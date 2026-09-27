@@ -1,0 +1,5 @@
+*.bat text eol=crlf
+Инструкция.txt -text
+*.png binary
+*.jpg binary
+*.ico binary
