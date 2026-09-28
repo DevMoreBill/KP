@@ -58,6 +58,9 @@ jobs:
           $cat = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/catalog'
           Write-Host "Позиций в каталоге: $($cat.Count)"
           if ($cat.Count -lt 1) { throw 'Каталог пуст' }
+          $types = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/types'
+          Write-Host "Типов оборудования: $($types.types.Count)"
+          if ($types.types.Count -lt 5) { throw 'Справочник типов не загрузился' }
           $html = Invoke-WebRequest -Uri 'http://127.0.0.1:17845/' -UseBasicParsing
           if ($html.Content -notmatch 'ПНЕВМОТЕХ') { throw 'Интерфейс не отдаётся' }
           $n = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/kp/new'
