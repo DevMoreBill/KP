@@ -43,6 +43,35 @@ button,input,textarea,select{font:inherit;color:inherit}
 .brand b{color:var(--navy)} .brand i{font-style:normal;color:var(--sky)}
 .brand small{display:block;font-weight:500;letter-spacing:0;color:var(--muted);font-size:12.5px;margin-top:-2px}
 .top .sp{flex:1}
+.icard{display:grid;grid-template-columns:120px minmax(0,1fr) 200px;gap:16px;align-items:start}
+.ithumb{width:120px;height:90px;border:1.5px dashed var(--line);border-radius:12px;background:var(--soft);display:grid;place-items:center;cursor:pointer;padding:4px;color:var(--muted);font-size:13px}
+.ithumb img{max-width:100%;max-height:100%;object-fit:contain}
+.itop{display:flex;gap:8px;align-items:center;margin-bottom:6px}.itop .item-no{margin:0}
+.ttype{white-space:nowrap;font-size:12px;font-weight:600;color:var(--navy);background:var(--soft);border-radius:999px;padding:2px 10px}
+.tcat{font-size:12px;color:var(--muted)}
+input.iname{font-weight:600;font-size:15.5px}
+.ikp{font-size:13px;color:var(--muted);margin:6px 0 8px}
+.istat{display:flex;flex-wrap:wrap;gap:6px}
+.st{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:3px 9px;font-size:12.5px;cursor:pointer;color:var(--ink)}
+.st b{font-weight:650}.st.zero{color:var(--muted)}.st:hover{border-color:var(--sky)}
+.iside{display:grid;gap:8px}
+.iside .pricebox{padding:9px 12px;min-height:0}.isum{text-align:right;font-size:13px;color:var(--muted)}.isum b{color:var(--ink);font-size:15px}
+.ifoot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+dialog.editor{max-width:min(1060px,96vw);width:100%;height:min(92vh,980px);display:none;flex-direction:column}
+dialog.editor[open]{display:flex}
+.ed-tabs{display:flex;gap:6px;padding:10px 20px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.ed-tab{border:0;background:none;padding:10px 14px;border-bottom:3px solid transparent;cursor:pointer;font-weight:600;color:var(--muted);font-size:14.5px}
+.ed-tab.on{color:var(--navy);border-bottom-color:var(--navy)}
+.ed-b{padding:18px 20px 24px;overflow:auto;flex:1}
+.ed-sec{margin-bottom:22px}
+.media2{display:grid;grid-template-columns:1fr 280px;gap:16px}
+.fblock{display:grid;grid-template-columns:190px minmax(0,1fr);gap:14px;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.fimg{display:grid;gap:6px}
+.ibox{height:130px;border:1.5px dashed var(--line);border-radius:10px;background:var(--soft);display:grid;place-items:center;text-align:center;cursor:pointer;color:var(--muted);font-size:13px;padding:6px}
+.ibox img{max-width:100%;max-height:118px;object-fit:contain}.ibox.over{border-color:var(--sky)}
+.ftext{display:grid;gap:8px;align-content:start}
+.fhead{display:grid;grid-template-columns:1fr 32px 32px;gap:6px;align-items:center}
+@media (max-width:1000px){.icard{grid-template-columns:90px 1fr}.iside{grid-column:1/-1;grid-template-columns:1fr 1fr 1fr;align-items:end}.media2,.fblock{grid-template-columns:1fr}}
 .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;border:1.5px dashed var(--line);border-radius:12px;padding:12px;min-height:70px;background:var(--soft)}
 .gal.over{border-color:var(--sky)}
 .gcard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px}
@@ -262,6 +291,7 @@ dialog::backdrop{background:rgba(10,20,40,.45)}
 </main>
 <div class="mbar" id="mbar"><b id="mtotal">0,00 руб.</b><button class="btn" type="button" data-go="side">Скачать</button></div>
 <dialog id="dlg"></dialog>
+<dialog id="edlg" class="editor" aria-label="Карточка позиции"></dialog>
 <div class="toast" id="toast" role="status"></div>
 <input type="file" id="filePick" accept="image/*" hidden>
 <script>/* Генератор ТКП ПНЕВМОТЕХ: собирает document.xml, footer1.xml и связи.
@@ -551,7 +581,7 @@ dialog::backdrop{background:rgba(10,20,40,.45)}
   // ряд целиком (пустое место — не больше высоты одного ряда), заголовок держится с первым рядом.
   function galleryXml(list) {
     if (!list || !list.length) return '';
-    const out = [spacer(300), heading('Узлы, фото и схемы')];
+    const out = [spacer(300), heading('Фото и схемы')];
     const HALF = 5073, GAP = 201, FULL = W;
     const card = (g, w, boxW, boxH) => {
       const k = Math.min(boxW / g.w, boxH / g.h);
@@ -585,7 +615,10 @@ dialog::backdrop{background:rgba(10,20,40,.45)}
     const m = M.items[it.id] || {};
     let desc = '';
     if (m.logo) { const cx = 1350000, cy = Math.round(cx * m.logo.h / m.logo.w); desc += p(img(m.logo.rid, cx, Math.min(cy, 700000), 'Логотип'), { after: 160 }); }
-    const feats = (it.features || []).filter(f => f.label || f.text);
+    const fimg = m.featImgs || {};
+    const allF = (it.features || []).filter(f => f.label || f.text);
+    const illustrated = allF.filter(f => f.id && fimg[f.id]);
+    const feats = allF.filter(f => !(f.id && fimg[f.id]));
     feats.forEach((f, i) => {
       if (f.label) desc += p(r(f.label, { sz: 14, color: BLUE, b: true, caps: true, sp: 15 }), { after: 20 });
       desc += p(r(f.text || '', { sz: 17 }), { after: i === feats.length - 1 ? 0 : 120, line: 250 });
@@ -602,6 +635,23 @@ dialog::backdrop{background:rgba(10,20,40,.45)}
       if (desc) out.push(tbl([[tc(desc, 5000, { mar: [0, 0, 0, 200] }), tc(END, 300, { mar: [0, 0, 0, 0] }), photo]], [5000, 300, 5047]));
       else out.push(p(img(m.tile.rid, cx, cy, it.name), { jc: 'center' }));
     } else if (desc) out.push(desc);
+    // «Узлы и компоненты»: блок описания и его фото рядом; каждый блок — неразрывная строка,
+    // фото чередуются слева/справа, при нехватке места блок целиком переносится на следующую страницу
+    if (illustrated.length) {
+      out.push(spacer(300));
+      out.push(heading('Узлы и компоненты'));
+      const IW = 3900, GAPW = 300, TW = W - IW - GAPW, boxW = (IW - 160) * E, boxH = 2000000;
+      illustrated.forEach((f, n) => {
+        const g = fimg[f.id]; const k = Math.min(boxW / g.w, boxH / g.h);
+        const picCell = tc(p(img(g.rid, Math.round(g.w * k), Math.round(g.h * k), f.label || 'Узел'), { jc: 'center' }), IW,
+          { bdr: B([4, HAIR], [4, HAIR], [4, HAIR], [4, HAIR]), va: 'center', mar: [100, 80, 100, 80] });
+        const txtCell = tc((f.label ? p(r(f.label, { sz: 15, color: BLUE, b: true, caps: true, sp: 15 }), { after: 60 }) : '') +
+          p(r(f.text || '', { sz: 18 }), { line: 264 }), TW, { va: 'center', mar: [60, 0, 60, 0] });
+        const gapCell = tc(END, GAPW, { mar: [0, 0, 0, 0] });
+        if (n) out.push(spacer(200));
+        out.push(n % 2 === 0 ? tbl([[picCell, gapCell, txtCell]], [IW, GAPW, TW]) : tbl([[txtCell, gapCell, picCell]], [TW, GAPW, IW]));
+      });
+    }
     const groups = (it.groups || []).map(g => ({ name: g.name, rows: (g.rows || []).filter(x => x.k || x.v) })).filter(g => g.rows.length);
     if (groups.length) {
       out.push(spacer(300));
@@ -615,7 +665,7 @@ dialog::backdrop{background:rgba(10,20,40,.45)}
         const a = flat(L), b = flat(R), n = Math.max(a.length, b.length);
         const wk = 2873, wv = 2200, gap = 201;
         const half = (e) => {
-          if (!e) return [tc('', wk + wv, { span: 2, mar: [36, 120, 36, 120] })];
+          if (!e) return [tc(END, wk + wv, { span: 2, mar: [0, 0, 0, 0] })];
           if (e.g) return [tc(p(r(e.g, { sz: 14, color: BLUE, b: true, caps: true, sp: 20 })), wk + wv, { span: 2, bdr: B(null, null, [6, SKY]), mar: [130, 120, 40, 120] })];
           return [cell(e.k, wk, { sz: 16, last: e.last }), cell(e.v, wv, { sz: 16, b: true, color: e.hl ? BLUE : DARK, last: e.last })];
         };
@@ -728,10 +778,10 @@ dialog::backdrop{background:rgba(10,20,40,.45)}
     const reg = x => { if (!x) return null; const rid = 'rIdImg' + (++n); media.push({ rid, file: x.file }); return Object.assign({ rid }, x); };
     M.cover = reg(Min.cover);
     M.thumbs = {}; for (const k in (Min.thumbs || {})) M.thumbs[k] = reg(Min.thumbs[k]);
-    for (const id in (Min.items || {})) M.items[id] = { tile: reg(Min.items[id].tile), logo: reg(Min.items[id].logo), gallery: (Min.items[id].gallery || []).map(reg).filter(Boolean) };
+    for (const id in (Min.items || {})) M.items[id] = { tile: reg(Min.items[id].tile), logo: reg(Min.items[id].logo), gallery: (Min.items[id].gallery || []).map(reg).filter(Boolean), featImgs: Object.fromEntries(Object.entries(Min.items[id].featImgs || {}).map(([k, v]) => [k, reg(v)])) };
     let body = coverXml(S, M);
     if (S.showClients) body += heading('Наши клиенты', true) + LOGOS;
-    for (const it of S.items) if (it.page && ((it.options || []).some(o => o.name) || it.groups?.some(g => g.rows?.some(x => x.k || x.v)) || M.items[it.id]?.tile || (M.items[it.id]?.gallery || []).length || (it.features || []).some(f => f.text))) body += equipXml(it, M);
+    for (const it of S.items) if (it.page && ((it.options || []).some(o => o.name) || it.groups?.some(g => g.rows?.some(x => x.k || x.v)) || M.items[it.id]?.tile || (M.items[it.id]?.gallery || []).length || Object.keys(M.items[it.id]?.featImgs || {}).length || (it.features || []).some(f => f.text))) body += equipXml(it, M);
     body += kpXml(S);
     return {
       document: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + roots.document + '<w:body>' + body + SECT + '</w:body></w:document>',
@@ -931,7 +981,7 @@ async function syncCatalog(number){
       photoCaption:it.photoCaption||base.photoCaption||'',
       features: (it.features||[]).some(f=>f.text) ? it.features : (base.features||[]),
       groups: (it.groups||[]).some(g=>(g.rows||[]).some(r=>r.k||r.v)) ? it.groups : (base.groups||[]),
-      hint: it.hint||base.hint||null, photo: it.photo||base.photo||null, logo: it.logo||base.logo||null, gallery: (it.gallery&&it.gallery.length)?it.gallery.map(({id,src,w,h,caption,slot,wide,on})=>({id,src,w,h,caption,slot,wide,on})):(base.gallery||[]), updatedAt: new Date().toISOString(),
+      hint: it.hint||base.hint||null, photo: it.photo||base.photo||null, logo: it.logo||base.logo||null, gallery: (it.gallery&&it.gallery.length)?it.gallery.map(({id,src,w,h,caption,slot,wide,on,at})=>({id,src,w,h,caption,slot,wide,on,at})):(base.gallery||[]), updatedAt: new Date().toISOString(),
       attrs: {...(base.attrs||{}), ...Object.fromEntries(Object.entries(it.attrs||{}).filter(([,v])=>v!==''&&v!=null))} });
     if (!base.kind && attrsOf(base).type==='Опция') base.kind='option';
     base.prices = (base.prices||[]).filter(p => !number || p.number!==number);
@@ -1035,8 +1085,9 @@ function renderForm(){
   const cur = STEPS.find(s=>s.id===STEP)||STEPS[0];
   $('#nav').innerHTML = stepperHtml();
   f.innerHTML = cur.f().replace(/<h2><span class="n">\d+<\/span>/, `<h2><span class="n">${STEPS.indexOf(cur)+1}</span>`) + stepNavHtml();
-  if (focusP) { const el = f.querySelector(`[data-p="${CSS.escape(focusP)}"]`); if (el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n);}catch(e){} } }
+  if (focusP && !$('#edlg').open) { const el = f.querySelector(`[data-p="${CSS.escape(focusP)}"]`); if (el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n);}catch(e){} } }
   renderSide();
+  if (EDIT && $('#edlg').open) renderEditor();
 }
 function stepClient(){
   return `<section class="step" id="st-client"><h2><span class="n">1</span>Клиент: кому и когда</h2>
@@ -1053,25 +1104,33 @@ function stepItems(){
   <button class="btn ghost" type="button" data-a="addItem">+ Позиция вручную</button></div></section>`;
 }
 function itemCard(x,i){
-  const P = `items.${i}`, bad = n => (n ? '' : ' bad');
-  const priceTxt = x._priceText ?? fmtPrice(x.price);
+  const P=`items.${i}`, t=typeById(attrsOf(x).cat);
+  const nf=(x.features||[]).filter(f=>f.label||f.text).length, ni=(x.gallery||[]).length+(x.photo?1:0);
+  const nr=(x.groups||[]).reduce((s,g)=>s+(g.rows||[]).filter(r=>r.k||r.v).length,0), no=(x.options||[]).filter(o=>o.name).length;
+  const stat=(tab,label,n,warn)=>`<button type="button" class="st${n?'':' zero'}${warn?' warn':''}" data-a="edit" data-i="${i}" data-tab="${tab}">${label}: <b>${n||'нет'}</b></button>`;
   return `<div class="item" id="item-${x.id}">
-   <div class="item-head">
-     <div class="item-no" aria-hidden="true">${i+1}</div>
-     <label class="f"><span class="req">Наименование</span><input type="text" data-p="${P}.name" value="${esc(x.name)}" placeholder="Начните вводить — подскажу из каталога" autocomplete="off" list="catNames"></label>
-     <label class="f qtyc"><span class="req">Кол-во, шт.</span><div class="qty"><button type="button" data-a="qty" data-i="${i}" data-d="-1" aria-label="Меньше">−</button><input type="text" inputmode="numeric" data-p="${P}.qty" value="${esc(x.qty)}" class="${+x.qty>=1&&Number.isInteger(+x.qty)?'':'bad'}"><button type="button" data-a="qty" data-i="${i}" data-d="1" aria-label="Больше">+</button></div></label>
-     <div class="f pricec"><span>Цена за ед., ${curSh(kpCur())}</span><button type="button" class="pricebox${x.price?'':' empty'}" data-a="toPrice" title="Цена задаётся в разделе «Цены и валюта»">${x.price?fmtPrice(x.price):'задать цену'}</button></div>
-     <div class="row acts">
-       <button class="icon" type="button" data-a="up" data-i="${i}" aria-label="Выше" ${i===0?'disabled':''}>↑</button>
-       <button class="icon" type="button" data-a="down" data-i="${i}" aria-label="Ниже" ${i===S.items.length-1?'disabled':''}>↓</button>
-       <button class="icon" type="button" data-a="delItem" data-i="${i}" aria-label="Удалить позицию">✕</button>
+   <div class="icard">
+     <button type="button" class="ithumb" data-a="edit" data-i="${i}" data-tab="desc" title="Фото и описание">${x.photo?`<img src="${x.photo.src}" alt="">`:'<span>+ фото</span>'}</button>
+     <div class="imain">
+       <div class="itop"><span class="item-no">${i+1}</span><span class="ttype">${esc(t.item||t.name)}</span>${x.catId?'<span class="tcat">из каталога</span>':''}</div>
+       <input type="text" class="iname" data-p="${P}.name" value="${esc(x.name)}" placeholder="Наименование позиции" autocomplete="off" list="catNames" aria-label="Наименование">
+       <div class="ikp">${esc(mainLine(x,4)||x.spec||'Параметры не заполнены — откройте карточку')}</div>
+       <div class="istat">${stat('desc','Описание',nf)}${stat('desc','Фото',ni)}${stat('spec','Характеристики',nr)}${stat('opts','Опции',no)}</div>
+     </div>
+     <div class="iside">
+       <label class="f"><span>Кол-во, шт.</span><div class="qty"><button type="button" data-a="qty" data-i="${i}" data-d="-1" aria-label="Меньше">−</button><input type="text" inputmode="numeric" data-p="${P}.qty" value="${esc(x.qty)}" class="${+x.qty>=1&&Number.isInteger(+x.qty)?'':'bad'}"><button type="button" data-a="qty" data-i="${i}" data-d="1" aria-label="Больше">+</button></div></label>
+       <div class="f"><span>Цена за ед., ${curSh(kpCur())}</span><button type="button" class="pricebox${x.price?'':' empty'}" data-a="toPrice">${x.price?fmtPrice(x.price):'задать цену'}</button></div>
+       <div class="isum">Сумма: <b data-sum="${i}">${money(itemSum(x))}</b></div>
      </div>
    </div>
-   <div class="grid" style="margin-top:10px">${field('Краткие характеристики (строка под названием в таблице)',`${P}.spec`,{ph:'Двигатель · альтернатор · мощность · габариты'})}</div>
-   <div class="item-sum"><button class="sw" type="button" role="switch" aria-checked="${!!x.page}" data-a="togglePage" data-i="${i}"><i></i>Страница оборудования в КП</button>
-     <span>Сумма: <b data-sum="${i}">${money(itemSum(x))}</b> ${curSh(kpCur())}</span></div>
-   ${optsBlock(x,i)}
-   ${x.page ? `<details class="more" data-more="${i}"${(x._open ?? !x.catId)?' open':''}><summary>Фото, описание и характеристики для страницы оборудования${x.catId?' <span class="muted">— заполнено из каталога</span>':''}</summary>${details(x,i)}</details>` : ''}
+   <div class="ifoot">
+     <button class="btn primary" type="button" data-a="edit" data-i="${i}" data-tab="main">Открыть карточку позиции</button>
+     <button class="sw" type="button" role="switch" aria-checked="${!!x.page}" data-a="togglePage" data-i="${i}"><i></i>Страница оборудования в КП</button>
+     <span style="flex:1"></span>
+     <button class="icon" type="button" data-a="up" data-i="${i}" aria-label="Выше" ${i===0?'disabled':''}>↑</button>
+     <button class="icon" type="button" data-a="down" data-i="${i}" aria-label="Ниже" ${i===S.items.length-1?'disabled':''}>↓</button>
+     <button class="icon" type="button" data-a="delItem" data-i="${i}" aria-label="Удалить позицию">✕</button>
+   </div>
   </div>`;
 }
 function itemSum(x){ return (+x.qty||0)*(x.price||0) + (x.options||[]).reduce((s,o)=>s+(+o.qty||0)*(o.price||0),0); }
@@ -1326,10 +1385,13 @@ document.addEventListener('click', async e=>{
     case 'galDel': it.gallery.splice(j,1); break;
     case 'galUp': [it.gallery[j-1],it.gallery[j]]=[it.gallery[j],it.gallery[j-1]]; break;
     case 'galDown': [it.gallery[j+1],it.gallery[j]]=[it.gallery[j],it.gallery[j+1]]; break;
+    case 'edit': return openEditor(i, b.dataset.tab);
+    case 'addFeatL': { it.features=it.features||[]; const f={id:uid(),label:b.dataset.l||'',text:''}; it.features.push(f); it.page=true; break; }
+    case 'featUp': [it.features[j-1],it.features[j]]=[it.features[j],it.features[j-1]]; break;
     case 'autoAttrs': it.attrs=Object.fromEntries(Object.entries(extractAttrs(it)).filter(([,v])=>v!==''&&v!=null)); toast('Параметры определены — проверьте'); break;
     case 'togglePage': it.page=!it.page; if(it.page && !it.features.length && !it.groups.length){ it.features=[{label:'',text:''}]; } break;
     case 'addFeat': it.features.push({label:'',text:''}); break;
-    case 'delFeat': it.features.splice(j,1); break;
+    case 'delFeat': { const f=it.features[j]; if (f&&f.id) it.gallery=(it.gallery||[]).filter(g=>g.at!=='feat:'+f.id); it.features.splice(j,1); break; }
     case 'addGrp': it.groups.push({name:'',rows:[{k:'',v:''}]}); break;
     case 'delGrp': it.groups.splice(j,1); break;
     case 'addRow': it.groups[j].rows.push({k:'',v:''}); break;
@@ -1364,6 +1426,7 @@ $('#btnNew').addEventListener('click', ()=>{ if(!confirm(S.kpId?'Начать н
 document.addEventListener('toggle', e=>{ const d=e.target; if (d.dataset && d.dataset.more!=null && S.items[+d.dataset.more]) S.items[+d.dataset.more]._open=d.open; }, true);
 document.addEventListener('keydown', e=>{ const dz=e.target.closest?.('[data-drop]'); if(dz && (e.key==='Enter'||e.key===' ')){ e.preventDefault(); pickImage(dz.dataset.drop,+dz.dataset.i);} });
 ['dragover','dragleave','drop'].forEach(ev=>document.addEventListener(ev, e=>{
+  const fz=e.target.closest?.('[data-fimg]'); if(fz){ e.preventDefault(); fz.classList.toggle('over', ev==='dragover'); if(ev==='drop'&&e.dataTransfer.files.length) addFeatImage(+fz.dataset.fimg, fz.dataset.fid, [...e.dataTransfer.files]); return; }
   const gz=e.target.closest?.('[data-gal]'); if(gz){ e.preventDefault(); gz.classList.toggle('over', ev==='dragover'); if(ev==='drop'&&e.dataTransfer.files.length) addGallery(+gz.dataset.gal,[...e.dataTransfer.files],''); return; }
   const dz=e.target.closest?.('[data-drop]'); if(!dz) return; e.preventDefault();
   dz.classList.toggle('over', ev==='dragover');
@@ -1735,16 +1798,123 @@ async function prepGallery(file){
 async function addGallery(i, files, slot){
   const it=S.items[i]; it.gallery=it.gallery||[]; let n=0;
   for (const f of files){ if (!f.type.startsWith('image/')) continue;
-    try{ const im=await prepGallery(f); it.gallery.push({id:uid(), ...im, caption:slot||'', slot:slot||'', on:true}); n++; slot=''; }catch(e){} }
+    try{ const im=await prepGallery(f); it.gallery.push({id:uid(), ...im, caption:slot||'', slot:slot||'', at:'', on:true}); n++; slot=''; }catch(e){} }
   if (!n) return toast('Нужен файл изображения: JPG, PNG, WEBP');
   it.page=true; it._open=true; renderForm(); persist(); toast(n>1?`Добавлено изображений: ${n}`:'Изображение добавлено');
 }
 function pickGallery(i, slot){ const f=$('#filePick'); f.value=''; f.multiple=!slot; f.onchange=()=>{ const L=[...f.files]; f.multiple=false; if(L.length) addGallery(i,L,slot); }; f.click(); }
 document.addEventListener('paste', e=>{
+  const fz=document.activeElement?.closest?.('[data-fimg]');
+  if (fz){ const files=[...(e.clipboardData?.files||[])].filter(f=>f.type.startsWith('image/')); if(files.length){ e.preventDefault(); addFeatImage(+fz.dataset.fimg, fz.dataset.fid, files); } return; }
   const z=document.activeElement?.closest?.('[data-gal]'); if(!z) return;
   const files=[...(e.clipboardData?.files||[])].filter(f=>f.type.startsWith('image/')); if(!files.length) return;
   e.preventDefault(); addGallery(+z.dataset.gal, files, '');
 });
+
+/* ---------- карточка позиции: редактор во всплывающем окне ---------- */
+let EDIT=null;   // {i, tab}
+const ED_TABS=[['main','Основное'],['desc','Описание и фото'],['spec','Характеристики'],['opts','Опции и услуги'],['ai','Автозаполнение']];
+function featId(f){ if(!f.id) f.id=uid(); return f.id; }
+// к какому месту позиции относится изображение: блок описания, группа характеристик или раздел «Фото и схемы»
+function linkOf(x,g){
+  if (g.at && g.at.startsWith('feat:')){ const f=(x.features||[]).find(f=>f.id===g.at.slice(5)); if (f) return {kind:'feat',f}; }
+  if (g.at && g.at.startsWith('group:')){ const nm=g.at.slice(6); if ((x.groups||[]).some(gr=>gr.name===nm)) return {kind:'group',name:nm}; }
+  if (g.at===undefined || g.at===''){
+    const c=norm(g.caption||g.slot||''); if (c){
+      const f=(x.features||[]).find(f=>f.label && (norm(f.label)===c || c.startsWith(norm(f.label)))); if (f && !(x.gallery||[]).some(o=>o!==g && o.at==='feat:'+featId(f))) return {kind:'feat',f,auto:true};
+      const gr=(x.groups||[]).find(gr=>gr.name && norm(gr.name)===c); if (gr) return {kind:'group',name:gr.name,auto:true}; } }
+  return {kind:'free'};
+}
+function featImage(x,f){ return (x.gallery||[]).find(g=>{ const L=linkOf(x,g); return L.kind==='feat' && L.f===f; }); }
+function openEditor(i, tab){
+  EDIT={i, tab: tab||'main'}; const d=$('#edlg'); renderEditor(); if(!d.open) d.showModal();
+}
+function closeEditor(){ const d=$('#edlg'); EDIT=null; if(d.open) d.close(); renderForm(); persist(); }
+function renderEditor(){
+  const d=$('#edlg'); if(!EDIT) return; const i=EDIT.i, x=S.items[i]; if(!x){ closeEditor(); return; }
+  const focusP=document.activeElement?.dataset?.p; const sc=d.querySelector('.ed-b')?.scrollTop||0;
+  const body = EDIT.tab==='main'?edMain(x,i): EDIT.tab==='desc'?edDesc(x,i): EDIT.tab==='spec'?edSpec(x,i): EDIT.tab==='opts'?edOpts(x,i): edAI(x,i);
+  d.innerHTML=`<div class="dlg-h"><h3>${i+1}. ${esc(x.name||'Новая позиция')}</h3><button class="btn primary" type="button" data-edclose>Готово</button></div>
+    <div class="ed-tabs">${ED_TABS.map(([k,l])=>`<button type="button" class="ed-tab${EDIT.tab===k?' on':''}" data-edtab="${k}">${l}</button>`).join('')}</div>
+    <div class="ed-b">${body}</div>`;
+  const b=d.querySelector('.ed-b'); b.scrollTop=sc;
+  if (focusP){ const el=d.querySelector(`[data-p="${CSS.escape(focusP)}"]`); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n);}catch(e){} } }
+}
+function edMain(x,i){
+  const P=`items.${i}`;
+  return `<div class="ed-sec"><div class="grid g2">${field('Наименование в КП',`${P}.name`,{req:1})}${field('Заголовок страницы оборудования',`${P}.pageTitle`,{ph:x.name||'Как в наименовании'})}</div>
+    <div class="grid" style="margin-top:12px">${field('Краткие характеристики — строка под названием в таблице КП',`${P}.spec`,{ph:'Двигатель · альтернатор · мощность · габариты'})}</div>
+    <div class="row" style="margin-top:12px"><button class="sw" type="button" role="switch" aria-checked="${!!x.page}" data-a="togglePage" data-i="${i}"><i></i>Отдельная страница оборудования в КП (фото, описание, характеристики)</button></div></div>
+   <div class="ed-sec">${attrsBlock(x,i)}</div>
+   <div class="ed-sec row"><button class="btn" type="button" data-a="saveCat" data-i="${i}">Сохранить позицию в каталог</button><span class="muted">Фото, описание, характеристики, изображения и цена будут доступны в следующих КП.</span></div>`;
+}
+function imgBox(src, attrs, text){ return `<div class="ibox" ${attrs} tabindex="0" role="button">${src?`<img src="${src}" alt="">`:`<span>${text}</span>`}</div>`; }
+function edDesc(x,i){
+  const P=`items.${i}`, t=typeById(attrsOf(x).cat);
+  const slots=(t.gallerySlots||[]).filter(s=>!WIDE_RX.test(s));
+  const have=new Set((x.features||[]).map(f=>norm(f.label)));
+  const blocks=(x.features||[]).map((f,j)=>{ featId(f); const im=featImage(x,f); const gi=im?(x.gallery||[]).indexOf(im):-1;
+    return `<div class="fblock">
+      <div class="fimg">${imgBox(im&&im.src,`data-fimg="${i}" data-fid="${f.id}"`,'+ фото к блоку<br><small>перетащите, вставьте Ctrl+V или нажмите</small>')}
+        ${im?`<div class="row" style="gap:4px;justify-content:center"><label class="row muted" style="gap:4px"><input type="checkbox" data-gon="${i}" data-j="${gi}" ${im.on===false?'':'checked'} style="width:auto">в КП</label><button class="icon" type="button" data-a="galDel" data-i="${i}" data-j="${gi}" aria-label="Убрать фото">✕</button></div>`:''}</div>
+      <div class="ftext"><div class="fhead"><input type="text" data-p="${P}.features.${j}.label" value="${esc(f.label)}" placeholder="Заголовок блока (Двигатель, Альтернатор…)" style="font-weight:600">
+        <button class="icon" type="button" data-a="featUp" data-i="${i}" data-j="${j}" aria-label="Выше" ${j===0?'disabled':''}>↑</button><button class="icon" type="button" data-a="delFeat" data-i="${i}" data-j="${j}" aria-label="Удалить блок">✕</button></div>
+        <textarea data-p="${P}.features.${j}.text" rows="3" placeholder="Описание: одно-два предложения">${esc(f.text)}</textarea></div></div>`; }).join('');
+  const free=(x.gallery||[]).map((g,j)=>({g,j,L:linkOf(x,g)})).filter(o=>o.L.kind!=='feat');
+  const groups=(x.groups||[]).map(g=>g.name).filter(Boolean);
+  const gcards=free.map(({g,j,L})=>`<div class="gcard${g.on===false?' off':''}"><img src="${g.src}" alt="">
+      <input type="text" data-p="${P}.gallery.${j}.caption" value="${esc(g.caption||'')}" placeholder="${L.kind==='group'?esc(L.name):'Подпись под изображением'}">
+      <label class="f"><span>Где показать</span><select data-gat="${i}" data-j="${j}"><option value="free"${L.kind==='free'?' selected':''}>Раздел «Фото и схемы»</option>
+        ${groups.map(n=>`<option value="group:${esc(n)}"${L.kind==='group'&&L.name===n?' selected':''}>К характеристикам: ${esc(n)}</option>`).join('')}
+        ${(x.features||[]).filter(f=>f.label).map(f=>`<option value="feat:${featId(f)}">К описанию: ${esc(f.label)}</option>`).join('')}</select></label>
+      <div class="gctl"><select data-p="${P}.gallery.${j}.wide" aria-label="Ширина"><option value=""${!g.wide?' selected':''}>Ширина: авто</option><option value="half"${g.wide==='half'?' selected':''}>Половина</option><option value="full"${g.wide==='full'?' selected':''}>Вся ширина</option></select>
+        <label class="row muted" style="gap:4px"><input type="checkbox" data-gon="${i}" data-j="${j}" ${g.on===false?'':'checked'} style="width:auto">в КП</label><span style="flex:1"></span>
+        <button class="icon" type="button" data-a="galDel" data-i="${i}" data-j="${j}" aria-label="Удалить">✕</button></div></div>`).join('');
+  const schemeSlots=(t.gallerySlots||[]).filter(s=>WIDE_RX.test(s));
+  return `<div class="ed-sec"><p class="sub">Главное фото и логотип</p>
+     <div class="media2"><div>${drop(x.photo,'photo',i,'Главное фото: перетащите или нажмите.<br>Белые поля обрежутся сами.')}${field('Подпись под фото',`${P}.photoCaption`,{ph:'Исполнение в кожухе'})}</div>
+       <div>${drop(x.logo,'logo',i,'Логотип производителя (PNG)',true)}<p class="muted">Логотип выводится над описанием на странице оборудования.</p></div></div></div>
+   <div class="ed-sec"><p class="sub">Описание узлов <span class="muted">у каждого блока — своё фото: в КП текст и фото стоят рядом</span></p>
+     ${blocks||'<p class="muted">Добавьте блоки описания — например, «Двигатель», «Альтернатор», «Контроллер».</p>'}
+     <div class="chips">${slots.filter(s=>!have.has(norm(s))).map(s=>`<button class="chip" type="button" data-a="addFeatL" data-i="${i}" data-l="${esc(s)}">+ ${esc(s)}</button>`).join('')}<button class="chip" type="button" data-a="addFeatL" data-i="${i}" data-l="">+ свой блок</button></div></div>
+   <div class="ed-sec"><p class="sub">Схемы, чертежи и другие фото <span class="muted">выводятся после характеристик; можно привязать к группе характеристик</span></p>
+     <div class="gal" data-gal="${i}" tabindex="0">${gcards||'<p class="muted" style="margin:0">Перетащите файлы сюда или вставьте из буфера (Ctrl+V). Схемы и чертежи в PNG сохраняются без потери чёткости.</p>'}</div>
+     <div class="chips" style="margin-top:8px">${schemeSlots.map(s=>`<button class="chip" type="button" data-a="galAdd" data-i="${i}" data-slot="${esc(s)}">+ ${esc(s)}</button>`).join('')}<button class="chip" type="button" data-a="galAdd" data-i="${i}" data-slot="">+ изображение</button></div></div>`;
+}
+function edSpec(x,i){
+  const P=`items.${i}`;
+  const groups=(x.groups||[]).map((g,j)=>`<div class="grp"><div class="grp-h"><input type="text" data-p="${P}.groups.${j}.name" value="${esc(g.name)}" placeholder="Группа (Двигатель, Альтернатор…)"><button class="icon" type="button" data-a="delGrp" data-i="${i}" data-j="${j}" aria-label="Удалить группу">✕</button></div>
+      ${g.rows.map((rw,k)=>`<div class="srow"><input type="text" data-p="${P}.groups.${j}.rows.${k}.k" value="${esc(rw.k)}" placeholder="Параметр"><input type="text" data-p="${P}.groups.${j}.rows.${k}.v" value="${esc(rw.v)}" placeholder="Значение"><button class="icon star" type="button" aria-pressed="${!!rw.hl}" data-a="star" data-i="${i}" data-j="${j}" data-k="${k}" aria-label="Ключевой параметр" title="Выделить синим">★</button><button class="icon" type="button" data-a="delRow" data-i="${i}" data-j="${j}" data-k="${k}" aria-label="Удалить строку">✕</button></div>`).join('')}
+      <button class="btn ghost" type="button" data-a="addRow" data-i="${i}" data-j="${j}">+ строка</button></div>`).join('');
+  return `<div class="ed-sec"><div class="row" style="margin-bottom:10px"><button class="btn" type="button" data-a="paste" data-i="${i}">Вставить таблицу из Excel</button><button class="btn" type="button" data-a="attrsToGroups" data-i="${i}">Сформировать из параметров</button><span class="muted">★ — выделить параметр синим в КП</span></div>
+    ${groups||'<p class="muted">Характеристик пока нет. Вставьте таблицу из Excel, сформируйте из параметров на вкладке «Основное» или используйте автозаполнение.</p>'}
+    <button class="btn ghost" type="button" data-a="addGrp" data-i="${i}">+ группа</button></div>`;
+}
+function edOpts(x,i){ return `<div class="ed-sec">${optsBlock(x,i)}</div>`; }
+function edAI(x,i){
+  const P=`items.${i}`;
+  return `<div class="ed-sec ai"><p class="sub">Заполнить карточку через Claude</p>
+      <ol class="muted" style="margin:0;padding-left:18px"><li>Вставьте текст из каталога или паспорта оборудования.</li><li>Нажмите «Скопировать запрос» и отправьте его в Claude (claude.ai) — можно приложить скриншот страницы каталога.</li><li>Вставьте ответ Claude и нажмите «Применить» — заполнятся параметры, описание, характеристики и титул.</li></ol>
+      <textarea data-p="${P}._src" rows="6" placeholder="Текст из каталога или паспорта…">${esc(x._src||'')}</textarea>
+      <div class="row"><button class="btn" type="button" data-a="aiCopy" data-i="${i}">Скопировать запрос</button><span class="muted" data-aistat="${i}">${esc(x._aiMsg||'')}</span></div>
+      <textarea data-p="${P}._ans" rows="4" placeholder="Ответ Claude (начинается с {)">${esc(x._ans||'')}</textarea>
+      <div class="row"><button class="btn primary" type="button" data-a="aiApply" data-i="${i}">Применить ответ</button></div></div>`;
+}
+async function addFeatImage(i, fid, files){
+  const it=S.items[i], f=(files||[]).find(f=>f.type&&f.type.startsWith('image/')); if(!f) return toast('Нужен файл изображения');
+  try{ const im=await prepGallery(f); it.gallery=(it.gallery||[]).filter(g=>g.at!=='feat:'+fid);
+    const ft=(it.features||[]).find(z=>z.id===fid);
+    it.gallery.push({id:uid(), ...im, caption:ft?ft.label:'', slot:'', at:'feat:'+fid, on:true}); it.page=true; renderForm(); persist(); toast('Фото добавлено к блоку описания'); }catch(e){ toast('Не удалось открыть изображение'); }
+}
+document.addEventListener('click', e=>{
+  const d=e.target.closest('#edlg'); if(!d) return;
+  if (e.target.closest('[data-edclose]')) return closeEditor();
+  const t=e.target.closest('[data-edtab]'); if (t){ EDIT.tab=t.dataset.edtab; renderEditor(); return; }
+  const fz=e.target.closest('[data-fimg]'); if (fz && !e.target.closest('[data-a]')){ const f=$('#filePick'); f.value=''; f.multiple=false; f.onchange=()=>f.files[0]&&addFeatImage(+fz.dataset.fimg, fz.dataset.fid, [f.files[0]]); f.click(); }
+});
+document.addEventListener('close', e=>{ if (e.target.id==='edlg' && EDIT){ EDIT=null; renderForm(); persist(); } }, true);
+document.addEventListener('change', e=>{ const t=e.target; if (t.dataset.gat==null) return;
+  const x=S.items[+t.dataset.gat], g=x.gallery[+t.dataset.j]; g.at = t.value==='free' ? 'free' : t.value; renderForm(); persist(); });
 /* ---------- новая позиция: выбор типа ---------- */
 function pickTypeAndAdd(pre){
   const d=$('#dlg'); d.classList.remove('wide');
@@ -1756,7 +1926,7 @@ function pickTypeAndAdd(pre){
   d.querySelector('.dlg-b').onclick=e=>{ const b=e.target.closest('[data-t]'); if(!b) return; const t=typeById(b.dataset.t);
     const it=newItem(); it.attrs={cat:t.id}; it.page=true; it.features=[{label:'',text:''}]; it._open=true;
     S.items.push(it); d.close(); if (STEP!=='equip') STEP='equip'; renderForm(); persist();
-    setTimeout(()=>document.querySelector(`#item-${it.id} [data-p="items.${S.items.length-1}.name"]`)?.focus(),50);
+    setTimeout(()=>openEditor(S.items.length-1,'main'),50);
     toast(`Добавлена позиция: ${t.item}. Заполните параметры — по ним сформируются характеристики и титул.`); };
 }
 /* ---------- станции для титула ---------- */
@@ -1906,6 +2076,7 @@ async function download(){
   if (!window.JSZip){ msg.className='msg err'; msg.textContent='Не загрузился модуль сборки файла. Обновите страницу.'; return; }
   btn.disabled=true; btn.textContent='Собираю файл…'; msg.textContent='';
   try{
+    S.items.forEach(x=>(x.features||[]).forEach(featId));
     const St = JSON.parse(JSON.stringify(S, (k,v)=>k.startsWith('_')?undefined:v));
     St.vat=+S.vat; St.cur={code:kpCur(), rate:kpCur()!=='RUB'?rateOf(kpCur()):null, date:S.pricing.rateDate||''}; St.items=S.items.map(x=>({...x, qty:+x.qty, photo:undefined, logo:undefined, _srcImg:undefined, options:(x.options||[]).filter(o=>o.name.trim()&&+o.qty>0).map(o=>({name:o.name.trim(), short:o.short, unit:o.unit, qty:+o.qty, price:o.price||0}))}));
     if (SRV.on && !S.kpId){ const r=await api('/api/kp/new',{method:'POST'}); S.kpId=r.id; S.number=r.number; St.kpId=r.id; St.number=r.number; }
@@ -1931,10 +2102,14 @@ async function download(){
     for (const x of S.items){ if(!x.page) continue; const m={};
       if (x.photo){ const t=await tileFrom(x.photo); zip.file(`word/media/tile_${x.id}.png`, b64(t.url), {base64:true}); m.tile={file:`tile_${x.id}.png`,w:t.w,h:t.h}; }
       if (x.logo){ zip.file(`word/media/logo_${x.id}.png`, b64(await toDataURL(x.logo)), {base64:true}); m.logo={file:`logo_${x.id}.png`,w:x.logo.w,h:x.logo.h}; }
-      m.gallery=[]; let gk=0;
+      m.gallery=[]; m.featImgs={}; let gk=0;
+      (x.features||[]).forEach(featId);
       for (const g of (x.gallery||[])){ if (g.on===false) continue; const du=await toDataURL(g); if(!du) continue;
         const ext=/^data:image\/png/.test(du)?'png':'jpg'; const fnm=`gal_${x.id}_${++gk}.${ext}`;
-        zip.file(`word/media/${fnm}`, b64(du), {base64:true}); m.gallery.push({file:fnm, w:g.w, h:g.h, caption:(g.caption||'').trim(), wide:galWide(g)}); }
+        zip.file(`word/media/${fnm}`, b64(du), {base64:true});
+        const L=linkOf(x,g);
+        if (L.kind==='feat') m.featImgs[L.f.id]={file:fnm, w:g.w, h:g.h};
+        else m.gallery.push({file:fnm, w:g.w, h:g.h, caption:(g.caption||'').trim() || (L.kind==='group'?L.name:''), wide:galWide(g)}); }
       Min.items[x.id]=m; }
     const out = KPGen.build(St, Min, ROOTS);
     zip.file('word/document.xml', out.document); zip.file('word/footer1.xml', out.footer); zip.file('word/_rels/document.xml.rels', out.rels);
