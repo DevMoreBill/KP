@@ -41,6 +41,12 @@ jobs:
       - name: Сборка
         run: python -m PyInstaller --noconfirm --clean kp.spec
 
+      - name: Проверка сборки — модуль SQLite внутри EXE
+        shell: pwsh
+        run: |
+          $toc = Get-ChildItem -Recurse -Path build -Filter 'xref-*.html' | Select-Object -First 1
+          if ($toc -and -not (Select-String -Path $toc.FullName -Pattern 'sqlite3' -Quiet)) { throw 'В сборку не попал модуль sqlite3' }
+
       - name: Проверка запуска EXE
         shell: pwsh
         run: |
@@ -58,6 +64,11 @@ jobs:
           $cat = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/catalog'
           Write-Host "Позиций в каталоге: $($cat.Count)"
           if ($cat.Count -lt 1) { throw 'Каталог пуст' }
+          if (-not (Test-Path -LiteralPath (Join-Path $dir 'data\kp.sqlite3'))) { throw 'База SQLite не создана' }
+          $one = Invoke-RestMethod -Uri ("http://127.0.0.1:17845/api/catalog/" + $cat[0].id)
+          if (-not $one.name) { throw 'Позиция каталога не читается из базы' }
+          $tpl = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/templates'
+          if ($tpl.Count -lt 1) { throw 'Шаблоны КП не найдены' }
           $types = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/types'
           Write-Host "Типов оборудования: $($types.types.Count)"
           if ($types.types.Count -lt 5) { throw 'Справочник типов не загрузился' }
@@ -72,14 +83,28 @@ jobs:
           if (-not $p.WaitForExit(15000)) { $p.Kill(); throw 'EXE не завершился по команде «Выход»' }
           Write-Host 'Проверка пройдена'
 
+      - name: Комплект для установки (EXE + сервер отдела)
+        shell: pwsh
+        run: |
+          $pkg = Join-Path $PWD "pkg\$env:KP_EXE_NAME"
+          New-Item -ItemType Directory -Force -Path $pkg | Out-Null
+          Copy-Item -LiteralPath "dist\$env:KP_EXE_NAME.exe" -Destination $pkg
+          Copy-Item -Recurse -LiteralPath 'server-setup' -Destination $pkg
+          Copy-Item -LiteralPath 'Инструкция.txt' -Destination $pkg
+          Compress-Archive -Path "$pkg\*" -DestinationPath "dist\$env:KP_EXE_NAME.zip" -Force
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.exe }}
-          path: dist/${{ matrix.exe }}.exe
+          path: |
+            dist/${{ matrix.exe }}.exe
+            dist/${{ matrix.exe }}.zip
           if-no-files-found: error
 
       - name: Публикация в релиз
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/${{ matrix.exe }}.exe
+          files: |
+            dist/${{ matrix.exe }}.exe
+            dist/${{ matrix.exe }}.zip

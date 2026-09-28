@@ -28,17 +28,19 @@ if os.name == 'nt':
 
 a = Analysis(
     ['app/kp_server.py'],
-    pathex=[],
+    pathex=['app'],
     binaries=[],
     datas=[
         ('app/app.html', 'app'),
         ('app/icon.ico', 'app'),
         ('app/equipment_types.json', 'app'),
+        ('templates', 'templates'),
         ('seed/data/catalog', 'seed/data/catalog'),
         ('seed/data/img', 'seed/data/img'),
     ],
-    hiddenimports=[],
-    excludes=['tkinter', 'unittest', 'pydoc', 'lib2to3', 'sqlite3', 'multiprocessing'],
+    hiddenimports=['counterparty', 'storage', 'sqlite3', '_sqlite3', 'gzip'],
+    # sqlite3 НЕ исключать: на нём работает база данных программы
+    excludes=['tkinter', 'unittest', 'pydoc', 'lib2to3', 'multiprocessing'],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
