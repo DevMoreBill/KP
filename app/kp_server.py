@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Конструктор КП ПНЕВМОТЕХ — локальный сервер (Python, собирается в один EXE через PyInstaller).
+"""Конструктор КП ПНЕВМОТЕХ — сервер программы.
 
-Перенос server.ps1 один в один: тот же порт, те же адреса API, те же папки данных.
-Интерфейс (app.html), шрифт и стартовый каталог с фотографиями встроены в EXE —
-ни Python, ни PowerShell, ни интернет для работы не нужны.
+Отдаёт интерфейс (app.html) и API; данные — в SQLite (storage.py), контрагенты — counterparty.py.
+Режимы (settings.json → mode): «local» — для одного компьютера (127.0.0.1), «server» — сервер отдела,
+доступный по сети (0.0.0.0:port). Только стандартная библиотека Python; собирается PyInstaller в один EXE.
 """
+import hashlib
 import json
 import os
 import re
@@ -15,7 +16,6 @@ import sys
 import threading
 import urllib.parse
 import urllib.request
-import uuid
 import webbrowser
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -67,6 +67,9 @@ def write_bytes(path, data):
 
 
 # --- папки данных (можно вынести в сетевую папку через settings.json: {"dataDir": "\\\\server\\share\\КП"}) ---
+SETTINGS = {}
+
+
 def resolve_dirs():
     data_dir = os.path.join(ROOT, 'data')
     docs_dir = os.path.join(ROOT, 'Коммерческие предложения')
@@ -74,6 +77,7 @@ def resolve_dirs():
     if os.path.exists(settings):
         try:
             st = json.loads(read_text(settings))
+            SETTINGS.update(st)
             if st.get('dataDir'):
                 data_dir = os.path.join(st['dataDir'], 'data')
                 docs_dir = os.path.join(st['dataDir'], 'Коммерческие предложения')
@@ -81,36 +85,109 @@ def resolve_dirs():
             pass
     else:
         try:
-            write_text(settings, '{\n  "dataDir": ""\n}\n')
+            write_text(settings, '{\n  "mode": "local",\n  "port": 17845,\n  "dataDir": "",\n  "docsShare": ""\n}\n')
         except Exception:
             pass
     return data_dir, docs_dir
 
 
 DATA_DIR, DOCS_DIR = resolve_dirs()
-CAT_DIR = os.path.join(DATA_DIR, 'catalog')
+# mode: "local" — программа для одного компьютера; "server" — сервер отдела, доступен по сети (http://имя-компьютера:порт)
+SERVER_MODE = str(SETTINGS.get('mode', 'local')).lower() == 'server'
+if SETTINGS.get('port'):
+    try:
+        BASE_PORT = int(SETTINGS['port'])
+    except (TypeError, ValueError):
+        pass
+DOCS_SHARE = str(SETTINGS.get('docsShare') or '').strip()   # сетевой путь к папке КП для сотрудников, напр. \\\\SERVER\\КП
+STORE = None
+
+
+def store():
+    global STORE
+    if STORE is None:
+        from storage import Store
+        STORE = Store(os.path.join(DATA_DIR, 'kp.sqlite3'))
+    return STORE
 IMG_DIR = os.path.join(DATA_DIR, 'img')
-KP_DIR = os.path.join(DATA_DIR, 'kp')
 
 
 def prepare_dirs():
-    fresh = not os.path.isdir(CAT_DIR) or not any(n.endswith('.json') for n in os.listdir(CAT_DIR))
-    for d in (DATA_DIR, CAT_DIR, IMG_DIR, KP_DIR, DOCS_DIR):
+    for d in (DATA_DIR, IMG_DIR, DOCS_DIR):
         os.makedirs(d, exist_ok=True)
-    # первый запуск на новом компьютере: раскладываем встроенный в EXE каталог с фотографиями
+
+
+def sync_counter_with_files():
+    """Номер КП не должен повторить уже существующий файл (например, если базу восстановили из старой копии)."""
+    year = datetime.now().year
+    top = 0
+    for dp, dn, fn in os.walk(DOCS_DIR):
+        for name in fn:
+            m = re.match(r'^(\d{4})-(\d{3,})_', name)
+            if m and int(m.group(1)) == year:
+                top = max(top, int(m.group(2)))
+    if top:
+        store().ensure_counter_at_least(year, top)
+
+
+def seed_catalog():
+    """Первый запуск на новом компьютере: стартовый каталог с фото из EXE — сразу в базу."""
+    st = store()
+    if st.catalog_count():
+        return
     seed = os.path.join(BUNDLE, 'seed', 'data')
-    if fresh and os.path.isdir(seed):
-        for sub, dst in (('catalog', CAT_DIR), ('img', IMG_DIR)):
-            src = os.path.join(seed, sub)
-            if not os.path.isdir(src):
-                continue
-            for name in os.listdir(src):
-                target = os.path.join(dst, name)
-                if not os.path.exists(target):
-                    shutil.copyfile(os.path.join(src, name), target)
+    img = os.path.join(seed, 'img')
+    if os.path.isdir(img):
+        for name in os.listdir(img):
+            target = os.path.join(IMG_DIR, name)
+            if not os.path.exists(target):
+                shutil.copyfile(os.path.join(img, name), target)
+    cat = os.path.join(seed, 'catalog')
+    if os.path.isdir(cat):
+        for name in os.listdir(cat):
+            if name.endswith('.json'):
+                st.catalog_put(name[:-5], read_text(os.path.join(cat, name)))
 
 
-TYPES_USER = os.path.join(DATA_DIR, 'types.json')
+# ---------- шаблоны КП ----------
+# Папка «templates» рядом с программой (правится вручную: base.docx в Word, template.json в Блокноте).
+TEMPLATES_DIR = os.path.join(ROOT, 'templates') if FROZEN else os.path.join(BUNDLE, 'templates')
+TPL_FILES = re.compile(r'^(template\.json|base\.docx|[A-Za-z0-9_-]+\.(jpg|jpeg|png))$')
+
+
+def ensure_templates():
+    """Первый запуск EXE: раскладываем встроенные шаблоны рядом с программой (свои правки не перезаписываются)."""
+    src = os.path.join(BUNDLE, 'templates')
+    if not os.path.isdir(src) or os.path.normcase(src) == os.path.normcase(TEMPLATES_DIR):
+        return
+    for name in os.listdir(src):
+        dst = os.path.join(TEMPLATES_DIR, name)
+        if os.path.isdir(os.path.join(src, name)) and not os.path.exists(dst):
+            shutil.copytree(os.path.join(src, name), dst)
+
+
+def template_dirs():
+    out = {}
+    if os.path.isdir(TEMPLATES_DIR):
+        for name in sorted(os.listdir(TEMPLATES_DIR)):
+            d = os.path.join(TEMPLATES_DIR, name)
+            if SAFE_ID.match(name) and os.path.isfile(os.path.join(d, 'template.json')):
+                out[name] = d
+    return out
+
+
+def list_templates():
+    res = []
+    for tid, d in template_dirs().items():
+        try:
+            j = json.loads(read_text(os.path.join(d, 'template.json')))
+        except Exception as e:
+            res.append({'id': tid, 'name': tid, 'error': 'Ошибка в template.json: %s' % e})
+            continue
+        res.append({'id': tid, 'name': j.get('name') or tid, 'description': j.get('description', ''), 'filePrefix': j.get('filePrefix', ''),
+                    'hasBase': os.path.isfile(os.path.join(d, 'base.docx')),
+                    'clients': bool(j.get('clientsImage')) and os.path.isfile(os.path.join(d, j.get('clientsImage', '')))})
+    return res
 
 
 def types_builtin_path():
@@ -127,12 +204,7 @@ def load_types():
         base = json.loads(read_text(types_builtin_path())).get('types', [])
     except Exception:
         base = []
-    user = []
-    if os.path.isfile(TYPES_USER):
-        try:
-            user = json.loads(read_text(TYPES_USER)).get('types', [])
-        except Exception:
-            user = []
+    user = (store().kv_get('types') or {}).get('types', [])
     out = [dict(t) for t in base]
     index = {t.get('id'): i for i, t in enumerate(out)}
     for t in user:
@@ -158,7 +230,19 @@ def save_user_types(body):
             raise ValueError('У каждого типа нужен id: латиница, цифры и «_»')
         if not isinstance(t.get('fields', []), list):
             raise ValueError('fields должен быть списком')
-    write_text(TYPES_USER, json.dumps({'version': 1, 'types': types}, ensure_ascii=False, indent=2))
+    store().kv_set('types', {'version': 1, 'types': types})
+
+
+_CP = None
+
+
+def cp():
+    """Справочник контрагентов и проверки (создаётся после подготовки папок данных)."""
+    global _CP
+    if _CP is None:
+        from counterparty import Counterparties
+        _CP = Counterparties(store())
+    return _CP
 
 
 def app_html_path():
@@ -176,50 +260,16 @@ def safe_file(s):
     return s or 'КП.docx'
 
 
-def join_json_files(paths):
-    parts = []
-    for p in sorted(paths):
-        try:
-            parts.append(read_text(p))
-        except OSError:
-            pass
-    return '[' + ','.join(parts) + ']'
+def safe_dir(s):
+    """Имя подпапки (фамилия менеджера): без путей и запрещённых символов."""
+    s = re.sub(r'[\\/:*?"<>|.]', '', s or '').strip()
+    return s[:60]
 
 
-def catalog_files():
-    return [os.path.join(CAT_DIR, n) for n in os.listdir(CAT_DIR) if n.lower().endswith('.json')]
-
-
-def meta_files():
-    out = []
-    for n in os.listdir(KP_DIR):
-        p = os.path.join(KP_DIR, n, 'meta.json')
-        if os.path.isfile(p):
-            out.append(p)
-    return out
-
-
-_number_lock = threading.Lock()
-
-
-def next_number():
-    with _number_lock:
-        year = datetime.now().year
-        cnt = os.path.join(DATA_DIR, 'counter-%d.txt' % year)
-        n = 0
-        if os.path.exists(cnt):
-            try:
-                n = int(read_text(cnt).strip() or 0)
-            except ValueError:
-                n = 0
-        while True:
-            n += 1
-            num = '%d-%03d' % (year, n)
-            if not os.path.exists(os.path.join(KP_DIR, num)):
-                break
-        write_text(cnt, str(n))
-        os.makedirs(os.path.join(KP_DIR, num))
-        return num
+def docs_path(rel):
+    """Путь к файлу КП по относительному имени из docx.txt (с подпапкой менеджера или без)."""
+    parts = [safe_file(x) for x in re.split(r'[\\/]', rel or '') if x]
+    return os.path.join(DOCS_DIR, *parts) if parts else os.path.join(DOCS_DIR, 'КП.docx')
 
 
 def open_file(path):
@@ -287,10 +337,23 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     # --- ответы ---
-    def send(self, code, ctype, body):
+    def is_local(self):
+        a = (self.client_address or ('',))[0]
+        return a in ('127.0.0.1', '::1', '::ffff:127.0.0.1') or a.startswith('127.')
+
+    def send(self, code, ctype, body, extra=None):
         data = body if isinstance(body, bytes) else str(body).encode('utf-8')
+        gz = len(data) > 20000 and 'gzip' in (self.headers.get('Accept-Encoding') or '') and \
+            (ctype.startswith('application/json') or ctype.startswith('text/'))
+        if gz:
+            import gzip
+            data = gzip.compress(data, 5)
         self.send_response(code)
         self.send_header('Content-Type', ctype)
+        if gz:
+            self.send_header('Content-Encoding', 'gzip')
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
         self.send_header('Cache-Control', 'no-store')
         self.send_header('Content-Length', str(len(data)))
         self.end_headers()
@@ -354,28 +417,77 @@ class Handler(BaseHTTPRequestHandler):
                 save_user_types(self.body())
             return self.send_json(load_types())
 
+        # контрагенты: поиск по ИНН, проверка Checko, справочник
+        if path == '/api/party':
+            return self.send_json(cp().lookup(q.get('inn', '')))
+        if path == '/api/check':
+            return self.send_json(cp().check(q.get('inn', ''), force=q.get('force') == '1'))
+        if path == '/api/integrations':
+            if m == 'PUT':
+                return self.send_json(cp().save_keys(self.body()))
+            return self.send_json(cp().keys_public())
+        if path == '/api/clients' and m == 'GET':
+            return self.send_json(cp().list_clients())
+        r = re.match(r'^/api/clients/([^/]+)$', path)
+        if r:
+            if m == 'PUT':
+                return self.send_json(cp().save_client(r.group(1), self.body()))
+            if m == 'DELETE':
+                cp().delete_client(r.group(1))
+                return self.send_json({'ok': True})
+
+        # шаблоны КП
+        if path == '/api/templates':
+            return self.send_json(list_templates())
+        if path == '/api/templates/folder' and m == 'POST' and not self.is_local():
+            return self.send_json({'remote': True, 'share': ''})
+        if path == '/api/templates/folder' and m == 'POST':
+            os.makedirs(TEMPLATES_DIR, exist_ok=True)
+            open_folder(TEMPLATES_DIR)
+            return self.send_json({'ok': True})
+        r = re.match(r'^/tpl/([A-Za-z0-9_-]+)/([^/]+)$', path)
+        if r:
+            d = template_dirs().get(r.group(1))
+            name = urllib.parse.unquote(r.group(2))
+            f = os.path.join(d, name) if d and TPL_FILES.match(name) else None
+            if not f or not os.path.isfile(f):
+                return self.not_found('Файл шаблона не найден')
+            ext = os.path.splitext(f)[1].lower()
+            ctype = {'.json': 'application/json; charset=utf-8', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}.get(ext) or MIME.get(ext, 'application/octet-stream')
+            with open(f, 'rb') as fh:
+                return self.send(200, ctype, fh.read())
+
         if path == '/api/ping':
-            return self.send_json({'ok': True, 'dataDir': DATA_DIR, 'docsDir': DOCS_DIR})
+            return self.send_json({'ok': True, 'dataDir': DATA_DIR, 'docsDir': DOCS_DIR, 'local': self.is_local(),
+                                   'mode': 'server' if SERVER_MODE else 'local', 'docsShare': DOCS_SHARE,
+                                   'host': socket.gethostname(), 'port': self.server.server_address[1], 'items': store().catalog_count()})
 
         # каталог
         if path == '/api/catalog' and m == 'GET':
-            return self.send_json(join_json_files(catalog_files()))
+            # список — облегчённые карточки (без таблиц характеристик и галерей); полная позиция — по id
+            return self.send_json(store().catalog_full() if q.get('full') == '1' else store().catalog_light())
         r = re.match(r'^/api/catalog/([^/]+)$', path)
         if r:
-            f = os.path.join(CAT_DIR, safe_id(r.group(1)) + '.json')
+            cid = safe_id(r.group(1))
+            if m == 'GET':
+                doc = store().catalog_get(cid)
+                return self.send_json(doc) if doc else self.not_found()
             if m == 'PUT':
-                write_text(f, self.body().decode('utf-8'))
+                store().catalog_put(cid, self.body().decode('utf-8'))
                 return self.send_json({'ok': True})
             if m == 'DELETE':
-                if os.path.exists(f):
-                    os.remove(f)
+                store().catalog_delete(cid)
                 return self.send_json({'ok': True})
 
         # изображения
         if path == '/api/img' and m == 'POST':
             ext = '.png' if q.get('ext') == 'png' else '.jpg'
-            name = uuid.uuid4().hex + ext
-            write_bytes(os.path.join(IMG_DIR, name), self.body())
+            data = self.body()
+            # имя по содержимому: одинаковые изображения (логотипы, фото контроллеров) хранятся один раз
+            name = hashlib.md5(data).hexdigest() + ext
+            path_img = os.path.join(IMG_DIR, name)
+            if not os.path.isfile(path_img):
+                write_bytes(path_img, data)
             return self.send_json({'name': name})
         r = re.match(r'^/img/([A-Za-z0-9]+\.(jpg|jpeg|png|webp))$', path)
         if r:
@@ -387,43 +499,65 @@ class Handler(BaseHTTPRequestHandler):
 
         # журнал КП
         if path == '/api/history':
-            return self.send_json(join_json_files(meta_files()))
+            return self.send_json(store().kp_list())
         if path == '/api/kp/new' and m == 'POST':
-            n = next_number()
+            n = store().next_number()
             return self.send_json({'id': n, 'number': n})
         r = re.match(r'^/api/kp/([^/]+)/(state|meta)$', path)
         if r:
-            d = os.path.join(KP_DIR, safe_id(r.group(1)))
-            f = os.path.join(d, r.group(2) + '.json')
+            kid = safe_id(r.group(1))
             if m == 'PUT':
-                os.makedirs(d, exist_ok=True)
-                write_text(f, self.body().decode('utf-8'))
+                store().kp_set(kid, r.group(2), self.body().decode('utf-8'))
                 return self.send_json({'ok': True})
             if m == 'GET':
-                if not os.path.isfile(f):
-                    return self.not_found()
-                return self.send_json(read_text(f))
+                v = store().kp_get(kid, r.group(2))
+                return self.send_json(v) if v else self.not_found()
         r = re.match(r'^/api/kp/([^/]+)/docx$', path)
         if r and m == 'PUT':
             kid = safe_id(r.group(1))
             name = safe_file(q.get('name'))
-            f = os.path.join(DOCS_DIR, name)
+            sub = safe_dir(q.get('dir'))            # папка менеджера (фамилия)
+            rel = (sub + '/' + name) if sub else name
+            f = docs_path(rel)
+            os.makedirs(os.path.dirname(f), exist_ok=True)
             write_bytes(f, self.body())
-            os.makedirs(os.path.join(KP_DIR, kid), exist_ok=True)
-            write_text(os.path.join(KP_DIR, kid, 'docx.txt'), name)
-            return self.send_json({'ok': True, 'path': f})
+            # при пересохранении КП под новым именем старый файл убираем, чтобы не копились дубли
+            prev = store().kp_get(kid, 'docx')
+            if prev:
+                old = docs_path(prev.strip())
+                if os.path.isfile(old) and os.path.normcase(old) != os.path.normcase(f):
+                    try:
+                        os.remove(old)
+                    except OSError:
+                        pass
+            store().kp_set(kid, 'docx', rel)
+            return self.send_json({'ok': True, 'path': f, 'rel': rel})
+        r = re.match(r'^/api/kp/([^/]+)/docx$', path)
+        if r and m == 'GET':
+            # скачивание готового КП — для сотрудников, открывших программу по сети
+            rel = store().kp_get(safe_id(r.group(1)), 'docx')
+            f = docs_path(rel.strip()) if rel else None
+            if not f or not os.path.isfile(f):
+                return self.not_found('Файл КП не найден')
+            with open(f, 'rb') as fh:
+                data = fh.read()
+            fn = os.path.basename(f)
+            return self.send(200, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data,
+                             {'Content-Disposition': 'attachment; filename="%s"; filename*=UTF-8\'\'%s' % (
+                                 re.sub(r'[^A-Za-z0-9._-]', '_', fn.encode('ascii', 'ignore').decode()) or 'KP.docx', urllib.parse.quote(fn))})
         r = re.match(r'^/api/kp/([^/]+)$', path)
         if r and m == 'DELETE':
-            d = os.path.join(KP_DIR, safe_id(r.group(1)))
-            if os.path.isdir(d):
-                shutil.rmtree(d)
+            store().kp_delete(safe_id(r.group(1)))
             return self.send_json({'ok': True})
         r = re.match(r'^/api/kp/([^/]+)/(open|folder)$', path)
         if r and m == 'POST':
-            ref = os.path.join(KP_DIR, safe_id(r.group(1)), 'docx.txt')
-            if not os.path.isfile(ref):
+            rel = store().kp_get(safe_id(r.group(1)), 'docx')
+            if not rel:
                 return self.not_found('Файл КП не найден')
-            f = os.path.join(DOCS_DIR, read_text(ref).strip())
+            if not self.is_local():   # открыть Word можно только на своём компьютере — сотруднику по сети отдаём файл
+                return self.send_json({'remote': True, 'download': '/api/kp/%s/docx' % safe_id(r.group(1)),
+                                       'share': (DOCS_SHARE.rstrip('\\/') + '\\' + rel.replace('/', '\\')) if DOCS_SHARE else ''})
+            f = docs_path(rel.strip())
             if not os.path.isfile(f):
                 return self.not_found('Файл КП был перемещён или удалён')
             if r.group(2) == 'open':
@@ -432,10 +566,23 @@ class Handler(BaseHTTPRequestHandler):
                 show_in_folder(f)
             return self.send_json({'ok': True})
         if path == '/api/folder' and m == 'POST':
-            open_folder(DOCS_DIR)
+            sub = safe_dir(q.get('dir'))
+            target = os.path.join(DOCS_DIR, sub) if sub else DOCS_DIR
+            os.makedirs(target, exist_ok=True)
+            if not self.is_local():
+                return self.send_json({'remote': True, 'share': (DOCS_SHARE.rstrip('\\/') + ('\\' + sub if sub else '')) if DOCS_SHARE else ''})
+            open_folder(target)
             return self.send_json({'ok': True})
         if path == '/api/cbr':
             return self.send_json(cbr_rates())
+        if path == '/api/backup' and m == 'POST':
+            if not self.is_local():
+                return self.send_json({'ok': False, 'message': 'Резервная копия создаётся на компьютере-сервере'})
+            stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
+            dst = store().backup(os.path.join(ROOT, 'backup', stamp, 'kp.sqlite3'))
+            return self.send_json({'ok': True, 'path': dst, 'dir': os.path.dirname(dst)})
+        if path == '/api/shutdown' and m == 'POST' and (SERVER_MODE or not self.is_local()):
+            return self.send_json({'ok': False, 'message': 'Сервер отдела выключается только на компьютере-сервере'})
         if path == '/api/shutdown' and m == 'POST':
             self.send_json({'ok': True})
             target = getattr(self.server, 'main_server', self.server)
@@ -443,29 +590,6 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self.not_found()
-
-
-def fix_old_names():
-    """Исправление имён КП, сохранённых старой версией с испорченной кодировкой (как в server.ps1)."""
-    try:
-        for n in os.listdir(KP_DIR):
-            ref = os.path.join(KP_DIR, n, 'docx.txt')
-            if not os.path.isfile(ref):
-                continue
-            old = read_text(ref).strip()
-            if not re.search('Р[љџ]Р', old):
-                continue
-            try:
-                new = safe_file(old.encode('cp1251').decode('utf-8'))
-            except UnicodeError:
-                continue
-            src, dst = os.path.join(DOCS_DIR, old), os.path.join(DOCS_DIR, new)
-            if os.path.exists(src) and not os.path.exists(dst):
-                shutil.move(src, dst)
-            if os.path.exists(dst):
-                write_text(ref, new)
-    except Exception:
-        pass
 
 
 def already_running():
@@ -498,9 +622,11 @@ def start_ipv6(port, main_server):
 
 
 def start_server():
-    for port in range(BASE_PORT, BASE_PORT + 40):
+    host = '0.0.0.0' if SERVER_MODE else '127.0.0.1'
+    ports = [BASE_PORT] if SERVER_MODE else range(BASE_PORT, BASE_PORT + 40)   # у сервера отдела адрес постоянный
+    for port in ports:
         try:
-            return Server(('127.0.0.1', port), Handler), port
+            return Server((host, port), Handler), port
         except OSError:
             continue
     return None, None
@@ -512,16 +638,31 @@ def main():
         webbrowser.open('http://localhost:%d/' % BASE_PORT)
         return 0
     try:
+        import sqlite3  # noqa: F401 — база данных программы; без модуля программа работать не может
+    except ImportError as e:
+        message_box('В сборке программы нет модуля базы данных SQLite (%s).\n\n'
+                    'Пересоберите EXE из актуального проекта (kp.spec не должен исключать sqlite3) '
+                    'или скачайте готовую сборку из GitHub Actions.' % e)
+        return 1
+    try:
         prepare_dirs()
+        ensure_templates()
+        store().migrate_json(DATA_DIR)   # переход с версии, хранившей данные в JSON-файлах
+        seed_catalog()
+        sync_counter_with_files()
     except Exception as e:
         message_box('Не удалось подготовить папки данных:\n%s\n\n%s' % (DATA_DIR, e))
         return 1
-    fix_old_names()
+    if DATA_DIR.startswith('\\\\'):
+        message_box('Папка данных указана в сети (%s).\n\nБазу данных нельзя держать в общей сетевой папке — '
+                    'при одновременной работе она может повредиться. Для работы всем отделом используйте '
+                    'сервер отдела (server-setup\\1. Установить сервер отдела.bat), а dataDir оставьте пустым.' % DATA_DIR, error=False)
     httpd, port = start_server()
     if not httpd:
         message_box('Не удалось запустить сервер: все порты заняты.')
         return 1
-    start_ipv6(port, httpd)
+    if not SERVER_MODE:
+        start_ipv6(port, httpd)
     # адрес localhost (а не 127.0.0.1) — чтобы браузер видел черновики, сохранённые прежней версией
     url = 'http://localhost:%d/' % port
     opener = threading.Timer(0.3, lambda: webbrowser.open(url))
@@ -529,6 +670,8 @@ def main():
     opener.start()
     try:
         print('%s запущен: %s\nДанные: %s\nГотовые КП: %s' % (APP_TITLE, url, DATA_DIR, DOCS_DIR), flush=True)
+        if SERVER_MODE:
+            print('Режим сервера отдела. Сотрудники открывают: http://%s:%d/' % (socket.gethostname(), port), flush=True)
     except Exception:
         pass
     try:
