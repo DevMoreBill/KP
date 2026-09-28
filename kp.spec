@@ -33,6 +33,7 @@ a = Analysis(
     datas=[
         ('app/app.html', 'app'),
         ('app/icon.ico', 'app'),
+        ('app/equipment_types.json', 'app'),
         ('seed/data/catalog', 'seed/data/catalog'),
         ('seed/data/img', 'seed/data/img'),
     ],
