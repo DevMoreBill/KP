@@ -110,6 +110,57 @@ def prepare_dirs():
                     shutil.copyfile(os.path.join(src, name), target)
 
 
+TYPES_USER = os.path.join(DATA_DIR, 'types.json')
+
+
+def types_builtin_path():
+    return os.path.join(BUNDLE, 'app', 'equipment_types.json')
+
+
+def load_types():
+    """Справочник типов оборудования: встроенный (app/equipment_types.json) + свои (data/types.json).
+
+    Типы из data/types.json с тем же id заменяют встроенные, новые добавляются в конец,
+    а тип с "hidden": true скрывается. Так новые виды оборудования добавляются без правки кода.
+    """
+    try:
+        base = json.loads(read_text(types_builtin_path())).get('types', [])
+    except Exception:
+        base = []
+    user = []
+    if os.path.isfile(TYPES_USER):
+        try:
+            user = json.loads(read_text(TYPES_USER)).get('types', [])
+        except Exception:
+            user = []
+    out = [dict(t) for t in base]
+    index = {t.get('id'): i for i, t in enumerate(out)}
+    for t in user:
+        if not isinstance(t, dict) or not t.get('id'):
+            continue
+        if t['id'] in index:
+            merged = dict(out[index[t['id']]])
+            merged.update(t)
+            out[index[t['id']]] = merged
+        else:
+            index[t['id']] = len(out)
+            out.append(t)
+    return {'version': 1, 'types': [t for t in out if not t.get('hidden')]}
+
+
+def save_user_types(body):
+    data = json.loads(body.decode('utf-8'))
+    types = data.get('types')
+    if not isinstance(types, list):
+        raise ValueError('Ожидается {"types": [...]}')
+    for t in types:
+        if not isinstance(t, dict) or not re.match(r'^[a-z][a-z0-9_]{1,30}$', t.get('id') or ''):
+            raise ValueError('У каждого типа нужен id: латиница, цифры и «_»')
+        if not isinstance(t.get('fields', []), list):
+            raise ValueError('fields должен быть списком')
+    write_text(TYPES_USER, json.dumps({'version': 1, 'types': types}, ensure_ascii=False, indent=2))
+
+
 def app_html_path():
     return os.path.join(BUNDLE, 'app', 'app.html')
 
@@ -297,6 +348,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.not_found()
             with open(icon, 'rb') as f:
                 return self.send(200, 'image/x-icon', f.read())
+        # справочник типов оборудования
+        if path == '/api/types':
+            if m == 'PUT':
+                save_user_types(self.body())
+            return self.send_json(load_types())
+
         if path == '/api/ping':
             return self.send_json({'ok': True, 'dataDir': DATA_DIR, 'docsDir': DOCS_DIR})
 
