@@ -22,11 +22,17 @@ GitHub → **Actions** → последний запуск «Сборка EXE д
 ## Состав
 
 ```
-app/kp_server.py          HTTP-сервер (стандартная библиотека Python): API, выдача интерфейса, сборка на Windows
+app/kp_server.py          точка входа и HTTP-сервер (адреса API, выдача интерфейса)
+app/config.py             настройки и пути (settings.json), база данных store(), общие помощники
+app/data_setup.py         подготовка данных при запуске: папки, стартовый каталог, нумерация
 app/storage.py            база данных SQLite (data/kp.sqlite3)
 app/counterparty.py       контрагенты: реквизиты по ИНН (Checko / DaData / ФНС ЕГРЮЛ), проверка Checko
-app/app.html              интерфейс (JSZip, генератор DOCX и шрифт встроены — интернет не нужен)
-app/equipment_types.json  справочник типов оборудования
+app/equipment_types.py    справочник типов оборудования (встроенный + свои)
+app/kp_templates.py       шаблоны КП (папка templates)
+app/cbr.py                курсы ЦБ РФ
+app/desktop.py            открыть файл / папку на этом компьютере
+app/equipment_types.json  встроенные типы оборудования
+app/web/                  интерфейс: index.html, css/, js/ (по модулям), vendor/ — см. app/web/README.md
 app/icon.ico              значок
 templates/                шаблоны КП (base.docx + template.json + clients.jpg), правятся вручную
 seed/data/                стартовый каталог (654 позиции) и фото — загружаются в базу при первом запуске
@@ -34,6 +40,9 @@ server-setup/             установка сервера отдела, ост
 kp.spec                   настройки PyInstaller
 .github/workflows/        сборка и проверка EXE
 ```
+
+Только стандартная библиотека Python (3.8+) и обычный JavaScript — без сборщиков. Интерфейс правится прямо в
+`app/web` (обновить страницу — F5); сервер — в `app/*.py` (перезапуск `python app/kp_server.py`).
 
 ## Данные
 

@@ -1,0 +1,59 @@
+/* Окно подбора и быстрый поиск по каталогу. */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:14px}
+.tile{display:flex;flex-direction:column;gap:4px;text-align:left;border:1.5px solid var(--line);background:var(--card);border-radius:14px;padding:16px;cursor:pointer;color:var(--ink);min-height:84px}
+.tile b{font-size:15px}
+.tile span{font-size:12.5px;color:var(--muted)}
+.tile:hover{border-color:var(--navy);box-shadow:0 4px 14px rgba(11,69,160,.08)}
+.tile.zero{opacity:.75}
+.tile.add{border-style:dashed;color:var(--navy)}
+.qadd{position:relative;margin-bottom:14px}
+.qadd input{width:100%;padding:12px 14px;font-size:15px}
+.qa-list{position:absolute;z-index:25;left:0;right:0;top:100%;margin-top:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.14);overflow:hidden;max-height:460px;overflow-y:auto}
+.qa-list button{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;width:100%;border:0;border-bottom:1px solid var(--line);background:none;padding:8px 12px;text-align:left;cursor:pointer;color:var(--ink)}
+.qa-list button:hover,.qa-list button.first{background:var(--soft)}
+.qa-list img,.qa-list i{width:56px;height:40px;object-fit:contain;background:#fff;border-radius:6px;display:block}
+.qa-list b{display:block;font-weight:600;font-size:14px}
+.qa-list small{color:var(--muted);font-size:12.5px}
+.qa-list em{font-style:normal;color:var(--navy);font-weight:600;font-size:13px}
+.cattabs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:14px}
+.ctab{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;cursor:pointer;font-size:13.5px;color:var(--ink)}
+.ctab i{font-style:normal;color:var(--muted);font-size:12px;margin-left:2px}
+.ctab.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.ctab.on i{color:rgba(255,255,255,.8)}
+.ctab.add{border-style:dashed;color:var(--navy)}
+.cgrp{font-size:12px;color:var(--muted);margin-left:8px;font-weight:600}
+.tag.tt{background:var(--soft);color:var(--navy)}
+.tpick{display:flex;flex-wrap:wrap;gap:8px}
+.tlist .trow{display:grid;grid-template-columns:260px 1fr auto;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.hist{font-size:12px;color:var(--muted);margin-top:2px}
+.pick{display:grid;grid-template-columns:250px minmax(0,1fr);gap:18px}
+.flt{display:grid;gap:12px;align-content:start}
+.flt label.f select,.flt label.f input{padding:8px 10px;font-size:14px}
+.kw{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.res-h{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
+.cat .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.tag{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--ink)}
+.tag.kwt{background:var(--navy);color:#fff}
+.cat{display:grid;grid-template-columns:72px 1fr auto;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.cat img,.cat .ph{width:72px;height:52px;object-fit:contain;border-radius:8px;background:var(--soft)}
+.cat b{display:block;font-weight:600}
+.cat span{color:var(--muted);font-size:13px}
+@media (max-width:1000px){
+  .pick{grid-template-columns:1fr}
+  .attrs{grid-template-columns:1fr 1fr}
+  .opt{grid-template-columns:1fr 64px 1fr 32px}.opt .s{display:none}
+  .wrap{grid-template-columns:1fr;padding:16px}
+  aside{position:static}
+  .item-head{grid-template-columns:1fr 1fr}
+  .item-no{display:none}
+  .item-head>label:first-of-type{grid-column:1/-1}
+  .item-head .acts{grid-column:1/-1;justify-content:flex-end}
+  .item-sum{flex-wrap:wrap;gap:10px}
+  .brand small{display:none}
+  .mbar{display:flex}
+  body{padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+  .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
+  .g4{grid-template-columns:1fr 1fr} .g3{grid-template-columns:1fr}
+  .media{grid-template-columns:1fr}
+  .feat{grid-template-columns:1fr 32px} .feat input:first-child{grid-column:1/-1}
+}

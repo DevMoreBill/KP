@@ -74,6 +74,10 @@ jobs:
           if ($types.types.Count -lt 5) { throw 'Справочник типов не загрузился' }
           $html = Invoke-WebRequest -Uri 'http://127.0.0.1:17845/' -UseBasicParsing
           if ($html.Content -notmatch 'ПНЕВМОТЕХ') { throw 'Интерфейс не отдаётся' }
+          foreach ($f in @('/web/js/main.js', '/web/js/docx/kpgen.js', '/web/css/base.css', '/web/vendor/jszip.min.js')) {
+            $r = Invoke-WebRequest -Uri ("http://127.0.0.1:17845" + $f) -UseBasicParsing
+            if ($r.StatusCode -ne 200 -or $r.Content.Length -lt 100) { throw "Не отдаётся $f" }
+          }
           $n = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/kp/new'
           Write-Host "Новый номер КП: $($n.number)"
           $name = [uri]::EscapeDataString('Проверка КП.docx')

@@ -31,14 +31,15 @@ a = Analysis(
     pathex=['app'],
     binaries=[],
     datas=[
-        ('app/app.html', 'app'),
+        ('app/web', 'app/web'),
         ('app/icon.ico', 'app'),
         ('app/equipment_types.json', 'app'),
         ('templates', 'templates'),
         ('seed/data/catalog', 'seed/data/catalog'),
         ('seed/data/img', 'seed/data/img'),
     ],
-    hiddenimports=['counterparty', 'storage', 'sqlite3', '_sqlite3', 'gzip'],
+    hiddenimports=['config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'desktop',
+                   'sqlite3', '_sqlite3', 'gzip'],
     # sqlite3 НЕ исключать: на нём работает база данных программы
     excludes=['tkinter', 'unittest', 'pydoc', 'lib2to3', 'multiprocessing'],
     noarchive=False,

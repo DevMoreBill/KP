@@ -1,236 +1,37 @@
 # -*- coding: utf-8 -*-
-"""Конструктор КП ПНЕВМОТЕХ — сервер программы.
+"""Конструктор КП ПНЕВМОТЕХ — точка входа и HTTP-сервер.
 
-Отдаёт интерфейс (app.html) и API; данные — в SQLite (storage.py), контрагенты — counterparty.py.
-Режимы (settings.json → mode): «local» — для одного компьютера (127.0.0.1), «server» — сервер отдела,
-доступный по сети (0.0.0.0:port). Только стандартная библиотека Python; собирается PyInstaller в один EXE.
+Отдаёт интерфейс (app/web) и API. Модули сервера:
+  config.py          — настройки и пути, база данных (store), общие помощники
+  data_setup.py      — подготовка данных при запуске
+  storage.py         — база SQLite
+  counterparty.py    — контрагенты: ИНН, Checko
+  equipment_types.py — справочник типов оборудования
+  kp_templates.py    — шаблоны КП
+  cbr.py             — курсы ЦБ РФ
+  desktop.py         — открыть файл / папку на этом компьютере
+Только стандартная библиотека Python; собирается PyInstaller в один EXE.
 """
 import hashlib
 import json
 import os
 import re
-import shutil
 import socket
-import subprocess
 import sys
 import threading
 import urllib.parse
 import urllib.request
 import webbrowser
-import xml.etree.ElementTree as ET
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-APP_TITLE = 'Конструктор КП ПНЕВМОТЕХ'
-BASE_PORT = 17845
-FROZEN = getattr(sys, 'frozen', False)
-
-# root — папка, где лежит EXE (или скрипт); bundle — встроенные в EXE файлы
-ROOT = os.path.dirname(os.path.abspath(sys.executable if FROZEN else __file__))
-BUNDLE = getattr(sys, '_MEIPASS', ROOT)
-if not FROZEN:
-    BUNDLE = os.path.dirname(ROOT)  # при запуске из исходников: корень репозитория
-
-SAFE_ID = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
-MIME = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp'}
-CURRENCIES = ('USD', 'EUR', 'CNY')
-
-
-def message_box(text, error=True):
-    """Сообщение пользователю: у EXE без консоли нет другого способа что-то показать."""
-    if os.name == 'nt':
-        try:
-            import ctypes
-            ctypes.windll.user32.MessageBoxW(None, text, APP_TITLE, 0x10 if error else 0x40)
-            return
-        except Exception:
-            pass
-    try:
-        print(text, file=sys.stderr)
-    except Exception:
-        pass
-
-
-def read_text(path):
-    with open(path, 'r', encoding='utf-8-sig') as f:
-        return f.read()
-
-
-def write_text(path, text):
-    with open(path, 'w', encoding='utf-8', newline='') as f:
-        f.write(text)
-
-
-def write_bytes(path, data):
-    with open(path, 'wb') as f:
-        f.write(data)
-
-
-# --- папки данных (можно вынести в сетевую папку через settings.json: {"dataDir": "\\\\server\\share\\КП"}) ---
-SETTINGS = {}
-
-
-def resolve_dirs():
-    data_dir = os.path.join(ROOT, 'data')
-    docs_dir = os.path.join(ROOT, 'Коммерческие предложения')
-    settings = os.path.join(ROOT, 'settings.json')
-    if os.path.exists(settings):
-        try:
-            st = json.loads(read_text(settings))
-            SETTINGS.update(st)
-            if st.get('dataDir'):
-                data_dir = os.path.join(st['dataDir'], 'data')
-                docs_dir = os.path.join(st['dataDir'], 'Коммерческие предложения')
-        except Exception:
-            pass
-    else:
-        try:
-            write_text(settings, '{\n  "mode": "local",\n  "port": 17845,\n  "dataDir": "",\n  "docsShare": ""\n}\n')
-        except Exception:
-            pass
-    return data_dir, docs_dir
-
-
-DATA_DIR, DOCS_DIR = resolve_dirs()
-# mode: "local" — программа для одного компьютера; "server" — сервер отдела, доступен по сети (http://имя-компьютера:порт)
-SERVER_MODE = str(SETTINGS.get('mode', 'local')).lower() == 'server'
-if SETTINGS.get('port'):
-    try:
-        BASE_PORT = int(SETTINGS['port'])
-    except (TypeError, ValueError):
-        pass
-DOCS_SHARE = str(SETTINGS.get('docsShare') or '').strip()   # сетевой путь к папке КП для сотрудников, напр. \\\\SERVER\\КП
-STORE = None
-
-
-def store():
-    global STORE
-    if STORE is None:
-        from storage import Store
-        STORE = Store(os.path.join(DATA_DIR, 'kp.sqlite3'))
-    return STORE
-IMG_DIR = os.path.join(DATA_DIR, 'img')
-
-
-def prepare_dirs():
-    for d in (DATA_DIR, IMG_DIR, DOCS_DIR):
-        os.makedirs(d, exist_ok=True)
-
-
-def sync_counter_with_files():
-    """Номер КП не должен повторить уже существующий файл (например, если базу восстановили из старой копии)."""
-    year = datetime.now().year
-    top = 0
-    for dp, dn, fn in os.walk(DOCS_DIR):
-        for name in fn:
-            m = re.match(r'^(\d{4})-(\d{3,})_', name)
-            if m and int(m.group(1)) == year:
-                top = max(top, int(m.group(2)))
-    if top:
-        store().ensure_counter_at_least(year, top)
-
-
-def seed_catalog():
-    """Первый запуск на новом компьютере: стартовый каталог с фото из EXE — сразу в базу."""
-    st = store()
-    if st.catalog_count():
-        return
-    seed = os.path.join(BUNDLE, 'seed', 'data')
-    img = os.path.join(seed, 'img')
-    if os.path.isdir(img):
-        for name in os.listdir(img):
-            target = os.path.join(IMG_DIR, name)
-            if not os.path.exists(target):
-                shutil.copyfile(os.path.join(img, name), target)
-    cat = os.path.join(seed, 'catalog')
-    if os.path.isdir(cat):
-        for name in os.listdir(cat):
-            if name.endswith('.json'):
-                st.catalog_put(name[:-5], read_text(os.path.join(cat, name)))
-
-
-# ---------- шаблоны КП ----------
-# Папка «templates» рядом с программой (правится вручную: base.docx в Word, template.json в Блокноте).
-TEMPLATES_DIR = os.path.join(ROOT, 'templates') if FROZEN else os.path.join(BUNDLE, 'templates')
-TPL_FILES = re.compile(r'^(template\.json|base\.docx|[A-Za-z0-9_-]+\.(jpg|jpeg|png))$')
-
-
-def ensure_templates():
-    """Первый запуск EXE: раскладываем встроенные шаблоны рядом с программой (свои правки не перезаписываются)."""
-    src = os.path.join(BUNDLE, 'templates')
-    if not os.path.isdir(src) or os.path.normcase(src) == os.path.normcase(TEMPLATES_DIR):
-        return
-    for name in os.listdir(src):
-        dst = os.path.join(TEMPLATES_DIR, name)
-        if os.path.isdir(os.path.join(src, name)) and not os.path.exists(dst):
-            shutil.copytree(os.path.join(src, name), dst)
-
-
-def template_dirs():
-    out = {}
-    if os.path.isdir(TEMPLATES_DIR):
-        for name in sorted(os.listdir(TEMPLATES_DIR)):
-            d = os.path.join(TEMPLATES_DIR, name)
-            if SAFE_ID.match(name) and os.path.isfile(os.path.join(d, 'template.json')):
-                out[name] = d
-    return out
-
-
-def list_templates():
-    res = []
-    for tid, d in template_dirs().items():
-        try:
-            j = json.loads(read_text(os.path.join(d, 'template.json')))
-        except Exception as e:
-            res.append({'id': tid, 'name': tid, 'error': 'Ошибка в template.json: %s' % e})
-            continue
-        res.append({'id': tid, 'name': j.get('name') or tid, 'description': j.get('description', ''), 'filePrefix': j.get('filePrefix', ''),
-                    'hasBase': os.path.isfile(os.path.join(d, 'base.docx')),
-                    'clients': bool(j.get('clientsImage')) and os.path.isfile(os.path.join(d, j.get('clientsImage', '')))})
-    return res
-
-
-def types_builtin_path():
-    return os.path.join(BUNDLE, 'app', 'equipment_types.json')
-
-
-def load_types():
-    """Справочник типов оборудования: встроенный (app/equipment_types.json) + свои (data/types.json).
-
-    Типы из data/types.json с тем же id заменяют встроенные, новые добавляются в конец,
-    а тип с "hidden": true скрывается. Так новые виды оборудования добавляются без правки кода.
-    """
-    try:
-        base = json.loads(read_text(types_builtin_path())).get('types', [])
-    except Exception:
-        base = []
-    user = (store().kv_get('types') or {}).get('types', [])
-    out = [dict(t) for t in base]
-    index = {t.get('id'): i for i, t in enumerate(out)}
-    for t in user:
-        if not isinstance(t, dict) or not t.get('id'):
-            continue
-        if t['id'] in index:
-            merged = dict(out[index[t['id']]])
-            merged.update(t)
-            out[index[t['id']]] = merged
-        else:
-            index[t['id']] = len(out)
-            out.append(t)
-    return {'version': 1, 'types': [t for t in out if not t.get('hidden')]}
-
-
-def save_user_types(body):
-    data = json.loads(body.decode('utf-8'))
-    types = data.get('types')
-    if not isinstance(types, list):
-        raise ValueError('Ожидается {"types": [...]}')
-    for t in types:
-        if not isinstance(t, dict) or not re.match(r'^[a-z][a-z0-9_]{1,30}$', t.get('id') or ''):
-            raise ValueError('У каждого типа нужен id: латиница, цифры и «_»')
-        if not isinstance(t.get('fields', []), list):
-            raise ValueError('fields должен быть списком')
-    store().kv_set('types', {'version': 1, 'types': types})
+from cbr import cbr_rates
+from config import (APP_TITLE, BASE_PORT, BUNDLE, DATA_DIR, DOCS_DIR, DOCS_SHARE, IMG_DIR, MIME, ROOT, SERVER_MODE,
+                    docs_path, message_box, read_text, safe_dir, safe_file, safe_id, store, write_bytes)
+from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
+from desktop import open_file, open_folder, show_in_folder
+from equipment_types import load_types, save_user_types, types_builtin_path
+from kp_templates import TEMPLATES_DIR, TPL_FILES, ensure_templates, list_templates, template_dirs
 
 
 _CP = None
@@ -245,89 +46,18 @@ def cp():
     return _CP
 
 
-def app_html_path():
-    return os.path.join(BUNDLE, 'app', 'app.html')
+WEB_DIR = os.path.join(BUNDLE, 'app', 'web')      # интерфейс: index.html, css/, js/, vendor/
+WEB_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+             '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2'}
 
 
-def safe_id(s):
-    if not SAFE_ID.match(s or ''):
-        raise ValueError('Недопустимый идентификатор: %s' % s)
-    return s
-
-
-def safe_file(s):
-    s = re.sub(r'[\\/:*?"<>|]', '', s or '').strip()
-    return s or 'КП.docx'
-
-
-def safe_dir(s):
-    """Имя подпапки (фамилия менеджера): без путей и запрещённых символов."""
-    s = re.sub(r'[\\/:*?"<>|.]', '', s or '').strip()
-    return s[:60]
-
-
-def docs_path(rel):
-    """Путь к файлу КП по относительному имени из docx.txt (с подпапкой менеджера или без)."""
-    parts = [safe_file(x) for x in re.split(r'[\\/]', rel or '') if x]
-    return os.path.join(DOCS_DIR, *parts) if parts else os.path.join(DOCS_DIR, 'КП.docx')
-
-
-def open_file(path):
-    if os.name == 'nt':
-        os.startfile(path)
-    elif sys.platform == 'darwin':
-        subprocess.Popen(['open', path])
-    else:
-        subprocess.Popen(['xdg-open', path])
-
-
-def show_in_folder(path):
-    if os.name == 'nt':
-        subprocess.Popen('explorer.exe /select,"%s"' % path)
-    else:
-        open_file(os.path.dirname(path))
-
-
-def open_folder(path):
-    if os.name == 'nt':
-        subprocess.Popen('explorer.exe "%s"' % path)
-    else:
-        open_file(path)
-
-
-def http_get(url, headers=None):
-    # urllib берёт системный прокси Windows, а SSL-сертификаты — из хранилища Windows
-    req = urllib.request.Request(url, headers=headers or {'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return r.read()
-
-
-def cbr_rates():
-    err = []
-    # 1) официальный сайт ЦБ РФ
-    try:
-        root = ET.fromstring(http_get('https://www.cbr.ru/scripts/XML_daily.asp'))  # windows-1251 из заголовка XML
-        d = root.get('Date')
-        res = {'date': '%s-%s-%s' % (d[6:10], d[3:5], d[0:2]), 'src': 'ЦБ РФ (cbr.ru)'}
-        for v in root.findall('Valute'):
-            code = v.findtext('CharCode')
-            if code in CURRENCIES:
-                res[code] = float(v.findtext('Value').replace(',', '.')) / float(v.findtext('Nominal').replace(',', '.'))
-        return res
-    except Exception as e:
-        err.append(str(e))
-    # 2) зеркало данных ЦБ
-    try:
-        j = json.loads(http_get('https://www.cbr-xml-daily.ru/daily_json.js').decode('utf-8-sig'))
-        res = {'date': j['Date'][:10], 'src': 'ЦБ РФ (зеркало cbr-xml-daily.ru)'}
-        for c in CURRENCIES:
-            v = j.get('Valute', {}).get(c)
-            if v:
-                res[c] = float(v['Value']) / float(v['Nominal'])
-        return res
-    except Exception as e:
-        err.append(str(e))
-    return {'error': '; '.join(err)}
+def web_file(rel):
+    """Файл интерфейса по относительному пути внутри app/web (без выхода за пределы папки)."""
+    parts = [x for x in rel.replace('\\', '/').split('/') if x and x not in ('.', '..')]
+    f = os.path.join(WEB_DIR, *parts)
+    if not os.path.normcase(os.path.abspath(f)).startswith(os.path.normcase(os.path.abspath(WEB_DIR))):
+        return None
+    return f if os.path.isfile(f) and os.path.splitext(f)[1].lower() in WEB_TYPES else None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -354,7 +84,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Encoding', 'gzip')
         for k, v in (extra or {}).items():
             self.send_header(k, v)
-        self.send_header('Cache-Control', 'no-store')
+        if 'Cache-Control' not in (extra or {}):
+            self.send_header('Cache-Control', 'no-store')
         self.send_header('Content-Length', str(len(data)))
         self.end_headers()
         if self.command != 'HEAD':
@@ -402,9 +133,12 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.unquote(u.path)
         q = dict(urllib.parse.parse_qsl(u.query, keep_blank_values=True, encoding='utf-8'))
 
-        if path in ('/', '/index.html'):
-            with open(app_html_path(), 'rb') as f:
-                return self.send(200, 'text/html; charset=utf-8', f.read())
+        if path in ('/', '/index.html') or path.startswith('/web/'):
+            f = web_file('index.html' if path in ('/', '/index.html') else path[len('/web/'):])
+            if not f:
+                return self.not_found()
+            with open(f, 'rb') as fh:
+                return self.send(200, WEB_TYPES[os.path.splitext(f)[1].lower()], fh.read(), {'Cache-Control': 'no-cache'})
         if path == '/favicon.ico':
             icon = os.path.join(BUNDLE, 'app', 'icon.ico')
             if not os.path.isfile(icon):
@@ -413,6 +147,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, 'image/x-icon', f.read())
         # справочник типов оборудования
         if path == '/api/types':
+            if q.get('builtin') == '1':
+                return self.send_json(read_text(types_builtin_path()))
             if m == 'PUT':
                 save_user_types(self.body())
             return self.send_json(load_types())

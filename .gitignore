@@ -8,3 +8,5 @@ __pycache__/
 app/data/
 app/Коммерческие предложения/
 app/settings.json
+app/backup/
+backup/

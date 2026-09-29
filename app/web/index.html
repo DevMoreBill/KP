@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Конструктор КП — ПНЕВМОТЕХ</title>
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/web/vendor/onest-font.css">
+<link rel="stylesheet" href="/web/css/base.css">
+<link rel="stylesheet" href="/web/css/layout.css">
+<link rel="stylesheet" href="/web/css/catalog.css">
+<link rel="stylesheet" href="/web/css/items.css">
+<link rel="stylesheet" href="/web/css/pricing.css">
+<link rel="stylesheet" href="/web/css/client.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><b>ПНЕВМО</b><i>ТЕХ</i><small>Конструктор технико-коммерческих предложений</small></div>
+  <div class="sp"></div>
+  <span class="saved" id="saved" aria-live="polite"></span>
+  <span class="saved" id="kpno"></span><span id="srvBtns" hidden><button class="btn" type="button" data-a="journal">Журнал КП</button> <button class="btn" type="button" data-a="openCatalog">Каталог</button> <button class="btn" type="button" data-a="docsFolder">Папка КП</button></span>
+  <button class="btn" type="button" data-a="typesEdit">Типы оборудования</button>
+  <button class="btn" id="btnNew" type="button">Новое КП</button><button class="btn ghost" id="btnExit" type="button" hidden>Выход</button>
+</header>
+<main class="wrap">
+  <div id="nav"></div>
+  <div id="form"></div>
+  <aside id="side"></aside>
+</main>
+<div class="mbar" id="mbar"><b id="mtotal">0,00 руб.</b><button class="btn" type="button" data-go="side">Скачать</button></div>
+<dialog id="dlg"></dialog>
+<dialog id="edlg" class="editor" aria-label="Карточка позиции"></dialog>
+<div class="toast" id="toast" role="status"></div>
+<input type="file" id="filePick" accept="image/*" hidden>
+
+<!-- Порядок подключения важен: общие модули → функции → разделы формы → обработчики → запуск. См. app/web/README.md -->
+<script src="/web/vendor/jszip.min.js"></script>
+<script src="/web/js/docx/kpgen.js"></script>
+<script src="/web/js/core/util.js"></script>
+<script src="/web/js/core/api.js"></script>
+<script src="/web/js/core/types.js"></script>
+<script src="/web/js/core/state.js"></script>
+<script src="/web/js/features/catalog.js"></script>
+<script src="/web/js/features/excel-import.js"></script>
+<script src="/web/js/features/pricing.js"></script>
+<script src="/web/js/features/clients.js"></script>
+<script src="/web/js/features/images.js"></script>
+<script src="/web/js/features/item-editor.js"></script>
+<script src="/web/js/features/ai-autofill.js"></script>
+<script src="/web/js/features/templates.js"></script>
+<script src="/web/js/features/types-editor.js"></script>
+<script src="/web/js/features/journal.js"></script>
+<script src="/web/js/docx/build.js"></script>
+<script src="/web/js/ui/form.js"></script>
+<script src="/web/js/ui/steps/client.js"></script>
+<script src="/web/js/ui/steps/equipment.js"></script>
+<script src="/web/js/ui/steps/pricing.js"></script>
+<script src="/web/js/ui/steps/cover.js"></script>
+<script src="/web/js/ui/steps/conditions.js"></script>
+<script src="/web/js/ui/steps/manager.js"></script>
+<script src="/web/js/ui/sidebar.js"></script>
+<script src="/web/js/ui/events.js"></script>
+<script src="/web/js/main.js"></script>
+</body>
+</html>
