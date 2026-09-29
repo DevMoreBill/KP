@@ -31,7 +31,8 @@ from config import (APP_TITLE, BASE_PORT, BUNDLE, DATA_DIR, DOCS_DIR, DOCS_SHARE
 from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
 from desktop import open_file, open_folder, show_in_folder
 from equipment_types import load_types, save_user_types, types_builtin_path
-from kp_templates import TEMPLATES_DIR, TPL_FILES, ensure_templates, list_templates, template_dirs
+from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, ensure_templates, list_history,
+                          list_templates, open_template_file, put_file, reset_template, restore_history, template_file)
 
 
 _CP = None
@@ -127,6 +128,33 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
+    def template_api(self, tid, action, m, q):
+        """Редактор шаблона: сохранение файлов, история версий, копия, заводской вариант, открыть в Word."""
+        try:
+            if action == 'file' and m == 'PUT':
+                put_file(tid, q.get('name', ''), self.body())
+                return self.send_json({'ok': True})
+            if action == 'history' and m == 'GET':
+                return self.send_json(list_history(tid))
+            if action == 'restore' and m == 'POST':
+                return self.send_json({'ok': True, 'file': restore_history(tid, q.get('name', ''))})
+            if action == 'copy' and m == 'POST':
+                return self.send_json({'ok': True, 'id': copy_template(tid, q.get('to', ''), q.get('title', ''))})
+            if action == 'reset' and m == 'POST':
+                reset_template(tid)
+                return self.send_json({'ok': True})
+            if action == 'delete' and m == 'POST':
+                delete_template(tid)
+                return self.send_json({'ok': True})
+            if action == 'open' and m == 'POST':
+                if not self.is_local():
+                    return self.send_json({'remote': True})
+                open_template_file(tid, q.get('name', ''))
+                return self.send_json({'ok': True})
+        except TemplateError as e:
+            return self.send(400, 'text/plain; charset=utf-8', str(e))
+        return self.not_found()
+
     def route(self):
         m = 'GET' if self.command == 'HEAD' else self.command
         u = urllib.parse.urlsplit(self.path)
@@ -172,7 +200,7 @@ class Handler(BaseHTTPRequestHandler):
                 cp().delete_client(r.group(1))
                 return self.send_json({'ok': True})
 
-        # шаблоны КП
+        # шаблоны КП (папка templates): список, файлы, редактор шаблона
         if path == '/api/templates':
             return self.send_json(list_templates())
         if path == '/api/templates/folder' and m == 'POST' and not self.is_local():
@@ -181,17 +209,20 @@ class Handler(BaseHTTPRequestHandler):
             os.makedirs(TEMPLATES_DIR, exist_ok=True)
             open_folder(TEMPLATES_DIR)
             return self.send_json({'ok': True})
+        r = re.match(r'^/api/templates/([A-Za-z0-9_-]+)/([a-z]+)$', path)
+        if r:
+            return self.template_api(r.group(1), r.group(2), m, q)
         r = re.match(r'^/tpl/([A-Za-z0-9_-]+)/([^/]+)$', path)
         if r:
-            d = template_dirs().get(r.group(1))
-            name = urllib.parse.unquote(r.group(2))
-            f = os.path.join(d, name) if d and TPL_FILES.match(name) else None
-            if not f or not os.path.isfile(f):
+            f = template_file(r.group(1), urllib.parse.unquote(r.group(2)))
+            if not f:
                 return self.not_found('Файл шаблона не найден')
             ext = os.path.splitext(f)[1].lower()
-            ctype = {'.json': 'application/json; charset=utf-8', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}.get(ext) or MIME.get(ext, 'application/octet-stream')
+            ctype = {'.json': 'application/json; charset=utf-8', '.js': 'text/plain; charset=utf-8',
+                     '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}.get(ext) or MIME.get(ext, 'application/octet-stream')
+            extra = {'Content-Disposition': 'attachment; filename="%s"' % os.path.basename(f)} if q.get('download') == '1' else None
             with open(f, 'rb') as fh:
-                return self.send(200, ctype, fh.read())
+                return self.send(200, ctype, fh.read(), extra)
 
         if path == '/api/ping':
             return self.send_json({'ok': True, 'dataDir': DATA_DIR, 'docsDir': DOCS_DIR, 'local': self.is_local(),
