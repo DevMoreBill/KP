@@ -63,6 +63,8 @@ function shortName(s){
   const m=s.match(/^(ООО|АО|ПАО|ЗАО|ОАО|ИП|ФГУП|МУП|ГУП)\s+["«„]?(.+?)["»“]?$/);
   if (m){ let nm=m[2].replace(/^["«„]|["»“]$/g,''); if (nm===nm.toUpperCase() && /[А-ЯЁ]/.test(nm) && m[1]!=='ИП') nm=nm.toLowerCase().replace(/(^|[\s\-"«])([а-яё])/g,(x,a,b)=>a+b.toUpperCase());
     if (m[1]==='ИП') nm=nm.toLowerCase().replace(/(^|\s)([а-яё])/g,(x,a,b)=>a+b.toUpperCase());
+    // вложенное название в кавычках (МПБК "ОЧАКОВО) — кавычки второго уровня: «Мпбк „Очаково“»
+    nm=nm.replace(/"([^"]+)"/g,'„$1“'); if ((nm.match(/"/g)||[]).length===1) nm=nm.replace(/"(.+)$/,'„$1“');
     return m[1]==='ИП' ? 'ИП '+nm : `${m[1]} «${nm}»`; }
   return s;
 }

@@ -9,7 +9,7 @@ function stepClient(){
   const objs=(cl?.objects||[]).filter(o=>(o.purpose||o.address) && !(norm(o.purpose)===norm(S.object.purpose) && norm(o.address)===norm(S.object.address)));
   // 1. Кому: поиск или карточка клиента
   const finder = `<div class="cl-find"><input type="text" id="clFind" placeholder="Название или ИНН клиента" autocomplete="off" aria-label="Поиск клиента"><div id="clList" class="cl-list" hidden></div></div>
-    <p class="muted" style="margin:8px 0 0">Ищем среди ваших клиентов${CLIENTS.length?` (${CLIENTS.length})`:''}, а по ИНН — в реестре ФНС. <button type="button" class="lnk" data-a="clientManual">Ввести реквизиты вручную</button></p>`;
+    <p class="muted" style="margin:8px 0 0">Ищем среди ваших клиентов${CLIENTS.length?` (${CLIENTS.length})`:''}, а по ИНН — в реестре ФНС. <button type="button" class="lnk" data-a="clientManual">Ввести реквизиты вручную</button> · <button type="button" class="lnk" data-a="clientsImport">Загрузить клиентов списком ИНН</button></p>`;
   const badge = S.clientStatus ? `<span class="st-badge ${/действ/i.test(S.clientStatus)?'ok':'bad'}">${esc(S.clientStatus)}</span>` : '';
   const risk = S.check && !S.check.error ? `<span class="st-badge ${S.check.score==='ok'?'ok':S.check.score==='warn'?'warn':'bad'}">${S.check.score==='ok'?'рисков не найдено':S.check.score==='warn'?'есть замечания':'высокий риск'}</span>` : '';
   const summary = `<div class="cl-card">
