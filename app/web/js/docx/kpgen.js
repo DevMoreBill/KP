@@ -49,14 +49,22 @@
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); if (!m) return iso || '';
     return `${+m[3]} ${MONTHS[+m[2] - 1]} ${m[1]} г.`;
   }
+  // скидка для заказчика на единицу позиции, копейки: disc = { type: 'pct' | 'sum', v: процент или копейки за ед. }
+  function unitDisc(it) {
+    const d = it && it.disc, p = (it && it.price) || 0;
+    if (!d || !(+d.v > 0) || !p) return 0;
+    return Math.min(p, d.type === 'sum' ? Math.round(+d.v) : Math.round(p * (+d.v) / 100));
+  }
+  const netPrice = it => ((it && it.price) || 0) - unitDisc(it);
   function totals(items, vatRate) {
-    let sum = 0, units = 0;
+    let sum = 0, units = 0, gross = 0, discount = 0;
     for (const it of items) {
-      const q = +it.qty || 0; sum += q * (it.price || 0); units += q;
-      for (const o of (it.options || [])) sum += (+o.qty || 0) * (o.price || 0);
+      const q = +it.qty || 0, dq = q * unitDisc(it);
+      gross += q * (it.price || 0); discount += dq; sum += q * (it.price || 0) - dq; units += q;
+      for (const o of (it.options || [])) { const os = (+o.qty || 0) * (o.price || 0); sum += os; gross += os; }
     }
     const vat = Math.round(sum * vatRate / (100 + vatRate));
-    return { sum, units, vat, net: sum - vat };
+    return { sum, units, vat, net: sum - vat, gross, discount };
   }
   // подстановка {метка} в текст шаблона
   const fill = (s, vars) => String(s == null ? '' : s).replace(/\{([^{}]+)\}/g, (m, k) => (vars && vars[k] != null ? String(vars[k]) : ''));
@@ -70,7 +78,7 @@
   }
   const clone = v => v === undefined ? v : JSON.parse(JSON.stringify(v));
 
-  const LIB = { money, words, totals, ruDate, plural, CURS, fill, deepMerge };
+  const LIB = { money, words, totals, unitDisc, netPrice, ruDate, plural, CURS, fill, deepMerge };
 
   // скелет шаблона (skeleton.js из папки шаблона): текст → { defaults, build }
   function loadSkeleton(code) {

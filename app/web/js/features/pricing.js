@@ -3,10 +3,34 @@
 
 function livePrice(i){ const x=S.items[i], el=document.querySelector(`[data-price="${i}"]`); if(el && document.activeElement!==el){ el.value=fmtPrice(x.price); el.classList.toggle('bad',!x.price); } }
 
-function liveMargin(i){ const x=S.items[i], el=document.querySelector(`[data-minfo="${i}"]`); if(!el) return; const c=costKP(x), cs=curSh(kpCur());
-  el.innerHTML = !x.cost ? 'Цена продажи вводится вручную. Укажите закупку, чтобы считать от неё.' : Number.isNaN(c) ? '<span class="bad-t">Нет курса для пересчёта закупки — обновите курс ЦБ</span>'
-    : x.price ? `Себестоимость ${money(Math.round(c))} ${cs} · прибыль <b>${money(Math.round(x.price-c))} ${cs}</b> · маржа ${(((x.price-c)/x.price)*100).toFixed(1).replace('.',',')} % · наценка ${(((x.price-c)/c)*100).toFixed(1).replace('.',',')} %` : 'Укажите маржу или наценку — цена рассчитается, или введите цену продажи вручную.';
+// подсказка под строкой цены: скидка для заказчика, себестоимость, прибыль, маржа (с учётом скидки)
+function priceHint(x){
+  const c=costKP(x), cs=curSh(kpCur()), d=KPGen.unitDisc(x), np=(x.price||0)-d;
+  const pc = v => v.toFixed(1).replace('.',',');
+  const dTxt = d ? `Скидка ${money(d)} ${cs} за ед. · цена для заказчика <b>${money(np)} ${cs}</b>` : '';
+  if (!x.cost) return dTxt || 'Цена продажи вводится вручную. Укажите закупку, чтобы считать от неё.';
+  if (Number.isNaN(c)) return '<span class="bad-t">Нет курса для пересчёта закупки — обновите курс ЦБ</span>';
+  if (!x.price) return 'Укажите маржу или наценку — цена рассчитается, или введите цену продажи вручную.';
+  const pr=np-c;
+  return (dTxt?dTxt+' · ':'') + `Себестоимость ${money(Math.round(c))} ${cs} · прибыль <b${pr<0?' class="bad-t"':''}>${money(Math.round(pr))} ${cs}</b> · маржа ${np?pc(pr/np*100):'—'} % · наценка ${pc(pr/c*100)} %${d?' (с учётом скидки)':''}`;
+}
+
+function liveMargin(i){ const x=S.items[i], el=document.querySelector(`[data-minfo="${i}"]`); if(!el) return;
+  el.innerHTML = priceHint(x);
   const mi=document.querySelector(`[data-margin="${i}"]`); if (mi){ mi.disabled=!x.cost; const act=actualPct(x); mi.placeholder = x.cost&&act!=null&&(x.priceManual||marginOf(x)==null) ? act.toFixed(1).replace('.',',') : '—'; } }
+
+// скидка для заказчика: x.disc = { type:'pct'|'sum', v } — процент или копейки за единицу; x.discType помнит выбранный вид
+const discType = x => (x.disc && x.disc.type) || x.discType || 'pct';
+function discText(x){ if (!x.disc || !(+x.disc.v>0)) return ''; return x.disc.type==='sum' ? money(x.disc.v) : String(x.disc.v).replace('.',','); }
+// разбор введённой скидки; возвращает false, если значение неверное (тогда скидка не применяется)
+function setDisc(x, text){
+  const type=discType(x), s=String(text||'').replace(/[\s %]/g,'');
+  x.discType=type;
+  if (!s){ delete x.disc; return true; }
+  if (type==='sum'){ const k=parsePrice(s); if (Number.isNaN(k) || k<0 || (x.price && k>x.price)){ delete x.disc; return false; } if (k) x.disc={type, v:k}; else delete x.disc; return true; }
+  const v=parseFloat(s.replace(',','.')); if (!/^\d+([.,]\d{0,2})?$/.test(s) || !(v>=0 && v<100)){ delete x.disc; return false; }
+  if (v) x.disc={type, v}; else delete x.disc; return true;
+}
 
 const CUR_LIST=['RUB','USD','EUR','CNY'];
 

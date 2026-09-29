@@ -19,6 +19,9 @@ document.addEventListener('input', e=>{
     const i=+t.dataset.cost, x=S.items[i], k=parsePrice(t.value);
     x._costText=t.value; x.cost=Number.isNaN(k)?0:k; t.classList.toggle('bad',Number.isNaN(k));
     if (!x.cost) x.priceManual=false; applyCalc(x); livePrice(i); updateLive(); liveMargin(i);
+  } else if (t.dataset.disc!=null){
+    const i=+t.dataset.disc, x=S.items[i];
+    x._discText=t.value; x._discBad=!setDisc(x, t.value); t.classList.toggle('bad', x._discBad); updateLive(); liveMargin(i);
   } else if (t.dataset.margin!=null){
     const i=+t.dataset.margin, x=S.items[i], v=t.value.trim();
     x.margin = v==='' ? undefined : v; if (v!=='') x.priceManual=false; applyCalc(x); livePrice(i); updateLive(); liveMargin(i);
@@ -57,6 +60,8 @@ document.addEventListener('focusout', e=>{
   const t=e.target;
   if (t.dataset.oprice!=null){ const [i,j]=t.dataset.oprice.split('.').map(Number), o=S.items[i].options[j], k=parsePrice(t.value); if(!Number.isNaN(k)){ delete o._priceText; t.value=k?money(k):''; } persist(); }
   if (t.dataset.price!=null){ const i=+t.dataset.price, k=parsePrice(t.value); if(!Number.isNaN(k)&&k){ delete S.items[i]._priceText; t.value=fmtPrice(k);} persist(); renderForm(); }
+  // без перерисовки формы: иначе следующий щелчок (например, по «% / руб.») попадёт в уже заменённую кнопку
+  if (t.dataset.disc!=null){ const x=S.items[+t.dataset.disc]; if (!x._discBad){ delete x._discText; t.value=discText(x); } persist(); }
   if (t.dataset.cost!=null){ const i=+t.dataset.cost, k=parsePrice(t.value); if(!Number.isNaN(k)){ delete S.items[i]._costText; t.value=k?money(k):''; } persist(); renderForm(); }
 });
 
@@ -118,6 +123,8 @@ document.addEventListener('click', async e=>{
     case 'integrations': return openIntegrations();
     case 'pickObject': { const o=(curClient()?.objects||[])[k]; if(o) S.object={...S.object,...o}; break; }
     case 'pickContact': { const o=(curClient()?.contacts||[])[k]; if(o) S.contact={...S.contact,...o}; break; }
+    case 'dmode': { const inp=document.querySelector(`[data-disc="${i}"]`); it.discType=b.dataset.v; if (it.disc) it.disc.type=b.dataset.v;
+      const txt=inp?inp.value:''; it._discText=txt; it._discBad=!setDisc(it, txt); if (!it._discBad) delete it._discText; renderForm(); persist(); return; }
     case 'tplEdit': return openTemplateEditor(b.dataset.id || S.template);
     case 'tplFolder': return api('/api/templates/folder',{method:'POST'}).then(r=>{ if(r&&r.remote) toast('Шаблоны правятся на компьютере-сервере отдела, в папке программы «templates»'); }).catch(()=>{});
     case 'toSave': { const sd=$('#side'); sd.scrollIntoView({behavior:'smooth'}); sd.classList.add('pulse'); setTimeout(()=>sd.classList.remove('pulse'),1600); return; }

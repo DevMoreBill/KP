@@ -72,6 +72,7 @@
     "equipSpecs": true,
     "specNote": true,
     "equipGallery": true,
+    "discount": true,
     "amountInWords": true,
     "currencyNote": true,
     "footer": true
@@ -128,6 +129,10 @@
     "colQty": "Кол-во",
     "colPrice": "Цена за ед., {cur}",
     "colSum": "Сумма, {cur}",
+    "colDisc": "Скидка",
+    "subtotal": "Сумма без скидки",
+    "discountTotal": "Скидка",
+    "coverDiscount": "с учётом скидки {sum} {cur}",
     "pcs": "шт.",
     "included": "включено",
     "total": "Итого",

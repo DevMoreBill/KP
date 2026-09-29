@@ -59,8 +59,28 @@ def ensure_templates():
     for tid, d in template_dirs().items():
         for name in SHARED_FILES:
             f, src = os.path.join(d, name), _bundled(tid, name)
-            if not os.path.isfile(f) and src and os.path.normcase(src) != os.path.normcase(f):
+            if not src or os.path.normcase(src) == os.path.normcase(f):
+                continue
+            if not os.path.isfile(f):
                 shutil.copyfile(src, f)
+            elif _norm_md5(f) in OLD_FACTORY.get(name, ()) and _norm_md5(f) != _norm_md5(src):
+                # заводской файл прошлой версии, который никто не правил, — обновляем (прежний — в историю)
+                _backup(d, name)
+                shutil.copyfile(src, f)
+
+
+# отпечатки заводских скелета и формы редактора прошлых версий: такие файлы обновляются сами,
+# изменённые пользователем — не трогаются
+OLD_FACTORY = {
+    'skeleton.js': ('5fbf889fa4d86dbd104efab151efe5cd',),
+    'editor.json': ('05add2124882dec245a673c9949a8e12',),
+}
+
+
+def _norm_md5(path):
+    import hashlib
+    with open(path, 'rb') as fh:
+        return hashlib.md5(fh.read().replace(b'\r\n', b'\n')).hexdigest()
 
 
 def template_dirs():
