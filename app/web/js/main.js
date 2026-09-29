@@ -11,3 +11,13 @@
 })();
 
 renderForm();
+
+// переключатель светлой и тёмной темы: выбор хранится в браузере; без выбора — как в системе
+function curTheme(){ const t=document.documentElement.dataset.theme; return t==='dark'||t==='light' ? t : (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'); }
+function paintThemeBtn(){ const b=document.getElementById('btnTheme'); if(!b) return; const dark=curTheme()==='dark';
+  b.textContent = dark ? '☀' : '☾'; const t = dark ? 'Светлая тема' : 'Тёмная тема'; b.title=t; b.setAttribute('aria-label', t); }
+document.getElementById('btnTheme').addEventListener('click', ()=>{
+  const t = curTheme()==='dark' ? 'light' : 'dark', r=document.documentElement;
+  r.dataset.theme=t; r.style.colorScheme=t; try{ localStorage.setItem('kp.theme', t); }catch(e){} paintThemeBtn(); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', paintThemeBtn);
+paintThemeBtn();
