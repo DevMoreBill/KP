@@ -118,6 +118,7 @@ document.addEventListener('click', async e=>{
     case 'integrations': return openIntegrations();
     case 'pickObject': { const o=(curClient()?.objects||[])[k]; if(o) S.object={...S.object,...o}; break; }
     case 'pickContact': { const o=(curClient()?.contacts||[])[k]; if(o) S.contact={...S.contact,...o}; break; }
+    case 'tplEdit': return openTemplateEditor(b.dataset.id || S.template);
     case 'tplFolder': return api('/api/templates/folder',{method:'POST'}).then(r=>{ if(r&&r.remote) toast('Шаблоны правятся на компьютере-сервере отдела, в папке программы «templates»'); }).catch(()=>{});
     case 'toSave': { const sd=$('#side'); sd.scrollIntoView({behavior:'smooth'}); sd.classList.add('pulse'); setTimeout(()=>sd.classList.remove('pulse'),1600); return; }
     case 'cbr': return loadCBR();

@@ -72,6 +72,19 @@ jobs:
           $types = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/types'
           Write-Host "Типов оборудования: $($types.types.Count)"
           if ($types.types.Count -lt 5) { throw 'Справочник типов не загрузился' }
+          $sk = Invoke-WebRequest -Uri 'http://127.0.0.1:17845/tpl/pnevmotekh/skeleton.js' -UseBasicParsing
+          if ($sk.Content -notmatch 'function kpSkeleton') { throw 'Скелет шаблона (skeleton.js) не отдаётся' }
+          $ed = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/tpl/pnevmotekh/editor.json'
+          if ($ed.tabs.Count -lt 5) { throw 'Форма редактора шаблона (editor.json) не загрузилась' }
+          foreach ($f in @('skeleton.js', 'editor.json', 'template.json', 'base.docx')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $dir "templates\pnevmotekh\$f"))) { throw "Файл шаблона $f не разложен рядом с программой" }
+          }
+          $tj = Invoke-WebRequest -Uri 'http://127.0.0.1:17845/tpl/pnevmotekh/template.json' -UseBasicParsing
+          Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:17845/api/templates/pnevmotekh/file?name=template.json' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($tj.Content)) | Out-Null
+          $hist = @(Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/templates/pnevmotekh/history')
+          if ($hist.Count -lt 1) { throw 'История версий шаблона не пишется' }
+          Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/templates/pnevmotekh/reset' | Out-Null
+          Write-Host "Шаблон: скелет, форма редактора, сохранение с историей ($($hist.Count)), заводской вариант — в порядке"
           $html = Invoke-WebRequest -Uri 'http://127.0.0.1:17845/' -UseBasicParsing
           if ($html.Content -notmatch 'ПНЕВМОТЕХ') { throw 'Интерфейс не отдаётся' }
           foreach ($f in @('/web/js/main.js', '/web/js/docx/kpgen.js', '/web/css/base.css', '/web/vendor/jszip.min.js')) {

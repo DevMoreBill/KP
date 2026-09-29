@@ -1,4 +1,5 @@
-// Шаблоны КП (папка templates): выбор шаблона и загрузка основы DOCX.
+// Шаблоны КП (папка templates): выбор шаблона и загрузка всего, что в папке шаблона —
+// настроек (template.json), скелета документа (skeleton.js) и основы Word (base.docx).
 'use strict';
 
 let TEMPLATES=[];
@@ -6,22 +7,35 @@ let TEMPLATES=[];
 const TPL_CACHE={};
 
 async function loadTemplates(){ try{ TEMPLATES = await api('/api/templates'); }catch(e){ TEMPLATES=[]; }
-  if (!S.template){ let t=''; try{ t=localStorage.getItem('kp.template')||''; }catch(e){} S.template = TEMPLATES.some(x=>x.id===t) ? t : (TEMPLATES.find(x=>x.id==='pnevmotekh')||TEMPLATES[0]||{}).id || ''; } }
+  if (!S.template || !TEMPLATES.some(x=>x.id===S.template)){ let t=''; try{ t=localStorage.getItem('kp.template')||''; }catch(e){} S.template = TEMPLATES.some(x=>x.id===t) ? t : (TEMPLATES.find(x=>x.id==='pnevmotekh')||TEMPLATES[0]||{}).id || ''; } }
 
 function curTemplate(){ return TEMPLATES.find(t=>t.id===S.template) || null; }
 
 function templatePicker(){
-  const list=TEMPLATES.filter(t=>!t.error);
+  const list=TEMPLATES.filter(t=>!t.error), bad=TEMPLATES.filter(t=>t.error);
   return `<div class="tplpick"><label class="f"><span>Шаблон КП</span><select data-tpl="1">${list.map(t=>`<option value="${esc(t.id)}"${t.id===S.template?' selected':''}>${esc(t.name)}</option>`).join('')}</select></label>
-    <span class="muted">${esc((curTemplate()||{}).description||'')}</span><button class="btn ghost" type="button" data-a="tplFolder" title="Папка с шаблонами: base.docx (шапка, поля, стили) и template.json (цвета, тексты)">Папка шаблонов</button></div>`;
+    <span class="muted">${esc((curTemplate()||{}).description||'')}</span>
+    <button class="btn" type="button" data-a="tplEdit" title="Цвета, шрифт, надписи, разделы, правила оформления — без программирования">Настроить шаблон</button>
+    <button class="btn ghost" type="button" data-a="tplFolder" title="Папка с шаблонами: в папке каждого шаблона — настройки, скелет документа и основа Word">Папка шаблонов</button></div>
+    ${bad.map(t=>`<p class="msg err">Шаблон «${esc(t.id)}»: ${esc(t.error)} <button class="btn ghost" type="button" data-a="tplEdit" data-id="${esc(t.id)}">Исправить</button></p>`).join('')}`;
 }
 
 const relAttr=(x,n)=>{ const m=x.match(new RegExp('\\s'+n+'="([^"]*)"')); return m?m[1]:''; };
 
+// сбросить загруженный шаблон (после правки его файлов)
+function dropTemplateCache(id){ if (id) delete TPL_CACHE[id]; else for (const k in TPL_CACHE) delete TPL_CACHE[k]; }
+
+async function fetchOk(url, what){ const r=await fetch(url,{cache:'no-store'}); if(!r.ok) throw new Error('нет файла '+what); return r; }
+
+// всё содержимое папки шаблона, готовое к сборке документа
 async function templatePack(id){
   if (TPL_CACHE[id]) return TPL_CACHE[id];
-  const j=await (await fetch(`/tpl/${id}/template.json`,{cache:'no-store'})).json();
-  const base=await (await fetch(`/tpl/${id}/base.docx`,{cache:'no-store'})).arrayBuffer();
+  const t=encodeURIComponent(id);
+  let json;
+  try{ json=await (await fetchOk(`/tpl/${t}/template.json`,'template.json')).json(); }
+  catch(e){ throw new Error(/нет файла/.test(e.message)?e.message:'ошибка в template.json — исправьте в «Настроить шаблон» или верните версию из истории'); }
+  const skel=KPGen.loadSkeleton(await (await fetchOk(`/tpl/${t}/skeleton.js`,'skeleton.js')).text());
+  const base=await (await fetchOk(`/tpl/${t}/base.docx`,'base.docx')).arrayBuffer();
   const z=await JSZip.loadAsync(base);
   const relsX=await z.file('word/_rels/document.xml.rels').async('string');
   const docX=await z.file('word/document.xml').async('string');
@@ -40,13 +54,27 @@ async function templatePack(id){
     keep.push('<Relationship Id="rIdKpFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer_kp.xml"/>');
     sect=sect.replace(/<w:footerReference[^>]*w:type="default"[^>]*\/>/,'');
     sect=sect.replace(/(<w:sectPr[^>]*>(?:\s*<w:headerReference[^>]*\/>)*)/,'$1<w:footerReference w:type="default" r:id="rIdKpFooter"/>'); }
-  const tpl={...j, rels:keep.join(''), sect};
-  let clients=null;
-  if (j.clientsImage){ try{ const buf=await (await fetch(`/tpl/${id}/${encodeURIComponent(j.clientsImage)}`)).arrayBuffer();
-      const ext=/\.png$/i.test(j.clientsImage)?'png':'jpg'; const bmp=await createImageBitmap(new Blob([buf]));
-      clients={buf, file:'tpl_clients.'+ext}; tpl.clients={rid:'rIdTplClients', file:clients.file, w:bmp.width, h:bmp.height}; }catch(e){ tpl.clients=false; } }
-  else tpl.clients=false;
-  return TPL_CACHE[id]={base, tpl, footerPath, addFooter, clients};
+  const settings=KPGen.deepMerge(skel.defaults, json);
+  return TPL_CACHE[id]={id, base, json, settings, skel, rels:keep.join(''), sect, footerPath, addFooter, images:{}};
+}
+
+// картинка шаблона (страница «Наши клиенты»): загружается один раз
+async function templateImage(pack, file){
+  if (!file) return null;
+  if (!(file in pack.images)){
+    try{ const buf=await (await fetchOk(`/tpl/${encodeURIComponent(pack.id)}/${encodeURIComponent(file)}`, file)).arrayBuffer();
+      const bmp=await createImageBitmap(new Blob([buf])); pack.images[file]={buf, w:bmp.width, h:bmp.height, ext:/\.png$/i.test(file)?'png':'jpg'}; }
+    catch(e){ pack.images[file]=null; } }
+  return pack.images[file];
+}
+
+// параметры страницы из base.docx — для подсказки в редакторе
+function pageInfo(sect){
+  const n=(re)=>{ const m=re.exec(sect||''); return m?+m[1]:0; }, cmv=v=>String(Math.round(v/567*100)/100).replace('.',',');
+  const w=n(/<w:pgSz[^>]*w:w="(\d+)"/), h=n(/<w:pgSz[^>]*w:h="(\d+)"/);
+  if (!w||!h) return '';
+  const fmt = Math.abs(w-11906)<30&&Math.abs(h-16838)<30 ? 'А4 книжный' : Math.abs(w-16838)<30&&Math.abs(h-11906)<30 ? 'А4 альбомный' : `${cmv(w)} × ${cmv(h)} см`;
+  return `${fmt}; поля: левое ${cmv(n(/<w:pgMar[^>]*w:left="(\d+)"/))}, правое ${cmv(n(/<w:pgMar[^>]*w:right="(\d+)"/))}, верхнее ${cmv(n(/<w:pgMar[^>]*w:top="(\d+)"/))}, нижнее ${cmv(n(/<w:pgMar[^>]*w:bottom="(\d+)"/))} см`;
 }
 
 document.addEventListener('change', e=>{ if (!e.target.dataset.tpl) return; S.template=e.target.value; try{ localStorage.setItem('kp.template',S.template); }catch(_){} renderForm(); persist(); toast('Шаблон КП: '+((curTemplate()||{}).name||'')); });

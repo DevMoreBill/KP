@@ -1,0 +1,68 @@
+/* Выбор шаблона на шаге «Титульный лист» и редактор шаблона КП */
+.tplpick{grid-template-columns:260px 1fr auto auto}
+@media (max-width:760px){ .tplpick{grid-template-columns:1fr} }
+
+dialog.tpled{max-width:min(1100px,96vw);display:flex;flex-direction:column;max-height:92vh}
+dialog.tpled:not([open]){display:none}
+.tpled .dlg-h{flex-wrap:wrap}
+.tpled .te-pick{width:auto;min-width:180px;max-width:280px}
+.te-err{margin:10px 20px 0;text-align:left}
+.te-wrap{display:grid;grid-template-columns:200px 1fr;min-height:0;flex:1}
+.te-nav{display:flex;flex-direction:column;gap:2px;padding:12px 8px;border-right:1px solid var(--line);background:var(--soft);overflow:auto}
+.te-nav button{border:0;background:transparent;text-align:left;padding:9px 12px;border-radius:8px;cursor:pointer;color:var(--ink);font-size:14px}
+.te-nav button:hover{background:var(--card)}
+.te-nav button.on{background:var(--navy);color:#fff;font-weight:600}
+.te-body{padding:14px 22px 26px;overflow:auto;min-height:0;max-height:calc(92vh - 150px)}
+.te-intro{margin:0 0 14px}
+.te-group{margin:22px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--navy)}
+.te-f{display:grid;gap:4px;margin-bottom:12px}
+.te-f small, .te-style small{font-size:12.5px;line-height:1.35}
+.te-lab{font-size:13px;font-weight:600;color:var(--muted)}
+.te-inline{display:flex;align-items:center;gap:8px}
+.te-inline em{font-style:normal;color:var(--muted);font-size:13px}
+.te-num input{max-width:130px}
+.te-tog{margin-bottom:6px}
+.te-color .te-inline input[type=color]{width:48px;height:38px;padding:2px;border-radius:8px;cursor:pointer}
+.te-hex{max-width:110px;font-family:ui-monospace,Consolas,monospace;text-transform:uppercase}
+.te-rows{display:grid;gap:8px}
+.te-pair{display:grid;grid-template-columns:200px 1fr 32px;gap:8px;align-items:start}
+.te-brandrow{grid-template-columns:1fr 220px 32px}
+.te-brand{margin-left:8px;font-size:16px;color:var(--ink)}
+.te-secs{list-style:none;margin:0;padding:0;display:grid;gap:6px;counter-reset:sec}
+.te-secs li{display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--card)}
+.te-secs li.off .te-secname{opacity:.55}
+.te-secname{display:grid;gap:2px}
+.te-move{display:flex;gap:2px}
+.te-chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--muted);white-space:nowrap}
+.te-chk input{width:auto}
+.te-style{display:grid;grid-template-columns:minmax(150px,210px) 110px 190px auto 1fr;gap:10px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)}
+.te-style input[type=number]{max-width:70px}
+.te-nocol{font-size:12px}
+.te-tgs{display:flex;gap:4px}
+.te-t{width:32px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer;font-weight:700;color:var(--muted);font-size:12px}
+.te-t.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.te-sample{padding:4px 8px;border-radius:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#fff;border:1px solid var(--line);min-width:0}
+.te-img{display:flex;gap:12px;align-items:center;padding:8px;border:1px dashed var(--line);border-radius:10px}
+.te-img img{max-width:180px;max-height:120px;border-radius:6px;background:#fff}
+.te-files{display:grid;gap:12px}
+.te-card{display:grid;gap:8px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--card)}
+.te-card p{margin:4px 0 0;font-size:13px}
+.te-card code{font-size:12.5px;color:var(--muted)}
+.te-actions{flex-wrap:wrap}
+.btn.danger{color:var(--danger)}
+.te-hist{display:grid;gap:4px}
+.te-hrow{display:grid;grid-template-columns:160px 1fr auto;gap:10px;align-items:center;border-bottom:1px solid var(--line);padding:4px 0;color:var(--ink);font-size:13.5px}
+.te-foot{display:flex;justify-content:space-between;gap:12px;padding:10px 20px;border-top:1px solid var(--line);font-size:13px;flex-wrap:wrap}
+.te-foot .warn{color:var(--danger);font-weight:600}
+.te-foot .okn{color:var(--ok);font-weight:600}
+@media (max-width:760px){
+  .te-wrap{grid-template-columns:1fr}
+  .te-nav{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}
+  .te-nav button{white-space:nowrap}
+  .te-style{grid-template-columns:1fr 1fr;}
+  .te-style .te-lab, .te-style .te-sample{grid-column:1/-1}
+  .te-pair, .te-brandrow{grid-template-columns:1fr 32px}
+  .te-pair > :nth-child(2){grid-column:1}
+  .te-secs li{grid-template-columns:auto 1fr;}
+  .te-body{max-height:none}
+}

@@ -18,7 +18,7 @@ vendor/
   jszip.min.js             упаковка DOCX (ZIP)
   onest-font.css           шрифт Onest (встроен, интернет не нужен)
 js/
-  docx/kpgen.js            генератор содержимого DOCX: титул, страницы оборудования, таблица КП, подвал
+  docx/kpgen.js            общие помощники: суммы, сумма прописью, даты, итоги; загрузка скелета шаблона
   core/util.js             помощники: $, esc, norm, money, toast, parsePrice, файлы
   core/api.js              запросы к серверу (api), загрузка изображений, работа по сети
   core/types.js            типы оборудования: справочник, attrsOf(), параметры, титул по типу
@@ -30,10 +30,11 @@ js/
   features/images.js       подготовка фото, галерея позиции
   features/item-editor.js  карточка позиции (окно с вкладками)
   features/ai-autofill.js  автозаполнение через Claude
-  features/templates.js    шаблоны КП (папка templates)
+  features/templates.js    шаблоны КП (папка templates): выбор, загрузка настроек, скелета и base.docx
+  features/template-editor.js  окно «Настроить шаблон» (форма строится по editor.json шаблона)
   features/types-editor.js редактор типов оборудования
   features/journal.js      журнал КП
-  docx/build.js            имя файла, модели для титула, download() — сборка и сохранение КП
+  docx/build.js            имя файла, модели для титула, renderDocx() — сборка файла, download(), previewDocx()
   ui/form.js               field(), разделы STEPS, меню, renderForm()
   ui/steps/*.js            разделы 1–6: client, equipment, pricing, cover, conditions, manager
   ui/sidebar.js            итог, проверка заполнения (problems), кнопка «Сохранить КП»
@@ -61,6 +62,6 @@ js/
 | Новое поле в разделе | `ui/steps/<раздел>.js` → `field(...)`; значение по умолчанию — `freshState()` в `core/state.js` |
 | Новая кнопка | разметка с `data-a="имя"` + `case 'имя':` в `ui/events.js` |
 | Проверка перед сохранением | `problems()` в `ui/sidebar.js` |
-| Вёрстка документа Word | `js/docx/kpgen.js` (цвета и тексты — из шаблона `templates/<id>/template.json`) |
+| Вёрстка документа Word | скелет шаблона `templates/<id>/skeleton.js`, настройки — `template.json`, форма редактора — `editor.json` |
 | Новый вид оборудования | без кода: `app/equipment_types.json` или «Типы оборудования» в программе |
 | Цвета интерфейса | переменные в начале `css/base.css` |

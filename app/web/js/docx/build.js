@@ -20,11 +20,17 @@ function equipShort(){
   return out;
 }
 
-function fileName(){
+// имя файла КП — по образцу из шаблона (fileName), метки: {номер} {префикс} {клиент} {оборудование} {дата}
+function fileName(settings){
   const c = fsafe(String(S.client||'клиент').replace(/^(ООО|АО|ПАО|ЗАО|ИП|ОАО)\s+/i,'')).slice(0,40) || 'клиент';
   const eq = fsafe(equipShort()).slice(0,60);
-  const pre = fsafe((TPL_CACHE[S.template]&&TPL_CACHE[S.template].tpl.filePrefix) || (curTemplate()&&curTemplate().filePrefix) || 'КП_Пневмотех');
-  return (S.number?S.number+'_':'')+`${pre}_${c}${eq?'_'+eq:''}_${S.date||today()}.docx`;
+  const pk = TPL_CACHE[S.template], tl = curTemplate() || {};
+  const st = settings || (pk && pk.settings) || {};
+  const pre = fsafe(st.filePrefix || tl.filePrefix || 'КП');
+  const pat = st.fileName || tl.fileName || '{номер}_{префикс}_{клиент}_{оборудование}_{дата}';
+  const name = KPGen.fill(pat, {'номер':S.number||'', 'префикс':pre, 'клиент':c, 'оборудование':eq, 'дата':S.date||today()})
+    .replace(/[\\/:*?"<>|]/g,'').replace(/_{2,}/g,'_').replace(/^[_\s-]+|[_\s-]+$/g,'');
+  return (name || 'КП') + '.docx';
 }
 
 function managerFolder(){ const m=S.manager||{}; return fsafe(m.folder || String(m.name||'').trim().split(/\s+/)[0] || '').slice(0,40); }
@@ -42,58 +48,84 @@ function stationsOf(){
   return [...map.values()];
 }
 
+// данные КП для документа (без служебных полей и изображений)
+function docState(){
+  S.items.forEach(x=>(x.features||[]).forEach(featId));
+  const St = JSON.parse(JSON.stringify(S, (k,v)=>k.startsWith('_')?undefined:v));
+  St.vat=+S.vat; St.cur={code:kpCur(), rate:kpCur()!=='RUB'?rateOf(kpCur()):null, date:S.pricing.rateDate||''}; St.items=S.items.map(x=>({...x, qty:+x.qty, photo:undefined, logo:undefined, _srcImg:undefined, options:(x.options||[]).filter(o=>o.name.trim()&&+o.qty>0).map(o=>({name:o.name.trim(), short:o.short, unit:o.unit, qty:+o.qty, price:o.price||0}))}));
+  return St;
+}
+
+// сборка файла .docx: основа Word из шаблона + страницы по скелету шаблона с настройками settings
+async function renderDocx(St, pack, settings){
+  const T = settings.texts || {};
+  const zip = await JSZip.loadAsync(pack.base);
+  const img = settings.clientsImage ? await templateImage(pack, settings.clientsImage) : null;
+  const clients = img ? {rid:'rIdTplClients', file:'tpl_clients.'+img.ext, w:img.w, h:img.h} : false;
+  { if (clients) zip.file('word/media/'+clients.file, img.buf);
+    if (pack.addFooter){ const ct=await zip.file('[Content_Types].xml').async('string');
+      if (!ct.includes('/word/footer_kp.xml')) zip.file('[Content_Types].xml', ct.replace('</Types>','<Override PartName="/word/footer_kp.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>')); }
+    const ct=await zip.file('[Content_Types].xml').async('string');
+    if (!/Extension="png"/i.test(ct) || !/Extension="jpg"/i.test(ct)) zip.file('[Content_Types].xml', ct.replace('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+(/Extension="png"/i.test(ct)?'':'<Default Extension="png" ContentType="image/png"/>')+(/Extension="jpg"/i.test(ct)?'':'<Default Extension="jpg" ContentType="image/jpeg"/>'))); }
+  const Min={cover:null,items:{}};
+  const STS=stationsOf();
+  if (STS.length>=2){
+    St.stations=STS.map(s=>({key:s.key,model:s.model,power:s.power,exec:s.exec,qty:s.qty}));
+    Min.thumbs={};
+    for (const s of STS){ if(!s.photo) continue; zip.file(`word/media/${s.key}.jpg`, b64(await toDataURL(s.photo)), {base64:true}); Min.thumbs[s.key]={file:`${s.key}.jpg`,w:s.photo.w,h:s.photo.h}; }
+    if (!S.cover.touched){
+      const makers=new Set(STS.map(s=>s.model.split(' ')[0]));
+      const kvas=STS.filter(s=>/кВА/.test(s.power||'')).map(s=>parseFloat(String(s.power).replace(',','.'))).filter(x=>x>0);
+      if (STS.length>3) St.cover.model = `${STS.length} ${plural(STS.length,'модель','модели','моделей')}` + (kvas.length && STS.every(s=>s.type==='dgu')?` · ${Math.min(...kvas)}–${Math.max(...kvas)} кВА`.replace(/\./g,','):'');
+      else St.cover.model = makers.size===1 && STS.every(s=>s.model.startsWith('Tide Power ')) ? 'Tide Power '+STS.map(s=>s.model.replace('Tide Power ','')).join(' · ') : STS.map(s=>s.model).join(' · ');
+      const cats=new Set(STS.map(s=>s.type)), grps=new Set(STS.map(s=>s.group));
+      St.cover.title = cats.size===1 ? (typeById([...cats][0]).coverTitle||typeById([...cats][0]).name) : grps.size===1 ? [...grps][0] : (T.coverMultiTitle||'Оборудование');
+      St.cover.desc = KPGen.fill(T.coverMultiDesc||'', {count:`${STS.length} ${plural(STS.length,'модель','модели','моделей')}`});
+    }
+  }
+  const coverItem=S.items.find(x=>x.photo);
+  if (coverItem){ zip.file('word/media/cover.jpg', b64(await toDataURL(coverItem.photo)), {base64:true}); Min.cover={file:'cover.jpg',w:coverItem.photo.w,h:coverItem.photo.h}; }
+  for (const x of S.items){ if(!x.page) continue; const m={};
+    if (x.photo){ const t=await tileFrom(x.photo); zip.file(`word/media/tile_${x.id}.png`, b64(t.url), {base64:true}); m.tile={file:`tile_${x.id}.png`,w:t.w,h:t.h}; }
+    if (x.logo){ zip.file(`word/media/logo_${x.id}.png`, b64(await toDataURL(x.logo)), {base64:true}); m.logo={file:`logo_${x.id}.png`,w:x.logo.w,h:x.logo.h}; }
+    m.gallery=[]; m.featImgs={}; let gk=0;
+    (x.features||[]).forEach(featId);
+    for (const g of (x.gallery||[])){ if (g.on===false) continue; const du=await toDataURL(g); if(!du) continue;
+      const ext=/^data:image\/png/.test(du)?'png':'jpg'; const fnm=`gal_${x.id}_${++gk}.${ext}`;
+      zip.file(`word/media/${fnm}`, b64(du), {base64:true});
+      const L=linkOf(x,g);
+      if (L.kind==='feat') m.featImgs[L.f.id]={file:fnm, w:g.w, h:g.h};
+      else m.gallery.push({file:fnm, w:g.w, h:g.h, caption:(g.caption||'').trim() || (L.kind==='group'?L.name:''), wide:galWide(g)}); }
+    Min.items[x.id]=m; }
+  let out;
+  try{ out = pack.skel.build(St, Min, ROOTS, Object.assign({}, settings, {rels:pack.rels, sect:pack.sect, clients})); }
+  catch(e){ throw new Error('ошибка в скелете шаблона (skeleton.js): '+(e&&e.message||e)); }
+  zip.file('word/document.xml', out.document); zip.file(pack.footerPath, out.footer); zip.file('word/_rels/document.xml.rels', out.rels);
+  return zip.generateAsync({type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression:'DEFLATE'});
+}
+
+// пробный файл: текущее КП по шаблону с несохранёнными настройками — без номера и записи в журнал
+async function previewDocx(id, settings){
+  if (!S.items.length) throw new Error('добавьте в КП хотя бы одну позицию — пробный файл строится по текущему КП');
+  const pack=await templatePack(id);
+  const St=docState(); if (!St.number) St.number='ПРОБНЫЙ';
+  const blob=await renderDocx(St, pack, settings || pack.settings);
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='Пробный_'+fileName(settings || pack.settings);
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 30000);
+}
+
 async function download(){
   const msg=$('#dlmsg'); const btn=document.querySelector('[data-a="download"]');
   if (problems().length) return;
   if (!window.JSZip){ msg.className='msg err'; msg.textContent='Не загрузился модуль сборки файла. Обновите страницу.'; return; }
   btn.disabled=true; btn.textContent='Собираю файл…'; msg.textContent='';
   try{
-    S.items.forEach(x=>(x.features||[]).forEach(featId));
-    const St = JSON.parse(JSON.stringify(S, (k,v)=>k.startsWith('_')?undefined:v));
-    St.vat=+S.vat; St.cur={code:kpCur(), rate:kpCur()!=='RUB'?rateOf(kpCur()):null, date:S.pricing.rateDate||''}; St.items=S.items.map(x=>({...x, qty:+x.qty, photo:undefined, logo:undefined, _srcImg:undefined, options:(x.options||[]).filter(o=>o.name.trim()&&+o.qty>0).map(o=>({name:o.name.trim(), short:o.short, unit:o.unit, qty:+o.qty, price:o.price||0}))}));
-    if (!S.kpId){ const r=await api('/api/kp/new',{method:'POST'}); S.kpId=r.id; S.number=r.number; St.kpId=r.id; St.number=r.number; }
+    const St = docState();
     if (!S.template) throw new Error('не выбран шаблон КП (папка templates рядом с программой пуста)');
     let pack;
     try{ pack=await templatePack(S.template); }catch(e){ throw new Error('шаблон «'+S.template+'» не загрузился: '+e.message); }
-    const zip = await JSZip.loadAsync(pack.base);
-    { if (pack.clients) zip.file('word/media/'+pack.clients.file, pack.clients.buf);
-      if (pack.addFooter){ const ct=await zip.file('[Content_Types].xml').async('string');
-        if (!ct.includes('/word/footer_kp.xml')) zip.file('[Content_Types].xml', ct.replace('</Types>','<Override PartName="/word/footer_kp.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>')); }
-      const ct=await zip.file('[Content_Types].xml').async('string');
-      if (!/Extension="png"/i.test(ct) || !/Extension="jpg"/i.test(ct)) zip.file('[Content_Types].xml', ct.replace('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+(/Extension="png"/i.test(ct)?'':'<Default Extension="png" ContentType="image/png"/>')+(/Extension="jpg"/i.test(ct)?'':'<Default Extension="jpg" ContentType="image/jpeg"/>'))); }
-    const Min={cover:null,items:{}};
-    const STS=stationsOf();
-    if (STS.length>=2){
-      St.stations=STS.map(s=>({key:s.key,model:s.model,power:s.power,exec:s.exec,qty:s.qty}));
-      Min.thumbs={};
-      for (const s of STS){ if(!s.photo) continue; zip.file(`word/media/${s.key}.jpg`, b64(await toDataURL(s.photo)), {base64:true}); Min.thumbs[s.key]={file:`${s.key}.jpg`,w:s.photo.w,h:s.photo.h}; }
-      if (!S.cover.touched){
-        const makers=new Set(STS.map(s=>s.model.split(' ')[0]));
-        const kvas=STS.filter(s=>/кВА/.test(s.power||'')).map(s=>parseFloat(String(s.power).replace(',','.'))).filter(x=>x>0);
-        if (STS.length>3) St.cover.model = `${STS.length} ${plural(STS.length,'модель','модели','моделей')}` + (kvas.length && STS.every(s=>s.type==='dgu')?` · ${Math.min(...kvas)}–${Math.max(...kvas)} кВА`.replace(/\./g,','):'');
-        else St.cover.model = makers.size===1 && STS.every(s=>s.model.startsWith('Tide Power ')) ? 'Tide Power '+STS.map(s=>s.model.replace('Tide Power ','')).join(' · ') : STS.map(s=>s.model).join(' · ');
-        const cats=new Set(STS.map(s=>s.type)), grps=new Set(STS.map(s=>s.group));
-        St.cover.title = cats.size===1 ? (typeById([...cats][0]).coverTitle||typeById([...cats][0]).name) : grps.size===1 ? [...grps][0] : 'Оборудование';
-        St.cover.desc = `В предложение входят ${STS.length} ${plural(STS.length,'модель','модели','моделей')} оборудования. Характеристики каждой модели приведены на отдельной странице.`;
-      }
-    }
-    const coverItem=S.items.find(x=>x.photo);
-    if (coverItem){ zip.file('word/media/cover.jpg', b64(await toDataURL(coverItem.photo)), {base64:true}); Min.cover={file:'cover.jpg',w:coverItem.photo.w,h:coverItem.photo.h}; }
-    for (const x of S.items){ if(!x.page) continue; const m={};
-      if (x.photo){ const t=await tileFrom(x.photo); zip.file(`word/media/tile_${x.id}.png`, b64(t.url), {base64:true}); m.tile={file:`tile_${x.id}.png`,w:t.w,h:t.h}; }
-      if (x.logo){ zip.file(`word/media/logo_${x.id}.png`, b64(await toDataURL(x.logo)), {base64:true}); m.logo={file:`logo_${x.id}.png`,w:x.logo.w,h:x.logo.h}; }
-      m.gallery=[]; m.featImgs={}; let gk=0;
-      (x.features||[]).forEach(featId);
-      for (const g of (x.gallery||[])){ if (g.on===false) continue; const du=await toDataURL(g); if(!du) continue;
-        const ext=/^data:image\/png/.test(du)?'png':'jpg'; const fnm=`gal_${x.id}_${++gk}.${ext}`;
-        zip.file(`word/media/${fnm}`, b64(du), {base64:true});
-        const L=linkOf(x,g);
-        if (L.kind==='feat') m.featImgs[L.f.id]={file:fnm, w:g.w, h:g.h};
-        else m.gallery.push({file:fnm, w:g.w, h:g.h, caption:(g.caption||'').trim() || (L.kind==='group'?L.name:''), wide:galWide(g)}); }
-      Min.items[x.id]=m; }
-    const out = KPGen.build(St, Min, ROOTS, pack.tpl);
-    zip.file('word/document.xml', out.document); zip.file(pack.footerPath, out.footer); zip.file('word/_rels/document.xml.rels', out.rels);
-    const blob = await zip.generateAsync({type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression:'DEFLATE'});
+    if (!S.kpId){ const r=await api('/api/kp/new',{method:'POST'}); S.kpId=r.id; S.number=r.number; St.kpId=r.id; St.number=r.number; }
+    const blob = await renderDocx(St, pack, pack.settings);
     btn.textContent='Сохраняю в журнал…';
     await syncCatalog(S.number); await saveClient(true);
     for (const it of S.items){ it.photo=await uploadImg(it.photo); it.logo=await uploadImg(it.logo); if (it.gallery) for (const g of it.gallery){ const u=await uploadImg(g); if(u) g.src=u.src; } }
