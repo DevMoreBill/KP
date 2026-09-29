@@ -1,0 +1,94 @@
+/* Раздел «Оборудование» и карточка позиции. */
+.eq-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.ready{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.rd{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:3px 10px;font-size:12.5px;cursor:pointer;color:var(--muted)}
+.rd.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,var(--line))}
+.rd.warn{color:#b07d00;border-color:#e8c46a;background:#fff8e6}
+.iopts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.oitem{display:inline-flex;gap:6px;align-items:center;background:var(--soft);border-radius:8px;padding:3px 4px 3px 10px;font-size:12.5px}
+.oitem button{border:0;background:none;cursor:pointer;color:var(--muted);font-size:12px;padding:0 4px}
+.icard{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 16px;align-items:start}
+.iside{grid-column:2;display:grid!important;grid-template-columns:170px 200px 1fr;gap:12px;align-items:end}
+textarea.iname{min-height:0;height:auto;resize:none;font-weight:600;font-size:15.5px;line-height:1.35;padding:8px 12px;width:100%}
+.ithumb{width:110px;height:84px;border:1.5px dashed var(--line);border-radius:12px;background:var(--soft);display:grid;place-items:center;cursor:pointer;padding:4px;color:var(--muted);font-size:13px}
+.ithumb img{max-width:100%;max-height:100%;object-fit:contain}
+.itop{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.itop .item-no{margin:0}
+.ttype{white-space:nowrap;font-size:12px;font-weight:600;color:var(--navy);background:var(--soft);border-radius:999px;padding:2px 10px}
+.tcat{font-size:12px;color:var(--muted)}
+input.iname{font-weight:600;font-size:15.5px}
+.ikp{font-size:13px;color:var(--muted);margin:6px 0 8px}
+.st{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:3px 9px;font-size:12.5px;cursor:pointer;color:var(--ink)}
+.st b{font-weight:650}
+.st.zero{color:var(--muted)}
+.st:hover{border-color:var(--sky)}
+.iside{display:grid;gap:8px}
+.iside .pricebox{padding:9px 12px;min-height:0}
+.isum{text-align:right;font-size:13px;color:var(--muted)}
+.isum b{color:var(--ink);font-size:15px}
+.ifoot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+dialog.editor{max-width:min(1060px,96vw);width:100%;height:min(92vh,980px);display:none;flex-direction:column}
+dialog.editor[open]{display:flex}
+.ed-tabs{display:flex;gap:6px;padding:10px 20px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.ed-tab{border:0;background:none;padding:10px 14px;border-bottom:3px solid transparent;cursor:pointer;font-weight:600;color:var(--muted);font-size:14.5px}
+.ed-tab.on{color:var(--navy);border-bottom-color:var(--navy)}
+.ed-b{padding:18px 20px 24px;overflow:auto;flex:1}
+.ed-sec{margin-bottom:22px}
+.media2{display:grid;grid-template-columns:1fr 280px;gap:16px}
+.fblock{display:grid;grid-template-columns:190px minmax(0,1fr);gap:14px;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.fimg{display:grid;gap:6px}
+.ibox{height:130px;border:1.5px dashed var(--line);border-radius:10px;background:var(--soft);display:grid;place-items:center;text-align:center;cursor:pointer;color:var(--muted);font-size:13px;padding:6px}
+.ibox img{max-width:100%;max-height:118px;object-fit:contain}
+.ibox.over{border-color:var(--sky)}
+.ftext{display:grid;gap:8px;align-content:start}
+.fhead{display:grid;grid-template-columns:1fr 32px 32px;gap:6px;align-items:center}
+@media (max-width:1000px){.icard{grid-template-columns:90px 1fr}.iside{grid-column:1/-1;grid-template-columns:1fr 1fr 1fr;align-items:end}.media2,.fblock{grid-template-columns:1fr}}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;border:1.5px dashed var(--line);border-radius:12px;padding:12px;min-height:70px;background:var(--soft)}
+.gal.over{border-color:var(--sky)}
+.gcard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.gcard img{width:100%;height:140px;object-fit:contain;background:#fff;border-radius:6px}
+.gcard.off{opacity:.45}
+.gctl{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.gctl select{padding:6px 8px;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--field);color:var(--ink);max-width:100%}
+div.f{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted);font-weight:500}
+details.more{margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:0 14px}
+details.more>summary{cursor:pointer;padding:12px 0;font-weight:600;font-size:14px;color:var(--navy)}
+details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px}
+.pricebox{width:100%;text-align:right;border:1px dashed var(--line);background:var(--soft);border-radius:10px;padding:10px 12px;font-size:15px;cursor:pointer;color:var(--ink);font-variant-numeric:tabular-nums}
+.pricebox.empty{color:var(--danger);text-align:center}
+.empty-pick{border:1.5px dashed var(--line);border-radius:14px;padding:26px;text-align:center;margin-bottom:14px;background:var(--soft)}
+.empty-pick p{margin:0 0 8px}
+.empty-pick .btn{margin-top:8px}
+.btn:focus-visible,.icon:focus-visible,.chip:focus-visible,.sw:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
+/* позиции */
+.item{border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px;background:var(--card)}
+.item-head{display:grid;grid-template-columns:28px minmax(0,1fr) 92px 150px auto;gap:10px;align-items:end}
+.item-no{width:28px;height:28px;border-radius:8px;background:var(--soft);color:var(--navy);display:grid;place-items:center;font-weight:700;font-size:13px;margin-bottom:8px}
+.item-sum{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:14px;color:var(--muted)}
+.item-sum b{color:var(--ink);font-variant-numeric:tabular-nums;font-size:16px}
+.qty{display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;background:var(--field)}
+.qty input{border:0;text-align:center;padding:10px 0;box-shadow:none!important;background:transparent}
+.qty button{border:0;background:transparent;width:28px;height:40px;cursor:pointer;color:var(--muted);font-size:17px}
+.sw{display:inline-flex;align-items:center;gap:10px;cursor:pointer;border:0;background:none;padding:0;font-weight:550;color:var(--ink)}
+.sw i{flex:0 0 38px;width:38px;height:22px;border-radius:22px;background:var(--line);position:relative;transition:background .2s}
+.sw i::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s}
+.sw[aria-checked=true] i{background:var(--navy)}
+.sw[aria-checked=true] i::after{transform:translateX(16px)}
+.drop{border:1.5px dashed var(--line);border-radius:12px;min-height:150px;display:grid;place-items:center;text-align:center;padding:10px;cursor:pointer;color:var(--muted);font-size:13px;background:var(--soft);position:relative;overflow:hidden}
+.drop.over{border-color:var(--sky)}
+.drop img{max-width:100%;max-height:170px;display:block}
+.drop .x{position:absolute;top:6px;right:6px;background:var(--card)}
+.grp{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.grp-h{display:flex;gap:8px;margin-bottom:8px}
+.grp-h input{font-weight:600}
+.srow{display:grid;grid-template-columns:1fr 1fr 32px 32px;gap:6px;margin-bottom:6px}
+.ai{background:var(--soft);border-radius:12px;padding:14px;display:grid;gap:10px}
+.ai p{margin:0}
+/* доп. оборудование */
+.opts{margin-top:14px;padding:14px;border-radius:12px;background:var(--soft)}
+.opt{display:grid;grid-template-columns:minmax(0,1fr) 72px 130px 120px 32px;gap:8px;align-items:center;margin-bottom:8px}
+.opt .s{text-align:right;font-variant-numeric:tabular-nums;font-size:14px;color:var(--muted)}
+.opt input{padding:8px 10px;font-size:14px;background:var(--field)}
+.opts .chips{margin:4px 0 10px}
+.attrs{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media (max-width:620px){ .g2{grid-template-columns:1fr} .top{padding:12px 16px} .step{padding:18px} .srow{grid-template-columns:1fr 1fr 28px 28px} }
