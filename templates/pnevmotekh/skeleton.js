@@ -55,7 +55,7 @@ function kpSkeleton(KP) {
     // отдельные блоки внутри разделов
     blocks: {
       coverKpis: true, coverTotal: true, coverDetailsNote: true, coverAbout: true, coverAdvantages: true, coverTrust: true,
-      equipLogo: true, equipOptions: true, equipComponents: true, equipFeatures: true, equipSpecs: true, specNote: true, equipGallery: true,
+      equipLogo: true, equipKeyParams: true, equipOptions: true, equipComponents: true, equipFeatures: true, equipSpecs: true, specNote: true, equipGallery: true,
       discount: true, amountInWords: true, currencyNote: true, footer: true
     },
     // правила заполнения и раскладки
@@ -68,8 +68,12 @@ function kpSkeleton(KP) {
       logoWidthCm: 3.75,
       equipPhotoWidthCm: 8.8,
       longFeatureChars: 230,      // описание длиннее — уходит в раздел «Особенности и комплектация»
-      specTwoColumnsFrom: 15,     // строк в характеристиках, с которых таблица в две колонки
-      specKeepRows: 12            // сколько строк таблицы держать вместе с заголовком
+      specTwoColumnsFrom: 15,     // строк в характеристиках, с которых карточки групп встают в две колонки
+      specLongValueChars: 32,     // значение длиннее — выводится текстом во всю ширину карточки
+      heroPhotoHeightCm: 6.5,     // высота рамки главного фото на странице оборудования
+      keyParamsMax: 6,            // плиток ключевых параметров рядом с фото
+      keyParamMaxChars: 28,       // значения длиннее в плитки не берутся
+      componentPhotoWidthCm: 4.6, componentPhotoHeightCm: 3.2
     },
     texts: {
       coverKicker: 'Технико-коммерческое предложение',
@@ -138,6 +142,10 @@ function kpSkeleton(KP) {
       specValue: { size: 8, color: 'DARK', bold: true },
       specValueKey: { size: 8, color: 'BLUE', bold: true },
       specNote: { size: 7, color: 'GRAY', italic: true },
+      specText: { size: 8, color: 'DARK' },
+      subheading: { size: 11, color: 'BLUE', bold: true },
+      heroValue: { size: 12, color: 'BLUE', bold: true },
+      heroLabel: { size: 7, color: 'GRAY' },
       galleryCaption: { size: 8, color: 'DARK', bold: true },
       rowIndex: { size: 9, color: 'GRAY' },
       itemName: { size: 9.5, color: 'DARK', bold: true },
@@ -444,48 +452,137 @@ function kpSkeleton(KP) {
   }
 
   // ================================================================ СТРАНИЦА ОБОРУДОВАНИЯ
+  // Страница позиции: первый экран (фото + ключевые параметры + коротко о главном), узлы и компоненты
+  // компактными карточками, особенности списком «подзаголовок — текст», характеристики — отдельной
+  // карточкой на каждую группу, фото и схемы. Колонки характеристик независимы: высота строки
+  // в одной колонке не влияет на соседнюю.
   const HDR = (t, w, jc = 'left', span = 1) => tc(p(r(t, 'tableHeader'), { jc }), w, { mar: [0, 120, 0, 120], span });
-  const cell = (t, w, style, o = {}) => tc(p(r(t, style), { jc: o.jc || 'left' }), w,
-    { bdr: o.last ? B() : B(null, null, [4, HAIR]), mar: o.mar || [36, 120, 36, 120] });
-
-  function balance(groups) {
-    const n = g => g.rows.length + 1, total = groups.reduce((a, g) => a + n(g), 0);
-    let acc = 0, k = 0;
-    for (; k < groups.length; k++) { if (acc + n(groups[k]) / 2 > total / 2 && k > 0) break; acc += n(groups[k]); }
-    return [groups.slice(0, k), groups.slice(k)];
-  }
-  // подзаголовок группы характеристик (Двигатель, Альтернатор…): светлая плашка и полоса слева
-  function grpCell(name, w) {
-    return tc(p(r(name, 'specGroup')), w,
-      { span: 2, fill: LIGHT, bdr: B(null, [36, BLUE], [6, SKY]), mar: [110, 140, 90, 140] });
-  }
+  const PXCAP = 914400 / 150;   // EMU на пиксель при 150 dpi — мелкие картинки не растягиваются
   // «не отрывать»: все абзацы строк таблицы держатся со следующими — Word переносит такой блок целиком
   const keepAll = xml => xml.replace(/<w:pPr>/g, '<w:pPr><w:keepNext/>').replace(/<w:p>(?!<w:pPr>)/g, '<w:p><w:pPr><w:keepNext/></w:pPr>');
   const specVal = row => row.hl ? 'specValueKey' : 'specValue';
-  function specTable(groups, wl) {
-    const rows = [[HDR(T.specParam, wl[0]), HDR(T.specValue, wl[1])]];
-    for (const g of groups) {
-      if (g.name) rows.push([grpCell(g.name, wl[0] + wl[1])]);
-      g.rows.forEach((row, i) => {
-        const last = i === g.rows.length - 1;
-        rows.push([cell(row.k, wl[0], 'specName', { last }), cell(row.v, wl[1], specVal(row), { last })]);
-      });
-    }
-    return bgpara(wl[0] + wl[1], 380, NAVYD, 90) + tbl(rows, wl, { heights: { 0: 380 } });
+  const fit = (g, bw, bh) => { const k = Math.min(bw / g.w, bh / g.h, PXCAP); return [Math.round(g.w * k), Math.round(g.h * k)]; };
+  const FRAME = [4, HAIR], NOM = [0, 0, 0, 0];
+  const gapCell = w => tc(END, w, { mar: NOM });
+
+  // подраздел страницы оборудования: заголовок и тонкая линия на всю ширину
+  function subheading(title, before) {
+    return p(r(title, 'subheading'), { before: before == null ? 320 : before, after: 140, keep: true,
+      bdr: `<w:bottom w:val="single" w:sz="6" w:space="4" w:color="${LINE}"/>` });
   }
 
-  // Дополнительные изображения: сетка карточек 2 в ряд, схемы и чертежи — на всю ширину.
-  // Каждый ряд — отдельная неразрывная таблица: при нехватке места на странице переносится ряд целиком.
-  const PXCAP = 914400 / 150;   // EMU на пиксель при 150 dpi
+  // ключевые параметры позиции: выделенные синим строки характеристик (или первые строки, если выделенных нет)
+  function keyParams(it) {
+    const rows = (it.groups || []).flatMap(g => (g.rows || []).filter(x => x.k && x.v));
+    let list = rows.filter(x => x.hl);
+    if (!list.length) list = rows.slice(0, 4);
+    return list.filter(x => String(x.v).length <= RULES.keyParamMaxChars).slice(0, RULES.keyParamsMax);
+  }
+
+  // первый экран: слева фото в светлой рамке, справа логотип, плитки ключевых параметров и коротко о главном
+  function heroXml(it, m, feats, opts) {
+    let right = '';
+    if (m.logo && BLK.equipLogo) { const [cx, cy] = fit(m.logo, cm(RULES.logoWidthCm), 560000); right += p(img(m.logo.rid, cx, cy, 'Логотип'), { after: 200 }); }
+    const kp = BLK.equipKeyParams ? keyParams(it) : [];
+    const [wl, wg, wr] = m.tile ? cols([4700, 340, 5307]) : [0, 0, W];
+    if (kp.length) {
+      const half = Math.floor(wr / 2), ws = [half, wr - half], rows = [];
+      for (let i = 0; i < kp.length; i += 2) rows.push([0, 1].map(j => {
+        const x = kp[i + j], last = i + 2 >= kp.length;
+        if (!x) return tc(END, ws[j], { mar: NOM });
+        return tc(p(r(x.v, 'heroValue'), { after: 30, line: 240 }) + p(r(x.k, 'heroLabel'), { line: 240 }), ws[j],
+          { bdr: B(null, j ? [4, LINE] : null, last ? null : [4, LINE]), va: 'top', mar: [90, j ? 180 : 0, 110, 120] });
+      }));
+      right += tbl(rows, ws) + spacer(200);
+    }
+    feats.forEach((f, i) => {
+      if (f.label) right += p(r(f.label, 'featureLabel'), { before: i ? 140 : 0, after: 30 });
+      right += p(r(f.text || '', 'featureText'), { line: 250 });
+    });
+    if (opts.length) {
+      right += p(r(T.equipOptionsTitle, 'featureLabel'), { before: feats.length ? 160 : 0, after: 30 });
+      opts.forEach(o => { right += p(r('+ ' + o.name, 'featureText'), { after: 20, line: 250 }); });
+    }
+    if (!m.tile) return right;
+    const [cx, cy] = fit(m.tile, Math.min(cm(RULES.equipPhotoWidthCm), (wl - 280) * E), cm(RULES.heroPhotoHeightCm));
+    const photo = p(img(m.tile.rid, cx, cy, it.name), { jc: 'center', after: it.photoCaption ? 120 : 0 }) +
+      (it.photoCaption ? p(r(it.photoCaption, 'photoCaption'), { jc: 'center', line: 240 }) : '');
+    return tbl([[tc(photo, wl, { fill: LIGHT, va: 'center', mar: [200, 140, 200, 140] }), gapCell(wg),
+      tc(right + END, wr, { va: 'top', mar: NOM })]], [wl, wg, wr]);
+  }
+
+  // узлы и компоненты: горизонтальные карточки — небольшое фото слева, подзаголовок и текст справа
+  function componentsXml(list, fimg) {
+    const out = [subheading(T.componentsTitle)];
+    const [wi, wg, wt] = cols([Math.round(RULES.componentPhotoWidthCm * 567), 280, BASEW - Math.round(RULES.componentPhotoWidthCm * 567) - 280]);
+    list.forEach((f, n) => {
+      const g = fimg[f.id], [cx, cy] = fit(g, (wi - 200) * E, cm(RULES.componentPhotoHeightCm));
+      const pic = tc(p(img(g.rid, cx, cy, f.label || 'Узел'), { jc: 'center' }), wi, { bdr: B(FRAME, FRAME, FRAME, FRAME), va: 'center', mar: [100, 100, 100, 100] });
+      const txt = tc((f.label ? p(r(f.label, 'componentLabel'), { after: 60 }) : '') + p(r(f.text || '', 'componentText'), { line: 252 }), wt, { va: 'center', mar: [40, 0, 40, 0] });
+      if (n) out.push(spacer(160));
+      out.push(tbl([[pic, gapCell(wg), txt]], [wi, wg, wt]));
+    });
+    return out.join('');
+  }
+
+  // особенности и комплектация: список «подзаголовок слева — текст справа»
+  function featuresXml(list) {
+    const [wl, wt] = cols([2500, 7847]);
+    const rows = list.map((f, i) => {
+      const bd = i < list.length - 1 ? B(null, null, [4, HAIR]) : B();
+      return [tc(p(r(f.label || '', 'featureLabel'), { line: 240 }), wl, { bdr: bd, va: 'top', mar: [120, 0, 120, 200] }),
+        tc(p(r(f.text || '', 'featureText'), { line: 252 }), wt, { bdr: bd, va: 'top', mar: [110, 0, 120, 0] })];
+    });
+    return subheading(T.featuresTitle) + tbl(rows, [wl, wt]);
+  }
+
+  // карточка группы характеристик: название группы (повторяется при переносе на новую страницу) и строки;
+  // длинное значение (перечень, условия) — текстом во всю ширину карточки под названием параметра
+  function specCard(g, w) {
+    const wk = Math.round(w * 0.55), wv = w - wk;
+    const rows = [[tc(p(r(g.name || T.specsTitle, 'specGroup'), { line: 240 }), w, { span: 2, fill: LIGHT, bdr: B(null, [36, BLUE]), mar: [90, 140, 80, 140] })]];
+    g.rows.forEach((x, i) => {
+      const bd = i === g.rows.length - 1 ? B(null, null, [4, LINE]) : B(null, null, [4, HAIR]);
+      if (String(x.v || '').length > RULES.specLongValueChars)
+        rows.push([tc(p(r(x.k, 'specName'), { after: 40, line: 240 }) + p(r(x.v, x.hl ? 'specValueKey' : String(x.v).length <= 70 ? 'specValue' : 'specText'), { line: 250 }), w,
+          { span: 2, bdr: bd, mar: [70, 140, 80, 120] })]);
+      else rows.push([tc(p(r(x.k, 'specName'), { line: 240 }), wk, { bdr: bd, va: 'center', mar: [50, 140, 50, 80] }),
+        tc(p(r(x.v, specVal(x)), { line: 240 }), wv, { bdr: bd, va: 'center', mar: [50, 80, 50, 120] })]);
+    });
+    return tbl(rows, [wk, wv], { header: true });
+  }
+  // примерная высота карточки в строках — для раскладки групп по двум колонкам
+  const cardH = g => 1.4 + g.rows.reduce((a, x) => {
+    const k = String(x.k || '').length, v = String(x.v || '').length;
+    return a + (v > RULES.specLongValueChars ? 1.2 + Math.ceil(v / 58) : Math.max(1, Math.ceil(k / 27), Math.ceil(v / 23)));
+  }, 0);
+  function specsXml(groups) {
+    const out = [subheading(T.specsTitle)];
+    const nrows = groups.reduce((a, g) => a + g.rows.length + 1, 0);
+    if (nrows < RULES.specTwoColumnsFrom || groups.length < 2) {
+      groups.forEach((g, i) => { if (i) out.push(spacer(160)); out.push(specCard(g, W)); });
+    } else {
+      // группы раскладываются по двум независимым колонкам: каждая следующая — в ту, что короче
+      const [c1, cg, c2] = cols([5073, 201, 5073]), A = [], Bc = [];
+      let ha = 0, hb = 0;
+      for (const g of groups) { const h = cardH(g); if (ha <= hb) { A.push(g); ha += h; } else { Bc.push(g); hb += h; } }
+      const stack = (gs, w) => gs.map((g, i) => (i ? spacer(200) : '') + specCard(g, w)).join('') + END;
+      out.push(tbl([[tc(stack(A, c1), c1, { va: 'top', mar: NOM }), gapCell(cg), tc(stack(Bc, c2), c2, { va: 'top', mar: NOM })]], [c1, cg, c2], { split: true }));
+    }
+    if (BLK.specNote && T.specNote) out.push(p(r(T.specNote, 'specNote'), { before: 120 }));
+    return out.join('');
+  }
+
+  // фото и схемы: карточки 2 в ряд, схемы и чертежи — на всю ширину; ряд переносится на новую страницу целиком
   function galleryXml(list) {
     if (!list || !list.length) return '';
-    const out = [spacer(list.length <= 2 ? 160 : 300), heading(T.galleryTitle)];
+    const out = [subheading(T.galleryTitle)];
     const GAP = X(201), HALF = Math.floor((W - GAP) / 2), FULL = W;
     const card = (g, w, boxW, boxH) => {
-      const k = Math.min(boxW / g.w, boxH / g.h, PXCAP);
-      const body = p(img(g.rid, Math.round(g.w * k), Math.round(g.h * k), g.caption || 'Изображение'), { jc: 'center', after: g.caption ? 80 : 0 }) +
+      const [cx, cy] = fit(g, boxW, boxH);
+      const body = p(img(g.rid, cx, cy, g.caption || 'Изображение'), { jc: 'center', after: g.caption ? 80 : 0 }) +
         (g.caption ? p(r(g.caption, 'galleryCaption'), { jc: 'center', line: 240 }) : '');
-      return tc(body, w, { bdr: B([4, HAIR], [4, HAIR], [4, HAIR], [4, HAIR]), va: 'center', mar: [140, 120, 140, 120] });
+      return tc(body, w, { bdr: B(FRAME, FRAME, FRAME, FRAME), va: 'center', mar: [140, 120, 140, 120] });
     };
     const halfBox = [(HALF - 260) * E, list.length <= 2 ? 1450000 : 1850000], fullBox = [(FULL - 260) * E, 3600000];
     // раскладка: половинки парами по порядку; широкое изображение, попавшее между половинками, ставится после пары
@@ -499,94 +596,31 @@ function kpSkeleton(KP) {
     while (deferred.length) rows.push([deferred.shift()]);
     rows.forEach((row, n) => {
       if (n) out.push(spacer(160));
-      if (row.length === 2) out.push(tbl([[card(row[0], HALF, ...halfBox), tc(END, FULL - 2 * HALF, { mar: [0, 0, 0, 0] }), card(row[1], HALF, ...halfBox)]], [HALF, FULL - 2 * HALF, HALF]));
+      if (row.length === 2) out.push(tbl([[card(row[0], HALF, ...halfBox), gapCell(FULL - 2 * HALF), card(row[1], HALF, ...halfBox)]], [HALF, FULL - 2 * HALF, HALF]));
       else if (row[0].wide) out.push(tbl([[card(row[0], FULL, ...fullBox)]], [FULL]));
       else { // одиночная половинка — по центру, без пустой колонки рядом
         const side = Math.floor((FULL - HALF) / 2);
-        out.push(tbl([[tc(END, side, { mar: [0, 0, 0, 0] }), card(row[0], HALF, ...halfBox), tc(END, FULL - HALF - side, { mar: [0, 0, 0, 0] })]], [side, HALF, FULL - HALF - side]));
+        out.push(tbl([[gapCell(side), card(row[0], HALF, ...halfBox), gapCell(FULL - HALF - side)]], [side, HALF, FULL - HALF - side]));
       }
     });
     return out.join('');
   }
+
   function equipXml(it, M) {
     const out = [heading(it.pageTitle || it.name, true)];
     const m = M.items[it.id] || {};
-    let desc = '';
-    if (m.logo && BLK.equipLogo) { const cx = cm(RULES.logoWidthCm), cy = Math.round(cx * m.logo.h / m.logo.w); desc += p(img(m.logo.rid, cx, Math.min(cy, 700000), 'Логотип'), { after: 160 }); }
     const fimg = BLK.equipComponents ? (m.featImgs || {}) : {};
     const allF = (it.features || []).filter(f => f.label || f.text);
     const illustrated = allF.filter(f => f.id && fimg[f.id]);
-    // длинные тексты (о серии, стандартная комплектация) — отдельным разделом на всю ширину
+    // длинные тексты (о серии, комплектация) — списком ниже; короткие — на первом экране рядом с фото
     const longF = allF.filter(f => !(f.id && fimg[f.id]) && (f.text || '').length > RULES.longFeatureChars);
     const feats = allF.filter(f => !(f.id && fimg[f.id]) && !longF.includes(f));
-    feats.forEach((f, i) => {
-      if (f.label) desc += p(r(f.label, 'featureLabel'), { after: 20 });
-      desc += p(r(f.text || '', 'featureText'), { after: i === feats.length - 1 ? 0 : 120, line: 250 });
-    });
     const opts = BLK.equipOptions ? (it.options || []).filter(o => o.name && +o.qty > 0) : [];
-    if (opts.length) {
-      desc += p(r(T.equipOptionsTitle, 'featureLabel'), { before: desc ? 160 : 0, after: 40 });
-      opts.forEach(o => { desc += p(r('+ ' + o.name, 'featureText'), { after: 20, line: 250 }); });
-    }
-    if (m.tile) {
-      const cx = cm(RULES.equipPhotoWidthCm), cy = Math.round(cx * m.tile.h / m.tile.w);
-      const w3 = cols([5000, 300, 5047]);
-      const photo = tc(p(img(m.tile.rid, cx, cy, it.name), { jc: 'center', after: it.photoCaption ? 80 : 0 }) +
-        (it.photoCaption ? p(r(it.photoCaption, 'photoCaption'), { jc: 'center' }) : ''), w3[2], { mar: [0, 0, 0, 0] });
-      if (desc) out.push(tbl([[tc(desc, w3[0], { mar: [0, 0, 0, 200] }), tc(END, w3[1], { mar: [0, 0, 0, 0] }), photo]], w3));
-      else out.push(p(img(m.tile.rid, cx, cy, it.name), { jc: 'center' }));
-    } else if (desc) out.push(desc);
-    // «Узлы и компоненты»: описание и фото рядом; фото чередуются слева/справа
-    if (illustrated.length) {
-      out.push(spacer(300));
-      out.push(heading(T.componentsTitle));
-      const IW = X(3900), GAPW = X(300), TW = W - IW - GAPW, boxW = (IW - 160) * E, boxH = 2000000;
-      illustrated.forEach((f, n) => {
-        const g = fimg[f.id]; const k = Math.min(boxW / g.w, boxH / g.h, PXCAP);
-        const picCell = tc(p(img(g.rid, Math.round(g.w * k), Math.round(g.h * k), f.label || 'Узел'), { jc: 'center' }), IW,
-          { bdr: B([4, HAIR], [4, HAIR], [4, HAIR], [4, HAIR]), va: 'center', mar: [100, 80, 100, 80] });
-        const txtCell = tc((f.label ? p(r(f.label, 'componentLabel'), { after: 60 }) : '') +
-          p(r(f.text || '', 'componentText'), { line: 264 }), TW, { va: 'center', mar: [60, 0, 60, 0] });
-        const gapCell = tc(END, GAPW, { mar: [0, 0, 0, 0] });
-        if (n) out.push(spacer(200));
-        out.push(n % 2 === 0 ? tbl([[picCell, gapCell, txtCell]], [IW, GAPW, TW]) : tbl([[txtCell, gapCell, picCell]], [TW, GAPW, IW]));
-      });
-    }
-    if (longF.length && BLK.equipFeatures) {
-      out.push(spacer(300));
-      out.push(heading(T.featuresTitle));
-      longF.forEach((f, n) => {
-        if (f.label) out.push(p(r(f.label, 'componentLabel'), { before: n ? 160 : 0, after: 50, keep: true }));
-        out.push(p(r(f.text || '', 'componentText'), { line: 264, jc: 'both' }));
-      });
-    }
+    out.push(heroXml(it, m, feats, opts));
+    if (illustrated.length) out.push(componentsXml(illustrated, fimg));
+    if (longF.length && BLK.equipFeatures) out.push(featuresXml(longF));
     const groups = BLK.equipSpecs ? (it.groups || []).map(g => ({ name: g.name, rows: (g.rows || []).filter(x => x.k || x.v) })).filter(g => g.rows.length) : [];
-    if (groups.length) {
-      out.push(spacer(300));
-      out.push(heading(T.specsTitle));
-      const nrows = groups.reduce((a, g) => a + g.rows.length + 1, 0);
-      if (nrows >= RULES.specTwoColumnsFrom) {
-        // две колонки в одной «плоской» таблице: длинная таблица аккуратно переносится на следующую страницу
-        const [L, R] = balance(groups);
-        const flat = gs => gs.flatMap(g => [{ g: g.name }].concat(g.rows.map((row, i) => ({ k: row.k, v: row.v, hl: row.hl, last: i === g.rows.length - 1 }))));
-        const a = flat(L), b = flat(R), n = Math.max(a.length, b.length);
-        const [wk, wv, gap] = cols([2873, 2200, 201]);
-        const half = (e) => {
-          if (!e) return [tc(END, wk + wv, { span: 2, mar: [0, 0, 0, 0] })];
-          if (e.g) return [grpCell(e.g, wk + wv)];
-          return [cell(e.k, wk, 'specName', { last: e.last }), cell(e.v, wv, specVal(e), { last: e.last })];
-        };
-        const g2 = W - 2 * (wk + wv);
-        const rows = [[HDR(T.specParam, wk), HDR(T.specValue, wv), tc(END, g2, { mar: [0, 0, 0, 0] }), HDR(T.specParam, wk), HDR(T.specValue, wv)]];
-        for (let i = 0; i < n; i++) rows.push([...half(a[i]), tc(END, g2, { mar: [0, 0, 0, 0] }), ...half(b[i])]);
-        out.push(`<w:p><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/></w:rPr></w:pPr>${rbg(wk + wv, 380, NAVYD, 90, 20, 0)}${rbg(wk + wv, 380, NAVYD, 90, 20, wk + wv + g2)}</w:p>`);
-        // заголовок раздела и первые строки таблицы не разрываются; дальше таблица переносится построчно
-        const KEEP = RULES.specKeepRows, WS = [wk, wv, g2, wk, wv];
-        out.push(keepAll(tbl(rows.slice(0, 1 + KEEP), WS, { heights: { 0: 380 } })));
-        if (rows.length > 1 + KEEP) out.push(tbl(rows.slice(1 + KEEP), WS));
-      } else out.push(keepAll(specTable(groups, cols([6047, 4300]))));
-      if (BLK.specNote && T.specNote) out.push(p(r(T.specNote, 'specNote'), { before: 100 }));
-    }
+    if (groups.length) out.push(specsXml(groups));
     if (BLK.equipGallery) out.push(galleryXml(m.gallery));
     return out.join('');
   }
