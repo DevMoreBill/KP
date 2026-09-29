@@ -66,6 +66,7 @@
     "coverAdvantages": true,
     "coverTrust": true,
     "equipLogo": true,
+    "equipKeyParams": true,
     "equipOptions": true,
     "equipComponents": true,
     "equipFeatures": true,
@@ -478,6 +479,24 @@
       "size": 9.5,
       "color": "DARK",
       "bold": true
+    },
+    "specText": {
+      "size": 8,
+      "color": "DARK"
+    },
+    "subheading": {
+      "size": 11,
+      "color": "BLUE",
+      "bold": true
+    },
+    "heroValue": {
+      "size": 12,
+      "color": "BLUE",
+      "bold": true
+    },
+    "heroLabel": {
+      "size": 7,
+      "color": "GRAY"
     }
   },
   "rules": {
@@ -491,6 +510,11 @@
     "equipPhotoWidthCm": 8.83,
     "longFeatureChars": 230,
     "specTwoColumnsFrom": 15,
-    "specKeepRows": 12
+    "specLongValueChars": 32,
+    "heroPhotoHeightCm": 6.5,
+    "keyParamsMax": 6,
+    "keyParamMaxChars": 28,
+    "componentPhotoWidthCm": 4.6,
+    "componentPhotoHeightCm": 3.2
   }
 }
