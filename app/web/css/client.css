@@ -44,3 +44,15 @@ details.more-lite>summary{cursor:pointer;color:var(--navy)}
 .fin{border-collapse:collapse;margin-top:10px;font-size:14px}
 .fin th,.fin td{padding:4px 14px 4px 0;text-align:left;border-bottom:1px solid var(--line)}
 @media (max-width:1000px){.inn-row{grid-template-columns:1fr}.facts{grid-template-columns:1fr}}
+
+/* загрузка клиентов списком ИНН */
+.ci-prog{height:6px;border-radius:3px;background:var(--soft);overflow:hidden;margin-top:14px}
+.ci-prog>div{height:100%;background:var(--navy);transition:width .3s}
+.ci-tbl{max-height:44vh;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.ci-tbl table{width:100%;border-collapse:collapse;font-size:13px}
+.ci-tbl th{position:sticky;top:0;background:var(--soft);text-align:left;padding:7px 10px;font-weight:600;color:var(--muted)}
+.ci-tbl td{padding:6px 10px;border-top:1px solid var(--line);vertical-align:top}
+.ci-tbl td small{display:block;color:var(--muted);font-size:12px}
+.ci-tbl tr.work td{background:var(--soft)}
+.ci-tbl tr.err td:last-child{color:var(--danger)}
+.ci-tbl tr.new td:last-child,.ci-tbl tr.upd td:last-child{color:var(--ok)}
