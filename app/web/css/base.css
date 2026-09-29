@@ -70,3 +70,6 @@ aside{position:sticky;top:84px;align-self:start}
 .empty{color:var(--muted);text-align:center;padding:30px 10px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+
+/* кнопка темы в шапке */
+.btn.icon-btn{width:40px;justify-content:center;padding-left:0;padding-right:0;font-size:17px;line-height:1}

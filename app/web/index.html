@@ -2,6 +2,8 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
+<script>/* тема до отрисовки страницы, чтобы не мигала: сохранённый выбор или системная */
+(function(){ try{ var t=localStorage.getItem('kp.theme'); if (t==='light'||t==='dark'){ document.documentElement.dataset.theme=t; document.documentElement.style.colorScheme=t; } }catch(e){} })();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Конструктор КП — ПНЕВМОТЕХ</title>
 <link rel="icon" href="/favicon.ico">
@@ -21,6 +23,7 @@
   <span class="saved" id="saved" aria-live="polite"></span>
   <span class="saved" id="kpno"></span><span id="srvBtns" hidden><button class="btn" type="button" data-a="journal">Журнал КП</button> <button class="btn" type="button" data-a="openCatalog">Каталог</button> <button class="btn" type="button" data-a="docsFolder">Папка КП</button></span>
   <button class="btn" type="button" data-a="typesEdit">Типы оборудования</button>
+  <button class="btn icon-btn" id="btnTheme" type="button" aria-label="Тёмная тема" title="Тёмная тема"></button>
   <button class="btn" id="btnNew" type="button">Новое КП</button><button class="btn ghost" id="btnExit" type="button" hidden>Выход</button>
 </header>
 <main class="wrap">
