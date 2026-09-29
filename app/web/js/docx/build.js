@@ -97,6 +97,8 @@ async function renderDocx(St, pack, settings){
       if (L.kind==='feat') m.featImgs[L.f.id]={file:fnm, w:g.w, h:g.h};
       else m.gallery.push({file:fnm, w:g.w, h:g.h, caption:(g.caption||'').trim() || (L.kind==='group'?L.name:''), wide:galWide(g)}); }
     Min.items[x.id]=m; }
+  // скелет, не умеющий показывать скидку (свой или старый), получает цены уже со скидкой — суммы сходятся
+  if (!(pack.skel.features||[]).includes('discount')) St.items=St.items.map(x=>Object.assign({}, x, {price:KPGen.netPrice(x), disc:undefined}));
   let out;
   try{ out = pack.skel.build(St, Min, ROOTS, Object.assign({}, settings, {rels:pack.rels, sect:pack.sect, clients})); }
   catch(e){ throw new Error('ошибка в скелете шаблона (skeleton.js): '+(e&&e.message||e)); }
@@ -129,7 +131,7 @@ async function download(){
     btn.textContent='Сохраняю в журнал…';
     await syncCatalog(S.number); await saveClient(true);
     for (const it of S.items){ it.photo=await uploadImg(it.photo); it.logo=await uploadImg(it.logo); if (it.gallery) for (const g of it.gallery){ const u=await uploadImg(g); if(u) g.src=u.src; } }
-    const t=totals(S.items.map(x=>({qty:+x.qty||0,price:x.price||0})), +S.vat||0), fn=fileName();
+    const t=totalsS(), fn=fileName();
     await api(`/api/kp/${S.kpId}/docx?name=${encodeURIComponent(fn)}&dir=${encodeURIComponent(managerFolder())}`,{method:'PUT',body:blob});
     const clean=JSON.parse(JSON.stringify(S,(k,v)=>k.startsWith('_')?undefined:v));
     await api(`/api/kp/${S.kpId}/state`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(clean)});

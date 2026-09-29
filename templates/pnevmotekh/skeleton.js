@@ -27,6 +27,8 @@
 function kpSkeleton(KP) {
   'use strict';
   const { money, words, totals, ruDate, plural, CURS, fill, deepMerge } = KP;
+  // скидка для заказчика (для программ без поддержки скидок — без скидок)
+  const unitDisc = KP.unitDisc || (() => 0), netPrice = KP.netPrice || (it => it.price || 0);
 
   // ---------------------------------------------------------------- настройки по умолчанию
   const DEFAULTS = {
@@ -54,7 +56,7 @@ function kpSkeleton(KP) {
     blocks: {
       coverKpis: true, coverTotal: true, coverDetailsNote: true, coverAbout: true, coverAdvantages: true, coverTrust: true,
       equipLogo: true, equipOptions: true, equipComponents: true, equipFeatures: true, equipSpecs: true, specNote: true, equipGallery: true,
-      amountInWords: true, currencyNote: true, footer: true
+      discount: true, amountInWords: true, currencyNote: true, footer: true
     },
     // правила заполнения и раскладки
     rules: {
@@ -87,6 +89,7 @@ function kpSkeleton(KP) {
       galleryTitle: 'Фото и схемы',
       offerTitle: 'Коммерческое предложение',
       colNo: '№', colName: 'Наименование', colQty: 'Кол-во', colPrice: 'Цена за ед., {cur}', colSum: 'Сумма, {cur}',
+      colDisc: 'Скидка', subtotal: 'Сумма без скидки', discountTotal: 'Скидка', coverDiscount: 'с учётом скидки {sum} {cur}',
       pcs: 'шт.', included: 'включено', total: 'Итого', vatIncl: 'в т. ч. НДС {vat} %', grandTotal: 'Итого к оплате с НДС',
       inWordsLabel: 'Итого: ', inWords: '{words}, в т. ч. НДС {vat} % — {vatSum} {cur}',
       currencyNote: 'Цены указаны в {curName}. Оплата производится в рублях по курсу ЦБ РФ на дату оплаты.',
@@ -407,9 +410,11 @@ function kpSkeleton(KP) {
       const OM = RULES.coverOptionsMax;
       const c1 = p(r(T.supplyTitle, 'boxLabel'), { after: 40 }) + p(r(comp, 'boxValue'), { after: optNames.length ? 40 : 0 }) +
         (optNames.length ? p(r(txt('including', { list: optNames.slice(0, OM).join(', ') }) + (optNames.length > OM ? T.includingMore : ''), 'muted'), { line: 240 }) : '');
+      const showD = BLK.discount && t.discount > 0;
       const c2 = p(r(txt('priceWithVat', { vat: S.vat }), 'boxLabel'), { jc: 'right', after: 40 }) +
-        p(r(money(t.sum), 'boxSum') + r(' ' + curSh(S), 'boxCurrency'), { jc: 'right' });
-      const bh = optNames.length ? 1500 : 1180, w2 = cols([5847, 4500]);
+        p(r(money(t.sum), 'boxSum') + r(' ' + curSh(S), 'boxCurrency'), { jc: 'right' }) +
+        (showD ? p(r(txt('coverDiscount', { sum: money(t.discount), cur: curSh(S) }), 'muted'), { jc: 'right', before: 40, line: 240 }) : '');
+      const bh = optNames.length || showD ? 1500 : 1180, w2 = cols([5847, 4500]);
       out.push(bgpara(W, bh, LIGHT, 160));
       out.push(tbl([[tc(c1, w2[0], { mar: [0, 300, 0, 120] }), tc(c2, w2[1], { mar: [0, 120, 0, 300] })]], w2, { heights: { 0: bh } }));
       if (BLK.coverDetailsNote && T.detailsNote) out.push(p(r(T.detailsNote, 'note'), { before: 100 }));
@@ -594,34 +599,52 @@ function kpSkeleton(KP) {
   // ================================================================ КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ
   function offerXml(S, sec) {
     const out = [headingFor(T.offerTitle, sec, 480)], t = totals(S.items, S.vat);
-    const wc = cols([560, 4787, 1200, 1900, 1900]), HL = B(null, null, [4, HAIR]), Mr = [230, 120, 230, 120];
+    // скидка для заказчика: колонка «Скидка» и строки «Сумма без скидки» / «Скидка»;
+    // если блок скидки выключен в шаблоне — в колонке цены сразу цена со скидкой
+    const showD = BLK.discount && t.discount > 0;
+    const unitP = it => showD ? it.price : netPrice(it);
+    const wc = showD ? cols([560, 3787, 1100, 1800, 1300, 1800]) : cols([560, 4787, 1200, 1900, 1900]);
+    const n = wc.length, wSum = (a, b) => wc.slice(a, b).reduce((x, y) => x + y, 0);
+    const HL = B(null, null, [4, HAIR]), Mr = [230, 120, 230, 120];
     const cur = curSh(S), pcs = NB + T.pcs;
-    const rows = [[HDR(T.colNo, wc[0], 'center'), HDR(T.colName, wc[1]), HDR(T.colQty, wc[2], 'center'), HDR(txt('colPrice', { cur }), wc[3], 'right'), HDR(txt('colSum', { cur }), wc[4], 'right')]];
+    const discCell = (it, w, o) => {
+      const d = unitDisc(it);
+      const tx = !d ? '—' : it.disc.type === 'sum' ? '−' + money(d) : '−' + String(it.disc.v).replace('.', ',') + NB + '%';
+      return tc(p(r(tx, d ? 'cell' : sty('cell', { color: GRAY })), { jc: 'right' }), w, o);
+    };
+    const rows = [[HDR(T.colNo, wc[0], 'center'), HDR(T.colName, wc[1]), HDR(T.colQty, wc[2], 'center'), HDR(txt('colPrice', { cur }), wc[3], 'right')]
+      .concat(showD ? [HDR(T.colDisc, wc[4], 'right')] : [], [HDR(txt('colSum', { cur }), wc[n - 1], 'right')])];
     S.items.forEach((it, i) => {
       const nm = p(r(it.name, 'itemName'), { after: it.spec ? 40 : 0 }) + (it.spec ? p(r(it.spec, 'muted')) : '');
       rows.push([tc(p(r(String(i + 1), 'rowIndex'), { jc: 'center' }), wc[0], { bdr: HL, mar: Mr }), tc(nm, wc[1], { bdr: HL, mar: Mr }),
         tc(p(r(it.qty + pcs, 'cell'), { jc: 'center' }), wc[2], { bdr: HL, mar: Mr }),
-        tc(p(r(money(it.price), 'cell'), { jc: 'right' }), wc[3], { bdr: HL, mar: Mr }),
-        tc(p(r(money(it.qty * it.price), 'cellBold'), { jc: 'right' }), wc[4], { bdr: HL, mar: Mr })]);
+        tc(p(r(money(unitP(it)), 'cell'), { jc: 'right' }), wc[3], { bdr: HL, mar: Mr })]
+        .concat(showD ? [discCell(it, wc[4], { bdr: HL, mar: Mr })] : [],
+          [tc(p(r(money(it.qty * netPrice(it)), 'cellBold'), { jc: 'right' }), wc[n - 1], { bdr: HL, mar: Mr })]));
       (it.options || []).filter(o => o.name && +o.qty > 0).forEach((o, j) => {
         const Mo = [110, 120, 110, 120], free = sty('option', { color: GRAY });
         const nm = p(r('+ ' + o.name, 'option'), { after: o.note ? 30 : 0, indL: 200 }) + (o.note ? p(r(o.note, 'optionNote'), { indL: 200 }) : '');
         rows.push([tc(p(r(`${i + 1}.${j + 1}`, 'muted'), { jc: 'center' }), wc[0], { bdr: HL, mar: Mo }), tc(nm, wc[1], { bdr: HL, mar: Mo }),
           tc(p(r(o.qty + NB + (o.unit || T.pcs), 'option'), { jc: 'center' }), wc[2], { bdr: HL, mar: Mo }),
-          tc(p(r(o.price ? money(o.price) : T.included, o.price ? 'option' : free), { jc: 'right' }), wc[3], { bdr: HL, mar: Mo }),
-          tc(p(r(o.price ? money(o.qty * o.price) : '—', o.price ? 'option' : free), { jc: 'right' }), wc[4], { bdr: HL, mar: Mo })]);
+          tc(p(r(o.price ? money(o.price) : T.included, o.price ? 'option' : free), { jc: 'right' }), wc[3], { bdr: HL, mar: Mo })]
+          .concat(showD ? [tc('', wc[4], { bdr: HL, mar: Mo })] : [],
+            [tc(p(r(o.price ? money(o.qty * o.price) : '—', o.price ? 'option' : free), { jc: 'right' }), wc[n - 1], { bdr: HL, mar: Mo })]));
       });
     });
     const lbl = (tx, span, w) => tc(p(r(tx, 'totalLabel'), { jc: 'right' }), w, { span, mar: [90, 120, 60, 160] });
-    rows.push([lbl(T.total, 2, wc[0] + wc[1]), tc(p(r(t.units + pcs, 'totalValue'), { jc: 'center' }), wc[2], { mar: [90, 120, 60, 120] }),
-      tc('', wc[3], { mar: [90, 120, 60, 120] }), tc(p(r(money(t.sum), 'totalValue'), { jc: 'right' }), wc[4], { mar: [90, 120, 60, 120] })]);
-    rows.push([lbl(txt('vatIncl', { vat: S.vat }), 4, wc[0] + wc[1] + wc[2] + wc[3]), tc(p(r(money(t.vat), sty('totalValue', { b: false })), { jc: 'right' }), wc[4], { mar: [60, 120, 60, 120] })]);
+    if (showD) {
+      rows.push([lbl(T.subtotal, n - 1, wSum(0, n - 1)), tc(p(r(money(t.gross), sty('totalValue', { b: false })), { jc: 'right' }), wc[n - 1], { mar: [90, 120, 30, 120] })]);
+      rows.push([lbl(T.discountTotal, n - 1, wSum(0, n - 1)), tc(p(r('−' + money(t.discount), 'totalValue'), { jc: 'right' }), wc[n - 1], { mar: [30, 120, 30, 120] })]);
+    }
+    rows.push([lbl(T.total, 2, wc[0] + wc[1]), tc(p(r(t.units + pcs, 'totalValue'), { jc: 'center' }), wc[2], { mar: [90, 120, 60, 120] })]
+      .concat(wc.slice(3, n - 1).map(w => tc('', w, { mar: [90, 120, 60, 120] })), [tc(p(r(money(t.sum), 'totalValue'), { jc: 'right' }), wc[n - 1], { mar: [90, 120, 60, 120] })]));
+    rows.push([lbl(txt('vatIncl', { vat: S.vat }), n - 1, wSum(0, n - 1)), tc(p(r(money(t.vat), sty('totalValue', { b: false })), { jc: 'right' }), wc[n - 1], { mar: [60, 120, 60, 120] })]);
     out.push(bgpara(W, 440, NAVYD, 90));
     out.push(tbl(rows, wc, { heights: { 0: 440 }, header: true }));
-    const L4 = wc[0] + wc[1] + wc[2] + wc[3];
+    const L4 = wSum(0, n - 1);
     out.push(bgpara(W, 640, BLUE, 120, 120));
     out.push(tbl([[tc(p(r(T.grandTotal, 'grandLabel'), { jc: 'right' }), L4, { mar: [0, 120, 0, 160] }),
-      tc(p(r(money(t.sum), 'grandSum'), { jc: 'right' }), wc[4], { mar: [0, 120, 0, 120] })]], [L4, wc[4]], { heights: { 0: 640 } }));
+      tc(p(r(money(t.sum), 'grandSum'), { jc: 'right' }), wc[n - 1], { mar: [0, 120, 0, 120] })]], [L4, wc[n - 1]], { heights: { 0: 640 } }));
     if (BLK.amountInWords)
       out.push(p(r(T.inWordsLabel, 'wordsLabel') + r(txt('inWords', { words: words(t.sum, curCode(S)), vat: S.vat, vatSum: money(t.vat), cur }), 'words'), { before: 140, line: 250 }));
     if (curCode(S) !== 'RUB' && BLK.currencyNote) {
@@ -730,5 +753,6 @@ function kpSkeleton(KP) {
     };
   }
 
-  return { defaults: DEFAULTS, build };
+  // features — что скелет умеет выводить сам; без 'discount' программа передаёт цены уже со скидкой
+  return { defaults: DEFAULTS, build, features: ['discount'] };
 }

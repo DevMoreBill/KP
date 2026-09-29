@@ -61,6 +61,7 @@
         { "key": "blocks.specNote", "type": "toggle", "label": "Примечание под характеристиками" },
         { "key": "blocks.equipGallery", "type": "toggle", "label": "Фото и схемы" },
         { "type": "group", "title": "Коммерческое предложение и колонтитул" },
+        { "key": "blocks.discount", "type": "toggle", "label": "Показывать скидку для заказчика", "hint": "Включено — колонка «Скидка», строки «Сумма без скидки» и «Скидка», на титуле «с учётом скидки». Выключено — в КП сразу цены со скидкой, без упоминания скидки." },
         { "key": "blocks.amountInWords", "type": "toggle", "label": "Сумма прописью" },
         { "key": "blocks.currencyNote", "type": "toggle", "label": "Пояснение о валюте и курсе ЦБ" },
         { "key": "blocks.footer", "type": "toggle", "label": "Нижний колонтитул (клиент, сайт, номера страниц)" }
@@ -119,6 +120,10 @@
         { "key": "texts.colQty", "type": "text", "label": "Колонка «Кол-во»" },
         { "key": "texts.colPrice", "type": "text", "label": "Колонка «Цена»", "hint": "{cur} — валюта" },
         { "key": "texts.colSum", "type": "text", "label": "Колонка «Сумма»", "hint": "{cur} — валюта" },
+        { "key": "texts.colDisc", "type": "text", "label": "Колонка «Скидка»" },
+        { "key": "texts.subtotal", "type": "text", "label": "Сумма без скидки" },
+        { "key": "texts.discountTotal", "type": "text", "label": "Строка «Скидка»" },
+        { "key": "texts.coverDiscount", "type": "text", "label": "Скидка на титуле", "hint": "{sum} — сумма скидки, {cur} — валюта" },
         { "key": "texts.pcs", "type": "text", "label": "Единица «шт.»" },
         { "key": "texts.included", "type": "text", "label": "Бесплатная опция" },
         { "key": "texts.total", "type": "text", "label": "Итого" },

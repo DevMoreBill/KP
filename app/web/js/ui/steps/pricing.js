@@ -6,9 +6,7 @@ function stepPrice(){
   const rows=S.items.map((x,i)=>{ const pt=x._priceText ?? fmtPrice(x.price);
     const act=actualPct(x), mv=marginOf(x), md=modeOf(x);
     const c=costKP(x), noRate=x.cost && Number.isNaN(c);
-    const hint = !x.cost ? 'Цена продажи вводится вручную. Укажите закупку, чтобы считать от неё.'
-      : noRate ? '<span class="bad-t">Нет курса для пересчёта закупки — обновите курс ЦБ</span>'
-      : (x.price ? `Себестоимость ${money(Math.round(c))} ${cs} · прибыль <b>${money(Math.round(x.price-c))} ${cs}</b> · маржа ${(((x.price-c)/x.price)*100).toFixed(1).replace('.',',')} % · наценка ${(((x.price-c)/c)*100).toFixed(1).replace('.',',')} %` : 'Укажите маржу или наценку — цена рассчитается, или введите цену продажи вручную.');
+    const hint = priceHint(x);
     const opts=(x.options||[]).filter(o=>o.name&&o.price);
     return `<div class="prow" id="prow-${x.id}">
       <div class="pname"><span class="item-no">${i+1}</span><div><b>${esc(x.name||'Без названия')}</b><span class="muted">${esc(x.qty)} шт.${opts.length?` · опции ${money(opts.reduce((s,o)=>s+(+o.qty||0)*(o.price||0),0))} ${cs}`:''}</span></div></div>
@@ -16,6 +14,8 @@ function stepPrice(){
       <label class="f mcell"><span><span class="mtog" role="group" aria-label="Способ расчёта"><button type="button" class="${md==='margin'?'on':''}" data-a="mmode" data-i="${i}" data-v="margin" title="Маржа — доля прибыли в цене продажи">Маржа</button><button type="button" class="${md==='markup'?'on':''}" data-a="mmode" data-i="${i}" data-v="markup" title="Наценка — процент к закупке">Наценка</button></span>, %</span>
         <input type="text" inputmode="decimal" class="num" data-margin="${i}" value="${esc(x.margin ?? '')}" placeholder="${x.cost&&act!=null&&(x.priceManual||mv==null)?esc(act.toFixed(1).replace('.',',')):'—'}" ${x.cost?'':'disabled title="Сначала укажите закупку"'}></label>
       <label class="f"><span class="req">Цена продажи за ед., ${cs}${x.priceManual&&x.cost?' <em class="man">вручную</em>':''}</span><input type="text" inputmode="decimal" class="num strong${Number.isNaN(parsePrice(pt))||!x.price?' bad':''}" data-price="${i}" value="${esc(pt)}" placeholder="0,00"></label>
+      <label class="f dcell" title="Скидка для заказчика — попадёт в КП"><span>Скидка <span class="mtog" role="group" aria-label="Вид скидки"><button type="button" class="${discType(x)==='pct'?'on':''}" data-a="dmode" data-i="${i}" data-v="pct" title="Скидка в процентах от цены">%</button><button type="button" class="${discType(x)==='sum'?'on':''}" data-a="dmode" data-i="${i}" data-v="sum" title="Скидка суммой на единицу">${cs}</button></span></span>
+        <input type="text" inputmode="decimal" class="num${x._discText!=null&&x._discBad?' bad':''}" data-disc="${i}" value="${esc(x._discText ?? discText(x))}" placeholder="нет" title="Скидка попадёт в КП: колонка «Скидка» и строки «Сумма без скидки» / «Скидка»"></label>
       <div class="psum"><span>Сумма</span><b data-sum="${i}">${money(itemSum(x))}</b></div>
       <div class="pinfo"><span data-minfo="${i}">${hint}</span>
         ${x.cost&&x.priceManual&&mv!=null?`<button class="btn ghost" type="button" data-a="reprice" data-i="${i}">↺ рассчитать по ${md==='markup'?'наценке':'марже'} ${esc(x.margin)} %</button>`:''}</div>

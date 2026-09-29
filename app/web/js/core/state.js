@@ -49,6 +49,7 @@ function getP(path){ return path.split('.').reduce((o,k)=>o==null?o:o[k], S); }
 
 function setP(path, v){ const ks=path.split('.'); let o=S; for(let i=0;i<ks.length-1;i++) o=o[ks[i]]; o[ks.at(-1)]=v; }
 
-function itemSum(x){ return (+x.qty||0)*(x.price||0) + (x.options||[]).reduce((s,o)=>s+(+o.qty||0)*(o.price||0),0); }
+// сумма позиции с учётом скидки для заказчика (KPGen.netPrice) и опций
+function itemSum(x){ return (+x.qty||0)*KPGen.netPrice(x) + (x.options||[]).reduce((s,o)=>s+(+o.qty||0)*(o.price||0),0); }
 
-function totalsS(){ return totals(S.items.map(x=>({qty:+x.qty||0, price:x.price||0, options:(x.options||[]).filter(o=>o.name).map(o=>({qty:+o.qty||0, price:o.price||0}))})), +S.vat||0); }
+function totalsS(){ return totals(S.items.map(x=>({qty:+x.qty||0, price:x.price||0, disc:x.disc, options:(x.options||[]).filter(o=>o.name).map(o=>({qty:+o.qty||0, price:o.price||0}))})), +S.vat||0); }
