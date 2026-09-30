@@ -52,13 +52,44 @@ WEB_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; chars
              '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2'}
 
 
+# Патчи интерфейса: файл из папки patch/web рядом с программой отдаётся вместо встроенного.
+# Проверяется при каждом запросе — чтобы поставить исправление, сервер останавливать не нужно.
+# patch/web/patch.json: {"js/features/clients.js": "<md5 встроенного файла, для которого сделан патч>"} —
+# если встроенный файл уже другой (установлена новая версия программы), патч не применяется.
+PATCH_WEB_DIR = os.path.join(ROOT, 'patch', 'web')
+_md5_cache = {}
+
+
+def _md5(path):
+    st = os.stat(path)
+    key = (path, st.st_mtime, st.st_size)
+    if key not in _md5_cache:
+        with open(path, 'rb') as fh:
+            _md5_cache[key] = hashlib.md5(fh.read()).hexdigest()
+    return _md5_cache[key]
+
+
+def _patch_applies(rel, bundled):
+    try:
+        base = json.loads(read_text(os.path.join(PATCH_WEB_DIR, 'patch.json'))).get(rel)
+    except Exception:
+        base = None
+    return not base or not bundled or _md5(bundled) == base
+
+
 def web_file(rel):
-    """Файл интерфейса по относительному пути внутри app/web (без выхода за пределы папки)."""
+    """Файл интерфейса по относительному пути внутри app/web (без выхода за пределы папки); сначала — из патча."""
     parts = [x for x in rel.replace('\\', '/').split('/') if x and x not in ('.', '..')]
-    f = os.path.join(WEB_DIR, *parts)
-    if not os.path.normcase(os.path.abspath(f)).startswith(os.path.normcase(os.path.abspath(WEB_DIR))):
-        return None
-    return f if os.path.isfile(f) and os.path.splitext(f)[1].lower() in WEB_TYPES else None
+
+    def pick(base):
+        f = os.path.join(base, *parts)
+        if not os.path.normcase(os.path.abspath(f)).startswith(os.path.normcase(os.path.abspath(base))):
+            return None
+        return f if os.path.isfile(f) and os.path.splitext(f)[1].lower() in WEB_TYPES else None
+    bundled, patched = pick(WEB_DIR), pick(PATCH_WEB_DIR)
+    if patched and _patch_applies('/'.join(parts), bundled):
+        return patched
+    return bundled
 
 
 class Handler(BaseHTTPRequestHandler):
