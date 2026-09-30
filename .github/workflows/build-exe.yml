@@ -107,6 +107,13 @@ jobs:
           $js = (Invoke-WebRequest -Uri 'http://127.0.0.1:17845/web/js/features/clients.js' -UseBasicParsing).Content
           if ($js -notmatch 'const OPF_SHORT=') { throw 'После патча сервер отдаёт прежний clients.js' }
           Write-Host 'Патч без остановки сервера: работает'
+          $af = Join-Path $mei.FullName 'app\web\js\features\ai-autofill.js'
+          Copy-Item -LiteralPath '.github\ci\ai-autofill_old.js' -Destination $af -Force
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'patches\2026-09-30 копирование запроса\install.ps1'
+          if ($LASTEXITCODE -ne 0) { throw "Патч «Скопировать запрос» завершился с ошибкой ($LASTEXITCODE)" }
+          $js = (Invoke-WebRequest -Uri 'http://127.0.0.1:17845/web/js/features/ai-autofill.js' -UseBasicParsing).Content
+          if ($js -notmatch 'function copyToClipboard\(') { throw 'После патча сервер отдаёт прежний ai-autofill.js' }
+          Write-Host 'Патч «Скопировать запрос»: работает'
           Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/shutdown' | Out-Null
           if (-not $p.WaitForExit(15000)) { $p.Kill(); throw 'EXE не завершился по команде «Выход»' }
           Write-Host 'Проверка пройдена'
