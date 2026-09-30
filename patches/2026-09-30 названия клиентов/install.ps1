@@ -80,6 +80,8 @@ if (-not $SkipUi) {
             }
         }
     }
+    # одна и та же временная папка может найтись под разными именами (короткое имя 8.3, TEMP и AppData\Local\Temp)
+    $webDirs = @($webDirs | ForEach-Object { (Resolve-Path -LiteralPath $_).ProviderPath } | Select-Object -Unique)
     if (-not $webDirs.Count) {
         Say '  Распакованная программа не найдена. Возможно, она запущена от другого пользователя или не запущена.' 'Yellow'
         Say '  Запустите патч от имени администратора на компьютере, где работает программа.' 'Yellow'
