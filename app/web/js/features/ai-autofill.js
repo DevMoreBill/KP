@@ -28,15 +28,28 @@ function parseSpecs(txt){
   return groups.filter(x=>x.rows.length);
 }
 
+// Копирование в буфер обмена. По сети (http://сервер:порт) браузер не даёт странице navigator.clipboard —
+// тогда текст кладётся через событие copy; поле для выделения создаётся внутри открытого окна,
+// потому что всё вне модального окна браузер делает неактивным. true — только если текст точно скопирован.
+async function copyToClipboard(txt){
+  if (navigator.clipboard && window.isSecureContext){ try{ await navigator.clipboard.writeText(txt); return true; }catch(e){} }
+  let done=false;
+  const onCopy=e=>{ try{ e.clipboardData.setData('text/plain', txt); e.preventDefault(); done=true; }catch(_){} };
+  document.addEventListener('copy', onCopy, true);
+  const host=[...document.querySelectorAll('dialog[open]')].pop()||document.body;
+  const ta=document.createElement('textarea'); ta.value=txt; ta.setAttribute('readonly',''); ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
+  host.appendChild(ta); ta.focus(); ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  document.removeEventListener('copy', onCopy, true); ta.remove();
+  return done;
+}
+
 async function aiCopy(i){
   const it=S.items[i], txt=aiPrompt(it);
-  let ok=false;
-  try{ await navigator.clipboard.writeText(txt); ok=true; }catch(e){
-    const ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select();
-    try{ ok=document.execCommand('copy'); }catch(e2){} ta.remove(); }
-  it._aiMsg = ok ? 'Запрос скопирован — вставьте его в Claude.' : 'Не удалось скопировать автоматически.';
-  if (!ok){ const d=$('#dlg'); d.innerHTML=`<div class="dlg-h"><h3>Запрос для Claude</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div><div class="dlg-b"><p class="muted" style="margin-top:0">Выделите текст (Ctrl+A) и скопируйте (Ctrl+C).</p><textarea rows="14" readonly>${esc(txt)}</textarea></div>`; d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close(); }
+  const ok=await copyToClipboard(txt);
+  it._aiMsg = ok ? 'Запрос скопирован — вставьте его в Claude.' : 'Не удалось скопировать автоматически — скопируйте текст из окна.';
   renderForm(); persist();
+  if (!ok){ const d=$('#dlg'); d.innerHTML=`<div class="dlg-h"><h3>Запрос для Claude</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div><div class="dlg-b"><p class="muted" style="margin-top:0">Выделите текст (Ctrl+A) и скопируйте (Ctrl+C).</p><textarea rows="14" readonly>${esc(txt)}</textarea></div>`; d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close(); const t=d.querySelector('textarea'); t.focus(); t.select(); }
 }
 
 function aiApply(i){

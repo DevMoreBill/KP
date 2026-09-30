@@ -19,6 +19,6 @@ async function uploadImg(img){
 function remoteResult(r){
   if (!r || !r.remote) return;
   if (r.download){ const f=document.createElement('iframe'); f.hidden=true; f.src=r.download; document.body.appendChild(f); setTimeout(()=>f.remove(),60000); }
-  if (r.share){ try{ navigator.clipboard.writeText(r.share); }catch(e){} toast((r.download?'Файл скачан. ':'')+'Папка на сервере: '+r.share+' (путь скопирован — вставьте в проводник)'); }
+  if (r.share){ copyToClipboard(r.share).then(ok=>toast((r.download?'Файл скачан. ':'')+'Папка на сервере: '+r.share+(ok?' (путь скопирован — вставьте в проводник)':''))); }
   else if (!r.download) toast('Папка КП находится на компьютере-сервере отдела. Попросите администратора указать docsShare в settings.json.');
 }
