@@ -96,6 +96,17 @@ jobs:
           $name = [uri]::EscapeDataString('Проверка КП.docx')
           Invoke-RestMethod -Method Put -Uri "http://127.0.0.1:17845/api/kp/$($n.id)/docx?name=$name" -Body ([byte[]](80,75,3,4)) | Out-Null
           if (-not (Test-Path -LiteralPath (Join-Path $dir 'Коммерческие предложения\Проверка КП.docx'))) { throw 'DOCX не сохранился' }
+          # патч на работающую программу (Windows PowerShell 5.1): старый clients.js → патч → сервер отдаёт исправленный без перезапуска
+          $mei = Get-ChildItem -Path $env:TEMP -Directory -Filter '_MEI*' | Where-Object { Test-Path (Join-Path $_.FullName 'app\web\js\features\clients.js') } | Select-Object -First 1
+          if (-not $mei) { throw 'Не найдена распакованная программа (_MEI…) для проверки патча' }
+          Copy-Item -LiteralPath '.github\ci\clients_old.js' -Destination (Join-Path $mei.FullName 'app\web\js\features\clients.js') -Force
+          $js = (Invoke-WebRequest -Uri 'http://127.0.0.1:17845/web/js/features/clients.js' -UseBasicParsing).Content
+          if ($js -match 'const OPF_SHORT=') { throw 'Старая версия clients.js не подложилась' }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'patches\2026-09-30 названия клиентов\install.ps1' -SkipNames
+          if ($LASTEXITCODE -ne 0) { throw "Патч завершился с ошибкой ($LASTEXITCODE)" }
+          $js = (Invoke-WebRequest -Uri 'http://127.0.0.1:17845/web/js/features/clients.js' -UseBasicParsing).Content
+          if ($js -notmatch 'const OPF_SHORT=') { throw 'После патча сервер отдаёт прежний clients.js' }
+          Write-Host 'Патч без остановки сервера: работает'
           Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/shutdown' | Out-Null
           if (-not $p.WaitForExit(15000)) { $p.Kill(); throw 'EXE не завершился по команде «Выход»' }
           Write-Host 'Проверка пройдена'
