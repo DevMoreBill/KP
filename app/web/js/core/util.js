@@ -46,7 +46,7 @@ async function saveFile(name, blob){
   if (window.showSaveFilePicker){
     try{
       const ext=name.split('.').pop();
-      const types = ext==='docx' ? [{description:'Документ Word',accept:{'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['.docx']}}] : [{description:'Каталог',accept:{'application/json':['.json']}}];
+      const types = ext==='docx' ? [{description:'Документ Word',accept:{'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['.docx']}}] : ext==='pdf' ? [{description:'Документ PDF',accept:{'application/pdf':['.pdf']}}] : [{description:'Каталог',accept:{'application/json':['.json']}}];
       const h=await window.showSaveFilePicker({suggestedName:name, types});
       const w=await h.createWritable(); await w.write(blob); await w.close(); return true;
     }catch(e){ if (e && e.name==='AbortError') return false; }

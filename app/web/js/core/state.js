@@ -23,7 +23,7 @@ function freshState(){
     date:today(), city:'Москва', vat:22, showClients:true,
     cover:{ title:'', model:'', desc:'', kpis:[{},{},{},{}], touched:false },
     pricing:{ cur:'RUB', rates:{USD:'',EUR:'',CNY:''}, rateDate:'', rateSrc:'', margin:35, mode:'margin', costNoVat:false, round:'1' },
-    items:[], conditions: COND.map(c=>({label:c[0], value:''})), manager:{...manager} };
+    items:[], conditions: COND.map(c=>({label:c[0], value:''})), condExtra:'', manager:{...manager}, managerId:'' };
 }
 
 let S = freshState();

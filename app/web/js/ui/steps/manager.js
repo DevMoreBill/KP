@@ -4,7 +4,8 @@
 function stepManager(){
   const m='manager.';
   return `<section class="step" id="st-manager"><h2><span class="n">5</span>Контакты менеджера</h2>
-  <p class="hint">Запоминаются на этом устройстве — в следующий раз заполнять не придётся.</p>
+  <p class="hint">Менеджеры хранятся в базе программы: выберите себя из списка — контакты подставятся. Это устройство запомнит выбор.</p>
+  ${managerBar()}
   <div class="grid g2">${field('ФИО',m+'name',{req:1})}${field('Должность',m+'position')}
   ${field('Телефон',m+'phone',{req:1})}${field('Добавочный',m+'ext')}${field('Мобильный',m+'mobile')}${field('E-mail',m+'email',{type:'email'})}
   ${field('Сайт',m+'site')}${field('Часы работы',m+'hours')}</div>

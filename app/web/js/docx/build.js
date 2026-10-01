@@ -83,7 +83,8 @@ async function renderDocx(St, pack, settings){
       St.cover.desc = KPGen.fill(T.coverMultiDesc||'', {count:`${STS.length} ${plural(STS.length,'модель','модели','моделей')}`});
     }
   }
-  const coverItem=S.items.find(x=>x.photo);
+  // фото на титул: выбранное в разделе «Титульный лист» или первой позиции с фото
+  const coverItem=S.items.find(x=>x.id===S.cover.photoFrom && x.photo) || S.items.find(x=>x.photo);
   if (coverItem){ zip.file('word/media/cover.jpg', b64(await toDataURL(coverItem.photo)), {base64:true}); Min.cover={file:'cover.jpg',w:coverItem.photo.w,h:coverItem.photo.h}; }
   for (const x of S.items){ if(!x.page) continue; const m={};
     if (x.photo){ const t=await tileFrom(x.photo); zip.file(`word/media/tile_${x.id}.png`, b64(t.url), {base64:true}); m.tile={file:`tile_${x.id}.png`,w:t.w,h:t.h}; }
@@ -131,6 +132,7 @@ async function download(){
     btn.textContent='Сохраняю в журнал…';
     await syncCatalog(S.number); await saveClient(true);
     for (const it of S.items){ it.photo=await uploadImg(it.photo); it.logo=await uploadImg(it.logo); if (it.gallery) for (const g of it.gallery){ const u=await uploadImg(g); if(u) g.src=u.src; } }
+    if (!S.managerId && String(S.manager.name||'').trim()) await saveManager(true);   // новый менеджер попадает в справочник
     const t=totalsS(), fn=fileName();
     await api(`/api/kp/${S.kpId}/docx?name=${encodeURIComponent(fn)}&dir=${encodeURIComponent(managerFolder())}`,{method:'PUT',body:blob});
     const clean=JSON.parse(JSON.stringify(S,(k,v)=>k.startsWith('_')?undefined:v));
@@ -138,9 +140,13 @@ async function download(){
     const meta={ id:S.kpId, number:S.number, date:S.date, client:S.client, sum:t.sum, units:t.units, positions:S.items.length,
       items:S.items.map(x=>x.name).slice(0,3), file:fn, manager:S.manager.name, savedAt:new Date().toISOString() };
     await api(`/api/kp/${S.kpId}/meta`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(meta)});
+    // PDF рядом с .docx — по галочке «Также сохранить в PDF»
+    let pdfOk=false, pdfErr='';
+    if (pdfWanted()){ btn.textContent='Создаю PDF…'; try{ await saveKpPdf(); pdfOk=true; }catch(e){ pdfErr=e.message||String(e); } }
     persist(); renderForm();
-    const m2=$('#dlmsg'); m2.className='msg ok';
-    m2.innerHTML=`КП № ${esc(S.number)} сохранено, каталог обновлён.<div class="row" style="justify-content:center;margin-top:8px"><button class="btn" type="button" data-a="openDoc" data-id="${esc(S.kpId)}">${SRV.info&&SRV.info.local===false?'Скачать .docx':'Открыть в Word'}</button>${SRV.info&&SRV.info.local===false&&!SRV.info.docsShare?'':`<button class="btn" type="button" data-a="showDoc" data-id="${esc(S.kpId)}">${SRV.info&&SRV.info.local===false?'Путь к файлу':'Показать в папке'}</button>`}</div>`;
+    const remote=SRV.info&&SRV.info.local===false, m2=$('#dlmsg'); m2.className='msg ok';
+    m2.innerHTML=`КП № ${esc(S.number)} сохранено${pdfOk?' (DOCX и PDF)':''}, каталог обновлён.<div class="row" style="justify-content:center;margin-top:8px"><button class="btn" type="button" data-a="openDoc" data-id="${esc(S.kpId)}">${remote?'Скачать .docx':'Открыть в Word'}</button>${pdfOk?`<button class="btn" type="button" data-a="openPdf" data-id="${esc(S.kpId)}">${remote?'Скачать PDF':'Открыть PDF'}</button>`:''}${remote&&!SRV.info.docsShare?'':`<button class="btn" type="button" data-a="showDoc" data-id="${esc(S.kpId)}">${remote?'Путь к файлу':'Показать в папке'}</button>`}</div>`
+      + (pdfErr?`<div class="msg err">PDF не создан: ${esc(pdfErr)}<div class="row" style="justify-content:center;margin-top:6px"><button class="btn" type="button" data-a="printPdf">Печать → «Сохранить как PDF»</button></div></div>`:'');
   } catch(e){
     msg.className='msg err';
     msg.textContent = e&&e.code==='declined' ? 'Сохранение отменено.' : e&&e.code==='rate_limited' ? 'Окно сохранения уже открыто.' : 'Не удалось собрать файл: '+(e&&e.message||e);

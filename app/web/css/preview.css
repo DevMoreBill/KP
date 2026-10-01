@@ -1,0 +1,44 @@
+/* Предпросмотр КП, превью титула, справочник менеджеров, печать КП в PDF. */
+.mgrbar{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px 14px;align-items:end;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:16px;background:var(--soft)}
+.btn.danger{color:var(--danger)}
+.cvtop{display:grid;grid-template-columns:260px minmax(0,1fr);gap:20px;align-items:start;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.cvinfo{display:grid;gap:10px;align-content:start}
+.cvinfo .sub{margin:0}
+.cvinfo .hint{margin:0}
+.cvthumb{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:#fff;min-height:200px;box-shadow:0 6px 18px rgba(11,47,110,.08)}
+.cvthumb.loading::after{content:"Обновляю…";position:absolute;right:8px;top:8px;font-size:11.5px;color:#66718C;background:rgba(255,255,255,.9);padding:2px 8px;border-radius:999px}
+.cvthumb .cv-page{transform:scale(var(--k,.4));transform-origin:0 0;width:max-content;pointer-events:none}
+.cvthumb .docx-wrapper{padding:0!important;background:none!important;display:block!important}
+.cvthumb section.docx{box-shadow:none!important;margin:0!important}
+.cv-empty{padding:30px 16px;text-align:center}
+.dl.pv{margin-top:14px;padding:10px 16px}
+.dl.pv+.dl{margin-top:8px}
+.pdftoo{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:8px;font-size:13px;color:var(--muted);cursor:pointer}
+.pdftoo input{width:16px;height:16px;margin:0;accent-color:var(--navy)}
+@media (max-width:760px){ .cvtop{grid-template-columns:1fr} .cvthumb{max-width:320px} }
+/* окно предпросмотра */
+dialog.kpprev{width:min(1200px,98vw);height:94vh;max-width:98vw;max-height:96vh;display:none;flex-direction:column;overflow:hidden}
+dialog.kpprev[open]{display:flex}
+.pv-hd{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.pv-hd h3{margin:0;font-size:18px}
+.pv-hd .sp{flex:1}
+.pv-zoom{display:flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:10px;padding:2px 4px;margin-right:4px}
+.pv-zoom span{min-width:46px;text-align:center;font-size:13px;font-variant-numeric:tabular-nums}
+.pv-msg{padding:8px 16px;font-size:13.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.pv-msg.err{color:var(--danger)} .pv-msg.ok{color:var(--ok)}
+.pv-body{flex:1;min-height:0;overflow:auto;background:#7d8597}
+.pv-body .docx-wrapper{zoom:var(--z,1);background:none!important;padding:24px 0!important}
+.pv-body section.docx{box-shadow:0 8px 28px rgba(0,0,0,.35)!important;margin-bottom:24px!important}
+/* печать из предпросмотра: только страницы КП */
+@media print{
+  @page{size:A4;margin:0}
+  body.printing-kp{background:#fff!important;padding:0!important}
+  body.printing-kp>*:not(#pvdlg){display:none!important}
+  body.printing-kp #pvdlg{position:static!important;display:block!important;width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;overflow:visible!important;box-shadow:none!important;border-radius:0!important;margin:0!important;padding:0!important;background:#fff!important}
+  body.printing-kp #pvdlg::backdrop{display:none}
+  body.printing-kp .pv-hd,body.printing-kp .pv-msg{display:none!important}
+  body.printing-kp .pv-body{overflow:visible!important;background:#fff!important;height:auto!important}
+  body.printing-kp .docx-wrapper{zoom:1!important;padding:0!important;background:#fff!important}
+  body.printing-kp section.docx{box-shadow:none!important;margin:0!important;break-after:page}
+}
+.cvthumb[data-a]{cursor:zoom-in}

@@ -24,6 +24,8 @@ js/
   core/types.js            типы оборудования: справочник, attrsOf(), параметры, титул по типу
   core/state.js            состояние КП S, freshState(), черновик в браузере (persist), getP/setP
   features/catalog.js      каталог: хранилище, fillFromCat, syncCatalog
+  features/managers.js     справочник менеджеров в базе: выбор, новый, автосохранение правок
+  features/preview.js      предпросмотр КП (vendor/docx-preview), превью титула, PDF (сервер или печать)
   features/catalog-window.js окно каталога: категории, фильтры, список с отметками, карточка, пакетные действия, размер окна
   features/catalog-edit.js правка позиции каталога в карточке позиции (CATED: S.items временно подменены)
   features/excel-import.js импорт каталога из Excel/CSV

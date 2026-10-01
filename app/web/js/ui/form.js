@@ -63,4 +63,5 @@ function renderForm(){
   if (focusP && !$('#edlg').open) { const el = f.querySelector(`[data-p="${CSS.escape(focusP)}"]`); if (el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n);}catch(e){} } }
   renderSide();
   if (EDIT && $('#edlg').open) renderEditor();
+  if (STEP==='cover') coverThumbSoon();
 }
