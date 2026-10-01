@@ -84,3 +84,13 @@ dialog::backdrop{background:rgba(10,20,40,.45)}
 .tip[open]>summary,.tip>summary:hover{border-color:var(--sky);color:var(--navy)}
 .tip-b{position:absolute;left:-10px;top:calc(100% + 8px);z-index:30;width:min(360px,80vw);background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px rgba(0,0,0,.16);padding:12px 14px;font-size:13.5px;line-height:1.5;font-weight:400;letter-spacing:0;text-transform:none}
 .tip-b p{margin:0 0 6px}.tip-b p:last-child{margin:0}
+/* поле с выбором базовых вариантов (раздел «Условия») */
+.cond-bar{margin:-4px 0 14px}
+.cpick{display:flex;gap:6px;align-items:stretch}
+.cpick>input,.cpick>textarea{flex:1;min-width:0}
+.cpick.ta{align-items:flex-start}
+.pickm{position:relative;flex:0 0 auto}
+.pickm>summary{list-style:none;height:100%;min-height:44px;padding:0 14px;justify-content:center}
+.pickm>summary::-webkit-details-marker{display:none}
+.pickm .menu-l{min-width:300px;max-height:320px;overflow:auto}
+.pm-cap{margin:4px 12px 2px;font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
