@@ -51,5 +51,6 @@ function renderSide(){
 function updateLive(){
   S.items.forEach((x,i)=>{ const el=document.querySelector(`[data-sum="${i}"]`); if(el) el.textContent=money(itemSum(x));
     (x.options||[]).forEach((o,j)=>{ const e2=document.querySelector(`[data-osum="${i}.${j}"]`); if(e2) e2.textContent=o.price?money((+o.qty||0)*o.price):'—'; }); });
+  if (CATED) return;
   renderSide(); persist();
 }
