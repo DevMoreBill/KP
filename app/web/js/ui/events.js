@@ -51,7 +51,7 @@ document.addEventListener('change', async e=>{
   const mo=/^items\.(\d+)\.options\.(\d+)\.name$/.exec(e.target.dataset.p||'');
   if (mo){ const o=S.items[+mo[1]].options[+mo[2]]; const x=catCache.find(d=>norm(d.name)===norm(o.name)); const pz=allPresets().find(q=>norm(q.name)===norm(o.name));
     if (pz){ o.short=pz.short; o.unit=pz.unit; } if (x && !o.price){ o.price=x.price||0; o.catId=x.id; o.short=o.short||attrsOf(x).model||''; } renderForm(); persist(); return; }
-  const m=/^items\.(\d+)\.name$/.exec(e.target.dataset.p||''); if(!m) return;
+  const m=/^items\.(\d+)\.name$/.exec(e.target.dataset.p||''); if(!m || CATED) return;
   const it=S.items[+m[1]]; let x=catCache.find(d=>norm(d.name)===norm(it.name));
   if (x && !it.price && !it.photo){ x=await fullDoc(x); fillFromCat(it,x); renderForm(); persist(); toast('Позиция подставлена из каталога'); }
 });

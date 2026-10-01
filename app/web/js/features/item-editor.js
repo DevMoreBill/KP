@@ -64,7 +64,10 @@ function renderEditor(){
   const d=$('#edlg'); if(!EDIT) return; const i=EDIT.i, x=S.items[i]; if(!x){ closeEditor(); return; }
   const focusP=document.activeElement?.dataset?.p; const sc=d.querySelector('.ed-b')?.scrollTop||0;
   const body = EDIT.tab==='main'?edMain(x,i): EDIT.tab==='desc'?edDesc(x,i): EDIT.tab==='spec'?edSpec(x,i): EDIT.tab==='opts'?edOpts(x,i): edAI(x,i);
-  d.innerHTML=`<div class="dlg-h"><h3>${i+1}. ${esc(x.name||'Новая позиция')}</h3>${S.items.length>1?`<button class="btn ghost" type="button" data-ednav="-1" ${i===0?'disabled':''} title="Предыдущая позиция">←</button><button class="btn ghost" type="button" data-ednav="1" ${i===S.items.length-1?'disabled':''} title="Следующая позиция">→</button>`:''}<button class="btn primary" type="button" data-edclose>Готово</button></div>
+  const head = CATED ? `<h3><span class="ed-cat">Каталог</span>${esc(x.name||'Новая позиция')}</h3><button class="btn" type="button" data-catcancel>Отмена</button><button class="btn primary" type="button" data-catsave>Сохранить в каталог</button>`
+    : `<h3>${i+1}. ${esc(x.name||'Новая позиция')}</h3>${S.items.length>1?`<button class="btn ghost" type="button" data-ednav="-1" ${i===0?'disabled':''} title="Предыдущая позиция">←</button><button class="btn ghost" type="button" data-ednav="1" ${i===S.items.length-1?'disabled':''} title="Следующая позиция">→</button>`:''}<button class="btn primary" type="button" data-edclose>Готово</button>`;
+  d.classList.toggle('catmode', !!CATED);
+  d.innerHTML=`<div class="dlg-h">${head}</div>
     <div class="ed-tabs">${ED_TABS.map(([k,l])=>`<button type="button" class="ed-tab${EDIT.tab===k?' on':''}" data-edtab="${k}">${l}</button>`).join('')}</div>
     <div class="ed-b">${body}</div>`;
   const b=d.querySelector('.ed-b'); b.scrollTop=sc;
@@ -75,9 +78,10 @@ function edMain(x,i){
   const P=`items.${i}`;
   return `<div class="ed-sec"><div class="grid g2">${field('Наименование в КП',`${P}.name`,{req:1})}${field('Заголовок страницы оборудования',`${P}.pageTitle`,{ph:x.name||'Как в наименовании'})}</div>
     <div class="grid" style="margin-top:12px">${field('Краткие характеристики — строка под названием в таблице КП',`${P}.spec`,{ph:'Двигатель · альтернатор · мощность · габариты'})}</div>
-    <div class="row" style="margin-top:12px"><button class="sw" type="button" role="switch" aria-checked="${!!x.page}" data-a="togglePage" data-i="${i}"><i></i>Отдельная страница оборудования в КП (фото, описание, характеристики)</button></div></div>
+    ${CATED?'':`<div class="row" style="margin-top:12px"><button class="sw" type="button" role="switch" aria-checked="${!!x.page}" data-a="togglePage" data-i="${i}"><i></i>Отдельная страница оборудования в КП (фото, описание, характеристики)</button></div>`}</div>
+   ${CATED?catPriceBlock(x):''}
    <div class="ed-sec">${attrsBlock(x,i)}</div>
-   <div class="ed-sec row"><button class="btn" type="button" data-a="saveCat" data-i="${i}">Сохранить позицию в каталог</button><span class="muted">Фото, описание, характеристики, изображения и цена будут доступны в следующих КП.</span></div>`;
+   ${CATED?'':`<div class="ed-sec row"><button class="btn" type="button" data-a="saveCat" data-i="${i}">Сохранить позицию в каталог</button><span class="muted">Фото, описание, характеристики, изображения и цена будут доступны в следующих КП.</span></div>`}`;
 }
 
 function imgBox(src, attrs, text){ return `<div class="ibox" ${attrs} tabindex="0" role="button">${src?`<img src="${src}" alt="">`:`<span>${text}</span>`}</div>`; }
@@ -152,7 +156,9 @@ document.addEventListener('click', e=>{
   const fz=e.target.closest('[data-fimg]'); if (fz && !e.target.closest('[data-a]')){ const f=$('#filePick'); f.value=''; f.multiple=false; f.onchange=()=>f.files[0]&&addFeatImage(+fz.dataset.fimg, fz.dataset.fid, [f.files[0]]); f.click(); }
 });
 
-document.addEventListener('close', e=>{ if (e.target.id==='edlg' && EDIT){ EDIT=null; renderForm(); persist(); } }, true);
+document.addEventListener('close', e=>{ if (e.target.id!=='edlg') return;
+  if (CATED){ S.items=CATED.items; CATED=null; EDIT=null; renderForm(); return; }   // окно закрыто не кнопками карточки каталога — правки не сохраняются
+  if (EDIT){ EDIT=null; renderForm(); persist(); } }, true);
 
 document.addEventListener('change', e=>{ const t=e.target; if (t.dataset.gat==null) return;
   const x=S.items[+t.dataset.gat], g=x.gallery[+t.dataset.j]; g.at = t.value==='free' ? 'free' : t.value; renderForm(); persist(); });

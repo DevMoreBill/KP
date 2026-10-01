@@ -55,6 +55,7 @@ function stepNavHtml(){
 }
 
 function renderForm(){
+  if (CATED){ if (EDIT && $('#edlg').open) renderEditor(); return; }
   const f = $('#form'); const focusP = document.activeElement?.dataset?.p;
   const cur = STEPS.find(s=>s.id===STEP)||STEPS[0];
   $('#nav').innerHTML = stepperHtml();

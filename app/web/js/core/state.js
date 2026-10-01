@@ -32,9 +32,14 @@ try { const d = localStorage.getItem('kp.draft'); if (d) { S = Object.assign(fre
 
 let saveT;
 
+// правка позиции каталога в карточке (features/catalog-edit.js): пока она открыта, S.items подменены — черновик не сохраняется
+var CATED = null;
+
 function persist(){
+  if (CATED) return;
   clearTimeout(saveT);
   saveT = setTimeout(()=>{
+    if (CATED) return;
     const el = $('#saved');
     try { localStorage.setItem('kp.draft', JSON.stringify(S)); el.textContent = 'Черновик сохранён'; }
     catch(e){

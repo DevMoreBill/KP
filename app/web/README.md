@@ -10,7 +10,7 @@ index.html                 каркас страницы (шапка, разде
 css/
   base.css                 цвета (переменные :root), шрифты, поля, кнопки, сетки
   layout.css               шапка, меню разделов, правая панель, окна
-  catalog.css              окно подбора, быстрый поиск
+  catalog.css              окно каталога, быстрый поиск
   items.css                раздел «Оборудование», карточка позиции, галерея
   pricing.css              раздел «Цены и валюта»
   client.css               раздел «Клиент»
@@ -23,7 +23,9 @@ js/
   core/api.js              запросы к серверу (api), загрузка изображений, работа по сети
   core/types.js            типы оборудования: справочник, attrsOf(), параметры, титул по типу
   core/state.js            состояние КП S, freshState(), черновик в браузере (persist), getP/setP
-  features/catalog.js      каталог: хранилище, окно подбора с фильтрами, fillFromCat, syncCatalog
+  features/catalog.js      каталог: хранилище, fillFromCat, syncCatalog
+  features/catalog-window.js окно каталога: категории, фильтры, список с отметками, карточка, пакетные действия, размер окна
+  features/catalog-edit.js правка позиции каталога в карточке позиции (CATED: S.items временно подменены)
   features/excel-import.js импорт каталога из Excel/CSV
   features/pricing.js      валюта, курсы ЦБ, закупка → маржа/наценка → цена
   features/clients.js      контрагенты: ИНН, справочник, Checko, интеграции
