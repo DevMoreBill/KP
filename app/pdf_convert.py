@@ -3,7 +3,8 @@
 
 1. Microsoft Word (если установлен) — через COM из Windows PowerShell: результат как при «Сохранить как PDF» в Word.
 2. LibreOffice (если установлен) — soffice --headless --convert-to pdf.
-Если нет ни того ни другого, программа предлагает печать из предпросмотра КП («Сохранить как PDF» в браузере).
+3. Облачный сервис ConvertAPI (convertapi.com), если в «Ключи API» задан его ключ: файл КП отправляется в сервис.
+Если ничего нет, программа предлагает печать из предпросмотра КП («Сохранить как PDF» в браузере).
 Преобразования выполняются по одному: Word и LibreOffice не любят параллельные запуски.
 """
 import glob
@@ -20,10 +21,13 @@ LO_TIMEOUT = 240
 
 # Word: Documents.Open(файл, без вопросов о преобразовании, только чтение, не в недавние) → ExportAsFixedFormat(PDF = 17).
 # У службы (SYSTEM) Word без папки Desktop в профиле systemprofile не открывает документы — создаём её.
+# Обычному пользователю эта папка недоступна («Отказано в доступе»), поэтому — только когда запущено от имени SYSTEM.
 WORD_PS = r'''
 $ErrorActionPreference = 'Stop'
-foreach ($d in @("$env:WINDIR\System32\config\systemprofile\Desktop", "$env:WINDIR\SysWOW64\config\systemprofile\Desktop")) {
-  if (-not (Test-Path -LiteralPath $d)) { try { New-Item -ItemType Directory -Path $d -Force | Out-Null } catch {} }
+if ([Security.Principal.WindowsIdentity]::GetCurrent().IsSystem) {
+  foreach ($d in @("$env:WINDIR\System32\config\systemprofile\Desktop", "$env:WINDIR\SysWOW64\config\systemprofile\Desktop")) {
+    try { if (-not (Test-Path -LiteralPath $d -ErrorAction SilentlyContinue)) { New-Item -ItemType Directory -Path $d -Force -ErrorAction SilentlyContinue | Out-Null } } catch {}
+  }
 }
 $w = New-Object -ComObject Word.Application
 try {
@@ -67,8 +71,8 @@ def word_available():
         return False
 
 
-def available():
-    return {'word': word_available(), 'libreoffice': bool(soffice_path())}
+def available(cloud_key=None):
+    return {'word': word_available(), 'libreoffice': bool(soffice_path()), 'cloud': bool(cloud_key)}
 
 
 def _ok(path):
@@ -101,11 +105,53 @@ def _libreoffice(src, dst):
         shutil.rmtree(profile, ignore_errors=True)
 
 
-def convert_file(src, dst):
+CLOUD_URL = 'https://v2.convertapi.com/convert/docx/to/pdf'
+
+
+def _cloud(src, dst, key):
+    """ConvertAPI: POST multipart (File) → JSON с файлом в base64 (StoreFile=false — файл не хранится в сервисе)."""
+    import base64
+    import json
+    import uuid
+    import urllib.error
+    import urllib.request
+    boundary = uuid.uuid4().hex
+    with open(src, 'rb') as f:
+        data = f.read()
+    body = b''.join([
+        ('--%s\r\nContent-Disposition: form-data; name="StoreFile"\r\n\r\nfalse\r\n' % boundary).encode(),
+        ('--%s\r\nContent-Disposition: form-data; name="File"; filename="kp.docx"\r\n'
+         'Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n\r\n' % boundary).encode(),
+        data, ('\r\n--%s--\r\n' % boundary).encode()])
+    req = urllib.request.Request(CLOUD_URL, data=body, method='POST', headers={
+        'Authorization': 'Bearer ' + key, 'Accept': 'application/json',
+        'Content-Type': 'multipart/form-data; boundary=' + boundary})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            res = json.loads(r.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        try:
+            msg = json.loads(e.read().decode('utf-8')).get('Message')
+        except Exception:
+            msg = ''
+        raise RuntimeError('ConvertAPI: %s' % (msg or 'ошибка %s' % e.code))
+    except OSError as e:
+        raise RuntimeError('ConvertAPI недоступен: %s' % e)
+    files = res.get('Files') or []
+    if not files or not files[0].get('FileData'):
+        raise RuntimeError('ConvertAPI: файл PDF не получен')
+    with open(dst, 'wb') as f:
+        f.write(base64.b64decode(files[0]['FileData']))
+    if not _ok(dst):
+        raise RuntimeError('ConvertAPI: файл PDF пустой')
+
+
+def convert_file(src, dst, cloud_key=None):
     """DOCX-файл src → PDF-файл dst. Ошибка RuntimeError с понятным текстом, если преобразовать нечем или не вышло."""
     tried = []
     with LOCK:
-        for name, ok, fn in (('Word', word_available, _word), ('LibreOffice', lambda: bool(soffice_path()), _libreoffice)):
+        for name, ok, fn in (('Word', word_available, _word), ('LibreOffice', lambda: bool(soffice_path()), _libreoffice),
+                             ('ConvertAPI', lambda: bool(cloud_key), lambda s, d: _cloud(s, d, cloud_key))):
             if not ok():
                 continue
             try:
@@ -118,17 +164,17 @@ def convert_file(src, dst):
             except Exception as e:
                 tried.append(str(e) or name)
     if not tried:
-        raise RuntimeError('на компьютере-сервере нет Microsoft Word или LibreOffice — сохраните PDF через печать из предпросмотра')
+        raise RuntimeError('на компьютере-сервере нет Microsoft Word или LibreOffice и не задан ключ ConvertAPI — сохраните PDF через печать из предпросмотра')
     raise RuntimeError('; '.join(tried))
 
 
-def convert_bytes(data):
+def convert_bytes(data, cloud_key=None):
     d = tempfile.mkdtemp(prefix='kp_pdfb_')
     try:
         src, dst = os.path.join(d, 'kp.docx'), os.path.join(d, 'kp.pdf')
         with open(src, 'wb') as f:
             f.write(data)
-        convert_file(src, dst)
+        convert_file(src, dst, cloud_key)
         with open(dst, 'rb') as f:
             return f.read()
     finally:

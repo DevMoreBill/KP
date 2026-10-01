@@ -99,11 +99,13 @@ async function openIntegrations(){
    <p class="muted">Checko: реквизиты, статус, финансы, суды, ФССП, реестры. Ключ — в личном кабинете checko.ru, раздел «API» (есть бесплатный тестовый лимит).</p>
    <label class="f"><span>API-ключ DaData ${k.dadata?`<b class="ok-t">задан: ${esc(k.dadataMask)}</b>`:''}</span><input type="text" id="kDadata" placeholder="${k.dadata?'Оставьте пустым, чтобы не менять':'Ключ из личного кабинета dadata.ru'}" autocomplete="off"></label>
    <p class="muted">DaData: быстрый поиск реквизитов по ИНН (бесплатно до 10 000 запросов в день).</p>
-   <div class="row"><button class="btn primary" type="button" id="kSave">Сохранить</button>${k.checko?'<button class="btn ghost" type="button" id="kDelC">Удалить ключ Checko</button>':''}${k.dadata?'<button class="btn ghost" type="button" id="kDelD">Удалить ключ DaData</button>':''}</div></div>`;
+   <label class="f"><span>Ключ ConvertAPI для PDF ${k.convertapi?`<b class="ok-t">задан: ${esc(k.convertapiMask)}</b>`:''}</span><input type="text" id="kConv" placeholder="${k.convertapi?'Оставьте пустым, чтобы не менять':'Secret или токен из личного кабинета convertapi.com'}" autocomplete="off"></label>
+   <p class="muted">Нужен, только если на компьютере, где работает программа, нет Microsoft Word и LibreOffice: тогда файл КП для PDF отправляется в сервис convertapi.com.</p>
+   <div class="row"><button class="btn primary" type="button" id="kSave">Сохранить</button>${k.checko?'<button class="btn ghost" type="button" id="kDelC">Удалить ключ Checko</button>':''}${k.dadata?'<button class="btn ghost" type="button" id="kDelD">Удалить ключ DaData</button>':''}${k.convertapi?'<button class="btn ghost" type="button" id="kDelV">Удалить ключ ConvertAPI</button>':''}</div></div>`;
   d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close();
   const put=async body=>{ await api('/api/integrations',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(body)}); toast('Сохранено'); openIntegrations(); };
-  $('#kSave').onclick=()=>{ const b={}; const c=$('#kChecko').value.trim(), dd=$('#kDadata').value.trim(); if(c) b.checkoKey=c; if(dd) b.dadataKey=dd; put(b); };
-  if ($('#kDelC')) $('#kDelC').onclick=()=>put({checkoKey:''}); if ($('#kDelD')) $('#kDelD').onclick=()=>put({dadataKey:''});
+  $('#kSave').onclick=()=>{ const b={}; const c=$('#kChecko').value.trim(), dd=$('#kDadata').value.trim(), cv=$('#kConv').value.trim(); if(c) b.checkoKey=c; if(dd) b.dadataKey=dd; if(cv) b.convertapiKey=cv; put(b); };
+  if ($('#kDelC')) $('#kDelC').onclick=()=>put({checkoKey:''}); if ($('#kDelD')) $('#kDelD').onclick=()=>put({dadataKey:''}); if ($('#kDelV')) $('#kDelV').onclick=()=>put({convertapiKey:''});
 }
 
 document.addEventListener('input', e=>{ const t=e.target; if (t.dataset && t.dataset.p==='clientInn'){ const v=t.value.replace(/\D/g,''); t.classList.toggle('bad', !!v && !validInn(v) && (v.length>=10)); if ((v.length===10||v.length===12) && validInn(v) && v!==S._lastInn){ S._lastInn=v; setTimeout(partyFind,50); } } });

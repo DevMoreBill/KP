@@ -84,12 +84,13 @@ class Counterparties:
         k = self.keys()
         mask = lambda v: (v[:4] + '…' + v[-4:]) if v and len(v) > 10 else ('задан' if v else '')
         return {'checko': bool(k.get('checkoKey')), 'checkoMask': mask(k.get('checkoKey', '')),
-                'dadata': bool(k.get('dadataKey')), 'dadataMask': mask(k.get('dadataKey', ''))}
+                'dadata': bool(k.get('dadataKey')), 'dadataMask': mask(k.get('dadataKey', '')),
+                'convertapi': bool(k.get('convertapiKey')), 'convertapiMask': mask(k.get('convertapiKey', ''))}
 
     def save_keys(self, body):
         cur = self.keys()
         new = json.loads(body.decode('utf-8'))
-        for k in ('checkoKey', 'dadataKey'):
+        for k in ('checkoKey', 'dadataKey', 'convertapiKey'):
             if k in new:
                 v = str(new[k] or '').strip()
                 if v:

@@ -28,8 +28,9 @@ function coverKey(){ try{ return JSON.stringify([S.template, S.cover, S.client, 
 function coverThumbSoon(){
   const box=$('#cvThumb'); if (!box) return;
   if (!S.items.length){ box.innerHTML='<p class="muted cv-empty">Добавьте оборудование — здесь появится титульный лист с фото, как в КП.</p>'; return; }
-  if (CVP.node && CVP.key===coverKey()){ box.replaceChildren(CVP.node); return; }
-  if (CVP.node) box.replaceChildren(CVP.node);
+  // раздел перерисован (переход между разделами): готовое превью ставится в новую рамку и снова подгоняется по размеру
+  if (CVP.node && CVP.key===coverKey()){ box.replaceChildren(CVP.node); fitCoverThumb(); return; }
+  if (CVP.node){ box.replaceChildren(CVP.node); fitCoverThumb(); }
   box.classList.add('loading');
   clearTimeout(CVP.t); CVP.t=setTimeout(renderCoverThumb, CVP.node?900:150);
 }
@@ -49,8 +50,10 @@ async function renderCoverThumb(){
   if (STEP==='cover' && CVP.key!==coverKey()) coverThumbSoon();
 }
 
+// масштаб превью по ширине рамки; высота рамки — по масштабированной странице (transform сам высоту не уменьшает)
 function fitCoverThumb(){ const box=$('#cvThumb'), sec=box&&box.querySelector('section.docx'); if (!sec) return;
-  const w=sec.offsetWidth||794, k=Math.min(1, (box.clientWidth-2)/w); box.style.setProperty('--k', k); box.style.height=Math.ceil((sec.offsetHeight||1123)*k)+'px'; }
+  const bw=box.clientWidth; if (!bw){ requestAnimationFrame(fitCoverThumb); return; }
+  const w=sec.offsetWidth||794, k=Math.min(1, (bw-2)/w); box.style.setProperty('--k', k); box.style.height=Math.ceil((sec.offsetHeight||1123)*k)+'px'; }
 
 addEventListener('resize', ()=>{ if (STEP==='cover') fitCoverThumb(); });
 
