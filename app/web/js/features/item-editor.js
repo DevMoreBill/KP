@@ -23,12 +23,14 @@ function attrsBlock(x,i){
   const inp=(f)=>{ const val=a[f.key]??''; const ph=auto[f.key]!=null&&auto[f.key]!==''?String(auto[f.key]):'';
     if (f.values&&f.values.length) return `<label class="f"><span>${esc(f.label)}${f.unit?', '+esc(f.unit):''}</span><select data-p="${P}.${f.key}"><option value="">${ph?esc(ph)+' (авто)':'—'}</option>${f.values.map(v=>`<option${String(val)===String(v)?' selected':''}>${esc(v)}</option>`).join('')}</select></label>`;
     return `<label class="f"><span>${esc(f.label)}${f.unit?', '+esc(f.unit):''}</span><input type="text" ${f.num?'inputmode="decimal"':''} data-p="${P}.${f.key}" value="${esc(val)}" placeholder="${esc(ph)}" autocomplete="off"></label>`; };
-  return `<div><p class="sub">Тип и параметры для подбора <button class="btn ghost" type="button" data-a="autoAttrs" data-i="${i}">Определить по характеристикам</button>
+  // параметры — по группам категории (основные, двигатель, комплектация, применимость…)
+  const grp=new Map(); for (const f of t.fields){ const g=f.group||'Основные'; if(!grp.has(g)) grp.set(g,[]); grp.get(g).push(f); }
+  return `<div><p class="sub">Категория и параметры <button class="btn ghost" type="button" data-a="autoAttrs" data-i="${i}">Определить по характеристикам</button>
       <button class="btn ghost" type="button" data-a="attrsToGroups" data-i="${i}">Сформировать таблицу характеристик</button></p>
-   <div class="attrs"><label class="f"><span>Тип оборудования</span><select data-p="${P}.cat" data-retype="${i}">${typeOptionsHtml(cat)}</select></label>
-   ${inp({key:'maker',label:'Производитель'})}${inp({key:'series',label:'Серия'})}${inp({key:'model',label:'Модель'})}
-   ${t.fields.map(inp).join('')}</div>
-   <p class="muted" style="margin:6px 0 0">Параметры используются в фильтрах каталога, на титуле и в карточке. Пустые поля заполняются автоматически из характеристик (серым показано, что будет подставлено).</p></div>`;
+   <div class="attrs"><label class="f"><span>Категория</span><select data-p="${P}.cat" data-retype="${i}">${typeOptionsHtml(cat)}</select></label>
+   ${inp({key:'maker',label:'Производитель'})}${inp({key:'series',label:'Серия'})}${inp({key:'model',label:'Модель'})}</div>
+   ${[...grp.entries()].map(([g,fs])=>`<p class="agrp">${esc(g)}</p><div class="attrs">${fs.map(inp).join('')}</div>`).join('')}
+   <p class="muted" style="margin:6px 0 0">Набор параметров зависит от категории «${esc(t.name)}». Они используются в фильтрах каталога, на титуле и в карточке. Пустые поля заполняются из характеристик (серым показано, что будет подставлено).</p></div>`;
 }
 
 function drop(img, kind, i, text, small){
@@ -124,8 +126,9 @@ function edSpec(x,i){
   const groups=(x.groups||[]).map((g,j)=>`<div class="grp"><div class="grp-h"><input type="text" data-p="${P}.groups.${j}.name" value="${esc(g.name)}" placeholder="Группа (Двигатель, Альтернатор…)"><button class="icon" type="button" data-a="delGrp" data-i="${i}" data-j="${j}" aria-label="Удалить группу">✕</button></div>
       ${g.rows.map((rw,k)=>`<div class="srow"><input type="text" data-p="${P}.groups.${j}.rows.${k}.k" value="${esc(rw.k)}" placeholder="Параметр"><input type="text" data-p="${P}.groups.${j}.rows.${k}.v" value="${esc(rw.v)}" placeholder="Значение"><button class="icon star" type="button" aria-pressed="${!!rw.hl}" data-a="star" data-i="${i}" data-j="${j}" data-k="${k}" aria-label="Ключевой параметр" title="Выделить синим">★</button><button class="icon" type="button" data-a="delRow" data-i="${i}" data-j="${j}" data-k="${k}" aria-label="Удалить строку">✕</button></div>`).join('')}
       <button class="btn ghost" type="button" data-a="addRow" data-i="${i}" data-j="${j}">+ строка</button></div>`).join('');
-  return `<div class="ed-sec"><div class="row" style="margin-bottom:10px"><button class="btn" type="button" data-a="paste" data-i="${i}">Вставить таблицу из Excel</button><button class="btn" type="button" data-a="attrsToGroups" data-i="${i}">Сформировать из параметров</button><span class="muted">★ — выделить параметр синим в КП</span></div>
-    ${groups||'<p class="muted">Характеристик пока нет. Вставьте таблицу из Excel, сформируйте из параметров на вкладке «Основное» или используйте автозаполнение.</p>'}
+  const tn=typeById(attrsOf(x).cat).name;
+  return `<div class="ed-sec"><div class="row" style="margin-bottom:10px"><button class="btn" type="button" data-a="specTpl" data-i="${i}" title="Группы и строки характеристик, принятые для категории «${esc(tn)}»; заполненное не меняется">Шаблон категории «${esc(tn)}»</button><button class="btn" type="button" data-a="paste" data-i="${i}">Вставить таблицу из Excel</button><button class="btn" type="button" data-a="attrsToGroups" data-i="${i}">Сформировать из параметров</button><span class="muted">★ — выделить параметр синим в КП</span></div>
+    ${groups||`<p class="muted">Характеристик пока нет. Нажмите «Шаблон категории» — появятся строки, принятые для «${esc(tn)}»; или вставьте таблицу из Excel, сформируйте из параметров на вкладке «Основное», используйте автозаполнение.</p>`}
     <button class="btn ghost" type="button" data-a="addGrp" data-i="${i}">+ группа</button></div>`;
 }
 

@@ -30,7 +30,7 @@ def seed_catalog():
     """Первый запуск на новом компьютере: стартовый каталог с фото из EXE — сразу в базу."""
     st = store()
     if st.catalog_count():
-        return
+        return False
     seed = os.path.join(BUNDLE, 'seed', 'data')
     img = os.path.join(seed, 'img')
     if os.path.isdir(img):
@@ -43,3 +43,4 @@ def seed_catalog():
         for name in os.listdir(cat):
             if name.endswith('.json'):
                 st.catalog_put(name[:-5], read_text(os.path.join(cat, name)))
+    return True

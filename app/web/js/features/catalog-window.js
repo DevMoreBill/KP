@@ -143,6 +143,7 @@ function cwCard(x, loading){
   const gal=(x.gallery||[]).filter(g=>g.src&&g.on!==false), hist=(x.prices||[]).slice(0,5), n=x.pricesCount||(x.prices||[]).length;
   return `<div class="pv-scroll">
     <div class="pv-photo">${x.photo?`<img src="${esc(x.photo.src)}" alt="">`:'<span>нет фото</span>'}${x.logo?`<img class="pv-logo" src="${esc(x.logo.src)}" alt="">`:''}</div>
+    ${x.photoFrom&&x.photo?`<p class="muted pv-pf">Фото — от похожей модели того же производителя («${esc(x.photoFrom.name||'')}»). Своё фото — «Редактировать» → «Описание и фото».</p>`:''}
     <h4>${esc(x.name||'Без названия')}</h4>${x.spec?`<p class="muted pv-spec">${esc(x.spec)}</p>`:''}
     ${CW.optFor==null?`<label class="pv-cat"><span>Категория</span><select data-pvcat>${typeOptionsHtml(a.cat)}</select></label>`:''}
     <div class="pv-price"><b>${x.price?money(x.price)+' '+curSh(x.priceCur||'RUB'):'Цена не указана'}</b>${x.cost?`<span>закупка ${money(x.cost)} ${curSh(x.costCur||'RUB')}</span>`:''}</div>
@@ -236,8 +237,6 @@ function cwMoveDlg(ids){
 
 // самая частая категория среди позиций — образец для новой категории при переносе
 function cwMainCat(ids){ const c=new Map(); ids.forEach(id=>{ const x=CW.docs.find(z=>z.id===id); if(x){ const k=cwA(x).cat; c.set(k,(c.get(k)||0)+1); } }); return [...c.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0]; }
-
-function userTypesList(){ const base=new Map(((TYPES_BUILTIN&&TYPES_BUILTIN.types)||[]).map(t=>[t.id,JSON.stringify(t)])); return TYPES.filter(t=>base.get(t.id)!==JSON.stringify(t)); }
 
 // base — категория-образец: параметры, фильтры и раздел новой категории берутся у неё
 function cwNewType(then, base){
