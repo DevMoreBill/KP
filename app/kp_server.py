@@ -28,9 +28,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from cbr import cbr_rates
 from config import (APP_TITLE, BASE_PORT, BUNDLE, DATA_DIR, DOCS_DIR, DOCS_SHARE, IMG_DIR, MIME, ROOT, SERVER_MODE,
                     docs_path, message_box, read_text, safe_dir, safe_file, safe_id, store, write_bytes)
+import catalog_migrate
 from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
 from desktop import open_file, open_folder, show_in_folder
-from equipment_types import load_types, save_user_types, types_builtin_path
+from equipment_types import load_types, load_types_builtin, save_user_types, types_builtin_path
 import pdf_convert
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, ensure_templates, list_history,
                           list_templates, open_template_file, put_file, reset_template, restore_history, template_file)
@@ -53,44 +54,13 @@ WEB_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; chars
              '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2'}
 
 
-# Патчи интерфейса: файл из папки patch/web рядом с программой отдаётся вместо встроенного.
-# Проверяется при каждом запросе — чтобы поставить исправление, сервер останавливать не нужно.
-# patch/web/patch.json: {"js/features/clients.js": "<md5 встроенного файла, для которого сделан патч>"} —
-# если встроенный файл уже другой (установлена новая версия программы), патч не применяется.
-PATCH_WEB_DIR = os.path.join(ROOT, 'patch', 'web')
-_md5_cache = {}
-
-
-def _md5(path):
-    st = os.stat(path)
-    key = (path, st.st_mtime, st.st_size)
-    if key not in _md5_cache:
-        with open(path, 'rb') as fh:
-            _md5_cache[key] = hashlib.md5(fh.read()).hexdigest()
-    return _md5_cache[key]
-
-
-def _patch_applies(rel, bundled):
-    try:
-        base = json.loads(read_text(os.path.join(PATCH_WEB_DIR, 'patch.json'))).get(rel)
-    except Exception:
-        base = None
-    return not base or not bundled or _md5(bundled) == base
-
-
 def web_file(rel):
-    """Файл интерфейса по относительному пути внутри app/web (без выхода за пределы папки); сначала — из патча."""
+    """Файл интерфейса по относительному пути внутри app/web (без выхода за пределы папки)."""
     parts = [x for x in rel.replace('\\', '/').split('/') if x and x not in ('.', '..')]
-
-    def pick(base):
-        f = os.path.join(base, *parts)
-        if not os.path.normcase(os.path.abspath(f)).startswith(os.path.normcase(os.path.abspath(base))):
-            return None
-        return f if os.path.isfile(f) and os.path.splitext(f)[1].lower() in WEB_TYPES else None
-    bundled, patched = pick(WEB_DIR), pick(PATCH_WEB_DIR)
-    if patched and _patch_applies('/'.join(parts), bundled):
-        return patched
-    return bundled
+    f = os.path.join(WEB_DIR, *parts)
+    if not os.path.normcase(os.path.abspath(f)).startswith(os.path.normcase(os.path.abspath(WEB_DIR))):
+        return None
+    return f if os.path.isfile(f) and os.path.splitext(f)[1].lower() in WEB_TYPES else None
 
 
 
@@ -269,7 +239,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/ping':
             return self.send_json({'ok': True, 'dataDir': DATA_DIR, 'docsDir': DOCS_DIR, 'local': self.is_local(),
                                    'mode': 'server' if SERVER_MODE else 'local', 'docsShare': DOCS_SHARE,
-                                   'host': socket.gethostname(), 'port': self.server.server_address[1], 'items': store().catalog_count()})
+                                   'host': socket.gethostname(), 'port': self.server.server_address[1], 'items': store().catalog_count(),
+                                   'migration': ((store().kv_get('migrations') or [None])[-1])})
 
         # каталог
         if path == '/api/catalog' and m == 'GET':
@@ -513,11 +484,17 @@ def main():
         prepare_dirs()
         ensure_templates()
         store().migrate_json(DATA_DIR)   # переход с версии, хранившей данные в JSON-файлах
-        seed_catalog()
+        seeded = seed_catalog()
         sync_counter_with_files()
     except Exception as e:
         message_box('Не удалось подготовить папки данных:\n%s\n\n%s' % (DATA_DIR, e))
         return 1
+    try:   # каталог под новую структуру категорий — один раз; перед этим копия базы в data/backup
+        if seeded:
+            catalog_migrate.mark_done(store())   # стартовый каталог уже в новой структуре
+        catalog_migrate.run(store(), load_types_builtin(), (store().kv_get('types') or {}).get('types', []), IMG_DIR, os.path.join(DATA_DIR, 'backup'))
+    except Exception as e:
+        print('Обновление каталога не выполнено (будет повторено при следующем запуске):', e)
     if DATA_DIR.startswith('\\\\'):
         message_box('Папка данных указана в сети (%s).\n\nБазу данных нельзя держать в общей сетевой папке — '
                     'при одновременной работе она может повредиться. Для работы всем отделом используйте '

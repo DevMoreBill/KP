@@ -54,6 +54,12 @@
   dgu:        type «ДГУ», maker, model, series, engine, engineModel, alternator, controller, kw, kwMax, kva, execution, voltage, phases, cat
   light:      те же ключи, что у dgu; type «Осветительная мачта»; execution «На шасси»
   comp_screw: maker, model, series, flow, pressure, kw, drive, vsd, execution, cooling, dryer, voltage, noise, size, mass, cat
+  остальные категории (comp_diesel — дизельные компрессоры, comp_scroll — спиральные, comp_piston, comp_centrifugal,
+  dryer_refrig / dryer_ads — осушители рефрижераторные / адсорбционные, filter — магистральные фильтры, receiver — ресиверы,
+  spare — запасные части и ЗИП, pump, ats, welder) — ключи из "fields" своего типа в equipment_types.json.
+  Запасные части (spare): part — вид из списка values, forType — для какого оборудования, forMaker — производитель техники,
+  engine — двигатель/узел, forModels — модели, к которым подходит, article — артикул, original — «Оригинал»/«Аналог»,
+  service — интервал замены в моточасах.
   chiller:    maker, model, series, coolingCapacity, type, execution, compressorType, compressorCount, refrigerant, evaporatorType, condenserType, coolant, coolantTempIn, coolantTempOut, ambientTemp, powerConsumption, voltage, phases, maxCurrent, eerBrutto, eerNetto, soundPressure1m, soundPressure5m, soundPressure10m, length, width, height, weight, cat
   Поле с "num": true — число (точка как разделитель: 1.08); нет данных — null. Поле с "values" — значение только из этого списка. Пример: execution «Открытое» / «В кожухе» / «Блок-контейнер»; phases «3 фазы» / «1 фаза».
   Новый вид оборудования, которого нет в типах, — "cat": "other" и отметка в отчёте; своих ключей не придумывай.

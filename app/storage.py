@@ -183,9 +183,6 @@ class Store:
     def kp_delete(self, kid):
         self.write('DELETE FROM kp WHERE id=?', (kid,))
 
-    def kp_docx_all(self):
-        return self.all('SELECT id, docx FROM kp WHERE docx IS NOT NULL')
-
     # ---------- контрагенты и проверки ----------
     def clients_all(self):
         return [json.loads(r[0]) for r in self.all('SELECT doc FROM clients ORDER BY updated DESC')]

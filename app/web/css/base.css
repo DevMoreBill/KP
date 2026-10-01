@@ -14,12 +14,10 @@ body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 "Onest",sys
 button,input,textarea,select{font:inherit;color:inherit}
 .chip.sm{padding:3px 10px;font-size:12.5px}
 .ok-t{color:var(--ok)}
-.istat{display:flex;flex-wrap:wrap;gap:6px}
 .chip.on{border-color:var(--ok);color:var(--ok)}
 .cost{display:grid;grid-template-columns:230px 110px 1fr;gap:10px;align-items:end;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--soft)}
-.cinfo{font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-bottom:10px}
 .bad-t{color:var(--danger)}
-@media (max-width:1000px){.cost{grid-template-columns:1fr 1fr}.cinfo{grid-column:1/-1}}
+@media (max-width:1000px){.cost{grid-template-columns:1fr 1fr}}
 #srvBtns{display:inline-flex;gap:8px}
 #srvBtns[hidden],#btnExit[hidden]{display:none}
 .jr{display:grid;grid-template-columns:128px 1fr auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
@@ -48,12 +46,9 @@ input.bad{border-color:var(--danger)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .icon{border:0;background:transparent;cursor:pointer;color:var(--muted);width:32px;height:32px;border-radius:8px;display:inline-grid;place-items:center;font-size:16px}
 .icon:hover{background:var(--soft);color:var(--ink)}
-.details{margin-top:14px;padding-top:16px;border-top:1px solid var(--line);display:grid;gap:18px}
 .sub{font-weight:650;font-size:14px;margin:0 0 8px;display:flex;align-items:center;gap:10px}
 .sub .muted{font-weight:400}
 .muted{color:var(--muted);font-size:13px}
-.media{display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:start}
-.feat{display:grid;grid-template-columns:170px 1fr 32px;gap:8px;margin-bottom:8px}
 .star{font-size:17px}
 .star[aria-pressed=true]{color:var(--navy)}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
@@ -68,7 +63,6 @@ aside{position:sticky;top:84px;align-self:start}
 .msg.err{color:var(--danger)}
 .msg.ok{color:var(--ok)}
 .empty{color:var(--muted);text-align:center;padding:30px 10px}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media (prefers-reduced-motion: reduce){ *{transition:none!important} }
 
 /* кнопка темы в шапке */

@@ -43,26 +43,6 @@ const WIDE_RX=/схем|чертёж|чертеж|характеристик|д�
 
 const galWide=g=> g.wide==='full' ? true : g.wide==='half' ? false : (WIDE_RX.test(g.caption||g.slot||'') || (g.w/g.h)>2.6);
 
-function galleryBlock(x,i){
-  const t=typeById(attrsOf(x).cat), G=x.gallery||[];
-  const slots=(t.gallerySlots&&t.gallerySlots.length?t.gallerySlots:['Фото','Схема']);
-  const used=new Set(G.map(g=>g.slot));
-  const cards=G.map((g,j)=>`<div class="gcard${g.on===false?' off':''}">
-      <img src="${g.src}" alt="">
-      <input type="text" data-p="items.${i}.gallery.${j}.caption" value="${esc(g.caption||'')}" placeholder="Подпись под изображением">
-      <div class="gctl"><select data-p="items.${i}.gallery.${j}.wide" aria-label="Ширина">
-          <option value=""${!g.wide?' selected':''}>Ширина: авто (${galWide({...g,wide:''})?'вся':'половина'})</option><option value="half"${g.wide==='half'?' selected':''}>Половина страницы</option><option value="full"${g.wide==='full'?' selected':''}>Вся ширина</option></select>
-        <label class="row muted" style="gap:6px"><input type="checkbox" data-gon="${i}" data-j="${j}" ${g.on===false?'':'checked'} style="width:auto"> в КП</label>
-        <span style="flex:1"></span>
-        <button class="icon" type="button" data-a="galUp" data-i="${i}" data-j="${j}" aria-label="Выше" ${j===0?'disabled':''}>↑</button>
-        <button class="icon" type="button" data-a="galDown" data-i="${i}" data-j="${j}" aria-label="Ниже" ${j===G.length-1?'disabled':''}>↓</button>
-        <button class="icon" type="button" data-a="galDel" data-i="${i}" data-j="${j}" aria-label="Удалить">✕</button></div></div>`).join('');
-  return `<div><p class="sub">Дополнительные изображения <span class="muted">узлы, контроллер, схемы — выводятся после характеристик</span></p>
-    <div class="chips" style="margin:0 0 10px">${slots.map(s=>`<button class="chip${used.has(s)?' on':''}" type="button" data-a="galAdd" data-i="${i}" data-slot="${esc(s)}">+ ${esc(s)}</button>`).join('')}
-      <button class="chip" type="button" data-a="galAdd" data-i="${i}" data-slot="">+ другое изображение</button></div>
-    <div class="gal" data-gal="${i}" tabindex="0" title="Можно перетащить файлы сюда или вставить из буфера (Ctrl+V)">${cards||'<p class="muted" style="margin:0">Перетащите сюда файлы изображений или вставьте из буфера обмена (Ctrl+V). Схемы и чертежи в PNG сохраняются без потери чёткости.</p>'}</div></div>`;
-}
-
 async function prepGallery(file){
   const url=await fileToURL(file); const im=await readImg(url);
   const max=2000, sc=Math.min(1,max/Math.max(im.width,im.height)); const w=Math.round(im.width*sc), h=Math.round(im.height*sc);

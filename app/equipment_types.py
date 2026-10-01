@@ -11,16 +11,20 @@ def types_builtin_path():
     return os.path.join(BUNDLE, 'app', 'equipment_types.json')
 
 
+def load_types_builtin():
+    try:
+        return json.loads(read_text(types_builtin_path())).get('types', [])
+    except Exception:
+        return []
+
+
 def load_types():
     """Справочник типов оборудования: встроенный (app/equipment_types.json) + свои (data/types.json).
 
     Типы из data/types.json с тем же id заменяют встроенные, новые добавляются в конец,
     а тип с "hidden": true скрывается. Так новые виды оборудования добавляются без правки кода.
     """
-    try:
-        base = json.loads(read_text(types_builtin_path())).get('types', [])
-    except Exception:
-        base = []
+    base = load_types_builtin()
     user = (store().kv_get('types') or {}).get('types', [])
     out = [dict(t) for t in base]
     index = {t.get('id'): i for i, t in enumerate(out)}

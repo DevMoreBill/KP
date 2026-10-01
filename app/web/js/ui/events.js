@@ -85,17 +85,17 @@ document.addEventListener('click', async e=>{
     case 'attrsToGroups': { const g=groupsFromAttrs(it); const keep=(it.groups||[]).filter(x=>!g.some(y=>y.name===x.name)); it.groups=[...g,...keep]; if(!it.hint) it.hint=autoHint(it); it.page=true; toast('Таблица характеристик сформирована'); break; }
     case 'galAdd': return pickGallery(i, b.dataset.slot||'');
     case 'galDel': it.gallery.splice(j,1); break;
-    case 'galUp': [it.gallery[j-1],it.gallery[j]]=[it.gallery[j],it.gallery[j-1]]; break;
-    case 'galDown': [it.gallery[j+1],it.gallery[j]]=[it.gallery[j],it.gallery[j+1]]; break;
     case 'edit': return openEditor(i, b.dataset.tab);
     case 'catOf': { const c=b.dataset.cat; if (!catCache.some(x=>attrsOf(x).cat===c)) { const t=typeById(c); const it2=newItem(); it2.attrs={cat:t.id}; it2.page=true; it2.features=[{id:uid(),label:'',text:''}]; S.items.push(it2); renderForm(); persist(); return openEditor(S.items.length-1,'main'); } return openCatalog({cat:c}); }
     case 'dupItem': { const cp=JSON.parse(JSON.stringify(it)); cp.id=uid(); (cp.features||[]).forEach(f=>{ const old=f.id; f.id=uid(); (cp.gallery||[]).forEach(g=>{ if(g.at==='feat:'+old) g.at='feat:'+f.id; }); });
       (cp.options||[]).forEach(o=>o.id=uid()); S.items.splice(i+1,0,cp); toast('Позиция скопирована'); break; }
     case 'addFeatL': { it.features=it.features||[]; const f={id:uid(),label:b.dataset.l||'',text:''}; it.features.push(f); it.page=true; break; }
     case 'featUp': [it.features[j-1],it.features[j]]=[it.features[j],it.features[j-1]]; break;
-    case 'autoAttrs': it.attrs=Object.fromEntries(Object.entries(extractAttrs(it)).filter(([,v])=>v!==''&&v!=null)); toast('Параметры определены — проверьте'); break;
+    case 'autoAttrs': { const cat=attrsOf(it).cat, t=typeById(cat), keep=new Set(['maker','series','model',...t.fields.map(f=>f.key)]);
+      it.attrs=Object.fromEntries(Object.entries({...extractAttrs(it), ...attrsFromSpec(it,t), ...Object.fromEntries(Object.entries(it.attrs||{}).filter(([,v])=>v!==''&&v!=null)), cat})
+        .filter(([k,v])=>v!==''&&v!=null&&(k==='cat'||keep.has(k)))); toast('Параметры определены по характеристикам — проверьте'); break; }
+    case 'specTpl': { const n=applySpecTemplate(it); it.page=true; toast(n?`Добавлено строк по шаблону категории: ${n} — заполните значения`:'Все строки шаблона категории уже есть'); break; }
     case 'togglePage': it.page=!it.page; if(it.page && !it.features.length && !it.groups.length){ it.features=[{label:'',text:''}]; } break;
-    case 'addFeat': it.features.push({label:'',text:''}); break;
     case 'delFeat': { const f=it.features[j]; if (f&&f.id) it.gallery=(it.gallery||[]).filter(g=>g.at!=='feat:'+f.id); it.features.splice(j,1); break; }
     case 'addGrp': it.groups.push({name:'',rows:[{k:'',v:''}]}); break;
     case 'delGrp': it.groups.splice(j,1); break;

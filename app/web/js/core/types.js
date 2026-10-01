@@ -3,26 +3,53 @@
 
 let TYPES_BUILTIN = null;   // встроенный справочник (app/equipment_types.json) — загружается с сервера
 
-let TYPES = (TYPES_BUILTIN && TYPES_BUILTIN.types) ? TYPES_BUILTIN.types.slice() : [];
+let TYPES = [];   // встроенные + свои типы — загружаются с сервера (loadTypes)
 
 const LEGACY_TYPE = {'ДГУ':'dgu','Осветительная мачта':'light','Шкаф АВР':'ats','Прочее':'other','Опция':'ats'};
 
-function mergeTypes(base, user){
-  const out=(base||[]).map(t=>({...t})); const ix=new Map(out.map((t,i)=>[t.id,i]));
-  for (const t of (user||[])){ if(!t||!t.id) continue; if (ix.has(t.id)) out[ix.get(t.id)]={...out[ix.get(t.id)],...t}; else { ix.set(t.id,out.length); out.push(t); } }
-  return out.filter(t=>!t.hidden);
-}
+// свои типы отдела: новые и изменённые относительно встроенного справочника (сохраняются в базе)
+function userTypesList(){ const base=new Map(((TYPES_BUILTIN&&TYPES_BUILTIN.types)||[]).map(t=>[t.id,JSON.stringify(t)])); return TYPES.filter(t=>base.get(t.id)!==JSON.stringify(t)); }
 
 function typeById(id){ return TYPES.find(t=>t.id===id) || TYPES.find(t=>t.id==='other') || {id:'other',group:'Прочее',name:'Прочее оборудование',item:'Оборудование',coverTitle:'Оборудование',role:'equipment',main:'kw',fields:[],options:[]}; }
 
+// категория по названию: сначала наименование и заголовок страницы, затем заголовок титула; ДГУ — последней
+// (так же определяет app/catalog_migrate.py при обновлении каталога)
 function detectCat(d, a){
   if (d && d.attrs && d.attrs.cat && TYPES.some(t=>t.id===d.attrs.cat)) return d.attrs.cat;
   if (d && d.kind==='option') return 'ats';
   if (d && d.attrs && LEGACY_TYPE[d.attrs.type]) return LEGACY_TYPE[d.attrs.type];
-  const text=[d&&d.name,d&&d.pageTitle,d&&d.hint&&d.hint.title].join(' ');
-  for (const t of TYPES){ if (t.id==='dgu'||!t.match) continue; try{ if (new RegExp(t.match,'i').test(text)) return t.id; }catch(e){} }
-  const dg=TYPES.find(t=>t.id==='dgu'); try{ if (dg && new RegExp(dg.match,'i').test(text)) return 'dgu'; }catch(e){}
+  const dg=TYPES.find(t=>t.id==='dgu');
+  for (const text of [[d&&d.name,d&&d.pageTitle].join(' '), String(d&&d.hint&&d.hint.title||'')]){
+    for (const t of TYPES){ if (t.id==='dgu'||!t.match) continue; try{ if (new RegExp(t.match,'i').test(text)) return t.id; }catch(e){} }
+    try{ if (dg && new RegExp(dg.match,'i').test(text)) return 'dgu'; }catch(e){}
+  }
   return 'other';
+}
+
+// значение параметра из таблицы характеристик по полю find типа (единицы как в app/catalog_migrate.py)
+const UNIT_RX={'м³/мин':'м[³3]\\s*/\\s*мин','л/мин':'л\\s*/\\s*мин','кВт':'квт','бар':'(бар|атм|кгс)','л':'л(?![а-я])','кг':'кг','дБ(А)':'дб','мм':'мм','%':'%','л/ч':'л\\s*/\\s*ч','моточасов':'(моточас|ч(?![а-я]))'};
+const NUM_RX='(\\d+(?:[ \\u00a0]\\d{3})*(?:[.,]\\d+)?)';
+const num_=s=>+String(s).replace(/[ \u00a0]/g,'').replace(',','.');
+const round_=v=>Math.round(v*1000)/1000;
+function parseNumUnit(text, unit){
+  const t=String(text||'').toLowerCase(); let m;
+  if (unit && UNIT_RX[unit] && (m=t.match(new RegExp(NUM_RX+'\\s*'+UNIT_RX[unit])))) return round_(num_(m[1]));
+  if (unit==='м³/мин' && (m=t.match(new RegExp(NUM_RX+'\\s*'+UNIT_RX['л/мин'])))) return round_(num_(m[1])/1000);
+  m=t.match(new RegExp(NUM_RX)); return m?round_(num_(m[1])):null;
+}
+function parseTextVal(text, f){
+  let v=String(text||'').replace(/\s+/g,' ').trim();
+  if (f.key==='voltage'){ const m=v.toLowerCase().match(/(\d{3})\s*в(?![а-я])/); return m?m[1]:''; }
+  if (f.key==='refrigerant'){ const m=v.match(/\bR-?\d{2,4}[A-Za-z]?\b/); return m?m[0].replace('-',''):v; }
+  if (f.unit && v.toLowerCase().endsWith(f.unit.toLowerCase())) v=v.slice(0,-f.unit.length).trim();
+  return v.slice(0,120);
+}
+function attrsFromSpec(d, t){
+  const out={}, rows=(d.groups||[]).flatMap(g=>(g.rows||[]).filter(r=>r.k&&r.v));
+  for (const f of (t.fields||[])){ if (!f.find) continue; let rx; try{ rx=new RegExp(f.find,'i'); }catch(e){ continue; }
+    const r=rows.find(r=>rx.test(String(r.k).trim())); if (!r) continue;
+    const v=f.num?parseNumUnit(r.v,f.unit):parseTextVal(r.v,f); if (v!==null&&v!=='') out[f.key]=v; }
+  return out;
 }
 
 function fmtField(f, v){ if (v==null || v==='') return ''; const s=(f.num&&typeof v==='number')?fnum(v):String(v); return f.unit && !s.includes(f.unit) ? s+' '+f.unit : s; }
@@ -57,13 +84,27 @@ function groupsFromAttrs(x){
   return [...G.entries()].map(([name,rows])=>({name,rows}));
 }
 
+// шаблон таблицы характеристик категории: группы и строки по параметрам типа (значения — из параметров позиции);
+// добавляются только недостающие строки, заполненное не меняется
+function applySpecTemplate(x){
+  const a=attrsOf(x), t=typeById(a.cat); x.groups=x.groups||[]; let n=0;
+  const key=s=>norm(String(s).replace(/,\s*[^,]*$/,''));
+  const rowsOf=[['Основные',{key:'maker',label:'Производитель'}],['Основные',{key:'model',label:'Модель'}],...t.fields.map(f=>[f.group||'Основные',f])];
+  for (const [gname,f] of rowsOf){
+    let g=x.groups.find(g=>norm(g.name)===norm(gname)); if (!g){ g={name:gname,rows:[]}; x.groups.push(g); }
+    if (x.groups.some(gg=>(gg.rows||[]).some(r=>key(r.k)===norm(f.label)||norm(r.k)===norm(f.label)))) continue;
+    g.rows.push({k:f.label+(f.unit?', '+f.unit:''), v:a[f.key]!=null&&a[f.key]!==''?String(f.num&&typeof a[f.key]==='number'?fnum(a[f.key]):a[f.key]):'', hl:!!f.kpi}); n++;
+  }
+  x.groups=x.groups.filter(g=>g.rows.length);
+  return n;
+}
+
 function allPresets(){ return TYPES.flatMap(t=>(t.options||[]).map(o=>Array.isArray(o)?{name:o[0],short:o[1]||o[0],unit:o[2]||'шт.'}:o)); }
 
 function presetsFor(x){ const t=typeById(attrsOf(x).cat); const L=(t.options&&t.options.length)?t.options:[['Доставка до объекта','доставка','усл.'],['Пусконаладочные работы','ПНР','усл.']]; return L.map(o=>Array.isArray(o)?{name:o[0],short:o[1]||o[0],unit:o[2]||'шт.'}:o); }
 
 function newOpt(it, p){ return { id:uid(), name:p?.name||'', short:p?.short||'', unit:p?.unit||'шт.', qty: (p?.unit==='усл.') ? 1 : (+it.qty||1), price:p?.price||0, catId:p?.catId }; }
 
-const EXEC = ['Открытое','В кожухе','Блок-контейнер','На шасси','Кожух на шасси','Контейнер на шасси'];
 
 function kwIn(s){ const m=String(s||'').replace(/\u00A0/g,' ').match(/(\d+(?:[.,]\d+)?)\s*кВт/i); return m?+m[1].replace(',','.'):null; }
 
@@ -77,7 +118,6 @@ function extractAttrs(d){
   const feat=re=>(d.features||[]).find(f=>re.test(norm(f.label)));
   const text=[d.name,d.spec,d.pageTitle,d.photoCaption,...(d.features||[]).map(f=>f.label+' '+f.text)].join(' ');
   const a={};
-  a.type = d.kind==='option' ? 'Опция' : /(^|\s)авр|автоматическ\S* ввод/i.test(d.name||'') ? 'Шкаф АВР' : /генератор|дгу|электростанц|дэс/i.test(text) ? 'ДГУ' : 'Прочее';
   const mk=((d.hint&&d.hint.model)||d.name||'').match(/\b([A-Z]{3,})\b/); a.maker = mk?mk[1]:'';
   const md=(d.name||'').match(/\b(HG\s*\d+\s*[A-ZА-Яа-я_]{0,4})/i); a.model = md?md[1].replace(/\s+/g,' ').trim():'';
   const sr=a.model.match(/\d+\s*([A-ZА-Я_]+)/i); a.series = sr?sr[1].toUpperCase().replace(/В/g,'B').replace(/С/g,'C').replace(/А/g,'A').replace(/_A$/,''):'';
@@ -97,4 +137,6 @@ function extractAttrs(d){
   return a;
 }
 
-function attrsOf(d){ const a=extractAttrs(d); const o=d.attrs||{}; for(const k in o){ if(o[k]!==''&&o[k]!=null) a[k]=o[k]; } a.cat=detectCat(d,a); a.type=typeById(a.cat).name; return a; }
+function attrsOf(d){ const a=extractAttrs(d); const o=d.attrs||{}; for(const k in o){ if(o[k]!==''&&o[k]!=null) a[k]=o[k]; } a.cat=detectCat(d,a);
+  const t=typeById(a.cat); if ((d.groups||[]).length){ const s=attrsFromSpec(d,t); for (const k in s) if (o[k]===''||o[k]==null) a[k]=s[k]; }
+  a.type=t.name; return a; }

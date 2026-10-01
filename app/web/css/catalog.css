@@ -27,18 +27,12 @@
   .opt{grid-template-columns:1fr 64px 1fr 32px}.opt .s{display:none}
   .wrap{grid-template-columns:1fr;padding:16px}
   aside{position:static}
-  .item-head{grid-template-columns:1fr 1fr}
   .item-no{display:none}
-  .item-head>label:first-of-type{grid-column:1/-1}
-  .item-head .acts{grid-column:1/-1;justify-content:flex-end}
-  .item-sum{flex-wrap:wrap;gap:10px}
   .brand small{display:none}
   .mbar{display:flex}
   body{padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}
   .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
   .g4{grid-template-columns:1fr 1fr} .g3{grid-template-columns:1fr}
-  .media{grid-template-columns:1fr}
-  .feat{grid-template-columns:1fr 32px} .feat input:first-child{grid-column:1/-1}
 }
 
 /* Окно каталога: шапка с поиском, категории и фильтры | список | карточка, внизу — пакетные действия */
@@ -169,3 +163,5 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .cw-h .btn{white-space:nowrap}
 .catwin.tiny .cw-lbl{display:none}
 .catwin.tiny .cw-h{gap:4px;padding:10px 8px}
+.pv-pf{margin:-4px 0 10px;font-size:12px}
+.mig{margin:4px 0 12px;padding-left:20px;font-size:14px;line-height:1.55}

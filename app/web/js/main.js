@@ -7,7 +7,7 @@
   { $('#srvBtns').hidden=false; $('#btnExit').hidden = SRV.info.mode==='server' || SRV.info.local===false; document.title='Конструктор КП — ПНЕВМОТЕХ';
     if (SRV.info.local===false || SRV.info.mode==='server'){ const st=$('#saved'); if (st) st.insertAdjacentHTML('beforebegin', `<span class="srvtag" title="Общая база отдела">Сервер отдела: ${esc(SRV.info.host||location.hostname)}</span>`); } }
   await loadTypes(); await loadClients(); await loadManagers(); await loadTemplates(); await refreshCat(); renderForm();
-  if (!S.items.length && catCache.length) openCatalog({});
+  if (!showMigrationNotice(SRV.info.migration) && !S.items.length && catCache.length) openCatalog({});
 })();
 
 renderForm();

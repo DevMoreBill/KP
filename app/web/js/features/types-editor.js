@@ -3,7 +3,6 @@
 
 function openTypesEditor(){
   const d=$('#dlg'); d.classList.add('wide');
-  const userTypes=()=>{ const base=new Map(((TYPES_BUILTIN&&TYPES_BUILTIN.types)||[]).map(t=>[t.id,JSON.stringify(t)])); return TYPES.filter(t=>base.get(t.id)!==JSON.stringify(t)); };
   d.innerHTML=`<div class="dlg-h"><h3>Типы оборудования</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
    <div class="dlg-b"><p class="muted" style="margin-top:0">Тип задаёт, какие параметры есть у оборудования, по каким из них работают фильтры каталога, что выводится на титуле и какие опции предлагаются. Добавить новый тип можно без программирования: нажмите «+ Новый тип» и поправьте поля по образцу.</p>
    <div class="tlist">${TYPES.map(t=>`<div class="trow"><b>${esc(t.name)}</b><span class="muted">${esc(t.group||'')} · ${t.fields.length} параметров · основной: ${esc((t.fields.find(f=>f.key===t.main)||{}).label||t.main||'—')}</span>
@@ -24,8 +23,8 @@ function openTypesEditor(){
       if (!/^[a-z][a-z0-9_]{1,30}$/.test(j.id||'')) { $('#tErr').textContent='id — латиница, цифры и «_», начинается с буквы'; return; }
       if (!j.name || !Array.isArray(j.fields)) { $('#tErr').textContent='Нужны поля name и fields'; return; }
       if (j.fields.some(f=>!f.key||!f.label)) { $('#tErr').textContent='У каждого параметра нужны key и label'; return; }
-      const list=userTypes().filter(x=>x.id!==j.id); list.push(j); await save(list); };
-    const del=$('#tDel'); if (del) del.onclick=async()=>{ if(!confirm('Удалить тип? Позиции этого типа останутся в каталоге как «Прочее».')) return; await save(userTypes().filter(x=>x.id!==t.id)); };
+      const list=userTypesList().filter(x=>x.id!==j.id); list.push(j); await save(list); };
+    const del=$('#tDel'); if (del) del.onclick=async()=>{ if(!confirm('Удалить тип? Позиции этого типа останутся в каталоге как «Прочее».')) return; await save(userTypesList().filter(x=>x.id!==t.id)); };
     $('#tJson').focus(); };
   d.querySelector('.tlist').onclick=e=>{ const b=e.target.closest('[data-tedit]'); if(b) edit(typeById(b.dataset.tedit)); };
   $('#tNew').onclick=()=>edit({id:'new_type',group:'Компрессоры',name:'Новый тип',item:'Оборудование',coverTitle:'Оборудование',role:'equipment',main:'kw',match:'',

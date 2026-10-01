@@ -77,6 +77,10 @@ jobs:
           $types = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/types'
           Write-Host "Типов оборудования: $($types.types.Count)"
           if ($types.types.Count -lt 5) { throw 'Справочник типов не загрузился' }
+          foreach ($id in @('comp_diesel', 'comp_scroll', 'dryer_refrig', 'dryer_ads', 'filter', 'receiver', 'spare')) {
+            if (-not ($types.types | Where-Object { $_.id -eq $id })) { throw "Нет категории $id" }
+          }
+          if ($cat.Count -lt 1000) { throw "Стартовый каталог неполный: $($cat.Count)" }
           $sk = Invoke-WebRequest -Uri 'http://127.0.0.1:17845/tpl/pnevmotekh/skeleton.js' -UseBasicParsing
           if ($sk.Content -notmatch 'function kpSkeleton') { throw 'Скелет шаблона (skeleton.js) не отдаётся' }
           $ed = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/tpl/pnevmotekh/editor.json'
@@ -117,33 +121,6 @@ jobs:
           $name = [uri]::EscapeDataString('Проверка КП.docx')
           Invoke-RestMethod -Method Put -Uri "http://127.0.0.1:17845/api/kp/$($n.id)/docx?name=$name" -Body ([byte[]](80,75,3,4)) | Out-Null
           if (-not (Test-Path -LiteralPath (Join-Path $dir 'Коммерческие предложения\Проверка КП.docx'))) { throw 'DOCX не сохранился' }
-          # патч на работающую программу (Windows PowerShell 5.1): старый clients.js → патч → сервер отдаёт исправленный без перезапуска
-          $mei = Get-ChildItem -Path $env:TEMP -Directory -Filter '_MEI*' | Where-Object { Test-Path (Join-Path $_.FullName 'app\web\js\features\clients.js') } | Select-Object -First 1
-          if (-not $mei) { throw 'Не найдена распакованная программа (_MEI…) для проверки патча' }
-          Copy-Item -LiteralPath '.github\ci\clients_old.js' -Destination (Join-Path $mei.FullName 'app\web\js\features\clients.js') -Force
-          $js = (Invoke-WebRequest -Uri 'http://127.0.0.1:17845/web/js/features/clients.js' -UseBasicParsing).Content
-          if ($js -match 'const OPF_SHORT=') { throw 'Старая версия clients.js не подложилась' }
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'patches\2026-09-30 названия клиентов\install.ps1' -SkipNames
-          if ($LASTEXITCODE -ne 0) { throw "Патч завершился с ошибкой ($LASTEXITCODE)" }
-          $js = (Invoke-WebRequest -Uri 'http://127.0.0.1:17845/web/js/features/clients.js' -UseBasicParsing).Content
-          if ($js -notmatch 'const OPF_SHORT=') { throw 'После патча сервер отдаёт прежний clients.js' }
-          Write-Host 'Патч без остановки сервера: работает'
-          $af = Join-Path $mei.FullName 'app\web\js\features\ai-autofill.js'
-          Copy-Item -LiteralPath '.github\ci\ai-autofill_old.js' -Destination $af -Force
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'patches\2026-09-30 копирование запроса\install.ps1'
-          if ($LASTEXITCODE -ne 0) { throw "Патч «Скопировать запрос» завершился с ошибкой ($LASTEXITCODE)" }
-          $js = (Invoke-WebRequest -Uri 'http://127.0.0.1:17845/web/js/features/ai-autofill.js' -UseBasicParsing).Content
-          if ($js -notmatch 'function copyToClipboard\(') { throw 'После патча сервер отдаёт прежний ai-autofill.js' }
-          Write-Host 'Патч «Скопировать запрос»: работает'
-          # патч «Каталог»: убрать новое окно каталога (как в прежней версии) → патч → сервер отдаёт новый интерфейс
-          Remove-Item -LiteralPath (Join-Path $mei.FullName 'app\web\js\features\catalog-window.js') -Force
-          $code = try { (Invoke-WebRequest -Uri 'http://127.0.0.1:17845/web/js/features/catalog-window.js' -UseBasicParsing).StatusCode } catch { 404 }
-          if ($code -eq 200) { throw 'Прежняя версия интерфейса не подложилась' }
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'patches\2026-10-01 каталог\install.ps1'
-          if ($LASTEXITCODE -ne 0) { throw "Патч «Каталог» завершился с ошибкой ($LASTEXITCODE)" }
-          $js = (Invoke-WebRequest -Uri 'http://127.0.0.1:17845/web/js/features/catalog-window.js' -UseBasicParsing).Content
-          if ($js -notmatch 'function cwMove\(') { throw 'После патча сервер не отдаёт новое окно каталога' }
-          Write-Host 'Патч «Каталог»: работает'
           Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/shutdown' | Out-Null
           if (-not $p.WaitForExit(15000)) { $p.Kill(); throw 'EXE не завершился по команде «Выход»' }
           Write-Host 'Проверка пройдена'
@@ -157,23 +134,6 @@ jobs:
           Copy-Item -Recurse -LiteralPath 'server-setup' -Destination $pkg
           Copy-Item -LiteralPath 'Инструкция.txt' -Destination $pkg
           Compress-Archive -Path "$pkg\*" -DestinationPath "dist\$env:KP_EXE_NAME.zip" -Force
-
-      - name: Комплект горячего патча каталога (без остановки сервера)
-        if: matrix.arch == 'x64'
-        shell: pwsh
-        run: |
-          $k = Join-Path $PWD 'pkg\Патч каталога'
-          New-Item -ItemType Directory -Force -Path $k | Out-Null
-          Copy-Item -Path 'patches\2026-10-01 каталог\*' -Destination $k -Recurse
-          Copy-Item -LiteralPath 'app\web' -Destination (Join-Path $k 'web') -Recurse
-          Compress-Archive -Path "$k\*" -DestinationPath 'dist\Патч каталога.zip' -Force
-
-      - uses: actions/upload-artifact@v4
-        if: matrix.arch == 'x64'
-        with:
-          name: Патч каталога (без остановки сервера)
-          path: dist/Патч каталога.zip
-          if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:

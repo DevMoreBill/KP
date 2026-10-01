@@ -54,7 +54,7 @@ async function syncCatalog(number){
       groups: (it.groups||[]).some(g=>(g.rows||[]).some(r=>r.k||r.v)) ? it.groups : (base.groups||[]),
       hint: it.hint||base.hint||null, photo: it.photo||base.photo||null, logo: it.logo||base.logo||null, gallery: (it.gallery&&it.gallery.length)?it.gallery.map(({id,src,w,h,caption,slot,wide,on,at})=>({id,src,w,h,caption,slot,wide,on,at})):(base.gallery||[]), updatedAt: new Date().toISOString(),
       attrs: {...(base.attrs||{}), ...Object.fromEntries(Object.entries(it.attrs||{}).filter(([,v])=>v!==''&&v!=null))} });
-    if (!base.kind && attrsOf(base).type==='Опция') base.kind='option';
+    if (base.photoFrom && (!doc || JSON.stringify(base.photo||null)!==JSON.stringify(doc.photo||null))) delete base.photoFrom;
     base.prices = (base.prices||[]).filter(p => !number || p.number!==number);
     base.prices.unshift({ date:S.date, client:S.client, price:it.price, cur:kpCur(), cost:it.cost||0, costCur:it.costCur||'RUB', qty:+it.qty, number:number||'' });
     base.prices = base.prices.slice(0,50);
@@ -85,4 +85,24 @@ async function saveCatalog(i){
   try{ const sv=await store().put(doc); if(sv&&sv.photo) it.photo=sv.photo; if(sv&&sv.logo) it.logo=sv.logo; it.catId=id; await refreshCat(); toast(store().persistent?'Позиция сохранена в каталог':'Сохранено до закрытия страницы — выгрузите каталог в файл'); }
   catch(e){ toast('Не удалось сохранить в каталог'); }
   renderForm(); persist();
+}
+
+// разовое сообщение после обновления каталога под новые категории (app/catalog_migrate.py)
+function showMigrationNotice(mg){
+  const r=mg&&mg.report; if (!r || r.empty) return false;
+  try{ if (localStorage.getItem('kp.migSeen')===mg.id) return false; }catch(e){}
+  const d=$('#dlg'); d.classList.remove('wide');
+  const moved=Object.entries(r.moved||{});
+  d.innerHTML=`<div class="dlg-h"><h3>Каталог обновлён</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
+   <div class="dlg-b"><p style="margin-top:0">Новые категории: дизельные и спиральные компрессоры, осушители рефрижераторные и адсорбционные, магистральные фильтры, ресиверы, запасные части и ЗИП. У каждой категории — свои параметры, фильтры и шаблон характеристик.</p>
+   ${moved.length?`<p class="sub">Перенесено по категориям</p><ul class="mig">${moved.map(([k,v])=>`<li>${esc(k)} — <b>${v}</b></li>`).join('')}</ul>`:''}
+   <ul class="mig"><li>Параметров заполнено из таблиц характеристик: <b>${r.attrsFilled||0}</b></li>
+     <li>Фото от похожей модели того же производителя: <b>${r.photos||0}</b>${r.logos?`, логотипов: <b>${r.logos}</b>`:''}</li>
+     ${r.noPhotoCount?`<li>Без фото (нет похожей модели того же производителя): <b>${r.noPhotoCount}</b> — ${esc((r.noPhoto||[]).slice(0,5).join('; '))}${r.noPhotoCount>5?'…':''}</li>`:''}</ul>
+   <p class="muted">Перед обновлением сделана копия базы${mg.backup?': '+esc(mg.backup):''}.</p>
+   <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>Понятно</button><button class="btn primary" type="button" data-mig="cat">Открыть каталог</button></div></div>`;
+  const seen=()=>{ try{ localStorage.setItem('kp.migSeen', mg.id); }catch(e){} };
+  d.showModal(); d.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{ seen(); d.close(); });
+  d.querySelector('[data-mig]').onclick=()=>{ seen(); d.close(); openCatalog({}); };
+  return true;
 }
