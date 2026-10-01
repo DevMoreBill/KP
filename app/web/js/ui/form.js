@@ -71,6 +71,6 @@ function renderForm(){
 
 // раскрывающиеся меню и подсказки закрываются щелчком мимо них (и после выбора пункта меню)
 document.addEventListener('click', e=>{
-  document.querySelectorAll('details.tip[open], details.topmenu[open]').forEach(d=>{
+  document.querySelectorAll('details.tip[open], details.topmenu[open], details.pickm[open]').forEach(d=>{
     if (!d.contains(e.target) || (d.classList.contains('topmenu') && e.target.closest('.menu-l button'))) d.open=false; });
 });
