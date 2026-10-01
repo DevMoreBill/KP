@@ -74,10 +74,10 @@ jobs:
           if (-not $one.name) { throw 'Позиция каталога не читается из базы' }
           # изображения разложены по папкам категорий и отдаются по адресу /img/<раздел>/<категория>/…
           $withPhoto = $cat | Where-Object { $_.photo -and $_.photo.src } | Select-Object -First 1
-          if ($withPhoto.photo.src -notmatch '^/img/[^/]+/[^/]+/') { throw "Фото не в папке категории: $($withPhoto.photo.src)" }
-          $ph = Invoke-WebRequest -Uri ("http://127.0.0.1:17845" + (($withPhoto.photo.src -split '/' | ForEach-Object { [uri]::EscapeDataString($_) }) -join '/')) -UseBasicParsing
+          if ($withPhoto.photo.src -cnotmatch '^/img/[a-z0-9-]+/[a-z0-9-]+/[a-z0-9-]+/[a-z0-9_.-]+$') { throw "Фото не в папке категории латиницей: $($withPhoto.photo.src)" }
+          $ph = Invoke-WebRequest -Uri ("http://127.0.0.1:17845" + $withPhoto.photo.src) -UseBasicParsing
           if ($ph.StatusCode -ne 200) { throw 'Фото из папки категории не отдаётся' }
-          if (-not (Test-Path -LiteralPath (Join-Path $dir 'data\img\Логотипы'))) { throw 'Нет папки логотипов' }
+          if (-not (Test-Path -LiteralPath (Join-Path $dir 'data\img\logos'))) { throw 'Нет папки логотипов' }
           $tpl = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/templates'
           if ($tpl.Count -lt 1) { throw 'Шаблоны КП не найдены' }
           $types = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/types'

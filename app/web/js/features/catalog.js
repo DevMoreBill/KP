@@ -92,7 +92,7 @@ function showMigrationNotice(list){
   const ms=(list||[]).filter(m=>m&&m.report&&!m.report.empty); if (!ms.length) return false;
   const key=ms.map(m=>m.id+'@'+m.at).join('|');
   try{ if (localStorage.getItem('kp.migSeen')===key) return false; }catch(e){}
-  const r=(ms.find(m=>m.id==='catalog-structure-2026-10')||{}).report, im=(ms.find(m=>m.id==='images-folders-2026-10')||{}).report;
+  const r=(ms.find(m=>m.id==='catalog-structure-2026-10')||{}).report, im=(ms.find(m=>m.id==='images-ascii-2026-10')||{}).report;
   const bk=ms.map(m=>m.backup).filter(Boolean)[0];
   const moved=r?Object.entries(r.moved||{}):[];
   const d=$('#dlg'); d.classList.remove('wide');
@@ -102,7 +102,7 @@ function showMigrationNotice(list){
    <ul class="mig"><li>Параметров заполнено из таблиц характеристик: <b>${r.attrsFilled||0}</b></li>
      <li>Фото от похожей модели того же производителя: <b>${r.photos||0}</b>${r.logos?`, логотипов: <b>${r.logos}</b>`:''}</li>
      ${r.noPhotoCount?`<li>Без фото (нет похожей модели того же производителя): <b>${r.noPhotoCount}</b> — ${esc((r.noPhoto||[]).slice(0,5).join('; '))}${r.noPhotoCount>5?'…':''}</li>`:''}</ul>`:''}
-   ${im?`<p class="sub">Изображения разложены по папкам</p><ul class="mig"><li>Папка data\\img: «Раздел / Категория / Производитель», логотипы — «Логотипы»; папок: <b>${im.folders}</b>, файлов: <b>${im.files}</b>${im.unused?`, из них не используются: <b>${im.unused}</b> (папка «Не используются»)`:''}</li></ul>`:''}
+   ${im?`<p class="sub">Изображения разложены по папкам</p><ul class="mig"><li>Папка data\\img: раздел / категория / производитель латиницей (например, compressors\\screw-compressors\\dalgakiran), логотипы — logos; папок: <b>${im.folders}</b>, файлов: <b>${im.files}</b>${im.unused?`, без ссылок: <b>${im.unused}</b> (папка unused)`:''}</li></ul>`:''}
    <p class="muted">Перед обновлением сделана копия базы${bk?': '+esc(bk):''}.</p>
    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>Понятно</button><button class="btn primary" type="button" data-mig="cat">Открыть каталог</button></div></div>`;
   const seen=()=>{ try{ localStorage.setItem('kp.migSeen', key); }catch(e){} };

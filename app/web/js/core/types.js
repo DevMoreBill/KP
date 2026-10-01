@@ -99,14 +99,10 @@ function applySpecTemplate(x){
   return n;
 }
 
-// папка изображения позиции в data/img: «Раздел/Категория/Производитель», логотипы — «Логотипы»
+// что за изображение: по этим данным сервер выбирает папку data/img/<раздел>/<категория>/<производитель> (app/images.py)
 function imgPlace(x, kind, g){
-  const a=attrsOf(x), t=typeById(a.cat), part=s=>String(s||'').replace(/\s*[\\/]+\s*/g,'-').trim();
-  if (kind==='logo') return { dir:'Логотипы', title:part(a.maker)||'Логотип' };
-  const mk=String(a.maker||'').trim(), md=String(a.model||'').trim();
-  const model = md && mk && md.toLowerCase().startsWith(mk.toLowerCase()) ? md : [mk, md].filter(Boolean).join(' ') || x.name || '';
-  return { dir:[t.group||'Прочее', t.name, a.maker||'Без производителя'].map(part).join('/'),
-    title: kind==='gallery' ? `${model} — ${(g&&(g.caption||g.slot))||'изображение'}` : model };
+  const a=attrsOf(x);
+  return { cat:a.cat, maker:a.maker||'', model:a.model||'', name:x.name||'', kind, caption:(g&&(g.caption||g.slot))||'' };
 }
 
 function allPresets(){ return TYPES.flatMap(t=>(t.options||[]).map(o=>Array.isArray(o)?{name:o[0],short:o[1]||o[0],unit:o[2]||'шт.'}:o)); }

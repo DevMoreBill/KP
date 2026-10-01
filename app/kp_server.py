@@ -32,6 +32,7 @@ from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
 from desktop import open_file, open_folder, show_in_folder
 from equipment_types import load_types, load_types_builtin, save_user_types, types_builtin_path
 import pdf_convert
+import images
 from images import ImageStore, mark_organized, organize_existing
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, ensure_templates, list_history,
                           list_templates, open_template_file, put_file, reset_template, restore_history, template_file)
@@ -263,10 +264,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({'ok': True})
 
         # изображения
-        # изображения: папки «раздел / категория / производитель» (app/images.py); одинаковые хранятся один раз
+        # изображения: папки «раздел/категория/производитель» латиницей (app/images.py); одинаковые хранятся один раз
         if path == '/api/img' and m == 'POST':
             ext = '.png' if q.get('ext') == 'png' else '.jpg'
-            rel = IMAGES.put(self.body(), ext, q.get('dir') or '', q.get('title') or '')
+            tmap = {t.get('id'): t for t in load_types()['types']}
+            folder, title = images.place(tmap.get(q.get('cat')), q.get('maker'), q.get('model'), q.get('name'), q.get('kind') or 'photo', q.get('caption'))
+            rel = IMAGES.put(self.body(), ext, folder, title)
             return self.send_json({'name': rel})
         r = re.match(r'^/img/(.+)$', path)
         if r:
