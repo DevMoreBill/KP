@@ -293,10 +293,10 @@ class Handler(BaseHTTPRequestHandler):
 
         # PDF: чем можно преобразовать; преобразование присланного DOCX (предпросмотр) без записи в журнал
         if path == '/api/pdf' and m == 'GET':
-            return self.send_json(pdf_convert.available())
+            return self.send_json(pdf_convert.available(cp().keys().get('convertapiKey')))
         if path == '/api/pdf' and m == 'POST':
             try:
-                data = pdf_convert.convert_bytes(self.body())
+                data = pdf_convert.convert_bytes(self.body(), cp().keys().get('convertapiKey'))
             except Exception as e:
                 return self.send(422, 'text/plain; charset=utf-8', 'PDF не создан: %s' % e)
             return self.send(200, 'application/pdf', data, self.attachment(safe_file(q.get('name')) or 'КП.pdf'))
@@ -364,7 +364,7 @@ class Handler(BaseHTTPRequestHandler):
             pdf = pdf_of(f)
             if m == 'POST':
                 try:
-                    pdf_convert.convert_file(f, pdf)
+                    pdf_convert.convert_file(f, pdf, cp().keys().get('convertapiKey'))
                 except Exception as e:
                     return self.send(422, 'text/plain; charset=utf-8', 'PDF не создан: %s' % e)
                 return self.send_json({'ok': True, 'path': pdf, 'local': self.is_local()})
