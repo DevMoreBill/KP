@@ -131,7 +131,7 @@ async function download(){
     const blob = await renderDocx(St, pack, pack.settings);
     btn.textContent='Сохраняю в журнал…';
     await syncCatalog(S.number); await saveClient(true);
-    for (const it of S.items){ it.photo=await uploadImg(it.photo); it.logo=await uploadImg(it.logo); if (it.gallery) for (const g of it.gallery){ const u=await uploadImg(g); if(u) g.src=u.src; } }
+    for (const it of S.items){ it.photo=await uploadImg(it.photo, imgPlace(it,'photo')); it.logo=await uploadImg(it.logo, imgPlace(it,'logo')); if (it.gallery) for (const g of it.gallery){ const u=await uploadImg(g, imgPlace(it,'gallery',g)); if(u) g.src=u.src; } }
     if (!S.managerId && String(S.manager.name||'').trim()) await saveManager(true);   // новый менеджер попадает в справочник
     const t=totalsS(), fn=fileName();
     await api(`/api/kp/${S.kpId}/docx?name=${encodeURIComponent(fn)}&dir=${encodeURIComponent(managerFolder())}`,{method:'PUT',body:blob});

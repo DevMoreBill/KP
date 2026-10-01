@@ -9,10 +9,12 @@ async function api(path, opts={}){
   const ct = r.headers.get('content-type')||''; return ct.includes('json') ? r.json() : r.text();
 }
 
-async function uploadImg(img){
+// place — куда положить на сервере: {dir:'Раздел/Категория/Производитель', title:'Модель'} (см. imgPlace, app/images.py)
+async function uploadImg(img, place){
   if (!img || !String(img.src).startsWith('data:')) return img;
   const ext = img.src.startsWith('data:image/png') ? 'png' : 'jpg';
-  const r = await api('/api/img?ext='+ext, {method:'POST', body: await dataURLtoBlobAsync(img.src)});
+  const q = `ext=${ext}&dir=${encodeURIComponent(place?.dir||'')}&title=${encodeURIComponent(place?.title||'')}`;
+  const r = await api('/api/img?'+q, {method:'POST', body: await dataURLtoBlobAsync(img.src)});
   return { src:'/img/'+r.name, w:img.w, h:img.h };
 }
 

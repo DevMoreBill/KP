@@ -33,11 +33,14 @@ def seed_catalog():
         return False
     seed = os.path.join(BUNDLE, 'seed', 'data')
     img = os.path.join(seed, 'img')
-    if os.path.isdir(img):
-        for name in os.listdir(img):
-            target = os.path.join(IMG_DIR, name)
-            if not os.path.exists(target):
-                shutil.copyfile(os.path.join(img, name), target)
+    if os.path.isdir(img):   # изображения — с папками категорий (см. app/images.py)
+        for dp, dn, fn in os.walk(img):
+            for name in fn:
+                src = os.path.join(dp, name)
+                target = os.path.join(IMG_DIR, os.path.relpath(src, img))
+                if not os.path.exists(target):
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
+                    shutil.copyfile(src, target)
     cat = os.path.join(seed, 'catalog')
     if os.path.isdir(cat):
         for name in os.listdir(cat):
