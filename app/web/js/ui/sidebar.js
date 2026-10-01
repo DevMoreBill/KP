@@ -29,13 +29,12 @@ function renderSide(){
   const pr = problems();
   const cs=curSh(kpCur());
   const mt=$('#mtotal'); if(mt) mt.textContent=money(t.sum)+' '+cs;
-  const withCost=S.items.filter(x=>x.cost && costKP(x)>0);
-  const costSum=withCost.reduce((s,x)=>s+costKP(x)*(+x.qty||0),0), saleSum=withCost.reduce((s,x)=>s+KPGen.netPrice(x)*(+x.qty||0),0);
-  const mBlock = withCost.length ? `<div class="mrg"><div class="lab">Для внутреннего расчёта — в КП не выводится</div><dl>
-     <dt>Закупка${withCost.length<S.items.length?` (${withCost.length} из ${S.items.length} поз.)`:''}</dt><dd>${money(Math.round(costSum))} ${cs}</dd>
-     <dt>Продажа тех же позиций${withCost.some(x=>KPGen.unitDisc(x))?' (со скидкой)':''}</dt><dd>${money(saleSum)} ${cs}</dd>
-     <dt>Прибыль</dt><dd>${money(Math.round(saleSum-costSum))} ${cs}</dd>
-     <dt>Маржа / наценка</dt><dd>${saleSum?((saleSum-costSum)/saleSum*100).toFixed(1).replace('.',','):'—'} % / ${costSum?((saleSum-costSum)/costSum*100).toFixed(1).replace('.',','):'—'} %</dd></dl></div>` : '';
+  const ec=kpEconomics(), pc=v=>v==null?'—':v.toFixed(1).replace('.',',');
+  const mBlock = ec.withCost ? `<div class="mrg"><div class="lab">Для внутреннего расчёта — в КП не выводится</div><dl>
+     <dt>Закупка${ec.withCost<ec.positions?` (${ec.withCost} из ${ec.positions} поз.)`:''}</dt><dd>${money(ec.cost)} ${cs}</dd>
+     <dt>Продажа тех же позиций${ec.discount?' (со скидкой)':''}</dt><dd>${money(ec.sale)} ${cs}</dd>
+     <dt>Прибыль</dt><dd>${money(ec.profit)} ${cs}</dd>
+     <dt>Маржа / наценка</dt><dd>${pc(ec.margin)} % / ${pc(ec.markup)} %</dd></dl></div>` : '';
   const rubEq = kpCur()!=='RUB' && rateOf(kpCur())>0 ? `<dt>В рублях по курсу</dt><dd>${money(Math.round(t.sum*rateOf(kpCur())))}</dd>` : '';
   const kn=$('#kpno'); if(kn) kn.textContent = S.number ? 'КП № '+S.number : '';
   $('#side').innerHTML = `<div class="total"><div class="lab">Итого к оплате с НДС</div>
