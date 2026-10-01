@@ -135,10 +135,12 @@ async function download(){
     if (!S.managerId && String(S.manager.name||'').trim()) await saveManager(true);   // новый менеджер попадает в справочник
     const t=totalsS(), fn=fileName();
     await api(`/api/kp/${S.kpId}/docx?name=${encodeURIComponent(fn)}&dir=${encodeURIComponent(managerFolder())}`,{method:'PUT',body:blob});
+    if (!S.createdAt) S.createdAt=new Date().toISOString();   // когда КП создано (для журнала)
     const clean=JSON.parse(JSON.stringify(S,(k,v)=>k.startsWith('_')?undefined:v));
     await api(`/api/kp/${S.kpId}/state`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(clean)});
-    const meta={ id:S.kpId, number:S.number, date:S.date, client:S.client, sum:t.sum, units:t.units, positions:S.items.length,
-      items:S.items.map(x=>x.name).slice(0,3), file:fn, manager:S.manager.name, savedAt:new Date().toISOString() };
+    const meta={ id:S.kpId, number:S.number, date:S.date, client:S.client, clientInn:S.clientInn||'', sum:t.sum, units:t.units, positions:S.items.length,
+      items:S.items.map(x=>x.name).slice(0,3), file:fn, manager:S.manager.name, managerPost:S.manager.position||'',
+      createdAt:S.createdAt, savedAt:new Date().toISOString(), econ:kpEconomics() };
     await api(`/api/kp/${S.kpId}/meta`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(meta)});
     // PDF рядом с .docx — по галочке «Также сохранить в PDF»
     let pdfOk=false, pdfErr='';

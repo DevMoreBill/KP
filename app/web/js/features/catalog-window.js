@@ -295,6 +295,14 @@ async function cwDup(id){ const x=await fullDoc(CW.docs.find(z=>z.id===id)); if 
 
 async function cwImportFile(f){
   try{ const j=JSON.parse(await f.text()); const items=Array.isArray(j)?j:j.items; if(!Array.isArray(items)) throw 0;
+    // новые категории из файла (types): добавляются к своим типам; категории с уже существующим id не меняются
+    let nt=0;
+    if (Array.isArray(j.types)){
+      const add=j.types.filter(t=>t && /^[a-z][a-z0-9_]{1,30}$/.test(t.id||'') && t.name && Array.isArray(t.fields) && t.fields.every(fl=>fl&&fl.key&&fl.label) && !TYPES.some(x=>x.id===t.id));
+      if (add.length){ cwBusy('Добавляю категории: '+add.map(t=>t.name).join(', '));
+        await api('/api/types',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({version:1,types:[...userTypesList(), ...add]})});
+        await loadTypes(); catCache.forEach(cwForget); nt=add.length; }
+    }
     const ex=new Map((await store().list()).map(z=>[z.id,z])); let n=0;
     for (const x of items){ if(!(x&&x.id&&x.name)) continue; const o=ex.get(x.id); cwBusy(`Загружаю каталог: ${++n} из ${items.length}`);
       if (o){ if(!x.price && o.price) x.price=o.price; if((!x.prices||!x.prices.length) && o.prices&&o.prices.length) x.prices=o.prices; if(!x.options&&o.options) x.options=o.options; }
@@ -304,7 +312,7 @@ async function cwImportFile(f){
     for (const id of rmList){ const o=ex.get(id); if(!o) continue; const keepId=(j.merge&&j.merge[id])||null; const k=keepId&&byId.get(keepId);
       if (k && o.prices && o.prices.length){ k.prices=[...(o.prices||[]),...(k.prices||[])].slice(0,50); if(!k.price&&o.price) k.price=o.price; await store().put(k); }
       await store().del(id); rmN++; }
-    CW.busy=''; await cwReload(); CW.note=`Загружено позиций: ${n}`+(rmN?`, удалено дубликатов: ${rmN}`:''); cwRedraw(); }
+    CW.busy=''; await cwReload(); CW.note=`Загружено позиций: ${n}`+(nt?`, новых категорий: ${nt}`:'')+(rmN?`, удалено дубликатов: ${rmN}`:''); cwRedraw(); }
   catch(e){ CW.busy=''; cwNote('Это не файл каталога КП'); }
 }
 

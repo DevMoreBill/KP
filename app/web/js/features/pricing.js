@@ -52,6 +52,22 @@ function costKP(x){  // себестоимость единицы в валют�
   let v=x.cost*r1/r2; if (S.pricing.costNoVat) v*=1+(+S.vat||0)/100; return v;
 }
 
+// экономика сделки по состоянию КП (текущего S или сохранённого в журнале): итог, закупка, прибыль, маржа.
+// Закупка, прибыль и маржа — по позициям с указанной закупкой; курсы — сохранённые в КП
+function kpEconomics(st=S){
+  const P=st.pricing||{}, cur=P.cur||'RUB', vat=+st.vat||0;
+  const rate=c=>{ if (!c||c==='RUB') return 1; const v=parseFloat(String((P.rates||{})[c]||'').replace(/\s/g,'').replace(',','.')); return v>0?v:NaN; };
+  const items=st.items||[];
+  const t=totals(items.map(x=>({qty:+x.qty||0, price:x.price||0, disc:x.disc, options:(x.options||[]).filter(o=>o.name).map(o=>({qty:+o.qty||0, price:o.price||0}))})), vat);
+  const unitCost=x=>{ if (!x.cost) return null; const v=x.cost*rate(x.costCur||'RUB')/rate(cur); return P.costNoVat ? v*(1+vat/100) : v; };
+  const withCost=items.filter(x=>unitCost(x)>0);
+  const cost=withCost.reduce((s,x)=>s+unitCost(x)*(+x.qty||0),0), sale=withCost.reduce((s,x)=>s+KPGen.netPrice(x)*(+x.qty||0),0);
+  const r=cur!=='RUB' && rate(cur)>0 ? rate(cur) : null;
+  return { cur, sum:t.sum, vat:t.vat, discount:t.discount||0, sumRub: r?Math.round(t.sum*r):null,
+    withCost:withCost.length, positions:items.length, cost:Math.round(cost), sale:Math.round(sale), profit:Math.round(sale-cost),
+    margin: sale?(sale-cost)/sale*100:null, markup: cost?(sale-cost)/cost*100:null };
+}
+
 function calcPrice(x){
   const c=costKP(x); if (c==null||Number.isNaN(c)) return c;
   const mv=marginOf(x); if (mv==null) return null; const m=mv/100;
