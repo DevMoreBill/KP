@@ -47,7 +47,6 @@ async function syncCatalog(number){
     if (!it.name.trim() || !it.price) continue;
     const doc = await fullDoc(list.find(d=>d.id===it.catId) || list.find(d=>norm(d.name)===norm(it.name)));
     const base = doc ? JSON.parse(JSON.stringify(doc)) : { id: uid()+uid(), prices: [] };
-    const has = arr => Array.isArray(arr) && arr.length;
     Object.assign(base, { name:it.name, spec:it.spec||base.spec||'', price:it.price, priceCur:kpCur(), cost:it.cost||base.cost||0, costCur:it.cost?(it.costCur||'RUB'):(base.costCur||'RUB'), margin:it.margin ?? base.margin, mmode:it.mmode||base.mmode, pageTitle:it.pageTitle||base.pageTitle||'',
       photoCaption:it.photoCaption||base.photoCaption||'',
       features: (it.features||[]).some(f=>f.text) ? it.features : (base.features||[]),

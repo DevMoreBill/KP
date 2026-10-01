@@ -15,7 +15,6 @@ textarea.iname{min-height:0;height:auto;resize:none;font-weight:600;font-size:15
 .itop{display:flex;gap:8px;align-items:center;margin-bottom:6px}
 .itop .item-no{margin:0}
 .ttype{white-space:nowrap;font-size:12px;font-weight:600;color:var(--navy);background:var(--soft);border-radius:999px;padding:2px 10px}
-.tcat{font-size:12px;color:var(--muted)}
 input.iname{font-weight:600;font-size:15.5px}
 .ikp{font-size:13px;color:var(--muted);margin:6px 0 8px}
 .st{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:3px 9px;font-size:12.5px;cursor:pointer;color:var(--ink)}

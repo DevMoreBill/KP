@@ -30,7 +30,6 @@ input.strong{font-weight:650}
 input.flash{animation:flash 1.6s ease}
 @keyframes flash{0%{background:#d6f5e3;border-color:var(--ok)}100%{}}
 @media (max-width:1000px){.wrap{grid-template-columns:1fr}.prow{grid-template-columns:1fr 1fr}.dcell,.prow>.psum{grid-column:auto;grid-row:auto}}
-.pricing{border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:14px;background:var(--soft)}
-.pricing select,.cost select{width:100%;border:1px solid var(--line);background:var(--field);border-radius:10px;padding:10px 12px;font-size:15px;color:var(--ink)}
+.cost select{width:100%;border:1px solid var(--line);background:var(--field);border-radius:10px;padding:10px 12px;font-size:15px;color:var(--ink)}
 .cin{display:grid;grid-template-columns:78px 1fr;gap:6px}
 em.man{font-style:normal;color:var(--sky);font-weight:600;margin-left:4px}
