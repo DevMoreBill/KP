@@ -5,7 +5,7 @@ const CatSrv = { persistent:true,
   async list(){ return await api('/api/catalog'); },
   async get(id){ return await api('/api/catalog/'+encodeURIComponent(id)); },
   async full(){ return await api('/api/catalog?full=1'); },
-  async put(doc){ doc={...doc, photo:await uploadImg(doc.photo), logo:await uploadImg(doc.logo), gallery: doc.gallery ? await Promise.all(doc.gallery.map(async g=>({...g, ...(await uploadImg(g))}))) : doc.gallery};
+  async put(doc){ doc={...doc, photo:await uploadImg(doc.photo, imgPlace(doc,'photo')), logo:await uploadImg(doc.logo, imgPlace(doc,'logo')), gallery: doc.gallery ? await Promise.all(doc.gallery.map(async g=>({...g, ...(await uploadImg(g, imgPlace(doc,'gallery',g)))}))) : doc.gallery};
     await api('/api/catalog/'+doc.id,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(doc)}); return doc; },
   async del(id){ await api('/api/catalog/'+id,{method:'DELETE'}); } };
 
@@ -87,21 +87,25 @@ async function saveCatalog(i){
   renderForm(); persist();
 }
 
-// разовое сообщение после обновления каталога под новые категории (app/catalog_migrate.py)
-function showMigrationNotice(mg){
-  const r=mg&&mg.report; if (!r || r.empty) return false;
-  try{ if (localStorage.getItem('kp.migSeen')===mg.id) return false; }catch(e){}
+// разовое сообщение после обновления каталога (app/catalog_migrate.py) и раскладки изображений по папкам (app/images.py)
+function showMigrationNotice(list){
+  const ms=(list||[]).filter(m=>m&&m.report&&!m.report.empty); if (!ms.length) return false;
+  const key=ms.map(m=>m.id+'@'+m.at).join('|');
+  try{ if (localStorage.getItem('kp.migSeen')===key) return false; }catch(e){}
+  const r=(ms.find(m=>m.id==='catalog-structure-2026-10')||{}).report, im=(ms.find(m=>m.id==='images-folders-2026-10')||{}).report;
+  const bk=ms.map(m=>m.backup).filter(Boolean)[0];
+  const moved=r?Object.entries(r.moved||{}):[];
   const d=$('#dlg'); d.classList.remove('wide');
-  const moved=Object.entries(r.moved||{});
   d.innerHTML=`<div class="dlg-h"><h3>Каталог обновлён</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-   <div class="dlg-b"><p style="margin-top:0">Новые категории: дизельные и спиральные компрессоры, осушители рефрижераторные и адсорбционные, магистральные фильтры, ресиверы, запасные части и ЗИП. У каждой категории — свои параметры, фильтры и шаблон характеристик.</p>
+   <div class="dlg-b">${r?`<p style="margin-top:0">Новые категории: дизельные и спиральные компрессоры, осушители рефрижераторные и адсорбционные, магистральные фильтры, ресиверы, запасные части и ЗИП. У каждой категории — свои параметры, фильтры и шаблон характеристик.</p>
    ${moved.length?`<p class="sub">Перенесено по категориям</p><ul class="mig">${moved.map(([k,v])=>`<li>${esc(k)} — <b>${v}</b></li>`).join('')}</ul>`:''}
    <ul class="mig"><li>Параметров заполнено из таблиц характеристик: <b>${r.attrsFilled||0}</b></li>
      <li>Фото от похожей модели того же производителя: <b>${r.photos||0}</b>${r.logos?`, логотипов: <b>${r.logos}</b>`:''}</li>
-     ${r.noPhotoCount?`<li>Без фото (нет похожей модели того же производителя): <b>${r.noPhotoCount}</b> — ${esc((r.noPhoto||[]).slice(0,5).join('; '))}${r.noPhotoCount>5?'…':''}</li>`:''}</ul>
-   <p class="muted">Перед обновлением сделана копия базы${mg.backup?': '+esc(mg.backup):''}.</p>
+     ${r.noPhotoCount?`<li>Без фото (нет похожей модели того же производителя): <b>${r.noPhotoCount}</b> — ${esc((r.noPhoto||[]).slice(0,5).join('; '))}${r.noPhotoCount>5?'…':''}</li>`:''}</ul>`:''}
+   ${im?`<p class="sub">Изображения разложены по папкам</p><ul class="mig"><li>Папка data\\img: «Раздел / Категория / Производитель», логотипы — «Логотипы»; папок: <b>${im.folders}</b>, файлов: <b>${im.files}</b>${im.unused?`, из них не используются: <b>${im.unused}</b> (папка «Не используются»)`:''}</li></ul>`:''}
+   <p class="muted">Перед обновлением сделана копия базы${bk?': '+esc(bk):''}.</p>
    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>Понятно</button><button class="btn primary" type="button" data-mig="cat">Открыть каталог</button></div></div>`;
-  const seen=()=>{ try{ localStorage.setItem('kp.migSeen', mg.id); }catch(e){} };
+  const seen=()=>{ try{ localStorage.setItem('kp.migSeen', key); }catch(e){} };
   d.showModal(); d.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{ seen(); d.close(); });
   d.querySelector('[data-mig]').onclick=()=>{ seen(); d.close(); openCatalog({}); };
   return true;

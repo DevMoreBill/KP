@@ -142,9 +142,9 @@ function cwCard(x, loading){
   const feats=(x.features||[]).filter(f=>f.label||f.text), groups=(x.groups||[]).filter(g=>(g.rows||[]).some(r=>r.k||r.v));
   const gal=(x.gallery||[]).filter(g=>g.src&&g.on!==false), hist=(x.prices||[]).slice(0,5), n=x.pricesCount||(x.prices||[]).length;
   return `<div class="pv-scroll">
-    <div class="pv-photo">${x.photo?`<img src="${esc(x.photo.src)}" alt="">`:'<span>нет фото</span>'}${x.logo?`<img class="pv-logo" src="${esc(x.logo.src)}" alt="">`:''}</div>
+    <div class="pv-photo">${x.photo?`<img src="${esc(x.photo.src)}" alt="" title="${esc(x.name||'')}">`:'<span>нет фото</span>'}</div>
     ${x.photoFrom&&x.photo?`<p class="muted pv-pf">Фото — от похожей модели того же производителя («${esc(x.photoFrom.name||'')}»). Своё фото — «Редактировать» → «Описание и фото».</p>`:''}
-    <h4>${esc(x.name||'Без названия')}</h4>${x.spec?`<p class="muted pv-spec">${esc(x.spec)}</p>`:''}
+    <div class="pv-ttl"><h4>${esc(x.name||'Без названия')}</h4>${x.logo?`<img class="pv-logo" src="${esc(x.logo.src)}" alt="">`:''}</div>${x.spec?`<p class="muted pv-spec">${esc(x.spec)}</p>`:''}
     ${CW.optFor==null?`<label class="pv-cat"><span>Категория</span><select data-pvcat>${typeOptionsHtml(a.cat)}</select></label>`:''}
     <div class="pv-price"><b>${x.price?money(x.price)+' '+curSh(x.priceCur||'RUB'):'Цена не указана'}</b>${x.cost?`<span>закупка ${money(x.cost)} ${curSh(x.costCur||'RUB')}</span>`:''}</div>
     ${kpi?`<div class="pv-kpi">${kpi}</div>`:''}
@@ -171,6 +171,10 @@ async function cwPreview(){
   const full=await fullDoc(light); if (CW.active!==id) return;
   const sc=pv.querySelector('.pv-scroll')?.scrollTop||0; pv.innerHTML=cwCard(full,false); const s2=pv.querySelector('.pv-scroll'); if(s2) s2.scrollTop=sc;
 }
+
+// изображение крупно поверх окна каталога; закрывается щелчком или Esc
+function cwZoom(src, caption){ const d=cwDlg(); d.querySelector('.cw-lb')?.remove();
+  const z=document.createElement('div'); z.className='cw-lb'; z.innerHTML=`<img src="${esc(src)}" alt=""><p>${esc(caption||'Щелчок — закрыть')}</p>`; d.appendChild(z); }
 
 function cwActivate(id){ CW.active=id; document.querySelectorAll('#cwList .cw-row').forEach(r=>r.classList.toggle('act', r.dataset.id===id)); cwPreview(); }
 
@@ -371,6 +375,8 @@ function cwBind(d){
     const pv=t.closest('[data-pv]'); if (pv && CW.active){ const a=pv.dataset.pv, id=CW.active;
       if (a==='add') return cwAdd([id]); if (a==='edit') return cwEdit(id); if (a==='dup') return cwDup(id); if (a==='del') return cwDelete([id]);
       if (a==='close'){ CW.active=null; cwActivate(null); } return; }
+    const zi=t.closest('.pv-photo>img:first-child, .pv-gal img'); if (zi){ cwZoom(zi.src, zi.title||''); return; }
+    if (t.closest('.cw-lb')){ t.closest('.cw-lb').remove(); return; }
     const row=t.closest('.cw-row'); if (row){ cwActivate(row.dataset.id); return; }
     const c=t.closest('[data-cw]'); if (!c) return;
     switch (c.dataset.cw){
@@ -389,6 +395,7 @@ function cwBind(d){
         f.onchange=()=>{ const file=f.files[0]; f.remove(); if (file) cwImportFile(file); }; d.appendChild(f); f.click(); return; }
     } });
   d.addEventListener('dblclick', e=>{ const row=e.target.closest('.cw-row'); if (row && !e.target.closest('button,label,input')) cwEdit(row.dataset.id); });
+  d.addEventListener('cancel', e=>{ const lb=d.querySelector('.cw-lb'); if (lb){ e.preventDefault(); lb.remove(); } });
   d.addEventListener('keydown', e=>{ if (e.target.id==='cwQ' && e.key==='Enter'){ e.preventDefault(); const x=CW.view[0]; if (x) cwActivate(x.id); }
     if ((e.key==='ArrowDown'||e.key==='ArrowUp') && (e.target.id==='cwQ' || e.target.closest?.('.cw-list')) && CW.view.length){
       e.preventDefault(); const ids=CW.view.slice(0,CW.limit).map(x=>x.id); let k=ids.indexOf(CW.active); k = k<0 ? 0 : Math.max(0, Math.min(ids.length-1, k+(e.key==='ArrowDown'?1:-1)));

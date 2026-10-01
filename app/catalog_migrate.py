@@ -240,6 +240,8 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
             if k:
                 titles.setdefault(k, t['id'])
 
+    # производители, встречающиеся в каталоге: позиция без производителя получает его по названию
+    makers = sorted({str((d.get('attrs') or {}).get('maker') or '').strip() for d in docs} - {''}, key=len, reverse=True)
     moved, filled, photos, logos, tidied, nophoto = {}, 0, 0, 0, 0, []
     changed = set()
     for d in docs:
@@ -267,6 +269,10 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
             d['hint'] = dict(h, title=t.get('coverTitle') or t.get('name'))
             changed.add(d['id'])
         before = json.dumps(a, sort_keys=True, ensure_ascii=False)
+        if not str(a.get('maker') or '').strip():
+            mk = next((m for m in makers if re.search(r'(^|[\s«"(])' + re.escape(m) + r'($|[\s»",)])', str(d.get('name') or ''), re.I)), None)
+            if mk:
+                a['maker'] = mk
         if t:
             fill_from_name(d, new, a)
             filled += fill_attrs(d, t, a)
@@ -324,6 +330,7 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
               'noPhoto': nophoto[:50], 'noPhotoCount': len(nophoto), 'changed': len(changed),
               'userTypesMerged': [t.get('name') for t in (types_user or []) if t.get('id') in user_map]}
     store.kv_set('migrations', done + [{'id': MIGRATION_ID, 'at': datetime.now().isoformat(timespec='seconds'), 'backup': backup, 'report': report}])
+    report = dict(report, backup=backup)
     log('Каталог обновлён под новые категории: изменено позиций %d, перенесено %d, параметров заполнено %d, фото %d, логотипов %d. Копия базы: %s'
         % (len(changed), sum(moved.values()), filled, photos, logos, backup))
     return report

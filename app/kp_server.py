@@ -12,7 +12,6 @@
   desktop.py         — открыть файл / папку на этом компьютере
 Только стандартная библиотека Python; собирается PyInstaller в один EXE.
 """
-import hashlib
 import json
 import os
 import re
@@ -33,6 +32,7 @@ from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
 from desktop import open_file, open_folder, show_in_folder
 from equipment_types import load_types, load_types_builtin, save_user_types, types_builtin_path
 import pdf_convert
+from images import ImageStore, mark_organized, organize_existing
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, ensure_templates, list_history,
                           list_templates, open_template_file, put_file, reset_template, restore_history, template_file)
 
@@ -63,6 +63,9 @@ def web_file(rel):
     return f if os.path.isfile(f) and os.path.splitext(f)[1].lower() in WEB_TYPES else None
 
 
+
+# хранилище изображений data/img (по папкам категорий)
+IMAGES = ImageStore(IMG_DIR)
 
 def pdf_of(docx):
     """PDF рядом с .docx КП, с тем же именем."""
@@ -240,7 +243,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({'ok': True, 'dataDir': DATA_DIR, 'docsDir': DOCS_DIR, 'local': self.is_local(),
                                    'mode': 'server' if SERVER_MODE else 'local', 'docsShare': DOCS_SHARE,
                                    'host': socket.gethostname(), 'port': self.server.server_address[1], 'items': store().catalog_count(),
-                                   'migration': ((store().kv_get('migrations') or [None])[-1])})
+                                   'migrations': (store().kv_get('migrations') or [])[-2:]})
 
         # каталог
         if path == '/api/catalog' and m == 'GET':
@@ -260,19 +263,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({'ok': True})
 
         # изображения
+        # изображения: папки «раздел / категория / производитель» (app/images.py); одинаковые хранятся один раз
         if path == '/api/img' and m == 'POST':
             ext = '.png' if q.get('ext') == 'png' else '.jpg'
-            data = self.body()
-            # имя по содержимому: одинаковые изображения (логотипы, фото контроллеров) хранятся один раз
-            name = hashlib.md5(data).hexdigest() + ext
-            path_img = os.path.join(IMG_DIR, name)
-            if not os.path.isfile(path_img):
-                write_bytes(path_img, data)
-            return self.send_json({'name': name})
-        r = re.match(r'^/img/([A-Za-z0-9]+\.(jpg|jpeg|png|webp))$', path)
+            rel = IMAGES.put(self.body(), ext, q.get('dir') or '', q.get('title') or '')
+            return self.send_json({'name': rel})
+        r = re.match(r'^/img/(.+)$', path)
         if r:
-            f = os.path.join(IMG_DIR, r.group(1))
-            if not os.path.isfile(f):
+            f = IMAGES.path(r.group(1))
+            if not f:
                 return self.not_found()
             with open(f, 'rb') as fh:
                 return self.send(200, MIME[os.path.splitext(f)[1].lower()], fh.read())
@@ -490,11 +489,13 @@ def main():
         message_box('Не удалось подготовить папки данных:\n%s\n\n%s' % (DATA_DIR, e))
         return 1
     try:   # каталог под новую структуру категорий — один раз; перед этим копия базы в data/backup
-        if seeded:
-            catalog_migrate.mark_done(store())   # стартовый каталог уже в новой структуре
-        catalog_migrate.run(store(), load_types_builtin(), (store().kv_get('types') or {}).get('types', []), IMG_DIR, os.path.join(DATA_DIR, 'backup'))
+        if seeded:   # стартовый каталог уже в новой структуре, изображения — по папкам
+            catalog_migrate.mark_done(store())
+            mark_organized(store())
+        rep = catalog_migrate.run(store(), load_types_builtin(), (store().kv_get('types') or {}).get('types', []), IMG_DIR, os.path.join(DATA_DIR, 'backup'))
+        organize_existing(store(), load_types()['types'], IMG_DIR, os.path.join(DATA_DIR, 'backup'), backup=(rep or {}).get('backup'))
     except Exception as e:
-        print('Обновление каталога не выполнено (будет повторено при следующем запуске):', e)
+        print('Обновление каталога или раскладка изображений не выполнены (будут повторены при следующем запуске):', e)
     if DATA_DIR.startswith('\\\\'):
         message_box('Папка данных указана в сети (%s).\n\nБазу данных нельзя держать в общей сетевой папке — '
                     'при одновременной работе она может повредиться. Для работы всем отделом используйте '
