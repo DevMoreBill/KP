@@ -9,11 +9,11 @@ async function api(path, opts={}){
   const ct = r.headers.get('content-type')||''; return ct.includes('json') ? r.json() : r.text();
 }
 
-// place — куда положить на сервере: {dir:'Раздел/Категория/Производитель', title:'Модель'} (см. imgPlace, app/images.py)
+// place — что это за изображение (imgPlace): категория, производитель, модель; папку выбирает сервер
 async function uploadImg(img, place){
   if (!img || !String(img.src).startsWith('data:')) return img;
   const ext = img.src.startsWith('data:image/png') ? 'png' : 'jpg';
-  const q = `ext=${ext}&dir=${encodeURIComponent(place?.dir||'')}&title=${encodeURIComponent(place?.title||'')}`;
+  const q = 'ext='+ext+Object.entries(place||{}).map(([k,v])=>'&'+k+'='+encodeURIComponent(v||'')).join('');
   const r = await api('/api/img?'+q, {method:'POST', body: await dataURLtoBlobAsync(img.src)});
   return { src:'/img/'+r.name, w:img.w, h:img.h };
 }
