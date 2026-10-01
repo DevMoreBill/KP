@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="/web/css/pricing.css">
 <link rel="stylesheet" href="/web/css/client.css">
 <link rel="stylesheet" href="/web/css/template-editor.css">
+<link rel="stylesheet" href="/web/css/preview.css">
 </head>
 <body>
 <header class="top">
@@ -33,6 +34,7 @@
 </main>
 <div class="mbar" id="mbar"><b id="mtotal">0,00 руб.</b><button class="btn" type="button" data-go="side">Скачать</button></div>
 <dialog id="catdlg" class="catwin" aria-label="Каталог"></dialog>
+<dialog id="pvdlg" class="kpprev" aria-label="Предпросмотр КП"></dialog>
 <dialog id="dlg"></dialog>
 <dialog id="edlg" class="editor" aria-label="Карточка позиции"></dialog>
 <div class="toast" id="toast" role="status"></div>
@@ -40,6 +42,7 @@
 
 <!-- Порядок подключения важен: общие модули → функции → разделы формы → обработчики → запуск. См. app/web/README.md -->
 <script src="/web/vendor/jszip.min.js"></script>
+<script src="/web/vendor/docx-preview.min.js"></script>
 <script src="/web/js/docx/kpgen.js"></script>
 <script src="/web/js/core/util.js"></script>
 <script src="/web/js/core/api.js"></script>
@@ -52,6 +55,7 @@
 <script src="/web/js/features/pricing.js"></script>
 <script src="/web/js/features/clients.js"></script>
 <script src="/web/js/features/clients-import.js"></script>
+<script src="/web/js/features/managers.js"></script>
 <script src="/web/js/features/images.js"></script>
 <script src="/web/js/features/item-editor.js"></script>
 <script src="/web/js/features/ai-autofill.js"></script>
@@ -60,6 +64,7 @@
 <script src="/web/js/features/types-editor.js"></script>
 <script src="/web/js/features/journal.js"></script>
 <script src="/web/js/docx/build.js"></script>
+<script src="/web/js/features/preview.js"></script>
 <script src="/web/js/ui/form.js"></script>
 <script src="/web/js/ui/steps/client.js"></script>
 <script src="/web/js/ui/steps/equipment.js"></script>

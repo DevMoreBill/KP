@@ -47,6 +47,11 @@ jobs:
           $toc = Get-ChildItem -Recurse -Path build -Filter 'xref-*.html' | Select-Object -First 1
           if ($toc -and -not (Select-String -Path $toc.FullName -Pattern 'sqlite3' -Quiet)) { throw 'В сборку не попал модуль sqlite3' }
 
+      - name: LibreOffice для проверки сохранения КП в PDF
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        run: choco install libreoffice-still -y --no-progress --limit-output
+
       - name: Проверка запуска EXE
         shell: pwsh
         run: |
@@ -90,6 +95,22 @@ jobs:
           foreach ($f in @('/web/js/main.js', '/web/js/docx/kpgen.js', '/web/css/base.css', '/web/vendor/jszip.min.js')) {
             $r = Invoke-WebRequest -Uri ("http://127.0.0.1:17845" + $f) -UseBasicParsing
             if ($r.StatusCode -ne 200 -or $r.Content.Length -lt 100) { throw "Не отдаётся $f" }
+          }
+          # справочник менеджеров в базе: добавить, прочитать, удалить
+          $mg = Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:17845/api/managers/ci_manager' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('{"name":"Иванов Иван","phone":"+7 495 000-00-00"}'))
+          $mgs = @(Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/managers' | ForEach-Object { $_ })
+          if (-not ($mgs | Where-Object { $_.id -eq 'ci_manager' -and $_.name -eq 'Иванов Иван' })) { throw 'Менеджер не сохранился в базе' }
+          Invoke-RestMethod -Method Delete -Uri 'http://127.0.0.1:17845/api/managers/ci_manager' | Out-Null
+          Write-Host 'Справочник менеджеров: в порядке'
+          # PDF: чем преобразовать; с LibreOffice — настоящее преобразование DOCX → PDF
+          $pa = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/pdf'
+          Write-Host "PDF: Word=$($pa.word), LibreOffice=$($pa.libreoffice)"
+          if ($env:KP_EXE_NAME -eq 'Конструктор КП') {
+            if (-not $pa.libreoffice) { throw 'Программа не нашла установленный LibreOffice' }
+            $pdf = Invoke-WebRequest -Method Post -Uri 'http://127.0.0.1:17845/api/pdf?name=test.pdf' -InFile (Join-Path $dir 'templates\pnevmotekh\base.docx') -UseBasicParsing -TimeoutSec 300
+            $head = [Text.Encoding]::ASCII.GetString($pdf.Content, 0, 5)
+            if ($head -ne '%PDF-') { throw "Сервер вернул не PDF: $head" }
+            Write-Host "DOCX → PDF через LibreOffice: $($pdf.Content.Length) байт"
           }
           $n = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/kp/new'
           Write-Host "Новый номер КП: $($n.number)"

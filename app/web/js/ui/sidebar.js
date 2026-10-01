@@ -44,7 +44,9 @@ function renderSide(){
     <div class="words">${t.sum?esc(words(t.sum).replace(/^./,c=>c.toUpperCase())):'Сумма прописью появится после ввода цен.'}</div></div>${mBlock}
     <div class="checks"><h3>${pr.length?'Осталось заполнить':'Всё готово'}</h3><ul>${pr.length?pr.map(x=>`<li><button type="button" data-go="${x[1]}">${esc(x[0])}</button></li>`).join(''):'<li class="ok">Проверки пройдены — можно скачивать.</li>'}</ul>
     ${TEMPLATES.length>1?`<div class="tplside">Шаблон: <b>${esc((curTemplate()||{}).name||'—')}</b> <button type="button" data-go="st-cover">сменить</button></div>`:''}
+    <button class="btn dl pv" type="button" data-a="kpPreview" ${S.items.length?'':'disabled'}>Предпросмотр КП</button>
     <button class="btn primary dl" type="button" data-a="download" ${pr.length?'disabled':''}>${S.kpId?'Сохранить изменения КП № '+esc(S.number):'Сохранить КП'}</button>
+    <label class="pdftoo"><input type="checkbox" id="pdfToo" ${pdfWanted()?'checked':''}> Также сохранить в PDF</label>
     <div class="fname">${!S.kpId?'Номер присвоится при сохранении':esc(fileName())}</div><div class="msg" id="dlmsg"></div></div>`;
 }
 

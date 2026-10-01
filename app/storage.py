@@ -9,7 +9,9 @@
   kp       — журнал КП: состояние формы, карточка для журнала, путь к .docx;
   counters — счётчики номеров КП по годам;
   clients  — контрагенты; checks — проверки Checko (кэш);
-  kv       — прочие настройки (ключи API, свои типы оборудования).
+  kv       — прочие настройки (ключи API, свои типы оборудования);
+  managers — менеджеры: контакты для КП (добавлена 01.10.2026; в прежних базах создаётся при запуске,
+             остальные таблицы и данные не меняются).
 
 Запись сериализуется одной блокировкой, база в режиме WAL: одновременное чтение многими пользователями
 не мешает записи. При первом запуске данные из прежних JSON-файлов переносятся автоматически.
@@ -29,6 +31,7 @@ CREATE TABLE IF NOT EXISTS counters (year INTEGER PRIMARY KEY, n INTEGER NOT NUL
 CREATE TABLE IF NOT EXISTS clients (id TEXT PRIMARY KEY, doc TEXT NOT NULL, updated TEXT);
 CREATE TABLE IF NOT EXISTS checks (inn TEXT PRIMARY KEY, doc TEXT NOT NULL, checked TEXT);
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS managers (id TEXT PRIMARY KEY, name TEXT, doc TEXT NOT NULL, updated TEXT);
 """
 
 # поля позиции, которые нужны списку каталога, фильтрам и быстрому поиску (без характеристик, описаний и галереи)
@@ -113,6 +116,24 @@ class Store:
 
     def catalog_count(self):
         return self.one('SELECT COUNT(*) FROM catalog')[0]
+
+    # ---------- менеджеры ----------
+    def managers_list(self):
+        rows = self.all('SELECT doc FROM managers ORDER BY name COLLATE NOCASE')
+        return '[' + ','.join(r[0] for r in rows) + ']'
+
+    def manager_put(self, mid, text):
+        doc = json.loads(text)
+        if not isinstance(doc, dict):
+            raise ValueError('Ожидались данные менеджера')
+        doc['id'] = mid
+        doc['updatedAt'] = _now()
+        self.write('INSERT OR REPLACE INTO managers (id, name, doc, updated) VALUES (?,?,?,?)',
+                   (mid, str(doc.get('name') or ''), json.dumps(doc, ensure_ascii=False), _now()))
+        return doc
+
+    def manager_delete(self, mid):
+        self.write('DELETE FROM managers WHERE id=?', (mid,))
 
     # ---------- журнал КП ----------
     def next_number(self):

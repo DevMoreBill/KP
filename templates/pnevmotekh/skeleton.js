@@ -98,7 +98,7 @@ function kpSkeleton(KP) {
       inWordsLabel: 'Итого: ', inWords: '{words}, в т. ч. НДС {vat} % — {vatSum} {cur}',
       currencyNote: 'Цены указаны в {curName}. Оплата производится в рублях по курсу ЦБ РФ на дату оплаты.',
       currencyRate: ' Справочно: курс ЦБ РФ{rateDate} — 1 {cur} = {rate} руб.; сумма в рублях — {rub} руб.',
-      conditionsTitle: 'Условия предложения', contactsTitle: 'Контактная информация',
+      conditionsTitle: 'Условия предложения', condExtraTitle: 'Дополнительные условия', contactsTitle: 'Контактная информация',
       closing1: 'С уважением и надеждой', closing2: 'на плодотворное сотрудничество',
       phone: 'Телефон', ext: ' доб. {ext}', mobile: 'Мобильный', email: 'E-mail', site: 'Сайт', hours: 'Часы работы', address: 'Адрес',
       footerText: 'Технико-коммерческое предложение для'
@@ -693,12 +693,21 @@ function kpSkeleton(KP) {
   // ================================================================ УСЛОВИЯ ПРЕДЛОЖЕНИЯ
   function conditionsXml(S, sec) {
     const conds = (S.conditions || []).filter(c => c.value);
-    if (!conds.length) return '';
+    // дополнительные условия и оговорки: каждая строка — отдельный абзац; строки с «-», «•», «*» — пункты списка
+    const extra = String(S.condExtra || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    if (!conds.length && !extra.length) return '';
     const w2 = cols([3400, 6947]);
-    return headingFor(T.conditionsTitle, sec, 480) + tbl(conds.map((c, i) => {
+    let x = headingFor(T.conditionsTitle, sec, 480);
+    if (conds.length) x += tbl(conds.map((c, i) => {
       const bd = i === conds.length - 1 ? B() : B(null, null, [4, HAIR]);
       return [tc(p(r(c.label, 'condLabel')), w2[0], { bdr: bd, mar: [130, 120, 130, 120] }), tc(p(r(c.value, 'condValue')), w2[1], { bdr: bd, mar: [130, 120, 130, 120] })];
     }), w2);
+    if (extra.length) {
+      x += p(r(T.condExtraTitle, 'condLabel'), { before: conds.length ? 260 : 60, after: 90, indL: 120 });
+      x += extra.map(l => /^[-•*–—]\s*/.test(l) ? p(r('•\u00A0\u00A0' + l.replace(/^[-•*–—]\s*/, ''), 'condValue'), { after: 70, line: 260, indL: 240 })
+        : p(r(l, 'condValue'), { after: 70, line: 260, indL: 120 })).join('');
+    }
+    return x;
   }
 
   // ================================================================ КОНТАКТНАЯ ИНФОРМАЦИЯ

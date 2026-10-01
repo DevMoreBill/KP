@@ -31,6 +31,7 @@ from config import (APP_TITLE, BASE_PORT, BUNDLE, DATA_DIR, DOCS_DIR, DOCS_SHARE
 from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
 from desktop import open_file, open_folder, show_in_folder
 from equipment_types import load_types, save_user_types, types_builtin_path
+import pdf_convert
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, ensure_templates, list_history,
                           list_templates, open_template_file, put_file, reset_template, restore_history, template_file)
 
@@ -92,6 +93,11 @@ def web_file(rel):
     return bundled
 
 
+
+def pdf_of(docx):
+    """PDF рядом с .docx КП, с тем же именем."""
+    return os.path.splitext(docx)[0] + '.pdf'
+
 class Handler(BaseHTTPRequestHandler):
     server_version = 'KP/1.0'
 
@@ -126,6 +132,11 @@ class Handler(BaseHTTPRequestHandler):
     def send_json(self, obj):
         text = obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False)
         self.send(200, 'application/json; charset=utf-8', text)
+
+    def attachment(self, fn):
+        """Заголовок «скачать как» с русским именем файла."""
+        ascii_fn = re.sub(r'[^A-Za-z0-9._-]', '_', fn.encode('ascii', 'ignore').decode()) or 'file'
+        return {'Content-Disposition': 'attachment; filename="%s"; filename*=UTF-8\'\'%s' % (ascii_fn, urllib.parse.quote(fn))}
 
     def not_found(self, text='not found'):
         self.send(404, 'text/plain; charset=utf-8', text)
@@ -295,6 +306,28 @@ class Handler(BaseHTTPRequestHandler):
             with open(f, 'rb') as fh:
                 return self.send(200, MIME[os.path.splitext(f)[1].lower()], fh.read())
 
+        # менеджеры (контакты в КП)
+        if path == '/api/managers' and m == 'GET':
+            return self.send_json(store().managers_list())
+        r = re.match(r'^/api/managers/([^/]+)$', path)
+        if r:
+            mid = safe_id(r.group(1))
+            if m == 'PUT':
+                return self.send_json(store().manager_put(mid, self.body().decode('utf-8')))
+            if m == 'DELETE':
+                store().manager_delete(mid)
+                return self.send_json({'ok': True})
+
+        # PDF: чем можно преобразовать; преобразование присланного DOCX (предпросмотр) без записи в журнал
+        if path == '/api/pdf' and m == 'GET':
+            return self.send_json(pdf_convert.available())
+        if path == '/api/pdf' and m == 'POST':
+            try:
+                data = pdf_convert.convert_bytes(self.body())
+            except Exception as e:
+                return self.send(422, 'text/plain; charset=utf-8', 'PDF не создан: %s' % e)
+            return self.send(200, 'application/pdf', data, self.attachment(safe_file(q.get('name')) or 'КП.pdf'))
+
         # журнал КП
         if path == '/api/history':
             return self.send_json(store().kp_list())
@@ -319,15 +352,20 @@ class Handler(BaseHTTPRequestHandler):
             f = docs_path(rel)
             os.makedirs(os.path.dirname(f), exist_ok=True)
             write_bytes(f, self.body())
+            # прежний PDF устарел: создаётся заново, если его попросили сохранить
+            stale = [pdf_of(f)]
             # при пересохранении КП под новым именем старый файл убираем, чтобы не копились дубли
             prev = store().kp_get(kid, 'docx')
             if prev:
                 old = docs_path(prev.strip())
                 if os.path.isfile(old) and os.path.normcase(old) != os.path.normcase(f):
-                    try:
-                        os.remove(old)
-                    except OSError:
-                        pass
+                    stale += [old, pdf_of(old)]
+            for x in stale:
+                try:
+                    if os.path.isfile(x):
+                        os.remove(x)
+                except OSError:
+                    pass
             store().kp_set(kid, 'docx', rel)
             return self.send_json({'ok': True, 'path': f, 'rel': rel})
         r = re.match(r'^/api/kp/([^/]+)/docx$', path)
@@ -343,6 +381,35 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data,
                              {'Content-Disposition': 'attachment; filename="%s"; filename*=UTF-8\'\'%s' % (
                                  re.sub(r'[^A-Za-z0-9._-]', '_', fn.encode('ascii', 'ignore').decode()) or 'KP.docx', urllib.parse.quote(fn))})
+        # PDF сохранённого КП: создаётся рядом с .docx (тем же именем), скачивается сотрудниками по сети
+        r = re.match(r'^/api/kp/([^/]+)/pdf$', path)
+        if r:
+            rel = store().kp_get(safe_id(r.group(1)), 'docx')
+            f = docs_path(rel.strip()) if rel else None
+            if not f or not os.path.isfile(f):
+                return self.not_found('Файл КП не найден')
+            pdf = pdf_of(f)
+            if m == 'POST':
+                try:
+                    pdf_convert.convert_file(f, pdf)
+                except Exception as e:
+                    return self.send(422, 'text/plain; charset=utf-8', 'PDF не создан: %s' % e)
+                return self.send_json({'ok': True, 'path': pdf, 'local': self.is_local()})
+            if m == 'GET':
+                if not os.path.isfile(pdf):
+                    return self.not_found('PDF этого КП ещё не создан')
+                with open(pdf, 'rb') as fh:
+                    return self.send(200, 'application/pdf', fh.read(), self.attachment(os.path.basename(pdf)))
+        r = re.match(r'^/api/kp/([^/]+)/openpdf$', path)
+        if r and m == 'POST':
+            rel = store().kp_get(safe_id(r.group(1)), 'docx')
+            pdf = pdf_of(docs_path(rel.strip())) if rel else None
+            if not pdf or not os.path.isfile(pdf):
+                return self.not_found('PDF этого КП ещё не создан')
+            if not self.is_local():
+                return self.send_json({'remote': True, 'download': '/api/kp/%s/pdf' % safe_id(r.group(1))})
+            open_file(pdf)
+            return self.send_json({'ok': True})
         r = re.match(r'^/api/kp/([^/]+)$', path)
         if r and m == 'DELETE':
             store().kp_delete(safe_id(r.group(1)))
