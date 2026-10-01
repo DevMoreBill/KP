@@ -1,6 +1,9 @@
 // Каркас формы: поля, разделы (шаги), навигация, перерисовка.
 'use strict';
 
+// подсказка «?»: пояснение открывается по нажатию и не занимает место в форме
+function tip(html){ return `<details class="tip"><summary title="Подсказка" aria-label="Подсказка">?</summary><div class="tip-b">${html}</div></details>`; }
+
 function field(label, path, o={}){
   const v = getP(path) ?? '';
   const req = o.req ? ' class="req"' : '';
@@ -44,8 +47,8 @@ function stepperHtml(){
      : id==='cover'? !!(S.cover.model||stationsOf().length>1) : id==='conds'? S.conditions.some(c=>c.value) : id==='mgr'? !!S.manager.name : false;
   return `<nav class="stepper" aria-label="Разделы КП">${STEPS.map((s,k)=>{
       const st = s.id===STEP ? 'cur' : bad.has(s.id) ? 'bad' : done(s.id) ? 'ok' : '';
-      return `<button type="button" class="stp ${st}" data-step="${s.id}" aria-current="${s.id===STEP?'step':'false'}">
-        <span class="num">${st==='ok'?'✓':k+1}</span><span class="tx"><b>${s.t}</b><small>${s.d}</small></span>${st==='bad'?'<i class="dot" title="Есть незаполненные поля"></i>':''}</button>`; }).join('')}</nav>`;
+      return `<button type="button" class="stp ${st}" data-step="${s.id}" title="${esc(s.d)}" aria-current="${s.id===STEP?'step':'false'}">
+        <span class="num">${st==='ok'?'✓':k+1}</span><span class="tx"><b>${s.t}</b></span>${st==='bad'?'<i class="dot" title="Есть незаполненные поля"></i>':''}</button>`; }).join('')}</nav>`;
 }
 
 function stepNavHtml(){
@@ -65,3 +68,9 @@ function renderForm(){
   if (EDIT && $('#edlg').open) renderEditor();
   if (STEP==='cover') coverThumbSoon();
 }
+
+// раскрывающиеся меню и подсказки закрываются щелчком мимо них (и после выбора пункта меню)
+document.addEventListener('click', e=>{
+  document.querySelectorAll('details.tip[open], details.topmenu[open]').forEach(d=>{
+    if (!d.contains(e.target) || (d.classList.contains('topmenu') && e.target.closest('.menu-l button'))) d.open=false; });
+});

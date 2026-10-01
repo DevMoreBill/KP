@@ -1,7 +1,7 @@
 /* Предпросмотр КП, превью титула, справочник менеджеров, печать КП в PDF. */
 .mgrbar{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px 14px;align-items:end;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:16px;background:var(--soft)}
 .btn.danger{color:var(--danger)}
-.cvtop{display:grid;grid-template-columns:260px minmax(0,1fr);gap:20px;align-items:start;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.cvtop{display:grid;grid-template-columns:260px minmax(0,1fr);gap:20px;align-items:start;margin-bottom:8px}
 .cvinfo{display:grid;gap:10px;align-content:start}
 .cvinfo .sub{margin:0}
 .cvinfo .hint{margin:0}
@@ -42,3 +42,7 @@ dialog.kpprev[open]{display:flex}
   body.printing-kp section.docx{box-shadow:none!important;margin:0!important;break-after:page}
 }
 .cvthumb[data-a]{cursor:zoom-in}
+.kpgrid{display:grid;gap:8px;padding:10px 0 12px}
+.kprow{display:grid;grid-template-columns:26px minmax(0,1fr) 110px minmax(0,2fr);gap:10px;align-items:end}
+.kprow .item-no{margin-bottom:12px}
+@media (max-width:760px){ .kprow{grid-template-columns:1fr 1fr} .kprow .item-no{display:none} .kprow label:last-child{grid-column:1/-1} }

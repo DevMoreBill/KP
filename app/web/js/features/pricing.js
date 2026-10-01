@@ -8,7 +8,7 @@ function priceHint(x){
   const c=costKP(x), cs=curSh(kpCur()), d=KPGen.unitDisc(x), np=(x.price||0)-d;
   const pc = v => v.toFixed(1).replace('.',',');
   const dTxt = d ? `Скидка ${money(d)} ${cs} за ед. · цена для заказчика <b>${money(np)} ${cs}</b>` : '';
-  if (!x.cost) return dTxt || 'Цена продажи вводится вручную. Укажите закупку, чтобы считать от неё.';
+  if (!x.cost) return dTxt;
   if (Number.isNaN(c)) return '<span class="bad-t">Нет курса для пересчёта закупки — обновите курс ЦБ</span>';
   if (!x.price) return 'Укажите маржу или наценку — цена рассчитается, или введите цену продажи вручную.';
   const pr=np-c;

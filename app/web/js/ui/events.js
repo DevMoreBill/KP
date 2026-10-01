@@ -103,7 +103,6 @@ document.addEventListener('click', async e=>{
     case 'delRow': it.groups[j].rows.splice(k,1); break;
     case 'star': it.groups[j].rows[k].hl=!it.groups[j].rows[k].hl; break;
     case 'rmImg': it[b.dataset.k]=null; break;
-    case 'chip': S.conditions[j].value=b.dataset.v; break;
     case 'clients': S.showClients=!S.showClients; break;
     case 'coverFrom': { const src=S.items.find(x=>x.hint); if(src) applyCover(src.hint,true); break; }
     case 'paste': return openPaste(i);

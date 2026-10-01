@@ -8,38 +8,35 @@ function stepItems(){
     const cnt=new Map(); catCache.forEach(x=>{ const c=attrsOf(x).cat; cnt.set(c,(cnt.get(c)||0)+1); });
     const tiles=TYPES.filter(t=>t.role!=='accessory').map(t=>{ const k=cnt.get(t.id)||0;
       return `<button type="button" class="tile${k?'':' zero'}" data-a="catOf" data-cat="${esc(t.id)}"><b>${esc(t.name)}</b><span>${k?`в каталоге: ${k}`:'каталог пуст — добавить вручную'}</span></button>`; }).join('');
-    return `<section class="step" id="st-items"><h2><span class="n">2</span>Оборудование</h2>
-    <p class="hint">Что предлагаем клиенту? Найдите модель по названию или выберите вид оборудования — фото, характеристики и титул подставятся из каталога.</p>
+    return `<section class="step" id="st-items"><h2><span class="n">2</span>Оборудование${tip('Найдите модель в строке поиска или выберите вид оборудования — фото, характеристики и титул подставятся из каталога.')}</h2>
     ${quick}
     <div class="tiles">${tiles}<button type="button" class="tile add" data-a="addItem"><b>+ Добавить вручную</b><span>позиция, которой нет в каталоге</span></button></div></section>`;
   }
-  return `<section class="step" id="st-items"><h2><span class="n">2</span>Оборудование</h2>
+  return `<section class="step" id="st-items"><h2><span class="n">2</span>Оборудование${tip('<p>«Изменить» — описание, фото, характеристики и опции позиции.</p><p>«Страница оборудования» — отдельный лист в КП с фото и характеристиками.</p><p>Цены, закупка и скидка — в разделе «Цены и валюта».</p>')}</h2>
   <div class="eq-bar"><button class="btn primary" type="button" data-a="openCatalog">+ Из каталога</button><button class="btn" type="button" data-a="addItem">+ Вручную</button>
     <span class="muted">${n} ${plural(n,'позиция','позиции','позиций')} · ${units} ед.</span></div>
   ${quick}
-  ${S.items.map((x,i)=>itemCard(x,i)).join('')}
-  <p class="muted" style="margin:4px 0 0">Цены — в следующем разделе «Цены и валюта». Нажмите «Изменить», чтобы поправить описание, фото или характеристики.</p></section>`;
+  ${S.items.map((x,i)=>itemCard(x,i)).join('')}</section>`;
 }
 
 function itemCard(x,i){
   const P=`items.${i}`, t=typeById(attrsOf(x).cat);
-  const nf=(x.features||[]).filter(f=>f.label||f.text).length, ni=(x.gallery||[]).length+(x.photo?1:0);
+  const nf=(x.features||[]).filter(f=>f.label||f.text).length;
   const nr=(x.groups||[]).reduce((s,g)=>s+(g.rows||[]).filter(r=>r.k||r.v).length,0);
   const chk=(tab,label,ok,need)=>`<button type="button" class="rd ${ok?'ok':(need?'warn':'')}" data-a="${tab==='price'?'toPrice':'edit'}" data-i="${i}" data-tab="${tab}" title="${ok?'Заполнено':'Не заполнено — нажмите, чтобы добавить'}">${ok?'✓':(need?'!':'+')} ${label}</button>`;
   const opts=(x.options||[]).filter(o=>o.name);
-  const have=new Set(opts.map(o=>norm(o.name)));
-  const pre=presetsFor(x).map((p,k)=>({p,k})).filter(({p})=>!have.has(norm(p.name))).slice(0,4);
+  // показываем только то, чего не хватает: заполненное не отвлекает
+  const miss=[chk('desc','Фото',!!x.photo,x.page),chk('desc','Описание',nf>0,x.page),chk('spec','Характеристики',nr>0,x.page),chk('price','Цена',x.price>0,true)].filter((h,k)=>!h.includes('class="rd ok"'));
   return `<div class="item" id="item-${x.id}">
    <div class="icard">
      <button type="button" class="ithumb" data-a="edit" data-i="${i}" data-tab="desc" title="Фото и описание">${x.photo?`<img src="${x.photo.src}" alt="">`:'<span>+ фото</span>'}</button>
      <div class="imain">
-       <div class="itop"><span class="item-no">${i+1}</span><span class="ttype">${esc(t.item||t.name)}</span>${x.catId?'<span class="tcat">из каталога</span>':''}</div>
+       <div class="itop"><span class="item-no">${i+1}</span><span class="ttype">${esc(t.item||t.name)}</span></div>
        <textarea class="iname" rows="${x.name.length>60?2:1}" data-p="${P}.name" placeholder="Наименование позиции" aria-label="Наименование">${esc(x.name)}</textarea>
        <div class="ikp">${esc(mainLine(x,4)||x.spec||'Параметры не заполнены')}</div>
-       <div class="ready">${chk('desc','Фото',!!x.photo,x.page)}${chk('desc','Описание',nf>0,x.page)}${chk('spec','Характеристики',nr>0,x.page)}${chk('price','Цена',x.price>0,true)}</div>
+       ${miss.length?`<div class="ready">${miss.join('')}</div>`:''}
        <div class="iopts">${opts.map((o)=>{ const j=(x.options||[]).indexOf(o); return `<span class="oitem">${esc(o.short||o.name)}${+o.qty>1?' × '+esc(o.qty):''}${o.price?' · '+money(o.price*(+o.qty||1)):' · включено'}<button type="button" data-a="delOpt" data-i="${i}" data-j="${j}" aria-label="Убрать опцию">✕</button></span>`; }).join('')}
-         ${pre.map(({p,k})=>`<button type="button" class="chip sm" data-a="optPreset" data-i="${i}" data-k="${k}">+ ${esc(p.short)}</button>`).join('')}
-         <button type="button" class="chip sm" data-a="edit" data-i="${i}" data-tab="opts">Все опции…</button></div>
+         <button type="button" class="chip sm" data-a="edit" data-i="${i}" data-tab="opts">+ Опции и услуги</button></div>
      </div>
      <div class="iside">
        <label class="f"><span>Количество, шт.</span><div class="qty"><button type="button" data-a="qty" data-i="${i}" data-d="-1" aria-label="Меньше">−</button><input type="text" inputmode="numeric" data-p="${P}.qty" value="${esc(x.qty)}" class="${+x.qty>=1&&Number.isInteger(+x.qty)?'':'bad'}"><button type="button" data-a="qty" data-i="${i}" data-d="1" aria-label="Больше">+</button></div></label>

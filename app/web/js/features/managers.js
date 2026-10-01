@@ -61,7 +61,7 @@ function managerBar(){
     <div class="row">${cur?'':'<button class="btn primary" type="button" data-a="mgrSave">Сохранить в справочник</button>'}
       <button class="btn" type="button" data-a="mgrNew">+ Новый менеджер</button>
       ${cur?'<button class="btn ghost danger" type="button" data-a="mgrDel">Удалить из справочника</button>':''}</div>
-    <p class="muted" id="mgrStat" style="grid-column:1/-1;margin:0">${cur?'Справочник общий для всех сотрудников: правки контактов сохраняются в нём автоматически.':'Новый менеджер: сохраните его в справочник — в следующих КП его можно будет выбрать из списка.'}</p></div>`;
+    <p class="muted" id="mgrStat" style="grid-column:1/-1;margin:0">${cur?'':'Новый менеджер — сохраните его в справочник.'}</p></div>`;
 }
 
 let mgrT=null;

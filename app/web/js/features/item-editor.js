@@ -25,12 +25,11 @@ function attrsBlock(x,i){
     return `<label class="f"><span>${esc(f.label)}${f.unit?', '+esc(f.unit):''}</span><input type="text" ${f.num?'inputmode="decimal"':''} data-p="${P}.${f.key}" value="${esc(val)}" placeholder="${esc(ph)}" autocomplete="off"></label>`; };
   // параметры — по группам категории (основные, двигатель, комплектация, применимость…)
   const grp=new Map(); for (const f of t.fields){ const g=f.group||'Основные'; if(!grp.has(g)) grp.set(g,[]); grp.get(g).push(f); }
-  return `<div><p class="sub">Категория и параметры <button class="btn ghost" type="button" data-a="autoAttrs" data-i="${i}">Определить по характеристикам</button>
+  return `<div><p class="sub">Категория и параметры${tip(`Набор параметров зависит от категории «${esc(t.name)}». Они работают в фильтрах каталога, на титуле и в карточке. Пустые поля заполняются из характеристик — серым показано, что будет подставлено.`)} <button class="btn ghost" type="button" data-a="autoAttrs" data-i="${i}">Определить по характеристикам</button>
       <button class="btn ghost" type="button" data-a="attrsToGroups" data-i="${i}">Сформировать таблицу характеристик</button></p>
    <div class="attrs"><label class="f"><span>Категория</span><select data-p="${P}.cat" data-retype="${i}">${typeOptionsHtml(cat)}</select></label>
    ${inp({key:'maker',label:'Производитель'})}${inp({key:'series',label:'Серия'})}${inp({key:'model',label:'Модель'})}</div>
-   ${[...grp.entries()].map(([g,fs])=>`<p class="agrp">${esc(g)}</p><div class="attrs">${fs.map(inp).join('')}</div>`).join('')}
-   <p class="muted" style="margin:6px 0 0">Набор параметров зависит от категории «${esc(t.name)}». Они используются в фильтрах каталога, на титуле и в карточке. Пустые поля заполняются из характеристик (серым показано, что будет подставлено).</p></div>`;
+   ${[...grp.entries()].map(([g,fs])=>`<p class="agrp">${esc(g)}</p><div class="attrs">${fs.map(inp).join('')}</div>`).join('')}</div>`;
 }
 
 function drop(img, kind, i, text, small){
@@ -83,7 +82,7 @@ function edMain(x,i){
     ${CATED?'':`<div class="row" style="margin-top:12px"><button class="sw" type="button" role="switch" aria-checked="${!!x.page}" data-a="togglePage" data-i="${i}"><i></i>Отдельная страница оборудования в КП (фото, описание, характеристики)</button></div>`}</div>
    ${CATED?catPriceBlock(x):''}
    <div class="ed-sec">${attrsBlock(x,i)}</div>
-   ${CATED?'':`<div class="ed-sec row"><button class="btn" type="button" data-a="saveCat" data-i="${i}">Сохранить позицию в каталог</button><span class="muted">Фото, описание, характеристики, изображения и цена будут доступны в следующих КП.</span></div>`}`;
+   ${CATED?'':`<div class="ed-sec row"><button class="btn" type="button" data-a="saveCat" data-i="${i}">Сохранить позицию в каталог</button>${tip('Фото, описание, характеристики, изображения и цена будут доступны в следующих КП.')}</div>`}`;
 }
 
 function imgBox(src, attrs, text){ return `<div class="ibox" ${attrs} tabindex="0" role="button">${src?`<img src="${src}" alt="">`:`<span>${text}</span>`}</div>`; }
@@ -112,11 +111,11 @@ function edDesc(x,i){
   const schemeSlots=(t.gallerySlots||[]).filter(s=>WIDE_RX.test(s));
   return `<div class="ed-sec"><p class="sub">Главное фото и логотип</p>
      <div class="media2"><div>${drop(x.photo,'photo',i,'Главное фото: перетащите или нажмите.<br>Белые поля обрежутся сами.')}${field('Подпись под фото',`${P}.photoCaption`,{ph:'Исполнение в кожухе'})}</div>
-       <div>${drop(x.logo,'logo',i,'Логотип производителя (PNG)',true)}<p class="muted">Логотип выводится над описанием на странице оборудования.</p></div></div></div>
-   <div class="ed-sec"><p class="sub">Описание узлов <span class="muted">у каждого блока — своё фото: в КП текст и фото стоят рядом</span></p>
+       <div>${drop(x.logo,'logo',i,'Логотип производителя (PNG)',true)}</div></div></div>
+   <div class="ed-sec"><p class="sub">Описание узлов${tip("У каждого блока — своё фото: в КП текст и фото стоят рядом.")}</p>
      ${blocks||'<p class="muted">Добавьте блоки описания — например, «Двигатель», «Альтернатор», «Контроллер».</p>'}
      <div class="chips">${slots.filter(s=>!have.has(norm(s))).map(s=>`<button class="chip" type="button" data-a="addFeatL" data-i="${i}" data-l="${esc(s)}">+ ${esc(s)}</button>`).join('')}<button class="chip" type="button" data-a="addFeatL" data-i="${i}" data-l="">+ свой блок</button></div></div>
-   <div class="ed-sec"><p class="sub">Схемы, чертежи и другие фото <span class="muted">выводятся после характеристик; можно привязать к группе характеристик</span></p>
+   <div class="ed-sec"><p class="sub">Схемы, чертежи и другие фото${tip("Выводятся после характеристик; можно привязать к группе характеристик. Перетащите файлы или вставьте из буфера (Ctrl+V).")}</p>
      <div class="gal" data-gal="${i}" tabindex="0">${gcards||'<p class="muted" style="margin:0">Перетащите файлы сюда или вставьте из буфера (Ctrl+V). Схемы и чертежи в PNG сохраняются без потери чёткости.</p>'}</div>
      <div class="chips" style="margin-top:8px">${schemeSlots.map(s=>`<button class="chip" type="button" data-a="galAdd" data-i="${i}" data-slot="${esc(s)}">+ ${esc(s)}</button>`).join('')}<button class="chip" type="button" data-a="galAdd" data-i="${i}" data-slot="">+ изображение</button></div></div>`;
 }
@@ -136,8 +135,7 @@ function edOpts(x,i){ return `<div class="ed-sec">${optsBlock(x,i)}</div>`; }
 
 function edAI(x,i){
   const P=`items.${i}`;
-  return `<div class="ed-sec ai"><p class="sub">Заполнить карточку через Claude</p>
-      <ol class="muted" style="margin:0;padding-left:18px"><li>Вставьте текст из каталога или паспорта оборудования.</li><li>Нажмите «Скопировать запрос» и отправьте его в Claude (claude.ai) — можно приложить скриншот страницы каталога.</li><li>Вставьте ответ Claude и нажмите «Применить» — заполнятся параметры, описание, характеристики и титул.</li></ol>
+  return `<div class="ed-sec ai"><p class="sub">Заполнить карточку через Claude${tip('<ol style="margin:0;padding-left:18px"><li>Вставьте текст из каталога или паспорта оборудования.</li><li>Нажмите «Скопировать запрос» и отправьте его в Claude (claude.ai) — можно приложить скриншот страницы каталога.</li><li>Вставьте ответ Claude и нажмите «Применить» — заполнятся параметры, описание, характеристики и титул.</li></ol>')}</p>
       <textarea data-p="${P}._src" rows="6" placeholder="Текст из каталога или паспорта…">${esc(x._src||'')}</textarea>
       <div class="row"><button class="btn" type="button" data-a="aiCopy" data-i="${i}">Скопировать запрос</button><span class="muted" data-aistat="${i}">${esc(x._aiMsg||'')}</span></div>
       <textarea data-p="${P}._ans" rows="4" placeholder="Ответ Claude (начинается с {)">${esc(x._ans||'')}</textarea>
@@ -171,7 +169,7 @@ function pickTypeAndAdd(pre){
   const groups=[...new Set(TYPES.filter(t=>t.role!=='accessory').map(t=>t.group||'Прочее'))];
   d.innerHTML=`<div class="dlg-h"><h3>Какое оборудование добавить?</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
    <div class="dlg-b">${groups.map(g=>`<p class="sub" style="margin:10px 0 6px">${esc(g)}</p><div class="tpick">${TYPES.filter(t=>t.role!=='accessory'&&(t.group||'Прочее')===g).map(t=>`<button type="button" class="btn${t.id===pre?' primary':''}" data-t="${esc(t.id)}">${esc(t.name)}</button>`).join('')}</div>`).join('')}
-   <p class="muted" style="margin-top:14px">Нужного типа нет? Его можно добавить в «Типы оборудования» (кнопка вверху) — без программирования.</p></div>`;
+   <p class="muted" style="margin-top:14px">Нужного типа нет? Его можно добавить: меню «⋯» вверху → «Типы оборудования».</p></div>`;
   d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close();
   d.querySelector('.dlg-b').onclick=e=>{ const b=e.target.closest('[data-t]'); if(!b) return; const t=typeById(b.dataset.t);
     const it=newItem(); it.attrs={cat:t.id}; it.page=true; it.features=[{label:'',text:''}]; it._open=true;

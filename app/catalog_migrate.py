@@ -242,7 +242,7 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
 
     # производители, встречающиеся в каталоге: позиция без производителя получает его по названию
     makers = sorted({str((d.get('attrs') or {}).get('maker') or '').strip() for d in docs} - {''}, key=len, reverse=True)
-    moved, filled, photos, logos, tidied, nophoto = {}, 0, 0, 0, 0, []
+    moved, filled, photos, logos, nophoto = {}, 0, 0, 0, []
     changed = set()
     for d in docs:
         a = dict(d.get('attrs') or {})
