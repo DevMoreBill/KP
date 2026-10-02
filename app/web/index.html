@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <script>/* тема до отрисовки страницы, чтобы не мигала: сохранённый выбор или системная */
-(function(){ try{ var t=localStorage.getItem('kp.theme'); if (t==='light'||t==='dark'){ document.documentElement.dataset.theme=t; document.documentElement.style.colorScheme=t; } }catch(e){} })();</script>
+(function(){ try{ var t=localStorage.getItem('kp.theme'); if (t==='light'||t==='dark'){ document.documentElement.dataset.theme=t; document.documentElement.style.colorScheme=t; } }catch(e){} })();
+/* телефон — сразу телефонная раскладка (условие то же, что в js/ui/mobile.js) */
+if (window.matchMedia && matchMedia('(max-width: 760px), (pointer: coarse) and (max-height: 500px)').matches) document.documentElement.classList.add('mob');</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Конструктор КП — ПНЕВМОТЕХ</title>
 <link rel="icon" href="/favicon.ico">
@@ -27,6 +29,7 @@
   <span class="saved" id="saved" aria-live="polite"></span>
   <span id="srvBtns" hidden><button class="btn" type="button" data-a="journal">Журнал КП</button> <button class="btn" type="button" data-a="openCatalog">Каталог</button></span>
   <button class="btn" id="btnNew" type="button">Новое КП</button>
+  <button class="btn mmenu-btn" id="btnMenu" type="button" aria-haspopup="dialog"><span aria-hidden="true">☰</span> Меню</button>
   <details class="topmenu"><summary class="btn icon-btn" aria-label="Ещё" title="Ещё">⋯</summary><div class="menu-l">
     <button type="button" data-a="docsFolder">Папка готовых КП</button>
     <button type="button" data-a="typesEdit">Типы оборудования</button>
@@ -40,7 +43,7 @@
   <div id="form"></div>
   <aside id="side"></aside>
 </main>
-<div class="mbar" id="mbar"><b id="mtotal">0,00 руб.</b><button class="btn" type="button" data-go="side">Скачать</button></div>
+<nav class="mbar" id="mbar" aria-label="Шаги КП"></nav>
 <dialog id="catdlg" class="catwin" aria-label="Каталог"></dialog>
 <dialog id="pvdlg" class="kpprev" aria-label="Предпросмотр КП"></dialog>
 <dialog id="dlg"></dialog>

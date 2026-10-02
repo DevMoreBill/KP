@@ -29,9 +29,8 @@
   aside{position:static}
   .item-no{display:none}
   .brand small{display:none}
-  .mbar{display:flex}
-  body{padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}
-  .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
+  body{padding-bottom:calc(var(--mbh) + env(safe-area-inset-bottom,0px))}
+  .toast{bottom:calc(var(--mbh) + 12px + env(safe-area-inset-bottom,0px))}
   .g4{grid-template-columns:1fr 1fr} .g3{grid-template-columns:1fr}
 }
 

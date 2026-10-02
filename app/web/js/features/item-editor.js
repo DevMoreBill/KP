@@ -68,11 +68,13 @@ function renderEditor(){
   const head = CATED ? `<h3><span class="ed-cat">Каталог</span>${esc(x.name||'Новая позиция')}</h3><button class="btn" type="button" data-catcancel>Отмена</button>${CW.mod&&!ADMIN.on?'<span class="muted ed-modnote">Изменения будут отправлены на модерацию</span>':''}<button class="btn primary" type="button" data-catsave>${catSaveLabel()}</button>`
     : `<h3>${i+1}. ${esc(x.name||'Новая позиция')}</h3>${S.items.length>1?`<button class="btn ghost" type="button" data-ednav="-1" ${i===0?'disabled':''} title="Предыдущая позиция">←</button><button class="btn ghost" type="button" data-ednav="1" ${i===S.items.length-1?'disabled':''} title="Следующая позиция">→</button>`:''}<button class="btn primary" type="button" data-edclose>Готово</button>`;
   d.classList.toggle('catmode', !!CATED);
-  d.innerHTML=`<div class="dlg-h">${head}</div>
+  const act=document.activeElement, tabSw=d.dataset.tab!==EDIT.tab; d.dataset.tab=EDIT.tab;
+  morph(d, `<div class="dlg-h">${head}</div>
     <div class="ed-tabs">${ED_TABS.map(([k,l])=>`<button type="button" class="ed-tab${EDIT.tab===k?' on':''}" data-edtab="${k}">${l}</button>`).join('')}</div>
-    <div class="ed-b">${body}</div>`;
-  const b=d.querySelector('.ed-b'); b.scrollTop=sc;
-  if (focusP){ const el=d.querySelector(`[data-p="${CSS.escape(focusP)}"]`); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n);}catch(e){} } }
+    <div class="ed-b">${body}</div>`);
+  const b=d.querySelector('.ed-b'); b.scrollTop=tabSw?0:sc;
+  const tb=d.querySelector('.ed-tabs'), on=tb.querySelector('.ed-tab.on'); if (on && tb.scrollWidth>tb.clientWidth) tb.scrollLeft=on.offsetLeft-(tb.clientWidth-on.offsetWidth)/2;
+  if (focusP && !act.isConnected){ const el=d.querySelector(`[data-p="${CSS.escape(focusP)}"]`); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n);}catch(e){} } }
 }
 
 function edMain(x,i){

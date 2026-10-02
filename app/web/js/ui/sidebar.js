@@ -28,7 +28,6 @@ function renderSide(){
   const t = totalsS();
   const pr = problems();
   const cs=curSh(kpCur());
-  const mt=$('#mtotal'); if(mt) mt.textContent=money(t.sum)+' '+cs;
   const ec=kpEconomics(), pc=v=>v==null?'—':v.toFixed(1).replace('.',',');
   const mBlock = ec.withCost ? `<div class="mrg"><div class="lab">Для внутреннего расчёта — в КП не выводится</div><dl>
      <dt>Закупка${ec.withCost<ec.positions?` (${ec.withCost} из ${ec.positions} поз.)`:''}</dt><dd>${money(ec.cost)} ${cs}</dd>
@@ -37,7 +36,8 @@ function renderSide(){
      <dt>Маржа / наценка</dt><dd>${pc(ec.margin)} % / ${pc(ec.markup)} %</dd></dl></div>` : '';
   const rubEq = kpCur()!=='RUB' && rateOf(kpCur())>0 ? `<dt>В рублях по курсу</dt><dd>${money(Math.round(t.sum*rateOf(kpCur())))}</dd>` : '';
   const kn=$('#kpno'); if(kn) kn.textContent = S.number ? 'КП № '+S.number : '';
-  $('#side').innerHTML = `<div class="total"><div class="lab">Итого к оплате с НДС</div>
+  renderMbar(t, pr, cs);
+  morph($('#side'), `<h2 class="side-h">Итог и сохранение</h2><div class="total"><div class="lab">Итого к оплате с НДС</div>
     <div class="big">${money(t.sum)} <small>${cs}</small></div>
     <dl>${t.discount?`<dt>Без скидки</dt><dd>${money(t.gross)}</dd><dt>Скидка для заказчика</dt><dd>−${money(t.discount)}</dd>`:''}<dt>в т. ч. НДС ${esc(S.vat)} %</dt><dd>${money(t.vat)}</dd>${rubEq}<dt>Позиций</dt><dd>${S.items.length}</dd><dt>Единиц оборудования</dt><dd>${t.units}</dd></dl>
     <div class="words">${t.sum?esc(words(t.sum).replace(/^./,c=>c.toUpperCase())):'Сумма прописью появится после ввода цен.'}</div></div>${mBlock}
@@ -46,7 +46,19 @@ function renderSide(){
     <button class="btn dl pv" type="button" data-a="kpPreview" ${S.items.length?'':'disabled'}>Предпросмотр КП</button>
     <button class="btn primary dl" type="button" data-a="download" ${pr.length?'disabled':''}>${S.kpId?'Сохранить изменения КП № '+esc(S.number):'Сохранить КП'}</button>
     <label class="pdftoo"><input type="checkbox" id="pdfToo" ${pdfWanted()?'checked':''}> Также сохранить в PDF</label>
-    <div class="fname">${!S.kpId?'Номер присвоится при сохранении':esc(fileName())}</div><div class="msg" id="dlmsg"></div></div>`;
+    <div class="fname">${!S.kpId?'Номер присвоится при сохранении':esc(fileName())}</div><div class="msg" id="dlmsg"></div></div>`);
+}
+
+// нижняя панель телефона: назад, итог (переход к сохранению), далее; на последнем шаге — «Сохранить КП»
+function renderMbar(t, pr, cs){
+  const m=$('#mbar'); if (!m) return;
+  const k=STEPS.findIndex(s=>s.id===STEP), prev=STEPS[k-1], next=STEPS[k+1];
+  const back = prev ? `<button class="mb-back" type="button" data-step="${prev.id}" aria-label="Назад: ${esc(prev.t)}"><span aria-hidden="true">‹</span></button>` : '<span class="mb-back" aria-hidden="true"></span>';
+  const sum = `<button class="mb-sum" type="button" data-a="toSave"><small>${pr.length?`Итого · не заполнено: ${pr.length}`:'Итого · всё готово'}</small><b>${money(t.sum)} ${esc(cs)}</b></button>`;
+  const go = next ? `<button class="btn primary mb-next" type="button" data-step="${next.id}"><span>Далее</span><small>${esc(next.t)}</small></button>`
+    : pr.length ? `<button class="btn primary mb-next" type="button" data-a="toSave"><span>Проверить</span><small>осталось ${pr.length}</small></button>`
+    : `<button class="btn primary mb-next" type="button" data-a="download"><span>Сохранить</span><small>${S.kpId?'изменения КП':'КП'}</small></button>`;
+  morph(m, back+sum+go);
 }
 
 function updateLive(){

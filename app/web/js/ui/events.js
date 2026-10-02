@@ -111,7 +111,7 @@ document.addEventListener('click', async e=>{
     case 'openCatalog': return openCatalog({});
     case 'toPrice': return goStep('price');
     case 'saveCat': return saveCatalog(i);
-    case 'download': return download();
+    case 'download': { const r=await download(); if (isMob()) $('#dlmsg')?.scrollIntoView({block:'center'}); return r; }
     case 'typesEdit': return openTypesEditor();
     case 'partyFind': return partyFind();
     case 'clientEdit': S._clEdit=!S._clEdit; break;
@@ -126,7 +126,8 @@ document.addEventListener('click', async e=>{
     case 'dmode': { const inp=document.querySelector(`[data-disc="${i}"]`); it.discType=b.dataset.v; if (it.disc) it.disc.type=b.dataset.v;
       const txt=inp?inp.value:''; it._discText=txt; it._discBad=!setDisc(it, txt); if (!it._discBad) delete it._discText; renderForm(); persist(); return; }
     case 'clientsImport': return openClientsImport();
-    case 'toSave': { const sd=$('#side'); sd.scrollIntoView({behavior:'smooth'}); sd.classList.add('pulse'); setTimeout(()=>sd.classList.remove('pulse'),1600); return; }
+    case 'toSave': { if (isMob() && STEP!==STEPS[STEPS.length-1].id){ goStep(STEPS[STEPS.length-1].id); }
+      const sd=$('#side'); sd.scrollIntoView({behavior:isMob()?'auto':'smooth'}); sd.classList.add('pulse'); setTimeout(()=>sd.classList.remove('pulse'),1600); return; }
     case 'cbr': return loadCBR();
     case 'reprice': it.priceManual=false; applyCalc(it); break;
     case 'mmode': it.mmode=b.dataset.v; it.priceManual=false; applyCalc(it); break;
