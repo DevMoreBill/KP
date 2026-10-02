@@ -50,18 +50,35 @@ jobs:
       - name: LibreOffice для проверки сохранения КП в PDF
         if: matrix.arch == 'x64'
         shell: pwsh
-        # сайт LibreOffice иногда не отвечает вовремя: до трёх попыток, затем другая редакция пакета
+        timeout-minutes: 30
+        # download.documentfoundation.org с серверов GitHub бывает недоступен (через него качает и Chocolatey):
+        # сначала установщик напрямую с зеркал LibreOffice, затем — Chocolatey
         run: |
-          $ok = $false
-          foreach ($i in 1..3) {
+          $ProgressPreference = 'SilentlyContinue'
+          $mirrors = @('https://ftp.fau.de/tdf/libreoffice/stable/', 'https://mirror.netcologne.de/tdf/libreoffice/stable/',
+                       'https://mirrors.dotsrc.org/tdf/libreoffice/stable/', 'https://ftp.gwdg.de/pub/tdf/libreoffice/stable/')
+          $msi = Join-Path $env:RUNNER_TEMP 'lo.msi'; $ok = $false
+          foreach ($m in $mirrors) {
+            try {
+              $list = (Invoke-WebRequest -Uri $m -UseBasicParsing -TimeoutSec 30).Content
+              $ver = [regex]::Matches($list, 'href="(\d+\.\d+\.\d+)/"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object { [version]$_ } | Select-Object -Last 1
+              if (-not $ver) { throw 'нет списка версий' }
+              $url = "$m$ver/win/x86_64/LibreOffice_${ver}_Win_x86-64.msi"
+              Write-Host "Скачиваю $url"
+              Invoke-WebRequest -Uri $url -OutFile $msi -UseBasicParsing -TimeoutSec 600
+              if ((Get-Item $msi).Length -lt 100MB) { throw 'файл установщика неполный' }
+              $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
+              if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "msiexec: код $($p.ExitCode)" }
+              $ok = $true; Write-Host "LibreOffice $ver установлен с зеркала $m"; break
+            } catch { Write-Host "Зеркало $m не подошло: $($_.Exception.Message)" }
+          }
+          if (-not $ok) {
             foreach ($pkg in @('libreoffice-still', 'libreoffice-fresh')) {
               choco install $pkg -y --no-progress --limit-output
               if ($LASTEXITCODE -eq 0) { $ok = $true; break }
             }
-            if ($ok) { break }
-            Write-Host "Попытка $i не удалась, повтор через 30 с"; Start-Sleep -Seconds 30
           }
-          if (-not $ok) { throw 'LibreOffice не установился (сайт загрузки недоступен)' }
+          if (-not $ok) { throw 'LibreOffice не установился: зеркала и сайт загрузки недоступны' }
           $global:LASTEXITCODE = 0
 
       - name: Проверка запуска EXE
