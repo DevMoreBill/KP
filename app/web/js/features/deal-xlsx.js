@@ -138,7 +138,7 @@ async function dealXlsx(){
   const W=[], M=[], H={};
   const put=(cells, h)=>{ W.push(cells); if (h) H[W.length]=h; return W.length; };
   const mg=(r, a, z)=>M.push(`${a}${r}:${z}${r}`);
-  const blank=()=>put([]);
+  const blank=()=>put([], 6);
   const sec=t=>{ const r=put([{v:t, s:'sec'},{v:'',s:'sec'},{v:'',s:'sec'},{v:'',s:'sec'},{v:'',s:'sec'},{v:'',s:'sec'},{v:'',s:'sec'},{v:'',s:'sec'}], 22); mg(r,'A','H'); };
   let r=put([{v:'Экономика сделки — на согласование', s:'title'}], 24); mg(r,'A','H');
   r=put([{v:[kpTitle, !DL.ex&&S.client?'заказчик: '+S.client:'', who?'менеджер: '+who:'', 'расчёт от '+today].filter(Boolean).join(' · '), s:'sub'}]); mg(r,'A','H');
@@ -214,7 +214,7 @@ async function dealXlsx(){
   sec('На что обратить внимание');
   const ws=[...c.warn.map(w=>[w.t, w.bad?'bad':'warn']), ...(unk?[['Не указан ввозной НДС к вычету — прибыль показана диапазоном','warn']]:[]), ...(c.ok?[]:[['В исходных данных есть ошибки — проверьте поля, отмеченные в программе','bad']])];
   (ws.length?ws:[['Замечаний нет','ok']]).forEach(([t,s])=>{ r=put([{v:'•',s:'text'},{v:t,s}]); mg(r,'B','H'); });
-  blank(); blank();
+  blank(); put([], 14);
   // подписи
   r=put([{v:'Подготовил',s:'bold'},'',{v:who,s:'text'},'',{v:'',s:'sign'},{v:'',s:'sign'},{v:today,s:'text'}], 28); mg(r,'A','B'); mg(r,'C','D'); mg(r,'E','F');
   r=put([{v:'',s:'note'},'','','',{v:'подпись',s:'note'}]); mg(r,'E','F');
@@ -223,7 +223,7 @@ async function dealXlsx(){
   r=put([note('Подробный расчёт с формулами — лист «Расчёт»; движение денег по дням — лист «График платежей».')]); mg(r,'A','H');
 
   const blob=await makeXlsx([
-    {name:SH0, cols:[5,38,11,16,16,16,15,11], rows:W, merges:M, heights:H, grid:false, footer},
+    {name:SH0, cols:[4,33,8,13,14,14,12,9], rows:W, merges:M, heights:H, grid:false, footer, onePage:true},
     {name:SH1, cols:[46,18,14,18,52], rows:R, freeze:4, titles:'4:4', footer},
     {name:SH2, cols:[9,52,18,18,14,18], rows:G, merges:GM, heights:GH, freeze:4, titles:'4:4', footer, landscape:true}], 'Экономика сделки');
   const safe=s=>String(s||'').replace(/[\\/:*?"<>|«»]+/g,'').replace(/\s+/g,'_').slice(0,60);
