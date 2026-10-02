@@ -69,7 +69,11 @@ async function dealXlsx(){
       amt('Таможенные платежи целиком', 'T'+k, ds.cus, null, 'Пошлина, сбор и ввозной НДС одной суммой');
       row(['Ввозной НДС к вычету', s.vi==null?{v:'', s:'inpMoney'}:{v:s.vi, s:'inpMoney'}, '₽', {f:self(), v:s.vi||0, s:'money'}, s.vi==null?note('Не указан: в файле считается 0 — прибыль минимальная'):''], 'vi'+k);
     }
-    row(['Аванс поставщику', {v:s.adv, s:'inp'}, '%', '', note('От оборудования; остаток — при готовности')], 'adv'+k);
+    const spK=[];
+    s.stages.forEach(st=>{ const key=`sp${k}_${st.j}`; spK.push(key);
+      const evT=DEAL_SUP_EVENTS[st.ev]+(st.off?' + '+st.off+' дн.':''), dup=st.name&&evT.toLowerCase().includes(st.name.toLowerCase());
+      row([`Оплата поставщику: этап ${st.j+1} — ${st.name&&!dup?st.name+', ':''}${evT}`,
+        st.last?{f:`100-${spK.slice(0,-1).map(x=>ref(x)).join('-')||'0'}`, v:st.p, s:'money'}:{v:st.p, s:'inp'}, '%', '', note(st.last?'Остаток до 100 % от оборудования':'Доля от оборудования (с комиссией за перевод)')], key); });
     row(['Изготовление', {v:s.prod, s:'inpInt'}, 'дней'], 'prod'+k);
     row(['Доставка', {v:s.ship, s:'inpInt'}, 'дней'], 'ship'+k);
     if (ds.vatIn) row(['НДС поставщика к вычету', s.voAuto?{f:`${D('EQ'+k)}*${vK}`, v:s.vo, s:'inpMoney'}:{v:s.vo, s:'inpMoney'}, '₽', {f:self(), v:s.vo, s:'money'}, s.voAuto?note('НДС в стоимости оборудования'):''], 'vo'+k);
@@ -97,8 +101,8 @@ async function dealXlsx(){
   const supK=id=>c.sup.findIndex(s=>s.id===id);
   const A=key=>q(SH1)+key, Afx=o=>o.fxE.replace(/([A-Z]+\d+)/g, m=>A(m));
   const amountF=r=>{ const [kind,id]=r.key.split(':'), k=supK(id), o=custOut[k];
-    if (kind==='adv') return `-(${A(D('EQ'+k))}+${Afx(o)})*${A(ref('adv'+k))}/100`;
-    if (kind==='rest') return `-((${A(D('EQ'+k))}+${Afx(o)})*(1-${A(ref('adv'+k))}/100)+${A(D('FX'+k))}-${Afx(o)}+${A(D('INS'+k))}+${A(D('L'+k))}+${A(D('T'+k))}+${A(D('BRK'+k))})`;
+    if (kind==='sp') return `-(${A(D('EQ'+k))}+${Afx(o)})*${A(ref(`sp${k}_${r.key.split(':')[2]}`))}/100`;
+    if (kind==='log') return `-(${A(D('FX'+k))}-${Afx(o)}+${A(D('INS'+k))}+${A(D('L'+k))}+${A(D('T'+k))}+${A(D('BRK'+k))})`;
     if (kind==='ru') return `-${A(D('LRU'+k))}`;
     if (kind==='mnt') return `-(${A(D('M'))}+${A(D('E'))})`;
     if (r.key==='bonus') return `-${A(ref('Rv'))}*${A(ref('BON'))}/100`;
@@ -195,9 +199,9 @@ async function dealXlsx(){
   blank();
   // поставщики
   sec('Поставщики и условия закупки');
-  put([{v:'№',s:'head'},{v:'Поставщик',s:'head'},{v:'Страна',s:'head'},{v:'Закупка, ₽',s:'headR'},{v:'Таможня, ₽',s:'headR'},{v:'Логистика, ₽',s:'headR'},{v:'Аванс',s:'headR'},{v:'Срок, дн.',s:'headR'}], 30);
+  put([{v:'№',s:'head'},{v:'Поставщик',s:'head'},{v:'Страна',s:'head'},{v:'Закупка, ₽',s:'headR'},{v:'Таможня, ₽',s:'headR'},{v:'Логистика, ₽',s:'headR'},{v:'Оплата, %',s:'headR'},{v:'Срок, дн.',s:'headR'}], 30);
   const CUSN={calc:'расчёт по ТН ВЭД', eaeu:'ЕАЭС', sum:'по сумме', none:'нет'};
-  c.sup.forEach((s,k)=>put([{v:k+1,s:'tdInt'},{v:`${s.name}\nтаможня: ${CUSN[s.mode]||'—'}${s.noVat?'; цены без НДС':''}`,s:'td'},{v:s.country||'—',s:'td'},{v:s.equip,s:'tdMoney'},{v:s.T,s:'tdMoney'},{v:s.L+s.Lru+s.brk,s:'tdMoney'},{v:s.adv/100,s:'tdPct'},{v:`${s.prod} + ${s.ship}`,s:'tdC'}]));
+  c.sup.forEach((s,k)=>put([{v:k+1,s:'tdInt'},{v:`${s.name}\nтаможня: ${CUSN[s.mode]||'—'}${s.noVat?'; цены без НДС':''}\nоплата: ${s.stages.filter(st=>st.p>0).map(st=>`${dlIn(st.p)} % ${DEAL_SUP_EVENTS[st.ev]}${st.off?' + '+st.off+' дн.':''}`).join('; ')}`,s:'td'},{v:s.country||'—',s:'td'},{v:s.equip,s:'tdMoney'},{v:s.T,s:'tdMoney'},{v:s.L+s.Lru+s.brk,s:'tdMoney'},{v:s.stages.filter(st=>st.p>0).map(st=>dlIn(st.p)).join(' / '),s:'tdC'},{v:`${s.prod} + ${s.ship}`,s:'tdC'}]));
   r=put([note('Срок: изготовление + доставка. Логистика: до границы, по России, брокер и СВХ.')]); mg(r,'A','H');
   blank();
   // оплата заказчика
