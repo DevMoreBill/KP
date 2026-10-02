@@ -302,32 +302,49 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-g.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media (max-width:640px){ .dl-step{padding:12px 12px 14px} .dl-step>.dl-sh{margin:-12px -12px 2px;padding:12px} .dl-tr{grid-template-columns:24px minmax(0,1fr) 34px;grid-template-areas:"n nm x" "n am am" "n w w" "n r r"} .dl-trr{flex-direction:row;gap:10px;justify-content:flex-end;align-items:baseline} .dl-g.g2{grid-template-columns:minmax(0,1fr)} .dl-trw{flex-wrap:wrap} .dl-troff{flex-basis:120px} .dl-kpt .c-cost{width:auto} }
 /* итог шага — в правом нижнем углу карточки */
-.dl-stot{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin:2px -18px -18px;padding:12px 18px;border-top:1px solid var(--line);background:var(--soft);border-radius:0 0 16px 16px}
-.dl-stot>span small{font-size:12.5px;color:var(--muted);line-height:1.4}
-.dl-stot>div{text-align:right;flex:0 0 auto}
-.dl-stot>div small{display:block;font-size:12px;color:var(--muted)}
-.dl-stot>div b{font-size:20px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap}
+.dl-stot{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;margin:0 -18px -18px;padding:7px 18px;border-top:1px solid var(--line);background:var(--soft);border-radius:0 0 16px 16px;flex-wrap:wrap}
+.dl-stot>span small{font-size:12px;color:var(--muted);line-height:1.35}
+.dl-stot>div{display:flex;align-items:baseline;gap:8px;margin-left:auto;flex:0 0 auto}
+.dl-stot>div small{font-size:12.5px;color:var(--muted)}
+.dl-stot>div b{font-size:15.5px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap}
 /* таможня наглядно: база → платежи → итого */
 .dl-cus2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,3fr);gap:10px;margin-top:12px;align-items:stretch}
 .dl-cpay{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;position:relative}
-.dl-cx,.dl-ctot{border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.dl-cx,.dl-ctot{border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .dl-cx{background:var(--paper);border:1px solid var(--line)}
 .dl-cbase .dl-cx{height:100%;box-sizing:border-box;background:var(--soft);border-color:var(--soft)}
 .dl-cx small,.dl-ctot small{font-size:12px;color:var(--muted)}
-.dl-cx b{font-size:17px;font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap}
+.dl-cx b{font-size:15.5px;font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap}
 .dl-cx em,.dl-ctot em{font-style:normal;font-size:11.5px;color:var(--muted);line-height:1.35}
 .dl-cx.vat{border-style:dashed}
 .dl-cx.vat b{color:var(--ok)}
-.dl-ctot{grid-column:1/-1;background:var(--navy);color:#fff;flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+.dl-ctot{grid-column:1/-1;background:var(--navy);color:#fff;flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:2px 10px;padding:6px 12px}
 .dl-ctot em{margin-left:auto}
-.dl-ctot small,.dl-ctot em{color:rgba(255,255,255,.85);font-size:13px}
-.dl-ctot>b{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dl-ctot small,.dl-ctot em{color:rgba(255,255,255,.85);font-size:12.5px}
+.dl-ctot>b{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .dl-ctot em b{color:#fff;font-size:inherit}
 .dl-hs .c-src{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
 .dl-hspick{font-size:12.5px;padding:4px 8px;max-width:190px;color:var(--navy)}
 .dl-hsdir td{vertical-align:middle}
 .dl-hsdir td small{display:block;font-size:11.5px}
 @media (max-width:1000px){ .dl-cus2{grid-template-columns:minmax(0,1fr)} }
-@media (max-width:640px){ .dl-cpay{grid-template-columns:minmax(0,1fr)} .dl-stot{margin:2px -12px -14px;padding:10px 12px;flex-direction:column;align-items:flex-end} .dl-stot>span{text-align:right} }
+@media (max-width:640px){ .dl-cpay{grid-template-columns:minmax(0,1fr)} .dl-stot{margin:0 -12px -14px;padding:7px 12px} }
 :root[data-theme="dark"] .dl-ctot{background:#2f5fc4}
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-ctot{background:#2f5fc4} }
+
+/* дата отсчёта и даты платежей */
+.dl-d0{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-end}
+.dl-d0 .dl-f{flex:0 0 auto}
+.dl-d0 input[type=date]{width:190px}
+.dl-d0 .muted{font-size:12.5px;padding-bottom:10px}
+.dl-t .dl-date{width:150px;padding:6px 8px}
+.dl-t .dl-dt{color:var(--muted);white-space:nowrap}
+.dl-t td.c-date{white-space:nowrap}
+@media (max-width:640px){
+  .dl-t .c-day{grid-row:1/5}
+  .dl-t .c-date{grid-column:2/4;grid-row:2}
+  .dl-t .c-pay{grid-row:3} .dl-t .c-fin{grid-row:3}
+  .dl-t .c-bal{grid-row:4}
+  .dl-t tfoot .c-date{display:none}
+  .dl-d0 input[type=date]{width:100%}
+}

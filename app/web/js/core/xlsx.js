@@ -18,13 +18,17 @@ const XLSX_STYLES = {
   td:{bd:'all', al:{wrap:1, v:'top'}}, tdC:{bd:'all', al:{h:'center', v:'top'}}, tdMoney:{fmt:'#,##0', bd:'all'}, tdMoney2:{fmt:'#,##0.00', bd:'all'},
   tdPct:{fmt:'0.0%', bd:'all'}, tdInt:{fmt:'0', bd:'all', al:{h:'center'}}, tdNote:{bd:'all', font:{i:1, sz:10, c:XLSX_INK2}, al:{wrap:1, v:'top'}},
   totL:{font:{b:1}, fill:'FFE8EEF8', bd:'all'}, totMoney:{fmt:'#,##0', font:{b:1}, fill:'FFE8EEF8', bd:'all'}, totPct:{fmt:'0.0%', font:{b:1}, fill:'FFE8EEF8', bd:'all'},
-  kpiL:{font:{sz:10, c:XLSX_INK2}, fill:'FFF3F6FB', al:{wrap:1, v:'bottom'}},
-  kpiV:{fmt:'#,##0 "₽"', font:{b:1, sz:14}, fill:'FFF3F6FB'}, kpiP:{fmt:'0.00%', font:{b:1, sz:14}, fill:'FFF3F6FB'},
-  kpiVg:{fmt:'#,##0 "₽"', font:{b:1, sz:14, c:'FF1A7F37'}, fill:'FFF3F6FB'}, kpiVr:{fmt:'#,##0 "₽"', font:{b:1, sz:14, c:'FFC62828'}, fill:'FFF3F6FB'},
-  kpiT:{font:{b:1, sz:12}, fill:'FFF3F6FB', al:{wrap:1}},
+  kpiL:{font:{sz:9, c:XLSX_INK2}, fill:'FFF3F6FB', al:{v:'bottom', ind:1}},
+  kpiV:{fmt:'#,##0 "₽"', font:{b:1, sz:13}, fill:'FFF3F6FB', al:{v:'center', ind:1}}, kpiP:{fmt:'0.00%', font:{b:1, sz:13}, fill:'FFF3F6FB', al:{v:'center', h:'left', ind:1}},
+  kpiVg:{fmt:'#,##0 "₽"', font:{b:1, sz:13, c:'FF1A7F37'}, fill:'FFF3F6FB', al:{v:'center', ind:1}}, kpiVr:{fmt:'#,##0 "₽"', font:{b:1, sz:13, c:'FFC62828'}, fill:'FFF3F6FB', al:{v:'center', ind:1}},
+  kpiT:{font:{b:1, sz:10}, fill:'FFF3F6FB', al:{wrap:1, v:'center', ind:1}},
+  inpDate:{fmt:'dd.mm.yyyy', fill:'FFFFF4C2', bd:'all', al:{h:'center'}}, tdDate:{fmt:'dd.mm.yyyy', bd:'all', al:{h:'center'}},
   ok:{font:{b:1, c:'FF1A7F37'}, al:{wrap:1, v:'top'}}, warn:{font:{c:'FF9A5B00'}, al:{wrap:1, v:'top'}}, bad:{font:{b:1, c:'FFC62828'}, al:{wrap:1, v:'top'}},
   sign:{bd:'bottom'},
 };
+
+// дата → число Excel (дни с 30.12.1899); 'ГГГГ-ММ-ДД' или пусто
+function xlsxDate(iso){ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||''); return m ? Date.UTC(+m[1],+m[2]-1,+m[3])/864e5+25569 : ''; }
 
 function xlsxCol(n){ let s=''; n++; while(n){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; }
 
@@ -44,7 +48,7 @@ function xlsxStyles(){
     const fill=o.fill?put(fills, `<fill><patternFill patternType="solid"><fgColor rgb="${o.fill}"/><bgColor indexed="64"/></patternFill></fill>`):0;
     const bd=o.bd?put(borders, bds[o.bd]):0;
     const nf=o.fmt ? (o.fmt==='0'?1:164+put(fmts, o.fmt)) : 0, a=o.al;
-    const al=a?`<alignment${a.h?` horizontal="${a.h}"`:''}${a.v?` vertical="${a.v}"`:''}${a.wrap?' wrapText="1"':''}/>`:'';
+    const al=a?`<alignment${a.h?` horizontal="${a.h}"`:(a.ind?' horizontal="left"':'')}${a.v?` vertical="${a.v}"`:''}${a.wrap?' wrapText="1"':''}${a.ind?` indent="${a.ind}"`:''}/>`:'';
     xfs.push(`<xf numFmtId="${nf}" fontId="${font}" fillId="${fill}" borderId="${bd}" xfId="0"${nf?' applyNumberFormat="1"':''}${font?' applyFont="1"':''}${fill?' applyFill="1"':''}${bd?' applyBorder="1"':''}${al?' applyAlignment="1">'+al+'</xf>':'/>'}`);
     idx[name]=k+1; });
   xfs.unshift('<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>');
