@@ -149,6 +149,12 @@ jobs:
           $kept = Invoke-RestMethod -Uri "http://127.0.0.1:17845/api/kp/$($kn.id)/state" -Headers @{ 'X-KP-User-Id' = 'ci_a' }
           if (-not $kept.deal -or $kept.authorId -ne 'ci_a') { throw 'Сохранение КП не автором затёрло экономику сделки' }
           Write-Host 'Экономика сделки: доступ только автору — в порядке'
+          # общие подсказки «Экономики сделки» и ключевая ставка ЦБ (сайт ЦБ может быть недоступен — нужен ответ, не ошибка сервера)
+          Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:17845/api/deal/profiles' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('{"sup":{"CI Поставщик":{"adv":"30"}},"duty":{"comp_screw":"5"}}')) | Out-Null
+          $pr = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/deal/profiles'
+          if ($pr.sup.'CI Поставщик'.adv -ne '30' -or $pr.duty.comp_screw -ne '5') { throw 'Условия поставщиков не сохраняются' }
+          $kr = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/cbr/keyrate' -TimeoutSec 60
+          Write-Host "Ключевая ставка ЦБ: $($kr.rate) $($kr.date) $($kr.error)"
           $tj = Invoke-WebRequest -Uri 'http://127.0.0.1:17845/tpl/pnevmotekh/template.json' -UseBasicParsing
           Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:17845/api/templates/pnevmotekh/file?name=template.json' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($tj.Content)) -WebSession $adm -Headers $ah | Out-Null
           $hist = @(Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/templates/pnevmotekh/history')

@@ -24,7 +24,7 @@ import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from cbr import cbr_rates
+from cbr import cbr_key_rate, cbr_rates
 from config import (APP_TITLE, BASE_PORT, BUNDLE, DATA_DIR, DOCS_DIR, DOCS_SHARE, IMG_DIR, MIME, ROOT, SERVER_MODE,
                     docs_path, message_box, read_text, safe_dir, safe_file, safe_id, store, write_bytes)
 import catalog_migrate
@@ -415,6 +415,25 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({'ok': True})
         if path == '/api/cbr':
             return self.send_json(cbr_rates())
+        if path == '/api/cbr/keyrate':
+            return self.send_json(cbr_key_rate())
+        # «Экономика сделки»: условия поставщиков и ставки пошлин по категориям — общие для отдела
+        if path == '/api/deal/profiles':
+            if m == 'GET':
+                return self.send_json(store().kv_get('dealProfiles', {}) or {})
+            if m == 'PUT':
+                d = json.loads(self.body().decode('utf-8') or '{}')
+                cur = store().kv_get('dealProfiles', {}) or {}
+                for grp in ('sup', 'duty'):
+                    for k, v in (d.get(grp) or {}).items():
+                        k = str(k)[:120].strip()
+                        if k and isinstance(v, (dict, str, int, float)):
+                            cur.setdefault(grp, {})[k] = v
+                for grp in ('sup', 'duty'):
+                    if len(cur.get(grp, {})) > 500:
+                        cur[grp] = dict(list(cur[grp].items())[-500:])
+                store().kv_set('dealProfiles', cur)
+                return self.send_json({'ok': True})
         if path == '/api/backup' and m == 'POST':
             if not self.is_local():
                 return self.send_json({'ok': False, 'message': 'Резервная копия создаётся на компьютере-сервере'})
