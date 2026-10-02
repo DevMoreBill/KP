@@ -83,9 +83,12 @@ async function dealXlsx(){
   row(['Прочий НДС к вычету', {v:c.Vo, s:'inpMoney'}, '₽', {f:self(), v:c.Vo, s:'money'}], 'Vo');
   row(['Резерв на гарантию', {v:c.warrP, s:'inp'}, '% выручки без НДС'], 'WARR');
   row(['Бонусы и комиссии с продажи', {v:c.bonusP, s:'inp'}, '% выручки без НДС'], 'BON');
-  const trKeys=[];
+  const trKeys=[], trRef=x=>ref(x, at[x+'col']||'B');
   c.trs.forEach((t,j)=>{ const key='TR'+j; trKeys.push(key);
-    row([`Оплата заказчика: этап ${j+1} — ${DEAL_EVENTS[t.ev]}${t.off?` + ${t.off} дн.`:''}`, t.last?{f:`100-${trKeys.slice(0,-1).map(x=>ref(x)).join('-')||'0'}`, v:t.p, s:'money'}:{v:t.p, s:'inp'}, '%', '', t.last?note('Остаток до 100 %'):''], key); });
+    const nm=`${t.name||'Оплата заказчика'}: этап ${j+1} — ${DEAL_EVENTS[t.ev]}${t.off?` + ${t.off} дн.`:''}`;
+    if (t.bySum){ const r=row([nm, {v:t.sum, s:'inpMoney'}, '₽', '', note('Сумма этапа; доля от цены — в колонке D')], key+'s');
+      R[r-1][3]={f:`IF(${D('S')}=0,0,${ref(key+'s')}/${D('S')}*100)`, v:t.p, s:'money'}; at[key]=r; at[key+'col']='D'; }
+    else row([nm, t.last?{f:`100-${trKeys.slice(0,-1).map(x=>trRef(x)).join('-')||'0'}`, v:t.p, s:'money'}:{v:t.p, s:'inp'}, '%', '', t.last?note('Остаток до 100 %'):''], key); });
   row(['Стоимость денег', {v:c.i, s:'inp'}, '% в месяц', '', c.moneyAuto&&DL.key?note(`Ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD} п.п. / 12`):''], 'i');
   row(['Налог на прибыль', {v:c.taxP, s:'inp'}, '%'], 'TAX');
   // график (на листе «График платежей»)
@@ -99,11 +102,12 @@ async function dealXlsx(){
     if (kind==='mnt') return `-(${A(D('M'))}+${A(D('E'))})`;
     if (r.key==='bonus') return `-${A(ref('Rv'))}*${A(ref('BON'))}/100`;
     if (r.key==='warr') return `-${A(ref('Rv'))}*${A(ref('WARR'))}/100`;
-    const j=+r.key.slice(1); return `${A(D('S'))}*${A(ref('TR'+j))}/100`; };
+    const j=+r.key.slice(1); return `${A(D('S'))}*${A(trRef('TR'+j))}/100`; };
   const inRows=c.rows.map((r,k)=>r.inflow?'A'+(gFirst+k):null).filter(Boolean);
   G.push([{v:'График платежей', s:'title'}]);
   G.push([{v:'Последняя оплата заказчика, день', s:'bold'}, {f:`MAX(${inRows.join(',')})`, v:c.Tend, s:'int'}]);
   G.push([{v:'Минус — расход, плюс — поступление. Дни (жёлтые) можно менять, сохраняя порядок строк по возрастанию дня. Финансирование — простой процент на недостающие деньги, месяц = 30 дней.', s:'note'}]);
+  const GM=['A3:F3'], GH={3:32};
   G.push([{v:'День',s:'head'},{v:'Событие',s:'head'},{v:'Платёж, ₽',s:'headR'},{v:'Остаток денег, ₽',s:'headR'},{v:'Дней финанси­рования',s:'headR'},{v:'Финансирование, ₽',s:'headR'}]);
   // итог расчёта (строки графика ссылаются на выручку)
   row([]);
@@ -142,12 +146,12 @@ async function dealXlsx(){
   // показатели
   const P=unk?null:b.P, gap=Math.max(0, ...c.rows.map(x=>-x.balance)), gapRow=c.rows.find(x=>-x.balance===gap);
   const kv=(v,s)=>({v, s}), tl=t=>({v:t, s:'kpiL'});
-  const tiles=(L, V)=>{ let r1=put([tl(L[0]),tl(''),tl(L[1]),tl(''),tl(L[2]),tl(''),tl(L[3]),tl('')], 18); ['A:B','C:D','E:F','G:H'].forEach(x=>mg(r1,...x.split(':')));
-    r1=put([V[0],kv('',V[0].s),V[1],kv('',V[1].s),V[2],kv('',V[2].s),V[3],kv('',V[3].s)], 26); ['A:B','C:D','E:F','G:H'].forEach(x=>mg(r1,...x.split(':'))); };
+  const tiles=(L, V)=>{ let r1=put([tl(L[0]),tl(''),tl(L[1]),tl(''),tl(L[2]),tl(''),tl(L[3]),tl('')], 32); ['A:B','C:D','E:F','G:H'].forEach(x=>mg(r1,...x.split(':')));
+    r1=put([V[0],kv('',V[0].s),V[1],kv('',V[1].s),V[2],kv('',V[2].s),V[3],kv('',V[3].s)], 28); ['A:B','C:D','E:F','G:H'].forEach(x=>mg(r1,...x.split(':'))); };
   sec('Ключевые показатели');
-  tiles(['Цена КП с НДС','Выручка без НДС','Себестоимость с финансированием', unk?'Прибыль до налога (диапазон)':'Прибыль до налога на прибыль'],
+  tiles(['Цена КП с НДС','Выручка без НДС','Себестоимость\nс финансированием', unk?'Прибыль до налога\n(диапазон)':'Прибыль\nдо налога на прибыль'],
     [kv(c.S,'kpiV'), kv(c.R,'kpiV'), kv(b.Ctot,'kpiV'), unk?kv(`${dlRub0(c.lo.P)} … ${dlRub0(c.hi.P)}`,'kpiT'):kv(P, P<0?'kpiVr':'kpiVg')]);
-  tiles(['Маржинальность (прибыль / выручка)','Наценка (прибыль / себестоимость)','Чистая прибыль после налога','Макс. вложение своих денег'+(gapRow&&gap>0?` (день ${gapRow.day})`:'')],
+  tiles(['Маржинальность\n(прибыль / выручка без НДС)','Наценка\n(прибыль / себестоимость)','Чистая прибыль\nпосле налога на прибыль','Макс. вложение своих денег'+(gapRow&&gap>0?`\n(день ${gapRow.day})`:'')],
     [unk?kv(`${dlPct(c.lo.margin)} … ${dlPct(c.hi.margin)}`,'kpiT'):kv(b.margin==null?'—':b.margin/100,'kpiP'), unk?kv(`${dlPct(c.lo.markup)} … ${dlPct(c.hi.markup)}`,'kpiT'):kv(b.markup==null?'—':b.markup/100,'kpiP'),
      unk?kv('—','kpiT'):kv(b.net, b.net<0?'kpiVr':'kpiV'), kv(gap,'kpiV')]);
   const tg=d.target||{}, tv=dNum(tg.v), TGN={margin:'маржинальность',markup:'наценка',profit:'прибыль до налога',net:'чистая прибыль'};
@@ -196,7 +200,7 @@ async function dealXlsx(){
   // оплата заказчика
   sec('Оплата заказчика');
   r=put([{v:'№',s:'head'},{v:'Этап',s:'head'},{v:'Доля',s:'headR'},{v:'День',s:'headR'},{v:'Сумма, ₽',s:'headR'},{v:'',s:'head'},{v:'',s:'head'},{v:'',s:'head'}]); mg(r,'E','F');
-  c.rows.filter(x=>x.inflow).forEach((x,k)=>{ r=put([{v:k+1,s:'tdInt'},{v:x.label.replace(/^Оплата заказчика [\d,.\s]+% — /,''),s:'td'},{v:(x.pct||0)/100,s:'tdPct'},{v:x.day,s:'tdInt'},{v:x.amount,s:'tdMoney'},{v:'',s:'tdMoney'}]); mg(r,'E','F'); });
+  c.rows.filter(x=>x.inflow).forEach((x,k)=>{ r=put([{v:k+1,s:'tdInt'},{v:(t=>t?`${t.name||(t.last&&c.trs.length>1?'Окончательный расчёт':t.k===0&&!t.last?'Аванс':'Оплата')} — ${DEAL_EVENTS[t.ev]}${t.off?` + ${t.off} дн.`:''}`:x.label)(c.trs[x.stage]),s:'td'},{v:(x.pct||0)/100,s:'tdPct'},{v:x.day,s:'tdInt'},{v:x.amount,s:'tdMoney'},{v:'',s:'tdMoney'}]); mg(r,'E','F'); });
   r=put([note(`День 0 — подписание договора. Готовность к отгрузке — день ${c.Rdy}, поставка — день ${c.D}.`)]); mg(r,'A','H');
   blank();
   // деньги и налоги
@@ -221,7 +225,7 @@ async function dealXlsx(){
   const blob=await makeXlsx([
     {name:SH0, cols:[5,38,11,16,16,16,15,11], rows:W, merges:M, heights:H, grid:false, footer},
     {name:SH1, cols:[46,18,14,18,52], rows:R, freeze:4, titles:'4:4', footer},
-    {name:SH2, cols:[9,52,18,18,14,18], rows:G, freeze:4, titles:'4:4', footer, landscape:true}], 'Экономика сделки');
+    {name:SH2, cols:[9,52,18,18,14,18], rows:G, merges:GM, heights:GH, freeze:4, titles:'4:4', footer, landscape:true}], 'Экономика сделки');
   const safe=s=>String(s||'').replace(/[\\/:*?"<>|«»]+/g,'').replace(/\s+/g,'_').slice(0,60);
   saveFileA(DL.ex ? 'Экономика_сделки_пример.xlsx' : `Экономика_КП_${safe(S.number||'черновик')}${S.client?'_'+safe(S.client):''}.xlsx`, blob);
   toast('Расчёт выгружен в Excel');

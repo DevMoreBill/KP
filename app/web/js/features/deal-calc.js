@@ -65,7 +65,7 @@ function dealCountryPreset(country){ const c=String(country||'').trim(); if (!c)
   const k=DEAL_COUNTRIES.find(x=>x[0].toLowerCase()===c.toLowerCase()); return {cusMode:'calc', vatIn:false, cur:k?k[1]:'USD'}; }
 
 // этапы оплаты заказчика: событие + дней после него
-const DEAL_EVENTS = { sign:'при подписании', ready:'при готовности к отгрузке', delivery:'после поставки', pnr:'после ПНР' };
+const DEAL_EVENTS = { sign:'после подписания договора', ready:'при готовности к отгрузке', delivery:'после поставки', pnr:'после ПНР' };
 
 function dealNewSupplier(id, def={}){
   return { id, name:'', country:'', vatIn:false, adv:def.adv??'20', prod:def.prod??'40', ship:def.ship??'40',
@@ -189,13 +189,18 @@ function dealCalc(kp, d){
   // этапы оплаты заказчика: последний этап — остаток до 100 %
   const ev={sign:0, ready:Rdy, delivery:D, pnr:D+pnrDays};
   const tr=(d.cust&&d.cust.tr&&d.cust.tr.length)?d.cust.tr:[{pct:'',ev:'delivery',off:'30'}];
-  let pctSum=0; const trs=tr.map((t,k)=>{ const last=k===tr.length-1;
-    const p=last?null:num(`cust.tr.${k}.pct`, t.pct, {def:0, max:100}); if (!last) pctSum+=p;
-    const off=num(`cust.tr.${k}.off`, t.off, {def:0, int:true}); return {k, p, ev:DEAL_EVENTS[t.ev]?t.ev:'delivery', off, last}; });
+  // этап — процентом или суммой в рублях (sum), со своим названием (name); последний — остаток
+  let pctSum=0; const trs=tr.map((t,k)=>{ const last=k===tr.length-1, bySum=!last && t.mode==='sum';
+    let p=null, sum=null;
+    if (bySum){ sum=num(`cust.tr.${k}.sum`, t.sum, {def:0}); p=S>0?sum/S*100:0; }
+    else if (!last) p=num(`cust.tr.${k}.pct`, t.pct, {def:0, max:100});
+    if (!last) pctSum+=p;
+    const off=num(`cust.tr.${k}.off`, t.off, {def:0, int:true});
+    return {k, p, sum, bySum, name:String(t.name||'').trim(), ev:DEAL_EVENTS[t.ev]?t.ev:'delivery', off, last}; });
   const restPct=100-pctSum; if (restPct<-0.0001) err['cust.tr']='Сумма этапов больше 100 %';
   trs[trs.length-1].p=Math.max(0,restPct);
   for (const t of trs){ if (!(t.p>0)) continue;
-    rows.push({key:'c'+t.k, auto:ev[t.ev]+t.off, label:`Оплата заказчика ${dlPctTxt(t.p)} — ${DEAL_EVENTS[t.ev]}${t.off?` + ${t.off} дн.`:''}`, amount:S*t.p/100, inflow:true, pct:t.p}); }
+    rows.push({key:'c'+t.k, auto:ev[t.ev]+t.off, label:`${t.name||'Оплата заказчика'} ${dlPctTxt(t.p)} — ${DEAL_EVENTS[t.ev]}${t.off?` + ${t.off} дн.`:''}`, amount:t.bySum?t.sum:S*t.p/100, inflow:true, pct:t.p, stage:t.k}); }
   if (!rows.some(r=>r.inflow)) rows.push({key:'c0', auto:D, label:'Оплата заказчика', amount:0, inflow:true, pct:100});
   rows.forEach((r,k)=>{ r.day=dayOf(r.key, r.auto); r.manual=r.day!==r.auto; r.ord=k; });
   const Tend=Math.max(...rows.filter(r=>r.inflow).map(r=>r.day));

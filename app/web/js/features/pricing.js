@@ -33,6 +33,18 @@ const kpCur = () => S.pricing.cur||'RUB';
 
 function rateOf(c){ if (c==='RUB') return 1; const v=parseFloat(String(S.pricing.rates[c]||'').replace(/\s/g,'').replace(',','.')); return v>0?v:NaN; }
 
+// смена валюты КП: цены позиций и опций переводятся по курсу (раздел «Цены» и окно «Экономика сделки»)
+function kpSetCur(cur){
+  const prev=kpCur(); if (prev===cur) return;
+  const r1=rateOf(prev), r2=rateOf(cur); S.pricing.cur=cur;
+  if (r1>0 && r2>0){ const cv=v=>Math.round(v*r1/r2);
+    S.items.forEach(x=>{ if (x.price) x.price=cv(x.price); delete x._priceText; (x.options||[]).forEach(o=>{ if(o.price){ o.price=cv(o.price); delete o._priceText; } }); });
+    toast(`Цены переведены в ${cur} по курсу`);
+  } else toast('Укажите курс, чтобы перевести цены: сейчас цены не пересчитаны');
+  renderForm(); persist(); if (typeof dealRender==='function') dealRender();
+  if (cur!=='RUB' && !(rateOf(cur)>0)) loadCBR();
+}
+
 function roundTo(kop){ const st=Math.round(parseFloat(S.pricing.round||'0.01')*100)||1; return Math.round(kop/st)*st; }
 
 function marginOf(x){ if (x.margin==null || x.margin==='') return null; const m=parseFloat(String(x.margin).replace(',','.')); return Number.isFinite(m)?m:null; }
@@ -82,7 +94,7 @@ async function loadCBR(){
   if (btn){ btn.disabled=false; btn.textContent='Обновить с cbr.ru'; }
   if (!r || !r.USD){ const m=$('#cbrMsg'); if(m){ m.textContent='Курс с cbr.ru не получен'+(why?` (${why})`:'')+' — введите вручную ниже.'; m.classList.add('bad-t'); } document.querySelector('details.psettings')?.setAttribute('open',''); document.querySelector('[data-rate]')?.focus(); toast('Курс ЦБ не загружен — введите вручную'); return; }
   const got=[]; for (const c of ['USD','EUR','CNY']) if (r[c]) { S.pricing.rates[c]=(+r[c]).toFixed(4).replace('.',','); got.push(c); }
-  S.pricing.rateDate=r.date||today(); S.pricing.rateSrc=src; renderForm(); persist();
+  S.pricing.rateDate=r.date||today(); S.pricing.rateSrc=src; renderForm(); persist(); if (typeof dealRender==='function') dealRender();
   got.forEach(c=>{ const el=document.querySelector(`[data-rate="${c}"]`); if(el){ el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1800); } });
   toast(`Курс ЦБ РФ на ${KPGen.ruDate(S.pricing.rateDate)}: USD ${S.pricing.rates.USD}, EUR ${S.pricing.rates.EUR}, CNY ${S.pricing.rates.CNY}`);
 }

@@ -1,14 +1,19 @@
 /* Окно «Экономика сделки» (js/features/deal.js) и кнопки входа в него. */
-dialog.dealwin{width:min(1320px,96vw);max-width:96vw;height:min(92vh,960px);display:none;flex-direction:column;overflow:hidden;padding:0}
+dialog.dealwin{width:min(1320px,96vw);max-width:100vw;max-height:100vh;height:min(92vh,960px);min-width:min(640px,100vw);min-height:min(420px,100vh);resize:both;display:none;flex-direction:column;overflow:hidden;padding:0}
+dialog.dealwin.max{width:100vw!important;height:100vh!important;max-height:100vh;border-radius:0;resize:none;margin:0;inset:0}
+.mob dialog.dealwin .dl-maxb{display:none}
 @supports (height:100dvh){ dialog.dealwin{height:min(92dvh,960px)} }
 dialog.dealwin[open]{display:flex}
 .dealwin .dlg-h h3 small{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:2px}
-.dl-b{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 400px}
-.dl-form{overflow:auto;padding:18px 22px 28px;display:grid;gap:18px;align-content:start;background:var(--paper);overscroll-behavior:contain}
-.dl-side{overflow:auto;border-left:1px solid var(--line);padding:18px 18px 28px;background:var(--card);overscroll-behavior:contain}
+.dl-b{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 400px;grid-template-rows:minmax(0,1fr)}
+.dl-form{overflow:auto;min-height:0;padding:18px 22px 28px;display:grid;gap:22px;align-content:start;background:var(--paper);overscroll-behavior:contain}
+.dl-side{overflow:auto;min-height:0;align-self:stretch;position:static;top:auto;max-height:none;border-left:1px solid var(--line);padding:18px 18px 28px;background:var(--card);overscroll-behavior:contain}
 
-/* шаги 1…6 */
-.dl-step{display:grid;gap:12px;min-width:0}
+/* шаги 1…7 — каждый отдельной карточкой */
+.dl-step{display:grid;gap:14px;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px 18px;box-shadow:0 1px 2px rgba(15,30,60,.05)}
+.dl-step>.dl-sh{margin:-16px -18px 2px;padding:14px 18px;border-bottom:1px solid var(--line);background:var(--soft);border-radius:16px 16px 0 0}
+details.dl-step:not([open])>.dl-sh{border-bottom:0;border-radius:16px;margin-bottom:-18px}
+.dl-step .dl-card{background:var(--paper);box-shadow:none}
 .dl-sh{display:flex;gap:12px;align-items:flex-start}
 .dl-sh h4{margin:2px 0 0;font-size:17px;font-weight:700;color:var(--ink)}
 .dl-sh p{margin:2px 0 0;font-size:13px;color:var(--muted);line-height:1.4}
@@ -97,9 +102,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 
 /* шаг «Оплата заказчика» */
 .dl-trs{display:grid;gap:8px}
-.dl-tr{display:grid;grid-template-columns:110px minmax(0,1fr) 140px 40px;gap:8px;align-items:center}
 .dl-tr select{width:100%}
-.dl-trp{font-weight:650;font-variant-numeric:tabular-nums;padding:0 6px;color:var(--navy)}
 .dl-tr.bad input{border-color:var(--danger)}
 .dl-trf{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:12.5px;margin-top:4px}
 
@@ -179,6 +182,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 @media (max-width:1000px){
   .dl-b{display:block;overflow:auto;overscroll-behavior:contain}
   .dl-form,.dl-side{overflow:visible}
+  .dl-b{grid-template-rows:none}
   .dl-side{border-left:0;border-top:1px solid var(--line)}
   .dl-mini{display:flex;gap:12px;align-items:flex-end;justify-content:space-between;padding:8px 16px 10px;border-bottom:1px solid var(--line);background:var(--card);font-size:13px;color:var(--muted)}
   .dl-mini>span{display:flex;flex-direction:column;min-width:0}
@@ -207,9 +211,6 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
   .dl-hs tr{grid-template-columns:auto auto minmax(0,1fr)}
   .dl-hs td.num{grid-column:auto}
   .dl-hs td.num::before{content:none}
-  .dl-tr{grid-template-columns:96px minmax(0,1fr) 40px;row-gap:6px;padding-bottom:6px;border-bottom:1px dashed var(--line)}
-  .dl-tr>.dl-in:nth-of-type(2){grid-column:2;grid-row:2;max-width:180px}
-  .dl-tr>button,.dl-tr>span:last-child:empty{grid-column:3;grid-row:1}
   .dl-pr{grid-template-columns:1fr}
   /* график — карточками */
   .dl-t{min-width:0;display:block} .dl-t thead{display:none} .dl-t tbody,.dl-t tfoot{display:block}
@@ -245,3 +246,58 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 :root[data-theme="dark"] .dl-badge.warn,:root[data-theme="dark"] .dl-chip.warn,:root[data-theme="dark"] .dl-warn li,:root[data-theme="dark"] .dl-ex{background:#3a2f12;color:#f3d27a;border-color:#5a4718}
 :root[data-theme="dark"] .dl-warn li.bad,:root[data-theme="dark"] .dl-ex.warn{background:#3d1c17;color:#ffb3a6;border-color:#5e2a22}
 :root[data-theme="dark"] .dl-n,:root[data-theme="dark"] .dl-cta i,:root[data-theme="dark"] .dl-seg button.on{background:#3b6fd1}
+
+/* подблоки карточки поставщика */
+.dl-sub{display:grid;gap:10px;padding-top:12px;border-top:1px dashed var(--line)}
+.dl-sub h5{margin:0;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.dl-sub .dl-g{margin-top:0}
+.dl-tl{margin:0;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:13px;color:var(--muted)}
+.dl-tl span{padding:4px 10px;border-radius:999px;background:var(--soft)}
+.dl-tl b{color:var(--ink)}
+.dl-tl i{font-style:normal}
+/* поле со списком */
+.dl-combo{position:relative}
+.dl-cb{display:flex;min-width:0}
+.dl-cb input{flex:1 1 auto;min-width:0;border-top-right-radius:0;border-bottom-right-radius:0;font-weight:600}
+.dl-cbb{flex:0 0 42px;border:1px solid var(--line);border-left:0;background:var(--soft);color:var(--navy);border-radius:0 10px 10px 0;font-size:16px;cursor:pointer}
+.dl-combo.open .dl-cbb{background:var(--navy);color:#fff}
+.dl-cbl{position:absolute;z-index:20;left:0;right:0;top:100%;margin:4px 0 0;padding:4px;list-style:none;max-height:300px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18)}
+.dl-cbl li button{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 8px;width:100%;text-align:left;border:0;background:none;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--ink);font:inherit}
+.dl-cbl li button:hover,.dl-cbl li[aria-selected="true"] button{background:var(--soft)}
+.dl-cbl b{font-weight:600}
+.dl-cbl em{font-style:normal;font-size:11px;font-weight:600;color:var(--navy);background:var(--soft);border-radius:999px;padding:1px 8px;align-self:center}
+.dl-cbl small{grid-column:1/-1;font-size:12px;color:var(--muted)}
+.dl-cbl li.none{padding:10px;font-size:13px;color:var(--muted)}
+/* этапы оплаты заказчика */
+.dl-trp-l{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
+.dl-trp-l .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer;color:var(--navy)}
+.dl-trp-l .chip:hover{background:var(--soft)}
+.dl-tr{display:grid;grid-template-columns:26px minmax(0,1fr) 200px 140px 34px;grid-template-areas:"n nm am r x" "n w w r x";gap:8px 10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.dl-trn{grid-area:n;align-self:start;margin-top:8px}
+.dl-trname{grid-area:nm}
+.dl-tram,.dl-trp{grid-area:am}
+.dl-trw{grid-area:w}
+.dl-trr{grid-area:r}
+.dl-tr>button,.dl-tr>span:last-child:empty{grid-area:x}
+.dl-trw>em{font-style:normal;font-size:13px;color:var(--muted);flex:0 0 auto;align-self:center}
+.dl-trn{width:24px;height:24px;border-radius:50%;background:var(--soft);color:var(--navy);display:grid;place-items:center;font-size:12px;font-weight:700}
+.dl-trname{width:100%}
+.dl-tram .mtog{flex:0 0 auto}
+.dl-trw{display:flex;gap:6px;min-width:0}
+.dl-trw select{flex:1 1 auto;min-width:0}
+.dl-troff{flex:0 0 120px}
+.dl-trw select{max-width:300px}
+.dl-trp{display:flex;flex-direction:column;font-size:12px;color:var(--muted);padding-left:6px}
+.dl-trp b{font-size:15px;color:var(--navy)}
+.dl-trr{display:flex;flex-direction:column;align-items:flex-end;font-variant-numeric:tabular-nums}
+.dl-trr small{font-size:12px;color:var(--muted)}
+/* цена КП */
+.dl-rates{gap:6px}
+.dl-rates .dl-in{max-width:280px}
+.dl-rates .dl-in>i{white-space:nowrap}
+.dl-rates .lnk{justify-self:start;font-size:13px}
+.dl-kpt .c-cost{width:200px}
+.dl-kpt tfoot td{border-bottom:0;padding-top:10px}
+.dl-kpt tfoot small{display:block;font-size:12px;color:var(--muted);font-weight:400}
+.dl-g.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:640px){ .dl-step{padding:12px 12px 14px} .dl-step>.dl-sh{margin:-12px -12px 2px;padding:12px} .dl-tr{grid-template-columns:24px minmax(0,1fr) 34px;grid-template-areas:"n nm x" "n am am" "n w w" "n r r"} .dl-trr{flex-direction:row;gap:10px;justify-content:flex-end;align-items:baseline} .dl-g.g2{grid-template-columns:minmax(0,1fr)} .dl-trw{flex-wrap:wrap} .dl-troff{flex-basis:120px} .dl-kpt .c-cost{width:auto} }
