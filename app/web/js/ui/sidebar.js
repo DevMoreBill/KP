@@ -29,13 +29,7 @@ function renderSide(){
   const pr = problems();
   const cs=curSh(kpCur());
   // экономика — только автору КП и администратору; заполнен расчёт сделки — его итог, иначе кнопка входа
-  const ds=dealAllowed()?dealSummary():null, pc2=v=>v==null?'—':v.toFixed(2).replace('.',',');
-  const mBlock = !dealAllowed() ? '' : ds ? `<div class="mrg"><div class="lab">Экономика сделки — в КП не выводится</div><dl>
-     ${ds.confirmed?`<dt>Прибыль после финансирования</dt><dd class="${ds.profit<0?'bad-t':''}">${money(Math.round(ds.profit*100))} руб.</dd><dt>Маржинальность / наценка</dt><dd>${pc2(ds.margin)} % / ${pc2(ds.markup)} %</dd>`
-       :`<dt>Прибыль</dt><dd>от ${money(ds.lo*100)} до ${money(ds.hi*100)} руб.</dd><dt class="warn-t">Нужна сумма ввозного НДС</dt><dd></dd>`}</dl>
-     <button class="btn dl-open" type="button" data-a="deal">Экономика сделки →</button></div>`
-   : `<div class="mrg"><div class="lab">Внутренний расчёт — в КП не выводится</div><p class="muted mrg-n">Закупка, логистика, таможня, финансирование — и цена продажи под нужную маржу.</p>
-     <button class="btn dl-open" type="button" data-a="deal">Экономика сделки →</button></div>`;
+  const mBlock = dealAllowed() ? dealSideBlock() : '';
   const rubEq = kpCur()!=='RUB' && rateOf(kpCur())>0 ? `<dt>В рублях по курсу</dt><dd>${money(Math.round(t.sum*rateOf(kpCur())))}</dd>` : '';
   const kn=$('#kpno'); if(kn) kn.textContent = S.number ? 'КП № '+S.number : '';
   renderMbar(t, pr, cs);

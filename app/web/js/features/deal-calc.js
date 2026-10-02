@@ -202,7 +202,10 @@ function dealCalc(kp, d){
   for (const t of trs){ if (!(t.p>0)) continue;
     rows.push({key:'c'+t.k, auto:ev[t.ev]+t.off, label:`${t.name||'Оплата заказчика'} ${dlPctTxt(t.p)} — ${DEAL_EVENTS[t.ev]}${t.off?` + ${t.off} дн.`:''}`, amount:t.bySum?t.sum:S*t.p/100, inflow:true, pct:t.p, stage:t.k}); }
   if (!rows.some(r=>r.inflow)) rows.push({key:'c0', auto:D, label:'Оплата заказчика', amount:0, inflow:true, pct:100});
-  rows.forEach((r,k)=>{ r.day=dayOf(r.key, r.auto); r.manual=r.day!==r.auto; r.ord=k; });
+  // день платежа: по срокам или вручную; при заданной дате отсчёта и производственном календаре (kp.workShift) расчётный
+  // день переносится на ближайший рабочий (банковский) день, вручную заданный — остаётся, но помечается, если он нерабочий
+  rows.forEach((r,k)=>{ r.day=dayOf(r.key, r.auto); r.manual=r.day!==r.auto; r.ord=k;
+    if (kp.workShift){ if (!r.manual){ const w=kp.workShift(r.day); if (w!==r.day){ r.shiftedFrom=r.day; r.day=w; } } else if (kp.isOff && kp.isOff(r.day)) r.offDay=true; } });
   const Tend=Math.max(...rows.filter(r=>r.inflow).map(r=>r.day));
   if (Bn>0) rows.push({key:'bonus', auto:Tend, day:Tend, fixed:true, label:'Бонусы и комиссии с продажи', amount:-Bn, ord:rows.length});
   if (W>0) rows.push({key:'warr', auto:Tend, day:Tend, fixed:true, label:'Резерв на гарантию', amount:-W, ord:rows.length});

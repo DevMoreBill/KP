@@ -1,0 +1,25 @@
+/* Руководство пользователя и история версий (js/features/help.js) */
+dialog.helpwin{width:min(1100px,96vw);max-width:96vw;height:min(88vh,900px);display:none;flex-direction:column;overflow:hidden;padding:0}
+dialog.helpwin[open]{display:flex}
+.helpwin .dlg-h h3 small{display:block;font-size:12.5px;font-weight:500;color:var(--muted)}
+.hl-b{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:260px minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.hl-nav{overflow:auto;border-right:1px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:4px;background:var(--paper)}
+.hl-nav input{width:100%;margin-bottom:8px}
+.hl-nav button{text-align:left;border:0;background:none;padding:9px 12px;border-radius:10px;cursor:pointer;font:inherit;font-size:14.5px;color:var(--ink)}
+.hl-nav button:hover{background:var(--soft)}
+.hl-nav button.on{background:var(--navy);color:#fff;font-weight:600}
+.hl-sel{display:none}
+.hl-a{overflow:auto;padding:20px 28px 32px;font-size:15px;line-height:1.6;overscroll-behavior:contain}
+.hl-a h2{margin:0 0 12px;font-size:22px;color:var(--navy)}
+.hl-a h4{margin:18px 0 6px;font-size:16px}
+.hl-a ul,.hl-a ol{padding-left:22px;margin:8px 0}
+.hl-a li{margin:4px 0}
+.hl-a code{background:var(--soft);padding:1px 6px;border-radius:6px;font-size:13.5px}
+.hl-a mark{background:#ffe58a;color:inherit;border-radius:3px}
+.hl-faq dt{font-weight:650;margin-top:12px}
+.hl-faq dd{margin:2px 0 0;color:var(--ink)}
+.help-btn{font-weight:700;min-width:40px}
+@media (max-width:760px){ .hl-b{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)} .hl-nav{border-right:0;border-bottom:1px solid var(--line);flex-direction:column;padding:10px 12px}
+  .hl-nav button{display:none} .hl-sel{display:block;width:100%} .hl-a{padding:14px 16px 28px} .mob .help-btn{display:none} }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .hl-a mark{background:#6b5a12} }
+:root[data-theme="dark"] .hl-a mark{background:#6b5a12}

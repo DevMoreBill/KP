@@ -55,7 +55,7 @@ MIGRATIONS = [
      """,
      """
      DROP TABLE IF EXISTS audit; DROP TABLE IF EXISTS trash; DROP TABLE IF EXISTS pending_edits;
-     DELETE FROM kv WHERE key IN ('admin', 'settings');
+     DELETE FROM kv WHERE key IN ('admin', 'admins', 'settings');
      """),
     # «Экономика сделки»: справочник поставщиков (название, страна, условия) и коды ТН ВЭД / пошлины
     # (по категории оборудования — ключ cat:<тип>, по модели каталога — item:<id>)
@@ -77,7 +77,18 @@ MIGRATIONS = [
      INSERT INTO customs_prev SELECT key, code, duty, note, updated, updated_by FROM customs;
      DROP TABLE customs; ALTER TABLE customs_prev RENAME TO customs;
      """),
+    # история версий КП: прежнее состояние сохраняется при каждом пересохранении КП (последние KP_VERSIONS)
+    ('2026-12-kp-versions',
+     """
+     CREATE TABLE IF NOT EXISTS kp_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, kp_id TEXT NOT NULL, created TEXT NOT NULL,
+         user_name TEXT, state TEXT NOT NULL, meta TEXT);
+     CREATE INDEX IF NOT EXISTS kp_versions_kp ON kp_versions(kp_id, id);
+     """,
+     """
+     DROP TABLE IF EXISTS kp_versions;
+     """),
 ]
+KP_VERSIONS = 30
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
 TRASH_TABLES = {'kp': 'kp', 'catalog': 'catalog', 'manager': 'managers', 'client': 'clients', 'supplier': 'suppliers'}
@@ -426,15 +437,38 @@ class Store:
         r = self.one('SELECT %s FROM kp WHERE id=?' % field, (kid,))
         return r[0] if r else None
 
-    def kp_set(self, kid, field, value):
+    def kp_set(self, kid, field, value, by=''):
         if field not in ('state', 'meta', 'docx'):
             raise ValueError(field)
         with self.lock:
             c = self.conn()
-            if not c.execute('SELECT 1 FROM kp WHERE id=?', (kid,)).fetchone():
+            old = c.execute('SELECT state, meta FROM kp WHERE id=?', (kid,)).fetchone()
+            if not old:
                 c.execute('INSERT INTO kp (id, number, updated) VALUES (?,?,?)', (kid, kid, _now()))
+            elif field == 'state' and old[0] and old[0] != value:
+                # прежнее состояние — в историю версий (лишнее сверх KP_VERSIONS удаляется)
+                c.execute('INSERT INTO kp_versions (kp_id, created, user_name, state, meta) VALUES (?,?,?,?,?)', (kid, _now(), by, old[0], old[1]))
+                c.execute('DELETE FROM kp_versions WHERE kp_id=? AND id NOT IN (SELECT id FROM kp_versions WHERE kp_id=? ORDER BY id DESC LIMIT ?)',
+                          (kid, kid, KP_VERSIONS))
             c.execute('UPDATE kp SET %s=?, updated=? WHERE id=?' % field, (value, _now(), kid))
             c.commit()
+
+    def kp_versions(self, kid):
+        out = []
+        for vid, created, by, meta, upd in self.all('SELECT id, created, user_name, meta, (SELECT updated FROM kp WHERE id=kp_id) FROM kp_versions '
+                                                     'WHERE kp_id=? ORDER BY id DESC', (kid,)):
+            mt = {}
+            try:
+                mt = json.loads(meta or '{}') or {}
+            except ValueError:
+                pass
+            out.append({'id': vid, 'created': created, 'by': by or '', 'sum': mt.get('sum'), 'cur': mt.get('cur'), 'client': mt.get('client'),
+                        'manager': mt.get('manager'), 'savedAt': mt.get('savedAt') or mt.get('updatedAt'), 'items': (mt.get('items') or [])[:3]})
+        return out
+
+    def kp_version_state(self, kid, vid):
+        r = self.one('SELECT state FROM kp_versions WHERE kp_id=? AND id=?', (kid, int(vid)))
+        return r[0] if r else None
 
     # ---------- контрагенты и проверки ----------
     def clients_all(self):

@@ -24,6 +24,7 @@ function openMobileMenu(){
       ${it('catalog','▦','Каталог оборудования','Подбор и своё оборудование')}
       ${it('preview','▤','Предпросмотр КП','Документ целиком')}
       ${dealAllowed()?it('deal','₽','Экономика сделки','Прибыль, финансирование, Excel'):''}
+      ${it('help','?','Руководство','Как пользоваться, история версий')}
       <hr>${it('theme',dark?'☀':'☾',dark?'Светлая тема':'Тёмная тема','')}
       ${it('settings','⚙','Настройки','Для администратора')}</div>`;
   d.onclick=e=>{ const b=e.target.closest('[data-mm],[data-close]'); if (!b){ if (e.target===d) d.close(); return; }
@@ -33,6 +34,7 @@ function openMobileMenu(){
     else if (k==='catalog') openCatalog({});
     else if (k==='preview') openKpPreview();
     else if (k==='deal') openDeal();
+    else if (k==='help') openHelp();
     else if (k==='theme') $('#btnTheme').click();
     else if (k==='settings') openSettings(); };
   d.showModal();

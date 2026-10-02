@@ -38,7 +38,7 @@ a = Analysis(
         ('seed/data/catalog', 'seed/data/catalog'),
         ('seed/data/img', 'seed/data/img'),
     ],
-    hiddenimports=['config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'desktop', 'pdf_convert', 'catalog_migrate', 'admin', 'images',
+    hiddenimports=['config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'workcal', 'desktop', 'pdf_convert', 'catalog_migrate', 'admin', 'images',
                    'sqlite3', '_sqlite3', 'gzip'],
     # sqlite3 НЕ исключать: на нём работает база данных программы
     excludes=['tkinter', 'unittest', 'pydoc', 'lib2to3', 'multiprocessing'],

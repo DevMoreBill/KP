@@ -107,6 +107,8 @@ document.addEventListener('click', async e=>{
     case 'checkRun': return checkRun(b.dataset.force==='1');
     case 'integrations': return openSettings('keys');
     case 'settings': return openSettings();
+    case 'help': return openHelp();
+    case 'versions': return openHelp('versions');
     case 'pickObject': { const o=(curClient()?.objects||[])[k]; if(o) S.object={...S.object,...o}; break; }
     case 'pickContact': { const o=(curClient()?.contacts||[])[k]; if(o) S.contact={...S.contact,...o}; break; }
     case 'dmode': { const inp=document.querySelector(`[data-disc="${i}"]`); it.discType=b.dataset.v; if (it.disc) it.disc.type=b.dataset.v;
