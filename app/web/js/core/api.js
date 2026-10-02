@@ -3,8 +3,15 @@
 
 const SRV = { on:false, info:null };
 
+// сессия «Настроек» (администратор): CSRF-токен для изменяющих запросов (cookie сессии ставит сервер)
+const ADMIN = { on:false, csrf:'' };
+
+// каждый запрос подписывается выбранным менеджером — для журнала действий (это не вход по паролю)
 async function api(path, opts={}){
-  const r = await fetch(path, opts);
+  const headers = { ...(opts.headers||{}), 'X-KP-User-Id': encodeURIComponent((typeof S!=='undefined'&&S.managerId)||''),
+    'X-KP-User': encodeURIComponent((typeof S!=='undefined'&&S.manager&&S.manager.name)||'') };
+  if (ADMIN.csrf) headers['X-CSRF-Token'] = ADMIN.csrf;
+  const r = await fetch(path, {...opts, headers});
   if (!r.ok) throw new Error((await r.text()) || ('HTTP '+r.status));
   const ct = r.headers.get('content-type')||''; return ct.includes('json') ? r.json() : r.text();
 }

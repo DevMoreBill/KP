@@ -31,6 +31,7 @@ import catalog_migrate
 from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
 from desktop import open_file, open_folder, show_in_folder
 from equipment_types import load_types, load_types_builtin, save_user_types, types_builtin_path
+import admin
 import pdf_convert
 import images
 from images import ImageStore, mark_organized, organize_existing
@@ -116,8 +117,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send(404, 'text/plain; charset=utf-8', text)
 
     def body(self):
-        n = int(self.headers.get('Content-Length') or 0)
-        return self.rfile.read(n) if n > 0 else b''
+        # тело читается один раз и запоминается: его смотрят и проверка прав / модерация (admin.py), и сам маршрут
+        if not hasattr(self, '_body'):
+            n = int(self.headers.get('Content-Length') or 0)
+            self._body = self.rfile.read(n) if n > 0 else b''
+        return self._body
+
+    def send_response(self, code, message=None):
+        self._code = code
+        super().send_response(code, message)
 
     # --- маршрутизация ---
     def do_GET(self):
@@ -137,7 +145,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def dispatch(self):
         try:
+            path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
+            m = 'GET' if self.command == 'HEAD' else self.command
+            # права, модерация и журнал действий (admin.py): True — ответ уже отправлен, функция — записать в журнал
+            hook = admin.guard(self, store(), m, path) if path.startswith('/api/') else None
+            if hook is True:
+                return
             self.route()
+            if callable(hook) and getattr(self, '_code', 500) < 400:
+                hook()
         except Exception as e:
             try:
                 self.send(500, 'text/plain; charset=utf-8', str(e))
@@ -212,9 +228,6 @@ class Handler(BaseHTTPRequestHandler):
         if r:
             if m == 'PUT':
                 return self.send_json(cp().save_client(r.group(1), self.body()))
-            if m == 'DELETE':
-                cp().delete_client(r.group(1))
-                return self.send_json({'ok': True})
 
         # шаблоны КП (папка templates): список, файлы, редактор шаблона
         if path == '/api/templates':
@@ -250,18 +263,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/catalog' and m == 'GET':
             # список — облегчённые карточки (без таблиц характеристик и галерей); полная позиция — по id
             return self.send_json(store().catalog_full() if q.get('full') == '1' else store().catalog_light())
+        if path == '/api/catalog/pending':   # режим модерации и товары с правками на модерации (бейдж «На модерации»)
+            return self.send_json({'moderation': bool(admin.moderation(store()).get('enabled')), 'ids': store().pending_ids()})
         r = re.match(r'^/api/catalog/([^/]+)$', path)
         if r:
             cid = safe_id(r.group(1))
             if m == 'GET':
                 doc = store().catalog_get(cid)
                 return self.send_json(doc) if doc else self.not_found()
-            if m == 'PUT':
-                store().catalog_put(cid, self.body().decode('utf-8'))
-                return self.send_json({'ok': True})
-            if m == 'DELETE':
-                store().catalog_delete(cid)
-                return self.send_json({'ok': True})
 
         # изображения
         # изображения: папки «раздел/категория/производитель» латиницей (app/images.py); одинаковые хранятся один раз
@@ -287,9 +296,6 @@ class Handler(BaseHTTPRequestHandler):
             mid = safe_id(r.group(1))
             if m == 'PUT':
                 return self.send_json(store().manager_put(mid, self.body().decode('utf-8')))
-            if m == 'DELETE':
-                store().manager_delete(mid)
-                return self.send_json({'ok': True})
 
         # PDF: чем можно преобразовать; преобразование присланного DOCX (предпросмотр) без записи в журнал
         if path == '/api/pdf' and m == 'GET':
@@ -382,10 +388,6 @@ class Handler(BaseHTTPRequestHandler):
             if not self.is_local():
                 return self.send_json({'remote': True, 'download': '/api/kp/%s/pdf' % safe_id(r.group(1))})
             open_file(pdf)
-            return self.send_json({'ok': True})
-        r = re.match(r'^/api/kp/([^/]+)$', path)
-        if r and m == 'DELETE':
-            store().kp_delete(safe_id(r.group(1)))
             return self.send_json({'ok': True})
         r = re.match(r'^/api/kp/([^/]+)/(open|folder)$', path)
         if r and m == 'POST':
@@ -486,6 +488,7 @@ def main():
         prepare_dirs()
         ensure_templates()
         store().migrate_json(DATA_DIR)   # переход с версии, хранившей данные в JSON-файлах
+        admin.startup(store(), DATA_DIR)   # сброс пароля по data/admin-reset.txt, очистка корзины
         seeded = seed_catalog()
         sync_counter_with_files()
     except Exception as e:

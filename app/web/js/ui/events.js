@@ -119,14 +119,13 @@ document.addEventListener('click', async e=>{
     case 'clientChange': Object.assign(S,{client:'',clientId:'',clientInn:'',clientKpp:'',clientOgrn:'',clientFull:'',clientAddr:'',clientDir:'',clientDirPost:'',clientStatus:'',clientSrc:'',check:null,_clEdit:false,_clManual:false,_lastInn:''});
       S.contact={name:'',post:'',phone:'',email:''}; S.object={purpose:'',address:''}; renderForm(); persist(); setTimeout(()=>$('#clFind')?.focus(),30); return;
     case 'checkRun': return checkRun(b.dataset.force==='1');
-    case 'integrations': return openIntegrations();
+    case 'integrations': return openSettings('keys');
+    case 'settings': return openSettings();
     case 'pickObject': { const o=(curClient()?.objects||[])[k]; if(o) S.object={...S.object,...o}; break; }
     case 'pickContact': { const o=(curClient()?.contacts||[])[k]; if(o) S.contact={...S.contact,...o}; break; }
     case 'dmode': { const inp=document.querySelector(`[data-disc="${i}"]`); it.discType=b.dataset.v; if (it.disc) it.disc.type=b.dataset.v;
       const txt=inp?inp.value:''; it._discText=txt; it._discBad=!setDisc(it, txt); if (!it._discBad) delete it._discText; renderForm(); persist(); return; }
     case 'clientsImport': return openClientsImport();
-    case 'tplEdit': return openTemplateEditor(b.dataset.id || S.template);
-    case 'tplFolder': return api('/api/templates/folder',{method:'POST'}).then(r=>{ if(r&&r.remote) toast('Шаблоны правятся на компьютере-сервере отдела, в папке программы «templates»'); }).catch(()=>{});
     case 'toSave': { const sd=$('#side'); sd.scrollIntoView({behavior:'smooth'}); sd.classList.add('pulse'); setTimeout(()=>sd.classList.remove('pulse'),1600); return; }
     case 'cbr': return loadCBR();
     case 'reprice': it.priceManual=false; applyCalc(it); break;

@@ -11,7 +11,9 @@
   clients  — контрагенты; checks — проверки Checko (кэш);
   kv       — прочие настройки (ключи API, свои типы оборудования);
   managers — менеджеры: контакты для КП (добавлена 01.10.2026; в прежних базах создаётся при запуске,
-             остальные таблицы и данные не меняются).
+             остальные таблицы и данные не меняются);
+  audit, trash, pending_edits — журнал действий, корзина удалённого, правки на модерации
+             (миграция «2026-10-admin», обратимая: Store.migration_down).
 
 Запись сериализуется одной блокировкой, база в режиме WAL: одновременное чтение многими пользователями
 не мешает записи. При первом запуске данные из прежних JSON-файлов переносятся автоматически.
@@ -33,6 +35,31 @@ CREATE TABLE IF NOT EXISTS checks (inn TEXT PRIMARY KEY, doc TEXT NOT NULL, chec
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS managers (id TEXT PRIMARY KEY, name TEXT, doc TEXT NOT NULL, updated TEXT);
 """
+
+# обратимые миграции: (id, что создать, что убрать при откате). Применённые — в kv «schema».
+# Существующие таблицы и данные миграции не меняют — только добавляют новые таблицы.
+MIGRATIONS = [
+    ('2026-10-admin',
+     """
+     CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, user_id TEXT, user_name TEXT,
+         role TEXT, action TEXT NOT NULL, entity_type TEXT, entity_id TEXT, before TEXT, after TEXT, ip TEXT, ua TEXT, result TEXT);
+     CREATE INDEX IF NOT EXISTS audit_ts ON audit(ts);
+     CREATE INDEX IF NOT EXISTS audit_action ON audit(action);
+     CREATE TABLE IF NOT EXISTS trash (id INTEGER PRIMARY KEY AUTOINCREMENT, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+         title TEXT, data TEXT NOT NULL, deleted_at TEXT NOT NULL, deleted_by TEXT);
+     CREATE TABLE IF NOT EXISTS pending_edits (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id TEXT NOT NULL, kind TEXT NOT NULL,
+         before TEXT, after TEXT NOT NULL, user_id TEXT, user_name TEXT, created TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+         reviewed_by TEXT, reviewed_at TEXT, reason TEXT);
+     CREATE INDEX IF NOT EXISTS pending_status ON pending_edits(status);
+     """,
+     """
+     DROP TABLE IF EXISTS audit; DROP TABLE IF EXISTS trash; DROP TABLE IF EXISTS pending_edits;
+     DELETE FROM kv WHERE key IN ('admin', 'settings');
+     """),
+]
+
+# таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
+TRASH_TABLES = {'kp': 'kp', 'catalog': 'catalog', 'manager': 'managers', 'client': 'clients'}
 
 # поля позиции, которые нужны списку каталога, фильтрам и быстрому поиску (без характеристик, описаний и галереи)
 LIGHT_KEYS = ('id', 'name', 'spec', 'price', 'priceCur', 'cost', 'costCur', 'margin', 'mmode', 'kind', 'short', 'unit',
@@ -67,6 +94,7 @@ class Store:
         c = self.conn()
         c.executescript(SCHEMA)
         c.commit()
+        self.migrations_up()
 
     def conn(self):
         c = getattr(self.local, 'c', None)
@@ -111,11 +139,170 @@ class Store:
                    (cid, json.dumps(doc, ensure_ascii=False), json.dumps(light_of(doc), ensure_ascii=False),
                     doc.get('name', ''), a.get('cat', ''), a.get('maker', ''), _now()))
 
-    def catalog_delete(self, cid):
-        self.write('DELETE FROM catalog WHERE id=?', (cid,))
-
     def catalog_count(self):
         return self.one('SELECT COUNT(*) FROM catalog')[0]
+
+    # ---------- миграции ----------
+    def migrations_applied(self):
+        return self.kv_get('schema') or []
+
+    def migrations_up(self):
+        done = self.migrations_applied()
+        for mid, up, _down in MIGRATIONS:
+            if mid not in done:
+                with self.lock:
+                    self.conn().executescript(up)
+                    self.conn().commit()
+                done = done + [mid]
+                self.kv_set('schema', done)
+
+    def migration_down(self, mid):
+        """Откат миграции: её таблицы удаляются (данные в них теряются), остальная база не меняется."""
+        down = next((d for i, _u, d in MIGRATIONS if i == mid), None)
+        if down is None or mid not in self.migrations_applied():
+            raise ValueError('Миграция не применена: %s' % mid)
+        with self.lock:
+            self.conn().executescript(down)
+            self.conn().commit()
+        self.kv_set('schema', [x for x in self.migrations_applied() if x != mid])
+
+    # ---------- журнал действий ----------
+    def audit_add(self, rec):
+        self.write('INSERT INTO audit (ts, user_id, user_name, role, action, entity_type, entity_id, before, after, ip, ua, result) '
+                   'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                   (rec.get('timestamp') or _now(), rec.get('userId'), rec.get('userName'), rec.get('userRole'), rec['action'],
+                    rec.get('entityType'), rec.get('entityId'),
+                    None if rec.get('before') is None else json.dumps(rec['before'], ensure_ascii=False),
+                    None if rec.get('after') is None else json.dumps(rec['after'], ensure_ascii=False),
+                    rec.get('ip'), (rec.get('userAgent') or '')[:300], rec.get('result') or 'success'))
+
+    AUDIT_COLS = ('id', 'timestamp', 'userId', 'userName', 'userRole', 'action', 'entityType', 'entityId',
+                  'before', 'after', 'ip', 'userAgent', 'result')
+
+    def _audit_row(self, r):
+        d = dict(zip(self.AUDIT_COLS, r))
+        for k in ('before', 'after'):
+            if d[k]:
+                try:
+                    d[k] = json.loads(d[k])
+                except Exception:
+                    pass
+        return d
+
+    def audit_query(self, f, limit=50, offset=0):
+        """Записи журнала действий по фильтрам: user, action, entity, q (поиск), from, to (даты ГГГГ-ММ-ДД)."""
+        where, args = [], []
+        if f.get('user'):
+            where.append('user_name = ?'); args.append(f['user'])
+        if f.get('action'):
+            where.append('action = ?'); args.append(f['action'])
+        if f.get('entity'):
+            where.append('entity_type = ?'); args.append(f['entity'])
+        if f.get('from'):
+            where.append('ts >= ?'); args.append(f['from'])
+        if f.get('to'):
+            where.append('ts < ?'); args.append(f['to'] + 'T99')
+        if f.get('q'):
+            where.append('(entity_id LIKE ? OR user_name LIKE ? OR after LIKE ? OR before LIKE ?)'); args += ['%' + f['q'] + '%'] * 4
+        w = (' WHERE ' + ' AND '.join(where)) if where else ''
+        total = self.one('SELECT COUNT(*) FROM audit' + w, args)[0]
+        rows = self.all('SELECT id, ts, user_id, user_name, role, action, entity_type, entity_id, before, after, ip, ua, result '
+                        'FROM audit' + w + ' ORDER BY id DESC LIMIT ? OFFSET ?', args + [int(limit), int(offset)])
+        return {'total': total, 'items': [self._audit_row(r) for r in rows]}
+
+    def audit_get(self, aid):
+        r = self.one('SELECT id, ts, user_id, user_name, role, action, entity_type, entity_id, before, after, ip, ua, result '
+                     'FROM audit WHERE id=?', (aid,))
+        return self._audit_row(r) if r else None
+
+    def audit_distinct(self, col):
+        if col not in ('user_name', 'action', 'entity_type'):
+            raise ValueError(col)
+        return [r[0] for r in self.all('SELECT DISTINCT %s FROM audit WHERE %s IS NOT NULL AND %s <> "" ORDER BY 1' % (col, col, col))]
+
+    # ---------- корзина (мягкое удаление с восстановлением) ----------
+    def trash_put(self, etype, eid, title, by):
+        table = TRASH_TABLES[etype]
+        with self.lock:
+            c = self.conn()
+            cur = c.execute('SELECT * FROM %s WHERE id=?' % table, (eid,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            data = dict(zip([x[0] for x in cur.description], row))
+            c.execute('INSERT INTO trash (entity_type, entity_id, title, data, deleted_at, deleted_by) VALUES (?,?,?,?,?,?)',
+                      (etype, eid, title, json.dumps(data, ensure_ascii=False), _now(), by))
+            c.execute('DELETE FROM %s WHERE id=?' % table, (eid,))
+            c.commit()
+        return data
+
+    def trash_list(self):
+        return [dict(zip(('id', 'entityType', 'entityId', 'title', 'deletedAt', 'deletedBy'), r))
+                for r in self.all('SELECT id, entity_type, entity_id, title, deleted_at, deleted_by FROM trash ORDER BY id DESC')]
+
+    def trash_restore(self, tid):
+        r = self.one('SELECT entity_type, entity_id, data FROM trash WHERE id=?', (tid,))
+        if not r:
+            raise ValueError('Нет такой записи в корзине')
+        etype, eid, data = r[0], r[1], json.loads(r[2])
+        table = TRASH_TABLES[etype]
+        if self.one('SELECT 1 FROM %s WHERE id=?' % table, (eid,)):
+            raise ValueError('Запись с таким id уже есть — восстановление заменило бы её')
+        cols = list(data)
+        with self.lock:
+            c = self.conn()
+            c.execute('INSERT INTO %s (%s) VALUES (%s)' % (table, ','.join(cols), ','.join('?' * len(cols))), [data[k] for k in cols])
+            c.execute('DELETE FROM trash WHERE id=?', (tid,))
+            c.commit()
+        return etype, eid
+
+    def trash_purge(self, days):
+        """Окончательно удалить то, что лежит в корзине дольше days дней."""
+        from datetime import timedelta
+        edge = (datetime.now() - timedelta(days=days)).isoformat(timespec='seconds')
+        n = self.one('SELECT COUNT(*) FROM trash WHERE deleted_at < ?', (edge,))[0]
+        if n:
+            self.write('DELETE FROM trash WHERE deleted_at < ?', (edge,))
+        return n
+
+    # ---------- правки товаров на модерации ----------
+    PENDING_COLS = ('id', 'productId', 'kind', 'before', 'after', 'userId', 'userName', 'created', 'status',
+                    'reviewedBy', 'reviewedAt', 'reason')
+
+    def pending_add(self, pid, kind, before, after, uid, uname):
+        with self.lock:
+            c = self.conn()
+            cur = c.execute('INSERT INTO pending_edits (product_id, kind, before, after, user_id, user_name, created) VALUES (?,?,?,?,?,?,?)',
+                            (pid, kind, before, after, uid, uname, _now()))
+            c.commit()
+            return cur.lastrowid
+
+    def pending_list(self, status='pending', with_docs=False):
+        cols = 'id, product_id, kind, %s, user_id, user_name, created, status, reviewed_by, reviewed_at, reason' % (
+            'before, after' if with_docs else 'NULL, NULL')
+        rows = self.all('SELECT %s FROM pending_edits WHERE status=? ORDER BY id DESC' % cols, (status,))
+        return [dict(zip(self.PENDING_COLS, r)) for r in rows]
+
+    def pending_get(self, eid):
+        r = self.one('SELECT id, product_id, kind, before, after, user_id, user_name, created, status, reviewed_by, reviewed_at, reason '
+                     'FROM pending_edits WHERE id=?', (eid,))
+        return dict(zip(self.PENDING_COLS, r)) if r else None
+
+    def pending_set(self, eid, status, by, reason=''):
+        self.write('UPDATE pending_edits SET status=?, reviewed_by=?, reviewed_at=?, reason=? WHERE id=?', (status, by, _now(), reason, eid))
+
+    def pending_ids(self):
+        return [r[0] for r in self.all("SELECT DISTINCT product_id FROM pending_edits WHERE status='pending'")]
+
+    # ---------- статистика ----------
+    def table_counts(self):
+        out = {}
+        for (t,) in self.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"):
+            out[t] = self.one('SELECT COUNT(*) FROM "%s"' % t)[0]
+        return out
+
+    def kp_all_meta(self):
+        return [json.loads(r[0]) for r in self.all('SELECT meta FROM kp WHERE meta IS NOT NULL')]
 
     # ---------- менеджеры ----------
     def managers_list(self):
@@ -131,9 +318,6 @@ class Store:
         self.write('INSERT OR REPLACE INTO managers (id, name, doc, updated) VALUES (?,?,?,?)',
                    (mid, str(doc.get('name') or ''), json.dumps(doc, ensure_ascii=False), _now()))
         return doc
-
-    def manager_delete(self, mid):
-        self.write('DELETE FROM managers WHERE id=?', (mid,))
 
     # ---------- журнал КП ----------
     def next_number(self):
@@ -180,9 +364,6 @@ class Store:
             c.execute('UPDATE kp SET %s=?, updated=? WHERE id=?' % field, (value, _now(), kid))
             c.commit()
 
-    def kp_delete(self, kid):
-        self.write('DELETE FROM kp WHERE id=?', (kid,))
-
     # ---------- контрагенты и проверки ----------
     def clients_all(self):
         return [json.loads(r[0]) for r in self.all('SELECT doc FROM clients ORDER BY updated DESC')]
@@ -193,9 +374,6 @@ class Store:
 
     def client_put(self, cid, doc):
         self.write('INSERT OR REPLACE INTO clients (id, doc, updated) VALUES (?,?,?)', (cid, json.dumps(doc, ensure_ascii=False), _now()))
-
-    def client_delete(self, cid):
-        self.write('DELETE FROM clients WHERE id=?', (cid,))
 
     def check_get(self, inn):
         r = self.one('SELECT doc FROM checks WHERE inn=?', (inn,))

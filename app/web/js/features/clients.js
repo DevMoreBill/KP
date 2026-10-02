@@ -71,7 +71,7 @@ function checkLine(){
   const c=S.check; const inn=String(S.clientInn||'').replace(/\D/g,'');
   if (!validInn(inn)) return '';
   if (!c) return `<div class="chk-line"><button class="btn ghost" type="button" data-a="checkRun">Проверить контрагента</button>${tip('Проверка по данным Checko: регистрация, долги, суды, исполнительные производства. Видна только вам, в КП не попадает.')}</div>`;
-  if (c.error) return `<div class="chk-line warn"><span>${c.error==='nokey'?'Проверка Checko: не задан API-ключ.':esc(c.message||c.error)}</span>${c.error==='nokey'?'<button class="btn ghost" type="button" data-a="integrations">Указать ключ Checko</button>':'<button class="btn ghost" type="button" data-a="checkRun">Повторить</button>'}</div>`;
+  if (c.error) return `<div class="chk-line warn"><span>${c.error==='nokey'?'Проверка Checko: не задан API-ключ.':esc(c.message||c.error)}</span>${c.error==='nokey'?'<button class="btn ghost" type="button" data-a="integrations">Ключ — в «Настройках»</button>':'<button class="btn ghost" type="button" data-a="checkRun">Повторить</button>'}</div>`;
   const label={ok:'Существенных рисков не найдено',warn:'Есть на что обратить внимание',bad:'Высокий риск'}[c.score]||'';
   const facts=[['Регистрация',c.regDate?KPGen.ruDate(c.regDate.slice(0,10))+(c.ageYears!=null?` (${String(c.ageYears).replace('.',',')} г.)`:''):''],['Уставный капитал',c.capital!=null?fmtRub(c.capital):''],
     ['Сотрудников',c.employees!=null?String(c.employees):''],['Категория МСП',c.msp],['Основной ОКВЭД',c.okved],['Налоговая недоимка',c.taxDebt?fmtRub(c.taxDebt):'нет'],

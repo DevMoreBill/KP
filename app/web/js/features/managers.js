@@ -46,13 +46,6 @@ async function saveManager(silent){
   catch(e){ if (!silent) toast('Не удалось сохранить менеджера: '+(e.message||e)); return false; }
 }
 
-async function deleteManager(){
-  const m=MGRS.find(x=>x.id===S.managerId); if (!m) return;
-  if (!confirm(`Удалить «${m.name}» из справочника менеджеров?\nВ уже сохранённых КП контакты останутся.`)) return;
-  try{ await api('/api/managers/'+m.id,{method:'DELETE'}); }catch(e){ return toast('Не удалось удалить: '+(e.message||e)); }
-  MGRS=MGRS.filter(x=>x.id!==m.id); S.managerId=''; mgrRemember(''); renderForm(); persist(); toast('Удалено из справочника');
-}
-
 function managerBar(){
   const cur=MGRS.find(x=>x.id===S.managerId);
   return `<div class="mgrbar"><label class="f"><span>Менеджер в КП</span><select id="mgrSel" aria-label="Выбор менеджера">
@@ -60,7 +53,7 @@ function managerBar(){
       ${MGRS.map(m=>`<option value="${esc(m.id)}"${m.id===S.managerId?' selected':''}>${esc(m.name)}${m.position?' — '+esc(m.position):''}</option>`).join('')}</select></label>
     <div class="row">${cur?'':'<button class="btn primary" type="button" data-a="mgrSave">Сохранить в справочник</button>'}
       <button class="btn" type="button" data-a="mgrNew">+ Новый менеджер</button>
-      ${cur?'<button class="btn ghost danger" type="button" data-a="mgrDel">Удалить из справочника</button>':''}</div>
+</div>
     <p class="muted" id="mgrStat" style="grid-column:1/-1;margin:0">${cur?'':'Новый менеджер — сохраните его в справочник.'}</p></div>`;
 }
 
@@ -71,4 +64,4 @@ document.addEventListener('input', e=>{ const p=e.target.dataset?.p||''; if (!p.
 document.addEventListener('change', e=>{ if (e.target.id!=='mgrSel') return; if (e.target.value) selectManager(e.target.value); else newManager(); });
 
 document.addEventListener('click', e=>{ const b=e.target.closest('[data-a]'); if (!b) return;
-  if (b.dataset.a==='mgrNew') newManager(); else if (b.dataset.a==='mgrSave') saveManager(false); else if (b.dataset.a==='mgrDel') deleteManager(); });
+  if (b.dataset.a==='mgrNew') newManager(); else if (b.dataset.a==='mgrSave') saveManager(false); });

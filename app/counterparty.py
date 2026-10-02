@@ -137,10 +137,6 @@ class Counterparties:
         self.store.client_put(cid, c)
         return c
 
-    def delete_client(self, cid):
-        self._check_id(cid)
-        self.store.client_delete(cid)
-
     # ---------- поиск по ИНН ----------
     def lookup(self, inn):
         inn = re.sub(r'\D', '', inn or '')
