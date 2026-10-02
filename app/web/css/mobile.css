@@ -311,3 +311,7 @@ span.mb-back{border:0}
 :root[data-theme="dark"] .btn.primary,:root[data-theme="dark"] .stp.cur,:root[data-theme="dark"] .cw-cat.on,:root[data-theme="dark"] .mtog button.on,:root[data-theme="dark"] .chip.on,:root[data-theme="dark"] .tag.kwt{color:#0B1A33}
 :root[data-theme="dark"] .stp.cur .num{background:#0B1A33;color:#fff}
 :root[data-theme="dark"] .cw-cat.on i,:root[data-theme="dark"] .stp.cur small{color:rgba(11,26,51,.75)}
+/* редактор шаблона на телефоне: заголовок — отдельной строкой, выбор шаблона растягивается */
+.mob dialog.tpled .dlg-h{flex-wrap:wrap}
+.mob dialog.tpled .dlg-h h3{flex:1 1 100%;order:-1}
+.mob dialog.tpled .te-pick{flex:1 1 140px;min-width:0;max-width:none}

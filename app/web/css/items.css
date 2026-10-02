@@ -88,3 +88,9 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .attrs{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 @media (max-width:620px){ .g2{grid-template-columns:1fr} .top{padding:12px 16px} .step{padding:18px} .srow{grid-template-columns:1fr 1fr 28px 28px} }
 .agrp{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* панель под местом для картинки: выбрать файл / вставить из буфера */
+.imgbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:6px 0 10px;font-size:13px}
+.imgbar .lnk,.lnk.imgp{border:0;background:none;padding:0;color:var(--navy);text-decoration:underline;cursor:pointer;font:inherit;font-size:13px}
+.lnk.imgp{display:block;margin:4px auto 0}
+.drop.over,.ibox.over,.gal.over,.ithumb.over{border-color:var(--navy);background:color-mix(in srgb,var(--navy) 8%,var(--soft));outline:2px dashed var(--navy);outline-offset:-4px}
+.drop:focus-visible,.ibox:focus-visible,.gal:focus-visible{outline:2px solid var(--navy);outline-offset:2px}

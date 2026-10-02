@@ -448,6 +448,7 @@ function dlSchedule(c, n=6){
 // ---------- правая колонка: подбор цены и итог
 function dlResult(c){
   const d=dlDeal(), kp=dlKp(), b=c.base, lo=c.lo, hi=c.hi, unk=c.unknown.length>0, bad=!c.ok || c.warn.some(w=>w.bad), r=b||lo;
+  const noCost=c.warn.filter(w=>/не указана цена закупки/.test(w.t)).length;
   const tg=d.target||{type:'margin',v:''}, tv=dNum(tg.v);
   const need = tv!=null && !Number.isNaN(tv) ? dealSolve(kp, d, tg.type, tv) : null;
   const be = dealSolve(kp, d, 'profit', 0);
@@ -466,7 +467,7 @@ function dlResult(c){
         : tv!=null?'<p class="muted">Цель недостижима при этих расходах.</p>':'<p class="muted">Укажите нужную маржу или прибыль — программа рассчитает цену КП и цены позиций.</p>'}
       <div class="dl-be">Безубыточная цена с НДС: <b>${be!=null?dlRub0(be):'—'}</b>${dlQ('Цена, при которой прибыль после всех расходов и финансирования равна нулю. Ниже — убыток.')}</div></div>`}
     <div class="dl-now"><h4>Итог при текущей цене КП <span class="muted">${dlRub0(c.S)}</span></h4>
-      ${bad?'<span class="dl-chip bad">Проверьте данные</span>':unk?'<span class="dl-chip warn">Нужна сумма ввозного НДС</span>':''}
+      ${bad?'<span class="dl-chip bad">Проверьте данные</span>':unk?'<span class="dl-chip warn">Нужна сумма ввозного НДС</span>':''}${noCost?`<span class="dl-chip warn">Расчёт неполный: нет закупки у ${noCost} поз.</span>`:''}
       <div class="dl-big${P!=null&&P<0?' neg':''}${unk?' rng':''}"><small>Прибыль до налога на прибыль</small><b>${unk?`${dlRub0(lo.P)} … ${dlRub0(hi.P)}`:dlRub0(P)}</b>
         ${unk?'':`<p class="dl-note">Чистая прибыль после налога ${dlIn(c.taxP)} %: <b>${dlRub0(b.net)}</b></p>`}</div>
       <div class="dl-kpi"><div><small>Маржинальность ${dlQ('Прибыль ÷ выручка без НДС. Сколько копеек прибыли в каждом рубле выручки.')}</small><b>${unk?`${dlPct(lo.margin)} … ${dlPct(hi.margin)}`:dlPct(b.margin)}</b></div>

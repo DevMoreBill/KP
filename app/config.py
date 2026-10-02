@@ -22,6 +22,10 @@ BUNDLE = getattr(sys, '_MEIPASS', ROOT)
 if not FROZEN:
     BUNDLE = os.path.dirname(ROOT)  # при запуске из исходников: корень репозитория
 
+# обновление (патч) из папки «update» рядом с программой — включает launcher.py; APP_DIR — файлы интерфейса и справочники
+UPDATE_DIR = os.environ.get('KP_UPDATE_DIR') or ''
+APP_DIR = os.path.join(UPDATE_DIR, 'app') if UPDATE_DIR and os.path.isdir(os.path.join(UPDATE_DIR, 'app', 'web')) else os.path.join(BUNDLE, 'app')
+
 SAFE_ID = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 MIME = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp'}
 
