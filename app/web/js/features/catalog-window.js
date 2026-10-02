@@ -69,12 +69,13 @@ function cwNav(){
   const t=F.cat?typeById(F.cat):null;
   let flt=cwFacet('maker','Производитель')+cwFacet('series','Серия');
   if (t){ for (const f of t.fields) if (f.range) flt+=cwRange(f); for (const f of t.fields) if (f.facet) flt+=cwFacet(f.key,f.label,true); }
-  $('#cwNav').innerHTML=`<p class="cw-cap">Категории</p><div class="cw-cats">
+  morph($('#cwNav'), `<p class="cw-cap">Категории</p><div class="cw-cats">
       <button type="button" class="cw-cat all${!F.cat?' on':''}" data-cat=""><span>Все позиции</span><i>${all}</i></button>${cats}
       ${CW.optFor==null?'<button type="button" class="cw-cat add" data-cw="newtype">+ Новая категория</button>':''}</div>
     <p class="cw-cap">Фильтры ${cwFiltered()?'<button type="button" class="lnk" data-cw="reset">сбросить</button>':''}</p>
     <div class="cw-flt">${flt}<label class="cw-chk"><input type="checkbox" id="cwPriced" ${F.priced?'checked':''}> Только с ценой</label>
-      ${t?'':'<p class="muted" style="margin:0">Выберите категорию — появятся фильтры по её параметрам (мощность, давление, производительность…).</p>'}</div>`;
+      ${t?'':'<p class="muted" style="margin:0">Выберите категорию — появятся фильтры по её параметрам (мощность, давление, производительность…).</p>'}</div>
+    <div class="cw-navok"><button class="btn primary" type="button" data-cw="nav" id="cwNavOk">Показать позиции</button></div>`);
 }
 
 function cwTags(x){ const a=cwA(x), t=typeById(a.cat), out=[];
@@ -110,9 +111,10 @@ function cwList(){
   CW.view=list;
   $('#cwCnt').textContent = CW.docs.length ? `Найдено: ${list.length} из ${CW.docs.length}` : '';
   const all=$('#cwAll'); const k=list.filter(x=>CW.sel.has(x.id)).length; all.checked=!!list.length && k===list.length; all.indeterminate=k>0 && k<list.length;
-  $('#cwList').innerHTML = list.length ? list.slice(0,CW.limit).map(cwRow).join('')
+  const ok=$('#cwNavOk'); if (ok) ok.textContent = list.length ? `Показать: ${list.length}` : 'Ничего не найдено';
+  morph($('#cwList'), list.length ? list.slice(0,CW.limit).map(cwRow).join('')
       + (list.length>CW.limit?`<div class="cw-more"><button class="btn" type="button" data-more>Показать ещё (${list.length-CW.limit})</button></div>`:'')
-    : `<p class="empty">${CW.docs.length?'Ничего не найдено — ослабьте фильтры или выберите «Все позиции».':'Каталог пуст. Добавьте позицию, загрузите файл каталога или импортируйте таблицу из Excel (меню «Ещё»).'}</p>`;
+    : `<p class="empty">${CW.docs.length?'Ничего не найдено — ослабьте фильтры или выберите «Все позиции».':'Каталог пуст. Добавьте позицию, загрузите файл каталога или импортируйте таблицу из Excel (меню «Ещё»).'}</p>`);
 }
 
 function cwFoot(){
@@ -141,7 +143,8 @@ function cwCard(x, loading){
   const params=[['Производитель',a.maker],['Серия',a.series],['Модель',a.model],...t.fields.filter(f=>!f.kpi).map(f=>[f.label,fmtField(f,a[f.key])])].filter(([,v])=>v!=null&&v!=='');
   const feats=(x.features||[]).filter(f=>f.label||f.text), groups=(x.groups||[]).filter(g=>(g.rows||[]).some(r=>r.k||r.v));
   const gal=(x.gallery||[]).filter(g=>g.src&&g.on!==false), hist=(x.prices||[]).slice(0,5), n=x.pricesCount||(x.prices||[]).length;
-  return `<div class="pv-scroll">
+  return `<div class="pv-mtop"><button class="btn pv-back" type="button" data-pv="close"><span aria-hidden="true">‹</span> К списку</button></div>
+  <div class="pv-scroll">
     <div class="pv-photo">${x.photo?`<img src="${esc(x.photo.src)}" alt="" title="${esc(x.name||'')}">`:'<span>нет фото</span>'}</div>
     ${x.photoFrom&&x.photo?`<p class="muted pv-pf">Фото — от похожей модели того же производителя («${esc(x.photoFrom.name||'')}»). Своё фото — «Редактировать» → «Описание и фото».</p>`:''}
     <div class="pv-ttl"><h4>${esc(x.name||'Без названия')}</h4>${x.logo?`<img class="pv-logo" src="${esc(x.logo.src)}" alt="">`:''}</div>${x.spec?`<p class="muted pv-spec">${esc(x.spec)}</p>`:''}
@@ -169,7 +172,7 @@ async function cwPreview(){
       <p>Двойной щелчок — открыть позицию на редактирование.</p><p>Отметьте галочками несколько позиций, чтобы добавить их в КП сразу, перенести в другую категорию или удалить.</p></div>`; return; }
   if (pv.dataset.id!==id){ pv.innerHTML=cwCard(light,!!light._light); pv.dataset.id=id; }
   const full=await fullDoc(light); if (CW.active!==id) return;
-  const sc=pv.querySelector('.pv-scroll')?.scrollTop||0; pv.innerHTML=cwCard(full,false); const s2=pv.querySelector('.pv-scroll'); if(s2) s2.scrollTop=sc;
+  const sc=pv.querySelector('.pv-scroll')?.scrollTop||0; morph(pv, cwCard(full,false)); const s2=pv.querySelector('.pv-scroll'); if(s2) s2.scrollTop=sc;
 }
 
 // изображение крупно поверх окна каталога; закрывается щелчком или Esc
@@ -320,7 +323,7 @@ async function openCatalog(mode={}){
   Object.assign(CW, { optFor, F: optFor!=null ? FO : FI, active:null, limit:150, lastCk:null, note:'', busy:'' }); CW.sel.clear();
   const F=CW.F; if (mode.cat!=null){ F.cat=mode.cat; F.f={}; F.rng={}; }
   const d=cwDlg(); d.classList.remove('navon','pvon'); cwSize(d);
-  d.innerHTML=`<div class="cw-h"><button class="icon cw-navbtn" type="button" data-cw="nav" aria-label="Категории и фильтры" title="Категории и фильтры">☰</button>
+  d.innerHTML=`<div class="cw-h"><button class="btn cw-navbtn" type="button" data-cw="nav" aria-label="Категории и фильтры" title="Категории и фильтры"><span aria-hidden="true">☰</span><span class="cw-lbl2"> Фильтры</span></button>
      <h3>${optFor!=null?'Опции для позиции '+(optFor+1):'Каталог'}</h3>
      <div class="cw-q"><input type="search" id="cwQ" placeholder="Поиск: модель, производитель, любое значение характеристик" autocomplete="off" value="${esc(F.q)}" aria-label="Поиск по каталогу"></div>
      ${optFor==null?'<button class="btn" type="button" data-cw="new" title="Новая позиция каталога">+<span class="cw-lbl"> Позиция</span></button>':''}

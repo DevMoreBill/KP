@@ -57,3 +57,46 @@ async function saveFile(name, blob){
 function saveFileA(name, blob){ const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=name; (document.querySelector('dialog[open]')||document.body).appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),4000); }
 
 function blobToURL(b){ return new Promise(r=>{ const f=new FileReader(); f.onload=()=>r(f.result); f.readAsDataURL(b); }); }
+
+// Обновить разметку элемента, не пересоздавая совпадающие узлы: фото не загружаются заново, фокус, курсор
+// и прокрутка не сбиваются, нажатие не «проваливается» в заменённую кнопку (важно на телефонах).
+function morph(el, html){
+  const t=document.createElement('template'); t.innerHTML=html; morphKids(el, t.content);
+}
+
+// узел с ключом (id, data-id, поле data-p) сопоставляется только с узлом того же ключа, где бы он ни стоял:
+// иначе при появлении новой кнопки перед полем ввода поле «превратилось» бы в соседнее вместе с набираемым текстом
+function morphKey(n){ return n.nodeType===1 ? (n.id || n.getAttribute('data-id') || n.getAttribute('data-p') || '') : ''; }
+
+function morphSame(a, b){
+  if (a.nodeType!==b.nodeType || a.nodeName!==b.nodeName) return false;
+  return a.nodeType!==1 || (morphKey(a)===morphKey(b) && (a.type||'')===(b.type||''));
+}
+
+function morphKids(a, b){
+  const keyed=new Map(); for (const c of a.childNodes){ const k=morphKey(c); if (k && !keyed.has(k)) keyed.set(k,c); }
+  let cur=a.firstChild;
+  for (const n of [...b.childNodes]){
+    const k=morphKey(n); let o=null;
+    if (k){ o=keyed.get(k)||null; if (o && !morphSame(o,n)) o=null; if (o) keyed.delete(k); }
+    else if (cur && !morphKey(cur) && morphSame(cur,n)) o=cur;
+    if (!o){ a.insertBefore(n,cur); continue; }
+    if (o===cur) cur=cur.nextSibling; else a.insertBefore(o,cur);
+    if (o.nodeType!==1){ if (o.nodeValue!==n.nodeValue) o.nodeValue=n.nodeValue; }
+    else morphEl(o,n);
+  }
+  while (cur){ const nx=cur.nextSibling; cur.remove(); cur=nx; }
+}
+
+function morphEl(o, n){
+  for (const at of [...o.attributes]) if (!n.hasAttribute(at.name)) o.removeAttribute(at.name);
+  for (const at of [...n.attributes]) if (o.getAttribute(at.name)!==at.value) o.setAttribute(at.name, at.value);
+  const tag=o.nodeName;
+  if (tag==='INPUT'){
+    if (o.type==='checkbox'||o.type==='radio') o.checked=n.hasAttribute('checked');
+    else if (o.type!=='file'){ const v=n.getAttribute('value')??''; if (o.value!==v) o.value=v; }
+    return; }
+  if (tag==='TEXTAREA'){ if (o.value!==n.value) o.value=n.value; return; }
+  morphKids(o,n);
+  if (tag==='SELECT'){ const v=n.querySelector('option[selected]')?.value ?? n.querySelector('option')?.value; if (v!=null && o.value!==v) o.value=v; }
+}

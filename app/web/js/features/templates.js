@@ -6,8 +6,11 @@ let TEMPLATES=[];
 
 const TPL_CACHE={};
 
-async function loadTemplates(){ try{ TEMPLATES = await api('/api/templates'); }catch(e){ TEMPLATES=[]; }
-  if (!S.template || !TEMPLATES.some(x=>x.id===S.template)){ let t=''; try{ t=localStorage.getItem('kp.template')||''; }catch(e){} S.template = TEMPLATES.some(x=>x.id===t) ? t : (TEMPLATES.find(x=>x.id==='pnevmotekh')||TEMPLATES[0]||{}).id || ''; } }
+async function loadTemplates(){ try{ TEMPLATES = await api('/api/templates'); }catch(e){ TEMPLATES=[]; } pickTemplate(); }
+
+// у КП всегда выбран шаблон: «Новое КП» и КП из журнала без шаблона получают сохранённый в браузере или основной
+function pickTemplate(){
+  if (TEMPLATES.length && (!S.template || !TEMPLATES.some(x=>x.id===S.template))){ let t=''; try{ t=localStorage.getItem('kp.template')||''; }catch(e){} S.template = TEMPLATES.some(x=>x.id===t) ? t : (TEMPLATES.find(x=>x.id==='pnevmotekh')||TEMPLATES[0]||{}).id || ''; } }
 
 function curTemplate(){ return TEMPLATES.find(t=>t.id===S.template) || null; }
 

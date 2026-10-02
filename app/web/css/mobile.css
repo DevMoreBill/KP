@@ -1,11 +1,19 @@
 /* Телефоны и планшеты: Safari iOS и Chrome Android. Подключается последним.
-   Брейкпоинты: ≤480 · 481–768 · 769–1024 · ≥1025 (настольный — как раньше).
-   --vvh — высота видимой области с учётом экранной клавиатуры (js/ui/mobile.js, visualViewport). */
+   Телефон — класс .mob на <html> (ширина ≤ 760 px или телефон, повёрнутый боком; ставится в <head> и в js/ui/mobile.js).
+   Планшет — ширина ≤ 1024 px. Компьютер (≥ 1025 px) — как раньше.
+   Принципы: ничего не сдвигается при нажатии и прокрутке (без автопрокруток, без «прыгающих» высот),
+   цели нажатия не меньше 44 px, поля 16 px (иначе Safari увеличивает страницу), «Закрыть» — всегда заметная кнопка. */
+
+:root{--mbh:72px}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
-body{min-height:100dvh}
-button,a,summary,label,select,input[type=checkbox],[role=button],[data-a]{touch-action:manipulation;-webkit-tap-highlight-color:rgba(11,69,160,.12)}
+*{-webkit-tap-highlight-color:transparent}
+button,a,summary,label,select,input,textarea,[data-a],[data-step]{touch-action:manipulation}
 dialog{overscroll-behavior:contain}
-.dlg-b,.ed-b,.cw-list,.cw-nav,.pv-scroll,.pv-body,.st-main,.menu-l,.qa-list{-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+html.mob:has(dialog[open]){overflow:hidden}      /* под открытым окном страница не прокручивается */
+.dlg-b,.ed-b,.cw-list,.cw-nav,.pv-scroll,.pv-body,.st-main,.menu-l,.qa-list,.mm-l{overscroll-behavior:contain}
+.mmenu-btn,.side-h,.pv-mtop,.cw-navok{display:none}
+.catwin.tiny .cw-navok{display:block}
+
 /* высоты окон: dvh вместо vh (адресная строка мобильных браузеров) */
 @supports (height:100dvh){
   dialog.editor{height:min(92dvh,980px)}
@@ -13,78 +21,293 @@ dialog{overscroll-behavior:contain}
   dialog.catwin{height:min(880px,92dvh)}
   dialog.kpprev{height:94dvh;max-height:96dvh}
 }
-/* сенсорный экран: крупные цели нажатия (44 × 44) и шрифт полей не меньше 16px — иначе Safari увеличивает страницу */
+
+/* ---------- сенсорный экран (телефон и планшет) ---------- */
 @media (pointer:coarse){
-  input,select,textarea{font-size:16px!important}
+  input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea{font-size:16px!important}
+  /* свой вид полей вместо системного iOS: без внутренней тени, «дата» и списки — той же высоты, что остальные поля */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),textarea,select{-webkit-appearance:none;appearance:none}
+  select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none' stroke='%238893AA' stroke-width='2'%3E%3Cpath d='m1 1 5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 12px center;padding-right:34px!important;text-overflow:ellipsis;white-space:nowrap}
+  input[type=date]{display:block;min-height:46px;min-width:0;line-height:1.3;text-align:left}
+  input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
   .btn,.seg button,.cw-cat,.st-nav button,.stp,.menu-l button,.pickm>summary,.topmenu>summary,.chk-chip{min-height:44px}
   .icon{min-width:44px;min-height:44px}
-  .chip,.chip.sm,.rd,.oitem{min-height:36px;padding-top:6px;padding-bottom:6px}
+  .chip,.rd,.oitem{min-height:36px;padding-top:6px;padding-bottom:6px}
+  .mtog button{min-height:34px;padding:4px 10px}
   .row,.chips,.iopts,.ready{gap:8px}
   .ck{width:44px;height:44px;flex-basis:44px}
-  .tip>summary{width:28px;height:28px}
-  /* наведение заменено нажатием: подсказки — по «?», действия — кнопками */
+  .tip>summary{width:30px;height:30px}
   .cw-row[draggable]{-webkit-user-drag:none}
 }
-/* 769–1024: планшет — две колонки там, где было три */
+/* на сенсорном экране «наведение» залипает после нажатия — не подсвечиваем */
+@media (hover:none){
+  .btn:hover{border-color:var(--line)} .btn.primary:hover{border-color:var(--navy)} .btn.ghost:hover{border-color:transparent}
+  .stp:hover{border-color:var(--line)} .stp.cur:hover{border-color:var(--navy)}
+  .btn:active{filter:brightness(.94)} .stp:active,.tile:active,.mm-i:active,.cw-row:active{background:var(--soft)}
+}
+
+/* ---------- нижняя панель шагов (телефон и планшет) ---------- */
+.mbar{grid-template-columns:52px minmax(0,1fr) auto;gap:10px;align-items:center;position:fixed;left:0;right:0;bottom:0;z-index:30;
+  background:var(--card);color:var(--ink);border-top:1px solid var(--line);box-shadow:0 -8px 24px rgba(8,25,60,.08);
+  padding:10px max(12px,env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left))}
+.mb-back{width:52px;height:52px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);display:grid;place-items:center;padding:0;cursor:pointer;font-size:30px;line-height:1}
+.mb-back span{margin-top:-4px}
+span.mb-back{border:0}
+.mb-sum{min-width:0;border:0;background:none;text-align:left;padding:2px 0;display:flex;flex-direction:column;gap:1px;color:var(--ink);cursor:pointer}
+.mb-sum small{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mb-sum b{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mbar .mb-next{min-height:52px;min-width:120px;max-width:44vw;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:6px 16px;border-radius:12px;line-height:1.15}
+.mb-next span{font-size:16px;font-weight:650}
+.mb-next small{font-size:11.5px;font-weight:500;opacity:.85;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---------- планшет: 761–1024 ---------- */
 @media (max-width:1024px){
   .wrap{grid-template-columns:minmax(0,1fr);gap:18px;padding:18px}
   .wrap>*{min-width:0}
   aside#side{position:static}
-  .stepper{flex-direction:row;overflow-x:auto;position:static;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .stepper{flex-direction:row;overflow-x:auto;position:static;scrollbar-width:none}
+  .stepper::-webkit-scrollbar{display:none}
   .stp{flex:0 0 auto}
   .cvtop{grid-template-columns:220px minmax(0,1fr)}
 }
-/* ≤768: телефон в альбомной и маленький планшет — окна на весь экран, карточки вместо таблиц */
-@media (max-width:768px){
-  .top{padding:10px max(12px,env(safe-area-inset-right)) 10px max(12px,env(safe-area-inset-left));gap:8px;flex-wrap:wrap}
-  .top .saved{display:none}
-  #srvBtns .btn,#btnNew{padding:8px 10px;font-size:14px}
-  .wrap{padding:12px max(12px,env(safe-area-inset-right)) 12px max(12px,env(safe-area-inset-left))}
-  .step{padding:16px;border-radius:14px}
-  .g2,.g3,.g4,.attrs,.kprow,.cprice{grid-template-columns:1fr!important}
-  .stepnav{position:sticky;bottom:calc(64px + env(safe-area-inset-bottom,0px));z-index:5;background:var(--paper);padding:8px 0}
-  .stepnav .btn{flex:1;justify-content:center}
-  /* модальные окна — на весь экран, с учётом выреза и клавиатуры */
-  dialog,dialog.wide,dialog.editor,dialog.catwin,dialog.kpprev,dialog.setwin,dialog.tpled{
-    position:fixed;inset:0;width:100vw!important;max-width:100vw!important;height:var(--vvh,100dvh)!important;max-height:var(--vvh,100dvh)!important;
-    margin:0;border-radius:0;resize:none}
-  dialog:not(.editor):not(.catwin):not(.kpprev):not(.setwin):not(.tpled):not(.st-confirm)[open]{display:flex;flex-direction:column}
-  dialog:not(.editor):not(.catwin):not(.kpprev):not(.setwin):not(.tpled) .dlg-b{max-height:none;flex:1;min-height:0}
-  dialog.st-confirm{height:auto!important;max-height:none!important;inset:auto 0 0 0;border-radius:16px 16px 0 0;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
-  .dlg-h,.cw-h,.pv-hd{padding-top:max(12px,env(safe-area-inset-top));padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right));flex-wrap:wrap}
-  .cw-f,.pv-acts,.dlg-b{padding-bottom:max(12px,env(safe-area-inset-bottom))}
-  .ed-tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-  .ed-tab{flex:0 0 auto}
-  /* позиции и цены — карточками в одну колонку */
-  .icard{grid-template-columns:72px minmax(0,1fr)}
-  .iside{grid-template-columns:1fr 1fr!important}
-  .isum{grid-column:1/-1}
-  .ifoot{flex-wrap:wrap}
-  .prow{grid-template-columns:1fr!important}
-  .prow>*{grid-column:auto!important;grid-row:auto!important}
-  .psum{display:flex;justify-content:space-between}
-  .jr{grid-template-columns:1fr}
-  .jr-e{text-align:left}
-  .jbar{grid-template-columns:1fr}
-  .pv-t,.st-diff{display:block;overflow-x:auto}
-  .curbar{flex-wrap:wrap}
-  .cvtop{grid-template-columns:1fr}
-  .cvthumb{max-width:320px}
-  .toast{left:12px;right:12px;transform:none;text-align:center}
+@media (max-width:1000px){
+  .mbar{display:grid}
+  .stepnav{display:none}
 }
-/* ≤480: телефон — меньше отступов, кнопки шагов во всю ширину */
-@media (max-width:480px){
-  .brand small{display:none}
-  .step>h2{font-size:19px}
-  .iside{grid-template-columns:1fr!important}
-  .ifoot .sw{order:3;flex-basis:100%}
-  .cw-h h3{display:none}
-  .st-tiles{grid-template-columns:1fr 1fr}
-  .st-tile b{font-size:18px}
-  .st-filters{grid-template-columns:1fr}
-  .stepnav{gap:8px}
-  .stepnav .btn{min-width:0;padding-left:10px;padding-right:10px;font-size:15px;white-space:nowrap}
-  .stepnav .btn:not(.primary){flex:0 1 38%}
-  .stepnav .btn:not(.primary)>*,.stepnav .btn:not(.primary){overflow:hidden;text-overflow:ellipsis}
-  .stepnav .btn.primary{flex:1 1 62%}
+
+/* ====================================================================================
+   ТЕЛЕФОН
+   ==================================================================================== */
+.mob:root{padding:0}
+.mob body{padding-bottom:calc(var(--mbh) + env(safe-area-inset-bottom,0px))}
+.mob .mbar{display:grid}
+.mob .btn{white-space:normal;text-align:center;justify-content:center;line-height:1.2;max-width:100%;overflow-wrap:anywhere}
+.mob .btn.sm{white-space:nowrap}
+.mob .toast{left:16px;right:16px;transform:none;text-align:center;bottom:calc(var(--mbh) + 14px + env(safe-area-inset-bottom,0px))}
+
+/* шапка: логотип, номер КП и одна заметная кнопка «Меню» */
+.mob .top{position:sticky;top:0;gap:10px;flex-wrap:nowrap;min-height:56px;
+  padding:calc(6px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right)) 6px max(16px,env(safe-area-inset-left))}
+.mob .brand{font-size:16px;flex:0 0 auto}
+.mob .brand small{display:none}
+.mob #kpno{font-size:12.5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mob #saved,.mob .srvtag,.mob #srvBtns,.mob #btnNew,.mob .topmenu{display:none!important}
+.mob .mmenu-btn{display:inline-flex;flex:0 0 auto;gap:8px;font-size:15px;padding:8px 14px;border-color:var(--line)}
+.mob .mmenu-btn span{font-size:18px;line-height:1}
+
+/* разделы КП: строка шагов прокручивается вбок, текущий — по центру */
+.mob .wrap{display:block;padding:0;max-width:820px;margin:0 auto}
+.mob .stepper{flex-direction:row;gap:6px;overflow-x:auto;position:static;padding:10px max(16px,env(safe-area-inset-left));scrollbar-width:none}
+.mob .stepper::-webkit-scrollbar{display:none}
+.mob .stp{flex:0 0 auto;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;border-width:1px}
+.mob .stp .num{flex:0 0 30px;width:30px;height:30px}
+.mob .stp b{font-size:14.5px;white-space:nowrap}
+.mob .stp.bad .dot{top:5px;right:8px}
+.mob .stepnav{display:none}
+
+/* содержимое раздела — во всю ширину, без рамок-«матрёшек» по краям */
+.mob .step{border:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:0;margin:0;
+  padding:16px max(16px,env(safe-area-inset-right)) 22px max(16px,env(safe-area-inset-left))}
+.mob .step>h2{font-size:20px;margin:0 0 12px;align-items:center}
+.mob .step>h2 .n{display:none}
+.mob .step>.hint{font-size:14px}
+.mob .grid{gap:12px}
+.mob .g2,.mob .g3,.mob .g4,.mob .attrs,.mob .kprow,.mob .cprice,.mob .inn-row,.mob .facts,.mob .media2,.mob .fblock,.mob .cost,.mob .mgrbar{grid-template-columns:minmax(0,1fr)!important}
+.mob label.f,.mob div.f{font-size:14px}
+.mob textarea{min-height:88px}
+.mob .csec{padding:14px;border-radius:14px}
+.mob .cl-card{padding:14px}
+.mob .cl-head b{font-size:17px}
+.mob .row{gap:8px}
+
+/* подсказки «?» и списки вариантов — над нижней панелью, во всю ширину (не вылезают за экран) */
+.mob .tip-b{position:fixed;left:12px;right:12px;top:auto;bottom:calc(var(--mbh) + 12px + env(safe-area-inset-bottom,0px));width:auto;z-index:60;font-size:15px;box-shadow:0 18px 50px rgba(0,0,0,.28)}
+.mob .pickm .menu-l{position:fixed;left:8px;right:8px;top:auto;bottom:calc(var(--mbh) + 10px + env(safe-area-inset-bottom,0px));min-width:0;max-height:55vh;z-index:60;box-shadow:0 18px 50px rgba(0,0,0,.28)}
+.mob .pickm .menu-l button{padding:12px;font-size:15px}
+
+/* итог и сохранение — на последнем шаге (из любого шага — нажатием на сумму внизу) */
+.mob #side{display:none;position:static;padding:8px max(16px,env(safe-area-inset-right)) 20px max(16px,env(safe-area-inset-left))}
+.mob body[data-kpstep="mgr"] #side{display:block}
+.mob .side-h{display:block;font-size:20px;margin:14px 0 12px}
+.mob .total{padding:18px}
+.mob .total .big{font-size:28px}
+.mob .dl{min-height:52px;font-size:16px}
+
+/* 2 · Оборудование */
+.mob .eq-bar{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mob .eq-bar .muted{grid-column:1/-1}
+.mob .eq-bar .btn{min-height:50px;font-size:15.5px}
+.mob .qadd input{padding:12px 14px}
+.mob .qa-list{max-height:52vh}
+.mob .qa-list button{grid-template-columns:52px minmax(0,1fr);min-height:56px}
+.mob .qa-list em{display:none}
+.mob .tiles{grid-template-columns:1fr 1fr;gap:8px}
+.mob .tile{padding:12px;min-height:76px;border-radius:12px}
+.mob .tile b{font-size:14.5px;line-height:1.25}
+.mob .item{padding:12px;border-radius:14px;margin-bottom:12px}
+.mob .icard{grid-template-columns:76px minmax(0,1fr);gap:10px 12px;align-items:center}
+.mob .ithumb{width:76px;height:62px;grid-column:1;grid-row:1;padding:3px;border-radius:10px}
+.mob .imain{display:contents}
+.mob .itop{grid-column:2;grid-row:1;margin:0;flex-wrap:wrap;gap:6px}
+.mob .itop .item-no{display:grid}
+.mob .ttype{white-space:normal;line-height:1.3}
+.mob textarea.iname,.mob .ikp,.mob .ready,.mob .iopts,.mob .iside{grid-column:1/-1}
+.mob textarea.iname{min-height:0;font-size:16px}
+.mob .ikp{margin:0}
+.mob .ready,.mob .iopts{margin:0}
+.mob .iside{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:10px;align-items:end}
+.mob .iside .f{font-size:13px}
+.mob .isum{grid-column:1/-1}
+.mob .qty button{width:44px;height:46px;font-size:22px;flex:0 0 44px}
+.mob .qty input{min-width:0;padding:10px 0}
+.mob .iside .pricebox{min-height:48px;text-align:center}
+.mob .ifoot{gap:8px;margin-top:10px;padding-top:10px}
+.mob .ifoot .sw{flex:1 1 100%;order:-1;min-height:40px}
+.mob .ifoot>span[style]{display:none}
+.mob .ifoot .btn.primary{flex:1 1 auto}
+.mob .ifoot .btn.ghost{border-color:var(--line);padding-left:14px;padding-right:14px}
+.mob .ifoot .icon{width:44px;height:44px;border:1px solid var(--line);border-radius:10px;font-size:18px}
+.mob .ifoot .icon[disabled]{opacity:.35}
+
+.mob .sw{text-align:left}
+
+/* 3 · Цены: карточка позиции в две колонки */
+.mob .curbar{flex-direction:column;align-items:stretch;gap:10px}
+.mob .cur-sel{min-width:0}
+.mob .rates{gap:6px 14px}
+.mob .prow{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:12px;padding:12px;border-radius:14px}
+.mob .prow>*{grid-column:1/-1!important;grid-row:auto}
+.mob .prow>.pname{grid-row:1}
+.mob .prow>:nth-child(2){grid-row:2}
+.mob .prow>.mcell{grid-column:1!important;grid-row:3}
+.mob .prow>.dcell{grid-column:2!important;grid-row:3}
+.mob .prow>:nth-child(4){grid-row:4}
+.mob .prow>.psum{grid-row:5;flex-direction:row;justify-content:space-between;align-items:baseline;padding:0}
+.mob .prow>.pinfo{grid-row:6}
+.mob .pname .item-no{display:grid}
+.mob .mcell>span,.mob .dcell>span{white-space:normal;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.mob .cin{grid-template-columns:96px minmax(0,1fr)}
+
+/* 4 · Титул */
+.mob .cvtop{grid-template-columns:minmax(0,1fr)}
+.mob .cvthumb{max-width:none}
+
+/* ---------- окна: на весь экран, шапка с заметной кнопкой «Закрыть» ---------- */
+.mob dialog{position:fixed;inset:0;width:100%!important;max-width:none!important;height:100%!important;max-height:none!important;margin:0;border-radius:0;resize:none;padding:0}
+.mob dialog[open]{display:flex;flex-direction:column}
+.mob dialog::backdrop{background:rgba(10,20,40,.5)}
+.mob dialog>.dlg-b{max-height:none;flex:1 1 auto;min-height:0;overflow:auto;padding:16px max(16px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left))}
+.mob .dlg-h,.mob .pv-hd{flex:0 0 auto;gap:8px;min-height:60px;padding:calc(8px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right)) 8px max(16px,env(safe-area-inset-left))}
+.mob .dlg-h h3{font-size:17px;line-height:1.25;min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.mob dialog .icon[aria-label="Закрыть"]{order:99;flex:0 0 44px;width:44px;height:44px;border-radius:50%;background:var(--soft);color:var(--ink);font-size:20px;font-weight:600}
+/* меню и подтверждения — листом снизу */
+.mob dialog.sheet,.mob dialog.st-confirm{inset:auto 0 0 0;height:auto!important;max-height:88%!important;border-radius:20px 20px 0 0;padding-bottom:env(safe-area-inset-bottom,0px)}
+.mob dialog.st-confirm{padding:20px max(20px,env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left))}
+.mob dialog.st-confirm .row .btn{flex:1 1 0;min-height:50px}
+.mm-l{display:grid;padding:4px 8px 12px;overflow:auto}
+.mm-i{display:flex;gap:14px;align-items:center;border:0;background:none;padding:10px;border-radius:12px;text-align:left;color:var(--ink);min-height:60px;cursor:pointer;width:100%}
+.mm-i i{font-style:normal;flex:0 0 42px;width:42px;height:42px;border-radius:12px;background:var(--soft);color:var(--navy);display:grid;place-items:center;font-size:20px}
+.mm-i b{display:block;font-size:16px;font-weight:600}
+.mm-i small{display:block;font-size:13px;color:var(--muted);margin-top:1px}
+.mm-l hr{border:0;border-top:1px solid var(--line);margin:6px 10px}
+/* выбор вида оборудования — список во всю ширину */
+.mob .tpick{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.mob .tpick .btn{justify-content:flex-start;text-align:left;min-height:50px;font-size:16px}
+
+/* карточка позиции (правка) */
+.mob dialog.editor .dlg-h h3{font-size:16px;-webkit-line-clamp:1;flex:1}
+.mob dialog.editor [data-ednav]{display:none}
+.mob dialog.editor [data-edclose],.mob dialog.editor [data-catsave]{min-height:44px;padding:8px 18px;font-size:16px}
+.mob dialog.editor.catmode .dlg-h{flex-wrap:wrap}
+.mob dialog.editor.catmode .dlg-h h3{flex:1 1 100%;-webkit-line-clamp:2}
+.mob dialog.editor.catmode [data-catsave]{flex:1 1 auto}
+.mob .ed-modnote{flex:1 1 100%;order:3;font-size:12.5px}
+.mob .ed-tabs{flex-wrap:nowrap;overflow-x:auto;gap:0;padding:0 max(8px,env(safe-area-inset-left));scrollbar-width:none}
+.mob .ed-tabs::-webkit-scrollbar{display:none}
+.mob .ed-tab{flex:0 0 auto;min-height:48px;padding:12px 12px 10px;font-size:15px}
+.mob .ed-b{padding:16px max(16px,env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left))}
+.mob .srow{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px 44px;gap:6px}
+.mob .fhead{grid-template-columns:minmax(0,1fr) 44px 44px}
+.mob .opt{grid-template-columns:72px minmax(0,1fr) 44px;gap:8px}
+.mob .opt>:first-child{grid-column:1/-1}
+.mob .opt .s{display:none}
+.mob .gal{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:8px}
+.mob .gcard img{height:110px}
+.mob .ibox{height:150px}
+.mob .grp{padding:10px}
+
+/* каталог: строка поиска и «Фильтры», список карточками, позиция — на весь экран с «‹ К списку» */
+.mob .catwin .cw-h{flex-wrap:wrap;row-gap:8px;gap:8px;padding:calc(8px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right)) 10px max(16px,env(safe-area-inset-left))}
+.mob .catwin .cw-h h3{display:block;order:1;flex:1 1 auto;font-size:18px;margin:0}
+.mob .catwin .cw-h [data-cw=new]{order:2}
+.mob .catwin .cw-h [data-cw=close]{order:3}
+.mob .catwin .cw-h .cw-q{order:4;flex:1 1 60%;max-width:none;margin:0}
+.mob .catwin .cw-h .cw-navbtn{order:5;display:inline-flex}
+.mob .catwin .cw-h .cw-menu,.mob .catwin .cw-h [data-cw=max]{display:none}
+.mob .catwin .cw-lbl{display:inline}
+.mob .catwin .cw-h .btn{padding:8px 12px}
+.mob .catwin .cw-q input{min-height:46px}
+.mob .catwin .cw-b{grid-template-columns:minmax(0,1fr)}
+.mob .catwin .cw-tb{padding:6px max(16px,env(safe-area-inset-right)) 6px max(16px,env(safe-area-inset-left));gap:10px}
+.mob .catwin .cw-tb .ck{display:none}
+.mob .catwin .cw-tb select{max-width:60%;min-height:40px;padding-top:6px;padding-bottom:6px}
+.mob .catwin .cw-list{padding:0 0 12px}
+.mob .catwin .cw-row{grid-template-columns:64px minmax(0,1fr) auto;grid-template-areas:"img mn add" "img pr add";gap:2px 12px;padding:10px max(16px,env(safe-area-inset-right)) 10px max(16px,env(safe-area-inset-left));border-radius:0}
+.mob .catwin .cw-row .ck{display:none}
+.mob .catwin .cw-row img,.mob .catwin .cw-row .ph{grid-area:img;width:64px;height:54px}
+.mob .catwin .cw-mn{grid-area:mn;min-width:0}
+.mob .catwin .cw-mn b{font-size:15px}
+.mob .catwin .cw-pr{grid-area:pr;display:block;text-align:left;font-size:14px}
+.mob .catwin .cw-pr small{display:inline;margin-left:6px}
+.mob .catwin .cw-row>.btn{grid-area:add;min-height:44px;padding:8px 14px}
+.mob .catwin .cw-nav{position:absolute;inset:0;width:auto;z-index:7;display:none;box-shadow:none;border:0;padding:12px max(16px,env(safe-area-inset-right)) 0 max(16px,env(safe-area-inset-left))}
+.mob .catwin.navon .cw-nav{display:block}
+.mob .catwin .cw-cat{font-size:15.5px}
+.mob .catwin .cw-flt label.f select,.mob .catwin .cw-flt input[type=text]{padding:10px 12px}
+.mob .catwin .cw-chk{min-height:44px}
+.mob .catwin .cw-chk input{width:22px;height:22px}
+.mob .catwin .cw-navok{display:block;position:sticky;bottom:0;margin:18px -16px 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:var(--paper);border-top:1px solid var(--line)}
+.mob .catwin .cw-navok .btn{width:100%;min-height:52px;font-size:16px}
+.mob .catwin .cw-pv{position:absolute;inset:0;width:auto;border:0;box-shadow:none;z-index:6}
+.mob .catwin .pv-mtop{display:flex;flex:0 0 auto;padding:8px max(12px,env(safe-area-inset-left));border-bottom:1px solid var(--line)}
+.mob .catwin .pv-back{font-size:16px;gap:6px}
+.mob .catwin .pv-back span{font-size:24px;line-height:1;margin-top:-3px}
+.mob .catwin .pv-acts .pv-x{display:none}
+.mob .catwin.pvon .cw-h .cw-q,.mob .catwin.pvon .cw-h .cw-navbtn,.mob .catwin.pvon .cw-tb{display:none}
+.mob .catwin .pv-scroll{padding:14px max(16px,env(safe-area-inset-right)) 16px max(16px,env(safe-area-inset-left))}
+.mob .catwin .pv-photo{height:220px}
+.mob .catwin .pv-cat{grid-template-columns:minmax(0,1fr)}
+.mob .catwin .pv-acts{padding:10px max(16px,env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left))}
+.mob .catwin .pv-main .btn{min-height:50px;font-size:16px}
+.mob .catwin .cw-f{flex-wrap:nowrap;min-height:0;padding:10px max(16px,env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left))}
+.mob .catwin .cw-f .cw-note,.mob .catwin .cw-f .sp{display:none}
+.mob .catwin .cw-f .btn.primary{flex:1 1 auto;min-height:50px;font-size:16px}
+.mob .catwin .cw-f>.muted{flex:0 0 auto}
+
+/* журнал КП */
+.mob .jr{grid-template-columns:minmax(0,1fr);gap:6px;padding:12px 0}
+.mob .jr-e{text-align:left}
+.mob .jbar{grid-template-columns:minmax(0,1fr)}
+.mob .jr .acts{justify-content:flex-start}
+.mob .jr .btn{min-height:44px;padding:8px 14px;font-size:14.5px}
+
+/* предпросмотр КП */
+.mob .pv-hd{flex-wrap:wrap}
+.mob .pv-hd h3{flex:1 1 auto;font-size:17px;margin:0}
+.mob .pv-hd .pv-note,.mob .pv-hd .sp{display:none}
+.mob .pv-hd .btn{flex:1 1 auto}
+.mob .pv-t,.mob .st-diff{display:block;overflow-x:auto}
+
+/* «Настройки» */
+.mob .st-b{flex:1;min-height:0}
+
+/* тёмная тема: на светло-синих кнопках и выделениях — тёмный текст (белый на них читается плохо) */
+@media (prefers-color-scheme: dark){
+:root:not([data-theme="light"]) .btn.primary,:root:not([data-theme="light"]) .stp.cur,:root:not([data-theme="light"]) .cw-cat.on,:root:not([data-theme="light"]) .mtog button.on,:root:not([data-theme="light"]) .chip.on,:root:not([data-theme="light"]) .tag.kwt{color:#0B1A33}
+:root:not([data-theme="light"]) .stp.cur .num{background:#0B1A33;color:#fff}
+:root:not([data-theme="light"]) .cw-cat.on i,:root:not([data-theme="light"]) .stp.cur small{color:rgba(11,26,51,.75)}
 }
+:root[data-theme="dark"] .btn.primary,:root[data-theme="dark"] .stp.cur,:root[data-theme="dark"] .cw-cat.on,:root[data-theme="dark"] .mtog button.on,:root[data-theme="dark"] .chip.on,:root[data-theme="dark"] .tag.kwt{color:#0B1A33}
+:root[data-theme="dark"] .stp.cur .num{background:#0B1A33;color:#fff}
+:root[data-theme="dark"] .cw-cat.on i,:root[data-theme="dark"] .stp.cur small{color:rgba(11,26,51,.75)}

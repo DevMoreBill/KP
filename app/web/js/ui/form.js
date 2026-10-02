@@ -36,7 +36,7 @@ function stepOfTarget(t, msg=''){
 
 function goStep(id, target){
   STEP=id; try{ localStorage.setItem('kp.step',id); }catch(e){}
-  renderForm(); window.scrollTo({top:0,behavior:'smooth'});
+  renderForm(); window.scrollTo({top:0,behavior:isMob()?'auto':'smooth'});
   if (id==='price') autoRates();
   if (target) setTimeout(()=>{ const el=document.getElementById(target); if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.querySelector('input.bad, input')?.focus({preventScroll:true}); } },60);
 }
@@ -59,11 +59,16 @@ function stepNavHtml(){
 
 function renderForm(){
   if (CATED){ if (EDIT && $('#edlg').open) renderEditor(); return; }
-  const f = $('#form'); const focusP = document.activeElement?.dataset?.p;
+  pickTemplate();
+  const f = $('#form'); const act = document.activeElement, focusP = act?.dataset?.p;
   const cur = STEPS.find(s=>s.id===STEP)||STEPS[0];
-  $('#nav').innerHTML = stepperHtml();
-  f.innerHTML = cur.f().replace(/<h2><span class="n">\d+<\/span>/, `<h2><span class="n">${STEPS.indexOf(cur)+1}</span>`) + stepNavHtml();
-  if (focusP && !$('#edlg').open) { const el = f.querySelector(`[data-p="${CSS.escape(focusP)}"]`); if (el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n);}catch(e){} } }
+  morph($('#nav'), stepperHtml());
+  morph(f, cur.f().replace(/<h2><span class="n">\d+<\/span>/, `<h2><span class="n">${STEPS.indexOf(cur)+1}</span>`) + stepNavHtml());
+  // поле осталось тем же узлом — фокус не трогаем (иначе на телефоне прыгает клавиатура)
+  if (focusP && !act.isConnected && !$('#edlg').open) { const el = f.querySelector(`[data-p="${CSS.escape(focusP)}"]`); if (el){ el.focus({preventScroll:true}); try{ const n=el.value.length; el.setSelectionRange(n,n);}catch(e){} } }
+  const sp=$('#nav .stepper'), sc=sp?.querySelector('.stp.cur'); if (sp && sc && sp.scrollWidth>sp.clientWidth) sp.scrollLeft=sc.offsetLeft-(sp.clientWidth-sc.offsetWidth)/2;
+  document.body.dataset.kpstep=STEP;
+  f.querySelectorAll('textarea.iname').forEach(fitText);
   renderSide();
   if (EDIT && $('#edlg').open) renderEditor();
   if (STEP==='cover') coverThumbSoon();
