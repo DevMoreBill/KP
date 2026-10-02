@@ -13,20 +13,13 @@ document.addEventListener('input', e=>{
     o._priceText=t.value; o.price=Number.isNaN(k)?0:k; t.classList.toggle('bad',Number.isNaN(k)); updateLive();
   } else if (t.dataset.price!=null){
     const i=+t.dataset.price, k=parsePrice(t.value);
-    S.items[i]._priceText=t.value; S.items[i].price = Number.isNaN(k)?0:k; if (S.items[i].cost) S.items[i].priceManual=true;
+    S.items[i]._priceText=t.value; S.items[i].price = Number.isNaN(k)?0:k; S.items[i].priceManual=true;
     t.classList.toggle('bad', Number.isNaN(k)||!k); updateLive(); liveMargin(i);
-  } else if (t.dataset.cost!=null){
-    const i=+t.dataset.cost, x=S.items[i], k=parsePrice(t.value);
-    x._costText=t.value; x.cost=Number.isNaN(k)?0:k; t.classList.toggle('bad',Number.isNaN(k));
-    if (!x.cost) x.priceManual=false; applyCalc(x); livePrice(i); updateLive(); liveMargin(i);
   } else if (t.dataset.disc!=null){
     const i=+t.dataset.disc, x=S.items[i];
     x._discText=t.value; x._discBad=!setDisc(x, t.value); t.classList.toggle('bad', x._discBad); updateLive(); liveMargin(i);
-  } else if (t.dataset.margin!=null){
-    const i=+t.dataset.margin, x=S.items[i], v=t.value.trim();
-    x.margin = v==='' ? undefined : v; if (v!=='') x.priceManual=false; applyCalc(x); livePrice(i); updateLive(); liveMargin(i);
   } else if (t.dataset.rate!=null){
-    S.pricing.rates[t.dataset.rate]=t.value; S.pricing.rateSrc='вручную'; const sh=document.querySelector(`[data-rshow="${t.dataset.rate}"]`); if(sh) sh.textContent=t.value||'—'; recalcAll(); S.items.forEach((_,i)=>{livePrice(i);liveMargin(i);}); updateLive();
+    S.pricing.rates[t.dataset.rate]=t.value; S.pricing.rateSrc='вручную'; const sh=document.querySelector(`[data-rshow="${t.dataset.rate}"]`); if(sh) sh.textContent=t.value||'—'; updateLive();
   }
 });
 
@@ -35,16 +28,15 @@ document.addEventListener('change', e=>{
   if (t.dataset.gon!=null){ const g=S.items[+t.dataset.gon].gallery[+t.dataset.j]; g.on=t.checked; t.closest('.gcard')?.classList.toggle('off',!t.checked); persist(); return; }
   if (/^items\.\d+\.gallery\.\d+\.wide$/.test(t.dataset.p||'')){ renderForm(); persist(); return; }
   if (t.dataset.retype!=null){ renderForm(); persist(); return; }
-  if (t.dataset.cc!=null){ const x=S.items[+t.dataset.cc]; x.costCur=t.value; applyCalc(x); renderForm(); persist(); if (t.value!=='RUB' && !(rateOf(t.value)>0)) loadCBR(); return; }
-  if (t.dataset.pr && t.dataset.pr!=='margin'){ const k=t.dataset.pr; const prevCur=kpCur(); S.pricing[k] = t.type==='checkbox' ? t.checked : t.value;
+  if (t.dataset.pr){ const k=t.dataset.pr; const prevCur=kpCur(); S.pricing[k] = t.type==='checkbox' ? t.checked : t.value;
     if (k==='cur' && prevCur!==S.pricing.cur){
       const r1=rateOf(prevCur), r2=rateOf(S.pricing.cur);
       if (r1>0 && r2>0){ const cv=v=>Math.round(v*r1/r2);
-        S.items.forEach(x=>{ if (!x.cost || x.priceManual){ if(x.price) x.price=cv(x.price); delete x._priceText; } (x.options||[]).forEach(o=>{ if(o.price){ o.price=cv(o.price); delete o._priceText; } }); });
+        S.items.forEach(x=>{ if (x.price) x.price=cv(x.price); delete x._priceText; (x.options||[]).forEach(o=>{ if(o.price){ o.price=cv(o.price); delete o._priceText; } }); });
         toast(`Цены переведены в ${S.pricing.cur} по курсу`);
       } else toast('Укажите курс, чтобы перевести цены: сейчас цены не пересчитаны');
     }
-    recalcAll(); renderForm(); persist(); if (k==='cur' && S.pricing.cur!=='RUB' && !(rateOf(S.pricing.cur)>0)) loadCBR(); return; }
+    renderForm(); persist(); if (k==='cur' && S.pricing.cur!=='RUB' && !(rateOf(S.pricing.cur)>0)) loadCBR(); return; }
 });
 
 document.addEventListener('change', async e=>{
@@ -62,7 +54,6 @@ document.addEventListener('focusout', e=>{
   if (t.dataset.price!=null){ const i=+t.dataset.price, k=parsePrice(t.value); if(!Number.isNaN(k)&&k){ delete S.items[i]._priceText; t.value=fmtPrice(k);} persist(); renderForm(); }
   // без перерисовки формы: иначе следующий щелчок (например, по «% / руб.») попадёт в уже заменённую кнопку
   if (t.dataset.disc!=null){ const x=S.items[+t.dataset.disc]; if (!x._discBad){ delete x._discText; t.value=discText(x); } persist(); }
-  if (t.dataset.cost!=null){ const i=+t.dataset.cost, k=parsePrice(t.value); if(!Number.isNaN(k)){ delete S.items[i]._costText; t.value=k?money(k):''; } persist(); renderForm(); }
 });
 
 document.addEventListener('click', async e=>{
@@ -129,8 +120,6 @@ document.addEventListener('click', async e=>{
     case 'toSave': { if (isMob() && STEP!==STEPS[STEPS.length-1].id){ goStep(STEPS[STEPS.length-1].id); }
       const sd=$('#side'); sd.scrollIntoView({behavior:isMob()?'auto':'smooth'}); sd.classList.add('pulse'); setTimeout(()=>sd.classList.remove('pulse'),1600); return; }
     case 'cbr': return loadCBR();
-    case 'reprice': it.priceManual=false; applyCalc(it); break;
-    case 'mmode': it.mmode=b.dataset.v; it.priceManual=false; applyCalc(it); break;
     case 'journal': return openJournal();
     case 'deal': return openDeal();
     case 'docsFolder': return api('/api/folder?dir='+encodeURIComponent(managerFolder()),{method:'POST'}).then(remoteResult).catch(()=>{}); 

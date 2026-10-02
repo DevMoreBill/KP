@@ -33,7 +33,7 @@ js/
   features/catalog-window.js окно каталога: категории, фильтры, список с отметками, карточка, пакетные действия, размер окна
   features/catalog-edit.js правка позиции каталога в карточке позиции (CATED: S.items временно подменены)
   features/excel-import.js импорт каталога из Excel/CSV
-  features/pricing.js      валюта, курсы ЦБ, закупка → маржа/наценка → цена
+  features/pricing.js      валюта, курсы ЦБ, ручные цены и скидки
   features/clients.js      контрагенты: ИНН, справочник, Checko, интеграции
   features/images.js       подготовка фото, галерея позиции
   features/item-editor.js  карточка позиции (окно с вкладками)
@@ -43,7 +43,8 @@ js/
   features/types-editor.js редактор типов оборудования
   features/journal.js      журнал КП
   features/deal-calc.js    «Экономика сделки» — расчёт по методике (без интерфейса; проверяется в node)
-  features/deal.js         окно «Экономика сделки»: поставщики, график платежей, итог, выгрузка в Excel, доступ (dealAllowed)
+  features/deal.js         окно «Экономика сделки»: закупка, справочники поставщиков и ТН ВЭД, подбор цены, доступ (dealAllowed)
+  features/deal-xlsx.js    выгрузка в Excel: «Сводка» для согласования, «Расчёт» с формулами, «График платежей»
   features/settings.js     окно «Настройки»: вход, статистика, модерация, удаление и корзина, журнал действий, резервные копии, шаблоны, ключи, пароль
   docx/build.js            имя файла, модели для титула, renderDocx() — сборка файла, download(), previewDocx()
   ui/form.js               field(), разделы STEPS, меню, renderForm()

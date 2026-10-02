@@ -8,28 +8,31 @@
 .rt.need b{color:var(--navy)}
 details.psettings{margin:8px 0 16px;font-size:14px}
 details.psettings>summary{cursor:pointer;color:var(--navy);font-weight:600;padding:4px 0}
-.mcell>span,.dcell>span{white-space:nowrap}
-/* скидка для заказчика — под ценой продажи; сумма справа на обе строки */
-.dcell{grid-column:3;grid-row:3}
-.dcell>span{display:flex;align-items:center;gap:6px}
-.prow>.psum{grid-column:4;grid-row:2/4;align-self:end}
-.mtog{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;vertical-align:middle}
-.mtog button{border:0;background:var(--card);padding:2px 8px;font-size:12px;cursor:pointer;color:var(--muted)}
+.mtog{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;vertical-align:middle;flex:0 0 auto}
+.mtog button{border:0;background:var(--card);padding:2px 8px;font-size:12px;cursor:pointer;color:var(--muted);min-width:30px}
+.mtog button+button{border-left:1px solid var(--line)}
 .mtog button.on{background:var(--navy);color:#fff}
-input.num:disabled{opacity:.5}
-.prow{display:grid;grid-template-columns:minmax(150px,230px) minmax(110px,150px) minmax(150px,1fr) minmax(100px,140px);gap:12px;align-items:end;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
-.pname{grid-column:1/-1}
-.pname{display:flex;gap:10px;align-items:flex-start}
-.pname b{display:block;font-weight:600;line-height:1.3}
-.pname .item-no{margin:0}
-.psum{display:flex;flex-direction:column;align-items:flex-end;padding-bottom:9px}
-.psum span{font-size:13px;color:var(--muted)}
-.psum b{font-size:16px;font-variant-numeric:tabular-nums}
-.pinfo{grid-column:1/-1;font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px dashed var(--line);padding-top:8px}
+/* строка позиции: № | позиция | кол-во | цена | скидка | сумма */
+.ptable{display:grid;gap:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
+.phead,.prow{display:grid;grid-template-columns:26px minmax(150px,1fr) 136px 156px 118px;gap:10px;align-items:center;padding:10px 12px}
+.phead{font-size:11.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);background:var(--soft);border-bottom:1px solid var(--line)}
+.phead span:nth-child(5){text-align:right}
+.prow+.prow{border-top:1px solid var(--line)}
+.prow .item-no{margin:0}
+.pname{min-width:0}
+.pname b{display:block;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.pname small{display:block;font-size:12.5px;color:var(--muted)}
+.prow .f{margin:0}
+.prow .pl{display:none}
+.dwrap{display:flex;gap:6px;align-items:center}
+.dwrap input{flex:1 1 auto;min-width:0;padding-left:8px;padding-right:8px}
+.pprice input{padding-left:8px;padding-right:8px}
+.psum{text-align:right}
+.psum b{font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pinfo{grid-column:2/-1;font-size:12.5px;color:var(--muted);margin-top:-4px}
+.pinfo:empty{display:none}
 input.strong{font-weight:650}
 input.flash{animation:flash 1.6s ease}
 @keyframes flash{0%{background:#d6f5e3;border-color:var(--ok)}100%{}}
-@media (max-width:1000px){.wrap{grid-template-columns:1fr}.prow{grid-template-columns:1fr 1fr}.dcell,.prow>.psum{grid-column:auto;grid-row:auto}}
+@media (max-width:1000px){.wrap{grid-template-columns:1fr}.phead,.prow{grid-template-columns:26px minmax(0,1fr) 150px 170px 130px}}
 .cost select{width:100%;border:1px solid var(--line);background:var(--field);border-radius:10px;padding:10px 12px;font-size:15px;color:var(--ink)}
-.cin{display:grid;grid-template-columns:78px 1fr;gap:6px}
-em.man{font-style:normal;color:var(--sky);font-weight:600;margin-left:4px}

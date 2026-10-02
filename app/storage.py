@@ -18,6 +18,7 @@
 Запись сериализуется одной блокировкой, база в режиме WAL: одновременное чтение многими пользователями
 не мешает записи. При первом запуске данные из прежних JSON-файлов переносятся автоматически.
 """
+import hashlib
 import json
 import os
 import re
@@ -56,10 +57,20 @@ MIGRATIONS = [
      DROP TABLE IF EXISTS audit; DROP TABLE IF EXISTS trash; DROP TABLE IF EXISTS pending_edits;
      DELETE FROM kv WHERE key IN ('admin', 'settings');
      """),
+    # «Экономика сделки»: справочник поставщиков (название, страна, условия) и коды ТН ВЭД / пошлины
+    # (по категории оборудования — ключ cat:<тип>, по модели каталога — item:<id>)
+    ('2026-11-deal',
+     """
+     CREATE TABLE IF NOT EXISTS suppliers (id TEXT PRIMARY KEY, name TEXT NOT NULL, country TEXT, doc TEXT NOT NULL, updated TEXT);
+     CREATE TABLE IF NOT EXISTS customs (key TEXT PRIMARY KEY, code TEXT, duty TEXT, note TEXT, updated TEXT, updated_by TEXT);
+     """,
+     """
+     DROP TABLE IF EXISTS suppliers; DROP TABLE IF EXISTS customs;
+     """),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
-TRASH_TABLES = {'kp': 'kp', 'catalog': 'catalog', 'manager': 'managers', 'client': 'clients'}
+TRASH_TABLES = {'kp': 'kp', 'catalog': 'catalog', 'manager': 'managers', 'client': 'clients', 'supplier': 'suppliers'}
 
 # поля позиции, которые нужны списку каталога, фильтрам и быстрому поиску (без характеристик, описаний и галереи)
 LIGHT_KEYS = ('id', 'name', 'spec', 'price', 'priceCur', 'cost', 'costCur', 'margin', 'mmode', 'kind', 'short', 'unit',
@@ -303,6 +314,50 @@ class Store:
 
     def kp_all_meta(self):
         return [json.loads(r[0]) for r in self.all('SELECT meta FROM kp WHERE meta IS NOT NULL')]
+
+    # ---------- «Экономика сделки»: поставщики и коды ТН ВЭД ----------
+    def suppliers_list(self):
+        self._deal_legacy()
+        return [json.loads(r[0]) for r in self.all('SELECT doc FROM suppliers ORDER BY name COLLATE NOCASE')]
+
+    def supplier_get(self, sid):
+        r = self.one('SELECT doc FROM suppliers WHERE id=?', (sid,))
+        return json.loads(r[0]) if r else None
+
+    def supplier_put(self, sid, doc):
+        if not isinstance(doc, dict) or not str(doc.get('name') or '').strip():
+            raise ValueError('Укажите название поставщика')
+        doc = dict(doc, id=sid, name=str(doc['name']).strip()[:200], updatedAt=_now())
+        self.write('INSERT OR REPLACE INTO suppliers (id, name, country, doc, updated) VALUES (?,?,?,?,?)',
+                   (sid, doc['name'], str(doc.get('country') or '')[:80], json.dumps(doc, ensure_ascii=False), _now()))
+        return doc
+
+    def customs_all(self):
+        self._deal_legacy()
+        out = {}
+        for key, code, duty, note, upd, by in self.all('SELECT key, code, duty, note, updated, updated_by FROM customs'):
+            out[key] = {'code': code or '', 'duty': duty or '', 'note': note or '', 'updated': upd, 'by': by or ''}
+        return out
+
+    def customs_put(self, key, code, duty, note, by):
+        if not re.match(r'^(cat|item):[\w.-]{1,80}$', key or ''):
+            raise ValueError('Неверный ключ')
+        self.write('INSERT OR REPLACE INTO customs (key, code, duty, note, updated, updated_by) VALUES (?,?,?,?,?,?)',
+                   (key, str(code or '')[:40], str(duty or '')[:12], str(note or '')[:300], _now(), str(by or '')[:120]))
+
+    def _deal_legacy(self):
+        """Перенос подсказок прежней версии (kv dealProfiles) в справочники — один раз."""
+        old = self.kv_get('dealProfiles')
+        if not old:
+            return
+        for name, p in (old.get('sup') or {}).items():
+            sid = 'sup_' + hashlib.md5(name.strip().lower().encode('utf-8')).hexdigest()[:10]
+            if isinstance(p, dict) and not self.one('SELECT 1 FROM suppliers WHERE name=? COLLATE NOCASE', (name,)):
+                self.supplier_put(sid, dict(p, name=name))
+        for cat, duty in (old.get('duty') or {}).items():
+            if not self.one('SELECT 1 FROM customs WHERE key=?', ('cat:' + cat,)):
+                self.customs_put('cat:' + cat, '', duty, '', 'перенос')
+        self.write("DELETE FROM kv WHERE key='dealProfiles'")
 
     # ---------- менеджеры ----------
     def managers_list(self):

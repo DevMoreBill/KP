@@ -417,22 +417,24 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(cbr_rates())
         if path == '/api/cbr/keyrate':
             return self.send_json(cbr_key_rate())
-        # «Экономика сделки»: условия поставщиков и ставки пошлин по категориям — общие для отдела
-        if path == '/api/deal/profiles':
+        # «Экономика сделки»: справочник поставщиков и коды ТН ВЭД / пошлины — общие для отдела (в базе)
+        if path == '/api/suppliers' and m == 'GET':
+            return self.send_json(store().suppliers_list())
+        r = re.match(r'^/api/suppliers/([A-Za-z0-9_-]{1,64})$', path)
+        if r and m == 'PUT':
+            try:
+                return self.send_json(store().supplier_put(r.group(1), json.loads(self.body().decode('utf-8') or '{}')))
+            except ValueError as e:
+                return self.send(400, 'text/plain; charset=utf-8', str(e))
+        if path == '/api/customs':
             if m == 'GET':
-                return self.send_json(store().kv_get('dealProfiles', {}) or {})
+                return self.send_json(store().customs_all())
             if m == 'PUT':
                 d = json.loads(self.body().decode('utf-8') or '{}')
-                cur = store().kv_get('dealProfiles', {}) or {}
-                for grp in ('sup', 'duty'):
-                    for k, v in (d.get(grp) or {}).items():
-                        k = str(k)[:120].strip()
-                        if k and isinstance(v, (dict, str, int, float)):
-                            cur.setdefault(grp, {})[k] = v
-                for grp in ('sup', 'duty'):
-                    if len(cur.get(grp, {})) > 500:
-                        cur[grp] = dict(list(cur[grp].items())[-500:])
-                store().kv_set('dealProfiles', cur)
+                try:
+                    store().customs_put(d.get('key'), d.get('code'), d.get('duty'), d.get('note'), admin.actor(self)[1])
+                except ValueError as e:
+                    return self.send(400, 'text/plain; charset=utf-8', str(e))
                 return self.send_json({'ok': True})
         if path == '/api/backup' and m == 'POST':
             if not self.is_local():

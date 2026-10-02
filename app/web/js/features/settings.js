@@ -10,14 +10,14 @@ const ST_TABS = [['stats','Статистика'],['moderation','Модерац�
 
 const ACT = { login:'Вход в «Настройки»', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
   admin_request:'Запрос без входа', edit_settings:'Изменение настроек', edit_template:'Изменение шаблона', create_kp:'Создание КП', edit_kp:'Изменение КП',
-  create_manager:'Новый менеджер', edit_manager:'Изменение менеджера', create_client:'Новый клиент', edit_client:'Изменение клиента',
+  create_manager:'Новый менеджер', create_supplier:'Новый поставщик', edit_supplier:'Изменение поставщика', delete_supplier:'Удаление поставщика', edit_customs:'Код ТН ВЭД и пошлина', edit_manager:'Изменение менеджера', create_client:'Новый клиент', edit_client:'Изменение клиента',
   edit_types:'Категории оборудования', submit_edit:'Правка на модерацию', edit_product:'Правка товара', create_product:'Новый товар',
   price_sync:'Цены из КП', approve_edit:'Правка одобрена', reject_edit:'Правка отклонена', rollback_edit:'Откат правки',
   toggle_moderation:'Режим модерации', delete_kp:'Удаление КП', delete_catalog:'Удаление товара', delete_manager:'Удаление менеджера',
   delete_client:'Удаление клиента', restore:'Восстановление из корзины', purge_trash:'Очистка корзины', export_db:'Экспорт базы', import_db:'Импорт базы' };
-const ENT = { product:'Товар', catalog:'Товар', kp:'КП', manager:'Менеджер', client:'Клиент', settings:'Настройки', template:'Шаблон',
+const ENT = { supplier:'Поставщик', customs:'ТН ВЭД', product:'Товар', catalog:'Товар', kp:'КП', manager:'Менеджер', client:'Клиент', settings:'Настройки', template:'Шаблон',
   types:'Категории', admin:'Администратор', db:'База', trash:'Корзина' };
-const DEL_TYPES = [['kp','КП из журнала'],['catalog','Товары каталога'],['manager','Контакты менеджеров'],['client','Клиенты']];
+const DEL_TYPES = [['kp','КП из журнала'],['catalog','Товары каталога'],['manager','Контакты менеджеров'],['client','Клиенты'],['supplier','Поставщики']];
 
 function setDlg(){ let d=$('#setdlg'); if(!d){ d=document.createElement('dialog'); d.id='setdlg'; d.className='setwin'; d.setAttribute('aria-label','Настройки'); document.body.appendChild(d); } return d; }
 
