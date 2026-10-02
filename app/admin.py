@@ -326,6 +326,17 @@ def guard(h, store, m, path):
         new = _loads(h.body().decode('utf-8')) or {}
         b, a = diff(old, new, ('updated', 'updatedAt', 'kpCount', 'lastKp'))
         return (lambda: log(h, store, 'edit_client' if old else 'create_client', 'client', r.group(1), b if old else None, a)) if a else None
+    r = re.match(r'^/api/suppliers/([A-Za-z0-9_-]+)$', path)
+    if r and m == 'PUT':
+        old = store.supplier_get(r.group(1))
+        new = _loads(h.body().decode('utf-8')) or {}
+        b, a = diff(old, dict(new, id=r.group(1)), ('updatedAt',))
+        return (lambda: log(h, store, 'edit_supplier' if old else 'create_supplier', 'supplier', r.group(1), b if old else None, a)) if a else None
+    if path == '/api/customs' and m == 'PUT':
+        new = _loads(h.body().decode('utf-8')) or {}
+        old = store.customs_all().get(new.get('key') or '')
+        return lambda: log(h, store, 'edit_customs', 'customs', new.get('key'), old and {k: old.get(k) for k in ('code', 'duty')},
+                           {k: new.get(k) for k in ('code', 'duty')})
     if path == '/api/types' and m == 'PUT':
         old = {t.get('id') for t in (store.kv_get('types') or {}).get('types', [])}
         new = {t.get('id') for t in (_loads(h.body().decode('utf-8')) or {}).get('types', [])}
@@ -437,7 +448,7 @@ class AdminApi:
         r = re.match(r'^audit/(\d+)/rollback$', sub)
         if r and m == 'POST':
             return self.rollback(int(r.group(1)))
-        r = re.match(r'^list/(kp|catalog|manager|client)$', sub)
+        r = re.match(r'^list/(kp|catalog|manager|client|supplier)$', sub)
         if r:
             return self.ok(self.listing(r.group(1), q.get('q') or ''))
         if sub == 'delete' and m == 'POST':
@@ -499,6 +510,9 @@ class AdminApi:
         elif etype == 'manager':
             rows = [{'id': x['id'], 'title': x.get('name', ''), 'sub': ' · '.join(v for v in (x.get('position'), x.get('phone')) if v)}
                     for x in json.loads(st.managers_list())]
+        elif etype == 'supplier':
+            rows = [{'id': x['id'], 'title': x.get('name', ''), 'sub': ' · '.join(v for v in (x.get('country'), x.get('currency')) if v)}
+                    for x in st.suppliers_list()]
         else:
             rows = [{'id': x['id'], 'title': x.get('name', ''), 'sub': 'ИНН %s' % x.get('inn', '')} for x in st.clients_all()]
         if ql:
@@ -507,7 +521,7 @@ class AdminApi:
 
     def delete(self, d):
         etype, ids = d.get('type'), d.get('ids') or []
-        if etype not in ('kp', 'catalog', 'manager', 'client') or not isinstance(ids, list) or not ids:
+        if etype not in ('kp', 'catalog', 'manager', 'client', 'supplier') or not isinstance(ids, list) or not ids:
             raise ValueError('Не выбрано, что удалить')
         rows = {r['id']: r['title'] for r in self.listing(etype, '')['items']} if etype != 'catalog' else {}
         titles = {eid: rows.get(eid) or next((r['title'] for r in self.listing(etype, str(eid))['items'] if r['id'] == eid), str(eid)) for eid in ids}

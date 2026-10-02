@@ -38,7 +38,7 @@ function fillFromCat(it, x){
   it.cost=x.cost||0; it.costCur=x.costCur||'RUB'; it.margin=x.margin; it.mmode=x.mmode; it.priceManual=false;
   const pc=x.priceCur||'RUB';
   if (it.price && pc!==kpCur()){ const r1=rateOf(pc), r2=rateOf(kpCur()); it.price = (r1>0&&r2>0) ? Math.round(it.price*r1/r2) : 0; }
-  if (it.cost) applyCalc(it);
+  if (it.cost && !it.price) applyCalc(it);            // у модели нет цены — по закупке и марже из каталога
   it.page = !!(it.photo || it.groups.length || it.features.some(f=>f.text));
   if (it.hint && (!S.cover.model || !S.cover.touched)) applyCover(it.hint,false);
 }

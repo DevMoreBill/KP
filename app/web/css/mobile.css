@@ -176,18 +176,18 @@ span.mb-back{border:0}
 .mob .curbar{flex-direction:column;align-items:stretch;gap:10px}
 .mob .cur-sel{min-width:0}
 .mob .rates{gap:6px 14px}
-.mob .prow{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:12px;padding:12px;border-radius:14px}
-.mob .prow>*{grid-column:1/-1!important;grid-row:auto}
-.mob .prow>.pname{grid-row:1}
-.mob .prow>:nth-child(2){grid-row:2}
-.mob .prow>.mcell{grid-column:1!important;grid-row:3}
-.mob .prow>.dcell{grid-column:2!important;grid-row:3}
-.mob .prow>:nth-child(4){grid-row:4}
-.mob .prow>.psum{grid-row:5;flex-direction:row;justify-content:space-between;align-items:baseline;padding:0}
-.mob .prow>.pinfo{grid-row:6}
-.mob .pname .item-no{display:grid}
-.mob .mcell>span,.mob .dcell>span{white-space:normal;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-.mob .cin{grid-template-columns:96px minmax(0,1fr)}
+.mob .ptable{border:0;background:none;gap:10px;overflow:visible}
+.mob .phead{display:none}
+.mob .prow{grid-template-columns:28px minmax(0,1.2fr) minmax(0,1fr);grid-template-areas:"no nm nm" "pr pr ds" "in in sm";gap:8px 10px;padding:12px;border:1px solid var(--line)!important;border-radius:14px;background:var(--card)}
+.mob .prow .item-no{grid-area:no;align-self:start;display:grid}
+.mob .pname{grid-area:nm}
+.mob .psum{grid-area:sm;align-self:center}
+.mob .pprice{grid-area:pr}
+.mob .pdisc{grid-area:ds}
+.mob .pinfo{grid-area:in;margin:0;align-self:center}
+.mob .pinfo:empty{display:block}
+.mob .prow .pl{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px}
+.mob .psum .pl{display:inline;margin:0 8px 0 0}
 
 /* 4 · Титул */
 .mob .cvtop{grid-template-columns:minmax(0,1fr)}

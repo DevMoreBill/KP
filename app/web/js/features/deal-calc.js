@@ -26,18 +26,56 @@ const CUSTOMS_FEES = { title:'ПП РФ № 1637 (с 01.01.2025)', scale:[[20000
 
 function customsFee(cv){ if (!(cv>0)) return 0; for (const [lim,fee] of CUSTOMS_FEES.scale) if (cv<=lim) return fee; return 0; }
 
+// Коды ТН ВЭД ЕАЭС и ставки ввозной пошлины по категориям оборудования — СПРАВОЧНО: ставка зависит от полного кода
+// (10 знаков), его подтверждает таможенный брокер. В программе любой код и ставку можно исправить — для категории
+// или для конкретной модели (хранится в базе, общая для отдела).
+const DEAL_HS = {
+  dgu:              {code:'8502 13', duty:'5', note:'Генераторные установки с дизельным двигателем: до 75 кВА — 8502 11, 75–375 кВА — 8502 12, свыше 375 кВА — 8502 13'},
+  light:            {code:'8502 39', duty:'5', note:'Осветительная мачта с генератором; без генератора — 9405'},
+  welder:           {code:'8502 20', duty:'5', note:'Сварочный агрегат с двигателем; сварочные аппараты без двигателя — 8515'},
+  comp_diesel:      {code:'8414 40', duty:'0', note:'Воздушные компрессоры на колёсном шасси, буксируемые'},
+  comp_screw:       {code:'8414 80', duty:'0', note:'Компрессоры воздушные винтовые'},
+  comp_scroll:      {code:'8414 80', duty:'0', note:'Компрессоры воздушные спиральные'},
+  comp_piston:      {code:'8414 80', duty:'0', note:'Компрессоры воздушные поршневые'},
+  comp_centrifugal: {code:'8414 80', duty:'0', note:'Турбокомпрессоры (центробежные)'},
+  dryer_ads:        {code:'8421 39', duty:'0', note:'Оборудование для очистки газов (адсорбционные осушители)'},
+  dryer_refrig:     {code:'8419 89', duty:'0', note:'Рефрижераторные осушители сжатого воздуха'},
+  filter:           {code:'8421 39', duty:'0', note:'Фильтры для очистки газов'},
+  receiver:         {code:'7311 00', duty:'5', note:'Ёмкости для сжатого газа из чёрных металлов'},
+  ats:              {code:'8537 10', duty:'0', note:'Щиты и пульты управления на напряжение до 1000 В'},
+  pump:             {code:'8413 70', duty:'0', note:'Насосы центробежные; мотопомпы с двигателем — 8413 70 / 8413 81'},
+  spare:            {code:'', duty:'', note:'Запасные части — код по виду детали, уточните у брокера'},
+  other:            {code:'', duty:'', note:'Укажите код и ставку'},
+};
+
+// код для ДГУ — по мощности (кВА, иначе кВт / 0,8)
+function dealHsAuto(cat, attrs){ const h=DEAL_HS[cat]; if (!h) return null;
+  if (cat==='dgu'){ const kva=dNum(attrs&&attrs.kva) || (dNum(attrs&&attrs.kw)||0)/0.8; if (kva>0) return {...h, code: kva<=75?'8502 11':kva<=375?'8502 12':'8502 13'}; }
+  return h; }
+
+// страна поставщика → таможенный режим, валюта, НДС
+const DEAL_EAEU = ['Беларусь','Казахстан','Армения','Киргизия'];
+const DEAL_COUNTRIES = [['Китай','CNY'],['Турция','USD'],['Германия','EUR'],['Италия','EUR'],['Россия','RUB'],['Беларусь','RUB'],['Казахстан','RUB'],
+  ['Индия','USD'],['Корея','USD'],['Япония','USD'],['США','USD'],['Чехия','EUR'],['Польша','EUR'],['Испания','EUR'],['Франция','EUR'],['Швеция','EUR'],
+  ['Финляндия','EUR'],['Великобритания','EUR'],['Тайвань','USD'],['Вьетнам','USD'],['ОАЭ','USD'],['Армения','RUB'],['Киргизия','RUB']];
+
+function dealCountryPreset(country){ const c=String(country||'').trim(); if (!c) return null;
+  if (/^росс/i.test(c)) return {cusMode:'none', vatIn:true, cur:'RUB'};
+  if (DEAL_EAEU.some(x=>x.toLowerCase()===c.toLowerCase())) return {cusMode:'eaeu', vatIn:false, cur:'RUB'};
+  const k=DEAL_COUNTRIES.find(x=>x[0].toLowerCase()===c.toLowerCase()); return {cusMode:'calc', vatIn:false, cur:k?k[1]:'USD'}; }
+
 // этапы оплаты заказчика: событие + дней после него
 const DEAL_EVENTS = { sign:'при подписании', ready:'при готовности к отгрузке', delivery:'после поставки', pnr:'после ПНР' };
 
 function dealNewSupplier(id, def={}){
-  return { id, name:'', vatIn:false, adv:def.adv??'20', prod:def.prod??'40', ship:def.ship??'40',
+  return { id, name:'', country:'', vatIn:false, adv:def.adv??'20', prod:def.prod??'40', ship:def.ship??'40',
     extra:{v:'',cur:'RUB'}, log:{v:'',cur:'RUB'}, logRu:{v:''}, cusMode:'sum', cus:{v:'',cur:'RUB'}, vi:'', vo:'',
     duty:'', ivat:'22', fee:'', ins:'', fx:'', brk:{v:''}, voRu:'' };
 }
 
 function dealBlank(def={}){
   const adv=def.cAdv&&+def.cAdv>0 ? String(def.cAdv) : '';
-  return { v:2, touched:false, over:{price:'',vat:''}, rates:{}, sup:[dealNewSupplier('s1',def)], map:{},
+  return { v:3, touched:false, over:{price:'',vat:''}, rates:{}, sup:[dealNewSupplier('s1',def)], map:{},
     mnt:'', pnr:'', oth:'', vo:'', warr:'', bonus:'', tax:def.tax??'25',
     cust:{ tr: adv ? [{pct:adv, ev:'sign', off:'0'}, {pct:'', ev:'delivery', off:def.defer??'30'}] : [{pct:'', ev:'delivery', off:def.defer??'30'}] },
     money:def.money??'', days:{}, target:{type:'margin', v:''} };
@@ -45,12 +83,14 @@ function dealBlank(def={}){
 
 // расчёт прежней версии (v1) → v2: недостающие поля, график оплаты заказчика этапами
 function dealUpgrade(d){
-  if (!d || d.v>=2) return d;
+  if (!d) return d;
+  if (d.v===2){ d.sup.forEach(s=>{ if (s.country==null) s.country=''; }); d.v=3; return d; }
+  if (d.v>=3) return d;
   d.sup=(d.sup||[]).map(s=>({...dealNewSupplier(s.id), ...s}));
   const c=d.cust||{}, adv=dNum(c.adv)||0;
   d.cust={ tr: adv>0 ? [{pct:String(c.adv), ev:'sign', off:String(c.day||'0')}, {pct:'', ev:'delivery', off:String(c.defer??'30')}]
     : [{pct:'', ev:'delivery', off:String(c.defer??'30')}] };
-  Object.assign(d, { pnr:d.pnr??'', warr:d.warr??'', bonus:d.bonus??'', tax:d.tax??'25', target:d.target||{type:'margin', v:''}, v:2 });
+  Object.assign(d, { pnr:d.pnr??'', warr:d.warr??'', bonus:d.bonus??'', tax:d.tax??'25', target:d.target||{type:'margin', v:''}, v:3 });
   return d;
 }
 
@@ -84,30 +124,37 @@ function dealCalc(kp, d){
   const supOf=id=>{ const s=d.map&&d.map[id]; return sup.some(x=>x.id===s) ? s : sup[0].id; };
   const S_=sup.map((s,k)=>{ const P=`sup.${k}`;
     const items=(kp.items||[]).filter(x=>supOf(x.id)===s.id);
-    const byCur={}; let equip=0, equipFx=0; const noCost=[];
+    const noVat = s.noVat!=null ? !!s.noVat : !!kp.costNoVat;      // цены поставщика указаны без НДС — к платежу добавляется НДС
+    const byCur={}; let equip=0, equipFx=0; const noCost=[], lines=[];
     for (const x of items){ const q=+x.qty||0; if (!(x.cost>0)){ noCost.push(x); continue; }
       const c=x.cur||'RUB'; used.add(c); byCur[c]=(byCur[c]||0)+x.cost*q;
       const r=rate(c); if (!(r>0)) { err[P+'.rate']=`Нет курса ${c}`; continue; }
-      const a=x.cost*q*r*(kp.costNoVat?vatK:1); equip+=a; if (c!=='RUB') equipFx+=a; }
+      const a=x.cost*q*r*(noVat?vatK:1); equip+=a; if (c!=='RUB') equipFx+=a;
+      lines.push({id:x.id, name:x.name, qty:q, rub:a, duty:x.duty, code:x.code||''}); }
     const ex=num(P+'.extra', s.extra&&s.extra.v, {def:0}); if (ex){ const c=(s.extra.cur)||'RUB'; byCur[c]=(byCur[c]||0)+ex; }
-    const exRub=money(P+'.extra', s.extra); equip+=exRub; if ((s.extra&&s.extra.cur||'RUB')!=='RUB') equipFx+=exRub;
+    const exRub=money(P+'.extra', s.extra)*(noVat?vatK:1); equip+=exRub; if ((s.extra&&s.extra.cur||'RUB')!=='RUB') equipFx+=exRub;
+    if (exRub) lines.push({id:'extra', name:'Прочая закупка у поставщика', qty:1, rub:exRub, duty:dNum(s.duty), code:''});
     const L=money(P+'.log', s.log), Lfx=(s.log&&s.log.cur||'RUB')!=='RUB' ? L : 0;
     const Lru=money(P+'.logRu', s.logRu, 'RUB'), brk=money(P+'.brk', s.brk, 'RUB');
     const adv=num(P+'.adv', s.adv, {def:0, max:100}), prod=num(P+'.prod', s.prod, {def:0, int:true}), ship=num(P+'.ship', s.ship, {def:0, int:true});
     const insP=num(P+'.ins', s.ins, {def:0, max:100}), fxP=num(P+'.fx', s.fx, {def:0, max:100});
     const ins=equip*insP/100, fxE=equipFx*fxP/100, fxL=Lfx*fxP/100;
-    // таможня: сумма целиком или расчёт
-    let T=0, vi=null, cv=0, dutyA=0, fee=0, feeAuto=true, ivatA=0;
-    const calc = s.cusMode==='calc';
-    if (calc){
-      const dutyP=num(P+'.duty', s.duty, {def:0, max:100}), ivP=num(P+'.ivat', s.ivat, {def:22, max:100});
-      cv=equip+L+ins; dutyA=cv*dutyP/100;
+    // таможня: расчёт по позициям (пошлина у каждой своя), ЕАЭС (только НДС), сумма целиком или нет (Россия)
+    const mode = ['calc','eaeu','none','sum'].includes(s.cusMode) ? s.cusMode : 'sum';
+    let T=0, vi=null, cv=0, dutyA=0, fee=0, feeAuto=true, ivatA=0; const noDuty=[];
+    const ivP=num(P+'.ivat', s.ivat, {def:22, max:100});
+    if (mode==='calc'){
+      const add=L+ins;                                              // логистика до границы и страхование — в таможенную стоимость пропорционально цене
+      for (const ln of lines){ ln.cv=ln.rub+(equip>0?add*ln.rub/equip:0); const dp=ln.duty; if (dp==null || Number.isNaN(dp)){ noDuty.push(ln); ln.dutyA=0; } else ln.dutyA=ln.cv*dp/100; cv+=ln.cv; dutyA+=ln.dutyA; }
+      if (!lines.length) cv=add;
       const feeOwn=num(P+'.fee', s.fee); feeAuto=feeOwn==null; fee=feeAuto?customsFee(cv):feeOwn;
       ivatA=(cv+dutyA)*ivP/100; T=dutyA+fee+ivatA; vi=ivatA;
-    } else if (s.cusMode==='none'){ vi=0;                   // поставка внутри России — таможни нет
+    } else if (mode==='eaeu'){                                      // ЕАЭС: пошлины и сбора нет, НДС при ввозе — в налоговую, к вычету
+      cv=equip; ivatA=equip*ivP/100; T=ivatA; vi=ivatA;
+    } else if (mode==='none'){ vi=0;                                // поставка внутри России — таможни нет
     } else {
       T=money(P+'.cus', s.cus);
-      vi=num(P+'.vi', s.vi); if (vi==null && !T) vi=0;            // нет растаможки — нечего вычитать
+      vi=num(P+'.vi', s.vi); if (vi==null && !T) vi=0;               // нет растаможки — нечего вычитать
       if (vi!=null && vi>T+0.005) err[P+'.vi']='Не больше суммы растаможки';
     }
     const suggest = s.vatIn ? inVat(equip) : 0;
@@ -116,9 +163,10 @@ function dealCalc(kp, d){
     const ruSuggest=inVat(Lru+brk); let voRu=num(P+'.voRu', s.voRu); const voRuAuto=voRu==null; if (voRuAuto) voRu=ruSuggest;
     if (voRu>Lru+brk+0.005) err[P+'.voRu']='Не больше суммы услуг в России';
     const cash=equip+fxE+fxL+ins+L+T+brk+Lru;
-    return { id:s.id, name:(s.name||'').trim()||`Поставщик ${k+1}`, items, noCost, byCur, equip, equipFx, L, Lru, brk, T, adv, prod, ship, ins, fxE, fxL,
-      calc, cv, dutyA, fee, feeAuto, ivatA, vi, vo, voAuto, suggest, voRu, voRuAuto, ruSuggest, cash, active: cash>0 }; });
-  for (const s of S_) for (const x of s.noCost) warn.push({t:`«${x.name||'Без названия'}»: закупка не указана — позиция не учтена в расходах`, go:'price'});
+    return { id:s.id, name:(s.name||'').trim()||`Поставщик ${k+1}`, country:s.country||'', items, noCost, lines, byCur, noVat, equip, equipFx, L, Lru, brk, T, adv, prod, ship, ins, fxE, fxL,
+      mode, calc:mode==='calc', cv, dutyA, fee, feeAuto, ivatA, ivP, noDuty, vi, vo, voAuto, suggest, voRu, voRuAuto, ruSuggest, cash, active: cash>0 }; });
+  for (const s of S_) if (s.noDuty.length) warn.push({t:`${s.name}: нет ставки пошлины у ${s.noDuty.length} ${s.noDuty.length===1?'позиции':'позиций'} — считается 0 %`});
+  for (const s of S_) for (const x of s.noCost) warn.push({t:`«${x.name||'Без названия'}»: не указана цена закупки — позиция не учтена в расходах`});
   const M=num('mnt', d.mnt, {def:0}), E=num('oth', d.oth, {def:0}), pnrDays=num('pnr', d.pnr, {def:0, int:true});
   const Vo=num('vo', d.vo, {def:0});
   const warrP=num('warr', d.warr, {def:0, max:100}), bonusP=num('bonus', d.bonus, {def:0, max:100}), taxP=num('tax', d.tax, {def:25, max:100});
@@ -171,7 +219,7 @@ function dealCalc(kp, d){
   const base=unknown.length?null:lo;
   if (base && Math.abs(base.P-(base.cashAfter+base.excess))>0.01) warn.push({t:'Контрольное равенство не сошлось — сообщите разработчику', bad:true});
   if (!(S>0)) warn.push({t:'Нет цены для заказчика: заполните цены в КП или укажите цену здесь', bad:true});
-  if (!equipSum && !Lsum && !Tsum && !M && !E) warn.push({t:'Расходы не указаны: укажите закупку в разделе «Цены» или суммы здесь', go:'price'});
+  if (!equipSum && !Lsum && !Tsum && !M && !E) warn.push({t:'Расходы не указаны: укажите цены закупки в шаге «Закупка»', go:'price'});
   // структура затрат (для итога и Excel)
   const parts=[['Оборудование', equipSum], ['Комиссии за перевод и конвертацию', sumOf(s=>s.fxE+s.fxL)], ['Страхование груза', sumOf(s=>s.ins)],
     ['Логистика до границы', Lsum], ['Таможенные платежи', Tsum], ['Брокер, СВХ, сертификация', brkSum], ['Доставка по России', LruSum],
@@ -197,4 +245,4 @@ function dealSolve(kp, d, type, value){
   return Math.ceil(hi*100)/100;
 }
 
-if (typeof module!=='undefined') module.exports={dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, dNum, CUSTOMS_FEES, DEAL_EVENTS};
+if (typeof module!=='undefined') module.exports={dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, dNum, CUSTOMS_FEES, DEAL_EVENTS, DEAL_HS, dealHsAuto, dealCountryPreset};

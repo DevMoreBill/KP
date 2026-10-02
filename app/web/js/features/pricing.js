@@ -1,23 +1,16 @@
-// Цены: валюта КП, курсы ЦБ РФ, закупка → маржа/наценка → цена продажи.
+// Цены: валюта КП, курсы ЦБ РФ, ручные цены продажи и скидки. Цена по закупке и марже считается только при подстановке
+// модели из каталога (если у неё нет цены); дальше — «Экономика сделки».
 'use strict';
 
 function livePrice(i){ const x=S.items[i], el=document.querySelector(`[data-price="${i}"]`); if(el && document.activeElement!==el){ el.value=fmtPrice(x.price); el.classList.toggle('bad',!x.price); } }
 
-// подсказка под строкой цены: скидка для заказчика, себестоимость, прибыль, маржа (с учётом скидки)
+// подсказка под строкой цены: скидка для заказчика и цена со скидкой (закупка и маржа — в «Экономике сделки»)
 function priceHint(x){
-  const c=costKP(x), cs=curSh(kpCur()), d=KPGen.unitDisc(x), np=(x.price||0)-d;
-  const pc = v => v.toFixed(1).replace('.',',');
-  const dTxt = d ? `Скидка ${money(d)} ${cs} за ед. · цена для заказчика <b>${money(np)} ${cs}</b>` : '';
-  if (!x.cost) return dTxt;
-  if (Number.isNaN(c)) return '<span class="bad-t">Нет курса для пересчёта закупки — обновите курс ЦБ</span>';
-  if (!x.price) return 'Укажите маржу или наценку — цена рассчитается, или введите цену продажи вручную.';
-  const pr=np-c;
-  return (dTxt?dTxt+' · ':'') + `Себестоимость ${money(Math.round(c))} ${cs} · прибыль <b${pr<0?' class="bad-t"':''}>${money(Math.round(pr))} ${cs}</b> · маржа ${np?pc(pr/np*100):'—'} % · наценка ${pc(pr/c*100)} %${d?' (с учётом скидки)':''}`;
+  const cs=curSh(kpCur()), d=KPGen.unitDisc(x);
+  return d ? `Скидка ${money(d)} ${cs} за ед. · цена для заказчика <b>${money((x.price||0)-d)} ${cs}</b>` : '';
 }
 
-function liveMargin(i){ const x=S.items[i], el=document.querySelector(`[data-minfo="${i}"]`); if(!el) return;
-  el.innerHTML = priceHint(x);
-  const mi=document.querySelector(`[data-margin="${i}"]`); if (mi){ mi.disabled=!x.cost; const act=actualPct(x); mi.placeholder = x.cost&&act!=null&&(x.priceManual||marginOf(x)==null) ? act.toFixed(1).replace('.',',') : '—'; } }
+function liveMargin(i){ const el=document.querySelector(`[data-minfo="${i}"]`); if (el) el.innerHTML=priceHint(S.items[i]); }
 
 // скидка для заказчика: x.disc = { type:'pct'|'sum', v } — процент или копейки за единицу; x.discType помнит выбранный вид
 const discType = x => (x.disc && x.disc.type) || x.discType || 'pct';
@@ -77,10 +70,6 @@ function calcPrice(x){
 
 function applyCalc(x){ if (x.priceManual || !x.cost || marginOf(x)==null) return; const p=calcPrice(x); if (p>0){ x.price=p; delete x._priceText; } }
 
-function actualPct(x){ const c=costKP(x); if (!c||Number.isNaN(c)||!x.price) return null; const pr=x.price-c; return modeOf(x)==='markup' ? pr/c*100 : pr/x.price*100; }
-
-function recalcAll(){ S.items.forEach(applyCalc); }
-
 let _autoRates=false;
 
 function autoRates(){ const need=[kpCur(),...S.items.filter(x=>x.cost).map(x=>x.costCur||'RUB')].filter(c=>c!=='RUB'&&!(rateOf(c)>0)); if(need.length && !_autoRates){ _autoRates=true; loadCBR().finally(()=>{_autoRates=false;}); } }
@@ -93,7 +82,7 @@ async function loadCBR(){
   if (btn){ btn.disabled=false; btn.textContent='Обновить с cbr.ru'; }
   if (!r || !r.USD){ const m=$('#cbrMsg'); if(m){ m.textContent='Курс с cbr.ru не получен'+(why?` (${why})`:'')+' — введите вручную ниже.'; m.classList.add('bad-t'); } document.querySelector('details.psettings')?.setAttribute('open',''); document.querySelector('[data-rate]')?.focus(); toast('Курс ЦБ не загружен — введите вручную'); return; }
   const got=[]; for (const c of ['USD','EUR','CNY']) if (r[c]) { S.pricing.rates[c]=(+r[c]).toFixed(4).replace('.',','); got.push(c); }
-  S.pricing.rateDate=r.date||today(); S.pricing.rateSrc=src; recalcAll(); renderForm(); persist();
+  S.pricing.rateDate=r.date||today(); S.pricing.rateSrc=src; renderForm(); persist();
   got.forEach(c=>{ const el=document.querySelector(`[data-rate="${c}"]`); if(el){ el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1800); } });
   toast(`Курс ЦБ РФ на ${KPGen.ruDate(S.pricing.rateDate)}: USD ${S.pricing.rates.USD}, EUR ${S.pricing.rates.EUR}, CNY ${S.pricing.rates.CNY}`);
 }
@@ -110,8 +99,7 @@ function pricingBlock(){
        <button class="btn ghost" type="button" data-a="cbr">Обновить с cbr.ru</button>
        <span class="muted" id="cbrMsg">${missing.length?`<span class="bad-t">Нужен курс ${missing.join(', ')}</span>`:(P.rateSrc==='вручную'?'введён вручную':'')}</span></div>
    </div>
-   <details class="psettings"${missing.length?' open':''}><summary>Изменить курсы вручную и параметры расчёта</summary>
+   <details class="psettings"${missing.length?' open':''}><summary>Изменить курсы вручную, округление цен</summary>
      <div class="grid g4" style="margin-top:10px">${rateInp('USD')}${rateInp('EUR')}${rateInp('CNY')}
-       <label class="f"><span>Округление цены продажи</span><select data-pr="round">${[['0.01','до копеек'],['1','до рубля'],['100','до 100'],['1000','до 1 000']].map(([v,l])=>`<option value="${v}"${String(P.round)===v?' selected':''}>${l}</option>`).join('')}</select></label></div>
-     <label class="row" style="gap:8px;margin-top:10px"><input type="checkbox" data-pr="costNoVat" ${P.costNoVat?'checked':''} style="width:auto"> Закупочные цены указаны без НДС (к закупке добавится НДС ${esc(S.vat)} %)</label></details>`;
+       <label class="f"><span>Округление цен из экономики сделки</span><select data-pr="round">${[['0.01','до копеек'],['1','до рубля'],['100','до 100'],['1000','до 1 000']].map(([v,l])=>`<option value="${v}"${String(P.round)===v?' selected':''}>${l}</option>`).join('')}</select></label></div></details>`;
 }
