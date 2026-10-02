@@ -28,15 +28,10 @@ document.addEventListener('change', e=>{
   if (t.dataset.gon!=null){ const g=S.items[+t.dataset.gon].gallery[+t.dataset.j]; g.on=t.checked; t.closest('.gcard')?.classList.toggle('off',!t.checked); persist(); return; }
   if (/^items\.\d+\.gallery\.\d+\.wide$/.test(t.dataset.p||'')){ renderForm(); persist(); return; }
   if (t.dataset.retype!=null){ renderForm(); persist(); return; }
-  if (t.dataset.pr){ const k=t.dataset.pr; const prevCur=kpCur(); S.pricing[k] = t.type==='checkbox' ? t.checked : t.value;
-    if (k==='cur' && prevCur!==S.pricing.cur){
-      const r1=rateOf(prevCur), r2=rateOf(S.pricing.cur);
-      if (r1>0 && r2>0){ const cv=v=>Math.round(v*r1/r2);
-        S.items.forEach(x=>{ if (x.price) x.price=cv(x.price); delete x._priceText; (x.options||[]).forEach(o=>{ if(o.price){ o.price=cv(o.price); delete o._priceText; } }); });
-        toast(`Цены переведены в ${S.pricing.cur} по курсу`);
-      } else toast('Укажите курс, чтобы перевести цены: сейчас цены не пересчитаны');
-    }
-    renderForm(); persist(); if (k==='cur' && S.pricing.cur!=='RUB' && !(rateOf(S.pricing.cur)>0)) loadCBR(); return; }
+  if (t.dataset.pr){ const k=t.dataset.pr;
+    if (k==='cur'){ kpSetCur(t.value); return; }
+    S.pricing[k] = t.type==='checkbox' ? t.checked : t.value;
+    renderForm(); persist(); return; }
 });
 
 document.addEventListener('change', async e=>{
