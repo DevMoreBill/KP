@@ -10,8 +10,8 @@
 .icard{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 16px;align-items:start}
 .iside{grid-column:2;display:grid!important;grid-template-columns:170px 200px 1fr;gap:12px;align-items:end}
 textarea.iname{min-height:0;height:auto;resize:none;font-weight:600;font-size:15.5px;line-height:1.35;padding:8px 12px;width:100%}
-.ithumb{width:110px;height:84px;border:1.5px dashed var(--line);border-radius:12px;background:var(--soft);display:grid;place-items:center;cursor:pointer;padding:4px;color:var(--muted);font-size:13px}
-.ithumb img{max-width:100%;max-height:100%;object-fit:contain}
+.ithumb{width:110px;height:84px;border:1.5px dashed var(--line);border-radius:12px;background:var(--soft);display:grid;place-items:center;cursor:pointer;padding:4px;color:var(--muted);font-size:13px;overflow:hidden;box-sizing:border-box;flex:0 0 auto}
+.ithumb img{display:block;width:100%;height:100%;min-width:0;min-height:0;object-fit:contain}
 .itop{display:flex;gap:8px;align-items:center;margin-bottom:6px}
 .itop .item-no{margin:0}
 .ttype{white-space:nowrap;font-size:12px;font-weight:600;color:var(--navy);background:var(--soft);border-radius:999px;padding:2px 10px}
