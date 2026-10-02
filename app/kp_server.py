@@ -226,6 +226,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(cp().list_clients())
         r = re.match(r'^/api/clients/([^/]+)$', path)
         if r:
+            if m == 'GET':
+                c = store().client_get(r.group(1))
+                return self.send_json(c) if c else self.send(404, 'text/plain; charset=utf-8', 'Клиент не найден')
             if m == 'PUT':
                 return self.send_json(cp().save_client(r.group(1), self.body()))
 
@@ -317,11 +320,19 @@ class Handler(BaseHTTPRequestHandler):
         if r:
             kid = safe_id(r.group(1))
             if m == 'PUT':
-                store().kp_set(kid, r.group(2), admin.kp_in(self, store(), kid, r.group(2), self.body().decode('utf-8')))
+                store().kp_set(kid, r.group(2), admin.kp_in(self, store(), kid, r.group(2), self.body().decode('utf-8')), admin.actor(self)[1])
                 return self.send_json({'ok': True})
             if m == 'GET':
                 v = store().kp_get(kid, r.group(2))
                 return self.send_json(admin.kp_out(self, r.group(2), v)) if v else self.not_found()
+        # история версий КП: список и состояние выбранной версии (экономика чужого КП убирается, как и у текущей)
+        r = re.match(r'^/api/kp/([^/]+)/versions$', path)
+        if r and m == 'GET':
+            return self.send_json(store().kp_versions(safe_id(r.group(1))))
+        r = re.match(r'^/api/kp/([^/]+)/versions/(\d+)$', path)
+        if r and m == 'GET':
+            v = store().kp_version_state(safe_id(r.group(1)), r.group(2))
+            return self.send_json(admin.kp_out(self, 'state', v)) if v else self.not_found()
         r = re.match(r'^/api/kp/([^/]+)/docx$', path)
         if r and m == 'PUT':
             kid = safe_id(r.group(1))
@@ -417,6 +428,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(cbr_rates())
         if path == '/api/cbr/keyrate':
             return self.send_json(cbr_key_rate())
+        if path == '/api/calendar' and m == 'GET':      # производственный календарь РФ (рабочие / банковские дни)
+            import workcal
+            qy = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(self.path).query)).get('year') or ''
+            try:
+                return self.send_json(workcal.year(store(), int(qy or 0)))
+            except ValueError as e:
+                return self.send(400, 'text/plain; charset=utf-8', str(e))
         # «Экономика сделки»: справочник поставщиков и коды ТН ВЭД / пошлины — общие для отдела (в базе)
         if path == '/api/suppliers' and m == 'GET':
             return self.send_json(store().suppliers_list())

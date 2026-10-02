@@ -138,6 +138,27 @@ jobs:
           $stats = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/admin/stats' -WebSession $adm -Headers $ah
           if ($null -eq $stats.kp) { throw 'Статистика «Настроек» не отдаётся' }
           Write-Host 'Настройки: пароль, вход, CSRF, запрет удаления без входа — в порядке'
+          # администраторы: второй с логином, вход по логину и паролю, неверный пароль — 403
+          $u = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/admin/users' -ContentType 'application/json' -Body '{"action":"add","login":"ci_second","name":"CI","password":"CiPassw0rd2"}' -WebSession $adm -Headers $ah
+          $users = @((Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/admin/users' -WebSession $adm -Headers $ah).items)
+          if ($users.Count -ne 2 -or -not ($users | Where-Object { $_.login -eq 'admin' })) { throw 'Учётные записи администраторов не сохраняются' }
+          $l2 = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/admin/login' -ContentType 'application/json' -Body '{"login":"ci_second","password":"CiPassw0rd2"}'
+          if (-not $l2.csrf) { throw 'Вход по логину и паролю не работает' }
+          $code = 0; try { Invoke-WebRequest -Method Post -Uri 'http://127.0.0.1:17845/api/admin/login' -ContentType 'application/json' -Body '{"login":"ci_second","password":"wrong1234"}' -UseBasicParsing | Out-Null } catch { $code = [int]$_.Exception.Response.StatusCode }
+          if ($code -ne 403) { throw "Неверный пароль: ожидался код 403, получен $code" }
+          # производственный календарь: строка на каждый день года (из сети или приблизительный)
+          $cal = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/calendar?year=2026'
+          if ($cal.days.Length -ne 365) { throw 'Производственный календарь не отдаётся' }
+          Write-Host ('Календарь: ' + $cal.src)
+          # история версий КП: пересохранение оставляет прежний вариант
+          $J = 'application/json; charset=utf-8'
+          Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:17845/api/kp/ci_ver/state' -ContentType $J -Body '{"client":"v1","items":[]}' | Out-Null
+          Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:17845/api/kp/ci_ver/state' -ContentType $J -Body '{"client":"v2","items":[]}' | Out-Null
+          $vers = @(Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/kp/ci_ver/versions')
+          if ($vers.Count -ne 1) { throw 'История версий КП не сохраняется' }
+          $v1 = Invoke-RestMethod -Uri ('http://127.0.0.1:17845/api/kp/ci_ver/versions/' + $vers[0].id)
+          if ($v1.client -ne 'v1') { throw 'Версия КП открывается неверно' }
+          Write-Host 'Администраторы, календарь, версии КП — в порядке'
           # «Экономика сделки»: расчёт чужого КП сервер не отдаёт и не даёт затереть
           $kn = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/kp/new'
           $st = '{"kpId":"' + $kn.id + '","authorId":"ci_a","managerId":"ci_a","items":[],"deal":{"v":1,"touched":true,"mnt":"100"}}'

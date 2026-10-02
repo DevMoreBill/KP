@@ -2,9 +2,11 @@
 """Админ-панель «Настройки»: пароль администратора, сессии, права, журнал действий, корзина, модерация правок,
 резервные копии и статистика.
 
-• Пароль хранится только хешем (scrypt; если в Python нет scrypt — PBKDF2-SHA256), в kv «admin».
-  Первый пароль задаётся на компьютере, где работает программа. Сброс: создать файл data/admin-reset.txt
-  и перезапустить программу.
+• Вход — логин и пароль администратора; администраторов может быть несколько (kv «admins»: логин, имя, хеш пароля).
+  Пароль хранится только хешем (scrypt; если в Python нет scrypt — PBKDF2-SHA256). Прежний единственный пароль
+  (kv «admin») при первом обращении переносится в учётную запись с логином «admin».
+  Первая учётная запись создаётся на компьютере, где работает программа. Сброс: создать файл data/admin-reset.txt
+  и перезапустить программу — все учётные записи администраторов удаляются, первую нужно создать заново.
 • Сессия администратора — cookie kp_admin (HttpOnly, SameSite=Strict) + CSRF-токен в заголовке X-CSRF-Token
   для всех изменяющих запросов; 15 минут бездействия — выход. Неверный пароль 5 раз за 10 минут — пауза 10 минут.
 • Удаление (КП, товары, менеджеры, клиенты) — только из «Настроек», в корзину (data хранится 30 дней, можно восстановить).
@@ -62,6 +64,39 @@ def verify_password(pw, rec):
         return False
 
 
+LOGIN_RE = re.compile(r'^[A-Za-z0-9А-Яа-яЁё._@-]{2,40}$')
+
+
+def accounts(store):
+    """Учётные записи администраторов [{login, name, pw, created, by, lastLogin}] (с переносом прежнего пароля)."""
+    rec = store.kv_get('admins')
+    if rec is None:
+        old = store.kv_get('admin')
+        rec = {'users': [{'login': 'admin', 'name': 'Администратор', 'pw': old, 'created': _now(), 'by': 'перенос'}] if old else []}
+        if old:
+            store.kv_set('admins', rec)
+            store.write("DELETE FROM kv WHERE key='admin'")
+    return rec.get('users') or []
+
+
+def save_accounts(store, users):
+    store.kv_set('admins', {'users': users})
+
+
+def find_account(users, login):
+    lo = (login or '').strip().lower()
+    return next((u for u in users if u['login'].lower() == lo), None)
+
+
+def check_login(login):
+    if not LOGIN_RE.match(login or ''):
+        raise ValueError('Логин — от 2 до 40 символов: буквы, цифры, точка, дефис, @')
+
+
+def public_account(u):
+    return {k: u.get(k) for k in ('login', 'name', 'created', 'by', 'lastLogin')}
+
+
 def check_new_password(pw):
     if len(pw or '') < 8:
         raise ValueError('Пароль — не короче 8 символов')
@@ -105,10 +140,11 @@ def is_admin(h, need_csrf=True):
     return not need_csrf or hmac.compare_digest(h.headers.get('X-CSRF-Token') or '', s['csrf'])
 
 
-def _start_session(h):
+def _start_session(h, user=None):
     tok, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
     with LOCK:
-        SESSIONS[tok] = {'csrf': csrf, 'last': time.time(), 'ip': _ip(h)}
+        SESSIONS[tok] = {'csrf': csrf, 'last': time.time(), 'ip': _ip(h), 'login': (user or {}).get('login', ''),
+                         'name': (user or {}).get('name') or (user or {}).get('login') or 'Администратор'}
     return tok, csrf
 
 
@@ -131,10 +167,13 @@ def _ip(h):
 
 def actor(h, admin=None):
     """Кто действует: администратор (по сессии) или менеджер, выбранный в программе (заголовки запроса)."""
+    s = session(h, touch=False)
     if admin is None:
-        admin = session(h, touch=False) is not None
+        admin = s is not None
     uid = urllib.parse.unquote(h.headers.get('X-KP-User-Id') or '')[:64]
     name = urllib.parse.unquote(h.headers.get('X-KP-User') or '')[:120]
+    if admin and s:                                   # действия в «Настройках» — от имени вошедшего администратора
+        return 'admin:' + s.get('login', ''), s.get('name') or 'Администратор', 'admin'
     return uid or None, name or ('Администратор' if admin else 'Не выбран'), 'admin' if admin else 'user'
 
 
@@ -372,37 +411,47 @@ class AdminApi:
     def handle(self, m, sub):
         h, st = self.h, self.st
         q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(h.path).query, keep_blank_values=True, encoding='utf-8'))
-        rec = st.kv_get('admin')
+        users = accounts(st)
         if sub == 'status':
             s = session(h)
-            return self.ok({'hasPassword': bool(rec), 'admin': bool(s), 'csrf': s['csrf'] if s else '',
-                            'canSetup': not rec and h.is_local(), 'idleMinutes': IDLE_SECONDS // 60})
+            return self.ok({'hasPassword': bool(users), 'admin': bool(s), 'csrf': s['csrf'] if s else '',
+                            'login': s.get('login', '') if s else '', 'name': s.get('name', '') if s else '',
+                            'canSetup': not users and h.is_local(), 'idleMinutes': IDLE_SECONDS // 60})
         if sub == 'setup' and m == 'POST':
-            if rec:
-                return self.err(409, 'Пароль уже задан')
+            if users:
+                return self.err(409, 'Администратор уже создан')
             if not h.is_local():
-                return self.err(403, 'Первый пароль задаётся на компьютере, где работает программа')
-            pw = self.data().get('password') or ''
+                return self.err(403, 'Первая учётная запись создаётся на компьютере, где работает программа')
+            d = self.data()
+            login, pw = (d.get('login') or 'admin').strip(), d.get('password') or ''
             try:
+                check_login(login)
                 check_new_password(pw)
             except ValueError as e:
                 return self.err(400, str(e))
-            st.kv_set('admin', hash_password(pw))
-            self.log('set_password', 'admin', 'password')
-            return self._login_ok()
+            u = {'login': login, 'name': (d.get('name') or '').strip()[:80] or login, 'pw': hash_password(pw), 'created': _now(), 'by': 'первый вход', 'lastLogin': _now()}
+            save_accounts(st, [u])
+            tok = self._login_ok(u)
+            log(h, st, 'create_admin', 'admin', login, None, {'login': login, 'name': u['name']}, admin=True)
+            return tok
         if sub == 'login' and m == 'POST':
             ip = _ip(h)
-            if not rec:
-                return self.err(409, 'Пароль администратора ещё не задан')
+            if not users:
+                return self.err(409, 'Администратор ещё не создан')
             if _locked(ip):
                 log(h, st, 'login', 'admin', None, result='failed', admin=False)
                 return self.err(429, 'Слишком много неверных попыток — подождите 10 минут')
-            if not verify_password(self.data().get('password') or '', rec):
+            d = self.data()
+            u = find_account(users, d.get('login')) if (d.get('login') or '').strip() else (users[0] if len(users) == 1 else None)
+            if not u or not verify_password(d.get('password') or '', u.get('pw') or {}):
                 _fail(ip)
-                log(h, st, 'login', 'admin', None, result='failed', admin=False)
-                return self.err(403, 'Неверный пароль')
-            self.log('login', 'admin')
-            return self._login_ok()
+                log(h, st, 'login', 'admin', (d.get('login') or '')[:40] or None, result='failed', admin=False)
+                return self.err(403, 'Неверный логин или пароль')
+            u['lastLogin'] = _now()
+            save_accounts(st, users)
+            resp = self._login_ok(u)
+            log(h, st, 'login', 'admin', u['login'], admin=True)
+            return resp
         if sub == 'logout' and m == 'POST':
             with LOCK:
                 SESSIONS.pop(_cookie_token(h), None)
@@ -419,22 +468,29 @@ class AdminApi:
         except ValueError as e:
             return self.err(400, str(e))
 
-    def _login_ok(self):
-        tok, csrf = _start_session(self.h)
+    def _login_ok(self, user=None):
+        tok, csrf = _start_session(self.h, user)
         return self.h.send(200, 'application/json; charset=utf-8', json.dumps({'ok': True, 'csrf': csrf}),
                            {'Set-Cookie': 'kp_admin=%s; Path=/; HttpOnly; SameSite=Strict' % tok})
 
     def route(self, m, sub, q):
         st = self.st
+        me = (session(self.h, touch=False) or {}).get('login', '')
         if sub == 'password' and m == 'POST':
-            d = self.data()
-            if not verify_password(d.get('old') or '', st.kv_get('admin')):
-                self.log('set_password', 'admin', 'password', result='failed')
+            d, users = self.data(), accounts(st)
+            u = find_account(users, me) or (users[0] if len(users) == 1 else None)
+            if not u or not verify_password(d.get('old') or '', u.get('pw') or {}):
+                self.log('set_password', 'admin', me, result='failed')
                 return self.err(403, 'Текущий пароль указан неверно')
             check_new_password(d.get('new') or '')
-            st.kv_set('admin', hash_password(d['new']))
-            self.log('set_password', 'admin', 'password')
+            u['pw'] = hash_password(d['new'])
+            save_accounts(st, users)
+            self.log('set_password', 'admin', u['login'])
             return self.ok()
+        if sub == 'users':
+            if m == 'POST':
+                return self.ok(self.users(self.data(), me))
+            return self.ok({'items': [public_account(u) for u in accounts(st)], 'me': me})
         if sub == 'stats':
             return self.ok(stats(st))
         if sub == 'audit':
@@ -496,6 +552,59 @@ class AdminApi:
             st.migration_down(r.group(1))
             return self.ok()
         return self.err(404, 'not found')
+
+    # ---------- учётные записи администраторов ----------
+    def users(self, d, me):
+        st, users, act = self.st, accounts(self.st), d.get('action')
+        login = (d.get('login') or '').strip()
+        u = find_account(users, login)
+        if act == 'add':
+            check_login(login)
+            if u:
+                raise ValueError('Логин «%s» уже занят' % login)
+            check_new_password(d.get('password') or '')
+            u = {'login': login, 'name': (d.get('name') or '').strip()[:80] or login, 'pw': hash_password(d['password']), 'created': _now(), 'by': me}
+            users.append(u)
+            save_accounts(st, users)
+            self.log('create_admin', 'admin', login, None, {'login': login, 'name': u['name']})
+            return {'ok': True}
+        if not u:
+            raise ValueError('Учётная запись не найдена')
+        if act == 'edit':
+            before = {'login': u['login'], 'name': u.get('name', '')}
+            new_login = (d.get('newLogin') or u['login']).strip()
+            if new_login.lower() != u['login'].lower():
+                check_login(new_login)
+                if find_account(users, new_login):
+                    raise ValueError('Логин «%s» уже занят' % new_login)
+            u['login'], u['name'] = new_login, (d.get('name') or '').strip()[:80] or new_login
+            save_accounts(st, users)
+            self.log('edit_admin', 'admin', u['login'], before, {'login': u['login'], 'name': u['name']})
+            if login.lower() == me.lower():
+                with LOCK:
+                    for s in SESSIONS.values():
+                        if s.get('login', '').lower() == me.lower():
+                            s['login'], s['name'] = u['login'], u['name']
+            return {'ok': True}
+        if act == 'password':
+            check_new_password(d.get('password') or '')
+            u['pw'] = hash_password(d['password'])
+            save_accounts(st, users)
+            self.log('set_password', 'admin', u['login'])
+            return {'ok': True}
+        if act == 'delete':
+            if len(users) <= 1:
+                raise ValueError('Нельзя удалить единственного администратора')
+            if u['login'].lower() == me.lower():
+                raise ValueError('Нельзя удалить свою учётную запись — войдите под другим администратором')
+            users.remove(u)
+            save_accounts(st, users)
+            with LOCK:
+                for k in [k for k, s in SESSIONS.items() if s.get('login', '').lower() == u['login'].lower()]:
+                    SESSIONS.pop(k, None)
+            self.log('delete_admin', 'admin', u['login'], {'login': u['login'], 'name': u.get('name', '')}, None)
+            return {'ok': True}
+        raise ValueError('Неизвестное действие')
 
     # ---------- удаление (в корзину) ----------
     def listing(self, etype, qs):
@@ -754,11 +863,11 @@ def startup(store, data_dir, log_print=print):
     """При запуске: сброс пароля по файлу data/admin-reset.txt, очистка корзины старше TRASH_DAYS дней."""
     reset = os.path.join(data_dir, 'admin-reset.txt')
     if os.path.isfile(reset):
-        store.write("DELETE FROM kv WHERE key='admin'")
+        store.write("DELETE FROM kv WHERE key IN ('admin', 'admins')")
         os.remove(reset)
         store.audit_add({'action': 'set_password', 'entityType': 'admin', 'entityId': 'reset', 'userName': 'Компьютер-сервер',
                          'userRole': 'admin', 'after': {'reset': True}})
-        log_print('Пароль администратора сброшен (data/admin-reset.txt): задайте новый в «Настройках» на этом компьютере')
+        log_print('Учётные записи администраторов сброшены (data/admin-reset.txt): создайте новую в «Настройках» на этом компьютере')
     n = store.trash_purge(TRASH_DAYS)
     if n:
         store.audit_add({'action': 'purge_trash', 'entityType': 'trash', 'userName': 'Программа', 'userRole': 'admin', 'after': {'count': n}})

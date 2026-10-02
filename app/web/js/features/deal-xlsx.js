@@ -11,7 +11,7 @@ async function dealXlsx(){
   const note=t=>({v:t, s:'note'});
   const today=new Date().toLocaleDateString('ru-RU');
   const who=S.manager&&S.manager.name || '';
-  const kpTitle=DL.ex ? 'Учебный пример из методики' : `${S.number?'КП № '+S.number:'КП без номера'}${S.date?' от '+KPGen.ruDate(S.date):''}`;
+  const kpTitle=`${S.number?'КП № '+S.number:'КП без номера'}${S.date?' от '+KPGen.ruDate(S.date):''}`;
   const footer=`${kpTitle} · расчёт от ${today}`;
 
   // ---------- лист «Расчёт»
@@ -108,7 +108,7 @@ async function dealXlsx(){
   G.push([{v:'График платежей', s:'title'}]);
   const D0g=()=>q(SH1)+ref('D0');
   G.push([{v:'Последняя оплата заказчика — день и дата', s:'bold'}, '', '', {f:`MAX(${inRows.join(',')})`, v:c.Tend, s:'int'}, {f:`IF(${D0g()}="","",${D0g()}+D2)`, v:xlsxDate(d.start)===''?undefined:xlsxDate(d.start)+c.Tend, s:'tdDate'}]);
-  G.push([{v:'Минус — расход, плюс — поступление. Дни (жёлтые) можно менять, сохраняя порядок строк по возрастанию дня. Финансирование — простой процент на недостающие деньги, месяц = 30 дней.', s:'note'}]);
+  G.push([{v:'Минус — расход, плюс — поступление. Дни (жёлтые) можно менять, сохраняя порядок строк по возрастанию дня. Финансирование — простой процент на недостающие деньги, месяц = 30 дней.'+(d.start?' Даты платежей — рабочие (банковские) дни по производственному календарю РФ.':''), s:'note'}]);
   const GM=['A2:C2','A3:G3'], GH={3:32};
   G.push([{v:'День',s:'head'},{v:'Дата',s:'head'},{v:'Событие',s:'head'},{v:'Платёж, ₽',s:'headR'},{v:'Остаток денег, ₽',s:'headR'},{v:'Дней финанси­рования',s:'headR'},{v:'Финансирование, ₽',s:'headR'}]);
   // итог расчёта (строки графика ссылаются на выручку)
@@ -182,7 +182,7 @@ async function dealXlsx(){
     tq.buy+=buy; tq.sale+=sale; tq.cost+=cost;
     put([{v:k+1,s:'tdInt'}, {v:x.name+(ln&&ln.code?`\nТН ВЭД ${ln.code}`:'')+(ln?'':'\nзакупка не указана'), s:'td'}, {v:+x.qty||0,s:'tdInt'}, {v:buy||'—',s:'tdMoney'}, {v:sale,s:'tdMoney'}, {v:ln?cost:'—',s:'tdMoney'}, {v:ln?sale-cost:'—',s:'tdMoney'}, {v:ln&&sale?(sale-cost)/sale:'—',s:'tdPct'}]); });
   const other=b.Ctot-tq.cost;
-  if (!its.length) { r=put([{v:'',s:'td'},{v:DL.ex?'Учебный пример: позиции не заданы, закупка — одной суммой':'В КП нет позиций',s:'td'},{v:'',s:'td'},{v:c.equipSum,s:'tdMoney'},{v:c.R,s:'tdMoney'},{v:b.Ctot,s:'tdMoney'},{v:c.R-b.Ctot,s:'tdMoney'},{v:c.R?(c.R-b.Ctot)/c.R:'—',s:'tdPct'}]); tq={buy:c.equipSum, sale:c.R, cost:b.Ctot}; }
+  if (!its.length) { r=put([{v:'',s:'td'},{v:'В КП нет позиций',s:'td'},{v:'',s:'td'},{v:c.equipSum,s:'tdMoney'},{v:c.R,s:'tdMoney'},{v:b.Ctot,s:'tdMoney'},{v:c.R-b.Ctot,s:'tdMoney'},{v:c.R?(c.R-b.Ctot)/c.R:'—',s:'tdPct'}]); tq={buy:c.equipSum, sale:c.R, cost:b.Ctot}; }
   else if (Math.abs(other)>0.5 && tq.cost>0) { put([{v:'',s:'td'},{v:'Расходы без привязки к позициям (прочая закупка; при отсутствии закупки у позиций)',s:'tdNote'},{v:'',s:'td'},{v:'',s:'td'},{v:Math.max(0,c.R-tq.sale),s:'tdMoney'},{v:other,s:'tdMoney'},{v:-other,s:'tdMoney'},{v:'',s:'td'}]); tq.cost+=other; }
   put([{v:'',s:'totL'},{v:'Итого',s:'totL'},{v:'',s:'totL'},{v:tq.buy,s:'totMoney'},{v:c.R,s:'totMoney'},{v:b.Ctot,s:'totMoney'},{v:c.R-b.Ctot,s:'totMoney'},{v:c.R?(c.R-b.Ctot)/c.R:'',s:'totPct'}]);
   r=put([note('* Себестоимость позиции — её закупка плюс доля логистики, таможни, монтажа, финансирования и прочих расходов (распределены пропорционально закупке), за вычетом НДС к вычету.'+(unk?' Ввозной НДС не указан — показана минимальная прибыль.':''))], 30); mg(r,'A','H');

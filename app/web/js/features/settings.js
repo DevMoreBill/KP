@@ -5,10 +5,10 @@
 
 const ST = { tab:'stats', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f:{}}, imp:null, chart:'day' };
 
-const ST_TABS = [['stats','Статистика'],['moderation','Модерация'],['delete','Удаление'],['trash','Корзина'],['audit','Журнал действий'],
-  ['backup','Резервные копии'],['templates','Шаблоны и категории'],['keys','Ключи API'],['security','Пароль и доступ']];
+const ST_TABS = [['stats','Статистика'],['moderation','Модерация'],['delete','Данные: правка и удаление'],['trash','Корзина'],['audit','Журнал действий'],
+  ['backup','Резервные копии'],['templates','Шаблоны и категории'],['keys','Ключи API'],['users','Администраторы'],['security','Пароль и доступ']];
 
-const ACT = { login:'Вход в «Настройки»', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
+const ACT = { login:'Вход в «Настройки»', create_admin:'Новый администратор', edit_admin:'Изменение администратора', delete_admin:'Удаление администратора', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
   admin_request:'Запрос без входа', edit_settings:'Изменение настроек', edit_template:'Изменение шаблона', create_kp:'Создание КП', edit_kp:'Изменение КП',
   create_manager:'Новый менеджер', create_supplier:'Новый поставщик', edit_supplier:'Изменение поставщика', delete_supplier:'Удаление поставщика', edit_customs:'Код ТН ВЭД и пошлина', edit_manager:'Изменение менеджера', create_client:'Новый клиент', edit_client:'Изменение клиента',
   edit_types:'Категории оборудования', submit_edit:'Правка на модерацию', edit_product:'Правка товара', create_product:'Новый товар',
@@ -38,23 +38,27 @@ async function openSettings(tab){
 
 function stRender(){
   const d=setDlg(), s=ST.status||{};
-  const head=`<div class="dlg-h"><h3>Настройки</h3>${ADMIN.on?'<button class="btn ghost" type="button" data-st="logout">Выйти</button>':''}<button class="icon" type="button" data-st="close" aria-label="Закрыть">✕</button></div>`;
+  const head=`<div class="dlg-h"><h3>Настройки${ADMIN.on&&s.name?`<small>${esc(s.name)} · ${esc(s.login||'')}</small>`:''}</h3>${ADMIN.on?'<button class="btn ghost" type="button" data-st="logout">Выйти</button>':''}<button class="icon" type="button" data-st="close" aria-label="Закрыть">✕</button></div>`;
   if (!ADMIN.on){
     const setup=!s.hasPassword;
     d.innerHTML=head+`<div class="st-login"><form id="stLogin" autocomplete="off">
-      <p class="sub">${setup?'Задайте пароль администратора':'Вход для администратора'}</p>
-      ${setup&&!s.canSetup?'<p class="msg err" style="text-align:left">Пароль ещё не задан. Задайте его на компьютере, где работает программа (сервер отдела).</p>':`
-      <label class="f"><span>${setup?'Новый пароль (не короче 8 символов, буквы и цифры)':'Пароль'}</span><input type="password" id="stPw" autocomplete="${setup?'new-password':'current-password'}" required></label>
+      <p class="sub">${setup?'Создайте учётную запись администратора':'Вход для администратора'}</p>
+      ${setup&&!s.canSetup?'<p class="msg err" style="text-align:left">Администратор ещё не создан. Создайте учётную запись на компьютере, где работает программа (сервер отдела).</p>':`
+      <label class="f"><span>Логин</span><input type="text" id="stLg" autocomplete="username" required value="${setup?'admin':esc(localStorage.getItem('kp.adminLogin')||'')}" placeholder="admin"></label>
+      ${setup?'<label class="f"><span>Имя (для журнала действий)</span><input type="text" id="stNm" autocomplete="name" placeholder="Например, Петров А. В."></label>':''}
+      <label class="f"><span>${setup?'Пароль (не короче 8 символов, буквы и цифры)':'Пароль'}</span><input type="password" id="stPw" autocomplete="${setup?'new-password':'current-password'}" required></label>
       ${setup?'<label class="f"><span>Повторите пароль</span><input type="password" id="stPw2" autocomplete="new-password" required></label>':''}
       <p class="msg err" id="stErr" style="text-align:left"></p>
-      <button class="btn primary" type="submit">${setup?'Сохранить пароль и войти':'Войти'}</button>
-      <p class="muted">Удаление КП, товаров и контактов, модерация, резервные копии, шаблоны и ключи API — только здесь. Через ${s.idleMinutes||15} минут бездействия вход закрывается.</p>`}
+      <button class="btn primary" type="submit">${setup?'Создать и войти':'Войти'}</button>
+      <p class="muted">Удаление и правка данных, модерация, резервные копии, шаблоны, ключи API и администраторы — только здесь. Через ${s.idleMinutes||15} минут бездействия вход закрывается.</p>`}
       </form></div>`;
-    const f=$('#stLogin'); if (f) f.onsubmit=async e=>{ e.preventDefault(); const pw=$('#stPw').value;
+    const f=$('#stLogin'); if (f) f.onsubmit=async e=>{ e.preventDefault(); const pw=$('#stPw').value, lg=$('#stLg').value.trim();
       if (setup && pw!==$('#stPw2').value) return $('#stErr').textContent='Пароли не совпадают';
-      try{ const r=await ajson(setup?'setup':'login',{password:pw}); ADMIN.on=true; ADMIN.csrf=r.csrf; ST.status={...s, hasPassword:true}; stRender(); }
+      try{ const r=await ajson(setup?'setup':'login', setup?{login:lg, name:$('#stNm').value.trim(), password:pw}:{login:lg, password:pw});
+        try{ localStorage.setItem('kp.adminLogin', lg); }catch(_){}
+        ADMIN.on=true; ADMIN.csrf=r.csrf; const st2=await api('/api/admin/status').catch(()=>({})); ST.status={...s, ...st2, hasPassword:true}; stRender(); }
       catch(err){ $('#stErr').textContent=err.message; } };
-    setTimeout(()=>$('#stPw')?.focus(),30);
+    setTimeout(()=>($('#stLg')&&!$('#stLg').value?$('#stLg'):$('#stPw'))?.focus(),30);
     return;
   }
   d.innerHTML=head+`<div class="st-b"><nav class="st-nav">${ST_TABS.map(([k,l])=>`<button type="button" class="${ST.tab===k?'on':''}" data-sttab="${k}">${l}</button>`).join('')}</nav>
@@ -65,7 +69,7 @@ function stRender(){
 async function stTab(){
   const m=$('#stMain'); if (!m) return;
   try{ await ({stats:stStats, moderation:stModeration, delete:stDelete, trash:stTrash, audit:stAudit, backup:stBackup,
-    templates:stTemplates, keys:stKeys, security:stSecurity})[ST.tab](m); }
+    templates:stTemplates, keys:stKeys, users:stUsers, security:stSecurity})[ST.tab](m); }
   catch(e){ if (ADMIN.on) m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; }
 }
 
@@ -157,17 +161,40 @@ async function stDelete(m){
   m.innerHTML=`<div class="seg st-types">${DEL_TYPES.map(([v,l])=>`<button type="button" class="${D.type===v?'on':''}" data-dtype="${v}">${l}</button>`).join('')}</div>
     <div class="row st-dbar"><input type="search" id="dQ" placeholder="Поиск" value="${esc(D.q)}" autocomplete="off"><span class="muted">${r.total>r.items.length?`показано ${r.items.length} из ${r.total} — уточните поиск`:`найдено: ${r.total}`}</span>
       <span class="sp"></span><button class="btn danger" type="button" data-del ${D.sel.size?'':'disabled'}>Удалить${D.sel.size?' ('+D.sel.size+')':''}</button></div>
-    <div class="st-list">${r.items.map(x=>`<label class="st-row ck-row"><input type="checkbox" data-did="${esc(x.id)}" ${D.sel.has(x.id)?'checked':''}><div><b>${esc(x.title)}</b><span class="muted">${esc(x.sub)}</span></div></label>`).join('')||'<p class="muted">Ничего не найдено.</p>'}</div>
-    <p class="muted">Удалённое попадает в корзину и хранится ${30} дней — его можно восстановить. Файлы готовых КП (.docx, .pdf) в папке КП не удаляются.</p>`;
+    <div class="st-list">${r.items.map(x=>`<label class="st-row ck-row"><input type="checkbox" data-did="${esc(x.id)}" ${D.sel.has(x.id)?'checked':''}><div><b>${esc(x.title)}</b><span class="muted">${esc(x.sub)}</span></div><div class="acts"><button class="btn" type="button" data-dedit="${esc(x.id)}">${D.type==='kp'?'Открыть':'Изменить'}</button></div></label>`).join('')||'<p class="muted">Ничего не найдено.</p>'}</div>
+    <p class="muted">«${D.type==='kp'?'Открыть':'Изменить'}» — ${({kp:'КП откроется в конструкторе для правки', catalog:'карточка товара в редакторе каталога', manager:'контакты менеджера', client:'реквизиты клиента', supplier:'условия поставщика'})[D.type]}. Удалённое попадает в корзину и хранится ${30} дней — его можно восстановить. Файлы готовых КП (.docx, .pdf) в папке КП не удаляются.</p>`;
   let qT; $('#dQ').oninput=e=>{ D.q=e.target.value; clearTimeout(qT); qT=setTimeout(()=>stDelete(m).then(()=>{ const i=$('#dQ'); i.focus(); i.setSelectionRange(i.value.length,i.value.length); }),250); };
   m.onchange=e=>{ const c=e.target.closest('[data-did]'); if(!c) return; c.checked?D.sel.add(c.dataset.did):D.sel.delete(c.dataset.did);
     const b=m.querySelector('[data-del]'); b.disabled=!D.sel.size; b.textContent='Удалить'+(D.sel.size?' ('+D.sel.size+')':''); };
   m.onclick=async e=>{ const t=e.target.closest('[data-dtype]'); if (t){ D.type=t.dataset.dtype; D.sel.clear(); D.q=''; return stDelete(m); }
+    const ed=e.target.closest('[data-dedit]'); if (ed){ e.preventDefault(); try{ await stEdit(D.type, ed.dataset.dedit, ()=>stDelete(m)); }catch(err){ toast(err.message||String(err)); } return; }
     if (!e.target.closest('[data-del]')) return;
     const n=D.sel.size, label=(DEL_TYPES.find(x=>x[0]===D.type)||[])[1];
     if (!await stConfirm(`Удалить? ${label}: ${n}`,'Записи будут в корзине 30 дней (их можно восстановить), затем удалятся окончательно.','Удалить')) return;
     const res=await ajson('delete',{type:D.type, ids:[...D.sel]}); D.sel.clear(); toast(`Удалено: ${res.deleted}`);
     if (D.type==='catalog') refreshCat(); if (D.type==='manager') loadManagers().then(renderForm); stDelete(m); };
+}
+
+// правка записи из «Настроек»: КП — в конструкторе, товар — в редакторе каталога, остальное — формой
+const ST_EDIT = {
+  manager: [['name','ФИО'],['position','Должность'],['phone','Телефон'],['ext','Добавочный'],['mobile','Мобильный'],['email','E-mail'],['site','Сайт'],['address','Адрес'],['hours','Часы работы']],
+  client: [['name','Краткое наименование'],['full','Полное наименование'],['inn','ИНН'],['kpp','КПП'],['ogrn','ОГРН'],['address','Юридический адрес','','textarea'],['director','Руководитель'],['directorPost','Должность руководителя']],
+  supplier: [['name','Поставщик'],['country','Страна'],['cur','Валюта (RUB, USD, EUR, CNY)'],['adv','Аванс поставщику, %'],['prod','Срок изготовления, дней'],['ship','Срок доставки, дней'],['ins','Страхование, %'],['fx','Комиссия за перевод, %']],
+};
+async function stEdit(type, id, after){
+  const J={'Content-Type':'application/json; charset=utf-8'};
+  if (type==='kp'){ const st=await api(`/api/kp/${encodeURIComponent(id)}/state`); S=Object.assign(freshState(), st); setDlg().close(); renderForm(); persist(); window.scrollTo({top:0}); toast('КП № '+(S.number||'')+' открыто для редактирования'); return; }
+  if (type==='catalog'){ const doc=await api('/api/catalog/'+encodeURIComponent(id)); openCatEditor(doc, ()=>{ refreshCat(); after(); }); return; }
+  const src = type==='manager' ? (await api('/api/managers')).find(x=>x.id===id) : type==='client' ? await api('/api/clients/'+encodeURIComponent(id)) : (await api('/api/suppliers')).find(x=>x.id===id);
+  if (!src) throw new Error('Запись не найдена');
+  const v=await stForm(({manager:'Менеджер',client:'Клиент',supplier:'Поставщик'})[type]+': '+(src.name||id), ST_EDIT[type].map(([k,l,_,t])=>[k,l,src[k]??'',t]));
+  if (!v) return;
+  if (!v.name) throw new Error('Название (ФИО) не может быть пустым');
+  const doc={...src, ...v};
+  if (type==='manager'){ await api('/api/managers/'+encodeURIComponent(id),{method:'PUT',headers:J,body:JSON.stringify(Object.fromEntries(MGR_KEYS.map(k=>[k,doc[k]??''])))}); loadManagers().then(renderForm); }
+  if (type==='client') await api('/api/clients/'+encodeURIComponent(id),{method:'PUT',headers:J,body:JSON.stringify(doc)});
+  if (type==='supplier'){ delete doc.id; delete doc.updatedAt; await api('/api/suppliers/'+encodeURIComponent(id),{method:'PUT',headers:J,body:JSON.stringify(doc)}); if (typeof DL!=='undefined') DL.sups=null; }
+  toast('Сохранено'); after();
 }
 
 async function stTrash(m){
@@ -255,12 +282,12 @@ async function stKeys(m){
 
 async function stSecurity(m){
   const mg=await aapi('migrations');
-  m.innerHTML=`<div class="st-card"><form id="pwF" autocomplete="off"><p class="sub">Сменить пароль администратора</p>
+  m.innerHTML=`<div class="st-card"><form id="pwF" autocomplete="off"><p class="sub">Сменить свой пароль${(ST.status||{}).login?` (${esc(ST.status.login)})`:''}</p>
       <div class="grid g2"><label class="f"><span>Текущий пароль</span><input type="password" id="pwO" autocomplete="current-password" required></label>
       <label class="f"><span>Новый пароль</span><input type="password" id="pwN" autocomplete="new-password" required></label></div>
       <p class="msg err" id="pwE" style="text-align:left"></p><button class="btn primary" type="submit">Сменить пароль</button></form></div>
     <div class="st-card"><p class="sub">Доступ</p><p class="muted">Вход закрывается через ${(ST.status||{}).idleMinutes||15} минут бездействия. Пять неверных паролей за 10 минут — пауза 10 минут.
-      Забыли пароль: на компьютере, где работает программа, создайте файл <b>data\\admin-reset.txt</b> и перезапустите программу — затем задайте новый пароль здесь.</p></div>
+      Пароль другого администратора меняется во вкладке «Администраторы». Забыли пароль все администраторы: на компьютере, где работает программа, создайте файл <b>data\\admin-reset.txt</b> и перезапустите программу — учётные записи администраторов удалятся, создайте новую здесь.</p></div>
     <details class="more"><summary>Миграции базы (для обслуживания)</summary>${mg.applied.map(id=>`<div class="st-row"><div><b>${esc(id)}</b><span class="muted">применена</span></div>
       <div class="acts"><button class="btn danger" type="button" data-mdown="${esc(id)}">Откатить</button></div></div>`).join('')||'<p class="muted">Нет применённых миграций.</p>'}
       <p class="muted">Откат удаляет таблицы журнала действий, корзины и модерации (перед этим — копия базы в data\\backup). При следующем запуске программы миграция применится снова.</p></details>`;
@@ -269,6 +296,45 @@ async function stSecurity(m){
   m.onclick=async e=>{ const b=e.target.closest('[data-mdown]'); if (!b) return;
     if (!await stConfirm('Откатить миграцию?','Журнал действий, корзина и правки на модерации будут удалены. Перед этим сохраняется копия базы.','Откатить')) return;
     await ajson(`migrations/${b.dataset.mdown}/down`); toast('Миграция откачена'); stSecurity(m); };
+}
+
+// ---------- администраторы: логин, имя, пароль
+async function stUsers(m){
+  const r=await aapi('users');
+  m.innerHTML=`<div class="st-card"><p class="sub">Администраторы · ${r.items.length}</p>
+    ${r.items.map(u=>`<div class="st-row" data-ulogin="${esc(u.login)}"><div><b>${esc(u.name||u.login)}</b><span class="muted">логин <b>${esc(u.login)}</b>${u.login===r.me?' · это вы':''} · создан ${esc(stTime(u.created))}${u.by?' ('+esc(u.by)+')':''}${u.lastLogin?' · последний вход '+esc(stTime(u.lastLogin)):''}</span></div>
+      <div class="acts"><button class="btn" type="button" data-uact="edit">Изменить</button><button class="btn" type="button" data-uact="password">Пароль</button>${r.items.length>1&&u.login!==r.me?'<button class="btn danger" type="button" data-uact="delete">Удалить</button>':''}</div></div>`).join('')}</div>
+    <div class="st-card"><form id="uAdd" autocomplete="off"><p class="sub">Добавить администратора</p>
+      <div class="grid g3"><label class="f"><span>Логин</span><input type="text" id="uL" required placeholder="ivanov" autocomplete="off"></label>
+      <label class="f"><span>Имя</span><input type="text" id="uN" placeholder="Иванов И. И."></label>
+      <label class="f"><span>Пароль</span><input type="password" id="uP" required autocomplete="new-password" placeholder="не короче 8, буквы и цифры"></label></div>
+      <p class="msg err" id="uE" style="text-align:left"></p><button class="btn primary" type="submit">Добавить</button></form>
+      <p class="muted">Каждый администратор входит под своим логином; в журнале действий видно, кто что изменил.</p></div>`;
+  $('#uAdd').onsubmit=async e=>{ e.preventDefault();
+    try{ await ajson('users',{action:'add', login:$('#uL').value.trim(), name:$('#uN').value.trim(), password:$('#uP').value}); toast('Администратор добавлен'); stUsers(m); }catch(err){ $('#uE').textContent=err.message; } };
+  m.onclick=async e=>{ const b=e.target.closest('[data-uact]'); if (!b) return; const login=b.closest('[data-ulogin]').dataset.ulogin, u=r.items.find(x=>x.login===login), a=b.dataset.uact;
+    try{
+      if (a==='delete'){ if (!await stConfirm(`Удалить администратора ${login}?`,'Он больше не сможет войти в «Настройки». Записи журнала действий сохранятся.','Удалить')) return;
+        await ajson('users',{action:'delete', login}); toast('Удалён'); }
+      if (a==='edit'){ const v=await stForm(`Изменить: ${login}`, [['newLogin','Логин',u.login],['name','Имя',u.name||'']]); if (!v) return;
+        await ajson('users',{action:'edit', login, newLogin:v.newLogin, name:v.name}); toast('Сохранено');
+        if (login===r.me){ ST.status={...ST.status, login:v.newLogin, name:v.name||v.newLogin}; } }
+      if (a==='password'){ const v=await stForm(`Новый пароль: ${login}`, [['password','Новый пароль (не короче 8, буквы и цифры)','','password']]); if (!v) return;
+        await ajson('users',{action:'password', login, password:v.password}); toast('Пароль изменён'); }
+      stUsers(m);
+    }catch(err){ toast(err.message||String(err)); } };
+}
+
+// форма из нескольких полей поверх «Настроек»: fields [[ключ, подпись, значение, тип]] → {ключ: значение} или null
+function stForm(title, fields){
+  return new Promise(res=>{ const d=document.createElement('dialog'); d.className='st-confirm st-form';
+    d.innerHTML=`<form method="dialog"><h3>${esc(title)}</h3>${fields.map(([k,l,v,t])=>`<label class="f"><span>${esc(l)}</span>${t==='textarea'?`<textarea data-k="${k}" rows="3">${esc(v??'')}</textarea>`:`<input type="${t||'text'}" data-k="${k}" value="${esc(v??'')}" autocomplete="off">`}</label>`).join('')}
+      <div class="row"><button class="btn" type="button" data-v="0">Отмена</button><button class="btn primary" type="submit">Сохранить</button></div></form>`;
+    document.body.appendChild(d); d.showModal(); d.querySelector('[data-k]')?.focus();
+    const done=v=>{ d.close(); d.remove(); res(v); };
+    d.addEventListener('cancel',e=>{ e.preventDefault(); done(null); });
+    d.querySelector('[data-v="0"]').onclick=()=>done(null);
+    d.querySelector('form').onsubmit=e=>{ e.preventDefault(); const o={}; d.querySelectorAll('[data-k]').forEach(i=>{ o[i.dataset.k]=i.value.trim(); }); done(o); }; });
 }
 
 // ---------- окно подтверждения и выбора (поверх «Настроек»)

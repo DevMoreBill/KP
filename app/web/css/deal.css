@@ -348,3 +348,8 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
   .dl-t tfoot .c-date{display:none}
   .dl-d0 input[type=date]{width:100%}
 }
+.dl-t small.dl-shift{display:block;font-size:11px;color:var(--muted);white-space:normal;max-width:170px}
+.mrg-deal .mrg-p{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:2px 0 8px}
+.mrg-deal .mrg-p small{font-size:12.5px;color:var(--muted)}
+.mrg-deal .mrg-p b{font-size:20px;color:var(--ok);font-variant-numeric:tabular-nums;white-space:nowrap}
+.mrg-deal .mrg-p.neg b{color:var(--danger)}
