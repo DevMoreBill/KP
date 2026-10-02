@@ -1,0 +1,125 @@
+/* Окно «Экономика сделки» (js/features/deal.js) и кнопки входа в него. */
+dialog.dealwin{width:min(1280px,96vw);max-width:96vw;height:min(92vh,940px);display:none;flex-direction:column;overflow:hidden;padding:0}
+@supports (height:100dvh){ dialog.dealwin{height:min(92dvh,940px)} }
+dialog.dealwin[open]{display:flex}
+.dealwin .dlg-h h3 small{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:2px}
+.dl-b{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 390px}
+.dl-form{overflow:auto;padding:16px 20px 24px;display:grid;gap:14px;align-content:start;background:var(--paper);overscroll-behavior:contain}
+.dl-side{overflow:auto;border-left:1px solid var(--line);padding:16px 18px 24px;background:var(--card);overscroll-behavior:contain}
+.dl-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
+.dl-ch{display:flex;align-items:center;gap:10px;margin-bottom:12px;min-height:32px}
+.dl-ch b{font-size:15px;flex:1}
+.dl-name{flex:1;font-weight:650;font-size:15px}
+.dl-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-top:12px}
+.dl-g:first-child{margin-top:0}
+.dl-g.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.dl-g.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.dl-f>span:first-child{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;min-height:20px}
+.dl-f>span i{font-style:normal;color:var(--muted);font-weight:400}
+.dl-in{display:flex;gap:6px;min-width:0}
+.dl-in input{flex:1 1 auto;min-width:0;text-align:right;font-variant-numeric:tabular-nums}
+.dl-in select{flex:0 0 84px;width:84px}
+.dl-f.bad input{border-color:var(--danger)}
+.dl-err{color:var(--danger);font-size:12.5px}
+.dl-f small.muted{font-size:12px}
+.dl-badge{font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;border:1px solid var(--line);color:var(--muted);background:var(--card);line-height:1.5}
+.dl-badge.kp{color:var(--navy);background:var(--soft);border-color:var(--soft)}
+.dl-badge.own{cursor:pointer;color:var(--navy)}
+.dl-badge.warn{color:#9a6b00;background:#fff4d6;border-color:#f0d58a}
+.dl-items{display:grid;gap:6px;margin-bottom:10px}
+.dl-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:var(--soft)}
+.dl-item>span{min-width:0;display:flex;flex-direction:column}
+.dl-item b{font-weight:600;font-size:14px}
+.dl-item small{font-size:12.5px;color:var(--muted)}
+.dl-item select{width:auto;max-width:46%;padding:6px 10px;font-size:13.5px}
+.dl-sum{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:8px 2px;border-top:1px dashed var(--line);border-bottom:1px dashed var(--line);font-size:14px;color:var(--muted)}
+.dl-sum b{color:var(--ink);font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sw-l{display:block;margin:14px 0 0}
+.dl-add{justify-self:start}
+.dl-add .muted{font-weight:400}
+.dl-foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.dl-ex{margin:0;padding:10px 20px;background:#fff4d6;color:#6b4c00;font-size:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #f0d58a}
+.dl-ex.warn{background:#fdecea;color:#8a2a1a;border-color:#f3c3ba}
+/* результат */
+.dl-res{display:grid;gap:14px}
+.dl-chip{justify-self:start;font-size:12.5px;font-weight:650;border-radius:999px;padding:3px 12px}
+.dl-chip.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent)}
+.dl-chip.warn{color:#9a6b00;background:#fff4d6}
+.dl-chip.bad{color:var(--danger);background:color-mix(in srgb,var(--danger) 12%,transparent)}
+.dl-big small{display:block;font-size:12.5px;color:var(--muted)}
+.dl-big b{display:block;font-size:28px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.2;margin-top:2px;color:var(--navy)}
+.dl-big.neg b{color:var(--danger)}
+.dl-big.rng b{font-size:21px}
+.dl-note{margin:6px 0 0;font-size:12.5px;color:var(--muted);line-height:1.45}
+.dl-kpi{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dl-kpi>div{background:var(--soft);border-radius:12px;padding:10px 12px;min-width:0}
+.dl-kpi small,.dl-kpi span{display:block;font-size:12px;color:var(--muted)}
+.dl-kpi b{display:block;font-size:18px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.dl-rng{font-size:15px}
+.dl-dl{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:0;font-size:14px}
+.dl-dl dt{color:var(--muted)}
+.dl-dl dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.dl-warn{margin:0;padding:0;list-style:none;display:grid;gap:6px;font-size:13px}
+.dl-warn li{padding:8px 10px;border-radius:10px;background:#fff4d6;color:#6b4c00}
+.dl-warn li.bad{background:#fdecea;color:#8a2a1a}
+/* график платежей */
+.dl-tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.dl-t{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
+.dl-t th{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+.dl-t td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.dl-t .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dl-t td small{display:block;font-size:11.5px;color:var(--muted)}
+.dl-t tr.in td{background:color-mix(in srgb,var(--ok) 7%,transparent)}
+.dl-t tr.man .dl-day{border-color:var(--sky)}
+.dl-t td.neg{color:var(--danger)}
+.dl-t tfoot td{border-bottom:0;padding-top:10px}
+.dl-t .dl-day{width:64px;text-align:center;padding:6px 4px}
+.dl-sched>.muted{margin:10px 0 0;font-size:12.5px}
+/* вход: правая панель и раздел «Цены» */
+.mrg .dl-open{width:100%;justify-content:center;margin-top:10px}
+.mrg-n{margin:6px 0 0;font-size:12px}
+.warn-t{color:#9a6b00}
+.dl-cta{margin:-4px 0 16px}
+/* узкое окно и телефон: одна колонка, итог — внизу, крупный итог — в шапке */
+.dl-mini{display:none}
+@media (max-width:1000px){
+  .dl-b{display:block;overflow:auto;overscroll-behavior:contain}
+  .dl-form,.dl-side{overflow:visible}
+  .dl-side{border-left:0;border-top:1px solid var(--line)}
+  .dl-mini{display:flex;gap:12px;align-items:flex-end;justify-content:space-between;padding:8px 16px 10px;border-bottom:1px solid var(--line);background:var(--card);font-size:13px;color:var(--muted)}
+  .dl-mini>span{display:flex;flex-direction:column;min-width:0}
+  .dl-mini .r{text-align:right;align-items:flex-end;flex:0 0 auto}
+  .dl-mini small{font-size:12px}
+  .dl-mini b{font-size:18px;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .dl-mini b.neg{color:var(--danger)}
+  .dl-g.g3,.dl-g.g4{grid-template-columns:1fr 1fr}
+}
+@media (max-width:560px){ .dl-g{grid-template-columns:minmax(0,1fr)} .dl-form{padding:12px} .dl-item{flex-direction:column;align-items:stretch} .dl-item select{max-width:none}
+  /* график — карточками: день | событие; платёж, финансирование; остаток денег */
+  .dl-t{min-width:0;display:block} .dl-t thead{display:none} .dl-t tbody,.dl-t tfoot{display:block}
+  .dl-t tr{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:2px 12px;padding:10px 6px;border-bottom:1px solid var(--line);align-items:center}
+  .dl-t td{border:0;padding:0}
+  .dl-t .c-day{grid-row:1/4;align-self:start}
+  .dl-t .c-ev{grid-column:2/4;font-weight:600}
+  .dl-t .c-pay{grid-column:2;grid-row:2;text-align:left}
+  .dl-t .c-fin{grid-column:3;grid-row:2}
+  .dl-t .c-fin small{display:inline;margin-left:4px}
+  .dl-t .c-bal{grid-column:2/4;grid-row:3;text-align:left;font-size:13px;color:var(--muted)}
+  .dl-t tr.in{background:color-mix(in srgb,var(--ok) 7%,transparent);border-radius:10px}
+  .dl-t tr.in td{background:none}
+  .dl-t .c-bal::before{content:"остаток денег: "}
+  .dl-t .c-bal.neg{color:var(--danger)}
+  .dl-t tfoot tr{grid-template-columns:minmax(0,1fr) auto}
+  .dl-t tfoot .c-day,.dl-t tfoot .c-pay,.dl-t tfoot .c-bal{display:none}
+  .dl-t tfoot .c-ev{grid-column:1;grid-row:1}
+  .dl-t tfoot .c-fin{grid-column:2;grid-row:1}
+}
+.mob .dealwin .dlg-h .btn{padding:8px 12px}
+.mob .dl-form{padding:12px max(12px,env(safe-area-inset-left)) 20px}
+.mob .dl-side{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .dl-badge.warn,:root:not([data-theme="light"]) .dl-chip.warn,:root:not([data-theme="light"]) .dl-warn li,:root:not([data-theme="light"]) .dl-ex{background:#3a2f12;color:#f3d27a;border-color:#5a4718}
+  :root:not([data-theme="light"]) .dl-warn li.bad,:root:not([data-theme="light"]) .dl-ex.warn{background:#3d1c17;color:#ffb3a6;border-color:#5e2a22}
+}
+:root[data-theme="dark"] .dl-badge.warn,:root[data-theme="dark"] .dl-chip.warn,:root[data-theme="dark"] .dl-warn li,:root[data-theme="dark"] .dl-ex{background:#3a2f12;color:#f3d27a;border-color:#5a4718}
+:root[data-theme="dark"] .dl-warn li.bad,:root[data-theme="dark"] .dl-ex.warn{background:#3d1c17;color:#ffb3a6;border-color:#5e2a22}

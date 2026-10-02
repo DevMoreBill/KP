@@ -309,7 +309,7 @@ class Handler(BaseHTTPRequestHandler):
 
         # журнал КП
         if path == '/api/history':
-            return self.send_json(store().kp_list())
+            return self.send_json(admin.history_out(self, store().kp_list()))
         if path == '/api/kp/new' and m == 'POST':
             n = store().next_number()
             return self.send_json({'id': n, 'number': n})
@@ -317,11 +317,11 @@ class Handler(BaseHTTPRequestHandler):
         if r:
             kid = safe_id(r.group(1))
             if m == 'PUT':
-                store().kp_set(kid, r.group(2), self.body().decode('utf-8'))
+                store().kp_set(kid, r.group(2), admin.kp_in(self, store(), kid, r.group(2), self.body().decode('utf-8')))
                 return self.send_json({'ok': True})
             if m == 'GET':
                 v = store().kp_get(kid, r.group(2))
-                return self.send_json(v) if v else self.not_found()
+                return self.send_json(admin.kp_out(self, r.group(2), v)) if v else self.not_found()
         r = re.match(r'^/api/kp/([^/]+)/docx$', path)
         if r and m == 'PUT':
             kid = safe_id(r.group(1))

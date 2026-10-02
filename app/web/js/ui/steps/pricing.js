@@ -21,6 +21,7 @@ function stepPrice(){
     </div>`; }).join('');
   return `<section class="step" id="st-price"><h2><span class="n">3</span>Цены и валюта${tip('<p>Введите цену продажи — или закупку и маржу (наценку), тогда цена посчитается сама.</p><p>Закупка, маржа и прибыль видны только вам, в КП не попадают. Скидка попадает в КП.</p>')}</h2>
   ${pricingBlock()}
+  ${S.items.length&&dealAllowed()?'<div class="dl-cta"><button class="btn" type="button" data-a="deal">Экономика сделки: логистика, растаможка, финансирование →</button></div>':''}
   ${rows || `<div class="empty-pick"><p><b>Сначала добавьте оборудование</b></p><button class="btn primary" type="button" data-step="equip">Перейти к оборудованию</button></div>`}
   </section>`;
 }

@@ -10,6 +10,14 @@ const mgrFields = m => Object.fromEntries(MGR_KEYS.map(k=>[k, m && m[k]!=null ? 
 
 function mgrRemember(id){ try{ if (id) localStorage.setItem('kp.managerId', id); else localStorage.removeItem('kp.managerId'); }catch(e){} }
 
+// кто работает на этом устройстве: менеджер, которого человек сам выбрал или добавил в разделе «Менеджер».
+// Открытие чужого КП из журнала его не меняет. По нему — автор новых КП и доступ к «Экономике сделки».
+function meId(){ try{ return localStorage.getItem('kp.me') || localStorage.getItem('kp.managerId') || ''; }catch(e){ return ''; } }
+
+function setMe(id){ try{ if (id) localStorage.setItem('kp.me', id); }catch(e){} }
+
+function meName(){ const m=MGRS.find(x=>x.id===meId()); return m ? m.name : ''; }
+
 async function loadManagers(){
   try{ MGRS = await api('/api/managers'); }catch(e){ MGRS=[]; return; }
   // переход с прежних версий: контакты, которые помнил этот браузер, становятся записью справочника
@@ -18,11 +26,12 @@ async function loadManagers(){
   if (!m && !S.managerId && String(S.manager?.name||'').trim()) m = MGRS.find(x=>norm(x.name)===norm(S.manager.name));
   if (!m && !String(S.manager?.name||'').trim()){ let id=''; try{ id=localStorage.getItem('kp.managerId')||''; }catch(e){} m = MGRS.find(x=>x.id===id) || (MGRS.length===1 ? MGRS[0] : null); }
   if (m){ S.managerId=m.id; S.manager={...S.manager, ...mgrFields(m)}; mgrRemember(m.id); }
+  try{ if (!localStorage.getItem('kp.me') && m && !S.kpId) setMe(m.id); }catch(e){}
 }
 
 function selectManager(id){
   const m=MGRS.find(x=>x.id===id); if (!m) return;
-  S.managerId=m.id; S.manager={...S.manager, ...mgrFields(m)}; mgrRemember(m.id);
+  S.managerId=m.id; S.manager={...S.manager, ...mgrFields(m)}; mgrRemember(m.id); setMe(m.id);
   renderForm(); persist(); toast('Менеджер: '+m.name);
 }
 
@@ -38,7 +47,7 @@ async function saveManager(silent){
   try{ const doc=await api('/api/managers/'+id,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(mgrFields(S.manager))});
     const k=MGRS.findIndex(x=>x.id===id); if (k>=0) MGRS[k]=doc; else MGRS.push(doc);
     MGRS.sort((a,b)=>String(a.name).localeCompare(String(b.name),'ru'));
-    const wasNew=!S.managerId; S.managerId=id; mgrRemember(id);
+    const wasNew=!S.managerId; S.managerId=id; mgrRemember(id); if (wasNew) setMe(id);
     if (wasNew){ persist(); if (STEP==='mgr') renderForm(); }
     const st=$('#mgrStat'); if (st) st.textContent='Сохранено в справочнике менеджеров';
     if (!silent) toast(wasNew?'Менеджер добавлен в справочник':'Сохранено');

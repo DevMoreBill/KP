@@ -132,6 +132,7 @@ document.addEventListener('click', async e=>{
     case 'reprice': it.priceManual=false; applyCalc(it); break;
     case 'mmode': it.mmode=b.dataset.v; it.priceManual=false; applyCalc(it); break;
     case 'journal': return openJournal();
+    case 'deal': return openDeal();
     case 'docsFolder': return api('/api/folder?dir='+encodeURIComponent(managerFolder()),{method:'POST'}).then(remoteResult).catch(()=>{}); 
     case 'openDoc': return api(`/api/kp/${b.dataset.id}/open`,{method:'POST'}).then(remoteResult).catch(()=>toast('Файл не найден'));
     case 'showDoc': return api(`/api/kp/${b.dataset.id}/folder`,{method:'POST'}).then(remoteResult).catch(()=>toast('Файл не найден'));
