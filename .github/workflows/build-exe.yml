@@ -229,7 +229,7 @@ jobs:
           $vf = Join-Path $upd 'app\version.py'
           [IO.File]::WriteAllText($vf, ([IO.File]::ReadAllText($vf) -replace "VERSION = '[^']+'", "VERSION = '99.0.0'"))
           [IO.File]::WriteAllText((Join-Path $upd 'version.json'), '{"version": "99.0.0"}')
-          [IO.File]::WriteAllText((Join-Path $upd 'app\web\ci-patch.txt'), 'patched')
+          [IO.File]::WriteAllText((Join-Path $upd 'app\web\ci-patch.json'), '{"patched": true}')
           $p = Start-Process -FilePath (Join-Path $dir 'kp.exe') -WorkingDirectory $dir -PassThru
           $ok = $false
           for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
@@ -240,8 +240,8 @@ jobs:
           $v = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/version'
           Write-Host "Версия: $($v.version), обновление: $($v.patched)"
           if ($v.version -ne '99.0.0' -or -not $v.patched) { throw 'Код из папки update не подключился' }
-          $mark = Invoke-WebRequest -Uri 'http://127.0.0.1:17845/ci-patch.txt' -UseBasicParsing
-          if ([string]$mark.Content -ne 'patched') { throw 'Интерфейс не берётся из папки update' }
+          $mark = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/web/ci-patch.json'
+          if (-not $mark.patched) { throw 'Интерфейс не берётся из папки update' }
           $hp = Invoke-WebRequest -Uri 'http://127.0.0.1:17845/' -UseBasicParsing
           if ($hp.StatusCode -ne 200) { throw 'Главная страница не открылась с обновлением' }
           $cat = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/catalog'
