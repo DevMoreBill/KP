@@ -67,10 +67,78 @@ async function addGallery(i, files, slot){
 
 function pickGallery(i, slot){ const f=$('#filePick'); f.value=''; f.multiple=!slot; f.onchange=()=>{ const L=[...f.files]; f.multiple=false; if(L.length) addGallery(i,L,slot); }; f.click(); }
 
-document.addEventListener('paste', e=>{
-  const fz=document.activeElement?.closest?.('[data-fimg]');
-  if (fz){ const files=[...(e.clipboardData?.files||[])].filter(f=>f.type.startsWith('image/')); if(files.length){ e.preventDefault(); addFeatImage(+fz.dataset.fimg, fz.dataset.fid, files); } return; }
-  const z=document.activeElement?.closest?.('[data-gal]'); if(!z) return;
-  const files=[...(e.clipboardData?.files||[])].filter(f=>f.type.startsWith('image/')); if(!files.length) return;
-  e.preventDefault(); addGallery(+z.dataset.gal, files, '');
+// ---------- все места для картинок устроены одинаково ----------
+// нажать — выбрать файл; перетащить файл или картинку со страницы сайта; вставить из буфера обмена — Ctrl+V, когда поле
+// выбрано или под курсором, либо кнопкой «Вставить из буфера». Места: главное фото и логотип (data-drop), миниатюра позиции
+// в разделе «Оборудование» (data-thumb), фото к блоку описания (data-fimg), схемы и изображения (data-gal).
+const IMG_SLOT='[data-drop],[data-thumb],[data-fimg],[data-gal]';
+let IMG_HOVER=null;
+
+function imgSlotOf(el){ return el && el.closest ? el.closest(IMG_SLOT) : null; }
+
+async function imgSlotPut(z, files){
+  files=(files||[]).filter(f=>f && f.type && f.type.startsWith('image/'));
+  if (!files.length) return toast('Нужна картинка: JPG, PNG, WEBP или скопированное изображение');
+  if (z.dataset.drop) return loadImage(files[0], z.dataset.drop, +z.dataset.i);
+  if (z.dataset.thumb!=null){ await loadImage(files[0], 'photo', +z.dataset.thumb); return toast('Главное фото добавлено'); }
+  if (z.dataset.fimg!=null) return addFeatImage(+z.dataset.fimg, z.dataset.fid, files.slice(0,1));
+  if (z.dataset.gal!=null) return addGallery(+z.dataset.gal, files, '');
+}
+
+// картинка по ссылке (перетащили со страницы сайта): data:-ссылка — сразу, http(s) — через сервер программы
+async function imgFromUrl(url){
+  url=String(url||'').trim(); if (!url) return null;
+  try{
+    const r = url.startsWith('data:image/') ? await fetch(url) : await fetch('/api/imgfetch?url='+encodeURIComponent(url));
+    if (!r.ok) throw new Error(await r.text());
+    const b=await r.blob(); return new File([b], 'image', {type:b.type||'image/png'});
+  }catch(e){ toast(String(e.message||e).slice(0,160)||'Картинку по ссылке загрузить не удалось — сохраните её в файл и перетащите файл'); return null; }
+}
+
+async function imgFilesFrom(dt){
+  const files=[...(dt.files||[])].filter(f=>f.type.startsWith('image/')); if (files.length) return files;
+  const html=dt.getData && dt.getData('text/html') || '', m=/<img[^>]+src="([^"]+)"/i.exec(html);
+  const url = m ? m[1].replace(/&amp;/g,'&') : ((dt.getData && (dt.getData('text/uri-list')||dt.getData('text/plain')))||'').split(/\r?\n/).find(u=>/^(https?:|data:image\/)/i.test(u.trim()));
+  if (!url) return [];
+  const f=await imgFromUrl(url); return f?[f]:[];
+}
+
+// кнопка «Вставить из буфера»: картинку из буфера читает браузер (на этом компьютере — сразу; по сети — через Ctrl+V)
+async function imgPasteButton(z){
+  if (navigator.clipboard && navigator.clipboard.read){
+    try{ const items=await navigator.clipboard.read();
+      for (const it of items){ const t=it.types.find(x=>x.startsWith('image/')); if (t){ const b=await it.getType(t); return imgSlotPut(z, [new File([b],'clipboard',{type:t})]); } }
+      for (const it of items){ if (it.types.includes('text/plain')){ const txt=await (await it.getType('text/plain')).text(); if (/^(https?:|data:image\/)/i.test(txt.trim())){ const f=await imgFromUrl(txt); if (f) return imgSlotPut(z,[f]); } } }
+      return toast('В буфере обмена нет картинки — скопируйте изображение (правый клик → «Копировать изображение»)');
+    }catch(e){}
+  }
+  z.focus(); toast('Нажмите Ctrl+V — картинка из буфера вставится сюда');
+}
+
+document.addEventListener('pointerover', e=>{ IMG_HOVER=imgSlotOf(e.target); });
+document.addEventListener('click', e=>{ const b=e.target.closest('[data-imgpaste]'); if (!b) return; e.preventDefault(); e.stopPropagation();
+  const z=b.dataset.imgpaste ? document.querySelector(b.dataset.imgpaste) : imgSlotOf(b); if (z) imgPasteButton(z); }, true);
+['dragover','dragleave','drop'].forEach(ev=>document.addEventListener(ev, async e=>{
+  const z=imgSlotOf(e.target); if (!z) return;
+  e.preventDefault(); z.classList.toggle('over', ev==='dragover');
+  if (ev==='drop'){ const files=await imgFilesFrom(e.dataTransfer); if (files.length) imgSlotPut(z, files); else toast('Перетащите файл картинки или изображение со страницы сайта'); }
+}));
+document.addEventListener('paste', async e=>{
+  const z=imgSlotOf(document.activeElement) || (IMG_HOVER && IMG_HOVER.isConnected ? IMG_HOVER : null); if (!z) return;
+  if (document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) && !imgSlotOf(document.activeElement)) return;
+  const files=[...(e.clipboardData?.files||[])].filter(f=>f.type.startsWith('image/'));
+  if (files.length){ e.preventDefault(); return imgSlotPut(z, files); }
+  const txt=(e.clipboardData && e.clipboardData.getData('text/plain')||'').trim();
+  if (/^(https?:|data:image\/)/i.test(txt)){ e.preventDefault(); const f=await imgFromUrl(txt); if (f) imgSlotPut(z,[f]); }
 });
+
+// ---------- логотип производителя: из каталога при точном совпадении названия производителя ----------
+let LOGOS=null;
+async function loadLogos(force){ if (LOGOS && !force) return LOGOS; try{ LOGOS=await api('/api/logos'); }catch(e){ LOGOS=LOGOS||{}; } return LOGOS; }
+function logoFor(maker){ const k=String(maker||'').trim().toLowerCase(); return k && LOGOS ? LOGOS[k] || null : null; }
+// подставить логотип, если его нет; true — подставлен
+function autoLogo(x){
+  if (!x || (x.logo && x.logo.src)) return false;
+  const lg=logoFor(attrsOf(x).maker); if (!lg) return false;
+  x.logo={src:lg.src, w:lg.w, h:lg.h, auto:lg.maker}; return true;
+}

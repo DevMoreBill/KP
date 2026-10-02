@@ -25,6 +25,7 @@ document.addEventListener('input', e=>{
 
 document.addEventListener('change', e=>{
   const t=e.target;
+  if (/^items\.(\d+)\.attrs\.maker$/.test(t.dataset.p||'')){ const x=S.items[+RegExp.$1]; loadLogos().then(()=>{ if (autoLogo(x)){ renderForm(); persist(); toast('Логотип производителя подставлен из каталога'); } }); }
   if (t.dataset.gon!=null){ const g=S.items[+t.dataset.gon].gallery[+t.dataset.j]; g.on=t.checked; t.closest('.gcard')?.classList.toggle('off',!t.checked); persist(); return; }
   if (/^items\.\d+\.gallery\.\d+\.wide$/.test(t.dataset.p||'')){ renderForm(); persist(); return; }
   if (t.dataset.retype!=null){ renderForm(); persist(); return; }
@@ -89,6 +90,7 @@ document.addEventListener('click', async e=>{
     case 'delRow': it.groups[j].rows.splice(k,1); break;
     case 'star': it.groups[j].rows[k].hl=!it.groups[j].rows[k].hl; break;
     case 'rmImg': it[b.dataset.k]=null; break;
+    case 'pickImg': return pickImage(b.dataset.k, i);
     case 'clients': S.showClients=!S.showClients; break;
     case 'coverFrom': { const src=S.items.find(x=>x.hint); if(src) applyCover(src.hint,true); break; }
     case 'paste': return openPaste(i);
@@ -135,10 +137,4 @@ document.addEventListener('toggle', e=>{ const d=e.target; if (d.dataset && d.da
 
 document.addEventListener('keydown', e=>{ const dz=e.target.closest?.('[data-drop]'); if(dz && (e.key==='Enter'||e.key===' ')){ e.preventDefault(); pickImage(dz.dataset.drop,+dz.dataset.i);} });
 
-['dragover','dragleave','drop'].forEach(ev=>document.addEventListener(ev, e=>{
-  const fz=e.target.closest?.('[data-fimg]'); if(fz){ e.preventDefault(); fz.classList.toggle('over', ev==='dragover'); if(ev==='drop'&&e.dataTransfer.files.length) addFeatImage(+fz.dataset.fimg, fz.dataset.fid, [...e.dataTransfer.files]); return; }
-  const gz=e.target.closest?.('[data-gal]'); if(gz){ e.preventDefault(); gz.classList.toggle('over', ev==='dragover'); if(ev==='drop'&&e.dataTransfer.files.length) addGallery(+gz.dataset.gal,[...e.dataTransfer.files],''); return; }
-  const dz=e.target.closest?.('[data-drop]'); if(!dz) return; e.preventDefault();
-  dz.classList.toggle('over', ev==='dragover');
-  if (ev==='drop' && e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0], dz.dataset.drop, +dz.dataset.i);
-}));
+// перетаскивание и вставка картинок — js/features/images.js (общие для всех мест с картинками)

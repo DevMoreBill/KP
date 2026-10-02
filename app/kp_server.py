@@ -25,7 +25,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from cbr import cbr_key_rate, cbr_rates
-from config import (APP_TITLE, BASE_PORT, BUNDLE, DATA_DIR, DOCS_DIR, DOCS_SHARE, IMG_DIR, MIME, ROOT, SERVER_MODE,
+from config import (APP_DIR, UPDATE_DIR, APP_TITLE, BASE_PORT, DATA_DIR, DOCS_DIR, DOCS_SHARE, IMG_DIR, MIME, ROOT, SERVER_MODE,
                     docs_path, message_box, read_text, safe_dir, safe_file, safe_id, store, write_bytes)
 import catalog_migrate
 from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
@@ -51,7 +51,7 @@ def cp():
     return _CP
 
 
-WEB_DIR = os.path.join(BUNDLE, 'app', 'web')      # интерфейс: index.html, css/, js/, vendor/
+WEB_DIR = os.path.join(APP_DIR, 'web')      # интерфейс: index.html, css/, js/, vendor/
 WEB_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
              '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2'}
 
@@ -200,7 +200,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(f, 'rb') as fh:
                 return self.send(200, WEB_TYPES[os.path.splitext(f)[1].lower()], fh.read(), {'Cache-Control': 'no-cache'})
         if path == '/favicon.ico':
-            icon = os.path.join(BUNDLE, 'app', 'icon.ico')
+            icon = os.path.join(APP_DIR, 'icon.ico')
             if not os.path.isfile(icon):
                 return self.not_found()
             with open(icon, 'rb') as f:
@@ -428,6 +428,20 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(cbr_rates())
         if path == '/api/cbr/keyrate':
             return self.send_json(cbr_key_rate())
+        # картинки карточек: логотипы производителей из каталога; картинка, перетащенная со страницы сайта
+        if path == '/api/logos' and m == 'GET':
+            import imgfetch
+            return self.send_json(imgfetch.logos(store()))
+        if path == '/api/imgfetch' and m == 'GET':
+            import imgfetch
+            try:
+                ctype, data = imgfetch.fetch_image(q.get('url') or '')
+            except Exception as e:
+                return self.send(422, 'text/plain; charset=utf-8', 'Картинка не загружена: %s' % e)
+            return self.send(200, ctype, data)
+        if path == '/api/version' and m == 'GET':       # версия программы и установленное обновление
+            import version
+            return self.send_json({'version': version.VERSION, 'patched': bool(UPDATE_DIR), 'updateDir': UPDATE_DIR})
         if path == '/api/calendar' and m == 'GET':      # производственный календарь РФ (рабочие / банковские дни)
             import workcal
             qy = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(self.path).query)).get('year') or ''

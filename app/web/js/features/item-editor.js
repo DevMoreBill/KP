@@ -32,9 +32,11 @@ function attrsBlock(x,i){
    ${[...grp.entries()].map(([g,fs])=>`<p class="agrp">${esc(g)}</p><div class="attrs">${fs.map(inp).join('')}</div>`).join('')}</div>`;
 }
 
+// место для картинки: нажать — файл; перетащить файл или картинку с сайта; Ctrl+V или «Вставить из буфера»
 function drop(img, kind, i, text, small){
   return `<div class="drop" data-drop="${kind}" data-i="${i}" tabindex="0" role="button" aria-label="${kind==='logo'?'Загрузить логотип':'Загрузить фото'}" style="${small?'min-height:80px':''}">
-    ${img?`<img src="${img.src}" alt=""><button class="icon x" type="button" data-a="rmImg" data-k="${kind}" data-i="${i}" aria-label="Убрать">✕</button>`:`<span>${text}</span>`}</div>`;
+    ${img?`<img src="${img.src}" alt=""><button class="icon x" type="button" data-a="rmImg" data-k="${kind}" data-i="${i}" aria-label="Убрать">✕</button>`:`<span>${text}</span>`}</div>
+    <div class="imgbar"><button type="button" class="lnk" data-a="pickImg" data-k="${kind}" data-i="${i}">Выбрать файл</button><button type="button" class="lnk" data-imgpaste>Вставить из буфера</button>${kind==='logo'&&img&&img.auto?`<span class="muted">по производителю «${esc(img.auto)}»</span>`:''}</div>`;
 }
 
 let EDIT=null;
@@ -56,6 +58,7 @@ function linkOf(x,g){
 function featImage(x,f){ return (x.gallery||[]).find(g=>{ const L=linkOf(x,g); return L.kind==='feat' && L.f===f; }); }
 
 function openEditor(i, tab){
+  if (S.items[i] && autoLogo(S.items[i])) persist();
   EDIT={i, tab: tab||'main'}; const d=$('#edlg'); renderEditor(); if(!d.open) d.showModal();
 }
 
@@ -95,7 +98,7 @@ function edDesc(x,i){
   const have=new Set((x.features||[]).map(f=>norm(f.label)));
   const blocks=(x.features||[]).map((f,j)=>{ featId(f); const im=featImage(x,f); const gi=im?(x.gallery||[]).indexOf(im):-1;
     return `<div class="fblock">
-      <div class="fimg">${imgBox(im&&im.src,`data-fimg="${i}" data-fid="${f.id}"`,'+ фото к блоку<br><small>перетащите, вставьте Ctrl+V или нажмите</small>')}
+      <div class="fimg">${imgBox(im&&im.src,`data-fimg="${i}" data-fid="${f.id}"`,'+ фото к блоку<br><small>нажмите, перетащите или Ctrl+V</small>')}<button type="button" class="lnk imgp" data-imgpaste='[data-fimg="${i}"][data-fid="${f.id}"]'>Вставить из буфера</button>
         ${im?`<div class="row" style="gap:4px;justify-content:center"><label class="row muted" style="gap:4px"><input type="checkbox" data-gon="${i}" data-j="${gi}" ${im.on===false?'':'checked'} style="width:auto">в КП</label><button class="icon" type="button" data-a="galDel" data-i="${i}" data-j="${gi}" aria-label="Убрать фото">✕</button></div>`:''}</div>
       <div class="ftext"><div class="fhead"><input type="text" data-p="${P}.features.${j}.label" value="${esc(f.label)}" placeholder="Заголовок блока (Двигатель, Альтернатор…)" style="font-weight:600">
         <button class="icon" type="button" data-a="featUp" data-i="${i}" data-j="${j}" aria-label="Выше" ${j===0?'disabled':''}>↑</button><button class="icon" type="button" data-a="delFeat" data-i="${i}" data-j="${j}" aria-label="Удалить блок">✕</button></div>
@@ -112,14 +115,14 @@ function edDesc(x,i){
         <button class="icon" type="button" data-a="galDel" data-i="${i}" data-j="${j}" aria-label="Удалить">✕</button></div></div>`).join('');
   const schemeSlots=(t.gallerySlots||[]).filter(s=>WIDE_RX.test(s));
   return `<div class="ed-sec"><p class="sub">Главное фото и логотип</p>
-     <div class="media2"><div>${drop(x.photo,'photo',i,'Главное фото: перетащите или нажмите.<br>Белые поля обрежутся сами.')}${field('Подпись под фото',`${P}.photoCaption`,{ph:'Исполнение в кожухе'})}</div>
-       <div>${drop(x.logo,'logo',i,'Логотип производителя (PNG)',true)}</div></div></div>
+     <div class="media2"><div>${drop(x.photo,'photo',i,'<b>Главное фото</b><br>нажмите, перетащите файл или картинку с сайта,<br>или вставьте из буфера (Ctrl+V).<br><small>Белые поля обрежутся сами.</small>')}${field('Подпись под фото',`${P}.photoCaption`,{ph:'Исполнение в кожухе'})}</div>
+       <div>${drop(x.logo,'logo',i,attrsOf(x).maker?(logoFor(attrsOf(x).maker)?'Логотип производителя':'Логотип производителя (PNG) — у «'+esc(attrsOf(x).maker)+'» в каталоге логотипа нет'):'Логотип подставится сам, если указать производителя (точное совпадение с каталогом)',true)}</div></div></div>
    <div class="ed-sec"><p class="sub">Описание узлов${tip("У каждого блока — своё фото: в КП текст и фото стоят рядом.")}</p>
      ${blocks||'<p class="muted">Добавьте блоки описания — например, «Двигатель», «Альтернатор», «Контроллер».</p>'}
      <div class="chips">${slots.filter(s=>!have.has(norm(s))).map(s=>`<button class="chip" type="button" data-a="addFeatL" data-i="${i}" data-l="${esc(s)}">+ ${esc(s)}</button>`).join('')}<button class="chip" type="button" data-a="addFeatL" data-i="${i}" data-l="">+ свой блок</button></div></div>
    <div class="ed-sec"><p class="sub">Схемы, чертежи и другие фото${tip("Выводятся после характеристик; можно привязать к группе характеристик. Перетащите файлы или вставьте из буфера (Ctrl+V).")}</p>
-     <div class="gal" data-gal="${i}" tabindex="0">${gcards||'<p class="muted" style="margin:0">Перетащите файлы сюда или вставьте из буфера (Ctrl+V). Схемы и чертежи в PNG сохраняются без потери чёткости.</p>'}</div>
-     <div class="chips" style="margin-top:8px">${schemeSlots.map(s=>`<button class="chip" type="button" data-a="galAdd" data-i="${i}" data-slot="${esc(s)}">+ ${esc(s)}</button>`).join('')}<button class="chip" type="button" data-a="galAdd" data-i="${i}" data-slot="">+ изображение</button></div></div>`;
+     <div class="gal" data-gal="${i}" tabindex="0">${gcards||'<p class="muted" style="margin:0">Перетащите сюда файлы или картинки с сайта, или вставьте из буфера (Ctrl+V). Схемы и чертежи в PNG сохраняются без потери чёткости.</p>'}</div>
+     <div class="chips" style="margin-top:8px">${schemeSlots.map(s=>`<button class="chip" type="button" data-a="galAdd" data-i="${i}" data-slot="${esc(s)}">+ ${esc(s)}</button>`).join('')}<button class="chip" type="button" data-a="galAdd" data-i="${i}" data-slot="">+ изображение</button><button class="chip" type="button" data-imgpaste='[data-gal="${i}"]'>Вставить из буфера</button></div></div>`;
 }
 
 function edSpec(x,i){

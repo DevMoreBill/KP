@@ -19,11 +19,13 @@ import subprocess
 import zipfile
 from datetime import datetime
 
-from config import BUNDLE, FROZEN, ROOT, SAFE_ID, read_text, write_bytes
+from config import BUNDLE, FROZEN, ROOT, SAFE_ID, UPDATE_DIR, read_text, write_bytes
 
 # Папка «templates» рядом с программой (при запуске из исходников — папка проекта).
 TEMPLATES_DIR = os.path.join(ROOT, 'templates') if FROZEN else os.path.join(BUNDLE, 'templates')
-BUNDLED_DIR = os.path.join(BUNDLE, 'templates')         # заводские шаблоны внутри EXE
+BUNDLED_DIR = os.path.join(BUNDLE, 'templates')         # заводские шаблоны внутри EXE (или в обновлении)
+if UPDATE_DIR and os.path.isdir(os.path.join(UPDATE_DIR, 'templates')):
+    BUNDLED_DIR = os.path.join(UPDATE_DIR, 'templates')
 DEFAULT_ID = 'pnevmotekh'
 IMAGE_RE = r'[A-Za-z0-9_-]+\.(jpg|jpeg|png)'
 TPL_FILES = re.compile(r'^(template\.json|base\.docx|skeleton\.js|editor\.json|%s)$' % IMAGE_RE)

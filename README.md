@@ -19,10 +19,30 @@ GitHub → **Actions** → последний запуск «Сборка EXE д
 Каждая сборка проверяется на Windows: запуск, база SQLite, каталог, шаблоны, типы, новый номер КП, сохранение DOCX, выход.
 Релиз с файлами — тег `v*`: `git tag v1.0.0 && git push origin v1.0.0`.
 
+## Установка в C:\KP и обновления патчем
+
+Постоянная папка программы — `C:\KP`. Полный комплект ставится один раз: `install\Установить в C KP.cmd`
+(права администратора; перенос данных из прежней папки, ярлык, переключение сервера отдела на `C:\KP`).
+
+Дальше каждое исправление — артефакт **«Обновление КП (патч)»** (`Обновление КП.zip`, ≈1 МБ, один на обе сборки):
+`Установить обновление.cmd` останавливает программу и сервер отдела, кладёт код и интерфейс новой версии в
+`C:\KP\update` (`update\version.json`, `update\app\*.py`, `update\app\web\…`, `update\templates\…`) и запускает
+программу снова. Данные не затрагиваются.
+
+Как это работает: точка входа EXE — `app/launcher.py`. Если в `update\version.json` версия новее встроенной
+(`app/version.py`), модули `app\*.py` загружаются из `update\app` раньше встроенных, интерфейс и заводские шаблоны —
+тоже оттуда (`config.APP_DIR`, `UPDATE_DIR`). Новый полный EXE с той же или более новой версией игнорирует старый патч.
+Патч не может добавить модуль стандартной библиотеки, которого нет в EXE (список — `hiddenimports` в `kp.spec`);
+в таком случае нужен полный комплект. Перед выпуском увеличивайте `VERSION` в `app/version.py`.
+CI проверяет: EXE с папкой `update` версии 99.0.0 берёт код и интерфейс из неё, с устаревшей — нет.
+
 ## Состав
 
 ```
-app/kp_server.py          точка входа и HTTP-сервер (адреса API, выдача интерфейса)
+app/launcher.py           точка входа EXE: подключает обновление (папка update рядом с EXE), затем kp_server
+app/version.py            номер версии программы (патч ставится, только если его версия новее)
+app/kp_server.py          HTTP-сервер (адреса API, выдача интерфейса); из исходников запускается напрямую
+app/imgfetch.py           логотипы производителей из каталога; загрузка картинки, перетащенной с сайта
 app/config.py             настройки и пути (settings.json), база данных store(), общие помощники
 app/data_setup.py         подготовка данных при запуске: папки, стартовый каталог, нумерация
 app/storage.py            база данных SQLite (data/kp.sqlite3)
@@ -41,6 +61,7 @@ app/icon.ico              значок
 templates/<шаблон>/       шаблон КП целиком — см. «Шаблоны КП» ниже и templates/README.txt
 seed/data/                стартовый каталог (1209 позиций, без истории цен) и фото — загружаются в базу при первом запуске
 server-setup/             установка сервера отдела, остановка, резервная копия
+install/                  установщик в C:\KP и установщик патча обновления (install/patch)
 kp.spec                   настройки PyInstaller
 .github/workflows/        сборка и проверка EXE
 ```
@@ -230,7 +251,7 @@ kp.spec                   настройки PyInstaller
 
 ## API (для справки)
 
-`/api/ping`, `/api/catalog` (облегчённый список; `?full=1` — полный), `/api/catalog/{id}`, `/api/img`, `/img/{файл}`,
+`/api/ping`, `/api/version`, `/api/logos`, `/api/imgfetch?url=`, `/api/catalog` (облегчённый список; `?full=1` — полный), `/api/catalog/{id}`, `/api/img`, `/img/{файл}`,
 `/api/history`, `/api/kp/new`, `/api/kp/{id}/state|meta|docx|open|folder`, `/api/types`, `/api/templates`, `/tpl/{id}/{файл}`,
 `/api/templates/{id}/file|history|restore|copy|reset|delete|open`,
 `/api/party?inn=`, `/api/check?inn=`, `/api/integrations`, `/api/clients`, `/api/cbr`, `/api/backup`, `/api/folder`, `/api/shutdown`,

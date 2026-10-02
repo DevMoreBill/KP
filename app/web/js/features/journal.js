@@ -8,17 +8,17 @@ const jShort = n => { const p=String(n||'').trim().split(/\s+/); return p.length
 
 // экономика КП из журнала: сумма в рублях (для итогов), прибыль и маржа — по позициям с закупкой
 function jEcon(r){
-  const e=r.econ||null, cur=(e&&e.cur)||'RUB', cs=curSh(cur), pc=v=>v==null?'—':v.toFixed(1).replace('.',',');
+  const e=r.econ||null, cur=(e&&e.cur)||'RUB', cs=curSh(cur), pc=v=>v==null||!Number.isFinite(v)?'—':v.toFixed(1).replace('.',',')+' %';
   if (r.locked) return { sum:`${money(r.sum||0)} ${cs}`, line:'<span class="muted">экономика — у автора КП</span>', sumRub: cur==='RUB'?(r.sum||0):null, profitRub:null };
   // заполнен расчёт «Экономика сделки» — показываем его (с логистикой, растаможкой и финансированием)
   if (r.deal){ const dd=r.deal, sumRub = cur==='RUB' ? (e?e.sum:r.sum)||0 : (e&&e.sumRub)||null;
-    const line = dd.confirmed ? `<span class="${dd.profit<0?'bad-t':'ok-t'}">прибыль ${money(Math.round(dd.profit*100))} руб.</span> · маржа ${pc(dd.margin)} % <span class="muted">по расчёту сделки</span>`
+    const line = dd.confirmed ? `<span class="${dd.profit<0?'bad-t':'ok-t'}">прибыль ${money(Math.round(dd.profit*100))} руб.</span> · маржа ${pc(dd.margin)} <span class="muted">по расчёту сделки</span>`
       : `прибыль от ${money(dd.lo*100)} до ${money(dd.hi*100)} руб. <span class="muted">— нужен ввозной НДС</span>`;
     return { sum:`${money((e?e.sum:r.sum)||0)} ${cs}`, line, sumRub, profitRub: dd.confirmed ? Math.round(dd.profit*100) : null }; }
   const sumRub = cur==='RUB' ? (e?e.sum:r.sum)||0 : (e&&e.sumRub)||null;
   const profitRub = e&&e.withCost ? (cur==='RUB' ? e.profit : (e.sumRub&&e.sum ? Math.round(e.profit*e.sumRub/e.sum) : null)) : null;
   const line = !e ? '<span class="muted">считаю…</span>'
-    : e.withCost ? `<span class="${e.profit<0?'bad-t':'ok-t'}">прибыль ${money(e.profit)} ${cs}</span> · маржа ${pc(e.margin)} %${e.withCost<e.positions?` <span class="muted">(${e.withCost} из ${e.positions} поз.)</span>`:''}${e.discount?` · скидка ${money(e.discount)}`:''}`
+    : e.withCost ? `<span class="${e.profit<0?'bad-t':'ok-t'}">прибыль ${money(e.profit)} ${cs}</span> · маржа ${pc(e.margin)}${e.withCost<e.positions?` <span class="muted">(${e.withCost} из ${e.positions} поз.)</span>`:''}${e.discount?` · скидка ${money(e.discount)}`:''}`
     : '<span class="muted">закупка не указана</span>';
   return { sum:`${money((e?e.sum:r.sum)||0)} ${cs}`, line, sumRub, profitRub };
 }

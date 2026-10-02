@@ -36,7 +36,7 @@ js/
   features/excel-import.js импорт каталога из Excel/CSV
   features/pricing.js      валюта, курсы ЦБ, ручные цены и скидки
   features/clients.js      контрагенты: ИНН, справочник, Checko, интеграции
-  features/images.js       подготовка фото, галерея позиции
+  features/images.js       изображения: единые слоты (файл, перетаскивание, буфер обмена, ссылка с сайта), логотип по производителю
   features/item-editor.js  карточка позиции (окно с вкладками)
   features/ai-autofill.js  автозаполнение через Claude
   features/templates.js    шаблоны КП (папка templates): выбор, загрузка настроек, скелета и base.docx

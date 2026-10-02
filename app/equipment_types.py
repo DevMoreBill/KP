@@ -4,11 +4,11 @@ import json
 import os
 import re
 
-from config import BUNDLE, read_text, store
+from config import APP_DIR, read_text, store
 
 
 def types_builtin_path():
-    return os.path.join(BUNDLE, 'app', 'equipment_types.json')
+    return os.path.join(APP_DIR, 'equipment_types.json')
 
 
 def load_types_builtin():

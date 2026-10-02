@@ -4,7 +4,9 @@
 import os
 
 NAME = os.environ.get('KP_EXE_NAME') or 'Конструктор КП'
-VERSION = (1, 0, 0, 0)
+import re as _re
+_v = _re.search(r"VERSION = '([\d.]+)'", open('app/version.py', encoding='utf-8').read()).group(1)
+VERSION = tuple(int(x) for x in (_v + '.0.0.0').split('.')[:4])
 
 version_info = None
 if os.name == 'nt':
@@ -27,7 +29,7 @@ if os.name == 'nt':
     )
 
 a = Analysis(
-    ['app/kp_server.py'],
+    ['app/launcher.py'],      # загрузчик: обновление (патч) из папки update рядом с EXE, затем kp_server
     pathex=['app'],
     binaries=[],
     datas=[
@@ -38,7 +40,9 @@ a = Analysis(
         ('seed/data/catalog', 'seed/data/catalog'),
         ('seed/data/img', 'seed/data/img'),
     ],
-    hiddenimports=['config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'workcal', 'desktop', 'pdf_convert', 'catalog_migrate', 'admin', 'images',
+    hiddenimports=['kp_server', 'version', 'imgfetch', 'importlib.abc', 'importlib.util', 'ipaddress', 'csv', 'zipfile', 'calendar', 'decimal',
+                   'statistics', 'uuid', 'base64', 'html', 'html.parser', 'http.client', 'email', 'shutil', 'tempfile', 'subprocess', 'ctypes',
+                   'config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'workcal', 'imgfetch', 'desktop', 'pdf_convert', 'catalog_migrate', 'admin', 'images',
                    'sqlite3', '_sqlite3', 'gzip'],
     # sqlite3 НЕ исключать: на нём работает база данных программы
     excludes=['tkinter', 'unittest', 'pydoc', 'lib2to3', 'multiprocessing'],
