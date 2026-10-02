@@ -15,6 +15,7 @@ css/
   pricing.css              раздел «Цены и валюта»
   client.css               раздел «Клиент»
   settings.css             окно «Настройки» (администратор), значок «На модерации», графики
+  deal.css                 окно «Экономика сделки»
   mobile.css               телефон (класс .mob на <html>) и планшет ≤1024: нижняя панель шагов, окна на весь экран, 44 px, 16 px в полях (подключается последним)
 vendor/
   jszip.min.js             упаковка DOCX (ZIP)
@@ -23,6 +24,7 @@ js/
   docx/kpgen.js            общие помощники: суммы, сумма прописью, даты, итоги; загрузка скелета шаблона
   core/util.js             помощники: $, esc, norm, money, toast, parsePrice, файлы
   core/api.js              запросы к серверу (api: подпись пользователя X-KP-User, X-CSRF-Token администратора), загрузка изображений, работа по сети
+  core/xlsx.js             файл Excel (.xlsx) с формулами без сторонних библиотек (JSZip)
   core/types.js            типы оборудования: справочник, attrsOf(), параметры, титул по типу
   core/state.js            состояние КП S, freshState(), черновик в браузере (persist), getP/setP
   features/catalog.js      каталог: хранилище, fillFromCat, syncCatalog
@@ -40,6 +42,8 @@ js/
   features/template-editor.js  окно «Настроить шаблон» (форма строится по editor.json шаблона)
   features/types-editor.js редактор типов оборудования
   features/journal.js      журнал КП
+  features/deal-calc.js    «Экономика сделки» — расчёт по методике (без интерфейса; проверяется в node)
+  features/deal.js         окно «Экономика сделки»: поставщики, график платежей, итог, выгрузка в Excel, доступ (dealAllowed)
   features/settings.js     окно «Настройки»: вход, статистика, модерация, удаление и корзина, журнал действий, резервные копии, шаблоны, ключи, пароль
   docx/build.js            имя файла, модели для титула, renderDocx() — сборка файла, download(), previewDocx()
   ui/form.js               field(), разделы STEPS, меню, renderForm()

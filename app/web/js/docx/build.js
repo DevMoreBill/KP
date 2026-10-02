@@ -127,12 +127,14 @@ async function download(){
     if (!S.template) throw new Error('не выбран шаблон КП (папка templates рядом с программой пуста)');
     let pack;
     try{ pack=await templatePack(S.template); }catch(e){ throw new Error('шаблон «'+S.template+'» не загрузился: '+e.message); }
-    if (!S.kpId){ const r=await api('/api/kp/new',{method:'POST'}); S.kpId=r.id; S.number=r.number; St.kpId=r.id; St.number=r.number; }
+    if (!S.kpId){ const r=await api('/api/kp/new',{method:'POST'}); S.kpId=r.id; S.number=r.number; St.kpId=r.id; St.number=r.number; S.authorId=meId()||S.managerId||''; }
+    else if (!S.authorId && dealAllowed()) S.authorId=meId()||S.managerId||'';   // КП прежней версии: автор — тот, кто его ведёт
     const blob = await renderDocx(St, pack, pack.settings);
     btn.textContent='Сохраняю в журнал…';
     await syncCatalog(S.number); await saveClient(true);
     for (const it of S.items){ it.photo=await uploadImg(it.photo, imgPlace(it,'photo')); it.logo=await uploadImg(it.logo, imgPlace(it,'logo')); if (it.gallery) for (const g of it.gallery){ const u=await uploadImg(g, imgPlace(it,'gallery',g)); if(u) g.src=u.src; } }
     if (!S.managerId && String(S.manager.name||'').trim()) await saveManager(true);   // новый менеджер попадает в справочник
+    if (!S.authorId) S.authorId=meId()||S.managerId||'';
     const t=totalsS(), fn=fileName();
     await api(`/api/kp/${S.kpId}/docx?name=${encodeURIComponent(fn)}&dir=${encodeURIComponent(managerFolder())}`,{method:'PUT',body:blob});
     if (!S.createdAt) S.createdAt=new Date().toISOString();   // когда КП создано (для журнала)
@@ -140,7 +142,7 @@ async function download(){
     await api(`/api/kp/${S.kpId}/state`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(clean)});
     const meta={ id:S.kpId, number:S.number, date:S.date, client:S.client, clientInn:S.clientInn||'', sum:t.sum, units:t.units, positions:S.items.length,
       items:S.items.map(x=>x.name).slice(0,3), file:fn, manager:S.manager.name, managerPost:S.manager.position||'',
-      createdAt:S.createdAt, savedAt:new Date().toISOString(), econ:kpEconomics() };
+      createdAt:S.createdAt, savedAt:new Date().toISOString(), econ:kpEconomics(), authorId:S.authorId||'', managerId:S.managerId||'', deal:dealSummary() };
     await api(`/api/kp/${S.kpId}/meta`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(meta)});
     // PDF рядом с .docx — по галочке «Также сохранить в PDF»
     let pdfOk=false, pdfErr='';

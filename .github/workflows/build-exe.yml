@@ -109,6 +109,17 @@ jobs:
           $stats = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/admin/stats' -WebSession $adm -Headers $ah
           if ($null -eq $stats.kp) { throw 'Статистика «Настроек» не отдаётся' }
           Write-Host 'Настройки: пароль, вход, CSRF, запрет удаления без входа — в порядке'
+          # «Экономика сделки»: расчёт чужого КП сервер не отдаёт и не даёт затереть
+          $kn = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/kp/new'
+          $st = '{"kpId":"' + $kn.id + '","authorId":"ci_a","managerId":"ci_a","items":[],"deal":{"v":1,"touched":true,"mnt":"100"}}'
+          Invoke-RestMethod -Method Put -Uri "http://127.0.0.1:17845/api/kp/$($kn.id)/state" -ContentType 'application/json' -Body $st -Headers @{ 'X-KP-User-Id' = 'ci_a' } | Out-Null
+          $mine = Invoke-RestMethod -Uri "http://127.0.0.1:17845/api/kp/$($kn.id)/state" -Headers @{ 'X-KP-User-Id' = 'ci_a' }
+          $other = Invoke-RestMethod -Uri "http://127.0.0.1:17845/api/kp/$($kn.id)/state" -Headers @{ 'X-KP-User-Id' = 'ci_b' }
+          if (-not $mine.deal -or $other.deal -or -not $other.locked) { throw 'Экономика сделки видна не только автору КП' }
+          Invoke-RestMethod -Method Put -Uri "http://127.0.0.1:17845/api/kp/$($kn.id)/state" -ContentType 'application/json' -Body ('{"kpId":"' + $kn.id + '","items":[]}') -Headers @{ 'X-KP-User-Id' = 'ci_b' } | Out-Null
+          $kept = Invoke-RestMethod -Uri "http://127.0.0.1:17845/api/kp/$($kn.id)/state" -Headers @{ 'X-KP-User-Id' = 'ci_a' }
+          if (-not $kept.deal -or $kept.authorId -ne 'ci_a') { throw 'Сохранение КП не автором затёрло экономику сделки' }
+          Write-Host 'Экономика сделки: доступ только автору — в порядке'
           $tj = Invoke-WebRequest -Uri 'http://127.0.0.1:17845/tpl/pnevmotekh/template.json' -UseBasicParsing
           Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:17845/api/templates/pnevmotekh/file?name=template.json' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($tj.Content)) -WebSession $adm -Headers $ah | Out-Null
           $hist = @(Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/templates/pnevmotekh/history')

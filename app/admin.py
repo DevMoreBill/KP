@@ -138,6 +138,75 @@ def actor(h, admin=None):
     return uid or None, name or ('Администратор' if admin else 'Не выбран'), 'admin' if admin else 'user'
 
 
+# ---------- «Экономика сделки»: только автору КП и администратору ----------
+# Автор — authorId в состоянии/описании КП (у КП прежних версий — менеджер КП). Пользователь — подпись запроса
+# (менеджер, выбранный на устройстве): это не вход по паролю, а защита от случайного просмотра; администратор видит всё.
+DEAL_KEYS_STATE = ('deal',)
+DEAL_KEYS_META = ('deal', 'econ')
+
+
+def deal_allowed(h, doc):
+    if session(h, touch=False) is not None:
+        return True
+    uid, name, _ = actor(h, admin=False)
+    author = (doc or {}).get('authorId') or (doc or {}).get('managerId')
+    if author:
+        return bool(uid) and uid == author
+    m = str((doc or {}).get('manager') or '').strip().lower()      # описание КП прежней версии — по имени автора
+    return not m or (name or '').strip().lower() == m
+
+
+def kp_out(h, field, text):
+    """Состояние или описание КП для ответа: экономику чужого КП убираем."""
+    if not text or field not in ('state', 'meta'):
+        return text
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        return text
+    if deal_allowed(h, doc):
+        return text
+    for k in (DEAL_KEYS_STATE if field == 'state' else DEAL_KEYS_META):
+        doc.pop(k, None)
+    doc['locked'] = True
+    return json.dumps(doc, ensure_ascii=False)
+
+
+def kp_in(h, store, kid, field, text):
+    """Сохранение КП не автором: расчёт экономики и автор остаются прежними (их не видно — значит, и не затереть)."""
+    if field not in ('state', 'meta'):
+        return text
+    old = store.kp_get(kid, field)
+    if not old:
+        return text
+    try:
+        o, n = json.loads(old), json.loads(text)
+    except ValueError:
+        return text
+    if deal_allowed(h, o) or not isinstance(n, dict):
+        return text
+    for k in (DEAL_KEYS_STATE if field == 'state' else ('deal',)) + ('authorId',):
+        if k in o:
+            n[k] = o[k]
+        else:
+            n.pop(k, None)
+    n.pop('locked', None)
+    return json.dumps(n, ensure_ascii=False)
+
+
+def history_out(h, text):
+    try:
+        rows = json.loads(text)
+    except ValueError:
+        return text
+    for r in rows:
+        if isinstance(r, dict) and not deal_allowed(h, r):
+            for k in DEAL_KEYS_META:
+                r.pop(k, None)
+            r['locked'] = True
+    return json.dumps(rows, ensure_ascii=False)
+
+
 def log(h, store, action, etype=None, eid=None, before=None, after=None, result='success', admin=None):
     uid, name, role = actor(h, admin)
     try:
