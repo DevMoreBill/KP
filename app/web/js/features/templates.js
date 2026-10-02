@@ -14,8 +14,8 @@ function curTemplate(){ return TEMPLATES.find(t=>t.id===S.template) || null; }
 function templatePicker(){
   const list=TEMPLATES.filter(t=>!t.error), bad=TEMPLATES.filter(t=>t.error);
   return `<div class="tplpick"><label class="f"><span>Шаблон КП${(curTemplate()||{}).description?tip(esc(curTemplate().description)):''}</span><select data-tpl="1">${list.map(t=>`<option value="${esc(t.id)}"${t.id===S.template?' selected':''}>${esc(t.name)}</option>`).join('')}</select></label>
-    <button class="btn" type="button" data-a="tplEdit" title="Цвета, шрифт, надписи, разделы, правила оформления — без программирования">Настроить шаблон</button></div>
-    ${bad.map(t=>`<p class="msg err">Шаблон «${esc(t.id)}»: ${esc(t.error)} <button class="btn ghost" type="button" data-a="tplEdit" data-id="${esc(t.id)}">Исправить</button></p>`).join('')}`;
+</div>
+    ${bad.map(t=>`<p class="msg err">Шаблон «${esc(t.id)}»: ${esc(t.error)} <button class="btn ghost" type="button" data-a="settings">Исправить в «Настройках»</button></p>`).join('')}`;
 }
 
 const relAttr=(x,n)=>{ const m=x.match(new RegExp('\\s'+n+'="([^"]*)"')); return m?m[1]:''; };

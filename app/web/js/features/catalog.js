@@ -1,13 +1,15 @@
 // Каталог: хранилище на сервере, окно подбора с фильтрами, подстановка позиции в КП, пополнение каталога.
 'use strict';
 
-const CatSrv = { persistent:true,
+const CatSrv = {
   async list(){ return await api('/api/catalog'); },
   async get(id){ return await api('/api/catalog/'+encodeURIComponent(id)); },
   async full(){ return await api('/api/catalog?full=1'); },
-  async put(doc){ doc={...doc, photo:await uploadImg(doc.photo, imgPlace(doc,'photo')), logo:await uploadImg(doc.logo, imgPlace(doc,'logo')), gallery: doc.gallery ? await Promise.all(doc.gallery.map(async g=>({...g, ...(await uploadImg(g, imgPlace(doc,'gallery',g)))}))) : doc.gallery};
-    await api('/api/catalog/'+doc.id,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(doc)}); return doc; },
-  async del(id){ await api('/api/catalog/'+id,{method:'DELETE'}); } };
+  // auto — сохранение КП обновляет цены и историю (без модерации); при включённой модерации ответ {pending:true}
+  async put(doc, auto){ doc={...doc, photo:await uploadImg(doc.photo, imgPlace(doc,'photo')), logo:await uploadImg(doc.logo, imgPlace(doc,'logo')), gallery: doc.gallery ? await Promise.all(doc.gallery.map(async g=>({...g, ...(await uploadImg(g, imgPlace(doc,'gallery',g)))}))) : doc.gallery};
+    const r=await api('/api/catalog/'+doc.id,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8',...(auto?{'X-KP-Edit':'auto'}:{})},body:JSON.stringify(doc)});
+    if (r && r.pending) doc._pending=true;
+    return doc; } };
 
 const store = () => CatSrv;
 
@@ -57,7 +59,7 @@ async function syncCatalog(number){
     base.prices = (base.prices||[]).filter(p => !number || p.number!==number);
     base.prices.unshift({ date:S.date, client:S.client, price:it.price, cur:kpCur(), cost:it.cost||0, costCur:it.costCur||'RUB', qty:+it.qty, number:number||'' });
     base.prices = base.prices.slice(0,50);
-    const saved = await store().put(base);
+    const saved = await store().put(base, true);
     it.catId = base.id;
     if (saved){ if (saved.photo) it.photo = saved.photo; if (saved.logo) it.logo = saved.logo; if (saved.gallery && it.gallery && saved.gallery.length===it.gallery.length) it.gallery=it.gallery.map((g,k)=>({...g, src:saved.gallery[k].src})); }
     for (const o of (it.options||[])){
@@ -68,7 +70,7 @@ async function syncCatalog(number){
       Object.assign(ob,{ name:o.name, price:o.price, spec:ob.spec||'', updatedAt:new Date().toISOString(), short:o.short||ob.short||'', unit:o.unit||'шт.' });
       if (!od && allPresets().some(p=>norm(p.name)===norm(o.name))) ob.kind='option';
       ob.prices=(ob.prices||[]).filter(p=>!number||p.number!==number); ob.prices.unshift({date:S.date,client:S.client,price:o.price,qty:+o.qty,number:number||''}); ob.prices=ob.prices.slice(0,50);
-      await store().put(ob); o.catId=ob.id; list.push(ob);
+      await store().put(ob, true); o.catId=ob.id; list.push(ob);
     }
   }
   await refreshCat();
@@ -81,7 +83,7 @@ async function saveCatalog(i){
   const id = it.catId || uid()+uid();
   const doc={ id, name:it.name, spec:it.spec, price:it.price, pageTitle:it.pageTitle, photoCaption:it.photoCaption,
     features:it.features, groups:it.groups, hint:it.hint||null, photo:it.photo||null, logo:it.logo||null, updatedAt:new Date().toISOString() };
-  try{ const sv=await store().put(doc); if(sv&&sv.photo) it.photo=sv.photo; if(sv&&sv.logo) it.logo=sv.logo; it.catId=id; await refreshCat(); toast(store().persistent?'Позиция сохранена в каталог':'Сохранено до закрытия страницы — выгрузите каталог в файл'); }
+  try{ const sv=await store().put(doc); if(sv&&sv.photo) it.photo=sv.photo; if(sv&&sv.logo) it.logo=sv.logo; it.catId=id; await refreshCat(); toast(sv._pending?'Отправлено на модерацию — изменения появятся после одобрения администратором':'Позиция сохранена в каталог'); }
   catch(e){ toast('Не удалось сохранить в каталог'); }
   renderForm(); persist();
 }

@@ -8,7 +8,7 @@ const FI = { q:'', cat:'', maker:'', series:'', f:{}, rng:{}, priced:false, sort
 const FO = { q:'', cat:'', maker:'', series:'', f:{}, rng:{}, priced:false, sort:'name' };
 
 // состояние окна: режим (позиции КП или опции позиции), отметки, открытая карточка, последний перенос (для отмены)
-const CW = { optFor:null, F:FI, sel:new Set(), active:null, limit:150, docs:[], view:[], lastCk:null, undo:null, note:'', busy:'', drag:null };
+const CW = { pend:new Set(), mod:false, optFor:null, F:FI, sel:new Set(), active:null, limit:150, docs:[], view:[], lastCk:null, undo:null, note:'', busy:'', drag:null };
 
 const cwA = x => x._a || (x._a = attrsOf(x));
 
@@ -97,7 +97,7 @@ function cwRow(x){ const id=x.id, n=x.pricesCount||(x.prices||[]).length, inn=cw
   return `<div class="cw-row${CW.sel.has(id)?' sel':''}${CW.active===id?' act':''}" data-id="${esc(id)}" draggable="${CW.optFor==null}">
     <label class="ck" title="Отметить (Shift — диапазон)"><input type="checkbox" data-ck ${CW.sel.has(id)?'checked':''} aria-label="Отметить"></label>
     ${x.photo?`<img src="${esc(x.photo.src)}" alt="" loading="lazy">`:'<i class="ph"></i>'}
-    <div class="cw-mn"><b>${esc(x.name)}</b>${cwTags(x)}</div>
+    <div class="cw-mn"><b>${esc(x.name)}</b>${CW.pend.has(id)?'<span class="modb">На модерации</span>':''}${cwTags(x)}</div>
     <div class="cw-pr">${cwPriceHtml(x)}${n?`<small>в КП ${n} ${plural(n,'раз','раза','раз')}</small>`:''}</div>
     <button class="btn sm${inn?' in':''}" type="button" data-add title="${inn?(CW.optFor!=null?'Уже добавлено':'Уже в КП — увеличить количество'):''}">${cwAddLabel(id)}</button></div>`; }
 
@@ -121,10 +121,10 @@ function cwFoot(){
   if (n){ f.className='cw-f bulk'; f.innerHTML=`<b>Отмечено: ${n}</b>
       <button class="btn primary" type="button" data-bulk="add">${CW.optFor!=null?'Добавить опциями':'Добавить в КП'}</button>
       ${CW.optFor==null?'<button class="btn" type="button" data-bulk="move">Перенести в категорию…</button>':''}
-      <button class="btn ghost danger" type="button" data-bulk="del">Удалить</button><span class="sp"></span>
+<span class="sp"></span>
       <button class="btn ghost" type="button" data-bulk="clear">Снять отметки</button>`; return; }
   const k = CW.optFor!=null ? (S.items[CW.optFor]?.options||[]).filter(o=>o.name).length : S.items.filter(x=>x.name).length;
-  f.className='cw-f'; f.innerHTML=`<span class="muted cw-note">${esc(CW.note||'Отметьте галочками несколько позиций — появятся пакетные действия. Позиции можно перетащить мышью на категорию слева.')}</span>
+  f.className='cw-f'; f.innerHTML=`<span class="muted cw-note">${esc(CW.note||'Отметьте галочками несколько позиций — появятся пакетные действия.'+(matchMedia('(pointer:coarse)').matches?'':' Позиции можно перетащить мышью на категорию слева.'))}</span>
     ${CW.undo?'<button class="btn ghost" type="button" data-cw="undo">Отменить перенос</button>':''}<span class="sp"></span>
     <span class="muted">${CW.optFor!=null?'Опций у позиции':'Позиций в КП'}: <b>${k}</b></span><button class="btn primary" type="button" data-cw="done">${CW.optFor!=null?'Готово':'Готово — к КП'}</button>`; }
 
@@ -157,7 +157,7 @@ function cwCard(x, loading){
     ${!loading&&!feats.length&&!groups.length?'<p class="muted pv-empty">Описания и характеристик пока нет — нажмите «Редактировать».</p>':''}
   </div>
   <div class="pv-acts"><div class="pv-main"><button class="btn primary" type="button" data-pv="add">${cwAddLabel(x.id,true)}</button><button class="btn" type="button" data-pv="edit">Редактировать</button></div>
-    <div class="pv-sub">${CW.optFor==null?'<button class="btn ghost" type="button" data-pv="dup" title="Создать копию позиции и открыть её на редактирование">Создать копию</button>':''}<button class="btn ghost danger" type="button" data-pv="del">Удалить из каталога</button><span class="sp"></span><button class="btn ghost pv-x" type="button" data-pv="close">Закрыть карточку</button></div></div>`;
+    <div class="pv-sub">${CW.optFor==null?'<button class="btn ghost" type="button" data-pv="dup" title="Создать копию позиции и открыть её на редактирование">Создать копию</button>':''}<span class="sp"></span><button class="btn ghost pv-x" type="button" data-pv="close">Закрыть карточку</button></div></div>`;
 }
 
 async function cwPreview(){
@@ -200,30 +200,26 @@ async function cwAdd(ids){
   cwNote([n?`Добавлено в КП: ${n} ${plural(n,'позиция','позиции','позиций')}`:'', m?`количество увеличено у ${m}`:''].filter(Boolean).join('; ')+'. Можно добавить ещё или нажать «Готово — к КП».'); cwPreview();
 }
 
-async function cwReload(){ await refreshCat(); CW.docs=catCache; renderForm(); }
+// режим модерации и товары, правки которых ждут решения администратора
+async function cwLoadPending(){ try{ const r=await api('/api/catalog/pending'); CW.mod=!!r.moderation; CW.pend=new Set(r.ids||[]); }catch(e){} }
+
+async function cwReload(){ await refreshCat(); await cwLoadPending(); CW.docs=catCache; renderForm(); }
 
 async function cwMove(ids, cat){
   const t=typeById(cat), todo=ids.filter(id=>{ const x=CW.docs.find(z=>z.id===id); return x && cwA(x).cat!==cat; });
   if (!todo.length) return cwNote(`Позиции уже в категории «${t.name}»`);
-  const undo=[]; let k=0, fail=0;
+  const undo=[]; let k=0, fail=0, pend=0;
   for (const id of todo){ cwBusy(`Переношу в «${t.name}»: ${++k} из ${todo.length}`);
     try{ const full=await store().get(id); if(!full||!full.id) throw 0; const prev=(full.attrs||{}).cat;
-      full.attrs={...(full.attrs||{}), cat}; await store().put(full); undo.push({id, prev}); }catch(e){ fail++; } }
+      full.attrs={...(full.attrs||{}), cat}; if ((await store().put(full))._pending) pend++; else undo.push({id, prev}); }catch(e){ fail++; } }
   CW.undo = undo.length ? {list:undo, name:t.name} : null; CW.sel.clear(); CW.busy='';
-  await cwReload(); CW.note=`Перенесено в «${t.name}»: ${undo.length} ${plural(undo.length,'позиция','позиции','позиций')}`+(fail?`, не удалось: ${fail}`:''); cwRedraw();
+  await cwReload(); CW.note=`Перенесено в «${t.name}»: ${undo.length} ${plural(undo.length,'позиция','позиции','позиций')}`+(pend?`, отправлено на модерацию: ${pend}`:'')+(fail?`, не удалось: ${fail}`:''); cwRedraw();
 }
 
 async function cwUndo(){ const u=CW.undo; if(!u) return; CW.undo=null; let k=0;
   for (const {id,prev} of u.list){ cwBusy(`Возвращаю: ${++k} из ${u.list.length}`);
     try{ const full=await store().get(id); const a={...(full.attrs||{})}; if (prev) a.cat=prev; else delete a.cat; full.attrs=a; await store().put(full); }catch(e){} }
   CW.busy=''; await cwReload(); CW.note='Перенос отменён'; cwRedraw(); }
-
-async function cwDelete(ids){
-  const one=ids.length===1 && CW.docs.find(z=>z.id===ids[0]);
-  if (!confirm(one ? `Удалить из каталога «${one.name}»?\nВ уже сохранённых КП ничего не изменится.` : `Удалить из каталога ${ids.length} ${plural(ids.length,'позицию','позиции','позиций')}?\nВ уже сохранённых КП ничего не изменится.`)) return;
-  let k=0, fail=0;
-  for (const id of ids){ if (ids.length>3) cwBusy(`Удаляю: ${++k} из ${ids.length}`); try{ await store().del(id); }catch(e){ fail++; } CW.sel.delete(id); if (CW.active===id) CW.active=null; }
-  CW.busy=''; await cwReload(); CW.note=`Удалено: ${ids.length-fail}`+(fail?`, не удалось: ${fail}`:''); cwRedraw(); }
 
 function cwTypeButtons(attr){
   const groups=[...new Set(TYPES.map(t=>t.group||'Прочее'))];
@@ -303,16 +299,13 @@ async function cwImportFile(f){
         await api('/api/types',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({version:1,types:[...userTypesList(), ...add]})});
         await loadTypes(); catCache.forEach(cwForget); nt=add.length; }
     }
-    const ex=new Map((await store().list()).map(z=>[z.id,z])); let n=0;
+    const ex=new Map((await store().list()).map(z=>[z.id,z])); let n=0, pend=0;
     for (const x of items){ if(!(x&&x.id&&x.name)) continue; const o=ex.get(x.id); cwBusy(`Загружаю каталог: ${++n} из ${items.length}`);
       if (o){ if(!x.price && o.price) x.price=o.price; if((!x.prices||!x.prices.length) && o.prices&&o.prices.length) x.prices=o.prices; if(!x.options&&o.options) x.options=o.options; }
-      await store().put(x); }
-    // удаление дубликатов, перечисленных в файле каталога (цены и история переносятся в оставшуюся позицию)
-    let rmN=0; const rmList=Array.isArray(j.remove)?j.remove:[]; const byId=new Map(items.map(z=>[z.id,z]));
-    for (const id of rmList){ const o=ex.get(id); if(!o) continue; const keepId=(j.merge&&j.merge[id])||null; const k=keepId&&byId.get(keepId);
-      if (k && o.prices && o.prices.length){ k.prices=[...(o.prices||[]),...(k.prices||[])].slice(0,50); if(!k.price&&o.price) k.price=o.price; await store().put(k); }
-      await store().del(id); rmN++; }
-    CW.busy=''; await cwReload(); CW.note=`Загружено позиций: ${n}`+(nt?`, новых категорий: ${nt}`:'')+(rmN?`, удалено дубликатов: ${rmN}`:''); cwRedraw(); }
+      if ((await store().put(x))._pending) pend++; }
+    // удалять позиции (в том числе дубликаты из списка remove) может только администратор — в «Настройках»
+    const rm=Array.isArray(j.remove)?j.remove.length:0;
+    CW.busy=''; await cwReload(); CW.note=`Загружено позиций: ${n}`+(nt?`, новых категорий: ${nt}`:'')+(pend?`, на модерации: ${pend}`:'')+(rm?`; дубликаты к удалению (${rm}) удаляет администратор в «Настройках»`:''); cwRedraw(); }
   catch(e){ CW.busy=''; cwNote('Это не файл каталога КП'); }
 }
 
@@ -346,6 +339,7 @@ async function openCatalog(mode={}){
   cwBind(d); cwLayout(d);
   $('#cwSort').value=F.sort;
   CW.docs = catCache.length ? catCache : await store().list().catch(()=>[]);
+  await cwLoadPending();
   cwRedraw();
   setTimeout(()=>{ if (matchMedia('(pointer:fine)').matches) $('#cwQ')?.focus(); },30);
 }
@@ -378,10 +372,10 @@ function cwBind(d){
     const rc=t.closest('[data-rc]'); if (rc){ const k=rc.dataset.rc, r=F.rng[k]||{min:'',max:''}; const same=String(r.min)===rc.dataset.lo&&String(r.max)===rc.dataset.hi;
       F.rng[k]= same?{min:'',max:''}:{min:rc.dataset.lo,max:rc.dataset.hi}; cwNav(); cwList(); return; }
     const bk=t.closest('[data-bulk]'); if (bk){ const ids=[...CW.sel];
-      if (bk.dataset.bulk==='add') return cwAdd(ids); if (bk.dataset.bulk==='move') return cwMoveDlg(ids); if (bk.dataset.bulk==='del') return cwDelete(ids);
+      if (bk.dataset.bulk==='add') return cwAdd(ids); if (bk.dataset.bulk==='move') return cwMoveDlg(ids);
       if (bk.dataset.bulk==='clear'){ CW.sel.clear(); cwList(); cwFoot(); } return; }
     const pv=t.closest('[data-pv]'); if (pv && CW.active){ const a=pv.dataset.pv, id=CW.active;
-      if (a==='add') return cwAdd([id]); if (a==='edit') return cwEdit(id); if (a==='dup') return cwDup(id); if (a==='del') return cwDelete([id]);
+      if (a==='add') return cwAdd([id]); if (a==='edit') return cwEdit(id); if (a==='dup') return cwDup(id);
       if (a==='close'){ CW.active=null; cwActivate(null); } return; }
     const zi=t.closest('.pv-photo>img:first-child, .pv-gal img'); if (zi){ cwZoom(zi.src, zi.title||''); return; }
     if (t.closest('.cw-lb')){ t.closest('.cw-lb').remove(); return; }

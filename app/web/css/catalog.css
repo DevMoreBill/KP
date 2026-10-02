@@ -25,7 +25,7 @@
 @media (max-width:1000px){
   .attrs{grid-template-columns:1fr 1fr}
   .opt{grid-template-columns:1fr 64px 1fr 32px}.opt .s{display:none}
-  .wrap{grid-template-columns:1fr;padding:16px}
+  .wrap{grid-template-columns:minmax(0,1fr);padding:16px}
   aside{position:static}
   .item-no{display:none}
   .brand small{display:none}

@@ -14,13 +14,15 @@ css/
   items.css                раздел «Оборудование», карточка позиции, галерея
   pricing.css              раздел «Цены и валюта»
   client.css               раздел «Клиент»
+  settings.css             окно «Настройки» (администратор), значок «На модерации», графики
+  mobile.css               телефоны и планшеты: ≤480 · 481–768 · 769–1024, safe-area, 44 px, 16 px в полях (подключается последним)
 vendor/
   jszip.min.js             упаковка DOCX (ZIP)
   onest-font.css           шрифт Onest (встроен, интернет не нужен)
 js/
   docx/kpgen.js            общие помощники: суммы, сумма прописью, даты, итоги; загрузка скелета шаблона
   core/util.js             помощники: $, esc, norm, money, toast, parsePrice, файлы
-  core/api.js              запросы к серверу (api), загрузка изображений, работа по сети
+  core/api.js              запросы к серверу (api: подпись пользователя X-KP-User, X-CSRF-Token администратора), загрузка изображений, работа по сети
   core/types.js            типы оборудования: справочник, attrsOf(), параметры, титул по типу
   core/state.js            состояние КП S, freshState(), черновик в браузере (persist), getP/setP
   features/catalog.js      каталог: хранилище, fillFromCat, syncCatalog
@@ -38,11 +40,13 @@ js/
   features/template-editor.js  окно «Настроить шаблон» (форма строится по editor.json шаблона)
   features/types-editor.js редактор типов оборудования
   features/journal.js      журнал КП
+  features/settings.js     окно «Настройки»: вход, статистика, модерация, удаление и корзина, журнал действий, резервные копии, шаблоны, ключи, пароль
   docx/build.js            имя файла, модели для титула, renderDocx() — сборка файла, download(), previewDocx()
   ui/form.js               field(), разделы STEPS, меню, renderForm()
   ui/steps/*.js            разделы 1–6: client, equipment, pricing, cover, conditions, manager
   ui/sidebar.js            итог, проверка заполнения (problems), кнопка «Сохранить КП»
   ui/events.js             общие обработчики: ввод в поля (data-p), кнопки (data-a), перетаскивание файлов
+  ui/mobile.js             экранная клавиатура (visualViewport → --vvh), прокрутка к полю ввода
   main.js                  запуск: проверка сервера, загрузка типов, контрагентов, шаблонов, каталога
 ```
 
@@ -58,6 +62,10 @@ js/
 - **Кнопки** — атрибут `data-a="действие"` (+ `data-i`, `data-j`, `data-k`), обработка — в `switch` в `ui/events.js`.
 - **Разделы формы** — массив `STEPS` в `ui/form.js`; каждый раздел — функция `stepXxx()` в `ui/steps/`, возвращающая HTML.
 - **Сервер** — только через `api(путь, опции)` (`core/api.js`); список адресов — в корневом README.
+- **Удаление** — только в «Настройках» (`features/settings.js`, сервер `app/admin.py`). Кнопок удаления в остальных
+  окнах нет; сервер отклоняет DELETE без входа администратора. Сохранение товара — `CatSrv.put()`: при включённой
+  модерации ответ `{pending:true}`.
+- **Телефоны** — правила в `css/mobile.css`; новые окна (`dialog`) на ≤768 px автоматически открываются на весь экран.
 
 ## Частые задачи
 

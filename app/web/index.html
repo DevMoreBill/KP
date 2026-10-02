@@ -16,6 +16,8 @@
 <link rel="stylesheet" href="/web/css/client.css">
 <link rel="stylesheet" href="/web/css/template-editor.css">
 <link rel="stylesheet" href="/web/css/preview.css">
+<link rel="stylesheet" href="/web/css/settings.css">
+<link rel="stylesheet" href="/web/css/mobile.css">
 </head>
 <body>
 <header class="top">
@@ -28,9 +30,8 @@
   <details class="topmenu"><summary class="btn icon-btn" aria-label="Ещё" title="Ещё">⋯</summary><div class="menu-l">
     <button type="button" data-a="docsFolder">Папка готовых КП</button>
     <button type="button" data-a="typesEdit">Типы оборудования</button>
-    <button type="button" data-a="tplFolder">Папка шаблонов КП</button>
     <button type="button" data-a="clientsImport">Загрузить клиентов списком ИНН</button>
-    <button type="button" data-a="integrations">Ключи API (Checko, DaData, PDF)</button>
+    <hr><button type="button" data-a="settings">⚙  Настройки (администратор)</button>
     <hr><button type="button" id="btnTheme">Тёмная тема</button>
     <button type="button" id="btnExit" hidden>Выход из программы</button></div></details>
 </header>
@@ -70,6 +71,7 @@
 <script src="/web/js/features/template-editor.js"></script>
 <script src="/web/js/features/types-editor.js"></script>
 <script src="/web/js/features/journal.js"></script>
+<script src="/web/js/features/settings.js"></script>
 <script src="/web/js/docx/build.js"></script>
 <script src="/web/js/features/preview.js"></script>
 <script src="/web/js/ui/form.js"></script>
@@ -81,6 +83,7 @@
 <script src="/web/js/ui/steps/manager.js"></script>
 <script src="/web/js/ui/sidebar.js"></script>
 <script src="/web/js/ui/events.js"></script>
+<script src="/web/js/ui/mobile.js"></script>
 <script src="/web/js/main.js"></script>
 </body>
 </html>

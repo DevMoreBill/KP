@@ -37,6 +37,9 @@ function openCatEditor(doc, onSave, isNew){
   openEditor(0,'main');
 }
 
+// при включённой модерации правка уходит администратору, а не сразу в каталог
+const catSaveLabel = () => CW.mod && !ADMIN.on ? 'Отправить на модерацию' : 'Сохранить в каталог';   // правки администратора — сразу
+
 function catEdDirty(){ return !!CATED && (CATED.isNew || JSON.stringify(itemToDoc(S.items[0],CATED.base))!==CATED.snap); }
 
 async function closeCatEditor(save){
@@ -46,7 +49,8 @@ async function closeCatEditor(save){
     if (!String(it.name||'').trim()){ EDIT.tab='main'; renderEditor(); setTimeout(()=>$('#edlg [data-p="items.0.name"]')?.focus(),30); return toast('Укажите наименование позиции'); }
     doc=itemToDoc(it,CATED.base); doc.updatedAt=new Date().toISOString();
     const btn=$('#edlg [data-catsave]'); if (btn){ btn.disabled=true; btn.textContent='Сохраняю…'; }
-    try{ doc=await store().put(doc); }catch(e){ if (btn){ btn.disabled=false; btn.textContent='Сохранить в каталог'; } return toast('Не удалось сохранить в каталог: '+(e.message||e)); }
+    try{ doc=await store().put(doc); }catch(e){ if (btn){ btn.disabled=false; btn.textContent=catSaveLabel(); } return toast('Не удалось сохранить в каталог: '+(e.message||e)); }
+    if (doc._pending) toast('Отправлено на модерацию — изменения появятся в каталоге после одобрения администратором');
   } else if (catEdDirty() && !confirm('Закрыть без сохранения? Изменения позиции каталога будут потеряны.')) return;
   const cb=CATED.onSave; S.items=CATED.items; CATED=null; EDIT=null;
   const d=$('#edlg'); if (d.open) d.close();

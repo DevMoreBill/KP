@@ -39,7 +39,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .g4{grid-template-columns:repeat(4,1fr)}
 label.f,div.f{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted);font-weight:500}
 label.f>span.req::after{content:" *";color:var(--danger)}
-input[type=text],input[type=date],input[type=number],input[type=email],textarea,select{
+input[type=text],input[type=search],input[type=password],input[type=date],input[type=number],input[type=email],textarea,select{
   width:100%;border:1px solid var(--line);background:var(--field);border-radius:10px;padding:10px 12px;font-size:15px;color:var(--ink);outline:none;transition:border-color .15s, box-shadow .15s}
 textarea{resize:vertical;min-height:72px;line-height:1.45}
 input:focus,textarea:focus,select:focus{border-color:var(--sky);box-shadow:0 0 0 3px color-mix(in srgb,var(--sky) 25%,transparent)}
