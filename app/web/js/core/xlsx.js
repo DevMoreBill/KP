@@ -1,7 +1,7 @@
 // Файл Excel (.xlsx) без сторонних библиотек: JSZip (уже есть в программе) + разметка SpreadsheetML.
 // Ячейка: строка, число или { v, f, s } — значение, формула Excel (без «=»), стиль из XLSX_STYLES. Формулы пересчитываются при открытии.
 // Лист: { name, cols:[ширины], rows:[[ячейки]], merges:['A1:F1'], heights:{номерСтроки:высота}, freeze:строк, grid:false,
-//         landscape:true, titles:'4:4' (строки, повторяемые при печати) }.
+//         landscape:true, titles:'4:4' (строки, повторяемые при печати), onePage:true — печать на одном листе }.
 'use strict';
 
 const XLSX_BLUE='FF0B45A0', XLSX_LINE='FFC9D1E0', XLSX_INK2='FF66718C';
@@ -75,7 +75,7 @@ function xlsxSheet(sh, idx){
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"${sh.grid===false?' showGridLines="0"':''}${sh.first?' tabSelected="1"':''}>${fr}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>${cols?`<cols>${cols}</cols>`:''}<sheetData>${rows}</sheetData>${mg}
-<printOptions horizontalCentered="1"/><pageMargins left="0.5" right="0.4" top="0.5" bottom="0.6" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="${sh.landscape?'landscape':'portrait'}" fitToWidth="1" fitToHeight="0"/>
+<printOptions horizontalCentered="1"/>${sh.onePage?'<pageMargins left="0.35" right="0.35" top="0.35" bottom="0.45" header="0.2" footer="0.2"/>':'<pageMargins left="0.5" right="0.4" top="0.5" bottom="0.6" header="0.3" footer="0.3"/>'}<pageSetup paperSize="9" orientation="${sh.landscape?'landscape':'portrait'}" fitToWidth="1" fitToHeight="${sh.onePage?1:0}"/>
 <headerFooter><oddFooter>&amp;L&amp;8${xlsxEsc(sh.footer||'')}&amp;R&amp;8Лист &amp;P из &amp;N</oddFooter></headerFooter></worksheet>`;
 }
 

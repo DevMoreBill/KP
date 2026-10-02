@@ -432,7 +432,7 @@ class Handler(BaseHTTPRequestHandler):
             if m == 'PUT':
                 d = json.loads(self.body().decode('utf-8') or '{}')
                 try:
-                    store().customs_put(d.get('key'), d.get('code'), d.get('duty'), d.get('note'), admin.actor(self)[1])
+                    store().customs_put(d.get('key'), d.get('code'), d.get('duty'), d.get('note'), admin.actor(self)[1], d.get('name'))
                 except ValueError as e:
                     return self.send(400, 'text/plain; charset=utf-8', str(e))
                 return self.send_json({'ok': True})

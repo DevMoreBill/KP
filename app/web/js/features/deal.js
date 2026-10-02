@@ -225,7 +225,10 @@ function dlComboPick(path, v){ const d=dlDeal(); dlSet(d, path, v); dlSupChanged
 
 const dlFilled = (...v) => v.some(x=>x!=null && String(x).trim()!=='' && String(x).trim()!=='0');
 
-function dlStep(n, title, sub, body, cls=''){ return `<section class="dl-step ${cls}"><div class="dl-sh"><span class="dl-n">${n}</span><div><h4>${title}</h4>${sub?`<p>${sub}</p>`:''}</div></div>${body}</section>`; }
+// шаг — карточка; tot: [подпись, сумма, пояснение] — итог шага в правом нижнем углу
+function dlStep(n, title, sub, body, cls='', tot=null){ return `<section class="dl-step ${cls}"><div class="dl-sh"><span class="dl-n">${n}</span><div><h4>${title}</h4>${sub?`<p>${sub}</p>`:''}</div></div>${body}${tot?dlTot(...tot):''}</section>`; }
+
+const dlTot=(lab, v, note)=>`<div class="dl-stot"><span>${note?`<small>${note}</small>`:''}</span><div><small>${esc(lab)}</small><b>${dlRub0(v)}</b></div></div>`;
 
 // ---------- шаг 1: закупка
 function dlPurchase(c){
@@ -268,7 +271,7 @@ function dlPurchase(c){
       <div class="dl-supf"><span>Закупка у поставщика</span><b>${dlRub(cs.equip)}</b></div>
     </div>`; }).join('');
   return dlStep(1, 'Закупка', 'Что и у кого покупаем. Цена — как в счёте поставщика, в его валюте.',
-    `${cards}${ex?'':`<button type="button" class="btn dl-add" data-dlx="addsup">+ Ещё поставщик</button>`}`);
+    `${cards}${ex?'':`<button type="button" class="btn dl-add" data-dlx="addsup">+ Ещё поставщик</button>`}`, '', ['Итого закупка и доставка', c.sup.reduce((a,x)=>a+x.cash-x.T,0), 'оборудование, перевозка, страхование, комиссии, брокер — без таможни']);
 }
 
 // ---------- шаг 2: таможня
@@ -282,15 +285,16 @@ function dlCustoms(c){
         return `<tr><td class="c-nm"><b>${esc(x.name)}</b><small>${esc(typeById(attrsOf(x).cat).name)}</small></td>
           <td><input type="text" class="hs" data-hs-i="${esc(x.id)}" data-f="code" value="${esc(h.code)}" placeholder="0000 00" aria-label="Код ТН ВЭД"></td>
           <td><span class="dl-in"><input type="text" inputmode="decimal" class="hs-d" data-hs-i="${esc(x.id)}" data-f="duty" value="${esc(h.duty)}" placeholder="?" aria-label="Ставка пошлины, %"><i>%</i></span></td>
-          <td>${h.src?`<span class="dl-badge ${h.src==='справочно'?'warn':'kp'}" title="${esc(h.src==='справочно'?(dealHsAuto(attrsOf(x).cat,attrsOf(x))||{}).note||'':'')}">${esc(h.src)}</span>`:'<span class="dl-badge warn">укажите</span>'}</td>
+          <td class="c-src">${h.src?`<span class="dl-badge ${h.src==='справочно'?'warn':'kp'}" title="${esc(h.src==='справочно'?(dealHsAuto(attrsOf(x).cat,attrsOf(x))||{}).note||'':'')}">${esc(h.src)}</span>`:'<span class="dl-badge warn">укажите</span>'}
+            <select class="dl-hspick" data-hspick="${esc(x.id)}" aria-label="Взять код и ставку из справочника"><option value="">из справочника…</option>${dlHsCats().map(o=>`<option value="${esc(o.key)}">${esc(o.name)} · ${esc(o.code||'—')} · ${esc(o.duty||'0')} %</option>`).join('')}</select></td>
           <td class="num">${ln?dlRub0(ln.cv):'—'}</td><td class="num">${ln?dlRub0(ln.dutyA):'—'}</td></tr>`; }).join('');
       body=`${rows?`<table class="dl-it dl-hs"><thead><tr><th>Позиция</th><th>Код ТН ВЭД</th><th>Пошлина</th><th></th><th class="num">Тамож. стоимость</th><th class="num">Пошлина, ₽</th></tr></thead><tbody>${rows}</tbody></table>`:''}
         <div class="dl-g g3">${dlField('НДС на ввоз', P+'.ivat', {calc:c, select:[['22','22 %'],['10','10 %'],['0','0 %']]})}
           ${dlField('Таможенный сбор', P+'.fee', {calc:c, unit:'₽', auto:cs.fee, autoLabel:'по шкале', autoTitle:'Сбор за таможенные операции по таможенной стоимости: '+CUSTOMS_FEES.title, q:'Фиксированная сумма по таможенной стоимости партии ('+CUSTOMS_FEES.title+').'})}</div>
-        <p class="dl-break">Таможенная стоимость ${dlRub0(cs.cv)} + пошлина ${dlRub0(cs.dutyA)} → ввозной НДС ${dlRub0(cs.ivatA)} <span class="muted">(вернётся вычетом)</span>; сбор ${dlRub0(cs.fee)}. <b>Платим на таможне: ${dlRub0(cs.T)}</b></p>`;
+        ${dlCusSum(cs)}`;
     } else if (cs.mode==='eaeu'){
       body=`<div class="dl-g g3">${dlField('НДС при ввозе', P+'.ivat', {calc:c, select:[['22','22 %'],['10','10 %'],['0','0 %']]})}</div>
-        <p class="dl-break">Из стран ЕАЭС пошлины и сбора нет. НДС при ввозе ${dlRub0(cs.ivatA)} платится в налоговую и <b>возвращается вычетом</b>.</p>`;
+        ${dlCusSum(cs, true)}`;
     } else if (cs.mode==='sum'){
       body=`<div class="dl-g">${dlField('Таможенные платежи целиком', P+'.cus.v', {calc:c, cur:P+'.cus.cur', q:'Пошлина, сбор и ввозной НДС одной суммой — например, по расчёту брокера.'})}
         ${dlField('Из них ввозной НДС к вычету', P+'.vi', {calc:c, unit:'₽', ph:cs.T?'Сумма по декларации':'0', unknown:cs.T>0, hint:cs.T?'Пусто — сумма неизвестна (не ноль). Нет права на вычет — 0.':''})}</div>`;
@@ -299,7 +303,18 @@ function dlCustoms(c){
   if (!blocks.trim()) return '';
   return dlStep(2, 'Таможня и ввозные налоги', 'Пошлина — по коду ТН ВЭД каждой позиции; ввозной НДС возвращается вычетом.',
     `${blocks}<p class="dl-foot-n">Коды и ставки — справочные по ЕТТ ЕАЭС; точный код (10 знаков) подтверждает таможенный брокер.
-      Исправленный код и ставка запоминаются для модели. ${ex?'':'<button type="button" class="lnk" data-dlx="hsdir">Справочник кодов по категориям</button> · '}<a href="https://www.alta.ru/tnved/" target="_blank" rel="noopener">Проверить ставку на alta.ru ↗</a></p>`);
+      Исправленный код и ставка запоминаются для модели. ${ex?'':'<button type="button" class="lnk" data-dlx="hsdir">Справочник кодов по категориям</button> · '}<a href="https://www.alta.ru/tnved/" target="_blank" rel="noopener">Проверить ставку на alta.ru ↗</a></p>`, '', ['Итого платим на таможне', c.Tsum, `из них в себестоимость ${dlRub0(c.sup.reduce((a,x)=>a+x.T-(x.vi||0),0))}, остальное — ввозной НДС к вычету`]);
+}
+
+// расчёт таможенных платежей наглядно: из чего складывается сумма к оплате на таможне и что вернётся вычетом
+function dlCusSum(cs, eaeu){
+  const it=(lab, v, note, cls='')=>`<div class="dl-cx ${cls}"><small>${lab}</small><b>${dlRub0(v)}</b>${note?`<em>${note}</em>`:''}</div>`;
+  return `<div class="dl-cus2">
+    <div class="dl-cbase">${it(eaeu?'Стоимость оборудования':'Таможенная стоимость', cs.cv, eaeu?'база для НДС':'оборудование + перевозка до границы + страхование')}</div>
+    <div class="dl-cpay">${eaeu?'':it(`Пошлина`, cs.dutyA, 'по ставкам позиций → в себестоимость')}${eaeu?'':it('Таможенный сбор', cs.fee, 'по шкале ПП РФ № 1637 → в себестоимость')}
+      ${it(`НДС при ввозе ${dlIn(cs.ivP)} %`, cs.ivatA, eaeu?'платится в налоговую → вернётся вычетом':`(стоимость + пошлина) × ${dlIn(cs.ivP)} % → вернётся вычетом`, 'vat')}</div>
+    <div class="dl-ctot"><small>${eaeu?'Платим НДС при ввозе':'Платим на таможне'}</small><b>${dlRub0(cs.T)}</b><em>из них в себестоимость: <b>${dlRub0(cs.T-cs.ivatA)}</b></em></div></div>
+    ${eaeu?'<p class="dl-foot-n">Из стран ЕАЭС пошлины и таможенного сбора нет (Договор о ЕАЭС).</p>':''}`;
 }
 
 // ---------- шаги 3–5
@@ -424,36 +439,61 @@ function dealRender(){
       ${dlField('Монтаж и ПНР', 'mnt', {calc:c, unit:'₽', hint:'Платёж — при поставке'})}${dlField('Срок ПНР', 'pnr', {calc:c, unit:'дней', int:true, hint:'Для оплаты «после ПНР»'})}${dlField('Прочие расходы', 'oth', {calc:c, unit:'₽', hint:'Платёж — при поставке'})}</div>
       <details class="dl-more"${otherOpen?' open':''}><summary>Ещё <span class="muted">— резерв на гарантию, бонусы с продажи, прочий НДС к вычету</span></summary><div class="dl-g g3">
         ${dlField('Резерв на гарантию', 'warr', {calc:c, unit:'% выручки', ph:'1', q:'Деньги на гарантийные случаи — процент от выручки без НДС.'})}${dlField('Бонусы и комиссии', 'bonus', {calc:c, unit:'% выручки', q:'Агентам, партнёрам, менеджерам — платятся после оплаты заказчика.'})}
-        ${dlField('Прочий НДС к вычету', 'vo', {calc:c, unit:'₽', q:'НДС в монтаже и прочих расходах, если подрядчики с НДС.'})}</div></details>`)}
-    ${dlStep(3+nS, 'Оплата заказчика', 'Когда и сколько платит заказчик. Аванс уменьшает финансирование.', dlCustomer(c))}
-    ${dlStep(4+nS, 'Цена КП и валюта', DL.ex?'Значения примера.':'Здесь меняются цены КП, валюта и курс — так же, как в разделе «Цены и валюта».', dlKpPrice(c))}
+        ${dlField('Прочий НДС к вычету', 'vo', {calc:c, unit:'₽', q:'НДС в монтаже и прочих расходах, если подрядчики с НДС.'})}</div></details>`, '', ['Итого монтаж и прочие расходы', c.M+c.E+c.W+c.Bn, c.W+c.Bn?`в т. ч. гарантия и бонусы ${dlRub0(c.W+c.Bn)}`:'']) }
+    ${dlStep(3+nS, 'Оплата заказчика', 'Когда и сколько платит заказчик. Аванс уменьшает финансирование.', dlCustomer(c), '', ['Итого заплатит заказчик', c.rows.filter(r=>r.inflow).reduce((a,r)=>a+r.amount,0), `${c.trs.filter(t=>t.p>0).length} ${plural(c.trs.filter(t=>t.p>0).length,'платёж','платежа','платежей')}, последний — день ${c.Tend}`])}
+    ${dlStep(4+nS, 'Цена КП и валюта', DL.ex?'Значения примера.':'Здесь меняются цены КП, валюта и курс — так же, как в разделе «Цены и валюта».', dlKpPrice(c), '', ['Цена КП с НДС', c.S, `выручка без НДС ${dlRub0(c.R)}, НДС ${dlIn(c.v)} % — ${dlRub0(c.VATs)}`])}
     ${dlStep(5+nS, 'Деньги и налог', 'Во что обходятся вложенные в сделку деньги и сколько уйдёт налога на прибыль.', `<div class="dl-g g2">
       ${dlField('Стоимость денег', 'money', {calc:c, unit:'% в месяц', auto:kp.moneyAuto, autoLabel:keyT, autoTitle:DL.key?`Ключевая ставка ЦБ РФ ${dlIn(DL.key.rate)} % с ${DL.key.date} + ${DL_KEY_SPREAD} п.п. годовых, делённое на 12`:(DL.keyErr?'Ключевая ставка ЦБ недоступна: '+DL.keyErr:''),
         hint:DL.key?`Ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD} п.п. = ${dlIn(DL.key.rate+DL_KEY_SPREAD)} % годовых → ${dlIn((DL.key.rate+DL_KEY_SPREAD)/12)} % в месяц`:'Процент в месяц на деньги, вложенные до оплаты заказчика',
         q:'Сколько стоят деньги, вложенные в сделку до оплаты заказчика: кредит или упущенный доход. По умолчанию — ключевая ставка ЦБ + 3 п.п. в год.'})}
-      ${dlField('Налог на прибыль', 'tax', {calc:c, unit:'%', hint:'С 2025 года — 25 %'})}</div>`)}
+      ${dlField('Налог на прибыль', 'tax', {calc:c, unit:'%', hint:'С 2025 года — 25 % (ст. 284 НК РФ)', q:'Считается с прибыли после всех расходов, включая финансирование. Проценты по кредиту уменьшают налог; если «стоимость денег» — упущенный доход на свои деньги, налоговая её не учитывает, и налог будет немного больше.'})}</div>`, '', ['Итого финансирование и налог', c.F+(c.base||c.lo).tax, `финансирование ${dlRub0(c.F)} + налог на прибыль ${dlRub0((c.base||c.lo).tax)}`])}
     ${dlSchedule(c, 6+nS)}
     <div class="dl-foot">${DL.ex?'':'<button class="btn ghost" type="button" data-dlx="example">Учебный пример из методики</button>'}<span class="muted">Пересчёт — сразу при вводе. Закупка сохраняется в КП и каталоге.</span></div>
   </div><aside class="dl-side">${dlResult(c)}</aside></div>`);
 }
 
 // ---------- справочник кодов ТН ВЭД по категориям
+// категории справочника ТН ВЭД: встроенные виды оборудования (значение из базы или справочное) и свои (cat:x_…)
+function dlHsCats(){
+  const cus=DL.cus||{}, out=TYPES.map(t=>{ const o=cus['cat:'+t.id]||{}, def=DEAL_HS[t.id]||{};
+    const v=f=>o[f]!=null&&String(o[f])!==''?String(o[f]):(def[f]||'');
+    return {key:'cat:'+t.id, id:t.id, name:t.name, code:v('code'), duty:v('duty'), note:o.note||def.note||'', own:false, edited:!!(o.code||o.duty)}; });
+  for (const [k,o] of Object.entries(cus)) if (k.startsWith('cat:x_')) out.push({key:k, id:k.slice(4), name:o.name||'Своя категория', code:o.code||'', duty:o.duty||'', note:o.note||'', own:true});
+  return out;
+}
+
+async function dlHsPut(key, o){
+  await api('/api/customs',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({key, code:o.code||'', duty:o.duty??'', note:o.note||'', name:o.name||''})});
+  DL.cus=DL.cus||{}; if (key.startsWith('cat:x_') && !o.name) delete DL.cus[key]; else DL.cus[key]={...(DL.cus[key]||{}), ...o};
+}
+
 function dlHsDir(){
   const dd=$('#dlg'); dd.classList.add('wide');
-  const types=TYPES.filter(t=>t.id!=='other'), cus=DL.cus||{};
-  dd.innerHTML=`<div class="dlg-h"><h3>Коды ТН ВЭД и пошлины по категориям</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-    <div class="dlg-b"><p class="muted">Значения по умолчанию для всех моделей категории. У конкретной модели код и ставку можно изменить в «Экономике сделки». Справочно — проверьте у брокера.</p>
-    <table class="dl-it dl-hsdir"><thead><tr><th>Категория</th><th>Код ТН ВЭД</th><th>Пошлина, %</th><th>Пояснение</th></tr></thead><tbody>
-    ${types.map(t=>{ const o=cus['cat:'+t.id]||{}, def=DEAL_HS[t.id]||{};
-      return `<tr><td><b>${esc(t.name)}</b></td><td><input type="text" data-hc="${esc(t.id)}" data-f="code" value="${esc(o.code||'')}" placeholder="${esc(def.code||'0000 00')}"></td>
-        <td><input type="text" inputmode="decimal" data-hc="${esc(t.id)}" data-f="duty" value="${esc(o.duty??'')}" placeholder="${esc(def.duty??'')}"></td><td class="muted">${esc(o.note||def.note||'')}</td></tr>`; }).join('')}
-    </tbody></table><p class="muted">Пустое поле — справочное значение (серым). Изменения сохраняются в базе для всего отдела.</p></div>`;
-  dd.showModal();
-  dd.querySelector('[data-close]').onclick=()=>{ dd.close(); dd.classList.remove('wide'); dealRender(); };
-  dd.querySelector('.dlg-b').onchange=async e=>{ const t=e.target; if (!t.dataset.hc) return;
-    const key='cat:'+t.dataset.hc, o={...(DL.cus[key]||{})}; o[t.dataset.f]=t.value.trim();
-    try{ await api('/api/customs',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({key, code:o.code||'', duty:o.duty??'', note:o.note||''})});
-      DL.cus[key]=o; toast('Сохранено в справочнике'); }catch(err){ toast('Не удалось сохранить: '+(err.message||err)); } };
+  const draw=()=>{ const cats=dlHsCats();
+    dd.innerHTML=`<div class="dlg-h"><h3>Коды ТН ВЭД и пошлины по категориям</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
+    <div class="dlg-b"><p class="muted">Код и ставка категории подставляются всем её моделям. У конкретной модели их можно изменить в «Экономике сделки» или выбрать категорию из этого справочника. Значения справочные (ЕТТ ЕАЭС) — точный код из 10 знаков подтверждает таможенный брокер.</p>
+    <table class="dl-it dl-hsdir"><thead><tr><th>Категория</th><th>Код ТН ВЭД</th><th>Пошлина, %</th><th>Пояснение</th><th></th></tr></thead><tbody>
+    ${cats.map(o=>`<tr data-key="${esc(o.key)}">
+      <td>${o.own?`<input type="text" data-hf="name" value="${esc(o.name)}" placeholder="Название категории">`:`<b>${esc(o.name)}</b>${o.edited?'<small class="ok-t">изменено</small>':''}`}</td>
+      <td><input type="text" data-hf="code" value="${esc(o.code)}" placeholder="0000 00"></td>
+      <td><input type="text" inputmode="decimal" data-hf="duty" value="${esc(o.duty)}" placeholder="0"></td>
+      <td>${o.own?`<input type="text" data-hf="note" value="${esc(o.note)}" placeholder="Что входит">`:`<span class="muted">${esc(o.note)}</span>`}</td>
+      <td>${o.own?`<button type="button" class="icon" data-hdel aria-label="Удалить категорию">✕</button>`:o.edited?`<button type="button" class="lnk" data-hreset title="Вернуть справочное значение">↺</button>`:''}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="row" style="gap:10px;margin-top:12px;align-items:center"><button type="button" class="btn" data-hadd>+ Добавить категорию</button><span class="muted">Изменения сохраняются сразу — в базе, для всего отдела.</span></div></div>`;
+  };
+  draw(); dd.showModal();
+  dd.onclick=async e=>{ const t=e.target;
+    if (t.closest('[data-close]')){ dd.close(); dd.classList.remove('wide'); dd.onclick=dd.onchange=null; return dealRender(); }
+    if (t.closest('[data-hadd]')){ const key='cat:x_'+uid(); try{ await dlHsPut(key, {name:'Новая категория', code:'', duty:'0'}); draw(); dd.querySelector(`[data-key="${key}"] [data-hf="name"]`)?.select(); }catch(err){ toast('Не удалось добавить: '+(err.message||err)); } return; }
+    const tr=t.closest('tr[data-key]'); if (!tr) return; const key=tr.dataset.key;
+    if (t.closest('[data-hdel]')){ if (!await stConfirm('Удалить категорию?', 'Категория пропадёт из справочника; у моделей, где её выбрали, код и ставка останутся.', 'Удалить')) return;
+      try{ await dlHsPut(key, {name:'', code:'', duty:''}); draw(); }catch(err){ toast('Не удалось удалить: '+(err.message||err)); } return; }
+    if (t.closest('[data-hreset]')){ try{ await dlHsPut(key, {code:'', duty:''}); draw(); }catch(err){ toast('Не удалось: '+(err.message||err)); } } };
+  dd.onchange=async e=>{ const t=e.target, tr=t.closest('tr[data-key]'); if (!t.dataset.hf || !tr) return;
+    const key=tr.dataset.key, o={...(DL.cus[key]||{})}; tr.querySelectorAll('[data-hf]').forEach(i=>{ o[i.dataset.hf]=i.value.trim(); });
+    if (key.startsWith('cat:x_') && !o.name){ toast('Укажите название категории'); return; }
+    try{ await dlHsPut(key, o); toast('Сохранено в справочнике'); }catch(err){ toast('Не удалось сохранить: '+(err.message||err)); } };
 }
 
 // код и ставка позиции: у модели каталога — в базу (для всех следующих сделок), иначе — только в этом КП
@@ -511,6 +551,7 @@ function dealBind(dlg){
     if (t.dataset.kpvat!=null || t.dataset.kprate!=null){ renderForm(); return; }
     if (t.dataset.dl && t.tagName==='SELECT'){ dlSet(dlDeal(), t.dataset.dl, t.value); if (!DL.ex) dealRememberDefault(t.dataset.dl, t.value);
       const m=/^sup\.(\d+)\./.exec(t.dataset.dl); if (m && !DL.ex) dlSaveSupplier(dlDeal().sup[+m[1]]); touch(); dealRender(); }
+    if (t.dataset.hspick!=null){ const o=dlHsCats().find(z=>z.key===t.value); if (o){ dlSaveHs(t.dataset.hspick, 'code', o.code); dlSaveHs(t.dataset.hspick, 'duty', o.duty); touch(); toast(`Код ${o.code||'—'}, пошлина ${o.duty||0} % — «${o.name}»`); } return dealRender(); }
     if (t.dataset.dlmap){ const d=dlDeal(); d.map={...(d.map||{}), [t.dataset.dlmap]:t.value}; touch(); dealRender(); } });
   dlg.addEventListener('toggle', e=>{ if (e.target.classList?.contains('dl-sched')) dlDeal()._schedOpen=e.target.open; }, true);
   dlg.addEventListener('click', e=>{ const b=e.target.closest('[data-dlx]');

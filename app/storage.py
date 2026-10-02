@@ -67,6 +67,16 @@ MIGRATIONS = [
      """
      DROP TABLE IF EXISTS suppliers; DROP TABLE IF EXISTS customs;
      """),
+    # свои категории в справочнике ТН ВЭД (ключ cat:x_<id>) — с названием
+    ('2026-12-customs-name',
+     """
+     ALTER TABLE customs ADD COLUMN name TEXT;
+     """,
+     """
+     CREATE TABLE customs_prev (key TEXT PRIMARY KEY, code TEXT, duty TEXT, note TEXT, updated TEXT, updated_by TEXT);
+     INSERT INTO customs_prev SELECT key, code, duty, note, updated, updated_by FROM customs;
+     DROP TABLE customs; ALTER TABLE customs_prev RENAME TO customs;
+     """),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
@@ -335,15 +345,22 @@ class Store:
     def customs_all(self):
         self._deal_legacy()
         out = {}
-        for key, code, duty, note, upd, by in self.all('SELECT key, code, duty, note, updated, updated_by FROM customs'):
-            out[key] = {'code': code or '', 'duty': duty or '', 'note': note or '', 'updated': upd, 'by': by or ''}
+        for key, code, duty, note, upd, by, name in self.all('SELECT key, code, duty, note, updated, updated_by, name FROM customs'):
+            out[key] = {'code': code or '', 'duty': duty or '', 'note': note or '', 'name': name or '', 'updated': upd, 'by': by or ''}
         return out
 
-    def customs_put(self, key, code, duty, note, by):
+    def customs_put(self, key, code, duty, note, by, name=''):
+        """Код ТН ВЭД и ставка пошлины по ключу cat:<категория> или item:<модель>; своя категория (cat:x_…) —
+        с названием; пустые код, ставка и название у своей категории — удалить её."""
         if not re.match(r'^(cat|item):[\w.-]{1,80}$', key or ''):
             raise ValueError('Неверный ключ')
-        self.write('INSERT OR REPLACE INTO customs (key, code, duty, note, updated, updated_by) VALUES (?,?,?,?,?,?)',
-                   (key, str(code or '')[:40], str(duty or '')[:12], str(note or '')[:300], _now(), str(by or '')[:120]))
+        if key.startswith('cat:x_') and not str(name or '').strip():
+            if str(code or '').strip() or str(duty or '').strip():
+                raise ValueError('Укажите название категории')
+            self.write('DELETE FROM customs WHERE key=?', (key,))
+            return
+        self.write('INSERT OR REPLACE INTO customs (key, code, duty, note, updated, updated_by, name) VALUES (?,?,?,?,?,?,?)',
+                   (key, str(code or '')[:40], str(duty or '')[:12], str(note or '')[:300], _now(), str(by or '')[:120], str(name or '')[:120]))
 
     def _deal_legacy(self):
         """Перенос подсказок прежней версии (kv dealProfiles) в справочники — один раз."""
