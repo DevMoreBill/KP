@@ -429,7 +429,14 @@ class Store:
 
     def kp_list(self):
         rows = self.all("SELECT meta FROM kp WHERE meta IS NOT NULL ORDER BY id DESC")
-        return '[' + ','.join(r[0] for r in rows) + ']'
+        out = []
+        for r in rows:      # испорченная запись (старая версия, ручная правка) не ломает весь журнал
+            try:
+                if isinstance(json.loads(r[0]), dict):
+                    out.append(r[0])
+            except (TypeError, ValueError):
+                pass
+        return '[' + ','.join(out) + ']'
 
     def kp_get(self, kid, field):
         if field not in ('state', 'meta', 'docx'):

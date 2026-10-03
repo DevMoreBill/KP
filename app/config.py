@@ -93,6 +93,9 @@ if SETTINGS.get('port'):
         BASE_PORT = int(SETTINGS['port'])
     except (TypeError, ValueError):
         pass
+# allowedHosts (сервер отдела, необязательно): имена, по которым сотрудники открывают программу, — запросы с другим
+# именем в адресе отклоняются (защита от подмены DNS). Пусто — любое имя. Локальная программа — только localhost.
+ALLOWED_HOSTS = [str(x).strip().lower() for x in (SETTINGS.get('allowedHosts') or []) if str(x).strip()] if isinstance(SETTINGS.get('allowedHosts'), list) else []
 DOCS_SHARE = str(SETTINGS.get('docsShare') or '').strip()   # сетевой путь к папке КП для сотрудников, напр. \\\\SERVER\\КП
 STORE = None
 
@@ -115,8 +118,8 @@ def safe_id(s):
 
 
 def safe_file(s):
-    s = re.sub(r'[\\/:*?"<>|]', '', s or '').strip()
-    return s or 'КП.docx'
+    s = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '', s or '').strip()
+    return s if s.strip('. ') else 'КП.docx'      # «.», «..» — не имя файла (выход из папки КП)
 
 
 def safe_dir(s):
@@ -128,4 +131,8 @@ def safe_dir(s):
 def docs_path(rel):
     """Путь к файлу КП по относительному имени из docx.txt (с подпапкой менеджера или без)."""
     parts = [safe_file(x) for x in re.split(r'[\\/]', rel or '') if x]
-    return os.path.join(DOCS_DIR, *parts) if parts else os.path.join(DOCS_DIR, 'КП.docx')
+    f = os.path.join(DOCS_DIR, *parts) if parts else os.path.join(DOCS_DIR, 'КП.docx')
+    root = os.path.normcase(os.path.abspath(DOCS_DIR)) + os.sep
+    if not os.path.normcase(os.path.abspath(f)).startswith(root):
+        raise ValueError('Недопустимое имя файла КП')
+    return f
