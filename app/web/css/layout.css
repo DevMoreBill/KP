@@ -92,3 +92,6 @@ dialog::backdrop{background:rgba(10,20,40,.45)}
 .pickm>summary::-webkit-details-marker{display:none}
 .pickm .menu-l{min-width:300px;max-height:320px;overflow:auto}
 .pm-cap{margin:4px 12px 2px;font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+/* условия, подставленные из «Экономики сделки» */
+.cond-auto{font-style:normal;font-size:11px;font-weight:600;color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent);padding:1px 7px;border-radius:999px;margin-left:6px;white-space:nowrap}
+.cond-sync{display:block;margin-top:4px;font-size:12.5px;text-align:left;border:0;background:none;padding:0;color:var(--navy);text-decoration:underline;cursor:pointer}

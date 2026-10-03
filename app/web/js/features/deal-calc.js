@@ -15,6 +15,8 @@
 //   (аванс, промежуточные, окончательная; xc.off[этап]=false — с этой оплаты не выдаётся), пропорционально суммам оплат,
 //   в день оплаты. Выданные раньше конца сделки наличные увеличивают финансирование; при расчёте от чистой прибыли сумма
 //   и финансирование зависят друг от друга — считается последовательными приближениями до совпадения.
+// Сроки в днях — календарных или рабочих (…K='work': prodK, shipK, pay[j].offK, cust.tr[k].offK, pnrK): рабочие дни
+//   считаются по производственному календарю (kp.addWork), без даты договора — приблизительно (×7/5).
 // Банковская гарантия (d.bg — список, необязательно): сумма — от аванса заказчика (% от всех оплат до поставки),
 //   % от цены КП или в рублях; комиссия банка = сумма × ставка % годовых × дней / 365, не меньше минимальной.
 //   Платится при выдаче гарантии (по умолчанию — при подписании договора), уменьшает прибыль и налоговую базу.
@@ -120,9 +122,17 @@ function dealUpgrade(d){
 
 // kp — данные конструктора: { sumRub, vat, rates:{CNY:'12,4',…}, costNoVat, items:[{id,name,qty,cost,cur}], moneyAuto } (cost — за единицу, в валюте cur)
 // d — S.deal (строки из полей). Возвращает все величины, график, структуру затрат, ошибки и предупреждения.
+function dealAddDays(kp, base, n, kind){
+  n=+n||0; if (kind!=='work' || !n) return base+n;
+  return kp && kp.addWork ? kp.addWork(base, n) : base+Math.ceil(n*7/5);
+}
+const dlDaysTxt=(n,k)=>`${n} ${k==='work'?(n%10===1&&n%100!==11?'рабочий день':n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)?'рабочих дня':'рабочих дней'):(n%10===1&&n%100!==11?'календарный день':n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)?'календарных дня':'календарных дней')}`;
+
 function dealCalc(kp, d){
   d=dealUpgrade(d);
   const err={}, warn=[];
+  const addD=(base, n, k)=>dealAddDays(kp, base, n, k);
+  const dk=k=>k==='work'?' раб. дн.':' дн.';
   const num=(path, s, o={})=>{ const v=dNum(s);
     if (v==null) return o.def!==undefined ? o.def : null;
     if (Number.isNaN(v)) { err[path]='Число, например 12 400,50'; return o.def??0; }
@@ -165,7 +175,7 @@ function dealCalc(kp, d){
     const ins=equip*insP/100, fxE=equipFx*fxP/100, fxL=Lfx*fxP/100;
     const payRaw=dealSupPay(s); let paySum=0;
     const stages=payRaw.map((t,j)=>{ const last=j===payRaw.length-1, p=last?null:num(`${P}.pay.${j}.pct`, t.pct, {def:0, max:100}); if (!last) paySum+=p;
-      return {j, p, last, name:String(t.name||'').trim(), ev:DEAL_SUP_EVENTS[t.ev]?t.ev:'ready', off:num(`${P}.pay.${j}.off`, t.off, {def:0, int:true})}; });
+      return {j, p, last, name:String(t.name||'').trim(), ev:DEAL_SUP_EVENTS[t.ev]?t.ev:'ready', off:num(`${P}.pay.${j}.off`, t.off, {def:0, int:true}), offK:t.offK==='work'?'work':''}; });
     if (paySum>100.0001) err[P+'.pay']='Сумма этапов оплаты поставщику больше 100 %';
     stages[stages.length-1].p=Math.max(0, 100-paySum);
     // таможня: расчёт по позициям (пошлина у каждой своя), ЕАЭС (только НДС), сумма целиком или нет (Россия)
@@ -192,7 +202,8 @@ function dealCalc(kp, d){
     const ruSuggest=inVat(Lru+brk); let voRu=num(P+'.voRu', s.voRu); const voRuAuto=voRu==null; if (voRuAuto) voRu=ruSuggest;
     if (voRu>Lru+brk+0.005) err[P+'.voRu']='Не больше суммы услуг в России';
     const cash=equip+fxE+fxL+ins+L+T+brk+Lru;
-    return { id:s.id, name:(s.name||'').trim()||`Поставщик ${k+1}`, country:s.country||'', items, noCost, lines, byCur, noVat, equip, equipFx, L, Lru, brk, T, adv, prod, ship, ins, fxE, fxL, stages,
+    const prodK=s.prodK==='work'?'work':'', shipK=s.shipK==='work'?'work':'', rdy=addD(0, prod, prodK), arr=addD(rdy, ship, shipK);
+    return { id:s.id, name:(s.name||'').trim()||`Поставщик ${k+1}`, country:s.country||'', items, noCost, lines, byCur, noVat, equip, equipFx, L, Lru, brk, T, adv, prod, ship, prodK, shipK, rdy, arr, ins, fxE, fxL, stages,
       mode, calc:mode==='calc', cv, dutyA, fee, feeAuto, ivatA, ivP, noDuty, vi, vo, voAuto, suggest, voRu, voRuAuto, ruSuggest, cash, active: cash>0 }; });
   for (const s of S_) if (s.noDuty.length) warn.push({t:`${s.name}: нет ставки пошлины у ${s.noDuty.length} ${s.noDuty.length===1?'позиции':'позиций'} — считается 0 %`});
   for (const s of S_) for (const x of s.noCost) warn.push({t:`«${x.name||'Без названия'}»: не указана цена закупки — позиция не учтена в расходах`});
@@ -211,19 +222,20 @@ function dealCalc(kp, d){
   const act=S_.filter(s=>s.active), multi=act.length>1, rows=[];
   const dayOf=(key, auto)=>{ const o=d.days&&d.days[key]; const n=dNum(o); if (o!=null && o!=='' && (Number.isNaN(n)||n<0||!Number.isInteger(n))) err['days.'+key]='Целое число дней'; return (n!=null && n>=0 && Number.isInteger(n)) ? n : auto; };
   let D=0, Rdy=0;
-  for (const s of act){ D=Math.max(D, s.prod+s.ship); Rdy=Math.max(Rdy, s.prod); }
+  for (const s of act){ D=Math.max(D, s.arr); Rdy=Math.max(Rdy, s.rdy); }
+  const pnrK=d.pnrK==='work'?'work':'', pnrEnd=addD(D, pnrDays, pnrK);
   // поставщику: этапы оплаты оборудования (с комиссией банка), перевозка, страхование, таможня и брокер — перед отгрузкой
-  for (const s of act){ const nm=multi?` «${s.name}»`:'', arr=s.prod+s.ship, base=s.equip+s.fxE;
-    const sd={order:0, ready:s.prod, delivery:arr, pnr:D+pnrDays};
+  for (const s of act){ const nm=multi?` «${s.name}»`:'', arr=s.arr, base=s.equip+s.fxE;
+    const sd={order:0, ready:s.rdy, delivery:arr, pnr:pnrEnd};
     for (const st of s.stages){ const a=base*st.p/100; if (!(a>0)) continue;
       const nmS=st.name || (st.j===0 && st.ev==='order' ? 'Аванс' : st.last && s.stages.length>1 ? 'Остаток' : 'Оплата');
-      rows.push({key:`sp:${s.id}:${st.j}`, auto:sd[st.ev]+st.off, label:`Поставщику: ${nmS.charAt(0).toLowerCase()+nmS.slice(1)} ${dlPctTxt(st.p)}${nm}`, amount:-a, party:'sup', ev:DEAL_SUP_EVENTS[st.ev]+(st.off?` + ${st.off} дн.`:'')}); }
+      rows.push({key:`sp:${s.id}:${st.j}`, auto:addD(sd[st.ev], st.off, st.offK), label:`Поставщику: ${nmS.charAt(0).toLowerCase()+nmS.slice(1)} ${dlPctTxt(st.p)}${nm}`, amount:-a, party:'sup', ev:DEAL_SUP_EVENTS[st.ev]+(st.off?` + ${st.off}${dk(st.offK)}`:'')}); }
     const B=s.fxL+s.ins+s.L+s.T+s.brk;
-    if (B>0) rows.push({key:'log:'+s.id, auto:s.prod, label:(s.T?'Перевозка, таможня и сборы':'Перевозка и сборы')+nm, amount:-B, party:'log', ev:'перед отгрузкой'});
+    if (B>0) rows.push({key:'log:'+s.id, auto:s.rdy, label:(s.T?'Перевозка, таможня и сборы':'Перевозка и сборы')+nm, amount:-B, party:'log', ev:'перед отгрузкой'});
     if (s.Lru>0) rows.push({key:'ru:'+s.id, auto:arr, label:'Доставка по России'+nm, amount:-s.Lru, party:'log', ev:'при поставке'}); }
   if (M+E>0) rows.push({key:'mnt', auto:D, label:'Монтаж, ПНР и прочие расходы', amount:-(M+E), party:'oth', ev:'при поставке'});
   // этапы оплаты заказчика: последний этап — остаток до 100 %
-  const ev={sign:0, ready:Rdy, delivery:D, pnr:D+pnrDays};
+  const ev={sign:0, ready:Rdy, delivery:D, pnr:pnrEnd};
   const tr=(d.cust&&d.cust.tr&&d.cust.tr.length)?d.cust.tr:[{pct:'',ev:'delivery',off:'30'}];
   // этап — процентом или суммой в рублях (sum), со своим названием (name); последний — остаток
   let pctSum=0; const trs=tr.map((t,k)=>{ const last=k===tr.length-1, bySum=!last && t.mode==='sum';
@@ -232,11 +244,11 @@ function dealCalc(kp, d){
     else if (!last) p=num(`cust.tr.${k}.pct`, t.pct, {def:0, max:100});
     if (!last) pctSum+=p;
     const off=num(`cust.tr.${k}.off`, t.off, {def:0, int:true});
-    return {k, p, sum, bySum, name:String(t.name||'').trim(), ev:DEAL_EVENTS[t.ev]?t.ev:'delivery', off, last}; });
+    return {k, p, sum, bySum, name:String(t.name||'').trim(), ev:DEAL_EVENTS[t.ev]?t.ev:'delivery', off, offK:t.offK==='work'?'work':'', last}; });
   const restPct=100-pctSum; if (restPct<-0.0001) err['cust.tr']='Сумма этапов больше 100 %';
   trs[trs.length-1].p=Math.max(0,restPct);
   for (const t of trs){ if (!(t.p>0)) continue;
-    rows.push({key:'c'+t.k, auto:ev[t.ev]+t.off, label:`${t.name||'Оплата заказчика'} ${dlPctTxt(t.p)} — ${DEAL_EVENTS[t.ev]}${t.off?` + ${t.off} дн.`:''}`, amount:t.bySum?t.sum:S*t.p/100, inflow:true, post:t.ev==='delivery'||t.ev==='pnr', pct:t.p, stage:t.k, party:'cust', ev:DEAL_EVENTS[t.ev]+(t.off?` + ${t.off} дн.`:'')}); }
+    rows.push({key:'c'+t.k, auto:addD(ev[t.ev], t.off, t.offK), label:`${t.name||'Оплата заказчика'} ${dlPctTxt(t.p)} — ${DEAL_EVENTS[t.ev]}${t.off?` + ${t.off}${dk(t.offK)}`:''}`, amount:t.bySum?t.sum:S*t.p/100, inflow:true, post:t.ev==='delivery'||t.ev==='pnr', pct:t.p, stage:t.k, party:'cust', ev:DEAL_EVENTS[t.ev]+(t.off?` + ${t.off}${dk(t.offK)}`:'')}); }
   if (!rows.some(r=>r.inflow)) rows.push({key:'c0', auto:D, label:'Оплата заказчика', amount:0, inflow:true, post:true, pct:100});
   // банковские гарантии
   const advSum=trs.filter(t=>t.p>0 && (t.ev==='sign'||t.ev==='ready')).reduce((a,t)=>a+(t.bySum?t.sum:S*t.p/100),0);
@@ -244,7 +256,7 @@ function dealCalc(kp, d){
     const base=['adv','pct','sum'].includes(g.base)?g.base:(type==='adv'?'adv':'pct');
     const v=num(P+'.v', g.v, {def:base==='adv'?100:base==='pct'?10:0, max:base==='sum'?null:100});
     const amount = base==='adv' ? advSum*v/100 : base==='pct' ? S*v/100 : v;
-    const daysAuto = type==='adv' ? D : type==='perf' ? D+pnrDays : 365;
+    const daysAuto = type==='adv' ? D : type==='perf' ? pnrEnd : 365;
     const dOwn=num(P+'.days', g.days, {int:true}), days=dOwn==null?daysAuto:dOwn;
     const rate=num(P+'.rate', g.rate, {def:0, max:100}), min=num(P+'.min', g.min, {def:0});
     const fee = amount>0 && (rate>0||min>0) ? Math.max(min, amount*rate/100*days/365) : 0;
@@ -303,7 +315,7 @@ function dealCalc(kp, d){
     ['Логистика до границы', Lsum], ['Таможенные платежи', Tsum], ['Брокер, СВХ, сертификация', brkSum], ['Доставка по России', LruSum],
     ['Монтаж и ПНР', M], ['Банковская гарантия', BG], ['Прочие расходы', E], ['Бонусы и комиссии с продажи', Bn], ['Резерв на гарантию', W], ['Финансирование', F],
     ['НДС к вычету (уменьшает затраты)', -(base||lo).VATin]].filter(x=>Math.abs(x[1])>0.004);
-  return { bgs, BG, advSum, xc:{mode:xMode, when:xWhen, off:xOffSt, from:xFrom.map(r=>r.key), v:xV, cost:xCost, g:xG, on:xV>0}, S, v, vatFromKp, rate, rateSrc, used:[...used].filter(c=>c!=='RUB'), sup:S_, M, E, Vo, W, Bn, warrP, bonusP, taxP, pnrDays, trs, ev, i, moneyAuto,
+  return { bgs, BG, advSum, xc:{mode:xMode, when:xWhen, off:xOffSt, from:xFrom.map(r=>r.key), v:xV, cost:xCost, g:xG, on:xV>0}, S, v, vatFromKp, rate, rateSrc, used:[...used].filter(c=>c!=='RUB'), sup:S_, M, E, Vo, W, Bn, warrP, bonusP, taxP, pnrDays, pnrK, pnrEnd, trs, ev, i, moneyAuto,
     rows, F, D, Rdy, Tend, R, VATs, Ccash, equipSum, Lsum, LruSum, brkSum, Tsum, voSup, voRuSum, unknown, base, lo, hi, cashBefore:S-Ccash-F, parts,
     err, warn, ok:!Object.keys(err).length };
 }
@@ -323,4 +335,4 @@ function dealSolve(kp, d, type, value){
   return Math.ceil(hi*100)/100;
 }
 
-if (typeof module!=='undefined') module.exports={DEAL_BG_TYPES, DEAL_SUP_EVENTS, dealSupPay, dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, dNum, CUSTOMS_FEES, DEAL_EVENTS, DEAL_HS, dealHsAuto, dealCountryPreset};
+if (typeof module!=='undefined') module.exports={dealAddDays, dlDaysTxt, DEAL_BG_TYPES, DEAL_SUP_EVENTS, dealSupPay, dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, dNum, CUSTOMS_FEES, DEAL_EVENTS, DEAL_HS, dealHsAuto, dealCountryPreset};

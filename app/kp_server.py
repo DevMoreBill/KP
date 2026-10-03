@@ -439,6 +439,18 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self.send(422, 'text/plain; charset=utf-8', 'Картинка не загружена: %s' % e)
             return self.send(200, ctype, data)
+        if path == '/api/uitexts' and m == 'GET':       # тексты интерфейса, изменённые администратором: {исходный текст: новый}
+            return self.send_json(store().kv_get('uitexts') or {})
+        if path == '/api/uitexts' and m == 'PUT':       # только администратор (admin.guard)
+            try:
+                d = json.loads(self.body().decode('utf-8') or '{}')
+            except ValueError:
+                return self.send(400, 'text/plain; charset=utf-8', 'Неверный формат')
+            if not isinstance(d, dict) or len(d) > 3000:
+                return self.send(400, 'text/plain; charset=utf-8', 'Неверный формат')
+            out = {str(k)[:2000]: str(v)[:4000] for k, v in d.items() if str(k).strip() and isinstance(v, str)}
+            store().kv_set('uitexts', out)
+            return self.send_json({'ok': True, 'count': len(out)})
         if path == '/api/version' and m == 'GET':       # версия программы и установленное обновление
             import version
             return self.send_json({'version': version.VERSION, 'patched': bool(UPDATE_DIR), 'updateDir': UPDATE_DIR})
