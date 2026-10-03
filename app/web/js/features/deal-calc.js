@@ -15,6 +15,9 @@
 //   (аванс, промежуточные, окончательная; xc.off[этап]=false — с этой оплаты не выдаётся), пропорционально суммам оплат,
 //   в день оплаты. Выданные раньше конца сделки наличные увеличивают финансирование; при расчёте от чистой прибыли сумма
 //   и финансирование зависят друг от друга — считается последовательными приближениями до совпадения.
+// Банковская гарантия (d.bg — список, необязательно): сумма — от аванса заказчика (% от всех оплат до поставки),
+//   % от цены КП или в рублях; комиссия банка = сумма × ставка % годовых × дней / 365, не меньше минимальной.
+//   Платится при выдаче гарантии (по умолчанию — при подписании договора), уменьшает прибыль и налоговую базу.
 // Таможня «Рассчитать»: таможенная стоимость CV = оборудование + логистика до границы + страхование;
 //   пошлина = CV × ставка; сбор — по шкале; ввозной НДС = (CV + пошлина) × ставка НДС (к вычету).
 'use strict';
@@ -74,6 +77,9 @@ function dealCountryPreset(country){ const c=String(country||'').trim(); if (!c)
 
 // этапы оплаты заказчика: событие + дней после него
 const DEAL_EVENTS = { sign:'после подписания договора', ready:'при готовности к отгрузке', delivery:'после поставки', pnr:'после ПНР' };
+
+// банковская гарантия: вид
+const DEAL_BG_TYPES = { adv:'На возврат аванса', perf:'Исполнения договора', warr:'Гарантийных обязательств' };
 
 // этапы оплаты поставщику: событие поставки + дней после него; последний этап — остаток до 100 %
 const DEAL_SUP_EVENTS = { order:'при заказе', ready:'перед отгрузкой (готовность)', delivery:'после поставки', pnr:'после шефмонтажа и ПНР' };
@@ -232,6 +238,20 @@ function dealCalc(kp, d){
   for (const t of trs){ if (!(t.p>0)) continue;
     rows.push({key:'c'+t.k, auto:ev[t.ev]+t.off, label:`${t.name||'Оплата заказчика'} ${dlPctTxt(t.p)} — ${DEAL_EVENTS[t.ev]}${t.off?` + ${t.off} дн.`:''}`, amount:t.bySum?t.sum:S*t.p/100, inflow:true, post:t.ev==='delivery'||t.ev==='pnr', pct:t.p, stage:t.k, party:'cust', ev:DEAL_EVENTS[t.ev]+(t.off?` + ${t.off} дн.`:'')}); }
   if (!rows.some(r=>r.inflow)) rows.push({key:'c0', auto:D, label:'Оплата заказчика', amount:0, inflow:true, post:true, pct:100});
+  // банковские гарантии
+  const advSum=trs.filter(t=>t.p>0 && (t.ev==='sign'||t.ev==='ready')).reduce((a,t)=>a+(t.bySum?t.sum:S*t.p/100),0);
+  const bgs=(Array.isArray(d.bg)?d.bg:[]).map((g,k)=>{ const P=`bg.${k}`, type=DEAL_BG_TYPES[g.type]?g.type:'adv';
+    const base=['adv','pct','sum'].includes(g.base)?g.base:(type==='adv'?'adv':'pct');
+    const v=num(P+'.v', g.v, {def:base==='adv'?100:base==='pct'?10:0, max:base==='sum'?null:100});
+    const amount = base==='adv' ? advSum*v/100 : base==='pct' ? S*v/100 : v;
+    const daysAuto = type==='adv' ? D : type==='perf' ? D+pnrDays : 365;
+    const dOwn=num(P+'.days', g.days, {int:true}), days=dOwn==null?daysAuto:dOwn;
+    const rate=num(P+'.rate', g.rate, {def:0, max:100}), min=num(P+'.min', g.min, {def:0});
+    const fee = amount>0 && (rate>0||min>0) ? Math.max(min, amount*rate/100*days/365) : 0;
+    return {k, type, base, v, amount, days, daysAuto, daysOwn:dOwn!=null, rate, min, fee}; });
+  const BG=bgs.reduce((a,g)=>a+g.fee,0);
+  for (const g of bgs) if (g.fee>0) rows.push({key:'bg:'+g.k, auto:0, label:`Банковская гарантия ${DEAL_BG_TYPES[g.type].toLowerCase()} — комиссия банка`, amount:-g.fee, party:'oth', ev:'при подписании договора'});
+  if (bgs.some(g=>g.base==='adv') && !(advSum>0)) warn.push({t:'Банковская гарантия на возврат аванса: у заказчика нет аванса — укажите аванс в «Оплате заказчика» или сумму гарантии'});
   // день платежа: по срокам или вручную; при заданной дате отсчёта и производственном календаре (kp.workShift) расчётный
   // день переносится на ближайший рабочий (банковский) день, вручную заданный — остаётся, но помечается, если он нерабочий
   rows.forEach((r,k)=>{ r.day=dayOf(r.key, r.auto); r.manual=r.day!==r.auto; r.ord=k;
@@ -260,7 +280,7 @@ function dealCalc(kp, d){
   const t2n=r=>{ const t=trs[r.stage]; return t&&t.name ? ` «${t.name}»` : ''; };
   let F=finance();
   const equipSum=sumOf(s=>s.equip);
-  const Ccash=sumOf(s=>s.cash)+M+E+W+Bn;
+  const Ccash=sumOf(s=>s.cash)+M+E+W+Bn+BG;
   const voSup=sumOf(s=>s.vo), voRuSum=sumOf(s=>s.voRu);
   const unknown=S_.filter(s=>s.vi==null);
   const VATinKnown=viSum+voSup+voRuSum+Vo;
@@ -281,9 +301,9 @@ function dealCalc(kp, d){
   // структура затрат (для итога и Excel)
   const parts=[['Оборудование', equipSum], ['Комиссии за перевод и конвертацию', sumOf(s=>s.fxE+s.fxL)], ['Страхование груза', sumOf(s=>s.ins)],
     ['Логистика до границы', Lsum], ['Таможенные платежи', Tsum], ['Брокер, СВХ, сертификация', brkSum], ['Доставка по России', LruSum],
-    ['Монтаж и ПНР', M], ['Прочие расходы', E], ['Бонусы и комиссии с продажи', Bn], ['Резерв на гарантию', W], ['Финансирование', F],
+    ['Монтаж и ПНР', M], ['Банковская гарантия', BG], ['Прочие расходы', E], ['Бонусы и комиссии с продажи', Bn], ['Резерв на гарантию', W], ['Финансирование', F],
     ['НДС к вычету (уменьшает затраты)', -(base||lo).VATin]].filter(x=>Math.abs(x[1])>0.004);
-  return { xc:{mode:xMode, when:xWhen, off:xOffSt, from:xFrom.map(r=>r.key), v:xV, cost:xCost, g:xG, on:xV>0}, S, v, vatFromKp, rate, rateSrc, used:[...used].filter(c=>c!=='RUB'), sup:S_, M, E, Vo, W, Bn, warrP, bonusP, taxP, pnrDays, trs, ev, i, moneyAuto,
+  return { bgs, BG, advSum, xc:{mode:xMode, when:xWhen, off:xOffSt, from:xFrom.map(r=>r.key), v:xV, cost:xCost, g:xG, on:xV>0}, S, v, vatFromKp, rate, rateSrc, used:[...used].filter(c=>c!=='RUB'), sup:S_, M, E, Vo, W, Bn, warrP, bonusP, taxP, pnrDays, trs, ev, i, moneyAuto,
     rows, F, D, Rdy, Tend, R, VATs, Ccash, equipSum, Lsum, LruSum, brkSum, Tsum, voSup, voRuSum, unknown, base, lo, hi, cashBefore:S-Ccash-F, parts,
     err, warn, ok:!Object.keys(err).length };
 }
@@ -303,4 +323,4 @@ function dealSolve(kp, d, type, value){
   return Math.ceil(hi*100)/100;
 }
 
-if (typeof module!=='undefined') module.exports={DEAL_SUP_EVENTS, dealSupPay, dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, dNum, CUSTOMS_FEES, DEAL_EVENTS, DEAL_HS, dealHsAuto, dealCountryPreset};
+if (typeof module!=='undefined') module.exports={DEAL_BG_TYPES, DEAL_SUP_EVENTS, dealSupPay, dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, dNum, CUSTOMS_FEES, DEAL_EVENTS, DEAL_HS, dealHsAuto, dealCountryPreset};
