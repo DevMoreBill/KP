@@ -445,6 +445,23 @@ function dlSchedule(c, n=6){
     <p class="muted">Простой процент на недостающие деньги до последней оплаты заказчика, месяц — 30 дней; оплаты заказчика уменьшают финансирование, доход на свободный остаток не начисляется. День или дату строки можно изменить.</p></details>`;
 }
 
+// ---------- прочие расходы наличными (необязательно): % от чистой прибыли, % от выручки без НДС или сумма — всё «чистыми», на руки
+const DL_XC_MODES=[['net','% от чистой прибыли'],['sale','% от суммы продажи без НДС'],['sum','Сумма, ₽']];
+function dlCash(c){
+  const d=dlDeal(), x=c.xc, r=c.base||c.lo, open=!!(d.xc && Object.values(d.xc).some(v=>v!=null && v!==''));
+  const unit = x.mode==='sum' ? '₽ на руки' : x.mode==='sale' ? '% выручки без НДС' : '% чистой прибыли';
+  const how = x.mode==='net' ? `${dlIn(x.v)} % от чистой прибыли сделки ${dlRub0(Math.max(0, r.Pa-r.tax))} (после налога на прибыль, до этих расходов)`
+    : x.mode==='sale' ? `${dlIn(x.v)} % от выручки без НДС ${dlRub0(c.R)}` : 'сумма на руки';
+  return `<details class="dl-more dl-cash"${open?' open':''}><summary>Прочие расходы (наличные) <span class="muted">— необязательно</span>${r.K>0?` <b class="dl-cash-s">${dlRub0(r.K)}</b>`:''}</summary>
+    <div class="dl-g g3">
+      ${dlField('Как считать', 'xc.mode', {calc:c, select:DL_XC_MODES})}
+      ${dlField(x.mode==='sum'?'Сумма':'Процент', 'xc.v', {calc:c, unit, ph:x.mode==='sum'?'100 000':'10', q:'Сумма «чистыми» — столько получат на руки наличными, без каких-либо налогов. От чистой прибыли — процент от прибыли сделки после налога на прибыль (до этих расходов); от продажи — процент от суммы продажи без НДС.'})}
+      ${dlField('Стоимость получения наличных', 'xc.cost', {calc:c, unit:'%', ph:'0', q:'Сколько процентов от перечисленной суммы удерживают за выдачу наличных. Расход компании = сумма на руки ÷ (1 − процент). Если наличные уже есть — оставьте пустым.'})}</div>
+    ${r.K>0?`<p class="dl-cash-r">На руки <b>${dlRub0(r.X)}</b>${x.cost?` · расход компании с получением наличных <b>${dlRub0(r.K)}</b>`:''} <span class="muted">— ${esc(how)}</span></p>`:''}
+    <p class="muted">Не уменьшают налог на прибыль: налог считается с прибыли до этих расходов, а сами они вычитаются из чистой прибыли — прибыль, маржа, наценка и подбор цены
+    показывают реальный интерес компании. Платятся после последней оплаты заказчика, в КП не выводятся.</p></details>`;
+}
+
 // ---------- правая колонка: подбор цены и итог
 function dlResult(c){
   const d=dlDeal(), kp=dlKp(), b=c.base, lo=c.lo, hi=c.hi, unk=c.unknown.length>0, bad=!c.ok || c.warn.some(w=>w.bad), r=b||lo;
@@ -468,16 +485,17 @@ function dlResult(c){
       <div class="dl-be">Безубыточная цена с НДС: <b>${be!=null?dlRub0(be):'—'}</b>${dlQ('Цена, при которой прибыль после всех расходов и финансирования равна нулю. Ниже — убыток.')}</div></div>`}
     <div class="dl-now"><h4>Итог при текущей цене КП <span class="muted">${dlRub0(c.S)}</span></h4>
       ${bad?'<span class="dl-chip bad">Проверьте данные</span>':unk?'<span class="dl-chip warn">Нужна сумма ввозного НДС</span>':''}${noCost?`<span class="dl-chip warn">Расчёт неполный: нет закупки у ${noCost} поз.</span>`:''}
-      <div class="dl-big${P!=null&&P<0?' neg':''}${unk?' rng':''}"><small>Прибыль до налога на прибыль</small><b>${unk?`${dlRub0(lo.P)} … ${dlRub0(hi.P)}`:dlRub0(P)}</b>
-        ${unk?'':`<p class="dl-note">Чистая прибыль после налога ${dlIn(c.taxP)} %: <b>${dlRub0(b.net)}</b></p>`}</div>
+      <div class="dl-big${P!=null&&P<0?' neg':''}${unk?' rng':''}"><small>${r.K>0?'Прибыль до налога, за вычетом наличных':'Прибыль до налога на прибыль'}</small><b>${unk?`${dlRub0(lo.P)} … ${dlRub0(hi.P)}`:dlRub0(P)}</b>
+        ${unk?'':`<p class="dl-note">Чистая прибыль после налога ${dlIn(c.taxP)} %${r.K>0?' и прочих расходов':''}: <b>${dlRub0(b.net)}</b></p>`}${r.K>0?`<p class="dl-note">С учётом прочих расходов наличными ${dlRub0(r.K)}</p>`:''}</div>
       <div class="dl-kpi"><div><small>Маржинальность ${dlQ('Прибыль ÷ выручка без НДС. Сколько копеек прибыли в каждом рубле выручки.')}</small><b>${unk?`${dlPct(lo.margin)} … ${dlPct(hi.margin)}`:dlPct(b.margin)}</b></div>
-        <div><small>Наценка ${dlQ('Прибыль ÷ себестоимость (все расходы с финансированием, без НДС к вычету).')}</small><b>${unk?`${dlPct(lo.markup)} … ${dlPct(hi.markup)}`:dlPct(b.markup)}</b></div></div>
+        <div><small>Наценка ${dlQ('Прибыль ÷ себестоимость (все расходы с финансированием, без НДС к вычету, и прочие расходы наличными).')}</small><b>${unk?`${dlPct(lo.markup)} … ${dlPct(hi.markup)}`:dlPct(b.markup)}</b></div></div>
       <dl class="dl-dl">
         <dt>Выручка без НДС</dt><dd>${dlRub0(c.R)}</dd>
         <dt>Себестоимость с финансированием</dt><dd>${dlRub0(r.Ctot)}</dd>
         <dt>в т. ч. финансирование</dt><dd>${dlRub0(c.F)}</dd>
         <dt>НДС к доплате</dt><dd>${dlRub0(r.payable)}</dd>
-        <dt>Налог на прибыль</dt><dd>${dlRub0(r.tax)}</dd>
+        ${r.K>0?`<dt>Прочие расходы (наличные)</dt><dd>${dlRub0(r.K)}${r.K!==r.X?`<small>на руки ${dlRub0(r.X)}</small>`:''}</dd>`:''}
+        <dt>Налог на прибыль${r.K>0?' <small class="muted">— без учёта наличных</small>':''}</dt><dd>${dlRub0(r.tax)}</dd>
         <dt>Деньги на счёте после сделки</dt><dd>${dlRub0(r.cashAfter)}</dd></dl>
       ${parts?`<details class="dl-more dl-parts"><summary>Из чего себестоимость</summary><dl class="dl-dl">${parts}</dl></details>`:''}
       ${c.warn.length?`<ul class="dl-warn">${c.warn.map(w=>`<li class="${w.bad?'bad':''}">${esc(w.t)}</li>`).join('')}</ul>`:''}</div>
@@ -499,7 +517,8 @@ function dealRenderIn(dlg){
   const banner = kp.sumNoRate ? `<div class="dl-ex warn">Нет курса валюты КП (${esc(kp.cur)}) — цена не переведена в рубли. Укажите курс в шаге «Цена КП и валюта».</div>` : '';
   const b=c.base, mini = b ? `<span><small>Прибыль при цене КП</small><b class="${b.P<0?'neg':''}">${dlRub0(b.P)}</b></span><span class="r"><small>Маржинальность</small><b>${dlPct(b.margin)}</b></span>`
     : `<span><small>Прибыль при цене КП</small><b>${dlRub0(c.lo.P)} … ${dlRub0(c.hi.P)}</b></span><span class="r warn-t">нужен ввозной НДС</span>`;
-  const otherOpen = dlFilled(d.vo, d.warr, d.bonus);
+  const otherOpen = dlFilled(d.vo, d.warr, d.bonus), xK=(c.base||c.lo).K;
+  const xNote=[c.W+c.Bn?`гарантия и бонусы ${dlRub0(c.W+c.Bn)}`:'', xK?`наличные ${dlRub0(xK)}`:''].filter(Boolean).join(', ');
   const cust=dlCustoms(c), nS=cust?1:0;
   morph(dlg, `${head}${banner}<div class="dl-mini">${mini}</div><div class="dl-b"><div class="dl-form">
     ${dlPurchase(c)}
@@ -508,7 +527,8 @@ function dealRenderIn(dlg){
       ${dlField('Монтаж и ПНР', 'mnt', {calc:c, unit:'₽', hint:'Платёж — при поставке'})}${dlField('Срок ПНР', 'pnr', {calc:c, unit:'дней', int:true, hint:'Для оплаты «после ПНР»'})}${dlField('Прочие расходы', 'oth', {calc:c, unit:'₽', hint:'Платёж — при поставке'})}</div>
       <details class="dl-more"${otherOpen?' open':''}><summary>Ещё <span class="muted">— резерв на гарантию, бонусы с продажи, прочий НДС к вычету</span></summary><div class="dl-g g3">
         ${dlField('Резерв на гарантию', 'warr', {calc:c, unit:'% выручки', ph:'1', q:'Деньги на гарантийные случаи — процент от выручки без НДС.'})}${dlField('Бонусы и комиссии', 'bonus', {calc:c, unit:'% выручки', q:'Агентам, партнёрам, менеджерам — платятся после оплаты заказчика.'})}
-        ${dlField('Прочий НДС к вычету', 'vo', {calc:c, unit:'₽', q:'НДС в монтаже и прочих расходах, если подрядчики с НДС.'})}</div></details>`, '', ['Итого монтаж и прочие расходы', c.M+c.E+c.W+c.Bn, c.W+c.Bn?`в т. ч. гарантия и бонусы ${dlRub0(c.W+c.Bn)}`:'']) }
+        ${dlField('Прочий НДС к вычету', 'vo', {calc:c, unit:'₽', q:'НДС в монтаже и прочих расходах, если подрядчики с НДС.'})}</div></details>
+      ${dlCash(c)}`, '', ['Итого монтаж и прочие расходы', c.M+c.E+c.W+c.Bn+xK, xNote?'в т. ч. '+xNote:'']) }
     ${dlStep(3+nS, 'Оплата заказчика', 'Когда и сколько платит заказчик. Аванс уменьшает финансирование.', dlCustomer(c), '', ['Итого заплатит заказчик', c.rows.filter(r=>r.inflow).reduce((a,r)=>a+r.amount,0), `${c.trs.filter(t=>t.p>0).length} ${plural(c.trs.filter(t=>t.p>0).length,'платёж','платежа','платежей')}, последний — день ${c.Tend}`])}
     ${dlStep(4+nS, 'Цена КП и валюта', DL.ex?'Значения примера.':'Здесь меняются цены КП, валюта и курс — так же, как в разделе «Цены и валюта».', dlKpPrice(c), '', ['Цена КП с НДС', c.S, `выручка без НДС ${dlRub0(c.R)}, НДС ${dlIn(c.v)} % — ${dlRub0(c.VATs)}`])}
     ${dlStep(5+nS, 'Деньги и налог', 'Во что обходятся вложенные в сделку деньги и сколько уйдёт налога на прибыль.', `<div class="dl-g g2">
@@ -675,6 +695,7 @@ function dealSideBlock(){
       <dt>Себестоимость</dt><dd>${dlRub0(r.Ctot)}</dd>
       ${c.Tsum?`<dt>Таможня (платим)</dt><dd>${dlRub0(c.Tsum)}</dd>`:''}
       <dt>Финансирование</dt><dd>${dlRub0(c.F)}</dd>
+      ${r.K>0?`<dt>Прочие расходы (нал.)</dt><dd>${dlRub0(r.K)}</dd>`:''}
       ${unk?'':`<dt>Чистая прибыль</dt><dd>${dlRub0(b.net)}</dd>`}
       ${need!=null?`<dt>Цена для ${TG[tg.type]||'цели'} ${esc(tg.v)}${tg.type==='profit'||tg.type==='net'?' ₽':' %'}</dt><dd><b>${dlRub0(need)}</b></dd>`:''}</dl>
     ${withCost<its.length?`<p class="mrg-n warn-t">Закупка указана у ${withCost} из ${its.length} позиций</p>`:warn.length?`<p class="mrg-n ${warn[0].bad?'bad-t':'warn-t'}">${esc(warn[0].t)}</p>`:unk?'<p class="mrg-n warn-t">Нужна сумма ввозного НДС</p>':''}

@@ -87,6 +87,12 @@ async function dealXlsx(){
   row(['Прочий НДС к вычету', {v:c.Vo, s:'inpMoney'}, '₽', {f:self(), v:c.Vo, s:'money'}], 'Vo');
   row(['Резерв на гарантию', {v:c.warrP, s:'inp'}, '% выручки без НДС'], 'WARR');
   row(['Бонусы и комиссии с продажи', {v:c.bonusP, s:'inp'}, '% выручки без НДС'], 'BON');
+  // прочие расходы наличными (только если заданы): способ расчёта — как в программе, значение и стоимость наличных можно менять
+  const xOn=b.K>0, xm=c.xc.mode;
+  if (xOn){
+    row([`Прочие расходы наличными, на руки — ${xm==='net'?'% от чистой прибыли':xm==='sale'?'% от выручки без НДС':'сумма'}`, {v:c.xc.v, s:xm==='sum'?'inpMoney':'inp'}, xm==='sum'?'₽':'%', '', note('Не уменьшают налог на прибыль; платятся после последней оплаты заказчика')], 'XV');
+    row(['Стоимость получения наличных', {v:c.xc.cost, s:'inp'}, '%', '', note('Расход компании = на руки / (1 − %)')], 'XCOST');
+  }
   const trKeys=[], trRef=x=>ref(x, at[x+'col']||'B');
   c.trs.forEach((t,j)=>{ const key='TR'+j; trKeys.push(key);
     const nm=`${t.name||'Оплата заказчика'}: этап ${j+1} — ${DEAL_EVENTS[t.ev]}${t.off?` + ${t.off} дн.`:''}`;
@@ -106,6 +112,7 @@ async function dealXlsx(){
     if (kind==='ru') return `-${A(D('LRU'+k))}`;
     if (kind==='mnt') return `-(${A(D('M'))}+${A(D('E'))})`;
     if (r.key==='bonus') return `-${A(ref('Rv'))}*${A(ref('BON'))}/100`;
+    if (r.key==='xc') return `-${A(ref('XK'))}`;
     if (r.key==='warr') return `-${A(ref('Rv'))}*${A(ref('WARR'))}/100`;
     const j=+r.key.slice(1); return `${A(D('S'))}*${A(trRef('TR'+j))}/100`; };
   const inRows=c.rows.map((r,k)=>r.inflow?'A'+(gFirst+k):null).filter(Boolean);
@@ -126,19 +133,31 @@ async function dealXlsx(){
   row(['Финансирование', {f:`${q(SH2)}G${gTot}`, v:c.F, s:'money'}, '', '', note('Лист «График платежей»')], 'F');
   row(['НДС к вычету', {f:vatIn, v:b.VATin, s:'money'}, '', '', note('Ввозной + НДС поставщиков + услуги в России + прочий')], 'VI');
   row(['Себестоимость с финансированием', {f:`${ref('C')}-${ref('VI')}+${ref('F')}`, v:b.Ctot, s:'money'}, '', '', note('Прямые платежи − НДС к вычету + финансирование')], 'CT');
-  row([{v:'Прибыль до налога на прибыль', s:'bold'}, {f:`${ref('Rv')}-${ref('CT')}`, v:b.P, s:'moneyB'}, '', '', unk?note('Ввозной НДС не указан — прибыль минимальная'):note('Выручка − себестоимость')], 'P');
-  row(['Налог на прибыль', {f:`IF(${ref('P')}>0,${ref('P')}*${ref('TAX')}/100,0)`, v:b.tax, s:'money'}], 'PT');
-  row([{v:'Чистая прибыль', s:'bold'}, {f:`${ref('P')}-${ref('PT')}`, v:b.net, s:'moneyB'}]);
-  row(['Наценка', {f:`IF(${ref('CT')}=0,"",${ref('P')}/${ref('CT')})`, v:b.markup==null?undefined:b.markup/100, s:'pctB'}, '', '', note('Прибыль / себестоимость')]);
+  if (!xOn){
+    row([{v:'Прибыль до налога на прибыль', s:'bold'}, {f:`${ref('Rv')}-${ref('CT')}`, v:b.P, s:'moneyB'}, '', '', unk?note('Ввозной НДС не указан — прибыль минимальная'):note('Выручка − себестоимость')], 'P');
+    row(['Налог на прибыль', {f:`IF(${ref('P')}>0,${ref('P')}*${ref('TAX')}/100,0)`, v:b.tax, s:'money'}], 'PT');
+    row([{v:'Чистая прибыль', s:'bold'}, {f:`${ref('P')}-${ref('PT')}`, v:b.net, s:'moneyB'}]);
+    row(['Наценка', {f:`IF(${ref('CT')}=0,"",${ref('P')}/${ref('CT')})`, v:b.markup==null?undefined:b.markup/100, s:'pctB'}, '', '', note('Прибыль / себестоимость')]);
+  } else {
+    row(['Прибыль до прочих расходов (база налога)', {f:`${ref('Rv')}-${ref('CT')}`, v:b.Pa, s:'money'}, '', '', unk?note('Ввозной НДС не указан — прибыль минимальная'):note('Выручка − себестоимость')], 'PA');
+    row(['Налог на прибыль', {f:`IF(${ref('PA')}>0,${ref('PA')}*${ref('TAX')}/100,0)`, v:b.tax, s:'money'}, '', '', note('Прочие расходы наличными налог не уменьшают')], 'PT');
+    row(['Прочие расходы наличными — на руки', {f:xm==='net'?`MAX(0,${ref('PA')}-${ref('PT')})*${ref('XV')}/100`:xm==='sale'?`${ref('Rv')}*${ref('XV')}/100`:ref('XV'), v:b.X, s:'money'}, '', '',
+      note(xm==='net'?'% от чистой прибыли до этих расходов':xm==='sale'?'% от выручки без НДС':'Сумма на руки')], 'XX');
+    row(['Прочие расходы наличными — расход компании', {f:`${ref('XX')}/(1-${ref('XCOST')}/100)`, v:b.K, s:'money'}, '', '', note('С учётом стоимости получения наличных')], 'XK');
+    row([{v:'Прибыль сделки до налога (за вычетом наличных)', s:'bold'}, {f:`${ref('PA')}-${ref('XK')}`, v:b.P, s:'moneyB'}], 'P');
+    row([{v:'Чистая прибыль', s:'bold'}, {f:`${ref('PA')}-${ref('PT')}-${ref('XK')}`, v:b.net, s:'moneyB'}, '', '', note('После налога на прибыль и прочих расходов')]);
+    row(['Наценка', {f:`IF(${ref('CT')}+${ref('XK')}=0,"",${ref('P')}/(${ref('CT')}+${ref('XK')}))`, v:b.markup==null?undefined:b.markup/100, s:'pctB'}, '', '', note('Прибыль / (себестоимость + наличные)')]);
+  }
   row(['Маржинальность', {f:`IF(${ref('Rv')}=0,"",${ref('P')}/${ref('Rv')})`, v:b.margin==null?undefined:b.margin/100, s:'pctB'}, '', '', note('Прибыль / выручка без НДС')]);
   row(['НДС к доплате', {f:`MAX(${ref('VATs')}-${ref('VI')},0)`, v:b.payable, s:'money'}], 'PAY');
   row(['Превышение вычетов', {f:`MAX(${ref('VI')}-${ref('VATs')},0)`, v:b.excess, s:'money'}, '', '', note('Не добавляется в остаток как возврат')]);
   row(['Деньги до расчётов по НДС', {f:`${D('S')}-${ref('C')}-${ref('F')}`, v:c.cashBefore, s:'money'}], 'CB');
-  row(['Деньги на счёте после сделки', {f:`${ref('CB')}-${ref('PAY')}`, v:b.cashAfter, s:'money'}, '', '', note('После доплаты НДС, до налога на прибыль')]);
+  row(['Деньги на счёте после сделки', {f:`${ref('CB')}-${ref('PAY')}${xOn?'-'+ref('XK'):''}`, v:b.cashAfter, s:'money'}, '', '', note(xOn?'После доплаты НДС и наличных, до налога на прибыль':'После доплаты НДС, до налога на прибыль')]);
+  const xIdx=c.rows.findIndex(x=>x.key==='xc');
   c.rows.forEach((r,k)=>{ const n=gFirst+k;
     const D0=q(SH1)+ref('D0'), dv=xlsxDate(d.start);
     G.push([{v:r.day, s:r.fixed?'tdInt':'inpInt'}, {f:`IF(${D0}="","",${D0}+A${n})`, v:dv===''?undefined:dv+r.day, s:'tdDate'}, {v:r.label, s:'td'}, {f:amountF(r), v:r.amount, s:'tdMoney2'}, {f:k?`E${n-1}+D${n}`:`D${n}`, v:r.balance, s:'tdMoney2'},
-      {f:k<c.rows.length-1?`MAX(0,MIN(A${n+1},$D$2)-A${n})`:'0', v:r.days, s:'tdInt'}, {f:`MAX(0,-E${n})*F${n}*${q(SH1)}${ref('i')}/100/30`, v:r.fin, s:'tdMoney2'}]); });
+      {f:k<c.rows.length-1?`MAX(0,MIN(A${n+1},$D$2)-A${n})`:'0', v:r.days, s:'tdInt'}, xIdx>=0&&k>=xIdx?{v:0, s:'tdMoney2'}:{f:`MAX(0,-E${n})*F${n}*${q(SH1)}${ref('i')}/100/30`, v:r.fin, s:'tdMoney2'}]); });
   G.push([{v:'',s:'totL'}, {v:'',s:'totL'}, {v:'Стоимость финансирования', s:'totL'}, {v:'',s:'totL'}, {v:'',s:'totL'}, {v:'',s:'totL'}, {f:`SUM(G${gFirst}:G${gLast})`, v:c.F, s:'totMoney'}]);
 
   // ---------- лист «Сводка»
@@ -156,7 +175,7 @@ async function dealXlsx(){
   const tiles=(L, V)=>{ let r1=put([tl(L[0]),tl(''),tl(L[1]),tl(''),tl(L[2]),tl(''),tl(L[3]),tl('')], 16); ['A:B','C:D','E:F','G:H'].forEach(x=>mg(r1,...x.split(':')));
     r1=put([V[0],kv('',V[0].s),V[1],kv('',V[1].s),V[2],kv('',V[2].s),V[3],kv('',V[3].s)], unk?30:22); ['A:B','C:D','E:F','G:H'].forEach(x=>mg(r1,...x.split(':'))); };
   sec('Ключевые показатели');
-  tiles(['Цена КП с НДС','Выручка без НДС','Себестоимость с финансированием', unk?'Прибыль (диапазон)':'Прибыль до налога'],
+  tiles(['Цена КП с НДС','Выручка без НДС','Себестоимость с финансированием', unk?'Прибыль (диапазон)':xOn?'Прибыль до налога, за вычетом наличных':'Прибыль до налога'],
     [kv(c.S,'kpiV'), kv(c.R,'kpiV'), kv(b.Ctot,'kpiV'), unk?kv(`${dlRub0(c.lo.P)} … ${dlRub0(c.hi.P)}`,'kpiT'):kv(P, P<0?'kpiVr':'kpiVg')]);
   tiles(['Маржинальность — прибыль / выручка','Наценка к себестоимости','Чистая прибыль после налога', gapRow&&gap>0?`Пик вложений, день ${gapRow.day}`:'Пик вложений своих денег'],
     [unk?kv(`${dlPct(c.lo.margin)} … ${dlPct(c.hi.margin)}`,'kpiT'):kv(b.margin==null?'—':b.margin/100,'kpiP'), unk?kv(`${dlPct(c.lo.markup)} … ${dlPct(c.hi.markup)}`,'kpiT'):kv(b.markup==null?'—':b.markup/100,'kpiP'),
@@ -214,7 +233,9 @@ async function dealXlsx(){
   sec('Деньги и налоги');
   const fin=[[`Стоимость денег, % в месяц${c.moneyAuto&&DL.key?` (ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD} п.п.)`:''}`, c.i/100, 'tdPct'],
     ['Финансирование (проценты на вложенные деньги)', c.F], ['Максимальное вложение своих денег', gap], ['НДС с продажи', c.VATs], ['НДС к вычету', b.VATin], ['НДС к доплате', b.payable],
-    [`Налог на прибыль ${dlIn(c.taxP)} %`, b.tax], ['Деньги на счёте после сделки (после НДС, до налога на прибыль)', b.cashAfter]];
+    [`Налог на прибыль ${dlIn(c.taxP)} %${xOn?' (с прибыли до прочих расходов)':''}`, b.tax],
+    ...(xOn?[[`Прочие расходы наличными: на руки ${dlRub0(b.X)}${b.K!==b.X?`, с получением наличных ${dlIn(c.xc.cost)} %`:''} — налог не уменьшают`, b.K]]:[]),
+    ['Деньги на счёте после сделки (после НДС, до налога на прибыль)', b.cashAfter]];
   fin.forEach(([n,v,s])=>{ r=put([{v:'',s:'td'},{v:n,s:'td'},{v:'',s:'td'},{v:'',s:'td'},{v:'',s:'td'},{v:v,s:s||'tdMoney'},{v:'',s:'td'},{v:'',s:'td'}]); mg(r,'B','E'); mg(r,'F','H'); });
   blank();
   // замечания

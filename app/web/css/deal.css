@@ -381,3 +381,8 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-t th:first-child{white-space:nowrap}
 .dl-t td.c-ev{min-width:180px}
 @media (max-width:640px){ .dl-t td.c-when{width:auto} .dl-t td.c-when .dl-date{width:132px} .dl-t tr{grid-template-columns:140px minmax(0,1fr) auto} }
+/* прочие расходы наличными */
+.dl-cash>summary .dl-cash-s{margin-left:6px;color:var(--ink)}
+.dl-cash-r{margin:6px 0 4px;font-size:13.5px}
+.dl-cash>p.muted{font-size:12.5px;margin:4px 0 2px}
+.dl-cash .dl-in>select:only-child{flex:1 1 auto;width:100%;min-width:0;max-width:none}
