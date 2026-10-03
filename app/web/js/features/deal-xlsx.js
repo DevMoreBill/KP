@@ -25,8 +25,10 @@ async function dealXlsx(){
   row([{v:'Цена и курсы', s:'grp'},{v:'',s:'grp'},{v:'',s:'grp'},{v:'',s:'grp'},{v:'',s:'grp'}]);
   row(['Цена для заказчика с НДС', {v:c.S, s:'inpMoney'}, '₽', {f:self(), v:c.S}], 'S');
   row(['НДС при продаже', {v:c.v, s:'inp'}, '%'], 'v');
-  for (const cur of c.used) row([`Курс рубля за 1 ${cur}`, {v:num(c.rate(cur)), s:'inp'}, '₽', '', note(c.rateSrc[cur]==='deal'?'Указан в расчёте':'Из КП (курс ЦБ)')], 'rate_'+cur);
-  const rub=(key, cur)=> cur==='RUB' ? ref(key) : `${ref(key)}*${ref('rate_'+cur)}`;
+  // курсы — всех валют, которые встречаются в расчёте (в т. ч. с нулевой суммой: на них ссылаются формулы)
+  const curs=[...new Set([...c.used, ...d.sup.flatMap(s=>[s.log&&s.log.cur, s.extra&&s.extra.cur]), ...kp.items.map(x=>x.cur)].filter(x=>x&&x!=='RUB'&&num(c.rate(x))>0))];
+  for (const cur of curs) row([`Курс рубля за 1 ${cur}`, {v:num(c.rate(cur)), s:'inp'}, '₽', '', note(c.rateSrc[cur]==='deal'?'Указан в расчёте':'Из КП (курс ЦБ)')], 'rate_'+cur);
+  const rub=(key, cur)=> cur==='RUB' ? ref(key) : at['rate_'+cur] ? `${ref(key)}*${ref('rate_'+cur)}` : `${ref(key)}*${num(c.rate(cur))||0}`;
   const vK=`${ref('v')}/(100+${ref('v')})`;
   const amt=(label, key, o, cur0, nt)=>{ const cur=cur0||(o&&o.cur)||'RUB', a=dNum(o&&o.v)||0; const r=row([label, {v:a, s:'inpMoney'}, cur, '', nt?note(nt):''], key); R[r-1][3]={f:rub(key,cur), v:a*num(c.rate(cur)), s:'money'}; return cur; };
   const custOut=[];
@@ -241,7 +243,8 @@ async function dealXlsx(){
   const fin=[[`Стоимость денег, % в месяц${c.moneyAuto&&DL.key?` (ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD} п.п.)`:''}`, c.i/100, 'tdPct'],
     ['Финансирование (проценты на вложенные деньги)', c.F], ['Максимальное вложение своих денег', gap], ['НДС с продажи', c.VATs], ['НДС к вычету', b.VATin], ['НДС к доплате', b.payable],
     [`Налог на прибыль ${dlIn(c.taxP)} %${xOn?' (с прибыли до прочих расходов)':''}`, b.tax],
-    ...(xOn?[[`Прочие расходы наличными: на руки ${dlRub0(b.X)}${b.K!==b.X?`, с получением наличных ${dlIn(c.xc.cost)} %`:''} — налог не уменьшают`, b.K]]:[]),
+    ...(c.BG>0?[['Банковская гарантия — комиссия банка', c.BG]]:[]),
+    ...(xOn?[['Прочие расходы (наличные) — расход компании', b.K], ...(b.K!==b.X?[[`  в т. ч. на руки (стоимость наличных ${dlIn(c.xc.cost)} %)`, b.X]]:[]), ['  налог на прибыль они не уменьшают', '', 'td']]:[]),
     ['Деньги на счёте после сделки (после НДС, до налога на прибыль)', b.cashAfter]];
   fin.forEach(([n,v,s])=>{ r=put([{v:'',s:'td'},{v:n,s:'td'},{v:'',s:'td'},{v:'',s:'td'},{v:'',s:'td'},{v:v,s:s||'tdMoney'},{v:'',s:'td'},{v:'',s:'td'}]); mg(r,'B','E'); mg(r,'F','H'); });
   blank();
@@ -257,6 +260,10 @@ async function dealXlsx(){
   r=put([{v:'',s:'note'},'',{v:'ФИО',s:'note'},'',{v:'подпись',s:'note'}]); mg(r,'C','D'); mg(r,'E','F');
   r=put([note('Подробный расчёт с формулами — лист «Расчёт»; движение денег по дням — лист «График платежей».')]); mg(r,'A','H');
 
+  // страховка от #ИМЯ?: формула со ссылкой на несуществующую строку заменяется посчитанным значением
+  let badF=0;
+  for (const rows of [R, G, W]) for (const r of rows) for (const cell of r||[]) if (cell && typeof cell==='object' && cell.f && /undefined|NaN|null|Infinity/.test(cell.f)){ delete cell.f; badF++; }
+  if (badF) console.warn('Excel: формул заменено значениями —', badF);
   const blob=await makeXlsx([
     {name:SH0, cols:[4,33,8,13,14,14,12,9], rows:W, merges:M, heights:H, grid:false, footer, onePage:true},
     {name:SH1, cols:[46,18,14,18,52], rows:R, freeze:4, titles:'4:4', footer},

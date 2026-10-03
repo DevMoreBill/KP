@@ -581,7 +581,7 @@ function dealRenderIn(dlg){
     const keyT = DL.key ? `ключевая ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD}` : 'по умолчанию';
   const d0h=dlD0(), calT=d0h?dlCalNote(d0h).replace(/<[^>]+>/g,''):'';
   const head=`<div class="dlg-h"><h3>Экономика сделки${!DL.ex&&S.number?` · КП № ${esc(S.number)}`:''}<small>${esc(S.client||'Получатель не указан')}</small></h3>
-      <label class="dl-hd${d0h?'':' empty'}" title="${esc(calT||'Ориентировочная дата подписания договора (день 0): от неё считаются даты всех платежей')}"><span>Дата договора</span><input type="date" data-dlstart value="${esc(d0h)}" aria-label="Дата договора"${DL.ex?' disabled':''}></label>
+      <label class="dl-hd${d0h?'':' empty'}"><span>Дата договора${dlQ('Ориентировочная дата заключения договора (день 0). От неё считаются сроки поставки и даты всех платежей; рабочие (банковские) дни — по производственному календарю РФ.'+(calT?' '+calT+'.':''))}</span><input type="date" data-dlstart value="${esc(d0h)}" aria-label="Дата договора"${DL.ex?' disabled':''}></label>
       <button class="btn" type="button" data-dlx="xlsx">Excel для согласования</button><button class="icon dl-maxb" type="button" data-dlx="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна можно менять, потянув за правый нижний угол">⤢</button><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div>`;
   const banner = kp.sumNoRate ? `<div class="dl-ex warn">Нет курса валюты КП (${esc(kp.cur)}) — цена не переведена в рубли. Укажите курс в шаге «Цена КП и валюта».</div>` : '';
   const b=c.base, mini = b ? `<span><small>Прибыль при цене КП</small><b class="${b.P<0?'neg':''}">${dlRub0(b.P)}</b></span><span class="r"><small>Маржинальность</small><b>${dlPct(b.margin)}</b></span>`
@@ -596,7 +596,7 @@ function dealRenderIn(dlg){
   DL.si=dlStepInfo(c);
   if (DL.open===undefined || !DL.nav[DL.open]) DL.open=(order.find(([id])=>DL.si[id]&&DL.si[id].st==='need')||order[0])[0];
   const tabs=`<nav class="dl-tabs" role="tablist" aria-label="Шаги расчёта">${order.map(([id,t],k)=>{ const st=(DL.si[id]||{}).st, on=DL.open===id;
-    return `<button type="button" role="tab" aria-selected="${on}" class="dl-tab${on?' on':''}${st?' '+st:''}" data-dlx="step" data-id="${id}" title="${esc((DL.si[id]||{}).sum||t)}"><span class="dl-tn">${st==='ok'?'✓':k+1}</span><span class="dl-tt">${DL_TAB_SHORT[id]||t}</span>${st==='need'?'<i class="dl-tdot" aria-label="нужно заполнить"></i>':''}</button>`; }).join('')}</nav>`;
+    return `<button type="button" role="tab" aria-selected="${on}" class="dl-tab${on?' on':''}${st?' st-'+st:''}" data-dlx="step" data-id="${id}" title="${esc(t+': '+((DL.si[id]||{}).sum||''))}"><span class="dl-tn">${st==='ok'?'✓':st==='need'?'!':k+1}</span><span class="dl-tt">${DL_TAB_SHORT[id]||t}</span></button>`; }).join('')}</nav>`;
   const d0=dlD0();
   const cust=dlCustoms(c);
   const custStep=dlStep(0, 'Оплата заказчика', 'Когда и сколько платит заказчик. Выберите готовый вариант или впишите свои этапы; сроки — днями или датой.', dlCustomer(c), '', ['Итого заплатит заказчик', c.rows.filter(r=>r.inflow).reduce((a,r)=>a+r.amount,0), `${c.trs.filter(t=>t.p>0).length} ${plural(c.trs.filter(t=>t.p>0).length,'платёж','платежа','платежей')}, последний — ${d0?dlDayRu(c.Tend):'день '+c.Tend}`], 'cust');
