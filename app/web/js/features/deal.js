@@ -572,6 +572,24 @@ const DL_PARTY = { sup:['Поставщик','sup'], log:['Логистика','
 const DL_WD = ['вс','пн','вт','ср','чт','пт','сб'];
 const dlWd = day => { const iso=dlDayIso(day); return iso ? DL_WD[new Date(iso+'T00:00:00Z').getUTCDay()] : ''; };
 
+// ширина столбцов графика платежей (компьютер): тянется за край заголовка, запоминается в браузере
+const DL_COLW = [205, 120, 0, 140, 150, 150];
+function dlColW(){ let w=null; try{ w=JSON.parse(localStorage.getItem('kp.dlcols')||'null'); }catch(e){}
+  return DL_COLW.map((d,k)=>Array.isArray(w) && +w[k]>=50 ? +w[k] : d); }
+document.addEventListener('pointerdown', e=>{
+  const h=e.target.closest && e.target.closest('.dl-t .dl-cr'); if (!h || e.button!==0) return;
+  e.preventDefault(); e.stopPropagation();
+  const k=+h.dataset.dlcol, tbl=h.closest('table'), col=tbl.querySelectorAll('col')[k], th=h.closest('th'), x0=e.clientX, w0=th.getBoundingClientRect().width;
+  const ws=dlColW(); document.body.classList.add('dl-colresize');
+  const mv=ev=>{ const w=Math.max(k===0?168:60, Math.round(w0+ev.clientX-x0)); col.style.width=w+'px'; ws[k]=w; };
+  const up=()=>{ removeEventListener('pointermove', mv); removeEventListener('pointerup', up); document.body.classList.remove('dl-colresize');
+    try{ localStorage.setItem('kp.dlcols', JSON.stringify(ws)); }catch(_){} };
+  addEventListener('pointermove', mv); addEventListener('pointerup', up);
+});
+document.addEventListener('dblclick', e=>{ const h=e.target.closest && e.target.closest('.dl-t .dl-cr'); if (!h) return;
+  const k=+h.dataset.dlcol, ws=dlColW(); ws[k]=DL_COLW[k]; try{ localStorage.setItem('kp.dlcols', JSON.stringify(ws)); }catch(_){}
+  const col=h.closest('table').querySelectorAll('col')[k]; col.style.width=DL_COLW[k]?DL_COLW[k]+'px':''; });
+
 function dlSchedule(c, n=6){
   const d=dlDeal(), d0=dlD0();
   const out=c.rows.filter(r=>!r.inflow), inn=c.rows.filter(r=>r.inflow);
@@ -585,12 +603,13 @@ function dlSchedule(c, n=6){
       ${tile('Получаем от заказчика', dlRub0(sum(r=>r.inflow)), `${inn.length} ${plural(inn.length,'платёж','платежа','платежей')}, последний — ${when(c.Tend)}`, 'in')}
       ${tile('Пик вложений своих денег', peak.r?dlRub0(-peak.v):'0 ₽', peak.r?when(peak.r.day):'деньги заказчика покрывают платежи', peak.r?'neg':'')}
       ${tile('Финансирование', dlRub0(c.F), `${dlIn(c.i)} % в месяц`)}</div>
-    <div class="dl-tw"><table class="dl-t"><thead><tr><th>${d0?'Дата · день':'День'}</th><th>Кто</th><th>Платёж</th><th class="num">Сумма</th><th class="num">Остаток денег</th><th class="num">Финансирование</th></tr></thead><tbody>
+    <div class="dl-tw"><table class="dl-t dl-tfix"><colgroup>${dlColW().map(w=>`<col${w?` style="width:${w}px"`:''}>`).join('')}</colgroup>
+    <thead><tr>${[d0?'Дата · день':'День','Кто','Платёж','Сумма','Остаток денег','Финансирование'].map((t,k)=>`<th${k>2?' class="num"':''}>${t}<i class="dl-cr" data-dlcol="${k}" title="Потяните, чтобы изменить ширину столбца; двойной щелчок — как было" aria-hidden="true"></i></th>`).join('')}</tr></thead><tbody>
     ${c.rows.map(r=>{ const pt=DL_PARTY[r.party]||DL_PARTY.oth;
       const dayIn = r.fixed?`<span class="dl-day fx">${r.day}</span>`:`<input type="text" inputmode="numeric" class="dl-day" data-dlday="${esc(r.key)}" value="${r.day}" aria-label="День: ${esc(r.label)}" title="${r.manual?'Дата изменена вручную':'По срокам — можно изменить'}">`;
       const dateIn = r.fixed?`<span class="dl-dt">${dlDayRu(r.day)}</span>`:`<input type="date" class="dl-date" data-dldate="${esc(r.key)}" value="${dlDayIso(r.day)}" min="${d0}" aria-label="Дата: ${esc(r.label)}" title="${r.manual?'Дата изменена вручную':'По срокам — можно изменить'}">`;
       const mv = r.fixed || DL.ex ? '' : `<span class="dl-smv"><span class="dl-hdl" draggable="true" data-dnds="${esc(r.key)}" title="Перетащите строку выше или ниже — платёж получит дату нового места, срок пересчитается" aria-hidden="true">⠿</span><button type="button" class="dl-mvb" data-dlx="rowmv" data-key="${esc(r.key)}" data-d="-1" aria-label="Раньше — на дату платежа выше" title="Раньше — на дату платежа выше">↑</button><button type="button" class="dl-mvb" data-dlx="rowmv" data-key="${esc(r.key)}" data-d="1" aria-label="Позже — на дату платежа ниже" title="Позже — на дату платежа ниже">↓</button></span>`;
-      return `<tr class="${r.inflow?'in':''}${r.manual?' man':''}" data-skey="${esc(r.key)}" data-sday="${r.day}"><td class="c-day${d0?' c-when':''}">${mv}${d0?`${dateIn}<small class="dl-wd${r.offDay?' bad-t':''}">день ${r.day} · ${dlWd(r.day)}${r.shiftedFrom!=null?` · <span title="По сроку — ${dlDayRu(r.shiftedFrom)} (${dlWd(r.shiftedFrom)}), нерабочий день">↷ с ${dlDayRu(r.shiftedFrom).slice(0,5)}</span>`:''}${r.offDay?' · нерабочий':''}</small>`:dayIn}</td>
+      return `<tr class="${r.inflow?'in':''}${r.manual?' man':''}" data-skey="${esc(r.key)}" data-sday="${r.day}"><td class="c-day${d0?' c-when':''}"><span class="dl-cdr">${mv}${d0?dateIn:dayIn}</span>${d0?`<small class="dl-wd${r.offDay?' bad-t':''}">день ${r.day} · ${dlWd(r.day)}${r.shiftedFrom!=null?` · <span title="По сроку — ${dlDayRu(r.shiftedFrom)} (${dlWd(r.shiftedFrom)}), нерабочий день">↷ с ${dlDayRu(r.shiftedFrom).slice(0,5)}</span>`:''}${r.offDay?' · нерабочий':''}</small>`:''}</td>
       <td class="c-who"><span class="dl-pty ${pt[1]}">${pt[0]}</span></td>
       <td class="c-ev">${esc(r.label)}${r.ev&&(r.party==='log'||r.party==='oth')?`<small>${esc(r.ev)}</small>`:''}</td><td class="num c-pay ${r.inflow?'ok-t':''}">${r.inflow?'+':'−'}${dlRub0(Math.abs(r.amount))}</td><td class="num c-bal ${r.balance<0?'neg':''}">${dlRub0(r.balance)}</td><td class="num c-fin">${r.fin?dlRub0(r.fin)+`<small>${r.days} дн.</small>`:'—'}</td></tr>`; }).join('')}
     </tbody><tfoot><tr><td class="c-day"></td><td class="c-who"></td><td class="c-ev">Стоимость финансирования</td><td class="c-pay"></td><td class="c-bal"></td><td class="num c-fin"><b>${dlRub(c.F)}</b></td></tr></tfoot></table></div>
@@ -695,9 +714,11 @@ function dealRenderIn(dlg){
   if (dealSyncConds(c)) persist();
     const keyT = DL.key ? `ключевая ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD}` : 'по умолчанию';
   const d0h=dlD0(), calT=d0h?dlCalNote(d0h).replace(/<[^>]+>/g,''):'';
+  // на телефоне шапка — одна строка, дата договора — в строке с прибылью (рабочая зона больше)
+  const mob=typeof isMob==='function' && isMob();
+  const hd=`<label class="dl-hd${d0h?'':' empty'}"><span>Дата договора${dlQ('Ориентировочная дата заключения договора (день 0). От неё считаются сроки поставки и даты всех платежей; рабочие (банковские) дни — по производственному календарю РФ.'+(calT?' '+calT+'.':''))}</span><input type="date" data-dlstart value="${esc(d0h)}" aria-label="Дата договора"${DL.ex?' disabled':''}></label>`;
   const head=`<div class="dlg-h"><h3>Экономика сделки${!DL.ex&&S.number?` · КП № ${esc(S.number)}`:''}<small>${esc(S.client||'Получатель не указан')}</small></h3>
-      <label class="dl-hd${d0h?'':' empty'}"><span>Дата договора${dlQ('Ориентировочная дата заключения договора (день 0). От неё считаются сроки поставки и даты всех платежей; рабочие (банковские) дни — по производственному календарю РФ.'+(calT?' '+calT+'.':''))}</span><input type="date" data-dlstart value="${esc(d0h)}" aria-label="Дата договора"${DL.ex?' disabled':''}></label>
-      <button class="btn" type="button" data-dlx="xlsx">Excel для согласования</button><button class="icon dl-maxb" type="button" data-dlx="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна можно менять, потянув за правый нижний угол">⤢</button><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div>`;
+      ${mob?'':hd}<button class="btn" type="button" data-dlx="xlsx" title="Excel для согласования"><span class="dl-xl-l">Excel для согласования</span><span class="dl-xl-s">Excel</span></button><button class="icon dl-maxb" type="button" data-dlx="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна можно менять, потянув за правый нижний угол">⤢</button><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div>`;
   const banner = kp.sumNoRate ? `<div class="dl-ex warn">Нет курса валюты КП (${esc(kp.cur)}) — цена не переведена в рубли. Укажите курс в шаге «Цена КП и валюта».</div>` : '';
   const b=c.base, mini = b ? `<span><small>Прибыль при цене КП</small><b class="${b.P<0?'neg':''}">${dlRub0(b.P)}</b></span><span class="r"><small>Маржинальность</small><b>${dlPct(b.margin)}</b></span>`
     : `<span><small>Прибыль при цене КП</small><b>${dlRub0(c.lo.P)} … ${dlRub0(c.hi.P)}</b></span><span class="r warn-t">нужен ввозной НДС</span>`;
@@ -715,7 +736,8 @@ function dealRenderIn(dlg){
   const d0=dlD0();
   const cust=dlCustoms(c);
   const custStep=dlStep(0, 'Оплата заказчика', 'Когда и сколько платит заказчик. Выберите готовый вариант или впишите свои этапы; сроки — днями или датой.', dlCustomer(c), '', ['Итого заплатит заказчик', c.rows.filter(r=>r.inflow).reduce((a,r)=>a+r.amount,0), `${c.trs.filter(t=>t.p>0).length} ${plural(c.trs.filter(t=>t.p>0).length,'платёж','платежа','платежей')}, последний — ${d0?dlDayRu(c.Tend):'день '+c.Tend}`], 'cust');
-  morph(dlg, `${head}${banner}<div class="dl-mini">${mini}</div><div class="dl-b"><div class="dl-tabw">${tabs}</div><div class="dl-form">
+  dlg.dataset.tab=DL.open;
+  morph(dlg, `${head}${banner}<div class="dl-mini">${mob?hd:''}${mini}</div><div class="dl-b"><div class="dl-tabw">${tabs}</div><div class="dl-form">
     ${dlPurchase(c)}
     ${cust}
     ${custStep}

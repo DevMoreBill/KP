@@ -315,3 +315,31 @@ span.mb-back{border:0}
 .mob dialog.tpled .dlg-h{flex-wrap:wrap}
 .mob dialog.tpled .dlg-h h3{flex:1 1 100%;order:-1}
 .mob dialog.tpled .te-pick{flex:1 1 140px;min-width:0;max-width:none}
+/* iPhone: поля даты — ровные, текст слева, у пустого — подсказка (без неё поле выглядит пустым прямоугольником) */
+@supports (-webkit-touch-callout:none){
+  input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-height:40px;line-height:1.25;text-align:left;background-color:var(--field)}
+  input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0;min-height:1.25em}
+  input[type=date].dt-empty::before{content:'дд.мм.гггг';color:var(--muted);opacity:.8}
+  input[type=date].dt-empty:focus::before{content:''}
+}
+.mob .top{transition:transform .2s ease;z-index:30}
+.mob body.top-hide .top{transform:translateY(-100%)}
+/* предпросмотр КП: «Предпросмотр · ✕» — первой строкой, масштаб и действия — второй, ровно по ширине */
+.mob .kpprev .pv-hd{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,.8fr) minmax(0,1.2fr);gap:8px 6px;align-items:center}
+.mob .kpprev .pv-hd h3{grid-column:1/4;grid-row:1;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mob .kpprev .pv-hd [data-pva=close]{grid-column:4;grid-row:1;justify-self:end}
+.mob .kpprev .pv-hd .pv-note,.mob .kpprev .pv-hd .sp{display:none}
+.mob .kpprev .pv-hd .pv-zoom{grid-column:1;grid-row:2}
+.mob .kpprev .pv-hd [data-pva=pdf]{grid-column:2;grid-row:2}
+.mob .kpprev .pv-hd [data-pva=print]{grid-column:3;grid-row:2}
+.mob .kpprev .pv-hd [data-pva=save]{grid-column:4;grid-row:2}
+.mob .kpprev .pv-hd .btn{min-width:0;padding:8px 4px;font-size:14px;white-space:nowrap}
+.mob .pv-l{display:none}
+.mob .kpprev .pv-zoom .icon{width:32px;min-width:32px}
+/* настройки: строка списка — текст сверху, кнопки снизу (не налезают) */
+.mob .st-row{flex-direction:column;align-items:stretch;gap:8px}
+.mob .st-row .acts{justify-content:flex-start}
+.mob .st-row .acts .btn{flex:1 1 auto}
+/* характеристики: название параметра — во всю ширину, значение, ★ и ✕ — под ним */
+.mob .srow{grid-template-columns:minmax(0,1fr) 40px 40px;gap:6px;padding-bottom:8px;border-bottom:1px dashed var(--line)}
+.mob .srow>input:first-child{grid-column:1/-1}
