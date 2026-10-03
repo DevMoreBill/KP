@@ -135,7 +135,9 @@ async function renderDocx(St, pack, settings){
   if (hdrOn && out.header){ zip.file('word/header_kp.xml', out.header);
     zip.file('word/_rels/header_kp.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
       (hdrLogo?`<Relationship Id="rIdHdrLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${hdrLogo.file}"/>`:'')+'</Relationships>'); }
-  return zip.generateAsync({type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression:'DEFLATE'});
+  const blob=await zip.generateAsync({type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression:'DEFLATE'});
+  blob.kpFloats=out.floats||[];   // плавающие объекты по порядку — предпросмотр дорисовывает надписи (docx-preview их не показывает)
+  return blob;
 }
 
 // пробный файл: текущее КП по шаблону с несохранёнными настройками — без номера и записи в журнал

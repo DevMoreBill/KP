@@ -23,9 +23,11 @@
      footerXml           — нижний колонтитул;
      headerXml           — шапка страницы из настроек (header.on): логотип и реквизиты — для новой компании без Word;
      build               — сборка документа из разделов в порядке settings.sections.
-   Дополнительные картинки шаблона (images: [{id, file, place, widthCm, align}]) выводятся в начале или в конце
-   раздела (place: '<раздел>Top' | '<раздел>End'). design: true — пометки для графического редактора
-   (стиль текста — KPS_<стиль>, картинка — KPI_<правило>, начало раздела — KPSEC_<раздел>).
+   Свои картинки и надписи шаблона (images, labels) — в начале или в конце раздела (place: '<раздел>Top' | '<раздел>End'):
+   строкой или свободно (float: плавающий объект Word со смещением x, y см от абзаца привязки, размер widthCm × heightCm).
+   imgSize — размер картинок макета без сохранения пропорций; para — сдвиг абзацев по стилю (выравнивание, отступы).
+   design: true — пометки для графического редактора (стиль текста — KPS_<стиль>, картинка — KPI_<правило>,
+   надпись — KPL_<id>, начало раздела — KPSEC_<раздел>, место привязки — KPANC_<место>).
    Размеры: ширина в «твипах» (1 см = 567), изображения в EMU (1 см = 360000).
    ============================================================================ */
 function kpSkeleton(KP) {
@@ -81,9 +83,17 @@ function kpSkeleton(KP) {
       clientsWidthCm: 0           // ширина картинки «Наши клиенты», 0 — во всю ширину текста
     },
     // шапка страницы из настроек (вместо шапки base.docx): логотип слева или справа, реквизиты строками
-    header: { on: false, logo: '', logoWidthCm: 4, logoSide: 'left', lines: '', textSize: 8, textColor: 'GRAY', firstBold: true, firstColor: 'BLUE', rule: true, ruleColor: 'LINE' },
-    // дополнительные картинки шаблона (баннер, печать, подпись…): место — начало/конец раздела
+    header: { on: false, logo: '', logoWidthCm: 4, logoHeightCm: 0, logoSide: 'left', lines: '', textSize: 8, textColor: 'GRAY', firstBold: true, firstColor: 'BLUE', rule: true, ruleColor: 'LINE' },
+    // дополнительные картинки шаблона (баннер, печать, подпись…): место — начало/конец раздела;
+    // float: true — свободно на странице (x, y — см от места привязки), widthCm × heightCm (0 — по пропорциям)
     images: [],
+    // свои надписи: текст с подстановками {клиент} {номер} {дата} {менеджер} {телефон} {email} {сайт};
+    // свободно на странице (рамка widthCm × heightCm в точке x, y) или строкой в начале/конце раздела
+    labels: [],
+    // размер картинок макета без сохранения пропорций: { ключ: { w, h } } (см; ключ — правило ширины)
+    imgSize: {},
+    // сдвиг абзацев по стилю: { стиль | 'IMG_'+ключ: { align, indent (см), before, after (пт) } } — прибавляется к макету
+    para: {},
     texts: {
       coverKicker: 'Технико-коммерческое предложение',
       recipient: 'Получатель', object: 'Объект', date: 'Дата',
@@ -233,7 +243,7 @@ function kpSkeleton(KP) {
 
   // ---------------------------------------------------------------- строительные блоки Word
   function r(t, o = {}) {
-    if (typeof o === 'string') { const nm = o; o = sty(o); if (TPL.design) o.mk = 'KPS_' + nm; }
+    if (typeof o === 'string') { const nm = o; o = sty(o); if (TPL.design) o.mk = 'KPS_' + nm; if (RUNSTY === null) RUNSTY = nm; }
     const sz = o.sz || 20, color = o.color || DARK, f = esc(TPL.font || 'Arial');
     let rp = (o.mk ? `<w:rStyle w:val="${o.mk}"/>` : '') + `<w:rFonts w:ascii="${f}" w:eastAsia="${f}" w:hAnsi="${f}" w:cs="${f}"/>`;
     if (o.b) rp += '<w:b/><w:bCs/>';
@@ -245,6 +255,15 @@ function kpSkeleton(KP) {
     return `<w:r><w:rPr>${rp}</w:rPr><w:t xml:space="preserve">${esc(t)}</w:t></w:r>`;
   }
   function p(runs = '', o = {}) {
+    // сдвиг абзаца из графического редактора: по стилю первого текста (или картинке) в абзаце
+    const adj = RUNSTY && TPL.para && TPL.para[RUNSTY]; RUNSTY = null;
+    if (adj) {
+      o = Object.assign({}, o);
+      if (adj.align) o.jc = adj.align;
+      if (+adj.before) o.before = Math.max(0, (o.before || 0) + Math.round(+adj.before * 20));
+      if (+adj.after) o.after = Math.max(0, (o.after || 0) + Math.round(+adj.after * 20));
+      if (+adj.indent) o.indL = Math.max(-1134, (o.indL || 0) + Math.round(+adj.indent * 567));
+    }
     let pp = '';
     if (o.keep) pp += '<w:keepNext/>';
     if (o.pbb) pp += '<w:pageBreakBefore/>';
@@ -287,9 +306,27 @@ function kpSkeleton(KP) {
     }).join('');
     return `<w:tbl><w:tblPr>${pr}</w:tblPr><w:tblGrid>${grid}</w:tblGrid>${body}</w:tbl>`;
   }
-  let PID = 9000;
+  let PID = 9000, RUNSTY = null;
+  // рисунок как графический объект Word
+  const picXml = (id, rid, cx, cy, name) => '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+    '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+    `<pic:nvPicPr><pic:cNvPr id="${id}" name="${esc(name)}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>`;
+  // плавающий объект: x — от левого края текста, y — от абзаца привязки (см); не сдвигает текст
+  function anchorRun(graphic, id, cx, cy, x, y, name, mk, behind) {
+    return '<w:r><w:rPr>' + (TPL.design && mk ? `<w:rStyle w:val="${mk}"/>` : '') + '<w:noProof/></w:rPr><w:drawing>' +
+      `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="${251659264 + id}" behindDoc="${behind ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="1">` +
+      `<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>${cm(x || 0)}</wp:posOffset></wp:positionH>` +
+      `<wp:positionV relativeFrom="paragraph"><wp:posOffset>${cm(y || 0)}</wp:posOffset></wp:positionV>` +
+      `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="${id}" name="${esc(name)}"/><wp:cNvGraphicFramePr/>` +
+      graphic + '</wp:anchor></w:drawing></w:r>';
+  }
   function img(rid, cx, cy, name, key) {
     const id = ++PID;
+    const fix = key && TPL.imgSize && TPL.imgSize[key];   // размер из графического редактора (пропорции не сохраняются)
+    if (fix && +fix.w > 0) { const k = cx ? cy / cx : 1; cx = cm(fix.w); cy = +fix.h > 0 ? cm(fix.h) : Math.round(cx * k); }
+    if (key && RUNSTY === null) RUNSTY = 'IMG_' + key;
     return '<w:r><w:rPr>' + (TPL.design && key ? `<w:rStyle w:val="KPI_${key}"/>` : '') + '<w:noProof/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">' +
       `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${id}" name="${esc(name)}"/>` +
       '<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>' +
@@ -774,7 +811,7 @@ function kpSkeleton(KP) {
       { jc: H.logoSide === 'right' ? 'left' : 'right', line: 250 })).join('') || p('');
     let logo = p('');
     if (lg && lg.rid) {
-      const wcm = Math.max(0.5, +H.logoWidthCm || 4), cx = cm(wcm), cy = Math.round(cx * lg.h / lg.w);
+      const wcm = Math.max(0.5, +H.logoWidthCm || 4), cx = cm(wcm), cy = +H.logoHeightCm > 0 ? cm(H.logoHeightCm) : Math.round(cx * lg.h / lg.w);
       logo = p(img(lg.rid, cx, cy, 'Логотип компании', 'headerLogo'), { jc: H.logoSide === 'right' ? 'right' : 'left' });
     }
     const lw = lg && lg.rid ? Math.min(X(6000), Math.round((+H.logoWidthCm || 4) * 567) + 200) : 0, tw = W - lw;
@@ -817,12 +854,49 @@ function kpSkeleton(KP) {
       conditions: sec => conditionsXml(S, sec),
       contacts: sec => contactsXml(S, sec)
     };
-    // дополнительные картинки шаблона: в начале или в конце раздела
-    const extra = {};
+    // свои картинки и надписи шаблона: строкой в начале / конце раздела или свободно на странице (плавающий объект,
+    // привязанный к крошечному абзацу на этом месте). floats — плавающие объекты по порядку (для предпросмотра)
+    const inline = {}, floating = {}, floats = [];
+    const push = (box, place, x) => (box[place] = box[place] || []).push(x);
     for (const x of (TPL.images || [])) { const im = (Min.extra || {})[x.id]; if (!im) continue;
-      const rg = reg(im), wcm = Math.max(0.5, +x.widthCm || 5), cx = cm(Math.min(wcm, W / 567)), cy = Math.round(cx * im.h / im.w);
-      (extra[x.place] = extra[x.place] || []).push(p(img(rg.rid, cx, cy, x.name || 'Изображение', 'X_' + x.id), { jc: x.align || 'center', before: 120, after: 120 })); }
-    const at = place => (extra[place] || []).join('');
+      const rg = reg(im), wcm = Math.max(0.3, +x.widthCm || 5), cx = cm(x.float ? wcm : Math.min(wcm, W / 567));
+      const cy = +x.heightCm > 0 ? cm(x.heightCm) : Math.round(cx * im.h / im.w);
+      if (x.float) push(floating, x.place, () => { const id = ++PID; floats.push({ kind: 'img', id: 'X_' + x.id, behind: !!x.behind });
+        return anchorRun(picXml(id, rg.rid, cx, cy, x.name || 'Изображение'), id, cx, cy, +x.x || 0, +x.y || 0, x.name || 'Изображение', 'KPI_X_' + x.id, x.behind); });
+      else push(inline, x.place, () => { RUNSTY = null; return p(img(rg.rid, cx, cy, x.name || 'Изображение', 'X_' + x.id), { jc: x.align || 'center', before: 120, after: 120 }); });
+    }
+    const vars = { 'клиент': S.client || '', 'номер': S.number || '', 'дата': S.date ? ruDate(S.date) : '', 'менеджер': (S.manager || {}).name || '',
+      'телефон': (S.manager || {}).phone || '', 'email': (S.manager || {}).email || '', 'сайт': TPL.site || '' };
+    const lblRuns = (l, line) => r(line, { sz: Math.round((+l.size || 10) * 2), color: COL(l.color || 'DARK'), b: !!l.bold, i: !!l.italic, caps: !!l.caps, mk: TPL.design ? 'KPL_' + l.id : '' });
+    const lblParas = (l, o) => { RUNSTY = null; return String(fill(l.text || '', vars)).split(/\r?\n/).map(line => p(line ? lblRuns(l, line) : '', Object.assign({ jc: l.align || 'left', line: 260 }, o))).join(''); };
+    const escH = v => esc(v).replace(/'/g, '&#39;');
+    for (const l of (TPL.labels || [])) {
+      if (!l || !String(l.text || '').trim()) continue;
+      if (!l.float) { push(inline, l.place, () => lblParas(l, {}).replace(/<w:spacing w:before="0"/, '<w:spacing w:before="120"')); continue; }
+      push(floating, l.place, () => {
+        const id = ++PID, cx = cm(Math.max(0.5, +l.widthCm || 6)), cy = cm(Math.max(0.3, +l.heightCm || 1.2)), pad = l.bg || l.border ? 72000 : 0;
+        const fillX = l.bg ? `<a:solidFill><a:srgbClr val="${COL(l.bg)}"/></a:solidFill>` : '<a:noFill/>';
+        const lnX = l.border ? `<a:ln w="9525"><a:solidFill><a:srgbClr val="${COL(l.border)}"/></a:solidFill></a:ln>` : '<a:ln><a:noFill/></a:ln>';
+        const g = '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">' +
+          `<wps:wsp><wps:cNvSpPr txBox="1"/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${fillX}${lnX}</wps:spPr>` +
+          `<wps:txbx><w:txbxContent>${lblParas(l, {})}</w:txbxContent></wps:txbx>` +
+          `<wps:bodyPr rot="0" vert="horz" wrap="square" lIns="${pad}" tIns="${pad}" rIns="${pad}" bIns="${pad}" anchor="t" anchorCtr="0"><a:noAutofit/></wps:bodyPr></wps:wsp></a:graphicData></a:graphic>`;
+        // то же для предпросмотра (docx-preview надписи Word не рисует)
+        const lines = String(fill(l.text || '', vars)).split(/\r?\n/).map(t => esc(t) || '&nbsp;').join('<br>');
+        const css = `position:absolute;left:0;top:0;box-sizing:border-box;width:${(+l.widthCm || 6)}cm;height:${(+l.heightCm || 1.2)}cm;overflow:hidden;` +
+          `padding:${pad ? '0.2cm' : '0'};font-family:'${escH(String(TPL.font || 'Arial').replace(/'/g, ''))}',Arial,sans-serif;font-size:${+l.size || 10}pt;line-height:1.25;` +
+          `color:#${COL(l.color || 'DARK')};font-weight:${l.bold ? 700 : 400};font-style:${l.italic ? 'italic' : 'normal'};text-transform:${l.caps ? 'uppercase' : 'none'};` +
+          `text-align:${{ left: 'left', center: 'center', right: 'right', both: 'justify' }[l.align] || 'left'};${l.bg ? 'background:#' + COL(l.bg) + ';' : ''}${l.border ? 'border:1px solid #' + COL(l.border) + ';' : ''}`;
+        floats.push({ kind: 'label', id: 'L_' + l.id, html: `<div class="kp-lbl" data-tdl="L_${escH(l.id)}" style="${escH(css)}">${lines}</div>` });
+        return anchorRun(g, id, cx, cy, +l.x || 0, +l.y || 0, 'Надпись', '', false);
+      });
+    }
+    // место в разделе: строки — как текст; плавающие — в абзаце привязки (в графическом редакторе он есть всегда)
+    const at = place => {
+      const fl = (floating[place] || []).map(f => f()).join(''), il = (inline[place] || []).map(f => f()).join('');
+      const anc = fl || TPL.design ? `<w:p><w:pPr><w:pStyle w:val="${TPL.design ? 'KPANC_' + place : 'KPFLOAT'}"/><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:jc w:val="left"/><w:rPr><w:sz w:val="2"/></w:rPr></w:pPr>${fl}</w:p>` : '';
+      return /Top$/.test(place) ? anc + il : il + anc;
+    };
     let body = '';
     for (const sec of TPL.sections) if (sec.on && parts[sec.id]) {
       let part = parts[sec.id](sec);
@@ -838,7 +912,7 @@ function kpSkeleton(KP) {
       footer: footerXml(S, roots.footer),
       rels: relsXml(S, media),
       header: TPL.header && TPL.header.on && roots.header ? headerXml(S, roots.header) : null,
-      media
+      media, floats
     };
   }
 

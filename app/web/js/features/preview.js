@@ -17,7 +17,20 @@ const DOCX_OPTS = { inWrapper:true, breakPages:true, ignoreLastRenderedPageBreak
 async function renderDocxInto(blob, host){
   const style=document.createElement('div'), body=document.createElement('div');
   await docx.renderAsync(blob, body, style, DOCX_OPTS);
+  kpFloatsFix(body, blob.kpFloats);
   host.replaceChildren(style, body);
+}
+
+// плавающие объекты шаблона (свободные картинки и надписи): docx-preview рисует их пустыми блоками нулевого размера
+// со сдвигом — по порядку в документе дорисовываются надписи, картинки «за текстом» уходят под текст
+function kpFloatsFix(body, floats){
+  if (!floats || !floats.length) return;
+  // только в абзацах привязки шаблона (стиль KPFLOAT / KPANC_…): фигуры самого макета не считаются
+  const boxes=[...body.querySelectorAll('section.docx > article p.docx_kpfloat div, section.docx > article p[class*="docx_kpanc_"] div')].filter(d=>d.style.width==='0px' && d.style.height==='0px');
+  floats.forEach((f,i)=>{ const d=boxes[i]; if (!d) return;
+    d.classList.add('kp-float'); d.dataset.kpf=f.id;
+    if (f.kind==='label' && !d.firstElementChild) d.innerHTML=f.html;
+    if (f.behind) d.classList.add('kp-behind'); });
 }
 
 // ---------- превью титула в разделе «Титульный лист»
