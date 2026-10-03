@@ -8,7 +8,7 @@
 // до последней оплаты заказчика. Без аванса заказчика это ровно Σ платёж × i/100 × дней до оплаты / 30;
 // поступления заказчика уменьшают финансируемую сумму, доход на свободный остаток не начисляется.
 // Прочие расходы наличными (необязательно, d.xc): X — сумма на руки, «чистыми»; mode: net — % от чистой прибыли сделки
-//   (после налога на прибыль, до этих расходов), sale — % от выручки без НДС, sum — сумма в рублях. Получение наличных
+//   (после налога на прибыль, до этих расходов), sale — % от выручки без НДС, salevat — % от суммы продажи с НДС, sum — сумма в рублях. Получение наличных
 //   стоит xc.cost % от перечисленного: расход компании K = X / (1 − cost/100). Налоговую базу K не уменьшает:
 //   налог = P_учёт × ставка, где P_учёт = R − C_total; прибыль сделки P = P_учёт − K; чистая прибыль = P_учёт − налог − K.
 //   Платится после последней оплаты заказчика — на финансирование не влияет.
@@ -190,7 +190,7 @@ function dealCalc(kp, d){
   const M=num('mnt', d.mnt, {def:0}), E=num('oth', d.oth, {def:0}), pnrDays=num('pnr', d.pnr, {def:0, int:true});
   const Vo=num('vo', d.vo, {def:0});
   const warrP=num('warr', d.warr, {def:0, max:100}), bonusP=num('bonus', d.bonus, {def:0, max:100}), taxP=num('tax', d.tax, {def:25, max:100});
-  const xc=d.xc||{}, xMode=['net','sale','sum'].includes(xc.mode)?xc.mode:'net';
+  const xc=d.xc||{}, xMode=['net','sale','salevat','sum'].includes(xc.mode)?xc.mode:'net';
   const xV=num('xc.v', xc.v, {def:0, max:xMode==='sum'?null:100}), xCost=num('xc.cost', xc.cost, {def:0, max:90}), xG=1/(1-xCost/100);
   const moneyOwn=num('money', d.money); const moneyAuto=moneyOwn==null; const i=moneyAuto ? (kp.moneyAuto ?? 2) : moneyOwn;
   const R=S/vatK, VATs=S-R;
@@ -250,7 +250,7 @@ function dealCalc(kp, d){
   const unknown=S_.filter(s=>s.vi==null);
   const VATinKnown=viSum+voSup+voRuSum+Vo;
   const res=VATin=>{ const Cnet=Ccash-VATin, Ctot=Cnet+F, Pa=R-Ctot, vb=VATs-VATin, tax=Pa>0?Pa*taxP/100:0;
-    const X = !xV ? 0 : xMode==='sum' ? xV : xMode==='sale' ? R*xV/100 : Math.max(0, Pa-tax)*xV/100, K=X*xG, P=Pa-K;
+    const X = !xV ? 0 : xMode==='sum' ? xV : xMode==='sale' ? R*xV/100 : xMode==='salevat' ? S*xV/100 : Math.max(0, Pa-tax)*xV/100, K=X*xG, P=Pa-K;
     return { VATin, Cnet, Ctot, Pa, X, K, P, tax, net:Pa-tax-K, markup: Ctot+K?P/(Ctot+K)*100:null, margin: R?P/R*100:null, vatBal:vb, payable:Math.max(vb,0), excess:Math.max(-vb,0),
       cashAfter: S-Ccash-F-K-Math.max(vb,0) }; };
   const lo=res(VATinKnown), hi=unknown.length?res(VATinKnown+unknown.reduce((a,s)=>a+s.T,0)):lo;
