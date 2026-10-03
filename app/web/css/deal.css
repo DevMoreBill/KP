@@ -435,3 +435,44 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 :root[data-theme="dark"] .dl-n.need{background:#b86b1d}
 .dl-trw select{max-width:220px}
 .dl-trw .dl-ddt input[type=date]{max-width:150px}
+
+/* ---- вкладки шагов */
+.dl-tabs{position:sticky;top:0;z-index:5;display:flex;gap:4px;overflow-x:auto;scrollbar-width:thin;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:5px;box-shadow:0 2px 8px rgba(15,30,60,.06)}
+.dl-tab{position:relative;flex:1 0 auto;display:flex;align-items:center;justify-content:center;gap:7px;border:0;background:none;font:inherit;font-size:13.5px;font-weight:600;color:var(--muted);padding:8px 12px;border-radius:10px;cursor:pointer;white-space:nowrap}
+.dl-tab:hover{background:var(--soft);color:var(--ink)}
+.dl-tab.on{background:var(--navy);color:#fff}
+.dl-tab:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
+.dl-tn{flex:0 0 22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;background:var(--soft);color:var(--ink);border:1px solid var(--line)}
+.dl-tab.ok .dl-tn{background:var(--ok);border-color:var(--ok);color:#fff}
+.dl-tab.need .dl-tn{background:#d9822b;border-color:#d9822b;color:#fff}
+.dl-tab.on .dl-tn{background:#fff;color:var(--navy);border-color:#fff}
+.dl-tdot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#d9822b}
+/* навигация внизу шага — отдельной строкой под карточкой */
+.dl-next{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 2px 4px;margin-top:-4px}
+.dl-next .btn{min-height:42px}
+/* мини-блоки на вкладке «Расходы» */
+.dl-mb{display:grid;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:12px}
+.dl-mbh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dl-mbh h5{margin:0;font-size:15px;font-weight:700;color:var(--ink);text-transform:none;letter-spacing:0}
+.dl-mbh .dl-stc{margin-left:0}
+.dl-mbs{margin-left:auto;font-size:15px}
+.dl-mbn{margin:0;font-size:12.5px}
+.dl-mb .dl-more{margin-top:0}
+.dl-bg{display:grid;gap:10px;padding:12px 0;border-top:1px dashed var(--line)}
+.dl-bg:first-of-type{border-top:0;padding-top:0}
+.dl-bgr{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0;font-size:13.5px}
+.dl-where .dl-seg{display:flex}
+.dl-where .dl-seg button{flex:1 1 0;min-height:44px}
+@media (max-width:640px){
+  .dl-tab{flex:0 0 auto;padding:7px 10px}
+  .dl-next{flex-wrap:wrap}
+  .dl-next .btn{flex:1 1 auto}
+  .dl-mb{padding:12px}
+}
+.dl-suph{display:flex;flex-wrap:wrap;align-items:flex-end}
+.dl-suph>.dl-f{flex:1 1 200px;min-width:0}
+.dl-suph>.dl-f:first-child{flex-grow:2}
+.dl-suph>.dl-del{flex:0 0 auto}
+.dl-form>*{flex-shrink:0}
+.dl-tabs{flex:0 0 auto;min-height:44px}
+.dl-f .dl-in>select:only-child{flex:1 1 auto;width:100%;min-width:0;max-width:none}
