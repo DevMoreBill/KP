@@ -664,3 +664,16 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dl-cdr .dl-smv{float:none;margin:0 0 0 -6px;flex:0 0 auto}
 .dl-cdr .dl-date{flex:1 1 auto;min-width:0;max-width:150px;width:auto;box-sizing:border-box}
 .dl-cdr .dl-day{flex:0 0 auto}
+/* «Цена продажи» — компактно: способ и значение в одну строку, безубыточная цена — одной строкой */
+.dl-price{padding:10px 12px;gap:6px;border-width:1.5px}
+.dl-price h4{margin:0;font-size:14px;display:flex;align-items:center;gap:6px}
+.dl-price .dl-pr,.mob .dl-price .dl-pr{display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:6px;align-items:center}
+.dl-price .dl-pr select,.dl-price .dl-pr input{min-height:36px;padding:5px 9px}
+.dl-price .dl-pr .dl-in{display:flex;align-items:center;gap:4px}
+.dl-price .dl-pr .dl-in input{width:100%;min-width:0}
+.dl-price .dl-be{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.dl-price .dl-be b{color:var(--ink)}
+.dl-price .dl-pmsg{margin:0;font-size:12.5px}
+.dl-price .dl-need{margin:2px 0 0}
+@media (max-width:640px){ .dl-price .dl-pr{grid-template-columns:minmax(0,1fr) 110px} }
+.mob dialog.dealwin .dl-price .dl-pr select,.mob dialog.dealwin .dl-price .dl-pr input{min-height:38px}

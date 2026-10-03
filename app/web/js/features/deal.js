@@ -675,13 +675,13 @@ function dlResult(c){
   const parts = c.parts.map(([n,v])=>`<dt>${esc(n)}</dt><dd${v<0?' class="ok-t"':''}>${dlRub0(v)}${v>0&&r.Ctot>0?`<small>${dlIn(v/r.Ctot*100)} %</small>`:''}</dd>`).join('');
   const P = unk ? null : b.P;
   return `<div class="dl-res">
-    ${DL.ex?'':`<div class="dl-price"><h4>Цена продажи</h4>
+    ${DL.ex?'':`<div class="dl-price"><h4>Цена продажи${dlQ('Укажите нужную маржинальность, наценку или прибыль — программа рассчитает цену КП и цены позиций; «Перенести цены в КП» подставит их.')}</h4>
       <div class="dl-pr"><select data-dl="target.type" aria-label="По какому показателю подобрать цену">${[['margin','Маржинальность'],['markup','Наценка'],['profit','Прибыль до налога'],['net','Чистая прибыль']].map(([v,t])=>`<option value="${v}"${tg.type===v?' selected':''}>${t}</option>`).join('')}</select>
         <span class="dl-in"><input type="text" inputmode="decimal" data-dl="target.v" value="${esc(tg.v||'')}" placeholder="${unit==='%'?'20':'500 000'}" aria-label="Нужное значение"><i>${unit}</i></span></div>
       ${need!=null?`<p class="dl-need"><small>Цена КП с НДС</small><b>${dlRub0(need)}</b><span class="${need<kp.sumRub?'ok-t':'muted'}">${Math.abs(need-kp.sumRub)<1?'совпадает с КП':`${need>=kp.sumRub?'+':'−'}${dlRub0(Math.abs(need-kp.sumRub))} к текущей цене КП`}</span></p>
         ${plan}<button class="btn primary dl-apply" type="button" data-dlx="apply" data-s="${need}">Перенести цены в КП</button>
         <p class="dl-note">${esc(pl?'Распределено '+pl.basis+'.':'')}</p>`
-        : tv!=null?'<p class="muted">Цель недостижима при этих расходах.</p>':'<p class="muted">Укажите нужную маржу или прибыль — программа рассчитает цену КП и цены позиций.</p>'}
+        : tv!=null?'<p class="muted dl-pmsg">Цель недостижима при этих расходах.</p>':''}
       <div class="dl-be">Безубыточная цена с НДС: <b>${be!=null?dlRub0(be):'—'}</b>${dlQ('Цена, при которой прибыль после всех расходов и финансирования равна нулю. Ниже — убыток.')}</div></div>`}
     <div class="dl-now"><h4>Итог при текущей цене КП <span class="muted">${dlRub0(c.S)}</span></h4>
       ${bad?'<span class="dl-chip bad">Проверьте данные</span>':unk?'<span class="dl-chip warn">Нужна сумма ввозного НДС</span>':''}${noCost?`<span class="dl-chip warn">Расчёт неполный: нет закупки у ${noCost} поз.</span>`:''}
