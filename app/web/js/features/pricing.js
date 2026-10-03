@@ -2,7 +2,6 @@
 // модели из каталога (если у неё нет цены); дальше — «Экономика сделки».
 'use strict';
 
-function livePrice(i){ const x=S.items[i], el=document.querySelector(`[data-price="${i}"]`); if(el && document.activeElement!==el){ el.value=fmtPrice(x.price); el.classList.toggle('bad',!x.price); } }
 
 // подсказка под строкой цены: скидка для заказчика и цена со скидкой (закупка и маржа — в «Экономике сделки»)
 function priceHint(x){

@@ -237,7 +237,7 @@ def history_out(h, text):
     try:
         rows = json.loads(text)
     except ValueError:
-        return text
+        return '[]'          # без разбора нельзя убрать чужую экономику — лучше пусто, чем лишнее
     for r in rows:
         if isinstance(r, dict) and not deal_allowed(h, r):
             for k in DEAL_KEYS_META:

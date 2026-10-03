@@ -86,8 +86,6 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-seg button{border:0;background:var(--card);padding:6px 12px;font-size:13.5px;cursor:pointer;color:var(--muted);min-height:34px}
 .dl-seg button+button{border-left:1px solid var(--line)}
 .dl-seg button.on{background:var(--navy);color:#fff}
-.dl-break{margin:12px 0 0;font-size:13.5px;color:var(--muted);line-height:1.55;padding:10px 12px;border-radius:10px;background:var(--soft)}
-.dl-break b{color:var(--ink)}
 .dl-foot-n{margin:0;font-size:12.5px;color:var(--muted);line-height:1.5}
 .dl-foot-n a{color:var(--navy)}
 .lnk{border:0;background:none;padding:0;color:var(--navy);text-decoration:underline;cursor:pointer;font:inherit}
@@ -339,16 +337,12 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-d0 .muted{font-size:12.5px;padding-bottom:10px}
 .dl-t .dl-date{width:150px;padding:6px 8px}
 .dl-t .dl-dt{color:var(--muted);white-space:nowrap}
-.dl-t td.c-date{white-space:nowrap}
 @media (max-width:640px){
   .dl-t .c-day{grid-row:1/5}
-  .dl-t .c-date{grid-column:2/4;grid-row:2}
   .dl-t .c-pay{grid-row:3} .dl-t .c-fin{grid-row:3}
   .dl-t .c-bal{grid-row:4}
-  .dl-t tfoot .c-date{display:none}
   .dl-d0 input[type=date]{width:100%}
 }
-.dl-t small.dl-shift{display:block;font-size:11px;color:var(--muted);white-space:normal;max-width:170px}
 .mrg-deal .mrg-p{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:2px 0 8px}
 .mrg-deal .mrg-p small{font-size:12.5px;color:var(--muted)}
 .mrg-deal .mrg-p b{font-size:20px;color:var(--ok);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -382,7 +376,6 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-t td.c-ev{min-width:180px}
 @media (max-width:640px){ .dl-t td.c-when{width:auto} .dl-t td.c-when .dl-date{width:132px} .dl-t tr{grid-template-columns:140px minmax(0,1fr) auto} }
 /* прочие расходы наличными */
-.dl-cash>summary .dl-cash-s{margin-left:6px;color:var(--ink)}
 .dl-cash-r{margin:6px 0 4px;font-size:13.5px}
 .dl-cash>p.muted{font-size:12.5px;margin:4px 0 2px}
 .dl-cash .dl-in>select:only-child{flex:1 1 auto;width:100%;min-width:0;max-width:none}
@@ -396,11 +389,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;border:0;cursor:pointer;align-items:center}
 .dl-step>button.dl-sh:hover{background:color-mix(in srgb,var(--soft) 70%,var(--sky) 30%)}
 .dl-step>button.dl-sh:focus-visible{outline:2px solid var(--navy);outline-offset:-2px}
-.dl-step.shut{padding:0;gap:0}
-.dl-step.shut>.dl-sh{margin:0;width:100%;border-bottom:0;border-radius:16px;background:var(--card);padding:12px 16px}
-.dl-step.shut>.dl-sh p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .dl-sh>div{flex:1 1 auto;min-width:0}
-.dl-chev{flex:0 0 auto;margin-left:auto;color:var(--muted);font-size:14px;align-self:center}
 .dl-n.ok{background:var(--ok)}
 .dl-n.need{background:#d9822b}
 .dl-stc{display:inline-block;margin-left:10px;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;vertical-align:2px}
@@ -409,12 +398,6 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-stc.opt{background:var(--soft);color:var(--muted);border:1px solid var(--line)}
 .dl-next{display:flex;justify-content:flex-end;padding-top:2px}
 .dl-next .btn{min-height:40px}
-.dl-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 16px}
-.dl-d0t{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px}
-.dl-d0t>span{display:flex;align-items:center;gap:6px}
-.dl-d0t input{width:auto;min-width:150px}
-.dl-d0n{flex:1 1 220px;min-width:0;font-size:12.5px}
-.dl-all{margin-left:auto;font-size:13px}
 /* срок: дни или дата */
 .dl-ddr{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dl-ddr>.dl-in{flex:0 1 120px;min-width:90px}
@@ -424,11 +407,8 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-trw{flex-wrap:wrap;align-items:center}
 .dl-trw .dl-ddt em{display:none}
 @media (max-width:640px){
-  .dl-step.shut>.dl-sh{padding:10px 12px}
   .dl-step>button.dl-sh{width:calc(100% + 24px)}
-  .dl-step.shut>button.dl-sh{width:100%}
   .dl-stc{margin-left:6px}
-  .dl-all{margin-left:0}
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-stc.need{background:#4a3215;color:#f3c37a} :root:not([data-theme="light"]) .dl-n.need{background:#b86b1d} }
 :root[data-theme="dark"] .dl-stc.need{background:#4a3215;color:#f3c37a}
@@ -446,7 +426,6 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-tab.ok .dl-tn{background:var(--ok);border-color:var(--ok);color:#fff}
 .dl-tab.need .dl-tn{background:#d9822b;border-color:#d9822b;color:#fff}
 .dl-tab.on .dl-tn{background:#fff;color:var(--navy);border-color:#fff}
-.dl-tdot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#d9822b}
 /* навигация внизу шага — отдельной строкой под карточкой */
 .dl-next{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 2px 4px;margin-top:-4px}
 .dl-next .btn{min-height:42px}
@@ -550,7 +529,6 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-tab.on .dl-tn{background:#fff;border-color:#fff;color:var(--navy)}
 .dl-tab.on.st-ok .dl-tn{color:var(--ok)}
 .dl-tab.on.st-need .dl-tn{color:#d9822b}
-.dl-tdot{display:none}
 @media (max-width:1000px){ .dl-tab{flex:0 0 auto;padding:0 12px} .dl-tabw{padding:8px 12px} }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-tab.st-need .dl-tt{color:#f3c37a} }
 :root[data-theme="dark"] .dl-tab.st-need .dl-tt{color:#f3c37a}

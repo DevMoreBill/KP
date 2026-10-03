@@ -138,7 +138,6 @@ const dlIsoRu = iso => iso ? iso.split('-').reverse().join('.') : '';
 const dlDayRu = day => dlIsoRu(dlDayIso(day));
 function dlIsoDay(iso){ const s=dlD0(); if (!s||!iso) return null; return Math.round((Date.parse(iso+'T00:00:00Z')-Date.parse(s+'T00:00:00Z'))/864e5); }
 
-const dlThousands = s => String(s).replace(/\B(?=(\d{3})+(?!\d))/g,' ');
 
 // ---------- подбор цен позиций под цену КП: распределение по закупке (одинаковая наценка), иначе по текущим ценам
 function dlPlan(Srub){

@@ -25,7 +25,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from cbr import cbr_key_rate, cbr_rates
-from config import (APP_DIR, UPDATE_DIR, APP_TITLE, BASE_PORT, DATA_DIR, DOCS_DIR, DOCS_SHARE, IMG_DIR, MIME, ROOT, SERVER_MODE,
+from config import (ALLOWED_HOSTS, APP_DIR, UPDATE_DIR, APP_TITLE, BASE_PORT, DATA_DIR, DOCS_DIR, DOCS_SHARE, IMG_DIR, MIME, ROOT, SERVER_MODE,
                     docs_path, message_box, read_text, safe_dir, safe_file, safe_id, store, write_bytes)
 import catalog_migrate
 from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
@@ -66,6 +66,8 @@ def web_file(rel):
 
 
 
+MAX_BODY = 300 * 1024 * 1024    # самый большой запрос — загрузка резервной копии базы
+
 # хранилище изображений data/img (по папкам категорий)
 IMAGES = ImageStore(IMG_DIR)
 
@@ -99,6 +101,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         if 'Cache-Control' not in (extra or {}):
             self.send_header('Cache-Control', 'no-store')
+        # браузер не угадывает тип файла (картинка не станет страницей), программу нельзя встроить в чужой сайт
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('X-Frame-Options', 'SAMEORIGIN')
+        self.send_header('Referrer-Policy', 'same-origin')
         self.send_header('Content-Length', str(len(data)))
         self.end_headers()
         if self.command != 'HEAD':
@@ -119,9 +125,34 @@ class Handler(BaseHTTPRequestHandler):
     def body(self):
         # тело читается один раз и запоминается: его смотрят и проверка прав / модерация (admin.py), и сам маршрут
         if not hasattr(self, '_body'):
-            n = int(self.headers.get('Content-Length') or 0)
+            n = self.body_size()
             self._body = self.rfile.read(n) if n > 0 else b''
         return self._body
+
+    def body_size(self):
+        try:
+            return max(0, int(self.headers.get('Content-Length') or 0))
+        except ValueError:
+            return 0
+
+    def request_allowed(self):
+        """Защита от чужих сайтов, открытых в браузере сотрудника: имя в адресе (подмена DNS) и источник изменяющего
+        запроса (подделка запроса). Программа и её скрипты запрос не подписывают Origin чужого сайта; curl/PowerShell — без Origin."""
+        host = (self.headers.get('Host') or '').strip().lower()
+        name = host.rsplit(':', 1)[0] if not host.endswith(']') else host
+        name = name.strip('[]')
+        if not SERVER_MODE:
+            if name not in ('localhost', '127.0.0.1', '::1'):
+                return False
+        elif ALLOWED_HOSTS and name not in ALLOWED_HOSTS and name not in ('localhost', '127.0.0.1', '::1'):
+            return False
+        if self.command not in ('GET', 'HEAD'):
+            origin = (self.headers.get('Origin') or '').strip().lower()
+            if origin and origin != 'null' and urllib.parse.urlsplit(origin).netloc != host:
+                return False
+            if origin == 'null':
+                return False
+        return True
 
     def send_response(self, code, message=None):
         self._code = code
@@ -147,6 +178,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
             m = 'GET' if self.command == 'HEAD' else self.command
+            if not self.request_allowed():
+                self.close_connection = True
+                return self.send(403, 'text/plain; charset=utf-8', 'Запрос отклонён: откройте программу по её адресу')
+            if self.body_size() > MAX_BODY:
+                self.close_connection = True
+                return self.send(413, 'text/plain; charset=utf-8', 'Слишком большой запрос')
             # права, модерация и журнал действий (admin.py): True — ответ уже отправлен, функция — записать в журнал
             hook = admin.guard(self, store(), m, path) if path.startswith('/api/') else None
             if hook is True:
@@ -278,10 +315,18 @@ class Handler(BaseHTTPRequestHandler):
         # изображения
         # изображения: папки «раздел/категория/производитель» латиницей (app/images.py); одинаковые хранятся один раз
         if path == '/api/img' and m == 'POST':
-            ext = '.png' if q.get('ext') == 'png' else '.jpg'
+            data = self.body()
+            if data[:8] == b'\x89PNG\r\n\x1a\n':
+                ext = '.png'
+            elif data[:3] == b'\xff\xd8\xff':
+                ext = '.jpg'
+            elif data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+                ext = '.webp'
+            else:
+                return self.send(400, 'text/plain; charset=utf-8', 'Нужна картинка JPEG, PNG или WebP')
             tmap = {t.get('id'): t for t in load_types()['types']}
             folder, title = images.place(tmap.get(q.get('cat')), q.get('maker'), q.get('model'), q.get('name'), q.get('kind') or 'photo', q.get('caption'))
-            rel = IMAGES.put(self.body(), ext, folder, title)
+            rel = IMAGES.put(data, ext, folder, title)
             return self.send_json({'name': rel})
         r = re.match(r'^/img/(.+)$', path)
         if r:
@@ -320,7 +365,13 @@ class Handler(BaseHTTPRequestHandler):
         if r:
             kid = safe_id(r.group(1))
             if m == 'PUT':
-                store().kp_set(kid, r.group(2), admin.kp_in(self, store(), kid, r.group(2), self.body().decode('utf-8')), admin.actor(self)[1])
+                text = self.body().decode('utf-8')
+                try:
+                    if not isinstance(json.loads(text), dict):
+                        raise ValueError
+                except ValueError:   # испорченная запись ломала бы журнал КП у всех
+                    return self.send(400, 'text/plain; charset=utf-8', 'Неверный формат КП')
+                store().kp_set(kid, r.group(2), admin.kp_in(self, store(), kid, r.group(2), text), admin.actor(self)[1])
                 return self.send_json({'ok': True})
             if m == 'GET':
                 v = store().kp_get(kid, r.group(2))

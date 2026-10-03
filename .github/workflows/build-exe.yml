@@ -130,6 +130,11 @@ jobs:
           if ($code -ne 403) { throw "DELETE без входа администратора: ожидался код 403, получен $code" }
           $code = 0; try { Invoke-WebRequest -Method Put -Uri 'http://127.0.0.1:17845/api/templates/pnevmotekh/file?name=template.json' -ContentType 'application/json' -Body '{}' -UseBasicParsing | Out-Null } catch { $code = [int]$_.Exception.Response.StatusCode }
           if ($code -ne 403) { throw "Запись шаблона без входа администратора: ожидался код 403, получен $code" }
+          # защита от чужих сайтов: подделка запроса (Origin) и подмена DNS (Host) — 403
+          $code = 0; try { Invoke-WebRequest -Method Post -Uri 'http://127.0.0.1:17845/api/shutdown' -Headers @{ 'Origin' = 'http://evil.example' } -UseBasicParsing | Out-Null } catch { $code = [int]$_.Exception.Response.StatusCode }
+          if ($code -ne 403) { throw "Запрос с чужого сайта: ожидался код 403, получен $code" }
+          $code = 0; try { Invoke-WebRequest -Uri 'http://127.0.0.1:17845/api/admin/status' -Headers @{ 'Host' = 'evil.example' } -UseBasicParsing | Out-Null } catch { $code = [int]$_.Exception.Response.StatusCode }
+          if ($code -ne 403) { throw "Запрос с чужим именем сервера: ожидался код 403, получен $code" }
           $login = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/admin/setup' -ContentType 'application/json' -Body '{"password":"CiPassw0rd1"}' -SessionVariable adm
           if (-not $login.csrf) { throw 'Первый пароль администратора не задаётся' }
           $ah = @{ 'X-CSRF-Token' = $login.csrf }
