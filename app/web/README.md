@@ -41,6 +41,7 @@ js/
   features/ai-autofill.js  автозаполнение через Claude
   features/templates.js    шаблоны КП (папка templates): выбор, загрузка настроек, скелета и base.docx
   features/template-editor.js  окно «Настроить шаблон» (форма строится по editor.json шаблона)
+  features/template-designer.js графический редактор шаблона (администратор): документ как в Word, выбор щелчком, шапка, картинки
   features/types-editor.js редактор типов оборудования
   features/journal.js      журнал КП
   features/deal-calc.js    «Экономика сделки» — расчёт по методике (без интерфейса; проверяется в node)

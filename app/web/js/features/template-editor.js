@@ -173,8 +173,7 @@ async function saveTE(){
 }
 
 async function putTemplateFile(name, file){
-  const r=await fetch(`/api/templates/${encodeURIComponent(TE.id)}/file?name=${encodeURIComponent(name)}`, {method:'PUT', body:file});
-  if (!r.ok) throw new Error(await r.text());
+  await api(`/api/templates/${encodeURIComponent(TE.id)}/file?name=${encodeURIComponent(name)}`, {method:'PUT', body:file});   // с токеном сессии администратора
 }
 
 const translit = s => String(s||'').toLowerCase().replace(/[а-яё]/g, ch => ({а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya'})[ch]||'')

@@ -21,7 +21,11 @@
      conditionsXml       — «Условия предложения»;
      contactsXml         — «Контактная информация»;
      footerXml           — нижний колонтитул;
+     headerXml           — шапка страницы из настроек (header.on): логотип и реквизиты — для новой компании без Word;
      build               — сборка документа из разделов в порядке settings.sections.
+   Дополнительные картинки шаблона (images: [{id, file, place, widthCm, align}]) выводятся в начале или в конце
+   раздела (place: '<раздел>Top' | '<раздел>End'). design: true — пометки для графического редактора
+   (стиль текста — KPS_<стиль>, картинка — KPI_<правило>, начало раздела — KPSEC_<раздел>).
    Размеры: ширина в «твипах» (1 см = 567), изображения в EMU (1 см = 360000).
    ============================================================================ */
 function kpSkeleton(KP) {
@@ -73,8 +77,13 @@ function kpSkeleton(KP) {
       heroPhotoHeightCm: 6.5,     // высота рамки главного фото на странице оборудования
       keyParamsMax: 6,            // плиток ключевых параметров рядом с фото
       keyParamMaxChars: 28,       // значения длиннее в плитки не берутся
-      componentPhotoWidthCm: 4.6, componentPhotoHeightCm: 3.2
+      componentPhotoWidthCm: 4.6, componentPhotoHeightCm: 3.2,
+      clientsWidthCm: 0           // ширина картинки «Наши клиенты», 0 — во всю ширину текста
     },
+    // шапка страницы из настроек (вместо шапки base.docx): логотип слева или справа, реквизиты строками
+    header: { on: false, logo: '', logoWidthCm: 4, logoSide: 'left', lines: '', textSize: 8, textColor: 'GRAY', firstBold: true, firstColor: 'BLUE', rule: true, ruleColor: 'LINE' },
+    // дополнительные картинки шаблона (баннер, печать, подпись…): место — начало/конец раздела
+    images: [],
     texts: {
       coverKicker: 'Технико-коммерческое предложение',
       recipient: 'Получатель', object: 'Объект', date: 'Дата',
@@ -218,15 +227,15 @@ function kpSkeleton(KP) {
       sp: s.spacing ? Math.round(+s.spacing * 20) : 0 }, extra || {});
   }
   const txt = (key, vars) => fill(T[key] == null ? '' : T[key], vars || {});
-  const brandRuns = (styleName) => { const s = sty(styleName); return (TPL.brandParts || []).map(([t, c]) => r(t, { sz: s.sz, color: COL(c), b: s.b })).join(''); };
+  const brandRuns = (styleName) => { const s = sty(styleName); return (TPL.brandParts || []).map(([t, c]) => r(t, { sz: s.sz, color: COL(c), b: s.b, mk: TPL.design ? 'KPS_' + styleName : '' })).join(''); };
 
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   // ---------------------------------------------------------------- строительные блоки Word
   function r(t, o = {}) {
-    if (typeof o === 'string') o = sty(o);
+    if (typeof o === 'string') { const nm = o; o = sty(o); if (TPL.design) o.mk = 'KPS_' + nm; }
     const sz = o.sz || 20, color = o.color || DARK, f = esc(TPL.font || 'Arial');
-    let rp = `<w:rFonts w:ascii="${f}" w:eastAsia="${f}" w:hAnsi="${f}" w:cs="${f}"/>`;
+    let rp = (o.mk ? `<w:rStyle w:val="${o.mk}"/>` : '') + `<w:rFonts w:ascii="${f}" w:eastAsia="${f}" w:hAnsi="${f}" w:cs="${f}"/>`;
     if (o.b) rp += '<w:b/><w:bCs/>';
     if (o.i) rp += '<w:i/><w:iCs/>';
     if (o.caps) rp += '<w:caps/>';
@@ -279,9 +288,9 @@ function kpSkeleton(KP) {
     return `<w:tbl><w:tblPr>${pr}</w:tblPr><w:tblGrid>${grid}</w:tblGrid>${body}</w:tbl>`;
   }
   let PID = 9000;
-  function img(rid, cx, cy, name) {
+  function img(rid, cx, cy, name, key) {
     const id = ++PID;
-    return '<w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">' +
+    return '<w:r><w:rPr>' + (TPL.design && key ? `<w:rStyle w:val="KPI_${key}"/>` : '') + '<w:noProof/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">' +
       `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${id}" name="${esc(name)}"/>` +
       '<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>' +
       '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
@@ -314,9 +323,10 @@ function kpSkeleton(KP) {
   const hyper = (rid, runs) => `<w:hyperlink r:id="${rid}">${runs}</w:hyperlink>`;
 
   // заголовок раздела: крупный текст и короткая линия-акцент
+  const HEADMARK = '\u0001KPHEAD\u0001';   // место сразу после заголовка раздела (для картинок «в начале раздела»)
   function heading(title, pbb) {
     return p(r(title, 'heading'), { after: 90, keep: true, line: 240, pbb }) +
-      p('', { after: 220, indR: W - X(1500), keep: true, bdr: line('bottom', 18, SKY) });
+      p('', { after: 220, indR: W - X(1500), keep: true, bdr: line('bottom', 18, SKY) }) + HEADMARK;
   }
   const blockTitle = (t, o) => p(r(t, 'blockTitle'), o || { after: 120 });
 
@@ -395,7 +405,7 @@ function kpSkeleton(KP) {
       const k = Math.min(BOXW / M.cover.w, BOXH / M.cover.h);
       const cxc = Math.round(M.cover.w * k), cyc = Math.round(M.cover.h * k);
       const w2 = cols([6247, 4100]);
-      out.push(tbl([[tc(left, w2[0], { va: 'center', mar: [0, 0, 0, 0] }), tc(p(img(M.cover.rid, cxc, cyc, 'Оборудование'), { jc: 'right' }), w2[1], { va: 'center', mar: [0, 0, 0, 0] })]], w2));
+      out.push(tbl([[tc(left, w2[0], { va: 'center', mar: [0, 0, 0, 0] }), tc(p(img(M.cover.rid, cxc, cyc, 'Оборудование', 'coverPhotoWidthCm'), { jc: 'right' }), w2[1], { va: 'center', mar: [0, 0, 0, 0] })]], w2));
     } else out.push(left);
     // ключевые параметры
     const kp = multi || !BLK.coverKpis ? [] : (c.kpis || []).filter(k => k.num);
@@ -447,8 +457,9 @@ function kpSkeleton(KP) {
   // ================================================================ НАШИ КЛИЕНТЫ
   function clientsXml(S, sec) {
     if (!S.showClients || !TPL.clients || !TPL.clients.rid) return '';
-    const c = TPL.clients, maxW = Math.round(7108166 * W / BASEW), k = Math.min(maxW / c.w, 7400000 / c.h);
-    return headingFor(TPL.clientsTitle || 'Наши клиенты', sec, 600) + p(img(c.rid, Math.round(c.w * k), Math.round(c.h * k), 'Логотипы клиентов'), { jc: 'center' });
+    const c = TPL.clients, full = Math.round(7108166 * W / BASEW), maxW = +RULES.clientsWidthCm > 0 ? Math.min(full, cm(RULES.clientsWidthCm)) : full;
+    const k = Math.min(maxW / c.w, (+RULES.clientsWidthCm > 0 ? 25 * CM : 7400000) / c.h);
+    return headingFor(TPL.clientsTitle || 'Наши клиенты', sec, 600) + p(img(c.rid, Math.round(c.w * k), Math.round(c.h * k), 'Логотипы клиентов', 'clientsWidthCm'), { jc: 'center' });
   }
 
   // ================================================================ СТРАНИЦА ОБОРУДОВАНИЯ
@@ -482,7 +493,7 @@ function kpSkeleton(KP) {
   // первый экран: слева фото в светлой рамке, справа логотип, плитки ключевых параметров и коротко о главном
   function heroXml(it, m, feats, opts) {
     let right = '';
-    if (m.logo && BLK.equipLogo) { const [cx, cy] = fit(m.logo, cm(RULES.logoWidthCm), 560000); right += p(img(m.logo.rid, cx, cy, 'Логотип'), { after: 200 }); }
+    if (m.logo && BLK.equipLogo) { const [cx, cy] = fit(m.logo, cm(RULES.logoWidthCm), 560000); right += p(img(m.logo.rid, cx, cy, 'Логотип', 'logoWidthCm'), { after: 200 }); }
     const kp = BLK.equipKeyParams ? keyParams(it) : [];
     const [wl, wg, wr] = m.tile ? cols([4700, 340, 5307]) : [0, 0, W];
     if (kp.length) {
@@ -505,7 +516,7 @@ function kpSkeleton(KP) {
     }
     if (!m.tile) return right;
     const [cx, cy] = fit(m.tile, Math.min(cm(RULES.equipPhotoWidthCm), (wl - 280) * E), cm(RULES.heroPhotoHeightCm));
-    const photo = p(img(m.tile.rid, cx, cy, it.name), { jc: 'center', after: it.photoCaption ? 120 : 0 }) +
+    const photo = p(img(m.tile.rid, cx, cy, it.name, 'equipPhotoWidthCm'), { jc: 'center', after: it.photoCaption ? 120 : 0 }) +
       (it.photoCaption ? p(r(it.photoCaption, 'photoCaption'), { jc: 'center', line: 240 }) : '');
     return tbl([[tc(photo, wl, { fill: LIGHT, va: 'center', mar: [200, 140, 200, 140] }), gapCell(wg),
       tc(right + END, wr, { va: 'top', mar: NOM })]], [wl, wg, wr]);
@@ -517,7 +528,7 @@ function kpSkeleton(KP) {
     const [wi, wg, wt] = cols([Math.round(RULES.componentPhotoWidthCm * 567), 280, BASEW - Math.round(RULES.componentPhotoWidthCm * 567) - 280]);
     list.forEach((f, n) => {
       const g = fimg[f.id], [cx, cy] = fit(g, (wi - 200) * E, cm(RULES.componentPhotoHeightCm));
-      const pic = tc(p(img(g.rid, cx, cy, f.label || 'Узел'), { jc: 'center' }), wi, { bdr: B(FRAME, FRAME, FRAME, FRAME), va: 'center', mar: [100, 100, 100, 100] });
+      const pic = tc(p(img(g.rid, cx, cy, f.label || 'Узел', 'componentPhotoWidthCm'), { jc: 'center' }), wi, { bdr: B(FRAME, FRAME, FRAME, FRAME), va: 'center', mar: [100, 100, 100, 100] });
       const txt = tc((f.label ? p(r(f.label, 'componentLabel'), { after: 60 }) : '') + p(r(f.text || '', 'componentText'), { line: 252 }), wt, { va: 'center', mar: [40, 0, 40, 0] });
       if (n) out.push(spacer(160));
       out.push(tbl([[pic, gapCell(wg), txt]], [wi, wg, wt]));
@@ -753,6 +764,27 @@ function kpSkeleton(KP) {
     return root + tbl([[tc(left, w2[0], { bdr: TOP, mar: [110, 0, 0, 0] }), tc(right, w2[1], { bdr: TOP, mar: [110, 0, 0, 0] })]], w2) + END + '</w:ftr>';
   }
 
+  // ================================================================ ШАПКА СТРАНИЦЫ (из настроек)
+  function headerXml(S, root) {
+    const H = TPL.header || {}, lg = TPL.headerLogo;
+    const lines = String(H.lines || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+    const sz = Math.round((+H.textSize || 8) * 2), col = COL(H.textColor || 'GRAY');
+    const mk = TPL.design ? 'KPS_headerText' : '';
+    const txt = lines.map((l, i) => p(r(l, { sz: i === 0 && H.firstBold ? sz + 4 : sz, color: i === 0 && H.firstColor ? COL(H.firstColor) : col, b: i === 0 && !!H.firstBold, mk }),
+      { jc: H.logoSide === 'right' ? 'left' : 'right', line: 250 })).join('') || p('');
+    let logo = p('');
+    if (lg && lg.rid) {
+      const wcm = Math.max(0.5, +H.logoWidthCm || 4), cx = cm(wcm), cy = Math.round(cx * lg.h / lg.w);
+      logo = p(img(lg.rid, cx, cy, 'Логотип компании', 'headerLogo'), { jc: H.logoSide === 'right' ? 'right' : 'left' });
+    }
+    const lw = lg && lg.rid ? Math.min(X(6000), Math.round((+H.logoWidthCm || 4) * 567) + 200) : 0, tw = W - lw;
+    const bdr = H.rule !== false ? B(null, null, [6, COL(H.ruleColor || 'LINE')]) : B();
+    const cells = lw ? (H.logoSide === 'right'
+      ? [tc(txt, tw, { bdr, mar: [0, 0, 120, 0] }), tc(logo, lw, { bdr, mar: [0, 0, 120, 0] })]
+      : [tc(logo, lw, { bdr, mar: [0, 0, 120, 0] }), tc(txt, tw, { bdr, mar: [0, 0, 120, 0] })]) : [tc(txt, W, { bdr, mar: [0, 0, 120, 0] })];
+    return root + tbl([cells], lw ? (H.logoSide === 'right' ? [tw, lw] : [lw, tw]) : [W]) + spacer(120) + '</w:hdr>';
+  }
+
   function relsXml(S, media) {
     const R = (id, type, target, ext) => `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${type}" Target="${esc(target)}"${ext ? ' TargetMode="External"' : ''}/>`;
     let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
@@ -785,17 +817,32 @@ function kpSkeleton(KP) {
       conditions: sec => conditionsXml(S, sec),
       contacts: sec => contactsXml(S, sec)
     };
+    // дополнительные картинки шаблона: в начале или в конце раздела
+    const extra = {};
+    for (const x of (TPL.images || [])) { const im = (Min.extra || {})[x.id]; if (!im) continue;
+      const rg = reg(im), wcm = Math.max(0.5, +x.widthCm || 5), cx = cm(Math.min(wcm, W / 567)), cy = Math.round(cx * im.h / im.w);
+      (extra[x.place] = extra[x.place] || []).push(p(img(rg.rid, cx, cy, x.name || 'Изображение', 'X_' + x.id), { jc: x.align || 'center', before: 120, after: 120 })); }
+    const at = place => (extra[place] || []).join('');
     let body = '';
-    for (const sec of TPL.sections) if (sec.on && parts[sec.id]) body += parts[sec.id](sec);
+    for (const sec of TPL.sections) if (sec.on && parts[sec.id]) {
+      let part = parts[sec.id](sec);
+      if (!part) continue;
+      // начало раздела: у титула — в самом начале, у остальных — сразу после заголовка раздела
+      part = sec.id === 'cover' || part.indexOf(HEADMARK) < 0 ? at(sec.id + 'Top') + part : part.replace(HEADMARK, at(sec.id + 'Top'));
+      if (TPL.design) body += `<w:p><w:pPr><w:pStyle w:val="KPSEC_${sec.id}"/><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`;
+      body += part.split(HEADMARK).join('') + at(sec.id + 'End');
+    }
     body += '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr></w:p>';
     return {
       document: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + roots.document + '<w:body>' + body + (TPL.sect || '') + '</w:body></w:document>',
       footer: footerXml(S, roots.footer),
       rels: relsXml(S, media),
+      header: TPL.header && TPL.header.on && roots.header ? headerXml(S, roots.header) : null,
       media
     };
   }
 
-  // features — что скелет умеет выводить сам; без 'discount' программа передаёт цены уже со скидкой
-  return { defaults: DEFAULTS, build, features: ['discount'] };
+  // features — что скелет умеет выводить сам; без 'discount' программа передаёт цены уже со скидкой,
+  // 'header' — шапка из настроек, 'images' — дополнительные картинки, 'design' — пометки графического редактора
+  return { defaults: DEFAULTS, build, features: ['discount', 'header', 'images', 'design'] };
 }

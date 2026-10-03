@@ -7,6 +7,18 @@ const ROOTS = {
   footer: "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:ftr xmlns:wpc=\"http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas\" xmlns:cx=\"http://schemas.microsoft.com/office/drawing/2014/chartex\" xmlns:cx1=\"http://schemas.microsoft.com/office/drawing/2015/9/8/chartex\" xmlns:cx2=\"http://schemas.microsoft.com/office/drawing/2015/10/21/chartex\" xmlns:cx3=\"http://schemas.microsoft.com/office/drawing/2016/5/9/chartex\" xmlns:cx4=\"http://schemas.microsoft.com/office/drawing/2016/5/10/chartex\" xmlns:cx5=\"http://schemas.microsoft.com/office/drawing/2016/5/11/chartex\" xmlns:cx6=\"http://schemas.microsoft.com/office/drawing/2016/5/12/chartex\" xmlns:cx7=\"http://schemas.microsoft.com/office/drawing/2016/5/13/chartex\" xmlns:cx8=\"http://schemas.microsoft.com/office/drawing/2016/5/14/chartex\" xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" xmlns:aink=\"http://schemas.microsoft.com/office/drawing/2016/ink\" xmlns:am3d=\"http://schemas.microsoft.com/office/drawing/2017/model3d\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:wp14=\"http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" xmlns:w10=\"urn:schemas-microsoft-com:office:word\" xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:w15=\"http://schemas.microsoft.com/office/word/2012/wordml\" xmlns:w16cex=\"http://schemas.microsoft.com/office/word/2018/wordml/cex\" xmlns:w16cid=\"http://schemas.microsoft.com/office/word/2016/wordml/cid\" xmlns:w16=\"http://schemas.microsoft.com/office/word/2018/wordml\" xmlns:w16sdtdh=\"http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash\" xmlns:w16se=\"http://schemas.microsoft.com/office/word/2015/wordml/symex\" xmlns:wpg=\"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup\" xmlns:wpi=\"http://schemas.microsoft.com/office/word/2010/wordprocessingInk\" xmlns:wne=\"http://schemas.microsoft.com/office/word/2006/wordml\" xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\" mc:Ignorable=\"w14 w15 w16se w16cid w16 w16cex w16sdtdh wp14\">"
 };
 
+ROOTS.header = ROOTS.footer.replace('<w:ftr ', '<w:hdr ');
+
+// поля страницы из настроек шаблона (page: {top, bottom, left, right} в см; пусто — как в base.docx)
+function sectWithPage(sect, page){
+  if (!page) return sect;
+  let out=sect;
+  for (const [k,a] of [['top','w:top'],['bottom','w:bottom'],['left','w:left'],['right','w:right']]){
+    const v=+String(page[k]??'').replace(',','.'); if (!(v>=0.5 && v<=6)) continue;
+    out=out.replace(new RegExp(`(<w:pgMar[^>]*\\s${a}=")\\d+(")`), `$1${Math.round(v*567)}$2`); }
+  return out;
+}
+
 const SHORT_T={dgu:'ДГУ',light:'Мачта',welder:'Сварочный',comp_screw:'Компрессор',comp_piston:'Компрессор',comp_centrifugal:'Компрессор',pump:'Насос',ats:'АВР',other:''};
 
 function equipShort(){
@@ -98,12 +110,31 @@ async function renderDocx(St, pack, settings){
       if (L.kind==='feat') m.featImgs[L.f.id]={file:fnm, w:g.w, h:g.h};
       else m.gallery.push({file:fnm, w:g.w, h:g.h, caption:(g.caption||'').trim() || (L.kind==='group'?L.name:''), wide:galWide(g)}); }
     Min.items[x.id]=m; }
+  // дополнительные картинки шаблона и шапка из настроек (если скелет это умеет)
+  const feats=pack.skel.features||[];
+  if (feats.includes('images')){ Min.extra={};
+    for (const x of (settings.images||[])){ const im=x&&x.file ? await templateImage(pack, x.file) : null; if (!im) continue;
+      const fnm=`tplx_${String(x.id).replace(/[^A-Za-z0-9_-]/g,'')}.${im.ext}`; zip.file('word/media/'+fnm, im.buf); Min.extra[x.id]={file:fnm, w:im.w, h:im.h}; } }
+  let sect=sectWithPage(pack.sect, settings.page), rels=pack.rels, hdrLogo=null;
+  const hdrOn = feats.includes('header') && settings.header && settings.header.on;
+  if (hdrOn){
+    const lg=settings.header.logo ? await templateImage(pack, settings.header.logo) : null;
+    if (lg){ hdrLogo={rid:'rIdHdrLogo', file:'tpl_hdr_logo.'+lg.ext, w:lg.w, h:lg.h}; zip.file('word/media/'+hdrLogo.file, lg.buf); }
+    // своя шапка: прежние ссылки на шапки убираются, первая страница — с той же шапкой
+    sect=sect.replace(/<w:headerReference[^>]*\/>/g,'').replace(/<w:titlePg\/>/g,'').replace(/(<w:sectPr[^>]*>)/,'$1<w:headerReference w:type="default" r:id="rIdKpHeader"/>');
+    rels+='<Relationship Id="rIdKpHeader" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header_kp.xml"/>';
+    const ct=await zip.file('[Content_Types].xml').async('string');
+    if (!ct.includes('/word/header_kp.xml')) zip.file('[Content_Types].xml', ct.replace('</Types>','<Override PartName="/word/header_kp.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>'));
+  }
   // скелет, не умеющий показывать скидку (свой или старый), получает цены уже со скидкой — суммы сходятся
   if (!(pack.skel.features||[]).includes('discount')) St.items=St.items.map(x=>Object.assign({}, x, {price:KPGen.netPrice(x), disc:undefined}));
   let out;
-  try{ out = pack.skel.build(St, Min, ROOTS, Object.assign({}, settings, {rels:pack.rels, sect:pack.sect, clients})); }
+  try{ out = pack.skel.build(St, Min, ROOTS, Object.assign({}, settings, {rels, sect, clients, headerLogo:hdrLogo})); }
   catch(e){ throw new Error('ошибка в скелете шаблона (skeleton.js): '+(e&&e.message||e)); }
   zip.file('word/document.xml', out.document); zip.file(pack.footerPath, out.footer); zip.file('word/_rels/document.xml.rels', out.rels);
+  if (hdrOn && out.header){ zip.file('word/header_kp.xml', out.header);
+    zip.file('word/_rels/header_kp.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      (hdrLogo?`<Relationship Id="rIdHdrLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${hdrLogo.file}"/>`:'')+'</Relationships>'); }
   return zip.generateAsync({type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression:'DEFLATE'});
 }
 
