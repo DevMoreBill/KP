@@ -92,6 +92,8 @@ async function dealXlsx(){
   if (xOn){
     row([`Прочие расходы наличными, на руки — ${xm==='net'?'% от чистой прибыли':xm==='sale'?'% от выручки без НДС':xm==='salevat'?'% от суммы продажи с НДС':'сумма'}`, {v:c.xc.v, s:xm==='sum'?'inpMoney':'inp'}, xm==='sum'?'₽':'%', '', note('Не уменьшают налог на прибыль; платятся после последней оплаты заказчика')], 'XV');
     row(['Стоимость получения наличных', {v:c.xc.cost, s:'inp'}, '%', '', note('Расход компании = на руки / (1 − %)')], 'XCOST');
+    row(['Когда выдаются наличные', {v:c.xc.when==='pay'&&c.xc.from.length?'с оплат заказчика':'после последней оплаты', s:'td'}, '', '',
+      note(c.xc.when==='pay'&&c.xc.from.length?(xm==='net'?'Пропорционально оплатам; суммы в графике — по расчёту программы (от чистой прибыли — с учётом финансирования)':'Пропорционально суммам отмеченных оплат заказчика, в день оплаты'):'На финансирование не влияют')]);
   }
   const trKeys=[], trRef=x=>ref(x, at[x+'col']||'B');
   c.trs.forEach((t,j)=>{ const key='TR'+j; trKeys.push(key);
@@ -113,8 +115,10 @@ async function dealXlsx(){
     if (kind==='mnt') return `-(${A(D('M'))}+${A(D('E'))})`;
     if (r.key==='bonus') return `-${A(ref('Rv'))}*${A(ref('BON'))}/100`;
     if (r.key==='xc') return `-${A(ref('XK'))}`;
+    if (String(r.key).startsWith('xc:')) return xm==='net' ? null : `-${A(ref('XK'))}*D${gRow[r.from]}/(${c.xc.from.map(x=>'D'+gRow[x]).join('+')})`;
     if (r.key==='warr') return `-${A(ref('Rv'))}*${A(ref('WARR'))}/100`;
     const j=+r.key.slice(1); return `${A(D('S'))}*${A(trRef('TR'+j))}/100`; };
+  const gRow=Object.fromEntries(c.rows.map((x,k)=>[x.key, gFirst+k]));
   const inRows=c.rows.map((r,k)=>r.inflow?'A'+(gFirst+k):null).filter(Boolean);
   G.push([{v:'График платежей', s:'title'}]);
   const D0g=()=>q(SH1)+ref('D0');
@@ -156,7 +160,7 @@ async function dealXlsx(){
   const xIdx=c.rows.findIndex(x=>x.key==='xc');
   c.rows.forEach((r,k)=>{ const n=gFirst+k;
     const D0=q(SH1)+ref('D0'), dv=xlsxDate(d.start);
-    G.push([{v:r.day, s:r.fixed?'tdInt':'inpInt'}, {f:`IF(${D0}="","",${D0}+A${n})`, v:dv===''?undefined:dv+r.day, s:'tdDate'}, {v:r.label, s:'td'}, {f:amountF(r), v:r.amount, s:'tdMoney2'}, {f:k?`E${n-1}+D${n}`:`D${n}`, v:r.balance, s:'tdMoney2'},
+    G.push([{v:r.day, s:r.fixed?'tdInt':'inpInt'}, {f:`IF(${D0}="","",${D0}+A${n})`, v:dv===''?undefined:dv+r.day, s:'tdDate'}, {v:r.label, s:'td'}, (f=>f==null?{v:r.amount, s:'tdMoney2'}:{f, v:r.amount, s:'tdMoney2'})(amountF(r)), {f:k?`E${n-1}+D${n}`:`D${n}`, v:r.balance, s:'tdMoney2'},
       {f:k<c.rows.length-1?`MAX(0,MIN(A${n+1},$D$2)-A${n})`:'0', v:r.days, s:'tdInt'}, xIdx>=0&&k>=xIdx?{v:0, s:'tdMoney2'}:{f:`MAX(0,-E${n})*F${n}*${q(SH1)}${ref('i')}/100/30`, v:r.fin, s:'tdMoney2'}]); });
   G.push([{v:'',s:'totL'}, {v:'',s:'totL'}, {v:'Стоимость финансирования', s:'totL'}, {v:'',s:'totL'}, {v:'',s:'totL'}, {v:'',s:'totL'}, {f:`SUM(G${gFirst}:G${gLast})`, v:c.F, s:'totMoney'}]);
 

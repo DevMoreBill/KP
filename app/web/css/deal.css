@@ -386,3 +386,8 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-cash-r{margin:6px 0 4px;font-size:13.5px}
 .dl-cash>p.muted{font-size:12.5px;margin:4px 0 2px}
 .dl-cash .dl-in>select:only-child{flex:1 1 auto;width:100%;min-width:0;max-width:none}
+.dl-cst{display:flex;flex-direction:column;gap:4px;margin:6px 0 4px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}
+.dl-cst-r{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;font-size:13.5px;cursor:pointer}
+.dl-cst-r.off{opacity:.6}
+.dl-cst-r b{font-variant-numeric:tabular-nums}
+.dl-cst>p{margin:2px 0 0;font-size:12.5px}
