@@ -46,3 +46,8 @@ dialog.kpprev[open]{display:flex}
 .kprow{display:grid;grid-template-columns:26px minmax(0,1fr) 110px minmax(0,2fr);gap:10px;align-items:end}
 .kprow .item-no{margin-bottom:12px}
 @media (max-width:760px){ .kprow{grid-template-columns:1fr 1fr} .kprow .item-no{display:none} .kprow label:last-child{grid-column:1/-1} }
+/* плавающие объекты шаблона: страница — отдельный слой, картинка «за текстом» под текстом, но над белым листом */
+.docx-wrapper section.docx{position:relative;z-index:0}
+.kp-float{z-index:1}
+.kp-float.kp-behind{z-index:-1}
+.kp-lbl{white-space:normal;word-wrap:break-word}
