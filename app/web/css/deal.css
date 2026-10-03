@@ -476,3 +476,60 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-form>*{flex-shrink:0}
 .dl-tabs{flex:0 0 auto;min-height:44px}
 .dl-f .dl-in>select:only-child{flex:1 1 auto;width:100%;min-width:0;max-width:none}
+
+/* ---- компактнее: поля ниже, сроки «дни · дата» в одну строку */
+.dealwin .dl-form input[type=text],.dealwin .dl-form input[type=date],.dealwin .dl-form select{min-height:36px;height:36px;padding:5px 10px;font-size:14px;border-radius:9px}
+.dealwin .dl-form .dl-seg button{min-height:36px;padding:5px 12px}
+.dealwin .dl-where .dl-seg button{min-height:36px}
+.dealwin .dl-form .btn{min-height:36px;padding:6px 14px}
+.dealwin .dl-next .btn{min-height:40px}
+.dl-form{gap:16px;padding-top:14px}
+.dl-step{gap:10px;padding:12px 16px 14px}
+.dl-step>.dl-sh{margin:-12px -16px 0;padding:10px 16px}
+.dl-sh h4{font-size:16px}
+.dl-n{flex-basis:26px;height:26px;font-size:13px}
+.dl-g{gap:10px 12px}
+.dl-f{gap:4px}
+.dl-f small{font-size:12px}
+.dl-mb{gap:10px;padding:12px 14px}
+.dl-ddr{flex-wrap:nowrap;gap:6px}
+.dl-ddr>.dl-in{flex:0 0 auto;min-width:0}
+.dl-ddr>.dl-in input{width:64px}
+.dl-ddt>em{font-size:12px}
+.dl-ddt input[type=date]{max-width:150px}
+/* дата договора — в шапке окна, всегда видна */
+.dl-hd{display:flex;align-items:center;gap:8px;margin-left:auto;padding:5px 6px 5px 12px;border-radius:12px;background:color-mix(in srgb,var(--sky) 16%,var(--card));border:1.5px solid var(--navy)}
+.dl-hd>span{font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap}
+.dl-hd input[type=date]{height:34px;min-height:34px;padding:4px 8px;font-size:14px;font-weight:600;border-radius:8px;width:auto}
+.dl-hd.empty{border-color:#d9822b;background:color-mix(in srgb,#d9822b 12%,var(--card))}
+.dl-hd.empty>span{color:#9a5410}
+.dealwin .dlg-h{flex-wrap:wrap;row-gap:8px}
+/* вкладки — над формой, не прокручиваются вместе с ней */
+.dl-b{grid-template-rows:auto minmax(0,1fr)}
+.dl-tabw{grid-column:1;grid-row:1;padding:10px 22px 0;background:var(--paper)}
+.dl-b>.dl-form{grid-column:1;grid-row:2}
+.dl-b>.dl-side{grid-column:2;grid-row:1 / span 2}
+.dl-tabw .dl-tabs{position:static}
+@media (max-width:1000px){
+  .dl-tabw{position:sticky;top:0;z-index:6;padding:8px 12px;border-bottom:1px solid var(--line)}
+  .dl-hd{margin-left:0;order:5;flex:1 1 100%;justify-content:space-between}
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-hd.empty>span{color:#f3c37a} }
+:root[data-theme="dark"] .dl-hd.empty>span{color:#f3c37a}
+.dl-tab{flex:1 1 auto;padding:7px 8px;gap:6px;font-size:13px}
+.dl-tn{flex-basis:20px;height:20px;font-size:11px}
+.dl-tabs{gap:2px;padding:4px}
+@media (max-width:1000px){ .dl-tab{flex:0 0 auto;padding:7px 10px} }
+.dl-ddt input[type=date],.dealwin .dl-form .dl-ddt input[type=date]{flex:0 0 auto;width:138px;max-width:none;padding:5px 6px}
+.dl-trw{flex-wrap:nowrap}
+.dl-trw select{flex:1 1 150px;max-width:210px}
+.dl-trw .dl-troff{flex:0 0 96px}
+.dealwin .dl-t .dl-date{width:130px;padding:4px 6px}
+@media (max-width:1180px){ .dl-trw{flex-wrap:wrap} }
+@media (max-width:1000px){ .dl-hd{order:20} }
+.dealwin .dl-t td.c-when .dl-date{width:130px}
+.dl-t th,.dl-t td{padding-left:6px;padding-right:6px}
+.dl-g:has(> .dl-f.dd){display:flex;flex-wrap:wrap;gap:10px 28px;align-items:flex-start}
+.dl-g > .dl-f.dd{flex:0 0 auto;min-width:0}
+@media (max-width:1000px){ .dl-hd{order:100} }
+.dl-g:has(> .dl-f.dd) > .dl-f:not(.dd){flex:1 1 180px}

@@ -315,7 +315,7 @@ function dlPurchase(c){
       <div class="dl-sub"><h5>Оплата поставщику ${dlQ('Доли от стоимости оборудования (с комиссией за перевод). Последний этап — остаток до 100 %. Перевозка, страхование, таможня и брокер оплачиваются перед отгрузкой.')}</h5>${dlSupPay(c, k)}</div>
       <div class="dl-sub"><h5>Стоимость перевозки</h5>
         <div class="dl-g">${ru?'':dlField('Перевозка до границы РФ', P+'.log.v', {calc:c, cur:P+'.log.cur', src:s.log&&s.log.src, q:'Сколько стоит довезти груз от поставщика до границы ЕАЭС. Входит в таможенную стоимость.'})}
-        ${dlField(ru?'Доставка до объекта заказчика':'Доставка по России до объекта', P+'.logRu.v', {calc:c, unit:'₽', src:s.logRu&&s.logRu.src, q:'Сколько стоит довезти груз по России '+(ru?'от склада поставщика':'от границы')+' до объекта заказчика. Платится при поставке; НДС перевозчика — к вычету.'})}</div></div>
+        ${dlField(ru?'Доставка до объекта':'Доставка по России', P+'.logRu.v', {calc:c, unit:'₽', src:s.logRu&&s.logRu.src, q:'Сколько стоит довезти груз по России '+(ru?'от склада поставщика':'от границы')+' до объекта заказчика. Платится при поставке; НДС перевозчика — к вычету.'})}</div></div>
       <details class="dl-more" data-more="sup${k}"${dlMore('sup'+k, false)}><summary>Ещё расходы по поставщику <span class="muted">— ${moreSum||'опции, страхование, комиссия за перевод, брокер'}</span></summary>
         <div class="dl-g">${dlField('Прочая закупка у поставщика', P+'.extra.v', {calc:c, cur:P+'.extra.cur', q:'Опции, ЗИП и всё, чего нет в позициях КП.'})}
           ${ru?'':dlField('Страхование груза', P+'.ins', {calc:c, unit:'% от оборудования', ph:'0,3'})}
@@ -496,7 +496,7 @@ function dlCash(c){
     <div class="dl-g g3">
       ${dlField('Как считать', 'xc.mode', {calc:c, select:DL_XC_MODES})}
       ${dlField(x.mode==='sum'?'Сумма на руки':'Процент', 'xc.v', {calc:c, unit, ph:x.mode==='sum'?'100 000':'10', q:'Сумма «чистыми» — столько получат на руки наличными, без каких-либо налогов. От чистой прибыли — процент от прибыли сделки после налога на прибыль (до этих расходов); от продажи — процент от суммы продажи без НДС или с НДС (цена КП).'})}
-      ${dlField('Стоимость получения наличных', 'xc.cost', {calc:c, unit:'%', ph:'0', q:'Сколько процентов от перечисленной суммы удерживают за выдачу наличных. Расход компании = сумма на руки ÷ (1 − процент). Если наличные уже есть — оставьте пустым.'})}</div>
+      ${dlField('Стоимость наличных', 'xc.cost', {calc:c, unit:'%', ph:'0', q:'Сколько процентов от перечисленной суммы удерживают за выдачу наличных. Расход компании = сумма на руки ÷ (1 − процент). Если наличные уже есть — оставьте пустым.'})}</div>
     ${x.on||open&&x.when==='pay'?`<div class="dl-g g2">${dlField('Когда выдаются', 'xc.when', {calc:c, select:DL_XC_WHEN, q:'После последней оплаты — наличные не влияют на финансирование. С оплат заказчика — с каждой отмеченной оплаты выдаётся часть, пропорционально её сумме, в день оплаты; деньги уходят раньше — финансирование может вырасти.'})}</div>
     ${x.when==='pay'?dlCashStages(c):''}`:''}
     ${r.K>0?`<p class="dl-cash-r">На руки <b>${dlRub0(r.X)}</b>${x.cost?` · расход компании с получением наличных <b>${dlRub0(r.K)}</b>`:''} <span class="muted">— ${esc(how)}</span></p>`:''}
@@ -579,7 +579,9 @@ function dealRender(force){
 function dealRenderIn(dlg){
   const d=dlDeal(), kp=dlKp(), c=dealCalc(kp,d);
     const keyT = DL.key ? `ключевая ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD}` : 'по умолчанию';
+  const d0h=dlD0(), calT=d0h?dlCalNote(d0h).replace(/<[^>]+>/g,''):'';
   const head=`<div class="dlg-h"><h3>Экономика сделки${!DL.ex&&S.number?` · КП № ${esc(S.number)}`:''}<small>${esc(S.client||'Получатель не указан')}</small></h3>
+      <label class="dl-hd${d0h?'':' empty'}" title="${esc(calT||'Ориентировочная дата подписания договора (день 0): от неё считаются даты всех платежей')}"><span>Дата договора</span><input type="date" data-dlstart value="${esc(d0h)}" aria-label="Дата договора"${DL.ex?' disabled':''}></label>
       <button class="btn" type="button" data-dlx="xlsx">Excel для согласования</button><button class="icon dl-maxb" type="button" data-dlx="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна можно менять, потянув за правый нижний угол">⤢</button><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div>`;
   const banner = kp.sumNoRate ? `<div class="dl-ex warn">Нет курса валюты КП (${esc(kp.cur)}) — цена не переведена в рубли. Укажите курс в шаге «Цена КП и валюта».</div>` : '';
   const b=c.base, mini = b ? `<span><small>Прибыль при цене КП</small><b class="${b.P<0?'neg':''}">${dlRub0(b.P)}</b></span><span class="r"><small>Маржинальность</small><b>${dlPct(b.margin)}</b></span>`
@@ -588,21 +590,17 @@ function dealRenderIn(dlg){
   const xNote=[c.W+c.Bn?`резерв и бонусы ${dlRub0(c.W+c.Bn)}`:'', c.BG?`банковская гарантия ${dlRub0(c.BG)}`:'', xK?`наличные ${dlRub0(xK)}`:''].filter(Boolean).join(', ');
   // шаги по порядку заполнения; свёрнутые — одной строкой; открыт один (или все — «Развернуть все шаги»)
   const hasCus=d.sup.some((s,k)=>!(c.sup[k].mode==='none' && /^росс/i.test(s.country||'')));
+  const DL_TAB_SHORT={money:'Налог', sched:'График'};
   const order=[['buy','Закупка'], ...(hasCus?[['cus','Таможня']]:[]), ['cust','Оплата заказчика'], ['mnt','Расходы'], ['price','Цена КП'], ['money','Деньги и налог'], ['sched','График платежей']];
   DL.nav={}; order.forEach(([id],k)=>{ DL.nav[id]={n:k+1, next:order[k+1]&&order[k+1][0], nextT:order[k+1]&&order[k+1][1], prev:order[k-1]&&order[k-1][0], prevT:order[k-1]&&order[k-1][1]}; });
   DL.si=dlStepInfo(c);
   if (DL.open===undefined || !DL.nav[DL.open]) DL.open=(order.find(([id])=>DL.si[id]&&DL.si[id].st==='need')||order[0])[0];
   const tabs=`<nav class="dl-tabs" role="tablist" aria-label="Шаги расчёта">${order.map(([id,t],k)=>{ const st=(DL.si[id]||{}).st, on=DL.open===id;
-    return `<button type="button" role="tab" aria-selected="${on}" class="dl-tab${on?' on':''}${st?' '+st:''}" data-dlx="step" data-id="${id}" title="${esc((DL.si[id]||{}).sum||t)}"><span class="dl-tn">${st==='ok'?'✓':k+1}</span><span class="dl-tt">${t}</span>${st==='need'?'<i class="dl-tdot" aria-label="нужно заполнить"></i>':''}</button>`; }).join('')}</nav>`;
+    return `<button type="button" role="tab" aria-selected="${on}" class="dl-tab${on?' on':''}${st?' '+st:''}" data-dlx="step" data-id="${id}" title="${esc((DL.si[id]||{}).sum||t)}"><span class="dl-tn">${st==='ok'?'✓':k+1}</span><span class="dl-tt">${DL_TAB_SHORT[id]||t}</span>${st==='need'?'<i class="dl-tdot" aria-label="нужно заполнить"></i>':''}</button>`; }).join('')}</nav>`;
   const d0=dlD0();
-  const top=`<div class="dl-top"><label class="dl-d0t"><span>Дата договора${dlQ('Ориентировочная дата подписания договора (день 0). От неё считаются даты всех платежей; вместо количества дней везде можно выбрать дату.')}</span>
-      <input type="date" data-dlstart value="${esc(d0)}" aria-label="Дата договора"${DL.ex?' disabled':''}></label>
-    <span class="dl-d0n">${d0?dlCalNote(d0):'<span class="muted">Укажите — появятся даты платежей; сроки можно задавать датами</span>'}</span></div>`;
   const cust=dlCustoms(c);
   const custStep=dlStep(0, 'Оплата заказчика', 'Когда и сколько платит заказчик. Выберите готовый вариант или впишите свои этапы; сроки — днями или датой.', dlCustomer(c), '', ['Итого заплатит заказчик', c.rows.filter(r=>r.inflow).reduce((a,r)=>a+r.amount,0), `${c.trs.filter(t=>t.p>0).length} ${plural(c.trs.filter(t=>t.p>0).length,'платёж','платежа','платежей')}, последний — ${d0?dlDayRu(c.Tend):'день '+c.Tend}`], 'cust');
-  morph(dlg, `${head}${banner}<div class="dl-mini">${mini}</div><div class="dl-b"><div class="dl-form">
-    ${top}
-    ${tabs}
+  morph(dlg, `${head}${banner}<div class="dl-mini">${mini}</div><div class="dl-b"><div class="dl-tabw">${tabs}</div><div class="dl-form">
     ${dlPurchase(c)}
     ${cust}
     ${custStep}
@@ -748,8 +746,11 @@ function dealBind(dlg){
     if (a==='apply') return dealApplyPrice(+b.dataset.s);
     if (a==='reset'){ dlSet(d, b.dataset.path, ''); }
     if (a==='resetdays') d.days={};
-    if (a==='step'){ DL.open=b.dataset.id; dealRender(); const f=dlg.querySelector('.dl-form'), t=dlg.querySelector('.dl-tabs');
-      if (f && t){ f.scrollTo({top:Math.max(0, t.offsetTop-8), behavior:'smooth'}); const on=t.querySelector('.dl-tab.on'); if (on) t.scrollTo({left:Math.max(0, on.offsetLeft-t.clientWidth/2+on.offsetWidth/2), behavior:'smooth'}); } return; }
+    if (a==='step'){ DL.open=b.dataset.id; dealRender();
+      // новая вкладка — с начала, без анимации прокрутки; на телефоне вкладки прилипают к верху прокрутки
+      const f=dlg.querySelector('.dl-form'), bx=dlg.querySelector('.dl-b'), tw=dlg.querySelector('.dl-tabw'), t=dlg.querySelector('.dl-tabs');
+      if (f) f.scrollTop=0; if (bx && tw && bx.scrollTop>tw.offsetTop) bx.scrollTop=tw.offsetTop;
+      const on=t&&t.querySelector('.dl-tab.on'); if (on) t.scrollLeft=Math.max(0, on.offsetLeft-t.clientWidth/2+on.offsetWidth/2); return; }
     if (a==='addbg'){ const c=dealCalc(dlKp(), d); d.bg=[...(Array.isArray(d.bg)?d.bg:[]), {type:c.advSum>0?'adv':'perf', rate:'3'}]; }
     if (a==='delbg'){ d.bg=(d.bg||[]).filter((_,j)=>j!==k); }
     if (a==='where'){ const s=d.sup[k]; s.where=b.dataset.v;
