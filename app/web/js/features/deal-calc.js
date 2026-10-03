@@ -33,11 +33,17 @@ function dNum(s){
 
 const DEAL_CURS=['RUB','CNY','USD','EUR'];
 
-// таможенные сборы за таможенные операции по таможенной стоимости, ₽ (ПП РФ от 28.11.2024 № 1637, с 01.01.2025).
+// Таможенные сборы за таможенные операции (ввоз), ₽ — фиксированная сумма за декларацию по её общей таможенной
+// стоимости (цена товара + доставка до границы ЕАЭС + страховка, в рублях по курсу ЦБ на дату подачи декларации).
+// ПП РФ от 28.11.2024 № 1637 в редакции ПП РФ от 23.10.2025 № 1638 — ставки с 01.01.2026.
 // При изменении ставок поправьте таблицу; в расчёте сбор можно вписать вручную.
-const CUSTOMS_FEES = { title:'ПП РФ № 1637 (с 01.01.2025)', scale:[[200000,1231],[450000,2462],[1200000,4924],[2700000,13541],[4200000,18465],[5500000,21344],[10000000,49240],[Infinity,73860]] };
+const CUSTOMS_FEES = { title:'ПП РФ № 1637 в ред. № 1638, с 01.01.2026', scale:[[200000,1231],[450000,2462],[1200000,4924],[2700000,13541],[4200000,18465],[5500000,21344],[10000000,49240],[Infinity,73860]] };
 
 function customsFee(cv){ if (!(cv>0)) return 0; for (const [lim,fee] of CUSTOMS_FEES.scale) if (cv<=lim) return fee; return 0; }
+// интервал шкалы для подсказки: «таможенная стоимость 3 100 000 ₽ — интервал 2 700 000,01–4 200 000 ₽»
+function customsFeeBand(cv){ if (!(cv>0)) return ''; const sc=CUSTOMS_FEES.scale, i=sc.findIndex(x=>cv<=x[0]); if (i<0) return '';
+  const f=v=>Math.round(v).toLocaleString('ru-RU'), lo=i?f(sc[i-1][0])+',01':'0', hi=sc[i][0]===Infinity?'и выше':'– '+f(sc[i][0]);
+  return `таможенная стоимость ${f(cv)} ₽ → интервал ${lo} ${hi} ₽ → сбор ${f(sc[i][1])} ₽`; }
 
 // Коды ТН ВЭД ЕАЭС и ставки ввозной пошлины по категориям оборудования — СПРАВОЧНО: ставка зависит от полного кода
 // (10 знаков), его подтверждает таможенный брокер. В программе любой код и ставку можно исправить — для категории
@@ -82,6 +88,9 @@ const DEAL_EVENTS = { sign:'после подписания договора', r
 
 // банковская гарантия: вид
 const DEAL_BG_TYPES = { adv:'На возврат аванса', perf:'Исполнения договора', warr:'Гарантийных обязательств' };
+// ставка банка за гарантию по умолчанию, % годовых от суммы гарантии за её срок. Рынок 2026: обычно 1–3,5 %,
+// в среднем ~2,2 % (Сбербанк — от 2 %, ВТБ — от 3,7 %); 3 % — с запасом для коммерческого договора. Правится в каждой гарантии.
+const DEAL_BG_RATE = 3;
 
 // этапы оплаты поставщику: событие поставки + дней после него; последний этап — остаток до 100 %
 const DEAL_SUP_EVENTS = { order:'при заказе', ready:'перед отгрузкой (готовность)', delivery:'после поставки', pnr:'после шефмонтажа и ПНР' };
@@ -258,7 +267,7 @@ function dealCalc(kp, d){
     const amount = base==='adv' ? advSum*v/100 : base==='pct' ? S*v/100 : v;
     const daysAuto = type==='adv' ? D : type==='perf' ? pnrEnd : 365;
     const dOwn=num(P+'.days', g.days, {int:true}), days=dOwn==null?daysAuto:dOwn;
-    const rate=num(P+'.rate', g.rate, {def:0, max:100}), min=num(P+'.min', g.min, {def:0});
+    const rate=num(P+'.rate', g.rate, {def:DEAL_BG_RATE, max:100}), min=num(P+'.min', g.min, {def:0});
     const fee = amount>0 && (rate>0||min>0) ? Math.max(min, amount*rate/100*days/365) : 0;
     return {k, type, base, v, amount, days, daysAuto, daysOwn:dOwn!=null, rate, min, fee}; });
   const BG=bgs.reduce((a,g)=>a+g.fee,0);
@@ -335,4 +344,4 @@ function dealSolve(kp, d, type, value){
   return Math.ceil(hi*100)/100;
 }
 
-if (typeof module!=='undefined') module.exports={dealAddDays, dlDaysTxt, DEAL_BG_TYPES, DEAL_SUP_EVENTS, dealSupPay, dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, dNum, CUSTOMS_FEES, DEAL_EVENTS, DEAL_HS, dealHsAuto, dealCountryPreset};
+if (typeof module!=='undefined') module.exports={dealAddDays, dlDaysTxt, DEAL_BG_TYPES, DEAL_BG_RATE, DEAL_SUP_EVENTS, dealSupPay, dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, customsFeeBand, dNum, CUSTOMS_FEES, DEAL_EVENTS, DEAL_HS, dealHsAuto, dealCountryPreset};

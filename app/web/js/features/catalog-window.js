@@ -19,12 +19,12 @@ function cwForget(x){ delete x._a; delete x._nv; delete x._hay; }
 function cwDlg(){ let d=$('#catdlg'); if(!d){ d=document.createElement('dialog'); d.id='catdlg'; d.className='catwin'; d.setAttribute('aria-label','Каталог'); document.body.appendChild(d); } return d; }
 
 // ---------- размер окна: запоминается в браузере
-function cwSize(d){ let z={}; try{ z=JSON.parse(localStorage.getItem('kp.catwin')||'{}')||{}; }catch(e){}
+function cwSize(d){ let z={}; try{ z=JSON.parse(localStorage.getItem('kp.catwin2')||'{}')||{}; }catch(e){}
   d.classList.toggle('max', !!z.max);
   if (z.w && z.h){ d.style.width=Math.min(z.w, innerWidth)+'px'; d.style.height=Math.min(z.h, innerHeight)+'px'; } else { d.style.width=''; d.style.height=''; } }
 
-function cwSaveSize(d){ try{ const o=JSON.parse(localStorage.getItem('kp.catwin')||'{}')||{}; const max=d.classList.contains('max');
-  const z = max ? {...o, max:true} : {max:false, w:Math.round(d.offsetWidth), h:Math.round(d.offsetHeight)}; localStorage.setItem('kp.catwin', JSON.stringify(z)); }catch(e){} }
+function cwSaveSize(d){ try{ const o=JSON.parse(localStorage.getItem('kp.catwin2')||'{}')||{}; const max=d.classList.contains('max');
+  const z = max ? {...o, max:true} : {max:false, w:Math.round(d.offsetWidth), h:Math.round(d.offsetHeight)}; localStorage.setItem('kp.catwin2', JSON.stringify(z)); }catch(e){} }
 
 function cwLayout(d){ const w=d.clientWidth; d.classList.toggle('narrow', w<1100); d.classList.toggle('tiny', w<760); }
 
@@ -63,15 +63,20 @@ function cwNav(){
   const F=CW.F, cnt=new Map(); let all=0;
   CW.docs.forEach(x=>{ if(!cwKindOk(x)) return; const c=cwA(x).cat; cnt.set(c,(cnt.get(c)||0)+1); all++; });
   const groups=[...new Set(TYPES.map(t=>t.group||'Прочее'))];
-  const cats=groups.map(g=>{ const ts=TYPES.filter(t=>(t.group||'Прочее')===g && (CW.optFor==null || t.role==='accessory' || cnt.get(t.id) || F.cat===t.id));
-    return ts.length ? `<p class="cw-grp">${esc(g)}</p>`+ts.map(t=>{ const n=cnt.get(t.id)||0;
-      return `<button type="button" class="cw-cat${F.cat===t.id?' on':''}${n?'':' zero'}" data-cat="${esc(t.id)}" data-dropcat="${esc(t.id)}"><span>${esc(t.name)}</span><i>${n}</i></button>`; }).join('') : ''; }).join('');
+  // разделы сворачиваются (запоминается в браузере); пустые категории можно скрыть
+  let fold={}, hideZero=false; try{ fold=JSON.parse(localStorage.getItem('kp.cwfold')||'{}')||{}; hideZero=localStorage.getItem('kp.cwzero')==='1'; }catch(e){}
+  const cats=groups.map(g=>{ const ts=TYPES.filter(t=>(t.group||'Прочее')===g && (CW.optFor==null || t.role==='accessory' || cnt.get(t.id) || F.cat===t.id) && (!hideZero || cnt.get(t.id) || F.cat===t.id));
+    const total=ts.reduce((a,t)=>a+(cnt.get(t.id)||0),0), shut=!!fold[g] && !ts.some(t=>t.id===F.cat);
+    return ts.length ? `<button type="button" class="cw-grp${shut?' shut':''}" data-cwfold="${esc(g)}" aria-expanded="${!shut}" title="${shut?'Развернуть':'Свернуть'} раздел"><span>${esc(g)}</span><i>${total}</i></button>`+(shut?'':ts.map(t=>{ const n=cnt.get(t.id)||0;
+      return `<button type="button" class="cw-cat${F.cat===t.id?' on':''}${n?'':' zero'}" data-cat="${esc(t.id)}" data-dropcat="${esc(t.id)}" title="${esc(t.name)}"><span>${esc(t.name)}</span><i>${n}</i></button>`; }).join('')) : ''; }).join('');
   const t=F.cat?typeById(F.cat):null;
   let flt=cwFacet('maker','Производитель')+cwFacet('series','Серия');
   if (t){ for (const f of t.fields) if (f.range) flt+=cwRange(f); for (const f of t.fields) if (f.facet) flt+=cwFacet(f.key,f.label,true); }
-  morph($('#cwNav'), `<p class="cw-cap">Категории</p><div class="cw-cats">
+  morph($('#cwNav'), `<p class="cw-cap">Категории ${CW.optFor==null?`<button type="button" class="lnk cw-tset" data-cw="types" title="Параметры, фильтры, ключевые параметры на титуле, быстрые опции${t?' — категории «'+esc(t.name)+'»':''}">⚙ настроить${t?' эту':''}</button>`:''}</p>
+    ${CW.optFor==null?'<p class="cw-hint">Щёлкните категорию — появятся её фильтры. Позиции можно перетащить мышью на другую категорию.</p>':''}<div class="cw-cats">
       <button type="button" class="cw-cat all${!F.cat?' on':''}" data-cat=""><span>Все позиции</span><i>${all}</i></button>${cats}
-      ${CW.optFor==null?'<button type="button" class="cw-cat add" data-cw="newtype">+ Новая категория</button>':''}</div>
+      ${CW.optFor==null?'<button type="button" class="cw-cat add" data-cw="newtype">+ Новая категория</button>':''}
+      <label class="cw-chk cw-zero"><input type="checkbox" data-cwzero ${hideZero?'checked':''}> Скрыть пустые категории</label></div>
     <p class="cw-cap">Фильтры ${cwFiltered()?'<button type="button" class="lnk" data-cw="reset">сбросить</button>':''}</p>
     <div class="cw-flt">${flt}<label class="cw-chk"><input type="checkbox" id="cwPriced" ${F.priced?'checked':''}> Только с ценой</label>
       ${t?'':'<p class="muted" style="margin:0">Выберите категорию — появятся фильтры по её параметрам (мощность, давление, производительность…).</p>'}</div>
@@ -355,6 +360,7 @@ function cwBind(d){
     if (t.id==='cwQ'){ F.q=t.value; CW.limit=150; clearTimeout(qT); qT=setTimeout(()=>{ cwNav(); cwList(); }, CW.docs.length>2000?180:60); return; }
     if (t.dataset.rk){ const r=F.rng[t.dataset.rk]||(F.rng[t.dataset.rk]={min:'',max:''}); r[t.dataset.rs]=t.value.replace(',','.').replace(/[^\d.]/g,''); cwList(); } });
   d.addEventListener('change', e=>{ const t=e.target, F=CW.F;
+    if (t.dataset.cwzero!=null){ try{ localStorage.setItem('kp.cwzero', t.checked?'1':'0'); }catch(_){} return cwNav(); }
     if (t.id==='cwSort'){ F.sort=t.value; cwList(); return; }
     if (t.dataset.f!=null){ if (t.dataset.in) F.f[t.dataset.f]=t.value; else F[t.dataset.f]=t.value; CW.limit=150; cwNav(); cwList(); return; }
     if (t.id==='cwPriced'){ F.priced=t.checked; cwNav(); cwList(); return; }
@@ -369,6 +375,8 @@ function cwBind(d){
       else on?CW.sel.add(id):CW.sel.delete(id);
       CW.lastCk=id; cwList(); cwFoot(); return; }
     if (t.closest('.ck')) return;
+    const fg=t.closest('[data-cwfold]'); if (fg){ let fold={}; try{ fold=JSON.parse(localStorage.getItem('kp.cwfold')||'{}')||{}; }catch(e){}
+      fold[fg.dataset.cwfold]=!fold[fg.dataset.cwfold]; try{ localStorage.setItem('kp.cwfold', JSON.stringify(fold)); }catch(e){} return cwNav(); }
     const cat=t.closest('[data-cat]'); if (cat){ F.cat=cat.dataset.cat; F.f={}; F.rng={}; CW.limit=150; d.classList.remove('navon'); cwNav(); cwList(); $('#cwList').scrollTop=0; return; }
     if (t.closest('[data-more]')){ CW.limit+=300; cwList(); return; }
     const add=t.closest('[data-add]'); if (add){ return cwAdd([add.closest('.cw-row').dataset.id]); }
@@ -394,7 +402,7 @@ function cwBind(d){
       case 'newtype': return cwNewType(id=>{ F.cat=id; F.f={}; F.rng={}; cwRedraw(); });
       case 'new': return F.cat ? cwNew(F.cat) : cwPickType(cwNew);
       case 'xls': return openXlsImport(F.cat);
-      case 'types': return openTypesEditor();
+      case 'types': return openTypesEditor(F.cat || undefined);
       case 'exp': return cwExport();
       case 'imp': { const f=document.createElement('input'); f.type='file'; f.accept='.json,application/json'; f.hidden=true;
         f.onchange=()=>{ const file=f.files[0]; f.remove(); if (file) cwImportFile(file); }; d.appendChild(f); f.click(); return; }

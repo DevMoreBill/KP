@@ -476,9 +476,9 @@ class Handler(BaseHTTPRequestHandler):
             open_folder(target)
             return self.send_json({'ok': True})
         if path == '/api/cbr':
-            return self.send_json(cbr_rates())
+            return self.send_json(cbr_saved('cbr_last', cbr_rates))
         if path == '/api/cbr/keyrate':
-            return self.send_json(cbr_key_rate())
+            return self.send_json(cbr_saved('keyrate_last', cbr_key_rate))
         # картинки карточек: логотипы производителей из каталога; картинка, перетащенная со страницы сайта
         if path == '/api/logos' and m == 'GET':
             import imgfetch
@@ -546,6 +546,27 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self.not_found()
+
+
+def cbr_saved(key, fetch):
+    """Курсы / ключевая ставка ЦБ: удачный ответ сохраняется в базе; если ЦБ недоступен — последний сохранённый
+    (с пометкой stale и временем загрузки), чтобы расчёты работали и без интернета."""
+    try:
+        res = fetch()
+    except Exception as e:
+        res = {'error': str(e)}
+    if res and not res.get('error'):
+        res = dict(res, fetched=datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
+        try:
+            store().kv_set(key, res)
+        except Exception:
+            pass
+        return res
+    last = store().kv_get(key)
+    if isinstance(last, dict) and not last.get('error'):
+        return dict(last, stale=True, src=(last.get('src') or 'ЦБ РФ') + ' — сохранённое значение, ЦБ сейчас недоступен',
+                    fetchError=res.get('error', ''))
+    return res
 
 
 def already_running():

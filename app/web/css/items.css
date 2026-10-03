@@ -26,7 +26,7 @@ input.iname{font-weight:600;font-size:15.5px}
 .isum{text-align:right;font-size:13px;color:var(--muted)}
 .isum b{color:var(--ink);font-size:15px}
 .ifoot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
-dialog.editor{max-width:min(1060px,96vw);width:100%;height:min(92vh,980px);display:none;flex-direction:column}
+dialog.editor{max-width:min(1240px,96vw);width:100%;height:min(92vh,980px);display:none;flex-direction:column}
 dialog.editor[open]{display:flex}
 .ed-tabs{display:flex;gap:6px;padding:10px 20px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .ed-tab{border:0;background:none;padding:10px 14px;border-bottom:3px solid transparent;cursor:pointer;font-weight:600;color:var(--muted);font-size:14.5px}
@@ -94,3 +94,16 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .lnk.imgp{display:block;margin:4px auto 0}
 .drop.over,.ibox.over,.gal.over,.ithumb.over{border-color:var(--navy);background:color-mix(in srgb,var(--navy) 8%,var(--soft));outline:2px dashed var(--navy);outline-offset:-4px}
 .drop:focus-visible,.ibox:focus-visible,.gal:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
+/* порядок блоков описания и изображений: «⠿» — перетащить, ↑↓ — сдвинуть */
+.ed-hdl{cursor:grab;color:var(--muted);font-size:17px;line-height:1;padding:4px 3px;border-radius:6px;user-select:none;align-self:center}
+.ed-hdl:hover{background:var(--soft);color:var(--ink)}
+.fhead{display:flex;align-items:center;gap:4px}
+.fhead input{flex:1}
+.gmv{display:flex;align-items:center;gap:2px}
+.gmv .icon{width:26px;height:26px;font-size:13px}
+.fblock.dragging,.gcard.dragging{opacity:.45}
+.fblock.drop-b{box-shadow:0 -3px 0 var(--navy)}
+.fblock.drop-a{box-shadow:0 3px 0 var(--navy)}
+.gcard.drop-b{box-shadow:-3px 0 0 var(--navy)}
+.gcard.drop-a{box-shadow:3px 0 0 var(--navy)}
+.mob .ed-hdl{display:none}
