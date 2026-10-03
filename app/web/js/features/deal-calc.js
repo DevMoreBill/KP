@@ -230,8 +230,8 @@ function dealCalc(kp, d){
   const restPct=100-pctSum; if (restPct<-0.0001) err['cust.tr']='Сумма этапов больше 100 %';
   trs[trs.length-1].p=Math.max(0,restPct);
   for (const t of trs){ if (!(t.p>0)) continue;
-    rows.push({key:'c'+t.k, auto:ev[t.ev]+t.off, label:`${t.name||'Оплата заказчика'} ${dlPctTxt(t.p)} — ${DEAL_EVENTS[t.ev]}${t.off?` + ${t.off} дн.`:''}`, amount:t.bySum?t.sum:S*t.p/100, inflow:true, pct:t.p, stage:t.k, party:'cust', ev:DEAL_EVENTS[t.ev]+(t.off?` + ${t.off} дн.`:'')}); }
-  if (!rows.some(r=>r.inflow)) rows.push({key:'c0', auto:D, label:'Оплата заказчика', amount:0, inflow:true, pct:100});
+    rows.push({key:'c'+t.k, auto:ev[t.ev]+t.off, label:`${t.name||'Оплата заказчика'} ${dlPctTxt(t.p)} — ${DEAL_EVENTS[t.ev]}${t.off?` + ${t.off} дн.`:''}`, amount:t.bySum?t.sum:S*t.p/100, inflow:true, post:t.ev==='delivery'||t.ev==='pnr', pct:t.p, stage:t.k, party:'cust', ev:DEAL_EVENTS[t.ev]+(t.off?` + ${t.off} дн.`:'')}); }
+  if (!rows.some(r=>r.inflow)) rows.push({key:'c0', auto:D, label:'Оплата заказчика', amount:0, inflow:true, post:true, pct:100});
   // день платежа: по срокам или вручную; при заданной дате отсчёта и производственном календаре (kp.workShift) расчётный
   // день переносится на ближайший рабочий (банковский) день, вручную заданный — остаётся, но помечается, если он нерабочий
   rows.forEach((r,k)=>{ r.day=dayOf(r.key, r.auto); r.manual=r.day!==r.auto; r.ord=k;
@@ -241,7 +241,9 @@ function dealCalc(kp, d){
   if (W>0) rows.push({key:'warr', auto:Tend, day:Tend, fixed:true, label:'Резерв на гарантию', amount:-W, ord:rows.length});
   const isX=r=>String(r.key).startsWith('xc');
   const tail=r=>isX(r)?2:(r.key==='bonus'||r.key==='warr')?1:0;
-  const order=()=>rows.sort((a,b)=>a.day-b.day || tail(a)-tail(b) || (a.inflow?1:0)-(b.inflow?1:0) || a.ord-b.ord);
+  // в один день: сначала деньги заказчика, потом платежи; постоплата (после поставки, после ПНР) — после платежей этого дня
+  const inRank=r=>r.inflow ? (r.post?1:-1) : 0;
+  const order=()=>rows.sort((a,b)=>a.day-b.day || tail(a)-tail(b) || inRank(a)-inRank(b) || a.ord-b.ord);
   const finance=()=>{ order(); let bal=0, Fsum=0;
     rows.forEach((r,k)=>{ bal+=r.amount; r.balance=bal; const nx=rows[k+1];
       r.days=Math.max(0, Math.min(nx?nx.day:Tend, Tend)-r.day); if (r.day>=Tend) r.days=0;
