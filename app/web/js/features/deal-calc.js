@@ -7,6 +7,11 @@
 // Финансирование F — простой процент (месяц = 30 дней) на недостающие деньги по графику платежей и поступлений
 // до последней оплаты заказчика. Без аванса заказчика это ровно Σ платёж × i/100 × дней до оплаты / 30;
 // поступления заказчика уменьшают финансируемую сумму, доход на свободный остаток не начисляется.
+// Прочие расходы наличными (необязательно, d.xc): X — сумма на руки, «чистыми»; mode: net — % от чистой прибыли сделки
+//   (после налога на прибыль, до этих расходов), sale — % от выручки без НДС, sum — сумма в рублях. Получение наличных
+//   стоит xc.cost % от перечисленного: расход компании K = X / (1 − cost/100). Налоговую базу K не уменьшает:
+//   налог = P_учёт × ставка, где P_учёт = R − C_total; прибыль сделки P = P_учёт − K; чистая прибыль = P_учёт − налог − K.
+//   Платится после последней оплаты заказчика — на финансирование не влияет.
 // Таможня «Рассчитать»: таможенная стоимость CV = оборудование + логистика до границы + страхование;
 //   пошлина = CV × ставка; сбор — по шкале; ввозной НДС = (CV + пошлина) × ставка НДС (к вычету).
 'use strict';
@@ -185,6 +190,8 @@ function dealCalc(kp, d){
   const M=num('mnt', d.mnt, {def:0}), E=num('oth', d.oth, {def:0}), pnrDays=num('pnr', d.pnr, {def:0, int:true});
   const Vo=num('vo', d.vo, {def:0});
   const warrP=num('warr', d.warr, {def:0, max:100}), bonusP=num('bonus', d.bonus, {def:0, max:100}), taxP=num('tax', d.tax, {def:25, max:100});
+  const xc=d.xc||{}, xMode=['net','sale','sum'].includes(xc.mode)?xc.mode:'net';
+  const xV=num('xc.v', xc.v, {def:0, max:xMode==='sum'?null:100}), xCost=num('xc.cost', xc.cost, {def:0, max:90}), xG=1/(1-xCost/100);
   const moneyOwn=num('money', d.money); const moneyAuto=moneyOwn==null; const i=moneyAuto ? (kp.moneyAuto ?? 2) : moneyOwn;
   const R=S/vatK, VATs=S-R;
   const W=R*warrP/100, Bn=R*bonusP/100;
@@ -229,7 +236,9 @@ function dealCalc(kp, d){
   const Tend=Math.max(...rows.filter(r=>r.inflow).map(r=>r.day));
   if (Bn>0) rows.push({key:'bonus', auto:Tend, day:Tend, fixed:true, label:'Бонусы и комиссии с продажи', amount:-Bn, ord:rows.length});
   if (W>0) rows.push({key:'warr', auto:Tend, day:Tend, fixed:true, label:'Резерв на гарантию', amount:-W, ord:rows.length});
-  rows.sort((a,b)=>a.day-b.day || ((a.key==='bonus'||a.key==='warr')?1:0)-((b.key==='bonus'||b.key==='warr')?1:0) || (a.inflow?1:0)-(b.inflow?1:0) || a.ord-b.ord);
+  const tail=r=>r.key==='xc'?2:(r.key==='bonus'||r.key==='warr')?1:0;
+  const order=()=>rows.sort((a,b)=>a.day-b.day || tail(a)-tail(b) || (a.inflow?1:0)-(b.inflow?1:0) || a.ord-b.ord);
+  order();
   let bal=0, Fsum=0;
   rows.forEach((r,k)=>{ bal+=r.amount; r.balance=bal; const nx=rows[k+1];
     r.days=Math.max(0, Math.min(nx?nx.day:Tend, Tend)-r.day); if (r.day>=Tend) r.days=0;
@@ -240,12 +249,18 @@ function dealCalc(kp, d){
   const voSup=sumOf(s=>s.vo), voRuSum=sumOf(s=>s.voRu);
   const unknown=S_.filter(s=>s.vi==null);
   const VATinKnown=viSum+voSup+voRuSum+Vo;
-  const res=VATin=>{ const Cnet=Ccash-VATin, Ctot=Cnet+F, P=R-Ctot, vb=VATs-VATin, tax=P>0?P*taxP/100:0;
-    return { VATin, Cnet, Ctot, P, tax, net:P-tax, markup: Ctot?P/Ctot*100:null, margin: R?P/R*100:null, vatBal:vb, payable:Math.max(vb,0), excess:Math.max(-vb,0),
-      cashAfter: S-Ccash-F-Math.max(vb,0) }; };
+  const res=VATin=>{ const Cnet=Ccash-VATin, Ctot=Cnet+F, Pa=R-Ctot, vb=VATs-VATin, tax=Pa>0?Pa*taxP/100:0;
+    const X = !xV ? 0 : xMode==='sum' ? xV : xMode==='sale' ? R*xV/100 : Math.max(0, Pa-tax)*xV/100, K=X*xG, P=Pa-K;
+    return { VATin, Cnet, Ctot, Pa, X, K, P, tax, net:Pa-tax-K, markup: Ctot+K?P/(Ctot+K)*100:null, margin: R?P/R*100:null, vatBal:vb, payable:Math.max(vb,0), excess:Math.max(-vb,0),
+      cashAfter: S-Ccash-F-K-Math.max(vb,0) }; };
   const lo=res(VATinKnown), hi=unknown.length?res(VATinKnown+unknown.reduce((a,s)=>a+s.T,0)):lo;
   const base=unknown.length?null:lo;
+  // прочие расходы наличными — строкой графика после последней оплаты заказчика (финансирование не меняется)
+  const xr=base||lo;
+  if (xr.K>0){ rows.push({key:'xc', auto:Tend, day:Tend, fixed:true, label:'Прочие расходы (наличные)', amount:-xr.K, party:'oth', ord:rows.length, days:0, fin:0});
+    order(); let b2=0; rows.forEach(r=>{ b2+=r.amount; r.balance=b2; }); }
   if (base && Math.abs(base.P-(base.cashAfter+base.excess))>0.01) warn.push({t:'Контрольное равенство не сошлось — сообщите разработчику', bad:true});
+  if (xr.K>0 && xr.net<0) warn.push({t:`Прочие расходы наличными (${Math.round(xr.K).toLocaleString('ru-RU')} ₽) больше чистой прибыли сделки — компания в убытке`, bad:true});
   if (!(S>0)) warn.push({t:'Нет цены для заказчика: заполните цены в КП или укажите цену здесь', bad:true});
   if (!equipSum && !Lsum && !Tsum && !M && !E) warn.push({t:'Расходы не указаны: укажите цены закупки в шаге «Закупка»', go:'price'});
   // структура затрат (для итога и Excel)
@@ -253,7 +268,7 @@ function dealCalc(kp, d){
     ['Логистика до границы', Lsum], ['Таможенные платежи', Tsum], ['Брокер, СВХ, сертификация', brkSum], ['Доставка по России', LruSum],
     ['Монтаж и ПНР', M], ['Прочие расходы', E], ['Бонусы и комиссии с продажи', Bn], ['Резерв на гарантию', W], ['Финансирование', F],
     ['НДС к вычету (уменьшает затраты)', -(base||lo).VATin]].filter(x=>Math.abs(x[1])>0.004);
-  return { S, v, vatFromKp, rate, rateSrc, used:[...used].filter(c=>c!=='RUB'), sup:S_, M, E, Vo, W, Bn, warrP, bonusP, taxP, pnrDays, trs, ev, i, moneyAuto,
+  return { xc:{mode:xMode, v:xV, cost:xCost, g:xG, on:xV>0}, S, v, vatFromKp, rate, rateSrc, used:[...used].filter(c=>c!=='RUB'), sup:S_, M, E, Vo, W, Bn, warrP, bonusP, taxP, pnrDays, trs, ev, i, moneyAuto,
     rows, F, D, Rdy, Tend, R, VATs, Ccash, equipSum, Lsum, LruSum, brkSum, Tsum, voSup, voRuSum, unknown, base, lo, hi, cashBefore:S-Ccash-F, parts,
     err, warn, ok:!Object.keys(err).length };
 }
