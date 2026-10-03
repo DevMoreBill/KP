@@ -446,6 +446,7 @@ function dlSchedule(c, n=6){
 }
 
 // ---------- прочие расходы наличными (необязательно): % от чистой прибыли, % от выручки без НДС или сумма — всё «чистыми», на руки
+const DL_XC_WHEN=[['end','После последней оплаты заказчика'],['pay','С оплат заказчика — по этапам']];
 const DL_XC_MODES=[['net','% от чистой прибыли'],['sale','% от суммы продажи без НДС'],['salevat','% от суммы продажи с НДС'],['sum','Сумма, ₽']];
 function dlCash(c){
   const d=dlDeal(), x=c.xc, r=c.base||c.lo, open=!!(d.xc && Object.values(d.xc).some(v=>v!=null && v!==''));
@@ -457,9 +458,20 @@ function dlCash(c){
       ${dlField('Как считать', 'xc.mode', {calc:c, select:DL_XC_MODES})}
       ${dlField(x.mode==='sum'?'Сумма':'Процент', 'xc.v', {calc:c, unit, ph:x.mode==='sum'?'100 000':'10', q:'Сумма «чистыми» — столько получат на руки наличными, без каких-либо налогов. От чистой прибыли — процент от прибыли сделки после налога на прибыль (до этих расходов); от продажи — процент от суммы продажи без НДС или с НДС (цена КП).'})}
       ${dlField('Стоимость получения наличных', 'xc.cost', {calc:c, unit:'%', ph:'0', q:'Сколько процентов от перечисленной суммы удерживают за выдачу наличных. Расход компании = сумма на руки ÷ (1 − процент). Если наличные уже есть — оставьте пустым.'})}</div>
+    <div class="dl-g g2">${dlField('Когда выдаются', 'xc.when', {calc:c, select:DL_XC_WHEN, q:'После последней оплаты — наличные не влияют на финансирование. С оплат заказчика — с каждой отмеченной оплаты выдаётся часть, пропорционально её сумме, в день оплаты; деньги уходят раньше — финансирование может вырасти.'})}</div>
+    ${x.when==='pay'?dlCashStages(c):''}
     ${r.K>0?`<p class="dl-cash-r">На руки <b>${dlRub0(r.X)}</b>${x.cost?` · расход компании с получением наличных <b>${dlRub0(r.K)}</b>`:''} <span class="muted">— ${esc(how)}</span></p>`:''}
     <p class="muted">Не уменьшают налог на прибыль: налог считается с прибыли до этих расходов, а сами они вычитаются из чистой прибыли — прибыль, маржа, наценка и подбор цены
-    показывают реальный интерес компании. Платятся после последней оплаты заказчика, в КП не выводятся.</p></details>`;
+    показывают реальный интерес компании. Выдаются после последней оплаты заказчика или частями с его оплат; в КП не выводятся.</p></details>`;
+}
+
+// с каких оплат заказчика выдаются наличные: отметки по этапам и сумма с каждой
+function dlCashStages(c){
+  const x=c.xc, ins=c.rows.filter(r=>r.inflow && r.amount>0), xs=c.rows.filter(r=>String(r.key).startsWith('xc:'));
+  if (!ins.length) return '';
+  return `<div class="dl-cst" role="group" aria-label="С каких оплат заказчика">${ins.map(r=>{ const on=x.off[r.stage]!==false, t=c.trs[r.stage], xr=xs.find(z=>z.from===r.key);
+    return `<label class="dl-cst-r${on?'':' off'}"><input type="checkbox" data-xcst="${r.stage}"${on?' checked':''}><span>${esc((t&&t.name)||(r.stage===0&&c.trs.length>1?'Аванс':t&&t.last&&c.trs.length>1?'Окончательная оплата':'Оплата'))} ${dlPctTxt(r.pct||0)} <small class="muted">день ${r.day}</small></span><b>${xr?'−'+dlRub0(-xr.amount):'—'}</b></label>`; }).join('')}
+    ${x.from.length?'':'<p class="muted">Ни одна оплата не отмечена — наличные выдаются после последней оплаты заказчика.</p>'}</div>`;
 }
 
 // ---------- правая колонка: подбор цены и итог
@@ -639,6 +651,7 @@ function dealBind(dlg){
     if (t.dataset.dldate!=null){ const n=dlIsoDay(t.value); if (n==null||n<0){ toast('Дата раньше дня 0 — укажите дату не раньше подписания договора'); return dealRender(); }
       const d=dlDeal(); d.days={...(d.days||{}), [t.dataset.dldate]:String(n)}; touch(); return dealRender(); }
     if (t.dataset.kpcur!=null){ kpSetCur(t.value); touch(); return; }
+    if (t.dataset.xcst!=null){ const d=dlDeal(); d.xc=d.xc||{}; const off={...(d.xc.off||{})}; if (t.checked) delete off[t.dataset.xcst]; else off[t.dataset.xcst]=false; d.xc.off=off; touch(); return dealRender(); }
     if (t.dataset.costcurI!=null){ S.items[+t.dataset.costcurI].costCur=t.value; if (t.value!=='RUB' && !(rateOf(t.value)>0)) loadCBR(); touch(); updateLive(); return dealRender(); }
     if (t.dataset.kpvat!=null || t.dataset.kprate!=null){ renderForm(); return; }
     if (t.dataset.dl && t.tagName==='SELECT'){ dlSet(dlDeal(), t.dataset.dl, t.value); if (!DL.ex) dealRememberDefault(t.dataset.dl, t.value);
