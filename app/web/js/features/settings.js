@@ -265,11 +265,13 @@ async function stBackup(m){
 // ---------- шаблоны, категории, ключи, пароль
 async function stTemplates(m){
   m.innerHTML=`<div class="st-card"><p class="sub">Шаблоны КП</p>${TEMPLATES.map(t=>`<div class="st-row"><div><b>${esc(t.name)}</b><span class="muted">${esc(t.description||t.id)}${t.error?' · <span class="bad-t">'+esc(t.error)+'</span>':''}</span></div>
-      <div class="acts"><button class="btn" type="button" data-tpl="${esc(t.id)}">Настроить</button></div></div>`).join('')}
-      <div class="row" style="margin-top:10px"><button class="btn ghost" type="button" data-tfold>Папка шаблонов</button></div></div>
+      <div class="acts">${t.error?'':`<button class="btn primary" type="button" data-tdes="${esc(t.id)}" title="Документ как в Word: щёлкните текст или картинку и меняйте шрифт, цвет, размеры, порядок разделов">Графический редактор</button>`}<button class="btn" type="button" data-tpl="${esc(t.id)}">Настроить</button></div></div>`).join('')}
+      <div class="row" style="margin-top:10px"><button class="btn" type="button" data-tnew>+ Новый шаблон для компании…</button><button class="btn ghost" type="button" data-tfold>Папка шаблонов</button></div></div>
     <div class="st-card"><p class="sub">Категории оборудования</p><p class="muted">Параметры, фильтры, группы характеристик. Удалить свою категорию или вернуть стандартные можно только отсюда (при входе в «Настройки»).</p>
       <button class="btn" type="button" data-types>Открыть категории</button></div>`;
   m.onclick=e=>{ const t=e.target.closest('[data-tpl]'); if (t) return openTemplateEditor(t.dataset.tpl);
+    const g=e.target.closest('[data-tdes]'); if (g) return openTemplateDesigner(g.dataset.tdes);
+    if (e.target.closest('[data-tnew]')) return tdNewCompany().catch(err=>toast('Не получилось: '+(err.message||err)));
     if (e.target.closest('[data-tfold]')) return api('/api/templates/folder',{method:'POST'}).then(r=>{ if(r&&r.remote) toast('Шаблоны лежат на компьютере-сервере, в папке программы «templates»'); }).catch(err=>toast(err.message));
     if (e.target.closest('[data-types]')) openTypesEditor(); };
 }
