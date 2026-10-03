@@ -567,3 +567,100 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-t tr.drop-a td{box-shadow:inset 0 -3px 0 var(--navy)}
 .dl-shint{margin-top:4px}
 .mob .dl-smv .dl-mvb{visibility:visible}
+
+/* ================= телефон: окно «Экономика сделки» =================
+   Шапка — одна строка (название · Excel · ✕), под ней строка «Договор [дата] · прибыль · маржа», вкладки.
+   Остальная высота — рабочая зона. Поля — 40 px, шрифт 16 px (iOS не увеличивает страницу при вводе). */
+.dl-xl-s{display:none}
+.mob dialog.dealwin .dlg-h{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 10px 6px 14px;min-height:0}
+.mob dialog.dealwin .dlg-h h3{font-size:15.5px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
+.mob dialog.dealwin .dlg-h h3 small{display:none}
+.mob dialog.dealwin .dlg-h .btn{padding:6px 12px;min-height:36px;font-size:14px}
+.mob dialog.dealwin .dlg-h .icon{width:40px;height:40px;min-width:40px;min-height:40px}
+.mob .dl-xl-l{display:none}
+.mob .dl-xl-s{display:inline}
+.mob dialog.dealwin .dl-mini{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:6px 14px;font-size:12px}
+.mob dialog.dealwin .dl-mini small{font-size:11px;line-height:1.1}
+.mob dialog.dealwin .dl-mini b{font-size:16px}
+.mob dialog.dealwin .dl-mini>span:not(.r){text-align:right;align-items:flex-end;display:flex;flex-direction:column}
+.mob dialog.dealwin .dl-mini .dl-hd{display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin:0;padding:0;border:0;background:none;box-shadow:none}
+.mob dialog.dealwin .dl-mini .dl-hd>span{font-size:11px;color:var(--muted);font-weight:600}
+.mob dialog.dealwin .dl-mini .dl-hd .dl-q{display:none}
+.mob dialog.dealwin .dl-mini .dl-hd input{width:142px;min-height:34px;padding:4px 8px;font-size:15px}
+.mob dialog.dealwin .dl-mini .dl-hd.empty input{border-color:#d9822b;background:#fff7ef}
+.mob dialog.dealwin .dl-tabw{padding:6px 10px}
+.mob dialog.dealwin .dl-tabs{min-height:40px;padding:3px;border-radius:12px}
+.mob dialog.dealwin .dl-tab{padding:6px 10px;font-size:13px;min-height:34px}
+.mob dialog.dealwin .dl-tn{width:20px;height:20px;font-size:11px}
+/* итог по сделке — на вкладке «Цена КП»; на остальных прибыль видна в строке сверху */
+.mob dialog.dealwin:not([data-tab="price"]) .dl-side{display:none}
+.mob dialog.dealwin .dl-foot{display:none}
+.mob dialog.dealwin .dl-form{padding:8px 10px 16px}
+.mob dialog.dealwin .dl-step{padding:10px 10px 12px;border-radius:14px}
+.mob dialog.dealwin .dl-step>.dl-sh{margin:-10px -10px 4px;padding:9px 12px;gap:10px;border-radius:14px 14px 0 0}
+.mob dialog.dealwin .dl-sh h4{font-size:16px;margin:0}
+.mob dialog.dealwin .dl-sh p{font-size:12.5px;line-height:1.35;margin:2px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mob dialog.dealwin .dl-card{padding:10px;border-radius:12px}
+.mob dialog.dealwin input:not([type=checkbox]):not([type=radio]),.mob dialog.dealwin select{min-height:40px;font-size:16px;padding:6px 10px}
+.mob dialog.dealwin .dl-in i,.mob dialog.dealwin .dl-in em{font-size:13px}
+/* «дни · кал./раб. · дата» — ровная сетка в одну строку */
+.mob dialog.dealwin .dl-ddr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:6px;align-items:center;width:100%}
+.mob dialog.dealwin .dl-ddr>.dl-in{display:grid;grid-template-columns:64px minmax(0,1fr);gap:6px;min-width:0}
+.mob dialog.dealwin .dl-ddr>.dl-in input{width:100%}
+.mob dialog.dealwin .dl-ddr>.dl-in select{width:100%;min-width:0}
+.mob dialog.dealwin .dl-ddt{display:block;min-width:0}
+.mob dialog.dealwin .dl-ddt>em{display:none}
+.mob dialog.dealwin .dl-ddt input[type=date]{width:100%;max-width:none;flex:none}
+/* этапы оплаты: № · название · ✕ / доля / когда / + дни · вид · дата / сумма */
+.mob dialog.dealwin .dl-tr{grid-template-columns:28px minmax(0,1fr) 36px;grid-template-areas:"n nm x" "mv am am" "mv w w" ". r r";gap:6px 8px;padding:10px 0}
+.mob dialog.dealwin .dl-tr .dl-mv{grid-area:mv;display:flex;flex-direction:column;gap:4px;align-self:start}
+.mob dialog.dealwin .dl-tr .dl-mvb{display:block;width:28px;height:28px;font-size:13px}
+.mob dialog.dealwin .dl-tr .dl-hdl{display:none}
+.mob dialog.dealwin .dl-trn{margin-top:8px}
+.mob dialog.dealwin .dl-tr>.icon{grid-area:x}
+.mob dialog.dealwin .dl-tram,.mob dialog.dealwin .dl-trp{width:100%}
+.mob dialog.dealwin .dl-trp{flex-direction:row;align-items:baseline;gap:8px;padding:0}
+.mob dialog.dealwin .dl-trw{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;align-items:center}
+.mob dialog.dealwin .dl-trw>em{display:none}
+.mob dialog.dealwin .dl-trw>select{grid-column:1/-1;max-width:none;width:100%}
+.mob dialog.dealwin .dl-trw .dl-troff{display:grid;grid-template-columns:14px 52px minmax(0,1fr);gap:4px;align-items:center;flex:none;min-width:0}
+.mob dialog.dealwin .dl-trw .dl-troff input{width:100%}
+.mob dialog.dealwin .dl-trw .dl-troff select{width:100%;min-width:0}
+.mob dialog.dealwin .dl-trw .dl-ddt input[type=date]{max-width:none;width:100%}
+.mob dialog.dealwin .dl-trr{flex-direction:row;justify-content:space-between;align-items:baseline;width:100%}
+/* быстрые варианты — лента в одну строку с прокруткой */
+.mob dialog.dealwin .dl-trp-l{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.mob dialog.dealwin .dl-trp-l .chip{flex:0 0 auto;white-space:nowrap}
+.mob dialog.dealwin .dl-next{position:sticky;bottom:0;z-index:4;background:var(--paper);padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px));margin-top:8px}
+.mob dialog.dealwin .dl-mini .dl-hd{order:0;grid-column:1}
+.mob dialog.dealwin .dl-mini .dl-hd input{width:152px}
+.mob dialog.dealwin .dl-trw{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+.mob dialog.dealwin .dl-trw .dl-troff{grid-template-columns:12px 46px minmax(0,1fr)}
+.mob dialog.dealwin .dl-tr>input.tx,.mob dialog.dealwin .dl-tr .dl-trname{width:100%;grid-area:nm}
+.mob dialog.dealwin .dl-sxs{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mob dialog.dealwin .dl-sx{padding:8px 10px;min-width:0}
+.mob dialog.dealwin .dl-sx b{font-size:15px}
+.mob dialog.dealwin .dl-sx small,.mob dialog.dealwin .dl-sx em{font-size:11px}
+/* график платежей на компьютере: фиксированная раскладка, ширина столбцов — за край заголовка; поле даты не выходит из ячейки */
+@media (min-width:641px){
+  .dl-t.dl-tfix{table-layout:fixed;min-width:760px}
+  .dl-t.dl-tfix td,.dl-t.dl-tfix th{overflow:hidden;text-overflow:ellipsis}
+  .dl-t.dl-tfix .c-pay,.dl-t.dl-tfix .c-bal,.dl-t.dl-tfix .c-fin{white-space:nowrap}
+  .dl-t.dl-tfix .c-ev{white-space:normal;overflow-wrap:anywhere}
+  .dl-t.dl-tfix .c-day small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
+.dl-t th{position:relative}
+.dl-cr{position:absolute;top:0;bottom:0;right:-5px;width:10px;cursor:col-resize;z-index:2;touch-action:none}
+.dl-cr::after{content:'';position:absolute;top:20%;bottom:20%;left:4px;width:2px;border-radius:2px;background:var(--line)}
+.dl-cr:hover::after{background:var(--sky)}
+body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:none}
+.dl-t th:last-child .dl-cr{right:0}
+.mob .dl-cr{display:none}
+/* окно экономики на компьютере — уже, чтобы легче читалось */
+@media (min-width:901px){ dialog.dealwin:not(.max){width:min(1440px,calc(100vw - 40px))} }
+
+/* ячейка даты: ⠿ ↑↓ и поле даты — одной строкой, поле сжимается по ширине столбца */
+.dl-cdr{display:flex;align-items:center;gap:4px;min-width:0}
+.dl-cdr .dl-smv{float:none;margin:0 0 0 -6px;flex:0 0 auto}
+.dl-cdr .dl-date{flex:1 1 auto;min-width:0;max-width:150px;width:auto;box-sizing:border-box}
+.dl-cdr .dl-day{flex:0 0 auto}

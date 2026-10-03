@@ -169,7 +169,7 @@ function tdPanelHTML(){
   if (TD.tab==='struct'){
     const blocks = tdFields('toggle').filter(f => /^blocks\./.test(f.key));
     return `<p class="muted td-hint">Перетащите раздел, чтобы поменять порядок. Щелчок по названию — показать раздел.</p>
-      <ol class="td-secs" id="tdSecs">${W.sections.map((s,i)=>`<li draggable="true" data-tdsec="${i}" class="${s.on?'':'off'}${TD.sel&&TD.sel.kind==='sec'&&TD.sel.key===s.id?' on':''}">
+      <ol class="td-secs" id="tdSecs">${W.sections.map((s,i)=>`<li data-tdsec="${i}" class="${s.on?'':'off'}${TD.sel&&TD.sel.kind==='sec'&&TD.sel.key===s.id?' on':''}">
         <span class="td-drag" aria-hidden="true">⋮⋮</span><button type="button" class="td-secname" data-tdgo="${esc(s.id)}">${esc(tdSecName(s.id))}</button>
         <button class="sw" type="button" role="switch" aria-checked="${!!s.on}" data-tdsecon="${i}" title="${s.on?'Раздел включён':'Раздел выключен'}"><i></i></button></li>`).join('')}</ol>
       <h4 class="td-h">Блоки внутри разделов</h4>
@@ -567,7 +567,7 @@ function tdSetNum(path, v){ const n = tdNum(v); if (v==='' || !isFinite(n)) retu
 
 document.addEventListener('click', async e=>{
   const d = $('#tddlg'); if (!d || !d.open || !d.contains(e.target)) return;
-  if (TD.clickBlock){ TD.clickBlock = false; if (e.target.closest('#tdPages')) return; }
+  if (TD.clickBlock){ TD.clickBlock = false; if (e.target.closest('#tdPages, #tdSecs')) return; }
   const b = e.target.closest('button');
   try{
     if (!b){
@@ -745,7 +745,7 @@ document.addEventListener('pointerdown', e=>{
       if (dy < -2) toast('Сдвиг вверх ограничен отступом макета над элементом');
     }
   };
-  addEventListener('pointermove', mv); addEventListener('pointerup', up);
+  addEventListener('pointermove', mv); addEventListener('pointerup', up); addEventListener('pointercancel', up, {once:true});
 });
 
 // размер за маркеры: ширина и высота независимо; Shift (или «Сохранять пропорции») — пропорционально
@@ -783,7 +783,7 @@ function tdResizeStart(e, h){
       w.imgSize[sel.key] = { w:wcm, h:hcm };
     }, {now:true});
   };
-  addEventListener('pointermove', mv); addEventListener('pointerup', up);
+  addEventListener('pointermove', mv); addEventListener('pointerup', up); addEventListener('pointercancel', up, {once:true});
 }
 
 // наведение — подсказка, что можно выбрать
@@ -794,14 +794,29 @@ document.addEventListener('mouseover', e=>{
     : /^X_/.test((t.closest('[data-tdi]')||{}).dataset?.tdi||'') ? 'Картинка шаблона — перетащите в любое место' : (TD_IMG[(t.closest('[data-tdi]')||{}).dataset.tdi]||'Картинка')+' — маркеры меняют размер';
   if (t.title !== k) t.title = k;
 });
-// перетаскивание разделов в списке «Структура»
-document.addEventListener('dragstart', e=>{ const li = e.target.closest && e.target.closest('#tdSecs li'); if (!li) return; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', li.dataset.tdsec); li.classList.add('drag'); });
-document.addEventListener('dragover', e=>{ const li = e.target.closest && e.target.closest('#tdSecs li'); if (!li) return; e.preventDefault();
-  document.querySelectorAll('#tdSecs li').forEach(x=>x.classList.remove('over-t','over-b')); const r = li.getBoundingClientRect(); li.classList.add(e.clientY < r.top+r.height/2 ? 'over-t' : 'over-b'); });
-document.addEventListener('dragend', ()=>{ document.querySelectorAll('#tdSecs li').forEach(x=>x.classList.remove('over-t','over-b','drag')); });
-document.addEventListener('drop', e=>{ const li = e.target.closest && e.target.closest('#tdSecs li'); if (!li) return; e.preventDefault();
-  const from = +e.dataTransfer.getData('text/plain'), r = li.getBoundingClientRect(); let to = +li.dataset.tdsec + (e.clientY < r.top+r.height/2 ? 0 : 1);
-  if (!isFinite(from)) return; if (from < to) to--; if (to===from) return;
-  tdChange(w=>{ const [x] = w.sections.splice(from, 1); w.sections.splice(to, 0, x); }); });
+// перетаскивание разделов в списке «Структура» — указателем (мышь, перо, палец), за любое место строки, кроме переключателя
+document.addEventListener('pointerdown', e=>{
+  const li = e.target.closest && e.target.closest('#tdSecs li'); if (!li || e.button!==0 || e.target.closest('.sw')) return;
+  const list = li.parentElement, from = +li.dataset.tdsec, y0 = e.clientY; let drag = false, to = from;
+  const items = () => [...list.children];
+  const mv = ev=>{
+    if (!drag){ if (Math.abs(ev.clientY-y0) < 5) return; drag = true; li.classList.add('drag'); document.body.classList.add('td-sorting'); }
+    ev.preventDefault();
+    li.style.transform = `translateY(${ev.clientY-y0}px)`;
+    items().forEach(x=>x.classList.remove('over-t','over-b'));
+    const others = items().filter(x=>x!==li); let tgt = null, after = false;
+    for (const x of others){ const r = x.getBoundingClientRect(); if (ev.clientY < r.top + r.height/2){ tgt = x; after = false; break; } tgt = x; after = true; }
+    if (tgt){ tgt.classList.add(after ? 'over-b' : 'over-t'); const k = +tgt.dataset.tdsec; to = after ? k + 1 : k; if (to > from) to--; }
+  };
+  const up = ()=>{ removeEventListener('pointermove', mv); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+    document.body.classList.remove('td-sorting'); li.style.transform = ''; li.classList.remove('drag'); items().forEach(x=>x.classList.remove('over-t','over-b'));
+    if (!drag) return;
+    TD.clickBlock = true; setTimeout(()=>{ TD.clickBlock = false; }, 0);
+    if (to !== from && to >= 0) tdChange(w=>{ const [x] = w.sections.splice(from, 1); w.sections.splice(to, 0, x); }, {now:true}); };
+  addEventListener('pointermove', mv, {passive:false}); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+});
+// встроенное перетаскивание браузера (картинки, выделенный текст) в документе не нужно — оно перехватывало мышь,
+// и объект «возвращался» на место
+document.addEventListener('dragstart', e=>{ if (e.target.closest && e.target.closest('#tdPages, #tdCanvas')) e.preventDefault(); }, true);
 addEventListener('resize', ()=>{ if (TD.sel) tdMarkSel(); });
 document.addEventListener('scroll', e=>{ if (e.target && e.target.id==='tdCanvas' && TD.sel && !TD.drag) tdMini(); }, true);

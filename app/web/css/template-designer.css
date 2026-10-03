@@ -161,3 +161,9 @@ dialog.tdwin:not([open]){display:none}
 #tdLblText{width:100%;font-size:13.5px}
 /* как в Word: отступы до и после абзацев складываются (в браузере они «схлопываются») */
 .td-pages section.docx > article{display:flex;flex-direction:column}
+/* без встроенного перетаскивания картинок и выделения текста в документе — иначе браузер перехватывает мышь */
+.td-pages,.td-pages *{-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
+.td-secs li{touch-action:none;user-select:none}
+.td-secs li.drag{position:relative;z-index:2;box-shadow:0 6px 18px rgba(0,0,0,.18);cursor:grabbing}
+body.td-sorting,body.td-sorting *{cursor:grabbing!important;user-select:none}
+.td-secname{cursor:grab}

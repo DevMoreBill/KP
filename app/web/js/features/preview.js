@@ -77,8 +77,8 @@ async function openKpPreview(){
   const d=pvDlg();
   d.innerHTML=`<div class="pv-hd"><h3>Предпросмотр КП${S.number?' № '+esc(S.number):''}</h3><span class="muted pv-note">${S.kpId?'':'Номер присвоится при сохранении'}</span><span class="sp"></span>
       <div class="pv-zoom"><button class="icon" type="button" data-pz="-1" aria-label="Мельче">−</button><span id="pvZ">100%</span><button class="icon" type="button" data-pz="1" aria-label="Крупнее">+</button></div>
-      <button class="btn" type="button" data-pva="pdf">Скачать PDF</button><button class="btn" type="button" data-pva="print" title="Печать или «Сохранить как PDF» средствами браузера">Печать</button>
-      <button class="btn primary" type="button" data-pva="save"${problems().length?' disabled title="Сначала заполните обязательные поля — список справа"':''}>${S.kpId?'Сохранить изменения':'Сохранить КП'}</button>
+      <button class="btn" type="button" data-pva="pdf"><span class="pv-l">Скачать </span>PDF</button><button class="btn" type="button" data-pva="print" title="Печать или «Сохранить как PDF» средствами браузера">Печать</button>
+      <button class="btn primary" type="button" data-pva="save"${problems().length?' disabled title="Сначала заполните обязательные поля — список справа"':''}>Сохранить<span class="pv-l">${S.kpId?' изменения':' КП'}</span></button>
       <button class="icon" type="button" data-pva="close" aria-label="Закрыть">✕</button></div>
     <div class="pv-msg" id="pvMsg" hidden></div>
     <div class="pv-body" id="pvBody"><p class="empty">Собираю документ…</p></div>`;

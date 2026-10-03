@@ -46,3 +46,17 @@ document.addEventListener('click', e=>{ if (e.target.closest('#btnMenu')) openMo
 // название позиции — поле по высоте текста (на узком экране длинное название не обрезается)
 function fitText(el){ el.style.height='auto'; el.style.height=(el.scrollHeight+2)+'px'; }
 document.addEventListener('input', e=>{ if (e.target.matches?.('textarea.iname')) fitText(e.target); });
+
+// пустое поле даты: на iPhone (Safari) оно выглядит пустым белым прямоугольником — помечаем пустые поля,
+// CSS показывает в них подсказку «дд.мм.гггг» (только на iOS, см. mobile.css)
+const dtMark = el => el.classList.toggle('dt-empty', !el.value);
+let dtRaf = 0;
+const dtScan = () => { dtRaf = 0; document.querySelectorAll('input[type=date]').forEach(dtMark); };
+['input','change'].forEach(t=>document.addEventListener(t, e=>{ if (e.target.type==='date') dtMark(e.target); }, true));
+new MutationObserver(()=>{ if (!dtRaf) dtRaf = requestAnimationFrame(dtScan); }).observe(document.documentElement, {childList:true, subtree:true});
+
+// телефон: шапка с логотипом прячется при прокрутке вниз и возвращается при прокрутке вверх — больше рабочей зоны
+let topY = 0;
+addEventListener('scroll', ()=>{ if (!isMob()) return; const y = scrollY, d = y - topY;
+  if (Math.abs(d) < 8) return;
+  document.body.classList.toggle('top-hide', d > 0 && y > 90); topY = y; }, {passive:true});
