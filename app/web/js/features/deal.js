@@ -262,7 +262,8 @@ const dlFilled = (...v) => v.some(x=>x!=null && String(x).trim()!=='' && String(
 function dlStep(n, title, sub, body, cls='', tot=null, id=''){
   const nav=(DL.nav||{})[id], num=nav?nav.n:n;
   if (id && DL.open!==id && !DL.all) return '';   // DL.all — все шаги сразу (для проверок)
-  const head=`<span class="dl-n">${num}</span><div><h4>${title}</h4>${sub?`<p>${sub}</p>`:''}</div>`;
+  // пояснение шага — в «?» рядом с названием: шапка шага — одна строка
+  const head=`<span class="dl-n">${num}</span><div class="dl-sht"><h4>${title}</h4>${sub?dlQ(sub):''}</div>`;
   const go=nav ? `<div class="dl-next">${nav.prev?`<button type="button" class="btn" data-dlx="step" data-id="${nav.prev}">← ${esc(nav.prevT)}</button>`:'<span></span>'}${nav.next?`<button type="button" class="btn primary" data-dlx="step" data-id="${nav.next}">Далее: ${esc(nav.nextT)} →</button>`:''}</div>` : '';
   return `<section class="dl-step ${cls}"${id?` data-stepid="${id}" role="tabpanel"`:''}><div class="dl-sh">${head}</div>${body}${tot?dlTot(...tot):''}</section>${go}`;
 }
@@ -613,8 +614,7 @@ function dlSchedule(c, n=6){
       <td class="c-who"><span class="dl-pty ${pt[1]}">${pt[0]}</span></td>
       <td class="c-ev">${esc(r.label)}${r.ev&&(r.party==='log'||r.party==='oth')?`<small>${esc(r.ev)}</small>`:''}</td><td class="num c-pay ${r.inflow?'ok-t':''}">${r.inflow?'+':'−'}${dlRub0(Math.abs(r.amount))}</td><td class="num c-bal ${r.balance<0?'neg':''}">${dlRub0(r.balance)}</td><td class="num c-fin">${r.fin?dlRub0(r.fin)+`<small>${r.days} дн.</small>`:'—'}</td></tr>`; }).join('')}
     </tbody><tfoot><tr><td class="c-day"></td><td class="c-who"></td><td class="c-ev">Стоимость финансирования</td><td class="c-pay"></td><td class="c-bal"></td><td class="num c-fin"><b>${dlRub(c.F)}</b></td></tr></tfoot></table></div>
-    <p class="muted">Простой процент на недостающие деньги до последней оплаты заказчика, месяц — 30 дней; оплаты заказчика уменьшают финансирование, доход на свободный остаток не начисляется.</p>
-    <p class="muted dl-shint">Перетащите платёж за «⠿» выше или ниже (или ↑ ↓, или выберите дату) — он получит новую дату, а срок, из которого он получился (этап оплаты, срок изготовления или доставки), пересчитается в днях и датах на предыдущих вкладках.</p>`, 'dl-sched', null, 'sched');
+    <p class="dl-qrow"><span>Как считается финансирование</span>${dlQ('Простой процент на недостающие деньги до последней оплаты заказчика, месяц — 30 дней; оплаты заказчика уменьшают финансирование, доход на свободный остаток не начисляется.')}<span>Как переносить платежи</span>${dlQ('Перетащите платёж за «⠿» выше или ниже (или ↑ ↓, или выберите дату) — он получит новую дату, а срок, из которого он получился (этап оплаты, срок изготовления или доставки), пересчитается в днях и датах на предыдущих вкладках.')}</p>`, 'dl-sched', null, 'sched');
 }
 
 // ---------- прочие расходы наличными (необязательно): % от чистой прибыли, % от выручки без НДС или сумма — всё «чистыми», на руки
@@ -625,7 +625,7 @@ function dlCash(c){
   const unit = x.mode==='sum' ? '₽ на руки' : x.mode==='sale' ? '% выручки без НДС' : x.mode==='salevat' ? '% суммы с НДС' : '% чистой прибыли';
   const how = x.mode==='net' ? `${dlIn(x.v)} % от чистой прибыли сделки ${dlRub0(Math.max(0, r.Pa-r.tax))} (после налога на прибыль, до этих расходов)`
     : x.mode==='sale' ? `${dlIn(x.v)} % от выручки без НДС ${dlRub0(c.R)}` : x.mode==='salevat' ? `${dlIn(x.v)} % от суммы продажи с НДС ${dlRub0(c.S)}` : 'сумма на руки';
-  return `<div class="dl-card dl-mb dl-cash"><div class="dl-mbh"><h5>Прочие расходы (наличные)</h5><span class="dl-stc opt">необязательно</span>${r.K>0?`<b class="dl-mbs">${dlRub0(r.K)}</b>`:''}</div>
+  return `<div class="dl-card dl-mb dl-cash"><div class="dl-mbh"><h5>Прочие расходы (наличные)</h5>${dlQ('Не уменьшают налог на прибыль — вычитаются из чистой прибыли; в КП не выводятся.')}<span class="dl-stc opt">необязательно</span>${r.K>0?`<b class="dl-mbs">${dlRub0(r.K)}</b>`:''}</div>
     <div class="dl-g g3">
       ${dlField('Как считать', 'xc.mode', {calc:c, select:DL_XC_MODES})}
       ${dlField(x.mode==='sum'?'Сумма на руки':'Процент', 'xc.v', {calc:c, unit, ph:x.mode==='sum'?'100 000':'10', q:'Сумма «чистыми» — столько получат на руки наличными, без каких-либо налогов. От чистой прибыли — процент от прибыли сделки после налога на прибыль (до этих расходов); от продажи — процент от суммы продажи без НДС или с НДС (цена КП).'})}
@@ -633,7 +633,7 @@ function dlCash(c){
     ${x.on||open&&x.when==='pay'?`<div class="dl-g g2">${dlField('Когда выдаются', 'xc.when', {calc:c, select:DL_XC_WHEN, q:'После последней оплаты — наличные не влияют на финансирование. С оплат заказчика — с каждой отмеченной оплаты выдаётся часть, пропорционально её сумме, в день оплаты; деньги уходят раньше — финансирование может вырасти.'})}</div>
     ${x.when==='pay'?dlCashStages(c):''}`:''}
     ${r.K>0?`<p class="dl-cash-r">На руки <b>${dlRub0(r.X)}</b>${x.cost?` · расход компании с получением наличных <b>${dlRub0(r.K)}</b>`:''} <span class="muted">— ${esc(how)}</span></p>`:''}
-    <p class="muted dl-mbn">Не уменьшают налог на прибыль — вычитаются из чистой прибыли; в КП не выводятся.</p></div>`;
+</div>`;
 }
 
 // банковская гарантия: вид, сумма (от аванса, % цены или рублями), срок (днями или датой), ставка банка; комиссия — в расходы
@@ -648,8 +648,8 @@ function dlBg(c){
         ${dlField('Ставка банка', P+'.rate', {calc:c, unit:'% годовых', ph:String(DEAL_BG_RATE).replace('.',','), q:'Комиссия банка за гарантию — процент годовых от суммы гарантии за её срок. По умолчанию '+String(DEAL_BG_RATE).replace('.',',')+' %; рынок 2026: обычно 1–3,5 %, в среднем около 2,2 % (Сбербанк — от 2 %, ВТБ — от 3,7 %). Впишите ставку своего банка.'})}
         ${dlField('Минимальная комиссия', P+'.min', {calc:c, unit:'₽', ph:'0', q:'Если у банка есть минимальная комиссия за гарантию — впишите её.'})}</div>
       <p class="dl-bgr"><span>Сумма гарантии <b>${dlRub0(cg.amount)}</b> · комиссия банка <b>${dlRub0(cg.fee)}</b> <span class="muted">— при подписании договора, уменьшает прибыль</span></span><button type="button" class="lnk" data-dlx="delbg" data-k="${k}">Убрать</button></p></div>`; }).join('');
-  return `<div class="dl-card dl-mb"><div class="dl-mbh"><h5>Банковская гарантия</h5><span class="dl-stc opt">необязательно</span>${c.BG>0?`<b class="dl-mbs">${dlRub0(c.BG)}</b>`:''}</div>
-    ${rows || '<p class="muted dl-mbn">Если заказчик просит безотзывную банковскую гарантию — на возврат аванса, исполнения договора или гарантийных обязательств, — добавьте её: комиссия банка войдёт в расходы.</p>'}
+  return `<div class="dl-card dl-mb"><div class="dl-mbh"><h5>Банковская гарантия</h5>${dlQ('Если заказчик просит безотзывную банковскую гарантию — на возврат аванса, исполнения договора или гарантийных обязательств, — добавьте её: комиссия банка войдёт в расходы.')}<span class="dl-stc opt">необязательно</span>${c.BG>0?`<b class="dl-mbs">${dlRub0(c.BG)}</b>`:''}</div>
+    ${rows}
     ${DL.ex?'':'<div><button type="button" class="btn" data-dlx="addbg">+ Банковская гарантия</button></div>'}</div>`;
 }
 
