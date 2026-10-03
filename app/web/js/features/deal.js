@@ -377,7 +377,7 @@ function dlCustoms(c){
           <td class="num">${ln?dlRub0(ln.cv):'—'}</td><td class="num">${ln?dlRub0(ln.dutyA):'—'}</td></tr>`; }).join('');
       body=`${rows?`<table class="dl-it dl-hs"><thead><tr><th>Позиция</th><th>Код ТН ВЭД</th><th>Пошлина</th><th></th><th class="num">Тамож. стоимость</th><th class="num">Пошлина, ₽</th></tr></thead><tbody>${rows}</tbody></table>`:''}
         <div class="dl-g g3">${dlField('НДС на ввоз', P+'.ivat', {calc:c, select:[['22','22 %'],['10','10 %'],['0','0 %']]})}
-          ${dlField('Таможенный сбор', P+'.fee', {calc:c, unit:'₽', auto:cs.fee, autoLabel:'по шкале', autoTitle:'Сбор за таможенные операции по таможенной стоимости: '+CUSTOMS_FEES.title, q:'Фиксированная сумма по таможенной стоимости партии ('+CUSTOMS_FEES.title+').'})}</div>
+          ${dlField('Таможенный сбор', P+'.fee', {calc:c, unit:'₽', auto:cs.fee, autoLabel:'по шкале', autoTitle:'Сбор за таможенные операции: '+(customsFeeBand(cs.cv)||'по таможенной стоимости')+' ('+CUSTOMS_FEES.title+')', q:'Фиксированная сумма за декларацию — зависит от общей таможенной стоимости партии (цена + доставка до границы + страховка): до 200 тыс. ₽ — 1 231 ₽, до 1,2 млн — 4 924 ₽, до 2,7 млн — 13 541 ₽, до 10 млн — 49 240 ₽, свыше — 73 860 ₽ ('+CUSTOMS_FEES.title+').'})}</div>
         ${dlCusSum(cs)}`;
     } else if (cs.mode==='eaeu'){
       body=`<div class="dl-g g3">${dlField('НДС при ввозе', P+'.ivat', {calc:c, select:[['22','22 %'],['10','10 %'],['0','0 %']]})}</div>
@@ -398,7 +398,7 @@ function dlCusSum(cs, eaeu){
   const it=(lab, v, note, cls='')=>`<div class="dl-cx ${cls}"><small>${lab}</small><b>${dlRub0(v)}</b>${note?`<em>${note}</em>`:''}</div>`;
   return `<div class="dl-cus2">
     <div class="dl-cbase">${it(eaeu?'Стоимость оборудования':'Таможенная стоимость', cs.cv, eaeu?'база для НДС':'оборудование + перевозка до границы + страхование')}</div>
-    <div class="dl-cpay">${eaeu?'':it(`Пошлина`, cs.dutyA, 'по ставкам позиций → в себестоимость')}${eaeu?'':it('Таможенный сбор', cs.fee, 'по шкале ПП РФ № 1637 → в себестоимость')}
+    <div class="dl-cpay">${eaeu?'':it(`Пошлина`, cs.dutyA, 'по ставкам позиций → в себестоимость')}${eaeu?'':it('Таможенный сбор', cs.fee, (cs.feeAuto&&customsFeeBand(cs.cv)?customsFeeBand(cs.cv).replace(/ → сбор.*/,'')+' · ':'')+'по шкале ПП РФ № 1637 → в себестоимость')}
       ${it(`НДС при ввозе ${dlIn(cs.ivP)} %`, cs.ivatA, eaeu?'платится в налоговую → вернётся вычетом':`(стоимость + пошлина) × ${dlIn(cs.ivP)} % → вернётся вычетом`, 'vat')}</div>
     <div class="dl-ctot"><small>${eaeu?'Платим НДС при ввозе':'Платим на таможне'}</small><b>${dlRub0(cs.T)}</b><em>из них в себестоимость: <b>${dlRub0(cs.T-cs.ivatA)}</b></em></div></div>
     ${eaeu?'<p class="dl-foot-n">Из стран ЕАЭС пошлины и таможенного сбора нет (Договор о ЕАЭС).</p>':''}`;
@@ -492,6 +492,51 @@ function dlMoveStage(grp, from, to){
   return `Этап «${m.name||'Оплата'}» перенесён: ${ev[m.ev]||''}${+m.off?` + ${m.off} ${m.offK==='work'?'раб.':''} дн.`:''}`;
 }
 
+// график платежей — итог всех сроков. Новая дата платежа (перетаскиванием строки, стрелками или вводом даты)
+// переписывает срок, из которого платёж получился: этап оплаты — событие + дни (если дата раньше события — этап
+// переходит на более раннее событие), логистика — срок изготовления у поставщика, доставка по России и монтаж —
+// срок доставки. Платёж без своего срока (комиссия банка за гарантию) получает дату вручную.
+function dlSetRowDay(key, N){
+  const d=dlDeal(), kp=dlKp(), c=dealCalc(kp, d);
+  if (!(N>=0)) return 'Дата раньше дня 0 — платёж не может быть раньше подписания договора';
+  const cnt=(base, kind)=>{ if (kind!=='work') return N-base; let n=dlCountWork(base, N); if (dealAddDays(kp, base, n, 'work') < N) n++; return n; };
+  const days={...(d.days||{})}; delete days[key]; d.days=days;     // ручная дата этого платежа больше не нужна
+  const manual=()=>{ d.days={...d.days, [key]:String(N)}; return `Дата платежа изменена вручную: ${dlDayRu(N)||'день '+N}`; };
+  const pickEv=(evDays, cur)=>{ if (evDays[cur]!=null && evDays[cur]<=N) return cur;
+    let best=null; for (const [k,v] of Object.entries(evDays)) if (v!=null && v<=N && (best==null || v>evDays[best])) best=k; return best||cur; };
+  const daysTxt=(n,k)=>n ? ` + ${dlDaysTxt(n,k)}` : '';
+  let m;
+  if ((m=/^c(\d+)$/.exec(key))){ const t=d.cust && d.cust.tr && d.cust.tr[+m[1]]; if (!t) return manual();
+    const ev=pickEv(c.ev, t.ev||'delivery'), n=cnt(c.ev[ev], t.offK); if (n<0) return manual();
+    t.ev=ev; t.off=String(n);
+    return `Оплата заказчика: ${DEAL_EVENTS[ev]}${daysTxt(n,t.offK)}`; }
+  if ((m=/^sp:(.+):(\d+)$/.exec(key))){ const k=d.sup.findIndex(x=>x.id===m[1]), cs=c.sup[k]; if (k<0 || !cs) return manual();
+    const s=d.sup[k]; if (!Array.isArray(s.pay) || !s.pay.length) s.pay=dealSupPay(s).map(x=>({...x}));
+    const t=s.pay[+m[2]]; if (!t) return manual();
+    const evDays={order:0, ready:cs.rdy, delivery:cs.arr, pnr:c.pnrEnd}, ev=pickEv(evDays, t.ev||'ready'), n=cnt(evDays[ev], t.offK); if (n<0) return manual();
+    t.ev=ev; t.off=String(n); dlSaveSupplier(s);
+    return `Оплата поставщику: ${DEAL_SUP_EVENTS[ev]}${daysTxt(n,t.offK)}`; }
+  if ((m=/^log:(.+)$/.exec(key))){ const k=d.sup.findIndex(x=>x.id===m[1]); if (k<0) return manual();
+    const s=d.sup[k], n=cnt(0, s.prodK); s.prod=String(n); dlSaveSupplier(s);
+    return `Срок изготовления${d.sup.length>1?` у «${c.sup[k].name}»`:''}: ${dlDaysTxt(n, s.prodK)} — сдвинуты и платежи, привязанные к готовности и поставке`; }
+  if ((m=/^ru:(.+)$/.exec(key)) || key==='mnt'){
+    let k = m ? d.sup.findIndex(x=>x.id===m[1]) : -1;
+    if (key==='mnt'){ let best=-1; c.sup.forEach((x,i)=>{ if (x.active && (best<0 || x.arr>c.sup[best].arr)) best=i; }); k=best; }
+    if (k<0 || !c.sup[k]) return manual();
+    const s=d.sup[k], n=cnt(c.sup[k].rdy, s.shipK); if (n<0) return manual();
+    s.ship=String(n); dlSaveSupplier(s);
+    return `Срок доставки${d.sup.length>1?` у «${c.sup[k].name}»`:''}: ${dlDaysTxt(n, s.shipK)} после готовности — сдвинуты платежи при поставке`; }
+  return manual();
+}
+// ↑ / ↓ у строки графика: на дату соседнего (более раннего / позднего) платежа
+function dlRowStep(key, dir){
+  const c=dealCalc(dlKp(), dlDeal()), r=c.rows.find(x=>x.key===key); if (!r) return null;
+  const ds=[...new Set(c.rows.map(x=>x.day))].sort((a,b)=>a-b), i=ds.indexOf(r.day), j=i+dir;
+  if (j<0) return r.day>0 ? dlSetRowDay(key, 0) : null;
+  if (j>=ds.length) return null;
+  return dlSetRowDay(key, ds[j]);
+}
+
 // цена КП, валюта и курсы — правятся здесь же и сразу меняют КП
 function dlKpPrice(c){
   const d=dlDeal(), kp=dlKp();
@@ -542,13 +587,15 @@ function dlSchedule(c, n=6){
       ${tile('Финансирование', dlRub0(c.F), `${dlIn(c.i)} % в месяц`)}</div>
     <div class="dl-tw"><table class="dl-t"><thead><tr><th>${d0?'Дата · день':'День'}</th><th>Кто</th><th>Платёж</th><th class="num">Сумма</th><th class="num">Остаток денег</th><th class="num">Финансирование</th></tr></thead><tbody>
     ${c.rows.map(r=>{ const pt=DL_PARTY[r.party]||DL_PARTY.oth;
-      const dayIn = r.fixed?`<span class="dl-day fx">${r.day}</span>`:`<input type="text" inputmode="numeric" class="dl-day" data-dl="days.${r.key}" value="${r.day}" aria-label="День: ${esc(r.label)}" title="${r.manual?'Дата изменена вручную':'По срокам — можно изменить'}">`;
+      const dayIn = r.fixed?`<span class="dl-day fx">${r.day}</span>`:`<input type="text" inputmode="numeric" class="dl-day" data-dlday="${esc(r.key)}" value="${r.day}" aria-label="День: ${esc(r.label)}" title="${r.manual?'Дата изменена вручную':'По срокам — можно изменить'}">`;
       const dateIn = r.fixed?`<span class="dl-dt">${dlDayRu(r.day)}</span>`:`<input type="date" class="dl-date" data-dldate="${esc(r.key)}" value="${dlDayIso(r.day)}" min="${d0}" aria-label="Дата: ${esc(r.label)}" title="${r.manual?'Дата изменена вручную':'По срокам — можно изменить'}">`;
-      return `<tr class="${r.inflow?'in':''}${r.manual?' man':''}"><td class="c-day${d0?' c-when':''}">${d0?`${dateIn}<small class="dl-wd${r.offDay?' bad-t':''}">день ${r.day} · ${dlWd(r.day)}${r.shiftedFrom!=null?` · <span title="По сроку — ${dlDayRu(r.shiftedFrom)} (${dlWd(r.shiftedFrom)}), нерабочий день">↷ с ${dlDayRu(r.shiftedFrom).slice(0,5)}</span>`:''}${r.offDay?' · нерабочий':''}</small>`:dayIn}</td>
+      const mv = r.fixed || DL.ex ? '' : `<span class="dl-smv"><span class="dl-hdl" draggable="true" data-dnds="${esc(r.key)}" title="Перетащите строку выше или ниже — платёж получит дату нового места, срок пересчитается" aria-hidden="true">⠿</span><button type="button" class="dl-mvb" data-dlx="rowmv" data-key="${esc(r.key)}" data-d="-1" aria-label="Раньше — на дату платежа выше" title="Раньше — на дату платежа выше">↑</button><button type="button" class="dl-mvb" data-dlx="rowmv" data-key="${esc(r.key)}" data-d="1" aria-label="Позже — на дату платежа ниже" title="Позже — на дату платежа ниже">↓</button></span>`;
+      return `<tr class="${r.inflow?'in':''}${r.manual?' man':''}" data-skey="${esc(r.key)}" data-sday="${r.day}"><td class="c-day${d0?' c-when':''}">${mv}${d0?`${dateIn}<small class="dl-wd${r.offDay?' bad-t':''}">день ${r.day} · ${dlWd(r.day)}${r.shiftedFrom!=null?` · <span title="По сроку — ${dlDayRu(r.shiftedFrom)} (${dlWd(r.shiftedFrom)}), нерабочий день">↷ с ${dlDayRu(r.shiftedFrom).slice(0,5)}</span>`:''}${r.offDay?' · нерабочий':''}</small>`:dayIn}</td>
       <td class="c-who"><span class="dl-pty ${pt[1]}">${pt[0]}</span></td>
       <td class="c-ev">${esc(r.label)}${r.ev&&(r.party==='log'||r.party==='oth')?`<small>${esc(r.ev)}</small>`:''}</td><td class="num c-pay ${r.inflow?'ok-t':''}">${r.inflow?'+':'−'}${dlRub0(Math.abs(r.amount))}</td><td class="num c-bal ${r.balance<0?'neg':''}">${dlRub0(r.balance)}</td><td class="num c-fin">${r.fin?dlRub0(r.fin)+`<small>${r.days} дн.</small>`:'—'}</td></tr>`; }).join('')}
     </tbody><tfoot><tr><td class="c-day"></td><td class="c-who"></td><td class="c-ev">Стоимость финансирования</td><td class="c-pay"></td><td class="c-bal"></td><td class="num c-fin"><b>${dlRub(c.F)}</b></td></tr></tfoot></table></div>
-    <p class="muted">Простой процент на недостающие деньги до последней оплаты заказчика, месяц — 30 дней; оплаты заказчика уменьшают финансирование, доход на свободный остаток не начисляется. День или дату строки можно изменить.</p>`, 'dl-sched', null, 'sched');
+    <p class="muted">Простой процент на недостающие деньги до последней оплаты заказчика, месяц — 30 дней; оплаты заказчика уменьшают финансирование, доход на свободный остаток не начисляется.</p>
+    <p class="muted dl-shint">Перетащите платёж за «⠿» выше или ниже (или ↑ ↓, или выберите дату) — он получит новую дату, а срок, из которого он получился (этап оплаты, срок изготовления или доставки), пересчитается в днях и датах на предыдущих вкладках.</p>`, 'dl-sched', null, 'sched');
 }
 
 // ---------- прочие расходы наличными (необязательно): % от чистой прибыли, % от выручки без НДС или сумма — всё «чистыми», на руки
@@ -579,7 +626,7 @@ function dlBg(c){
         ${dlField('Сумма гарантии', P+'.base', {calc:c, select:cg.type==='adv'?[['adv','от аванса заказчика'],['pct','% от цены КП'],['sum','в рублях']]:[['pct','% от цены КП'],['sum','в рублях'],['adv','от аванса заказчика']]})}
         ${dlField(cg.base==='sum'?'Сумма':'Процент', P+'.v', {calc:c, unit, ph:cg.base==='adv'?'100':cg.base==='pct'?'10':'500 000'})}</div>
       <div class="dl-g g3">${dlField('Срок гарантии', P+'.days', {calc:c, int:true, auto:cg.daysAuto, autoLabel:cg.type==='adv'?'до поставки':cg.type==='perf'?'до конца ПНР':'год', date:{base:0, val:cg.days, kind:false}})}
-        ${dlField('Ставка банка', P+'.rate', {calc:c, unit:'% годовых', ph:'3', q:'Комиссия банка за гарантию — процент годовых от суммы гарантии за её срок; обычно 2–5 %.'})}
+        ${dlField('Ставка банка', P+'.rate', {calc:c, unit:'% годовых', ph:String(DEAL_BG_RATE).replace('.',','), q:'Комиссия банка за гарантию — процент годовых от суммы гарантии за её срок. По умолчанию '+String(DEAL_BG_RATE).replace('.',',')+' %; рынок 2026: обычно 1–3,5 %, в среднем около 2,2 % (Сбербанк — от 2 %, ВТБ — от 3,7 %). Впишите ставку своего банка.'})}
         ${dlField('Минимальная комиссия', P+'.min', {calc:c, unit:'₽', ph:'0', q:'Если у банка есть минимальная комиссия за гарантию — впишите её.'})}</div>
       <p class="dl-bgr"><span>Сумма гарантии <b>${dlRub0(cg.amount)}</b> · комиссия банка <b>${dlRub0(cg.fee)}</b> <span class="muted">— при подписании договора, уменьшает прибыль</span></span><button type="button" class="lnk" data-dlx="delbg" data-k="${k}">Убрать</button></p></div>`; }).join('');
   return `<div class="dl-card dl-mb"><div class="dl-mbh"><h5>Банковская гарантия</h5><span class="dl-stc opt">необязательно</span>${c.BG>0?`<b class="dl-mbs">${dlRub0(c.BG)}</b>`:''}</div>
@@ -744,8 +791,8 @@ async function dlSaveHs(itemId, f, v){
 
 // ---------- события окна
 function dlWinSize(dlg, save){ try{
-  if (save){ localStorage.setItem('kp.dealwin', JSON.stringify({max:dlg.classList.contains('max'), w:dlg.style.width||'', h:dlg.style.height||''})); return; }
-  const o=JSON.parse(localStorage.getItem('kp.dealwin')||'{}')||{}; dlg.classList.toggle('max', !!o.max); if (o.w) dlg.style.width=o.w; if (o.h) dlg.style.height=o.h; }catch(e){} }
+  if (save){ localStorage.setItem('kp.dealwin2', JSON.stringify({max:dlg.classList.contains('max'), w:dlg.style.width||'', h:dlg.style.height||''})); return; }
+  const o=JSON.parse(localStorage.getItem('kp.dealwin2')||'{}')||{}; dlg.classList.toggle('max', !!o.max); if (o.w) dlg.style.width=o.w; if (o.h) dlg.style.height=o.h; }catch(e){} }
 
 function dealBind(dlg){
   const touch=()=>{ if (DL.ex) return; S.deal.touched=true; persist(); renderSide(); };
@@ -786,7 +833,9 @@ function dealBind(dlg){
   dlg.addEventListener('change', e=>{ const t=e.target;
     if (t.dataset.dlstart!=null){ if (DL.ex) return; dlDeal().start=t.value||''; touch(); return dealRender(); }
     if (t.dataset.dldate!=null){ const n=dlIsoDay(t.value); if (n==null||n<0){ toast('Дата раньше дня 0 — укажите дату не раньше подписания договора'); return dealRender(); }
-      const d=dlDeal(); d.days={...(d.days||{}), [t.dataset.dldate]:String(n)}; touch(); return dealRender(); }
+      toast(dlSetRowDay(t.dataset.dldate, n)); touch(); return dealRender(); }
+    if (t.dataset.dlday!=null){ const n=dNum(t.value); if (!(Number.isInteger(n) && n>=0)){ toast('День — целое число от 0'); return dealRender(); }
+      toast(dlSetRowDay(t.dataset.dlday, n)); touch(); return dealRender(); }
     if (t.dataset.kpcur!=null){ kpSetCur(t.value); touch(); return; }
     if (t.dataset.dldd!=null){ if (DL.ex || !t.value) return; const d=dlDeal();
       if (!dlD0()){ d.start=new Date().toISOString().slice(0,10); toast('Дата договора — сегодня. Её можно изменить вверху окна'); }
@@ -812,6 +861,20 @@ function dealBind(dlg){
   dlg.addEventListener('drop', e=>{ const r=dropRow(e); if (!r) return; e.preventDefault();
     const b=r.getBoundingClientRect(), i=+r.dataset.i, from=DL.drag.from; let to=e.clientY>b.top+b.height/2 ? i+1 : i; if (to>from) to--;
     const msg=dlMoveStage(DL.drag.grp, from, to); DL.drag=null; if (msg){ touch(); toast(msg); } dealRender(); });
+  // перетаскивание строк графика платежей: платёж получает дату строки, рядом с которой его отпустили
+  dlg.addEventListener('dragstart', e=>{ const h=e.target.closest&&e.target.closest('[data-dnds]'); if (!h) return;
+    DL.sdrag=h.dataset.dnds; e.dataTransfer.effectAllowed='move'; try{ e.dataTransfer.setData('text/plain', 'row'); }catch(_){}
+    const row=h.closest('tr'); if (row){ row.classList.add('dragging'); try{ e.dataTransfer.setDragImage(row, 20, 20); }catch(_){} } });
+  const sRow=e=>{ const r=e.target.closest&&e.target.closest('.dl-t tr[data-skey]'); return r && DL.sdrag ? r : null; };
+  dlg.addEventListener('dragover', e=>{ const r=sRow(e); if (!r) return; e.preventDefault(); e.dataTransfer.dropEffect='move';
+    const b=r.getBoundingClientRect(), after=e.clientY>b.top+b.height/2;
+    dlg.querySelectorAll('.dl-t tr.drop-b,.dl-t tr.drop-a').forEach(x=>{ if (x!==r) x.classList.remove('drop-b','drop-a'); });
+    r.classList.toggle('drop-a', after); r.classList.toggle('drop-b', !after);
+    r.title = r.dataset.skey===DL.sdrag ? '' : 'Платёж получит дату '+(dlDayRu(+r.dataset.sday)||'день '+r.dataset.sday); });
+  dlg.addEventListener('drop', e=>{ const r=sRow(e); if (!r) return; e.preventDefault();
+    const key=DL.sdrag; DL.sdrag=null; if (r.dataset.skey===key || DL.ex) return dealRender();
+    const msg=dlSetRowDay(key, +r.dataset.sday); touch(); toast(msg); dealRender(); });
+  dlg.addEventListener('dragend', ()=>{ DL.sdrag=null; dlg.querySelectorAll('.dl-t tr.dragging,.dl-t tr.drop-b,.dl-t tr.drop-a').forEach(x=>x.classList.remove('dragging','drop-b','drop-a')); });
   dlg.addEventListener('dragend', ()=>{ DL.drag=null; dlg.querySelectorAll('.dl-tr.dragging,.dl-tr.drop-b,.dl-tr.drop-a').forEach(x=>x.classList.remove('dragging','drop-b','drop-a')); });
   dlg.addEventListener('toggle', e=>{ const k=e.target.dataset&&e.target.dataset.more; if (k!=null){ DL.more=DL.more||{}; DL.more[k]=e.target.open; } }, true);
   dlg.addEventListener('click', e=>{ const b=e.target.closest('[data-dlx]');
@@ -828,12 +891,13 @@ function dealBind(dlg){
     if (a==='reset'){ dlSet(d, b.dataset.path, ''); }
     if (a==='resetdays') d.days={};
     if (a==='mv'){ const msg=dlMoveStage(b.dataset.grp, +b.dataset.i, +b.dataset.to); if (msg){ touch(); toast(msg); } return dealRender(); }
+    if (a==='rowmv'){ if (DL.ex) return; const msg=dlRowStep(b.dataset.key, +b.dataset.d); if (msg){ touch(); toast(msg); } return dealRender(); }
     if (a==='step'){ DL.open=b.dataset.id; dealRender();
       // новая вкладка — с начала, без анимации прокрутки; на телефоне вкладки прилипают к верху прокрутки
       const f=dlg.querySelector('.dl-form'), bx=dlg.querySelector('.dl-b'), tw=dlg.querySelector('.dl-tabw'), t=dlg.querySelector('.dl-tabs');
       if (f) f.scrollTop=0; if (bx && tw && bx.scrollTop>tw.offsetTop) bx.scrollTop=tw.offsetTop;
       const on=t&&t.querySelector('.dl-tab.on'); if (on) t.scrollLeft=Math.max(0, on.offsetLeft-t.clientWidth/2+on.offsetWidth/2); return; }
-    if (a==='addbg'){ const c=dealCalc(dlKp(), d); d.bg=[...(Array.isArray(d.bg)?d.bg:[]), {type:c.advSum>0?'adv':'perf', rate:'3'}]; }
+    if (a==='addbg'){ const c=dealCalc(dlKp(), d); d.bg=[...(Array.isArray(d.bg)?d.bg:[]), {type:c.advSum>0?'adv':'perf', rate:String(DEAL_BG_RATE).replace('.',',')}]; }
     if (a==='delbg'){ d.bg=(d.bg||[]).filter((_,j)=>j!==k); }
     if (a==='where'){ const s=d.sup[k]; s.where=b.dataset.v;
       if (b.dataset.v==='ru'){ s.country='Россия'; dlApplyCountry(s); }

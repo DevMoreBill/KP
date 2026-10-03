@@ -385,10 +385,17 @@ def guard(h, store, m, path):
         return lambda: log(h, store, 'edit_customs', 'customs', new.get('key'), old and {k: old.get(k) for k in ('code', 'duty')},
                            {k: new.get(k) for k in ('code', 'duty')})
     if path == '/api/types' and m == 'PUT':
-        old = {t.get('id') for t in (store.kv_get('types') or {}).get('types', [])}
+        stored = {t.get('id'): t for t in (store.kv_get('types') or {}).get('types', []) if isinstance(t, dict)}
         new = {t.get('id') for t in (_loads(h.body().decode('utf-8')) or {}).get('types', [])}
-        if old - new and not is_admin(h):    # удалить свою категорию или вернуть стандартные — только администратор
-            log(h, store, 'delete_attempt', 'types', ','.join(sorted(old - new)), result='failed')
+        try:
+            from equipment_types import load_types_builtin
+            builtin = {t.get('id'): t for t in load_types_builtin() if isinstance(t, dict)}
+        except Exception:
+            builtin = {}
+        # копия стандартной категории без изменений — не удаление (её убирают, чтобы категория обновлялась с программой)
+        removed = {i for i in set(stored) - new if not (i in builtin and json.dumps(stored[i], sort_keys=True) == json.dumps(builtin[i], sort_keys=True))}
+        if removed and not is_admin(h):    # удалить свою категорию или вернуть стандартные — только администратор
+            log(h, store, 'delete_attempt', 'types', ','.join(sorted(removed)), result='failed')
             h.send(403, 'text/plain; charset=utf-8', DENIED)
             return True
         return lambda: log(h, store, 'edit_types', 'types', 'user_types', None,

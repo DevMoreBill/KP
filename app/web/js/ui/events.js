@@ -77,7 +77,8 @@ document.addEventListener('click', async e=>{
     case 'dupItem': { const cp=JSON.parse(JSON.stringify(it)); cp.id=uid(); (cp.features||[]).forEach(f=>{ const old=f.id; f.id=uid(); (cp.gallery||[]).forEach(g=>{ if(g.at==='feat:'+old) g.at='feat:'+f.id; }); });
       (cp.options||[]).forEach(o=>o.id=uid()); S.items.splice(i+1,0,cp); toast('Позиция скопирована'); break; }
     case 'addFeatL': { it.features=it.features||[]; const f={id:uid(),label:b.dataset.l||'',text:''}; it.features.push(f); it.page=true; break; }
-    case 'featUp': [it.features[j-1],it.features[j]]=[it.features[j],it.features[j-1]]; break;
+    case 'featMv': if (!edMoveFeat(it, j, j+(+b.dataset.d))) return; break;
+    case 'galMv': { const free=edFreeGal(it), n=free.indexOf(j)+(+b.dataset.d); if (n<0 || n>=free.length || !edMoveGal(it, j, free[n])) return; break; }
     case 'autoAttrs': { const cat=attrsOf(it).cat, t=typeById(cat), keep=new Set(['maker','series','model',...t.fields.map(f=>f.key)]);
       it.attrs=Object.fromEntries(Object.entries({...extractAttrs(it), ...attrsFromSpec(it,t), ...Object.fromEntries(Object.entries(it.attrs||{}).filter(([,v])=>v!==''&&v!=null)), cat})
         .filter(([k,v])=>v!==''&&v!=null&&(k==='cat'||keep.has(k)))); toast('Параметры определены по характеристикам — проверьте'); break; }

@@ -97,15 +97,17 @@ function edDesc(x,i){
   const slots=(t.gallerySlots||[]).filter(s=>!WIDE_RX.test(s));
   const have=new Set((x.features||[]).map(f=>norm(f.label)));
   const blocks=(x.features||[]).map((f,j)=>{ featId(f); const im=featImage(x,f); const gi=im?(x.gallery||[]).indexOf(im):-1;
-    return `<div class="fblock">
+    return `<div class="fblock" data-fj="${j}">
       <div class="fimg">${imgBox(im&&im.src,`data-fimg="${i}" data-fid="${f.id}"`,'+ фото к блоку<br><small>нажмите, перетащите или Ctrl+V</small>')}<button type="button" class="lnk imgp" data-imgpaste='[data-fimg="${i}"][data-fid="${f.id}"]'>Вставить из буфера</button>
         ${im?`<div class="row" style="gap:4px;justify-content:center"><label class="row muted" style="gap:4px"><input type="checkbox" data-gon="${i}" data-j="${gi}" ${im.on===false?'':'checked'} style="width:auto">в КП</label><button class="icon" type="button" data-a="galDel" data-i="${i}" data-j="${gi}" aria-label="Убрать фото">✕</button></div>`:''}</div>
       <div class="ftext"><div class="fhead"><input type="text" data-p="${P}.features.${j}.label" value="${esc(f.label)}" placeholder="Заголовок блока (Двигатель, Альтернатор…)" style="font-weight:600">
-        <button class="icon" type="button" data-a="featUp" data-i="${i}" data-j="${j}" aria-label="Выше" ${j===0?'disabled':''}>↑</button><button class="icon" type="button" data-a="delFeat" data-i="${i}" data-j="${j}" aria-label="Удалить блок">✕</button></div>
+        <span class="ed-hdl" draggable="true" data-edrag="feat" data-i="${i}" data-j="${j}" title="Перетащите блок выше или ниже" aria-hidden="true">⠿</span>
+        <button class="icon" type="button" data-a="featMv" data-i="${i}" data-j="${j}" data-d="-1" aria-label="Блок выше" title="Выше" ${j===0?'disabled':''}>↑</button><button class="icon" type="button" data-a="featMv" data-i="${i}" data-j="${j}" data-d="1" aria-label="Блок ниже" title="Ниже" ${j===(x.features||[]).length-1?'disabled':''}>↓</button><button class="icon" type="button" data-a="delFeat" data-i="${i}" data-j="${j}" aria-label="Удалить блок">✕</button></div>
         <textarea data-p="${P}.features.${j}.text" rows="3" placeholder="Описание: одно-два предложения">${esc(f.text)}</textarea></div></div>`; }).join('');
   const free=(x.gallery||[]).map((g,j)=>({g,j,L:linkOf(x,g)})).filter(o=>o.L.kind!=='feat');
   const groups=(x.groups||[]).map(g=>g.name).filter(Boolean);
-  const gcards=free.map(({g,j,L})=>`<div class="gcard${g.on===false?' off':''}"><img src="${g.src}" alt="">
+  const gcards=free.map(({g,j,L},n)=>`<div class="gcard${g.on===false?' off':''}" data-gj="${j}"><div class="gmv"><span class="ed-hdl" draggable="true" data-edrag="gal" data-i="${i}" data-j="${j}" title="Перетащите, чтобы поменять порядок" aria-hidden="true">⠿</span>
+      <button class="icon" type="button" data-a="galMv" data-i="${i}" data-j="${j}" data-d="-1" aria-label="Раньше" title="Раньше" ${n===0?'disabled':''}>↑</button><button class="icon" type="button" data-a="galMv" data-i="${i}" data-j="${j}" data-d="1" aria-label="Позже" title="Позже" ${n===free.length-1?'disabled':''}>↓</button></div><img src="${g.src}" alt="">
       <input type="text" data-p="${P}.gallery.${j}.caption" value="${esc(g.caption||'')}" placeholder="${L.kind==='group'?esc(L.name):'Подпись под изображением'}">
       <label class="f"><span>Где показать</span><select data-gat="${i}" data-j="${j}"><option value="free"${L.kind==='free'?' selected':''}>Раздел «Фото и схемы»</option>
         ${groups.map(n=>`<option value="group:${esc(n)}"${L.kind==='group'&&L.name===n?' selected':''}>К характеристикам: ${esc(n)}</option>`).join('')}
@@ -182,3 +184,29 @@ function pickTypeAndAdd(pre){
     setTimeout(()=>openEditor(S.items.length-1,'main'),50);
     toast(`Добавлена позиция: ${t.item}. Заполните параметры — по ним сформируются характеристики и титул.`); };
 }
+
+// порядок блоков описания и изображений: перетаскивание за «⠿» (и стрелки ↑↓ — ui/events.js)
+function edMoveFeat(it, from, to){ const a=it.features||[]; if (from===to || to<0 || to>=a.length) return false; const [x]=a.splice(from,1); a.splice(to,0,x); return true; }
+// изображения: переставляется среди «своих» (не привязанных к блокам описания) — порядок в КП тот же
+function edMoveGal(it, from, to){ const g=it.gallery||[]; if (from===to || !g[from] || !g[to]) return false; const [x]=g.splice(from,1); g.splice(to,0,x); return true; }
+function edFreeGal(it){ return (it.gallery||[]).map((g,j)=>({g,j})).filter(o=>linkOf(it,o.g).kind!=='feat').map(o=>o.j); }
+const ED_DND = { kind:'', i:-1, j:-1 };
+document.addEventListener('dragstart', e=>{ const h=e.target.closest && e.target.closest('[data-edrag]'); if (!h) return;
+  Object.assign(ED_DND, { kind:h.dataset.edrag, i:+h.dataset.i, j:+h.dataset.j }); e.dataTransfer.effectAllowed='move';
+  try{ e.dataTransfer.setData('application/x-kp-move', h.dataset.edrag); }catch(_){}
+  const box=h.closest('.fblock,.gcard'); if (box){ box.classList.add('dragging'); try{ e.dataTransfer.setDragImage(box, 20, 20); }catch(_){} } }, true);
+const edDropBox = e => { if (!ED_DND.kind) return null; const b=e.target.closest && e.target.closest(ED_DND.kind==='feat'?'.fblock[data-fj]':'.gcard[data-gj]'); return b; };
+document.addEventListener('dragover', e=>{ if (!ED_DND.kind) return; e.preventDefault(); e.stopPropagation(); const b=edDropBox(e);
+  document.querySelectorAll('.drop-b,.drop-a').forEach(x=>{ if (x!==b) x.classList.remove('drop-b','drop-a'); });
+  if (!b) return; const r=b.getBoundingClientRect(), after = ED_DND.kind==='feat' ? e.clientY>r.top+r.height/2 : e.clientX>r.left+r.width/2;
+  b.classList.toggle('drop-a', after); b.classList.toggle('drop-b', !after); }, true);
+document.addEventListener('drop', e=>{ if (!ED_DND.kind) return; e.preventDefault(); e.stopPropagation();
+  const b=edDropBox(e), it=S.items[ED_DND.i]; const kind=ED_DND.kind, from=ED_DND.j; ED_DND.kind='';
+  document.querySelectorAll('.dragging,.drop-b,.drop-a').forEach(x=>x.classList.remove('dragging','drop-b','drop-a'));
+  if (!b || !it) return;
+  const r=b.getBoundingClientRect(), after = kind==='feat' ? e.clientY>r.top+r.height/2 : e.clientX>r.left+r.width/2;
+  let ok=false;
+  if (kind==='feat'){ let to=+b.dataset.fj+(after?1:0); if (to>from) to--; ok=edMoveFeat(it, from, to); }
+  else { const free=edFreeGal(it), fi=free.indexOf(from); let ti=free.indexOf(+b.dataset.gj)+(after?1:0); if (ti>fi) ti--; ok=fi>=0 && ti>=0 && ti<free.length && edMoveGal(it, from, free[ti]); }
+  if (ok){ renderForm(); persist(); } }, true);
+document.addEventListener('dragend', ()=>{ if (!ED_DND.kind) return; ED_DND.kind=''; document.querySelectorAll('.dragging,.drop-b,.drop-a').forEach(x=>x.classList.remove('dragging','drop-b','drop-a')); }, true);
