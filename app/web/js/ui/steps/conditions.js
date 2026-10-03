@@ -10,10 +10,19 @@ function rememberConds(){
   try{
     localStorage.setItem('kp.lastConds', JSON.stringify({conditions:S.conditions.map(c=>({label:c.label,value:c.value})), condExtra:S.condExtra||''}));
     const r=condRecent();
-    S.conditions.forEach((c,j)=>{ const v=String(c.value||'').trim(); if (!v || (COND[j]?.[1]||[]).includes(v)) return;
+    S.conditions.forEach(c=>{ const v=String(c.value||'').trim(); if (!v || condOpts(c.label).includes(v)) return;
       r[c.label]=[v,...(r[c.label]||[]).filter(x=>x!==v)].slice(0,5); });
     localStorage.setItem('kp.condRecent', JSON.stringify(r));
   }catch(e){}
+}
+
+// базовые варианты условия — по его названию (условия, добавленные позже, могут стоять не на своём месте)
+const condOpts = label => (COND.find(x=>x[0]===label)||[])[1] || [];
+
+// что предлагает экономика сделки (если её заполняли)
+function condFromDeal(){
+  if (!S.deal || !S.deal.touched || typeof dealCalc!=='function') return {};
+  try{ return dealCondSuggest(dealCalc(dealKpInputs(), S.deal)); }catch(e){ return {}; }
 }
 
 function condPicker(attr, idx, opts, recent){
@@ -23,10 +32,12 @@ function condPicker(attr, idx, opts, recent){
 }
 
 function stepConds(){
-  const rec=condRecent(), last=condLast();
-  const rows = S.conditions.map((c,j)=>`<div class="f"><span>${esc(c.label)}</span><div class="cpick">
+  const rec=condRecent(), last=condLast(), sug=condFromDeal();
+  const rows = S.conditions.map((c,j)=>{ const v=String(c.value||'').trim(), sv=sug[c.label], fromDeal=v && sv && v===sv;
+    return `<div class="f"><span>${esc(c.label)}${fromDeal?' <em class="cond-auto" title="Подставлено из «Экономики сделки» и обновляется при её изменении. Впишите своё — останется ваше.">из экономики сделки</em>':''}</span><div class="cpick">
       <input type="text" data-p="conditions.${j}.value" value="${esc(c.value||'')}" placeholder="Не выводить" autocomplete="off">
-      ${condPicker('data-cset', j, COND[j]?.[1]||[], (rec[c.label]||[]).filter(v=>!(COND[j]?.[1]||[]).includes(v)))}</div></div>`).join('');
+      ${condPicker('data-cset', j, condOpts(c.label), (rec[c.label]||[]).filter(v=>!condOpts(c.label).includes(v)))}</div>
+      ${sv && v!==sv ? `<button type="button" class="lnk cond-sync" data-csync="${j}" title="${esc(sv)}">↺ Из экономики сделки: ${esc(sv.length>70?sv.slice(0,70)+'…':sv)}</button>` : ''}</div>`; }).join('');
   return `<section class="step" id="st-conds"><h2><span class="n">5</span>Условия${tip('<p>Кнопка ▾ у поля — список базовых вариантов (и ваших значений из прошлых КП); можно и вписать своё. Пустое условие в КП не попадёт.</p><p>«Как в прошлом КП» — заполнить все условия так же, как в последнем сохранённом КП.</p><p>Дополнительные условия выводятся под таблицей условий: каждая строка — отдельный абзац.</p>')}</h2>
   <div class="row cond-bar">${last?'<button class="btn" type="button" data-cond="last">Как в прошлом КП</button>':''}<button class="btn ghost" type="button" data-cond="clear">Очистить</button></div>
   <div class="grid g2">${rows}</div>
@@ -39,7 +50,9 @@ function stepConds(){
 
 document.addEventListener('click', e=>{
   const set=e.target.closest('[data-cset]'), add=e.target.closest('[data-cxadd]'), act=e.target.closest('[data-cond]');
-  if (set){ S.conditions[+set.dataset.cset].value=set.dataset.v; }
+  const sync=e.target.closest('[data-csync]');
+  if (sync){ const c=S.conditions[+sync.dataset.csync], v=condFromDeal()[c.label]; if (v){ c.value=v; S.condAuto={...(S.condAuto||{}), [c.label]:v}; } }
+  else if (set){ S.conditions[+set.dataset.cset].value=set.dataset.v; }
   else if (add){ const cur=String(S.condExtra||'').trim(); if (!cur.split('\n').map(s=>s.trim()).includes(add.dataset.v)) S.condExtra=(cur?cur+'\n':'')+add.dataset.v; }
   else if (act && act.dataset.cond==='last'){ const l=condLast(); if (!l) return;
     S.conditions=S.conditions.map(c=>({...c, value:(l.conditions.find(x=>x.label===c.label)||{}).value||''})); S.condExtra=l.condExtra||''; toast('Условия — как в прошлом КП'); }

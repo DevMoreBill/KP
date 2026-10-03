@@ -330,6 +330,14 @@ def guard(h, store, m, path):
         log(h, store, 'delete_attempt', path.split('/')[2] if path.count('/') > 2 else None, path.rsplit('/', 1)[-1], result='failed')
         h.send(403, 'text/plain; charset=utf-8', DENIED)
         return True
+    # только администратор: тексты интерфейса
+    if path == '/api/uitexts' and m == 'PUT':
+        if not is_admin(h):
+            log(h, store, 'edit_settings', 'settings', 'uitexts', result='failed')
+            h.send(403, 'text/plain; charset=utf-8', DENIED)
+            return True
+        n = len(_loads(h.body().decode('utf-8')) or {})
+        return lambda: log(h, store, 'edit_settings', 'settings', 'uitexts', None, {'texts': n}, admin=True)
     # только администратор: шаблоны КП, ключи API
     tpl = re.match(r'^/api/templates/([A-Za-z0-9_-]+)/(file|restore|copy|reset|delete|open)$', path)
     if (tpl and m in ('PUT', 'POST')) or (path == '/api/templates/folder' and m == 'POST') or (path == '/api/integrations' and m == 'PUT'):

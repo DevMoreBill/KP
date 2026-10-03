@@ -75,3 +75,16 @@ aside{position:sticky;top:84px;align-self:start}
 
 /* кнопка темы в шапке */
 .btn.icon-btn{width:40px;justify-content:center;padding-left:0;padding-right:0;font-size:17px;line-height:1}
+
+/* правка текстов интерфейса администратором (js/features/uitexts.js) */
+.uit-pen{display:inline-grid;place-items:center;width:18px;height:18px;margin-left:4px;border-radius:50%;background:#d9822b;color:#fff;font-size:11px;font-style:normal;font-weight:700;line-height:1;vertical-align:middle;cursor:pointer;text-transform:none;letter-spacing:0;flex:0 0 auto;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.uit-pen:hover{background:#b8661a;transform:scale(1.12)}
+body.uit-edit .uit-pen{pointer-events:auto}
+.uit-bar{position:sticky;bottom:0;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 14px;background:#fdecd6;color:#7a4510;border-top:2px solid #d9822b;font-size:13px;font-weight:600}
+body>.uit-bar{position:fixed;left:0;right:0;bottom:0}
+dialog.uit-dlg{width:min(560px,94vw);padding:18px 20px}
+dialog.uit-dlg form{display:grid;gap:12px}
+dialog.uit-dlg h3{margin:0}
+dialog.uit-dlg textarea{width:100%;font:inherit}
+dialog.uit-dlg .uit-acts{display:flex;gap:8px;align-items:center}
+dialog.uit-dlg .uit-acts .sp{flex:1}

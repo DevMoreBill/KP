@@ -109,6 +109,7 @@ document.addEventListener('click', async e=>{
     case 'checkRun': return checkRun(b.dataset.force==='1');
     case 'integrations': return openSettings('keys');
     case 'settings': return openSettings();
+    case 'uitexts': document.querySelector('details.topmenu')?.removeAttribute('open'); return uitToggle();
     case 'help': return openHelp();
     case 'versions': return openHelp('versions');
     case 'pickObject': { const o=(curClient()?.objects||[])[k]; if(o) S.object={...S.object,...o}; break; }

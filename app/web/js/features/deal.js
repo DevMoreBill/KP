@@ -42,12 +42,19 @@ function dlCalOff(startIso, day){ if (!startIso) return false; const [y,m,d]=sta
   const cy=t.getUTCFullYear(), c=DL.cal[cy]; if (!c) return false; const doy=Math.round((t-Date.UTC(cy,0,1))/864e5); return c.days[doy]==='1'; }
 const dlCalReady = iso => dlCalYears(iso).every(y=>DL.cal[y]);
 
+// рабочие дни по производственному календарю (от даты договора); без календаря — приблизительно
+const dlAddWorkFn = d0 => (b,n)=>{ let x=b, c=0, g=0; while (c<n && g++<5000){ x++; if (!dlCalOff(d0,x)) c++; } return x; };
+function dlCalFns(){ const d0=dlD0(); return d0 && dlCalReady(d0) ? {addWork:dlAddWorkFn(d0)} : {}; }
+function dlCountWork(base, target){ if (!(target>base)) return 0; const d0=dlD0();
+  if (d0 && dlCalReady(d0)){ let c=0; for (let x=base+1; x<=target; x++) if (!dlCalOff(d0,x)) c++; return c; }
+  return Math.round((target-base)*5/7); }
+
 // данные конструктора для расчёта
 function dealKpInputs(st=S){
   const e=kpEconomics(st), P=st.pricing||{}, r=e.cur==='RUB'?1:dNum(P.rates&&P.rates[e.cur]);
   const d0=st.deal&&/^\d{4}-\d{2}-\d{2}$/.test(st.deal.start||'')?st.deal.start:'';
   if (d0 && !dlCalReady(d0)) dlCalLoad(d0);
-  const cal = d0 && dlCalReady(d0) ? { isOff:day=>dlCalOff(d0,day), workShift:day=>{ let x=day, g=0; while (dlCalOff(d0,x) && g++<20) x++; return x; } } : {};
+  const cal = d0 && dlCalReady(d0) ? { isOff:day=>dlCalOff(d0,day), workShift:day=>{ let x=day, g=0; while (dlCalOff(d0,x) && g++<20) x++; return x; }, addWork:dlAddWorkFn(d0) } : {};
   return { ...cal, sumRub: r>0 ? e.sum/100*r : 0, sumNoRate: !(r>0), cur:e.cur, vat:+st.vat||0, rates:{...(P.rates||{})}, costNoVat:!!P.costNoVat, moneyAuto:dlMoneyAuto(),
     items:(st.items||[]).filter(x=>String(x.name||'').trim()||x.cost).map(x=>{ const h=dlHsOf(x, st.deal);
       return {id:x.id, name:x.name, qty:+x.qty||0, cost:(x.cost||0)/100, cur:x.costCur||'RUB', cat:attrsOf(x).cat, maker:attrsOf(x).maker||'', catId:x.catId||'',
@@ -68,7 +75,7 @@ const dlNorm = s => String(s||'').trim().toLowerCase();
 function dlDir(name){ const n=dlNorm(name); if (!n || !DL.sups) return null;
   return DL.sups.find(x=>dlNorm(x.name)===n) || DL.sups.find(x=>(x.makers||[]).some(m=>dlNorm(m)===n)) || null; }
 
-const DL_SUP_KEYS=['country','cur','vatIn','noVat','adv','pay','prod','ship','cusMode','ivat','ins','fx'];
+const DL_SUP_KEYS=['country','cur','vatIn','noVat','adv','pay','prod','ship','prodK','shipK','cusMode','ivat','ins','fx'];
 
 // подставить условия поставщика из справочника (название, страна, валюта, аванс, сроки, таможня, комиссии)
 function dlApplyDir(s, p){ if (!p) return false;
@@ -198,17 +205,20 @@ function dlField(label, path, o={}){
   const cur = o.cur ? `<select data-dl="${o.cur}" aria-label="Валюта">${DEAL_CURS.map(k=>`<option${(dlGet(d,o.cur)||'RUB')===k?' selected':''}>${k}</option>`).join('')}</select>` : '';
   const inp = o.select ? `<select data-dl="${path}" aria-label="${esc(label)}">${o.select.map(([v,t])=>`<option value="${esc(v)}"${String(raw??o.select[0][0])===String(v)?' selected':''}>${esc(t)}</option>`).join('')}</select>`
     : `<input type="text" inputmode="${o.text?'text':o.int?'numeric':'decimal'}" data-dl="${path}" value="${esc(val)}" placeholder="${esc(o.ph??'0')}" autocomplete="off"${o.list?` list="${o.list}"`:''}${e?' aria-invalid="true"':''}${o.text?' class="tx"':''}>`;
-  const dd = o.date ? dlDateIn(path, o.date.base, o.date.val, label) : '';
+  const dd = o.date ? dlDateIn(path, o.date.base, o.date.val, label, o.date.kind===false?'':dlGet(d, path+'K')) : '';
   return `<label class="f dl-f${e?' bad':''}${o.cls?' '+o.cls:''}${dd?' dd':''}"><span>${esc(label)}${o.unit?` <i>${esc(o.unit)}</i>`:''}${badge}${o.q?dlQ(o.q):''}</span>
-    ${dd?`<span class="dl-ddr"><span class="dl-in">${inp}<i>дн.</i></span>${dd}</span>`:`<span class="dl-in${cur?' cur':''}">${inp}${cur}</span>`}
+    ${dd?`<span class="dl-ddr"><span class="dl-in">${inp}${o.date.kind===false?'<i>дн.</i>':dlDayKind(path)}</span>${dd}</span>`:`<span class="dl-in${cur?' cur':''}">${inp}${cur}</span>`}
     ${e?`<small class="dl-err">${esc(e)}</small>`:o.hint?`<small class="muted">${o.hint}</small>`:''}</label>`;
 }
 
 // выбор даты вместо количества дней: base — день события, от которого считаются дни; хранится по-прежнему в днях
-function dlDateIn(path, base, val, label){
-  const iso = dlD0() && Number.isFinite(+val) ? dlDayIso((+base||0)+(+val||0)) : '';
-  return `<span class="dl-ddt"><em>или дата</em><input type="date" data-dldd="${esc(path)}" data-base="${+base||0}" value="${iso}" aria-label="${esc(label)}: дата"${DL.ex?' disabled':''}></span>`;
+function dlDateIn(path, base, val, label, kind){
+  const iso = dlD0() && Number.isFinite(+val) ? dlDayIso(dealAddDays(dlCalFns(), +base||0, +val||0, kind)) : '';
+  return `<span class="dl-ddt"><em>или дата</em><input type="date" data-dldd="${esc(path)}" data-base="${+base||0}" data-kind="${kind==='work'?'work':''}" value="${iso}" aria-label="${esc(label)}: дата"${DL.ex?' disabled':''}></span>`;
 }
+// микро-меню «календарные / рабочие дни» у срока; путь вида — путь срока + «K»
+function dlDayKind(path){ const k=dlGet(dlDeal(), path+'K')==='work';
+  return `<select class="dl-dk" data-dl="${esc(path)}K" aria-label="Календарные или рабочие дни" title="Календарные или рабочие дни"${DL.ex?' disabled':''}><option value="">кал. дн.</option><option value="work"${k?' selected':''}>раб. дн.</option></select>`; }
 
 // поле с выпадающим списком: ввод с подсказками по первым буквам или выбор из списка (кнопка «▾», стрелки, Enter)
 function dlComboItems(path){
@@ -264,7 +274,7 @@ function dlStepInfo(c){
   const when=day=>d0?dlDayRu(day):`день ${day}`;
   const its=DL.ex?[]:(S.items||[]).filter(x=>String(x.name||'').trim()), noCost=its.filter(x=>!(x.cost>0)).length;
   si.buy={ st: noCost||d.sup.some(x=>!String(x.name||'').trim())?'need':'ok',
-    sum: noCost ? `Нет цены закупки у ${noCost} из ${its.length} поз.` : c.sup.filter(x=>x.equip>0||c.sup.length===1).map(x=>`${x.name}${x.country?' ('+x.country+')':''}: ${dlRub0(x.equip)}, готово — ${when(x.prod)}, у заказчика — ${when(x.prod+x.ship)}`).join(' · ') };
+    sum: noCost ? `Нет цены закупки у ${noCost} из ${its.length} поз.` : c.sup.filter(x=>x.equip>0||c.sup.length===1).map(x=>`${x.name}${x.country?' ('+x.country+')':''}: ${dlRub0(x.equip)}, готово — ${when(x.rdy)}, у заказчика — ${when(x.arr)}`).join(' · ') };
   const noDuty=c.sup.some(x=>x.noDuty.length);
   si.cus={ st: noDuty||c.unknown.length?'need':'ok',
     sum: noDuty ? 'Укажите ставку пошлины у позиций' : c.unknown.length ? 'Укажите ввозной НДС к вычету' : c.Tsum ? `Платим на таможне ${dlRub0(c.Tsum)}, в себестоимость ${dlRub0(c.sup.reduce((a,x)=>a+x.T-(x.vi||0),0))}` : 'Таможни нет' };
@@ -310,8 +320,8 @@ function dlPurchase(c){
       ${items}
       ${ru?`<div class="dl-inl"><span class="dl-lab">Цены в счёте</span><span class="dl-seg"><button type="button" class="${!cs.noVat?'on':''}" data-dlx="novat" data-k="${k}" data-v="0">с НДС</button><button type="button" class="${cs.noVat?'on':''}" data-dlx="novat" data-k="${k}" data-v="1">без НДС</button></span>${dlQ('НДС поставщика уменьшает НДС к уплате (вычет). Если в счёте цены без НДС, программа добавит НДС к платежу и учтёт его в вычете.')}</div>`:''}
       <div class="dl-sub"><h5>Сроки поставки</h5>
-        <div class="dl-g">${dlField('Готово к отгрузке через', P+'.prod', {calc:c, int:true, date:{base:0, val:cs.prod}, q:'Сколько дней от заказа (подписания договора) до готовности оборудования на складе поставщика. Можно выбрать дату — дни посчитаются сами.'})}${dlField('Доставка до заказчика', P+'.ship', {calc:c, int:true, date:{base:cs.prod, val:cs.ship}, q:'Сколько дней едет груз от склада поставщика до объекта заказчика, включая таможню. Дата — когда груз будет у заказчика.'})}</div>
-        <p class="dl-tl"><span>Заказ — <b>день 0</b>${dlD0()?` · ${dlDayRu(0)}`:''}</span><i>→</i><span>Готово к отгрузке — <b>день ${cs.prod}</b>${dlD0()?` · ${dlDayRu(cs.prod)}`:''}</span><i>→</i><span>У заказчика — <b>день ${cs.prod+cs.ship}</b>${dlD0()?` · ${dlDayRu(cs.prod+cs.ship)}`:''}</span></p></div>
+        <div class="dl-g">${dlField('Готово к отгрузке через', P+'.prod', {calc:c, int:true, date:{base:0, val:cs.prod}, q:'Сколько дней от заказа (подписания договора) до готовности оборудования на складе поставщика. Можно выбрать дату — дни посчитаются сами.'})}${dlField('Доставка до заказчика', P+'.ship', {calc:c, int:true, date:{base:cs.rdy, val:cs.ship}, q:'Сколько дней едет груз от склада поставщика до объекта заказчика, включая таможню. Дата — когда груз будет у заказчика.'})}</div>
+        <p class="dl-tl"><span>Заказ — <b>день 0</b>${dlD0()?` · ${dlDayRu(0)}`:''}</span><i>→</i><span>Готово к отгрузке — <b>день ${cs.rdy}</b>${dlD0()?` · ${dlDayRu(cs.rdy)}`:''}</span><i>→</i><span>У заказчика — <b>день ${cs.arr}</b>${dlD0()?` · ${dlDayRu(cs.arr)}`:''}</span></p></div>
       <div class="dl-sub"><h5>Оплата поставщику ${dlQ('Доли от стоимости оборудования (с комиссией за перевод). Последний этап — остаток до 100 %. Перевозка, страхование, таможня и брокер оплачиваются перед отгрузкой.')}</h5>${dlSupPay(c, k)}</div>
       <div class="dl-sub"><h5>Стоимость перевозки</h5>
         <div class="dl-g">${ru?'':dlField('Перевозка до границы РФ', P+'.log.v', {calc:c, cur:P+'.log.cur', src:s.log&&s.log.src, q:'Сколько стоит довезти груз от поставщика до границы ЕАЭС. Входит в таможенную стоимость.'})}
@@ -338,13 +348,13 @@ const DL_SP_PRESETS = {
 };
 function dlSupPay(c, k){
   const d=dlDeal(), s=d.sup[k], cs=c.sup[k], P=`sup.${k}`, n=s.pay.length, base=cs.equip+cs.fxE;
-  const spBase={order:0, ready:cs.prod, delivery:cs.prod+cs.ship, pnr:c.D+c.pnrDays};
+  const spBase={order:0, ready:cs.rdy, delivery:cs.arr, pnr:c.pnrEnd};
   const rows=s.pay.map((t,j)=>{ const st=cs.stages[j]||{p:0}, last=j===n-1, row=c.rows.find(r=>r.key===`sp:${s.id}:${j}`), e=c.err[`${P}.pay.${j}.pct`]||c.err[`${P}.pay.${j}.off`];
     const day=row?row.day:null;
-    return `<div class="dl-tr${e?' bad':''}${last?' last':''}"><span class="dl-trn">${j+1}</span>
+    return `<div class="dl-tr${e?' bad':''}${last?' last':''}" data-dnd="sp:${k}" data-i="${j}">${dlMoveCtl(`sp:${k}`, j, n)}<span class="dl-trn">${j+1}</span>
       <input type="text" class="tx dl-trname" data-dl="${P}.pay.${j}.name" value="${esc(t.name||'')}" placeholder="${j===0&&!last?'Аванс':last&&n>1?'Остаток':'Оплата'}" aria-label="Название этапа">
       ${last?`<span class="dl-trp">${n>1?'остаток':'всё'}<b>${dlIn(st.p)} %</b></span>`:`<span class="dl-in dl-tram"><input type="text" inputmode="decimal" data-dl="${P}.pay.${j}.pct" value="${esc(t.pct??'')}" placeholder="0" aria-label="Доля этапа, %"><i>%</i></span>`}
-      <span class="dl-trw"><em>Когда:</em><select data-dl="${P}.pay.${j}.ev" aria-label="Когда">${Object.entries(DEAL_SUP_EVENTS).map(([v,l])=>`<option value="${v}"${(t.ev||'ready')===v?' selected':''}>${l}</option>`).join('')}</select><span class="dl-in dl-troff"><i>+</i><input type="text" inputmode="numeric" data-dl="${P}.pay.${j}.off" value="${esc(t.off??'')}" placeholder="0" aria-label="Дней после события"><i>дн.</i></span>${dlDateIn(`${P}.pay.${j}.off`, spBase[t.ev||'ready']||0, st.off||0, 'Оплата поставщику')}</span>
+      <span class="dl-trw"><em>Когда:</em><select data-dl="${P}.pay.${j}.ev" aria-label="Когда">${Object.entries(DEAL_SUP_EVENTS).map(([v,l])=>`<option value="${v}"${(t.ev||'ready')===v?' selected':''}>${l}</option>`).join('')}</select><span class="dl-in dl-troff"><i>+</i><input type="text" inputmode="numeric" data-dl="${P}.pay.${j}.off" value="${esc(t.off??'')}" placeholder="0" aria-label="Дней после события">${dlDayKind(`${P}.pay.${j}.off`)}</span>${dlDateIn(`${P}.pay.${j}.off`, spBase[t.ev||'ready']||0, st.off||0, 'Оплата поставщику', t.offK)}</span>
       <span class="dl-trr"><b>${dlRub0(base*st.p/100)}</b><small>${day!=null?`день ${day}${dlD0()?` · ${dlDayRu(day)}`:''}`:'—'}</small></span>
       ${n>1?`<button type="button" class="icon" data-dlx="delsp" data-k="${k}" data-j="${j}" aria-label="Убрать этап">✕</button>`:'<span></span>'}</div>`; }).join('');
   return `<div class="dl-trp-l"><span class="muted">Быстро:</span>${Object.entries(DL_SP_PRESETS).map(([v,[t]])=>`<button type="button" class="chip" data-dlx="sppreset" data-k="${k}" data-v="${v}">${esc(t)}</button>`).join('')}</div>
@@ -413,16 +423,74 @@ function dlCustomer(c){
     const ph=last?(n>1?'Окончательный расчёт':'Оплата'):k===0?'Аванс':'Платёж '+(k+1);
     const amt = last ? `<span class="dl-trp" title="Последний этап — остаток до 100 %">остаток<b>${dlIn(ct.p)} %</b></span>`
       : `<span class="dl-in dl-tram"><input type="text" inputmode="decimal" data-dl="cust.tr.${k}.${bySum?'sum':'pct'}" value="${esc(bySum?t.sum??'':t.pct??'')}" placeholder="0" aria-label="${bySum?'Сумма этапа, ₽':'Доля этапа, %'}"><span class="mtog" role="group" aria-label="Процент или сумма"><button type="button" class="${bySum?'':'on'}" data-dlx="trmode" data-k="${k}" data-v="pct">%</button><button type="button" class="${bySum?'on':''}" data-dlx="trmode" data-k="${k}" data-v="sum">₽</button></span></span>`;
-    return `<div class="dl-tr${e?' bad':''}${last?' last':''}">
+    return `<div class="dl-tr${e?' bad':''}${last?' last':''}" data-dnd="cust" data-i="${k}">${dlMoveCtl('cust', k, n)}
       <span class="dl-trn">${k+1}</span>
       <input type="text" class="tx dl-trname" data-dl="cust.tr.${k}.name" value="${esc(t.name||'')}" placeholder="${esc(ph)}" aria-label="Название этапа">
       ${amt}
-      <span class="dl-trw"><em>Когда:</em>${evSel(k,t)}<span class="dl-in dl-troff"><i>+</i><input type="text" inputmode="numeric" data-dl="cust.tr.${k}.off" value="${esc(t.off)}" placeholder="0" aria-label="Дней после события"><i>дн.</i></span>${dlDateIn(`cust.tr.${k}.off`, c.ev[ct.ev]||0, ct.off||0, 'Оплата заказчика')}</span>
+      <span class="dl-trw"><em>Когда:</em>${evSel(k,t)}<span class="dl-in dl-troff"><i>+</i><input type="text" inputmode="numeric" data-dl="cust.tr.${k}.off" value="${esc(t.off)}" placeholder="0" aria-label="Дней после события">${dlDayKind(`cust.tr.${k}.off`)}</span>${dlDateIn(`cust.tr.${k}.off`, c.ev[ct.ev]||0, ct.off||0, 'Оплата заказчика', t.offK)}</span>
       <span class="dl-trr"><b>${dlRub0(rub)}</b><small>день ${day}${dlD0()?` · ${dlDayRu(day)}`:''}</small></span>
       ${n>1?`<button type="button" class="icon" data-dlx="deltr" data-k="${k}" aria-label="Убрать этап">✕</button>`:'<span></span>'}</div>`; }).join('');
   return `<div class="dl-trp-l"><span class="muted">Быстро:</span>${Object.entries(DL_TR_PRESETS).map(([k,[t]])=>`<button type="button" class="chip" data-dlx="trpreset" data-v="${k}">${esc(t)}</button>`).join('')}</div>
     <div class="dl-trs">${rows}</div>${c.err['cust.tr']?`<small class="dl-err">${esc(c.err['cust.tr'])}</small>`:''}
-    <div class="dl-trf"><button type="button" class="btn" data-dlx="addtr">+ Этап оплаты</button><span class="muted">Сумму этапа можно вписать в процентах или рублях; последний этап — остаток. День 0 — подписание договора, готовность — день ${c.Rdy}, поставка — день ${c.D}${c.pnrDays?`, ПНР — день ${c.D+c.pnrDays}`:''}.</span></div>`;
+    <div class="dl-trf"><button type="button" class="btn" data-dlx="addtr">+ Этап оплаты</button><span class="muted">Сумму этапа можно вписать в процентах или рублях; последний этап — остаток. День 0 — подписание договора, готовность — день ${c.Rdy}, поставка — день ${c.D}${c.pnrDays?`, ПНР — день ${c.pnrEnd}`:''}.</span></div>`;
+}
+
+// ---------- условия КП из экономики сделки: срок поставки, этапы оплаты, монтаж и ПНР.
+// Подставляются, пока поле пустое или в нём прежняя подстановка; вписанное вручную не меняется
+// (в разделе «Условия» — кнопка «↺ Из экономики сделки»). S.condAuto — последняя подстановка по каждому условию.
+const DL_COND_MNT='Монтаж, ШМР и ПНР';
+function dealCondSuggest(c){
+  const out={}, d=dlDeal(), act=c.sup.filter(s=>s.active);
+  if (c.D>0){ const allWork=act.length && act.every(s=>s.prodK==='work'&&s.shipK==='work');
+    const n=allWork ? Math.max(...act.map(s=>s.prod+s.ship)) : c.D;
+    out['Срок поставки']=`${dlDaysTxt(n, allWork?'work':'')} с даты подписания договора`; }
+  const EVW={sign:'подписания договора', ready:'уведомления о готовности к отгрузке', delivery:'поставки', pnr:'пусконаладочных работ'};
+  const ph=t=>t.off ? `в течение ${dlDaysTxt(t.off, t.offK)} после ${EVW[t.ev]}` : t.ev==='ready' ? 'перед отгрузкой' : t.ev==='sign' ? 'при подписании договора' : `после ${EVW[t.ev]}`;
+  const st=c.trs.filter(t=>t.p>0.004);
+  if (st.length) out['Условия оплаты'] = st.length===1 ? `100 % ${ph(st[0])}`
+    : st.map(t=>`${dlPctTxt(t.p)}${/^(аванс|предоплат)/i.test(t.name)?' — '+t.name.toLowerCase():''} ${ph(t)}`).join('; ');
+  if (c.M>0) out[DL_COND_MNT]=`Монтажные и пусконаладочные работы (ШМР, ПНР) входят в стоимость${c.pnrDays?`; срок ПНР — ${dlDaysTxt(c.pnrDays, d.pnrK==='work'?'work':'')} после поставки`:''}`;
+  return out;
+}
+function dealSyncConds(c){
+  if (DL.ex || !S.deal || !S.deal.touched || !Array.isArray(S.conditions)) return false;
+  const sug=dealCondSuggest(c); S.condAuto=S.condAuto||{}; let ch=false;
+  for (const label of ['Срок поставки','Условия оплаты',DL_COND_MNT]){
+    const v=sug[label]||''; let cd=S.conditions.find(x=>x.label===label);
+    if (!cd){ if (!v) continue; cd={label, value:''}; S.conditions.push(cd); }
+    const cur=String(cd.value||'').trim(), prev=S.condAuto[label];
+    if (!cur || (prev!=null && cur===prev)){ if (cd.value!==v){ cd.value=v; ch=true; } if (v) S.condAuto[label]=v; else delete S.condAuto[label]; }
+  }
+  return ch;
+}
+
+// перестановка этапов оплаты: перетаскивание за «⠿» или стрелки ↑↓. Этап занимает срок своего нового места
+// (события и дни остаются по местам в порядке дат), доли сохраняются; последний этап — остаток до 100 %.
+function dlMoveCtl(grp, i, n){
+  if (n<2 || DL.ex) return '<span class="dl-mv"></span>';
+  return `<span class="dl-mv"><span class="dl-hdl" draggable="true" data-dndh="${grp}" data-i="${i}" title="Перетащите, чтобы переставить этап выше или ниже" aria-hidden="true">⠿</span>
+    <button type="button" class="dl-mvb" data-dlx="mv" data-grp="${grp}" data-i="${i}" data-to="${i-1}"${i?'':' disabled'} aria-label="Этап выше">↑</button><button type="button" class="dl-mvb" data-dlx="mv" data-grp="${grp}" data-i="${i}" data-to="${i+1}"${i<n-1?'':' disabled'} aria-label="Этап ниже">↓</button></span>`;
+}
+function dlMoveStage(grp, from, to){
+  const d=dlDeal(), c=dealCalc(dlKp(), d);
+  let list, shares, k=-1;
+  if (grp==='cust'){ list=d.cust.tr; shares=c.trs.map(t=>t.p); }
+  else { k=+grp.split(':')[1]; list=d.sup[k] && d.sup[k].pay; shares=(c.sup[k]||{stages:[]}).stages.map(t=>t.p); }
+  if (!list || from===to || to<0 || to>=list.length || from<0 || from>=list.length) return null;
+  // название, описывающее срок («Перед отгрузкой», «После ПНР», «Окончательный расчёт»…), остаётся со сроком
+  const timeName=n=>/отгруз|пнр|поставк|подписан|оконч|остат|аванс|предоплат|заказ|шефмонтаж/i.test(n||'');
+  const slots=list.map(t=>({ev:t.ev, off:t.off, offK:t.offK, ...(timeName(t.name)?{name:t.name}:{})}));
+  const items=list.map((t,i)=>({...t, _p:shares[i]||0}));
+  const [x]=items.splice(from,1); items.splice(to,0,x);
+  items.forEach((t,i)=>{ const keep=!timeName(t.name)?t.name:null; if (timeName(t.name)) t.name='';
+    Object.assign(t, slots[i]); if (keep && !timeName(slots[i].name)) t.name=keep; if (!t.offK) delete t.offK;
+    if (i===items.length-1){ t.pct=''; if (t.mode==='sum') t.mode='pct'; }
+    else if (t.mode!=='sum') t.pct=dlIn(Math.round(t._p*100)/100);
+    delete t._p; });
+  list.splice(0, list.length, ...items);
+  if (k>=0) dlSaveSupplier(d.sup[k]);
+  const ev=grp==='cust'?DEAL_EVENTS:DEAL_SUP_EVENTS, m=items[to];
+  return `Этап «${m.name||'Оплата'}» перенесён: ${ev[m.ev]||''}${+m.off?` + ${m.off} ${m.offK==='work'?'раб.':''} дн.`:''}`;
 }
 
 // цена КП, валюта и курсы — правятся здесь же и сразу меняют КП
@@ -511,7 +579,7 @@ function dlBg(c){
       <div class="dl-g g3">${dlField('Вид гарантии', P+'.type', {calc:c, select:Object.entries(DEAL_BG_TYPES)})}
         ${dlField('Сумма гарантии', P+'.base', {calc:c, select:cg.type==='adv'?[['adv','от аванса заказчика'],['pct','% от цены КП'],['sum','в рублях']]:[['pct','% от цены КП'],['sum','в рублях'],['adv','от аванса заказчика']]})}
         ${dlField(cg.base==='sum'?'Сумма':'Процент', P+'.v', {calc:c, unit, ph:cg.base==='adv'?'100':cg.base==='pct'?'10':'500 000'})}</div>
-      <div class="dl-g g3">${dlField('Срок гарантии', P+'.days', {calc:c, int:true, auto:cg.daysAuto, autoLabel:cg.type==='adv'?'до поставки':cg.type==='perf'?'до конца ПНР':'год', date:{base:0, val:cg.days}})}
+      <div class="dl-g g3">${dlField('Срок гарантии', P+'.days', {calc:c, int:true, auto:cg.daysAuto, autoLabel:cg.type==='adv'?'до поставки':cg.type==='perf'?'до конца ПНР':'год', date:{base:0, val:cg.days, kind:false}})}
         ${dlField('Ставка банка', P+'.rate', {calc:c, unit:'% годовых', ph:'3', q:'Комиссия банка за гарантию — процент годовых от суммы гарантии за её срок; обычно 2–5 %.'})}
         ${dlField('Минимальная комиссия', P+'.min', {calc:c, unit:'₽', ph:'0', q:'Если у банка есть минимальная комиссия за гарантию — впишите её.'})}</div>
       <p class="dl-bgr"><span>Сумма гарантии <b>${dlRub0(cg.amount)}</b> · комиссия банка <b>${dlRub0(cg.fee)}</b> <span class="muted">— при подписании договора, уменьшает прибыль</span></span><button type="button" class="lnk" data-dlx="delbg" data-k="${k}">Убрать</button></p></div>`; }).join('');
@@ -578,6 +646,7 @@ function dealRender(force){
 
 function dealRenderIn(dlg){
   const d=dlDeal(), kp=dlKp(), c=dealCalc(kp,d);
+  if (dealSyncConds(c)) persist();
     const keyT = DL.key ? `ключевая ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD}` : 'по умолчанию';
   const d0h=dlD0(), calT=d0h?dlCalNote(d0h).replace(/<[^>]+>/g,''):'';
   const head=`<div class="dlg-h"><h3>Экономика сделки${!DL.ex&&S.number?` · КП № ${esc(S.number)}`:''}<small>${esc(S.client||'Получатель не указан')}</small></h3>
@@ -722,7 +791,7 @@ function dealBind(dlg){
     if (t.dataset.kpcur!=null){ kpSetCur(t.value); touch(); return; }
     if (t.dataset.dldd!=null){ if (DL.ex || !t.value) return; const d=dlDeal();
       if (!dlD0()){ d.start=new Date().toISOString().slice(0,10); toast('Дата договора — сегодня. Её можно изменить вверху окна'); }
-      const n=dlIsoDay(t.value)-(+t.dataset.base||0);
+      const base=+t.dataset.base||0, day=dlIsoDay(t.value), n=t.dataset.kind==='work' ? (day>=base ? dlCountWork(base, day) : -1) : day-base;
       if (!(n>=0)){ toast(`Дата раньше события, от которого считается срок (${dlDayRu(+t.dataset.base||0)}) — выберите дату позже`); return dealRender(); }
       dlSet(d, t.dataset.dldd, String(n)); const m=/^sup\.(\d+)\./.exec(t.dataset.dldd); if (m) dlSaveSupplier(d.sup[+m[1]]); touch(); return dealRender(); }
     if (t.dataset.xcst!=null){ const d=dlDeal(); d.xc=d.xc||{}; const off={...(d.xc.off||{})}; if (t.checked) delete off[t.dataset.xcst]; else off[t.dataset.xcst]=false; d.xc.off=off; touch(); return dealRender(); }
@@ -732,6 +801,19 @@ function dealBind(dlg){
       const m=/^sup\.(\d+)\./.exec(t.dataset.dl); if (m && !DL.ex) dlSaveSupplier(dlDeal().sup[+m[1]]); touch(); dealRender(); }
     if (t.dataset.hspick!=null){ const o=dlHsCats().find(z=>z.key===t.value); if (o){ dlSaveHs(t.dataset.hspick, 'code', o.code); dlSaveHs(t.dataset.hspick, 'duty', o.duty); touch(); toast(`Код ${o.code||'—'}, пошлина ${o.duty||0} % — «${o.name}»`); } return dealRender(); }
     if (t.dataset.dlmap){ const d=dlDeal(); d.map={...(d.map||{}), [t.dataset.dlmap]:t.value}; touch(); dealRender(); } });
+  // перетаскивание этапов оплаты мышью
+  dlg.addEventListener('dragstart', e=>{ const h=e.target.closest&&e.target.closest('[data-dndh]'); if (!h) return;
+    DL.drag={grp:h.dataset.dndh, from:+h.dataset.i}; e.dataTransfer.effectAllowed='move'; try{ e.dataTransfer.setData('text/plain', 'stage'); }catch(_){}
+    const row=h.closest('.dl-tr'); if (row){ row.classList.add('dragging'); try{ e.dataTransfer.setDragImage(row, 20, 20); }catch(_){} } });
+  const dropRow=e=>{ const r=e.target.closest&&e.target.closest('.dl-tr[data-dnd]'); return r && DL.drag && r.dataset.dnd===DL.drag.grp ? r : null; };
+  dlg.addEventListener('dragover', e=>{ const r=dropRow(e); if (!r) return; e.preventDefault(); e.dataTransfer.dropEffect='move';
+    const b=r.getBoundingClientRect(), after=e.clientY>b.top+b.height/2;
+    dlg.querySelectorAll('.dl-tr.drop-b,.dl-tr.drop-a').forEach(x=>{ if (x!==r) x.classList.remove('drop-b','drop-a'); });
+    r.classList.toggle('drop-a', after); r.classList.toggle('drop-b', !after); });
+  dlg.addEventListener('drop', e=>{ const r=dropRow(e); if (!r) return; e.preventDefault();
+    const b=r.getBoundingClientRect(), i=+r.dataset.i, from=DL.drag.from; let to=e.clientY>b.top+b.height/2 ? i+1 : i; if (to>from) to--;
+    const msg=dlMoveStage(DL.drag.grp, from, to); DL.drag=null; if (msg){ touch(); toast(msg); } dealRender(); });
+  dlg.addEventListener('dragend', ()=>{ DL.drag=null; dlg.querySelectorAll('.dl-tr.dragging,.dl-tr.drop-b,.dl-tr.drop-a').forEach(x=>x.classList.remove('dragging','drop-b','drop-a')); });
   dlg.addEventListener('toggle', e=>{ const k=e.target.dataset&&e.target.dataset.more; if (k!=null){ DL.more=DL.more||{}; DL.more[k]=e.target.open; } }, true);
   dlg.addEventListener('click', e=>{ const b=e.target.closest('[data-dlx]');
     if (DL.combo && !e.target.closest('.dl-combo')) comboClose();
@@ -746,6 +828,7 @@ function dealBind(dlg){
     if (a==='apply') return dealApplyPrice(+b.dataset.s);
     if (a==='reset'){ dlSet(d, b.dataset.path, ''); }
     if (a==='resetdays') d.days={};
+    if (a==='mv'){ const msg=dlMoveStage(b.dataset.grp, +b.dataset.i, +b.dataset.to); if (msg){ touch(); toast(msg); } return dealRender(); }
     if (a==='step'){ DL.open=b.dataset.id; dealRender();
       // новая вкладка — с начала, без анимации прокрутки; на телефоне вкладки прилипают к верху прокрутки
       const f=dlg.querySelector('.dl-form'), bx=dlg.querySelector('.dl-b'), tw=dlg.querySelector('.dl-tabw'), t=dlg.querySelector('.dl-tabs');

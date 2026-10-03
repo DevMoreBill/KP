@@ -559,3 +559,22 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-hd>span{display:flex;align-items:center;gap:6px}
 .dl-tab{padding:0 8px;gap:6px;font-size:13px}
 .dl-tn{flex-basis:20px;width:20px;height:20px;font-size:11px}
+/* микро-меню «кал. дн. / раб. дн.» */
+.dealwin .dl-form select.dl-dk{flex:0 0 auto;width:auto;min-width:0;height:30px;min-height:30px;padding:2px 22px 2px 6px;font-size:12px;border-radius:8px;background-position:right 5px center;color:var(--muted)}
+.dl-ddr>.dl-in input{width:56px}
+.dl-trw .dl-troff{flex:0 0 auto}
+.dl-troff input{width:48px}
+/* перестановка этапов: ручка ⠿ и стрелки */
+.dl-tr{grid-template-columns:22px 26px minmax(0,1fr) 200px 140px 34px;grid-template-areas:"mv n nm am r x" "mv n w w r x"}
+.dl-mv{grid-area:mv;display:flex;flex-direction:column;align-items:center;gap:2px;align-self:stretch;justify-content:center}
+.dl-hdl{cursor:grab;color:var(--muted);font-size:16px;line-height:1;padding:4px 2px;border-radius:6px;user-select:none}
+.dl-hdl:hover{background:var(--soft);color:var(--ink)}
+.dl-hdl:active{cursor:grabbing}
+.dl-mvb{display:none;border:1px solid var(--line);background:var(--card);border-radius:6px;width:22px;height:20px;padding:0;font-size:12px;line-height:1;cursor:pointer;color:var(--muted)}
+.dl-mvb:disabled{opacity:.35;cursor:default}
+.dl-tr.dragging{opacity:.45}
+.dl-tr.drop-b{box-shadow:inset 0 3px 0 var(--navy)}
+.dl-tr.drop-a{box-shadow:inset 0 -3px 0 var(--navy)}
+.mob .dl-hdl{display:none}
+.mob .dl-mvb{display:block}
+@media (max-width:640px){ .dl-tr{grid-template-columns:24px 24px minmax(0,1fr) 34px;grid-template-areas:"mv n nm x" "mv n am am" "mv n w w" "mv n r r"} }
