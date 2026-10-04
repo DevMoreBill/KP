@@ -140,3 +140,13 @@ dialog.typesed[open]{display:flex}
 /* обслуживание базы */
 .st-mh{display:flex;align-items:center;gap:6px}
 select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 8px;font-size:13px;margin:0 2px}
+/* ключи API — прямо во вкладке */
+.key-row{display:flex;gap:8px;align-items:flex-end}
+.key-row .f{flex:1;margin-bottom:0}
+.key-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:4px 18px}
+.key-f>.muted{margin:4px 0 10px;font-size:12px}
+.key-f>.f{margin-bottom:0}
+.key-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;bottom:0}
+.key-bar .sp{flex:1}
+@media (max-width:600px){.key-grid{grid-template-columns:1fr}.key-note{display:none}.key-bar{padding:10px 12px}.key-bar .btn{width:100%}}
+.warn-t{color:#9a6b00}

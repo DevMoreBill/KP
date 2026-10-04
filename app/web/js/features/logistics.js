@@ -56,7 +56,7 @@ function lgSync(d){
   }
 }
 
-// ---------- предложения перевозчиков (ATI.SU, ПЭК, Деловые Линии, КИТ) — сервер /api/logistics/quote
+// ---------- предложения перевозчиков (ATI.SU, ПЭК, Энергия, Деловые Линии, КИТ, СДЭК, Возовоз) — сервер /api/logistics/quote
 function lgQuoteKey(r){ return JSON.stringify([r.from&&r.from.name, r.to&&r.to.name, r.km, r.vehicles.map(v=>v.C.id+':'+Math.round(v.cost)), r.unload&&r.unload.id, Math.round(r.transport||0)]); }
 function lgQuoteFor(s, r){ const q=s.lg&&s.lg.quote; return q && q.key===lgQuoteKey(r) ? q : null; }
 function lgRateSrc(r){ const src=[...new Set(r.vehicles.map(v=>v.C.src+(v.C.srcAt?' от '+stTime(v.C.srcAt).slice(0,10):'')))]; return src.join('; ')||'тарифы «Настроек»'; }
@@ -164,12 +164,12 @@ function dlLogistics(c){
         ${T.unload.map(u=>`<option value="${esc(u.id)}"${lg.unload===u.id?' selected':''}>${esc(u.name)} — ${lgRub(u.cost)}</option>`).join('')}</select></label>
       ${veh}<p class="muted lg-note">Ставки за км: ${esc(lgRateSrc(r))}. Погрузка на складе поставщика обычно за его счёт.</p></div>`;
     // 5. цены перевозчиков — все «дверь в дверь», с агентом и страхованием; выбор — любое или максимальное
-    const pv=(LG.status&&LG.status.providers)||{}, noKey=[!pv.ati?'ATI.SU':'', !pv.dellin?'Деловые Линии':'', !pv.kit?'КИТ':''].filter(Boolean);
+    const pv=(LG.status&&LG.status.providers)||{}, noKey=[!pv.ati?'ATI.SU':'', !pv.dellin?'Деловые Линии':'', !pv.kit?'КИТ':'', !pv.cdek?'СДЭК':'', !pv.vozovoz?'Возовоз':''].filter(Boolean);
     const pick=lg.pick||'max', nmR=`lgpick${k}`;
     const kindT={model:'расчёт по тарифам',ftl:'отдельная машина',ltl:'сборный груз'};
-    const offers = r.need ? '' : `<div class="lg-sec"><h5><span class="lg-sn">${n0+4}</span>Перевозчик и цена${dlQ('Все цены — от двери до двери в одних условиях: перевозка (если перевозчик возит до терминала — плюс забор и доставка по городу по тарифам), агент-экспедитор '+String(T.agentPct).replace('.',',')+' %, обязательное страхование груза '+String(T.insPct).replace('.',',')+' % (не меньше '+lgRub(T.insMin)+') и разгрузка. Отдельная машина — ATI.SU «Средние ставки» (верхняя граница за 30 дней, с НДС); сборный груз — ПЭК, Деловые Линии, КИТ. По умолчанию в сделку идёт максимальное предложение; можно выбрать перевозчика.')}
+    const offers = r.need ? '' : `<div class="lg-sec"><h5><span class="lg-sn">${n0+4}</span>Перевозчик и цена${dlQ('Все цены — от двери до двери в одних условиях: перевозка (если перевозчик возит до терминала — плюс забор и доставка по городу по тарифам), агент-экспедитор '+String(T.agentPct).replace('.',',')+' %, обязательное страхование груза '+String(T.insPct).replace('.',',')+' % (не меньше '+lgRub(T.insMin)+') и разгрузка. Отдельная машина — ATI.SU «Средние ставки» (верхняя граница за 30 дней, с НДС); сборный груз — ПЭК, Энергия, Деловые Линии, КИТ, СДЭК, Возовоз. По умолчанию в сделку идёт максимальное предложение; можно выбрать перевозчика.')}
         ${ex?'':`<button class="btn ghost lg-qb" type="button" data-lgx="quote" data-k="${k}"${LG.busy[s.id]?' disabled':''}>${LG.busy[s.id]?'Запрашиваю…':Q?'Обновить цены':'Запросить цены'}</button>`}</h5>
-      ${noKey.length&&!ex?`<p class="muted lg-note">Без ключа: ${esc(noKey.join(', '))} — «⋯» → «Интеграции».</p>`:''}
+      ${noKey.length&&!ex?`<p class="muted lg-note">Не подключены: ${esc(noKey.join(', '))} — ключи в «Настройки → Ключи API».</p>`:''}
       ${LG.err[s.id]?`<p class="msg err">${esc(LG.err[s.id])}</p>`:''}
       <div class="lg-tw"><table class="lg-p lg-of"><tbody>
         <tr class="${pick==='max'?'on':''}"><td><label class="lg-pk"><input type="radio" name="${nmR}" data-lgpick="max" data-k="${k}"${pick==='max'?' checked':''}${ex?' disabled':''}><b>Максимальное предложение</b></label><small>рекомендуется: запас на рост ставок — сейчас ${esc(fin.max.src)}</small></td><td></td><td></td><td class="num">${lgRub(fin.max.total)}</td></tr>
@@ -267,8 +267,8 @@ async function stLogistics(m){
     <details class="lg-src"><summary>Откуда стандартные ставки</summary><ul>${LG_DEFAULTS.sources.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>
     <p class="muted">${LG.saved&&LG.saved.updatedAt?`Изменены ${esc(stTime(LG.saved.updatedAt))}${LG.saved.updatedBy?' · '+esc(LG.saved.updatedBy):''}`:'Стандартные значения — уточните по счетам перевозчиков'}</p>
     <div class="lg-auto">
-      <div class="sub st-mh">Автообновление ставок за км ${tip('<p>Раз в заданное число дней программа запрашивает у ATI.SU «Средние ставки» по опорным направлениям и берёт <b>верхнюю границу</b> средних ставок за период (с НДС) — максимум по направлениям — для каждого класса машины.</p><p>Нужна лицензия «API Средних ставок» ATI.SU и ключ в «Интеграциях». Снимите галочку «Авто» у машины, чтобы закрепить свою ставку.</p>')}</div>
-      <p class="${pv.ati?'muted':'bad-t'}">${pv.ati?'Ключ ATI.SU задан.':'Ключ ATI.SU не задан — автообновление не работает («Интеграции» → ключ ATI.SU).'}
+      <div class="sub st-mh">Автообновление ставок за км ${tip('<p>Раз в заданное число дней программа запрашивает у ATI.SU «Средние ставки» по опорным направлениям и берёт <b>верхнюю границу</b> средних ставок за период (с НДС) — максимум по направлениям — для каждого класса машины.</p><p>Нужна лицензия «API Средних ставок» ATI.SU и ключ в «Настройки → Ключи API». Снимите галочку «Авто» у машины, чтобы закрепить свою ставку.</p>')}</div>
+      <p class="${pv.ati?'muted':'bad-t'}">${pv.ati?'Ключ ATI.SU задан.':'Ключ ATI.SU не задан — автообновление не работает («Настройки → Ключи API»).'}
         ${au&&au.at?` Последнее обновление: <b>${esc(stTime(au.at))}</b>, классов обновлено: ${Object.keys(au.classes||{}).length}.`:' Обновлений ещё не было.'}</p>
       ${au&&(au.errors||[]).length?`<details class="lg-src"><summary>Замечания последнего обновления (${au.errors.length})</summary><ul>${au.errors.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>`:''}
       <div class="lg-autog"><label class="cw-chk"><input type="checkbox" id="lgAuOn"${cfg.on!==false?' checked':''}> обновлять автоматически</label>

@@ -317,11 +317,7 @@ async function stTemplates(m){
     if (e.target.closest('[data-types]')) openTypesEditor(); };
 }
 
-async function stKeys(m){
-  m.innerHTML=`<div class="st-card"><p class="sub">Ключи API</p><p class="muted">Checko и DaData — реквизиты и проверка контрагентов; ConvertAPI — PDF, если на сервере нет Word и LibreOffice.</p>
-    <button class="btn primary" type="button" data-keys>Изменить ключи</button></div>`;
-  m.onclick=e=>{ if (e.target.closest('[data-keys]')) openIntegrations(); };
-}
+async function stKeys(m){ return keysForm(m); }
 
 async function stSecurity(m){
   const mg=await aapi('migrations');
