@@ -328,9 +328,11 @@ def quote(store, req):
             d, via = None, ''
             for fa in [frm.get('name')] + list(frm.get('alt') or []):
                 for tb in [to.get('name')] + list(to.get('alt') or []):
-                    d = d or ati_direction(store, fa, tb)
-                    if d and not via and (fa != frm.get('name') or tb != to.get('name')):
-                        via = ' по направлению %s → %s (ближайшие крупные города)' % (d['from'], d['to'])
+                    d = ati_direction(store, fa, tb)
+                    if d:
+                        if fa != frm.get('name') or tb != to.get('name'):
+                            via = ' по направлению %s → %s (ближайшие крупные города)' % (d['from'], d['to'])
+                        break
                 if d:
                     break
             if not d:
