@@ -160,7 +160,10 @@ async function download(){
     if (!S.template) throw new Error('не выбран шаблон КП (папка templates рядом с программой пуста)');
     let pack;
     try{ pack=await templatePack(S.template); }catch(e){ throw new Error('шаблон «'+S.template+'» не загрузился: '+e.message); }
-    if (!S.kpId){ const r=await api('/api/kp/new',{method:'POST'}); S.kpId=r.id; S.number=r.number; St.kpId=r.id; St.number=r.number; S.authorId=meId()||S.managerId||''; }
+    if (!S.kpId){ const r=await api('/api/kp/new',{method:'POST'}); S.kpId=r.id; S.number=r.number; St.kpId=r.id; St.number=r.number; S.authorId=meId()||S.managerId||''; S._rev=0; }
+    else if (S._rev!=null){   // КП успели пересохранить у коллеги — спросить до записи файла
+      const rv=await api(`/api/kp/${S.kpId}/rev`);
+      if (rv.rev!==S._rev){ if (!conflictAsk(rv, '/api/kp/')){ const e=new Error('declined'); e.code='declined'; throw e; } S._rev=rv.rev; } }
     else if (!S.authorId && dealAllowed()) S.authorId=meId()||S.managerId||'';   // КП прежней версии: автор — тот, кто его ведёт
     const blob = await renderDocx(St, pack, pack.settings);
     btn.textContent='Сохраняю в журнал…';
@@ -172,7 +175,8 @@ async function download(){
     await api(`/api/kp/${S.kpId}/docx?name=${encodeURIComponent(fn)}&dir=${encodeURIComponent(managerFolder())}`,{method:'PUT',body:blob});
     if (!S.createdAt) S.createdAt=new Date().toISOString();   // когда КП создано (для журнала)
     const clean=JSON.parse(JSON.stringify(S,(k,v)=>k.startsWith('_')?undefined:v));
-    await api(`/api/kp/${S.kpId}/state`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(clean)});
+    const sr=await api(`/api/kp/${S.kpId}/state`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8',...(S._rev!=null?{'X-KP-Rev':String(S._rev)}:{})},body:JSON.stringify(clean)});
+    if (sr && sr.rev!=null) S._rev=sr.rev;
     const meta={ id:S.kpId, number:S.number, date:S.date, client:S.client, clientInn:S.clientInn||'', sum:t.sum, units:t.units, positions:S.items.length,
       items:S.items.map(x=>x.name).slice(0,3), file:fn, manager:S.manager.name, managerPost:S.manager.position||'',
       createdAt:S.createdAt, savedAt:new Date().toISOString(), econ:kpEconomics(), authorId:S.authorId||'', managerId:S.managerId||'', deal:dealSummary() };

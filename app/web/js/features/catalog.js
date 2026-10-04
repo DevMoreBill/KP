@@ -7,8 +7,10 @@ const CatSrv = {
   async full(){ return await api('/api/catalog?full=1'); },
   // auto — сохранение КП обновляет цены и историю (без модерации); при включённой модерации ответ {pending:true}
   async put(doc, auto){ doc={...doc, photo:await uploadImg(doc.photo, imgPlace(doc,'photo')), logo:await uploadImg(doc.logo, imgPlace(doc,'logo')), gallery: doc.gallery ? await Promise.all(doc.gallery.map(async g=>({...g, ...(await uploadImg(g, imgPlace(doc,'gallery',g)))}))) : doc.gallery};
-    const r=await api('/api/catalog/'+doc.id,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8',...(auto?{'X-KP-Edit':'auto'}:{})},body:JSON.stringify(doc)});
+    // _rev — с какой правки позиции начинали: если её успели изменить, сервер ответит «конфликт» (api спросит, перезаписать ли)
+    const r=await api('/api/catalog/'+doc.id,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8',...(auto?{'X-KP-Edit':'auto'}:{}),...(doc._rev!=null?{'X-KP-Rev':String(doc._rev)}:{})},body:JSON.stringify({...doc,_rev:undefined})});
     if (r && r.pending) doc._pending=true;
+    if (r && r.rev!=null) doc._rev=r.rev;
     return doc; } };
 
 const store = () => CatSrv;
@@ -65,7 +67,7 @@ async function syncCatalog(number){
     if (saved){ if (saved.photo) it.photo = saved.photo; if (saved.logo) it.logo = saved.logo; if (saved.gallery && it.gallery && saved.gallery.length===it.gallery.length) it.gallery=it.gallery.map((g,k)=>({...g, src:saved.gallery[k].src})); }
     for (const o of (it.options||[])){
       if (!o.name.trim() || !o.price) continue;
-      const od = list.find(d=>d.id===o.catId) || list.find(d=>norm(d.name)===norm(o.name));
+      const od = await fullDoc(list.find(d=>d.id===o.catId) || list.find(d=>norm(d.name)===norm(o.name)));   // полная позиция, а не карточка списка
       const ob = od ? JSON.parse(JSON.stringify(od)) : { id: uid()+uid(), kind:'option', prices: [], features:[], groups:[] };
       if (!od && !allPresets().some(p=>norm(p.name)===norm(o.name)) && !/авр|автоматическ/i.test(o.name)) ob.kind='option';
       Object.assign(ob,{ name:o.name, price:o.price, spec:ob.spec||'', updatedAt:new Date().toISOString(), short:o.short||ob.short||'', unit:o.unit||'шт.' });

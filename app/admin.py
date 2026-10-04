@@ -18,6 +18,7 @@
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -25,6 +26,8 @@ import threading
 import time
 import urllib.parse
 from datetime import datetime, timedelta
+
+from storage import Conflict
 
 IDLE_SECONDS = 15 * 60
 TRASH_DAYS = 30
@@ -246,6 +249,52 @@ def history_out(h, text):
     return json.dumps(rows, ensure_ascii=False)
 
 
+def _jround(x):
+    return int(math.floor(x + 0.5))
+
+
+def econ_rub(r):
+    """Сумма КП в рублях и прибыль в рублях (копейки) для итогов журнала — как jEcon() в интерфейсе."""
+    e = r.get('econ') if isinstance(r.get('econ'), dict) else None
+    cur = (e or {}).get('cur') or 'RUB'
+    base = ((e or {}).get('sum') if e else r.get('sum')) or 0
+    if r.get('locked'):
+        return ((r.get('sum') or 0) if cur == 'RUB' else None), None
+    sum_rub = base if cur == 'RUB' else ((e or {}).get('sumRub') or None)
+    dd = r.get('deal') if isinstance(r.get('deal'), dict) else None
+    try:
+        if dd:
+            return sum_rub, (_jround(float(dd.get('profit') or 0) * 100) if dd.get('confirmed') else None)
+        if e and e.get('withCost'):
+            if cur == 'RUB':
+                return sum_rub, e.get('profit')
+            if e.get('sumRub') and e.get('sum'):
+                return sum_rub, _jround(float(e['profit']) * float(e['sumRub']) / float(e['sum']))
+    except (TypeError, ValueError):
+        pass
+    return sum_rub, None
+
+
+def history_page(h, store, q):
+    """Журнал КП постранично: поиск и автор — в базе; итоги (сумма, прибыль) — по всему отбору."""
+    try:
+        limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, int(q.get('offset') or 0))
+    except ValueError:
+        limit, offset = 50, 0
+    metas = store.kp_metas_where(q.get('q', ''), q.get('author', ''))
+    rows = _loads(history_out(h, '[' + ','.join(m for m in metas if _loads(m) is not None) + ']')) or []
+    rows = [r for r in rows if isinstance(r, dict)]
+    s_sum, s_profit, n_profit = 0, 0, 0
+    for r in rows:
+        a, p = econ_rub(r)
+        s_sum += a or 0
+        if p is not None:
+            s_profit += p
+            n_profit += 1
+    return {'total': len(rows), 'items': rows[offset:offset + limit], 'authors': store.kp_authors(),
+            'agg': {'sum': s_sum, 'profit': s_profit, 'profitN': n_profit}}
+
+
 def log(h, store, action, etype=None, eid=None, before=None, after=None, result='success', admin=None):
     uid, name, role = actor(h, admin)
     try:
@@ -307,12 +356,15 @@ def _put_product(h, store, cid, admin):
         b, a = diff(before, after, AUTO_KEYS)
         log(h, store, 'submit_edit', 'product', cid, b, a, admin=False)
         return h.send_json({'ok': True, 'pending': True, 'pendingId': pid})
-    store.catalog_put(cid, text)
+    try:
+        rev = store.catalog_put(cid, text, actor(h, admin)[1], h.base_rev())
+    except Conflict as e:
+        return h.conflict(e)
     auto = before is not None and set(diff(before, after)[1]) <= AUTO_KEYS
     b, a = diff(before, after)
     log(h, store, 'price_sync' if auto else ('edit_product' if before else 'create_product'), 'product', cid,
         b if before else None, a, admin=admin)
-    return h.send_json({'ok': True})
+    return h.send_json({'ok': True, 'rev': rev})
 
 
 # ---------------------------------------------------------------- проверка прав перед маршрутом
@@ -558,6 +610,8 @@ class AdminApi:
             return self.export_sqlite()
         if sub in ('import/preview', 'import') and m == 'POST':
             return self.ok(self.import_(self.data(), apply=(sub == 'import'), sections=q.get('sections')))
+        if sub.startswith('maint'):
+            return self.maint(m, sub, q)
         if sub == 'migrations':
             from storage import MIGRATIONS
             return self.ok({'applied': st.migrations_applied(), 'all': [x[0] for x in MIGRATIONS]})
@@ -566,6 +620,41 @@ class AdminApi:
             st.backup(os.path.join(os.path.dirname(st.path), 'backup', 'kp-%s-before-migration-down.sqlite3' % datetime.now().strftime('%Y%m%d-%H%M%S')))
             st.migration_down(r.group(1))
             return self.ok()
+        return self.err(404, 'not found')
+
+    # ---------- обслуживание базы: копии, сжатие, журнал, изображения ----------
+    def maint(self, m, sub, q):
+        import maintenance as mt
+        st = self.st
+        data_dir = os.path.dirname(st.path)
+        img_dir = os.path.join(data_dir, 'img')
+        if sub == 'maint' and m == 'GET':
+            return self.ok(mt.summary(st, data_dir))
+        if sub == 'maint/backup' and m == 'POST':
+            rec = mt.daily_backup(st, data_dir, force=True)
+            self.log('backup_db', 'db', 'auto', None, {'ok': rec.get('ok'), 'file': os.path.basename(rec.get('file') or '')}, result='success' if rec.get('ok') else 'failed')
+            return self.ok(mt.summary(st, data_dir))
+        if sub == 'maint/run' and m == 'POST':
+            rec = mt.db_maintenance(st, vacuum=True)
+            self.log('maintain_db', 'db', 'vacuum', None, rec.get('vacuum'))
+            return self.ok(mt.summary(st, data_dir))
+        if sub == 'maint/audit' and m == 'POST':
+            years = int(self.data().get('years') or 0)
+            if years < 1 or years > 20:
+                raise ValueError('Срок хранения журнала — от 1 до 20 лет')
+            cfg = st.kv_get('settings') or {}
+            cfg['auditYears'] = years
+            st.kv_set('settings', cfg)
+            n = mt.archive_audit(st, data_dir, years)
+            self.log('edit_settings', 'settings', 'auditYears', None, {'years': years, 'archived': n})
+            return self.ok(dict(mt.summary(st, data_dir), archivedNow=n))
+        if sub == 'maint/images' and m == 'GET':
+            lst = mt.unused_images(st, img_dir)
+            return self.ok({'count': len(lst), 'bytes': sum(x['bytes'] for x in lst), 'sample': [x['rel'] for x in lst[:20]]})
+        if sub == 'maint/images' and m == 'POST':
+            res = mt.purge_images(st, img_dir)
+            self.log('purge_images', 'images', 'unused', None, res)
+            return self.ok(res)
         return self.err(404, 'not found')
 
     # ---------- учётные записи администраторов ----------
@@ -637,8 +726,10 @@ class AdminApi:
         elif etype == 'supplier':
             rows = [{'id': x['id'], 'title': x.get('name', ''), 'sub': ' · '.join(v for v in (x.get('country'), x.get('currency')) if v)}
                     for x in st.suppliers_list()]
-        else:
-            rows = [{'id': x['id'], 'title': x.get('name', ''), 'sub': 'ИНН %s' % x.get('inn', '')} for x in st.clients_all()]
+        else:       # контрагентов тысячи: ищем в базе, показываем первые 300
+            found = st.clients_search(qs, 300)
+            rows = [{'id': x['id'], 'title': x.get('name', ''), 'sub': 'ИНН %s' % x.get('inn', '')} for x in found['items']]
+            return {'total': found['total'], 'items': rows}
         if ql:
             rows = [r for r in rows if ql in (r['title'] + ' ' + r['sub'] + ' ' + str(r['id'])).lower()]
         return {'total': len(rows), 'items': rows if etype != 'catalog' else rows[:300]}
@@ -647,7 +738,9 @@ class AdminApi:
         etype, ids = d.get('type'), d.get('ids') or []
         if etype not in ('kp', 'catalog', 'manager', 'client', 'supplier') or not isinstance(ids, list) or not ids:
             raise ValueError('Не выбрано, что удалить')
-        rows = {r['id']: r['title'] for r in self.listing(etype, '')['items']} if etype != 'catalog' else {}
+        rows = {r['id']: r['title'] for r in self.listing(etype, '')['items']} if etype not in ('catalog', 'client') else {}
+        if etype == 'client':
+            rows = {eid: (self.st.client_get(str(eid)) or {}).get('name') for eid in ids}
         titles = {eid: rows.get(eid) or next((r['title'] for r in self.listing(etype, str(eid))['items'] if r['id'] == eid), str(eid)) for eid in ids}
         n = 0
         for eid in ids:
@@ -788,14 +881,13 @@ class AdminApi:
                         st.catalog_put(x['id'], json.dumps({k: v for k, v in x.items() if k not in ('_light', 'st', 'pricesCount')}, ensure_ascii=False))
                 elif s == 'kp':
                     for x in ok:
-                        st.write('INSERT OR REPLACE INTO kp (id, number, state, meta, docx, updated) VALUES (?,?,?,?,?,?)',
-                                 (x['id'], x.get('number'), x.get('state'), x.get('meta'), x.get('docx'), x.get('updated') or _now()))
+                        st.kp_import(x)
                 elif s == 'managers':
                     for x in ok:
                         st.manager_put(x['id'], json.dumps(x, ensure_ascii=False))
                 else:
                     for x in ok:
-                        st.write('INSERT OR REPLACE INTO clients (id, doc, updated) VALUES (?,?,?)', (x['id'], json.dumps(x, ensure_ascii=False), _now()))
+                        st.client_put(x['id'], x)
         if apply and 'settings' in want and isinstance(sec['settings'], dict):
             for k in ('types', 'settings'):
                 if sec['settings'].get(k) is not None:

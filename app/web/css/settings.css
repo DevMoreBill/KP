@@ -132,3 +132,6 @@ dialog.typesed[open]{display:flex}
 .ty-foot .sp{flex:1}
 .ty-foot .warn{color:var(--danger);font-weight:600}
 @media (max-width:820px){ .ty-wrap{grid-template-columns:1fr;overflow:auto} .ty-list{max-height:38vh;border-right:0;border-bottom:1px solid var(--line)} .ty-opt{grid-template-columns:1fr 1fr} }
+/* обслуживание базы */
+.st-mh{display:flex;align-items:center;gap:6px}
+select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 8px;font-size:13px;margin:0 2px}
