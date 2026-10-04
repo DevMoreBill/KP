@@ -125,30 +125,40 @@ async function checkRun(force){
   renderForm(); persist(); if (!S.check.error && S.client) saveClient(false);
 }
 
-async function openIntegrations(){
-  const d=$('#dlg'); d.classList.remove('wide');
+// Ключи API — форма прямо в «Настройки → Ключи API» (отдельного окна нет)
+const KEY_GROUPS=[
+  ['Контрагенты', 'Реквизиты по ИНН подтягиваются и без ключей — из открытого сервиса ФНС (egrul.nalog.ru). С ключами данные полнее и быстрее, а Checko ещё и проверяет контрагента.', [
+    {id:'checkoKey', on:'checko', mask:'checkoMask', t:'API-ключ Checko', ph:'Ключ из личного кабинета checko.ru → API', h:'Статус, финансы, суды, ФССП, реестры. Запросы Checko тратятся только на проверки.'},
+    {daily:true},
+    {id:'dadataKey', on:'dadata', mask:'dadataMask', t:'API-ключ DaData', ph:'Ключ из личного кабинета dadata.ru', h:'Быстрый поиск реквизитов по ИНН (бесплатно до 10 000 запросов в день).'}]],
+  ['Доставка по России — цены перевозчиков', 'Без ключа считают ПЭК и Энергия. Остальные перевозчики подключаются ключом — их цены появятся во вкладке «Логистика» сделки. В итог идёт максимальное предложение со сноской-источником.', [
+    {id:'atiToken', on:'ati', mask:'atiMask', t:'ATI.SU — «API Средних ставок»', ph:'ati.su → Профиль → API → токен', h:'Отдельная машина: средние ставки по направлению (верхняя граница) и автообновление ставок за км. Платная лицензия.'},
+    {id:'dellinKey', on:'dellin', mask:'dellinMask', t:'Деловые Линии (appkey)', ph:'dev.dellin.ru → регистрация → ключ приложения', h:'Сборный груз, бесплатно.'},
+    {id:'kitToken', on:'kit', mask:'kitMask', t:'КИТ — токен', ph:'tk-kit.ru → личный кабинет → API', h:'Сборный груз.'},
+    {id:'cdekId', on:'cdek', mask:'cdekIdMask', t:'СДЭК — идентификатор (Account)', ph:'lk.cdek.ru → Интеграция → Account', h:'Нужен договор со СДЭК. Ключи выдаются в личном кабинете: «Интеграция → Создать ключ».'},
+    {id:'cdekSecret', on:'cdek', mask:'cdekSecretMask', t:'СДЭК — секретный ключ (Secure password)', ph:'lk.cdek.ru → Интеграция → Secure password', h:'Считается тариф «дверь — дверь» (самый дешёвый из доступных).', secret:true},
+    {id:'vozovozToken', on:'vozovoz', mask:'vozovozMask', t:'Возовоз — токен', ph:'vozovoz.ru → личный кабинет → API', h:'Сборный груз, бесплатно после регистрации.'}]],
+  ['Документы', '', [
+    {id:'convertapiKey', on:'convertapi', mask:'convertapiMask', t:'ConvertAPI для PDF', ph:'Secret или токен из личного кабинета convertapi.com', h:'Нужен, только если на компьютере, где работает программа, нет Microsoft Word и LibreOffice.'}]]];
+
+async function keysForm(m){
   let k={}; try{ k=await api('/api/integrations'); }catch(e){}
-  d.innerHTML=`<div class="dlg-h"><h3>Интеграции</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-   <div class="dlg-b"><p class="muted" style="margin-top:0">Реквизиты по ИНН подтягиваются без ключей — из открытого сервиса ФНС (egrul.nalog.ru). С ключами данные полнее и быстрее, а Checko дополнительно проверяет контрагента. Ключи хранятся только на этом компьютере (в папке данных программы).</p>
-   <label class="f"><span>API-ключ Checko ${k.checko?`<b class="ok-t">задан: ${esc(k.checkoMask)}</b>`:''}</span><input type="text" id="kChecko" placeholder="${k.checko?'Оставьте пустым, чтобы не менять':'Ключ из личного кабинета checko.ru → API'}" autocomplete="off"></label>
-   <p class="muted">Checko: статус, финансы, суды, ФССП, реестры. Ключ — в личном кабинете checko.ru, раздел «API». Реквизиты по ИНН берутся из DaData и ФНС, запросы Checko тратятся только на проверки.</p>
-   <label class="f"><span>Лимит Checko, запросов в день ${k.quota&&k.quota.key?`<b class="muted">сегодня использовано ${k.quota.used} из ${k.quota.limit}${k.quota.queue?` · в очереди на полную проверку: ${k.quota.queue}`:''}</b>`:''}</span><input type="number" id="kDaily" min="1" max="100000" step="1" value="${esc(k.checkoDaily||100)}"></label>
-   <p class="muted">Бесплатно — 100 в календарный день (по Москве), полная проверка — 4 запроса. Когда лимит кончается, программа делает краткую или бесплатную проверку по ФНС, а полную выполняет сама на следующий день.</p>
-   <label class="f"><span>API-ключ DaData ${k.dadata?`<b class="ok-t">задан: ${esc(k.dadataMask)}</b>`:''}</span><input type="text" id="kDadata" placeholder="${k.dadata?'Оставьте пустым, чтобы не менять':'Ключ из личного кабинета dadata.ru'}" autocomplete="off"></label>
-   <p class="muted">DaData: быстрый поиск реквизитов по ИНН (бесплатно до 10 000 запросов в день).</p>
-   <p class="sub" style="margin:14px 0 4px">Доставка по России — цены перевозчиков</p>
-   <label class="f"><span>Токен ATI.SU «API Средних ставок» ${k.ati?`<b class="ok-t">задан: ${esc(k.atiMask)}</b>`:''}</span><input type="text" id="kAti" placeholder="${k.ati?'Оставьте пустым, чтобы не менять':'ati.su → Профиль → API → токен (нужна лицензия «API Средних ставок»)'}" autocomplete="off"></label>
-   <p class="muted">Средние ставки на отдельную машину по направлению (верхняя граница) и автообновление ставок за км. Платная лицензия ATI.SU.</p>
-   <label class="f"><span>Ключ Деловых Линий (appkey) ${k.dellin?`<b class="ok-t">задан: ${esc(k.dellinMask)}</b>`:''}</span><input type="text" id="kDellin" placeholder="${k.dellin?'Оставьте пустым, чтобы не менять':'dev.dellin.ru → регистрация → ключ приложения (бесплатно)'}" autocomplete="off"></label>
-   <label class="f"><span>Токен КИТ ${k.kit?`<b class="ok-t">задан: ${esc(k.kitMask)}</b>`:''}</span><input type="text" id="kKit" placeholder="${k.kit?'Оставьте пустым, чтобы не менять':'tk-kit.ru → личный кабинет → API'}" autocomplete="off"></label>
-   <p class="muted">Сборный груз: ПЭК — без ключа; Деловые Линии и КИТ — по ключу. Ключи хранятся только на этом компьютере.</p>
-   <label class="f"><span>Ключ ConvertAPI для PDF ${k.convertapi?`<b class="ok-t">задан: ${esc(k.convertapiMask)}</b>`:''}</span><input type="text" id="kConv" placeholder="${k.convertapi?'Оставьте пустым, чтобы не менять':'Secret или токен из личного кабинета convertapi.com'}" autocomplete="off"></label>
-   <p class="muted">Нужен, только если на компьютере, где работает программа, нет Microsoft Word и LibreOffice: тогда файл КП для PDF отправляется в сервис convertapi.com.</p>
-   <div class="row"><button class="btn primary" type="button" id="kSave">Сохранить</button>${k.checko?'<button class="btn ghost" type="button" id="kDelC">Удалить ключ Checko</button>':''}${k.dadata?'<button class="btn ghost" type="button" id="kDelD">Удалить ключ DaData</button>':''}${k.ati?'<button class="btn ghost" type="button" id="kDelA">Удалить токен ATI.SU</button>':''}${k.dellin?'<button class="btn ghost" type="button" id="kDelL">Удалить ключ Деловых Линий</button>':''}${k.kit?'<button class="btn ghost" type="button" id="kDelK">Удалить токен КИТ</button>':''}${k.convertapi?'<button class="btn ghost" type="button" id="kDelV">Удалить ключ ConvertAPI</button>':''}</div></div>`;
-  d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close();
-  const put=async body=>{ await api('/api/integrations',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(body)}); toast('Сохранено'); openIntegrations(); };
-  $('#kSave').onclick=()=>{ const b={}; const dl=+$('#kDaily').value; if (dl>0 && dl!==k.checkoDaily) b.checkoDaily=dl; const c=$('#kChecko').value.trim(), dd=$('#kDadata').value.trim(), cv=$('#kConv').value.trim(); if(c) b.checkoKey=c; if(dd) b.dadataKey=dd; if(cv) b.convertapiKey=cv; const ka=$('#kAti').value.trim(), kd=$('#kDellin').value.trim(), kk=$('#kKit').value.trim(); if(ka) b.atiToken=ka; if(kd) b.dellinKey=kd; if(kk) b.kitToken=kk; put(b); };
-  if ($('#kDelC')) $('#kDelC').onclick=()=>put({checkoKey:''}); if ($('#kDelD')) $('#kDelD').onclick=()=>put({dadataKey:''}); if ($('#kDelV')) $('#kDelV').onclick=()=>put({convertapiKey:''}); if ($('#kDelA')) $('#kDelA').onclick=()=>put({atiToken:''}); if ($('#kDelL')) $('#kDelL').onclick=()=>put({dellinKey:''}); if ($('#kDelK')) $('#kDelK').onclick=()=>put({kitToken:''});
+  const q=k.quota||{};
+  const fld=f=>f.daily ? `<div class="key-f"><label class="f"><span>Лимит Checko, запросов в день${q.key?` <b class="muted">сегодня ${q.used} из ${q.limit}${q.queue?` · в очереди: ${q.queue}`:''}</b>`:''}</span><input type="number" data-kday min="1" max="100000" step="1" value="${esc(k.checkoDaily||100)}"></label>
+      <p class="muted">Бесплатно — 100 в календарный день (по Москве), полная проверка — 4 запроса. Когда лимит кончается, делается краткая или бесплатная проверка по ФНС, а полная — на следующий день.</p></div>`
+    : `<div class="key-f"><div class="key-row"><label class="f"><span>${esc(f.t)} ${k[f.mask]?`<b class="ok-t">задан: ${esc(k[f.mask])}</b>`:(f.on&&k[f.on]===false&&f.id.startsWith('cdek')&&(k.cdekIdMask||k.cdekSecretMask)?'<b class="warn-t">нужны оба ключа</b>':'')}</span>
+      <input type="${f.secret?'password':'text'}" data-key="${f.id}" placeholder="${esc(k[f.mask]?'Новый ключ — заменит текущий':f.ph)}" autocomplete="off"></label>
+      ${k[f.mask]?`<button class="btn ghost sm" type="button" data-kdel="${f.id}" title="Удалить ключ">Удалить</button>`:''}</div>${f.h?`<p class="muted">${esc(f.h)}</p>`:''}</div>`;
+  m.innerHTML=KEY_GROUPS.map(([t,h,fs])=>`<div class="st-card"><p class="sub">${esc(t)}</p>${h?`<p class="muted">${esc(h)}</p>`:''}<div class="key-grid">${fs.map(fld).join('')}</div></div>`).join('')
+    +`<div class="st-card key-bar"><span class="muted key-note">Ключи хранятся только на компьютере, где работает программа (в папке данных).</span><span class="sp"></span><button class="btn primary" type="button" data-ksave>Сохранить ключи</button></div>`;
+  const put=async body=>{ try{ await api('/api/integrations',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(body)}); toast('Сохранено'); if (typeof LG!=='undefined') LG.status=null; keysForm(m); }catch(e){ toast('Не сохранилось: '+(e.message||e)); } };
+  m.onclick=e=>{ const d=e.target.closest('[data-kdel]'); if (d) return put({[d.dataset.kdel]:''});
+    if (!e.target.closest('[data-ksave]')) return;
+    const b={}; m.querySelectorAll('[data-key]').forEach(i=>{ const v=i.value.trim(); if (v) b[i.dataset.key]=v; });
+    const dl=+(m.querySelector('[data-kday]')||{}).value; if (dl>0 && dl!==(k.checkoDaily||100)) b.checkoDaily=dl;
+    if (!Object.keys(b).length) return toast('Нечего сохранять — введите ключ');
+    put(b); };
+  m.onkeydown=e=>{ if (e.key==='Enter' && e.target.matches('[data-key],[data-kday]')){ e.preventDefault(); m.querySelector('[data-ksave]').click(); } };
 }
 
 document.addEventListener('input', e=>{ const t=e.target; if (t.dataset && t.dataset.p==='clientInn'){ const v=t.value.replace(/\D/g,''); t.classList.toggle('bad', !!v && !validInn(v) && (v.length>=10)); if ((v.length===10||v.length===12) && validInn(v) && v!==S._lastInn){ S._lastInn=v; setTimeout(partyFind,50); } } });

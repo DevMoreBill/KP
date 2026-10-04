@@ -120,12 +120,15 @@ class Counterparties:
                 'convertapi': bool(k.get('convertapiKey')), 'convertapiMask': mask(k.get('convertapiKey', '')),
                 'checkoDaily': self._limit(), 'quota': self.quota(),
                 'ati': bool(k.get('atiToken')), 'atiMask': mask(k.get('atiToken', '')), 'dellin': bool(k.get('dellinKey')),
-                'dellinMask': mask(k.get('dellinKey', '')), 'kit': bool(k.get('kitToken')), 'kitMask': mask(k.get('kitToken', ''))}
+                'dellinMask': mask(k.get('dellinKey', '')), 'kit': bool(k.get('kitToken')), 'kitMask': mask(k.get('kitToken', '')),
+                'cdek': bool(k.get('cdekId') and k.get('cdekSecret')), 'cdekIdMask': mask(k.get('cdekId', '')),
+                'cdekSecretMask': mask(k.get('cdekSecret', '')), 'vozovoz': bool(k.get('vozovozToken')),
+                'vozovozMask': mask(k.get('vozovozToken', ''))}
 
     def save_keys(self, body):
         cur = self.keys()
         new = json.loads(body.decode('utf-8'))
-        for k in ('checkoKey', 'dadataKey', 'convertapiKey', 'atiToken', 'dellinKey', 'kitToken'):
+        for k in ('checkoKey', 'dadataKey', 'convertapiKey', 'atiToken', 'dellinKey', 'kitToken', 'cdekId', 'cdekSecret', 'vozovozToken'):
             if k in new:
                 v = str(new[k] or '').strip()
                 if v:
