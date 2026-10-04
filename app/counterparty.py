@@ -118,12 +118,14 @@ class Counterparties:
         return {'checko': bool(k.get('checkoKey')), 'checkoMask': mask(k.get('checkoKey', '')),
                 'dadata': bool(k.get('dadataKey')), 'dadataMask': mask(k.get('dadataKey', '')),
                 'convertapi': bool(k.get('convertapiKey')), 'convertapiMask': mask(k.get('convertapiKey', '')),
-                'checkoDaily': self._limit(), 'quota': self.quota()}
+                'checkoDaily': self._limit(), 'quota': self.quota(),
+                'ati': bool(k.get('atiToken')), 'atiMask': mask(k.get('atiToken', '')), 'dellin': bool(k.get('dellinKey')),
+                'dellinMask': mask(k.get('dellinKey', '')), 'kit': bool(k.get('kitToken')), 'kitMask': mask(k.get('kitToken', ''))}
 
     def save_keys(self, body):
         cur = self.keys()
         new = json.loads(body.decode('utf-8'))
-        for k in ('checkoKey', 'dadataKey', 'convertapiKey'):
+        for k in ('checkoKey', 'dadataKey', 'convertapiKey', 'atiToken', 'dellinKey', 'kitToken'):
             if k in new:
                 v = str(new[k] or '').strip()
                 if v:
