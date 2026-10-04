@@ -111,9 +111,12 @@ class Counterparties:
         out.sort(key=lambda c: c.get('usedAt') or c.get('updatedAt') or '', reverse=True)
         return out
 
-    def save_client(self, cid, body):
+    def save_client(self, cid, body, by='', base_rev=None):
         c = json.loads(body.decode('utf-8'))
         self._check_id(cid)
+        rev_in = c.pop('_rev', None)
+        if base_rev is None:
+            base_rev = rev_in
         old = self.store.client_get(cid) or {}
         # объекты и контакты накапливаются, повторы не дублируются
         def merge(a, b, key):
@@ -134,7 +137,7 @@ class Counterparties:
         c['updatedAt'] = datetime.now().isoformat(timespec='seconds')
         if not c.get('check') and old.get('check'):
             c['check'] = old['check']
-        self.store.client_put(cid, c)
+        c['_rev'] = self.store.client_put(cid, c, by, base_rev)
         return c
 
     # ---------- поиск по ИНН ----------

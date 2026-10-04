@@ -8,7 +8,7 @@ const ST = { tab:'stats', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f
 const ST_TABS = [['stats','Статистика'],['moderation','Модерация'],['delete','Данные: правка и удаление'],['trash','Корзина'],['audit','Журнал действий'],
   ['backup','Резервные копии'],['templates','Шаблоны и категории'],['keys','Ключи API'],['users','Администраторы'],['security','Пароль и доступ']];
 
-const ACT = { login:'Вход в «Настройки»', create_admin:'Новый администратор', edit_admin:'Изменение администратора', delete_admin:'Удаление администратора', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
+const ACT = { login:'Вход в «Настройки»', backup_db:'Копия базы', maintain_db:'Сжатие и проверка базы', purge_images:'Удаление лишних изображений', create_admin:'Новый администратор', edit_admin:'Изменение администратора', delete_admin:'Удаление администратора', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
   admin_request:'Запрос без входа', edit_settings:'Изменение настроек', edit_template:'Изменение шаблона', create_kp:'Создание КП', edit_kp:'Изменение КП',
   create_manager:'Новый менеджер', create_supplier:'Новый поставщик', edit_supplier:'Изменение поставщика', delete_supplier:'Удаление поставщика', edit_customs:'Код ТН ВЭД и пошлина', edit_manager:'Изменение менеджера', create_client:'Новый клиент', edit_client:'Изменение клиента',
   edit_types:'Категории оборудования', submit_edit:'Правка на модерацию', edit_product:'Правка товара', create_product:'Новый товар',
@@ -112,6 +112,37 @@ async function stStats(m){
   m.onclick=e=>{ const c=e.target.closest('[data-chart]'); if (c){ ST.chart=c.dataset.chart; stStats(m); } };
 }
 
+// ---------- обслуживание базы: копии, сжатие, срок журнала, изображения без ссылок
+async function stMaint(box, r){
+  if (!box) return;
+  try{ r=r||await aapi('maint'); }catch(e){ box.innerHTML='<p class="sub">Обслуживание базы</p><p class="muted">Недоступно: '+esc(e.message)+'</p>'; return; }
+  const b=r.backup||{}, v=r.vacuum, img=r.images, au=r.audit;
+  const bline = !b.at ? '<span class="bad-t">копий ещё не было</span>'
+    : b.ok ? `<span class="ok-t">${esc(stTime(b.at))} — исправна</span>` : `<span class="bad-t">${esc(stTime(b.at))} — ошибка: ${esc(b.error||'')}</span>`;
+  box.innerHTML=`<div class="sub st-mh">Автоматические копии и обслуживание базы ${tip('<p>Каждый день при первом запуске (и раз в сутки, пока работает сервер отдела) программа делает копию базы и проверяет её встроенной проверкой SQLite. Хранятся копии за 7 последних дней, по одной на 4 последние недели и на 12 последних месяцев.</p><p>Раз в месяц база сжимается и проверяется. Журнал действий старше заданного срока переносится в архив (папка backup/audit-archive рядом с базой).</p>')}</div>
+    <table class="pv-t">
+      <tr><td>Последняя копия</td><td>${bline}</td></tr>
+      <tr><td>Копий в папке</td><td>${r.copies}${r.copies?` · ${stSize(r.copiesBytes)} · с ${esc(KPGen.ruDate(r.oldest))}`:''}<br><small class="muted">${esc(r.dir)}</small></td></tr>
+      <tr><td>Сжатие и проверка</td><td>${v?`${esc(stTime(v.at))} · ${stSize(v.before)} → ${stSize(v.after)} · ${v.check==='ok'?'<span class="ok-t">без ошибок</span>':'<span class="bad-t">'+esc(v.check)+'</span>'}`:'ещё не выполнялись'}</td></tr>
+      <tr><td>Журнал действий</td><td>${stNum(r.auditRows)} записей${r.auditOldest?' с '+esc(KPGen.ruDate(r.auditOldest)):''} · хранить <select id="mAudY" class="st-inl" aria-label="Срок хранения журнала">${[1,2,3,5,10].map(y=>`<option value="${y}"${y===r.auditYears?' selected':''}>${y} ${y===1?'год':y<5?'года':'лет'}</option>`).join('')}</select>${au&&au.archived?` · в архиве ${stNum(au.archived)}`:''}</td></tr>
+      <tr><td>Изображения без ссылок</td><td id="mImg">${img?`удалено ${img.deleted} (${stSize(img.bytes)}) — ${esc(stTime(img.at))} · `:''}<button class="btn ghost" type="button" data-mt="imgscan">Найти</button></td></tr>
+    </table>
+    <div class="row" style="margin-top:8px"><button class="btn" type="button" data-mt="backup">Создать копию сейчас</button><button class="btn" type="button" data-mt="run">Сжать и проверить базу</button></div>`;
+  const busy=(btn,t)=>{ if (btn){ btn.disabled=true; btn.textContent=t; } };
+  box.onclick=async e=>{ const t=e.target.closest('[data-mt]'); if (!t) return; const a=t.dataset.mt;
+    try{
+      if (a==='backup'){ busy(t,'Копирую…'); const x=await ajson('maint/backup'); toast(x.backup&&x.backup.ok?'Копия создана и проверена':'Копия не создана'); return stMaint(box, x); }
+      if (a==='run'){ busy(t,'Сжимаю…'); const x=await ajson('maint/run'); toast('База сжата и проверена'); return stMaint(box, x); }
+      if (a==='imgscan'){ busy(t,'Ищу…'); const x=await aapi('maint/images');
+        $('#mImg').innerHTML = x.count ? `${x.count} файлов · ${stSize(x.bytes)} <button class="btn ghost" type="button" data-mt="imgdel" data-n="${x.count}">Удалить</button>${tip('<p>Файлы в папке img, на которые нет ссылок ни в каталоге, ни в КП, ни в истории версий и корзине (и которым больше месяца), а также всё из папки img/unused.</p><p>'+x.sample.map(esc).join('<br>')+(x.count>x.sample.length?'<br>…':'')+'</p>')}` : 'лишних нет'; return; }
+      if (a==='imgdel'){ if (!confirm(`Удалить ${t.dataset.n} изображений без ссылок? Восстановить их можно только из резервной копии папки img.`)) return; busy(t,'Удаляю…');
+        const x=await ajson('maint/images'); toast(`Удалено: ${x.deleted} (${stSize(x.bytes)})`); return stMaint(box); }
+    }catch(err){ toast('Не выполнено: '+(err.message||err)); stMaint(box); } };
+  const sel=$('#mAudY'); if (sel) sel.onchange=async()=>{ const y=+sel.value;
+    if (y<r.auditYears && !confirm(`Записи журнала действий старше ${sel.selectedOptions[0].textContent} будут перенесены в архив (папка backup/audit-archive) и пропадут из поиска в «Журнале действий». Продолжить?`)){ sel.value=r.auditYears; return; }
+    try{ const x=await ajson('maint/audit',{years:y}); toast(x.archivedNow?`В архив перенесено записей: ${x.archivedNow}`:'Срок хранения журнала сохранён'); stMaint(box, x); }catch(err){ toast('Не сохранено: '+err.message); } };
+}
+
 // ---------- модерация
 async function stModeration(m){
   const r=await aapi('moderation'), on=!!r.settings.enabled, P=r.pending;
@@ -191,7 +222,7 @@ async function stEdit(type, id, after){
   if (!v) return;
   if (!v.name) throw new Error('Название (ФИО) не может быть пустым');
   const doc={...src, ...v};
-  if (type==='manager'){ await api('/api/managers/'+encodeURIComponent(id),{method:'PUT',headers:J,body:JSON.stringify(Object.fromEntries(MGR_KEYS.map(k=>[k,doc[k]??''])))}); loadManagers().then(renderForm); }
+  if (type==='manager'){ await api('/api/managers/'+encodeURIComponent(id),{method:'PUT',headers:{...J,...(src._rev!=null?{'X-KP-Rev':String(src._rev)}:{})},body:JSON.stringify(Object.fromEntries(MGR_KEYS.map(k=>[k,doc[k]??''])))}); loadManagers().then(renderForm); }
   if (type==='client') await api('/api/clients/'+encodeURIComponent(id),{method:'PUT',headers:J,body:JSON.stringify(doc)});
   if (type==='supplier'){ delete doc.id; delete doc.updatedAt; await api('/api/suppliers/'+encodeURIComponent(id),{method:'PUT',headers:J,body:JSON.stringify(doc)}); if (typeof DL!=='undefined') DL.sups=null; }
   toast('Сохранено'); after();
@@ -236,13 +267,15 @@ async function stBackup(m){
   const hist=await aapi('audit?'+new URLSearchParams({action:'export_db'})), hi=await aapi('audit?'+new URLSearchParams({action:'import_db'}));
   const ops=[...hist.items, ...hi.items].sort((a,b)=>b.id-a.id).slice(0,15);
   const secs=[['catalog','Каталог'],['kp','КП (журнал)'],['managers','Менеджеры'],['clients','Клиенты'],['audit','Журнал действий'],['settings','Категории и настройки']];
-  m.innerHTML=`<div class="st-card"><p class="sub">Экспорт</p>
+  m.innerHTML=`<div class="st-card" id="stMaint"><p class="sub">Автоматические копии и обслуживание базы</p><p class="muted">Загружаю…</p></div>
+    <div class="st-card"><p class="sub">Экспорт</p>
       <div class="chips">${secs.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" data-xs="${v}" checked> ${l}</label>`).join('')}</div>
       <div class="row" style="margin-top:10px"><button class="btn primary" type="button" data-x="json">Скачать (.json)</button><button class="btn" type="button" data-x="sqlite">Полная копия базы (.sqlite3)</button></div>
       <p class="muted">.json — выбранные разделы (без изображений), можно загрузить обратно. .sqlite3 — файл базы целиком.</p></div>
     <div class="st-card"><p class="sub">Импорт</p><input type="file" id="impF" accept=".json,application/json" class="sr-file"><label for="impF" class="btn">Выбрать файл резервной копии…</label>
       <div id="impP"></div></div>
     <div class="st-card"><p class="sub">История</p>${ops.map(x=>`<div class="st-row"><div><b>${esc(ACT[x.action])}</b><span class="muted">${esc(stTime(x.timestamp))} · ${esc(x.entityId||'')}${x.after&&x.after.bytes?' · '+stSize(x.after.bytes):''}</span></div></div>`).join('')||'<p class="muted">Операций ещё не было.</p>'}</div>`;
+  stMaint($('#stMaint'));
   m.onclick=async e=>{ const x=e.target.closest('[data-x]'); if (x){
       const secs2=[...m.querySelectorAll('[data-xs]:checked')].map(c=>c.dataset.xs); if (x.dataset.x==='json' && !secs2.length) return toast('Отметьте разделы');
       const url = x.dataset.x==='json' ? 'export?sections='+secs2.join(',') : 'export/sqlite';

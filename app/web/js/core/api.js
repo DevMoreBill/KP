@@ -14,8 +14,23 @@ async function api(path, opts={}){
     'X-KP-User': encodeURIComponent(meNm||(typeof S!=='undefined'&&S.manager&&S.manager.name)||'') };
   if (ADMIN.csrf) headers['X-CSRF-Token'] = ADMIN.csrf;
   const r = await fetch(path, {...opts, headers});
+  if (r.status===409){   // запись успели изменить, пока она была открыта: спросить, перезаписать ли
+    let info=null; try{ info=await r.clone().json(); }catch(e){}
+    if (info && info.conflict){
+      if (!opts.retried && conflictAsk(info, path)) return api(path, {...opts, retried:true, headers:{...(opts.headers||{}), 'X-KP-Rev':String(info.rev)}});
+      const err=new Error('не сохранено — запись уже изменил(а) '+(info.by||'другой пользователь')+'. Откройте её заново, чтобы увидеть изменения');
+      err.code='conflict'; err.info=info; throw err; } }
   if (!r.ok) throw new Error((await r.text()) || ('HTTP '+r.status));
   const ct = r.headers.get('content-type')||''; return ct.includes('json') ? r.json() : r.text();
+}
+
+// совместная работа: запись изменили после того, как её открыли у нас
+function conflictTime(at){ const d=new Date(at); return isNaN(d) ? '' : d.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+function conflictAsk(info, path){
+  const kp=/^\/api\/kp\//.test(path), t=conflictTime(info.at);
+  return confirm((kp?'Это КП':'Эту запись')+' уже изменил(а) '+(info.by||'другой пользователь')+(t?' ('+t+')':'')+(kp?', пока оно было открыто у вас.':', пока она была открыта у вас.')+'\n\n'
+    +'ОК — сохранить вашу версию поверх'+(kp?' (версия коллеги останется в «Истории версий» КП)':'')+'.\n'
+    +'Отмена — не сохранять: откройте '+(kp?'КП из журнала':'запись заново')+', чтобы увидеть изменения.');
 }
 
 // place — что это за изображение (imgPlace): категория, производитель, модель; папку выбирает сервер

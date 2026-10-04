@@ -8,14 +8,29 @@ function validInn(v){ const s=String(v||'').replace(/\D/g,''); const c=(d,k)=>k.
   if (s.length===12) return c(s,[7,2,4,10,3,5,9,4,6,8])===+s[10] && c(s,[3,7,2,4,10,3,5,9,4,6,8])===+s[11];
   return false; }
 
-let CLIENTS=[];
+// справочник контрагентов не грузится целиком (их тысячи): CLIENTS — последние использованные и найденные,
+// поиск идёт на сервере; CLIENTS_ALL — сколько всего в справочнике
+let CLIENTS=[], CLIENTS_ALL=0;
+const CHECK_DAYS=30;   // через сколько дней проверка контрагента считается устаревшей
+const CL_FETCH=new Set();
 
-async function loadClients(){ try{ CLIENTS = await api('/api/clients'); }catch(e){ CLIENTS=[]; } }
+async function loadClients(){ try{ const r=await api('/api/clients?limit=50'); CLIENTS=r.items||[]; CLIENTS_ALL=r.all??CLIENTS.length; }catch(e){ CLIENTS=[]; } }
+
+function clientsKeep(list){ for (const c of list||[]){ if (!c||!c.id) continue; const k=CLIENTS.findIndex(x=>x.id===c.id); if (k<0) CLIENTS.push(c); else CLIENTS[k]=c; } }
+
+async function clientById(id){ if (!id) return null; const have=CLIENTS.find(c=>c.id===id); if (have) return have;
+  try{ const c=await api('/api/clients/'+encodeURIComponent(id)); clientsKeep([c]); return c; }catch(e){ return null; } }
+
+async function clientsFind(q, limit){ try{ const r=await api('/api/clients?limit='+(limit||6)+'&q='+encodeURIComponent(q)); clientsKeep(r.items); return r.items||[]; }catch(e){ return []; } }
 
 function clientIdOf(){ const inn=String(S.clientInn||'').replace(/\D/g,''); if (inn) return 'inn'+inn;
   return S.clientId || ('c'+Date.now().toString(36)); }
 
-function curClient(){ const id=S.clientId||(S.clientInn?'inn'+String(S.clientInn).replace(/\D/g,''):''); return id?CLIENTS.find(c=>c.id===id):null; }
+function curClient(){ const id=S.clientId||(S.clientInn?'inn'+String(S.clientInn).replace(/\D/g,''):''); if (!id) return null;
+  const c=CLIENTS.find(x=>x.id===id); if (c) return c;
+  // нет среди загруженных — подгружаем с сервера один раз и перерисовываем форму
+  if (!CL_FETCH.has(id)){ CL_FETCH.add(id); clientById(id).then(x=>{ if (x && typeof renderForm==='function') renderForm(); }); }
+  return null; }
 
 async function saveClient(usedInKp){
   if (!S.client.trim()) return null;
@@ -24,8 +39,9 @@ async function saveClient(usedInKp){
     status:S.clientStatus, source:S.clientSrc||'', usedAt:new Date().toISOString(),
     contacts: S.contact.name?[{...S.contact}]:[], objects:(S.object.purpose||S.object.address)?[{...S.object}]:[], check:S.check||null, _usedInKp:!!usedInKp };
   try{
+    const isNew=!CLIENTS.some(x=>x.id===id);
     const saved=await api('/api/clients/'+id,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(c)});
-    await loadClients(); return saved;
+    clientsKeep([saved]); if (isNew && !CL_FETCH.has(id)) CLIENTS_ALL++; return saved;
   }catch(e){ toast('Контрагент не сохранён: '+e.message); return null; }
 }
 
@@ -40,7 +56,7 @@ function applyClient(c){
 async function partyFind(){
   const inn=String(S.clientInn||'').replace(/\D/g,'');
   if (!validInn(inn)) return toast('Проверьте ИНН: 10 цифр у организации, 12 — у ИП');
-  const known=CLIENTS.find(c=>String(c.inn||'').replace(/\D/g,'')===inn);
+  const known=await clientById('inn'+inn);
   const msg=$('#partyMsg'); if(msg) msg.textContent='Ищу организацию…';
   try{
     const r=await api('/api/party?inn='+inn);
@@ -73,10 +89,11 @@ function checkLine(){
   if (!c) return `<div class="chk-line"><button class="btn ghost" type="button" data-a="checkRun">Проверить контрагента</button>${tip('Проверка по данным Checko: регистрация, долги, суды, исполнительные производства. Видна только вам, в КП не попадает.')}</div>`;
   if (c.error) return `<div class="chk-line warn"><span>${c.error==='nokey'?'Проверка Checko: не задан API-ключ.':esc(c.message||c.error)}</span>${c.error==='nokey'?'<button class="btn ghost" type="button" data-a="integrations">Ключ — в «Настройках»</button>':'<button class="btn ghost" type="button" data-a="checkRun">Повторить</button>'}</div>`;
   const label={ok:'Существенных рисков не найдено',warn:'Есть на что обратить внимание',bad:'Высокий риск'}[c.score]||'';
+  const age=c.checkedAt?(Date.now()-new Date(c.checkedAt))/864e5:0, old=age>CHECK_DAYS;   // проверка старше месяца — предложить обновить
   const facts=[['Регистрация',c.regDate?KPGen.ruDate(c.regDate.slice(0,10))+(c.ageYears!=null?` (${String(c.ageYears).replace('.',',')} г.)`:''):''],['Уставный капитал',c.capital!=null?fmtRub(c.capital):''],
     ['Сотрудников',c.employees!=null?String(c.employees):''],['Категория МСП',c.msp],['Основной ОКВЭД',c.okved],['Налоговая недоимка',c.taxDebt?fmtRub(c.taxDebt):'нет'],
     ['Арбитраж (ответчик)',c.courts&&c.courts.count?`${c.courts.count} дел на ${fmtRub(c.courts.sum)}`:'нет'],['Исполнительные производства',c.fssp&&c.fssp.count?`${c.fssp.count}${c.fssp.sum?' на '+fmtRub(c.fssp.sum):''}`:'нет']].filter(x=>x[1]);
-  return `<details class="chk ${c.score}"><summary><b>Checko: ${esc(label)}</b> <span class="muted">· ${esc(KPGen.ruDate((c.checkedAt||'').slice(0,10)))} · подробнее</span></summary>
+  return `<details class="chk ${c.score}"><summary><b>Checko: ${esc(label)}</b> <span class="muted">· ${esc(KPGen.ruDate((c.checkedAt||'').slice(0,10)))} · подробнее</span>${old?` <span class="chk-old" title="Данные могли измениться">проверке ${Math.floor(age)} дн. — обновите</span>`:''}</summary>
     <ul class="flags">${(c.flags||[]).map(f=>`<li class="${f.level}">${esc(f.text)}</li>`).join('')}</ul>
     <dl class="facts">${facts.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
     ${(c.finances||[]).length?`<table class="fin"><tr><th>Год</th><th>Выручка</th><th>Чистая прибыль</th></tr>${c.finances.map(f=>`<tr><td>${esc(f.year)}</td><td>${fmtRub(f.revenue)}</td><td class="${f.profit<0?'bad-t':''}">${fmtRub(f.profit)}</td></tr>`).join('')}</table>`:''}
@@ -110,14 +127,18 @@ async function openIntegrations(){
 
 document.addEventListener('input', e=>{ const t=e.target; if (t.dataset && t.dataset.p==='clientInn'){ const v=t.value.replace(/\D/g,''); t.classList.toggle('bad', !!v && !validInn(v) && (v.length>=10)); if ((v.length===10||v.length===12) && validInn(v) && v!==S._lastInn){ S._lastInn=v; setTimeout(partyFind,50); } } });
 
-document.addEventListener('input', e=>{ if (e.target.id!=='clFind') return; const raw=e.target.value.trim(), q=norm(raw), L=$('#clList');
-  const res=q?CLIENTS.filter(c=>norm([c.name,c.full,c.inn,c.address].join(' ')).includes(q)).slice(0,6):[];
+let clFindSeq=0, clFindT=0;
+document.addEventListener('input', e=>{ if (e.target.id!=='clFind') return; clearTimeout(clFindT); const inp=e.target; clFindT=setTimeout(()=>clFindRun(inp), 160); });
+async function clFindRun(inp){ const raw=inp.value.trim(), q=norm(raw), L=$('#clList'), seq=++clFindSeq;
+  const res=q?await clientsFind(raw, 6):[];
+  if (seq!==clFindSeq || !L) return;      // пока ждали ответ, ввели ещё буквы
+  const inp2=$('#clFind'); if (!inp2 || inp2.value.trim()!==raw) return;
   const inn=raw.replace(/\D/g,''), innOk=(inn.length===10||inn.length===12)&&/^\d[\d\s]*$/.test(raw)&&validInn(inn), known=res.some(c=>String(c.inn||'').replace(/\D/g,'')===inn);
   let html=res.map(c=>`<button type="button" data-clid="${esc(c.id)}"><b>${esc(c.name)}</b><span>${c.inn?'ИНН '+esc(c.inn)+' · ':''}${esc((c.address||'').slice(0,70))}${c.kpCount?' · КП: '+c.kpCount:''}</span></button>`).join('');
   if (innOk && !known) html+=`<button type="button" data-inn="${inn}"><b>Найти ИНН ${inn} в реестре</b><span>реквизиты подставятся автоматически</span></button>`;
   else if (/^\d+$/.test(inn) && inn.length>=10 && !innOk) html+=`<p class="muted" style="margin:10px 14px">ИНН с ошибкой: нужно 10 цифр (организация) или 12 (ИП)</p>`;
   else if (q && !res.length) html+=`<p class="muted" style="margin:10px 14px">Среди сохранённых не найдено. Введите ИНН — найдём в реестре.</p>`;
-  L.hidden=!html; L.innerHTML=html; });
+  L.hidden=!html; L.innerHTML=html; }
 
 document.addEventListener('keydown', e=>{ if (e.target.id!=='clFind' || e.key!=='Enter') return; const b=$('#clList [data-clid], #clList [data-inn]'); if (b){ e.preventDefault(); b.click(); } });
 

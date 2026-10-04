@@ -12,6 +12,7 @@
   desktop.py         — открыть файл / папку на этом компьютере
 Только стандартная библиотека Python; собирается PyInstaller в один EXE.
 """
+import hashlib
 import json
 import os
 import re
@@ -32,8 +33,11 @@ from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
 from desktop import open_file, open_folder, show_in_folder
 from equipment_types import load_types, load_types_builtin, save_user_types, types_builtin_path
 import admin
+from storage import Conflict, with_rev
+from version import VERSION as APP_VERSION
 import pdf_convert
 import images
+import maintenance
 from images import ImageStore, mark_organized, organize_existing
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, ensure_templates, list_history,
                           list_templates, open_template_file, put_file, reset_template, restore_history, template_file)
@@ -113,6 +117,24 @@ class Handler(BaseHTTPRequestHandler):
     def send_json(self, obj):
         text = obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False)
         self.send(200, 'application/json; charset=utf-8', text)
+
+    def send_cached(self, tag, make):
+        """Справочник с версией: браузер хранит копию и спрашивает «изменилось ли?» (If-None-Match).
+        Не изменилось — короткий ответ 304 без данных; иначе — данные (make()) с новой меткой."""
+        etag = 'W/"%s-%s"' % (tag, APP_VERSION)
+        if etag in (self.headers.get('If-None-Match') or ''):
+            return self.send(304, 'application/json; charset=utf-8', b'', {'ETag': etag, 'Cache-Control': 'no-cache'})
+        obj = make()
+        text = obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False)
+        return self.send(200, 'application/json; charset=utf-8', text, {'ETag': etag, 'Cache-Control': 'no-cache'})
+
+    def base_rev(self):
+        """С какой правки записи начинали редактирование (заголовок X-KP-Rev); нет — сохранить без проверки."""
+        v = (self.headers.get('X-KP-Rev') or '').strip()
+        return int(v) if v.isdigit() else None
+
+    def conflict(self, e):
+        return self.send(409, 'application/json; charset=utf-8', json.dumps(e.info(), ensure_ascii=False))
 
     def attachment(self, fn):
         """Заголовок «скачать как» с русским именем файла."""
@@ -248,7 +270,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(read_text(types_builtin_path()))
             if m == 'PUT':
                 save_user_types(self.body())
-            return self.send_json(load_types())
+                return self.send_json(load_types())
+            text = json.dumps(load_types(), ensure_ascii=False)
+            return self.send_cached('types-' + hashlib.md5(text.encode('utf-8')).hexdigest()[:16], lambda: text)
 
         # контрагенты: поиск по ИНН, проверка Checko, справочник
         if path == '/api/party':
@@ -260,14 +284,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(cp().save_keys(self.body()))
             return self.send_json(cp().keys_public())
         if path == '/api/clients' and m == 'GET':
-            return self.send_json(cp().list_clients())
+            # справочник не грузится целиком: последние использованные или найденные по названию / ИНН / адресу
+            try:
+                limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, int(q.get('offset') or 0))
+            except ValueError:
+                limit, offset = 50, 0
+            res = store().clients_search(q.get('q', ''), limit, offset)
+            res['all'] = store().clients_count() if not q.get('q') else None
+            return self.send_json(res)
         r = re.match(r'^/api/clients/([^/]+)$', path)
         if r:
             if m == 'GET':
-                c = store().client_get(r.group(1))
+                c = store().client_get(r.group(1), rev=True)
                 return self.send_json(c) if c else self.send(404, 'text/plain; charset=utf-8', 'Клиент не найден')
             if m == 'PUT':
-                return self.send_json(cp().save_client(r.group(1), self.body()))
+                try:
+                    return self.send_json(cp().save_client(r.group(1), self.body(), admin.actor(self)[1], self.base_rev()))
+                except Conflict as e:
+                    return self.conflict(e)
 
         # шаблоны КП (папка templates): список, файлы, редактор шаблона
         if path == '/api/templates':
@@ -302,14 +336,16 @@ class Handler(BaseHTTPRequestHandler):
         # каталог
         if path == '/api/catalog' and m == 'GET':
             # список — облегчённые карточки (без таблиц характеристик и галерей); полная позиция — по id
-            return self.send_json(store().catalog_full() if q.get('full') == '1' else store().catalog_light())
+            full = q.get('full') == '1'
+            return self.send_cached('cat%s-%s' % ('f' if full else 'l', store().data_rev('catalog')),
+                                    lambda: store().catalog_full() if full else store().catalog_light())
         if path == '/api/catalog/pending':   # режим модерации и товары с правками на модерации (бейдж «На модерации»)
             return self.send_json({'moderation': bool(admin.moderation(store()).get('enabled')), 'ids': store().pending_ids()})
         r = re.match(r'^/api/catalog/([^/]+)$', path)
         if r:
             cid = safe_id(r.group(1))
             if m == 'GET':
-                doc = store().catalog_get(cid)
+                doc = store().catalog_get(cid, rev=True)
                 return self.send_json(doc) if doc else self.not_found()
 
         # изображения
@@ -338,12 +374,15 @@ class Handler(BaseHTTPRequestHandler):
 
         # менеджеры (контакты в КП)
         if path == '/api/managers' and m == 'GET':
-            return self.send_json(store().managers_list())
+            return self.send_cached('mgr-' + store().data_rev('managers'), lambda: store().managers_list(rev=True))
         r = re.match(r'^/api/managers/([^/]+)$', path)
         if r:
             mid = safe_id(r.group(1))
             if m == 'PUT':
-                return self.send_json(store().manager_put(mid, self.body().decode('utf-8')))
+                try:
+                    return self.send_json(store().manager_put(mid, self.body().decode('utf-8'), admin.actor(self)[1], self.base_rev()))
+                except Conflict as e:
+                    return self.conflict(e)
 
         # PDF: чем можно преобразовать; преобразование присланного DOCX (предпросмотр) без записи в журнал
         if path == '/api/pdf' and m == 'GET':
@@ -357,6 +396,8 @@ class Handler(BaseHTTPRequestHandler):
 
         # журнал КП
         if path == '/api/history':
+            if 'limit' in q:     # постранично, с поиском и итогами по всему отбору
+                return self.send_json(admin.history_page(self, store(), q))
             return self.send_json(admin.history_out(self, store().kp_list()))
         if path == '/api/kp/new' and m == 'POST':
             n = store().next_number()
@@ -371,11 +412,21 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError
                 except ValueError:   # испорченная запись ломала бы журнал КП у всех
                     return self.send(400, 'text/plain; charset=utf-8', 'Неверный формат КП')
-                store().kp_set(kid, r.group(2), admin.kp_in(self, store(), kid, r.group(2), text), admin.actor(self)[1])
-                return self.send_json({'ok': True})
+                try:
+                    rev = store().kp_set(kid, r.group(2), admin.kp_in(self, store(), kid, r.group(2), text), admin.actor(self)[1],
+                                         self.base_rev() if r.group(2) == 'state' else None)
+                except Conflict as e:
+                    return self.conflict(e)
+                return self.send_json({'ok': True, 'rev': rev})
             if m == 'GET':
                 v = store().kp_get(kid, r.group(2))
+                if v and r.group(2) == 'state':
+                    v = with_rev(admin.kp_out(self, 'state', v), store().rev_of('kp', kid)['rev'])
+                    return self.send_json(v)
                 return self.send_json(admin.kp_out(self, r.group(2), v)) if v else self.not_found()
+        r = re.match(r'^/api/kp/([^/]+)/rev$', path)      # кто и когда последним сохранил КП — проверка перед сохранением
+        if r and m == 'GET':
+            return self.send_json(store().rev_of('kp', safe_id(r.group(1))))
         # история версий КП: список и состояние выбранной версии (экономика чужого КП убирается, как и у текущей)
         r = re.match(r'^/api/kp/([^/]+)/versions$', path)
         if r and m == 'GET':
@@ -514,11 +565,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(400, 'text/plain; charset=utf-8', str(e))
         # «Экономика сделки»: справочник поставщиков и коды ТН ВЭД / пошлины — общие для отдела (в базе)
         if path == '/api/suppliers' and m == 'GET':
-            return self.send_json(store().suppliers_list())
+            return self.send_cached('sup-' + store().data_rev('suppliers'), lambda: store().suppliers_list())
         r = re.match(r'^/api/suppliers/([A-Za-z0-9_-]{1,64})$', path)
         if r and m == 'PUT':
             try:
-                return self.send_json(store().supplier_put(r.group(1), json.loads(self.body().decode('utf-8') or '{}')))
+                return self.send_json(store().supplier_put(r.group(1), json.loads(self.body().decode('utf-8') or '{}'), admin.actor(self)[1], self.base_rev()))
+            except Conflict as e:
+                return self.conflict(e)
             except ValueError as e:
                 return self.send(400, 'text/plain; charset=utf-8', str(e))
         if path == '/api/customs':
@@ -626,6 +679,9 @@ def main():
         ensure_templates()
         store().migrate_json(DATA_DIR)   # переход с версии, хранившей данные в JSON-файлах
         admin.startup(store(), DATA_DIR)   # сброс пароля по data/admin-reset.txt, очистка корзины
+        # обслуживание базы: копия за сегодня, архив журнала, сжатие раз в месяц — в фоне, затем раз в сутки
+        threading.Thread(target=maintenance.run, args=(store(), DATA_DIR), daemon=True, name='maintenance-start').start()
+        maintenance.start_daily(store(), DATA_DIR)
         seeded = seed_catalog()
         sync_counter_with_files()
     except Exception as e:

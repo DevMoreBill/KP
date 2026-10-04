@@ -42,7 +42,7 @@ a = Analysis(
     ],
     hiddenimports=['kp_server', 'version', 'imgfetch', 'importlib.abc', 'importlib.util', 'ipaddress', 'csv', 'zipfile', 'calendar', 'decimal',
                    'statistics', 'uuid', 'base64', 'html', 'html.parser', 'http.client', 'email', 'shutil', 'tempfile', 'subprocess', 'ctypes',
-                   'config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'workcal', 'imgfetch', 'desktop', 'pdf_convert', 'catalog_migrate', 'admin', 'images',
+                   'config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'workcal', 'imgfetch', 'desktop', 'pdf_convert', 'catalog_migrate', 'admin', 'images', 'maintenance',
                    'sqlite3', '_sqlite3', 'gzip'],
     # sqlite3 НЕ исключать: на нём работает база данных программы
     excludes=['tkinter', 'unittest', 'pydoc', 'lib2to3', 'multiprocessing'],

@@ -64,8 +64,8 @@ async function ciRun(list){
     try{
       const p=await api('/api/party?inn='+r.inn);
       if (p.error) throw new Error(p.error.replace(/^Не удалось получить данные\.\s*/,''));
-      const known=CLIENTS.find(c=>String(c.inn||'').replace(/\D/g,'')===r.inn);
-      const c=Object.assign({}, known||{}, { id:'inn'+(p.inn||r.inn), name:shortName(p.short||p.full), full:p.full||'', inn:p.inn||r.inn, kpp:p.kpp||'', ogrn:p.ogrn||'',
+      const known=await clientById('inn'+r.inn);
+      const c=Object.assign({}, known||{}, { _rev:undefined, id:'inn'+(p.inn||r.inn), name:shortName(p.short||p.full), full:p.full||'', inn:p.inn||r.inn, kpp:p.kpp||'', ogrn:p.ogrn||'',
         address:p.address||'', director:p.director||'', directorPost:p.directorPost||'', status:p.status||'', source:p.source||'' });
       r.c=await api('/api/clients/'+c.id,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(c)});
       r.st=known?'upd':'new';

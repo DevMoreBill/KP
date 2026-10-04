@@ -93,7 +93,8 @@ function dlSaveSupplier(s){
   clearTimeout(DL.saveT[s.id]);
   DL.saveT[s.id]=setTimeout(async()=>{ const id=s.dirId || ('sup_'+uid()+uid()).slice(0,24);
     const kp=dealKpInputs(), makers=[...new Set(kp.items.filter(x=>dlSupOf(x.id)===s.id).map(x=>x.maker).filter(Boolean))];
-    const doc={ name:s.name.trim(), ...Object.fromEntries(DL_SUP_KEYS.map(k=>[k,s[k]??''])), makers };
+    const was=(DL.sups||[]).find(x=>x.id===id);   // номер правки — чтобы не затереть изменения коллеги
+    const doc={ name:s.name.trim(), ...Object.fromEntries(DL_SUP_KEYS.map(k=>[k,s[k]??''])), makers, ...(was&&was._rev!=null?{_rev:was._rev}:{}) };
     try{ const saved=await api('/api/suppliers/'+id,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(doc)});
       s.dirId=id; DL.sups=(DL.sups||[]).filter(x=>x.id!==id).concat(saved); persist(); }catch(e){} }, 1200);
 }
