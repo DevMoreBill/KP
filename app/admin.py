@@ -394,6 +394,13 @@ def guard(h, store, m, path):
             h.send(403, 'text/plain; charset=utf-8', DENIED)
             return True
         return lambda: log(h, store, 'edit_settings', 'settings', 'logistics', None, {'tariffs': True}, admin=True)
+    # только администратор: резервная копия ключей API (ключи целиком)
+    if path == '/api/integrations/export':
+        if not is_admin(h):
+            log(h, store, 'export_keys', 'settings', 'integrations', result='failed')
+            h.send(403, 'text/plain; charset=utf-8', DENIED)
+            return True
+        return lambda: log(h, store, 'export_keys', 'settings', 'integrations', None, None, admin=True)
     # только администратор: тексты интерфейса
     if path == '/api/uitexts' and m == 'PUT':
         if not is_admin(h):
