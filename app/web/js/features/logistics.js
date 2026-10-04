@@ -32,7 +32,10 @@ function lgInput(s){
   const imp=!lgRu(s) && (s.where==='imp' || !!s.country);
   const from=String(s.wh||'').trim() || (imp ? T.hub : '');
   const to=String(lg.to ?? (S.object&&S.object.address || S.clientAddr || '')).trim();
-  return { from:{addr:from}, to:{addr:to}, km:lg.km||'', unload:lg.unload||'auto',
+  const its=S.items.filter(x=>String(x.name||'').trim() && dlSupOf(x.id)===s.id);
+  const value=its.reduce((a,x)=>{ const q=+x.qty||0; if (x.cost) return a+x.cost/100*q*(rateOf(x.costCur||'RUB')||0);
+    return a+(x.price||0)/100*q*(rateOf(kpCur())||0); },0);
+  return { from:{addr:from}, to:{addr:to}, km:lg.km||'', unload:lg.unload||'auto', value,
     items:lgItems(s).map(x=>({name:x.name, qty:x.qty, l:x.l.v, w:x.w.v, h:x.h.v, m:x.m.v})), imp };
 }
 
@@ -43,7 +46,7 @@ function lgSync(d){
     if (!s.lg) s.lg={};
     // прежние сделки: сумма вписана вручную — так и остаётся
     if (s.lg.mode==null) s.lg.mode = s.logRu && String(s.logRu.v??'').trim()!=='' && s.logRu.src!=='module' ? 'manual' : 'auto';
-    const r=lgCalc(lgInput(s), LG.tar), Q=lgQuoteFor(s, r), fin=lgFinal(r, Q);
+    const r=lgCalc(lgInput(s), LG.tar), Q=lgQuoteFor(s, r), fin=lgFinal(r, Q, s.lg.pick);
     LG.res[s.id]=r; LG.fin[s.id]=fin;
     if (s.lg.mode==='auto'){
       const v = fin.price>0 && !r.need ? String(fin.price) : '';
@@ -54,17 +57,33 @@ function lgSync(d){
 }
 
 // ---------- предложения перевозчиков (ATI.SU, ПЭК, Деловые Линии, КИТ) — сервер /api/logistics/quote
-function lgQuoteKey(r){ return JSON.stringify([r.from&&r.from.name, r.to&&r.to.name, r.km, r.vehicles.map(v=>v.C.id+':'+Math.round(v.cost)), r.unload&&r.unload.id, Math.round(r.total)]); }
+function lgQuoteKey(r){ return JSON.stringify([r.from&&r.from.name, r.to&&r.to.name, r.km, r.vehicles.map(v=>v.C.id+':'+Math.round(v.cost)), r.unload&&r.unload.id, Math.round(r.transport||0)]); }
 function lgQuoteFor(s, r){ const q=s.lg&&s.lg.quote; return q && q.key===lgQuoteKey(r) ? q : null; }
 function lgRateSrc(r){ const src=[...new Set(r.vehicles.map(v=>v.C.src+(v.C.srcAt?' от '+stTime(v.C.srcAt).slice(0,10):'')))]; return src.join('; ')||'тарифы «Настроек»'; }
 
-// итог — максимальное из полных предложений; сноска — откуда цена и с чем сравнивали
-function lgFinal(r, Q){
-  const model={src:'model', price:Math.round(r.total), name:'Тарифы «Настроек»'};
-  if (!Q || !Q.res || !Q.res.best) return { ...model, foot:`Расчёт по тарифам программы (${lgRateSrc(r)})${Q&&Q.res?' — у перевозчиков нет полных предложений':' — цены перевозчиков ещё не получены'}.` };
-  const b=Q.res.best, others=Q.res.offers.filter(o=>o.complete && !(o.src===b.src && o.price===b.price));
-  return { src:b.kind, price:Math.round(b.price), name:b.src,
-    foot:`Цена — максимальное предложение: ${b.src}${b.note?' ('+b.note+')':''}, данные на ${stTime(Q.res.at)}.${others.length?' Для сравнения: '+others.map(o=>`${o.src} — ${lgRub(o.price)}`).join(', ')+'.':''}` };
+// предложения «дверь в дверь» в одних условиях: перевозка (+ забор и доставка по городу, если перевозчик возит до терминала)
+// + агент-экспедитор + обязательное страхование груза + разгрузка на объекте
+function lgOffers(r, Q){
+  const T=LG.tar, un=r.unload?r.unload.cost:0, out=[];
+  const add=(o)=>{ const local=o.local||0, agent=(o.kind==='ltl' && !+T.agentLtl) ? 0 : Math.round((o.base+local)*T.agentPct/100);
+    out.push({...o, local, agent, ins:r.ins, unload:un, total:Math.round(o.base+local+agent+r.ins+un)}); };
+  add({id:'model', src:'Тарифы «Настроек»', kind:'model', base:r.transport, note:`${r.vehicles.map(v=>v.C.name).join(' + ')}; ${lgRateSrc(r)}`, days:r.days});
+  for (const o of (Q&&Q.res&&Q.res.offers)||[]){ if (o.kind==='model' || !o.complete) continue;
+    const base = o.base!=null ? o.base : o.price-(o.unload||0);
+    add({id:o.src, src:o.src, kind:o.kind, base, local:o.door===false ? 2*(r.localLeg||0) : 0, note:o.note||'', days:o.days, url:o.url}); }
+  return out;
+}
+
+// итог: выбранное предложение (s.lg.pick) или максимальное; сноска — из чего цена, откуда данные и с чем сравнивали
+function lgFinal(r, Q, pick){
+  const T=LG.tar, offs=lgOffers(r, Q), max=offs.reduce((a,o)=>o.total>a.total?o:a, offs[0]);
+  const ch=(pick && pick!=='max' && offs.find(o=>o.id===pick)) || max, manualPick=ch!==max || (pick && pick!=='max');
+  const parts=[`перевозка ${lgRub(ch.base)}`, ch.local?`забор и доставка по городу ${lgRub(ch.local)}`:'', ch.agent?`агент ${String(T.agentPct).replace('.',',')} % ${lgRub(ch.agent)}`:'',
+    `страхование ${String(T.insPct).replace('.',',')} %${r.insBase?` от ${lgRub(r.insBase)}`:''} ${lgRub(ch.ins)}`, ch.unload?`разгрузка ${lgRub(ch.unload)}`:''].filter(Boolean);
+  const others=offs.filter(o=>o!==ch).map(o=>`${o.src} — ${lgRub(o.total)}`);
+  const when=Q&&Q.res?`, данные на ${stTime(Q.res.at)}`:' (цены перевозчиков ещё не получены)';
+  return { price:ch.total, name:ch.src, src:ch.kind, chosen:ch, max, offers:offs, picked:manualPick,
+    foot:`Цена — ${manualPick?'выбрано':'максимальное предложение'}: ${ch.src}${ch.note?' ('+ch.note+')':''}${when}. Дверь в дверь: ${parts.join(' + ')}.${others.length?' Для сравнения: '+others.join(', ')+'.':''}` };
 }
 
 // ближайшие крупные города (первые в таблице — крупнейшие) в пределах 150 км — для направлений перевозчиков
@@ -101,7 +120,7 @@ function dlLogistics(c){
   const d=dlDeal(), ex=DL.ex, T=LG.tar;
   if (!T) return dlStep(0, 'Логистика', '', '<p class="muted">Загружаю тарифы…</p>', '', null, 'log');
   const cityList=`<datalist id="lgCities">${LG_CITIES.map(x=>`<option value="${esc(x[0])}">`).join('')}</datalist>`;
-  const cards=d.sup.map((s,k)=>{ const cs=c.sup[k], P=`sup.${k}`, ru=lgRu(s), lg=s.lg||{}, r=LG.res[s.id]||lgCalc(lgInput(s), T), fin=LG.fin[s.id]||lgFinal(r,null);
+  const cards=d.sup.map((s,k)=>{ const cs=c.sup[k], P=`sup.${k}`, ru=lgRu(s), lg=s.lg||{}, r=LG.res[s.id]||lgCalc(lgInput(s), T), fin=LG.fin[s.id]||lgFinal(r,null,lg.pick);
     const its=lgItems(s), inp=lgInput(s), nm=cs.name, Q=lgQuoteFor(s, r);
     const cell=(x,f,ph)=>`<input type="text" inputmode="decimal" data-lgi="${esc(x.id)}" data-k="${k}" data-f="${f}" value="${esc(lgIn(x[f].v))}" placeholder="${ph}" class="${x[f].v==null?'need':''}${x[f].own?' own':''}" aria-label="${ph}"${ex?' disabled':''}>`;
     const ownCargo=Object.values(lg.items||{}).some(o=>Object.keys(o).length);
@@ -144,22 +163,30 @@ function dlLogistics(c){
         <option value="none"${lg.unload==='none'?' selected':''}>Не нужна (разгружает заказчик)</option>
         ${T.unload.map(u=>`<option value="${esc(u.id)}"${lg.unload===u.id?' selected':''}>${esc(u.name)} — ${lgRub(u.cost)}</option>`).join('')}</select></label>
       ${veh}<p class="muted lg-note">Ставки за км: ${esc(lgRateSrc(r))}. Погрузка на складе поставщика обычно за его счёт.</p></div>`;
-    // 5. цены перевозчиков
+    // 5. цены перевозчиков — все «дверь в дверь», с агентом и страхованием; выбор — любое или максимальное
     const pv=(LG.status&&LG.status.providers)||{}, noKey=[!pv.ati?'ATI.SU':'', !pv.dellin?'Деловые Линии':'', !pv.kit?'КИТ':''].filter(Boolean);
-    const isB=o=>Q&&Q.res.best&&o.src===Q.res.best.src&&o.price===Q.res.best.price;
-    const offers = r.need ? '' : `<div class="lg-sec"><h5><span class="lg-sn">${n0+4}</span>Цены перевозчиков${dlQ('Отдельная машина — ATI.SU «Средние ставки» (верхняя граница за 30 дней, с НДС) + разрешения и разгрузка по тарифам. Сборный груз (если места небольшие) — ПЭК, Деловые Линии, КИТ. В сделку идёт максимальное полное предложение.')}
-        ${ex?'':`<button class="btn ghost lg-qb" type="button" data-lgx="quote" data-k="${k}"${LG.busy[s.id]?' disabled':''}>${LG.busy[s.id]?'Запрашиваю…':Q?'Обновить':'Запросить'}</button>`}</h5>
+    const pick=lg.pick||'max', nmR=`lgpick${k}`;
+    const kindT={model:'расчёт по тарифам',ftl:'отдельная машина',ltl:'сборный груз'};
+    const offers = r.need ? '' : `<div class="lg-sec"><h5><span class="lg-sn">${n0+4}</span>Перевозчик и цена${dlQ('Все цены — от двери до двери в одних условиях: перевозка (если перевозчик возит до терминала — плюс забор и доставка по городу по тарифам), агент-экспедитор '+String(T.agentPct).replace('.',',')+' %, обязательное страхование груза '+String(T.insPct).replace('.',',')+' % (не меньше '+lgRub(T.insMin)+') и разгрузка. Отдельная машина — ATI.SU «Средние ставки» (верхняя граница за 30 дней, с НДС); сборный груз — ПЭК, Деловые Линии, КИТ. По умолчанию в сделку идёт максимальное предложение; можно выбрать перевозчика.')}
+        ${ex?'':`<button class="btn ghost lg-qb" type="button" data-lgx="quote" data-k="${k}"${LG.busy[s.id]?' disabled':''}>${LG.busy[s.id]?'Запрашиваю…':Q?'Обновить цены':'Запросить цены'}</button>`}</h5>
       ${noKey.length&&!ex?`<p class="muted lg-note">Без ключа: ${esc(noKey.join(', '))} — «⋯» → «Интеграции».</p>`:''}
       ${LG.err[s.id]?`<p class="msg err">${esc(LG.err[s.id])}</p>`:''}
-      ${Q?`<div class="lg-tw"><table class="lg-p lg-of">${Q.res.offers.map(o=>`<tr class="${isB(o)?'best':''}"><td><b>${esc(o.src)}</b><small>${esc(o.note||'')}</small></td>
-          <td>${esc({model:'расчёт',ftl:'отдельная машина',ltl:'сборный груз'}[o.kind]||'')}</td><td class="num">${o.days?esc(o.days)+' дн.':''}</td><td class="num">${lgRub(o.price)}${isB(o)?' <span class="lg-tag">макс.</span>':''}</td></tr>`).join('')}</table></div>
-        ${Q.res.errors.length?`<ul class="lg-errs">${Q.res.errors.map(e=>`<li class="${e.skip?'muted':''}"><b>${esc(e.src)}:</b> ${esc(e.msg)}</li>`).join('')}</ul>`:''}
-        <p class="muted lg-note">Запрошено ${esc(stTime(Q.res.at))}</p>`:(LG.busy[s.id]?'<p class="muted">Запрашиваю цены…</p>':'')}</div>`;
+      <div class="lg-tw"><table class="lg-p lg-of"><tbody>
+        <tr class="${pick==='max'?'on':''}"><td><label class="lg-pk"><input type="radio" name="${nmR}" data-lgpick="max" data-k="${k}"${pick==='max'?' checked':''}${ex?' disabled':''}><b>Максимальное предложение</b></label><small>рекомендуется: запас на рост ставок — сейчас ${esc(fin.max.src)}</small></td><td></td><td></td><td class="num">${lgRub(fin.max.total)}</td></tr>
+        ${fin.offers.map(o=>`<tr class="${pick===o.id?'on':''}${o===fin.max?' best':''}"><td><label class="lg-pk"><input type="radio" name="${nmR}" data-lgpick="${esc(o.id)}" data-k="${k}"${pick===o.id?' checked':''}${ex?' disabled':''}><b>${esc(o.src)}</b></label>
+            <small>${esc(o.note||'')}${o.local?` · + забор и доставка по городу ${lgRub(o.local)}`:''} · агент ${lgRub(o.agent)} · страхование ${lgRub(o.ins)}${o.unload?' · разгрузка '+lgRub(o.unload):''}</small></td>
+          <td>${esc(kindT[o.kind]||'')}</td><td class="num">${o.days?esc(o.days)+' дн.':''}</td><td class="num">${lgRub(o.total)}${o===fin.max?' <span class="lg-tag">макс.</span>':''}</td></tr>`).join('')}
+      </tbody></table></div>
+      ${Q&&Q.res.errors.length?`<ul class="lg-errs">${Q.res.errors.map(e=>`<li class="${e.skip?'muted':''}"><b>${esc(e.src)}:</b> ${esc(e.msg)}</li>`).join('')}</ul>`:''}
+      <p class="muted lg-note">${Q?'Цены перевозчиков запрошены '+esc(stTime(Q.res.at)):LG.busy[s.id]?'Запрашиваю цены перевозчиков…':'Цены перевозчиков ещё не запрошены — пока только расчёт по тарифам.'}</p></div>`;
     // итог — в сделку
-    const manual=lg.mode==='manual', cur=dNum(s.logRu&&s.logRu.v)||0;
-    const total=`<div class="lg-tot"><div><small>Доставка по России → в расчёт сделки</small>
+    const manual=lg.mode==='manual', cur=dNum(s.logRu&&s.logRu.v)||0, ch=fin.chosen;
+    const brk=[['Перевозка', ch.base], ['Забор и доставка по городу', ch.local], [`Агент-экспедитор ${String(T.agentPct).replace('.',',')} %`, ch.agent],
+      [`Страхование груза ${String(T.insPct).replace('.',',')} %${r.insBase?' от '+lgRub(r.insBase):''}`, ch.ins], ['Разгрузка', ch.unload]].filter(x=>x[1]);
+    const total=`<div class="lg-tot"><div><small>Доставка по России, дверь в дверь → в расчёт сделки</small>
         ${manual?`<span class="dl-in lg-man"><input type="text" inputmode="decimal" data-lgman="${k}" value="${esc(s.logRu&&s.logRu.v||'')}" placeholder="сумма, ₽" aria-label="Своя сумма доставки"${ex?' disabled':''}><em>₽</em></span>`:`<b>${lgRub(cur||fin.price)}</b>`}
-        <span class="muted">${manual?'своя сумма (например, по счёту перевозчика)':fin.src==='model'?`по тарифам программы · диапазон ${lgRub(r.lo)} – ${lgRub(r.hi)}`:'максимальное предложение: '+esc(fin.name)}${r.days&&!r.need?` · в пути ≈ ${r.days} ${plural(r.days,'день','дня','дней')}`:''}</span></div>
+        <span class="muted">${manual?'своя сумма (например, по счёту перевозчика)':(fin.picked?'выбрано: ':'максимальное предложение: ')+esc(fin.name)}${r.days&&!r.need?` · в пути ≈ ${r.days} ${plural(r.days,'день','дня','дней')}`:''}</span>
+        ${manual?'':`<table class="lg-p lg-brk">${brk.map(([t,v])=>`<tr><td>${esc(t)}</td><td class="num">${lgRub(v)}</td></tr>`).join('')}</table>`}</div>
       <div class="lg-act">${ex?'':`<span class="dl-seg"><button type="button" class="${manual?'':'on'}" data-lgx="mode" data-k="${k}" data-v="auto">По расчёту</button><button type="button" class="${manual?'on':''}" data-lgx="mode" data-k="${k}" data-v="manual">Своя сумма</button></span>`}
         ${ru&&!ex?`<label class="cw-chk"><input type="checkbox" data-lgf="setDays" data-k="${k}"${lg.setDays===false?'':' checked'}> срок в пути → «Доставка до заказчика»</label>`:''}</div></div>
       ${manual?'':`<p class="muted lg-note lg-foot">${esc(fin.foot)}</p>`}`;
@@ -184,7 +211,9 @@ function lgBind(dlg, touch){
   dlg.addEventListener('input', e=>{ const t=e.target;
     if (t.dataset.lgman!=null){ const s=dlDeal().sup[+t.dataset.lgman]; if (!s||DL.ex) return; s.logRu={v:t.value}; touch(); return dealRender(); }
     if ((t.dataset.lgf||t.dataset.lgi) && t.tagName==='INPUT' && t.type!=='checkbox' && upd(t)){ touch(); dealRender(); } });
-  dlg.addEventListener('change', e=>{ const t=e.target; if ((t.tagName==='SELECT'||t.type==='checkbox') && t.dataset.lgf && upd(t)){ touch(); dealRender(); } });
+  dlg.addEventListener('change', e=>{ const t=e.target;
+    if (t.dataset.lgpick!=null){ const s=dlDeal().sup[+t.dataset.k]; if (!s||DL.ex) return; s.lg=s.lg||{}; s.lg.pick=t.dataset.lgpick; touch(); return dealRender(); }
+    if ((t.tagName==='SELECT'||t.type==='checkbox') && t.dataset.lgf && upd(t)){ touch(); dealRender(); } });
   dlg.addEventListener('click', e=>{ const b=e.target.closest('[data-lgx]'); if (!b || DL.ex) return; const k=+b.dataset.k, s=dlDeal().sup[k]; if (!s) return;
     if (b.dataset.lgx==='quote'){ delete LG.tried[lgQuoteKey(LG.res[s.id]||{vehicles:[]})]; return lgQuote(k); }
     if (b.dataset.lgx==='savecargo') return lgSaveCargo(s).then(()=>dealRender());
@@ -216,7 +245,8 @@ async function lgSaveCargo(s){
 }
 
 // ---------- «Настройки» → «Логистика»: тарифы (администратор)
-const LG_SC=[['hub','Импорт: город СВХ / терминала по умолчанию','text'],['permitAgent','Оформление разрешения через агента, ₽',''],['overKLowbed','Негабарит на трале: множитель ставки',''],['roadK','Коэффициент дорог: европейская часть',''],['roadKE','… Урал и Сибирь',''],['roadKFE','… восточнее Байкала',''],
+const LG_SC=[['agentPct','Агент-экспедитор: наценка к перевозке, %',''],['agentLtl','Агент и для сборного груза (1 — да, 0 — нет)',''],['insPct','Страхование груза, % от стоимости',''],['insMin','Страхование: минимальная премия, ₽',''],
+  ['hub','Импорт: город СВХ / терминала по умолчанию','text'],['permitAgent','Оформление разрешения через агента, ₽',''],['overKLowbed','Негабарит на трале: множитель ставки',''],['roadK','Коэффициент дорог: европейская часть',''],['roadKE','… Урал и Сибирь',''],['roadKFE','… восточнее Байкала',''],
   ['localKm','Доставка по городу, км',''],['pack','Упаковка лёгких мест, % к массе',''],['packMax','Без упаковки — места тяжелее, т',''],
   ['overK','Негабарит на площадке: множитель ставки',''],['permit','Госпошлина за спецразрешение, ₽ за машину',''],['heavyFrom','Тяжеловес — груз в машине тяжелее, т',''],
   ['heavyPermit','Госпошлина за разрешение на тяжеловес, ₽',''],['harmKm','Вред дорогам (тяжеловес), ₽/км',''],['escortW','Прикрытие — груз шире, м',''],['escortKm','Автомобиль прикрытия, ₽/км',''],

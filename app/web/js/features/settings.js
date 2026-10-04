@@ -19,7 +19,15 @@ const ENT = { supplier:'Поставщик', customs:'ТН ВЭД', product:'Т�
   types:'Категории', admin:'Администратор', db:'База', trash:'Корзина' };
 const DEL_TYPES = [['kp','КП из журнала'],['catalog','Товары каталога'],['manager','Контакты менеджеров'],['client','Клиенты'],['supplier','Поставщики']];
 
-function setDlg(){ let d=$('#setdlg'); if(!d){ d=document.createElement('dialog'); d.id='setdlg'; d.className='setwin'; d.setAttribute('aria-label','Настройки'); document.body.appendChild(d); } return d; }
+function setDlg(){ let d=$('#setdlg'); if(!d){ d=document.createElement('dialog'); d.id='setdlg'; d.className='setwin'; d.setAttribute('aria-label','Настройки'); document.body.appendChild(d); stWinSize(d);
+    // размер окна запоминается (тянуть за правый нижний угол); «⤢» — во весь экран
+    d.addEventListener('click', e=>{ if (e.target.closest('[data-st="max"]')){ d.classList.toggle('max'); stWinSize(d, true); } });
+    let t=null; if (window.ResizeObserver) new ResizeObserver(()=>{ if (!d.open || (typeof isMob==='function'&&isMob()) || d.classList.contains('max')) return; clearTimeout(t);
+      t=setTimeout(()=>{ const r=d.getBoundingClientRect(); if (r.width>300){ d.style.width=Math.round(r.width)+'px'; d.style.height=Math.round(r.height)+'px'; stWinSize(d, true); } }, 600); }).observe(d); }
+  return d; }
+function stWinSize(d, save){ try{
+  if (save){ localStorage.setItem('kp.setwin', JSON.stringify({max:d.classList.contains('max'), w:d.style.width||'', h:d.style.height||''})); return; }
+  const o=JSON.parse(localStorage.getItem('kp.setwin')||'{}')||{}; d.classList.toggle('max', !!o.max); if (o.w) d.style.width=o.w; if (o.h) d.style.height=o.h; }catch(e){} }
 
 // запрос «Настроек»: сессия истекла — снова форма входа
 async function aapi(path, opts){
@@ -38,7 +46,7 @@ async function openSettings(tab){
 
 function stRender(){
   const d=setDlg(), s=ST.status||{};
-  const head=`<div class="dlg-h"><h3>Настройки${ADMIN.on&&s.name?`<small>${esc(s.name)} · ${esc(s.login||'')}</small>`:''}</h3>${ADMIN.on?'<button class="btn ghost" type="button" data-st="logout">Выйти</button>':''}<button class="icon" type="button" data-st="close" aria-label="Закрыть">✕</button></div>`;
+  const head=`<div class="dlg-h"><h3>Настройки${ADMIN.on&&s.name?`<small>${esc(s.name)} · ${esc(s.login||'')}</small>`:''}</h3>${ADMIN.on?'<button class="btn ghost" type="button" data-st="logout">Выйти</button>':''}<button class="icon st-maxb" type="button" data-st="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна меняется, если потянуть за правый нижний угол">⤢</button><button class="icon" type="button" data-st="close" aria-label="Закрыть">✕</button></div>`;
   if (!ADMIN.on){
     const setup=!s.hasPassword;
     d.innerHTML=head+`<div class="st-login"><form id="stLogin" autocomplete="off">

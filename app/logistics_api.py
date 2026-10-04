@@ -199,13 +199,21 @@ def pec_quote(store, frm, to, places):
             n = [x for x in (_num(y) for y in v) if x is not None]
             if n:
                 total += n[-1]
+    door = 0
+    for k in ('take', 'deliver'):                # забор груза у отправителя и доставка получателю
+        v = j.get(k)
+        n = [x for x in (_num(y) for y in (v if isinstance(v, list) else [v])) if x is not None] if v is not None else []
+        if n:
+            total += n[-1]
+            door += 1
     days = None
     per = _find(j, lambda o: isinstance(o, dict) and any(k in o for k in ('periods_days', 'periods')))
     if per:
         m = re.findall(r'\d+', str(per.get('periods_days') or per.get('periods')))
         days = int(m[-1]) if m else None
     via = '' if (fa, tb) == (frm[0] if isinstance(frm, list) else frm, to[0] if isinstance(to, list) else to) else ' (%s → %s)' % (fa, tb)
-    return {'price': round(total), 'days': days, 'note': 'сборный груз, терминал — терминал' + via}
+    return {'price': round(total), 'days': days, 'door': door == 2,
+            'note': ('сборный груз, дверь в дверь (забор и доставка ПЭК)' if door == 2 else 'сборный груз, межтерминальная перевозка ПЭК') + via}
 
 
 # ---------------------------------------------------------------- Деловые Линии
@@ -249,7 +257,7 @@ def dellin_quote(store, frm_addr, to_addr, places):
             days = (datetime.fromisoformat(str(b)[:10]) - datetime.fromisoformat(str(a)[:10])).days + 1
     except ValueError:
         pass
-    return {'price': round(price), 'days': days, 'note': 'сборный груз, от адреса до адреса'}
+    return {'price': round(price), 'days': days, 'door': True, 'note': 'сборный груз, от адреса до адреса'}
 
 
 # ---------------------------------------------------------------- КИТ
@@ -278,7 +286,7 @@ def kit_quote(store, frm, to, places, declared):
     body = {'city_pickup_code': a, 'city_delivery_code': b, 'declared_price': round(declared or 0), 'confirmation_price': 1,
             'places': [{'count_place': int(p['qty']), 'height': round(p['h'] * 100), 'width': round(p['w'] * 100), 'length': round(p['l'] * 100),
                         'weight': round(p['m'] * 1000, 1), 'volume': round(p['l'] * p['w'] * p['h'], 3)} for p in places],
-            'pick_up': 1, 'delivery': 1, 'insurance': 1, 'currency_code': 'RUB'}
+            'pick_up': 1, 'delivery': 1, 'insurance': 0, 'currency_code': 'RUB'}   # страхование — своё, единое для всех предложений
     j = _http(KIT_BASE + '/1.1/order/calculate', data=body, headers=_kit_headers(store), method='POST')
     rec = j[0] if isinstance(j, list) and j else j
     tariffs = []
@@ -290,7 +298,7 @@ def kit_quote(store, frm, to, places, declared):
         raise ValueError('КИТ: в ответе нет стоимости' + ((' — ' + str((rec or {}).get('message'))) if isinstance(rec, dict) and rec.get('message') else ''))
     name, cost, tm = next((t for t in tariffs if t[0] == 'standart'), tariffs[0])
     days = int(re.findall(r'\d+', str(tm))[-1]) if tm and re.findall(r'\d+', str(tm)) else None
-    return {'price': round(cost), 'days': days, 'note': 'сборный груз, от адреса до адреса (тариф %s)' % name}
+    return {'price': round(cost), 'days': days, 'door': True, 'note': 'сборный груз, от адреса до адреса (тариф %s)' % name}
 
 
 # ---------------------------------------------------------------- сводка предложений
@@ -346,8 +354,9 @@ def quote(store, req):
                 parts.append('%s: %s ₽ (верх средних ставок ATI.SU, %s %s т%s)' % (v.get('name') or v.get('id'), '{:,.0f}'.format(run).replace(',', ' '),
                              {'tent': 'тент', 'open': 'открытая', 'tral': 'трал'}.get(car, car), str(ton).replace('.', ','),
                              ', %s ₽/км' % '{:,.0f}'.format(p['upperKm']).replace(',', ' ') if p['upperKm'] else ''))
+            base = total
             total += unload
-            offers.append({'src': 'ATI.SU «Средние ставки»', 'kind': 'ftl', 'price': round(total), 'complete': True, 'at': at,
+            offers.append({'src': 'ATI.SU «Средние ставки»', 'kind': 'ftl', 'price': round(total), 'base': round(base), 'unload': round(unload), 'door': True, 'complete': True, 'at': at,
                            'note': ('ставка' + via + ': ' if via else '') + '; '.join(parts) + ('; разгрузка и разрешения — по тарифам программы' if unload or any(_num(v.get('extras')) for v in req['vehicles']) else ''),
                            'url': 'https://ati.su/rates'})
         except Exception as e:
@@ -377,7 +386,8 @@ def quote(store, req):
         for name, url, _f in jobs:
             r = res.get(name)
             if isinstance(r, dict):
-                offers.append({'src': name, 'kind': 'ltl', 'price': round(r['price'] + unload), 'days': r.get('days'), 'complete': True, 'at': at, 'url': url,
+                offers.append({'src': name, 'kind': 'ltl', 'price': round(r['price'] + unload), 'base': round(r['price']), 'unload': round(unload), 'door': bool(r.get('door')),
+                               'days': r.get('days'), 'complete': True, 'at': at, 'url': url,
                                'note': r.get('note', '') + ('; + разгрузка по тарифам программы' if unload else '')})
             else:
                 errors.append({'src': name, 'msg': _err(r) if r else 'нет ответа за 40 с'})
