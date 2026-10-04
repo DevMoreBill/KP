@@ -5,7 +5,7 @@
 
 const ST = { tab:'stats', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f:{}}, imp:null, chart:'day' };
 
-const ST_TABS = [['stats','Статистика'],['moderation','Модерация'],['delete','Данные: правка и удаление'],['trash','Корзина'],['audit','Журнал действий'],
+const ST_TABS = [['stats','Статистика'],['moderation','Модерация'],['delete','Справочники и данные'],['trash','Корзина'],['audit','Журнал действий'],
   ['backup','Резервные копии'],['logistics','Логистика'],['templates','Шаблоны и категории'],['keys','Ключи API'],['users','Администраторы'],['security','Пароль и доступ']];
 
 const ACT = { login:'Вход в «Настройки»', backup_db:'Копия базы', maintain_db:'Сжатие и проверка базы', purge_images:'Удаление лишних изображений', create_admin:'Новый администратор', edit_admin:'Изменение администратора', delete_admin:'Удаление администратора', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
@@ -14,7 +14,7 @@ const ACT = { login:'Вход в «Настройки»', backup_db:'Копия 
   edit_types:'Категории оборудования', submit_edit:'Правка на модерацию', edit_product:'Правка товара', create_product:'Новый товар',
   price_sync:'Цены из КП', approve_edit:'Правка одобрена', reject_edit:'Правка отклонена', rollback_edit:'Откат правки',
   toggle_moderation:'Режим модерации', delete_kp:'Удаление КП', delete_catalog:'Удаление товара', delete_manager:'Удаление менеджера',
-  delete_client:'Удаление клиента', restore:'Восстановление из корзины', purge_trash:'Очистка корзины', export_db:'Экспорт базы', import_db:'Импорт базы' };
+  delete_client:'Удаление клиента', restore:'Восстановление из корзины', purge_trash:'Очистка корзины', export_db:'Экспорт базы', import_db:'Импорт базы', export_keys:'Копия ключей API' };
 const ENT = { supplier:'Поставщик', customs:'ТН ВЭД', product:'Товар', catalog:'Товар', kp:'КП', manager:'Менеджер', client:'Клиент', settings:'Настройки', template:'Шаблон',
   types:'Категории', admin:'Администратор', db:'База', trash:'Корзина' };
 const DEL_TYPES = [['kp','КП из журнала'],['catalog','Товары каталога'],['manager','Контакты менеджеров'],['client','Клиенты'],['supplier','Поставщики']];
@@ -196,17 +196,23 @@ async function stPendView(id){
 
 // ---------- удаление (в корзину)
 async function stDelete(m){
-  const D=ST.del, r=await aapi(`list/${D.type}?q=${encodeURIComponent(D.q)}`);
+  const D=ST.del, r=await aapi(`list/${D.type}?q=${encodeURIComponent(D.q)}`), ed=ST.ed&&ST.ed.type===D.type?ST.ed:null;
   m.innerHTML=`<div class="seg st-types">${DEL_TYPES.map(([v,l])=>`<button type="button" class="${D.type===v?'on':''}" data-dtype="${v}">${l}</button>`).join('')}</div>
     <div class="row st-dbar"><input type="search" id="dQ" placeholder="Поиск" value="${esc(D.q)}" autocomplete="off"><span class="muted">${r.total>r.items.length?`показано ${r.items.length} из ${r.total} — уточните поиск`:`найдено: ${r.total}`}</span>
-      <span class="sp"></span><button class="btn danger" type="button" data-del ${D.sel.size?'':'disabled'}>Удалить${D.sel.size?' ('+D.sel.size+')':''}</button></div>
-    <div class="st-list">${r.items.map(x=>`<label class="st-row ck-row"><input type="checkbox" data-did="${esc(x.id)}" ${D.sel.has(x.id)?'checked':''}><div><b>${esc(x.title)}</b><span class="muted">${esc(x.sub)}</span></div><div class="acts"><button class="btn" type="button" data-dedit="${esc(x.id)}">${D.type==='kp'?'Открыть':'Изменить'}</button></div></label>`).join('')||'<p class="muted">Ничего не найдено.</p>'}</div>
-    <p class="muted">«${D.type==='kp'?'Открыть':'Изменить'}» — ${({kp:'КП откроется в конструкторе для правки', catalog:'карточка товара в редакторе каталога', manager:'контакты менеджера', client:'реквизиты клиента', supplier:'условия поставщика'})[D.type]}. Удалённое попадает в корзину и хранится ${30} дней — его можно восстановить. Файлы готовых КП (.docx, .pdf) в папке КП не удаляются.</p>`;
+      <span class="sp"></span>${ST_NEW[D.type]?`<button class="btn primary" type="button" data-dnew>+ ${esc(ST_NEW[D.type])}</button>`:''}<button class="btn danger" type="button" data-del ${D.sel.size?'':'disabled'}>Удалить${D.sel.size?' ('+D.sel.size+')':''}</button></div>
+    ${ed&&!ed.id?'<div class="st-ed"></div>':''}
+    <div class="st-list">${r.items.map(x=>`<label class="st-row ck-row${ed&&ed.id===x.id?' on':''}"><input type="checkbox" data-did="${esc(x.id)}" ${D.sel.has(x.id)?'checked':''}><div><b>${esc(x.title)}</b><span class="muted">${esc(x.sub)}</span></div><div class="acts"><button class="btn" type="button" data-dedit="${esc(x.id)}">${D.type==='kp'?'Открыть':'Изменить'}</button></div></label>${ed&&ed.id===x.id?'<div class="st-ed"></div>':''}`).join('')||'<p class="muted">Ничего не найдено.</p>'}</div>
+    <p class="muted">«${D.type==='kp'?'Открыть':'Изменить'}» — ${({kp:'КП откроется в конструкторе для правки', catalog:'карточка товара в редакторе каталога', manager:'контакты менеджера — прямо в списке', client:'реквизиты и контакт клиента — прямо в списке', supplier:'условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщика — прямо в списке'})[D.type]}. Удалённое попадает в корзину и хранится ${30} дней — его можно восстановить. Файлы готовых КП (.docx, .pdf) в папке КП не удаляются.</p>`;
+  const eb=m.querySelector('.st-ed'); if (eb){ stEdDraw(eb); stEdBind(eb, ()=>stDelete(m)); eb.scrollIntoView({block:'nearest'}); eb.querySelector('[data-ef]')?.focus({preventScroll:true}); }
   let qT; $('#dQ').oninput=e=>{ D.q=e.target.value; clearTimeout(qT); qT=setTimeout(()=>stDelete(m).then(()=>{ const i=$('#dQ'); i.focus(); i.setSelectionRange(i.value.length,i.value.length); }),250); };
   m.onchange=e=>{ const c=e.target.closest('[data-did]'); if(!c) return; c.checked?D.sel.add(c.dataset.did):D.sel.delete(c.dataset.did);
     const b=m.querySelector('[data-del]'); b.disabled=!D.sel.size; b.textContent='Удалить'+(D.sel.size?' ('+D.sel.size+')':''); };
-  m.onclick=async e=>{ const t=e.target.closest('[data-dtype]'); if (t){ D.type=t.dataset.dtype; D.sel.clear(); D.q=''; return stDelete(m); }
-    const ed=e.target.closest('[data-dedit]'); if (ed){ e.preventDefault(); try{ await stEdit(D.type, ed.dataset.dedit, ()=>stDelete(m)); }catch(err){ toast(err.message||String(err)); } return; }
+  m.onclick=async e=>{ if (e.target.closest('.st-ed')) return;
+    const t=e.target.closest('[data-dtype]'); if (t){ D.type=t.dataset.dtype; D.sel.clear(); D.q=''; ST.ed=null; return stDelete(m); }
+    if (e.target.closest('[data-dnew]')){ try{ await stEdOpen(D.type, null); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
+    const ed=e.target.closest('[data-dedit]'); if (ed){ e.preventDefault();
+      if (ST_NEW[D.type]){ if (ST.ed&&ST.ed.id===ed.dataset.dedit){ ST.ed=null; return stDelete(m); } try{ await stEdOpen(D.type, ed.dataset.dedit); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
+      try{ await stEdit(D.type, ed.dataset.dedit, ()=>stDelete(m)); }catch(err){ toast(err.message||String(err)); } return; }
     if (!e.target.closest('[data-del]')) return;
     const n=D.sel.size, label=(DEL_TYPES.find(x=>x[0]===D.type)||[])[1];
     if (!await stConfirm(`Удалить? ${label}: ${n}`,'Записи будут в корзине 30 дней (их можно восстановить), затем удалятся окончательно.','Удалить')) return;
@@ -214,26 +220,10 @@ async function stDelete(m){
     if (D.type==='catalog') refreshCat(); if (D.type==='manager') loadManagers().then(renderForm); stDelete(m); };
 }
 
-// правка записи из «Настроек»: КП — в конструкторе, товар — в редакторе каталога, остальное — формой
-const ST_EDIT = {
-  manager: [['name','ФИО'],['position','Должность'],['phone','Телефон'],['ext','Добавочный'],['mobile','Мобильный'],['email','E-mail'],['site','Сайт'],['address','Адрес'],['hours','Часы работы']],
-  client: [['name','Краткое наименование'],['full','Полное наименование'],['inn','ИНН'],['kpp','КПП'],['ogrn','ОГРН'],['address','Юридический адрес','','textarea'],['director','Руководитель'],['directorPost','Должность руководителя']],
-  supplier: [['name','Поставщик'],['country','Страна'],['cur','Валюта (RUB, USD, EUR, CNY)'],['adv','Аванс поставщику, %'],['prod','Срок изготовления, дней'],['ship','Срок доставки, дней'],['ins','Страхование, %'],['fx','Комиссия за перевод, %']],
-};
+// правка записи из «Настроек»: КП — в конструкторе, товар — в редакторе каталога (менеджеры, клиенты, поставщики — в списке, settings-dir.js)
 async function stEdit(type, id, after){
-  const J={'Content-Type':'application/json; charset=utf-8'};
   if (type==='kp'){ const st=await api(`/api/kp/${encodeURIComponent(id)}/state`); S=Object.assign(freshState(), st); setDlg().close(); renderForm(); persist(); window.scrollTo({top:0}); toast('КП № '+(S.number||'')+' открыто для редактирования'); return; }
-  if (type==='catalog'){ const doc=await api('/api/catalog/'+encodeURIComponent(id)); openCatEditor(doc, ()=>{ refreshCat(); after(); }); return; }
-  const src = type==='manager' ? (await api('/api/managers')).find(x=>x.id===id) : type==='client' ? await api('/api/clients/'+encodeURIComponent(id)) : (await api('/api/suppliers')).find(x=>x.id===id);
-  if (!src) throw new Error('Запись не найдена');
-  const v=await stForm(({manager:'Менеджер',client:'Клиент',supplier:'Поставщик'})[type]+': '+(src.name||id), ST_EDIT[type].map(([k,l,_,t])=>[k,l,src[k]??'',t]));
-  if (!v) return;
-  if (!v.name) throw new Error('Название (ФИО) не может быть пустым');
-  const doc={...src, ...v};
-  if (type==='manager'){ await api('/api/managers/'+encodeURIComponent(id),{method:'PUT',headers:{...J,...(src._rev!=null?{'X-KP-Rev':String(src._rev)}:{})},body:JSON.stringify(Object.fromEntries(MGR_KEYS.map(k=>[k,doc[k]??''])))}); loadManagers().then(renderForm); }
-  if (type==='client') await api('/api/clients/'+encodeURIComponent(id),{method:'PUT',headers:J,body:JSON.stringify(doc)});
-  if (type==='supplier'){ delete doc.id; delete doc.updatedAt; await api('/api/suppliers/'+encodeURIComponent(id),{method:'PUT',headers:J,body:JSON.stringify(doc)}); if (typeof DL!=='undefined') DL.sups=null; }
-  toast('Сохранено'); after();
+  if (type==='catalog'){ const doc=await api('/api/catalog/'+encodeURIComponent(id)); openCatEditor(doc, ()=>{ refreshCat(); after(); }); }
 }
 
 async function stTrash(m){

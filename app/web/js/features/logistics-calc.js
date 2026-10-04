@@ -250,7 +250,8 @@ function lgHav(a,b){
 }
 function lgRoadKm(a, b, T){
   if (!a || !b) return null;
-  if (a.name===b.name) return T.localKm;
+  if (a.exact && b.exact){ const d=lgHav(a,b); if (d<40) return Math.max(3, Math.round(d*1.4)); }   // точные адреса рядом — по городу
+  else if (a.name===b.name) return T.localKm;
   const east=Math.max(a.lon, b.lon), k = east>105 ? T.roadKFE : east>59 ? T.roadKE : T.roadK;
   return Math.round(lgHav(a,b)*k/10)*10;
 }
@@ -332,13 +333,25 @@ function lgUnloadPick(maxUnit, T, want){
 
 // ---------------------------------------------------------------- расчёт целиком
 // inp: { from:{name|addr}, to:{name|addr}, km (своё расстояние или ''), items:[{name, qty, l,w,h (м), m (т)}], unload:'auto'|'none'|id }
+// точка маршрута: точный адрес с координатами (подсказка DaData / OpenStreetMap, координаты с карты) или город из адреса
+function lgPoint(p){
+  if (!p) return null;
+  const g=p.geo;
+  if (g && Number.isFinite(+g.lat) && Number.isFinite(+g.lon) && g.lat!==null && g.lon!==null){
+    const base=(g.city&&(lgCityByName(g.city)||lgCity(g.city))) || lgCity(g.value||p.addr) || LG_IDX.reduce((m,c)=>{ const d=lgHav(c,{lat:+g.lat,lon:+g.lon}); return d<m.d?{c,d}:m; },{c:null,d:1e9}).c;
+    return {name:g.city||(base&&base.name)||'точка на карте', lat:+g.lat, lon:+g.lon, how:g.cityOnly?'город':'адрес', exact:!g.cityOnly, noRoad:!!(base&&base.noRoad), near:base&&base.name};
+  }
+  return p.city ? lgCityByName(p.city) : lgCity(p.addr);
+}
+const lgRouteKey = (a,b) => a&&b&&a.exact&&b.exact ? `${a.lat.toFixed(4)},${a.lon.toFixed(4)}|${b.lat.toFixed(4)},${b.lon.toFixed(4)}` : '';
+
 function lgCalc(inp, T){
   T=T||lgTariffs();
   const warn=[], missing=[];
-  const A=inp.from&&inp.from.city ? lgCityByName(inp.from.city) : lgCity(inp.from&&inp.from.addr);
-  const B=inp.to&&inp.to.city ? lgCityByName(inp.to.city) : lgCity(inp.to&&inp.to.addr);
+  const A=lgPoint(inp.from), B=lgPoint(inp.to), rk=lgRouteKey(A,B);
   let km=lgNum(inp.km), kmSrc='вручную';
-  if (!(km>0)){ km=lgRoadKm(A,B,T); kmSrc=km?(A.name===B.name?'в пределах города':'по прямой с поправкой на дороги'):''; }
+  if (!(km>0) && rk && inp.route && inp.route.key===rk && inp.route.km>0){ km=inp.route.km; kmSrc=inp.route.src||'по дорогам'; }
+  if (!(km>0)){ km=lgRoadKm(A,B,T); kmSrc=!km?'':A.exact&&B.exact?(lgHav(A,B)<40?'по городу между адресами':'по прямой между адресами с поправкой на дороги'):(A.name===B.name?'в пределах города':'по прямой с поправкой на дороги'); }
   if (A&&A.noRoad || B&&B.noRoad) warn.push(`${(B&&B.noRoad?B:A).name}: нет круглогодичной дороги — доставка морем, по зимнику или авиа, нужен расчёт перевозчика`);
   if (A&&B&&(A.name==='Калининград')!==(B.name==='Калининград')) warn.push('Калининград: транзит через страны ЕС или паром — нужен расчёт перевозчика');
   const units=[];
@@ -350,7 +363,7 @@ function lgCalc(inp, T){
     for (let i=0;i<Math.min(q,300);i++) units.push({name:it.name, l:Math.max(l,w), w:Math.min(l,w), h, m:mp});
     if (q>300) warn.push(`${it.name}: больше 300 мест — посчитаны первые 300`);
   }
-  const res={ from:A, to:B, km, kmSrc, units:units.length, mass:units.reduce((s,u)=>s+u.m,0), missing, warn, vehicles:[], unplaced:[], unload:null, total:0, lo:0, hi:0, days:0, ok:false };
+  const res={ from:A, to:B, km, kmSrc, routeKey:rk, units:units.length, mass:units.reduce((s,u)=>s+u.m,0), missing, warn, vehicles:[], unplaced:[], unload:null, total:0, lo:0, hi:0, days:0, ok:false };
   if (!(km>0)){ res.need='Укажите, откуда и куда везём (город в адресе) или расстояние в км'; return res; }
   if (!units.length){ res.need=missing.length?'Укажите массу и габариты позиций':'В КП нет позиций этого поставщика'; return res; }
   const plan=lgPlan(units, km, T);

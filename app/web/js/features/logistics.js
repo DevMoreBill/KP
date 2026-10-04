@@ -3,7 +3,7 @@
 // подобранный транспорт и разгрузка, цены перевозчиков и итог, который идёт в расчёт сделки.
 'use strict';
 
-const LG = { tar:null, saved:null, status:null, res:{}, fin:{}, busy:{}, err:{}, tried:{}, qT:{} };
+const LG = { rt:{}, tar:null, saved:null, status:null, res:{}, fin:{}, busy:{}, err:{}, tried:{}, qT:{} };
 
 async function lgLoad(force){
   if (LG.tar && !force) return LG.tar;
@@ -35,7 +35,9 @@ function lgInput(s){
   const its=S.items.filter(x=>String(x.name||'').trim() && dlSupOf(x.id)===s.id);
   const value=its.reduce((a,x)=>{ const q=+x.qty||0; if (x.cost) return a+x.cost/100*q*(rateOf(x.costCur||'RUB')||0);
     return a+(x.price||0)/100*q*(rateOf(kpCur())||0); },0);
-  return { from:{addr:from}, to:{addr:to}, km:lg.km||'', unload:lg.unload||'auto', value,
+  // точные адреса (с координатами) — пока текст поля совпадает с выбранной подсказкой
+  const gf=s.whGeo&&String(s.whGeo.value||'').trim()===from ? s.whGeo : null, gt=lg.toGeo&&String(lg.toGeo.value||'').trim()===to ? lg.toGeo : null;
+  return { from:{addr:from, geo:gf}, to:{addr:to, geo:gt}, km:lg.km||'', route:lg.route||null, unload:lg.unload||'auto', value,
     items:lgItems(s).map(x=>({name:x.name, qty:x.qty, l:x.l.v, w:x.w.v, h:x.h.v, m:x.m.v})), imp };
 }
 
@@ -48,12 +50,28 @@ function lgSync(d){
     if (s.lg.mode==null) s.lg.mode = s.logRu && String(s.logRu.v??'').trim()!=='' && s.logRu.src!=='module' ? 'manual' : 'auto';
     const r=lgCalc(lgInput(s), LG.tar), Q=lgQuoteFor(s, r), fin=lgFinal(r, Q, s.lg.pick);
     LG.res[s.id]=r; LG.fin[s.id]=fin;
+    if (r.routeKey && !(s.lg.route&&s.lg.route.key===r.routeKey)) lgRoute(s, r);
     if (s.lg.mode==='auto'){
       const v = fin.price>0 && !r.need ? String(fin.price) : '';
       if (!s.logRu || s.logRu.v!==v || s.logRu.src!=='module') s.logRu={v, src:'module'};
       if (lgRu(s) && s.lg.setDays!==false && r.days>0 && !r.need && String(s.ship)!==String(r.days)) s.ship=String(r.days);
     }
   }
+}
+
+// подсказки поля «Откуда»: склады поставщика из справочника (с адресом, режимом работы и контактами)
+GEO_EXTRA.wh = inp => { const s=(typeof dlDeal==='function'&&S.deal)?dlDeal().sup[+inp.dataset.k]:null; if (!s) return [];
+  const dir=(DL.sups||[]).find(x=>x.id===s.dirId) || (typeof dlDir==='function'?dlDir(s.name):null);
+  return ((dir&&dir.warehouses)||[]).filter(w=>w.addr).map(w=>({value:w.addr, lat:w.lat??null, lon:w.lon??null, city:w.city||'', exact:w.lat!=null, src:'справочник поставщиков',
+    tag:'склад', sub:[w.name, w.hours, w.phone].filter(Boolean).join(' · ')})); };
+
+// расстояние по дорогам между точными адресами (OSRM через сервер); не ответил — остаётся «по прямой с поправкой»
+function lgRoute(s, r){
+  const key=r.routeKey; if (!key || LG.rt[key]) return; LG.rt[key]='busy';
+  api(`/api/geo/route?a=${r.from.lat},${r.from.lon}&b=${r.to.lat},${r.to.lon}`).then(j=>{
+    if (j && j.km>0){ LG.rt[key]='ok'; s.lg=s.lg||{}; s.lg.route={key, km:j.km, hours:j.hours, src:j.src}; persist(); dealRender(); }
+    else LG.rt[key]=j&&j.error||'нет маршрута';
+  }).catch(e=>{ LG.rt[key]=e.message||'нет связи'; });
 }
 
 // ---------- предложения перевозчиков (ATI.SU, ПЭК, Энергия, Деловые Линии, КИТ, СДЭК, Возовоз) — сервер /api/logistics/quote
@@ -119,7 +137,6 @@ function lgAutoQuote(){
 function dlLogistics(c){
   const d=dlDeal(), ex=DL.ex, T=LG.tar;
   if (!T) return dlStep(0, 'Логистика', '', '<p class="muted">Загружаю тарифы…</p>', '', null, 'log');
-  const cityList=`<datalist id="lgCities">${LG_CITIES.map(x=>`<option value="${esc(x[0])}">`).join('')}</datalist>`;
   const cards=d.sup.map((s,k)=>{ const cs=c.sup[k], P=`sup.${k}`, ru=lgRu(s), lg=s.lg||{}, r=LG.res[s.id]||lgCalc(lgInput(s), T), fin=LG.fin[s.id]||lgFinal(r,null,lg.pick);
     const its=lgItems(s), inp=lgInput(s), nm=cs.name, Q=lgQuoteFor(s, r);
     const cell=(x,f,ph)=>`<input type="text" inputmode="decimal" data-lgi="${esc(x.id)}" data-k="${k}" data-f="${f}" value="${esc(lgIn(x[f].v))}" placeholder="${ph}" class="${x[f].v==null?'need':''}${x[f].own?' own':''}" aria-label="${ph}"${ex?' disabled':''}>`;
@@ -129,16 +146,19 @@ function dlLogistics(c){
       ${dlField('Страхование груза', P+'.ins', {calc:c, unit:'% от оборудования', ph:'0,3', q:'Процент от стоимости оборудования. Входит в таможенную стоимость.'})}</div></div>`;
     const n0=ru?0:1;
     // 2. маршрут
-    const where=[r.from?`<b>${esc(r.from.name)}</b>${r.from.how==='регион'?' <span class="muted">(центр региона)</span>':''}`:'<span class="bad-t">город склада не найден — впишите город</span>',
-      r.to?`<b>${esc(r.to.name)}</b>${r.to.how==='регион'?' <span class="muted">(центр региона — уточните город)</span>':''}`:'<span class="bad-t">город объекта не найден — впишите город</span>'].join(' → ')
-      +(r.km?` · <b>${stNumLg(r.km)} км</b> <span class="muted">${esc(r.kmSrc)}</span>`:'');
+    const pt=(p,what)=>!p?`<span class="bad-t">${what} не найден — впишите адрес или город</span>`
+      : p.exact?`<b>${esc(p.name)}</b> <span class="geo-ok" title="${esc(p.lat.toFixed(5)+', '+p.lon.toFixed(5))}">точный адрес ✓</span>`
+      : `<b>${esc(p.name)}</b>${p.how==='регион'?' <span class="muted">(центр региона — уточните адрес)</span>':' <span class="muted">(центр города)</span>'}`;
+    const rt=r.routeKey&&LG.rt[r.routeKey], rtNote=r.routeKey&&!(lg.route&&lg.route.key===r.routeKey)&&!lgV(lg.km) ? (rt==='busy'?' · считаю путь по дорогам…':rt&&rt!=='ok'?` · по дорогам не посчитано: ${rt}`:'') : '';
+    const where=[pt(r.from, ru?'склад':'пункт отправки'), pt(r.to,'адрес объекта')].join(' → ')
+      +(r.km?` · <b>${stNumLg(r.km)} км</b> <span class="muted">${esc(r.kmSrc)}${lg.route&&lg.route.key===r.routeKey&&!lgV(lg.km)&&lg.route.hours?', в пути без остановок ≈ '+String(lg.route.hours).replace('.',',')+' ч':''}${esc(rtNote)}</span>`:'');
     const route=`<div class="lg-sec"><h5><span class="lg-sn">${n0+1}</span>Маршрут по России</h5>
       <div class="lg-route">
-        <label class="f"><span>Откуда — ${ru?'склад поставщика':'СВХ / терминал'}${dlQ(ru?'Город или адрес склада поставщика. Запоминается в справочнике поставщиков.':'Где груз выпускается с таможни и откуда едет по России. По умолчанию — из «Настроек» → «Логистика».')}</span>
-          <input type="text" data-lgf="wh" data-k="${k}" value="${esc(s.wh||'')}" placeholder="${esc(ru?'например: Подольск':T.hub)}" list="lgCities"${ex?' disabled':''}></label>
-        <label class="f"><span>Куда — адрес объекта${dlQ('Из раздела «Клиент» (объект или юридический адрес). Можно вписать другой адрес или просто город.')}</span>
-          <input type="text" data-lgf="to" data-k="${k}" value="${esc(inp.to.addr)}" placeholder="город, улица" list="lgCities"${ex?' disabled':''}></label>
-        <label class="f lg-km"><span>Расстояние, км${dlQ('По таблице городов: по прямой с поправкой на дороги (точность ±5–10 %). Знаете точное — впишите.')}</span>
+        <label class="f"><span>Откуда — ${ru?'склад поставщика':'СВХ / терминал'}${dlQ((ru?'Точный адрес склада поставщика — выберите из подсказок (склады из справочника поставщиков, DaData или OpenStreetMap). Запоминается в справочнике поставщиков.':'Где груз выпускается с таможни и откуда едет по России. По умолчанию — из «Настроек» → «Логистика».')+' Можно вставить координаты или ссылку на точку из Google или Яндекс Карт — адрес определится сам. Достаточно и города — тогда расчёт от центра города.')}</span>
+          <input type="text" data-lgf="wh" data-geo="wh" data-k="${k}" value="${esc(s.wh||'')}" placeholder="${esc(ru?'адрес склада, город или координаты':T.hub)}" autocomplete="off"${ex?' disabled':''}></label>
+        <label class="f"><span>Куда — адрес объекта${dlQ('Из раздела «Клиент» (объект или юридический адрес). Выберите точный адрес из подсказок (DaData или OpenStreetMap) или вставьте координаты / ссылку на точку из Google или Яндекс Карт. Можно просто город.')}</span>
+          <input type="text" data-lgf="to" data-geo="to" data-k="${k}" value="${esc(lg.to ?? inp.to.addr)}" placeholder="адрес объекта, город или координаты" autocomplete="off"${ex?' disabled':''}></label>
+        <label class="f lg-km"><span>Расстояние, км${dlQ('Точные адреса с обеих сторон — расстояние по дорогам (OSRM, карты OpenStreetMap). Иначе — между городами по прямой с поправкой на дороги (точность ±5–10 %). Знаете точное — впишите.')}</span>
           <input type="text" inputmode="numeric" data-lgf="km" data-k="${k}" value="${esc(lg.km||'')}" placeholder="${r.km?esc(r.km)+' — авто':'авто'}"${ex?' disabled':''}></label></div>
       <p class="lg-where">${where}</p></div>`;
     // 3. груз
@@ -194,7 +214,7 @@ function dlLogistics(c){
       ${abroad}${route}${cargo}${trans}${offers}${total}</div>`; }).join('');
   const sum=c.sup.reduce((a,x)=>a+x.L+x.Lru+x.ins,0);
   return dlStep(0, 'Логистика', 'Перевозка от поставщика до объекта заказчика: маршрут, груз, транспорт, цены перевозчиков. Итог по каждому поставщику сразу идёт в расчёт сделки.',
-    `${cityList}${cards}`, '', ['Итого логистика', sum, 'до границы, страхование и доставка по России'], 'log');
+    cards, '', ['Итого логистика', sum, 'до границы, страхование и доставка по России'], 'log');
 }
 
 // ---------- ввод на вкладке (обработчики вешаются на окно «Экономики сделки» — dealBind → lgBind)
@@ -211,6 +231,12 @@ function lgBind(dlg, touch){
   dlg.addEventListener('input', e=>{ const t=e.target;
     if (t.dataset.lgman!=null){ const s=dlDeal().sup[+t.dataset.lgman]; if (!s||DL.ex) return; s.logRu={v:t.value}; touch(); return dealRender(); }
     if ((t.dataset.lgf||t.dataset.lgi) && t.tagName==='INPUT' && t.type!=='checkbox' && upd(t)){ touch(); dealRender(); } });
+  // выбран точный адрес из подсказок (или по координатам / ссылке карт)
+  dlg.addEventListener('geo:pick', e=>{ const t=e.target, k=+t.dataset.k, s=dlDeal().sup[k]; if (!s || DL.ex || !t.dataset.lgf) return; s.lg=s.lg||{};
+    const g={...e.detail}; delete g.note;
+    if (t.dataset.lgf==='wh'){ s.wh=g.value; s.whGeo=g; if (typeof dlSaveSupplier==='function') dlSaveSupplier(s); }
+    else if (t.dataset.lgf==='to'){ s.lg.to=g.value; s.lg.toGeo=g; }
+    touch(); dealRender(); });
   dlg.addEventListener('change', e=>{ const t=e.target;
     if (t.dataset.lgpick!=null){ const s=dlDeal().sup[+t.dataset.k]; if (!s||DL.ex) return; s.lg=s.lg||{}; s.lg.pick=t.dataset.lgpick; touch(); return dealRender(); }
     if ((t.tagName==='SELECT'||t.type==='checkbox') && t.dataset.lgf && upd(t)){ touch(); dealRender(); } });

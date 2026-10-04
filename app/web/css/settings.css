@@ -150,3 +150,32 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .key-bar .sp{flex:1}
 @media (max-width:600px){.key-grid{grid-template-columns:1fr}.key-note{display:none}.key-bar{padding:10px 12px}.key-bar .btn{width:100%}}
 .warn-t{color:#9a6b00}
+/* справочники: правка прямо в списке (settings-dir.js) */
+.st-ed{border:1px solid var(--navy);border-radius:12px;padding:12px 14px;margin:6px 0 12px;background:var(--card);box-shadow:0 6px 20px rgba(0,0,0,.06)}
+.st-ed-h,.st-ed-f{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.st-ed-h{position:sticky;top:-1px;z-index:2;background:var(--card);padding:4px 0 8px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.st-ed-h b{font-size:15px}
+.st-ed-h .sp,.st-ed-f .sp,.st-ed-ih .sp{flex:1}
+.st-ed-f{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.st-ed-sec{margin-top:12px}
+.st-ed-sec>.sub{margin-bottom:6px}
+.st-ed-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 12px}
+.st-ed-g .f{margin:0}
+.st-ed-g .f.wide{grid-column:span 2}
+.st-ed-g.c4{grid-template-columns:repeat(4,minmax(0,1fr)) auto;align-items:end}
+.st-ed-item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--soft)}
+.st-ed-ih{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.st-inn{display:flex;gap:6px}
+.st-inn input{flex:1;min-width:0}
+.st-chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.st-chips .chip{display:inline-flex;align-items:center;gap:6px}
+.st-chips .chip button{border:0;background:none;color:var(--muted);cursor:pointer;padding:0 2px;font-size:12px}
+.st-ed-add{gap:8px;margin:4px 0 8px}
+.st-ed-add input{flex:1;min-width:180px}
+.st-row.on{border-color:var(--navy)}
+@media (max-width:600px){.st-ed-add input{flex:1 1 100%}.st-ed{padding:10px}.st-ed-g,.st-ed-g.c4{grid-template-columns:1fr}.st-ed-g .f.wide{grid-column:auto}.st-ed-x{justify-self:end}}
+.key-bk{gap:10px;align-items:flex-end;flex-wrap:wrap}
+.key-bk .f{flex:1 1 240px;margin:0}
+.key-imp{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}
+.key-imp .ck{display:flex;gap:8px;align-items:center;margin:4px 0;flex-wrap:wrap}
+.key-imp .row{gap:8px;margin-top:10px;flex-wrap:wrap}

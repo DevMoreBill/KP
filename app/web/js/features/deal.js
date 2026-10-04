@@ -75,7 +75,7 @@ const dlNorm = s => String(s||'').trim().toLowerCase();
 function dlDir(name){ const n=dlNorm(name); if (!n || !DL.sups) return null;
   return DL.sups.find(x=>dlNorm(x.name)===n) || DL.sups.find(x=>(x.makers||[]).some(m=>dlNorm(m)===n)) || null; }
 
-const DL_SUP_KEYS=['wh','country','cur','vatIn','noVat','adv','pay','prod','ship','prodK','shipK','cusMode','ivat','ins','fx'];
+const DL_SUP_KEYS=['wh','whGeo','country','cur','vatIn','noVat','adv','pay','prod','ship','prodK','shipK','cusMode','ivat','ins','fx'];
 
 // подставить условия поставщика из справочника (название, страна, валюта, аванс, сроки, таможня, комиссии)
 function dlApplyDir(s, p){ if (!p) return false;
@@ -94,7 +94,9 @@ function dlSaveSupplier(s){
   DL.saveT[s.id]=setTimeout(async()=>{ const id=s.dirId || ('sup_'+uid()+uid()).slice(0,24);
     const kp=dealKpInputs(), makers=[...new Set(kp.items.filter(x=>dlSupOf(x.id)===s.id).map(x=>x.maker).filter(Boolean))];
     const was=(DL.sups||[]).find(x=>x.id===id);   // номер правки — чтобы не затереть изменения коллеги
-    const doc={ name:s.name.trim(), ...Object.fromEntries(DL_SUP_KEYS.map(k=>[k,s[k]??''])), makers, ...(was&&was._rev!=null?{_rev:was._rev}:{}) };
+    // поля справочника, которых нет в расчёте (реквизиты, склады, контакты, оборудование), — не трогаем
+    const doc={ ...(was||{}), name:s.name.trim(), ...Object.fromEntries(DL_SUP_KEYS.map(k=>[k,s[k]??''])), makers:[...new Set([...((was&&was.makers)||[]), ...makers])], ...(was&&was._rev!=null?{_rev:was._rev}:{}) };
+    delete doc.id; delete doc.updatedAt;
     try{ const saved=await api('/api/suppliers/'+id,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(doc)});
       s.dirId=id; DL.sups=(DL.sups||[]).filter(x=>x.id!==id).concat(saved); persist(); }catch(e){} }, 1200);
 }
@@ -106,13 +108,16 @@ function dealEnsure(){
   if (S.deal && S.deal.v){ dealUpgrade(S.deal); if (!S.deal.hs) S.deal.hs={}; return S.deal; }
   const def=dealDefaults(), d=dealBlank(def); d.hs={}; if (def.target) d.target={type:def.targetType||'margin', v:def.target};
   const its=(S.items||[]).filter(x=>String(x.name||'').trim());
-  const makers=[...new Set(its.map(x=>attrsOf(x).maker||''))];
+  // позиция каталога, закреплённая в справочнике за поставщиком, — к нему; остальные — по производителю
+  const dirOfItem = x => x.catId && (DL.sups||[]).find(p=>(p.items||[]).includes(x.catId));
+  const keyOf = x => { const p=dirOfItem(x); return p ? '\u0001'+p.id : attrsOf(x).maker||''; };
+  const keys=[...new Set(its.map(keyOf))];
   d.sup=[]; d.map={};
-  makers.forEach((mk,k)=>{ const s=dealNewSupplier('s'+(k+1), def); s.name=mk;
-    const p=dlDir(mk); if (p) dlApplyDir(s,p);
-    else { const cur=its.find(x=>(attrsOf(x).maker||'')===mk && x.cost)?.costCur; if (cur && cur!=='RUB'){ s.country=''; s.cusMode='calc'; s.log.cur=cur; s.cur=cur; }
+  keys.forEach((mk,k)=>{ const s=dealNewSupplier('s'+(k+1), def); const pd=mk[0]==='\u0001' ? (DL.sups||[]).find(p=>'\u0001'+p.id===mk) : null; s.name=pd?pd.name:mk;
+    const p=pd||dlDir(mk); if (p) dlApplyDir(s,p);
+    else { const cur=its.find(x=>keyOf(x)===mk && x.cost)?.costCur; if (cur && cur!=='RUB'){ s.country=''; s.cusMode='calc'; s.log.cur=cur; s.cur=cur; }
       else if (cur==='RUB'){ s.country='Россия'; dlApplyCountry(s); } }
-    d.sup.push(s); its.filter(x=>(attrsOf(x).maker||'')===mk).forEach(x=>{ d.map[x.id]=s.id; }); });
+    d.sup.push(s); its.filter(x=>keyOf(x)===mk).forEach(x=>{ d.map[x.id]=s.id; }); });
   if (!d.sup.length) d.sup=[dealNewSupplier('s1', def)];
   S.deal=d; return d;
 }
@@ -616,7 +621,7 @@ function dlSchedule(c, n=6){
       <td class="c-who"><span class="dl-pty ${pt[1]}">${pt[0]}</span></td>
       <td class="c-ev">${esc(r.label)}${r.ev&&(r.party==='log'||r.party==='oth')?`<small>${esc(r.ev)}</small>`:''}</td><td class="num c-pay ${r.inflow?'ok-t':''}">${r.inflow?'+':'−'}${dlRub0(Math.abs(r.amount))}</td><td class="num c-bal ${r.balance<0?'neg':''}">${dlRub0(r.balance)}</td><td class="num c-fin">${r.fin?dlRub0(r.fin)+`<small>${r.days} дн.</small>`:'—'}</td></tr>`; }).join('')}
     </tbody><tfoot><tr><td class="c-day"></td><td class="c-who"></td><td class="c-ev">Стоимость финансирования</td><td class="c-pay"></td><td class="c-bal"></td><td class="num c-fin"><b>${dlRub(c.F)}</b></td></tr></tfoot></table></div>
-    <p class="dl-qrow"><span>Как считается финансирование</span>${dlQ('Простой процент на недостающие деньги до последней оплаты заказчика, месяц — 30 дней; оплаты заказчика уменьшают финансирование, доход на свободный остаток не начисляется.')}<span>Как переносить платежи</span>${dlQ('Перетащите платёж за «⠿» выше или ниже (или ↑ ↓, или выберите дату) — он получит новую дату, а срок, из которого он получился (этап оплаты, срок изготовления или доставки), пересчитается в днях и датах на предыдущих вкладках.')}</p>`, 'dl-sched', null, 'sched');
+    <div class="dl-qrow"><span>Как считается финансирование</span>${dlQ('Простой процент на недостающие деньги до последней оплаты заказчика, месяц — 30 дней; оплаты заказчика уменьшают финансирование, доход на свободный остаток не начисляется.')}<span>Как переносить платежи</span>${dlQ('Перетащите платёж за «⠿» выше или ниже (или ↑ ↓, или выберите дату) — он получит новую дату, а срок, из которого он получился (этап оплаты, срок изготовления или доставки), пересчитается в днях и датах на предыдущих вкладках.')}</div>`, 'dl-sched', null, 'sched');
 }
 
 // ---------- прочие расходы наличными (необязательно): % от чистой прибыли, % от выручки без НДС или сумма — всё «чистыми», на руки

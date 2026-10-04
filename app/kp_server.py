@@ -276,12 +276,35 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_cached('types-' + hashlib.md5(text.encode('utf-8')).hexdigest()[:16], lambda: text)
 
         # контрагенты: поиск по ИНН, проверка Checko, справочник
+        # адреса и расстояния для доставки по России (geo.py): подсказки, координаты, маршрут по дорогам
+        if path.startswith('/api/geo/') and m == 'GET':
+            import geo
+            act = path[len('/api/geo/'):]
+            try:
+                if act == 'suggest':
+                    return self.send_json(geo.suggest(store(), q.get('q', '')))
+                if act == 'locate':
+                    return self.send_json(geo.locate(store(), q.get('q', '')))
+                if act == 'reverse':
+                    return self.send_json(geo.reverse(store(), q.get('lat'), q.get('lon')))
+                if act == 'route':
+                    a, b = (q.get('a') or '').split(','), (q.get('b') or '').split(',')
+                    if len(a) != 2 or len(b) != 2:
+                        raise ValueError('Нужны две точки')
+                    return self.send_json(geo.route(store(), a, b))
+                if act == 'unshort':
+                    return self.send_json({'url': geo.unshort(q.get('u', ''))})
+            except Exception as e:
+                return self.send_json({'error': str(e)[:300] or e.__class__.__name__})
+            return self.send(404, 'text/plain; charset=utf-8', 'Нет такого запроса')
         if path == '/api/party':
             return self.send_json(cp().lookup(q.get('inn', '')))
         if path == '/api/check/quota':      # сколько проверок Checko осталось сегодня (на весь отдел) и сколько в очереди
             return self.send_json(cp().quota())
         if path == '/api/check':
             return self.send_json(cp().check(q.get('inn', ''), force=q.get('force') == '1', by=admin.actor(self)[1]))
+        if path == '/api/integrations/export' and m == 'GET':      # резервная копия ключей (только администратор — см. admin.guard)
+            return self.send_json({'kind': 'kp-keys', 'v': 1, 'at': datetime.now().isoformat(timespec='seconds'), 'keys': cp().keys()})
         if path == '/api/integrations':
             if m == 'PUT':
                 return self.send_json(cp().save_keys(self.body()))

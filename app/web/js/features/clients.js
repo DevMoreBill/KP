@@ -125,6 +125,29 @@ async function checkRun(force){
   renderForm(); persist(); if (!S.check.error && S.client) saveClient(false);
 }
 
+// резервная копия ключей: файл JSON, по желанию зашифрованный паролем (PBKDF2-SHA256 + AES-GCM, Web Crypto в браузере)
+const KB = { file:null, crypto:!!(window.crypto&&crypto.subtle) };
+const kb64 = b => btoa(String.fromCharCode(...new Uint8Array(b)));
+const kbBin = s => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+async function keysKey(pw, salt, iter){ const base=await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:iter, hash:'SHA-256'}, base, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']); }
+async function keysEnc(text, pw){ const salt=crypto.getRandomValues(new Uint8Array(16)), iv=crypto.getRandomValues(new Uint8Array(12)), iter=250000;
+  const data=await crypto.subtle.encrypt({name:'AES-GCM', iv}, await keysKey(pw, salt, iter), new TextEncoder().encode(text));
+  return {alg:'PBKDF2-SHA256/AES-256-GCM', iter, salt:kb64(salt), iv:kb64(iv), data:kb64(data)}; }
+async function keysDec(enc, pw){ if (!KB.crypto) throw new Error('нет Web Crypto');
+  const data=await crypto.subtle.decrypt({name:'AES-GCM', iv:kbBin(enc.iv)}, await keysKey(pw, kbBin(enc.salt), enc.iter||250000), kbBin(enc.data));
+  return new TextDecoder().decode(data); }
+// что есть в файле копии: отметить, какие ключи восстановить (по умолчанию — все; текущие заменятся)
+function keysImpHtml(k){ const F=KB.file; if (!F) return '';
+  const head=`<p class="sub">Файл «${esc(F.name)}»${F.at?` от ${esc(String(F.at).slice(0,16).replace('T',' '))}`:''}</p>`;
+  if (!F.keys) return `<div class="key-imp">${head}<p class="muted">Файл зашифрован паролем.</p>${F.err?`<p class="msg err">${esc(F.err)}</p>`:''}
+    <div class="row"><input type="password" data-kipw placeholder="пароль копии" autocomplete="off"${KB.crypto?'':' disabled'}><button class="btn primary" type="button" data-kidec>Расшифровать</button><button class="btn ghost" type="button" data-kix>Отмена</button></div></div>`;
+  const all=KEY_GROUPS.flatMap(g=>g[2]).filter(f=>f.id), names=Object.keys(F.keys).filter(x=>F.keys[x]!=null && F.keys[x]!=='');
+  const lab=id=>(all.find(f=>f.id===id)||{}).t || (id==='checkoDaily'?'Лимит Checko в день':id);
+  const mask=v=>{ v=String(v); return v.length>10?v.slice(0,4)+'…'+v.slice(-4):'•••'; };
+  return `<div class="key-imp">${head}${names.length?names.map(id=>`<label class="ck"><input type="checkbox" data-kik="${esc(id)}" checked> <b>${esc(lab(id))}</b> <span class="muted">${id==='checkoDaily'?esc(F.keys[id]):esc(mask(F.keys[id]))}${(all.find(f=>f.id===id)||{}).mask&&k[(all.find(f=>f.id===id)).mask]?' · заменит текущий':''}</span></label>`).join(''):'<p class="muted">В файле нет ключей.</p>'}
+    <div class="row"><button class="btn primary" type="button" data-kiok${names.length?'':' disabled'}>Восстановить отмеченные</button><button class="btn ghost" type="button" data-kix>Отмена</button></div></div>`; }
+
 // Ключи API — форма прямо в «Настройки → Ключи API» (отдельного окна нет)
 const KEY_GROUPS=[
   ['Контрагенты', 'Реквизиты по ИНН подтягиваются и без ключей — из открытого сервиса ФНС (egrul.nalog.ru). С ключами данные полнее и быстрее, а Checko ещё и проверяет контрагента.', [
@@ -150,9 +173,32 @@ async function keysForm(m){
       <input type="${f.secret?'password':'text'}" data-key="${f.id}" placeholder="${esc(k[f.mask]?'Новый ключ — заменит текущий':f.ph)}" autocomplete="off"></label>
       ${k[f.mask]?`<button class="btn ghost sm" type="button" data-kdel="${f.id}" title="Удалить ключ">Удалить</button>`:''}</div>${f.h?`<p class="muted">${esc(f.h)}</p>`:''}</div>`;
   m.innerHTML=KEY_GROUPS.map(([t,h,fs])=>`<div class="st-card"><p class="sub">${esc(t)}</p>${h?`<p class="muted">${esc(h)}</p>`:''}<div class="key-grid">${fs.map(fld).join('')}</div></div>`).join('')
+    +`<div class="st-card"><p class="sub">Резервная копия ключей</p>
+      <p class="muted">Файл со всеми ключами — чтобы перенести их на другой компьютер или восстановить после переустановки. С паролем файл зашифрован (AES-256): без пароля ключи из него не прочитать. Без пароля храните файл как пароль — в нём ключи открытым текстом.</p>
+      <div class="row key-bk"><label class="f"><span>Пароль для файла (необязательно)</span><input type="password" data-kpw autocomplete="new-password" placeholder="${KB.crypto?'пароль копии':'шифрование доступно только при входе через localhost или https'}"${KB.crypto?'':' disabled'}></label>
+        <button class="btn" type="button" data-kexp>Скачать копию ключей</button><button class="btn ghost" type="button" data-kimp>Загрузить из копии…</button><input type="file" id="kFile" accept=".json,application/json" hidden></div>
+      <div id="kImp">${KB.file?keysImpHtml(k):''}</div></div>`
     +`<div class="st-card key-bar"><span class="muted key-note">Ключи хранятся только на компьютере, где работает программа (в папке данных).</span><span class="sp"></span><button class="btn primary" type="button" data-ksave>Сохранить ключи</button></div>`;
   const put=async body=>{ try{ await api('/api/integrations',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(body)}); toast('Сохранено'); if (typeof LG!=='undefined') LG.status=null; keysForm(m); }catch(e){ toast('Не сохранилось: '+(e.message||e)); } };
-  m.onclick=e=>{ const d=e.target.closest('[data-kdel]'); if (d) return put({[d.dataset.kdel]:''});
+  m.querySelector('#kFile').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if (!f) return;
+    try{ const j=JSON.parse(await f.text()); if (!j || j.kind!=='kp-keys' || !(j.keys||j.enc)) throw new Error('это не копия ключей программы');
+      KB.file={name:f.name, at:j.at, keys:j.keys||null, enc:j.enc||null, err:''}; }catch(err){ return toast('Файл не подходит: '+(err.message||err)); }
+    m.querySelector('#kImp').innerHTML=keysImpHtml(k); m.querySelector('#kImp [data-kipw]')?.focus(); };
+  m.onclick=async e=>{ const d=e.target.closest('[data-kdel]'); if (d) return put({[d.dataset.kdel]:''});
+    if (e.target.closest('[data-kimp]')) return m.querySelector('#kFile').click();
+    if (e.target.closest('[data-kexp]')){ try{ const j=await api('/api/integrations/export'), pw=(m.querySelector('[data-kpw]')||{}).value||'';
+        const out = pw ? {kind:'kp-keys', v:1, at:j.at, enc:await keysEnc(JSON.stringify(j.keys), pw)} : j;
+        const n=Object.keys(j.keys||{}).filter(x=>x!=='checkoDaily').length; if (!n) return toast('Ключей пока нет — нечего сохранять');
+        const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,1)],{type:'application/json'}));
+        a.download=`ключи-API-${(j.at||'').slice(0,10)}${pw?'-зашифровано':''}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+        toast(`Копия сохранена: ${n} ${plural(n,'ключ','ключа','ключей')}${pw?', зашифровано паролем':''}`); }catch(err){ toast('Не получилось: '+(err.message||err)); } return; }
+    if (e.target.closest('[data-kix]')){ KB.file=null; m.querySelector('#kImp').innerHTML=''; return; }
+    if (e.target.closest('[data-kidec]')){ const pw=m.querySelector('[data-kipw]').value;
+      try{ KB.file.keys=JSON.parse(await keysDec(KB.file.enc, pw)); KB.file.err=''; }catch(err){ KB.file.err='Пароль не подходит'; }
+      m.querySelector('#kImp').innerHTML=keysImpHtml(k); return; }
+    if (e.target.closest('[data-kiok]')){ const body={}; m.querySelectorAll('[data-kik]:checked').forEach(c=>{ body[c.dataset.kik]=KB.file.keys[c.dataset.kik]; });
+      if (!Object.keys(body).length) return toast('Не выбрано, что восстановить');
+      KB.file=null; return put(body); }
     if (!e.target.closest('[data-ksave]')) return;
     const b={}; m.querySelectorAll('[data-key]').forEach(i=>{ const v=i.value.trim(); if (v) b[i.dataset.key]=v; });
     const dl=+(m.querySelector('[data-kday]')||{}).value; if (dl>0 && dl!==(k.checkoDaily||100)) b.checkoDaily=dl;

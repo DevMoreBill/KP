@@ -85,7 +85,7 @@ function morphKids(a, b){
     if (o.nodeType!==1){ if (o.nodeValue!==n.nodeValue) o.nodeValue=n.nodeValue; }
     else morphEl(o,n);
   }
-  while (cur){ const nx=cur.nextSibling; cur.remove(); cur=nx; }
+  while (cur){ const nx=cur.nextSibling; if (!(cur.nodeType===1 && cur.hasAttribute('data-morph-keep'))) cur.remove(); cur=nx; }   // всплывающие списки поверх окна — не трогаем
 }
 
 function morphEl(o, n){
