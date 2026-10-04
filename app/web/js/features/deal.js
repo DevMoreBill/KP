@@ -184,7 +184,7 @@ async function openDeal(){
   let d=$('#dealdlg'); if (!d){ d=document.createElement('dialog'); d.id='dealdlg'; d.className='dealwin'; d.setAttribute('aria-label','Экономика сделки'); document.body.appendChild(d); dealBind(d); }
   // окно открывается сразу, содержимое — после загрузки справочников (повторное открытие тоже рисуется заново)
   if (!d.open){ d.innerHTML='<div class="dlg-h"><h3>Экономика сделки</h3><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div><p class="empty">Загружаю…</p>'; d.showModal(); }
-  await dlLoadDirs(); dealEnsure();
+  await Promise.all([dlLoadDirs(), lgLoadAll()]); dealEnsure();
   d.innerHTML=''; dealRender(true);
 }
 
@@ -276,6 +276,10 @@ function dlStepInfo(c){
   const its=DL.ex?[]:(S.items||[]).filter(x=>String(x.name||'').trim()), noCost=its.filter(x=>!(x.cost>0)).length;
   si.buy={ st: noCost||d.sup.some(x=>!String(x.name||'').trim())?'need':'ok',
     sum: noCost ? `Нет цены закупки у ${noCost} из ${its.length} поз.` : c.sup.filter(x=>x.equip>0||c.sup.length===1).map(x=>`${x.name}${x.country?' ('+x.country+')':''}: ${dlRub0(x.equip)}, готово — ${when(x.rdy)}, у заказчика — ${when(x.arr)}`).join(' · ') };
+  const lgr=d.sup.map(s=>LG.res[s.id]).filter(Boolean), lgNeed=lgr.some(r=>r.need && !/нет позиций/.test(r.need));
+  si.log={ st: DL.ex ? 'ok' : lgNeed ? 'need' : 'ok',
+    sum: c.sup.map((x,k)=>{ const r=LG.res[d.sup[k].id], f=LG.fin[d.sup[k].id];
+      return `${x.name}: ${r&&r.from&&r.to?`${r.from.name} → ${r.to.name}, ${r.km} км, `:''}${dlRub0(x.L+x.Lru+x.ins)}${f&&d.sup[k].lg&&d.sup[k].lg.mode!=='manual'?` (${f.name})`:''}`; }).join(' · ') };
   const noDuty=c.sup.some(x=>x.noDuty.length);
   si.cus={ st: noDuty||c.unknown.length?'need':'ok',
     sum: noDuty ? 'Укажите ставку пошлины у позиций' : c.unknown.length ? 'Укажите ввозной НДС к вычету' : c.Tsum ? `Платим на таможне ${dlRub0(c.Tsum)}, в себестоимость ${dlRub0(c.sup.reduce((a,x)=>a+x.T-(x.vi||0),0))}` : 'Таможни нет' };
@@ -308,7 +312,7 @@ function dlPurchase(c){
             <td class="num c-sum">${x.cost?dlRub0(sum):'—'}</td>
             ${multi?`<td><select data-dlmap="${esc(x.id)}" aria-label="Поставщик позиции">${d.sup.map((z,j)=>`<option value="${esc(z.id)}"${z.id===s.id?' selected':''}>${esc(c.sup[j].name)}</option>`).join('')}</select></td>`:''}</tr>`; }).join('')}
         </tbody></table>`; })();
-    const moreSum = [cs.equip&&dNum(s.extra&&s.extra.v)?`прочая закупка ${dlIn(dNum(s.extra.v))} ${(s.extra&&s.extra.cur)||'RUB'}`:'', dNum(s.ins)?`страхование ${dlIn(dNum(s.ins))} %`:'', dNum(s.fx)?`комиссия ${dlIn(dNum(s.fx))} %`:'', cs.brk?`брокер ${dlRub0(cs.brk)}`:''].filter(Boolean).map(esc).join(', ');
+    const moreSum = [cs.equip&&dNum(s.extra&&s.extra.v)?`прочая закупка ${dlIn(dNum(s.extra.v))} ${(s.extra&&s.extra.cur)||'RUB'}`:'', dNum(s.fx)?`комиссия ${dlIn(dNum(s.fx))} %`:'', cs.brk?`брокер ${dlRub0(cs.brk)}`:''].filter(Boolean).map(esc).join(', ');
     return `<div class="dl-card dl-sup">
       <div class="dl-suph">
         ${dlCombo('Поставщик', P+'.name', {ph:'Начните вводить или выберите из списка ▾', q:'Производитель, дистрибьютор или импортёр. Список — поставщики из справочника и производители позиций КП; можно вписать любого.'})}
@@ -324,13 +328,9 @@ function dlPurchase(c){
         <div class="dl-g">${dlField('Готово к отгрузке через', P+'.prod', {calc:c, int:true, date:{base:0, val:cs.prod}, q:'Сколько дней от заказа (подписания договора) до готовности оборудования на складе поставщика. Можно выбрать дату — дни посчитаются сами.'})}${dlField('Доставка до заказчика', P+'.ship', {calc:c, int:true, date:{base:cs.rdy, val:cs.ship}, q:'Сколько дней едет груз от склада поставщика до объекта заказчика, включая таможню. Дата — когда груз будет у заказчика.'})}</div>
         <p class="dl-tl"><span>Заказ — <b>день 0</b>${dlD0()?` · ${dlDayRu(0)}`:''}</span><i>→</i><span>Готово к отгрузке — <b>день ${cs.rdy}</b>${dlD0()?` · ${dlDayRu(cs.rdy)}`:''}</span><i>→</i><span>У заказчика — <b>день ${cs.arr}</b>${dlD0()?` · ${dlDayRu(cs.arr)}`:''}</span></p></div>
       <div class="dl-sub"><h5>Оплата поставщику ${dlQ('Доли от стоимости оборудования (с комиссией за перевод). Последний этап — остаток до 100 %. Перевозка, страхование, таможня и брокер оплачиваются перед отгрузкой.')}</h5>${dlSupPay(c, k)}</div>
-      <div class="dl-sub"><h5>Стоимость перевозки</h5>
-        <div class="dl-g">${ru?'':dlField('Перевозка до границы РФ', P+'.log.v', {calc:c, cur:P+'.log.cur', src:s.log&&s.log.src, q:'Сколько стоит довезти груз от поставщика до границы ЕАЭС. Входит в таможенную стоимость.'})}
-        ${dlField(ru?'Доставка до объекта':'Доставка по России', P+'.logRu.v', {calc:c, unit:'₽', src:s.logRu&&s.logRu.src, q:'Сколько стоит довезти груз по России '+(ru?'от склада поставщика':'от границы')+' до объекта заказчика. Платится при поставке; НДС перевозчика — к вычету.'})}</div>
-        ${ex?'':`<div class="dl-lgrow"><button type="button" class="btn dl-lgbtn" data-dlx="lgcalc" data-k="${k}">🚚 Рассчитать доставку по России</button><span class="muted">${s.lg&&s.lg.res?esc(s.lg.res.note):'по массе и габаритам позиций, от склада поставщика до объекта'}</span></div>`}</div>
-      <details class="dl-more" data-more="sup${k}"${dlMore('sup'+k, false)}><summary>Ещё расходы по поставщику <span class="muted">— ${moreSum||'опции, страхование, комиссия за перевод, брокер'}</span></summary>
+      <div class="dl-sub dl-lglink"><span>Перевозка${ru?'':', страхование'} и доставка до объекта — на вкладке «Логистика»${cs.L+cs.Lru+cs.ins>0?`: <b>${dlRub0(cs.L+cs.Lru+cs.ins)}</b>`:''}</span>${ex?'':`<button type="button" class="btn ghost" data-dlx="step" data-id="log">Открыть «Логистику» →</button>`}</div>
+      <details class="dl-more" data-more="sup${k}"${dlMore('sup'+k, false)}><summary>Ещё расходы по поставщику <span class="muted">— ${moreSum||'опции, комиссия за перевод, брокер'}</span></summary>
         <div class="dl-g">${dlField('Прочая закупка у поставщика', P+'.extra.v', {calc:c, cur:P+'.extra.cur', q:'Опции, ЗИП и всё, чего нет в позициях КП.'})}
-          ${ru?'':dlField('Страхование груза', P+'.ins', {calc:c, unit:'% от оборудования', ph:'0,3'})}
           ${ru?'':dlField('Комиссия банка или агента', P+'.fx', {calc:c, unit:'%', ph:'1,5', q:'Комиссия за перевод и конвертацию — процент от платежей поставщику в валюте.'})}
           ${dlField('Брокер, СВХ, сертификация', P+'.brk.v', {calc:c, unit:'₽'})}
           ${cs.Lru+cs.brk>0?dlField('НДС к вычету по услугам в России', P+'.voRu', {calc:c, unit:'₽', auto:cs.ruSuggest, autoLabel:`авто ${c.v}/${100+c.v}`, q:'НДС в счетах перевозчика и брокера. Если они без НДС — впишите 0.'}):''}
@@ -712,7 +712,8 @@ function dealRender(force){
 }
 
 function dealRenderIn(dlg){
-  const d=dlDeal(), kp=dlKp(), c=dealCalc(kp,d);
+  const d=dlDeal(); lgSync(d);                 // доставка по России из вкладки «Логистика» — в расчёт
+  const kp=dlKp(), c=dealCalc(kp,d);
   if (dealSyncConds(c)) persist();
     const keyT = DL.key ? `ключевая ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD}` : 'по умолчанию';
   const d0h=dlD0(), calT=d0h?dlCalNote(d0h).replace(/<[^>]+>/g,''):'';
@@ -729,7 +730,7 @@ function dealRenderIn(dlg){
   // шаги по порядку заполнения; свёрнутые — одной строкой; открыт один (или все — «Развернуть все шаги»)
   const hasCus=d.sup.some((s,k)=>!(c.sup[k].mode==='none' && /^росс/i.test(s.country||'')));
   const DL_TAB_SHORT={money:'Налог', sched:'График'};
-  const order=[['buy','Закупка'], ...(hasCus?[['cus','Таможня']]:[]), ['cust','Оплата заказчика'], ['mnt','Расходы'], ['price','Цена КП'], ['money','Деньги и налог'], ['sched','График платежей']];
+  const order=[['buy','Закупка'], ['log','Логистика'], ...(hasCus?[['cus','Таможня']]:[]), ['cust','Оплата заказчика'], ['mnt','Расходы'], ['price','Цена КП'], ['money','Деньги и налог'], ['sched','График платежей']];
   DL.nav={}; order.forEach(([id],k)=>{ DL.nav[id]={n:k+1, next:order[k+1]&&order[k+1][0], nextT:order[k+1]&&order[k+1][1], prev:order[k-1]&&order[k-1][0], prevT:order[k-1]&&order[k-1][1]}; });
   DL.si=dlStepInfo(c);
   if (DL.open===undefined || !DL.nav[DL.open]) DL.open=(order.find(([id])=>DL.si[id]&&DL.si[id].st==='need')||order[0])[0];
@@ -741,6 +742,7 @@ function dealRenderIn(dlg){
   dlg.dataset.tab=DL.open;
   morph(dlg, `${head}${banner}<div class="dl-mini">${mob?hd:''}${mini}</div><div class="dl-b"><div class="dl-tabw">${tabs}</div><div class="dl-form">
     ${dlPurchase(c)}
+    ${dlLogistics(c)}
     ${cust}
     ${custStep}
     ${dlStep(0, 'Расходы', 'Всё необязательно: заполните то, что есть в сделке. Пустые поля не учитываются.', `<div class="dl-card dl-mb"><div class="dl-mbh"><h5>Монтаж, ПНР и прочие расходы</h5><span class="dl-stc opt">необязательно</span>${c.M+c.E+c.W+c.Bn>0?`<b class="dl-mbs">${dlRub0(c.M+c.E+c.W+c.Bn)}</b>`:''}</div><div class="dl-g g3">
@@ -759,6 +761,7 @@ function dealRenderIn(dlg){
     ${dlSchedule(c, 0)}
     <div class="dl-foot"><span class="muted">Пересчёт — сразу при вводе. Закупка сохраняется в КП и каталоге.</span></div>
   </div><aside class="dl-side">${dlResult(c)}</aside></div>`);
+  lgAutoQuote();
 }
 
 // ---------- справочник кодов ТН ВЭД по категориям
@@ -822,6 +825,7 @@ function dealBind(dlg){
   const touch=()=>{ if (DL.ex) return; S.deal.touched=true; persist(); renderSide(); };
   const comboClose=()=>{ if (!DL.combo) return; DL.combo=null; DL.comboIx=-1; dealRender(); };
   dlWinSize(dlg);
+  lgBind(dlg, touch);
   let szT=null; if (window.ResizeObserver) new ResizeObserver(()=>{ if (!dlg.open || isMob() || dlg.classList.contains('max')) return; clearTimeout(szT);
     szT=setTimeout(()=>{ const r=dlg.getBoundingClientRect(); if (r.width>300){ dlg.style.width=Math.round(r.width)+'px'; dlg.style.height=Math.round(r.height)+'px'; dlWinSize(dlg,true); } }, 600); }).observe(dlg);
   dlg.addEventListener('input', e=>{ const t=e.target;
@@ -912,7 +916,7 @@ function dealBind(dlg){
     if (a==='xlsx') return dealXlsx();
     if (a==='hsdir') return dlHsDir();
     if (a==='apply') return dealApplyPrice(+b.dataset.s);
-    if (a==='lgcalc') return openLogistics(k);
+    if (a==='lgcalc'){ DL.open='log'; return dealRender(); }
     if (a==='reset'){ dlSet(d, b.dataset.path, ''); }
     if (a==='resetdays') d.days={};
     if (a==='mv'){ const msg=dlMoveStage(b.dataset.grp, +b.dataset.i, +b.dataset.to); if (msg){ touch(); toast(msg); } return dealRender(); }

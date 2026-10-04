@@ -679,17 +679,8 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .mob dialog.dealwin .dl-price .dl-pr select,.mob dialog.dealwin .dl-price .dl-pr input{min-height:38px}
 
 /* расчёт доставки по России */
-.dl-lgrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
-.dl-lgrow .muted{font-size:12.5px}
-dialog.lgwin{width:min(980px,calc(100vw - 32px));max-height:calc(100vh - 32px);padding:0;border:0;border-radius:16px;background:var(--card);color:var(--ink);display:none;flex-direction:column}
-dialog.lgwin[open]{display:flex}
-dialog.lgwin .dlg-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid var(--line)}
-dialog.lgwin .dlg-h h3{margin:0}
-.lg-sub{margin:2px 0 0;font-size:13px}
-.lg-b{overflow:auto}
 .lg-route{display:grid;grid-template-columns:1fr 1.4fr 140px;gap:10px}
 .lg-where{margin:6px 0 12px;font-size:13px}
-.lg-b h5{margin:10px 0 6px;font-size:13.5px;display:flex;align-items:center;gap:6px}
 .lg-tw{overflow-x:auto}
 .lg-t{width:100%;border-collapse:collapse;font-size:13px}
 .lg-t th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:4px 6px;border-bottom:1px solid var(--line)}
@@ -724,7 +715,6 @@ dialog.lgwin .dlg-h h3{margin:0}
 .lg-sc{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px 12px}
 :root[data-theme="dark"] .lg-t input.need{background:#3a3010}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .lg-t input.need{background:#3a3010}}
-.mob dialog.lgwin{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;border-radius:0;margin:0}
 .mob .lg-route{grid-template-columns:1fr}
 .mob .lg-t thead{display:none}
 .mob .lg-t tr{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px 0;border-bottom:1px solid var(--line)}
@@ -752,3 +742,29 @@ dialog.lgwin .dlg-h h3{margin:0}
 .lg-srcc{font-size:11.5px;color:var(--muted);min-width:200px;max-width:260px;line-height:1.3}
 #lgCl{min-width:1100px}
 .lg-st td input[readonly]{background:var(--soft);color:var(--muted)}
+
+/* вкладка «Логистика» */
+.lg-card{display:flex;flex-direction:column;gap:14px}
+.lg-ch{display:flex;align-items:baseline;gap:10px;font-size:15px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.lg-ch .muted{font-size:12.5px}
+.lg-sec h5{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:13.5px}
+.lg-sn{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--soft);color:var(--navy);font-size:11.5px;font-weight:700;flex:none}
+.lg-qb{margin-left:auto}
+.lg-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+.lg-row .muted{font-size:12.5px}
+.lg-sec .lg-un{max-width:420px;margin:0 0 8px}
+.lg-sec .lg-veh+.lg-veh{margin-top:8px}
+.lg-man{display:inline-flex;align-items:center;gap:6px;margin:4px 0}
+.lg-man input{width:160px;font-size:20px;font-weight:700;text-align:right}
+.lg-man em{font-style:normal;font-weight:600}
+.dl-lglink{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13.5px}
+.mob .lg-tot{flex-direction:column;align-items:stretch}
+.lg-file{margin:6px 0 4px;align-items:center}
+.lg-imp{border:1px solid var(--navy);border-radius:10px;padding:8px 12px;margin:8px 0;background:var(--soft)}
+.lg-imp ul{margin:4px 0 8px;padding-left:18px;font-size:13px}
+.lg-imp li{margin:2px 0}
+.mob .lg-of tr{display:grid;grid-template-columns:1fr auto auto;gap:2px 10px;padding:6px 0;border-top:1px solid var(--line)}
+.mob .lg-of td{border:0;padding:0 4px}
+.mob .lg-of td:first-child{grid-column:1/-1}
+.mob .lg-of td small{max-width:none}
+.mob .lg-qb{margin-left:auto}
