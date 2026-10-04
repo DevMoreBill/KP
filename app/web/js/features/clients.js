@@ -83,27 +83,45 @@ function shortName(s){
   return s;
 }
 
+// остаток проверок Checko на сегодня (на весь отдел): лимит 100 запросов в день, полная проверка — 4 запроса
+let CHK_Q=null;
+async function checkQuotaLoad(){ try{ CHK_Q=await api('/api/check/quota'); }catch(e){ CHK_Q=null; } return CHK_Q; }
+function checkQuotaText(q){ q=q||CHK_Q; if (!q || !q.key) return '';
+  if (q.left>=4) return `сегодня осталось ${q.checks} ${plural(q.checks,'полная проверка','полные проверки','полных проверок')} Checko`;
+  if (q.left>0) return `сегодня осталось ${q.left} ${plural(q.left,'запрос','запроса','запросов')} Checko — будет краткая проверка`;
+  return 'лимит Checko на сегодня исчерпан — будет бесплатная проверка по ФНС, полная — завтра автоматически'; }
+
 function checkLine(){
   const c=S.check; const inn=String(S.clientInn||'').replace(/\D/g,'');
   if (!validInn(inn)) return '';
-  if (!c) return `<div class="chk-line"><button class="btn ghost" type="button" data-a="checkRun">Проверить контрагента</button>${tip('Проверка по данным Checko: регистрация, долги, суды, исполнительные производства. Видна только вам, в КП не попадает.')}</div>`;
+  if (!c){ if (!CHK_Q) checkQuotaLoad().then(q=>{ if (q && q.key) { const el=$('#chkQ'); if (el) el.textContent=checkQuotaText(q); } });
+    return `<div class="chk-line"><button class="btn ghost" type="button" data-a="checkRun">Проверить контрагента</button><span class="muted" id="chkQ">${esc(checkQuotaText())}</span>${tip('<p>Проверка по данным Checko: регистрация, долги, суды, исполнительные производства. Видна только вам, в КП не попадает.</p><p>Бесплатно у Checko — 100 запросов в день на всех, полная проверка — 4 запроса. Если запросов не хватает, программа делает краткую проверку (1 запрос) или бесплатную по ФНС и сама выполняет полную на следующий день. Проверка хранится 7 дней и общая для отдела — повторная проверка того же ИНН запросы не тратит.</p>')}</div>`; }
   if (c.error) return `<div class="chk-line warn"><span>${c.error==='nokey'?'Проверка Checko: не задан API-ключ.':esc(c.message||c.error)}</span>${c.error==='nokey'?'<button class="btn ghost" type="button" data-a="integrations">Ключ — в «Настройках»</button>':'<button class="btn ghost" type="button" data-a="checkRun">Повторить</button>'}</div>`;
+  // полная проверка стояла в очереди и могла уже выполниться (после 00:00 по Москве) — подтянуть её один раз
+  if (c.queued && c.checkedAt && new Date(c.checkedAt).toDateString()!==new Date().toDateString() && S._chkAuto!==inn){ S._chkAuto=inn; setTimeout(()=>checkRun(false), 50); }
   const label={ok:'Существенных рисков не найдено',warn:'Есть на что обратить внимание',bad:'Высокий риск'}[c.score]||'';
   const age=c.checkedAt?(Date.now()-new Date(c.checkedAt))/864e5:0, old=age>CHECK_DAYS;   // проверка старше месяца — предложить обновить
+  const nc='не проверено', src=c.free?`Бесплатная проверка (${c.source})`:c.partial?'Checko, краткая проверка':'Checko';
   const facts=[['Регистрация',c.regDate?KPGen.ruDate(c.regDate.slice(0,10))+(c.ageYears!=null?` (${String(c.ageYears).replace('.',',')} г.)`:''):''],['Уставный капитал',c.capital!=null?fmtRub(c.capital):''],
-    ['Сотрудников',c.employees!=null?String(c.employees):''],['Категория МСП',c.msp],['Основной ОКВЭД',c.okved],['Налоговая недоимка',c.taxDebt?fmtRub(c.taxDebt):'нет'],
-    ['Арбитраж (ответчик)',c.courts&&c.courts.count?`${c.courts.count} дел на ${fmtRub(c.courts.sum)}`:'нет'],['Исполнительные производства',c.fssp&&c.fssp.count?`${c.fssp.count}${c.fssp.sum?' на '+fmtRub(c.fssp.sum):''}`:'нет']].filter(x=>x[1]);
-  return `<details class="chk ${c.score}"><summary><b>Checko: ${esc(label)}</b> <span class="muted">· ${esc(KPGen.ruDate((c.checkedAt||'').slice(0,10)))} · подробнее</span>${old?` <span class="chk-old" title="Данные могли измениться">проверке ${Math.floor(age)} дн. — обновите</span>`:''}</summary>
+    ['Сотрудников',c.employees!=null?String(c.employees):''],['Категория МСП',c.msp],['Основной ОКВЭД',c.okved],['Налоговая недоимка',c.free?nc:c.taxDebt?fmtRub(c.taxDebt):'нет'],
+    ['Арбитраж (ответчик)',!c.courts||c.courts.count==null?nc:c.courts.count?`${c.courts.count} дел на ${fmtRub(c.courts.sum)}`:'нет'],
+    ['Исполнительные производства',!c.fssp||c.fssp.count==null?nc:c.fssp.count?`${c.fssp.count}${c.fssp.sum?' на '+fmtRub(c.fssp.sum):''}`:'нет']].filter(x=>x[1]);
+  const q=c.quotaNow;
+  return `<details class="chk ${c.score}"><summary><b>${esc(src)}: ${esc(label)}</b> <span class="muted">· ${esc(KPGen.ruDate((c.checkedAt||'').slice(0,10)))} · подробнее</span>${c.queued?' <span class="chk-old" title="Выполнится автоматически, когда обновится лимит Checko (после 00:00 по Москве)">полная — в очереди</span>':''}${old?` <span class="chk-old" title="Данные могли измениться">проверке ${Math.floor(age)} дн. — обновите</span>`:''}</summary>
+    ${c.note?`<p class="chk-note">${esc(c.note)}</p>`:''}
     <ul class="flags">${(c.flags||[]).map(f=>`<li class="${f.level}">${esc(f.text)}</li>`).join('')}</ul>
+    ${(c.missing||[]).length?`<p class="muted chk-miss">Не проверено: ${esc(c.missing.join(', '))}.</p>`:''}
     <dl class="facts">${facts.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
     ${(c.finances||[]).length?`<table class="fin"><tr><th>Год</th><th>Выручка</th><th>Чистая прибыль</th></tr>${c.finances.map(f=>`<tr><td>${esc(f.year)}</td><td>${fmtRub(f.revenue)}</td><td class="${f.profit<0?'bad-t':''}">${fmtRub(f.profit)}</td></tr>`).join('')}</table>`:''}
-    <div class="row" style="margin-top:10px"><button class="btn ghost" type="button" data-a="checkRun" data-force="1">Обновить проверку</button><a class="btn ghost" href="${esc(c.url||'https://checko.ru/search?query='+inn)}" target="_blank" rel="noopener">Открыть на checko.ru</a>${c.quota&&c.quota.balance!=null?`<span class="muted">Остаток запросов: ${esc(c.quota.balance)}</span>`:''}</div></details>`;
+    ${(c.links||[]).length?`<p class="chk-links"><span class="muted">Проверить вручную (бесплатно):</span> ${c.links.map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a>`).join(' · ')}</p>`:''}
+    <div class="row" style="margin-top:10px"><button class="btn ghost" type="button" data-a="checkRun" data-force="1">Обновить проверку</button><a class="btn ghost" href="${esc(c.url||'https://checko.ru/search?query='+inn)}" target="_blank" rel="noopener">Открыть на checko.ru</a>${q&&q.key?`<span class="muted">${q.left?`Checko сегодня: осталось ${q.left} из ${q.limit} запросов`:'Лимит Checko на сегодня исчерпан, обновится в 00:00 по Москве'}${q.queue?` · в очереди: ${q.queue}`:''}</span>`:''}</div></details>`;
 }
 
 async function checkRun(force){
   const inn=String(S.clientInn||'').replace(/\D/g,''); if(!validInn(inn)) return toast('Укажите корректный ИНН');
   const b=document.querySelector('[data-a="checkRun"]'); if(b){ b.disabled=true; b.textContent='Проверяю…'; }
   try{ S.check=await api('/api/check?inn='+inn+(force?'&force=1':'')); }catch(e){ S.check={error:'net',message:'Ошибка запроса: '+e.message,url:'https://checko.ru/search?query='+inn}; }
+  if (S.check && S.check.quotaNow) CHK_Q=S.check.quotaNow;
   renderForm(); persist(); if (!S.check.error && S.client) saveClient(false);
 }
 
@@ -113,7 +131,9 @@ async function openIntegrations(){
   d.innerHTML=`<div class="dlg-h"><h3>Интеграции</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
    <div class="dlg-b"><p class="muted" style="margin-top:0">Реквизиты по ИНН подтягиваются без ключей — из открытого сервиса ФНС (egrul.nalog.ru). С ключами данные полнее и быстрее, а Checko дополнительно проверяет контрагента. Ключи хранятся только на этом компьютере (в папке данных программы).</p>
    <label class="f"><span>API-ключ Checko ${k.checko?`<b class="ok-t">задан: ${esc(k.checkoMask)}</b>`:''}</span><input type="text" id="kChecko" placeholder="${k.checko?'Оставьте пустым, чтобы не менять':'Ключ из личного кабинета checko.ru → API'}" autocomplete="off"></label>
-   <p class="muted">Checko: реквизиты, статус, финансы, суды, ФССП, реестры. Ключ — в личном кабинете checko.ru, раздел «API» (есть бесплатный тестовый лимит).</p>
+   <p class="muted">Checko: статус, финансы, суды, ФССП, реестры. Ключ — в личном кабинете checko.ru, раздел «API». Реквизиты по ИНН берутся из DaData и ФНС, запросы Checko тратятся только на проверки.</p>
+   <label class="f"><span>Лимит Checko, запросов в день ${k.quota&&k.quota.key?`<b class="muted">сегодня использовано ${k.quota.used} из ${k.quota.limit}${k.quota.queue?` · в очереди на полную проверку: ${k.quota.queue}`:''}</b>`:''}</span><input type="number" id="kDaily" min="1" max="100000" step="1" value="${esc(k.checkoDaily||100)}"></label>
+   <p class="muted">Бесплатно — 100 в календарный день (по Москве), полная проверка — 4 запроса. Когда лимит кончается, программа делает краткую или бесплатную проверку по ФНС, а полную выполняет сама на следующий день.</p>
    <label class="f"><span>API-ключ DaData ${k.dadata?`<b class="ok-t">задан: ${esc(k.dadataMask)}</b>`:''}</span><input type="text" id="kDadata" placeholder="${k.dadata?'Оставьте пустым, чтобы не менять':'Ключ из личного кабинета dadata.ru'}" autocomplete="off"></label>
    <p class="muted">DaData: быстрый поиск реквизитов по ИНН (бесплатно до 10 000 запросов в день).</p>
    <label class="f"><span>Ключ ConvertAPI для PDF ${k.convertapi?`<b class="ok-t">задан: ${esc(k.convertapiMask)}</b>`:''}</span><input type="text" id="kConv" placeholder="${k.convertapi?'Оставьте пустым, чтобы не менять':'Secret или токен из личного кабинета convertapi.com'}" autocomplete="off"></label>
@@ -121,7 +141,7 @@ async function openIntegrations(){
    <div class="row"><button class="btn primary" type="button" id="kSave">Сохранить</button>${k.checko?'<button class="btn ghost" type="button" id="kDelC">Удалить ключ Checko</button>':''}${k.dadata?'<button class="btn ghost" type="button" id="kDelD">Удалить ключ DaData</button>':''}${k.convertapi?'<button class="btn ghost" type="button" id="kDelV">Удалить ключ ConvertAPI</button>':''}</div></div>`;
   d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close();
   const put=async body=>{ await api('/api/integrations',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(body)}); toast('Сохранено'); openIntegrations(); };
-  $('#kSave').onclick=()=>{ const b={}; const c=$('#kChecko').value.trim(), dd=$('#kDadata').value.trim(), cv=$('#kConv').value.trim(); if(c) b.checkoKey=c; if(dd) b.dadataKey=dd; if(cv) b.convertapiKey=cv; put(b); };
+  $('#kSave').onclick=()=>{ const b={}; const dl=+$('#kDaily').value; if (dl>0 && dl!==k.checkoDaily) b.checkoDaily=dl; const c=$('#kChecko').value.trim(), dd=$('#kDadata').value.trim(), cv=$('#kConv').value.trim(); if(c) b.checkoKey=c; if(dd) b.dadataKey=dd; if(cv) b.convertapiKey=cv; put(b); };
   if ($('#kDelC')) $('#kDelC').onclick=()=>put({checkoKey:''}); if ($('#kDelD')) $('#kDelD').onclick=()=>put({dadataKey:''}); if ($('#kDelV')) $('#kDelV').onclick=()=>put({convertapiKey:''});
 }
 

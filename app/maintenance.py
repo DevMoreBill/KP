@@ -255,6 +255,22 @@ def start_daily(store, data_dir, log=print):
     return t
 
 
+def start_every(seconds, fn, log=print):
+    """Фоновая задача раз в seconds секунд (первый запуск — через минуту после старта)."""
+    def loop():
+        ev = threading.Event()
+        wait = 60
+        while not ev.wait(wait):
+            wait = seconds
+            try:
+                fn()
+            except Exception as e:
+                log('Фоновая задача: %s' % e)
+    t = threading.Thread(target=loop, daemon=True, name='every-%d' % seconds)
+    t.start()
+    return t
+
+
 def summary(store, data_dir):
     st = state(store)
     bl = backups(data_dir)

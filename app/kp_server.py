@@ -277,8 +277,10 @@ class Handler(BaseHTTPRequestHandler):
         # контрагенты: поиск по ИНН, проверка Checko, справочник
         if path == '/api/party':
             return self.send_json(cp().lookup(q.get('inn', '')))
+        if path == '/api/check/quota':      # сколько проверок Checko осталось сегодня (на весь отдел) и сколько в очереди
+            return self.send_json(cp().quota())
         if path == '/api/check':
-            return self.send_json(cp().check(q.get('inn', ''), force=q.get('force') == '1'))
+            return self.send_json(cp().check(q.get('inn', ''), force=q.get('force') == '1', by=admin.actor(self)[1]))
         if path == '/api/integrations':
             if m == 'PUT':
                 return self.send_json(cp().save_keys(self.body()))
@@ -682,6 +684,8 @@ def main():
         # обслуживание базы: копия за сегодня, архив журнала, сжатие раз в месяц — в фоне, затем раз в сутки
         threading.Thread(target=maintenance.run, args=(store(), DATA_DIR), daemon=True, name='maintenance-start').start()
         maintenance.start_daily(store(), DATA_DIR)
+        # отложенные проверки контрагентов: когда лимит Checko обновится (после 00:00 по Москве) — выполнить очередь
+        maintenance.start_every(1800, lambda: cp().run_queue())
         seeded = seed_catalog()
         sync_counter_with_files()
     except Exception as e:
