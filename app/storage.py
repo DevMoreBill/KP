@@ -325,10 +325,13 @@ class Store:
 
     def migrations_up(self):
         done = self.migrations_applied()
-        for mid, up, _down in MIGRATIONS:
-            if mid not in done:
-                done = done + [mid]
-                self._atomic_script(up, MIGRATION_FILL.get(mid), done)
+        todo = [x for x in MIGRATIONS if x[0] not in done]
+        if todo and done:      # база с данными: перед изменением структуры — копия в data/backup
+            self.backup(os.path.join(os.path.dirname(self.path), 'backup', 'kp-%s-before-%s.sqlite3' % (
+                datetime.now().strftime('%Y%m%d-%H%M%S'), todo[0][0])))
+        for mid, up, _down in todo:
+            done = done + [mid]
+            self._atomic_script(up, MIGRATION_FILL.get(mid), done)
 
     def migration_down(self, mid):
         """Откат миграции: её таблицы и столбцы удаляются (данные в них теряются), остальная база не меняется."""
