@@ -732,3 +732,6 @@ dialog.lgwin .dlg-h h3{margin:0}
 .mob .lg-t td.lg-nm{grid-column:1/-1}
 .mob .lg-t td.num{display:none}
 .mob .lg-t td input{width:100%}
+.lg-src{margin:4px 0 8px;font-size:12.5px}
+.lg-src summary{cursor:pointer;color:var(--navy)}
+.lg-src ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}

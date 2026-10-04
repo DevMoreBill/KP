@@ -10,27 +10,30 @@
 // wMax — ширина груза со спецразрешением (только открытые площадки); t — грузоподъёмность, т;
 // km — ставка, ₽/км (в одну сторону, с учётом обратного пробега); base — подача; min — минимальный заказ.
 const LG_DEFAULTS = {
-  ver: 1,
+  ver: 2,
+  // ставки — рынок РФ 2026, междугородние перевозки в одну сторону (см. sources); уточняются по счетам перевозчиков
   classes: [
-    { id:'gazel',  name:'«Газель» тент 1,5 т',        L:4.2,  W:2.0,  h:2.0, hMax:2.0, wMax:2.0,  t:1.5, open:false, km:45,  base:3000,  min:6000 },
-    { id:'t5',     name:'Грузовик 5 т',               L:6.2,  W:2.45, h:2.4, hMax:2.4, wMax:2.45, t:5,   open:false, km:65,  base:5000,  min:10000 },
-    { id:'t10',    name:'Грузовик 10 т',              L:7.5,  W:2.45, h:2.6, hMax:2.6, wMax:2.45, t:10,  open:false, km:85,  base:7000,  min:15000 },
-    { id:'tent20', name:'Фура тент 20 т (82 м³)',     L:13.6, W:2.45, h:2.6, hMax:2.6, wMax:2.45, t:20,  open:false, km:105, base:10000, min:25000 },
-    { id:'flat',   name:'Открытая площадка 22 т',     L:13.6, W:2.5,  h:2.6, hMax:3.1, wMax:3.2,  t:22,  open:true,  km:125, base:12000, min:30000 },
-    { id:'lowbed', name:'Трал низкорамный 40 т',      L:13.0, W:2.55, h:3.1, hMax:3.6, wMax:3.5,  t:40,  open:true,  km:230, base:25000, min:60000 },
+    { id:'gazel',  name:'«Газель» тент 1,5 т',        L:4.2,  W:2.0,  h:2.0, hMax:2.0, wMax:2.0,  t:1.5, open:false, km:30,  base:1500,  min:5000 },
+    { id:'t5',     name:'Грузовик 5 т',               L:6.2,  W:2.45, h:2.4, hMax:2.4, wMax:2.45, t:5,   open:false, km:40,  base:3000,  min:8000 },
+    { id:'t10',    name:'Грузовик 10 т',              L:7.5,  W:2.45, h:2.6, hMax:2.6, wMax:2.45, t:10,  open:false, km:45,  base:4000,  min:12000 },
+    { id:'tent20', name:'Фура тент 20 т (82 м³)',     L:13.6, W:2.45, h:2.6, hMax:2.6, wMax:2.45, t:20,  open:false, km:65,  base:6000,  min:20000 },
+    { id:'flat',   name:'Открытая площадка 20 т',     L:13.6, W:2.5,  h:2.6, hMax:3.1, wMax:3.2,  t:20,  open:true,  km:75,  base:8000,  min:25000 },
+    { id:'lowbed', name:'Трал низкорамный 40 т',      L:13.0, W:2.55, h:3.1, hMax:3.6, wMax:3.5,  t:40,  open:true,  km:120, base:15000, min:40000 },
   ],
-  overK: 1.25,          // негабарит: надбавка к ставке за км (медленнее, маршрут по разрешению)
-  permit: 15000,        // спецразрешение и проект маршрута, ₽ за машину
-  heavyFrom: 20,        // тяжеловес: груз тяжелее, т — нужна оплата вреда дорогам и разрешение
-  heavyPermit: 20000,   // разрешение на тяжеловесный груз, ₽ за машину
-  harmKm: 30,           // плата за вред дорогам, ₽/км (зависит от осевых нагрузок — ориентир)
+  overK: 1.1,           // негабарит на площадке: надбавка к ставке (ставка трала уже рассчитана на негабарит)
+  overKLowbed: 1,
+  permit: 1600,         // госпошлина за спецразрешение (Госуслуги, 2026), ₽ за машину
+  permitAgent: 0,       // оформление и проект маршрута через агента, ₽ (если пользуетесь)
+  heavyFrom: 20,        // тяжеловес: груз в машине тяжелее, т (тягач + трал ≈ 20–22 т, предел автопоезда 40–44 т)
+  heavyPermit: 1600,    // госпошлина за разрешение на тяжеловес, ₽
+  harmKm: 74,           // вред дорогам: ПП РФ № 67 — базовый размер 7 365 ₽ на 100 км (точно — по осевым нагрузкам)
   escortW: 3.5,         // шире — автомобиль прикрытия
-  escortKm: 70,         // прикрытие, ₽/км
-  unload: [             // разгрузка на объекте: максимальная масса одного места, т — стоимость, ₽
+  escortKm: 50,         // прикрытие, ₽/км (ориентир — уточните у перевозчика)
+  unload: [             // разгрузка на объекте: максимальная масса одного места, т — стоимость смены, ₽
     { id:'manip',   name:'Манипулятор до 7 т',  max:7,  cost:15000 },
-    { id:'crane25', name:'Автокран 25 т',       max:16, cost:35000 },
-    { id:'crane50', name:'Автокран 50 т',       max:32, cost:65000 },
-    { id:'crane100',name:'Автокран 100 т',      max:60, cost:140000 },
+    { id:'crane25', name:'Автокран 25 т',       max:16, cost:22000 },
+    { id:'crane50', name:'Автокран 50 т',       max:32, cost:40000 },
+    { id:'crane100',name:'Автокран 100 т',      max:60, cost:100000 },
   ],
   pack: 10,             // упаковка (поддон, обрешётка), % к массе — для мест легче packMax
   packMax: 3,           // тяжелее, т — оборудование на своей раме, без упаковки
@@ -44,12 +47,19 @@ const LG_DEFAULTS = {
   range: 15,            // разброс оценки, ± %
   hub: 'Москва',        // откуда везём импорт по умолчанию (СВХ / таможенный терминал)
   legal: { w:2.55, h:4.0 },
+  sources: [
+    'ATI.SU «Средние ставки», май 2026: фура 20 т — в среднем ≈ 58 ₽/км по рынку, ≈ 70 ₽/км у перевозчиков (rosperevozki.ru)',
+    'Газель от 15 ₽/км, КамАЗ 10 т 32–45 ₽/км, фура от 40 ₽/км, трал ≈ 118 ₽/км при 30 т (rosperevozki.ru, 2026)',
+    'Трал: до 30 т 80–120 ₽/км, 45–50 т 100–150 ₽/км; разрешение и сопровождение — отдельно (vityaz-tk.ru, 2025–2026)',
+    'Госпошлина за спецразрешение — 1 600 ₽ (Госуслуги, 2026); вред дорогам — ПП РФ от 31.01.2020 № 67',
+    'Автокран 25 т — 18–22 тыс. ₽ за смену, 50 т — 32–44 тыс. ₽ (Москва, 2026)',
+  ],
 };
 
 function lgTariffs(saved){
   const t=JSON.parse(JSON.stringify(LG_DEFAULTS));
   if (saved && typeof saved==='object'){
-    for (const k of Object.keys(t)) if (k!=='classes' && k!=='unload' && k!=='legal' && saved[k]!=null && saved[k]!=='') t[k]=typeof t[k]==='number' ? +saved[k] : saved[k];
+    for (const k of Object.keys(t)) if (!['classes','unload','legal','sources','ver'].includes(k) && saved[k]!=null && saved[k]!=='') t[k]=typeof t[k]==='number' ? +saved[k] : saved[k];
     for (const key of ['classes','unload']) if (Array.isArray(saved[key]) && saved[key].length) t[key]=saved[key].map(x=>{ const d=t[key].find(y=>y.id===x.id)||{}; const o={...d,...x};
       for (const f of ['L','W','h','hMax','wMax','t','km','base','min','max','cost']) if (o[f]!=null && o[f]!=='') o[f]=+o[f];
       o.open=!!o.open; return o; });
@@ -80,21 +90,21 @@ function lgLen(v, unitHint){
 const LG_DIM_SKIP=/радиатор|рабоч|помещени|мачт|рамы|присоедин|всасыв|над уровн|упаковк[аи]? (?:не|без)|кабин|экран|дисплей|фланц|патрубк|колес|колёс/i;
 
 function lgCargoOf(groups){
-  const rows=[]; for (const g of groups||[]) for (const r of (g&&g.rows)||[]) if (r && (r.k||r.v)) rows.push({k:String(r.k||''), v:String(r.v||'')});
-  let dims=null, dimSrc='', mass=null, massSrc='', prio=-1, mprio=-1;
+  const rows=[]; for (const g of groups||[]) for (const r of (g&&g.rows)||[]) if (r && (r.k||r.v)) rows.push({k:String(r.k||''), v:String(r.v||''), ref:r});
+  let dims=null, dimSrc='', mass=null, massSrc='', prio=-1, mprio=-1, dimRef=null, massRef=null;
   for (const r of rows){
     const k=r.k.toLowerCase();
     if (/габарит|размер|д\s*[×xх*]\s*ш|длина\s*[×xх*]/i.test(k) && !LG_DIM_SKIP.test(k)){
       const t=lgTriple(r.v, k); if (!t) continue;
       const order=/ш\s*[×xх*]\s*д/i.test(k) || /ширина\s*[×xх*]\s*длина/i.test(r.v) ? 'wlh' : 'lwh';
       const p=/транспорт/i.test(k)?3:/упаков/i.test(k)?2:1;
-      if (p>prio){ prio=p; const [a,b,c]=t; dims= order==='wlh' ? {l:b,w:a,h:c} : {l:a,w:b,h:c}; dimSrc=r.k+': '+r.v; }
+      if (p>prio){ prio=p; const [a,b,c]=t; dims= order==='wlh' ? {l:b,w:a,h:c} : {l:a,w:b,h:c}; dimSrc=r.k+': '+r.v; dimRef={row:r.ref, order}; }
     }
   }
   if (!dims){   // отдельные строки «Длина», «Ширина», «Высота»
     const one=re=>{ const r=rows.find(x=>re.test(x.k) && !LG_DIM_SKIP.test(x.k) && !/открыт/i.test(x.k)) || rows.find(x=>re.test(x.k) && !LG_DIM_SKIP.test(x.k)); return r?lgLen(r.v, r.k):null; };
     const l=one(/^длина/i), w=one(/^ширина/i), h=one(/^высота(?!\s*(рамы|мачты|всас|над))/i);
-    if (l && w && h){ dims={l,w,h}; dimSrc='Длина, ширина, высота'; }
+    if (l && w && h){ dims={l,w,h}; dimSrc='Длина, ширина, высота'; dimRef={sep:true}; }
   }
   for (const r of rows){
     const k=r.k.toLowerCase();
@@ -104,11 +114,35 @@ function lgCargoOf(groups){
     const unit=(m[2]||'').toLowerCase() || (/,\s*т\b|\(т\)/.test(k)?'т':'кг');
     if (unit.startsWith('т')) x*=1000;
     const p=/брутто|транспорт|в упаковке/.test(k)?3:/^масса|^вес$/.test(k)?2:1;
-    if (x>0 && x<200000 && p>mprio){ mprio=p; mass=x/1000; massSrc=r.k+': '+r.v; }
+    if (x>0 && x<200000 && p>mprio){ mprio=p; mass=x/1000; massSrc=r.k+': '+r.v; massRef=r.ref; }
   }
   // длина — наибольший размер в плане (груз ставят вдоль площадки)
   if (dims && dims.w>dims.l){ const t=dims.l; dims.l=dims.w; dims.w=t; }
-  return { dims, dimSrc, mass, massSrc };
+  return { dims, dimSrc, mass, massSrc, dimRef, massRef };
+}
+
+// записать массу и габариты в характеристики (позиция КП или карточка каталога): строку, из которой их прочитали,
+// иначе — в группу «Габариты и масса» (создаётся при необходимости). v — {l,w,h} в м, m в т; what — что записать.
+function lgWriteCargo(obj, v, what){
+  obj.groups=Array.isArray(obj.groups)?obj.groups:[];
+  const cg=lgCargoOf(obj.groups), mm=x=>String(Math.round(x*1000));
+  const grp=()=>{ let g=obj.groups.find(g=>/габарит|масс/i.test(g.name||''));
+    if (!g){ g={name:'Габариты и масса', rows:[]}; obj.groups.push(g); } g.rows=g.rows||[]; return g; };
+  let n=0;
+  if (what.dims && v.l>0 && v.w>0 && v.h>0){
+    const ref=cg.dimRef, txt=(ref&&ref.order==='wlh') ? `${mm(v.w)} × ${mm(v.l)} × ${mm(v.h)} мм` : `${mm(v.l)} × ${mm(v.w)} × ${mm(v.h)} мм`;
+    if (ref && ref.row) ref.row.v=txt;
+    else if (ref && ref.sep){ for (const g of obj.groups) for (const r of g.rows||[]){
+        if (/^длина/i.test(r.k||'')) r.v=mm(v.l)+' мм'; else if (/^ширина/i.test(r.k||'')) r.v=mm(v.w)+' мм'; else if (/^высота(?!\s*(рамы|мачты|всас|над))/i.test(r.k||'')) r.v=mm(v.h)+' мм'; } }
+    else grp().rows.push({k:'Габариты Д × Ш × В', v:txt});
+    n++;
+  }
+  if (what.mass && v.m>0){
+    const txt=Math.round(v.m*1000)+' кг';
+    if (cg.massRef) cg.massRef.v=txt; else grp().rows.push({k:'Масса', v:txt});
+    n++;
+  }
+  return n;
 }
 
 // ---------------------------------------------------------------- города и расстояние
@@ -243,11 +277,12 @@ const lgT = v => (Math.round(v*10)/10).toString().replace('.',',');
 function lgVehicleCost(C, fit, km, T){
   const over=fit.overW>0 || fit.overH>0, heavy=fit.mass>T.heavyFrom, escort=fit.overW>T.escortW;
   const parts=[];
-  const run=C.base + C.km*km*(over?T.overK:1);
-  parts.push([`${C.name}: подача ${lgRub(C.base)} + ${km} км × ${lgRub(C.km*(over?T.overK:1))}`, Math.max(C.min, run)]);
+  const ok=over ? (C.id==='lowbed' ? T.overKLowbed : T.overK) : 1;
+  const run=C.base + C.km*km*ok;
+  parts.push([`${C.name}: подача ${lgRub(C.base)} + ${km} км × ${lgRub(C.km*ok)}`, Math.max(C.min, run)]);
   if (run<C.min) parts[0][0]+=` (минимальный заказ ${lgRub(C.min)})`;
-  if (over) parts.push([`Негабарит (${[fit.overW?`ширина ${lgM(fit.overW)} м`:'', fit.overH?`высота груза ${lgM(fit.overH)} м`:''].filter(Boolean).join(', ')}): спецразрешение`, T.permit]);
-  if (heavy) parts.push([`Тяжеловес (${lgT(fit.mass)} т): разрешение и вред дорогам ${km} км × ${lgRub(T.harmKm)}`, T.heavyPermit + T.harmKm*km]);
+  if (over) parts.push([`Негабарит (${[fit.overW?`ширина ${lgM(fit.overW)} м`:'', fit.overH?`высота груза ${lgM(fit.overH)} м`:''].filter(Boolean).join(', ')}): спецразрешение${T.permitAgent?' и оформление':''}`, T.permit+T.permitAgent]);
+  if (heavy) parts.push([`Тяжеловес (${lgT(fit.mass)} т): ${over?'':'разрешение и '}вред дорогам ${km} км × ${lgRub(T.harmKm)}`, (over?0:T.heavyPermit+T.permitAgent) + T.harmKm*km]);
   if (escort) parts.push([`Автомобиль прикрытия (шире ${lgM(T.escortW)} м): ${km} км × ${lgRub(T.escortKm)}`, T.escortKm*km]);
   return { cost:parts.reduce((s,p)=>s+p[1],0), parts, over, heavy, escort };
 }
@@ -321,4 +356,4 @@ function lgCalc(inp, T){
   return res;
 }
 
-if (typeof module!=='undefined') module.exports={LG_DEFAULTS, lgTariffs, lgCargoOf, lgTriple, lgCity, lgCityByName, lgRoadKm, lgHav, lgFit, lgPlan, lgCalc, LG_CITIES};
+if (typeof module!=='undefined') module.exports={LG_DEFAULTS, lgTariffs, lgCargoOf, lgWriteCargo, lgTriple, lgCity, lgCityByName, lgRoadKm, lgHav, lgFit, lgPlan, lgCalc, LG_CITIES};

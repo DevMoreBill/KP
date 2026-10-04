@@ -67,6 +67,7 @@ function lgRender(){
       ${its.map(x=>`<tr><td class="lg-nm"><b>${esc(x.name)}</b><small>${esc([x.dimSrc, x.massSrc].filter(Boolean).join(' · ')||'нет габаритов и массы в характеристиках')}</small></td><td class="num">${esc(x.qty)}</td>
         <td>${cell(x,'l','Д')}</td><td>${cell(x,'w','Ш')}</td><td>${cell(x,'h','В')}</td><td>${cell(x,'m','т')}</td></tr>`).join('')}</tbody></table></div>`
       :'<p class="muted">У этого поставщика нет позиций в КП.</p>'}
+    ${its.length?'<p class="muted lg-note">Вписанные масса и габариты при «Подставить» сохранятся в характеристики позиции и в карточку каталога — в следующий раз подставятся сами.</p>':''}
     <div class="lg-un"><label class="f"><span>Разгрузка на объекте</span><select data-lgf="unload">
       <option value="auto"${(lg.unload||'auto')==='auto'?' selected':''}>Подобрать по самому тяжёлому месту</option>
       <option value="none"${lg.unload==='none'?' selected':''}>Не нужна (разгружает заказчик)</option>
@@ -125,14 +126,38 @@ function lgOnClick(e){
     s.lg.res={ total:Math.round(r.total), km:r.km, note, at:new Date().toISOString(), ok:r.ok };
     dealSetLogistics(s.id, { ru:{v:Math.round(r.total)}, note, ...(setDays?{ship:r.days}:{}) });
     dlg.close(); toast('Доставка по России: '+lgRub(r.total)+(setDays?` · в пути ${r.days} дн.`:''));
+    lgSaveCargo(s);
   }
 }
 
+// вписанные в расчёт масса и габариты — в характеристики позиции КП и в карточку каталога
+// (иначе при сохранении КП каталог получил бы прежние характеристики позиции)
+async function lgSaveCargo(s){
+  const own=(s.lg&&s.lg.items)||{}, its=lgItems(s);
+  let saved=0, pend=0; const noCat=[], fail=[];
+  for (const id of Object.keys(own)){
+    const o=own[id], x=S.items.find(i=>i.id===id), it=its.find(i=>i.id===id); if (!x || !it) continue;
+    const v={l:it.l.v, w:it.w.v, h:it.h.v, m:it.m.v};
+    const what={ dims:['l','w','h'].some(k=>lgV(o[k])!=null) && v.l>0 && v.w>0 && v.h>0, mass:lgV(o.m)!=null && v.m>0 };
+    if (!what.dims && !what.mass) continue;
+    lgWriteCargo(x, v, what);
+    if (!x.catId){ noCat.push(x.name); delete own[id]; continue; }
+    try{ const doc=await CatSrv.get(x.catId); lgWriteCargo(doc, v, what); doc.updatedAt=new Date().toISOString();
+      const r=await CatSrv.put(doc); if (r && r._pending) pend++; else saved++; delete own[id]; }
+    catch(e){ fail.push(x.name+(e.code==='conflict'?' (карточку изменили — откройте расчёт заново)':'')); }
+  }
+  persist(); if (typeof renderForm==='function') renderForm();
+  if (saved||pend||noCat.length||fail.length){
+    if (typeof refreshCat==='function') refreshCat();
+    toast([saved?`Масса и габариты сохранены в каталог: ${saved}`:'', pend?`отправлено на модерацию: ${pend}`:'', noCat.length?`нет в каталоге (записано только в КП): ${noCat.join(', ')}`:'',
+      fail.length?`не сохранено: ${fail.join(', ')}`:''].filter(Boolean).join(' · ')); }
+}
+
 // ---------- «Настройки» → «Логистика»: тарифы (администратор)
-const LG_SC=[['hub','Импорт: город СВХ / терминала по умолчанию','text'],['roadK','Коэффициент дорог: европейская часть',''],['roadKE','… Урал и Сибирь',''],['roadKFE','… восточнее Байкала',''],
+const LG_SC=[['hub','Импорт: город СВХ / терминала по умолчанию','text'],['permitAgent','Оформление разрешения через агента, ₽',''],['overKLowbed','Негабарит на трале: множитель ставки',''],['roadK','Коэффициент дорог: европейская часть',''],['roadKE','… Урал и Сибирь',''],['roadKFE','… восточнее Байкала',''],
   ['localKm','Доставка по городу, км',''],['pack','Упаковка лёгких мест, % к массе',''],['packMax','Без упаковки — места тяжелее, т',''],
-  ['overK','Негабарит: множитель ставки за км',''],['permit','Спецразрешение на негабарит, ₽ за машину',''],['heavyFrom','Тяжеловес — груз в машине тяжелее, т',''],
-  ['heavyPermit','Разрешение на тяжеловес, ₽ за машину',''],['harmKm','Вред дорогам (тяжеловес), ₽/км',''],['escortW','Прикрытие — груз шире, м',''],['escortKm','Автомобиль прикрытия, ₽/км',''],
+  ['overK','Негабарит на площадке: множитель ставки',''],['permit','Госпошлина за спецразрешение, ₽ за машину',''],['heavyFrom','Тяжеловес — груз в машине тяжелее, т',''],
+  ['heavyPermit','Госпошлина за разрешение на тяжеловес, ₽',''],['harmKm','Вред дорогам (тяжеловес), ₽/км',''],['escortW','Прикрытие — груз шире, м',''],['escortKm','Автомобиль прикрытия, ₽/км',''],
   ['kmDay','Пробег в сутки, км',''],['kmDayOver','Пробег негабарита в сутки, км',''],['permitDays','Оформление разрешения, раб. дней',''],['range','Разброс оценки, ± %','']];
 const LG_CC=[['name','Транспорт','text'],['L','Длина площадки, м'],['W','Ширина, м'],['h','Высота груза, м'],['hMax','Высота со спецразр., м'],['wMax','Ширина со спецразр., м'],
   ['t','Грузоподъём., т'],['km','₽/км'],['base','Подача, ₽'],['min','Минимум, ₽']];
@@ -141,6 +166,7 @@ async function stLogistics(m){
   await lgLoad(true);
   const T=LG.tar, inp=(v,t)=>`<input type="${t==='text'?'text':'text'}" inputmode="${t==='text'?'text':'decimal'}" value="${esc(t==='text'?v:lgIn(v))}">`;
   m.innerHTML=`<div class="st-card"><div class="sub st-mh">Тарифы доставки по России ${tip('<p>По ним «Экономика сделки» считает доставку со склада поставщика до объекта: машина подбирается по массе и габаритам груза, к ставке за км добавляются подача, негабарит, тяжеловес, прикрытие и разгрузка.</p><p>Стандартные значения — ориентир. Уточните ставки по 5–10 последним счетам перевозчиков.</p><p>Негабарит по правилам РФ: шире 2,55 м или выше 4 м от дороги (высота груза на площадке указана в столбце «Высота груза»).</p>')}</div>
+    <details class="lg-src"><summary>Откуда стандартные ставки</summary><ul>${LG_DEFAULTS.sources.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>
     <p class="muted">${LG.saved&&LG.saved.updatedAt?`Изменены ${esc(stTime(LG.saved.updatedAt))}${LG.saved.updatedBy?' · '+esc(LG.saved.updatedBy):''}`:'Стандартные значения — уточните по счетам перевозчиков'}</p>
     <div class="lg-tw"><table class="lg-st" id="lgCl"><thead><tr>${LG_CC.map(([,l])=>`<th>${esc(l)}</th>`).join('')}<th>Открытая</th><th></th></tr></thead><tbody>
       ${T.classes.map((c,i)=>`<tr data-i="${i}" data-id="${esc(c.id)}">${LG_CC.map(([k,,t])=>`<td data-k="${k}">${inp(c[k],t)}</td>`).join('')}<td><input type="checkbox" data-k="open"${c.open?' checked':''} aria-label="Открытая площадка"></td><td><button class="icon" type="button" data-lgdel="cl" aria-label="Убрать">✕</button></td></tr>`).join('')}
