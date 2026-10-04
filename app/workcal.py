@@ -24,24 +24,29 @@ def _days_in_year(y):
 
 
 def parse_isdayoff(text, y):
+    """(нерабочие, сокращённые): по строке '0'/'1' на каждый день; у isdayoff '2' — сокращённый предпраздничный день."""
     s = text.strip()
     if len(s) != _days_in_year(y) or set(s) - set('01248'):
         raise ValueError('isdayoff: неожиданный ответ')
-    return ''.join('1' if ch == '1' else '0' for ch in s)
+    return ''.join('1' if ch == '1' else '0' for ch in s), ''.join('1' if ch == '2' else '0' for ch in s)
 
 
 def parse_xmlcalendar(obj, y):
-    off = set()
+    off, short = set(), set()
     for m in obj.get('months') or []:
         for tok in str(m.get('days') or '').split(','):
             tok = tok.strip()
-            if not tok or tok.endswith('*'):
+            if not tok:
+                continue
+            if tok.endswith('*'):
+                short.add((int(m['month']), int(tok.rstrip('*'))))
                 continue
             off.add((int(m['month']), int(tok.rstrip('+'))))
     if not off:
         raise ValueError('xmlcalendar: пустой календарь')
     d0 = date(y, 1, 1)
-    return ''.join('1' if ((d0 + timedelta(i)).month, (d0 + timedelta(i)).day) in off else '0' for i in range(_days_in_year(y)))
+    md = [((d0 + timedelta(i)).month, (d0 + timedelta(i)).day) for i in range(_days_in_year(y))]
+    return ''.join('1' if x in off else '0' for x in md), ''.join('1' if x in short else '0' for x in md)
 
 
 def approx(y):
@@ -54,13 +59,14 @@ def approx(y):
 
 
 def year(store, y):
-    """{year, days: строка '0'/'1' (1 — нерабочий), src, approx}"""
+    """{year, days: строка '0'/'1' (1 — нерабочий), short: '1' — сокращённый предпраздничный, src, approx}"""
     y = int(y)
     if not 2000 <= y <= 2100:
         raise ValueError('Год вне диапазона')
     key = 'workcal:%d' % y
     cached = store.kv_get(key)
-    if cached and time.time() - cached.get('fetched', 0) < REFRESH:
+    # сохранённый прежней версией (без сокращённых дней) — обновить при первой возможности
+    if cached and time.time() - cached.get('fetched', 0) < REFRESH and 'short' in cached:
         return cached
     if time.time() - _FAILED.get(y, 0) < RETRY:
         return cached or {'year': y, 'days': approx(y), 'src': 'приблизительно: выходные и праздники без переносов (нет связи с календарём)', 'approx': True}
@@ -69,7 +75,8 @@ def year(store, y):
             ('isdayoff.ru', 'https://isdayoff.ru/api/getdata?year=%d&cc=ru' % y, lambda b: parse_isdayoff(b.decode('utf-8'), y)),
             ('xmlcalendar.ru', 'https://xmlcalendar.ru/data/ru/%d/calendar.json' % y, lambda b: parse_xmlcalendar(json.loads(b.decode('utf-8-sig')), y))):
         try:
-            rec = {'year': y, 'days': parse(http_get(url)), 'src': 'производственный календарь (%s)' % src, 'approx': False, 'fetched': time.time()}
+            days, short = parse(http_get(url))
+            rec = {'year': y, 'days': days, 'short': short, 'src': 'производственный календарь (%s)' % src, 'approx': False, 'fetched': time.time()}
             store.kv_set(key, rec)
             return rec
         except Exception as e:

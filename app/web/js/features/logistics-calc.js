@@ -35,6 +35,10 @@ const LG_DEFAULTS = {
     { id:'crane50', name:'Автокран 50 т',       max:32, cost:40000 },
     { id:'crane100',name:'Автокран 100 т',      max:60, cost:100000 },
   ],
+  agentPct: 15,         // агент-экспедитор: наценка к ставке перевозчика, % (рынок 5–15 %, в споте до 20–25 %)
+  agentLtl: 1,          // агент и для сборного груза (1 — да, 0 — нет)
+  insPct: 0.15,         // страхование груза по России — обязательно, % от стоимости груза (рынок 0,06–0,7 %, чаще 0,15 %)
+  insMin: 300,          // минимальная премия, ₽
   pack: 10,             // упаковка (поддон, обрешётка), % к массе — для мест легче packMax
   packMax: 3,           // тяжелее, т — оборудование на своей раме, без упаковки
   roadK: 1.13,          // коэффициент дорог (по дороге / по прямой): европейская часть
@@ -53,6 +57,8 @@ const LG_DEFAULTS = {
     'Трал: до 30 т 80–120 ₽/км, 45–50 т 100–150 ₽/км; разрешение и сопровождение — отдельно (vityaz-tk.ru, 2025–2026)',
     'Госпошлина за спецразрешение — 1 600 ₽ (Госуслуги, 2026); вред дорогам — ПП РФ от 31.01.2020 № 67',
     'Автокран 25 т — 18–22 тыс. ₽ за смену, 50 т — 32–44 тыс. ₽ (Москва, 2026)',
+    'Агент-экспедитор: наценка 5–15 % от ставки перевозчика в массовом сегменте, в споте до 20–25 % (portal-logistic.ru, roolz.net, 2026)',
+    'Страхование груза автотранспортом: 0,06–0,7 % от стоимости, обычно 0,15 %, полис от 300 ₽ (inslog.ru, infullbroker.ru, 2026)',
   ],
 };
 
@@ -353,7 +359,13 @@ function lgCalc(inp, T){
   const maxUnit=units.reduce((s,u)=>Math.max(s,u.m),0);
   res.unload=lgUnloadPick(maxUnit, T, inp.unload||'auto');
   if (res.unload && maxUnit>res.unload.max+0.001) warn.push(`Самое тяжёлое место ${lgT(maxUnit)} т — больше, чем поднимет «${res.unload.name}»`);
-  res.total=res.vehicles.reduce((s,v)=>s+v.cost,0)+(res.unload?res.unload.cost:0);
+  res.transport=res.vehicles.reduce((s,v)=>s+v.cost,0);
+  res.agent=Math.round(res.transport*T.agentPct/100);
+  const val=+inp.value||0;
+  res.ins=Math.round(Math.max(T.insMin, val*T.insPct/100)); res.insBase=val;
+  const loc=lgPlan(units, T.localKm, T);       // забор у отправителя и доставка получателю по городу (для «терминал — терминал»)
+  res.localLeg=loc.unplaced.length?0:Math.round(loc.vehicles.reduce((s,v)=>s+v.cost,0));
+  res.total=res.transport+res.agent+res.ins+(res.unload?res.unload.cost:0);
   res.lo=Math.round(res.total*(1-T.range/100)/100)*100; res.hi=Math.round(res.total*(1+T.range/100)/100)*100;
   const over=res.vehicles.some(v=>v.over||v.heavy);
   res.days=Math.ceil(km/(over?T.kmDayOver:T.kmDay))+1+(over?T.permitDays:0);
