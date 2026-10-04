@@ -55,3 +55,7 @@ details.more-lite>summary{cursor:pointer;color:var(--navy)}
 .ci-tbl tr.work td{background:var(--soft)}
 .ci-tbl tr.err td:last-child{color:var(--danger)}
 .ci-tbl tr.new td:last-child,.ci-tbl tr.upd td:last-child{color:var(--ok)}
+.chk-note{margin:8px 0 0;padding:8px 10px;border-radius:8px;background:var(--soft);font-size:13px}
+.chk-miss{margin:6px 0 0;font-size:13px}
+.chk-links{margin:8px 0 0;font-size:13px;line-height:1.7}
+.chk-links a{white-space:nowrap}

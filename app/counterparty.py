@@ -1,22 +1,54 @@
 # -*- coding: utf-8 -*-
 """Контрагенты: поиск организации по ИНН, проверка через API Checko, справочник сохранённых контрагентов.
 
-Источники данных по ИНН (по очереди, первый успешный):
-  1. Checko (api.checko.ru)  — нужен API-ключ, даёт и реквизиты, и данные для проверки;
-  2. DaData (dadata.ru)       — нужен бесплатный API-ключ;
-  3. ФНС ЕГРЮЛ (egrul.nalog.ru) — без ключа, открытый сервис налоговой.
+Источники реквизитов по ИНН (по очереди, первый успешный):
+  1. DaData (dadata.ru)       — нужен бесплатный API-ключ (10 000 запросов в день);
+  2. ФНС ЕГРЮЛ (egrul.nalog.ru) — без ключа, открытый сервис налоговой;
+  3. Checko (api.checko.ru)  — только если первые не ответили: его запросы берегутся для проверок.
+
+Проверка контрагента — Checko: бесплатно 100 запросов в календарный день (по Москве), полная проверка — 4 запроса
+(карточка, финансы, суды, ФССП). Программа ведёт учёт запросов на весь отдел и, когда их не хватает:
+  — осталось 1–3 запроса: краткая проверка по карточке Checko (статус, банкротство, недостоверность, массовость,
+    дисквалификация, недоимка, реестр недобросовестных поставщиков) — 1 запрос;
+  — лимит исчерпан: бесплатная проверка по ФНС ЕГРЮЛ / DaData (статус, ликвидация, возраст, недостоверность)
+    и ссылки на официальные сервисы (суды, ФССП, «Прозрачный бизнес», Федресурс);
+  в обоих случаях полная проверка ставится в очередь и выполняется сама после обновления лимита (run_queue).
 Ключи хранятся в базе программы (вводятся в программе: «Клиент» → «Интеграции»).
 Только стандартная библиотека Python (совместимо с 3.8).
 """
 import json
 import re
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 
 TIMEOUT = 15
 CHECK_TTL_DAYS = 7
+CHECKO_DAILY = 100       # бесплатный лимит Checko, запросов в календарный день (меняется в «Интеграциях»)
+CHECKO_RESERVE = 20      # очередь не тратит последние запросы дня — они остаются для проверок «вручную»
+FIN_REUSE_DAYS = 120     # бухотчётность годовая: при повторной проверке берём из прежней (экономия запроса)
+MSK = timezone(timedelta(hours=3))
+
+
+def msk_today():
+    return datetime.now(MSK).date().isoformat()
+
+
+def manual_links(inn):
+    """Бесплатные официальные сервисы — проверить вручную то, что не вошло в проверку."""
+    q = urllib.parse.quote(inn)
+    return [{'name': 'Прозрачный бизнес (ФНС)', 'url': 'https://pb.nalog.ru/search.html#t=1&mode=search-all&queryAll=' + q},
+            {'name': 'Арбитражные дела', 'url': 'https://kad.arbitr.ru/'},
+            {'name': 'Исполнительные производства (ФССП)', 'url': 'https://fssp.gov.ru/iss/ip/'},
+            {'name': 'Банкротство (Федресурс)', 'url': 'https://fedresurs.ru/search/entity?code=' + q},
+            {'name': 'Недобросовестные поставщики', 'url': 'https://zakupki.gov.ru/epz/dishonestsupplier/search/results.html?searchString=' + q},
+            {'name': 'Checko (сайт)', 'url': 'https://checko.ru/search?query=' + q}]
+
+
+class LimitError(Exception):
+    """Лимит запросов Checko на сегодня исчерпан."""
 
 
 def _http(url, data=None, headers=None, method=None):
@@ -85,7 +117,8 @@ class Counterparties:
         mask = lambda v: (v[:4] + '…' + v[-4:]) if v and len(v) > 10 else ('задан' if v else '')
         return {'checko': bool(k.get('checkoKey')), 'checkoMask': mask(k.get('checkoKey', '')),
                 'dadata': bool(k.get('dadataKey')), 'dadataMask': mask(k.get('dadataKey', '')),
-                'convertapi': bool(k.get('convertapiKey')), 'convertapiMask': mask(k.get('convertapiKey', ''))}
+                'convertapi': bool(k.get('convertapiKey')), 'convertapiMask': mask(k.get('convertapiKey', '')),
+                'checkoDaily': self._limit(), 'quota': self.quota()}
 
     def save_keys(self, body):
         cur = self.keys()
@@ -97,6 +130,15 @@ class Counterparties:
                     cur[k] = v
                 else:
                     cur.pop(k, None)
+        if 'checkoDaily' in new:        # бесплатный лимит Checko в день (по тарифу)
+            try:
+                n = int(new.get('checkoDaily') or 0)
+            except (TypeError, ValueError):
+                n = 0
+            if n > 0:
+                cur['checkoDaily'] = min(n, 100000)
+            else:
+                cur.pop('checkoDaily', None)
         self.store.kv_set('integrations', cur)
         return self.keys_public()
 
@@ -148,11 +190,11 @@ class Counterparties:
         keys = self.keys()
         errors = []
         sources = []
-        if keys.get('checkoKey'):
-            sources.append(('Checko', self._lookup_checko))
         if keys.get('dadataKey'):
             sources.append(('DaData', self._lookup_dadata))
         sources.append(('ФНС ЕГРЮЛ', self._lookup_egrul))
+        if keys.get('checkoKey') and self.quota()['left'] > CHECKO_RESERVE:   # запросы Checko берегутся для проверок
+            sources.append(('Checko', self._lookup_checko))
         for name, fn in sources:
             try:
                 r = fn(inn, keys)
@@ -165,8 +207,8 @@ class Counterparties:
         return {'error': 'Не удалось получить данные. ' + '; '.join(errors)}
 
     def _lookup_checko(self, inn, keys):
-        j = _http('https://api.checko.ru/v2/%s?%s' % ('entrepreneur' if len(inn) == 12 else 'company',
-                  urllib.parse.urlencode({'key': keys['checkoKey'], 'inn': inn})))
+        j = self._checko('https://api.checko.ru/v2/%s?%s' % ('entrepreneur' if len(inn) == 12 else 'company',
+                         urllib.parse.urlencode({'key': keys['checkoKey'], 'inn': inn})))
         d = j.get('data') or {}
         if not d:
             return None
@@ -201,7 +243,8 @@ class Counterparties:
                            'BANKRUPT': 'Банкротство', 'REORGANIZING': 'Реорганизация'}.get(g(d, 'state', 'status', default=''), ''),
                 'active': g(d, 'state', 'status') == 'ACTIVE',
                 'regDate': datetime.utcfromtimestamp(reg / 1000).strftime('%Y-%m-%d') if isinstance(reg, (int, float)) else '',
-                'okved': d.get('okved') or ''}
+                'okved': d.get('okved') or '', 'invalid': bool(d.get('invalid')),
+                'disq': bool(g(d, 'management', 'disqualified')), 'liqDate': g(d, 'state', 'liquidation_date')}
 
     def _lookup_egrul(self, inn, keys):
         t = _http('https://egrul.nalog.ru/', data={'query': inn, 'nameEq': 'on', 'region': '', 'PreventChromeAutocomplete': ''},
@@ -234,48 +277,245 @@ class Counterparties:
         m = re.match(r'(\d{2})\.(\d{2})\.(\d{4})', s or '')
         return '%s-%s-%s' % (m.group(3), m.group(2), m.group(1)) if m else (s or '')
 
-    # ---------- проверка контрагента (Checko) ----------
-    def check(self, inn, force=False):
+    # ---------- учёт запросов Checko (на весь отдел, по московскому календарному дню) ----------
+    def _limit(self):
+        try:
+            return max(1, int(self.keys().get('checkoDaily') or CHECKO_DAILY))
+        except (TypeError, ValueError):
+            return CHECKO_DAILY
+
+    def quota(self):
+        q = self.store.kv_get('checkoQuota') or {}
+        today = msk_today()
+        used = int(q.get('used') or 0) if q.get('day') == today else 0
+        limit = self._limit()
+        left = max(0, limit - used)
+        queue = self.store.kv_get('checkQueue') or []
+        return {'day': today, 'used': used, 'limit': limit, 'left': left, 'checks': left // 4, 'queue': len(queue),
+                'key': bool(self.keys().get('checkoKey'))}
+
+    def _spend(self, n=1, meta=None, exhausted=False):
+        with self.store.lock:
+            q = self.quota()
+            used = q['used'] + n
+            cnt = (meta or {}).get('today_request_count') if isinstance(meta, dict) else None
+            if isinstance(cnt, int) and cnt >= 0:
+                used = cnt                     # Checko сам сообщает, сколько запросов сделано сегодня
+            if exhausted:
+                used = max(used, q['limit'])
+            self.store.kv_set('checkoQuota', {'day': q['day'], 'used': used})
+
+    def _checko(self, url):
+        """Запрос к Checko с учётом лимита; исчерпан — LimitError."""
+        if self.quota()['left'] <= 0:
+            raise LimitError('Лимит запросов Checko на сегодня исчерпан')
+        try:
+            j = _http(url)
+        except urllib.error.HTTPError as e:
+            self._spend(1, exhausted=e.code in (402, 429))
+            if e.code in (402, 429):
+                raise LimitError('Лимит запросов Checko на сегодня исчерпан')
+            raise
+        meta = j.get('meta') or {}
+        lim = meta.get('status') == 'error' and re.search(r'лимит|limit|исчерпан|превыш|баланс|balance', str(meta.get('message') or ''), re.I)
+        self._spend(1, meta, exhausted=bool(lim))
+        if lim:
+            raise LimitError(str(meta.get('message') or 'Лимит запросов Checko на сегодня исчерпан'))
+        return j
+
+    def queue_add(self, inn, by=''):
+        with self.store.lock:
+            qu = [x for x in (self.store.kv_get('checkQueue') or []) if x.get('inn') != inn]
+            qu.append({'inn': inn, 'at': datetime.now().isoformat(timespec='seconds'), 'by': by})
+            self.store.kv_set('checkQueue', qu[-500:])
+
+    def run_queue(self, log=print):
+        """Отложенные полные проверки — когда лимит Checko обновился; последние CHECKO_RESERVE запросов не трогаем.
+        Результат — в кэш проверок и в карточку клиента (при следующем открытии КП видна полная проверка)."""
+        qu = self.store.kv_get('checkQueue') or []
+        if not qu or not self.keys().get('checkoKey'):
+            return 0
+        done = 0
+        for x in list(qu):
+            q = self.quota()
+            if q['left'] - (3 if len(x['inn']) == 12 else 4) < min(CHECKO_RESERVE, q['limit'] // 5):
+                break
+            try:
+                res = self.check(x['inn'], force=True, queue=False)
+            except Exception as e:
+                log('Отложенная проверка %s: %s' % (x['inn'], e))
+                break
+            if res.get('partial') or res.get('error'):
+                break                     # лимит кончился посередине — продолжим, когда обновится
+            with self.store.lock:
+                self.store.kv_set('checkQueue', [y for y in (self.store.kv_get('checkQueue') or []) if y.get('inn') != x['inn']])
+            cl = self.store.client_get('inn' + x['inn'])
+            if cl is not None:
+                cl['check'] = res
+                self.store.client_put('inn' + x['inn'], cl, 'Программа (очередь проверок)')
+            done += 1
+        return done
+
+    # ---------- проверка контрагента ----------
+    def check(self, inn, force=False, queue=True, by=''):
         inn = re.sub(r'\D', '', inn or '')
         if not valid_inn(inn):
             return {'error': 'ИНН указан с ошибкой'}
+        ip = len(inn) == 12
+        cost = 3 if ip else 4
         cached = self.store.check_get(inn)
+        q = self.quota()
         if cached and not force:
             try:
                 age = (datetime.now() - datetime.fromisoformat(cached.get('checkedAt'))).days
             except Exception:
                 age = 999
-            if age < CHECK_TTL_DAYS:
+            # краткую / бесплатную проверку заменяем полной, как только хватает запросов
+            if age < CHECK_TTL_DAYS and not (cached.get('partial') and q['key'] and q['left'] >= cost):
                 cached['cached'] = True
+                cached['quotaNow'] = q
                 return cached
         key = self.keys().get('checkoKey')
         if not key:
-            return {'error': 'nokey', 'message': 'Для проверки нужен API-ключ Checko: «Интеграции» → ключ Checko. '
-                                                 'Получить ключ: checko.ru → Личный кабинет → API.',
-                    'url': 'https://checko.ru/search?query=' + inn}
-        q = lambda ep, **extra: 'https://api.checko.ru/v2/%s?%s' % (ep, urllib.parse.urlencode(dict({'key': key, 'inn': inn}, **extra)))
-        ip = len(inn) == 12
-        raw = {}
-        errors = []
-        for name, url in (('company', q('entrepreneur' if ip else 'company')), ('finances', q('finances')),
-                          ('courts', q('legal-cases', role='defendant')), ('fssp', q('enforcements'))):
-            if ip and name == 'finances':
-                continue
+            res = self._free_check(inn, 'Для полной проверки (суды, ФССП, финансы, налоги) укажите API-ключ Checko в «Интеграциях».')
+            res['nokey'] = True
+            return self._finish(inn, res, q, keep_full=cached)
+        reuse = None   # финансы — из прежней полной проверки (годовая отчётность не меняется неделями)
+        if cached and not cached.get('partial') and cached.get('finances'):
             try:
-                j = _http(url)
+                if (datetime.now() - datetime.fromisoformat(cached.get('checkedAt'))).days < FIN_REUSE_DAYS:
+                    reuse = cached
+            except Exception:
+                pass
+        if reuse:
+            cost -= 1
+        if q['left'] < 1:
+            if queue:
+                self.queue_add(inn, by)
+            res = self._free_check(inn, 'Лимит Checko на сегодня исчерпан (%d запросов в день). Полная проверка выполнится автоматически '
+                                        'после 00:00 по Москве.' % q['limit'] if queue else '')
+            res['queued'] = bool(queue)
+            return self._finish(inn, res, q, keep_full=cached)
+        short = q['left'] < cost
+        qurl = lambda ep, **extra: 'https://api.checko.ru/v2/%s?%s' % (ep, urllib.parse.urlencode(dict({'key': key, 'inn': inn}, **extra)))
+        plan = [('company', qurl('entrepreneur' if ip else 'company'))]
+        if not short:
+            if not ip and not reuse:
+                plan.append(('finances', qurl('finances')))
+            plan += [('courts', qurl('legal-cases', role='defendant')), ('fssp', qurl('enforcements'))]
+        raw, errors, limited = {}, [], False
+        for name, url in plan:
+            try:
+                j = self._checko(url)
                 if g(j, 'meta', 'status') == 'error':
                     errors.append('%s: %s' % (name, g(j, 'meta', 'message', default='ошибка')))
                 raw[name] = j.get('data') or {}
                 raw['_meta'] = j.get('meta') or raw.get('_meta')
+            except LimitError as e:
+                limited = True
+                errors.append(str(e))
+                break
             except Exception as e:
                 errors.append('%s: %s' % (name, e))
         if not raw.get('company'):
-            return {'error': 'Checko не вернул данные. ' + '; '.join(errors)}
+            if limited:     # лимит кончился раньше, чем показывал наш учёт (запросы с другого компьютера / сайта)
+                if queue:
+                    self.queue_add(inn, by)
+                res = self._free_check(inn, 'Лимит Checko на сегодня исчерпан. Полная проверка выполнится автоматически после 00:00 по Москве.'
+                                       if queue else '')
+                res['queued'] = bool(queue)
+                return self._finish(inn, res, self.quota(), keep_full=cached)
+            return {'error': 'Checko не вернул данные. ' + '; '.join(errors), 'url': 'https://checko.ru/search?query=' + inn}
+        if reuse:
+            raw['finances_reused'] = reuse.get('finances')
         res = self._summarize(inn, raw, ip)
         res['errors'] = errors
+        missing = [n for n, _ in (('finances', 0), ('courts', 0), ('fssp', 0)) if n not in raw and not (n == 'finances' and (ip or reuse))]
+        if missing:
+            res['partial'] = True
+            res['missing'] = [{'finances': 'финансовая отчётность', 'courts': 'арбитражные суды', 'fssp': 'исполнительные производства'}[n] for n in missing]
+            res['note'] = ('Краткая проверка: на сегодня осталось меньше %d запросов Checko. ' % cost) + \
+                ('Полная проверка выполнится автоматически после 00:00 по Москве.' if queue else '')
+            if queue:
+                self.queue_add(inn, by)
+                res['queued'] = True
+            res['links'] = manual_links(inn)
+            prev = cached if cached and not cached.get('partial') else None
+            try:
+                fresh = prev and (datetime.now() - datetime.fromisoformat(prev.get('checkedAt'))).days < 30
+            except Exception:
+                fresh = False
+            if fresh:     # суды, ФССП, финансы — из недавней полной проверки (с датой), карточка — свежая
+                for k in ('courts', 'fssp', 'finances'):
+                    res[k] = prev.get(k)
+                have = {f.get('text') for f in res['flags']}
+                old = [f for f in (prev.get('flags') or []) if re.match(r'Арбитраж|Исполнительн|Убыток|Есть выручка', f.get('text', ''))
+                       and f.get('text') not in have]
+                dt = '.'.join(reversed(prev['checkedAt'][:10].split('-')))
+                res['flags'] = res['flags'] + [dict(f, text=f['text'] + ' (на %s)' % dt) for f in old]
+                lv = [f['level'] for f in res['flags']]
+                res['score'] = 'bad' if 'red' in lv else ('warn' if 'yellow' in lv else 'ok')
+                res['missing'] = []
+                res['note'] = 'Карточка обновлена сегодня; суды, ФССП и финансы — из полной проверки от %s. ' % dt + \
+                    ('Полная проверка выполнится автоматически после 00:00 по Москве.' if queue else '')
+        return self._finish(inn, res, self.quota())
+
+    def _finish(self, inn, res, q, keep_full=None):
         res['checkedAt'] = datetime.now().isoformat(timespec='seconds')
+        res['quotaNow'] = q
+        # прежнюю полную проверку не затираем краткой / бесплатной: она остаётся в кэше, пока не устарела
+        if res.get('partial') and keep_full and not keep_full.get('partial') and not res.get('nokey'):
+            try:
+                if (datetime.now() - datetime.fromisoformat(keep_full.get('checkedAt'))).days < 30:
+                    keep_full['cached'] = True
+                    keep_full['quotaNow'] = q
+                    keep_full['note'] = res.get('note') or ''
+                    keep_full['queued'] = res.get('queued')
+                    return keep_full
+            except Exception:
+                pass
         self.store.check_put(inn, res)
         return res
+
+    def _free_check(self, inn, note):
+        """Бесплатная проверка без Checko: DaData (если есть ключ) или ФНС ЕГРЮЛ — статус, ликвидация, возраст,
+        недостоверность сведений; остальное — ссылками на официальные сервисы."""
+        keys = self.keys()
+        info, src, errs = None, '', []
+        for name, fn in ((('DaData', self._lookup_dadata),) if keys.get('dadataKey') else ()) + (('ФНС ЕГРЮЛ', self._lookup_egrul),):
+            try:
+                info = fn(inn, keys)
+                if info:
+                    src = name
+                    break
+            except Exception as e:
+                errs.append('%s: %s' % (name, e))
+        flags = []
+        add = lambda lvl, text: flags.append({'level': lvl, 'text': text})
+        age = None
+        if info:
+            (add('green', 'Организация действует') if info.get('active') else add('red', 'Статус: ' + (info.get('status') or 'не действует')))
+            try:
+                age = (date.today() - date.fromisoformat((info.get('regDate') or '')[:10])).days / 365.25
+                if age < 1:
+                    add('yellow', 'Зарегистрирована менее года назад')
+                elif age >= 3:
+                    add('green', 'Работает более %d лет' % int(age))
+            except Exception:
+                pass
+            if info.get('invalid'):
+                add('red', 'Недостоверные сведения в ЕГРЮЛ (отметка ФНС)')
+            if info.get('disq'):
+                add('red', 'Руководитель — дисквалифицированное лицо')
+        levels = [f['level'] for f in flags]
+        return {'inn': inn, 'ogrn': (info or {}).get('ogrn', ''), 'name': (info or {}).get('short', ''), 'status': (info or {}).get('status', ''),
+                'active': (info or {}).get('active'), 'regDate': (info or {}).get('regDate', ''),
+                'ageYears': round(age, 1) if age is not None else None, 'okved': (info or {}).get('okved', ''),
+                'flags': flags, 'score': 'bad' if 'red' in levels else ('warn' if 'yellow' in levels else ('ok' if info else 'warn')),
+                'source': src or 'нет данных', 'partial': True, 'free': True,
+                'missing': ['арбитражные суды', 'исполнительные производства', 'финансовая отчётность', 'налоговая недоимка', 'банкротство', 'массовый адрес и руководитель'],
+                'note': note, 'errors': errs, 'links': manual_links(inn), 'url': 'https://checko.ru/search?query=' + inn,
+                'courts': {'count': None, 'sum': None}, 'fssp': {'count': None, 'sum': None}, 'finances': []}
 
     def _summarize(self, inn, raw, ip):
         c = raw.get('company') or {}
@@ -315,6 +555,9 @@ class Counterparties:
         # финансы: последние 3 года
         fin = []
         fdata = raw.get('finances') or {}
+        if raw.get('finances_reused'):
+            fin = list(raw['finances_reused'])
+            fdata = {}
         for y in sorted([k for k in fdata.keys() if re.match(r'^\d{4}$', str(k))], reverse=True)[:3]:
             row = fdata.get(y) or {}
             fin.append({'year': y, 'revenue': _num(row.get('2110')), 'profit': _num(row.get('2400')),
