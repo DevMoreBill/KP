@@ -38,6 +38,7 @@ from version import VERSION as APP_VERSION
 import pdf_convert
 import images
 import maintenance
+import logistics_api
 from images import ImageStore, mark_organized, organize_existing
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, ensure_templates, list_history,
                           list_templates, open_template_file, put_file, reset_template, restore_history, template_file)
@@ -543,6 +544,20 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self.send(422, 'text/plain; charset=utf-8', 'Картинка не загружена: %s' % e)
             return self.send(200, ctype, data)
+        if path == '/api/logistics/quote' and m == 'POST':   # цены перевозчиков (ATI.SU, ПЭК, Деловые Линии, КИТ) — итог по максимуму
+            try:
+                return self.send_json(logistics_api.quote(store(), json.loads(self.body().decode('utf-8') or '{}')))
+            except (ValueError, TypeError, KeyError) as e:
+                return self.send(400, 'text/plain; charset=utf-8', 'Неверный запрос: %s' % e)
+        if path == '/api/logistics/status' and m == 'GET':
+            return self.send_json({'providers': logistics_api.providers(store()), 'auto': store().kv_get('logisticsAuto'),
+                                   'settings': logistics_api.auto_settings(store())})
+        if path == '/api/logistics/refresh' and m == 'POST':   # обновить ставки по ATI.SU сейчас (администратор)
+            try:
+                rec = logistics_api.auto_refresh(store(), force=True)
+            except Exception as e:
+                return self.send(502, 'text/plain; charset=utf-8', 'ATI.SU: %s' % e)
+            return self.send_json(rec or {'error': 'Не задан ключ ATI.SU («Интеграции») или обновление уже идёт'})
         if path == '/api/logistics':                    # тарифы доставки по России (общие для отдела; изменяет администратор)
             if m == 'PUT':
                 try:
@@ -555,7 +570,7 @@ class Handler(BaseHTTPRequestHandler):
                 d['updatedBy'] = admin.actor(self)[1]
                 store().kv_set('logistics', d)
                 return self.send_json({'ok': True})
-            return self.send_json(store().kv_get('logistics') or {})
+            return self.send_json(dict(store().kv_get('logistics') or {}, _auto=store().kv_get('logisticsAuto')))
         if path == '/api/uitexts' and m == 'GET':       # тексты интерфейса, изменённые администратором: {исходный текст: новый}
             return self.send_json(store().kv_get('uitexts') or {})
         if path == '/api/uitexts' and m == 'PUT':       # только администратор (admin.guard)
@@ -699,6 +714,8 @@ def main():
         maintenance.start_daily(store(), DATA_DIR)
         # отложенные проверки контрагентов: когда лимит Checko обновится (после 00:00 по Москве) — выполнить очередь
         maintenance.start_every(1800, lambda: cp().run_queue())
+        # ставки доставки по ATI.SU — раз в сутки (период и направления — «Настройки» → «Логистика»)
+        maintenance.start_every(3 * 3600, lambda: logistics_api.auto_refresh(store()))
         seeded = seed_catalog()
         sync_counter_with_files()
     except Exception as e:

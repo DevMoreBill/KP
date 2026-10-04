@@ -64,6 +64,12 @@ function lgTariffs(saved){
       for (const f of ['L','W','h','hMax','wMax','t','km','base','min','max','cost']) if (o[f]!=null && o[f]!=='') o[f]=+o[f];
       o.open=!!o.open; return o; });
   }
+  // ставки ₽/км из автообновления (ATI.SU) — у классов, где оно не выключено (auto:false — ставка закреплена вручную)
+  const au=saved&&saved._auto, ac=(au&&au.classes)||{};
+  for (const c of t.classes){
+    if (c.auto!==false && ac[c.id] && ac[c.id].km>0){ c.km=+ac[c.id].km; c.src=ac[c.id].src; c.srcAt=au.at; c.srcAuto=true; }
+    else if (!c.src) c.src = saved&&saved.updatedAt && Array.isArray(saved.classes) ? 'вручную в «Настройках»' : 'стандартная ставка (рынок 2026, см. источники)';
+  }
   return t;
 }
 
