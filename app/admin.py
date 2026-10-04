@@ -382,6 +382,13 @@ def guard(h, store, m, path):
         log(h, store, 'delete_attempt', path.split('/')[2] if path.count('/') > 2 else None, path.rsplit('/', 1)[-1], result='failed')
         h.send(403, 'text/plain; charset=utf-8', DENIED)
         return True
+    # только администратор: тарифы доставки по России
+    if path == '/api/logistics' and m == 'PUT':
+        if not is_admin(h):
+            log(h, store, 'edit_settings', 'settings', 'logistics', result='failed')
+            h.send(403, 'text/plain; charset=utf-8', DENIED)
+            return True
+        return lambda: log(h, store, 'edit_settings', 'settings', 'logistics', None, {'tariffs': True}, admin=True)
     # только администратор: тексты интерфейса
     if path == '/api/uitexts' and m == 'PUT':
         if not is_admin(h):

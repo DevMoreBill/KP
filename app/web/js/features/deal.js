@@ -75,7 +75,7 @@ const dlNorm = s => String(s||'').trim().toLowerCase();
 function dlDir(name){ const n=dlNorm(name); if (!n || !DL.sups) return null;
   return DL.sups.find(x=>dlNorm(x.name)===n) || DL.sups.find(x=>(x.makers||[]).some(m=>dlNorm(m)===n)) || null; }
 
-const DL_SUP_KEYS=['country','cur','vatIn','noVat','adv','pay','prod','ship','prodK','shipK','cusMode','ivat','ins','fx'];
+const DL_SUP_KEYS=['wh','country','cur','vatIn','noVat','adv','pay','prod','ship','prodK','shipK','cusMode','ivat','ins','fx'];
 
 // подставить условия поставщика из справочника (название, страна, валюта, аванс, сроки, таможня, комиссии)
 function dlApplyDir(s, p){ if (!p) return false;
@@ -326,7 +326,8 @@ function dlPurchase(c){
       <div class="dl-sub"><h5>Оплата поставщику ${dlQ('Доли от стоимости оборудования (с комиссией за перевод). Последний этап — остаток до 100 %. Перевозка, страхование, таможня и брокер оплачиваются перед отгрузкой.')}</h5>${dlSupPay(c, k)}</div>
       <div class="dl-sub"><h5>Стоимость перевозки</h5>
         <div class="dl-g">${ru?'':dlField('Перевозка до границы РФ', P+'.log.v', {calc:c, cur:P+'.log.cur', src:s.log&&s.log.src, q:'Сколько стоит довезти груз от поставщика до границы ЕАЭС. Входит в таможенную стоимость.'})}
-        ${dlField(ru?'Доставка до объекта':'Доставка по России', P+'.logRu.v', {calc:c, unit:'₽', src:s.logRu&&s.logRu.src, q:'Сколько стоит довезти груз по России '+(ru?'от склада поставщика':'от границы')+' до объекта заказчика. Платится при поставке; НДС перевозчика — к вычету.'})}</div></div>
+        ${dlField(ru?'Доставка до объекта':'Доставка по России', P+'.logRu.v', {calc:c, unit:'₽', src:s.logRu&&s.logRu.src, q:'Сколько стоит довезти груз по России '+(ru?'от склада поставщика':'от границы')+' до объекта заказчика. Платится при поставке; НДС перевозчика — к вычету.'})}</div>
+        ${ex?'':`<div class="dl-lgrow"><button type="button" class="btn dl-lgbtn" data-dlx="lgcalc" data-k="${k}">🚚 Рассчитать доставку по России</button><span class="muted">${s.lg&&s.lg.res?esc(s.lg.res.note):'по массе и габаритам позиций, от склада поставщика до объекта'}</span></div>`}</div>
       <details class="dl-more" data-more="sup${k}"${dlMore('sup'+k, false)}><summary>Ещё расходы по поставщику <span class="muted">— ${moreSum||'опции, страхование, комиссия за перевод, брокер'}</span></summary>
         <div class="dl-g">${dlField('Прочая закупка у поставщика', P+'.extra.v', {calc:c, cur:P+'.extra.cur', q:'Опции, ЗИП и всё, чего нет в позициях КП.'})}
           ${ru?'':dlField('Страхование груза', P+'.ins', {calc:c, unit:'% от оборудования', ph:'0,3'})}
@@ -911,6 +912,7 @@ function dealBind(dlg){
     if (a==='xlsx') return dealXlsx();
     if (a==='hsdir') return dlHsDir();
     if (a==='apply') return dealApplyPrice(+b.dataset.s);
+    if (a==='lgcalc') return openLogistics(k);
     if (a==='reset'){ dlSet(d, b.dataset.path, ''); }
     if (a==='resetdays') d.days={};
     if (a==='mv'){ const msg=dlMoveStage(b.dataset.grp, +b.dataset.i, +b.dataset.to); if (msg){ touch(); toast(msg); } return dealRender(); }

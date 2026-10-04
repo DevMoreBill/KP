@@ -6,7 +6,7 @@
 const ST = { tab:'stats', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f:{}}, imp:null, chart:'day' };
 
 const ST_TABS = [['stats','Статистика'],['moderation','Модерация'],['delete','Данные: правка и удаление'],['trash','Корзина'],['audit','Журнал действий'],
-  ['backup','Резервные копии'],['templates','Шаблоны и категории'],['keys','Ключи API'],['users','Администраторы'],['security','Пароль и доступ']];
+  ['backup','Резервные копии'],['logistics','Логистика'],['templates','Шаблоны и категории'],['keys','Ключи API'],['users','Администраторы'],['security','Пароль и доступ']];
 
 const ACT = { login:'Вход в «Настройки»', backup_db:'Копия базы', maintain_db:'Сжатие и проверка базы', purge_images:'Удаление лишних изображений', create_admin:'Новый администратор', edit_admin:'Изменение администратора', delete_admin:'Удаление администратора', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
   admin_request:'Запрос без входа', edit_settings:'Изменение настроек', edit_template:'Изменение шаблона', create_kp:'Создание КП', edit_kp:'Изменение КП',
@@ -69,7 +69,7 @@ function stRender(){
 async function stTab(){
   const m=$('#stMain'); if (!m) return;
   try{ await ({stats:stStats, moderation:stModeration, delete:stDelete, trash:stTrash, audit:stAudit, backup:stBackup,
-    templates:stTemplates, keys:stKeys, users:stUsers, security:stSecurity})[ST.tab](m); }
+    templates:stTemplates, logistics:stLogistics, keys:stKeys, users:stUsers, security:stSecurity})[ST.tab](m); }
   catch(e){ if (ADMIN.on) m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; }
 }
 
