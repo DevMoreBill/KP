@@ -543,6 +543,19 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self.send(422, 'text/plain; charset=utf-8', 'Картинка не загружена: %s' % e)
             return self.send(200, ctype, data)
+        if path == '/api/logistics':                    # тарифы доставки по России (общие для отдела; изменяет администратор)
+            if m == 'PUT':
+                try:
+                    d = json.loads(self.body().decode('utf-8') or '{}')
+                except ValueError:
+                    d = None
+                if not isinstance(d, dict) or len(json.dumps(d)) > 100000:
+                    return self.send(400, 'text/plain; charset=utf-8', 'Неверный формат тарифов')
+                d['updatedAt'] = datetime.now().isoformat(timespec='seconds')
+                d['updatedBy'] = admin.actor(self)[1]
+                store().kv_set('logistics', d)
+                return self.send_json({'ok': True})
+            return self.send_json(store().kv_get('logistics') or {})
         if path == '/api/uitexts' and m == 'GET':       # тексты интерфейса, изменённые администратором: {исходный текст: новый}
             return self.send_json(store().kv_get('uitexts') or {})
         if path == '/api/uitexts' and m == 'PUT':       # только администратор (admin.guard)
