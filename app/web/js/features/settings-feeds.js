@@ -49,18 +49,21 @@ function fdJob(j){
   return j.msg ? `<p class="msg ok">${esc(j.msg)}</p>` : '';
 }
 
+function fdTypeName(id){ const t=FD.types.find(x=>x.id===id); return t ? t.name : (id==='other'||!id ? 'Прочее' : id); }
+function fdKinds(k){ return (k||[]).map(([id,n])=>`${esc(fdTypeName(id))} ${n}`).join(' · '); }
+
 function fdPreview(p){
   const tsel=(cid,v)=>`<select data-fdcat="${esc(cid)}" aria-label="Категория программы"><option value="skip"${v==='skip'?' selected':''}>— не загружать —</option>
-    <option value=""${!v?' selected':''}>определить по названию</option>${FD.types.map(t=>`<option value="${esc(t.id)}"${v===t.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`;
+    <option value=""${!v?' selected':''}>по названию позиции</option>${FD.types.map(t=>`<option value="${esc(t.id)}"${v===t.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`;
   return `<div class="fd-sum">${[['товаров', p.total], ['в наличии', p.available], ['с ценой', p.withPrice], ['с остатком', p.withQty], ['с фото', p.withPhoto], ['уже в каталоге', p.inCatalog]]
       .map(([t,v])=>`<span><b>${stNum(v)}</b> ${t}</span>`).join('')}${p.shop?`<span class="muted">${esc(p.shop)}${p.date?' · '+esc(p.date):''}</span>`:''}</div>
-    <p class="sub">Категории фида → категории программы</p>
-    <div class="fd-tw"><table class="fd-t"><thead><tr><th>Категория в фиде</th><th class="num">Товаров</th><th class="num">В каталоге</th><th>Категория программы</th></tr></thead>
-      <tbody>${p.cats.map(c=>`<tr><td>${esc(c.path)}</td><td class="num">${c.count}</td><td class="num">${c.inCatalog||''}</td><td>${tsel(c.id, FD.cats[c.id]??c.map)}</td></tr>`).join('')}</tbody></table></div>
+    <div class="sub">Категории фида → категории программы ${tip('По умолчанию категория определяется по названию каждой позиции: разделы фида часто — подборки («200 л/мин», «С ресивером»), где вперемешку винтовые и поршневые. Выберите категорию, только если весь раздел — одно и то же, или «не загружать».')}</div>
+    <div class="fd-tw"><table class="fd-t"><thead><tr><th>Категория в фиде</th><th class="num">Товаров</th><th class="num">В каталоге</th><th>По названию</th><th>Категория программы</th></tr></thead>
+      <tbody>${p.cats.map(c=>`<tr><td>${esc(c.path)}</td><td class="num">${c.count}</td><td class="num">${c.inCatalog||''}</td><td class="muted">${fdKinds(c.kinds)}</td><td>${tsel(c.id, FD.cats[c.id]??c.map)}</td></tr>`).join('')}</tbody></table></div>
     <p class="muted fd-cnt" id="fdCnt"></p>
     ${p.params.length?`<details class="more"><summary>Характеристики в фиде (${p.params.length})</summary><p class="muted">${p.params.map(([k,n])=>`${esc(k)} <small>(${n})</small>`).join(' · ')}</p></details>`:''}
-    <details class="more"><summary>Первые товары фида</summary><div class="fd-tw"><table class="fd-t"><thead><tr><th>Товар</th><th>Артикул</th><th class="num">РРЦ</th><th>Наличие</th><th class="num">Фото / ТТХ</th></tr></thead>
-      <tbody>${p.sample.map(o=>`<tr><td>${esc(o.name)}</td><td>${esc(o.sku||o.model||'')}</td><td class="num">${o.price!=null?money(Math.round(o.price*100))+' '+esc(o.cur||''):'—'}</td>
+    <details class="more"><summary>Первые товары фида</summary><div class="fd-tw"><table class="fd-t"><thead><tr><th>Товар</th><th>Производитель, модель</th><th>Артикул</th><th>Категория</th><th class="num">РРЦ</th><th>Наличие</th><th class="num">Фото / ТТХ</th></tr></thead>
+      <tbody>${p.sample.map(o=>`<tr><td>${esc(o.name)}</td><td>${esc([o.maker,o.model].filter(Boolean).join(' '))}</td><td>${esc(o.sku||'')}</td><td class="muted">${esc(fdTypeName(o.cat))}</td><td class="num">${o.price!=null?money(Math.round(o.price*100))+' '+esc(o.cur||''):'—'}</td>
         <td>${o.qty!=null?(o.qty>0?'в наличии '+o.qty:'нет'):(o.available?'в наличии':'нет')}</td><td class="num">${o.pics} / ${o.params}</td></tr>`).join('')}</tbody></table></div></details>`;
 }
 
