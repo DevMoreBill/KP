@@ -742,6 +742,7 @@ def main():
         import feeds
         feeds.IMAGE_STORE = IMAGES
         maintenance.start_every(3600, lambda: feeds.auto_check(store()))     # фиды поставщиков: РРЦ и наличие раз в день
+        feeds.upgrade(store(), load_types()['types'], APP_VERSION)          # после обновления — фиды по новым правилам
         seeded = seed_catalog()
         sync_counter_with_files()
     except Exception as e:

@@ -173,31 +173,107 @@ def page_desc(html):
     return ''
 
 
-def _desc_getter(store):
-    """Описания со страниц товаров с кэшем в kv «feeddesc» {адрес: {t, at}}; ошибки — в список."""
+IMG_RX = r'(?:https?://[^"\'\s<>()/]+)?/upload/(?:iblock|medialibrary)/[^"\'\s<>()]+?\.(?:jpe?g|png|webp)'
+APPLY_RX = r'применяемост|применимост|подходит (?:для|к)|совместим|для моделей|применяется (?:в|для|на)'
+
+
+def page_images(html, url, limit=8):
+    """Фото товара со страницы: schema.org (itemprop="image"), og:image и картинки галереи между заголовком <h1>
+    и концом описания — без блоков «похожие товары» ниже."""
+    out = []
+
+    def add(u):
+        u = urllib.parse.urljoin(url, u.replace('&amp;', '&').strip())
+        if '/resize_cache/' in u or re.search(r'(?i)logo|no[_-]?photo|noimage|placeholder|sprite', u):
+            return
+        if u not in out and re.match(r'^https?://', u):
+            out.append(u)
+    for m in re.finditer(r'<[^>]+\bitemprop\s*=\s*["\']image["\'][^>]*>', html, re.I):
+        a = re.search(r'\b(?:content|href|data-src|src)\s*=\s*["\']([^"\']+)', m.group(0), re.I)
+        if a and re.search(r'\.(jpe?g|png|webp)(\?|$)', a.group(1), re.I):
+            add(a.group(1))
+    m = re.search(r'<meta[^>]+property\s*=\s*["\']og:image["\'][^>]+content\s*=\s*["\']([^"\']+)', html, re.I)
+    if m:
+        add(m.group(1))
+    h1 = re.search(r'<h1\b', html, re.I)
+    start = h1.start() if h1 else 0
+    end = len(html)
+    d = re.search(r'\bitemprop\s*=\s*["\']description["\']', html[start:], re.I)
+    if d:
+        end = min(end, start + d.end() + 60000)
+    stop = re.search(r'(?i)похожие товары|с этим товаром|рекомендуем|вы смотрели|аналоги|сопутствующ', html[start:end])
+    if stop:
+        end = start + stop.start()
+    for u in re.findall(IMG_RX, html[start:end], re.I):
+        add(u)
+    return out[:limit]
+
+
+def page_props(html):
+    """Пары «название — значение» со страницы: таблицы, dt/dd и блоки свойств Битрикса (…name/…value)."""
+    out = []
+    pats = (r'<tr\b[^>]*>\s*<t[dh]\b[^>]*>(.*?)</t[dh]>\s*<td\b[^>]*>(.*?)</td>',
+            r'<dt\b[^>]*>(.*?)</dt>\s*<dd\b[^>]*>(.*?)</dd>',
+            r'class\s*=\s*["\'][^"\']*(?:prop|char|param)[^"\']*(?:name|title)[^"\']*["\'][^>]*>(.*?)</\w+>.{0,400}?'
+            r'class\s*=\s*["\'][^"\']*(?:prop|char|param)[^"\']*(?:value|val)[^"\']*["\'][^>]*>(.*?)</\w+>')
+    seen = set()
+    for rx in pats:
+        for m in re.finditer(rx, html, re.I | re.S):
+            k = re.sub(r'\s+', ' ', _html_text(m.group(1))).strip(' :')
+            v = re.sub(r'\s*\n\s*', '; ', _html_text(m.group(2))).strip(' ;')
+            if 1 < len(k) <= 60 and 0 < len(v) <= 300 and k.lower() not in seen:
+                seen.add(k.lower())
+                out.append([k, v])
+    return out[:60]
+
+
+def page_apply(html, props):
+    """Применимость запчасти: свойство «Применяемость / Подходит для …» или блок под таким заголовком."""
+    for k, v in props:
+        if re.search(APPLY_RX, k, re.I):
+            return v[:600]
+    best = ''
+    for m in re.finditer(r'>\s*([^<>]{0,30}(?:%s)[^<>]{0,40})\s*(?=<)' % APPLY_RX, html, re.I):
+        chunk = html[m.end():m.end() + 8000]
+        cut = re.search(r'(?i)<h[1-6]\b|class\s*=\s*["\'][^"\']*\btab', chunk)
+        text = _html_text(chunk[:cut.start()] if cut and cut.start() > 0 else chunk[:3000])
+        text = re.sub(r'\s*\n\s*', '; ', text.replace('• ', '')).strip(' ;:')
+        if len(text) >= 3 and not re.match(r'(?i)^(описание|характеристики|документ|отзыв)', text):
+            best = text[:600]       # последнее подходящее — содержимое вкладки, первое бывает её заголовком
+    return best
+
+
+def page_info(html, url):
+    props = page_props(html)
+    return {'t': page_desc(html), 'imgs': page_images(html, url), 'props': props, 'apply': page_apply(html, props), 'v': 2}
+
+
+def _page_getter(store):
+    """Данные со страниц товаров (описание, фото, свойства, применимость) с кэшем в kv «feeddesc» {адрес: {…, at}}."""
     cache = store.kv_get('feeddesc') or {}
     lock, errors, today = threading.Lock(), [], date.today()
 
     def get(url):
         if not url:
-            return ''
+            return {}
         with lock:
             hit = cache.get(url)
-        if hit:
+        if hit and hit.get('v') == 2:
             try:
                 if (today - date.fromisoformat(hit['at'])).days < PAGE_DAYS:
-                    return hit.get('t') or ''
+                    return hit
             except (KeyError, ValueError):
                 pass
         try:
-            text = page_desc(page_html(url))
+            info = page_info(page_html(url), url)
         except Exception as e:
             with lock:
                 errors.append('%s: %s' % (url[-80:], str(e)[:120]))
-            return (hit or {}).get('t') or ''
+            return hit or {}
+        info['at'] = today.isoformat()
         with lock:
-            cache[url] = {'t': text, 'at': today.isoformat()}
-        return text
+            cache[url] = info
+        return info
 
     def save():
         with lock:
@@ -395,6 +471,15 @@ def _rows(o):
     for p in o['params']:
         v = _sum_txt(p['k'], p['v'], p['u']) or (p['v'] if not p['u'] or p['v'].lower().endswith(p['u'].lower()) else '%s %s' % (p['v'], p['u']))
         rows.append({'k': p['k'], 'v': v[:300], 'hl': False})
+    have = {re.sub(r'[^а-яёa-z]', '', r['k'].lower())[:12] for r in rows}
+    for k, v in o.get('props') or []:          # характеристики со страницы товара, которых нет в фиде
+        key = re.sub(r'[^а-яёa-z]', '', k.lower())[:12]
+        if key and key not in have and not re.search(APPLY_RX + r'|артикул|наличи|цена|стоимост|склад|доставк|гаранти|отзыв|рейтинг', k, re.I):
+            have.add(key)
+            rows.append({'k': k[:60], 'v': v[:300], 'hl': False})
+    for k, v in o.get('extraRows') or []:
+        if v:
+            rows.append({'k': k, 'v': v[:600], 'hl': False})
     if o.get('dims') and not any(re.search(r'габарит', r['k'], re.I) for r in rows):
         rows.append({'k': 'Габариты упаковки (Д × Ш × В), см', 'v': o['dims'].replace('/', ' × '), 'hl': False})
     if o.get('weight') and not any(re.search(r'^вес|масса', r['k'], re.I) for r in rows):
@@ -457,20 +542,86 @@ def _fmt(n):
     return str(int(n)) if float(n).is_integer() else str(n).replace('.', ',')
 
 
-def item_cat(o, types):
-    """Категория программы для позиции фида: по названию; раздел фида — подсказка (у многих фидов разделы — это
-    подборки «200 л/мин», «С ресивером», где вперемешку винтовые и поршневые). Запчасти — по разделу «Запчасти»."""
-    spare = next((t for t in types if t.get('id') == 'spare'), None)
-    if spare and spare.get('match') and re.search(spare['match'], o.get('path') or '', re.I):   # «Запчасти / Для винтовых компрессоров»
-        return 'spare'
-    diesel = re.search(r'дизел', o['name'] + ' ' + str(o.get('path') or ''), re.I)
-    for text in [o['name']] + list(reversed(str(o.get('path') or '').split(' / '))):
-        c = catalog_migrate.detect({'name': text}, types)
-        if c == 'comp_diesel' and not diesel:     # «Компрессорная станция МВК» — электрическая, винтовая
-            c = 'comp_screw'
-        if c:
+# явные правила (по названию позиции, затем по разделу фида) — до общего определения по названию
+NAME_RULES = [
+    (r'компрессор\S*\s+медицинск|медицинск\S*\s+компрессор', 'comp_piston'),   # медицинские Remeza — поршневые безмасляные
+    (r'^\s*кожух', 'spare'),
+    (r'фильтроэлемент|корпус\S*\s+фильтр|патрон\S*\s+воздушн|картридж|блок\S*\s+поршнев|^\s*(поршень|шатун|цилиндр|палец|вкладыш|сапун|'
+     r'прессостат|манометр|редуктор|муфта|полумуфта|радиатор|переходник|пластина|термоэлемент|конденсатоотводчик|комплект колец|кольцо)', 'spare'),
+    (r'циклонн\S*\s+сепаратор', 'filter'),
+]
+PATH_RULES = [
+    (r'адсорбц\S*\s+осушител', 'dryer_ads'), (r'рефрижераторн\S*\s+осушител', 'dryer_refrig'), (r'воздушн\S*\s+ресивер', 'receiver'),
+    (r'фильтр\S*\s+сжатого воздуха', 'filter'), (r'циклонн\S*\s+сепаратор', 'filter'),
+    (r'винтов\S*\s+(маслозаполн\S*\s+|безмасл\S*\s+)?компрессор|компрессорн\S*\s+станци|лазерн', 'comp_screw'),
+    (r'поршнев\S*\s+(маслозаполн\S*\s+|безмасл\S*\s+)?компрессор|медицинск\S*\s+компрессор', 'comp_piston'),
+    (r'спиральн\S*\s+компрессор', 'comp_scroll'),
+]
+
+
+def _rule(rules, text, ids):
+    for rx, c in rules:
+        if c in ids and re.search(rx, text or '', re.I):
             return c
     return ''
+
+
+def item_cat(o, types):
+    """Категория программы для позиции фида — только из существующих категорий. Порядок: раздел «Запчасти»,
+    явные правила по названию, общее определение по названию (как в каталоге), правила по разделу фида, разделы фида
+    по одному. Разделы фида бывают подборками («200 л/мин», «С ресивером») — вперемешку винтовые и поршневые."""
+    ids = {t.get('id') for t in types}
+    path = str(o.get('path') or '')
+    spare = next((t for t in types if t.get('id') == 'spare'), None)
+    if spare and spare.get('match') and re.search(spare['match'], path, re.I):   # «Запчасти / Для винтовых компрессоров»
+        return 'spare'
+    c = _rule(NAME_RULES, o['name'], ids)
+    if c:
+        return c
+    diesel = re.search(r'дизел', o['name'] + ' ' + path, re.I)
+    c = catalog_migrate.detect({'name': o['name']}, types)
+    if c == 'comp_diesel' and not diesel:     # «Компрессорная станция МВК» — электрическая, винтовая
+        c = 'comp_screw'
+    if c:
+        return c
+    c = _rule(PATH_RULES, path, ids)
+    if c:
+        return c
+    for seg in reversed(path.split(' / ')):
+        c = catalog_migrate.detect({'name': seg}, types)
+        if c and not (c == 'comp_diesel' and not diesel):
+            return c
+    return ''
+
+
+SPARE_PART = [
+    (r'маслян\S*\s+фильтр|фильтр\S*\s+маслян', 'Фильтр масляный'),
+    (r'сепаратор|маслоотделител', 'Сепаратор (маслоотделитель)'),
+    (r'воздушн\S*\s+фильтр|фильтр\S*\s+воздушн|патрон|картридж', 'Фильтр воздушный'),
+    (r'фильтроэлемент', 'Фильтроэлемент магистрального фильтра'),
+    (r'масло', 'Масло компрессорное'),
+    (r'ремень|ремни', 'Ремень приводной'),
+    (r'датчик|термоэлемент|прессостат|манометр|конденсаторн', 'Датчики и электрика'),
+    (r'клапан|прокладк|сальник|кольц|уплотн', 'Ремкомплект (клапаны, уплотнения)'),
+    (r'блок\S*\s+поршнев|поршн|поршень|шатун|цилиндр|палец|пальц|вкладыш', 'Поршневой блок и детали'),
+]
+PISTON_SERIES = r'(?<![\w])(?:LB|LT|LH|OLD|AB|АВ)\d[\w.]*(?:[-/][\w.]+)*'
+
+
+def spare_info(o):
+    """Запасная часть: вид, для какого оборудования, к каким моделям (название, раздел фида, страница товара)."""
+    name, path = o['name'], str(o.get('path') or '')
+    last = path.split(' / ')[-1] if path else ''
+    part = next((v for rx, v in SPARE_PART if re.search(rx, name, re.I)), '') or \
+        next((v for rx, v in SPARE_PART if re.search(rx, last, re.I)), '') or 'Прочее'
+    series = re.findall(PISTON_SERIES, name)
+    text = path + ' ' + name
+    for_type = ('Винтовые компрессоры' if re.search(r'винтов|\bВК\s*\d', text, re.I) else
+                'Поршневые компрессоры' if series or re.search(r'поршнев|медицинск|кожух', text, re.I) else
+                'Спиральные компрессоры' if re.search(r'спиральн', text, re.I) else
+                'Магистральные фильтры' if re.search(r'фильтроэлемент|корпус\S*\s+фильтр|фильтр\S*\s+сжатого', text, re.I) else '')
+    models = o.get('apply') or ', '.join(dict.fromkeys(series))
+    return {'part': part, 'forType': for_type, 'forModels': models[:600]}
 
 
 def model_of(o, maker):
@@ -505,6 +656,10 @@ def build(o, f, types, old=None, put_image=None):
     tmap = {t.get('id'): t for t in types}
     maker = maker_of(o, f)
     model = model_of(o, maker)
+    auto = cat_id or item_cat(o, types) or 'other'
+    sp = spare_info(o) if auto == 'spare' else None
+    if sp:
+        o = dict(o, extraRows=[('Артикул', o['sku']), ('Для оборудования', sp['forType']), ('Применимость', sp['forModels'])])
     rows = _rows(o)
     orig = (doc.get('feed') or {}).get('orig') or {}
     desc = o['desc']
@@ -529,8 +684,10 @@ def build(o, f, types, old=None, put_image=None):
             groups[gi] = g
     doc['groups'] = groups
     a = doc.get('attrs') or {}
-    if not a.get('cat'):
-        a['cat'] = cat_id or item_cat(o, types) or 'other'
+    # категория: новая позиция — по правилам; загруженная раньше — тоже, если её не меняли вручную
+    prev_auto = (doc.get('feed') or {}).get('catAuto')
+    if not a.get('cat') or (old and a.get('cat') == (prev_auto or a.get('cat'))):
+        a['cat'] = auto
     a.setdefault('maker', maker)
     if not a.get('maker'):
         a['maker'] = maker
@@ -540,13 +697,18 @@ def build(o, f, types, old=None, put_image=None):
     if t:
         catalog_migrate.fill_from_name(doc, a['cat'], a)
         catalog_migrate.fill_attrs(doc, t, a)
+    if sp and a['cat'] == 'spare':
+        for k, v in (('part', sp['part']), ('forType', sp['forType']), ('forModels', sp['forModels']), ('article', o['sku']),
+                     ('forMaker', maker), ('original', 'Оригинал' if maker and _brand_key(maker) == _brand_key(f.get('maker')) else '')):
+            if v and not a.get(k):
+                a[k] = v
     doc['attrs'] = a
     if not doc.get('spec'):
         doc['spec'] = ' · '.join(r['v'] for r in rows[:4])[:200]
     if not doc.get('unit'):
         doc['unit'] = 'шт.'
     doc['feed'] = {'id': f['id'], 'oid': o['oid'], 'url': o['url'], 'sku': o['sku'], 'barcode': o['barcode'], 'cat': o['cat'],
-                   'orig': new_orig, 'at': today}
+                   'path': o.get('path', ''), 'catAuto': auto, 'orig': new_orig, 'at': today}
     changes = _price_part(doc, o, f, today)
     if put_image and o['pictures']:
         if not (doc.get('photo') or {}).get('src'):
@@ -617,7 +779,8 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
         j['total'] = len(offs)
         existing = {(d.get('feed') or {}).get('oid'): d for d in _feed_docs(store, f['id'])}
         put, save = _image_putter(store, image_store)
-        dget, dsave, derr = _desc_getter(store)
+        dget, dsave, derr = _page_getter(store)
+        ph = _placeholders(feed['offers'])
         added, updated, same, price_ch, stock_ch, errors = 0, 0, 0, [], [], []
 
         def one(o):
@@ -626,10 +789,18 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
                 cid = _cid(f['id'], o['oid'])
                 prev = store.catalog_get(cid)
                 old = json.loads(prev) if prev else None
+            o = dict(o, pictures=[u for u in o['pictures'] if u not in ph])
+            if old and ph:              # заглушка «нет фото», загруженная раньше, — заменить фото со страницы
+                if old.get('photoSource') in ph:
+                    old = dict(old, photo=None, photoSource=None)
+                old = dict(old, gallery=[g for g in old.get('gallery') or [] if g.get('source') not in ph])
             if f.get('pageDesc', True) and o['url']:
-                d = dget(o['url'])
-                if len(d) > len(o['desc']):
-                    o = dict(o, desc=d)
+                pi = dget(o['url'])
+                if len(pi.get('t') or '') > len(o['desc']):
+                    o['desc'] = pi['t']
+                seen = {urllib.parse.urlsplit(u).path for u in o['pictures']}
+                o['pictures'] = (o['pictures'] + [u for u in pi.get('imgs') or [] if urllib.parse.urlsplit(u).path not in seen])[:9]
+                o['props'], o['apply'] = pi.get('props') or [], pi.get('apply') or ''
             doc, ch = build(o, f, types, old, put)
             return o, old, doc, ch
 
@@ -652,7 +823,7 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
         save()
         dsave()
         if derr:
-            errors.append('Описание со страницы товара не загрузилось, позиций: %d (первая: %s)' % (len(derr), derr[0]))
+            errors.append('Страница товара не открылась (описание, фото, применимость), позиций: %d (первая: %s)' % (len(derr), derr[0]))
         res = {'at': _now(), 'kind': 'import', 'by': by, 'total': len(offs), 'added': added, 'updated': updated, 'same': same,
                'price': price_ch[:300], 'stock': stock_ch[:300], 'errors': errors[:50]}
         _log_add(store, f['id'], res)
@@ -718,6 +889,31 @@ def _mark(store, fid, kind, res):
             x['last'][kind]['stockChanges'] = len(res.get('stock') or [])
             x['last'][kind]['gone'] = len(res.get('gone') or [])
     store.kv_set(KV, {'items': items})
+
+
+def _placeholders(offers):
+    """Картинка-заглушка «нет фото»: одна и та же у товаров из многих разных разделов фида."""
+    cats = {}
+    for o in offers:
+        for u in o['pictures'][:1]:
+            cats.setdefault(u, set()).add(o['cat'])
+    return {u for u, c in cats.items() if len(c) > 4}
+
+
+def upgrade(store, types, version, log=print):
+    """После обновления программы — один раз перезагрузить фиды, из которых уже есть позиции в каталоге:
+    категории, запчасти (вид, применимость), описания и фото со страниц — по новым правилам. Ручные правки сохраняются."""
+    if store.kv_get('feedsUpgrade') == version:
+        return
+    store.kv_set('feedsUpgrade', version)
+    todo = [f for f in feeds(store) if _feed_docs(store, f['id'])]
+
+    def go():
+        for f in todo:
+            log('Фид «%s»: перезагрузка после обновления %s' % (f['name'], version))
+            _safe(import_feed, store, f, types, IMAGE_STORE, 'Обновление %s' % version)
+    if todo:
+        run_bg(go)
 
 
 def run_bg(fn, *a, **k):
