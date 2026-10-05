@@ -27,19 +27,23 @@ function detectCat(d, a){
 }
 
 // значение параметра из таблицы характеристик по полю find типа (единицы как в app/catalog_migrate.py)
-const UNIT_RX={'м³/мин':'м[³3]\\s*/\\s*мин','л/мин':'л\\s*/\\s*мин','кВт':'квт','бар':'(бар|атм|кгс)','л':'л(?![а-я])','кг':'кг','дБ(А)':'дб','мм':'мм','%':'%','л/ч':'л\\s*/\\s*ч','моточасов':'(моточас|ч(?![а-я]))'};
+const UNIT_RX={'м³/мин':'м[³3]\\s*/\\s*мин','л/мин':'л\\s*/\\s*мин','кВт':'квт','бар':'(бар|атм|кгс)','л':'л(?![а-я])','кг':'кг','дБ(А)':'дб','мм':'мм','%':'%','л/ч':'л\\s*/\\s*ч','моточасов':'(моточас|ч(?![а-я]))','м³/ч':'м[³3]\\s*/\\s*ч(?:ас)?(?![а-я])'};
+const CONVERT={'м³/мин':[['л/мин',0.001],['м³/ч',1/60]],'л/мин':[['м³/мин',1000],['м³/ч',1000/60]],'м³/ч':[['м³/мин',60],['л/мин',0.06]]};
 const NUM_RX='(\\d+(?:[ \\u00a0]\\d{3})*(?:[.,]\\d+)?)';
 const num_=s=>+String(s).replace(/[ \u00a0]/g,'').replace(',','.');
 const round_=v=>Math.round(v*1000)/1000;
 function parseNumUnit(text, unit){
   const t=String(text||'').toLowerCase(); let m;
   if (unit && UNIT_RX[unit] && (m=t.match(new RegExp(NUM_RX+'\\s*'+UNIT_RX[unit])))) return round_(num_(m[1]));
-  if (unit==='м³/мин' && (m=t.match(new RegExp(NUM_RX+'\\s*'+UNIT_RX['л/мин'])))) return round_(num_(m[1])/1000);
+  for (const [src,k] of (CONVERT[unit]||[])) if ((m=t.match(new RegExp(NUM_RX+'\\s*'+UNIT_RX[src])))) return round_(num_(m[1])*k);
   m=t.match(new RegExp(NUM_RX)); return m?round_(num_(m[1])):null;
 }
 function parseTextVal(text, f){
   let v=String(text||'').replace(/\s+/g,' ').trim();
   if (f.key==='voltage'){ const m=v.toLowerCase().match(/(\d{3})\s*в(?![а-я])/); return m?m[1]:''; }
+  if (f.key==='oilFree' && String(f.values)==='Да,Нет') return /безмасл|oil[- ]?free|класс 0/i.test(v)?'Да':/масл/i.test(v)?'Нет':'';
+  const canon=x=>String(x).toLowerCase().replace(/[−–]/g,'-').replace(/[\s°c]/g,'');
+  const hit=(f.values||[]).find(x=>typeof x==='string' && canon(x) && canon(x)===canon(v)); if (hit) return hit;
   if (f.key==='refrigerant'){ const m=v.match(/\bR-?\d{2,4}[A-Za-z]?\b/); return m?m[0].replace('-',''):v; }
   if (f.unit && v.toLowerCase().endsWith(f.unit.toLowerCase())) v=v.slice(0,-f.unit.length).trim();
   return v.slice(0,120);
@@ -47,8 +51,11 @@ function parseTextVal(text, f){
 function attrsFromSpec(d, t){
   const out={}, rows=(d.groups||[]).flatMap(g=>(g.rows||[]).filter(r=>r.k&&r.v));
   for (const f of (t.fields||[])){ if (!f.find) continue; let rx; try{ rx=new RegExp(f.find,'i'); }catch(e){ continue; }
-    const r=rows.find(r=>rx.test(String(r.k).trim())); if (!r) continue;
-    const v=f.num?parseNumUnit(r.v,f.unit):parseTextVal(r.v,f); if (v!==null&&v!=='') out[f.key]=v; }
+    // сначала строки в единицах поля, затем остальные — с пересчётом; «снижение шума на 8 дБ» — не значение
+    const ur=f.num&&UNIT_RX[f.unit]?new RegExp('\\d\\s*'+UNIT_RX[f.unit]):null;
+    const cand=rows.filter(r=>rx.test(String(r.k).trim()) && !(f.num && /снижени|уменьшени/i.test(r.v)));
+    cand.sort((a,b)=>(ur&&ur.test(String(b.v).toLowerCase())?1:0)-(ur&&ur.test(String(a.v).toLowerCase())?1:0));
+    for (const r of cand){ const v=f.num?parseNumUnit(r.v,f.unit):parseTextVal(r.v,f); if (v!==null&&v!==''){ out[f.key]=v; break; } } }
   return out;
 }
 
