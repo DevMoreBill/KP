@@ -567,6 +567,15 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self.send(422, 'text/plain; charset=utf-8', 'Картинка не загружена: %s' % e)
             return self.send(200, ctype, data)
+        if path == '/api/pagephotos' and m == 'POST':     # фото со страницы товара на сайте поставщика — в изображения позиции
+            import feeds
+            d = json.loads(self.body().decode('utf-8') or '{}')
+            tmap = {t.get('id'): t for t in load_types()['types']}
+            try:
+                return self.send_json(feeds.page_photos(store(), IMAGES, str(d.get('url') or '').strip(), tmap.get(d.get('cat')),
+                                                        d.get('maker') or '', d.get('model') or '', d.get('name') or ''))
+            except Exception as e:
+                return self.send(422, 'text/plain; charset=utf-8', 'Фото со страницы не загружены: %s' % str(e)[:200])
         if path == '/api/logistics/quote' and m == 'POST':   # цены перевозчиков (ATI.SU, ПЭК, Деловые Линии, КИТ) — итог по максимуму
             try:
                 return self.send_json(logistics_api.quote(store(), json.loads(self.body().decode('utf-8') or '{}')))

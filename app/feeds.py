@@ -14,8 +14,10 @@
     только если их не меняли после прошлой загрузки (сравнение с doc.feed.orig).
   • Журнал — kv «feedlog:<id>»: последние 30 загрузок и проверок (что добавлено, изменения РРЦ и наличия).
 """
+import gzip
 import hashlib
 import html as html_mod
+import http.cookiejar
 import json
 import re
 import struct
@@ -23,6 +25,7 @@ import threading
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+import zlib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 
@@ -126,29 +129,54 @@ def fetch(url):
 
 
 PAGE_MAX = 3 * 1024 * 1024
-PAGE_V = 3                              # версия разбора страницы: при смене кэш перечитывается
+PAGE_V = 4                              # версия разбора страницы: при смене кэш перечитывается
 PAGE_DAYS = 30                          # описание со страницы товара запоминается на 30 дней
 _PAGE_SEM = threading.Semaphore(3)      # не больше 3 страниц сайта одновременно
 
 
+_PAGE_JAR = http.cookiejar.CookieJar()   # cookie сайта (сессия, проверка «не робот») — общие для всех страниц
+
+
 def page_html(url):
-    """Страница товара на сайте поставщика (та же защита, что у фида и фото)."""
+    """Страница товара на сайте поставщика (та же защита, что у фида и фото). Запрос — как из браузера
+    (Bitrix-сайты на «робота» отвечают 403 или пустой страницей-проверкой), cookie сохраняются, повтор при отказе."""
     imgfetch._check_url(url)
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (KP-Pnevmotekh feed)', 'Accept': 'text/html,*/*'})
+    u = urllib.parse.urlsplit(url)
+    hd = {'User-Agent': imgfetch.BROWSER_UA, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.5', 'Accept-Encoding': 'gzip, deflate', 'Referer': '%s://%s/' % (u.scheme, u.netloc)}
+    opener = urllib.request.build_opener(imgfetch._SafeRedirect, urllib.request.HTTPCookieProcessor(_PAGE_JAR))
+
+    def get():
+        with opener.open(urllib.request.Request(url, headers=hd), timeout=25) as r:
+            return r.headers.get('Content-Type') or '', (r.headers.get('Content-Encoding') or '').lower(), r.read(PAGE_MAX)
     with _PAGE_SEM:
-        with urllib.request.build_opener(imgfetch._SafeRedirect).open(req, timeout=25) as r:
-            ctype = r.headers.get('Content-Type') or ''
-            data = r.read(PAGE_MAX)
+        ctype, enc, data = imgfetch.retry(get)
+    if enc == 'gzip' or data[:2] == b'\x1f\x8b':
+        data = gzip.decompress(data)
+    elif enc == 'deflate':
+        try:
+            data = zlib.decompress(data)
+        except zlib.error:
+            data = zlib.decompress(data, -zlib.MAX_WBITS)
     m = re.search(r'charset=([\w-]+)', ctype, re.I) or re.search(rb'<meta[^>]+charset=["\']?([\w-]+)', data[:4096], re.I)
     cs = m.group(1) if m else 'utf-8'
     cs = cs.decode('ascii', 'ignore') if isinstance(cs, bytes) else cs
     try:
-        return data.decode(cs)
+        html = data.decode(cs)
     except (LookupError, UnicodeDecodeError):
         try:
-            return data.decode('utf-8')
+            html = data.decode('utf-8')
         except UnicodeDecodeError:
-            return data.decode('cp1251', errors='replace')
+            html = data.decode('cp1251', errors='replace')
+    if not is_product_page(html):
+        raise ValueError('сайт отдал не страницу товара (проверка «не робот» или ошибка сайта)')
+    return html
+
+
+def is_product_page(html):
+    """Страница товара, а не заглушка защиты от роботов: есть заголовок <h1> и признаки карточки товара."""
+    return bool(re.search(r'<h1\b', html, re.I) and re.search(
+        r'itemprop\s*=\s*["\'](?:name|image|description|offers)["\']|data-fancybox|/upload/(?:iblock|medialibrary)/|detail-text', html, re.I))
 
 
 def _inner_html(html, m):
@@ -223,6 +251,9 @@ def page_images(html, url, limit=8):
         end = start + stop.start()
     for u in re.findall(IMG_RX, html[start:end], re.I):
         add(u)
+    if len(out) < 2:    # в карточке только уменьшенные копии Bitrix — берём оригиналы: /resize_cache/iblock/abc/300_300_1/x.jpg → /iblock/abc/x.jpg
+        for p, d, n in re.findall(r'/upload/resize_cache/(iblock|medialibrary)/(\w{3})/\d+_\d+_\d+/([^"\'\s<>()/]+?\.(?:jpe?g|png|webp))', html[start:end], re.I):
+            add('/upload/%s/%s/%s' % (p, d, n))
     return out[:limit]
 
 
@@ -317,7 +348,8 @@ def _page_getter(store):
             hit = cache.get(url)
         if hit and hit.get('v') == PAGE_V:
             try:
-                if (today - date.fromisoformat(hit['at'])).days < PAGE_DAYS:
+                # страница без фото перечитывается на следующий день: сайт мог отдать её не полностью
+                if (today - date.fromisoformat(hit['at'])).days < (PAGE_DAYS if hit.get('imgs') else 1):
                     return hit
             except (KeyError, ValueError):
                 pass
@@ -855,15 +887,19 @@ def build(o, f, types, old=None, put_image=None):
 def _image_putter(store, image_store):
     cache = store.kv_get('feedimg') or {}
     lock = threading.Lock()
+    stat = {'got': 0, 'fail': []}       # скачано новых картинок; не скачались — «адрес: причина»
 
     def put(url, t, maker, model, name, kind, caption):
         with lock:
             hit = cache.get(url)
         if hit and image_store.path(hit['rel']):
             return {'src': '/img/' + hit['rel'], 'w': hit.get('w'), 'h': hit.get('h')}
+        sp = urllib.parse.urlsplit(url)
         try:
-            ctype, data = imgfetch.fetch_image(url)
-        except Exception:
+            ctype, data = imgfetch.fetch_image(url, referer='%s://%s/' % (sp.scheme, sp.netloc), tries=2)
+        except Exception as e:
+            with lock:
+                stat['fail'].append('%s: %s' % (url[-70:], str(e)[:100]))
             return None
         ext = {'image/png': '.png', 'image/webp': '.webp'}.get(ctype, '.jpg')
         folder, title = images.place(t, maker, model, name, kind, caption)
@@ -871,12 +907,28 @@ def _image_putter(store, image_store):
         w, h = _img_size(data)
         with lock:
             cache[url] = {'rel': rel, 'w': w, 'h': h}
+            stat['got'] += 1
         return {'src': '/img/' + rel, 'w': w, 'h': h}
 
     def save():
         with lock:
             store.kv_set('feedimg', dict(list(cache.items())[-20000:]))
-    return put, save
+    return put, save, stat
+
+
+def page_photos(store, image_store, url, t=None, maker='', model='', name=''):
+    """Фото со страницы товара для одной позиции (кнопка в редакторе): [{src, w, h, source}] и ошибки скачивания."""
+    urls = page_images(page_html(url), url)
+    if not urls:
+        raise ValueError('на странице не найдено фото товара')
+    put, save, stat = _image_putter(store, image_store)
+    out = []
+    for k, u in enumerate(urls):
+        g = put(u, t, maker, model, name, 'gallery', 'foto-%d' % (k + 1))
+        if g:
+            out.append(dict(g, source=u))
+    save()
+    return {'imgs': out, 'errors': stat['fail'][:10]}
 
 
 # ---------------------------------------------------------------- загрузка в каталог и проверка цен
@@ -901,9 +953,10 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
         offs = [o for o in feed['offers'] if o['cat'] not in skip and (not only or o['oid'] in only)]
         j['total'] = len(offs)
         existing = {(d.get('feed') or {}).get('oid'): d for d in _feed_docs(store, f['id'])}
-        put, save = _image_putter(store, image_store)
+        put, save, istat = _image_putter(store, image_store)
         dget, dsave, derr = _page_getter(store)
         ph = _placeholders(feed['offers'])
+        pstat = {'img': 0, 'noimg': []}     # страниц товара: с фото / открылись, но фото не найдено
         added, updated, same, price_ch, stock_ch, errors = 0, 0, 0, [], [], []
 
         def one(o):
@@ -919,6 +972,10 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
                 old = dict(old, gallery=[g for g in old.get('gallery') or [] if g.get('source') not in ph])
             if f.get('pageDesc', True) and o['url']:
                 pi = dget(o['url'])
+                if pi.get('imgs'):
+                    pstat['img'] += 1
+                elif pi:
+                    pstat['noimg'].append(o['name'][:60])
                 if len(pi.get('t') or '') > len(o['desc']):
                     o['desc'] = pi['t']
                 seen = {urllib.parse.urlsplit(u).path for u in o['pictures']}
@@ -948,8 +1005,16 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
         dsave()
         if derr:
             errors.append('Страница товара не открылась (описание, фото, применимость), позиций: %d (первая: %s)' % (len(derr), derr[0]))
+        if istat['fail']:
+            errors.append('Фото не скачались: %d (первое: %s)' % (len(istat['fail']), istat['fail'][0]))
+        if pstat['noimg']:
+            errors.append('На странице товара не найдено фото, позиций: %d (%s%s)' % (
+                len(pstat['noimg']), '; '.join(pstat['noimg'][:3]), ' …' if len(pstat['noimg']) > 3 else ''))
+        pics = [len(d.get('gallery') or []) + (1 if (d.get('photo') or {}).get('src') else 0) for d in _feed_docs(store, f['id'])]
         res = {'at': _now(), 'kind': 'import', 'by': by, 'total': len(offs), 'added': added, 'updated': updated, 'same': same,
-               'price': price_ch[:300], 'stock': stock_ch[:300], 'errors': errors[:50]}
+               'price': price_ch[:300], 'stock': stock_ch[:300], 'errors': errors[:50],
+               'photos': {'new': istat['got'], 'pages': pstat['img'], 'items': len(pics), 'multi': sum(1 for n in pics if n > 1),
+                          'avg': round(sum(pics) / len(pics), 1) if pics else 0}}
         _log_add(store, f['id'], res)
         _mark(store, f['id'], 'import', res)
         j.update(state='done', result=res, msg='Добавлено %d, обновлено %d' % (added, updated))
