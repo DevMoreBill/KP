@@ -63,6 +63,7 @@ def _html_text(s):
     for a, b in (('&nbsp;', ' '), ('&laquo;', '«'), ('&raquo;', '»'), ('&mdash;', '—'), ('&ndash;', '–'), ('&quot;', '"'),
                  ('&amp;', '&'), ('&lt;', '<'), ('&gt;', '>'), ('&#039;', "'")):
         s = s.replace(a, b)
+    s = re.sub(r'\s*(?:\b(?:в|во|на|по)\s+)?#[A-Z0-9_]+#', '', s)   # шаблоны сайта: «в #REGION_NAME_DECLINE_PP#»
     lines = [re.sub(r'[ \t\xa0]+', ' ', x).strip() for x in s.split('\n')]
     return '\n'.join(x for x in lines if x)[:6000]
 
@@ -74,6 +75,10 @@ def feeds(store):
 
 def feed_get(store, fid):
     return next((f for f in feeds(store) if f.get('id') == fid), None)
+
+
+def _cats_ok(c):
+    return {str(k)[:40]: v[:40] for k, v in c.items() if isinstance(v, str) and v}
 
 
 def feed_save(store, f):
@@ -88,7 +93,7 @@ def feed_save(store, f):
     disc = _num(f.get('discount'))
     rec = dict(old, id=fid, name=str(f.get('name') or old.get('name') or fid).strip()[:80], url=url,
                maker=str(f.get('maker') or '').strip()[:60], discount=disc if disc and 0 < disc < 100 else None,
-               auto=f.get('auto', True) is not False, cats=f.get('cats') if isinstance(f.get('cats'), dict) else old.get('cats') or {},
+               auto=f.get('auto', True) is not False, cats=_cats_ok(f.get('cats')) if isinstance(f.get('cats'), dict) else old.get('cats') or {},
                supplier=str(f.get('supplier') or old.get('supplier') or '')[:64], updatedAt=_now())
     items = [x for x in items if x.get('id') != fid] + [rec]
     store.kv_set(KV, {'items': items})
@@ -117,6 +122,36 @@ def fetch(url):
     if len(data) > MAX_FEED:
         raise ValueError('Фид больше 150 МБ')
     return data
+
+
+UNIT_ALIAS = {'литров': 'л', 'литра': 'л', 'литр': 'л', 'л.': 'л', 'кг.': 'кг', 'квт': 'кВт', 'вт': 'Вт', 'в': 'В', 'бар': 'бар',
+              'дб': 'дБ', 'дба': 'дБ(А)', 'мм': 'мм', 'см': 'см', 'м': 'м', 'л/мин': 'л/мин', 'м3/мин': 'м³/мин', 'м³/мин': 'м³/мин'}
+_TR = dict(zip('абвгдеёжзийклмнопрстуфхцчшщъыьэюя', ['a', 'b', 'v', 'g', 'd', 'e', 'e', 'zh', 'z', 'i', 'i', 'k', 'l', 'm', 'n', 'o',
+               'p', 'r', 's', 't', 'u', 'f', 'h', 'c', 'ch', 'sh', 'sch', '', 'y', '', 'e', 'yu', 'ya']))
+
+
+def _brand_key(s):
+    """«Ремеза» и «Remeza» — один производитель."""
+    return re.sub(r'[^a-z0-9]', '', ''.join(_TR.get(c, c) for c in str(s or '').lower()))
+
+
+def _param_name(name, unit):
+    """«Мощность, кВт» без атрибута unit → («Мощность», «кВт»)."""
+    if not unit:
+        m = re.match(r'^(.*\S)\s*,\s*([^,]{1,12})$', name)
+        if m:
+            name, unit = m.group(1), m.group(2).strip()
+    return name, UNIT_ALIAS.get(unit.lower(), unit)
+
+
+def _clean_url(u):
+    """Метки рекламы в ссылке на страницу товара (?r1=yandext&r2=, utm_…) убираются."""
+    try:
+        p = urllib.parse.urlsplit(u)
+        q = [(k, v) for k, v in urllib.parse.parse_qsl(p.query, keep_blank_values=True) if not re.match(r'^(r\d|utm_|yclid|from)', k)]
+        return urllib.parse.urlunsplit((p.scheme, p.netloc, p.path, urllib.parse.urlencode(q), ''))
+    except ValueError:
+        return u
 
 
 def parse(data):
@@ -159,7 +194,8 @@ def parse(data):
             if STOCK_PARAM.match(pn) and _num(pv) is not None:
                 qty = _num(pv)
                 continue
-            params.append({'k': pn, 'u': (p.get('unit') or '').strip(), 'v': pv})
+            k, u = _param_name(pn, (p.get('unit') or '').strip())
+            params.append({'k': k, 'u': u, 'v': pv})
         for tag in STOCK_TAGS:
             v = _num(_txt(el, tag))
             if v is not None:
@@ -171,7 +207,8 @@ def parse(data):
         avail_attr = (el.get('available') or '').strip().lower()
         available = avail_attr not in ('false', '0', 'no') if avail_attr else (qty is None or qty > 0)
         cur = (_txt(el, 'currencyId') or 'RUB').upper()
-        offers.append({'oid': oid, 'name': name[:300], 'cat': _txt(el, 'categoryId'), 'url': _txt(el, 'url'),
+        cat = _txt(el, 'categoryId')
+        offers.append({'oid': oid, 'name': name[:300], 'cat': cat, 'path': (cats.get(cat) or {}).get('path', ''), 'url': _clean_url(_txt(el, 'url')),
                        'price': _num(_txt(el, 'price')), 'oldprice': _num(_txt(el, 'oldprice')), 'cur': 'RUB' if cur in ('RUR', 'RUB') else cur,
                        'vendor': vendor, 'model': model, 'sku': _txt(el, 'vendorCode'), 'barcode': _txt(el, 'barcode'),
                        'pictures': [re.sub(r'\s+', '', p.text) for p in el.findall('picture') if p.text and p.text.strip()][:12],
@@ -195,14 +232,6 @@ def load(store, f, fresh=False):
 
 
 # ---------------------------------------------------------------- категории фида → типы программы
-def guess_cat(types, cat_path, sample_names):
-    for text in [cat_path] + list(sample_names[:3]):
-        cat = catalog_migrate.detect({'name': text}, types)
-        if cat:
-            return cat
-    return ''
-
-
 def preview(store, f, types):
     feed = load(store, f, fresh=True)
     by = {}
@@ -212,8 +241,12 @@ def preview(store, f, types):
     cats = []
     for cid, offs in sorted(by.items(), key=lambda x: (feed['cats'].get(x[0]) or {}).get('path') or x[0]):
         c = feed['cats'].get(cid) or {'path': 'Без категории' if not cid else 'Категория %s' % cid}
-        g = guess_cat(types, c['path'], [o['name'] for o in offs])
-        cats.append({'id': cid, 'path': c['path'], 'count': len(offs), 'guess': g, 'map': (f.get('cats') or {}).get(cid, g),
+        kinds = {}
+        for o in offs:
+            k = item_cat(o, types) or 'other'
+            kinds[k] = kinds.get(k, 0) + 1
+        cats.append({'id': cid, 'path': c['path'], 'count': len(offs), 'kinds': sorted(kinds.items(), key=lambda x: -x[1]),
+                     'map': (f.get('cats') or {}).get(cid, ''),
                      'inCatalog': sum(1 for o in offs if o['oid'] in linked)})
     pn = {}
     for o in feed['offers']:
@@ -224,8 +257,9 @@ def preview(store, f, types):
             'available': sum(1 for o in offs if o['available']), 'withPrice': sum(1 for o in offs if o['price']),
             'withQty': sum(1 for o in offs if o['qty'] is not None), 'withPhoto': sum(1 for o in offs if o['pictures']),
             'inCatalog': len(linked & {o['oid'] for o in offs}), 'params': sorted(pn.items(), key=lambda x: -x[1])[:40],
-            'sample': [dict({k: o[k] for k in ('oid', 'name', 'price', 'cur', 'available', 'qty', 'vendor', 'model', 'sku')},
-                            pics=len(o['pictures']), params=len(o['params'])) for o in offs[:8]]}
+            'sample': [dict({k: o[k] for k in ('oid', 'name', 'price', 'cur', 'available', 'qty', 'sku')}, maker=maker_of(o, f),
+                            model=model_of(o, maker_of(o, f)), cat=item_cat(o, types), pics=len(o['pictures']), params=len(o['params']))
+                       for o in offs[:8]]}
 
 
 # ---------------------------------------------------------------- позиция фида → позиция каталога
@@ -259,10 +293,26 @@ def _cid(fid, oid):
     return ('%s-%s' % (images.slug(fid, 20) or 'feed', images.slug(oid, 40) or hashlib.md5(oid.encode()).hexdigest()[:10]))[:64]
 
 
+def _sum_txt(k, v, u):
+    """«5,5+5,5» кВт → «11 кВт (5,5+5,5)», «1,4х3» → «4,2 кВт (1,4 × 3)»: в параметр категории идёт общая мощность."""
+    if not u or not re.search(r'мощност|производительн', k, re.I):
+        return None
+    n = r'(\d+(?:[.,]\d+)?)'
+    m = re.match(r'^' + n + r'(?:\s*\+\s*' + n + r')+', v)
+    if m and '+' in m.group(0):
+        tot = sum(_num(x) for x in re.findall(n, m.group(0)))
+    else:
+        m = re.match(r'^' + n + r'\s*[хx×*]\s*(\d)\b', v)
+        if not m:
+            return None
+        tot = _num(m.group(1)) * int(m.group(2))
+    return '%s %s (%s)' % (_fmt(round(tot, 3)), u, re.sub(r'\s*\(.*$', '', v).replace('х', ' × ').replace('x', ' × '))
+
+
 def _rows(o):
     rows = []
     for p in o['params']:
-        v = p['v'] if not p['u'] or p['v'].lower().endswith(p['u'].lower()) else '%s %s' % (p['v'], p['u'])
+        v = _sum_txt(p['k'], p['v'], p['u']) or (p['v'] if not p['u'] or p['v'].lower().endswith(p['u'].lower()) else '%s %s' % (p['v'], p['u']))
         rows.append({'k': p['k'], 'v': v[:300], 'hl': False})
     if o.get('dims') and not any(re.search(r'габарит', r['k'], re.I) for r in rows):
         rows.append({'k': 'Габариты упаковки (Д × Ш × В), см', 'v': o['dims'].replace('/', ' × '), 'hl': False})
@@ -326,17 +376,54 @@ def _fmt(n):
     return str(int(n)) if float(n).is_integer() else str(n).replace('.', ',')
 
 
+def item_cat(o, types):
+    """Категория программы для позиции фида: по названию; раздел фида — подсказка (у многих фидов разделы — это
+    подборки «200 л/мин», «С ресивером», где вперемешку винтовые и поршневые). Запчасти — по разделу «Запчасти»."""
+    spare = next((t for t in types if t.get('id') == 'spare'), None)
+    if spare and spare.get('match') and re.search(spare['match'], o.get('path') or '', re.I):   # «Запчасти / Для винтовых компрессоров»
+        return 'spare'
+    diesel = re.search(r'дизел', o['name'] + ' ' + str(o.get('path') or ''), re.I)
+    for text in [o['name']] + list(reversed(str(o.get('path') or '').split(' / '))):
+        c = catalog_migrate.detect({'name': text}, types)
+        if c == 'comp_diesel' and not diesel:     # «Компрессорная станция МВК» — электрическая, винтовая
+            c = 'comp_screw'
+        if c:
+            return c
+    return ''
+
+
+def model_of(o, maker):
+    """Модель: <model> из фида, иначе из названия («Поршневой компрессор Ремеза СБ4/С-24.J1047B» → «СБ4/С-24.J1047B»),
+    иначе артикул. vendorCode у многих фидов — складской код, а не модель."""
+    if o['model']:
+        return o['model'][:80]
+    brands = {_brand_key(maker), _brand_key(o['vendor'])} - {''}
+    words = [w for w in o['name'].split() if _brand_key(w) not in brands]
+    if o['sku'] and words and words[0] == o['sku']:
+        return o['sku'][:80]
+    i = 0
+    while i < len(words) and re.fullmatch(r'[А-Яа-яЁёA-Za-z-]+', words[i]) and not (len(words[i]) > 1 and words[i].isupper()):
+        i += 1
+    rest = re.split(r'\s+(?:с|со|для|в комплекте)\s+', ' '.join(words[i:]))[0].strip(' ,–-')
+    rest = re.sub(r'(\s+[а-яё]+)+$', '', rest)        # «РВ 500/11 вертикальный» → «РВ 500/11»
+    return (rest or o['sku'] or '')[:80]
+
+
+def maker_of(o, f):
+    fm = f.get('maker') or ''
+    if fm and (not o['vendor'] or _brand_key(o['vendor']) == _brand_key(fm)):
+        return fm
+    return o['vendor'] or fm
+
+
 def build(o, f, types, old=None, put_image=None):
     """Позиция каталога из предложения фида; old — та же позиция в каталоге (ручные правки сохраняются)."""
     today = date.today().isoformat()
     doc = json.loads(json.dumps(old)) if old else {'prices': []}
     cat_id = (f.get('cats') or {}).get(o['cat']) or ''
     tmap = {t.get('id'): t for t in types}
-    maker = o['vendor'] or f.get('maker') or ''
-    model = o['model'] or o['sku'] or ''
-    if not model and maker:             # «Рефрижераторный осушитель Remeza RFD 12» → «RFD 12»
-        m = re.search(re.escape(maker) + r'\s+(.+)$', o['name'], re.I)
-        model = m.group(1).strip()[:80] if m else ''
+    maker = maker_of(o, f)
+    model = model_of(o, maker)
     rows = _rows(o)
     orig = (doc.get('feed') or {}).get('orig') or {}
     desc = o['desc']
@@ -362,7 +449,7 @@ def build(o, f, types, old=None, put_image=None):
     doc['groups'] = groups
     a = doc.get('attrs') or {}
     if not a.get('cat'):
-        a['cat'] = cat_id or catalog_migrate.detect(doc, types) or 'other'
+        a['cat'] = cat_id or item_cat(o, types) or 'other'
     a.setdefault('maker', maker)
     if not a.get('maker'):
         a['maker'] = maker
