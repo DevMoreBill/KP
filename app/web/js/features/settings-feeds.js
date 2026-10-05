@@ -3,7 +3,7 @@
 'use strict';
 
 const FD = { sel:null, prev:null, cats:{}, types:[], poll:0, edit:null, logs:{} };
-const FD_REMEZA = { name:'Remeza', url:'https://www.remeza.org/bitrix/catalog_export/yandex_202475.php', maker:'Remeza', auto:true };
+const FD_REMEZA = { name:'Remeza', url:'https://www.remeza.org/bitrix/catalog_export/yandex_202475.php', maker:'Remeza', auto:true, pageDesc:true };
 
 const fdRub = kop => kop==null ? '—' : money(kop)+' ₽';
 const fdDate = iso => iso ? stTime(iso) : '—';
@@ -32,7 +32,8 @@ function fdForm(f, isNew){
       <label class="f"><span>Название</span><input type="text" data-fdf="name" value="${esc(f.name||'')}" placeholder="Remeza"></label>
       <label class="f"><span>Производитель по умолчанию</span><input type="text" data-fdf="maker" value="${esc(f.maker||'')}" placeholder="если в фиде нет поля vendor"></label>
       <label class="f"><span>Наша скидка от РРЦ, %${tip('Если задана — закупка позиции = РРЦ минус скидка; обновляется вместе с РРЦ. Пусто — закупку фид не трогает.')}</span><input type="text" inputmode="decimal" data-fdf="discount" value="${esc(f.discount??'')}" placeholder="например, 25"></label>
-      <label class="fd-auto"><input type="checkbox" data-fdf="auto"${f.auto!==false?' checked':''}> Раз в день проверять РРЦ и наличие</label></div>
+      <label class="fd-auto"><input type="checkbox" data-fdf="auto"${f.auto!==false?' checked':''}> Раз в день проверять РРЦ и наличие</label>
+      <label class="fd-auto"><input type="checkbox" data-fdf="pageDesc"${f.pageDesc!==false?' checked':''}> Описание — со страницы товара на сайте${tip('При загрузке в каталог программа открывает страницу каждого товара (ссылка из фида) и берёт описание из блока описания (itemprop="description"). Если оно длиннее описания в фиде — идёт в карточку. Страницы запоминаются на 30 дней; первая загрузка большого фида — дольше на несколько минут. Описание, исправленное вручную, не затирается.')}</label></div>
     <div class="row fd-fb"><button class="btn primary" type="button" data-fd="save">${isNew?'Добавить фид':'Сохранить'}</button>${isNew?'<button class="btn ghost" type="button" data-fd="cancel">Отмена</button>':'<button class="btn ghost danger" type="button" data-fd="del">Удалить фид</button>'}</div></div>`;
 }
 
@@ -108,7 +109,7 @@ function fdVals(box){ const v={}; box.querySelectorAll('[data-fdf]').forEach(i=>
 async function fdClick(e, m){
   const b=e.target.closest('[data-fd]'); if (!b) return; const a=b.dataset.fd;
   try{
-    if (a==='new'){ FD.edit={name:'', url:'', maker:'', auto:true}; return stFeeds(m); }
+    if (a==='new'){ FD.edit={name:'', url:'', maker:'', auto:true, pageDesc:true}; return stFeeds(m); }
     if (a==='cancel'){ FD.edit=null; return stFeeds(m); }
     if (a==='open'){ FD.sel = FD.sel===b.dataset.id ? null : b.dataset.id; FD.prev=null; FD.cats={}; return stFeeds(m); }
     const form=b.closest('[data-fdform]') || m.querySelector(`[data-fdform="${FD.sel}"]`);
