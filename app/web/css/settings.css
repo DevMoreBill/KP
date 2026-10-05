@@ -179,3 +179,24 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .key-imp{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}
 .key-imp .ck{display:flex;gap:8px;align-items:center;margin:4px 0;flex-wrap:wrap}
 .key-imp .row{gap:8px;margin-top:10px;flex-wrap:wrap}
+/* фиды поставщиков (settings-feeds.js) */
+.fd-head{align-items:center;gap:8px}
+.fd-panel{border-color:var(--navy)}
+.fd-form .fd-auto{display:flex;align-items:center;gap:8px;grid-column:1/-1;cursor:pointer;font-size:14px}
+.fd-form .fd-auto input{width:17px;height:17px;margin:0;accent-color:var(--navy)}
+.fd-fb,.fd-acts{gap:8px;margin-top:10px;flex-wrap:wrap}
+.fd-acts{padding-top:10px;border-top:1px solid var(--line)}
+.fd-prog{position:relative;margin:10px 0;padding:8px 12px;border-radius:10px;background:var(--soft);overflow:hidden;font-size:13px}
+.fd-prog i{position:absolute;left:0;bottom:0;height:3px;background:var(--navy);transition:width .4s}
+.fd-sum{display:flex;flex-wrap:wrap;gap:6px 14px;margin:12px 0;font-size:13px}
+.fd-sum b{font-size:15px}
+.fd-tw{overflow-x:auto}
+.fd-t{width:100%;border-collapse:collapse;font-size:13px}
+.fd-t th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:6px 8px;border-bottom:1px solid var(--line)}
+.fd-t td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.fd-t .num{text-align:right;white-space:nowrap}
+.fd-t select{min-width:180px;max-width:100%}
+.fd-cnt{margin:8px 0}
+.fd-head{display:flex}
+#fdLog{margin-top:14px}
+.fd-panel .st-row .muted,.st-list .st-row .muted{overflow-wrap:anywhere}.fd-head .sp{flex:1}

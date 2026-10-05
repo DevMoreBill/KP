@@ -36,3 +36,7 @@ input.flash{animation:flash 1.6s ease}
 @keyframes flash{0%{background:#d6f5e3;border-color:var(--ok)}100%{}}
 @media (max-width:1000px){.wrap{grid-template-columns:1fr}.phead,.prow{grid-template-columns:26px minmax(0,1fr) 150px 170px 130px}}
 .cost select{width:100%;border:1px solid var(--line);background:var(--field);border-radius:10px;padding:10px 12px;font-size:15px;color:var(--ink)}
+/* контроль РРЦ в строке позиции */
+.rrc-h{font-size:12.5px;color:var(--muted)}
+.rrc-h.ok{color:var(--ok)}
+.rrc-h.bad{color:#b42318;font-weight:600}
