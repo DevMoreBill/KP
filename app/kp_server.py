@@ -739,6 +739,9 @@ def main():
         maintenance.start_every(1800, lambda: cp().run_queue())
         # ставки доставки по ATI.SU — раз в сутки (период и направления — «Настройки» → «Логистика»)
         maintenance.start_every(3 * 3600, lambda: logistics_api.auto_refresh(store()))
+        import feeds
+        feeds.IMAGE_STORE = IMAGES
+        maintenance.start_every(3600, lambda: feeds.auto_check(store()))     # фиды поставщиков: РРЦ и наличие раз в день
         seeded = seed_catalog()
         sync_counter_with_files()
     except Exception as e:

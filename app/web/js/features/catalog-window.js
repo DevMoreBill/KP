@@ -97,6 +97,13 @@ function cwAddLabel(id, long){ const inn=cwInKp(id);
   if (CW.optFor!=null) return inn ? '✓ Добавлено' : (long?'Добавить опцией':'Опцией');
   return inn ? (long?'Уже в КП: ещё 1 шт.':'✓ +1 шт.') : (long?'Добавить в КП':'В КП'); }
 
+// РРЦ и наличие у поставщика (позиции из товарного фида, feeds.py)
+function feedStockTxt(st){ if (!st) return ''; if (st.gone) return 'нет в фиде';
+  if (st.qty!=null) return st.qty>0 ? `в наличии ${String(st.qty).replace('.',',')} шт.` : (st.available ? 'под заказ' : 'нет в наличии');
+  return st.available ? 'в наличии' : 'нет в наличии'; }
+function feedBadges(x){ const r=x.rrc, st=x.stock; if (!r && !st) return '';
+  const up=r&&r.prev&&r.price>r.prev, dn=r&&r.prev&&r.price<r.prev, ok=st&&!st.gone&&(st.qty!=null?st.qty>0:st.available);
+  return `<span class="fd-b">${r?`<span class="fd-rrc" title="Рекомендованная розничная цена поставщика${r.at?' на '+esc(r.at):''}${r.prev?`; прежняя ${money(r.prev)} ${curSh(r.cur||'RUB')}${r.prevAt?' ('+esc(r.prevAt)+')':''}`:''}">РРЦ ${money(r.price)} ${curSh(r.cur||'RUB')}${up?' <i class="up">▲</i>':dn?' <i class="dn">▼</i>':''}</span>`:''}${st?`<span class="fd-st ${ok?'ok':st.gone?'gone':'no'}" title="Наличие у поставщика${st.at?' на '+esc(st.at):''}">${esc(feedStockTxt(st))}</span>`:''}</span>`; }
 function cwPriceHtml(x){ return x.price ? `${money(x.price)} ${curSh(x.priceCur||'RUB')}` : x.cost ? `<small>закупка</small>${money(x.cost)} ${curSh(x.costCur||'RUB')}` : '<small>без цены</small>'; }
 
 function cwRow(x){ const id=x.id, n=x.pricesCount||(x.prices||[]).length, inn=cwInKp(id);
@@ -104,7 +111,7 @@ function cwRow(x){ const id=x.id, n=x.pricesCount||(x.prices||[]).length, inn=cw
     <label class="ck" title="Отметить (Shift — диапазон)"><input type="checkbox" data-ck ${CW.sel.has(id)?'checked':''} aria-label="Отметить"></label>
     ${x.photo?`<img src="${esc(x.photo.src)}" alt="" loading="lazy">`:'<i class="ph"></i>'}
     <div class="cw-mn"><b>${esc(x.name)}</b>${CW.pend.has(id)?'<span class="modb">На модерации</span>':''}${cwTags(x)}</div>
-    <div class="cw-pr">${cwPriceHtml(x)}${n?`<small>в КП ${n} ${plural(n,'раз','раза','раз')}</small>`:''}</div>
+    <div class="cw-pr">${cwPriceHtml(x)}${feedBadges(x)}${n?`<small>в КП ${n} ${plural(n,'раз','раза','раз')}</small>`:''}</div>
     <button class="btn sm${inn?' in':''}" type="button" data-add title="${inn?(CW.optFor!=null?'Уже добавлено':'Уже в КП — увеличить количество'):''}">${cwAddLabel(id)}</button></div>`; }
 
 function cwList(){
@@ -154,7 +161,8 @@ function cwCard(x, loading){
     ${x.photoFrom&&x.photo?`<p class="muted pv-pf">Фото — от похожей модели того же производителя («${esc(x.photoFrom.name||'')}»). Своё фото — «Редактировать» → «Описание и фото».</p>`:''}
     <div class="pv-ttl"><h4>${esc(x.name||'Без названия')}</h4>${x.logo?`<img class="pv-logo" src="${esc(x.logo.src)}" alt="">`:''}</div>${x.spec?`<p class="muted pv-spec">${esc(x.spec)}</p>`:''}
     ${CW.optFor==null?`<label class="pv-cat"><span>Категория</span><select data-pvcat>${typeOptionsHtml(a.cat)}</select></label>`:''}
-    <div class="pv-price"><b>${x.price?money(x.price)+' '+curSh(x.priceCur||'RUB'):'Цена не указана'}</b>${x.cost?`<span>закупка ${money(x.cost)} ${curSh(x.costCur||'RUB')}</span>`:''}</div>
+    <div class="pv-price"><b>${x.price?money(x.price)+' '+curSh(x.priceCur||'RUB'):'Цена не указана'}</b>${x.cost?`<span>закупка ${money(x.cost)} ${curSh(x.costCur||'RUB')}</span>`:''}${feedBadges(x)}</div>
+    ${x.feed?`<p class="muted pv-pf">Из фида поставщика${x.feed.sku?' · артикул '+esc(x.feed.sku):''}${x.feed.url?` · <a href="${esc(x.feed.url)}" target="_blank" rel="noopener">страница товара</a>`:''}. РРЦ и наличие проверяются раз в день.</p>`:''}
     ${kpi?`<div class="pv-kpi">${kpi}</div>`:''}
     ${params.length?`<table class="pv-t">${params.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`:''}
     ${loading?'<p class="muted">Загружаю описание и характеристики…</p>':''}

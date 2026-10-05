@@ -554,6 +554,52 @@ class AdminApi:
         except ValueError as e:
             return self.err(400, str(e))
 
+    def feeds(self, m, sub, me):
+        import feeds
+        from equipment_types import load_types
+        st = self.st
+        types = load_types()['types']
+        if sub == 'feeds' and m == 'GET':
+            return self.ok({'items': feeds.status(st), 'types': [{'id': t.get('id'), 'name': t.get('name'), 'group': t.get('group')} for t in types if not t.get('hidden')]})
+        if sub == 'feeds' and m == 'POST':
+            f = feeds.feed_save(st, self.data())
+            self.log('edit_settings', 'settings', 'feed:' + f['id'], None, {'url': f['url'], 'name': f['name']})
+            return self.ok(f)
+        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status)$', sub)
+        if not r:
+            return self.err(404, 'Нет такого запроса')
+        fid, act = r.group(1), r.group(2)
+        f = feeds.feed_get(st, fid)
+        if not f:
+            return self.err(404, 'Фид не найден')
+        if act == 'log':
+            return self.ok({'items': feeds.log_of(st, fid)})
+        if act == 'status':
+            return self.ok({'job': feeds.JOBS.get(fid)})
+        if m != 'POST':
+            return self.err(405, 'Нужен POST')
+        if act == 'delete':
+            feeds.feed_delete(st, fid)
+            self.log('edit_settings', 'settings', 'feed:' + fid, {'url': f['url']}, None)
+            return self.ok()
+        if feeds.busy(fid):
+            return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
+        if act == 'preview':
+            try:
+                return self.ok(feeds.preview(st, f, types))
+            except Exception as e:
+                return self.err(422, 'Фид не загрузился: %s' % e)
+        who = me or 'администратор'
+        if act == 'import':
+            d = self.data()
+            only = set(d.get('only') or []) or None
+            feeds.run_bg(feeds.import_feed, st, f, types, feeds.IMAGE_STORE, who, only)
+            self.log('import_feed', 'catalog', 'feed:' + fid, None, {'url': f['url'], 'only': len(only) if only else 'все'})
+        else:
+            feeds.run_bg(feeds.check_feed, st, f, who)
+            self.log('check_feed', 'catalog', 'feed:' + fid, None, {'url': f['url']})
+        return self.ok({'job': feeds.JOBS.get(fid) or {'state': 'run', 'kind': act}})
+
     def _login_ok(self, user=None):
         tok, csrf = _start_session(self.h, user)
         return self.h.send(200, 'application/json; charset=utf-8', json.dumps({'ok': True, 'csrf': csrf}),
@@ -590,6 +636,8 @@ class AdminApi:
         r = re.match(r'^audit/(\d+)/rollback$', sub)
         if r and m == 'POST':
             return self.rollback(int(r.group(1)))
+        if sub == 'feeds' or sub.startswith('feeds/'):          # товарные фиды поставщиков (feeds.py)
+            return self.feeds(m, sub, me)
         r = re.match(r'^list/(kp|catalog|manager|client|supplier)$', sub)
         if r:
             return self.ok(self.listing(r.group(1), q.get('q') or ''))

@@ -40,7 +40,7 @@ a = Analysis(
         ('seed/data/catalog', 'seed/data/catalog'),
         ('seed/data/img', 'seed/data/img'),
     ],
-    hiddenimports=['kp_server', 'version', 'geo', 'imgfetch', 'importlib.abc', 'importlib.util', 'ipaddress', 'csv', 'zipfile', 'calendar', 'decimal',
+    hiddenimports=['kp_server', 'version', 'geo', 'feeds', 'imgfetch', 'importlib.abc', 'importlib.util', 'ipaddress', 'csv', 'zipfile', 'calendar', 'decimal',
                    'statistics', 'uuid', 'base64', 'html', 'html.parser', 'http.client', 'email', 'shutil', 'tempfile', 'subprocess', 'ctypes',
                    'config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'workcal', 'imgfetch', 'desktop', 'pdf_convert', 'catalog_migrate', 'admin', 'images', 'maintenance', 'logistics_api',
                    'sqlite3', '_sqlite3', 'gzip'],

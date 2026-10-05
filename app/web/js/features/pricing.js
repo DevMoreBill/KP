@@ -6,7 +6,23 @@
 // подсказка под строкой цены: скидка для заказчика и цена со скидкой (закупка и маржа — в «Экономике сделки»)
 function priceHint(x){
   const cs=curSh(kpCur()), d=KPGen.unitDisc(x);
-  return d ? `Скидка ${money(d)} ${cs} за ед. · цена для заказчика <b>${money((x.price||0)-d)} ${cs}</b>` : '';
+  const disc = d ? `Скидка ${money(d)} ${cs} за ед. · цена для заказчика <b>${money((x.price||0)-d)} ${cs}</b>` : '';
+  const rrc = rrcHint(x, (x.price||0)-d);
+  return [disc, rrc].filter(Boolean).join('<br>');
+}
+
+// контроль РРЦ: цена для заказчика против рекомендованной розничной цены поставщика (позиции из товарного фида)
+function rrcHint(x, unit){
+  const c=x.catId && typeof catCache!=='undefined' ? catCache.find(z=>z.id===x.catId) : null, r=c&&c.rrc;
+  if (!r || !(r.price>0)) return '';
+  const kr=rateOf(kpCur()), rr=rateOf(r.cur||'RUB');
+  const st=c.stock&&typeof feedStockTxt==='function' ? ` · ${esc(feedStockTxt(c.stock))}` : '';
+  if (!(kr>0) || !(rr>0) || !(unit>0)) return `<span class="rrc-h">РРЦ ${money(r.price)} ${curSh(r.cur||'RUB')}${st}</span>`;
+  const mine=unit*kr, rrc=r.price*rr, diff=(mine-rrc)/rrc*100;
+  const rrcTxt=`РРЦ ${money(r.price)} ${curSh(r.cur||'RUB')}`;
+  if (Math.abs(diff)<0.05) return `<span class="rrc-h ok">По РРЦ (${rrcTxt})${st}</span>`;
+  return diff<0 ? `<span class="rrc-h bad" title="Цена для заказчика ниже рекомендованной розничной цены поставщика">Ниже РРЦ на ${String(Math.round(-diff*10)/10).replace('.',',')} % — ${rrcTxt}${st}</span>`
+    : `<span class="rrc-h">Выше РРЦ на ${String(Math.round(diff*10)/10).replace('.',',')} % — ${rrcTxt}${st}</span>`;
 }
 
 function liveMargin(i){ const el=document.querySelector(`[data-minfo="${i}"]`); if (el) el.innerHTML=priceHint(S.items[i]); }
