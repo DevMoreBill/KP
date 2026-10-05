@@ -839,7 +839,7 @@ def build(o, f, types, old=None, put_image=None):
             if ph:
                 doc['photo'] = ph
                 doc['photoSource'] = o['pictures'][0]
-        have = {g.get('source') for g in doc.get('gallery') or []}
+        have = {g.get('source') for g in doc.get('gallery') or []} | {doc.get('photoSource')}   # главное фото, выбранное в редакторе, — не дублировать
         gal = doc.get('gallery') or []
         for k, u in enumerate(o['pictures'][1:9]):
             if u in have:

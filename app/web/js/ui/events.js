@@ -72,6 +72,7 @@ document.addEventListener('click', async e=>{
     case 'attrsToGroups': { const g=groupsFromAttrs(it); const keep=(it.groups||[]).filter(x=>!g.some(y=>y.name===x.name)); it.groups=[...g,...keep]; if(!it.hint) it.hint=autoHint(it); it.page=true; toast('Таблица характеристик сформирована'); break; }
     case 'galAdd': return pickGallery(i, b.dataset.slot||'');
     case 'galDel': it.gallery.splice(j,1); break;
+    case 'galMain': if (!edSetMain(it, j)) return; toast('Главное фото заменено — прежнее перенесено в изображения'); break;
     case 'edit': return openEditor(i, b.dataset.tab);
     case 'catOf': { const c=b.dataset.cat; if (!catCache.some(x=>attrsOf(x).cat===c)) { const t=typeById(c); const it2=newItem(); it2.attrs={cat:t.id}; it2.page=true; it2.features=[{id:uid(),label:'',text:''}]; S.items.push(it2); renderForm(); persist(); return openEditor(S.items.length-1,'main'); } return openCatalog({cat:c}); }
     case 'dupItem': { const cp=JSON.parse(JSON.stringify(it)); cp.id=uid(); (cp.features||[]).forEach(f=>{ const old=f.id; f.id=uid(); (cp.gallery||[]).forEach(g=>{ if(g.at==='feat:'+old) g.at='feat:'+f.id; }); });

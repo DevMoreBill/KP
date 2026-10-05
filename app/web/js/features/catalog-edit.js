@@ -17,8 +17,9 @@ function itemToDoc(it, base){
   Object.assign(d, { name:String(it.name||'').trim(), spec:it.spec||'', pageTitle:it.pageTitle||'', photoCaption:it.photoCaption||'',
     features:cl((it.features||[]).filter(f=>f.label||f.text)),
     groups:cl((it.groups||[]).map(g=>({...g, rows:(g.rows||[]).filter(r=>r.k||r.v)})).filter(g=>g.name||g.rows.length)),
-    hint:cl(it.hint||null), photo:cl(it.photo||null), logo:cl(it.logo||null),
-    gallery:(it.gallery||[]).map(({id,src,w,h,caption,slot,wide,on,at})=>({id,src,w,h,caption,slot,wide,on,at})),
+    hint:cl(it.hint||null), photo:cl(it.photo||null), logo:cl(it.logo||null), photoSource:it.photoSource||null,
+    // source — адрес картинки у поставщика: по нему фид не добавит то же фото повторно
+    gallery:(it.gallery||[]).map(({id,src,w,h,caption,slot,wide,on,at,source})=>({id,src,w,h,caption,slot,wide,on,at,...(source?{source}:{})})),
     attrs:Object.fromEntries(Object.entries(it.attrs||{}).filter(([,v])=>v!==''&&v!=null)),
     options:(it.options||[]).filter(o=>o.name).map(({_priceText,...o})=>o),
     price:it.price||0, priceCur:it.priceCur||'RUB', cost:it.cost||0, costCur:it.costCur||'RUB' });
