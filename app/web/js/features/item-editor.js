@@ -92,6 +92,22 @@ function edMain(x,i){
 
 function imgBox(src, attrs, text){ return `<div class="ibox" ${attrs} tabindex="0" role="button">${src?`<img src="${src}" alt="">`:`<span>${text}</span>`}</div>`; }
 
+// выбор главного фото среди изображений позиции (фото со страницы поставщика, загруженные вручную)
+function edMainPick(x,i){
+  const free=edFreeGal(x).filter(j=>x.gallery[j] && x.gallery[j].src); if (!free.length) return '';
+  return `<div class="mainpick"><span class="muted">Главное фото — выбрать из изображений позиции:</span>
+    <div class="mainpick-l">${free.map(j=>`<button type="button" class="mainpick-i" data-a="galMain" data-i="${i}" data-j="${j}" title="Сделать главным"><img src="${x.gallery[j].src}" alt=""></button>`).join('')}</div></div>`;
+}
+// главное фото ↔ изображение галереи: выбранное становится главным, прежнее главное — на его место в галерее
+function edSetMain(it, j){
+  const g=(it.gallery||[])[j]; if (!g || !g.src) return false;
+  const old=it.photo, oldSrc=it.photoSource;
+  it.photo={src:g.src, w:g.w, h:g.h}; it.photoSource=g.source||null; delete it.photoFrom;
+  if (old && old.src) it.gallery[j]={id:uid(), src:old.src, w:old.w, h:old.h, caption:'', slot:'', wide:g.wide||'', on:g.on!==false, at:g.at, ...(oldSrc?{source:oldSrc}:{})};
+  else it.gallery.splice(j,1);
+  return true;
+}
+
 function edDesc(x,i){
   const P=`items.${i}`, t=typeById(attrsOf(x).cat);
   const slots=(t.gallerySlots||[]).filter(s=>!WIDE_RX.test(s));
@@ -114,10 +130,11 @@ function edDesc(x,i){
         ${(x.features||[]).filter(f=>f.label).map(f=>`<option value="feat:${featId(f)}">К описанию: ${esc(f.label)}</option>`).join('')}</select></label>
       <div class="gctl"><select data-p="${P}.gallery.${j}.wide" aria-label="Ширина"><option value=""${!g.wide?' selected':''}>Ширина: авто</option><option value="half"${g.wide==='half'?' selected':''}>Половина</option><option value="full"${g.wide==='full'?' selected':''}>Вся ширина</option></select>
         <label class="row muted" style="gap:4px"><input type="checkbox" data-gon="${i}" data-j="${j}" ${g.on===false?'':'checked'} style="width:auto">в КП</label><span style="flex:1"></span>
+        <button class="lnk" type="button" data-a="galMain" data-i="${i}" data-j="${j}" title="Сделать главным фото позиции (текущее главное встанет на его место)">★ Главное</button>
         <button class="icon" type="button" data-a="galDel" data-i="${i}" data-j="${j}" aria-label="Удалить">✕</button></div></div>`).join('');
   const schemeSlots=(t.gallerySlots||[]).filter(s=>WIDE_RX.test(s));
   return `<div class="ed-sec"><p class="sub">Главное фото и логотип</p>
-     <div class="media2"><div>${drop(x.photo,'photo',i,'<b>Главное фото</b><br>нажмите, перетащите файл или картинку с сайта,<br>или вставьте из буфера (Ctrl+V).<br><small>Белые поля обрежутся сами.</small>')}${field('Подпись под фото',`${P}.photoCaption`,{ph:'Исполнение в кожухе'})}</div>
+     <div class="media2"><div>${drop(x.photo,'photo',i,'<b>Главное фото</b><br>нажмите, перетащите файл или картинку с сайта,<br>или вставьте из буфера (Ctrl+V).<br><small>Белые поля обрежутся сами.</small>')}${edMainPick(x,i)}${field('Подпись под фото',`${P}.photoCaption`,{ph:'Исполнение в кожухе'})}</div>
        <div>${drop(x.logo,'logo',i,attrsOf(x).maker?(logoFor(attrsOf(x).maker)?'Логотип производителя':'Логотип производителя (PNG) — у «'+esc(attrsOf(x).maker)+'» в каталоге логотипа нет'):'Логотип подставится сам, если указать производителя (точное совпадение с каталогом)',true)}</div></div></div>
    <div class="ed-sec"><div class="sub">Описание узлов${tip("У каждого блока — своё фото: в КП текст и фото стоят рядом.")}</div>
      ${blocks||'<p class="muted">Добавьте блоки описания — например, «Двигатель», «Альтернатор», «Контроллер».</p>'}
