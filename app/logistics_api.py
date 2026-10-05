@@ -77,6 +77,11 @@ def _err(e):
     return str(e)[:300] or e.__class__.__name__
 
 
+def _ins_of(items, name_key='name', price_key='price'):
+    """Сумма строк страхования (по названию «страхов…») в детализации перевозчика."""
+    return sum(_num(x.get(price_key)) or 0 for x in (items or []) if isinstance(x, dict) and re.search(r'страхов', str(x.get(name_key) or ''), re.I))
+
+
 def _num(v):
     try:
         x = float(str(v).replace(' ', '').replace('\xa0', '').replace(',', '.'))
@@ -181,12 +186,14 @@ def _pick(d, names):
     return None, names[0] if names else ''
 
 
-def pec_quote(store, frm, to, places):
+def pec_quote(store, frm, to, places, declared=0):
     t = pec_towns(store)
     (a, fa), (b, tb) = _pick(t, frm), _pick(t, to)
     if not a or not b:
         raise ValueError('город не найден в справочнике ПЭК: %s' % (fa if not a else tb))
     q = [('take[town]', a), ('deliver[town]', b)]
+    if declared:
+        q.append(('strah', int(round(declared))))   # объявленная стоимость — ПЭК считает своё страхование
     units = [p for p in places for _ in range(int(p['qty']))]
     for k, p in enumerate(units):   # место: ширина, длина, высота (м), объём (м³), вес (кг), негабарит, жёсткая упаковка
         q += [('places[%d][]' % k, v) for v in (p['w'], p['l'], p['h'], round(p['l'] * p['w'] * p['h'], 3), round(p['m'] * 1000),
@@ -198,12 +205,14 @@ def pec_quote(store, frm, to, places):
     nums = [n for n in (_num(x) for x in (auto if isinstance(auto, list) else [auto])) if n is not None]
     if not nums:
         raise ValueError('ПЭК: в ответе нет стоимости')
-    total = nums[-1]
-    for k, v in j.items():                      # обязательные надбавки (ADD…, негабарит)
+    total, ins = nums[-1], 0
+    for k, v in j.items():                      # обязательные надбавки (ADD…: негабарит, страхование)
         if re.match(r'^(ADD|add)', str(k)) and isinstance(v, list):
             n = [x for x in (_num(y) for y in v) if x is not None]
             if n:
                 total += n[-1]
+                if re.search(r'страх', ' '.join(str(y) for y in v[:2]), re.I):
+                    ins += n[-1]
     door = 0
     for k in ('take', 'deliver'):                # забор груза у отправителя и доставка получателю
         v = j.get(k)
@@ -217,12 +226,12 @@ def pec_quote(store, frm, to, places):
         m = re.findall(r'\d+', str(per.get('periods_days') or per.get('periods')))
         days = int(m[-1]) if m else None
     via = '' if (fa, tb) == (frm[0] if isinstance(frm, list) else frm, to[0] if isinstance(to, list) else to) else ' (%s → %s)' % (fa, tb)
-    return {'price': round(total), 'days': days, 'door': door == 2,
+    return {'price': round(total), 'ins': round(ins), 'days': days, 'door': door == 2,
             'note': ('сборный груз, дверь в дверь (забор и доставка ПЭК)' if door == 2 else 'сборный груз, межтерминальная перевозка ПЭК') + via}
 
 
 # ---------------------------------------------------------------- Деловые Линии
-def dellin_quote(store, frm_addr, to_addr, places):
+def dellin_quote(store, frm_addr, to_addr, places, declared=0):
     tw = {'worktimeStart': '09:00', 'worktimeEnd': '18:00'}
     units = [p for p in places for _ in range(int(p['qty']))]
     over = [u for u in units if max(u['l'], u['w'], u['h']) > 3 or u['m'] > 0.1]
@@ -236,6 +245,8 @@ def dellin_quote(store, frm_addr, to_addr, places):
                       'totalVolume': round(sum(u['l'] * u['w'] * u['h'] for u in units), 3), 'totalWeight': round(sum(u['m'] for u in units) * 1000, 1),
                       'oversizedWeight': round(sum(u['m'] for u in over) * 1000, 1), 'oversizedVolume': round(sum(u['l'] * u['w'] * u['h'] for u in over), 3),
                       'hazardClass': 0}}
+    if declared:                                 # страхование груза Деловыми Линиями по объявленной стоимости
+        body['cargo']['insurance'] = {'statedValue': int(round(declared)), 'term': True}
     try:
         j = _http(DELLIN_CALC, data=body, headers={'Content-Type': 'application/json'}, method='POST')
     except urllib.error.HTTPError as e:
@@ -262,7 +273,9 @@ def dellin_quote(store, frm_addr, to_addr, places):
             days = (datetime.fromisoformat(str(b)[:10]) - datetime.fromisoformat(str(a)[:10])).days + 1
     except ValueError:
         pass
-    return {'price': round(price), 'days': days, 'door': True, 'note': 'сборный груз, от адреса до адреса'}
+    iv = d.get('insurance')
+    ins = _num(iv.get('price') if isinstance(iv, dict) else iv) or 0
+    return {'price': round(price), 'ins': round(ins), 'days': days, 'door': True, 'note': 'сборный груз, от адреса до адреса'}
 
 
 # ---------------------------------------------------------------- КИТ
@@ -342,7 +355,7 @@ KIT_TYPES = {'01': 'Стандарт', '03': 'Экспресс'}
 
 def kit_quote(store, frm, to, places, declared):
     """Расчёт KIT.API /2.0/order/calculate: забор и доставка по адресу (дверь — дверь), тариф «Стандарт» (01).
-    Страхование КИТ (услуги «страхован…» в детализации) из цены вычитается — страховка в расчёте своя, единая."""
+    Страхование КИТ по объявленной стоимости (строки «страхован…» в детализации) входит в цену и показывается отдельно."""
     (a, fa), (b, tb) = kit_city(store, frm), kit_city(store, to)
     if not a or not b:
         raise ValueError('город не найден в справочнике КИТ: %s' % (fa if not a else tb))
@@ -368,13 +381,12 @@ def kit_quote(store, frm, to, places, declared):
         raise ValueError('КИТ: в ответе нет стоимости' + (' — ' + str(msg)[:300] if msg else ''))
     code = '01' if '01' in found else sorted(found)[0]
     t = found[code]
-    ins = sum(_num(x.get('price')) or 0 for x in (t.get('detail') or []) if isinstance(x, dict) and re.search(r'страхов', str(x.get('name') or ''), re.I))
+    ins = _ins_of(t.get('detail'))
     days = re.findall(r'\d+', str(t.get('time') or ''))
     first = lambda v: v[0] if isinstance(v, (list, tuple)) else v
     via = '' if (fa, tb) == (first(frm), first(to)) else ' (%s → %s)' % (fa, tb)
-    return {'price': round(_num(t['cost']) - ins), 'days': int(days[-1]) if days else None, 'door': True,
-            'note': 'дверь в дверь (забор и доставка КИТ), тариф «%s»%s%s' % (t.get('name') or KIT_TYPES.get(code, code), via,
-                                                                             ', без страхования КИТ — своё, единое' if ins else '')}
+    return {'price': round(_num(t['cost'])), 'ins': round(ins), 'days': int(days[-1]) if days else None, 'door': True,
+            'note': 'дверь в дверь (забор и доставка КИТ), тариф «%s»%s' % (t.get('name') or KIT_TYPES.get(code, code), via)}
 
 
 # ---------------------------------------------------------------- СДЭК (API v2, OAuth client_credentials)
@@ -414,7 +426,7 @@ def cdek_city(store, names, h):
     return None, names[0] if names else ''
 
 
-def cdek_quote(store, frm, to, places, frm_addr='', to_addr=''):
+def cdek_quote(store, frm, to, places, frm_addr='', to_addr='', declared=0):
     h = _cdek_headers(store)
     (a, fa), (b, tb) = cdek_city(store, frm, h), cdek_city(store, to, h)
     if not a or not b:
@@ -431,8 +443,20 @@ def cdek_quote(store, frm, to, places, frm_addr='', to_addr=''):
     if not door:
         raise ValueError('СДЭК: нет тарифов «дверь — дверь» для такого груза' + (' (есть только до пункта выдачи)' if rows else ''))
     r = min(door, key=lambda x: _num(x['delivery_sum']))
+    price, ins = _num(r['delivery_sum']), 0
+    if declared:            # страхование СДЭК (услуга INSURANCE) — расчёт выбранного тарифа с объявленной стоимостью
+        try:
+            t = _http(CDEK_BASE + '/calculator/tariff', data={'type': 2, 'currency': 1, 'tariff_code': r.get('tariff_code'), 'from_location': loc(a, frm_addr),
+                                                              'to_location': loc(b, to_addr), 'packages': pk,
+                                                              'services': [{'code': 'INSURANCE', 'parameter': str(int(round(declared)))}]}, headers=h, method='POST')
+            svc = [x for x in (t.get('services') or []) if isinstance(x, dict) and x.get('code') == 'INSURANCE'] if isinstance(t, dict) else []
+            ins = sum(_num(x.get('total_sum') if x.get('total_sum') is not None else x.get('sum')) or 0 for x in svc)
+            if not ins and isinstance(t, dict) and _num(t.get('total_sum')) and _num(t.get('delivery_sum')):
+                ins = max(0, _num(t['total_sum']) - _num(t['delivery_sum']))
+        except Exception:
+            ins = 0         # не посчиталось — страхование будет своё, единое
     via = '' if (fa, tb) == (frm[0] if isinstance(frm, list) else frm, to[0] if isinstance(to, list) else to) else ' (%s → %s)' % (fa, tb)
-    return {'price': round(_num(r['delivery_sum'])), 'days': r.get('period_max') or r.get('period_min'), 'door': True,
+    return {'price': round(price + ins), 'ins': round(ins), 'days': r.get('period_max') or r.get('period_min'), 'door': True,
             'note': 'дверь в дверь, тариф «%s»%s' % (r.get('tariff_name') or r.get('tariff_code'), via)}
 
 
@@ -441,14 +465,15 @@ def _has_street(addr):
     return bool(re.search(r'\d', str(addr or ''))) and ',' in str(addr or '')
 
 
-def vozovoz_quote(store, frm, to, frm_addr, to_addr, places):
+def vozovoz_quote(store, frm, to, frm_addr, to_addr, places, declared=0):
     units = [p for p in places for _ in range(int(p['qty']))]
     point = lambda city, addr: dict({'location': city}, **({'address': addr} if _has_street(addr) else {'terminal': 'default'}))
     body = {'object': 'price', 'action': 'get', 'params': {
         'cargo': {'dimension': {'quantity': len(units), 'volume': round(sum(u['l'] * u['w'] * u['h'] for u in units), 3),
                                 'weight': round(sum(u['m'] for u in units) * 1000, 1),
                                 'max': {'length': max(u['l'] for u in units), 'width': max(u['w'] for u in units),
-                                        'height': max(u['h'] for u in units), 'weight': round(max(u['m'] for u in units) * 1000, 1)}}},
+                                        'height': max(u['h'] for u in units), 'weight': round(max(u['m'] for u in units) * 1000, 1)}},
+                  **({'insurance': int(round(declared))} if declared else {})},
         'gateway': {'dispatch': {'point': point(frm, frm_addr)}, 'destination': {'point': point(to, to_addr)}}}}
     j = _http(VOZ_URL + '?' + urllib.parse.urlencode({'token': keys(store).get('vozovozToken', '')}), data=body,
               headers={'Content-Type': 'application/json'}, method='POST')
@@ -459,11 +484,11 @@ def vozovoz_quote(store, frm, to, frm_addr, to_addr, places):
     price = _num(r.get('price'))
     if not price:
         raise ValueError('Возовоз: в ответе нет стоимости')
-    ins = sum(_num(x.get('price')) or 0 for x in r.get('service') or [] if re.search(r'страхов', str(x.get('name') or ''), re.I))
+    ins = _ins_of(r.get('service'))
     door = _has_street(frm_addr) and _has_street(to_addr)
     dt = r.get('deliveryTime') or {}
-    return {'price': round(price - ins), 'days': dt.get('to') or dt.get('from'), 'door': door,
-            'note': ('дверь в дверь' if door else 'от терминала до терминала') + (' (без их страхования — своё, единое)' if ins else '')}
+    return {'price': round(price), 'ins': round(ins), 'days': dt.get('to') or dt.get('from'), 'door': door,
+            'note': 'дверь в дверь' if door else 'от терминала до терминала'}
 
 
 # ---------------------------------------------------------------- Энергия (открытый расчёт без ключа)
@@ -497,7 +522,8 @@ def nrg_quote(store, frm, to, places, declared):
     if not a or not b:
         raise ValueError('город не найден в справочнике Энергии: %s' % (fa if not a else tb))
     items = [{'weight': round(p['m'] * 1000, 1), 'width': p['w'], 'height': p['h'], 'length': p['l']} for p in places for _ in range(int(p['qty']))]
-    j = _nrg('/price', {'idCityFrom': a, 'idCityTo': b, 'cover': 0, 'idCurrency': 0, 'items': items, 'declaredCargoPrice': 0, 'idClient': 0})
+    j = _nrg('/price', {'idCityFrom': a, 'idCityTo': b, 'cover': 0, 'idCurrency': 0, 'items': items,
+                        'declaredCargoPrice': int(round(declared or 0)), 'idClient': 0})
     if isinstance(j, dict) and (j.get('message') or j.get('error')) and not j.get('transfer'):
         raise ValueError('Энергия: ' + str(j.get('message') or j.get('error'))[:300])
     tr = (j or {}).get('transfer') or []
@@ -512,8 +538,13 @@ def nrg_quote(store, frm, to, places, declared):
         if n:
             price += n
             door += 1
+    ins = 0
+    for k, v in (j or {}).items() if isinstance(j, dict) else []:   # страхование Энергии по объявленной стоимости
+        if re.search(r'insur', str(k), re.I):
+            ins += (_num(v.get('price')) if isinstance(v, dict) else _num(v)) or 0
+    price += ins
     days = re.findall(r'\d+', str(t.get('interval') or ''))
-    return {'price': round(price), 'days': int(days[-1]) if days else None, 'door': door == 2,
+    return {'price': round(price), 'ins': round(ins), 'days': int(days[-1]) if days else None, 'door': door == 2,
             'note': ('дверь в дверь (забор и доставка Энергии)' if door == 2 else 'от терминала до терминала') + ', ' + str(t.get('type') or 'авто').lower()}
 
 
@@ -582,17 +613,18 @@ def quote(store, req):
     if places and not ok:
         errors.append({'src': 'Сборный груз (ПЭК, Деловые Линии, КИТ, СДЭК, Возовоз, Энергия)', 'msg': why, 'skip': True})
     if places and ok:
-        jobs = [('ПЭК', 'https://pecom.ru/services-are/shipping-request/', lambda: pec_quote(store, [frm.get('name')] + list(frm.get('alt') or []), [to.get('name')] + list(to.get('alt') or []), places))]
+        decl = _num(req.get('declared')) or 0     # объявленная стоимость груза — для страхования перевозчика
+        jobs = [('ПЭК', 'https://pecom.ru/services-are/shipping-request/', lambda: pec_quote(store, [frm.get('name')] + list(frm.get('alt') or []), [to.get('name')] + list(to.get('alt') or []), places, decl))]
         if pv['dellin']:
-            jobs.append(('Деловые Линии', 'https://www.dellin.ru/requests/', lambda: dellin_quote(store, frm.get('addr') or frm.get('name'), to.get('addr') or to.get('name'), places)))
+            jobs.append(('Деловые Линии', 'https://www.dellin.ru/requests/', lambda: dellin_quote(store, frm.get('addr') or frm.get('name'), to.get('addr') or to.get('name'), places, decl)))
         fl, tl = [frm.get('name')] + list(frm.get('alt') or []), [to.get('name')] + list(to.get('alt') or [])
-        jobs.append(('Энергия', 'https://nrg-tk.ru/client/calculator/', lambda: nrg_quote(store, fl, tl, places, _num(req.get('declared')))))
+        jobs.append(('Энергия', 'https://nrg-tk.ru/client/calculator/', lambda: nrg_quote(store, fl, tl, places, decl)))
         if pv['cdek']:
-            jobs.append(('СДЭК', 'https://www.cdek.ru/ru/calculate', lambda: cdek_quote(store, fl, tl, places, frm.get('addr'), to.get('addr'))))
+            jobs.append(('СДЭК', 'https://www.cdek.ru/ru/calculate', lambda: cdek_quote(store, fl, tl, places, frm.get('addr'), to.get('addr'), decl)))
         if pv['vozovoz']:
-            jobs.append(('Возовоз', 'https://vozovoz.ru/calculate/', lambda: vozovoz_quote(store, frm.get('name'), to.get('name'), frm.get('addr'), to.get('addr'), places)))
+            jobs.append(('Возовоз', 'https://vozovoz.ru/calculate/', lambda: vozovoz_quote(store, frm.get('name'), to.get('name'), frm.get('addr'), to.get('addr'), places, decl)))
         if pv['kit']:
-            jobs.append(('КИТ', 'https://tk-kit.ru/calculate', lambda: kit_quote(store, [frm.get('name')] + list(frm.get('alt') or []), [to.get('name')] + list(to.get('alt') or []), places, _num(req.get('declared')))))
+            jobs.append(('КИТ', 'https://tk-kit.ru/calculate', lambda: kit_quote(store, [frm.get('name')] + list(frm.get('alt') or []), [to.get('name')] + list(to.get('alt') or []), places, decl)))
         res = {}
 
         def run(name, fn):
@@ -608,7 +640,9 @@ def quote(store, req):
         for name, url, _f in jobs:
             r = res.get(name)
             if isinstance(r, dict):
-                offers.append({'src': name, 'kind': 'ltl', 'price': round(r['price'] + unload), 'base': round(r['price']), 'unload': round(unload), 'door': bool(r.get('door')),
+                ins = round(r.get('ins') or 0)    # страхование перевозчика (входит в его цену) — берётся вместо своего
+                offers.append({'src': name, 'kind': 'ltl', 'price': round(r['price'] + unload), 'base': round(r['price'] - ins), 'ins': ins,
+                               'unload': round(unload), 'door': bool(r.get('door')),
                                'days': r.get('days'), 'complete': True, 'at': at, 'url': url,
                                'note': r.get('note', '') + ('; + разгрузка по тарифам программы' if unload else '')})
             else:
