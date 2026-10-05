@@ -5,6 +5,11 @@ on:
     branches: ['**']
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Выпустить релиз v<версия из app/version.py> с EXE, комплектом и патчем'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -316,10 +321,21 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Версия программы
+        id: ver
+        shell: pwsh
+        run: |
+          $ver = [regex]::Match((Get-Content -Raw 'app\version.py'), "VERSION = '([^']+)'").Groups[1].Value
+          "v=$ver" >> $env:GITHUB_OUTPUT
+
+      # по тегу v* или ручным запуском с «release» — тег ставится на собранный коммит
       - name: Публикация в релиз
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release)
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.ver.outputs.v) }}
+          target_commitish: ${{ github.sha }}
+          name: Конструктор КП ${{ steps.ver.outputs.v }}
           files: |
             dist/${{ matrix.exe }}.exe
             dist/${{ matrix.exe }}.zip
