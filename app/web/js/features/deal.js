@@ -700,13 +700,35 @@ function dlResult(c){
         <dt>Выручка без НДС</dt><dd>${dlRub0(c.R)}</dd>
         <dt>Себестоимость с финансированием</dt><dd>${dlRub0(r.Ctot)}</dd>
         <dt>в т. ч. финансирование</dt><dd>${dlRub0(c.F)}</dd>
-        <dt>НДС к доплате</dt><dd>${dlRub0(r.payable)}</dd>
+        <dt>НДС к уплате в бюджет${dlQ('НДС с продажи минус НДС к вычету: в цене российских поставщиков, ввозной на таможне, в доставке и услугах в России, прочий. Разбивка — ниже и в шаге «Деньги и налог».')}</dt><dd>${unk?`${dlRub0(hi.payable)} … ${dlRub0(lo.payable)}`:dlRub0(r.payable)}</dd>
         ${r.K>0?`<dt>Прочие расходы (наличные)</dt><dd>${dlRub0(r.K)}${r.K!==r.X?`<small>на руки ${dlRub0(r.X)}</small>`:''}</dd>`:''}
         <dt>Налог на прибыль${r.K>0?' <small class="muted">— без учёта наличных</small>':''}</dt><dd>${dlRub0(r.tax)}</dd>
         <dt>Деньги на счёте после сделки</dt><dd>${dlRub0(r.cashAfter)}</dd></dl>
+      <details class="dl-more dl-parts" data-more="vat"${dlMore('vat', false)}><summary>Из чего НДС к уплате</summary>${dlVat(c, r)}</details>
       ${parts?`<details class="dl-more dl-parts" data-more="parts"${dlMore('parts', false)}><summary>Из чего себестоимость</summary><dl class="dl-dl">${parts}</dl></details>`:''}
       ${c.warn.length?`<ul class="dl-warn">${c.warn.map(w=>`<li class="${w.bad?'bad':''}">${esc(w.t)}</li>`).join('')}</ul>`:''}</div>
   </div>`;
+}
+
+// НДС к уплате в бюджет: НДС с продажи минус вычеты (поставщики в РФ, ввозной на таможне, услуги в России, прочие)
+function dlVatRows(c, r){
+  const viSum=c.sup.reduce((a,s)=>a+(s.vi||0),0), unk=c.unknown.length>0;
+  const ded=[[`НДС в цене поставщиков`, c.voSup, 'выделенный в счетах российских поставщиков'],
+    [`Ввозной НДС на таможне`, viSum, unk?'нет суммы у поставщика с растаможкой «суммой» — укажите ввозной НДС':'уплачен при ввозе, весь к вычету'],
+    [`НДС в доставке, брокере и услугах в России`, c.voRuSum, 'в ценах перевозчиков, брокера, СВХ'],
+    [`Прочий НДС к вычету`, c.Vo, 'монтаж, ПНР и прочие подрядчики с НДС']].filter(x=>x[1]>0.004 || (x[0].startsWith('Ввозной') && unk));
+  return { viSum, unk, ded };
+}
+function dlVat(c, r, wide){
+  const {ded, unk}=dlVatRows(c, r), lo=c.lo, hi=c.hi;
+  const pay = unk ? `${dlRub0(hi.payable)} … ${dlRub0(lo.payable)}` : dlRub0(r.payable);
+  return `<table class="dl-vat${wide?' wide':''}"><tbody>
+    <tr><td>НДС ${dlIn(c.v)} % с продажи <small>${dlRub0(c.S)} × ${dlIn(c.v)} / ${dlIn(100+c.v)}</small></td><td class="num">${dlRub0(c.VATs)}</td></tr>
+    ${ded.map(([t,v,h])=>`<tr class="ded"><td>− ${esc(t)}${h?` <small>${esc(h)}</small>`:''}</td><td class="num">${v>0.004?'−'+dlRub0(v):'?'}</td></tr>`).join('')}
+    <tr class="sum"><td>Итого НДС к вычету</td><td class="num">${unk?`${dlRub0(lo.VATin)} … ${dlRub0(hi.VATin)}`:'−'+dlRub0(r.VATin)}</td></tr>
+    <tr class="tot"><td><b>НДС к уплате в бюджет</b></td><td class="num"><b>${pay}</b></td></tr>
+    ${!unk&&r.excess>0.5?`<tr class="ex"><td>Вычеты больше НДС с продажи — к возмещению из бюджета <small>в остаток денег не включается</small></td><td class="num">${dlRub0(r.excess)}</td></tr>`:''}
+  </tbody></table>`;
 }
 
 function dealRender(force){
@@ -762,7 +784,8 @@ function dealRenderIn(dlg){
       ${dlField('Стоимость денег', 'money', {calc:c, unit:'% в месяц', auto:kp.moneyAuto, autoLabel:keyT, autoTitle:DL.key?`Ключевая ставка ЦБ РФ ${dlIn(DL.key.rate)} % с ${DL.key.date} + ${DL_KEY_SPREAD} п.п. годовых, делённое на 12`:(DL.keyErr?'Ключевая ставка ЦБ недоступна: '+DL.keyErr:''),
         hint:DL.key?`Ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD} п.п. = ${dlIn(DL.key.rate+DL_KEY_SPREAD)} % годовых → ${dlIn((DL.key.rate+DL_KEY_SPREAD)/12)} % в месяц`:'Процент в месяц на деньги, вложенные до оплаты заказчика',
         q:'Сколько стоят деньги, вложенные в сделку до оплаты заказчика: кредит или упущенный доход. По умолчанию — ключевая ставка ЦБ + 3 п.п. в год.'})}
-      ${dlField('Налог на прибыль', 'tax', {calc:c, unit:'%', hint:'С 2025 года — 25 % (ст. 284 НК РФ)', q:'Считается с прибыли после всех расходов, включая финансирование. Проценты по кредиту уменьшают налог; если «стоимость денег» — упущенный доход на свои деньги, налоговая её не учитывает, и налог будет немного больше.'})}</div>`, '', ['Итого финансирование и налог', c.F+(c.base||c.lo).tax, `финансирование ${dlRub0(c.F)} + налог на прибыль ${dlRub0((c.base||c.lo).tax)}`], 'money')}
+      ${dlField('Налог на прибыль', 'tax', {calc:c, unit:'%', hint:'С 2025 года — 25 % (ст. 284 НК РФ)', q:'Считается с прибыли после всех расходов, включая финансирование. Проценты по кредиту уменьшают налог; если «стоимость денег» — упущенный доход на свои деньги, налоговая её не учитывает, и налог будет немного больше.'})}</div>
+      <div class="dl-vatsec"><h5>НДС к уплате${dlQ('НДС с продажи минус весь НДС к вычету по сделке. Ставка НДС продажи — из КП. Ввозной НДС платится на таможне и целиком идёт к вычету, поэтому на прибыль не влияет — только на деньги в обороте.')}</h5>${dlVat(c, c.base||c.lo, true)}</div>`, '', ['Итого финансирование и налог', c.F+(c.base||c.lo).tax, `финансирование ${dlRub0(c.F)} + налог на прибыль ${dlRub0((c.base||c.lo).tax)} · НДС к уплате ${c.unknown.length?`${dlRub0(c.hi.payable)} … ${dlRub0(c.lo.payable)}`:dlRub0((c.base||c.lo).payable)}`], 'money')}
     ${dlSchedule(c, 0)}
     <div class="dl-foot"><span class="muted">Пересчёт — сразу при вводе. Закупка сохраняется в КП и каталоге.</span></div>
   </div><aside class="dl-side">${dlResult(c)}</aside></div>`);
