@@ -36,8 +36,12 @@ GENERAL = {'', 'other', 'comp_screw', 'comp_piston'}
 NUM = r'(\d+(?:[  ]\d{3})*(?:[.,]\d+)?)'
 UNIT_RX = {
     'м³/мин': r'м[³3]\s*/\s*мин', 'л/мин': r'л\s*/\s*мин', 'кВт': r'квт', 'бар': r'(бар|атм|кгс)', 'л': r'л(?![а-я])',
-    'кг': r'кг', 'дБ(А)': r'дб', 'мм': r'мм', '%': r'%', 'л/ч': r'л\s*/\s*ч', 'моточасов': r'(моточас|ч(?![а-я]))',
+    'м³/ч': r'м[³3]\s*/\s*ч(?:ас)?(?![а-я])', 'кг': r'кг', 'дБ(А)': r'дб', 'мм': r'мм', '%': r'%', 'л/ч': r'л\s*/\s*ч', 'моточасов': r'(моточас|ч(?![а-я]))',
 }
+
+
+CONVERT = {'м³/мин': (('л/мин', 0.001), ('м³/ч', 1 / 60)), 'л/мин': (('м³/мин', 1000), ('м³/ч', 1000 / 60)),
+           'м³/ч': (('м³/мин', 60), ('л/мин', 0.06))}
 
 
 def _num(s):
@@ -58,16 +62,25 @@ def parse_num(text, unit):
             m = re.search(NUM + r'\s*' + rx, t)
             if m:
                 return _clean(_num(m.group(1)))
-        if unit == 'м³/мин':
-            m = re.search(NUM + r'\s*' + UNIT_RX['л/мин'], t)
+        for src, k in CONVERT.get(unit, ()):      # другая единица той же величины: л/мин ↔ м³/мин ↔ м³/ч
+            m = re.search(NUM + r'\s*' + UNIT_RX[src], t)
             if m:
-                return _clean(_num(m.group(1)) / 1000)
+                return _clean(round(_num(m.group(1)) * k, 3))
     m = re.search(NUM, t)
     return _clean(_num(m.group(1))) if m else None
 
 
+def _canon(v):
+    return re.sub(r'[\s°c]', '', v.lower().replace('−', '-').replace('–', '-'))
+
+
 def parse_text(text, f):
     v = re.sub(r'\s+', ' ', str(text or '')).strip()
+    if f.get('key') == 'oilFree' and f.get('values') == ['Да', 'Нет']:     # «Тип компрессора: Безмасляный / Масляный»
+        return 'Да' if re.search(r'безмасл|oil[- ]?free|класс 0', v, re.I) else 'Нет' if re.search(r'масл', v, re.I) else ''
+    for x in f.get('values') or []:      # значение из списка категории: «-40 °C» → «−40»
+        if isinstance(x, str) and _canon(x) and _canon(x) == _canon(v):
+            return x
     if f.get('key') == 'voltage':
         m = re.search(r'(\d{3})\s*в\b', v.lower())
         return m.group(1) if m else ''
@@ -141,12 +154,16 @@ def fill_attrs(doc, t, a):
         k, rx = f.get('key'), f.get('find')
         if not k or not rx or a.get(k) not in (None, ''):
             continue
-        for rk, rv in rows:
+        ur = UNIT_RX.get(f.get('unit')) if f.get('num') else None
+        # сначала строки в единицах поля («1,7 м³/мин» раньше «100 м³/ч»), затем остальные — с пересчётом
+        for rk, rv in sorted(rows, key=lambda r: 0 if ur and re.search(r'\d\s*' + ur, r[1].lower()) else 1):
             try:
                 if not re.search(rx, rk, re.I):
                     continue
             except re.error:
                 break
+            if f.get('num') and re.search(r'(?i)снижени|уменьшени', rv):    # «снижение уровня шума на 8 дБ» — не значение
+                continue
             v = parse_num(rv, f.get('unit')) if f.get('num') else parse_text(rv, f)
             if v not in (None, ''):
                 a[k] = v

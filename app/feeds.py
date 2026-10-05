@@ -15,6 +15,7 @@
   • Журнал — kv «feedlog:<id>»: последние 30 загрузок и проверок (что добавлено, изменения РРЦ и наличия).
 """
 import hashlib
+import html as html_mod
 import json
 import re
 import struct
@@ -125,6 +126,7 @@ def fetch(url):
 
 
 PAGE_MAX = 3 * 1024 * 1024
+PAGE_V = 3                              # версия разбора страницы: при смене кэш перечитывается
 PAGE_DAYS = 30                          # описание со страницы товара запоминается на 30 дней
 _PAGE_SEM = threading.Semaphore(3)      # не больше 3 страниц сайта одновременно
 
@@ -167,14 +169,25 @@ def page_desc(html):
         for m in re.finditer(rx, html, re.I):
             if m.group(1).lower() in ('meta', 'link'):
                 continue
-            text = _html_text(_inner_html(html, m))
+            text = _no_sales(_html_text(_inner_html(html, m)))
             if len(text) >= 40:
                 return text
     return ''
 
 
+SALES_RX = (r'(?i)tel:|\b8[\s-]?800\b|\+7[\s(]|\b8[\s-]?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}\b|оставьте заявку|'
+            r'обратн\S* связ|свяжутся с\s*вами|наши (специалисты|менеджеры)|чтобы купить|купить .{0,60}\bв\s+(тд|торгов)|'
+            r'@|https?://|www\.|\.(ru|org|com|by)\b')
+
+
+def _no_sales(text):
+    """Абзацы-призывы сайта поставщика («Чтобы купить … в ТД …, оставьте заявку по телефону …») в КП не нужны."""
+    return '\n'.join(x for x in text.split('\n') if not re.search(SALES_RX, x))
+
+
 IMG_RX = r'(?:https?://[^"\'\s<>()/]+)?/upload/(?:iblock|medialibrary)/[^"\'\s<>()]+?\.(?:jpe?g|png|webp)'
-APPLY_RX = r'применяемост|применимост|подходит (?:для|к)|совместим|для моделей|применяется (?:в|для|на)'
+APPLY_RX = (r'применяемост|применимост|подходит (?:для|к)|совместим|для моделей|применяется (?:в|для|на)|'
+            r'^модел\S*\s+(?:компрессор|оборудован|осушител|техник)')
 
 
 def page_images(html, url, limit=8):
@@ -195,6 +208,10 @@ def page_images(html, url, limit=8):
     m = re.search(r'<meta[^>]+property\s*=\s*["\']og:image["\'][^>]+content\s*=\s*["\']([^"\']+)', html, re.I)
     if m:
         add(m.group(1))
+    for m in re.finditer(r'<a\b[^>]*\bdata-fancybox\s*=\s*["\']gallery["\'][^>]*>', html, re.I):   # галерея Аспро / Битрикс
+        a = re.search(r'\bhref\s*=\s*["\']([^"\']+)', m.group(0), re.I)
+        if a and re.search(IMG_RX + r'$', a.group(1), re.I):
+            add(a.group(1))
     h1 = re.search(r'<h1\b', html, re.I)
     start = h1.start() if h1 else 0
     end = len(html)
@@ -209,9 +226,48 @@ def page_images(html, url, limit=8):
     return out[:limit]
 
 
-def page_props(html):
-    """Пары «название — значение» со страницы: таблицы, dt/dd и блоки свойств Битрикса (…name/…value)."""
+def _unesc(v):
+    return re.sub(r'\s+', ' ', html_mod.unescape(html_mod.unescape(v or ''))).strip()
+
+
+def _schema_props(html):
+    """Свойства schema.org (itemprop="additionalProperty"): <meta itemprop="name|value" content> или текст элементов."""
     out = []
+    for m in re.finditer(r'<(\w+)\b[^>]*\bitemprop\s*=\s*["\']additionalProperty["\'][^>]*>', html, re.I):
+        block = _inner_html(html, m)[:4000]
+        kv = {}
+        for nm in ('name', 'value'):
+            x = re.search(r'<meta\b[^>]*\bitemprop\s*=\s*["\']%s["\'][^>]*\bcontent\s*=\s*"([^"]*)"' % nm, block, re.I) or \
+                re.search(r'<(\w+)\b[^>]*\bitemprop\s*=\s*["\']%s["\'][^>]*>(.*?)</\1>' % nm, block, re.I | re.S)
+            if x:
+                kv[nm] = _unesc(re.sub(r'<[^>]+>', ' ', x.group(x.lastindex)))
+        k, v = (kv.get('name') or '').strip(' :'), kv.get('value') or ''
+        if k and v:
+            out.append([k, v])
+    return out
+
+
+def page_crumbs(html):
+    """Раздел товара на сайте по «хлебным крошкам» (schema.org BreadcrumbList): звенья-ссылки без «Главная» и «Каталог»
+    (последнее звено — сам товар — ссылкой не бывает)."""
+    m = re.search(r'<(\w+)\b[^>]*\bitemtype\s*=\s*["\'][^"\']*BreadcrumbList["\'][^>]*>', html, re.I)
+    if not m:
+        return ''
+    names = []
+    for it in re.split(r'(?=<\w+\b[^>]*\bitemprop\s*=\s*["\']itemListElement["\'])', _inner_html(html, m))[1:]:
+        x = re.search(r'<a\b[^>]*\bhref[^>]*>.*?\bitemprop\s*=\s*["\']name["\'][^>]*>(.*?)</', it, re.I | re.S)
+        name = _unesc(re.sub(r'<[^>]+>', '', x.group(1))) if x else ''
+        if name and not re.match(r'(?i)^(главная|каталог|home)$', name):
+            names.append(name)
+    return ' / '.join(names)[:300]
+
+
+def page_props(html):
+    """Пары «название — значение» со страницы: свойства schema.org, иначе таблицы, dt/dd и блоки свойств Битрикса."""
+    out = _schema_props(html)
+    if out:
+        return out[:60]
+    html = re.sub(r'(?is)<div\b[^>]*\bbasket_props_block\b.*?</table>', '', html)     # скрытый выбор свойств корзины
     pats = (r'<tr\b[^>]*>\s*<t[dh]\b[^>]*>(.*?)</t[dh]>\s*<td\b[^>]*>(.*?)</td>',
             r'<dt\b[^>]*>(.*?)</dt>\s*<dd\b[^>]*>(.*?)</dd>',
             r'class\s*=\s*["\'][^"\']*(?:prop|char|param)[^"\']*(?:name|title)[^"\']*["\'][^>]*>(.*?)</\w+>.{0,400}?'
@@ -245,7 +301,8 @@ def page_apply(html, props):
 
 def page_info(html, url):
     props = page_props(html)
-    return {'t': page_desc(html), 'imgs': page_images(html, url), 'props': props, 'apply': page_apply(html, props), 'v': 2}
+    return {'t': page_desc(html), 'imgs': page_images(html, url), 'props': props, 'apply': page_apply(html, props),
+            'crumbs': page_crumbs(html), 'v': PAGE_V}
 
 
 def _page_getter(store):
@@ -258,7 +315,7 @@ def _page_getter(store):
             return {}
         with lock:
             hit = cache.get(url)
-        if hit and hit.get('v') == 2:
+        if hit and hit.get('v') == PAGE_V:
             try:
                 if (today - date.fromisoformat(hit['at'])).days < PAGE_DAYS:
                     return hit
@@ -282,7 +339,8 @@ def _page_getter(store):
 
 
 UNIT_ALIAS = {'литров': 'л', 'литра': 'л', 'литр': 'л', 'л.': 'л', 'кг.': 'кг', 'квт': 'кВт', 'вт': 'Вт', 'в': 'В', 'бар': 'бар',
-              'дб': 'дБ', 'дба': 'дБ(А)', 'мм': 'мм', 'см': 'см', 'м': 'м', 'л/мин': 'л/мин', 'м3/мин': 'м³/мин', 'м³/мин': 'м³/мин'}
+              'дб': 'дБ', 'дба': 'дБ(А)', 'мм': 'мм', 'см': 'см', 'м': 'м', 'л/мин': 'л/мин', 'м3/мин': 'м³/мин', 'м³/мин': 'м³/мин',
+              'м3/час': 'м³/ч', 'м3/ч': 'м³/ч', 'м³/час': 'м³/ч', 'м³/ч': 'м³/ч', 'дюйм': 'дюйм'}
 _TR = dict(zip('абвгдеёжзийклмнопрстуфхцчшщъыьэюя', ['a', 'b', 'v', 'g', 'd', 'e', 'e', 'zh', 'z', 'i', 'i', 'k', 'l', 'm', 'n', 'o',
                'p', 'r', 's', 't', 'u', 'f', 'h', 'c', 'ch', 'sh', 'sch', '', 'y', '', 'e', 'yu', 'ya']))
 
@@ -466,17 +524,33 @@ def _sum_txt(k, v, u):
     return '%s %s (%s)' % (_fmt(round(tot, 3)), u, re.sub(r'\s*\(.*$', '', v).replace('х', ' × ').replace('x', ' × '))
 
 
+def _with_unit(v, u):
+    """«1.7» + «м³/мин» → «1,7 м³/мин»; текстовое значение («G1"») — без единицы."""
+    v = re.sub(r'^(-?\d+)\.(\d+)$', r'\1,\2', v.strip())
+    if not u or v.lower().endswith(u.lower()) or not re.match(r'^[-−+]?\d', v):
+        return v
+    return '%s %s' % (v, u)
+
+
+def _row_key(k, u):
+    return re.sub(r'[^а-яёa-z]', '', k.lower())[:14] + '|' + (u or '').lower()
+
+
 def _rows(o):
-    rows = []
+    rows, have = [], set()
     for p in o['params']:
-        v = _sum_txt(p['k'], p['v'], p['u']) or (p['v'] if not p['u'] or p['v'].lower().endswith(p['u'].lower()) else '%s %s' % (p['v'], p['u']))
+        v = _sum_txt(p['k'], p['v'], p['u']) or _with_unit(p['v'], p['u'])
         rows.append({'k': p['k'], 'v': v[:300], 'hl': False})
-    have = {re.sub(r'[^а-яёa-z]', '', r['k'].lower())[:12] for r in rows}
-    for k, v in o.get('props') or []:          # характеристики со страницы товара, которых нет в фиде
-        key = re.sub(r'[^а-яёa-z]', '', k.lower())[:12]
-        if key and key not in have and not re.search(APPLY_RX + r'|артикул|наличи|цена|стоимост|склад|доставк|гаранти|отзыв|рейтинг', k, re.I):
+        have.add(_row_key(p['k'], p['u']))
+    skip = APPLY_RX + r'|артикул|наличи|цена|стоимост|склад|доставк|гаранти|отзыв|рейтинг|бренд'
+    if any(k == 'Для оборудования' for k, v in o.get('extraRows') or []):
+        skip += r'|^применение$'          # у запчасти это строка «Для оборудования»
+    for pk, pv in o.get('props') or []:        # характеристики со страницы товара, которых нет в фиде
+        k, u = _param_name(pk, '')
+        key = _row_key(k, u)
+        if key.split('|')[0] and key not in have and not re.search(skip, pk, re.I):
             have.add(key)
-            rows.append({'k': k[:60], 'v': v[:300], 'hl': False})
+            rows.append({'k': k[:60], 'v': (_sum_txt(k, pv, u) or _with_unit(pv, u))[:300], 'hl': False})
     for k, v in o.get('extraRows') or []:
         if v:
             rows.append({'k': k, 'v': v[:600], 'hl': False})
@@ -555,7 +629,7 @@ PATH_RULES = [
     (r'фильтр\S*\s+сжатого воздуха', 'filter'), (r'циклонн\S*\s+сепаратор', 'filter'),
     (r'винтов\S*\s+(маслозаполн\S*\s+|безмасл\S*\s+)?компрессор|компрессорн\S*\s+станци|лазерн', 'comp_screw'),
     (r'поршнев\S*\s+(маслозаполн\S*\s+|безмасл\S*\s+)?компрессор|медицинск\S*\s+компрессор', 'comp_piston'),
-    (r'спиральн\S*\s+компрессор', 'comp_scroll'),
+    (r'спиральн\S*\s+компрессор|компрессор\S*\s+серии\s+акс', 'comp_scroll'),
 ]
 
 
@@ -571,11 +645,15 @@ def item_cat(o, types):
     явные правила по названию, общее определение по названию (как в каталоге), правила по разделу фида, разделы фида
     по одному. Разделы фида бывают подборками («200 л/мин», «С ресивером») — вперемешку винтовые и поршневые."""
     ids = {t.get('id') for t in types}
-    path = str(o.get('path') or '')
+    path, crumbs = str(o.get('path') or ''), str(o.get('crumbs') or '')
     spare = next((t for t in types if t.get('id') == 'spare'), None)
-    if spare and spare.get('match') and re.search(spare['match'], path, re.I):   # «Запчасти / Для винтовых компрессоров»
-        return 'spare'
+    for p in (crumbs, path):        # «Запчасти и расходные материалы / Для винтовых компрессоров»
+        if p and spare and spare.get('match') and re.search(spare['match'], p, re.I):
+            return 'spare'
     c = _rule(NAME_RULES, o['name'], ids)
+    if c:
+        return c
+    c = _rule(PATH_RULES, crumbs, ids)      # настоящий раздел сайта (страница товара) надёжнее подборок фида
     if c:
         return c
     diesel = re.search(r'дизел', o['name'] + ' ' + path, re.I)
@@ -610,18 +688,58 @@ PISTON_SERIES = r'(?<![\w])(?:LB|LT|LH|OLD|AB|АВ)\d[\w.]*(?:[-/][\w.]+)*'
 
 def spare_info(o):
     """Запасная часть: вид, для какого оборудования, к каким моделям (название, раздел фида, страница товара)."""
-    name, path = o['name'], str(o.get('path') or '')
+    name, path = o['name'], str(o.get('crumbs') or o.get('path') or '')
     last = path.split(' / ')[-1] if path else ''
+    use = next((v for k, v in o.get('props') or [] if re.match(r'(?i)^(применение|назначение|тип оборудования)$', k)), '')
     part = next((v for rx, v in SPARE_PART if re.search(rx, name, re.I)), '') or \
         next((v for rx, v in SPARE_PART if re.search(rx, last, re.I)), '') or 'Прочее'
     series = re.findall(PISTON_SERIES, name)
-    text = path + ' ' + name
+    text = use + ' ' + path + ' ' + name
     for_type = ('Винтовые компрессоры' if re.search(r'винтов|\bВК\s*\d', text, re.I) else
                 'Поршневые компрессоры' if series or re.search(r'поршнев|медицинск|кожух', text, re.I) else
                 'Спиральные компрессоры' if re.search(r'спиральн', text, re.I) else
                 'Магистральные фильтры' if re.search(r'фильтроэлемент|корпус\S*\s+фильтр|фильтр\S*\s+сжатого', text, re.I) else '')
     models = o.get('apply') or ', '.join(dict.fromkeys(series))
-    return {'part': part, 'forType': for_type, 'forModels': models[:600]}
+    svc = next((m.group(1) for k, v in o.get('props') or [] for m in [re.search(r'(?i)замен\S*\D{0,25}?(\d[\d\s]{1,6})\s*(?:моточас|час|ч\b)', v)] if m), '')
+    return {'part': part, 'forType': for_type, 'forModels': models[:600], 'service': int(re.sub(r'\s', '', svc)) if svc else None}
+
+
+CRUMB_ATTRS = [      # признаки, которые видны только по разделу сайта: (категории, раздел/название, поле, значение)
+    (('dryer_ads',), r'холодн\S* регенерац', 'regen', 'Холодная (без нагрева)'),
+    (('dryer_ads',), r'горяч\S* регенерац', 'regen', 'Горячая (с нагревом)'),
+    (('comp_piston', 'comp_scroll', 'comp_screw'), r'безмасл', 'oilFree', 'Да'),
+    (('comp_piston', 'comp_screw'), r'маслозаполн|масл\S+\s+компрессор', 'oilFree', 'Нет'),
+    (('comp_piston', 'comp_scroll'), r'ремен\S* привод', 'drive', 'Ременной'),
+    (('comp_piston', 'comp_scroll'), r'прям\S* привод', 'drive', 'Прямой'),
+    (('comp_screw',), r'частотн|постоянн\S* магнит', 'vsd', 'Да'),
+    (('comp_piston',), r'передвижн', 'execution', 'Передвижной'),
+    (('comp_screw', 'comp_scroll'), r'на ресивере|ресивер\S* \d', 'execution', 'На ресивере'),
+    (('comp_screw', 'comp_scroll'), r'с осушител|осушител\S* встроен', 'dryer', 'Да'),
+]
+
+
+DESC_ATTRS = [       # пустые поля — из описания, когда характеристик на странице нет: (поле, выражение, значение или группа)
+    ('drive', r'ремённ\S*|ременн\S*\s+(?:привод|передач)', 'Ременной'),
+    ('drive', r'прям\S*\s+привод', 'Прямой'),
+    ('voltage', r'напряжени\S*\s+(?:сети\s+)?(220|380|400)\s*в\b', 1),
+    ('receiver', r'ресивер\S*\s+(?:объ[её]мом\s+)?(?:на\s+)?(\d{2,4})\s*(?:л|литр)', 1),
+    ('stages', r'(двухступенчат|одноступенчат)', lambda m: '2' if m.group(1).lower().startswith('дву') else '1'),
+]
+
+
+def desc_attrs(t, text, a):
+    keys = {f.get('key') for f in t.get('fields') or []}
+    for k, rx, v in DESC_ATTRS:
+        m = re.search(rx, text or '', re.I)
+        if k in keys and not a.get(k) and m:
+            a[k] = v(m) if callable(v) else (int(m.group(v)) if k == 'receiver' else m.group(v)) if isinstance(v, int) else v
+
+
+def crumb_attrs(t, text, a):
+    keys = {f.get('key') for f in t.get('fields') or []}
+    for cats, rx, k, v in CRUMB_ATTRS:
+        if t.get('id') in cats and k in keys and not a.get(k) and re.search(rx, text or '', re.I):
+            a[k] = v
 
 
 def model_of(o, maker):
@@ -636,7 +754,8 @@ def model_of(o, maker):
     i = 0
     while i < len(words) and re.fullmatch(r'[А-Яа-яЁёA-Za-z-]+', words[i]) and not (len(words[i]) > 1 and words[i].isupper()):
         i += 1
-    rest = re.split(r'\s+(?:с|со|для|в комплекте)\s+', ' '.join(words[i:]))[0].strip(' ,–-')
+    rest = re.sub(r'^(\([^)]*\)\s*)+', '', ' '.join(words[i:]))     # «Сепаратор (маслоотделитель) для ВК20» — не модель
+    rest = re.split(r'(?:^|\s+)(?:с|со|для|в комплекте)\s+', rest)[0].strip(' ,–-')
     rest = re.sub(r'(\s+[а-яё]+)+$', '', rest)        # «РВ 500/11 вертикальный» → «РВ 500/11»
     return (rest or o['sku'] or '')[:80]
 
@@ -676,7 +795,9 @@ def build(o, f, types, old=None, put_image=None):
     doc['features'] = feats
     groups = doc.get('groups') or []
     gi = next((i for i, g in enumerate(groups) if g.get('feed')), None)
-    if rows and (gi is None or _hash(groups[gi].get('rows') or []) == orig.get('rows')):
+    if gi is not None and not rows and _hash(groups[gi].get('rows') or []) == orig.get('rows'):
+        groups.pop(gi)          # характеристик из фида и со страницы больше нет, вручную таблицу не меняли
+    elif rows and (gi is None or _hash(groups[gi].get('rows') or []) == orig.get('rows')):
         g = {'name': 'Характеристики', 'rows': rows, 'feed': True}
         if gi is None:
             groups.insert(0, g)
@@ -697,9 +818,11 @@ def build(o, f, types, old=None, put_image=None):
     if t:
         catalog_migrate.fill_from_name(doc, a['cat'], a)
         catalog_migrate.fill_attrs(doc, t, a)
+        crumb_attrs(t, (o.get('crumbs') or '') + ' / ' + o['name'], a)
+        desc_attrs(t, desc, a)
     if sp and a['cat'] == 'spare':
         for k, v in (('part', sp['part']), ('forType', sp['forType']), ('forModels', sp['forModels']), ('article', o['sku']),
-                     ('forMaker', maker), ('original', 'Оригинал' if maker and _brand_key(maker) == _brand_key(f.get('maker')) else '')):
+                     ('forMaker', maker), ('service', sp['service']), ('original', 'Оригинал' if maker and _brand_key(maker) == _brand_key(f.get('maker')) else '')):
             if v and not a.get(k):
                 a[k] = v
     doc['attrs'] = a
@@ -708,7 +831,7 @@ def build(o, f, types, old=None, put_image=None):
     if not doc.get('unit'):
         doc['unit'] = 'шт.'
     doc['feed'] = {'id': f['id'], 'oid': o['oid'], 'url': o['url'], 'sku': o['sku'], 'barcode': o['barcode'], 'cat': o['cat'],
-                   'path': o.get('path', ''), 'catAuto': auto, 'orig': new_orig, 'at': today}
+                   'path': o.get('path', ''), 'crumbs': o.get('crumbs', ''), 'catAuto': auto, 'orig': new_orig, 'at': today}
     changes = _price_part(doc, o, f, today)
     if put_image and o['pictures']:
         if not (doc.get('photo') or {}).get('src'):
@@ -799,8 +922,9 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
                 if len(pi.get('t') or '') > len(o['desc']):
                     o['desc'] = pi['t']
                 seen = {urllib.parse.urlsplit(u).path for u in o['pictures']}
-                o['pictures'] = (o['pictures'] + [u for u in pi.get('imgs') or [] if urllib.parse.urlsplit(u).path not in seen])[:9]
-                o['props'], o['apply'] = pi.get('props') or [], pi.get('apply') or ''
+                o['pictures'] = (o['pictures'] + [u for u in pi.get('imgs') or []
+                                                  if urllib.parse.urlsplit(u).path not in seen and u not in ph])[:9]
+                o['props'], o['apply'], o['crumbs'] = pi.get('props') or [], pi.get('apply') or '', pi.get('crumbs') or ''
             doc, ch = build(o, f, types, old, put)
             return o, old, doc, ch
 
