@@ -129,7 +129,7 @@ def fetch(url):
 
 
 PAGE_MAX = 3 * 1024 * 1024
-PAGE_V = 4                              # версия разбора страницы: при смене кэш перечитывается
+PAGE_V = 5                              # версия разбора страницы: при смене кэш перечитывается
 PAGE_DAYS = 30                          # описание со страницы товара запоминается на 30 дней
 _PAGE_SEM = threading.Semaphore(3)      # не больше 3 страниц сайта одновременно
 
@@ -213,47 +213,29 @@ def _no_sales(text):
     return '\n'.join(x for x in text.split('\n') if not re.search(SALES_RX, x))
 
 
-IMG_RX = r'(?:https?://[^"\'\s<>()/]+)?/upload/(?:iblock|medialibrary)/[^"\'\s<>()]+?\.(?:jpe?g|png|webp)'
 APPLY_RX = (r'применяемост|применимост|подходит (?:для|к)|совместим|для моделей|применяется (?:в|для|на)|'
             r'^модел\S*\s+(?:компрессор|оборудован|осушител|техник)')
 
 
 def page_images(html, url, limit=8):
-    """Фото товара со страницы: schema.org (itemprop="image"), og:image и картинки галереи между заголовком <h1>
-    и концом описания — без блоков «похожие товары» ниже."""
+    """Фото товара — только из галереи карточки (шаблон Аспро/Битрикс, как у Remeza): блок
+    div.product-detail-gallery__slider--big, в нём ссылки a.product-detail-gallery__link (data-fancybox="gallery")
+    на оригиналы. Миниатюры (thmb), описание, og:image, баннеры и «похожие товары» не берутся. Нет галереи — нет фото."""
     out = []
-
-    def add(u):
-        u = urllib.parse.urljoin(url, u.replace('&amp;', '&').strip())
-        if '/resize_cache/' in u or re.search(r'(?i)logo|no[_-]?photo|noimage|placeholder|sprite', u):
-            return
-        if u not in out and re.match(r'^https?://', u):
-            out.append(u)
-    for m in re.finditer(r'<[^>]+\bitemprop\s*=\s*["\']image["\'][^>]*>', html, re.I):
-        a = re.search(r'\b(?:content|href|data-src|src)\s*=\s*["\']([^"\']+)', m.group(0), re.I)
-        if a and re.search(r'\.(jpe?g|png|webp)(\?|$)', a.group(1), re.I):
-            add(a.group(1))
-    m = re.search(r'<meta[^>]+property\s*=\s*["\']og:image["\'][^>]+content\s*=\s*["\']([^"\']+)', html, re.I)
+    m = re.search(r'<(div)\b[^>]*\bclass\s*=\s*["\'][^"\']*product-detail-gallery__slider--big[^"\']*["\'][^>]*>', html, re.I)
     if m:
-        add(m.group(1))
-    for m in re.finditer(r'<a\b[^>]*\bdata-fancybox\s*=\s*["\']gallery["\'][^>]*>', html, re.I):   # галерея Аспро / Битрикс
-        a = re.search(r'\bhref\s*=\s*["\']([^"\']+)', m.group(0), re.I)
-        if a and re.search(IMG_RX + r'$', a.group(1), re.I):
-            add(a.group(1))
-    h1 = re.search(r'<h1\b', html, re.I)
-    start = h1.start() if h1 else 0
-    end = len(html)
-    d = re.search(r'\bitemprop\s*=\s*["\']description["\']', html[start:], re.I)
-    if d:
-        end = min(end, start + d.end() + 60000)
-    stop = re.search(r'(?i)похожие товары|с этим товаром|рекомендуем|вы смотрели|аналоги|сопутствующ', html[start:end])
-    if stop:
-        end = start + stop.start()
-    for u in re.findall(IMG_RX, html[start:end], re.I):
-        add(u)
-    if len(out) < 2:    # в карточке только уменьшенные копии Bitrix — берём оригиналы: /resize_cache/iblock/abc/300_300_1/x.jpg → /iblock/abc/x.jpg
-        for p, d, n in re.findall(r'/upload/resize_cache/(iblock|medialibrary)/(\w{3})/\d+_\d+_\d+/([^"\'\s<>()/]+?\.(?:jpe?g|png|webp))', html[start:end], re.I):
-            add('/upload/%s/%s/%s' % (p, d, n))
+        block = _inner_html(html, m)
+        links = re.findall(r'<a\b[^>]*\bclass\s*=\s*["\'][^"\']*product-detail-gallery__link[^>]*>', block, re.I) or \
+            re.findall(r'<a\b[^>]*\bdata-fancybox\s*=\s*["\']gallery["\'][^>]*>', block, re.I)
+    else:   # другой шаблон: только ссылки галереи увеличения
+        links = re.findall(r'<a\b[^>]*\bdata-fancybox\s*=\s*["\']gallery["\'][^>]*>', html, re.I)
+    for tag in links:
+        h = re.search(r'\bhref\s*=\s*["\']([^"\']+)', tag, re.I)
+        if not h or not re.search(r'\.(?:jpe?g|png|webp)(?:\?|$)', h.group(1), re.I):
+            continue
+        u = urllib.parse.urljoin(url, html_mod.unescape(h.group(1)).strip())
+        if '/resize_cache/' not in u and re.match(r'^https?://', u) and u not in out:
+            out.append(u)
     return out[:limit]
 
 
@@ -871,12 +853,14 @@ def build(o, f, types, old=None, put_image=None):
             if ph:
                 doc['photo'] = ph
                 doc['photoSource'] = o['pictures'][0]
+        if doc.get('photoSource'):      # главное фото не повторяется в изображениях
+            doc['gallery'] = [g for g in doc.get('gallery') or [] if g.get('source') != doc['photoSource']]
         have = {g.get('source') for g in doc.get('gallery') or []} | {doc.get('photoSource')}   # главное фото, выбранное в редакторе, — не дублировать
         gal = doc.get('gallery') or []
-        for k, u in enumerate(o['pictures'][1:9]):
+        for k, u in enumerate(o['pictures'][:9]):     # с первого: если главным выбрано другое фото, первое — в изображениях
             if u in have:
                 continue
-            g = put_image(u, t, maker, model, o['name'], 'gallery', 'foto-%d' % (k + 2))
+            g = put_image(u, t, maker, model, o['name'], 'gallery', 'foto-%d' % (k + 1))
             if g:
                 gal.append(dict(g, id=hashlib.md5(u.encode()).hexdigest()[:8], caption='', on=True, source=u))
         doc['gallery'] = gal
@@ -965,6 +949,7 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
                 cid = _cid(f['id'], o['oid'])
                 prev = store.catalog_get(cid)
                 old = json.loads(prev) if prev else None
+            old0 = old      # для сравнения «изменилось ли»: old ниже может быть очищен от лишних фото
             o = dict(o, pictures=[u for u in o['pictures'] if u not in ph])
             if old and ph:              # заглушка «нет фото», загруженная раньше, — заменить фото со страницы
                 if old.get('photoSource') in ph:
@@ -978,12 +963,18 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
                     pstat['noimg'].append(o['name'][:60])
                 if len(pi.get('t') or '') > len(o['desc']):
                     o['desc'] = pi['t']
-                seen = {urllib.parse.urlsplit(u).path for u in o['pictures']}
-                o['pictures'] = (o['pictures'] + [u for u in pi.get('imgs') or []
-                                                  if urllib.parse.urlsplit(u).path not in seen and u not in ph])[:9]
+                gal = [u for u in pi.get('imgs') or [] if u not in ph][:9]
+                if gal:     # фото — только из галереи карточки товара; картинки фида — лишь когда галереи нет
+                    o['pictures'] = gal
+                    if old:     # загруженное раньше не из галереи (фид, описание, og:image) — убрать, если не правили вручную
+                        keep = set(gal)
+                        old = dict(old, gallery=[g for g in old.get('gallery') or [] if not g.get('source') or g['source'] in keep
+                                                 or g.get('caption') or g.get('slot') or g.get('at')])
+                        if old.get('photoSource') and old['photoSource'] not in keep:
+                            old = dict(old, photo=None, photoSource=None)
                 o['props'], o['apply'], o['crumbs'] = pi.get('props') or [], pi.get('apply') or '', pi.get('crumbs') or ''
             doc, ch = build(o, f, types, old, put)
-            return o, old, doc, ch
+            return o, old0, doc, ch
 
         with ThreadPoolExecutor(6) as ex:
             for o, old, doc, ch in ex.map(one, offs):
