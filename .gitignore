@@ -10,3 +10,7 @@ app/Коммерческие предложения/
 app/settings.json
 app/backup/
 backup/
+# базы SQLite и их служебные файлы — не в репозиторий (стартовый каталог — seed/data/catalog и seed/data/img)
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
