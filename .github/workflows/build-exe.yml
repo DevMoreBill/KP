@@ -21,14 +21,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Windows 8.1 / 10 / 11, 64-бит
+          # Windows 8.1 / 10 / 11, 64-бит — сервер отдела; сотрудники работают через браузер (сборки для Windows 7 нет)
           - python: '3.12'
             arch: x64
             exe: 'Конструктор КП'
-          # Windows 7 SP1 и новее, 32- и 64-бит (Python 3.8 — последний с поддержкой Windows 7)
-          - python: '3.8'
-            arch: x86
-            exe: 'Конструктор КП (Windows 7, 32-бит)'
     env:
       KP_EXE_NAME: ${{ matrix.exe }}
       PYTHONUTF8: '1'
