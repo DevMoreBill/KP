@@ -65,6 +65,29 @@ async function addGallery(i, files, slot){
   it.page=true; it._open=true; renderForm(); persist(); toast(n>1?`Добавлено изображений: ${n}`:'Изображение добавлено');
 }
 
+// все фото со страницы товара на сайте поставщика (для позиций из фида — её адрес): сервер скачивает их в изображения позиции;
+// уже добавленные (тот же адрес у поставщика) пропускаются, у позиции без главного фото первое становится главным
+async function galFromPage(i, other){
+  const it=S.items[i], def=(it.feed&&it.feed.url)||it.pageUrl||'';
+  const url=(def && !other) ? def : prompt('Ссылка на страницу товара на сайте поставщика', def||'https://');
+  if (!url || !/^https?:\/\/./.test(url.trim())) return;
+  toast('Загружаю фото со страницы товара…');
+  let r; try{ r=await api('/api/pagephotos', {method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({url:url.trim(), ...imgPlace(it)})}); }
+  catch(e){ return toast(String(e.message||e)); }
+  if (!(it.feed&&it.feed.url)) it.pageUrl=url.trim();
+  it.gallery=it.gallery||[];
+  const have=new Set([it.photoSource, it.photo&&it.photo.src, ...it.gallery.flatMap(g=>[g.source, g.src])].filter(Boolean));
+  let n=0;
+  for (const g of r.imgs||[]){ if (have.has(g.source) || have.has(g.src)) continue; have.add(g.src);
+    if (!(it.photo&&it.photo.src)){ it.photo={src:g.src, w:g.w, h:g.h}; it.photoSource=g.source; }
+    else it.gallery.push({id:uid(), src:g.src, w:g.w, h:g.h, caption:'', slot:'', wide:'', at:'', on:true, source:g.source});
+    n++; }
+  it.page=true; renderForm(); persist();
+  const bad=(r.errors||[]).length;
+  toast(n ? `Добавлено фото со страницы: ${n}${bad?` (не скачались: ${bad})`:''}` : (r.imgs||[]).length ? 'Все фото со страницы уже есть у позиции' : `Фото не скачались${bad?': '+r.errors[0]:''}`);
+}
+
 function pickGallery(i, slot){ const f=$('#filePick'); f.value=''; f.multiple=!slot; f.onchange=()=>{ const L=[...f.files]; f.multiple=false; if(L.length) addGallery(i,L,slot); }; f.click(); }
 
 // ---------- все места для картинок устроены одинаково ----------

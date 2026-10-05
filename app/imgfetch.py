@@ -10,8 +10,12 @@ import ipaddress
 import json
 import socket
 import urllib.parse
+import time
+import urllib.error
 import urllib.request
 
+# сайты поставщиков (Bitrix и др.) на запрос «робота» отвечают 403 или страницей-проверкой — представляемся браузером
+BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 MAX_BYTES = 15 * 1024 * 1024
 TYPES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp')     # SVG не берём: в нём бывают скрипты
 
@@ -63,14 +67,33 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def fetch_image(url):
+def retry(fn, tries=3, pause=1.5):
+    """Повтор при временном отказе сайта: 403/429/5xx (защита от частых запросов), обрыв, тайм-аут."""
+    for k in range(tries):
+        try:
+            return fn()
+        except urllib.error.HTTPError as e:
+            if k == tries - 1 or e.code not in (403, 408, 425, 429, 500, 502, 503, 504):
+                raise
+        except (urllib.error.URLError, OSError):
+            if k == tries - 1:
+                raise
+        time.sleep(pause * (k + 1))
+
+
+def fetch_image(url, referer=None, tries=1):
     _check_url(url)
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'image/*'})
-    with urllib.request.build_opener(_SafeRedirect).open(req, timeout=20) as r:
-        ctype = (r.headers.get('Content-Type') or '').split(';')[0].strip().lower()
-        if ctype not in TYPES:
-            raise ValueError('По ссылке не картинка (нужен PNG, JPEG, GIF, WebP или BMP)')
-        data = r.read(MAX_BYTES + 1)
-    if len(data) > MAX_BYTES:
-        raise ValueError('Картинка больше 15 МБ')
-    return ctype, data
+    hd = {'User-Agent': BROWSER_UA, 'Accept': 'image/avif,image/webp,image/png,image/jpeg,image/*,*/*;q=0.8'}
+    if referer:
+        hd['Referer'] = referer        # защита от «горячих ссылок»: картинку отдают только со своей страницы
+
+    def get():
+        with urllib.request.build_opener(_SafeRedirect).open(urllib.request.Request(url, headers=hd), timeout=20) as r:
+            ctype = (r.headers.get('Content-Type') or '').split(';')[0].strip().lower()
+            if ctype not in TYPES:
+                raise ValueError('По ссылке не картинка (нужен PNG, JPEG, GIF, WebP или BMP)')
+            data = r.read(MAX_BYTES + 1)
+        if len(data) > MAX_BYTES:
+            raise ValueError('Картинка больше 15 МБ')
+        return ctype, data
+    return retry(get, tries)

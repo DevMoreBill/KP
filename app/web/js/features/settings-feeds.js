@@ -82,7 +82,7 @@ async function fdLoadLog(fid){
 function fdLogItem(x){
   const kind=x.kind==='import'?'Загрузка в каталог':'Проверка РРЦ и наличия';
   if (x.error) return `<div class="st-row"><div><b>${esc(fdDate(x.at))} · ${kind}</b><span class="bad-t">${esc(x.error)}</span></div></div>`;
-  const sum=x.kind==='import' ? `добавлено ${x.added}, обновлено ${x.updated}, без изменений ${x.same}` : `проверено ${x.checked}, обновлено ${x.updated}${x.new?`, новых в фиде ${x.new}`:''}`;
+  const ph=x.photos, sum=x.kind==='import' ? `добавлено ${x.added}, обновлено ${x.updated}, без изменений ${x.same}${ph&&ph.items?` · фото: в среднем ${String(ph.avg).replace('.',',')} на позицию, с несколькими фото — ${ph.multi} из ${ph.items}${ph.new?`, скачано новых ${ph.new}`:''}`:''}` : `проверено ${x.checked}, обновлено ${x.updated}${x.new?`, новых в фиде ${x.new}`:''}`;
   const pc=x.price||[], sc=x.stock||[], gone=x.gone||[];
   const tbl=(rows, f)=>`<table class="fd-t"><tbody>${rows.map(f).join('')}</tbody></table>`;
   return `<details class="st-log"><summary><span class="t">${esc(fdDate(x.at))}</span><b>${kind}</b><span class="muted">${esc(sum)}${pc.length?` · РРЦ изменилась: ${pc.length}`:''}${sc.length?` · наличие: ${sc.length}`:''}${gone.length?` · нет в фиде: ${gone.length}`:''}</span><span class="u">${esc(x.by||'')}</span></summary>

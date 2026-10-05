@@ -71,6 +71,7 @@ document.addEventListener('click', async e=>{
     case 'optPreset': { it.options=it.options||[]; const pz=presetsFor(it)[k]; const ix=it.options.findIndex(o=>norm(o.name)===norm(pz.name)); if(ix>=0) it.options.splice(ix,1); else { const c=catCache.find(d=>norm(d.name)===norm(pz.name)); it.options.push(newOpt(it,{...pz, price:c?.price||0, catId:c?.id})); } break; }
     case 'attrsToGroups': { const g=groupsFromAttrs(it); const keep=(it.groups||[]).filter(x=>!g.some(y=>y.name===x.name)); it.groups=[...g,...keep]; if(!it.hint) it.hint=autoHint(it); it.page=true; toast('Таблица характеристик сформирована'); break; }
     case 'galAdd': return pickGallery(i, b.dataset.slot||'');
+    case 'galPage': return galFromPage(i, e.shiftKey);
     case 'galDel': it.gallery.splice(j,1); break;
     case 'galMain': if (!edSetMain(it, j)) return; toast('Главное фото заменено — прежнее перенесено в изображения'); break;
     case 'edit': return openEditor(i, b.dataset.tab);
