@@ -11,7 +11,8 @@
   Деловые Линии (dellinKey — appkey, бесплатно после регистрации на dev.dellin.ru)
       https://api.dellin.ru/v2/calculator.json — сборный груз от адреса до адреса
   КИТ (kitToken — Bearer, личный кабинет tk-kit.ru)
-      https://capi.tk-kit.com/1.1/order/calculate, города — /1.1/tdd/city/get-list (коды КЛАДР)
+      https://capi.tk-kit.com/2.0/order/calculate (тариф 01 «Стандарт», забор и доставка), города — /1.1/tdd/city/get-list
+      и /1.1/tdd/search/by-name; ошибки: 401 — токен, 429 — лимит по токену, 422 — поля
 
 Итог расчёта — максимальное из полных предложений (включая расчёт по тарифам «Настроек») со сноской, откуда цена.
 Ответы сервисов разбираются терпимо к мелким отличиям формата; ошибка сервиса показывается как есть и не мешает остальным.
@@ -269,40 +270,111 @@ def _kit_headers(store):
     return {'Authorization': 'Bearer ' + keys(store).get('kitToken', ''), 'Content-Type': 'application/json'}
 
 
+def _kit_call(store, path, body):
+    """Запрос к KIT.API (POST JSON, токен — Bearer). Ошибки — понятным текстом: 401 — токен, 429 — лимит, 422 — поля."""
+    try:
+        return _http(KIT_BASE + path, data=body, headers=_kit_headers(store), method='POST')
+    except urllib.error.HTTPError as e:
+        try:
+            j = json.loads(e.read().decode('utf-8', 'replace') or 'null')
+        except Exception:
+            j = None
+        if e.code == 401:
+            raise ValueError('КИТ: токен не принят — создайте новый в личном кабинете tk-kit.ru («Разработчикам» → «Получение ключа API»)')
+        if e.code == 429:
+            raise ValueError('КИТ: превышен лимит запросов по токену — повторите позже')
+        if isinstance(j, list):         # ошибки проверки полей: [{"field": …, "message": …}]
+            msg = '; '.join(str(x.get('message') or x) for x in j if isinstance(x, dict))
+        elif isinstance(j, dict):
+            msg = str(j.get('message') or j.get('name') or '')
+        else:
+            msg = ''
+        raise ValueError('КИТ: HTTP %s%s' % (e.code, (' — ' + msg[:300]) if msg else ''))
+
+
+def _kit_row_name(r):
+    return cnorm(r.get('name')) if isinstance(r, dict) else ''
+
+
 def kit_cities(store):
+    """Справочник населённых пунктов КИТ (/1.1/tdd/city/get-list): имя → код. При совпадении имён — город («гор.»)."""
     def load():
-        j = _http(KIT_BASE + '/1.1/tdd/city/get-list', data={}, headers=_kit_headers(store), method='POST')
+        j = _kit_call(store, '/1.1/tdd/city/get-list', {'country_code': 'RU'})
         rows = j if isinstance(j, list) else (_find(j, lambda o: isinstance(o, list) and o and isinstance(o[0], dict) and 'code' in o[0]) or [])
-        out = {}
+        out, city = {}, set()
         for r in rows:
-            n = cnorm(r.get('name'))
-            if n and r.get('code') and n not in out:
+            n, is_city = _kit_row_name(r), str(r.get('type') or '').startswith('гор')
+            if n and r.get('code') and n not in city and (n not in out or is_city):
                 out[n] = r['code']
+                if is_city:
+                    city.add(n)
         return out
     return _dict_cache(store, 'kit', load)
 
 
-def kit_quote(store, frm, to, places, declared):
+def kit_city(store, names):
+    """Код города КИТ: по справочнику, а если там нет — поиском по имени (/1.1/tdd/search/by-name), с запоминанием."""
+    names = names if isinstance(names, (list, tuple)) else [names]
     c = kit_cities(store)
-    (a, fa), (b, tb) = _pick(c, frm), _pick(c, to)
+    for n in names:
+        key = cnorm(n)
+        if not key:
+            continue
+        if key not in c:
+            try:
+                rows = _kit_call(store, '/1.1/tdd/search/by-name', {'title': n})
+            except ValueError as e:
+                if 'токен' in str(e):      # неверный токен — дальше искать бессмысленно
+                    raise
+                continue                    # поиск не ответил — берём следующий (ближайший крупный) город
+            rows = [r for r in (rows if isinstance(rows, list) else []) if _kit_row_name(r) == key and r.get('code')
+                    and str(r.get('country_code') or r.get('country_сode') or 'RU') == 'RU']
+            hit = next((r for r in rows if str(r.get('type') or '').startswith('гор')), rows[0] if rows else None)
+            c[key] = hit['code'] if hit else None
+            store.kv_set('lgdict:kit', dict(store.kv_get('lgdict:kit') or {'at': _now()}, items=c))
+        if c.get(key):
+            return c[key], n
+    return None, names[0] if names else ''
+
+
+KIT_TYPES = {'01': 'Стандарт', '03': 'Экспресс'}
+
+
+def kit_quote(store, frm, to, places, declared):
+    """Расчёт KIT.API /2.0/order/calculate: забор и доставка по адресу (дверь — дверь), тариф «Стандарт» (01).
+    Страхование КИТ (услуги «страхован…» в детализации) из цены вычитается — страховка в расчёте своя, единая."""
+    (a, fa), (b, tb) = kit_city(store, frm), kit_city(store, to)
     if not a or not b:
         raise ValueError('город не найден в справочнике КИТ: %s' % (fa if not a else tb))
-    body = {'city_pickup_code': a, 'city_delivery_code': b, 'declared_price': round(declared or 0), 'confirmation_price': 1,
-            'places': [{'count_place': int(p['qty']), 'height': round(p['h'] * 100), 'width': round(p['w'] * 100), 'length': round(p['l'] * 100),
-                        'weight': round(p['m'] * 1000, 1), 'volume': round(p['l'] * p['w'] * p['h'], 3)} for p in places],
-            'pick_up': 1, 'delivery': 1, 'insurance': 0, 'currency_code': 'RUB'}   # страхование — своё, единое для всех предложений
-    j = _http(KIT_BASE + '/1.1/order/calculate', data=body, headers=_kit_headers(store), method='POST')
-    rec = j[0] if isinstance(j, list) and j else j
-    tariffs = []
-    for name in ('standart', 'economy', 'express'):
-        t = (rec or {}).get(name) if isinstance(rec, dict) else None
-        if isinstance(t, dict) and _num(t.get('cost')):
-            tariffs.append((name, _num(t['cost']), t.get('time')))
-    if not tariffs:
-        raise ValueError('КИТ: в ответе нет стоимости' + ((' — ' + str((rec or {}).get('message'))) if isinstance(rec, dict) and rec.get('message') else ''))
-    name, cost, tm = next((t for t in tariffs if t[0] == 'standart'), tariffs[0])
-    days = int(re.findall(r'\d+', str(tm))[-1]) if tm and re.findall(r'\d+', str(tm)) else None
-    return {'price': round(cost), 'days': days, 'door': True, 'note': 'сборный груз, от адреса до адреса (тариф %s)' % name}
+    units = [p for p in places for _ in range(int(p['qty']))]
+    price = max(1, int(round(declared or 0)))
+    body = {'city_pickup_code': a, 'city_delivery_code': b, 'declared_price': price, 'type': '01',
+            'pick_up': 1, 'delivery': 1, 'currency_code': ['RUB'],
+            'places': [{'count_place': 1, 'length': round(u['l'] * 100, 2), 'width': round(u['w'] * 100, 2),
+                        'height': round(u['h'] * 100, 2), 'weight': round(u['m'] * 1000, 2)} for u in units]}
+    if price >= 50000:                  # от 50 000 ₽ КИТ требует признак документов, подтверждающих стоимость
+        body.update(confirmation_price=1, have_doc=1)
+    j = _kit_call(store, '/2.0/order/calculate', body)
+    found = {}
+    for el in (j if isinstance(j, list) else [j]):
+        if isinstance(el, dict):
+            for k, v in el.items():
+                if isinstance(v, dict) and _num(v.get('cost')) is not None:
+                    found[str(k)] = v
+    if not found:
+        msg = ''
+        if isinstance(j, dict):
+            msg = j.get('message') or '; '.join(str(x) for x in (j.get('messages_log') or []))
+        raise ValueError('КИТ: в ответе нет стоимости' + (' — ' + str(msg)[:300] if msg else ''))
+    code = '01' if '01' in found else sorted(found)[0]
+    t = found[code]
+    ins = sum(_num(x.get('price')) or 0 for x in (t.get('detail') or []) if isinstance(x, dict) and re.search(r'страхов', str(x.get('name') or ''), re.I))
+    days = re.findall(r'\d+', str(t.get('time') or ''))
+    first = lambda v: v[0] if isinstance(v, (list, tuple)) else v
+    via = '' if (fa, tb) == (first(frm), first(to)) else ' (%s → %s)' % (fa, tb)
+    return {'price': round(_num(t['cost']) - ins), 'days': int(days[-1]) if days else None, 'door': True,
+            'note': 'дверь в дверь (забор и доставка КИТ), тариф «%s»%s%s' % (t.get('name') or KIT_TYPES.get(code, code), via,
+                                                                             ', без страхования КИТ — своё, единое' if ins else '')}
 
 
 # ---------------------------------------------------------------- СДЭК (API v2, OAuth client_credentials)

@@ -130,7 +130,7 @@ kp.spec                   настройки PyInstaller
 Цены перевозчиков (`app/logistics_api.py`, `/api/logistics/quote`): ATI.SU «Средние ставки»
 (`api.ati.su/priceline/license/v2/all_directions` и `average_prices`, ключ `atiToken`, платная лицензия) — отдельная
 машина, верхняя граница (`UpperPrice`) за рейс или ₽/км × км; ПЭК (открытый калькулятор `calc.pecom.ru`, без ключа),
-Деловые Линии (`api.dellin.ru/v2/calculator.json`, `dellinKey`), КИТ (`capi.tk-kit.com/1.1/order/calculate`, `kitToken`), СДЭК (`api.cdek.ru/v2`: OAuth `cdekId` + `cdekSecret`,
+Деловые Линии (`api.dellin.ru/v2/calculator.json`, `dellinKey`), КИТ (`capi.tk-kit.com/2.0/order/calculate`, тариф `01`, `pick_up`/`delivery` = 1, города — `/1.1/tdd/city/get-list` и `/1.1/tdd/search/by-name`, `kitToken` — Bearer), СДЭК (`api.cdek.ru/v2`: OAuth `cdekId` + `cdekSecret`,
 `calculator/tarifflist`, только тарифы «дверь — дверь», `delivery_mode` 1), Возовоз (`vozovoz.ru/api/`, объект `price`,
 `vozovozToken`), Энергия (открытый `api2.nrg-tk.ru/v2/price`, без ключа; забор и доставка прибавляются) —
 сборный груз, если места не больше 3 т и 6 × 2,4 × 2,5 м. Итог — максимальное полное предложение (вместе с расчётом по
