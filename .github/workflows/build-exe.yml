@@ -296,8 +296,10 @@ jobs:
           Compress-Archive -Path "$pt\*" -DestinationPath 'dist\Обновление КП.zip' -Force
           Write-Host ("Патч $ver" + ': ' + [math]::Round((Get-Item 'dist\Обновление КП.zip').Length / 1KB) + ' КБ')
 
+      # артефакты — для удобства; при исчерпанной квоте хранилища сборка не падает, выпуск всё равно уходит в релиз
       - uses: actions/upload-artifact@v4
         if: matrix.arch == 'x64'
+        continue-on-error: true
         with:
           name: Обновление КП (патч)
           path: dist/Обновление КП.zip
@@ -305,6 +307,7 @@ jobs:
           retention-days: 7       # артефакты каждой сборки — неделю (квота хранилища); выпуски — в релизах по тегу v*
 
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: ${{ matrix.exe }}
           path: |
