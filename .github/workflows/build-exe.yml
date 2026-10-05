@@ -324,15 +324,38 @@ jobs:
           $ver = [regex]::Match((Get-Content -Raw 'app\version.py'), "VERSION = '([^']+)'").Groups[1].Value
           "v=$ver" >> $env:GITHUB_OUTPUT
 
-      # по тегу v* или ручным запуском с «release» — тег ставится на собранный коммит
-      - name: Публикация в релиз
+      # по тегу v* или ручным запуском с «release» — тег ставится на собранный коммит.
+      # GitHub заменяет кириллицу в именах файлов релиза на «default», поэтому имена — латиницей.
+      - name: Файлы релиза
+        id: rel
         if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ver = '${{ steps.ver.outputs.v }}'
+          $tag = if ('${{ github.ref }}'.StartsWith('refs/tags/')) { '${{ github.ref_name }}' } else { "v$ver" }
+          New-Item -ItemType Directory -Force -Path rel | Out-Null
+          Copy-Item -LiteralPath "dist\$env:KP_EXE_NAME.exe" -Destination "rel\KP-Konstruktor-$ver-win64.exe"
+          Copy-Item -LiteralPath "dist\$env:KP_EXE_NAME.zip" -Destination "rel\KP-Konstruktor-$ver-win64.zip"
+          Copy-Item -LiteralPath 'dist\Обновление КП.zip' -Destination "rel\KP-Obnovlenie-$ver.zip"
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          # файлы прежних выпусков с кириллицей в имени (стали default.*) — убрать
+          $names = gh release view $tag --json assets --jq '.assets[].name' 2>$null
+          foreach ($n in @($names)) { if ($n -like 'default*') { gh release delete-asset $tag $n --yes } }
+          $global:LASTEXITCODE = 0
+
+      - name: Публикация в релиз
+        if: steps.rel.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.ver.outputs.v) }}
+          tag_name: ${{ steps.rel.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: Конструктор КП ${{ steps.ver.outputs.v }}
-          files: |
-            dist/${{ matrix.exe }}.exe
-            dist/${{ matrix.exe }}.zip
-            dist/Обновление КП.zip
+          body: |
+            Конструктор КП ${{ steps.ver.outputs.v }} — Windows 8.1 / 10 / 11, 64-бит (сервер отдела; сотрудники работают в браузере).
+            • KP-Konstruktor-${{ steps.ver.outputs.v }}-win64.exe — программа («Конструктор КП.exe»).
+            • KP-Konstruktor-${{ steps.ver.outputs.v }}-win64.zip — комплект: EXE, установка в C:\KP, сервер отдела, инструкция.
+            • KP-Obnovlenie-${{ steps.ver.outputs.v }}.zip — патч «Обновление КП» для уже установленной программы (запустить «Установить обновление.cmd»).
+            Что нового — «?» → «История версий» в программе.
+          files: rel/*
