@@ -93,7 +93,7 @@ def feed_save(store, f):
     disc = _num(f.get('discount'))
     rec = dict(old, id=fid, name=str(f.get('name') or old.get('name') or fid).strip()[:80], url=url,
                maker=str(f.get('maker') or '').strip()[:60], discount=disc if disc and 0 < disc < 100 else None,
-               auto=f.get('auto', True) is not False, cats=_cats_ok(f.get('cats')) if isinstance(f.get('cats'), dict) else old.get('cats') or {},
+               auto=f.get('auto', True) is not False, pageDesc=f.get('pageDesc', old.get('pageDesc', True)) is not False, cats=_cats_ok(f.get('cats')) if isinstance(f.get('cats'), dict) else old.get('cats') or {},
                supplier=str(f.get('supplier') or old.get('supplier') or '')[:64], updatedAt=_now())
     items = [x for x in items if x.get('id') != fid] + [rec]
     store.kv_set(KV, {'items': items})
@@ -122,6 +122,87 @@ def fetch(url):
     if len(data) > MAX_FEED:
         raise ValueError('Фид больше 150 МБ')
     return data
+
+
+PAGE_MAX = 3 * 1024 * 1024
+PAGE_DAYS = 30                          # описание со страницы товара запоминается на 30 дней
+_PAGE_SEM = threading.Semaphore(3)      # не больше 3 страниц сайта одновременно
+
+
+def page_html(url):
+    """Страница товара на сайте поставщика (та же защита, что у фида и фото)."""
+    imgfetch._check_url(url)
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (KP-Pnevmotekh feed)', 'Accept': 'text/html,*/*'})
+    with _PAGE_SEM:
+        with urllib.request.build_opener(imgfetch._SafeRedirect).open(req, timeout=25) as r:
+            ctype = r.headers.get('Content-Type') or ''
+            data = r.read(PAGE_MAX)
+    m = re.search(r'charset=([\w-]+)', ctype, re.I) or re.search(rb'<meta[^>]+charset=["\']?([\w-]+)', data[:4096], re.I)
+    cs = m.group(1) if m else 'utf-8'
+    cs = cs.decode('ascii', 'ignore') if isinstance(cs, bytes) else cs
+    try:
+        return data.decode(cs)
+    except (LookupError, UnicodeDecodeError):
+        try:
+            return data.decode('utf-8')
+        except UnicodeDecodeError:
+            return data.decode('cp1251', errors='replace')
+
+
+def _inner_html(html, m):
+    """Содержимое элемента, открывающий тег которого найден m (group(1) — имя тега): с учётом вложенных таких же тегов."""
+    tag, depth, pos = m.group(1).lower(), 1, m.end()
+    for t in re.finditer(r'<(/?)%s\b[^>]*>' % re.escape(tag), html[pos:], re.I):
+        depth += -1 if t.group(1) else (0 if t.group(0).endswith('/>') else 1)
+        if depth == 0:
+            return html[pos:pos + t.start()]
+    return html[pos:pos + 20000]
+
+
+def page_desc(html):
+    """Описание товара со страницы: элемент itemprop="description" (Битрикс: div.detail-text-wrap)."""
+    html = re.sub(r'(?is)<(script|style|noscript)\b.*?</\1\s*>', '', html or '')
+    for rx in (r'<(\w+)\b[^>]*\bitemprop\s*=\s*["\']description["\'][^>]*>',
+               r'<(\w+)\b[^>]*\bclass\s*=\s*["\'][^"\']*\bdetail-text-wrap\b[^"\']*["\'][^>]*>'):
+        for m in re.finditer(rx, html, re.I):
+            if m.group(1).lower() in ('meta', 'link'):
+                continue
+            text = _html_text(_inner_html(html, m))
+            if len(text) >= 40:
+                return text
+    return ''
+
+
+def _desc_getter(store):
+    """Описания со страниц товаров с кэшем в kv «feeddesc» {адрес: {t, at}}; ошибки — в список."""
+    cache = store.kv_get('feeddesc') or {}
+    lock, errors, today = threading.Lock(), [], date.today()
+
+    def get(url):
+        if not url:
+            return ''
+        with lock:
+            hit = cache.get(url)
+        if hit:
+            try:
+                if (today - date.fromisoformat(hit['at'])).days < PAGE_DAYS:
+                    return hit.get('t') or ''
+            except (KeyError, ValueError):
+                pass
+        try:
+            text = page_desc(page_html(url))
+        except Exception as e:
+            with lock:
+                errors.append('%s: %s' % (url[-80:], str(e)[:120]))
+            return (hit or {}).get('t') or ''
+        with lock:
+            cache[url] = {'t': text, 'at': today.isoformat()}
+        return text
+
+    def save():
+        with lock:
+            store.kv_set('feeddesc', dict(list(cache.items())[-30000:]))
+    return get, save, errors
 
 
 UNIT_ALIAS = {'литров': 'л', 'литра': 'л', 'литр': 'л', 'л.': 'л', 'кг.': 'кг', 'квт': 'кВт', 'вт': 'Вт', 'в': 'В', 'бар': 'бар',
@@ -536,6 +617,7 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
         j['total'] = len(offs)
         existing = {(d.get('feed') or {}).get('oid'): d for d in _feed_docs(store, f['id'])}
         put, save = _image_putter(store, image_store)
+        dget, dsave, derr = _desc_getter(store)
         added, updated, same, price_ch, stock_ch, errors = 0, 0, 0, [], [], []
 
         def one(o):
@@ -544,6 +626,10 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
                 cid = _cid(f['id'], o['oid'])
                 prev = store.catalog_get(cid)
                 old = json.loads(prev) if prev else None
+            if f.get('pageDesc', True) and o['url']:
+                d = dget(o['url'])
+                if len(d) > len(o['desc']):
+                    o = dict(o, desc=d)
             doc, ch = build(o, f, types, old, put)
             return o, old, doc, ch
 
@@ -564,6 +650,9 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
                     errors.append('%s: %s' % (o['name'][:60], e))
                 j['done'] += 1
         save()
+        dsave()
+        if derr:
+            errors.append('Описание со страницы товара не загрузилось, позиций: %d (первая: %s)' % (len(derr), derr[0]))
         res = {'at': _now(), 'kind': 'import', 'by': by, 'total': len(offs), 'added': added, 'updated': updated, 'same': same,
                'price': price_ch[:300], 'stock': stock_ch[:300], 'errors': errors[:50]}
         _log_add(store, f['id'], res)
