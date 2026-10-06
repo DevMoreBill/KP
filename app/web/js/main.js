@@ -7,6 +7,7 @@
   { $('#srvBtns').hidden=false; $('#btnExit').hidden = SRV.info.mode==='server' || SRV.info.local===false; document.title='Конструктор КП — ПНЕВМОТЕХ';
     if (SRV.info.local===false || SRV.info.mode==='server'){ const st=$('#saved'); if (st) st.insertAdjacentHTML('beforebegin', `<span class="srvtag" title="Общая база отдела">Сервер отдела: ${esc(SRV.info.host||location.hostname)}</span>`); } }
   await authLoad();
+  aiStatusLoad();               // нейросеть в программе — включена ли администратором
   if (AUTH.enabled && !AUTH.user && !AUTH.admin){ authScreen(); return; }       // вход менеджеров по паролю включён
   try{ const st=await api('/api/admin/status'); ADMIN.on=!!st.admin; ADMIN.csrf=st.csrf||''; }catch(e){}   // вход администратора действует и после обновления страницы
   await loadTypes(); await loadClients(); await loadManagers(); await loadTemplates(); await refreshCat(); loadLogos(); loadAppVersion(); uitLoad(); renderForm(); authMenu();

@@ -6,14 +6,14 @@
 const ST = { tab:'stats', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f:{}}, imp:null, chart:'day' };
 
 const ST_TABS = [['stats','Статистика'],['moderation','Модерация'],['delete','Справочники и данные'],['trash','Корзина'],['audit','Журнал действий'],
-  ['backup','Резервные копии'],['logistics','Логистика'],['feeds','Фиды поставщиков'],['templates','Шаблоны и категории'],['keys','Ключи API'],['access','Менеджеры и доступ'],['users','Администраторы'],['security','Пароль и доступ']];
+  ['backup','Резервные копии'],['logistics','Логистика'],['feeds','Фиды поставщиков'],['templates','Шаблоны и категории'],['keys','Ключи API'],['ai','Нейросеть'],['access','Менеджеры и доступ'],['users','Администраторы'],['security','Пароль и доступ']];
 
 const ACT = { login:'Вход в «Настройки»', backup_db:'Копия базы', maintain_db:'Сжатие и проверка базы', purge_images:'Удаление лишних изображений', create_admin:'Новый администратор', edit_admin:'Изменение администратора', delete_admin:'Удаление администратора', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
   admin_request:'Запрос без входа', edit_settings:'Изменение настроек', edit_template:'Изменение шаблона', create_kp:'Создание КП', edit_kp:'Изменение КП',
   create_manager:'Новый менеджер', create_supplier:'Новый поставщик', edit_supplier:'Изменение поставщика', delete_supplier:'Удаление поставщика', edit_customs:'Код ТН ВЭД и пошлина', edit_manager:'Изменение менеджера', create_client:'Новый клиент', edit_client:'Изменение клиента',
   edit_types:'Категории оборудования', submit_edit:'Правка на модерацию', edit_product:'Правка товара', create_product:'Новый товар',
   price_sync:'Цены из КП', approve_edit:'Правка одобрена', reject_edit:'Правка отклонена', rollback_edit:'Откат правки',
-  toggle_moderation:'Режим модерации', toggle_user_login:'Вход менеджеров по паролю', edit_access:'Доступ менеджера', delete_kp:'Удаление КП', delete_catalog:'Удаление товара', delete_manager:'Удаление менеджера',
+  toggle_moderation:'Режим модерации', toggle_user_login:'Вход менеджеров по паролю', edit_ai:'Нейросеть в программе', edit_access:'Доступ менеджера', delete_kp:'Удаление КП', delete_catalog:'Удаление товара', delete_manager:'Удаление менеджера',
   delete_client:'Удаление клиента', restore:'Восстановление из корзины', purge_trash:'Очистка корзины', export_db:'Экспорт базы', import_db:'Импорт базы', export_keys:'Копия ключей API', import_feed:'Загрузка фида в каталог', check_feed:'Проверка РРЦ и наличия по фиду' };
 const ENT = { supplier:'Поставщик', customs:'ТН ВЭД', product:'Товар', catalog:'Товар', kp:'КП', manager:'Менеджер', client:'Клиент', settings:'Настройки', template:'Шаблон',
   types:'Категории', admin:'Администратор', db:'База', trash:'Корзина' };
@@ -77,7 +77,7 @@ function stRender(){
 async function stTab(){
   const m=$('#stMain'); if (!m) return;
   try{ await ({stats:stStats, moderation:stModeration, delete:stDelete, trash:stTrash, audit:stAudit, backup:stBackup,
-    templates:stTemplates, logistics:stLogistics, feeds:stFeeds, keys:stKeys, access:stAccess, users:stUsers, security:stSecurity})[ST.tab](m); }
+    templates:stTemplates, logistics:stLogistics, feeds:stFeeds, keys:stKeys, ai:stAi, access:stAccess, users:stUsers, security:stSecurity})[ST.tab](m); }
   catch(e){ if (ADMIN.on) m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; }
 }
 
@@ -308,6 +308,36 @@ async function stTemplates(m){
 }
 
 async function stKeys(m){ return keysForm(m); }
+
+// ---------- нейросеть в программе (DeepSeek): включение, ключ, модель, проверка, расход
+async function stAi(m, note){
+  const r=await aapi('ai'), u=r.usage||{}, tok=n=>Number(n||0).toLocaleString('ru-RU');
+  m.innerHTML=`<div class="st-card"><div class="row"><p class="sub" style="margin:0">Нейросеть прямо в программе</p><span class="sp"></span>
+      <label class="sw"><input type="checkbox" id="aiOn"${r.enabled?' checked':''}${r.hasKey?'':' disabled'}><span>${r.enabled?'включена':'выключена'}</span></label></div>
+    <p class="muted">${r.enabled?'Менеджеры заполняют карточки оборудования и элементы станций одной кнопкой «✨ Заполнить автоматически» — без чата в браузере. Ручной способ (копировать запрос в любой ИИ-чат) остаётся запасным.'
+      :'Сейчас менеджеры заполняют карточки через любой ИИ-чат в браузере (копировать запрос → вставить ответ). Включите, чтобы программа сама отправляла запрос в DeepSeek.'}</p>
+    ${r.hasKey?'':'<p class="msg warn" style="text-align:left">Сначала укажите ключ API DeepSeek ниже.</p>'}
+    ${note?`<p class="msg${note.err?' err':''}" style="text-align:left">${esc(note.t)}</p>`:''}</div>
+  <div class="st-card"><p class="sub">Подключение</p>
+    <div class="grid g2"><label class="f"><span>Ключ API DeepSeek ${r.hasKey?`<b class="ok-t">задан: ${esc(r.keyMask)}</b>`:''}</span><input type="password" id="aiKey" placeholder="${r.hasKey?'Новый ключ — заменит текущий':'sk-…'}" autocomplete="off"></label>
+      <label class="f"><span>Модель</span><input type="text" id="aiModel" list="aiModels" value="${esc(r.model)}" autocomplete="off"><datalist id="aiModels">${r.models.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}<option value="deepseek/deepseek-chat-v3-0324:free">OpenRouter — DeepSeek V3, бесплатная (с лимитами)</option></datalist></label></div>
+    <details class="more"><summary>Другой сервис с таким же API</summary><label class="f" style="margin-top:8px"><span>Адрес API</span><input type="text" id="aiBase" value="${esc(r.base)}" placeholder="https://api.deepseek.com"></label>
+      <p class="muted">Например OpenRouter — https://openrouter.ai/api/v1 (модели DeepSeek, в т. ч. бесплатные с лимитами; ключ — с openrouter.ai) или своя модель на сервере отдела (Ollama — http не подойдёт, нужен https). Название модели — в поле «Модель».</p></details>
+    <div class="row" style="margin-top:10px"><button class="btn primary" type="button" id="aiSave">Сохранить</button><button class="btn" type="button" id="aiTest"${r.hasKey?'':' disabled'}>Проверить связь</button>
+      ${r.hasKey?'<button class="btn ghost" type="button" id="aiDel">Удалить ключ</button>':''}</div>
+    <p class="muted">Ключ — на platform.deepseek.com (раздел API keys), оплата — пополнением баланса там же. Ключ хранится только на компьютере-сервере и попадает в резервную копию ключей; менеджерам он не виден.</p></div>
+  <div class="st-card"><p class="sub">Расход</p>
+    <p>За ${esc(r.usageMonth)}: запросов <b>${tok(u.requests)}</b>, токенов в запросах <b>${tok(u.tokensIn)}</b>, в ответах <b>${tok(u.tokensOut)}</b>.</p>
+    ${(r.usageAll||[]).length>1?`<p class="muted">${r.usageAll.slice(1).map(x=>`${esc(x.month)}: ${tok(x.requests)} запр., ${tok((x.tokensIn||0)+(x.tokensOut||0))} ток.`).join(' · ')}</p>`:''}
+    <p class="muted">Одна карточка — обычно 3–15 тыс. токенов (больше, если вставлен длинный паспорт или ТЗ).</p></div>`;
+  const save=async(body, msg)=>{ try{ await ajson('ai', body); if (typeof aiStatusLoad==='function') await aiStatusLoad(); stAi(m, {t:msg}); }catch(e){ stAi(m, {t:String(e.message||e), err:true}); } };
+  $('#aiOn').onchange=e=>save({enabled:e.target.checked}, e.target.checked?'Нейросеть включена — у менеджеров появилась кнопка «✨ Заполнить автоматически»':'Нейросеть выключена — менеджеры заполняют через ИИ-чат');
+  $('#aiSave').onclick=()=>{ const b={model:$('#aiModel').value, base:$('#aiBase').value}; const k=$('#aiKey').value.trim(); if (k) b.key=k; save(b, 'Сохранено'); };
+  if ($('#aiDel')) $('#aiDel').onclick=async()=>{ if (!await stConfirm('Удалить ключ DeepSeek?','Нейросеть в программе выключится, менеджеры будут заполнять через ИИ-чат.','Удалить')) return; save({key:''}, 'Ключ удалён, нейросеть выключена'); };
+  $('#aiTest').onclick=async e=>{ e.target.disabled=true; e.target.textContent='Проверяю…';
+    try{ const t=await ajson('ai/test', {}); stAi(m, {t:`Связь есть: модель ${t.model}, ответ получен (${(t.usage&&t.usage.total_tokens)||0} токенов).`}); }
+    catch(err){ stAi(m, {t:String(err.message||err), err:true}); } };
+}
 
 async function stSecurity(m){
   const mg=await aapi('migrations');
