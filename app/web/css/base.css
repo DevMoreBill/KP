@@ -2,12 +2,13 @@
 :root{
   --navy:#0B45A0; --sky:#3DA0EE; --ink:#1F2B4D; --muted:#66718C; --paper:#F3F6FB; --card:#FFFFFF;
   --line:#D9E6F3; --soft:#EAF4FD; --danger:#C23B22; --ok:#1E8E5A; --field:#FFFFFF; --panel:#0B2F6E; --panel-ink:#FFFFFF;
+  --warn:#D9822B; --warn-ink:#9A6B00; --warn-bg:#FFF4D6; --warn-line:#F0D58A;
   box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --ink:#E6ECF7; --muted:#9AA6BF; --paper:#0E1524; --card:#152036; --line:#26344F; --soft:#1A2A47; --field:#101a2e; --panel:#0B2F6E; --navy:#6FA8FF; --danger:#FF7A63; --ok:#4CC38A;
+  --ink:#E6ECF7; --muted:#9AA6BF; --paper:#0E1524; --card:#152036; --line:#26344F; --soft:#1A2A47; --field:#101a2e; --panel:#0B2F6E; --navy:#6FA8FF; --danger:#FF7A63; --ok:#4CC38A; --warn:#E39B2E; --warn-ink:#F3C37A; --warn-bg:#3A2A14; --warn-line:#6B4C00;
 }}
-:root[data-theme="dark"]{ --ink:#E6ECF7; --muted:#9AA6BF; --paper:#0E1524; --card:#152036; --line:#26344F; --soft:#1A2A47; --field:#101a2e; --panel:#0B2F6E; --navy:#6FA8FF; --danger:#FF7A63; --ok:#4CC38A; }
+:root[data-theme="dark"]{ --ink:#E6ECF7; --muted:#9AA6BF; --paper:#0E1524; --card:#152036; --line:#26344F; --soft:#1A2A47; --field:#101a2e; --panel:#0B2F6E; --navy:#6FA8FF; --danger:#FF7A63; --ok:#4CC38A; --warn:#E39B2E; --warn-ink:#F3C37A; --warn-bg:#3A2A14; --warn-line:#6B4C00; }
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *,*::before,*::after{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 "Onest",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;-webkit-font-smoothing:antialiased}
@@ -77,10 +78,10 @@ aside{position:sticky;top:84px;align-self:start}
 .btn.icon-btn{width:40px;justify-content:center;padding-left:0;padding-right:0;font-size:17px;line-height:1}
 
 /* правка текстов интерфейса администратором (js/features/uitexts.js) */
-.uit-pen{display:inline-grid;place-items:center;width:18px;height:18px;margin-left:4px;border-radius:50%;background:#d9822b;color:#fff;font-size:11px;font-style:normal;font-weight:700;line-height:1;vertical-align:middle;cursor:pointer;text-transform:none;letter-spacing:0;flex:0 0 auto;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.uit-pen{display:inline-grid;place-items:center;width:18px;height:18px;margin-left:4px;border-radius:50%;background:var(--warn);color:#fff;font-size:11px;font-style:normal;font-weight:700;line-height:1;vertical-align:middle;cursor:pointer;text-transform:none;letter-spacing:0;flex:0 0 auto;box-shadow:0 1px 3px rgba(0,0,0,.25)}
 .uit-pen:hover{background:#b8661a;transform:scale(1.12)}
 body.uit-edit .uit-pen{pointer-events:auto}
-.uit-bar{position:sticky;bottom:0;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 14px;background:#fdecd6;color:#7a4510;border-top:2px solid #d9822b;font-size:13px;font-weight:600}
+.uit-bar{position:sticky;bottom:0;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 14px;background:#fdecd6;color:#7a4510;border-top:2px solid var(--warn);font-size:13px;font-weight:600}
 body>.uit-bar{position:fixed;left:0;right:0;bottom:0}
 dialog.uit-dlg{width:min(560px,94vw);padding:18px 20px}
 dialog.uit-dlg form{display:grid;gap:12px}

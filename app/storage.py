@@ -554,10 +554,34 @@ class Store:
         rows = self.all('SELECT doc, rev FROM managers ORDER BY name COLLATE NOCASE')
         return '[' + ','.join(with_rev(r[0], r[1]) if rev else r[0] for r in rows) + ']'
 
+    @staticmethod
+    def manager_keys(doc):
+        """Признаки одного и того же человека: фамилия и имя, e-mail, мобильный (последние 10 цифр), добавочный."""
+        words = re.sub(r'\s+', ' ', str(doc.get('name') or '').lower().replace('ё', 'е')).strip().split(' ')
+        mob = re.sub(r'\D', '', str(doc.get('mobile') or ''))[-10:]
+        return {'name': ' '.join(words[:2]) if len(words) >= 2 else '', 'email': str(doc.get('email') or '').strip().lower(),
+                'mobile': mob if len(mob) == 10 else '', 'ext': re.sub(r'\D', '', str(doc.get('ext') or ''))}
+
+    def manager_dup(self, mid, doc):
+        """Другой менеджер с теми же фамилией и именем, e-mail, мобильным или добавочным: (менеджер, что совпало) или None."""
+        mine = self.manager_keys(doc)
+        what = {'name': 'фамилия и имя', 'email': 'e-mail', 'mobile': 'мобильный телефон', 'ext': 'добавочный номер'}
+        for other in json.loads(self.managers_list()):
+            if other.get('id') == mid:
+                continue
+            k = self.manager_keys(other)
+            for f in ('name', 'email', 'mobile', 'ext'):
+                if mine[f] and mine[f] == k[f]:
+                    return other, what[f]
+        return None
+
     def manager_put(self, mid, text, by='', base_rev=None):
         doc = json.loads(text)
         if not isinstance(doc, dict):
             raise ValueError('Ожидались данные менеджера')
+        dup = self.manager_dup(mid, doc)
+        if dup:
+            raise ValueError('Такой менеджер уже есть: %s (совпадает %s)' % (dup[0].get('name') or 'без имени', dup[1]))
         doc.pop('_rev', None)
         doc['id'] = mid
         doc['updatedAt'] = _now()

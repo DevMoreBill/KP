@@ -44,7 +44,8 @@ var CATED = null;
 
 function persist(){
   if (CATED) return;
-  if (typeof kitSync==='function') S.items.forEach(kitSync);     // закупка сборки — по текущим курсам
+  if (typeof kitSync==='function') S.items.forEach(x=>{ kitSync(x); stationFill(x); stationAutoName(x); });     // закупка сборки — по текущим курсам; параметры станции — по составу
+  if (typeof coverSync==='function') coverSync();
   clearTimeout(saveT);
   saveT = setTimeout(()=>{
     if (CATED) return;

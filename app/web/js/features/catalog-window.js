@@ -57,6 +57,10 @@ function cwRange(f){ const F=CW.F, r=F.rng[f.key]||{min:'',max:''}, chips=f.chip
     ${chips.length?`<div class="chips">${chips.map(([lo,hi])=>{ const on=String(r.min)===String(lo||'')&&String(r.max)===String(hi??''); return `<button class="chip${on?' on':''}" type="button" data-rc="${f.key}" data-lo="${lo||''}" data-hi="${hi??''}">${hi==null?'от '+fnum(lo):(lo?fnum(lo)+'–'+fnum(hi):'до '+fnum(hi))}</button>`; }).join('')}</div>`:''}</div>`; }
 
 function cwFiltered(){ return CW.F.maker||CW.F.series||Object.values(CW.F.f).some(Boolean)||Object.values(CW.F.rng).some(r=>r&&((r.min??'')!==''||(r.max??'')!==''))||CW.F.priced; }
+// сколько условий отбора включено (фильтры и строка поиска) — для кнопки «Сбросить фильтры» рядом с поиском
+function cwFilterCount(){ const F=CW.F; return [F.maker, F.series, F.priced, String(F.q||'').trim()].filter(Boolean).length + Object.values(F.f).filter(Boolean).length
+  + Object.values(F.rng).filter(r=>r&&((r.min??'')!==''||(r.max??'')!=='')).length; }
+function cwResetBtn(){ const b=$('#cwReset'); if (!b) return; const n=cwFilterCount(); b.hidden=!n; b.querySelector('b').textContent=n; }
 
 // ---------- отрисовка
 function cwNav(){
@@ -115,6 +119,7 @@ function cwRow(x){ const id=x.id, n=x.pricesCount||(x.prices||[]).length, inn=cw
     <button class="btn sm${inn?' in':''}" type="button" data-add title="${inn?(CW.optFor!=null?'Уже добавлено':'Уже в КП — увеличить количество'):''}">${cwAddLabel(id)}</button></div>`; }
 
 function cwList(){
+  cwResetBtn();
   const F=CW.F, s=F.sort, mainVal=x=>{ const a=cwA(x), t=typeById(a.cat); return numOf(a[t.main||'kw']); };
   const list=CW.docs.filter(x=>cwPass(x));
   list.sort((p,q)=> s==='name' ? String(p.name).localeCompare(q.name,'ru',{numeric:true}) : s==='price' ? (p.price||9e15)-(q.price||9e15) :
@@ -329,6 +334,7 @@ async function openCatalog(mode={}){
   d.innerHTML=`<div class="cw-h"><button class="btn cw-navbtn" type="button" data-cw="nav" aria-label="Категории и фильтры" title="Категории и фильтры"><span aria-hidden="true">☰</span><span class="cw-lbl2"> Фильтры</span></button>
      <h3>${optFor!=null?'Опции для позиции '+(optFor+1):'Каталог'}</h3>
      <div class="cw-q"><input type="search" id="cwQ" placeholder="Поиск: модель, производитель, любое значение характеристик" autocomplete="off" value="${esc(F.q)}" aria-label="Поиск по каталогу"></div>
+     <button class="btn cw-reset" type="button" id="cwReset" data-cw="resetall" title="Сбросить поиск и все фильтры (раздел каталога остаётся)" hidden>✕ Сбросить фильтры <b>0</b></button>
      ${optFor==null?'<button class="btn" type="button" data-cw="new" title="Новая позиция каталога">+<span class="cw-lbl"> Позиция</span></button>':''}
      <details class="cw-menu"><summary class="btn" title="Импорт, выгрузка, типы оборудования">Ещё<span class="cw-lbl"> ▾</span></summary><div>
        <button type="button" data-cw="xls">Импорт из Excel…</button><button type="button" data-cw="imp">Загрузить файл каталога (.json)…</button><button type="button" data-cw="exp">Выгрузить каталог в файл</button>
@@ -396,6 +402,7 @@ function cwBind(d){
       case 'max': d.classList.toggle('max'); cwSaveSize(d); return;
       case 'nav': d.classList.toggle('navon'); return;
       case 'reset': Object.assign(F,{maker:'',series:'',f:{},rng:{},priced:false}); cwNav(); cwList(); return;
+      case 'resetall': { Object.assign(F,{maker:'',series:'',f:{},rng:{},priced:false,q:''}); const q=$('#cwQ'); if (q) q.value=''; cwNav(); cwList(); return; }
       case 'undo': return cwUndo();
       case 'newtype': return cwNewType(id=>{ F.cat=id; F.f={}; F.rng={}; cwRedraw(); });
       case 'new': return newEquip('catalog', F.cat||'');

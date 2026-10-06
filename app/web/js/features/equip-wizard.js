@@ -71,7 +71,7 @@ function nwStation(t){
   const cats=t.station.main||[];
   if (!NW.pf || NW.pfFor!==t.id){ NW.pf=pfNew(cats); NW.pfFor=t.id; }
   const m=NW.main && catCache.find(x=>x.id===NW.main);
-  return `<p class="muted nw-lead">${esc(t.item)} — одно изделие для заказчика: одна строка и одна цена в КП, а закупка, поставщики и описание — по каждому элементу. Остальные элементы (${esc(t.station.parts.slice(0,3).join(', '))}…) добавите в карточке одним нажатием.</p>
+  return `<p class="muted nw-lead">${esc(t.item)} — одно изделие для заказчика: одна строка и одна цена в КП, а закупка, поставщики и описание — по каждому элементу. Остальные элементы (${esc(t.station.parts.slice(0,3).map(z=>Array.isArray(z)?z[0]:z).join(', '))}…) добавите в карточке одним нажатием.</p>
     <p class="nw-h">1. Контейнер</p>
     <div class="kit-cts">${CONTAINER_TYPES.map(c=>`<button type="button" class="kit-ctb${NW.ctype===c.id?' on':''}" data-nwct="${c.id}"><b>${esc(c.name)}</b><small>${esc(c.size)}</small></button>`).join('')}</div>
     <div class="nw-row"><label class="f"><span>Утепление</span><select id="nwIns">${CONTAINER_INS.map(v=>`<option${v===NW.ins?' selected':''}>${v}</option>`).join('')}</select></label>

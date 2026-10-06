@@ -70,13 +70,39 @@ function contApply(p, o={}){
 function stationAutoName(x){ if (!stationOf(x)) return; if (!String(x.name||'').trim() || x.name===x._autoNameV){ x.name=stationName(x); x._autoNameV=x.name; } }
 function kitNewContainer(ctype){ const c=ctypeOf(ctype); return contApply(kitNewPart({qty:1}), {ctype:c.id, ins:c.ins||'100 мм', climate:c.climate||'УХЛ1'}); }
 
-// параметры станции из её элементов: контейнер, климат, мощность / подача / давление основного оборудования — если пусто
+// параметры станции из её элементов — пересчитываются при любом изменении состава (замена, удаление, количество):
+// контейнер, климат, габариты — из контейнера; установленная мощность — сумма элементов; подача, давление, мощность ДГУ —
+// у основного оборудования; остальные (точка росы, бак…) — у первого элемента, где они есть; масса — сумма, если известна у всех.
+// x._sa — что подставлено автоматически: вписанное менеджером (значение не совпадает) не трогается.
+const STATION_MAIN_KEYS = ['flow', 'head', 'pressure', 'kw', 'kva', 'voltage', 'drive', 'automation'];
+function stationAuto(x){
+  const t=typeById(attrsOf(x).cat); if (!t.station) return {};
+  const P=kitParts(x), c=kitContainer(x), m=kitMainPart(x), cl=c&&CLIMATES.find(z=>z[0]===c.climate), out={};
+  const pa=p=>p.attrs||{}, q=p=>+p.qty||1;
+  if (c){ out.container=ctypeOf(c.ctype).name; if (c.climate) out.climate=c.climate; if (cl) out.tmin=cl[2];
+    const dm=String((c.rows||[]).find(r=>/^Габариты/.test(r.k))?.v||''); if (/\d{3,}\s*[×xх*]\s*\d{3,}/.test(dm)) out.size=dm.replace(/\s*мм\s*$/,''); }
+  const ms=P.map(p=>{ const v=numOf(pa(p).mass) ?? (typeof lgCargoOf==='function' ? (lgCargoOf([{rows:p.rows||[]}]).mass||0)*1000 : 0); return v>0 ? v*q(p) : null; });
+  if (P.length && ms.every(v=>v>0)) out.mass=Math.round(ms.reduce((a,b)=>a+b,0));
+  for (const f of t.fields){ if (['container','climate','tmin','size','mass'].includes(f.key)) continue;
+    if (f.key==='kw' && /установленн/i.test(f.label)){ const s=P.reduce((a,p)=>{ const n=numOf(pa(p).kw); return n>0 ? a+n*q(p) : a; },0); if (s>0) out.kw=Math.round(s*10)/10; continue; }
+    if (m && pa(m)[f.key]!=null && pa(m)[f.key]!==''){ const v=pa(m)[f.key]; out[f.key]=f.num ? ((numOf(v)??v)*(f.key==='flow'?q(m):1)) : v; continue; }
+    if (STATION_MAIN_KEYS.includes(f.key)) continue;      // подача, давление, напор, мощность ДГУ — только основного оборудования
+    const o=P.find(p=>p!==m && pa(p)[f.key]!=null && pa(p)[f.key]!==''); if (o) out[f.key]=f.num ? (numOf(pa(o)[f.key])??pa(o)[f.key]) : pa(o)[f.key]; }
+  return out;
+}
 function stationFill(x){
   const t=typeById(attrsOf(x).cat); if (!t.station) return;
-  x.attrs=x.attrs||{}; const c=kitContainer(x), m=kitMainPart(x), cl=c&&CLIMATES.find(z=>z[0]===c.climate);
-  if (c){ x.attrs.container=ctypeOf(c.ctype).name; if (c.climate) x.attrs.climate=c.climate; if (cl && x.attrs.tmin==null) x.attrs.tmin=cl[2]; }
-  if (m && m.attrs) for (const f of t.fields) if ((x.attrs[f.key]==null || x.attrs[f.key]==='') && m.attrs[f.key]!=null && m.attrs[f.key]!=='' && !['size','mass','container','climate'].includes(f.key))
-    x.attrs[f.key]=f.num ? (numOf(m.attrs[f.key]) ?? m.attrs[f.key]) * (f.key==='kw'||f.key==='flow'?(+m.qty||1):1) : m.attrs[f.key];
+  x.attrs=x.attrs||{}; const old=x._sa||{}, now=stationAuto(x), same=(a,b)=>String(a??'')===String(b??'');
+  for (const k of new Set([...Object.keys(old), ...Object.keys(now)])){
+    const cur=x.attrs[k], mine = cur!=null && cur!=='' && !same(cur, old[k]);
+    if (mine) continue;
+    if (now[k]!=null && now[k]!=='') x.attrs[k]=now[k]; else delete x.attrs[k]; }
+  x._sa=now;
+  // строка под названием и таблица характеристик станции — тоже автоматически, пока их не правили
+  const spec=[mainLine(x,3), kitContainer(x)?ctypeOf(kitContainer(x).ctype).name.toLowerCase():''].filter(Boolean).join(' · ');
+  if (!String(x.spec||'').trim() || x.spec===x._saSpec){ x.spec=spec; x._saSpec=spec; }
+  const g=groupsFromAttrs(x).filter(z=>z.rows.length), gs=JSON.stringify(x.groups||[]);
+  if (!(x.groups||[]).some(z=>(z.rows||[]).some(r=>r.k||r.v)) || gs===x._saG){ x.groups=g; x._saG=JSON.stringify(g); }
 }
 // название станции по умолчанию: «Модульная насосная станция Grundfos CR 32 в блок-контейнере»
 function stationName(x){
@@ -136,7 +162,7 @@ function kitLines(st=S){
     if (!isKit(x)){ out.push({id:x.id, i, name:x.name, qty:+x.qty||0, cost:x.cost||0, costCur:x.costCur||'RUB', maker:attrsOf(x).maker||'', item:x}); return; }
     kitParts(x).forEach((p,j)=>{ if (!String(p.name||'').trim() && !p.cost) return;
       out.push({id:x.id+'~'+p.id, i, j, part:p, name:p.name||'Элемент', of:x.name, qty:(+x.qty||0)*(+p.qty||0), cost:p.cost||0, costCur:p.costCur||'RUB',
-        maker:p.sup||(p.attrs&&p.attrs.maker)||'', item:{id:x.id+'~'+p.id, catId:p.catId||'', name:p.name, attrs:{...(p.attrs||{}), cat:(p.attrs&&p.attrs.cat)||attrsOf(x).cat}}}); }); });
+        maker:p.sup||(p.attrs&&p.attrs.maker)||'', item:{id:x.id+'~'+p.id, catId:p.catId||'', name:p.name, role:p.role||'', attrs:{...(p.attrs||{}), cat:(p.attrs&&p.attrs.cat)||attrsOf(x).cat}}}); }); });
   return out;
 }
 
@@ -181,7 +207,8 @@ function edKit(x,i){
   if (!st && !parts.length) return `<div class="ed-sec"><p class="muted">Состав есть только у станций в контейнере. Чтобы собрать станцию, выберите категорию «Насосные / Компрессорные / Дизель-генераторные станции в контейнере» на вкладке «Основное».</p></div>`;
   const cont=kitContainer(x), main=kitMainPart(x);
   const have=new Set(parts.map(p=>norm(p.name)));
-  const presets=(st?st.parts:KIT_PRESETS).filter(n=>!have.has(norm(n)));
+  // типовые элементы: [название, категория каталога] — подбор в этой категории; без категории — поиск по названию
+  const presets=(st?st.parts:KIT_PRESETS).map(z=>Array.isArray(z)?z:[z,'']).filter(([n])=>!have.has(norm(n)));
   // что ещё не выбрано — крупными шагами сверху
   const todo=st ? [
     cont?'':`<div class="kit-todo"><b>1. Контейнер</b><span class="muted">В чём поставляем станцию — дальше можно уточнить утепление и климатическое исполнение.</span>
@@ -193,7 +220,7 @@ function edKit(x,i){
     <div class="kit-l">${parts.map(card).join('')}</div>
     <datalist id="kitSupL">${sups.map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
     <div class="kit-add"><span class="muted">Добавить в состав:</span>
-      <span class="chips">${presets.map(n=>`<button class="chip" type="button" data-a="kitAdd" data-i="${i}" data-n="${esc(n)}">+ ${esc(n)}</button>`).join('')}</span>
+      <span class="chips">${presets.map(([n,c])=>`<button class="chip" type="button" data-a="kitPreset" data-i="${i}" data-n="${esc(n)}" data-cat="${esc(c)}" title="${c?'Подобрать в каталоге: '+esc(typeById(c).name):'Найти в каталоге или добавить новым элементом'}">+ ${esc(n)}</button>`).join('')}</span>
       <span class="row"><button class="btn ghost" type="button" data-a="kitCat" data-i="${i}">+ Из каталога</button><button class="btn ghost" type="button" data-a="kitAdd" data-i="${i}">+ Свой элемент</button></span></div>
     ${parts.length?`<div class="kit-sum"><span>Закупка изделия${parts.some(p=>p.costCur&&p.costCur!=='RUB')?' (по курсам КП)':''}</span><b>${Number.isFinite(cost)?money(cost)+' ₽':'нет курса валюты — укажите в шаге «Цены»'}</b>
       ${parts.some(p=>!p.cost)?`<small class="warn-t">не указана закупка: ${parts.filter(p=>!p.cost).map(p=>esc(p.name||'без названия')).join(', ')}</small>`:''}</div>`:''}</div>`;
@@ -245,18 +272,23 @@ function pfSet(F, el){
 const pfRow = (x, act) => `<button type="button" class="kit-pick" ${act}="${esc(x.id)}">${x.photo&&x.photo.src?`<img src="${esc(x.photo.src)}" alt="">`:'<span class="kit-noimg"></span>'}<span><b>${esc(x.name)}</b><small class="muted">${esc(typeById(attrsOf(x).cat).name)}${mainLine(x,3)?' · '+esc(mainLine(x,3)):''}${x.cost?' · закупка '+money(x.cost)+' '+(x.costCur||'RUB'):''}</small></span></button>`;
 
 // выбор позиции каталога для элемента: cats — только эти категории (основное оборудование станции), role — роль элемента
-function kitPickCat(i, cats, role){
-  const d=$('#dlg'); d.classList.add('wide'); const F=pfNew(cats);
-  const list=()=>{ const r=pfList(F, cats, 60); return `<p class="muted pf-n">Найдено: ${r.n}${r.n>60?' — показаны первые 60, уточните фильтры':''}</p>`+(r.list.map(x=>pfRow(x,'data-cid')).join('') || '<p class="muted">Ничего не найдено — измените фильтры или добавьте свой элемент.</p>'); };
+function kitPickCat(i, cats, role, name){
+  const d=$('#dlg'); d.classList.add('wide'); const F=pfNew(cats); if (name && !cats) F.q=name;
+  const newBtn=`<button class="btn" type="button" data-kitnew="1">+ Новый элемент${name?` «${esc(name)}»`:''}</button>`;
+  const list=()=>{ const r=pfList(F, cats, 60); return `<p class="muted pf-n">Найдено: ${r.n}${r.n>60?' — показаны первые 60, уточните фильтры':''}</p>`+(r.list.map(x=>pfRow(x,'data-cid')).join('')
+    || `<div class="kit-none"><p>В каталоге нет подходящего${name?` для «${esc(name)}»`:''}.</p>${newBtn}<small class="muted">Элемент появится в составе — описание и характеристики заполните вручную или кнопкой «✨ ИИ».</small></div>`); };
   const draw=()=>{ $('#kitPF').innerHTML=pfHtml(F, cats); $('#kitPL').innerHTML=list(); };
-  d.innerHTML=`<div class="dlg-h"><h3>${role==='main'?esc(stationOf(S.items[i]).mainLabel)+' — подбор в каталоге':'Элемент из каталога'}</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
+  d.innerHTML=`<div class="dlg-h"><h3>${role==='main'?esc(stationOf(S.items[i]).mainLabel)+' — подбор в каталоге':name?esc(name)+' — подбор в каталоге':'Элемент из каталога'}</h3>${newBtn}<button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
     <div class="dlg-b"><div id="kitPF"></div><div class="kit-pl" id="kitPL"></div></div>`;
   d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close(); draw();
   setTimeout(()=>d.querySelector('[data-pf="q"]')?.focus(), 30);
   const onF=e=>{ const el=e.target.closest('[data-pf]'); if (!el) return; const re=pfSet(F, el);
     if (re){ draw(); } else $('#kitPL').innerHTML=list(); };
   $('#kitPF').oninput=e=>{ if (e.target.tagName==='INPUT') onF(e); }; $('#kitPF').onchange=e=>{ if (e.target.tagName==='SELECT') onF(e); };
-  $('#kitPL').onclick=async e=>{ const b=e.target.closest('[data-cid]'); if (!b) return; const lite=catCache.find(x=>x.id===b.dataset.cid);
+  d.querySelector('.dlg-h [data-kitnew]').onclick=()=>kitPickNew();
+  const kitPickNew=()=>{ const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=kitNewPart({name:name||(F.q||'').trim()}); if (role) p.role=role;
+    it.kit.parts.push(p); it.page=true; d.close(); renderForm(); persist(); toast('Элемент добавлен — описание и характеристики: вручную или кнопкой «✨ ИИ»'); };
+  $('#kitPL').onclick=async e=>{ if (e.target.closest('[data-kitnew]')) return kitPickNew(); const b=e.target.closest('[data-cid]'); if (!b) return; const lite=catCache.find(x=>x.id===b.dataset.cid);
     let doc=lite; try{ doc=await api('/api/catalog/'+encodeURIComponent(lite.id)); }catch(_){}
     const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=kitFromCat(doc); if (role) p.role=role;
     if (role==='main'){ const ix=it.kit.parts.findIndex(z=>z.role==='container'); it.kit.parts.splice(ix>=0?ix:0, 0, p); } else it.kit.parts.push(p);
@@ -269,6 +301,7 @@ function kitAction(a, i, b){
   const it=S.items[i]; if (!it) return false; it.kit=it.kit||{parts:[]}; const P=it.kit.parts, j=+b.dataset.j;
   if (a==='kitAdd'){ const p=kitNewPart({name:b.dataset.n||''}); if (b.dataset.role) p.role=b.dataset.role; P.push(p); it.page=true; return true; }
   if (a==='kitCat'){ kitPickCat(i); return 'async'; }
+  if (a==='kitPreset'){ const c=b.dataset.cat; kitPickCat(i, c&&TYPES.some(t=>t.id===c)?[c]:null, null, b.dataset.n); return 'async'; }
   if (a==='kitMain'){ kitPickCat(i, (stationOf(it)||{}).main, 'main'); return 'async'; }
   if (a==='kitSys'){ const p=P[j]; p.sys={...(p.sys||CONT_SYS_DEF)}; p.sys[b.dataset.sys]=!p.sys[b.dataset.sys]; contApply(p); return true; }
   if (a==='kitCont'){ P.push(kitNewContainer(b.dataset.ct)); it.page=true; stationFill(it); stationAutoName(it); return true; }

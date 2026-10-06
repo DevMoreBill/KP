@@ -149,7 +149,7 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .key-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;bottom:0}
 .key-bar .sp{flex:1}
 @media (max-width:600px){.key-grid{grid-template-columns:1fr}.key-note{display:none}.key-bar{padding:10px 12px}.key-bar .btn{width:100%}}
-.warn-t{color:#9a6b00}
+.warn-t{color:var(--warn-ink)}
 /* справочники: правка прямо в списке (settings-dir.js) */
 .st-ed{border:1px solid var(--navy);border-radius:12px;padding:12px 14px;margin:6px 0 12px;background:var(--card);box-shadow:0 6px 20px rgba(0,0,0,.06)}
 .st-ed-h,.st-ed-f{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
