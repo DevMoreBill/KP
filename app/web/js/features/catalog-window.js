@@ -298,11 +298,11 @@ function cwPickType(then){
 const cwAfterSave = async doc => { await cwReload(); CW.active=doc.id; const pv=$('#cwPv'); if (pv) pv.dataset.id=''; CW.note=`Сохранено: ${doc.name}`; cwRedraw();
   requestAnimationFrame(()=>document.querySelector(`#cwList .cw-row[data-id="${CSS.escape(doc.id)}"]`)?.scrollIntoView({block:'nearest'})); };
 
-async function cwEdit(id){ const x=await fullDoc(CW.docs.find(z=>z.id===id)); if (!x) return; openCatEditor(x, cwAfterSave); }
+async function cwEdit(id){ if (!can('catEdit')) return cannot('catEdit'); const x=await fullDoc(CW.docs.find(z=>z.id===id)); if (!x) return; openCatEditor(x, cwAfterSave); }
 
-function cwNew(cat){ openCatEditor({ id:uid()+uid(), name:'', spec:'', price:0, priceCur:'RUB', attrs:{cat}, features:[{id:uid(),label:'',text:''}], groups:[], gallery:[], prices:[] }, cwAfterSave); }
+function cwNew(cat){ if (!can('catAdd')) return cannot('catAdd'); openCatEditor({ id:uid()+uid(), name:'', spec:'', price:0, priceCur:'RUB', attrs:{cat}, features:[{id:uid(),label:'',text:''}], groups:[], gallery:[], prices:[] }, cwAfterSave); }
 
-async function cwDup(id){ const x=await fullDoc(CW.docs.find(z=>z.id===id)); if (!x || x._light) return cwNote('Не удалось загрузить позицию');
+async function cwDup(id){ if (!can('catAdd')) return cannot('catAdd'); const x=await fullDoc(CW.docs.find(z=>z.id===id)); if (!x || x._light) return cwNote('Не удалось загрузить позицию');
   const c=JSON.parse(JSON.stringify(x)); c.id=uid()+uid(); c.name=x.name+' (копия)'; c.prices=[]; delete c.pricesCount; openCatEditor(c, cwAfterSave, true); }
 
 async function cwImportFile(f){

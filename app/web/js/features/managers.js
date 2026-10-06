@@ -12,7 +12,8 @@ function mgrRemember(id){ try{ if (id) localStorage.setItem('kp.managerId', id);
 
 // кто работает на этом устройстве: менеджер, которого человек сам выбрал или добавил в разделе «Менеджер».
 // Открытие чужого КП из журнала его не меняет. По нему — автор новых КП и доступ к «Экономике сделки».
-function meId(){ try{ return localStorage.getItem('kp.me') || localStorage.getItem('kp.managerId') || ''; }catch(e){ return ''; } }
+function meId(){ if (typeof AUTH!=='undefined' && AUTH.enabled && AUTH.user) return AUTH.user.id;
+  try{ return localStorage.getItem('kp.me') || localStorage.getItem('kp.managerId') || ''; }catch(e){ return ''; } }
 
 function setMe(id){ try{ if (id) localStorage.setItem('kp.me', id); }catch(e){} }
 
@@ -25,6 +26,7 @@ async function loadManagers(){
   let m = S.managerId ? MGRS.find(x=>x.id===S.managerId) : null;
   if (!m && !S.managerId && String(S.manager?.name||'').trim()) m = MGRS.find(x=>norm(x.name)===norm(S.manager.name));
   if (!m && !String(S.manager?.name||'').trim()){ let id=''; try{ id=localStorage.getItem('kp.managerId')||''; }catch(e){} m = MGRS.find(x=>x.id===id) || (MGRS.length===1 ? MGRS[0] : null); }
+  if (!m && typeof AUTH!=='undefined' && AUTH.enabled && AUTH.user && !S.kpId) m = MGRS.find(x=>x.id===AUTH.user.id);      // вошёл по паролю — менеджер нового КП он сам
   if (m){ S.managerId=m.id; S.manager={...S.manager, ...mgrFields(m)}; mgrRemember(m.id); }
   try{ if (!localStorage.getItem('kp.me') && m && !S.kpId) setMe(m.id); }catch(e){}
 }

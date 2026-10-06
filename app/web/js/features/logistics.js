@@ -20,7 +20,7 @@ const lgRu = s => /^росс/i.test(s.country||'') || s.where==='ru';
 // позиции поставщика: масса и габариты — из характеристик, свои правки — в s.lg.items
 function lgItems(s){
   const own=(s.lg&&s.lg.items)||{};
-  return S.items.filter(x=>String(x.name||'').trim() && dlSupOf(x.id)===s.id).map(x=>{
+  return kitCargo().filter(x=>String(x.name||'').trim() && dlSupOf(x.id)===s.id).map(x=>{
     const cg=lgCargoOf(x.groups), o=own[x.id]||{}, d=cg.dims||{};
     const pick=(k,auto)=>{ const v=lgV(o[k]); return v!=null ? {v, own:true} : {v:auto??null, own:false}; };
     const l=pick('l',d.l), w=pick('w',d.w), h=pick('h',d.h), m=pick('m',cg.mass);
@@ -32,7 +32,7 @@ function lgInput(s){
   const imp=!lgRu(s) && (s.where==='imp' || !!s.country);
   const from=String(s.wh||'').trim() || (imp ? T.hub : '');
   const to=String(lg.to ?? (S.object&&S.object.address || S.clientAddr || '')).trim();
-  const its=S.items.filter(x=>String(x.name||'').trim() && dlSupOf(x.id)===s.id);
+  const its=kitCargo().filter(x=>String(x.name||'').trim() && dlSupOf(x.id)===s.id);
   const value=its.reduce((a,x)=>{ const q=+x.qty||0; if (x.cost) return a+x.cost/100*q*(rateOf(x.costCur||'RUB')||0);
     return a+(x.price||0)/100*q*(rateOf(kpCur())||0); },0);
   // точные адреса (с координатами) — пока текст поля совпадает с выбранной подсказкой
@@ -115,7 +115,7 @@ async function lgQuote(k){
   const d=dlDeal(), s=d.sup[k]; if (!s) return; const r=LG.res[s.id];
   if (!r || r.need || LG.busy[s.id]) return;
   const inp=lgInput(s), key=lgQuoteKey(r);
-  const its=S.items.filter(x=>String(x.name||'').trim() && dlSupOf(x.id)===s.id);
+  const its=kitCargo().filter(x=>String(x.name||'').trim() && dlSupOf(x.id)===s.id);
   const declared=its.reduce((a,x)=>a+(x.cost?x.cost/100*(+x.qty||0)*(rateOf(x.costCur||'RUB')||0):0),0);
   const body={ from:{name:r.from&&r.from.name, addr:String(s.wh||'').trim()||(r.from&&r.from.name), alt:lgNearBig(r.from)}, to:{name:r.to&&r.to.name, addr:inp.to.addr, alt:lgNearBig(r.to)}, km:r.km,
     places:inp.items.filter(x=>x.l&&x.w&&x.h&&x.m&&x.qty).map(x=>({l:x.l, w:x.w, h:x.h, m:x.m, qty:x.qty})),
@@ -257,7 +257,7 @@ async function lgSaveCargo(s){
   const own=(s.lg&&s.lg.items)||{}, its=lgItems(s);
   let saved=0, pend=0; const noCat=[], fail=[];
   for (const id of Object.keys(own)){
-    const o=own[id], x=S.items.find(i=>i.id===id), it=its.find(i=>i.id===id); if (!x || !it) continue;
+    const o=own[id], x=kitCargo().find(i=>i.id===id), it=its.find(i=>i.id===id); if (!x || !it) continue;
     const v={l:it.l.v, w:it.w.v, h:it.h.v, m:it.m.v};
     const what={ dims:['l','w','h'].some(k=>lgV(o[k])!=null) && v.l>0 && v.w>0 && v.h>0, mass:lgV(o.m)!=null && v.m>0 };
     if (!what.dims && !what.mass) continue;

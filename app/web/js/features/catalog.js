@@ -37,6 +37,7 @@ function fillFromCat(it, x){
     features:JSON.parse(JSON.stringify(x.features||[])), groups:JSON.parse(JSON.stringify(x.groups||[])), hint:x.hint||null, catId:x.id, photo:x.photo||null, logo:x.logo||null,
     attrs:{...(x.attrs||{})}, options:JSON.parse(JSON.stringify(x.options||[])).map(o=>({...o,id:uid(),qty:o.unit==='усл.'?1:(+it.qty||1)})) });
   delete it._priceText; delete it._costText;
+  if (x.kit && Array.isArray(x.kit.parts) && x.kit.parts.length) it.kit=JSON.parse(JSON.stringify(x.kit)); else delete it.kit;     // сборка из каталога — со своим составом
   it.cost=x.cost||0; it.costCur=x.costCur||'RUB'; it.margin=x.margin; it.mmode=x.mmode; it.priceManual=false;
   const pc=x.priceCur||'RUB';
   if (it.price && pc!==kpCur()){ const r1=rateOf(pc), r2=rateOf(kpCur()); it.price = (r1>0&&r2>0) ? Math.round(it.price*r1/r2) : 0; }
@@ -83,11 +84,13 @@ async function syncCatalog(number){
 
 async function saveCatalog(i){
   const it=S.items[i]; if(!it.name.trim()) return toast('Сначала укажите наименование');
+  const need=it.catId && catCache.some(x=>x.id===it.catId) ? 'catEdit' : 'catAdd'; if (!can(need)) return cannot(need);
   const id = it.catId || uid()+uid();
   const doc={ id, name:it.name, spec:it.spec, price:it.price, pageTitle:it.pageTitle, photoCaption:it.photoCaption,
-    features:it.features, groups:it.groups, hint:it.hint||null, photo:it.photo||null, logo:it.logo||null, updatedAt:new Date().toISOString() };
+    features:it.features, groups:it.groups, hint:it.hint||null, photo:it.photo||null, logo:it.logo||null, updatedAt:new Date().toISOString(),
+    ...(isKit(it)?{kit:{parts:kitParts(it).map(({_costText,...p})=>p)}, cost:it.cost, costCur:'RUB', attrs:it.attrs}:{}) };
   try{ const sv=await store().put(doc); if(sv&&sv.photo) it.photo=sv.photo; if(sv&&sv.logo) it.logo=sv.logo; it.catId=id; await refreshCat(); toast(sv._pending?'Отправлено на модерацию — изменения появятся после одобрения администратором':'Позиция сохранена в каталог'); }
-  catch(e){ toast('Не удалось сохранить в каталог'); }
+  catch(e){ toast('Не удалось сохранить в каталог: '+(e.message||e)); }
   renderForm(); persist();
 }
 

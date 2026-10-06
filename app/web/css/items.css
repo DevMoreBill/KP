@@ -112,3 +112,38 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .gcard.drop-b{box-shadow:-3px 0 0 var(--navy)}
 .gcard.drop-a{box-shadow:3px 0 0 var(--navy)}
 .mob .ed-hdl{display:none}
+
+/* сборка: состав изделия */
+.kit-l{display:grid;gap:12px}
+.kit-card{display:grid;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.kit-h{display:flex;align-items:center;gap:6px}
+.kit-n{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--soft);color:var(--navy);font-weight:700;font-size:13px}
+.kit-nm{flex:1;min-width:0;font-weight:600}
+.kit-g{display:grid;grid-template-columns:90px minmax(0,1.2fr) minmax(0,1fr);gap:10px}
+.kit-cost{display:flex;gap:6px}
+.kit-cost input{flex:1;min-width:0}
+.kit-cost select{width:auto;flex:none}
+.kit-b{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px;align-items:start}
+.kit-ph{position:relative;display:grid;place-items:center;width:120px;height:100px;margin-top:20px;overflow:hidden;border:1px dashed var(--line);border-radius:10px;background:var(--field)}
+.kit-ph img{max-width:100%;max-height:100%;object-fit:contain}
+.kit-ph .x{position:absolute;top:4px;right:4px}
+.kit-phb{border:0;background:none;color:var(--navy);font-weight:600;cursor:pointer}
+.kit-rows summary{cursor:pointer;font-weight:600;font-size:13px}
+.kit-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:6px;margin-top:6px}
+.kit-rows .btn{margin-top:6px}
+.kit-add{flex-wrap:wrap;gap:8px;margin-top:12px}
+.kit-add .chips{display:flex;flex-wrap:wrap;gap:6px}
+.kit-sum{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--soft)}
+.kit-sum b{font-size:16px}
+.kit-sum small{flex-basis:100%}
+.kit-pl{display:grid;gap:6px;max-height:60vh;margin-top:10px;overflow:auto}
+.kit-pick{display:flex;align-items:center;gap:10px;padding:6px 8px;border:1px solid var(--line);border-radius:10px;background:var(--card);text-align:left;cursor:pointer}
+.kit-pick:hover{border-color:var(--sky)}
+.kit-pick img,.kit-noimg{flex:none;width:56px;height:44px;object-fit:contain}
+.kit-pick small{display:block}
+@media (max-width:700px){
+  .kit-g{grid-template-columns:80px minmax(0,1fr)}
+  .kit-sup{grid-column:1/-1}
+  .kit-b{grid-template-columns:1fr}
+  .kit-ph{margin-top:0}
+}
