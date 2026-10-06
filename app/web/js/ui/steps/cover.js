@@ -1,4 +1,4 @@
-// Раздел 4 «Титульный лист».
+// Раздел 4 «Оформление КП»: шаблон документа, заголовок, модель, описание и ключевые параметры (первая страница КП).
 'use strict';
 
 function stepCover(){
@@ -14,17 +14,30 @@ function stepCover(){
   const help = multi
     ? `<p>В КП ${n} ${plural(n,'модель','модели','моделей')}: на титуле будет блок «Оборудование в предложении» с фото, мощностью, исполнением и количеством каждой модели. Заголовок и описание подставятся сами; заполните поля, чтобы задать свои. Ключевые параметры в этом режиме не выводятся.</p><p>Фото модели — первое фото позиции; поменять — в карточке позиции.</p>`
     : `<p>Поля заполняются из каталога при выборе оборудования — проверьте и поправьте при необходимости.</p><p>Щелчок по превью — предпросмотр всего КП.</p>`;
-  return `<section class="step" id="st-cover"><h2><span class="n">4</span>Титульный лист${tip(help)}</h2>
+  return `<section class="step" id="st-cover"><h2><span class="n">4</span>Оформление КП${tip(help)}</h2>
   ${templatePicker()}
   <div class="cvtop"><div class="cvthumb" id="cvThumb" data-a="kpPreview" title="Предпросмотр всего КП"></div><div class="cvinfo">
     ${field('Тип оборудования','cover.title',{ph:'Дизель-генераторные установки'})}${field('Модель / серия','cover.model',{req:!multi,ph:'HERTZ HG 45 CH'})}
     ${field('Описание под заголовком','cover.desc',{area:1,rows:3,ph:'Установки в кожухе номинальной мощностью …'})}
     ${photoCtl}
+    ${c.touched && src!==undefined?`<p class="cv-touched muted">Заголовок изменён вручную — при смене оборудования не обновляется. <button class="lnk" type="button" data-a="coverFrom">↺ Заполнить по оборудованию</button></p>`:''}
     <div class="row">${ci>=0&&!multi?`<button class="btn ghost" type="button" data-a="edit" data-i="${ci}" data-tab="desc">${cur?'Заменить фото':'Добавить фото'}</button>`:''}<button class="btn" type="button" data-a="kpPreview">Предпросмотр КП</button></div></div></div>
   ${multi?'':`<details class="more"${c.kpis.some(k=>k.num)?'':' open'}><summary>Ключевые параметры на титуле <span class="muted">${c.kpis.filter(k=>k.num).length} из 4</span></summary>
     <div class="kpgrid">${kp}</div>
-    ${src?`<button class="btn ghost" type="button" data-a="coverFrom">Заполнить из позиции «${esc(src.name||'')}»</button>`:''}</details>`}
+    </details>`}
   </section>`;
+}
+
+// заголовок КП по оборудованию: пока менеджер не правил поля сам (cover.touched), они всегда соответствуют текущим позициям —
+// при замене, удалении или перестановке оборудования обновляются; КП без позиций — пустые
+function coverSync(){
+  if (CATED || S.cover.touched) return;
+  const x=S.items.find(z=>z.id===S.cover.photoFrom && String(z.name||'').trim()) || S.items.find(z=>String(z.name||'').trim());
+  const h=x ? (x.hint && !stationOf(x) ? x.hint : autoHint(x)) : {title:'', model:'', desc:'', kpis:[]};
+  const key=JSON.stringify(h); if (S.cover._src===key) return;
+  const c=S.cover; c.title=h.title||''; c.model=h.model||''; c.desc=h.desc||'';
+  c.kpis=[0,1,2,3].map(n=>({num:(h.kpis||[])[n]?.num||'', unit:(h.kpis||[])[n]?.unit||'', cap:(h.kpis||[])[n]?.cap||''}));
+  S.cover._src=key;
 }
 
 function applyCover(h, force){

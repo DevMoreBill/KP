@@ -409,6 +409,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(store().manager_put(mid, self.body().decode('utf-8'), admin.actor(self)[1], self.base_rev()))
                 except Conflict as e:
                     return self.conflict(e)
+                except ValueError as e:         # дубль другого менеджера (ФИО, e-mail, мобильный, добавочный)
+                    return self.send(422, 'text/plain; charset=utf-8', str(e))
 
         # PDF: чем можно преобразовать; преобразование присланного DOCX (предпросмотр) без записи в журнал
         if path == '/api/pdf' and m == 'GET':

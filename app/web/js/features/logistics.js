@@ -167,7 +167,7 @@ function dlLogistics(c){
     const cell=(x,f,ph)=>`<input type="text" inputmode="decimal" data-lgi="${esc(x.id)}" data-k="${k}" data-f="${f}" value="${esc(lgIn(x[f].v))}" placeholder="${ph}" class="${x[f].v==null?'need':''}${x[f].own?' own':''}" aria-label="${ph}"${ex?' disabled':''}>`;
     const ownCargo=Object.values(lg.items||{}).some(o=>Object.keys(o).length);
     // 1. до границы и страхование — только импорт
-    const abroad = ru ? '' : `<div class="lg-sec"><h5><span class="lg-sn">1</span>До границы РФ</h5><div class="dl-g">${dlField('Перевозка до границы РФ', P+'.log.v', {calc:c, cur:P+'.log.cur', src:s.log&&s.log.src, q:'Сколько стоит довезти груз от поставщика до границы ЕАЭС. Входит в таможенную стоимость.'})}
+    const abroad = ru ? '' : `<div class="lg-sec lg-s-abr"><h5><span class="lg-sn">1</span>До границы РФ</h5><div class="dl-g">${dlField('Перевозка до границы РФ', P+'.log.v', {calc:c, cur:P+'.log.cur', src:s.log&&s.log.src, q:'Сколько стоит довезти груз от поставщика до границы ЕАЭС. Входит в таможенную стоимость.'})}
       ${dlField('Страхование груза', P+'.ins', {calc:c, unit:'% от оборудования', ph:'0,3', q:'Процент от стоимости оборудования. Входит в таможенную стоимость.'})}</div></div>`;
     const n0=ru?0:1;
     // 2. маршрут
@@ -177,7 +177,7 @@ function dlLogistics(c){
     const rt=r.routeKey&&LG.rt[r.routeKey], rtNote=r.routeKey&&!(lg.route&&lg.route.key===r.routeKey)&&!lgV(lg.km) ? (rt==='busy'?' · считаю путь по дорогам…':rt&&rt!=='ok'?` · по дорогам не посчитано: ${rt}`:'') : '';
     const where=[pt(r.from, ru?'склад':'пункт отправки'), pt(r.to, toA?'склад сборщика':'адрес объекта')].join(' → ')
       +(r.km?` · <b>${stNumLg(r.km)} км</b> <span class="muted">${esc(r.kmSrc)}${lg.route&&lg.route.key===r.routeKey&&!lgV(lg.km)&&lg.route.hours?', в пути без остановок ≈ '+String(lg.route.hours).replace('.',',')+' ч':''}${esc(rtNote)}</span>`:'');
-    const route=`<div class="lg-sec"><h5><span class="lg-sn">${n0+1}</span>${toA?`Маршрут на сборку к «${esc(aName)}»`:isA?'Станция в сборе — до заказчика':'Маршрут по России'}</h5>
+    const route=`<div class="lg-sec lg-s-route"><h5><span class="lg-sn">${n0+1}</span>${toA?`Маршрут на сборку к «${esc(aName)}»`:isA?'Станция в сборе — до заказчика':'Маршрут по России'}</h5>
       ${toA&&!String(asm.A.wh||'').trim()?`<p class="msg warn">Укажите склад «${esc(aName)}» (адрес производства контейнера) в его карточке ниже — туда едут элементы станции.</p>`:''}
       <div class="lg-route">
         <label class="f"><span>Откуда — ${ru?'склад поставщика':'СВХ / терминал'}${dlQ((ru?'Точный адрес склада поставщика — выберите из подсказок (склады из справочника поставщиков, DaData или OpenStreetMap). Запоминается в справочнике поставщиков.':'Где груз выпускается с таможни и откуда едет по России. По умолчанию — из «Настроек» → «Логистика».')+' Можно вставить координаты или ссылку на точку из Google или Яндекс Карт — адрес определится сам. Достаточно и города — тогда расчёт от центра города.')}</span>
@@ -188,7 +188,7 @@ function dlLogistics(c){
           <input type="text" inputmode="numeric" data-lgf="km" data-k="${k}" value="${esc(lg.km||'')}" placeholder="${r.km?esc(r.km)+' — авто':'авто'}"${ex?' disabled':''}></label></div>
       <p class="lg-where">${where}</p></div>`;
     // 3. груз
-    const cargo=`<div class="lg-sec"><h5><span class="lg-sn">${n0+2}</span>Груз${dlQ('Масса и габариты — из характеристик позиций («Масса», «Габариты Д × Ш × В»). Пустые поля заполните; кнопка ниже сохранит их в каталог. К местам легче '+lgIn(T.packMax)+' т добавляется упаковка +'+lgIn(T.pack)+' %.')}</h5>
+    const cargo=`<div class="lg-sec lg-s-cargo"><h5><span class="lg-sn">${n0+2}</span>Груз${dlQ('Масса и габариты — из характеристик позиций («Масса», «Габариты Д × Ш × В»). Пустые поля заполните; кнопка ниже сохранит их в каталог. К местам легче '+lgIn(T.packMax)+' т добавляется упаковка +'+lgIn(T.pack)+' %.')}</h5>
       ${its.length?`<div class="lg-tw"><table class="lg-t"><thead><tr><th>Позиция</th><th class="num">Мест</th><th>Длина, м</th><th>Ширина, м</th><th>Высота, м</th><th>Масса 1 шт, т</th></tr></thead><tbody>
         ${its.map(x=>`<tr><td class="lg-nm"><b>${esc(x.name)}</b><small>${esc([x.dimSrc, x.massSrc].filter(Boolean).join(' · ')||'нет габаритов и массы в характеристиках')}</small></td><td class="num">${esc(x.qty)}</td>
           <td>${cell(x,'l','Д')}</td><td>${cell(x,'w','Ш')}</td><td>${cell(x,'h','В')}</td><td>${cell(x,'m','т')}</td></tr>`).join('')}</tbody></table></div>
@@ -203,7 +203,7 @@ function dlLogistics(c){
         + (r.unload?`<div class="lg-veh"><table class="lg-p"><tr><td>Разгрузка: ${esc(r.unload.name)}</td><td class="num">${lgRub(r.unload.cost)}</td></tr></table></div>`:'')
         + r.warn.map(w=>`<p class="msg warn">${esc(w)}</p>`).join('')
         + (r.missing.length?`<p class="msg warn">Не посчитаны (нет массы или габаритов): ${esc(r.missing.join(', '))}</p>`:'');
-    const trans=`<div class="lg-sec"><h5><span class="lg-sn">${n0+3}</span>Транспорт и разгрузка${dlQ('Машина подбирается по массе и габаритам: самая дешёвая из тарифов, куда помещается груз. Негабарит (шире 2,55 м, выше 4 м от дороги), тяжеловес и прикрытие — по правилам РФ. Ставки — «Настройки» → «Логистика».')}</h5>
+    const trans=`<div class="lg-sec lg-s-trans"><h5><span class="lg-sn">${n0+3}</span>Транспорт и разгрузка${dlQ('Машина подбирается по массе и габаритам: самая дешёвая из тарифов, куда помещается груз. Негабарит (шире 2,55 м, выше 4 м от дороги), тяжеловес и прикрытие — по правилам РФ. Ставки — «Настройки» → «Логистика».')}</h5>
       <label class="f lg-un"><span>Разгрузка на объекте</span><select data-lgf="unload" data-k="${k}"${ex?' disabled':''}>
         <option value="auto"${(lg.unload||'auto')==='auto'?' selected':''}>Подобрать по самому тяжёлому месту</option>
         <option value="none"${lg.unload==='none'?' selected':''}>Не нужна (разгружает заказчик)</option>
@@ -213,7 +213,7 @@ function dlLogistics(c){
     const pv=(LG.status&&LG.status.providers)||{}, noKey=[!pv.ati?'ATI.SU':'', !pv.dellin?'Деловые Линии':'', !pv.kit?'КИТ':'', !pv.cdek?'СДЭК':'', !pv.vozovoz?'Возовоз':''].filter(Boolean);
     const pick=lg.pick||'max', nmR=`lgpick${k}`;
     const kindT={model:'расчёт по тарифам',ftl:'отдельная машина',ltl:'сборный груз'};
-    const offers = r.need ? '' : `<div class="lg-sec"><h5><span class="lg-sn">${n0+4}</span>Перевозчик и цена${dlQ('Все цены — от двери до двери в одних условиях: перевозка (если перевозчик возит до терминала — плюс забор и доставка по городу по тарифам), обязательное страхование груза и разгрузка. Страхование — перевозчика, если он его считает (по объявленной стоимости груза), иначе своё: '+String(T.insPct).replace('.',',')+' %, не меньше '+lgRub(T.insMin)+'. Агент-экспедитор ('+String(T.agentPct).replace('.',',')+' %) — только для отдельной машины и расчёта по тарифам: у транспортной компании комиссии агента нет. Отдельная машина — ATI.SU «Средние ставки» (верхняя граница за 30 дней, с НДС); сборный груз — ПЭК, Энергия, Деловые Линии, КИТ, СДЭК, Возовоз. По умолчанию в сделку идёт максимальное предложение; можно выбрать перевозчика.')}
+    const offers = r.need ? '' : `<div class="lg-sec lg-s-off"><h5><span class="lg-sn">${n0+4}</span>Перевозчик и цена${dlQ('Все цены — от двери до двери в одних условиях: перевозка (если перевозчик возит до терминала — плюс забор и доставка по городу по тарифам), обязательное страхование груза и разгрузка. Страхование — перевозчика, если он его считает (по объявленной стоимости груза), иначе своё: '+String(T.insPct).replace('.',',')+' %, не меньше '+lgRub(T.insMin)+'. Агент-экспедитор ('+String(T.agentPct).replace('.',',')+' %) — только для отдельной машины и расчёта по тарифам: у транспортной компании комиссии агента нет. Отдельная машина — ATI.SU «Средние ставки» (верхняя граница за 30 дней, с НДС); сборный груз — ПЭК, Энергия, Деловые Линии, КИТ, СДЭК, Возовоз. По умолчанию в сделку идёт максимальное предложение; можно выбрать перевозчика.')}
         ${ex?'':`<button class="btn ghost lg-qb" type="button" data-lgx="quote" data-k="${k}"${LG.busy[s.id]?' disabled':''}>${LG.busy[s.id]?'Запрашиваю…':Q?'Обновить цены':'Запросить цены'}</button>`}</h5>
       ${noKey.length&&!ex?`<p class="muted lg-note">Не подключены: ${esc(noKey.join(', '))} — ключи в «Настройки → Ключи API».</p>`:''}
       ${LG.err[s.id]?`<p class="msg err">${esc(LG.err[s.id])}</p>`:''}

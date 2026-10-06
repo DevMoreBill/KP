@@ -44,7 +44,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-badge{font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;border:1px solid var(--line);color:var(--muted);background:var(--card);line-height:1.5;white-space:nowrap}
 .dl-badge.kp{color:var(--navy);background:var(--soft);border-color:var(--soft)}
 .dl-badge.own{cursor:pointer;color:var(--navy)}
-.dl-badge.warn{color:#9a6b00;background:#fff4d6;border-color:#f0d58a}
+.dl-badge.warn{color:var(--warn-ink);background:var(--warn-bg);border-color:var(--warn-line)}
 
 /* пояснение «?» */
 .dl-q{display:inline-block;position:relative}
@@ -69,7 +69,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-it .c-nm small{display:block;font-size:12px;color:var(--muted)}
 .dl-it .c-cost{width:250px}
 .dl-it .c-cost select{flex-basis:76px;width:76px}
-.dl-it tr.need td{background:color-mix(in srgb,#f0b400 9%,transparent)}
+.dl-it tr.need td{background:color-mix(in srgb,var(--warn) 9%,transparent)}
 .dl-it input.need{border-color:#e0a800}
 .dl-it select{width:auto;max-width:180px}
 .dl-inl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -120,7 +120,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-day.fx{display:inline-block;width:64px;text-align:center;color:var(--muted)}
 .dl-sched>.muted{margin:0;font-size:12.5px}
 .dl-foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:12.5px}
-.dl-ex{margin:0;padding:10px 20px;background:#fff4d6;color:#6b4c00;font-size:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #f0d58a}
+.dl-ex{margin:0;padding:10px 20px;background:var(--warn-bg);color:var(--warn-ink);font-size:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--warn-line)}
 .dl-ex.warn{background:#fdecea;color:#8a2a1a;border-color:#f3c3ba}
 
 /* правая колонка: подбор цены и итог */
@@ -143,7 +143,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-be{margin:0;font-size:13.5px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .dl-now{display:grid;gap:12px}
 .dl-chip{justify-self:start;font-size:12.5px;font-weight:650;border-radius:999px;padding:3px 12px}
-.dl-chip.warn{color:#9a6b00;background:#fff4d6}
+.dl-chip.warn{color:var(--warn-ink);background:var(--warn-bg)}
 .dl-chip.bad{color:var(--danger);background:color-mix(in srgb,var(--danger) 12%,transparent)}
 .dl-big small{display:block;font-size:12.5px;color:var(--muted)}
 .dl-big>b{display:block;font-size:28px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.2;margin-top:2px;color:var(--ok)}
@@ -160,13 +160,13 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-dl dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
 .dl-dl dd small{display:block;font-size:11.5px;color:var(--muted)}
 .dl-warn{margin:0;padding:0;list-style:none;display:grid;gap:6px;font-size:13px}
-.dl-warn li{padding:8px 10px;border-radius:10px;background:#fff4d6;color:#6b4c00}
+.dl-warn li{padding:8px 10px;border-radius:10px;background:var(--warn-bg);color:var(--warn-ink)}
 .dl-warn li.bad{background:#fdecea;color:#8a2a1a}
 
 /* вход: правая панель и раздел «Цены» */
 .mrg .dl-open{width:100%;justify-content:center;margin-top:10px}
 .mrg-n{margin:6px 0 0;font-size:12px}
-.warn-t{color:#9a6b00}
+.warn-t{color:var(--warn-ink)}
 .dl-cta{display:flex;align-items:center;gap:14px;width:100%;margin:4px 0 16px;padding:14px 18px;border:2px solid var(--navy);border-radius:14px;background:var(--soft);color:var(--navy);cursor:pointer;text-align:left;font:inherit}
 .dl-cta:hover{background:color-mix(in srgb,var(--navy) 10%,var(--soft))}
 .dl-cta i{font-style:normal;flex:0 0 40px;height:40px;border-radius:50%;background:var(--navy);color:#fff;display:grid;place-items:center;font-size:20px;font-weight:700}
@@ -204,7 +204,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
   .dl-it .c-cost{width:auto;grid-column:1/-1}
   .dl-it .c-cost select{flex:0 0 96px;width:96px}
   .dl-it td.num:nth-child(2)::before{content:"кол-во "; color:var(--muted)}
-  .dl-it tr.need{background:color-mix(in srgb,#f0b400 9%,transparent);border-radius:10px;padding:10px 8px}
+  .dl-it tr.need{background:color-mix(in srgb,var(--warn) 9%,transparent);border-radius:10px;padding:10px 8px}
   .dl-it tr.need td{background:none}
   .dl-hs tr{grid-template-columns:auto auto minmax(0,1fr)}
   .dl-hs td.num{grid-column:auto}
@@ -237,7 +237,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .mob .dl-q>div{position:fixed;left:16px;right:16px;top:auto;bottom:calc(24px + env(safe-area-inset-bottom,0px));width:auto}
 
 @media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]) .dl-badge.warn,:root:not([data-theme="light"]) .dl-chip.warn,:root:not([data-theme="light"]) .dl-warn li,:root:not([data-theme="light"]) .dl-ex{background:#3a2f12;color:#f3d27a;border-color:#5a4718}
+  :root:not([data-theme="light"]) .dl-badge.warn,:root:not([data-theme="light"]) .dl-chip.warn,:root:not([data-theme="light"]) .dl-warn li,:root:not([data-theme="light"]) .dl-ex{background:#3a2f12;color:var(--warn-line);border-color:#5a4718}
   :root:not([data-theme="light"]) .dl-warn li.bad,:root:not([data-theme="light"]) .dl-ex.warn{background:#3d1c17;color:#ffb3a6;border-color:#5e2a22}
   :root:not([data-theme="light"]) .dl-n,:root:not([data-theme="light"]) .dl-cta i,:root:not([data-theme="light"]) .dl-seg button.on{background:#3b6fd1}
 }
@@ -391,7 +391,7 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-step>button.dl-sh:focus-visible{outline:2px solid var(--navy);outline-offset:-2px}
 .dl-sh>div{flex:1 1 auto;min-width:0}
 .dl-n.ok{background:var(--ok)}
-.dl-n.need{background:#d9822b}
+.dl-n.need{background:var(--warn)}
 .dl-stc{display:inline-block;margin-left:10px;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;vertical-align:2px}
 .dl-stc.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
 .dl-stc.need{background:#fdecd6;color:#9a5410}
@@ -424,7 +424,7 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-tab:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
 .dl-tn{flex:0 0 22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;background:var(--soft);color:var(--ink);border:1px solid var(--line)}
 .dl-tab.ok .dl-tn{background:var(--ok);border-color:var(--ok);color:#fff}
-.dl-tab.need .dl-tn{background:#d9822b;border-color:#d9822b;color:#fff}
+.dl-tab.need .dl-tn{background:var(--warn);border-color:var(--warn);color:#fff}
 .dl-tab.on .dl-tn{background:#fff;color:var(--navy);border-color:#fff}
 /* навигация внизу шага — отдельной строкой под карточкой */
 .dl-next{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 2px 4px;margin-top:-4px}
@@ -480,7 +480,7 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-hd{display:flex;align-items:center;gap:8px;margin-left:auto;padding:5px 6px 5px 12px;border-radius:12px;background:color-mix(in srgb,var(--sky) 16%,var(--card));border:1.5px solid var(--navy)}
 .dl-hd>span{font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap}
 .dl-hd input[type=date]{height:34px;min-height:34px;padding:4px 8px;font-size:14px;font-weight:600;border-radius:8px;width:auto}
-.dl-hd.empty{border-color:#d9822b;background:color-mix(in srgb,#d9822b 12%,var(--card))}
+.dl-hd.empty{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))}
 .dl-hd.empty>span{color:#9a5410}
 .dealwin .dlg-h{flex-wrap:wrap;row-gap:8px}
 /* вкладки — над формой, не прокручиваются вместе с ней */
@@ -523,12 +523,12 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-tab.on::after{content:none}
 .dl-tn{flex:0 0 22px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;line-height:1;background:var(--soft);color:var(--muted);border:1px solid var(--line);margin:0}
 .dl-tab.st-ok .dl-tn{background:var(--ok);border-color:var(--ok);color:#fff}
-.dl-tab.st-need .dl-tn{background:#d9822b;border-color:#d9822b;color:#fff}
+.dl-tab.st-need .dl-tn{background:var(--warn);border-color:var(--warn);color:#fff}
 .dl-tab.st-need .dl-tt{color:#9a5410}
 .dl-tab.on .dl-tt{color:#fff}
 .dl-tab.on .dl-tn{background:#fff;border-color:#fff;color:var(--navy)}
 .dl-tab.on.st-ok .dl-tn{color:var(--ok)}
-.dl-tab.on.st-need .dl-tn{color:#d9822b}
+.dl-tab.on.st-need .dl-tn{color:var(--warn)}
 @media (max-width:1000px){ .dl-tab{flex:0 0 auto;padding:0 12px} .dl-tabw{padding:8px 12px} }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-tab.st-need .dl-tt{color:#f3c37a} }
 :root[data-theme="dark"] .dl-tab.st-need .dl-tt{color:#f3c37a}
@@ -587,7 +587,7 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .mob dialog.dealwin .dl-mini .dl-hd>span{font-size:11px;color:var(--muted);font-weight:600}
 .mob dialog.dealwin .dl-mini .dl-hd .dl-q{display:none}
 .mob dialog.dealwin .dl-mini .dl-hd input{width:142px;min-height:34px;padding:4px 8px;font-size:15px}
-.mob dialog.dealwin .dl-mini .dl-hd.empty input{border-color:#d9822b;background:#fff7ef}
+.mob dialog.dealwin .dl-mini .dl-hd.empty input{border-color:var(--warn);background:var(--warn-bg)}
 .mob dialog.dealwin .dl-tabw{padding:6px 10px}
 .mob dialog.dealwin .dl-tabs{min-height:40px;padding:3px;border-radius:12px}
 .mob dialog.dealwin .dl-tab{padding:6px 10px;font-size:13px;min-height:34px}
@@ -686,7 +686,7 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .lg-t th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:4px 6px;border-bottom:1px solid var(--line)}
 .lg-t td{padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
 .lg-t td input{width:78px;min-height:32px;padding:4px 8px;text-align:right}
-.lg-t input.need{border-color:#e0a100;background:#fff8e1}
+.lg-t input.need{border-color:var(--warn);background:var(--warn-bg)}
 .lg-t input.own{border-color:var(--navy)}
 .lg-nm b{display:block;font-weight:600}
 .lg-nm small{display:block;color:var(--muted);font-size:11.5px;max-width:420px}
@@ -695,7 +695,7 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .lg-veh{border:1px solid var(--line);border-radius:10px;padding:8px 12px}
 .lg-vh{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-bottom:4px;font-size:13.5px}
 .lg-vh .muted{font-size:12.5px}
-.lg-tag{font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:999px;background:#fff3cd;color:#8a6100}
+.lg-tag{font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--warn-bg);color:var(--warn-ink)}
 .lg-tag.bad{background:#fde2dd;color:#a33a24}
 .lg-p{width:100%;border-collapse:collapse;font-size:13px}
 .lg-p td{padding:3px 0}
@@ -782,7 +782,7 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dl-vat tr.ded td:first-child{padding-left:10px}
 .dl-vat tr.sum td{color:var(--muted)}
 .dl-vat tr.tot td{border-bottom:0;border-top:2px solid var(--ink);font-size:14px;padding-top:7px}
-.dl-vat tr.ex td{color:#9a6b00;border-bottom:0}
+.dl-vat tr.ex td{color:var(--warn-ink);border-bottom:0}
 .dl-vat.wide{max-width:640px}
 .dl-vatsec{margin-top:14px}
 .dl-vatsec h5{margin:0 0 6px;font-size:14px;display:flex;align-items:center;gap:6px}
@@ -792,10 +792,10 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dlo-v{display:grid;gap:10px;padding:16px 18px;border:1px solid var(--line);border-left:6px solid var(--line);border-radius:14px;background:var(--card)}
 .dlo-v.st-ok{border-left-color:var(--ok)}
 .dlo-v.st-bad{border-left-color:var(--danger)}
-.dlo-v.st-need{border-left-color:#d79a1c}
+.dlo-v.st-need{border-left-color:var(--warn)}
 .dlo-vh{display:flex;align-items:center;gap:10px}
 .dlo-vh h4{margin:0;font-size:18px}
-.dlo-ic{display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%;color:#fff;font-weight:800;background:#d79a1c}
+.dlo-ic{display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%;color:#fff;font-weight:800;background:var(--warn)}
 .st-ok .dlo-ic{background:var(--ok)}
 .st-bad .dlo-ic{background:var(--danger)}
 .dlo-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
@@ -848,11 +848,65 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dlo-tk.r{transform:translateX(-100%)}
 
 /* сборка станции у производителя контейнера */
-.dlo-bar i.asm,.dlo-lg i.asm{background:#E39B2E}
+.dlo-bar i.asm,.dlo-lg i.asm{background:var(--warn)}
 .dlo-bar i.wt{background:repeating-linear-gradient(135deg,var(--line) 0 4px,transparent 4px 8px)}
 .dlo-bar i.tr.toasm{background:var(--muted)}
-.dl-asmc{border-color:#E39B2E}
+.dl-asmc{border-color:var(--warn)}
 .dl-asmh{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px}
 .dl-asmh h5{margin:0;font-size:15px}
 .dl-asm{display:grid;gap:4px;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--soft);font-size:13.5px}
 .dl-asm .dl-asm-t{margin-top:4px;font-weight:600}
+
+/* оплата поставщику: этап — одной строкой (на узком окне — в две) */
+.dl-sph{display:none}
+@media (min-width:1100px){
+  .dl-sps .dl-sph,.dl-tr.sp{display:grid;grid-template-columns:22px 24px minmax(120px,1fr) 92px minmax(300px,1.8fr) 128px 30px;grid-template-areas:"mv n nm am w r x";gap:8px;align-items:center}
+  .dl-sps .dl-sph{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);padding:2px 0 4px}
+  .dl-sps .dl-sph span:nth-child(6){text-align:right}
+  .dl-tr.sp{padding:6px 0}
+  .dl-tr.sp .dl-trw{flex-wrap:nowrap;gap:6px}
+  .dl-tr.sp .dl-trw select{min-width:0;flex:1 1 auto}
+  .dl-tr.sp .dl-troff{flex:0 0 150px}
+  .dl-tr.sp .dl-ddt{display:none}
+  .dl-tr.sp .dl-trp{white-space:nowrap}
+  .dl-tr.sp .dl-trp{flex-direction:row;align-items:baseline;gap:4px}
+  .dl-tr.sp .dl-trp b{font-size:14px}
+  .dl-tr.sp .dl-trr small{font-size:11.5px}
+}
+.dl-tr.sp .dl-trn{align-self:center;margin-top:0}
+
+/* лента «Поставщики и сроки»: толще, срок внутри отрезка, дата и метка — под лентой, без наложения */
+.dlo-r{grid-template-columns:minmax(140px,210px) minmax(0,1fr) 28px}
+.dlo-r:not(.ax):not(.cust) .dlo-bar{height:46px}
+.dlo-bar i{top:4px;height:20px;border-radius:5px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.dlo-bar i span{font-size:10.5px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:clip;padding:0 4px;font-style:normal}
+.dlo-bar i.wt span{color:var(--muted)}
+.dlo-bar em{top:27px;transform:translateX(-100%);font-size:11.5px;font-weight:600;color:var(--ink);background:var(--paper);padding:0 2px;border-radius:3px}
+.dlo-bar em.l{transform:none}
+.dlo-bar em .dlo-crit{position:static;font-size:10.5px;color:var(--danger);font-weight:700;margin-left:4px}
+.dlo-crit{position:static}
+
+/* «Логистика» плотнее: меньше отступов; на широком окне маршрут и транспорт — рядом */
+.lg-card{gap:10px}
+.lg-sec h5{margin:0 0 6px}
+.lg-where{margin:4px 0 0}
+.lg-veh{padding:6px 10px}
+.lg-tot{padding:8px 12px}
+.lg-tot b{font-size:20px}
+.lg-route{grid-template-columns:1fr 1fr 110px}
+.lg-t td{padding:3px 6px}
+@media (min-width:1250px){
+  .lg-card{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-auto-flow:row dense;gap:10px 18px;align-items:start}
+  .lg-card>*{grid-column:1/-1}
+  .lg-card>.lg-s-trans{grid-column:1}
+  .lg-card>.lg-tot{grid-column:2;align-self:stretch}
+}
+
+/* «Деньги и налог» — в общем стиле: компактные поля в карточке, НДС — карточкой на всю ширину */
+.dl-money{grid-template-columns:repeat(auto-fill,minmax(230px,320px));align-items:end}
+.dl-card.dl-vatsec{margin-top:0}
+.dl-card.dl-vatsec .dl-vat.wide{max-width:none}
+
+/* единые заголовки блоков в «Экономике сделки»: карточки — 14,5 px полужирный, подразделы — прописными (dl-sub) */
+.dl-asmh h5,.dl-vatsec h5,.dlo-th h5,.dl-mbh h5{font-size:14.5px;font-weight:700;color:var(--ink)}
+.lg-sec h5{font-size:14px}

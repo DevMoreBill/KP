@@ -121,9 +121,9 @@ function pricingBlock(){
   const rateTxt=['USD','EUR','CNY'].map(c=>`<span class="rt${need.includes(c)?' need':''}${need.includes(c)&&!(rateOf(c)>0)?' bad-t':''}">${c}&nbsp;<b data-rshow="${c}">${esc(P.rates[c]||'—')}</b></span>`).join('');
   const rateInp=c=>`<label class="f"><span>1 ${c}, руб.</span><input type="text" inputmode="decimal" class="num${need.includes(c)&&!(rateOf(c)>0)?' bad':''}" data-rate="${c}" value="${esc(P.rates[c]||'')}" placeholder="0,0000"></label>`;
   return `<div class="curbar">
-     <label class="f cur-sel"><span>Валюта КП</span><select data-pr="cur">${CUR_LIST.map(c=>`<option value="${c}"${c===cur?' selected':''}>${c==='RUB'?'Рубли':c==='USD'?'Доллары США':c==='EUR'?'Евро':'Юани'} (${c})</option>`).join('')}</select></label>
-     <div class="rates"><span class="muted">Курс ЦБ РФ${P.rateDate?' на '+esc(KPGen.ruDate(P.rateDate)):''}:</span> ${rateTxt}
-       <button class="btn ghost" type="button" data-a="cbr">Обновить с cbr.ru</button>
+     <label class="cur-sel"><span>Валюта КП</span><select data-pr="cur">${CUR_LIST.map(c=>`<option value="${c}"${c===cur?' selected':''}>${c==='RUB'?'Рубли':c==='USD'?'Доллары США':c==='EUR'?'Евро':'Юани'} (${c})</option>`).join('')}</select></label>
+     <div class="rates"><span class="muted">Курс ЦБ${P.rateDate?' на '+esc(KPGen.ruDate(P.rateDate).replace(/ г\.$/,'')):''}:</span> ${rateTxt}
+       <button class="btn ghost sm" type="button" data-a="cbr" title="Обновить курсы с cbr.ru">↻ Обновить</button>
        <span class="muted" id="cbrMsg">${missing.length?`<span class="bad-t">Нужен курс ${missing.join(', ')}</span>`:(P.rateSrc==='вручную'?'введён вручную':'')}</span></div>
    </div>
    <details class="psettings"${missing.length?' open':''}><summary>Изменить курсы вручную, округление цен</summary>

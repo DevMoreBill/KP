@@ -42,10 +42,28 @@ function newManager(){
   renderForm(); persist(); setTimeout(()=>$('[data-p="manager.name"]')?.focus(), 30);
 }
 
+// дубль: другой менеджер с теми же фамилией и именем, e-mail, мобильным (последние 10 цифр) или добавочным — {m, what} или null
+function mgrKeys(m){ const w=String(m.name||'').toLowerCase().replace(/ё/g,'е').replace(/\s+/g,' ').trim().split(' '), mob=String(m.mobile||'').replace(/\D/g,'').slice(-10);
+  return { name:w.length>=2?w.slice(0,2).join(' '):'', email:String(m.email||'').trim().toLowerCase(), mobile:mob.length===10?mob:'', ext:String(m.ext||'').replace(/\D/g,'') }; }
+function mgrDup(id, m){
+  const a=mgrKeys(m), what={name:'фамилия и имя', email:'e-mail', mobile:'мобильный телефон', ext:'добавочный номер'};
+  for (const o of MGRS){ if (o.id===id) continue; const b=mgrKeys(o);
+    for (const f of ['name','email','mobile','ext']) if (a[f] && a[f]===b[f]) return {m:o, what:what[f]}; }
+  return null;
+}
+
 // silent — без уведомлений (автосохранение и перенос из браузера)
 async function saveManager(silent){
   if (!String(S.manager.name||'').trim()){ if (!silent) toast('Укажите ФИО менеджера'); return false; }
   const id=S.managerId || uid()+uid();
+  const dup=mgrDup(S.managerId, S.manager), st0=$('#mgrStat');
+  if (dup){
+    const msg=`Такой менеджер уже есть в справочнике: ${dup.m.name} (совпадает ${dup.what}).`;
+    if (st0){ st0.textContent=msg+(S.managerId?' Изменения не сохранены — исправьте или выберите его в списке.':''); st0.classList.add('warn-t'); }
+    if (!S.managerId && !silent && confirm(msg+'\n\nВыбрать его вместо создания нового?')) selectManager(dup.m.id);
+    else if (!silent) toast(msg);
+    return false; }
+  if (st0) st0.classList.remove('warn-t');
   try{ const doc=await api('/api/managers/'+id,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(mgrFields(S.manager))});
     const k=MGRS.findIndex(x=>x.id===id); if (k>=0) MGRS[k]=doc; else MGRS.push(doc);
     MGRS.sort((a,b)=>String(a.name).localeCompare(String(b.name),'ru'));

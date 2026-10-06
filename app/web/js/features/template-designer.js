@@ -504,7 +504,7 @@ async function tdSaveAs(){
   await api(`/api/templates/${encodeURIComponent(id)}/file?name=template.json`, {method:'PUT', headers:{'Content-Type':'application/json; charset=utf-8'}, body:JSON.stringify(w, null, 2)});
   TD.saved = JSON.stringify(TD.work);   // изменения ушли в новый шаблон, исходный не тронут
   await loadTemplates(); renderForm();
-  await openTemplateDesigner(id); TD.note = 'Создан шаблон «'+name.trim()+'» (папка templates/'+id+'). Выбрать его для КП — на шаге «Титульный лист».'; tdTop();
+  await openTemplateDesigner(id); TD.note = 'Создан шаблон «'+name.trim()+'» (папка templates/'+id+'). Выбрать его для КП — в разделе «Оформление КП».'; tdTop();
 }
 // новый шаблон для другой компании: копия основного шаблона, сразу в графическом редакторе на вкладке «Шапка»
 async function tdNewCompany(){

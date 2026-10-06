@@ -74,7 +74,7 @@ document.addEventListener('click', async e=>{
     case 'attrsToGroups': { const g=groupsFromAttrs(it); const keep=(it.groups||[]).filter(x=>!g.some(y=>y.name===x.name)); it.groups=[...g,...keep]; if(!it.hint) it.hint=autoHint(it); it.page=true; toast('Таблица характеристик сформирована'); break; }
     case 'galAdd': return pickGallery(i, b.dataset.slot||'');
     case 'galPage': return galFromPage(i, e.shiftKey);
-    case 'kitAdd': case 'kitCat': case 'kitMain': case 'kitCont': case 'kitSys': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (kitAction(a, i, b)==='async') return; break; }
+    case 'kitAdd': case 'kitCat': case 'kitMain': case 'kitCont': case 'kitSys': case 'kitPreset': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (kitAction(a, i, b)==='async') return; break; }
     case 'galDel': it.gallery.splice(j,1); break;
     case 'galMain': if (!edSetMain(it, j)) return; toast('Главное фото заменено — прежнее перенесено в изображения'); break;
     case 'edit': return openEditor(i, b.dataset.tab);
@@ -98,7 +98,7 @@ document.addEventListener('click', async e=>{
     case 'rmImg': it[b.dataset.k]=null; break;
     case 'pickImg': return pickImage(b.dataset.k, i);
     case 'clients': S.showClients=!S.showClients; break;
-    case 'coverFrom': { const src=S.items.find(x=>x.hint); if(src) applyCover(src.hint,true); break; }
+    case 'coverFrom': S.cover.touched=false; S.cover._src=''; coverSync(); toast('Заголовок и параметры — по оборудованию КП'); break;
     case 'paste': return openPaste(i);
     case 'aiCopy': return aiCopy(i, b.dataset.url||'');
     case 'aiFetch': return aiFetch(i);

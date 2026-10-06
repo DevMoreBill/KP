@@ -169,7 +169,7 @@ function aiApply(i){
   if (feats.length && (!keep || !(it.features||[]).some(f=>f.text))) it.features=feats;
   const groups=(j.groups||[]).filter(g=>g&&Array.isArray(g.rows)).map(g=>({name:String(g.name||''), rows:g.rows.filter(x=>x&&(x.k||x.v)).map(x=>({k:String(x.k||''), v:String(x.v??''), hl:!!x.hl}))})).filter(g=>g.rows.length);
   if (groups.length && (!keep || !(it.groups||[]).some(g=>(g.rows||[]).some(x=>x.v)))) it.groups=groups;
-  if (j.cover && typeof j.cover==='object' && !CATED){ it.hint=j.cover; if (!S.cover.touched || !S.cover.model) applyCover(j.cover,false); }
+  if (j.cover && typeof j.cover==='object' && !CATED){ it.hint=j.cover; coverSync(); }
   if (j.attrs && typeof j.attrs==='object'){
     const keepCat=(it.attrs||{}).cat, add=Object.fromEntries(Object.entries(j.attrs).filter(([,v])=>v!==''&&v!=null&&!String(v).includes(' | ')).map(([k,v])=>[k,String(v)]));
     it.attrs=keep ? {...add, ...Object.fromEntries(Object.entries(it.attrs||{}).filter(([,v])=>v!==''&&v!=null))} : {...(it.attrs||{}), ...add};
