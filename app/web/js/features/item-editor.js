@@ -41,7 +41,9 @@ function drop(img, kind, i, text, small){
 
 let EDIT=null;
 
-const ED_TABS=[['main','Основное'],['kit','Состав'],['desc','Описание и фото'],['spec','Характеристики'],['opts','Опции и услуги'],['ai','Автозаполнение']];
+const ED_TABS=[['main','Основное'],['kit','Состав станции'],['ai','✨ Заполнить с ИИ'],['desc','Описание и фото'],['spec','Характеристики'],['opts','Опции и услуги']];
+// вкладки позиции: «Состав станции» — только у станций в контейнере (и у сборок, заведённых раньше)
+const edTabs = x => ED_TABS.filter(([k])=>k!=='kit' || canKit(x));
 
 function featId(f){ if(!f.id) f.id=uid(); return f.id; }
 
@@ -66,6 +68,7 @@ function closeEditor(){ const d=$('#edlg'); EDIT=null; if(d.open) d.close(); ren
 
 function renderEditor(){
   const d=$('#edlg'); if(!EDIT) return; const i=EDIT.i, x=S.items[i]; if(!x){ closeEditor(); return; }
+  if (!edTabs(x).some(([k])=>k===EDIT.tab)) EDIT.tab='main';
   const focusP=document.activeElement?.dataset?.p; const sc=d.querySelector('.ed-b')?.scrollTop||0;
   const body = EDIT.tab==='main'?edMain(x,i): EDIT.tab==='kit'?edKit(x,i): EDIT.tab==='desc'?edDesc(x,i): EDIT.tab==='spec'?edSpec(x,i): EDIT.tab==='opts'?edOpts(x,i): edAI(x,i);
   const head = CATED ? `<h3><span class="ed-cat">Каталог</span>${esc(x.name||'Новая позиция')}</h3><button class="btn" type="button" data-catcancel>Отмена</button>${CW.mod&&!ADMIN.on?'<span class="muted ed-modnote">Изменения будут отправлены на модерацию</span>':''}<button class="btn primary" type="button" data-catsave>${catSaveLabel()}</button>`
@@ -73,7 +76,7 @@ function renderEditor(){
   d.classList.toggle('catmode', !!CATED);
   const act=document.activeElement, tabSw=d.dataset.tab!==EDIT.tab; d.dataset.tab=EDIT.tab;
   morph(d, `<div class="dlg-h">${head}</div>
-    <div class="ed-tabs">${ED_TABS.map(([k,l])=>`<button type="button" class="ed-tab${EDIT.tab===k?' on':''}" data-edtab="${k}">${l}</button>`).join('')}</div>
+    <div class="ed-tabs">${edTabs(x).map(([k,l])=>`<button type="button" class="ed-tab${EDIT.tab===k?' on':''}" data-edtab="${k}">${l}</button>`).join('')}</div>
     <div class="ed-b">${body}</div>`);
   const b=d.querySelector('.ed-b'); b.scrollTop=tabSw?0:sc;
   const tb=d.querySelector('.ed-tabs'), on=tb.querySelector('.ed-tab.on'); if (on && tb.scrollWidth>tb.clientWidth) tb.scrollLeft=on.offsetLeft-(tb.clientWidth-on.offsetWidth)/2;
@@ -158,12 +161,23 @@ function edSpec(x,i){
 function edOpts(x,i){ return `<div class="ed-sec">${optsBlock(x,i)}</div>`; }
 
 function edAI(x,i){
-  const P=`items.${i}`;
-  return `<div class="ed-sec ai"><div class="sub">Заполнить карточку через Claude${tip('<ol style="margin:0;padding-left:18px"><li>Вставьте текст из каталога или паспорта оборудования.</li><li>Нажмите «Скопировать запрос» и отправьте его в Claude (claude.ai) — можно приложить скриншот страницы каталога.</li><li>Вставьте ответ Claude и нажмите «Применить» — заполнятся параметры, описание, характеристики и титул.</li></ol>')}</div>
-      <textarea data-p="${P}._src" rows="6" placeholder="Текст из каталога или паспорта…">${esc(x._src||'')}</textarea>
-      <div class="row"><button class="btn" type="button" data-a="aiCopy" data-i="${i}">Скопировать запрос</button><span class="muted" data-aistat="${i}">${esc(x._aiMsg||'')}</span></div>
-      <textarea data-p="${P}._ans" rows="4" placeholder="Ответ Claude (начинается с {)">${esc(x._ans||'')}</textarea>
-      <div class="row"><button class="btn primary" type="button" data-a="aiApply" data-i="${i}">Применить ответ</button></div></div>`;
+  const P=`items.${i}`, r=aiParse(x._ans), props=(x._srcProps||[]).length, has=!!String(x._src||'').trim();
+  const st=x._aiStep||(r?3:has?2:1), cls=n=>`ai-st${st===n?' cur':''}${st>n?' done':''}`;
+  return `<div class="ed-sec ai3"><p class="sub">Заполнить карточку с помощью ИИ${tip('Подойдёт любой ИИ-чат: ChatGPT, Claude, Алиса (YandexGPT), GigaChat, DeepSeek и другие. Программа готовит запрос, ИИ раскладывает данные по полям, программа заполняет карточку: описание, характеристики, параметры для фильтров, титул.')}</p>
+    <ol class="ai-steps">
+    <li class="${cls(1)}"><b>Откуда взять данные</b><span class="muted">Ссылка на страницу товара, текст паспорта или каталога — или просто модель в наименовании.</span>
+      <div class="ai-url"><input type="url" data-p="${P}._srcUrl" value="${esc(x._srcUrl||x.pageUrl||'')}" placeholder="https://… ссылка на страницу товара" autocomplete="off"><button class="btn" type="button" data-a="aiFetch" data-i="${i}">Загрузить со страницы</button></div>
+      <textarea data-p="${P}._src" rows="6" placeholder="…или вставьте сюда текст: описание, таблицу характеристик из паспорта или PDF. Можно ничего не вставлять — тогда ИИ ищет данные по модели «${esc(x.name||'из наименования')}».">${esc(x._src||'')}</textarea>
+      ${props?`<div class="ai-props"><span>Со страницы взято характеристик: <b>${props}</b>.</span><button class="btn ghost" type="button" data-a="aiProps" data-i="${i}">Перенести в «Характеристики» без ИИ</button></div>`:''}</li>
+    <li class="${cls(2)}"><b>Отправьте запрос в ИИ</b><span class="muted">Кнопка с названием ИИ копирует запрос и открывает сайт в новой вкладке — там вставьте (Ctrl+V) и отправьте. Можно приложить скриншот или PDF паспорта.</span>
+      ${aiSitesHtml('aiCopy', i)}
+      <details class="ai-pr"><summary>Показать запрос</summary><textarea rows="8" readonly>${esc(aiPrompt(x))}</textarea></details></li>
+    <li class="${cls(3)}"><b>Вставьте ответ ИИ</b><span class="muted">Скопируйте ответ целиком (кнопка «Копировать» под ответом) и вставьте сюда — программа сразу покажет, что заполнится.</span>
+      <textarea data-p="${P}._ans" data-aians="${i}" rows="5" placeholder="Ctrl+V — ответ ИИ">${esc(x._ans||'')}</textarea>
+      <div class="ai-prev" data-aiprev="${i}">${aiSummary(r)}</div>
+      <div class="row"><button class="btn primary" type="button" data-a="aiApply" data-i="${i}" data-aiok="${i}" ${r&&r.kind!=='bad'?'':'disabled'}>Заполнить карточку</button>
+        <label class="row muted" style="gap:6px"><input type="checkbox" data-aikeep="${i}" ${x._aiKeep?'checked':''} style="width:auto">не менять уже заполненное</label></div></li></ol>
+    ${x._aiMsg?`<p class="ai-msg" data-aistat="${i}">${esc(x._aiMsg)}</p>`:''}</div>`;
 }
 
 async function addFeatImage(i, fid, files){
@@ -188,19 +202,6 @@ document.addEventListener('close', e=>{ if (e.target.id!=='edlg') return;
 document.addEventListener('change', e=>{ const t=e.target; if (t.dataset.gat==null) return;
   const x=S.items[+t.dataset.gat], g=x.gallery[+t.dataset.j]; g.at = t.value==='free' ? 'free' : t.value; renderForm(); persist(); });
 
-function pickTypeAndAdd(pre){
-  const d=$('#dlg'); d.classList.remove('wide');
-  const groups=[...new Set(TYPES.filter(t=>t.role!=='accessory').map(t=>t.group||'Прочее'))];
-  d.innerHTML=`<div class="dlg-h"><h3>Какое оборудование добавить?</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-   <div class="dlg-b">${groups.map(g=>`<p class="sub" style="margin:10px 0 6px">${esc(g)}</p><div class="tpick">${TYPES.filter(t=>t.role!=='accessory'&&(t.group||'Прочее')===g).map(t=>`<button type="button" class="btn${t.id===pre?' primary':''}" data-t="${esc(t.id)}">${esc(t.name)}</button>`).join('')}</div>`).join('')}
-   <p class="muted" style="margin-top:14px">Нужного типа нет? Его можно добавить: меню «⋯» вверху → «Типы оборудования».</p></div>`;
-  d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close();
-  d.querySelector('.dlg-b').onclick=e=>{ const b=e.target.closest('[data-t]'); if(!b) return; const t=typeById(b.dataset.t);
-    const it=newItem(); it.attrs={cat:t.id}; it.page=true; it.features=[{label:'',text:''}]; it._open=true;
-    S.items.push(it); d.close(); if (STEP!=='equip') STEP='equip'; renderForm(); persist();
-    setTimeout(()=>openEditor(S.items.length-1,'main'),50);
-    toast(`Добавлена позиция: ${t.item}. Заполните параметры — по ним сформируются характеристики и титул.`); };
-}
 
 // порядок блоков описания и изображений: перетаскивание за «⠿» (и стрелки ↑↓ — ui/events.js)
 function edMoveFeat(it, from, to){ const a=it.features||[]; if (from===to || to<0 || to>=a.length) return false; const [x]=a.splice(from,1); a.splice(to,0,x); return true; }

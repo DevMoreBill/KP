@@ -258,7 +258,7 @@ function cwMainCat(ids){ const c=new Map(); ids.forEach(id=>{ const x=CW.docs.fi
 function cwNewType(then, base){
   const d=$('#dlg'); d.classList.remove('wide');
   const groups=[...new Set(TYPES.map(t=>t.group||'Прочее'))];
-  base=base||CW.F.cat||(CW.active&&CW.docs.find(z=>z.id===CW.active)&&cwA(CW.docs.find(z=>z.id===CW.active)).cat)||(TYPES.find(t=>t.role!=='accessory')||{}).id||'other';
+  base=base||CW.F.cat||(CW.active&&CW.docs.find(z=>z.id===CW.active)&&cwA(CW.docs.find(z=>z.id===CW.active)).cat)||(TYPES.find(t=>t.role!=='accessory'&&!t.station)||{}).id||'other';
   d.innerHTML=`<div class="dlg-h"><h3>Новая категория</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
    <div class="dlg-b"><div class="grid">
      <label class="f"><span class="req">Название категории</span><input type="text" id="ntName" placeholder="Например: Спиральные компрессоры" autocomplete="off"></label>
@@ -286,21 +286,11 @@ function cwNewType(then, base){
   setTimeout(()=>$('#ntName').focus(),30);
 }
 
-function cwPickType(then){
-  const d=$('#dlg'); d.classList.remove('wide');
-  d.innerHTML=`<div class="dlg-h"><h3>Новая позиция каталога — какая категория?</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-   <div class="dlg-b">${cwTypeButtons('data-nt')}<div class="row" style="margin-top:16px"><button class="btn" type="button" data-ntnew>+ Новая категория…</button></div></div>`;
-  d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close();
-  d.querySelector('.dlg-b').onclick=e=>{ const b=e.target.closest('[data-nt]'); if (b){ d.close(); then(b.dataset.nt); return; }
-    if (e.target.closest('[data-ntnew]')){ d.close(); cwNewType(then); } };
-}
-
 const cwAfterSave = async doc => { await cwReload(); CW.active=doc.id; const pv=$('#cwPv'); if (pv) pv.dataset.id=''; CW.note=`Сохранено: ${doc.name}`; cwRedraw();
   requestAnimationFrame(()=>document.querySelector(`#cwList .cw-row[data-id="${CSS.escape(doc.id)}"]`)?.scrollIntoView({block:'nearest'})); };
 
 async function cwEdit(id){ if (!can('catEdit')) return cannot('catEdit'); const x=await fullDoc(CW.docs.find(z=>z.id===id)); if (!x) return; openCatEditor(x, cwAfterSave); }
 
-function cwNew(cat){ if (!can('catAdd')) return cannot('catAdd'); openCatEditor({ id:uid()+uid(), name:'', spec:'', price:0, priceCur:'RUB', attrs:{cat}, features:[{id:uid(),label:'',text:''}], groups:[], gallery:[], prices:[] }, cwAfterSave); }
 
 async function cwDup(id){ if (!can('catAdd')) return cannot('catAdd'); const x=await fullDoc(CW.docs.find(z=>z.id===id)); if (!x || x._light) return cwNote('Не удалось загрузить позицию');
   const c=JSON.parse(JSON.stringify(x)); c.id=uid()+uid(); c.name=x.name+' (копия)'; c.prices=[]; delete c.pricesCount; openCatEditor(c, cwAfterSave, true); }
@@ -408,7 +398,7 @@ function cwBind(d){
       case 'reset': Object.assign(F,{maker:'',series:'',f:{},rng:{},priced:false}); cwNav(); cwList(); return;
       case 'undo': return cwUndo();
       case 'newtype': return cwNewType(id=>{ F.cat=id; F.f={}; F.rng={}; cwRedraw(); });
-      case 'new': return F.cat ? cwNew(F.cat) : cwPickType(cwNew);
+      case 'new': return newEquip('catalog', F.cat||'');
       case 'xls': return openXlsImport(F.cat);
       case 'types': return openTypesEditor(F.cat || undefined);
       case 'exp': return cwExport();
