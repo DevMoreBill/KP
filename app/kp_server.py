@@ -39,6 +39,7 @@ import pdf_convert
 import images
 import maintenance
 import logistics_api
+import ai_llm
 from images import ImageStore, mark_organized, organize_existing
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, ensure_templates, list_history,
                           list_templates, open_template_file, put_file, reset_template, restore_history, template_file)
@@ -569,6 +570,14 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self.send(422, 'text/plain; charset=utf-8', 'Картинка не загружена: %s' % e)
             return self.send(200, ctype, data)
+        if path == '/api/ai/status' and m == 'GET':       # нейросеть в программе: включена ли (без ключа и адреса)
+            return self.send_json(ai_llm.status(store()))
+        if path == '/api/ai/fill' and m == 'POST':        # автозаполнение: запрос из программы → ответ нейросети (JSON строкой)
+            d = json.loads(self.body().decode('utf-8') or '{}')
+            try:
+                return self.send_json(ai_llm.ask(store(), d.get('prompt')))
+            except RuntimeError as e:
+                return self.send(422, 'text/plain; charset=utf-8', str(e))
         if path == '/api/pagetext' and m == 'POST':       # текст и характеристики со страницы товара — для автозаполнения карточки
             import feeds
             d = json.loads(self.body().decode('utf-8') or '{}')

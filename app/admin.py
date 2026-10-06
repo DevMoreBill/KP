@@ -746,6 +746,28 @@ class AdminApi:
                 info['password'] = 'изменён'
             self.log('edit_access', 'manager', mid, None, info)
             return self.ok({'login': rec.get('login') or '', 'hasPassword': bool(rec.get('pw')), 'perms': auth_users.perms_of(rec), 'blocked': bool(rec.get('blocked'))})
+        if sub == 'ai':          # нейросеть в программе: включить / выключить, ключ, модель, адрес API, расход
+            import ai_llm
+            if m == 'POST':
+                d = self.data()
+                before = ai_llm.settings(st)
+                try:
+                    res = ai_llm.save(st, d, me or 'admin')
+                except ValueError as e:
+                    return self.err(400, str(e))
+                info = {k: d[k] for k in ('enabled', 'model', 'base') if k in d}
+                if 'key' in d:
+                    info['key'] = 'изменён' if d.get('key') else 'удалён'
+                self.log('edit_ai', 'settings', 'ai', {k: before.get(k) for k in info if k in before}, info)
+                return self.ok(res)
+            return self.ok(ai_llm.admin_view(st))
+        if sub == 'ai/test' and m == 'POST':      # проверка ключа и связи: короткий запрос
+            import ai_llm
+            try:
+                r = ai_llm.ask(st, 'Ответь JSON-объектом {"ok": true, "model": "<название модели>"}', force=True)
+            except RuntimeError as e:
+                return self.err(422, str(e))
+            return self.ok({'ok': True, 'answer': r['text'][:200], 'model': r['model'], 'usage': r['usage']})
         if sub == 'users':
             if m == 'POST':
                 return self.ok(self.users(self.data(), me))

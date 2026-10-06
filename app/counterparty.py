@@ -123,12 +123,12 @@ class Counterparties:
                 'dellinMask': mask(k.get('dellinKey', '')), 'kit': bool(k.get('kitToken')), 'kitMask': mask(k.get('kitToken', '')),
                 'cdek': bool(k.get('cdekId') and k.get('cdekSecret')), 'cdekIdMask': mask(k.get('cdekId', '')),
                 'cdekSecretMask': mask(k.get('cdekSecret', '')), 'vozovoz': bool(k.get('vozovozToken')),
-                'vozovozMask': mask(k.get('vozovozToken', ''))}
+                'vozovozMask': mask(k.get('vozovozToken', '')), 'deepseek': bool(k.get('deepseekKey')), 'deepseekMask': mask(k.get('deepseekKey', ''))}
 
     def save_keys(self, body):
         cur = self.keys()
         new = json.loads(body.decode('utf-8'))
-        for k in ('checkoKey', 'dadataKey', 'convertapiKey', 'atiToken', 'dellinKey', 'kitToken', 'cdekId', 'cdekSecret', 'vozovozToken'):
+        for k in ('checkoKey', 'dadataKey', 'convertapiKey', 'atiToken', 'dellinKey', 'kitToken', 'cdekId', 'cdekSecret', 'vozovozToken', 'deepseekKey'):
             if k in new:
                 v = str(new[k] or '').strip()
                 if v:

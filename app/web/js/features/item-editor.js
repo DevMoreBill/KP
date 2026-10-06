@@ -170,10 +170,13 @@ function edAI(x,i){
       <div class="row ai-file"><label class="btn ghost">Загрузить файл: ТЗ, паспорт (.docx, .txt)<input type="file" accept=".docx,.txt,.csv,.md" hidden data-aifile="${i}"></label>${typeById(attrsOf(x).cat).station?'<span class="muted">ТЗ заказчика — ИИ разложит требования к контейнеру и добавит недостающие элементы станции.</span>':''}</div>
       <textarea data-p="${P}._src" rows="6" placeholder="…или вставьте сюда текст: описание, таблицу характеристик из паспорта или PDF. Можно ничего не вставлять — тогда ИИ ищет данные по модели «${esc(x.name||'из наименования')}».">${esc(x._src||'')}</textarea>
       ${props?`<div class="ai-props"><span>Со страницы взято характеристик: <b>${props}</b>.</span><button class="btn ghost" type="button" data-a="aiProps" data-i="${i}">Перенести в «Характеристики» без ИИ</button></div>`:''}</li>
-    <li class="${cls(2)}"><b>Отправьте запрос в ИИ</b><span class="muted">Кнопка с названием ИИ копирует запрос и открывает сайт в новой вкладке — там вставьте (Ctrl+V) и отправьте. Можно приложить скриншот или PDF паспорта.</span>
+    ${AI_DIRECT.enabled?`<li class="${cls(2)}"><b>Заполните автоматически</b><span class="muted">${esc(AI_DIRECT.provider)} разложит данные по полям прямо в программе — ответ появится в шаге 3.</span>
+      <div class="row"><button class="btn primary" type="button" data-a="aiAuto" data-i="${i}"${AI_DIRECT.busy[x.id]?' disabled':''}>${AI_DIRECT.busy[x.id]?'Заполняю…':`✨ Заполнить автоматически — ${esc(AI_DIRECT.provider)}`}</button></div>
+      <details class="ai-pr"><summary>или через ИИ-чат в браузере (можно приложить скриншот или PDF)</summary>${aiSitesHtml('aiCopy', i)}<textarea rows="8" readonly>${esc(aiPrompt(x))}</textarea></details></li>`
+    :`<li class="${cls(2)}"><b>Отправьте запрос в ИИ</b><span class="muted">Кнопка с названием ИИ копирует запрос и открывает сайт в новой вкладке — там вставьте (Ctrl+V) и отправьте. Можно приложить скриншот или PDF паспорта.</span>
       ${aiSitesHtml('aiCopy', i)}
-      <details class="ai-pr"><summary>Показать запрос</summary><textarea rows="8" readonly>${esc(aiPrompt(x))}</textarea></details></li>
-    <li class="${cls(3)}"><b>Вставьте ответ ИИ</b><span class="muted">Скопируйте ответ целиком (кнопка «Копировать» под ответом) и вставьте сюда — программа сразу покажет, что заполнится.</span>
+      <details class="ai-pr"><summary>Показать запрос</summary><textarea rows="8" readonly>${esc(aiPrompt(x))}</textarea></details></li>`}
+    <li class="${cls(3)}"><b>${AI_DIRECT.enabled?'Проверьте ответ':'Вставьте ответ ИИ'}</b><span class="muted">${AI_DIRECT.enabled?'Здесь ответ нейросети и что заполнится; при ручном способе — вставьте ответ чата сюда.':'Скопируйте ответ целиком (кнопка «Копировать» под ответом) и вставьте сюда — программа сразу покажет, что заполнится.'}</span>
       <textarea data-p="${P}._ans" data-aians="${i}" rows="5" placeholder="Ctrl+V — ответ ИИ">${esc(x._ans||'')}</textarea>
       <div class="ai-prev" data-aiprev="${i}">${aiSummary(r)}</div>
       <div class="row"><button class="btn primary" type="button" data-a="aiApply" data-i="${i}" data-aiok="${i}" ${r&&r.kind!=='bad'?'':'disabled'}>Заполнить карточку</button>

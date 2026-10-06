@@ -48,6 +48,23 @@ async function copyToClipboard(txt){
   return done;
 }
 
+// нейросеть прямо в программе (включает администратор: «Настройки → Нейросеть»)
+const AI_DIRECT = { enabled:false, provider:'', model:'', busy:{} };
+async function aiStatusLoad(){ try{ Object.assign(AI_DIRECT, await api('/api/ai/status')); }catch(e){ AI_DIRECT.enabled=false; } }
+
+// запрос к нейросети через сервер; ответ — в то же поле, что и при ручном способе (видно, что заполнится)
+async function aiDirect(prompt){ const r=await api('/api/ai/fill', {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:JSON.stringify({prompt})}); return r.text||''; }
+
+async function aiAuto(i){
+  const it=S.items[i]; if (!it || AI_DIRECT.busy[it.id]) return;
+  if (!String(it._src||'').trim() && !String(it.name||'').trim()){ it._aiMsg='Сначала шаг 1: ссылка, текст или хотя бы модель в наименовании.'; return renderForm(); }
+  AI_DIRECT.busy[it.id]=true; it._aiMsg=`${AI_DIRECT.provider||'Нейросеть'} заполняет карточку… обычно 10–40 секунд`; renderForm();
+  try{ it._ans=await aiDirect(aiPrompt(it)); it._aiStep=3; const r=aiParse(it._ans);
+    it._aiMsg = r && r.kind!=='bad' ? 'Ответ получен — проверьте, что заполнится, и нажмите «Заполнить карточку».' : (r?r.err:'Пустой ответ — повторите'); }
+  catch(e){ it._aiMsg=String(e.message||e); }
+  finally{ delete AI_DIRECT.busy[it.id]; renderForm(); persist(); }
+}
+
 const AI_SITES = [['ChatGPT','https://chatgpt.com/'], ['Claude','https://claude.ai/new'], ['Алиса (YandexGPT)','https://alice.yandex.ru/'],
   ['GigaChat','https://giga.chat/'], ['DeepSeek','https://chat.deepseek.com/']];
 
@@ -241,12 +258,16 @@ function aiPartDialog(i, j){
     <div class="dlg-b ai3"><ol class="ai-steps">
       <li><b>Что известно об элементе</b><span class="muted">Текст паспорта, коммерческого предложения поставщика, требования заказчика — или просто модель.</span>
         <textarea id="aipSrc" rows="5" placeholder="Например: контейнер 40 футов HC, утепление 100 мм, ворота 2,4 × 2,5 м, отопление 2 × 3 кВт">${esc(p._src||'')}</textarea></li>
-      <li><b>Отправьте запрос в любой ИИ</b><span class="muted">Кнопка с названием копирует запрос и открывает сайт — вставьте (Ctrl+V) и отправьте. Можно приложить PDF или скриншот.</span>${aiSitesHtml('aiPartCopy', i, ` data-j="${j}"`)}</li>
+      <li><b>${AI_DIRECT.enabled?'Заполните автоматически':'Отправьте запрос в любой ИИ'}</b>${AI_DIRECT.enabled?`<div class="row"><button class="btn primary" type="button" id="aipAuto">✨ Заполнить автоматически — ${esc(AI_DIRECT.provider)}</button><span class="muted" id="aipSt"></span></div>
+        <details class="ai-pr"><summary>или через ИИ-чат в браузере</summary>${aiSitesHtml('aiPartCopy', i, ` data-j="${j}"`)}</details>`
+        :`<span class="muted">Кнопка с названием копирует запрос и открывает сайт — вставьте (Ctrl+V) и отправьте. Можно приложить PDF или скриншот.</span>${aiSitesHtml('aiPartCopy', i, ` data-j="${j}"`)}`}</li>
       <li><b>Вставьте ответ ИИ</b><textarea id="aipAns" rows="5" placeholder="Скопируйте ответ целиком и вставьте сюда (Ctrl+V)">${esc(p._ans||'')}</textarea>
         <div class="ai-prev" id="aipPrev">${aiSummary(r)}</div>
         <div class="row"><button class="btn primary" type="button" id="aipOk" ${r&&r.kind!=='bad'?'':'disabled'}>Заполнить элемент</button></div></li></ol></div>`;
     d.querySelector('[data-close]').onclick=()=>d.close();
     $('#aipSrc').oninput=e=>{ p._src=e.target.value; };
+    if ($('#aipAuto')) $('#aipAuto').onclick=async e=>{ e.target.disabled=true; $('#aipSt').textContent='Заполняю… обычно 10–30 секунд';
+      try{ p._ans=await aiDirect(aiPartPrompt(it, p)); draw(); }catch(x){ e.target.disabled=false; $('#aipSt').textContent=String(x.message||x); } };
     $('#aipAns').oninput=e=>{ p._ans=e.target.value; const r2=aiParse(p._ans); $('#aipPrev').innerHTML=aiSummary(r2); $('#aipOk').disabled=!(r2&&r2.kind!=='bad'); };
     $('#aipOk').onclick=()=>{ const r2=aiParse(p._ans); if (!r2||r2.kind==='bad') return; const jj=r2.j;
       if (jj.name && !String(p.name||'').trim()) p.name=String(jj.name);

@@ -102,6 +102,7 @@ document.addEventListener('click', async e=>{
     case 'paste': return openPaste(i);
     case 'aiCopy': return aiCopy(i, b.dataset.url||'');
     case 'aiFetch': return aiFetch(i);
+    case 'aiAuto': return aiAuto(i);
     case 'aiProps': return aiProps(i);
     case 'aiPart': return aiPartDialog(i, j);
     case 'aiPartCopy': return aiPartCopy(i, j, b.dataset.url||'');
