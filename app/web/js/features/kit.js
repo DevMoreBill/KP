@@ -191,14 +191,17 @@ function edKit(x,i){
       <label class="f"><span>Размер Д × Ш × В, мм</span><input type="text" data-kitct="${i}.${j}" data-fld="size" value="${esc(p.size||'')}" placeholder="${esc(ctypeOf(p.ctype).size)}"></label>
       <label class="f"><span>Цвет</span><input type="text" data-kitct="${i}.${j}" data-fld="ral" value="${esc(p.ral||'')}" placeholder="например, RAL 7004 / RAL 5005"></label></div>
       <div class="kit-sys"><span class="muted">Системы контейнера:</span>${CONT_SYSTEMS.map(([id,k])=>`<button type="button" class="chip${(p.sys||CONT_SYS_DEF)[id]?' on':''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!(p.sys||CONT_SYS_DEF)[id]}">${esc(k)}</button>`).join('')}</div>`:''}
+    <div class="kit-body">
+    <div class="kit-phw"><span class="kit-phl">Фото элемента</span>
+      <div class="kit-ph${p.photo&&p.photo.src?' has':''}">${p.photo&&p.photo.src?`<img src="${esc(p.photo.src)}" alt="${esc(p.name||'Фото элемента')}"><button class="icon x" type="button" data-a="kitPhotoDel" data-i="${i}" data-j="${j}" aria-label="Убрать фото">✕</button>`:`<button type="button" class="kit-phb" data-a="kitPhoto" data-i="${i}" data-j="${j}"><b>+ фото</b><small>выбрать файл</small></button>`}</div>
+      ${p.photo&&p.photo.src?`<button type="button" class="lnk kit-phr" data-a="kitPhoto" data-i="${i}" data-j="${j}">Заменить фото</button>`:''}</div>
+    <div class="kit-main">
     <div class="kit-g">
       <label class="f"><span>Кол-во</span><input type="text" inputmode="numeric" data-p="${P}.${j}.qty" value="${esc(p.qty)}"></label>
       <label class="f"><span>Закупка за ед.</span><span class="kit-cost"><input type="text" inputmode="decimal" data-kitcost="${i}.${j}" value="${esc(ct)}" placeholder="цена из счёта"><select data-kitcur="${i}.${j}" aria-label="Валюта закупки">${DEAL_CURS.map(c=>`<option${(p.costCur||'RUB')===c?' selected':''}>${c}</option>`).join('')}</select></span></label>
       <label class="f kit-sup"><span>Поставщик${tip('У кого покупаем этот элемент. В «Экономике сделки» элементы с разными поставщиками попадут в разные карточки — со своими сроками и условиями оплаты.')}</span><input type="text" data-p="${P}.${j}.sup" value="${esc(p.sup)}" list="kitSupL" placeholder="Производитель или поставщик" autocomplete="off"></label>
     </div>
-    <div class="kit-b">
-      <div class="kit-ph">${p.photo&&p.photo.src?`<img src="${esc(p.photo.src)}" alt=""><button class="icon x" type="button" data-a="kitPhotoDel" data-i="${i}" data-j="${j}" aria-label="Убрать фото">✕</button>`:`<button type="button" class="kit-phb" data-a="kitPhoto" data-i="${i}" data-j="${j}">+ фото</button>`}</div>
-      <label class="f kit-desc"><span>Техническое описание${p.catId?' <small class="muted">из каталога</small>':''}</span><textarea rows="3" data-p="${P}.${j}.desc" placeholder="Назначение, конструкция, комплектация элемента — попадёт в КП">${esc(p.desc||'')}</textarea></label></div>
+      <label class="f kit-desc"><span>Техническое описание${p.catId?' <small class="muted">из каталога</small>':''}</span><textarea rows="3" data-p="${P}.${j}.desc" placeholder="Назначение, конструкция, комплектация элемента — попадёт в КП">${esc(p.desc||'')}</textarea></label></div></div>
     <details class="kit-rows"${(p.rows||[]).length&&(p.rows||[]).length<=6?' open':''}><summary>Характеристики элемента <span class="muted">${(p.rows||[]).length?(p.rows.length+' '+plural(p.rows.length,'строка','строки','строк')):'— таблица в КП'}</span></summary>
       ${(p.rows||[]).map((r,k)=>`<div class="kit-row"><input type="text" data-p="${P}.${j}.rows.${k}.k" value="${esc(r.k)}" placeholder="Параметр"><input type="text" data-p="${P}.${j}.rows.${k}.v" value="${esc(r.v)}" placeholder="Значение"><button class="icon" type="button" data-a="kitRowDel" data-i="${i}" data-j="${j}" data-k="${k}" aria-label="Убрать строку">✕</button></div>`).join('')}
       <button class="btn ghost" type="button" data-a="kitRowAdd" data-i="${i}" data-j="${j}">+ строка</button></details>
@@ -215,11 +218,18 @@ function edKit(x,i){
       <div class="kit-cts">${CONTAINER_TYPES.map(c=>`<button type="button" class="kit-ctb" data-a="kitCont" data-i="${i}" data-ct="${c.id}"><b>${esc(c.name)}</b><small>${esc(c.size)}</small></button>`).join('')}</div></div>`,
     main?'':`<div class="kit-todo"><b>${cont?'1':'2'}. ${esc(st.mainLabel)}</b><span class="muted">Из каталога — с описанием, характеристиками, фото и закупкой; или своё.</span>
       <div class="row"><button class="btn primary" type="button" data-a="kitMain" data-i="${i}">Выбрать в каталоге</button><button class="btn ghost" type="button" data-a="kitAdd" data-i="${i}" data-n="${esc(st.mainLabel)}" data-role="main">+ Своё</button></div></div>`].join('') : '';
+  const others=parts.filter(p=>!p.role), noCost=parts.filter(p=>!p.cost).length;
+  const stp=(ok, n, title, sub)=>`<li class="${ok?'done':'todo'}"><span class="kit-sn">${ok?'✓':n}</span><span><b>${title}</b><small>${sub}</small></span></li>`;
+  const steps = st ? `<ol class="kit-steps" aria-label="Как собрать станцию">
+      ${stp(!!cont, 1, 'Контейнер', cont?esc(ctypeOf(cont.ctype).name):'выберите ниже')}
+      ${stp(!!main, 2, esc(st.mainLabel), main?esc(main.name||'без названия'):'из каталога или своё')}
+      ${stp(others.length>0, 3, 'Дополнительные элементы', others.length?`${others.length} ${plural(others.length,'элемент','элемента','элементов')}`:'кнопки «+» внизу')}
+      ${stp(parts.length>0 && !noCost, 4, 'Закупка', !parts.length?'—':noCost?`нет цены у ${noCost}`:'цены указаны')}</ol>` : '';
   return `<div class="ed-sec"><p class="sub">${st?`Состав: ${esc(t.item.toLowerCase())}`:'Состав изделия'}${tip('Станция в контейнере — одно изделие для заказчика: одна строка и одна цена в КП. Закупка, поставщик, описание и характеристики — у каждого элемента: в КП это таблица «Состав изделия» и карточки элементов, в «Экономике сделки» — свои поставщики и сроки.')}</p>
-    ${todo}
+    ${steps}${todo}
     <div class="kit-l">${parts.map(card).join('')}</div>
     <datalist id="kitSupL">${sups.map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
-    <div class="kit-add"><span class="muted">Добавить в состав:</span>
+    <div class="kit-add"><b>${st?'3. ':''}Добавить в состав</b><span class="muted">— нажмите элемент: откроется подбор в каталоге; нет в каталоге — добавите своим.</span>
       <span class="chips">${presets.map(([n,c])=>`<button class="chip" type="button" data-a="kitPreset" data-i="${i}" data-n="${esc(n)}" data-cat="${esc(c)}" title="${c?'Подобрать в каталоге: '+esc(typeById(c).name):'Найти в каталоге или добавить новым элементом'}">+ ${esc(n)}</button>`).join('')}</span>
       <span class="row"><button class="btn ghost" type="button" data-a="kitCat" data-i="${i}">+ Из каталога</button><button class="btn ghost" type="button" data-a="kitAdd" data-i="${i}">+ Свой элемент</button></span></div>
     ${parts.length?`<div class="kit-sum"><span>Закупка изделия${parts.some(p=>p.costCur&&p.costCur!=='RUB')?' (по курсам КП)':''}</span><b>${Number.isFinite(cost)?money(cost)+' ₽':'нет курса валюты — укажите в шаге «Цены»'}</b>

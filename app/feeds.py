@@ -275,25 +275,83 @@ def page_crumbs(html):
     return ' / '.join(names)[:300]
 
 
+PROP_PATS = (r'<tr\b[^>]*>\s*<t[dh]\b[^>]*>(.*?)</t[dh]>\s*<td\b[^>]*>(.*?)</td>',
+             r'<dt\b[^>]*>(.*?)</dt>\s*<dd\b[^>]*>(.*?)</dd>',
+             r'class\s*=\s*["\'][^"\']*(?:prop|char|param|spec|attr|feature)[^"\']*(?:name|title|label|key)[^"\']*["\'][^>]*>(.*?)</\w+>.{0,400}?'
+             r'class\s*=\s*["\'][^"\']*(?:prop|char|param|spec|attr|feature)[^"\']*(?:value|val)[^"\']*["\'][^>]*>(.*?)</\w+>')
+# список характеристик без таблицы: <li><span>Мощность</span><span>22 кВт</span></li>
+PROP_LI = r'<li\b[^>]*>\s*<(span|div|b|strong)\b[^>]*>(.*?)</\1>\s*(?:<[^>]*>\s*)*?<(span|div)\b[^>]*>(.*?)</\3>\s*</li>'
+
+
+def _table_props(html, pats=PROP_PATS, li=False, limit=60):
+    """Пары из таблиц, dt/dd, блоков свойств (Битрикс и др.); li=True — ещё и списки «название — значение»."""
+    html = re.sub(r'(?is)<div\b[^>]*\bbasket_props_block\b.*?</table>', '', html)     # скрытый выбор свойств корзины
+    out, seen = [], set()
+    found = [(m.group(1), m.group(2)) for rx in pats for m in re.finditer(rx, html, re.I | re.S)]
+    if li:
+        found += [(m.group(2), m.group(4)) for m in re.finditer(PROP_LI, html, re.I | re.S)]
+    for a, b in found:
+        k = re.sub(r'\s+', ' ', _html_text(a)).strip(' :')
+        v = re.sub(r'\s*\n\s*', '; ', _html_text(b)).strip(' ;')
+        if 1 < len(k) <= 80 and 0 < len(v) <= 300 and k.lower() not in seen and not re.search(SALES_RX, k + ' ' + v):
+            seen.add(k.lower())
+            out.append([k, v])
+    return out[:limit]
+
+
 def page_props(html):
     """Пары «название — значение» со страницы: свойства schema.org, иначе таблицы, dt/dd и блоки свойств Битрикса."""
     out = _schema_props(html)
     if out:
         return out[:60]
-    html = re.sub(r'(?is)<div\b[^>]*\bbasket_props_block\b.*?</table>', '', html)     # скрытый выбор свойств корзины
-    pats = (r'<tr\b[^>]*>\s*<t[dh]\b[^>]*>(.*?)</t[dh]>\s*<td\b[^>]*>(.*?)</td>',
-            r'<dt\b[^>]*>(.*?)</dt>\s*<dd\b[^>]*>(.*?)</dd>',
-            r'class\s*=\s*["\'][^"\']*(?:prop|char|param)[^"\']*(?:name|title)[^"\']*["\'][^>]*>(.*?)</\w+>.{0,400}?'
-            r'class\s*=\s*["\'][^"\']*(?:prop|char|param)[^"\']*(?:value|val)[^"\']*["\'][^>]*>(.*?)</\w+>')
-    seen = set()
-    for rx in pats:
-        for m in re.finditer(rx, html, re.I | re.S):
-            k = re.sub(r'\s+', ' ', _html_text(m.group(1))).strip(' :')
-            v = re.sub(r'\s*\n\s*', '; ', _html_text(m.group(2))).strip(' ;')
-            if 1 < len(k) <= 60 and 0 < len(v) <= 300 and k.lower() not in seen:
-                seen.add(k.lower())
-                out.append([k, v])
-    return out[:60]
+    return _table_props(html)
+
+
+def _ld_product(html):
+    """Товар из JSON-LD (schema.org Product): описание и additionalProperty — многие сайты кладут их только туда."""
+    desc, props = '', []
+    for m in re.finditer(r'(?is)<script\b[^>]*type\s*=\s*["\']application/ld\+json["\'][^>]*>(.*?)</script>', html):
+        try:
+            data = json.loads(m.group(1).strip())
+        except ValueError:
+            continue
+        stack = data if isinstance(data, list) else [data]
+        while stack:
+            x = stack.pop()
+            if isinstance(x, list):
+                stack.extend(x)
+                continue
+            if not isinstance(x, dict):
+                continue
+            stack.extend(v for v in x.values() if isinstance(v, (dict, list)))
+            tp = x.get('@type')
+            if (tp == 'Product' or (isinstance(tp, list) and 'Product' in tp)):
+                d = _html_text(_unesc(str(x.get('description') or '')))
+                if len(d) > len(desc):
+                    desc = d
+                for p in x.get('additionalProperty') or []:
+                    if isinstance(p, dict) and p.get('name') and p.get('value') not in (None, ''):
+                        props.append([str(p['name']).strip(' :')[:80], (str(p['value']) + (' ' + str(p['unitText']) if p.get('unitText') else ''))[:300]])
+    return desc, props
+
+
+# вкладки карточки товара («Описание», «Характеристики», «Комплектация»…): в разметке есть все, видна одна
+TAB_RX = (r'<(div|section|article)\b[^>]*(?:\brole\s*=\s*["\']tabpanel["\']|\bclass\s*=\s*["\'][^"\']*(?:\btab-pane\b|\btabs?[_-]{1,2}(?:content|pane|panel|body|item-content|block)\b|'
+          r'\btab-content__item\b|\btabcontent\b|\btab_content\b|\bdetail-tab|\bproduct-tab|\bjs-tab)[^"\']*["\']|\bdata-tab-content\b)[^>]*>')
+
+
+def _tab_texts(html):
+    """Текст каждой вкладки (без вложенных повторов): таблицы — строками «параметр значение»."""
+    out, seen = [], set()
+    for m in re.finditer(TAB_RX, html, re.I):
+        inner = _inner_html(html, m)
+        inner = re.sub(r'(?i)</t[dh]\s*>', ' ', re.sub(r'(?i)</tr\s*>|<table\b[^>]*>', '\n<br>', inner))
+        text = _no_sales(re.sub(r'[ \t]{2,}', ' ', _html_text(inner)))
+        lines = [x for x in text.split('\n') if len(x) > 2 and x not in seen]
+        if sum(len(x) for x in lines) >= 40:
+            seen.update(lines)
+            out.append('\n'.join(lines))
+    return out
 
 
 def page_apply(html, props):
@@ -314,14 +372,34 @@ def page_apply(html, props):
 
 def page_text(url):
     """Для автозаполнения карточки: название, описание и характеристики со страницы любого сайта (не только поставщиков
-    из фидов). Свойства — парами; если описания в разметке нет — видимый текст страницы без меню и скриптов (до 12 000 знаков)."""
+    из фидов). Описание — itemprop/JSON-LD и текст всех вкладок карточки (скрытые вкладки тоже есть в разметке);
+    свойства — парами из schema.org, JSON-LD, таблиц и списков; если описания нет — видимый текст страницы без меню и скриптов."""
     html = page_html(url, strict=False)
     t = re.search(r'(?is)<h1\b[^>]*>(.*?)</h1>', html) or re.search(r'(?is)<title\b[^>]*>(.*?)</title>', html)
     title = _unesc(re.sub(r'<[^>]+>', ' ', t.group(1))) if t else ''
-    props = page_props(html)
+    ld_desc, ld_props = _ld_product(html)
+    clean = re.sub(r'(?is)<(script|style|noscript|svg)\b.*?</\1\s*>', ' ', html)
+    clean = re.sub(r'(?i)</(span|b|strong|em|a|label)\s*>', r' </\1>', clean)      # «Масса</span><span>430 кг» → «Масса 430 кг»
+    # характеристики — отовсюду: schema.org, JSON-LD, таблицы и списки (в том числе на скрытых вкладках)
+    props, seen = [], set()
+    for k, v in _schema_props(html) + ld_props + _table_props(clean, li=True, limit=200):
+        if k.lower() not in seen:
+            seen.add(k.lower())
+            props.append([k, v])
+    props = props[:150]
     desc = page_desc(html)
+    if len(ld_desc) > len(desc):
+        desc = ld_desc
+    # остальные вкладки (комплектация, преимущества, технические данные текстом…) — после описания, без повторов
+    have = set(desc.split('\n'))
+    for tx in _tab_texts(clean):
+        add = [x for x in tx.split('\n') if x not in have]
+        if sum(len(x) for x in add) >= 40:
+            have.update(add)
+            desc = (desc + '\n\n' + '\n'.join(add)).strip()
+    desc = desc[:20000]
     if len(desc) < 200:
-        body = re.sub(r'(?is)<(script|style|noscript|svg|nav|header|footer|form|select|button)\b.*?</\1\s*>', ' ', html)
+        body = re.sub(r'(?is)<(script|style|noscript|svg|nav|header|footer|form|select|button)\b.*?</\1\s*>', ' ', clean)
         body = re.sub(r'(?i)</t[dh]\s*>', ' ', re.sub(r'(?i)</tr\s*>|<table\b[^>]*>', '\n<br>', body))
         m = re.search(r'(?is)<main\b[^>]*>(.*)</main>', body) or re.search(r'(?is)<body\b[^>]*>(.*)</body>', body)
         text = _no_sales(_html_text(m.group(1) if m else body))

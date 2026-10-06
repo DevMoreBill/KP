@@ -92,6 +92,9 @@ const DEAL_EVENTS = { sign:'после подписания договора', r
 
 // банковская гарантия: вид
 const DEAL_BG_TYPES = { adv:'На возврат аванса', perf:'Исполнения договора', warr:'Гарантийных обязательств' };
+// разработка документации: виды (отметки в «Расходах»; в условиях КП — какие виды входят в стоимость)
+const DEAL_DOC_KINDS = { pd:'проектная', rd:'рабочая', id:'исполнительная' };
+const dealDocKinds = d => Object.keys(DEAL_DOC_KINDS).filter(k=>d && d.docK && d.docK[k]).map(k=>DEAL_DOC_KINDS[k]).join(', ');
 // ставка банка за гарантию по умолчанию, % годовых от суммы гарантии за её срок. Рынок 2026: обычно 1–3,5 %,
 // в среднем ~2,2 % (Сбербанк — от 2 %, ВТБ — от 3,7 %); 3 % — с запасом для коммерческого договора. Правится в каждой гарантии.
 const DEAL_BG_RATE = 3;
@@ -107,15 +110,15 @@ function dealSupPay(s){
 }
 
 function dealNewSupplier(id, def={}){
-  return { id, name:'', country:'', vatIn:false, adv:def.adv??'20', prod:def.prod??'40', ship:def.ship??'40',
-    extra:{v:'',cur:'RUB'}, log:{v:'',cur:'RUB'}, logRu:{v:''}, cusMode:'sum', cus:{v:'',cur:'RUB'}, vi:'', vo:'',
+  return { id, name:'', country:'Россия', vatIn:true, adv:def.adv??'20', prod:def.prod??'40', ship:def.ship??'40',
+    extra:{v:'',cur:'RUB'}, log:{v:'',cur:'RUB'}, logRu:{v:''}, cusMode:'none', cus:{v:'',cur:'RUB'}, vi:'', vo:'',
     duty:'', ivat:'22', fee:'', ins:'', fx:'', brk:{v:''}, voRu:'' };
 }
 
 function dealBlank(def={}){
   const adv=def.cAdv&&+def.cAdv>0 ? String(def.cAdv) : '';
   return { v:3, touched:false, over:{price:'',vat:''}, rates:{}, sup:[dealNewSupplier('s1',def)], map:{},
-    mnt:'', pnr:'', oth:'', vo:'', warr:'', bonus:'', tax:def.tax??'25',
+    mnt:'', pnr:'', oth:'', doc:'', docK:{}, vo:'', warr:'', bonus:'', tax:def.tax??'25',
     cust:{ tr: adv ? [{pct:adv, ev:'sign', off:'0'}, {pct:'', ev:'delivery', off:def.defer??'30'}] : [{pct:'', ev:'delivery', off:def.defer??'30'}] },
     money:def.money??'', days:{}, target:{type:'margin', v:''} };
 }
@@ -236,7 +239,7 @@ function dealCalc(kp, d){
   }
   for (const s of S_) if (s.noDuty.length) warn.push({t:`${s.name}: нет ставки пошлины у ${s.noDuty.length} ${s.noDuty.length===1?'позиции':'позиций'} — считается 0 %`});
   for (const s of S_) for (const x of s.noCost) warn.push({t:`«${x.name||'Без названия'}»: не указана цена закупки — позиция не учтена в расходах`});
-  const M=num('mnt', d.mnt, {def:0}), E=num('oth', d.oth, {def:0}), pnrDays=num('pnr', d.pnr, {def:0, int:true});
+  const M=num('mnt', d.mnt, {def:0}), E=num('oth', d.oth, {def:0}), Dc=num('doc', d.doc, {def:0}), pnrDays=num('pnr', d.pnr, {def:0, int:true});
   const Vo=num('vo', d.vo, {def:0});
   const warrP=num('warr', d.warr, {def:0, max:100}), bonusP=num('bonus', d.bonus, {def:0, max:100}), taxP=num('tax', d.tax, {def:25, max:100});
   const xc=d.xc||{}, xMode=['net','sale','salevat','sum'].includes(xc.mode)?xc.mode:'net';
@@ -246,7 +249,7 @@ function dealCalc(kp, d){
   const W=R*warrP/100, Bn=R*bonusP/100;
   const sumOf=f=>S_.reduce((a,s)=>a+f(s),0);
   const viSum=sumOf(s=>s.vi||0), Tsum=sumOf(s=>s.T), Lsum=sumOf(s=>s.L), LruSum=sumOf(s=>s.Lru), brkSum=sumOf(s=>s.brk);
-  if (Vo > Lsum+Tsum+M+E-viSum+0.005) err['vo']='Не больше расходов на логистику, таможню, монтаж и прочее за вычетом ввозного НДС';
+  if (Vo > Lsum+Tsum+M+E+Dc-viSum+0.005) err['vo']='Не больше расходов на логистику, таможню, монтаж и прочее за вычетом ввозного НДС';
   // график: платежи поставщикам, доставка по России, монтаж при поставке, поступления заказчика, бонусы и резерв
   const act=S_.filter(s=>s.active), multi=act.length>1, rows=[];
   const dayOf=(key, auto)=>{ const o=d.days&&d.days[key]; const n=dNum(o); if (o!=null && o!=='' && (Number.isNaN(n)||n<0||!Number.isInteger(n))) err['days.'+key]='Целое число дней'; return (n!=null && n>=0 && Number.isInteger(n)) ? n : auto; };
@@ -263,6 +266,7 @@ function dealCalc(kp, d){
     if (B>0) rows.push({key:'log:'+s.id, auto:s.rdy, label:(s.T?'Перевозка, таможня и сборы':'Перевозка и сборы')+nm, amount:-B, party:'log', ev:'перед отгрузкой'});
     if (s.Lru>0) rows.push({key:'ru:'+s.id, auto:arr, label:'Доставка по России'+nm, amount:-s.Lru, party:'log', ev:'при поставке'}); }
   if (asmC && asmC.cost>0) rows.push({key:'asm', auto:asmC.end, label:`Сборка станции у «${asmC.A.name}»`, amount:-asmC.cost, party:'sup', ev:'после сборки'});
+  if (Dc>0) rows.push({key:'doc', auto:Rdy, label:'Разработка документации', amount:-Dc, party:'oth', ev:'до отгрузки'});
   if (M+E>0) rows.push({key:'mnt', auto:D, label:'Монтаж, ПНР и прочие расходы', amount:-(M+E), party:'oth', ev:'при поставке'});
   // этапы оплаты заказчика: последний этап — остаток до 100 %
   const ev={sign:0, ready:Rdy, delivery:D, pnr:pnrEnd};
@@ -323,7 +327,7 @@ function dealCalc(kp, d){
   let F=finance();
   const equipSum=sumOf(s=>s.equip);
   const asmCost=asmC?asmC.cost:0;
-  const Ccash=sumOf(s=>s.cash)+M+E+W+Bn+BG+asmCost;
+  const Ccash=sumOf(s=>s.cash)+M+E+Dc+W+Bn+BG+asmCost;
   const voSup=sumOf(s=>s.vo), voRuSum=sumOf(s=>s.voRu);
   const unknown=S_.filter(s=>s.vi==null);
   const VATinKnown=viSum+voSup+voRuSum+Vo+inVat(asmCost);      // сборка — услуга в России с НДС
@@ -340,13 +344,13 @@ function dealCalc(kp, d){
   if (base && Math.abs(base.P-(base.cashAfter+base.excess))>0.01) warn.push({t:'Контрольное равенство не сошлось — сообщите разработчику', bad:true});
   if (xr.K>0 && xr.net<0) warn.push({t:`Прочие расходы наличными (${Math.round(xr.K).toLocaleString('ru-RU')} ₽) больше чистой прибыли сделки — компания в убытке`, bad:true});
   if (!(S>0)) warn.push({t:'Нет цены для заказчика: заполните цены в КП или укажите цену здесь', bad:true});
-  if (!equipSum && !Lsum && !Tsum && !M && !E) warn.push({t:'Расходы не указаны: укажите цены закупки в шаге «Закупка»', go:'price'});
+  if (!equipSum && !Lsum && !Tsum && !M && !E && !Dc) warn.push({t:'Расходы не указаны: укажите цены закупки в шаге «Закупка»', go:'price'});
   // структура затрат (для итога и Excel)
   const parts=[['Оборудование', equipSum], ['Комиссии за перевод и конвертацию', sumOf(s=>s.fxE+s.fxL)], ['Страхование груза', sumOf(s=>s.ins)],
     ['Логистика до границы', Lsum], ['Таможенные платежи', Tsum], ['Брокер, СВХ, сертификация', brkSum], ['Доставка по России', LruSum], ['Сборка станции', asmCost],
-    ['Монтаж и ПНР', M], ['Банковская гарантия', BG], ['Прочие расходы', E], ['Бонусы и комиссии с продажи', Bn], ['Резерв на гарантию', W], ['Финансирование', F],
+    ['Монтаж и ПНР', M], ['Разработка документации', Dc], ['Банковская гарантия', BG], ['Прочие расходы', E], ['Бонусы и комиссии с продажи', Bn], ['Резерв на гарантию', W], ['Финансирование', F],
     ['НДС к вычету (уменьшает затраты)', -(base||lo).VATin]].filter(x=>Math.abs(x[1])>0.004);
-  return { asm:asmC, bgs, BG, advSum, xc:{mode:xMode, when:xWhen, off:xOffSt, from:xFrom.map(r=>r.key), v:xV, cost:xCost, g:xG, on:xV>0}, S, v, vatFromKp, rate, rateSrc, used:[...used].filter(c=>c!=='RUB'), sup:S_, M, E, Vo, W, Bn, warrP, bonusP, taxP, pnrDays, pnrK, pnrEnd, trs, ev, i, moneyAuto,
+  return { asm:asmC, bgs, BG, advSum, xc:{mode:xMode, when:xWhen, off:xOffSt, from:xFrom.map(r=>r.key), v:xV, cost:xCost, g:xG, on:xV>0}, S, v, vatFromKp, rate, rateSrc, used:[...used].filter(c=>c!=='RUB'), sup:S_, M, E, Dc, Vo, W, Bn, warrP, bonusP, taxP, pnrDays, pnrK, pnrEnd, trs, ev, i, moneyAuto,
     rows, F, D, Rdy, Tend, R, VATs, Ccash, equipSum, Lsum, LruSum, brkSum, Tsum, voSup, voRuSum, unknown, base, lo, hi, cashBefore:S-Ccash-F, parts,
     err, warn, ok:!Object.keys(err).length };
 }

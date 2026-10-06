@@ -135,7 +135,7 @@ async function aiFetchInto(it){
   it._src=[`Страница: ${url}`, r.title?`Название: ${r.title}`:'', r.text||'', props.length?'Характеристики:\n'+props.map(p=>`${p[0]}: ${p[1]}`).join('\n'):''].filter(Boolean).join('\n\n');
   it._srcProps=props; if (!it.pageUrl && !(it.feed&&it.feed.url)) it.pageUrl=url;
   if (!String(it.name||'').trim() && r.title) it.name=r.title.slice(0,200);
-  it._aiMsg=`Текст страницы загружен${props.length?`, характеристик: ${props.length}`:''}. Дальше — шаг 2: отправьте запрос в ИИ.`; it._aiStep=2;
+  it._aiMsg=`Со страницы загружено ${(r.text||'').length.toLocaleString('ru-RU')} знаков текста${props.length?` и ${props.length} ${plural(props.length,'характеристика','характеристики','характеристик')}`:''}. Дальше — шаг 2: ${AI_DIRECT.enabled?'«Заполнить автоматически»':'отправьте запрос в ИИ'}.`; it._aiStep=2;
   return true;
 }
 async function aiFetch(i){

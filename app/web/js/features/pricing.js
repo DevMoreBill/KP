@@ -122,11 +122,11 @@ function pricingBlock(){
   const rateInp=c=>`<label class="f"><span>1 ${c}, руб.</span><input type="text" inputmode="decimal" class="num${need.includes(c)&&!(rateOf(c)>0)?' bad':''}" data-rate="${c}" value="${esc(P.rates[c]||'')}" placeholder="0,0000"></label>`;
   return `<div class="curbar">
      <label class="cur-sel"><span>Валюта КП</span><select data-pr="cur">${CUR_LIST.map(c=>`<option value="${c}"${c===cur?' selected':''}>${c==='RUB'?'Рубли':c==='USD'?'Доллары США':c==='EUR'?'Евро':'Юани'} (${c})</option>`).join('')}</select></label>
-     <div class="rates"><span class="muted">Курс ЦБ${P.rateDate?' на '+esc(KPGen.ruDate(P.rateDate).replace(/ г\.$/,'')):''}:</span> ${rateTxt}
+     ${need.length?`<div class="rates"><span class="muted">Курс ЦБ${P.rateDate?' на '+esc(KPGen.ruDate(P.rateDate).replace(/ г\.$/,'')):''}:</span> ${rateTxt}
        <button class="btn ghost sm" type="button" data-a="cbr" title="Обновить курсы с cbr.ru">↻ Обновить</button>
-       <span class="muted" id="cbrMsg">${missing.length?`<span class="bad-t">Нужен курс ${missing.join(', ')}</span>`:(P.rateSrc==='вручную'?'введён вручную':'')}</span></div>
+       <span class="muted" id="cbrMsg">${missing.length?`<span class="bad-t">Нужен курс ${missing.join(', ')}</span>`:(P.rateSrc==='вручную'?'введён вручную':'')}</span></div>`:''}
    </div>
-   <details class="psettings"${missing.length?' open':''}><summary>Изменить курсы вручную, округление цен</summary>
-     <div class="grid g4" style="margin-top:10px">${rateInp('USD')}${rateInp('EUR')}${rateInp('CNY')}
+   <details class="psettings"${missing.length?' open':''}><summary>${need.length?'Изменить курсы вручную, округление цен':'Округление цен'}</summary>
+     <div class="grid g4" style="margin-top:10px">${need.length?rateInp('USD')+rateInp('EUR')+rateInp('CNY'):''}
        <label class="f"><span>Округление цен из экономики сделки</span><select data-pr="round">${[['0.01','до копеек'],['1','до рубля'],['100','до 100'],['1000','до 1 000']].map(([v,l])=>`<option value="${v}"${String(P.round)===v?' selected':''}>${l}</option>`).join('')}</select></label></div></details>`;
 }
