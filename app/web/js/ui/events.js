@@ -29,6 +29,7 @@ document.addEventListener('change', e=>{
   if (t.dataset.gon!=null){ const g=S.items[+t.dataset.gon].gallery[+t.dataset.j]; g.on=t.checked; t.closest('.gcard')?.classList.toggle('off',!t.checked); persist(); return; }
   if (/^items\.\d+\.gallery\.\d+\.wide$/.test(t.dataset.p||'')){ renderForm(); persist(); return; }
   if (t.dataset.retype!=null){ renderForm(); persist(); return; }
+  if (t.dataset.aikeep!=null){ S.items[+t.dataset.aikeep]._aiKeep=t.checked; persist(); return; }
   if (t.dataset.pr){ const k=t.dataset.pr;
     if (k==='cur'){ kpSetCur(t.value); return; }
     S.pricing[k] = t.type==='checkbox' ? t.checked : t.value;
@@ -61,7 +62,8 @@ document.addEventListener('click', async e=>{
   const b=e.target.closest('[data-a]'); if(!b) return;
   const a=b.dataset.a, i=+b.dataset.i, j=+b.dataset.j, k=+b.dataset.k, it=S.items[i];
   switch(a){
-    case 'addItem': return pickTypeAndAdd();
+    case 'addItem': return newEquip('kp', b.dataset.cat||'');
+    case 'addStation': return newEquip('kp', b.dataset.cat||'station');
     case 'delItem': S.items.splice(i,1); break;
     case 'up': [S.items[i-1],S.items[i]]=[S.items[i],S.items[i-1]]; break;
     case 'down': [S.items[i+1],S.items[i]]=[S.items[i],S.items[i+1]]; break;
@@ -72,11 +74,11 @@ document.addEventListener('click', async e=>{
     case 'attrsToGroups': { const g=groupsFromAttrs(it); const keep=(it.groups||[]).filter(x=>!g.some(y=>y.name===x.name)); it.groups=[...g,...keep]; if(!it.hint) it.hint=autoHint(it); it.page=true; toast('Таблица характеристик сформирована'); break; }
     case 'galAdd': return pickGallery(i, b.dataset.slot||'');
     case 'galPage': return galFromPage(i, e.shiftKey);
-    case 'kitAdd': case 'kitCat': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (kitAction(a, i, b)==='async') return; break; }
+    case 'kitAdd': case 'kitCat': case 'kitMain': case 'kitCont': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (kitAction(a, i, b)==='async') return; break; }
     case 'galDel': it.gallery.splice(j,1); break;
     case 'galMain': if (!edSetMain(it, j)) return; toast('Главное фото заменено — прежнее перенесено в изображения'); break;
     case 'edit': return openEditor(i, b.dataset.tab);
-    case 'catOf': { const c=b.dataset.cat; if (!catCache.some(x=>attrsOf(x).cat===c)) { const t=typeById(c); const it2=newItem(); it2.attrs={cat:t.id}; it2.page=true; it2.features=[{id:uid(),label:'',text:''}]; S.items.push(it2); renderForm(); persist(); return openEditor(S.items.length-1,'main'); } return openCatalog({cat:c}); }
+    case 'catOf': { const c=b.dataset.cat; if (typeById(c).station || !catCache.some(x=>attrsOf(x).cat===c)) return newEquip('kp', c); return openCatalog({cat:c}); }
     case 'dupItem': { const cp=JSON.parse(JSON.stringify(it)); cp.id=uid(); (cp.features||[]).forEach(f=>{ const old=f.id; f.id=uid(); (cp.gallery||[]).forEach(g=>{ if(g.at==='feat:'+old) g.at='feat:'+f.id; }); });
       (cp.options||[]).forEach(o=>o.id=uid()); S.items.splice(i+1,0,cp); toast('Позиция скопирована'); break; }
     case 'addFeatL': { it.features=it.features||[]; const f={id:uid(),label:b.dataset.l||'',text:''}; it.features.push(f); it.page=true; break; }
@@ -98,7 +100,11 @@ document.addEventListener('click', async e=>{
     case 'clients': S.showClients=!S.showClients; break;
     case 'coverFrom': { const src=S.items.find(x=>x.hint); if(src) applyCover(src.hint,true); break; }
     case 'paste': return openPaste(i);
-    case 'aiCopy': return aiCopy(i);
+    case 'aiCopy': return aiCopy(i, b.dataset.url||'');
+    case 'aiFetch': return aiFetch(i);
+    case 'aiProps': return aiProps(i);
+    case 'aiPart': return aiPartDialog(i, j);
+    case 'aiPartCopy': return aiPartCopy(i, j, b.dataset.url||'');
     case 'aiApply': return aiApply(i);
     case 'openCatalog': return openCatalog({});
     case 'toPrice': return goStep('price');

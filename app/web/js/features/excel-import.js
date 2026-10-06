@@ -24,7 +24,7 @@ function parseTable(txt){
 
 function openXlsImport(cat){
   const d=$('#dlg'); d.classList.remove('wide');
-  let cur=cat||TYPES.find(t=>t.role!=='accessory')?.id||'other';
+  let cur=cat||TYPES.find(t=>t.role!=='accessory'&&!t.station)?.id||'other';
   d.innerHTML=`<div class="dlg-h"><h3>Импорт позиций из Excel</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
    <div class="dlg-b"><div class="grid g2"><label class="f"><span>Тип оборудования</span><select id="xType">${typeOptionsHtml(cur)}</select></label>
      <div style="align-self:end"><button class="btn" type="button" id="xTpl">Скачать шаблон для Excel</button></div></div>

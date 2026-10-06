@@ -567,6 +567,13 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self.send(422, 'text/plain; charset=utf-8', 'Картинка не загружена: %s' % e)
             return self.send(200, ctype, data)
+        if path == '/api/pagetext' and m == 'POST':       # текст и характеристики со страницы товара — для автозаполнения карточки
+            import feeds
+            d = json.loads(self.body().decode('utf-8') or '{}')
+            try:
+                return self.send_json(feeds.page_text(str(d.get('url') or '').strip()))
+            except Exception as e:
+                return self.send(422, 'text/plain; charset=utf-8', 'Страница не прочитана: %s' % str(e)[:200])
         if path == '/api/pagephotos' and m == 'POST':     # фото со страницы товара на сайте поставщика — в изображения позиции
             import feeds
             d = json.loads(self.body().decode('utf-8') or '{}')

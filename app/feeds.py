@@ -137,7 +137,7 @@ _PAGE_SEM = threading.Semaphore(3)      # не больше 3 страниц с�
 _PAGE_JAR = http.cookiejar.CookieJar()   # cookie сайта (сессия, проверка «не робот») — общие для всех страниц
 
 
-def page_html(url):
+def page_html(url, strict=True):
     """Страница товара на сайте поставщика (та же защита, что у фида и фото). Запрос — как из браузера
     (Bitrix-сайты на «робота» отвечают 403 или пустой страницей-проверкой), cookie сохраняются, повтор при отказе."""
     imgfetch._check_url(url)
@@ -168,7 +168,7 @@ def page_html(url):
             html = data.decode('utf-8')
         except UnicodeDecodeError:
             html = data.decode('cp1251', errors='replace')
-    if not is_product_page(html):
+    if strict and not is_product_page(html):
         raise ValueError('сайт отдал не страницу товара (проверка «не робот» или ошибка сайта)')
     return html
 
@@ -310,6 +310,25 @@ def page_apply(html, props):
         if len(text) >= 3 and not re.match(r'(?i)^(описание|характеристики|документ|отзыв)', text):
             best = text[:600]       # последнее подходящее — содержимое вкладки, первое бывает её заголовком
     return best
+
+
+def page_text(url):
+    """Для автозаполнения карточки: название, описание и характеристики со страницы любого сайта (не только поставщиков
+    из фидов). Свойства — парами; если описания в разметке нет — видимый текст страницы без меню и скриптов (до 12 000 знаков)."""
+    html = page_html(url, strict=False)
+    t = re.search(r'(?is)<h1\b[^>]*>(.*?)</h1>', html) or re.search(r'(?is)<title\b[^>]*>(.*?)</title>', html)
+    title = _unesc(re.sub(r'<[^>]+>', ' ', t.group(1))) if t else ''
+    props = page_props(html)
+    desc = page_desc(html)
+    if len(desc) < 200:
+        body = re.sub(r'(?is)<(script|style|noscript|svg|nav|header|footer|form|select|button)\b.*?</\1\s*>', ' ', html)
+        body = re.sub(r'(?i)</t[dh]\s*>', ' ', re.sub(r'(?i)</tr\s*>|<table\b[^>]*>', '\n<br>', body))
+        m = re.search(r'(?is)<main\b[^>]*>(.*)</main>', body) or re.search(r'(?is)<body\b[^>]*>(.*)</body>', body)
+        text = _no_sales(_html_text(m.group(1) if m else body))
+        desc = '\n'.join(x for x in text.split('\n') if len(x) > 2)[:12000] if len(text) > len(desc) else desc
+    if not (title or desc or props):
+        raise ValueError('на странице не нашлось текста')
+    return {'title': title[:300], 'text': desc, 'props': props}
 
 
 def page_info(html, url):
