@@ -17,10 +17,27 @@ const lgV = s => { const v=parseFloat(String(s??'').replace(/\s+/g,'').replace('
 const stNumLg = v => Number(v||0).toLocaleString('ru-RU');
 const lgRu = s => /^росс/i.test(s.country||'') || s.where==='ru';
 
+// сборка станции: A — кто собирает (к нему везут элементы), toAsm — поставщики элементов (их маршрут — до A)
+function lgAsm(){
+  const d=S.deal; if (!d || !d.asm || d.asm.on===false) return null;
+  const A=d.sup.find(z=>z.id===d.asm.sup); if (!A) return null;
+  const parts=kitLines(S).filter(l=>l.part); if (!parts.length) return null;
+  return { A, toAsm:new Set(parts.map(l=>dlSupOf(l.id)).filter(id=>id!==A.id)) };
+}
+// груз сборщика: станция целиком — габариты контейнера, масса — сумма элементов (если у всех она есть)
+function lgStations(){
+  return S.items.filter(isKit).map(x=>{ const c=kitContainer(x), rows=[...((c&&c.rows)||[])];
+    const ms=kitParts(x).map(p=>{ const m=lgCargoOf([{rows:p.rows||[]}]).mass; return m>0 ? m*(+p.qty||1) : null; });
+    if (ms.length && ms.every(m=>m>0)) rows.push({k:'Масса станции в сборе', v:String(Math.round(ms.reduce((a,b)=>a+b,0)*1000))+' кг'});
+    return {id:'st:'+x.id, name:'Станция в сборе: '+(x.name||'без названия'), qty:+x.qty||1, groups:[{name:'', rows}]}; });
+}
+
 // позиции поставщика: масса и габариты — из характеристик, свои правки — в s.lg.items
 function lgItems(s){
-  const own=(s.lg&&s.lg.items)||{};
-  return kitCargo().filter(x=>String(x.name||'').trim() && dlSupOf(x.id)===s.id).map(x=>{
+  const own=(s.lg&&s.lg.items)||{}, asm=lgAsm();
+  const list = asm && asm.A===s ? [...lgStations(), ...kitCargo().filter(x=>!String(x.id).includes('~') && dlSupOf(x.id)===s.id)]
+    : kitCargo().filter(x=>dlSupOf(x.id)===s.id);
+  return list.filter(x=>String(x.name||'').trim()).map(x=>{
     const cg=lgCargoOf(x.groups), o=own[x.id]||{}, d=cg.dims||{};
     const pick=(k,auto)=>{ const v=lgV(o[k]); return v!=null ? {v, own:true} : {v:auto??null, own:false}; };
     const l=pick('l',d.l), w=pick('w',d.w), h=pick('h',d.h), m=pick('m',cg.mass);
@@ -31,12 +48,15 @@ function lgInput(s){
   const lg=s.lg||{}, T=LG.tar;
   const imp=!lgRu(s) && (s.where==='imp' || !!s.country);
   const from=String(s.wh||'').trim() || (imp ? T.hub : '');
-  const to=String(lg.to ?? (S.object&&S.object.address || S.clientAddr || '')).trim();
-  const its=kitCargo().filter(x=>String(x.name||'').trim() && dlSupOf(x.id)===s.id);
+  const asm=lgAsm(), toA=asm && asm.toAsm.has(s.id);        // элементы станции едут на сборку — до склада сборщика
+  const to=String(lg.to ?? (toA ? (asm.A.wh||'') : (S.object&&S.object.address || S.clientAddr || ''))).trim();
+  // стоимость груза (для страхования): у сборщика — станция целиком (все элементы) и его прочие позиции
+  const its=kitCargo().filter(x=>String(x.name||'').trim() && (asm && asm.A===s ? String(x.id).includes('~') || dlSupOf(x.id)===s.id : dlSupOf(x.id)===s.id));
   const value=its.reduce((a,x)=>{ const q=+x.qty||0; if (x.cost) return a+x.cost/100*q*(rateOf(x.costCur||'RUB')||0);
     return a+(x.price||0)/100*q*(rateOf(kpCur())||0); },0);
   // точные адреса (с координатами) — пока текст поля совпадает с выбранной подсказкой
-  const gf=s.whGeo&&String(s.whGeo.value||'').trim()===from ? s.whGeo : null, gt=lg.toGeo&&String(lg.toGeo.value||'').trim()===to ? lg.toGeo : null;
+  const gf=s.whGeo&&String(s.whGeo.value||'').trim()===from ? s.whGeo : null;
+  const gt=lg.toGeo&&String(lg.toGeo.value||'').trim()===to ? lg.toGeo : toA && asm.A.whGeo && String(asm.A.whGeo.value||'').trim()===to ? asm.A.whGeo : null;
   return { from:{addr:from, geo:gf}, to:{addr:to, geo:gt}, km:lg.km||'', route:lg.route||null, unload:lg.unload||'auto', value,
     items:lgItems(s).map(x=>({name:x.name, qty:x.qty, l:x.l.v, w:x.w.v, h:x.h.v, m:x.m.v})), imp };
 }
@@ -140,7 +160,9 @@ function lgAutoQuote(){
 function dlLogistics(c){
   const d=dlDeal(), ex=DL.ex, T=LG.tar;
   if (!T) return dlStep(0, 'Логистика', '', '<p class="muted">Загружаю тарифы…</p>', '', null, 'log');
+  const asm=lgAsm();
   const cards=d.sup.map((s,k)=>{ const cs=c.sup[k], P=`sup.${k}`, ru=lgRu(s), lg=s.lg||{}, r=LG.res[s.id]||lgCalc(lgInput(s), T), fin=LG.fin[s.id]||lgFinal(r,null,lg.pick);
+    const toA=asm && asm.toAsm.has(s.id), isA=asm && asm.A===s, aName=asm?c.sup[d.sup.indexOf(asm.A)].name:'';
     const its=lgItems(s), inp=lgInput(s), nm=cs.name, Q=lgQuoteFor(s, r);
     const cell=(x,f,ph)=>`<input type="text" inputmode="decimal" data-lgi="${esc(x.id)}" data-k="${k}" data-f="${f}" value="${esc(lgIn(x[f].v))}" placeholder="${ph}" class="${x[f].v==null?'need':''}${x[f].own?' own':''}" aria-label="${ph}"${ex?' disabled':''}>`;
     const ownCargo=Object.values(lg.items||{}).some(o=>Object.keys(o).length);
@@ -153,14 +175,15 @@ function dlLogistics(c){
       : p.exact?`<b>${esc(p.name)}</b> <span class="geo-ok" title="${esc(p.lat.toFixed(5)+', '+p.lon.toFixed(5))}">точный адрес ✓</span>`
       : `<b>${esc(p.name)}</b>${p.how==='регион'?' <span class="muted">(центр региона — уточните адрес)</span>':' <span class="muted">(центр города)</span>'}`;
     const rt=r.routeKey&&LG.rt[r.routeKey], rtNote=r.routeKey&&!(lg.route&&lg.route.key===r.routeKey)&&!lgV(lg.km) ? (rt==='busy'?' · считаю путь по дорогам…':rt&&rt!=='ok'?` · по дорогам не посчитано: ${rt}`:'') : '';
-    const where=[pt(r.from, ru?'склад':'пункт отправки'), pt(r.to,'адрес объекта')].join(' → ')
+    const where=[pt(r.from, ru?'склад':'пункт отправки'), pt(r.to, toA?'склад сборщика':'адрес объекта')].join(' → ')
       +(r.km?` · <b>${stNumLg(r.km)} км</b> <span class="muted">${esc(r.kmSrc)}${lg.route&&lg.route.key===r.routeKey&&!lgV(lg.km)&&lg.route.hours?', в пути без остановок ≈ '+String(lg.route.hours).replace('.',',')+' ч':''}${esc(rtNote)}</span>`:'');
-    const route=`<div class="lg-sec"><h5><span class="lg-sn">${n0+1}</span>Маршрут по России</h5>
+    const route=`<div class="lg-sec"><h5><span class="lg-sn">${n0+1}</span>${toA?`Маршрут на сборку к «${esc(aName)}»`:isA?'Станция в сборе — до заказчика':'Маршрут по России'}</h5>
+      ${toA&&!String(asm.A.wh||'').trim()?`<p class="msg warn">Укажите склад «${esc(aName)}» (адрес производства контейнера) в его карточке ниже — туда едут элементы станции.</p>`:''}
       <div class="lg-route">
         <label class="f"><span>Откуда — ${ru?'склад поставщика':'СВХ / терминал'}${dlQ((ru?'Точный адрес склада поставщика — выберите из подсказок (склады из справочника поставщиков, DaData или OpenStreetMap). Запоминается в справочнике поставщиков.':'Где груз выпускается с таможни и откуда едет по России. По умолчанию — из «Настроек» → «Логистика».')+' Можно вставить координаты или ссылку на точку из Google или Яндекс Карт — адрес определится сам. Достаточно и города — тогда расчёт от центра города.')}</span>
           <input type="text" data-lgf="wh" data-geo="wh" data-k="${k}" value="${esc(s.wh||'')}" placeholder="${esc(ru?'адрес склада, город или координаты':T.hub)}" autocomplete="off"${ex?' disabled':''}></label>
-        <label class="f"><span>Куда — адрес объекта${dlQ('Из раздела «Клиент» (объект или юридический адрес). Выберите точный адрес из подсказок (DaData или OpenStreetMap) или вставьте координаты / ссылку на точку из Google или Яндекс Карт. Можно просто город.')}</span>
-          <input type="text" data-lgf="to" data-geo="to" data-k="${k}" value="${esc(lg.to ?? inp.to.addr)}" placeholder="адрес объекта, город или координаты" autocomplete="off"${ex?' disabled':''}></label>
+        <label class="f"><span>${toA?`Куда — склад «${esc(aName)}» (сборка)`:'Куда — адрес объекта'}${dlQ('Из раздела «Клиент» (объект или юридический адрес). Выберите точный адрес из подсказок (DaData или OpenStreetMap) или вставьте координаты / ссылку на точку из Google или Яндекс Карт. Можно просто город.')}</span>
+          <input type="text" data-lgf="to" data-geo="to" data-k="${k}" value="${esc(lg.to ?? inp.to.addr)}" placeholder="${toA?'адрес производства контейнера':'адрес объекта, город или координаты'}" autocomplete="off"${ex?' disabled':''}></label>
         <label class="f lg-km"><span>Расстояние, км${dlQ('Точные адреса с обеих сторон — расстояние по дорогам (OSRM, карты OpenStreetMap). Иначе — между городами по прямой с поправкой на дороги (точность ±5–10 %). Знаете точное — впишите.')}</span>
           <input type="text" inputmode="numeric" data-lgf="km" data-k="${k}" value="${esc(lg.km||'')}" placeholder="${r.km?esc(r.km)+' — авто':'авто'}"${ex?' disabled':''}></label></div>
       <p class="lg-where">${where}</p></div>`;
@@ -213,10 +236,10 @@ function dlLogistics(c){
       <div class="lg-act">${ex?'':`<span class="dl-seg"><button type="button" class="${manual?'':'on'}" data-lgx="mode" data-k="${k}" data-v="auto">По расчёту</button><button type="button" class="${manual?'on':''}" data-lgx="mode" data-k="${k}" data-v="manual">Своя сумма</button></span>`}
         ${ru&&!ex?`<label class="cw-chk"><input type="checkbox" data-lgf="setDays" data-k="${k}"${lg.setDays===false?'':' checked'}> срок в пути → «Доставка до заказчика»</label>`:''}</div></div>
       ${manual?'':`<p class="muted lg-note lg-foot">${esc(fin.foot)}</p>`}`;
-    return `<div class="dl-card lg-card">${d.sup.length>1?`<div class="lg-ch"><b>${esc(nm)}</b><span class="muted">${ru?'покупаем в России':'ввозим сами'}</span></div>`:''}
+    return `<div class="dl-card lg-card">${d.sup.length>1?`<div class="lg-ch"><b>${esc(nm)}</b><span class="muted">${ru?'покупаем в России':'ввозим сами'}${toA?` · везём на сборку к «${esc(aName)}»`:isA?' · собирает станцию и везёт заказчику':''}</span></div>`:''}
       ${abroad}${route}${cargo}${trans}${offers}${total}</div>`; }).join('');
   const sum=c.sup.reduce((a,x)=>a+x.L+x.Lru+x.ins,0);
-  return dlStep(0, 'Логистика', 'Перевозка от поставщика до объекта заказчика: маршрут, груз, транспорт, цены перевозчиков. Итог по каждому поставщику сразу идёт в расчёт сделки.',
+  return dlStep(0, 'Логистика', asm?`Станция собирается у «${esc(c.sup[d.sup.indexOf(asm.A)].name)}»: поставщики элементов везут их туда, а собранная станция едет к заказчику одним грузом (габариты контейнера, масса — сумма элементов). Итог по каждому поставщику сразу идёт в расчёт сделки.`:'Перевозка от поставщика до объекта заказчика: маршрут, груз, транспорт, цены перевозчиков. Итог по каждому поставщику сразу идёт в расчёт сделки.',
     cards, '', ['Итого логистика', sum, 'до границы, страхование и доставка по России'], 'log');
 }
 

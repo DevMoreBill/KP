@@ -846,3 +846,13 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dlo-bar em.r{transform:translateX(calc(-100% - 6px));top:auto;bottom:-14px}
 .dlo-pay.r{transform:translateX(-100%)}
 .dlo-tk.r{transform:translateX(-100%)}
+
+/* сборка станции у производителя контейнера */
+.dlo-bar i.asm,.dlo-lg i.asm{background:#E39B2E}
+.dlo-bar i.wt{background:repeating-linear-gradient(135deg,var(--line) 0 4px,transparent 4px 8px)}
+.dlo-bar i.tr.toasm{background:var(--muted)}
+.dl-asmc{border-color:#E39B2E}
+.dl-asmh{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px}
+.dl-asmh h5{margin:0;font-size:15px}
+.dl-asm{display:grid;gap:4px;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--soft);font-size:13.5px}
+.dl-asm .dl-asm-t{margin-top:4px;font-weight:600}

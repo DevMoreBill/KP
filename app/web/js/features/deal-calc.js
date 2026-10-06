@@ -214,6 +214,21 @@ function dealCalc(kp, d){
     const prodK=s.prodK==='work'?'work':'', shipK=s.shipK==='work'?'work':'', rdy=addD(0, prod, prodK), arr=addD(rdy, ship, shipK);
     return { id:s.id, name:(s.name||'').trim()||`Поставщик ${k+1}`, country:s.country||'', items, noCost, lines, byCur, noVat, equip, equipFx, L, Lru, brk, T, adv, prod, ship, prodK, shipK, rdy, arr, ins, fxE, fxL, stages,
       mode, calc:mode==='calc', cv, dutyA, fee, feeAuto, ivatA, ivP, noDuty, vi, vo, voAuto, suggest, voRu, voRuAuto, ruSuggest, cash, active: cash>0 }; });
+  // сборка станции: элементы едут к сборщику (обычно производитель контейнера), там собирают и испытывают, потом станция едет
+  // заказчику. У поставщиков элементов «доставка» — до сборщика; у сборщика «готово» — станция собрана, «доставка» — до заказчика
+  const asm=d.asm||{}, kitIds=new Set((kp.items||[]).filter(x=>x.kit).map(x=>x.id));
+  const A = asm.on!==false && kitIds.size ? (S_.find(s=>s.id===asm.sup) || null) : null;
+  let asmC=null;
+  if (asm.on!==false && kitIds.size && !A) warn.push({t:'Сборка станции: выберите, кто собирает станцию (производитель контейнера) — на вкладке «Закупка»', go:'buy'});
+  if (A){
+    const toAsm=S_.filter(s=>s!==A && s.items.some(x=>kitIds.has(x.id)));
+    const days=num('asm.days', asm.days, {def:0, int:true}), daysK=asm.daysK==='work'?'work':'', cost=num('asm.cost.v', asm.cost&&asm.cost.v, {def:0});
+    toAsm.forEach(s=>{ s.toAsm=true; if (s.items.some(x=>!kitIds.has(x.id))) warn.push({t:`${s.name}: позиции не из станции тоже поедут на сборку — выберите для них другого поставщика или отключите сборку`}); });
+    const cRdy=A.rdy, start=Math.max(cRdy, ...toAsm.filter(s=>s.active).map(s=>s.arr)), end=addD(start, days, daysK);
+    const late=toAsm.filter(s=>s.active && s.arr===start && start>cRdy);
+    A.isAsm=true; A.active=true; A.cRdy=cRdy; A.asmStart=start; A.rdy=end; A.arr=addD(end, A.ship, A.shipK);
+    asmC={on:true, A, toAsm, days, daysK, cost, start, end, cRdy, arr:A.arr, late};
+  }
   for (const s of S_) if (s.noDuty.length) warn.push({t:`${s.name}: нет ставки пошлины у ${s.noDuty.length} ${s.noDuty.length===1?'позиции':'позиций'} — считается 0 %`});
   for (const s of S_) for (const x of s.noCost) warn.push({t:`«${x.name||'Без названия'}»: не указана цена закупки — позиция не учтена в расходах`});
   const M=num('mnt', d.mnt, {def:0}), E=num('oth', d.oth, {def:0}), pnrDays=num('pnr', d.pnr, {def:0, int:true});
@@ -231,7 +246,7 @@ function dealCalc(kp, d){
   const act=S_.filter(s=>s.active), multi=act.length>1, rows=[];
   const dayOf=(key, auto)=>{ const o=d.days&&d.days[key]; const n=dNum(o); if (o!=null && o!=='' && (Number.isNaN(n)||n<0||!Number.isInteger(n))) err['days.'+key]='Целое число дней'; return (n!=null && n>=0 && Number.isInteger(n)) ? n : auto; };
   let D=0, Rdy=0;
-  for (const s of act){ D=Math.max(D, s.arr); Rdy=Math.max(Rdy, s.rdy); }
+  for (const s of act){ if (s.toAsm) continue; D=Math.max(D, s.arr); Rdy=Math.max(Rdy, s.rdy); }
   const pnrK=d.pnrK==='work'?'work':'', pnrEnd=addD(D, pnrDays, pnrK);
   // поставщику: этапы оплаты оборудования (с комиссией банка), перевозка, страхование, таможня и брокер — перед отгрузкой
   for (const s of act){ const nm=multi?` «${s.name}»`:'', arr=s.arr, base=s.equip+s.fxE;
@@ -242,6 +257,7 @@ function dealCalc(kp, d){
     const B=s.fxL+s.ins+s.L+s.T+s.brk;
     if (B>0) rows.push({key:'log:'+s.id, auto:s.rdy, label:(s.T?'Перевозка, таможня и сборы':'Перевозка и сборы')+nm, amount:-B, party:'log', ev:'перед отгрузкой'});
     if (s.Lru>0) rows.push({key:'ru:'+s.id, auto:arr, label:'Доставка по России'+nm, amount:-s.Lru, party:'log', ev:'при поставке'}); }
+  if (asmC && asmC.cost>0) rows.push({key:'asm', auto:asmC.end, label:`Сборка станции у «${asmC.A.name}»`, amount:-asmC.cost, party:'sup', ev:'после сборки'});
   if (M+E>0) rows.push({key:'mnt', auto:D, label:'Монтаж, ПНР и прочие расходы', amount:-(M+E), party:'oth', ev:'при поставке'});
   // этапы оплаты заказчика: последний этап — остаток до 100 %
   const ev={sign:0, ready:Rdy, delivery:D, pnr:pnrEnd};
@@ -301,10 +317,11 @@ function dealCalc(kp, d){
   const t2n=r=>{ const t=trs[r.stage]; return t&&t.name ? ` «${t.name}»` : ''; };
   let F=finance();
   const equipSum=sumOf(s=>s.equip);
-  const Ccash=sumOf(s=>s.cash)+M+E+W+Bn+BG;
+  const asmCost=asmC?asmC.cost:0;
+  const Ccash=sumOf(s=>s.cash)+M+E+W+Bn+BG+asmCost;
   const voSup=sumOf(s=>s.vo), voRuSum=sumOf(s=>s.voRu);
   const unknown=S_.filter(s=>s.vi==null);
-  const VATinKnown=viSum+voSup+voRuSum+Vo;
+  const VATinKnown=viSum+voSup+voRuSum+Vo+inVat(asmCost);      // сборка — услуга в России с НДС
   const res=VATin=>{ const Cnet=Ccash-VATin, Ctot=Cnet+F, Pa=R-Ctot, vb=VATs-VATin, tax=Pa>0?Pa*taxP/100:0;
     const X = !xV ? 0 : xMode==='sum' ? xV : xMode==='sale' ? R*xV/100 : xMode==='salevat' ? S*xV/100 : Math.max(0, Pa-tax)*xV/100, K=X*xG, P=Pa-K;
     return { VATin, Cnet, Ctot, Pa, X, K, P, tax, net:Pa-tax-K, markup: Ctot+K?P/(Ctot+K)*100:null, margin: R?P/R*100:null, vatBal:vb, payable:Math.max(vb,0), excess:Math.max(-vb,0),
@@ -321,10 +338,10 @@ function dealCalc(kp, d){
   if (!equipSum && !Lsum && !Tsum && !M && !E) warn.push({t:'Расходы не указаны: укажите цены закупки в шаге «Закупка»', go:'price'});
   // структура затрат (для итога и Excel)
   const parts=[['Оборудование', equipSum], ['Комиссии за перевод и конвертацию', sumOf(s=>s.fxE+s.fxL)], ['Страхование груза', sumOf(s=>s.ins)],
-    ['Логистика до границы', Lsum], ['Таможенные платежи', Tsum], ['Брокер, СВХ, сертификация', brkSum], ['Доставка по России', LruSum],
+    ['Логистика до границы', Lsum], ['Таможенные платежи', Tsum], ['Брокер, СВХ, сертификация', brkSum], ['Доставка по России', LruSum], ['Сборка станции', asmCost],
     ['Монтаж и ПНР', M], ['Банковская гарантия', BG], ['Прочие расходы', E], ['Бонусы и комиссии с продажи', Bn], ['Резерв на гарантию', W], ['Финансирование', F],
     ['НДС к вычету (уменьшает затраты)', -(base||lo).VATin]].filter(x=>Math.abs(x[1])>0.004);
-  return { bgs, BG, advSum, xc:{mode:xMode, when:xWhen, off:xOffSt, from:xFrom.map(r=>r.key), v:xV, cost:xCost, g:xG, on:xV>0}, S, v, vatFromKp, rate, rateSrc, used:[...used].filter(c=>c!=='RUB'), sup:S_, M, E, Vo, W, Bn, warrP, bonusP, taxP, pnrDays, pnrK, pnrEnd, trs, ev, i, moneyAuto,
+  return { asm:asmC, bgs, BG, advSum, xc:{mode:xMode, when:xWhen, off:xOffSt, from:xFrom.map(r=>r.key), v:xV, cost:xCost, g:xG, on:xV>0}, S, v, vatFromKp, rate, rateSrc, used:[...used].filter(c=>c!=='RUB'), sup:S_, M, E, Vo, W, Bn, warrP, bonusP, taxP, pnrDays, pnrK, pnrEnd, trs, ev, i, moneyAuto,
     rows, F, D, Rdy, Tend, R, VATs, Ccash, equipSum, Lsum, LruSum, brkSum, Tsum, voSup, voRuSum, unknown, base, lo, hi, cashBefore:S-Ccash-F, parts,
     err, warn, ok:!Object.keys(err).length };
 }
