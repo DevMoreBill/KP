@@ -167,6 +167,7 @@ function edAI(x,i){
     <ol class="ai-steps">
     <li class="${cls(1)}"><b>Откуда взять данные</b><span class="muted">Ссылка на страницу товара, текст паспорта или каталога — или просто модель в наименовании.</span>
       <div class="ai-url"><input type="url" data-p="${P}._srcUrl" value="${esc(x._srcUrl||x.pageUrl||'')}" placeholder="https://… ссылка на страницу товара" autocomplete="off"><button class="btn" type="button" data-a="aiFetch" data-i="${i}">Загрузить со страницы</button></div>
+      <div class="row ai-file"><label class="btn ghost">Загрузить файл: ТЗ, паспорт (.docx, .txt)<input type="file" accept=".docx,.txt,.csv,.md" hidden data-aifile="${i}"></label>${typeById(attrsOf(x).cat).station?'<span class="muted">ТЗ заказчика — ИИ разложит требования к контейнеру и добавит недостающие элементы станции.</span>':''}</div>
       <textarea data-p="${P}._src" rows="6" placeholder="…или вставьте сюда текст: описание, таблицу характеристик из паспорта или PDF. Можно ничего не вставлять — тогда ИИ ищет данные по модели «${esc(x.name||'из наименования')}».">${esc(x._src||'')}</textarea>
       ${props?`<div class="ai-props"><span>Со страницы взято характеристик: <b>${props}</b>.</span><button class="btn ghost" type="button" data-a="aiProps" data-i="${i}">Перенести в «Характеристики» без ИИ</button></div>`:''}</li>
     <li class="${cls(2)}"><b>Отправьте запрос в ИИ</b><span class="muted">Кнопка с названием ИИ копирует запрос и открывает сайт в новой вкладке — там вставьте (Ctrl+V) и отправьте. Можно приложить скриншот или PDF паспорта.</span>

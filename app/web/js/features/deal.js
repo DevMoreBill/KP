@@ -59,7 +59,7 @@ function dealKpInputs(st=S){
   return { ...cal, sumRub: r>0 ? e.sum/100*r : 0, sumNoRate: !(r>0), cur:e.cur, vat:+st.vat||0, rates:{...(P.rates||{})}, costNoVat:!!P.costNoVat, moneyAuto:dlMoneyAuto(),
     // строки закупки: обычная позиция — как есть, сборка — по элементам (у каждого своя валюта и поставщик)
     items:kitLines(st).map(l=>{ const x=l.item, h=dlHsOf(x, st.deal);
-      return {id:l.id, name:l.of?`${l.of}: ${l.name}`:l.name, qty:l.qty, cost:(l.cost||0)/100, cur:l.costCur||'RUB', cat:attrsOf(x).cat, maker:l.maker||'', catId:x.catId||'',
+      return {id:l.id, name:l.of?`${l.of}: ${l.name}`:l.name, qty:l.qty, cost:(l.cost||0)/100, cur:l.costCur||'RUB', cat:attrsOf(x).cat, maker:l.maker||'', catId:x.catId||'', kit:!!l.part,
         code:h.code, duty:dNum(h.duty), hsSrc:h.src}; }) };
 }
 
@@ -119,8 +119,15 @@ function dlAutoMap(d){
     if (s) d.map[l.id]=s.id; }
 }
 
+// сборка станции: если в КП есть станция — элементы по умолчанию едут на сборку к поставщику контейнера
+function dlAsmAuto(d){
+  const parts=kitLines(S).filter(l=>l.part); if (!parts.length) return;
+  if (!d.asm) d.asm={on:true, sup:'', days:'10', daysK:'work', cost:{v:''}};
+  if (d.asm.on!==false && !d.sup.some(z=>z.id===d.asm.sup)){ const c=parts.find(l=>l.part.role==='container'); if (c) d.asm.sup=dlSupOf(c.id); }
+}
+
 function dealEnsure(){
-  if (S.deal && S.deal.v){ dealUpgrade(S.deal); if (!S.deal.hs) S.deal.hs={}; dlAutoMap(S.deal); return S.deal; }
+  if (S.deal && S.deal.v){ dealUpgrade(S.deal); if (!S.deal.hs) S.deal.hs={}; dlAutoMap(S.deal); dlAsmAuto(S.deal); return S.deal; }
   const def=dealDefaults(), d=dealBlank(def); d.hs={}; if (def.target) d.target={type:def.targetType||'margin', v:def.target};
   const its=kitLines(S).filter(x=>String(x.name||'').trim());
   // позиция каталога, закреплённая в справочнике за поставщиком, — к нему; остальные — по производителю (у элемента сборки — по его поставщику)
@@ -134,7 +141,7 @@ function dealEnsure(){
       else if (cur==='RUB'){ s.country='Россия'; dlApplyCountry(s); } }
     d.sup.push(s); its.filter(x=>keyOf(x)===mk).forEach(x=>{ d.map[x.id]=s.id; }); });
   if (!d.sup.length) d.sup=[dealNewSupplier('s1', def)];
-  S.deal=d; return d;
+  S.deal=d; dlAsmAuto(d); return d;
 }
 
 const dlKp = () => DL.ex ? DL.exKp : dealKpInputs();
@@ -341,9 +348,12 @@ function dlOverview(c){
   const rows=act.map((s,k)=>{ const sup=c.sup.indexOf(s);
     return `<div class="dlo-r"><div class="dlo-rl"><b>${esc(s.name)}</b><small>${s.lines.length?esc(s.lines.map(l=>l.name.replace(/^.*?: /,'')).slice(0,3).join(', ')+(s.lines.length>3?` и ещё ${s.lines.length-3}`:'')):'позиции не выбраны'}</small>
         <small>закупка <b>${dlRub0(s.equip)}</b>${s.L+s.Lru+s.T>0?` · доставка и таможня ${dlRub0(s.L+s.Lru+s.T)}`:''}</small><small class="muted">${esc(payTxt(s))}</small></div>
-      <div class="dlo-bar" role="img" aria-label="${esc(`${s.name}: готово к отгрузке ${when(s.rdy)}, у заказчика ${when(s.arr)}`)}">
-        <i class="pr" style="left:0;width:${W(0,s.rdy)}" title="Производство: ${s.rdy} дн."></i><i class="tr" style="left:${X(s.rdy)};width:${W(s.rdy,s.arr)}" title="Доставка: ${s.arr-s.rdy} дн."></i>
-        <em style="left:${X(s.arr)}"${R(s.arr)}>${when(s.arr)}</em>${(c.D===s.arr && act.length>1)?'<span class="dlo-crit" title="Самая долгая поставка — от неё зависит срок всего изделия">срок изделия</span>':''}</div>
+      ${s.isAsm?`<div class="dlo-bar" role="img" aria-label="${esc(`${s.name}: контейнер готов ${when(s.cRdy)}, сборка ${when(s.asmStart)} — ${when(s.rdy)}, станция у заказчика ${when(s.arr)}`)}">
+        <i class="pr" style="left:0;width:${W(0,s.cRdy)}" title="Контейнер: ${s.cRdy} дн."></i>${s.asmStart>s.cRdy?`<i class="wt" style="left:${X(s.cRdy)};width:${W(s.cRdy,s.asmStart)}" title="Ждём элементы: ${s.asmStart-s.cRdy} дн."></i>`:''}<i class="asm" style="left:${X(s.asmStart)};width:${W(s.asmStart,s.rdy)}" title="Сборка и испытания: ${s.rdy-s.asmStart} дн."></i><i class="tr" style="left:${X(s.rdy)};width:${W(s.rdy,s.arr)}" title="Доставка станции: ${s.arr-s.rdy} дн."></i>
+        <em style="left:${X(s.arr)}"${R(s.arr)}>${when(s.arr)}</em><span class="dlo-crit" title="Станция у заказчика">станция</span></div>`
+      :`<div class="dlo-bar" role="img" aria-label="${esc(`${s.name}: готово к отгрузке ${when(s.rdy)}, ${s.toAsm?'на сборке':'у заказчика'} ${when(s.arr)}`)}">
+        <i class="pr" style="left:0;width:${W(0,s.rdy)}" title="Производство: ${s.rdy} дн."></i><i class="tr${s.toAsm?' toasm':''}" style="left:${X(s.rdy)};width:${W(s.rdy,s.arr)}" title="${s.toAsm?'На сборку':'Доставка'}: ${s.arr-s.rdy} дн."></i>
+        <em style="left:${X(s.arr)}"${R(s.arr)}>${s.toAsm?'на сборке ':''}${when(s.arr)}</em>${(!c.asm && c.D===s.arr && act.length>1)?'<span class="dlo-crit" title="Самая долгая поставка — от неё зависит срок всего изделия">срок изделия</span>':''}${c.asm&&c.asm.late.includes(s)?'<span class="dlo-crit" title="Приезжает на сборку последним — от него зависит начало сборки">последний на сборку</span>':''}</div>`}
       <button type="button" class="icon dlo-go" data-dlx="step" data-id="buy" data-sup="${sup}" aria-label="Изменить условия поставщика" title="Изменить: закупка, сроки, оплата">›</button></div>`; }).join('');
   const pnr=c.pnrDays>0?`<div class="dlo-r"><div class="dlo-rl"><b>Монтаж и ПНР</b><small>${c.pnrDays} дн. после поставки</small></div><div class="dlo-bar"><i class="pnr" style="left:${X(c.D)};width:${W(c.D,c.pnrEnd)}"></i><em style="left:${X(c.pnrEnd)}"${R(c.pnrEnd)}>${when(c.pnrEnd)}</em></div><span></span></div>`:'';
   const inn=c.rows.filter(r=>r.inflow&&r.amount>0);
@@ -358,11 +368,26 @@ function dlOverview(c){
     <div><small>Стоимость этих денег</small><b>${dlRub0(c.F)}</b><span>${dlIn(c.i)} % в месяц — уже в себестоимости</span></div></div>`;
   return `<section class="dl-step dlo" data-stepid="sum" role="tabpanel">${head}
     <div class="dl-card dlo-tl"><div class="dlo-th"><h5>Поставщики и сроки</h5><span class="muted">${d0?'от даты договора':'дни от подписания договора — укажите дату договора вверху, чтобы видеть даты'}</span>
-      <span class="dlo-lg"><i class="pr"></i>производство <i class="tr"></i>доставка${c.pnrDays>0?' <i class="pnr"></i>ПНР':''}</span></div>
+      <span class="dlo-lg"><i class="pr"></i>производство <i class="tr"></i>доставка${c.asm?' <i class="asm"></i>сборка станции':''}${c.pnrDays>0?' <i class="pnr"></i>ПНР':''}</span></div>
       ${rows}${pnr}${cust}${axis}
-      ${act.length>1?`<p class="muted dlo-note">Изделие у заказчика целиком — ${when(c.D)}: по самой долгой поставке. Условия каждого поставщика (оплата, сроки, доставка) — на вкладке «Закупка».</p>`:''}</div>
+      ${c.asm?`<p class="muted dlo-note">Элементы едут на сборку к «${esc(c.asm.A.name)}»: сборка ${when(c.asm.start)} — ${when(c.asm.end)}, станция у заказчика ${when(c.asm.arr)}. Условия — на вкладке «Закупка», маршруты — на вкладке «Логистика».</p>`:act.length>1?`<p class="muted dlo-note">Изделие у заказчика целиком — ${when(c.D)}: по самой долгой поставке. Условия каждого поставщика (оплата, сроки, доставка) — на вкладке «Закупка».</p>`:''}</div>
     ${money}
     <div class="dl-next"><span></span><button type="button" class="btn primary" data-dlx="step" data-id="buy">Подробно: Закупка →</button></div></section>`;
+}
+
+// ---------- сборка станции: кто собирает, сколько дней, сколько стоит; элементы других поставщиков едут к нему
+function dlAsmCard(c){
+  const d=dlDeal(); if (!d.asm || DL.ex && !c.asm) return '';
+  const on=d.asm.on!==false, a=c.asm, ex=DL.ex, when=day=>dlD0()?dlDayRu(day):`день ${day}`;
+  const seg=`<span class="dl-seg"><button type="button" class="${on?'on':''}" data-dlx="asmon" data-v="1"${ex?' disabled':''}>Через сборку у производителя контейнера</button><button type="button" class="${on?'':'on'}" data-dlx="asmon" data-v="0"${ex?' disabled':''}>Каждый поставщик везёт заказчику</button></span>`;
+  const body = !on ? '<p class="muted">Элементы станции едут к заказчику напрямую, срок — по самой долгой поставке.</p>' : `
+    <div class="dl-g">${dlField('Кто собирает станцию', 'asm.sup', {select:[['','— выберите поставщика —'], ...d.sup.map((z,k)=>[z.id, c.sup[k].name])], q:'Обычно производитель контейнера: к нему едут все элементы, он монтирует оборудование, обвязку и системы, испытывает и отгружает станцию заказчику.'})}
+      ${dlField('Сборка и испытания', 'asm.days', {calc:c, int:true, unit:'дн.', ph:'10', q:'Сколько дней от прихода последнего элемента (и готовности контейнера) до отгрузки собранной станции.'})}
+      ${dlField('Сборка, обвязка, испытания', 'asm.cost.v', {calc:c, unit:'₽ с НДС', ph:'в цене контейнера', q:'Если производитель контейнера берёт за сборку отдельно — сумма с НДС. Оплата — после сборки; НДС — к вычету.'})}</div>
+    ${a?`<div class="dl-asm">${a.toAsm.map(s=>`<span><b>${esc(s.name)}</b> → на сборке ${when(s.arr)}${a.late.includes(s)?' <em class="warn-t">последним</em>':''}</span>`).join('')}
+      <span><b>${esc(a.A.name)}</b>: контейнер готов ${when(a.cRdy)}</span>
+      <span class="dl-asm-t">Сборка ${when(a.start)} — ${when(a.end)} → станция у заказчика <b>${when(a.arr)}</b></span></div>`:'<p class="msg warn">Выберите, кто собирает станцию.</p>'}`;
+  return `<div class="dl-card dl-asmc"><div class="dl-asmh"><h5>Сборка станции</h5>${seg}${dlQ('Элементы станции (ДГУ, насосы, компрессор, шкафы…) везут на производство контейнера, там станцию собирают и испытывают, потом отправляют заказчику. Сроки поставщиков элементов считаются до производителя контейнера, срок станции — после сборки. Маршруты обеих перевозок — на вкладке «Логистика».')}</div>${body}</div>`;
 }
 
 // ---------- шаг 1: закупка
@@ -395,10 +420,12 @@ function dlPurchase(c){
       ${items}
       ${ru?`<div class="dl-inl"><span class="dl-lab">Цены в счёте</span><span class="dl-seg"><button type="button" class="${!cs.noVat?'on':''}" data-dlx="novat" data-k="${k}" data-v="0">с НДС</button><button type="button" class="${cs.noVat?'on':''}" data-dlx="novat" data-k="${k}" data-v="1">без НДС</button></span>${dlQ('НДС поставщика уменьшает НДС к уплате (вычет). Если в счёте цены без НДС, программа добавит НДС к платежу и учтёт его в вычете.')}</div>`:''}
       <div class="dl-sub"><h5>Сроки поставки</h5>
-        <div class="dl-g">${dlField('Готово к отгрузке через', P+'.prod', {calc:c, int:true, date:{base:0, val:cs.prod}, q:'Сколько дней от заказа (подписания договора) до готовности оборудования на складе поставщика. Можно выбрать дату — дни посчитаются сами.'})}${dlField('Доставка до заказчика', P+'.ship', {calc:c, int:true, date:{base:cs.rdy, val:cs.ship}, q:'Сколько дней едет груз от склада поставщика до объекта заказчика, включая таможню. Дата — когда груз будет у заказчика.'})}</div>
-        <p class="dl-tl"><span>Заказ — <b>день 0</b>${dlD0()?` · ${dlDayRu(0)}`:''}</span><i>→</i><span>Готово к отгрузке — <b>день ${cs.rdy}</b>${dlD0()?` · ${dlDayRu(cs.rdy)}`:''}</span><i>→</i><span>У заказчика — <b>день ${cs.arr}</b>${dlD0()?` · ${dlDayRu(cs.arr)}`:''}</span></p></div>
+        ${cs.isAsm?`<div class="dl-g">${dlField('Контейнер готов через', P+'.prod', {calc:c, int:true, date:{base:0, val:cs.prod}, q:'Сколько дней от заказа до готовности контейнера у производителя. Сборка начнётся, когда готов контейнер и приехали все элементы.'})}${dlField('Доставка станции заказчику', P+'.ship', {calc:c, int:true, date:{base:cs.rdy, val:cs.ship}, q:'Сколько дней едет собранная станция от производителя контейнера до объекта заказчика.'})}</div>
+        <p class="dl-tl"><span>Контейнер готов — <b>день ${cs.cRdy}</b>${dlD0()?` · ${dlDayRu(cs.cRdy)}`:''}</span><i>→</i><span>Сборка — <b>дни ${cs.asmStart}–${cs.rdy}</b></span><i>→</i><span>Станция у заказчика — <b>день ${cs.arr}</b>${dlD0()?` · ${dlDayRu(cs.arr)}`:''}</span></p>`
+        :`<div class="dl-g">${dlField('Готово к отгрузке через', P+'.prod', {calc:c, int:true, date:{base:0, val:cs.prod}, q:'Сколько дней от заказа (подписания договора) до готовности оборудования на складе поставщика. Можно выбрать дату — дни посчитаются сами.'})}${dlField(cs.toAsm?`Доставка на сборку к «${c.asm.A.name}»`:'Доставка до заказчика', P+'.ship', {calc:c, int:true, date:{base:cs.rdy, val:cs.ship}, q:cs.toAsm?'Сколько дней едут элементы от склада поставщика до производителя контейнера, где собирают станцию.':'Сколько дней едет груз от склада поставщика до объекта заказчика, включая таможню. Дата — когда груз будет у заказчика.'})}</div>
+        <p class="dl-tl"><span>Заказ — <b>день 0</b>${dlD0()?` · ${dlDayRu(0)}`:''}</span><i>→</i><span>Готово к отгрузке — <b>день ${cs.rdy}</b>${dlD0()?` · ${dlDayRu(cs.rdy)}`:''}</span><i>→</i><span>${cs.toAsm?'На сборке':'У заказчика'} — <b>день ${cs.arr}</b>${dlD0()?` · ${dlDayRu(cs.arr)}`:''}</span></p>`}</div>
       <div class="dl-sub"><h5>Оплата поставщику ${dlQ('Доли от стоимости оборудования (с комиссией за перевод). Последний этап — остаток до 100 %. Перевозка, страхование, таможня и брокер оплачиваются перед отгрузкой.')}</h5>${dlSupPay(c, k)}</div>
-      <div class="dl-sub dl-lglink"><span>Перевозка${ru?'':', страхование'} и доставка до объекта — на вкладке «Логистика»${cs.L+cs.Lru+cs.ins>0?`: <b>${dlRub0(cs.L+cs.Lru+cs.ins)}</b>`:''}</span>${ex?'':`<button type="button" class="btn ghost" data-dlx="step" data-id="log">Открыть «Логистику» →</button>`}</div>
+      <div class="dl-sub dl-lglink"><span>Перевозка${ru?'':', страхование'} и доставка ${cs.toAsm?'на сборку':cs.isAsm?'станции до объекта':'до объекта'} — на вкладке «Логистика»${cs.L+cs.Lru+cs.ins>0?`: <b>${dlRub0(cs.L+cs.Lru+cs.ins)}</b>`:''}</span>${ex?'':`<button type="button" class="btn ghost" data-dlx="step" data-id="log">Открыть «Логистику» →</button>`}</div>
       <details class="dl-more" data-more="sup${k}"${dlMore('sup'+k, false)}><summary>Ещё расходы по поставщику <span class="muted">— ${moreSum||'опции, комиссия за перевод, брокер'}</span></summary>
         <div class="dl-g">${dlField('Прочая закупка у поставщика', P+'.extra.v', {calc:c, cur:P+'.extra.cur', q:'Опции, ЗИП и всё, чего нет в позициях КП.'})}
           ${ru?'':dlField('Комиссия банка или агента', P+'.fx', {calc:c, unit:'%', ph:'1,5', q:'Комиссия за перевод и конвертацию — процент от платежей поставщику в валюте.'})}
@@ -408,7 +435,7 @@ function dlPurchase(c){
       <div class="dl-supf"><span>Закупка у поставщика</span><b>${dlRub(cs.equip)}</b></div>
     </div>`; }).join('');
   return dlStep(1, 'Закупка', 'Что и у кого покупаем. Цена — как в счёте поставщика, в его валюте.',
-    `${cards}${ex?'':`<button type="button" class="btn dl-add" data-dlx="addsup">+ Ещё поставщик</button>`}`, '', ['Итого закупка и доставка', c.sup.reduce((a,x)=>a+x.cash-x.T,0), 'оборудование, перевозка, страхование, комиссии, брокер — без таможни'], 'buy');
+    `${dlAsmCard(c)}${cards}${ex?'':`<button type="button" class="btn dl-add" data-dlx="addsup">+ Ещё поставщик</button>`}`, '', ['Итого закупка и доставка', c.sup.reduce((a,x)=>a+x.cash-x.T,0), 'оборудование, перевозка, страхование, комиссии, брокер — без таможни'], 'buy');
 }
 
 // этапы оплаты поставщику: название, доля, событие + дней; итог — сумма и день (дата)
@@ -1027,6 +1054,7 @@ function dealBind(dlg){
       else if (/^росс/i.test(s.country||'')){ s.country=''; s.cusMode='calc'; s.vatIn=false; }
       dlSaveSupplier(s); }
     if (a==='novat'){ d.sup[k].noVat=b.dataset.v==='1'; dlSaveSupplier(d.sup[k]); }
+    if (a==='asmon'){ d.asm=d.asm||{}; d.asm.on=b.dataset.v==='1'; dlAsmAuto(d); }
     if (a==='cusmode'){ d.sup[k].cusMode=b.dataset.v; dlSaveSupplier(d.sup[k]); }
     if (a==='trmode'){ const t=d.cust.tr[k], c=dealCalc(dlKp(), d), ct=c.trs[k];
       if (b.dataset.v==='sum' && t.mode!=='sum'){ t.mode='sum'; t.sum=ct&&ct.p?dlIn(Math.round(c.S*ct.p/100)):''; }

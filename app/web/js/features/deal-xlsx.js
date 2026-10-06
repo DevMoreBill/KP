@@ -86,6 +86,8 @@ async function dealXlsx(){
   row([{v:'Монтаж, прочие расходы, оплата заказчика', s:'grp'},{v:'',s:'grp'},{v:'',s:'grp'},{v:'',s:'grp'},{v:'',s:'grp'}]);
   row(['Монтаж и ПНР', {v:c.M, s:'inpMoney'}, '₽', {f:self(), v:c.M, s:'money'}], 'M');
   row(['Прочие расходы', {v:c.E, s:'inpMoney'}, '₽', {f:self(), v:c.E, s:'money'}], 'E');
+  const asmOn=!!(c.asm && c.asm.cost>0);
+  if (asmOn) row([`Сборка станции у «${c.asm.A.name}» (с НДС)`, {v:c.asm.cost, s:'inpMoney'}, '₽', {f:self(), v:c.asm.cost, s:'money'}, note(`Сборка ${c.asm.days} дн.; НДС ${c.v} % — к вычету`)], 'ASM');
   row(['Прочий НДС к вычету', {v:c.Vo, s:'inpMoney'}, '₽', {f:self(), v:c.Vo, s:'money'}], 'Vo');
   row(['Резерв на гарантию', {v:c.warrP, s:'inp'}, '% выручки без НДС'], 'WARR');
   row(['Бонусы и комиссии с продажи', {v:c.bonusP, s:'inp'}, '% выручки без НДС'], 'BON');
@@ -122,6 +124,8 @@ async function dealXlsx(){
     if (r.key==='xc') return `-${A(ref('XK'))}`;
     if (String(r.key).startsWith('xc:')) return xm==='net' ? null : `-${A(ref('XK'))}*D${gRow[r.from]}/(${c.xc.from.map(x=>'D'+gRow[x]).join('+')})`;
     if (r.key==='warr') return `-${A(ref('Rv'))}*${A(ref('WARR'))}/100`;
+    if (r.key==='asm') return `-${A(D('ASM'))}`;
+    if (!/^c\d+$/.test(r.key)) return null;            // прочие строки — значением
     const j=+r.key.slice(1); return `${A(D('S'))}*${A(trRef('TR'+j))}/100`; };
   const gRow=Object.fromEntries(c.rows.map((x,k)=>[x.key, gFirst+k]));
   const inRows=c.rows.map((r,k)=>r.inflow?'A'+(gFirst+k):null).filter(Boolean);
@@ -135,10 +139,10 @@ async function dealXlsx(){
   row([]);
   row([{v:'Результат', s:'head'},{v:'Значение',s:'headR'},{v:'',s:'head'},{v:'',s:'head'},{v:'Как считается',s:'head'}]);
   const sumK=p=>c.sup.map((s,k)=>D(p+k)).join('+')||'0';
-  const vatIn=[...c.sup.map((s,k)=>D('vi'+k)), ...c.sup.map((s,k)=>d.sup[k].vatIn?D('vo'+k):null).filter(Boolean), ...c.sup.map((s,k)=>D('voru'+k)), D('Vo')].join('+');
+  const vatIn=[...c.sup.map((s,k)=>D('vi'+k)), ...c.sup.map((s,k)=>d.sup[k].vatIn?D('vo'+k):null).filter(Boolean), ...c.sup.map((s,k)=>D('voru'+k)), D('Vo'), ...(asmOn?[`${D('ASM')}*${ref('v')}/(100+${ref('v')})`]:[])].join('+');
   row(['Выручка без НДС', {f:`${D('S')}/(1+${ref('v')}/100)`, v:c.R, s:'money'}, '', '', note('R = цена с НДС / (1 + НДС / 100)')], 'Rv');
   row(['НДС с продажи', {f:`${D('S')}-${ref('Rv')}`, v:c.VATs, s:'money'}, '', '', note('Цена с НДС − выручка')], 'VATs');
-  row(['Прямые платежи', {f:`${sumK('CASH')}+${D('M')}+${D('E')}+${ref('Rv')}*(${ref('WARR')}+${ref('BON')})/100${c.BG>0?'+'+D('BG'):''}`, v:c.Ccash, s:'money'}, '', '', note('Поставщики, доставка, таможня, монтаж, прочее, резерв, бонусы')], 'C');
+  row(['Прямые платежи', {f:`${sumK('CASH')}+${D('M')}+${D('E')}+${ref('Rv')}*(${ref('WARR')}+${ref('BON')})/100${c.BG>0?'+'+D('BG'):''}${asmOn?'+'+D('ASM'):''}`, v:c.Ccash, s:'money'}, '', '', note('Поставщики, доставка, таможня, монтаж, прочее, резерв, бонусы')], 'C');
   row(['Финансирование', {f:`${q(SH2)}G${gTot}`, v:c.F, s:'money'}, '', '', note('Лист «График платежей»')], 'F');
   row(['НДС к вычету', {f:vatIn, v:b.VATin, s:'money'}, '', '', note('Ввозной + НДС поставщиков + услуги в России + прочий')], 'VI');
   row(['Себестоимость с финансированием', {f:`${ref('C')}-${ref('VI')}+${ref('F')}`, v:b.Ctot, s:'money'}, '', '', note('Прямые платежи − НДС к вычету + финансирование')], 'CT');

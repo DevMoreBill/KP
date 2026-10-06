@@ -5,11 +5,11 @@
 //   3) карточка открывается сразу на нужной вкладке (в каталоге — карточка каталога).
 'use strict';
 
-const NW = { where:'kp', cat:'', ctype:'block', ins:'100 мм', climate:'УХЛ1', main:null, q:'', mq:'', url:'', name:'', busy:false };
+const NW = { where:'kp', cat:'', ctype:'block', ins:'100 мм', climate:'УХЛ1', main:null, q:'', pf:null, url:'', name:'', busy:false };
 
 function newEquip(where, pre){
   if (where==='catalog' && !can('catAdd')) return cannot('catAdd');
-  Object.assign(NW, { where:where||'kp', cat:'', ctype:'block', ins:'100 мм', climate:'УХЛ1', main:null, q:'', mq:'', url:'', name:'', busy:false });
+  Object.assign(NW, { where:where||'kp', cat:'', ctype:'block', ins:'100 мм', climate:'УХЛ1', main:null, q:'', pf:null, url:'', name:'', busy:false });
   if (pre==='station') NW.cat='station';
   else if (pre && TYPES.some(t=>t.id===pre)) NW.cat=pre;
   const d=$('#dlg'); d.className='wide nw'; nwDraw(); if (!d.open) d.showModal();
@@ -69,7 +69,7 @@ function nwUnit(t){
 // станция: контейнер и основное оборудование
 function nwStation(t){
   const cats=t.station.main||[];
-  const hits=catCache.filter(x=>cats.includes(attrsOf(x).cat) && (!NW.mq.trim() || norm(x.name+' '+(attrsOf(x).maker||'')+' '+(attrsOf(x).model||'')).includes(norm(NW.mq)))).slice(0,30);
+  if (!NW.pf || NW.pfFor!==t.id){ NW.pf=pfNew(cats); NW.pfFor=t.id; }
   const m=NW.main && catCache.find(x=>x.id===NW.main);
   return `<p class="muted nw-lead">${esc(t.item)} — одно изделие для заказчика: одна строка и одна цена в КП, а закупка, поставщики и описание — по каждому элементу. Остальные элементы (${esc(t.station.parts.slice(0,3).join(', '))}…) добавите в карточке одним нажатием.</p>
     <p class="nw-h">1. Контейнер</p>
@@ -78,8 +78,14 @@ function nwStation(t){
       <label class="f"><span>Климатическое исполнение</span><select id="nwCl">${CLIMATES.map(c=>`<option value="${c[0]}"${c[0]===NW.climate?' selected':''}>${c[0]} — ${esc(c[1])}</option>`).join('')}</select></label></div>
     <p class="nw-h">2. ${esc(t.station.mainLabel)} <span class="muted">— из каталога или позже</span></p>
     ${m?`<div class="nw-chosen">${m.photo?`<img src="${esc(m.photo.src)}" alt="">`:''}<b>${esc(m.name)}</b><button class="btn ghost" type="button" data-nw="unmain">Другое</button></div>`
-      :`<input type="search" id="nwMq" value="${esc(NW.mq)}" placeholder="Модель, производитель, мощность" autocomplete="off"><div class="nw-res nw-mlist" id="nwMl">${hits.map(x=>`<button type="button" class="nw-hit" data-nwmain="${esc(x.id)}">${x.photo?`<img src="${esc(x.photo.src)}" alt="">`:'<i></i>'}<span><b>${esc(x.name)}</b><small>${esc(mainLine(x,3)||'')}</small></span><em>Выбрать</em></button>`).join('')||'<p class="muted">В каталоге нет подходящего — добавите в карточке станции своё.</p>'}</div>`}
+      :`<div id="nwPf">${pfHtml(NW.pf, cats)}</div><div class="nw-res nw-mlist" id="nwMl">${nwMainList(cats)}</div>`}
     <div class="row nw-go"><button class="btn primary" type="button" data-nw="mkStation"${NW.busy?' disabled':''}>Создать станцию</button><span class="muted">Откроется карточка станции на вкладке «Состав станции».</span></div>`;
+}
+
+function nwMainList(cats){
+  const r=pfList(NW.pf, cats, 30);
+  return `<p class="muted pf-n">Подходит: ${r.n}${r.n>30?' — показаны первые 30, уточните фильтры':''}</p>`+(r.list.map(x=>`<button type="button" class="nw-hit" data-nwmain="${esc(x.id)}">${x.photo?`<img src="${esc(x.photo.src)}" alt="">`:'<i></i>'}<span><b>${esc(x.name)}</b><small>${esc(mainLine(x,3)||'')}</small></span><em>Выбрать</em></button>`).join('')
+    || '<p class="muted">Подходящего нет — измените фильтры или добавьте своё в карточке станции.</p>');
 }
 
 // новая позиция → в КП (карточка позиции) или в каталог (карточка каталога), открыть на вкладке tab
@@ -129,7 +135,7 @@ async function nwMakeStation(){
 document.addEventListener('click', e=>{
   const d=e.target.closest('#dlg.nw'); if (!d) return;
   if (e.target.closest('[data-close]')){ d.close(); d.className=''; return; }
-  const c=e.target.closest('[data-nwcat]'); if (c){ NW.cat=c.dataset.nwcat; nwDraw(); setTimeout(()=>($('#nwName')||$('#nwMq'))?.focus(),30); return; }
+  const c=e.target.closest('[data-nwcat]'); if (c){ NW.cat=c.dataset.nwcat; nwDraw(); setTimeout(()=>($('#nwName')||document.querySelector('#dlg [data-pf="q"]'))?.focus(),30); return; }
   const h=e.target.closest('[data-nwadd]'); if (h){ const x=catCache.find(z=>z.id===h.dataset.nwadd); d.close(); d.className=''; if (x) addFromCatalog(x); return; }
   const ct=e.target.closest('[data-nwct]'); if (ct){ NW.ctype=ct.dataset.nwct; const cc=ctypeOf(NW.ctype); if (cc.ins) NW.ins=cc.ins; if (cc.climate) NW.climate=cc.climate; nwDraw(); return; }
   const mn=e.target.closest('[data-nwmain]'); if (mn){ NW.main=mn.dataset.nwmain; nwDraw(); return; }
@@ -142,11 +148,12 @@ document.addEventListener('click', e=>{
 });
 document.addEventListener('input', e=>{ if (!e.target.closest('#dlg.nw')) return; const t=e.target;
   if (t.id==='nwQ'){ NW.q=t.value; $('#nwRes').innerHTML=nwFound(); }
-  if (t.id==='nwMq'){ NW.mq=t.value; const pos=t.selectionStart; nwDraw(); const n=$('#nwMq'); if (n){ n.focus(); n.setSelectionRange(pos,pos); } }
+  if (t.dataset.pf && t.tagName==='INPUT'){ pfSet(NW.pf, t); $('#nwMl').innerHTML=nwMainList(typeById(NW.cat).station.main); }
   if (t.id==='nwName') NW.name=t.value;
   if (t.id==='nwUrl') NW.url=t.value; });
 document.addEventListener('change', e=>{ if (!e.target.closest('#dlg.nw')) return;
-  if (e.target.id==='nwIns') NW.ins=e.target.value; if (e.target.id==='nwCl') NW.climate=e.target.value; });
+  if (e.target.id==='nwIns') NW.ins=e.target.value; if (e.target.id==='nwCl') NW.climate=e.target.value;
+  const t=e.target; if (t.dataset.pf && t.tagName==='SELECT'){ const cats=typeById(NW.cat).station.main; if (pfSet(NW.pf, t)) $('#nwPf').innerHTML=pfHtml(NW.pf, cats); $('#nwMl').innerHTML=nwMainList(cats); } });
 document.addEventListener('keydown', e=>{ if (!e.target.closest || !e.target.closest('#dlg.nw') || e.key!=='Enter') return;
   if (e.target.id==='nwQ'){ const x=quickMatches(NW.q)[0]; if (x){ e.preventDefault(); const d=$('#dlg'); d.close(); d.className=''; addFromCatalog(x); } }
   if (e.target.id==='nwUrl'){ e.preventDefault(); NW.name=($('#nwName')||{}).value||NW.name; nwMakeUnit('url'); } });

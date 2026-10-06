@@ -82,6 +82,8 @@ function aiSummary(r){
   if (rows) L.push(`Характеристики: ${aiN(rows,'строка','строки','строк')}${(j.groups||[]).length>1?` в ${aiN(j.groups.length,'группе','группах','группах')}`:''}`);
   const na=Object.entries(j.attrs||{}).filter(([k,v])=>k!=='cat'&&v!==''&&v!=null).length; if (na) L.push(`Параметры для фильтров каталога: ${na}`);
   if (j.cover && (j.cover.model||j.cover.title)) L.push('Титульный лист');
+  const np=(j.parts||[]).filter(p=>p&&p.name).length; if (np) L.push(`Элементы станции: ${np} — новые добавятся в состав`);
+  const nc=((j.container&&j.container.rows)||[]).filter(x=>x&&x.k).length; if (nc) L.push(`Требования к контейнеру: ${aiN(nc,'строка','строки','строк')}`);
   if (!L.length) return '<p class="ai-err">В ответе нет данных для карточки.</p>';
   return `<p class="ai-ok">${r.kind==='text'?'Распознана таблица характеристик (без ИИ-формата).':'Ответ распознан.'} Будет заполнено:</p><ul class="ai-list">${L.map(x=>`<li>${x}</li>`).join('')}</ul>`;
 }
@@ -124,6 +126,29 @@ async function aiFetch(i){
   await aiFetchInto(it); renderForm(); persist();
 }
 
+// текст файла для шага 1: Word (.docx — абзацы и таблицы строками «ячейка | ячейка»), текст (.txt, .csv, .md)
+async function aiFileText(f){
+  const nm=String(f.name||'').toLowerCase();
+  if (/\.docx$/.test(nm)){
+    const z=await JSZip.loadAsync(await f.arrayBuffer()), x=await z.file('word/document.xml').async('string');
+    const ent=t=>t.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&');
+    const para=p=>ent((p.match(/<w:t[^>]*>[^<]*<\/w:t>|<w:tab\/>|<w:br\/>/g)||[]).map(t=>t.startsWith('<w:t')?t.replace(/<[^>]+>/g,''):t==='<w:tab/>'?'\t':'\n').join('')).trim();
+    const body=x.slice(x.indexOf('<w:body'));
+    const out=[];
+    // таблицы — строками, ячейки через «|»; абзацы вне таблиц — как есть
+    body.replace(/<w:tbl>[\s\S]*?<\/w:tbl>|<w:p[ >][\s\S]*?<\/w:p>/g, blk=>{
+      if (blk.startsWith('<w:tbl>')) (blk.match(/<w:tr[ >][\s\S]*?<\/w:tr>/g)||[]).forEach(tr=>{
+        const cells=(tr.match(/<w:tc>[\s\S]*?<\/w:tc>/g)||[]).map(tc=>(tc.match(/<w:p[ >][\s\S]*?<\/w:p>/g)||[]).map(para).filter(Boolean).join(' ').trim()).filter(Boolean);
+        if (cells.length) out.push(cells.join(' | ')); });
+      else { const t=para(blk); if (t) out.push(t); }
+      return ''; });
+    return out.join('\n');
+  }
+  if (/\.(txt|csv|md|tsv)$/.test(nm) || /^text\//.test(f.type||'')) return await f.text();
+  if (/\.pdf$/.test(nm)) throw new Error('PDF программа не читает: откройте файл, выделите всё (Ctrl+A), скопируйте (Ctrl+C) и вставьте в поле — или приложите PDF прямо в окне ИИ');
+  throw new Error('Подходят файлы Word (.docx) и текстовые (.txt)');
+}
+
 // характеристики со страницы — сразу в таблицу, без ИИ
 function aiProps(i){
   const it=S.items[i], P=it._srcProps||[]; if (!P.length) return;
@@ -152,6 +177,16 @@ function aiApply(i){
     else if (!TYPES.some(t=>t.id===it.attrs.cat)) delete it.attrs.cat;
     const t=typeById(it.attrs.cat||keepCat); for (const f of t.fields) if (f.num && it.attrs[f.key]!=null){ const n=numOf(it.attrs[f.key]); it.attrs[f.key]=n!=null?n:it.attrs[f.key]; }
   }
+  // станция по ТЗ: требования к контейнеру — в его характеристики, недостающие элементы — в состав
+  if (typeById(attrsOf(it).cat).station){
+    it.kit=it.kit||{parts:[]}; const P=it.kit.parts, have=new Set(P.map(p=>norm(p.name)));
+    const crow=((j.container&&j.container.rows)||[]).filter(x=>x&&x.k&&x.v).map(x=>({k:String(x.k), v:String(x.v)}));
+    if (crow.length){ let c=P.find(p=>p.role==='container'); if (!c){ c=kitNewContainer('welded'); P.push(c); }
+      for (const r of crow){ const o=c.rows.find(z=>norm(z.k)===norm(r.k)); if (o) o.v=r.v; else c.rows.push(r); } }
+    for (const p of (j.parts||[])){ if (!p || !String(p.name||'').trim() || have.has(norm(p.name))) continue; have.add(norm(p.name));
+      P.push(kitNewPart({name:String(p.name).trim(), qty:+p.qty>0?+p.qty:1, desc:String(p.desc||''), rows:(p.rows||[]).filter(x=>x&&x.k&&x.v).map(x=>({k:String(x.k), v:String(x.v)}))})); }
+    stationFill(it);
+  }
   if (feats.length || groups.length) it.page=true;
   it._ans=''; it._aiStep=0; it._aiMsg='Карточка заполнена — проверьте вкладки «Основное», «Описание и фото», «Характеристики».';
   renderForm(); persist(); toast('Карточка заполнена из ответа ИИ');
@@ -175,9 +210,11 @@ function aiPrompt(it){
 "features":[{"label":"Узел или особенность","text":"1–2 предложения по существу"}],
 "groups":[{"name":"Основные","rows":[{"k":"Параметр, ед.","v":"значение","hl":true}]}],
 "cover":{"title":"${t.coverTitle||t.name}","model":"марка и модель","desc":"1–2 предложения для титульного листа","kpis":[{"num":"число","unit":"ед.","cap":"что это"}]},
-"attrs":{"cat":"${t.id}","maker":"производитель","series":"серия","model":"модель",${aiFields(t)}}}
+"attrs":{"cat":"${t.id}","maker":"производитель","series":"серия","model":"модель",${aiFields(t)}}${st?`,
+"container":{"rows":[{"k":"Раздел — параметр (например «Стены — наружная обшивка»)","v":"требование"}]},
+"parts":[{"name":"элемент станции (кроме контейнера), например «Шкаф АВР»","qty":1,"desc":"что требуется","rows":[{"k":"Параметр","v":"значение"}]}]`:''}}
 \`\`\`
-Правила: features — 2–4 блока об основных узлах и особенностях${st?' (для станции — о контейнере, основном оборудовании и системах)':''}; groups — все характеристики, сгруппированные по смыслу; hl=true — только у 2–4 главных параметров; kpis — ровно 4 главных числовых параметра; в attrs числовые поля — только число без единиц.${st?'':` Если оборудование другого типа, укажи attrs.cat из списка: ${types}.`}
+Правила: features — 2–4 блока об основных узлах и особенностях${st?' (для станции — о контейнере, основном оборудовании и системах)':''};${st?' Если исходные данные — техническое задание заказчика: в container — все требования к контейнеру (корпус, обшивка, утепление, окраска, вентиляция, освещение, ОПС, пожаротушение, шум, климат), в parts — все требуемые элементы и опции станции, кроме контейнера и основного оборудования (АВР, подогреватели, глушитель, топливная система, мониторинг и т. п.);':''} groups — все характеристики, сгруппированные по смыслу; hl=true — только у 2–4 главных параметров; kpis — ровно 4 главных числовых параметра; в attrs числовые поля — только число без единиц.${st?'':` Если оборудование другого типа, укажи attrs.cat из списка: ${types}.`}
 
 ИСХОДНЫЕ ДАННЫЕ:
 ${String(it._src||'').trim()||'(только наименование выше — найди данные производителя по этой модели; если не уверен в значении — оставь пустым)'}`;
@@ -228,6 +265,12 @@ function aiPartCopy(i, j, url){
 }
 
 // шаг 3 вкладки «Заполнить с ИИ»: ответ разбирается при вставке, без перерисовки окна
+document.addEventListener('change', async e=>{ const t=e.target; if (t.dataset.aifile==null || !t.files[0]) return;
+  const it=S.items[+t.dataset.aifile], f=t.files[0]; t.value='';
+  try{ const txt=await aiFileText(f); it._src=`Файл: ${f.name}\n\n`+txt.slice(0,60000); it._aiStep=2; it._aiMsg=`Файл «${f.name}» загружен (${txt.length.toLocaleString('ru-RU')} знаков). Дальше — шаг 2.`; }
+  catch(x){ it._aiMsg=String(x.message||x); }
+  renderForm(); persist(); });
+
 document.addEventListener('input', e=>{ const t=e.target; if (t.dataset.aians==null) return;
   const i=+t.dataset.aians, r=aiParse(t.value), pv=document.querySelector(`[data-aiprev="${i}"]`), ok=document.querySelector(`[data-aiok="${i}"]`);
   if (pv) pv.innerHTML=aiSummary(r); if (ok) ok.disabled=!(r&&r.kind!=='bad'); });

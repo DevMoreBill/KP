@@ -16,6 +16,8 @@ const KIT_PRESETS = ['Шасси (прицеп)', 'Глушитель', 'Шка�
 const CONTAINER_TYPES = [
   { id:'block', name:'Блок-контейнер утеплённый', short:'блок-контейнере', size:'по проекту (длина 3–12 м, ширина 2,4–3 м)',
     desc:'Каркас из гнутого стального профиля, стены и кровля — сэндвич-панели с минераловатным утеплителем, пол — рифлёный стальной лист по утеплённому основанию. Размеры подбираются под оборудование; двери и проёмы — по проекту.' },
+  { id:'welded', name:'Блок-контейнер цельносварной', short:'цельносварном блок-контейнере', size:'по проекту, например 5000 × 2400 × 2500 мм',
+    desc:'Цельносварной стальной каркас и корпус: наружная обшивка — стальной лист от 1,5 мм с антикоррозионной обработкой, утепление стен, крыши и пола минеральной ватой, пол — рифлёный стальной лист, крыша — профилированный лист. Закладные под оборудование, проушины для погрузки, дверь и утеплённые ворота — по проекту.' },
   { id:'sea20', name:'Морской контейнер 20 футов', short:'контейнере 20 футов', size:'6058 × 2438 × 2591 мм',
     desc:'Стандартный морской контейнер ISO 20 футов, переоборудованный под оборудование: утепление и внутренняя обшивка, дверь обслуживания, вентиляционные проёмы, кабельные и трубные вводы.' },
   { id:'sea40', name:'Морской контейнер 40 футов', short:'контейнере 40 футов', size:'12192 × 2438 × 2591 мм',
@@ -28,6 +30,18 @@ const CONTAINER_TYPES = [
     desc:'Арктическое исполнение для работы при температуре до −60 °C: усиленное утепление, тамбур, автоматический электрообогрев, утеплённые жалюзи вентиляции, подогрев оборудования.' },
 ];
 const CONTAINER_INS = ['50 мм', '100 мм', '150 мм', '200 мм'];
+// системы контейнера (как в спецификациях производителей контейнеров и в ТЗ заказчиков): включённая — строка в характеристиках
+const CONT_SYSTEMS = [
+  ['power', 'Электрооборудование', 'Щит собственных нужд, сальниковые кабельные вводы, проводка в кабель-каналах, розетки, заземление'],
+  ['light', 'Освещение', 'Основное — светодиодные светильники; аварийное — светильник с аккумулятором'],
+  ['heat', 'Отопление', 'Электрические конвекторы с терморегулятором'],
+  ['vent', 'Вентиляция', 'Приточно-вытяжная: воздушные клапаны с электроприводом, управление по термодатчику, антивандальные решётки'],
+  ['ops', 'Охранно-пожарная сигнализация', 'Прибор приёмно-контрольный, дымовые датчики, датчик открытия двери, сирена, вывод сигналов «сухими контактами»'],
+  ['fire', 'Автоматическое пожаротушение', 'Аэрозольное: модули пожаротушения, табло «Аэрозоль уходи» / «Аэрозоль не входи»'],
+  ['noise', 'Шумоизоляция', 'Внутренняя обшивка шумопоглощающим материалом, камеры шумоглушения на приточных и вытяжных жалюзи'],
+  ['gate', 'Ворота', 'Утеплённые распашные ворота для монтажа и обслуживания оборудования'],
+];
+const CONT_SYS_DEF = { power:true, light:true, heat:true, vent:true };
 const CLIMATES = [['У1','умеренный климат, до −45 °C', -45], ['УХЛ1','умеренно-холодный климат, до −60 °C', -60], ['ХЛ1','холодный климат, до −60 °C', -60]];
 const ctypeOf = id => CONTAINER_TYPES.find(c=>c.id===id) || CONTAINER_TYPES[0];
 
@@ -44,9 +58,12 @@ function contApply(p, o={}){
   const prevAuto=p._autoDesc; p.name=(!p.name || CONTAINER_TYPES.some(z=>z.name===p.name)) ? c.name : p.name;
   if (!p.desc || p.desc===prevAuto) p.desc=c.desc; p._autoDesc=c.desc;
   const cl=CLIMATES.find(z=>z[0]===p.climate);
-  const set={ 'Тип': c.name, 'Габариты (Д × Ш × В)': c.size, 'Утепление': p.ins?'минеральная вата '+p.ins:'', 'Климатическое исполнение': cl?`${cl[0]} (${cl[1]})`:'' };
-  p.rows=p.rows||[];
-  for (const [k,v] of Object.entries(set)){ const r=p.rows.find(z=>z.k===k); if (r){ if (v) r.v=v; } else if (v) p.rows.push({k, v}); }
+  const set={ 'Тип': c.name, 'Габариты (Д × Ш × В)': String(p.size||'').trim() ? String(p.size).trim()+(/мм|м\b/.test(p.size)?'':' мм') : c.size,
+    'Утепление': p.ins?'минеральная вата '+p.ins:'', 'Климатическое исполнение': cl?`${cl[0]} (${cl[1]})`:'', 'Цвет': String(p.ral||'').trim() };
+  p.rows=p.rows||[]; if (!p.sys) p.sys={...CONT_SYS_DEF};
+  for (const [k,v] of Object.entries(set)){ const r=p.rows.find(z=>z.k===k); if (r){ if (v) r.v=v; else if (k==='Цвет') p.rows.splice(p.rows.indexOf(r),1); } else if (v) p.rows.push({k, v}); }
+  for (const [id, k, v] of CONT_SYSTEMS){ const ix=p.rows.findIndex(z=>z.k===k);
+    if (p.sys[id] && ix<0) p.rows.push({k, v}); else if (!p.sys[id] && ix>=0) p.rows.splice(ix,1); }
   return p;
 }
 // название станции подставляется, пока менеджер его не менял сам
@@ -144,7 +161,10 @@ function edKit(x,i){
       <button class="icon" type="button" data-a="kitDel" data-i="${i}" data-j="${j}" aria-label="Убрать элемент">✕</button></div>
     ${p.role==='container'?`<div class="kit-ct"><label class="f"><span>Тип контейнера</span>${sel('ctype', j, CONTAINER_TYPES.map(c=>[c.id, c.name+' — '+c.size]), p.ctype)}</label>
       <label class="f"><span>Утепление</span>${sel('ins', j, CONTAINER_INS.map(v=>[v,v]), p.ins)}</label>
-      <label class="f"><span>Климатическое исполнение</span>${sel('climate', j, CLIMATES.map(c=>[c[0], c[0]+' — '+c[1]]), p.climate)}</label></div>`:''}
+      <label class="f"><span>Климатическое исполнение</span>${sel('climate', j, CLIMATES.map(c=>[c[0], c[0]+' — '+c[1]]), p.climate)}</label>
+      <label class="f"><span>Размер Д × Ш × В, мм</span><input type="text" data-kitct="${i}.${j}" data-fld="size" value="${esc(p.size||'')}" placeholder="${esc(ctypeOf(p.ctype).size)}"></label>
+      <label class="f"><span>Цвет</span><input type="text" data-kitct="${i}.${j}" data-fld="ral" value="${esc(p.ral||'')}" placeholder="например, RAL 7004 / RAL 5005"></label></div>
+      <div class="kit-sys"><span class="muted">Системы контейнера:</span>${CONT_SYSTEMS.map(([id,k])=>`<button type="button" class="chip${(p.sys||CONT_SYS_DEF)[id]?' on':''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!(p.sys||CONT_SYS_DEF)[id]}">${esc(k)}</button>`).join('')}</div>`:''}
     <div class="kit-g">
       <label class="f"><span>Кол-во</span><input type="text" inputmode="numeric" data-p="${P}.${j}.qty" value="${esc(p.qty)}"></label>
       <label class="f"><span>Закупка за ед.</span><span class="kit-cost"><input type="text" inputmode="decimal" data-kitcost="${i}.${j}" value="${esc(ct)}" placeholder="цена из счёта"><select data-kitcur="${i}.${j}" aria-label="Валюта закупки">${DEAL_CURS.map(c=>`<option${(p.costCur||'RUB')===c?' selected':''}>${c}</option>`).join('')}</select></span></label>
@@ -179,17 +199,63 @@ function edKit(x,i){
       ${parts.some(p=>!p.cost)?`<small class="warn-t">не указана закупка: ${parts.filter(p=>!p.cost).map(p=>esc(p.name||'без названия')).join(', ')}</small>`:''}</div>`:''}</div>`;
 }
 
+// ---------- подбор по фильтрам категории: вид (если категорий несколько), производитель, списки и «от–до» по параметрам
+// F = {cat, maker, q, f:{ключ: значение}, r:{ключ: [от, до]}}; cats — допустимые категории (null — все)
+const pfNew = cats => ({ cat:cats&&cats.length===1?cats[0]:'', maker:'', q:'', f:{}, r:{} });
+const pfNum = v => { const n=parseFloat(String(v??'').replace(/\s+/g,'').replace(',','.')); return Number.isFinite(n)?n:null; };
+function pfPool(cats){ return catCache.filter(x=>!cats || cats.includes(attrsOf(x).cat)); }
+function pfFields(F){ return F.cat ? typeById(F.cat).fields.filter(f=>f.facet || f.range).slice(0,8) : []; }
+function pfHtml(F, cats){
+  const pool=pfPool(cats).filter(x=>!F.cat || attrsOf(x).cat===F.cat);
+  const opt=(v,l,on)=>`<option value="${esc(v)}"${on?' selected':''}>${esc(l)}</option>`;
+  const catSel = !cats || cats.length>1 ? `<label class="f"><span>Вид</span><select data-pf="cat">${opt('','Все',!F.cat)}${(cats||TYPES.map(t=>t.id)).filter(c=>!typeById(c).station).map(c=>opt(c, typeById(c).name, F.cat===c)).join('')}</select></label>` : '';
+  const makers=[...new Set(pool.map(x=>attrsOf(x).maker).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
+  const mk=`<label class="f"><span>Производитель</span><select data-pf="maker">${opt('','Все',!F.maker)}${makers.map(m=>opt(m,m,F.maker===m)).join('')}</select></label>`;
+  const fl=pfFields(F).map(f=>{ const lab=esc(f.label)+(f.unit?', '+esc(f.unit):'');
+    if (f.range){ const r=F.r[f.key]||[];
+      return `<label class="f pf-r"><span>${lab}</span><span class="pf-rr"><input type="text" inputmode="decimal" data-pf="rmin:${f.key}" value="${esc(r[0]??'')}" placeholder="от"><input type="text" inputmode="decimal" data-pf="rmax:${f.key}" value="${esc(r[1]??'')}" placeholder="до"></span></label>`; }
+    const vals=(f.values&&f.values.length?f.values:[...new Set(pool.map(x=>attrsOf(x)[f.key]).filter(v=>v!=null&&v!=='').map(String))].sort()).slice(0,40);
+    return vals.length ? `<label class="f"><span>${lab}</span><select data-pf="f:${f.key}">${opt('','Все',!F.f[f.key])}${vals.map(v=>opt(v,v,F.f[f.key]===v)).join('')}</select></label>` : ''; }).join('');
+  return `<div class="pf"><label class="f pf-q"><span>Модель или название</span><input type="search" data-pf="q" value="${esc(F.q)}" placeholder="например, CR 32 или Cummins" autocomplete="off"></label>${catSel}${mk}${fl}</div>`;
+}
+function pfMatch(x, F, cats){
+  const a=attrsOf(x); if (cats && !cats.includes(a.cat)) return false; if (F.cat && a.cat!==F.cat) return false;
+  if (F.maker && a.maker!==F.maker) return false;
+  for (const [k,v] of Object.entries(F.f)) if (v && String(a[k]??'')!==v) return false;
+  for (const [k,[lo,hi]] of Object.entries(F.r)){ const l=pfNum(lo), h=pfNum(hi); if (l==null && h==null) continue;
+    const n=numOf(a[k]); if (n==null || (l!=null && n<l) || (h!=null && n>h)) return false; }
+  if (F.q.trim()){ const w=norm(F.q).split(' ').filter(Boolean), hay=norm([x.name, a.maker, a.model, a.series].join(' ')); if (!w.every(v=>hay.includes(v))) return false; }
+  return true;
+}
+function pfList(F, cats, lim=40){
+  const res=pfPool(cats).filter(x=>pfMatch(x,F,cats));
+  const mv=x=>numOf(attrsOf(x)[typeById(attrsOf(x).cat).main||'kw'])??9e9;
+  return { n:res.length, list:res.sort((p,q)=>mv(p)-mv(q)).slice(0,lim) };
+}
+// изменение поля фильтра; true — поменялся набор полей (нужно перерисовать фильтры)
+function pfSet(F, el){
+  const k=el.dataset.pf, v=el.value;
+  if (k==='cat'){ F.cat=v; F.f={}; F.r={}; return true; }
+  if (k==='maker'){ F.maker=v; return false; }
+  if (k==='q'){ F.q=v; return false; }
+  const [t,key]=k.split(':');
+  if (t==='f'){ F.f[key]=v; return false; }
+  const r=F.r[key]=F.r[key]||['','']; r[t==='rmin'?0:1]=v; return false;
+}
+const pfRow = (x, act) => `<button type="button" class="kit-pick" ${act}="${esc(x.id)}">${x.photo&&x.photo.src?`<img src="${esc(x.photo.src)}" alt="">`:'<span class="kit-noimg"></span>'}<span><b>${esc(x.name)}</b><small class="muted">${esc(typeById(attrsOf(x).cat).name)}${mainLine(x,3)?' · '+esc(mainLine(x,3)):''}${x.cost?' · закупка '+money(x.cost)+' '+(x.costCur||'RUB'):''}</small></span></button>`;
+
 // выбор позиции каталога для элемента: cats — только эти категории (основное оборудование станции), role — роль элемента
 function kitPickCat(i, cats, role){
-  const d=$('#dlg'); d.classList.add('wide'); let all=!cats;
-  const draw=q=>{ const n=norm(q||''), list=catCache.filter(x=>(all || cats.includes(attrsOf(x).cat)) && (!n || norm(x.name+' '+(attrsOf(x).maker||'')+' '+(attrsOf(x).model||'')).includes(n))).slice(0,60);
-    return list.map(x=>`<button type="button" class="kit-pick" data-cid="${esc(x.id)}">${x.photo&&x.photo.src?`<img src="${esc(x.photo.src)}" alt="">`:'<span class="kit-noimg"></span>'}<span><b>${esc(x.name)}</b><small class="muted">${esc(typeById(attrsOf(x).cat).name)}${mainLine(x,3)?' · '+esc(mainLine(x,3)):''}${x.cost?' · закупка '+money(x.cost)+' '+(x.costCur||'RUB'):''}</small></span></button>`).join('') || '<p class="muted">Ничего не найдено — добавьте свой элемент.</p>'; };
-  d.innerHTML=`<div class="dlg-h"><h3>${role==='main'?esc(stationOf(S.items[i]).mainLabel)+' из каталога':'Элемент из каталога'}</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-    <div class="dlg-b"><div class="row"><input type="search" id="kitQ" placeholder="Модель, производитель, мощность" autocomplete="off" style="flex:1">
-      ${cats?`<label class="row muted" style="gap:6px"><input type="checkbox" id="kitAll" style="width:auto">все категории</label>`:''}</div><div class="kit-pl" id="kitPL">${draw('')}</div></div>`;
-  d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close();
-  $('#kitQ').oninput=e=>{ $('#kitPL').innerHTML=draw(e.target.value); }; setTimeout(()=>$('#kitQ')?.focus(), 30);
-  if ($('#kitAll')) $('#kitAll').onchange=e=>{ all=e.target.checked; $('#kitPL').innerHTML=draw($('#kitQ').value); };
+  const d=$('#dlg'); d.classList.add('wide'); const F=pfNew(cats);
+  const list=()=>{ const r=pfList(F, cats, 60); return `<p class="muted pf-n">Найдено: ${r.n}${r.n>60?' — показаны первые 60, уточните фильтры':''}</p>`+(r.list.map(x=>pfRow(x,'data-cid')).join('') || '<p class="muted">Ничего не найдено — измените фильтры или добавьте свой элемент.</p>'); };
+  const draw=()=>{ $('#kitPF').innerHTML=pfHtml(F, cats); $('#kitPL').innerHTML=list(); };
+  d.innerHTML=`<div class="dlg-h"><h3>${role==='main'?esc(stationOf(S.items[i]).mainLabel)+' — подбор в каталоге':'Элемент из каталога'}</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
+    <div class="dlg-b"><div id="kitPF"></div><div class="kit-pl" id="kitPL"></div></div>`;
+  d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close(); draw();
+  setTimeout(()=>d.querySelector('[data-pf="q"]')?.focus(), 30);
+  const onF=e=>{ const el=e.target.closest('[data-pf]'); if (!el) return; const re=pfSet(F, el);
+    if (re){ draw(); } else $('#kitPL').innerHTML=list(); };
+  $('#kitPF').oninput=e=>{ if (e.target.tagName==='INPUT') onF(e); }; $('#kitPF').onchange=e=>{ if (e.target.tagName==='SELECT') onF(e); };
   $('#kitPL').onclick=async e=>{ const b=e.target.closest('[data-cid]'); if (!b) return; const lite=catCache.find(x=>x.id===b.dataset.cid);
     let doc=lite; try{ doc=await api('/api/catalog/'+encodeURIComponent(lite.id)); }catch(_){}
     const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=kitFromCat(doc); if (role) p.role=role;
@@ -204,6 +270,7 @@ function kitAction(a, i, b){
   if (a==='kitAdd'){ const p=kitNewPart({name:b.dataset.n||''}); if (b.dataset.role) p.role=b.dataset.role; P.push(p); it.page=true; return true; }
   if (a==='kitCat'){ kitPickCat(i); return 'async'; }
   if (a==='kitMain'){ kitPickCat(i, (stationOf(it)||{}).main, 'main'); return 'async'; }
+  if (a==='kitSys'){ const p=P[j]; p.sys={...(p.sys||CONT_SYS_DEF)}; p.sys[b.dataset.sys]=!p.sys[b.dataset.sys]; contApply(p); return true; }
   if (a==='kitCont'){ P.push(kitNewContainer(b.dataset.ct)); it.page=true; stationFill(it); stationAutoName(it); return true; }
   if (a==='kitDel'){ if (!confirm(`Убрать из состава «${P[j].name||'элемент'}»?`)) return 'async'; P.splice(j,1); kitSync(it); return true; }
   if (a==='kitMv'){ const k=j+(+b.dataset.d); if (P[k]){ [P[j],P[k]]=[P[k],P[j]]; } return true; }
