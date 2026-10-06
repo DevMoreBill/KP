@@ -6,14 +6,14 @@
 const ST = { tab:'stats', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f:{}}, imp:null, chart:'day' };
 
 const ST_TABS = [['stats','Статистика'],['moderation','Модерация'],['delete','Справочники и данные'],['trash','Корзина'],['audit','Журнал действий'],
-  ['backup','Резервные копии'],['logistics','Логистика'],['feeds','Фиды поставщиков'],['templates','Шаблоны и категории'],['keys','Ключи API'],['users','Администраторы'],['security','Пароль и доступ']];
+  ['backup','Резервные копии'],['logistics','Логистика'],['feeds','Фиды поставщиков'],['templates','Шаблоны и категории'],['keys','Ключи API'],['access','Менеджеры и доступ'],['users','Администраторы'],['security','Пароль и доступ']];
 
 const ACT = { login:'Вход в «Настройки»', backup_db:'Копия базы', maintain_db:'Сжатие и проверка базы', purge_images:'Удаление лишних изображений', create_admin:'Новый администратор', edit_admin:'Изменение администратора', delete_admin:'Удаление администратора', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
   admin_request:'Запрос без входа', edit_settings:'Изменение настроек', edit_template:'Изменение шаблона', create_kp:'Создание КП', edit_kp:'Изменение КП',
   create_manager:'Новый менеджер', create_supplier:'Новый поставщик', edit_supplier:'Изменение поставщика', delete_supplier:'Удаление поставщика', edit_customs:'Код ТН ВЭД и пошлина', edit_manager:'Изменение менеджера', create_client:'Новый клиент', edit_client:'Изменение клиента',
   edit_types:'Категории оборудования', submit_edit:'Правка на модерацию', edit_product:'Правка товара', create_product:'Новый товар',
   price_sync:'Цены из КП', approve_edit:'Правка одобрена', reject_edit:'Правка отклонена', rollback_edit:'Откат правки',
-  toggle_moderation:'Режим модерации', delete_kp:'Удаление КП', delete_catalog:'Удаление товара', delete_manager:'Удаление менеджера',
+  toggle_moderation:'Режим модерации', toggle_user_login:'Вход менеджеров по паролю', edit_access:'Доступ менеджера', delete_kp:'Удаление КП', delete_catalog:'Удаление товара', delete_manager:'Удаление менеджера',
   delete_client:'Удаление клиента', restore:'Восстановление из корзины', purge_trash:'Очистка корзины', export_db:'Экспорт базы', import_db:'Импорт базы', export_keys:'Копия ключей API', import_feed:'Загрузка фида в каталог', check_feed:'Проверка РРЦ и наличия по фиду' };
 const ENT = { supplier:'Поставщик', customs:'ТН ВЭД', product:'Товар', catalog:'Товар', kp:'КП', manager:'Менеджер', client:'Клиент', settings:'Настройки', template:'Шаблон',
   types:'Категории', admin:'Администратор', db:'База', trash:'Корзина' };
@@ -77,7 +77,7 @@ function stRender(){
 async function stTab(){
   const m=$('#stMain'); if (!m) return;
   try{ await ({stats:stStats, moderation:stModeration, delete:stDelete, trash:stTrash, audit:stAudit, backup:stBackup,
-    templates:stTemplates, logistics:stLogistics, feeds:stFeeds, keys:stKeys, users:stUsers, security:stSecurity})[ST.tab](m); }
+    templates:stTemplates, logistics:stLogistics, feeds:stFeeds, keys:stKeys, access:stAccess, users:stUsers, security:stSecurity})[ST.tab](m); }
   catch(e){ if (ADMIN.on) m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; }
 }
 
@@ -351,6 +351,37 @@ async function stUsers(m){
       if (a==='password'){ const v=await stForm(`Новый пароль: ${login}`, [['password','Новый пароль (не короче 8, буквы и цифры)','','password']]); if (!v) return;
         await ajson('users',{action:'password', login, password:v.password}); toast('Пароль изменён'); }
       stUsers(m);
+    }catch(err){ toast(err.message||String(err)); } };
+}
+
+// ---------- вход менеджеров в конструктор по паролю и права
+async function stAccess(m){
+  const r=await aapi('access'), P=r.perms;
+  const row=x=>`<tr data-mid="${esc(x.id)}"${x.blocked?' class="off"':''}><td><b>${esc(x.name||'Без имени')}</b><small class="muted">${esc(x.position||'')}${x.lastLogin?(x.position?' · ':'')+'вход '+esc(stTime(x.lastLogin)):''}</small></td>
+    <td>${x.login?`<b>${esc(x.login)}</b>${x.hasPassword?'':' <small class="bad-t">нет пароля</small>'}${x.blocked?' <small class="bad-t">вход запрещён</small>':''}`:'<span class="muted">не задан</span>'}</td>
+    ${P.map(p=>`<td class="c"><input type="checkbox" data-perm="${p.key}"${x.perms[p.key]?' checked':''} aria-label="${esc(p.label)}"></td>`).join('')}
+    <td class="acts"><button class="btn" type="button" data-ac="login">${x.login?'Логин и пароль':'Задать вход'}</button>${x.login?`<button class="btn ghost" type="button" data-ac="block">${x.blocked?'Разрешить вход':'Запретить вход'}</button>`:''}</td></tr>`;
+  m.innerHTML=`<div class="st-card"><div class="row"><p class="sub" style="margin:0">Вход в конструктор по логину и паролю</p><span class="sp"></span>
+      <label class="sw"><input type="checkbox" id="acOn"${r.enabled?' checked':''}><span>${r.enabled?'включён':'выключен'}</span></label></div>
+    <p class="muted">${r.enabled?'Без входа программа не открывается. Кто работает, программа знает по входу; права ниже проверяются на сервере.'
+      :'Сейчас менеджер выбирается на устройстве, пароль не нужен, права не проверяются. Чтобы включить вход, задайте логин и пароль хотя бы одному менеджеру.'}
+      Администратор входит в «Настройки» своим паролем и может всё.</p></div>
+    <div class="st-card"><p class="sub">Менеджеры и права · ${r.managers.length}</p>
+    ${r.managers.length?`<div class="ac-tw"><table class="pv-t ac-t"><thead><tr><th>Менеджер</th><th>Логин</th>${P.map(p=>`<th class="c" title="${esc(p.label)}">${esc(p.label)}</th>`).join('')}<th></th></tr></thead><tbody>${r.managers.map(row).join('')}</tbody></table></div>`
+      :'<p class="muted">Менеджеров ещё нет — их добавляют в шаге «Менеджер» конструктора.</p>'}
+    <p class="muted">Права действуют, когда вход по паролю включён. «КП других менеджеров» — видеть их в журнале, открывать и сохранять; без него менеджер видит только свои КП. «Экономика сделки» — своих КП (чужих — вместе с правом на КП других).</p></div>`;
+  const post=(mid, body)=>ajson('access/'+encodeURIComponent(mid), body);
+  $('#acOn').onchange=async e=>{ try{ await ajson('access',{enabled:e.target.checked}); toast(e.target.checked?'Вход по паролю включён':'Вход по паролю выключен'); }catch(err){ toast(err.message||String(err)); } stAccess(m); };
+  m.onchange=async e=>{ const c=e.target.closest('[data-perm]'); if (!c) return; const mid=c.closest('[data-mid]').dataset.mid;
+    const perms={}; c.closest('tr').querySelectorAll('[data-perm]').forEach(x=>perms[x.dataset.perm]=x.checked);
+    try{ await post(mid,{perms}); toast('Права сохранены'); }catch(err){ toast(err.message||String(err)); stAccess(m); } };
+  m.onclick=async e=>{ const b=e.target.closest('[data-ac]'); if (!b) return; const mid=b.closest('[data-mid]').dataset.mid, x=r.managers.find(z=>z.id===mid);
+    try{
+      if (b.dataset.ac==='login'){ const v=await stForm(`Вход: ${x.name}`, [['login','Логин (латиница или кириллица, без пробелов)',x.login||''],['password',x.hasPassword?'Новый пароль (пусто — не менять), не короче 4 символов':'Пароль, не короче 4 символов','','password']]); if (!v) return;
+        if (!x.hasPassword && !v.password) return toast('Задайте пароль');
+        await post(mid,{login:v.login, ...(v.password?{password:v.password}:{})}); toast('Сохранено'); }
+      if (b.dataset.ac==='block'){ await post(mid,{blocked:!x.blocked}); toast(x.blocked?'Вход разрешён':'Вход запрещён, сессии закрыты'); }
+      stAccess(m);
     }catch(err){ toast(err.message||String(err)); } };
 }
 

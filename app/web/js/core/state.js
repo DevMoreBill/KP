@@ -44,6 +44,7 @@ var CATED = null;
 
 function persist(){
   if (CATED) return;
+  if (typeof kitSync==='function') S.items.forEach(kitSync);     // закупка сборки — по текущим курсам
   clearTimeout(saveT);
   saveT = setTimeout(()=>{
     if (CATED) return;

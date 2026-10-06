@@ -786,3 +786,63 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dl-vat.wide{max-width:640px}
 .dl-vatsec{margin-top:14px}
 .dl-vatsec h5{margin:0 0 6px;font-size:14px;display:flex;align-items:center;gap:6px}
+
+/* обзор «Кратко»: итог, чего не хватает, поставщики и сроки на одной ленте */
+.dlo{display:grid;gap:14px}
+.dlo-v{display:grid;gap:10px;padding:16px 18px;border:1px solid var(--line);border-left:6px solid var(--line);border-radius:14px;background:var(--card)}
+.dlo-v.st-ok{border-left-color:var(--ok)}
+.dlo-v.st-bad{border-left-color:var(--danger)}
+.dlo-v.st-need{border-left-color:#d79a1c}
+.dlo-vh{display:flex;align-items:center;gap:10px}
+.dlo-vh h4{margin:0;font-size:18px}
+.dlo-ic{display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%;color:#fff;font-weight:800;background:#d79a1c}
+.st-ok .dlo-ic{background:var(--ok)}
+.st-bad .dlo-ic{background:var(--danger)}
+.dlo-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.dlo-t{display:grid;gap:2px;padding:10px 12px;border-radius:10px;background:var(--soft)}
+.dlo-t small{color:var(--muted);font-size:12px}
+.dlo-t b{font-size:19px;font-variant-numeric:tabular-nums}
+.dlo-t span{color:var(--muted);font-size:11px}
+.dlo-t.pos b{color:var(--ok)}
+.dlo-t.neg b{color:var(--danger)}
+.dlo-p{margin:0;color:var(--muted);font-size:13px}
+.dlo-need{display:grid;gap:4px;margin:0;padding-left:18px;font-size:13px}
+.dlo-need .lnk{font-weight:700}
+.dlo-tl{display:grid;gap:8px}
+.dlo-th{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
+.dlo-th h5{margin:0}
+.dlo-th .muted{font-size:12px}
+.dlo-lg{margin-left:auto;display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+.dlo-lg i{display:inline-block;width:14px;height:8px;border-radius:3px}
+.dlo-r{display:grid;grid-template-columns:minmax(150px,240px) minmax(0,1fr) 28px;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line)}
+.dlo-r.ax{border-top:0;padding-top:0}
+.dlo-rl{display:grid;gap:1px;min-width:0}
+.dlo-rl b{overflow-wrap:anywhere}
+.dlo-rl small{font-size:12px;overflow-wrap:anywhere}
+.dlo-bar{position:relative;height:26px;border-radius:6px;background:repeating-linear-gradient(90deg,transparent 0 calc(10% - 1px),var(--line) calc(10% - 1px) 10%)}
+.dlo-r.ax .dlo-bar,.dlo-r.cust .dlo-bar{background:none}
+.dlo-bar i{position:absolute;top:6px;height:14px;border-radius:4px}
+.dlo-bar i.pr,.dlo-lg i.pr{background:var(--sky)}
+.dlo-bar i.tr,.dlo-lg i.tr{background:var(--navy)}
+.dlo-bar i.pnr,.dlo-lg i.pnr{background:var(--ok)}
+.dlo-bar em{position:absolute;top:-2px;transform:translateX(4px);font-style:normal;font-size:11px;font-weight:700;white-space:nowrap}
+.dlo-crit{position:absolute;right:0;bottom:-12px;color:var(--danger);font-size:10px;font-weight:700}
+.dlo-pay{position:absolute;top:2px;transform:translateX(-50%);padding:2px 6px;border-radius:999px;background:var(--ok);color:#fff;font-size:11px;font-weight:700;white-space:nowrap}
+.dlo-tk{position:absolute;top:0;transform:translateX(-50%);color:var(--muted);font-size:11px;white-space:nowrap}
+.dlo-tk:first-child{transform:none}
+.dlo-go{font-size:20px}
+.dlo-note{margin:0;font-size:12px}
+.dlo-m{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.dlo-m>div{display:grid;gap:2px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.dlo-m small{color:var(--muted);font-size:12px}
+.dlo-m b{font-size:17px}
+.dlo-m span{color:var(--muted);font-size:11px}
+@media (max-width:760px){
+  .dlo-tiles,.dlo-m{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dlo-r{grid-template-columns:minmax(0,1fr) 28px}
+  .dlo-r .dlo-bar{grid-column:1/-1;grid-row:2}
+  .dlo-r.ax{display:none}
+}
+.dlo-bar em.r{transform:translateX(calc(-100% - 6px));top:auto;bottom:-14px}
+.dlo-pay.r{transform:translateX(-100%)}
+.dlo-tk.r{transform:translateX(-100%)}

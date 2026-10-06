@@ -23,6 +23,7 @@ function itemToDoc(it, base){
     attrs:Object.fromEntries(Object.entries(it.attrs||{}).filter(([,v])=>v!==''&&v!=null)),
     options:(it.options||[]).filter(o=>o.name).map(({_priceText,...o})=>o),
     price:it.price||0, priceCur:it.priceCur||'RUB', cost:it.cost||0, costCur:it.costCur||'RUB' });
+  if (isKit(it)) d.kit={parts:kitParts(it).map(({_costText,...p})=>cl(p))}; else delete d.kit;
   CAT_TMP_KEYS.forEach(k=>delete d[k]);
   if (JSON.stringify(d.photo||null)!==JSON.stringify(base.photo||null)) delete d.photoFrom;   // своё фото вместо фото похожей модели
   return d;

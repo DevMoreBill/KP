@@ -298,7 +298,7 @@ function lgVehicleCost(C, fit, km, T){
   if (escort) parts.push([`Автомобиль прикрытия (шире ${lgM(T.escortW)} м): ${km} км × ${lgRub(T.escortKm)}`, T.escortKm*km]);
   return { cost:parts.reduce((s,p)=>s+p[1],0), parts, over, heavy, escort };
 }
-const lgRub = v => Math.round(v).toLocaleString('ru-RU')+' ₽';
+const lgRub = v => Number.isFinite(v) ? Math.round(v).toLocaleString('ru-RU')+' ₽' : '—';     // не посчитано (нет адресов, груза) — прочерк
 
 function lgBestClass(units, km, T){
   let best=null;

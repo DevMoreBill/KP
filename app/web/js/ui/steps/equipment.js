@@ -36,7 +36,8 @@ function itemCard(x,i){
        <div class="ikp">${esc(mainLine(x,4)||x.spec||'Параметры не заполнены')}</div>
        ${miss.length?`<div class="ready">${miss.join('')}</div>`:''}
        <div class="iopts">${opts.map((o)=>{ const j=(x.options||[]).indexOf(o); return `<span class="oitem">${esc(o.short||o.name)}${+o.qty>1?' × '+esc(o.qty):''}${o.price?' · '+money(o.price*(+o.qty||1)):' · включено'}<button type="button" data-a="delOpt" data-i="${i}" data-j="${j}" aria-label="Убрать опцию">✕</button></span>`; }).join('')}
-         <button type="button" class="chip sm" data-a="edit" data-i="${i}" data-tab="opts">+ Опции и услуги</button></div>
+         <button type="button" class="chip sm" data-a="edit" data-i="${i}" data-tab="opts">+ Опции и услуги</button>
+         <button type="button" class="chip sm${isKit(x)?' on':''}" data-a="edit" data-i="${i}" data-tab="kit" title="Изделие из нескольких единиц оборудования: у каждого элемента — своё описание, закупка и поставщик">${isKit(x)?`Сборка: ${kitParts(x).length} ${plural(kitParts(x).length,'элемент','элемента','элементов')}`:'+ Состав (сборка)'}</button></div>
      </div>
      <div class="iside">
        <label class="f"><span>Количество, шт.</span><div class="qty"><button type="button" data-a="qty" data-i="${i}" data-d="-1" aria-label="Меньше">−</button><input type="text" inputmode="numeric" data-p="${P}.qty" value="${esc(x.qty)}" class="${+x.qty>=1&&Number.isInteger(+x.qty)?'':'bad'}"><button type="button" data-a="qty" data-i="${i}" data-d="1" aria-label="Больше">+</button></div></label>

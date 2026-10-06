@@ -64,7 +64,7 @@ function stationsOf(){
 function docState(){
   S.items.forEach(x=>(x.features||[]).forEach(featId));
   const St = JSON.parse(JSON.stringify(S, (k,v)=>k.startsWith('_')?undefined:v));
-  St.vat=+S.vat; St.cur={code:kpCur(), rate:kpCur()!=='RUB'?rateOf(kpCur()):null, date:S.pricing.rateDate||''}; St.items=S.items.map(x=>({...x, qty:+x.qty, photo:undefined, logo:undefined, _srcImg:undefined, options:(x.options||[]).filter(o=>o.name.trim()&&+o.qty>0).map(o=>({name:o.name.trim(), short:o.short, unit:o.unit, qty:+o.qty, price:o.price||0}))}));
+  St.vat=+S.vat; St.cur={code:kpCur(), rate:kpCur()!=='RUB'?rateOf(kpCur()):null, date:S.pricing.rateDate||''}; St.items=S.items.map(kitDocItem).map(x=>({...x, kit:undefined, qty:+x.qty, photo:undefined, logo:undefined, _srcImg:undefined, options:(x.options||[]).filter(o=>o.name.trim()&&+o.qty>0).map(o=>({name:o.name.trim(), short:o.short, unit:o.unit, qty:+o.qty, price:o.price||0}))}));
   return St;
 }
 
@@ -98,7 +98,7 @@ async function renderDocx(St, pack, settings){
   // фото на титул: выбранное в разделе «Титульный лист» или первой позиции с фото
   const coverItem=S.items.find(x=>x.id===S.cover.photoFrom && x.photo) || S.items.find(x=>x.photo);
   if (coverItem){ zip.file('word/media/cover.jpg', b64(await toDataURL(coverItem.photo)), {base64:true}); Min.cover={file:'cover.jpg',w:coverItem.photo.w,h:coverItem.photo.h}; }
-  for (const x of S.items){ if(!x.page) continue; const m={};
+  for (const x of S.items.map(kitDocItem)){ if(!x.page) continue; const m={};
     if (x.photo){ const t=await tileFrom(x.photo); zip.file(`word/media/tile_${x.id}.png`, b64(t.url), {base64:true}); m.tile={file:`tile_${x.id}.png`,w:t.w,h:t.h}; }
     if (x.logo){ zip.file(`word/media/logo_${x.id}.png`, b64(await toDataURL(x.logo)), {base64:true}); m.logo={file:`logo_${x.id}.png`,w:x.logo.w,h:x.logo.h}; }
     m.gallery=[]; m.featImgs={}; let gk=0;
@@ -168,7 +168,8 @@ async function download(){
     const blob = await renderDocx(St, pack, pack.settings);
     btn.textContent='Сохраняю в журнал…';
     await syncCatalog(S.number); await saveClient(true);
-    for (const it of S.items){ it.photo=await uploadImg(it.photo, imgPlace(it,'photo')); it.logo=await uploadImg(it.logo, imgPlace(it,'logo')); if (it.gallery) for (const g of it.gallery){ const u=await uploadImg(g, imgPlace(it,'gallery',g)); if(u) g.src=u.src; } }
+    for (const it of S.items){ it.photo=await uploadImg(it.photo, imgPlace(it,'photo')); it.logo=await uploadImg(it.logo, imgPlace(it,'logo')); if (it.gallery) for (const g of it.gallery){ const u=await uploadImg(g, imgPlace(it,'gallery',g)); if(u) g.src=u.src; }
+      for (const p of kitParts(it)) if (p.photo) p.photo=await uploadImg(p.photo, imgPlace(it,'gallery',{caption:p.name})); }
     if (!S.managerId && String(S.manager.name||'').trim()) await saveManager(true);   // новый менеджер попадает в справочник
     if (!S.authorId) S.authorId=meId()||S.managerId||'';
     const t=totalsS(), fn=fileName();

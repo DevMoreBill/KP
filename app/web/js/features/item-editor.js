@@ -41,7 +41,7 @@ function drop(img, kind, i, text, small){
 
 let EDIT=null;
 
-const ED_TABS=[['main','Основное'],['desc','Описание и фото'],['spec','Характеристики'],['opts','Опции и услуги'],['ai','Автозаполнение']];
+const ED_TABS=[['main','Основное'],['kit','Состав'],['desc','Описание и фото'],['spec','Характеристики'],['opts','Опции и услуги'],['ai','Автозаполнение']];
 
 function featId(f){ if(!f.id) f.id=uid(); return f.id; }
 
@@ -67,7 +67,7 @@ function closeEditor(){ const d=$('#edlg'); EDIT=null; if(d.open) d.close(); ren
 function renderEditor(){
   const d=$('#edlg'); if(!EDIT) return; const i=EDIT.i, x=S.items[i]; if(!x){ closeEditor(); return; }
   const focusP=document.activeElement?.dataset?.p; const sc=d.querySelector('.ed-b')?.scrollTop||0;
-  const body = EDIT.tab==='main'?edMain(x,i): EDIT.tab==='desc'?edDesc(x,i): EDIT.tab==='spec'?edSpec(x,i): EDIT.tab==='opts'?edOpts(x,i): edAI(x,i);
+  const body = EDIT.tab==='main'?edMain(x,i): EDIT.tab==='kit'?edKit(x,i): EDIT.tab==='desc'?edDesc(x,i): EDIT.tab==='spec'?edSpec(x,i): EDIT.tab==='opts'?edOpts(x,i): edAI(x,i);
   const head = CATED ? `<h3><span class="ed-cat">Каталог</span>${esc(x.name||'Новая позиция')}</h3><button class="btn" type="button" data-catcancel>Отмена</button>${CW.mod&&!ADMIN.on?'<span class="muted ed-modnote">Изменения будут отправлены на модерацию</span>':''}<button class="btn primary" type="button" data-catsave>${catSaveLabel()}</button>`
     : `<h3>${i+1}. ${esc(x.name||'Новая позиция')}</h3>${S.items.length>1?`<button class="btn ghost" type="button" data-ednav="-1" ${i===0?'disabled':''} title="Предыдущая позиция">←</button><button class="btn ghost" type="button" data-ednav="1" ${i===S.items.length-1?'disabled':''} title="Следующая позиция">→</button>`:''}<button class="btn primary" type="button" data-edclose>Готово</button>`;
   d.classList.toggle('catmode', !!CATED);

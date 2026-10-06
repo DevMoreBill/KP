@@ -27,6 +27,7 @@ import time
 import urllib.parse
 from datetime import datetime, timedelta
 
+import auth_users
 from storage import Conflict
 
 IDLE_SECONDS = 15 * 60
@@ -175,6 +176,9 @@ def actor(h, admin=None):
         admin = s is not None
     uid = urllib.parse.unquote(h.headers.get('X-KP-User-Id') or '')[:64]
     name = urllib.parse.unquote(h.headers.get('X-KP-User') or '')[:120]
+    u = getattr(h, '_kp_user', None)
+    if u and not (admin and s):                       # вход по паролю включён — кто работает, знает сервер
+        return u['id'], u['name'], 'user'
     if admin and s:                                   # действия в «Настройках» — от имени вошедшего администратора
         return 'admin:' + s.get('login', ''), s.get('name') or 'Администратор', 'admin'
     return uid or None, name or ('Администратор' if admin else 'Не выбран'), 'admin' if admin else 'user'
@@ -187,9 +191,40 @@ DEAL_KEYS_STATE = ('deal',)
 DEAL_KEYS_META = ('deal', 'econ')
 
 
+def login_on(h):
+    """Вход менеджеров по паролю включён и запрос — не от администратора: права проверяются."""
+    return bool(getattr(h, '_kp_login', False)) and session(h, touch=False) is None
+
+
+def perm(h, key):
+    if not login_on(h):
+        return True
+    u = getattr(h, '_kp_user', None)
+    return bool(u and u['perms'].get(key))
+
+
+def own_kp(h, doc):
+    u = getattr(h, '_kp_user', None) or {}
+    author = (doc or {}).get('authorId') or (doc or {}).get('managerId')
+    if author:
+        return author == u.get('id')
+    m = str((doc or {}).get('manager') or '').strip().lower()
+    return not m or m == str(u.get('name') or '').strip().lower()
+
+
+def kp_access(h, store, kid):
+    """Открыть / сохранить КП: своё — всегда, чужое — с правом «КП других менеджеров»; нового КП ещё нет — можно."""
+    if not login_on(h):
+        return True
+    meta = _loads(store.kp_get(kid, 'meta')) or _loads(store.kp_get(kid, 'state'))
+    return not meta or own_kp(h, meta) or perm(h, 'kpOthers')
+
+
 def deal_allowed(h, doc):
     if session(h, touch=False) is not None:
         return True
+    if login_on(h):
+        return perm(h, 'dealView') and (own_kp(h, doc) or perm(h, 'kpOthers'))
     uid, name, _ = actor(h, admin=False)
     author = (doc or {}).get('authorId') or (doc or {}).get('managerId')
     if author:
@@ -220,6 +255,15 @@ def kp_in(h, store, kid, field, text):
         return text
     old = store.kp_get(kid, field)
     if not old:
+        u = getattr(h, '_kp_user', None)
+        if login_on(h) and u:            # новое КП при входе по паролю: автор — вошедший менеджер, а не подпись браузера
+            try:
+                n = json.loads(text)
+                if isinstance(n, dict):
+                    n['authorId'] = u['id']
+                    return json.dumps(n, ensure_ascii=False)
+            except ValueError:
+                pass
         return text
     try:
         o, n = json.loads(old), json.loads(text)
@@ -241,6 +285,8 @@ def history_out(h, text):
         rows = json.loads(text)
     except ValueError:
         return '[]'          # без разбора нельзя убрать чужую экономику — лучше пусто, чем лишнее
+    if login_on(h) and not perm(h, 'kpOthers'):
+        rows = [r for r in rows if isinstance(r, dict) and own_kp(h, r)]
     for r in rows:
         if isinstance(r, dict) and not deal_allowed(h, r):
             for k in DEAL_KEYS_META:
@@ -346,6 +392,12 @@ def _put_product(h, store, cid, admin):
     after = json.loads(text)
     before_text = store.catalog_get(cid)
     before = _loads(before_text)
+    if not admin and login_on(h):
+        only_prices = before is not None and set(diff(before, after)[1]) <= AUTO_KEYS
+        if not only_prices and not perm(h, 'catEdit' if before is not None else 'catAdd'):
+            log(h, store, 'edit_product' if before else 'create_product', 'product', cid, result='failed')
+            return h.send(403, 'text/plain; charset=utf-8', 'Нет права %s оборудование в каталоге — обратитесь к администратору'
+                          % ('редактировать' if before is not None else 'добавлять'))
     mod = moderation(store).get('enabled') and not admin
     if mod and before is not None and h.headers.get('X-KP-Edit') == 'auto':
         b, a = diff(before, after)
@@ -373,6 +425,22 @@ def guard(h, store, m, path):
     (запись в журнал); None — ничего не нужно."""
     if path.startswith('/api/admin/'):
         AdminApi(h, store).handle(m, path[len('/api/admin/'):])
+        return True
+    if path.startswith('/api/auth/'):
+        auth_api(h, store, m, path[len('/api/auth/'):])
+        return True
+    # вход менеджеров по паролю: без входа — только экран входа; кто работает — по сессии
+    h._kp_login = auth_users.enabled(store)
+    h._kp_user = auth_users.current(h, store) if h._kp_login else None
+    if h._kp_login and not h._kp_user and session(h, touch=False) is None and path not in ('/api/version', '/api/ping'):
+        h.send(401, 'text/plain; charset=utf-8', 'Нужно войти в программу: логин и пароль менеджера')
+        return True
+    r = re.match(r'^/api/kp/([A-Za-z0-9_-]+)/', path)
+    if r and not kp_access(h, store, r.group(1)):
+        h.send(403, 'text/plain; charset=utf-8', 'Это КП другого менеджера — нет доступа. Права выдаёт администратор')
+        return True
+    if path == '/api/types' and m == 'PUT' and not perm(h, 'catEdit'):
+        h.send(403, 'text/plain; charset=utf-8', 'Нет права менять категории оборудования — обратитесь к администратору')
         return True
     r = re.match(r'^/api/catalog/([A-Za-z0-9_-]{1,64})$', path)
     if r and m == 'PUT':
@@ -472,6 +540,37 @@ def guard(h, store, m, path):
         return lambda: log(h, store, 'edit_types', 'types', 'user_types', None,
                            {'types': [t.get('name') for t in (_loads(h.body().decode('utf-8')) or {}).get('types', [])]})
     return None
+
+
+# ---------------------------------------------------------------- вход менеджеров в конструктор
+def auth_api(h, store, m, sub):
+    send = lambda code, obj, extra=None: h.send(code, 'application/json; charset=utf-8', json.dumps(obj, ensure_ascii=False), extra)
+    if sub == 'status':
+        u = auth_users.current(h, store) if auth_users.enabled(store) else None
+        return send(200, {'enabled': auth_users.enabled(store), 'user': u, 'admin': session(h, touch=False) is not None,
+                          'perms': [{'key': k, 'label': lb} for k, lb, _ in auth_users.PERMS]})
+    if sub == 'login' and m == 'POST':
+        ip = _ip(h)
+        if _locked(ip):
+            return h.send(429, 'text/plain; charset=utf-8', 'Слишком много неверных попыток — подождите 10 минут')
+        d = _loads(h.body().decode('utf-8')) or {}
+        mid, rec = auth_users.find_by_login(store, d.get('login'))
+        if not mid or rec.get('blocked') or not rec.get('pw') or not verify_password(d.get('password') or '', rec['pw']):
+            _fail(ip)
+            store.audit_add({'userId': mid, 'userName': str(d.get('login') or '')[:40], 'userRole': 'user', 'action': 'login', 'entityType': 'user',
+                             'entityId': mid, 'ip': ip, 'userAgent': h.headers.get('User-Agent') or '', 'result': 'failed'})
+            return h.send(403, 'text/plain; charset=utf-8', 'Неверный логин или пароль' if not (rec or {}).get('blocked') else 'Вход запрещён администратором')
+        tok = auth_users.start(store, mid)
+        auth_users.touch_login(store, mid)
+        store.audit_add({'userId': mid, 'userName': rec.get('login'), 'userRole': 'user', 'action': 'login', 'entityType': 'user', 'entityId': mid,
+                         'ip': ip, 'userAgent': h.headers.get('User-Agent') or '', 'result': 'success'})
+        return send(200, {'ok': True}, {'Set-Cookie': auth_users.cookie(tok)})
+    if sub == 'logout' and m == 'POST':
+        tok = auth_users.cookie_token(h)
+        if tok:
+            auth_users.drop_sessions(store, tok=tok)
+        return send(200, {'ok': True}, {'Set-Cookie': auth_users.cookie('', clear=True)})
+    return h.send(404, 'text/plain; charset=utf-8', 'Нет такого запроса')
 
 
 # ---------------------------------------------------------------- API «Настроек»
@@ -619,6 +718,34 @@ class AdminApi:
             save_accounts(st, users)
             self.log('set_password', 'admin', u['login'])
             return self.ok()
+        if sub == 'access':      # вход менеджеров в конструктор: режим, логины, пароли, права
+            if m == 'POST':
+                d = self.data()
+                if 'enabled' in d:
+                    on = bool(d['enabled'])
+                    if on and not any(r.get('login') and r.get('pw') and not r.get('blocked') for r in auth_users.access(st).values()):
+                        return self.err(400, 'Сначала задайте логин и пароль хотя бы одному менеджеру')
+                    before = auth_users.enabled(st)
+                    auth_users.set_enabled(st, on, me or 'admin')
+                    self.log('toggle_user_login', 'settings', 'userLogin', {'enabled': before}, {'enabled': on})
+            mgrs = _loads(st.managers_list()) or []
+            return self.ok({'enabled': auth_users.enabled(st), 'perms': [{'key': k, 'label': lb, 'def': dv} for k, lb, dv in auth_users.PERMS],
+                            'managers': auth_users.public(st, mgrs)})
+        r = re.match(r'^access/([A-Za-z0-9_-]{1,64})$', sub)
+        if r and m == 'POST':
+            mid = r.group(1)
+            if not any(x.get('id') == mid for x in (_loads(st.managers_list()) or [])):
+                return self.err(404, 'Менеджер не найден')
+            d = self.data()
+            try:
+                rec = auth_users.set_access(st, mid, d, hash_password)
+            except ValueError as e:
+                return self.err(400, str(e))
+            info = {k: d[k] for k in ('login', 'perms', 'blocked', 'clear') if k in d}
+            if d.get('password'):
+                info['password'] = 'изменён'
+            self.log('edit_access', 'manager', mid, None, info)
+            return self.ok({'login': rec.get('login') or '', 'hasPassword': bool(rec.get('pw')), 'perms': auth_users.perms_of(rec), 'blocked': bool(rec.get('blocked'))})
         if sub == 'users':
             if m == 'POST':
                 return self.ok(self.users(self.data(), me))

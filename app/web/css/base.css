@@ -88,3 +88,14 @@ dialog.uit-dlg h3{margin:0}
 dialog.uit-dlg textarea{width:100%;font:inherit}
 dialog.uit-dlg .uit-acts{display:flex;gap:8px;align-items:center}
 dialog.uit-dlg .uit-acts .sp{flex:1}
+
+/* вход менеджеров по логину и паролю */
+.auth-wrap{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:16px;background:var(--paper)}
+.auth-card{width:min(380px,100%);display:grid;gap:12px;padding:28px 26px;border:1px solid var(--line);border-radius:16px;background:var(--card);box-shadow:0 18px 50px rgba(11,69,160,.12)}
+.auth-card h2{margin:0;font-size:20px}
+.auth-card .muted{margin:0}
+.auth-card .btn.primary{justify-content:center;height:44px;font-size:15px}
+.auth-logo{font-weight:800;font-size:22px;letter-spacing:.02em;color:var(--navy)}
+.auth-logo span{color:var(--sky)}
+.auth-adm{font-size:12px;text-align:center}
+.auth-me{display:grid;gap:2px;padding:6px 12px 2px}
