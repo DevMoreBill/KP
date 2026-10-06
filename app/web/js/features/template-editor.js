@@ -130,7 +130,7 @@ function styleHTML(f, v){
 function imageHTML(f, v){
   const url = v ? `/tpl/${encodeURIComponent(TE.id)}/${encodeURIComponent(v)}?t=${Date.now()}` : '';
   return `<div class="te-f"><span class="te-lab">${esc(f.label||'')}</span>
-    <div class="te-img">${v?`<img src="${url}" alt=""><span class="muted">${esc(v)}</span>`:'<span class="muted">Картинки нет — страница не выводится</span>'}</div>
+    <div class="te-img">${v?`<img src="${url}" alt=""><span class="muted">${esc(v)}</span>`:`<span class="muted">${esc(f.empty||'Картинки нет — страница не выводится')}</span>`}</div>
     <div class="row"><label class="btn ghost">Заменить…<input type="file" accept="image/jpeg,image/png" hidden data-img="${esc(f.key)}"></label>${v?`<button class="btn ghost" type="button" data-img-del="${esc(f.key)}">Убрать</button>`:''}</div>
     ${f.hint?`<small class="muted">${esc(f.hint)}</small>`:''}</div>`;
 }
@@ -215,7 +215,7 @@ document.addEventListener('change', async e=>{
     if (el.dataset.pair && el.tagName==='SELECT'){ const arr=getPath(TE.work, el.dataset.pair); arr[+el.dataset.i][+el.dataset.j]=el.value; markDirty(); return refreshTab(); }
     if (el.dataset.k && el.tagName==='SELECT'){ updateSamples(); return; }
     if (el.dataset.secNp!=null){ TE.work.sections[+el.dataset.secNp].newPage=el.checked; markDirty(); return; }
-    if (el.dataset.img && el.files[0]){ const f=el.files[0], name='clients.'+(f.type==='image/png'?'png':'jpg');
+    if (el.dataset.img && el.files[0]){ const f=el.files[0], name=el.dataset.img.replace(/Image$/,'').replace(/[^A-Za-z0-9_-]/g,'_')+'.'+(f.type==='image/png'?'png':'jpg');
       await putTemplateFile(name, f); dropTemplateCache(TE.id); TE.pack=await templatePack(TE.id);
       setPath(TE.work, el.dataset.img, name); markDirty(); refreshTab(); return teNote('Картинка загружена — нажмите «Сохранить»'); }
     if (el.dataset.tePut && el.files[0]){ const name=el.dataset.tePut;

@@ -3,7 +3,8 @@
 //   photo, catId, attrs:{cat, maker, model}}]. Элемент — из каталога (копия описания, характеристик, фото, закупки) или свой
 //   (контейнер под требования заказчика и т. п.).
 // • Закупка изделия (x.cost, ₽) — сумма закупок элементов по курсам КП; цена для заказчика — одна, как у обычной позиции.
-// • Документ КП: элементы — блоками описания с фото и своими таблицами характеристик (kitDocItem) — в любом шаблоне.
+// • Документ КП: шаблон, умеющий сборки (features 'kit'), получает состав как есть (kitDocData) и выводит таблицу состава
+//   и карточки элементов; любой другой — элементы блоками описания с фото и своими таблицами характеристик (kitDocItem).
 // • Экономика сделки: каждый элемент — отдельная строка закупки со своим поставщиком (kitLines): разные сроки и условия оплаты.
 'use strict';
 
@@ -43,6 +44,14 @@ function kitDocItem(x){
   const gal=parts.filter(p=>p.photo&&p.photo.src&&feats.some(f=>f.id==='kit_'+p.id)).map(p=>({id:'kitg_'+p.id, src:p.photo.src, w:p.photo.w, h:p.photo.h, caption:p.name.trim(), slot:'', at:'feat:kit_'+p.id, on:true}));
   return { ...x, page:true, spec:x.spec||('В составе: '+parts.map(p=>p.name.trim()).join(', ')).slice(0,200),
     features:[...(x.features||[]).filter(f=>f.label||f.text), list, ...feats], groups:[...(x.groups||[]), ...groups], gallery:[...(x.gallery||[]), ...gal] };
+}
+
+// состав для шаблона, умеющего сборки (feature 'kit'): элементы как есть (без закупки и поставщика) и описание изделия
+// без разложенного состава — его шаблон показывает сам
+function kitDocData(x){
+  const parts=kitParts(x).filter(p=>String(p.name||'').trim()).map(p=>({id:p.id, name:p.name.trim(), qty:+p.qty||1, desc:String(p.desc||'').trim(),
+    rows:(p.rows||[]).filter(r=>r.k&&r.v).map(r=>({k:r.k, v:r.v})), maker:(p.attrs&&p.attrs.maker)||'', model:(p.attrs&&p.attrs.model)||''}));
+  return { parts, base:{ page:true, spec:x.spec||'', features:(x.features||[]).filter(f=>f.label||f.text), groups:x.groups||[], gallery:x.gallery||[] } };
 }
 
 // строки закупки для экономики сделки: элемент сборки — своя строка (своя валюта и поставщик); обычная позиция — как есть

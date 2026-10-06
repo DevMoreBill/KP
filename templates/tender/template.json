@@ -1,0 +1,320 @@
+{
+  "name": "Тендерный (без графики)",
+  "description": "Строгое КП для подачи на тендеры: полный состав и характеристики, реквизиты, подпись и печать.",
+  "filePrefix": "КП",
+  "fileName": "{номер}_{префикс}_{клиент}_{оборудование}_{дата}",
+  "brandParts": [
+    [
+      "ПНЕВМОТЕХ",
+      "DARK"
+    ]
+  ],
+  "site": "www.kompr.ru",
+  "font": "Times New Roman",
+  "colors": {
+    "DARK": "000000",
+    "GRAY": "595959",
+    "LINE": "7F7F7F",
+    "FILL": "F2F2F2",
+    "WHITE": "FFFFFF"
+  },
+  "sections": [
+    {
+      "id": "requisites",
+      "on": true
+    },
+    {
+      "id": "offer",
+      "on": true,
+      "newPage": false
+    },
+    {
+      "id": "conditions",
+      "on": true,
+      "newPage": false
+    },
+    {
+      "id": "specs",
+      "on": true,
+      "newPage": true
+    },
+    {
+      "id": "supplier",
+      "on": true,
+      "newPage": false
+    },
+    {
+      "id": "signature",
+      "on": true,
+      "newPage": false
+    }
+  ],
+  "blocks": {
+    "letterhead": true,
+    "recipient": true,
+    "intro": true,
+    "object": true,
+    "offerMaker": true,
+    "offerSpec": true,
+    "offerKit": true,
+    "offerOptions": true,
+    "amountInWords": true,
+    "currencyNote": true,
+    "specsFeatures": true,
+    "specsChars": true,
+    "specsKit": true,
+    "specsKitChars": true,
+    "specsOptions": true,
+    "specsPhoto": false,
+    "specsNote": true,
+    "signImage": true,
+    "stampImage": true,
+    "executor": true,
+    "footer": true
+  },
+  "rules": {
+    "specPhotoWidthCm": 6,
+    "specPhotoHeightCm": 4.5,
+    "signWidthCm": 3.5,
+    "signHeightCm": 0,
+    "stampWidthCm": 4,
+    "stampX": 5.5,
+    "stampY": -2.6,
+    "stampBehind": false
+  },
+  "header": {
+    "on": false,
+    "logo": "",
+    "logoWidthCm": 4,
+    "logoHeightCm": 0,
+    "logoSide": "left",
+    "lines": "",
+    "textSize": 8,
+    "textColor": "GRAY",
+    "firstBold": true,
+    "firstColor": "DARK",
+    "rule": true,
+    "ruleColor": "LINE"
+  },
+  "company": "ПНЕВМОТЕХ",
+  "letterhead": "",
+  "supplier": [
+    [
+      "Полное наименование",
+      ""
+    ],
+    [
+      "Сокращённое наименование",
+      ""
+    ],
+    [
+      "ИНН / КПП",
+      ""
+    ],
+    [
+      "ОГРН",
+      ""
+    ],
+    [
+      "Юридический адрес",
+      ""
+    ],
+    [
+      "Почтовый адрес",
+      ""
+    ],
+    [
+      "Расчётный счёт",
+      ""
+    ],
+    [
+      "Банк",
+      ""
+    ],
+    [
+      "БИК",
+      ""
+    ],
+    [
+      "Корреспондентский счёт",
+      ""
+    ],
+    [
+      "Руководитель",
+      ""
+    ],
+    [
+      "Телефон",
+      ""
+    ],
+    [
+      "E-mail",
+      ""
+    ]
+  ],
+  "signPost": "Генеральный директор",
+  "signName": "",
+  "signImage": "",
+  "stampImage": "",
+  "texts": {
+    "outNo": "Исх. № {номер} от {дата}",
+    "to": "Кому:",
+    "inn": "ИНН {inn}",
+    "attention": "{contact}",
+    "title": "Коммерческое предложение",
+    "subject": "на поставку: {предмет}",
+    "intro": "{компания} предлагает к поставке оборудование в соответствии с приведённой ниже спецификацией на следующих условиях.",
+    "object": "Объект: {объект}",
+    "offerTitle": "1. Спецификация и стоимость",
+    "colNo": "№ п/п",
+    "colName": "Наименование товара, производитель, модель",
+    "colUnit": "Ед. изм.",
+    "colQty": "Кол-во",
+    "colPrice": "Цена за ед. с НДС, {cur}",
+    "colSum": "Сумма с НДС, {cur}",
+    "colPriceNoVat": "Цена за ед., {cur}",
+    "colSumNoVat": "Сумма, {cur}",
+    "maker": "Производитель: {maker}",
+    "model": "Модель: {model}",
+    "country": "Страна происхождения: {country}",
+    "pcs": "шт.",
+    "kitPart": "в т. ч. {name}",
+    "inKit": "в составе",
+    "included": "включено",
+    "total": "Итого:",
+    "vatIncl": "в т. ч. НДС {vat} %:",
+    "noVat": "НДС не облагается",
+    "grandTotal": "Всего к оплате:",
+    "inWords": "Всего к оплате: {words}, в т. ч. НДС {vat} % — {vatSum} {cur}",
+    "inWordsNoVat": "Всего к оплате: {words}, НДС не облагается",
+    "currencyNote": "Цены указаны в {curName}. Оплата производится в рублях по курсу ЦБ РФ на дату оплаты.",
+    "currencyRate": " Справочно: курс ЦБ РФ{rateDate} — 1 {cur} = {rate} руб.; сумма в рублях — {rub} руб.",
+    "conditionsTitle": "2. Условия поставки",
+    "condExtraTitle": "Дополнительные условия:",
+    "specsTitle": "3. Техническое описание предлагаемого оборудования",
+    "specsItem": "3.{n}. {name}",
+    "qtyLine": "Количество: {qty} {unit}",
+    "charsTitle": "Технические характеристики",
+    "charName": "Наименование показателя",
+    "charValue": "Значение показателя",
+    "kitTitle": "Состав изделия",
+    "kitName": "Наименование элемента",
+    "kitQty": "Кол-во",
+    "kitChars": "Описание и характеристики",
+    "optionsTitle": "Дополнительная комплектация (входит в стоимость)",
+    "specsNote": "Характеристики приведены по данным производителя. Оборудование новое, не бывшее в употреблении, не восстановленное.",
+    "supplierTitle": "4. Сведения о поставщике",
+    "signPost": "{должность}",
+    "signCaption": "(подпись)",
+    "signNameCaption": "(расшифровка подписи)",
+    "stamp": "М.П.",
+    "executor": "Исполнитель: {менеджер}{должность}, тел. {телефон}{email}",
+    "footerText": "КП № {номер} от {дата}",
+    "page": "Стр. {page} из {pages}"
+  },
+  "styles": {
+    "company": {
+      "size": 12,
+      "color": "DARK",
+      "bold": true
+    },
+    "letterhead": {
+      "size": 9,
+      "color": "GRAY"
+    },
+    "meta": {
+      "size": 11,
+      "color": "DARK"
+    },
+    "metaBold": {
+      "size": 11,
+      "color": "DARK",
+      "bold": true
+    },
+    "title": {
+      "size": 14,
+      "color": "DARK",
+      "bold": true,
+      "caps": true
+    },
+    "subject": {
+      "size": 12,
+      "color": "DARK",
+      "bold": true
+    },
+    "text": {
+      "size": 11,
+      "color": "DARK"
+    },
+    "heading": {
+      "size": 12,
+      "color": "DARK",
+      "bold": true
+    },
+    "subheading": {
+      "size": 11,
+      "color": "DARK",
+      "bold": true
+    },
+    "label": {
+      "size": 11,
+      "color": "DARK",
+      "bold": true
+    },
+    "th": {
+      "size": 9.5,
+      "color": "DARK",
+      "bold": true
+    },
+    "cell": {
+      "size": 10,
+      "color": "DARK"
+    },
+    "cellBold": {
+      "size": 10,
+      "color": "DARK",
+      "bold": true
+    },
+    "cellSmall": {
+      "size": 9,
+      "color": "GRAY"
+    },
+    "group": {
+      "size": 10,
+      "color": "DARK",
+      "bold": true
+    },
+    "total": {
+      "size": 10.5,
+      "color": "DARK",
+      "bold": true
+    },
+    "words": {
+      "size": 11,
+      "color": "DARK",
+      "italic": true
+    },
+    "note": {
+      "size": 9.5,
+      "color": "GRAY",
+      "italic": true
+    },
+    "sign": {
+      "size": 11,
+      "color": "DARK"
+    },
+    "signBold": {
+      "size": 11,
+      "color": "DARK",
+      "bold": true
+    },
+    "caption": {
+      "size": 8,
+      "color": "GRAY"
+    },
+    "footer": {
+      "size": 8,
+      "color": "GRAY"
+    }
+  }
+}

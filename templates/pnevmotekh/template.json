@@ -68,6 +68,8 @@
     "equipLogo": true,
     "equipKeyParams": true,
     "equipOptions": true,
+    "equipKit": true,
+    "equipKitCards": true,
     "equipComponents": true,
     "equipFeatures": true,
     "equipSpecs": true,
@@ -76,7 +78,9 @@
     "discount": true,
     "amountInWords": true,
     "currencyNote": true,
-    "footer": true
+    "footer": true,
+    "offerKit": true,
+    "coverKit": true
   },
   "about": " — интегратор комплексных решений для промышленности. С 1995 года поставляем и обслуживаем компрессорное, генераторное и насосное оборудование — для малых предприятий, ЖКХ и крупных промышленных компаний.",
   "advantages": [
@@ -118,6 +122,12 @@
     "trustMore": " — полный список на следующей странице.",
     "equipOptionsTitle": "Дополнительная комплектация",
     "componentsTitle": "Узлы и компоненты",
+    "kitTitle": "Состав изделия",
+    "kitColName": "Элемент",
+    "kitColParams": "Основные характеристики",
+    "kitCardsTitle": "Элементы изделия",
+    "kitMaker": "Производитель: {maker}",
+    "kitInOffer": "в составе",
     "featuresTitle": "Особенности и комплектация",
     "specsTitle": "Технические характеристики",
     "specParam": "Параметр",
@@ -516,6 +526,9 @@
     "keyParamsMax": 6,
     "keyParamMaxChars": 28,
     "componentPhotoWidthCm": 4.6,
-    "componentPhotoHeightCm": 3.2
+    "componentPhotoHeightCm": 3.2,
+    "kitKeyParams": 3,
+    "kitPhotoWidthCm": 3.6,
+    "kitPhotoHeightCm": 2.8
   }
 }

@@ -64,7 +64,7 @@ function stationsOf(){
 function docState(){
   S.items.forEach(x=>(x.features||[]).forEach(featId));
   const St = JSON.parse(JSON.stringify(S, (k,v)=>k.startsWith('_')?undefined:v));
-  St.vat=+S.vat; St.cur={code:kpCur(), rate:kpCur()!=='RUB'?rateOf(kpCur()):null, date:S.pricing.rateDate||''}; St.items=S.items.map(kitDocItem).map(x=>({...x, kit:undefined, qty:+x.qty, photo:undefined, logo:undefined, _srcImg:undefined, options:(x.options||[]).filter(o=>o.name.trim()&&+o.qty>0).map(o=>({name:o.name.trim(), short:o.short, unit:o.unit, qty:+o.qty, price:o.price||0}))}));
+  St.vat=+S.vat; St.cur={code:kpCur(), rate:kpCur()!=='RUB'?rateOf(kpCur()):null, date:S.pricing.rateDate||''}; St.items=S.items.map(x=>Object.assign(kitDocItem(x), isKit(x)?{kitDoc:kitDocData(x)}:{}, {info:(a=>({maker:a.maker||'', model:a.model||'', type:a.type||''}))(attrsOf(x))})).map(x=>({...x, kit:undefined, qty:+x.qty, photo:undefined, logo:undefined, _srcImg:undefined, options:(x.options||[]).filter(o=>o.name.trim()&&+o.qty>0).map(o=>({name:o.name.trim(), short:o.short, unit:o.unit, qty:+o.qty, price:o.price||0}))}));
   return St;
 }
 
@@ -126,6 +126,19 @@ async function renderDocx(St, pack, settings){
     const ct=await zip.file('[Content_Types].xml').async('string');
     if (!ct.includes('/word/header_kp.xml')) zip.file('[Content_Types].xml', ct.replace('</Types>','<Override PartName="/word/header_kp.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>'));
   }
+  // скелет, умеющий показывать сборки (feature 'kit'), получает состав как есть: it.kit.parts — таблица состава и карточки элементов;
+  // остальным — состав, разложенный в блоки описания и таблицы (kitDocItem)
+  if (feats.includes('kit')){
+    St.items=St.items.map(x=>x.kitDoc ? Object.assign({}, x, x.kitDoc.base, {kit:{parts:x.kitDoc.parts}, kitDoc:undefined}) : x);
+    for (const x of S.items){ if (!isKit(x) || !Min.items[x.id]) continue; const m=Min.items[x.id]; m.kitImgs={};
+      for (const p of kitParts(x)){ if (!p.photo || !p.photo.src) continue; const du=await toDataURL(p.photo); if (!du) continue;
+        const ext=/^data:image\/png/.test(du)?'png':'jpg', fnm=`kit_${x.id}_${String(p.id).replace(/[^A-Za-z0-9_-]/g,'')}.${ext}`;
+        zip.file('word/media/'+fnm, b64(du), {base64:true}); m.kitImgs[p.id]={file:fnm, w:p.photo.w, h:p.photo.h}; } } }
+  else St.items=St.items.map(x=>x.kitDoc ? Object.assign({}, x, {kitDoc:undefined}) : x);
+  // подпись и печать (картинки шаблона) — для блока подписи, если скелет его умеет (feature 'sign')
+  if (feats.includes('sign')){ Min.sign={};
+    for (const k of ['signImage','stampImage']){ const im=settings[k] ? await templateImage(pack, settings[k]) : null; if (!im) continue;
+      const fnm=`tpl_${k}.${im.ext}`; zip.file('word/media/'+fnm, im.buf); Min.sign[k.replace('Image','')]={file:fnm, w:im.w, h:im.h}; } }
   // скелет, не умеющий показывать скидку (свой или старый), получает цены уже со скидкой — суммы сходятся
   if (!(pack.skel.features||[]).includes('discount')) St.items=St.items.map(x=>Object.assign({}, x, {price:KPGen.netPrice(x), disc:undefined}));
   let out;
