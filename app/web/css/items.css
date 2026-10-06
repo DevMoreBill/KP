@@ -273,3 +273,19 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 @media (prefers-reduced-motion:reduce){ .ai-spin{animation:none} }
 .ai-apply .btn.primary{min-height:40px}
 @media (max-width:700px){ .ai-src{grid-template-columns:1fr} .ai-hero{flex-wrap:wrap} .ed-sec.ai3 .ai-steps>li{padding:12px} }
+/* выбор фото со страницы: ★ главное, галочки — какие добавить */
+.pim{display:grid;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--field)}
+.pim-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:13px}
+.pim-h b{font-size:13.5px}
+.pim-all{margin-left:auto;font-size:12.5px}
+.pim-l{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px}
+.pim-i{display:grid;gap:4px;padding:6px;border:1.5px solid var(--line);border-radius:10px;background:var(--card)}
+.pim-i:has(input[type=radio]:checked){border-color:var(--navy);box-shadow:0 0 0 1px var(--navy)}
+.pim-ph{display:flex;align-items:center;justify-content:center;height:100px;border-radius:6px;background:#fff;overflow:hidden}
+.pim-ph img{max-width:100%;max-height:100%;object-fit:contain}
+.pim-m,.pim-c,.pim-keep{display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer}
+.pim-m{font-weight:600;color:var(--navy)}
+.pim-m input,.pim-c input,.pim-keep input{width:auto;margin:0}
+.pim-f{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px 14px}
+.pim-keep{color:var(--muted)}
+#dlg .pim{border:0;padding:0;background:none}

@@ -92,10 +92,10 @@ function nwMainList(cats){
 function nwFinish(it, tab, after){
   const d=$('#dlg'); d.close(); d.className='';
   if (NW.where==='catalog'){
-    const src=it._src, props=it._srcProps, url=it._srcUrl;
+    const src=it._src, props=it._srcProps, url=it._srcUrl, imgs=it._srcImgs;
     const doc=itemToDoc(it, { id:uid()+uid(), prices:[] });
     openCatEditor(doc, typeof cwAfterSave==='function'?cwAfterSave:null, true);
-    const x=S.items[0]; Object.assign(x, {_src:src, _srcProps:props, _srcUrl:url, _aiStep:it._aiStep, _aiMsg:it._aiMsg});
+    const x=S.items[0]; Object.assign(x, {_src:src, _srcProps:props, _srcUrl:url, _srcImgs:imgs, _aiStep:it._aiStep, _aiMsg:it._aiMsg});
     EDIT.tab=tab; renderEditor(); if (after) after(0); return;
   }
   const blank=S.items.length===1 && !S.items[0].name.trim() && !S.items[0].price && !isKit(S.items[0]);

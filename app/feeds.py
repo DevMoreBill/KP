@@ -239,6 +239,73 @@ def page_images(html, url, limit=8):
     return out[:limit]
 
 
+# фото товара на любом сайте: что точно не фото оборудования
+IMG_SKIP = (r'(?i)logo|icon|sprite|favicon|banner|placeholder|no[-_]?(?:photo|image|img)|noimage|blank|loader|spinner|captcha|'
+            r'counter|pixel|social|telegram|whatsapp|vk[-_.]|youtube|payment|/flags?/|rating|stars?[-_.]|arrow|button|avatar|cert|'
+            r'sertif|diplom|/menu/|header|footer|watermark|preview_?[0-9]{2}x')
+IMG_ATTRS = ('data-zoom-image', 'data-large', 'data-large_image', 'data-full', 'data-original', 'data-big', 'data-src', 'data-lazy-src', 'src')
+GAL_RX = (r'<(\w+)\b[^>]*\bclass\s*=\s*["\'][^"\']*(?:gallery|slider|swiper|carousel|fotorama|zoom|lightbox|product[-_]?(?:image|img|photo|pic|media|gallery)|'
+          r'detail[-_]?(?:image|img|photo|pic)|item[-_]?(?:image|photo)|main[-_]?(?:image|photo))[^"\']*["\'][^>]*>')
+
+
+def page_images_any(html, url, limit=12):
+    """Фото товара с любого сайта — для выбора главного и дополнительных (кнопкой «Загрузить» в автозаполнении и
+    «Фото с сайта поставщика»). По порядку: галерея карточки (как у фидов), JSON-LD, og:image, itemprop=image, ссылки
+    увеличения (fancybox, lightbox), картинки в блоках галереи/слайдера. Логотипы, иконки, баннеры, svg/gif — нет."""
+    out, seen = [], set()
+
+    def add(u, strict=True):
+        u = html_mod.unescape(str(u or '')).strip().split(' ')[0]
+        if not u or u.startswith('data:'):
+            return
+        u = urllib.parse.urljoin(url, u)
+        key = u.split('?')[0].lower()
+        if not re.match(r'^https?://', u) or key in seen or re.search(IMG_SKIP, key) or re.search(r'\.(svg|gif|ico)$', key):
+            return
+        if strict and not re.search(r'\.(jpe?g|png|webp)$', key):
+            return
+        seen.add(key)
+        out.append(u)
+    for u in page_images(html, url, limit):
+        add(u)
+    for m in re.finditer(r'(?is)<script\b[^>]*application/ld\+json[^>]*>(.*?)</script>', html):
+        try:
+            data = json.loads(m.group(1).strip())
+        except ValueError:
+            continue
+        stack = data if isinstance(data, list) else [data]
+        while stack:
+            x = stack.pop()
+            if isinstance(x, list):
+                stack.extend(x)
+            elif isinstance(x, dict):
+                tp = x.get('@type')
+                if tp == 'Product' or (isinstance(tp, list) and 'Product' in tp):
+                    im = x.get('image')
+                    for v in (im if isinstance(im, list) else [im]):
+                        add(v.get('url') or v.get('contentUrl') if isinstance(v, dict) else v, strict=False)
+                stack.extend(v for v in x.values() if isinstance(v, (dict, list)))
+    for rx in (r'<meta\b[^>]*\bproperty\s*=\s*["\']og:image(?::url)?["\'][^>]*\bcontent\s*=\s*["\']([^"\']+)',
+               r'<meta\b[^>]*\bcontent\s*=\s*["\']([^"\']+)["\'][^>]*\bproperty\s*=\s*["\']og:image["\']',
+               r'<(?:img|link|meta)\b[^>]*\bitemprop\s*=\s*["\']image["\'][^>]*\b(?:src|href|content)\s*=\s*["\']([^"\']+)'):
+        for m in re.finditer(rx, html, re.I):
+            add(m.group(1), strict=False)
+    for m in re.finditer(r'<a\b[^>]*(?:data-fancybox|data-lightbox|data-zoom|rel\s*=\s*["\'](?:lightbox|gallery)|class\s*=\s*["\'][^"\']*(?:fancybox|lightbox|zoom|gallery))[^>]*>', html, re.I):
+        h = re.search(r'\bhref\s*=\s*["\']([^"\']+)', m.group(0), re.I)
+        if h:
+            add(h.group(1))
+    for m in re.finditer(GAL_RX, html, re.I):
+        if len(out) >= limit:
+            break
+        for tag in re.findall(r'<img\b[^>]*>', _inner_html(html, m)[:60000], re.I):
+            for a in IMG_ATTRS:
+                v = re.search(r'\b%s\s*=\s*["\']([^"\']+)' % a, tag, re.I)
+                if v:
+                    add(v.group(1))
+                    break
+    return out[:limit]
+
+
 def _unesc(v):
     return re.sub(r'\s+', ' ', html_mod.unescape(html_mod.unescape(v or ''))).strip()
 
@@ -406,7 +473,7 @@ def page_text(url):
         desc = '\n'.join(x for x in text.split('\n') if len(x) > 2)[:12000] if len(text) > len(desc) else desc
     if not (title or desc or props):
         raise ValueError('на странице не нашлось текста')
-    return {'title': title[:300], 'text': desc, 'props': props}
+    return {'title': title[:300], 'text': desc, 'props': props, 'imgs': page_images_any(html, url)}
 
 
 def page_info(html, url):
@@ -997,9 +1064,14 @@ def _image_putter(store, image_store):
     return put, save, stat
 
 
-def page_photos(store, image_store, url, t=None, maker='', model='', name=''):
-    """Фото со страницы товара для одной позиции (кнопка в редакторе): [{src, w, h, source}] и ошибки скачивания."""
-    urls = page_images(page_html(url), url)
+def page_photos(store, image_store, url, t=None, maker='', model='', name='', urls=None):
+    """Фото со страницы товара для одной позиции: [{src, w, h, source}] и ошибки скачивания. urls — выбранные
+    пользователем адреса картинок (из page_text / page_images_any), иначе — все найденные на странице."""
+    if urls:
+        urls = [u for u in urls if isinstance(u, str) and re.match(r'^https?://', u)][:20]
+    else:
+        html = page_html(url)
+        urls = page_images(html, url) or page_images_any(html, url)
     if not urls:
         raise ValueError('на странице не найдено фото товара')
     put, save, stat = _image_putter(store, image_store)

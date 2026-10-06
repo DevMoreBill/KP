@@ -133,9 +133,9 @@ async function aiFetchInto(it){
   catch(e){ it._aiMsg=String(e.message||e)+'. Откройте страницу сами, выделите текст (Ctrl+A), скопируйте и вставьте в поле ниже.'; return false; }
   const props=(r.props||[]).filter(p=>p[0]&&p[1]);
   it._src=[`Страница: ${url}`, r.title?`Название: ${r.title}`:'', r.text||'', props.length?'Характеристики:\n'+props.map(p=>`${p[0]}: ${p[1]}`).join('\n'):''].filter(Boolean).join('\n\n');
-  it._srcProps=props; if (!it.pageUrl && !(it.feed&&it.feed.url)) it.pageUrl=url;
+  it._srcProps=props; it._srcImgs=(r.imgs||[]).slice(0,12); if (!it.pageUrl && !(it.feed&&it.feed.url)) it.pageUrl=url;
   if (!String(it.name||'').trim() && r.title) it.name=r.title.slice(0,200);
-  it._aiMsg=`Со страницы загружено ${(r.text||'').length.toLocaleString('ru-RU')} знаков текста${props.length?` и ${props.length} ${plural(props.length,'характеристика','характеристики','характеристик')}`:''}. Дальше — шаг 2: ${AI_DIRECT.enabled?'«Заполнить автоматически»':'отправьте запрос в ИИ'}.`; it._aiStep=2;
+  it._aiMsg=`Со страницы загружено ${(r.text||'').length.toLocaleString('ru-RU')} знаков текста${props.length?` и ${props.length} ${plural(props.length,'характеристика','характеристики','характеристик')}`:''}${it._srcImgs.length?`, найдено фото: ${it._srcImgs.length} — выберите главное ниже`:''}. Дальше — шаг 2: ${AI_DIRECT.enabled?'«Заполнить автоматически»':'отправьте запрос в ИИ'}.`; it._aiStep=2;
   return true;
 }
 async function aiFetch(i){
@@ -162,8 +162,12 @@ async function aiFileText(f){
     return out.join('\n');
   }
   if (/\.(txt|csv|md|tsv)$/.test(nm) || /^text\//.test(f.type||'')) return await f.text();
-  if (/\.pdf$/.test(nm)) throw new Error('PDF программа не читает: откройте файл, выделите всё (Ctrl+A), скопируйте (Ctrl+C) и вставьте в поле — или приложите PDF прямо в окне ИИ');
-  throw new Error('Подходят файлы Word (.docx) и текстовые (.txt)');
+  if (/\.pdf$/.test(nm) || f.type==='application/pdf'){
+    // текст PDF читает сервер (pdf_text.py); скан без текста — понятная ошибка
+    const r=await api('/api/pdftext', {method:'POST', headers:{'Content-Type':'application/pdf'}, body:f});
+    return r.text||'';
+  }
+  throw new Error('Подходят файлы PDF, Word (.docx) и текстовые (.txt)');
 }
 
 // характеристики со страницы — сразу в таблицу, без ИИ
@@ -288,6 +292,7 @@ function aiPartCopy(i, j, url){
 // шаг 3 вкладки «Заполнить с ИИ»: ответ разбирается при вставке, без перерисовки окна
 document.addEventListener('change', async e=>{ const t=e.target; if (t.dataset.aifile==null || !t.files[0]) return;
   const it=S.items[+t.dataset.aifile], f=t.files[0]; t.value='';
+  it._aiMsg=`Читаю «${f.name}»…`; renderForm();
   try{ const txt=await aiFileText(f); it._src=`Файл: ${f.name}\n\n`+txt.slice(0,60000); it._aiStep=2; it._aiMsg=`Файл «${f.name}» загружен (${txt.length.toLocaleString('ru-RU')} знаков). Дальше — шаг 2.`; }
   catch(x){ it._aiMsg=String(x.message||x); }
   renderForm(); persist(); });

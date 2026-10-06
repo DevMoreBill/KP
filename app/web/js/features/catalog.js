@@ -38,7 +38,7 @@ function fillFromCat(it, x){
     attrs:{...(x.attrs||{})}, options:JSON.parse(JSON.stringify(x.options||[])).map(o=>({...o,id:uid(),qty:o.unit==='усл.'?1:(+it.qty||1)})) });
   delete it._priceText; delete it._costText;
   // другое оборудование — без следов прежнего: адрес страницы, фото со страницы, черновик автозаполнения
-  ['pageUrl','photoSource','photoFrom','feed','_src','_srcProps','_srcUrl','_ans','_aiMsg','_aiStep','_sa','_saSpec','_saG','_autoNameV'].forEach(k=>delete it[k]);
+  ['pageUrl','photoSource','photoFrom','feed','_src','_srcProps','_srcImgs','_srcUrl','_ans','_aiMsg','_aiStep','_sa','_saSpec','_saG','_autoNameV'].forEach(k=>delete it[k]);
   if (x.kit && Array.isArray(x.kit.parts) && x.kit.parts.length) it.kit=JSON.parse(JSON.stringify(x.kit)); else delete it.kit;     // сборка из каталога — со своим составом
   it.cost=x.cost||0; it.costCur=x.costCur||'RUB'; it.margin=x.margin; it.mmode=x.mmode; it.priceManual=false;
   const pc=x.priceCur||'RUB';
