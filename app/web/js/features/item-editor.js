@@ -186,12 +186,13 @@ function edAI(x,i){
       <div class="ai-src">
         <div class="ai-srcc ai-srcu"><span class="ai-srct">🔗 Страница товара на сайте</span>
           <div class="ai-url"><input type="url" data-p="${P}._srcUrl" value="${esc(x._srcUrl||x.pageUrl||'')}" placeholder="https://… ссылка на страницу товара" autocomplete="off"><button class="btn primary" type="button" data-a="aiFetch" data-i="${i}">Загрузить</button></div>
-          <small class="muted">Возьмём описание, все вкладки страницы и таблицы характеристик.</small></div>
-        <label class="ai-srcc ai-srcf"><span class="ai-srct">📄 Файл</span><span class="ai-fileb">Выбрать .docx или .txt</span><small class="muted">${st0?'ТЗ заказчика — ИИ разложит требования к контейнеру и добавит недостающие элементы.':'Паспорт, каталог, ТЗ.'}</small><input type="file" accept=".docx,.txt,.csv,.md" hidden data-aifile="${i}"></label>
+          <small class="muted">Возьмём описание, все вкладки страницы, таблицы характеристик и фото товара.</small></div>
+        <label class="ai-srcc ai-srcf"><span class="ai-srct">📄 Файл</span><span class="ai-fileb">Выбрать PDF, Word или .txt</span><small class="muted">${st0?'ТЗ заказчика — ИИ разложит требования к контейнеру и добавит недостающие элементы.':'Паспорт, каталог, ТЗ — текст из файла уйдёт в запрос.'}</small><input type="file" accept=".pdf,.docx,.txt,.csv,.md" hidden data-aifile="${i}"></label>
       </div>
       <details class="ai-txt"${has?' open':''}><summary>${has?'Текст для ИИ — можно поправить':'✍ Вставить текст вручную: описание, таблицу из паспорта или PDF'}</summary>
         <textarea data-p="${P}._src" rows="6" placeholder="Вставьте текст. Можно ничего не вставлять — тогда ИИ ищет данные по модели «${esc(x.name||'из наименования')}».">${esc(x._src||'')}</textarea></details>
-      ${props?`<div class="ai-props"><span>Со страницы взято характеристик: <b>${props}</b>.</span><button class="btn ghost" type="button" data-a="aiProps" data-i="${i}">Перенести в «Характеристики» без ИИ</button></div>`:''}</li>
+      ${props?`<div class="ai-props"><span>Со страницы взято характеристик: <b>${props}</b>.</span><button class="btn ghost" type="button" data-a="aiProps" data-i="${i}">Перенести в «Характеристики» без ИИ</button></div>`:''}
+      ${(x._srcImgs||[]).length?pageImgsHtml(i, x._srcImgs, 'ai'):''}</li>
     ${direct?`<li class="${cls(2)}">${head(2, 'Заполнить с помощью нейросети', `${esc(AI_DIRECT.provider)} · ответ — в шаге 3`)}
       <div class="row"><button class="btn primary ai-go" type="button" data-a="aiAuto" data-i="${i}"${busy?' disabled':''}>${busy?'<span class="ai-spin" aria-hidden="true"></span> Заполняю…':`✨ Заполнить автоматически`}</button><span class="muted">Обычно 10–40 секунд.</span></div>
       <details class="ai-pr"><summary>или через ИИ-чат в браузере (можно приложить скриншот или PDF)</summary>${aiSitesHtml('aiCopy', i)}<textarea rows="8" readonly>${esc(aiPrompt(x))}</textarea></details></li>`

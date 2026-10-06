@@ -67,26 +67,70 @@ async function addGallery(i, files, slot){
 
 // все фото со страницы товара на сайте поставщика (для позиций из фида — её адрес): сервер скачивает их в изображения позиции;
 // уже добавленные (тот же адрес у поставщика) пропускаются, у позиции без главного фото первое становится главным
+// «Фото с сайта поставщика»: найти фото на странице товара и выбрать главное и дополнительные
 async function galFromPage(i, other){
   const it=S.items[i], def=(it.feed&&it.feed.url)||it.pageUrl||'';
   const url=(def && !other) ? def : prompt('Ссылка на страницу товара на сайте поставщика', def||'https://');
   if (!url || !/^https?:\/\/./.test(url.trim())) return;
-  toast('Загружаю фото со страницы товара…');
-  let r; try{ r=await api('/api/pagephotos', {method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({url:url.trim(), ...imgPlace(it)})}); }
+  toast('Ищу фото на странице товара…');
+  let r; try{ r=await api('/api/pagetext', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:url.trim()})}); }
   catch(e){ return toast(String(e.message||e)); }
-  if (!(it.feed&&it.feed.url)) it.pageUrl=url.trim();
+  const imgs=r.imgs||[]; if (!imgs.length) return toast('На странице не найдено фото товара — сохраните картинку и перетащите её в карточку');
+  PIM_DLG={url:url.trim(), imgs};
+  const d=$('#dlg'); d.classList.add('wide');
+  d.innerHTML=`<div class="dlg-h"><h3>Фото со страницы товара<small>${esc(url.trim())}</small></h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
+    <div class="dlg-b">${pageImgsHtml(i, imgs, 'dlg')}</div>`;
+  d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close();
+}
+
+// выбор фото со страницы (автозаполнение и «Фото с сайта поставщика»): ★ — главное, галочки — какие добавить в изображения
+let PIM_DLG=null;
+function pageImgsHtml(i, imgs, src){
+  const it=S.items[i], hasMain=!!(it.photo&&it.photo.src);
+  return `<div class="pim" data-pim="${i}" data-src="${src||'ai'}">
+    <div class="pim-h"><b>Фото со страницы: ${imgs.length}</b><span class="muted">★ — главное фото позиции, галочка — добавить в «Описание и фото».</span>
+      <span class="pim-all"><button type="button" class="lnk" data-pimall="1">отметить все</button> · <button type="button" class="lnk" data-pimall="0">снять все</button></span></div>
+    <div class="pim-l">${imgs.map((u,k)=>`<div class="pim-i"><span class="pim-ph"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
+      <label class="pim-m" title="Сделать главным фото"><input type="radio" name="pimMain${i}" value="${k}"${!hasMain&&k===0?' checked':''}> ★ Главное</label>
+      <label class="pim-c"><input type="checkbox" data-pimk="${k}" checked> добавить</label></div>`).join('')}</div>
+    <div class="pim-f">${hasMain?`<label class="pim-keep"><input type="radio" name="pimMain${i}" value="-1" checked> оставить текущее главное фото</label>`:''}
+      <button type="button" class="btn primary" data-pimgo="${i}">Добавить выбранные фото</button></div></div>`;
+}
+async function pageImgsAdd(i, url, imgs, box){
+  const it=S.items[i]; if (!it) return false;
+  const main=+((box.querySelector(`input[name="pimMain${i}"]:checked`)||{}).value ?? -1);
+  const ks=[...box.querySelectorAll('[data-pimk]:checked')].map(x=>+x.dataset.pimk); if (main>=0 && !ks.includes(main)) ks.unshift(main);
+  if (!ks.length){ toast('Отметьте хотя бы одно фото'); return false; }
+  toast(`Загружаю фото: ${ks.length}…`);
+  let r; try{ r=await api('/api/pagephotos', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url, urls:ks.map(k=>imgs[k]), ...imgPlace(it)})}); }
+  catch(e){ toast(String(e.message||e)); return false; }
+  const bySrc=new Map((r.imgs||[]).map(g=>[g.source, g]));
   it.gallery=it.gallery||[];
   const have=new Set([it.photoSource, it.photo&&it.photo.src, ...it.gallery.flatMap(g=>[g.source, g.src])].filter(Boolean));
-  let n=0;
-  for (const g of r.imgs||[]){ if (have.has(g.source) || have.has(g.src)) continue; have.add(g.src);
-    if (!(it.photo&&it.photo.src)){ it.photo={src:g.src, w:g.w, h:g.h}; it.photoSource=g.source; }
-    else it.gallery.push({id:uid(), src:g.src, w:g.w, h:g.h, caption:'', slot:'', wide:'', at:'', on:true, source:g.source});
-    n++; }
+  let n=0, mainSet=false;
+  const g0=main>=0 ? bySrc.get(imgs[main]) : null;
+  if (g0){   // новое главное; прежнее главное — в изображения
+    if (it.photo && it.photo.src && it.photo.src!==g0.src && !it.gallery.some(x=>x.src===it.photo.src))
+      it.gallery.push({id:uid(), src:it.photo.src, w:it.photo.w, h:it.photo.h, caption:'', slot:'', wide:'', at:'', on:true, ...(it.photoSource?{source:it.photoSource}:{})});
+    it.gallery=it.gallery.filter(x=>x.src!==g0.src);
+    it.photo={src:g0.src, w:g0.w, h:g0.h}; it.photoSource=g0.source; delete it.photoFrom; have.add(g0.src); have.add(g0.source); n++; mainSet=true; }
+  for (const k of ks){ if (k===main) continue; const g=bySrc.get(imgs[k]); if (!g || have.has(g.source) || have.has(g.src)) continue; have.add(g.src);
+    it.gallery.push({id:uid(), src:g.src, w:g.w, h:g.h, caption:'', slot:'', wide:'', at:'', on:true, source:g.source}); n++; }
+  if (url && !it.pageUrl && !(it.feed&&it.feed.url)) it.pageUrl=url;
   it.page=true; renderForm(); persist();
   const bad=(r.errors||[]).length;
-  toast(n ? `Добавлено фото со страницы: ${n}${bad?` (не скачались: ${bad})`:''}` : (r.imgs||[]).length ? 'Все фото со страницы уже есть у позиции' : `Фото не скачались${bad?': '+r.errors[0]:''}`);
+  toast(n ? `Добавлено фото: ${n}${mainSet?' — главное фото заменено':''}${bad?` · не скачались: ${bad}`:''}` : bad ? `Фото не скачались (${bad}) — сайт не отдаёт картинки` : 'Эти фото уже есть у позиции');
+  return true;
 }
+document.addEventListener('click', async e=>{
+  const all=e.target.closest('[data-pimall]'); if (all){ all.closest('.pim').querySelectorAll('[data-pimk]').forEach(x=>{ x.checked=all.dataset.pimall==='1'; }); return; }
+  const b=e.target.closest('[data-pimgo]'); if (!b) return;
+  const box=b.closest('.pim'), i=+b.dataset.pimgo, it=S.items[i]; if (!it) return;
+  const src = box.dataset.src==='dlg' ? PIM_DLG : {url:String(it._srcUrl||'').trim(), imgs:it._srcImgs||[]};
+  if (!src || !src.imgs.length) return;
+  b.disabled=true; const ok=await pageImgsAdd(i, src.url, src.imgs, box); b.disabled=false;
+  if (ok && box.dataset.src==='dlg'){ const d=$('#dlg'); if (d.open) d.close(); }
+});
 
 function pickGallery(i, slot){ const f=$('#filePick'); f.value=''; f.multiple=!slot; f.onchange=()=>{ const L=[...f.files]; f.multiple=false; if(L.length) addGallery(i,L,slot); }; f.click(); }
 

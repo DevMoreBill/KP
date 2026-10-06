@@ -40,6 +40,7 @@ import images
 import maintenance
 import logistics_api
 import ai_llm
+import pdf_text
 from images import ImageStore, mark_organized, organize_existing
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, ensure_templates, list_history,
                           list_templates, open_template_file, put_file, reset_template, restore_history, template_file)
@@ -585,13 +586,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(feeds.page_text(str(d.get('url') or '').strip()))
             except Exception as e:
                 return self.send(422, 'text/plain; charset=utf-8', 'Страница не прочитана: %s' % str(e)[:200])
+        if path == '/api/pdftext' and m == 'POST':        # текст из PDF (паспорт, каталог, ТЗ) — для автозаполнения карточки
+            if self.body_size() > pdf_text.MAX_BYTES:
+                return self.send(413, 'text/plain; charset=utf-8', 'PDF больше 40 МБ')
+            try:
+                return self.send_json(pdf_text.text(self.body()))
+            except Exception as e:
+                return self.send(422, 'text/plain; charset=utf-8', 'PDF не прочитан: %s' % str(e)[:200])
         if path == '/api/pagephotos' and m == 'POST':     # фото со страницы товара на сайте поставщика — в изображения позиции
             import feeds
             d = json.loads(self.body().decode('utf-8') or '{}')
             tmap = {t.get('id'): t for t in load_types()['types']}
             try:
                 return self.send_json(feeds.page_photos(store(), IMAGES, str(d.get('url') or '').strip(), tmap.get(d.get('cat')),
-                                                        d.get('maker') or '', d.get('model') or '', d.get('name') or ''))
+                                                        d.get('maker') or '', d.get('model') or '', d.get('name') or '',
+                                                        d.get('urls') if isinstance(d.get('urls'), list) else None))
             except Exception as e:
                 return self.send(422, 'text/plain; charset=utf-8', 'Фото со страницы не загружены: %s' % str(e)[:200])
         if path == '/api/logistics/quote' and m == 'POST':   # цены перевозчиков (ATI.SU, ПЭК, Деловые Линии, КИТ) — итог по максимуму
