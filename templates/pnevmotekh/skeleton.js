@@ -61,7 +61,7 @@ function kpSkeleton(KP) {
     // отдельные блоки внутри разделов
     blocks: {
       coverKpis: true, coverTotal: true, coverDetailsNote: true, coverAbout: true, coverAdvantages: true, coverTrust: true,
-      equipLogo: true, equipKeyParams: true, equipOptions: true, equipComponents: true, equipFeatures: true, equipSpecs: true, specNote: true, equipGallery: true,
+      equipLogo: true, equipKeyParams: true, equipOptions: true, equipKit: true, equipKitCards: true, offerKit: true, coverKit: true, equipComponents: true, equipFeatures: true, equipSpecs: true, specNote: true, equipGallery: true,
       discount: true, amountInWords: true, currencyNote: true, footer: true
     },
     // правила заполнения и раскладки
@@ -80,6 +80,8 @@ function kpSkeleton(KP) {
       keyParamsMax: 6,            // плиток ключевых параметров рядом с фото
       keyParamMaxChars: 28,       // значения длиннее в плитки не берутся
       componentPhotoWidthCm: 4.6, componentPhotoHeightCm: 3.2,
+      kitKeyParams: 3,            // характеристик элемента в таблице «Состав изделия» (полностью — в карточке элемента)
+      kitPhotoWidthCm: 3.6, kitPhotoHeightCm: 2.8,
       clientsWidthCm: 0           // ширина картинки «Наши клиенты», 0 — во всю ширину текста
     },
     // шапка страницы из настроек (вместо шапки base.docx): логотип слева или справа, реквизиты строками
@@ -106,6 +108,8 @@ function kpSkeleton(KP) {
       detailsNote: 'Детальный расчёт по позициям приведён в разделе «Коммерческое предложение».',
       aboutTitle: 'О компании', trustLabel: 'Нам доверяют: ', trustMore: ' — полный список на следующей странице.',
       equipOptionsTitle: 'Дополнительная комплектация', componentsTitle: 'Узлы и компоненты',
+      kitTitle: 'Состав изделия', kitColName: 'Элемент', kitColParams: 'Основные характеристики', kitCardsTitle: 'Элементы изделия',
+      kitMaker: 'Производитель: {maker}', kitInOffer: 'в составе', kitCover: 'В составе: {list}',
       featuresTitle: 'Особенности и комплектация', specsTitle: 'Технические характеристики',
       specParam: 'Параметр', specValue: 'Значение',
       specNote: 'Синим выделены ключевые параметры. Характеристики приведены по данным производителя.',
@@ -461,7 +465,7 @@ function kpSkeleton(KP) {
       out.push(spacer(tight ? 400 : 760));
       const one = S.items.length === 1;
       const comp = one ? `${S.items[0].qty} × ${c.model || S.items[0].name}` : multi ? `${ST.length} ${plural(ST.length, 'модель', 'модели', 'моделей')}, ${t.units} ед.` : `${S.items.length} ${plural(S.items.length, 'позиция', 'позиции', 'позиций')}, ${t.units} ед.`;
-      const optNames = [...new Set(S.items.flatMap(it => (it.options || []).filter(o => o.name && +o.qty > 0).map(o => o.short || o.name)))];
+      const optNames = [...new Set((BLK.coverKit ? S.items.flatMap(it => kitOf(it).map(kitName)) : []).concat(S.items.flatMap(it => (it.options || []).filter(o => o.name && +o.qty > 0).map(o => o.short || o.name))))];
       const OM = RULES.coverOptionsMax;
       const c1 = p(r(T.supplyTitle, 'boxLabel'), { after: 40 }) + p(r(comp, 'boxValue'), { after: optNames.length ? 40 : 0 }) +
         (optNames.length ? p(r(txt('including', { list: optNames.slice(0, OM).join(', ') }) + (optNames.length > OM ? T.includingMore : ''), 'muted'), { line: 240 }) : '');
@@ -654,6 +658,59 @@ function kpSkeleton(KP) {
     return out.join('');
   }
 
+  // ---------------------------------------------------------------- СБОРКА (изделие из нескольких элементов)
+  // it.kit.parts — элементы: {id, name, qty, desc, rows:[{k,v}], maker, model}; фото — m.kitImgs[id].
+  // Таблица «Состав изделия» — что входит и главное о каждом элементе одной строкой; карточки — описание и все характеристики.
+  const kitOf = it => (it && it.kit && Array.isArray(it.kit.parts) ? it.kit.parts : []).filter(x => x && String(x.name || '').trim());
+  const kitName = x => x.name + (+x.qty > 1 ? ' × ' + x.qty : '');
+  function kitXml(it, m) {
+    const parts = kitOf(it), imgs = m.kitImgs || {}, out = [];
+    if (BLK.equipKit) {
+      out.push(subheading(T.kitTitle));
+      const wc = cols([520, 3900, 1000, 4927]), HL = B(null, null, [4, HAIR]), Mr = [90, 100, 90, 100];
+      const head = [T.colNo, T.kitColName, T.colQty, T.kitColParams].map((t, i) => tc(p(r(t, 'tableHeader'), { jc: i === 0 || i === 2 ? 'center' : 'left' }), wc[i], { fill: NAVYD, mar: [80, 100, 80, 100] }));
+      const rows = [head].concat(parts.map((x, i) => {
+        const short = (x.rows || []).filter(z => String(z.v).length <= 40), main = short.filter(z => !/^(модель|марка|производитель|тип|бренд)/i.test(z.k));
+        const key = (main.length ? main : short).slice(0, Math.max(0, +RULES.kitKeyParams || 0)).map(z => z.k + ': ' + z.v).join('; ');
+        const sub = [x.maker, x.model].filter(Boolean).join(' ');
+        return [tc(p(r(String(i + 1), 'rowIndex'), { jc: 'center' }), wc[0], { bdr: HL, mar: Mr }),
+          tc(p(r(x.name, 'cellBold'), { line: 240 }) + (sub && !x.name.includes(sub) ? p(r(sub, 'muted'), { before: 20, line: 240 }) : ''), wc[1], { bdr: HL, mar: Mr }),
+          tc(p(r((+x.qty || 1) + NB + T.pcs, 'cell'), { jc: 'center' }), wc[2], { bdr: HL, mar: Mr }),
+          tc(p(r(key || '—', key ? 'specText' : sty('specText', { color: GRAY })), { line: 240 }), wc[3], { bdr: HL, mar: Mr })];
+      }));
+      out.push(tbl(rows, wc, { header: true }));
+    }
+    // карточки элементов: фото (если есть) слева, справа — название, описание и характеристики парами «параметр — значение»
+    const cards = BLK.equipKitCards ? parts.filter(x => x.desc || (x.rows || []).length || imgs[x.id]) : [];
+    if (cards.length) {
+      out.push(subheading(T.kitCardsTitle));
+      cards.forEach((x, n) => {
+        const g = imgs[x.id], wi = g ? Math.round(RULES.kitPhotoWidthCm * 567) : 0, wg = g ? X(240) : 0, wt = W - wi - wg;
+        let body = p(r((n + 1) + '. ' + kitName(x), 'componentLabel'), { after: 60, keep: true });
+        if (x.maker && !x.name.includes(x.maker)) body += p(r(txt('kitMaker', { maker: [x.maker, x.model].filter(Boolean).join(' ') }), 'muted'), { after: 60 });
+        if (x.desc) body += p(r(x.desc, 'componentText'), { line: 252, after: (x.rows || []).length ? 80 : 0 });
+        const rows = x.rows || [];
+        if (rows.length) {
+          // характеристики в две пары колонок, если их больше четырёх — карточка остаётся короткой
+          const two = rows.length > 4, per = two ? Math.ceil(rows.length / 2) : rows.length, w1 = two ? Math.floor((wt - 160) / 2) : wt;
+          const kv = (z, w) => { const wk = Math.round(w * 0.55); return [tc(p(r(z ? z.k : '', 'specName'), { line: 240 }), wk, { bdr: B(null, null, [4, HAIR]), mar: [40, 0, 40, 80] }),
+            tc(p(r(z ? z.v : '', 'specValue'), { line: 240 }), w - wk, { bdr: B(null, null, [4, HAIR]), mar: [40, 60, 40, 0] })]; };
+          const tr = [];
+          for (let i = 0; i < per; i++) tr.push(two ? kv(rows[i], w1).concat([gapCell(wt - 2 * w1)], kv(rows[i + per], w1)) : kv(rows[i], w1));
+          const ws = two ? [Math.round(w1 * 0.55), w1 - Math.round(w1 * 0.55), wt - 2 * w1, Math.round(w1 * 0.55), w1 - Math.round(w1 * 0.55)] : [Math.round(wt * 0.55), wt - Math.round(wt * 0.55)];
+          body += tbl(tr, ws) + END;
+        }
+        if (n) out.push(spacer(180));
+        if (g) {
+          const [cx, cy] = fit(g, (wi - 160) * E, cm(RULES.kitPhotoHeightCm));
+          out.push(tbl([[tc(p(img(g.rid, cx, cy, x.name, 'kitPhotoWidthCm'), { jc: 'center' }), wi, { va: 'top', mar: [40, 0, 0, 0] }),
+            gapCell(wg), tc(body, wt, { va: 'top', mar: [0, 0, 0, 0] })]], [wi, wg, wt]));
+        } else out.push(tbl([[tc(body, W, { bdr: B(null, [18, SKY]), va: 'top', mar: [20, 200, 20, 0] })]], [W]));
+      });
+    }
+    return out.join('');
+  }
+
   function equipXml(it, M) {
     const out = [heading(it.pageTitle || it.name, true)];
     const m = M.items[it.id] || {};
@@ -665,6 +722,7 @@ function kpSkeleton(KP) {
     const feats = allF.filter(f => !(f.id && fimg[f.id]) && !longF.includes(f));
     const opts = BLK.equipOptions ? (it.options || []).filter(o => o.name && +o.qty > 0) : [];
     out.push(heroXml(it, m, feats, opts));
+    if (kitOf(it).length) out.push(kitXml(it, m));
     if (illustrated.length) out.push(componentsXml(illustrated, fimg));
     if (longF.length && BLK.equipFeatures) out.push(featuresXml(longF));
     const groups = BLK.equipSpecs ? (it.groups || []).map(g => ({ name: g.name, rows: (g.rows || []).filter(x => x.k || x.v) })).filter(g => g.rows.length) : [];
@@ -674,7 +732,7 @@ function kpSkeleton(KP) {
   }
   function hasEquipPage(it, M) {
     const m = M.items[it.id];
-    return it.page && ((it.options || []).some(o => o.name) || (it.groups && it.groups.some(g => g.rows && g.rows.some(x => x.k || x.v))) ||
+    return it.page && ((it.options || []).some(o => o.name) || kitOf(it).length || (it.groups && it.groups.some(g => g.rows && g.rows.some(x => x.k || x.v))) ||
       (m && m.tile) || ((m && m.gallery) || []).length || Object.keys((m && m.featImgs) || {}).length || (it.features || []).some(f => f.text));
   }
 
@@ -703,6 +761,13 @@ function kpSkeleton(KP) {
         tc(p(r(money(unitP(it)), 'cell'), { jc: 'right' }), wc[3], { bdr: HL, mar: Mr })]
         .concat(showD ? [discCell(it, wc[4], { bdr: HL, mar: Mr })] : [],
           [tc(p(r(money(it.qty * netPrice(it)), 'cellBold'), { jc: 'right' }), wc[n - 1], { bdr: HL, mar: Mr })]));
+      if (BLK.offerKit) kitOf(it).forEach(x => {
+        const Mo = [70, 120, 70, 120], free = sty('option', { color: GRAY });
+        rows.push([tc('', wc[0], { bdr: HL, mar: Mo }), tc(p(r('· ' + x.name, 'option'), { indL: 200 }), wc[1], { bdr: HL, mar: Mo }),
+          tc(p(r((+x.qty || 1) * (+it.qty || 1) + pcs, 'option'), { jc: 'center' }), wc[2], { bdr: HL, mar: Mo }),
+          tc(p(r(T.kitInOffer, free), { jc: 'right' }), wc[3], { bdr: HL, mar: Mo })]
+          .concat(showD ? [tc('', wc[4], { bdr: HL, mar: Mo })] : [], [tc(p(r('—', free), { jc: 'right' }), wc[n - 1], { bdr: HL, mar: Mo })]));
+      });
       (it.options || []).filter(o => o.name && +o.qty > 0).forEach((o, j) => {
         const Mo = [110, 120, 110, 120], free = sty('option', { color: GRAY });
         const nm = p(r('+ ' + o.name, 'option'), { after: o.note ? 30 : 0, indL: 200 }) + (o.note ? p(r(o.note, 'optionNote'), { indL: 200 }) : '');
@@ -835,7 +900,7 @@ function kpSkeleton(KP) {
 
   // ================================================================ СБОРКА
   /* S — данные КП; Min — подготовленные изображения:
-     { cover:{file,w,h}, thumbs:{[key]:…}, items:{[id]:{tile, logo, gallery:[…], featImgs:{…}}} };
+     { cover:{file,w,h}, thumbs:{[key]:…}, items:{[id]:{tile, logo, gallery:[…], featImgs:{…}, kitImgs:{[id элемента]:…}}} };
      roots — корневые теги document.xml и footer.xml; tpl — настройки шаблона (template.json + base.docx). */
   function build(S, Min, roots, tpl) {
     setTemplate(tpl);
@@ -845,7 +910,8 @@ function kpSkeleton(KP) {
     const reg = x => { if (!x) return null; const rid = 'rIdImg' + (++n); media.push({ rid, file: x.file }); return Object.assign({ rid }, x); };
     M.cover = reg(Min.cover);
     M.thumbs = {}; for (const k in (Min.thumbs || {})) M.thumbs[k] = reg(Min.thumbs[k]);
-    for (const id in (Min.items || {})) M.items[id] = { tile: reg(Min.items[id].tile), logo: reg(Min.items[id].logo), gallery: (Min.items[id].gallery || []).map(reg).filter(Boolean), featImgs: Object.fromEntries(Object.entries(Min.items[id].featImgs || {}).map(([k, v]) => [k, reg(v)])) };
+    for (const id in (Min.items || {})) M.items[id] = { tile: reg(Min.items[id].tile), logo: reg(Min.items[id].logo), gallery: (Min.items[id].gallery || []).map(reg).filter(Boolean), featImgs: Object.fromEntries(Object.entries(Min.items[id].featImgs || {}).map(([k, v]) => [k, reg(v)])),
+      kitImgs: Object.fromEntries(Object.entries(Min.items[id].kitImgs || {}).map(([k, v]) => [k, reg(v)])) };
     const parts = {
       cover: () => coverXml(S, M),
       clients: sec => clientsXml(S, sec),
@@ -917,6 +983,7 @@ function kpSkeleton(KP) {
   }
 
   // features — что скелет умеет выводить сам; без 'discount' программа передаёт цены уже со скидкой,
-  // 'header' — шапка из настроек, 'images' — дополнительные картинки, 'design' — пометки графического редактора
-  return { defaults: DEFAULTS, build, features: ['discount', 'header', 'images', 'design'] };
+  // 'header' — шапка из настроек, 'images' — дополнительные картинки, 'design' — пометки графического редактора,
+  // 'kit' — сборки: состав изделия приходит как есть (it.kit.parts), а не разложенным в описание
+  return { defaults: DEFAULTS, build, features: ['discount', 'header', 'images', 'design', 'kit'] };
 }

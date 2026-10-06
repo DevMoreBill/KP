@@ -110,6 +110,7 @@ jobs:
           if (-not (Test-Path -LiteralPath (Join-Path $dir 'data\img\logos'))) { throw 'Нет папки логотипов' }
           $tpl = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/templates'
           if ($tpl.Count -lt 1) { throw 'Шаблоны КП не найдены' }
+          if (-not ($tpl | Where-Object { $_.id -eq 'tender' })) { throw 'Нет тендерного шаблона' }
           $types = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/types'
           Write-Host "Типов оборудования: $($types.types.Count)"
           if ($types.types.Count -lt 5) { throw 'Справочник типов не загрузился' }

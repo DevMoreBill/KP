@@ -74,8 +74,8 @@ def ensure_templates():
 # отпечатки заводских скелета и формы редактора прошлых версий: такие файлы обновляются сами,
 # изменённые пользователем — не трогаются
 OLD_FACTORY = {
-    'skeleton.js': ('5fbf889fa4d86dbd104efab151efe5cd', '318639067e897b8dab73293c9d992d68', 'bc0c2a86f14f0c4d370130d395b26824', 'af29a5feb11dd57092e059dcf1a25139', '09824be0014a7a0bf89db2432180702d'),
-    'editor.json': ('05add2124882dec245a673c9949a8e12', '989a6bcdabfed2bb0d2ef55ec242fc12', '59bbf5edc4966a5057382803bfb90945'),
+    'skeleton.js': ('5fbf889fa4d86dbd104efab151efe5cd', '318639067e897b8dab73293c9d992d68', 'bc0c2a86f14f0c4d370130d395b26824', 'af29a5feb11dd57092e059dcf1a25139', '09824be0014a7a0bf89db2432180702d', 'b25ddfbef3a810deedb3c9d2716236d1'),
+    'editor.json': ('05add2124882dec245a673c9949a8e12', '989a6bcdabfed2bb0d2ef55ec242fc12', '59bbf5edc4966a5057382803bfb90945', 'b0fa2e8c9160d3267e23e289869b08cd'),
 }
 
 

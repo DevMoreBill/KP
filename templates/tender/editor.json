@@ -1,0 +1,813 @@
+{
+  "_help": "Описание формы «Настроить шаблон». Каждая вкладка — список полей: key — путь к настройке в template.json, type — вид поля (text, textarea, number, color, toggle, select, font, pairs, brand, sections, style, image, group). Новую настройку из skeleton.js достаточно добавить сюда — она появится в редакторе.",
+  "colorNames": {
+    "DARK": "Текст",
+    "GRAY": "Второстепенный текст",
+    "LINE": "Линии таблиц",
+    "FILL": "Заливка шапок таблиц",
+    "WHITE": "Белый"
+  },
+  "tabs": [
+    {
+      "id": "main",
+      "title": "Основное",
+      "fields": [
+        {
+          "key": "name",
+          "type": "text",
+          "label": "Название шаблона"
+        },
+        {
+          "key": "description",
+          "type": "textarea",
+          "rows": 2,
+          "label": "Описание",
+          "hint": "Видно под списком шаблонов."
+        },
+        {
+          "key": "filePrefix",
+          "type": "text",
+          "label": "Префикс имени файла",
+          "hint": "Подставляется вместо {префикс}."
+        },
+        {
+          "key": "fileName",
+          "type": "text",
+          "label": "Имя файла КП",
+          "hint": "Метки: {номер}, {префикс}, {клиент}, {оборудование}, {дата}. Пустые метки пропускаются вместе с «_». Расширение .docx добавляется само."
+        },
+        {
+          "key": "font",
+          "type": "font",
+          "label": "Шрифт документа",
+          "hint": "Для тендерной документации обычно Times New Roman или Arial."
+        }
+      ]
+    },
+    {
+      "id": "sections",
+      "title": "Разделы и блоки",
+      "fields": [
+        {
+          "key": "sections",
+          "type": "sections",
+          "label": "Разделы документа",
+          "names": {
+            "requisites": "Бланк: реквизиты, исх. №, адресат, заголовок",
+            "offer": "Спецификация и стоимость (таблица)",
+            "conditions": "Условия поставки",
+            "specs": "Техническое описание оборудования",
+            "supplier": "Сведения о поставщике",
+            "signature": "Подпись и печать"
+          },
+          "hints": {
+            "specs": "По каждой позиции: описание, полная таблица характеристик, состав сборки, доп. комплектация.",
+            "supplier": "Таблица реквизитов со вкладки «Поставщик»; пустые строки не выводятся."
+          }
+        },
+        {
+          "type": "group",
+          "title": "Бланк"
+        },
+        {
+          "key": "blocks.letterhead",
+          "type": "toggle",
+          "label": "Наименование и реквизиты поставщика вверху"
+        },
+        {
+          "key": "blocks.recipient",
+          "type": "toggle",
+          "label": "Адресат (заказчик, ИНН, контактное лицо)"
+        },
+        {
+          "key": "blocks.object",
+          "type": "toggle",
+          "label": "Объект поставки"
+        },
+        {
+          "key": "blocks.intro",
+          "type": "toggle",
+          "label": "Вступительный абзац"
+        },
+        {
+          "type": "group",
+          "title": "Спецификация и стоимость"
+        },
+        {
+          "key": "blocks.offerMaker",
+          "type": "toggle",
+          "label": "Производитель, модель, страна под наименованием"
+        },
+        {
+          "key": "blocks.offerSpec",
+          "type": "toggle",
+          "label": "Краткая характеристика под наименованием"
+        },
+        {
+          "key": "blocks.offerKit",
+          "type": "toggle",
+          "label": "Элементы сборки строками",
+          "hint": "Под позицией-сборкой — её элементы с пометкой «в составе»."
+        },
+        {
+          "key": "blocks.offerOptions",
+          "type": "toggle",
+          "label": "Дополнительная комплектация строками"
+        },
+        {
+          "key": "blocks.amountInWords",
+          "type": "toggle",
+          "label": "Сумма прописью"
+        },
+        {
+          "key": "blocks.currencyNote",
+          "type": "toggle",
+          "label": "Пояснение о валюте (если КП не в рублях)"
+        },
+        {
+          "type": "group",
+          "title": "Техническое описание"
+        },
+        {
+          "key": "blocks.specsFeatures",
+          "type": "toggle",
+          "label": "Описание (абзацы)"
+        },
+        {
+          "key": "blocks.specsChars",
+          "type": "toggle",
+          "label": "Таблица технических характеристик"
+        },
+        {
+          "key": "blocks.specsKit",
+          "type": "toggle",
+          "label": "Состав сборки таблицей"
+        },
+        {
+          "key": "blocks.specsKitChars",
+          "type": "toggle",
+          "label": "Характеристики каждого элемента сборки"
+        },
+        {
+          "key": "blocks.specsOptions",
+          "type": "toggle",
+          "label": "Дополнительная комплектация"
+        },
+        {
+          "key": "blocks.specsPhoto",
+          "type": "toggle",
+          "label": "Фото оборудования",
+          "hint": "Выключено: для тендера графика обычно не нужна."
+        },
+        {
+          "key": "blocks.specsNote",
+          "type": "toggle",
+          "label": "Примечание о характеристиках"
+        },
+        {
+          "type": "group",
+          "title": "Подпись"
+        },
+        {
+          "key": "blocks.signImage",
+          "type": "toggle",
+          "label": "Картинка подписи"
+        },
+        {
+          "key": "blocks.stampImage",
+          "type": "toggle",
+          "label": "Картинка печати"
+        },
+        {
+          "key": "blocks.executor",
+          "type": "toggle",
+          "label": "Строка «Исполнитель» (менеджер КП)"
+        },
+        {
+          "key": "blocks.footer",
+          "type": "toggle",
+          "label": "Нижний колонтитул: № КП и страницы"
+        }
+      ]
+    },
+    {
+      "id": "supplier",
+      "title": "Поставщик",
+      "intro": "Данные компании для бланка и раздела «Сведения о поставщике».",
+      "fields": [
+        {
+          "key": "company",
+          "type": "text",
+          "label": "Наименование компании",
+          "hint": "Вверху бланка, в подписи и в нижнем колонтитуле. Например: ООО «Пневмотех»."
+        },
+        {
+          "key": "letterhead",
+          "type": "textarea",
+          "rows": 4,
+          "label": "Строки бланка под наименованием",
+          "hint": "Адрес, телефон, e-mail, сайт, ИНН/КПП — каждая строка отдельно."
+        },
+        {
+          "key": "supplier",
+          "type": "pairs",
+          "label": "Сведения о поставщике",
+          "cols": [
+            "Реквизит",
+            "Значение"
+          ],
+          "hint": "Таблица в разделе «Сведения о поставщике». Строки без значения не выводятся."
+        }
+      ]
+    },
+    {
+      "id": "sign",
+      "title": "Подпись и печать",
+      "intro": "Подпись ставится на линию «(подпись)», печать — поверх, у отметки «М.П.». Лучше всего — PNG с прозрачным фоном (сканируйте на белом листе и уберите фон).",
+      "fields": [
+        {
+          "key": "signPost",
+          "type": "text",
+          "label": "Должность подписанта"
+        },
+        {
+          "key": "signName",
+          "type": "text",
+          "label": "ФИО подписанта",
+          "hint": "Пусто — КП подписывает менеджер КП (его должность и ФИО)."
+        },
+        {
+          "key": "signImage",
+          "type": "image",
+          "label": "Картинка подписи",
+          "empty": "Картинки нет — линия подписи остаётся пустой (подписать вручную)"
+        },
+        {
+          "key": "stampImage",
+          "type": "image",
+          "label": "Картинка печати",
+          "empty": "Картинки нет — остаётся отметка «М.П.»"
+        },
+        {
+          "key": "rules.signWidthCm",
+          "type": "number",
+          "label": "Ширина подписи",
+          "unit": "см",
+          "min": 1,
+          "max": 8,
+          "step": 0.1
+        },
+        {
+          "key": "rules.signHeightCm",
+          "type": "number",
+          "label": "Высота подписи",
+          "unit": "см",
+          "min": 0,
+          "max": 5,
+          "step": 0.1,
+          "hint": "0 — по пропорциям картинки."
+        },
+        {
+          "key": "rules.stampWidthCm",
+          "type": "number",
+          "label": "Диаметр (ширина) печати",
+          "unit": "см",
+          "min": 2,
+          "max": 6,
+          "step": 0.1
+        },
+        {
+          "key": "rules.stampX",
+          "type": "number",
+          "label": "Печать: сдвиг вправо от края текста",
+          "unit": "см",
+          "min": -3,
+          "max": 15,
+          "step": 0.1
+        },
+        {
+          "key": "rules.stampY",
+          "type": "number",
+          "label": "Печать: сдвиг по вертикали от «М.П.»",
+          "unit": "см",
+          "min": -6,
+          "max": 3,
+          "step": 0.1,
+          "hint": "Минус — выше строки «М.П.», на подпись."
+        },
+        {
+          "key": "rules.stampBehind",
+          "type": "toggle",
+          "label": "Печать за текстом",
+          "hint": "Для картинки с белым фоном: текст подписи останется виден поверх печати."
+        }
+      ]
+    },
+    {
+      "id": "texts",
+      "title": "Надписи",
+      "intro": "Все заголовки и подписи документа. Слова в фигурных скобках — метки, вместо них подставляются данные КП.",
+      "fields": [
+        {
+          "type": "group",
+          "title": "Бланк"
+        },
+        {
+          "key": "texts.outNo",
+          "type": "text",
+          "label": "Исх. номер",
+          "hint": "{номер}, {дата}"
+        },
+        {
+          "key": "texts.to",
+          "type": "text",
+          "label": "«Кому»"
+        },
+        {
+          "key": "texts.inn",
+          "type": "text",
+          "label": "ИНН заказчика",
+          "hint": "{inn}"
+        },
+        {
+          "key": "texts.title",
+          "type": "text",
+          "label": "Заголовок документа"
+        },
+        {
+          "key": "texts.subject",
+          "type": "text",
+          "label": "Предмет",
+          "hint": "{предмет} — оборудование с титула."
+        },
+        {
+          "key": "texts.object",
+          "type": "text",
+          "label": "Объект",
+          "hint": "{объект}"
+        },
+        {
+          "key": "texts.intro",
+          "type": "textarea",
+          "label": "Вступление",
+          "hint": "{компания}, {клиент}"
+        },
+        {
+          "type": "group",
+          "title": "Спецификация"
+        },
+        {
+          "key": "texts.offerTitle",
+          "type": "text",
+          "label": "Заголовок раздела"
+        },
+        {
+          "key": "texts.colNo",
+          "type": "text",
+          "label": "Колонка №"
+        },
+        {
+          "key": "texts.colName",
+          "type": "text",
+          "label": "Колонка наименования"
+        },
+        {
+          "key": "texts.colUnit",
+          "type": "text",
+          "label": "Колонка ед. изм."
+        },
+        {
+          "key": "texts.colQty",
+          "type": "text",
+          "label": "Колонка кол-ва"
+        },
+        {
+          "key": "texts.colPrice",
+          "type": "text",
+          "label": "Колонка цены (с НДС)",
+          "hint": "{cur}"
+        },
+        {
+          "key": "texts.colSum",
+          "type": "text",
+          "label": "Колонка суммы (с НДС)",
+          "hint": "{cur}"
+        },
+        {
+          "key": "texts.colPriceNoVat",
+          "type": "text",
+          "label": "Колонка цены (без НДС)"
+        },
+        {
+          "key": "texts.colSumNoVat",
+          "type": "text",
+          "label": "Колонка суммы (без НДС)"
+        },
+        {
+          "key": "texts.maker",
+          "type": "text",
+          "label": "Производитель",
+          "hint": "{maker}"
+        },
+        {
+          "key": "texts.model",
+          "type": "text",
+          "label": "Модель",
+          "hint": "{model}"
+        },
+        {
+          "key": "texts.country",
+          "type": "text",
+          "label": "Страна происхождения",
+          "hint": "{country} — из строки «Страна…» характеристик."
+        },
+        {
+          "key": "texts.pcs",
+          "type": "text",
+          "label": "Единица «шт.»"
+        },
+        {
+          "key": "texts.kitPart",
+          "type": "text",
+          "label": "Элемент сборки",
+          "hint": "{name}"
+        },
+        {
+          "key": "texts.inKit",
+          "type": "text",
+          "label": "Пометка «в составе»"
+        },
+        {
+          "key": "texts.included",
+          "type": "text",
+          "label": "Пометка «включено»"
+        },
+        {
+          "key": "texts.total",
+          "type": "text",
+          "label": "Итого"
+        },
+        {
+          "key": "texts.vatIncl",
+          "type": "text",
+          "label": "В т. ч. НДС",
+          "hint": "{vat}"
+        },
+        {
+          "key": "texts.noVat",
+          "type": "text",
+          "label": "Без НДС"
+        },
+        {
+          "key": "texts.grandTotal",
+          "type": "text",
+          "label": "Всего к оплате"
+        },
+        {
+          "key": "texts.inWords",
+          "type": "textarea",
+          "label": "Сумма прописью (с НДС)",
+          "hint": "{words}, {vat}, {vatSum}, {cur}"
+        },
+        {
+          "key": "texts.inWordsNoVat",
+          "type": "textarea",
+          "label": "Сумма прописью (без НДС)",
+          "hint": "{words}"
+        },
+        {
+          "key": "texts.currencyNote",
+          "type": "textarea",
+          "label": "Пояснение о валюте"
+        },
+        {
+          "key": "texts.currencyRate",
+          "type": "textarea",
+          "label": "Курс справочно"
+        },
+        {
+          "type": "group",
+          "title": "Условия"
+        },
+        {
+          "key": "texts.conditionsTitle",
+          "type": "text",
+          "label": "Заголовок раздела"
+        },
+        {
+          "key": "texts.condExtraTitle",
+          "type": "text",
+          "label": "Дополнительные условия"
+        },
+        {
+          "type": "group",
+          "title": "Техническое описание"
+        },
+        {
+          "key": "texts.specsTitle",
+          "type": "text",
+          "label": "Заголовок раздела"
+        },
+        {
+          "key": "texts.specsItem",
+          "type": "text",
+          "label": "Заголовок позиции",
+          "hint": "{n} — номер, {name} — наименование."
+        },
+        {
+          "key": "texts.qtyLine",
+          "type": "text",
+          "label": "Количество",
+          "hint": "{qty}, {unit}"
+        },
+        {
+          "key": "texts.charsTitle",
+          "type": "text",
+          "label": "Технические характеристики"
+        },
+        {
+          "key": "texts.charName",
+          "type": "text",
+          "label": "Колонка показателя"
+        },
+        {
+          "key": "texts.charValue",
+          "type": "text",
+          "label": "Колонка значения"
+        },
+        {
+          "key": "texts.kitTitle",
+          "type": "text",
+          "label": "Состав изделия"
+        },
+        {
+          "key": "texts.kitName",
+          "type": "text",
+          "label": "Колонка элемента"
+        },
+        {
+          "key": "texts.kitQty",
+          "type": "text",
+          "label": "Колонка кол-ва"
+        },
+        {
+          "key": "texts.kitChars",
+          "type": "text",
+          "label": "Колонка описания"
+        },
+        {
+          "key": "texts.optionsTitle",
+          "type": "text",
+          "label": "Дополнительная комплектация"
+        },
+        {
+          "key": "texts.specsNote",
+          "type": "textarea",
+          "label": "Примечание"
+        },
+        {
+          "type": "group",
+          "title": "Поставщик и подпись"
+        },
+        {
+          "key": "texts.supplierTitle",
+          "type": "text",
+          "label": "Заголовок сведений о поставщике"
+        },
+        {
+          "key": "texts.signPost",
+          "type": "text",
+          "label": "Должность",
+          "hint": "{должность}"
+        },
+        {
+          "key": "texts.signCaption",
+          "type": "text",
+          "label": "Подпись под линией"
+        },
+        {
+          "key": "texts.signNameCaption",
+          "type": "text",
+          "label": "Подпись под ФИО"
+        },
+        {
+          "key": "texts.stamp",
+          "type": "text",
+          "label": "Отметка печати"
+        },
+        {
+          "key": "texts.executor",
+          "type": "textarea",
+          "label": "Исполнитель",
+          "hint": "{менеджер}, {должность}, {телефон}, {email}"
+        },
+        {
+          "type": "group",
+          "title": "Колонтитул"
+        },
+        {
+          "key": "texts.footerText",
+          "type": "text",
+          "label": "Нижний колонтитул слева",
+          "hint": "{номер}, {дата}, {клиент}"
+        },
+        {
+          "key": "texts.page",
+          "type": "text",
+          "label": "Номер страницы",
+          "hint": "{page}, {pages}"
+        }
+      ]
+    },
+    {
+      "id": "colors",
+      "title": "Цвета",
+      "fields": [
+        {
+          "key": "colors.DARK",
+          "type": "color",
+          "label": "Текст"
+        },
+        {
+          "key": "colors.GRAY",
+          "type": "color",
+          "label": "Второстепенный текст"
+        },
+        {
+          "key": "colors.LINE",
+          "type": "color",
+          "label": "Линии таблиц"
+        },
+        {
+          "key": "colors.FILL",
+          "type": "color",
+          "label": "Заливка шапок таблиц"
+        }
+      ]
+    },
+    {
+      "id": "styles",
+      "title": "Стили текста",
+      "fields": [
+        {
+          "type": "group",
+          "title": "Бланк"
+        },
+        {
+          "key": "styles.company",
+          "type": "style",
+          "label": "Наименование компании",
+          "sample": "ООО «Пневмотех»"
+        },
+        {
+          "key": "styles.letterhead",
+          "type": "style",
+          "label": "Строки бланка",
+          "sample": "ИНН 0000000000, тел. +7 …"
+        },
+        {
+          "key": "styles.meta",
+          "type": "style",
+          "label": "Исх. №, адресат",
+          "sample": "Исх. № 125 от 6 октября 2026 г."
+        },
+        {
+          "key": "styles.metaBold",
+          "type": "style",
+          "label": "Наименование заказчика",
+          "sample": "АО «Заказчик»"
+        },
+        {
+          "key": "styles.title",
+          "type": "style",
+          "label": "Заголовок документа",
+          "sample": "Коммерческое предложение"
+        },
+        {
+          "key": "styles.subject",
+          "type": "style",
+          "label": "Предмет",
+          "sample": "на поставку: дизельная электростанция"
+        },
+        {
+          "type": "group",
+          "title": "Текст"
+        },
+        {
+          "key": "styles.text",
+          "type": "style",
+          "label": "Основной текст",
+          "sample": "Оборудование поставляется новым."
+        },
+        {
+          "key": "styles.heading",
+          "type": "style",
+          "label": "Заголовок раздела",
+          "sample": "1. Спецификация и стоимость"
+        },
+        {
+          "key": "styles.subheading",
+          "type": "style",
+          "label": "Заголовок позиции",
+          "sample": "3.1. Дизельная электростанция"
+        },
+        {
+          "key": "styles.label",
+          "type": "style",
+          "label": "Подзаголовок",
+          "sample": "Технические характеристики"
+        },
+        {
+          "key": "styles.words",
+          "type": "style",
+          "label": "Сумма прописью",
+          "sample": "Всего к оплате: один миллион рублей"
+        },
+        {
+          "key": "styles.note",
+          "type": "style",
+          "label": "Примечание",
+          "sample": "Характеристики приведены по данным производителя."
+        },
+        {
+          "type": "group",
+          "title": "Таблицы"
+        },
+        {
+          "key": "styles.th",
+          "type": "style",
+          "label": "Шапка таблицы",
+          "sample": "Наименование показателя"
+        },
+        {
+          "key": "styles.cell",
+          "type": "style",
+          "label": "Ячейка",
+          "sample": "Мощность, кВт"
+        },
+        {
+          "key": "styles.cellBold",
+          "type": "style",
+          "label": "Ячейка жирная",
+          "sample": "1 250 000,00"
+        },
+        {
+          "key": "styles.cellSmall",
+          "type": "style",
+          "label": "Пояснение в ячейке",
+          "sample": "Производитель: Tide Power"
+        },
+        {
+          "key": "styles.group",
+          "type": "style",
+          "label": "Группа характеристик",
+          "sample": "Двигатель"
+        },
+        {
+          "key": "styles.total",
+          "type": "style",
+          "label": "Итоги",
+          "sample": "Всего к оплате:"
+        },
+        {
+          "type": "group",
+          "title": "Подпись и колонтитул"
+        },
+        {
+          "key": "styles.sign",
+          "type": "style",
+          "label": "Подпись",
+          "sample": "/ Иванов И. И. /"
+        },
+        {
+          "key": "styles.signBold",
+          "type": "style",
+          "label": "Должность",
+          "sample": "Генеральный директор"
+        },
+        {
+          "key": "styles.caption",
+          "type": "style",
+          "label": "Пояснения под линиями",
+          "sample": "(подпись)"
+        },
+        {
+          "key": "styles.footer",
+          "type": "style",
+          "label": "Нижний колонтитул",
+          "sample": "Стр. 1 из 3"
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "title": "Файлы шаблона",
+      "intro": "Поля и размер листа — в base.docx (правится в Word). Раскладка страниц — в skeleton.js. Каждое сохранение оставляет прежнюю версию в истории.",
+      "fields": [
+        {
+          "type": "files"
+        }
+      ]
+    }
+  ]
+}
