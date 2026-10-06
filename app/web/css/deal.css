@@ -910,3 +910,68 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 /* единые заголовки блоков в «Экономике сделки»: карточки — 14,5 px полужирный, подразделы — прописными (dl-sub) */
 .dl-asmh h5,.dl-vatsec h5,.dlo-th h5,.dl-mbh h5{font-size:14.5px;font-weight:700;color:var(--ink)}
 .lg-sec h5{font-size:14px}
+
+/* 3.23: этапы оплаты поставщику и заказчику — одинаковые, в одну строку (при ширине блока от 860 px), без обрезанных подписей */
+.dl-pays{display:grid;gap:0;container-type:inline-size}
+.dl-pays>.dl-sph{display:none}
+.dl-tr.pay .dl-trw{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+.dl-tr.pay .dl-trw>select{flex:1 1 150px;min-width:130px;max-width:220px}
+.dl-tr.pay .dl-troff{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto}
+.dl-tr.pay .dl-troff input{width:44px;text-align:right}
+.dealwin .dl-form .dl-tr.pay select.dl-dk{width:92px;padding-right:20px}
+.dl-tr.pay .dl-ddt em{display:none}
+/* дата этапа — под суммой: выглядит как подпись, по щелчку — календарь */
+.dealwin .dl-form .dl-tr.pay .dl-trr .dl-ddt input[type=date]{width:118px;height:22px;min-height:22px;padding:0 2px;border:1px solid transparent;background:transparent;font-size:12px;color:var(--muted);text-align:right;border-radius:6px;cursor:pointer}
+.dealwin .dl-form .dl-tr.pay .dl-trr .dl-ddt input[type=date]:hover,.dealwin .dl-form .dl-tr.pay .dl-trr .dl-ddt input[type=date]:focus{border-color:var(--line);background:var(--field);color:var(--ink)}
+.dl-tr.pay .dl-trr b{white-space:nowrap}
+.dl-tr.pay .dl-trr small{white-space:nowrap}
+.dl-tr.pay .dl-trp{flex-direction:row;align-items:baseline;gap:4px;white-space:nowrap;padding-left:2px}
+.dl-tr.pay .dl-trp b{font-size:14px}
+.dl-tr.pay .dl-tram input{width:100%;min-width:0}
+.dl-tr.pay .dl-trn{align-self:center;margin-top:0}
+@container (min-width:760px){
+  .dl-pays>.dl-sph,.dl-pays>.dl-tr.pay{display:grid;grid-template-columns:20px 24px minmax(120px,1fr) 108px 350px 124px 28px;grid-template-areas:"mv n nm am w r x";gap:8px;align-items:center}
+  .dl-pays>.dl-sph{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);padding:0 0 4px}
+  .dl-pays>.dl-sph span:nth-child(6){text-align:right}
+  .dl-pays>.dl-tr.pay{padding:5px 0}
+  .dl-tr.pay .dl-trw{flex-wrap:nowrap}
+  .dl-tr.pay .dl-trw>select{flex:0 0 178px;min-width:0}
+}
+.dl-trf{gap:10px}
+.dl-pre{display:inline-flex;align-items:center;gap:8px;margin-left:auto;min-width:0;font-size:13px;color:var(--muted)}
+.dealwin .dl-form .dl-pre select{width:300px;min-width:0;max-width:100%;height:36px;min-height:36px;padding:4px 30px 4px 10px;font-size:13.5px;color:var(--navy);font-weight:600;border-color:var(--navy);text-overflow:ellipsis}
+@media (max-width:640px){ .dl-pre{margin-left:0;flex:1 1 100%;width:100%} .dl-pre>span{flex:none} .dealwin .dl-form .dl-pre select{flex:1 1 0;width:0} }
+.mob .dl-pre{margin-left:0;flex:1 1 100%;width:100%}
+.mob .dl-pre>span{flex:none}
+.mob dialog.dealwin .dl-form .dl-pre select{flex:1 1 0;width:0}
+.dl-pays{min-width:0;max-width:100%}
+
+/* низ карточки поставщика: компактнее, без лишних разделителей */
+.dl-sup .dl-sub{padding-top:10px;gap:8px}
+.dl-sup .dl-lglink{padding:8px 12px;border:0;border-radius:10px;background:var(--soft);font-size:13px}
+.dl-sup .dl-lglink .btn{min-height:32px;padding:4px 10px}
+.dl-sup .dl-more{border-top:0;padding-top:0;margin-top:0}
+.dl-sup .dl-supf{padding-top:8px}
+
+/* разработка документации: сумма и виды */
+.dl-doc{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px;margin-top:10px}
+.dl-doc>.dl-f{flex:0 1 320px}
+.dl-dock{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding-bottom:22px;font-size:13px}
+.dl-dock .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer;color:var(--navy)}
+.dl-dock .chip.on{background:var(--navy);border-color:var(--navy);color:#fff}
+
+/* дата договора: подставлена сегодняшняя — напоминание «уточните» */
+.dl-hd.auto{border-color:var(--warn);background:var(--warn-bg)}
+.dl-hdw{font-style:normal;font-size:11.5px;font-weight:700;color:var(--warn-ink,#9a5410);background:var(--card);border:1px solid var(--warn);border-radius:999px;padding:1px 8px;white-space:nowrap}
+
+/* «Деньги и налог»: поля по верху, подсказки не сдвигают поля */
+.dl-money{grid-template-columns:minmax(300px,1.5fr) minmax(170px,1fr) minmax(170px,1fr);align-items:start}
+@media (max-width:900px){ .dl-money{grid-template-columns:1fr} }
+.dl-money .dl-f>span:first-child{white-space:nowrap}
+.dl-big .dl-note{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 8px}
+.dl-big .dl-note b{white-space:nowrap}
+/* телефон: срок «дни + дата» не шире поля */
+.mob dialog.dealwin .dl-ddr{max-width:100%}
+.mob dialog.dealwin .dl-g>.dl-f{min-width:0;max-width:100%}
+.mob dialog.dealwin .dl-ddr>.dl-ddt{display:flex;min-width:0;width:100%}
+.mob dialog.dealwin .dl-form .dl-ddr>.dl-ddt input[type=date]{flex:1 1 auto;width:100%;min-width:0}

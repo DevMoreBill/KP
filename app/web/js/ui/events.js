@@ -76,6 +76,7 @@ document.addEventListener('click', async e=>{
     case 'galPage': return galFromPage(i, e.shiftKey);
     case 'kitAdd': case 'kitCat': case 'kitMain': case 'kitCont': case 'kitSys': case 'kitPreset': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (kitAction(a, i, b)==='async') return; break; }
     case 'galDel': it.gallery.splice(j,1); break;
+    case 'stPhoto': { const p=kitParts(it)[j]; if (!p || !p.photo || !p.photo.src) return; it.photo={...p.photo}; delete it.photoFrom; toast('Главное фото станции — фото «'+(p.name||'элемента')+'»'); break; }
     case 'galMain': if (!edSetMain(it, j)) return; toast('Главное фото заменено — прежнее перенесено в изображения'); break;
     case 'edit': return openEditor(i, b.dataset.tab);
     case 'catOf': { const c=b.dataset.cat; if (typeById(c).station || !catCache.some(x=>attrsOf(x).cat===c)) return newEquip('kp', c); return openCatalog({cat:c}); }

@@ -111,6 +111,17 @@ function edSetMain(it, j){
   return true;
 }
 
+// станция: главное фото — общий вид изделия (титул и строка КП); можно взять фото любого элемента состава
+function edStationPhoto(x,i){
+  if (!(typeof stationOf==='function' && stationOf(x))) return '';
+  const ps=kitParts(x).map((p,j)=>({p,j})).filter(o=>o.p.photo && o.p.photo.src), cur=x.photo && x.photo.src;
+  const from=cur ? ps.find(o=>o.p.photo.src===cur) : null;
+  return `<div class="st-ph"><p class="st-phn"><b>Это фото станции целиком</b> — оно стоит в строке КП и на титульном листе. Лучше всего — общий вид станции или контейнера.
+      ${from?`Сейчас — фото элемента «${esc(from.p.name||'без названия')}» из состава.`:cur?'Сейчас — своё фото.':'Фото пока нет.'}
+      Фото компрессора, насоса, осушителя и других элементов — на вкладке «Состав станции»: в КП они стоят рядом с описанием элемента.</p>
+    ${ps.length?`<div class="st-phl"><span class="muted">Взять фото элемента состава:</span>${ps.map(({p,j})=>`<button type="button" class="st-phi${p.photo.src===cur?' on':''}" data-a="stPhoto" data-i="${i}" data-j="${j}" title="${esc(p.name||'')}"><img src="${esc(p.photo.src)}" alt=""><small>${esc(p.role==='container'?'контейнер':p.name||'элемент')}</small></button>`).join('')}</div>`:''}</div>`;
+}
+
 function edDesc(x,i){
   const P=`items.${i}`, t=typeById(attrsOf(x).cat);
   const slots=(t.gallerySlots||[]).filter(s=>!WIDE_RX.test(s));
@@ -136,10 +147,11 @@ function edDesc(x,i){
         <button class="lnk" type="button" data-a="galMain" data-i="${i}" data-j="${j}" title="Сделать главным фото позиции (текущее главное встанет на его место)">★ Главное</button>
         <button class="icon" type="button" data-a="galDel" data-i="${i}" data-j="${j}" aria-label="Удалить">✕</button></div></div>`).join('');
   const schemeSlots=(t.gallerySlots||[]).filter(s=>WIDE_RX.test(s));
-  return `<div class="ed-sec"><p class="sub">Главное фото и логотип</p>
-     <div class="media2"><div>${drop(x.photo,'photo',i,'<b>Главное фото</b><br>нажмите, перетащите файл или картинку с сайта,<br>или вставьте из буфера (Ctrl+V).<br><small>Белые поля обрежутся сами.</small>')}${edMainPick(x,i)}${field('Подпись под фото',`${P}.photoCaption`,{ph:'Исполнение в кожухе'})}</div>
+  const isSt=typeof stationOf==='function' && !!stationOf(x);
+  return `<div class="ed-sec"><p class="sub">${isSt?'Главное фото станции и логотип':'Главное фото и логотип'}</p>${edStationPhoto(x,i)}
+     <div class="media2"><div>${drop(x.photo,'photo',i,`<b>${isSt?'Главное фото станции':'Главное фото'}</b><br>нажмите, перетащите файл или картинку с сайта,<br>или вставьте из буфера (Ctrl+V).<br><small>Белые поля обрежутся сами.</small>`)}${edMainPick(x,i)}${field('Подпись под фото',`${P}.photoCaption`,{ph:'Исполнение в кожухе'})}</div>
        <div>${drop(x.logo,'logo',i,attrsOf(x).maker?(logoFor(attrsOf(x).maker)?'Логотип производителя':'Логотип производителя (PNG) — у «'+esc(attrsOf(x).maker)+'» в каталоге логотипа нет'):'Логотип подставится сам, если указать производителя (точное совпадение с каталогом)',true)}</div></div></div>
-   <div class="ed-sec"><div class="sub">Описание узлов${tip("У каждого блока — своё фото: в КП текст и фото стоят рядом.")}</div>
+   <div class="ed-sec"><div class="sub">${isSt?'Описание станции по узлам':'Описание узлов'}${tip("У каждого блока — своё фото: в КП текст и фото стоят рядом."+(isSt?" Для станции — например, «Контейнер снаружи», «Внутри контейнера»; элементы состава описываются на вкладке «Состав станции».":""))}</div>
      ${blocks||'<p class="muted">Добавьте блоки описания — например, «Двигатель», «Альтернатор», «Контроллер».</p>'}
      <div class="chips">${slots.filter(s=>!have.has(norm(s))).map(s=>`<button class="chip" type="button" data-a="addFeatL" data-i="${i}" data-l="${esc(s)}">+ ${esc(s)}</button>`).join('')}<button class="chip" type="button" data-a="addFeatL" data-i="${i}" data-l="">+ свой блок</button></div></div>
    <div class="ed-sec"><div class="sub">Схемы, чертежи и другие фото${tip("Выводятся после характеристик; можно привязать к группе характеристик. Перетащите файлы или вставьте из буфера (Ctrl+V).")}</div>
@@ -161,25 +173,36 @@ function edSpec(x,i){
 function edOpts(x,i){ return `<div class="ed-sec">${optsBlock(x,i)}</div>`; }
 
 function edAI(x,i){
-  const P=`items.${i}`, r=aiParse(x._ans), props=(x._srcProps||[]).length, has=!!String(x._src||'').trim();
+  const P=`items.${i}`, r=aiParse(x._ans), props=(x._srcProps||[]).length, has=!!String(x._src||'').trim(), st0=typeById(attrsOf(x).cat).station;
   const st=x._aiStep||(r?3:has?2:1), cls=n=>`ai-st${st===n?' cur':''}${st>n?' done':''}`;
-  return `<div class="ed-sec ai3"><p class="sub">Заполнить карточку с помощью ИИ${tip('Подойдёт любой ИИ-чат: ChatGPT, Claude, Алиса (YandexGPT), GigaChat, DeepSeek и другие. Программа готовит запрос, ИИ раскладывает данные по полям, программа заполняет карточку: описание, характеристики, параметры для фильтров, титул.')}</p>
+  const srcLen=String(x._src||'').length, direct=AI_DIRECT.enabled, busy=AI_DIRECT.busy[x.id];
+  const head=(n, t, note)=>`<div class="ai-sh"><span class="ai-sn">${st>n?'✓':n}</span><b>${t}</b>${note?`<span class="ai-stc">${note}</span>`:''}</div>`;
+  return `<div class="ed-sec ai3">
+    <div class="ai-hero"><span class="ai-ic" aria-hidden="true">✨</span>
+      <div><h4>Автозаполнение карточки</h4><p>Дайте источник — ИИ разложит данные по полям: ${st0?'описание станции, требования к контейнеру, недостающие элементы состава':'наименование, описание, характеристики, параметры для фильтров'}. Перед заполнением вы увидите, что изменится.</p></div>
+      <span class="ai-mode${direct?' on':''}" title="${direct?'Запрос уходит в нейросеть с компьютера-сервера — включает администратор в «Настройки → Нейросеть»':'Запрос копируется в любой ИИ-чат: ChatGPT, Claude, Алиса, GigaChat, DeepSeek'}">${direct?`● ${esc(AI_DIRECT.provider)} в программе`:'Через ИИ-чат'}</span></div>
     <ol class="ai-steps">
-    <li class="${cls(1)}"><b>Откуда взять данные</b><span class="muted">Ссылка на страницу товара, текст паспорта или каталога — или просто модель в наименовании.</span>
-      <div class="ai-url"><input type="url" data-p="${P}._srcUrl" value="${esc(x._srcUrl||x.pageUrl||'')}" placeholder="https://… ссылка на страницу товара" autocomplete="off"><button class="btn" type="button" data-a="aiFetch" data-i="${i}">Загрузить со страницы</button></div>
-      <div class="row ai-file"><label class="btn ghost">Загрузить файл: ТЗ, паспорт (.docx, .txt)<input type="file" accept=".docx,.txt,.csv,.md" hidden data-aifile="${i}"></label>${typeById(attrsOf(x).cat).station?'<span class="muted">ТЗ заказчика — ИИ разложит требования к контейнеру и добавит недостающие элементы станции.</span>':''}</div>
-      <textarea data-p="${P}._src" rows="6" placeholder="…или вставьте сюда текст: описание, таблицу характеристик из паспорта или PDF. Можно ничего не вставлять — тогда ИИ ищет данные по модели «${esc(x.name||'из наименования')}».">${esc(x._src||'')}</textarea>
+    <li class="${cls(1)}">${head(1, 'Откуда взять данные', has?`загружено ${srcLen.toLocaleString('ru-RU')} знаков${props?` · характеристик: ${props}`:''}`:'можно пропустить — хватит модели в наименовании')}
+      <div class="ai-src">
+        <div class="ai-srcc ai-srcu"><span class="ai-srct">🔗 Страница товара на сайте</span>
+          <div class="ai-url"><input type="url" data-p="${P}._srcUrl" value="${esc(x._srcUrl||x.pageUrl||'')}" placeholder="https://… ссылка на страницу товара" autocomplete="off"><button class="btn primary" type="button" data-a="aiFetch" data-i="${i}">Загрузить</button></div>
+          <small class="muted">Возьмём описание, все вкладки страницы и таблицы характеристик.</small></div>
+        <label class="ai-srcc ai-srcf"><span class="ai-srct">📄 Файл</span><span class="ai-fileb">Выбрать .docx или .txt</span><small class="muted">${st0?'ТЗ заказчика — ИИ разложит требования к контейнеру и добавит недостающие элементы.':'Паспорт, каталог, ТЗ.'}</small><input type="file" accept=".docx,.txt,.csv,.md" hidden data-aifile="${i}"></label>
+      </div>
+      <details class="ai-txt"${has?' open':''}><summary>${has?'Текст для ИИ — можно поправить':'✍ Вставить текст вручную: описание, таблицу из паспорта или PDF'}</summary>
+        <textarea data-p="${P}._src" rows="6" placeholder="Вставьте текст. Можно ничего не вставлять — тогда ИИ ищет данные по модели «${esc(x.name||'из наименования')}».">${esc(x._src||'')}</textarea></details>
       ${props?`<div class="ai-props"><span>Со страницы взято характеристик: <b>${props}</b>.</span><button class="btn ghost" type="button" data-a="aiProps" data-i="${i}">Перенести в «Характеристики» без ИИ</button></div>`:''}</li>
-    ${AI_DIRECT.enabled?`<li class="${cls(2)}"><b>Заполните автоматически</b><span class="muted">${esc(AI_DIRECT.provider)} разложит данные по полям прямо в программе — ответ появится в шаге 3.</span>
-      <div class="row"><button class="btn primary" type="button" data-a="aiAuto" data-i="${i}"${AI_DIRECT.busy[x.id]?' disabled':''}>${AI_DIRECT.busy[x.id]?'Заполняю…':`✨ Заполнить автоматически — ${esc(AI_DIRECT.provider)}`}</button></div>
+    ${direct?`<li class="${cls(2)}">${head(2, 'Заполнить с помощью нейросети', `${esc(AI_DIRECT.provider)} · ответ — в шаге 3`)}
+      <div class="row"><button class="btn primary ai-go" type="button" data-a="aiAuto" data-i="${i}"${busy?' disabled':''}>${busy?'<span class="ai-spin" aria-hidden="true"></span> Заполняю…':`✨ Заполнить автоматически`}</button><span class="muted">Обычно 10–40 секунд.</span></div>
       <details class="ai-pr"><summary>или через ИИ-чат в браузере (можно приложить скриншот или PDF)</summary>${aiSitesHtml('aiCopy', i)}<textarea rows="8" readonly>${esc(aiPrompt(x))}</textarea></details></li>`
-    :`<li class="${cls(2)}"><b>Отправьте запрос в ИИ</b><span class="muted">Кнопка с названием ИИ копирует запрос и открывает сайт в новой вкладке — там вставьте (Ctrl+V) и отправьте. Можно приложить скриншот или PDF паспорта.</span>
+    :`<li class="${cls(2)}">${head(2, 'Отправьте запрос в ИИ', 'кнопка копирует запрос и открывает сайт')}
+      <p class="ai-how">Нажмите кнопку с названием ИИ → в открывшейся вкладке вставьте <kbd>Ctrl</kbd>+<kbd>V</kbd> и отправьте. Можно приложить скриншот или PDF паспорта.</p>
       ${aiSitesHtml('aiCopy', i)}
       <details class="ai-pr"><summary>Показать запрос</summary><textarea rows="8" readonly>${esc(aiPrompt(x))}</textarea></details></li>`}
-    <li class="${cls(3)}"><b>${AI_DIRECT.enabled?'Проверьте ответ':'Вставьте ответ ИИ'}</b><span class="muted">${AI_DIRECT.enabled?'Здесь ответ нейросети и что заполнится; при ручном способе — вставьте ответ чата сюда.':'Скопируйте ответ целиком (кнопка «Копировать» под ответом) и вставьте сюда — программа сразу покажет, что заполнится.'}</span>
-      <textarea data-p="${P}._ans" data-aians="${i}" rows="5" placeholder="Ctrl+V — ответ ИИ">${esc(x._ans||'')}</textarea>
+    <li class="${cls(3)}">${head(3, direct?'Проверьте и заполните':'Вставьте ответ ИИ и заполните', r&&r.kind!=='bad'?'ответ распознан':'')}
+      <textarea data-p="${P}._ans" data-aians="${i}" rows="5" placeholder="${direct?'Здесь появится ответ нейросети (или вставьте ответ чата)':'Ctrl+V — ответ ИИ целиком (кнопка «Копировать» под ответом в чате)'}">${esc(x._ans||'')}</textarea>
       <div class="ai-prev" data-aiprev="${i}">${aiSummary(r)}</div>
-      <div class="row"><button class="btn primary" type="button" data-a="aiApply" data-i="${i}" data-aiok="${i}" ${r&&r.kind!=='bad'?'':'disabled'}>Заполнить карточку</button>
+      <div class="row ai-apply"><button class="btn primary" type="button" data-a="aiApply" data-i="${i}" data-aiok="${i}" ${r&&r.kind!=='bad'?'':'disabled'}>Заполнить карточку</button>
         <label class="row muted" style="gap:6px"><input type="checkbox" data-aikeep="${i}" ${x._aiKeep?'checked':''} style="width:auto">не менять уже заполненное</label></div></li></ol>
     ${x._aiMsg?`<p class="ai-msg" data-aistat="${i}">${esc(x._aiMsg)}</p>`:''}</div>`;
 }
