@@ -1137,12 +1137,18 @@ def build(o, f, types, old=None, put_image=None):
     if not old or doc.get('name') == orig.get('name'):
         doc['name'] = o['name']
     feats = doc.get('features') or []
-    fd = next((x for x in feats if x.get('feed') and not x.get('feedOpts')), None)
-    if desc and (not fd or _hash(fd.get('text') or '') == orig.get('desc')):
-        if fd:
-            fd['text'] = desc
-        else:
-            feats.insert(0, {'id': hashlib.md5((o['oid'] + 'd').encode()).hexdigest()[:8], 'label': 'Описание', 'text': desc, 'feed': True})
+    # описание из фида — несколько блоков карточки (feed_files.desc_blocks); пока их не правили вручную, они обновляются целиком
+    fds = [x for x in feats if x.get('feed') and not x.get('feedOpts')]
+    blocks = feed_files.desc_blocks(desc) if desc else []
+    untouched = (not fds or _hash('\n'.join(x.get('text') or '' for x in fds)) == orig.get('desc')
+                 or _hash([[x.get('label') or '', x.get('text') or ''] for x in fds]) == orig.get('descBlocks'))
+    if blocks and untouched:
+        pos = feats.index(fds[0]) if fds else 0
+        for x in fds:
+            feats.remove(x)
+        feats[pos:pos] = [{'id': hashlib.md5((o['oid'] + 'd' + ('' if i == 0 else str(i))).encode()).hexdigest()[:8], 'label': lab, 'text': txt, 'feed': True}
+                          for i, (lab, txt) in enumerate(blocks)]
+    new_orig['descBlocks'] = _hash([[lab, txt] for lab, txt in blocks])
     opts = o.get('opts') or []
     fo = next((x for x in feats if x.get('feedOpts')), None)
     otext = '; '.join('%s — %s %s' % (x['name'], _fmt(x['price']), o['cur']) for x in opts) if opts else ''
