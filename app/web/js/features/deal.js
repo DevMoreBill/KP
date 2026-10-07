@@ -9,9 +9,13 @@
 
 const DL = { cal:{}, calLoading:{}, ex:false, exKp:null, exDeal:null, key:null, keyErr:'', sups:null, cus:null, saveT:{} };
 const DL_DEF_KEYS = { money:'money', tax:'tax', 'target.v':'target', 'target.type':'targetType' };
-const DL_KEY_SPREAD = 3;                       // стоимость денег по умолчанию: ключевая ставка ЦБ + 3 п.п. годовых
+const dlSpread = () => DEFN('deal.spread', 3);   // стоимость денег по умолчанию: ключевая ставка ЦБ + п.п. годовых (Настройки → Умолчания)
 
-function dealDefaults(){ try{ return JSON.parse(localStorage.getItem('kp.dealDef')||'{}')||{}; }catch(e){ return {}; } }
+// последние значения менеджера в этом браузере (стоимость денег, налог, цель); заданное администратором в «Умолчаниях» — главнее
+function dealDefaults(){ let o={}; try{ o=JSON.parse(localStorage.getItem('kp.dealDef')||'{}')||{}; }catch(e){ o={}; }
+  const set=k=>typeof DEFS_SRV!=='undefined' && DEFS_SRV[k] && typeof DEFS_SRV[k]==='object';
+  if (set('deal.tax')) delete o.tax; if (set('deal.spread')) delete o.money; if (set('deal.target')){ delete o.target; delete o.targetType; }
+  return o; }
 
 function dealRememberDefault(path, v){ const k=DL_DEF_KEYS[path]; if (!k) return; try{ const o=dealDefaults(); o[k]=v; localStorage.setItem('kp.dealDef', JSON.stringify(o)); }catch(e){} }
 
@@ -23,7 +27,7 @@ function dealAllowed(st=S){
   return st.authorId ? st.authorId===me : st.managerId===me;
 }
 
-const dlMoneyAuto = () => DL.key && DL.key.rate>0 ? (DL.key.rate+DL_KEY_SPREAD)/12 : 2;
+const dlMoneyAuto = () => DL.key && DL.key.rate>0 ? (DL.key.rate+dlSpread())/12 : 2;
 
 // ---------- коды ТН ВЭД и пошлины позиции: вручную в этом КП → по модели (база) → по категории (база) → справочно
 function dlHsOf(x, d=S.deal){
@@ -137,7 +141,8 @@ function dealEnsure(){
   d.sup=[]; d.map={};
   keys.forEach((mk,k)=>{ const s=dealNewSupplier('s'+(k+1), def); const pd=mk[0]==='\u0001' ? (DL.sups||[]).find(p=>'\u0001'+p.id===mk) : null; s.name=pd?pd.name:mk;
     const p=pd||dlDir(mk); if (p) dlApplyDir(s,p);
-    else { const cur=its.find(x=>keyOf(x)===mk && x.cost)?.costCur; s.country='Россия'; dlApplyCountry(s); if (cur && cur!=='RUB') s.cur=cur; }   // по умолчанию покупаем в России
+    else { const cur=its.find(x=>keyOf(x)===mk && x.cost)?.costCur;      // страна по умолчанию — из «Умолчаний» (обычно Россия)
+      if (cur && cur!=='RUB'){ s.cur=cur; if (!s.country){ s.cusMode='calc'; s.log.cur=cur; } } }
     d.sup.push(s); its.filter(x=>keyOf(x)===mk).forEach(x=>{ d.map[x.id]=s.id; }); });
   if (!d.sup.length) d.sup=[dealNewSupplier('s1', def)];
   S.deal=d; dlAsmAuto(d); dlStartAuto(d); return d;
@@ -146,7 +151,7 @@ function dealEnsure(){
 // дата договора по умолчанию — сегодня (startAuto): пока её не указали вручную, каждый день сдвигается на сегодня,
 // в шапке окна — напоминание «уточните»
 function dlToday(){ const t=new Date(); return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
-function dlStartAuto(d){ if (DL.ex || !d) return;
+function dlStartAuto(d){ if (DL.ex || !d || (!d.start && !DEF('deal.startToday'))) return;
   if (!d.start){ d.start=dlToday(); d.startAuto=true; } else if (d.startAuto && d.start!==dlToday()) d.start=dlToday(); }
 
 const dlKp = () => DL.ex ? DL.exKp : dealKpInputs();
@@ -521,7 +526,7 @@ function dlCustoms(c){
           <td class="c-src">${h.src?`<span class="dl-badge ${h.src==='справочно'?'warn':'kp'}" title="${esc(h.src==='справочно'?(dealHsAuto(attrsOf(x).cat,attrsOf(x))||{}).note||'':'')}">${esc(h.src)}</span>`:'<span class="dl-badge warn">укажите</span>'}
             <select class="dl-hspick" data-hspick="${esc(x.id)}" aria-label="Взять код и ставку из справочника"><option value="">из справочника…</option>${dlHsCats().map(o=>`<option value="${esc(o.key)}">${esc(o.name)} · ${esc(o.code||'—')} · ${esc(o.duty||'0')} %</option>`).join('')}</select></td>
           <td class="num">${ln?dlRub0(ln.cv):'—'}</td><td class="num">${ln?dlRub0(ln.dutyA):'—'}</td></tr>`; }).join('');
-      body=`${rows?`<table class="dl-it dl-hs"><thead><tr><th>Позиция</th><th>Код ТН ВЭД</th><th>Пошлина</th><th></th><th class="num">Тамож. стоимость</th><th class="num">Пошлина, ₽</th></tr></thead><tbody>${rows}</tbody></table>`:''}
+      body=`${rows?`<div class="dl-tw dl-hsw"><table class="dl-it dl-hs"><thead><tr><th>Позиция</th><th>Код ТН ВЭД</th><th>Пошлина</th><th></th><th class="num">Тамож. стоимость</th><th class="num">Пошлина, ₽</th></tr></thead><tbody>${rows}</tbody></table></div>`:''}
         <div class="dl-g g3">${dlField('НДС на ввоз', P+'.ivat', {calc:c, select:[['22','22 %'],['10','10 %'],['0','0 %']]})}
           ${dlField('Таможенный сбор', P+'.fee', {calc:c, unit:'₽', auto:cs.fee, autoLabel:'по шкале', autoTitle:'Сбор за таможенные операции: '+(customsFeeBand(cs.cv)||'по таможенной стоимости')+' ('+CUSTOMS_FEES.title+')', q:'Фиксированная сумма за декларацию — зависит от общей таможенной стоимости партии (цена + доставка до границы + страховка): до 200 тыс. ₽ — 1 231 ₽, до 1,2 млн — 4 924 ₽, до 2,7 млн — 13 541 ₽, до 10 млн — 49 240 ₽, свыше — 73 860 ₽ ('+CUSTOMS_FEES.title+').'})}</div>
         ${dlCusSum(cs)}`;
@@ -814,7 +819,7 @@ function dlBg(c){
         ${dlField('Сумма гарантии', P+'.base', {calc:c, select:cg.type==='adv'?[['adv','от аванса заказчика'],['pct','% от цены КП'],['sum','в рублях']]:[['pct','% от цены КП'],['sum','в рублях'],['adv','от аванса заказчика']]})}
         ${dlField(cg.base==='sum'?'Сумма':'Процент', P+'.v', {calc:c, unit, ph:cg.base==='adv'?'100':cg.base==='pct'?'10':'500 000'})}</div>
       <div class="dl-g g3">${dlField('Срок гарантии', P+'.days', {calc:c, int:true, auto:cg.daysAuto, autoLabel:cg.type==='adv'?'до поставки':cg.type==='perf'?'до конца ПНР':'год', date:{base:0, val:cg.days, kind:false}})}
-        ${dlField('Ставка банка', P+'.rate', {calc:c, unit:'% годовых', ph:String(DEAL_BG_RATE).replace('.',','), q:'Комиссия банка за гарантию — процент годовых от суммы гарантии за её срок. По умолчанию '+String(DEAL_BG_RATE).replace('.',',')+' %; рынок 2026: обычно 1–3,5 %, в среднем около 2,2 % (Сбербанк — от 2 %, ВТБ — от 3,7 %). Впишите ставку своего банка.'})}
+        ${dlField('Ставка банка', P+'.rate', {calc:c, unit:'% годовых', ph:String(dealBgRate()).replace('.',','), q:'Комиссия банка за гарантию — процент годовых от суммы гарантии за её срок. По умолчанию '+String(dealBgRate()).replace('.',',')+' %; рынок 2026: обычно 1–3,5 %, в среднем около 2,2 % (Сбербанк — от 2 %, ВТБ — от 3,7 %). Впишите ставку своего банка.'})}
         ${dlField('Минимальная комиссия', P+'.min', {calc:c, unit:'₽', ph:'0', q:'Если у банка есть минимальная комиссия за гарантию — впишите её.'})}</div>
       <p class="dl-bgr"><span>Сумма гарантии <b>${dlRub0(cg.amount)}</b> · комиссия банка <b>${dlRub0(cg.fee)}</b> <span class="muted">— при подписании договора, уменьшает прибыль</span></span><button type="button" class="lnk" data-dlx="delbg" data-k="${k}">Убрать</button></p></div>`; }).join('');
   return `<div class="dl-card dl-mb"><div class="dl-mbh"><h5>Банковская гарантия</h5>${dlQ('Если заказчик просит безотзывную банковскую гарантию — на возврат аванса, исполнения договора или гарантийных обязательств, — добавьте её: комиссия банка войдёт в расходы.')}<span class="dl-stc opt">необязательно</span>${c.BG>0?`<b class="dl-mbs">${dlRub0(c.BG)}</b>`:''}</div>
@@ -904,7 +909,7 @@ function dealRenderIn(dlg){
   const d=dlDeal(); lgSync(d);                 // доставка по России из вкладки «Логистика» — в расчёт
   const kp=dlKp(), c=dealCalc(kp,d);
   if (dealSyncConds(c)) persist();
-    const keyT = DL.key ? `ключевая ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD}` : 'по умолчанию';
+    const keyT = DL.key ? `ключевая ${dlIn(DL.key.rate)} % + ${dlSpread()}` : 'по умолчанию';
   const d0h=dlD0(), calT=d0h?dlCalNote(d0h).replace(/<[^>]+>/g,''):'';
   // на телефоне шапка — одна строка, дата договора — в строке с прибылью (рабочая зона больше)
   const mob=typeof isMob==='function' && isMob();
@@ -947,8 +952,8 @@ function dealRenderIn(dlg){
       ${dlCash(c)}`, '', ['Итого расходы', c.M+c.E+c.Dc+c.W+c.Bn+c.BG+xK, xNote?'в т. ч. '+xNote:''], 'mnt') }
     ${dlStep(0, 'Цена КП и валюта', DL.ex?'Значения примера.':'Здесь меняются цены КП, валюта и курс — так же, как в разделе «Цены и валюта».', dlKpPrice(c), '', ['Цена КП с НДС', c.S, `выручка без НДС ${dlRub0(c.R)}, НДС ${dlIn(c.v)} % — ${dlRub0(c.VATs)}`], 'price')}
     ${dlStep(0, 'Деньги и налог', 'Обычно менять не нужно: стоимость денег — по ключевой ставке ЦБ, НДС продажи — как в КП, налог на прибыль — 25 %.', `<div class="dl-card"><div class="dl-g dl-money">
-      ${dlField('Стоимость денег', 'money', {calc:c, unit:'% в месяц', auto:kp.moneyAuto, autoLabel:keyT, autoTitle:DL.key?`Ключевая ставка ЦБ РФ ${dlIn(DL.key.rate)} % с ${DL.key.date} + ${DL_KEY_SPREAD} п.п. годовых, делённое на 12`:(DL.keyErr?'Ключевая ставка ЦБ недоступна: '+DL.keyErr:''),
-        hint:DL.key?`Ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD} п.п. = ${dlIn(DL.key.rate+DL_KEY_SPREAD)} % годовых → ${dlIn((DL.key.rate+DL_KEY_SPREAD)/12)} % в месяц`:'Процент в месяц на деньги, вложенные до оплаты заказчика',
+      ${dlField('Стоимость денег', 'money', {calc:c, unit:'% в месяц', auto:kp.moneyAuto, autoLabel:keyT, autoTitle:DL.key?`Ключевая ставка ЦБ РФ ${dlIn(DL.key.rate)} % с ${DL.key.date} + ${dlSpread()} п.п. годовых, делённое на 12`:(DL.keyErr?'Ключевая ставка ЦБ недоступна: '+DL.keyErr:''),
+        hint:DL.key?`Ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${dlSpread()} п.п. = ${dlIn(DL.key.rate+dlSpread())} % годовых → ${dlIn((DL.key.rate+dlSpread())/12)} % в месяц`:'Процент в месяц на деньги, вложенные до оплаты заказчика',
         q:'Сколько стоят деньги, вложенные в сделку до оплаты заказчика: кредит или упущенный доход. По умолчанию — ключевая ставка ЦБ + 3 п.п. в год.'})}
       ${DL.ex?dlField('НДС продажи', 'over.vat', {calc:c, unit:'%', kp:kp.vat}):`<label class="f dl-f"><span>НДС продажи <i>%</i>${dlQ('Ставка НДС в цене КП — та же, что в разделе «Условия». С 2026 года основная ставка — 22 %.')}</span><span class="dl-in"><input type="text" inputmode="numeric" data-kpvat value="${esc(S.vat)}" aria-label="НДС продажи, %"></span><small class="muted">Как в КП и разделе «Условия»</small></label>`}
       ${dlField('Налог на прибыль', 'tax', {calc:c, unit:'%', hint:'С 2025 года — 25 % (ст. 284 НК РФ)', q:'Считается с прибыли после всех расходов, включая финансирование. Проценты по кредиту уменьшают налог; если «стоимость денег» — упущенный доход на свои деньги, налоговая её не учитывает, и налог будет немного больше.'})}</div></div>
@@ -1125,7 +1130,7 @@ function dealBind(dlg){
       const f=dlg.querySelector('.dl-form'), bx=dlg.querySelector('.dl-b'), tw=dlg.querySelector('.dl-tabw'), t=dlg.querySelector('.dl-tabs');
       if (f) f.scrollTop=0; if (bx && tw && bx.scrollTop>tw.offsetTop) bx.scrollTop=tw.offsetTop;
       const on=t&&t.querySelector('.dl-tab.on'); if (on) t.scrollLeft=Math.max(0, on.offsetLeft-t.clientWidth/2+on.offsetWidth/2); return; }
-    if (a==='addbg'){ const c=dealCalc(dlKp(), d); d.bg=[...(Array.isArray(d.bg)?d.bg:[]), {type:c.advSum>0?'adv':'perf', rate:String(DEAL_BG_RATE).replace('.',',')}]; }
+    if (a==='addbg'){ const c=dealCalc(dlKp(), d); d.bg=[...(Array.isArray(d.bg)?d.bg:[]), {type:c.advSum>0?'adv':'perf', rate:String(dealBgRate()).replace('.',',')}]; }
     if (a==='delbg'){ d.bg=(d.bg||[]).filter((_,j)=>j!==k); }
     if (a==='where'){ const s=d.sup[k]; s.where=b.dataset.v;
       if (b.dataset.v==='ru'){ s.country='Россия'; dlApplyCountry(s); }
@@ -1137,10 +1142,8 @@ function dealBind(dlg){
     if (a==='trmode'){ const t=d.cust.tr[k], c=dealCalc(dlKp(), d), ct=c.trs[k];
       if (b.dataset.v==='sum' && t.mode!=='sum'){ t.mode='sum'; t.sum=ct&&ct.p?dlIn(Math.round(c.S*ct.p/100)):''; }
       else if (b.dataset.v==='pct' && t.mode==='sum'){ t.mode='pct'; t.pct=ct&&ct.p?dlIn(ct.p):''; } }
-    if (a==='trpreset'){ d.cust.tr=JSON.parse(JSON.stringify(DL_TR_PRESETS[b.dataset.v][1])); d.days={}; }
     if (a==='addsp'){ const p=d.sup[k].pay; p.splice(p.length-1, 0, {name:'', pct:'', ev:'ready', off:'0'}); dlSaveSupplier(d.sup[k]); }
     if (a==='delsp'){ d.sup[k].pay.splice(+b.dataset.j, 1); dlSaveSupplier(d.sup[k]); }
-    if (a==='sppreset'){ d.sup[k].pay=JSON.parse(JSON.stringify(DL_SP_PRESETS[b.dataset.v][1])); dlSaveSupplier(d.sup[k]); }
     if (a==='addtr'){ const tr=d.cust.tr; tr.splice(tr.length-1, 0, {name:'', pct:'', ev:tr.length>1?'ready':'sign', off:'0'}); }
     if (a==='deltr'){ d.cust.tr.splice(k,1); }
     if (a==='dock'){ d.docK={...(d.docK||{})}; d.docK[b.dataset.v]=!d.docK[b.dataset.v]; }

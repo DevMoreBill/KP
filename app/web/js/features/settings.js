@@ -5,8 +5,14 @@
 
 const ST = { tab:'stats', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f:{}}, imp:null, chart:'day' };
 
-const ST_TABS = [['stats','Статистика'],['moderation','Модерация'],['delete','Справочники и данные'],['trash','Корзина'],['audit','Журнал действий'],
-  ['backup','Резервные копии'],['logistics','Логистика'],['feeds','Фиды поставщиков'],['templates','Шаблоны и категории'],['keys','Ключи API'],['ai','Нейросеть'],['access','Менеджеры и доступ'],['users','Администраторы'],['security','Пароль и доступ']];
+// вкладки по смыслу: обзор → данные → как работает программа → подключения → доступ
+const ST_NAV = [
+  ['Обзор', [['stats','Статистика'],['audit','Журнал действий']]],
+  ['Данные', [['delete','Справочники и данные'],['moderation','Модерация правок'],['trash','Корзина'],['backup','Копии и обслуживание базы']]],
+  ['Работа программы', [['defaults','Умолчания'],['templates','Шаблоны КП и категории'],['logistics','Логистика: тарифы'],['feeds','Фиды поставщиков']]],
+  ['Подключения', [['ai','Нейросеть'],['keys','Ключи API']]],
+  ['Доступ', [['access','Менеджеры и права'],['users','Администраторы'],['security','Мой пароль']]]];
+const ST_TABS = ST_NAV.flatMap(g=>g[1]);
 
 const ACT = { login:'Вход в «Настройки»', backup_db:'Копия базы', maintain_db:'Сжатие и проверка базы', purge_images:'Удаление лишних изображений', create_admin:'Новый администратор', edit_admin:'Изменение администратора', delete_admin:'Удаление администратора', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
   admin_request:'Запрос без входа', edit_settings:'Изменение настроек', edit_template:'Изменение шаблона', create_kp:'Создание КП', edit_kp:'Изменение КП',
@@ -69,7 +75,8 @@ function stRender(){
     setTimeout(()=>($('#stLg')&&!$('#stLg').value?$('#stLg'):$('#stPw'))?.focus(),30);
     return;
   }
-  d.innerHTML=head+`<div class="st-b"><nav class="st-nav">${ST_TABS.map(([k,l])=>`<button type="button" class="${ST.tab===k?'on':''}" data-sttab="${k}">${l}</button>`).join('')}</nav>
+  if (!ST_TABS.some(([k])=>k===ST.tab)) ST.tab='stats';
+  d.innerHTML=head+`<div class="st-b"><nav class="st-nav">${ST_NAV.map(([g,tabs])=>`<span class="st-ng">${g}</span>${tabs.map(([k,l])=>`<button type="button" class="${ST.tab===k?'on':''}" data-sttab="${k}">${l}</button>`).join('')}`).join('')}</nav>
     <section class="st-main" id="stMain"><p class="empty">Загружаю…</p></section></div>`;
   stTab();
 }
@@ -77,7 +84,7 @@ function stRender(){
 async function stTab(){
   const m=$('#stMain'); if (!m) return;
   try{ await ({stats:stStats, moderation:stModeration, delete:stDelete, trash:stTrash, audit:stAudit, backup:stBackup,
-    templates:stTemplates, logistics:stLogistics, feeds:stFeeds, keys:stKeys, ai:stAi, access:stAccess, users:stUsers, security:stSecurity})[ST.tab](m); }
+    templates:stTemplates, logistics:stLogistics, feeds:stFeeds, keys:stKeys, ai:stAi, access:stAccess, users:stUsers, security:stSecurity, defaults:stDefaults})[ST.tab](m); }
   catch(e){ if (ADMIN.on) m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; }
 }
 
@@ -272,9 +279,10 @@ async function stBackup(m){
       <p class="muted">.json — выбранные разделы (без изображений), можно загрузить обратно. .sqlite3 — файл базы целиком.</p></div>
     <div class="st-card"><p class="sub">Импорт</p><input type="file" id="impF" accept=".json,application/json" class="sr-file"><label for="impF" class="btn">Выбрать файл резервной копии…</label>
       <div id="impP"></div></div>
+    <div class="st-card" id="stMigr"></div>
     <div class="st-card"><p class="sub">История</p>${ops.map(x=>`<div class="st-row"><div><b>${esc(ACT[x.action])}</b><span class="muted">${esc(stTime(x.timestamp))} · ${esc(x.entityId||'')}${x.after&&x.after.bytes?' · '+stSize(x.after.bytes):''}</span></div></div>`).join('')||'<p class="muted">Операций ещё не было.</p>'}</div>`;
-  stMaint($('#stMaint'));
-  m.onclick=async e=>{ const x=e.target.closest('[data-x]'); if (x){
+  stMaint($('#stMaint')); stMigr($('#stMigr'));
+  m.onclick=async e=>{ if (e.target.closest('#stMigr')) return; const x=e.target.closest('[data-x]'); if (x){
       const secs2=[...m.querySelectorAll('[data-xs]:checked')].map(c=>c.dataset.xs); if (x.dataset.x==='json' && !secs2.length) return toast('Отметьте разделы');
       const url = x.dataset.x==='json' ? 'export?sections='+secs2.join(',') : 'export/sqlite';
       const r=await fetch('/api/admin/'+url,{headers:{'X-CSRF-Token':ADMIN.csrf}}); if (!r.ok) return toast(await r.text());
@@ -340,21 +348,26 @@ async function stAi(m, note){
 }
 
 async function stSecurity(m){
-  const mg=await aapi('migrations');
   m.innerHTML=`<div class="st-card"><form id="pwF" autocomplete="off"><p class="sub">Сменить свой пароль${(ST.status||{}).login?` (${esc(ST.status.login)})`:''}</p>
       <div class="grid g2"><label class="f"><span>Текущий пароль</span><input type="password" id="pwO" autocomplete="current-password" required></label>
       <label class="f"><span>Новый пароль</span><input type="password" id="pwN" autocomplete="new-password" required></label></div>
       <p class="msg err" id="pwE" style="text-align:left"></p><button class="btn primary" type="submit">Сменить пароль</button></form></div>
     <div class="st-card"><p class="sub">Доступ</p><p class="muted">Вход закрывается через ${(ST.status||{}).idleMinutes||15} минут бездействия. Пять неверных паролей за 10 минут — пауза 10 минут.
       Пароль другого администратора меняется во вкладке «Администраторы». Забыли пароль все администраторы: на компьютере, где работает программа, создайте файл <b>data\\admin-reset.txt</b> и перезапустите программу — учётные записи администраторов удалятся, создайте новую здесь.</p></div>
-    <details class="more"><summary>Миграции базы (для обслуживания)</summary>${mg.applied.map(id=>`<div class="st-row"><div><b>${esc(id)}</b><span class="muted">применена</span></div>
-      <div class="acts"><button class="btn danger" type="button" data-mdown="${esc(id)}">Откатить</button></div></div>`).join('')||'<p class="muted">Нет применённых миграций.</p>'}
-      <p class="muted">Откат удаляет таблицы журнала действий, корзины и модерации (перед этим — копия базы в data\\backup). При следующем запуске программы миграция применится снова.</p></details>`;
+`;
   $('#pwF').onsubmit=async e=>{ e.preventDefault();
     try{ await ajson('password',{old:$('#pwO').value, new:$('#pwN').value}); toast('Пароль изменён'); stSecurity(m); }catch(err){ $('#pwE').textContent=err.message; } };
-  m.onclick=async e=>{ const b=e.target.closest('[data-mdown]'); if (!b) return;
+}
+
+// миграции базы — в «Копии и обслуживание базы» (для обслуживания, обычно не нужны)
+async function stMigr(box){
+  if (!box) return; let mg; try{ mg=await aapi('migrations'); }catch(e){ box.innerHTML=''; return; }
+  box.innerHTML=`<details class="more"><summary>Миграции базы (для обслуживания)</summary>${mg.applied.map(id=>`<div class="st-row"><div><b>${esc(id)}</b><span class="muted">применена</span></div>
+      <div class="acts"><button class="btn danger" type="button" data-mdown="${esc(id)}">Откатить</button></div></div>`).join('')||'<p class="muted">Нет применённых миграций.</p>'}
+      <p class="muted">Откат удаляет таблицы журнала действий, корзины и модерации (перед этим — копия базы в data\\backup). При следующем запуске программы миграция применится снова.</p></details>`;
+  box.onclick=async e=>{ const b=e.target.closest('[data-mdown]'); if (!b) return;
     if (!await stConfirm('Откатить миграцию?','Журнал действий, корзина и правки на модерации будут удалены. Перед этим сохраняется копия базы.','Откатить')) return;
-    await ajson(`migrations/${b.dataset.mdown}/down`); toast('Миграция откачена'); stSecurity(m); };
+    await ajson(`migrations/${b.dataset.mdown}/down`); toast('Миграция откачена'); stMigr(box); };
 }
 
 // ---------- администраторы: логин, имя, пароль

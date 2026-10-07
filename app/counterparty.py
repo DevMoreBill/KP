@@ -153,11 +153,6 @@ class Counterparties:
         if not re.match(r'^[A-Za-z0-9_-]{1,64}$', cid or ''):
             raise ValueError('Некорректный идентификатор контрагента')
 
-    def list_clients(self):
-        out = self.store.clients_all()
-        out.sort(key=lambda c: c.get('usedAt') or c.get('updatedAt') or '', reverse=True)
-        return out
-
     def save_client(self, cid, body, by='', base_rev=None):
         c = json.loads(body.decode('utf-8'))
         self._check_id(cid)

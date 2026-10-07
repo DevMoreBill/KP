@@ -17,7 +17,6 @@
 .qa-list em{font-style:normal;color:var(--navy);font-weight:600;font-size:13px}
 .tag.tt{background:var(--soft);color:var(--navy)}
 .tpick{display:flex;flex-wrap:wrap;gap:8px}
-.tlist .trow{display:grid;grid-template-columns:260px 1fr auto;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
 .kw{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .cw-mn .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .tag{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--ink)}

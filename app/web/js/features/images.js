@@ -86,13 +86,15 @@ async function galFromPage(i, other){
 // выбор фото со страницы (автозаполнение и «Фото с сайта поставщика»): ★ — главное, галочки — какие добавить в изображения
 let PIM_DLG=null;
 function pageImgsHtml(i, imgs, src){
-  const it=S.items[i], hasMain=!!(it.photo&&it.photo.src);
+  // по умолчанию («Настройки → Умолчания»): отмечено только главное фото, остальные — по выбору; или все сразу
+  const it=S.items[i], hasMain=!!(it.photo&&it.photo.src), only=DEF('img.mainOnly');
+  const on=k=>!only || (!hasMain && k===0);
   return `<div class="pim" data-pim="${i}" data-src="${src||'ai'}">
     <div class="pim-h"><b>Фото со страницы: ${imgs.length}</b><span class="muted">★ — главное фото позиции, галочка — добавить в «Описание и фото».</span>
       <span class="pim-all"><button type="button" class="lnk" data-pimall="1">отметить все</button> · <button type="button" class="lnk" data-pimall="0">снять все</button></span></div>
     <div class="pim-l">${imgs.map((u,k)=>`<div class="pim-i"><span class="pim-ph"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
       <label class="pim-m" title="Сделать главным фото"><input type="radio" name="pimMain${i}" value="${k}"${!hasMain&&k===0?' checked':''}> ★ Главное</label>
-      <label class="pim-c"><input type="checkbox" data-pimk="${k}" checked> добавить</label></div>`).join('')}</div>
+      <label class="pim-c"><input type="checkbox" data-pimk="${k}"${on(k)?' checked':''}> добавить</label></div>`).join('')}</div>
     <div class="pim-f">${hasMain?`<label class="pim-keep"><input type="radio" name="pimMain${i}" value="-1" checked> оставить текущее главное фото</label>`:''}
       <button type="button" class="btn primary" data-pimgo="${i}">Добавить выбранные фото</button></div></div>`;
 }
@@ -156,7 +158,7 @@ async function imgSlotPut(z, files){
 async function imgFromUrl(url){
   url=String(url||'').trim(); if (!url) return null;
   try{
-    const r = url.startsWith('data:image/') ? await fetch(url) : await fetch('/api/imgfetch?url='+encodeURIComponent(url));
+    const r = url.startsWith('data:image/') ? await fetch(url) : await fetch('/api/imgfetch?url='+encodeURIComponent(url), {headers:{'X-KP-User-Id':''}});
     if (!r.ok) throw new Error(await r.text());
     const b=await r.blob(); return new File([b], 'image', {type:b.type||'image/png'});
   }catch(e){ toast(String(e.message||e).slice(0,160)||'Картинку по ссылке загрузить не удалось — сохраните её в файл и перетащите файл'); return null; }

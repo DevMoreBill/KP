@@ -85,7 +85,6 @@ dialog.tdwin:not([open]){display:none}
 .td-pages [data-tdi] img:hover{outline:2px dashed #3DA0EE}
 .td-pages [data-tdi^="X_"] img{cursor:move}
 .td-pages img.td-on{outline:2px solid #3DA0EE}
-.td-pages img.td-dragging{opacity:.4}
 .td-pages p.td-on{outline:2px dashed #E67E22;outline-offset:4px}
 .td-sel{position:absolute;pointer-events:none;border:2px solid #3DA0EE;z-index:4}
 .td-dim{position:absolute;left:0;top:-22px;background:#3DA0EE;color:#fff;font-size:11px;padding:1px 6px;border-radius:4px;white-space:nowrap}

@@ -22,15 +22,20 @@ const COND_EXTRA = ['Цена действительна при заказе в�
 
 function newItem(){ return { id:uid(), name:'', spec:'', qty:1, price:0, page:false, pageTitle:'', photoCaption:'', photo:null, logo:null, features:[], groups:[], hint:null, options:[], attrs:{} }; }
 
+// контакты компании для нового менеджера — из умолчаний администратора
+function defManager(){ const m={...DEF_MANAGER}; for (const k of ['phone','site','address','hours']){ const v=DEF('mgr.'+k); m[k]=v==null?'':v; } return m; }
+
 function freshState(){
-  let manager = DEF_MANAGER;
+  let manager = defManager();
   try { const m = localStorage.getItem('kp.manager'); if (m) manager = JSON.parse(m); } catch(e){}
   return { client:'', clientId:'', clientInn:'', clientKpp:'', clientOgrn:'', clientFull:'', clientAddr:'', clientDir:'', clientDirPost:'', clientStatus:'',
     contact:{name:'',post:'',phone:'',email:''}, object:{purpose:'',address:''}, check:null,
-    date:today(), city:'Москва', vat:22, showClients:true,
+    date:today(), city:DEF('kp.city')||'', vat:DEFN('kp.vat', 22), showClients:true,
     cover:{ title:'', model:'', desc:'', kpis:[{},{},{},{}], touched:false },
-    pricing:{ cur:'RUB', rates:{USD:'',EUR:'',CNY:''}, rateDate:'', rateSrc:'', margin:35, mode:'margin', costNoVat:false, round:'1' },
-    items:[], conditions: COND.map(c=>({label:c[0], value:''})), condExtra:'', manager:{...manager}, managerId:'' };
+    pricing:{ cur:DEF('kp.cur')||'RUB', rates:{USD:'',EUR:'',CNY:''}, rateDate:'', rateSrc:'', margin:35, mode:'margin', costNoVat:false, round:DEF('kp.round')||'1' },
+    items:[], conditions: COND.map(c=>({label:c[0], value:DEF('cond.'+c[0])||''})),
+    // текст условий из «Умолчаний» — как автоматический: «Экономика сделки» заменит его своим расчётом, пока его не правили
+    condAuto: Object.fromEntries(COND.map(c=>[c[0], DEF('cond.'+c[0])]).filter(x=>x[1])), condExtra:'', manager:{...manager}, managerId:'' };
 }
 
 let S = freshState();

@@ -38,7 +38,7 @@ function selectManager(id){
 }
 
 function newManager(){
-  S.managerId=''; S.manager={...DEF_MANAGER, name:'', position:'', ext:'', mobile:'', email:'', folder:''}; mgrRemember('');
+  S.managerId=''; S.manager={...defManager(), name:'', position:'', ext:'', mobile:'', email:'', folder:''}; mgrRemember('');
   renderForm(); persist(); setTimeout(()=>$('[data-p="manager.name"]')?.focus(), 30);
 }
 

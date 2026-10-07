@@ -14,7 +14,6 @@
     только если их не меняли после прошлой загрузки (сравнение с doc.feed.orig).
   • Журнал — kv «feedlog:<id>»: последние 30 загрузок и проверок (что добавлено, изменения РРЦ и наличия).
 """
-import gzip
 import hashlib
 import html as html_mod
 import http.cookiejar
@@ -137,6 +136,15 @@ _PAGE_SEM = threading.Semaphore(3)      # не больше 3 страниц с�
 _PAGE_JAR = http.cookiejar.CookieJar()   # cookie сайта (сессия, проверка «не робот») — общие для всех страниц
 
 
+def _inflate(data, wbits, limit=PAGE_MAX * 8):
+    """Распаковка ответа сайта с пределом: «сжатая бомба» (маленький архив → гигабайты) не займёт всю память."""
+    d = zlib.decompressobj(wbits)
+    out = d.decompress(data, limit)
+    if d.unconsumed_tail:
+        raise ValueError('страница после распаковки больше %d МБ' % (limit // 1048576))
+    return out
+
+
 def page_html(url, strict=True):
     """Страница товара на сайте поставщика (та же защита, что у фида и фото). Запрос — как из браузера
     (Bitrix-сайты на «робота» отвечают 403 или пустой страницей-проверкой), cookie сохраняются, повтор при отказе."""
@@ -152,12 +160,12 @@ def page_html(url, strict=True):
     with _PAGE_SEM:
         ctype, enc, data = imgfetch.retry(get)
     if enc == 'gzip' or data[:2] == b'\x1f\x8b':
-        data = gzip.decompress(data)
+        data = _inflate(data, 16 + zlib.MAX_WBITS)
     elif enc == 'deflate':
         try:
-            data = zlib.decompress(data)
+            data = _inflate(data, zlib.MAX_WBITS)
         except zlib.error:
-            data = zlib.decompress(data, -zlib.MAX_WBITS)
+            data = _inflate(data, -zlib.MAX_WBITS)
     m = re.search(r'charset=([\w-]+)', ctype, re.I) or re.search(rb'<meta[^>]+charset=["\']?([\w-]+)', data[:4096], re.I)
     cs = m.group(1) if m else 'utf-8'
     cs = cs.decode('ascii', 'ignore') if isinstance(cs, bytes) else cs
@@ -437,7 +445,52 @@ def page_apply(html, props):
     return best
 
 
-def page_text(url):
+# проверенные картинки со страницы (адрес → время, тип, байты): скачиваются один раз — при выборе и при сохранении
+_PROBE, _PROBE_LOCK, PROBE_TTL = {}, threading.Lock(), 900
+
+
+def _probe_get(url):
+    with _PROBE_LOCK:
+        x = _PROBE.get(url)
+    if x and datetime.now().timestamp() - x[0] < PROBE_TTL:
+        return x[1], x[2]
+    return None
+
+
+def probe_images(urls, opts):
+    """Оставить фото оборудования: файл не меньше minKB, стороны не меньше minPx, не однотонная «пустая» картинка
+    (skipBlank: очень мало байт на пиксель — белый или однотонный фон). → (подходящие, сколько отброшено)."""
+    min_b, min_px, blank = (opts.get('minKB') or 0) * 1024, opts.get('minPx') or 0, opts.get('skipBlank')
+
+    def one(u):
+        hit = _probe_get(u)
+        if hit is None:
+            sp = urllib.parse.urlsplit(u)
+            try:
+                hit = imgfetch.fetch_image(u, referer='%s://%s/' % (sp.scheme, sp.netloc), tries=1)
+            except Exception:
+                return False
+            with _PROBE_LOCK:
+                if len(_PROBE) > 80:
+                    for k in sorted(_PROBE, key=lambda k: _PROBE[k][0])[:40]:
+                        _PROBE.pop(k, None)
+                _PROBE[u] = (datetime.now().timestamp(), hit[0], hit[1])
+        data = hit[1]
+        w, h = _img_size(data)
+        if len(data) < min_b:
+            return False
+        if w and h and min(w, h) < min_px:
+            return False
+        if blank and w and h and w * h >= 40000 and len(data) / (w * h) < 0.012:
+            return False
+        return True
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        ok = list(ex.map(one, urls))
+    good = [u for u, k in zip(urls, ok) if k]
+    return good, len(urls) - len(good)
+
+
+def page_text(url, opts=None):
     """Для автозаполнения карточки: название, описание и характеристики со страницы любого сайта (не только поставщиков
     из фидов). Описание — itemprop/JSON-LD и текст всех вкладок карточки (скрытые вкладки тоже есть в разметке);
     свойства — парами из schema.org, JSON-LD, таблиц и списков; если описания нет — видимый текст страницы без меню и скриптов."""
@@ -473,7 +526,10 @@ def page_text(url):
         desc = '\n'.join(x for x in text.split('\n') if len(x) > 2)[:12000] if len(text) > len(desc) else desc
     if not (title or desc or props):
         raise ValueError('на странице не нашлось текста')
-    return {'title': title[:300], 'text': desc, 'props': props, 'imgs': page_images_any(html, url)}
+    opts = opts or {}
+    cand = page_images_any(html, url, limit=max(4, (opts.get('maxCount') or 12) * 2))
+    imgs, skipped = probe_images(cand, opts) if (opts.get('minKB') or opts.get('minPx') or opts.get('skipBlank')) else (cand, 0)
+    return {'title': title[:300], 'text': desc, 'props': props, 'imgs': imgs[:opts.get('maxCount') or 12], 'imgsSkipped': skipped}
 
 
 def page_info(html, url):
@@ -1044,7 +1100,7 @@ def _image_putter(store, image_store):
             return {'src': '/img/' + hit['rel'], 'w': hit.get('w'), 'h': hit.get('h')}
         sp = urllib.parse.urlsplit(url)
         try:
-            ctype, data = imgfetch.fetch_image(url, referer='%s://%s/' % (sp.scheme, sp.netloc), tries=2)
+            ctype, data = _probe_get(url) or imgfetch.fetch_image(url, referer='%s://%s/' % (sp.scheme, sp.netloc), tries=2)
         except Exception as e:
             with lock:
                 stat['fail'].append('%s: %s' % (url[-70:], str(e)[:100]))
