@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Товарные фиды поставщиков (формат YML — «Яндекс.Маркет», его выгружают Bitrix, InSales, 1С и др.).
+"""Товарные фиды поставщиков (формат YML — «Яндекс.Маркет», его выгружают Bitrix, InSales, 1С и др.)
+и фиды из файлов (парс сайта CSV + прайс XLSX — feed_files.py) для поставщиков без YML.
 
 Фид — как API поставщика: по кнопке позиции фида становятся позициями каталога (название, характеристики,
 описание, фото, производитель, модель, категория программы), а раз в день программа сверяет РРЦ и наличие.
 
-  • Настройки фидов — kv «feeds»: [{id, name, url, maker, discount, auto, cats:{категория фида: тип программы | "skip"}}].
+  • Настройки фидов — kv «feeds»: [{id, name, url, maker, discount, auto, cats:{категория фида: тип программы | "skip"},
+    kind: "yml" | "files"; у файлового — files:{pages:{name, size, at, rows}, price:{…}}, priceKind: "rrc" | "cost" (цена прайса —
+    РРЦ или наша закупка), cur (валюта прайса), priceOnly (добавлять и позиции, которых нет в парсе)}].
   • Позиция каталога из фида: doc.feed = {id, oid, url, sku, barcode, orig:{…}} — связь с предложением фида;
     doc.rrc = {price (коп.), cur, at, prev, prevAt} — рекомендованная розничная цена;
     doc.stock = {qty, available, at, gone} — наличие у поставщика (qty — если фид даёт остаток).
@@ -29,8 +32,10 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 
 import catalog_migrate
+import feed_files
 import images
 import imgfetch
+from config import DATA_DIR
 
 MAX_FEED = 150 * 1024 * 1024
 KV = 'feeds'
@@ -85,26 +90,56 @@ def _cats_ok(c):
 
 
 def feed_save(store, f):
+    kind = 'files' if f.get('kind') == 'files' else 'yml'
     url = str(f.get('url') or '').strip()
-    if not re.match(r'^https?://', url, re.I):
+    if kind == 'yml' and not re.match(r'^https?://', url, re.I):
         raise ValueError('Укажите адрес фида (http или https)')
+    if kind == 'files' and not str(f.get('name') or '').strip():
+        raise ValueError('Укажите название фида — например, имя поставщика')
     items = feeds(store)
     fid = f.get('id') or images.slug(f.get('name') or urllib.parse.urlsplit(url).hostname or 'feed', 30) or 'feed'
     old = next((x for x in items if x.get('id') == fid), None) or {}
     if not f.get('id') and any(x.get('id') == fid for x in items):
         fid = '%s-%d' % (fid, len(items) + 1)
     disc = _num(f.get('discount'))
-    rec = dict(old, id=fid, name=str(f.get('name') or old.get('name') or fid).strip()[:80], url=url,
+    rec = dict(old, id=fid, kind=kind, name=str(f.get('name') or old.get('name') or fid).strip()[:80], url=url,
                maker=str(f.get('maker') or '').strip()[:60], discount=disc if disc and 0 < disc < 100 else None,
-               auto=f.get('auto', True) is not False, pageDesc=f.get('pageDesc', old.get('pageDesc', True)) is not False, cats=_cats_ok(f.get('cats')) if isinstance(f.get('cats'), dict) else old.get('cats') or {},
+               auto=f.get('auto', kind == 'yml') is True, pageDesc=f.get('pageDesc', old.get('pageDesc', kind == 'yml')) is True,
+               cats=_cats_ok(f.get('cats')) if isinstance(f.get('cats'), dict) else old.get('cats') or {},
                supplier=str(f.get('supplier') or old.get('supplier') or '')[:64], updatedAt=_now())
+    if kind == 'files':
+        cur = str(f.get('cur') or old.get('cur') or '').upper()[:3]
+        rec.update(priceKind='rrc' if f.get('priceKind', old.get('priceKind')) == 'rrc' else 'cost', cur=cur if re.match(r'^[A-Z]{3}$', cur) else '',
+                   priceOnly=f.get('priceOnly', old.get('priceOnly')) is True, files=old.get('files') or {})
     items = [x for x in items if x.get('id') != fid] + [rec]
     store.kv_set(KV, {'items': items})
+    with _LOCK:
+        _CACHE.pop(fid, None)
     return rec
+
+
+def feed_file_put(store, fid, kind, data, name):
+    """Файл фида (парс сайта / прайс): сохранить на диск, запомнить мету в настройках фида; → мета."""
+    f = feed_get(store, fid)
+    if not f or f.get('kind') != 'files':
+        raise ValueError('Файлы принимает только фид из файлов')
+    meta = feed_files.save_file(DATA_DIR, fid, kind, data, name)
+    items = feeds(store)
+    for x in items:
+        if x.get('id') == fid:
+            x.setdefault('files', {})[kind] = meta
+            x['updatedAt'] = _now()
+    store.kv_set(KV, {'items': items})
+    with _LOCK:
+        _CACHE.pop(fid, None)
+    return meta
 
 
 def feed_delete(store, fid):
     store.kv_set(KV, {'items': [x for x in feeds(store) if x.get('id') != fid]})
+    feed_files.remove_files(DATA_DIR, fid)
+    with _LOCK:
+        _CACHE.pop(fid, None)
 
 
 def log_of(store, fid):
@@ -670,13 +705,24 @@ def parse(data):
 
 
 def load(store, f, fresh=False):
+    """Разобранный фид: YML — скачать (кэш 30 минут), из файлов — прочитать сохранённые файлы (кэш до новой загрузки файла)."""
+    files = f.get('kind') == 'files'
+    key = json.dumps([f.get('files'), f.get('maker'), f.get('cur'), f.get('priceOnly')], sort_keys=True) if files else f['url']
     with _LOCK:
         c = _CACHE.get(f['id'])
-        if c and not fresh and c[1] == f['url'] and (datetime.now() - c[0]).total_seconds() < 1800:
+        if c and c[1] == key and (files or (not fresh and (datetime.now() - c[0]).total_seconds() < 1800)):
             return c[2]
-    feed = parse(fetch(f['url']))
+    if files:
+        pages = feed_files.read_file(DATA_DIR, f['id'], 'pages')
+        if not pages:
+            raise ValueError('Сначала загрузите файл парса сайта (CSV)')
+        price = feed_files.read_file(DATA_DIR, f['id'], 'price')
+        prices = feed_files.parse_price(price)[0] if price else []
+        feed = feed_files.build_feed(f, feed_files.parse_pages(pages), prices, _param_name)
+    else:
+        feed = parse(fetch(f['url']))
     with _LOCK:
-        _CACHE[f['id']] = (datetime.now(), f['url'], feed)
+        _CACHE[f['id']] = (datetime.now(), key, feed)
     return feed
 
 
@@ -702,7 +748,7 @@ def preview(store, f, types):
         for p in o['params']:
             pn[p['k']] = pn.get(p['k'], 0) + 1
     offs = feed['offers']
-    return {'shop': feed['shop'], 'date': feed['date'], 'total': len(offs), 'cats': cats,
+    return {'shop': feed['shop'], 'date': feed['date'], 'total': len(offs), 'cats': cats, 'match': feed.get('match'), 'kind': f.get('kind') or 'yml',
             'available': sum(1 for o in offs if o['available']), 'withPrice': sum(1 for o in offs if o['price']),
             'withQty': sum(1 for o in offs if o['qty'] is not None), 'withPhoto': sum(1 for o in offs if o['pictures']),
             'inCatalog': len(linked & {o['oid'] for o in offs}), 'params': sorted(pn.items(), key=lambda x: -x[1])[:40],
@@ -812,9 +858,17 @@ def _feed_docs(store, fid):
 
 
 def _price_part(doc, o, f, today):
-    """РРЦ, наличие, цена КП и закупка позиции по предложению фида; → список изменений [(поле, было, стало)]."""
+    """РРЦ, наличие, цена КП и закупка позиции по предложению фида; → список изменений [(поле, было, стало, валюта)].
+    У фида из файлов с priceKind = cost цена прайса — наша закупка (минус скидка, если задана); РРЦ и цена КП не трогаются."""
     ch = []
-    if o['price']:
+    if o['price'] and f.get('priceKind') == 'cost':
+        kop = int(round(o['price'] * 100 * (1 - (f.get('discount') or 0) / 100)))
+        if doc.get('costSrc', 'feed') == 'feed' and (doc.get('cost') != kop or (doc.get('costCur') or 'RUB') != o['cur']):
+            if doc.get('cost'):
+                ch.append(('cost', doc.get('cost'), kop, o['cur']))
+            doc['cost'], doc['costCur'], doc['costSrc'] = kop, o['cur'], 'feed'
+        doc['costAt'] = today
+    elif o['price']:
         kop = int(round(o['price'] * 100))
         r = doc.get('rrc') or {}
         if r.get('price') != kop or r.get('cur') != o['cur']:
@@ -828,12 +882,18 @@ def _price_part(doc, o, f, today):
             doc['price'], doc['priceCur'], doc['priceSrc'] = kop, o['cur'], 'rrc'
         if f.get('discount') and doc.get('costSrc', 'feed') == 'feed':
             doc['cost'], doc['costCur'], doc['costSrc'] = int(round(kop * (1 - f['discount'] / 100))), o['cur'], 'feed'
+    if o.get('nostock'):            # фид из файлов не знает наличия
+        return ch
     s = doc.get('stock') or {}
     st = {'qty': o['qty'], 'available': bool(o['available']), 'at': today, 'gone': False}
     if (s.get('qty'), bool(s.get('available')), bool(s.get('gone'))) != (st['qty'], st['available'], False) and s:
         ch.append(('stock', _stock_txt(s), _stock_txt(st)))
     doc['stock'] = st
     return ch
+
+
+def _change(cid, doc, c):
+    return {'id': cid, 'name': doc.get('name'), 'kind': c[0], 'old': c[1], 'new': c[2], 'cur': c[3] if len(c) > 3 else ''}
 
 
 def _stock_txt(s):
@@ -859,7 +919,7 @@ NAME_RULES = [
     (r'циклонн\S*\s+сепаратор', 'filter'),
 ]
 PATH_RULES = [
-    (r'адсорбц\S*\s+осушител', 'dryer_ads'), (r'рефрижераторн\S*\s+осушител', 'dryer_refrig'), (r'воздушн\S*\s+ресивер', 'receiver'),
+    (r'адсорбц\S*\s+осушител|осушител\S*.*адсорбц', 'dryer_ads'), (r'рефрижераторн\S*\s+осушител|осушител\S*.*рефрижер', 'dryer_refrig'), (r'воздушн\S*\s+ресивер', 'receiver'),
     (r'фильтр\S*\s+сжатого воздуха', 'filter'), (r'циклонн\S*\s+сепаратор', 'filter'),
     (r'винтов\S*\s+(маслозаполн\S*\s+|безмасл\S*\s+)?компрессор|компрессорн\S*\s+станци|лазерн', 'comp_screw'),
     (r'поршнев\S*\s+(маслозаполн\S*\s+|безмасл\S*\s+)?компрессор|медицинск\S*\s+компрессор', 'comp_piston'),
@@ -1020,12 +1080,23 @@ def build(o, f, types, old=None, put_image=None):
     if not old or doc.get('name') == orig.get('name'):
         doc['name'] = o['name']
     feats = doc.get('features') or []
-    fd = next((x for x in feats if x.get('feed')), None)
+    fd = next((x for x in feats if x.get('feed') and not x.get('feedOpts')), None)
     if desc and (not fd or _hash(fd.get('text') or '') == orig.get('desc')):
         if fd:
             fd['text'] = desc
         else:
             feats.insert(0, {'id': hashlib.md5((o['oid'] + 'd').encode()).hexdigest()[:8], 'label': 'Описание', 'text': desc, 'feed': True})
+    opts = o.get('opts') or []
+    fo = next((x for x in feats if x.get('feedOpts')), None)
+    otext = '; '.join('%s — %s %s' % (x['name'], _fmt(x['price']), o['cur']) for x in opts) if opts else ''
+    if otext and (not fo or _hash(fo.get('text') or '') == orig.get('opts')):
+        if fo:
+            fo['text'] = otext
+        else:
+            feats.append({'id': hashlib.md5((o['oid'] + 'o').encode()).hexdigest()[:8], 'label': 'Опции по прайсу поставщика', 'text': otext, 'feed': True, 'feedOpts': True})
+    elif not otext and fo and _hash(fo.get('text') or '') == orig.get('opts'):
+        feats.remove(fo)
+    new_orig['opts'] = _hash(otext)
     doc['features'] = feats
     groups = doc.get('groups') or []
     gi = next((i for i, g in enumerate(groups) if g.get('feed')), None)
@@ -1213,7 +1284,7 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
                         added += 0 if old else 1
                         updated += 1 if old else 0
                     for c in ch:
-                        (price_ch if c[0] == 'rrc' else stock_ch).append({'id': cid, 'name': doc.get('name'), 'old': c[1], 'new': c[2]})
+                        (stock_ch if c[0] == 'stock' else price_ch).append(_change(cid, doc, c))
                 except Exception as e:
                     errors.append('%s: %s' % (o['name'][:60], e))
                 j['done'] += 1
@@ -1258,12 +1329,13 @@ def check_feed(store, f, by='', log=print):
             if o:
                 ch = _price_part(d, o, f, today)
                 for c in ch:
-                    (price_ch if c[0] == 'rrc' else stock_ch).append({'id': d['id'], 'name': d.get('name'), 'old': c[1], 'new': c[2]})
+                    (stock_ch if c[0] == 'stock' else price_ch).append(_change(d['id'], d, c))
             else:
                 s = d.get('stock') or {}
                 if not s.get('gone'):
                     gone.append({'id': d['id'], 'name': d.get('name')})
-                d['stock'] = dict(s, available=False, gone=True, at=today)
+                if f.get('kind') != 'files':        # у фида из файлов наличие неизвестно — не отмечать «нет в фиде»
+                    d['stock'] = dict(s, available=False, gone=True, at=today)
             if json.dumps([d.get('rrc'), d.get('stock'), d.get('price'), d.get('cost')], sort_keys=True) != before:
                 d['updatedAt'] = _now()
                 store.catalog_put(d['id'], json.dumps(d, ensure_ascii=False), by or ('Фид «%s»' % f['name']))
@@ -1276,7 +1348,7 @@ def check_feed(store, f, by='', log=print):
                'gone': gone[:300], 'new': len(new), 'newSample': [o['name'] for o in new[:10]]}
         _log_add(store, f['id'], res)
         _mark(store, f['id'], 'check', res)
-        j.update(state='done', result=res, msg='РРЦ изменилась: %d, наличие: %d' % (len(price_ch), len(stock_ch)))
+        j.update(state='done', result=res, msg=('Закупка изменилась: %d' if f.get('priceKind') == 'cost' else 'РРЦ изменилась: %d, наличие: %d') % ((len(price_ch),) if f.get('priceKind') == 'cost' else (len(price_ch), len(stock_ch))))
         return res
     except Exception as e:
         j.update(state='error', msg=str(e)[:300])
@@ -1340,7 +1412,7 @@ def auto_check(store, log=print):
         return
     today = date.today().isoformat()
     for f in feeds(store):
-        if not f.get('auto') or busy(f['id']):
+        if not f.get('auto') or f.get('kind') == 'files' or busy(f['id']):
             continue
         if ((f.get('last') or {}).get('check') or {}).get('at', '')[:10] == today:
             continue

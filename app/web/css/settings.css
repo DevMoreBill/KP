@@ -197,6 +197,12 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .fd-t .num{text-align:right;white-space:nowrap}
 .fd-t select{min-width:180px;max-width:100%}
 .fd-cnt{margin:8px 0}
+.fd-files{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);display:grid;gap:8px}
+.fd-file{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 12px;border-radius:10px;background:var(--soft);font-size:13px}
+.fd-file>div{flex:1;min-width:220px;line-height:1.45}
+.fd-up{cursor:pointer}
+.fd-note:empty{display:none}
+.fd-match{margin:0 0 10px}
 .fd-head{display:flex}
 #fdLog{margin-top:14px}
 .fd-panel .st-row .muted,.st-list .st-row .muted{overflow-wrap:anywhere}.fd-head .sp{flex:1}

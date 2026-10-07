@@ -662,9 +662,9 @@ class AdminApi:
             return self.ok({'items': feeds.status(st), 'types': [{'id': t.get('id'), 'name': t.get('name'), 'group': t.get('group')} for t in types if not t.get('hidden')]})
         if sub == 'feeds' and m == 'POST':
             f = feeds.feed_save(st, self.data())
-            self.log('edit_settings', 'settings', 'feed:' + f['id'], None, {'url': f['url'], 'name': f['name']})
+            self.log('edit_settings', 'settings', 'feed:' + f['id'], None, {'url': f['url'] or f.get('kind'), 'name': f['name']})
             return self.ok(f)
-        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status)$', sub)
+        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload)$', sub)
         if not r:
             return self.err(404, 'Нет такого запроса')
         fid, act = r.group(1), r.group(2)
@@ -677,6 +677,13 @@ class AdminApi:
             return self.ok({'job': feeds.JOBS.get(fid)})
         if m != 'POST':
             return self.err(405, 'Нужен POST')
+        if act == 'upload':         # файл фида из файлов: ?kind=pages|price&name=имя, тело — сам файл
+            if feeds.busy(fid):
+                return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
+            q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(self.h.path).query, keep_blank_values=True, encoding='utf-8'))
+            meta = feeds.feed_file_put(st, fid, q.get('kind', ''), self.h.body(), q.get('name', ''))
+            self.log('edit_settings', 'settings', 'feed:' + fid, None, {'file': q.get('kind'), 'name': meta['name'], 'rows': meta.get('rows')})
+            return self.ok(meta)
         if act == 'delete':
             feeds.feed_delete(st, fid)
             self.log('edit_settings', 'settings', 'feed:' + fid, {'url': f['url']}, None)
