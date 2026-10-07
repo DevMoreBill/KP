@@ -172,9 +172,37 @@ async function fdDiscClick(a, b, m){
 
 function fdActions(f){
   const files=fdIsFiles(f), ready=!files || (f.files&&f.files.pages);
+  if (files) return fdFilesActions(f, ready);
   return `<div class="row fd-acts"><button class="btn" type="button" data-fd="preview"${ready?'':' disabled title="Сначала загрузите файл парса сайта"'}>Проверить фид</button>
     <button class="btn primary" type="button" data-fd="import"${FD.prev&&FD.prev.id===f.id?'':' disabled title="Сначала «Проверить фид»"'}>Загрузить в каталог</button>
     <button class="btn" type="button" data-fd="check"${f.linked?'':' disabled title="Сначала загрузите позиции в каталог"'}>${files?(fdCostKind(f)?'Обновить цены из прайса':'Обновить РРЦ из прайса'):'Проверить цены и наличие сейчас'}</button></div>`;
+}
+
+// фид из файлов: сначала «Сформировать каталог» (полный парс → позиция на каждое исполнение, без дублей), потом парс
+// только добавляет новые позиции, а прайс обновляет цены
+function fdFilesActions(f, ready){
+  const noFile=ready?'':' disabled title="Сначала загрузите файл парса сайта"', b=f.built;
+  if (!b) return `<div class="fd-build"><p class="muted">${tip('<p>Парс сайта — полный список номенклатуры. «Сформировать каталог» создаёт позицию на каждое исполнение из парса (давление, ресивер, осушитель — как на сайте): описание по блокам, характеристики (сверены с прайсом — он точнее), главное фото из парса, цена из прайса.</p><p>Уже имеющиеся позиции производителя (из прошлых загрузок и заведённые вручную) сопоставляются с позициями парса и перестраиваются — id сохраняется, ссылки в КП не теряются. Лишние совпадения (дубли, например карточка «на все давления») уходят в корзину — 30 дней их можно восстановить.</p><p>После сборки парс больше не меняет позиции — только добавляет новые; описания, фото и характеристики правятся вручную. Цены обновляются загрузкой нового прайса.</p>')} Каталог производителя ещё не сформирован по полному парсу.</p></div>
+    <div class="row fd-acts"><button class="btn" type="button" data-fd="preview"${noFile}>Проверить фид</button>
+      <button class="btn" type="button" data-fd="plan"${noFile}>План сборки</button>
+      <button class="btn primary" type="button" data-fd="build"${noFile}>Сформировать каталог</button></div>`;
+  return `<div class="fd-build"><p class="ok-t">Каталог сформирован ${esc(fdDate(b.at))}${b.by?' · '+esc(b.by):''}: позиций ${stNum(b.items||0)}, сопоставлено с имевшимися ${stNum(b.linked||0)}, в корзину ${stNum(b.trashed||0)}.</p>
+      <p class="muted">Парс больше не меняет позиции каталога — только добавляет новые, если они появятся. Описания, фото и характеристики правятся вручную в карточке. Цены: загрузите новый прайс и нажмите «Обновить цены из прайса».</p></div>
+    <div class="row fd-acts"><button class="btn" type="button" data-fd="plan"${noFile}>Что нового в парсе</button>
+      <button class="btn" type="button" data-fd="addnew"${noFile}>Добавить новые из парса</button>
+      <button class="btn primary" type="button" data-fd="check"${f.linked?'':' disabled'}>Обновить цены из прайса</button>
+      <span class="sp"></span><button class="btn ghost danger" type="button" data-fd="rebuild">Сформировать заново…</button></div>`;
+}
+
+function fdBuildPlan(p){
+  const list=(arr, f)=>arr.length?`<p class="muted">${arr.slice(0,300).map(f).join(' · ')}${arr.length>300?' …':''}</p>`:'';
+  if (p.built) return `<div class="fd-plan"><p><b>Новых позиций в парсе: ${stNum(p.addCount)}</b>${p.addCount?' — «Добавить новые из парса» создаст их; имеющиеся не изменятся.':' — каталог совпадает с парсом.'}</p>${list(p.add, esc)}</div>`;
+  return `<div class="fd-plan"><div class="fd-sum"><span><b>${stNum(p.offers)}</b> позиций в парсе</span><span><b>${stNum(p.withPrice)}</b> с ценой из прайса</span>
+      <span><b>${stNum(p.links)}</b> сопоставлено с имеющимися</span><span><b>${stNum(p.new)}</b> новых</span><span><b>${stNum(p.dups.length)}</b> дублей — в корзину</span><span><b>${stNum(p.keep.length)}</b> нет в парсе</span></div>
+    ${p.dups.length?`<details class="more" open><summary>Дубли — уйдут в корзину (${p.dups.length})</summary>${list(p.dups, x=>esc(x.name))}</details>`:''}
+    ${p.keep.length?`<details class="more"><summary>Позиции производителя, которых нет в парсе (${p.keep.length})</summary>${list(p.keep, x=>esc(x.name))}
+      <label class="fd-auto"><input type="checkbox" id="fdTrashMissing"> Убрать и их в корзину (по умолчанию остаются в каталоге как есть)</label></details>`:''}
+    ${p.linkSample.length?`<details class="more"><summary>Имеющиеся позиции, которые перестроятся по парсу с новым названием (${p.linkSample.length})</summary>${list(p.linkSample, x=>`${esc(x[0])} → <b>${esc(x[1])}</b>`)}</details>`:''}</div>`;
 }
 
 function fdJob(j){
@@ -221,7 +249,7 @@ async function fdLoadLog(fid){
 function fdLogItem(x){
   const pc=x.price||[], sc=x.stock||[], gone=x.gone||[];
   const costLog=pc.length&&pc.every(c=>c.kind==='cost');
-  const kind=x.kind==='import'?'Загрузка в каталог':(costLog?'Обновление закупки по прайсу':'Проверка РРЦ и наличия');
+  const kind=x.kind==='import'?(x.mode==='build'?'Сборка каталога по парсу':x.mode==='add'?'Новые позиции из парса':'Загрузка в каталог'):(costLog?'Обновление закупки по прайсу':'Проверка РРЦ и наличия');
   if (x.error) return `<div class="st-row"><div><b>${esc(fdDate(x.at))} · ${kind}</b><span class="bad-t">${esc(x.error)}</span></div></div>`;
   const ph=x.photos, sum=x.kind==='import' ? `добавлено ${x.added}, обновлено ${x.updated}, без изменений ${x.same}${ph&&ph.items?` · фото: в среднем ${String(ph.avg).replace('.',',')} на позицию, с несколькими фото — ${ph.multi} из ${ph.items}${ph.new?`, скачано новых ${ph.new}`:''}`:''}` : `проверено ${x.checked}, обновлено ${x.updated}${x.new?`, новых в фиде ${x.new}`:''}`;
   const tbl=(rows, f)=>`<table class="fd-t"><tbody>${rows.map(f).join('')}</tbody></table>`;
@@ -232,6 +260,7 @@ function fdLogItem(x){
       ${gone.length?`<p class="sub">Пропали из фида</p>${tbl(gone, c=>`<tr><td>${esc(c.name)}</td></tr>`)}`:''}
       ${x.newSample&&x.newSample.length?`<p class="sub">Новые товары в фиде (ещё не в каталоге)</p><p class="muted">${x.newSample.map(esc).join(' · ')}${x.new>x.newSample.length?' …':''} — «Проверить фид» → «Загрузить в каталог».</p>`:''}
       ${x.cards?fdCardsLog(x.cards):''}
+      ${x.mode==='build'?`<p class="sub">Сборка</p><p class="muted">Сопоставлено с имевшимися позициями: ${stNum(x.linked||0)}, в корзину: ${stNum(x.trashed||0)}.</p>${(x.dups||[]).length?`<details class="more"><summary>Дубли в корзине (${x.dups.length})</summary><p class="muted">${x.dups.map(esc).join(' · ')}</p></details>`:''}${(x.keep||[]).length?`<details class="more"><summary>Позиции производителя, которых нет в парсе (${x.keep.length})</summary><p class="muted">${x.keep.map(esc).join(' · ')}</p></details>`:''}`:''}
       ${(x.errors||[]).length?`<p class="sub">Ошибки</p><p class="bad-t">${x.errors.map(esc).join('<br>')}</p>`:''}
       ${!pc.length&&!sc.length&&!gone.length&&!(x.errors||[]).length&&!x.new?'<p class="muted">Изменений нет.</p>':''}</div></details>`;
 }
@@ -275,5 +304,14 @@ async function fdClick(e, m){
       await ajson('feeds', {...f, cats:{...FD.cats}});
       await ajson(`feeds/${FD.sel}/import`); toast('Загрузка началась — можно продолжать работу'); return stFeeds(m); }
     if (a==='check'){ await ajson(`feeds/${FD.sel}/check`); toast('Обновление началось'); return stFeeds(m); }
+    if (a==='plan'){ b.disabled=true; b.textContent='Считаю…'; const p=await ajson(`feeds/${FD.sel}/plan`);
+      const el=m.querySelector('#fdPrev'); if (el) el.innerHTML=fdBuildPlan(p); b.disabled=false; b.textContent=p.built?'Что нового в парсе':'План сборки'; return; }
+    if (a==='build'){ const tm=!!m.querySelector('#fdTrashMissing')?.checked;
+      if (!await stConfirm('Сформировать каталог по парсу?', `Позиции производителя перестроятся по парсу и прайсу (описания, характеристики, фото, цены), дубли уйдут в корзину${tm?', позиции, которых нет в парсе, — тоже':''}. Ручные правки в этих позициях заменятся. Перед сборкой программа сделает копию базы.`, 'Сформировать')) return;
+      await ajson(`feeds/${FD.sel}/import`, {trashMissing:tm}); toast('Сборка каталога началась — можно продолжать работу'); FD.prev=null; return stFeeds(m); }
+    if (a==='addnew'){ await ajson(`feeds/${FD.sel}/import`, {}); toast('Добавляю новые позиции из парса'); return stFeeds(m); }
+    if (a==='rebuild'){
+      if (!await stConfirm('Сформировать каталог заново?', 'Позиции производителя снова перестроятся по парсу — ручные правки описаний, фото и характеристик в них заменятся. Обычно это не нужно: новые позиции добавляет «Добавить новые из парса».', 'Разрешить пересборку')) return;
+      await ajson(`feeds/${FD.sel}/rebuild`); toast('Теперь можно сформировать каталог заново'); return stFeeds(m); }
   }catch(err){ toast(err.message||String(err)); stFeeds(m); }
 }

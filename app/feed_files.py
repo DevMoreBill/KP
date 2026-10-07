@@ -16,6 +16,7 @@ import csv
 import hashlib
 import html as html_mod
 import io
+import json
 import os
 import re
 import zipfile
@@ -455,12 +456,25 @@ def _spec_val(v, u):
 JUNK_SENT = re.compile(r'\bваш(е|ем|у|им|их|а|и)?\b|\bвам\b|верный способ|обратитесь|звоните|позвоните|менеджер|оставьте заявку|заказать|купить|'
                        r'\bцен[аыу]\b|доставк|примерн|индивидуально|согласно проекту|официальн\S* (дилер|представител|поставщик)|'
                        r'в наличии|со склада|гарантия качества|лучшее решение|не имеет аналогов|по выгодн|скидк|акци[яи]\b|\bоплат|\bфишк', re.I)
-HEAD_RX = re.compile(r'\s*(технические особенности|главное о серии|особенности|преимущества|опции|комплектация|применение|области применения)([^:\n•]{0,50}):\s*', re.I)
+HEAD_RX = re.compile(r'\s*(технические особенности|главное о серии|общие характеристики|основные характеристики|основные преимущества|особенности|преимущества|опции|комплектация|применение|области применения)([^:\n•]{0,50}):\s*', re.I)
+
+
+LIST_HEAD_RX = re.compile(r'(Общие характеристики|Основные характеристики|Основные преимущества)\s+([^.:\n•►]{20,}?)(?=\s*(?:$|\n|\.\s|Технические особенности|Опции))')
+
+
+def _list_items(m):
+    """«Общие характеристики Высокоэффективный блок Электронная система управления Быстрое подключение…» (перечень без
+    знаков — пункты с заглавной буквы) → «Общие характеристики:» и список «• …»."""
+    items = [x.strip(' ,;') for x in re.split(r'\s+(?=[А-ЯЁ][а-яё])(?<![«/]\s)', m.group(2)) if x.strip(' ,;')]
+    if len(items) < 3:
+        return m.group(0)
+    return '\n' + m.group(1) + ':\n' + '\n'.join('• ' + x for x in items) + '\n'
 
 
 def clean_desc(text):
     """Описание со страницы → текст без «воды»: вводный абзац, подзаголовки, список «• …»; повторы и рекламные фразы убраны."""
     t = html_mod.unescape(str(text or '')).replace('\xa0', ' ')
+    t = LIST_HEAD_RX.sub(_list_items, t)
     t = re.sub(r'["«»]{2,}|\s*"\s*;|\s*"(?=\s|$)|(?<=\s)"\s*', ' ', t)      # сломанные кавычки из CSV
     t = re.sub(r'\s*[►▪■●♦➢➤✓]\s*(?=[А-ЯA-Zа-я0-9])|\s+-\s+(?=[А-Я])', '\n• ', t)
     t = HEAD_RX.sub(lambda m: '\n' + m.group(1).strip().capitalize() + ':\n', t)
@@ -495,6 +509,7 @@ def clean_desc(text):
 
 # ---------------------------------------------------------------- описание → логичные блоки карточки
 HEAD_LABEL = {'технические особенности': 'Технические особенности', 'главное о серии': 'Главное о серии', 'особенности': 'Особенности',
+              'общие характеристики': 'Общие характеристики', 'основные характеристики': 'Общие характеристики', 'основные преимущества': 'Преимущества',
               'преимущества': 'Преимущества', 'опции': 'Опции', 'комплектация': 'Комплектация', 'применение': 'Применение',
               'области применения': 'Применение'}
 PURPOSE_RX = re.compile(r'предназначен|применя(ет|ют)ся|использу(ет|ют)ся|решает|для предприятий|подходит для|отрасл|задач', re.I)
@@ -571,7 +586,7 @@ SPEC_CLASS = [
     ('pressure', r'давлен'), ('flow', r'производительн|пропускн\S*\s+способн'), ('power', r'мощност'),
     ('dims', r'габарит'), ('length', r'^длина'), ('width', r'^ширина'), ('height', r'^высота'), ('mass_ads', r'масс\S*\s+адсорбент'),
     ('mass', r'^(масса|вес|общий вес)'), ('noise', r'шум'), ('outlet', r'выход\S*,?\s+сжатого|^соединение$|^присоединительн|соединение по воздуху'),
-    ('receiver', r'ресивер'), ('dryer', r'встроенн\S*\s+осушител'), ('filters', r'встроенн\S*\s+фильтр|тип фильтров|фильтры в составе'),
+    ('receiver', r'ресивер|^объ[её]м$'), ('dryer', r'встроенн\S*\s+осушител|модель осушителя'), ('filters', r'встроенн\S*\s+фильтр|тип фильтров|фильтры в составе'),
     ('voltage', r'напряжени'), ('refrigerant', r'хлад(о|а)гент'), ('controller', r'контроллер'), ('cartridge', r'картридж|катридж'),
     ('purity', r'чистот'), ('country', r'страна'), ('ip', r'степень защиты'), ('rpm', r'скорост\S*\s+вращени'),
 ]
@@ -585,6 +600,7 @@ SPEC_DROP = re.compile(r'^(аналог|примечание|все характ
 
 def spec_class(key):
     k = re.sub(r'\s*\([^)]*\)\s*$', '', str(key or '')).strip().lower()
+    k = re.sub(r'(?<=[а-я])-(?=[а-я])', '', k)         # «Производи-тельность» — перенос в ячейке прайса
     for c, rx in SPEC_CLASS:
         if re.search(rx, k):
             return c
@@ -604,12 +620,52 @@ def _tidy_label(k):
     return k[:60]
 
 
+EMPTY_VALS = {'-', '—', '–', 'нет данных', 'n/a', 'нет', ''}
+
+
+def _spec_fix(k, v):
+    """Строка характеристики: без прочерков, единицы без скобок («2,49 (м³/мин)»), «IE5» в «Степени защиты» — класс
+    энергоэффективности, производительность без единиц (сайт пишет л/мин) — с единицами."""
+    k = re.sub(r'(?<=[а-я])-(?=[а-я])', '', str(k or '').strip())
+    v = re.sub(r'\s+', ' ', str(v if v is not None else '')).strip()
+    if v.lower() in EMPTY_VALS or re.match(r'^[а-яa-z]', k) or re.match(r'^артикул\s*\d', k, re.I):
+        return k, ''                        # «имеют температурный режим…», «Артикул 6006400004» — обрывки примечаний прайса
+    m = re.match(r'^(?:размер\s+)?([A-HА-ЕНa-h])(?:\s*\(мм\))?$', k, re.I)
+    if m:                                   # размеры на чертеже: «A (мм)», «Размер А» (кириллица) — одинаково
+        lat = m.group(1).upper().translate(str.maketrans('АВСЕН', 'ABCEH'))
+        k = 'Размер %s, мм' % lat
+        v = re.sub(r'\s*мм$', '', v)
+    v = re.sub(r'\s*\((м³/мин|м3/мин|м³/ч|м3/ч|л/мин|нм3/час|нм³/ч|бар|л|кг|мм|кВт|дБ)\)', r' \1', v)
+    for rx, rp in ((r'(?<=\d)\s*bar\b', ' бар'), (r'(?<=\d)\s*m3/min\b', ' м³/мин'), (r'(?<=\d)\s*dB\s*\(A\)', ' дБ(А)'),
+                   (r'(?<=\d)\s*dB\b', ' дБ'), (r'^IP\s+(\d\d)$', r'IP\1'), (r'(?<=\d)\s*kW\b', ' кВт'),
+                   (r'(?<=\d)\s*V\b', ' В'), (r'(?<=\d)\s*Hz\b', ' Гц'), (r'\s*В/Гц$', ''), (r'\bБар\b', 'бар'),
+                   (r'(?<=\d)\s*(нм3|нм³)\s*/\s*час?\b', ' нм³/ч'), (r'(?<=\d)\s*м3\s*/\s*(мин|час|ч)\b', r' м³/\1'), (r'(?<=\d)м³', ' м³'),
+                   (r'м³/час\b', 'м³/ч'), (r"''|”|“", '"'), (r'(?<=\d)\s*литр\w*', ' л'), (r'Гц\s+В$', 'Гц')):
+        v = re.sub(rx, rp, v, flags=re.I)
+    if re.match(r'^степень защиты', k, re.I) and re.match(r'^IE\d', v):
+        k = 'Класс энергоэффективности'
+    c = spec_class(k)
+    if c == 'dims':                         # «1940 X 950 X 2125 ДхШхВ мм» → «1940 × 950 × 2125 мм»
+        v = re.sub(r'\(?\s*Д\s*[хx×]\s*Ш\s*[хx×]\s*В\s*\)?', ' ', v, flags=re.I)
+        v = re.sub(r'(?<=\d)\s*[xхX×]\s*(?=\d)', ' × ', v).strip()
+        v = re.sub(r'\s+', ' ', v)
+        if re.search(r'\d$', v):
+            v += ' мм'
+    if c == 'receiver' and re.fullmatch(r'\d+(?:\s*[×x]\s*\d+)?', v):
+        v = re.sub(r'\s*[×x]\s*', ' × ', v) + ' л'
+    if c == 'flow' and re.fullmatch(r'\d+(?:[.,]\d+)?', v) and not re.search(r'\(', k):
+        n = float(v.replace(',', '.'))
+        v = ('%s л/мин' % v) if n >= 60 else ('%s м³/мин' % v)
+    return k, v
+
+
 def merge_specs(parse_rows, price_specs):
     """Строки характеристик: парс, затем прайс; одинаковые параметры (давление, производительность, мощность, габариты, масса…)
     берутся из прайса — он точнее; «Длина/Ширина/Высота» прайса складываются в габариты."""
     rows, idx = [], {}
     for k, v in parse_rows:
-        if SPEC_DROP.match(k):
+        k, v = _spec_fix(k, v)
+        if SPEC_DROP.match(k) or not v:
             continue
         c = spec_class(k)
         if c in idx:
@@ -618,7 +674,8 @@ def merge_specs(parse_rows, price_specs):
         rows.append([k, v])
     dims = {}
     for k, v in price_specs:
-        if SPEC_DROP.match(k) or not str(v).strip():
+        k, v = _spec_fix(k, v)
+        if SPEC_DROP.match(k) or not v:
             continue
         c = spec_class(k)
         if c in ('length', 'width', 'height'):
@@ -669,24 +726,124 @@ def _model_set(s):
     return frozenset(words) if len(words) >= 2 else None
 
 
+def _char(pg, rx):
+    for k, v in pg.get('chars') or []:
+        if re.search(rx, k, re.I):
+            v = str(v).strip()
+            return '' if v in ('-', '—', '–', 'нет', 'Нет') else v
+    return ''
+
+
+def page_cfg(pg):
+    """Исполнение позиции парса: по названию и характеристикам (давление, ресивер, осушитель) — как model_cfg у прайса."""
+    cfg = model_cfg(pg['name'], pg['name'])
+    p = _num_attr(re.sub(r'[^\d,.]', '', _char(pg, r'^давление')).replace(',', '.') or None)
+    if p:
+        cfg['p'] = p
+    rv = _char(pg, r'объ[её]м ресивера')
+    m2 = re.match(r'^\s*(\d+)\s*[xх×]\s*(\d+)', rv, re.I)          # «2 × 270» — два ресивера
+    rec = int(m2.group(1)) * int(m2.group(2)) if m2 else _num_attr(re.sub(r'[^\d,.]', '', rv) or None)
+    if rec and rec >= 50:
+        cfg['rec'] = int(rec)
+    if _char(pg, r'модель осушителя') or re.search(r'\d+d$', (pg.get('url') or '').rstrip('/'), re.I):
+        cfg['dry'] = True
+    return cfg
+
+
+def _lat(c):
+    return tuple(sorted(s for s in c['ser'] if re.match(r'^[A-Z]', s) and s != 'R'))     # R — резьба «R1 1/2"», не серия
+
+
+def _cfg_key(c):
+    p = 7.5 if c['p'] == 7 else c['p']          # в прайсе «7» и «7,5» — одно исполнение (на сайте — 7,5)
+    return (_lat(c), c['size'], p, c['rec'], c['dry'], c['vsd'], c['w'])
+
+
+def cfg_compatible(a, b):
+    """Не противоречат ли исполнения: серия (латинские слова), типоразмер, частотник, водяное охлаждение. Без серии — не судим."""
+    if not _lat(a) or not _lat(b) or a['size'] is None or b['size'] is None:
+        return True
+    if _lat(a) != _lat(b) or a['size'] != b['size'] or a['vsd'] != b['vsd'] or a['w'] != b['w']:
+        return False
+    ka, kb = _cfg_key(a), _cfg_key(b)
+    if a['p'] and b['p'] and ka[2] != kb[2]:        # давление известно с обеих сторон — должно совпасть
+        return False
+    return a['rec'] == b['rec'] and a['dry'] == b['dry']
+
+
+def unique_names(pages):
+    """Одинаковые названия в парсе («Компрессор винтовой TIDY-N 15» для разных давлений и ресиверов) — уникальными, как в прайсе:
+    «… TIDY-N 15-8,5-250D» (давление, ресивер, D — с осушителем). Полные копии (одна и та же позиция дважды) — убираются."""
+    groups, out, seen = {}, [], set()
+    for pg in pages:
+        groups.setdefault(pg['name'], []).append(pg)
+    for pg in pages:
+        same = groups[pg['name']]
+        if len(same) > 1:
+            c = page_cfg(pg)
+            suf = ''
+            if c['p']:
+                suf += '-' + ('%g' % c['p']).replace('.', ',')
+            rv = _char(pg, r'объ[её]м ресивера')
+            m2 = re.match(r'^\s*(\d+)\s*[xх×]\s*(\d+)', rv, re.I)
+            if m2:
+                suf += '-%s×%s' % (m2.group(1), m2.group(2))
+            elif c['rec']:
+                suf += '-' + str(c['rec'])
+            if c['dry']:
+                suf += 'D'
+            if suf and not re.search(re.escape(suf) + r'$', pg['name']):
+                pg = dict(pg, name=pg['name'] + suf, model=((pg.get('model') or '') + suf).strip('-'))
+        sig = (pg['name'], json.dumps(pg.get('chars') or [], ensure_ascii=False))
+        if sig in seen:
+            continue                        # та же позиция на сайте дважды
+        seen.add(sig)
+        out.append(pg)
+    names = {}
+    for pg in out:
+        names.setdefault(pg['name'], []).append(pg)
+    for n, lst in names.items():        # всё ещё одинаковые (разная производительность) — с номером варианта
+        for i, pg in enumerate(lst[1:], 2):
+            pg['name'] = '%s (вариант %d)' % (n, i)
+    return out
+
+
 def match_prices(pages, prices):
-    """Каждой позиции парса — строка прайса: по полному названию, затем без знаков, затем по модели (и по набору слов модели). → {url: price_row}, stats."""
-    by_norm, by_key, by_model, by_short, by_set = {}, {}, {}, {}, {}
+    """Каждой позиции парса — строка прайса: по исполнению (серия, типоразмер, давление, ресивер, осушитель, частотник,
+    водяное охлаждение), по полному названию, без знаков, затем по модели — только если у строк этой модели одна цена.
+    → {url: price_row}, stats."""
+    by_norm, by_key, by_model, by_short, by_set, by_cfg = {}, {}, {}, {}, {}, {}
     for p in prices:
         if len(p['name']) > 90 or len(p['name'].split()) > 9:      # примечания и сноски в столбце названий — не товары
             continue
         by_norm.setdefault(_norm(p['name']), p)
         by_key.setdefault(_key(p['name']), p)
+        c = model_cfg(p['name'])
+        p['_cfg'] = c
+        if _lat(c) and c['size'] is not None:
+            by_cfg.setdefault(_cfg_key(c), []).append(p)
         mk = _model_key(p['name'])
         if mk:
-            by_model.setdefault(mk, p)
+            by_model.setdefault(mk, []).append(p)
         if p['short']:
-            by_short.setdefault(_key(p['short']), p)
+            by_short.setdefault(_key(p['short']), []).append(p)
         ms = _model_set(p['name'])
         if ms:
-            by_set.setdefault(ms, p)
-    hit, how = {}, {'name': 0, 'key': 0, 'model': 0, 'short': 0, 'set': 0}
+            by_set.setdefault(ms, []).append(p)
+
+    def one(lst):       # модель → строка прайса, только если все строки этой модели с одной ценой (иначе — не угадывать)
+        if not lst:
+            return None
+        priced = [p for p in lst if p['price']] or lst
+        return priced[0] if len({p['price'] for p in priced}) == 1 else None
+    hit, how = {}, {'cfg': 0, 'name': 0, 'key': 0, 'model': 0, 'short': 0, 'set': 0}
     for pg in pages:
+        c = page_cfg(pg)
+        p = one(by_cfg.get(_cfg_key(c))) if _lat(c) and c['size'] is not None and c['p'] else None
+        if p:
+            how['cfg'] += 1
+            hit[pg['url']] = p
+            continue
         p = by_norm.get(_norm(pg['name']))
         if p:
             how['name'] += 1
@@ -696,17 +853,20 @@ def match_prices(pages, prices):
                 how['key'] += 1
             else:
                 mk = _model_key(pg['name']) or _key(pg.get('model'))
-                p = by_model.get(mk) if mk else None
+                p = one(by_model.get(mk)) if mk else None
                 if p:
                     how['model'] += 1
-                elif pg.get('model') and by_short.get(_key(pg['model'])):
-                    p = by_short[_key(pg['model'])]
+                elif pg.get('model') and one(by_short.get(_key(pg['model']))):
+                    p = one(by_short[_key(pg['model'])])
                     how['short'] += 1
                 else:
                     ms = _model_set(pg['name'])
-                    p = by_set.get(ms) if ms else None
+                    p = one(by_set.get(ms)) if ms else None
                     if p:
                         how['set'] += 1
+        if p and not cfg_compatible(c, p.get('_cfg') or model_cfg(p['name'])):
+            how['rejected'] = how.get('rejected', 0) + 1     # «DVK 75-7» ≠ «DVK D 75-7»: другое исполнение
+            p = None
         if p:
             hit[pg['url']] = p
     used = {id(p) for p in hit.values()}
@@ -722,6 +882,7 @@ def _param(k):
 
 def build_feed(f, pages, prices, param_name):
     """→ {shop, date, cats, offers} как у feeds.parse(): позиции парса с ценой из прайса; при f.priceOnly — и строки прайса без страницы."""
+    pages = unique_names(pages)
     hit, stats = match_prices(pages, prices) if prices else ({}, {'matched': 0, 'how': {}, 'priceOnly': len(prices)})
     cats, offers = {}, {}
     maker = (f.get('maker') or '').strip()
@@ -769,7 +930,7 @@ CFG_SKIP = {'КОМПРЕССОР', 'ВИНТОВОЙ', 'БЕЗМАСЛЯНЫЙ'
 def model_cfg(model, text=''):
     """Модель → {'ser': серия (буквенные части), 'size': типоразмер, 'p': давление, 'rec': ресивер, 'dry', 'vsd', 'w'}.
     text — название карточки: «с ресивером», «осушител», «водян», «частот»."""
-    m = re.sub(r'\([^)]*\)', ' ', str(model or '')).upper().replace(',', '.')
+    m = re.sub(r'\([^)]*\)', ' ', str(model or '').replace('\\', '')).upper().replace(',', '.')
     m = re.sub(r'(?<=\d)\s*[XХ×]\s*(?=\d)', 'X', m)                   # «2х270», «2 × 270» → «2X270»
     t = str(text or '').lower()
     cfg = {'ser': set(), 'size': None, 'p': None, 'rec': None, 'dry': False, 'vsd': False, 'w': False}
@@ -782,6 +943,9 @@ def model_cfg(model, text=''):
             continue
         if tok == 'ID':
             cfg['dry'] = True
+            continue
+        if tok == 'W':                      # «EAGLE-N VSD 200 10 BAR W» — водяное охлаждение
+            cfg['w'] = True
             continue
         parts = []
         for x in tok.split('-'):
@@ -811,6 +975,8 @@ def model_cfg(model, text=''):
                 cfg['ser'].add(x)
     if any(s.startswith('INVERS') for s in cfg['ser']):    # INVERSYS — всегда с частотным преобразователем
         cfg['vsd'] = True
+    if 'DS' in cfg['ser']:                  # спиральные DS: S/D/T/Q — число головок, не серия
+        cfg['ser'] -= {'S', 'D', 'T', 'Q'}
     if nums:
         cfg['size'] = nums[0]
     if len(nums) >= 2 and nums[1] <= 50:
@@ -823,7 +989,7 @@ def model_cfg(model, text=''):
         cfg['vsd'] = True
     if re.search(r'водян', t):
         cfg['w'] = True
-    if re.search(r'осушител', t):
+    if re.search(r'(с|со встроенным|и)\s+осушител', t):        # «с ресивером и осушителем»; сам «Осушитель DK 10» — не признак
         cfg['dry'] = True
     m2 = re.search(r'ресивер\S*\s*(\d{3,4})', t)
     if m2:
