@@ -791,6 +791,37 @@ class Store:
                 out.close()
         return dst
 
+    def restore_sqlite(self, src, log=lambda s: None):
+        """Заменить содержимое базы содержимым файла SQLite (копии программы) «на ходу»: через встроенный backup SQLite
+        в открытое соединение — файл базы и её WAL не подменяются руками (подмена файла при живом -wal портит базу:
+        «database disk image is malformed»). Перед этим — копия текущей базы в data/backup. → имя файла копии."""
+        chk = sqlite3.connect(src, timeout=30)
+        try:
+            res = [r[0] for r in chk.execute('PRAGMA integrity_check').fetchall()]
+            if res != ['ok']:
+                raise ValueError('Файл базы повреждён: ' + '; '.join(str(x) for x in res[:3]))
+            tables = {r[0] for r in chk.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            need = {'catalog', 'kp', 'kv', 'managers', 'clients'}
+            if not need <= tables:
+                raise ValueError('Это не база программы: нет таблиц ' + ', '.join(sorted(need - tables)))
+            bak = os.path.join(os.path.dirname(self.path), 'backup', 'kp-%s-before-restore.sqlite3' % datetime.now().strftime('%Y%m%d-%H%M%S'))
+            with self.lock:
+                self.backup(bak)
+                c = self.conn()
+                c.commit()
+                chk.backup(c)
+                c.commit()
+        finally:
+            chk.close()
+        self.migrations_up()          # копия может быть от прежней версии программы
+        with self.lock:
+            c = self.conn()
+            for name in ('catalog', 'managers', 'clients', 'suppliers', 'kp', 'types', 'settings'):
+                self._bump_data(c, name)      # версии справочников — чтобы браузеры перекачали данные
+            c.commit()
+        log('База заменена из файла %s, прежняя сохранена: %s' % (src, bak))
+        return bak
+
     # ---------- перенос прежних JSON-файлов ----------
     def migrate_json(self, data_dir, log=lambda s: None):
         """Однократно переносит каталог, журнал, контрагентов, проверки, ключи и типы из файлов в базу.

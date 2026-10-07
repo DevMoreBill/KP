@@ -846,6 +846,8 @@ class AdminApi:
             return self.export_sqlite()
         if sub in ('import/preview', 'import') and m == 'POST':
             return self.ok(self.import_(self.data(), apply=(sub == 'import'), sections=q.get('sections')))
+        if sub == 'import/sqlite' and m == 'POST':
+            return self.ok(self.import_sqlite(self.h.body(), q.get('name', '')))
         if sub.startswith('maint'):
             return self.maint(m, sub, q)
         if sub == 'migrations':
@@ -1085,6 +1087,37 @@ class AdminApi:
             os.remove(tmp)
         self.log('export_db', 'db', 'sqlite', None, {'bytes': len(data)})
         return self.h.send(200, 'application/octet-stream', data, self.h.attachment('kp_%s.sqlite3' % datetime.now().strftime('%Y-%m-%d_%H%M')))
+
+    def import_sqlite(self, data, name=''):
+        """Файл базы целиком (.sqlite3 или .zip с ним): проверка, копия текущей базы, замена содержимого «на ходу»."""
+        import zipfile
+        import io
+        if not data:
+            raise ValueError('Файл пустой')
+        if data[:2] == b'PK':
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                names = [n for n in z.namelist() if n.lower().endswith(('.sqlite3', '.sqlite', '.db'))]
+                if not names:
+                    raise ValueError('В архиве нет файла базы (.sqlite3)')
+                data = z.read(names[0])
+        if data[:16] != b'SQLite format 3\x00':
+            raise ValueError('Это не файл базы SQLite (.sqlite3) и не архив с ним')
+        tmp = os.path.join(os.path.dirname(self.st.path), 'backup', 'import-%s.sqlite3' % secrets.token_hex(4))
+        os.makedirs(os.path.dirname(tmp), exist_ok=True)
+        with open(tmp, 'wb') as f:
+            f.write(data)
+        try:
+            bak = self.st.restore_sqlite(tmp)
+        finally:
+            for ext in ('', '-wal', '-shm', '-journal'):
+                try:
+                    os.remove(tmp + ext)
+                except OSError:
+                    pass
+        rep = {'catalog': self.st.one('SELECT COUNT(*) FROM catalog')[0], 'kp': self.st.one('SELECT COUNT(*) FROM kp')[0],
+               'clients': self.st.one('SELECT COUNT(*) FROM clients')[0], 'backup': bak, 'file': str(name or '')[:120]}
+        self.log('import_db', 'db', 'sqlite', None, {'bytes': len(data), 'file': rep['file'], 'backup': bak, 'catalog': rep['catalog'], 'kp': rep['kp']})
+        return rep
 
     def import_(self, d, apply, sections=None):
         """Проверка схемы и предпросмотр (что добавится / обновится); apply — запись после копии базы.
