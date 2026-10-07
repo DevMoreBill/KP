@@ -122,7 +122,7 @@ TRASH_TABLES = {'kp': 'kp', 'catalog': 'catalog', 'manager': 'managers', 'client
 
 # поля позиции, которые нужны списку каталога, фильтрам и быстрому поиску (без характеристик, описаний и галереи)
 LIGHT_KEYS = ('id', 'name', 'spec', 'price', 'priceCur', 'cost', 'costCur', 'margin', 'mmode', 'kind', 'short', 'unit',
-              'attrs', 'hint', 'photo', 'prices', 'options', 'updatedAt', 'rrc', 'stock', 'priceSrc', 'costSrc')
+              'attrs', 'hint', 'photo', 'prices', 'options', 'updatedAt', 'rrc', 'stock', 'priceSrc', 'costSrc', 'costDisc')
 
 
 def _now():

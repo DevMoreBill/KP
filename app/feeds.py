@@ -13,6 +13,10 @@
     doc.stock = {qty, available, at, gone} — наличие у поставщика (qty — если фид даёт остаток).
     Цена КП позиции (doc.price) берётся из РРЦ, пока её не изменили вручную (doc.priceSrc = "rrc");
     закупка (doc.cost) — РРЦ минус скидка поставщика, если скидка задана (doc.costSrc = "feed").
+  • Сетка скидок поставщика — f.discounts: [{label, cats:[типы], drive: any|belt|direct, kwMin, kwMax, pct}], первое подходящее
+    правило; не подошло ни одно — f.discount («всё остальное»). Привод — по строке «Привод», признаку частотника и подсказкам
+    f.driveHints {belt, direct} (серии в названии / листе прайса: «TIDY, DVK» — ременной, «DVK D, IMPETUS» — прямой).
+    Какая скидка применена — doc.costDisc {pct, label}.
   • Повторная загрузка не затирает ручные правки: название, описание и таблица характеристик обновляются,
     только если их не меняли после прошлой загрузки (сравнение с doc.feed.orig).
   • Журнал — kv «feedlog:<id>»: последние 30 загрузок и проверок (что добавлено, изменения РРЦ и наличия).
@@ -107,6 +111,9 @@ def feed_save(store, f):
                auto=f.get('auto', kind == 'yml') is True, pageDesc=f.get('pageDesc', old.get('pageDesc', kind == 'yml')) is True,
                cats=_cats_ok(f.get('cats')) if isinstance(f.get('cats'), dict) else old.get('cats') or {},
                supplier=str(f.get('supplier') or old.get('supplier') or '')[:64], updatedAt=_now())
+    rec['discounts'] = _disc_rules(f['discounts']) if isinstance(f.get('discounts'), list) else old.get('discounts') or []
+    hints = f.get('driveHints') if isinstance(f.get('driveHints'), dict) else old.get('driveHints') or {}
+    rec['driveHints'] = {k: re.sub(r'\s+', ' ', str(hints.get(k) or '')).strip()[:400] for k in ('belt', 'direct')}
     if kind == 'files':
         cur = str(f.get('cur') or old.get('cur') or '').upper()[:3]
         rec.update(priceKind='rrc' if f.get('priceKind', old.get('priceKind')) == 'rrc' else 'cost', cur=cur if re.match(r'^[A-Z]{3}$', cur) else '',
@@ -907,16 +914,123 @@ def _feed_docs(store, fid):
     return out
 
 
+DRIVES = ('any', 'belt', 'direct')
+VSD_RX = re.compile(r'\bVSD\b|\bVFD\b|инвертор|частотн|преобразовател\S*\s+частоты|\bINVERS', re.I)
+
+
+def _disc_rules(raw):
+    """Сетка скидок из настроек: не больше 30 правил, у каждого — скидка 0…99 %, категории — id типов программы."""
+    out = []
+    for r in raw[:30]:
+        if not isinstance(r, dict):
+            continue
+        pct = _num(r.get('pct'))
+        if pct is None or not 0 < pct < 100:
+            continue
+        cats = [str(c)[:40] for c in (r.get('cats') or []) if re.match(r'^[a-z0-9_-]{1,40}$', str(c))][:40]
+        lim = {k: _num(r.get(k)) for k in ('kwMin', 'kwMax')}
+        out.append({'label': re.sub(r'\s+', ' ', str(r.get('label') or '')).strip()[:80], 'cats': cats,
+                    'drive': r.get('drive') if r.get('drive') in DRIVES else 'any', 'pct': round(pct, 2),
+                    'kwMin': lim['kwMin'] if lim['kwMin'] and lim['kwMin'] > 0 else None, 'kwMax': lim['kwMax'] if lim['kwMax'] and lim['kwMax'] > 0 else None})
+    return out
+
+
+def _hint_rx(words):
+    """«DVK D, IMPETUS» → регулярное выражение по целым словам (пробел и дефис внутри серии — любые)."""
+    parts = [w.strip() for w in re.split(r'[,;\n]', words or '') if w.strip()]
+    if not parts:
+        return None
+    alt = '|'.join(r'[\s-]*'.join(re.escape(x) for x in re.split(r'[\s-]+', p)) for p in sorted(parts, key=len, reverse=True))
+    return re.compile(r'(?<![A-Za-zА-Яа-я0-9])(?:%s)(?![A-Za-zА-Яа-я])' % alt, re.I)
+
+
+def drive_of(doc, f):
+    """Привод позиции: 'vsd' (частотник), 'direct', 'belt' или '' — не определён. Порядок: признак частотника,
+    подсказки-серии из настроек фида (прямые — раньше ременных: «DVK D» точнее «DVK»), строка «Привод» таблицы."""
+    a = doc.get('attrs') or {}
+    fd = doc.get('feed') or {}
+    text = ' '.join(str(x or '') for x in (doc.get('name'), a.get('model'), a.get('series'), fd.get('sheet'), fd.get('path')))
+    rows = [(str(r.get('k') or ''), str(r.get('v') or '')) for g in doc.get('groups') or [] for r in g.get('rows') or []]
+    reg = ' '.join(v for k, v in rows if re.search(r'регулирован|управлени\S* производ|частот', k, re.I))
+    if str(a.get('vsd') or '').lower() == 'да' or VSD_RX.search(text) or VSD_RX.search(reg):
+        return 'vsd'
+    hints = f.get('driveHints') or {}
+    for kind in ('direct', 'belt'):
+        rx = _hint_rx(hints.get(kind))
+        if rx and rx.search(text):
+            return kind
+    drv = ' '.join(v for k, v in rows if re.search(r'привод|передач', k, re.I)).lower()
+    if 'ремен' in drv and not re.search(r'прям|муфт|редукт|зубч', drv):
+        return 'belt'
+    if re.search(r'прям|муфт|редукт|зубч|соосн|коаксиал', drv):
+        return 'direct'
+    return ''
+
+
+def _kw_of(doc):
+    kw = _num((doc.get('attrs') or {}).get('kw'))
+    if kw:
+        return kw
+    for g in doc.get('groups') or []:
+        for r in g.get('rows') or []:
+            if re.search(r'мощност', str(r.get('k') or ''), re.I) and not re.search(r'потребля|охлажд|вентил', str(r.get('k') or ''), re.I):
+                m = re.search(r'(\d+(?:[.,]\d+)?)\s*(квт|kw)', str(r.get('v') or '') + ' ' + str(r.get('k') or ''), re.I)
+                if m:
+                    return _num(m.group(1))
+    return None
+
+
+def discount_for(f, doc):
+    """Скидка поставщика для позиции по сетке f.discounts (первое подходящее правило), иначе f.discount; → (pct | None, подпись)."""
+    pct, label, _ = _disc_pick(f, doc)
+    return pct, label
+
+
+def _disc_pick(f, doc):
+    """→ (pct | None, подпись, номер правила | None — «остальное»)."""
+    a = doc.get('attrs') or {}
+    cat = a.get('cat') or ''
+    drive, kw = None, None
+    for i, r in enumerate(f.get('discounts') or []):
+        if r.get('cats') and cat not in r['cats']:
+            continue
+        if r.get('drive') in ('belt', 'direct'):
+            drive = drive_of(doc, f) if drive is None else drive
+            if (drive == 'belt') != (r['drive'] == 'belt') or not drive:
+                continue
+        if r.get('kwMin') or r.get('kwMax'):
+            kw = _kw_of(doc) if kw is None else kw
+            if not kw or (r.get('kwMin') and kw < r['kwMin']) or (r.get('kwMax') and kw > r['kwMax']):
+                continue
+        return r['pct'], r.get('label') or '', i
+    if f.get('discount'):
+        return f['discount'], 'Остальное оборудование' if f.get('discounts') else '', None
+    return None, '', None
+
+
+def _set_cost(doc, kop, cur, f, ch):
+    """Закупка = цена × (1 − скидка по сетке); ручную закупку (costSrc = manual) не трогает; изменение — в список ch."""
+    pct, label = discount_for(f, doc)
+    if doc.get('costSrc', 'feed') != 'feed':
+        return
+    if pct is None:
+        if f.get('priceKind') != 'cost' or f.get('kind') != 'files':
+            return
+        pct = 0
+    new = int(round(kop * (1 - pct / 100)))
+    if doc.get('cost') and (doc.get('cost') != new or (doc.get('costCur') or 'RUB') != cur):
+        ch.append(('cost', doc.get('cost'), new, cur))
+    doc['cost'], doc['costCur'], doc['costSrc'] = new, cur, 'feed'
+    doc['costDisc'] = {'pct': pct, 'label': label} if pct else None
+
+
 def _price_part(doc, o, f, today):
     """РРЦ, наличие, цена КП и закупка позиции по предложению фида; → список изменений [(поле, было, стало, валюта)].
-    У фида из файлов с priceKind = cost цена прайса — наша закупка (минус скидка, если задана); РРЦ и цена КП не трогаются."""
+    У фида из файлов с priceKind = cost цена прайса — наша закупка (минус скидка, если задана); РРЦ и цена КП не трогаются.
+    Скидка — по сетке скидок фида (discount_for)."""
     ch = []
     if o['price'] and f.get('priceKind') == 'cost':
-        kop = int(round(o['price'] * 100 * (1 - (f.get('discount') or 0) / 100)))
-        if doc.get('costSrc', 'feed') == 'feed' and (doc.get('cost') != kop or (doc.get('costCur') or 'RUB') != o['cur']):
-            if doc.get('cost'):
-                ch.append(('cost', doc.get('cost'), kop, o['cur']))
-            doc['cost'], doc['costCur'], doc['costSrc'] = kop, o['cur'], 'feed'
+        _set_cost(doc, int(round(o['price'] * 100)), o['cur'], f, ch)
         doc['costAt'] = today
     elif o['price']:
         kop = int(round(o['price'] * 100))
@@ -930,8 +1044,8 @@ def _price_part(doc, o, f, today):
             r['at'] = today
         if doc.get('priceSrc', 'rrc') == 'rrc' and (doc.get('price') != kop or (doc.get('priceCur') or 'RUB') != o['cur']):
             doc['price'], doc['priceCur'], doc['priceSrc'] = kop, o['cur'], 'rrc'
-        if f.get('discount') and doc.get('costSrc', 'feed') == 'feed':
-            doc['cost'], doc['costCur'], doc['costSrc'] = int(round(kop * (1 - f['discount'] / 100))), o['cur'], 'feed'
+        _set_cost(doc, kop, o['cur'], f, ch)
+        doc['costAt'] = today
     if o.get('nostock'):            # фид из файлов не знает наличия
         return ch
     s = doc.get('stock') or {}
@@ -1201,7 +1315,8 @@ def build(o, f, types, old=None, put_image=None):
     if not doc.get('unit'):
         doc['unit'] = 'шт.'
     doc['feed'] = {'id': f['id'], 'oid': o['oid'], 'url': o['url'], 'sku': o['sku'], 'barcode': o['barcode'], 'cat': o['cat'],
-                   'path': o.get('path', ''), 'crumbs': o.get('crumbs', ''), 'catAuto': auto, 'orig': new_orig, 'at': today, 'linked': bool(handmade)}
+                   'path': o.get('path', ''), 'crumbs': o.get('crumbs', ''), 'sheet': o.get('sheet', ''), 'catAuto': auto, 'orig': new_orig, 'at': today,
+                   'linked': bool(handmade)}
     changes = _price_part(doc, o, f, today)
     if put_image and o['pictures']:
         if not (doc.get('photo') or {}).get('src'):
@@ -1424,6 +1539,33 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
         raise
 
 
+def discount_plan(store, f):
+    """Как сетка скидок разложится по позициям каталога из фида (без записи): по правилам — число позиций, примеры,
+    средняя закупка; отдельно — компрессоры, у которых не определён привод или мощность (их скидка — «остальное»)."""
+    rules = list(f.get('discounts') or [])
+    groups = [{'label': r.get('label') or 'Правило %d' % (i + 1), 'pct': r['pct'], 'count': 0, 'sample': []} for i, r in enumerate(rules)]
+    other = {'label': 'Остальное оборудование', 'pct': f.get('discount'), 'count': 0, 'sample': []}
+    unknown, manual, noprice = [], 0, 0
+    drive_cats = {c for r in rules if r.get('drive') in ('belt', 'direct') for c in r.get('cats') or []}
+    kw_cats = {c for r in rules if r.get('kwMin') or r.get('kwMax') for c in r.get('cats') or []}
+    for d in _feed_docs(store, f['id']):
+        i = _disc_pick(f, d)[2]
+        g = groups[i] if i is not None else other
+        g['count'] += 1
+        if len(g['sample']) < 8:
+            g['sample'].append(d.get('name') or '')
+        cat = (d.get('attrs') or {}).get('cat')
+        if g is other and cat in drive_cats | kw_cats:
+            why = 'привод не определён' if cat in drive_cats and not drive_of(d, f) else ('мощность не указана' if cat in kw_cats and not _kw_of(d) else '')
+            if why:
+                unknown.append({'id': d['id'], 'name': d.get('name'), 'why': why})
+        if d.get('costSrc', 'feed') != 'feed':
+            manual += 1
+        if not ((d.get('rrc') or {}).get('price') or d.get('cost')):
+            noprice += 1
+    return {'groups': groups + [other], 'unknown': unknown[:200], 'unknownCount': len(unknown), 'manual': manual, 'noprice': noprice}
+
+
 def check_feed(store, f, by='', log=print):
     """Ежедневная проверка: РРЦ и наличие связанных позиций каталога; позиции, пропавшие из фида, — «нет в фиде»."""
     j = _job(f['id'], 'check')
@@ -1436,8 +1578,10 @@ def check_feed(store, f, by='', log=print):
         price_ch, stock_ch, gone, upd = [], [], [], 0
         for d in docs:
             o = by_oid.get(d['feed'].get('oid'))
-            before = json.dumps([d.get('rrc'), d.get('stock'), d.get('price'), d.get('cost')], sort_keys=True)
+            before = json.dumps([d.get('rrc'), d.get('stock'), d.get('price'), d.get('cost'), d.get('costDisc')], sort_keys=True)
             if o:
+                if o.get('sheet'):
+                    d['feed']['sheet'] = o['sheet']
                 ch = _price_part(d, o, f, today)
                 for c in ch:
                     (stock_ch if c[0] == 'stock' else price_ch).append(_change(d['id'], d, c))
@@ -1447,7 +1591,7 @@ def check_feed(store, f, by='', log=print):
                     gone.append({'id': d['id'], 'name': d.get('name')})
                 if f.get('kind') != 'files':        # у фида из файлов наличие неизвестно — не отмечать «нет в фиде»
                     d['stock'] = dict(s, available=False, gone=True, at=today)
-            if json.dumps([d.get('rrc'), d.get('stock'), d.get('price'), d.get('cost')], sort_keys=True) != before:
+            if json.dumps([d.get('rrc'), d.get('stock'), d.get('price'), d.get('cost'), d.get('costDisc')], sort_keys=True) != before:
                 d['updatedAt'] = _now()
                 store.catalog_put(d['id'], json.dumps(d, ensure_ascii=False), by or ('Фид «%s»' % f['name']))
                 upd += 1
@@ -1460,7 +1604,10 @@ def check_feed(store, f, by='', log=print):
                'gone': gone[:300], 'new': len(new), 'newSample': [o['name'] for o in new[:10]]}
         _log_add(store, f['id'], res)
         _mark(store, f['id'], 'check', res)
-        j.update(state='done', result=res, msg=('Закупка изменилась: %d' if f.get('priceKind') == 'cost' else 'РРЦ изменилась: %d, наличие: %d') % ((len(price_ch),) if f.get('priceKind') == 'cost' else (len(price_ch), len(stock_ch))))
+        n_cost, n_rrc = sum(1 for c in price_ch if c['kind'] == 'cost'), sum(1 for c in price_ch if c['kind'] == 'rrc')
+        msg = 'Закупка изменилась: %d' % n_cost if f.get('priceKind') == 'cost' and f.get('kind') == 'files' else \
+            'РРЦ изменилась: %d, закупка: %d, наличие: %d' % (n_rrc, n_cost, len(stock_ch))
+        j.update(state='done', result=res, msg=msg)
         return res
     except Exception as e:
         j.update(state='error', msg=str(e)[:300])

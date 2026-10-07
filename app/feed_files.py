@@ -771,4 +771,4 @@ def _offer(oid, name, cid, path, url, pictures, desc, params, maker, model, pr, 
             'cur': cur0 or (pr['cur'] if pr and pr['cur'] else 'EUR'), 'vendor': maker, 'model': model or (pr['short'] if pr else '') or '',
             'sku': pr['sku'] if pr else '', 'barcode': '', 'pictures': pictures, 'desc': desc, 'params': params,
             'available': True, 'qty': None, 'nostock': True, 'authoritative': True, 'weight': None, 'dims': '', 'notes': '',
-            'opts': [{'name': n, 'price': v} for n, v in (pr['opts'] if pr else [])]}
+            'opts': [{'name': n, 'price': v} for n, v in (pr['opts'] if pr else [])], 'sheet': pr['sheet'] if pr else ''}

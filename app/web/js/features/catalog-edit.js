@@ -60,13 +60,17 @@ async function closeCatEditor(save){
   if (doc && cb) await cb(doc);
 }
 
+// закупка из фида по сетке скидок поставщика: «РРЦ − 30 % (Компрессоры с ременным приводом до 75 кВт)»
+function catDiscTxt(x){ const d=x.costDisc;
+  return d&&d.pct&&x.costSrc==='feed' ? ` Закупка — из фида поставщика: ${x.rrc&&x.rrc.price?'РРЦ':'цена прайса'} − ${String(d.pct).replace('.',',')} %${d.label?` (${esc(d.label)})`:''}.` : ''; }
+
 function catPriceBlock(x){
   const cur=k=>`<select data-ccur="${k}" aria-label="Валюта">${Object.keys(CURS).map(c=>`<option value="${c}"${(x[k]||'RUB')===c?' selected':''}>${esc(CURS[c].sh)}</option>`).join('')}</select>`;
   const pt=x._priceText ?? (x.price?money(x.price):''), ct=x._costText ?? (x.cost?money(x.cost):'');
   return `<div class="ed-sec"><p class="sub">Цена в каталоге</p><div class="cprice">
       <label class="f"><span>Цена продажи</span><input type="text" inputmode="decimal" class="num" data-cprice="price" value="${esc(pt)}" placeholder="не указана" autocomplete="off"></label><label class="f"><span>Валюта</span>${cur('priceCur')}</label>
       <label class="f"><span>Закупка</span><input type="text" inputmode="decimal" class="num" data-cprice="cost" value="${esc(ct)}" placeholder="не указана" autocomplete="off"></label><label class="f"><span>Валюта закупки</span>${cur('costCur')}</label></div>
-    <p class="muted" style="margin:6px 0 0">Цена подставляется в новые КП. При сохранении КП цена позиции в каталоге обновляется сама.</p></div>`;
+    <p class="muted" style="margin:6px 0 0">Цена подставляется в новые КП. При сохранении КП цена позиции в каталоге обновляется сама.${catDiscTxt(x)}</p></div>`;
 }
 
 document.addEventListener('input', e=>{ const t=e.target; if (t.dataset.cprice==null || !CATED) return;
