@@ -147,6 +147,32 @@ def _clean_text(s):
     return s.strip(' "')
 
 
+PAGE_COLS = {'cat': r'^категор', 'name': r'^назван|^наименован', 'url': r'ссылк|^url', 'pictures': r'картин|^фото|изображ', 'desc': r'^описан',
+             'chars': r'характерист', 'model': r'^модель', 'sku': r'^артикул'}
+
+
+def _pages_table(text):
+    """Правильный CSV (все поля в кавычках, переносы строк внутри ячеек — как в выгрузке программы): столбцы по заголовкам.
+    → список записей [cat, name, url, pics, desc, chars, model] или None, если это не такой файл."""
+    try:
+        rows = list(csv.reader(io.StringIO(text)))
+    except csv.Error:
+        return None
+    if len(rows) < 2:
+        return None
+    head = [re.sub(r'\s+', ' ', h).strip().lower() for h in rows[0]]
+    col = {}
+    for key, rx in PAGE_COLS.items():
+        col[key] = next((i for i, h in enumerate(head) if re.search(rx, h)), None)
+    if col['name'] is None or col['url'] is None:
+        return None
+    body = [r for r in rows[1:] if len(r) > col['url'] and r[col['name']].strip()]
+    if not body or sum(1 for r in body if _PROD_URL.match(r[col['url']].strip())) < len(body) * 0.8:
+        return None             # кавычки сломаны — строки склеились, читать построчно
+    get = lambda r, k: r[col[k]].strip() if col[k] is not None and col[k] < len(r) else ''
+    return [[get(r, 'cat'), get(r, 'name'), get(r, 'url'), get(r, 'pictures'), get(r, 'desc'), get(r, 'chars'), get(r, 'model')] for r in body]
+
+
 def parse_pages(data):
     """CSV парса → [{cat, name, url, pictures, desc, chars:[(k, v)], model}]."""
     text = _decode(data)
@@ -154,19 +180,24 @@ def parse_pages(data):
     if not lines:
         raise ValueError('Файл пустой')
     out, seen = [], set()
-    for line in lines[1:] if re.match(r'^"?категор', lines[0].strip(), re.I) else lines:
-        line = _unwrap(line)
-        if not line.strip():
-            continue
-        parts = None
-        try:
-            r = next(csv.reader(io.StringIO(line)))
-            if len(r) == 6 and _PROD_URL.match(r[2].strip()):
-                parts = [x.strip() for x in r]
-        except (csv.Error, StopIteration):
+    table = _pages_table(text) if re.match(r'^"?(категор|назван)', lines[0].strip(), re.I) else None
+    for item in (table if table is not None else (lines[1:] if re.match(r'^"?категор', lines[0].strip(), re.I) else lines)):
+        model0 = ''
+        if table is not None:
+            parts, model0 = item[:6], item[6]
+        else:
+            line = _unwrap(item)
+            if not line.strip():
+                continue
             parts = None
-        if parts is None:
-            parts = _split_line(line)
+            try:
+                r = next(csv.reader(io.StringIO(line)))
+                if len(r) == 6 and _PROD_URL.match(r[2].strip()):
+                    parts = [x.strip() for x in r]
+            except (csv.Error, StopIteration):
+                parts = None
+            if parts is None:
+                parts = _split_line(line)
         if not parts or not parts[1]:
             continue
         cat, name, url, pics, desc, chars = parts
@@ -185,7 +216,7 @@ def parse_pages(data):
             have.add(base)
             pictures.append(u)
         pictures.sort(key=lambda u: 1 if '/cache/' in u else 0)      # оригиналы раньше уменьшенных копий
-        rows, model = [], ''
+        rows, model = [], model0[:80]
         for piece in re.split(r'\s*\|\s*', _clean_text(chars)):
             k, _, v = piece.partition(':')
             k, v = k.strip(' "'), v.strip(' "')
