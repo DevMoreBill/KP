@@ -155,7 +155,8 @@ function kpSkeleton(KP) {
     rp += `<w:color w:val="${o.color || COL('DARK')}"/>`;
     if (o.sp) rp += `<w:spacing w:val="${o.sp}"/>`;
     rp += `<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/><w:lang w:val="ru-RU"/>`;
-    return `<w:r><w:rPr>${rp}</w:rPr><w:t xml:space="preserve">${esc(t)}</w:t></w:r>`;
+    // перенос строки в тексте (список «• …» в описании) — разрыв строки внутри абзаца
+    return String(t == null ? '' : t).split(/\r?\n/).map(line => `<w:r><w:rPr>${rp}</w:rPr><w:t xml:space="preserve">${esc(line)}</w:t></w:r>`).join('<w:r><w:br/></w:r>');
   }
   const br = '<w:r><w:br/></w:r>';
   const lines = (s, st) => String(s || '').split(/\r?\n/).map(x => r(x, st)).join(br);
