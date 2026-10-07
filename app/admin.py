@@ -713,7 +713,7 @@ class AdminApi:
             feeds.run_bg(feeds.import_feed, st, f, types, feeds.IMAGE_STORE, who, only)
             self.log('import_feed', 'catalog', 'feed:' + fid, None, {'url': f['url'], 'only': len(only) if only else 'все'})
         else:
-            feeds.run_bg(feeds.check_feed, st, f, who)
+            feeds.run_bg(feeds.check_feed, st, f, who, types=types)
             self.log('check_feed', 'catalog', 'feed:' + fid, None, {'url': f['url']})
         return self.ok({'job': feeds.JOBS.get(fid) or {'state': 'run', 'kind': act}})
 

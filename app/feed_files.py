@@ -755,7 +755,128 @@ def build_feed(f, pages, prices, param_name):
                 k2, u = param_name(k, '')
                 params.append({'k': k2[:60], 'u': u, 'v': v})
             offers[oid] = _offer(oid, p['name'], cid, p['sheet'], '', [], '', params, maker, p['short'], p, cur0)
-    return {'shop': f.get('name') or '', 'date': '', 'cats': cats, 'offers': list(offers.values()), 'match': stats}
+    return {'shop': f.get('name') or '', 'date': '', 'cats': cats, 'offers': list(offers.values()), 'match': stats, 'prices': prices}
+
+
+# ---------------------------------------------------------------- ручные карточки каталога ↔ строки прайса
+# Карточка, заведённая вручную, описывает модель целиком («TIDY-N 15 с ресивером и осушителем», давление 7,5 / 8,5 / 10 / 13 бар),
+# а прайс — каждое исполнение отдельно («TIDY-N 15-7,5-250D»). Цена у давлений до 13 бар одна, отличается исполнение:
+# ресивер (250 / 500 л), осушитель (D после ресивера или ID), водяное охлаждение (W), частотник (VSD). Сопоставление — по серии,
+# типоразмеру и исполнению; давление не учитывается, если цены совпадают.
+CFG_SKIP = {'КОМПРЕССОР', 'ВИНТОВОЙ', 'БЕЗМАСЛЯНЫЙ', 'ПОРШНЕВОЙ', 'СПИРАЛЬНЫЙ', 'ДВУХСТУПЕНЧАТЫЙ', 'ДОЖИМНОЙ', 'DALGAKIRAN', 'COMPACT', 'BAR', 'БАР'}
+
+
+def model_cfg(model, text=''):
+    """Модель → {'ser': серия (буквенные части), 'size': типоразмер, 'p': давление, 'rec': ресивер, 'dry', 'vsd', 'w'}.
+    text — название карточки: «с ресивером», «осушител», «водян», «частот»."""
+    m = re.sub(r'\([^)]*\)', ' ', str(model or '')).upper().replace(',', '.')
+    m = re.sub(r'(?<=\d)\s*[XХ×]\s*(?=\d)', 'X', m)                   # «2х270», «2 × 270» → «2X270»
+    t = str(text or '').lower()
+    cfg = {'ser': set(), 'size': None, 'p': None, 'rec': None, 'dry': False, 'vsd': False, 'w': False}
+    nums = []
+    for tok in re.split(r'[\s/]+', m):
+        if not tok:
+            continue
+        if tok in ('VSD', 'VFD'):
+            cfg['vsd'] = True
+            continue
+        if tok == 'ID':
+            cfg['dry'] = True
+            continue
+        parts = []
+        for x in tok.split('-'):
+            g = re.match(r'^([A-ZА-Я]{2,})(\d+(?:\.\d+)?)$', x)        # «DS11» → «DS», «11»
+            parts += [g.group(1), g.group(2)] if g else ([x] if x else [])
+        for x in parts:
+            n = re.match(r'^(\d+(?:\.\d+)?)([A-ZА-Я]*)$', x)
+            if n:
+                nums.append(float(n.group(1)))
+                suf = n.group(2)
+                if suf == 'W':
+                    cfg['w'] = True
+                elif suf == 'D' and len(nums) >= 3:     # «-250D» — ресивер с осушителем
+                    cfg['dry'] = True
+                elif suf == 'D':                        # «DVK 220D» — серия с прямым приводом
+                    cfg['ser'].add('D')
+                elif re.match(r'^\d*X\d', x):
+                    pass
+                continue
+            if re.match(r'^\d+X\d', x):                 # «2X270D» — два ресивера
+                r = re.match(r'^(\d+)X(\d+)(D?)$', x)
+                if r:
+                    cfg['rec'] = int(r.group(1)) * int(r.group(2))
+                    cfg['dry'] = cfg['dry'] or bool(r.group(3))
+                continue
+            if re.match(r'^[A-ZА-Я]+$', x) and x not in CFG_SKIP:
+                cfg['ser'].add(x)
+    if any(s.startswith('INVERS') for s in cfg['ser']):    # INVERSYS — всегда с частотным преобразователем
+        cfg['vsd'] = True
+    if nums:
+        cfg['size'] = nums[0]
+    if len(nums) >= 2 and nums[1] <= 50:
+        cfg['p'] = nums[1]
+    if len(nums) >= 3 and 50 <= nums[2] <= 3000:
+        cfg['rec'] = int(nums[2])
+    if re.search(r'частот|инвертор|\bvsd\b', t):
+        cfg['vsd'] = True
+    if any(s.startswith('INVERS') for s in cfg['ser']):
+        cfg['vsd'] = True
+    if re.search(r'водян', t):
+        cfg['w'] = True
+    if re.search(r'осушител', t):
+        cfg['dry'] = True
+    m2 = re.search(r'ресивер\S*\s*(\d{3,4})', t)
+    if m2:
+        cfg['rec'] = int(m2.group(1))
+    elif re.search(r'(с|на) ресивер', t) and not cfg['rec']:
+        cfg['rec'] = -1                                 # с ресивером, объём не указан
+    return cfg
+
+
+def match_card(name, model, attrs, prices):
+    """Ручная карточка → строки прайса того же исполнения; → (строки, причина-если-нет). Давление учитывается,
+    только если у найденных строк разные цены (тогда — по давлению карточки)."""
+    cfg = model_cfg(model or name, name)
+    a = attrs or {}
+    if str(a.get('vsd') or '').lower() == 'да':
+        cfg['vsd'] = True
+    if str(a.get('dryer') or '').lower() == 'да':
+        cfg['dry'] = True
+    rec = _num_attr(a.get('receiver'))
+    if rec and cfg['rec'] in (None, -1):
+        cfg['rec'] = int(rec)
+    if not cfg['ser'] or cfg['size'] is None:
+        return [], 'не понятна модель'
+    cand = []
+    for p in prices:
+        pc = model_cfg(p['name'] or p['short'])
+        if pc['ser'] != cfg['ser'] or pc['size'] != cfg['size'] or pc['vsd'] != cfg['vsd'] or pc['w'] != cfg['w'] or pc['dry'] != cfg['dry']:
+            continue
+        if (cfg['rec'] is None) != (pc['rec'] is None) or (cfg['rec'] not in (None, -1) and pc['rec'] != cfg['rec']):
+            continue
+        cand.append((p, pc))
+    if not cand:
+        return [], 'нет в прайсе'
+    hp = cfg.get('p') or _num_attr(a.get('pressure'))
+    std = [(p, pc) for p, pc in cand if not pc['p'] or pc['p'] <= 13]
+    if std and not (hp and hp > 13):
+        cand = std
+    priced = [(p, pc) for p, pc in cand if p['price']]
+    if not priced:
+        return [p for p, _ in cand], 'в прайсе без цены'
+    if len({p['price'] for p, _ in priced}) > 1:
+        by_p = [(p, pc) for p, pc in priced if hp and pc['p'] == hp]
+        if len({p['price'] for p, _ in by_p}) == 1:
+            return [p for p, _ in by_p], ''
+        return [p for p, _ in priced], 'разные цены у исполнений'
+    return [p for p, _ in priced], ''
+
+
+def _num_attr(v):
+    try:
+        return float(str(v).replace(',', '.'))
+    except (TypeError, ValueError):
+        return None
 
 
 def _oid(base, uniq, offers):

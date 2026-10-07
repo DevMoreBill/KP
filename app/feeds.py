@@ -929,7 +929,7 @@ def _disc_rules(raw):
             continue
         cats = [str(c)[:40] for c in (r.get('cats') or []) if re.match(r'^[a-z0-9_-]{1,40}$', str(c))][:40]
         lim = {k: _num(r.get(k)) for k in ('kwMin', 'kwMax')}
-        out.append({'label': re.sub(r'\s+', ' ', str(r.get('label') or '')).strip()[:80], 'cats': cats,
+        out.append({'label': re.sub(r'\s+', ' ', str(r.get('label') or '')).strip()[:80], 'cats': cats, 'kwUnknown': r.get('kwUnknown') is True,
                     'drive': r.get('drive') if r.get('drive') in DRIVES else 'any', 'pct': round(pct, 2),
                     'kwMin': lim['kwMin'] if lim['kwMin'] and lim['kwMin'] > 0 else None, 'kwMax': lim['kwMax'] if lim['kwMax'] and lim['kwMax'] > 0 else None})
     return out
@@ -1000,7 +1000,9 @@ def _disc_pick(f, doc):
                 continue
         if r.get('kwMin') or r.get('kwMax'):
             kw = _kw_of(doc) if kw is None else kw
-            if not kw or (r.get('kwMin') and kw < r['kwMin']) or (r.get('kwMax') and kw > r['kwMax']):
+            if not kw and not r.get('kwUnknown'):
+                continue
+            if kw and ((r.get('kwMin') and kw < r['kwMin']) or (r.get('kwMax') and kw > r['kwMax'])):
                 continue
         return r['pct'], r.get('label') or '', i
     if f.get('discount'):
@@ -1114,6 +1116,8 @@ def item_cat(o, types):
     c = _rule(NAME_RULES, o['name'], ids)
     if c:
         return c
+    if 'comp_diesel' in ids and re.search(r'компрессор', o['name'], re.I) and re.search(r'дизел', o['name'], re.I):
+        return 'comp_diesel'                # «Компрессор винтовой дизельный PDP 15-7» — дизельный, а не винтовой
     c = _rule(PATH_RULES, crumbs, ids)      # настоящий раздел сайта (страница товара) надёжнее подборок фида
     if c:
         return c
@@ -1539,6 +1543,52 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
         raise
 
 
+def _maker_cards(store, f):
+    """Позиции каталога производителя фида (f.maker), заведённые вручную и не связанные ни с одним фидом."""
+    mk = _brand_key(f.get('maker'))
+    if not mk:
+        return []
+    out = []
+    for (doc,) in store.all("SELECT doc FROM catalog"):
+        try:
+            d = json.loads(doc)
+        except ValueError:
+            continue
+        if (d.get('feed') or {}).get('id'):
+            continue
+        if _brand_key((d.get('attrs') or {}).get('maker')) == mk:
+            out.append(d)
+    return out
+
+
+def price_cards(store, f, prices, today, by=''):
+    """Ручные карточки производителя ↔ строки прайса (feed_files.match_card: серия, типоразмер, исполнение): РРЦ, цена КП
+    и закупка по сетке скидок — как у позиций фида; связь — doc.priceLink {feed, sku, name, at}. → (изменения цен, сводка)."""
+    changes, sumr = [], {'cards': 0, 'priced': 0, 'updated': 0, 'noPrice': [], 'missing': [], 'unclear': []}
+    for d in _maker_cards(store, f):
+        a = d.get('attrs') or {}
+        sumr['cards'] += 1
+        rows, why = feed_files.match_card(d.get('name'), a.get('model'), a, prices)
+        if why:
+            key = {'в прайсе без цены': 'noPrice', 'нет в прайсе': 'missing'}.get(why, 'unclear')
+            sumr[key].append({'id': d['id'], 'name': d.get('name'), 'why': why, 'rows': [p['name'] for p in rows[:3]]})
+            continue
+        p = rows[0]
+        before = json.dumps([d.get('rrc'), d.get('price'), d.get('cost'), d.get('costDisc'), d.get('priceLink')], sort_keys=True, ensure_ascii=False)
+        o = {'price': p['price'], 'oldprice': None, 'cur': (f.get('cur') or p.get('cur') or 'EUR').upper(), 'nostock': True}
+        for c in _price_part(d, o, f, today):
+            changes.append(_change(d['id'], d, c))
+        d['priceLink'] = {'feed': f['id'], 'sku': p.get('sku') or '', 'name': p['name'], 'sheet': p.get('sheet') or '', 'rows': len(rows)}
+        sumr['priced'] += 1
+        if json.dumps([d.get('rrc'), d.get('price'), d.get('cost'), d.get('costDisc'), d.get('priceLink')], sort_keys=True, ensure_ascii=False) != before:
+            d['updatedAt'] = _now()
+            store.catalog_put(d['id'], json.dumps(d, ensure_ascii=False), by or ('Фид «%s»' % f['name']))
+            sumr['updated'] += 1
+    for k in ('noPrice', 'missing', 'unclear'):
+        sumr[k] = sumr[k][:300]
+    return changes, sumr
+
+
 def discount_plan(store, f):
     """Как сетка скидок разложится по позициям каталога из фида (без записи): по правилам — число позиций, примеры,
     средняя закупка; отдельно — компрессоры, у которых не определён привод или мощность (их скидка — «остальное»)."""
@@ -1548,7 +1598,7 @@ def discount_plan(store, f):
     unknown, manual, noprice = [], 0, 0
     drive_cats = {c for r in rules if r.get('drive') in ('belt', 'direct') for c in r.get('cats') or []}
     kw_cats = {c for r in rules if r.get('kwMin') or r.get('kwMax') for c in r.get('cats') or []}
-    for d in _feed_docs(store, f['id']):
+    for d in _feed_docs(store, f['id']) + (_maker_cards(store, f) if f.get('kind') == 'files' else []):
         i = _disc_pick(f, d)[2]
         g = groups[i] if i is not None else other
         g['count'] += 1
@@ -1566,7 +1616,7 @@ def discount_plan(store, f):
     return {'groups': groups + [other], 'unknown': unknown[:200], 'unknownCount': len(unknown), 'manual': manual, 'noprice': noprice}
 
 
-def check_feed(store, f, by='', log=print):
+def check_feed(store, f, by='', log=print, types=None):
     """Ежедневная проверка: РРЦ и наличие связанных позиций каталога; позиции, пропавшие из фида, — «нет в фиде»."""
     j = _job(f['id'], 'check')
     try:
@@ -1582,6 +1632,15 @@ def check_feed(store, f, by='', log=print):
             if o:
                 if o.get('sheet'):
                     d['feed']['sheet'] = o['sheet']
+                if types:       # категория по правилам изменилась (а вручную её не меняли) — до расчёта скидки
+                    a = d.get('attrs') or {}
+                    auto = (f.get('cats') or {}).get(o['cat']) or item_cat(o, types) or 'other'
+                    prev = d['feed'].get('catAuto')
+                    if prev and a.get('cat') == prev and auto != prev:
+                        a['cat'] = auto
+                        d['feed']['catAuto'] = auto
+                        d['attrs'] = a
+                        before = before + '*'
                 ch = _price_part(d, o, f, today)
                 for c in ch:
                     (stock_ch if c[0] == 'stock' else price_ch).append(_change(d['id'], d, c))
@@ -1596,17 +1655,24 @@ def check_feed(store, f, by='', log=print):
                 store.catalog_put(d['id'], json.dumps(d, ensure_ascii=False), by or ('Фид «%s»' % f['name']))
                 upd += 1
             j['done'] += 1
+        cards = None
+        if f.get('kind') == 'files' and feed.get('prices'):        # карточки производителя, заведённые вручную
+            cc, cards = price_cards(store, f, feed['prices'], today, by)
+            price_ch += cc
+            upd += cards['updated']
         linked = {d['feed'].get('oid') for d in docs}
         skip = {k for k, v in (f.get('cats') or {}).items() if v == 'skip'}
         var = set(f.get('variants') or [])
         new = [o for o in feed['offers'] if o['oid'] not in linked and o['cat'] not in skip and o['oid'] not in var]
         res = {'at': _now(), 'kind': 'check', 'by': by, 'checked': len(docs), 'updated': upd, 'price': price_ch[:300], 'stock': stock_ch[:300],
-               'gone': gone[:300], 'new': len(new), 'newSample': [o['name'] for o in new[:10]]}
+               'gone': gone[:300], 'new': len(new), 'newSample': [o['name'] for o in new[:10]], 'cards': cards}
         _log_add(store, f['id'], res)
         _mark(store, f['id'], 'check', res)
         n_cost, n_rrc = sum(1 for c in price_ch if c['kind'] == 'cost'), sum(1 for c in price_ch if c['kind'] == 'rrc')
         msg = 'Закупка изменилась: %d' % n_cost if f.get('priceKind') == 'cost' and f.get('kind') == 'files' else \
             'РРЦ изменилась: %d, закупка: %d, наличие: %d' % (n_rrc, n_cost, len(stock_ch))
+        if cards:
+            msg += '; карточки, заведённые вручную: с ценой из прайса %d из %d' % (cards['priced'], cards['cards'])
         j.update(state='done', result=res, msg=msg)
         return res
     except Exception as e:
