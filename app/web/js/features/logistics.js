@@ -223,7 +223,7 @@ function dlLogistics(c){
             <small>${esc(o.note||'')}${o.local?` · + забор и доставка по городу ${lgRub(o.local)}`:''} ${o.agent?' · агент '+lgRub(o.agent):''} · страхование ${o.insTk?'перевозчика ':''}${lgRub(o.ins)}${o.unload?' · разгрузка '+lgRub(o.unload):''}</small></td>
           <td>${esc(kindT[o.kind]||'')}</td><td class="num">${o.days?esc(o.days)+' дн.':''}</td><td class="num">${lgRub(o.total)}${o===fin.max?' <span class="lg-tag">макс.</span>':''}</td></tr>`).join('')}
       </tbody></table></div>
-      ${Q&&Q.res.errors.length?`<ul class="lg-errs">${Q.res.errors.map(e=>`<li class="${e.skip?'muted':''}"><b>${esc(e.src)}:</b> ${esc(e.msg)}</li>`).join('')}</ul>`:''}
+      ${Q&&Q.res.errors.length?`<ul class="lg-errs">${Q.res.errors.map(e=>`<li class="${e.skip?'muted':''}"><b>${esc(e.src)}:</b> ${esc(e.msg)}${e.url&&!e.skip?` <a href="${esc(e.url)}" target="_blank" rel="noopener">посчитать на сайте ↗</a>`:''}</li>`).join('')}</ul>`:''}
       <p class="muted lg-note">${Q?'Цены перевозчиков запрошены '+esc(stTime(Q.res.at)):LG.busy[s.id]?'Запрашиваю цены перевозчиков…':'Цены перевозчиков ещё не запрошены — пока только расчёт по тарифам.'}</p></div>`;
     // итог — в сделку
     const manual=lg.mode==='manual', cur=dNum(s.logRu&&s.logRu.v)||0, ch=fin.chosen;
