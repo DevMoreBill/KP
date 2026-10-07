@@ -19,7 +19,9 @@
 """
 import json
 import re
+import socket
 import threading
+import time
 import urllib.error
 import urllib.parse
 from datetime import date, datetime, timedelta
@@ -35,6 +37,12 @@ CDEK_BASE = 'https://api.cdek.ru/v2'
 VOZ_URL = 'https://vozovoz.ru/api/'
 NRG_BASES = ('https://api2.nrg-tk.ru/v2', 'https://api2.nrg-tk.pro/v2')
 DICT_DAYS = 7
+# защита сайтов СДЭК и Энергии отклоняет (403) запросы с «неизвестным» браузером — представляемся обычным
+BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+# коды ответов сервисов → понятное объяснение (сам код — в скобках)
+HTTP_WHY = {400: 'сервис не принял запрос', 401: 'ключ не принят — проверьте «Настройки → Ключи API»', 403: 'сервис отклонил запрос (защита сайта или доступ по ключу)',
+            404: 'адрес сервиса изменился', 429: 'исчерпан лимит запросов — повторите позже', 500: 'ошибка на стороне сервиса',
+            502: 'сервис временно недоступен', 503: 'сервис временно недоступен', 504: 'сервис не ответил вовремя'}
 
 # класс машины в тарифах → тип кузова и тоннаж «Средних ставок» ATI.SU
 ATI_CLASS = {'gazel': ('tent', 1.5), 't5': ('tent', 5), 't10': ('tent', 10), 'tent20': ('tent', 20),
@@ -67,13 +75,40 @@ def providers(store):
             'cdek': bool(k.get('cdekId') and k.get('cdekSecret')), 'vozovoz': bool(k.get('vozovozToken')), 'nrg': True}
 
 
+def _body_text(body):
+    """Из тела ошибки — коротко и по-человечески: message из JSON, иначе текст без HTML-разметки."""
+    body = (body or '').strip()
+    if not body:
+        return ''
+    try:
+        j = json.loads(body)
+        if isinstance(j, dict):
+            m = j.get('message') or j.get('error_description') or j.get('error') or j.get('detail')
+            if isinstance(m, (str, int, float)):
+                return str(m)[:200]
+            errs = j.get('errors')
+            if isinstance(errs, list) and errs:
+                return '; '.join(str((x or {}).get('message') if isinstance(x, dict) else x) for x in errs)[:200]
+        return ''
+    except ValueError:
+        pass
+    if '<' in body and '>' in body:                 # страница-заглушка (nginx, защита сайта) — её текст не нужен
+        return ''
+    return re.sub(r'\s+', ' ', body)[:200]
+
+
 def _err(e):
     if isinstance(e, urllib.error.HTTPError):
         try:
-            body = e.read().decode('utf-8', 'replace')[:300]
+            text = _body_text(e.read().decode('utf-8', 'replace')[:2000])
         except Exception:
-            body = ''
-        return 'HTTP %s%s' % (e.code, (': ' + body) if body else '')
+            text = ''
+        why = HTTP_WHY.get(e.code) or ('сервис ответил ошибкой')
+        return '%s, HTTP %s%s' % (why, e.code, (' — ' + text) if text else '')
+    if isinstance(e, (socket.timeout, TimeoutError)) or 'timed out' in str(e):
+        return 'сервис не ответил вовремя — повторите позже'
+    if isinstance(e, urllib.error.URLError):
+        return 'нет связи с сервисом: %s' % (str(e.reason)[:120] if e.reason else 'проверьте интернет')
     return str(e)[:300] or e.__class__.__name__
 
 
@@ -114,6 +149,8 @@ def _dict_cache(store, name, loader):
     if fresh and c.get('items'):
         return c['items']
     items = loader()
+    if not items:                   # пустой справочник не запоминаем — иначе каждый город будет «не найден»
+        raise ValueError('справочник городов не загрузился (сервис ответил без данных) — повторите позже')
     store.kv_set('lgdict:' + name, {'at': _now(), 'items': items})
     return items
 
@@ -302,7 +339,7 @@ def _kit_call(store, path, body):
             msg = str(j.get('message') or j.get('name') or '')
         else:
             msg = ''
-        raise ValueError('КИТ: HTTP %s%s' % (e.code, (' — ' + msg[:300]) if msg else ''))
+        raise ValueError('КИТ: %s, HTTP %s%s' % (HTTP_WHY.get(e.code) or 'сервис ответил ошибкой', e.code, (' — ' + msg[:300]) if msg else ''))
 
 
 def _kit_row_name(r):
@@ -398,12 +435,12 @@ def _cdek_headers(store):
     t = _cdek_tok.get(k.get('cdekId'))
     if not t or t[1] < datetime.now():
         j = _http(CDEK_BASE + '/oauth/token', data={'grant_type': 'client_credentials', 'client_id': k.get('cdekId', ''),
-                                                    'client_secret': k.get('cdekSecret', '')}, method='POST')
+                                                    'client_secret': k.get('cdekSecret', '')}, headers={'User-Agent': BROWSER_UA}, method='POST')
         if not j.get('access_token'):
             raise ValueError('СДЭК: не выдан токен — проверьте идентификатор и секретный ключ')
         t = (j['access_token'], datetime.now() + timedelta(seconds=int(j.get('expires_in') or 3600) - 60))
         _cdek_tok[k.get('cdekId')] = t
-    return {'Authorization': 'Bearer ' + t[0], 'Content-Type': 'application/json'}
+    return {'Authorization': 'Bearer ' + t[0], 'Content-Type': 'application/json', 'User-Agent': BROWSER_UA}
 
 
 def cdek_city(store, names, h):
@@ -493,13 +530,20 @@ def vozovoz_quote(store, frm, to, frm_addr, to_addr, places, declared=0):
 
 # ---------------------------------------------------------------- Энергия (открытый расчёт без ключа)
 def _nrg(path, data=None):
+    """Запрос к Энергии: два адреса API, при 5xx / обрыве связи — повтор через паузу (их API временами отвечает 502)."""
     err = None
-    h = {'Content-Type': 'application/json', 'Accept': 'application/json'}
-    for base in NRG_BASES:
-        try:
-            return _http(base + path, data=data, headers=h, method='POST' if data is not None else None)
-        except Exception as e:
-            err = e
+    h = {'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': BROWSER_UA}
+    for attempt in range(2):
+        for base in NRG_BASES:
+            try:
+                return _http(base + path, data=data, headers=h, method='POST' if data is not None else None)
+            except urllib.error.HTTPError as e:
+                err = e
+                if e.code < 500:
+                    raise
+            except Exception as e:
+                err = e
+        time.sleep(1.5)
     raise err
 
 
@@ -646,7 +690,10 @@ def quote(store, req):
                                'days': r.get('days'), 'complete': True, 'at': at, 'url': url,
                                'note': r.get('note', '') + ('; + разгрузка по тарифам программы' if unload else '')})
             else:
-                errors.append({'src': name, 'msg': _err(r) if r else 'нет ответа за 40 с'})
+                msg = _err(r) if r else 'нет ответа за 40 с'
+                if name == 'СДЭК' and isinstance(r, urllib.error.HTTPError) and r.code == 403:
+                    msg += '. Если ключи верны — защита сайта СДЭК не пропускает запросы с этого компьютера'
+                errors.append({'src': name, 'msg': msg, 'url': url})
     full = [o for o in offers if o.get('complete')]
     best = max(full, key=lambda o: o['price']) if full else None
     return {'offers': offers, 'errors': errors, 'best': best, 'at': at, 'providers': pv}
