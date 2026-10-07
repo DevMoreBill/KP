@@ -197,6 +197,10 @@ def parse_pages(data):
             # хвосты описания, попавшие в характеристики («01 мг/м3). Технические особенности: …»), — не параметры
             if re.match(r'^(примечание|все характеристики)', k, re.I) or len(k) > 45 or re.search(r'[.)]\s|^\d', k):
                 continue
+            v = re.sub(r'""', '"', v)
+            v = re.sub(r'(?<=\d)\s*[xх]\s*(?=\d)', ' × ', v) if re.match(r'^\d+\s*[xх]\s*\d+', v) else v
+            if re.match(r'^(масса|вес)', k, re.I) and re.fullmatch(r'0([.,]0+)?', v):
+                continue
             rows.append((k[:70], v[:300]))
         out.append({'cat': _clean_text(cat)[:80] or 'Без категории', 'name': _clean_text(name)[:300], 'url': url,
                     'pictures': pictures[:12], 'desc': _clean_text(desc)[:6000], 'chars': rows, 'model': model})
@@ -347,10 +351,13 @@ def parse_price(data):
                 # объединённые ячейки повторяют текст в каждой строке и столбце — название листа и повторы шапки не нужны
                 if v and v not in wide and not JUNK.match(v) and not (_is_unit(v) and v not in HEAD_WORDS) and not head.get(col, '').endswith(v):
                     head[col] = (head.get(col, '') + ' ' + v).strip()
+        units = rows[ur] if ur is not None else {}
+        for col, u in units.items():        # столбец с единицей, но без подписи (шапка объединена криво) — подпись по единице
+            if col not in head and str(u).strip().lower() in UNIT_LABEL:
+                head[col] = UNIT_LABEL[str(u).strip().lower()]
         c = _price_cols(head)
         if c['name'] is None:
             continue
-        units = rows[ur] if ur is not None else {}
         cur = ''
         if c['price'] is not None:
             cur = CUR_WORDS.get(str(units.get(c['price'], '')).strip().lower(), '')
@@ -398,13 +405,137 @@ def parse_price(data):
     return out, sheets
 
 
+UNIT_LABEL = {'бар': 'Макс. давление', 'квт': 'Мощность', 'кг': 'Масса', 'дб': 'Уровень шума', 'м³/мин': 'Производительность', 'м3/мин': 'Производительность',
+              'л/мин': 'Производительность', 'м³/ч': 'Производительность', 'м3/час': 'Производительность', 'лит': 'Объём ресивера', 'л': 'Объём ресивера'}
+SPEC_UNITS = {'лит': 'л', 'м3/мин': 'м³/мин', 'м3/час': 'м³/ч', 'м3/ч': 'м³/ч', 'кВт.': 'кВт', 'кВт/ч': 'кВт', 'дБ(А)': 'дБ', 'мбар': 'мбар', '(л)': 'л', '(кг)': 'кг'}
+
+
 def _spec_val(v, u):
+    u = SPEC_UNITS.get(str(u).strip(), str(u).strip())
     v = str(v).strip()
     n = _num(v)
     if n is not None:
         v = ('%d' % n) if float(n).is_integer() else ('%.3f' % n).rstrip('0').rstrip('.').replace('.', ',')
     v = v.replace('x', '×').replace('х', '×') if re.match(r'^\d+\s*[xх×]\s*\d+', v) else v
-    return ('%s %s' % (v, u)) if u and re.match(r'^-?\d', v) else v
+    return ('%s %s' % (v, u)) if u and re.match(r'^-?\d', v) and not re.search(r'["\'“”]|^\d+/\d+$|^DN', v) else v
+
+
+# ---------------------------------------------------------------- описание: без рекламы и мусора, с абзацами и списком
+JUNK_SENT = re.compile(r'\bваш(е|ем|у|им|их|а|и)?\b|\bвам\b|верный способ|обратитесь|звоните|позвоните|менеджер|оставьте заявку|заказать|купить|'
+                       r'\bцен[аыу]\b|доставк|примерн|индивидуально|согласно проекту|официальн\S* (дилер|представител|поставщик)|'
+                       r'в наличии|со склада|гарантия качества|лучшее решение|не имеет аналогов|по выгодн|скидк|акци[яи]\b', re.I)
+HEAD_RX = re.compile(r'\s*(технические особенности|главное о серии|особенности|преимущества|опции|комплектация|применение|области применения)([^:\n•]{0,50}):\s*', re.I)
+
+
+def clean_desc(text):
+    """Описание со страницы → текст без «воды»: вводный абзац, подзаголовки, список «• …»; повторы и рекламные фразы убраны."""
+    t = html_mod.unescape(str(text or '')).replace('\xa0', ' ')
+    t = re.sub(r'["«»]{2,}|\s*"\s*;|\s*"(?=\s|$)|(?<=\s)"\s*', ' ', t)      # сломанные кавычки из CSV
+    t = re.sub(r'\s*[►▪■●♦➢➤✓]\s*(?=[А-ЯA-Zа-я0-9])|\s+-\s+(?=[А-Я])', '\n• ', t)
+    t = HEAD_RX.sub(lambda m: '\n' + m.group(1).strip().capitalize() + ':\n', t)
+    t = t.replace('С°', '°C').replace('C°', '°C').replace('м3/', 'м³/').replace('м3 /', 'м³/')
+    out, seen = [], set()
+    for line in t.split('\n'):
+        line = re.sub(r'\s+', ' ', line).strip()
+        if not line:
+            continue
+        if line.startswith('• ') or line.endswith(':'):
+            parts = [line]
+        else:
+            parts = [x.strip() for x in re.split(r'(?<=[.!?;])\s+(?=[А-ЯA-Z0-9«])', line) if x.strip()]
+        for sent in parts:
+            body = sent[2:] if sent.startswith('• ') else sent
+            body = body.strip(' ;"').rstrip('.;') + ('' if sent.endswith(':') else '.')
+            key = re.sub(r'[^а-яa-z0-9]', '', body.lower())
+            if len(key) < 8 or key in seen:
+                continue
+            if JUNK_SENT.search(body) and not sent.endswith(':'):
+                continue
+            seen.add(key)
+            out.append(('• ' + body) if sent.startswith('• ') else (sent if sent.endswith(':') else body))
+    # подзаголовок без пунктов после него не нужен
+    res = []
+    for i, x in enumerate(out):
+        if x.endswith(':') and not (i + 1 < len(out) and out[i + 1].startswith('• ')):
+            continue
+        res.append(x)
+    return '\n'.join(res)[:4000].strip()
+
+
+# ---------------------------------------------------------------- характеристики: парс + прайс (прайс точнее)
+SPEC_CLASS = [
+    ('pressure_min', r'^мин\S*\s+давлен'), ('pressure_in', r'давлен\S*\s+на входе'), ('vacuum', r'разряжени|вакуум'),
+    ('pressure', r'давлен'), ('flow', r'производительн|пропускн\S*\s+способн'), ('power', r'мощност'),
+    ('dims', r'габарит'), ('length', r'^длина'), ('width', r'^ширина'), ('height', r'^высота'), ('mass_ads', r'масс\S*\s+адсорбент'),
+    ('mass', r'^(масса|вес|общий вес)'), ('noise', r'шум'), ('outlet', r'выход\S*,?\s+сжатого|^соединение$|^присоединительн|соединение по воздуху'),
+    ('receiver', r'ресивер'), ('dryer', r'встроенн\S*\s+осушител'), ('filters', r'встроенн\S*\s+фильтр|тип фильтров|фильтры в составе'),
+    ('voltage', r'напряжени'), ('refrigerant', r'хлад(о|а)гент'), ('controller', r'контроллер'), ('cartridge', r'картридж|катридж'),
+    ('purity', r'чистот'), ('country', r'страна'), ('ip', r'степень защиты'), ('rpm', r'скорост\S*\s+вращени'),
+]
+SPEC_LABEL = {'pressure_min': 'Минимальное давление', 'pressure_in': 'Давление на входе', 'vacuum': 'Максимальное разрежение', 'pressure': 'Давление',
+              'flow': 'Производительность', 'power': 'Мощность', 'dims': 'Габариты (Д × Ш × В)', 'mass': 'Масса', 'mass_ads': 'Масса адсорбента',
+              'noise': 'Уровень шума', 'outlet': 'Выход сжатого воздуха', 'receiver': 'Объём ресивера', 'dryer': 'Встроенный осушитель',
+              'filters': 'Встроенные фильтры', 'voltage': 'Напряжение', 'refrigerant': 'Хладагент', 'controller': 'Контроллер', 'cartridge': 'Картридж',
+              'purity': 'Чистота', 'rpm': 'Скорость вращения'}
+SPEC_DROP = re.compile(r'^(аналог|примечание|все характеристики|new price)', re.I)
+
+
+def spec_class(key):
+    k = re.sub(r'\s*\([^)]*\)\s*$', '', str(key or '')).strip().lower()
+    for c, rx in SPEC_CLASS:
+        if re.search(rx, k):
+            return c
+    return 'k:' + re.sub(r'[^а-яa-z0-9]', '', k)
+
+
+def _tidy_label(k):
+    k = re.sub(r'\s+', ' ', str(k or '')).strip(' *:')
+    k = re.sub(r'\*+$', '', k).strip()
+    words = k.split(' ')
+    if len(words) == 2 and words[0].lower() == words[1].lower():        # «Ширина ширина» — склейка объединённых ячеек
+        k = words[0]
+    k = re.sub(r'\s*\((Д[/хx×]Ш[/хx×]В)\)|\s+Д[/хx×]Ш[/хx×]В$', '', k)
+    k = k.replace('Производи-тельность', 'Производительность').replace('приблизительно', '').replace('Максиальное', 'Максимальное').strip()
+    if re.fullmatch(r'[A-ZА-Я]', k):
+        k = 'Размер ' + k
+    return k[:60]
+
+
+def merge_specs(parse_rows, price_specs):
+    """Строки характеристик: парс, затем прайс; одинаковые параметры (давление, производительность, мощность, габариты, масса…)
+    берутся из прайса — он точнее; «Длина/Ширина/Высота» прайса складываются в габариты."""
+    rows, idx = [], {}
+    for k, v in parse_rows:
+        if SPEC_DROP.match(k):
+            continue
+        c = spec_class(k)
+        if c in idx:
+            continue
+        idx[c] = len(rows)
+        rows.append([k, v])
+    dims = {}
+    for k, v in price_specs:
+        if SPEC_DROP.match(k) or not str(v).strip():
+            continue
+        c = spec_class(k)
+        if c in ('length', 'width', 'height'):
+            dims[c] = re.sub(r'\s*мм$', '', str(v))
+            continue
+        label = SPEC_LABEL.get(c) or _tidy_label(k)
+        if c in idx:
+            rows[idx[c]][1] = v           # прайс точнее парса
+            if c.startswith('k:'):
+                rows[idx[c]][0] = rows[idx[c]][0]
+        else:
+            idx[c] = len(rows)
+            rows.append([label, v])
+    if len(dims) == 3:
+        v = '%s × %s × %s мм' % (dims['length'], dims['width'], dims['height'])
+        if 'dims' in idx:
+            rows[idx['dims']][1] = v
+        else:
+            rows.append([SPEC_LABEL['dims'], v])
+    return [(k, str(v)[:300]) for k, v in rows]
 
 
 # ---------------------------------------------------------------- сопоставление парса и прайса
@@ -497,12 +628,14 @@ def build_feed(f, pages, prices, param_name):
         cats.setdefault(cid, {'id': cid, 'name': pg['cat'], 'parent': '', 'path': pg['cat']})
         pr = hit.get(pg['url'])
         params = []
-        for k, v in pg['chars']:
+        for k, v in merge_specs(pg['chars'], pr['specs'] if pr else []):
             k2, u = _param(k)
             k2, u = param_name(k2, u)
+            if u == 'дюйм' and re.search(r'["“”\']|\bDN\b|\bG\s*\d', v):     # «2"», «DN 50», «G 1/2» — единица уже в значении
+                u = ''
             params.append({'k': k2[:60], 'u': u, 'v': v})
         oid = _oid(pg['url'].rstrip('/').rsplit('/', 1)[-1] or pg['name'], pg['url'], offers)
-        o = _offer(oid, pg['name'], cid, pg['cat'], pg['url'], pg['pictures'], pg['desc'], params, maker, pg['model'], pr, cur0)
+        o = _offer(oid, pg['name'], cid, pg['cat'], pg['url'], pg['pictures'], clean_desc(pg['desc']), params, maker, pg['model'], pr, cur0)
         # начало описания называет вид («Адсорбционный осушитель …») — по нему точнее определяется категория программы
         o['crumbs'] = pg['cat'] + ' / ' + re.sub(r'[|/]', ' ', pg['desc'][:120])
         offers[oid] = o
@@ -515,7 +648,7 @@ def build_feed(f, pages, prices, param_name):
             cats.setdefault(cid, {'id': cid, 'name': p['sheet'], 'parent': '', 'path': 'Прайс / ' + (p['title'] or p['sheet'])})
             oid = _oid('p-' + (p['sku'] or p['name']), p['sheet'] + '|' + p['name'], offers)
             params = []
-            for k, v in p['specs']:
+            for k, v in merge_specs([], p['specs']):
                 k2, u = param_name(k, '')
                 params.append({'k': k2[:60], 'u': u, 'v': v})
             offers[oid] = _offer(oid, p['name'], cid, p['sheet'], '', [], '', params, maker, p['short'], p, cur0)
@@ -534,5 +667,5 @@ def _offer(oid, name, cid, path, url, pictures, desc, params, maker, model, pr, 
     return {'oid': oid, 'name': name[:300], 'cat': cid, 'path': path, 'url': url, 'price': pr['price'] if pr else None, 'oldprice': None,
             'cur': cur0 or (pr['cur'] if pr and pr['cur'] else 'EUR'), 'vendor': maker, 'model': model or (pr['short'] if pr else '') or '',
             'sku': pr['sku'] if pr else '', 'barcode': '', 'pictures': pictures, 'desc': desc, 'params': params,
-            'available': True, 'qty': None, 'nostock': True, 'weight': None, 'dims': '', 'notes': '',
+            'available': True, 'qty': None, 'nostock': True, 'authoritative': True, 'weight': None, 'dims': '', 'notes': '',
             'opts': [{'name': n, 'price': v} for n, v in (pr['opts'] if pr else [])]}

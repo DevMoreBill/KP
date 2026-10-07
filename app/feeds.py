@@ -845,6 +845,56 @@ def _hash(x):
     return hashlib.md5(json.dumps(x, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()[:12]
 
 
+def _existing_index(store, fid):
+    """Позиции каталога, созданные не фидом (или этим же фидом): по производителю и модели, по названию —
+    чтобы позиция файла дополняла уже имеющуюся, а не создавала дубль."""
+    by_model, by_name = {}, {}
+    for (doc,) in store.all("SELECT doc FROM catalog"):
+        try:
+            d = json.loads(doc)
+        except ValueError:
+            continue
+        fd = d.get('feed') or {}
+        if fd and fd.get('id') != fid:
+            continue
+        a = d.get('attrs') or {}
+        b = _brand_key(a.get('maker'))
+        mk = feed_files._key(a.get('model'))
+        if b and mk:
+            by_model.setdefault((b, mk), d)
+        by_name.setdefault(feed_files._key(d.get('name')), d)
+    return by_model, by_name
+
+
+def _link_existing(store, f, offs):
+    """Какая позиция каталога уже есть для предложения файла: {oid: doc}; варианты одной серии (EAGLE 110-7/8,5/10 при
+    позиции «EAGLE 110» в каталоге) — к одной позиции привязывается вариант с тем же давлением (иначе первый), остальные
+    не создаются. → (links, skip, stats)."""
+    by_model, by_name = _existing_index(store, f['id'])
+    groups = {}
+    for o in offs:
+        if o.get('linked_old'):
+            continue
+        b = _brand_key(maker_of(o, f))
+        d = by_name.get(feed_files._key(o['name']))
+        for mk in (feed_files._key(o.get('model')), feed_files._model_key(o['name'])):
+            if d is None and b and mk:
+                d = by_model.get((b, mk))
+        if d is not None and not (d.get('feed') or {}).get('oid', o['oid']) == o['oid']:
+            continue            # уже привязана к другому предложению этого фида
+        if d is not None:
+            groups.setdefault(d['id'], (d, []))[1].append(o)
+    links, skip = {}, set()
+    for did, (d, lst) in groups.items():
+        pick = next((o for o in lst if (d.get('feed') or {}).get('oid') == o['oid']), None)
+        if pick is None:
+            pr = (d.get('attrs') or {}).get('pressure')
+            pick = next((o for o in lst if pr and any(re.match(r'давлен', p['k'], re.I) and _num(p['v'].split()[0]) == float(pr) for p in o['params'])), lst[0])
+        links[pick['oid']] = d
+        skip.update(o['oid'] for o in lst if o is not pick)
+    return links, skip, {'linked': len(links), 'skipped': len(skip)}
+
+
 def _feed_docs(store, fid):
     out = []
     for (doc,) in store.all("SELECT doc FROM catalog WHERE doc LIKE ?", ('%"feed": {%' + json.dumps(fid) + '%',)):
@@ -912,6 +962,8 @@ def _fmt(n):
 
 # явные правила (по названию позиции, затем по разделу фида) — до общего определения по названию
 NAME_RULES = [
+    (r'сепаратор\S*\s+масляного тумана|масловлагоразделител|сепаратор\S*\s+конденсата|водомаслян\S*\s+сепаратор', 'oil_sep'),
+    (r'угольн\S*\s+колонн', 'filter'),
     (r'компрессор\S*\s+медицинск|медицинск\S*\s+компрессор', 'comp_piston'),   # медицинские Remeza — поршневые безмасляные
     (r'^\s*кожух', 'spare'),
     (r'фильтроэлемент|корпус\S*\s+фильтр|патрон\S*\s+воздушн|картридж|блок\S*\s+поршнев|^\s*(поршень|шатун|цилиндр|палец|вкладыш|сапун|'
@@ -919,6 +971,7 @@ NAME_RULES = [
     (r'циклонн\S*\s+сепаратор', 'filter'),
 ]
 PATH_RULES = [
+    (r'воздуходувк', 'blower'), (r'генератор\S*\s+азота', 'gen_n2'), (r'генератор\S*\s+кислорода', 'gen_o2'),
     (r'адсорбц\S*\s+осушител|осушител\S*.*адсорбц', 'dryer_ads'), (r'рефрижераторн\S*\s+осушител|осушител\S*.*рефрижер', 'dryer_refrig'), (r'воздушн\S*\s+ресивер', 'receiver'),
     (r'фильтр\S*\s+сжатого воздуха', 'filter'), (r'циклонн\S*\s+сепаратор', 'filter'),
     (r'винтов\S*\s+(маслозаполн\S*\s+|безмасл\S*\s+)?компрессор|компрессорн\S*\s+станци|лазерн', 'comp_screw'),
@@ -1075,7 +1128,11 @@ def build(o, f, types, old=None, put_image=None):
         o = dict(o, extraRows=[('Артикул', o['sku']), ('Для оборудования', sp['forType']), ('Применимость', sp['forModels'])])
     rows = _rows(o)
     orig = (doc.get('feed') or {}).get('orig') or {}
-    desc = o['desc']
+    # позиция заведена вручную (связана с фидом по модели): признак хранится в doc.feed.linked и действует при каждой загрузке
+    handmade = bool(old) and ((old.get('feed') or {}).get('linked') or (not (old.get('feed') or {}).get('orig') and bool(old.get('groups') or old.get('features'))))
+    if handmade:        # позиция заведена вручную: её текст и таблицы остаются, значения из файла — точнее, остальное — отдельной группой
+        rows = _apply_rows(doc, rows)
+    desc = '' if handmade and doc.get('features') else o['desc']
     new_orig = {'name': o['name'], 'desc': _hash(desc), 'rows': _hash(rows)}
     if not old or doc.get('name') == orig.get('name'):
         doc['name'] = o['name']
@@ -1103,9 +1160,9 @@ def build(o, f, types, old=None, put_image=None):
     if gi is not None and not rows and _hash(groups[gi].get('rows') or []) == orig.get('rows'):
         groups.pop(gi)          # характеристик из фида и со страницы больше нет, вручную таблицу не меняли
     elif rows and (gi is None or _hash(groups[gi].get('rows') or []) == orig.get('rows')):
-        g = {'name': 'Характеристики', 'rows': rows, 'feed': True}
+        g = {'name': 'Данные поставщика' if handmade else 'Характеристики', 'rows': rows, 'feed': True}
         if gi is None:
-            groups.insert(0, g)
+            groups.append(g) if handmade else groups.insert(0, g)
         else:
             groups[gi] = g
     doc['groups'] = groups
@@ -1120,6 +1177,8 @@ def build(o, f, types, old=None, put_image=None):
     if not a.get('model'):
         a['model'] = model
     t = tmap.get(a['cat'])
+    if t and o.get('authoritative'):       # характеристики из файлов точнее: поля категории — заново по ним
+        _redo_attrs(doc, t, a, handmade)
     if t:
         catalog_migrate.fill_from_name(doc, a['cat'], a)
         catalog_migrate.fill_attrs(doc, t, a)
@@ -1136,7 +1195,7 @@ def build(o, f, types, old=None, put_image=None):
     if not doc.get('unit'):
         doc['unit'] = 'шт.'
     doc['feed'] = {'id': f['id'], 'oid': o['oid'], 'url': o['url'], 'sku': o['sku'], 'barcode': o['barcode'], 'cat': o['cat'],
-                   'path': o.get('path', ''), 'crumbs': o.get('crumbs', ''), 'catAuto': auto, 'orig': new_orig, 'at': today}
+                   'path': o.get('path', ''), 'crumbs': o.get('crumbs', ''), 'catAuto': auto, 'orig': new_orig, 'at': today, 'linked': bool(handmade)}
     changes = _price_part(doc, o, f, today)
     if put_image and o['pictures']:
         if not (doc.get('photo') or {}).get('src'):
@@ -1157,6 +1216,43 @@ def build(o, f, types, old=None, put_image=None):
         doc['gallery'] = gal
     doc['updatedAt'] = _now()
     return doc, changes
+
+
+def _apply_rows(doc, rows):
+    """Строки из файла — в уже имеющиеся таблицы позиции: тот же параметр (мощность, масса, габариты…) — значение заменяется,
+    если в таблице оно одно (не «7 / 8,5 / 10 бар» для серии); остальные строки → отдельной группой. → строки для группы."""
+    multi = re.compile(r'\d\s*[/–—-]\s*\d|\bпри\b')
+    rest = []
+    for r in rows:
+        c = feed_files.spec_class(r['k'])
+        hit = None
+        for g in doc.get('groups') or []:
+            if g.get('feed'):
+                continue
+            for er in g.get('rows') or []:
+                ev = str(er.get('v') or '')
+                if feed_files.spec_class(er.get('k')) == c and re.search(r'\d', ev) and (c not in ('flow', 'pressure') or not multi.search(ev)):
+                    hit = er
+                    break
+            if hit:
+                break
+        if hit:
+            if c in ('flow', 'pressure', 'power', 'mass', 'dims', 'noise', 'outlet', 'receiver', 'voltage', 'refrigerant', 'controller', 'dryer', 'filters', 'rpm', 'purity'):
+                hit['v'] = r['v']
+        else:
+            rest.append(r)
+    return rest
+
+
+def _redo_attrs(doc, t, a, handmade):
+    """Поля категории заново по таблице характеристик из файла (она точнее). У позиций, заведённых вручную, производительность и
+    давление не трогаются — там они на всю серию (максимум), а строка файла — один вариант."""
+    keep = {'cat', 'maker', 'model', 'series'} | ({'flow', 'pressure'} if handmade else set())
+    for f in t.get('fields') or []:
+        k = f.get('key')
+        if k and k not in keep and f.get('find'):
+            a.pop(k, None)
+    catalog_migrate.fill_attrs(doc, t, a)
 
 
 def _image_putter(store, image_store):
@@ -1231,8 +1327,17 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
         feed = load(store, f)
         skip = {k for k, v in (f.get('cats') or {}).items() if v == 'skip'}
         offs = [o for o in feed['offers'] if o['cat'] not in skip and (not only or o['oid'] in only)]
-        j['total'] = len(offs)
         existing = {(d.get('feed') or {}).get('oid'): d for d in _feed_docs(store, f['id'])}
+        links, lstat = {}, {}
+        if f.get('kind') == 'files':        # уже имеющееся оборудование того же производителя — дополнить, а не дублировать
+            links, variants, lstat = _link_existing(store, f, [o for o in offs if o['oid'] not in existing])
+            offs = [o for o in offs if o['oid'] not in variants]
+            items = feeds(store)        # варианты серии, объединённые с имеющейся позицией, — не «новые» при проверке
+            for x in items:
+                if x.get('id') == f['id']:
+                    x['variants'] = sorted(variants)
+            store.kv_set(KV, {'items': items})
+        j['total'] = len(offs)
         put, save, istat = _image_putter(store, image_store)
         dget, dsave, derr = _page_getter(store)
         ph = _placeholders(feed['offers'])
@@ -1240,7 +1345,7 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
         added, updated, same, price_ch, stock_ch, errors = 0, 0, 0, [], [], []
 
         def one(o):
-            old = existing.get(o['oid'])
+            old = existing.get(o['oid']) or links.get(o['oid'])
             if not old:
                 cid = _cid(f['id'], o['oid'])
                 prev = store.catalog_get(cid)
@@ -1298,7 +1403,7 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
             errors.append('На странице товара не найдено фото, позиций: %d (%s%s)' % (
                 len(pstat['noimg']), '; '.join(pstat['noimg'][:3]), ' …' if len(pstat['noimg']) > 3 else ''))
         pics = [len(d.get('gallery') or []) + (1 if (d.get('photo') or {}).get('src') else 0) for d in _feed_docs(store, f['id'])]
-        res = {'at': _now(), 'kind': 'import', 'by': by, 'total': len(offs), 'added': added, 'updated': updated, 'same': same,
+        res = {'at': _now(), 'kind': 'import', 'by': by, 'total': len(offs), 'added': added, 'updated': updated, 'same': same, 'linked': lstat.get('linked', 0), 'variants': lstat.get('skipped', 0),
                'price': price_ch[:300], 'stock': stock_ch[:300], 'errors': errors[:50],
                'photos': {'new': istat['got'], 'pages': pstat['img'], 'items': len(pics), 'multi': sum(1 for n in pics if n > 1),
                           'avg': round(sum(pics) / len(pics), 1) if pics else 0}}
@@ -1343,7 +1448,8 @@ def check_feed(store, f, by='', log=print):
             j['done'] += 1
         linked = {d['feed'].get('oid') for d in docs}
         skip = {k for k, v in (f.get('cats') or {}).items() if v == 'skip'}
-        new = [o for o in feed['offers'] if o['oid'] not in linked and o['cat'] not in skip]
+        var = set(f.get('variants') or [])
+        new = [o for o in feed['offers'] if o['oid'] not in linked and o['cat'] not in skip and o['oid'] not in var]
         res = {'at': _now(), 'kind': 'check', 'by': by, 'checked': len(docs), 'updated': upd, 'price': price_ch[:300], 'stock': stock_ch[:300],
                'gone': gone[:300], 'new': len(new), 'newSample': [o['name'] for o in new[:10]]}
         _log_add(store, f['id'], res)
