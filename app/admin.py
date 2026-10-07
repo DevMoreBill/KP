@@ -664,7 +664,7 @@ class AdminApi:
             f = feeds.feed_save(st, self.data())
             self.log('edit_settings', 'settings', 'feed:' + f['id'], None, {'url': f['url'] or f.get('kind'), 'name': f['name']})
             return self.ok(f)
-        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|discounts)$', sub)
+        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|discounts|plan|rebuild)$', sub)
         if not r:
             return self.err(404, 'Нет такого запроса')
         fid, act = r.group(1), r.group(2)
@@ -701,6 +701,15 @@ class AdminApi:
             return self.ok()
         if feeds.busy(fid):
             return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
+        if act == 'plan':           # фид из файлов: что сделает сборка каталога (без записи)
+            try:
+                return self.ok(feeds.plan_summary(st, f))
+            except Exception as e:
+                return self.err(422, 'Фид не загрузился: %s' % e)
+        if act == 'rebuild':        # разрешить сборку каталога заново (парс снова перестроит позиции производителя)
+            feeds.feed_unbuild(st, fid)
+            self.log('edit_settings', 'settings', 'feed:' + fid, {'built': True}, {'built': False})
+            return self.ok()
         if act == 'preview':
             try:
                 return self.ok(feeds.preview(st, f, types))
@@ -710,7 +719,7 @@ class AdminApi:
         if act == 'import':
             d = self.data()
             only = set(d.get('only') or []) or None
-            feeds.run_bg(feeds.import_feed, st, f, types, feeds.IMAGE_STORE, who, only)
+            feeds.run_bg(feeds.import_feed, st, f, types, feeds.IMAGE_STORE, who, only, trash_missing=d.get('trashMissing') is True)
             self.log('import_feed', 'catalog', 'feed:' + fid, None, {'url': f['url'], 'only': len(only) if only else 'все'})
         else:
             feeds.run_bg(feeds.check_feed, st, f, who, types=types)

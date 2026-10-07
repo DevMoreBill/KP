@@ -25,6 +25,7 @@ import hashlib
 import html as html_mod
 import http.cookiejar
 import json
+import os
 import re
 import struct
 import threading
@@ -816,6 +817,8 @@ def _with_unit(v, u):
     v = re.sub(r'^(-?\d+)\.(\d+)$', r'\1,\2', v.strip())
     if not u or v.lower().endswith(u.lower()) or not re.match(r'^[-−+]?\d', v):
         return v
+    if re.search(r'\d\s*(мм|см|бар|bar|кг|кВт|kw|л|дБ|db|м³|м3|нм3|нм³|°c|в|гц|%)\b', v, re.I):
+        return v                            # единица уже в значении: «50 мм», «7,5 бар»
     return '%s %s' % (v, u)
 
 
@@ -848,58 +851,150 @@ def _rows(o):
     return rows
 
 
+def _fix_drive_rows(rows, o, f):
+    """«Тип привода» по сериям из настроек фида (driveHints): сайт иногда ошибается — у «DVK D 340-7» пишет «ременной»."""
+    hints = f.get('driveHints') or {}
+    text = ' '.join(str(x or '') for x in (o.get('name'), o.get('model'), o.get('sheet')))
+    want = ''
+    for kind in ('direct', 'belt'):
+        rx = _hint_rx(hints.get(kind))
+        if rx and rx.search(text):
+            want = kind
+            break
+    if not want:
+        return rows
+    for r in rows:
+        if re.match(r'^(тип\s+)?привод', r['k'], re.I):
+            v = str(r['v']).lower()
+            if want == 'direct' and 'ремен' in v:
+                r['v'] = 'прямой'
+            elif want == 'belt' and re.search(r'прям|муфт', v):
+                r['v'] = 'ременной'
+    return rows
+
+
 def _hash(x):
     return hashlib.md5(json.dumps(x, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()[:12]
 
 
-def _existing_index(store, fid):
-    """Позиции каталога, созданные не фидом (или этим же фидом): по производителю и модели, по названию —
-    чтобы позиция файла дополняла уже имеющуюся, а не создавала дубль."""
-    by_model, by_name = {}, {}
-    for (doc,) in store.all("SELECT doc FROM catalog"):
-        try:
-            d = json.loads(doc)
-        except ValueError:
-            continue
+# ---------------------------------------------------------------- фид из файлов: сборка каталога из полного парса
+# Парс сайта — исчерпывающий список номенклатуры: по нему один раз «формируется каталог» (позиция на каждое исполнение,
+# как на сайте), уже имеющиеся позиции производителя (из прошлых загрузок и заведённые вручную) сопоставляются с позициями
+# парса и перестраиваются, лишние совпадения (дубли) уходят в корзину. После сборки (f.built) парс только добавляет новые
+# позиции, а прайс — обновляет цены; описания, фото и характеристики правятся вручную.
+def _pressures(d):
+    """Давления позиции каталога: «Рабочее давление 7,5 / 8,5 / 10 / 13 бар» → {7.5, 8.5, 10, 13}; иначе — attrs.pressure."""
+    out = set()
+    for g in d.get('groups') or []:
+        for r in g.get('rows') or []:
+            k = str(r.get('k') or '')
+            if re.search(r'давлен', k, re.I) and not re.search(r'мин|вход|разреж|вакуум|шин', k, re.I):
+                for x in re.findall(r'\d+(?:[.,]\d+)?', str(r.get('v') or '')):
+                    n = float(x.replace(',', '.'))
+                    if 2 <= n <= 60:
+                        out.add(7.5 if n == 7 else n)
+    p = _num((d.get('attrs') or {}).get('pressure'))
+    if not out and p:
+        out.add(7.5 if p == 7 else p)
+    return out
+
+
+def _doc_cfg(d):
+    a = d.get('attrs') or {}
+    c = feed_files.model_cfg(a.get('model') or d.get('name'), d.get('name'))
+    if not feed_files._lat(c):
+        c = feed_files.model_cfg(d.get('name'), d.get('name'))
+    if str(a.get('vsd') or '').lower() == 'да':
+        c['vsd'] = True
+    if str(a.get('dryer') or '').lower() == 'да':
+        c['dry'] = True
+    rec = _num(a.get('receiver'))
+    if rec and c['rec'] in (None, -1):
+        c['rec'] = int(rec)
+    return c
+
+
+def _offer_cfg(o):
+    pg = {'name': o['name'], 'url': o.get('url') or '', 'chars': [(p['k'] + (' (%s)' % p['u'] if p.get('u') else ''), p['v']) for p in o.get('params') or []]}
+    return feed_files.page_cfg(pg)
+
+
+def plan_summary(store, f):
+    """Сборка каталога без записи: сколько позиций парса, с чем сопоставятся, что станет новым, что уйдёт в корзину."""
+    feed = load(store, f)
+    skip = {k for k, v in (f.get('cats') or {}).items() if v == 'skip'}
+    offs = [o for o in feed['offers'] if o['cat'] not in skip]
+    plan = build_plan(store, f, offs)
+    oname = {o['oid']: o['name'] for o in offs}
+    existing = {(d.get('feed') or {}).get('oid') for d in _feed_docs(store, f['id'])}
+    add = [o['name'] for o in offs if o['oid'] not in existing and o['oid'] not in plan['links']] if f.get('built') else []
+    return {'built': f.get('built'), 'offers': len(offs), 'withPrice': sum(1 for o in offs if o['price']),
+            'links': len(plan['links']), 'new': len(plan['new']), 'add': add[:300], 'addCount': len(add),
+            'linkSample': [[d.get('name'), oname[oid]] for oid, d in list(plan['links'].items()) if d.get('name') != oname[oid]][:300],
+            'dups': [{'id': d['id'], 'name': d.get('name')} for d in plan['dups']][:300],
+            'keep': [{'id': d['id'], 'name': d.get('name')} for d in plan['keep']][:300]}
+
+
+def feed_unbuild(store, fid):
+    items = feeds(store)
+    for x in items:
+        if x.get('id') == fid:
+            x.pop('built', None)
+    store.kv_set(KV, {'items': items})
+
+
+def build_plan(store, f, offs):
+    """Какие позиции каталога соответствуют позициям парса: {'links': {oid: doc}, 'dups': [doc], 'keep': [doc], 'new': [oid]}.
+    Кандидаты: та же ссылка на сайт, то же название, то же исполнение (серия, типоразмер, ресивер, осушитель, частотник,
+    водяное охлаждение; давление позиции парса — среди давлений карточки). Каждой позиции парса — не больше одной позиции
+    каталога (её id сохраняется — ссылки в КП не теряются); остальные совпавшие — дубли."""
+    docs = _feed_docs(store, f['id']) + _maker_cards(store, f)
+    by_url, by_name = {}, {}
+    ocfg = []
+    for i, o in enumerate(offs):
+        if o.get('url'):
+            by_url[o['url'].rstrip('/').lower()] = i
+        by_name.setdefault(feed_files._key(o['name']), i)
+        ocfg.append(_offer_cfg(o))
+    by_lat = {}
+    for i, c in enumerate(ocfg):
+        if feed_files._lat(c) and c['size'] is not None:
+            by_lat.setdefault((feed_files._lat(c), c['size']), []).append(i)
+    pairs, cand_docs = [], set()
+    for d in docs:
         fd = d.get('feed') or {}
-        if fd and fd.get('id') != fid:
+        if fd.get('url') and fd['url'].rstrip('/').lower() in by_url:
+            pairs.append((0, 0, by_url[fd['url'].rstrip('/').lower()], d['id']))
+        i = by_name.get(feed_files._key(d.get('name')))
+        if i is not None:
+            pairs.append((1, 0, i, d['id']))
+        c = _doc_cfg(d)
+        ps = _pressures(d)
+        for i in by_lat.get((feed_files._lat(c), c['size']), []) if feed_files._lat(c) and c['size'] is not None else []:
+            oc = ocfg[i]
+            if oc['vsd'] != c['vsd'] or oc['w'] != c['w'] or oc['dry'] != c['dry']:
+                continue
+            if (c['rec'] is None) != (oc['rec'] is None) or (c['rec'] not in (None, -1) and oc['rec'] != c['rec']):
+                continue
+            op = 7.5 if oc['p'] == 7 else oc['p']
+            if ps and op and op not in ps:
+                continue
+            own = _num((d.get('attrs') or {}).get('pressure'))
+            rank = 0 if own and op == (7.5 if own == 7 else own) else (1 + (op or 0) / 100)
+            pairs.append((2, rank, i, d['id']))
+    pairs.sort(key=lambda x: (x[0], x[1], x[2]))
+    by_id = {d['id']: d for d in docs}
+    links, taken_o, taken_d = {}, set(), set()
+    for prio, rank, i, did in pairs:
+        cand_docs.add(did)
+        if i in taken_o or did in taken_d:
             continue
-        a = d.get('attrs') or {}
-        b = _brand_key(a.get('maker'))
-        mk = feed_files._key(a.get('model'))
-        if b and mk:
-            by_model.setdefault((b, mk), d)
-        by_name.setdefault(feed_files._key(d.get('name')), d)
-    return by_model, by_name
-
-
-def _link_existing(store, f, offs):
-    """Какая позиция каталога уже есть для предложения файла: {oid: doc}; варианты одной серии (EAGLE 110-7/8,5/10 при
-    позиции «EAGLE 110» в каталоге) — к одной позиции привязывается вариант с тем же давлением (иначе первый), остальные
-    не создаются. → (links, skip, stats)."""
-    by_model, by_name = _existing_index(store, f['id'])
-    groups = {}
-    for o in offs:
-        if o.get('linked_old'):
-            continue
-        b = _brand_key(maker_of(o, f))
-        d = by_name.get(feed_files._key(o['name']))
-        for mk in (feed_files._key(o.get('model')), feed_files._model_key(o['name'])):
-            if d is None and b and mk:
-                d = by_model.get((b, mk))
-        if d is not None and not (d.get('feed') or {}).get('oid', o['oid']) == o['oid']:
-            continue            # уже привязана к другому предложению этого фида
-        if d is not None:
-            groups.setdefault(d['id'], (d, []))[1].append(o)
-    links, skip = {}, set()
-    for did, (d, lst) in groups.items():
-        pick = next((o for o in lst if (d.get('feed') or {}).get('oid') == o['oid']), None)
-        if pick is None:
-            pr = (d.get('attrs') or {}).get('pressure')
-            pick = next((o for o in lst if pr and any(re.match(r'давлен', p['k'], re.I) and _num(p['v'].split()[0]) == float(pr) for p in o['params'])), lst[0])
-        links[pick['oid']] = d
-        skip.update(o['oid'] for o in lst if o is not pick)
-    return links, skip, {'linked': len(links), 'skipped': len(skip)}
+        taken_o.add(i)
+        taken_d.add(did)
+        links[offs[i]['oid']] = by_id[did]
+    dups = [by_id[x] for x in cand_docs if x not in taken_d]
+    keep = [d for d in docs if d['id'] not in cand_docs]
+    return {'links': links, 'dups': dups, 'keep': keep, 'new': [o['oid'] for o in offs if o['oid'] not in links]}
 
 
 def _feed_docs(store, fid):
@@ -1244,7 +1339,7 @@ def build(o, f, types, old=None, put_image=None):
     sp = spare_info(o) if auto == 'spare' else None
     if sp:
         o = dict(o, extraRows=[('Артикул', o['sku']), ('Для оборудования', sp['forType']), ('Применимость', sp['forModels'])])
-    rows = _rows(o)
+    rows = _fix_drive_rows(_rows(o), o, f)
     orig = (doc.get('feed') or {}).get('orig') or {}
     # позиция заведена вручную (связана с фидом по модели): признак хранится в doc.feed.linked и действует при каждой загрузке
     handmade = bool(old) and ((old.get('feed') or {}).get('linked') or (not (old.get('feed') or {}).get('orig') and bool(old.get('groups') or old.get('features'))))
@@ -1444,24 +1539,43 @@ def busy(fid):
     return bool(j and j['state'] == 'run')
 
 
-def import_feed(store, f, types, image_store, by='', only=None, log=print):
+def _img_key(u):
+    """Одна картинка в разных размерах («/upload/abc.png» и «/upload/cache/max_360x500/abc.png») — один ключ."""
+    return str(u or '').split('?')[0].rstrip('/').rsplit('/', 1)[-1].lower()
+
+
+def import_feed(store, f, types, image_store, by='', only=None, log=print, trash_missing=False):
     """Загрузка фида в каталог: новые позиции создаются, связанные обновляются (ручные правки сохраняются).
-    only — множество id предложений (иначе все, кроме категорий «skip»)."""
+    only — множество id предложений (иначе все, кроме категорий «skip»).
+    Фид из файлов: до сборки каталога (f.built) — сборка: каждая позиция парса — позиция каталога, имеющиеся позиции
+    производителя сопоставляются (build_plan) и перестраиваются по парсу и прайсу, дубли — в корзину (и позиции, которых
+    нет в парсе, — при trash_missing); после сборки — только новые позиции, имеющиеся не меняются."""
     j = _job(f['id'], 'import')
     try:
         feed = load(store, f)
         skip = {k for k, v in (f.get('cats') or {}).items() if v == 'skip'}
         offs = [o for o in feed['offers'] if o['cat'] not in skip and (not only or o['oid'] in only)]
         existing = {(d.get('feed') or {}).get('oid'): d for d in _feed_docs(store, f['id'])}
-        links, lstat = {}, {}
-        if f.get('kind') == 'files':        # уже имеющееся оборудование того же производителя — дополнить, а не дублировать
-            links, variants, lstat = _link_existing(store, f, [o for o in offs if o['oid'] not in existing])
-            offs = [o for o in offs if o['oid'] not in variants]
-            items = feeds(store)        # варианты серии, объединённые с имеющейся позицией, — не «новые» при проверке
-            for x in items:
-                if x.get('id') == f['id']:
-                    x['variants'] = sorted(variants)
-            store.kv_set(KV, {'items': items})
+        links, lstat, mode, plan = {}, {}, 'import', None
+        if f.get('kind') == 'files':
+            plan = build_plan(store, f, offs)
+            if f.get('built'):          # каталог сформирован: парс только добавляет новое, имеющееся не трогает
+                mode = 'add'
+                offs = [o for o in offs if o['oid'] not in existing and o['oid'] not in plan['links']]
+                existing = {}
+            else:
+                mode = 'build'
+                try:                    # сборка перестраивает много позиций — сначала копия базы в data/backup
+                    store.backup(os.path.join(os.path.dirname(store.path), 'backup', 'kp-%s-before-feed-build.sqlite3' % datetime.now().strftime('%Y%m%d-%H%M%S')))
+                except Exception as e:
+                    log('Копия базы перед сборкой каталога не создана: %s' % e)
+                links = {oid: {'id': d['id'], 'prices': d.get('prices') or []} for oid, d in plan['links'].items()}
+                existing = {}
+                gone = plan['dups'] + (plan['keep'] if trash_missing else [])
+                for d in gone:          # дубли — в корзину до записи новых позиций (id новой может совпасть)
+                    store.trash_put('catalog', d['id'], d.get('name') or d['id'], by or ('Фид «%s»' % f['name']))
+            lstat = {'linked': len(plan['links']), 'dups': len(plan['dups']), 'keep': len(plan['keep']),
+                     'trashed': len(plan['dups']) + (len(plan['keep']) if mode == 'build' and trash_missing else 0)}
         j['total'] = len(offs)
         put, save, istat = _image_putter(store, image_store)
         dget, dsave, derr = _page_getter(store)
@@ -1487,9 +1601,13 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
                     pstat['img'] += 1
                 elif pi:
                     pstat['noimg'].append(o['name'][:60])
-                if len(pi.get('t') or '') > len(o['desc']):
+                if len(pi.get('t') or '') > len(o['desc']) and f.get('kind') != 'files':    # у фида из файлов описание — из парса
                     o['desc'] = pi['t']
                 gal = [u for u in pi.get('imgs') or [] if u not in ph][:9]
+                if gal and f.get('kind') == 'files':       # главное фото — из парса, страница товара добавляет остальные
+                    keys = {_img_key(u) for u in o['pictures']}
+                    o['pictures'] = (o['pictures'] + [u for u in gal if _img_key(u) not in keys])[:10]
+                    gal = []
                 if gal:     # фото — только из галереи карточки товара; картинки фида — лишь когда галереи нет
                     o['pictures'] = gal
                     if old:     # загруженное раньше не из галереи (фид, описание, og:image) — убрать, если не правили вручную
@@ -1528,7 +1646,18 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print):
             errors.append('На странице товара не найдено фото, позиций: %d (%s%s)' % (
                 len(pstat['noimg']), '; '.join(pstat['noimg'][:3]), ' …' if len(pstat['noimg']) > 3 else ''))
         pics = [len(d.get('gallery') or []) + (1 if (d.get('photo') or {}).get('src') else 0) for d in _feed_docs(store, f['id'])]
-        res = {'at': _now(), 'kind': 'import', 'by': by, 'total': len(offs), 'added': added, 'updated': updated, 'same': same, 'linked': lstat.get('linked', 0), 'variants': lstat.get('skipped', 0),
+        if mode == 'build':
+            items = feeds(store)
+            for x in items:
+                if x.get('id') == f['id']:
+                    x['built'] = {'at': _now(), 'by': by, 'items': len(offs), 'linked': lstat.get('linked', 0), 'trashed': lstat.get('trashed', 0)}
+                    x['variants'] = []
+            store.kv_set(KV, {'items': items})
+            with _LOCK:
+                _CACHE.pop(f['id'], None)
+        res = {'at': _now(), 'kind': 'import', 'mode': mode, 'by': by, 'total': len(offs), 'added': added, 'updated': updated, 'same': same,
+               'linked': lstat.get('linked', 0), 'dups': [d.get('name') for d in (plan or {}).get('dups', [])][:300],
+               'keep': [d.get('name') for d in (plan or {}).get('keep', [])][:300], 'trashed': lstat.get('trashed', 0),
                'price': price_ch[:300], 'stock': stock_ch[:300], 'errors': errors[:50],
                'photos': {'new': istat['got'], 'pages': pstat['img'], 'items': len(pics), 'multi': sum(1 for n in pics if n > 1),
                           'avg': round(sum(pics) / len(pics), 1) if pics else 0}}
@@ -1632,7 +1761,7 @@ def check_feed(store, f, by='', log=print, types=None):
             if o:
                 if o.get('sheet'):
                     d['feed']['sheet'] = o['sheet']
-                if types:       # категория по правилам изменилась (а вручную её не меняли) — до расчёта скидки
+                if types and not f.get('built'):     # категория по правилам изменилась (вручную не меняли) — до расчёта скидки
                     a = d.get('attrs') or {}
                     auto = (f.get('cats') or {}).get(o['cat']) or item_cat(o, types) or 'other'
                     prev = d['feed'].get('catAuto')
@@ -1708,7 +1837,8 @@ def upgrade(store, types, version, log=print):
     if store.kv_get('feedsUpgrade') == version:
         return
     store.kv_set('feedsUpgrade', version)
-    todo = [f for f in feeds(store) if _feed_docs(store, f['id'])]
+    # фид из файлов перестраивает каталог только по кнопке («Сформировать каталог»), после сборки — правки только вручную
+    todo = [f for f in feeds(store) if _feed_docs(store, f['id']) and f.get('kind') != 'files']
 
     def go():
         for f in todo:

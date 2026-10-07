@@ -197,6 +197,9 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .fd-t .num{text-align:right;white-space:nowrap}
 .fd-t select{min-width:180px;max-width:100%}
 .fd-cnt{margin:8px 0}
+.fd-build{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.fd-build p{margin:4px 0}
+.fd-plan{margin-top:10px}
 .fd-disc{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
 .fd-dh{gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
 .fd-dt input[type=text],.fd-dt select{width:100%;min-width:0}
