@@ -127,7 +127,7 @@ def feed_save(store, f):
 
 
 def feed_file_put(store, fid, kind, data, name):
-    """Файл фида (парс сайта / прайс): сохранить на диск, запомнить мету в настройках фида; → мета."""
+    """Файл фида (парс сайта / прайс / остатки): сохранить на диск, запомнить мету в настройках фида; → мета."""
     f = feed_get(store, fid)
     if not f or f.get('kind') != 'files':
         raise ValueError('Файлы принимает только фид из файлов')
@@ -726,7 +726,8 @@ def load(store, f, fresh=False):
             raise ValueError('Сначала загрузите файл парса сайта (CSV)')
         price = feed_files.read_file(DATA_DIR, f['id'], 'price')
         prices = feed_files.parse_price(price)[0] if price else []
-        feed = feed_files.build_feed(f, feed_files.parse_pages(pages), prices, _param_name)
+        stock = feed_files.read_file(DATA_DIR, f['id'], 'stock')
+        feed = feed_files.build_feed(f, feed_files.parse_pages(pages), prices, _param_name, feed_files.parse_stock(stock) if stock else None)
     else:
         feed = parse(fetch(f['url']))
     with _LOCK:
@@ -956,10 +957,13 @@ def build_plan(store, f, offs):
             by_url[o['url'].rstrip('/').lower()] = i
         by_name.setdefault(feed_files._key(o['name']), i)
         ocfg.append(_offer_cfg(o))
-    by_lat = {}
+    by_lat, by_code = {}, {}
     for i, c in enumerate(ocfg):
         if feed_files._lat(c) and c['size'] is not None:
             by_lat.setdefault((feed_files._lat(c), c['size']), []).append(i)
+        k = feed_files.code_cfg(offs[i]['name'])
+        if k:
+            by_code.setdefault(k['ser'], []).append((i, k))
     pairs, cand_docs = [], set()
     for d in docs:
         fd = d.get('feed') or {}
@@ -982,6 +986,9 @@ def build_plan(store, f, offs):
             own = _num((d.get('attrs') or {}).get('pressure'))
             rank = 0 if own and op == (7.5 if own == 7 else own) else (1 + (op or 0) / 100)
             pairs.append((2, rank, i, d['id']))
+        lat_hit = any(x[0] == 2 and x[3] == d['id'] for x in pairs)
+        for i, rank in ([] if lat_hit else _code_pairs(d, offs, ocfg, by_code)):
+            pairs.append((3, rank, i, d['id']))
     pairs.sort(key=lambda x: (x[0], x[1], x[2]))
     by_id = {d['id']: d for d in docs}
     links, taken_o, taken_d = {}, set(), set()
@@ -995,6 +1002,39 @@ def build_plan(store, f, offs):
     dups = [by_id[x] for x in cand_docs if x not in taken_d]
     keep = [d for d in docs if d['id'] not in cand_docs]
     return {'links': links, 'dups': dups, 'keep': keep, 'new': [o['oid'] for o in offs if o['oid'] not in links]}
+
+
+def _code_pairs(d, offs, ocfg, by_code):
+    """Русские коды моделей (АСО): карточка «АСО-ВК11/10» — позиция парса «АСО-ВК 11/10М2», «К25М1/10» — «К25М1».
+    Совпадают серия, типоразмер (старое «18» = «18,5»), ресивер, осушитель, частотник, исполнение; поколение (М2, Н2)
+    в старом названии может не быть; давление карточки, которого нет в парсе, — вариант той же модели (уйдёт в дубли).
+    → [(индекс позиции парса, ранг)]."""
+    a = d.get('attrs') or {}
+    dc = feed_files.code_cfg(d.get('name'), a.get('model'))
+    if not dc or not dc['cyr']:             # латинские модели (Dalgakiran) — только по исполнению выше
+        return []
+    out = []
+    for i, oc in by_code.get(dc['ser'], []):
+        if not oc['cyr']:
+            continue
+        if not (oc['size'] == dc['size'] or (dc['size'].is_integer() and oc['size'] == dc['size'] + 0.5)):
+            continue
+        if (oc['dry'], oc['vsd'], oc['flags'], oc['var'], oc['rec']) != (dc['dry'], dc['vsd'], dc['flags'], dc['var'], dc['rec']):
+            continue
+        if dc['gen'] and oc['gen'] != dc['gen']:
+            continue
+        rank = 0 if oc['gen'] == dc['gen'] else 1
+        if oc['p'] is not None and dc['p'] is not None:
+            if oc['p'] != dc['p']:
+                continue
+        elif dc['p'] is not None:           # «К2/10» и «К2»: давление позиции парса — из характеристик
+            op = ocfg[i]['p']
+            rank += 0 if op and abs(op - dc['p']) < 0.6 else 0.5
+        out.append((i, rank + (oc['size'] != dc['size']) * 0.2, oc['gen']))
+    gens = {g for _, _, g in out}
+    if not dc['gen'] and len(gens) > 1 and '' not in gens:
+        return []                   # «КТ16» — это КТ16М или КТ16МЭ? Не угадывать
+    return [(i, r) for i, r, _ in out]
 
 
 def _feed_docs(store, fid):
@@ -1180,6 +1220,12 @@ NAME_RULES = [
     (r'фильтроэлемент|корпус\S*\s+фильтр|патрон\S*\s+воздушн|картридж|блок\S*\s+поршнев|^\s*(поршень|шатун|цилиндр|палец|вкладыш|сапун|'
      r'прессостат|манометр|редуктор|муфта|полумуфта|радиатор|переходник|пластина|термоэлемент|конденсатоотводчик|комплект колец|кольцо)', 'spare'),
     (r'циклонн\S*\s+сепаратор', 'filter'),
+    (r'модульн\S*\s+компрессорн\S*\s+станци|\bВМКС\b', 'st_comp'),       # АСО: станция в блок-контейнере
+    (r'шкаф\S*\s+управления', 'automation'),
+    (r'^\s*(рукав|сопло|соплодержател|сцеплени)', 'spare'),                  # к аппаратам струйной очистки
+    # русские модели без латиницы («Поршневой компрессор К2»): «Поршневой компрессор высокого давления … W 64» не трогается
+    (r'^(?!.*[A-Za-z])\s*поршнев\S*\s+компрессор', 'comp_piston'),
+    (r'^(?!.*[A-Za-z])\s*(винтов\S*\s+компрессор|агрегат\S*\s+компрессорн\S*\s+винтов|установк\S*\s+компрессорн\S*\s+винтов)', 'comp_screw'),
 ]
 PATH_RULES = [
     (r'воздуходувк', 'blower'), (r'генератор\S*\s+азота', 'gen_n2'), (r'генератор\S*\s+кислорода', 'gen_o2'),
@@ -1409,11 +1455,13 @@ def build(o, f, types, old=None, put_image=None):
             if v and not a.get(k):
                 a[k] = v
     doc['attrs'] = a
-    if not doc.get('spec'):
-        doc['spec'] = ' · '.join(r['v'] for r in rows[:4])[:200]
+    if not doc.get('spec'):             # строка под названием: мощность, производительность, давление, ресивер — потом остальное
+        top = {'power': 0, 'flow': 1, 'pressure': 2, 'receiver': 3}
+        best = sorted(rows, key=lambda r: top.get(feed_files.spec_class(r['k']), 9))
+        doc['spec'] = ' · '.join(r['v'] for r in best[:4])[:200]
     if not doc.get('unit'):
         doc['unit'] = 'шт.'
-    doc['feed'] = {'id': f['id'], 'oid': o['oid'], 'url': o['url'], 'sku': o['sku'], 'barcode': o['barcode'], 'cat': o['cat'],
+    doc['feed'] = {'id': f['id'], 'files': f.get('kind') == 'files', 'oid': o['oid'], 'url': o['url'], 'sku': o['sku'], 'barcode': o['barcode'], 'cat': o['cat'],
                    'path': o.get('path', ''), 'crumbs': o.get('crumbs', ''), 'sheet': o.get('sheet', ''), 'catAuto': auto, 'orig': new_orig, 'at': today,
                    'linked': bool(handmade)}
     changes = _price_part(doc, o, f, today)
@@ -1690,7 +1738,7 @@ def _maker_cards(store, f):
     return out
 
 
-def price_cards(store, f, prices, today, by=''):
+def price_cards(store, f, prices, today, by='', stock=None):
     """Ручные карточки производителя ↔ строки прайса (feed_files.match_card: серия, типоразмер, исполнение): РРЦ, цена КП
     и закупка по сетке скидок — как у позиций фида; связь — doc.priceLink {feed, sku, name, at}. → (изменения цен, сводка)."""
     changes, sumr = [], {'cards': 0, 'priced': 0, 'updated': 0, 'noPrice': [], 'missing': [], 'unclear': []}
@@ -1703,13 +1751,16 @@ def price_cards(store, f, prices, today, by=''):
             sumr[key].append({'id': d['id'], 'name': d.get('name'), 'why': why, 'rows': [p['name'] for p in rows[:3]]})
             continue
         p = rows[0]
-        before = json.dumps([d.get('rrc'), d.get('price'), d.get('cost'), d.get('costDisc'), d.get('priceLink')], sort_keys=True, ensure_ascii=False)
+        before = json.dumps([d.get('rrc'), d.get('price'), d.get('cost'), d.get('costDisc'), d.get('priceLink'), d.get('stock')], sort_keys=True, ensure_ascii=False)
         o = {'price': p['price'], 'oldprice': None, 'cur': (f.get('cur') or p.get('cur') or 'EUR').upper(), 'nostock': True}
+        if stock:           # остатки поставщика — и у карточек, заведённых вручную
+            r = feed_files.stock_row(stock, p.get('sku'), d.get('name'))
+            o.update(qty=r['qty'] if r else 0, available=bool(r and r['qty'] > 0), nostock=False)
         for c in _price_part(d, o, f, today):
             changes.append(_change(d['id'], d, c))
         d['priceLink'] = {'feed': f['id'], 'sku': p.get('sku') or '', 'name': p['name'], 'sheet': p.get('sheet') or '', 'rows': len(rows)}
         sumr['priced'] += 1
-        if json.dumps([d.get('rrc'), d.get('price'), d.get('cost'), d.get('costDisc'), d.get('priceLink')], sort_keys=True, ensure_ascii=False) != before:
+        if json.dumps([d.get('rrc'), d.get('price'), d.get('cost'), d.get('costDisc'), d.get('priceLink'), d.get('stock')], sort_keys=True, ensure_ascii=False) != before:
             d['updatedAt'] = _now()
             store.catalog_put(d['id'], json.dumps(d, ensure_ascii=False), by or ('Фид «%s»' % f['name']))
             sumr['updated'] += 1
@@ -1761,6 +1812,7 @@ def check_feed(store, f, by='', log=print, types=None):
             if o:
                 if o.get('sheet'):
                     d['feed']['sheet'] = o['sheet']
+                d['feed']['files'] = f.get('kind') == 'files'
                 if types and not f.get('built'):     # категория по правилам изменилась (вручную не меняли) — до расчёта скидки
                     a = d.get('attrs') or {}
                     auto = (f.get('cats') or {}).get(o['cat']) or item_cat(o, types) or 'other'
@@ -1786,8 +1838,9 @@ def check_feed(store, f, by='', log=print, types=None):
             j['done'] += 1
         cards = None
         if f.get('kind') == 'files' and feed.get('prices'):        # карточки производителя, заведённые вручную
-            cc, cards = price_cards(store, f, feed['prices'], today, by)
-            price_ch += cc
+            cc, cards = price_cards(store, f, feed['prices'], today, by, feed.get('stock'))
+            for c in cc:
+                (stock_ch if c['kind'] == 'stock' else price_ch).append(c)
             upd += cards['updated']
         linked = {d['feed'].get('oid') for d in docs}
         skip = {k for k, v in (f.get('cats') or {}).items() if v == 'skip'}
