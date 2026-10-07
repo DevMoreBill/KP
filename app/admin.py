@@ -664,7 +664,7 @@ class AdminApi:
             f = feeds.feed_save(st, self.data())
             self.log('edit_settings', 'settings', 'feed:' + f['id'], None, {'url': f['url'] or f.get('kind'), 'name': f['name']})
             return self.ok(f)
-        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload)$', sub)
+        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|discounts)$', sub)
         if not r:
             return self.err(404, 'Нет такого запроса')
         fid, act = r.group(1), r.group(2)
@@ -675,6 +675,17 @@ class AdminApi:
             return self.ok({'items': feeds.log_of(st, fid)})
         if act == 'status':
             return self.ok({'job': feeds.JOBS.get(fid)})
+        if act == 'discounts':      # как сетка скидок разложится по позициям; в теле можно прислать ещё не сохранённую сетку
+            d = self.data() if m == 'POST' else {}
+            g = dict(f)
+            if isinstance(d.get('discounts'), list):
+                g['discounts'] = feeds._disc_rules(d['discounts'])
+            if isinstance(d.get('driveHints'), dict):
+                g['driveHints'] = {k: str(d['driveHints'].get(k) or '')[:400] for k in ('belt', 'direct')}
+            if 'discount' in d:
+                x = feeds._num(d.get('discount'))
+                g['discount'] = x if x and 0 < x < 100 else None
+            return self.ok(feeds.discount_plan(st, g))
         if m != 'POST':
             return self.err(405, 'Нужен POST')
         if act == 'upload':         # файл фида из файлов: ?kind=pages|price&name=имя, тело — сам файл

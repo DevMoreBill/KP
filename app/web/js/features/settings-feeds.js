@@ -3,7 +3,15 @@
 // Фид из файлов (парс сайта CSV + прайс XLSX, app/feed_files.py) — для поставщиков без YML: цены обновляются загрузкой нового прайса.
 'use strict';
 
-const FD = { sel:null, prev:null, cats:{}, types:[], poll:0, edit:null, logs:{} };
+const FD = { sel:null, prev:null, cats:{}, types:[], poll:0, edit:null, logs:{}, disc:null, plan:null };
+// сетка скидок Dalgakiran от РРЦ: ременные компрессоры до 75 кВт и рефрижераторные осушители — 30 %, прямой привод и/или
+// частотник — 27 % при любой мощности, фильтры и сепараторы — 30 %, остальное — 25 %
+const FD_DISC_DALG = { discount:25, driveHints:{ belt:'TIDY, DVK, DS', direct:'DVK D, IMPETUS, EAGLE' }, discounts:[
+  { label:'Компрессоры с ременным приводом до 75 кВт', cats:['comp_screw','comp_piston','comp_scroll'], drive:'belt', kwMax:75, pct:30 },
+  { label:'Рефрижераторные осушители', cats:['dryer_refrig'], drive:'any', pct:30 },
+  { label:'Компрессоры с прямым приводом и/или частотником', cats:['comp_screw','comp_piston','comp_scroll'], drive:'direct', pct:27 },
+  { label:'Фильтры, сепараторы, маслоотделители', cats:['filter','oil_sep'], drive:'any', pct:30 } ] };
+const FD_DRIVES = [['any','любой'], ['belt','ременной'], ['direct','прямой и/или частотник']];
 const FD_REMEZA = { name:'Remeza', url:'https://www.remeza.org/bitrix/catalog_export/yandex_202475.php', maker:'Remeza', auto:true, pageDesc:true, kind:'yml' };
 const FD_FILES = { kind:'files', name:'', maker:'', priceKind:'cost', cur:'EUR', priceOnly:false, pageDesc:false, auto:false };
 const FD_CURS = [['', 'как в прайсе'], ['RUB', 'Рубли'], ['EUR', 'Евро'], ['USD', 'Доллары США'], ['CNY', 'Юани']];
@@ -26,9 +34,10 @@ async function stFeeds(m){
         ${x.job&&x.job.state==='run'?`<span class="ok-t">${x.job.kind==='import'?'Загружаю':'Проверяю'}… ${x.job.done}/${x.job.total||'?'}</span>`:''}</div>
         <div class="acts"><button class="btn" type="button" data-fd="open" data-id="${esc(x.id)}">${x.id===FD.sel?'Свернуть':'Открыть'}</button></div></div>`).join('')}</div>`:'<p class="muted">Фидов пока нет.</p>'}</div>
     ${FD.edit?fdForm(FD.edit, true):''}
-    ${f?`<div class="st-card fd-panel" id="fdPanel">${fdForm(f)}${fdIsFiles(f)?fdFiles(f):''}${fdActions(f)}<div id="fdJob">${fdJob(f.job)}</div><div id="fdPrev">${FD.prev&&FD.prev.id===f.id?fdPreview(FD.prev, f):''}</div><div id="fdLog"></div></div>`:''}`;
+    ${f?`<div class="st-card fd-panel" id="fdPanel">${fdForm(f)}${fdIsFiles(f)?fdFiles(f):''}<div id="fdDisc">${fdDisc(f)}</div>${fdActions(f)}<div id="fdJob">${fdJob(f.job)}</div><div id="fdPrev">${FD.prev&&FD.prev.id===f.id?fdPreview(FD.prev, f):''}</div><div id="fdLog"></div></div>`:''}`;
   m.onclick=e=>fdClick(e, m);
   m.onchange=e=>{ const t=e.target;
+    if (t.dataset.fdc!=null){ fdDiscRead(m); const s=t.closest('details'); if (s) s.querySelector('summary').textContent=fdCatsTxt(FD.disc.discounts[+s.dataset.fdr].cats); return; }
     if (t.dataset.fdcat!=null){ FD.cats[t.dataset.fdcat]=t.value; fdCount(m); return; }
     if (t.dataset.fdfile!=null){ fdUpload(t, m); return; }
     if (t.dataset.fdf==='kind' && FD.edit){ FD.edit={...(t.value==='files'?FD_FILES:FD_REMEZA), ...fdVals(t.closest('[data-fdform]')), kind:t.value}; if (t.value==='files' && FD.edit.url===FD_REMEZA.url) FD.edit.url=''; stFeeds(m); } };
@@ -47,12 +56,12 @@ function fdForm(f, isNew){
     ? `${kindSel}${common}
       <label class="f"><span>Цена в прайсе — это${tip('<p><b>Наша закупка</b> — дилерский прайс: цена идёт в закупку позиции (валюта — как в прайсе), цена продажи остаётся за менеджером и «Экономикой сделки».</p><p><b>РРЦ</b> — розничный прайс: цена идёт в РРЦ и цену КП, закупка — РРЦ минус скидка.</p>')}</span><select data-fdf="priceKind"><option value="cost"${f.priceKind!=='rrc'?' selected':''}>наша закупка (дилерская цена)</option><option value="rrc"${f.priceKind==='rrc'?' selected':''}>РРЦ (розничная цена)</option></select></label>
       <label class="f"><span>Валюта прайса</span><select data-fdf="cur">${FD_CURS.map(([v,t])=>`<option value="${v}"${(f.cur||'')===v?' selected':''}>${t}</option>`).join('')}</select></label>
-      <label class="f"><span>Скидка от цены прайса, %${tip('Если задана — закупка = цена прайса минус скидка. Пусто — закупка равна цене прайса.')}</span><input type="text" inputmode="decimal" data-fdf="discount" value="${esc(f.discount??'')}" placeholder="например, 10"></label>
+      ${isNew?`<label class="f"><span>Скидка от цены прайса, %${tip('Если задана — закупка = цена прайса минус скидка. Пусто — закупка равна цене прайса. Сетку скидок по видам оборудования можно задать после создания фида.')}</span><input type="text" inputmode="decimal" data-fdf="discount" value="${esc(f.discount??'')}" placeholder="например, 10"></label>`:''}
       <label class="fd-auto"><input type="checkbox" data-fdf="priceOnly"${f.priceOnly?' checked':''}> Добавлять и позиции, которых нет в парсе (только из прайса)${tip('Строки прайса, для которых не нашлось страницы сайта: без фото и описания, с характеристиками из столбцов прайса. Разделы — по листам прайса.')}</label>
       <label class="fd-auto"><input type="checkbox" data-fdf="pageDesc"${f.pageDesc?' checked':''}> Дополнять описание и фото со страницы товара (дольше)${tip('Программа откроет страницу каждого товара по ссылке из парса. Обычно не нужно: описание, фото и характеристики уже есть в файле парса.')}</label>`
     : `${kindSel}<label class="f wide"><span>Адрес фида (YML)</span><input type="text" inputmode="url" data-fdf="url" value="${esc(f.url||'')}" placeholder="https://…/catalog_export/yandex.php"></label>
       ${common}
-      <label class="f"><span>Наша скидка от РРЦ, %${tip('Если задана — закупка позиции = РРЦ минус скидка; обновляется вместе с РРЦ. Пусто — закупку фид не трогает.')}</span><input type="text" inputmode="decimal" data-fdf="discount" value="${esc(f.discount??'')}" placeholder="например, 25"></label>
+      ${isNew?`<label class="f"><span>Наша скидка от РРЦ, %${tip('Если задана — закупка позиции = РРЦ минус скидка; обновляется вместе с РРЦ. Пусто — закупку фид не трогает. Сетку скидок по видам оборудования можно задать после создания фида.')}</span><input type="text" inputmode="decimal" data-fdf="discount" value="${esc(f.discount??'')}" placeholder="например, 25"></label>`:''}
       <label class="fd-auto"><input type="checkbox" data-fdf="auto"${f.auto!==false?' checked':''}> Раз в день проверять РРЦ и наличие</label>
       <label class="fd-auto"><input type="checkbox" data-fdf="pageDesc"${f.pageDesc!==false?' checked':''}> Описание, фото и применимость — со страницы товара${tip('При загрузке в каталог программа открывает страницу каждого товара (ссылка из фида): описание из блока описания (itemprop="description") — если оно длиннее описания в фиде; до 8 фото товара (без блоков «похожие товары»); характеристики, которых нет в фиде; у запчастей — применимость («Применяемость», «Подходит для…»). Страницы запоминаются на 30 дней; первая загрузка большого фида — дольше на несколько минут. Описание, исправленное вручную, не затирается.')}</label>`;
   return `<div class="${isNew?'st-card ':''}fd-form" data-fdform="${isNew?'new':esc(f.id)}">${isNew?`<p class="sub">${files?'Новый фид из файлов':'Новый фид'}</p>`:''}
@@ -84,6 +93,77 @@ async function fdUpload(input, m){
     toast(kind==='pages' ? `Парс сайта загружен: ${stNum(meta.rows)} ${plural(meta.rows,'позиция','позиции','позиций')}` : `Прайс загружен: ${stNum(meta.rows)} ${plural(meta.rows,'строка','строки','строк')}, с ценой ${stNum(meta.withPrice)}`);
     FD.prev=null; stFeeds(m);
   }catch(err){ input.disabled=false; if (st) st.textContent=''; toast('Файл не принят: '+(err.message||err)); }
+}
+
+// ---------------------------------------------------------------- сетка скидок поставщика
+function fdDiscOf(f){
+  if (!FD.disc || FD.disc.id!==f.id) FD.disc={ id:f.id, discount:f.discount??'', driveHints:{...(f.driveHints||{})},
+    discounts:JSON.parse(JSON.stringify(f.discounts||[])) };
+  return FD.disc;
+}
+function fdCatsTxt(cats){ return (cats||[]).length ? cats.map(fdTypeName).join(', ') : 'любая категория'; }
+
+function fdDisc(f){
+  const d=fdDiscOf(f), base=fdCostKind(f)?'цены прайса':'РРЦ';
+  const num=v=>v==null?'':String(v).replace('.',',');
+  const row=(r,i)=>`<tr data-fdr="${i}">
+      <td><input type="text" data-fdd="label" value="${esc(r.label||'')}" placeholder="Например: Ременные компрессоры до 75 кВт" aria-label="Название правила"></td>
+      <td data-l="Категории"><details class="fd-dc" data-fdr="${i}"><summary>${esc(fdCatsTxt(r.cats))}</summary><div class="fd-dcl">${FD.types.map(t=>`<label><input type="checkbox" data-fdc="${esc(t.id)}"${(r.cats||[]).includes(t.id)?' checked':''}> ${esc(t.name)}</label>`).join('')}</div></details></td>
+      <td data-l="Привод"><select data-fdd="drive" aria-label="Привод">${FD_DRIVES.map(([v,t])=>`<option value="${v}"${(r.drive||'any')===v?' selected':''}>${t}</option>`).join('')}</select></td>
+      <td data-l="Мощность до, кВт"><input type="text" inputmode="decimal" data-fdd="kwMax" value="${esc(num(r.kwMax))}" placeholder="любая" aria-label="Мощность до, кВт"></td>
+      <td data-l="Скидка, %"><input type="text" inputmode="decimal" data-fdd="pct" value="${esc(num(r.pct))}" placeholder="%" aria-label="Скидка, %"></td>
+      <td class="num"><button class="btn ghost" type="button" data-fd="discdel" data-i="${i}" title="Удалить правило" aria-label="Удалить правило">✕</button></td></tr>`;
+  return `<div class="fd-disc"><div class="row fd-dh"><p class="sub" style="margin:0">Сетка скидок поставщика${tip(`<p>Закупка позиции = ${base} минус скидка. Правила проверяются сверху вниз: первое подходящее даёт скидку; не подошло ни одно — «Остальное оборудование».</p><p>Категория — категория программы у позиции каталога. Привод определяется по признаку частотника (VSD, инвертор), по сериям из полей ниже (в названии позиции или на листе прайса) и по строке «Привод» в характеристиках. Мощность — поле «Мощность» позиции; «до 75» — включительно.</p><p>Закупка, исправленная вручную в карточке, не меняется. Применённая скидка видна в карточке позиции.</p>`)}</p>
+      <span class="sp"></span><button class="btn" type="button" data-fd="discpreset">Сетка Dalgakiran</button></div>
+    <div class="fd-tw"><table class="fd-t fd-dt"><thead><tr><th>Правило</th><th>Категории</th><th>Привод</th><th>Мощность до, кВт</th><th>Скидка, %</th><th></th></tr></thead>
+      <tbody>${d.discounts.map(row).join('')}
+      <tr class="fd-dother"><td><b>Остальное оборудование</b></td><td class="muted" colspan="3">всё, что не подошло под правила выше</td><td data-l="Скидка, %"><input type="text" inputmode="decimal" data-fddo="discount" value="${esc(num(d.discount))}" placeholder="нет" aria-label="Скидка на остальное, %"></td><td></td></tr></tbody></table></div>
+    <div class="row fd-fb"><button class="btn" type="button" data-fd="discadd">+ Правило</button></div>
+    <div class="st-ed-g fd-dhint">
+      <label class="f"><span>Серии с ременным приводом${tip('Через запятую. Ищутся в названии позиции и в названии листа прайса целым словом. Пример для Dalgakiran: TIDY, DVK, DS.')}</span><input type="text" data-fdh="belt" value="${esc(d.driveHints.belt||'')}" placeholder="TIDY, DVK, DS"></label>
+      <label class="f"><span>Серии с прямым приводом${tip('Через запятую; проверяются раньше ременных — «DVK D» точнее, чем «DVK». Частотник (VSD, INVERSYS, инвертор) определяется сам.')}</span><input type="text" data-fdh="direct" value="${esc(d.driveHints.direct||'')}" placeholder="DVK D, IMPETUS, EAGLE"></label></div>
+    <div class="row fd-fb"><button class="btn" type="button" data-fd="discplan">Показать распределение</button><button class="btn" type="button" data-fd="discsave">Сохранить сетку</button>
+      <button class="btn primary" type="button" data-fd="discapply"${f.linked?'':' disabled title="Сначала загрузите позиции в каталог"'}>Сохранить и обновить цены</button></div>
+    <div id="fdPlan">${FD.plan&&FD.plan.id===f.id?fdPlan(FD.plan):''}</div></div>`;
+}
+
+function fdDiscRead(m){
+  const d=FD.disc; if (!d) return d; const box=m.querySelector('.fd-disc'); if (!box) return d;
+  const n=v=>{ const x=parseFloat(String(v||'').replace(/\s/g,'').replace(',','.')); return Number.isFinite(x)&&x>0?x:null; };
+  box.querySelectorAll('tr[data-fdr]').forEach(tr=>{ const r=d.discounts[+tr.dataset.fdr]; if (!r) return;
+    r.label=tr.querySelector('[data-fdd=label]').value.trim(); r.drive=tr.querySelector('[data-fdd=drive]').value;
+    r.kwMax=n(tr.querySelector('[data-fdd=kwMax]').value); r.pct=n(tr.querySelector('[data-fdd=pct]').value);
+    r.cats=[...tr.querySelectorAll('[data-fdc]:checked')].map(x=>x.dataset.fdc); });
+  d.discount=n(box.querySelector('[data-fddo=discount]').value);
+  box.querySelectorAll('[data-fdh]').forEach(i=>{ d.driveHints[i.dataset.fdh]=i.value.trim(); });
+  return d;
+}
+
+function fdDiscBody(d){ return { discounts:d.discounts.filter(r=>r.pct), discount:d.discount, driveHints:d.driveHints }; }
+
+function fdPlan(p){
+  const pct=v=>v==null||v===''?'нет':String(v).replace('.',',')+' %';
+  return `<div class="fd-tw"><table class="fd-t"><thead><tr><th>Правило</th><th class="num">Скидка</th><th class="num">Позиций</th><th>Например</th></tr></thead>
+    <tbody>${p.groups.map(g=>`<tr><td>${esc(g.label)}</td><td class="num">${pct(g.pct)}</td><td class="num">${stNum(g.count)}</td><td class="muted">${esc(g.sample.slice(0,3).join(' · '))}${g.count>3?' …':''}</td></tr>`).join('')}</tbody></table></div>
+    ${p.unknownCount?`<details class="more"><summary class="bad-t">Не распознано: ${stNum(p.unknownCount)} — получат скидку «остальное»</summary><p class="muted">${p.unknown.map(u=>`${esc(u.name)} <small>(${esc(u.why)})</small>`).join(' · ')}</p><p class="muted">Добавьте серию в поле «Серии с ременным / прямым приводом» или укажите привод и мощность в карточке позиции.</p></details>`:''}
+    ${p.manual?`<p class="muted">Закупка исправлена вручную у ${stNum(p.manual)} ${plural(p.manual,'позиции','позиций','позиций')} — её сетка не меняет.</p>`:''}
+    ${p.noprice?`<p class="muted">Пока без цены: ${stNum(p.noprice)} ${plural(p.noprice,'позиция','позиции','позиций')} — закупка появится после «Сохранить и обновить цены», если в прайсе есть цена.</p>`:''}`;
+}
+
+async function fdDiscClick(a, b, m){
+  const f=(await aapi('feeds')).items.find(x=>x.id===FD.sel); if (!f) return;
+  const d=fdDiscRead(m) || fdDiscOf(f), redraw=()=>{ const el=m.querySelector('#fdDisc'); if (el) el.innerHTML=fdDisc(f); };
+  if (a==='discadd'){ d.discounts.push({ label:'', cats:[], drive:'any', kwMax:null, pct:null }); return redraw(); }
+  if (a==='discdel'){ d.discounts.splice(+b.dataset.i, 1); return redraw(); }
+  if (a==='discpreset'){
+    if (d.discounts.length && !await stConfirm('Заменить сетку скидок?','Текущие правила заменятся сеткой Dalgakiran: ременные компрессоры до 75 кВт и рефрижераторные осушители — 30 %, прямой привод и/или частотник — 27 %, фильтры и сепараторы — 30 %, остальное — 25 %.','Заменить')) return;
+    Object.assign(d, JSON.parse(JSON.stringify(FD_DISC_DALG))); FD.plan=null; return redraw(); }
+  if (d.discounts.some(r=>!r.pct)){ toast('У каждого правила укажите скидку, % (или удалите правило)'); return; }
+  if (a==='discplan'){ b.disabled=true; b.textContent='Считаю…';
+    FD.plan={...await ajson(`feeds/${FD.sel}/discounts`, fdDiscBody(d)), id:FD.sel}; return redraw(); }
+  await ajson('feeds', {...f, ...fdDiscBody(d)}); FD.disc=null;
+  if (a==='discsave'){ toast('Сетка скидок сохранена'); FD.plan=null; return stFeeds(m); }
+  if (a==='discapply'){ await ajson(`feeds/${FD.sel}/check`); toast('Сетка сохранена, обновляю цены по прайсу'); FD.plan=null; return stFeeds(m); }
 }
 
 function fdActions(f){
@@ -169,7 +249,8 @@ async function fdClick(e, m){
     if (a==='new'){ FD.edit={name:'', url:'', maker:'', auto:true, pageDesc:true, kind:'yml'}; return stFeeds(m); }
     if (a==='newfiles'){ FD.edit={...FD_FILES}; return stFeeds(m); }
     if (a==='cancel'){ FD.edit=null; return stFeeds(m); }
-    if (a==='open'){ FD.sel = FD.sel===b.dataset.id ? null : b.dataset.id; FD.prev=null; FD.cats={}; return stFeeds(m); }
+    if (a==='open'){ FD.sel = FD.sel===b.dataset.id ? null : b.dataset.id; FD.prev=null; FD.cats={}; FD.disc=null; FD.plan=null; return stFeeds(m); }
+    if (a.startsWith('disc')) return fdDiscClick(a, b, m);
     const form=b.closest('[data-fdform]') || m.querySelector(`[data-fdform="${FD.sel}"]`);
     if (a==='save'){ const isNew=form.dataset.fdform==='new', v=fdVals(form);
       const old=isNew?{}:(await aapi('feeds')).items.find(x=>x.id===FD.sel)||{};
