@@ -71,7 +71,7 @@ function catPriceBlock(x){
 
 document.addEventListener('input', e=>{ const t=e.target; if (t.dataset.cprice==null || !CATED) return;
   const x=S.items[0], key=t.dataset.cprice, k=parsePrice(t.value);
-  x['_'+key+'Text']=t.value; x[key]=Number.isNaN(k)?0:k; t.classList.toggle('bad', Number.isNaN(k)); });
+  x['_'+key+'Text']=t.value; x[key]=Number.isNaN(k)?0:k; x[key+'Src']='manual'; t.classList.toggle('bad', Number.isNaN(k)); });   // ручная цена — фид её больше не трогает
 
 document.addEventListener('focusout', e=>{ const t=e.target; if (t.dataset.cprice==null || !CATED) return;
   const x=S.items[0], key=t.dataset.cprice, k=parsePrice(t.value); if (!Number.isNaN(k)){ delete x['_'+key+'Text']; t.value=k?money(k):''; } });
