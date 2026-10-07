@@ -131,7 +131,9 @@ def _split_line(line):
     if pm:
         pics = pm.group(1)
         rest = rest[pm.end():].lstrip(',')
-    cands = [c.start() for c in _CHAR_START.finditer(rest)]
+    # начало характеристик — «,"Ключ: значение | …»: ключ с заглавной буквы и без точки («,03 мг/м3. Технические особенности:» — хвост
+    # описания после запятой в числе «0,03», не характеристики)
+    cands = [c.start() for c in _CHAR_START.finditer(rest) if re.match(r'^,\s*"*\s*[А-ЯЁA-Z][^:|.]{0,69}:', rest[c.start():])]
     cut = next((p for p in cands if rest[p:].count(' | ') >= 2), cands[-1] if cands else -1)
     if cut >= 0:
         desc, chars = rest[:cut], rest[cut + 1:]
@@ -193,7 +195,9 @@ def parse_pages(data):
             parts = None
             try:
                 r = next(csv.reader(io.StringIO(line)))
-                if len(r) == 6 and _PROD_URL.match(r[2].strip()):
+                # кавычка внутри описания («99%;"») сбивает CSV: поле характеристик тогда — хвост описания, а не «ключ: значение | …»
+                if len(r) == 6 and _PROD_URL.match(r[2].strip()) and (not r[5].strip() or (
+                        re.match(r'^\s*"?[^:|.]{2,70}:', r[5]) and r[5].count(' | ') >= 2)):
                     parts = [x.strip() for x in r]
             except (csv.Error, StopIteration):
                 parts = None
@@ -471,6 +475,10 @@ def _list_items(m):
     return '\n' + m.group(1) + ':\n' + '\n'.join('• ' + x for x in items) + '\n'
 
 
+BLOCK_LABELS = {'Назначение', 'Конструкция и принцип работы', 'Диапазон серии', 'Исполнения', 'Особенности', 'Технические особенности',
+                'Главное о серии', 'Общие характеристики', 'Преимущества', 'Опции', 'Комплектация', 'Применение', 'Описание'}
+
+
 def clean_desc(text):
     """Описание со страницы → текст без «воды»: вводный абзац, подзаголовки, список «• …»; повторы и рекламные фразы убраны."""
     t = html_mod.unescape(str(text or '')).replace('\xa0', ' ')
@@ -498,10 +506,11 @@ def clean_desc(text):
                 continue
             seen.add(key)
             out.append(('• ' + body) if sent.startswith('• ') else (sent if sent.endswith(':') else body))
-    # подзаголовок без пунктов после него не нужен
+    # подзаголовок без пунктов после него не нужен (кроме заголовков блоков карточки: «Назначение:» и т. п. — перед абзацем)
     res = []
     for i, x in enumerate(out):
-        if x.endswith(':') and not (i + 1 < len(out) and out[i + 1].startswith('• ')):
+        nxt = out[i + 1] if i + 1 < len(out) else ''
+        if x.endswith(':') and not nxt.startswith('• ') and not (x[:-1] in BLOCK_LABELS and nxt and not nxt.endswith(':')):
             continue
         res.append(x)
     return '\n'.join(res)[:4000].strip()
@@ -573,7 +582,7 @@ def desc_blocks(text):
         if not sec['label']:
             out.extend(_intro_blocks(sec['prose'], sec['bullets']))
         else:
-            out.append((sec['label'], '\n'.join(sec['prose'] + sec['bullets'])))
+            out.append((sec['label'], '\n'.join(([' '.join(sec['prose'])] if sec['prose'] else []) + sec['bullets'])))
     out = [(lab, t) for lab, t in out if t.strip()]
     if len(out) == 1 and sections and not sections[0]['label']:
         out = [('Описание', out[0][1])]
@@ -880,6 +889,22 @@ def _param(k):
     return (m.group(1), m.group(2)) if m else (k, '')
 
 
+def _price_specs_ok(pg, pr):
+    """Характеристики строки прайса без явных ошибок: давление, не совпадающее с давлением в названии модели
+    (в прайсе у «TIDY-N 5-7,5-250» — «4 бар», значения съехали на строку), не берётся — остаётся из парса."""
+    if not pr:
+        return []
+    p = page_cfg(pg)['p']
+    out = []
+    for k, v in pr['specs']:
+        if p and spec_class(k) == 'pressure':
+            n = _num_attr(re.sub(r'[^\d,.]', '', str(v)).replace(',', '.') or None)
+            if n and (7.5 if n == 7 else n) != (7.5 if p == 7 else p):
+                continue
+        out.append((k, v))
+    return out
+
+
 def build_feed(f, pages, prices, param_name):
     """→ {shop, date, cats, offers} как у feeds.parse(): позиции парса с ценой из прайса; при f.priceOnly — и строки прайса без страницы."""
     pages = unique_names(pages)
@@ -892,7 +917,7 @@ def build_feed(f, pages, prices, param_name):
         cats.setdefault(cid, {'id': cid, 'name': pg['cat'], 'parent': '', 'path': pg['cat']})
         pr = hit.get(pg['url'])
         params = []
-        for k, v in merge_specs(pg['chars'], pr['specs'] if pr else []):
+        for k, v in merge_specs(pg['chars'], _price_specs_ok(pg, pr)):
             k2, u = _param(k)
             k2, u = param_name(k2, u)
             if u == 'дюйм' and re.search(r'["“”\']|\bDN\b|\bG\s*\d', v):     # «2"», «DN 50», «G 1/2» — единица уже в значении
