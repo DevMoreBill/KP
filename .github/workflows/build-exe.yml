@@ -278,10 +278,31 @@ jobs:
           New-Item -ItemType Directory -Force -Path $pkg | Out-Null
           Copy-Item -LiteralPath "dist\$env:KP_EXE_NAME.exe" -Destination $pkg
           Copy-Item -Recurse -LiteralPath 'server-setup' -Destination $pkg
+          Copy-Item -LiteralPath 'install\kp-common.ps1' -Destination "$pkg\server-setup"
           Copy-Item -LiteralPath 'Инструкция.txt' -Destination $pkg
           New-Item -ItemType Directory -Force -Path "$pkg\install" | Out-Null
           Copy-Item -LiteralPath 'install\Установить в C KP.cmd', 'install\install-full.ps1', 'install\kp-common.ps1' -Destination "$pkg\install"
           Compress-Archive -Path "$pkg\*" -DestinationPath "dist\$env:KP_EXE_NAME.zip" -Force
+
+      - name: Проверка «Остановить сервер» / «Запустить сервер» (server-setup\kp-server.ps1)
+        shell: powershell
+        run: |
+          $pkg = Join-Path $PWD "pkg\$env:KP_EXE_NAME"
+          $ps = Join-Path $pkg 'server-setup\kp-server.ps1'
+          $exe = Get-ChildItem -LiteralPath $pkg -Filter '*.exe' | Select-Object -First 1
+          function Up { for ($i = 0; $i -lt 60; $i++) { try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/ping' -TimeoutSec 2; if ($r.ok) { return $true } } catch {}; Start-Sleep -Seconds 1 }; return $false }
+          function Listening { [bool](netstat -ano | Where-Object { $_ -match '^\s*TCP\s+\S+:17845\s+(0\.0\.0\.0:0|\[::\]:0)\s' }) }
+          $p = Start-Process -FilePath $exe.FullName -WorkingDirectory $pkg -PassThru
+          if (-not (Up)) { throw 'Программа не запустилась' }
+          & powershell -NoProfile -ExecutionPolicy Bypass -File $ps -Action stop -Quiet
+          if ($LASTEXITCODE -ne 0) { throw '«Остановить сервер» вернул ошибку' }
+          if (Get-Process -Id $p.Id -ErrorAction SilentlyContinue) { throw 'Процесс программы не завершён' }
+          if (Listening) { throw 'Порт 17845 всё ещё занят' }
+          & powershell -NoProfile -ExecutionPolicy Bypass -File $ps -Action start -Quiet
+          if ($LASTEXITCODE -ne 0 -or -not (Up)) { throw '«Запустить сервер» не запустил программу' }
+          & powershell -NoProfile -ExecutionPolicy Bypass -File $ps -Action stop -Quiet
+          if ($LASTEXITCODE -ne 0 -or (Listening)) { throw 'Повторная остановка не сработала' }
+          Write-Host 'Остановка и запуск сервера: в порядке'
 
       - name: Патч обновления (без EXE, для обеих сборок)
         if: matrix.arch == 'x64'
@@ -295,6 +316,10 @@ jobs:
           Get-ChildItem -Recurse -Directory -Path $upd -Filter '__pycache__' | Remove-Item -Recurse -Force
           [IO.File]::WriteAllText((Join-Path $upd 'version.json'), ('{"version": "' + $ver + '"}'))
           Copy-Item -LiteralPath 'install\patch\Установить обновление.cmd', 'install\patch\install-update.ps1', 'install\kp-common.ps1' -Destination $pt
+          # файлы управления сервером отдела (остановить / запустить / удалить) — установщик обновления кладёт их в C:\KP\server-setup
+          New-Item -ItemType Directory -Force -Path "$pt\server-setup" | Out-Null
+          Get-ChildItem -LiteralPath 'server-setup' | Where-Object { -not $_.PSIsContainer -and $_.Name -notlike '1.*' } | Copy-Item -Destination "$pt\server-setup"
+          Copy-Item -LiteralPath 'install\kp-common.ps1' -Destination "$pt\server-setup"
           Compress-Archive -Path "$pt\*" -DestinationPath 'dist\Обновление КП.zip' -Force
           Write-Host ("Патч $ver" + ': ' + [math]::Round((Get-Item 'dist\Обновление КП.zip').Length / 1KB) + ' КБ')
 

@@ -699,7 +699,8 @@ class Handler(BaseHTTPRequestHandler):
             stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
             dst = store().backup(os.path.join(ROOT, 'backup', stamp, 'kp.sqlite3'))
             return self.send_json({'ok': True, 'path': dst, 'dir': os.path.dirname(dst)})
-        if path == '/api/shutdown' and m == 'POST' and (SERVER_MODE or not self.is_local()):
+        # выключение — только с самого компьютера (файл «Остановить сервер», установщик, кнопка «Выход»); по сети — нельзя
+        if path == '/api/shutdown' and m == 'POST' and not self.is_local():
             return self.send_json({'ok': False, 'message': 'Сервер отдела выключается только на компьютере-сервере'})
         if path == '/api/shutdown' and m == 'POST':
             self.send_json({'ok': True})

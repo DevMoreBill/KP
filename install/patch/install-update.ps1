@@ -12,10 +12,16 @@ if (-not $exe) { Fail 'В C:\KP нет программы. Сначала оди
 $m = [regex]::Match([string]$exe.VersionInfo.FileVersion, '(\d+)\D+(\d+)')
 if ((-not $m.Success) -or ([int]$m.Groups[1].Value * 1000 + [int]$m.Groups[2].Value -lt 3002)) {
   Fail ('Программа в C:\KP (версия ' + $exe.VersionInfo.FileVersion + ') ещё не умеет ставить обновления. Один раз установите полный комплект версии 3.2 или новее.') }
-Stop-KP
+if (-not (Stop-KP $KP)) { Fail 'Программа не остановилась — перезагрузите компьютер и запустите обновление снова.' }
 $dst = Join-Path $KP 'update'
 if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Recurse -Force }
 Write-Host '  копирую файлы обновления'
 Copy-Item -LiteralPath $new -Destination $dst -Recurse -Force
-Start-KP $exe.FullName
+# новые файлы управления сервером отдела (остановить / запустить / удалить) — в C:\KP\server-setup
+$ss = Join-Path $here 'server-setup'
+if (Test-Path -LiteralPath $ss) {
+  New-Item -ItemType Directory -Force -Path (Join-Path $KP 'server-setup') | Out-Null
+  Get-ChildItem -LiteralPath $ss | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $KP 'server-setup') -Force }
+  Remove-OldServerFiles }
+if (-not (Start-KP $exe.FullName)) { Write-Host '  программа ещё запускается — откройте её через минуту' -ForegroundColor Yellow }
 Done ('Готово: установлена версия ' + $ver + '. Откройте программу (в браузере обновите страницу: Ctrl+F5).')
