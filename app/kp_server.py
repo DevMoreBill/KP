@@ -802,6 +802,14 @@ def main():
         seeded = seed_catalog()
         sync_counter_with_files()
     except Exception as e:
+        if 'malformed' in str(e) or 'not a database' in str(e):
+            message_box('Файл базы данных повреждён:\n%s\n\n%s\n\n'
+                        'Так бывает, когда kp.sqlite3 подменяют вручную при оставшихся рядом файлах kp.sqlite3-wal и kp.sqlite3-shm.\n'
+                        'Что сделать: остановить программу, удалить kp.sqlite3-wal и kp.sqlite3-shm, затем положить на место kp.sqlite3 '
+                        'копию из папки data\\backup (kp-ДАТА.sqlite3 — автоматические копии, kp-…-before-….sqlite3 — перед изменениями). '
+                        'Загружать файл базы впредь лучше через «Настройки → Копии и обслуживание базы → Файл базы целиком».'
+                        % (os.path.join(DATA_DIR, 'kp.sqlite3'), e))
+            return 1
         message_box('Не удалось подготовить папки данных:\n%s\n\n%s' % (DATA_DIR, e))
         return 1
     try:   # каталог под новую структуру категорий — один раз; перед этим копия базы в data/backup

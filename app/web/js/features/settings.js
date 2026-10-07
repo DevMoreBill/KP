@@ -278,7 +278,9 @@ async function stBackup(m){
       <div class="row" style="margin-top:10px"><button class="btn primary" type="button" data-x="json">Скачать (.json)</button><button class="btn" type="button" data-x="sqlite">Полная копия базы (.sqlite3)</button></div>
       <p class="muted">.json — выбранные разделы (без изображений), можно загрузить обратно. .sqlite3 — файл базы целиком.</p></div>
     <div class="st-card"><p class="sub">Импорт</p><input type="file" id="impF" accept=".json,application/json" class="sr-file"><label for="impF" class="btn">Выбрать файл резервной копии…</label>
-      <div id="impP"></div></div>
+      <div id="impP"></div>
+      <p class="sub" style="margin-top:14px">Файл базы целиком (.sqlite3 или .zip с ним)${tip('<p>Заменяет всю базу содержимым файла — каталог, КП, клиентов, менеджеров, настройки. Перед заменой программа сохраняет копию текущей базы в data\\backup (kp-…-before-restore.sqlite3).</p><p>Так и нужно подменять базу: вручную копировать kp.sqlite3 в папку data нельзя — рядом лежат файлы kp.sqlite3-wal и -shm от прежней базы, и она повредится («database disk image is malformed»).</p>')}</p>
+      <input type="file" id="impDb" accept=".sqlite3,.sqlite,.db,.zip" class="sr-file"><label for="impDb" class="btn">Выбрать файл базы…</label><p class="muted" id="impDbSt"></p></div>
     <div class="st-card" id="stMigr"></div>
     <div class="st-card"><p class="sub">История</p>${ops.map(x=>`<div class="st-row"><div><b>${esc(ACT[x.action])}</b><span class="muted">${esc(stTime(x.timestamp))} · ${esc(x.entityId||'')}${x.after&&x.after.bytes?' · '+stSize(x.after.bytes):''}</span></div></div>`).join('')||'<p class="muted">Операций ещё не было.</p>'}</div>`;
   stMaint($('#stMaint')); stMigr($('#stMigr'));
@@ -292,6 +294,14 @@ async function stBackup(m){
       if (!await stConfirm('Загрузить данные из резервной копии?','Перед загрузкой программа сохранит копию текущей базы. Записи с теми же id будут заменены, новые — добавлены, ничего не удаляется.','Загрузить')) return;
       await aapi('import?sections='+ap.dataset.imp,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8'},body:ST.imp});
       ST.imp=null; toast('Загружено'); refreshCat(); loadManagers(); loadClients(); stBackup(m); } };
+  $('#impDb').onchange=async e=>{ const f=e.target.files[0]; if (!f) return; e.target.value='';
+    if (!await stConfirm('Заменить всю базу файлом «'+f.name+'»?','Текущие данные будут заменены содержимым файла. Перед этим программа сохранит копию текущей базы в data\\backup.','Заменить базу')) return;
+    const st=$('#impDbSt'); st.textContent=`Загружаю «${f.name}» (${stSize(f.size)})…`;
+    try{ const r=await fetch('/api/admin/import/sqlite?name='+encodeURIComponent(f.name),{method:'POST',headers:{'X-CSRF-Token':ADMIN.csrf,'Content-Type':'application/octet-stream'},body:f});
+      if (!r.ok) throw new Error(await r.text()); const j=await r.json();
+      st.textContent=''; toast(`База заменена: позиций ${stNum(j.catalog)}, КП ${stNum(j.kp)}. Прежняя сохранена: ${j.backup.split(/[\\/]/).pop()}`);
+      setTimeout(()=>location.reload(), 1500); }
+    catch(err){ st.textContent=''; toast('Не загружено: '+(err.message||err)); } };
   $('#impF').onchange=async e=>{ const f=e.target.files[0]; if (!f) return; const box=$('#impP'); box.innerHTML='<p class="muted">Проверяю…</p>';
     try{ ST.imp=await f.text(); const r=await aapi('import/preview',{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8'},body:ST.imp});
       const names={catalog:'Каталог',kp:'КП',managers:'Менеджеры',clients:'Клиенты',settings:'Категории и настройки'};
