@@ -184,9 +184,12 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .pv-kpi small,.pv-kpi span{overflow-wrap:normal;word-break:normal;hyphens:auto}
 /* РРЦ и наличие из фида поставщика */
 .fd-b{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;margin-top:2px}
+.cw-pr .fd-b{max-width:220px;margin-left:auto}
+.pv-stock{margin:4px 0 0;font-size:12px;color:var(--muted);line-height:1.4}      /* РРЦ, наличие и акция — в две строки, название не сжимается */
 .fd-rrc,.fd-st{font-size:11.5px;line-height:1.3;padding:1px 7px;border-radius:999px;background:var(--soft);color:var(--navy);white-space:nowrap}
 .fd-rrc i{font-style:normal;font-size:9px}.fd-rrc i.up{color:var(--danger)}.fd-rrc i.dn{color:var(--ok)}
-.fd-st.ok{color:var(--ok)}.fd-st.no{color:var(--warn-ink)}.fd-st.gone{color:var(--danger)}
+.fd-st.ok{color:var(--ok)}.fd-st.no{color:var(--warn-ink)}.fd-st.gone{color:var(--danger)}.fd-st.wait{color:var(--navy)}
+.fd-promo{font-size:11px;line-height:1.3;padding:1px 7px;border-radius:999px;background:var(--warn-bg);color:var(--warn-ink);white-space:nowrap;cursor:help}
 .pv-price .fd-b{justify-content:flex-start;width:100%}
 
 /* мастер «Добавить оборудование» */

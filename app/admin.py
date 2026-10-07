@@ -664,7 +664,7 @@ class AdminApi:
             f = feeds.feed_save(st, self.data())
             self.log('edit_settings', 'settings', 'feed:' + f['id'], None, {'url': f['url'] or f.get('kind'), 'name': f['name']})
             return self.ok(f)
-        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|discounts|plan|rebuild)$', sub)
+        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|file|discounts|plan|rebuild)$', sub)
         if not r:
             return self.err(404, 'Нет такого запроса')
         fid, act = r.group(1), r.group(2)
@@ -692,9 +692,17 @@ class AdminApi:
             if feeds.busy(fid):
                 return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
             q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(self.h.path).query, keep_blank_values=True, encoding='utf-8'))
-            meta = feeds.feed_file_put(st, fid, q.get('kind', ''), self.h.body(), q.get('name', ''))
+            meta = feeds.feed_file_put(st, fid, q.get('kind', ''), self.h.body(), q.get('name', ''), q.get('slot') or None)
             self.log('edit_settings', 'settings', 'feed:' + fid, None, {'file': q.get('kind'), 'name': meta['name'], 'rows': meta.get('rows')})
             return self.ok(meta)
+        if act == 'file':           # файл фида из файлов: {kind, slot, act: drop | cur, cur, sheet}
+            if feeds.busy(fid):
+                return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
+            d = self.data()
+            x = feeds.feed_file_set(st, fid, str(d.get('kind') or ''), str(d.get('slot') or ''), str(d.get('act') or ''),
+                                    str(d.get('cur') or ''), str(d.get('sheet') or ''))
+            self.log('edit_settings', 'settings', 'feed:' + fid, None, {'file': d.get('kind'), 'slot': d.get('slot'), 'act': d.get('act'), 'cur': d.get('cur')})
+            return self.ok(x.get('files') or {})
         if act == 'delete':
             feeds.feed_delete(st, fid)
             self.log('edit_settings', 'settings', 'feed:' + fid, {'url': f['url']}, None)
