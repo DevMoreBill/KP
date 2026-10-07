@@ -285,7 +285,8 @@ jobs:
           Compress-Archive -Path "$pkg\*" -DestinationPath "dist\$env:KP_EXE_NAME.zip" -Force
 
       - name: Проверка «Остановить сервер» / «Запустить сервер» (server-setup\kp-server.ps1)
-        shell: powershell
+        shell: pwsh
+        # шаг — в pwsh (файл шага без BOM, Windows PowerShell 5.1 прочёл бы русский текст неверно); сам kp-server.ps1 — как у пользователя, в powershell.exe
         run: |
           $pkg = Join-Path $PWD "pkg\$env:KP_EXE_NAME"
           $ps = Join-Path $pkg 'server-setup\kp-server.ps1'
