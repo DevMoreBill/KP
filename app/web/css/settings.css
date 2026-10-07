@@ -202,12 +202,15 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .fd-dt input[type=text],.fd-dt select{width:100%;min-width:0}
 .fd-dt td:nth-child(1){min-width:300px}
 .fd-dt td:nth-child(2){min-width:180px;max-width:280px}
-.fd-dt td:nth-child(4),.fd-dt td:nth-child(5){width:96px}
+.fd-dt td:nth-child(4),.fd-dt td:nth-child(5){width:110px}
 .fd-dc summary{cursor:pointer;font-size:13px;line-height:1.35;color:var(--navy)}
 .fd-dcl{display:grid;gap:4px;padding:6px 0;max-height:220px;overflow:auto}
 .fd-dcl label{display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer}
 .fd-dcl input{width:15px;height:15px;margin:0;accent-color:var(--navy)}
 .fd-dother td{background:var(--soft,#f6f8fb)}
+.fd-dku{display:flex;gap:5px;align-items:center;font-size:12px;color:var(--muted);margin-top:4px;white-space:nowrap;cursor:pointer}
+.fd-dku input{width:14px;height:14px;margin:0;accent-color:var(--navy)}
+.fd-dku[hidden]{display:none}
 .fd-dhint{margin-top:10px}
 @media (max-width:640px){
   .fd-dt thead{display:none}
