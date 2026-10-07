@@ -108,7 +108,7 @@ async function dealXlsx(){
     if (t.bySum){ const r=row([nm, {v:t.sum, s:'inpMoney'}, '₽', '', note('Сумма этапа; доля от цены — в колонке D')], key+'s');
       R[r-1][3]={f:`IF(${D('S')}=0,0,${ref(key+'s')}/${D('S')}*100)`, v:t.p, s:'money'}; at[key]=r; at[key+'col']='D'; }
     else row([nm, t.last?{f:`100-${trKeys.slice(0,-1).map(x=>trRef(x)).join('-')||'0'}`, v:t.p, s:'money'}:{v:t.p, s:'inp'}, '%', '', t.last?note('Остаток до 100 %'):''], key); });
-  row(['Стоимость денег', {v:c.i, s:'inp'}, '% в месяц', '', c.moneyAuto&&DL.key?note(`Ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD} п.п. / 12`):''], 'i');
+  row(['Стоимость денег', {v:c.i, s:'inp'}, '% в месяц', '', c.moneyAuto&&DL.key?note(`Ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${dlSpread()} п.п. / 12`):''], 'i');
   row(['Налог на прибыль', {v:c.taxP, s:'inp'}, '%'], 'TAX');
   row(['Дата отсчёта — подписание договора (день 0)', {v:xlsxDate(d.start), s:'inpDate'}, 'дата', '', note('Даты платежей на листе «График платежей» = эта дата + день')], 'D0');
   // график (на листе «График платежей»)
@@ -246,7 +246,7 @@ async function dealXlsx(){
   blank();
   // деньги и налоги
   sec('Деньги и налоги');
-  const fin=[[`Стоимость денег, % в месяц${c.moneyAuto&&DL.key?` (ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${DL_KEY_SPREAD} п.п.)`:''}`, c.i/100, 'tdPct'],
+  const fin=[[`Стоимость денег, % в месяц${c.moneyAuto&&DL.key?` (ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${dlSpread()} п.п.)`:''}`, c.i/100, 'tdPct'],
     ['Финансирование (проценты на вложенные деньги)', c.F], ['Максимальное вложение своих денег', gap], ['НДС с продажи', c.VATs], ['НДС к вычету', b.VATin], ['НДС к уплате', b.payable],
     [`Налог на прибыль ${dlIn(c.taxP)} %${xOn?' (с прибыли до прочих расходов)':''}`, b.tax],
     ...(c.BG>0?[['Банковская гарантия — комиссия банка', c.BG]]:[]),

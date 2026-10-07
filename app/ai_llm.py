@@ -11,6 +11,7 @@
 """
 import json
 import threading
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -24,6 +25,8 @@ SYSTEM = ('Ты — инженер компании-поставщика про�
           'Отвечай строго одним JSON-объектом без пояснений и без markdown. Используй только факты из исходных данных; '
           'если данных нет — оставляй пустую строку или пустой массив, ничего не придумывай.')
 LOCK = threading.Lock()
+RATE = (30, 60)          # не больше 30 запросов в минуту на весь отдел: защита баланса от зацикливания и случайных повторов
+_RECENT = []
 
 
 def _now():
@@ -108,6 +111,12 @@ def ask(store, prompt, force=False):
     prompt = str(prompt or '').strip()
     if not prompt:
         raise RuntimeError('Пустой запрос')
+    now = time.time()
+    with LOCK:
+        _RECENT[:] = [t for t in _RECENT if now - t < RATE[1]]
+        if len(_RECENT) >= RATE[0]:
+            raise RuntimeError('Слишком много запросов к нейросети за минуту — подождите немного и повторите')
+        _RECENT.append(now)
     body = {'model': s['model'], 'temperature': 0.2, 'max_tokens': 6000, 'stream': False,
             'messages': [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': prompt[:MAX_PROMPT]}]}
     if 'reasoner' not in s['model']:                 # у DeepSeek-R1 режима JSON нет — разбор ответа и так терпимый

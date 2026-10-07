@@ -12,6 +12,7 @@ import zlib
 
 MAX_BYTES = 40 * 1024 * 1024
 MAX_TEXT = 60000
+MAX_STREAM = 64 * 1024 * 1024        # распакованный поток — не больше
 
 _OBJ_RX = re.compile(rb'(\d+)\s+(\d+)\s+obj\b')
 _WS = b' \t\r\n\x0c\x00'
@@ -178,10 +179,12 @@ def _decode_stream(dic, raw):
     for x in fl:
         x = str(x)
         if x in ('FlateDecode', 'Fl'):
+            # предел на поток: «сжатая бомба» в PDF не займёт всю память; повреждённый конец — берём, что распаковалось
+            d = zlib.decompressobj()
             try:
-                data = zlib.decompress(data)
+                data = d.decompress(data, MAX_STREAM)
             except zlib.error:
-                data = zlib.decompressobj().decompress(data)     # повреждённый конец потока — берём, что распаковалось
+                return None
         elif x in ('ASCIIHexDecode', 'AHx'):
             h = re.sub(rb'[^0-9A-Fa-f]', b'', data.split(b'>')[0])
             data = bytes.fromhex((h + b'0' * (len(h) % 2)).decode('ascii'))

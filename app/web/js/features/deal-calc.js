@@ -97,7 +97,7 @@ const DEAL_DOC_KINDS = { pd:'проектная', rd:'рабочая', id:'ис�
 const dealDocKinds = d => Object.keys(DEAL_DOC_KINDS).filter(k=>d && d.docK && d.docK[k]).map(k=>DEAL_DOC_KINDS[k]).join(', ');
 // ставка банка за гарантию по умолчанию, % годовых от суммы гарантии за её срок. Рынок 2026: обычно 1–3,5 %,
 // в среднем ~2,2 % (Сбербанк — от 2 %, ВТБ — от 3,7 %); 3 % — с запасом для коммерческого договора. Правится в каждой гарантии.
-const DEAL_BG_RATE = 3;
+const dealBgRate = () => typeof DEFN==='function' ? DEFN('deal.bgRate', 3) : 3;     // ставка банковской гарантии по умолчанию, % годовых (Настройки → Умолчания)
 
 // этапы оплаты поставщику: событие поставки + дней после него; последний этап — остаток до 100 %
 const DEAL_SUP_EVENTS = { order:'при заказе', ready:'перед отгрузкой (готовность)', delivery:'после поставки', pnr:'после шефмонтажа и ПНР' };
@@ -109,18 +109,26 @@ function dealSupPay(s){
   return a>0 ? [{name:'Аванс', pct:String(s.adv), ev:'order', off:'0'}, {name:'Остаток', ev:'ready', off:'0'}] : [{name:'Оплата', ev:'ready', off:'0'}];
 }
 
+// новый поставщик: страна, сроки, НДС при ввозе и этапы оплаты — из умолчаний администратора (Настройки → Умолчания)
+const dealDef = (k, fb) => typeof DEF==='function' ? DEF(k) : fb;
 function dealNewSupplier(id, def={}){
-  return { id, name:'', country:'Россия', vatIn:true, adv:def.adv??'20', prod:def.prod??'40', ship:def.ship??'40',
-    extra:{v:'',cur:'RUB'}, log:{v:'',cur:'RUB'}, logRu:{v:''}, cusMode:'none', cus:{v:'',cur:'RUB'}, vi:'', vo:'',
-    duty:'', ivat:'22', fee:'', ins:'', fx:'', brk:{v:''}, voRu:'' };
+  const country=def.country!==undefined ? def.country : (dealDef('deal.country', 'Россия')||'');
+  const p=dealCountryPreset(country) || {cusMode:'sum', vatIn:false};
+  const s={ id, name:'', country, vatIn:p.vatIn, adv:def.adv??'20', prod:def.prod??dealDef('deal.prod','40')??'', ship:def.ship??dealDef('deal.ship','40')??'',
+    extra:{v:'',cur:'RUB'}, log:{v:'',cur:'RUB'}, logRu:{v:''}, cusMode:p.cusMode, cus:{v:'',cur:'RUB'}, vi:'', vo:'',
+    duty:'', ivat:dealDef('deal.ivat','22')||'22', fee:'', ins:'', fx:'', brk:{v:''}, voRu:'' };
+  const pp=dealDef('deal.supPay', null);
+  if (pp && typeof DL_SP_PRESETS!=='undefined' && DL_SP_PRESETS[pp]) s.pay=JSON.parse(JSON.stringify(DL_SP_PRESETS[pp][1]));
+  return s;
 }
 
 function dealBlank(def={}){
-  const adv=def.cAdv&&+def.cAdv>0 ? String(def.cAdv) : '';
+  const adv=def.cAdv&&+def.cAdv>0 ? String(def.cAdv) : '', cp=dealDef('deal.custPay', null), tg=dealDef('deal.target', null);
+  const tr = adv ? [{pct:adv, ev:'sign', off:'0'}, {pct:'', ev:'delivery', off:def.defer??'30'}]
+    : cp && typeof DL_TR_PRESETS!=='undefined' && DL_TR_PRESETS[cp] ? JSON.parse(JSON.stringify(DL_TR_PRESETS[cp][1])) : [{pct:'', ev:'delivery', off:def.defer??'30'}];
   return { v:3, touched:false, over:{price:'',vat:''}, rates:{}, sup:[dealNewSupplier('s1',def)], map:{},
-    mnt:'', pnr:'', oth:'', doc:'', docK:{}, vo:'', warr:'', bonus:'', tax:def.tax??'25',
-    cust:{ tr: adv ? [{pct:adv, ev:'sign', off:'0'}, {pct:'', ev:'delivery', off:def.defer??'30'}] : [{pct:'', ev:'delivery', off:def.defer??'30'}] },
-    money:def.money??'', days:{}, target:{type:'margin', v:''} };
+    mnt:'', pnr:'', oth:'', doc:'', docK:{}, vo:'', warr:'', bonus:'', tax:def.tax??dealDef('deal.tax','25')??'25',
+    cust:{ tr }, money:def.money??'', days:{}, target:{type:'margin', v:tg||''} };
 }
 
 // расчёт прежней версии (v1) → v2: недостающие поля, график оплаты заказчика этапами
@@ -128,7 +136,7 @@ function dealUpgrade(d){
   if (!d) return d;
   if (d.v===2){ d.sup.forEach(s=>{ if (s.country==null) s.country=''; }); d.v=3; return d; }
   if (d.v>=3) return d;
-  d.sup=(d.sup||[]).map(s=>({...dealNewSupplier(s.id), ...s}));
+  d.sup=(d.sup||[]).map(s=>{ const n={...dealNewSupplier(s.id), ...s}; if (!s.pay) delete n.pay; return n; });   // этапы — из аванса прежней версии
   const c=d.cust||{}, adv=dNum(c.adv)||0;
   d.cust={ tr: adv>0 ? [{pct:String(c.adv), ev:'sign', off:String(c.day||'0')}, {pct:'', ev:'delivery', off:String(c.defer??'30')}]
     : [{pct:'', ev:'delivery', off:String(c.defer??'30')}] };
@@ -292,7 +300,7 @@ function dealCalc(kp, d){
     const amount = base==='adv' ? advSum*v/100 : base==='pct' ? S*v/100 : v;
     const daysAuto = type==='adv' ? D : type==='perf' ? pnrEnd : 365;
     const dOwn=num(P+'.days', g.days, {int:true}), days=dOwn==null?daysAuto:dOwn;
-    const rate=num(P+'.rate', g.rate, {def:DEAL_BG_RATE, max:100}), min=num(P+'.min', g.min, {def:0});
+    const rate=num(P+'.rate', g.rate, {def:dealBgRate(), max:100}), min=num(P+'.min', g.min, {def:0});
     const fee = amount>0 && (rate>0||min>0) ? Math.max(min, amount*rate/100*days/365) : 0;
     return {k, type, base, v, amount, days, daysAuto, daysOwn:dOwn!=null, rate, min, fee}; });
   const BG=bgs.reduce((a,g)=>a+g.fee,0);
@@ -370,4 +378,4 @@ function dealSolve(kp, d, type, value){
   return Math.ceil(hi*100)/100;
 }
 
-if (typeof module!=='undefined') module.exports={dealAddDays, dlDaysTxt, DEAL_BG_TYPES, DEAL_BG_RATE, DEAL_SUP_EVENTS, dealSupPay, dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, customsFeeBand, dNum, CUSTOMS_FEES, DEAL_EVENTS, DEAL_HS, dealHsAuto, dealCountryPreset};
+if (typeof module!=='undefined') module.exports={dealAddDays, dlDaysTxt, DEAL_BG_TYPES, dealBgRate, DEAL_SUP_EVENTS, dealSupPay, dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, customsFeeBand, dNum, CUSTOMS_FEES, DEAL_EVENTS, DEAL_HS, dealHsAuto, dealCountryPreset};

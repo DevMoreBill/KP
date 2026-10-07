@@ -746,6 +746,19 @@ class AdminApi:
                 info['password'] = 'изменён'
             self.log('edit_access', 'manager', mid, None, info)
             return self.ok({'login': rec.get('login') or '', 'hasPassword': bool(rec.get('pw')), 'perms': auth_users.perms_of(rec), 'blocked': bool(rec.get('blocked'))})
+        if sub == 'defaults':    # значения по умолчанию программы: {ключ: {on, v}}; None — вернуть встроенное
+            import defaults
+            if m == 'POST':
+                d = self.data()
+                before = defaults.get(st)
+                try:
+                    res = defaults.save(st, d.get('values'), me or 'admin')
+                except ValueError as e:
+                    return self.err(400, str(e))
+                ch = {k: res.get(k) for k in (d.get('values') or {})}
+                self.log('edit_defaults', 'settings', 'defaults', {k: before.get(k) for k in ch}, ch)
+                return self.ok({'values': res})
+            return self.ok({'values': defaults.get(st)})
         if sub == 'ai':          # нейросеть в программе: включить / выключить, ключ, модель, адрес API, расход
             import ai_llm
             if m == 'POST':

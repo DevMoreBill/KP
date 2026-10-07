@@ -40,10 +40,3 @@ function coverSync(){
   S.cover._src=key;
 }
 
-function applyCover(h, force){
-  if (CATED) return;   // правка позиции каталога не трогает титул текущего КП
-  const c=S.cover;
-  const put=(k,v)=>{ if(v && (force || !c[k])) c[k]=v; };
-  put('title',h.title); put('model',h.model); put('desc',h.desc);
-  if (Array.isArray(h.kpis) && h.kpis.length && (force || !c.kpis.some(k=>k.num))) c.kpis=[0,1,2,3].map(n=>({num:h.kpis[n]?.num||'',unit:h.kpis[n]?.unit||'',cap:h.kpis[n]?.cap||''}));
-}

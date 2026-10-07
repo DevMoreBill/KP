@@ -204,7 +204,7 @@ function edAI(x,i){
       <textarea data-p="${P}._ans" data-aians="${i}" rows="5" placeholder="${direct?'Здесь появится ответ нейросети (или вставьте ответ чата)':'Ctrl+V — ответ ИИ целиком (кнопка «Копировать» под ответом в чате)'}">${esc(x._ans||'')}</textarea>
       <div class="ai-prev" data-aiprev="${i}">${aiSummary(r)}</div>
       <div class="row ai-apply"><button class="btn primary" type="button" data-a="aiApply" data-i="${i}" data-aiok="${i}" ${r&&r.kind!=='bad'?'':'disabled'}>Заполнить карточку</button>
-        <label class="row muted" style="gap:6px"><input type="checkbox" data-aikeep="${i}" ${x._aiKeep?'checked':''} style="width:auto">не менять уже заполненное</label></div></li></ol>
+        <label class="row muted" style="gap:6px"><input type="checkbox" data-aikeep="${i}" ${(x._aiKeep ?? DEF('ai.keep'))?'checked':''} style="width:auto">не менять уже заполненное</label></div></li></ol>
     ${x._aiMsg?`<p class="ai-msg" data-aistat="${i}">${esc(x._aiMsg)}</p>`:''}</div>`;
 }
 
@@ -223,7 +223,7 @@ document.addEventListener('click', e=>{
   const fz=e.target.closest('[data-fimg]'); if (fz && !e.target.closest('[data-a]')){ const f=$('#filePick'); f.value=''; f.multiple=false; f.onchange=()=>f.files[0]&&addFeatImage(+fz.dataset.fimg, fz.dataset.fid, [f.files[0]]); f.click(); }
 });
 
-document.addEventListener('close', e=>{ if (e.target.id!=='edlg') return;
+document.addEventListener('close', e=>{ if (e.target.id!=='edlg' || e.target.open) return;     // закрытие пришло позже повторного открытия — не сбрасывать
   if (CATED){ S.items=CATED.items; CATED=null; EDIT=null; renderForm(); return; }   // окно закрыто не кнопками карточки каталога — правки не сохраняются
   if (EDIT){ EDIT=null; renderForm(); persist(); } }, true);
 

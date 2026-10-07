@@ -293,12 +293,6 @@ class Store:
         r = self.one('SELECT value FROM kv WHERE key=?', ('datarev:' + name,))
         return str(r[0]) if r else '0'
 
-    def bump_data(self, name):
-        with self.lock:
-            c = self.conn()
-            self._bump_data(c, name)
-            c.commit()
-
     def catalog_count(self):
         return self.one('SELECT COUNT(*) FROM catalog')[0]
 

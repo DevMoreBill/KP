@@ -160,7 +160,6 @@ function tdSample(s, f){
   return `font-family:'${esc(String(TD.work.font||'Arial').replace(/'/g,''))}',Arial,sans-serif;color:#${tdColorHex(s.color)};${f&&f.dark?'background:#'+tdColorHex('NAVYD')+';':''}font-weight:${s.bold?700:400};font-style:${s.italic?'italic':'normal'}`;
 }
 function tdPlaces(){ return TD.work.sections.filter(s=>s.on).flatMap(s => [[s.id+'Top', tdSecName(s.id)+' — начало'], [s.id+'End', tdSecName(s.id)+' — конец']]); }
-function tdPlaceName(p){ const x = tdPlaces().find(q=>q[0]===p); return x ? x[1] : (TD_SEC_NAMES[String(p).replace(/(Top|End)$/,'')] ? tdSecName(String(p).replace(/(Top|End)$/,''))+' (раздел выключен)' : '—'); }
 const tdImgUrl = f => `/tpl/${encodeURIComponent(TD.id)}/${encodeURIComponent(f)}`;
 
 // ---------------------------------------------------------------- левая панель

@@ -212,3 +212,45 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .ac-t th:first-child,.ac-t td:first-child{text-align:left}
 .ac-t td:nth-child(2){white-space:nowrap;min-width:110px}
 .ac-t td:nth-child(2) small{display:block;white-space:normal}
+
+/* 3.24: навигация «Настроек» по группам */
+.st-ng{display:block;padding:12px 12px 3px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.st-ng:first-child{padding-top:2px}
+.st-nav button{min-height:38px;padding:8px 12px}
+@media (max-width:900px){ .st-ng{display:none} }
+.mob .st-ng{display:none}
+
+/* «Умолчания»: переключатель, подпись, значение, «↺» */
+.df-g{display:grid;gap:0}
+.df-g>.sub{margin-bottom:6px}
+.df-row{display:grid;grid-template-columns:44px minmax(0,1.3fr) minmax(160px,1fr) 32px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.df-row .df-l{display:grid;gap:2px;min-width:0}
+.df-row .df-l b{font-weight:600;font-size:14px}
+.df-row .df-l small{font-size:12px;line-height:1.35}
+.df-row.off .df-l b{color:var(--muted)}
+.df-row.off .df-v{opacity:.5}
+.df-row.own .df-l b::after{content:" · изменено";font-weight:500;font-size:11.5px;color:var(--navy)}
+.df-row.bad input{border-color:var(--danger)}
+.df-in{display:flex;align-items:center;gap:6px}
+.df-in input{min-width:0}
+.df-in i{font-style:normal;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.df-v select{width:100%;min-width:0}
+.df-sw{position:relative;display:inline-flex}
+.df-sw input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+.df-sw span{display:block;width:38px;height:22px;border-radius:22px;background:var(--line);position:relative;transition:background .2s}
+.df-sw span::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s}
+.df-sw input:checked+span{background:var(--navy)}
+.df-sw input:checked+span::after{transform:translateX(16px)}
+.df-sw input:focus-visible+span{outline:2px solid var(--sky);outline-offset:2px}
+.df-sw input:disabled+span{opacity:.55;cursor:default}
+.df-rs:disabled{visibility:hidden}
+.df-row[data-type=bool] .df-v{display:none}
+.df-row[data-type=bool]{grid-template-columns:44px minmax(0,1fr) 32px}
+.df-bar{position:sticky;bottom:-24px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;justify-content:flex-end;padding:12px 0;margin-top:4px;background:var(--paper);border-top:1px solid var(--line);z-index:2}
+.df-bar #dfSt{margin-right:auto;font-size:13px}
+@media (max-width:640px){ .df-row{grid-template-columns:44px minmax(0,1fr) 32px} .df-row .df-v{grid-column:2/3} .df-row .df-rs{grid-row:1;grid-column:3} }
+.mob .df-row{grid-template-columns:44px minmax(0,1fr) 32px}
+.mob .df-row .df-v{grid-column:2/3}
+.mob .df-row .df-rs{grid-row:1;grid-column:3}
+.df-gh{margin:0 0 8px;font-size:12.5px}
+@media (max-width:640px){ .df-bar{gap:6px} .df-bar #dfSt{flex:1 1 100%;font-size:12px} }

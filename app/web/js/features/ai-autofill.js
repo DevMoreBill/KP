@@ -135,7 +135,7 @@ async function aiFetchInto(it){
   it._src=[`Страница: ${url}`, r.title?`Название: ${r.title}`:'', r.text||'', props.length?'Характеристики:\n'+props.map(p=>`${p[0]}: ${p[1]}`).join('\n'):''].filter(Boolean).join('\n\n');
   it._srcProps=props; it._srcImgs=(r.imgs||[]).slice(0,12); if (!it.pageUrl && !(it.feed&&it.feed.url)) it.pageUrl=url;
   if (!String(it.name||'').trim() && r.title) it.name=r.title.slice(0,200);
-  it._aiMsg=`Со страницы загружено ${(r.text||'').length.toLocaleString('ru-RU')} знаков текста${props.length?` и ${props.length} ${plural(props.length,'характеристика','характеристики','характеристик')}`:''}${it._srcImgs.length?`, найдено фото: ${it._srcImgs.length} — выберите главное ниже`:''}. Дальше — шаг 2: ${AI_DIRECT.enabled?'«Заполнить автоматически»':'отправьте запрос в ИИ'}.`; it._aiStep=2;
+  it._aiMsg=`Со страницы загружено ${(r.text||'').length.toLocaleString('ru-RU')} знаков текста${props.length?` и ${props.length} ${plural(props.length,'характеристика','характеристики','характеристик')}`:''}${it._srcImgs.length?`, найдено фото: ${it._srcImgs.length} — выберите главное ниже`:''}${r.imgsSkipped?` (мелких и пустых картинок пропущено: ${r.imgsSkipped})`:''}. Дальше — шаг 2: ${AI_DIRECT.enabled?'«Заполнить автоматически»':'отправьте запрос в ИИ'}.`; it._aiStep=2;
   return true;
 }
 async function aiFetch(i){
@@ -183,7 +183,7 @@ function aiProps(i){
 function aiApply(i){
   const it=S.items[i], r=aiParse(it._ans);
   if (!r || r.kind==='bad'){ it._aiMsg=r?r.err:'Вставьте ответ ИИ в поле шага 3.'; return renderForm(); }
-  const j=r.j, keep=!!it._aiKeep, empty=v=>!String(v||'').trim();
+  const j=r.j, keep=!!(it._aiKeep ?? DEF('ai.keep')), empty=v=>!String(v||'').trim();
   const set=(k,v)=>{ if (v && (!keep || empty(it[k]))) it[k]=String(v); };
   set('name', j.name); set('spec', j.spec); set('pageTitle', j.pageTitle); set('photoCaption', j.photoCaption);
   const feats=(j.features||[]).filter(f=>f&&(f.label||f.text)).map(f=>({id:uid(), label:String(f.label||''), text:String(f.text||'')}));

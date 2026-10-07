@@ -68,7 +68,7 @@ function contApply(p, o={}){
 }
 // название станции подставляется, пока менеджер его не менял сам
 function stationAutoName(x){ if (!stationOf(x)) return; if (!String(x.name||'').trim() || x.name===x._autoNameV){ x.name=stationName(x); x._autoNameV=x.name; } }
-function kitNewContainer(ctype){ const c=ctypeOf(ctype); return contApply(kitNewPart({qty:1}), {ctype:c.id, ins:c.ins||'100 мм', climate:c.climate||'УХЛ1'}); }
+function kitNewContainer(ctype){ const c=ctypeOf(ctype); return contApply(kitNewPart({qty:1}), {ctype:c.id, ins:c.ins||DEF('st.ins')||'100 мм', climate:c.climate||DEF('st.climate')||'УХЛ1'}); }
 
 // параметры станции из её элементов — пересчитываются при любом изменении состава (замена, удаление, количество):
 // контейнер, климат, габариты — из контейнера; установленная мощность — сумма элементов; подача, давление, мощность ДГУ —

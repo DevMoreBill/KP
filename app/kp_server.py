@@ -41,6 +41,7 @@ import maintenance
 import logistics_api
 import ai_llm
 import pdf_text
+import defaults
 from images import ImageStore, mark_organized, organize_existing
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, ensure_templates, list_history,
                           list_templates, open_template_file, put_file, reset_template, restore_history, template_file)
@@ -73,6 +74,7 @@ def web_file(rel):
 
 
 
+PAID_GET = ('/api/geo/', '/api/party', '/api/check', '/api/imgfetch', '/api/cbr')
 MAX_BODY = 300 * 1024 * 1024    # самый большой запрос — загрузка резервной копии базы
 
 # хранилище изображений data/img (по папкам категорий)
@@ -92,6 +94,20 @@ class Handler(BaseHTTPRequestHandler):
     def is_local(self):
         a = (self.client_address or ('',))[0]
         return a in ('127.0.0.1', '::1', '::ffff:127.0.0.1') or a.startswith('127.')
+
+    def send_file(self, f, ctype, cache):
+        """Файл с проверкой версии (ETag): неизменённый файл браузер берёт из своего кэша — ответ 304 без тела.
+        Интерфейс (cache='no-cache') проверяется при каждой загрузке, изображения хранятся неделю."""
+        st = os.stat(f)
+        tag = '"%x-%x"' % (st.st_mtime_ns, st.st_size)
+        if self.headers.get('If-None-Match') == tag:
+            self.send_response(304)
+            self.send_header('ETag', tag)
+            self.send_header('Cache-Control', cache)
+            self.end_headers()
+            return
+        with open(f, 'rb') as fh:
+            return self.send(200, ctype, fh.read(), {'Cache-Control': cache, 'ETag': tag})
 
     def send(self, code, ctype, body, extra=None):
         data = body if isinstance(body, bytes) else str(body).encode('utf-8')
@@ -206,6 +222,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self.request_allowed():
                 self.close_connection = True
                 return self.send(403, 'text/plain; charset=utf-8', 'Запрос отклонён: откройте программу по её адресу')
+            # запросы, которые тратят лимиты внешних сервисов (Checko, DaData, карты, курсы, скачивание картинок), — только из
+            # программы: её запросы несут заголовок X-KP-User-Id, а чужой сайт в браузере сотрудника такой заголовок не поставит
+            if m == 'GET' and path.startswith(PAID_GET) and 'X-KP-User-Id' not in self.headers:
+                return self.send(403, 'text/plain; charset=utf-8', 'Запрос отклонён: только из программы')
             if self.body_size() > MAX_BODY:
                 self.close_connection = True
                 return self.send(413, 'text/plain; charset=utf-8', 'Слишком большой запрос')
@@ -259,8 +279,7 @@ class Handler(BaseHTTPRequestHandler):
             f = web_file('index.html' if path in ('/', '/index.html') else path[len('/web/'):])
             if not f:
                 return self.not_found()
-            with open(f, 'rb') as fh:
-                return self.send(200, WEB_TYPES[os.path.splitext(f)[1].lower()], fh.read(), {'Cache-Control': 'no-cache'})
+            return self.send_file(f, WEB_TYPES[os.path.splitext(f)[1].lower()], 'no-cache')
         if path == '/favicon.ico':
             icon = os.path.join(APP_DIR, 'icon.ico')
             if not os.path.isfile(icon):
@@ -397,8 +416,7 @@ class Handler(BaseHTTPRequestHandler):
             f = IMAGES.path(r.group(1))
             if not f:
                 return self.not_found()
-            with open(f, 'rb') as fh:
-                return self.send(200, MIME[os.path.splitext(f)[1].lower()], fh.read())
+            return self.send_file(f, MIME[os.path.splitext(f)[1].lower()], 'private, max-age=604800')
 
         # менеджеры (контакты в КП)
         if path == '/api/managers' and m == 'GET':
@@ -571,6 +589,8 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self.send(422, 'text/plain; charset=utf-8', 'Картинка не загружена: %s' % e)
             return self.send(200, ctype, data)
+        if path == '/api/defaults' and m == 'GET':        # значения по умолчанию от администратора (для всех)
+            return self.send_json(defaults.get(store()))
         if path == '/api/ai/status' and m == 'GET':       # нейросеть в программе: включена ли (без ключа и адреса)
             return self.send_json(ai_llm.status(store()))
         if path == '/api/ai/fill' and m == 'POST':        # автозаполнение: запрос из программы → ответ нейросети (JSON строкой)
@@ -583,7 +603,7 @@ class Handler(BaseHTTPRequestHandler):
             import feeds
             d = json.loads(self.body().decode('utf-8') or '{}')
             try:
-                return self.send_json(feeds.page_text(str(d.get('url') or '').strip()))
+                return self.send_json(feeds.page_text(str(d.get('url') or '').strip(), defaults.img_opts(store())))
             except Exception as e:
                 return self.send(422, 'text/plain; charset=utf-8', 'Страница не прочитана: %s' % str(e)[:200])
         if path == '/api/pdftext' and m == 'POST':        # текст из PDF (паспорт, каталог, ТЗ) — для автозаполнения карточки
@@ -756,12 +776,11 @@ def main():
     if already_running():
         webbrowser.open('http://localhost:%d/' % BASE_PORT)
         return 0
-    try:
-        import sqlite3  # noqa: F401 — база данных программы; без модуля программа работать не может
-    except ImportError as e:
-        message_box('В сборке программы нет модуля базы данных SQLite (%s).\n\n'
+    import importlib.util
+    if importlib.util.find_spec('sqlite3') is None:     # база данных программы; без модуля программа работать не может
+        message_box('В сборке программы нет модуля базы данных SQLite.\n\n'
                     'Пересоберите EXE из актуального проекта (kp.spec не должен исключать sqlite3) '
-                    'или скачайте готовую сборку из GitHub Actions.' % e)
+                    'или скачайте готовую сборку из GitHub Actions.')
         return 1
     try:
         prepare_dirs()
