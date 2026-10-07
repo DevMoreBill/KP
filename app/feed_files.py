@@ -17,6 +17,7 @@ import hashlib
 import html as html_mod
 import io
 import json
+import urllib.parse
 import os
 import re
 import zipfile
@@ -27,7 +28,8 @@ import images
 DIR_NAME = 'feeds'
 MAX_FILE = 60 * 1024 * 1024
 UNITS = {'бар', 'м³/мин', 'м3/мин', 'м³/ч', 'м3/час', 'м3/ч', 'л/мин', 'лит', 'л', 'квт', 'мм', 'кг', 'дюйм', 'дб', 'дб(а)', 'евро', 'eur', '€',
-         'руб', 'руб.', '₽', 'usd', '$', 'в/гц', 'в', 'модель', 'тип', 'r', 'фланец', 'шт', '(л)', '(кг)', 'об/мин', '%', '°c', 'мбар'}
+         'руб', 'руб.', '₽', 'usd', '$', 'в/гц', 'в', 'модель', 'тип', 'r', 'фланец', 'шт', '(л)', '(кг)', 'об/мин', '%', '°c', 'мбар',
+         'атм', 'см', 'м', 'g', 'марка', 'м2/ч', 'r (ü)', 'мм', 'час', 'материал', 'град,°с', '°с', 'м3/мин'}
 HEAD_WORDS = ('Артикул', 'Код SAP', 'Модель', 'Название', 'Наименование')
 JUNK = re.compile(r'^(NEW PRICE|Опции|www\.|Содержание|Цены с учетом|\*)', re.I)
 CUR_WORDS = {'евро': 'EUR', 'eur': 'EUR', '€': 'EUR', 'руб': 'RUB', 'руб.': 'RUB', '₽': 'RUB', 'usd': 'USD', '$': 'USD', 'юань': 'CNY', 'cny': 'CNY'}
@@ -38,13 +40,16 @@ def feed_dir(data_dir, fid):
     return os.path.join(data_dir, DIR_NAME, images.slug(fid, 40) or 'feed')
 
 
+FILE_NAMES = {'pages': 'pages.csv', 'price': 'price.xlsx', 'stock': 'stock.xlsx'}
+
+
 def file_path(data_dir, fid, kind):
-    return os.path.join(feed_dir(data_dir, fid), 'pages.csv' if kind == 'pages' else 'price.xlsx')
+    return os.path.join(feed_dir(data_dir, fid), FILE_NAMES[kind])
 
 
 def save_file(data_dir, fid, kind, data, name):
     """Сохранить файл фида; → мета {name, size, at, …} с итогом разбора (ValueError — файл не читается)."""
-    if kind not in ('pages', 'price'):
+    if kind not in FILE_NAMES:
         raise ValueError('Неизвестный вид файла')
     if not data:
         raise ValueError('Файл пустой')
@@ -54,6 +59,9 @@ def save_file(data_dir, fid, kind, data, name):
     if kind == 'pages':
         rows = parse_pages(data)
         meta.update(rows=len(rows), cats=len({r['cat'] for r in rows}))
+    elif kind == 'stock':
+        rows = parse_stock(data)
+        meta.update(rows=len(rows), inStock=sum(1 for r in rows if r['qty'] > 0))
     else:
         rows, sheets = parse_price(data)
         meta.update(rows=len(rows), sheets=len(sheets), withPrice=sum(1 for r in rows if r['price']),
@@ -184,7 +192,53 @@ def _pages_table(text):
 # характеристики), описанием одной строкой, характеристиками — объектом {"Давление": "8,5 бар"}.
 JSON_KEYS = {'cat': ('category', 'категория', 'cat'), 'name': ('name', 'название', 'наименование'), 'model': ('model', 'модель'),
              'url': ('url', 'ссылка', 'link', 'ссылка на страницу товара'), 'pictures': ('images', 'pictures', 'картинки', 'фото'),
-             'desc': ('description', 'описание', 'desc'), 'chars': ('specs', 'characteristics', 'характеристики', 'технические характеристики')}
+             'desc': ('description', 'описание', 'desc'), 'chars': ('specs', 'characteristics', 'характеристики', 'технические характеристики'),
+             'schemes': ('schemes', 'схемы', 'чертежи', 'drawings')}
+# разделы сайта по адресу страницы, когда в парсе нет категории (asobezh.ru/catalog/vintovye_kompressory/11_18_5_kvt/…)
+URL_SLUGS = {'vintovye_kompressory': 'Винтовые компрессоры', 'porshnevye_kompressory': 'Поршневые компрессоры',
+             'vozdushnye_resivery': 'Воздушные ресиверы', 'podgotovka_vozdukha': 'Подготовка воздуха',
+             'apparaty_struynoy_ochistki': 'Аппараты струйной очистки', 'na_blokakh_rotorcomp': 'На блоках Rotorcomp',
+             'peredvizhnye': 'Передвижные', 'vmks_modulnye_kompressornye_stantsii': 'Модульные компрессорные станции ВМКС',
+             's_davleniem_do_16_atm': 'Давление до 16 атм', 'avtonomnyy_privod': 'С автономным приводом', 'tandem': 'Тандем',
+             'bloki_upravleniya_porshnevymi_kompressorami': 'Блоки управления', 'na_vertikalnom_resivere': 'На вертикальном ресивере',
+             'na_baze_inostrannykh_kompressornykh_golovok': 'На импортных головках', 'seriya_fini': 'Серия FINI',
+             '09g2s': 'Сталь 09Г2С', '12x18h10t': 'Нержавеющая сталь 12Х18Н10Т', 'otsinkovannye': 'Оцинкованные',
+             'gorizontalnye_resivery_s_plitoy': 'Горизонтальные с плитой', 'osushiteli_vozdukha': 'Осушители воздуха',
+             'magistralnye_filtry': 'Магистральные фильтры', 'peskostruynye_apparaty': 'Пескоструйные аппараты',
+             'rukava_napornye': 'Рукава напорные', 'rukava_peskostruynye': 'Рукава пескоструйные', 'sopla': 'Сопла',
+             'soploderzhateli': 'Соплодержатели', 'stsepleniya_krabovye': 'Сцепления крабовые', 's_elektroprivodom': 'С электроприводом'}
+
+
+def _url_cat(url):
+    """Раздел по адресу: два первых уровня каталога сайта, «4_7_5_kvt» → «4–7,5 кВт», «10_atmosfer» → «10 атм»."""
+    path = [x for x in urllib.parse.urlsplit(str(url or '')).path.split('/') if x]
+    if path and path[0] in ('catalog', 'katalog', 'products', 'product'):
+        path = path[1:]
+    out = []
+    for seg in path[:2]:
+        if re.fullmatch(r'\d+', seg):
+            break
+        t = URL_SLUGS.get(seg)
+        if not t:
+            m = re.fullmatch(r'(?:s_privodom_)?(\d+(?:_\d+)*)_kvt', seg)
+            m3 = re.fullmatch(r'(\d+)(?:_(\d+))?_atmosfer', seg)
+            if m:           # «4_7_5» — 4–7,5; «11_18_5» — 11–18,5; «2_2_4_0» — 2,2–4,0; «18_5» — 18,5
+                n = m.group(1).split('_')
+                if len(n) == 4:
+                    a, b = n[0] + ',' + n[1], n[2] + ',' + n[3]
+                elif len(n) == 3:
+                    a, b = (n[0], n[1] + ',' + n[2]) if int(n[0]) < int(n[1]) else (n[0] + ',' + n[1], n[2])
+                elif len(n) == 2 and int(n[1]) > int(n[0]):
+                    a, b = n
+                else:
+                    a, b = ','.join(n), ''
+                t = '%s–%s кВт' % (a, b) if b else '%s кВт' % a
+            elif m3:
+                t = '%s атм' % '–'.join(x for x in m3.groups() if x)
+            else:
+                t = seg.replace('_', ' ').capitalize()
+        out.append(t)
+    return ' / '.join(out)
 
 
 def _jget(it, key):
@@ -195,9 +249,28 @@ def _jget(it, key):
     return None
 
 
+SITE_TAIL = re.compile(r'^(официальный сайт|на официальном сайте|на страницах каталога|в разделе техническая документация|рекомендуемая схема|'
+                       r'для подбора|задать вопрос|каталог продукции завода|американская компания|стандартная схема пневмосистемы)', re.I)
+
+
+def _join_lines(text):
+    """Текст страницы, разорванный на строки посреди фразы («…ресивер\nРВ 110/11\nсочетает…») → абзацы; ссылки на разделы
+    сайта и чужая реклама в конце — убираются."""
+    paras = []
+    for line in str(text or '').replace('\r', '').split('\n'):
+        line = re.sub(r'\s+', ' ', line).strip()
+        if not line:
+            continue
+        if paras and (not re.search(r'[.!?:;]$', paras[-1]) or re.match(r'^[a-zа-яё0-9«"(,.:;–—-]', line)) and not line.startswith(('-', '•')):
+            paras[-1] = (paras[-1] + ' ' + line).replace(' ,', ',').replace(' .', '.')
+        else:
+            paras.append(line)
+    return '\n'.join(p for p in paras if not SITE_TAIL.match(p))
+
+
 def _json_desc(d):
     if isinstance(d, str):
-        return d
+        return _join_lines(d)
     out = []
     for b in d or []:
         if isinstance(b, str):
@@ -250,14 +323,17 @@ def parse_pages_json(obj):
         pics = _jget(it, 'pictures') or []
         if isinstance(pics, str):
             pics = re.split(r'\s*\|\s*', pics)
+        schemes = _jget(it, 'schemes') or []          # схемы и чертежи — в конец галереи
+        pics = list(pics) + (re.split(r'\s*\|\s*', schemes) if isinstance(schemes, str) else list(schemes))
         rows = []
         for k, v in _json_specs(_jget(it, 'chars')):
             k, v = k.strip(), v.strip()
             if k and v and not re.match(r'^модель$', k, re.I):
                 rows.append((k[:70], v[:300]))
-        out.append({'cat': str(_jget(it, 'cat') or 'Без категории').strip()[:80], 'name': name[:300], 'url': url,
-                    'pictures': [str(u).strip() for u in pics if str(u).strip().startswith('http')][:12],
-                    'desc': _json_desc(_jget(it, 'desc'))[:6000], 'chars': rows, 'model': str(_jget(it, 'model') or '').strip()[:80]})
+        model = str(_jget(it, 'model') or '').strip() or ' '.join(_code_run(name))     # «Ресивер воздушный РВ 110/11» → «РВ 110/11»
+        out.append({'cat': str(_jget(it, 'cat') or _url_cat(url) or 'Без категории').strip()[:80], 'name': name[:300], 'url': url,
+                    'pictures': list(dict.fromkeys(str(u).strip() for u in pics if str(u).strip().startswith('http')))[:12],
+                    'desc': _json_desc(_jget(it, 'desc'))[:6000], 'chars': rows, 'model': model[:80]})
     if not out:
         raise ValueError('В JSON не нашлось ни одной позиции с названием и ссылкой на страницу товара')
     return out
@@ -424,9 +500,30 @@ def _num(v):
     return float(s)
 
 
+def _unit_parts(v):
+    """«кВт / В» → ['квт', 'в'], «см / кг  /   r (ü)» → ['см', 'кг', 'r (ü)']; не единица — None."""
+    o = re.sub(r'\s+', ' ', str(v).strip())
+    s = o.lower()
+    if not s:
+        return None
+    if s in UNITS or s in CUR_WORDS:
+        return [o]
+    t, to = [x.strip().rstrip('.') for x in s.split('/')], [x.strip().rstrip('.') for x in o.split('/')]
+    out, i = [], 0
+    while i < len(t):
+        if i + 1 < len(t) and t[i] + '/' + t[i + 1] in UNITS:
+            out.append(to[i] + '/' + to[i + 1])
+            i += 2
+        elif t[i] in UNITS or t[i] in CUR_WORDS:
+            out.append(to[i])
+            i += 1
+        else:
+            return None
+    return out
+
+
 def _is_unit(v):
-    s = str(v).strip().lower()
-    return s in UNITS or s in CUR_WORDS
+    return _unit_parts(v) is not None
 
 
 def _price_cols(head):
@@ -439,11 +536,11 @@ def _price_cols(head):
             continue
         if re.match(r'^(артикул|код sap|код)$', tl) and c['sku'] is None:
             c['sku'] = col
-        elif 'печатн' in tl and c['short'] is None:
+        elif ('печатн' in tl or re.match(r'^номе?н?клатура', tl)) and c['short'] is None:
             c['short'] = col
         elif re.match(r'^(модель|название|наименование)', tl) and c['name'] is None:
             c['name'] = col
-        elif re.match(r'^(стоимость|цена)', tl) and not re.search(r'опци|пуск|охл|рекуперац|grease|смазк', tl) and c['price'] is None:
+        elif re.match(r'^(отпускная )?(стоимость|цена)', tl) and not re.search(r'опци|(?<!от)пуск|охл|рекуперац|grease|смазк', tl) and c['price'] is None:
             c['price'] = col
         elif re.match(r'^(стоимость|цена)', tl) or 'grease' in tl:
             c['opts'].append((col, re.sub(r'^(стоимость|цена)( опции)?\s*[-–—:]?\s*', '', t, flags=re.I).strip(' -') or t))
@@ -457,86 +554,140 @@ def _opt_name(t):
 
 
 def parse_price(data):
-    """XLSX прайса → ([{sku, name, short, price, cur, opts:[(подпись, цена)], specs:[(k, v)], sheet, title}], листы)."""
+    """XLSX прайса → ([{sku, name, short, price, cur, opts:[(подпись, цена)], specs:[(k, v)], sheet, title, group}], листы).
+    На листе может быть несколько таблиц со своей шапкой (АСО: фильтры, затем осушители) — каждая читается своей шапкой."""
     book = read_xlsx(data)
     out, sheets = [], []
     for sname, rows in book:
-        hr = next((i for i, r in enumerate(rows) if any(str(v).strip() in HEAD_WORDS for v in r.values())), None)
-        if hr is None:
+        hrs = [i for i, r in enumerate(rows) if any(str(v).strip() in HEAD_WORDS for v in r.values())]
+        if not hrs:
             continue
-        ur = next((i for i in range(hr, min(hr + 5, len(rows))) if sum(1 for v in rows[i].values() if _is_unit(v)) >= 3), None)
-        lo, hi = max(0, hr - 3), (ur if ur is not None else hr + 1)
         title = ''
         for r in rows[:3]:
             v = str(r.get(0, '')).strip()
             if len(v) > 6 and not JUNK.match(v):
                 title = re.sub(r'\s+', ' ', v)[:100]
                 break
-        head = {}
-        for i in range(lo, hi):
-            vals = {col: re.sub(r'\s+', ' ', str(v)).strip() for col, v in rows[i].items()}
-            wide = {v for v in vals.values() if list(vals.values()).count(v) >= 5}      # название листа — объединено через всю таблицу
-            for col, v in vals.items():
-                # объединённые ячейки повторяют текст в каждой строке и столбце — название листа и повторы шапки не нужны
-                if v and v not in wide and not JUNK.match(v) and not (_is_unit(v) and v not in HEAD_WORDS) and not head.get(col, '').endswith(v):
-                    head[col] = (head.get(col, '') + ' ' + v).strip()
-        units = rows[ur] if ur is not None else {}
-        for col, u in units.items():        # столбец с единицей, но без подписи (шапка объединена криво) — подпись по единице
-            if col not in head and str(u).strip().lower() in UNIT_LABEL:
-                head[col] = UNIT_LABEL[str(u).strip().lower()]
-        c = _price_cols(head)
-        if c['name'] is None:
-            continue
-        cur = ''
-        if c['price'] is not None:
-            cur = CUR_WORDS.get(str(units.get(c['price'], '')).strip().lower(), '')
-            if not cur:
-                m = re.search(r'\((евро|eur|руб|usd|\$|€|₽)\.?\)', head.get(c['price'], ''), re.I)
-                cur = CUR_WORDS.get(m.group(1).lower(), '') if m else ''
-        start = (ur if ur is not None else hr) + 1
-        items, n0 = [], len(out)
-        for i in range(start, len(rows)):
-            r = rows[i]
-            name = re.sub(r'\s+', ' ', str(r.get(c['name'], ''))).strip()
-            if not name or len(name) < 3 or name in HEAD_WORDS or JUNK.match(name) or re.match(r'^цены ', name, re.I):
-                continue
-            price = _num(r.get(c['price'])) if c['price'] is not None else None
-            if price is None and c['price'] is not None:          # цена группы в соседней строке без названия (варианты по давлению)
-                for j in (i - 1, i + 1, i + 2):
-                    if 0 <= j < len(rows) and not str(rows[j].get(c['name'], '')).strip():
-                        price = _num(rows[j].get(c['price']))
-                        if price is not None:
-                            break
-            opts = []
-            for col, label in c['opts']:
-                v = _num(r.get(col))
-                if v:
-                    opts.append((_opt_name(label), round(v, 2)))
-            specs = []
-            for col, label in c['specs']:
-                v = str(r.get(col, '')).strip()
-                if not v or v in ('-', '—', '–'):
-                    continue
-                u = str(units.get(col, '')).strip()
-                if u.lower() in ('модель', 'тип', 'r') or u.lower() in CUR_WORDS:
-                    u = ''
-                specs.append((label[:60], _spec_val(v, u)))
-            sku = str(r.get(c['sku'], '')).strip() if c['sku'] is not None else ''
-            if sku in ('-', '—'):
-                sku = ''
-            short = re.sub(r'\s+', ' ', str(r.get(c['short'], ''))).strip()[:120] if c['short'] is not None else ''
-            items.append({'sku': sku[:40], 'name': name[:300], 'short': '' if _num(short) is not None else short,
-                          'price': round(price, 2) if price else None, 'cur': cur, 'opts': opts, 'specs': specs, 'sheet': sname, 'title': title})
+        tops = [i for k, i in enumerate(hrs) if k == 0 or i - hrs[k - 1] > 3]      # строки шапки подряд — одна шапка
+        n0, cur0, items, prev = len(out), '', [], None
+        for k, hr in enumerate(tops):
+            end = tops[k + 1] if k + 1 < len(tops) else len(rows)
+            got, cur, prev = _price_block(rows, hr, end, max(0, hr - 3) if k == 0 else hr, sname, title, prev)
+            items.extend(got)
+            cur0 = cur0 or cur
         out.extend(items)
-        sheets.append({'name': sname, 'rows': len(out) - n0, 'withPrice': sum(1 for x in items if x['price']), 'cur': cur})
+        if items:
+            sheets.append({'name': sname, 'rows': len(out) - n0, 'withPrice': sum(1 for x in items if x['price']), 'cur': cur0})
     if not out:
         raise ValueError('В прайсе не нашлось листов с шапкой «Артикул / Модель / Стоимость»')
     return out, sheets
 
 
+NOTE_ROW = re.compile(r'^([-*rü]\s|\*)')        # сноски под таблицей: «r - стоимость упаковки…», «* Расход абразива…»
+
+
+def _price_block(rows, hr, end, lo, sname, title, prev=None):
+    """Одна таблица листа: шапка в строке hr, данные до end. Шапка без столбца названия — столбцы прошлой таблицы (prev)."""
+    ur = next((i for i in range(hr, min(hr + 5, end)) if sum(1 for v in rows[i].values() if _is_unit(v)) >= 3), None)
+    hi = ur if ur is not None else hr + 1
+    head = {}
+    for i in range(lo, hi):
+        vals = {col: re.sub(r'\s+', ' ', str(v)).strip() for col, v in rows[i].items()}
+        wide = {v for v in vals.values() if list(vals.values()).count(v) >= (3 if i < hr else 5)}   # название листа и завода — объединены
+        for col, v in vals.items():
+            if i < hr and (_num(v) is not None or re.match(r'^\(?лист\b', v, re.I)):     # номер листа и дата над шапкой
+                continue
+            # объединённые ячейки повторяют текст в каждой строке и столбце — название листа и повторы шапки не нужны
+            if v and v not in wide and not JUNK.match(v) and not (_is_unit(v) and v not in HEAD_WORDS) and not head.get(col, '').endswith(v):
+                head[col] = (head.get(col, '') + ' ' + v).strip()
+    units = rows[ur] if ur is not None else {}
+    for col, u in units.items():        # столбец с единицей, но без подписи (шапка объединена криво) — подпись по единице
+        if col not in head and str(u).strip().lower() in UNIT_LABEL:
+            head[col] = UNIT_LABEL[str(u).strip().lower()]
+    c = _price_cols(head)
+    if c['name'] is None and prev:
+        c, units = prev
+    if c['name'] is None:
+        return [], '', prev
+    cur = ''
+    if c['price'] is not None:
+        cur = CUR_WORDS.get(str(units.get(c['price'], '')).strip().lower(), '')
+        if not cur:
+            m = re.search(r'\((евро|eur|руб|usd|\$|€|₽)\.?\)', head.get(c['price'], ''), re.I)
+            cur = CUR_WORDS.get(m.group(1).lower(), '') if m else ''
+    group = ''
+    if hr > 0:                          # подзаголовок таблицы над шапкой
+        v = {str(x).strip() for x in rows[hr - 1].values()} - {''}
+        if len(v) == 1 and len(rows[hr - 1]) >= 4:
+            group = _group_name(v.pop())
+    items = []
+    for i in range((ur if ur is not None else hr) + 1, end):
+        r = rows[i]
+        vals = {str(v).strip() for v in r.values()} - {''}
+        if len(vals) <= 2 and len(r) >= 4:          # строка-раздел на всю ширину («Воздушные вертикальные ресиверы…») или сноска
+            v = sorted(vals)[0]
+            if not NOTE_ROW.match(v) and not re.search(r'упаковк', v, re.I):
+                group = _group_name(v)
+            continue
+        name = re.sub(r'\s+', ' ', str(r.get(c['name'], ''))).strip().rstrip('*').strip()
+        if not name or len(name) < 3 or name in HEAD_WORDS or JUNK.match(name) or NOTE_ROW.match(name) or re.match(r'^цены ', name, re.I):
+            continue
+        price = _num(r.get(c['price'])) if c['price'] is not None else None
+        if price is None and c['price'] is not None:          # цена группы в соседней строке без названия (варианты по давлению)
+            for j in (i - 1, i + 1, i + 2):
+                if 0 <= j < len(rows) and not str(rows[j].get(c['name'], '')).strip():
+                    price = _num(rows[j].get(c['price']))
+                    if price is not None:
+                        break
+        opts = []
+        for col, label in c['opts']:
+            v = _num(r.get(col))
+            if v:
+                opts.append((_opt_name(label), round(v, 2)))
+        specs = []
+        for col, label in c['specs']:
+            v = str(r.get(col, '')).strip()
+            if not v or v in ('-', '—', '–', 'r', 'ü') or re.match(r'^(модель|номе?н?клатура)$', label, re.I):
+                continue
+            u = str(units.get(col, '')).strip()
+            if u.lower().rstrip('.') in ('модель', 'тип', 'r', 'марка', 'материал', 'g') or u.lower() in CUR_WORDS:
+                u = ''
+            if re.fullmatch(r'(макс|мин)\.?', u, re.I):        # «Давление, Бар» над столбцами «Макс.» и «Мин.»
+                label, u = '%s %s' % (u, label[:1].lower() + label[1:]), ''
+            for sp in _spec_split(label, v, u):
+                if sp not in specs:              # объединённые ячейки шапки дают повторы столбцов
+                    specs.append(sp)
+        sku = str(r.get(c['sku'], '')).strip() if c['sku'] is not None else ''
+        if sku in ('-', '—'):
+            sku = ''
+        short = re.sub(r'\s+', ' ', str(r.get(c['short'], ''))).strip()[:120] if c['short'] is not None else ''
+        items.append({'sku': sku[:40], 'name': name[:300], 'short': '' if _num(short) is not None else short,
+                      'price': round(price, 2) if price else None, 'cur': cur, 'opts': opts, 'specs': specs, 'sheet': sname, 'title': title,
+                      'group': group})
+    return items, cur, (c, units)
+
+
+def _group_name(v):
+    v = re.split(r'[\r\n]', str(v).strip())[0]
+    return re.split(r'(?<=[а-яА-Я])\s+для\s|[.,(]', re.sub(r'\s+', ' ', v))[0].strip()[:80]
+
+
 UNIT_LABEL = {'бар': 'Макс. давление', 'квт': 'Мощность', 'кг': 'Масса', 'дб': 'Уровень шума', 'м³/мин': 'Производительность', 'м3/мин': 'Производительность',
               'л/мин': 'Производительность', 'м³/ч': 'Производительность', 'м3/час': 'Производительность', 'лит': 'Объём ресивера', 'л': 'Объём ресивера'}
 SPEC_UNITS = {'лит': 'л', 'м3/мин': 'м³/мин', 'м3/час': 'м³/ч', 'м3/ч': 'м³/ч', 'кВт.': 'кВт', 'кВт/ч': 'кВт', 'дБ(А)': 'дБ', 'мбар': 'мбар', '(л)': 'л', '(кг)': 'кг'}
+
+
+def _spec_split(label, v, u):
+    """Составной столбец: «Габариты / Масса / Упаковка» «81 х 41 х 64 / 65» «см / кг / r (ü)» → [(Габариты, 81×41×64 см), (Масса, 65 кг)]."""
+    us = _unit_parts(u) if u else None
+    vs = [x.strip() for x in re.split(r'\s+/\s+', v)]
+    ls = [x.strip() for x in label.split(' / ')]
+    if us and len(us) > 1 and len(vs) > 1:
+        if len(ls) >= len(vs):
+            return [(ls[k][:60], _spec_val(vs[k], us[k] if k < len(us) else '')) for k in range(len(vs))]
+        if len(ls) == 1 and len(vs) == len(us):
+            return [(label[:60], ' / '.join(_spec_val(vs[k], us[k]) for k in range(len(vs))))]
+    return [(label[:60], _spec_val(re.sub(r'\s+', ' ', v), us[0] if us else u))]
 
 
 def _spec_val(v, u):
@@ -546,7 +697,7 @@ def _spec_val(v, u):
     if n is not None:
         v = ('%d' % n) if float(n).is_integer() else ('%.3f' % n).rstrip('0').rstrip('.').replace('.', ',')
     v = v.replace('x', '×').replace('х', '×') if re.match(r'^\d+\s*[xх×]\s*\d+', v) else v
-    return ('%s %s' % (v, u)) if u and re.match(r'^-?\d', v) and not re.search(r'["\'“”]|^\d+/\d+$|^DN', v) else v
+    return ('%s %s' % (v, u)) if u and re.match(r'^[-+]?\d', v) and not re.search(r'["\'“”]|^\d+/\d+$|^DN', v) else v
 
 
 # ---------------------------------------------------------------- описание: без рекламы и мусора, с абзацами и списком
@@ -713,8 +864,9 @@ def desc_blocks(text):
 # ---------------------------------------------------------------- характеристики: парс + прайс (прайс точнее)
 SPEC_CLASS = [
     ('pressure_min', r'^мин\S*\s+давлен'), ('pressure_in', r'давлен\S*\s+на входе'), ('vacuum', r'разряжени|вакуум'),
-    ('pressure', r'давлен'), ('flow', r'производительн|пропускн\S*\s+способн'), ('power', r'мощност'),
-    ('dims', r'габарит'), ('length', r'^длина'), ('width', r'^ширина'), ('height', r'^высота'), ('mass_ads', r'масс\S*\s+адсорбент'),
+    ('relay', r'реле\s+давлени'), ('pressure', r'давлен'), ('flow_out', r'по\s+нагнетани|привед'), ('flow_clean', r'по\s+очистке'), ('flow_rpm', r'при\s+оборотах'),
+    ('flow', r'производительн|пропускн\S*\s+способн'), ('power', r'мощност'),
+    ('dims', r'габарит'), ('length', r'^(длина|глубина)'), ('width', r'^ширина'), ('height', r'^высота'), ('mass_ads', r'масс\S*\s+адсорбент'),
     ('mass', r'^(масса|вес|общий вес)'), ('noise', r'шум'), ('outlet', r'выход\S*,?\s+сжатого|^соединение$|^присоединительн|соединение по воздуху'),
     ('receiver', r'ресивер|^объ[её]м$'), ('dryer', r'встроенн\S*\s+осушител|модель осушителя'), ('filters', r'встроенн\S*\s+фильтр|тип фильтров|фильтры в составе'),
     ('voltage', r'напряжени'), ('refrigerant', r'хлад(о|а)гент'), ('controller', r'контроллер'), ('cartridge', r'картридж|катридж'),
@@ -725,7 +877,79 @@ SPEC_LABEL = {'pressure_min': 'Минимальное давление', 'pressu
               'noise': 'Уровень шума', 'outlet': 'Выход сжатого воздуха', 'receiver': 'Объём ресивера', 'dryer': 'Встроенный осушитель',
               'filters': 'Встроенные фильтры', 'voltage': 'Напряжение', 'refrigerant': 'Хладагент', 'controller': 'Контроллер', 'cartridge': 'Картридж',
               'purity': 'Чистота', 'rpm': 'Скорость вращения'}
-SPEC_DROP = re.compile(r'^(аналог|примечание|все характеристики|new price)', re.I)
+SPEC_DROP = re.compile(r'^(аналог|примечание|все характеристики|new price|количество комментариев|тема форума|похожие товары)', re.I)
+# единица в названии характеристики («Давление, атм.», «Габариты, см») — переносится в значение
+KEY_UNIT = re.compile(r'^(.*?\S)\s*,\s*(атм\.?|бар|л\.?|л/мин\.?|квт(?:/в)?|см|мм|кг\.?|дба|дб\(а\)|°\s?[cс]|град,?\s*°?[cс]|г/час|лет|'
+                      r'м³/мин|м3/мин|мг/м³|мг/м3|мкм|м²/ч|м2/ч|м|час|дюйм)$', re.I)
+UNIT_FIX = {'атм.': 'атм', 'л.': 'л', 'л/мин.': 'л/мин', 'кг.': 'кг', 'дба': 'дБ(А)', 'квт': 'кВт', 'м3/мин': 'м³/мин', 'мг/м3': 'мг/м³', 'м2/ч': 'м²/ч'}
+# подписи прайса и сайта АСО → одна подпись для одинаковых характеристик
+SPEC_RENAME = [
+    (r'^(макс\.?\s*раб(\.|очее)?\s*давл(\.|ение)?|макс\.?\s*давление|рабочее давление|давление)$', 'Давление'),
+    (r'^мин\.?\s*давление$', 'Минимальное давление'),
+    (r'^(произв\.?|производит\.?)$', 'Производительность'),
+    (r'^(произв\.?\s*привед\.?\s*к\s*н\.?\s*услов\.?|произв\.?\s*по\s*нагнетанию)$', 'Производительность по нагнетанию'),
+    (r'^произв\.?\s*при оборотах$', 'Производительность при оборотах'),
+    (r'^произв(\.|одительность)?\s*по очистке( поверхности)?$', 'Производительность по очистке'),
+    (r'^(объем ресивера|ресивер)$', 'Объём ресивера'), (r'^объем$', 'Объём'), (r'^объем камеры$', 'Объём камеры'),
+    (r'^(вход\s*/\s*выход|выход)$', 'Вход/выход'), (r'^(сталь|марка стали)$', 'Марка стали'),
+    (r'^расход абразива на 1\s*м[2²]\*?$', 'Расход абразива на 1 м²'), (r'^рекоменд\.?\s*рабочее давление$', 'Рабочее давление'),
+]
+POWER_KEY = re.compile(r'^(привод|эл\.?\s*питание|электропривод)$', re.I)
+
+
+def _spec_rows(k, v):
+    """Строка характеристики → строки каталога: единица из названия — в значение, подписи АСО — к общим, «Привод 2,2 / 380»
+    — мощность и напряжение, габариты в сантиметрах — в миллиметрах."""
+    k = re.sub(r'\s+', ' ', re.sub(r'^[PР](?=асход)', 'Р', str(k or '').strip()))
+    k = re.sub(r'(?i)производит\s+ельн', 'Производительн', k)       # перенос внутри слова в шапке прайса
+    v = re.sub(r'\s+', ' ', str(v if v is not None else '')).strip()
+    k = re.sub(r'^C(?=тепень)', 'С', k)
+    unit = ''
+    m = KEY_UNIT.match(k) or re.match(r'^(.*?\S)\s+(мг/м3|мг/м³|мкм)$', k)        # «Степень очистки по воде мг/м3»
+    if m:
+        k, unit = m.group(1), m.group(2)
+    m = re.match(r'^(наружное покрытие),\s*(.+)$', k, re.I)         # «Наружное покрытие, полиэфирная порошковая краска: RAL 5010»
+    if m:
+        k, v = m.group(1), '%s %s' % (m.group(2), v)
+    unit = re.sub(r'^град,?\s*°?[cс]$|^°\s?[cс]$', '°C', unit, flags=re.I)
+    unit = UNIT_FIX.get(unit.lower(), unit)
+    v = re.sub(r'(?<=\d)\s*град,?\s*°?[CС]$|(?<=\d)\s*°\s?С$', ' °C', v)
+    for rx, label in SPEC_RENAME:
+        if re.match(rx, k, re.I):
+            k = label
+            break
+    if POWER_KEY.match(k):
+        main = 'Мощность' if re.match(r'^эл', k, re.I) else 'Мощность двигателя'
+        if not re.match(r'^\d', v):
+            return [('Двигатель', v)] if v else []
+        parts = [x.strip() for x in re.split(r'\s*/\s*', v) if x.strip()]
+        out = []
+        for i, x in enumerate(parts[:2]):
+            n = re.sub(r'\s*(кВт|В)$', '', x, flags=re.I).replace('.', ',')
+            n = re.sub(r'\s*[*×xх]\s*', ' × ', n)                   # «2*75» — два двигателя
+            m = re.match(r'^([\d ×,]+?)\s*(\(.*\))$', n)              # «11(S=1,15)» → «11 кВт (S=1,15)»
+            u = 'В' if i == 1 else 'кВт'
+            out.append(('Напряжение' if i == 1 else main, '%s %s %s' % (m.group(1), u, m.group(2)) if m else '%s %s' % (n, u)))
+        return [_spec_fix(a, b) for a, b in out]
+    v = re.sub(r'^(\d+)\.(\d+)$', r'\1,\2', v)
+    if unit and re.match(r'^([-+−≤<]?\s*\d|до\b|от\b|не более|не менее)', v, re.I) and not re.search(r'[a-zа-я°³²"]\.?\s*$', v, re.I):
+        v = '%s %s' % (v, unit)
+    if unit == 'кВт' and re.match(r'^\d+\s*[*×xх]\s*\d', v):
+        v = re.sub(r'\s*[*×xх]\s*', ' × ', v)
+    if spec_class(k) == 'dims':
+        nums = re.findall(r'\d+(?:[.,]\d+)?', v)
+        if re.search(r'см\s*$', v) or (unit == 'см' and nums):
+            v = re.sub(r'\s*(см|мм)\s*$', '', v)
+            vals = [float(x.replace(',', '.')) for x in nums]
+            if vals and max(vals) < 1000:        # «7515*2540*2495» с подписью «см» — это уже миллиметры
+                v = ' × '.join(('%g' % (x * 10)).replace('.', ',') for x in vals)
+            else:
+                v = re.sub(r'\s*[*×xхX]\s*', ' × ', v)
+            v += ' мм'
+    if re.match(r'^условия эксплуатации|температур', k, re.I) and re.search(r'\d$', v) and '°' not in v:
+        v += ' °C'
+    return [_spec_fix(k, v)]
+
 
 
 def spec_class(key):
@@ -793,8 +1017,7 @@ def merge_specs(parse_rows, price_specs):
     """Строки характеристик: парс, затем прайс; одинаковые параметры (давление, производительность, мощность, габариты, масса…)
     берутся из прайса — он точнее; «Длина/Ширина/Высота» прайса складываются в габариты."""
     rows, idx = [], {}
-    for k, v in parse_rows:
-        k, v = _spec_fix(k, v)
+    for k, v in (r for kv in parse_rows for r in _spec_rows(*kv)):
         if SPEC_DROP.match(k) or not v:
             continue
         c = spec_class(k)
@@ -803,28 +1026,30 @@ def merge_specs(parse_rows, price_specs):
         idx[c] = len(rows)
         rows.append([k, v])
     dims = {}
-    for k, v in price_specs:
-        k, v = _spec_fix(k, v)
+    for k, v in (r for kv in price_specs for r in _spec_rows(*kv)):
         if SPEC_DROP.match(k) or not v:
             continue
         c = spec_class(k)
         if c in ('length', 'width', 'height'):
-            dims[c] = re.sub(r'\s*мм$', '', str(v))
+            dims[c] = (_tidy_label(k), v)
             continue
         label = SPEC_LABEL.get(c) or _tidy_label(k)
         if c in idx:
-            rows[idx[c]][1] = v           # прайс точнее парса
+            if not str(rows[idx[c]][1]).lower().startswith(str(v).lower()):   # «YNT55A (Baosi)» в парсе полнее «YNT55A» прайса
+                rows[idx[c]][1] = v           # прайс точнее парса
             if c.startswith('k:'):
                 rows[idx[c]][0] = rows[idx[c]][0]
         else:
             idx[c] = len(rows)
             rows.append([label, v])
-    if len(dims) == 3:
-        v = '%s × %s × %s мм' % (dims['length'], dims['width'], dims['height'])
+    if len(dims) == 3 and all(re.search(r'^[\d.,\s]+(мм)?$', str(dims[c][1])) for c in dims):
+        v = '%s × %s × %s мм' % tuple(re.sub(r'\s*мм$', '', str(dims[c][1])) for c in ('length', 'width', 'height'))
         if 'dims' in idx:
             rows[idx['dims']][1] = v
         else:
             rows.append([SPEC_LABEL['dims'], v])
+    else:                                   # одна «Длина» (рукав 10 м) — это не габариты
+        rows += [[lb, v] for c, (lb, v) in dims.items() if c not in idx]
     return [(k, str(v)[:300]) for k, v in rows]
 
 
@@ -961,6 +1186,11 @@ def match_prices(pages, prices):
         if ms:
             by_set.setdefault(ms, []).append(p)
 
+    by_code = {}
+    for p in prices:
+        for t in {_code(p['name']), _code(p['short'])} - {''}:
+            by_code.setdefault(t, []).append(p)
+
     def one(lst):       # модель → строка прайса, только если все строки этой модели с одной ценой (иначе — не угадывать)
         if not lst:
             return None
@@ -994,6 +1224,10 @@ def match_prices(pages, prices):
                     p = one(by_set.get(ms)) if ms else None
                     if p:
                         how['set'] += 1
+                    else:
+                        p = _by_code(pg['name'], by_code)
+                        if p:
+                            how['code'] = how.get('code', 0) + 1
         if p and not cfg_compatible(c, p.get('_cfg') or model_cfg(p['name'])):
             how['rejected'] = how.get('rejected', 0) + 1     # «DVK 75-7» ≠ «DVK D 75-7»: другое исполнение
             p = None
@@ -1001,6 +1235,155 @@ def match_prices(pages, prices):
             hit[pg['url']] = p
     used = {id(p) for p in hit.values()}
     return hit, {'matched': len(hit), 'how': how, 'priceOnly': sum(1 for p in prices if id(p) not in used)}
+
+
+LAT_CYR = str.maketrans('АВЕКМНОРСТХ', 'ABEKMHOPCTX')
+
+
+def _code(s):
+    """Код изделия из названия: «Ресивер воздушный РВ 500/10» → «PB500/10», «АСО-ВК 11/8М2» = «АСО-ВК11/8М2»,
+    «Винтовой компрессор АСО-ВК110/8 ESQ» → «ACOBK110/8ESQ». Слова в скобках не в коде («(с плитой)»)."""
+    run = _code_run(s)
+    code = re.sub(r'[\s.\-]', '', ''.join(run)).upper().replace(',', '.').translate(LAT_CYR)
+    return code if len(code) >= 3 else ''
+
+
+def _code_run(s):
+    """Слова кода изделия в названии: первое слово с цифрой и соседние короткие заглавные («РВ», «АСО-ВК», «ESQ»)."""
+    t = [w.strip(',;:') for w in re.sub(r'\([^)]*\)', ' ', str(s or '')).split()]
+    t = [w for w in t if w]
+    i = next((k for k, w in enumerate(t) if re.search(r'\d', w)), None)
+    if i is None:
+        return []
+    short_up = lambda w: re.fullmatch(r'[A-ZА-ЯЁ][A-ZА-ЯЁ-]*', w) and len(w.replace('-', '')) <= 5
+    a, b = i, i + 1
+    while a > 0 and short_up(t[a - 1]):
+        a -= 1
+    while b < len(t) and (re.search(r'\d', t[b]) or short_up(t[b]) or t[b].startswith('-')):
+        b += 1
+    return t[a:b]
+
+
+def code_cfg(name, model=''):
+    """Исполнение по коду изделия (русские модели: АСО, ремзавод): «АСО-ВК 11/10М2.ОВ-500» → серия ACOBK, типоразмер 11,
+    давление 10, поколение M2, ресивер 500, осушитель; «К25М1/10» → K, 25, M1, давление 10; «РВ 110-01/40» → исполнение 01.
+    Марка завода перед кодом («АСО К1/10») — не серия. → dict или None."""
+    for src in (model, name):
+        run = _code_run(src)
+        if run and len(run) > 1 and re.fullmatch(r'АСО|ASO', run[0], re.I) and re.match(r'[A-ZА-ЯЁ]+\d', run[1]):
+            run = run[1:]                      # «АСО К1/10» — марка завода, а не серия «АСО-К»
+        raw = ' '.join(run).upper().translate(LAT_CYR).replace(',', '.')
+        m = re.match(r'^([A-ZА-ЯЁ]+(?:[\s-]+[A-ZА-ЯЁ]+)?)[\s-]*(\d+(?:\.\d+)?)(.*)$', raw)
+        if m:
+            break
+    else:
+        return None
+    rest, low = m.group(3), (str(name or '') + ' ' + str(model or '')).lower()
+    pm = re.search(r'/\s*(\d+(?:\.\d+)?)', rest)
+    rec = re.search(r'-\s*(\d{3,4})\b', rest[pm.end():] if pm else '')
+    gen = re.search(r'(?:^|[/\d\s.])([MH]\d?Э?)(?=$|[\s.\-/]|OB)', rest)     # «КТ16МЭ» — поколение «МЭ», не «М»
+    var = re.match(r'^\s*-\s*(\d{2})\b', rest)
+    flags = set(re.findall(r'ESQ|ПЭ|ПД|ГЦ|Ц\b', rest.replace('ГЦ', ' ГЦ ')))
+    return {'ser': re.sub(r'[\s-]', '', m.group(1)), 'size': float(m.group(2)), 'cyr': bool(re.search(r'[А-ЯЁ]', ' '.join(run).upper())), 'p': float(pm.group(1)) if pm else None,
+            'rec': int(rec.group(1)) if rec else None, 'gen': gen.group(1) if gen else '', 'var': var.group(1) if var else '',
+            'dry': bool(re.search(r'\bOB\b|OB-|\.OB|M\dOB', rest) or 'осушител' in low),
+            'vsd': 'ESQ' in flags or bool(re.search(r'частотн', low)), 'flags': sorted(flags - {'ESQ'})}
+
+
+def _by_code(name, by_code):
+    """Строка прайса с тем же кодом изделия; несколько — ближайшая по словам («Поршневой компрессор С412М» — «Компрессор С412М»,
+    а не «Головка С412М»; «РГ 500/10 (с плитой)» — строка с плитой)."""
+    code = _code(name)
+    lst = by_code.get(code)
+    if not lst:
+        return None
+    words = lambda x: {w[:5] for w in re.findall(r'[а-яёa-z]{3,}', str(x).lower())}
+    mine = words(name)
+    # код в модели надёжнее кода в номенклатуре (в прайсе АСО у «РГ 110/10» номенклатура «РЕСИВЕР РВ110/16»)
+    score = lambda p: (_code(p['name']) == code) * 10 + len(mine & (words(p['name']) | words(p['short']))) * 2 - len(words(p['name']) - mine)
+    best = sorted(lst, key=score, reverse=True)
+    if len(best) > 1 and score(best[0]) == score(best[1]) and best[0]['price'] != best[1]['price']:
+        return None
+    return best[0]
+
+
+# ---------------------------------------------------------------- остатки на складе поставщика
+def parse_stock(data):
+    """XLSX остатков: «Артикул», «Номенклатура», количество → [{sku, name, qty}]. Количество — столбец, где в строках
+    числа (в выгрузке АСО у него нет своей подписи: шапка «Номенклатура» объединена на три столбца); пусто — 0."""
+    out = []
+    for sname, rows in read_xlsx(data):
+        hr = next((i for i, r in enumerate(rows[:30]) if any(re.match(r'^(артикул|код|номенклатура|наименование|модель)$', str(v).strip(), re.I)
+                                                            for v in r.values())), None)
+        if hr is None:
+            continue
+        head = {col: str(v).strip().lower() for col, v in rows[hr].items()}
+        sku = next((c for c, t in sorted(head.items()) if re.match(r'^(артикул|код)', t)), None)
+        name = next((c for c, t in sorted(head.items()) if re.match(r'^(номенклатура|наименование|название|модель)', t)), None)
+        if name is None and sku is None:
+            continue
+        data_rows = [r for r in rows[hr + 1:] if str(r.get(name if name is not None else sku, '')).strip() not in ('', 'Номенклатура', 'Артикул')]
+        qty = next((c for c, t in sorted(head.items()) if re.search(r'остат|кол-?во|количеств|наличи|склад', t)), None)
+        if qty is None:
+            nums = {}
+            for r in data_rows:
+                for c, v in r.items():
+                    if c not in (sku, name) and _num(v) is not None:
+                        nums[c] = nums.get(c, 0) + 1
+            qty = max(nums, key=nums.get) if nums else None
+        if qty is None:
+            continue
+        for r in data_rows:
+            n = _num(r.get(qty))
+            nm = re.sub(r'\s+', ' ', str(r.get(name, '') if name is not None else '')).strip()
+            sk = str(r.get(sku, '') if sku is not None else '').strip()
+            if (nm or sk) and not NOTE_ROW.match(nm or sk):
+                out.append({'sku': sk[:60], 'name': (nm or sk)[:200], 'qty': max(0, int(n)) if n else 0, 'sheet': sname})
+    if not out:
+        raise ValueError('В файле остатков не нашлось шапки «Артикул / Номенклатура» и столбца с количеством')
+    return out
+
+
+def _sku_key(s):
+    return re.sub(r'[\s.\-]', '', str(s or '')).upper().translate(LAT_CYR)
+
+
+def stock_row(stock, sku, name):
+    """Строка остатков для одной позиции: по артикулу, иначе по коду изделия в названии; None — нет в остатках."""
+    k = _sku_key(sku)
+    r = next((x for x in stock if k and _sku_key(x['sku']) == k), None)
+    if r is None and _code(name):
+        rows = [{'name': x['name'], 'short': x['sku'], 'price': x['qty'], 'r': x} for x in stock]
+        by_code = {}
+        for row in rows:
+            for t in {_code(row['name']), _code(row['short'])} - {''}:
+                by_code.setdefault(t, []).append(row)
+        x = _by_code(name, by_code)
+        r = x['r'] if x else None
+    return r
+
+
+def apply_stock(offers, stock):
+    """Остатки → предложения фида: строка остатков по артикулу из прайса, иначе по коду изделия в названии
+    («Поршневой компрессор К14» — «УСТАНОВКА КОМПРЕССОРНАЯ К14»). Позиции нет в остатках — на складе 0. → число найденных."""
+    by_sku, by_code = {}, {}
+    for r in stock:
+        if r['sku']:
+            by_sku.setdefault(_sku_key(r['sku']), r)
+        row = {'name': r['name'], 'short': r['sku'], 'price': r['qty'], 'r': r}
+        for t in {_code(r['name']), _code(r['sku'])} - {''}:
+            by_code.setdefault(t, []).append(row)
+    found = 0
+    for o in offers:
+        r = by_sku.get(_sku_key(o.get('sku'))) if o.get('sku') else None
+        if r is None:
+            x = _by_code(o['name'], by_code) or (_by_code(o['model'], by_code) if o.get('model') else None)
+            r = x['r'] if x else None
+        o['qty'] = r['qty'] if r else 0
+        o['available'] = o['qty'] > 0
+        o['nostock'] = False
+        found += r is not None
+    return found
 
 
 # ---------------------------------------------------------------- фид в формате feeds.parse()
@@ -1026,8 +1409,9 @@ def _price_specs_ok(pg, pr):
     return out
 
 
-def build_feed(f, pages, prices, param_name):
-    """→ {shop, date, cats, offers} как у feeds.parse(): позиции парса с ценой из прайса; при f.priceOnly — и строки прайса без страницы."""
+def build_feed(f, pages, prices, param_name, stock=None):
+    """→ {shop, date, cats, offers} как у feeds.parse(): позиции парса с ценой из прайса; при f.priceOnly — и строки прайса без страницы;
+    stock — остатки на складе (parse_stock): количество у каждой позиции."""
     pages = unique_names(pages)
     hit, stats = match_prices(pages, prices) if prices else ({}, {'matched': 0, 'how': {}, 'priceOnly': len(prices)})
     cats, offers = {}, {}
@@ -1062,7 +1446,10 @@ def build_feed(f, pages, prices, param_name):
                 k2, u = param_name(k, '')
                 params.append({'k': k2[:60], 'u': u, 'v': v})
             offers[oid] = _offer(oid, p['name'], cid, p['sheet'], '', [], '', params, maker, p['short'], p, cur0)
-    return {'shop': f.get('name') or '', 'date': '', 'cats': cats, 'offers': list(offers.values()), 'match': stats, 'prices': prices}
+    offs = list(offers.values())
+    if stock:
+        stats['stock'] = apply_stock(offs, stock)
+    return {'shop': f.get('name') or '', 'date': '', 'cats': cats, 'offers': offs, 'match': stats, 'prices': prices, 'stock': stock}
 
 
 # ---------------------------------------------------------------- ручные карточки каталога ↔ строки прайса

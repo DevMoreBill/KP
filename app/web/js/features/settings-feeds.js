@@ -22,6 +22,8 @@ const fdMoney = (kop, cur) => kop==null ? '—' : money(kop)+' '+(typeof curSh==
 const fdDate = iso => iso ? stTime(iso) : '—';
 const fdIsFiles = f => !!f && f.kind==='files';
 const fdCostKind = f => fdIsFiles(f) && f.priceKind!=='rrc';
+// кнопка обновления фида из файлов: с остатками на складе — «цены и остатки»
+const fdUpdLbl = f => (fdCostKind(f)?'Обновить цены':'Обновить РРЦ')+(f.files&&f.files.stock?' и остатки':' из прайса');
 
 async function stFeeds(m){
   const r=await aapi('feeds'); FD.types=r.types||[]; const items=r.items||[];
@@ -47,7 +49,7 @@ async function stFeeds(m){
 }
 
 function fdFilesShort(x){ const fl=x.files||{}; const d=iso=>iso?new Date(iso).toLocaleDateString('ru-RU'):'нет';
-  return `файлы: парс сайта — ${fl.pages?d(fl.pages.at):'нет'}, прайс — ${fl.price?d(fl.price.at):'нет'}`; }
+  return `файлы: парс сайта — ${fl.pages?d(fl.pages.at):'нет'}, прайс — ${fl.price?d(fl.price.at):'нет'}${fl.stock?', остатки — '+d(fl.stock.at):''}`; }
 
 function fdForm(f, isNew){
   const files=fdIsFiles(f);
@@ -76,10 +78,11 @@ function fdFiles(f){
   const fl=f.files||{};
   const row=(kind, title, accept, hint, meta, info)=>`<div class="fd-file"><div><b>${title}</b>${tip(hint)}<br>${meta?`<span class="muted">${esc(meta.name)} · ${esc(fdDate(meta.at))} · ${info}</span>`:'<span class="bad-t">файл ещё не загружен</span>'}</div>
       <label class="btn fd-up"><input type="file" accept="${accept}" data-fdfile="${kind}" hidden>${meta?'Заменить файл':'Загрузить файл'}</label></div>`;
-  const pg=fl.pages, pr=fl.price;
+  const pg=fl.pages, pr=fl.price, sk=fl.stock;
   return `<div class="fd-files">
     ${row('pages', 'Парс сайта (JSON или CSV)', '.json,application/json,.csv,text/csv', '<p><b>JSON</b> (надёжнее): {"items": [{"category", "name", "model", "url", "images": [адреса, первое — главное], "description": [{"title": "Назначение", "text": "…"}, {"title": "Общие характеристики", "items": ["…"]}], "specs": [{"name": "Давление", "value": "8,5 бар"}]}]}.</p><p><b>CSV</b>: столбцы — категория, название, ссылка на страницу товара, картинки (через « | »), описание, технические характеристики («Ключ: значение | Ключ: значение»). Первая строка — заголовки.</p><p>Из него создаются позиции каталога: название, раздел, описание, характеристики, фото (скачиваются по ссылкам).</p>', pg, pg?`${stNum(pg.rows)} ${plural(pg.rows,'позиция','позиции','позиций')}, разделов: ${pg.cats}`:'')}
     ${row('price', 'Прайс поставщика (XLSX)', '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '<p>Книга Excel с листами по сериям: шапка «Артикул», «Модель» (полное название), «Название для печатной формы», характеристики, «Стоимость» (и столбцы опций). Объединённые ячейки учитываются.</p><p>Строка прайса находится по названию позиции парса (точно, без знаков препинания, по модели). Чтобы обновить цены, загрузите новый прайс и нажмите «Обновить цены из прайса».</p>', pr, pr?`${stNum(pr.rows)} ${plural(pr.rows,'строка','строки','строк')} на ${pr.sheets} ${plural(pr.sheets,'листе','листах','листах')}, с ценой: ${stNum(pr.withPrice)}${pr.cur?', '+esc(pr.cur):''}`:'')}
+    ${row('stock', 'Остатки на складе (XLSX)', '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '<p>Необязательно. Выгрузка склада поставщика: «Артикул», «Номенклатура» и количество (столбец с числами можно не подписывать).</p><p>Позиция находится по артикулу из прайса, иначе — по коду модели в названии («УСТАНОВКА КОМПРЕССОРНАЯ К14» → «Поршневой компрессор К14»). Нет в файле — «нет в наличии». Чтобы обновить остатки, загрузите новый файл и нажмите «Обновить цены и остатки».</p>', sk, sk?`${stNum(sk.rows)} ${plural(sk.rows,'строка','строки','строк')}, в наличии: ${stNum(sk.inStock)}`:'')}
     <p class="muted fd-note" id="fdUpSt"></p></div>`;
 }
 
@@ -92,7 +95,9 @@ async function fdUpload(input, m){
     const r=await fetch(`/api/admin/feeds/${encodeURIComponent(FD.sel)}/upload?kind=${kind}&name=${encodeURIComponent(file.name)}`, {method:'POST', headers:{'X-CSRF-Token':ADMIN.csrf, 'Content-Type':'application/octet-stream'}, body:file});
     if (!r.ok) throw new Error(await r.text());
     const meta=await r.json();
-    toast(kind==='pages' ? `Парс сайта загружен: ${stNum(meta.rows)} ${plural(meta.rows,'позиция','позиции','позиций')}` : `Прайс загружен: ${stNum(meta.rows)} ${plural(meta.rows,'строка','строки','строк')}, с ценой ${stNum(meta.withPrice)}`);
+    toast(kind==='pages' ? `Парс сайта загружен: ${stNum(meta.rows)} ${plural(meta.rows,'позиция','позиции','позиций')}`
+      : kind==='stock' ? `Остатки загружены: ${stNum(meta.rows)} ${plural(meta.rows,'строка','строки','строк')}, в наличии ${stNum(meta.inStock)}. Нажмите «… и остатки», чтобы перенести их в каталог`
+      : `Прайс загружен: ${stNum(meta.rows)} ${plural(meta.rows,'строка','строки','строк')}, с ценой ${stNum(meta.withPrice)}`);
     FD.prev=null; stFeeds(m);
   }catch(err){ input.disabled=false; if (st) st.textContent=''; toast('Файл не принят: '+(err.message||err)); }
 }
@@ -175,7 +180,7 @@ function fdActions(f){
   if (files) return fdFilesActions(f, ready);
   return `<div class="row fd-acts"><button class="btn" type="button" data-fd="preview"${ready?'':' disabled title="Сначала загрузите файл парса сайта"'}>Проверить фид</button>
     <button class="btn primary" type="button" data-fd="import"${FD.prev&&FD.prev.id===f.id?'':' disabled title="Сначала «Проверить фид»"'}>Загрузить в каталог</button>
-    <button class="btn" type="button" data-fd="check"${f.linked?'':' disabled title="Сначала загрузите позиции в каталог"'}>${files?(fdCostKind(f)?'Обновить цены из прайса':'Обновить РРЦ из прайса'):'Проверить цены и наличие сейчас'}</button></div>`;
+    <button class="btn" type="button" data-fd="check"${f.linked?'':' disabled title="Сначала загрузите позиции в каталог"'}>${files?fdUpdLbl(f):'Проверить цены и наличие сейчас'}</button></div>`;
 }
 
 // фид из файлов: сначала «Сформировать каталог» (полный парс → позиция на каждое исполнение, без дублей), потом парс
@@ -187,10 +192,10 @@ function fdFilesActions(f, ready){
       <button class="btn" type="button" data-fd="plan"${noFile}>План сборки</button>
       <button class="btn primary" type="button" data-fd="build"${noFile}>Сформировать каталог</button></div>`;
   return `<div class="fd-build"><p class="ok-t">Каталог сформирован ${esc(fdDate(b.at))}${b.by?' · '+esc(b.by):''}: позиций ${stNum(b.items||0)}, сопоставлено с имевшимися ${stNum(b.linked||0)}, в корзину ${stNum(b.trashed||0)}.</p>
-      <p class="muted">Парс больше не меняет позиции каталога — только добавляет новые, если они появятся. Описания, фото и характеристики правятся вручную в карточке. Цены: загрузите новый прайс и нажмите «Обновить цены из прайса».</p></div>
+      <p class="muted">Парс больше не меняет позиции каталога — только добавляет новые, если они появятся. Описания, фото и характеристики правятся вручную в карточке. Цены${f.files&&f.files.stock?' и остатки':''}: загрузите новый прайс${f.files&&f.files.stock?' или файл остатков':''} и нажмите «${fdUpdLbl(f)}».</p></div>
     <div class="row fd-acts"><button class="btn" type="button" data-fd="plan"${noFile}>Что нового в парсе</button>
       <button class="btn" type="button" data-fd="addnew"${noFile}>Добавить новые из парса</button>
-      <button class="btn primary" type="button" data-fd="check"${f.linked?'':' disabled'}>Обновить цены из прайса</button>
+      <button class="btn primary" type="button" data-fd="check"${f.linked?'':' disabled'}>${fdUpdLbl(f)}</button>
       <span class="sp"></span><button class="btn ghost danger" type="button" data-fd="rebuild">Сформировать заново…</button></div>`;
 }
 
