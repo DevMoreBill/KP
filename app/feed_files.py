@@ -454,7 +454,7 @@ def _spec_val(v, u):
 # ---------------------------------------------------------------- описание: без рекламы и мусора, с абзацами и списком
 JUNK_SENT = re.compile(r'\bваш(е|ем|у|им|их|а|и)?\b|\bвам\b|верный способ|обратитесь|звоните|позвоните|менеджер|оставьте заявку|заказать|купить|'
                        r'\bцен[аыу]\b|доставк|примерн|индивидуально|согласно проекту|официальн\S* (дилер|представител|поставщик)|'
-                       r'в наличии|со склада|гарантия качества|лучшее решение|не имеет аналогов|по выгодн|скидк|акци[яи]\b', re.I)
+                       r'в наличии|со склада|гарантия качества|лучшее решение|не имеет аналогов|по выгодн|скидк|акци[яи]\b|\bоплат|\bфишк', re.I)
 HEAD_RX = re.compile(r'\s*(технические особенности|главное о серии|особенности|преимущества|опции|комплектация|применение|области применения)([^:\n•]{0,50}):\s*', re.I)
 
 
@@ -478,7 +478,7 @@ def clean_desc(text):
             body = sent[2:] if sent.startswith('• ') else sent
             body = body.strip(' ;"').rstrip('.;') + ('' if sent.endswith(':') else '.')
             key = re.sub(r'[^а-яa-z0-9]', '', body.lower())
-            if len(key) < 8 or key in seen:
+            if (len(key) < 8 and not sent.endswith(':')) or key in seen:
                 continue
             if JUNK_SENT.search(body) and not sent.endswith(':'):
                 continue
@@ -491,6 +491,78 @@ def clean_desc(text):
             continue
         res.append(x)
     return '\n'.join(res)[:4000].strip()
+
+
+# ---------------------------------------------------------------- описание → логичные блоки карточки
+HEAD_LABEL = {'технические особенности': 'Технические особенности', 'главное о серии': 'Главное о серии', 'особенности': 'Особенности',
+              'преимущества': 'Преимущества', 'опции': 'Опции', 'комплектация': 'Комплектация', 'применение': 'Применение',
+              'области применения': 'Применение'}
+PURPOSE_RX = re.compile(r'предназначен|применя(ет|ют)ся|использу(ет|ют)ся|решает|для предприятий|подходит для|отрасл|задач', re.I)
+DESIGN_RX = re.compile(r'принцип|конструкц|состоит|состав|оборудован|оснащ|установлен|теплообменник|контроллер|двигател|блок|корпус|кожух|'
+                       r'панел|клапан|фильтр|систем|привод|ресивер|сенсорн|экран|датчик|колонн|адсорбент|сито|сечени|ремен|подшипник|ротор|'
+                       r'сепаратор|шкаф|отсек|насос|охлажден|цилиндр', re.I)
+PARAM_RX = re.compile(r'^(производительность|давление|избыточное давление|рабочее давление|вакуум|разрежение|мощность|расход|напряжение|'
+                      r'точка росы|объ[её]м|чистота|уровень шума)\b[^.]{0,70}\.?$', re.I)
+VARIANT_RX = re.compile(r'исполнени', re.I)
+BLOCK_LIMIT = 12
+
+
+def _sents(t):
+    return [x.strip() for x in re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9«(])', t) if x.strip()]
+
+
+def _intro_blocks(prose, bullets):
+    """Вводный текст без подзаголовков: назначение → конструкция и принцип работы → диапазон серии → исполнения/особенности."""
+    buckets = {'Назначение': [], 'Конструкция и принцип работы': [], 'Диапазон серии': []}
+    cur = 'Назначение'
+    sents = [s for line in prose for s in _sents(line)]
+    for i, s in enumerate(sents):
+        if PARAM_RX.match(s):
+            buckets['Диапазон серии'].append(s)
+            continue
+        if cur == 'Назначение' and i > 0 and not PURPOSE_RX.search(s) and DESIGN_RX.search(s):
+            cur = 'Конструкция и принцип работы'
+        buckets[cur].append(s)
+    out = [(lab, ' '.join(v)) for lab, v in buckets.items() if v and lab != 'Диапазон серии']
+    if buckets['Диапазон серии']:
+        out.append(('Диапазон серии', '\n'.join('• ' + s for s in buckets['Диапазон серии'])))
+    if bullets:
+        lab = 'Исполнения' if sum(1 for b in bullets if VARIANT_RX.search(b)) * 2 >= len(bullets) else 'Особенности'
+        out.append((lab, '\n'.join(bullets)))
+    return out
+
+
+def desc_blocks(text):
+    """Очищенное описание (clean_desc) → список блоков карточки [(заголовок, текст)]: вводный текст делится на «Назначение»,
+    «Конструкция и принцип работы», «Диапазон серии», «Исполнения»; подзаголовки страницы («Технические особенности:»,
+    «Главное о серии:», «Опции:»…) становятся отдельными блоками. Без структуры — один блок «Описание»."""
+    text = str(text or '').strip()
+    if not text:
+        return []
+    sections, cur = [], {'label': '', 'prose': [], 'bullets': []}
+    for line in text.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        if line.endswith(':') and not line.startswith('• ') and len(line) <= 60:
+            if cur['prose'] or cur['bullets']:
+                sections.append(cur)
+            key = line[:-1].strip().lower()
+            cur = {'label': HEAD_LABEL.get(key) or (line[:-1].strip()[:1].upper() + line[:-1].strip()[1:]), 'prose': [], 'bullets': []}
+            continue
+        (cur['bullets'] if line.startswith('• ') else cur['prose']).append(line)
+    if cur['prose'] or cur['bullets']:
+        sections.append(cur)
+    out = []
+    for sec in sections:
+        if not sec['label']:
+            out.extend(_intro_blocks(sec['prose'], sec['bullets']))
+        else:
+            out.append((sec['label'], '\n'.join(sec['prose'] + sec['bullets'])))
+    out = [(lab, t) for lab, t in out if t.strip()]
+    if len(out) == 1 and sections and not sections[0]['label']:
+        out = [('Описание', out[0][1])]
+    return out[:BLOCK_LIMIT]
 
 
 # ---------------------------------------------------------------- характеристики: парс + прайс (прайс точнее)

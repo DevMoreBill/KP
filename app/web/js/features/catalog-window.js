@@ -171,7 +171,7 @@ function cwCard(x, loading){
     ${kpi?`<div class="pv-kpi">${kpi}</div>`:''}
     ${params.length?`<table class="pv-t">${params.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`:''}
     ${loading?'<p class="muted">Загружаю описание и характеристики…</p>':''}
-    ${feats.length?`<p class="pv-cap">Описание</p>${feats.map(f=>`<p class="pv-f">${f.label?`<b>${esc(f.label)}.</b> `:''}${esc(f.text||'')}</p>`).join('')}`:''}
+    ${feats.length?`<p class="pv-cap">Описание</p>${feats.map(f=>`<p class="pv-f">${f.label?`<b>${esc(f.label)}.</b>${/^• /.test(f.text||'')?'<br>':' '}`:''}${esc(f.text||'')}</p>`).join('')}`:''}
     ${groups.length?`<p class="pv-cap">Характеристики</p>${groups.map((g,k)=>`<details class="pv-g"${k===0?' open':''}><summary>${esc(g.name||'Основные')} <i>${g.rows.filter(r=>r.k||r.v).length}</i></summary><table class="pv-t">${g.rows.filter(r=>r.k||r.v).map(r=>`<tr${r.hl?' class="hl"':''}><td>${esc(r.k)}</td><td>${esc(r.v)}</td></tr>`).join('')}</table></details>`).join('')}`:''}
     ${gal.length?`<p class="pv-cap">Изображения <i>${gal.length}</i></p><div class="pv-gal">${gal.map(g=>`<img src="${esc(g.src)}" alt="" title="${esc(g.caption||'')}" loading="lazy">`).join('')}</div>`:''}
     ${hist.length?`<p class="pv-cap">В коммерческих предложениях <i>${n}</i></p><table class="pv-t pv-h">${hist.map(p=>`<tr><td>${esc(KPGen.ruDate(p.date))}${p.number?`<br><small>№ ${esc(p.number)}</small>`:''}</td><td>${esc(p.client||'')}</td><td>${p.price?money(p.price)+' '+curSh(p.cur||'RUB'):''}</td></tr>`).join('')}</table>`:''}
