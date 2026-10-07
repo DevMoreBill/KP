@@ -129,7 +129,7 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .pv-t tr.hl td:last-child{color:var(--navy);font-weight:600}
 .pv-cap{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
 .pv-cap i,.pv-g summary i{font-style:normal;font-weight:400;color:var(--muted);letter-spacing:0}
-.pv-f{font-size:13px;margin:0 0 6px;line-height:1.45}
+.pv-f{font-size:13px;margin:0 0 6px;line-height:1.45;white-space:pre-line}
 .pv-g{border-bottom:1px solid var(--line)}
 .pv-g summary{cursor:pointer;padding:7px 0;font-weight:600;font-size:13.5px}
 .pv-g .pv-t tr:last-child td{border-bottom:0}

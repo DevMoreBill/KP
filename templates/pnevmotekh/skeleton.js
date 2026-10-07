@@ -256,7 +256,8 @@ function kpSkeleton(KP) {
     rp += `<w:color w:val="${color}"/>`;
     if (o.sp) rp += `<w:spacing w:val="${o.sp}"/>`;
     rp += `<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/><w:lang w:val="ru-RU"/>`;
-    return `<w:r><w:rPr>${rp}</w:rPr><w:t xml:space="preserve">${esc(t)}</w:t></w:r>`;
+    // перенос строки в тексте (список «• …» в описании) — разрыв строки внутри абзаца
+    return String(t == null ? '' : t).split(/\r?\n/).map(line => `<w:r><w:rPr>${rp}</w:rPr><w:t xml:space="preserve">${esc(line)}</w:t></w:r>`).join('<w:r><w:br/></w:r>');
   }
   function p(runs = '', o = {}) {
     // сдвиг абзаца из графического редактора: по стилю первого текста (или картинке) в абзаце
