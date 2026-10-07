@@ -176,9 +176,102 @@ def _pages_table(text):
     return [[get(r, 'cat'), get(r, 'name'), get(r, 'url'), get(r, 'pictures'), get(r, 'desc'), get(r, 'chars'), get(r, 'model')] for r in body]
 
 
+# ---------------------------------------------------------------- парс в JSON
+# {"format": "kp-parse/1", "supplier": "…", "items": [{"category", "name", "model", "url", "images": [адреса, первое — главное],
+#   "description": [{"title": "Назначение", "text": "…"}, {"title": "Общие характеристики", "items": ["…", …]}],
+#   "specs": [{"name": "Давление", "value": "8,5 бар"}, …]}]}
+# Можно и списком позиций без обёртки, с русскими ключами (категория, название, модель, ссылка, картинки, описание,
+# характеристики), описанием одной строкой, характеристиками — объектом {"Давление": "8,5 бар"}.
+JSON_KEYS = {'cat': ('category', 'категория', 'cat'), 'name': ('name', 'название', 'наименование'), 'model': ('model', 'модель'),
+             'url': ('url', 'ссылка', 'link', 'ссылка на страницу товара'), 'pictures': ('images', 'pictures', 'картинки', 'фото'),
+             'desc': ('description', 'описание', 'desc'), 'chars': ('specs', 'characteristics', 'характеристики', 'технические характеристики')}
+
+
+def _jget(it, key):
+    for k in JSON_KEYS[key]:
+        for kk in (k, k.capitalize()):
+            if kk in it:
+                return it[kk]
+    return None
+
+
+def _json_desc(d):
+    if isinstance(d, str):
+        return d
+    out = []
+    for b in d or []:
+        if isinstance(b, str):
+            out.append(b)
+            continue
+        if not isinstance(b, dict):
+            continue
+        title = str(b.get('title') or b.get('заголовок') or '').strip().rstrip(':')
+        text = str(b.get('text') or b.get('текст') or '').strip()
+        items = [str(x).strip() for x in (b.get('items') or b.get('пункты') or []) if str(x).strip()]
+        if title:
+            out.append(title + ':')
+        if text:
+            out.append(text)
+        out += ['• ' + x.lstrip('•►- ').strip() for x in items]
+    return '\n'.join(out)
+
+
+def _json_specs(s):
+    if isinstance(s, dict):
+        return [(str(k), str(v)) for k, v in s.items()]
+    out = []
+    for r in s or []:
+        if isinstance(r, dict):
+            k = r.get('name') or r.get('k') or r.get('название') or ''
+            v = r.get('value') if r.get('value') is not None else r.get('v', r.get('значение', ''))
+            u = str(r.get('unit') or r.get('единица') or '').strip()
+            v = str(v if v is not None else '').strip()
+            if u and v and not v.lower().endswith(u.lower()):
+                v = '%s %s' % (v, u)
+            out.append((str(k), v))
+        elif isinstance(r, (list, tuple)) and len(r) >= 2:
+            out.append((str(r[0]), str(r[1])))
+    return out
+
+
+def parse_pages_json(obj):
+    """Парс в JSON → те же записи, что parse_pages из CSV."""
+    items = obj.get('items') or obj.get('позиции') if isinstance(obj, dict) else obj
+    if not isinstance(items, list):
+        raise ValueError('В JSON нет списка позиций (items)')
+    out, seen = [], set()
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        name, url = str(_jget(it, 'name') or '').strip(), str(_jget(it, 'url') or '').strip()
+        if not name or not url or url in seen:
+            continue
+        seen.add(url)
+        pics = _jget(it, 'pictures') or []
+        if isinstance(pics, str):
+            pics = re.split(r'\s*\|\s*', pics)
+        rows = []
+        for k, v in _json_specs(_jget(it, 'chars')):
+            k, v = k.strip(), v.strip()
+            if k and v and not re.match(r'^модель$', k, re.I):
+                rows.append((k[:70], v[:300]))
+        out.append({'cat': str(_jget(it, 'cat') or 'Без категории').strip()[:80], 'name': name[:300], 'url': url,
+                    'pictures': [str(u).strip() for u in pics if str(u).strip().startswith('http')][:12],
+                    'desc': _json_desc(_jget(it, 'desc'))[:6000], 'chars': rows, 'model': str(_jget(it, 'model') or '').strip()[:80]})
+    if not out:
+        raise ValueError('В JSON не нашлось ни одной позиции с названием и ссылкой на страницу товара')
+    return out
+
+
 def parse_pages(data):
-    """CSV парса → [{cat, name, url, pictures, desc, chars:[(k, v)], model}]."""
+    """CSV или JSON парса → [{cat, name, url, pictures, desc, chars:[(k, v)], model}]."""
     text = _decode(data)
+    if text.lstrip()[:1] in ('[', '{'):
+        try:
+            obj = json.loads(text)
+        except ValueError as e:
+            raise ValueError('JSON не читается: %s' % e)
+        return parse_pages_json(obj)
     lines = text.splitlines()
     if not lines:
         raise ValueError('Файл пустой')
@@ -476,7 +569,14 @@ def _list_items(m):
 
 
 BLOCK_LABELS = {'Назначение', 'Конструкция и принцип работы', 'Диапазон серии', 'Исполнения', 'Особенности', 'Технические особенности',
-                'Главное о серии', 'Общие характеристики', 'Преимущества', 'Опции', 'Комплектация', 'Применение', 'Описание'}
+                'Главное о серии', 'Общие характеристики', 'Преимущества', 'Опции', 'Комплектация', 'Применение', 'Описание',
+                'Устройство', 'Исполнения и опции'}
+# схема блоков карточки: «Назначение», «Устройство», «Преимущества», «Исполнения и опции», «Комплектация»; заголовки страниц
+# поставщиков сводятся к ней, одноимённые блоки объединяются
+BLOCK_MAP = {'Конструкция и принцип работы': 'Устройство', 'Технические особенности': 'Преимущества', 'Общие характеристики': 'Преимущества',
+             'Главное о серии': 'Преимущества', 'Особенности': 'Преимущества', 'Опции': 'Исполнения и опции', 'Исполнения': 'Исполнения и опции',
+             'Диапазон серии': 'Исполнения и опции', 'Применение': 'Назначение'}
+BLOCK_ORDER = ['Назначение', 'Устройство', 'Преимущества', 'Исполнения и опции', 'Комплектация']
 
 
 def clean_desc(text):
@@ -485,7 +585,15 @@ def clean_desc(text):
     t = LIST_HEAD_RX.sub(_list_items, t)
     t = re.sub(r'["«»]{2,}|\s*"\s*;|\s*"(?=\s|$)|(?<=\s)"\s*', ' ', t)      # сломанные кавычки из CSV
     t = re.sub(r'\s*[►▪■●♦➢➤✓]\s*(?=[А-ЯA-Zа-я0-9])|\s+-\s+(?=[А-Я])', '\n• ', t)
+    keep = {}                   # заголовки блоков отдельной строкой («Исполнения и опции:») — не разбирать на подзаголовки
+    for lab in sorted(BLOCK_LABELS, key=len, reverse=True):
+        tok = '\x00%d\x00' % len(keep)
+        t2 = re.sub(r'(?m)^\s*' + re.escape(lab) + r':\s*$', tok, t)
+        if t2 != t:
+            keep[tok], t = lab + ':', t2
     t = HEAD_RX.sub(lambda m: '\n' + m.group(1).strip().capitalize() + ':\n', t)
+    for tok, lab in keep.items():
+        t = t.replace(tok, '\n' + lab + '\n')
     t = t.replace('С°', '°C').replace('C°', '°C').replace('м3/', 'м³/').replace('м3 /', 'м³/')
     out, seen = [], set()
     for line in t.split('\n'):
@@ -581,12 +689,25 @@ def desc_blocks(text):
     for sec in sections:
         if not sec['label']:
             out.extend(_intro_blocks(sec['prose'], sec['bullets']))
+        elif sec['label'] in ('Модельный ряд', 'Диапазон серии') and not sec['bullets']:
+            out.append(('Исполнения и опции', '\n'.join('• ' + x for x in sec['prose'])))
         else:
             out.append((sec['label'], '\n'.join(([' '.join(sec['prose'])] if sec['prose'] else []) + sec['bullets'])))
     out = [(lab, t) for lab, t in out if t.strip()]
     if len(out) == 1 and sections and not sections[0]['label']:
-        out = [('Описание', out[0][1])]
-    return out[:BLOCK_LIMIT]
+        return [('Описание', out[0][1])]
+    merged = {}
+    for lab, t in out:          # к схеме блоков; одинаковые пункты не повторяются
+        lab = BLOCK_MAP.get(lab, lab)
+        if lab not in merged:
+            merged[lab] = t
+            continue
+        have = set(merged[lab].split('\n'))
+        add = [x for x in t.split('\n') if x not in have]
+        if add:
+            merged[lab] += ('\n' if merged[lab] else '') + '\n'.join(add)
+    order = {k: i for i, k in enumerate(BLOCK_ORDER)}
+    return sorted(merged.items(), key=lambda kv: order.get(kv[0], len(order)))[:BLOCK_LIMIT]
 
 
 # ---------------------------------------------------------------- характеристики: парс + прайс (прайс точнее)
