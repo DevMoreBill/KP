@@ -103,11 +103,24 @@ function cwAddLabel(id, long){ const inn=cwInKp(id);
 
 // РРЦ и наличие у поставщика (позиции из товарного фида, feeds.py)
 function feedStockTxt(st){ if (!st) return ''; if (st.gone) return 'нет в фиде';
-  if (st.qty!=null) return st.qty>0 ? `в наличии ${String(st.qty).replace('.',',')} шт.` : (st.available ? 'под заказ' : 'нет в наличии');
+  const n=v=>String(v).replace('.',',');
+  if (st.qty!=null){
+    if (st.qty>0) return `в наличии ${n(st.qty)} шт.${st.transit?` + ${n(st.transit)} в пути`:''}`;
+    if (st.transit) return `в пути ${n(st.transit)} шт.${st.eta?' ('+st.eta+')':''}`;
+    if (st.prod) return `в производстве ${n(st.prod)} шт.`;
+    return st.available ? 'под заказ' : 'нет в наличии'; }
   return st.available ? 'в наличии' : 'нет в наличии'; }
+// подробности остатков: склады, в пути / в производстве, ожидаемая дата, акция — для подсказки
+function feedStockTip(st){ if (!st) return '';
+  const out=[], n=v=>String(v).replace('.',',');
+  (st.wh||[]).forEach(([w,q])=>out.push(`${w}: ${n(q)} шт.`));
+  if (st.transit) out.push(`в пути: ${n(st.transit)} шт.${st.eta?' — ожидается '+st.eta:''}`);
+  if (st.prod) out.push(`в производстве: ${n(st.prod)} шт.${st.eta&&!st.transit?' — ожидается '+st.eta:''}`);
+  if (st.promo) out.push(`акция: ${st.promo}`);
+  return out.join('; '); }
 function feedBadges(x){ const r=x.rrc, st=x.stock; if (!r && !st) return '';
   const up=r&&r.prev&&r.price>r.prev, dn=r&&r.prev&&r.price<r.prev, ok=st&&!st.gone&&(st.qty!=null?st.qty>0:st.available);
-  return `<span class="fd-b">${r?`<span class="fd-rrc" title="Рекомендованная розничная цена поставщика${r.at?' на '+esc(r.at):''}${r.prev?`; прежняя ${money(r.prev)} ${curSh(r.cur||'RUB')}${r.prevAt?' ('+esc(r.prevAt)+')':''}`:''}">РРЦ ${money(r.price)} ${curSh(r.cur||'RUB')}${up?' <i class="up">▲</i>':dn?' <i class="dn">▼</i>':''}</span>`:''}${st?`<span class="fd-st ${ok?'ok':st.gone?'gone':'no'}" title="Наличие у поставщика${st.at?' на '+esc(st.at):''}">${esc(feedStockTxt(st))}</span>`:''}</span>`; }
+  return `<span class="fd-b">${r?`<span class="fd-rrc" title="Рекомендованная розничная цена поставщика${r.at?' на '+esc(r.at):''}${r.prev?`; прежняя ${money(r.prev)} ${curSh(r.cur||'RUB')}${r.prevAt?' ('+esc(r.prevAt)+')':''}`:''}">РРЦ ${money(r.price)} ${curSh(r.cur||'RUB')}${up?' <i class="up">▲</i>':dn?' <i class="dn">▼</i>':''}</span>`:''}${st?`<span class="fd-st ${ok?'ok':st.gone?'gone':(st.transit||st.prod)?'wait':'no'}" title="Наличие у поставщика${st.at?' на '+esc(st.at):''}${feedStockTip(st)?': '+esc(feedStockTip(st)):''}">${esc(feedStockTxt(st))}</span>`:''}${st&&st.promo&&!st.gone?`<span class="fd-promo" title="${esc(st.promo)}">акция</span>`:''}</span>`; }
 function cwPriceHtml(x){ return x.price ? `${money(x.price)} ${curSh(x.priceCur||'RUB')}` : x.cost ? `<small>закупка</small>${money(x.cost)} ${curSh(x.costCur||'RUB')}` : '<small>без цены</small>'; }
 
 function cwRow(x){ const id=x.id, n=x.pricesCount||(x.prices||[]).length, inn=cwInKp(id);
@@ -167,6 +180,7 @@ function cwCard(x, loading){
     <div class="pv-ttl"><h4>${esc(x.name||'Без названия')}</h4>${x.logo?`<img class="pv-logo" src="${esc(x.logo.src)}" alt="">`:''}</div>${x.spec?`<p class="muted pv-spec">${esc(x.spec)}</p>`:''}
     ${CW.optFor==null?`<label class="pv-cat"><span>Категория</span><select data-pvcat>${typeOptionsHtml(a.cat)}</select></label>`:''}
     <div class="pv-price"><b>${x.price?money(x.price)+' '+curSh(x.priceCur||'RUB'):'Цена не указана'}</b>${x.cost?`<span>закупка ${money(x.cost)} ${curSh(x.costCur||'RUB')}${x.costDisc&&x.costDisc.pct&&x.costSrc==='feed'?` (−${String(x.costDisc.pct).replace('.',',')} %)`:''}</span>`:''}${feedBadges(x)}</div>
+    ${x.stock&&!x.stock.gone&&feedStockTip(x.stock)?`<p class="pv-stock">${esc(feedStockTip(x.stock))}</p>`:''}
     ${x.feed?`<p class="muted pv-pf">Из фида поставщика${x.feed.sku?' · артикул '+esc(x.feed.sku):''}${x.feed.url?` · <a href="${esc(x.feed.url)}" target="_blank" rel="noopener">страница товара</a>`:''}. ${x.feed.files?'Цены и наличие обновляются из прайса и остатков поставщика.':'РРЦ и наличие проверяются раз в день.'}</p>`:''}
     ${kpi?`<div class="pv-kpi">${kpi}</div>`:''}
     ${params.length?`<table class="pv-t">${params.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`:''}
