@@ -32,6 +32,8 @@ if not exist "Коммерческие предложения" mkdir "Комме
 net share КП /delete /y >nul 2>&1
 net share КП="%CD%\Коммерческие предложения" /GRANT:Все,READ >nul 2>&1 || net share КП="%CD%\Коммерческие предложения" /GRANT:Everyone,READ >nul 2>&1
 echo [4/4] Автозапуск при включении компьютера (без входа пользователя)...
+rem прежний экземпляр программы (в том числе от имени SYSTEM) — остановить полностью, иначе новый не займёт порт
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0kp-server.ps1" -Action stop -Quiet
 schtasks /Delete /TN "Конструктор КП — сервер отдела" /F >nul 2>&1
 schtasks /Create /TN "Конструктор КП — сервер отдела" /TR "\"%EXE%\"" /SC ONSTART /RU SYSTEM /RL HIGHEST /F >nul
 schtasks /Run /TN "Конструктор КП — сервер отдела" >nul

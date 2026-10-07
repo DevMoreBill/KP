@@ -9,7 +9,7 @@ $exe = Find-Exe $src
 if (-not $exe) { Fail ('Не найден «Конструктор КП.exe» рядом с папкой install: ' + $src) }
 Write-Host 'Установка «Конструктора КП» в C:\KP' -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $KP | Out-Null
-Stop-KP
+if (-not (Stop-KP $KP)) { Fail 'Программа не остановилась — перезагрузите компьютер и запустите установку снова.' }
 # перенос данных из прежней папки программы
 if ((-not (Test-Path (Join-Path $KP 'data\kp.sqlite3'))) -and ($src.TrimEnd('\') -ne $KP)) {
   $old = Read-Host 'Если программа раньше работала из другой папки, укажите её (там лежит папка data), иначе нажмите Enter'
@@ -29,6 +29,7 @@ if ($src.TrimEnd('\') -ne $KP) {
     if (Test-Path -LiteralPath $p) { Copy-Item -LiteralPath $p -Destination $KP -Recurse -Force }
   }
 }
+Remove-OldServerFiles
 # обновление из прежнего комплекта уже входит в новый EXE
 if (Test-Path (Join-Path $KP 'update')) { Remove-Item -LiteralPath (Join-Path $KP 'update') -Recurse -Force }
 $target = Join-Path $KP $exe.Name
@@ -36,5 +37,5 @@ if (Task-Exists) { schtasks /Change /TN $TASK /TR ('"' + $target + '"') > $null 
 # ярлык на рабочем столе
 $lnk = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Конструктор КП.lnk'
 $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut($lnk); $s.TargetPath = $target; $s.WorkingDirectory = $KP; $s.Save()
-Start-KP $target
+if (-not (Start-KP $target)) { Write-Host '  программа ещё запускается — откройте её через минуту' -ForegroundColor Yellow }
 Done 'Готово: программа установлена в C:\KP, ярлык «Конструктор КП» — на рабочем столе.'
