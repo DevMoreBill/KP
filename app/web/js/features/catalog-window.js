@@ -3,13 +3,13 @@
 // Перенос — также перетаскиванием позиций на категорию. Размер окна меняется за угол, «⤢» — на весь экран.
 'use strict';
 
-const FI = { q:'', cat:'', maker:'', series:'', sup:'', f:{}, rng:{}, priced:false, stock:false, sort:'main' };
+const FI = { q:'', cat:'', maker:'', series:'', sup:'', f:{}, rng:{}, priced:false, stock:false, sort:'best', dir:1 };
 
-const FO = { q:'', cat:'', maker:'', series:'', sup:'', f:{}, rng:{}, priced:false, stock:false, sort:'name' };
+const FO = { q:'', cat:'', maker:'', series:'', sup:'', f:{}, rng:{}, priced:false, stock:false, sort:'best', dir:1 };
 
 // состояние окна: режим (позиции КП или опции позиции), отметки, открытая карточка, последний перенос (для отмены)
 const CW = { pend:new Set(), mod:false, optFor:null, F:FI, sel:new Set(), active:null, limit:150, docs:[], view:[], lastCk:null, undo:null, note:'', busy:'', drag:null,
-  src:{}, sups:[], tab:'' };      // src — фиды-источники (id → поставщик), sups — справочник поставщиков, tab — вкладка слева (flt / cats)
+  src:{}, sups:[], tab:'', fx:null };   // fx — курсы ЦБ к рублю: цены в разных валютах сравниваются в рублях      // src — фиды-источники (id → поставщик), sups — справочник поставщиков, tab — вкладка слева (flt / cats)
 
 const cwA = x => x._a || (x._a = attrsOf(x));
 
@@ -54,7 +54,34 @@ function cwSize(d){ let z={}; try{ z=JSON.parse(localStorage.getItem('kp.catwin2
 function cwSaveSize(d){ try{ const o=JSON.parse(localStorage.getItem('kp.catwin2')||'{}')||{}; const max=d.classList.contains('max');
   const z = max ? {...o, max:true} : {max:false, w:Math.round(d.offsetWidth), h:Math.round(d.offsetHeight)}; localStorage.setItem('kp.catwin2', JSON.stringify(z)); }catch(e){} }
 
-function cwLayout(d){ const w=d.clientWidth; d.classList.toggle('narrow', w<1100); d.classList.toggle('tiny', w<760); }
+function cwLayout(d){ const w=d.clientWidth; d.classList.toggle('narrow', w<1100); d.classList.toggle('tiny', w<760); cwSplitPos(d); }
+
+// ---------- ширина панелей: фильтры | список | карточка — границы перетаскиваются мышью (или стрелками), двойной щелчок — как было
+const CW_PANE={ nav:[200,560], pv:[300,900] }, CW_MIDMIN=380;
+function cwPanesLoad(d){ let z={}; try{ z=JSON.parse(localStorage.getItem('kp.cwpanes')||'{}')||{}; }catch(e){}
+  for (const k in CW_PANE) if (z[k]) d.style.setProperty('--cw-'+k, z[k]+'px'); else d.style.removeProperty('--cw-'+k); }
+function cwPanesSave(d){ const z={}; for (const k in CW_PANE){ const v=parseInt(d.style.getPropertyValue('--cw-'+k)); if (v) z[k]=v; }
+  try{ localStorage.setItem('kp.cwpanes', JSON.stringify(z)); }catch(e){} }
+function cwSplitPos(d){ const b=d.querySelector('.cw-b'); if (!b) return; const br=b.getBoundingClientRect();
+  const nav=d.querySelector('.cw-nav'), pv=d.querySelector('.cw-pv');
+  d.querySelectorAll('.cw-split').forEach(sp=>{ const k=sp.dataset.split, el=k==='nav'?nav:pv; const r=el?.getBoundingClientRect();
+    const show = r && r.width>0 && !d.classList.contains('tiny') && !(k==='pv' && d.classList.contains('narrow')) && !d.classList.contains('pvwide');
+    sp.hidden=!show; if (!show) return;
+    sp.style.left=Math.round((k==='nav' ? r.right : r.left) - br.left - 4)+'px'; sp.setAttribute('aria-valuenow', Math.round(r.width)); });
+  if (d.classList.contains('pvwide') && pv) pv.style.left = (d.classList.contains('tiny') || !nav ? 0 : Math.round(nav.getBoundingClientRect().width))+'px'; else if (pv) pv.style.left=''; }
+function cwSplitSet(d, k, w){ const b=d.querySelector('.cw-b').getBoundingClientRect(), [lo,hi]=CW_PANE[k];
+  const other = k==='nav' ? (d.classList.contains('narrow') ? 0 : d.querySelector('.cw-pv').getBoundingClientRect().width) : d.querySelector('.cw-nav').getBoundingClientRect().width;
+  w=Math.round(Math.max(lo, Math.min(hi, b.width-other-CW_MIDMIN, w))); d.style.setProperty('--cw-'+k, w+'px'); cwSplitPos(d); }
+function cwSplitBind(d){
+  d.addEventListener('pointerdown', e=>{ const sp=e.target.closest?.('.cw-split'); if (!sp || e.button!==0) return; e.preventDefault();
+    const k=sp.dataset.split, b=d.querySelector('.cw-b'); sp.setPointerCapture(e.pointerId); d.classList.add('resizing');
+    const mv=ev=>{ const r=b.getBoundingClientRect(); cwSplitSet(d, k, k==='nav' ? ev.clientX-r.left : r.right-ev.clientX); };
+    const up=()=>{ sp.removeEventListener('pointermove',mv); sp.removeEventListener('pointerup',up); sp.removeEventListener('pointercancel',up); d.classList.remove('resizing'); cwPanesSave(d); };
+    sp.addEventListener('pointermove',mv); sp.addEventListener('pointerup',up); sp.addEventListener('pointercancel',up); });
+  d.addEventListener('keydown', e=>{ const sp=e.target.closest?.('.cw-split'); if (!sp || !['ArrowLeft','ArrowRight','Home'].includes(e.key)) return; e.preventDefault();
+    const k=sp.dataset.split; if (e.key==='Home'){ d.style.removeProperty('--cw-'+k); cwSplitPos(d); cwPanesSave(d); return; }
+    const el=d.querySelector(k==='nav'?'.cw-nav':'.cw-pv'), st=(e.key==='ArrowRight')===(k==='nav') ? 24 : -24;
+    cwSplitSet(d, k, el.getBoundingClientRect().width+st); cwPanesSave(d); }); }
 
 // ---------- фильтрация
 function cwKindOk(x){ if (CW.optFor==null) return true; const t=typeById(cwA(x).cat); return t.role==='accessory' || x.kind==='option'; }
@@ -198,14 +225,47 @@ function cwRow(x){ const id=x.id, n=x.pricesCount||(x.prices||[]).length, inn=cw
     <div class="cw-pr">${cwPriceHtml(x)}${feedBadges(x)}${n?`<small>в КП ${n} ${plural(n,'раз','раза','раз')}</small>`:''}</div>
     <button class="btn sm${inn?' in':''}" type="button" data-add title="${inn?(CW.optFor!=null?'Уже добавлено':'Уже в КП — увеличить количество'):''}">${cwAddLabel(id)}</button></div>`; }
 
+// ---------- сортировка: поле + направление (↑ / ↓); позиции без значения — всегда в конце
+const CW_SORTS=[['best','Рекомендуемые',1,'Сначала в наличии и с ценой, затем по основному параметру категории (при поиске — сначала точные совпадения модели)'],
+  ['price','Цена',1,'В рублях по курсу ЦБ; без цены — закупочная цена, иначе в конце'],['stock','Наличие',-1,'Больше всего на складе — первыми'],
+  ['name','Название',1,'По алфавиту, номера моделей — по возрастанию чисел'],['kp','Популярные в КП',-1,'Чаще всего попадали в коммерческие предложения'],
+  ['upd','Обновлённые',-1,'Недавно изменённые позиции']];
+function cwSortFields(){ const t=CW.F.cat?typeById(CW.F.cat):null; return t ? t.fields.filter(f=>f.num) : []; }
+function cwSortDef(k){ const z=CW_SORTS.find(x=>x[0]===k); return z ? z[2] : 1; }
+function cwSortBox(){ const F=CW.F, sel=$('#cwSort'), dir=$('#cwDir'); if (!sel) return;
+  const fl=cwSortFields(); if (!CW_SORTS.some(x=>x[0]===F.sort) && !(F.sort.startsWith('f:') && fl.some(f=>'f:'+f.key===F.sort))){ F.sort='best'; F.dir=1; }
+  morph(sel, CW_SORTS.map(([k,l,,h])=>`<option value="${k}" title="${esc(h)}"${F.sort===k?' selected':''}>${l}</option>`).join('')
+    + (fl.length?`<optgroup label="Параметры: ${esc(typeById(F.cat).name)}">${fl.map(f=>`<option value="f:${esc(f.key)}"${F.sort==='f:'+f.key?' selected':''}>${esc(f.label)}${f.unit?', '+esc(f.unit):''}</option>`).join('')}</optgroup>`:''));
+  sel.value=F.sort; const up=F.dir>0;
+  dir.textContent = F.sort==='name' ? (up?'А→Я':'Я→А') : up?'↑ по возрастанию':'↓ по убыванию';
+  dir.title='Сменить направление сортировки'; dir.setAttribute('aria-label', up?'По возрастанию — сменить на убывание':'По убыванию — сменить на возрастание');
+  dir.hidden = F.sort==='best'; }
+function cwRub(v, cur){ if (!v) return null; cur=cur||'RUB'; if (cur==='RUB') return v; const r=+(CW.fx?.[cur]) || +String(S.pricing?.rates?.[cur]||'').replace(',','.');
+  return r>0 ? v*r : null; }
+function cwPriceRub(x){ return x.price ? cwRub(x.price, x.priceCur) : x.cost ? cwRub(x.cost, x.costCur) : null; }
+function cwStockN(x){ const st=x.stock; if (!st || st.gone) return null; return st.qty!=null ? (st.qty>0?st.qty:null) : st.available ? 1 : null; }
+function cwLoadFx(){ if (CW.fx || CW.fxLoading) return; CW.fxLoading=true;
+  api('/api/cbr').then(r=>{ if (r && (r.EUR||r.USD)){ CW.fx=r; if (CW.F.sort==='price') cwList(); } }).catch(()=>{}).finally(()=>{ CW.fxLoading=false; }); }
+function cwSorter(){ const F=CW.F, s=F.sort, d=F.dir||1, ord=new Map(TYPES.map((t,i)=>[t.id,i]));
+  const byName=(p,q)=>String(p.name).localeCompare(q.name,'ru',{numeric:true});
+  const num=(f)=>{ const m=new Map(); return x=>{ if (!m.has(x.id)){ const v=f(x); m.set(x.id, v==null||!isFinite(v)||v===0?null:v); } return m.get(x.id); }; };
+  const cmp=(g)=>(p,q)=>{ const a=g(p), b=g(q); return a==null ? (b==null?0:1) : b==null ? -1 : (a-b)*d; };
+  if (s==='name') return (p,q)=>byName(p,q)*d;
+  if (s==='price'){ const c=cmp(num(cwPriceRub)); return (p,q)=>c(p,q)||byName(p,q); }
+  if (s==='stock'){ const c=cmp(num(cwStockN)); return (p,q)=>c(p,q)||byName(p,q); }
+  if (s==='kp'){ const c=cmp(num(x=>x.pricesCount||(x.prices||[]).length)); return (p,q)=>c(p,q)||byName(p,q); }
+  if (s==='upd'){ const c=cmp(num(x=>Date.parse(x.updatedAt||'')||null)); return (p,q)=>c(p,q)||byName(p,q); }
+  if (s.startsWith('f:')){ const k=s.slice(2), c=cmp(num(x=>numOf(cwA(x)[k]))); return (p,q)=>c(p,q)||byName(p,q); }
+  // рекомендуемые: точные совпадения → в наличии с ценой → с ценой → остальные; внутри — по категориям (порядок разделов) и основному параметру
+  const q=String(F.q||'').trim(), rel=num(x=>q?cwRel(x)+1:null), main=num(x=>{ const a=cwA(x), t=typeById(a.cat); return numOf(a[t.main||'kw']); });
+  const tier=x=>(x.price||x.cost ? 0 : 2) + (cwInStock(x) ? 0 : 1), cm=cmp(main);
+  return (p,q2)=> (q ? (rel(p)-rel(q2)) : 0) || tier(p)-tier(q2) || (ord.get(cwA(p).cat)??999)-(ord.get(cwA(q2).cat)??999) || cm(p,q2) || byName(p,q2); }
+
 function cwList(){
-  const F=CW.F, s=F.sort, mainVal=x=>{ const a=cwA(x), t=typeById(a.cat); return numOf(a[t.main||'kw']); };
+  const F=CW.F;
   const list=CW.docs.filter(x=>cwPass(x));
-  const rel=new Map(); if (String(F.q||'').trim()) list.forEach(x=>rel.set(x.id, cwRel(x)));      // при поиске — сначала точные совпадения модели
-  // основной параметр 0 или пусто (не заполнен в источнике) — в конец, а не в начало списка
-  list.sort((p,q)=> (rel.size ? rel.get(p.id)-rel.get(q.id) : 0) || (s==='name' ? String(p.name).localeCompare(q.name,'ru',{numeric:true}) : s==='price' ? (p.price||9e15)-(q.price||9e15) :
-    s==='recent' ? String(q.prices?.[0]?.date||q.updatedAt||'').localeCompare(String(p.prices?.[0]?.date||p.updatedAt||'')) :
-    (String(cwA(p).cat).localeCompare(String(cwA(q).cat))) || ((mainVal(p)||9e9)-(mainVal(q)||9e9)) || String(p.name).localeCompare(q.name,'ru',{numeric:true})));
+  if (F.sort==='price') cwLoadFx();
+  list.sort(cwSorter()); cwSortBox();
   CW.view=list;
   $('#cwCnt').innerHTML = CW.docs.length ? `Найдено: <b>${list.length}</b> из ${CW.docs.length}` : '';
   morph($('#cwChips'), cwChips()); cwBar();
@@ -261,16 +321,16 @@ function cwCard(x, loading){
     ${!loading&&!feats.length&&!groups.length?'<p class="muted pv-empty">Описания и характеристик пока нет — нажмите «Редактировать».</p>':''}
   </div>
   <div class="pv-acts"><div class="pv-main"><button class="btn primary" type="button" data-pv="add">${cwAddLabel(x.id,true)}</button><button class="btn" type="button" data-pv="edit">Редактировать</button></div>
-    <div class="pv-sub">${CW.optFor==null?'<button class="btn ghost" type="button" data-pv="dup" title="Создать копию позиции и открыть её на редактирование">Создать копию</button>':''}<span class="sp"></span><button class="btn ghost pv-x" type="button" data-pv="close">Закрыть карточку</button></div></div>`;
+    <div class="pv-sub">${CW.optFor==null?'<button class="btn ghost" type="button" data-pv="dup" title="Создать копию позиции и открыть её на редактирование">Создать копию</button>':''}<span class="sp"></span><button class="btn ghost pv-w" type="button" data-pv="wide" title="Карточка крупно, на месте списка (двойной щелчок по позиции). Esc — назад к списку">${cwDlg().classList.contains('pvwide')?'Свернуть карточку':'⤢ Крупно'}</button><button class="btn ghost pv-x" type="button" data-pv="close">Закрыть карточку</button></div></div>`;
 }
 
 async function cwPreview(){
   const pv=$('#cwPv'), d=cwDlg(); if(!pv) return; const id=CW.active;
   d.classList.toggle('pvon', !!id);
   const light=id && CW.docs.find(z=>z.id===id);
-  if (!light){ CW.active=null; d.classList.remove('pvon');
+  if (!light){ CW.active=null; d.classList.remove('pvon','pvwide');
     pv.innerHTML=`<div class="cw-pv0"><b>Карточка позиции</b><p>Нажмите на позицию в списке — здесь появятся фото, параметры, описание, характеристики и история цен.</p>
-      <p>Двойной щелчок — открыть позицию на редактирование.</p><p>Отметьте галочками несколько позиций, чтобы добавить их в КП сразу, перенести в другую категорию или удалить.</p></div>`; return; }
+      <p>Двойной щелчок — карточка крупно, на месте списка. Изменить позицию — кнопка «Редактировать» в карточке.</p><p>Отметьте галочками несколько позиций, чтобы добавить их в КП сразу, перенести в другую категорию или удалить.</p></div>`; return; }
   if (pv.dataset.id!==id){ pv.innerHTML=cwCard(light,!!light._light); pv.dataset.id=id; }
   const full=await fullDoc(light); if (CW.active!==id) return;
   const sc=pv.querySelector('.pv-scroll')?.scrollTop||0; morph(pv, cwCard(full,false)); const s2=pv.querySelector('.pv-scroll'); if(s2) s2.scrollTop=sc;
@@ -279,6 +339,11 @@ async function cwPreview(){
 // изображение крупно поверх окна каталога; закрывается щелчком или Esc
 function cwZoom(src, caption){ const d=cwDlg(); d.querySelector('.cw-lb')?.remove();
   const z=document.createElement('div'); z.className='cw-lb'; z.innerHTML=`<img src="${esc(src)}" alt=""><p>${esc(caption||'Щелчок — закрыть')}</p>`; d.appendChild(z); }
+
+// карточка крупно: занимает место списка, панель фильтров остаётся; Esc, «‹ К списку» или «Свернуть» — назад
+function cwWide(on, id){ const d=cwDlg(); if (id) cwActivate(id); if (on && !CW.active) return;
+  d.classList.toggle('pvwide', !!on); cwSplitPos(d); cwPreview();
+  if (!on && CW.active) document.querySelector(`#cwList .cw-row[data-id="${CSS.escape(CW.active)}"]`)?.scrollIntoView({block:'nearest'}); }
 
 function cwActivate(id){ CW.active=id; document.querySelectorAll('#cwList .cw-row').forEach(r=>r.classList.toggle('act', r.dataset.id===id)); cwPreview(); }
 
@@ -413,7 +478,7 @@ async function openCatalog(mode={}){
   const optFor = Number.isInteger(mode.opt) ? mode.opt : null;
   Object.assign(CW, { optFor, F: optFor!=null ? FO : FI, active:null, limit:150, lastCk:null, note:'', busy:'', tab:'' }); CW.sel.clear();
   const F=CW.F; if (mode.cat!=null){ F.cat=mode.cat; F.f={}; F.rng={}; }
-  const d=cwDlg(); d.classList.remove('navon','pvon'); cwSize(d);
+  const d=cwDlg(); d.classList.remove('navon','pvon','pvwide'); cwSize(d); cwPanesLoad(d);
   d.innerHTML=`<div class="cw-h"><button class="btn cw-navbtn" type="button" data-cw="nav" aria-label="Категории и фильтры" title="Категории и фильтры"><span aria-hidden="true">☰</span><span class="cw-lbl2"> Фильтры</span></button>
      <h3>${optFor!=null?'Опции для позиции '+(optFor+1):'Каталог'}</h3>
      <div class="cw-q"><input type="search" id="cwQ" placeholder="Модель, артикул, производитель, поставщик или характеристика" autocomplete="off" value="${esc(F.q)}" aria-label="Поиск по каталогу" title="Можно без пробелов и дефисов: «DVK3013» найдёт DVK D 30-13; «/» — перейти к поиску"><kbd aria-hidden="true">/</kbd></div>
@@ -426,13 +491,14 @@ async function openCatalog(mode={}){
    <div class="cw-fb" id="cwBar" role="group" aria-label="Отбор по категории, производителю, поставщику"></div>
    <div class="cw-b"><nav class="cw-nav" id="cwNav" aria-label="Категории и фильтры"></nav>
      <section class="cw-mid"><div class="cw-chips" id="cwChips" aria-live="polite"></div><div class="cw-tb"><label class="ck" title="Отметить все найденные"><input type="checkbox" id="cwAll" aria-label="Отметить все найденные"></label><span class="muted" id="cwCnt"></span><span class="sp"></span>
-         <select id="cwSort" aria-label="Сортировка"><option value="main">По основному параметру</option><option value="name">По названию</option><option value="recent">Недавно в КП</option><option value="price">По цене</option></select></div>
+         <label class="cw-sortl" for="cwSort">Сортировка</label><select id="cwSort" aria-label="Сортировка"></select><button class="btn sm cw-dir" type="button" id="cwDir"></button></div>
        <div class="cw-list" id="cwList"><p class="empty">Загружаю…</p></div></section>
-     <aside class="cw-pv" id="cwPv" aria-label="Карточка позиции"></aside></div>
+     <aside class="cw-pv" id="cwPv" aria-label="Карточка позиции"></aside>
+     <div class="cw-split" data-split="nav" role="separator" aria-orientation="vertical" aria-label="Ширина панели фильтров" tabindex="0" title="Потяните, чтобы изменить ширину панели фильтров. Двойной щелчок — как было"></div>
+     <div class="cw-split" data-split="pv" role="separator" aria-orientation="vertical" aria-label="Ширина карточки позиции" tabindex="0" title="Потяните, чтобы изменить ширину карточки. Двойной щелчок — как было"></div></div>
    <div class="cw-f" id="cwF"></div>`;
   if (!d.open) d.showModal();
   cwBind(d); cwLayout(d);
-  $('#cwSort').value=F.sort;
   CW.docs = catCache.length ? catCache : await store().list().catch(()=>[]);
   await Promise.all([cwLoadPending(), cwLoadSources()]);
   cwRedraw();
@@ -446,7 +512,7 @@ async function cwLoadSources(){
   CW.docs.forEach(x=>{ delete x._sup; delete x._hay; }); }
 
 function cwBind(d){
-  if (d._bound) return; d._bound=true;
+  if (d._bound) return; d._bound=true; cwSplitBind(d);
   let szT=null; new ResizeObserver(()=>{ if(!d.open) return; cwLayout(d); clearTimeout(szT); szT=setTimeout(()=>{ if (d.open && !d.classList.contains('max')) cwSaveSize(d); },500); }).observe(d);
   let qT=null;
   d.addEventListener('input', e=>{ const t=e.target, F=CW.F;
@@ -454,7 +520,7 @@ function cwBind(d){
     if (t.dataset.rk){ const r=F.rng[t.dataset.rk]||(F.rng[t.dataset.rk]={min:'',max:''}); r[t.dataset.rs]=t.value.replace(',','.').replace(/[^\d.]/g,''); cwList(); } });
   d.addEventListener('change', e=>{ const t=e.target, F=CW.F;
     if (t.dataset.cwzero!=null){ try{ localStorage.setItem('kp.cwzero', t.checked?'1':'0'); }catch(_){} return cwNav(); }
-    if (t.id==='cwSort'){ F.sort=t.value; cwList(); return; }
+    if (t.id==='cwSort'){ F.sort=t.value; F.dir=cwSortDef(t.value); cwList(); $('#cwList').scrollTop=0; return; }
     if (t.dataset.f!=null){ if (t.dataset.in) F.f[t.dataset.f]=t.value; else F[t.dataset.f]=t.value; CW.limit=150; cwNav(); cwList(); return; }
     if (t.id==='cwPriced'){ F.priced=t.checked; CW.limit=150; cwNav(); cwList(); return; }
     if (t.id==='cwStock'){ F.stock=t.checked; CW.limit=150; cwNav(); cwList(); return; }
@@ -474,6 +540,7 @@ function cwBind(d){
     if (t.closest('.ck')) return;
     const fg=t.closest('[data-cwfold]'); if (fg){ let fold={}; try{ fold=JSON.parse(localStorage.getItem('kp.cwfold')||'{}')||{}; }catch(e){}
       fold[fg.dataset.cwfold]=!fold[fg.dataset.cwfold]; try{ localStorage.setItem('kp.cwfold', JSON.stringify(fold)); }catch(e){} return cwNav(); }
+    if (t.closest('#cwDir')){ F.dir=-(F.dir||1); cwList(); $('#cwList').scrollTop=0; return; }
     const tab=t.closest('[data-tab]'); if (tab){ CW.tab=tab.dataset.tab; cwNav(); return; }
     const chip=t.closest('[data-chip]'); if (chip){ const k=chip.dataset.chip; CW.limit=150;
       if (k==='q'){ F.q=''; const q=$('#cwQ'); if (q) q.value=''; }
@@ -494,7 +561,8 @@ function cwBind(d){
       if (bk.dataset.bulk==='clear'){ CW.sel.clear(); cwList(); cwFoot(); } return; }
     const pv=t.closest('[data-pv]'); if (pv && CW.active){ const a=pv.dataset.pv, id=CW.active;
       if (a==='add') return cwAdd([id]); if (a==='edit') return cwEdit(id); if (a==='dup') return cwDup(id);
-      if (a==='close'){ CW.active=null; cwActivate(null); } return; }
+      if (a==='wide') return cwWide(!d.classList.contains('pvwide'));
+      if (a==='close'){ if (d.classList.contains('pvwide')) return cwWide(false); CW.active=null; cwActivate(null); } return; }
     const zi=t.closest('.pv-photo>img:first-child, .pv-gal img'); if (zi){ cwZoom(zi.src, zi.title||''); return; }
     if (t.closest('.cw-lb')){ t.closest('.cw-lb').remove(); return; }
     const row=t.closest('.cw-row'); if (row){ cwActivate(row.dataset.id); return; }
@@ -515,8 +583,11 @@ function cwBind(d){
       case 'imp': { const f=document.createElement('input'); f.type='file'; f.accept='.json,application/json'; f.hidden=true;
         f.onchange=()=>{ const file=f.files[0]; f.remove(); if (file) cwImportFile(file); }; d.appendChild(f); f.click(); return; }
     } });
-  d.addEventListener('dblclick', e=>{ const row=e.target.closest('.cw-row'); if (row && !e.target.closest('button,label,input')) cwEdit(row.dataset.id); });
-  d.addEventListener('cancel', e=>{ const lb=d.querySelector('.cw-lb'); if (lb){ e.preventDefault(); lb.remove(); } });
+  // двойной щелчок по позиции — карточка крупно (на месте списка); по границе панелей — ширина как была
+  d.addEventListener('dblclick', e=>{ const sp=e.target.closest('.cw-split'); if (sp){ d.style.removeProperty('--cw-'+sp.dataset.split); cwSplitPos(d); cwPanesSave(d); return; }
+    const row=e.target.closest('.cw-row'); if (row && !e.target.closest('button,label,input')){ getSelection()?.removeAllRanges(); cwWide(true, row.dataset.id); } });
+  d.addEventListener('cancel', e=>{ const lb=d.querySelector('.cw-lb'); if (lb){ e.preventDefault(); lb.remove(); return; }
+    if (d.classList.contains('pvwide')){ e.preventDefault(); cwWide(false); } });
   d.addEventListener('keydown', e=>{
     if (e.key==='/' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.closest?.('input,textarea,select,[contenteditable]')){ e.preventDefault(); const q=$('#cwQ'); q?.focus(); q?.select(); return; }
     if (e.target.id==='cwQ' && e.key==='Escape' && e.target.value){ e.preventDefault(); e.stopPropagation(); e.target.value=''; CW.F.q=''; cwNav(); cwList(); return; }
