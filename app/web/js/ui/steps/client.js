@@ -49,14 +49,13 @@ function tenderNoFromUrl(u){ u=String(u||''); let m=/[?&](?:regNumber|purchaseNu
   if (m) return m[1]; const all=u.replace(/^https?:\/\/[^/]+/i,'').match(/\d{6,}/g)||[]; return all.sort((a,b)=>b.length-a.length)[0]||''; }
 function tenderHost(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return ''; } }
 function tenderBlock(){ const on=tenderOn(), T=S.tender||{}, url=String(T.url||'').trim(), badUrl=url && !tenderUrl();
-  const tt=TEMPLATES.find(t=>t.id==='tender' && !t.error), useTpl = on && tt && S.template!=='tender';
   return `<div class="csec kp-kind${on?' on':''}" id="st-tender"><div class="kk-head"><p class="sub">Вид КП</p>
       <div class="seg" role="radiogroup" aria-label="Вид КП"><button type="button" role="radio" aria-checked="${!on}" class="${on?'':'on'}" data-a="kpKind" data-v="std">Обычное</button><button type="button" role="radio" aria-checked="${on}" class="${on?'on':''}" data-a="kpKind" data-v="tender">Для тендера</button></div></div>
     ${on?`<div class="grid kk-grid">${field('№ закупки (тендера)','tender.number',{req:1,ph:'Например: 4567892',cls:T.number&&String(T.number).trim()?'':'bad'})}
-        <label class="f"><span>Ссылка на закупку <span class="muted">необязательно</span></span><input type="url" data-p="tender.url" value="${esc(url)}" placeholder="https://zakupki.gov.ru/…" autocomplete="off" class="${badUrl?'bad':''}"></label></div>
+        <label class="f"><span>Ссылка на закупку <span class="muted">для журнала, в КП не выводится</span></span><input type="url" data-p="tender.url" value="${esc(url)}" placeholder="https://zakupki.gov.ru/…" autocomplete="off" class="${badUrl?'bad':''}"></label></div>
       <p class="muted kk-note" id="kkNote">${kkNote()}</p>
-      ${useTpl?`<p class="kk-tpl">Для тендеров есть строгий шаблон «${esc(tt.name)}» — без графики, с реквизитами, подписью и печатью. <button type="button" class="lnk" data-a="tenderTpl">Применить</button></p>`:''}`
-    :`<p class="muted kk-note">Для тендера номер закупки и ссылка на неё появятся в КП и журнале, а файлы будут называться «№ закупки КП».</p>`}</div>`; }
+`
+    :`<p class="muted kk-note">Для тендера КП собирается в шаблоне «Тендерный», в нём — номер закупки; файлы называются «№ закупки КП поставщик заказчик».</p>`}</div>`; }
 function kkNote(){ const n=tenderNo(), u=String((S.tender||{}).url||'').trim();
-  return (n ? `Файлы: <b>${esc(savedFileName())}</b> и <b>${esc(savedFileName().replace(/\.docx$/i,'.pdf'))}</b>.` : 'Номер закупки — в названии файлов: «4567892 КП.docx».')
+  return (n ? `Файлы: <b>${esc(savedFileName())}</b> и <b>${esc(savedFileName().replace(/\.docx$/i,'.pdf'))}</b>.` : 'Номер закупки — в КП и в названии файлов: «4567892 КП ПНЕВМОТЕХ Заказчик.docx».')
     + (u && !tenderUrl() ? ' <span class="bad-t">Ссылка должна начинаться с http:// или https://</span>' : u ? ` Площадка: ${esc(tenderHost(u))}.` : ''); }
