@@ -26,12 +26,15 @@ function jEcon(r){
 async function openJournal(){
   const d=$('#dlg'); d.classList.add('wide');
   d.innerHTML=`<div class="dlg-h"><h3>Журнал КП</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-   <div class="dlg-b"><div class="jbar"><input type="text" id="jQ" placeholder="Поиск: номер, получатель, ИНН, позиция" autocomplete="off"><select id="jA" aria-label="Автор"><option value="">Все авторы</option></select></div>
+   <div class="dlg-b"><div class="jbar"><input type="text" id="jQ" placeholder="Поиск: номер КП или закупки, получатель, ИНН, позиция" autocomplete="off"><select id="jK" aria-label="Вид КП"><option value="">Все КП</option><option value="std">Обычные</option><option value="tender">Тендеры</option></select><select id="jA" aria-label="Автор"><option value="">Все авторы</option></select></div>
    <div class="jtot muted" id="jTot"></div><div id="jList"><p class="empty">Загружаю…</p></div></div>`;
   d.showModal(); d.querySelector('[data-close]').onclick=()=>{ d.close(); d.classList.remove('wide'); };
   // журнал — постранично: поиск, автор и итоги считает сервер, в браузер приходят только видимые КП
   const J={rows:[], total:0, agg:null, seq:0, size:50, any:false};
-  const row=(r,e)=>`<div class="jr"><div class="jr-n"><span class="n">№ ${esc(r.number)}</span><span class="muted">от ${esc(KPGen.ruDate(r.date))}</span>${r.savedAt?`<span class="muted" title="Последнее сохранение">сохр. ${esc(jTime(r.savedAt))}</span>`:''}</div>
+  // тендер: номер закупки и ссылка на неё; ссылка — только http(s)
+  const tnd=r=>{ const t=r.tender; if (!t || !t.number) return ''; const u=/^https?:\/\//i.test(t.url||'') ? t.url : '';
+    return `<span class="jr-t" title="КП для тендера${u?': '+esc(u):''}">Тендер № ${esc(t.number)}${u?` <a href="${esc(u)}" target="_blank" rel="noopener noreferrer" aria-label="Открыть закупку на площадке">↗</a>`:''}</span>`; };
+  const row=(r,e)=>`<div class="jr${r.tender&&r.tender.number?' tnd':''}"><div class="jr-n"><span class="n">№ ${esc(r.number)}</span><span class="muted">от ${esc(KPGen.ruDate(r.date))}</span>${tnd(r)}${r.savedAt?`<span class="muted" title="Последнее сохранение">сохр. ${esc(jTime(r.savedAt))}</span>`:''}</div>
       <div class="jr-m"><b>${esc(r.client)}</b><span class="muted">${(r.items&&r.items[0])?esc(r.items[0])+(r.positions>1?` и ещё ${r.positions-1}`:''):''}</span>${r.manager?`<span class="jr-a" title="${esc([r.manager,r.managerPost].filter(Boolean).join(', '))}">Автор: ${esc(jShort(r.manager))}</span>`:''}</div>
       <div class="jr-e"><b>${e.sum}</b><span>${e.line}</span></div>
       <div class="acts"><button class="btn" type="button" data-jo="${esc(r.id)}">Открыть</button><button class="btn" type="button" data-jc="${esc(r.id)}">Копия</button><button class="btn" type="button" data-jv="${esc(r.id)}" data-jn="${esc(r.number)}">Версии</button>${r.locked?'':`<button class="btn" type="button" data-je="${esc(r.id)}">Экономика</button>`}<button class="btn" type="button" data-a="openDoc" data-id="${esc(r.id)}">${SRV.info&&SRV.info.local===false?'Скачать':'Word'}</button></div></div>`;
@@ -41,30 +44,32 @@ async function openJournal(){
     $('#jList').innerHTML = J.rows.length ? J.rows.map(r=>row(r, jEcon(r))).join('')
         + (more>0?`<div class="row" style="justify-content:center;margin-top:10px"><button class="btn" type="button" data-jmore>Показать ещё ${Math.min(more,J.size)} из ${more}</button></div>`:'')
       : `<p class="empty">${J.any?'Ничего не найдено.':'Журнал пуст. Сохранённые КП появятся здесь.'}</p>`; };
-  const load=async more=>{ const seq=++J.seq, au=$('#jA').value, q=$('#jQ').value.trim();
-    let r; try{ r=await api(`/api/history?limit=${J.size}&offset=${more?J.rows.length:0}&q=${encodeURIComponent(q)}&author=${encodeURIComponent(au)}`); }
+  const load=async more=>{ const seq=++J.seq, au=$('#jA').value, q=$('#jQ').value.trim(), kd=$('#jK').value;
+    let r; try{ r=await api(`/api/history?limit=${J.size}&offset=${more?J.rows.length:0}&q=${encodeURIComponent(q)}&author=${encodeURIComponent(au)}&kind=${encodeURIComponent(kd)}`); }
     catch(e){ if (seq===J.seq) $('#jList').innerHTML='<p class="empty">Журнал недоступен.</p>'; return; }
     if (seq!==J.seq || !d.open) return;          // пока ждали ответ, изменили поиск
-    J.rows = more ? J.rows.concat(r.items||[]) : (r.items||[]); J.total=r.total||0; J.agg=r.agg||null; if (!q && !au) J.any=J.total>0; else J.any=true;
+    J.rows = more ? J.rows.concat(r.items||[]) : (r.items||[]); J.total=r.total||0; J.agg=r.agg||null; if (!q && !au && !kd) J.any=J.total>0; else J.any=true;
     if (!$('#jA').dataset.ok){ $('#jA').dataset.ok='1'; $('#jA').innerHTML+=(r.authors||[]).map(a=>`<option>${esc(a)}</option>`).join(''); }
     draw();
     // КП, сохранённые прежней версией: экономика считается по сохранённому состоянию КП
     for (const x of (r.items||[]).filter(x=>!x.econ && !x.locked)){ if (!d.open || seq!==J.seq) break;
       try{ x.econ=kpEconomics(await api(`/api/kp/${x.id}/state`)); }catch(e){ x.econ={cur:'RUB',sum:x.sum||0,withCost:0,positions:x.positions||0}; } }
     if (d.open && seq===J.seq) draw(); };
-  let qT=0; $('#jQ').oninput=()=>{ clearTimeout(qT); qT=setTimeout(()=>load(false), 220); }; $('#jA').onchange=()=>load(false);
+  let qT=0; $('#jQ').oninput=()=>{ clearTimeout(qT); qT=setTimeout(()=>load(false), 220); }; $('#jA').onchange=$('#jK').onchange=()=>load(false);
   await load(false);
   $('#jList').onclick=async e=>{
+    if (e.target.closest('.jr-t a')) return;        // ссылка на закупку открывается в браузере
     if (e.target.closest('[data-jmore]')) return load(true);
     const jv=e.target.closest('[data-jv]'); if (jv) return openKpVersions(jv.dataset.jv, jv.dataset.jn, ()=>{ d.close(); d.classList.remove('wide'); });
     const o=e.target.closest('[data-jo]'), c=e.target.closest('[data-jc]'), ec=e.target.closest('[data-je]'); if(!o&&!c&&!ec) return;
     try{
       const st=await api(`/api/kp/${(o||c||ec).dataset[o?'jo':c?'jc':'je']}/state`);
-      S=Object.assign(freshState(), st);
-      if (c){ delete S.kpId; delete S.number; delete S.createdAt; delete S._rev; S.date=today(); S.client=''; S.authorId=meId(); }
+      S=Object.assign(freshState(), st); if (!c){ const m=J.rows.find(x=>x.id===st.kpId); if (m && m.file) S._file=m.file; }
+      if (c){ delete S.kpId; delete S.number; delete S.createdAt; delete S._rev; S.date=today(); S.client=''; S.authorId=meId();
+        if (S.tender && S.tender.on) S.tender={on:true, number:'', url:''}; }     // копия тендерного КП — под другую закупку
       d.close(); d.classList.remove('wide'); renderForm(); persist(); window.scrollTo({top:0});
       if (ec) return openDeal();
-      toast(c?'Создана копия — укажите получателя':'КП № '+S.number+' открыто для редактирования');
+      toast(c?(S.tender&&S.tender.on?'Создана копия — укажите получателя и № закупки':'Создана копия — укажите получателя'):'КП № '+S.number+' открыто для редактирования');
     }catch(err){ toast('Не удалось открыть КП'); }
   };
 }

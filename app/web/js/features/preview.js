@@ -107,7 +107,7 @@ function pvPrint(){ document.body.classList.add('printing-kp'); const done=()=>{
 
 // PDF по текущему КП (без записи в журнал): преобразует компьютер-сервер
 async function pdfFromBlob(blob){
-  const r=await fetch('/api/pdf?name='+encodeURIComponent(fileName().replace(/\.docx$/i,'.pdf')), {method:'POST', body:blob});
+  const r=await fetch('/api/pdf?name='+encodeURIComponent(savedFileName().replace(/\.docx$/i,'.pdf')), {method:'POST', body:blob});
   if (!r.ok) throw new Error((await r.text()).replace(/^PDF не создан:\s*/,'') || 'HTTP '+r.status);
   return r.blob();
 }
@@ -115,7 +115,7 @@ async function pdfFromBlob(blob){
 async function pvPdf(btn){
   if (!PV.blob) return;
   btn.disabled=true; const t=btn.textContent; btn.textContent='Создаю PDF…'; pvMsg('');
-  try{ const pdf=await pdfFromBlob(PV.blob); await saveFile(fileName().replace(/\.docx$/i,'.pdf'), pdf); pvMsg('PDF готов.', 'ok'); }
+  try{ const pdf=await pdfFromBlob(PV.blob); await saveFile(savedFileName().replace(/\.docx$/i,'.pdf'), pdf); pvMsg('PDF готов.', 'ok'); }
   catch(e){ pvMsg(`PDF не создан: ${esc(e.message||e)}. <button class="btn" type="button" data-pva="print">Печать → «Сохранить как PDF»</button>`, 'err'); }
   btn.disabled=false; btn.textContent=t;
 }

@@ -7,6 +7,11 @@ document.addEventListener('input', e=>{
     let v=t.value; if (t.dataset.p.endsWith('.qty')) { v=v.replace(/\D/g,''); t.value=v; v = v===''?'':+v; t.classList.toggle('bad', !(v>=1)); }
     setP(t.dataset.p, v);
     if (t.dataset.p==='cover.title'||t.dataset.p.startsWith('cover.')) S.cover.touched=true;
+    if (t.dataset.p.startsWith('tender.')){
+      if (t.dataset.p==='tender.url' && !String(S.tender.number||'').trim()){ const n=tenderNoFromUrl(v); if (n){ S.tender.number=n; const ni=document.querySelector('[data-p="tender.number"]'); if (ni) ni.value=n; } }
+      if (t.dataset.p==='tender.url') t.classList.toggle('bad', !!String(v).trim() && !tenderUrl());
+      document.querySelector('[data-p="tender.number"]')?.classList.toggle('bad', !String(S.tender.number||'').trim());
+      const nt=$('#kkNote'); if (nt) nt.innerHTML=kkNote(); const fn=document.querySelector('#side .fname'); if (fn && S.kpId) fn.textContent=savedFileName(); }
     updateLive();
   } else if (t.dataset.oprice!=null){
     const [i,j]=t.dataset.oprice.split('.').map(Number), o=S.items[i].options[j], k=parsePrice(t.value);
@@ -124,6 +129,8 @@ document.addEventListener('click', async e=>{
     case 'uitexts': document.querySelector('details.topmenu')?.removeAttribute('open'); return uitToggle();
     case 'help': return openHelp();
     case 'versions': return openHelp('versions');
+    case 'kpKind': S.tender=Object.assign({on:false,number:'',url:''}, S.tender||{}, {on:b.dataset.v==='tender'}); break;
+    case 'tenderTpl': S.template='tender'; try{ localStorage.setItem('kp.template',S.template); }catch(_){} toast('Шаблон КП: '+((curTemplate()||{}).name||'')); break;
     case 'pickObject': { const o=(curClient()?.objects||[])[k]; if(o) S.object={...S.object,...o}; break; }
     case 'pickContact': { const o=(curClient()?.contacts||[])[k]; if(o) S.contact={...S.contact,...o}; break; }
     case 'dmode': { const inp=document.querySelector(`[data-disc="${i}"]`); it.discType=b.dataset.v; if (it.disc) it.disc.type=b.dataset.v;

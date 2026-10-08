@@ -493,6 +493,13 @@ class Handler(BaseHTTPRequestHandler):
             name = safe_file(q.get('name'))
             sub = safe_dir(q.get('dir'))            # папка менеджера (фамилия)
             rel = (sub + '/' + name) if sub else name
+            # имя занято файлом другого КП (два КП по одной закупке: «4567892 КП») — «4567892 КП (2)», «(3)»…
+            stem, ext = os.path.splitext(name)
+            for k in range(2, 100):
+                if not store().kp_docx_owner(rel, kid):
+                    break
+                name = '%s (%d)%s' % (stem, k, ext)
+                rel = (sub + '/' + name) if sub else name
             f = docs_path(rel)
             os.makedirs(os.path.dirname(f), exist_ok=True)
             write_bytes(f, self.body())

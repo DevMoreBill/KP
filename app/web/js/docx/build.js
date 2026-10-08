@@ -34,6 +34,7 @@ function equipShort(){
 
 // имя файла КП — по образцу из шаблона (fileName), метки: {номер} {префикс} {клиент} {оборудование} {дата}
 function fileName(settings){
+  if (tenderNo()) return (fsafe(tenderNo()).replace(/[\\/:*?"<>|]/g,'').slice(0,60) || 'Тендер') + ' КП.docx';     // тендер: «4567892 КП.docx»
   const c = fsafe(String(S.client||'клиент').replace(/^(ООО|АО|ПАО|ЗАО|ИП|ОАО)\s+/i,'')).slice(0,40) || 'клиент';
   const eq = fsafe(equipShort()).slice(0,60);
   const pk = TPL_CACHE[S.template], tl = curTemplate() || {};
@@ -44,6 +45,9 @@ function fileName(settings){
     .replace(/[\\/:*?"<>|]/g,'').replace(/_{2,}/g,'_').replace(/^[_\s-]+|[_\s-]+$/g,'');
   return (name || 'КП') + '.docx';
 }
+
+// имя файла, как его сохранил сервер: «4567892 КП (2).docx», если «4567892 КП» уже у другого КП той же закупки
+function savedFileName(){ const fn=fileName(), sv=S._file||''; return sv && sv.replace(/ \(\d+\)(?=\.docx$)/i,'')===fn ? sv : fn; }
 
 function managerFolder(){ const m=S.manager||{}; return fsafe(m.folder || String(m.name||'').trim().split(/\s+/)[0] || '').slice(0,40); }
 
@@ -186,13 +190,15 @@ async function download(){
     if (!S.managerId && String(S.manager.name||'').trim()) await saveManager(true);   // новый менеджер попадает в справочник
     if (!S.authorId) S.authorId=meId()||S.managerId||'';
     const t=totalsS(), fn=fileName();
-    await api(`/api/kp/${S.kpId}/docx?name=${encodeURIComponent(fn)}&dir=${encodeURIComponent(managerFolder())}`,{method:'PUT',body:blob});
+    // имя файла может получить «(2)», если такое уже занято другим КП (два КП по одному тендеру)
+    const dr=await api(`/api/kp/${S.kpId}/docx?name=${encodeURIComponent(fn)}&dir=${encodeURIComponent(managerFolder())}`,{method:'PUT',body:blob});
+    const fnSaved=(dr && dr.rel ? String(dr.rel).split('/').pop() : '') || fn; S._file=fnSaved;
     if (!S.createdAt) S.createdAt=new Date().toISOString();   // когда КП создано (для журнала)
     const clean=JSON.parse(JSON.stringify(S,(k,v)=>k.startsWith('_')?undefined:v));
     const sr=await api(`/api/kp/${S.kpId}/state`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8',...(S._rev!=null?{'X-KP-Rev':String(S._rev)}:{})},body:JSON.stringify(clean)});
     if (sr && sr.rev!=null) S._rev=sr.rev;
     const meta={ id:S.kpId, number:S.number, date:S.date, client:S.client, clientInn:S.clientInn||'', sum:t.sum, units:t.units, positions:S.items.length,
-      items:S.items.map(x=>x.name).slice(0,3), file:fn, manager:S.manager.name, managerPost:S.manager.position||'',
+      items:S.items.map(x=>x.name).slice(0,3), file:fnSaved, manager:S.manager.name, tender: tenderNo() ? {number:tenderNo(), url:tenderUrl()} : undefined, managerPost:S.manager.position||'',
       createdAt:S.createdAt, savedAt:new Date().toISOString(), econ:kpEconomics(), authorId:S.authorId||'', managerId:S.managerId||'', deal:dealSummary() };
     await api(`/api/kp/${S.kpId}/meta`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(meta)});
     // PDF рядом с .docx — по галочке «Также сохранить в PDF»

@@ -99,6 +99,7 @@ function kpSkeleton(KP) {
     texts: {
       coverKicker: 'Технико-коммерческое предложение',
       recipient: 'Получатель', object: 'Объект', date: 'Дата',
+      tender: 'Закупка (тендер) № {тендер}', tenderLink: 'Ссылка на закупку: ',
       inn: 'ИНН {inn}', attention: 'Вниманию: {contact}', supplyUnits: 'Поставка оборудования: {units} ед.',
       coverMultiTitle: 'Оборудование',
       coverMultiDesc: 'В предложение входят {count} оборудования. Характеристики каждой модели приведены на отдельной странице.',
@@ -241,6 +242,10 @@ function kpSkeleton(KP) {
       sp: s.spacing ? Math.round(+s.spacing * 20) : 0 }, extra || {});
   }
   const txt = (key, vars) => fill(T[key] == null ? '' : T[key], vars || {});
+  // КП для тендера: номер закупки и ссылка (только http/https) — строка в начале документа, ссылка кликабельна
+  const tenderOf = S => { const t = S && S.tender; if (!t || !t.on || !String(t.number || '').trim()) return null;
+    const u = String(t.url || '').trim(); return { number: String(t.number).trim(), url: /^https?:\/\/\S+$/i.test(u) ? u : '' }; };
+  const linkRun = (t, o) => r(t, o).replace(/<w:lang /g, '<w:u w:val="single"/><w:lang ');
   const brandRuns = (styleName) => { const s = sty(styleName); return (TPL.brandParts || []).map(([t, c]) => r(t, { sz: s.sz, color: COL(c), b: s.b, mk: TPL.design ? 'KPS_' + styleName : '' })).join(''); };
 
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -400,6 +405,9 @@ function kpSkeleton(KP) {
       const w2 = cols([6847, 3500]);
       out.push(tbl([[meta(T.recipient, r(S.client, cn), sub, w2[0], true, 'left'), dateCell(w2[1])]], w2));
     }
+    const td = tenderOf(S);
+    if (td) out.push(p(r(txt('tender', { 'тендер': td.number }), 'metaObject') + (td.url ? r('   ' + (T.tenderLink || ''), 'muted')
+      + hyper('rIdTender', linkRun(td.url, sty('muted', { color: '0563C1' }))) : ''), { before: 140, after: 0, line: 240 }));
     out.push(spacer(tight ? 500 : 900));
     const c = S.cover;
     let left = p(r(T.coverKicker, 'coverKicker'), { after: 160 });
@@ -894,6 +902,8 @@ function kpSkeleton(KP) {
     x += (TPL.rels || '') + (TPL.clients ? R(TPL.clients.rid, 'image', 'media/' + TPL.clients.file) : '');
     const m = S.manager || {};
     if (m.email) x += R('rIdMail', 'hyperlink', 'mailto:' + m.email.trim(), true);
+    const td = tenderOf(S);
+    if (td && td.url) x += R('rIdTender', 'hyperlink', td.url, true);
     if (m.site) x += R('rIdSite', 'hyperlink', /^https?:/i.test(m.site) ? m.site.trim() : 'http://' + m.site.trim(), true);
     media.forEach(md => { x += R(md.rid, 'image', 'media/' + md.file); });
     return x + '</Relationships>';

@@ -25,6 +25,7 @@ function stepClient(){
       <div class="grid g3" style="margin-top:12px">${field('КПП','clientKpp')}${field('ОГРН','clientOgrn')}${field('Руководитель','clientDir',{ph:'ФИО'})}</div>
       <div class="grid" style="margin-top:12px">${field('Юридический адрес','clientAddr')}</div></div>`;
   return `<section class="step" id="st-client"><h2><span class="n">1</span>Клиент${tip(`<p>Начните вводить название или ИНН: поиск идёт по вашему справочнику клиентов${CLIENTS_ALL?` (${CLIENTS_ALL})`:''}, а по ИНН — в реестре ФНС; реквизиты заполнятся сами.</p><p>Контактное лицо и объект необязательны: контакт выводится на титуле («Вниманию: …»), объект — для каких нужд и куда поставка.</p><p>Ключи Checko и DaData, загрузка клиентов списком ИНН — в меню «⋯» вверху.</p>`)}</h2>
+  ${tenderBlock()}
   <div class="csec"><p class="sub">Кому</p>${has ? summary : finder}${(has&&edit)||S._clManual ? form : ''}${has?checkLine():''}</div>
   <div class="csec"><p class="sub">Контактное лицо <span class="muted">необязательно</span></p>
    ${cons.length?`<div class="chips" style="margin-bottom:8px"><span class="muted" style="font-size:13px">Ранее:</span>${cons.slice(0,4).map((c,k)=>`<button class="chip sm" type="button" data-a="pickContact" data-k="${(cl.contacts||[]).indexOf(c)}">${esc(c.name)}${c.post?' — '+esc(c.post):''}</button>`).join('')}</div>`:''}
@@ -37,3 +38,25 @@ function stepClient(){
   <div class="csec"><div class="grid g2">${field('Дата КП','date',{type:'date',req:1})}${field('Город','city')}</div></div>
   </section>`;
 }
+
+// ---------- вид КП: обычное или для тендера. Тендер — номер и ссылка на закупку в КП, журнале; файл «<номер> КП.docx / .pdf»
+function tenderOn(){ return !!(S.tender && S.tender.on); }
+function tenderNo(){ return tenderOn() ? String(S.tender.number||'').trim() : ''; }
+function tenderUrl(){ const u=tenderOn() ? String(S.tender.url||'').trim() : ''; return /^https?:\/\/\S+$/i.test(u) ? u : ''; }
+// номер закупки из ссылки: ЕИС (regNumber=…), площадки (…/tender/123456, …?id=…), иначе — самая длинная группа цифр от 6 знаков
+function tenderNoFromUrl(u){ u=String(u||''); let m=/[?&](?:regNumber|purchaseNumber|noticeNumber|lotNumber)=(\d{5,})/i.exec(u)
+    || /(?:tender|purchase|trade|lot|procedure|auction|zakupk\w*|notice)[\w-]*[/=_-](\d{5,})/i.exec(u);
+  if (m) return m[1]; const all=u.replace(/^https?:\/\/[^/]+/i,'').match(/\d{6,}/g)||[]; return all.sort((a,b)=>b.length-a.length)[0]||''; }
+function tenderHost(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return ''; } }
+function tenderBlock(){ const on=tenderOn(), T=S.tender||{}, url=String(T.url||'').trim(), badUrl=url && !tenderUrl();
+  const tt=TEMPLATES.find(t=>t.id==='tender' && !t.error), useTpl = on && tt && S.template!=='tender';
+  return `<div class="csec kp-kind${on?' on':''}" id="st-tender"><div class="kk-head"><p class="sub">Вид КП</p>
+      <div class="seg" role="radiogroup" aria-label="Вид КП"><button type="button" role="radio" aria-checked="${!on}" class="${on?'':'on'}" data-a="kpKind" data-v="std">Обычное</button><button type="button" role="radio" aria-checked="${on}" class="${on?'on':''}" data-a="kpKind" data-v="tender">Для тендера</button></div></div>
+    ${on?`<div class="grid kk-grid">${field('№ закупки (тендера)','tender.number',{req:1,ph:'Например: 4567892',cls:T.number&&String(T.number).trim()?'':'bad'})}
+        <label class="f"><span>Ссылка на закупку <span class="muted">необязательно</span></span><input type="url" data-p="tender.url" value="${esc(url)}" placeholder="https://zakupki.gov.ru/…" autocomplete="off" class="${badUrl?'bad':''}"></label></div>
+      <p class="muted kk-note" id="kkNote">${kkNote()}</p>
+      ${useTpl?`<p class="kk-tpl">Для тендеров есть строгий шаблон «${esc(tt.name)}» — без графики, с реквизитами, подписью и печатью. <button type="button" class="lnk" data-a="tenderTpl">Применить</button></p>`:''}`
+    :`<p class="muted kk-note">Для тендера номер закупки и ссылка на неё появятся в КП и журнале, а файлы будут называться «№ закупки КП».</p>`}</div>`; }
+function kkNote(){ const n=tenderNo(), u=String((S.tender||{}).url||'').trim();
+  return (n ? `Файлы: <b>${esc(savedFileName())}</b> и <b>${esc(savedFileName().replace(/\.docx$/i,'.pdf'))}</b>.` : 'Номер закупки — в названии файлов: «4567892 КП.docx».')
+    + (u && !tenderUrl() ? ' <span class="bad-t">Ссылка должна начинаться с http:// или https://</span>' : u ? ` Площадка: ${esc(tenderHost(u))}.` : ''); }
