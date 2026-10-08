@@ -129,8 +129,12 @@ document.addEventListener('click', async e=>{
     case 'uitexts': document.querySelector('details.topmenu')?.removeAttribute('open'); return uitToggle();
     case 'help': return openHelp();
     case 'versions': return openHelp('versions');
-    case 'kpKind': S.tender=Object.assign({on:false,number:'',url:''}, S.tender||{}, {on:b.dataset.v==='tender'}); break;
-    case 'tenderTpl': S.template='tender'; try{ localStorage.setItem('kp.template',S.template); }catch(_){} toast('Шаблон КП: '+((curTemplate()||{}).name||'')); break;
+    case 'kpKind': { const on=b.dataset.v==='tender', was=tenderOn(); S.tender=Object.assign({on:false,number:'',url:''}, S.tender||{}, {on});
+      // тендерное КП — в шаблоне «Тендерный»; обратно — прежний шаблон
+      const tt=TEMPLATES.find(t=>t.id==='tender' && !t.error);
+      if (on && !was && tt && S.template!=='tender'){ S._tplPrev=S.template; S.template='tender'; toast('Шаблон КП: '+tt.name); }
+      else if (!on && was && S.template==='tender'){ const pv=TEMPLATES.find(t=>t.id===(S._tplPrev||'pnevmotekh') && !t.error); if (pv){ S.template=pv.id; toast('Шаблон КП: '+pv.name); } delete S._tplPrev; }
+      break; }
     case 'pickObject': { const o=(curClient()?.objects||[])[k]; if(o) S.object={...S.object,...o}; break; }
     case 'pickContact': { const o=(curClient()?.contacts||[])[k]; if(o) S.contact={...S.contact,...o}; break; }
     case 'dmode': { const inp=document.querySelector(`[data-disc="${i}"]`); it.discType=b.dataset.v; if (it.disc) it.disc.type=b.dataset.v;

@@ -34,7 +34,7 @@ function equipShort(){
 
 // имя файла КП — по образцу из шаблона (fileName), метки: {номер} {префикс} {клиент} {оборудование} {дата}
 function fileName(settings){
-  if (tenderNo()) return (fsafe(tenderNo()).replace(/[\\/:*?"<>|]/g,'').slice(0,60) || 'Тендер') + ' КП.docx';     // тендер: «4567892 КП.docx»
+  if (tenderNo()) return tenderFileName(settings);
   const c = fsafe(String(S.client||'клиент').replace(/^(ООО|АО|ПАО|ЗАО|ИП|ОАО)\s+/i,'')).slice(0,40) || 'клиент';
   const eq = fsafe(equipShort()).slice(0,60);
   const pk = TPL_CACHE[S.template], tl = curTemplate() || {};
@@ -48,6 +48,15 @@ function fileName(settings){
 
 // имя файла, как его сохранил сервер: «4567892 КП (2).docx», если «4567892 КП» уже у другого КП той же закупки
 function savedFileName(){ const fn=fileName(), sv=S._file||''; return sv && sv.replace(/ \(\d+\)(?=\.docx$)/i,'')===fn ? sv : fn; }
+
+// тендер: «<№ закупки> КП <поставщик> <заказчик>.docx», например «4567892 КП ПНЕВМОТЕХ ПАВЛИК.docx»
+function tenderFileName(settings){
+  const clean = s => String(s||'').replace(/[«»"'\\/:*?<>|\x00-\x1f]/g,'').replace(/\s+/g,' ').trim();
+  const pk = TPL_CACHE[S.template], st = settings || (pk && pk.settings) || {}, tl = curTemplate() || {};
+  const sup = clean(st.company || tl.company || (st.brandParts||[]).map(x=>x[0]).join('') || 'ПНЕВМОТЕХ').slice(0,40);
+  const cl = clean(String(S.client||'').replace(/^(ООО|АО|ПАО|ЗАО|ИП|ОАО|НАО)\s+/i,'')).slice(0,60);
+  return [clean(tenderNo()).slice(0,60) || 'Тендер', 'КП', sup, cl].filter(Boolean).join(' ') + '.docx';
+}
 
 function managerFolder(){ const m=S.manager||{}; return fsafe(m.folder || String(m.name||'').trim().split(/\s+/)[0] || '').slice(0,40); }
 
