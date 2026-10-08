@@ -37,7 +37,7 @@ async function stFeeds(m){
         ${x.job&&x.job.state==='run'?`<span class="ok-t">${x.job.kind==='import'?'Загружаю':'Проверяю'}… ${x.job.done}/${x.job.total||'?'}</span>`:''}</div>
         <div class="acts"><button class="btn" type="button" data-fd="open" data-id="${esc(x.id)}">${x.id===FD.sel?'Свернуть':'Открыть'}</button></div></div>`).join('')}</div>`:'<p class="muted">Фидов пока нет.</p>'}</div>
     ${FD.edit?fdForm(FD.edit, true):''}
-    ${f?`<div class="st-card fd-panel" id="fdPanel">${fdForm(f)}${fdIsFiles(f)?fdFiles(f):''}<div id="fdDisc">${fdDisc(f)}</div>${fdActions(f)}<div id="fdJob">${fdJob(f.job)}</div><div id="fdPrev">${FD.prev&&FD.prev.id===f.id?fdPreview(FD.prev, f):''}</div><div id="fdLog"></div></div>`:''}`;
+    ${f?`<div class="st-card fd-panel" id="fdPanel">${fdForm(f)}${fdIsFiles(f)?fdFiles(f):fdExtra(f)}<div id="fdDisc">${fdDisc(f)}</div>${fdActions(f)}<div id="fdJob">${fdJob(f.job)}</div><div id="fdPrev">${FD.prev&&FD.prev.id===f.id?fdPreview(FD.prev, f):''}</div><div id="fdLog"></div></div>`:''}`;
   m.onclick=e=>fdClick(e, m);
   m.oninput=e=>{ const t=e.target; if (t.dataset.fdd==='kwMax'){ const l=t.parentNode.querySelector('.fd-dku'); if (l) l.hidden=!t.value.trim(); } };
   m.onchange=e=>{ const t=e.target;
@@ -88,6 +88,16 @@ function fdFiles(f){
     <p class="muted fd-note" id="fdUpSt"></p></div>`;
 }
 
+// фид YML: файл описаний (JSON) — описания серий и позиций, которых нет в фиде, логотипы марок
+function fdExtra(f){
+  const ex=(f.files||{}).extra;
+  const hint='<p>Необязательно. Если в фиде у части позиций нет описания или вместо него рекламный текст сайта, загрузите файл описаний (JSON):</p><p><b>series</b> — описание серии: раздел фида (cats — id, names — название), при необходимости шаблон названия (match); mode «empty» — только позициям без описания, «replace» — вместо описания фида;</p><p><b>items</b> — описание отдельной позиции (oid — id предложения или url — ссылка на товар);</p><p><b>logos</b> — логотипы марок (картинка data:image/…), если в каталоге логотипа марки ещё нет.</p><p>Описание из файла важнее описания со страницы товара. Цены и наличие по-прежнему берутся из фида.</p>';
+  const info=ex?`${stNum(ex.series)} ${plural(ex.series,'серия','серии','серий')}, ${stNum(ex.rows)} ${plural(ex.rows,'позиция','позиции','позиций')}${ex.logos?`, логотипов: ${stNum(ex.logos)}`:''}`:'';
+  return `<div class="fd-files"><div class="fd-file"><div><b>Описания к фиду (JSON)</b>${tip(hint)}<br>${ex?`<span class="muted">${esc(ex.name)} · ${esc(fdDate(ex.at))} · ${info}</span>`:'<span class="muted">не загружен — описания только из фида</span>'}</div>
+      <div class="fd-fbtn"><label class="btn fd-up"><input type="file" accept=".json,application/json" data-fdfile="extra" hidden>${ex?'Заменить файл':'Загрузить файл'}</label>${ex?'<button class="btn ghost" type="button" data-fd="fdrop" data-kind="extra" title="Убрать файл">✕</button>':''}</div></div>
+    <p class="muted fd-note" id="fdUpSt"></p></div>`;
+}
+
 const XLSX_ACC='.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const fdCurName = c => (FD_CURS.find(x=>x[0]===c)||[c,c])[1];
 // прайсы фида: несколько файлов (у дистрибьютора — книга на каждую марку); прежний единственный — слот «price»
@@ -128,6 +138,7 @@ async function fdUpload(input, m){
       if (!r.ok) throw new Error(`«${file.name}»: `+await r.text());
       const meta=await r.json(); done.push(meta);
       toast(kind==='pages' ? `Парс сайта загружен: ${stNum(meta.rows)} ${plural(meta.rows,'позиция','позиции','позиций')}`
+        : kind==='extra' ? `Описания загружены: ${stNum(meta.series)} ${plural(meta.series,'серия','серии','серий')}, ${stNum(meta.rows)} ${plural(meta.rows,'позиция','позиции','позиций')}. Нажмите «Загрузить в каталог», чтобы обновить описания`
         : kind==='stock' ? `Остатки загружены: ${stNum(meta.rows)} ${plural(meta.rows,'модель','модели','моделей')}, в наличии ${stNum(meta.inStock)}. Нажмите «… и остатки», чтобы перенести их в каталог`
         : `Прайс «${file.name}» загружен: ${stNum(meta.rows)} ${plural(meta.rows,'строка','строки','строк')}, с ценой ${stNum(meta.withPrice)}${(meta.sheetCurs||[]).some(x=>x.rows&&!x.cur)?' — у части листов не указана валюта, выберите её':''}`);
     }
@@ -260,9 +271,10 @@ function fdPreview(p, f){
   const mt=p.match||{};
   const sum = files
     ? [['позиций', p.total], ['с ценой из прайса', p.withPrice], ['с фото', p.withPhoto], ['уже в каталоге', p.inCatalog]]
-    : [['товаров', p.total], ['в наличии', p.available], ['с ценой', p.withPrice], ['с остатком', p.withQty], ['с фото', p.withPhoto], ['уже в каталоге', p.inCatalog]];
+    : [['товаров', p.total], ['в наличии', p.available], ['с ценой', p.withPrice], ['с остатком', p.withQty], ['с фото', p.withPhoto], ['с описанием', p.withDesc], ['уже в каталоге', p.inCatalog]].filter(([,v])=>v!=null);
   return `<div class="fd-sum">${sum.map(([t,v])=>`<span><b>${stNum(v)}</b> ${t}</span>`).join('')}${p.shop&&!files?`<span class="muted">${esc(p.shop)}${p.date?' · '+esc(p.date):''}</span>`:''}</div>
     ${files&&p.match?`<p class="muted fd-match">Сопоставление с прайсом: строка прайса нашлась у ${stNum(mt.matched)} ${plural(mt.matched,'позиции','позиций','позиций')} парса${mt.how?` (по названию ${mt.how.name||0}, без знаков ${mt.how.key||0}, по модели ${(mt.how.model||0)+(mt.how.short||0)+(mt.how.set||0)})`:''}; строк прайса без страницы на сайте — ${stNum(mt.priceOnly)}${f&&f.priceOnly?' (загружаются как отдельные позиции, разделы «Прайс / …»)':' (не загружаются — есть настройка «Добавлять и позиции, которых нет в парсе»)'}. Позиции без строки прайса или с пустой ценой («по запросу») загружаются без цены.</p>`:''}
+    ${!files&&p.extra?`<p class="muted fd-match">Файл описаний: описание из файла получили ${stNum(p.extra.applied)} ${plural(p.extra.applied,'позиция','позиции','позиций')} фида (серий в файле — ${stNum(p.extra.series)}, позиций — ${stNum(p.extra.items)}).</p>`:''}
     <div class="sub">Категории ${files?'парса':'фида'} → категории программы ${tip('По умолчанию категория определяется по названию каждой позиции: разделы фида часто — подборки («200 л/мин», «С ресивером»), где вперемешку винтовые и поршневые. Выберите категорию, только если весь раздел — одно и то же, или «не загружать».')}</div>
     <div class="fd-tw"><table class="fd-t"><thead><tr><th>Категория ${files?'в парсе':'в фиде'}</th><th class="num">Товаров</th><th class="num">В каталоге</th><th>По названию</th><th>Категория программы</th></tr></thead>
       <tbody>${p.cats.map(c=>`<tr><td>${esc(c.path)}</td><td class="num">${c.count}</td><td class="num">${c.inCatalog||''}</td><td class="muted">${fdKinds(c.kinds)}</td><td>${tsel(c.id, FD.cats[c.id]??c.map)}</td></tr>`).join('')}</tbody></table></div>
@@ -330,9 +342,9 @@ async function fdClick(e, m){
     if (a==='cancel'){ FD.edit=null; return stFeeds(m); }
     if (a==='open'){ FD.sel = FD.sel===b.dataset.id ? null : b.dataset.id; FD.prev=null; FD.cats={}; FD.disc=null; FD.plan=null; return stFeeds(m); }
     if (a.startsWith('disc')) return fdDiscClick(a, b, m);
-    if (a==='fdrop'){ const pr=b.dataset.kind==='price';
-      if (!await stConfirm(pr?'Убрать прайс?':'Убрать файл остатков?', pr?'Цены из этого файла перестанут обновляться; уже записанные в каталог останутся.':'Наличие в каталоге обновится при следующем «Обновить цены…» — у всех позиций станет «нет данных».', 'Убрать')) return;
-      await fdFileSet(m, {kind:b.dataset.kind, slot:b.dataset.slot||'', act:'drop'}); toast(pr?'Прайс убран':'Файл остатков убран'); return; }
+    if (a==='fdrop'){ const pr=b.dataset.kind==='price', ex=b.dataset.kind==='extra';
+      if (!await stConfirm(pr?'Убрать прайс?':ex?'Убрать файл описаний?':'Убрать файл остатков?', pr?'Цены из этого файла перестанут обновляться; уже записанные в каталог останутся.':ex?'Описания, уже записанные в каталог, останутся; при следующей загрузке позиции получат описание из фида.':'Наличие в каталоге обновится при следующем «Обновить цены…» — у всех позиций станет «нет данных».', 'Убрать')) return;
+      await fdFileSet(m, {kind:b.dataset.kind, slot:b.dataset.slot||'', act:'drop'}); toast(pr?'Прайс убран':ex?'Файл описаний убран':'Файл остатков убран'); return; }
     const form=b.closest('[data-fdform]') || m.querySelector(`[data-fdform="${FD.sel}"]`);
     if (a==='save'){ const isNew=form.dataset.fdform==='new', v=fdVals(form);
       const old=isNew?{}:(await aapi('feeds')).items.find(x=>x.id===FD.sel)||{};

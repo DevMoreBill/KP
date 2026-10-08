@@ -50,6 +50,10 @@ _CACHE = {}             # id фида → (время, url, разобранны
 _LOCK = threading.Lock()
 STOCK_TAGS = ('count', 'quantity', 'stock_quantity', 'stock', 'amount', 'qty', 'instock', 'in_stock')
 STOCK_PARAM = re.compile(r'^(остаток|остатки|наличие|в наличии|количество( на складе)?|склад)$', re.I)
+WH_PARAM = re.compile(r'^(?:склад|остаток на складе|остаток)\s+(?:в\s+)?(\S.*)$', re.I)   # «Склад Новосибирск» = 2 — остаток склада
+BRAND_PARAM = re.compile(r'^(бренд|марка|производитель|торговая марка)$', re.I)
+JUNK_PARAM = re.compile(r'^(array|object|null|undefined)$', re.I)     # «Картинки галереи: Array» — служебные поля сайта
+JUNK_PNAME = re.compile(r'\(для авито\)|^(цена|стоимость)\b|^(картинки галереи|полезные документы|видео)$', re.I)  # поля для площадок, цена
 
 
 def _now():
@@ -140,8 +144,10 @@ def feed_file_put(store, fid, kind, data, name, slot=None):
     Прайс: slot — какой заменить; иначе заменяется прайс с тем же поставщиком в имени файла (price_slot), без slot —
     и прежний единственный прайс фида (слот «price»); «new» и не нашлось — прайс добавляется."""
     f = feed_get(store, fid)
-    if not f or f.get('kind') != 'files':
-        raise ValueError('Файлы принимает только фид из файлов')
+    if not f:
+        raise ValueError('Фид не найден')
+    if (kind == 'extra') == (f.get('kind') == 'files'):
+        raise ValueError('Фид из файлов принимает парс, прайсы и остатки; фид YML — только файл описаний (JSON)')
     old = None
     if kind == 'price':
         have = price_files(f)
@@ -185,15 +191,15 @@ def feed_file_set(store, fid, kind, slot, act, cur='', sheet=''):
     (sheet — только для этого листа)."""
     items = feeds(store)
     x = next((i for i in items if i.get('id') == fid), None)
-    if not x or x.get('kind') != 'files':
+    if not x or (x.get('kind') != 'files' and kind != 'extra'):
         raise ValueError('Фид из файлов не найден')
     fl = x.setdefault('files', {})
     cur = str(cur or '').upper()[:3]
     if cur and not re.match(r'^[A-Z]{3}$', cur):
         raise ValueError('Валюта — трёхбуквенный код (EUR, USD, RUB, CNY)')
-    if kind == 'stock' and act == 'drop':
-        feed_files.drop_file(DATA_DIR, fid, 'stock')
-        fl.pop('stock', None)
+    if kind in ('stock', 'extra') and act == 'drop':
+        feed_files.drop_file(DATA_DIR, fid, kind)
+        fl.pop(kind, None)
     elif kind == 'price':
         lst = price_files(x)
         m = next((i for i in lst if i['slot'] == slot), None)
@@ -355,7 +361,9 @@ def page_desc(html):
 
 SALES_RX = (r'(?i)tel:|\b8[\s-]?800\b|\+7[\s(]|\b8[\s-]?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}\b|оставьте заявку|'
             r'обратн\S* связ|свяжутся с\s*вами|наши (специалисты|менеджеры)|чтобы купить|купить .{0,60}\bв\s+(тд|торгов)|'
-            r'@|https?://|www\.|\.(ru|org|com|by)\b')
+            r'@|https?://|www\.|\.(ru|org|com|by)\b|наша компания предлагает|получите подробную информацию|у нашего консультанта|'
+            r'помогут подобрать|наши квалифицированные|наших квалифицированных|'
+            r'представляет собой неприхотлив|характерна величина рабочего давления')       # шаблонный текст сайта вместо описания
 
 
 def _no_sales(text):
@@ -716,7 +724,7 @@ def _page_getter(store):
 
 UNIT_ALIAS = {'литров': 'л', 'литра': 'л', 'литр': 'л', 'л.': 'л', 'кг.': 'кг', 'квт': 'кВт', 'вт': 'Вт', 'в': 'В', 'бар': 'бар',
               'дб': 'дБ', 'дба': 'дБ(А)', 'мм': 'мм', 'см': 'см', 'м': 'м', 'л/мин': 'л/мин', 'м3/мин': 'м³/мин', 'м³/мин': 'м³/мин',
-              'м3/час': 'м³/ч', 'м3/ч': 'м³/ч', 'м³/час': 'м³/ч', 'м³/ч': 'м³/ч', 'дюйм': 'дюйм'}
+              'м3/час': 'м³/ч', 'м3/ч': 'м³/ч', 'м³/час': 'м³/ч', 'м³/ч': 'м³/ч', 'дюйм': 'дюйм', '℃': '°C', '°с': '°C', '°c': '°C'}
 _TR = dict(zip('абвгдеёжзийклмнопрстуфхцчшщъыьэюя', ['a', 'b', 'v', 'g', 'd', 'e', 'e', 'zh', 'z', 'i', 'i', 'k', 'l', 'm', 'n', 'o',
                'p', 'r', 's', 't', 'u', 'f', 'h', 'c', 'ch', 'sh', 'sch', '', 'y', '', 'e', 'yu', 'ya']))
 
@@ -774,19 +782,37 @@ def parse(data):
         oid = (el.get('id') or '').strip()
         if not oid:
             continue
-        vendor, model, prefix = _txt(el, 'vendor'), _txt(el, 'model'), _txt(el, 'typePrefix')
+        vendor, model, prefix, sku = _txt(el, 'vendor'), _txt(el, 'model'), _txt(el, 'typePrefix'), _txt(el, 'vendorCode')
         name = _txt(el, 'name') or ' '.join(x for x in (prefix, vendor, model) if x)
         params = []
-        qty = None
+        qty, wh = None, {}
         for p in el.findall('param'):
-            pn, pv = (p.get('name') or '').strip(), re.sub(r'\s+', ' ', p.text or '').strip()
-            if not pn or not pv:
+            pn = re.sub(r'\s+', ' ', re.sub(r'[\xad\u200b-\u200d\ufeff]', '', p.get('name') or '')).strip()
+            pv = re.sub(r'\s+', ' ', p.text or '').strip()
+            if not pn or not pv or JUNK_PARAM.match(pv) or JUNK_PNAME.search(pn) or (pn.lower() == 'спецификация' and pv.isdigit()):
                 continue
             if STOCK_PARAM.match(pn) and _num(pv) is not None:
                 qty = _num(pv)
                 continue
+            m = WH_PARAM.match(pn)
+            if m and _num(pv) is not None:
+                wh[m.group(1).strip()] = wh.get(m.group(1).strip(), 0) + _num(pv)
+                continue
+            if BRAND_PARAM.match(pn) and not vendor:        # марка и модель — параметрами, а не тегами vendor / model
+                vendor = pv
+                continue
+            if re.match(r'^модель$', pn, re.I) and not model:
+                model = pv
+                continue
+            if re.match(r'^(код номенклатуры|артикул)$', pn, re.I) and not sku:
+                sku = pv
+                continue
             k, u = _param_name(pn, (p.get('unit') or '').strip())
+            if re.search(r'мощност', k, re.I):        # «90-4», «200-4 B35» — мощность и число полюсов (исполнение) двигателя
+                pv = re.sub(r'^(\d+(?:[.,]\d+)?)-[2468](?:\s*B\d+)?$', r'\1', pv)
             params.append({'k': k, 'u': u, 'v': pv})
+        if wh and qty is None:
+            qty = sum(wh.values())
         for tag in STOCK_TAGS:
             v = _num(_txt(el, tag))
             if v is not None:
@@ -797,24 +823,30 @@ def parse(data):
             qty = sum(x for x in outs if x is not None)
         avail_attr = (el.get('available') or '').strip().lower()
         available = avail_attr not in ('false', '0', 'no') if avail_attr else (qty is None or qty > 0)
+        desc = _no_sales(_html_text((el.find('description').text if el.find('description') is not None else '') or ''))
         cur = (_txt(el, 'currencyId') or 'RUB').upper()
         cat = _txt(el, 'categoryId')
         offers.append({'oid': oid, 'name': name[:300], 'cat': cat, 'path': (cats.get(cat) or {}).get('path', ''), 'url': _clean_url(_txt(el, 'url')),
                        'price': _num(_txt(el, 'price')), 'oldprice': _num(_txt(el, 'oldprice')), 'cur': 'RUB' if cur in ('RUR', 'RUB') else cur,
-                       'vendor': vendor, 'model': model, 'sku': _txt(el, 'vendorCode'), 'barcode': _txt(el, 'barcode'),
+                       'vendor': vendor, 'model': model, 'sku': sku, 'barcode': _txt(el, 'barcode'),
                        'pictures': [re.sub(r'\s+', '', p.text) for p in el.findall('picture') if p.text and p.text.strip()][:12],
-                       'desc': _html_text((el.find('description').text if el.find('description') is not None else '') or ''),
-                       'params': params, 'available': available, 'qty': qty,
+                       'desc': desc, 'params': params, 'available': available, 'qty': qty,
+                       'stockInfo': {'wh': sorted(([w, n] for w, n in wh.items()), key=lambda t: -t[1])} if wh else None,
                        'weight': _num(_txt(el, 'weight')), 'dims': _txt(el, 'dimensions'), 'notes': _txt(el, 'sales_notes')})
     if not offers:
         raise ValueError('В фиде нет товаров (<offer>)')
+    if any(o['stockInfo'] for o in offers):         # остатки по складам: позиции без складов в фиде — не на складе (под заказ)
+        for o in offers:
+            if o['qty'] is None and o['available'] and not o['stockInfo']:
+                o['qty'], o['available'] = 0, False
     return {'shop': _txt(shop, 'name') or _txt(shop, 'company'), 'date': root.get('date') or '', 'cats': cats, 'offers': offers}
 
 
 def load(store, f, fresh=False):
     """Разобранный фид: YML — скачать (кэш 30 минут), из файлов — прочитать сохранённые файлы (кэш до новой загрузки файла)."""
     files = f.get('kind') == 'files'
-    key = json.dumps([f.get('files'), f.get('maker'), f.get('cur'), f.get('priceOnly')], sort_keys=True) if files else f['url']
+    key = json.dumps([f.get('files'), f.get('maker'), f.get('cur'), f.get('priceOnly')], sort_keys=True) if files else \
+        json.dumps([f['url'], (f.get('files') or {}).get('extra')], sort_keys=True)
     with _LOCK:
         c = _CACHE.get(f['id'])
         if c and c[1] == key and (files or (not fresh and (datetime.now() - c[0]).total_seconds() < 1800)):
@@ -828,6 +860,9 @@ def load(store, f, fresh=False):
         feed = feed_files.build_feed(f, feed_files.parse_pages(pages), prices, _param_name, feed_files.parse_stock(stock) if stock else None)
     else:
         feed = parse(fetch(f['url']))
+        extra = feed_files.read_file(DATA_DIR, f['id'], 'extra') if (f.get('files') or {}).get('extra') else None
+        if extra:           # описания серий и позиций, которых нет в фиде, — из файла описаний
+            feed_files.apply_extra(feed, feed_files.parse_extra(extra))
     with _LOCK:
         _CACHE[f['id']] = (datetime.now(), key, feed)
     return feed
@@ -855,7 +890,8 @@ def preview(store, f, types):
         for p in o['params']:
             pn[p['k']] = pn.get(p['k'], 0) + 1
     offs = feed['offers']
-    return {'shop': feed['shop'], 'date': feed['date'], 'total': len(offs), 'cats': cats, 'match': feed.get('match'), 'kind': f.get('kind') or 'yml',
+    return {'shop': feed['shop'], 'date': feed['date'], 'total': len(offs), 'cats': cats, 'match': feed.get('match'), 'extra': feed.get('extra'), 'kind': f.get('kind') or 'yml',
+            'withDesc': sum(1 for o in feed['offers'] if len(o.get('desc') or '') >= 40),
             'available': sum(1 for o in offs if o['available']), 'withPrice': sum(1 for o in offs if o['price']),
             'withQty': sum(1 for o in offs if o['qty'] is not None), 'withPhoto': sum(1 for o in offs if o['pictures']),
             'inCatalog': len(linked & {o['oid'] for o in offs}), 'params': sorted(pn.items(), key=lambda x: -x[1])[:40],
@@ -1333,6 +1369,7 @@ NAME_RULES = [
     (r'угольн\S*\s+колонн', 'filter'),
     (r'компрессор\S*\s+медицинск|медицинск\S*\s+компрессор', 'comp_piston'),   # медицинские Remeza — поршневые безмасляные
     (r'^\s*кожух', 'spare'),
+    (r'^\s*конденсатоотводчик', 'condensate'),          # отдельный узел «Очистка и отвод конденсата»; нет такой категории — ЗИП
     (r'фильтроэлемент|корпус\S*\s+фильтр|патрон\S*\s+воздушн|картридж|блок\S*\s+поршнев|^\s*(поршень|шатун|цилиндр|палец|вкладыш|сапун|'
      r'прессостат|манометр|редуктор|муфта|полумуфта|радиатор|переходник|пластина|термоэлемент|конденсатоотводчик|комплект колец|кольцо)', 'spare'),
     (r'циклонн\S*\s+сепаратор', 'filter'),
@@ -1347,7 +1384,8 @@ PATH_RULES = [
     (r'воздуходувк', 'blower'), (r'генератор\S*\s+азота', 'gen_n2'), (r'генератор\S*\s+кислорода', 'gen_o2'),
     (r'адсорбц\S*\s+осушител|осушител\S*.*адсорбц', 'dryer_ads'), (r'рефрижераторн\S*\s+осушител|осушител\S*.*рефрижер', 'dryer_refrig'), (r'воздушн\S*\s+ресивер', 'receiver'),
     (r'фильтр\S*\s+сжатого воздуха', 'filter'), (r'циклонн\S*\s+сепаратор', 'filter'),
-    (r'винтов\S*\s+(маслозаполн\S*\s+|безмасл\S*\s+)?компрессор|компрессорн\S*\s+станци|лазерн', 'comp_screw'),
+    (r'винтов\S*\s+(маслозаполн\S*\s+|безмасл\S*\s+)?компрессор|компрессорн\S*\s+станци|лазерн|'
+     r'безмасл\S*\s+компрессор\S*\s+(сухого сжатия|с водяным впрыском)', 'comp_screw'),      # Dali CAT, VFW — безмасляные винтовые
     (r'поршнев\S*\s+(маслозаполн\S*\s+|безмасл\S*\s+)?компрессор|медицинск\S*\s+компрессор', 'comp_piston'),
     (r'спиральн\S*\s+компрессор|компрессор\S*\s+серии\s+акс', 'comp_scroll'),
 ]
@@ -1381,6 +1419,14 @@ def item_cat(o, types):
     c = _rule(PATH_RULES, crumbs, ids)      # настоящий раздел сайта (страница товара) надёжнее подборок фида
     if c:
         return c
+    kind = ' '.join(p['v'] for p in o.get('params') or [] if re.match(r'^(вид|тип) компрессора$', p['k'], re.I))
+    c = _rule(PATH_RULES, kind + ' компрессор', ids) if kind else ''       # параметр фида «Вид компрессора: винтовой»
+    if c:
+        return c
+    if re.match(r'^\s*осушител', o['name'], re.I):      # «Осушитель воздуха Dali CAAD-27MP-D», параметр «Осушитель: Адсорбционный»
+        c = _rule(PATH_RULES, ' '.join('осушитель ' + p['v'] for p in o.get('params') or [] if re.match(r'^(тип )?осушител', p['k'], re.I)), ids)
+        if c:
+            return c
     diesel = re.search(r'дизел', o['name'] + ' ' + path, re.I)
     c = catalog_migrate.detect({'name': o['name']}, types)
     if c == 'comp_diesel' and not diesel:     # «Компрессорная станция МВК» — электрическая, винтовая
@@ -1394,6 +1440,8 @@ def item_cat(o, types):
         c = catalog_migrate.detect({'name': seg}, types)
         if c and not (c == 'comp_diesel' and not diesel):
             return c
+    if 'comp_diesel' in ids and re.search(r'бензин\S*\s+(\S+\s+)?компрессор', o['name'], re.I):
+        return 'comp_diesel'                # компрессор с бензиновым двигателем — рядом с дизельными (свой двигатель)
     return ''
 
 
@@ -1450,6 +1498,27 @@ DESC_ATTRS = [       # пустые поля — из описания, когд
     ('receiver', r'ресивер\S*\s+(?:объ[её]мом\s+)?(?:на\s+)?(\d{2,4})\s*(?:л|литр)', 1),
     ('stages', r'(двухступенчат|одноступенчат)', lambda m: '2' if m.group(1).lower().startswith('дву') else '1'),
 ]
+
+
+# параметры фида вида «Частотный преобразователь: есть», «Тип охлаждения: воздушное» → поля категории (Да / Нет, Воздушное / Водяное)
+ROW_ATTRS = (('vsd', r'^частотн|преобразовател\S*\s+частот', ((r'^(есть|да)\b', 'Да'), (r'^нет\b', 'Нет'))),
+             ('dryer', r'^(встроенный\s+)?осушител', ((r'^нет\b', 'Нет'), (r'^(есть|да)\b|встроен|рефриж|адсорб', 'Да'))),
+             ('cooling', r'^(тип\s+)?охлаждени', ((r'воздуш', 'Воздушное'), (r'водян', 'Водяное'))))
+
+
+def row_attrs(t, rows, a):
+    fields = {f.get('key'): f for f in t.get('fields') or []}
+    for key, krx, vals in ROW_ATTRS:
+        f = fields.get(key)
+        if not f or a.get(key) not in (None, ''):
+            continue
+        for r in rows:
+            if not re.search(krx, r['k'], re.I):
+                continue
+            v = next((out for vrx, out in vals if re.search(vrx, str(r['v']).strip(), re.I)), '')
+            if v and (not f.get('values') or v in f['values']):
+                a[key] = v
+            break
 
 
 def desc_attrs(t, text, a):
@@ -1576,6 +1645,7 @@ def build(o, f, types, old=None, put_image=None):
         catalog_migrate.fill_attrs(doc, t, a)
         crumb_attrs(t, (o.get('crumbs') or '') + ' / ' + o['name'], a)
         desc_attrs(t, desc, a)
+        row_attrs(t, rows, a)
     if sp and a['cat'] == 'spare':
         for k, v in (('part', sp['part']), ('forType', sp['forType']), ('forModels', sp['forModels']), ('article', o['sku']),
                      ('forMaker', maker), ('service', sp['service']), ('original', 'Оригинал' if maker and _brand_key(maker) in {_brand_key(m) for m in makers(f)} else '')):
@@ -1584,7 +1654,8 @@ def build(o, f, types, old=None, put_image=None):
     doc['attrs'] = a
     if not doc.get('spec'):             # строка под названием: мощность, производительность, давление, ресивер — потом остальное
         top = {'power': 0, 'flow': 1, 'pressure': 2, 'receiver': 3}
-        best = sorted(rows, key=lambda r: top.get(feed_files.spec_class(r['k']), 9))
+        best = sorted((r for r in rows if not re.match(r'^(нет|есть|да|-)$', str(r['v']).strip(), re.I)),     # «Ресивер: нет» — не в строку
+                      key=lambda r: top.get(feed_files.spec_class(r['k']), 9))
         doc['spec'] = ' · '.join(r['v'] for r in best[:4])[:200]
     if not doc.get('unit'):
         doc['unit'] = 'шт.'
@@ -1814,7 +1885,7 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
                     pstat['img'] += 1
                 elif pi:
                     pstat['noimg'].append(o['name'][:60])
-                if len(pi.get('t') or '') > len(o['desc']) and f.get('kind') != 'files':    # у фида из файлов описание — из парса
+                if len(pi.get('t') or '') > len(o['desc']) and f.get('kind') != 'files' and not o.get('descFixed'):    # у фида из файлов и из файла описаний — своё
                     o['desc'] = pi['t']
                 gal = [u for u in pi.get('imgs') or [] if u not in ph][:9]
                 if gal and f.get('kind') == 'files':       # главное фото — из парса, страница товара добавляет остальные
