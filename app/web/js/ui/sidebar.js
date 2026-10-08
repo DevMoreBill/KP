@@ -6,6 +6,8 @@ function problems(){
   if (!S.client.trim()) p.push(['Укажите получателя','st-client']);
   if (!S.date) p.push(['Укажите дату','st-client']);
   if (S.clientInn && !validInn(S.clientInn)) p.push(['ИНН получателя указан с ошибкой','st-client']);
+  if (tenderOn() && !tenderNo()) p.push(['Тендер: укажите № закупки','st-tender']);
+  if (tenderOn() && String(S.tender.url||'').trim() && !tenderUrl()) p.push(['Тендер: ссылка должна начинаться с https://','st-tender']);
   if (!S.items.length) p.push(['Добавьте хотя бы одну позицию','st-items']);
   S.items.forEach((x,i)=>{
     if (!x.name.trim()) p.push([`Позиция ${i+1}: нет наименования`,'item-'+x.id]);
@@ -42,7 +44,7 @@ function renderSide(){
     <button class="btn dl pv" type="button" data-a="kpPreview" ${S.items.length?'':'disabled'}>Предпросмотр КП</button>
     <button class="btn primary dl" type="button" data-a="download" ${pr.length?'disabled':''}>${S.kpId?'Сохранить изменения КП № '+esc(S.number):'Сохранить КП'}</button>
     <label class="pdftoo"><input type="checkbox" id="pdfToo" ${pdfWanted()?'checked':''}> Также сохранить в PDF</label>
-    <div class="fname">${!S.kpId?'Номер присвоится при сохранении':esc(fileName())}</div><div class="msg" id="dlmsg"></div></div>`);
+    <div class="fname">${!S.kpId?'Номер присвоится при сохранении':esc(savedFileName())}</div><div class="msg" id="dlmsg"></div></div>`);
 }
 
 // нижняя панель телефона: назад, итог (переход к сохранению), далее; на последнем шаге — «Сохранить КП»

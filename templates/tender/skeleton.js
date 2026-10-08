@@ -61,6 +61,7 @@ function kpSkeleton(KP) {
       title: 'Коммерческое предложение', subject: 'на поставку: {предмет}',
       intro: '{компания} предлагает к поставке оборудование в соответствии с приведённой ниже спецификацией на следующих условиях.',
       object: 'Объект: {объект}',
+      tender: 'Закупка (тендер) № {тендер}', tenderLink: ', ссылка на закупку: ',
       offerTitle: '1. Спецификация и стоимость',
       colNo: '№ п/п', colName: 'Наименование товара, производитель, модель', colUnit: 'Ед. изм.', colQty: 'Кол-во',
       colPrice: 'Цена за ед. с НДС, {cur}', colSum: 'Сумма с НДС, {cur}', colPriceNoVat: 'Цена за ед., {cur}', colSumNoVat: 'Сумма, {cur}',
@@ -138,6 +139,10 @@ function kpSkeleton(KP) {
       sp: s.spacing ? Math.round(+s.spacing * 20) : 0 }, extra || {});
   }
   const txt = (key, vars) => fill(T[key] == null ? '' : T[key], vars || {});
+  // КП для тендера: номер закупки и ссылка (только http/https) — строка в начале документа, ссылка кликабельна
+  const tenderOf = S => { const t = S && S.tender; if (!t || !t.on || !String(t.number || '').trim()) return null;
+    const u = String(t.url || '').trim(); return { number: String(t.number).trim(), url: /^https?:\/\/\S+$/i.test(u) ? u : '' }; };
+  const linkRun = (t, o) => r(t, o).replace(/<w:lang /g, '<w:u w:val="single"/><w:lang ');
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const cm = v => Math.round(+v * CM);
   const curCode = S => (S && S.cur && S.cur.code) || 'RUB';
@@ -255,6 +260,9 @@ function kpSkeleton(KP) {
     const c = S.cover || {}, subj = [c.title, c.model].filter(Boolean).join(' ') || (S.items[0] && S.items[0].name) || '';
     out.push(p(r(T.title, 'title'), { jc: 'center', before: 360, after: 60 }));
     if (subj) out.push(p(r(txt('subject', { 'предмет': subj }), 'subject'), { jc: 'center', after: 240 }));
+    const td = tenderOf(S);
+    if (td) out.push(p(r(txt('tender', { 'тендер': td.number }), sty('text', { b: true })) + (td.url ? r(T.tenderLink || ' ', 'text')
+      + `<w:hyperlink r:id="rIdTender">${linkRun(td.url, sty('text', { color: '0563C1' }))}</w:hyperlink>` : ''), { after: 120 }));
     const ob = S.object || {};
     if (BLK.object && (ob.purpose || ob.address)) out.push(p(r(txt('object', { 'объект': [ob.purpose, ob.address].filter(Boolean).join(', ') }), 'text'), { after: 120, jc: 'both' }));
     if (BLK.intro && T.intro) out.push(p(r(txt('intro', { 'компания': TPL.company || '', 'клиент': S.client || '' }), 'text'), { after: 120, jc: 'both', first: 567 }));
@@ -446,8 +454,10 @@ function kpSkeleton(KP) {
       : [tc(logo, lw, { bdr, mar: [0, 0, 120, 0] }), tc(tx, tw, { bdr, mar: [0, 0, 120, 0] })]) : [tc(tx, W, { bdr, mar: [0, 0, 120, 0] })];
     return root + tbl([cells], lw ? (H.logoSide === 'right' ? [tw, lw] : [lw, tw]) : [W]) + END + '</w:hdr>';
   }
-  function relsXml(media) {
+  function relsXml(media, S) {
     let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + (TPL.rels || '');
+    const td = tenderOf(S);
+    if (td && td.url) x += `<Relationship Id="rIdTender" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${esc(td.url)}" TargetMode="External"/>`;
     media.forEach(md => { x += `<Relationship Id="${md.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${esc(md.file)}"/>`; });
     return x + '</Relationships>';
   }
@@ -478,7 +488,7 @@ function kpSkeleton(KP) {
     return {
       document: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + roots.document + '<w:body>' + body + (TPL.sect || '') + '</w:body></w:document>',
       footer: footerXml(S, roots.footer),
-      rels: relsXml(media),
+      rels: relsXml(media, S),
       header: TPL.header && TPL.header.on && roots.header ? headerXml(S, roots.header) : null,
       media, floats
     };

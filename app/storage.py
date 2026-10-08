@@ -177,10 +177,12 @@ def kp_cols(meta):
     """Столбцы журнала КП из описания (meta) для поиска и фильтров."""
     d = meta if isinstance(meta, dict) else {}
     items = d.get('items') if isinstance(d.get('items'), list) else []
+    td = d.get('tender') if isinstance(d.get('tender'), dict) else {}
+    tnd = ['тендер ' + str(td['number'])] if td.get('number') else []     # поиск по номеру закупки и слову «тендер»
     return (str(d.get('client') or '')[:300], re.sub(r'\D', '', str(d.get('clientInn') or ''))[:12], str(d.get('manager') or '')[:200],
             str(d.get('date') or '')[:20], str(d.get('savedAt') or '')[:40],
             norm(' '.join([str(d.get('number') or ''), str(d.get('client') or ''), str(d.get('clientInn') or ''), str(d.get('manager') or '')]
-                          + [str(x) for x in items]))[:1500])
+                          + tnd + [str(x) for x in items]))[:1500])
 
 
 def _fill_columns(st, c):
@@ -707,9 +709,12 @@ class Store:
                       (x['id'], x.get('number'), x.get('state'), x.get('meta'), x.get('docx'), x.get('updated') or _now()) + cols + (rev,))
             c.commit()
 
-    def kp_page(self, q='', author='', limit=50, offset=0):
-        """Журнал КП постранично: поиск по номеру, получателю, ИНН, автору и позициям; фильтр по автору."""
+    def kp_page(self, q='', author='', limit=50, offset=0, kind=''):
+        """Журнал КП постранично: поиск по номеру, получателю, ИНН, автору, позициям и номеру закупки; фильтр по автору
+        и виду КП (kind: tender — для тендера, std — обычные)."""
         where, args = ['meta IS NOT NULL'], []
+        if kind in ('tender', 'std'):        # тендерное КП — в описании есть tender.number (клиент пишет его первым полем)
+            where.append(('' if kind == 'tender' else 'NOT ') + "(meta LIKE '%\"tender\":{\"number\":%')")
         qn = norm(q)
         if qn:
             where.append("search LIKE ? ESCAPE '\\'")
@@ -722,10 +727,15 @@ class Store:
         rows = self.all('SELECT meta FROM kp' + w + ' ORDER BY id DESC LIMIT ? OFFSET ?', args + [int(limit), int(offset)])
         return total, [r[0] for r in rows]
 
-    def kp_metas_where(self, q='', author=''):
+    def kp_metas_where(self, q='', author='', kind=''):
         """Все описания КП под фильтром — для итогов журнала (сумма, прибыль)."""
-        total, rows = self.kp_page(q, author, 10 ** 9, 0)
+        total, rows = self.kp_page(q, author, 10 ** 9, 0, kind)
         return rows
+
+    def kp_docx_owner(self, rel, kid):
+        """Другое КП, чей файл лежит по этому пути (тендерные КП называются «<№ закупки> КП» и могут совпасть)."""
+        r = self.one('SELECT id FROM kp WHERE docx=? AND id<>?', (rel, kid))
+        return r[0] if r else None
 
     def kp_authors(self):
         return [r[0] for r in self.all("SELECT DISTINCT manager FROM kp WHERE meta IS NOT NULL AND manager IS NOT NULL AND manager <> '' "

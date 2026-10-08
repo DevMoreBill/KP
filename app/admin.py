@@ -327,7 +327,7 @@ def history_page(h, store, q):
         limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, int(q.get('offset') or 0))
     except ValueError:
         limit, offset = 50, 0
-    metas = store.kp_metas_where(q.get('q', ''), q.get('author', ''))
+    metas = store.kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', ''))
     rows = _loads(history_out(h, '[' + ','.join(m for m in metas if _loads(m) is not None) + ']')) or []
     rows = [r for r in rows if isinstance(r, dict)]
     s_sum, s_profit, n_profit = 0, 0, 0

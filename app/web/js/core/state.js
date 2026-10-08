@@ -30,6 +30,7 @@ function freshState(){
   try { const m = localStorage.getItem('kp.manager'); if (m) manager = JSON.parse(m); } catch(e){}
   return { client:'', clientId:'', clientInn:'', clientKpp:'', clientOgrn:'', clientFull:'', clientAddr:'', clientDir:'', clientDirPost:'', clientStatus:'',
     contact:{name:'',post:'',phone:'',email:''}, object:{purpose:'',address:''}, check:null,
+    tender:{on:false, number:'', url:''},      // вид КП: обычное или для тендера (номер и ссылка на закупку — в КП, журнале и имени файла)
     date:today(), city:DEF('kp.city')||'', vat:DEFN('kp.vat', 22), showClients:true,
     cover:{ title:'', model:'', desc:'', kpis:[{},{},{},{}], touched:false },
     pricing:{ cur:DEF('kp.cur')||'RUB', rates:{USD:'',EUR:'',CNY:''}, rateDate:'', rateSrc:'', margin:35, mode:'margin', costNoVat:false, round:DEF('kp.round')||'1' },
