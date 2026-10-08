@@ -1650,6 +1650,38 @@ def _redo_attrs(doc, t, a, handmade):
     catalog_migrate.fill_attrs(doc, t, a)
 
 
+def _logo_filler(store, image_store, feed):
+    """Логотип производителя у позиций фида: тот, что уже есть в каталоге у этой марки (любое написание), иначе — из
+    JSON-парса («logos»: картинка сохраняется в папку логотипов). → fill(doc) → True, если логотип поставлен."""
+    have = {_brand_key(v['maker']): v for v in imgfetch.logos(store).values()}
+    jl = {_brand_key(k): v for k, v in (feed.get('logos') or {}).items() if v}
+    state = {'put': None, 'save': None}
+
+    def fill(doc):
+        if (doc.get('logo') or {}).get('src'):
+            return False
+        maker = (doc.get('attrs') or {}).get('maker') or ''
+        mk = _brand_key(maker)
+        if not mk:
+            return False
+        lg = have.get(mk)
+        if not lg and jl.get(mk) and image_store is not None:
+            if state['put'] is None:
+                state['put'], state['save'], _ = _image_putter(store, image_store)
+            g = state['put'](jl[mk], None, maker, '', maker, 'logo', '')
+            if g:
+                lg = have[mk] = {'maker': maker, 'src': g['src'], 'w': g.get('w'), 'h': g.get('h')}
+        if not lg:
+            return False
+        doc['logo'] = {'src': lg['src'], 'w': lg.get('w'), 'h': lg.get('h')}
+        return True
+
+    def save():
+        if state['save']:
+            state['save']()
+    return fill, save
+
+
 def _image_putter(store, image_store):
     cache = store.kv_get('feedimg') or {}
     lock = threading.Lock()
@@ -1758,6 +1790,7 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
                      'trashed': len(plan['dups']) + (len(plan['keep']) if mode == 'build' and trash_missing else 0)}
         j['total'] = len(offs)
         put, save, istat = _image_putter(store, image_store)
+        logo_fill, logo_save = _logo_filler(store, image_store, feed)
         dget, dsave, derr = _page_getter(store)
         ph = _placeholders(feed['offers'])
         pstat = {'img': 0, 'noimg': []}     # страниц товара: с фото / открылись, но фото не найдено
@@ -1798,6 +1831,7 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
                             old = dict(old, photo=None, photoSource=None)
                 o['props'], o['apply'], o['crumbs'] = pi.get('props') or [], pi.get('apply') or '', pi.get('crumbs') or ''
             doc, ch = build(o, f, types, old, put)
+            logo_fill(doc)
             return o, old0, doc, ch
 
         with ThreadPoolExecutor(6) as ex:
@@ -1817,6 +1851,7 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
                     errors.append('%s: %s' % (o['name'][:60], e))
                 j['done'] += 1
         save()
+        logo_save()
         dsave()
         if derr:
             errors.append('Страница товара не открылась (описание, фото, применимость), позиций: %d (первая: %s)' % (len(derr), derr[0]))
@@ -1941,9 +1976,12 @@ def check_feed(store, f, by='', log=print, types=None):
         j['total'] = len(docs)
         today = date.today().isoformat()
         price_ch, stock_ch, gone, upd = [], [], [], 0
+        logo_fill, logo_save = _logo_filler(store, IMAGE_STORE, feed)
         for d in docs:
             o = by_oid.get(d['feed'].get('oid'))
             before = json.dumps([d.get('rrc'), d.get('stock'), d.get('price'), d.get('cost'), d.get('costDisc')], sort_keys=True)
+            if logo_fill(d):            # логотип производителя — и у позиций, загруженных раньше
+                before += '*'
             if o:
                 if o.get('sheet'):
                     d['feed']['sheet'] = o['sheet']
@@ -1971,6 +2009,7 @@ def check_feed(store, f, by='', log=print, types=None):
                 store.catalog_put(d['id'], json.dumps(d, ensure_ascii=False), by or ('Фид «%s»' % f['name']))
                 upd += 1
             j['done'] += 1
+        logo_save()
         cards = None
         if f.get('kind') == 'files' and feed.get('prices'):        # карточки производителя, заведённые вручную
             cc, cards = price_cards(store, f, feed['prices'], today, by, feed.get('stock'))

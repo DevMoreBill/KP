@@ -399,6 +399,9 @@ def parse_pages_json(obj):
         if u.startswith('data:'):
             return _put_asset(u)
         return u if u.startswith('http') else ''
+    # логотипы марок: {"logos": {"EXELUTE": "asset:logo-exelute"}} — у позиций этой марки, если в каталоге логотипа ещё нет
+    raw_logos = obj.get('logos') if isinstance(obj, dict) and isinstance(obj.get('logos'), dict) else {}
+    logos = {str(k).strip().lower(): pic(v) for k, v in list(raw_logos.items())[:50] if isinstance(v, str)}
     out, seen = [], set()
     for it in items:
         if not isinstance(it, dict):
@@ -420,6 +423,7 @@ def parse_pages_json(obj):
         model = str(_jget(it, 'model') or '').strip() or ' '.join(_code_run(name))     # «Ресивер воздушный РВ 110/11» → «РВ 110/11»
         out.append({'cat': str(_jget(it, 'cat') or _url_cat(url) or 'Без категории').strip()[:80], 'name': name[:300], 'url': url,
                     'pictures': [u for u in dict.fromkeys(pic(u) for u in pics) if u][:12], 'brand': str(_jget(it, 'brand') or '').strip()[:60],
+                    'logo': logos.get(str(_jget(it, 'brand') or '').strip().lower(), ''),
                     'desc': _json_desc(_jget(it, 'desc'))[:6000], 'chars': rows, 'model': model[:80]})
     if not out:
         raise ValueError('В JSON не нашлось ни одной позиции с названием и ссылкой на страницу товара')
@@ -1741,9 +1745,14 @@ def build_feed(f, pages, prices, param_name, stock=None):
                 params.append({'k': k2[:60], 'u': u, 'v': v})
             offers[oid] = _offer(oid, p['name'], cid, p['sheet'], '', [], '', params, maker, p['short'], p, cur0)
     offs = list(offers.values())
+    logos = {}                  # логотипы марок из JSON-парса: {марка: kpa:…}
+    for pg in pages:
+        if pg.get('logo'):
+            logos.setdefault(pg.get('brand') or maker, pg['logo'])
     if stock:
         stats['stock'] = apply_stock(offs, stock)
-    return {'shop': f.get('name') or '', 'date': '', 'cats': cats, 'offers': offs, 'match': stats, 'prices': prices, 'stock': stock}
+    return {'shop': f.get('name') or '', 'date': '', 'cats': cats, 'offers': offs, 'match': stats, 'prices': prices, 'stock': stock,
+            'logos': logos}
 
 
 # ---------------------------------------------------------------- ручные карточки каталога ↔ строки прайса
