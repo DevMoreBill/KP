@@ -42,7 +42,7 @@ def feed_dir(data_dir, fid):
     return os.path.join(data_dir, DIR_NAME, images.slug(fid, 40) or 'feed')
 
 
-FILE_NAMES = {'pages': 'pages.csv', 'price': 'price.xlsx', 'stock': 'stock.xlsx'}
+FILE_NAMES = {'pages': 'pages.csv', 'price': 'price.xlsx', 'stock': 'stock.xlsx', 'extra': 'extra.json'}
 
 
 def file_path(data_dir, fid, kind, slot=None):
@@ -75,6 +75,9 @@ def save_file(data_dir, fid, kind, data, name, slot=None):
     if kind == 'pages':
         rows = parse_pages(data)
         meta.update(rows=len(rows), cats=len({r['cat'] for r in rows}))
+    elif kind == 'extra':
+        ex = parse_extra(data)
+        meta.update(rows=len(ex['items']), series=len(ex['series']), logos=len(ex['logos']))
     elif kind == 'stock':
         rows = parse_stock(data)
         meta.update(rows=len(rows), inStock=sum(1 for r in rows if r['qty'] > 0), units=sum(r['qty'] for r in rows),
@@ -428,6 +431,87 @@ def parse_pages_json(obj):
     if not out:
         raise ValueError('В JSON не нашлось ни одной позиции с названием и ссылкой на страницу товара')
     return out
+
+
+# ---------------------------------------------------------------- описания к YML-фиду
+# В фиде поставщика (YML) часть позиций без описания или с рекламным текстом сайта («Наша компания предлагает купить…»).
+# Файл описаний (JSON) дополняет фид: описание серии — по разделу фида (id или название) и, при необходимости, по названию
+# позиции (match — регулярное выражение); описание отдельной позиции — по id предложения или ссылке; логотипы марок.
+# mode серии: «empty» — только позициям без описания, «replace» — вместо описания фида.
+#   {"format": "kp-feed-extra/1", "series": [{"cats": ["116"], "names": ["Двухступенчатые компрессоры"], "match": "EN",
+#     "mode": "replace", "desc": [{"title": "Назначение", "text": "…", "items": ["…"]}]}],
+#     "items": [{"oid": "712", "url": "https://…", "desc": […]}], "logos": {"Dali": "data:image/png;base64,…"}}
+def _url_key(u):
+    u = re.sub(r'^https?://(www\.)?', '', str(u or '').strip().lower())
+    return u.split('?')[0].rstrip('/')
+
+
+def parse_extra(data):
+    """JSON описаний к YML-фиду → {series: [{cats, names, rx, mode, desc}], items: {oid или адрес: desc}, logos: {марка: kpa:…}}."""
+    try:
+        obj = json.loads(_decode(data))
+    except ValueError as e:
+        raise ValueError('JSON описаний не читается: %s' % e)
+    if not isinstance(obj, dict):
+        raise ValueError('В JSON описаний нет разделов series / items')
+    series = []
+    for x in (obj.get('series') or [])[:2000]:
+        if not isinstance(x, dict):
+            continue
+        desc = _json_desc(x.get('desc') or x.get('description'))[:6000]
+        if not desc:
+            continue
+        rx = None
+        if x.get('match'):
+            try:
+                rx = re.compile(str(x['match'])[:300], re.I)
+            except re.error as e:
+                raise ValueError('Описание серии: ошибка в match «%s»: %s' % (x['match'], e))
+        series.append({'cats': {str(c).strip() for c in x.get('cats') or [] if str(c).strip()},
+                       'names': {re.sub(r'\s+', ' ', str(c)).strip().lower() for c in x.get('names') or [] if str(c).strip()},
+                       'rx': rx, 'mode': 'replace' if x.get('mode') == 'replace' else 'empty', 'desc': desc})
+    items = {}
+    for x in (obj.get('items') or [])[:20000]:
+        if not isinstance(x, dict):
+            continue
+        desc = _json_desc(x.get('desc') or x.get('description'))[:6000]
+        if not desc:
+            continue
+        for k in (str(x.get('oid') or '').strip(), _url_key(x.get('url'))):
+            if k:
+                items[k] = desc
+    logos = {}
+    if isinstance(obj.get('logos'), dict):
+        if len(ASSETS) > 4000:
+            ASSETS.clear()
+        for k, v in list(obj['logos'].items())[:50]:
+            ref = _put_asset(v) if isinstance(v, str) and v.startswith('data:') else ''
+            if ref:
+                logos[str(k).strip()] = ref
+    if not series and not items and not logos:
+        raise ValueError('В JSON описаний нет ни описаний серий (series), ни описаний позиций (items)')
+    return {'series': series, 'items': items, 'logos': logos}
+
+
+def apply_extra(feed, ex):
+    """Описания из файла → предложения YML-фида (o.desc, o.descFixed — страница товара его не заменяет); → число позиций."""
+    n = 0
+    for o in feed['offers']:
+        desc = ex['items'].get(o['oid']) or ex['items'].get(_url_key(o.get('url')))
+        if not desc:
+            cname = re.sub(r'\s+', ' ', ((feed['cats'].get(o['cat']) or {}).get('name') or '')).strip().lower()
+            for x in ex['series']:
+                if (o['cat'] in x['cats'] or cname in x['names']) and (not x['rx'] or x['rx'].search(o['name'])):
+                    if x['mode'] == 'replace' or len(o['desc'] or '') < 40:
+                        desc = x['desc']
+                    break
+        if desc:
+            o['desc'], o['descFixed'] = desc, True
+            n += 1
+    if ex['logos']:
+        feed['logos'] = dict(feed.get('logos') or {}, **ex['logos'])
+    feed['extra'] = {'items': len(ex['items']), 'series': len(ex['series']), 'applied': n}
+    return n
 
 
 def parse_pages(data):
