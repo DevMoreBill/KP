@@ -3,18 +3,46 @@
 // Перенос — также перетаскиванием позиций на категорию. Размер окна меняется за угол, «⤢» — на весь экран.
 'use strict';
 
-const FI = { q:'', cat:'', maker:'', series:'', f:{}, rng:{}, priced:false, sort:'main' };
+const FI = { q:'', cat:'', maker:'', series:'', sup:'', f:{}, rng:{}, priced:false, stock:false, sort:'main' };
 
-const FO = { q:'', cat:'', maker:'', series:'', f:{}, rng:{}, priced:false, sort:'name' };
+const FO = { q:'', cat:'', maker:'', series:'', sup:'', f:{}, rng:{}, priced:false, stock:false, sort:'name' };
 
 // состояние окна: режим (позиции КП или опции позиции), отметки, открытая карточка, последний перенос (для отмены)
-const CW = { pend:new Set(), mod:false, optFor:null, F:FI, sel:new Set(), active:null, limit:150, docs:[], view:[], lastCk:null, undo:null, note:'', busy:'', drag:null };
+const CW = { pend:new Set(), mod:false, optFor:null, F:FI, sel:new Set(), active:null, limit:150, docs:[], view:[], lastCk:null, undo:null, note:'', busy:'', drag:null,
+  src:{}, sups:[], tab:'' };      // src — фиды-источники (id → поставщик), sups — справочник поставщиков, tab — вкладка слева (flt / cats)
 
 const cwA = x => x._a || (x._a = attrsOf(x));
 
 const cwNV = (x,k) => { const c=x._nv||(x._nv={}); return k in c ? c[k] : (c[k]=norm(cwA(x)[k])); };
 
-function cwForget(x){ delete x._a; delete x._nv; delete x._hay; }
+function cwForget(x){ delete x._a; delete x._nv; delete x._hay; delete x._sup; }
+
+// ---------- поиск: «DVK30-13» = «DVK D 30-13», «5.5» = «5,5», «далгакиран» = «Dalgakiran», латинская «C» в «СА11» = кириллическая
+const CW_TR={а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ж:'zh',з:'z',и:'i',й:'i',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya'};
+const CW_HG={а:'a',в:'b',е:'e',к:'k',м:'m',н:'h',о:'o',р:'p',с:'c',т:'t',у:'y',х:'x'};
+const cwTr = s => s.replace(/[а-я]/g, c=>CW_TR[c]??c);
+const cwFold = s => s.replace(/[авекмнорстух]/g, c=>CW_HG[c]).replace(/[\s\-./,_()×x*]+/g,'');
+// облегчённая карточка несёт src / art, полная (после сохранения) — feed.id / feed.sku
+const cwSrc = x => x.src || x.feed?.id || '';
+const cwArt = x => x.art || x.feed?.sku || cwA(x).article || '';
+function cwHay(x){ if (x._hay) return x._hay; const a=cwA(x);
+  const plain=norm([x.name, x.spec, x.st||'', cwArt(x), cwSup(x), ...Object.values(a), ...(x.groups||[]).flatMap(g=>(g.rows||[]).map(r=>r.k+' '+r.v))].join(' '));
+  // модель без одиночных букв-исполнений: «DVK D 30-13» → «dvk3013», чтобы «DVK30-13» находил её
+  const m=norm([a.model, x.name, cwArt(x)].filter(Boolean).join(' ')), model=cwFold(m), model2=cwFold(m.replace(/(^|\s)[a-zа-яё](?=\s)/g,' '));
+  return (x._hay={ plain, fold:cwFold(plain), tr:cwTr(plain), model, model2 }); }
+function cwWordHit(h, w){ if (h.plain.includes(w)) return true; const f=cwFold(w); if (f.length>=2 && (h.fold.includes(f) || h.model2.includes(f))) return true;
+  const t=cwTr(w); return t!==w && h.tr.includes(t); }
+// насколько позиция подходит к запросу: модель начинается с запроса → 0, запрос целиком в названии → 1, остальное → 2
+function cwRel(x){ const F=CW.F, q=norm(F.q), f=cwFold(q); if (!q) return 2; const h=cwHay(x);
+  if (f.length>=2 && (cwFold(norm(cwA(x).model||'')).startsWith(f) || h.model.includes(f) || h.model2.includes(f))) return 0; return norm(x.name).includes(q) ? 1 : 2; }
+
+// ---------- поставщик позиции: фид-источник (или поставщик, к которому фид привязан), иначе — по производителю из справочника
+function cwSup(x){ if (x._sup!==undefined) return x._sup; let s='';
+  const src=cwSrc(x); if (src) s=(CW.src[src]||{}).name||src;
+  else { const m=norm(cwA(x).maker); if (m){ const z=CW.sups.find(z=>norm(z.name)===m) || CW.sups.find(z=>(z.makers||[]).some(k=>norm(k)===m)); s=z?z.name:''; } }
+  return (x._sup=s); }
+const CW_NOSUP='Не указан';
+function cwInStock(x){ const st=x.stock; return !!st && !st.gone && (st.qty!=null ? st.qty>0 : !!st.available); }
 
 function cwDlg(){ let d=$('#catdlg'); if(!d){ d=document.createElement('dialog'); d.id='catdlg'; d.className='catwin'; d.setAttribute('aria-label','Каталог'); document.body.appendChild(d); } return d; }
 
@@ -38,10 +66,11 @@ function cwPass(x, skip){ const F=CW.F, a=cwA(x);
   for (const k in F.f) if (k!==skip && F.f[k] && cwNV(x,k)!==norm(F.f[k])) return false;
   for (const k in F.rng){ if (k===skip) continue; const r=F.rng[k]; if(!r) continue; const v=numOf(a[k]);
     if (r.min!==''&&r.min!=null && !(v>=+r.min)) return false; if (r.max!==''&&r.max!=null && !(v<=+r.max)) return false; }
+  if (skip!=='sup' && F.sup && norm(cwSup(x)||CW_NOSUP)!==norm(F.sup)) return false;
   if (F.priced && !x.price) return false;
+  if (F.stock && !cwInStock(x)) return false;
   if (F.q){ if (!F._qw || F._qs!==F.q){ F._qs=F.q; F._qw=norm(F.q).split(' ').filter(Boolean); }
-    const hay=x._hay||(x._hay=norm([x.name,x.spec,x.st||'',...Object.values(a),...(x.groups||[]).flatMap(g=>(g.rows||[]).map(r=>r.k+' '+r.v))].join(' ')));
-    if (!F._qw.every(w=>hay.includes(w))) return false; }
+    const h=cwHay(x); if (!F._qw.every(w=>cwWordHit(h,w))){ const f=cwFold(norm(F.q)); if (f.length<3 || !(h.fold.includes(f) || h.model2.includes(f))) return false; } }
   return true; }
 
 function cwFacet(key, label, inF){ const F=CW.F, cnt=new Map();
@@ -56,35 +85,73 @@ function cwRange(f){ const F=CW.F, r=F.rng[f.key]||{min:'',max:''}, chips=f.chip
   return `<div class="f"><span class="muted">${esc(f.label)}${f.unit?', '+esc(f.unit):''}</span><div class="kw"><input type="text" inputmode="decimal" data-rk="${f.key}" data-rs="min" placeholder="от" value="${esc(r.min??'')}"><input type="text" inputmode="decimal" data-rk="${f.key}" data-rs="max" placeholder="до" value="${esc(r.max??'')}"></div>
     ${chips.length?`<div class="chips">${chips.map(([lo,hi])=>{ const on=String(r.min)===String(lo||'')&&String(r.max)===String(hi??''); return `<button class="chip${on?' on':''}" type="button" data-rc="${f.key}" data-lo="${lo||''}" data-hi="${hi??''}">${hi==null?'от '+fnum(lo):(lo?fnum(lo)+'–'+fnum(hi):'до '+fnum(hi))}</button>`; }).join('')}</div>`:''}</div>`; }
 
-function cwFiltered(){ return CW.F.maker||CW.F.series||Object.values(CW.F.f).some(Boolean)||Object.values(CW.F.rng).some(r=>r&&((r.min??'')!==''||(r.max??'')!==''))||CW.F.priced; }
-// сколько условий отбора включено (фильтры и строка поиска) — для кнопки «Сбросить фильтры» рядом с поиском
-function cwFilterCount(){ const F=CW.F; return [F.maker, F.series, F.priced, String(F.q||'').trim()].filter(Boolean).length + Object.values(F.f).filter(Boolean).length
-  + Object.values(F.rng).filter(r=>r&&((r.min??'')!==''||(r.max??'')!=='')).length; }
-function cwResetBtn(){ const b=$('#cwReset'); if (!b) return; const n=cwFilterCount(); b.hidden=!n; b.querySelector('b').textContent=n; }
+const cwRngOn = r => r && ((r.min??'')!=='' || (r.max??'')!=='');
+function cwFiltered(){ const F=CW.F; return !!(F.series||Object.values(F.f).some(Boolean)||Object.values(F.rng).some(cwRngOn)); }
+// сколько условий отбора включено (фильтры и строка поиска; категория — нет)
+function cwFilterCount(){ const F=CW.F; return [F.maker, F.series, F.sup, F.priced, F.stock, String(F.q||'').trim()].filter(Boolean).length + Object.values(F.f).filter(Boolean).length
+  + Object.values(F.rng).filter(cwRngOn).length; }
 
-// ---------- отрисовка
+// ---------- верхняя панель: категория, производитель, поставщик, «с ценой», «в наличии» — видны всегда, без прокрутки
+function cwCounts(key, val){ const m=new Map(); CW.docs.forEach(x=>{ if (!cwKindOk(x) || !cwPass(x,key)) return; const v=val(x); if (v==null||v==='') return;
+  const k=norm(v); const c=m.get(k)||{v:String(v),n:0}; c.n++; m.set(k,c); }); return m; }
+function cwSel(key, label, m, cur, all){ const opts=[...m.values()].sort((p,q)=>String(p.v).localeCompare(String(q.v),'ru',{numeric:true}));
+  const has=!cur||m.has(norm(cur));
+  return `<label class="cw-sel${cur?' on':''}"><span>${label}</span><select data-top="${key}" aria-label="${label}"><option value="">${all}</option>${opts.map(o=>`<option value="${esc(o.v)}"${norm(cur)===norm(o.v)?' selected':''}>${esc(o.v)} · ${o.n}</option>`).join('')}${has?'':`<option selected>${esc(cur)} · 0</option>`}</select></label>`; }
+function cwBar(){ const F=CW.F, el=$('#cwBar'); if (!el) return;
+  const cc=cwCounts('cat', x=>cwA(x).cat), groups=[...new Set(TYPES.map(t=>t.group||'Прочее'))];
+  const cat=`<label class="cw-sel cw-selcat${F.cat?' on':''}"><span>Категория</span><select data-top="cat" aria-label="Категория"><option value="">Все категории · ${[...cc.values()].reduce((a,c)=>a+c.n,0)}</option>${groups.map(g=>{
+      const ts=TYPES.filter(t=>(t.group||'Прочее')===g && ((cc.get(norm(t.id))||{}).n || F.cat===t.id)); if (!ts.length) return '';
+      return `<optgroup label="${esc(g)}">${ts.map(t=>`<option value="${esc(t.id)}"${F.cat===t.id?' selected':''}>${esc(t.name)} · ${(cc.get(norm(t.id))||{}).n||0}</option>`).join('')}</optgroup>`; }).join('')}</select></label>`;
+  const sup=cwCounts('sup', x=>cwSup(x)||CW_NOSUP);
+  morph(el, cat + cwSel('maker','Производитель', cwCounts('maker', x=>cwA(x).maker), F.maker, 'Все производители')
+    + cwSel('sup','Поставщик', sup, F.sup, 'Все поставщики')
+    + `<div class="cw-togs"><label class="cw-tog${F.priced?' on':''}"><input type="checkbox" id="cwPriced" ${F.priced?'checked':''}> С ценой</label>
+       <label class="cw-tog${F.stock?' on':''}" title="Есть на складе поставщика (по фиду или файлу остатков)"><input type="checkbox" id="cwStock" ${F.stock?'checked':''}> В наличии</label></div>`); }
+
+// ---------- выбранные условия — плашками с крестиком над списком
+function cwChips(){ const F=CW.F, t=F.cat?typeById(F.cat):null, out=[];
+  const chip=(key,txt)=>out.push(`<button type="button" class="cw-chip" data-chip="${esc(key)}" title="Убрать условие">${esc(txt)}<i aria-hidden="true">✕</i></button>`);
+  if (String(F.q||'').trim()) chip('q', '«'+F.q.trim()+'»');
+  if (t) chip('cat', t.name);
+  if (F.maker) chip('maker', F.maker); if (F.sup) chip('sup', 'Поставщик: '+F.sup); if (F.series) chip('series', 'Серия '+F.series);
+  for (const k in F.f) if (F.f[k]){ const f=t?.fields.find(z=>z.key===k); chip('f:'+k, (f?f.label+': ':'')+F.f[k]); }
+  for (const k in F.rng){ const r=F.rng[k]; if (!cwRngOn(r)) continue; const f=t?.fields.find(z=>z.key===k)||{label:k};
+    chip('r:'+k, `${f.label}: ${(r.min??'')!==''?'от '+fnum(+r.min):''}${(r.min??'')!==''&&(r.max??'')!==''?' ':''}${(r.max??'')!==''?'до '+fnum(+r.max):''}${f.unit?' '+f.unit:''}`); }
+  if (F.priced) chip('priced', 'С ценой'); if (F.stock) chip('stock', 'В наличии');
+  return out.length ? out.join('') + `<button type="button" class="lnk cw-clr" data-cw="resetall">Сбросить всё</button>` : ''; }
+
+// ---------- отрисовка: слева вкладки «Фильтры» (параметры категории — сразу сверху) и «Категории» (дерево, перенос перетаскиванием)
 function cwNav(){
   const F=CW.F, cnt=new Map(); let all=0;
   CW.docs.forEach(x=>{ if(!cwKindOk(x)) return; const c=cwA(x).cat; cnt.set(c,(cnt.get(c)||0)+1); all++; });
-  const groups=[...new Set(TYPES.map(t=>t.group||'Прочее'))];
-  // разделы сворачиваются (запоминается в браузере); пустые категории можно скрыть
-  let fold={}, hideZero=false; try{ fold=JSON.parse(localStorage.getItem('kp.cwfold')||'{}')||{}; hideZero=localStorage.getItem('kp.cwzero')==='1'; }catch(e){}
-  const cats=groups.map(g=>{ const ts=TYPES.filter(t=>(t.group||'Прочее')===g && (CW.optFor==null || t.role==='accessory' || cnt.get(t.id) || F.cat===t.id) && (!hideZero || cnt.get(t.id) || F.cat===t.id));
-    const total=ts.reduce((a,t)=>a+(cnt.get(t.id)||0),0), shut=!!fold[g] && !ts.some(t=>t.id===F.cat);
-    return ts.length ? `<button type="button" class="cw-grp${shut?' shut':''}" data-cwfold="${esc(g)}" aria-expanded="${!shut}" title="${shut?'Развернуть':'Свернуть'} раздел"><span>${esc(g)}</span><i>${total}</i></button>`+(shut?'':ts.map(t=>{ const n=cnt.get(t.id)||0;
-      return `<button type="button" class="cw-cat${F.cat===t.id?' on':''}${n?'':' zero'}" data-cat="${esc(t.id)}" data-dropcat="${esc(t.id)}" title="${esc(t.name)}"><span>${esc(t.name)}</span><i>${n}</i></button>`; }).join('')) : ''; }).join('');
-  const t=F.cat?typeById(F.cat):null;
-  let flt=cwFacet('maker','Производитель')+cwFacet('series','Серия');
-  if (t){ for (const f of t.fields) if (f.range) flt+=cwRange(f); for (const f of t.fields) if (f.facet) flt+=cwFacet(f.key,f.label,true); }
-  morph($('#cwNav'), `<p class="cw-cap">Категории ${CW.optFor==null?`<button type="button" class="lnk cw-tset" data-cw="types" title="Параметры, фильтры, ключевые параметры на титуле, быстрые опции${t?' — категории «'+esc(t.name)+'»':''}">⚙ настроить${t?' эту':''}</button>`:''}</p>
-    ${CW.optFor==null?'<p class="cw-hint">Щёлкните категорию — появятся её фильтры. Позиции можно перетащить мышью на другую категорию.</p>':''}<div class="cw-cats">
-      <button type="button" class="cw-cat all${!F.cat?' on':''}" data-cat=""><span>Все позиции</span><i>${all}</i></button>${cats}
-      ${CW.optFor==null?'<button type="button" class="cw-cat add" data-cw="newtype">+ Новая категория</button>':''}
-      <label class="cw-chk cw-zero"><input type="checkbox" data-cwzero ${hideZero?'checked':''}> Скрыть пустые категории</label></div>
-    <p class="cw-cap">Фильтры ${cwFiltered()?'<button type="button" class="lnk" data-cw="reset">сбросить</button>':''}</p>
-    <div class="cw-flt">${flt}<label class="cw-chk"><input type="checkbox" id="cwPriced" ${F.priced?'checked':''}> Только с ценой</label>
-      ${t?'':'<p class="muted" style="margin:0">Выберите категорию — появятся фильтры по её параметрам (мощность, давление, производительность…).</p>'}</div>
-    <div class="cw-navok"><button class="btn primary" type="button" data-cw="nav" id="cwNavOk">Показать позиции</button></div>`);
+  const t=F.cat?typeById(F.cat):null, tab=CW.tab||(t?'flt':'cats');
+  const nf=[F.series].filter(Boolean).length+Object.values(F.f).filter(Boolean).length+Object.values(F.rng).filter(cwRngOn).length;
+  const tabs=`<div class="cw-tabs" role="tablist"><button type="button" role="tab" class="${tab==='flt'?'on':''}" aria-selected="${tab==='flt'}" data-tab="flt">Фильтры${nf?` <b>${nf}</b>`:''}</button>
+    <button type="button" role="tab" class="${tab==='cats'?'on':''}" aria-selected="${tab==='cats'}" data-tab="cats">Категории</button></div>`;
+  let body;
+  if (tab==='cats'){
+    const groups=[...new Set(TYPES.map(t=>t.group||'Прочее'))];
+    let fold={}, hideZero=false; try{ fold=JSON.parse(localStorage.getItem('kp.cwfold')||'{}')||{}; hideZero=localStorage.getItem('kp.cwzero')==='1'; }catch(e){}
+    const cats=groups.map(g=>{ const ts=TYPES.filter(t=>(t.group||'Прочее')===g && (CW.optFor==null || t.role==='accessory' || cnt.get(t.id) || F.cat===t.id) && (!hideZero || cnt.get(t.id) || F.cat===t.id));
+      const total=ts.reduce((a,t)=>a+(cnt.get(t.id)||0),0), shut=!!fold[g] && !ts.some(t=>t.id===F.cat);
+      return ts.length ? `<button type="button" class="cw-grp${shut?' shut':''}" data-cwfold="${esc(g)}" aria-expanded="${!shut}" title="${shut?'Развернуть':'Свернуть'} раздел"><span>${esc(g)}</span><i>${total}</i></button>`+(shut?'':ts.map(t=>{ const n=cnt.get(t.id)||0;
+        return `<button type="button" class="cw-cat${F.cat===t.id?' on':''}${n?'':' zero'}" data-cat="${esc(t.id)}" data-dropcat="${esc(t.id)}" title="${esc(t.name)}"><span>${esc(t.name)}</span><i>${n}</i></button>`; }).join('')) : ''; }).join('');
+    body=`${CW.optFor==null?'<p class="cw-hint">Позиции можно перетащить мышью на другую категорию.</p>':''}<div class="cw-cats">
+        <button type="button" class="cw-cat all${!F.cat?' on':''}" data-cat=""><span>Все позиции</span><i>${all}</i></button>${cats}
+        ${CW.optFor==null?'<button type="button" class="cw-cat add" data-cw="newtype">+ Новая категория</button>':''}
+        <label class="cw-chk cw-zero"><input type="checkbox" data-cwzero ${hideZero?'checked':''}> Скрыть пустые категории</label></div>
+      ${CW.optFor==null?`<p class="cw-cap"><button type="button" class="lnk cw-tset" data-cw="types" title="Параметры, фильтры, ключевые параметры на титуле, быстрые опции">⚙ Настроить категории</button></p>`:''}`;
+  } else {
+    let flt=cwFacet('series','Серия');
+    if (t){ for (const f of t.fields) if (f.range) flt+=cwRange(f); for (const f of t.fields) if (f.facet) flt+=cwFacet(f.key,f.label,true); }
+    const top=[...cnt.entries()].filter(([,n])=>n).sort((p,q)=>q[1]-p[1]).slice(0,10);
+    body=`<p class="cw-cap">${t?esc(t.name):'Все категории'} ${cwFiltered()?'<button type="button" class="lnk" data-cw="reset">сбросить</button>':''}</p>
+      <div class="cw-flt">${flt}
+        ${t?'':`<p class="cw-hint" style="margin:0">Выберите категорию — появятся фильтры по её параметрам: мощность, давление, производительность…</p>
+          <div class="cw-qcat">${top.map(([id,n])=>`<button type="button" class="chip" data-cat="${esc(id)}">${esc(typeById(id).name)} <i>${n}</i></button>`).join('')}</div>`}
+        ${t&&CW.optFor==null?`<button type="button" class="lnk cw-tset2" data-cw="types">⚙ Какие параметры показывать в фильтрах</button>`:''}</div>`;
+  }
+  morph($('#cwNav'), tabs + body + `<div class="cw-navok"><button class="btn primary" type="button" data-cw="nav" id="cwNavOk">Показать позиции</button></div>`);
 }
 
 function cwTags(x){ const a=cwA(x), t=typeById(a.cat), out=[];
@@ -132,14 +199,16 @@ function cwRow(x){ const id=x.id, n=x.pricesCount||(x.prices||[]).length, inn=cw
     <button class="btn sm${inn?' in':''}" type="button" data-add title="${inn?(CW.optFor!=null?'Уже добавлено':'Уже в КП — увеличить количество'):''}">${cwAddLabel(id)}</button></div>`; }
 
 function cwList(){
-  cwResetBtn();
   const F=CW.F, s=F.sort, mainVal=x=>{ const a=cwA(x), t=typeById(a.cat); return numOf(a[t.main||'kw']); };
   const list=CW.docs.filter(x=>cwPass(x));
-  list.sort((p,q)=> s==='name' ? String(p.name).localeCompare(q.name,'ru',{numeric:true}) : s==='price' ? (p.price||9e15)-(q.price||9e15) :
+  const rel=new Map(); if (String(F.q||'').trim()) list.forEach(x=>rel.set(x.id, cwRel(x)));      // при поиске — сначала точные совпадения модели
+  // основной параметр 0 или пусто (не заполнен в источнике) — в конец, а не в начало списка
+  list.sort((p,q)=> (rel.size ? rel.get(p.id)-rel.get(q.id) : 0) || (s==='name' ? String(p.name).localeCompare(q.name,'ru',{numeric:true}) : s==='price' ? (p.price||9e15)-(q.price||9e15) :
     s==='recent' ? String(q.prices?.[0]?.date||q.updatedAt||'').localeCompare(String(p.prices?.[0]?.date||p.updatedAt||'')) :
-    (String(cwA(p).cat).localeCompare(String(cwA(q).cat))) || ((mainVal(p)??9e9)-(mainVal(q)??9e9)) || String(p.name).localeCompare(q.name,'ru',{numeric:true}));
+    (String(cwA(p).cat).localeCompare(String(cwA(q).cat))) || ((mainVal(p)||9e9)-(mainVal(q)||9e9)) || String(p.name).localeCompare(q.name,'ru',{numeric:true})));
   CW.view=list;
-  $('#cwCnt').textContent = CW.docs.length ? `Найдено: ${list.length} из ${CW.docs.length}` : '';
+  $('#cwCnt').innerHTML = CW.docs.length ? `Найдено: <b>${list.length}</b> из ${CW.docs.length}` : '';
+  morph($('#cwChips'), cwChips()); cwBar();
   const all=$('#cwAll'); const k=list.filter(x=>CW.sel.has(x.id)).length; all.checked=!!list.length && k===list.length; all.indeterminate=k>0 && k<list.length;
   const ok=$('#cwNavOk'); if (ok) ok.textContent = list.length ? `Показать: ${list.length}` : 'Ничего не найдено';
   morph($('#cwList'), list.length ? list.slice(0,CW.limit).map(cwRow).join('')
@@ -334,7 +403,7 @@ async function cwImportFile(f){
   catch(e){ CW.busy=''; cwNote('Это не файл каталога КП'); }
 }
 
-async function cwExport(){ const all=(await store().full()).map(x=>{ const y={...x}; delete y._a; delete y._nv; delete y._hay; return y; }); if(!all.length) return cwNote('Каталог пуст');
+async function cwExport(){ const all=(await store().full()).map(x=>{ const y={...x}; delete y._a; delete y._nv; delete y._hay; delete y._sup; return y; }); if(!all.length) return cwNote('Каталог пуст');
   saveFile(`Каталог_КП_Пневмотех_${today()}.json`, new Blob([JSON.stringify({format:'kp-catalog',version:1,items:all})],{type:'application/json'})); }
 
 function cwClose(){ const d=cwDlg(); if (d.open) d.close(); }
@@ -342,21 +411,21 @@ function cwClose(){ const d=cwDlg(); if (d.open) d.close(); }
 // ---------- окно
 async function openCatalog(mode={}){
   const optFor = Number.isInteger(mode.opt) ? mode.opt : null;
-  Object.assign(CW, { optFor, F: optFor!=null ? FO : FI, active:null, limit:150, lastCk:null, note:'', busy:'' }); CW.sel.clear();
+  Object.assign(CW, { optFor, F: optFor!=null ? FO : FI, active:null, limit:150, lastCk:null, note:'', busy:'', tab:'' }); CW.sel.clear();
   const F=CW.F; if (mode.cat!=null){ F.cat=mode.cat; F.f={}; F.rng={}; }
   const d=cwDlg(); d.classList.remove('navon','pvon'); cwSize(d);
   d.innerHTML=`<div class="cw-h"><button class="btn cw-navbtn" type="button" data-cw="nav" aria-label="Категории и фильтры" title="Категории и фильтры"><span aria-hidden="true">☰</span><span class="cw-lbl2"> Фильтры</span></button>
      <h3>${optFor!=null?'Опции для позиции '+(optFor+1):'Каталог'}</h3>
-     <div class="cw-q"><input type="search" id="cwQ" placeholder="Поиск: модель, производитель, любое значение характеристик" autocomplete="off" value="${esc(F.q)}" aria-label="Поиск по каталогу"></div>
-     <button class="btn cw-reset" type="button" id="cwReset" data-cw="resetall" title="Сбросить поиск и все фильтры (раздел каталога остаётся)" hidden>✕ Сбросить фильтры <b>0</b></button>
+     <div class="cw-q"><input type="search" id="cwQ" placeholder="Модель, артикул, производитель, поставщик или характеристика" autocomplete="off" value="${esc(F.q)}" aria-label="Поиск по каталогу" title="Можно без пробелов и дефисов: «DVK3013» найдёт DVK D 30-13; «/» — перейти к поиску"><kbd aria-hidden="true">/</kbd></div>
      ${optFor==null?'<button class="btn" type="button" data-cw="new" title="Новая позиция каталога">+<span class="cw-lbl"> Позиция</span></button>':''}
      <details class="cw-menu"><summary class="btn" title="Импорт, выгрузка, типы оборудования">Ещё<span class="cw-lbl"> ▾</span></summary><div>
        <button type="button" data-cw="xls">Импорт из Excel…</button><button type="button" data-cw="imp">Загрузить файл каталога (.json)…</button><button type="button" data-cw="exp">Выгрузить каталог в файл</button>
        <hr><button type="button" data-cw="types">Типы оборудования…</button></div></details>
      <button class="icon" type="button" data-cw="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна можно менять, потянув за правый нижний угол">⤢</button>
      <button class="icon" type="button" data-cw="close" aria-label="Закрыть">✕</button></div>
+   <div class="cw-fb" id="cwBar" role="group" aria-label="Отбор по категории, производителю, поставщику"></div>
    <div class="cw-b"><nav class="cw-nav" id="cwNav" aria-label="Категории и фильтры"></nav>
-     <section class="cw-mid"><div class="cw-tb"><label class="ck" title="Отметить все найденные"><input type="checkbox" id="cwAll" aria-label="Отметить все найденные"></label><span class="muted" id="cwCnt"></span><span class="sp"></span>
+     <section class="cw-mid"><div class="cw-chips" id="cwChips" aria-live="polite"></div><div class="cw-tb"><label class="ck" title="Отметить все найденные"><input type="checkbox" id="cwAll" aria-label="Отметить все найденные"></label><span class="muted" id="cwCnt"></span><span class="sp"></span>
          <select id="cwSort" aria-label="Сортировка"><option value="main">По основному параметру</option><option value="name">По названию</option><option value="recent">Недавно в КП</option><option value="price">По цене</option></select></div>
        <div class="cw-list" id="cwList"><p class="empty">Загружаю…</p></div></section>
      <aside class="cw-pv" id="cwPv" aria-label="Карточка позиции"></aside></div>
@@ -365,10 +434,16 @@ async function openCatalog(mode={}){
   cwBind(d); cwLayout(d);
   $('#cwSort').value=F.sort;
   CW.docs = catCache.length ? catCache : await store().list().catch(()=>[]);
-  await cwLoadPending();
+  await Promise.all([cwLoadPending(), cwLoadSources()]);
   cwRedraw();
   setTimeout(()=>{ if (matchMedia('(pointer:fine)').matches) $('#cwQ')?.focus(); },30);
 }
+
+// поставщики позиций: фиды-источники и справочник поставщиков (для фильтра «Поставщик» и поиска по нему)
+async function cwLoadSources(){
+  const [src, sups] = await Promise.all([api('/api/catalog/sources').catch(()=>({})), api('/api/suppliers').catch(()=>[])]);
+  CW.src = src && typeof src==='object' && !Array.isArray(src) ? src : {}; CW.sups = Array.isArray(sups) ? sups : [];
+  CW.docs.forEach(x=>{ delete x._sup; delete x._hay; }); }
 
 function cwBind(d){
   if (d._bound) return; d._bound=true;
@@ -381,7 +456,11 @@ function cwBind(d){
     if (t.dataset.cwzero!=null){ try{ localStorage.setItem('kp.cwzero', t.checked?'1':'0'); }catch(_){} return cwNav(); }
     if (t.id==='cwSort'){ F.sort=t.value; cwList(); return; }
     if (t.dataset.f!=null){ if (t.dataset.in) F.f[t.dataset.f]=t.value; else F[t.dataset.f]=t.value; CW.limit=150; cwNav(); cwList(); return; }
-    if (t.id==='cwPriced'){ F.priced=t.checked; cwNav(); cwList(); return; }
+    if (t.id==='cwPriced'){ F.priced=t.checked; CW.limit=150; cwNav(); cwList(); return; }
+    if (t.id==='cwStock'){ F.stock=t.checked; CW.limit=150; cwNav(); cwList(); return; }
+    if (t.dataset.top){ const k=t.dataset.top; CW.limit=150;
+      if (k==='cat'){ F.cat=t.value; F.f={}; F.rng={}; F.series=''; CW.tab=t.value?'flt':''; } else F[k]=t.value;
+      cwNav(); cwList(); $('#cwList').scrollTop=0; return; }
     if (t.id==='cwAll'){ CW.view.forEach(x=>t.checked?CW.sel.add(x.id):CW.sel.delete(x.id)); cwList(); cwFoot(); return; }
     if (t.dataset.pvcat!=null && CW.active){ cwMove([CW.active], t.value); return; } });
   d.addEventListener('click', async e=>{
@@ -395,7 +474,17 @@ function cwBind(d){
     if (t.closest('.ck')) return;
     const fg=t.closest('[data-cwfold]'); if (fg){ let fold={}; try{ fold=JSON.parse(localStorage.getItem('kp.cwfold')||'{}')||{}; }catch(e){}
       fold[fg.dataset.cwfold]=!fold[fg.dataset.cwfold]; try{ localStorage.setItem('kp.cwfold', JSON.stringify(fold)); }catch(e){} return cwNav(); }
-    const cat=t.closest('[data-cat]'); if (cat){ F.cat=cat.dataset.cat; F.f={}; F.rng={}; CW.limit=150; d.classList.remove('navon'); cwNav(); cwList(); $('#cwList').scrollTop=0; return; }
+    const tab=t.closest('[data-tab]'); if (tab){ CW.tab=tab.dataset.tab; cwNav(); return; }
+    const chip=t.closest('[data-chip]'); if (chip){ const k=chip.dataset.chip; CW.limit=150;
+      if (k==='q'){ F.q=''; const q=$('#cwQ'); if (q) q.value=''; }
+      else if (k==='cat'){ F.cat=''; F.f={}; F.rng={}; F.series=''; CW.tab=''; }
+      else if (k==='priced'||k==='stock') F[k]=false;
+      else if (k.startsWith('f:')) F.f[k.slice(2)]='';
+      else if (k.startsWith('r:')) F.rng[k.slice(2)]={min:'',max:''};
+      else F[k]='';
+      cwNav(); cwList(); return; }
+    const cat=t.closest('[data-cat]'); if (cat){ F.cat=cat.dataset.cat; F.f={}; F.rng={}; F.series=''; CW.limit=150; CW.tab=F.cat?'flt':'cats';
+      if (!F.cat) d.classList.remove('navon'); cwNav(); cwList(); $('#cwList').scrollTop=0; return; }
     if (t.closest('[data-more]')){ CW.limit+=300; cwList(); return; }
     const add=t.closest('[data-add]'); if (add){ return cwAdd([add.closest('.cw-row').dataset.id]); }
     const rc=t.closest('[data-rc]'); if (rc){ const k=rc.dataset.rc, r=F.rng[k]||{min:'',max:''}; const same=String(r.min)===rc.dataset.lo&&String(r.max)===rc.dataset.hi;
@@ -415,8 +504,8 @@ function cwBind(d){
       case 'done': cwClose(); if (CW.optFor==null && STEP!=='equip') goStep('equip'); return;
       case 'max': d.classList.toggle('max'); cwSaveSize(d); return;
       case 'nav': d.classList.toggle('navon'); return;
-      case 'reset': Object.assign(F,{maker:'',series:'',f:{},rng:{},priced:false}); cwNav(); cwList(); return;
-      case 'resetall': { Object.assign(F,{maker:'',series:'',f:{},rng:{},priced:false,q:''}); const q=$('#cwQ'); if (q) q.value=''; cwNav(); cwList(); return; }
+      case 'reset': Object.assign(F,{series:'',f:{},rng:{}}); cwNav(); cwList(); return;
+      case 'resetall': { Object.assign(F,{maker:'',series:'',sup:'',f:{},rng:{},priced:false,stock:false,q:''}); const q=$('#cwQ'); if (q) q.value=''; CW.limit=150; cwNav(); cwList(); return; }
       case 'undo': return cwUndo();
       case 'newtype': return cwNewType(id=>{ F.cat=id; F.f={}; F.rng={}; cwRedraw(); });
       case 'new': return newEquip('catalog', F.cat||'');
@@ -428,13 +517,17 @@ function cwBind(d){
     } });
   d.addEventListener('dblclick', e=>{ const row=e.target.closest('.cw-row'); if (row && !e.target.closest('button,label,input')) cwEdit(row.dataset.id); });
   d.addEventListener('cancel', e=>{ const lb=d.querySelector('.cw-lb'); if (lb){ e.preventDefault(); lb.remove(); } });
-  d.addEventListener('keydown', e=>{ if (e.target.id==='cwQ' && e.key==='Enter'){ e.preventDefault(); const x=CW.view[0]; if (x) cwActivate(x.id); }
+  d.addEventListener('keydown', e=>{
+    if (e.key==='/' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.closest?.('input,textarea,select,[contenteditable]')){ e.preventDefault(); const q=$('#cwQ'); q?.focus(); q?.select(); return; }
+    if (e.target.id==='cwQ' && e.key==='Escape' && e.target.value){ e.preventDefault(); e.stopPropagation(); e.target.value=''; CW.F.q=''; cwNav(); cwList(); return; }
+    if (e.target.id==='cwQ' && e.key==='Enter'){ e.preventDefault(); const x=CW.view[0]; if (x) cwActivate(x.id); }
     if ((e.key==='ArrowDown'||e.key==='ArrowUp') && (e.target.id==='cwQ' || e.target.closest?.('.cw-list')) && CW.view.length){
       e.preventDefault(); const ids=CW.view.slice(0,CW.limit).map(x=>x.id); let k=ids.indexOf(CW.active); k = k<0 ? 0 : Math.max(0, Math.min(ids.length-1, k+(e.key==='ArrowDown'?1:-1)));
       cwActivate(ids[k]); document.querySelector(`#cwList .cw-row[data-id="${CSS.escape(ids[k])}"]`)?.scrollIntoView({block:'nearest'}); } });
   // перенос перетаскиванием: позиция (или все отмеченные, если тянут отмеченную) → категория слева
   d.addEventListener('dragstart', e=>{ const row=e.target.closest?.('.cw-row'); if (!row || CW.optFor!=null) return;
     const id=row.dataset.id; CW.drag = CW.sel.has(id) ? [...CW.sel] : [id];
+    if (CW.tab!=='cats' && !d.classList.contains('narrow')){ CW.tab='cats'; setTimeout(cwNav); }      // цели переноса — во вкладке «Категории»
     e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', CW.drag.length>1 ? `${CW.drag.length} позиций` : (CW.docs.find(z=>z.id===id)?.name||''));
     d.classList.add('dragging'); });
   d.addEventListener('dragend', ()=>{ CW.drag=null; d.classList.remove('dragging'); d.querySelectorAll('.cw-cat.over').forEach(b=>b.classList.remove('over')); });

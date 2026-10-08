@@ -386,6 +386,10 @@ class Handler(BaseHTTPRequestHandler):
             full = q.get('full') == '1'
             return self.send_cached('cat%s-%s' % ('f' if full else 'l', store().data_rev('catalog')),
                                     lambda: store().catalog_full() if full else store().catalog_light())
+        if path == '/api/catalog/sources' and m == 'GET':   # фиды-источники позиций: id → поставщик (из справочника, если фид к нему привязан) — фильтр «Поставщик»
+            sups = {x.get('id'): x.get('name') for x in store().suppliers_list()}
+            return self.send_json({f['id']: {'name': sups.get(f.get('supplier')) or f.get('name') or f['id'], 'feed': f.get('name') or f['id']}
+                                   for f in (store().kv_get('feeds') or {}).get('items', []) if f.get('id')})
         if path == '/api/catalog/pending':   # режим модерации и товары с правками на модерации (бейдж «На модерации»)
             return self.send_json({'moderation': bool(admin.moderation(store()).get('enabled')), 'ids': store().pending_ids()})
         r = re.match(r'^/api/catalog/([^/]+)$', path)

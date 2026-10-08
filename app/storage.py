@@ -114,6 +114,14 @@ MIGRATIONS = [
      ALTER TABLE managers DROP COLUMN rev; ALTER TABLE managers DROP COLUMN updated_by;
      ALTER TABLE suppliers DROP COLUMN rev; ALTER TABLE suppliers DROP COLUMN updated_by;
      """),
+    # 3.35.0: в облегчённой карточке каталога — фид-источник и артикул (фильтр «Поставщик», поиск по артикулу)
+    ('2027-02-light',
+     """
+     CREATE INDEX IF NOT EXISTS catalog_maker ON catalog(maker);
+     """,
+     """
+     DROP INDEX IF EXISTS catalog_maker;
+     """),
 ]
 KP_VERSIONS = 30
 
@@ -191,7 +199,18 @@ def _fill_columns(st, c):
         c.execute('UPDATE kp SET client=?, inn=?, manager=?, kdate=?, saved=?, search=? WHERE id=?', kp_cols(d) + (kid,))
 
 
-MIGRATION_FILL = {'2027-01-db': _fill_columns}
+def _fill_light(st, c):
+    """Миграция 2027-02-light: облегчённые карточки каталога заново — с фидом-источником и артикулом (фильтр «Поставщик», поиск по артикулу)."""
+    for cid, doc in c.execute('SELECT id, doc FROM catalog').fetchall():
+        try:
+            d = json.loads(doc)
+        except ValueError:
+            continue
+        c.execute('UPDATE catalog SET light=? WHERE id=?', (json.dumps(light_of(d), ensure_ascii=False), cid))
+    c.execute("INSERT INTO kv (key, value) VALUES ('datarev:catalog', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1")
+
+
+MIGRATION_FILL = {'2027-01-db': _fill_columns, '2027-02-light': _fill_light}
 
 
 def light_of(doc):
@@ -205,6 +224,12 @@ def light_of(doc):
         for r in g.get('rows') or []:
             vals.append('%s %s' % (r.get('k', ''), r.get('v', '')))
     d['st'] = ' '.join(vals)[:600]
+    fd = doc.get('feed') if isinstance(doc.get('feed'), dict) else {}
+    if fd.get('id'):                # фид-источник — фильтр «Поставщик» в каталоге
+        d['src'] = str(fd['id'])[:40]
+    art = fd.get('sku') or (doc.get('attrs') or {}).get('article')
+    if art:                         # артикул поставщика — поиск по артикулу
+        d['art'] = str(art)[:60]
     d['_light'] = True
     return d
 
