@@ -14,6 +14,8 @@ import time
 import urllib.error
 import urllib.request
 
+import images
+
 # сайты поставщиков (Bitrix и др.) на запрос «робота» отвечают 403 или страницей-проверкой — представляемся браузером
 BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 MAX_BYTES = 15 * 1024 * 1024
@@ -21,23 +23,26 @@ TYPES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp')     
 
 
 def logos(store):
-    count = {}
+    """Логотип каждого производителя: {производитель в нижнем регистре: {maker, src, w, h}}. Написания одной марки
+    («Remeza», «REMEZA», «Ремеза») — одна группа; из нескольких логотипов — файл из папки логотипов, затем самый частый."""
+    groups, names = {}, {}
     for maker, doc in store.all("SELECT maker, doc FROM catalog WHERE maker IS NOT NULL AND maker <> ''"):
+        g = images.slug(maker, 60).replace('-', '')
+        names.setdefault(g, set()).add(maker.strip())
         try:
             lg = (json.loads(doc) or {}).get('logo')
         except ValueError:
             continue
         if not isinstance(lg, dict) or not lg.get('src'):
             continue
-        key = maker.strip().lower()
-        c = count.setdefault(key, {})
-        k = lg['src']
-        c[k] = c.get(k, (0, maker, lg))
-        c[k] = (c[k][0] + 1, maker, lg)
+        c = groups.setdefault(g, {})
+        n, mk, _ = c.get(lg['src'], (0, maker, lg))
+        c[lg['src']] = (n + 1, mk, lg)
     out = {}
-    for key, variants in count.items():
-        n, maker, lg = max(variants.values(), key=lambda v: v[0])
-        out[key] = {'maker': maker.strip(), 'src': lg['src'], 'w': lg.get('w'), 'h': lg.get('h')}
+    for g, variants in groups.items():
+        n, maker, lg = max(variants.values(), key=lambda v: (str(v[2]['src']).startswith('/img/logos/'), v[0]))
+        for m in names.get(g, {maker}):
+            out[m.lower()] = {'maker': m, 'src': lg['src'], 'w': lg.get('w'), 'h': lg.get('h')}
     return out
 
 
