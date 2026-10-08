@@ -74,19 +74,43 @@ def _canon(v):
     return re.sub(r'[\s°c]', '', v.lower().replace('−', '-').replace('–', '-'))
 
 
+def dew_point(v, vals=()):
+    """Точка росы: первое число со знаком; к значению из списка категории, если отличается не больше чем на 1 °C."""
+    m = re.search(r'([+\-−–]?)\s*(\d+(?:[.,]\d+)?)', str(v or ''))
+    if not m:
+        return ''
+    n = float(m.group(2).replace(',', '.')) * (-1 if m.group(1) in ('-', '−', '–') else 1)
+    for x in vals:
+        try:
+            if abs(float(x.replace('−', '-').replace('+', '')) - n) <= 1:
+                return x
+        except ValueError:
+            pass
+    n = int(n) if n.is_integer() else n
+    return ('+%s' % n if n > 0 else '−%s' % str(-n) if n < 0 else '0').replace('.', ',')
+
+
 def parse_text(text, f):
     v = re.sub(r'\s+', ' ', str(text or '')).strip()
     if f.get('key') == 'oilFree' and f.get('values') == ['Да', 'Нет']:     # «Тип компрессора: Безмасляный / Масляный»
         return 'Да' if re.search(r'безмасл|oil[- ]?free|класс 0', v, re.I) else 'Нет' if re.search(r'масл', v, re.I) else ''
-    for x in f.get('values') or []:      # значение из списка категории: «-40 °C» → «−40»
-        if isinstance(x, str) and _canon(x) and _canon(x) == _canon(v):
+    vals = [x for x in f.get('values') or [] if isinstance(x, str)]
+    for x in vals:      # значение из списка категории: «-40 °C» → «−40»
+        if _canon(x) and _canon(x) == _canon(v):
             return x
+    if f.get('key') == 'dewPoint':      # «3 °C» → «+3», «-40…-70 °C» → «−40», «2-10 °C» → «+3» (ближайшее из списка)
+        return dew_point(v, vals)
     if f.get('key') == 'voltage':
         m = re.search(r'(\d{3})\s*в\b', v.lower())
-        return m.group(1) if m else ''
-    if f.get('key') == 'refrigerant':   # «R134a, 0,275 кг» → «R134a»: заправка хладагента в фильтр не нужна
+        x = m.group(1) if m else ''
+        return {'230': '220', '400': '380'}.get(x, x) if {'220', '380'} <= set(vals) else x
+    if f.get('key') == 'refrigerant':   # «R134a, 0,275 кг» → «R134A»; «Тип компрессора хладагента: поршневой» — не хладагент
         m = re.search(r'\bR-?\d{2,4}[A-Za-z]?\b', v)
-        return m.group(0).replace('-', '') if m else v
+        return m.group(0).replace('-', '').upper() if m else ''
+    if len(_canon(v)) >= 4:             # «Горячая» → «Горячая (с нагревом)»: единственное значение списка с таким началом
+        pre = [x for x in vals if _canon(x).startswith(_canon(v))]
+        if len(pre) == 1:
+            return pre[0]
     u = f.get('unit')
     if u and v.lower().endswith(u.lower()):
         v = v[:-len(u)].strip()

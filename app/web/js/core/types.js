@@ -38,13 +38,25 @@ function parseNumUnit(text, unit){
   for (const [src,k] of (CONVERT[unit]||[])) if ((m=t.match(new RegExp(NUM_RX+'\\s*'+UNIT_RX[src])))) return round_(num_(m[1])*k);
   m=t.match(new RegExp(NUM_RX)); return m?round_(num_(m[1])):null;
 }
+// точка росы: первое число со знаком; к значению из списка категории, если отличается не больше чем на 1 °C
+function dewPointVal(v, vals){
+  const m=String(v||'').match(/([+\-−–]?)\s*(\d+(?:[.,]\d+)?)/); if (!m) return '';
+  const n=+m[2].replace(',','.')*(/[-−–]/.test(m[1])?-1:1);
+  const hit=vals.find(x=>Math.abs(+x.replace('−','-').replace('+','')-n)<=1); if (hit) return hit;
+  return (n>0?'+'+n:n<0?'−'+(-n):'0').replace('.',',');
+}
 function parseTextVal(text, f){
   let v=String(text||'').replace(/\s+/g,' ').trim();
-  if (f.key==='voltage'){ const m=v.toLowerCase().match(/(\d{3})\s*в(?![а-я])/); return m?m[1]:''; }
+  const vals=(f.values||[]).filter(x=>typeof x==='string');
+  if (f.key==='voltage'){ const m=v.toLowerCase().match(/(\d{3})\s*в(?![а-я])/); const x=m?m[1]:'';
+    return vals.includes('220')&&vals.includes('380') ? ({'230':'220','400':'380'}[x]||x) : x; }
   if (f.key==='oilFree' && String(f.values)==='Да,Нет') return /безмасл|oil[- ]?free|класс 0/i.test(v)?'Да':/масл/i.test(v)?'Нет':'';
   const canon=x=>String(x).toLowerCase().replace(/[−–]/g,'-').replace(/[\s°c]/g,'');
-  const hit=(f.values||[]).find(x=>typeof x==='string' && canon(x) && canon(x)===canon(v)); if (hit) return hit;
-  if (f.key==='refrigerant'){ const m=v.match(/\bR-?\d{2,4}[A-Za-z]?\b/); return m?m[0].replace('-',''):v; }
+  const hit=vals.find(x=>canon(x) && canon(x)===canon(v)); if (hit) return hit;
+  if (f.key==='dewPoint') return dewPointVal(v, vals);
+  // «Тип компрессора хладагента: поршневой» — не хладагент
+  if (f.key==='refrigerant'){ const m=v.match(/\bR-?\d{2,4}[A-Za-z]?\b/); return m?m[0].replace('-','').toUpperCase():''; }
+  if (canon(v).length>=4){ const pre=vals.filter(x=>canon(x).startsWith(canon(v))); if (pre.length===1) return pre[0]; }
   if (f.unit && v.toLowerCase().endsWith(f.unit.toLowerCase())) v=v.slice(0,-f.unit.length).trim();
   return v.slice(0,120);
 }
