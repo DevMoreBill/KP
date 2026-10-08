@@ -53,6 +53,22 @@ def _public_host(host):
     return True
 
 
+def web_url(url):
+    """Адрес как его пишет сайт («…/upload/РГ110 01.jpg», кириллический домен) → допустимый для запроса: русские буквы,
+    пробелы и прочее — в %-кодировку, домен — в punycode; уже закодированное (%D0%A0) не трогается."""
+    url = str(url or '').strip()
+    try:
+        u = urllib.parse.urlsplit(url)
+        host = u.hostname.encode('idna').decode('ascii') if u.hostname and not u.hostname.isascii() else (u.hostname or '')
+    except (ValueError, UnicodeError):
+        return url
+    netloc = u.netloc
+    if u.hostname and host != u.hostname:
+        netloc = netloc.replace(u.hostname, host)
+    q = lambda s, safe: urllib.parse.quote(s, safe=safe, encoding='utf-8')
+    return urllib.parse.urlunsplit((u.scheme, netloc, q(u.path, "/%:@!$&'()*+,;=~-._"), q(u.query, "/%:@!$&'()*+,;=?~-._"), q(u.fragment, "/%:@?~-._")))
+
+
 def _check_url(url):
     u = urllib.parse.urlsplit(url or '')
     if u.scheme not in ('http', 'https') or not u.hostname:
@@ -63,6 +79,7 @@ def _check_url(url):
 class _SafeRedirect(urllib.request.HTTPRedirectHandler):
     """Переадресация тоже проверяется: сайт не должен увести запрос в локальную сеть."""
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        newurl = web_url(newurl)
         _check_url(newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -82,6 +99,7 @@ def retry(fn, tries=3, pause=1.5):
 
 
 def fetch_image(url, referer=None, tries=1):
+    url = web_url(url)
     _check_url(url)
     hd = {'User-Agent': BROWSER_UA, 'Accept': 'image/avif,image/webp,image/png,image/jpeg,image/*,*/*;q=0.8'}
     if referer:
