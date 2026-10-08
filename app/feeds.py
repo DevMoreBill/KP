@@ -258,6 +258,7 @@ def _log_add(store, fid, rec):
 
 # ---------------------------------------------------------------- загрузка и разбор YML
 def fetch(url):
+    url = imgfetch.web_url(url)
     imgfetch._check_url(url)        # только http(s) и не адреса локальной сети
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (KP-Pnevmotekh feed)', 'Accept': 'application/xml,text/xml,*/*'})
     with urllib.request.build_opener(imgfetch._SafeRedirect).open(req, timeout=120) as r:
@@ -288,6 +289,7 @@ def _inflate(data, wbits, limit=PAGE_MAX * 8):
 def page_html(url, strict=True):
     """Страница товара на сайте поставщика (та же защита, что у фида и фото). Запрос — как из браузера
     (Bitrix-сайты на «робота» отвечают 403 или пустой страницей-проверкой), cookie сохраняются, повтор при отказе."""
+    url = imgfetch.web_url(url)
     imgfetch._check_url(url)
     u = urllib.parse.urlsplit(url)
     hd = {'User-Agent': imgfetch.BROWSER_UA, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
