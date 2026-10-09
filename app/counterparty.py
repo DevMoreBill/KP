@@ -179,6 +179,7 @@ class Counterparties:
         c['updatedAt'] = datetime.now().isoformat(timespec='seconds')
         if not c.get('check') and old.get('check'):
             c['check'] = old['check']
+        c['notes'] = old.get('notes') or []          # заметки о клиенте ведёт карточка клиента (/api/clientcard/note)
         c['_rev'] = self.store.client_put(cid, c, by, base_rev)
         return c
 
