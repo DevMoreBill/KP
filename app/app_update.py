@@ -359,13 +359,14 @@ class Restarter:
             return False
 
     def command(self):
-        """Команда вспомогательного процесса (список аргументов)."""
+        """Команда вспомогательного процесса. На Windows — готовая строка: из списка Python сделал бы кавычки вида \\",
+        которых cmd.exe не понимает (start "" "…\\kp.exe" сломался бы)."""
         if os.name == 'nt':
             wait = 'ping -n %d 127.0.0.1 >nul' % (self.DELAY + 1)
             if self.server_mode and self._task_exists():
-                return ['cmd', '/c', '%s & schtasks /Run /TN "%s"' % (wait, self.TASK)]
-            exe = sys.executable if getattr(sys, 'frozen', False) else '"%s" "%s"' % (sys.executable, os.path.abspath(sys.argv[0]))
-            return ['cmd', '/c', '%s & start "" %s' % (wait, exe if exe.startswith('"') else '"%s"' % exe)]
+                return 'cmd.exe /s /c "%s & schtasks /Run /TN "%s""' % (wait, self.TASK)
+            run = '"%s"' % sys.executable if getattr(sys, 'frozen', False) else '"%s" "%s"' % (sys.executable, os.path.abspath(sys.argv[0]))
+            return 'cmd.exe /s /c "%s & start "" %s"' % (wait, run)
         args = [sys.executable] if getattr(sys, 'frozen', False) else [sys.executable, os.path.abspath(sys.argv[0])]
         return ['sh', '-c', 'sleep %d; exec "$@"' % self.DELAY, 'kp-restart'] + args
 

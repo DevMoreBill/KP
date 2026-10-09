@@ -275,16 +275,25 @@ jobs:
         shell: pwsh
         run: |
           $dir = Join-Path $env:RUNNER_TEMP 'kp-smoke'
+          # при сбое — причина в аннотации сборки (видна и без скачивания логов)
+          $phase = 'запуск'
+          trap {
+            $procs = (Get-Process -Name kp -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }) -join ','
+            Write-Host ("::error::Обновление из «Настроек», этап «$phase»: " + $_.Exception.Message + ' ' + $_.ErrorDetails.Message + " | процессы kp: $procs | update: " + (Test-Path (Join-Path $dir 'update')))
+            break
+          }
           Remove-Item -Recurse -Force -LiteralPath (Join-Path $dir 'update') -ErrorAction SilentlyContinue
           function Up { try { (Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/ping' -TimeoutSec 2).ok } catch { $false } }
           $p = Start-Process -FilePath (Join-Path $dir 'kp.exe') -WorkingDirectory $dir -PassThru
           for ($i = 0; $i -lt 60 -and -not (Up); $i++) { Start-Sleep -Seconds 1 }
           if (-not (Up)) { throw 'Программа не запустилась' }
+          $phase = 'администратор'
           # первый администратор (только на этом компьютере) — сессия и CSRF
           $r = Invoke-WebRequest -Method Post -Uri 'http://127.0.0.1:17845/api/admin/setup' -ContentType 'application/json' -Body '{"login":"admin","password":"Ci-Passw0rd1"}' -SessionVariable s -UseBasicParsing
           $csrf = ($r.Content | ConvertFrom-Json).csrf
           if (-not $csrf) { throw 'Администратор не создан' }
           $H = @{ 'X-CSRF-Token' = $csrf }
+          $phase = 'архив и загрузка'
           # архив обновления 99.0.1 — как «KP-Obnovlenie-….zip»
           $pt = Join-Path $env:RUNNER_TEMP 'kp-upd\Обновление КП 99.0.1'
           $upd = Join-Path $pt 'update'
@@ -299,6 +308,7 @@ jobs:
           Write-Host "Установлено: $($res.version), файлов: $($res.files)"
           if ($res.version -ne '99.0.1') { throw 'Обновление не установилось' }
           if (-not (Test-Path -LiteralPath (Join-Path $dir 'update\app\kp_server.py'))) { throw 'Нет папки update' }
+          $phase = 'перезапуск'
           # перезапуск: программа закрывается и поднимается снова уже с обновлением
           Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/admin/restart' -Headers $H -WebSession $s | Out-Null
           $down = $false
