@@ -35,6 +35,7 @@ FEATURES = {
     'priceHist': (True, 'Цены в прошлых КП'),
     'saveDlg': (True, 'Окно «КП сохранено»'),
     'mgrLine': (True, '«Менеджер» строкой'),
+    'clientCard': (True, 'Карточка клиента'),
 }
 
 # адреса сервера, которые принадлежат функции: (метод или None — любой, шаблон пути, ключ)
@@ -49,6 +50,7 @@ ROUTES = [
     ('GET', re.compile(r'^/api/kp/[A-Za-z0-9_-]+/versions(/\d+)?$'), 'versions'),
     (None, re.compile(r'^/api/drafts(/.*)?$'), 'drafts'),
     (None, re.compile(r'^/api/presets(/.*)?$'), 'presets'),
+    (None, re.compile(r'^/api/clientcard(/.*)?$'), 'clientCard'),
 ]
 
 

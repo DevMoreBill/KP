@@ -997,6 +997,71 @@ class DraftsController(Controller):
         return self.send_json({'ok': True})
 
 
+class ClientCardController(Controller):
+    """Карточка клиента: реквизиты и контакты из справочника, все КП клиента (с правами журнала), итоги по статусам, заметки."""
+    MAX_NOTES = 200
+
+    def _client(self, cid, inn):
+        c = store().client_get(safe_id(cid), rev=True) if cid else None
+        if not c and inn:
+            c = store().client_get('inn' + inn, rev=True)
+        return c
+
+    @route(r'/api/clientcard', 'GET')
+    def card(self):
+        inn = re.sub(r'\D', '', self.q.get('inn') or '')[:12]
+        name = (self.q.get('name') or '').strip()[:300]
+        c = self._client(self.q.get('id') or '', inn)
+        if c:
+            inn = inn or re.sub(r'\D', '', str(c.get('inn') or ''))
+            name = name or str(c.get('name') or '')
+        if not inn and not name:
+            raise BadRequest('Нужен ИНН или название клиента')
+        res = admin.history_page(self.h, store(), {'q': inn or name, 'limit': 500})
+        key = (lambda r: re.sub(r'\D', '', str(r.get('clientInn') or '')) == inn) if inn else \
+              (lambda r: str(r.get('client') or '').strip().lower() == name.lower())
+        rows = [r for r in res['items'] if key(r)]
+        rows.sort(key=lambda r: (r.get('date') or '', r.get('number') or ''), reverse=True)
+        by, total, people = {}, 0, {}
+        for r in rows:
+            st = ((r.get('track') or {}).get('status') if isinstance(r.get('track'), dict) else None) or 'new'
+            a = admin.econ_rub(r)[0] or 0
+            b = by.setdefault(st, {'n': 0, 'sum': 0})
+            b['n'] += 1
+            b['sum'] += a
+            total += a
+            if r.get('manager'):
+                people[r['manager']] = people.get(r['manager'], 0) + 1
+        return self.send_json({'client': c, 'inn': inn, 'name': name, 'kps': rows, 'by': by, 'total': total,
+                               'managers': sorted(people, key=lambda k: -people[k]), 'notes': (c or {}).get('notes') or []})
+
+    @route(r'/api/clientcard/note', 'POST')      # заметка о клиенте: {id, text} — добавить; {id, del: время заметки} — удалить свою
+    def note(self):
+        d = self.json_body()
+        c = self._client(str(d.get('id') or '')[:64], '')
+        if not c:
+            return self.text(404, 'Клиент не найден в справочнике — сначала сохраните КП с этим клиентом')
+        cid = safe_id(str(d.get('id')))
+        uid, name = admin.actor(self.h, admin=False)[0] or '', admin.actor(self.h)[1] or ''
+        notes = [n for n in (c.get('notes') or []) if isinstance(n, dict)]
+        if d.get('del'):
+            mine = admin.session(self.h, touch=False) is not None
+            keep = [n for n in notes if not (n.get('at') == d['del'] and (mine or n.get('uid') == uid))]
+            if len(keep) == len(notes):
+                return self.text(403, 'Удалить можно только свою заметку')
+            notes = keep
+        else:
+            text = str(d.get('text') or '').strip()[:2000]
+            if not text:
+                raise BadRequest('Пустая заметка')
+            notes.insert(0, {'at': datetime.now().isoformat(timespec='seconds'), 'by': name, 'uid': uid, 'text': text})
+            notes = notes[:self.MAX_NOTES]
+        doc = {k: v for k, v in c.items() if k != '_rev'}
+        doc['notes'] = notes
+        store().client_put(cid, doc, name)
+        return self.send_json({'ok': True, 'notes': notes})
+
+
 class ServiceController(Controller):
     @route(r'/api/backup', 'POST')
     def backup(self):
