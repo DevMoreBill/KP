@@ -66,3 +66,13 @@ span.jst{cursor:default}
 .ml-files input{margin-top:3px;flex:none}
 .ml-files span{overflow-wrap:anywhere}
 .ml-dlg textarea{min-height:140px}
+.jbar [hidden]{display:none}
+/* «Настройки → Функции программы» */
+.ft-l{display:grid;gap:4px}
+.ft-r{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:start;padding:10px 0;border-top:1px solid var(--line)}
+.ft-r:first-child{border-top:0}
+.ft-r>div{display:grid;gap:2px}
+.ft-r .muted{font-size:13px}
+.ft-r.off b{color:var(--muted)}
+.ft-off{font-size:12.5px;color:var(--warn-ink)}
+@media (max-width:640px){.ft-r{grid-template-columns:1fr;gap:4px}}

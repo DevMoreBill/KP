@@ -4,6 +4,7 @@
 // у клиента уже есть недавние КП (за 120 дней, по ИНН) — чтобы два менеджера не готовили параллельные предложения
 const CL_PREV = { key:'', items:[], busy:false };
 function clientPrevHtml(){
+  if (!FEAT.on('clientPrev')) return '';
   const key=String(S.clientInn||'').replace(/\D/g,''); if (key.length<10) return '';
   if (CL_PREV.key!==key){ if (!CL_PREV.busy) clientPrevLoad(key); return ''; }
   const items=CL_PREV.items.filter(x=>x.id!==S.kpId); if (!items.length) return '';
@@ -56,7 +57,7 @@ function stepClient(){
 }
 
 // ---------- вид КП: обычное или для тендера. Тендер — номер и ссылка на закупку в КП, журнале; файл «<номер> КП.docx / .pdf»
-function tenderOn(){ return !!(S.tender && S.tender.on); }
+function tenderOn(){ return FEAT.on('tender') && !!(S.tender && S.tender.on); }
 function tenderNo(){ return tenderOn() ? String(S.tender.number||'').trim() : ''; }
 function tenderUrl(){ const u=tenderOn() ? String(S.tender.url||'').trim() : ''; return /^https?:\/\/\S+$/i.test(u) ? u : ''; }
 // номер закупки из ссылки: ЕИС (regNumber=…), площадки (…/tender/123456, …?id=…), иначе — самая длинная группа цифр от 6 знаков
@@ -64,7 +65,7 @@ function tenderNoFromUrl(u){ u=String(u||''); let m=/[?&](?:regNumber|purchaseNu
     || /(?:tender|purchase|trade|lot|procedure|auction|zakupk\w*|notice)[\w-]*[/=_-](\d{5,})/i.exec(u);
   if (m) return m[1]; const all=u.replace(/^https?:\/\/[^/]+/i,'').match(/\d{6,}/g)||[]; return all.sort((a,b)=>b.length-a.length)[0]||''; }
 function tenderHost(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return ''; } }
-function tenderBlock(){ const on=tenderOn(), T=S.tender||{}, url=String(T.url||'').trim(), badUrl=url && !tenderUrl();
+function tenderBlock(){ if (!FEAT.on('tender')) return ''; const on=tenderOn(), T=S.tender||{}, url=String(T.url||'').trim(), badUrl=url && !tenderUrl();
   return `<div class="csec kp-kind${on?' on':''}" id="st-tender"><div class="kk-head"><p class="sub">Вид КП</p>
       <div class="seg" role="radiogroup" aria-label="Вид КП"><button type="button" role="radio" aria-checked="${!on}" class="${on?'':'on'}" data-a="kpKind" data-v="std">Обычное</button><button type="button" role="radio" aria-checked="${on}" class="${on?'on':''}" data-a="kpKind" data-v="tender">Для тендера</button></div></div>
     ${on?`<div class="grid kk-grid">${field('№ закупки (тендера)','tender.number',{req:1,ph:'Например: 4567892',cls:T.number&&String(T.number).trim()?'':'bad'})}

@@ -12,7 +12,7 @@
   if (AUTH.enabled && !AUTH.user && !AUTH.admin){ authScreen(); return; }       // вход менеджеров по паролю включён
   try{ const st=await api('/api/admin/status'); ADMIN.on=!!st.admin; ADMIN.csrf=st.csrf||''; }catch(e){}   // вход администратора действует и после обновления страницы
   // справочники — параллельно (каталогу нужны только категории); списки и выборы администратора — до первой отрисовки
-  await loadTypes(); await Promise.all([loadClients(), loadManagers(), loadTemplates(), refreshCat(), LISTS.load()]);
+  await loadTypes(); await Promise.all([loadClients(), loadManagers(), loadTemplates(), refreshCat(), LISTS.load(), FEAT.load()]);
   loadLogos(); loadAppVersion(); uitLoad(); renderForm(); authMenu();
   (window.requestIdleCallback||setTimeout)(()=>CW.prewarm());     // поиск в каталоге — готов заранее
   Reminders.load(); setInterval(()=>{ if (!document.hidden) Reminders.load(); }, 10*60*1000);   // колокольчик: перезвонить, срок действия КП

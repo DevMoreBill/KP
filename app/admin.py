@@ -464,6 +464,12 @@ def guard(h, store, m, path):
     if h._kp_login and not h._kp_user and session(h, touch=False) is None and path not in ('/api/version', '/api/ping'):
         h.send(401, 'text/plain; charset=utf-8', 'Нужно войти в программу: логин и пароль менеджера')
         return True
+    # выключенная администратором функция («Настройки → Функции программы») — её адреса закрыты
+    import features
+    off = features.blocked(store, m, path)
+    if off:
+        h.send(403, 'text/plain; charset=utf-8', 'Функция «%s» выключена администратором' % off)
+        return True
     r = re.match(r'^/api/kp/([A-Za-z0-9_-]+)/', path)
     if r and not kp_access(h, store, r.group(1)):
         h.send(403, 'text/plain; charset=utf-8', 'Это КП другого менеджера — нет доступа. Права выдаёт администратор')
@@ -825,6 +831,19 @@ class AdminApi:
                 info['password'] = 'изменён'
             self.log('edit_access', 'manager', mid, None, info)
             return self.ok({'login': rec.get('login') or '', 'hasPassword': bool(rec.get('pw')), 'perms': auth_users.perms_of(rec), 'blocked': bool(rec.get('blocked'))})
+        if sub == 'features':    # функции программы: включить / выключить
+            import features
+            if m == 'POST':
+                before = features.get(st)
+                try:
+                    res = features.save(st, self.data().get('values'), me or 'admin')
+                except ValueError as e:
+                    return self.err(400, str(e))
+                ch = {k: v for k, v in res.items() if before.get(k) != v}
+                if ch:
+                    self.log('edit_settings', 'settings', 'features', {k: before.get(k) for k in ch}, ch)
+                return self.ok({'values': res})
+            return self.ok({'values': features.get(st)})
         if sub == 'mail':        # почта для отправки КП клиентам (SMTP)
             import kp_track
             if m == 'POST':

@@ -167,7 +167,7 @@ document.addEventListener('keydown', e=>{ const dz=e.target.closest?.('[data-dro
 
 // горячие клавиши (когда не открыто окно): Ctrl+S — сохранить КП, Ctrl+K — каталог
 document.addEventListener('keydown', e=>{
-  if (!(e.ctrlKey || e.metaKey) || e.altKey || document.querySelector('dialog[open]')) return;
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || !FEAT.on('hotkeys') || document.querySelector('dialog[open]')) return;
   const k=e.key.toLowerCase();
   if (k==='s' || k==='ы'){ e.preventDefault(); const pr=problems();
     if (pr.length){ toast('Сначала заполните: '+pr[0][0]+(pr.length>1?` (и ещё ${pr.length-1})`:'')); return; }

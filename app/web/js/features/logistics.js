@@ -150,7 +150,7 @@ async function lgQuote(k){
 
 // цены перевозчиков — сами, когда открыта вкладка и груз посчитан (после паузы во вводе, один раз на набор данных)
 function lgAutoQuote(){
-  if (DL.ex || DL.open!=='log' || !LG.tar) return;
+  if (!FEAT.on('carriers') || DL.ex || DL.open!=='log' || !LG.tar) return;
   dlDeal().sup.forEach((s,k)=>{ const r=LG.res[s.id]; if (!r || r.need) return; const key=lgQuoteKey(r);
     if (lgQuoteFor(s, r) || LG.tried[key] || LG.busy[s.id]) return;
     clearTimeout(LG.qT[s.id]); LG.qT[s.id]=setTimeout(()=>{ const r2=LG.res[s.id]; if (r2 && lgQuoteKey(r2)===key && DL.open==='log') lgQuote(k); }, 1200); });

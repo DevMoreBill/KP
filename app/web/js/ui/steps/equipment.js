@@ -16,7 +16,7 @@ function stepItems(){
     <div class="tiles">${tiles}<button type="button" class="tile add" data-a="addItem"><b>+ Новое оборудование</b><span>нет в каталоге — заполнить по ссылке, с ИИ или вручную</span></button></div></section>`;
   }
   return `<section class="step" id="st-items"><h2><span class="n">2</span>Оборудование${tip('<p>«Изменить» — описание, фото, характеристики и опции позиции.</p><p>«Страница оборудования» — отдельный лист в КП с фото и характеристиками.</p><p>Цены, закупка и скидка — в разделе «Цены и валюта».</p>')}</h2>
-  <div class="eq-bar"><button class="btn primary" type="button" data-a="openCatalog">+ Из каталога</button><button class="btn" type="button" data-a="addItem" title="Нет в каталоге: по ссылке на сайт, с помощью ИИ, таблицей или вручную">+ Новое оборудование</button><button class="btn" type="button" data-a="addStation">+ Станция в контейнере</button>
+  <div class="eq-bar"><button class="btn primary" type="button" data-a="openCatalog">+ Из каталога</button><button class="btn" type="button" data-a="addItem" title="Нет в каталоге: по ссылке на сайт, с помощью ИИ, таблицей или вручную">+ Новое оборудование</button>${FEAT.on('stations')?'<button class="btn" type="button" data-a="addStation">+ Станция в контейнере</button>':''}
     <span class="muted">${n} ${plural(n,'позиция','позиции','позиций')} · ${units} ед.</span></div>
   ${quick}
   ${S.items.map((x,i)=>itemCard(x,i)).join('')}</section>`;

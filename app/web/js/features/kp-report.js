@@ -54,19 +54,21 @@ class KpReport {
   static conv(x){ return x.won+x.lost ? Math.round(x.won/(x.won+x.lost)*100)+' %' : '—'; }
   static html(D){
     if (!D.list.length) return '<p class="empty">За этот период КП нет.</p>';
-    const t=D.tot, rub=v=>money(v||0)+' ₽', P=KpReport.pct;
+    const t=D.tot, rub=v=>money(v||0)+' ₽', P=KpReport.pct, pf=FEAT.on('deal');     // прибыль и маржа — только при включённой экономике сделки
     const tile=(l,v,s='')=>`<div class="rp-t"><small>${l}</small><b>${v}</b>${s?`<span>${s}</span>`:''}</div>`;
-    const tbl=(head, rows)=>`<div class="rp-tw"><table class="rp-tb"><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+    // столбец: [заголовок, (строка)=>ячейка, числовой?, только при экономике?]
+    const tbl=(cols, rows)=>{ const cs=cols.filter(c=>pf || !c[3]);
+      return `<div class="rp-tw"><table class="rp-tb"><thead><tr>${cs.map(c=>`<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.map(x=>`<tr>${cs.map(c=>`<td${c[2]?' class="n"':''}>${c[1](x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`; };
+    const nm=x=>esc(x.name), n=f=>x=>x[f], r=f=>x=>rub(x[f]), conv=x=>KpReport.conv(x), wonC=x=>`${x.won} · ${rub(x.wonSum)}`;
     return `<div class="rp-tiles">${tile('КП', t.n, `на ${rub(t.sum)}`)}${tile('Выиграно', t.won, rub(t.wonSum))}${tile('Проиграно', t.lost)}${tile('Конверсия', KpReport.conv(t), 'выиграно из закрытых')}
-        ${tile('Прибыль', rub(t.profit), t.pBase?`${P(t.profit, t.pBase)} от суммы КП с расчётом`:'нет КП с закупкой')}</div>
-      <h4>По менеджерам</h4>${tbl(['Менеджер','КП','Сумма','Отправлено','Выиграно','Проиграно','Конверсия','Прибыль','% от суммы'],
-        D.mgr.map(x=>`<tr><td>${esc(x.name)}</td><td class="n">${x.n}</td><td class="n">${rub(x.sum)}</td><td class="n">${x.sent}</td><td class="n">${x.won} · ${rub(x.wonSum)}</td><td class="n">${x.lost}</td><td class="n">${KpReport.conv(x)}</td><td class="n">${x.pBase?rub(x.profit):'—'}</td><td class="n">${P(x.profit,x.pBase)}</td></tr>`))}
-      <h4>По категориям оборудования <span class="muted">— прибыль по позициям с закупкой, без логистики и финансирования</span></h4>${tbl(['Категория','КП','Позиций','Сумма','Выиграно на','Продажа с закупкой','Закупка','Прибыль','Маржа'],
-        D.cat.map(x=>`<tr><td>${esc(x.name)}</td><td class="n">${x.n}</td><td class="n">${x.pos}</td><td class="n">${rub(x.sum)}</td><td class="n">${rub(x.won)}</td><td class="n">${rub(x.sale)}</td><td class="n">${rub(x.cost)}</td><td class="n">${rub(x.sale-x.cost)}</td><td class="n">${P(x.sale-x.cost, x.sale)}</td></tr>`))}
-      <h4>Крупнейшие клиенты</h4>${tbl(['Клиент','КП','Сумма','Выиграно','Конверсия'],
-        D.cli.map(x=>`<tr><td>${esc(x.name)}</td><td class="n">${x.n}</td><td class="n">${rub(x.sum)}</td><td class="n">${x.won} · ${rub(x.wonSum)}</td><td class="n">${KpReport.conv(x)}</td></tr>`))}
-      <details class="rp-all"><summary>Все КП периода (${D.list.length})</summary>${tbl(['№','Дата','Клиент','Автор','Статус','Сумма','Прибыль'],
-        D.list.map(x=>`<tr><td><button type="button" class="lnk" data-ro="${esc(x.id)}">${esc(x.number)}</button></td><td>${esc(ddmm(x.date))}</td><td>${esc(x.client||'')}</td><td>${esc(jShort(x.manager||''))}</td><td><span class="jst st-${x.st}">${KP_STATUS[x.st]}</span></td><td class="n">${rub(x.sum)}</td><td class="n">${x.profit==null?'—':rub(x.profit)}</td></tr>`))}</details>`;
+        ${pf?tile('Прибыль', rub(t.profit), t.pBase?`${P(t.profit, t.pBase)} от суммы КП с расчётом`:'нет КП с закупкой'):''}</div>
+      <h4>По менеджерам</h4>${tbl([['Менеджер',nm],['КП',n('n'),1],['Сумма',r('sum'),1],['Отправлено',n('sent'),1],['Выиграно',wonC,1],['Проиграно',n('lost'),1],['Конверсия',conv,1],
+        ['Прибыль',x=>x.pBase?rub(x.profit):'—',1,1],['% от суммы',x=>P(x.profit,x.pBase),1,1]], D.mgr)}
+      <h4>По категориям оборудования${pf?' <span class="muted">— прибыль по позициям с закупкой, без логистики и финансирования</span>':''}</h4>${tbl([['Категория',nm],['КП',n('n'),1],['Позиций',n('pos'),1],['Сумма',r('sum'),1],['Выиграно на',r('won'),1],
+        ['Продажа с закупкой',r('sale'),1,1],['Закупка',r('cost'),1,1],['Прибыль',x=>rub(x.sale-x.cost),1,1],['Маржа',x=>P(x.sale-x.cost, x.sale),1,1]], D.cat)}
+      <h4>Крупнейшие клиенты</h4>${tbl([['Клиент',nm],['КП',n('n'),1],['Сумма',r('sum'),1],['Выиграно',wonC,1],['Конверсия',conv,1]], D.cli)}
+      <details class="rp-all"><summary>Все КП периода (${D.list.length})</summary>${tbl([['№',x=>`<button type="button" class="lnk" data-ro="${esc(x.id)}">${esc(x.number)}</button>`],['Дата',x=>esc(ddmm(x.date))],
+        ['Клиент',x=>esc(x.client||'')],['Автор',x=>esc(jShort(x.manager||''))],['Статус',x=>`<span class="jst st-${x.st}">${KP_STATUS[x.st]}</span>`],['Сумма',r('sum'),1],['Прибыль',x=>x.profit==null?'—':rub(x.profit),1,1]], D.list)}</details>`;
   }
   static async excel(D, a, b){
     const r=v=>Math.round(v||0)/100, h=s=>({v:s, s:'head'}), H=s=>({v:s, s:'headR'}), M=v=>({v:r(v), s:'tdMoney'}), N=v=>({v, s:'tdInt'}), T=v=>({v:String(v??''), s:'td'}), Pc=(x,y)=>({v:y?x/y:0, s:'tdPct'});
@@ -80,6 +82,10 @@ class KpReport {
         ...D.cli.map(x=>[T(x.name),N(x.n),M(x.sum),N(x.won),M(x.wonSum)])]},
       {name:'КП', cols:[12,12,40,28,14,16,16], freeze:3, rows:[...title, [h('№'),h('Дата'),h('Клиент'),h('Автор'),h('Статус'),H('Сумма, руб.'),H('Прибыль, руб.')],
         ...D.list.map(x=>[T(x.number),T(ddmm(x.date)),T(x.client),T(x.manager),T(KP_STATUS[x.st]),M(x.sum),x.profit==null?T('—'):M(x.profit)])]}];
+    if (!FEAT.on('deal')){     // экономика сделки выключена — без прибыли, закупки и маржи
+      const drop={'Менеджеры':[7,8], 'Категории':[5,6,7,8], 'КП':[6]};
+      for (const sh of sheets){ const d=drop[sh.name]; if (!d) continue; sh.cols=sh.cols.filter((_,k)=>!d.includes(k)); sh.rows=sh.rows.map(row=>row.length>2?row.filter((_,k)=>!d.includes(k)):row); }
+    }
     saveFileA(`Отчёт_КП_${a}_${b}.xlsx`, await makeXlsx(sheets, 'Отчёт по КП'));
     toast('Отчёт выгружен в Excel');
   }

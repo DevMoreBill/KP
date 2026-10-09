@@ -90,3 +90,25 @@ class TextsPanel {
 
 async function stLists(m){ await new ListsPanel(m).open(); }
 async function stTexts(m){ await new TextsPanel(m).open(); }
+
+// «Настройки → Функции программы»: включить и выключить дополнительные функции (реестр — js/core/features.js,
+// сервер — app/features.py). Изменение действует сразу у всех; данные выключенной функции сохраняются.
+class FeaturesPanel {
+  constructor(m){ this.m=m; }
+  async open(){ const r=await aapi('features'); FEAT.use(r.values||{}); this.render(); this.bind(); }
+  row(d){ const own=FEAT.vals[d.key]!==false, need=d.needs && !FEAT.on(d.needs) ? FEAT.get(d.needs) : null;
+    return `<div class="ft-r${own?'':' off'}"><label class="sw ft-sw"><input type="checkbox" data-ft="${esc(d.key)}"${own?' checked':''}><span>${own?'включено':'выключено'}</span></label>
+      <div><b>${esc(d.label)}</b><span class="muted">${esc(d.hint)}</span>${!own&&d.off?`<span class="ft-off">Выключено: ${esc(d.off)}</span>`:''}${need?`<span class="ft-off">Не работает: выключено «${esc(need.label)}»</span>`:''}</div></div>`; }
+  render(){ const n=FEAT.defs.filter(d=>!FEAT.on(d.key)).length;
+    this.m.innerHTML=`<div class="st-card"><p class="sub" style="margin:0">Функции программы</p>
+        <p class="muted" style="margin:6px 0 0">Включите только то, чем пользуется отдел, — лишние кнопки и окна пропадут у всех. Выключенная функция недоступна и в обход
+        интерфейса; её данные (статусы, расчёты, версии) не удаляются: включите снова — всё на месте.${n?` Сейчас выключено: <b>${n}</b>.`:''}</p></div>
+      ${FEAT.groups.map(g=>{ const ds=FEAT.defs.filter(d=>d.group===g.id); return ds.length?`<div class="st-card"><p class="sub">${esc(g.title)}</p><div class="ft-l">${ds.map(d=>this.row(d)).join('')}</div></div>`:''; }).join('')}
+      <div class="row"><button class="btn ghost" type="button" data-ftall>Включить всё</button></div>`; }
+  async save(values, msg){
+    try{ const r=await ajson('features', {values}); FEAT.use(r.values||{}); this.render(); toast(msg); renderForm(); if (typeof Reminders!=='undefined') Reminders.load(); }
+    catch(e){ toast('Не сохранено: '+(e.message||e)); this.render(); } }
+  bind(){ this.m.onchange=e=>{ const k=e.target.dataset.ft; if (!k) return; const d=FEAT.get(k);
+      this.save({[k]: e.target.checked}, `«${d.label}» — ${e.target.checked?'включено':'выключено'} у всех`); };
+    this.m.onclick=e=>{ if (e.target.closest('[data-ftall]')) this.save(Object.fromEntries(FEAT.defs.map(d=>[d.key, null])), 'Все функции включены'); }; }
+}
