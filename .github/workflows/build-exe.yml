@@ -274,7 +274,11 @@ jobs:
       - name: Установка обновления и перезапуск из «Настроек» (как администратор)
         shell: pwsh
         run: |
-          $dir = Join-Path $env:RUNNER_TEMP 'kp-smoke'
+          # своя чистая папка с копией EXE: в kp-smoke предыдущие шаги уже создали администратора
+          $dir = Join-Path $env:RUNNER_TEMP 'kp-admin-update'
+          Remove-Item -Recurse -Force -LiteralPath $dir -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'kp-smoke\kp.exe') -Destination $dir
           # при сбое — причина в аннотации сборки (видна и без скачивания логов)
           $phase = 'запуск'
           trap {
