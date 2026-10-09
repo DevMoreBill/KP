@@ -40,6 +40,7 @@ function renderSide(){
     <dl>${t.discount?`<dt>Без скидки</dt><dd>${money(t.gross)}</dd><dt>Скидка для заказчика</dt><dd>−${money(t.discount)}</dd>`:''}<dt>в т. ч. НДС ${esc(S.vat)} %</dt><dd>${money(t.vat)}</dd>${rubEq}<dt>Позиций</dt><dd>${S.items.length}</dd><dt>Единиц оборудования</dt><dd>${t.units}</dd></dl>
     <div class="words">${t.sum?esc(words(t.sum).replace(/^./,c=>c.toUpperCase())):'Сумма прописью появится после ввода цен.'}</div></div>${mBlock}
     <div class="checks"><h3>${pr.length?'Осталось заполнить':'Всё готово'}</h3><ul>${pr.length?pr.map(x=>`<li><button type="button" data-go="${x[1]}">${esc(x[0])}</button></li>`).join(''):'<li class="ok">Проверки пройдены — можно скачивать.</li>'}</ul>
+    ${mgrLine()&&STEP!=='mgr'?`<div class="tplside">Менеджер: <b>${esc(jShort(S.manager.name))}</b>, ${esc(S.manager.phone)} <button type="button" data-step="mgr">изменить</button></div>`:''}
     ${TEMPLATES.length>1?`<div class="tplside">Шаблон: <b>${esc((curTemplate()||{}).name||'—')}</b> <button type="button" data-go="st-cover">сменить</button></div>`:''}
     <button class="btn dl pv" type="button" data-a="kpPreview" ${S.items.length?'':'disabled'}>Предпросмотр КП</button>
     <button class="btn primary dl" type="button" data-a="download" ${pr.length?'disabled':''}>${S.kpId?'Сохранить изменения КП № '+esc(S.number):'Сохранить КП'}</button>
@@ -50,7 +51,7 @@ function renderSide(){
 // нижняя панель телефона: назад, итог (переход к сохранению), далее; на последнем шаге — «Сохранить КП»
 function renderMbar(t, pr, cs){
   const m=$('#mbar'); if (!m) return;
-  const k=STEPS.findIndex(s=>s.id===STEP), prev=STEPS[k-1], next=STEPS[k+1];
+  const L=steps(), k=L.findIndex(s=>s.id===STEP), prev=L[k-1], next=L[k+1];
   const back = prev ? `<button class="mb-back" type="button" data-step="${prev.id}" aria-label="Назад: ${esc(prev.t)}"><span aria-hidden="true">‹</span></button>` : '<span class="mb-back" aria-hidden="true"></span>';
   const sum = `<button class="mb-sum" type="button" data-a="toSave"><small>${pr.length?`Итого · не заполнено: ${pr.length}`:'Итого · всё готово'}</small><b>${money(t.sum)} ${esc(cs)}</b></button>`;
   const go = next ? `<button class="btn primary mb-next" type="button" data-step="${next.id}"><span>Далее</span><small>${esc(next.t)}</small></button>`

@@ -8,7 +8,34 @@ function priceHint(x){
   const cs=curSh(kpCur()), d=KPGen.unitDisc(x);
   const disc = d ? `Скидка ${money(d)} ${cs} за ед. · цена для заказчика <b>${money((x.price||0)-d)} ${cs}</b>` : '';
   const rrc = rrcHint(x, (x.price||0)-d);
-  return [disc, rrc].filter(Boolean).join('<br>');
+  return [disc, rrc, PriceHist.hint(x)].filter(Boolean).join('<br>');
+}
+
+// цены позиции в прошлых КП (функция priceHist): каталог помнит цену модели в каждом сохранённом КП (последние 50)
+class PriceHist {
+  static doc(x){ if (typeof catCache==='undefined') return null; return catCache.find(z=>z.id===x.catId) || (x.name ? catCache.find(z=>norm(z.name)===norm(x.name)) : null); }
+  static rows(c){ return (c&&c.prices||[]).filter(p=>p && p.price>0 && (!S.number || p.number!==S.number)); }
+  static fmt(p){ return `${money(p.price)} ${curSh(p.cur||'RUB')}`; }
+  static hint(x){
+    if (!FEAT.on('priceHist') || !x.name) return '';
+    const c=this.doc(x), L=this.rows(c); if (!L.length) return '';
+    const p=L[0], n=Math.max(L.length, (c.pricesCount||0)-((c.prices||[]).length-L.length)), i=S.items.indexOf(x);
+    const same=L.filter(q=>(q.cur||'RUB')===(p.cur||'RUB')).map(q=>q.price), lo=Math.min(...same), hi=Math.max(...same);
+    return `<span class="ph-h">В прошлых КП: <b>${this.fmt(p)}</b> — ${p.number?'№ '+esc(p.number)+', ':''}${esc(p.client||'')}${p.date?', '+esc(ddmm(p.date)):''}${same.length>1&&lo!==hi?` · от ${money(lo)} до ${money(hi)}`:''}
+      ${i>=0?`<button class="lnk" type="button" data-a="priceHist" data-i="${i}">${n>1?'все '+n:'подробнее'}</button>`:''}</span>`;
+  }
+  static async open(i){
+    const x=S.items[i]; if (!x) return; const lite=this.doc(x); if (!lite) return;
+    const c=await fullDoc(lite), L=this.rows(c), cs=curSh(kpCur());
+    const m=new Modal(`<div class="dlg-h"><h3>Цены в прошлых КП</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
+      <p class="muted" style="margin:0 0 10px">${esc(x.name)}${x.price?` · сейчас <b>${money(x.price)} ${cs}</b>`:''}</p>
+      <div class="ph-l"><table class="ph-t"><thead><tr><th>Дата</th><th>КП</th><th>Клиент</th><th class="num">Кол-во</th><th class="num">Цена</th><th></th></tr></thead><tbody>
+      ${L.map((p, k)=>`<tr><td>${esc(p.date?KPGen.ruDate(p.date).replace(/ г\.$/, ''):'')}</td><td>${p.number?'№ '+esc(p.number):'—'}</td><td>${esc(p.client||'')}</td><td class="num">${p.qty||''}</td><td class="num"><b>${this.fmt(p)}</b></td>
+        <td>${(p.cur||'RUB')===kpCur()?`<button class="btn sm ghost" type="button" data-phu="${k}" title="Поставить эту цену в КП">Взять</button>`:''}</td></tr>`).join('')}</tbody></table></div>`, 'ph-dlg');
+    m.d.onclick=e=>{ if (e.target.closest('[data-x]')) return m.close();
+      const b=e.target.closest('[data-phu]'); if (!b) return; const p=L[+b.dataset.phu];
+      x.price=p.price; x.priceManual=true; delete x._priceText; m.close(); renderForm(); persist(); toast(`Цена из КП № ${p.number||''}: ${this.fmt(p)}`); };
+  }
 }
 
 // контроль РРЦ: цена для заказчика против рекомендованной розничной цены поставщика (позиции из товарного фида)

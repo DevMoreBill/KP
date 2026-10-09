@@ -115,6 +115,7 @@ document.addEventListener('click', async e=>{
     case 'aiApply': return aiApply(i);
     case 'openCatalog': return openCatalog({});
     case 'toPrice': return goStep('price');
+    case 'priceHist': return PriceHist.open(i);
     case 'saveCat': return saveCatalog(i);
     case 'download': { const r=await download(); if (isMob()) $('#dlmsg')?.scrollIntoView({block:'center'}); return r; }
     case 'typesEdit': return openTypesEditor();
@@ -140,7 +141,7 @@ document.addEventListener('click', async e=>{
     case 'dmode': { const inp=document.querySelector(`[data-disc="${i}"]`); it.discType=b.dataset.v; if (it.disc) it.disc.type=b.dataset.v;
       const txt=inp?inp.value:''; it._discText=txt; it._discBad=!setDisc(it, txt); if (!it._discBad) delete it._discText; renderForm(); persist(); return; }
     case 'clientsImport': return openClientsImport();
-    case 'toSave': { if (isMob() && STEP!==STEPS[STEPS.length-1].id){ goStep(STEPS[STEPS.length-1].id); }
+    case 'toSave': { const L=steps(); if (isMob() && STEP!==L[L.length-1].id){ goStep(L[L.length-1].id); }
       const sd=$('#side'); sd.scrollIntoView({behavior:isMob()?'auto':'smooth'}); sd.classList.add('pulse'); setTimeout(()=>sd.classList.remove('pulse'),1600); return; }
     case 'cbr': return loadCBR();
     case 'journal': return openJournal();
