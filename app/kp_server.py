@@ -75,6 +75,10 @@ def web_file(rel):
 
 
 PAID_GET = ('/api/geo/', '/api/party', '/api/check', '/api/imgfetch', '/api/cbr')
+# политика безопасности страницы: скрипты — только файлы программы (внедрённый в данные скрипт не выполнится);
+# unsafe-eval — скелет шаблона КП (skeleton.js) собирается из текста; картинки — свои, data:, blob: и с сайтов поставщиков
+CSP = ("default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; "
+       "font-src 'self' data:; connect-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
 MAX_BODY = 300 * 1024 * 1024    # самый большой запрос — загрузка резервной копии базы
 
 # хранилище изображений data/img (по папкам категорий)
@@ -95,7 +99,7 @@ class Handler(BaseHTTPRequestHandler):
         a = (self.client_address or ('',))[0]
         return a in ('127.0.0.1', '::1', '::ffff:127.0.0.1') or a.startswith('127.')
 
-    def send_file(self, f, ctype, cache):
+    def send_file(self, f, ctype, cache, csp=None):
         """Файл с проверкой версии (ETag): неизменённый файл браузер берёт из своего кэша — ответ 304 без тела.
         Интерфейс (cache='no-cache') проверяется при каждой загрузке, изображения хранятся неделю."""
         st = os.stat(f)
@@ -107,7 +111,10 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         with open(f, 'rb') as fh:
-            return self.send(200, ctype, fh.read(), {'Cache-Control': cache, 'ETag': tag})
+            extra = {'Cache-Control': cache, 'ETag': tag}
+            if csp:
+                extra['Content-Security-Policy'] = csp
+            return self.send(200, ctype, fh.read(), extra)
 
     def send(self, code, ctype, body, extra=None):
         data = body if isinstance(body, bytes) else str(body).encode('utf-8')
@@ -237,8 +244,11 @@ class Handler(BaseHTTPRequestHandler):
             if callable(hook) and getattr(self, '_code', 500) < 400:
                 hook()
         except Exception as e:
+            # подробности — в журнал сервера; пользователю — без путей и внутренностей
+            import traceback
+            traceback.print_exc()
             try:
-                self.send(500, 'text/plain; charset=utf-8', str(e))
+                self.send(500, 'text/plain; charset=utf-8', 'Внутренняя ошибка сервера (%s). Подробности — в журнале сервера.' % type(e).__name__)
             except Exception:
                 pass
 
@@ -279,7 +289,7 @@ class Handler(BaseHTTPRequestHandler):
             f = web_file('index.html' if path in ('/', '/index.html') else path[len('/web/'):])
             if not f:
                 return self.not_found()
-            return self.send_file(f, WEB_TYPES[os.path.splitext(f)[1].lower()], 'no-cache')
+            return self.send_file(f, WEB_TYPES[os.path.splitext(f)[1].lower()], 'no-cache', CSP if f.endswith('index.html') else None)
         if path == '/favicon.ico':
             icon = os.path.join(APP_DIR, 'icon.ico')
             if not os.path.isfile(icon):
@@ -600,6 +610,9 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self.send(422, 'text/plain; charset=utf-8', 'Картинка не загружена: %s' % e)
             return self.send(200, ctype, data)
+        if path == '/api/lists' and m == 'GET':           # списки и выборы от администратора (для всех; правка — /api/admin/lists)
+            from lists import ListStore
+            return self.send_json(ListStore(store()).all())
         if path == '/api/defaults' and m == 'GET':        # значения по умолчанию от администратора (для всех)
             return self.send_json(defaults.get(store()))
         if path == '/api/ai/status' and m == 'GET':       # нейросеть в программе: включена ли (без ключа и адреса)

@@ -473,7 +473,7 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-ddt input[type=date]{max-width:150px}
 /* дата договора — в шапке окна, всегда видна */
 .dl-hd{display:flex;align-items:center;gap:8px;margin-left:auto;padding:5px 6px 5px 12px;border-radius:12px;background:color-mix(in srgb,var(--sky) 16%,var(--card));border:1.5px solid var(--navy)}
-.dl-hd>span{font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap}
+.dl-hd>span{font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap;min-width:0}
 .dl-hd input[type=date]{height:34px;min-height:34px;padding:4px 8px;font-size:14px;font-weight:600;border-radius:8px;width:auto}
 .dl-hd.empty{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))}
 .dl-hd.empty>span{color:#9a5410}
@@ -579,6 +579,10 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .mob dialog.dealwin .dl-mini>span:not(.r){text-align:right;align-items:flex-end;display:flex;flex-direction:column}
 .mob dialog.dealwin .dl-mini .dl-hd{display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin:0;padding:0;border:0;background:none;box-shadow:none}
 .mob dialog.dealwin .dl-mini .dl-hd>span{font-size:11px;color:var(--muted);font-weight:600}
+/* длинная подпись (своя в «Текстах интерфейса») переносится, поле даты — на всю строку над итогами */
+.mob dialog.dealwin .dl-mini .dl-hd{grid-column:1 / -1}
+.mob dialog.dealwin .dl-mini .dl-hd>span{white-space:normal;flex-wrap:wrap}
+.mob dialog.dealwin .dl-mini .dl-hdw{white-space:normal}
 .mob dialog.dealwin .dl-mini .dl-hd .dl-q{display:none}
 .mob dialog.dealwin .dl-mini .dl-hd input{width:142px;min-height:34px;padding:4px 8px;font-size:15px}
 .mob dialog.dealwin .dl-mini .dl-hd.empty input{border-color:var(--warn);background:var(--warn-bg)}

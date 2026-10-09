@@ -81,9 +81,21 @@ function docState(){
   return St;
 }
 
+// изображения документа: файл пропал (удалён из папки картинок, база перенесена без картинок) — КП собирается без него,
+// а кому не хватило фото — в DOC_MISS (показывается после сохранения и в предпросмотре)
+let DOC_MISS = [];
+async function docImg(img, who){ if (!img || !img.src) return null;
+  try{ if (String(img.src).startsWith('data:')) return img.src;
+    const r=await fetch(img.src); if (!r.ok || !/^image\//.test(r.headers.get('Content-Type')||'')) throw new Error(String(r.status));
+    return await blobToURL(await r.blob()); }
+  catch(e){ if (who && !DOC_MISS.includes(who)) DOC_MISS.push(who); return null; } }
+async function docTile(img, who){ const du=await docImg(img, who); if (!du) return null;
+  try{ return await tileFrom({src:du}); }catch(e){ if (who && !DOC_MISS.includes(who)) DOC_MISS.push(who); return null; } }
+function docMissHtml(){ return DOC_MISS.length ? `<div class="msg warn">Не найден файл фото: ${esc(DOC_MISS.slice(0,5).join('; '))}${DOC_MISS.length>5?` и ещё ${DOC_MISS.length-5}`:''}. КП собрано без этих фото — замените их в карточке позиции.</div>` : ''; }
+
 // сборка файла .docx: основа Word из шаблона + страницы по скелету шаблона с настройками settings
 async function renderDocx(St, pack, settings){
-  const T = settings.texts || {};
+  const T = settings.texts || {}; DOC_MISS = [];
   const zip = await JSZip.loadAsync(pack.base);
   const img = settings.clientsImage ? await templateImage(pack, settings.clientsImage) : null;
   const clients = img ? {rid:'rIdTplClients', file:'tpl_clients.'+img.ext, w:img.w, h:img.h} : false;
@@ -97,7 +109,8 @@ async function renderDocx(St, pack, settings){
   if (STS.length>=2){
     St.stations=STS.map(s=>({key:s.key,model:s.model,power:s.power,exec:s.exec,qty:s.qty}));
     Min.thumbs={};
-    for (const s of STS){ if(!s.photo) continue; zip.file(`word/media/${s.key}.jpg`, b64(await toDataURL(s.photo)), {base64:true}); Min.thumbs[s.key]={file:`${s.key}.jpg`,w:s.photo.w,h:s.photo.h}; }
+    for (const s of STS){ if(!s.photo) continue; const du=await docImg(s.photo, s.model); if (!du) continue;
+      zip.file(`word/media/${s.key}.jpg`, b64(du), {base64:true}); Min.thumbs[s.key]={file:`${s.key}.jpg`,w:s.photo.w,h:s.photo.h}; }
     if (!S.cover.touched){
       const makers=new Set(STS.map(s=>s.model.split(' ')[0]));
       const kvas=STS.filter(s=>/кВА/.test(s.power||'')).map(s=>parseFloat(String(s.power).replace(',','.'))).filter(x=>x>0);
@@ -109,14 +122,15 @@ async function renderDocx(St, pack, settings){
     }
   }
   // фото на титул: выбранное в разделе «Титульный лист» или первой позиции с фото
-  const coverItem=S.items.find(x=>x.id===S.cover.photoFrom && x.photo) || S.items.find(x=>x.photo);
-  if (coverItem){ zip.file('word/media/cover.jpg', b64(await toDataURL(coverItem.photo)), {base64:true}); Min.cover={file:'cover.jpg',w:coverItem.photo.w,h:coverItem.photo.h}; }
+  const covers=[S.items.find(x=>x.id===S.cover.photoFrom && x.photo), ...S.items.filter(x=>x.photo)].filter(Boolean);
+  for (const ci of covers){ const du=await docImg(ci.photo, ci.name); if (!du) continue;
+    zip.file('word/media/cover.jpg', b64(du), {base64:true}); Min.cover={file:'cover.jpg',w:ci.photo.w,h:ci.photo.h}; break; }
   for (const x of S.items.map(kitDocItem)){ if(!x.page) continue; const m={};
-    if (x.photo){ const t=await tileFrom(x.photo); zip.file(`word/media/tile_${x.id}.png`, b64(t.url), {base64:true}); m.tile={file:`tile_${x.id}.png`,w:t.w,h:t.h}; }
-    if (x.logo){ zip.file(`word/media/logo_${x.id}.png`, b64(await toDataURL(x.logo)), {base64:true}); m.logo={file:`logo_${x.id}.png`,w:x.logo.w,h:x.logo.h}; }
+    if (x.photo){ const t=await docTile(x.photo, x.name); if (t){ zip.file(`word/media/tile_${x.id}.png`, b64(t.url), {base64:true}); m.tile={file:`tile_${x.id}.png`,w:t.w,h:t.h}; } }
+    if (x.logo){ const du=await docImg(x.logo, x.name+' (логотип)'); if (du){ zip.file(`word/media/logo_${x.id}.png`, b64(du), {base64:true}); m.logo={file:`logo_${x.id}.png`,w:x.logo.w,h:x.logo.h}; } }
     m.gallery=[]; m.featImgs={}; let gk=0;
     (x.features||[]).forEach(featId);
-    for (const g of (x.gallery||[])){ if (g.on===false) continue; const du=await toDataURL(g); if(!du) continue;
+    for (const g of (x.gallery||[])){ if (g.on===false) continue; const du=await docImg(g, x.name+(g.caption?' — '+g.caption:'')); if(!du) continue;
       const ext=/^data:image\/png/.test(du)?'png':'jpg'; const fnm=`gal_${x.id}_${++gk}.${ext}`;
       zip.file(`word/media/${fnm}`, b64(du), {base64:true});
       const L=linkOf(x,g);
@@ -144,7 +158,7 @@ async function renderDocx(St, pack, settings){
   if (feats.includes('kit')){
     St.items=St.items.map(x=>x.kitDoc ? Object.assign({}, x, x.kitDoc.base, {kit:{parts:x.kitDoc.parts}, kitDoc:undefined}) : x);
     for (const x of S.items){ if (!isKit(x) || !Min.items[x.id]) continue; const m=Min.items[x.id]; m.kitImgs={};
-      for (const p of kitParts(x)){ if (!p.photo || !p.photo.src) continue; const du=await toDataURL(p.photo); if (!du) continue;
+      for (const p of kitParts(x)){ if (!p.photo || !p.photo.src) continue; const du=await docImg(p.photo, x.name+' — '+(p.name||'элемент')); if (!du) continue;
         const ext=/^data:image\/png/.test(du)?'png':'jpg', fnm=`kit_${x.id}_${String(p.id).replace(/[^A-Za-z0-9_-]/g,'')}.${ext}`;
         zip.file('word/media/'+fnm, b64(du), {base64:true}); m.kitImgs[p.id]={file:fnm, w:p.photo.w, h:p.photo.h}; } } }
   else St.items=St.items.map(x=>x.kitDoc ? Object.assign({}, x, {kitDoc:undefined}) : x);
@@ -215,7 +229,7 @@ async function download(){
     if (pdfWanted()){ btn.textContent='Создаю PDF…'; try{ await saveKpPdf(); pdfOk=true; }catch(e){ pdfErr=e.message||String(e); } }
     rememberConds(); persist(); renderForm();
     const remote=SRV.info&&SRV.info.local===false, m2=$('#dlmsg'); m2.className='msg ok';
-    m2.innerHTML=`КП № ${esc(S.number)} сохранено${pdfOk?' (DOCX и PDF)':''}, каталог обновлён.<div class="row" style="justify-content:center;margin-top:8px"><button class="btn" type="button" data-a="openDoc" data-id="${esc(S.kpId)}">${remote?'Скачать .docx':'Открыть в Word'}</button>${pdfOk?`<button class="btn" type="button" data-a="openPdf" data-id="${esc(S.kpId)}">${remote?'Скачать PDF':'Открыть PDF'}</button>`:''}${remote&&!SRV.info.docsShare?'':`<button class="btn" type="button" data-a="showDoc" data-id="${esc(S.kpId)}">${remote?'Путь к файлу':'Показать в папке'}</button>`}</div>`
+    m2.innerHTML=docMissHtml()+`КП № ${esc(S.number)} сохранено${pdfOk?' (DOCX и PDF)':''}, каталог обновлён.<div class="row" style="justify-content:center;margin-top:8px"><button class="btn" type="button" data-a="openDoc" data-id="${esc(S.kpId)}">${remote?'Скачать .docx':'Открыть в Word'}</button>${pdfOk?`<button class="btn" type="button" data-a="openPdf" data-id="${esc(S.kpId)}">${remote?'Скачать PDF':'Открыть PDF'}</button>`:''}${remote&&!SRV.info.docsShare?'':`<button class="btn" type="button" data-a="showDoc" data-id="${esc(S.kpId)}">${remote?'Путь к файлу':'Показать в папке'}</button>`}</div>`
       + (pdfErr?`<div class="msg err">PDF не создан: ${esc(pdfErr)}<div class="row" style="justify-content:center;margin-top:6px"><button class="btn" type="button" data-a="printPdf">Печать → «Сохранить как PDF»</button></div></div>`:'');
   } catch(e){
     msg.className='msg err';

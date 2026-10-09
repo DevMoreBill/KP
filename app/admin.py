@@ -155,8 +155,9 @@ def _start_session(h, user=None):
 def _locked(ip):
     now = time.time()
     with LOCK:
-        FAILS[ip] = [t for t in FAILS.get(ip, []) if now - t < FAIL_WINDOW]
-        return len(FAILS[ip]) >= FAIL_LIMIT
+        for k in [k for k, v in FAILS.items() if not v or now - v[-1] >= FAIL_WINDOW]:     # старые попытки не копятся
+            del FAILS[k]
+        return len(FAILS.get(ip, [])) >= FAIL_LIMIT
 
 
 def _fail(ip):
@@ -781,6 +782,20 @@ class AdminApi:
                 info['password'] = 'изменён'
             self.log('edit_access', 'manager', mid, None, info)
             return self.ok({'login': rec.get('login') or '', 'hasPassword': bool(rec.get('pw')), 'perms': auth_users.perms_of(rec), 'blocked': bool(rec.get('blocked'))})
+        if sub == 'lists':       # списки и выборы: {ключ: [строки]}; None — вернуть встроенный список
+            from lists import ListStore
+            ls = ListStore(st)
+            if m == 'POST':
+                d = self.data()
+                before = ls.all()
+                try:
+                    res = ls.save(d.get('values'), me or 'admin')
+                except ValueError as e:
+                    return self.err(400, str(e))
+                keys = list((d.get('values') or {}).keys())
+                self.log('edit_lists', 'settings', 'lists', {k: before.get(k) for k in keys}, {k: res.get(k) for k in keys})
+                return self.ok({'values': res})
+            return self.ok({'values': ls.all()})
         if sub == 'defaults':    # значения по умолчанию программы: {ключ: {on, v}}; None — вернуть встроенное
             import defaults
             if m == 'POST':

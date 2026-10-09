@@ -9,7 +9,7 @@ const ST = { tab:'stats', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f
 const ST_NAV = [
   ['Обзор', [['stats','Статистика'],['audit','Журнал действий']]],
   ['Данные', [['delete','Справочники и данные'],['moderation','Модерация правок'],['trash','Корзина'],['backup','Копии и обслуживание базы']]],
-  ['Работа программы', [['defaults','Умолчания'],['templates','Шаблоны КП и категории'],['logistics','Логистика: тарифы'],['feeds','Фиды поставщиков']]],
+  ['Работа программы', [['defaults','Умолчания'],['lists','Списки и выборы'],['texts','Тексты интерфейса'],['templates','Шаблоны КП и категории'],['logistics','Логистика: тарифы'],['feeds','Фиды поставщиков']]],
   ['Подключения', [['ai','Нейросеть'],['keys','Ключи API']]],
   ['Доступ', [['access','Менеджеры и права'],['users','Администраторы'],['security','Мой пароль']]]];
 const ST_TABS = ST_NAV.flatMap(g=>g[1]);
@@ -84,7 +84,7 @@ function stRender(){
 async function stTab(){
   const m=$('#stMain'); if (!m) return;
   try{ await ({stats:stStats, moderation:stModeration, delete:stDelete, trash:stTrash, audit:stAudit, backup:stBackup,
-    templates:stTemplates, logistics:stLogistics, feeds:stFeeds, keys:stKeys, ai:stAi, access:stAccess, users:stUsers, security:stSecurity, defaults:stDefaults})[ST.tab](m); }
+    templates:stTemplates, logistics:stLogistics, feeds:stFeeds, keys:stKeys, ai:stAi, access:stAccess, users:stUsers, security:stSecurity, defaults:stDefaults, lists:stLists, texts:stTexts})[ST.tab](m); }
   catch(e){ if (ADMIN.on) m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; }
 }
 

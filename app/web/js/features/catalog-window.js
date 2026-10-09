@@ -15,7 +15,7 @@ const cwA = x => x._a || (x._a = attrsOf(x));
 
 const cwNV = (x,k) => { const c=x._nv||(x._nv={}); return k in c ? c[k] : (c[k]=norm(cwA(x)[k])); };
 
-function cwForget(x){ delete x._a; delete x._nv; delete x._hay; delete x._sup; }
+function cwForget(x){ delete x._a; delete x._nv; delete x._hay; delete x._sup; FI._qs=FO._qs=null; }     // позиция изменилась — совпадения с поиском заново
 
 // ---------- поиск: «DVK30-13» = «DVK D 30-13», «5.5» = «5,5», «далгакиран» = «Dalgakiran», латинская «C» в «СА11» = кириллическая
 const CW_TR={а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ж:'zh',з:'z',и:'i',й:'i',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya'};
@@ -29,12 +29,12 @@ function cwHay(x){ if (x._hay) return x._hay; const a=cwA(x);
   const plain=norm([x.name, x.spec, x.st||'', cwArt(x), cwSup(x), ...Object.values(a), ...(x.groups||[]).flatMap(g=>(g.rows||[]).map(r=>r.k+' '+r.v))].join(' '));
   // модель без одиночных букв-исполнений: «DVK D 30-13» → «dvk3013», чтобы «DVK30-13» находил её
   const m=norm([a.model, x.name, cwArt(x)].filter(Boolean).join(' ')), model=cwFold(m), model2=cwFold(m.replace(/(^|\s)[a-zа-яё](?=\s)/g,' '));
-  return (x._hay={ plain, fold:cwFold(plain), tr:cwTr(plain), model, model2 }); }
+  return (x._hay={ plain, fold:cwFold(plain), tr:cwTr(plain), model, model2, m0:cwFold(norm(a.model||'')), name:norm(x.name) }); }
 function cwWordHit(h, w){ if (h.plain.includes(w)) return true; const f=cwFold(w); if (f.length>=2 && (h.fold.includes(f) || h.model2.includes(f))) return true;
   const t=cwTr(w); return t!==w && h.tr.includes(t); }
 // насколько позиция подходит к запросу: модель начинается с запроса → 0, запрос целиком в названии → 1, остальное → 2
-function cwRel(x){ const F=CW.F, q=norm(F.q), f=cwFold(q); if (!q) return 2; const h=cwHay(x);
-  if (f.length>=2 && (cwFold(norm(cwA(x).model||'')).startsWith(f) || h.model.includes(f) || h.model2.includes(f))) return 0; return norm(x.name).includes(q) ? 1 : 2; }
+function cwRel(x){ const F=CW.F, q=norm(F.q); if (!q) return 2; const f=F._qs===F.q ? F._qf : cwFold(q), h=cwHay(x);
+  if (f.length>=2 && (h.m0.startsWith(f) || h.model.includes(f) || h.model2.includes(f))) return 0; return h.name.includes(q) ? 1 : 2; }
 
 // ---------- поставщик позиции: фид-источник (или поставщик, к которому фид привязан), иначе — по производителю из справочника
 function cwSup(x){ if (x._sup!==undefined) return x._sup; let s='';
@@ -96,9 +96,18 @@ function cwPass(x, skip){ const F=CW.F, a=cwA(x);
   if (skip!=='sup' && F.sup && norm(cwSup(x)||CW_NOSUP)!==norm(F.sup)) return false;
   if (F.priced && !x.price) return false;
   if (F.stock && !cwInStock(x)) return false;
-  if (F.q){ if (!F._qw || F._qs!==F.q){ F._qs=F.q; F._qw=norm(F.q).split(' ').filter(Boolean); }
-    const h=cwHay(x); if (!F._qw.every(w=>cwWordHit(h,w))){ const f=cwFold(norm(F.q)); if (f.length<3 || !(h.fold.includes(f) || h.model2.includes(f))) return false; } }
+  if (F.q && !cwQHit(x)) return false;
   return true; }
+// совпадение с поиском — один раз на позицию для текущего текста (счётчики фильтров спрашивают по многу раз)
+function cwQHit(x){ const F=CW.F;
+  if (F._qs!==F.q){ F._qs=F.q; F._qw=norm(F.q).split(' ').filter(Boolean); F._qf=cwFold(norm(F.q)); F._qm=new Map(); }
+  let ok=F._qm.get(x.id); if (ok!==undefined) return ok;
+  const h=cwHay(x); ok = F._qw.every(w=>cwWordHit(h,w)) || (F._qf.length>=3 && (h.fold.includes(F._qf) || h.model2.includes(F._qf)));
+  F._qm.set(x.id, ok); return ok; }
+// поисковые строки всех позиций — заранее, в простое браузера, пачками (первый поиск — без задержки)
+function cwWarm(){ const docs=CW.docs; let i=0; const idle=window.requestIdleCallback||(f=>setTimeout(()=>f({timeRemaining:()=>8}),30));
+  const step=dl=>{ if (docs!==CW.docs) return; while (i<docs.length && dl.timeRemaining()>2) cwHay(docs[i++]); if (i<docs.length) idle(step); };
+  idle(step); }
 
 function cwFacet(key, label, inF){ const F=CW.F, cnt=new Map();
   CW.docs.filter(x=>cwPass(x,key)).forEach(x=>{ const v=cwA(x)[key]; if(v==null||v==='') return; const n=cwNV(x,key); const c=cnt.get(n)||{v:String(v),n:0}; c.n++; cnt.set(n,c); });
@@ -500,7 +509,8 @@ async function openCatalog(mode={}){
   if (!d.open) d.showModal();
   cwBind(d); cwLayout(d);
   CW.docs = catCache.length ? catCache : await store().list().catch(()=>[]);
-  await Promise.all([cwLoadPending(), cwLoadSources()]);
+  FI._qs=FO._qs=null; await Promise.all([cwLoadPending(), cwLoadSources()]);
+  cwWarm();
   cwRedraw();
   setTimeout(()=>{ if (matchMedia('(pointer:fine)').matches) $('#cwQ')?.focus(); },30);
 }
@@ -509,7 +519,7 @@ async function openCatalog(mode={}){
 async function cwLoadSources(){
   const [src, sups] = await Promise.all([api('/api/catalog/sources').catch(()=>({})), api('/api/suppliers').catch(()=>[])]);
   CW.src = src && typeof src==='object' && !Array.isArray(src) ? src : {}; CW.sups = Array.isArray(sups) ? sups : [];
-  CW.docs.forEach(x=>{ delete x._sup; delete x._hay; }); }
+  CW.docs.forEach(x=>{ delete x._sup; delete x._hay; }); FI._qs=FO._qs=null; }
 
 function cwBind(d){
   if (d._bound) return; d._bound=true; cwSplitBind(d);
