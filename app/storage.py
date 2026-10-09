@@ -133,6 +133,17 @@ MIGRATIONS = [
      DROP INDEX IF EXISTS kp_status; DROP INDEX IF EXISTS kp_follow;
      ALTER TABLE kp DROP COLUMN track; ALTER TABLE kp DROP COLUMN status; ALTER TABLE kp DROP COLUMN follow;
      """),
+    # 3.42.0: черновики КП на сервере (свои у каждого менеджера, автосохранение) и заготовки КП («как в прошлый раз»).
+    # kind: draft | preset; owner — id менеджера (или «admin:логин»); kp — номер КП, если это несохранённые правки КП.
+    ('2027-04-drafts',
+     """
+     CREATE TABLE IF NOT EXISTS drafts (id TEXT PRIMARY KEY, kind TEXT NOT NULL, owner TEXT NOT NULL DEFAULT '', owner_name TEXT,
+       title TEXT, client TEXT, kp TEXT, positions INTEGER, sum REAL, cur TEXT, updated TEXT, state TEXT);
+     CREATE INDEX IF NOT EXISTS drafts_owner ON drafts(kind, owner, updated);
+     """,
+     """
+     DROP TABLE IF EXISTS drafts;
+     """),
 ]
 KP_VERSIONS = 30
 
@@ -815,6 +826,37 @@ class Store:
     def kp_version_state(self, kid, vid):
         r = self.one('SELECT state FROM kp_versions WHERE kp_id=? AND id=?', (kid, int(vid)))
         return r[0] if r else None
+
+    # ---------- черновики и заготовки КП ----------
+    DRAFT_COLS = ('id', 'kind', 'owner', 'owner_name', 'title', 'client', 'kp', 'positions', 'sum', 'cur', 'updated')
+
+    def drafts_list(self, kind, owner=None):
+        """Черновики владельца или все заготовки (owner=None) — без состояния КП, новые сверху."""
+        sql, args = 'SELECT %s FROM drafts WHERE kind=?' % ', '.join(self.DRAFT_COLS), [kind]
+        if owner is not None:
+            sql += ' AND owner=?'
+            args.append(owner)
+        return [dict(zip(self.DRAFT_COLS, r)) for r in self.all(sql + ' ORDER BY updated DESC LIMIT 500', args)]
+
+    def draft_get(self, did):
+        """(строка без состояния, состояние — текст JSON) или (None, None)."""
+        r = self.one('SELECT %s, state FROM drafts WHERE id=?' % ', '.join(self.DRAFT_COLS), (did,))
+        return (dict(zip(self.DRAFT_COLS, r[:-1])), r[-1]) if r else (None, None)
+
+    def draft_put(self, row, state, keep=40):
+        """Записать черновик или заготовку; у владельца остаются keep последних черновиков."""
+        cols = self.DRAFT_COLS + ('state',)
+        vals = [row.get(c) for c in self.DRAFT_COLS] + [state]
+        with self.lock:
+            c = self.conn()
+            c.execute('INSERT OR REPLACE INTO drafts (%s) VALUES (%s)' % (', '.join(cols), ','.join('?' * len(cols))), vals)
+            if row['kind'] == 'draft':
+                c.execute("DELETE FROM drafts WHERE kind='draft' AND owner=? AND id NOT IN "
+                          "(SELECT id FROM drafts WHERE kind='draft' AND owner=? ORDER BY updated DESC LIMIT ?)", (row['owner'], row['owner'], keep))
+            c.commit()
+
+    def draft_del(self, did):
+        self.write('DELETE FROM drafts WHERE id=?', (did,))
 
     # ---------- контрагенты и проверки ----------
     def clients_all(self):

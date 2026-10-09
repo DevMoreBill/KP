@@ -230,7 +230,7 @@ async function stDelete(m){
 
 // правка записи из «Настроек»: КП — в конструкторе, товар — в редакторе каталога (менеджеры, клиенты, поставщики — в списке, settings-dir.js)
 async function stEdit(type, id, after){
-  if (type==='kp'){ const st=await api(`/api/kp/${encodeURIComponent(id)}/state`); S=Object.assign(freshState(), st); setDlg().close(); renderForm(); persist(); window.scrollTo({top:0}); toast('КП № '+(S.number||'')+' открыто для редактирования'); return; }
+  if (type==='kp'){ await Drafts.stash(); const st=await api(`/api/kp/${encodeURIComponent(id)}/state`); S=Object.assign(freshState(), st); setDlg().close(); renderForm(); persist(); window.scrollTo({top:0}); toast('КП № '+(S.number||'')+' открыто для редактирования'); return; }
   if (type==='catalog'){ const doc=await api('/api/catalog/'+encodeURIComponent(id)); openCatEditor(doc, ()=>{ refreshCat(); after(); }); }
 }
 
