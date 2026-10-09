@@ -126,6 +126,8 @@ class Presets {
     renderForm(); persist(); Drafts.loaded(); window.scrollTo({top:0}); goStep('client');
     toast(`Новое КП по заготовке «${r.row.title}» — укажите клиента`);
   }
+  static async remove(id){ try{ await api(`/api/presets/${encodeURIComponent(id)}/delete`, {method:'POST'}); toast('Заготовка удалена'); return true; }
+    catch(e){ toast('Не удалено: '+(e.message||e)); return false; } }
   static rowHtml(r){
     const mine=r.owner===this.me || ADMIN.on;
     return `<div class="st-row"><div><b>${esc(r.title)}</b><span class="muted">${r.positions||0} поз.${r.sum?` · ${money(r.sum)} ${esc(curSh(r.cur||'RUB'))}`:''}${r.owner_name?' · '+esc(jShort(r.owner_name)):''} · ${esc(jTime(r.updated))}</span></div>
@@ -133,31 +135,32 @@ class Presets {
   }
 }
 
-/** «Новое КП»: пустое, из заготовки или продолжить черновик; текущее — в черновики */
-async function newKpDialog(){
-  const mean=Drafts.meaningful(S), useD=Drafts.on(), useP=Presets.on();
-  if (!useD && !useP){
-    if (!confirm(S.kpId?'Начать новое КП? Сохранённое КП № '+S.number+' останется в журнале.':'Начать новое КП? Текущий черновик будет очищен (контакты менеджера сохранятся).')) return;
-    return newKpBlank();
+// «Новое КП»: пустое, из заготовки или продолжить черновик; текущее — в черновики
+class NewKp {
+  static async open(){
+    const mean=Drafts.meaningful(S), useD=Drafts.on(), useP=Presets.on();
+    if (!useD && !useP){
+      if (!confirm(S.kpId?'Начать новое КП? Сохранённое КП № '+S.number+' останется в журнале.':'Начать новое КП? Текущий черновик будет очищен (контакты менеджера сохранятся).')) return;
+      return NewKp.blank();
+    }
+    const [P, D]=await Promise.all([useP?Presets.list():[], useD?Drafts.list():[]]);
+    const note = !mean ? '' : S.kpId ? `Сохранённое КП № ${esc(S.number)} останется в журнале${useD?', несохранённые правки — в черновиках':''}.` : useD ? 'Текущее КП будет отложено в черновики.' : 'Текущее КП будет очищено.';
+    const m=new Modal(`<div class="dlg-h"><h3>Новое КП</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
+      ${note?`<p class="muted" style="margin:0 0 10px">${note}</p>`:''}
+      <div class="row nk-top"><button class="btn primary" type="button" data-nk>Пустое КП</button>${useP&&S.items.length?'<button class="btn" type="button" data-nps title="Позиции, цены и условия текущего КП — для следующих КП">Сохранить текущее как заготовку</button>':''}</div>
+      ${useP?`<p class="sub" style="margin:4px 0 6px">По заготовке</p>${P.length>6?'<input type="search" class="f" id="nkQ" placeholder="Найти заготовку" style="margin-bottom:6px">':''}<div class="nk-l" id="nkP">${P.length?P.map(r=>Presets.rowHtml(r)).join(''):'<p class="empty">Заготовок пока нет. Соберите КП и нажмите «Сохранить текущее как заготовку».</p>'}</div>`:''}
+      ${useD&&D.length?`<p class="sub" style="margin:14px 0 6px">Продолжить черновик</p><div class="nk-l">${D.slice(0,5).map(r=>Drafts.rowHtml(r)).join('')}</div>${D.length>5?`<button class="btn ghost" type="button" data-nall>Все черновики (${D.length})</button>`:''}`:''}`, 'newkp-dlg');
+    const q=m.$('#nkQ'); if (q) q.oninput=()=>{ const s=q.value.trim().toLowerCase(); m.$('#nkP').innerHTML=P.filter(r=>!s||r.title.toLowerCase().includes(s)).map(r=>Presets.rowHtml(r)).join('')||'<p class="empty">Не найдено.</p>'; };
+    m.d.onclick=async e=>{ const t=e.target;
+      if (t.closest('[data-x]')) return m.close();
+      if (t.closest('[data-nk]')){ m.close(); await Drafts.stash(); return NewKp.blank(); }
+      if (t.closest('[data-nps]')){ m.close(); return Presets.ask(); }
+      if (t.closest('[data-nall]')){ m.close(); return Drafts.dialog(); }
+      const u=t.closest('[data-pru]'); if (u){ m.close(); return Presets.use(u.dataset.pru); }
+      const pd=t.closest('[data-prd]'); if (pd){ if (!confirm(`Удалить заготовку «${pd.dataset.prt}»?`)) return;
+        if (await Presets.remove(pd.dataset.prd)) pd.closest('.st-row').remove(); return; }
+      const o=t.closest('[data-dro]'); if (o){ m.close(); return Drafts.open(o.dataset.dro); }
+      const dl=t.closest('[data-drd]'); if (dl && await Drafts.remove(dl.dataset.drd)) dl.closest('.st-row').remove(); };
   }
-  const [P, D]=await Promise.all([useP?Presets.list():[], useD?Drafts.list():[]]);
-  const note = !mean ? '' : S.kpId ? `Сохранённое КП № ${esc(S.number)} останется в журнале${useD?', несохранённые правки — в черновиках':''}.` : useD ? 'Текущее КП будет отложено в черновики.' : 'Текущее КП будет очищено.';
-  const m=new Modal(`<div class="dlg-h"><h3>Новое КП</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
-    ${note?`<p class="muted" style="margin:0 0 10px">${note}</p>`:''}
-    <div class="row nk-top"><button class="btn primary" type="button" data-nk>Пустое КП</button>${useP&&S.items.length?'<button class="btn" type="button" data-nps title="Позиции, цены и условия текущего КП — для следующих КП">Сохранить текущее как заготовку</button>':''}</div>
-    ${useP?`<p class="sub" style="margin:4px 0 6px">По заготовке</p>${P.length>6?'<input type="search" class="f" id="nkQ" placeholder="Найти заготовку" style="margin-bottom:6px">':''}<div class="nk-l" id="nkP">${P.length?P.map(r=>Presets.rowHtml(r)).join(''):'<p class="empty">Заготовок пока нет. Соберите КП и нажмите «Сохранить текущее как заготовку».</p>'}</div>`:''}
-    ${useD&&D.length?`<p class="sub" style="margin:14px 0 6px">Продолжить черновик</p><div class="nk-l">${D.slice(0,5).map(r=>Drafts.rowHtml(r)).join('')}</div>${D.length>5?`<button class="btn ghost" type="button" data-nall>Все черновики (${D.length})</button>`:''}`:''}`, 'newkp-dlg');
-  const q=m.$('#nkQ'); if (q) q.oninput=()=>{ const s=q.value.trim().toLowerCase(); m.$('#nkP').innerHTML=P.filter(r=>!s||r.title.toLowerCase().includes(s)).map(r=>Presets.rowHtml(r)).join('')||'<p class="empty">Не найдено.</p>'; };
-  m.d.onclick=async e=>{ const t=e.target;
-    if (t.closest('[data-x]')) return m.close();
-    if (t.closest('[data-nk]')){ m.close(); await Drafts.stash(); return newKpBlank(); }
-    if (t.closest('[data-nps]')){ m.close(); return Presets.ask(); }
-    if (t.closest('[data-nall]')){ m.close(); return Drafts.dialog(); }
-    const u=t.closest('[data-pru]'); if (u){ m.close(); return Presets.use(u.dataset.pru); }
-    const pd=t.closest('[data-prd]'); if (pd){ if (!confirm(`Удалить заготовку «${pd.dataset.prt}»?`)) return;
-      try{ await api(`/api/presets/${encodeURIComponent(pd.dataset.prd)}/delete`, {method:'POST'}); pd.closest('.st-row').remove(); toast('Заготовка удалена'); }catch(err){ toast('Не удалено: '+(err.message||err)); } return; }
-    const o=t.closest('[data-dro]'); if (o){ m.close(); return Drafts.open(o.dataset.dro); }
-    const dl=t.closest('[data-drd]'); if (dl && await Drafts.remove(dl.dataset.drd)) dl.closest('.st-row').remove(); };
+  static blank(){ S=freshState(); renderForm(); persist(); window.scrollTo({top:0}); if (catCache.length) openCatalog({}); }
 }
-
-function newKpBlank(){ S=freshState(); renderForm(); persist(); window.scrollTo({top:0}); if (catCache.length) openCatalog({}); }

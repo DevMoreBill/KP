@@ -8,11 +8,11 @@ function clientPrevHtml(){
   const key=String(S.clientInn||'').replace(/\D/g,''); if (key.length<10) return '';
   if (CL_PREV.key!==key){ if (!CL_PREV.busy) clientPrevLoad(key); return ''; }
   const items=CL_PREV.items.filter(x=>x.id!==S.kpId); if (!items.length) return '';
-  return `<div class="msg warn cl-prev">У этого клиента уже есть КП: ${items.slice(0,3).map(x=>`<b>№ ${esc(x.number)}</b> от ${esc(ddmm(x.date))} — ${esc(jShort(x.manager||''))}, ${esc(KP_STATUS[KpTrack.status(x.track)].toLowerCase())}`).join('; ')}${items.length>3?` и ещё ${items.length-3}`:''}.
+  return `<div class="msg warn cl-prev">У этого клиента уже есть КП: ${items.slice(0,3).map(x=>`<b>№ ${esc(x.number)}</b> от ${esc(KpDate.ddmm(x.date))} — ${esc(jShort(x.manager||''))}, ${esc(KP_STATUS[KpTrack.status(x.track)].toLowerCase())}`).join('; ')}${items.length>3?` и ещё ${items.length-3}`:''}.
     <button type="button" class="lnk" data-a="clPrev">Показать в журнале</button></div>`;
 }
 async function clientPrevLoad(key){
-  CL_PREV.busy=true; const since=addDaysIso(today(), -120);
+  CL_PREV.busy=true; const since=KpDate.addDays(today(), -120);
   try{ const r=await api(`/api/history?limit=20&q=${encodeURIComponent(key)}`); CL_PREV.items=(r.items||[]).filter(x=>String(x.clientInn||'').replace(/\D/g,'')===key && (x.date||'')>=since); }
   catch(e){ CL_PREV.items=[]; }
   CL_PREV.key=key; CL_PREV.busy=false; if (STEP==='client' && CL_PREV.items.some(x=>x.id!==S.kpId)) renderForm();

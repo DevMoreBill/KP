@@ -23,7 +23,7 @@ class KpReport {
       catch(e){ out.innerHTML=`<p class="empty">Отчёт недоступен: ${esc(e.message)}</p>`; } };
     m.d.onclick=async e=>{ const t=e.target; if (t.closest('[data-x]')) return m.close();
       const q=t.closest('[data-rq]'); if (q){ const [x,y]=KpReport.range(q.dataset.rq); m.$('#rpA').value=x; m.$('#rpB').value=y; m.d.querySelectorAll('[data-rq]').forEach(z=>z.classList.toggle('on', z===q)); return run(); }
-      const o=t.closest('[data-ro]'); if (o){ m.close(); return openKpById(o.dataset.ro).catch(err=>toast('Не удалось открыть: '+err.message)); }
+      const o=t.closest('[data-ro]'); if (o){ m.close(); return KpLoader.byId(o.dataset.ro).catch(err=>toast('Не удалось открыть: '+err.message)); }
       if (t.closest('[data-rx]')) return KpReport.excel(R.data, m.$('#rpA').value, m.$('#rpB').value); };
     m.d.onchange=e=>{ if (e.target.type==='date'){ m.d.querySelectorAll('[data-rq]').forEach(z=>z.classList.remove('on')); run(); } };
     run();
@@ -67,12 +67,12 @@ class KpReport {
       <h4>По категориям оборудования${pf?' <span class="muted">— прибыль по позициям с закупкой, без логистики и финансирования</span>':''}</h4>${tbl([['Категория',nm],['КП',n('n'),1],['Позиций',n('pos'),1],['Сумма',r('sum'),1],['Выиграно на',r('won'),1],
         ['Продажа с закупкой',r('sale'),1,1],['Закупка',r('cost'),1,1],['Прибыль',x=>rub(x.sale-x.cost),1,1],['Маржа',x=>P(x.sale-x.cost, x.sale),1,1]], D.cat)}
       <h4>Крупнейшие клиенты</h4>${tbl([['Клиент',nm],['КП',n('n'),1],['Сумма',r('sum'),1],['Выиграно',wonC,1],['Конверсия',conv,1]], D.cli)}
-      <details class="rp-all"><summary>Все КП периода (${D.list.length})</summary>${tbl([['№',x=>`<button type="button" class="lnk" data-ro="${esc(x.id)}">${esc(x.number)}</button>`],['Дата',x=>esc(ddmm(x.date))],
+      <details class="rp-all"><summary>Все КП периода (${D.list.length})</summary>${tbl([['№',x=>`<button type="button" class="lnk" data-ro="${esc(x.id)}">${esc(x.number)}</button>`],['Дата',x=>esc(KpDate.ddmm(x.date))],
         ['Клиент',x=>esc(x.client||'')],['Автор',x=>esc(jShort(x.manager||''))],['Статус',x=>`<span class="jst st-${x.st}">${KP_STATUS[x.st]}</span>`],['Сумма',r('sum'),1],['Прибыль',x=>x.profit==null?'—':rub(x.profit),1,1]], D.list)}</details>`;
   }
   static async excel(D, a, b){
     const r=v=>Math.round(v||0)/100, h=s=>({v:s, s:'head'}), H=s=>({v:s, s:'headR'}), M=v=>({v:r(v), s:'tdMoney'}), N=v=>({v, s:'tdInt'}), T=v=>({v:String(v??''), s:'td'}), Pc=(x,y)=>({v:y?x/y:0, s:'tdPct'});
-    const title=[[{v:`Отчёт по КП за ${ddmm(a)} — ${ddmm(b)}`, s:'title'}],[]];
+    const title=[[{v:`Отчёт по КП за ${KpDate.ddmm(a)} — ${KpDate.ddmm(b)}`, s:'title'}],[]];
     const sheets=[
       {name:'Менеджеры', cols:[34,8,16,12,10,16,11,16,12], freeze:3, rows:[...title, [h('Менеджер'),H('КП'),H('Сумма, руб.'),H('Отправлено'),H('Выиграно'),H('Выиграно на, руб.'),H('Проиграно'),H('Прибыль, руб.'),H('% от суммы')],
         ...D.mgr.map(x=>[T(x.name),N(x.n),M(x.sum),N(x.sent),N(x.won),M(x.wonSum),N(x.lost),M(x.profit),Pc(x.profit,x.pBase)])]},
@@ -81,7 +81,7 @@ class KpReport {
       {name:'Клиенты', cols:[44,8,16,10,16], freeze:3, rows:[...title, [h('Клиент'),H('КП'),H('Сумма, руб.'),H('Выиграно'),H('Выиграно на, руб.')],
         ...D.cli.map(x=>[T(x.name),N(x.n),M(x.sum),N(x.won),M(x.wonSum)])]},
       {name:'КП', cols:[12,12,40,28,14,16,16], freeze:3, rows:[...title, [h('№'),h('Дата'),h('Клиент'),h('Автор'),h('Статус'),H('Сумма, руб.'),H('Прибыль, руб.')],
-        ...D.list.map(x=>[T(x.number),T(ddmm(x.date)),T(x.client),T(x.manager),T(KP_STATUS[x.st]),M(x.sum),x.profit==null?T('—'):M(x.profit)])]}];
+        ...D.list.map(x=>[T(x.number),T(KpDate.ddmm(x.date)),T(x.client),T(x.manager),T(KP_STATUS[x.st]),M(x.sum),x.profit==null?T('—'):M(x.profit)])]}];
     if (!FEAT.on('deal')){     // экономика сделки выключена — без прибыли, закупки и маржи
       const drop={'Менеджеры':[7,8], 'Категории':[5,6,7,8], 'КП':[6]};
       for (const sh of sheets){ const d=drop[sh.name]; if (!d) continue; sh.cols=sh.cols.filter((_,k)=>!d.includes(k)); sh.rows=sh.rows.map(row=>row.length>2?row.filter((_,k)=>!d.includes(k)):row); }
@@ -96,7 +96,7 @@ class KpDiff {
   static itemKey(x){ return x.id || norm(x.name||''); }
   static rows(a, b){
     const out=[], ch=(what, x, y)=>{ if (String(x??'')!==String(y??'')) out.push([what, x??'', y??'']); };
-    ch('Получатель', a.client, b.client); ch('Дата КП', ddmm(a.date), ddmm(b.date)); ch('Валюта', (a.pricing||{}).cur||'RUB', (b.pricing||{}).cur||'RUB');
+    ch('Получатель', a.client, b.client); ch('Дата КП', KpDate.ddmm(a.date), KpDate.ddmm(b.date)); ch('Валюта', (a.pricing||{}).cur||'RUB', (b.pricing||{}).cur||'RUB');
     ch('НДС, %', a.vat, b.vat); ch('Шаблон', a.template, b.template); ch('№ закупки', (a.tender||{}).number, (b.tender||{}).number);
     ch('Менеджер', (a.manager||{}).name, (b.manager||{}).name);
     const ea=kpEconomics(a), eb=kpEconomics(b), cs=c=>curSh(c||'RUB');
