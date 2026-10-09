@@ -41,7 +41,6 @@ dialog.setwin[open]{display:flex}
 .st-row .acts{display:flex;gap:6px;flex-wrap:wrap}
 .ck-row{cursor:pointer}
 .ck-row input{width:20px;height:20px;flex:0 0 auto;accent-color:var(--navy)}
-.st-types{margin-bottom:10px}
 .st-dbar{margin-bottom:6px}
 .st-dbar input{max-width:320px}
 .st-filters{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -262,9 +261,9 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .ac-t td:nth-child(2) small{display:block;white-space:normal}
 
 /* 3.24: навигация «Настроек» по группам */
-.st-ng{display:block;padding:18px 12px 4px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.st-ng{display:block;padding:10px 12px 2px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .st-ng:first-child{padding-top:2px}
-.st-nav button{min-height:38px;padding:8px 12px;height:auto;line-height:1.3}
+.st-nav button{min-height:32px;padding:5px 12px;height:auto;line-height:1.3;font-size:13.5px}
 .st-nav{grid-auto-rows:max-content}
 @media (max-width:900px){ .st-ng{display:none} }
 .mob .st-ng{display:none}
@@ -334,3 +333,11 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .tx-n textarea{width:100%;font-size:13.5px}
 .tx-a{display:flex;flex-direction:column;gap:6px;padding-top:16px}
 @media (max-width:900px){ .ls{grid-template-columns:1fr} .ls-nav{position:static;max-height:240px} .tx-r{grid-template-columns:1fr} .tx-a{flex-direction:row;padding-top:0} }
+
+/* заголовок вкладки: раздел, название, зачем она */
+.st-th{margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.st-th>span{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.st-th h4{margin:2px 0 2px;font-size:19px}
+.st-th p{margin:0;font-size:13.5px}
+@media (max-width:900px){ .st-th{margin-bottom:10px} .st-th>span{display:none} }
+.st-tt th{text-align:left}
