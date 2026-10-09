@@ -173,7 +173,7 @@ function edSpec(x,i){
 function edOpts(x,i){ return `<div class="ed-sec">${optsBlock(x,i)}</div>`; }
 
 function edAI(x,i){
-  const P=`items.${i}`, r=aiParse(x._ans), props=(x._srcProps||[]).length, has=!!String(x._src||'').trim(), st0=typeById(attrsOf(x).cat).station;
+  const P=`items.${i}`, r=AiFill.parse(x), props=(x._srcProps||[]).length, has=!!String(x._src||'').trim(), st0=typeById(attrsOf(x).cat).station;
   const st=x._aiStep||(r?3:has?2:1), cls=n=>`ai-st${st===n?' cur':''}${st>n?' done':''}`;
   const srcLen=String(x._src||'').length, direct=AI_DIRECT.enabled, busy=AI_DIRECT.busy[x.id];
   const head=(n, t, note)=>`<div class="ai-sh"><span class="ai-sn">${st>n?'✓':n}</span><b>${t}</b>${note?`<span class="ai-stc">${note}</span>`:''}</div>`;
@@ -195,14 +195,14 @@ function edAI(x,i){
       ${(x._srcImgs||[]).length?pageImgsHtml(i, x._srcImgs, 'ai'):''}</li>
     ${direct?`<li class="${cls(2)}">${head(2, 'Заполнить с помощью нейросети', `${esc(AI_DIRECT.provider)} · ответ — в шаге 3`)}
       <div class="row"><button class="btn primary ai-go" type="button" data-a="aiAuto" data-i="${i}"${busy?' disabled':''}>${busy?'<span class="ai-spin" aria-hidden="true"></span> Заполняю…':`✨ Заполнить автоматически`}</button><span class="muted">Обычно 10–40 секунд.</span></div>
-      <details class="ai-pr"><summary>или через ИИ-чат в браузере (можно приложить скриншот или PDF)</summary>${aiSitesHtml('aiCopy', i)}<textarea rows="8" readonly>${esc(aiPrompt(x))}</textarea></details></li>`
+      <details class="ai-pr"><summary>или через ИИ-чат в браузере (можно приложить скриншот или PDF)</summary>${aiSitesHtml('aiCopy', i)}<textarea rows="8" readonly>${esc(AiFill.promptNow(x))}</textarea></details></li>`
     :`<li class="${cls(2)}">${head(2, 'Отправьте запрос в ИИ', 'кнопка копирует запрос и открывает сайт')}
       <p class="ai-how">Нажмите кнопку с названием ИИ → в открывшейся вкладке вставьте <kbd>Ctrl</kbd>+<kbd>V</kbd> и отправьте. Можно приложить скриншот или PDF паспорта.</p>
       ${aiSitesHtml('aiCopy', i)}
-      <details class="ai-pr"><summary>Показать запрос</summary><textarea rows="8" readonly>${esc(aiPrompt(x))}</textarea></details></li>`}
+      <details class="ai-pr"><summary>Показать запрос</summary><textarea rows="8" readonly>${esc(AiFill.promptNow(x))}</textarea></details></li>`}
     <li class="${cls(3)}">${head(3, direct?'Проверьте и заполните':'Вставьте ответ ИИ и заполните', r&&r.kind!=='bad'?'ответ распознан':'')}
       <textarea data-p="${P}._ans" data-aians="${i}" rows="5" placeholder="${direct?'Здесь появится ответ нейросети (или вставьте ответ чата)':'Ctrl+V — ответ ИИ целиком (кнопка «Копировать» под ответом в чате)'}">${esc(x._ans||'')}</textarea>
-      <div class="ai-prev" data-aiprev="${i}">${aiSummary(r)}</div>
+      <div class="ai-prev" data-aiprev="${i}">${AiFill.summary(x, r)}</div>
       <div class="row ai-apply"><button class="btn primary" type="button" data-a="aiApply" data-i="${i}" data-aiok="${i}" ${r&&r.kind!=='bad'?'':'disabled'}>Заполнить карточку</button>
         <label class="row muted" style="gap:6px"><input type="checkbox" data-aikeep="${i}" ${(x._aiKeep ?? DEF('ai.keep'))?'checked':''} style="width:auto">не менять уже заполненное</label></div></li></ol>
     ${x._aiMsg?`<p class="ai-msg" data-aistat="${i}">${esc(x._aiMsg)}</p>`:''}</div>`;

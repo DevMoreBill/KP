@@ -27,6 +27,7 @@ import pdf_convert
 import images
 import logistics_api
 import ai_llm
+from ai_profile import CategoryProfile, ModelFacts
 import pdf_text
 import defaults
 from kp_track import DealTrack, Mailer, MailTemplate, ReminderList
@@ -647,6 +648,12 @@ class ToolsController(Controller):
     @route(r'/api/ai/status', 'GET')       # нейросеть в программе: включена ли (без ключа и адреса)
     def ai_status(self):
         return self.send_json(ai_llm.status(store()))
+
+    @route(r'/api/ai/profile', 'GET')     # образец объёма категории и данные этой же модели из каталога — для запроса к ИИ
+    def ai_profile(self):
+        q = self.q
+        return self.send_json({'profile': CategoryProfile(store()).get(str(q.get('cat') or '')[:40]),
+                               'facts': ModelFacts(store()).find(q.get('maker', '')[:100], q.get('model', '')[:100], q.get('name', '')[:300], q.get('id', '')[:64])})
 
     @route(r'/api/ai/fill', 'POST')        # автозаполнение: запрос из программы → ответ нейросети (JSON строкой)
     def ai_fill(self):
