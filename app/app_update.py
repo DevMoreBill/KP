@@ -370,8 +370,21 @@ class Restarter:
         args = [sys.executable] if getattr(sys, 'frozen', False) else [sys.executable, os.path.abspath(sys.argv[0])]
         return ['sh', '-c', 'sleep %d; exec "$@"' % self.DELAY, 'kp-restart'] + args
 
+    # переменные, которые новый процесс должен получить заново, а не унаследовать:
+    # _MEI…/_PYI… — EXE в одном файле (PyInstaller) распаковывается во временную папку и помечает её в окружении;
+    # унаследовав их, новый EXE искал бы свои файлы в папке старого процесса (её уже удалили) и сразу падал;
+    # KP_UPDATE_* / KP_BASE_VERSION — launcher.py ставит их сам, если обновление новее EXE (после отката — нет)
+    INHERIT_DROP = ('_MEI', '_PYI', 'PYINSTALLER_', 'KP_UPDATE_', 'KP_BASE_VERSION')
+
+    @classmethod
+    def environment(cls):
+        env = {k: v for k, v in os.environ.items() if not k.upper().startswith(cls.INHERIT_DROP)}
+        env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'      # PyInstaller ≥ 6.10: новый EXE — как запущенный заново
+        env['KP_NO_BROWSER'] = '1'
+        return env
+
     def spawn(self):
-        env = dict(os.environ, KP_NO_BROWSER='1')
+        env = self.environment()
         cmd = self.command()
         if os.name == 'nt':
             flags = 0x00000008 | 0x00000200       # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
