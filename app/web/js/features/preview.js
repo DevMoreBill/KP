@@ -89,7 +89,7 @@ async function openKpPreview(){
     if (a.dataset.pva==='print') return pvPrint();
     if (a.dataset.pva==='pdf') return pvPdf(a);
     if (a.dataset.pva==='save'){ d.close(); return download(); } };
-  try{ PV.blob=await buildKpBlob(); await renderDocxInto(PV.blob, $('#pvBody')); pvFit(); }
+  try{ PV.blob=await buildKpBlob(); await renderDocxInto(PV.blob, $('#pvBody')); pvFit(); if (DOC_MISS.length) pvMsg(docMissHtml().replace(/^<div class="msg warn">|<\/div>$/g,''), 'warn'); }
   catch(e){ $('#pvBody').innerHTML=`<p class="empty">Не удалось собрать КП: ${esc(e.message||e)}</p>`; }
 }
 

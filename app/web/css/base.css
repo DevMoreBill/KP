@@ -71,6 +71,7 @@ aside{position:sticky;top:84px;align-self:start}
 .msg{font-size:13px;margin-top:8px;text-align:center}
 .msg.err{color:var(--danger)}
 .msg.ok{color:var(--ok)}
+.msg.warn{color:var(--warn-ink,#9a5410);background:var(--warn-bg,#fff5e6);border:1px solid var(--warn);border-radius:10px;padding:8px 10px;margin:0 0 8px;text-align:left}
 .empty{color:var(--muted);text-align:center;padding:30px 10px}
 @media (prefers-reduced-motion: reduce){ *{transition:none!important} }
 

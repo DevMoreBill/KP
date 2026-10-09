@@ -11,7 +11,9 @@
   defaultsLoad();               // значения по умолчанию от администратора («Настройки → Умолчания»)
   if (AUTH.enabled && !AUTH.user && !AUTH.admin){ authScreen(); return; }       // вход менеджеров по паролю включён
   try{ const st=await api('/api/admin/status'); ADMIN.on=!!st.admin; ADMIN.csrf=st.csrf||''; }catch(e){}   // вход администратора действует и после обновления страницы
-  await loadTypes(); await loadClients(); await loadManagers(); await loadTemplates(); await refreshCat(); loadLogos(); loadAppVersion(); uitLoad(); renderForm(); authMenu();
+  // справочники — параллельно (каталогу нужны только категории); списки и выборы администратора — до первой отрисовки
+  await loadTypes(); await Promise.all([loadClients(), loadManagers(), loadTemplates(), refreshCat(), LISTS.load()]);
+  loadLogos(); loadAppVersion(); uitLoad(); renderForm(); authMenu();
   if (!showMigrationNotice(SRV.info.migrations) && !S.items.length && catCache.length) openCatalog({});
 })();
 

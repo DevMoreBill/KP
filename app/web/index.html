@@ -2,10 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<script>/* тема до отрисовки страницы, чтобы не мигала: сохранённый выбор или системная */
-(function(){ try{ var t=localStorage.getItem('kp.theme'); if (t==='light'||t==='dark'){ document.documentElement.dataset.theme=t; document.documentElement.style.colorScheme=t; } }catch(e){} })();
-/* телефон — сразу телефонная раскладка (условие то же, что в js/ui/mobile.js) */
-if (window.matchMedia && matchMedia('(max-width: 760px), (pointer: coarse) and (max-height: 500px)').matches) document.documentElement.classList.add('mob');</script>
+<script src="/web/js/boot.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Конструктор КП — ПНЕВМОТЕХ</title>
 <link rel="icon" href="/favicon.ico">
@@ -104,6 +101,8 @@ if (window.matchMedia && matchMedia('(max-width: 760px), (pointer: coarse) and (
 <script src="/web/js/features/uitexts.js"></script>
 <script src="/web/js/docx/build.js"></script>
 <script src="/web/js/features/preview.js"></script>
+<script src="/web/js/core/lists.js"></script>
+<script src="/web/js/features/settings-lists.js"></script>
 <script src="/web/js/ui/form.js"></script>
 <script src="/web/js/ui/steps/client.js"></script>
 <script src="/web/js/ui/steps/equipment.js"></script>

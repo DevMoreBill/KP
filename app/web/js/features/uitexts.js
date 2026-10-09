@@ -7,7 +7,7 @@
 const UIT = { map:{}, rev:{}, edit:false, raf:0 };
 const UIT_ATTRS = ['title', 'placeholder', 'aria-label'];
 const uitNorm = t => String(t||'').replace(/\s+/g, ' ').trim();
-const uitSkip = el => !el || !!el.closest('script,style,textarea,select,[contenteditable="true"],.uit-dlg,.uit-pen,.uit-bar');
+const uitSkip = el => !el || !!el.closest('script,style,textarea,select,[contenteditable="true"],.uit-dlg,.uit-pen,.uit-bar,[data-uit-skip]');
 
 function uitLoad(){
   return api('/api/uitexts').then(m=>{ UIT.map = m && typeof m==='object' ? m : {}; uitIndex(); uitApply(document.body); }).catch(()=>{});

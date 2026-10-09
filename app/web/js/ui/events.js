@@ -162,3 +162,13 @@ document.addEventListener('toggle', e=>{ const d=e.target; if (d.dataset && d.da
 document.addEventListener('keydown', e=>{ const dz=e.target.closest?.('[data-drop]'); if(dz && (e.key==='Enter'||e.key===' ')){ e.preventDefault(); pickImage(dz.dataset.drop,+dz.dataset.i);} });
 
 // перетаскивание и вставка картинок — js/features/images.js (общие для всех мест с картинками)
+
+// горячие клавиши (когда не открыто окно): Ctrl+S — сохранить КП, Ctrl+K — каталог
+document.addEventListener('keydown', e=>{
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || document.querySelector('dialog[open]')) return;
+  const k=e.key.toLowerCase();
+  if (k==='s' || k==='ы'){ e.preventDefault(); const pr=problems();
+    if (pr.length){ toast('Сначала заполните: '+pr[0][0]+(pr.length>1?` (и ещё ${pr.length-1})`:'')); return; }
+    document.querySelector('#side [data-a="download"]')?.click(); return; }
+  if (k==='k' || k==='л'){ e.preventDefault(); openCatalog({}); }
+});
