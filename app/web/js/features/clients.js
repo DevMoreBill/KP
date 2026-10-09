@@ -92,6 +92,7 @@ function checkQuotaText(q){ q=q||CHK_Q; if (!q || !q.key) return '';
   return 'лимит Checko на сегодня исчерпан — будет бесплатная проверка по ФНС, полная — завтра автоматически'; }
 
 function checkLine(){
+  if (!FEAT.on('check')) return '';
   const c=S.check; const inn=String(S.clientInn||'').replace(/\D/g,'');
   if (!validInn(inn)) return '';
   if (!c){ if (!CHK_Q) checkQuotaLoad().then(q=>{ if (q && q.key) { const el=$('#chkQ'); if (el) el.textContent=checkQuotaText(q); } });

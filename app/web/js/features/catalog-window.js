@@ -181,7 +181,7 @@ class FeedBadge {
     if (st.prod) out.push(`в производстве: ${n(st.prod)} шт.${st.eta&&!st.transit?' — ожидается '+st.eta:''}`);
     if (st.promo) out.push(`акция: ${st.promo}`);
     return out.join('; '); }
-  static html(x){ const r=x.rrc, st=x.stock; if (!r && !st) return '';
+  static html(x){ const r=x.rrc, st=x.stock; if ((!r && !st) || !FEAT.on('feedInfo')) return '';
     const up=r&&r.prev&&r.price>r.prev, dn=r&&r.prev&&r.price<r.prev, ok=st&&!st.gone&&(st.qty!=null?st.qty>0:st.available), tip=FeedBadge.stockTip(st);
     return `<span class="fd-b">${r?`<span class="fd-rrc" title="Рекомендованная розничная цена поставщика${r.at?' на '+esc(r.at):''}${r.prev?`; прежняя ${money(r.prev)} ${curSh(r.cur||'RUB')}${r.prevAt?' ('+esc(r.prevAt)+')':''}`:''}">РРЦ ${money(r.price)} ${curSh(r.cur||'RUB')}${up?' <i class="up">▲</i>':dn?' <i class="dn">▼</i>':''}</span>`:''}${st?`<span class="fd-st ${ok?'ok':st.gone?'gone':(st.transit||st.prod)?'wait':'no'}" title="Наличие у поставщика${st.at?' на '+esc(st.at):''}${tip?': '+esc(tip):''}">${esc(FeedBadge.stockText(st))}</span>`:''}${st&&st.promo&&!st.gone?`<span class="fd-promo" title="${esc(st.promo)}">акция</span>`:''}</span>`; }
 }
@@ -530,7 +530,7 @@ class CatalogWindow {
        <div class="cw-q"><input type="search" id="cwQ" placeholder="Модель, артикул, производитель, поставщик или характеристика" autocomplete="off" value="${esc(F.q)}" aria-label="Поиск по каталогу" title="Можно без пробелов и дефисов: «DVK3013» найдёт DVK D 30-13; «/» — перейти к поиску"><kbd aria-hidden="true">/</kbd></div>
        ${optFor==null?'<button class="btn" type="button" data-cw="new" title="Новая позиция каталога">+<span class="cw-lbl"> Позиция</span></button>':''}
        <details class="cw-menu"><summary class="btn" title="Импорт, выгрузка, категории оборудования">Ещё<span class="cw-lbl"> ▾</span></summary><div>
-         <button type="button" data-cw="xls">Импорт из Excel…</button><button type="button" data-cw="imp">Загрузить файл каталога (.json)…</button><button type="button" data-cw="exp">Выгрузить каталог в файл</button>
+         ${FEAT.on('catImport')?'<button type="button" data-cw="xls">Импорт из Excel…</button><button type="button" data-cw="imp">Загрузить файл каталога (.json)…</button>':''}<button type="button" data-cw="exp">Выгрузить каталог в файл</button>
          <hr><button type="button" data-cw="types">Категории оборудования…</button></div></details>
        <button class="icon" type="button" data-cw="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна можно менять, потянув за правый нижний угол">⤢</button>
        <button class="icon" type="button" data-cw="close" aria-label="Закрыть">✕</button></div>
@@ -578,7 +578,7 @@ class CatalogWindow {
     d.addEventListener('cancel', e=>{ const lb=d.querySelector('.cw-lb'); if (lb){ e.preventDefault(); lb.remove(); return; }
       if (d.classList.contains('pvwide')){ e.preventDefault(); this.wide(false); } });
     d.addEventListener('keydown', e=>{
-      if (e.key==='/' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.closest?.('input,textarea,select,[contenteditable]')){ e.preventDefault(); const q=$('#cwQ'); q?.focus(); q?.select(); return; }
+      if (e.key==='/' && FEAT.on('hotkeys') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.closest?.('input,textarea,select,[contenteditable]')){ e.preventDefault(); const q=$('#cwQ'); q?.focus(); q?.select(); return; }
       if (e.target.id==='cwQ' && e.key==='Escape' && e.target.value){ e.preventDefault(); e.stopPropagation(); e.target.value=''; this.F.q=''; this.refresh(); return; }
       if (e.target.id==='cwQ' && e.key==='Enter'){ e.preventDefault(); const x=this.view[0]; if (x) this.activate(x.id); }
       if ((e.key==='ArrowDown'||e.key==='ArrowUp') && (e.target.id==='cwQ' || e.target.closest?.('.cw-list')) && this.view.length){

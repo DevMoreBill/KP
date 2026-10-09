@@ -835,6 +835,11 @@ class TrackController(Controller):
         items = kp_track.reminders(rows, mine)
         return self.send_json({'items': items, 'count': len(items)})
 
+    @route(r'/api/features', 'GET')        # какие функции программы включены (для всех; правка — /api/admin/features)
+    def features(self):
+        import features
+        return self.send_json(features.get(store()))
+
     @route(r'/api/mail/status', 'GET')
     def mail_status(self):
         return self.send_json({'on': kp_track.mail_on(store())})
@@ -901,10 +906,15 @@ class TrackController(Controller):
         metas = [m for m in store().kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', ''))
                  if d1 <= str(_obj(m).get('date') or '')[:10] <= d2]
         rows = json.loads(admin.history_out(self.h, '[' + ','.join(m for m in metas if _obj(m)) + ']'))
+        import features
+        deal_on = features.on(store(), 'deal')      # экономика сделки выключена — без прибыли и закупки
         for r in rows:
             sr, pr = admin.econ_rub(r)
-            r['sumRub'], r['profitRub'] = sr, pr
-            if r.get('locked'):
+            r['sumRub'], r['profitRub'] = sr, (pr if deal_on else None)
+            if not deal_on:
+                for k in ('econ', 'deal'):
+                    r.pop(k, None)
+            if r.get('locked') or not deal_on:
                 continue
             st = _obj(store().kp_get(r.get('id') or '', 'state'))
             r['calc'] = {'vat': st.get('vat'), 'pricing': {k: (st.get('pricing') or {}).get(k) for k in ('cur', 'rates', 'costNoVat')},

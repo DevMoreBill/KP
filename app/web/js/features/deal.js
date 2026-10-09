@@ -21,7 +21,7 @@ function dealRememberDefault(path, v){ const k=DL_DEF_KEYS[path]; if (!k) return
 
 // расчёт виден автору КП (кто его создал на своём устройстве) и администратору; новое несохранённое КП — своё
 function dealAllowed(st=S){
-  if (!can('dealView')) return false;
+  if (!FEAT.on('deal') || !can('dealView')) return false;
   if (ADMIN.on || !st.kpId) return true;
   const me=meId(); if (!me) return false;
   return st.authorId ? st.authorId===me : st.managerId===me;

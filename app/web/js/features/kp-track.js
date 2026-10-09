@@ -34,7 +34,7 @@ class Modal {
 // ---------- статус КП
 class KpTrack {
   static status(tr){ return (tr && tr.status) || 'new'; }
-  static chip(r){ const tr=r.track||{}, st=KpTrack.status(tr), fu=tr.followUp&&!tr.followUp.done?tr.followUp:null;
+  static chip(r){ if (!FEAT.on('track')) return ''; const tr=r.track||{}, st=KpTrack.status(tr), fu=tr.followUp&&!tr.followUp.done?tr.followUp:null;
     return `<button type="button" class="jst st-${st}" data-jst="${esc(r.id)}" title="Ход сделки: статус, напоминание">${esc(KP_STATUS[st])}${st==='lost'&&tr.reason?` · ${esc(tr.reason)}`:''}</button>`
       + (fu?`<span class="jfu${fu.date<=today()?' due':''}" title="${esc(fu.note||'Напоминание')}">⏰ ${esc(ddmm(fu.date))}</span>`:'')
       + (tr.sent&&tr.sent.length?`<span class="jsent" title="Отправлено: ${esc(tr.sent.map(s=>ddmm(s.at)+' → '+(s.to||[]).join(', ')).join('; '))}">✉ ${esc(ddmm(tr.sent[tr.sent.length-1].at))}</span>`:''); }
@@ -74,7 +74,7 @@ class KpTrack {
 // ---------- напоминания: колокольчик в шапке (перезвонить, срок действия КП, отправлено без ответа)
 class Reminders {
   static items = [];
-  static async load(){ try{ const r=await api('/api/reminders'); Reminders.items=r.items||[]; }catch(e){ Reminders.items=[]; } Reminders.badge(); }
+  static async load(){ if (!FEAT.on('reminders')){ Reminders.items=[]; return Reminders.badge(); } try{ const r=await api('/api/reminders'); Reminders.items=r.items||[]; }catch(e){ Reminders.items=[]; } Reminders.badge(); }
   static badge(){ const b=$('#btnRem'); if (!b) return; const n=Reminders.items.length, due=Reminders.items.some(x=>x.overdue||x.date<=today());
     b.hidden=!n; b.classList.toggle('due', due); $('#remN').textContent=n||''; b.title=n?`Напоминания: ${n}`:'Напоминаний нет'; }
   static icon(k){ return k==='follow'?'⏰':k==='expire'?'⌛':'✉'; }

@@ -43,7 +43,7 @@ let EDIT=null;
 
 const ED_TABS=[['main','Основное'],['kit','Состав станции'],['ai','✨ Заполнить с ИИ'],['desc','Описание и фото'],['spec','Характеристики'],['opts','Опции и услуги']];
 // вкладки позиции: «Состав станции» — только у станций в контейнере (и у сборок, заведённых раньше)
-const edTabs = x => ED_TABS.filter(([k])=>k!=='kit' || canKit(x));
+const edTabs = x => ED_TABS.filter(([k])=>(k!=='kit' || canKit(x)) && (k!=='ai' || FEAT.on('ai')));
 
 function featId(f){ if(!f.id) f.id=uid(); return f.id; }
 
