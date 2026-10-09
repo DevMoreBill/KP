@@ -100,3 +100,9 @@ function morphEl(o, n){
   morphKids(o,n);
   if (tag==='SELECT'){ const v=n.querySelector('option[selected]')?.value ?? n.querySelector('option')?.value; if (v!=null && o.value!==v) o.value=v; }
 }
+
+// картинка на странице, файл которой пропал (перемещён, удалён, не скопирован на этот компьютер), —
+// спокойная заглушка «нет фото» вместо значка сломанной картинки
+const IMG_MISS='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120" viewBox="0 0 160 120"><rect width="160" height="120" rx="10" fill="#eef3f9"/><path d="M52 78l20-24 14 16 10-11 18 19z" fill="#c3d2e4"/><circle cx="98" cy="44" r="8" fill="#c3d2e4"/><text x="80" y="104" font-family="sans-serif" font-size="13" text-anchor="middle" fill="#8aa0b8">нет фото</text></svg>');
+document.addEventListener('error', e=>{ const t=e.target;
+  if (t && t.tagName==='IMG' && t.src!==IMG_MISS){ t.dataset.miss='1'; t.alt=t.alt||'нет фото'; t.src=IMG_MISS; } }, true);

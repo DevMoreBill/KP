@@ -85,6 +85,7 @@ class CatalogSorter {
     ['price','Цена',1,'В рублях по курсу ЦБ; без цены — закупочная цена, иначе в конце'],['stock','Наличие',-1,'Больше всего на складе — первыми'],
     ['name','Название',1,'По алфавиту, номера моделей — по возрастанию чисел'],['kp','Популярные в КП',-1,'Чаще всего попадали в коммерческие предложения'],
     ['upd','Обновлённые',-1,'Недавно изменённые позиции']];
+  static COLL = new Intl.Collator('ru', {numeric:true});     // сравнение названий: как localeCompare(…, 'ru', {numeric}), но в разы быстрее
   static def(k){ const z=CatalogSorter.SORTS.find(x=>x[0]===k); return z ? z[2] : 1; }
   static stockN(x){ const st=x.stock; if (!st || st.gone) return null; return st.qty!=null ? (st.qty>0?st.qty:null) : st.available ? 1 : null; }
   constructor(win){ this.win=win; this.fx=null; this.fxLoading=false; }      // fx — курсы ЦБ к рублю: цены в разных валютах сравниваются в рублях
@@ -96,7 +97,7 @@ class CatalogSorter {
     api('/api/cbr').then(r=>{ if (r && (r.EUR||r.USD)){ this.fx=r; if (this.win.F.sort==='price') this.win.list(); } }).catch(()=>{}).finally(()=>{ this.fxLoading=false; }); }
   /** сравнение позиций для текущей сортировки */
   compare(){ const F=this.win.F, s=F.sort, d=F.dir||1, ord=new Map(TYPES.map((t,i)=>[t.id,i])), A=CatalogIndex.attrs;
-    const byName=(p,q)=>String(p.name).localeCompare(q.name,'ru',{numeric:true});
+    const byName=(p,q)=>CatalogSorter.COLL.compare(String(p.name), String(q.name));
     const num=(f)=>{ const m=new Map(); return x=>{ if (!m.has(x.id)){ const v=f(x); m.set(x.id, v==null||!isFinite(v)||v===0?null:v); } return m.get(x.id); }; };
     const cmp=(g)=>(p,q)=>{ const a=g(p), b=g(q); return a==null ? (b==null?0:1) : b==null ? -1 : (a-b)*d; };
     const by=g=>{ const c=cmp(num(g)); return (p,q)=>c(p,q)||byName(p,q); };
@@ -188,9 +189,10 @@ const feedStockTxt = st => FeedBadge.stockText(st);      // для раздел�
 
 // ---------- окно каталога
 class CatalogWindow {
+  static PAGE = 60;           // строк списка за раз: остальные — при прокрутке (150 строк сразу тормозили слабые ПК)
   constructor(){
     // режим (позиции КП или опции позиции), отметки, открытая карточка, последний перенос (для отмены)
-    Object.assign(this, { pend:new Set(), mod:false, optFor:null, F:FI, sel:new Set(), active:null, limit:150, docs:[], view:[], lastCk:null, undo:null, note:'', busy:'', drag:null,
+    Object.assign(this, { pend:new Set(), mod:false, optFor:null, F:FI, sel:new Set(), active:null, limit:CatalogWindow.PAGE, docs:[], view:[], lastCk:null, undo:null, note:'', busy:'', drag:null,
       src:{}, sups:[], tab:'' });      // src — фиды-источники (id → поставщик), sups — справочник поставщиков, tab — вкладка слева (flt / cats)
     this.sorter = new CatalogSorter(this);
     this.panes = null;
@@ -217,8 +219,13 @@ class CatalogWindow {
   /** поставщики позиций: фиды-источники и справочник поставщиков (для фильтра «Поставщик» и поиска по нему) */
   async loadSources(){
     const [src, sups] = await Promise.all([api('/api/catalog/sources').catch(()=>({})), api('/api/suppliers').catch(()=>[])]);
-    this.src = src && typeof src==='object' && !Array.isArray(src) ? src : {}; this.sups = Array.isArray(sups) ? sups : [];
-    this.docs.forEach(x=>{ delete x._sup; delete x._hay; }); FI.dropQuery(); FO.dropQuery(); }
+    const s2 = src && typeof src==='object' && !Array.isArray(src) ? src : {}, u2 = Array.isArray(sups) ? sups : [], key=JSON.stringify([s2, u2]);
+    if (key===this.srcKey) return;            // поставщики не менялись — готовые поисковые строки остаются
+    this.srcKey=key; this.src=s2; this.sups=u2;
+    for (const L of new Set([this.docs, catCache])) L.forEach(x=>{ delete x._sup; delete x._hay; });
+    FI.dropQuery(); FO.dropQuery(); }
+  /** после запуска, в простое: поставщики и поисковые строки — первый поиск в каталоге без задержки */
+  async prewarm(){ this.sorter.loadFx(); await this.loadSources(); if (!$('#catdlg')?.open){ this.docs=catCache; this.warm(); } }
   async reload(){ await refreshCat(); await this.loadPending(); this.docs=catCache; renderForm(); }
 
   // ---------- левая панель: фильтры по параметрам категории
@@ -328,8 +335,14 @@ class CatalogWindow {
     const ok=$('#cwNavOk'); if (ok) ok.textContent = list.length ? `Показать: ${list.length}` : 'Ничего не найдено';
     morph($('#cwList'), list.length ? list.slice(0,this.limit).map(x=>this.row(x)).join('')
         + (list.length>this.limit?`<div class="cw-more"><button class="btn" type="button" data-more>Показать ещё (${list.length-this.limit})</button></div>`:'')
-      : `<p class="empty">${this.docs.length?'Ничего не найдено — ослабьте фильтры или выберите «Все позиции».':'Каталог пуст. Добавьте позицию, загрузите файл каталога или импортируйте таблицу из Excel (меню «Ещё»).'}</p>`);
+      : `<p class="empty">${this.docs.length?'Ничего не найдено — ослабьте фильтры или выберите «Все позиции».':'Каталог пуст. Добавьте позицию, загрузите файл каталога или импортируйте таблицу из Excel (меню «Ещё»).'}</p>`);    this.autoMore();
   }
+  /** следующая порция строк списка */
+  more(){ this.limit+=CatalogWindow.PAGE*2; this.list(); }
+  /** строки дорисовываются сами, когда прокрутка подходит к концу списка («Показать ещё» — на случай без прокрутки) */
+  autoMore(){ this.io?.disconnect(); const box=$('#cwList'), m=box?.querySelector('.cw-more'); if (!m || !window.IntersectionObserver) return;
+    this.io=new IntersectionObserver(es=>{ if (es.some(e=>e.isIntersecting)){ this.io.disconnect(); this.more(); } }, {root:box, rootMargin:'0px 0px 600px 0px'});
+    this.io.observe(m); }
   /** обновить фильтры и список (после смены условий) */
   refresh(){ this.nav(); this.list(); }
 
@@ -457,7 +470,7 @@ class CatalogWindow {
        <div class="grid g2"><label class="f"><span>Раздел</span><select id="ntGroup">${groups.map(g=>`<option${g===(typeById(base).group||'Прочее')?' selected':''}>${esc(g)}</option>`).join('')}<option value="__new">+ новый раздел…</option></select></label>
          <label class="f" id="ntGroupNewL" style="display:none"><span>Название раздела</span><input type="text" id="ntGroupNew" placeholder="Например: Подготовка воздуха" autocomplete="off"></label></div>
        <label class="f"><span>Параметры и фильтры — как у категории</span><select id="ntBase">${typeOptionsHtml(base)}</select></label></div>
-     <p class="muted">Из выбранной категории копируются параметры (мощность, давление, производительность…), фильтры каталога и быстрые опции. Тонкая настройка — «Ещё» → «Типы оборудования».</p>
+     <p class="muted">Из выбранной категории копируются параметры (мощность, давление, производительность…), фильтры каталога и быстрые опции. Тонкая настройка — «Ещё» → «Категории оборудования».</p>
      <p class="msg err" id="ntErr" style="text-align:left"></p>
      <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>Отмена</button><button class="btn primary" type="button" id="ntSave">Создать категорию</button></div></div>`;
     d.showModal(); d.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>d.close());
@@ -509,16 +522,16 @@ class CatalogWindow {
   // ---------- окно
   async open(mode={}){
     const optFor = Number.isInteger(mode.opt) ? mode.opt : null;
-    Object.assign(this, { optFor, F: optFor!=null ? FO : FI, active:null, limit:150, lastCk:null, note:'', busy:'', tab:'' }); this.sel.clear();
+    Object.assign(this, { optFor, F: optFor!=null ? FO : FI, active:null, limit:CatalogWindow.PAGE, lastCk:null, note:'', busy:'', tab:'' }); this.sel.clear();
     const F=this.F; if (mode.cat!=null){ F.cat=mode.cat; F.f={}; F.rng={}; }
     const d=this.dlg(); d.classList.remove('navon','pvon','pvwide'); this.panes.loadSize(); this.panes.load();
     d.innerHTML=`<div class="cw-h"><button class="btn cw-navbtn" type="button" data-cw="nav" aria-label="Категории и фильтры" title="Категории и фильтры"><span aria-hidden="true">☰</span><span class="cw-lbl2"> Фильтры</span></button>
        <h3>${optFor!=null?'Опции для позиции '+(optFor+1):'Каталог'}</h3>
        <div class="cw-q"><input type="search" id="cwQ" placeholder="Модель, артикул, производитель, поставщик или характеристика" autocomplete="off" value="${esc(F.q)}" aria-label="Поиск по каталогу" title="Можно без пробелов и дефисов: «DVK3013» найдёт DVK D 30-13; «/» — перейти к поиску"><kbd aria-hidden="true">/</kbd></div>
        ${optFor==null?'<button class="btn" type="button" data-cw="new" title="Новая позиция каталога">+<span class="cw-lbl"> Позиция</span></button>':''}
-       <details class="cw-menu"><summary class="btn" title="Импорт, выгрузка, типы оборудования">Ещё<span class="cw-lbl"> ▾</span></summary><div>
+       <details class="cw-menu"><summary class="btn" title="Импорт, выгрузка, категории оборудования">Ещё<span class="cw-lbl"> ▾</span></summary><div>
          <button type="button" data-cw="xls">Импорт из Excel…</button><button type="button" data-cw="imp">Загрузить файл каталога (.json)…</button><button type="button" data-cw="exp">Выгрузить каталог в файл</button>
-         <hr><button type="button" data-cw="types">Типы оборудования…</button></div></details>
+         <hr><button type="button" data-cw="types">Категории оборудования…</button></div></details>
        <button class="icon" type="button" data-cw="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна можно менять, потянув за правый нижний угол">⤢</button>
        <button class="icon" type="button" data-cw="close" aria-label="Закрыть">✕</button></div>
      <div class="cw-fb" id="cwBar" role="group" aria-label="Отбор по категории, производителю, поставщику"></div>
@@ -545,15 +558,15 @@ class CatalogWindow {
     let szT=null; new ResizeObserver(()=>{ if(!d.open) return; this.panes.layout(); clearTimeout(szT); szT=setTimeout(()=>{ if (d.open && !d.classList.contains('max')) this.panes.saveSize(); },500); }).observe(d);
     let qT=null;
     d.addEventListener('input', e=>{ const t=e.target, F=this.F;
-      if (t.id==='cwQ'){ F.q=t.value; this.limit=150; clearTimeout(qT); qT=setTimeout(()=>this.refresh(), this.docs.length>2000?180:60); return; }
+      if (t.id==='cwQ'){ F.q=t.value; this.limit=CatalogWindow.PAGE; clearTimeout(qT); qT=setTimeout(()=>this.refresh(), this.docs.length>2000?180:60); return; }
       if (t.dataset.rk){ const r=F.rng[t.dataset.rk]||(F.rng[t.dataset.rk]={min:'',max:''}); r[t.dataset.rs]=t.value.replace(',','.').replace(/[^\d.]/g,''); this.list(); } });
     d.addEventListener('change', e=>{ const t=e.target, F=this.F;
       if (t.dataset.cwzero!=null){ try{ localStorage.setItem('kp.cwzero', t.checked?'1':'0'); }catch(_){} return this.nav(); }
       if (t.id==='cwSort'){ F.sort=t.value; F.dir=CatalogSorter.def(t.value); this.list(); $('#cwList').scrollTop=0; return; }
-      if (t.dataset.f!=null){ if (t.dataset.in) F.f[t.dataset.f]=t.value; else F[t.dataset.f]=t.value; this.limit=150; this.refresh(); return; }
-      if (t.id==='cwPriced'){ F.priced=t.checked; this.limit=150; this.refresh(); return; }
-      if (t.id==='cwStock'){ F.stock=t.checked; this.limit=150; this.refresh(); return; }
-      if (t.dataset.top){ const k=t.dataset.top; this.limit=150;
+      if (t.dataset.f!=null){ if (t.dataset.in) F.f[t.dataset.f]=t.value; else F[t.dataset.f]=t.value; this.limit=CatalogWindow.PAGE; this.refresh(); return; }
+      if (t.id==='cwPriced'){ F.priced=t.checked; this.limit=CatalogWindow.PAGE; this.refresh(); return; }
+      if (t.id==='cwStock'){ F.stock=t.checked; this.limit=CatalogWindow.PAGE; this.refresh(); return; }
+      if (t.dataset.top){ const k=t.dataset.top; this.limit=CatalogWindow.PAGE;
         if (k==='cat'){ F.setCategory(t.value); this.tab=t.value?'flt':''; } else F[k]=t.value;
         this.refresh(); $('#cwList').scrollTop=0; return; }
       if (t.id==='cwAll'){ this.view.forEach(x=>t.checked?this.sel.add(x.id):this.sel.delete(x.id)); this.list(); this.foot(); return; }
@@ -595,7 +608,7 @@ class CatalogWindow {
       fold[fg.dataset.cwfold]=!fold[fg.dataset.cwfold]; try{ localStorage.setItem('kp.cwfold', JSON.stringify(fold)); }catch(e){} return this.nav(); }
     if (t.closest('#cwDir')){ F.dir=-(F.dir||1); this.list(); $('#cwList').scrollTop=0; return; }
     const tab=t.closest('[data-tab]'); if (tab){ this.tab=tab.dataset.tab; this.nav(); return; }
-    const chip=t.closest('[data-chip]'); if (chip){ const k=chip.dataset.chip; this.limit=150;
+    const chip=t.closest('[data-chip]'); if (chip){ const k=chip.dataset.chip; this.limit=CatalogWindow.PAGE;
       if (k==='q'){ F.q=''; const q=$('#cwQ'); if (q) q.value=''; }
       else if (k==='cat'){ F.setCategory(''); this.tab=''; }
       else if (k==='priced'||k==='stock') F[k]=false;
@@ -603,9 +616,9 @@ class CatalogWindow {
       else if (k.startsWith('r:')) F.rng[k.slice(2)]={min:'',max:''};
       else F[k]='';
       this.refresh(); return; }
-    const cat=t.closest('[data-cat]'); if (cat){ F.setCategory(cat.dataset.cat); this.limit=150; this.tab=F.cat?'flt':'cats';
+    const cat=t.closest('[data-cat]'); if (cat){ F.setCategory(cat.dataset.cat); this.limit=CatalogWindow.PAGE; this.tab=F.cat?'flt':'cats';
       if (!F.cat) d.classList.remove('navon'); this.refresh(); $('#cwList').scrollTop=0; return; }
-    if (t.closest('[data-more]')){ this.limit+=300; this.list(); return; }
+    if (t.closest('[data-more]')){ this.more(); return; }
     const add=t.closest('[data-add]'); if (add){ return this.add([add.closest('.cw-row').dataset.id]); }
     const rc=t.closest('[data-rc]'); if (rc){ const k=rc.dataset.rc, r=F.rng[k]||{min:'',max:''}; const same=String(r.min)===rc.dataset.lo&&String(r.max)===rc.dataset.hi;
       F.rng[k]= same?{min:'',max:''}:{min:rc.dataset.lo,max:rc.dataset.hi}; this.refresh(); return; }
@@ -626,7 +639,7 @@ class CatalogWindow {
       case 'max': d.classList.toggle('max'); this.panes.saveSize(); return;
       case 'nav': d.classList.toggle('navon'); return;
       case 'reset': F.resetParams(); this.refresh(); return;
-      case 'resetall': { F.resetAll(); const q=$('#cwQ'); if (q) q.value=''; this.limit=150; this.refresh(); return; }
+      case 'resetall': { F.resetAll(); const q=$('#cwQ'); if (q) q.value=''; this.limit=CatalogWindow.PAGE; this.refresh(); return; }
       case 'undo': return this.undoMove();
       case 'newtype': return this.newType(id=>{ F.cat=id; F.f={}; F.rng={}; this.redraw(); });
       case 'new': return newEquip('catalog', F.cat||'');

@@ -178,14 +178,14 @@ span.mb-back{border:0}
 .mob .rates{gap:6px 14px}
 .mob .ptable{border:0;background:none;gap:10px;overflow:visible}
 .mob .phead{display:none}
-.mob .prow{grid-template-columns:28px minmax(0,1.2fr) minmax(0,1fr);grid-template-areas:"no nm nm" "pr pr ds" "in in sm";gap:8px 10px;padding:12px;border:1px solid var(--line)!important;border-radius:14px;background:var(--card)}
+.mob .prow{grid-template-columns:28px minmax(0,1.2fr) minmax(0,1fr);grid-template-areas:"no nm nm" "pr pr ds" "sm sm sm" "in in in";gap:8px 10px;padding:12px;border:1px solid var(--line)!important;border-radius:14px;background:var(--card)}
 .mob .prow .item-no{grid-area:no;align-self:start;display:grid}
 .mob .pname{grid-area:nm}
 .mob .psum{grid-area:sm;align-self:center}
 .mob .pprice{grid-area:pr}
 .mob .pdisc{grid-area:ds}
 .mob .pinfo{grid-area:in;margin:0;align-self:center}
-.mob .pinfo:empty{display:block}
+.mob .pinfo:empty{display:none}
 .mob .prow .pl{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px}
 .mob .psum .pl{display:inline;margin:0 8px 0 0}
 

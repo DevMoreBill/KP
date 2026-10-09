@@ -55,6 +55,7 @@ dialog.editor[open]{display:flex}
 .gctl{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
 .gctl select{padding:6px 8px;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--field);color:var(--ink);max-width:100%}
 details.more{margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:0 14px}
+.cv-opts{margin-top:14px}
 details.more>summary{cursor:pointer;padding:12px 0;font-weight:600;font-size:14px;color:var(--navy)}
 details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px}
 .pricebox{width:100%;text-align:right;border:1px dashed var(--line);background:var(--soft);border-radius:10px;padding:10px 12px;font-size:15px;cursor:pointer;color:var(--ink);font-variant-numeric:tabular-nums}

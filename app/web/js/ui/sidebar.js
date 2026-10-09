@@ -19,7 +19,7 @@ function problems(){
       if (Number.isNaN(parsePrice(o._priceText ?? ''))) p.push([`Позиция ${i+1}, опция «${o.short||o.name}»: цена`,'item-'+x.id]); });
   });
   if (!S.cover.model.trim() && stationsOf().length<2) p.push(['Титул: укажите модель или серию','st-cover']);
-  const v=+S.vat; if (!(v>=0 && v<=50)) p.push(['Проверьте ставку НДС','st-conds']);
+  const v=+S.vat; if (!(v>=0 && v<=50)) p.push(['Проверьте ставку НДС','st-price']);
   const needR=new Set([kpCur(),...S.items.filter(x=>x.cost).map(x=>x.costCur||'RUB')].filter(c=>c!=='RUB'));
   for (const c of needR) if (!(rateOf(c)>0)) p.push([`Укажите курс ${c}`,'st-price']);
   if (!S.manager.name.trim() || !S.manager.phone.trim()) p.push(['Контакты: ФИО и телефон','st-manager']);
