@@ -1,18 +1,59 @@
-// «Настройки» — админ-панель под паролем администратора (сервер: app/admin.py).
-// Статистика, удаление (в корзину), корзина, модерация правок товаров, журнал действий, резервные копии,
-// шаблоны КП, ключи API, пароль. Сессия — 15 минут бездействия.
+// «Настройки» — админ-панель под паролем администратора (сервер: app/admin.py). Разделы и вкладки — AdminNav:
+// обзор, КП, каталог, справочники, программа, подключения, доступ, обслуживание. Сессия — 15 минут бездействия.
 'use strict';
 
 const ST = { tab:'stats', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f:{}}, imp:null, chart:'day' };
 
-// вкладки по смыслу: обзор → данные → как работает программа → подключения → доступ
-const ST_NAV = [
-  ['Обзор', [['stats','Статистика'],['audit','Журнал действий']]],
-  ['Данные', [['delete','Справочники и данные'],['moderation','Модерация правок'],['trash','Корзина'],['backup','Копии и обслуживание базы']]],
-  ['Работа программы', [['features','Функции программы'],['defaults','Умолчания'],['lists','Списки и выборы'],['texts','Тексты интерфейса'],['templates','Шаблоны КП и категории'],['logistics','Логистика: тарифы'],['feeds','Фиды поставщиков']]],
-  ['Подключения', [['mail','Почта'],['ai','Нейросеть'],['keys','Ключи API']]],
-  ['Доступ', [['access','Менеджеры и права'],['users','Администраторы'],['security','Мой пароль']]]];
-const ST_TABS = ST_NAV.flatMap(g=>g[1]);
+// Разделы «Настроек» по предметной области: что смотрим → с чем работает отдел (КП, каталог, справочники) → как ведёт себя
+// программа → внешние сервисы → кто входит → обслуживание. У вкладки: ключ, название, пояснение (под заголовком) и обработчик.
+class AdminNav {
+  static GROUPS = [
+    {title:'Обзор', tabs:[
+      {key:'stats', label:'Статистика', hint:'КП по периодам, активные менеджеры, популярные товары, модерация и размер базы.', open:m=>stStats(m)},
+      {key:'audit', label:'Журнал действий', hint:'Кто, что и когда изменил: КП, каталог, справочники, настройки. Фильтры по сотруднику, действию и дате.', open:m=>stAudit(m)}]},
+    {title:'КП', tabs:[
+      {key:'templates', label:'Шаблоны КП', hint:'Оформление документа КП: графический редактор, настройки шаблона, новый шаблон для другой компании.', open:m=>stTemplates(m)},
+      {key:'db-kp', label:'КП в базе', hint:'Все сохранённые КП: найти, открыть для правки, удалить в корзину. Файлы готовых КП в папке не удаляются.', open:m=>stDelete(m, 'kp')}]},
+    {title:'Каталог', tabs:[
+      {key:'db-catalog', label:'Товары', hint:'Карточки каталога: найти, изменить в редакторе, удалить в корзину.', open:m=>stDelete(m, 'catalog')},
+      {key:'types', label:'Категории оборудования', hint:'Параметры, фильтры и группы характеристик каждой категории.', open:m=>stTypes(m)},
+      {key:'feeds', label:'Фиды поставщиков', hint:'Загрузка прайсов, остатков и описаний поставщиков в каталог, РРЦ, наличие, сетка скидок.', open:m=>stFeeds(m)},
+      {key:'moderation', label:'Модерация правок', hint:'Правки товаров сотрудниками — сразу в каталог или после вашего подтверждения.', open:m=>stModeration(m)}]},
+    {title:'Справочники', tabs:[
+      {key:'db-client', label:'Клиенты', hint:'Реквизиты, контакты и объекты клиентов; загрузка списком ИНН.', open:m=>stDelete(m, 'client')},
+      {key:'db-supplier', label:'Поставщики', hint:'Условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщиков.', open:m=>stDelete(m, 'supplier')},
+      {key:'db-manager', label:'Менеджеры — контакты', hint:'Контакты менеджеров, которые попадают в КП. Логины и права — «Доступ → Вход и права менеджеров».', open:m=>stDelete(m, 'manager')},
+      {key:'logistics', label:'Тарифы доставки', hint:'Тарифы перевозки по России для «Экономики сделки»: транспорт, расстояния, разгрузка; загрузка файлом.', open:m=>stLogistics(m)}]},
+    {title:'Программа', tabs:[
+      {key:'features', label:'Функции программы', hint:'Какие дополнительные возможности включены и кому доступны: всем, администратору или выбранным менеджерам.', open:m=>new FeaturesPanel(m).open()},
+      {key:'defaults', label:'Умолчания', hint:'Что программа подставляет сама: новое КП, условия, контакты компании, экономика сделки, станции, автозаполнение.', open:m=>stDefaults(m)},
+      {key:'lists', label:'Списки и выборы', hint:'Варианты в выпадающих списках: условия, причины проигрыша, единицы и т. п.', open:m=>stLists(m)},
+      {key:'texts', label:'Тексты интерфейса', hint:'Свои надписи и подсказки вместо стандартных.', open:m=>stTexts(m)}]},
+    {title:'Подключения', tabs:[
+      {key:'mail', label:'Почта', hint:'Почтовый сервер (SMTP) и письмо по умолчанию для отправки КП клиентам.', open:m=>stMail(m)},
+      {key:'ai', label:'Нейросеть', hint:'Нейросеть прямо в программе для «Заполнить с ИИ»: ключ, модель, расход.', open:m=>stAi(m)},
+      {key:'keys', label:'Ключи API', hint:'Контрагенты (Checko, DaData), перевозчики, PDF; резервная копия ключей.', open:m=>stKeys(m)}]},
+    {title:'Доступ', tabs:[
+      {key:'access', label:'Вход и права менеджеров', hint:'Вход в конструктор по логину и паролю, права менеджеров. Контакты менеджеров — «Справочники → Менеджеры — контакты».', open:m=>stAccess(m)},
+      {key:'users', label:'Администраторы', hint:'Кто входит в «Настройки».', open:m=>stUsers(m)},
+      {key:'security', label:'Мой пароль', hint:'Смена своего пароля и правила входа.', open:m=>stSecurity(m)}]},
+    {title:'Обслуживание', tabs:[
+      {key:'backup', label:'Копии и база', hint:'Автоматические копии, сжатие и проверка базы, экспорт и импорт, обновления базы.', open:m=>stBackup(m)},
+      {key:'trash', label:'Корзина', hint:'Удалённое хранится 30 дней — здесь его можно восстановить.', open:m=>stTrash(m)}]}];
+  // прежние ключи вкладок (ссылки из других окон, сохранённый выбор)
+  static ALIAS = {delete:'db-kp'};
+
+  static tabs(){ return this.GROUPS.flatMap(g=>g.tabs); }
+  static key(k){ k=this.ALIAS[k]||k; return this.tabs().some(t=>t.key===k) ? k : 'stats'; }
+  static tab(k){ return this.tabs().find(t=>t.key===this.key(k)); }
+  static html(cur){ return `<nav class="st-nav">${this.GROUPS.map(g=>`<span class="st-ng">${esc(g.title)}</span>${g.tabs.map(t=>`<button type="button" class="${t.key===cur?'on':''}" data-sttab="${t.key}" title="${esc(t.hint)}">${esc(t.label)}</button>`).join('')}`).join('')}</nav>`; }
+  /** вкладка: заголовок и пояснение, под ними — содержимое (обработчику отдаётся его блок) */
+  static async open(main, k){
+    const t=this.tab(k), g=this.GROUPS.find(x=>x.tabs.includes(t));
+    main.innerHTML=`<header class="st-th"><span class="muted">${esc(g.title)}</span><h4>${esc(t.label)}</h4><p class="muted">${esc(t.hint)}</p></header><div class="st-body"><p class="empty">Загружаю…</p></div>`;
+    await t.open(main.querySelector('.st-body'));
+  }
+}
 
 const ACT = { login:'Вход в «Настройки»', backup_db:'Копия базы', maintain_db:'Сжатие и проверка базы', purge_images:'Удаление лишних изображений', create_admin:'Новый администратор', edit_admin:'Изменение администратора', delete_admin:'Удаление администратора', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
   admin_request:'Запрос без входа', kp_status:'Ход сделки по КП', send_kp:'Отправка КП по почте', edit_settings:'Изменение настроек', edit_template:'Изменение шаблона', create_kp:'Создание КП', edit_kp:'Изменение КП',
@@ -75,16 +116,16 @@ function stRender(){
     setTimeout(()=>($('#stLg')&&!$('#stLg').value?$('#stLg'):$('#stPw'))?.focus(),30);
     return;
   }
-  if (!ST_TABS.some(([k])=>k===ST.tab)) ST.tab='stats';
-  d.innerHTML=head+`<div class="st-b"><nav class="st-nav">${ST_NAV.map(([g,tabs])=>`<span class="st-ng">${g}</span>${tabs.map(([k,l])=>`<button type="button" class="${ST.tab===k?'on':''}" data-sttab="${k}">${l}</button>`).join('')}`).join('')}</nav>
+  ST.tab=AdminNav.key(ST.tab);
+  d.innerHTML=head+`<div class="st-b">${AdminNav.html(ST.tab)}
     <section class="st-main" id="stMain"><p class="empty">Загружаю…</p></section></div>`;
+  d.querySelector('.st-nav .on')?.scrollIntoView({block:'nearest'});
   stTab();
 }
 
 async function stTab(){
   const m=$('#stMain'); if (!m) return;
-  try{ await ({stats:stStats, moderation:stModeration, delete:stDelete, trash:stTrash, audit:stAudit, backup:stBackup,
-    templates:stTemplates, logistics:stLogistics, feeds:stFeeds, keys:stKeys, mail:stMail, features:m=>new FeaturesPanel(m).open(), ai:stAi, access:stAccess, users:stUsers, security:stSecurity, defaults:stDefaults, lists:stLists, texts:stTexts})[ST.tab](m); }
+  try{ await AdminNav.open(m, ST.tab); }
   catch(e){ if (ADMIN.on) m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; }
 }
 
@@ -201,12 +242,14 @@ async function stPendView(id){
     toast(b.dataset.pa==='approve'?'Одобрено — изменения в каталоге':'Отклонено'); refreshCat(); stTab(); };
 }
 
-// ---------- удаление (в корзину)
-async function stDelete(m){
-  const D=ST.del, r=await aapi(`list/${D.type}?q=${encodeURIComponent(D.q)}`), ed=ST.ed&&ST.ed.type===D.type?ST.ed:null;
-  m.innerHTML=`<div class="seg st-types">${DEL_TYPES.map(([v,l])=>`<button type="button" class="${D.type===v?'on':''}" data-dtype="${v}">${l}</button>`).join('')}</div>
-    <div class="row st-dbar"><input type="search" id="dQ" placeholder="Поиск" value="${esc(D.q)}" autocomplete="off"><span class="muted">${r.total>r.items.length?`показано ${r.items.length} из ${r.total} — уточните поиск`:`найдено: ${r.total}`}</span>
-      <span class="sp"></span>${D.type==='client'?'<button class="btn" type="button" data-dimp title="Список ИНН — реквизиты подтянутся сами">Загрузить списком ИНН…</button>':''}${ST_NEW[D.type]?`<button class="btn primary" type="button" data-dnew>+ ${esc(ST_NEW[D.type])}</button>`:''}<button class="btn danger" type="button" data-del ${D.sel.size?'':'disabled'}>Удалить${D.sel.size?' ('+D.sel.size+')':''}</button></div>
+// ---------- записи базы: КП, товары, клиенты, поставщики, контакты менеджеров — поиск, правка, удаление в корзину
+// (вкладка на каждый вид — AdminNav; type задаёт вкладка, повторные вызовы без type остаются на том же виде)
+async function stDelete(m, type){
+  const D=ST.del; if (type && type!==D.type){ D.type=type; D.sel.clear(); D.q=''; ST.ed=null; }
+  const r=await aapi(`list/${D.type}?q=${encodeURIComponent(D.q)}`), ed=ST.ed&&ST.ed.type===D.type?ST.ed:null;
+  const link=({manager:['access','Вход и права менеджеров →'], catalog:['moderation','Модерация правок →'], supplier:['feeds','Фиды поставщиков →']})[D.type];
+  m.innerHTML=`<div class="row st-dbar"><input type="search" id="dQ" placeholder="Поиск" value="${esc(D.q)}" autocomplete="off"><span class="muted">${r.total>r.items.length?`показано ${r.items.length} из ${r.total} — уточните поиск`:`найдено: ${r.total}`}</span>
+      <span class="sp"></span>${D.type==='client'?'<button class="btn" type="button" data-dimp title="Список ИНН — реквизиты подтянутся сами">Загрузить списком ИНН…</button>':''}${ST_NEW[D.type]?`<button class="btn primary" type="button" data-dnew>+ ${esc(ST_NEW[D.type])}</button>`:''}<button class="btn danger" type="button" data-del ${D.sel.size?'':'disabled'}>Удалить${D.sel.size?' ('+D.sel.size+')':''}</button>${link?`<button class="btn ghost" type="button" data-sttab="${link[0]}">${link[1]}</button>`:''}</div>
     ${ed&&!ed.id?'<div class="st-ed"></div>':''}
     <div class="st-list">${r.items.map(x=>`<label class="st-row ck-row${ed&&ed.id===x.id?' on':''}"><input type="checkbox" data-did="${esc(x.id)}" ${D.sel.has(x.id)?'checked':''}><div><b>${esc(x.title)}</b><span class="muted">${esc(x.sub)}</span></div><div class="acts"><button class="btn" type="button" data-dedit="${esc(x.id)}">${D.type==='kp'?'Открыть':'Изменить'}</button></div></label>${ed&&ed.id===x.id?'<div class="st-ed"></div>':''}`).join('')||'<p class="muted">Ничего не найдено.</p>'}</div>
     <p class="muted">«${D.type==='kp'?'Открыть':'Изменить'}» — ${({kp:'КП откроется в конструкторе для правки', catalog:'карточка товара в редакторе каталога', manager:'контакты менеджера — прямо в списке', client:'реквизиты и контакт клиента — прямо в списке', supplier:'условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщика — прямо в списке'})[D.type]}. Удалённое попадает в корзину и хранится ${30} дней — его можно восстановить. Файлы готовых КП (.docx, .pdf) в папке КП не удаляются.</p>`;
@@ -215,7 +258,6 @@ async function stDelete(m){
   m.onchange=e=>{ const c=e.target.closest('[data-did]'); if(!c) return; c.checked?D.sel.add(c.dataset.did):D.sel.delete(c.dataset.did);
     const b=m.querySelector('[data-del]'); b.disabled=!D.sel.size; b.textContent='Удалить'+(D.sel.size?' ('+D.sel.size+')':''); };
   m.onclick=async e=>{ if (e.target.closest('.st-ed')) return;
-    const t=e.target.closest('[data-dtype]'); if (t){ D.type=t.dataset.dtype; D.sel.clear(); D.q=''; ST.ed=null; return stDelete(m); }
     if (e.target.closest('[data-dimp]')) return openClientsImport();
     if (e.target.closest('[data-dnew]')){ try{ await stEdOpen(D.type, null); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
     const ed=e.target.closest('[data-dedit]'); if (ed){ e.preventDefault();
@@ -314,16 +356,24 @@ async function stBackup(m){
 
 // ---------- шаблоны, категории, ключи, пароль
 async function stTemplates(m){
-  m.innerHTML=`<div class="st-card"><p class="sub">Шаблоны КП</p>${TEMPLATES.map(t=>`<div class="st-row"><div><b>${esc(t.name)}</b><span class="muted">${esc(t.description||t.id)}${t.error?' · <span class="bad-t">'+esc(t.error)+'</span>':''}</span></div>
+  m.innerHTML=`<div class="st-card"><p class="sub">Шаблоны · ${TEMPLATES.length}</p>${TEMPLATES.map(t=>`<div class="st-row"><div><b>${esc(t.name)}</b><span class="muted">${esc(t.description||t.id)}${t.error?' · <span class="bad-t">'+esc(t.error)+'</span>':''}</span></div>
       <div class="acts">${t.error?'':`<button class="btn primary" type="button" data-tdes="${esc(t.id)}" title="Документ как в Word: щёлкните текст или картинку и меняйте шрифт, цвет, размеры, порядок разделов">Графический редактор</button>`}<button class="btn" type="button" data-tpl="${esc(t.id)}">Настроить</button></div></div>`).join('')}
-      <div class="row" style="margin-top:10px"><button class="btn" type="button" data-tnew>+ Новый шаблон для компании…</button><button class="btn ghost" type="button" data-tfold>Папка шаблонов</button></div></div>
-    <div class="st-card"><p class="sub">Категории оборудования</p><p class="muted">Параметры, фильтры, группы характеристик. Удалить свою категорию или вернуть стандартные можно только отсюда (при входе в «Настройки»).</p>
-      <button class="btn" type="button" data-types>Открыть категории</button></div>`;
+      <div class="row" style="margin-top:10px"><button class="btn" type="button" data-tnew>+ Новый шаблон для компании…</button><button class="btn ghost" type="button" data-tfold>Папка шаблонов</button></div></div>`;
   m.onclick=e=>{ const t=e.target.closest('[data-tpl]'); if (t) return openTemplateEditor(t.dataset.tpl);
     const g=e.target.closest('[data-tdes]'); if (g) return openTemplateDesigner(g.dataset.tdes);
     if (e.target.closest('[data-tnew]')) return tdNewCompany().catch(err=>toast('Не получилось: '+(err.message||err)));
-    if (e.target.closest('[data-tfold]')) return api('/api/templates/folder',{method:'POST'}).then(r=>{ if(r&&r.remote) toast('Шаблоны лежат на компьютере-сервере, в папке программы «templates»'); }).catch(err=>toast(err.message));
-    if (e.target.closest('[data-types]')) openTypesEditor(); };
+    if (e.target.closest('[data-tfold]')) return api('/api/templates/folder',{method:'POST'}).then(r=>{ if(r&&r.remote) toast('Шаблоны лежат на компьютере-сервере, в папке программы «templates»'); }).catch(err=>toast(err.message)); };
+}
+
+// ---------- категории оборудования (редактор — types-editor.js): сколько товаров в каждой, открыть редактор
+async function stTypes(m){
+  const n={}; for (const x of (typeof catCache!=='undefined'?catCache:[])){ const c=attrsOf(x).cat||''; n[c]=(n[c]||0)+1; }
+  const L=TYPES.filter(t=>!t.station), S2=TYPES.filter(t=>t.station);
+  const row=t=>`<tr><td>${esc(t.name)}</td><td class="muted">${t.fields.length} ${plural(t.fields.length,'параметр','параметра','параметров')}</td><td>${stNum(n[t.id]||0)}</td></tr>`;
+  m.innerHTML=`<div class="st-card"><div class="row"><p class="sub" style="margin:0">Категории · ${L.length}${S2.length?` и станций · ${S2.length}`:''}</p><span class="sp"></span><button class="btn primary" type="button" data-types>Открыть редактор категорий</button></div>
+      <p class="muted">Параметры, фильтры, группы характеристик и шаблон таблицы. Удалить свою категорию или вернуть стандартные можно только отсюда (при входе в «Настройки»).</p>
+      <table class="pv-t st-tt"><tr><th>Категория</th><th>Параметры</th><th>Товаров</th></tr>${[...L, ...S2].map(row).join('')}</table></div>`;
+  m.onclick=e=>{ if (e.target.closest('[data-types]')) openTypesEditor(); };
 }
 
 async function stKeys(m){ return keysForm(m); }
@@ -366,7 +416,7 @@ async function stMail(m, note){
 
 async function stAi(m, note){
   const r=await aapi('ai'), u=r.usage||{}, tok=n=>Number(n||0).toLocaleString('ru-RU');
-  m.innerHTML=`<div class="st-card"><div class="row"><p class="sub" style="margin:0">Нейросеть прямо в программе</p><span class="sp"></span>
+  m.innerHTML=`<div class="st-card"><div class="row"><p class="sub" style="margin:0">Заполнение карточек нейросетью</p><span class="sp"></span>
       <label class="sw"><input type="checkbox" id="aiOn"${r.enabled?' checked':''}${r.hasKey?'':' disabled'}><span>${r.enabled?'включена':'выключена'}</span></label></div>
     <p class="muted">${r.enabled?'Менеджеры заполняют карточки оборудования и элементы станций одной кнопкой «✨ Заполнить автоматически» — без чата в браузере. Ручной способ (копировать запрос в любой ИИ-чат) остаётся запасным.'
       :'Сейчас менеджеры заполняют карточки через любой ИИ-чат в браузере (копировать запрос → вставить ответ). Включите, чтобы программа сама отправляла запрос в DeepSeek.'}</p>
@@ -419,7 +469,7 @@ async function stMigr(box){
 // ---------- администраторы: логин, имя, пароль
 async function stUsers(m){
   const r=await aapi('users');
-  m.innerHTML=`<div class="st-card"><p class="sub">Администраторы · ${r.items.length}</p>
+  m.innerHTML=`<div class="st-card"><p class="sub">Учётные записи · ${r.items.length}</p>
     ${r.items.map(u=>`<div class="st-row" data-ulogin="${esc(u.login)}"><div><b>${esc(u.name||u.login)}</b><span class="muted">логин <b>${esc(u.login)}</b>${u.login===r.me?' · это вы':''} · создан ${esc(stTime(u.created))}${u.by?' ('+esc(u.by)+')':''}${u.lastLogin?' · последний вход '+esc(stTime(u.lastLogin)):''}</span></div>
       <div class="acts"><button class="btn" type="button" data-uact="edit">Изменить</button><button class="btn" type="button" data-uact="password">Пароль</button>${r.items.length>1&&u.login!==r.me?'<button class="btn danger" type="button" data-uact="delete">Удалить</button>':''}</div></div>`).join('')}</div>
     <div class="st-card"><form id="uAdd" autocomplete="off"><p class="sub">Добавить администратора</p>
@@ -455,7 +505,7 @@ async function stAccess(m){
     <p class="muted">${r.enabled?'Без входа программа не открывается. Кто работает, программа знает по входу; права ниже проверяются на сервере.'
       :'Сейчас менеджер выбирается на устройстве, пароль не нужен, права не проверяются. Чтобы включить вход, задайте логин и пароль хотя бы одному менеджеру.'}
       Администратор входит в «Настройки» своим паролем и может всё.</p></div>
-    <div class="st-card"><p class="sub">Менеджеры и права · ${r.managers.length}</p>
+    <div class="st-card"><div class="row"><p class="sub" style="margin:0">Менеджеры и права · ${r.managers.length}</p><span class="sp"></span><button class="btn ghost" type="button" data-sttab="db-manager">Контакты менеджеров →</button></div>
     ${r.managers.length?`<div class="ac-tw"><table class="pv-t ac-t"><thead><tr><th>Менеджер</th><th>Логин</th>${P.map(p=>`<th class="c" title="${esc(p.label)}">${esc(p.label)}</th>`).join('')}<th></th></tr></thead><tbody>${r.managers.map(row).join('')}</tbody></table></div>`
       :'<p class="muted">Менеджеров ещё нет — их добавляют в шаге «Менеджер» конструктора.</p>'}
     <p class="muted">Права действуют, когда вход по паролю включён. «КП других менеджеров» — видеть их в журнале, открывать и сохранять; без него менеджер видит только свои КП. «Экономика сделки» — своих КП (чужих — вместе с правом на КП других).</p></div>`;
@@ -497,7 +547,7 @@ const stChoose = (title, opts) => stModal(`<h3>${esc(title)}</h3><div class="st-
 
 document.addEventListener('click', e=>{
   const d=e.target.closest('#setdlg'); if (!d) return;
-  const t=e.target.closest('[data-sttab]'); if (t){ ST.tab=t.dataset.sttab; d.querySelectorAll('[data-sttab]').forEach(b=>b.classList.toggle('on',b===t)); return stTab(); }
+  const t=e.target.closest('[data-sttab]'); if (t){ ST.tab=AdminNav.key(t.dataset.sttab); d.querySelectorAll('.st-nav [data-sttab]').forEach(b=>b.classList.toggle('on',b.dataset.sttab===ST.tab)); return stTab(); }
   const a=e.target.closest('[data-st]'); if (!a) return;
   if (a.dataset.st==='close') return d.close();
   if (a.dataset.st==='logout') ajson('logout').catch(()=>{}).then(()=>{ ADMIN.on=false; ADMIN.csrf=''; stRender(); FEAT.refresh(); toast('Вы вышли из «Настроек»'); });

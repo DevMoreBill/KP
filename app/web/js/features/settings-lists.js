@@ -22,7 +22,7 @@ class ListsPanel {
         <span class="ls-a"><button type="button" class="icon" data-lsm="-1" data-i="${i}" title="Выше" aria-label="Выше"${i?'':' disabled'}>↑</button><button type="button" class="icon" data-lsm="1" data-i="${i}" title="Ниже" aria-label="Ниже"${i<this.rows.length-1?'':' disabled'}>↓</button><button type="button" class="icon" data-lsdel data-i="${i}" title="Удалить строку" aria-label="Удалить строку">✕</button></span></div>`).join('')}
     </div>`; }
   render(){ const d=this.def(), own=LISTS.isOwn(this.key);
-    this.m.innerHTML=`<div class="st-card"><p class="sub" style="margin:0">Списки и выборы</p><p class="muted" style="margin:6px 0 0">Варианты выпадающих меню и подсказок во всей программе.
+    this.m.innerHTML=`<div class="st-card"><p class="muted" style="margin:0">Варианты выпадающих меню и подсказок во всей программе.
         Изменения видят все пользователи; уже созданные КП не меняются. «Вернуть встроенный» — список, как в программе.</p></div>
       <div class="ls"><nav class="ls-nav" aria-label="Списки">${this.navHtml()}</nav>
         <section class="ls-ed"><div class="ls-hd"><h4>${esc(d.label)}${own?' <i class="ls-own">свой</i>':''}</h4>${d.hint?`<p class="muted">${esc(d.hint)}</p>`:''}
@@ -62,8 +62,7 @@ class TextsPanel {
   async open(){ await uitLoad(); this.render(); this.bind(); }
   entries(){ const q=norm(this.q); return Object.entries(UIT.map).filter(([a,b])=>!q || norm(a).includes(q) || norm(b).includes(q)).sort((p,r)=>p[0].localeCompare(r[0],'ru')); }
   render(){ const all=Object.keys(UIT.map).length, list=this.entries();
-    this.m.innerHTML=`<div class="st-card"><p class="sub" style="margin:0">Тексты интерфейса</p>
-        <p class="muted" style="margin:6px 0 10px">Названия разделов и кнопок, подписи полей, подсказки — как их видят все пользователи. Новую замену удобнее сделать прямо на экране:
+    this.m.innerHTML=`<div class="st-card"><p class="muted" style="margin:0 0 10px">Названия разделов и кнопок, подписи полей, подсказки — как их видят все пользователи. Новую замену удобнее сделать прямо на экране:
         «Править на экране» → карандаш у надписи. Здесь — все замены сразу: изменить или вернуть исходный текст.</p>
         <div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" data-txon>✎ Править на экране</button>
           <input type="search" id="txQ" placeholder="Поиск по тексту" value="${esc(this.q)}" autocomplete="off" style="flex:1 1 220px" aria-label="Поиск по тексту"></div></div>
@@ -109,8 +108,7 @@ class FeaturesPanel {
     return `<div class="ft-r${own?'':' off'}"><label class="sw ft-sw"><input type="checkbox" data-ft="${k}"${own?' checked':''}><span>${own?'включено':'выключено'}</span></label>
       <div><b>${esc(d.label)}</b><span class="muted">${esc(d.hint)}</span>${!own&&d.off?`<span class="ft-off">Выключено: ${esc(d.off)}</span>`:''}${need?`<span class="ft-off">Не работает: выключено «${esc(need.label)}»</span>`:''}${who}</div></div>`; }
   render(){ const n=FEAT.defs.filter(d=>!this.c(d.key).on).length, lim=FEAT.defs.filter(d=>this.c(d.key).on && this.c(d.key).who!=='all').length;
-    this.m.innerHTML=`<div class="st-card"><p class="sub" style="margin:0">Функции программы</p>
-        <p class="muted" style="margin:6px 0 0">Включите только то, чем пользуется отдел, — лишние кнопки и окна пропадут. Функцию можно открыть всем, только
+    this.m.innerHTML=`<div class="st-card"><p class="muted" style="margin:0">Включите только то, чем пользуется отдел, — лишние кнопки и окна пропадут. Функцию можно открыть всем, только
         администратору (видна после входа в «Настройки») или выбранным менеджерам. Недоступная функция закрыта и в обход интерфейса;
         её данные (статусы, расчёты, версии) не удаляются: включите снова — всё на месте.${n?` Выключено: <b>${n}</b>.`:''}${lim?` С ограниченным доступом: <b>${lim}</b>.`:''}</p></div>
       ${FEAT.groups.map(g=>{ const ds=FEAT.defs.filter(d=>d.group===g.id); return ds.length?`<div class="st-card"><p class="sub">${esc(g.title)}</p><div class="ft-l">${ds.map(d=>this.row(d)).join('')}</div></div>`:''; }).join('')}
