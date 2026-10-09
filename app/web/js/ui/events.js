@@ -106,13 +106,14 @@ document.addEventListener('click', async e=>{
     case 'clients': S.showClients=!S.showClients; break;
     case 'coverFrom': S.cover.touched=false; S.cover._src=''; coverSync(); toast('Заголовок и параметры — по оборудованию КП'); break;
     case 'paste': return openPaste(i);
-    case 'aiCopy': return aiCopy(i, b.dataset.url||'');
+    case 'aiCopy': return AiFill.copy(i, b.dataset.url||'');
+    case 'aiMore': return AiFill.more(i);
     case 'aiFetch': return aiFetch(i);
-    case 'aiAuto': return aiAuto(i);
+    case 'aiAuto': return AiFill.auto(i);
     case 'aiProps': return aiProps(i);
     case 'aiPart': return aiPartDialog(i, j);
     case 'aiPartCopy': return aiPartCopy(i, j, b.dataset.url||'');
-    case 'aiApply': return aiApply(i);
+    case 'aiApply': return AiFill.apply(i);
     case 'openCatalog': return openCatalog({});
     case 'toPrice': return goStep('price');
     case 'priceHist': return PriceHist.open(i);

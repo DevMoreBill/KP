@@ -46,7 +46,7 @@ ROUTES = [
     (None, re.compile(r'^/api/kp/[A-Za-z0-9_-]+/(send|mailform)$'), 'mail'),
     ('GET', re.compile(r'^/api/report$'), 'report'),
     (None, re.compile(r'^/api/check(/.*)?$'), 'check'),
-    ('POST', re.compile(r'^/api/ai/fill$'), 'ai'),
+    (None, re.compile(r'^/api/ai/(fill|profile)$'), 'ai'),
     ('POST', re.compile(r'^/api/logistics/quote$'), 'carriers'),
     ('GET', re.compile(r'^/api/kp/[A-Za-z0-9_-]+/versions(/\d+)?$'), 'versions'),
     (None, re.compile(r'^/api/drafts(/.*)?$'), 'drafts'),

@@ -1,4 +1,4 @@
-// Автозаполнение карточки оборудования с помощью любого ИИ (ChatGPT, Claude, Алиса/YandexGPT, GigaChat, DeepSeek…):
+// Автозаполнение карточки оборудования с помощью любого ИИ (ChatGPT, Claude, Алиса/YandexGPT, GigaChat, DeepSeek…), класс AiFill:
 // 1) источник — ссылка на страницу (текст и характеристики скачивает сервер, /api/pagetext), текст паспорта или просто модель;
 // 2) «Скопировать запрос и открыть …» — запрос в буфере, сайт ИИ в новой вкладке: вставить и отправить;
 // 3) ответ вставляется в поле — сразу разбирается (JSON, даже «неаккуратный»; или строки «параметр: значение»),
@@ -55,16 +55,6 @@ async function aiStatusLoad(){ try{ Object.assign(AI_DIRECT, await api('/api/ai/
 // запрос к нейросети через сервер; ответ — в то же поле, что и при ручном способе (видно, что заполнится)
 async function aiDirect(prompt){ const r=await api('/api/ai/fill', {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:JSON.stringify({prompt})}); return r.text||''; }
 
-async function aiAuto(i){
-  const it=S.items[i]; if (!it || AI_DIRECT.busy[it.id]) return;
-  if (!String(it._src||'').trim() && !String(it.name||'').trim()){ it._aiMsg='Сначала шаг 1: ссылка, текст или хотя бы модель в наименовании.'; return renderForm(); }
-  AI_DIRECT.busy[it.id]=true; it._aiMsg=`${AI_DIRECT.provider||'Нейросеть'} заполняет карточку… обычно 10–40 секунд`; renderForm();
-  try{ it._ans=await aiDirect(aiPrompt(it)); it._aiStep=3; const r=aiParse(it._ans);
-    it._aiMsg = r && r.kind!=='bad' ? 'Ответ получен — проверьте, что заполнится, и нажмите «Заполнить карточку».' : (r?r.err:'Пустой ответ — повторите'); }
-  catch(e){ it._aiMsg=String(e.message||e); }
-  finally{ delete AI_DIRECT.busy[it.id]; renderForm(); persist(); }
-}
-
 const AI_SITES = [['ChatGPT','https://chatgpt.com/'], ['Claude','https://claude.ai/new'], ['Алиса (YandexGPT)','https://alice.yandex.ru/'],
   ['GigaChat','https://giga.chat/'], ['DeepSeek','https://chat.deepseek.com/']];
 
@@ -117,12 +107,6 @@ function aiSend(txt, url, done){
   p.then(ok=>{ done(ok);
     if (!ok){ const d=$('#dlg'); d.innerHTML=`<div class="dlg-h"><h3>Запрос для ИИ</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div><div class="dlg-b"><p class="muted" style="margin-top:0">Скопировать автоматически не вышло. Выделите текст (Ctrl+A), скопируйте (Ctrl+C) и вставьте в окно ИИ.</p><textarea rows="14" readonly>${esc(txt)}</textarea></div>`;
       if (!d.open) d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close(); const t=d.querySelector('textarea'); t.focus(); t.select(); } });
-}
-
-function aiCopy(i, url){
-  const it=S.items[i];
-  if (!String(it._src||'').trim() && !String(it.name||'').trim()){ it._aiMsg='Сначала шаг 1: ссылка, текст или хотя бы модель.'; return renderForm(); }
-  aiSend(aiPrompt(it), url, ok=>{ it._aiMsg = ok ? `Запрос скопирован${url?' — вставьте его (Ctrl+V) в открывшемся окне ИИ и отправьте':' — вставьте его в любой ИИ'}. Ответ скопируйте целиком и вставьте в шаг 3.` : 'Скопируйте запрос из окна.'; it._aiStep=3; renderForm(); persist(); });
 }
 
 // текст и характеристики со страницы товара по ссылке → it._src, it._srcProps (и наименование, если пусто)
@@ -180,26 +164,212 @@ function aiProps(i){
   renderForm(); persist(); toast('Характеристики со страницы перенесены');
 }
 
-function aiApply(i){
-  const it=S.items[i], r=aiParse(it._ans);
-  if (!r || r.kind==='bad'){ it._aiMsg=r?r.err:'Вставьте ответ ИИ в поле шага 3.'; return renderForm(); }
-  const j=r.j, keep=!!(it._aiKeep ?? DEF('ai.keep')), empty=v=>!String(v||'').trim();
-  const set=(k,v)=>{ if (v && (!keep || empty(it[k]))) it[k]=String(v); };
-  set('name', j.name); set('spec', j.spec); set('pageTitle', j.pageTitle); set('photoCaption', j.photoCaption);
-  const feats=(j.features||[]).filter(f=>f&&(f.label||f.text)).map(f=>({id:uid(), label:String(f.label||''), text:String(f.text||'')}));
-  if (feats.length && (!keep || !(it.features||[]).some(f=>f.text))) it.features=feats;
-  const groups=(j.groups||[]).filter(g=>g&&Array.isArray(g.rows)).map(g=>({name:String(g.name||''), rows:g.rows.filter(x=>x&&(x.k||x.v)).map(x=>({k:String(x.k||''), v:String(x.v??''), hl:!!x.hl}))})).filter(g=>g.rows.length);
-  if (groups.length && (!keep || !(it.groups||[]).some(g=>(g.rows||[]).some(x=>x.v)))) it.groups=groups;
-  if (j.cover && typeof j.cover==='object' && !CATED){ it.hint=j.cover; coverSync(); }
-  if (j.attrs && typeof j.attrs==='object'){
-    const keepCat=(it.attrs||{}).cat, add=Object.fromEntries(Object.entries(j.attrs).filter(([,v])=>v!==''&&v!=null&&!String(v).includes(' | ')).map(([k,v])=>[k,String(v)]));
+// Заполнение карточки с ИИ: объём — как у карточек этой категории в каталоге (образец — /api/ai/profile, app/ai_profile.py),
+// недостающее описание и ключевые характеристики — вторым запросом «дополнить». Дополнение принимается только с указанием
+// источника (исходные данные или опубликованные данные производителя этой модели); приблизительное, повторы и правки
+// уже заполненного отбрасываются; всё дополненное показывается списком «проверьте».
+class AiFill {
+  static ctx = {};                 // образец категории и данные этой же позиции из каталога: ключ — категория|производитель|наименование
+  static SRC = /^(исходные данные|производитель|каталог)/i;
+  static VAGUE = /≈|~|около|примерно|ориентировочн|уточн|нет данных|н\/д|не указ|неизвестн|зависит от|по запросу|может (быть|отличаться)/i;
+  static KEY_SHARE = 0.5;          // характеристика «ключевая», если есть у половины карточек категории
+
+  // ---------- образец объёма и данные той же позиции
+  static ctxKey(it, cat){ const a=attrsOf(it); return [cat||a.cat||'', a.maker||'', it.name||'', it.catId||''].join('|'); }
+  static async context(it, cat){
+    const a=attrsOf(it), k=this.ctxKey(it, cat); if (this.ctx[k]) return this.ctx[k];
+    const q=new URLSearchParams({cat:cat||a.cat||'', maker:a.maker||'', model:a.model||'', name:it.name||'', id:it.catId||''});
+    let r; try{ r=await api('/api/ai/profile?'+q); }catch(e){ r={}; }
+    return this.ctx[k]={profile:r.profile||null, facts:r.facts||[]};
+  }
+  /** для показа запроса без ожидания: образец уже загружен — с ним, иначе загрузить и перерисовать */
+  static promptNow(it){ const c=this.ctx[this.ctxKey(it)]; if (!c) this.context(it).then(()=>renderForm()); return this.prompt(it, c||{}); }
+
+  static norm(k){ return String(k||'').replace(/\s*[,(].*$/, '').replace(/ё/g,'е').toLowerCase().replace(/\s+/g,' ').trim(); }
+  static keysOf(j){ return new Set([...(j.groups||[]).flatMap(g=>(g&&g.rows)||[]), ...(j.rows||[])].filter(r=>r&&r.k&&String(r.v??'').trim()).map(r=>this.norm(r.k))); }
+
+  /** объём — словами для запроса */
+  static volume(p){
+    if (!p) return 'features — 3–6 блоков по 2–4 предложения; groups — все характеристики из исходных данных, сгруппированные по смыслу.';
+    const keys=p.keys.filter(x=>x.share>=this.KEY_SHARE).map(x=>x.k);
+    return `Объём — как у карточек этой категории в каталоге программы (по ${p.cards} карточкам): описание — около ${p.features} ${plural(p.features,'блока','блоков','блоков')} по ~${p.blockChars} знаков (всего ~${p.descChars})${p.labels.length?`, типичные темы блоков: ${p.labels.join('; ')}`:''}; характеристики — около ${p.rows} строк${p.groups>1?` в ${p.groups} группах (${p.groupNames.join('; ')})`:''}.
+Характеристики, которые есть у большинства карточек категории, — заполни каждую, для которой есть достоверное значение: ${keys.join('; ')||'—'}.
+Если достоверных данных меньше, дай меньше — объём не повод придумывать.`;
+  }
+  static factsText(facts){
+    return (facts||[]).map(f=>`«${f.name}»:\n${f.rows.map(r=>`${r[0]}: ${r[1]}`).join('\n')}${f.text?'\n'+f.text:''}`).join('\n\n');
+  }
+  static fields(t){ return t.fields.map(f=>`"${f.key}":"${f.label}${f.unit?', '+f.unit:''}${f.values&&f.values.length?' — одно из: '+f.values.join(' | '):''}${f.num?' (только число)':''}"`).join(','); }
+
+  // ---------- основной запрос
+  static prompt(it, c={}){
+    const t=typeById(attrsOf(it).cat), st=t.station, parts=kitParts(it).filter(p=>p.name), p=c.profile;
+    const types=TYPES.filter(x=>!x.station).map(x=>`${x.id} — ${x.name}`).join('; '), facts=this.factsText(c.facts);
+    return `Ты — инженер, готовишь технико-коммерческое предложение на русском языке.
+Оборудование: ${t.item||t.name}${it.name?` — «${it.name}»`:''}.${st&&parts.length?`\nЭто ${t.item.toLowerCase()} в контейнере, в составе: ${parts.map(x=>x.name+(+x.qty>1?' × '+x.qty:'')).join('; ')}.`:''}
+Задача: разнести данные по полям карточки. Источники — исходные данные ниже (и приложенные файлы или скриншоты, если есть) и опубликованные данные производителя ИМЕННО этой модели и исполнения (паспорт, каталог, официальный сайт), в которых ты уверен. Не бери значения у соседних моделей и исполнений, не рассчитывай и не округляй; нет достоверных данных — пустая строка "" или пустой массив []. Значения — с единицами измерения, десятичный разделитель — запятая.
+
+Ответ — строго один JSON-объект в блоке кода, без пояснений до и после:
+\`\`\`json
+{"name":"полное наименование, например «${t.item} …»",
+"spec":"ключевые характеристики одной строкой через « · », до 90 символов",
+"pageTitle":"заголовок страницы оборудования",
+"features":[{"label":"Узел или особенность","text":"2–4 предложения по существу"}],
+"groups":[{"name":"Основные","rows":[{"k":"Параметр, ед.","v":"значение","hl":true}]}],
+"cover":{"title":"${t.coverTitle||t.name}","model":"марка и модель","desc":"1–2 предложения для титульного листа","kpis":[{"num":"число","unit":"ед.","cap":"что это"}]},
+"attrs":{"cat":"${t.id}","maker":"производитель","series":"серия","model":"модель",${this.fields(t)}}${st?`,
+"container":{"rows":[{"k":"Раздел — параметр (например «Стены — наружная обшивка»)","v":"требование"}]},
+"parts":[{"name":"элемент станции (кроме контейнера), например «Шкаф АВР»","qty":1,"desc":"что требуется","rows":[{"k":"Параметр","v":"значение"}]}]`:''}}
+\`\`\`
+${this.volume(p)}
+Правила:${st?' features — о контейнере, основном оборудовании и системах станции; если исходные данные — техническое задание заказчика: в container — все требования к контейнеру (корпус, обшивка, утепление, окраска, вентиляция, освещение, ОПС, пожаротушение, шум, климат), в parts — все требуемые элементы и опции станции, кроме контейнера и основного оборудования (АВР, подогреватели, глушитель, топливная система, мониторинг и т. п.);':''} groups — характеристики, сгруппированные по смыслу; hl=true — только у 2–4 главных параметров; kpis — ровно 4 главных числовых параметра; в attrs числовые поля — только число без единиц.${st?'':` Если оборудование другого типа, укажи attrs.cat из списка: ${types}.`}
+
+ИСХОДНЫЕ ДАННЫЕ:
+${String(it._src||'').trim()||'(только наименование выше — данные производителя по этой модели; не уверен в значении — оставь пустым)'}${facts?`
+
+ДАННЫЕ ЭТОЙ ЖЕ ПОЗИЦИИ ИЗ КАТАЛОГА ПРОГРАММЫ (проверены, можно брать как есть):
+${facts}`:''}`;
+  }
+
+  // ---------- чего не хватает по сравнению с образцом
+  static gaps(j, p){
+    if (!j || !p) return null;
+    const feats=(j.features||[]).filter(f=>f&&String(f.text||'').trim()), chars=feats.reduce((a,f)=>a+String(f.text).length,0), have=this.keysOf(j);
+    const keys=p.keys.filter(x=>x.share>=this.KEY_SHARE && !have.has(this.norm(x.k))).map(x=>x.k);
+    const desc=feats.length<Math.max(2, Math.round(p.features*0.7)) || chars<p.descChars*0.5;
+    const rows=have.size<p.rows*0.6;
+    if (!desc && !rows && !keys.length) return null;
+    const labels=p.labels.filter(l=>!feats.some(f=>this.norm(f.label)===this.norm(l)));
+    return {desc, rows, keys, labels, feats:feats.length, chars, have:have.size};
+  }
+  static gapsText(g, max=8){
+    const keys=g.keys.length>max ? g.keys.slice(0, max).join(', ')+` и ещё ${g.keys.length-max}` : g.keys.join(', ');
+    return [g.desc?`описание (сейчас ${g.feats} ${plural(g.feats,'блок','блока','блоков')}, ~${g.chars} знаков)`:'', g.keys.length?`характеристики: ${keys}`:g.rows?`характеристики (сейчас ${g.have} строк)`:''].filter(Boolean).join('; ');
+  }
+
+  // ---------- запрос «дополнить»
+  static supplementPrompt(it, j, g, p, c={}){
+    const filled=[...this.keysOf(j)].join('; '), labels=(j.features||[]).map(f=>f&&f.label).filter(Boolean).join('; ');
+    return `Ты дополняешь карточку оборудования для технико-коммерческого предложения на русском языке: «${j.name||it.name||''}»${(j.attrs&&j.attrs.maker)?`, производитель ${j.attrs.maker}`:''}${(j.attrs&&j.attrs.model)?`, модель ${j.attrs.model}`:''}.
+Уже заполнено — НЕ повторяй и НЕ меняй: характеристики: ${filled||'—'}; блоки описания: ${labels||'—'}.
+Не хватает (по образцу карточек этой категории в каталоге):
+${g.desc?`— описания: нужно около ${p.features} ${plural(p.features,'блока','блоков','блоков')} по ~${p.blockChars} знаков (всего ~${p.descChars}); добавь недостающие блоки${g.labels.length?` (типичные темы: ${g.labels.join('; ')})`:''};\n`:''}${g.keys.length?`— характеристик: ${g.keys.join('; ')};\n`:''}${g.rows&&!g.keys.length?`— характеристик: у карточек категории их около ${p.rows}, сейчас ${g.have};\n`:''}
+Источники — только исходные данные ниже и опубликованные данные производителя ИМЕННО этой модели и исполнения (паспорт, каталог, официальный сайт).
+Строгие правила:
+— добавляй значение, только если уверен, что оно верно для этой модели и исполнения; не бери у соседних моделей, серий и исполнений, не рассчитывай, не округляй;
+— не уверен — не добавляй строку или блок вовсе (никаких «нет данных», «около», «уточняйте»);
+— описание — только факты об этой модели (конструкция, узлы, комплектация, назначение), без рекламы;
+— у каждой строки и каждого блока укажи "src": "исходные данные" или "производитель".
+Ответ — строго один JSON-объект в блоке кода:
+\`\`\`json
+{"add":true,"features":[{"label":"тема","text":"2–4 предложения","src":"производитель"}],"rows":[{"group":"название группы","k":"Параметр, ед.","v":"значение","src":"исходные данные"}]}
+\`\`\`
+ИСХОДНЫЕ ДАННЫЕ:
+${String(it._src||'').trim()||'(только наименование выше)'}${c.facts&&c.facts.length?`\n\nДАННЫЕ ЭТОЙ ЖЕ ПОЗИЦИИ ИЗ КАТАЛОГА ПРОГРАММЫ:\n${this.factsText(c.facts)}`:''}`;
+  }
+
+  /** ответ «дополнить» → в основной ответ; только с источником, без приблизительного и без повторов */
+  static merge(j, add){
+    const out=JSON.parse(JSON.stringify(j)), have=this.keysOf(out), added={rows:[], features:[], skipped:0};
+    out.groups=Array.isArray(out.groups)?out.groups:[];
+    for (const r of (add.rows||[])){
+      const k=String(r&&r.k||'').trim(), v=String(r&&r.v||'').trim();
+      if (!k || !v || !this.SRC.test(String(r.src||'')) || this.VAGUE.test(v) || have.has(this.norm(k))){ if (k) added.skipped++; continue; }
+      const gn=String(r.group||'').trim()||'Основные';
+      let g=out.groups.find(x=>x&&this.norm(x.name)===this.norm(gn)); if (!g){ g={name:gn, rows:[]}; out.groups.push(g); }
+      g.rows.push({k, v, hl:false}); have.add(this.norm(k)); added.rows.push(k);
+    }
+    const labels=new Set((out.features||[]).map(f=>this.norm(f&&f.label)));
+    out.features=Array.isArray(out.features)?out.features:[];
+    for (const f of (add.features||[])){
+      const label=String(f&&f.label||'').trim(), text=String(f&&f.text||'').trim();
+      if (!text || text.length<40 || !this.SRC.test(String(f.src||'')) || this.VAGUE.test(text) || (label && labels.has(this.norm(label)))){ if (text) added.skipped++; continue; }
+      out.features.push({label, text}); labels.add(this.norm(label)); added.features.push(label||'без названия');
+    }
+    out.added=added;
+    return out;
+  }
+
+  // ---------- ответ в поле шага 3: основной или «дополнить» (сливается с сохранённым основным)
+  static parse(it, text=it._ans){
+    const r=aiParse(text); if (!r || r.kind==='bad' || !r.j.add) return r;
+    const base=aiParse(it._ansBase||''); if (!base || base.kind==='bad') return {kind:'bad', err:'Это ответ «дополнить» — сначала нужен основной ответ ИИ.'};
+    return {kind:'json', j:this.merge(base.j, r.j)};
+  }
+  static summary(it, r){
+    let h=aiSummary(r); if (!r || r.kind==='bad') return h;
+    const a=r.j.added;
+    if (a && (a.rows.length || a.features.length)) h+=`<p class="ai-add">Дополнено — проверьте по паспорту: ${[a.features.length?`описание: ${a.features.join(', ')}`:'', a.rows.length?`характеристики: ${a.rows.join(', ')}`:''].filter(Boolean).join('; ')}${a.skipped?` · отброшено неуверенных: ${a.skipped}`:''}.</p>`;
+    const c=this.ctx[this.ctxKey(it, r.j.attrs&&r.j.attrs.cat)]||this.ctx[this.ctxKey(it)], g=c&&this.gaps(r.j, c.profile);
+    if (g && !AI_DIRECT.busy[it.id]) h+=`<p class="ai-gap">По сравнению с каталогом не хватает: ${esc(this.gapsText(g))}.${AI_DIRECT.enabled?'':` <button class="lnk" type="button" data-a="aiMore" data-i="${S.items.indexOf(it)}">Скопировать запрос «дополнить»</button>`}</p>`;
+    return h;
+  }
+
+  // ---------- нейросеть в программе: основной запрос, затем «дополнить», если не хватает
+  static async auto(i){
+    const it=S.items[i]; if (!it || AI_DIRECT.busy[it.id]) return;
+    if (!String(it._src||'').trim() && !String(it.name||'').trim()){ it._aiMsg='Сначала шаг 1: ссылка, текст или хотя бы модель в наименовании.'; return renderForm(); }
+    AI_DIRECT.busy[it.id]=true; const who=AI_DIRECT.provider||'Нейросеть';
+    try{
+      if (!String(it._src||'').trim() && /^https?:\/\//.test(it._srcUrl||it.pageUrl||'')){ it._srcUrl=it._srcUrl||it.pageUrl; it._aiMsg='Загружаю страницу товара — это достоверный источник…'; renderForm(); await aiFetchInto(it); }
+      it._aiMsg=`${who} заполняет карточку… обычно 20–60 секунд`; renderForm();
+      const c=await this.context(it), ans=await aiDirect(this.prompt(it, c)), r=aiParse(ans);
+      if (!r || r.kind==='bad'){ it._ans=ans; it._aiStep=3; it._aiMsg=r?r.err:'Пустой ответ — повторите'; return; }
+      const cat=(r.j.attrs&&r.j.attrs.cat)||attrsOf(it).cat, c2=await this.context(it, cat), g=this.gaps(r.j, c2.profile);
+      let j=r.j;
+      if (g){ it._aiMsg=`Не хватает: ${this.gapsText(g)} — ${who} ищет достоверные данные…`; renderForm();
+        try{ const add=aiParse(await aiDirect(this.supplementPrompt(it, j, g, c2.profile, c2))); if (add && add.kind!=='bad') j=this.merge(j, add.j); }
+        catch(e){ it._aiMsg=String(e.message||e); } }
+      it._ans=JSON.stringify(j, null, 1); it._aiStep=3;
+      const a=j.added, left=this.gaps(j, c2.profile);
+      it._aiMsg=`Ответ получен${a&&(a.rows.length||a.features.length)?`, дополнено: ${a.features.length} ${plural(a.features.length,'блок','блока','блоков')} описания и ${a.rows.length} ${plural(a.rows.length,'характеристика','характеристики','характеристик')}`:''}${left?`. Достоверных данных не нашлось: ${this.gapsText(left)} — оставлено пустым`:''}. Проверьте, что заполнится, и нажмите «Заполнить карточку».`;
+    }catch(e){ it._aiMsg=String(e.message||e); }
+    finally{ delete AI_DIRECT.busy[it.id]; renderForm(); persist(); }
+  }
+
+  // ---------- ИИ-чат в браузере
+  static async copy(i, url){
+    const it=S.items[i];
+    if (!String(it._src||'').trim() && !String(it.name||'').trim()){ it._aiMsg='Сначала шаг 1: ссылка, текст или хотя бы модель.'; return renderForm(); }
+    const c=this.ctx[this.ctxKey(it)]||{};       // образец уже загружен при показе вкладки; копирование — сразу (иначе браузер не даст)
+    aiSend(this.prompt(it, c), url, ok=>{ it._aiMsg = ok ? `Запрос скопирован${url?' — вставьте его (Ctrl+V) в открывшемся окне ИИ и отправьте':' — вставьте его в любой ИИ'}. Ответ скопируйте целиком и вставьте в шаг 3.` : 'Скопируйте запрос из окна.'; it._aiStep=3; it._ansBase=''; renderForm(); persist(); });
+  }
+  static more(i){
+    const it=S.items[i], r=aiParse(it._ans); if (!r || r.kind==='bad') return;
+    const cat=(r.j.attrs&&r.j.attrs.cat)||attrsOf(it).cat, c=this.ctx[this.ctxKey(it, cat)]||this.ctx[this.ctxKey(it)], g=c&&this.gaps(r.j, c.profile); if (!g) return;
+    aiSend(this.supplementPrompt(it, r.j, g, c.profile, c), '', ok=>{ it._ansBase=it._ans; it._ans='';
+      it._aiMsg=ok?'Запрос «дополнить» скопирован — отправьте его в том же чате, ответ вставьте в шаг 3: он добавится к основному.':'Скопируйте запрос из окна.'; renderForm(); persist(); });
+  }
+
+  // ---------- «Заполнить карточку»
+  static apply(i){
+    const it=S.items[i], r=this.parse(it);
+    if (!r || r.kind==='bad'){ it._aiMsg=r?r.err:'Вставьте ответ ИИ в поле шага 3.'; return renderForm(); }
+    const j=r.j, keep=!!(it._aiKeep ?? DEF('ai.keep')), empty=v=>!String(v||'').trim();
+    const set=(k,v)=>{ if (v && (!keep || empty(it[k]))) it[k]=String(v); };
+    set('name', j.name); set('spec', j.spec); set('pageTitle', j.pageTitle); set('photoCaption', j.photoCaption);
+    const feats=(j.features||[]).filter(f=>f&&(f.label||f.text)).map(f=>({id:uid(), label:String(f.label||''), text:String(f.text||'')}));
+    if (feats.length && (!keep || !(it.features||[]).some(f=>f.text))) it.features=feats;
+    const groups=(j.groups||[]).filter(g=>g&&Array.isArray(g.rows)).map(g=>({name:String(g.name||''), rows:g.rows.filter(x=>x&&(x.k||x.v)).map(x=>({k:String(x.k||''), v:String(x.v??''), hl:!!x.hl}))})).filter(g=>g.rows.length);
+    if (groups.length && (!keep || !(it.groups||[]).some(g=>(g.rows||[]).some(x=>x.v)))) it.groups=groups;
+    if (j.cover && typeof j.cover==='object' && !CATED){ it.hint=j.cover; coverSync(); }
+    if (j.attrs && typeof j.attrs==='object') this.applyAttrs(it, j.attrs, keep);
+    if (typeById(attrsOf(it).cat).station) this.applyStation(it, j);
+    if (feats.length || groups.length) it.page=true;
+    const a=j.added;
+    it._ans=''; it._ansBase=''; it._aiStep=0;
+    it._aiMsg=`Карточка заполнена — проверьте вкладки «Основное», «Описание и фото», «Характеристики».${a&&(a.rows.length||a.features.length)?' Дополненное ИИ сверьте с паспортом: '+[...a.features, ...a.rows].join(', ')+'.':''}`;
+    renderForm(); persist(); toast('Карточка заполнена из ответа ИИ');
+  }
+  static applyAttrs(it, attrs, keep){
+    const keepCat=(it.attrs||{}).cat, add=Object.fromEntries(Object.entries(attrs).filter(([,v])=>v!==''&&v!=null&&!String(v).includes(' | ')).map(([k,v])=>[k,String(v)]));
     it.attrs=keep ? {...add, ...Object.fromEntries(Object.entries(it.attrs||{}).filter(([,v])=>v!==''&&v!=null))} : {...(it.attrs||{}), ...add};
     if (keepCat && (typeById(keepCat).station || !TYPES.some(t=>t.id===it.attrs.cat))) it.attrs.cat=keepCat;   // станцию ИИ не переклассифицирует
     else if (!TYPES.some(t=>t.id===it.attrs.cat)) delete it.attrs.cat;
     const t=typeById(it.attrs.cat||keepCat); for (const f of t.fields) if (f.num && it.attrs[f.key]!=null){ const n=numOf(it.attrs[f.key]); it.attrs[f.key]=n!=null?n:it.attrs[f.key]; }
   }
-  // станция по ТЗ: требования к контейнеру — в его характеристики, недостающие элементы — в состав
-  if (typeById(attrsOf(it).cat).station){
+  /** станция по ТЗ: требования к контейнеру — в его характеристики, недостающие элементы — в состав */
+  static applyStation(it, j){
     it.kit=it.kit||{parts:[]}; const P=it.kit.parts, have=new Set(P.map(p=>norm(p.name)));
     const crow=((j.container&&j.container.rows)||[]).filter(x=>x&&x.k&&x.v).map(x=>({k:String(x.k), v:String(x.v)}));
     if (crow.length){ let c=P.find(p=>p.role==='container'); if (!c){ c=kitNewContainer('welded'); P.push(c); }
@@ -208,37 +378,6 @@ function aiApply(i){
       P.push(kitNewPart({name:String(p.name).trim(), qty:+p.qty>0?+p.qty:1, desc:String(p.desc||''), rows:(p.rows||[]).filter(x=>x&&x.k&&x.v).map(x=>({k:String(x.k), v:String(x.v)}))})); }
     stationFill(it);
   }
-  if (feats.length || groups.length) it.page=true;
-  it._ans=''; it._aiStep=0; it._aiMsg='Карточка заполнена — проверьте вкладки «Основное», «Описание и фото», «Характеристики».';
-  renderForm(); persist(); toast('Карточка заполнена из ответа ИИ');
-}
-
-// поля категории для запроса
-function aiFields(t){ return t.fields.map(f=>`"${f.key}":"${f.label}${f.unit?', '+f.unit:''}${f.values&&f.values.length?' — одно из: '+f.values.join(' | '):''}${f.num?' (только число)':''}"`).join(','); }
-
-function aiPrompt(it){
-  const t=typeById(attrsOf(it).cat), st=t.station, parts=kitParts(it).filter(p=>p.name);
-  const types=TYPES.filter(x=>!x.station).map(x=>`${x.id} — ${x.name}`).join('; ');
-  return `Ты — инженер, готовишь технико-коммерческое предложение на русском языке.
-Оборудование: ${t.item||t.name}${it.name?` — «${it.name}»`:''}.${st&&parts.length?`\nЭто ${t.item.toLowerCase()} в контейнере, в составе: ${parts.map(p=>p.name+(+p.qty>1?' × '+p.qty:'')).join('; ')}.`:''}
-Задача: разнести исходные данные по полям. Бери ТОЛЬКО факты из исходных данных (и из приложенных файлов или скриншотов, если они есть). Ничего не придумывай: нет данных — пустая строка "" или пустой массив []. Значения — с единицами измерения, десятичный разделитель — запятая.
-
-Ответ — строго один JSON-объект в блоке кода, без пояснений до и после:
-\`\`\`json
-{"name":"полное наименование, например «${t.item} …»",
-"spec":"ключевые характеристики одной строкой через « · », до 90 символов",
-"pageTitle":"заголовок страницы оборудования",
-"features":[{"label":"Узел или особенность","text":"1–2 предложения по существу"}],
-"groups":[{"name":"Основные","rows":[{"k":"Параметр, ед.","v":"значение","hl":true}]}],
-"cover":{"title":"${t.coverTitle||t.name}","model":"марка и модель","desc":"1–2 предложения для титульного листа","kpis":[{"num":"число","unit":"ед.","cap":"что это"}]},
-"attrs":{"cat":"${t.id}","maker":"производитель","series":"серия","model":"модель",${aiFields(t)}}${st?`,
-"container":{"rows":[{"k":"Раздел — параметр (например «Стены — наружная обшивка»)","v":"требование"}]},
-"parts":[{"name":"элемент станции (кроме контейнера), например «Шкаф АВР»","qty":1,"desc":"что требуется","rows":[{"k":"Параметр","v":"значение"}]}]`:''}}
-\`\`\`
-Правила: features — 2–4 блока об основных узлах и особенностях${st?' (для станции — о контейнере, основном оборудовании и системах)':''};${st?' Если исходные данные — техническое задание заказчика: в container — все требования к контейнеру (корпус, обшивка, утепление, окраска, вентиляция, освещение, ОПС, пожаротушение, шум, климат), в parts — все требуемые элементы и опции станции, кроме контейнера и основного оборудования (АВР, подогреватели, глушитель, топливная система, мониторинг и т. п.);':''} groups — все характеристики, сгруппированные по смыслу; hl=true — только у 2–4 главных параметров; kpis — ровно 4 главных числовых параметра; в attrs числовые поля — только число без единиц.${st?'':` Если оборудование другого типа, укажи attrs.cat из списка: ${types}.`}
-
-ИСХОДНЫЕ ДАННЫЕ:
-${String(it._src||'').trim()||'(только наименование выше — найди данные производителя по этой модели; если не уверен в значении — оставь пустым)'}`;
 }
 
 // ---------- окно «Заполнить с ИИ» для элемента станции (описание и характеристики элемента)
@@ -298,5 +437,5 @@ document.addEventListener('change', async e=>{ const t=e.target; if (t.dataset.a
   renderForm(); persist(); });
 
 document.addEventListener('input', e=>{ const t=e.target; if (t.dataset.aians==null) return;
-  const i=+t.dataset.aians, r=aiParse(t.value), pv=document.querySelector(`[data-aiprev="${i}"]`), ok=document.querySelector(`[data-aiok="${i}"]`);
-  if (pv) pv.innerHTML=aiSummary(r); if (ok) ok.disabled=!(r&&r.kind!=='bad'); });
+  const i=+t.dataset.aians, it=S.items[i], r=it?AiFill.parse(it, t.value):aiParse(t.value), pv=document.querySelector(`[data-aiprev="${i}"]`), ok=document.querySelector(`[data-aiok="${i}"]`);
+  if (pv) pv.innerHTML=it?AiFill.summary(it, r):aiSummary(r); if (ok) ok.disabled=!(r&&r.kind!=='bad'); });

@@ -295,3 +295,7 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .mob .ai-hero{flex-wrap:wrap}
 .mob .ai-hero>div{flex:1 1 200px}
 .mob .ai-mode{margin-left:52px}
+
+/* заполнение с ИИ: дополненное и чего не хватает по сравнению с каталогом */
+.ai-add{margin:6px 0 0;font-size:13px;color:var(--warn-ink);background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:8px;padding:6px 10px}
+.ai-gap{margin:6px 0 0;font-size:13px;color:var(--muted)}
