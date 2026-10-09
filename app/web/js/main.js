@@ -15,8 +15,9 @@
   await loadTypes(); await Promise.all([loadClients(), loadManagers(), loadTemplates(), refreshCat(), LISTS.load(), FEAT.load()]);
   loadLogos(); loadAppVersion(); uitLoad(); renderForm(); authMenu();
   (window.requestIdleCallback||setTimeout)(()=>CW.prewarm());     // поиск в каталоге — готов заранее
+  Drafts.start();               // черновики на сервере: автосохранение раз в минуту
   Reminders.load(); setInterval(()=>{ if (!document.hidden) Reminders.load(); }, 10*60*1000);   // колокольчик: перезвонить, срок действия КП
-  if (!showMigrationNotice(SRV.info.migrations) && !S.items.length && catCache.length) openCatalog({});
+  if (!showMigrationNotice(SRV.info.migrations) && !MyDay.start() && !S.items.length && catCache.length) openCatalog({});   // «Мой день» — вместо каталога
 })();
 
 renderForm();

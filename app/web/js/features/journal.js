@@ -27,7 +27,7 @@ function jEcon(r){
 async function openJournal(){
   const d=$('#dlg'); d.classList.add('wide');
   d.innerHTML=`<div class="dlg-h"><h3>Журнал КП</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-   <div class="dlg-b"><div class="jbar"><input type="text" id="jQ" placeholder="Поиск: номер КП или закупки, получатель, ИНН, позиция" autocomplete="off"><select id="jK" aria-label="Вид КП"><option value="">Все КП</option><option value="std">Обычные</option><option value="tender">Тендеры</option></select><select id="jA" aria-label="Автор"><option value="">Все авторы</option></select><select id="jS" aria-label="Статус КП"${FEAT.on('track')?'':' hidden'}><option value="">Все статусы</option><option value="open">Не закрытые</option>${Object.entries(KP_STATUS).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select><button class="btn" type="button" id="jMe" title="Только мои КП">Мои</button><button class="btn" type="button" id="jRep"${FEAT.on('report')?'':' hidden'} title="Отчёт по КП, прибыли и марже за период — по менеджерам и категориям">Отчёт</button></div>
+   <div class="dlg-b"><div class="jbar"><input type="text" id="jQ" placeholder="Поиск: номер КП или закупки, получатель, ИНН, позиция" autocomplete="off"><select id="jK" aria-label="Вид КП"><option value="">Все КП</option><option value="std">Обычные</option><option value="tender">Тендеры</option></select><select id="jA" aria-label="Автор"><option value="">Все авторы</option></select><select id="jS" aria-label="Статус КП"${FEAT.on('track')?'':' hidden'}><option value="">Все статусы</option><option value="open">Не закрытые</option>${Object.entries(KP_STATUS).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select><button class="btn" type="button" id="jMe" title="Только мои КП">Мои</button><button class="btn" type="button" id="jDr"${FEAT.on('drafts')?'':' hidden'} title="Незаконченные КП и несохранённые правки">Черновики</button><button class="btn" type="button" id="jRep"${FEAT.on('report')?'':' hidden'} title="Отчёт по КП, прибыли и марже за период — по менеджерам и категориям">Отчёт</button></div>
    <div class="jtot muted" id="jTot"></div><div class="jfun" id="jFun"></div><div id="jList"><p class="empty">Загружаю…</p></div></div>`;
   d.showModal(); d.querySelector('[data-close]').onclick=()=>{ d.close(); d.classList.remove('wide'); };
   // журнал — постранично: поиск, автор и итоги считает сервер, в браузер приходят только видимые КП
@@ -61,6 +61,7 @@ async function openJournal(){
     if (d.open && seq===J.seq) draw(); };
   let qT=0; $('#jQ').oninput=()=>{ clearTimeout(qT); qT=setTimeout(()=>load(false), 220); }; $('#jA').onchange=$('#jK').onchange=$('#jS').onchange=()=>load(false);
   $('#jFun').onclick=e=>{ const b=e.target.closest('[data-jf]'); if (!b) return; const s=$('#jS'); s.value = s.value===b.dataset.jf ? '' : b.dataset.jf; load(false); };
+  $('#jDr').onclick=()=>Drafts.dialog();
   $('#jRep').onclick=()=>KpReport.open({author:$('#jA').value, kind:$('#jK').value});
   $('#jMe').onclick=()=>{ const me=(typeof AUTH!=='undefined'&&AUTH.user&&AUTH.user.name)||meName(), a=$('#jA');
     if (!me) return toast('Выберите себя в разделе «Менеджер» — тогда журнал покажет ваши КП');
@@ -75,11 +76,12 @@ async function openJournal(){
     const jv=e.target.closest('[data-jv]'); if (jv) return openKpVersions(jv.dataset.jv, jv.dataset.jn, ()=>{ d.close(); d.classList.remove('wide'); });
     const o=e.target.closest('[data-jo]'), c=e.target.closest('[data-jc]'), ec=e.target.closest('[data-je]'); if(!o&&!c&&!ec) return;
     try{
+      await Drafts.stash();
       const st=await api(`/api/kp/${(o||c||ec).dataset[o?'jo':c?'jc':'je']}/state`);
       S=Object.assign(freshState(), st); if (!c){ const m=J.rows.find(x=>x.id===st.kpId); if (m && m.file) S._file=m.file; }
       if (c){ delete S.kpId; delete S.number; delete S.createdAt; delete S._rev; S.date=today(); S.client=''; S.authorId=meId();
         if (S.tender && S.tender.on) S.tender={on:true, number:'', url:''}; }     // копия тендерного КП — под другую закупку
-      d.close(); d.classList.remove('wide'); renderForm(); persist(); window.scrollTo({top:0});
+      d.close(); d.classList.remove('wide'); renderForm(); persist(); window.scrollTo({top:0}); if (c) Drafts.loaded();
       if (ec) return openDeal();
       toast(c?(S.tender&&S.tender.on?'Создана копия — укажите получателя и № закупки':'Создана копия — укажите получателя'):'КП № '+S.number+' открыто для редактирования');
     }catch(err){ toast('Не удалось открыть КП'); }
@@ -101,7 +103,7 @@ async function openKpVersions(id, number, closeJournal){
   d.onclick=async e=>{ if (e.target.closest('[data-x]')) return done();
     const vc=e.target.closest('[data-vc]'); if (vc) return KpDiff.open(id, vc.dataset.vc, number);
     const b=e.target.closest('[data-vo]'); if (!b) return;
-    try{ const st=await api(`/api/kp/${encodeURIComponent(id)}/versions/${b.dataset.vo}`);
+    try{ await Drafts.stash(); const st=await api(`/api/kp/${encodeURIComponent(id)}/versions/${b.dataset.vo}`);
       S=Object.assign(freshState(), st);
       try{ S._rev=(await api(`/api/kp/${encodeURIComponent(id)}/rev`)).rev; }catch(e2){ delete S._rev; }   // прежняя версия заменит текущую правку КП
       done(); closeJournal&&closeJournal(); renderForm(); persist(); window.scrollTo({top:0});

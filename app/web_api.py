@@ -924,6 +924,79 @@ class TrackController(Controller):
 
 
 # ---------------------------------------------------------------- обслуживание: копия базы, выключение
+class DraftsController(Controller):
+    """Черновики КП на сервере (у каждого менеджера свои, автосохранение) и заготовки КП (общие для всех).
+    Тело записи: {state — состояние КП, rev — ревизия КП, если это правки сохранённого КП, sum, cur, title}."""
+    KINDS = {'drafts': 'draft', 'presets': 'preset'}
+    MAX_STATE = 25 * 1024 * 1024
+
+    def _who(self):
+        uid, name, _ = admin.actor(self.h, admin=False)
+        return uid or '', name or ''
+
+    def _mine(self, row):
+        return row['owner'] == self._who()[0] or admin.session(self.h, touch=False) is not None
+
+    @route(r'/api/(drafts|presets)', 'GET')
+    def list(self, kind):
+        k = self.KINDS[kind]
+        return self.send_json({'items': store().drafts_list(k, self._who()[0] if k == 'draft' else None), 'me': self._who()[0]})
+
+    @route(r'/api/(drafts|presets)/([A-Za-z0-9_-]{1,40})', 'GET')
+    def get(self, kind, did):
+        row, state = store().draft_get(did)
+        if not row or row['kind'] != self.KINDS[kind]:
+            return self.not_found('Черновик не найден' if kind == 'drafts' else 'Заготовка не найдена')
+        if kind == 'drafts' and not self._mine(row):
+            return self.text(403, 'Это черновик другого менеджера')
+        return self.send(200, 'application/json; charset=utf-8', ('{"row":%s,"data":%s}' % (json.dumps(row, ensure_ascii=False), state or '{}')).encode('utf-8'))
+
+    @route(r'/api/(drafts|presets)/([A-Za-z0-9_-]{1,40})', 'PUT')
+    def put(self, kind, did):
+        k = self.KINDS[kind]
+        raw = self.body()
+        if len(raw) > self.MAX_STATE:
+            return self.text(413, 'Черновик слишком большой (больше 25 МБ) — уберите вставленные картинки большого размера')
+        d = self.json_body()
+        st = d.get('state')
+        if not isinstance(st, dict):
+            raise BadRequest('Нет состояния КП')
+        old, _ = store().draft_get(did)
+        if old and (old['kind'] != k or not self._mine(old)):
+            return self.text(403, 'Это запись другого менеджера')
+        uid, name = self._who()
+        items = st.get('items') if isinstance(st.get('items'), list) else []
+        try:
+            total = float(d.get('sum') or 0)
+        except (TypeError, ValueError):
+            total = 0.0
+        row = {'id': did, 'kind': k, 'owner': old['owner'] if old else uid, 'owner_name': old['owner_name'] if old else name,
+               'title': str(d.get('title') or '')[:120], 'client': str(st.get('client') or '')[:200],
+               'kp': str(st.get('number') or '')[:40] if st.get('kpId') and k == 'draft' else '', 'positions': len(items),
+               'sum': total, 'cur': str(d.get('cur') or 'RUB')[:3], 'updated': datetime.now().isoformat(timespec='seconds')}
+        if k == 'preset' and not row['title']:
+            raise BadRequest('Укажите название заготовки')
+        keep = {'state': st}
+        if k == 'draft' and isinstance(d.get('rev'), int):
+            keep['rev'] = d['rev']
+        store().draft_put(row, json.dumps(keep, ensure_ascii=False))
+        if k == 'preset' and not old:
+            admin.log(self.h, store(), 'preset_add', 'preset', did, None, {'title': row['title']})
+        return self.send_json({'ok': True, 'row': row})
+
+    @route(r'/api/(drafts|presets)/([A-Za-z0-9_-]{1,40})/delete', 'POST')
+    def delete(self, kind, did):
+        row, _ = store().draft_get(did)
+        if not row or row['kind'] != self.KINDS[kind]:
+            return self.send_json({'ok': True})
+        if not self._mine(row):
+            return self.text(403, 'Удалить может только автор или администратор')
+        store().draft_del(did)
+        if kind == 'presets':
+            admin.log(self.h, store(), 'preset_delete', 'preset', did, {'title': row['title']}, None)
+        return self.send_json({'ok': True})
+
+
 class ServiceController(Controller):
     @route(r'/api/backup', 'POST')
     def backup(self):

@@ -28,6 +28,10 @@ FEATURES = {
     'feedInfo': (True, 'РРЦ и остатки поставщиков'),
     'catImport': (True, 'Импорт каталога'),
     'hotkeys': (True, 'Горячие клавиши'),
+    'myDay': (True, '«Мой день»'),
+    'drafts': (True, 'Черновики на сервере'),
+    'autosave': (True, 'Автосохранение'),
+    'presets': (True, 'Заготовки КП'),
 }
 
 # адреса сервера, которые принадлежат функции: (метод или None — любой, шаблон пути, ключ)
@@ -40,6 +44,8 @@ ROUTES = [
     ('POST', re.compile(r'^/api/ai/fill$'), 'ai'),
     ('POST', re.compile(r'^/api/logistics/quote$'), 'carriers'),
     ('GET', re.compile(r'^/api/kp/[A-Za-z0-9_-]+/versions(/\d+)?$'), 'versions'),
+    (None, re.compile(r'^/api/drafts(/.*)?$'), 'drafts'),
+    (None, re.compile(r'^/api/presets(/.*)?$'), 'presets'),
 ]
 
 

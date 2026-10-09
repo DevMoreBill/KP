@@ -81,3 +81,41 @@ span.jst{cursor:default}
 .ft-users{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13.5px}
 .ft-users .ft-u{display:inline-flex;align-items:center;gap:6px}
 @media (max-width:640px){.ft-r{grid-template-columns:1fr;gap:4px}}
+
+/* кнопки внизу окна: второстепенные слева от главной, главная — справа */
+.dlg-acts{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:14px}
+/* черновики, заготовки, «Новое КП» */
+dialog.st-confirm.drafts-dlg,dialog.st-confirm.newkp-dlg{width:min(720px,calc(100vw - 32px));max-width:none}
+dialog.newkp-dlg .nk-top{justify-content:flex-start;margin-bottom:14px}
+.dr-l,.nk-l{max-height:min(52vh,460px);overflow:auto}
+.dr-l .st-row>div:first-child,.nk-l .st-row>div:first-child{display:grid;gap:2px;flex:1;min-width:0}
+.dr-l .st-row .acts,.nk-l .st-row .acts{flex:none;display:flex;gap:6px}
+
+/* «Мой день» */
+dialog.st-confirm.myday-dlg{width:min(980px,calc(100vw - 32px));max-width:none}
+.myday-dlg .md-date{display:block;font-size:13.5px;text-transform:none}
+.myday-dlg .md-date::first-letter{text-transform:uppercase}
+.md-q{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 16px}
+.myday-dlg .dlg-h>div{flex:1;min-width:0}
+.md-g{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:14px;align-items:start}
+.md-col{display:grid;gap:14px;min-width:0}
+.md-col:empty{display:none}
+.md-st{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:3px}
+.md-st .jst{font-size:12px;padding:1px 9px}
+.md-st .jfu,.md-st .jsent{font-size:12px}
+.md-s{border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0;background:var(--card)}
+.md-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.md-h .sub{margin:0}
+.md-c{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--soft);color:var(--navy);font-size:12px;text-align:center}
+.md-r{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.md-r:first-of-type{border-top:0}
+.md-r>div{display:grid;gap:1px;flex:1;min-width:0}
+.md-r>div b,.md-r>div .muted{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.md-r .muted{font-size:12.5px}
+.md-r .btn{flex:none}
+.md-r.over b{color:var(--danger)}
+.md-n{font-weight:600;font-size:13px;flex:none;color:var(--muted)}
+.md-s .empty{margin:6px 0;padding:0;font-size:13.5px}
+.md-start{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13.5px;color:var(--muted)}
+.md-r .jst{flex:none}
+@media (max-width:760px){.md-g{grid-template-columns:minmax(0,1fr)}}

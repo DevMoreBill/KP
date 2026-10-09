@@ -144,6 +144,7 @@ document.addEventListener('click', async e=>{
       const sd=$('#side'); sd.scrollIntoView({behavior:isMob()?'auto':'smooth'}); sd.classList.add('pulse'); setTimeout(()=>sd.classList.remove('pulse'),1600); return; }
     case 'cbr': return loadCBR();
     case 'journal': return openJournal();
+    case 'myDay': return MyDay.open();
     case 'deal': return openDeal();
     case 'docsFolder': return api('/api/folder?dir='+encodeURIComponent(managerFolder()),{method:'POST'}).then(remoteResult).catch(()=>{}); 
     case 'mailKp': return MailDlg.open(b.dataset.id, S.number);
@@ -157,7 +158,7 @@ document.addEventListener('click', async e=>{
 
 $('#btnExit').addEventListener('click', async ()=>{ if(!confirm('Закрыть программу? Несохранённый черновик останется в браузере.')) return; try{ await api('/api/shutdown',{method:'POST'}); }catch(e){} document.body.innerHTML='<p style="padding:40px;font:18px Onest,Arial">Программа закрыта. Эту вкладку можно закрыть.</p>'; });
 
-$('#btnNew').addEventListener('click', ()=>{ if(!confirm(S.kpId?'Начать новое КП? Сохранённое КП № '+S.number+' останется в журнале.':'Начать новое КП? Текущий черновик будет очищен (контакты менеджера сохранятся).')) return; S=freshState(); renderForm(); persist(); window.scrollTo({top:0}); if (catCache.length) openCatalog({}); });
+$('#btnNew').addEventListener('click', ()=>newKpDialog());     // пустое КП, по заготовке или продолжить черновик (features/kp-drafts.js)
 
 document.addEventListener('toggle', e=>{ const d=e.target; if (d.dataset && d.dataset.more!=null && S.items[+d.dataset.more]) S.items[+d.dataset.more]._open=d.open; }, true);
 

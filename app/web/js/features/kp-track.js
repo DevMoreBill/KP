@@ -101,6 +101,7 @@ class Reminders {
 
 /** открыть сохранённое КП по номеру (из напоминаний, отчёта) */
 async function openKpById(id){
+  await Drafts.stash();
   const st=await api(`/api/kp/${encodeURIComponent(id)}/state`);
   S=Object.assign(freshState(), st); document.querySelectorAll('dialog[open]').forEach(d=>d.close()); renderForm(); persist(); window.scrollTo({top:0});
   toast('КП № '+(S.number||id)+' открыто');
