@@ -13,6 +13,7 @@ import re
 import sys
 
 APP_TITLE = 'Конструктор КП ПНЕВМОТЕХ'
+STARTED = __import__('time').time()        # когда запущена программа («Настройки → Система»)
 BASE_PORT = 17845
 FROZEN = getattr(sys, 'frozen', False)
 

@@ -24,7 +24,7 @@ import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from config import (ALLOWED_HOSTS, APP_TITLE, BadRequest, BASE_PORT, DATA_DIR, DOCS_DIR, IMG_DIR, SERVER_MODE, message_box, store)
+from config import (ALLOWED_HOSTS, APP_TITLE, BadRequest, BASE_PORT, DATA_DIR, DOCS_DIR, IMG_DIR, ROOT, SERVER_MODE, message_box, store)
 import catalog_migrate
 from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
 from equipment_types import load_types, load_types_builtin
@@ -316,6 +316,8 @@ def main():
         import feeds
         feeds.IMAGE_STORE = IMAGES
         maintenance.start_every(3600, lambda: feeds.auto_check(store()))     # фиды поставщиков: РРЦ и наличие раз в день
+        from app_update import Updater
+        maintenance.start_every(6 * 3600, lambda: Updater(store(), ROOT, DATA_DIR).auto_check())   # новая версия на GitHub — раз в сутки
         feeds.upgrade(store(), load_types()['types'], APP_VERSION)          # после обновления — фиды по новым правилам
         seeded = seed_catalog()
         sync_counter_with_files()
@@ -350,9 +352,10 @@ def main():
         start_ipv6(port, httpd)
     # адрес localhost (а не 127.0.0.1) — чтобы браузер видел черновики, сохранённые прежней версией
     url = 'http://localhost:%d/' % port
-    opener = threading.Timer(0.3, lambda: webbrowser.open(url))
-    opener.daemon = True
-    opener.start()
+    if not os.environ.get('KP_NO_BROWSER'):          # после перезапуска из «Настроек» браузер уже открыт
+        opener = threading.Timer(0.3, lambda: webbrowser.open(url))
+        opener.daemon = True
+        opener.start()
     try:
         print('%s запущен: %s\nДанные: %s\nГотовые КП: %s' % (APP_TITLE, url, DATA_DIR, DOCS_DIR), flush=True)
         if SERVER_MODE:

@@ -792,6 +792,8 @@ class AdminApi:
     def route(self, m, sub, q):
         st = self.st
         me = (session(self.h, touch=False) or {}).get('login', '')
+        if sub in ('system', 'attention', 'restart', 'folder') or sub == 'update' or sub.startswith('update/'):
+            return self.system(m, sub, q, me)
         if sub == 'password' and m == 'POST':
             d, users = self.data(), accounts(st)
             u = find_account(users, me) or (users[0] if len(users) == 1 else None)
@@ -987,6 +989,58 @@ class AdminApi:
             st.backup(os.path.join(os.path.dirname(st.path), 'backup', 'kp-%s-before-migration-down.sqlite3' % datetime.now().strftime('%Y%m%d-%H%M%S')))
             st.migration_down(r.group(1))
             return self.ok()
+        return self.err(404, 'not found')
+
+    # ---------- система: сведения, «требует внимания», обновления, перезапуск, папки ----------
+    def system(self, m, sub, q, me):
+        import config
+        from admin_overview import Attention, SystemInfo
+        from app_update import Restarter, UpdateError, Updater
+        st, up = self.st, Updater(self.st, config.ROOT, config.DATA_DIR)
+        if sub == 'system' and m == 'GET':
+            return self.ok(dict(SystemInfo(st, config).get(), local=self.h.is_local()))
+        if sub == 'attention' and m == 'GET':
+            return self.ok({'items': Attention(st, config).items()})
+        if sub == 'restart' and m == 'POST':
+            self.log('restart', 'system', config.APP_TITLE)
+            self.ok({'ok': True, 'delay': Restarter.DELAY})
+            Restarter(config.SERVER_MODE).restart(getattr(self.h.server, 'main_server', self.h.server))
+            return None
+        if sub == 'folder' and m == 'POST':
+            if not self.h.is_local():
+                return self.err(403, 'Папки открываются только на компьютере, где работает программа')
+            from desktop import open_folder
+            path = {'data': config.DATA_DIR, 'docs': config.DOCS_DIR, 'root': config.ROOT,
+                    'backup': os.path.join(config.DATA_DIR, 'backup')}.get(self.data().get('which'))
+            if not path or not os.path.isdir(path):
+                return self.err(404, 'Папки нет')
+            open_folder(path)
+            return self.ok()
+        try:
+            if sub == 'update' and m == 'GET':
+                return self.ok(up.status())
+            if sub == 'update' and m == 'POST':
+                d = self.data()
+                res = up.configure(d, me or 'admin')
+                self.log('edit_settings', 'settings', 'update', None, {k: ('задан' if k == 'token' and d[k] else d[k]) for k in d if k in ('repo', 'auto', 'token')})
+                return self.ok(res)
+            if sub == 'update/check' and m == 'POST':
+                return self.ok(up.check())
+            if sub in ('update/download', 'update/upload') and m == 'POST':
+                res = up.download_latest(me or 'admin') if sub == 'update/download' else \
+                    up.install(self.h.body(), me or 'admin', source='файл ' + str(q.get('name') or '')[:80], force=q.get('force') == '1')
+                self.log('update_install', 'system', res['version'], {'version': res['from']}, {'version': res['version'], 'files': res['files']})
+                return self.ok(res)
+            if sub == 'update/rollback' and m == 'POST':
+                res = up.rollback(me or 'admin')
+                self.log('update_rollback', 'system', res['version'])
+                return self.ok(res)
+            if sub == 'update/remove' and m == 'POST':
+                res = up.remove(me or 'admin')
+                self.log('update_remove', 'system', 'EXE')
+                return self.ok(res)
+        except UpdateError as e:
+            return self.err(422, str(e))
         return self.err(404, 'not found')
 
     # ---------- обслуживание базы: копии, сжатие, журнал, изображения ----------

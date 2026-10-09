@@ -38,6 +38,8 @@ class AdminNav {
       {key:'users', label:'Администраторы', hint:'Кто входит в «Настройки».', open:m=>stUsers(m)},
       {key:'security', label:'Мой пароль', hint:'Смена своего пароля и правила входа.', open:m=>stSecurity(m)}]},
     {title:'Обслуживание', tabs:[
+      {key:'updates', label:'Обновления', hint:'Новая версия программы: проверить на GitHub и установить одной кнопкой или из файла; откат; история установок.', open:m=>AdminSystem.updates(m)},
+      {key:'system', label:'Система', hint:'Версия, режим работы, адрес, папки, место на диске; перезапуск программы.', open:m=>AdminSystem.system(m)},
       {key:'backup', label:'Копии и база', hint:'Автоматические копии, сжатие и проверка базы, экспорт и импорт, обновления базы.', open:m=>stBackup(m)},
       {key:'trash', label:'Корзина', hint:'Удалённое хранится 30 дней — здесь его можно восстановить.', open:m=>stTrash(m)}]}];
   // прежние ключи вкладок (ссылки из других окон, сохранённый выбор)
@@ -60,10 +62,10 @@ const ACT = { login:'Вход в «Настройки»', backup_db:'Копия 
   create_manager:'Новый менеджер', create_supplier:'Новый поставщик', edit_supplier:'Изменение поставщика', delete_supplier:'Удаление поставщика', edit_customs:'Код ТН ВЭД и пошлина', edit_manager:'Изменение менеджера', create_client:'Новый клиент', edit_client:'Изменение клиента',
   edit_types:'Категории оборудования', submit_edit:'Правка на модерацию', edit_product:'Правка товара', create_product:'Новый товар',
   price_sync:'Цены из КП', approve_edit:'Правка одобрена', reject_edit:'Правка отклонена', rollback_edit:'Откат правки',
-  toggle_moderation:'Режим модерации', toggle_user_login:'Вход менеджеров по паролю', edit_ai:'Нейросеть в программе', edit_access:'Доступ менеджера', delete_kp:'Удаление КП', delete_catalog:'Удаление товара', delete_manager:'Удаление менеджера',
+  toggle_moderation:'Режим модерации', update_install:'Установка обновления', update_rollback:'Откат обновления', update_remove:'Обновление убрано', restart:'Перезапуск программы', toggle_user_login:'Вход менеджеров по паролю', edit_ai:'Нейросеть в программе', edit_access:'Доступ менеджера', delete_kp:'Удаление КП', delete_catalog:'Удаление товара', delete_manager:'Удаление менеджера',
   delete_client:'Удаление клиента', restore:'Восстановление из корзины', purge_trash:'Очистка корзины', export_db:'Экспорт базы', import_db:'Импорт базы', export_keys:'Копия ключей API', import_feed:'Загрузка фида в каталог', check_feed:'Проверка РРЦ и наличия по фиду' };
 const ENT = { supplier:'Поставщик', customs:'ТН ВЭД', product:'Товар', catalog:'Товар', kp:'КП', manager:'Менеджер', client:'Клиент', settings:'Настройки', template:'Шаблон',
-  types:'Категории', admin:'Администратор', db:'База', trash:'Корзина' };
+  types:'Категории', admin:'Администратор', db:'База', trash:'Корзина', system:'Программа' };
 const DEL_TYPES = [['kp','КП из журнала'],['catalog','Товары каталога'],['manager','Контакты менеджеров'],['client','Клиенты'],['supplier','Поставщики']];
 
 function setDlg(){ let d=$('#setdlg'); if(!d){ d=document.createElement('dialog'); d.id='setdlg'; d.className='setwin'; d.setAttribute('aria-label','Настройки'); document.body.appendChild(d); stWinSize(d);
@@ -150,7 +152,9 @@ async function stStats(m){
   const s=await aapi('stats'), k=s.kp, mo=s.moderation;
   const tile=(v,l)=>`<div class="st-tile"><b>${v}</b><span>${l}</span></div>`;
   const ser=s.series[ST.chart];
-  m.innerHTML=`<div class="st-tiles">${tile(stNum(k.total),'КП всего')}${tile(stNum(k.today),'за сегодня')}${tile(stNum(k.week),'за неделю')}${tile(stNum(k.month),'за месяц')}
+  m.innerHTML=`<div id="stAttn"></div>
+    <div class="row st-quick"><button class="btn" type="button" data-q="report">Отчёт по КП…</button><button class="btn" type="button" data-q="journal">Журнал КП…</button><button class="btn" type="button" data-sttab="audit">Журнал действий</button><button class="btn" type="button" data-sttab="updates">Обновления</button></div>
+    <div class="st-tiles">${tile(stNum(k.total),'КП всего')}${tile(stNum(k.today),'за сегодня')}${tile(stNum(k.week),'за неделю')}${tile(stNum(k.month),'за месяц')}
       ${tile(stNum(Math.round((k.sumMonth||0)/100)),'сумма КП за месяц, руб.')}${tile(stNum(s.activeUsers),'активных за 30 дней')}
       ${tile(stNum(mo.pending),'правок на модерации')}${tile(mo.conversion==null?'—':String(mo.conversion).replace('.',',')+' %','правок одобрено')}
       ${tile(stNum(s.deletions.month),'удалений за месяц')}${tile(stSize(s.db.bytes),'размер базы')}</div>
@@ -165,7 +169,9 @@ async function stStats(m){
       <tr><td>Конверсия черновик → подтверждено</td><td>${mo.conversion==null?'—':String(mo.conversion).replace('.',',')+' %'}</td></tr></table></div>
       <div class="st-card"><p class="sub">База данных · ${stSize(s.db.bytes)}</p><table class="pv-t">${Object.entries(s.db.tables).map(([t,n])=>`<tr><td>${esc(t)}</td><td>${stNum(n)}</td></tr>`).join('')}
       <tr><td>Удалений всего / в корзине</td><td>${s.deletions.total} / ${s.deletions.trash}</td></tr></table></div></div>`;
-  m.onclick=e=>{ const c=e.target.closest('[data-chart]'); if (c){ ST.chart=c.dataset.chart; stStats(m); } };
+  AdminSystem.attention(m.querySelector('#stAttn'));
+  m.onclick=e=>{ const c=e.target.closest('[data-chart]'); if (c){ ST.chart=c.dataset.chart; stStats(m); return; }
+    const q=e.target.closest('[data-q]'); if (q){ setDlg().close(); if (q.dataset.q==='report') KpReport.open({}); else openJournal(); } };
 }
 
 // ---------- обслуживание базы: копии, сжатие, срок журнала, изображения без ссылок
@@ -248,7 +254,8 @@ async function stDelete(m, type){
   const D=ST.del; if (type && type!==D.type){ D.type=type; D.sel.clear(); D.q=''; ST.ed=null; }
   const r=await aapi(`list/${D.type}?q=${encodeURIComponent(D.q)}`), ed=ST.ed&&ST.ed.type===D.type?ST.ed:null;
   const link=({manager:['access','Вход и права менеджеров →'], catalog:['moderation','Модерация правок →'], supplier:['feeds','Фиды поставщиков →']})[D.type];
-  m.innerHTML=`<div class="row st-dbar"><input type="search" id="dQ" placeholder="Поиск" value="${esc(D.q)}" autocomplete="off"><span class="muted">${r.total>r.items.length?`показано ${r.items.length} из ${r.total} — уточните поиск`:`найдено: ${r.total}`}</span>
+  const catTools=D.type==='catalog'?`<div class="row st-quick"><button class="btn" type="button" data-cat="xls">Импорт из Excel…</button><button class="btn" type="button" data-cat="imp">Загрузить файл каталога (.json)…</button><button class="btn" type="button" data-cat="exp">Выгрузить каталог в файл</button><button class="btn ghost" type="button" data-cat="open">Открыть каталог</button></div>`:'';
+  m.innerHTML=`${catTools}<div class="row st-dbar"><input type="search" id="dQ" placeholder="Поиск" value="${esc(D.q)}" autocomplete="off"><span class="muted">${r.total>r.items.length?`показано ${r.items.length} из ${r.total} — уточните поиск`:`найдено: ${r.total}`}</span>
       <span class="sp"></span>${D.type==='client'?'<button class="btn" type="button" data-dimp title="Список ИНН — реквизиты подтянутся сами">Загрузить списком ИНН…</button>':''}${ST_NEW[D.type]?`<button class="btn primary" type="button" data-dnew>+ ${esc(ST_NEW[D.type])}</button>`:''}<button class="btn danger" type="button" data-del ${D.sel.size?'':'disabled'}>Удалить${D.sel.size?' ('+D.sel.size+')':''}</button>${link?`<button class="btn ghost" type="button" data-sttab="${link[0]}">${link[1]}</button>`:''}</div>
     ${ed&&!ed.id?'<div class="st-ed"></div>':''}
     <div class="st-list">${r.items.map(x=>`<label class="st-row ck-row${ed&&ed.id===x.id?' on':''}"><input type="checkbox" data-did="${esc(x.id)}" ${D.sel.has(x.id)?'checked':''}><div><b>${esc(x.title)}</b><span class="muted">${esc(x.sub)}</span></div><div class="acts"><button class="btn" type="button" data-dedit="${esc(x.id)}">${D.type==='kp'?'Открыть':'Изменить'}</button></div></label>${ed&&ed.id===x.id?'<div class="st-ed"></div>':''}`).join('')||'<p class="muted">Ничего не найдено.</p>'}</div>
@@ -259,6 +266,7 @@ async function stDelete(m, type){
     const b=m.querySelector('[data-del]'); b.disabled=!D.sel.size; b.textContent='Удалить'+(D.sel.size?' ('+D.sel.size+')':''); };
   m.onclick=async e=>{ if (e.target.closest('.st-ed')) return;
     if (e.target.closest('[data-dimp]')) return openClientsImport();
+    const ct=e.target.closest('[data-cat]'); if (ct) return stCatalogTool(ct.dataset.cat);
     if (e.target.closest('[data-dnew]')){ try{ await stEdOpen(D.type, null); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
     const ed=e.target.closest('[data-dedit]'); if (ed){ e.preventDefault();
       if (ST_NEW[D.type]){ if (ST.ed&&ST.ed.id===ed.dataset.dedit){ ST.ed=null; return stDelete(m); } try{ await stEdOpen(D.type, ed.dataset.dedit); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
@@ -268,6 +276,16 @@ async function stDelete(m, type){
     if (!await stConfirm(`Удалить? ${label}: ${n}`,'Записи будут в корзине 30 дней (их можно восстановить), затем удалятся окончательно.','Удалить')) return;
     const res=await ajson('delete',{type:D.type, ids:[...D.sel]}); D.sel.clear(); toast(`Удалено: ${res.deleted}`);
     if (D.type==='catalog') refreshCat(); if (D.type==='manager') loadManagers().then(renderForm); stDelete(m); };
+}
+
+// каталог из «Настроек»: импорт из Excel, загрузка и выгрузка файла каталога (те же действия, что в «Ещё» окна каталога)
+function stCatalogTool(a){
+  if (a==='exp') return CW.exportFile();
+  if (a==='xls') return openXlsImport('');
+  if (a==='open'){ setDlg().close(); return openCatalog({}); }
+  const f=document.createElement('input'); f.type='file'; f.accept='.json,application/json'; f.hidden=true; document.body.appendChild(f);
+  f.onchange=async()=>{ const file=f.files[0]; f.remove(); if (!file) return; setDlg().close(); await openCatalog({}); CW.importFile(file); };
+  f.click();
 }
 
 // правка записи из «Настроек»: КП — в конструкторе, товар — в редакторе каталога (менеджеры, клиенты, поставщики — в списке, settings-dir.js)

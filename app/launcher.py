@@ -44,6 +44,7 @@ def activate_update():
     if getattr(sys, 'frozen', False) and uv and os.path.isfile(os.path.join(app, 'kp_server.py')) \
             and version.as_tuple(uv) > version.as_tuple(version.VERSION):
         os.environ['KP_UPDATE_DIR'] = UPD
+        os.environ['KP_BASE_VERSION'] = version.VERSION     # версия, встроенная в EXE («Настройки → Обновления»)
         os.environ['KP_UPDATE_VERSION'] = uv
         sys.meta_path.insert(0, _UpdateFinder(app))
         sys.modules.pop('version', None)          # версия — тоже из обновления

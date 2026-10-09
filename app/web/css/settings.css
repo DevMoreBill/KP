@@ -341,3 +341,28 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .st-th p{margin:0;font-size:13.5px}
 @media (max-width:900px){ .st-th{margin-bottom:10px} .st-th>span{display:none} }
 .st-tt th{text-align:left}
+
+/* «Требует внимания» и быстрые действия (Статистика, Товары) */
+.st-quick{gap:8px;margin:0 0 12px}
+.at-card .sub{margin-bottom:6px}
+.at-r{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line);font-size:14px}
+.at-r:first-of-type{border-top:0}
+.at-t{flex:1;min-width:0}
+.at-l{flex:none;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--muted)}
+.at-bad .at-l{background:var(--danger);color:var(--on-navy)}
+.at-warn .at-l{background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line)}
+.at-ok .sub{color:var(--ok)}
+/* обновления */
+.up-v{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;justify-content:space-between}
+.up-v>div:first-child{display:grid;gap:2px}
+.up-big{font-size:26px;line-height:1.1}
+.up-pend{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn-ink)}
+.up-new{display:grid;gap:8px}
+.up-new p{margin:0}
+.up-notes pre{white-space:pre-wrap;font:13px/1.5 inherit;margin:6px 0 0;max-height:260px;overflow:auto;background:var(--soft);padding:10px 12px;border-radius:8px}
+/* перезапуск */
+dialog.st-confirm.rs-dlg{width:min(460px,calc(100vw - 32px))}
+.rs-bar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden;margin-top:10px}
+.rs-bar i{display:block;height:100%;width:40%;background:var(--navy);border-radius:3px;animation:rsMove 1.2s ease-in-out infinite}
+@keyframes rsMove{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+.btn.ghost:disabled{opacity:.45;cursor:default;text-decoration:none}
