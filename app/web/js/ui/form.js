@@ -22,6 +22,11 @@ const STEPS=[
 
 let STEP='client';
 
+// «Менеджер — строкой» (функция mgrLine): ФИО и телефон заполнены — шага нет в списке, менеджер — строкой в боковой панели
+function mgrLine(){ return FEAT.on('mgrLine') && !!String(S.manager.name||'').trim() && !!String(S.manager.phone||'').trim(); }
+/** шаги, которые сейчас показаны (открытый шаг — всегда) */
+function steps(){ return STEPS.filter(s=>s.id!=='mgr' || STEP==='mgr' || !mgrLine()); }
+
 try{ const s0=localStorage.getItem('kp.step'); if (STEPS.some(s=>s.id===s0)) STEP=s0; }catch(e){}
 
 function stepOfTarget(t, msg=''){
@@ -45,14 +50,14 @@ function stepperHtml(){
   const pr=problems(); const bad=new Set(pr.map(x=>stepOfTarget(x[1],x[0])).filter(Boolean));
   const done=id=> id==='client'? !!S.client.trim() : id==='equip'? S.items.length>0 : id==='price'? S.items.length>0 && S.items.every(x=>x.price>0)
      : id==='cover'? !!(S.cover.model||stationsOf().length>1) : id==='conds'? S.conditions.some(c=>c.value) : id==='mgr'? !!S.manager.name : false;
-  return `<nav class="stepper" aria-label="Разделы КП">${STEPS.map((s,k)=>{
+  return `<nav class="stepper" aria-label="Разделы КП">${steps().map((s,k)=>{
       const st = s.id===STEP ? 'cur' : bad.has(s.id) ? 'bad' : done(s.id) ? 'ok' : '';
       return `<button type="button" class="stp ${st}" data-step="${s.id}" title="${esc(s.d)}" aria-current="${s.id===STEP?'step':'false'}">
         <span class="num">${st==='ok'?'✓':k+1}</span><span class="tx"><b>${s.t}</b></span>${st==='bad'?'<i class="dot" title="Есть незаполненные поля"></i>':''}</button>`; }).join('')}</nav>`;
 }
 
 function stepNavHtml(){
-  const k=STEPS.findIndex(s=>s.id===STEP), prev=STEPS[k-1], next=STEPS[k+1];
+  const L=steps(), k=L.findIndex(s=>s.id===STEP), prev=L[k-1], next=L[k+1];
   return `<div class="stepnav">${prev?`<button class="btn" type="button" data-step="${prev.id}">← ${prev.t}</button>`:'<span></span>'}
     ${next?`<button class="btn primary" type="button" data-step="${next.id}">Далее: ${next.t} →</button>`:`<button class="btn primary" type="button" data-a="toSave">Перейти к сохранению КП →</button>`}</div>`;
 }
@@ -63,7 +68,7 @@ function renderForm(){
   const f = $('#form'); const act = document.activeElement, focusP = act?.dataset?.p;
   const cur = STEPS.find(s=>s.id===STEP)||STEPS[0];
   morph($('#nav'), stepperHtml());
-  morph(f, cur.f().replace(/<h2><span class="n">\d+<\/span>/, `<h2><span class="n">${STEPS.indexOf(cur)+1}</span>`) + stepNavHtml());
+  morph(f, cur.f().replace(/<h2><span class="n">\d+<\/span>/, `<h2><span class="n">${steps().indexOf(cur)+1}</span>`) + stepNavHtml());
   // поле осталось тем же узлом — фокус не трогаем (иначе на телефоне прыгает клавиатура)
   if (focusP && !act.isConnected && !$('#edlg').open) { const el = f.querySelector(`[data-p="${CSS.escape(focusP)}"]`); if (el){ el.focus({preventScroll:true}); try{ const n=el.value.length; el.setSelectionRange(n,n);}catch(e){} } }
   const sp=$('#nav .stepper'), sc=sp?.querySelector('.stp.cur'); if (sp && sc && sp.scrollWidth>sp.clientWidth) sp.scrollLeft=sc.offsetLeft-(sp.clientWidth-sc.offsetWidth)/2;

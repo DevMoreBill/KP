@@ -119,3 +119,11 @@ dialog.st-confirm.myday-dlg{width:min(980px,calc(100vw - 32px));max-width:none}
 .md-start{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13.5px;color:var(--muted)}
 .md-r .jst{flex:none}
 @media (max-width:760px){.md-g{grid-template-columns:minmax(0,1fr)}}
+
+/* окно «КП сохранено» */
+dialog.st-confirm.ks-dlg{width:min(640px,calc(100vw - 32px));max-width:none}
+.ks-ok{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--ok);color:#fff;font-size:15px;margin-right:6px;vertical-align:-3px}
+.ks-g{display:grid;gap:4px;margin-top:10px}
+.ks-g section{padding:10px 0;border-top:1px solid var(--line)}
+.ks-g .sub{margin:0 0 8px}
+.ks-b{display:flex;flex-wrap:wrap;gap:8px}

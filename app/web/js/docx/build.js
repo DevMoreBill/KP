@@ -196,7 +196,7 @@ async function download(){
   if (!window.JSZip){ msg.className='msg err'; msg.textContent='Не загрузился модуль сборки файла. Обновите страницу.'; return; }
   btn.disabled=true; btn.textContent='Собираю файл…'; msg.textContent='';
   try{
-    const St = docState();
+    const St = docState(), isNew = !S.kpId;
     if (!S.template) throw new Error('не выбран шаблон КП (папка templates рядом с программой пуста)');
     let pack;
     try{ pack=await templatePack(S.template); }catch(e){ throw new Error('шаблон «'+S.template+'» не загрузился: '+e.message); }
@@ -232,9 +232,10 @@ async function download(){
     const remote=SRV.info&&SRV.info.local===false, m2=$('#dlmsg'); m2.className='msg ok';
     m2.innerHTML=docMissHtml()+`КП № ${esc(S.number)} сохранено${pdfOk?' (DOCX и PDF)':''}, каталог обновлён.<div class="row" style="justify-content:center;margin-top:8px"><button class="btn" type="button" data-a="openDoc" data-id="${esc(S.kpId)}">${remote?'Скачать .docx':'Открыть в Word'}</button>${pdfOk?`<button class="btn" type="button" data-a="openPdf" data-id="${esc(S.kpId)}">${remote?'Скачать PDF':'Открыть PDF'}</button>`:''}${remote&&!SRV.info.docsShare?'':`<button class="btn" type="button" data-a="showDoc" data-id="${esc(S.kpId)}">${remote?'Путь к файлу':'Показать в папке'}</button>`}${FEAT.on('mail')?`<button class="btn primary" type="button" data-a="mailKp" data-id="${esc(S.kpId)}" title="Письмо клиенту с файлом КП">Отправить клиенту</button>`:''}</div>`
       + (pdfErr?`<div class="msg err">PDF не создан: ${esc(pdfErr)}<div class="row" style="justify-content:center;margin-top:6px"><button class="btn" type="button" data-a="printPdf">Печать → «Сохранить как PDF»</button></div></div>`:'');
+    if (FEAT.on('saveDlg')) KpSaved.open({pdfOk, pdfErr, isNew});     // окно «КП сохранено»: файл, клиенту, дальше
   } catch(e){
     msg.className='msg err';
     msg.textContent = e&&e.code==='declined' ? 'Сохранение отменено.' : e&&e.code==='rate_limited' ? 'Окно сохранения уже открыто.' : 'Не удалось собрать файл: '+(e&&e.message||e);
   }
-  btn.disabled=false; btn.textContent='Сохранить КП';
+  btn.disabled=false; btn.textContent=S.kpId?'Сохранить изменения КП № '+S.number:'Сохранить КП';
 }
