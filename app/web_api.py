@@ -14,7 +14,7 @@ import re
 import socket
 import threading
 import urllib.parse
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from cbr import cbr_key_rate, cbr_rates
 from config import (APP_DIR, BadRequest, UPDATE_DIR, DATA_DIR, DOCS_DIR, DOCS_SHARE, IMG_DIR, MIME, ROOT, SERVER_MODE,
@@ -29,6 +29,7 @@ import logistics_api
 import ai_llm
 import pdf_text
 import defaults
+import kp_track
 from images import ImageStore
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, list_history, list_templates,
                           open_template_file, put_file, reset_template, restore_history, template_file)
@@ -788,6 +789,128 @@ class DealController(Controller):
         except ValueError as e:
             return self.text(400, str(e))
         return self.send_json({'ok': True})
+
+
+# ---------------------------------------------------------------- ход сделки: статус, напоминания, письмо клиенту, отчёт
+def _obj(text):
+    try:
+        d = json.loads(text) if text else {}
+    except (TypeError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+class TrackController(Controller):
+    @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/track', 'PUT')   # статус, причина, заметка, напоминание (права — admin.guard по /api/kp/<id>/)
+    def track(self, kid):
+        if not store().kp_get(kid, 'meta'):
+            return self.not_found('Сначала сохраните КП')
+        try:
+            tr, changed = kp_track.update(store(), kid, self.json_body(), admin.actor(self.h)[1])
+        except ValueError as e:
+            raise BadRequest(str(e))
+        if changed:
+            admin.log(self.h, store(), 'kp_status', 'kp', kid, None, changed)
+        return self.send_json({'ok': True, 'track': tr})
+
+    @route(r'/api/reminders', 'GET')       # напоминания менеджера: перезвонить, срок действия КП, нет ответа
+    def reminders(self):
+        h = self.h
+        uid, name, _ = admin.actor(h, admin=False)
+        everyone = admin.session(h, touch=False) is not None and not uid
+        rows = []
+        for kid, meta, track, state in store().kp_tracked((date.today() - timedelta(days=200)).isoformat()):
+            m = _obj(meta)
+            if admin.login_on(h) and not admin.own_kp(h, m) and not admin.perm(h, 'kpOthers'):
+                continue
+            rows.append((kid, m, _obj(track), _obj(state)))
+
+        def mine(m):
+            if everyone:
+                return True
+            author = m.get('authorId') or m.get('managerId')
+            if author and uid:
+                return author == uid
+            return bool(name) and str(m.get('manager') or '').strip().lower() == str(name).strip().lower()
+        items = kp_track.reminders(rows, mine)
+        return self.send_json({'items': items, 'count': len(items)})
+
+    @route(r'/api/mail/status', 'GET')
+    def mail_status(self):
+        return self.send_json({'on': kp_track.mail_on(store())})
+
+    def _files(self, kid):
+        rel = store().kp_get(kid, 'docx')
+        f = docs_path(rel.strip()) if rel else None
+        return f if f and os.path.isfile(f) else None
+
+    @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/mailform', 'GET')   # письмо клиенту: адреса и текст по умолчанию
+    def mailform(self, kid):
+        st, mt = _obj(store().kp_get(kid, 'state')), _obj(store().kp_get(kid, 'meta'))
+        mp = kp_track.mail_public(store())
+        v = kp_track.mail_vars(st, mt, mp.get('fromName') or '')
+        f = self._files(kid)
+        ct = st.get('contact') if isinstance(st.get('contact'), dict) else {}
+        return self.send_json({'on': mp['on'], 'to': str(ct.get('email') or '').strip(), 'cc': v['e-mail'],
+                               'subject': kp_track.fill(mp['subject'], v), 'body': kp_track.fill(mp['body'], v),
+                               'word': os.path.basename(f) if f else '', 'pdf': os.path.basename(pdf_of(f)) if f and os.path.isfile(pdf_of(f)) else '',
+                               'sent': (store().kp_track_get(kid).get('sent') or [])[-5:]})
+
+    @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/send', 'POST')      # отправить КП клиенту по почте
+    def send_kp(self, kid):
+        d = self.json_body()
+        try:
+            to, cc = kp_track.addresses(d.get('to')), kp_track.addresses(d.get('cc'))
+        except ValueError as e:
+            raise BadRequest(str(e))
+        if not to:
+            raise BadRequest('Укажите адрес получателя')
+        f = self._files(kid)
+        if not f:
+            return self.not_found('Файл КП не найден — сохраните КП')
+        files = []
+        if d.get('word', True):
+            with open(f, 'rb') as fh:
+                files.append((os.path.basename(f), fh.read(), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'))
+        if d.get('pdf'):
+            pdf = pdf_of(f)
+            if not os.path.isfile(pdf):
+                try:
+                    pdf_convert.convert_file(f, pdf, cp().keys().get('convertapiKey'))
+                except Exception as e:
+                    return self.text(422, 'PDF не создан: %s' % str(e)[:200])
+            with open(pdf, 'rb') as fh:
+                files.append((os.path.basename(pdf), fh.read(), 'application/pdf'))
+        if not files:
+            raise BadRequest('Выберите файл: Word или PDF')
+        st = _obj(store().kp_get(kid, 'state'))
+        reply = str((st.get('manager') or {}).get('email') or '') if isinstance(st.get('manager'), dict) else ''
+        try:
+            kp_track.send(store(), to, cc, str(d.get('subject') or '')[:300], str(d.get('body') or '')[:20000], files, reply)
+        except RuntimeError as e:
+            admin.log(self.h, store(), 'send_kp', 'kp', kid, None, {'to': to, 'error': str(e)[:200]}, result='failed')
+            return self.text(422, str(e))
+        tr = kp_track.mark_sent(store(), kid, to + cc, [x[0] for x in files], admin.actor(self.h)[1])
+        admin.log(self.h, store(), 'send_kp', 'kp', kid, None, {'to': to, 'cc': cc, 'files': [x[0] for x in files]})
+        return self.send_json({'ok': True, 'track': tr})
+
+    @route(r'/api/report', 'GET')          # отчёт по КП за период: описания (права — как в журнале) и позиции для расчёта по категориям
+    def report(self):
+        q = self.q
+        d1, d2 = str(q.get('from') or '')[:10], str(q.get('to') or '')[:10] or '9999-12-31'
+        metas = [m for m in store().kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', ''))
+                 if d1 <= str(_obj(m).get('date') or '')[:10] <= d2]
+        rows = json.loads(admin.history_out(self.h, '[' + ','.join(m for m in metas if _obj(m)) + ']'))
+        for r in rows:
+            sr, pr = admin.econ_rub(r)
+            r['sumRub'], r['profitRub'] = sr, pr
+            if r.get('locked'):
+                continue
+            st = _obj(store().kp_get(r.get('id') or '', 'state'))
+            r['calc'] = {'vat': st.get('vat'), 'pricing': {k: (st.get('pricing') or {}).get(k) for k in ('cur', 'rates', 'costNoVat')},
+                         'items': [{k: x.get(k) for k in ('name', 'qty', 'price', 'disc', 'options', 'cost', 'costCur', 'attrs', 'kit')}
+                                   for x in (st.get('items') or []) if isinstance(x, dict)]}
+        return self.send_json({'items': rows})
 
 
 # ---------------------------------------------------------------- обслуживание: копия базы, выключение

@@ -146,6 +146,8 @@ document.addEventListener('click', async e=>{
     case 'journal': return openJournal();
     case 'deal': return openDeal();
     case 'docsFolder': return api('/api/folder?dir='+encodeURIComponent(managerFolder()),{method:'POST'}).then(remoteResult).catch(()=>{}); 
+    case 'mailKp': return MailDlg.open(b.dataset.id, S.number);
+    case 'clPrev': return openJournal().then(()=>{ const q=$('#jQ'); if (q){ q.value=S.clientInn||S.client; q.dispatchEvent(new Event('input')); } });
     case 'openDoc': return api(`/api/kp/${b.dataset.id}/open`,{method:'POST'}).then(remoteResult).catch(()=>toast('Файл не найден'));
     case 'showDoc': return api(`/api/kp/${b.dataset.id}/folder`,{method:'POST'}).then(remoteResult).catch(()=>toast('Файл не найден'));
     default: return;

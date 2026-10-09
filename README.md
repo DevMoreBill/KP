@@ -43,6 +43,7 @@ app/launcher.py           точка входа EXE: подключает обн
 app/version.py            номер версии программы (патч ставится, только если его версия новее)
 app/kp_server.py          HTTP-сервер (HTTP/1.1: приём запросов, доступ, выдача файлов); из исходников запускается напрямую
 app/web_api.py            адреса API: контроллеры по разделам (@route) и маршрутизатор ROUTER
+app/kp_track.py           ход сделки по КП: статус, напоминания, срок действия КП, отправка КП по почте (SMTP)
 app/imgfetch.py           логотипы производителей из каталога; загрузка картинки, перетащенной с сайта
 app/config.py             настройки и пути (settings.json), база данных store(), общие помощники
 app/data_setup.py         подготовка данных при запуске: папки, стартовый каталог, нумерация
@@ -424,6 +425,10 @@ e-mail, мобильный (последние 10 цифр) и добавочн�
 | Неверный запрос | `config.BadRequest` (в т. ч. `safe_id`), испорченное тело (не UTF-8, не JSON) — 400 в `Router.dispatch` и `Handler._dispatch`; `AdminApi.data()` — только объект JSON; `desktop.DesktopError` — 422 «Не удалось открыть» |
 | Файл КП | `PUT /api/kp/<id>/docx`: имя — всегда `.docx` (зарезервированные имена Windows — с «_»), содержимое — архив `PK\x03\x04`; «Открыть» / «Папка» — только `.docx` и `.pdf` |
 | Вход по паролю | `admin.guard` проверяет и `/tpl/`, `/img/`; `/api/ping` до входа — без путей; `PUT /api/managers/<id>` — только своя карточка (администратор — любые) |
+| Ход сделки | `kp_track.py`; столбцы `kp.track` (JSON: status, reason, note, followUp, sent, history), `kp.status`, `kp.follow` — миграция `2027-03-track`; `PUT /api/kp/<id>/track`, `GET /api/reminders`, журнал: `status=`, `funnel`; клиент — `features/kp-track.js` (`KpTrack`, `Reminders`, `MailDlg`), список причин — `LISTS` «kp.lost» |
+| Почта | kv `mail` (SMTP: host, port, security ssl/starttls/none, login, password, fromEmail, fromName, bccSelf, subject, body); `Настройки → Почта` — `/api/admin/mail`, `/api/admin/mail/test`; `GET /api/kp/<id>/mailform`, `POST /api/kp/<id>/send` (Word / PDF, Reply-To — почта менеджера КП) |
+| Отчёт и версии | `GET /api/report?from&to` — описания КП периода (права — `history_out`) + позиции для расчёта по категориям; `features/kp-report.js`: `KpReport` (менеджеры, категории, клиенты, Excel), `KpDiff` (сравнение версии с текущим КП) |
+| Сжатый кэш | `kp_server.GZ_CACHE`: большие ответы `send_cached` (каталог) сжимаются один раз на ETag (до 8 версий) |
 | Расчёт сделки | `deal-calc.js`: `DealCalculator` — `price`, `suppliers` / `supplier`, `assembly`, `expenses`, `supplierRows`, `customerRows`, `guarantees`, `days`, `finance`, `result`, `run`; подбор цены — `DealCalculator.solve`; `dealCalc` / `dealSolve` — прежние точки входа |
 | Остатки поставщика | фид из файлов: третий файл `stock.xlsx` (`upload?kind=stock`, `feed_files.parse_stock`: «Артикул», «Номенклатура», количество — столбец с числами без подписи тоже находится); `apply_stock` — по артикулу из прайса, иначе по коду изделия (`_code`: «УСТАНОВКА КОМПРЕССОРНАЯ К14» = «Поршневой компрессор К14»), нет в файле — 0; `doc.stock {qty, available, at}` пишется при сборке и «Обновить цены и остатки» (`check_feed`), у ручных карточек — через `stock_row` |
 | Русские коды моделей | `feed_files.code_cfg` («АСО-ВК 11/10М2.ОВ-500» → серия, типоразмер, давление, поколение М2/Н2, ресивер, ОВ, ESQ, исполнение -01); `match_prices` — шаг `code` (`_by_code`: ближайшая по словам строка, код модели важнее номенклатуры); `build_plan` → `_code_pairs`: старые карточки «АСО-ВК11/10», «К2/10» связываются с позициями парса «АСО-ВК 11/10М2», «К2», варианты давления — в дубли; только для кириллических кодов |

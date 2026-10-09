@@ -28,7 +28,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .jr-e{text-align:right}
 .jr-e b{font-variant-numeric:tabular-nums}
 .jr-e span{font-size:12.5px}
-.jbar{display:grid;grid-template-columns:1fr 150px 220px;gap:8px;margin-bottom:8px}
+.jbar{display:grid;grid-template-columns:minmax(200px,1fr) 130px 190px 150px auto auto;gap:8px;margin-bottom:8px}
 .jtot{margin:0 0 6px;font-size:13px}
 .jr b{display:block}
 .jr .acts{display:flex;flex-direction:row;gap:6px;flex-wrap:wrap;justify-content:flex-end}

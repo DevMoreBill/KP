@@ -122,6 +122,17 @@ MIGRATIONS = [
      """
      DROP INDEX IF EXISTS catalog_maker;
      """),
+    # 3.40.0: ход сделки по КП — статус (отправлено, в работе, выиграно, проиграно), напоминание, отправки по почте.
+    # Отдельно от описания КП (meta): пересохранение КП их не затирает. status и follow — для фильтров и напоминаний.
+    ('2027-03-track',
+     """
+     ALTER TABLE kp ADD COLUMN track TEXT; ALTER TABLE kp ADD COLUMN status TEXT; ALTER TABLE kp ADD COLUMN follow TEXT;
+     CREATE INDEX IF NOT EXISTS kp_status ON kp(status); CREATE INDEX IF NOT EXISTS kp_follow ON kp(follow);
+     """,
+     """
+     DROP INDEX IF EXISTS kp_status; DROP INDEX IF EXISTS kp_follow;
+     ALTER TABLE kp DROP COLUMN track; ALTER TABLE kp DROP COLUMN status; ALTER TABLE kp DROP COLUMN follow;
+     """),
 ]
 KP_VERSIONS = 30
 
@@ -145,6 +156,17 @@ def norm(s):
 def like_arg(q):
     """Подстрока для LIKE … ESCAPE '\\' (символы % и _ ищутся как есть)."""
     return '%' + re.sub(r'([%_\\])', r'\\\1', q) + '%'
+
+
+def with_track(meta, track):
+    """Описание КП (строка JSON) с ходом сделки полем track."""
+    if not track or not meta:
+        return meta
+    t = meta.rstrip()
+    if not t.endswith('}'):
+        return meta
+    body = t[:-1].rstrip()
+    return '%s%s"track":%s}' % (body, '' if body.endswith('{') else ',', track)
 
 
 def with_rev(text, rev):
@@ -641,12 +663,12 @@ class Store:
                 c.commit()
 
     def kp_list(self):
-        rows = self.all("SELECT meta FROM kp WHERE meta IS NOT NULL ORDER BY id DESC")
+        rows = self.all("SELECT meta, track FROM kp WHERE meta IS NOT NULL ORDER BY id DESC")
         out = []
         for r in rows:      # испорченная запись (старая версия, ручная правка) не ломает весь журнал
             try:
                 if isinstance(json.loads(r[0]), dict):
-                    out.append(r[0])
+                    out.append(with_track(r[0], r[1]))
             except (TypeError, ValueError):
                 pass
         return '[' + ','.join(out) + ']'
@@ -704,15 +726,30 @@ class Store:
         with self.lock:
             c = self.conn()
             rev = self._next_rev(c, 'kp', x['id'], None)
-            c.execute('INSERT OR REPLACE INTO kp (id, number, state, meta, docx, updated, client, inn, manager, kdate, saved, search, rev) '
-                      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                      (x['id'], x.get('number'), x.get('state'), x.get('meta'), x.get('docx'), x.get('updated') or _now()) + cols + (rev,))
+            tr = x.get('track') if isinstance(x.get('track'), str) else None
+            try:
+                td = json.loads(tr) if tr else {}
+            except ValueError:
+                tr, td = None, {}
+            fu = td.get('followUp') if isinstance(td, dict) and isinstance(td.get('followUp'), dict) else {}
+            c.execute('INSERT OR REPLACE INTO kp (id, number, state, meta, docx, updated, client, inn, manager, kdate, saved, search, rev, '
+                      'track, status, follow) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                      (x['id'], x.get('number'), x.get('state'), x.get('meta'), x.get('docx'), x.get('updated') or _now()) + cols + (rev,)
+                      + (tr, (td.get('status') if isinstance(td, dict) else None) or None, (fu.get('date') if not fu.get('done') else None) or None))
             c.commit()
 
-    def kp_page(self, q='', author='', limit=50, offset=0, kind=''):
-        """Журнал КП постранично: поиск по номеру, получателю, ИНН, автору, позициям и номеру закупки; фильтр по автору
-        и виду КП (kind: tender — для тендера, std — обычные)."""
+    def kp_page(self, q='', author='', limit=50, offset=0, kind='', status=''):
+        """Журнал КП постранично: поиск по номеру, получателю, ИНН, автору, позициям и номеру закупки; фильтр по автору,
+        виду КП (kind: tender — для тендера, std — обычные) и ходу сделки (status: new, sent, work, won, lost; open — не закрытые).
+        Ход сделки (track) приходит в описании КП полем track."""
         where, args = ['meta IS NOT NULL'], []
+        if status == 'new':
+            where.append("(status IS NULL OR status = 'new')")
+        elif status == 'open':
+            where.append("(status IS NULL OR status NOT IN ('won', 'lost'))")
+        elif status in ('sent', 'work', 'won', 'lost'):
+            where.append('status = ?')
+            args.append(status)
         if kind in ('tender', 'std'):        # тендерное КП — в описании есть tender.number (клиент пишет его первым полем)
             where.append(('' if kind == 'tender' else 'NOT ') + "(meta LIKE '%\"tender\":{\"number\":%')")
         qn = norm(q)
@@ -724,13 +761,34 @@ class Store:
             args.append(author)
         w = ' WHERE ' + ' AND '.join(where)
         total = self.one('SELECT COUNT(*) FROM kp' + w, args)[0]
-        rows = self.all('SELECT meta FROM kp' + w + ' ORDER BY id DESC LIMIT ? OFFSET ?', args + [int(limit), int(offset)])
-        return total, [r[0] for r in rows]
+        rows = self.all('SELECT meta, track FROM kp' + w + ' ORDER BY id DESC LIMIT ? OFFSET ?', args + [int(limit), int(offset)])
+        return total, [with_track(m, t) for m, t in rows]
 
-    def kp_metas_where(self, q='', author='', kind=''):
+    def kp_metas_where(self, q='', author='', kind='', status=''):
         """Все описания КП под фильтром — для итогов журнала (сумма, прибыль)."""
-        total, rows = self.kp_page(q, author, 10 ** 9, 0, kind)
+        total, rows = self.kp_page(q, author, 10 ** 9, 0, kind, status)
         return rows
+
+    # ---------- ход сделки по КП (kp_track.py)
+    def kp_track_get(self, kid):
+        r = self.one('SELECT track FROM kp WHERE id=?', (kid,))
+        try:
+            d = json.loads(r[0]) if r and r[0] else {}
+        except ValueError:
+            d = {}
+        return d if isinstance(d, dict) else {}
+
+    def kp_track_set(self, kid, track):
+        follow = (track.get('followUp') or {}) if isinstance(track.get('followUp'), dict) else {}
+        self.write('UPDATE kp SET track=?, status=?, follow=? WHERE id=?',
+                   (json.dumps(track, ensure_ascii=False), track.get('status') or None,
+                    (follow.get('date') or None) if not follow.get('done') else None, kid))
+
+    def kp_tracked(self, since):
+        """КП для напоминаний: незакрытые, сохранённые не раньше since (ГГГГ-ММ-ДД), или с напоминанием —
+        [(id, meta, track, state)]."""
+        return self.all("SELECT id, meta, track, state FROM kp WHERE meta IS NOT NULL AND (status IS NULL OR status NOT IN ('won', 'lost')) "
+                        "AND (kdate >= ? OR follow IS NOT NULL)", (since,))
 
     def kp_docx_owner(self, rel, kid):
         """Другое КП, чей файл лежит по этому пути (тендерные КП называются «<№ закупки> КП» и могут совпасть)."""

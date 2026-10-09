@@ -332,6 +332,19 @@ def history_page(h, store, q):
     metas = store.kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', ''))
     rows = _loads(history_out(h, '[' + ','.join(m for m in metas if _loads(m) is not None) + ']')) or []
     rows = [r for r in rows if isinstance(r, dict)]
+    # воронка — по всему отбору без фильтра статуса: сколько КП и на какую сумму в каждом статусе
+    def stt_of(r):
+        return ((r.get('track') or {}).get('status') if isinstance(r.get('track'), dict) else None) or 'new'
+    funnel = {}
+    for r in rows:
+        f = funnel.setdefault(stt_of(r), {'n': 0, 'sum': 0})
+        f['n'] += 1
+        f['sum'] += econ_rub(r)[0] or 0
+    want = q.get('status', '')
+    if want == 'open':
+        rows = [r for r in rows if stt_of(r) not in ('won', 'lost')]
+    elif want:
+        rows = [r for r in rows if stt_of(r) == want]
     s_sum, s_profit, n_profit = 0, 0, 0
     for r in rows:
         a, p = econ_rub(r)
@@ -340,7 +353,7 @@ def history_page(h, store, q):
             s_profit += p
             n_profit += 1
     return {'total': len(rows), 'items': rows[offset:offset + limit], 'authors': store.kp_authors(),
-            'agg': {'sum': s_sum, 'profit': s_profit, 'profitN': n_profit}}
+            'agg': {'sum': s_sum, 'profit': s_profit, 'profitN': n_profit}, 'funnel': funnel}
 
 
 def log(h, store, action, etype=None, eid=None, before=None, after=None, result='success', admin=None):
@@ -812,6 +825,29 @@ class AdminApi:
                 info['password'] = 'изменён'
             self.log('edit_access', 'manager', mid, None, info)
             return self.ok({'login': rec.get('login') or '', 'hasPassword': bool(rec.get('pw')), 'perms': auth_users.perms_of(rec), 'blocked': bool(rec.get('blocked'))})
+        if sub == 'mail':        # почта для отправки КП клиентам (SMTP)
+            import kp_track
+            if m == 'POST':
+                try:
+                    res = kp_track.mail_save(st, self.data(), me or 'admin')
+                except ValueError as e:
+                    return self.err(400, str(e))
+                self.log('edit_settings', 'settings', 'mail', None, {k: res.get(k) for k in ('host', 'port', 'security', 'login', 'fromEmail')})
+                return self.ok(res)
+            return self.ok(kp_track.mail_public(st))
+        if sub == 'mail/test' and m == 'POST':
+            import kp_track
+            try:
+                to = kp_track.addresses(self.data().get('to'))
+                if not to:
+                    return self.err(400, 'Укажите адрес для проверки')
+                kp_track.send(st, to, [], 'Проверка почты — Конструктор КП', 'Это проверочное письмо: отправка КП по почте настроена.', [], test=True)
+            except ValueError as e:
+                return self.err(400, str(e))
+            except RuntimeError as e:
+                return self.err(422, str(e))
+            self.log('edit_settings', 'settings', 'mail_test', None, {'to': to})
+            return self.ok({'ok': True})
         if sub == 'lists':       # списки и выборы: {ключ: [строки]}; None — вернуть встроенный список
             from lists import ListStore
             ls = ListStore(st)
@@ -1135,8 +1171,8 @@ class AdminApi:
         if 'catalog' in sections:
             out['catalog'] = json.loads(st.catalog_full())
         if 'kp' in sections:
-            out['kp'] = [dict(zip(('id', 'number', 'state', 'meta', 'docx', 'updated'), r))
-                         for r in st.all('SELECT id, number, state, meta, docx, updated FROM kp')]
+            out['kp'] = [dict(zip(('id', 'number', 'state', 'meta', 'docx', 'updated', 'track'), r))
+                         for r in st.all('SELECT id, number, state, meta, docx, updated, track FROM kp')]
         if 'managers' in sections:
             out['managers'] = json.loads(st.managers_list())
         if 'clients' in sections:

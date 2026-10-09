@@ -10,12 +10,12 @@ const ST_NAV = [
   ['Обзор', [['stats','Статистика'],['audit','Журнал действий']]],
   ['Данные', [['delete','Справочники и данные'],['moderation','Модерация правок'],['trash','Корзина'],['backup','Копии и обслуживание базы']]],
   ['Работа программы', [['defaults','Умолчания'],['lists','Списки и выборы'],['texts','Тексты интерфейса'],['templates','Шаблоны КП и категории'],['logistics','Логистика: тарифы'],['feeds','Фиды поставщиков']]],
-  ['Подключения', [['ai','Нейросеть'],['keys','Ключи API']]],
+  ['Подключения', [['mail','Почта'],['ai','Нейросеть'],['keys','Ключи API']]],
   ['Доступ', [['access','Менеджеры и права'],['users','Администраторы'],['security','Мой пароль']]]];
 const ST_TABS = ST_NAV.flatMap(g=>g[1]);
 
 const ACT = { login:'Вход в «Настройки»', backup_db:'Копия базы', maintain_db:'Сжатие и проверка базы', purge_images:'Удаление лишних изображений', create_admin:'Новый администратор', edit_admin:'Изменение администратора', delete_admin:'Удаление администратора', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
-  admin_request:'Запрос без входа', edit_settings:'Изменение настроек', edit_template:'Изменение шаблона', create_kp:'Создание КП', edit_kp:'Изменение КП',
+  admin_request:'Запрос без входа', kp_status:'Ход сделки по КП', send_kp:'Отправка КП по почте', edit_settings:'Изменение настроек', edit_template:'Изменение шаблона', create_kp:'Создание КП', edit_kp:'Изменение КП',
   create_manager:'Новый менеджер', create_supplier:'Новый поставщик', edit_supplier:'Изменение поставщика', delete_supplier:'Удаление поставщика', edit_customs:'Код ТН ВЭД и пошлина', edit_manager:'Изменение менеджера', create_client:'Новый клиент', edit_client:'Изменение клиента',
   edit_types:'Категории оборудования', submit_edit:'Правка на модерацию', edit_product:'Правка товара', create_product:'Новый товар',
   price_sync:'Цены из КП', approve_edit:'Правка одобрена', reject_edit:'Правка отклонена', rollback_edit:'Откат правки',
@@ -84,7 +84,7 @@ function stRender(){
 async function stTab(){
   const m=$('#stMain'); if (!m) return;
   try{ await ({stats:stStats, moderation:stModeration, delete:stDelete, trash:stTrash, audit:stAudit, backup:stBackup,
-    templates:stTemplates, logistics:stLogistics, feeds:stFeeds, keys:stKeys, ai:stAi, access:stAccess, users:stUsers, security:stSecurity, defaults:stDefaults, lists:stLists, texts:stTexts})[ST.tab](m); }
+    templates:stTemplates, logistics:stLogistics, feeds:stFeeds, keys:stKeys, mail:stMail, ai:stAi, access:stAccess, users:stUsers, security:stSecurity, defaults:stDefaults, lists:stLists, texts:stTexts})[ST.tab](m); }
   catch(e){ if (ADMIN.on) m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; }
 }
 
@@ -206,7 +206,7 @@ async function stDelete(m){
   const D=ST.del, r=await aapi(`list/${D.type}?q=${encodeURIComponent(D.q)}`), ed=ST.ed&&ST.ed.type===D.type?ST.ed:null;
   m.innerHTML=`<div class="seg st-types">${DEL_TYPES.map(([v,l])=>`<button type="button" class="${D.type===v?'on':''}" data-dtype="${v}">${l}</button>`).join('')}</div>
     <div class="row st-dbar"><input type="search" id="dQ" placeholder="Поиск" value="${esc(D.q)}" autocomplete="off"><span class="muted">${r.total>r.items.length?`показано ${r.items.length} из ${r.total} — уточните поиск`:`найдено: ${r.total}`}</span>
-      <span class="sp"></span>${ST_NEW[D.type]?`<button class="btn primary" type="button" data-dnew>+ ${esc(ST_NEW[D.type])}</button>`:''}<button class="btn danger" type="button" data-del ${D.sel.size?'':'disabled'}>Удалить${D.sel.size?' ('+D.sel.size+')':''}</button></div>
+      <span class="sp"></span>${D.type==='client'?'<button class="btn" type="button" data-dimp title="Список ИНН — реквизиты подтянутся сами">Загрузить списком ИНН…</button>':''}${ST_NEW[D.type]?`<button class="btn primary" type="button" data-dnew>+ ${esc(ST_NEW[D.type])}</button>`:''}<button class="btn danger" type="button" data-del ${D.sel.size?'':'disabled'}>Удалить${D.sel.size?' ('+D.sel.size+')':''}</button></div>
     ${ed&&!ed.id?'<div class="st-ed"></div>':''}
     <div class="st-list">${r.items.map(x=>`<label class="st-row ck-row${ed&&ed.id===x.id?' on':''}"><input type="checkbox" data-did="${esc(x.id)}" ${D.sel.has(x.id)?'checked':''}><div><b>${esc(x.title)}</b><span class="muted">${esc(x.sub)}</span></div><div class="acts"><button class="btn" type="button" data-dedit="${esc(x.id)}">${D.type==='kp'?'Открыть':'Изменить'}</button></div></label>${ed&&ed.id===x.id?'<div class="st-ed"></div>':''}`).join('')||'<p class="muted">Ничего не найдено.</p>'}</div>
     <p class="muted">«${D.type==='kp'?'Открыть':'Изменить'}» — ${({kp:'КП откроется в конструкторе для правки', catalog:'карточка товара в редакторе каталога', manager:'контакты менеджера — прямо в списке', client:'реквизиты и контакт клиента — прямо в списке', supplier:'условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщика — прямо в списке'})[D.type]}. Удалённое попадает в корзину и хранится ${30} дней — его можно восстановить. Файлы готовых КП (.docx, .pdf) в папке КП не удаляются.</p>`;
@@ -216,6 +216,7 @@ async function stDelete(m){
     const b=m.querySelector('[data-del]'); b.disabled=!D.sel.size; b.textContent='Удалить'+(D.sel.size?' ('+D.sel.size+')':''); };
   m.onclick=async e=>{ if (e.target.closest('.st-ed')) return;
     const t=e.target.closest('[data-dtype]'); if (t){ D.type=t.dataset.dtype; D.sel.clear(); D.q=''; ST.ed=null; return stDelete(m); }
+    if (e.target.closest('[data-dimp]')) return openClientsImport();
     if (e.target.closest('[data-dnew]')){ try{ await stEdOpen(D.type, null); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
     const ed=e.target.closest('[data-dedit]'); if (ed){ e.preventDefault();
       if (ST_NEW[D.type]){ if (ST.ed&&ST.ed.id===ed.dataset.dedit){ ST.ed=null; return stDelete(m); } try{ await stEdOpen(D.type, ed.dataset.dedit); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
@@ -328,6 +329,41 @@ async function stTemplates(m){
 async function stKeys(m){ return keysForm(m); }
 
 // ---------- нейросеть в программе (DeepSeek): включение, ключ, модель, проверка, расход
+// почта: менеджеры отправляют КП клиентам из журнала и после сохранения КП (сервер — app/kp_track.py, SMTP)
+async function stMail(m, note){
+  const r=await aapi('mail');
+  m.innerHTML=`<div class="st-card"><p class="sub" style="margin:0">Отправка КП по почте ${r.on?'<b class="ok-t">настроена</b>':'<span class="muted">не настроена</span>'}</p>
+    <p class="muted" style="margin:6px 0 0">Менеджеры отправляют КП клиенту из программы: журнал → «Отправить» или кнопка после сохранения КП. Письмо уходит с этого адреса,
+      ответ клиента — на почту менеджера КП; отправка отмечается в журнале, статус КП становится «Отправлено».</p>
+    ${note?`<p class="msg${note.err?' err':''}" style="text-align:left">${esc(note.t)}</p>`:''}</div>
+  <div class="st-card"><p class="sub">Почтовый сервер (SMTP)</p>
+    <div class="grid g2"><label class="f"><span>Сервер</span><input type="text" id="mlHost" value="${esc(r.host)}" placeholder="smtp.yandex.ru" autocomplete="off"></label>
+      <div class="grid g2"><label class="f"><span>Порт</span><input type="text" inputmode="numeric" id="mlPort" value="${esc(r.port)}"></label>
+        <label class="f"><span>Защита</span><select id="mlSec">${[['ssl','SSL/TLS (465)'],['starttls','STARTTLS (587)'],['none','Без защиты']].map(([k,l])=>`<option value="${k}"${r.security===k?' selected':''}>${l}</option>`).join('')}</select></label></div>
+      <label class="f"><span>Логин</span><input type="text" id="mlLogin" value="${esc(r.login)}" autocomplete="off" placeholder="обычно — адрес почты"></label>
+      <label class="f"><span>Пароль ${r.hasPassword?'<b class="ok-t">задан</b>':''}</span><input type="password" id="mlPw" autocomplete="new-password" placeholder="${r.hasPassword?'Новый пароль — заменит текущий':'Пароль приложения для почты'}"></label>
+      <label class="f"><span>Адрес отправителя</span><input type="text" id="mlFrom" value="${esc(r.fromEmail)}" placeholder="kp@company.ru"></label>
+      <label class="f"><span>Имя отправителя</span><input type="text" id="mlName" value="${esc(r.fromName)}" placeholder="ПНЕВМОТЕХ"></label></div>
+    <label class="ck"><input type="checkbox" id="mlBcc"${r.bccSelf?' checked':''}> Копия каждого письма — на адрес отправителя (архив отправленных КП)</label>
+    <p class="muted">Яндекс: smtp.yandex.ru, 465, SSL, пароль приложения (id.yandex.ru → Безопасность). Mail.ru: smtp.mail.ru, 465. Корпоративный сервер — у системного администратора.</p></div>
+  <div class="st-card"><p class="sub">Письмо по умолчанию</p>
+    <label class="f"><span>Тема</span><input type="text" id="mlSubj" value="${esc(r.subject)}"></label>
+    <label class="f"><span>Текст</span><textarea id="mlBody" rows="9">${esc(r.body)}</textarea></label>
+    <p class="muted">Подстановки: {номер}, {дата}, {клиент}, {поставщик} (имя отправителя), {менеджер}, {должность}, {телефон}, {e-mail}; {, контакт} — «, Иван Петрович» (если в КП указано контактное лицо); {: оборудование} — «: Винтовые компрессоры Remeza ВК10…» по заголовку титула. Менеджер может поправить текст перед отправкой.</p>
+    <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" id="mlSave">Сохранить</button>
+      <input type="text" id="mlTestTo" placeholder="адрес для проверки" style="max-width:260px" autocomplete="off"><button class="btn" type="button" id="mlTest"${r.on?'':' disabled'}>Отправить проверочное письмо</button>
+      ${r.hasPassword?'<button class="btn ghost" type="button" id="mlDel">Удалить пароль</button>':''}</div></div>`;
+  const body=()=>{ const b={host:$('#mlHost').value.trim(), port:$('#mlPort').value.trim(), security:$('#mlSec').value, login:$('#mlLogin').value.trim(),
+    fromEmail:$('#mlFrom').value.trim(), fromName:$('#mlName').value.trim(), bccSelf:$('#mlBcc').checked, subject:$('#mlSubj').value, body:$('#mlBody').value};
+    const pw=$('#mlPw').value; if (pw) b.password=pw; return b; };
+  $('#mlSave').onclick=async()=>{ try{ await ajson('mail', body()); stMail(m, {t:'Сохранено'}); }catch(e){ stMail(m, {t:String(e.message||e), err:true}); } };
+  $('#mlTest').onclick=async e=>{ e.target.disabled=true; e.target.textContent='Отправляю…';
+    try{ await ajson('mail/test', {to:$('#mlTestTo').value}); stMail(m, {t:'Проверочное письмо отправлено на '+$('#mlTestTo').value}); }
+    catch(err){ stMail(m, {t:String(err.message||err), err:true}); } };
+  if ($('#mlDel')) $('#mlDel').onclick=async()=>{ if (!await stConfirm('Удалить пароль почты?','Отправка КП по почте перестанет работать, пока не зададите новый.','Удалить')) return;
+    try{ await ajson('mail', {clearPassword:true}); stMail(m, {t:'Пароль удалён'}); }catch(e){ stMail(m, {t:String(e.message||e), err:true}); } };
+}
+
 async function stAi(m, note){
   const r=await aapi('ai'), u=r.usage||{}, tok=n=>Number(n||0).toLocaleString('ru-RU');
   m.innerHTML=`<div class="st-card"><div class="row"><p class="sub" style="margin:0">Нейросеть прямо в программе</p><span class="sp"></span>
