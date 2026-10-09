@@ -92,23 +92,36 @@ async function stLists(m){ await new ListsPanel(m).open(); }
 async function stTexts(m){ await new TextsPanel(m).open(); }
 
 // «Настройки → Функции программы»: включить и выключить дополнительные функции (реестр — js/core/features.js,
-// сервер — app/features.py). Изменение действует сразу у всех; данные выключенной функции сохраняются.
+// сервер — app/features.py) и выбрать, кому они доступны. Изменение действует сразу; данные выключенной функции сохраняются.
 class FeaturesPanel {
-  constructor(m){ this.m=m; }
-  async open(){ const r=await aapi('features'); FEAT.use(r.values||{}); this.render(); this.bind(); }
-  row(d){ const own=FEAT.vals[d.key]!==false, need=d.needs && !FEAT.on(d.needs) ? FEAT.get(d.needs) : null;
-    return `<div class="ft-r${own?'':' off'}"><label class="sw ft-sw"><input type="checkbox" data-ft="${esc(d.key)}"${own?' checked':''}><span>${own?'включено':'выключено'}</span></label>
-      <div><b>${esc(d.label)}</b><span class="muted">${esc(d.hint)}</span>${!own&&d.off?`<span class="ft-off">Выключено: ${esc(d.off)}</span>`:''}${need?`<span class="ft-off">Не работает: выключено «${esc(need.label)}»</span>`:''}</div></div>`; }
-  render(){ const n=FEAT.defs.filter(d=>!FEAT.on(d.key)).length;
+  constructor(m){ this.m=m; this.cfg={}; }
+  async open(){ const r=await aapi('features'); this.cfg=r.config||{}; await FEAT.load(); this.render(); this.bind(); }
+  c(k){ return this.cfg[k] || {on:true, who:'all', users:[]}; }
+  /** кому доступна — подпись для строки */
+  whoText(c){ if (c.who==='admin') return 'только администратору';
+    if (c.who==='users'){ const n=c.users.map(id=>(MGRS.find(m=>m.id===id)||{}).name).filter(Boolean); return n.length?'администратору и: '+n.join(', '):'только администратору (менеджеры не выбраны)'; }
+    return 'всем'; }
+  row(d){ const c=this.c(d.key), own=c.on, need=d.needs && !this.c(d.needs).on ? FEAT.get(d.needs) : null, k=esc(d.key);
+    const who=own?`<div class="ft-who"><label>Кому <select class="f" data-ftwho="${k}">${[['all','Всем'],['admin','Только администратору'],['users','Выбранным менеджерам']]
+        .map(([v,t])=>`<option value="${v}"${c.who===v?' selected':''}>${t}</option>`).join('')}</select></label>
+      ${c.who==='users'?`<div class="ft-users">${MGRS.length?MGRS.map(m=>`<label class="ft-u"><input type="checkbox" data-ftu="${k}" value="${esc(m.id)}"${c.users.includes(m.id)?' checked':''}> ${esc(m.name||m.id)}</label>`).join(''):'<span class="muted">Менеджеров нет — добавьте их в разделе «Менеджеры».</span>'}</div>`:''}
+      ${c.who!=='all'?`<span class="ft-off">Доступно ${esc(this.whoText(c))}; остальные её не видят.</span>`:''}</div>`:'';
+    return `<div class="ft-r${own?'':' off'}"><label class="sw ft-sw"><input type="checkbox" data-ft="${k}"${own?' checked':''}><span>${own?'включено':'выключено'}</span></label>
+      <div><b>${esc(d.label)}</b><span class="muted">${esc(d.hint)}</span>${!own&&d.off?`<span class="ft-off">Выключено: ${esc(d.off)}</span>`:''}${need?`<span class="ft-off">Не работает: выключено «${esc(need.label)}»</span>`:''}${who}</div></div>`; }
+  render(){ const n=FEAT.defs.filter(d=>!this.c(d.key).on).length, lim=FEAT.defs.filter(d=>this.c(d.key).on && this.c(d.key).who!=='all').length;
     this.m.innerHTML=`<div class="st-card"><p class="sub" style="margin:0">Функции программы</p>
-        <p class="muted" style="margin:6px 0 0">Включите только то, чем пользуется отдел, — лишние кнопки и окна пропадут у всех. Выключенная функция недоступна и в обход
-        интерфейса; её данные (статусы, расчёты, версии) не удаляются: включите снова — всё на месте.${n?` Сейчас выключено: <b>${n}</b>.`:''}</p></div>
+        <p class="muted" style="margin:6px 0 0">Включите только то, чем пользуется отдел, — лишние кнопки и окна пропадут. Функцию можно открыть всем, только
+        администратору (видна после входа в «Настройки») или выбранным менеджерам. Недоступная функция закрыта и в обход интерфейса;
+        её данные (статусы, расчёты, версии) не удаляются: включите снова — всё на месте.${n?` Выключено: <b>${n}</b>.`:''}${lim?` С ограниченным доступом: <b>${lim}</b>.`:''}</p></div>
       ${FEAT.groups.map(g=>{ const ds=FEAT.defs.filter(d=>d.group===g.id); return ds.length?`<div class="st-card"><p class="sub">${esc(g.title)}</p><div class="ft-l">${ds.map(d=>this.row(d)).join('')}</div></div>`:''; }).join('')}
-      <div class="row"><button class="btn ghost" type="button" data-ftall>Включить всё</button></div>`; }
+      <div class="row"><button class="btn ghost" type="button" data-ftall>Включить всё для всех</button></div>`; }
   async save(values, msg){
-    try{ const r=await ajson('features', {values}); FEAT.use(r.values||{}); this.render(); toast(msg); renderForm(); if (typeof Reminders!=='undefined') Reminders.load(); }
+    try{ const r=await ajson('features', {values}); this.cfg=r.config||{}; await FEAT.refresh(); this.render(); toast(msg); }
     catch(e){ toast('Не сохранено: '+(e.message||e)); this.render(); } }
-  bind(){ this.m.onchange=e=>{ const k=e.target.dataset.ft; if (!k) return; const d=FEAT.get(k);
-      this.save({[k]: e.target.checked}, `«${d.label}» — ${e.target.checked?'включено':'выключено'} у всех`); };
-    this.m.onclick=e=>{ if (e.target.closest('[data-ftall]')) this.save(Object.fromEntries(FEAT.defs.map(d=>[d.key, null])), 'Все функции включены'); }; }
+  bind(){ this.m.onchange=e=>{ const t=e.target, d=t.dataset;
+      if (d.ft){ const f=FEAT.get(d.ft); this.save({[d.ft]: {...this.c(d.ft), on:t.checked}}, `«${f.label}» — ${t.checked?'включено':'выключено'}`); }
+      else if (d.ftwho){ const f=FEAT.get(d.ftwho), c={...this.c(d.ftwho), who:t.value}; this.save({[d.ftwho]: c}, `«${f.label}» — доступно ${this.whoText(c)}`); }
+      else if (d.ftu){ const c=this.c(d.ftu), users=[...this.m.querySelectorAll(`[data-ftu="${CSS.escape(d.ftu)}"]:checked`)].map(x=>x.value);
+        this.save({[d.ftu]: {...c, users}}, `«${FEAT.get(d.ftu).label}» — доступно ${this.whoText({...c, users})}`); } };
+    this.m.onclick=e=>{ if (e.target.closest('[data-ftall]')) this.save(Object.fromEntries(FEAT.defs.map(d=>[d.key, null])), 'Все функции включены для всех'); }; }
 }

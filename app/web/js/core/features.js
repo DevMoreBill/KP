@@ -1,5 +1,6 @@
 // Функции программы, которые администратор включает и выключает («Настройки → Функции программы»; сервер: app/features.py,
-// kv settings.features = {ключ: да / нет}). FEAT.on(ключ) — включена ли функция; выключенная прячется из интерфейса,
+// kv settings.features = {ключ: {on, who, users}}): включена ли и кому доступна — всем, только администратору, выбранным
+// менеджерам. Сервер присылает готовый ответ для этого пользователя: FEAT.on(ключ) — доступна ли; недоступная прячется из интерфейса,
 // её адреса на сервере закрыты. Данные выключенной функции не удаляются. Последние значения хранятся в браузере.
 'use strict';
 
@@ -12,6 +13,8 @@ class FeatureRegistry {
   on(key){ const d=this.get(key); if (d && d.needs && !this.on(d.needs)) return false; return this.vals[key] !== false; }
   use(v){ this.vals = v && typeof v==='object' && !Array.isArray(v) ? v : {}; try{ localStorage.setItem('kp.features', JSON.stringify(this.vals)); }catch(e){} }
   async load(){ try{ this.use(await api('/api/features')); }catch(e){} }
+  /** права изменились (вход администратора, другой менеджер на устройстве) — перечитать и перерисовать */
+  async refresh(){ await this.load(); if (typeof renderForm==='function') renderForm(); if (typeof Reminders!=='undefined') Reminders.load(); if (typeof MyDay!=='undefined') MyDay.badge(); }
 }
 
 const FEAT = new FeatureRegistry()

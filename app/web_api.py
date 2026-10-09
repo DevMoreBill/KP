@@ -838,7 +838,7 @@ class TrackController(Controller):
     @route(r'/api/features', 'GET')        # какие функции программы включены (для всех; правка — /api/admin/features)
     def features(self):
         import features
-        return self.send_json(features.get(store()))
+        return self.send_json(features.get(store(), admin.session(self.h, touch=False) is not None, admin.actor(self.h, admin=False)[0] or ''))
 
     @route(r'/api/mail/status', 'GET')
     def mail_status(self):
@@ -907,7 +907,7 @@ class TrackController(Controller):
                  if d1 <= str(_obj(m).get('date') or '')[:10] <= d2]
         rows = json.loads(admin.history_out(self.h, '[' + ','.join(m for m in metas if _obj(m)) + ']'))
         import features
-        deal_on = features.on(store(), 'deal')      # экономика сделки выключена — без прибыли и закупки
+        deal_on = features.get(store(), admin.session(self.h, touch=False) is not None, admin.actor(self.h, admin=False)[0] or '')['deal']   # экономика недоступна — без прибыли
         for r in rows:
             sr, pr = admin.econ_rub(r)
             r['sumRub'], r['profitRub'] = sr, (pr if deal_on else None)
