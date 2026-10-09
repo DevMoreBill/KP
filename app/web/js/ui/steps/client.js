@@ -1,6 +1,22 @@
 // Раздел 1 «Клиент».
 'use strict';
 
+// у клиента уже есть недавние КП (за 120 дней, по ИНН) — чтобы два менеджера не готовили параллельные предложения
+const CL_PREV = { key:'', items:[], busy:false };
+function clientPrevHtml(){
+  const key=String(S.clientInn||'').replace(/\D/g,''); if (key.length<10) return '';
+  if (CL_PREV.key!==key){ if (!CL_PREV.busy) clientPrevLoad(key); return ''; }
+  const items=CL_PREV.items.filter(x=>x.id!==S.kpId); if (!items.length) return '';
+  return `<div class="msg warn cl-prev">У этого клиента уже есть КП: ${items.slice(0,3).map(x=>`<b>№ ${esc(x.number)}</b> от ${esc(ddmm(x.date))} — ${esc(jShort(x.manager||''))}, ${esc(KP_STATUS[KpTrack.status(x.track)].toLowerCase())}`).join('; ')}${items.length>3?` и ещё ${items.length-3}`:''}.
+    <button type="button" class="lnk" data-a="clPrev">Показать в журнале</button></div>`;
+}
+async function clientPrevLoad(key){
+  CL_PREV.busy=true; const since=addDaysIso(today(), -120);
+  try{ const r=await api(`/api/history?limit=20&q=${encodeURIComponent(key)}`); CL_PREV.items=(r.items||[]).filter(x=>String(x.clientInn||'').replace(/\D/g,'')===key && (x.date||'')>=since); }
+  catch(e){ CL_PREV.items=[]; }
+  CL_PREV.key=key; CL_PREV.busy=false; if (STEP==='client' && CL_PREV.items.some(x=>x.id!==S.kpId)) renderForm();
+}
+
 function stepClient(){
   const has = !!(S.client || S.clientInn);
   const edit = S._clEdit || (has && !S.client.trim());
@@ -26,7 +42,7 @@ function stepClient(){
       <div class="grid" style="margin-top:12px">${field('Юридический адрес','clientAddr')}</div></div>`;
   return `<section class="step" id="st-client"><h2><span class="n">1</span>Клиент${tip(`<p>Начните вводить название или ИНН: поиск идёт по вашему справочнику клиентов${CLIENTS_ALL?` (${CLIENTS_ALL})`:''}, а по ИНН — в реестре ФНС; реквизиты заполнятся сами.</p><p>Контактное лицо и объект необязательны: контакт выводится на титуле («Вниманию: …»), объект — для каких нужд и куда поставка.</p><p>Ключи Checko и DaData, загрузка клиентов списком ИНН — в меню «⋯» вверху.</p>`)}</h2>
   ${tenderBlock()}
-  <div class="csec"><p class="sub">Кому</p>${has ? summary : finder}${(has&&edit)||S._clManual ? form : ''}${has?checkLine():''}</div>
+  <div class="csec"><p class="sub">Кому</p>${has ? summary : finder}${(has&&edit)||S._clManual ? form : ''}${has?checkLine():''}${has?clientPrevHtml():''}</div>
   <div class="csec"><p class="sub">Контактное лицо <span class="muted">необязательно</span></p>
    ${cons.length?`<div class="chips" style="margin-bottom:8px"><span class="muted" style="font-size:13px">Ранее:</span>${cons.slice(0,4).map((c,k)=>`<button class="chip sm" type="button" data-a="pickContact" data-k="${(cl.contacts||[]).indexOf(c)}">${esc(c.name)}${c.post?' — '+esc(c.post):''}</button>`).join('')}</div>`:''}
    <div class="grid g2">${field('ФИО','contact.name',{ph:'Иванов Иван Иванович'})}${field('Должность','contact.post',{ph:'Главный энергетик'})}</div>

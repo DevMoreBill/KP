@@ -15,6 +15,7 @@
   await loadTypes(); await Promise.all([loadClients(), loadManagers(), loadTemplates(), refreshCat(), LISTS.load()]);
   loadLogos(); loadAppVersion(); uitLoad(); renderForm(); authMenu();
   (window.requestIdleCallback||setTimeout)(()=>CW.prewarm());     // поиск в каталоге — готов заранее
+  Reminders.load(); setInterval(()=>{ if (!document.hidden) Reminders.load(); }, 10*60*1000);   // колокольчик: перезвонить, срок действия КП
   if (!showMigrationNotice(SRV.info.migrations) && !S.items.length && catCache.length) openCatalog({});
 })();
 

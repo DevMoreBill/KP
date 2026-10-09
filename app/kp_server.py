@@ -37,6 +37,8 @@ from kp_templates import ensure_templates
 from web_api import IMAGES, ROUTER, cp
 
 PAID_GET = ('/api/geo/', '/api/party', '/api/check', '/api/imgfetch', '/api/cbr')
+GZ_CACHE = {}       # сжатые большие справочники: {ETag: байты gzip} (send_cached)
+GZ_LOCK = threading.Lock()
 MAX_BODY = 300 * 1024 * 1024    # самый большой запрос — загрузка резервной копии базы
 
 
@@ -74,9 +76,9 @@ class Handler(BaseHTTPRequestHandler):
                 extra['Content-Security-Policy'] = csp
             return self.send(200, ctype, fh.read(), extra)
 
-    def send(self, code, ctype, body, extra=None):
+    def send(self, code, ctype, body, extra=None, compressed=False):
         data = body if isinstance(body, bytes) else str(body).encode('utf-8')
-        gz = len(data) > 20000 and 'gzip' in (self.headers.get('Accept-Encoding') or '') and \
+        gz = not compressed and len(data) > 20000 and 'gzip' in (self.headers.get('Accept-Encoding') or '') and \
             (ctype.startswith('application/json') or ctype.startswith('text/'))
         if gz:
             import gzip
@@ -104,13 +106,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_cached(self, tag, make):
         """Справочник с версией: браузер хранит копию и спрашивает «изменилось ли?» (If-None-Match).
-        Не изменилось — короткий ответ 304 без данных; иначе — данные (make()) с новой меткой."""
+        Не изменилось — короткий ответ 304 без данных; иначе — данные (make()) с новой меткой.
+        Большой ответ (каталог — 12 МБ) сжимается один раз на версию и отдаётся всем сотрудникам готовым (GZ_CACHE)."""
         etag = 'W/"%s-%s"' % (tag, APP_VERSION)
+        extra = {'ETag': etag, 'Cache-Control': 'no-cache'}
         if etag in (self.headers.get('If-None-Match') or ''):
-            return self.send(304, 'application/json; charset=utf-8', b'', {'ETag': etag, 'Cache-Control': 'no-cache'})
-        obj = make()
-        text = obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False)
-        return self.send(200, 'application/json; charset=utf-8', text, {'ETag': etag, 'Cache-Control': 'no-cache'})
+            return self.send(304, 'application/json; charset=utf-8', b'', extra)
+        gz_ok = 'gzip' in (self.headers.get('Accept-Encoding') or '')
+        hit = GZ_CACHE.get(etag) if gz_ok else None
+        if hit is None:
+            obj = make()
+            text = obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False)
+            data = text.encode('utf-8')
+            if not gz_ok or len(data) < 200000:
+                return self.send(200, 'application/json; charset=utf-8', data, extra)
+            import gzip
+            hit = gzip.compress(data, 6)
+            with GZ_LOCK:
+                GZ_CACHE[etag] = hit
+                while len(GZ_CACHE) > 8:          # старые версии — прочь
+                    GZ_CACHE.pop(next(iter(GZ_CACHE)))
+        return self.send(200, 'application/json; charset=utf-8', hit, dict(extra, **{'Content-Encoding': 'gzip'}), compressed=True)
 
     def base_rev(self):
         """С какой правки записи начинали редактирование (заголовок X-KP-Rev); нет — сохранить без проверки."""

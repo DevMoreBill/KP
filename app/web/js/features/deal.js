@@ -926,7 +926,7 @@ function dealRenderIn(dlg){
   const xNote=[c.W+c.Bn?`резерв и бонусы ${dlRub0(c.W+c.Bn)}`:'', c.BG?`банковская гарантия ${dlRub0(c.BG)}`:'', xK?`наличные ${dlRub0(xK)}`:''].filter(Boolean).join(', ');
   // шаги по порядку заполнения; свёрнутые — одной строкой; открыт один (или все — «Развернуть все шаги»)
   const hasCus=d.sup.some((s,k)=>!(c.sup[k].mode==='none' && /^росс/i.test(s.country||'')));
-  const DL_TAB_SHORT={money:'Налог', sched:'График'};
+  const DL_TAB_SHORT={sched:'График'};
   const order=[['sum','Кратко'], ['buy','Закупка'], ['log','Логистика'], ...(hasCus?[['cus','Таможня']]:[]), ['cust','Оплата заказчика'], ['mnt','Расходы'], ['price','Цена КП'], ['money','Деньги и налог'], ['sched','График платежей']];
   DL.nav={}; order.forEach(([id],k)=>{ DL.nav[id]={n:k+1, next:order[k+1]&&order[k+1][0], nextT:order[k+1]&&order[k+1][1], prev:order[k-1]&&order[k-1][0], prevT:order[k-1]&&order[k-1][1]}; });
   DL.si=dlStepInfo(c);

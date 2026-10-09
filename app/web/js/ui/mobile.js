@@ -20,7 +20,8 @@ function openMobileMenu(){
   const it=(k,ic,t,s)=>`<button type="button" class="mm-i" data-mm="${k}"><i aria-hidden="true">${ic}</i><span><b>${t}</b>${s?`<small>${s}</small>`:''}</span></button>`;
   d.innerHTML=`<div class="dlg-h"><h3>Меню</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
     <div class="mm-l">${it('new','＋','Новое КП','Начать с чистого листа')}
-      ${it('journal','☰','Журнал КП','Открыть, повторить прошлое КП')}
+      ${it('journal','☰','Журнал КП','Открыть, повторить прошлое КП, статусы, отчёт')}
+      ${Reminders.items.length?it('reminders','🔔','Напоминания ('+Reminders.items.length+')','Перезвонить, срок действия КП'):''}
       ${it('catalog','▦','Каталог оборудования','Подбор и своё оборудование')}
       ${it('preview','▤','Предпросмотр КП','Документ целиком')}
       ${dealAllowed()?it('deal','₽','Экономика сделки','Прибыль, финансирование, Excel'):''}
@@ -32,6 +33,7 @@ function openMobileMenu(){
     if (k==='new') $('#btnNew').click();
     else if (k==='uitexts') uitToggle();
     else if (k==='journal') openJournal();
+    else if (k==='reminders') Reminders.open();
     else if (k==='catalog') openCatalog({});
     else if (k==='preview') openKpPreview();
     else if (k==='deal') openDeal();

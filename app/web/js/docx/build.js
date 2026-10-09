@@ -222,14 +222,14 @@ async function download(){
     if (sr && sr.rev!=null) S._rev=sr.rev;
     const meta={ id:S.kpId, number:S.number, date:S.date, client:S.client, clientInn:S.clientInn||'', sum:t.sum, units:t.units, positions:S.items.length,
       items:S.items.map(x=>x.name).slice(0,3), file:fnSaved, manager:S.manager.name, tender: tenderNo() ? {number:tenderNo(), url:tenderUrl()} : undefined, managerPost:S.manager.position||'',
-      createdAt:S.createdAt, savedAt:new Date().toISOString(), econ:kpEconomics(), authorId:S.authorId||'', managerId:S.managerId||'', deal:dealSummary() };
+      createdAt:S.createdAt, savedAt:new Date().toISOString(), econ:kpEconomics(), authorId:S.authorId||'', managerId:S.managerId||'', deal:dealSummary(), validUntil:kpValidUntil()||undefined };
     await api(`/api/kp/${S.kpId}/meta`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(meta)});
     // PDF рядом с .docx — по галочке «Также сохранить в PDF»
     let pdfOk=false, pdfErr='';
     if (pdfWanted()){ btn.textContent='Создаю PDF…'; try{ await saveKpPdf(); pdfOk=true; }catch(e){ pdfErr=e.message||String(e); } }
     rememberConds(); persist(); renderForm();
     const remote=SRV.info&&SRV.info.local===false, m2=$('#dlmsg'); m2.className='msg ok';
-    m2.innerHTML=docMissHtml()+`КП № ${esc(S.number)} сохранено${pdfOk?' (DOCX и PDF)':''}, каталог обновлён.<div class="row" style="justify-content:center;margin-top:8px"><button class="btn" type="button" data-a="openDoc" data-id="${esc(S.kpId)}">${remote?'Скачать .docx':'Открыть в Word'}</button>${pdfOk?`<button class="btn" type="button" data-a="openPdf" data-id="${esc(S.kpId)}">${remote?'Скачать PDF':'Открыть PDF'}</button>`:''}${remote&&!SRV.info.docsShare?'':`<button class="btn" type="button" data-a="showDoc" data-id="${esc(S.kpId)}">${remote?'Путь к файлу':'Показать в папке'}</button>`}</div>`
+    m2.innerHTML=docMissHtml()+`КП № ${esc(S.number)} сохранено${pdfOk?' (DOCX и PDF)':''}, каталог обновлён.<div class="row" style="justify-content:center;margin-top:8px"><button class="btn" type="button" data-a="openDoc" data-id="${esc(S.kpId)}">${remote?'Скачать .docx':'Открыть в Word'}</button>${pdfOk?`<button class="btn" type="button" data-a="openPdf" data-id="${esc(S.kpId)}">${remote?'Скачать PDF':'Открыть PDF'}</button>`:''}${remote&&!SRV.info.docsShare?'':`<button class="btn" type="button" data-a="showDoc" data-id="${esc(S.kpId)}">${remote?'Путь к файлу':'Показать в папке'}</button>`}<button class="btn primary" type="button" data-a="mailKp" data-id="${esc(S.kpId)}" title="Письмо клиенту с файлом КП">Отправить клиенту</button></div>`
       + (pdfErr?`<div class="msg err">PDF не создан: ${esc(pdfErr)}<div class="row" style="justify-content:center;margin-top:6px"><button class="btn" type="button" data-a="printPdf">Печать → «Сохранить как PDF»</button></div></div>`:'');
   } catch(e){
     msg.className='msg err';
