@@ -70,7 +70,7 @@ function stRender(){
       if (setup && pw!==$('#stPw2').value) return $('#stErr').textContent='Пароли не совпадают';
       try{ const r=await ajson(setup?'setup':'login', setup?{login:lg, name:$('#stNm').value.trim(), password:pw}:{login:lg, password:pw});
         try{ localStorage.setItem('kp.adminLogin', lg); }catch(_){}
-        ADMIN.on=true; ADMIN.csrf=r.csrf; const st2=await api('/api/admin/status').catch(()=>({})); ST.status={...s, ...st2, hasPassword:true}; stRender(); }
+        ADMIN.on=true; ADMIN.csrf=r.csrf; const st2=await api('/api/admin/status').catch(()=>({})); ST.status={...s, ...st2, hasPassword:true}; stRender(); FEAT.refresh(); }
       catch(err){ $('#stErr').textContent=err.message; } };
     setTimeout(()=>($('#stLg')&&!$('#stLg').value?$('#stLg'):$('#stPw'))?.focus(),30);
     return;
@@ -500,5 +500,5 @@ document.addEventListener('click', e=>{
   const t=e.target.closest('[data-sttab]'); if (t){ ST.tab=t.dataset.sttab; d.querySelectorAll('[data-sttab]').forEach(b=>b.classList.toggle('on',b===t)); return stTab(); }
   const a=e.target.closest('[data-st]'); if (!a) return;
   if (a.dataset.st==='close') return d.close();
-  if (a.dataset.st==='logout') ajson('logout').catch(()=>{}).then(()=>{ ADMIN.on=false; ADMIN.csrf=''; stRender(); toast('Вы вышли из «Настроек»'); });
+  if (a.dataset.st==='logout') ajson('logout').catch(()=>{}).then(()=>{ ADMIN.on=false; ADMIN.csrf=''; stRender(); FEAT.refresh(); toast('Вы вышли из «Настроек»'); });
 });

@@ -466,7 +466,7 @@ def guard(h, store, m, path):
         return True
     # выключенная администратором функция («Настройки → Функции программы») — её адреса закрыты
     import features
-    off = features.blocked(store, m, path)
+    off = features.blocked(store, m, path, lambda: (session(h, touch=False) is not None, actor(h, admin=False)[0] or ''))
     if off:
         h.send(403, 'text/plain; charset=utf-8', 'Функция «%s» выключена администратором' % off)
         return True
@@ -834,7 +834,7 @@ class AdminApi:
         if sub == 'features':    # функции программы: включить / выключить
             import features
             if m == 'POST':
-                before = features.get(st)
+                before = features.config(st)
                 try:
                     res = features.save(st, self.data().get('values'), me or 'admin')
                 except ValueError as e:
@@ -842,8 +842,8 @@ class AdminApi:
                 ch = {k: v for k, v in res.items() if before.get(k) != v}
                 if ch:
                     self.log('edit_settings', 'settings', 'features', {k: before.get(k) for k in ch}, ch)
-                return self.ok({'values': res})
-            return self.ok({'values': features.get(st)})
+                return self.ok({'config': res})
+            return self.ok({'config': features.config(st)})
         if sub == 'mail':        # почта для отправки КП клиентам (SMTP)
             import kp_track
             if m == 'POST':

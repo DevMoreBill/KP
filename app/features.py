@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """Включение и отключение дополнительных функций программы («Настройки → Функции программы»).
 
-• kv «settings».features = {ключ: true | false}; нет ключа — действует встроенное значение (FEATURES).
+• kv «settings».features = {ключ: {on, who: all | admin | users, users: [id менеджеров]}}; нет ключа — встроенное значение
+  (FEATURES), для всех. «Только администратору» — функцию видит вошедший в «Настройки»; «выбранным» — им и администратору.
+  Кто работает: при входе по паролю — вошедший менеджер, иначе — менеджер, выбранный на устройстве (подпись запроса).
 • Интерфейс прячет выключенные функции (подписи и описания — app/web/js/core/features.js), сервер закрывает их адреса
   (blocked → 403 «Функция выключена администратором»): выключенную функцию нельзя вызвать и в обход интерфейса.
 • Данные выключенной функции не удаляются: включили снова — всё на месте.
@@ -41,19 +43,51 @@ ROUTES = [
 ]
 
 
-def get(store):
-    """Действующие значения всех функций: {ключ: true | false}."""
+WHO = ('all', 'admin', 'users')       # кому доступна включённая функция: всем, только администратору, выбранным менеджерам
+
+
+def config(store):
+    """Настройка всех функций: {ключ: {on, who, users}} (старое значение да / нет — {on, who: all})."""
     own = ((store.kv_get('settings') or {}).get('features')) or {}
     own = own if isinstance(own, dict) else {}
-    return {k: bool(own[k]) if isinstance(own.get(k), bool) else d for k, (d, _) in FEATURES.items()}
+    out = {}
+    for k, (d, _) in FEATURES.items():
+        v = own.get(k)
+        if isinstance(v, bool):
+            v = {'on': v}
+        v = v if isinstance(v, dict) else {}
+        who = v.get('who') if v.get('who') in WHO else 'all'
+        users = [str(x)[:64] for x in (v.get('users') or []) if isinstance(x, str)][:200] if who == 'users' else []
+        out[k] = {'on': bool(v['on']) if isinstance(v.get('on'), bool) else d, 'who': who, 'users': users}
+    return out
+
+
+def allowed(cfg, key, is_admin, uid):
+    """Доступна ли функция этому пользователю: выключена — нет; «только администратору» — администратору;
+    «выбранным» — им и администратору."""
+    c = cfg.get(key) or {'on': True, 'who': 'all'}
+    if not c['on']:
+        return False
+    if c['who'] == 'all':
+        return True
+    if is_admin:
+        return True
+    return c['who'] == 'users' and bool(uid) and uid in c['users']
+
+
+def get(store, is_admin=True, uid=''):
+    """Действующие значения для пользователя: {ключ: да | нет}."""
+    cfg = config(store)
+    return {k: allowed(cfg, k, is_admin, uid) for k in FEATURES}
 
 
 def on(store, key):
-    return get(store).get(key, True)
+    """Включена ли функция вообще (для всех или для кого-то)."""
+    return config(store)[key]['on']
 
 
 def save(store, values, by=''):
-    """values = {ключ: true | false | None (вернуть встроенное)}. ValueError — понятным текстом."""
+    """values = {ключ: {on, who, users} | да / нет | None (вернуть встроенное)}. ValueError — понятным текстом."""
     if not isinstance(values, dict) or not values:
         raise ValueError('Нет значений')
     st = store.kv_get('settings') or {}
@@ -64,18 +98,29 @@ def save(store, values, by=''):
         if v is None:
             cur.pop(k, None)
         elif isinstance(v, bool):
-            cur[k] = v
+            cur[k] = {'on': v, 'who': (cur.get(k) or {}).get('who', 'all') if isinstance(cur.get(k), dict) else 'all',
+                      'users': (cur.get(k) or {}).get('users', []) if isinstance(cur.get(k), dict) else []}
+        elif isinstance(v, dict):
+            who = v.get('who', 'all')
+            if who not in WHO:
+                raise ValueError('Кому доступно: всем, администратору или выбранным менеджерам')
+            users = v.get('users') or []
+            if not isinstance(users, list) or not all(isinstance(x, str) and re.match(r'^[A-Za-z0-9_-]{1,64}$', x) for x in users):
+                raise ValueError('Неверный список менеджеров')
+            cur[k] = {'on': bool(v.get('on', True)), 'who': who, 'users': users[:200] if who == 'users' else []}
         else:
-            raise ValueError('Значение функции — да или нет')
+            raise ValueError('Неверное значение функции')
     st['features'] = cur
     st['featuresAt'], st['featuresBy'] = datetime.now().isoformat(timespec='seconds'), by
     store.kv_set('settings', st)
-    return get(store)
+    return config(store)
 
 
-def blocked(store, method, path):
-    """Название выключенной функции, которой принадлежит адрес, или None."""
+def blocked(store, method, path, who):
+    """Название функции, которой принадлежит адрес и которая недоступна этому пользователю, или None.
+    who() → (администратор ли, id менеджера) — вызывается, только если адрес принадлежит функции."""
     for m, rx, key in ROUTES:
         if (m is None or m == method) and rx.match(path):
-            return None if on(store, key) else FEATURES[key][1]
+            is_admin, uid = who()
+            return None if allowed(config(store), key, is_admin, uid) else FEATURES[key][1]
     return None
