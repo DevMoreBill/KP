@@ -219,6 +219,11 @@ hours, contact, phone, note}], `contacts`, `makers`, `items` (id позиций 
   в двух независимых колонках (длинные значения — текстом во всю ширину);
   без пустого последнего листа. Имя файла: `<номер>_<префикс шаблона>_<клиент>_<оборудование>_<дата>.docx`.
 
+- **Работа менеджера (3.42):** «Мой день» при запуске (`features/my-day.js`), черновики на сервере и автосохранение,
+  заготовки КП (`features/kp-drafts.js`), цены позиции в прошлых КП (`PriceHist` в `features/pricing.js`), окно «КП сохранено»
+  (`features/kp-saved.js`), карточка клиента (`features/client-card.js`), шаг «Менеджер» строкой (`mgrLine()` / `steps()` в `ui/form.js`).
+  Каждая — функция программы: включается и выключается, доступ — всем, администратору или выбранным менеджерам.
+
 - **Телефон** (`css/mobile.css`, `js/ui/mobile.js`, Safari iOS и Chrome Android): шапка с кнопкой «Меню» (новое КП, журнал,
   каталог, предпросмотр, тема, «Настройки»), шаги КП строкой вверху, внизу — «‹ назад», итог и «Далее» (на последнем шаге —
   «Сохранить»). Окна — на весь экран с заметной кнопкой «✕»; каталог — поиск и «Фильтры», карточка позиции с «‹ К списку»;
@@ -427,7 +432,10 @@ e-mail, мобильный (последние 10 цифр) и добавочн�
 | Файл КП | `PUT /api/kp/<id>/docx`: имя — всегда `.docx` (зарезервированные имена Windows — с «_»), содержимое — архив `PK\x03\x04`; «Открыть» / «Папка» — только `.docx` и `.pdf` |
 | Вход по паролю | `admin.guard` проверяет и `/tpl/`, `/img/`; `/api/ping` до входа — без путей; `PUT /api/managers/<id>` — только своя карточка (администратор — любые) |
 | Ход сделки | `kp_track.py`; столбцы `kp.track` (JSON: status, reason, note, followUp, sent, history), `kp.status`, `kp.follow` — миграция `2027-03-track`; `PUT /api/kp/<id>/track`, `GET /api/reminders`, журнал: `status=`, `funnel`; клиент — `features/kp-track.js` (`KpTrack`, `Reminders`, `MailDlg`), список причин — `LISTS` «kp.lost» |
-| Функции программы | `features.py`: `FEATURES` (ключ → встроенное значение, название), `ROUTES` — адреса функции, `blocked()` в `admin.guard` → 403; `GET /api/features`, `POST /api/admin/features`; клиент — `core/features.js` (`FeatureRegistry`, `FEAT.on(ключ)`, зависимости `needs`), панель — `FeaturesPanel` в `settings-lists.js` |
+| Функции программы | `features.py`: `FEATURES` (ключ → встроенное значение, название), настройка `{on, who: all / admin / users, users}` — `config()`, `allowed()`; `ROUTES` — адреса функции, `blocked()` в `admin.guard` → 403 (кто — сессия администратора или менеджер); `GET /api/features`, `POST /api/admin/features`; клиент — `core/features.js` (`FeatureRegistry`, `FEAT.on(ключ)`, зависимости `needs`), панель — `FeaturesPanel` в `settings-lists.js` |
+| Черновики и заготовки | таблица `drafts` (миграция `2027-04-drafts`: kind draft / preset, owner, title, client, kp, positions, sum, cur, updated, state); `DraftsController`: `GET/PUT /api/drafts/<id>`, `POST …/delete` (только владелец или администратор, у владельца — 40 последних), то же `/api/presets` (видны всем); клиент — `Drafts` (отпечаток состояния `sig`, `pending`, `stash` перед заменой КП, `saved` после сохранения), `Presets`, `newKpDialog()` |
+| Карточка клиента | `ClientCardController`: `GET /api/clientcard?id&inn&name` — клиент из справочника, КП через `admin.history_page` (права журнала, чужая экономика скрыта), итоги по статусам; `POST /api/clientcard/note` — заметки в `clients.doc.notes` (обычное сохранение клиента в `counterparty.save_client` их переносит) |
+| Тёмная тема | `--on-navy` в `base.css` — текст на заливке navy / ok / danger (белый в светлой теме, тёмный в тёмной); цвета статусов КП — `--st-*` в `track.css` |
 | Почта | kv `mail` (SMTP: host, port, security ssl/starttls/none, login, password, fromEmail, fromName, bccSelf, subject, body); `Настройки → Почта` — `/api/admin/mail`, `/api/admin/mail/test`; `GET /api/kp/<id>/mailform`, `POST /api/kp/<id>/send` (Word / PDF, Reply-To — почта менеджера КП) |
 | Отчёт и версии | `GET /api/report?from&to` — описания КП периода (права — `history_out`) + позиции для расчёта по категориям; `features/kp-report.js`: `KpReport` (менеджеры, категории, клиенты, Excel), `KpDiff` (сравнение версии с текущим КП) |
 | Сжатый кэш | `kp_server.GZ_CACHE`: большие ответы `send_cached` (каталог) сжимаются один раз на ETag (до 8 версий) |

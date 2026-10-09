@@ -9,7 +9,7 @@ dialog.tpled:not([open]){display:none}
 .te-nav{display:flex;flex-direction:column;gap:2px;padding:12px 8px;border-right:1px solid var(--line);background:var(--soft);overflow:auto}
 .te-nav button{border:0;background:transparent;text-align:left;padding:9px 12px;border-radius:8px;cursor:pointer;color:var(--ink);font-size:14px}
 .te-nav button:hover{background:var(--card)}
-.te-nav button.on{background:var(--navy);color:#fff;font-weight:600}
+.te-nav button.on{background:var(--navy);color:var(--on-navy);font-weight:600}
 .te-body{padding:14px 22px 26px;overflow:auto;min-height:0;max-height:calc(92vh - 150px)}
 .te-intro{margin:0 0 14px}
 .te-group{margin:22px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--navy)}
@@ -38,7 +38,7 @@ dialog.tpled:not([open]){display:none}
 .te-nocol{font-size:12px}
 .te-tgs{display:flex;gap:4px}
 .te-t{width:32px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer;font-weight:700;color:var(--muted);font-size:12px}
-.te-t.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.te-t.on{background:var(--navy);border-color:var(--navy);color:var(--on-navy)}
 .te-sample{padding:4px 8px;border-radius:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#fff;border:1px solid var(--line);min-width:0}
 .te-img{display:flex;gap:12px;align-items:center;padding:8px;border:1px dashed var(--line);border-radius:10px}
 .te-img img{max-width:180px;max-height:120px;border-radius:6px;background:#fff}
