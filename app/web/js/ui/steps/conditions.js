@@ -43,9 +43,7 @@ function stepConds(){
   <div class="grid g2">${rows}</div>
   <div class="f" style="margin-top:14px"><span>Дополнительные условия и оговорки</span><div class="cpick ta">
     <textarea data-p="condExtra" rows="3" placeholder="Например: цена действительна при заказе комплекта целиком">${esc(S.condExtra||'')}</textarea>
-    ${condPicker('data-cxadd', 0, COND_EXTRA, [])}</div></div>
-  <div class="grid g2" style="margin-top:14px"><label class="f"><span>Ставка НДС, %</span><input type="text" inputmode="numeric" data-p="vat" value="${esc(S.vat)}"></label>
-  <div style="align-self:end;padding-bottom:10px"><button class="sw" type="button" role="switch" aria-checked="${S.showClients}" data-a="clients"><i></i>Страница «Наши клиенты»</button></div></div></section>`;
+    ${condPicker('data-cxadd', 0, COND_EXTRA, [])}</div></div></section>`;
 }
 
 document.addEventListener('click', e=>{

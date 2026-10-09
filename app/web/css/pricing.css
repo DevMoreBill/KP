@@ -2,6 +2,7 @@
 .curbar{display:flex;gap:10px 22px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:var(--soft)}
 .cur-sel{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
 .cur-sel select{width:auto;padding-top:6px;padding-bottom:6px}
+.cur-vat input{width:72px;padding-top:6px;padding-bottom:6px;text-align:right}
 .rates{display:flex;gap:6px 14px;align-items:center;flex-wrap:wrap;font-size:14px}
 .rt{color:var(--muted)}
 .rt b{color:var(--ink);font-variant-numeric:tabular-nums}

@@ -374,7 +374,9 @@ function dlOverview(c){
     <button type="button" class="icon dlo-go" data-dlx="step" data-id="cust" aria-label="Изменить оплату заказчика" title="Изменить оплату заказчика">›</button></div>`;
   // деления оси — без наложения: ближе 7 % ширины к предыдущему не ставятся
   const ticks=[0, ...new Set([...act.map(s=>s.arr), c.Tend].filter(x=>x>0))].sort((a,z)=>a-z).filter((t,k,arr)=>k===0 || t-arr.slice(0,k).reduce((m,x)=>Math.max(m,x),0)>=end*0.07 || t===c.Tend);
-  const axis=`<div class="dlo-r ax"><span></span><div class="dlo-bar">${ticks.map(t=>`<span class="dlo-tk${t/end>0.9?' r':''}" style="left:${X(t)}">${d0?dlIsoRu(dlDayIso(t)).slice(0,5):'день '+t}</span>`).join('')}</div><span></span></div>`;
+  // подпись вплотную к предыдущей (последняя оплата через несколько дней после договора) — второй строкой, без наложения
+  const lo=ticks.map((t,k)=>k>0 && (t-ticks[k-1])/end<0.12);
+  const axis=`<div class="dlo-r ax"><span></span><div class="dlo-bar">${ticks.map((t,k)=>`<span class="dlo-tk${t/end>0.9?' r':''}${lo[k]&&!lo[k-1]?' lo':''}" style="left:${X(t)}">${d0?dlIsoRu(dlDayIso(t)).slice(0,5):'день '+t}</span>`).join('')}</div><span></span></div>`;
   const peak=c.rows.reduce((m,r)=>Math.min(m,r.balance),0), pk=c.rows.find(r=>r.balance===peak);
   const money=`<div class="dlo-m"><div><small>Своих денег в сделке на пике</small><b>${peak<-0.5?dlRub0(-peak):'0 ₽'}</b><span>${peak<-0.5&&pk?when(pk.day):'платежи покрывают оплаты заказчика'}</span></div>
     <div><small>Деньги вернутся</small><b>${when(c.Tend)}</b><span>последняя оплата заказчика</span></div>

@@ -17,9 +17,9 @@ import urllib.parse
 from datetime import datetime
 
 from cbr import cbr_key_rate, cbr_rates
-from config import (APP_DIR, UPDATE_DIR, DATA_DIR, DOCS_DIR, DOCS_SHARE, IMG_DIR, MIME, ROOT, SERVER_MODE,
+from config import (APP_DIR, BadRequest, UPDATE_DIR, DATA_DIR, DOCS_DIR, DOCS_SHARE, IMG_DIR, MIME, ROOT, SERVER_MODE,
                     docs_path, read_text, safe_dir, safe_file, safe_id, store, write_bytes)
-from desktop import open_file, open_folder, show_in_folder
+from desktop import DesktopError, open_file, open_folder, show_in_folder
 from equipment_types import load_types, save_user_types, types_builtin_path
 import admin
 from storage import Conflict, with_rev
@@ -35,6 +35,7 @@ from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_te
 
 # ---------------------------------------------------------------- общие ресурсы сервера
 _CP = None
+_LOGOS = {}          # логотипы производителей: {rev — версия каталога, text — готовый ответ}
 
 
 def cp():
@@ -68,6 +69,9 @@ def web_file(rel):
     return f if os.path.isfile(f) and os.path.splitext(f)[1].lower() in WEB_TYPES else None
 
 
+WIN_RESERVED = {'CON', 'PRN', 'AUX', 'NUL'} | {'COM%d' % i for i in range(1, 10)} | {'LPT%d' % i for i in range(1, 10)}
+
+
 def pdf_of(docx):
     """PDF рядом с .docx КП, с тем же именем."""
     return os.path.splitext(docx)[0] + '.pdf'
@@ -98,8 +102,6 @@ def cbr_saved(key, fetch):
 PASS = object()      # обработчик: «не мой случай» — ищем следующий маршрут
 
 
-class BadRequest(ValueError):
-    """Неверный запрос (не JSON, не объект) — ответ 400 с понятным текстом вместо внутренней ошибки."""
 _ROUTES = []         # (регулярное выражение, методы или None, класс, имя метода) — в порядке объявления
 
 
@@ -171,6 +173,10 @@ class Router:
                 res = getattr(c, attr)(*mt.groups())
             except BadRequest as e:
                 return h.send(400, 'text/plain; charset=utf-8', str(e))
+            except DesktopError as e:
+                return h.send(422, 'text/plain; charset=utf-8', str(e))
+            except (UnicodeDecodeError, json.JSONDecodeError):      # тело запроса — не текст UTF-8 или не JSON
+                return h.send(400, 'text/plain; charset=utf-8', 'Неверный запрос: нужен JSON в кодировке UTF-8')
             if res is not PASS:
                 return res
         return h.not_found()
@@ -201,7 +207,11 @@ class TypesController(Controller):
         if self.q.get('builtin') == '1':
             return self.send_json(read_text(types_builtin_path()))
         if self.m == 'PUT':
-            save_user_types(self.body())
+            self.json_body()
+            try:
+                save_user_types(self.body())
+            except ValueError as e:
+                raise BadRequest(str(e))
             return self.send_json(load_types())
         text = json.dumps(load_types(), ensure_ascii=False)
         return self.send_cached('types-' + hashlib.md5(text.encode('utf-8')).hexdigest()[:16], lambda: text)
@@ -253,6 +263,7 @@ class PartiesController(Controller):
     @route(r'/api/integrations')
     def keys(self):
         if self.m == 'PUT':
+            self.json_body()
             return self.send_json(cp().save_keys(self.body()))
         return self.send_json(cp().keys_public())
 
@@ -261,7 +272,7 @@ class PartiesController(Controller):
         # справочник не грузится целиком: последние использованные или найденные по названию / ИНН / адресу
         q = self.q
         try:
-            limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, int(q.get('offset') or 0))
+            limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, min(int(q.get('offset') or 0), 10 ** 9))
         except ValueError:
             limit, offset = 50, 0
         res = store().clients_search(q.get('q', ''), limit, offset)
@@ -270,9 +281,11 @@ class PartiesController(Controller):
 
     @route(r'/api/clients/([^/]+)', ('GET', 'PUT'))
     def client(self, cid):
+        cid = safe_id(cid)
         if self.m == 'GET':
             c = store().client_get(cid, rev=True)
             return self.send_json(c) if c else self.text(404, 'Клиент не найден')
+        self.json_body()            # не объект JSON — 400
         try:
             return self.send_json(cp().save_client(cid, self.body(), admin.actor(self.h)[1], self.base_rev()))
         except Conflict as e:
@@ -339,6 +352,9 @@ class TemplatesController(Controller):
 class SystemController(Controller):
     @route(r'/api/ping')
     def ping(self):
+        base = {'ok': True, 'local': self.is_local(), 'mode': 'server' if SERVER_MODE else 'local', 'host': socket.gethostname()}
+        if getattr(self.h, '_kp_login', False) and not self.h._kp_user and admin.session(self.h, touch=False) is None:
+            return self.send_json(base)        # до входа — без папок, путей и состава базы
         return self.send_json({'ok': True, 'dataDir': DATA_DIR, 'docsDir': DOCS_DIR, 'local': self.is_local(),
                                'mode': 'server' if SERVER_MODE else 'local', 'docsShare': DOCS_SHARE,
                                'host': socket.gethostname(), 'port': self.server.server_address[1], 'items': store().catalog_count(),
@@ -402,8 +418,15 @@ class ManagersController(Controller):
 
     @route(r'/api/managers/([^/]+)', 'PUT')
     def manager(self, mid):
+        mid, d = safe_id(mid), self.json_body()
+        # при входе по паролю менеджер меняет только свою карточку (контакты в его КП); остальные — администратор
+        if admin.login_on(self.h) and (getattr(self.h, '_kp_user', None) or {}).get('id') != mid:
+            return self.text(403, 'Карточку другого менеджера меняет администратор')
+        for k in ('name', 'position', 'phone', 'ext', 'mobile', 'email'):
+            if k in d and not isinstance(d[k], str):
+                d[k] = '' if d[k] is None else str(d[k])
         try:
-            return self.send_json(store().manager_put(safe_id(mid), self.body().decode('utf-8'), admin.actor(self.h)[1], self.base_rev()))
+            return self.send_json(store().manager_put(mid, json.dumps(d, ensure_ascii=False), admin.actor(self.h)[1], self.base_rev()))
         except Conflict as e:
             return self.conflict(e)
         except ValueError as e:         # дубль другого менеджера (ФИО, e-mail, мобильный, добавочный)
@@ -469,6 +492,8 @@ class KpController(Controller):
 
     @route(r'/api/kp/([^/]+)/versions/(\d+)', 'GET')
     def version(self, kid, n):
+        if len(n) > 9:
+            return self.not_found()
         v = store().kp_version_state(safe_id(kid), n)
         return self.send_json(admin.kp_out(self.h, 'state', v)) if v else self.not_found()
 
@@ -476,6 +501,13 @@ class KpController(Controller):
     def docx_put(self, kid):
         kid, q = safe_id(kid), self.q
         name = safe_file(q.get('name'))
+        # только документ Word: имя — с расширением .docx (не .exe, .bat, .lnk…), содержимое — архив docx (PK…)
+        if not name.lower().endswith('.docx'):
+            name = os.path.splitext(name)[0].rstrip('. ') + '.docx'
+        if os.path.splitext(name)[0].split('.')[0].strip().upper() in WIN_RESERVED:
+            name = '_' + name
+        if self.body()[:4] != b'PK\x03\x04':
+            return self.text(400, 'Файл КП должен быть документом Word (.docx)')
         sub = safe_dir(q.get('dir'))            # папка менеджера (фамилия)
         rel = (sub + '/' + name) if sub else name
         # имя занято файлом другого КП (два КП по одной закупке: «4567892 КП») — «4567892 КП (2)», «(3)»…
@@ -562,6 +594,8 @@ class KpController(Controller):
         f = docs_path(rel.strip())
         if not os.path.isfile(f):
             return self.not_found('Файл КП был перемещён или удалён')
+        if os.path.splitext(f)[1].lower() not in ('.docx', '.pdf'):    # запускать на компьютере можно только документ
+            return self.text(400, 'Это не документ Word — файл не открывается')
         if how == 'open':
             open_file(f)
         else:
@@ -592,8 +626,12 @@ class ToolsController(Controller):
     # картинки карточек: логотипы производителей из каталога; картинка, перетащенная со страницы сайта
     @route(r'/api/logos', 'GET')
     def logos(self):
+        # логотипы зависят только от каталога: расчёт (~0,5 с на большом каталоге) — один раз на его версию
         import imgfetch
-        return self.send_json(imgfetch.logos(store()))
+        rev = store().data_rev('catalog')
+        if _LOGOS.get('rev') != rev:
+            _LOGOS.update(rev=rev, text=json.dumps(imgfetch.logos(store()), ensure_ascii=False))
+        return self.send_cached('logos-' + rev, lambda: _LOGOS['text'])
 
     @route(r'/api/imgfetch', 'GET')
     def imgfetch(self):

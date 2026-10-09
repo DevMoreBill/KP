@@ -111,9 +111,13 @@ IMG_DIR = os.path.join(DATA_DIR, 'img')
 
 
 
+class BadRequest(ValueError):
+    """Неверный запрос (не JSON, не объект, недопустимый идентификатор) — ответ 400 с понятным текстом вместо внутренней ошибки."""
+
+
 def safe_id(s):
     if not SAFE_ID.match(s or ''):
-        raise ValueError('Недопустимый идентификатор: %s' % s)
+        raise BadRequest('Недопустимый идентификатор')
     return s
 
 

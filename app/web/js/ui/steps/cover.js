@@ -25,6 +25,7 @@ function stepCover(){
   ${multi?'':`<details class="more"${c.kpis.some(k=>k.num)?'':' open'}><summary>Ключевые параметры на титуле <span class="muted">${c.kpis.filter(k=>k.num).length} из 4</span></summary>
     <div class="kpgrid">${kp}</div>
     </details>`}
+  <div class="cv-opts"><button class="sw" type="button" role="switch" aria-checked="${S.showClients}" data-a="clients"><i></i>Страница «Наши клиенты» в КП</button></div>
   </section>`;
 }
 

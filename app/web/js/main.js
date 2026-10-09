@@ -14,6 +14,7 @@
   // справочники — параллельно (каталогу нужны только категории); списки и выборы администратора — до первой отрисовки
   await loadTypes(); await Promise.all([loadClients(), loadManagers(), loadTemplates(), refreshCat(), LISTS.load()]);
   loadLogos(); loadAppVersion(); uitLoad(); renderForm(); authMenu();
+  (window.requestIdleCallback||setTimeout)(()=>CW.prewarm());     // поиск в каталоге — готов заранее
   if (!showMigrationNotice(SRV.info.migrations) && !S.items.length && catCache.length) openCatalog({});
 })();
 

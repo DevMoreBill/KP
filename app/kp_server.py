@@ -24,7 +24,7 @@ import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from config import (ALLOWED_HOSTS, APP_TITLE, BASE_PORT, DATA_DIR, DOCS_DIR, IMG_DIR, SERVER_MODE, message_box, store)
+from config import (ALLOWED_HOSTS, APP_TITLE, BadRequest, BASE_PORT, DATA_DIR, DOCS_DIR, IMG_DIR, SERVER_MODE, message_box, store)
 import catalog_migrate
 from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
 from equipment_types import load_types, load_types_builtin
@@ -42,6 +42,12 @@ MAX_BODY = 300 * 1024 * 1024    # самый большой запрос — з�
 
 class Handler(BaseHTTPRequestHandler):
     server_version = 'KP/1.0'
+    sys_version = ''        # в заголовке Server — без версии Python
+    # HTTP/1.1: соединение держится между запросами (60 файлов интерфейса — без новых подключений), а браузер кэширует
+    # ответы API с меткой версии (ETag) и получает «не изменилось» (304) вместо повторной загрузки каталога.
+    # Ответы — только через send() / send_file() (всегда с Content-Length).
+    protocol_version = 'HTTP/1.1'
+    timeout = 120           # простаивающее соединение закрывается
 
     def log_message(self, fmt, *args):  # у EXE без консоли нет stderr
         pass
@@ -174,7 +180,21 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         self.dispatch()
 
+    # данные одного запроса: при HTTP/1.1 обработчик обслуживает несколько запросов соединения подряд — перед каждым
+    # они сбрасываются (тело, вошедший менеджер, код ответа), иначе следующий запрос увидел бы данные предыдущего
+    PER_REQUEST = ('_body', '_kp_user', '_kp_login', '_code')
+
     def dispatch(self):
+        for a in self.PER_REQUEST:
+            self.__dict__.pop(a, None)
+        try:
+            self._dispatch()
+        finally:
+            # тело запроса не прочитано (отказ до разбора) — его остаток нельзя принять за следующий запрос
+            if not hasattr(self, '_body') and self.body_size() > 0:
+                self.close_connection = True
+
+    def _dispatch(self):
         try:
             path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
             m = 'GET' if self.command == 'HEAD' else self.command
@@ -188,13 +208,18 @@ class Handler(BaseHTTPRequestHandler):
             if self.body_size() > MAX_BODY:
                 self.close_connection = True
                 return self.send(413, 'text/plain; charset=utf-8', 'Слишком большой запрос')
-            # права, модерация и журнал действий (admin.py): True — ответ уже отправлен, функция — записать в журнал
-            hook = admin.guard(self, store(), m, path) if path.startswith('/api/') else None
+            # права, модерация и журнал действий (admin.py), вход по паролю — и для шаблонов и картинок: True — ответ уже отправлен, функция — записать в журнал
+            hook = admin.guard(self, store(), m, path) if path.startswith(('/api/', '/tpl/', '/img/')) else None
             if hook is True:
                 return
             self.route()
             if callable(hook) and getattr(self, '_code', 500) < 400:
                 hook()
+        except (BadRequest, UnicodeDecodeError, json.JSONDecodeError) as e:      # недопустимый идентификатор, испорченное тело — 400
+            try:
+                self.send(400, 'text/plain; charset=utf-8', str(e) if isinstance(e, BadRequest) else 'Неверный запрос: нужен JSON в кодировке UTF-8')
+            except Exception:
+                pass
         except Exception as e:
             # подробности — в журнал сервера; пользователю — без путей и внутренностей
             import traceback

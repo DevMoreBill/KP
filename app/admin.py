@@ -28,6 +28,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 
 import auth_users
+from config import BadRequest
 from storage import Conflict
 
 IDLE_SECONDS = 15 * 60
@@ -325,7 +326,7 @@ def econ_rub(r):
 def history_page(h, store, q):
     """Журнал КП постранично: поиск и автор — в базе; итоги (сумма, прибыль) — по всему отбору."""
     try:
-        limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, int(q.get('offset') or 0))
+        limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, min(int(q.get('offset') or 0), 10 ** 9))
     except ValueError:
         limit, offset = 50, 0
     metas = store.kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', ''))
@@ -376,6 +377,15 @@ def _loads(t):
         return None
 
 
+def _body_obj(h):
+    """Тело запроса — объект JSON или {} (не объект — маршрут сам ответит 400, журнал не падает)."""
+    try:
+        d = _loads(h.body().decode('utf-8'))
+    except UnicodeDecodeError:
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
 # ---------------------------------------------------------------- модерация
 def moderation(store):
     return ((store.kv_get('settings') or {}).get('productEditModeration') or {'enabled': False})
@@ -389,8 +399,13 @@ def _set_moderation(store, enabled, by):
 
 def _put_product(h, store, cid, admin):
     """Единая точка сохранения товара: модерация (черновик) или сразу в каталог; всё — в журнал."""
-    text = h.body().decode('utf-8')
-    after = json.loads(text)
+    after = _body_obj(h)
+    if not after or not isinstance(after.get('attrs', {}), dict):
+        return h.send(400, 'text/plain; charset=utf-8', 'Неверный запрос: нужна карточка оборудования (объект JSON)')
+    for k in ('name', 'model', 'desc'):
+        if k in after and not isinstance(after[k], str):
+            after[k] = '' if after[k] is None else str(after[k])
+    text = json.dumps(after, ensure_ascii=False)
     before_text = store.catalog_get(cid)
     before = _loads(before_text)
     if not admin and login_on(h):
@@ -444,6 +459,9 @@ def guard(h, store, m, path):
         h.send(403, 'text/plain; charset=utf-8', 'Нет права менять категории оборудования — обратитесь к администратору')
         return True
     r = re.match(r'^/api/catalog/([A-Za-z0-9_-]{1,64})$', path)
+    if r and m == 'PUT' and r.group(1) in ('sources', 'pending'):      # служебные адреса каталога — не карточки
+        h.send(400, 'text/plain; charset=utf-8', 'Недопустимый идентификатор')
+        return True
     if r and m == 'PUT':
         _put_product(h, store, r.group(1), is_admin(h))
         return True
@@ -476,7 +494,7 @@ def guard(h, store, m, path):
             log(h, store, 'edit_settings', 'settings', 'uitexts', result='failed')
             h.send(403, 'text/plain; charset=utf-8', DENIED)
             return True
-        n = len(_loads(h.body().decode('utf-8')) or {})
+        n = len(_body_obj(h))
         return lambda: log(h, store, 'edit_settings', 'settings', 'uitexts', None, {'texts': n}, admin=True)
     # только администратор: шаблоны КП, ключи API
     tpl = re.match(r'^/api/templates/([A-Za-z0-9_-]+)/(file|restore|copy|reset|delete|open)$', path)
@@ -486,7 +504,7 @@ def guard(h, store, m, path):
             h.send(403, 'text/plain; charset=utf-8', DENIED)
             return True
         if path == '/api/integrations':
-            keys = list((_loads(h.body().decode('utf-8')) or {}).keys())
+            keys = list(_body_obj(h).keys())
             return lambda: log(h, store, 'edit_settings', 'settings', 'integrations', None, {'keys': keys}, admin=True)
         if tpl.group(2) != 'open':
             info = {'action': tpl.group(2), 'file': urllib.parse.parse_qs(urllib.parse.urlsplit(h.path).query).get('name', [''])[0]}
@@ -496,7 +514,7 @@ def guard(h, store, m, path):
     r = re.match(r'^/api/kp/([A-Za-z0-9_-]+)/meta$', path)
     if r and m == 'PUT':
         old = _loads(store.kp_get(r.group(1), 'meta'))
-        new = _loads(h.body().decode('utf-8')) or {}
+        new = _body_obj(h)
         keep = ('number', 'client', 'sum', 'positions', 'manager', 'file')
         b = {k: old.get(k) for k in keep} if old else None
         a = {k: new.get(k) for k in keep}
@@ -504,29 +522,29 @@ def guard(h, store, m, path):
     r = re.match(r'^/api/managers/([A-Za-z0-9_-]+)$', path)
     if r and m == 'PUT':
         old = next((x for x in json.loads(store.managers_list()) if x.get('id') == r.group(1)), None)
-        new = _loads(h.body().decode('utf-8')) or {}
+        new = _body_obj(h)
         b, a = diff(old, dict(new, id=r.group(1)), ('updatedAt',))
         return (lambda: log(h, store, 'edit_manager' if old else 'create_manager', 'manager', r.group(1), b if old else None, a)) if a else None
     r = re.match(r'^/api/clients/([A-Za-z0-9_-]+)$', path)
     if r and m == 'PUT':
         old = store.client_get(r.group(1))
-        new = _loads(h.body().decode('utf-8')) or {}
+        new = _body_obj(h)
         b, a = diff(old, new, ('updated', 'updatedAt', 'kpCount', 'lastKp'))
         return (lambda: log(h, store, 'edit_client' if old else 'create_client', 'client', r.group(1), b if old else None, a)) if a else None
     r = re.match(r'^/api/suppliers/([A-Za-z0-9_-]+)$', path)
     if r and m == 'PUT':
         old = store.supplier_get(r.group(1))
-        new = _loads(h.body().decode('utf-8')) or {}
+        new = _body_obj(h)
         b, a = diff(old, dict(new, id=r.group(1)), ('updatedAt',))
         return (lambda: log(h, store, 'edit_supplier' if old else 'create_supplier', 'supplier', r.group(1), b if old else None, a)) if a else None
     if path == '/api/customs' and m == 'PUT':
-        new = _loads(h.body().decode('utf-8')) or {}
+        new = _body_obj(h)
         old = store.customs_all().get(new.get('key') or '')
         return lambda: log(h, store, 'edit_customs', 'customs', new.get('key'), old and {k: old.get(k) for k in ('code', 'duty')},
                            {k: new.get(k) for k in ('code', 'duty')})
     if path == '/api/types' and m == 'PUT':
         stored = {t.get('id'): t for t in (store.kv_get('types') or {}).get('types', []) if isinstance(t, dict)}
-        new = {t.get('id') for t in (_loads(h.body().decode('utf-8')) or {}).get('types', [])}
+        new = {t.get('id') for t in (_body_obj(h).get('types') or []) if isinstance(t, dict)}
         try:
             from equipment_types import load_types_builtin
             builtin = {t.get('id'): t for t in load_types_builtin() if isinstance(t, dict)}
@@ -539,7 +557,7 @@ def guard(h, store, m, path):
             h.send(403, 'text/plain; charset=utf-8', DENIED)
             return True
         return lambda: log(h, store, 'edit_types', 'types', 'user_types', None,
-                           {'types': [t.get('name') for t in (_loads(h.body().decode('utf-8')) or {}).get('types', [])]})
+                           {'types': [t.get('name') for t in (_body_obj(h).get('types') or []) if isinstance(t, dict)]})
     return None
 
 
@@ -554,7 +572,7 @@ def auth_api(h, store, m, sub):
         ip = _ip(h)
         if _locked(ip):
             return h.send(429, 'text/plain; charset=utf-8', 'Слишком много неверных попыток — подождите 10 минут')
-        d = _loads(h.body().decode('utf-8')) or {}
+        d = _body_obj(h)
         mid, rec = auth_users.find_by_login(store, d.get('login'))
         if not mid or rec.get('blocked') or not rec.get('pw') or not verify_password(d.get('password') or '', rec['pw']):
             _fail(ip)
@@ -589,7 +607,19 @@ class AdminApi:
         return self.h.send(code, 'text/plain; charset=utf-8', text)
 
     def data(self):
-        return _loads(self.h.body().decode('utf-8')) or {}
+        """Тело запроса — объект JSON (пустое тело — {}); иначе 400 «Неверный запрос»."""
+        raw = self.h.body()
+        if not raw.strip():
+            return {}
+        try:
+            d = json.loads(raw.decode('utf-8'))
+        except ValueError:
+            raise BadRequest('Неверный запрос: нужен JSON')
+        if d is None:
+            return {}
+        if not isinstance(d, dict):
+            raise BadRequest('Неверный запрос: нужен объект JSON')
+        return d
 
     def log(self, *a, **k):
         log(self.h, self.st, *a, admin=True, **k)
@@ -845,7 +875,7 @@ class AdminApi:
         if sub == 'audit/filters':
             return self.ok({'users': st.audit_distinct('user_name'), 'actions': st.audit_distinct('action'),
                             'entities': st.audit_distinct('entity_type')})
-        r = re.match(r'^audit/(\d+)/rollback$', sub)
+        r = re.match(r'^audit/(\d{1,9})/rollback$', sub)
         if r and m == 'POST':
             return self.rollback(int(r.group(1)))
         if sub == 'feeds' or sub.startswith('feeds/'):          # товарные фиды поставщиков (feeds.py)
@@ -857,7 +887,7 @@ class AdminApi:
             return self.delete(self.data())
         if sub == 'trash':
             return self.ok({'items': st.trash_list(), 'days': TRASH_DAYS})
-        r = re.match(r'^trash/(\d+)/restore$', sub)
+        r = re.match(r'^trash/(\d{1,9})/restore$', sub)
         if r and m == 'POST':
             etype, eid = st.trash_restore(int(r.group(1)))
             self.log('restore', etype, eid)
@@ -868,7 +898,7 @@ class AdminApi:
             return self.ok({'settings': moderation(st), 'pending': self.pending_list('pending'),
                             'history': self.pending_list('approved')[:30] + self.pending_list('rejected')[:30],
                             'archived': self.pending_list('archived')})
-        r = re.match(r'^pending/(\d+)$', sub)
+        r = re.match(r'^pending/(\d{1,9})$', sub)
         if r:
             p = st.pending_get(int(r.group(1)))
             if not p:
@@ -877,7 +907,7 @@ class AdminApi:
             p['current'] = st.catalog_get(p['productId']) is not None
             p.pop('before'), p.pop('after')
             return self.ok(p)
-        r = re.match(r'^pending/(\d+)/(approve|reject)$', sub)
+        r = re.match(r'^pending/(\d{1,9})/(approve|reject)$', sub)
         if r and m == 'POST':
             return self.ok(self.review(int(r.group(1)), r.group(2), self.data().get('reason') or ''))
         if sub == 'pending/approve-all' and m == 'POST':

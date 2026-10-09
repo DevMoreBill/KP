@@ -838,6 +838,7 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dlo-bar em.r{transform:translateX(calc(-100% - 6px));top:auto;bottom:-14px}
 .dlo-pay.r{transform:translateX(-100%)}
 .dlo-tk.r{transform:translateX(-100%)}
+.dlo-tk.lo{top:13px}
 
 /* сборка станции у производителя контейнера */
 .dlo-bar i.asm,.dlo-lg i.asm{background:var(--warn)}
