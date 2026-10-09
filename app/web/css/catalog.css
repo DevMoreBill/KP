@@ -20,7 +20,7 @@
 .kw{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .cw-mn .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .tag{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--ink)}
-.tag.kwt{background:var(--navy);color:#fff}
+.tag.kwt{background:var(--navy);color:var(--on-navy)}
 @media (max-width:1000px){
   .attrs{grid-template-columns:1fr 1fr}
   .opt{grid-template-columns:1fr 64px 1fr 32px}.opt .s{display:none}
@@ -66,7 +66,7 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .cw-cat{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;border:0;background:none;text-align:left;padding:6px 10px 6px 24px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--ink);line-height:1.3}
 .cw-cat i{font-style:normal;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .cw-cat:hover{background:var(--soft)}
-.cw-cat.on{background:var(--navy);color:#fff}
+.cw-cat.on{background:var(--navy);color:var(--on-navy)}
 .cw-cat.on i{color:rgba(255,255,255,.8)}
 .cw-cat.all{font-weight:600;padding-left:10px}
 .cw-cat.zero:not(.on){color:var(--muted)}
@@ -168,7 +168,7 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .catwin.tiny .cw-pr{display:none}
 .catwin.tiny .cw-h .btn{padding:8px 10px}
 /* карточка позиции каталога (правка из окна каталога) */
-.ed-cat{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--navy);border-radius:6px;padding:3px 7px;margin-right:10px;vertical-align:2px}
+.ed-cat{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--on-navy);background:var(--navy);border-radius:6px;padding:3px 7px;margin-right:10px;vertical-align:2px}
 .cprice{display:grid;grid-template-columns:1.4fr .8fr 1.4fr .8fr;gap:12px}
 @media (max-width:700px){ .cprice{grid-template-columns:1fr 1fr} }
 .cw-h .btn{white-space:nowrap}
@@ -261,7 +261,7 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .cw-chips:empty{display:none}
 .cw-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--navy);background:var(--soft);color:var(--navy);border-radius:999px;padding:3px 6px 3px 11px;font:600 12.5px/1.4 inherit;cursor:pointer;max-width:100%}
 .cw-chip i{font-style:normal;display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;font-size:10px}
-.cw-chip:hover i{background:var(--navy);color:#fff}
+.cw-chip:hover i{background:var(--navy);color:var(--on-navy)}
 .cw-chip:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
 .cw-clr{border:0;background:none;color:var(--muted);font:600 12.5px/1 inherit;cursor:pointer;padding:4px 6px;text-decoration:underline}
 .cw-clr:hover{color:var(--navy)}
@@ -270,7 +270,7 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .cw-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px;margin:0 2px 12px;border-radius:10px;background:var(--soft);position:sticky;top:-12px;z-index:1}
 .cw-tabs button{border:0;background:none;border-radius:8px;padding:7px 8px;font:600 13.5px/1.2 inherit;color:var(--muted);cursor:pointer}
 .cw-tabs button.on{background:var(--card);color:var(--navy);box-shadow:0 1px 3px rgba(0,0,0,.12)}
-.cw-tabs button b{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;margin-left:3px;border-radius:999px;background:var(--navy);color:#fff;font-size:11px}
+.cw-tabs button b{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;margin-left:3px;border-radius:999px;background:var(--navy);color:var(--on-navy);font-size:11px}
 .cw-tabs button:focus-visible{outline:2px solid var(--sky);outline-offset:1px}
 .cw-qcat{display:flex;flex-wrap:wrap;gap:6px}
 .cw-qcat .chip i{font-style:normal;opacity:.7}

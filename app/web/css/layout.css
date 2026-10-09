@@ -17,10 +17,10 @@
 .stp .num{flex:0 0 28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;background:var(--soft);color:var(--navy)}
 .stp .tx{display:flex;flex-direction:column;min-width:0}
 .stp b{font-size:14.5px;font-weight:650}
-.stp.cur{border-color:var(--navy);background:var(--navy);color:#fff}
+.stp.cur{border-color:var(--navy);background:var(--navy);color:var(--on-navy)}
 .stp.cur .num{background:#fff;color:var(--navy)}
 .stp.cur small{color:rgba(255,255,255,.8)}
-.stp.ok .num{background:var(--ok);color:#fff}
+.stp.ok .num{background:var(--ok);color:var(--on-navy)}
 .stp.bad .dot{position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--danger)}
 .stepnav{display:flex;justify-content:space-between;gap:12px;margin:4px 0 28px}
 .stepnav .btn{padding:12px 18px;font-size:15px}
