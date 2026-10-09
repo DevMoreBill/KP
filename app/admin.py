@@ -465,8 +465,8 @@ def guard(h, store, m, path):
         h.send(401, 'text/plain; charset=utf-8', 'Нужно войти в программу: логин и пароль менеджера')
         return True
     # выключенная администратором функция («Настройки → Функции программы») — её адреса закрыты
-    import features
-    off = features.blocked(store, m, path, lambda: (session(h, touch=False) is not None, actor(h, admin=False)[0] or ''))
+    from features import FeatureAccess
+    off = FeatureAccess(store).blocked(m, path, lambda: (session(h, touch=False) is not None, actor(h, admin=False)[0] or ''))
     if off:
         h.send(403, 'text/plain; charset=utf-8', 'Функция «%s» выключена администратором' % off)
         return True
@@ -832,35 +832,36 @@ class AdminApi:
             self.log('edit_access', 'manager', mid, None, info)
             return self.ok({'login': rec.get('login') or '', 'hasPassword': bool(rec.get('pw')), 'perms': auth_users.perms_of(rec), 'blocked': bool(rec.get('blocked'))})
         if sub == 'features':    # функции программы: включить / выключить
-            import features
+            from features import FeatureAccess
+            fa = FeatureAccess(st)
             if m == 'POST':
-                before = features.config(st)
+                before = fa.config()
                 try:
-                    res = features.save(st, self.data().get('values'), me or 'admin')
+                    res = fa.save(self.data().get('values'), me or 'admin')
                 except ValueError as e:
                     return self.err(400, str(e))
                 ch = {k: v for k, v in res.items() if before.get(k) != v}
                 if ch:
                     self.log('edit_settings', 'settings', 'features', {k: before.get(k) for k in ch}, ch)
                 return self.ok({'config': res})
-            return self.ok({'config': features.config(st)})
+            return self.ok({'config': fa.config()})
         if sub == 'mail':        # почта для отправки КП клиентам (SMTP)
-            import kp_track
+            from kp_track import Mailer
             if m == 'POST':
                 try:
-                    res = kp_track.mail_save(st, self.data(), me or 'admin')
+                    res = Mailer(st).save(self.data(), me or 'admin')
                 except ValueError as e:
                     return self.err(400, str(e))
                 self.log('edit_settings', 'settings', 'mail', None, {k: res.get(k) for k in ('host', 'port', 'security', 'login', 'fromEmail')})
                 return self.ok(res)
-            return self.ok(kp_track.mail_public(st))
+            return self.ok(Mailer(st).public())
         if sub == 'mail/test' and m == 'POST':
-            import kp_track
+            from kp_track import Mailer
             try:
-                to = kp_track.addresses(self.data().get('to'))
+                to = Mailer.addresses(self.data().get('to'))
                 if not to:
                     return self.err(400, 'Укажите адрес для проверки')
-                kp_track.send(st, to, [], 'Проверка почты — Конструктор КП', 'Это проверочное письмо: отправка КП по почте настроена.', [], test=True)
+                Mailer(st).send(to, [], 'Проверка почты — Конструктор КП', 'Это проверочное письмо: отправка КП по почте настроена.', [], test=True)
             except ValueError as e:
                 return self.err(400, str(e))
             except RuntimeError as e:

@@ -29,7 +29,8 @@ import logistics_api
 import ai_llm
 import pdf_text
 import defaults
-import kp_track
+from kp_track import DealTrack, Mailer, MailTemplate, ReminderList
+from features import FeatureAccess
 from images import ImageStore
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, list_history, list_templates,
                           open_template_file, put_file, reset_template, restore_history, template_file)
@@ -806,7 +807,7 @@ class TrackController(Controller):
         if not store().kp_get(kid, 'meta'):
             return self.not_found('Сначала сохраните КП')
         try:
-            tr, changed = kp_track.update(store(), kid, self.json_body(), admin.actor(self.h)[1])
+            tr, changed = DealTrack(store()).update(kid, self.json_body(), admin.actor(self.h)[1])
         except ValueError as e:
             raise BadRequest(str(e))
         if changed:
@@ -832,17 +833,20 @@ class TrackController(Controller):
             if author and uid:
                 return author == uid
             return bool(name) and str(m.get('manager') or '').strip().lower() == str(name).strip().lower()
-        items = kp_track.reminders(rows, mine)
+        items = ReminderList().collect(rows, mine)
         return self.send_json({'items': items, 'count': len(items)})
 
     @route(r'/api/features', 'GET')        # какие функции программы включены (для всех; правка — /api/admin/features)
     def features(self):
-        import features
-        return self.send_json(features.get(store(), admin.session(self.h, touch=False) is not None, admin.actor(self.h, admin=False)[0] or ''))
+        return self.send_json(self._features())
+
+    def _features(self):
+        """Функции программы, доступные тому, кто прислал запрос."""
+        return FeatureAccess(store()).for_user(admin.session(self.h, touch=False) is not None, admin.actor(self.h, admin=False)[0] or '')
 
     @route(r'/api/mail/status', 'GET')
     def mail_status(self):
-        return self.send_json({'on': kp_track.mail_on(store())})
+        return self.send_json({'on': Mailer(store()).on()})
 
     def _files(self, kid):
         rel = store().kp_get(kid, 'docx')
@@ -852,12 +856,12 @@ class TrackController(Controller):
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/mailform', 'GET')   # письмо клиенту: адреса и текст по умолчанию
     def mailform(self, kid):
         st, mt = _obj(store().kp_get(kid, 'state')), _obj(store().kp_get(kid, 'meta'))
-        mp = kp_track.mail_public(store())
-        v = kp_track.mail_vars(st, mt, mp.get('fromName') or '')
+        mp = Mailer(store()).public()
+        tpl = MailTemplate(st, mt, mp.get('fromName') or '')
         f = self._files(kid)
         ct = st.get('contact') if isinstance(st.get('contact'), dict) else {}
-        return self.send_json({'on': mp['on'], 'to': str(ct.get('email') or '').strip(), 'cc': v['e-mail'],
-                               'subject': kp_track.fill(mp['subject'], v), 'body': kp_track.fill(mp['body'], v),
+        return self.send_json({'on': mp['on'], 'to': str(ct.get('email') or '').strip(), 'cc': tpl.vars['e-mail'],
+                               'subject': tpl.fill(mp['subject']), 'body': tpl.fill(mp['body']),
                                'word': os.path.basename(f) if f else '', 'pdf': os.path.basename(pdf_of(f)) if f and os.path.isfile(pdf_of(f)) else '',
                                'sent': (store().kp_track_get(kid).get('sent') or [])[-5:]})
 
@@ -865,7 +869,7 @@ class TrackController(Controller):
     def send_kp(self, kid):
         d = self.json_body()
         try:
-            to, cc = kp_track.addresses(d.get('to')), kp_track.addresses(d.get('cc'))
+            to, cc = Mailer.addresses(d.get('to')), Mailer.addresses(d.get('cc'))
         except ValueError as e:
             raise BadRequest(str(e))
         if not to:
@@ -891,11 +895,11 @@ class TrackController(Controller):
         st = _obj(store().kp_get(kid, 'state'))
         reply = str((st.get('manager') or {}).get('email') or '') if isinstance(st.get('manager'), dict) else ''
         try:
-            kp_track.send(store(), to, cc, str(d.get('subject') or '')[:300], str(d.get('body') or '')[:20000], files, reply)
+            Mailer(store()).send(to, cc, str(d.get('subject') or '')[:300], str(d.get('body') or '')[:20000], files, reply)
         except RuntimeError as e:
             admin.log(self.h, store(), 'send_kp', 'kp', kid, None, {'to': to, 'error': str(e)[:200]}, result='failed')
             return self.text(422, str(e))
-        tr = kp_track.mark_sent(store(), kid, to + cc, [x[0] for x in files], admin.actor(self.h)[1])
+        tr = DealTrack(store()).mark_sent(kid, to + cc, [x[0] for x in files], admin.actor(self.h)[1])
         admin.log(self.h, store(), 'send_kp', 'kp', kid, None, {'to': to, 'cc': cc, 'files': [x[0] for x in files]})
         return self.send_json({'ok': True, 'track': tr})
 
@@ -906,8 +910,7 @@ class TrackController(Controller):
         metas = [m for m in store().kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', ''))
                  if d1 <= str(_obj(m).get('date') or '')[:10] <= d2]
         rows = json.loads(admin.history_out(self.h, '[' + ','.join(m for m in metas if _obj(m)) + ']'))
-        import features
-        deal_on = features.get(store(), admin.session(self.h, touch=False) is not None, admin.actor(self.h, admin=False)[0] or '')['deal']   # экономика недоступна — без прибыли
+        deal_on = self._features()['deal']   # экономика недоступна — без прибыли
         for r in rows:
             sr, pr = admin.econ_rub(r)
             r['sumRub'], r['profitRub'] = sr, (pr if deal_on else None)

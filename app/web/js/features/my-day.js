@@ -42,11 +42,11 @@ class MyDay {
     m.d.onclick=async e=>{ const t=e.target;
       if (t.closest('[data-x]')) return m.close();
       const q=t.closest('[data-mdq]'); if (q){ m.close(); const k=q.dataset.mdq;
-        if (k==='new') return newKpDialog(); if (k==='preset') return newKpDialog(); if (k==='journal') return openJournal(); if (k==='catalog') return openCatalog({}); }
+        if (k==='new') return NewKp.open(); if (k==='preset') return NewKp.open(); if (k==='journal') return openJournal(); if (k==='catalog') return openCatalog({}); }
       if (t.closest('[data-mdall]')){ m.close(); return Reminders.open(); }
       if (t.closest('[data-mddr]')){ m.close(); return Drafts.dialog(); }
-      const r=t.closest('[data-mdr]'); if (r){ const x=R[+r.dataset.mdr]; m.close(); return openKpById(x.id).catch(err=>toast('Не открылось: '+err.message)); }
-      const k=t.closest('[data-mdk]'); if (k){ m.close(); return openKpById(k.dataset.mdk).catch(err=>toast('Не открылось: '+err.message)); }
+      const r=t.closest('[data-mdr]'); if (r){ const x=R[+r.dataset.mdr]; m.close(); return KpLoader.byId(x.id).catch(err=>toast('Не открылось: '+err.message)); }
+      const k=t.closest('[data-mdk]'); if (k){ m.close(); return KpLoader.byId(k.dataset.mdk).catch(err=>toast('Не открылось: '+err.message)); }
       const s=t.closest('[data-jst]'); if (s){ const row=K.find(x=>x.id===s.dataset.jst); if (row){ m.close(); KpTrack.open(row); } return; }
       const o=t.closest('[data-dro]'); if (o){ m.close(); return Drafts.open(o.dataset.dro); } };
   }

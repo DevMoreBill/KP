@@ -24,7 +24,7 @@ class KpSaved {
       if (t.closest('[data-x]')) return m.close();
       if (t.closest('[data-a="mailKp"]')) return m.close();          // окно письма открывает общий обработчик
       const b=t.closest('[data-ks]'); if (!b) return; const k=b.dataset.ks;
-      if (k==='new'){ m.close(); return newKpDialog(); }
+      if (k==='new'){ m.close(); return NewKp.open(); }
       if (k==='preset'){ m.close(); return Presets.ask(); }
       if (k==='sent'){ try{ await KpTrack.put(S.kpId, {status:'sent'}); b.disabled=true; b.textContent='✓ Отправлено'; Reminders.load(); toast(`КП № ${S.number}: отправлено`); }catch(err){ toast('Не получилось: '+err.message); } return; }
       if (k==='remind'){ const r=await this.row(); m.close(); return KpTrack.open(r || {id:S.kpId, number:S.number, client:S.client, track:{}}); } });

@@ -141,7 +141,7 @@ document.addEventListener('click', async e=>{
     case 'dmode': { const inp=document.querySelector(`[data-disc="${i}"]`); it.discType=b.dataset.v; if (it.disc) it.disc.type=b.dataset.v;
       const txt=inp?inp.value:''; it._discText=txt; it._discBad=!setDisc(it, txt); if (!it._discBad) delete it._discText; renderForm(); persist(); return; }
     case 'clientsImport': return openClientsImport();
-    case 'toSave': { const L=steps(); if (isMob() && STEP!==L[L.length-1].id){ goStep(L[L.length-1].id); }
+    case 'toSave': { const L=StepList.visible(); if (isMob() && STEP!==L[L.length-1].id){ goStep(L[L.length-1].id); }
       const sd=$('#side'); sd.scrollIntoView({behavior:isMob()?'auto':'smooth'}); sd.classList.add('pulse'); setTimeout(()=>sd.classList.remove('pulse'),1600); return; }
     case 'cbr': return loadCBR();
     case 'journal': return openJournal();
@@ -159,7 +159,7 @@ document.addEventListener('click', async e=>{
 
 $('#btnExit').addEventListener('click', async ()=>{ if(!confirm('Закрыть программу? Несохранённый черновик останется в браузере.')) return; try{ await api('/api/shutdown',{method:'POST'}); }catch(e){} document.body.innerHTML='<p style="padding:40px;font:18px Onest,Arial">Программа закрыта. Эту вкладку можно закрыть.</p>'; });
 
-$('#btnNew').addEventListener('click', ()=>newKpDialog());     // пустое КП, по заготовке или продолжить черновик (features/kp-drafts.js)
+$('#btnNew').addEventListener('click', ()=>NewKp.open());     // пустое КП, по заготовке или продолжить черновик (features/kp-drafts.js)
 
 document.addEventListener('toggle', e=>{ const d=e.target; if (d.dataset && d.dataset.more!=null && S.items[+d.dataset.more]) S.items[+d.dataset.more]._open=d.open; }, true);
 

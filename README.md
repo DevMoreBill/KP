@@ -43,8 +43,8 @@ app/launcher.py           точка входа EXE: подключает обн
 app/version.py            номер версии программы (патч ставится, только если его версия новее)
 app/kp_server.py          HTTP-сервер (HTTP/1.1: приём запросов, доступ, выдача файлов); из исходников запускается напрямую
 app/web_api.py            адреса API: контроллеры по разделам (@route) и маршрутизатор ROUTER
-app/features.py           функции программы: включить / выключить (kv settings.features), закрытие адресов выключенных
-app/kp_track.py           ход сделки по КП: статус, напоминания, срок действия КП, отправка КП по почте (SMTP)
+app/features.py           функции программы (класс FeatureAccess): включить / выключить, кому доступны (kv settings.features), закрытие адресов
+app/kp_track.py           ход сделки по КП: DealTrack (статус, отправки), OfferTerm (срок действия КП), ReminderList, Mailer + MailTemplate (почта SMTP)
 app/imgfetch.py           логотипы производителей из каталога; загрузка картинки, перетащенной с сайта
 app/config.py             настройки и пути (settings.json), база данных store(), общие помощники
 app/data_setup.py         подготовка данных при запуске: папки, стартовый каталог, нумерация
@@ -221,7 +221,7 @@ hours, contact, phone, note}], `contacts`, `makers`, `items` (id позиций 
 
 - **Работа менеджера (3.42):** «Мой день» при запуске (`features/my-day.js`), черновики на сервере и автосохранение,
   заготовки КП (`features/kp-drafts.js`), цены позиции в прошлых КП (`PriceHist` в `features/pricing.js`), окно «КП сохранено»
-  (`features/kp-saved.js`), карточка клиента (`features/client-card.js`), шаг «Менеджер» строкой (`mgrLine()` / `steps()` в `ui/form.js`).
+  (`features/kp-saved.js`), карточка клиента (`features/client-card.js`), шаг «Менеджер» строкой (`StepList` в `ui/form.js`); «Новое КП» — `NewKp`, открыть КП по номеру — `KpLoader`, даты — `KpDate`.
   Каждая — функция программы: включается и выключается, доступ — всем, администратору или выбранным менеджерам.
 
 - **Телефон** (`css/mobile.css`, `js/ui/mobile.js`, Safari iOS и Chrome Android): шапка с кнопкой «Меню» (новое КП, журнал,
@@ -431,8 +431,8 @@ e-mail, мобильный (последние 10 цифр) и добавочн�
 | Неверный запрос | `config.BadRequest` (в т. ч. `safe_id`), испорченное тело (не UTF-8, не JSON) — 400 в `Router.dispatch` и `Handler._dispatch`; `AdminApi.data()` — только объект JSON; `desktop.DesktopError` — 422 «Не удалось открыть» |
 | Файл КП | `PUT /api/kp/<id>/docx`: имя — всегда `.docx` (зарезервированные имена Windows — с «_»), содержимое — архив `PK\x03\x04`; «Открыть» / «Папка» — только `.docx` и `.pdf` |
 | Вход по паролю | `admin.guard` проверяет и `/tpl/`, `/img/`; `/api/ping` до входа — без путей; `PUT /api/managers/<id>` — только своя карточка (администратор — любые) |
-| Ход сделки | `kp_track.py`; столбцы `kp.track` (JSON: status, reason, note, followUp, sent, history), `kp.status`, `kp.follow` — миграция `2027-03-track`; `PUT /api/kp/<id>/track`, `GET /api/reminders`, журнал: `status=`, `funnel`; клиент — `features/kp-track.js` (`KpTrack`, `Reminders`, `MailDlg`), список причин — `LISTS` «kp.lost» |
-| Функции программы | `features.py`: `FEATURES` (ключ → встроенное значение, название), настройка `{on, who: all / admin / users, users}` — `config()`, `allowed()`; `ROUTES` — адреса функции, `blocked()` в `admin.guard` → 403 (кто — сессия администратора или менеджер); `GET /api/features`, `POST /api/admin/features`; клиент — `core/features.js` (`FeatureRegistry`, `FEAT.on(ключ)`, зависимости `needs`), панель — `FeaturesPanel` в `settings-lists.js` |
+| Ход сделки | `kp_track.py`: `DealTrack(store).update / mark_sent`, `OfferTerm.until`, `ReminderList(today).collect`, `Mailer(store)` (settings, public, save, addresses, send), `MailTemplate(state, meta).fill`; столбцы `kp.track` (JSON: status, reason, note, followUp, sent, history), `kp.status`, `kp.follow` — миграция `2027-03-track`; `PUT /api/kp/<id>/track`, `GET /api/reminders`, журнал: `status=`, `funnel`; клиент — `features/kp-track.js` (`KpTrack`, `Reminders`, `MailDlg`), список причин — `LISTS` «kp.lost» |
+| Функции программы | `features.py`: `FEATURES` (ключ → встроенное значение, название), настройка `{on, who: all / admin / users, users}` — `FeatureAccess(store)`: `config()`, `allowed()`, `for_user()`, `save()`, `blocked()`; `ROUTES` — адреса функции, `blocked()` в `admin.guard` → 403 (кто — сессия администратора или менеджер); `GET /api/features`, `POST /api/admin/features`; клиент — `core/features.js` (`FeatureRegistry`, `FEAT.on(ключ)`, зависимости `needs`), панель — `FeaturesPanel` в `settings-lists.js` |
 | Черновики и заготовки | таблица `drafts` (миграция `2027-04-drafts`: kind draft / preset, owner, title, client, kp, positions, sum, cur, updated, state); `DraftsController`: `GET/PUT /api/drafts/<id>`, `POST …/delete` (только владелец или администратор, у владельца — 40 последних), то же `/api/presets` (видны всем); клиент — `Drafts` (отпечаток состояния `sig`, `pending`, `stash` перед заменой КП, `saved` после сохранения), `Presets`, `newKpDialog()` |
 | Карточка клиента | `ClientCardController`: `GET /api/clientcard?id&inn&name` — клиент из справочника, КП через `admin.history_page` (права журнала, чужая экономика скрыта), итоги по статусам; `POST /api/clientcard/note` — заметки в `clients.doc.notes` (обычное сохранение клиента в `counterparty.save_client` их переносит) |
 | Тёмная тема | `--on-navy` в `base.css` — текст на заливке navy / ok / danger (белый в светлой теме, тёмный в тёмной); цвета статусов КП — `--st-*` в `track.css` |
@@ -603,6 +603,17 @@ widthCm, align}`). Свободное размещение: свои карти�
 
 Курсы ЦБ (`/api/cbr`) и ключевая ставка (`/api/cbr/keyrate`): удачный ответ сохраняется в базе (`kv`: `cbr_last`,
 `keyrate_last`); если ЦБ недоступен — отдаётся сохранённый с `stale: true`.
+
+## Планы (отложено)
+
+**Счета, договоры и спецификации с 1С** — обсуждено, к внедрению позже. Исходные условия: счета и их номера создаются в 1С;
+с частью клиентов уже заключены договоры, и по ним подписываются спецификации по установленной форме.
+Предложение в три шага: (1) договоры клиента в карточке клиента и «Спецификация к договору» из сохранённого КП
+(номер и дата договора, следующий номер спецификации, позиции, условия; для клиентов без договора — типовой договор);
+(2) номер и дата счёта 1С в КП при статусе «Выиграно»; (3) обмен с 1С (HTTP-сервис, файл обмена CommerceML / Excel или
+общая папка): заказ в 1С → счёт → номер и оплата обратно в КП. Нужно от заказчика: конфигурация и версия 1С, есть ли
+HTTP-сервисы; образцы формы спецификации и типового договора; правило нумерации спецификаций; как связать номенклатуру
+каталога с 1С; бывает ли несколько счетов на одно КП.
 
 ## API (для справки)
 

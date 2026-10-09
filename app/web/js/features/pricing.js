@@ -21,7 +21,7 @@ class PriceHist {
     const c=this.doc(x), L=this.rows(c); if (!L.length) return '';
     const p=L[0], n=Math.max(L.length, (c.pricesCount||0)-((c.prices||[]).length-L.length)), i=S.items.indexOf(x);
     const same=L.filter(q=>(q.cur||'RUB')===(p.cur||'RUB')).map(q=>q.price), lo=Math.min(...same), hi=Math.max(...same);
-    return `<span class="ph-h">В прошлых КП: <b>${this.fmt(p)}</b> — ${p.number?'№ '+esc(p.number)+', ':''}${esc(p.client||'')}${p.date?', '+esc(ddmm(p.date)):''}${same.length>1&&lo!==hi?` · от ${money(lo)} до ${money(hi)}`:''}
+    return `<span class="ph-h">В прошлых КП: <b>${this.fmt(p)}</b> — ${p.number?'№ '+esc(p.number)+', ':''}${esc(p.client||'')}${p.date?', '+esc(KpDate.ddmm(p.date)):''}${same.length>1&&lo!==hi?` · от ${money(lo)} до ${money(hi)}`:''}
       ${i>=0?`<button class="lnk" type="button" data-a="priceHist" data-i="${i}">${n>1?'все '+n:'подробнее'}</button>`:''}</span>`;
   }
   static async open(i){
