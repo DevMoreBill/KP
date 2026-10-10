@@ -26,7 +26,7 @@ function openMobileMenu(){
       ${it('preview','▤','Предпросмотр КП','Документ целиком')}
       ${dealAllowed()?it('deal','₽','Экономика сделки','Прибыль, финансирование, Excel'):''}
       ${it('help','?','Руководство','Как пользоваться, история версий')}
-      <hr>${it('theme',dark?'☀':'☾',dark?'Светлая тема':'Тёмная тема','')}
+      <hr>${it('prefs','☺','Мои настройки','Тема, стартовый экран, мои условия, подпись в письмах')}${it('theme',dark?'☀':'☾',dark?'Светлая тема':'Тёмная тема','')}
       ${it('settings','⚙','Настройки','Для администратора')}${ADMIN.on?it('uitexts','✎','Тексты интерфейса','Правка надписей и подсказок'):''}</div>`;
   d.onclick=e=>{ const b=e.target.closest('[data-mm],[data-close]'); if (!b){ if (e.target===d) d.close(); return; }
     d.close(); const k=b.dataset.mm;
@@ -40,6 +40,7 @@ function openMobileMenu(){
     else if (k==='deal') openDeal();
     else if (k==='help') openHelp();
     else if (k==='theme') $('#btnTheme').click();
+    else if (k==='prefs') MyPrefs.open();
     else if (k==='settings') openSettings(); };
   d.showModal();
 }

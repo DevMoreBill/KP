@@ -118,6 +118,7 @@ class MailDlg {
     let f; try{ f=await api(`/api/kp/${encodeURIComponent(id)}/mailform`); }catch(e){ return toast('Не удалось подготовить письмо: '+e.message); }
     if (!f.on) return toast('Почта не настроена — администратор: «Настройки → Почта»');
     if (!f.word) return toast('Файл КП не найден — сохраните КП');
+    f=MyPrefs.mail(f);         // подпись и копия себе — из «Моих настроек»
     const m=new Modal(`<div class="dlg-h"><h3>Отправить КП № ${esc(number)} клиенту</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <label class="f"><span>Кому *</span><input type="text" id="mlTo" value="${esc(f.to)}" placeholder="client@company.ru — несколько через запятую" autocomplete="off"></label>
       <label class="f"><span>Копия</span><input type="text" id="mlCc" value="${esc(f.cc)}" autocomplete="off"></label>

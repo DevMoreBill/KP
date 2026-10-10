@@ -15,7 +15,8 @@ function mgrRemember(id){ try{ if (id) localStorage.setItem('kp.managerId', id);
 function meId(){ if (typeof AUTH!=='undefined' && AUTH.enabled && AUTH.user) return AUTH.user.id;
   try{ return localStorage.getItem('kp.me') || localStorage.getItem('kp.managerId') || ''; }catch(e){ return ''; } }
 
-function setMe(id){ const was=meId(); try{ if (id) localStorage.setItem('kp.me', id); }catch(e){} if (id && id!==was && typeof FEAT!=='undefined') FEAT.refresh(); }
+function setMe(id){ const was=meId(); try{ if (id) localStorage.setItem('kp.me', id); }catch(e){} if (id && id!==was && typeof FEAT!=='undefined') FEAT.refresh();
+  if (id && id!==was && typeof MyPrefs!=='undefined') MyPrefs.load(); }
 
 function meName(){ const m=MGRS.find(x=>x.id===meId()); return m ? m.name : ''; }
 

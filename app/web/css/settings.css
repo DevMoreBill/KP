@@ -419,3 +419,6 @@ dialog.st-confirm:has(.sh-t){width:min(820px,calc(100vw - 32px));max-width:none}
 .mob .cn-t,.mob .cn-t tbody,.mob .cn-t tr,.mob .cn-t td,.mob .ch-t,.mob .ch-t tbody,.mob .ch-t tr,.mob .ch-t td,.mob .sh-t,.mob .sh-t tbody,.mob .sh-t tr,.mob .sh-t td{display:block;width:auto!important;max-width:none}
 .mob .ch-t thead,.mob .sh-t thead{display:none}
 .mob .ch-t td[data-l]::before,.mob .sh-t td[data-l]::before{content:attr(data-l) ': ';color:var(--muted)}
+/* «Мои настройки» менеджера */
+.mp-dlg label.mp-ck{display:flex;align-items:center;gap:8px;margin:8px 0;cursor:pointer}
+.mp-dlg .dlg-h h3 small{display:block;font-size:13px;font-weight:400;color:var(--muted)}
