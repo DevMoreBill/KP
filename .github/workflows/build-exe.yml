@@ -97,8 +97,9 @@ jobs:
           }
           if (-not $ok) { throw 'Сервер не ответил на /api/ping' }
           # каталог и фото в EXE не входят (они в базе на сервере отдела): новая база пустая — создаём пробную позицию с фото
-          $cat = @(Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/catalog')
-          if ($cat.Count -ne 0) { throw "Новая база не пустая: $($cat.Count)" }
+          # пустой ответ «[]» PowerShell превращает в $null (@($null).Count = 1) — сравниваем сам текст ответа
+          $raw = (Invoke-WebRequest -Uri 'http://127.0.0.1:17845/api/catalog' -UseBasicParsing).Content.Trim()
+          if ($raw -ne '[]') { throw "Новая база не пустая: $($raw.Substring(0, [Math]::Min(120, $raw.Length)))" }
           if (-not (Test-Path -LiteralPath (Join-Path $dir 'data\kp.sqlite3'))) { throw 'База SQLite не создана' }
           $png = Join-Path $env:RUNNER_TEMP 'ci-photo.png'
           [IO.File]::WriteAllBytes($png, [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='))
