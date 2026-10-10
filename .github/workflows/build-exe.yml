@@ -430,6 +430,7 @@ jobs:
         run: |
           $pkg = Join-Path $PWD "pkg\$env:KP_EXE_NAME"
           $TASK = 'Конструктор КП — сервер отдела'
+          $CTL = 'KP CI — контроль ограничения'
           $exe = Get-ChildItem -LiteralPath $pkg -Filter '*.exe' | Select-Object -First 1
           $ps = Join-Path $pkg 'server-setup\kp-server.ps1'
           function Show($t) { $s = $t.Settings; "ограничение $($s.ExecutionTimeLimit), не запускать от батареи $($s.DisallowStartIfOnBatteries), останавливать от батареи $($s.StopIfGoingOnBatteries), приоритет $($s.Priority), повторы $($s.RestartCount)" }
@@ -457,7 +458,11 @@ jobs:
             # ограничение — 1 минута вместо 3 дней: видно, действует ли прежнее ограничение на уже запущенную программу
             Fresh
             $t = Get-ScheduledTask -TaskName $TASK; $t.Settings.ExecutionTimeLimit = 'PT1M'; Set-ScheduledTask -InputObject $t | Out-Null
+            # контрольная задача с тем же ограничением, которую никто не исправляет: Планировщик должен её остановить
+            schtasks /Create /TN $CTL /TR 'cmd /c ping -n 400 127.0.0.1' /SC ONCE /ST 23:59 /RU SYSTEM /F 2>$null | Out-Null
+            $c = Get-ScheduledTask -TaskName $CTL; $c.Settings.ExecutionTimeLimit = 'PT1M'; Set-ScheduledTask -InputObject $c | Out-Null
             [IO.File]::WriteAllText($sj, '{"mode": "server", "port": 17845}')
+            schtasks /Run /TN $CTL | Out-Null
             schtasks /Run /TN $TASK | Out-Null
             $t0 = Get-Date
             for ($i = 0; $i -lt 60 -and -not (Up); $i++) { Start-Sleep -Seconds 1 }
@@ -478,13 +483,19 @@ jobs:
             if (-not $sys.task.exists -or @($sys.task.problems).Count -or -not $sys.task.fixed) { throw '«Система» не показывает исправленную задачу' }
             $att = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/admin/attention' -Headers $H -WebSession $s
             if (@($att.items | Where-Object { $_.text -like '*Планировщика*' }).Count) { throw 'В «Требует внимания» осталась задача Планировщика' }
-            # прошло больше минуты с запуска: остановило ли программу прежнее ограничение (1 мин)
+            # прошло больше минуты с запуска: исправленная программа работает, контрольную задачу Планировщик остановил
             while (((Get-Date) - $t0).TotalSeconds -lt 90) { Start-Sleep -Seconds 2 }
             $alive = Up
-            Write-Host ('Через {0:N0} с после запуска (прежнее ограничение — 1 мин): программа {1}' -f ((Get-Date) - $t0).TotalSeconds, $(if ($alive) { 'работает — новые настройки действуют сразу' } else { 'остановлена — прежнее ограничение действует до перезапуска' }))
+            $ctlStopped = [string](Get-ScheduledTask -TaskName $CTL).State -ne 'Running'
+            Write-Host ('Через {0:N0} с (ограничение было 1 мин): программа {1}, контрольная задача {2}' -f ((Get-Date) - $t0).TotalSeconds, $(if ($alive) { 'работает' } else { 'остановлена' }), $(if ($ctlStopped) { 'остановлена Планировщиком' } else { 'ещё работает' }))
+            if (-not $alive) { throw 'Прежнее ограничение остановило программу после исправления задачи' }
+            if ($ctlStopped) { Write-Host 'Новые настройки задачи действуют на уже запущенную программу сразу' }
+            else { Write-Host 'Планировщик не остановил и контрольную задачу за 90 с — проверка ограничения не показательна' }
           } finally {
             & powershell -NoProfile -ExecutionPolicy Bypass -File $ps -Action stop -Quiet
             schtasks /Delete /TN $TASK /F 2>$null | Out-Null
+            schtasks /End /TN $CTL 2>$null | Out-Null
+            schtasks /Delete /TN $CTL /F 2>$null | Out-Null
             if ($null -ne $keep) { [IO.File]::WriteAllText($sj, $keep) } else { Remove-Item -LiteralPath $sj -ErrorAction SilentlyContinue }
           }
           Write-Host 'Задача Планировщика сервера отдела: в порядке'
