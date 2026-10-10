@@ -1,9 +1,15 @@
 # Среда разработки Claude Code для проекта
 
-Выборочная интеграция [ECC](https://github.com/affaan-m/ECC) (релиз **v2.2.3**, лицензия MIT — `ECC-LICENSE`).
-Полный плагин `ecc@ecc` не подключён: он добавляет ~45 тыс. токенов в каждую сессию (387 навыков, 68 агентов, хуки
-на каждое действие), а большая часть его содержимого — для других стеков. Здесь — только то, что подходит проекту
-(Python stdlib + SQLite + обычный JavaScript + тесты на Playwright). Хуков нет.
+[ECC](https://github.com/affaan-m/ECC) (релиз **v2.2.3**, лицензия MIT — `ECC-LICENSE`) подключён двумя способами:
+
+1. **Полный плагин `ecc@ecc`** — `.claude/settings.json` (`extraKnownMarketplaces` с закреплённой версией v2.2.3 и
+   `enabledPlugins`): 68 агентов, 293 навыка, 94 команды и хуки ECC. Работает в Claude Code на компьютере (CLI, приложение,
+   VS Code) после того, как папке проекта доверяют. Плагин из внешнего репозитория каждый ставит у себя один раз:
+   `/plugin install ecc@ecc` (маркетплейс `ecc` уже зарегистрирован настройками проекта). Добавляет около 45 тыс. токенов
+   в каждую сессию. Отключить у себя, не трогая проект: `"enabledPlugins": {"ecc@ecc": false}` в `.claude/settings.local.json`.
+2. **Выборочный набор в репозитории** (таблица ниже) — для облачных сессий (claude.ai/code): там плагины из
+   `enabledPlugins` не загружаются, работает только то, что лежит в `.claude/` репозитория. На компьютере с плагином
+   имена не пересекаются: у плагина — `ecc:python-reviewer`, `/ecc:tdd-workflow`, здесь — `python-reviewer`, `/tdd-workflow`.
 
 | Что | Где | Зачем |
 |---|---|---|
@@ -33,5 +39,4 @@
 git clone --depth 1 --branch vX.Y.Z https://github.com/affaan-m/ECC /tmp/ecc
 # скопировать те же файлы из /tmp/ecc/{agents,skills,rules} поверх, просмотреть дифф, закоммитить
 ```
-Нужен полный плагин — `/plugin marketplace add affaan-m/ECC` и `/plugin install ecc@ecc` (в своей пользовательской
-области, не поверх этих файлов: иначе навыки и агенты задвоятся).
+Плагин — поменять `ref` в `.claude/settings.json` на новую метку и выполнить `/plugin marketplace update ecc`.
