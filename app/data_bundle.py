@@ -118,3 +118,43 @@ class DataBundle:
             os.replace(tmp, f)
             n += 1
         return n
+
+
+class ProgramSettings:
+    """Раздел «Настройки программы» резервной копии: категории, общие настройки (умолчания, списки, функции, вход),
+    тексты интерфейса, тарифы доставки, фиды, почта. Без секретов: пароль почты, ключи API (integrations),
+    учётные записи администраторов и пароли менеджеров (mgrAccess) не выгружаются и при загрузке не затираются."""
+    KEYS = ('types', 'settings', 'uitexts', 'logistics', 'feeds', 'mail')
+    SECRET = {'mail': ('password',)}
+
+    def __init__(self, store):
+        self.store = store
+
+    def export(self):
+        out = {}
+        for k in self.KEYS:
+            v = self.store.kv_get(k)
+            if isinstance(v, dict) and k in self.SECRET:
+                v = {a: b for a, b in v.items() if a not in self.SECRET[k]}
+            if v is not None:
+                out[k] = v
+        return out
+
+    def count(self, d):
+        return sum(1 for k in self.KEYS if isinstance(d, dict) and d.get(k) is not None)
+
+    def apply(self, d):
+        """Записать настройки из копии; секреты текущей базы сохраняются. → сколько разделов настроек записано."""
+        n = 0
+        for k in self.KEYS:
+            v = d.get(k) if isinstance(d, dict) else None
+            if v is None:
+                continue
+            if isinstance(v, dict) and k in self.SECRET:
+                cur = self.store.kv_get(k) or {}
+                v = dict({a: b for a, b in v.items() if a not in self.SECRET[k]},
+                         **{a: cur[a] for a in self.SECRET[k] if isinstance(cur, dict) and a in cur})
+            self.store.kv_set(k, v)
+            n += 1
+        self.store.touch_data('types', 'settings')
+        return n

@@ -3,13 +3,17 @@
 // оборудования, с изображениями (тогда архив .zip: kp-backup.json + img/…), и загрузка такого файла обратно.
 
 class DataTransfer {
-  static SECTIONS = [['catalog','Каталог'],['kp','КП (журнал)'],['managers','Менеджеры'],['clients','Клиенты'],['audit','Журнал действий'],['settings','Категории и настройки']];
-  static NAMES = {catalog:'Каталог',kp:'КП',managers:'Менеджеры',clients:'Клиенты',settings:'Категории и настройки'};
+  static SECTIONS = [['catalog','Каталог'],['clients','Клиенты'],['settings','Настройки программы'],['suppliers','Поставщики и ТН ВЭД'],['managers','Менеджеры'],['kp','КП (журнал)'],['audit','Журнал действий']];
+  static NAMES = {catalog:'Каталог',kp:'КП',managers:'Менеджеры',clients:'Клиенты',suppliers:'Поставщики',settings:'Настройки программы'};
+  // быстрый выбор: что отметить
+  static PRESETS = [['all','Всё',null],['catalog','Только каталог',['catalog','settings']],['clients','Только клиенты',['clients']],['settings','Только настройки',['settings']]];
   static file = null;
 
   static html(){
     return `<div class="st-card" id="dtExp"><p class="sub">Выгрузка${tip('<p><b>.json</b> — выбранные разделы базы. <b>С изображениями</b> — архив .zip: тот же JSON и все фото, галереи и логотипы, на которые в нём есть ссылки (папка img).</p><p>Каталог можно выгрузить целиком или только выбранные группы и категории оборудования. Файл загружается обратно здесь же, в «Загрузке»: записи с теми же id заменяются, новые добавляются, изображения — только недостающие.</p>')}</p>
-      <div class="chips">${DataTransfer.SECTIONS.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" data-xs="${v}" checked> ${l}</label>`).join('')}</div>
+      <div class="row" style="flex-wrap:wrap;gap:6px">${DataTransfer.PRESETS.map(([k,l])=>`<button class="btn ghost" type="button" data-dp="${k}">${l}</button>`).join('')}</div>
+      <div class="chips" style="margin-top:8px">${DataTransfer.SECTIONS.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" data-xs="${v}" checked> ${l}</label>`).join('')}</div>
+      <p class="muted">«Настройки программы» — категории, умолчания, списки, функции, тексты интерфейса, тарифы доставки, фиды, почта; пароли, ключи API и учётные записи не выгружаются.</p>
       <div id="dtCatBox" style="margin-top:10px"></div>
       <label class="chk-chip" style="margin-top:10px"><input type="checkbox" id="dtImg" checked> С изображениями (.zip)</label>
       <div class="row" style="margin-top:10px"><button class="btn primary" type="button" data-dx="json">Скачать</button><button class="btn" type="button" data-dx="sqlite">Полная копия базы (.sqlite3)</button></div>
@@ -19,7 +23,8 @@ class DataTransfer {
   static async mount(m, done){
     const box=m.querySelector('#dtCatBox');
     try{ DataTransfer._cats(box, await aapi('export/cats')); }catch(err){ box.innerHTML=`<p class="muted">${esc(err.message)}</p>`; }
-    m.querySelector('#dtExp').addEventListener('click', e=>{ const b=e.target.closest('[data-dx]'); if (b) DataTransfer._export(m, b.dataset.dx, done); });
+    m.querySelector('#dtExp').addEventListener('click', e=>{ const b=e.target.closest('[data-dx]'); if (b) return DataTransfer._export(m, b.dataset.dx, done);
+      const p=e.target.closest('[data-dp]'); if (p) DataTransfer._preset(m, p.dataset.dp); });
     m.querySelector('#dtExp').addEventListener('change', e=>DataTransfer._toggle(m, e.target));
   }
 
@@ -36,7 +41,18 @@ class DataTransfer {
         <p class="muted" id="dtSel">Ничего не выбрано</p></div>`;
   }
 
+  static _preset(m, key){
+    const on=(DataTransfer.PRESETS.find(x=>x[0]===key)||[])[2];
+    m.querySelectorAll('[data-xs]').forEach(c=>{ c.checked = on ? on.includes(c.dataset.xs) : c.dataset.xs!=='audit'; });
+    const img=m.querySelector('#dtImg'); if (img) img.checked = !on || on.includes('catalog');
+    DataTransfer._scope(m);
+  }
+
+  // выбор групп и категорий — только когда выгружается каталог
+  static _scope(m){ const box=m.querySelector('#dtCatBox'), cat=m.querySelector('[data-xs=catalog]'); if (box && cat) box.hidden=!cat.checked; }
+
   static _toggle(m, el){
+    if (el.dataset.xs==='catalog') DataTransfer._scope(m);
     if (el.name==='dtScope') m.querySelector('#dtCats').hidden = el.value!=='some';
     if (el.dataset.dg!=null) m.querySelectorAll(`[data-dgi="${el.dataset.dg}"]`).forEach(c=>{ c.checked=el.checked; });
     if (el.dataset.dgi!=null){ const all=[...m.querySelectorAll(`[data-dgi="${el.dataset.dgi}"]`)], g=m.querySelector(`[data-dg="${el.dataset.dgi}"]`);

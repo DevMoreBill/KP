@@ -612,7 +612,9 @@ def auth_api(h, store, m, sub):
 
 
 # ---------------------------------------------------------------- API «Настроек»
-SECTIONS = ('catalog', 'kp', 'managers', 'clients', 'audit', 'settings')
+SECTIONS = ('catalog', 'kp', 'managers', 'clients', 'suppliers', 'audit', 'settings')
+SECTION_FILE = {'catalog': 'каталог', 'kp': 'КП', 'managers': 'менеджеры', 'clients': 'клиенты', 'suppliers': 'поставщики',
+                'audit': 'журнал', 'settings': 'настройки'}     # части имени файла выгрузки
 
 
 class AdminApi:
@@ -1271,13 +1273,17 @@ class AdminApi:
             out['clients'] = st.clients_all()
         if 'audit' in sections:
             out['audit'] = st.audit_query({}, 10 ** 7)['items']
+        if 'suppliers' in sections:
+            out['suppliers'] = {'suppliers': [{k: v for k, v in x.items() if k != '_rev'} for x in st.suppliers_list()],
+                                'customs': st.customs_all()}
         if 'settings' in sections:
-            out['settings'] = {'types': st.kv_get('types'), 'settings': st.kv_get('settings')}
+            from data_bundle import ProgramSettings
+            out['settings'] = ProgramSettings(st).export()
         meta = {'format': 'kp-backup', 'version': 1, 'createdAt': _now(), 'sections': out}
         if cats:
             meta['cats'] = cats
         body = json.dumps(meta, ensure_ascii=False)
-        what = ('+'.join(sections) if len(sections) < len(SECTIONS) else 'полная') + ('_категорий-%d' % len(cats) if cats else '')
+        what = ('+'.join(SECTION_FILE[x] for x in sections) if len(sections) < len(SECTIONS) else 'полная') + ('_категорий-%d' % len(cats) if cats else '')
         stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
         info = {'sections': sections, 'cats': cats, 'items': len(out.get('catalog') or [])}
         if images:
@@ -1335,19 +1341,24 @@ class AdminApi:
         if d.get('format') != 'kp-backup' or d.get('version') != 1 or not isinstance(d.get('sections'), dict):
             raise ValueError('Это не резервная копия программы (нужен файл «КП_резервная_копия_….json»)')
         sec = d['sections']
-        want = [s for s in (sections or 'catalog,kp,managers,clients,settings').split(',') if s in sec and s != 'audit']
+        want = [s for s in (sections or 'catalog,kp,managers,clients,suppliers,settings').split(',') if s in sec and s != 'audit' and s in SECTIONS]
         st, rep, errors = self.st, {}, []
         backup = self.import_backup() if apply else None
         exist = {'catalog': {x['id']: x for x in json.loads(st.catalog_light())},
                  'kp': {r[0]: r for r in st.all('SELECT id, meta FROM kp')},
                  'managers': {x['id']: x for x in json.loads(st.managers_list())},
-                 'clients': {x['id']: x for x in st.clients_all()}}
-        req = {'catalog': ('id', 'name'), 'kp': ('id', 'number'), 'managers': ('id', 'name'), 'clients': ('id',)}
+                 'clients': {x['id']: x for x in st.clients_all()},
+                 'suppliers': {x['id']: x for x in st.suppliers_list()}}
+        req = {'catalog': ('id', 'name'), 'kp': ('id', 'number'), 'managers': ('id', 'name'), 'clients': ('id',), 'suppliers': ('id', 'name')}
+        from data_bundle import ProgramSettings
         for s in want:
             if s == 'settings':
-                rep[s] = {'new': 0, 'updated': 1 if sec[s] else 0, 'invalid': 0}
+                rep[s] = {'new': 0, 'updated': ProgramSettings(st).count(sec[s]), 'invalid': 0}
                 continue
-            rows = sec[s] if isinstance(sec[s], list) else []
+            if s == 'suppliers':     # {suppliers: [...], customs: {ключ: {code, duty, note, name}}}
+                rows = (sec[s].get('suppliers') if isinstance(sec[s], dict) else None) or []
+            else:
+                rows = sec[s] if isinstance(sec[s], list) else []
             bad = [i for i, x in enumerate(rows) if not isinstance(x, dict) or any(not x.get(k) for k in req[s])
                    or not re.match(r'^[A-Za-z0-9_-]{1,64}$', str(x.get('id')))]
             errors += ['%s: запись %d без обязательных полей %s' % (s, i + 1, ', '.join(req[s])) for i in bad[:5]]
@@ -1364,13 +1375,18 @@ class AdminApi:
                 elif s == 'managers':
                     for x in ok:
                         st.manager_put(x['id'], json.dumps(x, ensure_ascii=False))
+                elif s == 'suppliers':
+                    for x in ok:
+                        st.supplier_put(x['id'], x, actor(self.h, True)[1])
+                    customs = sec[s].get('customs') if isinstance(sec[s].get('customs'), dict) else {}
+                    for key, c in customs.items():
+                        if isinstance(c, dict) and re.match(r'^(cat|item):[\w.-]{1,80}$', str(key)):
+                            st.customs_put(key, c.get('code'), c.get('duty'), c.get('note'), actor(self.h, True)[1], c.get('name') or '')
                 else:
                     for x in ok:
                         st.client_put(x['id'], x)
         if apply and 'settings' in want and isinstance(sec['settings'], dict):
-            for k in ('types', 'settings'):
-                if sec['settings'].get(k) is not None:
-                    st.kv_set(k, sec['settings'][k])
+            ProgramSettings(st).apply(sec['settings'])
         if apply:
             self.log('import_db', 'db', ','.join(want), None, {'report': rep, 'createdAt': d.get('createdAt'), 'backup': backup})
         return {'report': rep, 'errors': errors, 'createdAt': d.get('createdAt'), 'applied': apply}

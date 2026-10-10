@@ -349,6 +349,14 @@ class Store:
         c.execute("INSERT INTO kv (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1",
                   ('datarev:' + name,))
 
+    def touch_data(self, *names):
+        """Справочники изменены не через свои методы (загрузка копии) — браузеры перекачают их."""
+        with self.lock:
+            c = self.conn()
+            for name in names:
+                self._bump_data(c, name)
+            c.commit()
+
     def data_rev(self, name):
         r = self.one('SELECT value FROM kv WHERE key=?', ('datarev:' + name,))
         return str(r[0]) if r else '0'
