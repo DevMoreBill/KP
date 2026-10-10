@@ -1,82 +1,12 @@
 // Логистика по России: расчёт стоимости доставки со склада поставщика до объекта заказчика (без внешних сервисов).
 // Груз — масса и габариты позиций из характеристик каталога; транспорт — классы машин из тарифов (правит администратор);
-// расстояние — по таблице городов: по прямой × коэффициент дорог; негабарит и тяжеловес — по правилам РФ
-// (ПП РФ от 21.12.2020 № 2200: ширина 2,55 м, высота 4 м, длина автопоезда 20 м; сопровождение — шире 3,5 м или длиннее 25 м).
-// Чистые функции: их проверяет node-тест, интерфейс — в deal.js (окно «Расчёт доставки»).
+// расстояние — по дорогам (OSRM, карты OpenStreetMap: между точными адресами или центрами городов), пока маршрут не
+// посчитан — по прямой × коэффициент дорог; негабарит и тяжеловес — по правилам РФ (ПП РФ от 21.12.2020 № 2200:
+// ширина 2,55 м, высота 4 м, длина автопоезда 20 м; ПП РФ от 21.12.2020 № 2060: автомобиль прикрытия — шире 3,5 м,
+// патрульный автомобиль ГИБДД — шире 4 м). Тариф машины — в два участка: подача + ставка до 1 000 км + ставка дальше
+// (дальний рейс дешевле за км), не меньше минимального заказа; ставки сверяются с фактическими счетами (Freight.calibrate).
+// Чистые функции и класс Freight: их проверяет node-тест, интерфейс — в logistics.js (вкладка «Логистика» сделки и «Настройки»).
 'use strict';
-
-// ---------------------------------------------------------------- тарифы по умолчанию (ориентир; уточняются по счетам перевозчиков)
-// L × W — грузовая площадка, м; h — высота груза без спецразрешения (4 м минус высота пола), hMax — со спецразрешением;
-// wMax — ширина груза со спецразрешением (только открытые площадки); t — грузоподъёмность, т;
-// km — ставка, ₽/км (в одну сторону, с учётом обратного пробега); base — подача; min — минимальный заказ.
-const LG_DEFAULTS = {
-  ver: 2,
-  // ставки — рынок РФ 2026, междугородние перевозки в одну сторону (см. sources); уточняются по счетам перевозчиков
-  classes: [
-    { id:'gazel',  name:'«Газель» тент 1,5 т',        L:4.2,  W:2.0,  h:2.0, hMax:2.0, wMax:2.0,  t:1.5, open:false, km:30,  base:1500,  min:5000 },
-    { id:'t5',     name:'Грузовик 5 т',               L:6.2,  W:2.45, h:2.4, hMax:2.4, wMax:2.45, t:5,   open:false, km:40,  base:3000,  min:8000 },
-    { id:'t10',    name:'Грузовик 10 т',              L:7.5,  W:2.45, h:2.6, hMax:2.6, wMax:2.45, t:10,  open:false, km:45,  base:4000,  min:12000 },
-    { id:'tent20', name:'Фура тент 20 т (82 м³)',     L:13.6, W:2.45, h:2.6, hMax:2.6, wMax:2.45, t:20,  open:false, km:65,  base:6000,  min:20000 },
-    { id:'flat',   name:'Открытая площадка 20 т',     L:13.6, W:2.5,  h:2.6, hMax:3.1, wMax:3.2,  t:20,  open:true,  km:75,  base:8000,  min:25000 },
-    { id:'lowbed', name:'Трал низкорамный 40 т',      L:13.0, W:2.55, h:3.1, hMax:3.6, wMax:3.5,  t:40,  open:true,  km:120, base:15000, min:40000 },
-  ],
-  overK: 1.1,           // негабарит на площадке: надбавка к ставке (ставка трала уже рассчитана на негабарит)
-  overKLowbed: 1,
-  permit: 1600,         // госпошлина за спецразрешение (Госуслуги, 2026), ₽ за машину
-  permitAgent: 0,       // оформление и проект маршрута через агента, ₽ (если пользуетесь)
-  heavyFrom: 20,        // тяжеловес: груз в машине тяжелее, т (тягач + трал ≈ 20–22 т, предел автопоезда 40–44 т)
-  heavyPermit: 1600,    // госпошлина за разрешение на тяжеловес, ₽
-  harmKm: 74,           // вред дорогам: ПП РФ № 67 — базовый размер 7 365 ₽ на 100 км (точно — по осевым нагрузкам)
-  escortW: 3.5,         // шире — автомобиль прикрытия
-  escortKm: 50,         // прикрытие, ₽/км (ориентир — уточните у перевозчика)
-  unload: [             // разгрузка на объекте: максимальная масса одного места, т — стоимость смены, ₽
-    { id:'manip',   name:'Манипулятор до 7 т',  max:7,  cost:15000 },
-    { id:'crane25', name:'Автокран 25 т',       max:16, cost:22000 },
-    { id:'crane50', name:'Автокран 50 т',       max:32, cost:40000 },
-    { id:'crane100',name:'Автокран 100 т',      max:60, cost:100000 },
-  ],
-  agentPct: 15,         // агент-экспедитор: наценка к ставке перевозчика, % (рынок 5–15 %, в споте до 20–25 %)
-  insPct: 0.15,         // страхование груза по России — обязательно, % от стоимости груза (рынок 0,06–0,7 %, чаще 0,15 %)
-  insMin: 300,          // минимальная премия, ₽
-  pack: 10,             // упаковка (поддон, обрешётка), % к массе — для мест легче packMax
-  packMax: 3,           // тяжелее, т — оборудование на своей раме, без упаковки
-  roadK: 1.13,          // коэффициент дорог (по дороге / по прямой): европейская часть
-  roadKE: 1.22,         // Урал и Сибирь (восточнее 59° в. д.)
-  roadKFE: 1.4,         // восточнее Байкала (105° в. д.): дороги в обход
-  localKm: 40,          // доставка в пределах города
-  kmDay: 600,           // пробег в сутки, км (негабарит — kmDayOver)
-  kmDayOver: 350,
-  permitDays: 5,        // оформление спецразрешения, рабочих дней
-  range: 15,            // разброс оценки, ± %
-  hub: 'Москва',        // откуда везём импорт по умолчанию (СВХ / таможенный терминал)
-  legal: { w:2.55, h:4.0 },
-  sources: [
-    'ATI.SU «Средние ставки», май 2026: фура 20 т — в среднем ≈ 58 ₽/км по рынку, ≈ 70 ₽/км у перевозчиков (rosperevozki.ru)',
-    'Газель от 15 ₽/км, КамАЗ 10 т 32–45 ₽/км, фура от 40 ₽/км, трал ≈ 118 ₽/км при 30 т (rosperevozki.ru, 2026)',
-    'Трал: до 30 т 80–120 ₽/км, 45–50 т 100–150 ₽/км; разрешение и сопровождение — отдельно (vityaz-tk.ru, 2025–2026)',
-    'Госпошлина за спецразрешение — 1 600 ₽ (Госуслуги, 2026); вред дорогам — ПП РФ от 31.01.2020 № 67',
-    'Автокран 25 т — 18–22 тыс. ₽ за смену, 50 т — 32–44 тыс. ₽ (Москва, 2026)',
-    'Агент-экспедитор: наценка 5–15 % от ставки перевозчика в массовом сегменте, в споте до 20–25 % (portal-logistic.ru, roolz.net, 2026)',
-    'Страхование груза автотранспортом: 0,06–0,7 % от стоимости, обычно 0,15 %, полис от 300 ₽ (inslog.ru, infullbroker.ru, 2026)',
-  ],
-};
-
-function lgTariffs(saved){
-  const t=JSON.parse(JSON.stringify(LG_DEFAULTS));
-  if (saved && typeof saved==='object'){
-    for (const k of Object.keys(t)) if (!['classes','unload','legal','sources','ver'].includes(k) && saved[k]!=null && saved[k]!=='') t[k]=typeof t[k]==='number' ? +saved[k] : saved[k];
-    for (const key of ['classes','unload']) if (Array.isArray(saved[key]) && saved[key].length) t[key]=saved[key].map(x=>{ const d=t[key].find(y=>y.id===x.id)||{}; const o={...d,...x};
-      for (const f of ['L','W','h','hMax','wMax','t','km','base','min','max','cost']) if (o[f]!=null && o[f]!=='') o[f]=+o[f];
-      o.open=!!o.open; return o; });
-  }
-  // ставки ₽/км из автообновления (ATI.SU) — у классов, где оно не выключено (auto:false — ставка закреплена вручную)
-  const au=saved&&saved._auto, ac=(au&&au.classes)||{};
-  for (const c of t.classes){
-    if (c.auto!==false && ac[c.id] && ac[c.id].km>0){ c.km=+ac[c.id].km; c.src=ac[c.id].src; c.srcAt=au.at; c.srcAuto=true; }
-    else if (!c.src) c.src = saved&&saved.updatedAt && Array.isArray(saved.classes) ? 'вручную в «Настройках»' : 'стандартная ставка (рынок 2026, см. источники)';
-  }
-  return t;
-}
 
 // ---------------------------------------------------------------- груз: масса и габариты из характеристик
 const lgNum = s => { const v=parseFloat(String(s).replace(/\s+/g,'').replace(',','.')); return Number.isFinite(v)?v:null; };
@@ -255,74 +185,10 @@ function lgRoadKm(a, b, T){
   return Math.round(lgHav(a,b)*k/10)*10;
 }
 
-// ---------------------------------------------------------------- раскладка груза по машинам
-// units — места груза {l, w, h, m, name}; ориентация в плане любая, кантовать нельзя
-function lgFit(units, C, T){
-  let mass=0, overW=0, overH=0;
-  const lay=[];
-  for (const u of units){
-    mass+=u.m;
-    let l=u.l, w=u.w;
-    if (w>C.W && l<=C.W && w<=C.L){ const t=l; l=w; w=t; }          // повернуть поперёк, если так помещается
-    if (l>C.L+0.001) return { ok:false, why:`длина ${lgM(u.l)} м больше площадки ${lgM(C.L)} м` };
-    if (u.h>C.hMax+0.001) return { ok:false, why:`высота ${lgM(u.h)} м больше допустимой ${lgM(C.hMax)} м` };
-    if (w>C.wMax+0.001) return { ok:false, why:`ширина ${lgM(w)} м больше допустимой ${lgM(C.wMax)} м` };
-    if (w>C.W+0.001) overW=Math.max(overW, w);
-    if (u.h>C.h+0.001) overH=Math.max(overH, u.h);
-    lay.push({l,w,u});
-  }
-  if (mass>C.t+0.001) return { ok:false, why:`масса ${lgT(mass)} т больше грузоподъёмности ${lgT(C.t)} т` };
-  // полки вдоль площадки: в полке места стоят рядом поперёк, глубина полки — самое длинное место
-  lay.sort((a,b)=>b.l-a.l || b.w-a.w);
-  const shelves=[]; let depth=0;
-  for (const x of lay){
-    const sh=shelves.find(s=>s.depth>=x.l-0.001 && s.used+x.w<=Math.max(C.W, x.w)+0.001 && !(s.wide||x.w>C.W));
-    if (sh) sh.used+=x.w;
-    else { shelves.push({depth:x.l, used:x.w, wide:x.w>C.W}); depth+=x.l+0.1; }
-  }
-  if (depth-0.1>C.L+0.001) return { ok:false, why:'не помещается по длине площадки' };
-  return { ok:true, mass, overW, overH, depth:Math.max(0, depth-0.1) };
-}
+// ---------------------------------------------------------------- форматирование и точки маршрута
 const lgM = v => (Math.round(v*100)/100).toString().replace('.',',');
 const lgT = v => (Math.round(v*10)/10).toString().replace('.',',');
-
-function lgVehicleCost(C, fit, km, T){
-  const over=fit.overW>0 || fit.overH>0, heavy=fit.mass>T.heavyFrom, escort=fit.overW>T.escortW;
-  const parts=[];
-  const ok=over ? (C.id==='lowbed' ? T.overKLowbed : T.overK) : 1;
-  const run=C.base + C.km*km*ok;
-  parts.push([`${C.name}: подача ${lgRub(C.base)} + ${km} км × ${lgRub(C.km*ok)}`, Math.max(C.min, run)]);
-  if (run<C.min) parts[0][0]+=` (минимальный заказ ${lgRub(C.min)})`;
-  if (over) parts.push([`Негабарит (${[fit.overW?`ширина ${lgM(fit.overW)} м`:'', fit.overH?`высота груза ${lgM(fit.overH)} м`:''].filter(Boolean).join(', ')}): спецразрешение${T.permitAgent?' и оформление':''}`, T.permit+T.permitAgent]);
-  if (heavy) parts.push([`Тяжеловес (${lgT(fit.mass)} т): ${over?'':'разрешение и '}вред дорогам ${km} км × ${lgRub(T.harmKm)}`, (over?0:T.heavyPermit+T.permitAgent) + T.harmKm*km]);
-  if (escort) parts.push([`Автомобиль прикрытия (шире ${lgM(T.escortW)} м): ${km} км × ${lgRub(T.escortKm)}`, T.escortKm*km]);
-  return { cost:parts.reduce((s,p)=>s+p[1],0), parts, over, heavy, escort };
-}
 const lgRub = v => Number.isFinite(v) ? Math.round(v).toLocaleString('ru-RU')+' ₽' : '—';     // не посчитано (нет адресов, груза) — прочерк
-
-function lgBestClass(units, km, T){
-  let best=null;
-  for (const C of T.classes){ const f=lgFit(units, C, T); if (!f.ok) continue;
-    const c=lgVehicleCost(C, f, km, T); if (!best || c.cost<best.cost) best={C, fit:f, ...c}; }
-  return best;
-}
-
-// план перевозки: одна машина, если всё помещается; иначе — несколько (крупные места первыми)
-function lgPlan(units, km, T){
-  const one=lgBestClass(units, km, T);
-  if (one) return { vehicles:[{...one, units}], unplaced:[] };
-  const sorted=[...units].sort((a,b)=>(b.l*b.w)-(a.l*a.w) || b.m-a.m);
-  const vs=[], unplaced=[];
-  for (const u of sorted){
-    let placed=false;
-    for (const v of vs){ const b=lgBestClass(v.units.concat(u), km, T); if (b){ Object.assign(v, b, {units:v.units.concat(u)}); placed=true; break; } }
-    if (placed) continue;
-    const b=lgBestClass([u], km, T);
-    if (b) vs.push({...b, units:[u]});
-    else unplaced.push({u, why:T.classes.map(C=>lgFit([u], C, T).why).filter(Boolean).pop()||''});
-  }
-  return { vehicles:vs, unplaced };
-}
 
 function lgUnloadPick(maxUnit, T, want){
   if (want==='none') return null;
@@ -330,8 +196,6 @@ function lgUnloadPick(maxUnit, T, want){
   return T.unload.find(x=>maxUnit<=x.max) || T.unload[T.unload.length-1];
 }
 
-// ---------------------------------------------------------------- расчёт целиком
-// inp: { from:{name|addr}, to:{name|addr}, km (своё расстояние или ''), items:[{name, qty, l,w,h (м), m (т)}], unload:'auto'|'none'|id }
 // точка маршрута: точный адрес с координатами (подсказка DaData / OpenStreetMap, координаты с карты) или город из адреса
 function lgPoint(p){
   if (!p) return null;
@@ -342,48 +206,288 @@ function lgPoint(p){
   }
   return p.city ? lgCityByName(p.city) : lgCity(p.addr);
 }
-const lgRouteKey = (a,b) => a&&b&&a.exact&&b.exact ? `${a.lat.toFixed(4)},${a.lon.toFixed(4)}|${b.lat.toFixed(4)},${b.lon.toFixed(4)}` : '';
 
-function lgCalc(inp, T){
-  T=T||lgTariffs();
-  const warn=[], missing=[];
-  const A=lgPoint(inp.from), B=lgPoint(inp.to), rk=lgRouteKey(A,B);
-  let km=lgNum(inp.km), kmSrc='вручную';
-  if (!(km>0) && rk && inp.route && inp.route.key===rk && inp.route.km>0){ km=inp.route.km; kmSrc=inp.route.src||'по дорогам'; }
-  if (!(km>0)){ km=lgRoadKm(A,B,T); kmSrc=!km?'':A.exact&&B.exact?(lgHav(A,B)<40?'по городу между адресами':'по прямой между адресами с поправкой на дороги'):(A.name===B.name?'в пределах города':'по прямой с поправкой на дороги'); }
-  if (A&&A.noRoad || B&&B.noRoad) warn.push(`${(B&&B.noRoad?B:A).name}: нет круглогодичной дороги — доставка морем, по зимнику или авиа, нужен расчёт перевозчика`);
-  if (A&&B&&(A.name==='Калининград')!==(B.name==='Калининград')) warn.push('Калининград: транзит через страны ЕС или паром — нужен расчёт перевозчика');
-  const units=[];
-  for (const it of inp.items||[]){
-    const q=Math.max(0, Math.round(+it.qty||0)); if (!q) continue;
-    const l=+it.l, w=+it.w, h=+it.h, m=+it.m;
-    if (!(l>0&&w>0&&h>0) || !(m>0)){ missing.push(it.name||'позиция'); continue; }
-    const mp = m<T.packMax ? m*(1+T.pack/100) : m;
-    for (let i=0;i<Math.min(q,300);i++) units.push({name:it.name, l:Math.max(l,w), w:Math.min(l,w), h, m:mp});
-    if (q>300) warn.push(`${it.name}: больше 300 мест — посчитаны первые 300`);
+// ---------------------------------------------------------------- модель перевозки: тарифы, раскладка по машинам, расчёт, сверка
+class Freight {
+  // Тарифы по умолчанию — рынок РФ, осень 2026, с НДС 22 %, ставка перевозчика (агент — отдельной строкой в расчёте).
+  // Рейс = подача (base) + ставка за км до far км (km) + ставка за км дальше (kmFar), не меньше минимального заказа (min):
+  // подача покрывает подачу машины, простой на погрузке и выгрузке и платные въезды, дальний рейс дешевле за км.
+  // Калибровка (сентябрь — октябрь 2026, тент 20 т): Москва → Санкт-Петербург ≈ 60–70 тыс. ₽, Москва → Новосибирск
+  // ≈ 167–188 тыс. ₽, средняя по рынку ≈ 70 ₽/км у перевозчиков (ATI.SU, май 2026); остальные классы — по средним
+  // заказам Москва → Санкт-Петербург (Газель ≈ 35 тыс. ₽, 5 т ≈ 52 тыс. ₽, 10 т ≈ 67 тыс. ₽). Ставки уточняются по
+  // фактическим счетам («Сверка со счетами» в «Настройках») и автообновлением по ATI.SU.
+  // L × W — грузовая площадка, м; h — высота груза без спецразрешения (4 м минус высота пола), hMax — со спецразрешением;
+  // wMax — ширина груза со спецразрешением; t — грузоподъёмность, т; tLegal — без спецразрешения на тяжеловес
+  // (автопоезд до 40–44 т); open — открытая площадка (груз до 2,55 м шириной — без спецразрешения); iso — только морские контейнеры.
+  static DEFAULTS = {
+    ver: 3,
+    classes: [
+      { id:'gazel',  name:'«Газель» тент 1,5 т (4,2 м, 17 м³)',      L:4.2,  W:2.0,  h:2.0, hMax:2.0, wMax:2.0,  t:1.5, open:false, km:43,  kmFar:30, base:5000,  min:6000 },
+      { id:'t5',     name:'Грузовик 5 т (6,2 м, 36 м³)',            L:6.2,  W:2.45, h:2.4, hMax:2.4, wMax:2.45, t:5,   open:false, km:64,  kmFar:42, base:7000,  min:10000 },
+      { id:'t10',    name:'Грузовик 10 т (7,5 м, 48 м³)',           L:7.5,  W:2.45, h:2.6, hMax:2.6, wMax:2.45, t:10,  open:false, km:80,  kmFar:48, base:10000, min:15000 },
+      { id:'tent20', name:'Фура тент 20 т (13,6 м, 86 м³)',         L:13.6, W:2.45, h:2.6, hMax:2.6, wMax:2.45, t:20,  open:false, km:72,  kmFar:40, base:15000, min:20000 },
+      { id:'cont',   name:'Контейнеровоз (контейнер 20 / 40 фут)',  L:12.2, W:2.5,  h:2.9, hMax:2.9, wMax:2.5,  t:28,  tLegal:28, open:true, iso:true, km:78, kmFar:44, base:16000, min:22000 },
+      { id:'flat',   name:'Открытая площадка 20 т (13,6 м)',        L:13.6, W:2.5,  h:2.6, hMax:3.1, wMax:3.2,  t:20,  open:true,  km:82,  kmFar:47, base:18000, min:25000 },
+      { id:'lowbed', name:'Трал низкорамный 40 т',                  L:13.0, W:2.55, h:3.1, hMax:3.6, wMax:3.5,  t:40,  tLegal:22, open:true, km:110, kmFar:90, base:20000, min:45000 },
+    ],
+    far: 1000,          // граница участков тарифа, км: дальше — ставка kmFar
+    overK: 1.1,         // негабарит на площадке: надбавка к ставке (ставка трала уже рассчитана на негабарит)
+    overKLowbed: 1,
+    permit: 1600,       // госпошлина за спецразрешение (НК РФ, ст. 333.33, п. 1, пп. 111), ₽ за машину
+    permitAgent: 0,     // оформление и проект маршрута через агента, ₽ (если пользуетесь)
+    heavyFrom: 20,      // тяжеловес для своих классов без «грузоподъёмности без спецразрешения»: груз тяжелее, т
+    heavyPermit: 1600,  // госпошлина за разрешение на тяжеловес, ₽
+    harmKm: 74,         // вред дорогам: ПП РФ от 31.01.2020 № 67 — ориентир ≈ 7 365 ₽ на 100 км (точно — по осевым нагрузкам)
+    escortW: 3.5,       // шире — автомобиль прикрытия (ПП РФ № 2060)
+    escortKm: 50,       // прикрытие, ₽/км (ориентир — уточните у перевозчика)
+    gibddW: 4.0,        // шире — сопровождение патрульным автомобилем ГИБДД (стоимость — по договору, в расчёт не входит)
+    unload: [           // разгрузка на объекте: максимальная масса одного места, т — стоимость смены (7 + 1 ч), ₽
+      { id:'manip',   name:'Манипулятор до 7 т',  max:7,  cost:15000 },
+      { id:'crane25', name:'Автокран 25 т',       max:16, cost:22000 },
+      { id:'crane50', name:'Автокран 50 т',       max:32, cost:40000 },
+      { id:'crane100',name:'Автокран 100 т',      max:60, cost:100000 },
+    ],
+    agentPct: 15,       // агент-экспедитор: наценка к ставке перевозчика, % (рынок 5–15 %, в споте до 20–25 %)
+    insPct: 0.15,       // страхование груза по России — обязательно, % от стоимости груза (рынок 0,06–0,7 %, чаще 0,15 %)
+    insMin: 300,        // минимальная премия, ₽
+    pack: 10,           // упаковка (поддон, обрешётка), % к массе — для мест легче packMax
+    packMax: 3,         // тяжелее, т — оборудование на своей раме, без упаковки
+    roadK: 1.13,        // пока маршрут по дорогам не посчитан: коэффициент дорог (по дороге / по прямой), европейская часть
+    roadKE: 1.22,       // Урал и Сибирь (восточнее 59° в. д.)
+    roadKFE: 1.4,       // восточнее Байкала (105° в. д.): дороги в обход
+    localKm: 40,        // доставка в пределах города (адреса не уточнены)
+    kmDay: 600,         // пробег в сутки, км (негабарит — kmDayOver)
+    kmDayOver: 350,
+    permitDays: 5,      // оформление спецразрешения, рабочих дней
+    range: 15,          // разброс оценки, ± %
+    hub: 'Москва',      // откуда везём импорт по умолчанию (СВХ / таможенный терминал)
+    legal: { w:2.55, h:4.0 },
+    sources: [
+      'Ставки — с НДС 22 %, ставка перевозчика без агента; рейс = подача + км до 1 000 км × ставка + км дальше × «дальняя» ставка',
+      'Москва → Санкт-Петербург, тент 20 т: 60 860 ₽ (калькулятор EastLines, 2026), от 70 000 ₽ (avtogost77.ru, июль 2026)',
+      'Москва → Новосибирск, 20 т: 167 000 ₽ (фургон, EastLines), 188 104 ₽ (тент, базовый тариф «Русский Транзит 77»)',
+      'Средние заказы Москва → Санкт-Петербург (maintransport.ru, 16.05.2026): Газель ≈ 35 000 ₽, 5 т ≈ 52 200 ₽, 10 т ≈ 66 700 ₽',
+      'ATI.SU «Средние ставки», май 2026: фура — ≈ 58 ₽/км по рынку, ≈ 70 ₽/км средневзвешенно у перевозчиков; за 2025 год ставки выросли на 12,3 %',
+      'Трал: до 30 т 80–120 ₽/км, 45–50 т 100–150 ₽/км, при 30 т ≈ 118 ₽/км; разрешение и сопровождение — отдельно (vityaz-tk.ru, rosperevozki.ru, 2026)',
+      'Госпошлина за спецразрешение — 1 600 ₽ (НК РФ, ст. 333.33); вред дорогам — ПП РФ от 31.01.2020 № 67; сопровождение — ПП РФ от 21.12.2020 № 2060',
+      'Автокран 25 т — 18–22 тыс. ₽ за смену, 50 т — 32–44 тыс. ₽ (Москва, 2026)',
+      'Агент-экспедитор: наценка 5–15 % от ставки перевозчика в массовом сегменте, в споте до 20–25 % (portal-logistic.ru, roolz.net, 2026)',
+      'Страхование груза автотранспортом: 0,06–0,7 % от стоимости, обычно 0,15 %, полис от 300 ₽ (inslog.ru, infullbroker.ru, 2026)',
+    ],
+  };
+  static NUM = ['L','W','h','hMax','wMax','t','tLegal','km','kmFar','base','min','max','cost'];
+  // стандартные ставки и названия до версии 3.50 (одна ставка за км): сохранённые без изменений — заменяются новыми стандартными
+  static OLD = { gazel:{name:'«Газель» тент 1,5 т', km:30, base:1500, min:5000}, t5:{name:'Грузовик 5 т', km:40, base:3000, min:8000},
+    t10:{name:'Грузовик 10 т', km:45, base:4000, min:12000}, tent20:{name:'Фура тент 20 т (82 м³)', km:65, base:6000, min:20000},
+    flat:{name:'Открытая площадка 20 т', km:75, base:8000, min:25000}, lowbed:{name:'Трал низкорамный 40 т', km:120, base:15000, min:40000} };
+  // морской контейнер: 20 фут — 6,058 м, 40 фут — 12,192 м; ширина 2,438 м; высота 2,591 м (HC — 2,896 м)
+  static ISO = { l:[6.058, 12.192], w:2.438, h:[2.591, 2.896], tol:0.04 };
+
+  // тарифы: стандартные + сохранённые администратором + ставки автообновления (ATI.SU)
+  static tariffs(saved){
+    const t=JSON.parse(JSON.stringify(Freight.DEFAULTS));
+    if (saved && typeof saved==='object'){
+      for (const k of Object.keys(t)) if (!['classes','unload','legal','sources','ver'].includes(k) && saved[k]!=null && saved[k]!=='') t[k]=typeof t[k]==='number' ? +saved[k] : saved[k];
+      const oldVer=!(+saved.ver>=3);
+      for (const key of ['classes','unload']) if (Array.isArray(saved[key]) && saved[key].length){
+        const def=t[key];
+        t[key]=saved[key].map(x0=>{ const d=def.find(y=>y.id===x0.id)||{}, x={...x0}, od=key==='classes'&&oldVer&&Freight.OLD[x.id];
+          // прежние стандартные значения, не изменённые администратором, — новые стандартные (ставки 2026 в два участка)
+          if (od){ if (['km','base','min'].every(f=>+x[f]===od[f])){ delete x.km; delete x.base; delete x.min; delete x.kmFar; if (x.src && /стандартн/.test(x.src)) delete x.src; }
+            if (x.name===od.name) delete x.name; }
+          const o={...d,...x};
+          for (const f of Freight.NUM) if (o[f]!=null && o[f]!=='') o[f]=+o[f];
+          // своя ставка из прежних версий (без «дальней» ставки) — та же по всему маршруту, как считалось раньше
+          if (key==='classes' && !(x.kmFar>0) && x.km>0) o.kmFar=+x.km;
+          o.open=!!o.open; return o; });
+        // новые стандартные классы (контейнеровоз) — в тарифы, сохранённые до их появления
+        if (key==='classes' && oldVer) for (const d of def) if (!t[key].some(x=>x.id===d.id) && !Freight.OLD[d.id]) t[key].push({...d});
+      }
+    }
+    // ставки из автообновления (ATI.SU) — у классов, где оно не выключено (auto:false — ставка закреплена вручную)
+    const au=saved&&saved._auto, ac=(au&&au.classes)||{};
+    for (const c of t.classes){
+      if (c.auto!==false && ac[c.id] && ac[c.id].km>0){ Object.assign(c, Freight.fromAuto(c, ac[c.id], t)); c.src=ac[c.id].src; c.srcAt=au.at; c.srcAuto=true; }
+      else if (!c.src) c.src = saved&&saved.updatedAt && Array.isArray(saved.classes) ? 'вручную в «Настройках»' : 'стандартная ставка (рынок 2026, см. источники)';
+    }
+    return t;
   }
-  const res={ from:A, to:B, km, kmSrc, routeKey:rk, units:units.length, mass:units.reduce((s,u)=>s+u.m,0), missing, warn, vehicles:[], unplaced:[], unload:null, total:0, lo:0, hi:0, days:0, ok:false };
-  if (!(km>0)){ res.need='Укажите, откуда и куда везём (город в адресе) или расстояние в км'; return res; }
-  if (!units.length){ res.need=missing.length?'Укажите массу и габариты позиций':'В КП нет позиций этого поставщика'; return res; }
-  const plan=lgPlan(units, km, T);
-  res.vehicles=plan.vehicles; res.unplaced=plan.unplaced;
-  if (plan.unplaced.length) warn.push('Не помещается ни в одну машину из тарифов: '+[...new Set(plan.unplaced.map(x=>x.u.name))].join(', ')+' — нужен индивидуальный расчёт');
-  const maxUnit=units.reduce((s,u)=>Math.max(s,u.m),0);
-  res.unload=lgUnloadPick(maxUnit, T, inp.unload||'auto');
-  if (res.unload && maxUnit>res.unload.max+0.001) warn.push(`Самое тяжёлое место ${lgT(maxUnit)} т — больше, чем поднимет «${res.unload.name}»`);
-  res.transport=res.vehicles.reduce((s,v)=>s+v.cost,0);
-  res.agent=Math.round(res.transport*T.agentPct/100);
-  const val=+inp.value||0;
-  res.ins=Math.round(Math.max(T.insMin, val*T.insPct/100)); res.insBase=val;
-  const loc=lgPlan(units, T.localKm, T);       // забор у отправителя и доставка получателю по городу (для «терминал — терминал»)
-  res.localLeg=loc.unplaced.length?0:Math.round(loc.vehicles.reduce((s,v)=>s+v.cost,0));
-  res.total=res.transport+res.agent+res.ins+(res.unload?res.unload.cost:0);
-  res.lo=Math.round(res.total*(1-T.range/100)/100)*100; res.hi=Math.round(res.total*(1+T.range/100)/100)*100;
-  const over=res.vehicles.some(v=>v.over||v.heavy);
-  res.days=Math.ceil(km/(over?T.kmDayOver:T.kmDay))+1+(over?T.permitDays:0);
-  res.over=over;
-  res.ok=!plan.unplaced.length && !missing.length;
-  return res;
+
+  // ставки класса по автообновлению: по направлениям с длиной и ценой рейса — ставка до far км и дальше (верхняя граница),
+  // иначе — общая ставка ₽/км, а дальняя — в той же пропорции, что у стандартного тарифа
+  static fromAuto(C, a, T){
+    const ratio=C.kmFar>0 && C.km>0 ? C.kmFar/C.km : 1, far=T.far>0?T.far:1000, base=C.base||0;
+    const pts=(a.routes||[]).filter(r=>r.dist>0 && r.trip>0);
+    if (!pts.length) return { km:+a.km, kmFar:Math.round(+a.km*ratio) };
+    const near=pts.filter(p=>p.dist<=far), long=pts.filter(p=>p.dist>far);
+    let km = near.length ? Math.max(...near.map(p=>(p.trip-base)/p.dist)) : Math.max(...long.map(p=>(p.trip-base)/(far+ratio*(p.dist-far))));
+    km=Math.max(1, km);
+    let kmFar = long.length ? Math.max(...long.map(p=>(p.trip-base-km*far)/(p.dist-far))) : km*ratio;
+    if (!(kmFar>0)) kmFar=km*ratio;
+    return { km:Math.round(km), kmFar:Math.round(Math.min(kmFar, km)) };
+  }
+
+  static isIso(u){ const I=Freight.ISO, near=(v, list)=>list.some(x=>Math.abs(v-x)<=I.tol);
+    return near(Math.max(u.l,u.w), I.l) && Math.abs(Math.min(u.l,u.w)-I.w)<=I.tol && near(u.h, I.h); }
+
+  // грузоподъёмность без спецразрешения на тяжеловес
+  static legalT(C, T){ return C.tLegal>0 ? C.tLegal : (C.open && C.t>T.heavyFrom ? T.heavyFrom : C.t); }
+
+  // раскладка мест по площадке; units — места груза {l, w, h, m, name}; ориентация в плане любая, кантовать нельзя
+  static fit(units, C, T){
+    let mass=0, overW=0, overH=0;
+    const lay=[], legalW=(T.legal&&T.legal.w)||2.55;
+    for (const u of units){
+      if (C.iso && !Freight.isIso(u)) return { ok:false, why:'контейнеровоз возит только морские контейнеры 20 и 40 футов' };
+      mass+=u.m;
+      let l=u.l, w=u.w;
+      if (w>C.W && l<=C.W && w<=C.L){ const t=l; l=w; w=t; }          // повернуть поперёк, если так помещается
+      if (l>C.L+0.001) return { ok:false, why:`длина ${lgM(u.l)} м больше площадки ${lgM(C.L)} м` };
+      if (u.h>C.hMax+0.001) return { ok:false, why:`высота ${lgM(u.h)} м больше допустимой ${lgM(C.hMax)} м` };
+      if (w>C.wMax+0.001 || (!C.open && w>C.W+0.001)) return { ok:false, why:`ширина ${lgM(w)} м больше допустимой ${lgM(C.open?C.wMax:C.W)} м` };
+      // открытая площадка: груз шире кузова, но не шире 2,55 м, — без спецразрешения; шире — негабарит
+      if (w>legalW+0.001) overW=Math.max(overW, w);
+      if (u.h>C.h+0.001) overH=Math.max(overH, u.h);
+      lay.push({l,w,u});
+    }
+    if (mass>C.t+0.001) return { ok:false, why:`масса ${lgT(mass)} т больше грузоподъёмности ${lgT(C.t)} т` };
+    // полки вдоль площадки: в полке места стоят рядом поперёк, глубина полки — самое длинное место
+    lay.sort((a,b)=>b.l-a.l || b.w-a.w);
+    const shelves=[]; let depth=0;
+    for (const x of lay){
+      const sh=shelves.find(s=>s.depth>=x.l-0.001 && s.used+x.w<=Math.max(C.W, x.w)+0.001 && !(s.wide||x.w>C.W));
+      if (sh) sh.used+=x.w;
+      else { shelves.push({depth:x.l, used:x.w, wide:x.w>C.W}); depth+=x.l+0.1; }
+    }
+    if (depth-0.1>C.L+0.001) return { ok:false, why:'не помещается по длине площадки' };
+    return { ok:true, mass, overW, overH, depth:Math.max(0, depth-0.1) };
+  }
+
+  // рейс: подача + км до far × ставка + км дальше × «дальняя» ставка (× надбавка негабарита), не меньше минимального заказа
+  static run(C, km, T, k=1){
+    const far=T.far>0?T.far:Infinity, near=Math.min(km, far), rest=Math.max(0, km-far), kmFar=C.kmFar>0?C.kmFar:C.km;
+    const raw=(C.base||0) + (C.km*near + kmFar*rest)*k;
+    return { v:Math.max(C.min||0, raw), raw, near, rest, kmFar };
+  }
+
+  static vehicleCost(C, fit, km, T){
+    const over=fit.overW>0 || fit.overH>0, heavy=fit.mass>Freight.legalT(C, T)+0.001, escort=fit.overW>T.escortW, gibdd=fit.overW>(T.gibddW||4);
+    const k=over ? (C.id==='lowbed' ? T.overKLowbed : T.overK) : 1, r=Freight.run(C, km, T, k), n=x=>Math.round(x).toLocaleString('ru-RU');
+    const seg = r.rest>0 ? `${n(r.near)} км × ${lgRub(C.km*k)} + ${n(r.rest)} км × ${lgRub(r.kmFar*k)}` : `${n(km)} км × ${lgRub(C.km*k)}`;
+    const parts=[[`${C.name}: подача ${lgRub(C.base||0)} + ${seg}${r.raw<(C.min||0)?` (минимальный заказ ${lgRub(C.min)})`:''}`, r.v]];
+    if (over) parts.push([`Негабарит (${[fit.overW?`ширина ${lgM(fit.overW)} м`:'', fit.overH?`высота груза ${lgM(fit.overH)} м`:''].filter(Boolean).join(', ')}): спецразрешение${T.permitAgent?' и оформление':''}`, T.permit+T.permitAgent]);
+    if (heavy) parts.push([`Тяжеловес (${lgT(fit.mass)} т, без разрешения — до ${lgT(Freight.legalT(C, T))} т): ${over?'':'разрешение и '}вред дорогам ${n(km)} км × ${lgRub(T.harmKm)}`, (over?0:T.heavyPermit+T.permitAgent) + T.harmKm*km]);
+    if (escort) parts.push([`Автомобиль прикрытия (шире ${lgM(T.escortW)} м): ${n(km)} км × ${lgRub(T.escortKm)}`, T.escortKm*km]);
+    return { cost:parts.reduce((s,p)=>s+p[1],0), parts, over, heavy, escort, gibdd };
+  }
+
+  static bestClass(units, km, T){
+    let best=null;
+    for (const C of T.classes){ const f=Freight.fit(units, C, T); if (!f.ok) continue;
+      const c=Freight.vehicleCost(C, f, km, T); if (!best || c.cost<best.cost) best={C, fit:f, ...c}; }
+    return best;
+  }
+
+  // план перевозки: одна машина, если всё помещается; иначе — несколько (крупные места первыми)
+  static plan(units, km, T){
+    const one=Freight.bestClass(units, km, T);
+    if (one) return { vehicles:[{...one, units}], unplaced:[] };
+    const sorted=[...units].sort((a,b)=>(b.l*b.w)-(a.l*a.w) || b.m-a.m);
+    const vs=[], unplaced=[];
+    for (const u of sorted){
+      let placed=false;
+      for (const v of vs){ const b=Freight.bestClass(v.units.concat(u), km, T); if (b){ Object.assign(v, b, {units:v.units.concat(u)}); placed=true; break; } }
+      if (placed) continue;
+      const b=Freight.bestClass([u], km, T);
+      if (b) vs.push({...b, units:[u]});
+      else unplaced.push({u, why:T.classes.map(C=>Freight.fit([u], C, T).why).filter(Boolean).pop()||''});
+    }
+    return { vehicles:vs, unplaced };
+  }
+
+  // ключ маршрута по дорогам: обе точки с координатами — точные адреса или центры городов (один город без адресов — по городу)
+  static routeKey(a, b){
+    if (!a || !b || !Number.isFinite(a.lat) || !Number.isFinite(a.lon) || !Number.isFinite(b.lat) || !Number.isFinite(b.lon)) return '';
+    if (!a.exact && !b.exact && a.name===b.name) return '';
+    return `${a.lat.toFixed(4)},${a.lon.toFixed(4)}|${b.lat.toFixed(4)},${b.lon.toFixed(4)}`;
+  }
+
+  // расчёт целиком. inp: { from:{city|addr|geo}, to:{…}, km (своё расстояние или ''), route:{key, km, src} (по дорогам),
+  // items:[{name, qty, l,w,h (м), m (т)}], unload:'auto'|'none'|id, value (стоимость груза для страхования) }
+  static calc(inp, T){
+    T=T||Freight.tariffs();
+    const warn=[], missing=[];
+    const A=lgPoint(inp.from), B=lgPoint(inp.to), rk=Freight.routeKey(A,B);
+    let km=lgNum(inp.km), kmSrc='вручную';
+    if (!(km>0) && rk && inp.route && inp.route.key===rk && inp.route.km>0){
+      km=inp.route.km; kmSrc=(inp.route.src||'по дорогам')+(A.exact&&B.exact?'':A.exact||B.exact?', от центра города':', между центрами городов'); }
+    if (!(km>0)){ km=lgRoadKm(A,B,T); kmSrc=!km?'':A.exact&&B.exact?(lgHav(A,B)<40?'по городу между адресами':'по прямой между адресами с поправкой на дороги'):(A.name===B.name?'в пределах города':'по прямой с поправкой на дороги'); }
+    if (A&&A.noRoad || B&&B.noRoad) warn.push(`${(B&&B.noRoad?B:A).name}: нет круглогодичной дороги — доставка морем, по зимнику или авиа, нужен расчёт перевозчика`);
+    if (A&&B&&(A.name==='Калининград')!==(B.name==='Калининград')) warn.push('Калининград: транзит через страны ЕС или паром — нужен расчёт перевозчика');
+    const units=[];
+    for (const it of inp.items||[]){
+      const q=Math.max(0, Math.round(+it.qty||0)); if (!q) continue;
+      const l=+it.l, w=+it.w, h=+it.h, m=+it.m;
+      if (!(l>0&&w>0&&h>0) || !(m>0)){ missing.push(it.name||'позиция'); continue; }
+      const mp = m<T.packMax ? m*(1+T.pack/100) : m;
+      for (let i=0;i<Math.min(q,300);i++) units.push({name:it.name, l:Math.max(l,w), w:Math.min(l,w), h, m:mp});
+      if (q>300) warn.push(`${it.name}: больше 300 мест — посчитаны первые 300`);
+    }
+    const res={ from:A, to:B, km, kmSrc, routeKey:rk, units:units.length, mass:units.reduce((s,u)=>s+u.m,0), missing, warn, vehicles:[], unplaced:[], unload:null, total:0, lo:0, hi:0, days:0, ok:false };
+    if (!(km>0)){ res.need='Укажите, откуда и куда везём (город в адресе) или расстояние в км'; return res; }
+    if (!units.length){ res.need=missing.length?'Укажите массу и габариты позиций':'В КП нет позиций этого поставщика'; return res; }
+    const plan=Freight.plan(units, km, T);
+    res.vehicles=plan.vehicles; res.unplaced=plan.unplaced;
+    if (plan.unplaced.length) warn.push('Не помещается ни в одну машину из тарифов: '+[...new Set(plan.unplaced.map(x=>x.u.name))].join(', ')+' — нужен индивидуальный расчёт');
+    if (res.vehicles.some(v=>v.gibdd)) warn.push(`Груз шире ${lgM(T.gibddW||4)} м — нужно сопровождение патрульным автомобилем ГИБДД: стоимость уточните у перевозчика (в расчёт не входит)`);
+    const maxUnit=units.reduce((s,u)=>Math.max(s,u.m),0);
+    res.unload=lgUnloadPick(maxUnit, T, inp.unload||'auto');
+    if (res.unload && maxUnit>res.unload.max+0.001) warn.push(`Самое тяжёлое место ${lgT(maxUnit)} т — больше, чем поднимет «${res.unload.name}»`);
+    res.transport=res.vehicles.reduce((s,v)=>s+v.cost,0);
+    res.agent=Math.round(res.transport*T.agentPct/100);
+    const val=+inp.value||0;
+    res.ins=Math.round(Math.max(T.insMin, val*T.insPct/100)); res.insBase=val;
+    const loc=Freight.plan(units, T.localKm, T);       // забор у отправителя и доставка получателю по городу (для «терминал — терминал»)
+    res.localLeg=loc.unplaced.length?0:Math.round(loc.vehicles.reduce((s,v)=>s+v.cost,0));
+    res.total=res.transport+res.agent+res.ins+(res.unload?res.unload.cost:0);
+    res.lo=Math.round(res.total*(1-T.range/100)/100)*100; res.hi=Math.round(res.total*(1+T.range/100)/100)*100;
+    const over=res.vehicles.some(v=>v.over||v.heavy);
+    res.days=Math.ceil(km/(over?T.kmDayOver:T.kmDay))+1+(over?T.permitDays:0);
+    res.over=over;
+    res.ok=!plan.unplaced.length && !missing.length;
+    return res;
+  }
+
+  // Сверка с фактическими счетами: facts — [{at, route, km, cls, sum (с НДС), note}]. Для каждой записи — цена рейса по
+  // тарифу (без агента, страхования и разгрузки) и отклонение; для класса — поправка тарифа:
+  //   при 3+ счетах на разных расстояниях — два множителя (взвешенный МНК по относительной ошибке): α к подаче и минимальному
+  //   заказу, β к ставкам за км (доля «дальней» ставки сохраняется); иначе — один множитель (медиана «факт / тариф»).
+  static calibrate(facts, T){
+    const rows=(facts||[]).map(f=>{ const C=T.classes.find(c=>c.id===f.cls), km=+f.km, sum=+f.sum;
+      if (!C || !(km>0) || !(sum>0)) return {...f, ok:false};
+      const r=Freight.run(C, km, T); return {...f, ok:true, model:r.v, dev:sum/r.v-1}; });
+    const out=[];
+    for (const C of T.classes){
+      const R=rows.filter(r=>r.ok && r.cls===C.id); if (!R.length) continue;
+      const ratios=R.map(r=>1+r.dev).sort((a,b)=>a-b), n=R.length;
+      const med=n%2 ? ratios[(n-1)/2] : (ratios[n/2-1]+ratios[n/2])/2;
+      let a=med, b=med, how='один множитель — медиана по счетам';
+      const kms=R.map(r=>+r.km);
+      if (n>=3 && Math.max(...kms)>=2*Math.min(...kms) && (C.base||0)>0){
+        // sum ≈ α·base + β·D, D — часть рейса за км; вес 1/sum² (относительная ошибка)
+        let s11=0, s12=0, s22=0, t1=0, t2=0;
+        for (const r of R){ const x=Freight.run(C, +r.km, T), D=x.raw-(C.base||0), B=C.base||0, w=1/(r.sum*r.sum);
+          s11+=w*B*B; s12+=w*B*D; s22+=w*D*D; t1+=w*B*r.sum; t2+=w*D*r.sum; }
+        const det=s11*s22-s12*s12;
+        if (Math.abs(det)>1e-18){ const A=(t1*s22-t2*s12)/det, Bt=(s11*t2-s12*t1)/det;
+          if (A>0.2 && A<5 && Bt>0.2 && Bt<5){ a=A; b=Bt; how='подача и ставки за км отдельно — по счетам на разных расстояниях'; } }
+      }
+      const fitted={...C, base:Math.round((C.base||0)*a/100)*100, min:Math.round((C.min||0)*a/100)*100, km:Math.round(C.km*b), kmFar:Math.round((C.kmFar>0?C.kmFar:C.km)*b)};
+      const err=(cls)=>R.reduce((s,r)=>s+Math.abs(r.sum/Freight.run(cls, +r.km, T).v-1),0)/n*100;
+      out.push({id:C.id, name:C.name, n, a, b, how, before:err(C), after:err(fitted), fitted});
+    }
+    return { rows, classes:out };
+  }
 }
 
-if (typeof module!=='undefined') module.exports={LG_DEFAULTS, lgTariffs, lgCargoOf, lgWriteCargo, lgTriple, lgCity, lgCityByName, lgRoadKm, lgHav, lgFit, lgPlan, lgCalc, LG_CITIES};
+if (typeof module!=='undefined') module.exports={Freight, lgCargoOf, lgWriteCargo, lgTriple, lgCity, lgCityByName, lgRoadKm, lgHav, lgPoint, LG_CITIES};

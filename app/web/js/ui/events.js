@@ -125,7 +125,7 @@ document.addEventListener('click', async e=>{
     case 'clientManual': S._clManual=true; break;
     case 'clientChange': Object.assign(S,{client:'',clientId:'',clientInn:'',clientKpp:'',clientOgrn:'',clientFull:'',clientAddr:'',clientDir:'',clientDirPost:'',clientStatus:'',clientSrc:'',check:null,_clEdit:false,_clManual:false,_lastInn:''});
       S.contact={name:'',post:'',phone:'',email:''}; S.object={purpose:'',address:''}; renderForm(); persist(); setTimeout(()=>$('#clFind')?.focus(),30); return;
-    case 'checkRun': return checkRun(b.dataset.force==='1');
+    case 'checkRun': return PartyCheck.run(b.dataset.force==='1');
     case 'integrations': return openSettings('keys');
     case 'settings': return openSettings();
     case 'uitexts': document.querySelector('details.topmenu')?.removeAttribute('open'); return uitToggle();

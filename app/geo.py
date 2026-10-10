@@ -106,25 +106,36 @@ def reverse(store, lat, lon):
     raise ValueError('По этим координатам адрес не найден')
 
 
-def route(store, a, b):
-    """Расстояние по дорогам, км (OSRM). a, b — (lat, lon)."""
-    a, b = (_f(a[0]), _f(a[1])), (_f(b[0]), _f(b[1]))
-    if None in a or None in b:
-        raise ValueError('Неверные координаты')
-    key = '%.3f,%.3f|%.3f,%.3f' % (a + b)
-    cache = store.kv_get('georoute') or {}
-    if key in cache:
-        return dict(cache[key], cached=True)
-    j = _http(OSRM + '%s,%s;%s,%s?overview=false' % (a[1], a[0], b[1], b[0]))
-    r = (j.get('routes') or [None])[0] if isinstance(j, dict) else None
-    if not r or j.get('code') not in (None, 'Ok'):
-        raise ValueError('Маршрут по дорогам не найден' + (': ' + str(j.get('message')) if isinstance(j, dict) and j.get('message') else ''))
-    out = {'km': max(1, round(r['distance'] / 1000)), 'hours': round(r.get('duration', 0) / 3600, 1), 'src': 'по дорогам (OSRM, OpenStreetMap)'}
-    if len(cache) > 2000:
-        cache = dict(list(cache.items())[-1500:])
-    cache[key] = out
-    store.kv_set('georoute', cache)
-    return out
+class RoadRoute:
+    """Расстояние по дорогам (OSRM, данные OpenStreetMap) между двумя точками — точными адресами или центрами городов.
+    Результат кэшируется в kv «georoute» по паре точек, округлённых до ~100 м (не больше 2 000 пар). Сервис не ответил —
+    ValueError с понятным текстом: программа считает расстояние по прямой с поправкой на дороги."""
+    URL = OSRM
+    MAX = 2000
+
+    @classmethod
+    def km(cls, store, a, b):
+        """a, b — (lat, lon) → {'km', 'hours', 'src'}."""
+        a, b = (_f(a[0]), _f(a[1])), (_f(b[0]), _f(b[1]))
+        if None in a or None in b or not all(-90 <= p[0] <= 90 and -180 <= p[1] <= 180 for p in (a, b)):
+            raise ValueError('Неверные координаты')
+        key = '%.3f,%.3f|%.3f,%.3f' % (a + b)
+        cache = store.kv_get('georoute') or {}
+        if key in cache:
+            return dict(cache[key], cached=True)
+        try:
+            j = _http(cls.URL + '%s,%s;%s,%s?overview=false' % (a[1], a[0], b[1], b[0]))
+        except (urllib.error.URLError, OSError, ValueError):
+            raise ValueError('сервис маршрутов OSRM не ответил — расстояние по прямой с поправкой на дороги')
+        r = (j.get('routes') or [None])[0] if isinstance(j, dict) else None
+        if not r or j.get('code') not in (None, 'Ok'):
+            raise ValueError('маршрут по дорогам не найден — расстояние по прямой с поправкой на дороги')
+        out = {'km': max(1, round(r['distance'] / 1000)), 'hours': round(r.get('duration', 0) / 3600, 1), 'src': 'по дорогам (OSRM, OpenStreetMap)'}
+        if len(cache) > cls.MAX:
+            cache = dict(list(cache.items())[-(cls.MAX * 3 // 4):])
+        cache[key] = out
+        store.kv_set('georoute', cache)
+        return out
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):

@@ -45,40 +45,7 @@ function customsFeeBand(cv){ if (!(cv>0)) return ''; const sc=CUSTOMS_FEES.scale
   const f=v=>Math.round(v).toLocaleString('ru-RU'), lo=i?f(sc[i-1][0])+',01':'0', hi=sc[i][0]===Infinity?'и выше':'– '+f(sc[i][0]);
   return `таможенная стоимость ${f(cv)} ₽ → интервал ${lo} ${hi} ₽ → сбор ${f(sc[i][1])} ₽`; }
 
-// Коды ТН ВЭД ЕАЭС и ставки ввозной пошлины по категориям оборудования — СПРАВОЧНО: ставка зависит от полного кода
-// (10 знаков), его подтверждает таможенный брокер. В программе любой код и ставку можно исправить — для категории
-// или для конкретной модели (хранится в базе, общая для отдела).
-const DEAL_HS = {
-  st_pump:          {code:'8413 70', duty:'0', note:'Насосная станция в контейнере — по основному насосу (центробежные); с двигателем внутреннего сгорания — 8413 81'},
-  st_comp:          {code:'8414 80', duty:'0', note:'Компрессорная станция в контейнере — по компрессору (блочно-модульная установка)'},
-  st_dgu:           {code:'8502 13', duty:'5', note:'Дизельная электростанция в контейнере — как ДГУ: до 75 кВА — 8502 11, 75–375 кВА — 8502 12, свыше 375 кВА — 8502 13'},
-  container:        {code:'9406 90', duty:'', note:'Блок-контейнер — сборные строительные конструкции из чёрных металлов; ставку пошлины уточните у таможенного брокера'},
-  dgu:              {code:'8502 13', duty:'5', note:'Генераторные установки с дизельным двигателем: до 75 кВА — 8502 11, 75–375 кВА — 8502 12, свыше 375 кВА — 8502 13'},
-  light:            {code:'8502 39', duty:'5', note:'Осветительная мачта с генератором; без генератора — 9405'},
-  welder:           {code:'8502 20', duty:'5', note:'Сварочный агрегат с двигателем; сварочные аппараты без двигателя — 8515'},
-  comp_diesel:      {code:'8414 40', duty:'0', note:'Воздушные компрессоры на колёсном шасси, буксируемые'},
-  comp_screw:       {code:'8414 80', duty:'0', note:'Компрессоры воздушные винтовые'},
-  comp_scroll:      {code:'8414 80', duty:'0', note:'Компрессоры воздушные спиральные'},
-  comp_piston:      {code:'8414 80', duty:'0', note:'Компрессоры воздушные поршневые'},
-  comp_centrifugal: {code:'8414 80', duty:'0', note:'Турбокомпрессоры (центробежные)'},
-  dryer_ads:        {code:'8421 39', duty:'0', note:'Оборудование для очистки газов (адсорбционные осушители)'},
-  dryer_refrig:     {code:'8419 89', duty:'0', note:'Рефрижераторные осушители сжатого воздуха'},
-  filter:           {code:'8421 39', duty:'0', note:'Фильтры для очистки газов'},
-  receiver:         {code:'7311 00', duty:'5', note:'Ёмкости для сжатого газа из чёрных металлов'},
-  blower:           {code:'8414 59', duty:'0', note:'Воздуходувки (нагнетатели) роторные; вакуумные насосы — 8414 10'},
-  gen_n2:           {code:'8421 39', duty:'0', note:'Установки разделения газов (адсорбционные генераторы азота)'},
-  gen_o2:           {code:'8421 39', duty:'0', note:'Установки разделения газов (адсорбционные генераторы кислорода)'},
-  oil_sep:          {code:'8421 39', duty:'0', note:'Сепараторы масляного тумана и конденсата — оборудование для очистки газов'},
-  ats:              {code:'8537 10', duty:'0', note:'Щиты и пульты управления на напряжение до 1000 В'},
-  pump:             {code:'8413 70', duty:'0', note:'Насосы центробежные; мотопомпы с двигателем — 8413 70 / 8413 81'},
-  spare:            {code:'8414 90', duty:'0', note:'Части компрессоров; части генераторов — 8503 00, фильтроэлементы — 8421 99, части насосов — 8413 91'},
-  other:            {code:'8479 89', duty:'0', note:'Прочие машины и механизмы — уточните код по виду оборудования'},
-};
-
-// код для ДГУ — по мощности (кВА, иначе кВт / 0,8)
-function dealHsAuto(cat, attrs){ const h=DEAL_HS[cat]; if (!h) return null;
-  if (cat==='dgu' || cat==='st_dgu'){ const kva=dNum(attrs&&attrs.kva) || (dNum(attrs&&attrs.kw)||0)/0.8; if (kva>0) return {...h, code: kva<=75?'8502 11':kva<=375?'8502 12':'8502 13'}; }
-  return h; }
+// Коды ТН ВЭД ЕАЭС и ставки пошлины по видам оборудования — класс TnVed (features/tnved.js).
 
 // страна поставщика → таможенный режим, валюта, НДС
 const DEAL_EAEU = ['Беларусь','Казахстан','Армения','Киргизия'];
@@ -190,7 +157,9 @@ class DealCalculator {
   // ---------- поставщик: закупка, логистика, таможня, этапы оплаты, сроки
   supplier(s, k, supOf){ const P=`sup.${k}`, kp=this.kp, vatK=this.vatK, num=(...a)=>this.num(...a), money=(...a)=>this.money(...a);
     const items=(kp.items||[]).filter(x=>supOf(x.id)===s.id);
-    const noVat = s.noVat!=null ? !!s.noVat : !!kp.costNoVat;      // цены поставщика указаны без НДС — к платежу добавляется НДС
+    const mode = ['calc','eaeu','none','sum'].includes(s.cusMode) ? s.cusMode : 'sum';
+    // цены поставщика без НДС — к платежу добавляется НДС; только у поставщика в России: у ввозимого НДС считается при ввозе
+    const noVat = mode==='none' && (s.noVat!=null ? !!s.noVat : !!kp.costNoVat);
     const byCur={}; let equip=0, equipFx=0; const noCost=[], lines=[];
     for (const x of items){ const q=+x.qty||0; if (!(x.cost>0)){ noCost.push(x); continue; }
       const c=x.cur||'RUB'; this.used.add(c); byCur[c]=(byCur[c]||0)+x.cost*q;
@@ -199,7 +168,10 @@ class DealCalculator {
       lines.push({id:x.id, name:x.name, qty:q, rub:a, duty:x.duty, code:x.code||''}); }
     const ex=num(P+'.extra', s.extra&&s.extra.v, {def:0}); if (ex){ const c=(s.extra.cur)||'RUB'; byCur[c]=(byCur[c]||0)+ex; }
     const exRub=money(P+'.extra', s.extra)*(noVat?vatK:1); equip+=exRub; if ((s.extra&&s.extra.cur||'RUB')!=='RUB') equipFx+=exRub;
-    if (exRub) lines.push({id:'extra', name:'Прочая закупка у поставщика', qty:1, rub:exRub, duty:dNum(s.duty), code:''});
+    // прочая закупка (опции, ЗИП): своя ставка пошлины или средняя по стоимости позиций поставщика с известной ставкой
+    if (exRub){ const own=mode==='calc' ? num(P+'.duty', s.duty, {max:100}) : null, wd=lines.filter(l=>l.duty!=null && !Number.isNaN(l.duty)), wb=wd.reduce((a,l)=>a+l.rub,0);
+      lines.push({id:'extra', name:'Прочая закупка у поставщика', qty:1, rub:exRub, duty: own!=null ? own : wb>0 ? wd.reduce((a,l)=>a+l.rub*l.duty,0)/wb : null,
+        dutyAuto: own==null && wb>0, code:String(s.hsx||'').trim()}); }
     const L=money(P+'.log', s.log), Lfx=(s.log&&s.log.cur||'RUB')!=='RUB' ? L : 0;
     const Lru=money(P+'.logRu', s.logRu, 'RUB'), brk=money(P+'.brk', s.brk, 'RUB');
     const adv=num(P+'.adv', s.adv, {def:0, max:100}), prod=num(P+'.prod', s.prod, {def:0, int:true}), ship=num(P+'.ship', s.ship, {def:0, int:true});
@@ -211,7 +183,6 @@ class DealCalculator {
     if (paySum>100.0001) this.err[P+'.pay']='Сумма этапов оплаты поставщику больше 100 %';
     stages[stages.length-1].p=Math.max(0, 100-paySum);
     // таможня: расчёт по позициям (пошлина у каждой своя), ЕАЭС (только НДС), сумма целиком или нет (Россия)
-    const mode = ['calc','eaeu','none','sum'].includes(s.cusMode) ? s.cusMode : 'sum';
     let T=0, vi=null, cv=0, dutyA=0, fee=0, feeAuto=true, ivatA=0; const noDuty=[];
     const ivP=num(P+'.ivat', s.ivat, {def:22, max:100});
     if (mode==='calc'){
@@ -421,4 +392,4 @@ function dlPctTxt(p){ return (Math.round(p*100)/100).toString().replace('.',',')
 // цена с НДС, при которой показатель равен цели — DealCalculator.solve
 function dealSolve(kp, d, type, value){ return DealCalculator.solve(kp, d, type, value); }
 
-if (typeof module!=='undefined') module.exports={DealCalculator, dealAddDays, dlDaysTxt, DEAL_BG_TYPES, dealBgRate, DEAL_SUP_EVENTS, dealSupPay, dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, customsFeeBand, dNum, CUSTOMS_FEES, DEAL_EVENTS, DEAL_HS, dealHsAuto, dealCountryPreset};
+if (typeof module!=='undefined') module.exports={DealCalculator, dealAddDays, dlDaysTxt, DEAL_BG_TYPES, dealBgRate, DEAL_SUP_EVENTS, dealSupPay, dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, customsFeeBand, dNum, CUSTOMS_FEES, DEAL_EVENTS, dealCountryPreset};

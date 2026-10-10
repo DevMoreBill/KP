@@ -699,6 +699,38 @@ def quote(store, req):
     return {'offers': offers, 'errors': errors, 'best': best, 'at': at, 'providers': pv}
 
 
+# ---------------------------------------------------------------- тарифы из «Настроек»: проверка на границе
+class TariffInput:
+    """Тарифы доставки из «Настроек» (PUT /api/logistics): объект JSON до 100 КБ; счета для сверки тарифов (facts) —
+    не больше 300, только известные поля: дата ГГГГ-ММ-ДД, маршрут до 120 знаков, расстояние 1–20 000 км, машина, сумма.
+    Ошибка — ValueError с понятным текстом."""
+    MAX_BYTES = 100000
+    MAX_FACTS = 300
+
+    @classmethod
+    def check(cls, d):
+        if not isinstance(d, dict) or len(json.dumps(d)) > cls.MAX_BYTES:
+            raise ValueError('Неверный формат тарифов')
+        facts = d.get('facts')
+        if facts is None:
+            return d
+        if not isinstance(facts, list) or len(facts) > cls.MAX_FACTS:
+            raise ValueError('Счетов для сверки тарифов — не больше %d' % cls.MAX_FACTS)
+        out = []
+        for f in facts:
+            if not isinstance(f, dict):
+                raise ValueError('Неверный формат счёта для сверки тарифов')
+            km, total = _num(f.get('km')), _num(f.get('sum'))
+            if not (km and 0 < km <= 20000) or not (total and 0 < total <= 1e9):
+                raise ValueError('Счёт для сверки тарифов: расстояние от 1 до 20 000 км и сумма больше нуля')
+            at = str(f.get('at') or '')[:10]
+            if at and not re.match(r'^\d{4}-\d{2}-\d{2}$', at):
+                raise ValueError('Дата счёта для сверки тарифов — в формате ГГГГ-ММ-ДД')
+            out.append({'at': at, 'route': str(f.get('route') or '')[:120], 'km': km, 'cls': str(f.get('cls') or '')[:40], 'sum': total})
+        d['facts'] = out
+        return d
+
+
 # ---------------------------------------------------------------- автообновление ставок по ATI.SU
 def auto_settings(store):
     t = store.kv_get('logistics') or {}
@@ -708,7 +740,9 @@ def auto_settings(store):
 
 def auto_refresh(store, force=False, log=print):
     """Ставки ₽/км классов машин — верхняя граница средних ставок ATI.SU по опорным направлениям (максимум по направлениям).
-    Результат — kv «logisticsAuto»: {at, classes:{id:{km, src, routes}}, errors}. Ставки, закреплённые вручную, не меняются (это делает интерфейс)."""
+    Результат — kv «logisticsAuto»: {at, classes:{id:{km, src, routes:[{route, km, avg, trip, dist}]}}, errors}. По длине направлений
+    и цене рейса программа делит ставку на два участка — до 1 000 км и дальше (Freight.fromAuto). Ставки, закреплённые вручную,
+    не меняются (это делает интерфейс)."""
     if not providers(store)['ati']:
         return None
     cfg = auto_settings(store)
@@ -737,7 +771,10 @@ def auto_refresh(store, force=False, log=print):
                         raise ValueError('направления нет в «Средних ставках»')
                     p = ati_price(store, d, car, ton, cfg['period'])
                     if p['upperKm']:
-                        rows.append({'route': r.strip(), 'km': round(p['upperKm'], 1), 'avg': p['avgKm'] and round(p['avgKm'], 1)})
+                        # длина направления и цена рейса — для тарифа в два участка (ставка до 1 000 км и дальше считается в программе)
+                        dist = round(p['upperRub'] / p['upperKm']) if p['upperRub'] and p['upperKm'] else None
+                        rows.append({'route': r.strip(), 'km': round(p['upperKm'], 1), 'avg': p['avgKm'] and round(p['avgKm'], 1),
+                                     'trip': round(p['upperRub']) if p['upperRub'] else None, 'dist': dist})
                         best = max(best or 0, p['upperKm'])
                 except Exception as e:
                     errors.append('%s, %s: %s' % (r.strip(), cid, _err(e)))

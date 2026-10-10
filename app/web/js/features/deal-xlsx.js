@@ -53,7 +53,7 @@ async function dealXlsx(){
       const duK=[];
       s.lines.forEach((ln,j)=>{ const lk=lineKey[ln.id]; if (!lk) return; const key=`du${k}_${j}`; duK.push(key);
         row([`Пошлина: ${ln.name}`, {v:Number.isFinite(ln.duty)?ln.duty:0, s:'inp'}, '%',
-          {f:`IF(${D('EQ'+k)}=0,0,${D(lk)}*${D('CV'+k)}/${D('EQ'+k)})*${self()}/100`, v:ln.dutyA, s:'money'}, note((ln.code?'ТН ВЭД '+ln.code+'. ':'')+(Number.isFinite(ln.duty)?'':'Ставка не указана — 0 %'))], key); });
+          {f:`IF(${D('EQ'+k)}=0,0,${D(lk)}*${D('CV'+k)}/${D('EQ'+k)})*${self()}/100`, v:ln.dutyA, s:'money'}, note((ln.code?'ТН ВЭД '+ln.code+'. ':'')+(ln.dutyAuto?'Средняя ставка позиций поставщика. ':'')+(Number.isFinite(ln.duty)?'':'Ставка не указана — 0 %'))], key); });
       row(['Пошлина, итого', '', '', {f:duK.map(x=>D(x)).join('+')||'0', v:s.dutyA, s:'money'}, note('С таможенной стоимости позиции (доля логистики и страхования — по цене)')], 'DU'+k);
       const sc=CUSTOMS_FEES.scale, lims=[0,...sc.slice(0,-1).map(x=>x[0]+0.01)], fees=sc.map(x=>x[1]);
       row(['Таможенный сбор', s.feeAuto?{f:`LOOKUP(${D('CV'+k)},{${lims.join(',')}},{${fees.join(',')}})`, v:s.fee, s:'inpMoney'}:{v:s.fee, s:'inpMoney'}, '₽', {f:self(), v:s.fee, s:'money'}, note(s.feeAuto?'По шкале '+CUSTOMS_FEES.title:'Вписан вручную')], 'FE'+k);

@@ -23,7 +23,7 @@ class AdminNav {
       {key:'db-client', label:'Клиенты', hint:'Реквизиты, контакты и объекты клиентов; загрузка списком ИНН.', open:m=>stDelete(m, 'client')},
       {key:'db-supplier', label:'Поставщики', hint:'Условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщиков.', open:m=>stDelete(m, 'supplier')},
       {key:'db-manager', label:'Менеджеры — контакты', hint:'Контакты менеджеров, которые попадают в КП. Логины и права — «Доступ → Вход и права менеджеров».', open:m=>stDelete(m, 'manager')},
-      {key:'logistics', label:'Тарифы доставки', hint:'Тарифы перевозки по России для «Экономики сделки»: транспорт, расстояния, разгрузка; загрузка файлом.', open:m=>stLogistics(m)}]},
+      {key:'logistics', label:'Тарифы доставки', hint:'Тарифы перевозки по России для «Экономики сделки»: транспорт, расстояния, разгрузка; загрузка файлом.', open:m=>FreightSettings.open(m)}]},
     {title:'Программа', tabs:[
       {key:'features', label:'Функции программы', hint:'Какие дополнительные возможности включены и кому доступны: всем, администратору или выбранным менеджерам.', open:m=>new FeaturesPanel(m).open()},
       {key:'defaults', label:'Умолчания', hint:'Что программа подставляет сама: новое КП, условия, контакты компании, экономика сделки, станции, автозаполнение.', open:m=>stDefaults(m)},
@@ -35,7 +35,7 @@ class AdminNav {
       {key:'connections', label:'Проверка подключений', hint:'Все внешние сервисы одной кнопкой: почта, нейросеть, ЦБ, контрагенты, перевозчики, GitHub, фиды, PDF.', open:m=>new ConnectionsPanel(m).open()},
       {key:'mail', label:'Почта', hint:'Почтовый сервер (SMTP) и письмо по умолчанию для отправки КП клиентам.', open:m=>stMail(m)},
       {key:'ai', label:'Нейросеть', hint:'Нейросеть прямо в программе для «Заполнить с ИИ»: ключ, модель, расход.', open:m=>stAi(m)},
-      {key:'keys', label:'Ключи API', hint:'Контрагенты (Checko, DaData), перевозчики, PDF; резервная копия ключей.', open:m=>stKeys(m)}]},
+      {key:'keys', label:'Ключи API', hint:'Контрагенты (Checko, резерв OFData, DaData), перевозчики, PDF; резервная копия ключей.', open:m=>stKeys(m)}]},
     {title:'Доступ', tabs:[
       {key:'access', label:'Вход и права менеджеров', hint:'Вход в конструктор по логину и паролю, права менеджеров. Контакты менеджеров — «Справочники → Менеджеры — контакты».', open:m=>stAccess(m)},
       {key:'users', label:'Администраторы', hint:'Кто входит в «Настройки».', open:m=>stUsers(m)},
@@ -379,7 +379,7 @@ async function stTypes(m){
   m.onclick=e=>{ if (e.target.closest('[data-types]')) openTypesEditor(); };
 }
 
-async function stKeys(m){ return keysForm(m); }
+async function stKeys(m){ return ApiKeys.form(m); }
 
 // ---------- нейросеть в программе (DeepSeek): включение, ключ, модель, проверка, расход
 // почта: менеджеры отправляют КП клиентам из журнала и после сохранения КП (сервер — app/kp_track.py, SMTP)

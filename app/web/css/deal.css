@@ -79,7 +79,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-add{justify-self:start}
 
 /* шаг 2 — таможня */
-.dl-hs input.hs{width:110px;font-variant-numeric:tabular-nums}
+.dl-hs input.hs{width:136px;font-variant-numeric:tabular-nums}
 .dl-hs .dl-in{width:84px}
 .dl-hs .dl-in input{width:56px}
 .dl-seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;flex-wrap:wrap}
@@ -208,6 +208,10 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
   .dl-hs tr{grid-template-columns:auto auto minmax(0,1fr)}
   .dl-hs td.num{grid-column:auto}
   .dl-hs td.num::before{content:none}
+  /* отметка источника и «из справочника…» — своей строкой под кодом и ставкой (10 знаков кода не оставляют им места) */
+  .dl-hs td.c-src{grid-column:1/-1;flex-direction:row;flex-wrap:wrap;align-items:center}
+  .dl-hs td.c-src .dl-hspick{max-width:100%}
+  .dl-hs input.hs{width:156px}
   .dl-pr{grid-template-columns:1fr}
   /* график — карточками */
   .dl-t{min-width:0;display:block} .dl-t thead{display:none} .dl-t tbody,.dl-t tfoot{display:block}
@@ -734,7 +738,7 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .lg-autog .f input{width:90px}
 .lg-auto textarea{min-height:76px}
 .lg-srcc{font-size:11.5px;color:var(--muted);min-width:200px;max-width:260px;line-height:1.3}
-#lgCl{min-width:1100px}
+#lgCl{min-width:1260px}
 .lg-st td input[readonly]{background:var(--soft);color:var(--muted)}
 
 /* вкладка «Логистика» */
@@ -980,3 +984,12 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dl-money .dl-f>span:first-child{white-space:normal;min-height:36px;align-items:flex-end}
 .dl-tw.dl-hsw{margin:0 -2px}
 .dl-hs .dl-hspick{max-width:170px}
+/* 3.50: сверка тарифов со счетами перевозчиков (после правил 3.24 для .lg-st — шире поля маршрута и суммы) */
+.lg-st.lg-fa td input[data-fa=route]{width:190px}
+.lg-st.lg-fa td input[data-fa=sum]{width:96px}
+.lg-st.lg-fa td input[type=date]{min-height:30px;padding:3px 6px;font-size:13px}
+.lg-fa td select{min-height:30px;font-size:12.5px;max-width:220px}
+.lg-fa td.num{white-space:nowrap;font-variant-numeric:tabular-nums}
+.lg-fares{margin-top:8px}
+.lg-fares .lg-p td{vertical-align:top}
+.lg-st tr.lg-upd td{background:var(--ok-bg, rgba(46,125,50,.08))}

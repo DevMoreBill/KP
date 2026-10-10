@@ -237,7 +237,7 @@ class GeoController(Controller):
                 a, b = (q.get('a') or '').split(','), (q.get('b') or '').split(',')
                 if len(a) != 2 or len(b) != 2:
                     raise ValueError('Нужны две точки')
-                return self.send_json(geo.route(store(), a, b))
+                return self.send_json(geo.RoadRoute.km(store(), a, b))
             if act == 'unshort':
                 return self.send_json({'url': geo.unshort(q.get('u', ''))})
         except Exception as e:
@@ -245,13 +245,13 @@ class GeoController(Controller):
         return self.text(404, 'Нет такого запроса')
 
 
-# ---------------------------------------------------------------- контрагенты: ИНН, проверка Checko, ключи интеграций, справочник
+# ---------------------------------------------------------------- контрагенты: ИНН, проверка (Checko, резерв OFData), ключи интеграций, справочник
 class PartiesController(Controller):
     @route(r'/api/party')
     def party(self):
         return self.send_json(cp().lookup(self.q.get('inn', '')))
 
-    @route(r'/api/check/quota')        # сколько проверок Checko осталось сегодня (на весь отдел) и сколько в очереди
+    @route(r'/api/check/quota')        # сколько проверок Checko (и резерва OFData) осталось сегодня на весь отдел, сколько в очереди
     def quota(self):
         return self.send_json(cp().quota())
 
@@ -267,7 +267,10 @@ class PartiesController(Controller):
     def keys(self):
         if self.m == 'PUT':
             self.json_body()
-            return self.send_json(cp().save_keys(self.body()))
+            try:
+                return self.send_json(cp().save_keys(self.body()))
+            except ValueError as e:
+                raise BadRequest(str(e))
         return self.send_json(cp().keys_public())
 
     @route(r'/api/clients', 'GET')
@@ -747,11 +750,9 @@ class SettingsController(Controller):
     def logistics(self):
         if self.m == 'PUT':
             try:
-                d = self.json_body()
-            except ValueError:
-                d = None
-            if not isinstance(d, dict) or len(json.dumps(d)) > 100000:
-                return self.text(400, 'Неверный формат тарифов')
+                d = logistics_api.TariffInput.check(self.json_body())
+            except ValueError as e:
+                return self.text(400, str(e) if not isinstance(e, BadRequest) else 'Неверный формат тарифов')
             d['updatedAt'] = datetime.now().isoformat(timespec='seconds')
             d['updatedBy'] = admin.actor(self.h)[1]
             store().kv_set('logistics', d)

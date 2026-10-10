@@ -1,4 +1,4 @@
-// Контрагенты: поиск по ИНН, справочник клиентов, проверка Checko, ключи API.
+// Контрагенты: поиск по ИНН, справочник клиентов, проверка (Checko, резерв OFData, ГИР БО, Rusprofile), ключи API.
 'use strict';
 
 const PURPOSES=['Резервное электроснабжение','Основной источник питания','Строительная площадка','Котельная','Производство','Сжатый воздух для производства','Водоснабжение / водоотведение'];
@@ -83,47 +83,70 @@ function shortName(s){
   return s;
 }
 
-// остаток проверок Checko на сегодня (на весь отдел): лимит 100 запросов в день, полная проверка — 4 запроса
-let CHK_Q=null;
-async function checkQuotaLoad(){ try{ CHK_Q=await api('/api/check/quota'); }catch(e){ CHK_Q=null; } return CHK_Q; }
-function checkQuotaText(q){ q=q||CHK_Q; if (!q || !q.key) return '';
-  if (q.left>=4) return `сегодня осталось ${q.checks} ${plural(q.checks,'полная проверка','полные проверки','полных проверок')} Checko`;
-  if (q.left>0) return `сегодня осталось ${q.left} ${plural(q.left,'запрос','запроса','запросов')} Checko — будет краткая проверка`;
-  return 'лимит Checko на сегодня исчерпан — будет бесплатная проверка по ФНС, полная — завтра автоматически'; }
+// Проверка контрагента: Checko — основной сервис, OFData — резерв (тот же формат данных), бухотчётность — бесплатно из
+// ГИР БО ФНС, Rusprofile — кнопкой (открытого API у него нет). Лимиты — на весь отдел, по московскому дню.
+class PartyCheck {
+  static quota = null;      // последний известный остаток: Checko + reserve (OFData), если задан его ключ
+  static TIP = '<p>Проверка по данным Checko: регистрация, долги, суды, исполнительные производства, бухотчётность. Видна только вам, в КП не попадает.</p>'
+    +'<p>Бесплатно у Checko — 100 запросов в день на всех, полная проверка — 3 запроса: бухотчётность берётся бесплатно из ГИР БО ФНС. Резерв — OFData (свои 100 запросов в день, ключ — в «Настройки → Ключи API»): если у Checko кончился лимит или он не ответил, проверка идёт через OFData.</p>'
+    +'<p>Если запросов не хватает нигде, программа делает краткую проверку (1 запрос) или бесплатную по ФНС и сама выполняет полную на следующий день. Проверка хранится 7 дней и общая для отдела — повторная проверка того же ИНН запросы не тратит. Rusprofile открывается кнопкой: у него нет API, карточка — в браузере.</p>';
 
-function checkLine(){
-  if (!FEAT.on('check')) return '';
-  const c=S.check; const inn=String(S.clientInn||'').replace(/\D/g,'');
-  if (!validInn(inn)) return '';
-  if (!c){ if (!CHK_Q) checkQuotaLoad().then(q=>{ if (q && q.key) { const el=$('#chkQ'); if (el) el.textContent=checkQuotaText(q); } });
-    return `<div class="chk-line"><button class="btn ghost" type="button" data-a="checkRun">Проверить контрагента</button><span class="muted" id="chkQ">${esc(checkQuotaText())}</span>${tip('<p>Проверка по данным Checko: регистрация, долги, суды, исполнительные производства. Видна только вам, в КП не попадает.</p><p>Бесплатно у Checko — 100 запросов в день на всех, полная проверка — 4 запроса. Если запросов не хватает, программа делает краткую проверку (1 запрос) или бесплатную по ФНС и сама выполняет полную на следующий день. Проверка хранится 7 дней и общая для отдела — повторная проверка того же ИНН запросы не тратит.</p>')}</div>`; }
-  if (c.error) return `<div class="chk-line warn"><span>${c.error==='nokey'?'Проверка Checko: не задан API-ключ.':esc(c.message||c.error)}</span>${c.error==='nokey'?'<button class="btn ghost" type="button" data-a="integrations">Ключ — в «Настройках»</button>':'<button class="btn ghost" type="button" data-a="checkRun">Повторить</button>'}</div>`;
-  // полная проверка стояла в очереди и могла уже выполниться (после 00:00 по Москве) — подтянуть её один раз
-  if (c.queued && c.checkedAt && new Date(c.checkedAt).toDateString()!==new Date().toDateString() && S._chkAuto!==inn){ S._chkAuto=inn; setTimeout(()=>checkRun(false), 50); }
-  const label={ok:'Существенных рисков не найдено',warn:'Есть на что обратить внимание',bad:'Высокий риск'}[c.score]||'';
-  const age=c.checkedAt?(Date.now()-new Date(c.checkedAt))/864e5:0, old=age>CHECK_DAYS;   // проверка старше месяца — предложить обновить
-  const nc='не проверено', src=c.free?`Бесплатная проверка (${c.source})`:c.partial?'Checko, краткая проверка':'Checko';
-  const facts=[['Регистрация',c.regDate?KPGen.ruDate(c.regDate.slice(0,10))+(c.ageYears!=null?` (${String(c.ageYears).replace('.',',')} г.)`:''):''],['Уставный капитал',c.capital!=null?fmtRub(c.capital):''],
-    ['Сотрудников',c.employees!=null?String(c.employees):''],['Категория МСП',c.msp],['Основной ОКВЭД',c.okved],['Налоговая недоимка',c.free?nc:c.taxDebt?fmtRub(c.taxDebt):'нет'],
-    ['Арбитраж (ответчик)',!c.courts||c.courts.count==null?nc:c.courts.count?`${c.courts.count} дел на ${fmtRub(c.courts.sum)}`:'нет'],
-    ['Исполнительные производства',!c.fssp||c.fssp.count==null?nc:c.fssp.count?`${c.fssp.count}${c.fssp.sum?' на '+fmtRub(c.fssp.sum):''}`:'нет']].filter(x=>x[1]);
-  const q=c.quotaNow;
-  return `<details class="chk ${c.score}"><summary><b>${esc(src)}: ${esc(label)}</b> <span class="muted">· ${esc(KPGen.ruDate((c.checkedAt||'').slice(0,10)))} · подробнее</span>${c.queued?' <span class="chk-old" title="Выполнится автоматически, когда обновится лимит Checko (после 00:00 по Москве)">полная — в очереди</span>':''}${old?` <span class="chk-old" title="Данные могли измениться">проверке ${Math.floor(age)} дн. — обновите</span>`:''}</summary>
-    ${c.note?`<p class="chk-note">${esc(c.note)}</p>`:''}
-    <ul class="flags">${(c.flags||[]).map(f=>`<li class="${f.level}">${esc(f.text)}</li>`).join('')}</ul>
-    ${(c.missing||[]).length?`<p class="muted chk-miss">Не проверено: ${esc(c.missing.join(', '))}.</p>`:''}
-    <dl class="facts">${facts.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
-    ${(c.finances||[]).length?`<table class="fin"><tr><th>Год</th><th>Выручка</th><th>Чистая прибыль</th></tr>${c.finances.map(f=>`<tr><td>${esc(f.year)}</td><td>${fmtRub(f.revenue)}</td><td class="${f.profit<0?'bad-t':''}">${fmtRub(f.profit)}</td></tr>`).join('')}</table>`:''}
-    ${(c.links||[]).length?`<p class="chk-links"><span class="muted">Проверить вручную (бесплатно):</span> ${c.links.map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a>`).join(' · ')}</p>`:''}
-    <div class="row" style="margin-top:10px"><button class="btn ghost" type="button" data-a="checkRun" data-force="1">Обновить проверку</button><a class="btn ghost" href="${esc(c.url||'https://checko.ru/search?query='+inn)}" target="_blank" rel="noopener">Открыть на checko.ru</a>${q&&q.key?`<span class="muted">${q.left?`Checko сегодня: осталось ${q.left} из ${q.limit} запросов`:'Лимит Checko на сегодня исчерпан, обновится в 00:00 по Москве'}${q.queue?` · в очереди: ${q.queue}`:''}</span>`:''}</div></details>`;
-}
+  static async load(){ try{ PartyCheck.quota=await api('/api/check/quota'); }catch(e){ PartyCheck.quota=null; } return PartyCheck.quota; }
 
-async function checkRun(force){
-  const inn=String(S.clientInn||'').replace(/\D/g,''); if(!validInn(inn)) return toast('Укажите корректный ИНН');
-  const b=document.querySelector('[data-a="checkRun"]'); if(b){ b.disabled=true; b.textContent='Проверяю…'; }
-  try{ S.check=await api('/api/check?inn='+inn+(force?'&force=1':'')); }catch(e){ S.check={error:'net',message:'Ошибка запроса: '+e.message,url:'https://checko.ru/search?query='+inn}; }
-  if (S.check && S.check.quotaNow) CHK_Q=S.check.quotaNow;
-  renderForm(); persist(); if (!S.check.error && S.client) saveClient(false);
+  static rusprofile(inn){ return 'https://www.rusprofile.ru/search?query='+encodeURIComponent(inn); }
+
+  // сервисы с ключом: [Checko, OFData]
+  static _apis(q){ q=q||PartyCheck.quota; return q ? [q.key?q:null, q.reserve||null].filter(Boolean) : []; }
+
+  static quotaText(q){ const L=PartyCheck._apis(q); if (!L.length) return '';
+    const full=L.reduce((t,x)=>t+(x.checks||0),0), left=L.reduce((t,x)=>t+(x.left||0),0), src=L.map(x=>x.name||'Checko').join(' + ');
+    if (full>0) return `сегодня осталось ${full} ${plural(full,'полная проверка','полные проверки','полных проверок')} (${src})`;
+    if (left>0) return `сегодня осталось ${left} ${plural(left,'запрос','запроса','запросов')} (${src}) — будет краткая проверка`;
+    return `лимит ${src} на сегодня исчерпан — будет бесплатная проверка по ФНС, полная — завтра автоматически`; }
+
+  // остаток под кнопками: «Checko сегодня: осталось 40 из 100 · OFData: 100 из 100 · в очереди: 2»
+  static _left(q){ const L=PartyCheck._apis(q); if (!L.length) return '';
+    return L.map(x=>`${esc(x.name||'Checko')} сегодня: ${x.left?`осталось ${x.left} из ${x.limit}`:'лимит исчерпан, обновится в 00:00 по Москве'}`).join(' · ')+(q.queue?` · в очереди: ${q.queue}`:''); }
+
+  static line(){
+    if (!FEAT.on('check')) return '';
+    const c=S.check; const inn=String(S.clientInn||'').replace(/\D/g,'');
+    if (!validInn(inn)) return '';
+    const rp=`<a class="btn ghost" href="${esc((c&&c.rusprofile)||PartyCheck.rusprofile(inn))}" target="_blank" rel="noopener" title="Открыть карточку организации в Rusprofile (в браузере)">Rusprofile</a>`;
+    if (!c){ if (!PartyCheck.quota) PartyCheck.load().then(q=>{ const el=$('#chkQ'); if (el) el.textContent=PartyCheck.quotaText(q); });
+      return `<div class="chk-line"><button class="btn ghost" type="button" data-a="checkRun">Проверить контрагента</button><span class="muted" id="chkQ">${esc(PartyCheck.quotaText())}</span>${tip(PartyCheck.TIP)}</div>`; }
+    if (c.error) return `<div class="chk-line warn"><span>${c.error==='nokey'?'Проверка Checko: не задан API-ключ.':esc(c.message||c.error)}</span>${c.error==='nokey'?'<button class="btn ghost" type="button" data-a="integrations">Ключ — в «Настройках»</button>':'<button class="btn ghost" type="button" data-a="checkRun">Повторить</button>'}${rp}</div>`;
+    // полная проверка стояла в очереди и могла уже выполниться (после 00:00 по Москве) — подтянуть её один раз
+    if (c.queued && c.checkedAt && new Date(c.checkedAt).toDateString()!==new Date().toDateString() && S._chkAuto!==inn){ S._chkAuto=inn; setTimeout(()=>PartyCheck.run(false), 50); }
+    const label={ok:'Существенных рисков не найдено',warn:'Есть на что обратить внимание',bad:'Высокий риск'}[c.score]||'';
+    const age=c.checkedAt?(Date.now()-new Date(c.checkedAt))/864e5:0, old=age>CHECK_DAYS;   // проверка старше месяца — предложить обновить
+    const name=String(c.source||'Checko').replace(/^OFData$/,'OFData (резерв Checko)');
+    const nc='не проверено', src=c.free?`Бесплатная проверка (${c.source})`:c.partial?`${name}, краткая проверка`:name;
+    const facts=[['Регистрация',c.regDate?KPGen.ruDate(c.regDate.slice(0,10))+(c.ageYears!=null?` (${String(c.ageYears).replace('.',',')} г.)`:''):''],['Уставный капитал',c.capital!=null?fmtRub(c.capital):''],
+      ['Сотрудников',c.employees!=null?String(c.employees):''],['Категория МСП',c.msp],['Основной ОКВЭД',c.okved],['Налоговая недоимка',c.free?nc:c.taxDebt?fmtRub(c.taxDebt):'нет'],
+      ['Арбитраж (ответчик)',!c.courts||c.courts.count==null?nc:c.courts.count?`${c.courts.count} дел на ${fmtRub(c.courts.sum)}`:'нет'],
+      ['Исполнительные производства',!c.fssp||c.fssp.count==null?nc:c.fssp.count?`${c.fssp.count}${c.fssp.sum?' на '+fmtRub(c.fssp.sum):''}`:'нет']].filter(x=>x[1]);
+    const fin=(c.finances||[]).length?`<table class="fin"><tr><th>Год</th><th>Выручка</th><th>Чистая прибыль</th></tr>${c.finances.map(f=>`<tr><td>${esc(f.year)}</td><td>${fmtRub(f.revenue)}</td><td class="${f.profit<0?'bad-t':''}">${fmtRub(f.profit)}</td></tr>`).join('')}</table>`
+      +(c.finSource?`<p class="muted chk-fin">Бухотчётность: ${c.finUrl?`<a href="${esc(c.finUrl)}" target="_blank" rel="noopener">${esc(c.finSource)}</a>`:esc(c.finSource)}</p>`:''):'';
+    const q=c.quotaNow;
+    return `<details class="chk ${c.score}"><summary><b>${esc(src)}: ${esc(label)}</b> <span class="muted">· ${esc(KPGen.ruDate((c.checkedAt||'').slice(0,10)))} · подробнее</span>${c.queued?' <span class="chk-old" title="Выполнится автоматически, когда обновится лимит (после 00:00 по Москве)">полная — в очереди</span>':''}${old?` <span class="chk-old" title="Данные могли измениться">проверке ${Math.floor(age)} дн. — обновите</span>`:''}</summary>
+      ${c.note?`<p class="chk-note">${esc(c.note)}</p>`:''}
+      <ul class="flags">${(c.flags||[]).map(f=>`<li class="${f.level}">${esc(f.text)}</li>`).join('')}</ul>
+      ${(c.missing||[]).length?`<p class="muted chk-miss">Не проверено: ${esc(c.missing.join(', '))}.</p>`:''}
+      ${c.finNote?`<p class="muted chk-miss">${esc(c.finNote)}</p>`:''}
+      <dl class="facts">${facts.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+      ${fin}
+      ${(c.links||[]).length?`<p class="chk-links"><span class="muted">Проверить вручную (бесплатно):</span> ${c.links.map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a>`).join(' · ')}</p>`:''}
+      <div class="row" style="margin-top:10px"><button class="btn ghost" type="button" data-a="checkRun" data-force="1">Обновить проверку</button><a class="btn ghost" href="${esc(c.url||'https://checko.ru/search?query='+inn)}" target="_blank" rel="noopener">Открыть на checko.ru</a>${rp}${q?`<span class="muted">${PartyCheck._left(q)}</span>`:''}</div></details>`;
+  }
+
+  static async run(force){
+    const inn=String(S.clientInn||'').replace(/\D/g,''); if(!validInn(inn)) return toast('Укажите корректный ИНН');
+    const b=document.querySelector('[data-a="checkRun"]'); if(b){ b.disabled=true; b.textContent='Проверяю…'; }
+    try{ S.check=await api('/api/check?inn='+inn+(force?'&force=1':'')); }catch(e){ S.check={error:'net',message:'Ошибка запроса: '+e.message,url:'https://checko.ru/search?query='+inn,rusprofile:PartyCheck.rusprofile(inn)}; }
+    if (S.check && S.check.quotaNow) PartyCheck.quota=S.check.quotaNow;
+    renderForm(); persist(); if (!S.check.error && S.client) saveClient(false);
+  }
 }
 
 // резервная копия ключей: файл JSON, по желанию зашифрованный паролем (PBKDF2-SHA256 + AES-GCM, Web Crypto в браузере)
@@ -143,69 +166,82 @@ function keysImpHtml(k){ const F=KB.file; if (!F) return '';
   const head=`<p class="sub">Файл «${esc(F.name)}»${F.at?` от ${esc(String(F.at).slice(0,16).replace('T',' '))}`:''}</p>`;
   if (!F.keys) return `<div class="key-imp">${head}<p class="muted">Файл зашифрован паролем.</p>${F.err?`<p class="msg err">${esc(F.err)}</p>`:''}
     <div class="row"><input type="password" data-kipw placeholder="пароль копии" autocomplete="off"${KB.crypto?'':' disabled'}><button class="btn primary" type="button" data-kidec>Расшифровать</button><button class="btn ghost" type="button" data-kix>Отмена</button></div></div>`;
-  const all=KEY_GROUPS.flatMap(g=>g[2]).filter(f=>f.id), names=Object.keys(F.keys).filter(x=>F.keys[x]!=null && F.keys[x]!=='');
-  const lab=id=>(all.find(f=>f.id===id)||{}).t || (id==='checkoDaily'?'Лимит Checko в день':id);
+  const all=ApiKeys.GROUPS.flatMap(g=>g[2]).filter(f=>f.id), names=Object.keys(F.keys).filter(x=>F.keys[x]!=null && F.keys[x]!=='');
+  const lab=id=>(all.find(f=>f.id===id)||{}).t || ApiKeys.DAILY[id] || id;
   const mask=v=>{ v=String(v); return v.length>10?v.slice(0,4)+'…'+v.slice(-4):'•••'; };
-  return `<div class="key-imp">${head}${names.length?names.map(id=>`<label class="ck"><input type="checkbox" data-kik="${esc(id)}" checked> <b>${esc(lab(id))}</b> <span class="muted">${id==='checkoDaily'?esc(F.keys[id]):esc(mask(F.keys[id]))}${(all.find(f=>f.id===id)||{}).mask&&k[(all.find(f=>f.id===id)).mask]?' · заменит текущий':''}</span></label>`).join(''):'<p class="muted">В файле нет ключей.</p>'}
+  return `<div class="key-imp">${head}${names.length?names.map(id=>`<label class="ck"><input type="checkbox" data-kik="${esc(id)}" checked> <b>${esc(lab(id))}</b> <span class="muted">${ApiKeys.DAILY[id]?esc(F.keys[id]):esc(mask(F.keys[id]))}${(all.find(f=>f.id===id)||{}).mask&&k[(all.find(f=>f.id===id)).mask]?' · заменит текущий':''}</span></label>`).join(''):'<p class="muted">В файле нет ключей.</p>'}
     <div class="row"><button class="btn primary" type="button" data-kiok${names.length?'':' disabled'}>Восстановить отмеченные</button><button class="btn ghost" type="button" data-kix>Отмена</button></div></div>`; }
 
-// Ключи API — форма прямо в «Настройки → Ключи API» (отдельного окна нет)
-const KEY_GROUPS=[
-  ['Контрагенты', 'Реквизиты по ИНН подтягиваются и без ключей — из открытого сервиса ФНС (egrul.nalog.ru). С ключами данные полнее и быстрее, а Checko ещё и проверяет контрагента.', [
-    {id:'checkoKey', on:'checko', mask:'checkoMask', t:'API-ключ Checko', ph:'Ключ из личного кабинета checko.ru → API', h:'Статус, финансы, суды, ФССП, реестры. Запросы Checko тратятся только на проверки.'},
-    {daily:true},
-    {id:'dadataKey', on:'dadata', mask:'dadataMask', t:'API-ключ DaData', ph:'Ключ из личного кабинета dadata.ru', h:'Быстрый поиск реквизитов по ИНН (бесплатно до 10 000 запросов в день).'}]],
-  ['Доставка по России — цены перевозчиков', 'Без ключа считают ПЭК и Энергия. Остальные перевозчики подключаются ключом — их цены появятся во вкладке «Логистика» сделки. В итог идёт максимальное предложение со сноской-источником.', [
-    {id:'atiToken', on:'ati', mask:'atiMask', t:'ATI.SU — «API Средних ставок»', ph:'ati.su → Профиль → API → токен', h:'Отдельная машина: средние ставки по направлению (верхняя граница) и автообновление ставок за км. Платная лицензия.'},
-    {id:'dellinKey', on:'dellin', mask:'dellinMask', t:'Деловые Линии (appkey)', ph:'dev.dellin.ru → регистрация → ключ приложения', h:'Сборный груз, бесплатно.'},
-    {id:'kitToken', on:'kit', mask:'kitMask', t:'КИТ — токен', ph:'tk-kit.ru → личный кабинет → «Разработчикам» → «Получение ключа API»', h:'Сборный груз, дверь в дверь (тариф «Стандарт»). Лимит запросов — на каждый токен.'},
-    {id:'cdekId', on:'cdek', mask:'cdekIdMask', t:'СДЭК — идентификатор (Account)', ph:'lk.cdek.ru → Интеграция → Account', h:'Нужен договор со СДЭК. Ключи выдаются в личном кабинете: «Интеграция → Создать ключ».'},
-    {id:'cdekSecret', on:'cdek', mask:'cdekSecretMask', t:'СДЭК — секретный ключ (Secure password)', ph:'lk.cdek.ru → Интеграция → Secure password', h:'Считается тариф «дверь — дверь» (самый дешёвый из доступных).', secret:true},
-    {id:'vozovozToken', on:'vozovoz', mask:'vozovozMask', t:'Возовоз — токен', ph:'vozovoz.ru → личный кабинет → API', h:'Сборный груз, бесплатно после регистрации.'}]],
-  ['Документы', '', [
-    {id:'convertapiKey', on:'convertapi', mask:'convertapiMask', t:'ConvertAPI для PDF', ph:'Secret или токен из личного кабинета convertapi.com', h:'Нужен, только если на компьютере, где работает программа, нет Microsoft Word и LibreOffice.'}]]];
+// Ключи API — форма прямо в «Настройки → Ключи API» (отдельного окна нет). Ключи на сервере; в браузер приходит только маска.
+class ApiKeys {
+  static GROUPS=[
+    ['Контрагенты', 'Реквизиты по ИНН подтягиваются и без ключей — из открытого сервиса ФНС (egrul.nalog.ru), бухотчётность — из ГИР БО ФНС (тоже без ключа). С ключами данные полнее и быстрее, а Checko ещё и проверяет контрагента: суды, ФССП, налоги, реестры. Резерв для Checko — OFData (тот же формат данных). Rusprofile открывается кнопкой в проверке: открытого API у него нет, ключ не нужен.', [
+      {id:'checkoKey', on:'checko', mask:'checkoMask', t:'API-ключ Checko', ph:'Ключ из личного кабинета checko.ru → API', h:'Карточка, суды, ФССП, налоги, реестры (бухотчётность — бесплатно из ГИР БО). Запросы Checko тратятся только на проверки.'},
+      {daily:'checkoDaily', name:'Checko', on:'checko', q:'main'},
+      {id:'ofdataKey', on:'ofdata', mask:'ofdataMask', t:'API-ключ OFData — резерв Checko', ph:'Ключ из личного кабинета ofdata.ru → API', h:'Необязательно. Тот же формат данных, что у Checko, свои 100 бесплатных запросов в сутки: проверка идёт через OFData, когда у Checko кончился лимит, нет ключа или он не ответил; недостающее (суды, ФССП) OFData добирает за Checko.'},
+      {daily:'ofdataDaily', name:'OFData', on:'ofdata', q:'reserve'},
+      {id:'dadataKey', on:'dadata', mask:'dadataMask', t:'API-ключ DaData', ph:'Ключ из личного кабинета dadata.ru', h:'Быстрый поиск реквизитов по ИНН (бесплатно до 10 000 запросов в день).'}]],
+    ['Доставка по России — цены перевозчиков', 'Без ключа считают ПЭК и Энергия. Остальные перевозчики подключаются ключом — их цены появятся во вкладке «Логистика» сделки. В итог идёт максимальное предложение со сноской-источником.', [
+      {id:'atiToken', on:'ati', mask:'atiMask', t:'ATI.SU — «API Средних ставок»', ph:'ati.su → Профиль → API → токен', h:'Отдельная машина: средние ставки по направлению (верхняя граница) и автообновление ставок за км. Платная лицензия.'},
+      {id:'dellinKey', on:'dellin', mask:'dellinMask', t:'Деловые Линии (appkey)', ph:'dev.dellin.ru → регистрация → ключ приложения', h:'Сборный груз, бесплатно.'},
+      {id:'kitToken', on:'kit', mask:'kitMask', t:'КИТ — токен', ph:'tk-kit.ru → личный кабинет → «Разработчикам» → «Получение ключа API»', h:'Сборный груз, дверь в дверь (тариф «Стандарт»). Лимит запросов — на каждый токен.'},
+      {id:'cdekId', on:'cdek', mask:'cdekIdMask', t:'СДЭК — идентификатор (Account)', ph:'lk.cdek.ru → Интеграция → Account', h:'Нужен договор со СДЭК. Ключи выдаются в личном кабинете: «Интеграция → Создать ключ».'},
+      {id:'cdekSecret', on:'cdek', mask:'cdekSecretMask', t:'СДЭК — секретный ключ (Secure password)', ph:'lk.cdek.ru → Интеграция → Secure password', h:'Считается тариф «дверь — дверь» (самый дешёвый из доступных).', secret:true},
+      {id:'vozovozToken', on:'vozovoz', mask:'vozovozMask', t:'Возовоз — токен', ph:'vozovoz.ru → личный кабинет → API', h:'Сборный груз, бесплатно после регистрации.'}]],
+    ['Документы', '', [
+      {id:'convertapiKey', on:'convertapi', mask:'convertapiMask', t:'ConvertAPI для PDF', ph:'Secret или токен из личного кабинета convertapi.com', h:'Нужен, только если на компьютере, где работает программа, нет Microsoft Word и LibreOffice.'}]]];
+  static DAILY={checkoDaily:'Лимит Checko в день', ofdataDaily:'Лимит OFData в день'};
+  static FREE_DAILY=100;
 
-async function keysForm(m){
-  let k={}; try{ k=await api('/api/integrations'); }catch(e){}
-  const q=k.quota||{};
-  const fld=f=>f.daily ? `<div class="key-f"><label class="f"><span>Лимит Checko, запросов в день${q.key?` <b class="muted">сегодня ${q.used} из ${q.limit}${q.queue?` · в очереди: ${q.queue}`:''}</b>`:''}</span><input type="number" data-kday min="1" max="100000" step="1" value="${esc(k.checkoDaily||100)}"></label>
-      <p class="muted">Бесплатно — 100 в календарный день (по Москве), полная проверка — 4 запроса. Когда лимит кончается, делается краткая или бесплатная проверка по ФНС, а полная — на следующий день.</p></div>`
-    : `<div class="key-f"><div class="key-row"><label class="f"><span>${esc(f.t)} ${k[f.mask]?`<b class="ok-t">задан: ${esc(k[f.mask])}</b>`:(f.on&&k[f.on]===false&&f.id.startsWith('cdek')&&(k.cdekIdMask||k.cdekSecretMask)?'<b class="warn-t">нужны оба ключа</b>':'')}</span>
+  // лимит запросов в день: у Checko — с остатком и очередью, у OFData — с остатком резерва
+  static _daily(f, k){ const Q=k.quota||{}, q=f.q==='reserve'?(Q.reserve||{}):Q;
+    const info=k[f.on]&&q.limit?` <b class="muted">сегодня ${q.used} из ${q.limit}${f.q==='main'&&Q.queue?` · в очереди: ${Q.queue}`:''}</b>`:'';
+    const h=f.q==='reserve'?'Бесплатно — 100 в сутки. Расходуется, только когда у Checko не хватает запросов или он не ответил.'
+      :'Бесплатно — 100 в календарный день (по Москве), полная проверка — 3 запроса. Когда лимит кончается, проверка идёт через OFData (если задан ключ), иначе — краткая или бесплатная по ФНС, а полная — на следующий день.';
+    return `<div class="key-f"><label class="f"><span>Лимит ${esc(f.name)}, запросов в день${info}</span><input type="number" data-kday="${esc(f.daily)}" min="1" max="100000" step="1" value="${esc(k[f.daily]||ApiKeys.FREE_DAILY)}"></label>
+      <p class="muted">${esc(h)}</p></div>`; }
+
+  static _field(f, k){ if (f.daily) return ApiKeys._daily(f, k);
+    return `<div class="key-f"><div class="key-row"><label class="f"><span>${esc(f.t)} ${k[f.mask]?`<b class="ok-t">задан: ${esc(k[f.mask])}</b>`:(f.on&&k[f.on]===false&&f.id.startsWith('cdek')&&(k.cdekIdMask||k.cdekSecretMask)?'<b class="warn-t">нужны оба ключа</b>':'')}</span>
       <input type="${f.secret?'password':'text'}" data-key="${f.id}" placeholder="${esc(k[f.mask]?'Новый ключ — заменит текущий':f.ph)}" autocomplete="off"></label>
-      ${k[f.mask]?`<button class="btn ghost sm" type="button" data-kdel="${f.id}" title="Удалить ключ">Удалить</button>`:''}</div>${f.h?`<p class="muted">${esc(f.h)}</p>`:''}</div>`;
-  m.innerHTML=KEY_GROUPS.map(([t,h,fs])=>`<div class="st-card"><p class="sub">${esc(t)}</p>${h?`<p class="muted">${esc(h)}</p>`:''}<div class="key-grid">${fs.map(fld).join('')}</div></div>`).join('')
-    +`<div class="st-card"><p class="sub">Резервная копия ключей</p>
-      <p class="muted">Файл со всеми ключами — чтобы перенести их на другой компьютер или восстановить после переустановки. С паролем файл зашифрован (AES-256): без пароля ключи из него не прочитать. Без пароля храните файл как пароль — в нём ключи открытым текстом.</p>
-      <div class="row key-bk"><label class="f"><span>Пароль для файла (необязательно)</span><input type="password" data-kpw autocomplete="new-password" placeholder="${KB.crypto?'пароль копии':'шифрование доступно только при входе через localhost или https'}"${KB.crypto?'':' disabled'}></label>
-        <button class="btn" type="button" data-kexp>Скачать копию ключей</button><button class="btn ghost" type="button" data-kimp>Загрузить из копии…</button><input type="file" id="kFile" accept=".json,application/json" hidden></div>
-      <div id="kImp">${KB.file?keysImpHtml(k):''}</div></div>`
-    +`<div class="st-card key-bar"><span class="muted key-note">Ключи хранятся только на компьютере, где работает программа (в папке данных).</span><span class="sp"></span><button class="btn primary" type="button" data-ksave>Сохранить ключи</button></div>`;
-  const put=async body=>{ try{ await api('/api/integrations',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(body)}); toast('Сохранено'); if (typeof LG!=='undefined') LG.status=null; keysForm(m); }catch(e){ toast('Не сохранилось: '+(e.message||e)); } };
-  m.querySelector('#kFile').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if (!f) return;
-    try{ const j=JSON.parse(await f.text()); if (!j || j.kind!=='kp-keys' || !(j.keys||j.enc)) throw new Error('это не копия ключей программы');
-      KB.file={name:f.name, at:j.at, keys:j.keys||null, enc:j.enc||null, err:''}; }catch(err){ return toast('Файл не подходит: '+(err.message||err)); }
-    m.querySelector('#kImp').innerHTML=keysImpHtml(k); m.querySelector('#kImp [data-kipw]')?.focus(); };
-  m.onclick=async e=>{ const d=e.target.closest('[data-kdel]'); if (d) return put({[d.dataset.kdel]:''});
-    if (e.target.closest('[data-kimp]')) return m.querySelector('#kFile').click();
-    if (e.target.closest('[data-kexp]')){ try{ const j=await api('/api/integrations/export'), pw=(m.querySelector('[data-kpw]')||{}).value||'';
-        const out = pw ? {kind:'kp-keys', v:1, at:j.at, enc:await keysEnc(JSON.stringify(j.keys), pw)} : j;
-        const n=Object.keys(j.keys||{}).filter(x=>x!=='checkoDaily').length; if (!n) return toast('Ключей пока нет — нечего сохранять');
-        const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,1)],{type:'application/json'}));
-        a.download=`ключи-API-${(j.at||'').slice(0,10)}${pw?'-зашифровано':''}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
-        toast(`Копия сохранена: ${n} ${plural(n,'ключ','ключа','ключей')}${pw?', зашифровано паролем':''}`); }catch(err){ toast('Не получилось: '+(err.message||err)); } return; }
-    if (e.target.closest('[data-kix]')){ KB.file=null; m.querySelector('#kImp').innerHTML=''; return; }
-    if (e.target.closest('[data-kidec]')){ const pw=m.querySelector('[data-kipw]').value;
-      try{ KB.file.keys=JSON.parse(await keysDec(KB.file.enc, pw)); KB.file.err=''; }catch(err){ KB.file.err='Пароль не подходит'; }
-      m.querySelector('#kImp').innerHTML=keysImpHtml(k); return; }
-    if (e.target.closest('[data-kiok]')){ const body={}; m.querySelectorAll('[data-kik]:checked').forEach(c=>{ body[c.dataset.kik]=KB.file.keys[c.dataset.kik]; });
-      if (!Object.keys(body).length) return toast('Не выбрано, что восстановить');
-      KB.file=null; return put(body); }
-    if (!e.target.closest('[data-ksave]')) return;
-    const b={}; m.querySelectorAll('[data-key]').forEach(i=>{ const v=i.value.trim(); if (v) b[i.dataset.key]=v; });
-    const dl=+(m.querySelector('[data-kday]')||{}).value; if (dl>0 && dl!==(k.checkoDaily||100)) b.checkoDaily=dl;
-    if (!Object.keys(b).length) return toast('Нечего сохранять — введите ключ');
-    put(b); };
-  m.onkeydown=e=>{ if (e.key==='Enter' && e.target.matches('[data-key],[data-kday]')){ e.preventDefault(); m.querySelector('[data-ksave]').click(); } };
+      ${k[f.mask]?`<button class="btn ghost sm" type="button" data-kdel="${f.id}" title="Удалить ключ">Удалить</button>`:''}</div>${f.h?`<p class="muted">${esc(f.h)}</p>`:''}</div>`; }
+
+  static async form(m){
+    let k={}; try{ k=await api('/api/integrations'); }catch(e){}
+    m.innerHTML=ApiKeys.GROUPS.map(([t,h,fs])=>`<div class="st-card"><p class="sub">${esc(t)}</p>${h?`<p class="muted">${esc(h)}</p>`:''}<div class="key-grid">${fs.map(f=>ApiKeys._field(f, k)).join('')}</div></div>`).join('')
+      +`<div class="st-card"><p class="sub">Резервная копия ключей</p>
+        <p class="muted">Файл со всеми ключами — чтобы перенести их на другой компьютер или восстановить после переустановки. С паролем файл зашифрован (AES-256): без пароля ключи из него не прочитать. Без пароля храните файл как пароль — в нём ключи открытым текстом; не выкладывайте его в репозиторий, почту и общие папки.</p>
+        <div class="row key-bk"><label class="f"><span>Пароль для файла (необязательно)</span><input type="password" data-kpw autocomplete="new-password" placeholder="${KB.crypto?'пароль копии':'шифрование доступно только при входе через localhost или https'}"${KB.crypto?'':' disabled'}></label>
+          <button class="btn" type="button" data-kexp>Скачать копию ключей</button><button class="btn ghost" type="button" data-kimp>Загрузить из копии…</button><input type="file" id="kFile" accept=".json,application/json" hidden></div>
+        <div id="kImp">${KB.file?keysImpHtml(k):''}</div></div>`
+      +`<div class="st-card key-bar"><span class="muted key-note">Ключи хранятся только на компьютере, где работает программа (в папке данных).</span><span class="sp"></span><button class="btn primary" type="button" data-ksave>Сохранить ключи</button></div>`;
+    const put=async body=>{ try{ await api('/api/integrations',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(body)}); toast('Сохранено'); if (typeof LG!=='undefined') LG.status=null; PartyCheck.quota=null; ApiKeys.form(m); }catch(e){ toast('Не сохранилось: '+(e.message||e)); } };
+    m.querySelector('#kFile').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if (!f) return;
+      try{ const j=JSON.parse(await f.text()); if (!j || j.kind!=='kp-keys' || !(j.keys||j.enc)) throw new Error('это не копия ключей программы');
+        KB.file={name:f.name, at:j.at, keys:j.keys||null, enc:j.enc||null, err:''}; }catch(err){ return toast('Файл не подходит: '+(err.message||err)); }
+      m.querySelector('#kImp').innerHTML=keysImpHtml(k); m.querySelector('#kImp [data-kipw]')?.focus(); };
+    m.onclick=async e=>{ const d=e.target.closest('[data-kdel]'); if (d) return put({[d.dataset.kdel]:''});
+      if (e.target.closest('[data-kimp]')) return m.querySelector('#kFile').click();
+      if (e.target.closest('[data-kexp]')){ try{ const j=await api('/api/integrations/export'), pw=(m.querySelector('[data-kpw]')||{}).value||'';
+          const out = pw ? {kind:'kp-keys', v:1, at:j.at, enc:await keysEnc(JSON.stringify(j.keys), pw)} : j;
+          const n=Object.keys(j.keys||{}).filter(x=>!ApiKeys.DAILY[x]).length; if (!n) return toast('Ключей пока нет — нечего сохранять');
+          const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,1)],{type:'application/json'}));
+          a.download=`ключи-API-${(j.at||'').slice(0,10)}${pw?'-зашифровано':''}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+          toast(`Копия сохранена: ${n} ${plural(n,'ключ','ключа','ключей')}${pw?', зашифровано паролем':''}`); }catch(err){ toast('Не получилось: '+(err.message||err)); } return; }
+      if (e.target.closest('[data-kix]')){ KB.file=null; m.querySelector('#kImp').innerHTML=''; return; }
+      if (e.target.closest('[data-kidec]')){ const pw=m.querySelector('[data-kipw]').value;
+        try{ KB.file.keys=JSON.parse(await keysDec(KB.file.enc, pw)); KB.file.err=''; }catch(err){ KB.file.err='Пароль не подходит'; }
+        m.querySelector('#kImp').innerHTML=keysImpHtml(k); return; }
+      if (e.target.closest('[data-kiok]')){ const body={}; m.querySelectorAll('[data-kik]:checked').forEach(c=>{ body[c.dataset.kik]=KB.file.keys[c.dataset.kik]; });
+        if (!Object.keys(body).length) return toast('Не выбрано, что восстановить');
+        KB.file=null; return put(body); }
+      if (!e.target.closest('[data-ksave]')) return;
+      const b={}; m.querySelectorAll('[data-key]').forEach(i=>{ const v=i.value.trim(); if (v) b[i.dataset.key]=v; });
+      m.querySelectorAll('[data-kday]').forEach(i=>{ const dl=+i.value, id=i.dataset.kday; if (dl>0 && dl!==(k[id]||ApiKeys.FREE_DAILY)) b[id]=dl; });
+      if (!Object.keys(b).length) return toast('Нечего сохранять — введите ключ');
+      put(b); };
+    m.onkeydown=e=>{ if (e.key==='Enter' && e.target.matches('[data-key],[data-kday]')){ e.preventDefault(); m.querySelector('[data-ksave]').click(); } };
+  }
 }
 
 document.addEventListener('input', e=>{ const t=e.target; if (t.dataset && t.dataset.p==='clientInn'){ const v=t.value.replace(/\D/g,''); t.classList.toggle('bad', !!v && !validInn(v) && (v.length>=10)); if ((v.length===10||v.length===12) && validInn(v) && v!==S._lastInn){ S._lastInn=v; setTimeout(partyFind,50); } } });
