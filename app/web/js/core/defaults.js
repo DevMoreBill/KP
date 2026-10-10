@@ -47,6 +47,7 @@ const DEF_BY = Object.fromEntries(DEF_SCHEMA.map(x=>[x[0], x]));
 // значение по умолчанию: выключено — null; bool — true/false
 function DEF(key){
   const sc=DEF_BY[key]; if (!sc) return null;
+  const mine=typeof MyPrefs!=='undefined' ? MyPrefs.def(key) : null; if (mine!=null) return mine;   // личное значение менеджера («Мои настройки»)
   const [, , , type, builtin, o={}]=sc, x=DEFS_SRV[key];
   const on = x && typeof x==='object' && 'on' in x ? !!x.on || !!o.req : !o.off;
   if (type==='bool') return x && 'on' in x ? !!x.on : !!builtin;

@@ -69,7 +69,8 @@ class CatalogFilter {
   qHit(x){
     if (this._qs!==this.q){ this._qs=this.q; this._qw=norm(this.q).split(' ').filter(Boolean); this._qf=CatalogIndex.fold(norm(this.q)); this._qm=new Map(); }
     let ok=this._qm.get(x.id); if (ok!==undefined) return ok;
-    const h=CatalogIndex.hay(x); ok = this._qw.every(w=>CatalogIndex.wordHit(h,w)) || (this._qf.length>=3 && (h.fold.includes(this._qf) || h.model2.includes(this._qf)));
+    const h=CatalogIndex.hay(x), srv=CatalogSearch.ids(this.q);    // srv — найденное сервером по характеристикам
+    ok = this._qw.every(w=>CatalogIndex.wordHit(h,w)) || (this._qf.length>=3 && (h.fold.includes(this._qf) || h.model2.includes(this._qf))) || (!!srv && srv.has(x.id));
     this._qm.set(x.id, ok); return ok; }
   /** насколько позиция подходит к запросу: модель начинается с запроса → 0, запрос целиком в названии → 1, остальное → 2 */
   rel(x){ const q=norm(this.q); if (!q) return 2; const f=this._qs===this.q ? this._qf : CatalogIndex.fold(q), h=CatalogIndex.hay(x);
@@ -558,7 +559,9 @@ class CatalogWindow {
     let szT=null; new ResizeObserver(()=>{ if(!d.open) return; this.panes.layout(); clearTimeout(szT); szT=setTimeout(()=>{ if (d.open && !d.classList.contains('max')) this.panes.saveSize(); },500); }).observe(d);
     let qT=null;
     d.addEventListener('input', e=>{ const t=e.target, F=this.F;
-      if (t.id==='cwQ'){ F.q=t.value; this.limit=CatalogWindow.PAGE; clearTimeout(qT); qT=setTimeout(()=>this.refresh(), this.docs.length>2000?180:60); return; }
+      if (t.id==='cwQ'){ F.q=t.value; this.limit=CatalogWindow.PAGE; clearTimeout(qT); qT=setTimeout(()=>{ this.refresh(); const q=F.q;
+          // поиск по характеристикам — на сервере: ответ пришёл, запрос тот же → список с найденным по характеристикам
+          if (!CatalogSearch.has(q)) CatalogSearch.ask(q).then(s=>{ if (s && F.q===q && $('#catdlg')?.open){ F.dropQuery(); this.refresh(); } }); }, this.docs.length>2000?180:60); return; }
       if (t.dataset.rk){ const r=F.rng[t.dataset.rk]||(F.rng[t.dataset.rk]={min:'',max:''}); r[t.dataset.rs]=t.value.replace(',','.').replace(/[^\d.]/g,''); this.list(); } });
     d.addEventListener('change', e=>{ const t=e.target, F=this.F;
       if (t.dataset.cwzero!=null){ try{ localStorage.setItem('kp.cwzero', t.checked?'1':'0'); }catch(_){} return this.nav(); }

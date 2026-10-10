@@ -163,6 +163,21 @@ MIGRATIONS = [
      """
      SELECT 1;
      """),
+    # 3.48.0: каталог 20 000+ позиций. seq — номер изменения позиции (браузер хранит каталог у себя и докачивает только
+    # изменённое: /api/catalog/sync), catalog_gone — удалённые позиции; search — строка поиска по характеристикам на сервере
+    # (/api/catalog/search) вместо длинной строки в каждой карточке браузера.
+    ('2027-07-catalog-sync',
+     """
+     ALTER TABLE catalog ADD COLUMN seq INTEGER NOT NULL DEFAULT 0;
+     ALTER TABLE catalog ADD COLUMN search TEXT;
+     CREATE INDEX IF NOT EXISTS catalog_seq ON catalog(seq);
+     CREATE TABLE IF NOT EXISTS catalog_gone (id TEXT PRIMARY KEY, seq INTEGER NOT NULL);
+     CREATE INDEX IF NOT EXISTS catalog_gone_seq ON catalog_gone(seq);
+     """,
+     """
+     DROP INDEX IF EXISTS catalog_gone_seq; DROP TABLE IF EXISTS catalog_gone; DROP INDEX IF EXISTS catalog_seq;
+     ALTER TABLE catalog DROP COLUMN search; ALTER TABLE catalog DROP COLUMN seq;
+     """),
 ]
 KP_VERSIONS = 30
 
@@ -253,6 +268,36 @@ def _fill_columns(st, c):
         c.execute('UPDATE kp SET client=?, inn=?, manager=?, kdate=?, saved=?, search=? WHERE id=?', kp_cols(d) + (kid,))
 
 
+def cat_search(doc):
+    """Строка поиска позиции на сервере: название, описание строкой, параметры, характеристики, артикул (без повторов слов)."""
+    a = doc.get('attrs') if isinstance(doc.get('attrs'), dict) else {}
+    fd = doc.get('feed') if isinstance(doc.get('feed'), dict) else {}
+    parts = [doc.get('name'), doc.get('spec'), doc.get('short'), fd.get('sku')] + [v for v in a.values() if isinstance(v, (str, int, float))]
+    for g in doc.get('groups') or []:
+        for r in (g.get('rows') or []) if isinstance(g, dict) else []:
+            if isinstance(r, dict):
+                parts.append('%s %s' % (r.get('k', ''), r.get('v', '')))
+    seen, words = set(), []
+    for w in norm(' '.join(str(x) for x in parts if x not in (None, ''))).split():
+        if w not in seen:
+            seen.add(w)
+            words.append(w)
+    return ' '.join(words)[:6000]
+
+
+def _fill_sync(st, c):
+    """Миграция 2027-07: строка поиска и номер изменения у всех позиций; облегчённые карточки — без строки поиска."""
+    c.execute("INSERT INTO kv (key, value) VALUES ('datarev:catalog', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1")
+    seq = int(c.execute("SELECT value FROM kv WHERE key='datarev:catalog'").fetchone()[0])
+    for cid, doc in c.execute('SELECT id, doc FROM catalog').fetchall():
+        try:
+            d = json.loads(doc)
+        except ValueError:
+            continue
+        c.execute('UPDATE catalog SET light=?, search=?, seq=? WHERE id=?', (json.dumps(light_of(d), ensure_ascii=False), cat_search(d), seq, cid))
+    c.execute('INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)', ('catepoch', json.dumps(os.urandom(6).hex())))
+
+
 def _fill_light(st, c):
     """Миграция 2027-02-light: облегчённые карточки каталога заново — с фидом-источником и артикулом (фильтр «Поставщик», поиск по артикулу)."""
     for cid, doc in c.execute('SELECT id, doc FROM catalog').fetchall():
@@ -264,7 +309,7 @@ def _fill_light(st, c):
     c.execute("INSERT INTO kv (key, value) VALUES ('datarev:catalog', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1")
 
 
-MIGRATION_FILL = {'2027-01-db': _fill_columns, '2027-02-light': _fill_light, '2027-06-light-slim': _fill_light}
+MIGRATION_FILL = {'2027-01-db': _fill_columns, '2027-02-light': _fill_light, '2027-06-light-slim': _fill_light, '2027-07-catalog-sync': _fill_sync}
 
 
 def light_of(doc):
@@ -272,19 +317,7 @@ def light_of(doc):
     if isinstance(d.get('prices'), list):
         d['prices'] = d['prices'][:5]
         d['pricesCount'] = len(doc.get('prices') or [])
-    # строка для поиска по значениям характеристик (без самих таблиц)
-    vals = []
-    for g in doc.get('groups') or []:
-        for r in g.get('rows') or []:
-            vals.append('%s %s' % (r.get('k', ''), r.get('v', '')))
-    # слова без повторов (поиск сравнивает слова по отдельности): «Производительность при 7,5 бар …» не повторяется у каждой строки
-    seen, words = set(), []
-    for w in ' '.join(vals).split():
-        k = w.lower()
-        if k not in seen:
-            seen.add(k)
-            words.append(w)
-    d['st'] = ' '.join(words)[:400]
+    # поиск по значениям характеристик — на сервере (столбец search, /api/catalog/search), в карточке браузера его нет
     fd = doc.get('feed') if isinstance(doc.get('feed'), dict) else {}
     if fd.get('id'):                # фид-источник — фильтр «Поставщик» в каталоге
         d['src'] = str(fd['id'])[:40]
@@ -363,12 +396,26 @@ class Store:
         with self.lock:
             c = self.conn()
             rev = self._next_rev(c, 'catalog', cid, base_rev)
-            c.execute('INSERT OR REPLACE INTO catalog (id, doc, light, name, cat, maker, updated, rev, updated_by) VALUES (?,?,?,?,?,?,?,?,?)',
+            seq = self._cat_seq(c)
+            c.execute('INSERT OR REPLACE INTO catalog (id, doc, light, name, cat, maker, updated, rev, updated_by, seq, search) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
                       (cid, json.dumps(doc, ensure_ascii=False), json.dumps(light_of(doc), ensure_ascii=False),
-                       doc.get('name', ''), a.get('cat', ''), a.get('maker', ''), _now(), rev, str(by or '')[:120]))
-            self._bump_data(c, 'catalog')
+                       doc.get('name', ''), a.get('cat', ''), a.get('maker', ''), _now(), rev, str(by or '')[:120], seq, cat_search(doc)))
+            c.execute('DELETE FROM catalog_gone WHERE id=?', (cid,))
             c.commit()
         return rev
+
+    def _cat_seq(self, c):
+        """Новый номер изменения каталога (он же версия справочника «каталог»)."""
+        self._bump_data(c, 'catalog')
+        return int(c.execute("SELECT value FROM kv WHERE key='datarev:catalog'").fetchone()[0])
+
+    def catalog_epoch(self):
+        """Метка «поколения» каталога: меняется, когда база заменена целиком, — браузеры тогда загружают каталог заново."""
+        e = self.kv_get('catepoch')
+        if not e:
+            e = os.urandom(6).hex()
+            self.write('INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)', ('catepoch', json.dumps(e)))
+        return e
 
     # ---------- версия справочников: браузер хранит копию и перекачивает её, только когда что-то изменилось ----------
     def _bump_data(self, c, name):
@@ -495,7 +542,9 @@ class Store:
             c.execute('INSERT INTO trash (entity_type, entity_id, title, data, deleted_at, deleted_by) VALUES (?,?,?,?,?,?)',
                       (etype, eid, title, json.dumps(data, ensure_ascii=False), _now(), by))
             c.execute('DELETE FROM %s WHERE id=?' % table, (eid,))
-            if table in ('catalog', 'managers', 'suppliers'):
+            if table == 'catalog':          # браузеры уберут позицию при следующей догрузке изменений
+                c.execute('INSERT OR REPLACE INTO catalog_gone (id, seq) VALUES (?,?)', (eid, self._cat_seq(c)))
+            elif table in ('managers', 'suppliers'):
                 self._bump_data(c, table)
             c.commit()
         return data
@@ -525,7 +574,14 @@ class Store:
                     c.execute('UPDATE kp SET client=?, inn=?, manager=?, kdate=?, saved=?, search=? WHERE id=?', kp_cols(json.loads(data['meta'])) + (eid,))
                 except ValueError:
                     pass
-            if table in ('catalog', 'managers', 'suppliers'):
+            if table == 'catalog':
+                try:
+                    d = json.loads(data.get('doc') or '{}')
+                except ValueError:
+                    d = {}
+                c.execute('UPDATE catalog SET seq=?, search=?, light=? WHERE id=?', (self._cat_seq(c), cat_search(d), json.dumps(light_of(d), ensure_ascii=False), eid))
+                c.execute('DELETE FROM catalog_gone WHERE id=?', (eid,))
+            elif table in ('managers', 'suppliers'):
                 self._bump_data(c, table)
             c.commit()
         return etype, eid
@@ -996,6 +1052,7 @@ class Store:
             c = self.conn()
             for name in ('catalog', 'managers', 'clients', 'suppliers', 'kp', 'types', 'settings'):
                 self._bump_data(c, name)      # версии справочников — чтобы браузеры перекачали данные
+            c.execute('INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)', ('catepoch', json.dumps(os.urandom(6).hex())))
             c.commit()
         log('База заменена из файла %s, прежняя сохранена: %s' % (src, bak))
         return bak

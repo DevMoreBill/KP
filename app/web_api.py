@@ -373,6 +373,23 @@ class CatalogController(Controller):
         return self.send_cached('cat%s-%s' % ('f' if full else 'l', store().data_rev('catalog')),
                                 lambda: store().catalog_full() if full else store().catalog_light())
 
+    # каталог 20 000+: браузер хранит каталог у себя (IndexedDB) и докачивает изменения после своего номера
+    @route(r'/api/catalog/sync', 'GET')
+    def sync(self):
+        from catalog_sync import CatalogSync
+        cs = CatalogSync(store())
+        d = cs.delta(self.q.get('since'), self.q.get('epoch') or '')
+        if d is not None:
+            return self.send(200, 'application/json; charset=utf-8', cs.delta_json(d).encode('utf-8'), {'Cache-Control': 'no-store'})
+        st = cs.state()
+        return self.send_cached('cats-%s-%s' % (st['epoch'], st['seq']), cs.full_json)
+
+    # поиск по характеристикам (строка поиска позиции хранится на сервере, не в браузере)
+    @route(r'/api/catalog/search', 'GET')
+    def search(self):
+        from catalog_sync import CatalogSync
+        return self.send_json({'q': self.q.get('q') or '', 'ids': CatalogSync(store()).search(self.q.get('q') or '')})
+
     @route(r'/api/catalog/sources', 'GET')   # фиды-источники позиций: id → поставщик (из справочника, если фид к нему привязан)
     def sources(self):
         sups = {x.get('id'): x.get('name') for x in store().suppliers_list()}
@@ -1070,6 +1087,25 @@ class ClientCardController(Controller):
         doc['notes'] = notes
         store().client_put(cid, doc, name)
         return self.send_json({'ok': True, 'notes': notes})
+
+
+# ---------------------------------------------------------------- личные настройки менеджера (user_prefs.py)
+class MeController(Controller):
+    @route(r'/api/me/prefs', 'GET')
+    def prefs(self):
+        from user_prefs import UserPrefs
+        uid = admin.actor(self.h, admin=False)[0]
+        return self.send_json({'id': uid or '', 'prefs': UserPrefs(store()).get(uid) if uid else {}})
+
+    @route(r'/api/me/prefs', 'PUT')
+    def prefs_put(self):
+        from user_prefs import UserPrefs
+        uid, name, _ = admin.actor(self.h, admin=False)
+        try:
+            p = UserPrefs(store()).save(uid, self.json_body(), name)
+        except ValueError as e:
+            raise BadRequest(str(e))
+        return self.send_json({'id': uid, 'prefs': p})
 
 
 class ServiceController(Controller):
