@@ -28,6 +28,20 @@ if os.name == 'nt':
         ],
     )
 
+# Стандартная библиотека Python — с запасом для будущих обновлений патчем: новый модуль программы (папка update) может
+# импортировать любой из этих модулей, и новый EXE для него не нужен. Почта, XML и HTML, сеть, архивы, точные вычисления,
+# потоки, журналы, сравнение текстов. Не входят: tkinter, unittest, pydoc, multiprocessing, xmlrpc, asyncio (не нужны).
+from PyInstaller.utils.hooks import collect_submodules
+STDLIB = [m for pkg in ('email', 'xml', 'html', 'http', 'urllib', 'json', 'concurrent', 'logging', 'sqlite3', 'importlib', 'ctypes', 'encodings')
+          for m in collect_submodules(pkg) if not _re.search(r'_codecs_(jp|hk|cn|kr|tw|iso2022)|encodings\.(cp93[2-9]|cp949|cp950|euc_|gb|big5|hz|iso2022|johab|shift_jis)', m)] + [
+    'difflib', 'textwrap', 'unicodedata', 'fractions', 'decimal', 'statistics', 'numbers', 'cmath', 'random', 'secrets', 'hmac', 'hashlib',
+    'tarfile', 'lzma', 'bz2', 'zlib', 'gzip', 'zipfile', 'shutil', 'tempfile', 'glob', 'fnmatch', 'filecmp', 'pathlib', 'mimetypes',
+    'configparser', 'tomllib', 'csv', 'calendar', 'locale', 'gettext', 'string', 'pprint', 'reprlib', 'copy', 'pickle', 'struct', 'array',
+    'base64', 'binascii', 'quopri', 'codecs', 'smtplib', 'imaplib', 'poplib', 'ftplib', 'mailbox', 'socketserver', 'selectors', 'ssl', 'ipaddress',
+    'uuid', 'sched', 'queue', 'heapq', 'bisect', 'graphlib', 'dataclasses', 'enum', 'typing', 'contextlib', 'contextvars', 'functools', 'itertools',
+    'operator', 'weakref', 'shlex', 'argparse', 'getpass', 'colorsys', 'inspect', 'ast', 'tokenize', 'traceback', 'warnings', 'pkgutil', 'platform',
+    'mmap', 'fileinput', 'timeit']
+
 a = Analysis(
     ['app/launcher.py'],      # загрузчик: обновление (патч) из папки update рядом с EXE, затем kp_server
     pathex=['app'],
@@ -41,7 +55,7 @@ a = Analysis(
     hiddenimports=['kp_server', 'web_api', 'version', 'geo', 'feeds', 'feed_files', 'imgfetch', 'auth_users', 'ai_llm', 'ai_profile', 'app_update', 'admin_overview', 'data_bundle', 'settings_history', 'backup_mirror', 'connections', 'catalog_sync', 'user_prefs', 'platform', 'pdf_text', 'defaults', 'lists', 'kp_track', 'features', 'smtplib', 'email.message', 'email.utils', 'importlib.abc', 'importlib.util', 'ipaddress', 'csv', 'zipfile', 'calendar', 'decimal',
                    'statistics', 'uuid', 'base64', 'html', 'html.parser', 'http.client', 'email', 'shutil', 'tempfile', 'subprocess', 'ctypes',
                    'config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'workcal', 'imgfetch', 'desktop', 'pdf_convert', 'catalog_migrate', 'admin', 'images', 'maintenance', 'logistics_api',
-                   'sqlite3', '_sqlite3', 'gzip'],
+                   'sqlite3', '_sqlite3', 'gzip'] + STDLIB,
     # sqlite3 НЕ исключать: на нём работает база данных программы
     excludes=['tkinter', 'unittest', 'pydoc', 'pydoc_data', 'lib2to3', 'multiprocessing', 'xmlrpc', 'curses', 'test'],
     noarchive=False,

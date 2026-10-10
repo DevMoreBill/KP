@@ -34,8 +34,13 @@ class AdminSystem {
   static async updates(m, note){
     const s=await aapi('update'), last=s.last||{};
     const ver=v=>`<b>${esc(v)}</b>`;
-    const hist=(s.history||[]).map(h=>`<tr><td>${esc(stTime(h.at))}</td><td>${esc(h.from||'')} → ${esc(h.version||'')}</td><td>${esc(h.source||'')}</td><td>${esc(h.by||'')}</td></tr>`).join('');
+    const hist=(s.history||[]).map(h=>`<tr><td>${esc(stTime(h.at))}</td><td>${esc(h.from||'')} → ${esc(h.version||'')}</td><td>${esc(h.source||'')}${h.reason?`<br><small class="muted">${esc(h.reason)}</small>`:''}</td><td>${esc(h.by||'')}</td></tr>`).join('');
+    const f=s.failed, again=f&&last.version===f.version;
     m.innerHTML=`${note?`<p class="msg ok" style="text-align:left">${esc(note)}</p>`:''}
+    ${f?`<div class="st-card up-fail"><p><b class="bad-t">Обновление ${esc(f.version)} не запустилось</b>${f.at?` (${esc(stTime(f.at))})`:''} — программа сама вернулась к версии ${ver(s.current)}. Данные не пострадали: перед установкой была сделана копия базы («Копии и база»).</p>
+      <p>Причина: <code>${esc(f.reason||'неизвестна')}</code></p>
+      ${f.trace?`<details class="up-notes"><summary>Подробности для разработчика</summary><pre>${esc(f.trace)}</pre></details>`:''}
+      <p class="muted">Установить эту версию снова можно, когда причина устранена (обычно — в выпуске с исправлением): «Скачать и установить» или «Выбрать архив обновления…».</p></div>`:''}
     <div class="st-card"><div class="up-v"><div><span class="muted">Работает версия</span><b class="up-big">${esc(s.current)}</b>
         <span class="muted">${s.patched?`обновление поверх программы ${s.base?esc(s.base):''}`:'версия программы (EXE)'}</span></div>
       ${s.pending?`<div class="up-pend">Установлено обновление ${ver(s.installed)} — заработает после перезапуска <button class="btn primary" type="button" data-up="restart">Перезапустить сейчас</button></div>`:''}</div>
@@ -45,7 +50,8 @@ class AdminSystem {
       ${last.at?`<p class="muted" style="margin:6px 0">Проверено ${esc(stTime(last.at))}${last.error?` — <span class="bad-t">${esc(last.error)}</span>`:''}</p>`:'<p class="muted" style="margin:6px 0">Ещё не проверялось.</p>'}
       ${last.version&&!last.error?(s.available?`<div class="up-new"><p>Доступна версия ${ver(last.version)}${last.published?` от ${esc(KPGen.ruDate(last.published.slice(0,10)))}`:''}.${last.url?` <a href="${esc(last.url)}" target="_blank" rel="noopener noreferrer">Выпуск на GitHub ↗</a>`:''}</p>
           ${last.notes?`<details class="up-notes" open><summary>Что нового</summary><pre>${esc(last.notes)}</pre></details>`:''}
-          ${last.asset?`<button class="btn primary" type="button" data-up="download">Скачать и установить ${esc(last.version)}</button> <span class="muted">${esc(last.asset.name)} · ${stSize(last.asset.size||0)} · перед установкой — копия базы, после — перезапуск</span>`:'<p class="muted">В выпуске нет архива обновления — скачайте полный комплект с GitHub.</p>'}</div>`
+          ${again?'<p class="bad-t">Эта версия уже не запустилась на этом компьютере — подробности выше.</p>':''}
+          ${last.asset?`<button class="btn${again?'':' primary'}" type="button" data-up="download">Скачать и установить ${esc(last.version)}</button> <span class="muted">${esc(last.asset.name)} · ${stSize(last.asset.size||0)} · перед установкой — копия базы, после — перезапуск</span>`:'<p class="muted">В выпуске нет архива обновления — скачайте полный комплект с GitHub.</p>'}</div>`
         :`<p class="ok-t" style="margin:0">Установлена последняя версия (${esc(last.version)}).</p>`):''}</div>
     <div class="st-card"><p class="sub">Установить из файла</p>
       <p class="muted" style="margin:0 0 8px">Архив обновления «KP-Obnovlenie-….zip» из выпуска — без интернета на компьютере-сервере. Перед установкой — копия базы, после — перезапуск.</p>

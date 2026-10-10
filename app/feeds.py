@@ -1849,7 +1849,7 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
             else:
                 mode = 'build'
                 try:                    # сборка перестраивает много позиций — сначала копия базы в data/backup
-                    store.backup(os.path.join(os.path.dirname(store.path), 'backup', 'kp-%s-before-feed-build.sqlite3' % datetime.now().strftime('%Y%m%d-%H%M%S')))
+                    store.backup(os.path.join(os.path.dirname(store.path), 'backup', 'kp-%s-before-feed-build.zip' % datetime.now().strftime('%Y%m%d-%H%M%S')))
                 except Exception as e:
                     log('Копия базы перед сборкой каталога не создана: %s' % e)
                 links = {oid: {'id': d['id'], 'prices': d.get('prices') or []} for oid, d in plan['links'].items()}

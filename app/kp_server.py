@@ -35,11 +35,15 @@ import logistics_api
 from images import mark_organized, organize_existing
 from kp_templates import ensure_templates
 from web_api import IMAGES, ROUTER, cp
+from app_update import StartCheck
 
 PAID_GET = ('/api/geo/', '/api/party', '/api/check', '/api/imgfetch', '/api/cbr')
 GZ_CACHE = {}       # сжатые большие справочники: {ETag: байты gzip} (send_cached)
 GZ_LOCK = threading.Lock()
 MAX_BODY = 300 * 1024 * 1024    # самый большой запрос — загрузка резервной копии базы
+# программа запустилась и отвечает (после самопроверки обновления): сбой после этого launcher.py не считает сбоем
+# запуска обновления и прежнюю версию не возвращает
+STARTED = False
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -311,6 +315,8 @@ def main():
         ensure_templates()
         store().migrate_json(DATA_DIR)   # переход с версии, хранившей данные в JSON-файлах
         admin.startup(store(), DATA_DIR)   # сброс пароля по data/admin-reset.txt, очистка корзины
+        from app_update import Updater
+        Updater(store(), ROOT, DATA_DIR).absorb_failures()     # обновление не запустилось — запись в «Обновления»
         # обслуживание базы: копия за сегодня, архив журнала, сжатие раз в месяц — в фоне, затем раз в сутки
         threading.Thread(target=maintenance.run, args=(store(), DATA_DIR), daemon=True, name='maintenance-start').start()
         maintenance.start_daily(store(), DATA_DIR)
@@ -321,17 +327,19 @@ def main():
         import feeds
         feeds.IMAGE_STORE = IMAGES
         maintenance.start_every(3600, lambda: feeds.auto_check(store()))     # фиды поставщиков: РРЦ и наличие раз в день
-        from app_update import Updater
         maintenance.start_every(6 * 3600, lambda: Updater(store(), ROOT, DATA_DIR).auto_check())   # новая версия на GitHub — раз в сутки
         feeds.upgrade(store(), load_types()['types'], APP_VERSION)          # после обновления — фиды по новым правилам
         fresh = FreshBase.check()
         sync_counter_with_files()
     except Exception as e:
+        if StartCheck.patched() and StartCheck.code_error(e):
+            raise          # ошибка в коде обновления: launcher.py вернёт прежнюю версию и запустит её
         if 'malformed' in str(e) or 'not a database' in str(e):
             message_box('Файл базы данных повреждён:\n%s\n\n%s\n\n'
                         'Так бывает, когда kp.sqlite3 подменяют вручную при оставшихся рядом файлах kp.sqlite3-wal и kp.sqlite3-shm.\n'
                         'Что сделать: остановить программу, удалить kp.sqlite3-wal и kp.sqlite3-shm, затем положить на место kp.sqlite3 '
-                        'копию из папки data\\backup (kp-ДАТА.sqlite3 — автоматические копии, kp-…-before-….sqlite3 — перед изменениями). '
+                        'копию из папки data\\backup (архивы ZIP: kp-ДАТА.zip в backup\\auto — автоматические копии, kp-…-before-….zip — '
+                        'перед изменениями; файл kp.sqlite3 — внутри архива). '
                         'Загружать файл базы впредь лучше через «Настройки → Копии и обслуживание базы → Файл базы целиком».'
                         % (os.path.join(DATA_DIR, 'kp.sqlite3'), e))
             return 1
@@ -357,8 +365,19 @@ def main():
         start_ipv6(port, httpd)
     # адрес localhost (а не 127.0.0.1) — чтобы браузер видел черновики, сохранённые прежней версией
     url = 'http://localhost:%d/' % port
-    if not os.environ.get('KP_NO_BROWSER'):          # после перезапуска из «Настроек» браузер уже открыт
-        opener = threading.Timer(0.3, lambda: webbrowser.open(url))
+
+    def ready():
+        global STARTED
+        STARTED = True
+        if not os.environ.get('KP_NO_BROWSER'):          # после перезапуска из «Настроек» браузер уже открыт
+            webbrowser.open(url)
+    # обновление (патч) сначала отвечает на свои главные адреса — тогда открывается браузер; не ответило — сервер
+    # останавливается, и launcher.py возвращает прежнюю версию
+    check = StartCheck(port, httpd, ready) if StartCheck.patched() else None
+    if check:
+        check.start()
+    else:
+        opener = threading.Timer(0.3, ready)
         opener.daemon = True
         opener.start()
     try:
@@ -372,6 +391,8 @@ def main():
     except KeyboardInterrupt:
         pass
     httpd.server_close()
+    if check and check.error:
+        raise StartCheck.Failed(check.error)
     return 0
 
 

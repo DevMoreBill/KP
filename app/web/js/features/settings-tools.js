@@ -280,7 +280,7 @@ class MirrorCard {
       :`<b class="bad-t">✕ ${esc(stTime(L.at))}: ${esc(L.error||'ошибка')}</b>`):'<span class="muted">копий ещё не было</span>';
     this.box.innerHTML=`<div class="row"><p class="sub" style="margin:0">Вторая папка для копий базы</p><span class="sp"></span>
         <label class="sw"><input type="checkbox" id="mbOn"${s.on?' checked':''} data-nodirty><span>${s.on?'включена':'выключена'}</span></label></div>
-      <p class="muted">Копии в data\\backup лежат на том же диске, что и база: откажет диск — пропадёт всё. Укажите вторую папку на другом устройстве: сетевой диск (\\\\сервер\\копии), флешку или папку Яндекс Диска / OneDrive. Каждый день после обычной копии файл базы копируется туда и проверяется.</p>
+      <p class="muted">Копии в data\\backup лежат на том же диске, что и база: откажет диск — пропадёт всё. Укажите вторую папку на другом устройстве: сетевой диск (\\\\сервер\\копии), флешку или папку Яндекс Диска / OneDrive. Каждый день после обычной копии архив базы (ZIP) копируется туда и проверяется.</p>
       ${note?`<p class="msg${note.err?' err':''}" style="text-align:left">${esc(note.t)}</p>`:''}
       <div class="grid g2"><label class="f"><span>Папка</span><input type="text" id="mbPath" value="${esc(s.path||'')}" placeholder="D:\\Копии КП или \\\\сервер\\копии" autocomplete="off"></label>
         <label class="f"><span>Хранить копий (последних дней)</span><input type="number" id="mbKeep" min="1" max="365" value="${esc(s.keep||14)}"></label></div>

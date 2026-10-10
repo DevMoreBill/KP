@@ -10,12 +10,16 @@
   встроенной), прежнее обновление — в update.prev (откат одной кнопкой), копия базы перед установкой, история установок.
 • Restarter — перезапуск: вспомогательный процесс ждёт, пока программа закроется и освободит порт, и запускает её снова
   (сервер отдела — задачей Планировщика, обычный запуск — тем же EXE без открытия браузера).
+• StartCheck — самопроверка запуска обновления и разбор ошибок запуска: не прошла — launcher.py (встроен в EXE) сам
+  возвращает прежнюю версию, а Updater показывает причину в «Обновлениях».
 """
+import errno
 import io
 import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -156,10 +160,11 @@ class Updater:
     """Установка обновления рядом с программой, откат, история."""
     KV = 'update'
     HISTORY = 30
+    FAILED_LOG = 'update-failed.json'     # пишет launcher.py, когда обновление не запустилось и вернулась прежняя версия
 
     def __init__(self, store, root, data_dir):
         self.store, self.root, self.data_dir = store, root, data_dir
-        self.dir, self.prev, self.new = (os.path.join(root, x) for x in ('update', 'update.prev', 'update.new'))
+        self.dir, self.prev, self.new, self.failed_dir = (os.path.join(root, x) for x in ('update', 'update.prev', 'update.new', 'update.failed'))
 
     # ---------- состояние
     def settings(self):
@@ -188,7 +193,7 @@ class Updater:
         return str(((self.store.kv_get('integrations') or {}).get('githubToken')) or '').strip()
 
     def status(self):
-        s = self.settings()
+        s = (os.path.isfile(os.path.join(self.root, self.FAILED_LOG)) and self.absorb_failures()) or self.settings()
         installed, prev = self._dir_version(self.dir), self._dir_version(self.prev)
         last = s.get('last') or {}
         return {'current': self.current(), 'base': os.environ.get('KP_BASE_VERSION') or '', 'patched': bool(os.environ.get('KP_UPDATE_DIR')),
@@ -196,7 +201,47 @@ class Updater:
                 'prev': prev, 'frozen': self.frozen(), 'writable': self.writable(), 'root': self.root,
                 'repo': s.get('repo') or 'DevMoreBill/KP', 'auto': s.get('auto', True), 'hasToken': bool(self.token()),
                 'last': last, 'available': bool(last.get('version')) and version.as_tuple(last['version']) > version.as_tuple(self.current()),
-                'history': (s.get('history') or [])[-self.HISTORY:][::-1]}
+                'failed': self.failed(s), 'history': (s.get('history') or [])[-self.HISTORY:][::-1]}
+
+    def failed(self, s=None):
+        """Последнее обновление, которое не запустилось (программа вернулась к прежней версии), — пока работает версия
+        старше него: {version, back, at, reason, trace} или None."""
+        f = (s or self.settings()).get('failed')
+        if not isinstance(f, dict) or not f.get('version'):
+            return None
+        return f if version.as_tuple(f['version']) > version.as_tuple(self.current()) else None
+
+    def absorb_failures(self):
+        """Записи launcher.py о неудачных запусках обновлений (update-failed.json рядом с программой) → история установок
+        и предупреждение в «Обновлениях»; файл удаляется. Никогда не мешает запуску. → новые настройки или None."""
+        path = os.path.join(self.root, self.FAILED_LOG)
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                recs = json.load(f)
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError):
+            recs = []
+        try:
+            s = self.settings()
+            h = s.get('history') if isinstance(s.get('history'), list) else []
+            for r in recs if isinstance(recs, list) else []:
+                if not isinstance(r, dict) or not r.get('version'):
+                    continue
+                r = {k: str(r.get(k) or '')[:limit] for k, limit in (('version', 40), ('back', 40), ('exe', 40), ('at', 40), ('reason', 600), ('trace', 6000))}
+                h.append({'version': r['back'] or r['exe'], 'from': r['version'], 'by': 'программа', 'at': r['at'],
+                          'source': 'не запустилось — возврат', 'reason': r['reason']})
+                # не запустились подряд два обновления (новое и предыдущее) — предупреждение о самом новом из них
+                old = s.get('failed') if isinstance(s.get('failed'), dict) else {}
+                if version.as_tuple(r['version']) >= version.as_tuple(old.get('version') or '0'):
+                    s['failed'] = r
+            s['history'] = h[-self.HISTORY:]
+            self._save(s)
+            os.remove(path)
+            return s
+        except Exception as e:          # запись о сбое не должна мешать работе программы
+            print('Запись о неудачном обновлении не прочитана:', e)
+            return None
 
     def writable(self):
         try:
@@ -282,12 +327,13 @@ class Updater:
             raise UpdateError('Архив распакован не полностью — повторите')
         self._swap_in()
         setup = self._server_setup(pkg)
-        self._log({'version': pkg.version, 'from': cur, 'by': by, 'source': source, 'files': n})
+        shutil.rmtree(self.failed_dir, ignore_errors=True)      # прежнее неудачное обновление больше не нужно
+        self._log({'version': pkg.version, 'from': cur, 'by': by, 'source': source, 'files': n}, failed=None)
         return {'version': pkg.version, 'from': cur, 'files': n, 'serverSetup': setup}
 
     def _backup_db(self, ver):
         stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-        self.store.backup(os.path.join(self.data_dir, 'backup', 'kp-%s-before-update-%s.sqlite3' % (stamp, ver)))
+        self.store.backup(os.path.join(self.data_dir, 'backup', 'kp-%s-before-update-%s.zip' % (stamp, ver)))
 
     def _swap_in(self):
         """update.new → update; прежнее update → update.prev. Папку, занятую работающей программой, не переименовать —
@@ -336,11 +382,16 @@ class Updater:
         self._log({'version': 'EXE', 'from': self.current(), 'by': by, 'source': 'обновление убрано'})
         return {'ok': True}
 
-    def _log(self, rec):
+    def _log(self, rec, **extra):
         s = self.settings()
         h = s.get('history') if isinstance(s.get('history'), list) else []
         h.append(dict(rec, at=datetime.now().isoformat(timespec='seconds')))
         s['history'] = h[-self.HISTORY:]
+        for k, v in extra.items():          # failed=None — новая установка: прежнее предупреждение о сбое снимается
+            if v is None:
+                s.pop(k, None)
+            else:
+                s[k] = v
         self._save(s)
 
 
@@ -377,14 +428,18 @@ class Restarter:
     INHERIT_DROP = ('_MEI', '_PYI', 'PYINSTALLER_', 'KP_UPDATE_', 'KP_BASE_VERSION')
 
     @classmethod
-    def environment(cls):
+    def environment(cls, browser=False):
         env = {k: v for k, v in os.environ.items() if not k.upper().startswith(cls.INHERIT_DROP)}
         env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'      # PyInstaller ≥ 6.10: новый EXE — как запущенный заново
-        env['KP_NO_BROWSER'] = '1'
+        if browser:
+            env.pop('KP_NO_BROWSER', None)
+        else:
+            env['KP_NO_BROWSER'] = '1'
         return env
 
-    def spawn(self):
-        env = self.environment()
+    def spawn(self, browser=False):
+        """browser — новый процесс сам откроет браузер (возврат к прежней версии при первом запуске: страницы ещё нет)."""
+        env = self.environment(browser)
         cmd = self.command()
         if os.name == 'nt':
             flags = 0x00000008 | 0x00000200       # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
@@ -402,3 +457,67 @@ class Restarter:
             self.spawn()
             server.shutdown()
         threading.Timer(0.7, go).start()
+
+
+class StartCheck:
+    """Самопроверка запуска обновления (патча) и разбор ошибок запуска.
+
+    Пока новая версия не ответила на свои главные адреса, программа не считается запущенной (kp_server.STARTED).
+    Ошибка в коде обновления до этого момента или неудачная самопроверка — launcher.py возвращает прежнюю версию
+    (update → update.failed, update.prev → update) и запускает её; причина — в «Настройки → Обновления».
+    Ошибки окружения (база повреждена или занята, нет места, нет прав) прежняя версия встретила бы так же — из-за них
+    обновление не откатывается: программа показывает своё обычное сообщение."""
+    PATHS = ('/api/version', '/api/ping', '/')
+    TIMEOUT = 60           # медленный компьютер или большая база: не ответил за минуту — не повод откатывать
+    ENV_WORDS = ('malformed', 'not a database', 'disk is full', 'database is locked', 'disk i/o error', 'readonly database',
+                 'unable to open database', 'read-only file system', 'no space left')
+
+    class Failed(Exception):
+        """Обновление запустилось, но на свои главные адреса не отвечает как надо."""
+
+    def __init__(self, port, server, ready):
+        self.port, self.server, self.ready, self.error = port, server, ready, ''
+
+    @staticmethod
+    def patched():
+        return bool(os.environ.get('KP_UPDATE_DIR'))
+
+    @classmethod
+    def code_error(cls, e):
+        """Ошибка в коде программы, а не в окружении (нет прав, нет места, база повреждена или занята)."""
+        if isinstance(e, PermissionError) or (isinstance(e, OSError) and e.errno in (errno.ENOSPC, errno.EROFS, errno.EACCES)):
+            return False
+        if isinstance(e, sqlite3.DatabaseError) or isinstance(e, OSError):
+            return not any(w in str(e).lower() for w in cls.ENV_WORDS)
+        return True
+
+    def start(self):
+        threading.Thread(target=self._run, daemon=True, name='start-check').start()
+
+    def _run(self):
+        try:
+            for path in self.PATHS:
+                self._get(path)
+        except self.Failed as e:
+            self.error = 'Самопроверка после запуска: %s' % e
+            self.server.shutdown()
+            return
+        except Exception as e:           # сама проверка не должна откатывать рабочую версию
+            print('Самопроверка запуска не выполнена:', e)
+        self.ready()
+
+    def _get(self, path):
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            with opener.open('http://127.0.0.1:%d%s' % (self.port, path), timeout=self.TIMEOUT) as r:
+                r.read(1 << 20)
+        except urllib.error.HTTPError as e:
+            raise self.Failed('%s — ответ %d' % (path, e.code))
+        except urllib.error.URLError as e:
+            if isinstance(e.reason, TimeoutError):
+                return
+            raise self.Failed('%s — нет ответа (%s)' % (path, e.reason))
+        except TimeoutError:
+            return
+        except (OSError, ValueError) as e:
+            raise self.Failed('%s — %s' % (path, e))

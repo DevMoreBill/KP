@@ -24,6 +24,7 @@ import os
 import re
 import sqlite3
 import threading
+import zipfile
 from datetime import datetime
 
 SCHEMA = """
@@ -221,6 +222,77 @@ def with_rev(text, rev):
         return text
     body = t[1:].lstrip()
     return '{"_rev":%d%s%s' % (int(rev or 0), '' if body.startswith('}') else ',', body)
+
+
+class DbZip:
+    """Копия базы в архиве ZIP: внутри один файл kp.sqlite3. Описания серий повторяются у тысяч моделей, поэтому база
+    сжимается в 15–20 раз (271 МБ → ~17 МБ за 2–3 с). Восстановить — «Настройки → Копии и обслуживание базы →
+    Файл базы целиком» (принимает и .zip, и .sqlite3) или распаковать kp.sqlite3 из архива."""
+    MEMBER = 'kp.sqlite3'
+    LEVEL = 6
+    CHUNK = 1 << 20
+
+    @staticmethod
+    def is_zip(path):
+        return str(path).lower().endswith('.zip')
+
+    @classmethod
+    def pack(cls, src, dst):
+        """Файл базы → архив dst (сначала dst.part, затем переименование); проверка контрольных сумм записанного архива."""
+        part = dst + '.part'
+        try:
+            with zipfile.ZipFile(part, 'w', zipfile.ZIP_DEFLATED, compresslevel=cls.LEVEL) as z:
+                z.write(src, cls.MEMBER)
+            cls.verify(part)
+            os.replace(part, dst)
+        finally:
+            if os.path.exists(part):
+                os.remove(part)
+        return dst
+
+    @classmethod
+    def verify(cls, path):
+        """Архив читается, в нём есть файл базы и контрольные суммы совпадают — иначе ValueError с причиной."""
+        try:
+            with zipfile.ZipFile(path) as z:
+                if not cls.member(z):
+                    raise ValueError('в архиве нет файла базы')
+                bad = z.testzip()
+        except (zipfile.BadZipFile, OSError) as e:
+            raise ValueError('архив копии не читается: %s' % e)
+        if bad:
+            raise ValueError('архив копии повреждён: %s' % bad)
+
+    @staticmethod
+    def member(z):
+        """Имя файла базы внутри архива (kp.sqlite3, иначе первый .sqlite3 / .sqlite / .db) или ''."""
+        names = [n for n in z.namelist() if n.lower().endswith(('.sqlite3', '.sqlite', '.db'))]
+        return DbZip.MEMBER if DbZip.MEMBER in names else (names[0] if names else '')
+
+    @classmethod
+    def unpack(cls, src, dst):
+        """Файл базы из архива src → dst (потоком, без чтения всей базы в память)."""
+        with zipfile.ZipFile(src) as z:
+            name = cls.member(z)
+            if not name:
+                raise ValueError('В архиве нет файла базы (.sqlite3)')
+            with z.open(name) as fi, open(dst, 'wb') as fo:
+                while True:
+                    b = fi.read(cls.CHUNK)
+                    if not b:
+                        break
+                    fo.write(b)
+        return dst
+
+    @staticmethod
+    def integrity(path, quick=False):
+        """Проверка файла базы встроенной проверкой SQLite: 'ok' или текст ошибки."""
+        c = sqlite3.connect(path, timeout=30)
+        try:
+            r = c.execute('PRAGMA quick_check' if quick else 'PRAGMA integrity_check').fetchall()
+            return 'ok' if [x[0] for x in r] == ['ok'] else '; '.join(str(x[0]) for x in r[:5])
+        finally:
+            c.close()
 
 
 class Conflict(Exception):
@@ -471,7 +543,7 @@ class Store:
         done = self.migrations_applied()
         todo = [x for x in MIGRATIONS if x[0] not in done]
         if todo and done:      # база с данными: перед изменением структуры — копия в data/backup
-            self.backup(os.path.join(os.path.dirname(self.path), 'backup', 'kp-%s-before-%s.sqlite3' % (
+            self.backup(os.path.join(os.path.dirname(self.path), 'backup', 'kp-%s-before-%s.zip' % (
                 datetime.now().strftime('%Y%m%d-%H%M%S'), todo[0][0])))
         for mid, up, _down in todo:
             done = done + [mid]
@@ -1023,9 +1095,26 @@ class Store:
             except Exception as e:        # история не должна мешать сохранению настроек
                 print('История настроек не записана:', e)
 
-    def backup(self, dst):
-        """Согласованная копия базы «на ходу» (встроенный механизм SQLite backup)."""
+    def backup(self, dst, check=False):
+        """Согласованная копия базы «на ходу» (встроенный механизм SQLite backup). dst на .zip — копия сжимается в архив
+        (DbZip); check — до сжатия полная проверка копии встроенной проверкой SQLite (ValueError с причиной)."""
         os.makedirs(os.path.dirname(dst), exist_ok=True)
+        if DbZip.is_zip(dst):
+            tmp = dst + '.tmp'
+            try:
+                for ext in ('', '-wal', '-shm', '-journal'):      # остаток прерванной копии — не дописывать в него
+                    if os.path.exists(tmp + ext):
+                        os.remove(tmp + ext)
+                self.backup(tmp)
+                if check:
+                    res = DbZip.integrity(tmp)
+                    if res != 'ok':
+                        raise ValueError('копия не прошла проверку: ' + res)
+                return DbZip.pack(tmp, dst)
+            finally:
+                for ext in ('', '-wal', '-shm', '-journal'):
+                    if os.path.exists(tmp + ext):
+                        os.remove(tmp + ext)
         with self.lock:
             out = sqlite3.connect(dst)
             try:
@@ -1047,7 +1136,7 @@ class Store:
             need = {'catalog', 'kp', 'kv', 'managers', 'clients'}
             if not need <= tables:
                 raise ValueError('Это не база программы: нет таблиц ' + ', '.join(sorted(need - tables)))
-            bak = os.path.join(os.path.dirname(self.path), 'backup', 'kp-%s-before-restore.sqlite3' % datetime.now().strftime('%Y%m%d-%H%M%S'))
+            bak = os.path.join(os.path.dirname(self.path), 'backup', 'kp-%s-before-restore.zip' % datetime.now().strftime('%Y%m%d-%H%M%S'))
             with self.lock:
                 self.backup(bak)
                 c = self.conn()

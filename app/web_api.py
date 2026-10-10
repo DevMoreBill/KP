@@ -1115,7 +1115,7 @@ class ServiceController(Controller):
         if not self.is_local():
             return self.send_json({'ok': False, 'message': 'Резервная копия создаётся на компьютере-сервере'})
         stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
-        dst = store().backup(os.path.join(ROOT, 'backup', stamp, 'kp.sqlite3'))
+        dst = store().backup(os.path.join(ROOT, 'backup', stamp, 'kp.zip'))     # архив: kp.sqlite3 внутри
         return self.send_json({'ok': True, 'path': dst, 'dir': os.path.dirname(dst)})
 
     # выключение — только с самого компьютера (файл «Остановить сервер», установщик, кнопка «Выход»); по сети — нельзя

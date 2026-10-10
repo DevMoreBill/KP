@@ -260,7 +260,7 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
         return None
 
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-    backup = os.path.join(backup_dir, 'kp-%s-до-обновления-каталога.sqlite3' % stamp)
+    backup = os.path.join(backup_dir, 'kp-%s-до-обновления-каталога.zip' % stamp)
     store.backup(backup)
 
     # свои категории, которые теперь встроенные
