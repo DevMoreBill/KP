@@ -19,6 +19,25 @@ function Find-Exe($dir) {
 
 function Task-Exists { schtasks /Query /TN $TASK > $null 2>&1; return ($LASTEXITCODE -eq 0) }
 
+# Настройки задачи сервера отдела. Задаче из «schtasks /Create» Планировщик ставит настройки не для сервера: остановить через
+# 3 дня работы (ExecutionTimeLimit PT72H), не запускать и останавливать при работе от батареи (так Windows видит и ИБП, когда
+# пропало питание), приоритет ниже обычного (7). Сервер отдела работает неделями: без ограничения времени, от батареи тоже,
+# обычный приоритет, не запустилась — ещё 3 попытки раз в минуту. Нужен PowerShell 3+ (Windows 8 и новее). true — заданы.
+function Set-KPTask {
+  if (-not (Task-Exists)) { return $false }
+  try {
+    $s = (Get-ScheduledTask -TaskName $TASK).Settings
+    $s.ExecutionTimeLimit = 'PT0S'
+    $s.DisallowStartIfOnBatteries = $false
+    $s.StopIfGoingOnBatteries = $false
+    $s.Priority = 5
+    $s.RestartCount = 3
+    $s.RestartInterval = 'PT1M'
+    Set-ScheduledTask -TaskName $TASK -Settings $s | Out-Null
+    return $true
+  } catch { return $false }
+}
+
 $PORT = 17845
 
 # процессы программы: EXE «Конструктор КП» (где бы ни лежал), любой EXE из папки программы и тот, кто занял порт 17845.

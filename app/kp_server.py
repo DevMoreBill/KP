@@ -328,6 +328,10 @@ def main():
         feeds.IMAGE_STORE = IMAGES
         maintenance.start_every(3600, lambda: feeds.auto_check(store()))     # фиды поставщиков: РРЦ и наличие раз в день
         maintenance.start_every(6 * 3600, lambda: Updater(store(), ROOT, DATA_DIR).auto_check())   # новая версия на GitHub — раз в сутки
+        from server_task import ServerTask
+        if ServerTask.applicable(SERVER_MODE):     # задача Планировщика: без остановки через 3 дня работы и от батареи (ИБП)
+            import config
+            ServerTask(store()).start(config.STARTED)
         feeds.upgrade(store(), load_types()['types'], APP_VERSION)          # после обновления — фиды по новым правилам
         fresh = FreshBase.check()
         sync_counter_with_files()

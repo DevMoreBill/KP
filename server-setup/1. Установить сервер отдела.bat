@@ -36,6 +36,9 @@ rem прежний экземпляр программы (в том числе �
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0kp-server.ps1" -Action stop -Quiet
 schtasks /Delete /TN "Конструктор КП — сервер отдела" /F >nul 2>&1
 schtasks /Create /TN "Конструктор КП — сервер отдела" /TR "\"%EXE%\"" /SC ONSTART /RU SYSTEM /RL HIGHEST /F >nul
+rem настройки задачи для сервера: Планировщик по умолчанию останавливает задачу через 3 дня работы, не запускает её
+rem от батареи (и от ИБП, когда пропало питание) и понижает приоритет — сервер работает неделями
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0kp-server.ps1" -Action task -Quiet || echo   Внимание: настройки задачи не заданы — сервер может останавливаться через 3 дня работы.
 schtasks /Run /TN "Конструктор КП — сервер отдела" >nul
 rem ярлык для сотрудников
 > "server-setup\Конструктор КП (сервер %COMPUTERNAME%).url" echo [InternetShortcut]

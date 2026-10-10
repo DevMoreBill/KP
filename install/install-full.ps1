@@ -33,7 +33,10 @@ Remove-OldServerFiles
 # обновление из прежнего комплекта уже входит в новый EXE
 if (Test-Path (Join-Path $KP 'update')) { Remove-Item -LiteralPath (Join-Path $KP 'update') -Recurse -Force }
 $target = Join-Path $KP $exe.Name
-if (Task-Exists) { schtasks /Change /TN $TASK /TR ('"' + $target + '"') > $null 2>&1 }
+if (Task-Exists) {
+  schtasks /Change /TN $TASK /TR ('"' + $target + '"') > $null 2>&1
+  # прежние установки сервера: задача останавливала программу через 3 дня работы и при работе от батареи (ИБП)
+  if (-not (Set-KPTask)) { Write-Host '  настройки задачи сервера не заданы — сервер может останавливаться через 3 дня работы' -ForegroundColor Yellow } }
 # ярлык на рабочем столе
 $lnk = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Конструктор КП.lnk'
 $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut($lnk); $s.TargetPath = $target; $s.WorkingDirectory = $KP; $s.Save()
