@@ -29,5 +29,7 @@ if (Test-Path -LiteralPath $ss) {
   New-Item -ItemType Directory -Force -Path (Join-Path $KP 'server-setup') | Out-Null
   Get-ChildItem -LiteralPath $ss | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $KP 'server-setup') -Force }
   Remove-OldServerFiles }
+# задача сервера отдела: без ограничения времени работы и с работой от батареи (ИБП) — до запуска программы
+if ((Task-Exists) -and -not (Set-KPTask)) { Write-Host '  настройки задачи сервера не заданы — сервер может останавливаться через 3 дня работы' -ForegroundColor Yellow }
 if (-not (Start-KP $exe.FullName)) { Write-Host '  программа ещё запускается — откройте её через минуту' -ForegroundColor Yellow }
 Done ('Готово: установлена версия ' + $ver + '. Откройте программу (в браузере обновите страницу: Ctrl+F5).')

@@ -93,6 +93,16 @@ class AdminSystem {
   }
 
   // ---------- система
+  // задача Планировщика сервера отдела (app/server_task.py): без ограничения времени работы, от батареи (ИБП), обычный приоритет
+  static task(t){
+    const bat='«server-setup\\1. Установить сервер отдела.bat»';
+    if (t.pending) return '<span class="muted">проверяется…</span>';
+    if (!t.exists) return t.error?`<span class="bad-t">не проверена: ${esc(t.error)}</span>`
+      :`<span class="muted">задачи Планировщика нет — после перезагрузки сервер сам не запустится; автозапуск включает ${bat}</span>`;
+    if ((t.problems||[]).length) return `<span class="bad-t">✕ задача Планировщика ${esc(t.problems.join(', '))}</span>${t.error?` <small class="muted">(исправить не удалось: ${esc(t.error)})</small>`:''}<br><small class="muted">Запустите ${bat} от имени администратора.</small>`;
+    const fx=t.fixed||t.fixedBefore;
+    return `<span class="ok-t">✓ задача Планировщика: без ограничения времени работы, от батареи и ИБП, обычный приоритет</span>${fx?` <small class="muted">· исправлена программой ${esc(stTime(fx))}</small>`:''}`;
+  }
   static uptime(s){ const d=Math.floor(s/86400), h=Math.floor(s%86400/3600), mi=Math.floor(s%3600/60); return (d?`${d} дн. `:'')+(h?`${h} ч `:'')+`${mi} мин`; }
   static async system(m){
     const s=await aapi('system');
@@ -101,6 +111,7 @@ class AdminSystem {
       <table class="pv-t">${row('Версия', `<b>${esc(s.version)}</b>${s.patched?` (обновление поверх ${esc(s.base||'EXE')})`:''} <button class="lnk" type="button" data-sttab="updates">Обновления →</button>`)}
         ${row('Режим', s.mode==='server'?`сервер отдела — сотрудники открывают <code>http://${esc(s.host)}:${s.port}/</code>`:`программа на этом компьютере — <code>http://localhost:${s.port}/</code>`)}
         ${row('Работает', `${this.uptime(s.uptime)} (с ${esc(stTime(s.started))})`)}
+        ${s.task?row('Автозапуск', this.task(s.task)):''}
         ${row('Компьютер', `${esc(s.host)} · ${esc(s.os)} · Python ${esc(s.python)}`)}
         ${s.allowedHosts.length?row('Разрешённые имена', esc(s.allowedHosts.join(', '))):''}</table></div>
     <div class="st-card"><p class="sub">Папки и место на диске</p>

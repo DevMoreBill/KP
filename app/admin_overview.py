@@ -3,8 +3,8 @@
 
 • SystemInfo — версия (EXE и обновление), режим (компьютер / сервер отдела), адрес, папки, свободное место, время работы.
 • Attention — что администратору стоит сделать сейчас: правки на модерации, копия базы не сделана или с ошибкой, есть новая
-  версия, функция включена, но не настроена (почта, нейросеть), мало места на диске, корзина. У пункта — важность и вкладка
-  «Настроек», где это решается.
+  версия, функция включена, но не настроена (почта, нейросеть), мало места на диске, корзина, задача Планировщика сервера
+  отдела с настройками не для сервера. У пункта — важность и вкладка «Настроек», где это решается.
 """
 import os
 import shutil
@@ -36,6 +36,13 @@ class SystemInfo:
         except ImportError:
             return sys.platform
 
+    def task(self):
+        """Задача Планировщика сервера отдела (только Windows и режим сервера): итог проверки или «проверяется»."""
+        from server_task import ServerTask
+        if not ServerTask.applicable(self.cfg.SERVER_MODE):
+            return None
+        return ServerTask(self.store).status() or {'pending': True}
+
     def get(self):
         c = self.cfg
         try:
@@ -47,7 +54,7 @@ class SystemInfo:
                 'root': c.ROOT, 'dataDir': c.DATA_DIR, 'docsDir': c.DOCS_DIR, 'docsShare': c.DOCS_SHARE, 'settingsFile': os.path.join(c.ROOT, 'settings.json'),
                 'dbBytes': db, 'disk': self._free(c.DATA_DIR), 'python': sys.version.split()[0], 'os': self._os(),
                 'started': datetime.fromtimestamp(c.STARTED).isoformat(timespec='seconds'), 'uptime': int(time.time() - c.STARTED),
-                'allowedHosts': list(c.ALLOWED_HOSTS)}
+                'allowedHosts': list(c.ALLOWED_HOSTS), 'task': self.task()}
 
 
 class Attention:
@@ -60,7 +67,7 @@ class Attention:
 
     def items(self):
         out = []
-        for check in (self._catalog, self._backup, self._mirror, self._update, self._moderation, self._mail, self._ai, self._disk, self._login, self._trash):
+        for check in (self._catalog, self._backup, self._mirror, self._update, self._task, self._moderation, self._mail, self._ai, self._disk, self._login, self._trash):
             try:
                 out.extend(check())
             except Exception:        # одна проверка не должна ломать обзор
@@ -106,6 +113,14 @@ class Attention:
         elif s['pending']:
             out.append({'level': 'warn', 'text': 'Обновление %s установлено, но программа ещё не перезапущена' % s['installed'], 'tab': 'updates'})
         return out
+
+    def _task(self):
+        t = SystemInfo(self.store, self.cfg).task()
+        if not t or not t.get('exists') or not t.get('problems'):
+            return []
+        why = ' (исправить не удалось: %s)' % t['error'][:120] if t.get('error') else ''
+        return [{'level': 'bad', 'text': 'Задача Планировщика сервера отдела %s%s — запустите «server-setup\\1. Установить сервер отдела.bat» '
+                 'от имени администратора' % (', '.join(t['problems']), why), 'tab': 'system'}]
 
     def _moderation(self):
         n = len(self.store.pending_list('pending'))
