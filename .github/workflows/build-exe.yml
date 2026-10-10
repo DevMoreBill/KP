@@ -15,7 +15,40 @@ permissions:
   contents: write
 
 jobs:
+  # проверки кода при каждой отправке: pyflakes, ESLint (с необъявленными именами), наборы tests/ на стенде со сгенерированной
+  # базой (без данных пользователя); EXE собирается, только если они прошли
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Проверка репозитория — нет баз, выгрузок и ключей API
+        run: python .github/scripts/repo_guard.py .
+
+      - name: pyflakes — сервер, проверки, служебные сценарии
+        run: |
+          python -m pip install --upgrade pip pyflakes==4.0.0
+          python -m pyflakes app/*.py tests/*.py .github/scripts/*.py
+
+      - name: ESLint — интерфейс (eslint.config.mjs, необъявленные имена)
+        run: npx --yes eslint@10.1.0 --max-warnings 0 app/web/js
+
+      - name: Проверки программы (tests/run_all.py)
+        run: python tests/run_all.py --no-static --strict
+
   build:
+    needs: tests
     runs-on: windows-latest
     strategy:
       fail-fast: false
