@@ -60,13 +60,18 @@ class Attention:
 
     def items(self):
         out = []
-        for check in (self._backup, self._update, self._moderation, self._mail, self._ai, self._disk, self._login, self._trash):
+        for check in (self._catalog, self._backup, self._update, self._moderation, self._mail, self._ai, self._disk, self._login, self._trash):
             try:
                 out.extend(check())
             except Exception:        # одна проверка не должна ломать обзор
                 pass
         order = {'bad': 0, 'warn': 1, 'info': 2}
         return sorted(out, key=lambda x: order.get(x['level'], 3))
+
+    def _catalog(self):
+        if self.store.catalog_count():
+            return []
+        return [{'level': 'warn', 'text': 'Каталог пуст: каталог и фото хранятся на сервере отдела — работайте по его адресу или загрузите сюда файл базы (фото — папка data\\img сервера)', 'tab': 'backup'}]
 
     def _backup(self):
         import maintenance

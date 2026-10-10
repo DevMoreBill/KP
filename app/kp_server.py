@@ -26,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from config import (ALLOWED_HOSTS, APP_TITLE, BadRequest, BASE_PORT, DATA_DIR, DOCS_DIR, IMG_DIR, ROOT, SERVER_MODE, message_box, store)
 import catalog_migrate
-from data_setup import prepare_dirs, seed_catalog, sync_counter_with_files
+from data_setup import FreshBase, prepare_dirs, sync_counter_with_files
 from equipment_types import load_types, load_types_builtin
 import admin
 from version import VERSION as APP_VERSION
@@ -319,7 +319,7 @@ def main():
         from app_update import Updater
         maintenance.start_every(6 * 3600, lambda: Updater(store(), ROOT, DATA_DIR).auto_check())   # новая версия на GitHub — раз в сутки
         feeds.upgrade(store(), load_types()['types'], APP_VERSION)          # после обновления — фиды по новым правилам
-        seeded = seed_catalog()
+        fresh = FreshBase.check()
         sync_counter_with_files()
     except Exception as e:
         if 'malformed' in str(e) or 'not a database' in str(e):
@@ -333,7 +333,7 @@ def main():
         message_box('Не удалось подготовить папки данных:\n%s\n\n%s' % (DATA_DIR, e))
         return 1
     try:   # каталог под новую структуру категорий — один раз; перед этим копия базы в data/backup
-        if seeded:   # стартовый каталог уже в новой структуре, изображения — по папкам
+        if fresh:   # новая база: переносить в новую структуру нечего
             catalog_migrate.mark_done(store())
             mark_organized(store())
         rep = catalog_migrate.run(store(), load_types_builtin(), (store().kv_get('types') or {}).get('types', []), IMG_DIR, os.path.join(DATA_DIR, 'backup'))
