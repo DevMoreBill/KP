@@ -993,3 +993,7 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .lg-fares{margin-top:8px}
 .lg-fares .lg-p td{vertical-align:top}
 .lg-st tr.lg-upd td{background:var(--ok-bg, rgba(46,125,50,.08))}
+/* 3.50.1: таблица тарифов — суммы из 5–6 знаков и названия машин видны целиком */
+#lgCl{min-width:1340px}
+.lg-st td[data-k=base] input,.lg-st td[data-k=min] input{width:74px}
+.lg-st td[data-k=name] input{width:226px}
