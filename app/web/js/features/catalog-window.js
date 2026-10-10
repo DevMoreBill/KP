@@ -33,8 +33,10 @@ class CatalogIndex {
     // модель без одиночных букв-исполнений: «DVK D 30-13» → «dvk3013», чтобы «DVK30-13» находил её
     const m=norm([a.model, x.name, CatalogIndex.art(x)].filter(Boolean).join(' ')), model=fold(m), model2=fold(m.replace(/(^|\s)[a-zа-яё](?=\s)/g,' '));
     return (x._hay={ plain, fold:fold(plain), tr:CatalogIndex.tr(plain), model, model2, m0:fold(norm(a.model||'')), name:norm(x.name) }); }
-  static wordHit(h, w){ if (h.plain.includes(w)) return true; const f=CatalogIndex.fold(w); if (f.length>=2 && (h.fold.includes(f) || h.model2.includes(f))) return true;
-    const t=CatalogIndex.tr(w); return t!==w && h.tr.includes(t); }
+  /** слово запроса с готовыми «свёрнутой» формой и транслитом — считаются один раз на запрос, а не для каждой позиции */
+  static word(w){ return {w, f:CatalogIndex.fold(w), t:CatalogIndex.tr(w)}; }
+  static wordHit(h, q){ if (h.plain.includes(q.w)) return true; if (q.f.length>=2 && (h.fold.includes(q.f) || h.model2.includes(q.f))) return true;
+    return q.t!==q.w && h.tr.includes(q.t); }
 }
 
 // ---------- условия отбора
@@ -67,11 +69,14 @@ class CatalogFilter {
     return true; }
   /** совпадение с поиском — один раз на позицию для текущего текста (счётчики фильтров спрашивают по многу раз) */
   qHit(x){
-    if (this._qs!==this.q){ this._qs=this.q; this._qw=norm(this.q).split(' ').filter(Boolean); this._qf=CatalogIndex.fold(norm(this.q)); this._qm=new Map(); }
+    if (this._qs!==this.q){ this._qs=this.q; this._qw=norm(this.q).split(' ').filter(Boolean).map(CatalogIndex.word); this._qf=CatalogIndex.fold(norm(this.q)); this._qm=new Map(); }
     let ok=this._qm.get(x.id); if (ok!==undefined) return ok;
     const h=CatalogIndex.hay(x), srv=CatalogSearch.ids(this.q);    // srv — найденное сервером по характеристикам
     ok = this._qw.every(w=>CatalogIndex.wordHit(h,w)) || (this._qf.length>=3 && (h.fold.includes(this._qf) || h.model2.includes(this._qf))) || (!!srv && srv.has(x.id));
     this._qm.set(x.id, ok); return ok; }
+  /** пришёл ответ сервера по характеристикам: найденное им отмечается совпадением, остальное уже посчитано —
+   *  список не пересчитывается заново (на 25 000 позициях второй полный проход удваивал время поиска). → сколько добавилось, −1 — пересчитать */
+  addServer(q, ids){ if (this._qs!==q || !this._qm) return -1; let n=0; for (const id of ids) if (this._qm.get(id)===false){ this._qm.set(id, true); n++; } return n; }
   /** насколько позиция подходит к запросу: модель начинается с запроса → 0, запрос целиком в названии → 1, остальное → 2 */
   rel(x){ const q=norm(this.q); if (!q) return 2; const f=this._qs===this.q ? this._qf : CatalogIndex.fold(q), h=CatalogIndex.hay(x);
     if (f.length>=2 && (h.m0.startsWith(f) || h.model.includes(f) || h.model2.includes(f))) return 0; return h.name.includes(q) ? 1 : 2; }
@@ -238,8 +243,8 @@ class CatalogWindow {
     return `<label class="f"><span>${esc(label)}</span><select data-f="${key}" data-in="${inF?1:''}"><option value="">Все</option>${opts.map(o=>`<option value="${esc(o.v)}"${norm(cur)===norm(o.v)?' selected':''}>${esc(o.v)} (${o.n})</option>`).join('')}${cur&&!cnt.has(norm(cur))?`<option selected>${esc(cur)}</option>`:''}</select></label>`; }
   range(f){ const F=this.F, r=F.rng[f.key]||{min:'',max:''}, chips=f.chips||[];
     const has=this.docs.some(x=>this.pass(x,f.key)&&numOf(CatalogIndex.attrs(x)[f.key])!=null); if(!has && r.min===''&&r.max==='') return '';
-    return `<div class="f"><span class="muted">${esc(f.label)}${f.unit?', '+esc(f.unit):''}</span><div class="kw"><input type="text" inputmode="decimal" data-rk="${f.key}" data-rs="min" placeholder="от" value="${esc(r.min??'')}"><input type="text" inputmode="decimal" data-rk="${f.key}" data-rs="max" placeholder="до" value="${esc(r.max??'')}"></div>
-      ${chips.length?`<div class="chips">${chips.map(([lo,hi])=>{ const on=String(r.min)===String(lo||'')&&String(r.max)===String(hi??''); return `<button class="chip${on?' on':''}" type="button" data-rc="${f.key}" data-lo="${lo||''}" data-hi="${hi??''}">${hi==null?'от '+fnum(lo):(lo?fnum(lo)+'–'+fnum(hi):'до '+fnum(hi))}</button>`; }).join('')}</div>`:''}</div>`; }
+    return `<div class="f"><span class="muted">${esc(f.label)}${f.unit?', '+esc(f.unit):''}</span><div class="kw"><input type="text" inputmode="decimal" data-rk="${esc(f.key)}" data-rs="min" placeholder="от" value="${esc(r.min??'')}"><input type="text" inputmode="decimal" data-rk="${esc(f.key)}" data-rs="max" placeholder="до" value="${esc(r.max??'')}"></div>
+      ${chips.length?`<div class="chips">${chips.map(([lo,hi])=>{ const on=String(r.min)===String(lo||'')&&String(r.max)===String(hi??''); return `<button class="chip${on?' on':''}" type="button" data-rc="${esc(f.key)}" data-lo="${lo||''}" data-hi="${hi??''}">${hi==null?'от '+fnum(lo):(lo?fnum(lo)+'–'+fnum(hi):'до '+fnum(hi))}</button>`; }).join('')}</div>`:''}</div>`; }
 
   // ---------- верхняя панель: категория, производитель, поставщик, «с ценой», «в наличии» — видны всегда, без прокрутки
   counts(key, val){ const m=new Map(); this.docs.forEach(x=>{ if (!this.kindOk(x) || !this.pass(x,key)) return; const v=val(x); if (v==null||v==='') return;
@@ -316,6 +321,8 @@ class CatalogWindow {
   addLabel(id, long){ const inn=this.inKp(id);
     if (this.optFor!=null) return inn ? '✓ Добавлено' : (long?'Добавить опцией':'Опцией');
     return inn ? (long?'Уже в КП: ещё 1 шт.':'✓ +1 шт.') : (long?'Добавить в КП':'В КП'); }
+  /** ссылка из данных — только на сайт (http/https), не javascript: и не file: */
+  static webUrl(u){ return /^https?:\/\//i.test(String(u||'')); }
   static priceHtml(x){ return x.price ? `${money(x.price)} ${curSh(x.priceCur||'RUB')}` : x.cost ? `<small>закупка</small>${money(x.cost)} ${curSh(x.costCur||'RUB')}` : '<small>без цены</small>'; }
   row(x){ const id=x.id, n=x.pricesCount||(x.prices||[]).length, inn=this.inKp(id);
     return `<div class="cw-row${this.sel.has(id)?' sel':''}${this.active===id?' act':''}" data-id="${esc(id)}" draggable="${this.optFor==null}">
@@ -379,7 +386,7 @@ class CatalogWindow {
       ${this.optFor==null?`<label class="pv-cat"><span>Категория</span><select data-pvcat>${typeOptionsHtml(a.cat)}</select></label>`:''}
       <div class="pv-price"><b>${x.price?money(x.price)+' '+curSh(x.priceCur||'RUB'):'Цена не указана'}</b>${x.cost?`<span>закупка ${money(x.cost)} ${curSh(x.costCur||'RUB')}${x.costDisc&&x.costDisc.pct&&x.costSrc==='feed'?` (−${String(x.costDisc.pct).replace('.',',')} %)`:''}</span>`:''}${FeedBadge.html(x)}</div>
       ${x.stock&&!x.stock.gone&&FeedBadge.stockTip(x.stock)?`<p class="pv-stock">${esc(FeedBadge.stockTip(x.stock))}</p>`:''}
-      ${x.feed?`<p class="muted pv-pf">Из фида поставщика${x.feed.sku?' · артикул '+esc(x.feed.sku):''}${x.feed.url?` · <a href="${esc(x.feed.url)}" target="_blank" rel="noopener">страница товара</a>`:''}. ${x.feed.files?'Цены и наличие обновляются из прайса и остатков поставщика.':'РРЦ и наличие проверяются раз в день.'}</p>`:''}
+      ${x.feed?`<p class="muted pv-pf">Из фида поставщика${x.feed.sku?' · артикул '+esc(x.feed.sku):''}${CatalogWindow.webUrl(x.feed.url)?` · <a href="${esc(x.feed.url)}" target="_blank" rel="noopener">страница товара</a>`:''}. ${x.feed.files?'Цены и наличие обновляются из прайса и остатков поставщика.':'РРЦ и наличие проверяются раз в день.'}</p>`:''}
       ${kpi?`<div class="pv-kpi">${kpi}</div>`:''}
       ${params.length?`<table class="pv-t">${params.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`:''}
       ${loading?'<p class="muted">Загружаю описание и характеристики…</p>':''}
@@ -561,7 +568,7 @@ class CatalogWindow {
     d.addEventListener('input', e=>{ const t=e.target, F=this.F;
       if (t.id==='cwQ'){ F.q=t.value; this.limit=CatalogWindow.PAGE; clearTimeout(qT); qT=setTimeout(()=>{ this.refresh(); const q=F.q;
           // поиск по характеристикам — на сервере: ответ пришёл, запрос тот же → список с найденным по характеристикам
-          if (!CatalogSearch.has(q)) CatalogSearch.ask(q).then(s=>{ if (s && F.q===q && $('#catdlg')?.open){ F.dropQuery(); this.refresh(); } }); }, this.docs.length>2000?180:60); return; }
+          if (!CatalogSearch.has(q)) CatalogSearch.ask(q).then(s=>{ if (s && s.size && F.q===q && $('#catdlg')?.open){ const n=F.addServer(q, s); if (n<0) F.dropQuery(); if (n) this.refresh(); } }); }, this.docs.length>2000?180:60); return; }
       if (t.dataset.rk){ const r=F.rng[t.dataset.rk]||(F.rng[t.dataset.rk]={min:'',max:''}); r[t.dataset.rs]=t.value.replace(',','.').replace(/[^\d.]/g,''); this.list(); } });
     d.addEventListener('change', e=>{ const t=e.target, F=this.F;
       if (t.dataset.cwzero!=null){ try{ localStorage.setItem('kp.cwzero', t.checked?'1':'0'); }catch(_){} return this.nav(); }

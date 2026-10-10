@@ -26,7 +26,7 @@ async function loadManagers(){
   if (!MGRS.length && String(S.manager?.name||'').trim()){ await saveManager(true); return; }
   let m = S.managerId ? MGRS.find(x=>x.id===S.managerId) : null;
   if (!m && !S.managerId && String(S.manager?.name||'').trim()) m = MGRS.find(x=>norm(x.name)===norm(S.manager.name));
-  if (!m && !String(S.manager?.name||'').trim()){ let id=''; try{ id=localStorage.getItem('kp.managerId')||''; }catch(e){} m = MGRS.find(x=>x.id===id) || (MGRS.length===1 ? MGRS[0] : null); }
+  if (!m && !String(S.manager?.name||'').trim()){ let id=''; try{ id=localStorage.getItem('kp.managerId')||''; }catch(e){} m = MGRS.find(x=>x.id===id) || MGRS.find(x=>x.id===meId()) || (MGRS.length===1 ? MGRS[0] : null); }   // нет запомненных контактов — «кто я» на этом компьютере
   if (!m && typeof AUTH!=='undefined' && AUTH.enabled && AUTH.user && !S.kpId) m = MGRS.find(x=>x.id===AUTH.user.id);      // вошёл по паролю — менеджер нового КП он сам
   if (m){ S.managerId=m.id; S.manager={...S.manager, ...mgrFields(m)}; mgrRemember(m.id); }
   try{ if (!localStorage.getItem('kp.me') && m && !S.kpId) setMe(m.id); }catch(e){}

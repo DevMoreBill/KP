@@ -375,14 +375,23 @@ class Store:
     def all(self, sql, args=()):
         return self.conn().execute(sql, args).fetchall()
 
+    def joined(self, sql, args=(), sep=','):
+        """Первый столбец выборки одной строкой через sep — склеивает сама база. Тысячи строк по одной при одновременных
+        запросах передают блокировку интерпретатора (GIL) на каждой строке: 16 поисков по каталогу шли по 10 с вместо 0,3 с."""
+        try:
+            r = self.one('SELECT group_concat(x, ?) FROM (%s)' % sql, (sep,) + tuple(args))
+        except (sqlite3.DataError, sqlite3.OperationalError) as e:
+            if 'too big' not in str(e):
+                raise
+            return sep.join(row[0] for row in self.all(sql, args) if row[0] is not None)    # больше 1 ГБ одной строкой — по строкам
+        return (r[0] or '') if r else ''
+
     # ---------- каталог ----------
     def catalog_light(self):
-        rows = self.all('SELECT light FROM catalog ORDER BY name')
-        return '[' + ','.join(r[0] for r in rows) + ']'
+        return '[' + self.joined('SELECT light AS x FROM catalog ORDER BY name') + ']'
 
     def catalog_full(self):
-        rows = self.all('SELECT doc FROM catalog ORDER BY name')
-        return '[' + ','.join(r[0] for r in rows) + ']'
+        return '[' + self.joined('SELECT doc AS x FROM catalog ORDER BY name') + ']'
 
     def catalog_get(self, cid, rev=False):
         r = self.one('SELECT doc, rev FROM catalog WHERE id=?', (cid,))

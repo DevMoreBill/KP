@@ -32,7 +32,7 @@ function itemCard(x,i){
   const miss=[chk('desc','Фото',!!x.photo,x.page),chk('desc','Описание',nf>0,x.page),chk('spec','Характеристики',nr>0,x.page),chk('price','Цена',x.price>0,true)].filter((h,k)=>!h.includes('class="rd ok"'));
   return `<div class="item" id="item-${x.id}">
    <div class="icard">
-     <button type="button" class="ithumb" data-a="edit" data-i="${i}" data-tab="desc" data-thumb="${i}" title="Нажмите — фото и описание. Главное фото можно перетащить сюда или вставить (Ctrl+V), наведя курсор">${x.photo?`<img src="${x.photo.src}" alt="">`:'<span>+ фото</span>'}</button>
+     <button type="button" class="ithumb" data-a="edit" data-i="${i}" data-tab="desc" data-thumb="${i}" title="Нажмите — фото и описание. Главное фото можно перетащить сюда или вставить (Ctrl+V), наведя курсор">${x.photo?`<img src="${esc(x.photo.src)}" alt="">`:'<span>+ фото</span>'}</button>
      <div class="imain">
        <div class="itop"><span class="item-no">${i+1}</span><span class="ttype">${esc(t.item||t.name)}</span></div>
        <textarea class="iname" rows="${x.name.length>60?2:1}" data-p="${P}.name" placeholder="Наименование позиции" aria-label="Наименование">${esc(x.name)}</textarea>
@@ -79,7 +79,7 @@ async function addFromCatalog(x){
 }
 
 document.addEventListener('input', e=>{ if (e.target.id!=='quickAdd') return; const L=$('#qaList'); const res=quickMatches(e.target.value);
-  L.hidden=!e.target.value.trim(); L.innerHTML = res.length ? res.map((x,k)=>`<button type="button" data-qa="${esc(x.id)}" class="${k===0?'first':''}">${x.photo?`<img src="${x.photo.src}" alt="">`:'<i></i>'}<span><b>${esc(x.name)}</b><small>${esc(mainLine(x,3)||x.spec||'')}${x.price?' · '+money(x.price)+' '+curSh(x.priceCur||'RUB'):''}</small></span><em>Добавить</em></button>`).join('')
+  L.hidden=!e.target.value.trim(); L.innerHTML = res.length ? res.map((x,k)=>`<button type="button" data-qa="${esc(x.id)}" class="${k===0?'first':''}">${x.photo?`<img src="${esc(x.photo.src)}" alt="">`:'<i></i>'}<span><b>${esc(x.name)}</b><small>${esc(mainLine(x,3)||x.spec||'')}${x.price?' · '+money(x.price)+' '+curSh(x.priceCur||'RUB'):''}</small></span><em>Добавить</em></button>`).join('')
     : `<p class="muted" style="margin:10px 14px">Ничего не найдено. <button class="btn ghost" type="button" data-a="openCatalog">Открыть каталог с фильтрами</button></p>`; });
 
 document.addEventListener('keydown', e=>{ if (e.target.id!=='quickAdd') return;

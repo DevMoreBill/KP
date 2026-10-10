@@ -73,7 +73,7 @@ function nwStation(t){
   const m=NW.main && catCache.find(x=>x.id===NW.main);
   return `<p class="muted nw-lead">${esc(t.item)} — одно изделие для заказчика: одна строка и одна цена в КП, а закупка, поставщики и описание — по каждому элементу. Остальные элементы (${esc(t.station.parts.slice(0,3).map(z=>Array.isArray(z)?z[0]:z).join(', '))}…) добавите в карточке одним нажатием.</p>
     <p class="nw-h">1. Контейнер</p>
-    <div class="kit-cts">${CONTAINER_TYPES.map(c=>`<button type="button" class="kit-ctb${NW.ctype===c.id?' on':''}" data-nwct="${c.id}"><b>${esc(c.name)}</b><small>${esc(c.size)}</small></button>`).join('')}</div>
+    <div class="kit-cts">${CONTAINER_TYPES.map(c=>`<button type="button" class="kit-ctb${NW.ctype===c.id?' on':''}" data-nwct="${esc(c.id)}"><b>${esc(c.name)}</b><small>${esc(c.size)}</small></button>`).join('')}</div>
     <div class="nw-row"><label class="f"><span>Утепление</span><select id="nwIns">${CONTAINER_INS.map(v=>`<option${v===NW.ins?' selected':''}>${v}</option>`).join('')}</select></label>
       <label class="f"><span>Климатическое исполнение</span><select id="nwCl">${CLIMATES.map(c=>`<option value="${c[0]}"${c[0]===NW.climate?' selected':''}>${c[0]} — ${esc(c[1])}</option>`).join('')}</select></label></div>
     <p class="nw-h">2. ${esc(t.station.mainLabel)} <span class="muted">— из каталога или позже</span></p>

@@ -238,11 +238,11 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]) .dl-badge.warn,:root:not([data-theme="light"]) .dl-chip.warn,:root:not([data-theme="light"]) .dl-warn li,:root:not([data-theme="light"]) .dl-ex{background:#3a2f12;color:var(--warn-line);border-color:#5a4718}
   :root:not([data-theme="light"]) .dl-warn li.bad,:root:not([data-theme="light"]) .dl-ex.warn{background:#3d1c17;color:#ffb3a6;border-color:#5e2a22}
-  :root:not([data-theme="light"]) .dl-n,:root:not([data-theme="light"]) .dl-cta i,:root:not([data-theme="light"]) .dl-seg button.on{background:#3b6fd1}
+  :root:not([data-theme="light"]) .dl-n,:root:not([data-theme="light"]) .dl-cta i,:root:not([data-theme="light"]) .dl-seg button.on{background:#3b6fd1;color:#fff}
 }
 :root[data-theme="dark"] .dl-badge.warn,:root[data-theme="dark"] .dl-chip.warn,:root[data-theme="dark"] .dl-warn li,:root[data-theme="dark"] .dl-ex{background:#3a2f12;color:#f3d27a;border-color:#5a4718}
 :root[data-theme="dark"] .dl-warn li.bad,:root[data-theme="dark"] .dl-ex.warn{background:#3d1c17;color:#ffb3a6;border-color:#5e2a22}
-:root[data-theme="dark"] .dl-n,:root[data-theme="dark"] .dl-cta i,:root[data-theme="dark"] .dl-seg button.on{background:#3b6fd1}
+:root[data-theme="dark"] .dl-n,:root[data-theme="dark"] .dl-cta i,:root[data-theme="dark"] .dl-seg button.on{background:#3b6fd1;color:#fff}
 
 /* подблоки карточки поставщика */
 .dl-sub{display:grid;gap:10px;padding-top:12px;border-top:1px dashed var(--line)}
@@ -527,6 +527,8 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 @media (max-width:1000px){ .dl-tab{flex:0 0 auto;padding:0 12px} .dl-tabw{padding:8px 12px} }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-tab.st-need .dl-tt{color:#f3c37a} }
 :root[data-theme="dark"] .dl-tab.st-need .dl-tt{color:#f3c37a}
+:root[data-theme="dark"] .dl-tab.on.st-need .dl-tt{color:var(--on-navy)}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-tab.on.st-need .dl-tt{color:var(--on-navy)} }
 /* подсказка у даты договора в шапке */
 .dl-hd .dl-q{font-weight:400}
 .dl-hd>span{display:flex;align-items:center;gap:6px}
@@ -870,8 +872,9 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dlo-r{grid-template-columns:minmax(140px,210px) minmax(0,1fr) 28px}
 .dlo-r:not(.ax):not(.cust) .dlo-bar{height:46px}
 .dlo-bar i{top:4px;height:20px;border-radius:5px;overflow:hidden;display:flex;align-items:center;justify-content:center}
-.dlo-bar i span{font-size:10.5px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:clip;padding:0 4px;font-style:normal}
+.dlo-bar i span{font-size:10.5px;font-weight:700;color:var(--on-navy);white-space:nowrap;overflow:hidden;text-overflow:clip;padding:0 4px;font-style:normal}
 .dlo-bar i.wt span{color:var(--muted)}
+.dlo-bar i.pr span,.dlo-bar i.asm span{color:#0B1A33}     /* голубая и оранжевая полосы светлые в обеих темах — тёмная подпись */
 .dlo-bar em{top:27px;transform:translateX(-100%);font-size:11.5px;font-weight:600;color:var(--ink);background:var(--paper);padding:0 2px;border-radius:3px}
 .dlo-bar em.l{transform:none}
 .dlo-bar em .dlo-crit{position:static;font-size:10.5px;color:var(--danger);font-weight:700;margin-left:4px}

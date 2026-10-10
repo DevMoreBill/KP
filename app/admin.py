@@ -982,7 +982,7 @@ class AdminApi:
         if sub == 'pending/approve-all' and m == 'POST':
             n = sum(1 for p in st.pending_list('pending') if self.review(p['id'], 'approve', '')['ok'])
             return self.ok({'approved': n})
-        if sub == 'export':
+        if sub == 'export' and m == 'GET':
             cats = [c for c in (q.get('cats') or '').split(',') if re.match(r'^[A-Za-z0-9_-]{1,64}$', c)] or None
             return self.export([s for s in (q.get('sections') or ','.join(SECTIONS)).split(',') if s in SECTIONS],
                                cats=cats, images=q.get('images') == '1')
@@ -990,7 +990,7 @@ class AdminApi:
             return self.ok(self.export_cats())
         if sub in ('import/file/preview', 'import/file') and m == 'POST':
             return self.ok(self.import_file(self.h.body(), apply=(sub == 'import/file'), sections=q.get('sections')))
-        if sub == 'export/sqlite':
+        if sub == 'export/sqlite' and m == 'GET':
             return self.export_sqlite()
         if sub in ('import/preview', 'import') and m == 'POST':
             return self.ok(self.import_(self.data(), apply=(sub == 'import'), sections=q.get('sections')))
@@ -1066,7 +1066,8 @@ class AdminApi:
         sh = SettingsHistory(self.st)
         if sub == 'history' and m == 'GET':
             key = q.get('key') if q.get('key') in SettingsHistory.KEYS else None
-            return self.ok({'items': sh.items(key, min(int(q.get('limit') or 100), 500), int(q.get('offset') or 0)),
+            limit, offset = max(1, min(int(q.get('limit') or 100), 500)), max(0, min(int(q.get('offset') or 0), SettingsHistory.KEEP))
+            return self.ok({'items': sh.items(key, limit, offset),
                             'keys': SettingsHistory.KEYS})
         r = re.match(r'^history/(\d{1,9})(/rollback)?$', sub)
         if r and m == 'GET' and not r.group(2):
@@ -1303,12 +1304,13 @@ class AdminApi:
 
     def export(self, sections, cats=None, images=False):
         """Выбранные разделы JSON; cats — только эти категории каталога; images — архив .zip с изображениями из ссылок."""
-        st, out = self.st, {}
+        st, out, items, catalog = self.st, {}, 0, '[]'
         if 'catalog' in sections:
-            out['catalog'] = json.loads(st.catalog_full())
-            if cats:
-                ids = set(r[0] for r in st.all('SELECT id FROM catalog WHERE cat IN (%s)' % ','.join('?' * len(cats)), tuple(cats)))
-                out['catalog'] = [x for x in out['catalog'] if x.get('id') in ids]
+            # каталог — готовыми строками из базы, без разбора и повторной сборки: 25 000 позиций занимали 1,3 ГБ памяти сервера
+            where, args = ('WHERE cat IN (%s)' % ','.join('?' * len(cats)), tuple(cats)) if cats else ('', ())
+            out['catalog'] = None
+            items = st.one('SELECT COUNT(*) FROM catalog ' + where, args)[0]
+            catalog = '[' + st.joined('SELECT doc AS x FROM catalog %s ORDER BY name' % where, args) + ']'
         if 'kp' in sections:
             out['kp'] = [dict(zip(('id', 'number', 'state', 'meta', 'docx', 'updated', 'track'), r))
                          for r in st.all('SELECT id, number, state, meta, docx, updated, track FROM kp')]
@@ -1324,19 +1326,20 @@ class AdminApi:
         if 'settings' in sections:
             from data_bundle import ProgramSettings
             out['settings'] = ProgramSettings(st).export()
-        meta = {'format': 'kp-backup', 'version': 1, 'createdAt': _now(), 'sections': out}
-        if cats:
-            meta['cats'] = cats
-        body = json.dumps(meta, ensure_ascii=False)
+        secs = ','.join('%s:%s' % (json.dumps(k), catalog if k == 'catalog' else json.dumps(v, ensure_ascii=False)) for k, v in out.items())
+        body = '{"format":"kp-backup","version":1,"createdAt":%s,"sections":{%s}%s}' % (
+            json.dumps(_now()), secs, ',"cats":%s' % json.dumps(cats, ensure_ascii=False) if cats else '')
         what = ('+'.join(SECTION_FILE[x] for x in sections) if len(sections) < len(SECTIONS) else 'полная') + ('_категорий-%d' % len(cats) if cats else '')
         stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
-        info = {'sections': sections, 'cats': cats, 'items': len(out.get('catalog') or [])}
+        info = {'sections': sections, 'cats': cats, 'items': items}
         if images:
             data, n, missing = self.bundle().pack(body)
             self.log('export_db', 'db', ','.join(sections), None, dict(info, bytes=len(data), images=n, missing=missing))
             return self.h.send(200, 'application/zip', data, self.h.attachment('КП_выгрузка_%s_%s.zip' % (what, stamp)))
-        self.log('export_db', 'db', ','.join(sections), None, dict(info, bytes=len(body.encode('utf-8'))))
-        return self.h.send(200, 'application/json; charset=utf-8', body, self.h.attachment('КП_резервная_копия_%s_%s.json' % (what, stamp)))
+        data = body.encode('utf-8')        # один раз: выгрузка всей базы — сотни мегабайт
+        del body
+        self.log('export_db', 'db', ','.join(sections), None, dict(info, bytes=len(data)))
+        return self.h.send(200, 'application/json; charset=utf-8', data, self.h.attachment('КП_резервная_копия_%s_%s.json' % (what, stamp)))
 
     def export_sqlite(self):
         tmp = os.path.join(os.path.dirname(self.st.path), 'backup', 'export-%s.sqlite3' % secrets.token_hex(4))
@@ -1383,7 +1386,7 @@ class AdminApi:
     def import_(self, d, apply, sections=None):
         """Проверка схемы и предпросмотр (что добавится / обновится); apply — запись после копии базы.
         Ничего не удаляется. Журнал действий не импортируется."""
-        if d.get('format') != 'kp-backup' or d.get('version') != 1 or not isinstance(d.get('sections'), dict):
+        if not isinstance(d, dict) or d.get('format') != 'kp-backup' or d.get('version') != 1 or not isinstance(d.get('sections'), dict):
             raise ValueError('Это не резервная копия программы (нужен файл «КП_резервная_копия_….json»)')
         sec = d['sections']
         want = [s for s in (sections or 'catalog,kp,managers,clients,suppliers,settings').split(',') if s in sec and s != 'audit' and s in SECTIONS]
