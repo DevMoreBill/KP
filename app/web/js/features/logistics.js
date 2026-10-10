@@ -145,7 +145,7 @@ async function lgQuote(k){
   try{ const res=await api('/api/logistics/quote',{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(body)});
     s.lg.quote={key, res}; persist(); }
   catch(e){ LG.err[s.id]='Не удалось запросить цены: '+(e.message||e); }
-  LG.busy[s.id]=false; dealRender(); renderSide();
+  LG.busy[s.id]=false; dealRender(); SidePanel.render();
 }
 
 // цены перевозчиков — сами, когда открыта вкладка и груз посчитан (после паузы во вводе, один раз на набор данных)

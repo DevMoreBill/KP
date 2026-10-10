@@ -33,7 +33,7 @@ const dlMoneyAuto = () => DL.key && DL.key.rate>0 ? (DL.key.rate+dlSpread())/12 
 function dlCalYears(iso){ const y=+String(iso||'').slice(0,4); return y ? [y, y+1, y+2] : []; }
 function dlCalLoad(iso){ const need=dlCalYears(iso).filter(y=>!DL.cal[y] && !DL.calLoading[y]); if (!need.length) return;
   need.forEach(y=>{ DL.calLoading[y]=true;
-    api('/api/calendar?year='+y).then(r=>{ if (r && r.days) DL.cal[y]=r; }).catch(()=>{}).finally(()=>{ delete DL.calLoading[y]; dealRender(); renderSide(); }); }); }
+    api('/api/calendar?year='+y).then(r=>{ if (r && r.days) DL.cal[y]=r; }).catch(()=>{}).finally(()=>{ delete DL.calLoading[y]; dealRender(); SidePanel.render(); }); }); }
 function dlCalOff(startIso, day){ if (!startIso) return false; const [y,m,d]=startIso.split('-').map(Number), t=new Date(Date.UTC(y,m-1,d+(+day||0)));
   const cy=t.getUTCFullYear(), c=DL.cal[cy]; if (!c) return false; const doy=Math.round((t-Date.UTC(cy,0,1))/864e5); return c.days[doy]==='1'; }
 const dlCalReady = iso => dlCalYears(iso).every(y=>DL.cal[y]);
@@ -203,7 +203,7 @@ function dealSetLogistics(supId, o={}){
   if (o.ru) s.logRu={v:String(o.ru.v??''), src:'module'};
   if (o.ship!=null) s.ship=String(o.ship);
   if (o.note) s.logNote=String(o.note);
-  d.touched=true; persist(); dealRender(); renderSide();
+  d.touched=true; persist(); dealRender(); SidePanel.render();
 }
 
 async function openDeal(){
@@ -279,7 +279,7 @@ function dlSupChanged(p){ const d=dlDeal(), m=/^sup\.(\d+)\.(name|country)$/.exe
   if (m[2]==='country') dlApplyCountry(s); }
 
 function dlComboPick(path, v){ const d=dlDeal(); dlSet(d, path, v); dlSupChanged(path); DL.combo=null; DL.comboIx=-1;
-  const m=/^sup\.(\d+)\./.exec(path); if (m && !DL.ex) dlSaveSupplier(d.sup[+m[1]]); if (!DL.ex){ S.deal.touched=true; persist(); renderSide(); } dealRender(); }
+  const m=/^sup\.(\d+)\./.exec(path); if (m && !DL.ex) dlSaveSupplier(d.sup[+m[1]]); if (!DL.ex){ S.deal.touched=true; persist(); SidePanel.render(); } dealRender(); }
 
 // раскрывающийся блок «Ещё…»: открыт, если пользователь его открыл (DL.more), иначе — по умолчанию (def)
 const dlMore = (key, def) => ((DL.more && key in DL.more) ? DL.more[key] : def) ? ' open' : '';
@@ -1053,7 +1053,7 @@ function dlWinSize(dlg, save){ try{
   const o=JSON.parse(localStorage.getItem('kp.dealwin2')||'{}')||{}; dlg.classList.toggle('max', !!o.max); if (o.w) dlg.style.width=o.w; if (o.h) dlg.style.height=o.h; }catch(e){} }
 
 function dealBind(dlg){
-  const touch=()=>{ if (DL.ex) return; S.deal.touched=true; persist(); renderSide(); };
+  const touch=()=>{ if (DL.ex) return; S.deal.touched=true; persist(); SidePanel.render(); };
   const comboClose=()=>{ if (!DL.combo) return; DL.combo=null; DL.comboIx=-1; dealRender(); };
   dlWinSize(dlg);
   lgBind(dlg, touch);
@@ -1184,32 +1184,40 @@ function dealBind(dlg){
     touch(); dealRender(); });
 }
 
-// блок «Экономика сделки» в правой панели конструктора: текущий расчёт модуля (без открытия окна)
-function dealSideBlock(){
-  const its=(S.items||[]).filter(x=>String(x.name||'').trim());
-  const btn='<button class="btn dl-open" type="button" data-a="deal">Экономика сделки →</button>';
-  const lab='<div class="lab">Экономика сделки · в КП не выводится</div>';
-  if (!its.length) return '';
-  const withCost=its.filter(x=>x.cost>0).length;
-  if (!withCost) return `<div class="mrg">${lab}<p class="mrg-n">Закупка не указана — укажите цены поставщика в «Экономике сделки», и здесь появятся прибыль, маржа, таможня и финансирование.</p>${btn}</div>`;
-  let c; try{ c=dealCalc(dealKpInputs(), S.deal||dealBlank(dealDefaults())); }catch(e){ return `<div class="mrg">${lab}${btn}</div>`; }
-  const b=c.base, r=b||c.lo, unk=!b, p=v=>v==null||!Number.isFinite(v)?'—':v.toFixed(1).replace('.',',')+' %';
-  const P=unk?null:b.P, tg=S.deal&&S.deal.target, tv=tg?dNum(tg.v):null;
-  const need=tv!=null&&!Number.isNaN(tv)?dealSolve(dealKpInputs(), S.deal, tg.type, tv):null;
-  const TG={margin:'маржи',markup:'наценки',profit:'прибыли',net:'чистой прибыли'};
-  const warn=c.warn.filter(w=>w.bad).concat(c.warn.filter(w=>!w.bad));
-  return `<div class="mrg mrg-deal">${lab}
-    <div class="mrg-p${P!=null&&P<0?' neg':''}"><small>Прибыль до налога</small><b>${unk?`${dlRub0(c.lo.P)} … ${dlRub0(c.hi.P)}`:dlRub0(P)}</b></div>
-    <dl><dt>Маржинальность / наценка</dt><dd>${unk?'—':`${p(b.margin)} / ${p(b.markup)}`}</dd>
-      <dt>Себестоимость</dt><dd>${dlRub0(r.Ctot)}</dd>
-      ${c.Tsum?`<dt>Таможня (платим)</dt><dd>${dlRub0(c.Tsum)}</dd>`:''}
-      <dt>Финансирование</dt><dd>${dlRub0(c.F)}</dd>
-      ${r.K>0?`<dt>Прочие расходы (нал.)</dt><dd>${dlRub0(r.K)}</dd>`:''}
-      ${unk?'':`<dt>Чистая прибыль</dt><dd>${dlRub0(b.net)}</dd>`}
-      ${need!=null?`<dt>Цена для ${TG[tg.type]||'цели'} ${esc(tg.v)}${tg.type==='profit'||tg.type==='net'?' ₽':' %'}</dt><dd><b>${dlRub0(need)}</b></dd>`:''}</dl>
-    ${withCost<its.length?`<p class="mrg-n warn-t">Закупка указана у ${withCost} из ${its.length} позиций</p>`:warn.length?`<p class="mrg-n ${warn[0].bad?'bad-t':'warn-t'}">${esc(warn[0].t)}</p>`:unk?'<p class="mrg-n warn-t">Нужна сумма ввозного НДС</p>':''}
-    ${S.deal&&S.deal.touched?'':'<p class="mrg-n muted">Предварительно: условия поставщика — по умолчанию.</p>'}
-    ${btn}</div>`;
+// краткая экономика сделки в правой панели (под кнопками сохранения): прибыль до налога, маржа, чистая прибыль, цена под цель;
+// себестоимость, таможня и финансирование — в раскрывающемся «Себестоимость и расходы». Только автору КП и администратору (dealAllowed).
+class DealSide {
+  static more = false;          // «Себестоимость и расходы» раскрыто: панель перерисовывается при каждом вводе — помним выбор
+  static bound = false;
+
+  static html(){
+    if (!this.bound){ this.bound=true; document.addEventListener('toggle', e=>{ if (e.target.classList && e.target.classList.contains('mrg-more')) this.more=e.target.open; }, true); }
+    const its=(S.items||[]).filter(x=>String(x.name||'').trim());
+    const btn='<button class="btn dl-open" type="button" data-a="deal">Экономика сделки →</button>';
+    const lab='<div class="lab">Экономика сделки · в КП не выводится</div>';
+    if (!its.length) return '';
+    const withCost=its.filter(x=>x.cost>0).length;
+    if (!withCost) return `<div class="mrg">${lab}<p class="mrg-n">Укажите закупку в «Экономике сделки» — здесь появятся прибыль, маржа, таможня и финансирование.</p>${btn}</div>`;
+    let c; try{ c=dealCalc(dealKpInputs(), S.deal||dealBlank(dealDefaults())); }catch(e){ return `<div class="mrg">${lab}${btn}</div>`; }
+    const b=c.base, r=b||c.lo, unk=!b, p=v=>v==null||!Number.isFinite(v)?'—':v.toFixed(1).replace('.',',')+' %';
+    const P=unk?null:b.P, tg=S.deal&&S.deal.target, tv=tg?dNum(tg.v):null;
+    const need=tv!=null&&!Number.isNaN(tv)?dealSolve(dealKpInputs(), S.deal, tg.type, tv):null;
+    const TG={margin:'маржи',markup:'наценки',profit:'прибыли',net:'чистой прибыли'};
+    const warn=c.warn.filter(w=>w.bad).concat(c.warn.filter(w=>!w.bad));
+    return `<div class="mrg mrg-deal">${lab}
+      <div class="mrg-p${P!=null&&P<0?' neg':''}"><small>Прибыль до налога</small><b>${unk?`${dlRub0(c.lo.P)} … ${dlRub0(c.hi.P)}`:dlRub0(P)}</b></div>
+      <dl><dt>Маржинальность / наценка</dt><dd>${unk?'—':`${p(b.margin)} / ${p(b.markup)}`}</dd>
+        ${unk?'':`<dt>Чистая прибыль</dt><dd>${dlRub0(b.net)}</dd>`}
+        ${need!=null?`<dt>Цена для ${TG[tg.type]||'цели'} ${esc(tg.v)}${tg.type==='profit'||tg.type==='net'?' ₽':' %'}</dt><dd><b>${dlRub0(need)}</b></dd>`:''}</dl>
+      <details class="mrg-more"${this.more?' open':''}><summary>Себестоимость и расходы</summary><dl>
+        <dt>Себестоимость</dt><dd>${dlRub0(r.Ctot)}</dd>
+        ${c.Tsum?`<dt>Таможня (платим)</dt><dd>${dlRub0(c.Tsum)}</dd>`:''}
+        <dt>Финансирование</dt><dd>${dlRub0(c.F)}</dd>
+        ${r.K>0?`<dt>Прочие расходы (нал.)</dt><dd>${dlRub0(r.K)}</dd>`:''}</dl></details>
+      ${withCost<its.length?`<p class="mrg-n warn-t">Закупка указана у ${withCost} из ${its.length} позиций</p>`:warn.length?`<p class="mrg-n ${warn[0].bad?'bad-t':'warn-t'}">${esc(warn[0].t)}</p>`:unk?'<p class="mrg-n warn-t">Нужна сумма ввозного НДС</p>':''}
+      ${S.deal&&S.deal.touched?'':'<p class="mrg-n muted">Предварительно: условия поставщика — по умолчанию.</p>'}
+      ${btn}</div>`;
+  }
 }
 
 // краткий итог для правой панели и журнала (только если расчёт заполнен)

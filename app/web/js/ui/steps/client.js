@@ -42,7 +42,7 @@ function stepClient(){
       <div class="grid g3" style="margin-top:12px">${field('КПП','clientKpp')}${field('ОГРН','clientOgrn')}${field('Руководитель','clientDir',{ph:'ФИО'})}</div>
       <div class="grid" style="margin-top:12px">${field('Юридический адрес','clientAddr')}</div></div>`;
   return `<section class="step" id="st-client"><h2><span class="n">1</span>Клиент${tip(`<p>Начните вводить название или ИНН: поиск идёт по вашему справочнику клиентов${CLIENTS_ALL?` (${CLIENTS_ALL})`:''}, а по ИНН — в реестре ФНС; реквизиты заполнятся сами.</p><p>Контактное лицо и объект необязательны: контакт выводится на титуле («Вниманию: …»), объект — для каких нужд и куда поставка.</p><p>Ключи Checko и DaData, загрузка клиентов списком ИНН — в меню «⋯» вверху.</p>`)}</h2>
-  ${tenderBlock()}
+  ${TenderBlock.html()}
   <div class="csec"><p class="sub">Кому</p>${has ? summary : finder}${(has&&edit)||S._clManual ? form : ''}${has?PartyCheck.line():''}${has?clientPrevHtml():''}</div>
   <div class="csec"><p class="sub">Контактное лицо <span class="muted">необязательно</span></p>
    ${cons.length?`<div class="chips" style="margin-bottom:8px"><span class="muted" style="font-size:13px">Ранее:</span>${cons.slice(0,4).map((c,k)=>`<button class="chip sm" type="button" data-a="pickContact" data-k="${(cl.contacts||[]).indexOf(c)}">${esc(c.name)}${c.post?' — '+esc(c.post):''}</button>`).join('')}</div>`:''}
@@ -65,14 +65,18 @@ function tenderNoFromUrl(u){ u=String(u||''); let m=/[?&](?:regNumber|purchaseNu
     || /(?:tender|purchase|trade|lot|procedure|auction|zakupk\w*|notice)[\w-]*[/=_-](\d{5,})/i.exec(u);
   if (m) return m[1]; const all=u.replace(/^https?:\/\/[^/]+/i,'').match(/\d{6,}/g)||[]; return all.sort((a,b)=>b.length-a.length)[0]||''; }
 function tenderHost(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return ''; } }
-function tenderBlock(){ if (!FEAT.on('tender')) return ''; const on=tenderOn(), T=S.tender||{}, url=String(T.url||'').trim(), badUrl=url && !tenderUrl();
-  return `<div class="csec kp-kind${on?' on':''}" id="st-tender"><div class="kk-head"><p class="sub">Вид КП</p>
-      <div class="seg" role="radiogroup" aria-label="Вид КП"><button type="button" role="radio" aria-checked="${!on}" class="${on?'':'on'}" data-a="kpKind" data-v="std">Обычное</button><button type="button" role="radio" aria-checked="${on}" class="${on?'on':''}" data-a="kpKind" data-v="tender">Для тендера</button></div></div>
-    ${on?`<div class="grid kk-grid">${field('№ закупки (тендера)','tender.number',{req:1,ph:'Например: 4567892',cls:T.number&&String(T.number).trim()?'':'bad'})}
-        <label class="f"><span>Ссылка на закупку <span class="muted">для журнала, в КП не выводится</span></span><input type="url" data-p="tender.url" value="${esc(url)}" placeholder="https://zakupki.gov.ru/…" autocomplete="off" class="${badUrl?'bad':''}"></label></div>
-      <p class="muted kk-note" id="kkNote">${kkNote()}</p>
-`
-    :`<p class="muted kk-note">Для тендера КП собирается в шаблоне «Тендерный», в нём — номер закупки; файлы называются «№ закупки КП поставщик заказчик».</p>`}</div>`; }
+// вид КП: обычное или для тендера (функция tender). Пояснение — в «?»; поля номера и ссылки на закупку — только у тендерного
+class TenderBlock {
+  static html(){
+    if (!FEAT.on('tender')) return '';
+    const on=tenderOn(), T=S.tender||{}, url=String(T.url||'').trim(), badUrl=url && !tenderUrl();
+    return `<div class="csec kp-kind${on?' on':''}" id="st-tender"><div class="kk-head"><div class="sub">Вид КП${tip('<p>Для тендера КП собирается в шаблоне «Тендерный»: в нём — номер закупки, а файлы называются «№ закупки КП поставщик заказчик».</p><p>Ссылка на закупку хранится в журнале КП и в документ не выводится.</p>')}</div>
+        <div class="seg" role="radiogroup" aria-label="Вид КП"><button type="button" role="radio" aria-checked="${!on}" class="${on?'':'on'}" data-a="kpKind" data-v="std">Обычное</button><button type="button" role="radio" aria-checked="${on}" class="${on?'on':''}" data-a="kpKind" data-v="tender">Для тендера</button></div></div>
+      ${on?`<div class="grid kk-grid">${field('№ закупки (тендера)','tender.number',{req:1,ph:'Например: 4567892',cls:T.number&&String(T.number).trim()?'':'bad'})}
+          <label class="f"><span>Ссылка на закупку <span class="muted">для журнала, в КП не выводится</span></span><input type="url" data-p="tender.url" value="${esc(url)}" placeholder="https://zakupki.gov.ru/…" autocomplete="off" class="${badUrl?'bad':''}"></label></div>
+        <p class="muted kk-note" id="kkNote">${kkNote()}</p>`:''}</div>`;
+  }
+}
 function kkNote(){ const n=tenderNo(), u=String((S.tender||{}).url||'').trim();
   return (n ? `Файлы: <b>${esc(savedFileName())}</b> и <b>${esc(savedFileName().replace(/\.docx$/i,'.pdf'))}</b>.` : 'Номер закупки — в КП и в названии файлов: «4567892 КП ПНЕВМОТЕХ Заказчик.docx».')
     + (u && !tenderUrl() ? ' <span class="bad-t">Ссылка должна начинаться с http:// или https://</span>' : u ? ` Площадка: ${esc(tenderHost(u))}.` : ''); }

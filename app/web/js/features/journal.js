@@ -24,6 +24,39 @@ function jEcon(r){
   return { sum:`${money((e?e.sum:r.sum)||0)} ${cs}`, line, sumRub, profitRub };
 }
 
+// строка журнала КП (класс JournalRow): частые действия — «Открыть» и «Копия», остальные (файл, письмо, экономика,
+// версии) — в меню «⋯», чтобы в длинном списке не рябило от кнопок
+class JournalRow {
+  // тендер: номер закупки и ссылка на неё; ссылка — только http(s)
+  static tender(r){ const t=r.tender; if (!t || !t.number) return ''; const u=/^https?:\/\//i.test(t.url||'') ? t.url : '';
+    return `<span class="jr-t" title="КП для тендера${u?': '+esc(u):''}">Тендер № ${esc(t.number)}${u?` <a href="${esc(u)}" target="_blank" rel="noopener noreferrer" aria-label="Открыть закупку на площадке">↗</a>`:''}</span>`; }
+
+  static html(r, e){
+    return `<div class="jr${r.tender&&r.tender.number?' tnd':''}"><div class="jr-n"><span class="n">№ ${esc(r.number)}</span><span class="muted">от ${esc(KPGen.ruDate(r.date))}</span>${this.tender(r)}${r.savedAt?`<span class="muted" title="Последнее сохранение">сохр. ${esc(jTime(r.savedAt))}</span>`:''}</div>
+      <div class="jr-m"><b>${ClientCard.link({inn:String(r.clientInn||'').replace(/\D/g,''), name:r.client}, r.client)}</b><span class="muted">${(r.items&&r.items[0])?esc(r.items[0])+(r.positions>1?` и ещё ${r.positions-1}`:''):''}</span>${r.manager?`<span class="jr-a" title="${esc([r.manager,r.managerPost].filter(Boolean).join(', '))}">Автор: ${esc(jShort(r.manager))}</span>`:''}</div>
+      <div class="jr-e"><b>${e.sum}</b><span>${e.line}</span><span class="jr-st">${KpTrack.chip(r)}</span></div>
+      <div class="acts"><button class="btn" type="button" data-jo="${esc(r.id)}" title="Открыть КП для просмотра и правки">Открыть</button><button class="btn" type="button" data-jc="${esc(r.id)}" title="Новое КП на основе этого: позиции, цены и условия — те же, получатель — новый">Копия</button>${this.menu(r)}</div></div>`;
+  }
+
+  static menu(r){
+    const id=esc(r.id), it=(attrs, text, title)=>`<button type="button" ${attrs}${title?` title="${title}"`:''}>${text}</button>`;
+    return `<details class="jr-more" data-id="${id}"><summary class="btn" title="Другие действия с КП" aria-label="Другие действия с КП № ${esc(r.number)}">⋯</summary><div class="menu-l">${[
+      SRV.info&&SRV.info.local===false ? it(`data-a="openDoc" data-id="${id}"`, 'Скачать файл КП (Word)') : it(`data-a="openDoc" data-id="${id}"`, 'Открыть файл КП в Word'),
+      r.file&&FEAT.on('mail') ? it(`data-jm="${id}"`, 'Отправить клиенту…', 'Письмо клиенту с файлом КП') : '',
+      r.locked||!FEAT.on('deal') ? '' : it(`data-je="${id}"`, 'Экономика сделки'),
+      FEAT.on('versions') ? it(`data-jv="${id}" data-jn="${esc(r.number)}"`, 'Прежние версии КП') : ''].join('')}</div></details>`;
+  }
+
+  // меню у нижнего края списка открывается вверх, у левого края — вправо (на телефоне оно — панель снизу экрана)
+  static place(d){
+    const m=d.querySelector('.menu-l'), box=d.closest('.dlg-b'); d.classList.remove('up','lft');
+    if (!d.open || !m || !box || getComputedStyle(m).position==='fixed') return;
+    const r=m.getBoundingClientRect(), b=box.getBoundingClientRect();
+    if (r.left < b.left) d.classList.add('lft');
+    if (r.bottom > b.bottom && r.height+8 < r.top-b.top) d.classList.add('up');
+  }
+}
+
 async function openJournal(){
   const d=$('#dlg'); d.classList.add('wide');
   d.innerHTML=`<div class="dlg-h"><h3>Журнал КП</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
@@ -32,22 +65,16 @@ async function openJournal(){
   d.showModal(); d.querySelector('[data-close]').onclick=()=>{ d.close(); d.classList.remove('wide'); };
   // журнал — постранично: поиск, автор и итоги считает сервер, в браузер приходят только видимые КП
   const J={rows:[], total:0, agg:null, seq:0, size:50, any:false};
-  // тендер: номер закупки и ссылка на неё; ссылка — только http(s)
-  const tnd=r=>{ const t=r.tender; if (!t || !t.number) return ''; const u=/^https?:\/\//i.test(t.url||'') ? t.url : '';
-    return `<span class="jr-t" title="КП для тендера${u?': '+esc(u):''}">Тендер № ${esc(t.number)}${u?` <a href="${esc(u)}" target="_blank" rel="noopener noreferrer" aria-label="Открыть закупку на площадке">↗</a>`:''}</span>`; };
-  const row=(r,e)=>`<div class="jr${r.tender&&r.tender.number?' tnd':''}"><div class="jr-n"><span class="n">№ ${esc(r.number)}</span><span class="muted">от ${esc(KPGen.ruDate(r.date))}</span>${tnd(r)}${r.savedAt?`<span class="muted" title="Последнее сохранение">сохр. ${esc(jTime(r.savedAt))}</span>`:''}</div>
-      <div class="jr-m"><b>${ClientCard.link({inn:String(r.clientInn||'').replace(/\D/g,''), name:r.client}, r.client)}</b><span class="muted">${(r.items&&r.items[0])?esc(r.items[0])+(r.positions>1?` и ещё ${r.positions-1}`:''):''}</span>${r.manager?`<span class="jr-a" title="${esc([r.manager,r.managerPost].filter(Boolean).join(', '))}">Автор: ${esc(jShort(r.manager))}</span>`:''}</div>
-      <div class="jr-e"><b>${e.sum}</b><span>${e.line}</span><span class="jr-st">${KpTrack.chip(r)}</span></div>
-      <div class="acts"><button class="btn" type="button" data-jo="${esc(r.id)}">Открыть</button><button class="btn" type="button" data-jc="${esc(r.id)}">Копия</button>${FEAT.on('versions')?`<button class="btn" type="button" data-jv="${esc(r.id)}" data-jn="${esc(r.number)}">Версии</button>`:''}${r.file&&FEAT.on('mail')?`<button class="btn" type="button" data-jm="${esc(r.id)}" title="Письмо клиенту с файлом КП">Отправить</button>`:''}${r.locked||!FEAT.on('deal')?'':`<button class="btn" type="button" data-je="${esc(r.id)}">Экономика</button>`}<button class="btn" type="button" data-a="openDoc" data-id="${esc(r.id)}">${SRV.info&&SRV.info.local===false?'Скачать':'Word'}</button></div></div>`;
   const draw=()=>{ const a=J.agg||{};
     $('#jTot').innerHTML = J.total ? `КП: <b>${J.total}</b> · на сумму <b>${money(a.sum||0)} руб.</b>${a.profitN&&FEAT.on('deal')?` · прибыль <b>${money(a.profit)} руб.</b> <span>(по ${a.profitN} КП с закупкой)</span>`:''}` : '';
     const fn=J.funnel||{}, nn=k=>(fn[k]||{}).n||0, won=nn('won'), lost=nn('lost');
     $('#jFun').innerHTML = FEAT.on('track') && Object.keys(fn).length ? Object.entries(KP_STATUS).filter(([k])=>nn(k)).map(([k,l])=>`<button type="button" class="jf st-${k}${$('#jS').value===k?' on':''}" data-jf="${k}" title="Показать только «${l}»"><b>${nn(k)}</b> ${l} <span>${money((fn[k]||{}).sum||0)} руб.</span></button>`).join('')
       + (won+lost?`<span class="jf-c" title="Выиграно из закрытых (выиграно + проиграно)">Конверсия <b>${Math.round(won/(won+lost)*100)} %</b></span>`:'') : '';
-    const more=J.total-J.rows.length;
-    $('#jList').innerHTML = J.rows.length ? J.rows.map(r=>row(r, jEcon(r))).join('')
+    const more=J.total-J.rows.length, op=$('#jList .jr-more[open]');      // открытое меню «⋯» переживает перерисовку
+    $('#jList').innerHTML = J.rows.length ? J.rows.map(r=>JournalRow.html(r, jEcon(r))).join('')
         + (more>0?`<div class="row" style="justify-content:center;margin-top:10px"><button class="btn" type="button" data-jmore>Показать ещё ${Math.min(more,J.size)} из ${more}</button></div>`:'')
-      : `<p class="empty">${J.any?'Ничего не найдено.':'Журнал пуст. Сохранённые КП появятся здесь.'}</p>`; };
+      : `<p class="empty">${J.any?'Ничего не найдено.':'Журнал пуст. Сохранённые КП появятся здесь.'}</p>`;
+    if (op) for (const x of $('#jList').querySelectorAll('.jr-more')) if (x.dataset.id===op.dataset.id){ x.open=true; JournalRow.place(x); } };
   const load=async more=>{ const seq=++J.seq, au=$('#jA').value, q=$('#jQ').value.trim(), kd=$('#jK').value, ks=$('#jS').value;
     let r; try{ r=await api(`/api/history?limit=${J.size}&offset=${more?J.rows.length:0}&q=${encodeURIComponent(q)}&author=${encodeURIComponent(au)}&kind=${encodeURIComponent(kd)}&status=${encodeURIComponent(ks)}`); }
     catch(e){ if (seq===J.seq) $('#jList').innerHTML='<p class="empty">Журнал недоступен.</p>'; return; }
@@ -68,6 +95,7 @@ async function openJournal(){
     if (![...a.options].some(o=>o.value===me)) return toast('У вас ещё нет сохранённых КП');
     a.value = a.value===me ? '' : me; $('#jMe').classList.toggle('on', a.value===me); load(false); };
   await load(false);
+  $('#jList').addEventListener('toggle', e=>{ if (e.target.classList.contains('jr-more')) JournalRow.place(e.target); }, true);
   $('#jList').onclick=async e=>{
     if (e.target.closest('.jr-t a')) return;        // ссылка на закупку открывается в браузере
     if (e.target.closest('[data-jmore]')) return load(true);
