@@ -7,7 +7,6 @@
   программы. Только http/https, только изображения до 15 МБ, адреса локальной сети и самого компьютера запрещены.
 """
 import ipaddress
-import json
 import socket
 import urllib.parse
 import time
@@ -26,18 +25,19 @@ def logos(store):
     """Логотип каждого производителя: {производитель в нижнем регистре: {maker, src, w, h}}. Написания одной марки
     («Remeza», «REMEZA», «Ремеза») — одна группа; из нескольких логотипов — файл из папки логотипов, затем самый частый."""
     groups, names = {}, {}
-    for maker, doc in store.all("SELECT maker, doc FROM catalog WHERE maker IS NOT NULL AND maker <> ''"):
+    # логотипы считает сама база (по производителю и файлу): не нужно читать и разбирать все карточки каталога —
+    # на 25 000 позиций это было 0,9 с и +190 МБ памяти сервера после каждой правки каталога
+    one = "CASE WHEN json_valid(doc) THEN json_extract(doc, '$.logo.%s') END"
+    rows = store.all("SELECT maker, src, w, h, COUNT(*) FROM (SELECT maker, %s AS src, %s AS w, %s AS h FROM catalog "
+                     "WHERE maker IS NOT NULL AND maker <> '') GROUP BY maker, src" % (one % 'src', one % 'w', one % 'h'))
+    for maker, src, w, h, n in rows:
         g = images.slug(maker, 60).replace('-', '')
         names.setdefault(g, set()).add(maker.strip())
-        try:
-            lg = (json.loads(doc) or {}).get('logo')
-        except ValueError:
-            continue
-        if not isinstance(lg, dict) or not lg.get('src'):
+        if not src or not isinstance(src, str):
             continue
         c = groups.setdefault(g, {})
-        n, mk, _ = c.get(lg['src'], (0, maker, lg))
-        c[lg['src']] = (n + 1, mk, lg)
+        k, mk, lg = c.get(src, (0, maker, {'src': src, 'w': w, 'h': h}))
+        c[src] = (k + n, mk, lg)
     out = {}
     for g, variants in groups.items():
         n, maker, lg = max(variants.values(), key=lambda v: (str(v[2]['src']).startswith('/img/logos/'), v[0]))

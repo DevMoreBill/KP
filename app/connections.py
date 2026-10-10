@@ -3,7 +3,7 @@
 
 Каждая проверка — лёгкий запрос к сервису (без отправки писем и без трат платных лимитов, где можно):
 почта — вход на SMTP-сервер; нейросеть — короткий запрос; ЦБ — курсы; контрагенты — ФНС и DaData по ИНН Сбербанка
-(Checko — только остаток лимита); перевозчики — пробный расчёт Москва → Санкт-Петербург; GitHub — последняя версия;
+(Checko — доступность сервиса и остаток лимита); перевозчики — пробный расчёт Москва → Санкт-Петербург; GitHub — последняя версия;
 фиды — доступность адреса прайса; PDF — Word, LibreOffice или ConvertAPI. Проверки идут параллельно, у каждой — свой
 предел времени. Результат: [{id, group, name, status: ok | warn | fail | off, msg, ms, tab}].
 """
@@ -11,6 +11,7 @@ import smtplib
 import ssl
 import threading
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime
 
@@ -21,6 +22,7 @@ SAMPLE_PLACE = {'l': 1.2, 'w': 1.0, 'h': 1.0, 'm': 0.3, 'qty': 1}
 class ConnectionCheck:
     TIMEOUT = 45
     FEED_TIMEOUT = 20
+    CHECKO = 'https://api.checko.ru/'
 
     def __init__(self, store, data_dir, root):
         self.store, self.data_dir, self.root = store, data_dir, root
@@ -123,9 +125,14 @@ class ConnectionCheck:
         if not self._keys().get('checkoKey'):
             return 'off', 'ключ не задан (проверка контрагентов — бесплатная по ФНС)'
         from counterparty import Counterparties
+        # связь — запросом к адресу сервиса без ключа: любой ответ сервера значит «доступен», лимит запросов не тратится
+        try:
+            urllib.request.urlopen(urllib.request.Request(self.CHECKO, headers={'User-Agent': 'KP-Konstruktor'}), timeout=self.FEED_TIMEOUT).close()
+        except urllib.error.HTTPError:
+            pass
         q = Counterparties(self.store).quota()
         st = 'ok' if q.get('left', 0) > 0 else 'warn'
-        return st, 'сегодня использовано %s из %s запросов (лимит не тратится на проверку)' % (q.get('used'), q.get('limit'))
+        return st, 'сервис доступен; сегодня использовано %s из %s запросов (лимит не тратится на проверку)' % (q.get('used'), q.get('limit'))
 
     def _carriers(self):
         import logistics_api

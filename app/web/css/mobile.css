@@ -34,6 +34,7 @@ html.mob:has(dialog[open]){overflow:hidden}      /* под открытым ок
   .btn,.seg button,.cw-cat,.st-nav button,.stp,.menu-l button,.pickm>summary,.topmenu>summary,.chk-chip{min-height:44px}
   .icon{min-width:44px;min-height:44px}
   .chip,.rd,.oitem{min-height:36px;padding-top:6px;padding-bottom:6px}
+  input[type=checkbox],input[type=radio]{width:20px;height:20px;flex-shrink:0}     /* галочки под палец: 13 px были меньше пальца */
   .mtog button{min-height:34px;padding:4px 10px}
   .row,.chips,.iopts,.ready{gap:8px}
   .ck{width:44px;height:44px;flex-basis:44px}

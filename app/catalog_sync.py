@@ -23,7 +23,7 @@ class CatalogSync:
         return {'epoch': self.store.catalog_epoch(), 'seq': int(self.store.data_rev('catalog') or 0)}
 
     def delta(self, since, epoch):
-        """{epoch, seq, full: False, items, gone} или None — нужен каталог целиком."""
+        """{epoch, seq, full: False, items — карточки строкой JSON через запятую, gone} или None — нужен каталог целиком."""
         st = self.state()
         try:
             since = int(since)
@@ -34,24 +34,26 @@ class CatalogSync:
         n = self.store.one('SELECT COUNT(*) FROM catalog WHERE seq > ?', (since,))[0]
         if n > self.MAX_DELTA:
             return None
-        items = [r[0] for r in self.store.all('SELECT light FROM catalog WHERE seq > ? ORDER BY seq', (since,))]
+        items = self.store.joined('SELECT light AS x FROM catalog WHERE seq > ? ORDER BY seq', (since,))
         gone = [r[0] for r in self.store.all('SELECT id FROM catalog_gone WHERE seq > ?', (since,))]
         return dict(st, full=False, items=items, gone=gone)
 
     def delta_json(self, d):
         """Ответ без повторного разбора облегчённых карточек (они уже строки JSON)."""
         return ('{"epoch":%s,"seq":%d,"full":false,"items":[%s],"gone":%s}'
-                % (json.dumps(d['epoch']), d['seq'], ','.join(d['items']), json.dumps(d['gone'], ensure_ascii=False)))
+                % (json.dumps(d['epoch']), d['seq'], d['items'], json.dumps(d['gone'], ensure_ascii=False)))
 
     def full_json(self):
         st = self.state()
         return '{"epoch":%s,"seq":%d,"full":true,"items":%s,"gone":[]}' % (json.dumps(st['epoch']), st['seq'], self.store.catalog_light())
 
     def search(self, q):
-        """id позиций со всеми словами запроса; слова короче двух букв не учитываются."""
+        """id позиций со всеми словами запроса; слова короче двух букв не учитываются. id приходят из базы одной строкой
+        (Store.joined): тысячи найденных строк по одной тормозили одновременные поиски нескольких менеджеров."""
         words = [w for w in re.split(r'\s+', norm(q)) if len(w) >= self.MIN_WORD][:8]
         if not words:
             return []
         where = ' AND '.join(["search LIKE ? ESCAPE '\\'"] * len(words))
-        return [r[0] for r in self.store.all('SELECT id FROM catalog WHERE %s LIMIT %d' % (where, self.SEARCH_LIMIT),
-                                             tuple(like_arg(w) for w in words))]
+        ids = self.store.joined('SELECT id AS x FROM catalog WHERE %s LIMIT %d' % (where, self.SEARCH_LIMIT),
+                                tuple(like_arg(w) for w in words), '\n')
+        return ids.split('\n') if ids else []

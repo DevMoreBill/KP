@@ -35,7 +35,7 @@ function attrsBlock(x,i){
 // место для картинки: нажать — файл; перетащить файл или картинку с сайта; Ctrl+V или «Вставить из буфера»
 function drop(img, kind, i, text, small){
   return `<div class="drop" data-drop="${kind}" data-i="${i}" tabindex="0" role="button" aria-label="${kind==='logo'?'Загрузить логотип':'Загрузить фото'}" style="${small?'min-height:80px':''}">
-    ${img?`<img src="${img.src}" alt=""><button class="icon x" type="button" data-a="rmImg" data-k="${kind}" data-i="${i}" aria-label="Убрать">✕</button>`:`<span>${text}</span>`}</div>
+    ${img?`<img src="${esc(img.src)}" alt=""><button class="icon x" type="button" data-a="rmImg" data-k="${kind}" data-i="${i}" aria-label="Убрать">✕</button>`:`<span>${text}</span>`}</div>
     <div class="imgbar"><button type="button" class="lnk" data-a="pickImg" data-k="${kind}" data-i="${i}">Выбрать файл</button><button type="button" class="lnk" data-imgpaste>Вставить из буфера</button>${kind==='logo'&&img&&img.auto?`<span class="muted">по производителю «${esc(img.auto)}»</span>`:''}</div>`;
 }
 
@@ -93,13 +93,13 @@ function edMain(x,i){
    ${CATED?'':`<div class="ed-sec row"><button class="btn" type="button" data-a="saveCat" data-i="${i}">Сохранить позицию в каталог</button>${tip('Фото, описание, характеристики, изображения и цена будут доступны в следующих КП.')}</div>`}`;
 }
 
-function imgBox(src, attrs, text){ return `<div class="ibox" ${attrs} tabindex="0" role="button">${src?`<img src="${src}" alt="">`:`<span>${text}</span>`}</div>`; }
+function imgBox(src, attrs, text){ return `<div class="ibox" ${attrs} tabindex="0" role="button">${src?`<img src="${esc(src)}" alt="">`:`<span>${text}</span>`}</div>`; }
 
 // выбор главного фото среди изображений позиции (фото со страницы поставщика, загруженные вручную)
 function edMainPick(x,i){
   const free=edFreeGal(x).filter(j=>x.gallery[j] && x.gallery[j].src); if (!free.length) return '';
   return `<div class="mainpick"><span class="muted">Главное фото — выбрать из изображений позиции:</span>
-    <div class="mainpick-l">${free.map(j=>`<button type="button" class="mainpick-i" data-a="galMain" data-i="${i}" data-j="${j}" title="Сделать главным"><img src="${x.gallery[j].src}" alt=""></button>`).join('')}</div></div>`;
+    <div class="mainpick-l">${free.map(j=>`<button type="button" class="mainpick-i" data-a="galMain" data-i="${i}" data-j="${j}" title="Сделать главным"><img src="${esc(x.gallery[j].src)}" alt=""></button>`).join('')}</div></div>`;
 }
 // главное фото ↔ изображение галереи: выбранное становится главным, прежнее главное — на его место в галерее
 function edSetMain(it, j){
@@ -128,7 +128,7 @@ function edDesc(x,i){
   const have=new Set((x.features||[]).map(f=>norm(f.label)));
   const blocks=(x.features||[]).map((f,j)=>{ featId(f); const im=featImage(x,f); const gi=im?(x.gallery||[]).indexOf(im):-1;
     return `<div class="fblock" data-fj="${j}">
-      <div class="fimg">${imgBox(im&&im.src,`data-fimg="${i}" data-fid="${f.id}"`,'+ фото к блоку<br><small>нажмите, перетащите или Ctrl+V</small>')}<button type="button" class="lnk imgp" data-imgpaste='[data-fimg="${i}"][data-fid="${f.id}"]'>Вставить из буфера</button>
+      <div class="fimg">${imgBox(im&&im.src,`data-fimg="${i}" data-fid="${esc(f.id)}"`,'+ фото к блоку<br><small>нажмите, перетащите или Ctrl+V</small>')}<button type="button" class="lnk imgp" data-imgpaste="${esc('[data-fimg="'+i+'"][data-fid="'+f.id+'"]')}">Вставить из буфера</button>
         ${im?`<div class="row" style="gap:4px;justify-content:center"><label class="row muted" style="gap:4px"><input type="checkbox" data-gon="${i}" data-j="${gi}" ${im.on===false?'':'checked'} style="width:auto">в КП</label><button class="icon" type="button" data-a="galDel" data-i="${i}" data-j="${gi}" aria-label="Убрать фото">✕</button></div>`:''}</div>
       <div class="ftext"><div class="fhead"><input type="text" data-p="${P}.features.${j}.label" value="${esc(f.label)}" placeholder="Заголовок блока (Двигатель, Альтернатор…)" style="font-weight:600">
         <span class="ed-hdl" draggable="true" data-edrag="feat" data-i="${i}" data-j="${j}" title="Перетащите блок выше или ниже" aria-hidden="true">⠿</span>
@@ -137,7 +137,7 @@ function edDesc(x,i){
   const free=(x.gallery||[]).map((g,j)=>({g,j,L:linkOf(x,g)})).filter(o=>o.L.kind!=='feat');
   const groups=(x.groups||[]).map(g=>g.name).filter(Boolean);
   const gcards=free.map(({g,j,L},n)=>`<div class="gcard${g.on===false?' off':''}" data-gj="${j}"><div class="gmv"><span class="ed-hdl" draggable="true" data-edrag="gal" data-i="${i}" data-j="${j}" title="Перетащите, чтобы поменять порядок" aria-hidden="true">⠿</span>
-      <button class="icon" type="button" data-a="galMv" data-i="${i}" data-j="${j}" data-d="-1" aria-label="Раньше" title="Раньше" ${n===0?'disabled':''}>↑</button><button class="icon" type="button" data-a="galMv" data-i="${i}" data-j="${j}" data-d="1" aria-label="Позже" title="Позже" ${n===free.length-1?'disabled':''}>↓</button></div><img src="${g.src}" alt="">
+      <button class="icon" type="button" data-a="galMv" data-i="${i}" data-j="${j}" data-d="-1" aria-label="Раньше" title="Раньше" ${n===0?'disabled':''}>↑</button><button class="icon" type="button" data-a="galMv" data-i="${i}" data-j="${j}" data-d="1" aria-label="Позже" title="Позже" ${n===free.length-1?'disabled':''}>↓</button></div><img src="${esc(g.src)}" alt="">
       <input type="text" data-p="${P}.gallery.${j}.caption" value="${esc(g.caption||'')}" placeholder="${L.kind==='group'?esc(L.name):'Подпись под изображением'}">
       <label class="f"><span>Где показать</span><select data-gat="${i}" data-j="${j}"><option value="free"${L.kind==='free'?' selected':''}>Раздел «Фото и схемы»</option>
         ${groups.map(n=>`<option value="group:${esc(n)}"${L.kind==='group'&&L.name===n?' selected':''}>К характеристикам: ${esc(n)}</option>`).join('')}

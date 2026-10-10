@@ -3,7 +3,7 @@
 .ready{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .rd{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:3px 10px;font-size:12.5px;cursor:pointer;color:var(--muted)}
 .rd.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,var(--line))}
-.rd.warn{color:var(--warn-ink);border-color:#e8c46a;background:#fff8e6}
+.rd.warn{color:var(--warn-ink);border-color:var(--warn-line);background:var(--warn-bg)}
 .iopts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .oitem{display:inline-flex;gap:6px;align-items:center;background:var(--soft);border-radius:8px;padding:3px 4px 3px 10px;font-size:12.5px}
 .oitem button{border:0;background:none;cursor:pointer;color:var(--muted);font-size:12px;padding:0 4px}
@@ -116,10 +116,10 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 
 /* сборка: состав изделия */
 .kit-l{display:grid;gap:12px}
-.kit-card{display:grid;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
-.kit-h{display:flex;align-items:center;gap:6px}
+.kit-card{display:grid;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);min-width:0}
+.kit-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px}     /* на телефоне кнопки карточки переносятся, а не выходят за край */
 .kit-n{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--soft);color:var(--navy);font-weight:700;font-size:13px}
-.kit-nm{flex:1;min-width:0;font-weight:600}
+.kit-nm{flex:1 1 140px;min-width:0;font-weight:600}
 .kit-g{display:grid;grid-template-columns:90px minmax(0,1.2fr) minmax(0,1fr);gap:10px}
 .kit-cost{display:flex;gap:6px}
 .kit-cost input{flex:1;min-width:0}

@@ -215,7 +215,7 @@ function edKit(x,i){
   // что ещё не выбрано — крупными шагами сверху
   const todo=st ? [
     cont?'':`<div class="kit-todo"><b>1. Контейнер</b><span class="muted">В чём поставляем станцию — дальше можно уточнить утепление и климатическое исполнение.</span>
-      <div class="kit-cts">${CONTAINER_TYPES.map(c=>`<button type="button" class="kit-ctb" data-a="kitCont" data-i="${i}" data-ct="${c.id}"><b>${esc(c.name)}</b><small>${esc(c.size)}</small></button>`).join('')}</div></div>`,
+      <div class="kit-cts">${CONTAINER_TYPES.map(c=>`<button type="button" class="kit-ctb" data-a="kitCont" data-i="${i}" data-ct="${esc(c.id)}"><b>${esc(c.name)}</b><small>${esc(c.size)}</small></button>`).join('')}</div></div>`,
     main?'':`<div class="kit-todo"><b>${cont?'1':'2'}. ${esc(st.mainLabel)}</b><span class="muted">Из каталога — с описанием, характеристиками, фото и закупкой; или своё.</span>
       <div class="row"><button class="btn primary" type="button" data-a="kitMain" data-i="${i}">Выбрать в каталоге</button><button class="btn ghost" type="button" data-a="kitAdd" data-i="${i}" data-n="${esc(st.mainLabel)}" data-role="main">+ Своё</button></div></div>`].join('') : '';
   const others=parts.filter(p=>!p.role), noCost=parts.filter(p=>!p.cost).length;

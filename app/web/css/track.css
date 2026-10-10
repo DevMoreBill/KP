@@ -12,6 +12,7 @@ span.jst{cursor:default}
 .jfun{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 10px}
 .jf{display:inline-flex;gap:6px;align-items:baseline;padding:4px 10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:13px/1.4 inherit;cursor:pointer}
 .jf span{color:var(--muted);font-size:12px}
+.jf[class*="st-"] span{color:inherit}     /* сумма на цветной плашке статуса — её цветом (серый на светлой плашке в тёмной теме не читался) */
 .jf.on{outline:2px solid var(--sky);outline-offset:1px}
 .jf-c{margin-left:auto;font-size:13px;color:var(--muted)}
 .kt-dlg,.ml-dlg{max-width:min(620px,94vw)!important}

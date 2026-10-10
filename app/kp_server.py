@@ -263,6 +263,9 @@ class Server(ThreadingHTTPServer):
     daemon_threads = True
     # на Windows SO_REUSEADDR позволил бы двум процессам занять один порт; на Linux/macOS он нужен для перезапуска
     allow_reuse_address = os.name != 'nt'
+    # очередь входящих соединений: по умолчанию 5 — утром 20 браузеров по 6 соединений переполняли её, и часть запросов
+    # ждала повтора соединения 1–3 с; 128 — как у обычных веб-серверов
+    request_queue_size = 128
 
 
 class Server6(Server):

@@ -1,9 +1,9 @@
 /* --on-navy — текст на заливке navy, ok, danger, warn: белый в светлой теме, тёмный в тёмной (там заливки светлые) */
 /* Основа: цвета, шрифты, поля ввода, кнопки, сетки. */
 :root{
-  --navy:#0B45A0; --sky:#3DA0EE; --ink:#1F2B4D; --muted:#66718C; --paper:#F3F6FB; --card:#FFFFFF;
-  --line:#D9E6F3; --soft:#EAF4FD; --danger:#C23B22; --ok:#1E8E5A; --field:#FFFFFF; --panel:#0B2F6E; --panel-ink:#FFFFFF;
-  --warn:#D9822B; --warn-ink:#9A6B00; --warn-bg:#FFF4D6; --warn-line:#F0D58A; --on-navy:#FFFFFF;
+  --navy:#0B45A0; --sky:#3DA0EE; --ink:#1F2B4D; --muted:#5E6984; --paper:#F3F6FB; --card:#FFFFFF;
+  --line:#D9E6F3; --soft:#EAF4FD; --danger:#C23B22; --ok:#18794C; --field:#FFFFFF; --panel:#0B2F6E; --panel-ink:#FFFFFF;
+  --warn:#D9822B; --warn-ink:#8A5F00; --warn-bg:#FFF4D6; --warn-line:#F0D58A; --on-navy:#FFFFFF;
   box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
@@ -16,6 +16,7 @@ body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 "Onest",sys
 button,input,textarea,select{font:inherit;color:inherit}
 .chip.sm{padding:3px 10px;font-size:12.5px}
 .ok-t{color:var(--ok)}
+:where(a:not(.btn)){color:var(--navy)}     /* ссылки — цветом темы (в тёмной теме синяя ссылка браузера не видна) */
 .chip.on{border-color:var(--ok);color:var(--ok)}
 .cost{display:grid;grid-template-columns:230px 110px 1fr;gap:10px;align-items:end;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--soft)}
 .bad-t{color:var(--danger)}

@@ -13,9 +13,9 @@ const tyOpt = o => Array.isArray(o) ? [o[0]||'', o[1]||'', o[2]||''] : [o&&o.nam
 
 function openTypesEditor(id){
   const d=$('#dlg'); d.classList.add('wide','typesed');
-  if (!d.open) d.showModal();
   if (!d._tyBound){ d._tyBound=true; tyBind(d); }
   tyPick(id || TY.id || (TYPES[0]||{}).id);
+  if (!d.open) d.showModal();       // окно — после содержимого: фокус сразу внутри окна, а не на странице за ним
 }
 
 function tyPick(id){
