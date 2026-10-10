@@ -285,7 +285,7 @@ class AlertsCard {
       <p class="muted">Программа сама пришлёт письмо, если копия базы не сделалась или вторая папка не обновляется, на диске мало места, обновление не запустилось,
         задача Планировщика настроена не для сервера или в журнале сервера появились ошибки. Письмо — когда проблема появилась и раз в сутки, пока она не решена.</p>
       ${s.mailOn?'':'<p class="msg warn">Сначала настройте почтовый сервер выше — письма уходят через него.</p>'}
-      ${note?`<p class="msg${note.err?' err':''}" style="text-align:left">${esc(note.t)}</p>`:''}
+      ${note?`<p class="msg ${note.err?'err':'ok'}" style="text-align:left">${esc(note.t)}</p>`:''}
       <label class="f"><span>Кому (до 5 адресов через запятую)</span><input type="text" id="alTo" value="${esc(s.to)}" placeholder="admin@company.ru" autocomplete="off"></label>
       <p class="muted" style="margin:6px 0">${L?`Последнее письмо: ${esc(stTime(L.at))}${L.test?' (пробное)':''} — ${L.ok?'<span class="ok-t">отправлено</span>':`<span class="bad-t">не отправлено: ${esc(L.error||'')}</span>`}`:'Писем ещё не было.'}</p>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-al="save">Сохранить</button>
