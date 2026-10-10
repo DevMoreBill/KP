@@ -55,6 +55,14 @@ class Handler(BaseHTTPRequestHandler):
     # Ответы — только через send() / send_file() (всегда с Content-Length).
     protocol_version = 'HTTP/1.1'
     timeout = 120           # простаивающее соединение закрывается
+    # браузер закрыл соединение, не дождавшись ответа (ушёл со страницы, отменил запрос, пропала сеть), — не ошибка сервера;
+    # на Windows так же: WinError 64 «сетевое имя больше недоступно», 1236 «соединение прервано»
+    GONE = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError)
+    GONE_WIN = (64, 1236)
+
+    @classmethod
+    def gone(cls, e):
+        return isinstance(e, cls.GONE) or getattr(e, 'winerror', None) in cls.GONE_WIN
 
     def log_message(self, fmt, *args):  # у EXE без консоли нет stderr
         pass
@@ -244,12 +252,14 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
         except Exception as e:
-            # подробности — в журнал сервера (data/logs/kp.log, «Настройки → Система»); пользователю — без путей и внутренностей
-            ServerLog.failure('%s %s' % (self.command, urllib.parse.urlsplit(self.path).path[:300]), e)
+            # пользователю — без путей и внутренностей; подробности — в журнал сервера (data/logs/kp.log, «Настройки → Система»)
             try:
                 self.send(500, 'text/plain; charset=utf-8', 'Внутренняя ошибка сервера (%s). Подробности — в журнале сервера.' % type(e).__name__)
             except Exception:
-                pass
+                if self.gone(e):          # браузер уже закрыл соединение — ответ не нужен, и это не ошибка сервера
+                    self.close_connection = True
+                    return
+            ServerLog.failure('%s %s' % (self.command, urllib.parse.urlsplit(self.path).path[:300]), e)
 
     def route(self):
         """Маршруты API — контроллеры разделов в web_api.py (Router: первый подходящий по пути и методу)."""
@@ -272,12 +282,11 @@ class Server(ThreadingHTTPServer):
     # очередь входящих соединений: по умолчанию 5 — утром 20 браузеров по 6 соединений переполняли её, и часть запросов
     # ждала повтора соединения 1–3 с; 128 — как у обычных веб-серверов
     request_queue_size = 128
-    QUIET = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError)   # браузер закрыл соединение — не ошибка
-
     def handle_error(self, request, client_address):
-        """Ошибка вне обработчика запроса — в журнал сервера (по умолчанию socketserver печатал её в stderr, которого у EXE нет)."""
+        """Ошибка вне обработчика запроса — в журнал сервера (по умолчанию socketserver печатал её в stderr, которого у EXE нет);
+        браузер закрыл соединение — не ошибка (Handler.gone)."""
         e = sys.exc_info()[1]
-        if not isinstance(e, self.QUIET):
+        if not Handler.gone(e):
             ServerLog.failure('соединение %s' % (client_address[0] if client_address else '?'), e)
 
 

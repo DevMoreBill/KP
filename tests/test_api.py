@@ -7,6 +7,8 @@ import io
 import json
 import os
 import shutil
+import socket
+import struct
 import tempfile
 import time
 import unittest
@@ -367,6 +369,29 @@ class ApiTest(unittest.TestCase):
     def test_99_no_request_errors(self):
         """Ни один запрос за прогон не закончился внутренней ошибкой сервера (запись в журнале сервера)."""
         self.assertEqual([r['text'] for r in self.stand.request_errors()], [])
+
+
+@unittest.skipIf(os.name == 'nt', 'обрыв соединения (SO_LINGER) проверяется на Linux')
+class ClientGoneTest(unittest.TestCase):
+    """Браузер закрыл соединение, не дождавшись ответа (ушёл со страницы, отменил запрос), — не ошибка сервера: в журнале
+    её нет, поэтому нет и пункта «Ошибки сервера» в «Требует внимания» и письма администратору; сервер работает дальше."""
+    def test_client_gone_is_not_an_error(self):
+        sample = SampleData(items=10, clients=2, kps=1)
+        sample.items.append(dict(sample.items[0], id='tst-big', spec='Text. ' * 1500000))     # ~9 МБ — больше буферов соединения
+        stand = Stand(sample=sample).start()
+        self.addCleanup(stand.close)
+        for _ in range(3):
+            s = socket.socket()
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+            s.connect((Net.LOCAL, stand.port))
+            s.sendall(b'GET /api/catalog/tst-big HTTP/1.1\r\nHost: 127.0.0.1\r\nX-KP-User-Id: mgr-ivanova\r\n\r\n')
+            time.sleep(0.5)                                                     # сервер упёрся в заполненный буфер
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))   # закрыть со сбросом (RST)
+            s.close()
+        time.sleep(1)
+        self.assertTrue(stand.up())
+        self.assertEqual([r['text'] for r in stand.request_errors()], [])
+        self.assertEqual(stand.http.req('GET', '/api/catalog/tst-big', headers=Stand.as_manager(SampleData.MANAGERS[0]))[0], 200)
 
 
 if __name__ == '__main__':
