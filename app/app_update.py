@@ -479,8 +479,10 @@ class StartCheck:
         self.port, self.server, self.ready, self.error = port, server, ready, ''
 
     @staticmethod
-    def patched():
-        return bool(os.environ.get('KP_UPDATE_DIR'))
+    def armed():
+        """Работает обновление (патч), и EXE умеет вернуть прежнюю версию (launcher.py с 3.51). У прежних EXE ошибку
+        запуска вернуть некому — тогда без самопроверки и обновление запускается как раньше."""
+        return bool(os.environ.get('KP_UPDATE_DIR')) and os.environ.get('KP_UPDATE_FALLBACK') == '1'
 
     @classmethod
     def code_error(cls, e):

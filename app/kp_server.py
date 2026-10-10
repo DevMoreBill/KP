@@ -332,7 +332,7 @@ def main():
         fresh = FreshBase.check()
         sync_counter_with_files()
     except Exception as e:
-        if StartCheck.patched() and StartCheck.code_error(e):
+        if StartCheck.armed() and StartCheck.code_error(e):
             raise          # ошибка в коде обновления: launcher.py вернёт прежнюю версию и запустит её
         if 'malformed' in str(e) or 'not a database' in str(e):
             message_box('Файл базы данных повреждён:\n%s\n\n%s\n\n'
@@ -373,7 +373,7 @@ def main():
             webbrowser.open(url)
     # обновление (патч) сначала отвечает на свои главные адреса — тогда открывается браузер; не ответило — сервер
     # останавливается, и launcher.py возвращает прежнюю версию
-    check = StartCheck(port, httpd, ready) if StartCheck.patched() else None
+    check = StartCheck(port, httpd, ready) if StartCheck.armed() else None
     if check:
         check.start()
     else:
