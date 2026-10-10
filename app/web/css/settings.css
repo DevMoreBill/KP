@@ -366,3 +366,4 @@ dialog.st-confirm.rs-dlg{width:min(460px,calc(100vw - 32px))}
 .rs-bar i{display:block;height:100%;width:40%;background:var(--navy);border-radius:3px;animation:rsMove 1.2s ease-in-out infinite}
 @keyframes rsMove{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
 .btn.ghost:disabled{opacity:.45;cursor:default;text-decoration:none}
+.dt-g{margin:6px 0 10px}.dt-g .chips{margin:6px 0 0 18px}.dt-gh{border-color:var(--navy)}

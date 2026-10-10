@@ -95,15 +95,20 @@ class ImageStore:
                         idx.setdefault(d, os.path.relpath(os.path.join(dp, name), self.root).replace(os.sep, '/'))
         self.index = idx
 
-    def path(self, rel):
-        """Файл по адресу внутри data/img (без выхода за её пределы); None, если нет такого изображения."""
+    def target(self, rel):
+        """Полный путь изображения по адресу внутри data/img (без выхода за её пределы); None — недопустимый адрес."""
         parts = [p for p in re.split(r'[\\/]+', str(rel or '')) if p not in ('', '.', '..')]
         if not parts:
             return None
         f = os.path.abspath(os.path.join(self.root, *parts))
         if not os.path.normcase(f).startswith(os.path.normcase(self.root + os.sep)):
             return None
-        return f if os.path.isfile(f) and os.path.splitext(f)[1].lower() in EXTS else None
+        return f if os.path.splitext(f)[1].lower() in EXTS else None
+
+    def path(self, rel):
+        """Файл по адресу внутри data/img; None, если нет такого изображения."""
+        f = self.target(rel)
+        return f if f and os.path.isfile(f) else None
 
     def put(self, data, ext, folder, title):
         """Сохранить изображение (папка и название — латиницей); то же изображение повторно не записывается."""

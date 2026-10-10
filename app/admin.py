@@ -972,7 +972,13 @@ class AdminApi:
             n = sum(1 for p in st.pending_list('pending') if self.review(p['id'], 'approve', '')['ok'])
             return self.ok({'approved': n})
         if sub == 'export':
-            return self.export([s for s in (q.get('sections') or ','.join(SECTIONS)).split(',') if s in SECTIONS])
+            cats = [c for c in (q.get('cats') or '').split(',') if re.match(r'^[A-Za-z0-9_-]{1,64}$', c)] or None
+            return self.export([s for s in (q.get('sections') or ','.join(SECTIONS)).split(',') if s in SECTIONS],
+                               cats=cats, images=q.get('images') == '1')
+        if sub == 'export/cats' and m == 'GET':
+            return self.ok(self.export_cats())
+        if sub in ('import/file/preview', 'import/file') and m == 'POST':
+            return self.ok(self.import_file(self.h.body(), apply=(sub == 'import/file'), sections=q.get('sections')))
         if sub == 'export/sqlite':
             return self.export_sqlite()
         if sub in ('import/preview', 'import') and m == 'POST':
@@ -1240,10 +1246,22 @@ class AdminApi:
         return self.ok()
 
     # ---------- резервные копии ----------
-    def export(self, sections):
+    def bundle(self):
+        from data_bundle import DataBundle
+        return DataBundle(os.path.join(os.path.dirname(self.st.path), 'img'))
+
+    def export_cats(self):
+        """Категории каталога для выборочной выгрузки: [{cat, count}] (названия и группы — у клиента в справочнике типов)."""
+        return [{'cat': c or '', 'count': n} for c, n in self.st.all('SELECT cat, COUNT(*) FROM catalog GROUP BY cat ORDER BY cat')]
+
+    def export(self, sections, cats=None, images=False):
+        """Выбранные разделы JSON; cats — только эти категории каталога; images — архив .zip с изображениями из ссылок."""
         st, out = self.st, {}
         if 'catalog' in sections:
             out['catalog'] = json.loads(st.catalog_full())
+            if cats:
+                ids = set(r[0] for r in st.all('SELECT id FROM catalog WHERE cat IN (%s)' % ','.join('?' * len(cats)), tuple(cats)))
+                out['catalog'] = [x for x in out['catalog'] if x.get('id') in ids]
         if 'kp' in sections:
             out['kp'] = [dict(zip(('id', 'number', 'state', 'meta', 'docx', 'updated', 'track'), r))
                          for r in st.all('SELECT id, number, state, meta, docx, updated, track FROM kp')]
@@ -1255,10 +1273,19 @@ class AdminApi:
             out['audit'] = st.audit_query({}, 10 ** 7)['items']
         if 'settings' in sections:
             out['settings'] = {'types': st.kv_get('types'), 'settings': st.kv_get('settings')}
-        body = json.dumps({'format': 'kp-backup', 'version': 1, 'createdAt': _now(), 'sections': out}, ensure_ascii=False)
-        self.log('export_db', 'db', ','.join(sections), None, {'sections': sections, 'bytes': len(body.encode('utf-8'))})
-        fn = 'КП_резервная_копия_%s_%s.json' % ('+'.join(sections) if len(sections) < len(SECTIONS) else 'полная', datetime.now().strftime('%Y-%m-%d_%H%M'))
-        return self.h.send(200, 'application/json; charset=utf-8', body, self.h.attachment(fn))
+        meta = {'format': 'kp-backup', 'version': 1, 'createdAt': _now(), 'sections': out}
+        if cats:
+            meta['cats'] = cats
+        body = json.dumps(meta, ensure_ascii=False)
+        what = ('+'.join(sections) if len(sections) < len(SECTIONS) else 'полная') + ('_категорий-%d' % len(cats) if cats else '')
+        stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
+        info = {'sections': sections, 'cats': cats, 'items': len(out.get('catalog') or [])}
+        if images:
+            data, n, missing = self.bundle().pack(body)
+            self.log('export_db', 'db', ','.join(sections), None, dict(info, bytes=len(data), images=n, missing=missing))
+            return self.h.send(200, 'application/zip', data, self.h.attachment('КП_выгрузка_%s_%s.zip' % (what, stamp)))
+        self.log('export_db', 'db', ','.join(sections), None, dict(info, bytes=len(body.encode('utf-8'))))
+        return self.h.send(200, 'application/json; charset=utf-8', body, self.h.attachment('КП_резервная_копия_%s_%s.json' % (what, stamp)))
 
     def export_sqlite(self):
         tmp = os.path.join(os.path.dirname(self.st.path), 'backup', 'export-%s.sqlite3' % secrets.token_hex(4))
@@ -1347,6 +1374,25 @@ class AdminApi:
         if apply:
             self.log('import_db', 'db', ','.join(want), None, {'report': rep, 'createdAt': d.get('createdAt'), 'backup': backup})
         return {'report': rep, 'errors': errors, 'createdAt': d.get('createdAt'), 'applied': apply}
+
+    def import_file(self, data, apply, sections=None):
+        """Резервная копия файлом: .json или .zip с изображениями — предпросмотр или загрузка (изображения — только недостающие)."""
+        b = self.bundle()
+        d, z, imgs = b.read(data)
+        try:
+            res = self.import_(d, apply, sections)
+            res['images'] = b.plan(imgs) if imgs else None
+            if apply and imgs:
+                res['images']['written'] = b.write(z, imgs)
+                try:
+                    import web_api
+                    web_api.IMAGES.index = None     # новые файлы — в учёт одинаковых изображений
+                except Exception:
+                    pass
+            return res
+        finally:
+            if z:
+                z.close()
 
     def import_backup(self):
         return self.st.backup(os.path.join(os.path.dirname(self.st.path), 'backup', 'kp-%s-before-import.sqlite3' % datetime.now().strftime('%Y%m%d-%H%M%S')))

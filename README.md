@@ -410,6 +410,13 @@ e-mail, мобильный (последние 10 цифр) и добавочн�
 работать по адресу сервера отдела или загрузить файл базы («Обслуживание → Копии и база»), фото — папка `data\img` сервера.
 Из сборки исключены и ненужные модули Python и азиатские кодировки (`kp.spec`).
 
+**Выгрузка с изображениями** (`app/data_bundle.py`, `features/settings-data.js`): «Копии и база» — разделы базы в JSON,
+каталог целиком или выбранные группы/категории (`GET /api/admin/export?sections&cats&images=1`, список — `export/cats`).
+С изображениями — архив «КП_выгрузка_….zip»: `kp-backup.json` + `img/<путь>` (все `/img/…`, на которые есть ссылки, в т. ч. в КП).
+Загрузка .json или .zip — `POST import/file/preview` и `import/file?sections` (тело — сам файл): записи с теми же id заменяются,
+изображения — только недостающие, без путей наружу из `data/img` и только JPEG/PNG/WebP по содержимому. `DataBundle` (сервер),
+`DataTransfer` (интерфейс).
+
 **Обновления из «Настроек»** (`app/app_update.py`): `UpdatePackage` проверяет архив «KP-Obnovlenie-X.zip» (нет путей наружу, есть
 `update/version.json`, `update/app/kp_server.py`, `update/app/web/index.html`); `ReleaseSource` — последний выпуск GitHub
 (`/repos/{repo}/releases/latest`, токен — kv `integrations.githubToken`, при скачивании файла токен на хранилище не передаётся);
