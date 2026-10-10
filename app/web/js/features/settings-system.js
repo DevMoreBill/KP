@@ -68,6 +68,13 @@ class AdminSystem {
       <label class="row muted" style="gap:6px;margin-top:6px"><input type="checkbox" id="upAuto" style="width:auto"${s.auto?' checked':''}> Проверять новую версию раз в сутки (в «Требует внимания» появится напоминание)</label>
       <p class="muted">Репозиторий приватный — нужен токен: github.com → Settings → Developer settings → Fine-grained tokens → доступ к репозиторию, право «Contents: Read-only». Токен хранится только на компьютере-сервере.</p>
       <div class="row"><button class="btn primary" type="button" data-up="save">Сохранить</button>${s.hasToken?'<button class="btn ghost" type="button" data-up="deltok">Удалить токен</button>':''}</div></div>
+    <div class="st-card"><p class="sub">Ночные обновления</p>
+      <div class="grid g2"><label class="f"><span>Ставить сами</span><select id="upNight">${[['off','выключено'],['patch','только исправления (3.52.0 → 3.52.1)'],['all','все новые версии']].map(([k,l])=>`<option value="${k}"${s.nightly===k?' selected':''}>${l}</option>`).join('')}</select></label>
+        <label class="f"><span>Время</span><select id="upHour">${Array.from({length:24},(_,h)=>`<option value="${h}"${s.nightHour===h?' selected':''}>с ${h}:00 до ${(h+2)%24}:00</option>`).join('')}</select></label></div>
+      <p class="muted">В это время программа сама проверит новую версию на GitHub, скачает, поставит её и перезапустится (сотрудникам — пара секунд ожидания). Не ставит, если последние 15 минут кто-то сохранял данные (попробует через полчаса), и не повторяет версию, которая уже не запустилась. Если новая версия не запустится, программа сама вернётся к прежней. Об установке придёт письмо, если включены «Письма о проблемах» (вкладка «Почта»).</p>
+      ${s.nightSupported?'':'<p class="msg warn">Программа запущена не из EXE 3.51 и новее — ночные обновления не сработают (установите полный комплект).</p>'}
+      ${s.nightLast?`<p class="muted" style="margin:0 0 8px">Последняя попытка: ${esc(stTime(s.nightLast.at))} — <span class="${s.nightLast.error?'bad-t':''}">${esc(s.nightLast.result||'')}</span></p>`:''}
+      <button class="btn primary" type="button" data-up="night">Сохранить</button></div>
     ${hist?`<div class="st-card"><p class="sub">История установок</p><table class="pv-t st-tt"><tr><th>Когда</th><th>Версия</th><th>Откуда</th><th>Кто</th></tr>${hist}</table></div>`:''}`;
     const installed=async res=>{ if (await stConfirm(`Установлена версия ${res.version}`, `Файлов: ${res.files}. Копия базы сохранена. Чтобы новая версия заработала, программу нужно перезапустить — у всех сотрудников страница обновится сама.`, 'Перезапустить сейчас')) return this.restart('Устанавливается версия '+res.version);
       this.updates(m, `Версия ${res.version} установлена — перезапустите программу, когда будет удобно.`); };
@@ -86,6 +93,7 @@ class AdminSystem {
           const r=await ajson('update/rollback'); return this.restart('Возвращается версия '+(r.version||'')); }
         if (a==='remove'){ if (!await stConfirm('Убрать обновление?', 'Программа будет работать на версии, встроенной в EXE. Обновление останется в update.prev — его можно вернуть кнопкой «Вернуть предыдущее». После — перезапуск.', 'Убрать')) return;
           await ajson('update/remove'); return this.restart(); }
+        if (a==='night'){ await ajson('update', {nightly:m.querySelector('#upNight').value, nightHour:+m.querySelector('#upHour').value}); toast('Сохранено'); return this.updates(m); }
         if (a==='save' || a==='deltok'){ const body={repo:m.querySelector('#upRepo').value.trim(), auto:m.querySelector('#upAuto').checked};
           const t=m.querySelector('#upTok').value.trim(); if (t) body.token=t; if (a==='deltok') body.token='';
           await ajson('update', body); toast('Сохранено'); return this.updates(m); }
@@ -103,6 +111,16 @@ class AdminSystem {
     const fx=t.fixed||t.fixedBefore;
     return `<span class="ok-t">✓ задача Планировщика: без ограничения времени работы, от батареи и ИБП, обычный приоритет</span>${fx?` <small class="muted">· исправлена программой ${esc(stTime(fx))}</small>`:''}`;
   }
+  // журнал сервера (app/server_log.py, data/logs/kp.log): последние ошибки, скачать целиком
+  static async logCard(box){
+    let r; try{ r=await aapi('log'); }catch(e){ box.innerHTML=`<p class="sub">Журнал сервера</p><p class="muted">${esc(e.message||e)}</p>`; return; }
+    const L=r.errors||[];
+    box.innerHTML=`<div class="row"><p class="sub" style="margin:0">Журнал сервера</p><span class="sp"></span>
+        <a class="btn" href="/api/admin/log/download" download>Скачать журнал</a>${r.local?'<button class="btn ghost" type="button" data-fold="logs">Открыть папку</button>':''}</div>
+      <p class="muted" style="margin:6px 0">${r.day?`<span class="bad-t">Ошибок за сутки: ${r.day}</span>`:'<span class="ok-t">За сутки ошибок нет</span>'} · ${stSize(r.bytes||0)} · <code>${esc(r.dir||'')}</code></p>
+      ${L.length?`<div class="lg-list">${L.map(x=>`<details class="lg-e"><summary><span class="muted">${esc(stTime(x.at))}</span> ${esc(x.text)}</summary>${x.detail?`<pre>${esc(x.detail)}</pre>`:''}</details>`).join('')}</div>`
+        :'<p class="muted" style="margin:0">Ошибок в журнале нет.</p>'}`;
+  }
   static uptime(s){ const d=Math.floor(s/86400), h=Math.floor(s%86400/3600), mi=Math.floor(s%3600/60); return (d?`${d} дн. `:'')+(h?`${h} ч `:'')+`${mi} мин`; }
   static async system(m){
     const s=await aapi('system');
@@ -119,7 +137,9 @@ class AdminSystem {
         ${row('Готовые КП', path(s.docsDir, 'docs')+(s.docsShare?`<br><small class="muted">сотрудникам: ${esc(s.docsShare)}</small>`:''))}${row('Копии базы', path(s.dataDir+(s.dataDir.includes('\\')?'\\':'/')+'backup', 'backup'))}
         ${row('База данных', stSize(s.dbBytes))}${s.disk?row('Свободно на диске', `${stSize(s.disk.free)} из ${stSize(s.disk.total)}`):''}
         ${row('Файл настроек', `<code>${esc(s.settingsFile)}</code><br><small class="muted">режим, порт, папка данных — меняются в нём; затем «Перезапустить программу»</small>`)}</table>
-      ${s.local?'':'<p class="muted">Кнопки «Открыть» — только на самом компьютере-сервере.</p>'}</div>`;
+      ${s.local?'':'<p class="muted">Кнопки «Открыть» — только на самом компьютере-сервере.</p>'}</div>
+    <div class="st-card" id="sysLog"><p class="sub">Журнал сервера</p><p class="muted">Загружаю…</p></div>`;
+    this.logCard(m.querySelector('#sysLog'));
     m.onclick=async e=>{ if (e.target.closest('[data-sys=restart]')){ if (await stConfirm('Перезапустить программу?', 'Сотрудники подождут 10–30 секунд, несохранённые черновики останутся в браузере.', 'Перезапустить')) this.restart(); return; }
       const f=e.target.closest('[data-fold]'); if (f){ try{ await ajson('folder', {which:f.dataset.fold}); }catch(err){ toast(err.message); } } };
   }

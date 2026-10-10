@@ -110,9 +110,107 @@ def check_new_password(pw):
 
 
 # ---------------------------------------------------------------- сессии и попытки входа
-SESSIONS = {}
 FAILS = {}
-LOCK = threading.Lock()
+LOCK = threading.RLock()
+
+
+class AdminSessions:
+    """Сессии администраторов «Настроек»: в памяти и в базе (kv adminSessions — хеш токена, а не сам токен), поэтому
+    перезапуск программы (обновление, «Перезапустить») не выводит администратора из «Настроек». 15 минут бездействия —
+    сессия закрывается; время последнего действия записывается в базу не чаще раза в минуту. При загрузке из базы
+    сессии удалённых учётных записей не восстанавливаются."""
+    KV = 'adminSessions'
+    SAVE_EVERY = 60
+    FIELDS = ('csrf', 'last', 'ip', 'login', 'name')
+    items = None          # {хеш токена: {csrf, last, ip, login, name, saved}}
+
+    @staticmethod
+    def key(tok):
+        return hashlib.sha256(tok.encode('utf-8')).hexdigest() if tok else ''
+
+    @staticmethod
+    def _store():
+        from config import store
+        return store()
+
+    @classmethod
+    def _all(cls):
+        if cls.items is None:
+            st, now = cls._store(), time.time()
+            logins = {u['login'].lower() for u in accounts(st)}
+            raw = st.kv_get(cls.KV) or {}
+            cls.items = {k: dict(v, saved=v.get('last', 0)) for k, v in (raw.items() if isinstance(raw, dict) else [])
+                         if isinstance(v, dict) and now - float(v.get('last') or 0) <= IDLE_SECONDS
+                         and (not v.get('login') or v['login'].lower() in logins)}
+        return cls.items
+
+    @classmethod
+    def _save(cls):
+        cls._store().kv_set(cls.KV, {k: {f: v.get(f) for f in cls.FIELDS} for k, v in cls.items.items()})
+        for v in cls.items.values():
+            v['saved'] = v['last']
+
+    @classmethod
+    def get(cls, tok, touch=True):
+        """Действующая сессия по токену из cookie или None."""
+        if not tok:
+            return None
+        k = cls.key(tok)
+        with LOCK:
+            s = cls._all().get(k)
+            if not s:
+                return None
+            now = time.time()
+            if now - s['last'] > IDLE_SECONDS:
+                cls.items.pop(k, None)
+                cls._save()
+                return None
+            if touch:
+                s['last'] = now
+                if now - s.get('saved', 0) > cls.SAVE_EVERY:
+                    cls._save()
+            return s
+
+    @classmethod
+    def start(cls, h, user=None):
+        tok, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
+        with LOCK:
+            cls._all()[cls.key(tok)] = {'csrf': csrf, 'last': time.time(), 'ip': _ip(h), 'login': (user or {}).get('login', ''),
+                                        'name': (user or {}).get('name') or (user or {}).get('login') or 'Администратор'}
+            cls._save()
+        return tok, csrf
+
+    @classmethod
+    def drop(cls, tok):
+        with LOCK:
+            if cls._all().pop(cls.key(tok), None) is not None:
+                cls._save()
+
+    @classmethod
+    def drop_login(cls, login, keep=''):
+        """Закрыть сессии учётной записи (удалена, сменён пароль), кроме сессии с токеном keep."""
+        lo, kk = (login or '').lower(), cls.key(keep)
+        with LOCK:
+            gone = [k for k, s in cls._all().items() if s.get('login', '').lower() == lo and k != kk]
+            for k in gone:
+                cls.items.pop(k, None)
+            if gone:
+                cls._save()
+
+    @classmethod
+    def rename(cls, old, login, name):
+        with LOCK:
+            for s in cls._all().values():
+                if s.get('login', '').lower() == (old or '').lower():
+                    s['login'], s['name'] = login, name
+            cls._save()
+
+    @classmethod
+    def reset(cls, store):
+        """Учётные записи сброшены (data/admin-reset.txt) — все сессии закрыты."""
+        store.kv_set(cls.KV, {})
+        with LOCK:
+            cls.items = None
 
 
 def _cookie_token(h):
@@ -125,17 +223,7 @@ def _cookie_token(h):
 
 def session(h, touch=True):
     """Действующая сессия администратора или None (по cookie; 15 минут бездействия — сессия закрывается)."""
-    tok = _cookie_token(h)
-    with LOCK:
-        s = SESSIONS.get(tok)
-        if not s:
-            return None
-        if time.time() - s['last'] > IDLE_SECONDS:
-            SESSIONS.pop(tok, None)
-            return None
-        if touch:
-            s['last'] = time.time()
-        return s
+    return AdminSessions.get(_cookie_token(h), touch)
 
 
 def is_admin(h, need_csrf=True):
@@ -143,14 +231,6 @@ def is_admin(h, need_csrf=True):
     if not s:
         return False
     return not need_csrf or hmac.compare_digest(h.headers.get('X-CSRF-Token') or '', s['csrf'])
-
-
-def _start_session(h, user=None):
-    tok, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
-    with LOCK:
-        SESSIONS[tok] = {'csrf': csrf, 'last': time.time(), 'ip': _ip(h), 'login': (user or {}).get('login', ''),
-                         'name': (user or {}).get('name') or (user or {}).get('login') or 'Администратор'}
-    return tok, csrf
 
 
 def _locked(ip):
@@ -692,8 +772,7 @@ class AdminApi:
             log(h, st, 'login', 'admin', u['login'], admin=True)
             return resp
         if sub == 'logout' and m == 'POST':
-            with LOCK:
-                SESSIONS.pop(_cookie_token(h), None)
+            AdminSessions.drop(_cookie_token(h))
             log(h, st, 'logout', 'admin', admin=True)
             return h.send(200, 'application/json; charset=utf-8', '{"ok": true}',
                           {'Set-Cookie': 'kp_admin=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict'})
@@ -789,14 +868,14 @@ class AdminApi:
         return self.ok({'job': feeds.JOBS.get(fid) or {'state': 'run', 'kind': act}})
 
     def _login_ok(self, user=None):
-        tok, csrf = _start_session(self.h, user)
+        tok, csrf = AdminSessions.start(self.h, user)
         return self.h.send(200, 'application/json; charset=utf-8', json.dumps({'ok': True, 'csrf': csrf}),
                            {'Set-Cookie': 'kp_admin=%s; Path=/; HttpOnly; SameSite=Strict' % tok})
 
     def route(self, m, sub, q):
         st = self.st
         me = (session(self.h, touch=False) or {}).get('login', '')
-        if sub in ('system', 'attention', 'restart', 'folder') or sub == 'update' or sub.startswith('update/'):
+        if sub in ('system', 'attention', 'restart', 'folder', 'log', 'log/download', 'alerts', 'alerts/test') or sub == 'update' or sub.startswith('update/'):
             return self.system(m, sub, q, me)
         if sub == 'history' or sub.startswith('history/'):
             return self.history(m, sub, q)
@@ -1018,8 +1097,36 @@ class AdminApi:
             return self.ok(dict(SystemInfo(st, config).get(), local=self.h.is_local()))
         if sub == 'attention' and m == 'GET':
             return self.ok({'items': Attention(st, config).items()})
+        if sub == 'log' and m == 'GET':             # журнал сервера: последние ошибки (data/logs/kp.log)
+            from server_log import ServerLog
+            lg = ServerLog.current or ServerLog(os.path.join(config.DATA_DIR, 'logs'))
+            return self.ok({'errors': lg.errors(30), 'day': lg.count_since(24), 'bytes': lg.size(), 'files': len(lg.files()),
+                            'dir': lg.folder, 'local': self.h.is_local()})
+        if sub == 'log/download' and m == 'GET':
+            from server_log import ServerLog
+            lg = ServerLog.current or ServerLog(os.path.join(config.DATA_DIR, 'logs'))
+            return self.h.send(200, 'text/plain; charset=utf-8', lg.text().encode('utf-8'),
+                               self.h.attachment('kp-log_%s.txt' % datetime.now().strftime('%Y-%m-%d_%H%M')))
+        if sub.startswith('alerts'):              # письма администратору о проблемах (admin_alerts.py)
+            from admin_alerts import AdminAlerts
+            al = AdminAlerts(st, config)
+            try:
+                if sub == 'alerts' and m == 'GET':
+                    return self.ok(al.public())
+                if sub == 'alerts' and m == 'POST':
+                    before = al.public()
+                    res = al.save(self.data(), me)
+                    self.log('edit_settings', 'settings', 'alerts', {'on': before['on'], 'to': before['to']}, {'on': res['on'], 'to': res['to']})
+                    return self.ok(res)
+                if sub == 'alerts/test' and m == 'POST':
+                    return self.ok(al.test())
+            except (ValueError, RuntimeError) as e:
+                return self.err(400, str(e))
+            return self.err(404, 'not found')
         if sub == 'restart' and m == 'POST':
             self.log('restart', 'system', config.APP_TITLE)
+            from server_log import ServerLog
+            ServerLog.note('Перезапуск из «Настроек» (%s)' % (me or 'администратор'))
             self.ok({'ok': True, 'delay': Restarter.DELAY})
             Restarter(config.SERVER_MODE).restart(getattr(self.h.server, 'main_server', self.h.server))
             return None
@@ -1028,7 +1135,7 @@ class AdminApi:
                 return self.err(403, 'Папки открываются только на компьютере, где работает программа')
             from desktop import open_folder
             path = {'data': config.DATA_DIR, 'docs': config.DOCS_DIR, 'root': config.ROOT,
-                    'backup': os.path.join(config.DATA_DIR, 'backup')}.get(self.data().get('which'))
+                    'backup': os.path.join(config.DATA_DIR, 'backup'), 'logs': os.path.join(config.DATA_DIR, 'logs')}.get(self.data().get('which'))
             if not path or not os.path.isdir(path):
                 return self.err(404, 'Папки нет')
             open_folder(path)
@@ -1039,7 +1146,8 @@ class AdminApi:
             if sub == 'update' and m == 'POST':
                 d = self.data()
                 res = up.configure(d, me or 'admin')
-                self.log('edit_settings', 'settings', 'update', None, {k: ('задан' if k == 'token' and d[k] else d[k]) for k in d if k in ('repo', 'auto', 'token')})
+                self.log('edit_settings', 'settings', 'update', None, {k: ('задан' if k == 'token' and d[k] else d[k]) for k in d
+                                                                       if k in ('repo', 'auto', 'token', 'nightly', 'nightHour')})
                 return self.ok(res)
             if sub == 'update/check' and m == 'POST':
                 return self.ok(up.check())
@@ -1159,16 +1267,13 @@ class AdminApi:
             u['login'], u['name'] = new_login, (d.get('name') or '').strip()[:80] or new_login
             save_accounts(st, users)
             self.log('edit_admin', 'admin', u['login'], before, {'login': u['login'], 'name': u['name']})
-            if login.lower() == me.lower():
-                with LOCK:
-                    for s in SESSIONS.values():
-                        if s.get('login', '').lower() == me.lower():
-                            s['login'], s['name'] = u['login'], u['name']
+            AdminSessions.rename(login, u['login'], u['name'])
             return {'ok': True}
         if act == 'password':
             check_new_password(d.get('password') or '')
             u['pw'] = hash_password(d['password'])
             save_accounts(st, users)
+            AdminSessions.drop_login(u['login'], keep=_cookie_token(self.h))     # сменён пароль — другие входы закрыты
             self.log('set_password', 'admin', u['login'])
             return {'ok': True}
         if act == 'delete':
@@ -1178,9 +1283,7 @@ class AdminApi:
                 raise ValueError('Нельзя удалить свою учётную запись — войдите под другим администратором')
             users.remove(u)
             save_accounts(st, users)
-            with LOCK:
-                for k in [k for k, s in SESSIONS.items() if s.get('login', '').lower() == u['login'].lower()]:
-                    SESSIONS.pop(k, None)
+            AdminSessions.drop_login(u['login'])
             self.log('delete_admin', 'admin', u['login'], {'login': u['login'], 'name': u.get('name', '')}, None)
             return {'ok': True}
         raise ValueError('Неизвестное действие')
@@ -1536,6 +1639,7 @@ def startup(store, data_dir, log_print=print):
     reset = os.path.join(data_dir, 'admin-reset.txt')
     if os.path.isfile(reset):
         store.write("DELETE FROM kv WHERE key IN ('admin', 'admins')")
+        AdminSessions.reset(store)
         os.remove(reset)
         store.audit_add({'action': 'set_password', 'entityType': 'admin', 'entityId': 'reset', 'userName': 'Компьютер-сервер',
                          'userRole': 'admin', 'after': {'reset': True}})

@@ -114,7 +114,8 @@ class ServerTask:
         try:
             self.check(started)
         except Exception as e:
-            print('Проверка задачи Планировщика не выполнена:', e)
+            from server_log import ServerLog
+            ServerLog.failure('проверка задачи Планировщика', e)
 
     def status(self):
         """Для «Системы» и «Требует внимания»: запись проверки и что осталось исправить."""

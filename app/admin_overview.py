@@ -58,7 +58,8 @@ class SystemInfo:
 
 
 class Attention:
-    """Пункты «Требует внимания»: {level: bad | warn | info, text, tab}."""
+    """Пункты «Требует внимания»: {level: bad | warn | info, text, tab}; у проблем сервера — постоянный key и alert:
+    о них администратору приходит письмо (admin_alerts.AdminAlerts)."""
     LOW_DISK = 2 * 1024 ** 3
     BACKUP_DAYS = 2
 
@@ -67,7 +68,7 @@ class Attention:
 
     def items(self):
         out = []
-        for check in (self._catalog, self._backup, self._mirror, self._update, self._task, self._moderation, self._mail, self._ai, self._disk, self._login, self._trash):
+        for check in (self._catalog, self._backup, self._mirror, self._update, self._task, self._errors, self._moderation, self._mail, self._ai, self._disk, self._login, self._trash):
             try:
                 out.extend(check())
             except Exception:        # одна проверка не должна ломать обзор
@@ -86,9 +87,9 @@ class Attention:
         if not b.get('at'):
             return [{'level': 'warn', 'text': 'Автоматической копии базы ещё не было', 'tab': 'backup'}]
         if not b.get('ok'):
-            return [{'level': 'bad', 'text': 'Последняя копия базы с ошибкой: %s' % (b.get('error') or '')[:120], 'tab': 'backup'}]
+            return [{'level': 'bad', 'text': 'Последняя копия базы с ошибкой: %s' % (b.get('error') or '')[:120], 'tab': 'backup', 'key': 'backup', 'alert': True}]
         if datetime.fromisoformat(b['at'][:19]) < datetime.now() - timedelta(days=self.BACKUP_DAYS):
-            return [{'level': 'warn', 'text': 'Копия базы не обновлялась с %s' % b['at'][:10], 'tab': 'backup'}]
+            return [{'level': 'warn', 'text': 'Копия базы не обновлялась с %s' % b['at'][:10], 'tab': 'backup', 'key': 'backup', 'alert': True}]
         return []
 
     def _mirror(self):
@@ -99,7 +100,8 @@ class Attention:
             return [{'level': 'info', 'text': 'Копии базы хранятся только на этом диске — укажите вторую папку (сетевой диск, флешку, облако)', 'tab': 'backup'}]
         if mb.stale():
             why = s.get('error') or ('последняя — %s' % s['at'][:10] if s.get('at') else 'ещё не было')
-            return [{'level': 'bad' if s.get('error') else 'warn', 'text': 'Копия во вторую папку не обновляется: %s' % why[:160], 'tab': 'backup'}]
+            return [{'level': 'bad' if s.get('error') else 'warn', 'text': 'Копия во вторую папку не обновляется: %s' % why[:160], 'tab': 'backup',
+                     'key': 'mirror', 'alert': True}]
         return []
 
     def _update(self):
@@ -107,11 +109,16 @@ class Attention:
         s = Updater(self.store, self.cfg.ROOT, self.cfg.DATA_DIR).status()
         f = s.get('failed')
         out = [{'level': 'bad', 'text': 'Обновление %s не запустилось — программа сама вернулась к версии %s. Причина: %s'
-                % (f['version'], s['current'], f.get('reason', '')[:160]), 'tab': 'updates'}] if f else []
+                % (f['version'], s['current'], f.get('reason', '')[:160]), 'tab': 'updates', 'key': 'update-failed', 'alert': True}] if f else []
         if s['available'] and not (f and f['version'] == s['last']['version']):     # ту же неудачную версию не предлагать
             out.append({'level': 'warn', 'text': 'Доступна новая версия %s (работает %s)' % (s['last']['version'], s['current']), 'tab': 'updates'})
         elif s['pending']:
             out.append({'level': 'warn', 'text': 'Обновление %s установлено, но программа ещё не перезапущена' % s['installed'], 'tab': 'updates'})
+        night = s.get('nightLast') or {}
+        if s.get('nightly', 'off') != 'off' and not s.get('nightSupported'):
+            out.append({'level': 'info', 'text': 'Ночные обновления включены, но работают только у программы из EXE 3.51 и новее', 'tab': 'updates'})
+        elif s.get('nightly', 'off') != 'off' and night.get('error'):
+            out.append({'level': 'warn', 'text': 'Ночное обновление %s: %s' % (night.get('night', ''), night.get('result', '')[:160]), 'tab': 'updates'})
         return out
 
     def _task(self):
@@ -120,7 +127,14 @@ class Attention:
             return []
         why = ' (исправить не удалось: %s)' % t['error'][:120] if t.get('error') else ''
         return [{'level': 'bad', 'text': 'Задача Планировщика сервера отдела %s%s — запустите «server-setup\\1. Установить сервер отдела.bat» '
-                 'от имени администратора' % (', '.join(t['problems']), why), 'tab': 'system'}]
+                 'от имени администратора' % (', '.join(t['problems']), why), 'tab': 'system', 'key': 'task', 'alert': True}]
+
+    def _errors(self):
+        from server_log import ServerLog
+        lg = ServerLog.current or ServerLog(os.path.join(self.cfg.DATA_DIR, 'logs'))
+        n = lg.count_since(24)
+        return [{'level': 'warn', 'text': 'Ошибки сервера за сутки: %d — подробности в «Системе» (журнал сервера)' % n, 'tab': 'system',
+                 'key': 'errors', 'alert': True}] if n else []
 
     def _moderation(self):
         n = len(self.store.pending_list('pending'))
@@ -129,8 +143,11 @@ class Attention:
     def _mail(self):
         from features import FeatureAccess
         from kp_track import Mailer
-        if FeatureAccess(self.store).is_on('mail') and not Mailer(self.store).on():
-            return [{'level': 'info', 'text': 'Отправка КП по почте включена, но почта не настроена', 'tab': 'mail'}]
+        if not Mailer(self.store).on():
+            if (self.store.kv_get('alerts') or {}).get('on'):
+                return [{'level': 'warn', 'text': 'Письма администратору о проблемах включены, но почта не настроена', 'tab': 'mail'}]
+            if FeatureAccess(self.store).is_on('mail'):
+                return [{'level': 'info', 'text': 'Отправка КП по почте включена, но почта не настроена', 'tab': 'mail'}]
         return []
 
     def _ai(self):
@@ -143,7 +160,7 @@ class Attention:
     def _disk(self):
         d = SystemInfo._free(self.cfg.DATA_DIR)
         if d and d['free'] < self.LOW_DISK:
-            return [{'level': 'bad', 'text': 'На диске с базой осталось %.1f ГБ' % (d['free'] / 1024 ** 3), 'tab': 'system'}]
+            return [{'level': 'bad', 'text': 'На диске с базой осталось %.1f ГБ' % (d['free'] / 1024 ** 3), 'tab': 'system', 'key': 'disk', 'alert': True}]
         return []
 
     def _login(self):

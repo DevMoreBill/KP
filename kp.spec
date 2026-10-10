@@ -54,7 +54,7 @@ a = Analysis(
     ],
     hiddenimports=['kp_server', 'web_api', 'version', 'geo', 'feeds', 'feed_files', 'imgfetch', 'auth_users', 'ai_llm', 'ai_profile', 'app_update', 'admin_overview', 'data_bundle', 'settings_history', 'backup_mirror', 'connections', 'catalog_sync', 'user_prefs', 'platform', 'pdf_text', 'defaults', 'lists', 'kp_track', 'features', 'smtplib', 'email.message', 'email.utils', 'importlib.abc', 'importlib.util', 'ipaddress', 'csv', 'zipfile', 'calendar', 'decimal',
                    'statistics', 'uuid', 'base64', 'html', 'html.parser', 'http.client', 'email', 'shutil', 'tempfile', 'subprocess', 'ctypes',
-                   'config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'workcal', 'imgfetch', 'desktop', 'pdf_convert', 'catalog_migrate', 'admin', 'images', 'maintenance', 'logistics_api', 'server_task',
+                   'config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'workcal', 'imgfetch', 'desktop', 'pdf_convert', 'catalog_migrate', 'admin', 'images', 'maintenance', 'logistics_api', 'server_task', 'server_log', 'admin_alerts',
                    'sqlite3', '_sqlite3', 'gzip'] + STDLIB,
     # sqlite3 НЕ исключать: на нём работает база данных программы
     excludes=['tkinter', 'unittest', 'pydoc', 'pydoc_data', 'lib2to3', 'multiprocessing', 'xmlrpc', 'curses', 'test'],

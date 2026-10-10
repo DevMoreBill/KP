@@ -360,6 +360,10 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .up-new{display:grid;gap:8px}
 .up-new p{margin:0}
 .up-fail{border-color:var(--danger);box-shadow:inset 4px 0 0 var(--danger)}
+.lg-list{display:grid;margin-top:4px}
+.lg-e{border-top:1px solid var(--line);padding:6px 0}
+.lg-e summary{cursor:pointer;word-break:break-word}
+.lg-e pre{white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,Consolas,monospace;max-height:260px;overflow:auto;margin:6px 0 0;background:var(--soft);padding:8px 10px;border-radius:8px}
 .up-fail p{margin:0 0 8px}
 .up-fail code{white-space:pre-wrap;word-break:break-word}
 .up-notes pre{white-space:pre-wrap;font:13px/1.5 inherit;margin:6px 0 0;max-height:260px;overflow:auto;background:var(--soft);padding:10px 12px;border-radius:8px}
