@@ -2,9 +2,10 @@
 """Копии базы во второе место: сетевой диск, флешка, папка облака (Яндекс Диск, OneDrive) — на случай,
 если откажет диск компьютера с программой (тогда пропадут и база, и копии рядом с ней в data/backup).
 
-Каждый день после обычной копии (maintenance.daily_backup) файл kp-ГГГГ-ММ-ДД.sqlite3 копируется во вторую папку
-и проверяется; там хранится столько последних копий, сколько задано. По желанию туда же досылаются изображения
-каталога (только новые и изменённые файлы). Настройка — kv settings.backup2, состояние — kv maint.backup2.
+Каждый день после обычной копии (maintenance.DbCopy.daily) архив kp-ГГГГ-ММ-ДД.zip копируется во вторую папку
+и проверяется (контрольные суммы архива; прежние копии без сжатия .sqlite3 — встроенной проверкой SQLite); там хранится
+столько последних копий, сколько задано. По желанию туда же досылаются изображения каталога (только новые и изменённые
+файлы). Настройка — kv settings.backup2, состояние — kv maint.backup2.
 """
 import os
 import shutil
@@ -13,6 +14,7 @@ import uuid
 from datetime import date, datetime
 
 import maintenance
+from storage import DbZip
 
 
 class MirrorBackup:
@@ -98,14 +100,7 @@ class MirrorBackup:
     # ---------- копирование ----------
     @staticmethod
     def _copies(path):
-        out = []
-        if path and os.path.isdir(path):
-            for name in os.listdir(path):
-                m = maintenance.AUTO_RX.match(name)
-                if m:
-                    f = os.path.join(path, name)
-                    out.append({'date': m.group(1), 'file': f, 'bytes': os.path.getsize(f)})
-        return sorted(out, key=lambda x: x['date'], reverse=True)
+        return maintenance.DbCopy.listing(path)
 
     def run(self, force=False):
         """Копия за сегодня во вторую папку (если включено). → состояние или None (выключено)."""
@@ -124,32 +119,66 @@ class MirrorBackup:
         rec = {'at': datetime.now().isoformat(timespec='seconds'), 'path': c['path']}
         try:
             self.check(c['path'])
-            src = os.path.join(maintenance.auto_dir(self.data_dir), 'kp-%s.sqlite3' % today)
-            if not os.path.isfile(src) or force:
-                maintenance.daily_backup(self.store, self.data_dir, force=force)
-            if not os.path.isfile(src):
+            auto = maintenance.auto_dir(self.data_dir)
+            src = self._today(auto, today)
+            if not src or force:
+                maintenance.DbCopy.daily(self.store, self.data_dir, force=force)
+                src = self._today(auto, today)
+            if not src:
                 raise RuntimeError('нет сегодняшней копии базы в data\\backup\\auto')
             dst = os.path.join(c['path'], os.path.basename(src))
             tmp = dst + '.part'
-            shutil.copyfile(src, tmp)
-            if os.path.getsize(tmp) != os.path.getsize(src):
-                raise RuntimeError('копия записалась не полностью')
-            res = maintenance.integrity(tmp, quick=True)
-            if res != 'ok':
-                raise RuntimeError('копия не прошла проверку: ' + res)
-            os.replace(tmp, dst)
+            try:
+                shutil.copyfile(src, tmp)
+                if os.path.getsize(tmp) != os.path.getsize(src):
+                    raise RuntimeError('копия записалась не полностью')
+                self._verify(tmp, DbZip.is_zip(src))
+                os.replace(tmp, dst)
+            finally:
+                if os.path.exists(tmp):          # не записалась или не прошла проверку — недописанный файл не оставлять
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+            for x in self._copies(c['path']):        # та же дата в прежнем виде (без сжатия) — заменена архивом
+                if x['date'] == today:
+                    for f in x['files']:
+                        if f != dst and os.path.isfile(f):
+                            os.remove(f)
             rec.update(ok=True, file=dst, bytes=os.path.getsize(dst))
             for old in self._copies(c['path'])[c['keep']:]:
-                try:
-                    os.remove(old['file'])
-                except OSError:
-                    pass
+                for f in old['files']:
+                    try:
+                        os.remove(f)
+                    except OSError:
+                        pass
             if c['images']:
                 rec['images'] = self._images(os.path.join(c['path'], 'img'))
         except Exception as e:
             rec.update(ok=False, error=str(e)[:300])
         maintenance._save(self.store, backup2=rec)
         return rec
+
+    @staticmethod
+    def _today(auto, today):
+        """Сегодняшняя копия в data/backup/auto: архив ZIP или прежняя копия без сжатия; нет — ''."""
+        for x in maintenance.DbCopy.listing(auto):
+            if x['date'] == today:
+                return x['file']
+        return ''
+
+    @staticmethod
+    def _verify(path, is_zip):
+        """Записанная во вторую папку копия читается: архив — по контрольным суммам, файл базы — проверкой SQLite."""
+        if is_zip:
+            try:
+                DbZip.verify(path)
+            except ValueError as e:
+                raise RuntimeError('копия не прошла проверку: %s' % e)
+            return
+        res = maintenance.integrity(path, quick=True)
+        if res != 'ok':
+            raise RuntimeError('копия не прошла проверку: ' + res)
 
     def _images(self, dst_root):
         """Изображения каталога: только новые и изменённые (по размеру) файлы."""

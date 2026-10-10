@@ -16,8 +16,8 @@ class DataTransfer {
       <p class="muted">«Настройки программы» — категории, умолчания, списки, функции, тексты интерфейса, тарифы доставки, фиды, почта; пароли, ключи API и учётные записи не выгружаются.</p>
       <div id="dtCatBox" style="margin-top:10px"></div>
       <label class="chk-chip" style="margin-top:10px"><input type="checkbox" id="dtImg" checked> С изображениями (.zip)</label>
-      <div class="row" style="margin-top:10px"><button class="btn primary" type="button" data-dx="json">Скачать</button><button class="btn" type="button" data-dx="sqlite">Полная копия базы (.sqlite3)</button></div>
-      <p class="muted" id="dtExpSt">.sqlite3 — файл базы целиком (без изображений), загружается ниже: «Файл базы целиком».</p></div>`;
+      <div class="row" style="margin-top:10px"><button class="btn primary" type="button" data-dx="json">Скачать</button><button class="btn" type="button" data-dx="sqlite">Полная копия базы (.zip)</button></div>
+      <p class="muted" id="dtExpSt">.zip — файл базы целиком в архиве (kp.sqlite3 внутри, без изображений), загружается ниже как есть: «Файл базы целиком».</p></div>`;
   }
 
   static async mount(m, done){

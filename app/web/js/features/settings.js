@@ -179,35 +179,43 @@ async function stStats(m){
     const q=e.target.closest('[data-q]'); if (q){ setDlg().close(); if (q.dataset.q==='report') KpReport.open({}); else openJournal(); } };
 }
 
-// ---------- обслуживание базы: копии, сжатие, срок журнала, изображения без ссылок
-async function stMaint(box, r){
-  if (!box) return;
-  try{ r=r||await aapi('maint'); }catch(e){ box.innerHTML='<p class="sub">Обслуживание базы</p><p class="muted">Недоступно: '+esc(e.message)+'</p>'; return; }
-  const b=r.backup||{}, v=r.vacuum, img=r.images, au=r.audit;
-  const bline = !b.at ? '<span class="bad-t">копий ещё не было</span>'
-    : b.ok ? `<span class="ok-t">${esc(stTime(b.at))} — исправна</span>` : `<span class="bad-t">${esc(stTime(b.at))} — ошибка: ${esc(b.error||'')}</span>`;
-  box.innerHTML=`<div class="sub st-mh">Автоматические копии и обслуживание базы ${tip('<p>Каждый день при первом запуске (и раз в сутки, пока работает сервер отдела) программа делает копию базы и проверяет её встроенной проверкой SQLite. Хранятся копии за 7 последних дней, по одной на 4 последние недели и на 12 последних месяцев.</p><p>Раз в месяц база сжимается и проверяется. Журнал действий старше заданного срока переносится в архив (папка backup/audit-archive рядом с базой).</p>')}</div>
-    <table class="pv-t">
-      <tr><td>Последняя копия</td><td>${bline}</td></tr>
-      <tr><td>Копий в папке</td><td>${r.copies}${r.copies?` · ${stSize(r.copiesBytes)} · с ${esc(KPGen.ruDate(r.oldest))}`:''}<br><small class="muted">${esc(r.dir)}</small></td></tr>
-      <tr><td>Сжатие и проверка</td><td>${v?`${esc(stTime(v.at))} · ${stSize(v.before)} → ${stSize(v.after)} · ${v.check==='ok'?'<span class="ok-t">без ошибок</span>':'<span class="bad-t">'+esc(v.check)+'</span>'}`:'ещё не выполнялись'}</td></tr>
-      <tr><td>Журнал действий</td><td>${stNum(r.auditRows)} записей${r.auditOldest?' с '+esc(KPGen.ruDate(r.auditOldest)):''} · хранить <select id="mAudY" class="st-inl" aria-label="Срок хранения журнала">${[1,2,3,5,10].map(y=>`<option value="${y}"${y===r.auditYears?' selected':''}>${y} ${y===1?'год':y<5?'года':'лет'}</option>`).join('')}</select>${au&&au.archived?` · в архиве ${stNum(au.archived)}`:''}</td></tr>
-      <tr><td>Изображения без ссылок</td><td id="mImg">${img?`удалено ${img.deleted} (${stSize(img.bytes)}) — ${esc(stTime(img.at))} · `:''}<button class="btn ghost" type="button" data-mt="imgscan">Найти</button></td></tr>
-    </table>
-    <div class="row" style="margin-top:8px"><button class="btn" type="button" data-mt="backup">Создать копию сейчас</button><button class="btn" type="button" data-mt="run">Сжать и проверить базу</button></div>`;
-  const busy=(btn,t)=>{ if (btn){ btn.disabled=true; btn.textContent=t; } };
-  box.onclick=async e=>{ const t=e.target.closest('[data-mt]'); if (!t) return; const a=t.dataset.mt;
-    try{
-      if (a==='backup'){ busy(t,'Копирую…'); const x=await ajson('maint/backup'); toast(x.backup&&x.backup.ok?'Копия создана и проверена':'Копия не создана'); return stMaint(box, x); }
-      if (a==='run'){ busy(t,'Сжимаю…'); const x=await ajson('maint/run'); toast('База сжата и проверена'); return stMaint(box, x); }
-      if (a==='imgscan'){ busy(t,'Ищу…'); const x=await aapi('maint/images');
-        $('#mImg').innerHTML = x.count ? `${x.count} файлов · ${stSize(x.bytes)} <button class="btn ghost" type="button" data-mt="imgdel" data-n="${x.count}">Удалить</button>${tip('<p>Файлы в папке img, на которые нет ссылок ни в каталоге, ни в КП, ни в истории версий и корзине (и которым больше месяца), а также всё из папки img/unused.</p><p>'+x.sample.map(esc).join('<br>')+(x.count>x.sample.length?'<br>…':'')+'</p>')}` : 'лишних нет'; return; }
-      if (a==='imgdel'){ if (!confirm(`Удалить ${t.dataset.n} изображений без ссылок? Восстановить их можно только из резервной копии папки img.`)) return; busy(t,'Удаляю…');
-        const x=await ajson('maint/images'); toast(`Удалено: ${x.deleted} (${stSize(x.bytes)})`); return stMaint(box); }
-    }catch(err){ toast('Не выполнено: '+(err.message||err)); stMaint(box); } };
-  const sel=$('#mAudY'); if (sel) sel.onchange=async()=>{ const y=+sel.value;
-    if (y<r.auditYears && !confirm(`Записи журнала действий старше ${sel.selectedOptions[0].textContent} будут перенесены в архив (папка backup/audit-archive) и пропадут из поиска в «Журнале действий». Продолжить?`)){ sel.value=r.auditYears; return; }
-    try{ const x=await ajson('maint/audit',{years:y}); toast(x.archivedNow?`В архив перенесено записей: ${x.archivedNow}`:'Срок хранения журнала сохранён'); stMaint(box, x); }catch(err){ toast('Не сохранено: '+err.message); } };
+// ---------- обслуживание базы: копии (архивы ZIP), сжатие, срок журнала, изображения без ссылок
+class DbMaint {
+  // строка о последней копии: время, проверка, размер архива рядом с размером базы
+  static last(b){
+    if (!b.at) return '<span class="bad-t">копий ещё не было</span>';
+    if (!b.ok) return `<span class="bad-t">${esc(stTime(b.at))} — ошибка: ${esc(b.error||'')}</span>`;
+    return `<span class="ok-t">${esc(stTime(b.at))} — исправна</span>${b.bytes?` · ${b.zip?'архив ZIP ':''}${stSize(b.bytes)}${b.zip&&b.db?` (база ${stSize(b.db)})`:''}`:''}`;
+  }
+
+  static async render(box, r){
+    if (!box) return;
+    try{ r=r||await aapi('maint'); }catch(e){ box.innerHTML='<p class="sub">Обслуживание базы</p><p class="muted">Недоступно: '+esc(e.message)+'</p>'; return; }
+    const v=r.vacuum, img=r.images, au=r.audit, oth=r.others||{}, cz=r.compressed;
+    box.innerHTML=`<div class="sub st-mh">Автоматические копии и обслуживание базы ${tip('<p>Каждый день при первом запуске (и раз в сутки, пока работает сервер отдела) программа делает копию базы, проверяет её встроенной проверкой SQLite и сжимает в архив ZIP (в 15–20 раз меньше файла базы; файл kp.sqlite3 — внутри). Восстановить — «Файл базы целиком» ниже: он принимает и архив. Хранятся копии за 7 последних дней, по одной на 4 последние недели и на 12 последних месяцев.</p><p>Раз в месяц база сжимается и проверяется. Журнал действий старше заданного срока переносится в архив (папка backup/audit-archive рядом с базой).</p>')}</div>
+      <table class="pv-t">
+        <tr><td>Последняя копия</td><td>${DbMaint.last(r.backup||{})}</td></tr>
+        <tr><td>Копий в папке</td><td>${r.copies}${r.copies?` · ${stSize(r.copiesBytes)} · с ${esc(KPGen.ruDate(r.oldest))}`:''}<br><small class="muted">${esc(r.dir)}</small></td></tr>
+        <tr><td>Копии перед изменениями</td><td>${oth.count?`${oth.count} · ${stSize(oth.bytes)}`:'нет'} <small class="muted">— перед обновлением программы, загрузкой базы, сборкой каталога</small>${cz?`<br><small class="ok-t">прежние копии без сжатия перепакованы в ZIP: ${cz.files} · освобождено ${stSize(cz.saved)}</small>`:''}</td></tr>
+        <tr><td>Сжатие и проверка</td><td>${v?`${esc(stTime(v.at))} · ${stSize(v.before)} → ${stSize(v.after)} · ${v.check==='ok'?'<span class="ok-t">без ошибок</span>':'<span class="bad-t">'+esc(v.check)+'</span>'}`:'ещё не выполнялись'}</td></tr>
+        <tr><td>Журнал действий</td><td>${stNum(r.auditRows)} записей${r.auditOldest?' с '+esc(KPGen.ruDate(r.auditOldest)):''} · хранить <select id="mAudY" class="st-inl" aria-label="Срок хранения журнала">${[1,2,3,5,10].map(y=>`<option value="${y}"${y===r.auditYears?' selected':''}>${y} ${y===1?'год':y<5?'года':'лет'}</option>`).join('')}</select>${au&&au.archived?` · в архиве ${stNum(au.archived)}`:''}</td></tr>
+        <tr><td>Изображения без ссылок</td><td id="mImg">${img?`удалено ${img.deleted} (${stSize(img.bytes)}) — ${esc(stTime(img.at))} · `:''}<button class="btn ghost" type="button" data-mt="imgscan">Найти</button></td></tr>
+      </table>
+      <div class="row" style="margin-top:8px"><button class="btn" type="button" data-mt="backup">Создать копию сейчас</button><button class="btn" type="button" data-mt="run">Сжать и проверить базу</button></div>`;
+    const busy=(btn,t)=>{ if (btn){ btn.disabled=true; btn.textContent=t; } };
+    box.onclick=async e=>{ const t=e.target.closest('[data-mt]'); if (!t) return; const a=t.dataset.mt;
+      try{
+        if (a==='backup'){ busy(t,'Копирую…'); const x=await ajson('maint/backup'); toast(x.backup&&x.backup.ok?'Копия создана и проверена':'Копия не создана'); return DbMaint.render(box, x); }
+        if (a==='run'){ busy(t,'Сжимаю…'); const x=await ajson('maint/run'); toast('База сжата и проверена'); return DbMaint.render(box, x); }
+        if (a==='imgscan'){ busy(t,'Ищу…'); const x=await aapi('maint/images');
+          $('#mImg').innerHTML = x.count ? `${x.count} файлов · ${stSize(x.bytes)} <button class="btn ghost" type="button" data-mt="imgdel" data-n="${x.count}">Удалить</button>${tip('<p>Файлы в папке img, на которые нет ссылок ни в каталоге, ни в КП, ни в истории версий и корзине (и которым больше месяца), а также всё из папки img/unused.</p><p>'+x.sample.map(esc).join('<br>')+(x.count>x.sample.length?'<br>…':'')+'</p>')}` : 'лишних нет'; return; }
+        if (a==='imgdel'){ if (!confirm(`Удалить ${t.dataset.n} изображений без ссылок? Восстановить их можно только из резервной копии папки img.`)) return; busy(t,'Удаляю…');
+          const x=await ajson('maint/images'); toast(`Удалено: ${x.deleted} (${stSize(x.bytes)})`); return DbMaint.render(box); }
+      }catch(err){ toast('Не выполнено: '+(err.message||err)); DbMaint.render(box); } };
+    const sel=$('#mAudY'); if (sel) sel.onchange=async()=>{ const y=+sel.value;
+      if (y<r.auditYears && !confirm(`Записи журнала действий старше ${sel.selectedOptions[0].textContent} будут перенесены в архив (папка backup/audit-archive) и пропадут из поиска в «Журнале действий». Продолжить?`)){ sel.value=r.auditYears; return; }
+      try{ const x=await ajson('maint/audit',{years:y}); toast(x.archivedNow?`В архив перенесено записей: ${x.archivedNow}`:'Срок хранения журнала сохранён'); DbMaint.render(box, x); }catch(err){ toast('Не сохранено: '+err.message); } };
+  }
 }
 
 // ---------- модерация
@@ -341,11 +349,11 @@ async function stBackup(m){
     <div class="st-card" id="stMirror"></div>
     ${DataTransfer.html()}
     <div class="st-card"><p class="sub">Загрузка</p>${DataTransfer.importHtml()}
-      <p class="sub" style="margin-top:14px">Файл базы целиком (.sqlite3 или .zip с ним)${tip('<p>Заменяет всю базу содержимым файла — каталог, КП, клиентов, менеджеров, настройки. Перед заменой программа сохраняет копию текущей базы в data\\backup (kp-…-before-restore.sqlite3).</p><p>Так и нужно подменять базу: вручную копировать kp.sqlite3 в папку data нельзя — рядом лежат файлы kp.sqlite3-wal и -shm от прежней базы, и она повредится («database disk image is malformed»).</p>')}</p>
+      <p class="sub" style="margin-top:14px">Файл базы целиком (.sqlite3 или .zip с ним)${tip('<p>Заменяет всю базу содержимым файла — каталог, КП, клиентов, менеджеров, настройки. Перед заменой программа сохраняет копию текущей базы в data\\backup (архив kp-…-before-restore.zip).</p><p>Так и нужно подменять базу: вручную копировать kp.sqlite3 в папку data нельзя — рядом лежат файлы kp.sqlite3-wal и -shm от прежней базы, и она повредится («database disk image is malformed»).</p>')}</p>
       <input type="file" id="impDb" accept=".sqlite3,.sqlite,.db,.zip" class="sr-file"><label for="impDb" class="btn">Выбрать файл базы…</label><p class="muted" id="impDbSt"></p></div>
     <div class="st-card" id="stMigr"></div>
     <div class="st-card"><p class="sub">История</p>${ops.map(x=>`<div class="st-row"><div><b>${esc(ACT[x.action])}</b><span class="muted">${esc(stTime(x.timestamp))} · ${esc(x.entityId||'')}${x.after&&x.after.bytes?' · '+stSize(x.after.bytes):''}</span></div></div>`).join('')||'<p class="muted">Операций ещё не было.</p>'}</div>`;
-  stMaint($('#stMaint')); stMigr($('#stMigr')); new MirrorCard($('#stMirror')).open();
+  DbMaint.render($('#stMaint')); stMigr($('#stMigr')); new MirrorCard($('#stMirror')).open();
   m.onclick=null; DataTransfer.mount(m, ()=>stBackup(m)); DataTransfer.bindImport(m, ()=>stBackup(m));
   $('#impDb').onchange=async e=>{ const f=e.target.files[0]; if (!f) return; e.target.value='';
     if (!await stConfirm('Заменить всю базу файлом «'+f.name+'»?','Текущие данные будут заменены содержимым файла. Перед этим программа сохранит копию текущей базы в data\\backup.','Заменить базу')) return;

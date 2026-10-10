@@ -172,7 +172,7 @@ def organize_existing(store, types, img_dir, backup_dir, backup=None, log=print)
         store.kv_set('migrations', done + [{'id': ORGANIZE_ID, 'at': datetime.now().isoformat(timespec='seconds'), 'report': {'empty': True}}])
         return None
     if not backup:
-        backup = os.path.join(backup_dir, 'kp-%s-before-images.sqlite3' % datetime.now().strftime('%Y%m%d-%H%M%S'))
+        backup = os.path.join(backup_dir, 'kp-%s-before-images.zip' % datetime.now().strftime('%Y%m%d-%H%M%S'))
         store.backup(backup)
     tmap = {t['id']: t for t in types}
     docs = json.loads(store.catalog_full() or '[]')

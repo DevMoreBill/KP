@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Обслуживание базы: ежедневные резервные копии с проверкой, срок хранения журнала действий (старое — в архив),
-сжатие и проверка базы, неиспользуемые изображения, устаревший кэш проверок контрагентов.
+"""Обслуживание базы: ежедневные резервные копии с проверкой (архивы ZIP — DbCopy), срок хранения журнала действий
+(старое — в архив), сжатие и проверка базы, неиспользуемые изображения, устаревший кэш проверок контрагентов.
 
 Запускается при старте программы и раз в сутки, пока программа (сервер отдела) работает.
 Состояние — в kv «maint»: показывается в «Настройках» → «Статистика» → «Обслуживание базы».
@@ -9,16 +9,17 @@ import gzip
 import json
 import os
 import re
-import sqlite3
 import threading
+import time
 from datetime import date, datetime, timedelta
+
+from storage import DbZip
 
 KEEP_DAILY, KEEP_WEEKLY, KEEP_MONTHLY = 7, 4, 12
 AUDIT_YEARS = 2            # журнал действий: сколько лет хранить в базе (старее — в архив data/backup/audit-archive)
 VACUUM_DAYS = 30           # сжатие базы — не чаще раза в месяц
 CHECKS_DAYS = 365          # кэш проверок контрагентов (Checko) старше года удаляется
 IMG_MIN_AGE_DAYS = 30      # изображение без ссылок считается лишним, если ему больше месяца (черновики КП в браузерах)
-AUTO_RX = re.compile(r'^kp-(\d{4}-\d{2}-\d{2})\.sqlite3$')
 IMG_RX = re.compile(r'/img/([^"\\?#\s<>]+?\.(?:jpg|jpeg|png|webp))', re.I)
 IMG_EXTS = ('.jpg', '.jpeg', '.png', '.webp')
 
@@ -46,76 +47,157 @@ def auto_dir(data_dir):
 
 def integrity(path, quick=False):
     """Проверка файла базы встроенной проверкой SQLite: 'ok' или текст ошибки."""
-    c = sqlite3.connect(path, timeout=30)
-    try:
-        r = c.execute('PRAGMA quick_check' if quick else 'PRAGMA integrity_check').fetchall()
-        return 'ok' if [x[0] for x in r] == ['ok'] else '; '.join(str(x[0]) for x in r[:5])
-    finally:
-        c.close()
+    return DbZip.integrity(path, quick)
 
 
-def backups(data_dir):
-    d = auto_dir(data_dir)
-    out = []
-    if os.path.isdir(d):
-        for name in os.listdir(d):
-            m = AUTO_RX.match(name)
-            if m:
-                f = os.path.join(d, name)
-                out.append({'date': m.group(1), 'file': f, 'bytes': os.path.getsize(f)})
-    return sorted(out, key=lambda x: x['date'], reverse=True)
+class DbCopy:
+    """Ежедневные копии базы в data/backup/auto — архивы kp-ГГГГ-ММ-ДД.zip (DbZip: в 15–20 раз меньше файла базы);
+    прежние копии без сжатия (kp-ГГГГ-ММ-ДД.sqlite3) учитываются наравне и со временем перепаковываются в ZIP.
+    Хранятся 7 последних дней, по одной на каждую из 4 последних недель и на каждый из 12 последних месяцев."""
+    RX = re.compile(r'^kp-(\d{4}-\d{2}-\d{2})\.(zip|sqlite3)$')
+    OLD_RX = re.compile(r'^kp-.+\.sqlite3$')      # копии без сжатия: ежедневные и «перед изменением» (обновление, импорт…)
+    # временные файлы копий, выгрузки и загрузки базы: остаются, если программу закрыли посреди копирования
+    TMP_RX = re.compile(r'^(?:kp-.+\.zip\.(?:tmp|part)|export-[0-9a-f]+\.zip(?:\.tmp|\.part)?|import-[0-9a-f]+\.sqlite3)(?:-wal|-shm|-journal)?$')
+    TMP_AGE = 3600                                 # временный файл старше часа — остаток прерванной операции
+    PAUSE = 0.3                                    # пауза между перепаковками — сервер не нагружается подряд
+    LOCK = threading.Lock()                        # одна копия за раз: плановая и «Создать копию сейчас» не пишут один файл
 
+    @classmethod
+    def listing(cls, folder):
+        """Ежедневные копии в папке, новые первыми: по одной записи на дату (file — ZIP, если есть; files — все файлы даты)."""
+        by = {}
+        if folder and os.path.isdir(folder):
+            for name in os.listdir(folder):
+                m = cls.RX.match(name)
+                if not m:
+                    continue
+                f = os.path.join(folder, name)
+                try:
+                    size = os.path.getsize(f)
+                except OSError:
+                    continue
+                rec = by.setdefault(m.group(1), {'date': m.group(1), 'file': f, 'bytes': 0, 'zip': False, 'files': []})
+                rec['files'].append(f)
+                rec['bytes'] += size
+                if m.group(2) == 'zip':
+                    rec['file'], rec['zip'] = f, True
+        return sorted(by.values(), key=lambda x: x['date'], reverse=True)
 
-def keep_set(dates):
-    """Какие копии оставить: 7 последних дней, по одной (последней) на каждую из 4 последних недель
-    и на каждый из 12 последних месяцев."""
-    ds = sorted(set(dates), reverse=True)
-    keep = set(ds[:KEEP_DAILY])
-    weeks, months = {}, {}
-    for s in ds:
-        d = date.fromisoformat(s)
-        weeks.setdefault(d.isocalendar()[:2], s)
-        months.setdefault((d.year, d.month), s)
-    keep |= set(list(weeks.values())[:KEEP_WEEKLY])
-    keep |= set(list(months.values())[:KEEP_MONTHLY])
-    return keep
+    @staticmethod
+    def keep_set(dates):
+        """Какие копии оставить: 7 последних дней, по одной (последней) на каждую из 4 последних недель
+        и на каждый из 12 последних месяцев."""
+        ds = sorted(set(dates), reverse=True)
+        keep = set(ds[:KEEP_DAILY])
+        weeks, months = {}, {}
+        for s in ds:
+            d = date.fromisoformat(s)
+            weeks.setdefault(d.isocalendar()[:2], s)
+            months.setdefault((d.year, d.month), s)
+        keep |= set(list(weeks.values())[:KEEP_WEEKLY])
+        keep |= set(list(months.values())[:KEEP_MONTHLY])
+        return keep
 
-
-def daily_backup(store, data_dir, force=False):
-    """Копия базы за сегодня (если её ещё нет), проверка целостности копии, ротация старых копий."""
-    today = date.today().isoformat()
-    d = auto_dir(data_dir)
-    dst = os.path.join(d, 'kp-%s.sqlite3' % today)
-    if os.path.isfile(dst) and not force:
-        return state(store).get('backup')
-    os.makedirs(d, exist_ok=True)
-    tmp = dst + '.tmp'
-    rec = {'at': _now(), 'file': dst}
-    try:
-        if os.path.isfile(tmp):
-            os.remove(tmp)
-        store.backup(tmp)
-        res = integrity(tmp)
-        if res != 'ok':
-            raise RuntimeError('копия не прошла проверку: ' + res)
-        os.replace(tmp, dst)
-        rec.update(ok=True, bytes=os.path.getsize(dst))
-    except Exception as e:
-        rec.update(ok=False, error=str(e)[:300])
-        try:
-            if os.path.isfile(tmp):
-                os.remove(tmp)
-        except OSError:
-            pass
-    keep = keep_set([b['date'] for b in backups(data_dir)])
-    for b in backups(data_dir):
-        if b['date'] not in keep:
+    @classmethod
+    def daily(cls, store, data_dir, force=False):
+        """Копия за сегодня (если её ещё нет): архив ZIP, копия проверена встроенной проверкой SQLite до сжатия и
+        контрольными суммами после; затем ротация старых копий. → запись о копии (kv maint.backup)."""
+        with cls.LOCK:
+            today = date.today().isoformat()
+            d = auto_dir(data_dir)
+            have = [x for x in cls.listing(d) if x['date'] == today]
+            if have and not force:
+                return state(store).get('backup')
+            dst = os.path.join(d, 'kp-%s.zip' % today)
+            rec = {'at': _now(), 'file': dst}
             try:
-                os.remove(b['file'])
-            except OSError:
-                pass
-    _save(store, backup=rec)
-    return rec
+                store.backup(dst, check=True)
+                for x in have:                       # прежняя копия за сегодня (например, без сжатия) — заменена архивом
+                    for f in x['files']:
+                        if f != dst and os.path.isfile(f):
+                            os.remove(f)
+                rec.update(ok=True, bytes=os.path.getsize(dst), db=_db_size(store), zip=True)
+            except Exception as e:
+                rec.update(ok=False, error=str(e)[:300])
+            cls.rotate(d)
+            _save(store, backup=rec)
+            return rec
+
+    @classmethod
+    def sweep(cls, folder, age=None):
+        """Удалить остатки прерванных копий, выгрузок и загрузок базы (временные файлы старше часа). → сколько удалено."""
+        n = 0
+        edge = time.time() - (cls.TMP_AGE if age is None else age)
+        if folder and os.path.isdir(folder):
+            for name in os.listdir(folder):
+                f = os.path.join(folder, name)
+                try:
+                    if cls.TMP_RX.match(name) and os.path.isfile(f) and os.path.getmtime(f) < edge:
+                        os.remove(f)
+                        n += 1
+                except OSError:
+                    pass
+        return n
+
+    @classmethod
+    def rotate(cls, folder, keep=None):
+        """Удалить копии, которые не нужно хранить (все файлы их даты), и остатки прерванных копий."""
+        cls.sweep(folder)
+        lst = cls.listing(folder)
+        keep = cls.keep_set([b['date'] for b in lst]) if keep is None else keep
+        for b in lst:
+            if b['date'] not in keep:
+                for f in b['files']:
+                    try:
+                        os.remove(f)
+                    except OSError:
+                        pass
+
+    @classmethod
+    def compress_old(cls, store, data_dir, log=print):
+        """Копии без сжатия (kp-….sqlite3 в data/backup/auto и data/backup) → архив ZIP рядом с тем же именем;
+        исходный файл удаляется только после проверки архива. → {'files', 'saved'} или None (нечего перепаковывать)."""
+        n = saved = 0
+        for folder in (auto_dir(data_dir), os.path.join(data_dir, 'backup')):
+            if not os.path.isdir(folder):
+                continue
+            cls.sweep(folder)
+            for name in sorted(os.listdir(folder)):
+                src = os.path.join(folder, name)
+                dst = src[:-len('.sqlite3')] + '.zip'
+                if not cls.OLD_RX.match(name) or not os.path.isfile(src) or os.path.exists(dst):
+                    continue
+                try:
+                    before = os.path.getsize(src)
+                    DbZip.pack(src, dst)
+                    os.remove(src)
+                    for ext in ('-wal', '-shm', '-journal'):
+                        if os.path.exists(src + ext):
+                            os.remove(src + ext)
+                    n += 1
+                    saved += before - os.path.getsize(dst)
+                except Exception as e:
+                    log('Копия %s не сжата: %s' % (name, e))
+                time.sleep(cls.PAUSE)
+        if not n:
+            return None
+        st = state(store).get('compressed') or {}
+        rec = {'at': _now(), 'files': int(st.get('files') or 0) + n, 'saved': int(st.get('saved') or 0) + saved}
+        _save(store, compressed=rec)
+        return rec
+
+    @staticmethod
+    def others(data_dir):
+        """Копии «перед изменением» в data/backup (обновление программы, импорт, сборка каталога…): сколько и сколько места."""
+        folder = os.path.join(data_dir, 'backup')
+        n = size = 0
+        if os.path.isdir(folder):
+            for name in os.listdir(folder):
+                f = os.path.join(folder, name)
+                if name.startswith('kp-') and name.endswith(('.zip', '.sqlite3')) and os.path.isfile(f):
+                    n += 1
+                    size += os.path.getsize(f)
+        return {'count': n, 'bytes': size}
 
 
 def archive_audit(store, data_dir, years=None):
@@ -231,8 +313,9 @@ def run(store, data_dir, log=print):
         return
     try:
         from backup_mirror import MirrorBackup
-        for name, fn in (('копия базы', lambda: daily_backup(store, data_dir)),
+        for name, fn in (('копия базы', lambda: DbCopy.daily(store, data_dir)),
                          ('копия во вторую папку', lambda: MirrorBackup(store, data_dir).run()),
+                         ('сжатие прежних копий', lambda: DbCopy.compress_old(store, data_dir, log)),
                          ('архив журнала действий', lambda: archive_audit(store, data_dir)),
                          ('кэш проверок', lambda: purge_checks(store)),
                          ('обслуживание базы', lambda: db_maintenance(store))):
@@ -275,8 +358,9 @@ def start_every(seconds, fn, log=print):
 
 def summary(store, data_dir):
     st = state(store)
-    bl = backups(data_dir)
+    bl = DbCopy.listing(auto_dir(data_dir))
     return {'backup': st.get('backup'), 'copies': len(bl), 'copiesBytes': sum(b['bytes'] for b in bl), 'dir': auto_dir(data_dir),
+            'others': DbCopy.others(data_dir), 'compressed': st.get('compressed'), 'dbBytes': _db_size(store),
             'oldest': bl[-1]['date'] if bl else None, 'audit': st.get('audit'), 'vacuum': st.get('vacuum'), 'optimize': st.get('optimize'),
             'images': st.get('images'), 'lastRun': st.get('lastRun'), 'auditYears': int((store.kv_get('settings') or {}).get('auditYears') or AUDIT_YEARS),
             'auditRows': store.one('SELECT COUNT(*) FROM audit')[0], 'auditOldest': (store.one('SELECT MIN(ts) FROM audit')[0] or '')[:10]}

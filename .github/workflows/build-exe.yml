@@ -333,11 +333,63 @@ jobs:
           $v = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/version'
           Write-Host "После перезапуска: $($v.version), обновление: $($v.patched)"
           if ($v.version -ne '99.0.1' -or -not $v.patched) { throw 'После перезапуска работает не установленная версия' }
+          # обновление не запустилось → программа сама возвращается к прежней (99.0.1): ошибка в коде при запуске (99.0.2)
+          # и ответ 500 на самопроверке (99.0.3); причина — в «Настройки → Обновления»
+          function Patch($ver, $file, $from, $to) {
+            $base = Join-Path $env:RUNNER_TEMP "kp-upd-$ver"
+            Remove-Item -Recurse -Force -LiteralPath $base -ErrorAction SilentlyContinue
+            $u = Join-Path $base "Обновление КП $ver\update"
+            New-Item -ItemType Directory -Force -Path $u | Out-Null
+            Copy-Item -Recurse -LiteralPath 'app', 'templates' -Destination $u
+            $f = Join-Path $u 'app\version.py'
+            [IO.File]::WriteAllText($f, ([IO.File]::ReadAllText($f) -replace "VERSION = '[^']+'", "VERSION = '$ver'"))
+            [IO.File]::WriteAllText((Join-Path $u 'version.json'), ('{"version": "' + $ver + '"}'))
+            $f = Join-Path $u "app\$file"
+            $t = [IO.File]::ReadAllText($f)
+            if (-not $t.Contains($from)) { throw "Нет строки для поломки в $file" }
+            [IO.File]::WriteAllText($f, $t.Replace($from, $to))
+            $z = Join-Path $env:RUNNER_TEMP "KP-Obnovlenie-$ver.zip"
+            Compress-Archive -Path (Join-Path $base '*') -DestinationPath $z -Force
+            return $z
+          }
+          function Login {
+            $r = Invoke-WebRequest -Method Post -Uri 'http://127.0.0.1:17845/api/admin/login' -ContentType 'application/json' -Body '{"login":"admin","password":"Ci-Passw0rd1"}' -SessionVariable ss -UseBasicParsing
+            $script:s = $ss
+            $script:H = @{ 'X-CSRF-Token' = ($r.Content | ConvertFrom-Json).csrf }
+          }
+          function Version {
+            try { (Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/version' -TimeoutSec 3).version } catch { '' }
+          }
+          foreach ($case in @(
+              @{ ver = '99.0.2'; file = 'kp_server.py'; from = 'STARTED = False'; to = "STARTED = False; raise RuntimeError('ci: broken update')"; why = 'ci: broken update' },
+              @{ ver = '99.0.3'; file = 'web_api.py'; from = "return self.send_json({'version': version.VERSION,"; to = "raise KeyError('ci'); return self.send_json({'version': version.VERSION,"; why = 'Самопроверка' })) {
+            $phase = "возврат после сбоя $($case.ver)"
+            Login
+            $zip = Patch $case.ver $case.file $case.from $case.to
+            $res = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/admin/update/upload?name=ci.zip' -InFile $zip -ContentType 'application/zip' -Headers $H -WebSession $s
+            if ($res.version -ne $case.ver) { throw "Обновление $($case.ver) не установилось" }
+            Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/admin/restart' -Headers $H -WebSession $s | Out-Null
+            $down = $false
+            for ($i = 0; $i -lt 40 -and -not $down; $i++) { Start-Sleep -Milliseconds 500; if (-not (Up)) { $down = $true } }
+            if (-not $down) { throw 'Программа не закрылась для перезапуска' }
+            # сломанная версия может ненадолго подняться (самопроверка ещё идёт) — ждём, пока снова заработает 99.0.1
+            $v = ''
+            for ($i = 0; $i -lt 120 -and $v -ne '99.0.1'; $i++) { Start-Sleep -Seconds 1; $v = Version }
+            Write-Host "После сбоя $($case.ver) работает: $v"
+            if ($v -ne '99.0.1') { throw "Программа не вернулась к 99.0.1 после сбоя $($case.ver) (работает: $v)" }
+            if (-not (Test-Path -LiteralPath (Join-Path $dir 'update.failed\version.json'))) { throw 'Нет папки update.failed' }
+            Login
+            $st = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/admin/update' -Headers $H -WebSession $s
+            Write-Host "Причина: $($st.failed.reason)"
+            if ($st.failed.version -ne $case.ver -or -not ([string]$st.failed.reason).Contains($case.why)) { throw "В «Обновлениях» нет причины сбоя $($case.ver)" }
+            # EXE в одном файле — два процесса (загрузчик и программа); больше — значит, остался прежний экземпляр
+            if (@(Get-Process -Name kp -ErrorAction SilentlyContinue).Count -gt 2) { throw 'После возврата работает больше одного экземпляра программы' }
+          }
           Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/shutdown' | Out-Null
           for ($i = 0; $i -lt 30 -and (Up); $i++) { Start-Sleep -Milliseconds 500 }
           if (Up) { throw 'Перезапущенная программа не завершилась' }
-          Remove-Item -Recurse -Force -LiteralPath (Join-Path $dir 'update'), (Join-Path $dir 'update.prev') -ErrorAction SilentlyContinue
-          Write-Host 'Обновление из «Настроек» и перезапуск: в порядке'
+          Remove-Item -Recurse -Force -LiteralPath (Join-Path $dir 'update'), (Join-Path $dir 'update.prev'), (Join-Path $dir 'update.failed') -ErrorAction SilentlyContinue
+          Write-Host 'Обновление из «Настроек», перезапуск и возврат после неудачного обновления: в порядке'
 
       - name: Комплект для установки (EXE + сервер отдела)
         shell: pwsh

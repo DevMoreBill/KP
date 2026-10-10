@@ -1003,7 +1003,7 @@ class AdminApi:
             return self.ok({'applied': st.migrations_applied(), 'all': [x[0] for x in MIGRATIONS]})
         r = re.match(r'^migrations/([A-Za-z0-9_.-]+)/down$', sub)
         if r and m == 'POST':
-            st.backup(os.path.join(os.path.dirname(st.path), 'backup', 'kp-%s-before-migration-down.sqlite3' % datetime.now().strftime('%Y%m%d-%H%M%S')))
+            st.backup(os.path.join(os.path.dirname(st.path), 'backup', 'kp-%s-before-migration-down.zip' % datetime.now().strftime('%Y%m%d-%H%M%S')))
             st.migration_down(r.group(1))
             return self.ok()
         return self.err(404, 'not found')
@@ -1087,7 +1087,7 @@ class AdminApi:
         if sub == 'maint' and m == 'GET':
             return self.ok(mt.summary(st, data_dir))
         if sub == 'maint/backup' and m == 'POST':
-            rec = mt.daily_backup(st, data_dir, force=True)
+            rec = mt.DbCopy.daily(st, data_dir, force=True)
             self.log('backup_db', 'db', 'auto', None, {'ok': rec.get('ok'), 'file': os.path.basename(rec.get('file') or '')}, result='success' if rec.get('ok') else 'failed')
             from backup_mirror import MirrorBackup
             mb = MirrorBackup(st, data_dir)
@@ -1342,7 +1342,8 @@ class AdminApi:
         return self.h.send(200, 'application/json; charset=utf-8', data, self.h.attachment('КП_резервная_копия_%s_%s.json' % (what, stamp)))
 
     def export_sqlite(self):
-        tmp = os.path.join(os.path.dirname(self.st.path), 'backup', 'export-%s.sqlite3' % secrets.token_hex(4))
+        """Файл базы целиком — архивом ZIP (kp.sqlite3 внутри): в 15–20 раз меньше, загружается обратно как есть."""
+        tmp = os.path.join(os.path.dirname(self.st.path), 'backup', 'export-%s.zip' % secrets.token_hex(4))
         self.st.backup(tmp)
         try:
             with open(tmp, 'rb') as f:
@@ -1350,27 +1351,29 @@ class AdminApi:
         finally:
             os.remove(tmp)
         self.log('export_db', 'db', 'sqlite', None, {'bytes': len(data)})
-        return self.h.send(200, 'application/octet-stream', data, self.h.attachment('kp_%s.sqlite3' % datetime.now().strftime('%Y-%m-%d_%H%M')))
+        return self.h.send(200, 'application/zip', data, self.h.attachment('kp_%s.zip' % datetime.now().strftime('%Y-%m-%d_%H%M')))
 
     def import_sqlite(self, data, name=''):
         """Файл базы целиком (.sqlite3 или .zip с ним): проверка, копия текущей базы, замена содержимого «на ходу»."""
         import zipfile
         import io
+        from storage import DbZip
         if not data:
             raise ValueError('Файл пустой')
-        if data[:2] == b'PK':
-            with zipfile.ZipFile(io.BytesIO(data)) as z:
-                names = [n for n in z.namelist() if n.lower().endswith(('.sqlite3', '.sqlite', '.db'))]
-                if not names:
-                    raise ValueError('В архиве нет файла базы (.sqlite3)')
-                data = z.read(names[0])
-        if data[:16] != b'SQLite format 3\x00':
-            raise ValueError('Это не файл базы SQLite (.sqlite3) и не архив с ним')
         tmp = os.path.join(os.path.dirname(self.st.path), 'backup', 'import-%s.sqlite3' % secrets.token_hex(4))
         os.makedirs(os.path.dirname(tmp), exist_ok=True)
-        with open(tmp, 'wb') as f:
-            f.write(data)
         try:
+            if data[:2] == b'PK':
+                try:
+                    DbZip.unpack(io.BytesIO(data), tmp)
+                except zipfile.BadZipFile:
+                    raise ValueError('Архив повреждён или это не архив ZIP')
+            else:
+                with open(tmp, 'wb') as f:
+                    f.write(data)
+            with open(tmp, 'rb') as f:
+                if f.read(16) != b'SQLite format 3\x00':
+                    raise ValueError('Это не файл базы SQLite (.sqlite3) и не архив с ним')
             bak = self.st.restore_sqlite(tmp)
         finally:
             for ext in ('', '-wal', '-shm', '-journal'):
@@ -1459,7 +1462,7 @@ class AdminApi:
                 z.close()
 
     def import_backup(self):
-        return self.st.backup(os.path.join(os.path.dirname(self.st.path), 'backup', 'kp-%s-before-import.sqlite3' % datetime.now().strftime('%Y%m%d-%H%M%S')))
+        return self.st.backup(os.path.join(os.path.dirname(self.st.path), 'backup', 'kp-%s-before-import.zip' % datetime.now().strftime('%Y%m%d-%H%M%S')))
 
 
 # ---------------------------------------------------------------- статистика

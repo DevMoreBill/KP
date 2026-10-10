@@ -98,11 +98,14 @@ class Attention:
     def _update(self):
         from app_update import Updater
         s = Updater(self.store, self.cfg.ROOT, self.cfg.DATA_DIR).status()
-        if s['available']:
-            return [{'level': 'warn', 'text': 'Доступна новая версия %s (работает %s)' % (s['last']['version'], s['current']), 'tab': 'updates'}]
-        if s['pending']:
-            return [{'level': 'warn', 'text': 'Обновление %s установлено, но программа ещё не перезапущена' % s['installed'], 'tab': 'updates'}]
-        return []
+        f = s.get('failed')
+        out = [{'level': 'bad', 'text': 'Обновление %s не запустилось — программа сама вернулась к версии %s. Причина: %s'
+                % (f['version'], s['current'], f.get('reason', '')[:160]), 'tab': 'updates'}] if f else []
+        if s['available'] and not (f and f['version'] == s['last']['version']):     # ту же неудачную версию не предлагать
+            out.append({'level': 'warn', 'text': 'Доступна новая версия %s (работает %s)' % (s['last']['version'], s['current']), 'tab': 'updates'})
+        elif s['pending']:
+            out.append({'level': 'warn', 'text': 'Обновление %s установлено, но программа ещё не перезапущена' % s['installed'], 'tab': 'updates'})
+        return out
 
     def _moderation(self):
         n = len(self.store.pending_list('pending'))

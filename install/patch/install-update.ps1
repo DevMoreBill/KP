@@ -14,7 +14,13 @@ if ((-not $m.Success) -or ([int]$m.Groups[1].Value * 1000 + [int]$m.Groups[2].Va
   Fail ('Программа в C:\KP (версия ' + $exe.VersionInfo.FileVersion + ') ещё не умеет ставить обновления. Один раз установите полный комплект версии 3.2 или новее.') }
 if (-not (Stop-KP $KP)) { Fail 'Программа не остановилась — перезагрузите компьютер и запустите обновление снова.' }
 $dst = Join-Path $KP 'update'
-if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Recurse -Force }
+# прежнее обновление — в update.prev: если новое не запустится, программа сама вернётся к нему
+$prev = Join-Path $KP 'update.prev'
+if (Test-Path -LiteralPath $dst) {
+  if (Test-Path -LiteralPath $prev) { Remove-Item -LiteralPath $prev -Recurse -Force }
+  Move-Item -LiteralPath $dst -Destination $prev }
+$failed = Join-Path $KP 'update.failed'
+if (Test-Path -LiteralPath $failed) { Remove-Item -LiteralPath $failed -Recurse -Force }
 Write-Host '  копирую файлы обновления'
 Copy-Item -LiteralPath $new -Destination $dst -Recurse -Force
 # новые файлы управления сервером отдела (остановить / запустить / удалить) — в C:\KP\server-setup
