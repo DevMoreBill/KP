@@ -36,6 +36,14 @@ button,input,textarea,select{font:inherit;color:inherit}
 .jr b{display:block}
 .jr .acts{display:flex;flex-direction:row;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .jr .btn{padding:6px 10px;font-size:13px}
+/* «⋯» в строке журнала: остальные действия с КП */
+.jr-more{position:relative}
+.jr-more>summary{list-style:none}
+.jr-more>summary::-webkit-details-marker{display:none}
+.jr-more[open]>summary{border-color:var(--sky);color:var(--navy)}
+.jr-more .menu-l{min-width:240px}
+.jr-more.up .menu-l{top:auto;bottom:calc(100% + 6px)}
+.jr-more.lft .menu-l{right:auto;left:0}
 @media (max-width:1000px){#srvBtns .btn{padding:7px 9px;font-size:13px}.jr{grid-template-columns:1fr}.jr-e{text-align:left}.jbar{grid-template-columns:1fr;grid-auto-flow:row}.jr .acts{justify-content:flex-start}}
 .grid{display:grid;gap:14px}
 .g2{grid-template-columns:1fr 1fr}

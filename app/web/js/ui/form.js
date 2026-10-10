@@ -17,7 +17,7 @@ const STEPS=[
   {id:'equip',  t:'Оборудование',    d:'Подбор из каталога, опции, фото',    f:()=>stepItems()},
   {id:'price',  t:'Цены и валюта',   d:'Валюта, НДС, цены и скидки',         f:()=>stepPrice()},
   {id:'cover',  t:'Оформление КП',  d:'Шаблон, титул, страница клиентов',  f:()=>stepCover()},
-  {id:'conds',  t:'Условия',         d:'Сроки, оплата, гарантия',            f:()=>stepConds()},
+  {id:'conds',  t:'Условия',         d:'Сроки, оплата, гарантия',            f:()=>CondsStep.html()},
   {id:'mgr',    t:'Менеджер',        d:'Контакты в КП',                      f:()=>stepManager()}];
 
 let STEP='client';
@@ -76,13 +76,17 @@ function renderForm(){
   const sp=$('#nav .stepper'), sc=sp?.querySelector('.stp.cur'); if (sp && sc && sp.scrollWidth>sp.clientWidth) sp.scrollLeft=sc.offsetLeft-(sp.clientWidth-sc.offsetWidth)/2;
   document.body.dataset.kpstep=STEP;
   f.querySelectorAll('textarea.iname').forEach(fitText);
-  renderSide();
+  SidePanel.render();
   if (EDIT && $('#edlg').open) renderEditor();
   if (STEP==='cover') coverThumbSoon();
 }
 
-// раскрывающиеся меню и подсказки закрываются щелчком мимо них (и после выбора пункта меню)
-document.addEventListener('click', e=>{
-  document.querySelectorAll('details.tip[open], details.topmenu[open], details.pickm[open]').forEach(d=>{
-    if (!d.contains(e.target) || (d.classList.contains('topmenu') && e.target.closest('.menu-l button'))) d.open=false; });
-});
+// раскрывающиеся меню и подсказки (класс Popups) закрываются щелчком мимо них, меню действий — и после выбора пункта
+class Popups {
+  static OPEN = 'details.tip[open], details.topmenu[open], details.pickm[open], details.jr-more[open]';
+  static close(e){
+    document.querySelectorAll(this.OPEN).forEach(d=>{
+      if (!d.contains(e.target) || (d.matches('.topmenu, .jr-more') && e.target.closest('.menu-l button'))) d.open=false; });
+  }
+}
+document.addEventListener('click', e=>Popups.close(e));

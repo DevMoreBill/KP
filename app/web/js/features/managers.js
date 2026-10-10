@@ -76,21 +76,34 @@ async function saveManager(silent){
   catch(e){ if (!silent) toast('Не удалось сохранить менеджера: '+(e.message||e)); return false; }
 }
 
-function managerBar(){
-  const cur=MGRS.find(x=>x.id===S.managerId);
-  // КП прежней версии: менеджер записан под старым кодом, а в справочнике есть с тем же ФИО — предложить взять оттуда
-  const same=!cur && String(S.manager.name||'').trim() ? MGRS.find(x=>norm(x.name)===norm(S.manager.name)) : null;
-  return `<div class="mgrbar"><label class="f"><span>Менеджер в КП</span><select id="mgrSel" aria-label="Выбор менеджера">
-      ${cur?'':`<option value="" selected>${String(S.manager.name||'').trim()?esc(S.manager.name)+' — не в справочнике':'— новый менеджер —'}</option>`}
-      ${MGRS.map(m=>`<option value="${esc(m.id)}"${m.id===S.managerId?' selected':''}>${esc(m.name)}${m.position?' — '+esc(m.position):''}</option>`).join('')}</select></label>
-    <div class="row">${cur?'':'<button class="btn primary" type="button" data-a="mgrSave">Сохранить в справочник</button>'}
-      <button class="btn" type="button" data-a="mgrNew">+ Новый менеджер</button>
-</div>
-    <p class="muted" id="mgrStat" style="grid-column:1/-1;margin:0">${cur?'':same?`В справочнике есть «${esc(same.name)}» — <button class="lnk" type="button" data-a="mgrSame" data-id="${esc(same.id)}">взять контакты оттуда</button>.`:'Новый менеджер — сохраните его в справочник.'}</p></div>`;
+// выбор менеджера в разделе «Менеджер» (класс MgrBar): выбран из справочника — правки сохраняются сами; не выбран —
+// подсказка, а «Сохранить в справочник» появляется, когда ФИО уже вписано (до этого сохранять нечего)
+class MgrBar {
+  static html(){ return `<div class="mgrbar">${this.inner()}</div>`; }
+
+  static inner(){
+    const cur=MGRS.find(x=>x.id===S.managerId), typed=!!String(S.manager.name||'').trim();
+    // КП прежней версии: менеджер записан под старым кодом, а в справочнике есть с тем же ФИО — предложить взять оттуда
+    const same=!cur && typed ? MGRS.find(x=>norm(x.name)===norm(S.manager.name)) : null;
+    const btns = cur ? '<button class="btn" type="button" data-a="mgrNew">+ Новый менеджер</button>'
+      : typed ? '<button class="btn primary" type="button" data-a="mgrSave">Сохранить в справочник</button>' : '';
+    const note = cur ? '' : same ? `В справочнике есть «${esc(same.name)}» — <button class="lnk" type="button" data-a="mgrSame" data-id="${esc(same.id)}">взять контакты оттуда</button>.`
+      : typed ? 'Сохраните в справочник — в следующих КП достаточно будет выбрать себя из списка.'
+      : 'Выберите себя в списке — контакты подставятся. Нет в списке — заполните поля ниже и сохраните в справочник.';
+    return `<label class="f"><span>Менеджер в КП</span><select id="mgrSel" aria-label="Выбор менеджера">
+        ${cur?'':`<option value="" selected>${typed?esc(S.manager.name)+' — не в справочнике':'— выберите из списка —'}</option>`}
+        ${MGRS.map(m=>`<option value="${esc(m.id)}"${m.id===S.managerId?' selected':''}>${esc(m.name)}${m.position?' — '+esc(m.position):''}</option>`).join('')}</select></label>
+      <div class="row">${btns}</div>
+      <p class="muted" id="mgrStat" style="grid-column:1/-1;margin:0">${note}</p>`;
+  }
+
+  /** ФИО вписано или стёрто у менеджера не из справочника — показать или убрать «Сохранить в справочник» */
+  static refresh(){ const b=document.querySelector('.mgrbar'); if (b) morph(b, this.inner()); }
 }
 
 let mgrT=null;
-document.addEventListener('input', e=>{ const p=e.target.dataset?.p||''; if (!p.startsWith('manager.') || !S.managerId) return;
+// ФИО менеджера не из справочника: панель — после записи поля в S (общий обработчик ввода подключается позже)
+document.addEventListener('input', e=>{ const p=e.target.dataset?.p||''; if (p==='manager.name' && !S.managerId) return void setTimeout(()=>MgrBar.refresh()); if (!p.startsWith('manager.') || !S.managerId) return;
   clearTimeout(mgrT); const st=$('#mgrStat'); if (st) st.textContent='Сохраняю…'; mgrT=setTimeout(()=>saveManager(true), 900); });
 
 document.addEventListener('change', e=>{ if (e.target.id!=='mgrSel') return; if (e.target.value) selectManager(e.target.value); else newManager(); });

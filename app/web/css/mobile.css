@@ -93,7 +93,7 @@ span.mb-back{border:0}
 .mob .brand{font-size:16px;flex:0 0 auto}
 .mob .brand small{display:none}
 .mob #kpno{font-size:12.5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mob #saved,.mob .srvtag,.mob #srvBtns,.mob #btnNew,.mob .topmenu{display:none!important}
+.mob #saved,.mob #srvBtns,.mob #btnNew,.mob .topmenu{display:none!important}
 .mob .mmenu-btn{display:inline-flex;flex:0 0 auto;gap:8px;font-size:15px;padding:8px 14px;border-color:var(--line)}
 .mob .mmenu-btn span{font-size:18px;line-height:1}
 
@@ -124,8 +124,8 @@ span.mb-back{border:0}
 
 /* подсказки «?» и списки вариантов — над нижней панелью, во всю ширину (не вылезают за экран) */
 .mob .tip-b{position:fixed;left:12px;right:12px;top:auto;bottom:calc(var(--mbh) + 12px + env(safe-area-inset-bottom,0px));width:auto;z-index:60;font-size:15px;box-shadow:0 18px 50px rgba(0,0,0,.28)}
-.mob .pickm .menu-l{position:fixed;left:8px;right:8px;top:auto;bottom:calc(var(--mbh) + 10px + env(safe-area-inset-bottom,0px));min-width:0;max-height:55vh;z-index:60;box-shadow:0 18px 50px rgba(0,0,0,.28)}
-.mob .pickm .menu-l button{padding:12px;font-size:15px}
+.mob .pickm .menu-l,.mob .jr-more .menu-l{position:fixed;left:8px;right:8px;top:auto;bottom:calc(var(--mbh) + 10px + env(safe-area-inset-bottom,0px));min-width:0;max-height:55vh;z-index:60;box-shadow:0 18px 50px rgba(0,0,0,.28)}
+.mob .pickm .menu-l button,.mob .jr-more .menu-l button{padding:12px;font-size:15px}
 
 /* итог и сохранение — на последнем шаге (из любого шага — нажатием на сумму внизу) */
 .mob #side{display:none;position:static;padding:8px max(16px,env(safe-area-inset-right)) 20px max(16px,env(safe-area-inset-left))}
@@ -192,7 +192,10 @@ span.mb-back{border:0}
 
 /* 4 · Титул */
 .mob .cvtop{grid-template-columns:minmax(0,1fr)}
-.mob .cvthumb{max-width:none}
+.mob .cvthumb{order:2;width:100%;max-width:240px;justify-self:center}     /* миниатюра титула — под полями, не во всю ширину */
+.mob .cvinfo{order:1}
+.mob .dl-cta small{display:none}                     /* «Экономика сделки» в «Ценах» — заголовок и стрелка, без пояснения */
+.mob .dl-cta{margin:2px 0 12px}
 
 /* ---------- окна: на весь экран, шапка с заметной кнопкой «Закрыть» ---------- */
 .mob dialog{position:fixed;inset:0;width:100%!important;max-width:none!important;height:100%!important;max-height:none!important;margin:0;border-radius:0;resize:none;padding:0}
@@ -289,7 +292,9 @@ span.mb-back{border:0}
 /* журнал КП */
 .mob .jr{grid-template-columns:minmax(0,1fr);gap:6px;padding:12px 0}
 .mob .jr-e{text-align:left}
-.mob .jbar{grid-template-columns:minmax(0,1fr);grid-auto-flow:row}
+/* фильтры журнала: поиск во всю ширину, остальное — по два в ряд (список КП виден сразу, а не после семи строк фильтров) */
+.mob .jbar{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-flow:row}
+.mob .jbar #jQ{grid-column:1/-1}
 .mob .jr .acts{justify-content:flex-start}
 .mob .jr .btn{min-height:44px;padding:8px 14px;font-size:14.5px}
 
@@ -341,6 +346,11 @@ span.mb-back{border:0}
 .mob .st-row{flex-direction:column;align-items:stretch;gap:8px}
 .mob .st-row .acts{justify-content:flex-start}
 .mob .st-row .acts .btn{flex:1 1 auto}
+/* «Требует внимания»: метка и «Открыть» — строкой сверху, текст — во всю ширину (а не узким столбцом между ними) */
+.mob .at-r{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"l b" "t t";gap:6px 10px;padding:10px 0}
+.mob .at-l{grid-area:l;justify-self:start}
+.mob .at-t{grid-area:t}
+.mob .at-r>.btn{grid-area:b}
 /* характеристики: название параметра — во всю ширину, значение, ★ и ✕ — под ним */
 .mob .srow{grid-template-columns:minmax(0,1fr) 40px 40px;gap:6px;padding-bottom:8px;border-bottom:1px dashed var(--line)}
 .mob .srow>input:first-child{grid-column:1/-1}
