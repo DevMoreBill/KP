@@ -60,7 +60,7 @@ function openXlsImport(cat){
         name, spec:v.spec||'', attrs, price:parsePrice(v.price||'')||0, priceCur:'RUB', cost:parsePrice(v.cost||'')||0, costCur:(v.costCur||'RUB').toUpperCase().slice(0,3),
         margin:v.margin?numOf(v.margin):undefined, features:[], groups:[], photo:null, logo:null, prices:[], updatedAt:new Date().toISOString(), pageTitle:name, photoCaption:'' };
       if (!CUR_LIST.includes(x.costCur)) x.costCur='RUB';
-      x.groups=groupsFromAttrs(x); x.hint=autoHint(x); if(!x.spec) x.spec=mainLine(x,4);
+      x.groups=groupsFromAttrs(x); x.hint=CoverHint.of(x); if(!x.spec) x.spec=mainLine(x,4);
       const ex=await fullDoc(catCache.find(z=>z.id===x.id)); if (ex){ x.photo=ex.photo; x.logo=ex.logo; x.prices=ex.prices||[]; if(!x.price) x.price=ex.price||0; if (ex.features&&ex.features.length) x.features=ex.features; }
       await store().put(x); n++;
     }

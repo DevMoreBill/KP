@@ -29,7 +29,7 @@ function kpSkeleton(KP) {
       { id: 'requisites', on: true },
       { id: 'offer', on: true, newPage: false },
       { id: 'conditions', on: true, newPage: false },
-      { id: 'specs', on: true, newPage: true },
+      { id: 'specs', on: true, newPage: false },
       { id: 'supplier', on: true, newPage: false },
       { id: 'signature', on: true, newPage: false }
     ],
@@ -43,7 +43,8 @@ function kpSkeleton(KP) {
       specPhotoWidthCm: 6, specPhotoHeightCm: 4.5,
       signWidthCm: 3.5, signHeightCm: 0,          // 0 — по пропорциям картинки
       stampWidthCm: 4, stampX: 5.5, stampY: -2.6, // печать: от левого края текста и от строки «М.П.», см
-      stampBehind: false                          // true — печать за текстом (для картинки без прозрачного фона)
+      stampBehind: false,                         // true — печать за текстом (для картинки без прозрачного фона)
+      hyphenation: true                           // автоматические переносы слов в тексте (заголовки, названия, числа — без переносов)
     },
     header: { on: false, logo: '', logoWidthCm: 4, logoHeightCm: 0, logoSide: 'left', lines: '', textSize: 8, textColor: 'GRAY', firstBold: true, firstColor: 'DARK', rule: true, ruleColor: 'LINE' },
     company: 'ПНЕВМОТЕХ',
@@ -147,6 +148,57 @@ function kpSkeleton(KP) {
   const curSh = S => (CURS[curCode(S)] || CURS.RUB).sh;
   const sectionOn = id => TPL.sections.some(s => s.id === id && s.on);
 
+  // ---------------------------------------------------------------- типографика
+  // Неразрывные пробелы: число и единица измерения («22 кВт»), разряды («1 500»), «№ 5», короткие предлоги и союзы
+  // со следующим словом, тире не в начале строки, «т. ч.», «г. Москва», инициалы. Списки в описаниях («• …», «- …»,
+  // «1) …») — отдельными абзацами с висячим отступом (строка перед разрывом не растягивается по ширине).
+  class Typo {
+    static text(s) {
+      s = String(s == null ? '' : s);
+      if (s.indexOf(' ') < 0) return s;
+      return s
+        .replace(/(\d) (?=\d{3}(?!\d))/g, '$1 ')
+        .replace(/(\d) (?=(?:%|‰|°[CС]?|[A-Za-zА-Яа-яЁёµΩ³²°/]{1,7}\.?)(?=[\s,.;:)(!?»"]|$))/g, '$1 ')
+        .replace(/(№|§) (?=\S)/g, '$1 ')
+        .replace(/ ([—–]) /g, ' $1 ')
+        .replace(Typo.SHORT, '$1 ')
+        .replace(/(?<=^|[\s(«"„])т\. ([чедп])\./g, 'т. $1.')
+        .replace(/(?<=^|[\s(«"„,])((?:г|ул|д|стр|корп|оф|пос|пгт|обл|пр|пер|пл|наб|ш|им|рис|табл|п|с)\.) (?=[\dА-ЯЁA-Z«"])/g, '$1 ')
+        .replace(/(?<=^|\s)([А-ЯЁ]\.) (?=[А-ЯЁ])/g, '$1 ');
+    }
+    // дефисы внутри кодов (слово с цифрами или с двумя заглавными подряд) → метка \u0002 (в r() — неразрывный дефис Word)
+    static codes(s) {
+      return s.indexOf('-') < 0 ? s : s.replace(/[^\s]+/g, tok => /\d|[A-ZА-ЯЁ]{2}/.test(tok) ? tok.replace(/(?<=[0-9A-Za-zА-Яа-яЁё.,/)])-(?=[0-9A-Za-zА-Яа-яЁё(])/g, '\u0002') : tok);
+    }
+    // текст со строками → абзацы; пункты списка — с маркером («–» или номер) и висячим отступом;
+    // lead — подзаголовок в начале первого абзаца («Назначение. …»)
+    static paras(text, st, o = {}, lead) {
+      const L = String(text == null ? '' : text).split(/\r?\n/), out = [];
+      let n = L.length, gap = 0;
+      while (n && !L[n - 1].trim()) n--;
+      // текст начинается со списка — подзаголовок отдельной строкой над пунктами
+      const first = L.findIndex(x => x.trim());
+      if (lead && first >= 0 && Typo.ITEM.test(L[first])) { out.push(p(lead, Object.assign({}, o, { after: 30, keep: true }))); lead = ''; }
+      for (let i = 0; i < n; i++) {
+        const line = L[i].replace(/\s+$/, '');
+        if (!line.trim()) { gap = 80; continue; }
+        const m = Typo.ITEM.exec(line), last = i === n - 1, lr = !out.length && lead ? lead : '';
+        const po = Object.assign({}, o, { before: out.length ? gap : (o.before || 0), after: last ? (o.after || 0) : (m ? 20 : (o.gap == null ? 40 : o.gap)) });
+        if (o.tail && i === n - 2) po.keep = true;      // последняя строка не уходит одна на следующую страницу
+        gap = 0;
+        if (m && !lr) {
+          // пункты списка — по левому краю: при выравнивании по ширине короткие строки растягиваются
+          const ind = (o.indL || 0) + Typo.IND, mk = /\d/.test(m[1]) ? m[1] : (o.mark || '–');
+          out.push(p(r(mk, st) + '<w:r><w:tab/></w:r>' + r(m[2], st), Object.assign(po, { indL: ind, hang: Typo.IND, tab: ind, first: 0, jc: 'left' })));
+        } else out.push(p(lr + r(line.trim(), st), po));
+      }
+      return out.join('') || p(lead || r('', st), o);
+    }
+  }
+  Typo.SHORT = /(?<=^|[\s(«"„])(в|к|с|у|о|и|а|я|во|ко|со|об|от|до|из|за|на|по|не|ни|но|да|же|при|без|для|под|над|про)(?: )(?=[^\s—–])/giu;
+  Typo.ITEM = /^\s*([•·▪◦‣*\-–—]|\d{1,2}[.)])\s+(.*)$/;
+  Typo.IND = 284;
+
   // ---------------------------------------------------------------- строительные блоки Word
   function r(t, o = {}) {
     if (typeof o === 'string') o = sty(o);
@@ -158,19 +210,26 @@ function kpSkeleton(KP) {
     rp += `<w:color w:val="${o.color || COL('DARK')}"/>`;
     if (o.sp) rp += `<w:spacing w:val="${o.sp}"/>`;
     rp += `<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/><w:lang w:val="ru-RU"/>`;
-    // перенос строки в тексте (список «• …» в описании) — разрыв строки внутри абзаца
-    return String(t == null ? '' : t).split(/\r?\n/).map(line => `<w:r><w:rPr>${rp}</w:rPr><w:t xml:space="preserve">${esc(line)}</w:t></w:r>`).join('<w:r><w:br/></w:r>');
+    // перенос строки внутри короткого текста — разрыв строки (списки в описаниях — абзацами, см. Typo.paras);
+    // дефис внутри кода модели («CAAD-0.7/B», «АСО-ВК») — неразрывный: код не рвётся на две строки
+    const run = x => `<w:r><w:rPr>${rp}</w:rPr><w:t xml:space="preserve">${esc(x)}</w:t></w:r>`, nbh = `<w:r><w:rPr>${rp}</w:rPr><w:noBreakHyphen/></w:r>`;
+    return String(t == null ? '' : t).split(/\r?\n/).map(line => Typo.codes(Typo.text(line)).split('\u0002').map(run).join(nbh)).join('<w:r><w:br/></w:r>');
   }
   const br = '<w:r><w:br/></w:r>';
   const lines = (s, st) => String(s || '').split(/\r?\n/).map(x => r(x, st)).join(br);
+  // абзац: keep — не отрывать от следующего; pbb — с новой страницы; hy — можно переносить слова;
+  // first — отступ первой строки, hang — висячий отступ (пункт списка), tab — позиция табуляции
   function p(runs = '', o = {}) {
     let pp = '';
+    if (o.style) pp += `<w:pStyle w:val="${o.style}"/>`;
     if (o.keep) pp += '<w:keepNext/>';
     if (o.pbb) pp += '<w:pageBreakBefore/>';
-    if (o.style) pp = `<w:pStyle w:val="${o.style}"/>` + pp;
+    pp += '<w:widowControl/>';
     if (o.bdr) pp += `<w:pBdr>${o.bdr}</w:pBdr>`;
+    if (o.tab) pp += `<w:tabs><w:tab w:val="left" w:pos="${o.tab}"/></w:tabs>`;
+    if (!o.hy) pp += '<w:suppressAutoHyphens/>';
     pp += `<w:spacing w:before="${o.before || 0}" w:after="${o.after || 0}" w:line="${o.line || 252}" w:lineRule="auto"/>`;
-    if (o.indL || o.indR || o.first) pp += `<w:ind w:left="${o.indL || 0}" w:right="${o.indR || 0}"${o.first ? ` w:firstLine="${o.first}"` : ''}/>`;
+    if (o.indL || o.indR || o.first || o.hang) pp += `<w:ind w:left="${o.indL || 0}" w:right="${o.indR || 0}"${o.hang ? ` w:hanging="${o.hang}"` : o.first ? ` w:firstLine="${o.first}"` : ''}/>`;
     pp += `<w:jc w:val="${o.jc || 'left'}"/>`;
     return `<w:p><w:pPr>${pp}</w:pPr>${runs}</w:p>`;
   }
@@ -224,8 +283,13 @@ function kpSkeleton(KP) {
       picXml(id, rid, cx, cy, name) + '</wp:anchor></w:drawing></w:r>';
   }
   const fit = (g, bw, bh) => { const k = Math.min(bw / g.w, bh / g.h, 914400 / 150); return [Math.round(g.w * k), Math.round(g.h * k)]; };
+  // «не отрывать»: все абзацы строки таблицы держатся со следующей строкой — Word переносит такой блок целиком
+  const keepAll = xml => xml.replace(/(<w:pPr>(?:<w:pStyle [^>]*\/>)?)(?!<w:keepNext\/>)/g, '$1<w:keepNext/>').replace(/<w:p>(?!<w:pPr>)/g, '<w:p><w:pPr><w:keepNext/></w:pPr>').replace(/<w:p\/>/g, '<w:p><w:pPr><w:keepNext/></w:pPr></w:p>');
+  const keepRow = row => row.map(keepAll);
+  // строки таблицы: короткая (до 6 строк) — целиком; у длинной вместе первые две и последние три строки
+  const keepTail = (i, n) => i < n - 1 && (n <= 6 || i === 0 || i >= n - 3);
   const heading = (title, sec, first) => p(r(title, 'heading'), { before: first || (sec && sec.newPage) ? 0 : 360, after: 160, keep: true, pbb: !!(sec && sec.newPage) });
-  const TH = (t, w, jc) => tc(p(r(t, 'th'), { jc: jc || 'center', line: 240 }), w, { fill: COL('FILL'), va: 'center' });
+  const TH = (t, w, jc) => tc(p(r(t, 'th'), { jc: jc || 'center', line: 240, keep: true }), w, { fill: COL('FILL'), va: 'center' });
 
   // производитель, модель, страна происхождения позиции (из карточки и таблицы характеристик)
   function infoOf(it) {
@@ -272,7 +336,10 @@ function kpSkeleton(KP) {
     const rows = [[TH(T.colNo, wc[0]), TH(T.colName, wc[1]), TH(T.colUnit, wc[2]), TH(T.colQty, wc[3]),
       TH(txt(vo ? 'colPrice' : 'colPriceNoVat', { cur }), wc[4]), TH(txt(vo ? 'colSum' : 'colSumNoVat', { cur }), wc[5])]];
     const num = (v, st, jc) => p(r(v, st || 'cell'), { jc: jc || 'right', line: 240 });
+    // позиция с составом и опциями не разрывается; последняя — вместе с итогами и суммой прописью
+    let last = rows.length;
     S.items.forEach((it, i) => {
+      const g0 = rows.length;
       const inf = infoOf(it);
       let nm = p(r(it.name, 'cellBold'), { line: 240 });
       if (BLK.offerMaker) {
@@ -289,17 +356,21 @@ function kpSkeleton(KP) {
       const k0 = BLK.offerKit ? kitOf(it).length : 0;
       if (BLK.offerOptions) optsOf(it).forEach((o, j) => sub(`${i + 1}.${k0 + j + 1}`, o.name, o.qty, o.unit || T.pcs,
         o.price ? money(o.price) : T.included, o.price ? money(o.qty * o.price) : '—'));
+      for (let k = g0; k < rows.length - 1; k++) rows[k] = keepRow(rows[k]);
+      last = g0;
     });
+    for (let k = last; k < rows.length; k++) rows[k] = keepRow(rows[k]);
     const L = wc.slice(0, n - 1).reduce((a, b) => a + b, 0);
-    const tot = (label, val) => rows.push([tc(p(r(label, 'total'), { jc: 'right', line: 240 }), L, { span: n - 1 }), tc(num(val, 'total'), wc[n - 1])]);
-    tot(T.total, money(t.sum));
-    tot(vo ? txt('vatIncl', { vat: S.vat }) : T.noVat, vo ? money(t.vat) : '—');
-    tot(T.grandTotal, money(t.sum));
+    const note = curCode(S) !== 'RUB' && BLK.currencyNote;
+    const tot = (label, val, keep) => { const row = [tc(p(r(label, 'total'), { jc: 'right', line: 240 }), L, { span: n - 1 }), tc(num(val, 'total'), wc[n - 1])]; rows.push(keep ? keepRow(row) : row); };
+    tot(T.total, money(t.sum), true);
+    tot(vo ? txt('vatIncl', { vat: S.vat }) : T.noVat, vo ? money(t.vat) : '—', true);
+    tot(T.grandTotal, money(t.sum), BLK.amountInWords || note);
     const out = [heading(T.offerTitle, sec, sectionOn('requisites') ? 0 : 1), tbl(rows, wc, { header: true })];
-    if (BLK.amountInWords) out.push(p(r(vo ? txt('inWords', { words: words(t.sum, curCode(S)), vat: S.vat, vatSum: money(t.vat), cur }) : txt('inWordsNoVat', { words: words(t.sum, curCode(S)) }), 'words'), { before: 120, jc: 'both' }));
-    if (curCode(S) !== 'RUB' && BLK.currencyNote) {
+    if (BLK.amountInWords) out.push(p(r(vo ? txt('inWords', { words: words(t.sum, curCode(S)), vat: S.vat, vatSum: money(t.vat), cur }) : txt('inWordsNoVat', { words: words(t.sum, curCode(S)) }), 'words'), { before: 120, jc: 'both', hy: true, keep: note }));
+    if (note) {
       const C = CURS[curCode(S)], rt = S.cur && +S.cur.rate;
-      out.push(p(r(txt('currencyNote', { curName: C.name }) + (rt ? txt('currencyRate', { rateDate: S.cur.date ? ' на ' + ruDate(S.cur.date) : '', cur: C.sh, rate: String(rt).replace('.', ','), rub: money(Math.round(t.sum * rt)) }) : ''), 'note'), { before: 60, jc: 'both' }));
+      out.push(p(r(txt('currencyNote', { curName: C.name }) + (rt ? txt('currencyRate', { rateDate: S.cur.date ? ' на ' + ruDate(S.cur.date) : '', cur: C.sh, rate: String(rt).replace('.', ','), rub: money(Math.round(t.sum * rt)) }) : ''), 'note'), { before: 60, jc: 'both', hy: true }));
     }
     return out.join('');
   }
@@ -311,10 +382,12 @@ function kpSkeleton(KP) {
     if (!conds.length && !extra.length) return '';
     const w2 = cols([3300, 6338]);
     let x = heading(T.conditionsTitle, sec);
-    if (conds.length) x += tbl(conds.map(c => [tc(p(r(c.label, 'cellBold'), { line: 240 }), w2[0]), tc(p(r(c.value, 'cell'), { line: 240 }), w2[1])]), w2);
+    // первые две и последние две строки — вместе: строка условий не остаётся одна на странице
+    if (conds.length) x += tbl(conds.map((c, i) => { const row = [tc(p(r(c.label, 'cellBold'), { line: 240 }), w2[0]), tc(Typo.paras(c.value, 'cell', { line: 240 }), w2[1])];
+      return i < conds.length - 1 && (i === 0 || i >= conds.length - 2) ? keepRow(row) : row; }), w2);
     if (extra.length) {
-      x += p(r(T.condExtraTitle, 'label'), { before: conds.length ? 200 : 0, after: 60 });
-      x += extra.map(l => p(r(/^[-•*–—]\s*/.test(l) ? '–' + NB + l.replace(/^[-•*–—]\s*/, '') : l, 'text'), { after: 40, jc: 'both', indL: /^[-•*–—]/.test(l) ? 284 : 0 })).join('');
+      x += p(r(T.condExtraTitle, 'label'), { before: conds.length ? 200 : 0, after: 60, keep: true });
+      x += Typo.paras(extra.join('\n'), 'text', { after: 0, gap: 40, jc: 'both', hy: true, tail: true });
     }
     return x;
   }
@@ -324,8 +397,9 @@ function kpSkeleton(KP) {
     const w2 = cols([5200, 4438]);
     const rows = [[TH(T.charName, w2[0]), TH(T.charValue, w2[1])]];
     groups.forEach(g => {
-      if (groups.length > 1 || g.name) rows.push([tc(p(r(g.name || T.charsTitle, 'group'), { line: 240 }), w2[0] + w2[1], { span: 2, fill: COL('FILL') })]);
-      g.rows.forEach(x => rows.push([tc(p(r(x.k || '', 'cell'), { line: 240 }), w2[0]), tc(p(r(x.v || '', x.hl ? 'cellBold' : 'cell'), { line: 240 }), w2[1])]));
+      if (groups.length > 1 || g.name) rows.push(keepRow([tc(p(r(g.name || T.charsTitle, 'group'), { line: 240 }), w2[0] + w2[1], { span: 2, fill: COL('FILL') })]));
+      g.rows.forEach((x, i) => { const row = [tc(p(r(x.k || '', 'cell'), { line: 240 }), w2[0]), tc(Typo.paras(x.v || '', x.hl ? 'cellBold' : 'cell', { line: 240 }), w2[1])];
+        rows.push(keepTail(i, g.rows.length) ? keepRow(row) : row); });
     });
     return tbl(rows, w2, { header: true });
   }
@@ -334,7 +408,7 @@ function kpSkeleton(KP) {
     const rows = [[TH(T.colNo, wc[0]), TH(T.kitName, wc[1]), TH(T.kitQty, wc[2]), TH(T.kitChars, wc[3])]];
     kitOf(it).forEach((x, j) => {
       const sub = [x.maker, x.model].filter(Boolean).join(' ');
-      let d = x.desc ? p(r(x.desc, 'cell'), { line: 240, jc: 'both', after: (x.rows || []).length && BLK.specsKitChars ? 60 : 0 }) : '';
+      let d = x.desc ? Typo.paras(x.desc, 'cell', { line: 240, after: (x.rows || []).length && BLK.specsKitChars ? 60 : 0 }) : '';
       if (BLK.specsKitChars) d += (x.rows || []).map(z => p(r(z.k + ': ', 'cellSmall') + r(z.v, 'cell'), { line: 240 })).join('');
       rows.push([tc(p(r(String(j + 1), 'cell'), { jc: 'center', line: 240 }), wc[0]),
         tc(p(r(x.name, 'cellBold'), { line: 240 }) + (sub && !x.name.includes(sub) ? p(r(sub, 'cellSmall'), { line: 240, before: 30 }) : ''), wc[1]),
@@ -349,13 +423,13 @@ function kpSkeleton(KP) {
       out.push(p(r(txt('specsItem', { n: i + 1, name: it.name }), 'subheading'), { before: i ? 280 : 0, after: 80, keep: true }));
       const meta = [inf.maker ? txt('maker', { maker: inf.maker }) : '', inf.model ? txt('model', { model: inf.model }) : '', inf.country ? txt('country', { country: inf.country }) : '',
         txt('qtyLine', { qty: it.qty, unit: T.pcs })].filter(Boolean).join('; ').replace(/([^.])$/, '$1.');
-      out.push(p(r(meta, 'text'), { after: 100 }));
+      out.push(p(r(meta, 'text'), { after: 100, keep: true }));
       if (BLK.specsPhoto && m.tile) {
         const [cx, cy] = fit(m.tile, cm(RULES.specPhotoWidthCm), cm(RULES.specPhotoHeightCm));
         out.push(p(img(m.tile.rid, cx, cy, it.name), { jc: 'center', after: 100 }));
       }
       if (BLK.specsFeatures) (it.features || []).filter(f => f.text).forEach(f => {
-        out.push(p((f.label ? r(f.label.replace(/[.:]\s*$/, '') + '. ', 'label') : '') + r(f.text, 'text'), { after: 80, jc: 'both', first: 567 }));
+        out.push(Typo.paras(f.text, 'text', { after: 80, jc: 'both', first: 567, hy: true }, f.label ? r(f.label.replace(/[.:]\s*$/, '') + '. ', 'label') : ''));
       });
       const groups = (it.groups || []).map(g => ({ name: g.name, rows: (g.rows || []).filter(x => x.k && x.v) })).filter(g => g.rows.length);
       if (BLK.specsChars && groups.length) {
@@ -484,7 +558,8 @@ function kpSkeleton(KP) {
       footer: footerXml(S, roots.footer),
       rels: relsXml(media),
       header: TPL.header && TPL.header.on && roots.header ? headerXml(S, roots.header) : null,
-      media, floats
+      media, floats,
+      hyphenate: !!RULES.hyphenation    // программа включает (или выключает) автоматические переносы в настройках документа
     };
   }
 

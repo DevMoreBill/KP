@@ -33,7 +33,7 @@ function renderDatalist(){
 
 function fillFromCat(it, x){
   it.gallery = JSON.parse(JSON.stringify(x.gallery||[])).map(g=>({...g,id:g.id||uid()}));
-  if (!x.hint) x={...x, hint:autoHint(x)};
+  if (!x.hint) x={...x, hint:CoverHint.of(x)};
   if (!(x.groups||[]).length) x={...x, groups:groupsFromAttrs(x)};
   Object.assign(it,{ name:x.name||it.name, spec:x.spec||'', price:x.price||0, pageTitle:x.pageTitle||'', photoCaption:x.photoCaption||'',
     features:JSON.parse(JSON.stringify(x.features||[])), groups:JSON.parse(JSON.stringify(x.groups||[])), hint:x.hint||null, catId:x.id, photo:x.photo||null, logo:x.logo||null,

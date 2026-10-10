@@ -14,9 +14,23 @@ async function buildKpBlob(){
 
 const DOCX_OPTS = { inWrapper:true, breakPages:true, ignoreLastRenderedPageBreak:true, experimental:true, renderHeaders:true, renderFooters:true, useBase64URL:true };
 
+// документ для показа: docx-preview не знает неразрывный дефис Word (<w:noBreakHyphen/>) и теряет его
+// («CAF4-22-5/2» → «CAF4225/2») — в копии для показа он заменяется знаком U+2011; сам файл (и PDF из него) не меняется
+class PreviewDocx {
+  static async forDisplay(blob){
+    try{
+      const zip=await JSZip.loadAsync(blob); let changed=false;
+      for (const name of Object.keys(zip.files).filter(n=>/^word\/(document|header\d*|footer\d*|header_kp|footer_kp)\.xml$/.test(n))){
+        const x=await zip.file(name).async('string'); if (x.indexOf('<w:noBreakHyphen/>')<0) continue;
+        zip.file(name, x.split('<w:noBreakHyphen/>').join('<w:t>\u2011</w:t>')); changed=true; }
+      return changed ? await zip.generateAsync({type:'blob', compression:'STORE'}) : blob;
+    }catch(e){ return blob; }
+  }
+}
+
 async function renderDocxInto(blob, host){
   const style=document.createElement('div'), body=document.createElement('div');
-  await docx.renderAsync(blob, body, style, DOCX_OPTS);
+  await docx.renderAsync(await PreviewDocx.forDisplay(blob), body, style, DOCX_OPTS);
   kpFloatsFix(body, blob.kpFloats);
   host.replaceChildren(style, body);
 }
