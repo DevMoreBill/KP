@@ -11,7 +11,7 @@ class ListsPanel {
   async open(){ const r=await aapi('lists'); LISTS.use(r.values||{}); LISTS.cache(); this.start(); this.render(); this.bind(); }
 
   navHtml(){ return LISTS.groups.map(g=>{ const ds=LISTS.inGroup(g.id); return ds.length ? `<p class="ls-g">${esc(g.title)}</p>`
-      + ds.map(d=>`<button type="button" class="ls-it${d.key===this.key?' on':''}" data-lsk="${esc(d.key)}"><span>${esc(d.label)}</span>${LISTS.isOwn(d.key)?'<i>свой</i>':''}</button>`).join('') : ''; }).join(''); }
+      + ds.map(d=>`<button type="button" class="ls-it${d.key===this.key?' on':''}${LISTS.isOwn(d.key)?' own':''}" data-lsk="${esc(d.key)}"><span>${esc(d.label)}</span>${LISTS.isOwn(d.key)?'<i>свой</i>':''}</button>`).join('') : ''; }).join(''); }
   cellHtml(r, i, [f, label, type, o={}]){ const v=r[f]==null?'':String(r[f]);
     return type==='area' ? `<textarea rows="2" data-lsf="${f}" data-i="${i}" aria-label="${esc(label)}" placeholder="${esc(o.ph||'')}">${esc(v)}</textarea>`
       : `<input type="text" data-lsf="${f}" data-i="${i}" value="${esc(v)}" aria-label="${esc(label)}" placeholder="${esc(o.ph||'')}"${type==='num'?' inputmode="decimal"':''}>`; }
@@ -24,7 +24,7 @@ class ListsPanel {
   render(){ const d=this.def(), own=LISTS.isOwn(this.key);
     this.m.innerHTML=`<div class="st-card"><p class="muted" style="margin:0">Варианты выпадающих меню и подсказок во всей программе.
         Изменения видят все пользователи; уже созданные КП не меняются. «Вернуть встроенный» — список, как в программе.</p></div>
-      <div class="ls"><nav class="ls-nav" aria-label="Списки">${this.navHtml()}</nav>
+      <div class="ls${ListsPanel.only?' st-only':''}"><nav class="ls-nav" aria-label="Списки"><label class="ck st-own"><input type="checkbox" data-lsonly data-nodirty${ListsPanel.only?' checked':''}> Только свои (${[...LISTS.defs.keys()].filter(k=>LISTS.isOwn(k)).length})</label>${this.navHtml()}</nav>
         <section class="ls-ed"><div class="ls-hd"><h4>${esc(d.label)}${own?' <i class="ls-own">свой</i>':''}</h4>${d.hint?`<p class="muted">${esc(d.hint)}</p>`:''}
           ${(LISTS.groups.find(g=>g.id===d.group)||{}).hint?`<p class="muted ls-gh">${esc(LISTS.groups.find(g=>g.id===d.group).hint)}</p>`:''}</div>
           ${this.tableHtml()}
@@ -39,6 +39,7 @@ class ListsPanel {
     try{ const r=await ajson('lists', {values}); LISTS.use(r.values||{}); LISTS.cache(); this.start(); this.render(); toast(msg); renderForm(); }
     catch(e){ toast('Не сохранено: '+(e.message||e)); } }
   bind(){ const m=this.m;
+    m.onchange=e=>{ if (e.target.matches('[data-lsonly]')){ ListsPanel.only=e.target.checked; m.querySelector('.ls').classList.toggle('st-only', ListsPanel.only); } };
     m.oninput=e=>{ const t=e.target; if (t.dataset.lsf==null) return; this.rows[+t.dataset.i][t.dataset.lsf]=t.value; this.touch(); };
     m.onclick=async e=>{ const t=e.target;
       const k=t.closest('[data-lsk]'); if (k){ if (this.dirty && !await stConfirm('Не сохранено','Изменения в этом списке пропадут.','Перейти')) return;
@@ -56,6 +57,7 @@ class ListsPanel {
   }
 }
 ListsPanel.last = '';
+ListsPanel.only = false;     // фильтр «Только свои»
 
 class TextsPanel {
   constructor(m){ this.m=m; this.q=''; }
@@ -100,26 +102,32 @@ class FeaturesPanel {
   whoText(c){ if (c.who==='admin') return 'только администратору';
     if (c.who==='users'){ const n=c.users.map(id=>(MGRS.find(m=>m.id===id)||{}).name).filter(Boolean); return n.length?'администратору и: '+n.join(', '):'только администратору (менеджеры не выбраны)'; }
     return 'всем'; }
-  row(d){ const c=this.c(d.key), own=c.on, need=d.needs && !this.c(d.needs).on ? FEAT.get(d.needs) : null, k=esc(d.key);
+  /** функция настроена не как в программе (выключена или открыта не всем) */
+  changed(k){ const c=this.cfg[k]; return !!c && (c.on===false || (c.who && c.who!=='all')); }
+  row(d){ const c=this.c(d.key), own=c.on, ch=this.changed(d.key), need=d.needs && !this.c(d.needs).on ? FEAT.get(d.needs) : null, k=esc(d.key);
     const who=own?`<div class="ft-who"><label>Кому <select class="f" data-ftwho="${k}">${[['all','Всем'],['admin','Только администратору'],['users','Выбранным менеджерам']]
         .map(([v,t])=>`<option value="${v}"${c.who===v?' selected':''}>${t}</option>`).join('')}</select></label>
       ${c.who==='users'?`<div class="ft-users">${MGRS.length?MGRS.map(m=>`<label class="ft-u"><input type="checkbox" data-ftu="${k}" value="${esc(m.id)}"${c.users.includes(m.id)?' checked':''}> ${esc(m.name||m.id)}</label>`).join(''):'<span class="muted">Менеджеров нет — добавьте их в разделе «Менеджеры».</span>'}</div>`:''}
       ${c.who!=='all'?`<span class="ft-off">Доступно ${esc(this.whoText(c))}; остальные её не видят.</span>`:''}</div>`:'';
-    return `<div class="ft-r${own?'':' off'}"><label class="sw ft-sw"><input type="checkbox" data-ft="${k}"${own?' checked':''}><span>${own?'включено':'выключено'}</span></label>
-      <div><b>${esc(d.label)}</b><span class="muted">${esc(d.hint)}</span>${!own&&d.off?`<span class="ft-off">Выключено: ${esc(d.off)}</span>`:''}${need?`<span class="ft-off">Не работает: выключено «${esc(need.label)}»</span>`:''}${who}</div></div>`; }
-  render(){ const n=FEAT.defs.filter(d=>!this.c(d.key).on).length, lim=FEAT.defs.filter(d=>this.c(d.key).on && this.c(d.key).who!=='all').length;
+    return `<div class="ft-r${own?'':' off'}${ch?' own':''}"><label class="sw ft-sw"><input type="checkbox" data-ft="${k}"${own?' checked':''}><span>${own?'включено':'выключено'}</span></label>
+      <div><b>${esc(d.label)}</b>${ch?` <i class="st-mod">изменено</i> <button type="button" class="icon ft-rs" data-ftrs="${k}" title="Вернуть как в программе: включено для всех" aria-label="Вернуть встроенное">↺</button>`:''}<span class="muted">${esc(d.hint)}</span>${!own&&d.off?`<span class="ft-off">Выключено: ${esc(d.off)}</span>`:''}${need?`<span class="ft-off">Не работает: выключено «${esc(need.label)}»</span>`:''}${who}</div></div>`; }
+  render(){ this.m.classList.toggle('st-only', !!FeaturesPanel.only); const n=FEAT.defs.filter(d=>!this.c(d.key).on).length, lim=FEAT.defs.filter(d=>this.c(d.key).on && this.c(d.key).who!=='all').length;
     this.m.innerHTML=`<div class="st-card"><p class="muted" style="margin:0">Включите только то, чем пользуется отдел, — лишние кнопки и окна пропадут. Функцию можно открыть всем, только
         администратору (видна после входа в «Настройки») или выбранным менеджерам. Недоступная функция закрыта и в обход интерфейса;
-        её данные (статусы, расчёты, версии) не удаляются: включите снова — всё на месте.${n?` Выключено: <b>${n}</b>.`:''}${lim?` С ограниченным доступом: <b>${lim}</b>.`:''}</p></div>
+        её данные (статусы, расчёты, версии) не удаляются: включите снова — всё на месте.${n?` Выключено: <b>${n}</b>.`:''}${lim?` С ограниченным доступом: <b>${lim}</b>.`:''}</p>
+        <label class="ck st-own"><input type="checkbox" data-ftonly data-nodirty${FeaturesPanel.only?' checked':''}> Только изменённые (${FEAT.defs.filter(d=>this.changed(d.key)).length})</label></div>
       ${FEAT.groups.map(g=>{ const ds=FEAT.defs.filter(d=>d.group===g.id); return ds.length?`<div class="st-card"><p class="sub">${esc(g.title)}</p><div class="ft-l">${ds.map(d=>this.row(d)).join('')}</div></div>`:''; }).join('')}
       <div class="row"><button class="btn ghost" type="button" data-ftall>Включить всё для всех</button></div>`; }
   async save(values, msg){
     try{ const r=await ajson('features', {values}); this.cfg=r.config||{}; await FEAT.refresh(); this.render(); toast(msg); }
     catch(e){ toast('Не сохранено: '+(e.message||e)); this.render(); } }
   bind(){ this.m.onchange=e=>{ const t=e.target, d=t.dataset;
+      if (t.matches('[data-ftonly]')){ FeaturesPanel.only=t.checked; this.m.classList.toggle('st-only', t.checked); return; }
       if (d.ft){ const f=FEAT.get(d.ft); this.save({[d.ft]: {...this.c(d.ft), on:t.checked}}, `«${f.label}» — ${t.checked?'включено':'выключено'}`); }
       else if (d.ftwho){ const f=FEAT.get(d.ftwho), c={...this.c(d.ftwho), who:t.value}; this.save({[d.ftwho]: c}, `«${f.label}» — доступно ${this.whoText(c)}`); }
       else if (d.ftu){ const c=this.c(d.ftu), users=[...this.m.querySelectorAll(`[data-ftu="${CSS.escape(d.ftu)}"]:checked`)].map(x=>x.value);
         this.save({[d.ftu]: {...c, users}}, `«${FEAT.get(d.ftu).label}» — доступно ${this.whoText({...c, users})}`); } };
-    this.m.onclick=e=>{ if (e.target.closest('[data-ftall]')) this.save(Object.fromEntries(FEAT.defs.map(d=>[d.key, null])), 'Все функции включены для всех'); }; }
+    this.m.onclick=e=>{ const rs=e.target.closest('[data-ftrs]'); if (rs){ const f=FEAT.get(rs.dataset.ftrs); return this.save({[rs.dataset.ftrs]: null}, `«${f.label}» — как в программе: включено для всех`); }
+      if (e.target.closest('[data-ftall]')) this.save(Object.fromEntries(FEAT.defs.map(d=>[d.key, null])), 'Все функции включены для всех'); }; }
 }
+FeaturesPanel.only = false;   // фильтр «Только изменённые»

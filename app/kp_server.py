@@ -303,6 +303,8 @@ def main():
         return 1
     try:
         prepare_dirs()
+        from settings_history import SettingsHistory
+        store().kv_hook = SettingsHistory(store())     # правки настроек людьми — в историю с откатом
         ensure_templates()
         store().migrate_json(DATA_DIR)   # переход с версии, хранившей данные в JSON-файлах
         admin.startup(store(), DATA_DIR)   # сброс пароля по data/admin-reset.txt, очистка корзины

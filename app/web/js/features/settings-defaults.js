@@ -19,9 +19,12 @@ async function stDefaults(m){
       <button type="button" class="icon df-rs" data-dreset title="Вернуть встроенное значение${type==='bool'?'':': '+esc(String(builtin||'пусто'))}" aria-label="Вернуть встроенное"${own?'':' disabled'}>↺</button></div>`; };
   m.innerHTML=`<div class="st-card df-top"><p class="sub" style="margin:0">Что программа подставляет сама</p>
       <p class="muted">Включено — значение подставляется в новые КП, расчёты и карточки (менеджер может изменить). Выключено — поле остаётся пустым, решает менеджер.
-      «↺» — вернуть значение программы. Уже созданные КП не меняются.</p></div>
+      «↺» — вернуть значение программы. Уже созданные КП не меняются.</p>
+      <label class="ck st-own"><input type="checkbox" id="dfOwn" data-nodirty${stDefaults.only?' checked':''}> Только изменённые (${Object.keys(V).filter(k=>DEF_BY[k]).length})</label></div>
     ${DEF_GROUPS.map(([g,t])=>{ const rows=DEF_SCHEMA.filter(x=>x[1]===g); return rows.length?`<div class="st-card df-g"><p class="sub">${esc(t)}</p>${DEF_GROUP_HINTS[g]?`<p class="muted df-gh">${esc(DEF_GROUP_HINTS[g])}</p>`:''}${rows.map(row).join('')}</div>`:''; }).join('')}
     <div class="df-bar"><span class="muted" id="dfSt">Изменений нет</span><button class="btn ghost" type="button" data-dall>Вернуть все встроенные</button><button class="btn primary" type="button" data-dsave disabled>Сохранить</button></div>`;
+  m.classList.toggle('st-only', !!stDefaults.only);
+  m.querySelector('#dfOwn').onchange=e=>{ stDefaults.only=e.target.checked; m.classList.toggle('st-only', e.target.checked); };
   const dirty=()=>{ const b=m.querySelector('[data-dsave]'); b.disabled=false; $('#dfSt').textContent='Есть несохранённые изменения'; };
   m.onchange=e=>{ const rw=e.target.closest('.df-row'); if (!rw) return;
     if (e.target.matches('[data-don]')){ rw.classList.toggle('off', !e.target.checked); const v=rw.querySelector('[data-dv]'); if (v) v.disabled=!e.target.checked; }
@@ -48,3 +51,4 @@ async function stDefSave(m, values, msg){
     toast(msg); stDefaults(m); }
   catch(err){ toast('Не сохранено: '+(err.message||err)); }
 }
+stDefaults.only = false;     // фильтр «Только изменённые» — запоминается, пока открыта программа

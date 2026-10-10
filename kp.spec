@@ -38,7 +38,7 @@ a = Analysis(
         ('app/equipment_types.json', 'app'),
         ('templates', 'templates'),
     ],
-    hiddenimports=['kp_server', 'web_api', 'version', 'geo', 'feeds', 'feed_files', 'imgfetch', 'auth_users', 'ai_llm', 'ai_profile', 'app_update', 'admin_overview', 'data_bundle', 'platform', 'pdf_text', 'defaults', 'lists', 'kp_track', 'features', 'smtplib', 'email.message', 'email.utils', 'importlib.abc', 'importlib.util', 'ipaddress', 'csv', 'zipfile', 'calendar', 'decimal',
+    hiddenimports=['kp_server', 'web_api', 'version', 'geo', 'feeds', 'feed_files', 'imgfetch', 'auth_users', 'ai_llm', 'ai_profile', 'app_update', 'admin_overview', 'data_bundle', 'settings_history', 'backup_mirror', 'connections', 'platform', 'pdf_text', 'defaults', 'lists', 'kp_track', 'features', 'smtplib', 'email.message', 'email.utils', 'importlib.abc', 'importlib.util', 'ipaddress', 'csv', 'zipfile', 'calendar', 'decimal',
                    'statistics', 'uuid', 'base64', 'html', 'html.parser', 'http.client', 'email', 'shutil', 'tempfile', 'subprocess', 'ctypes',
                    'config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'workcal', 'imgfetch', 'desktop', 'pdf_convert', 'catalog_migrate', 'admin', 'images', 'maintenance', 'logistics_api',
                    'sqlite3', '_sqlite3', 'gzip'],
