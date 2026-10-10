@@ -410,6 +410,17 @@ e-mail, мобильный (последние 10 цифр) и добавочн�
 работать по адресу сервера отдела или загрузить файл базы («Обслуживание → Копии и база»), фото — папка `data\img` сервера.
 Из сборки исключены и ненужные модули Python и азиатские кодировки (`kp.spec`).
 
+**Удобство «Настроек» (3.47):** `features/settings-tools.js` — `SettingsSearch` (поиск по вкладкам, умолчаниям `DEF_SCHEMA`, функциям
+`FEAT`, спискам `LISTS`, ключам `KEY_GROUPS`, категориям `TYPES`; переход и подсветка `StNav.highlight`), `StDirty` (несохранённые изменения:
+отметка, вопрос при уходе; любой успешный запрос на изменение через `api()` снимает отметку), `ChangedPanel` («Изменённые настройки»),
+`SettingsHistoryPanel` и `ConnectionsPanel`, `MirrorCard`. Сервер: `settings_history.py` — `SettingsHistory` (перехват `Store.kv_set` для kv
+settings, types, uitexts, logistics, mail, feeds; только правки людей — `SettingsHistory.actor()` в `admin.guard`; без секретов; служебные поля
+*At/*By, last, checked… не считаются; таблица `settings_history`, миграция 2027-05; откат по полям глубиной 2), адреса `history`,
+`history/<id>`, `history/<id>/rollback`; `connections.py` — `ConnectionCheck` (`GET|POST /api/admin/connections`, результат — kv connCheck);
+`backup_mirror.py` — `MirrorBackup` (kv settings.backup2, состояние maint.backup2; копия после ежедневной, проверка quick_check, хранение N
+последних, изображения — только новые; `maint/mirror`, `maint/mirror/check`, `maint/mirror/run` в фоне). Облегчённый каталог (миграция
+2027-06): без `hint`, строка поиска `st` — слова без повторов, до 400 символов.
+
 **Выгрузка с изображениями** (`app/data_bundle.py`, `features/settings-data.js`): «Копии и база» — разделы базы в JSON,
 каталог целиком или выбранные группы/категории (`GET /api/admin/export?sections&cats&images=1`, список — `export/cats`).
 С изображениями — архив «КП_выгрузка_….zip»: `kp-backup.json` + `img/<путь>` (все `/img/…`, на которые есть ссылки, в т. ч. в КП).

@@ -144,6 +144,25 @@ MIGRATIONS = [
      """
      DROP TABLE IF EXISTS drafts;
      """),
+    # 3.47.0: история изменений настроек с откатом (app/settings_history.py): снимок «было — стало» без секретов.
+    ('2027-05-settings-history',
+     """
+     CREATE TABLE IF NOT EXISTS settings_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, key TEXT NOT NULL,
+       by TEXT, paths TEXT, before TEXT, after TEXT, rolled TEXT);
+     CREATE INDEX IF NOT EXISTS settings_history_key ON settings_history(key, id);
+     """,
+     """
+     DROP TABLE IF EXISTS settings_history;
+     """),
+    # 3.47.0: облегчённые карточки каталога легче вдвое (каталог 6–10 тыс. позиций грузится в браузер быстрее и занимает меньше
+    # памяти): без подсказки титула (hint — нужна только в КП, а туда позиция берётся целиком) и строка поиска без повторов слов.
+    ('2027-06-light-slim',
+     """
+     SELECT 1;
+     """,
+     """
+     SELECT 1;
+     """),
 ]
 KP_VERSIONS = 30
 
@@ -152,7 +171,7 @@ TRASH_TABLES = {'kp': 'kp', 'catalog': 'catalog', 'manager': 'managers', 'client
 
 # поля позиции, которые нужны списку каталога, фильтрам и быстрому поиску (без характеристик, описаний и галереи)
 LIGHT_KEYS = ('id', 'name', 'spec', 'price', 'priceCur', 'cost', 'costCur', 'margin', 'mmode', 'kind', 'short', 'unit',
-              'attrs', 'hint', 'photo', 'prices', 'options', 'updatedAt', 'rrc', 'stock', 'priceSrc', 'costSrc', 'costDisc')
+              'attrs', 'photo', 'prices', 'options', 'updatedAt', 'rrc', 'stock', 'priceSrc', 'costSrc', 'costDisc')
 
 
 def _now():
@@ -245,7 +264,7 @@ def _fill_light(st, c):
     c.execute("INSERT INTO kv (key, value) VALUES ('datarev:catalog', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1")
 
 
-MIGRATION_FILL = {'2027-01-db': _fill_columns, '2027-02-light': _fill_light}
+MIGRATION_FILL = {'2027-01-db': _fill_columns, '2027-02-light': _fill_light, '2027-06-light-slim': _fill_light}
 
 
 def light_of(doc):
@@ -258,7 +277,14 @@ def light_of(doc):
     for g in doc.get('groups') or []:
         for r in g.get('rows') or []:
             vals.append('%s %s' % (r.get('k', ''), r.get('v', '')))
-    d['st'] = ' '.join(vals)[:600]
+    # слова без повторов (поиск сравнивает слова по отдельности): «Производительность при 7,5 бар …» не повторяется у каждой строки
+    seen, words = set(), []
+    for w in ' '.join(vals).split():
+        k = w.lower()
+        if k not in seen:
+            seen.add(k)
+            words.append(w)
+    d['st'] = ' '.join(words)[:400]
     fd = doc.get('feed') if isinstance(doc.get('feed'), dict) else {}
     if fd.get('id'):                # фид-источник — фильтр «Поставщик» в каталоге
         d['src'] = str(fd['id'])[:40]
@@ -920,8 +946,17 @@ class Store:
         except Exception:
             return default
 
+    kv_hook = None      # история настроек (settings_history.SettingsHistory): watches(key), record(key, было, стало)
+
     def kv_set(self, key, value):
+        hook = self.kv_hook if self.kv_hook is not None and self.kv_hook.watches(key) else None
+        before = self.kv_get(key) if hook else None
         self.write('INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)', (key, json.dumps(value, ensure_ascii=False)))
+        if hook:
+            try:
+                hook.record(key, before, value)
+            except Exception as e:        # история не должна мешать сохранению настроек
+                print('История настроек не записана:', e)
 
     def backup(self, dst):
         """Согласованная копия базы «на ходу» (встроенный механизм SQLite backup)."""

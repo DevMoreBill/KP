@@ -452,6 +452,8 @@ def _put_product(h, store, cid, admin):
 def guard(h, store, m, path):
     """Вызывается до обычного маршрута. True — ответ уже отправлен; функция — вызвать после успешного ответа
     (запись в журнал); None — ничего не нужно."""
+    from settings_history import SettingsHistory
+    SettingsHistory.actor(actor(h)[1])            # запрос человека: его правки настроек — в историю
     if path.startswith('/api/admin/'):
         AdminApi(h, store).handle(m, path[len('/api/admin/'):])
         return True
@@ -796,6 +798,13 @@ class AdminApi:
         me = (session(self.h, touch=False) or {}).get('login', '')
         if sub in ('system', 'attention', 'restart', 'folder') or sub == 'update' or sub.startswith('update/'):
             return self.system(m, sub, q, me)
+        if sub == 'history' or sub.startswith('history/'):
+            return self.history(m, sub, q)
+        if sub == 'connections':      # проверить все подключения: почта, нейросеть, ЦБ, контрагенты, перевозчики, GitHub, фиды, PDF
+            from config import ROOT
+            from connections import ConnectionCheck
+            cc = ConnectionCheck(st, os.path.dirname(st.path), ROOT)
+            return self.ok(cc.run() if m == 'POST' else cc.last())
         if sub == 'password' and m == 'POST':
             d, users = self.data(), accounts(st)
             u = find_account(users, me) or (users[0] if len(users) == 1 else None)
@@ -1051,6 +1060,23 @@ class AdminApi:
             return self.err(422, str(e))
         return self.err(404, 'not found')
 
+    # ---------- история изменений настроек ----------
+    def history(self, m, sub, q):
+        from settings_history import SettingsHistory
+        sh = SettingsHistory(self.st)
+        if sub == 'history' and m == 'GET':
+            key = q.get('key') if q.get('key') in SettingsHistory.KEYS else None
+            return self.ok({'items': sh.items(key, min(int(q.get('limit') or 100), 500), int(q.get('offset') or 0)),
+                            'keys': SettingsHistory.KEYS})
+        r = re.match(r'^history/(\d{1,9})(/rollback)?$', sub)
+        if r and m == 'GET' and not r.group(2):
+            return self.ok(sh.get(r.group(1)))
+        if r and m == 'POST' and r.group(2):
+            res = sh.rollback(r.group(1), actor(self.h, True)[1])
+            self.log('rollback_settings', 'settings', res['key'], None, {'history': res['id'], 'title': res['title']})
+            return self.ok(res)
+        return self.err(404, 'not found')
+
     # ---------- обслуживание базы: копии, сжатие, журнал, изображения ----------
     def maint(self, m, sub, q):
         import maintenance as mt
@@ -1062,7 +1088,26 @@ class AdminApi:
         if sub == 'maint/backup' and m == 'POST':
             rec = mt.daily_backup(st, data_dir, force=True)
             self.log('backup_db', 'db', 'auto', None, {'ok': rec.get('ok'), 'file': os.path.basename(rec.get('file') or '')}, result='success' if rec.get('ok') else 'failed')
+            from backup_mirror import MirrorBackup
+            mb = MirrorBackup(st, data_dir)
+            if mb.config()['on'] and not mb.status()['running']:
+                threading.Thread(target=mb.run, daemon=True, name='backup-mirror').start()
             return self.ok(mt.summary(st, data_dir))
+        if sub.startswith('maint/mirror'):         # вторая папка для копий базы (сетевой диск, флешка, облако)
+            from backup_mirror import MirrorBackup
+            mb = MirrorBackup(st, data_dir)
+            if sub == 'maint/mirror' and m == 'GET':
+                return self.ok(mb.status())
+            if sub == 'maint/mirror' and m == 'POST':
+                res = mb.save(self.data(), actor(self.h, True)[1])
+                self.log('edit_settings', 'settings', 'backup2', None, {k: res[k] for k in ('on', 'path', 'keep', 'images')})
+                return self.ok(res)
+            if sub == 'maint/mirror/check' and m == 'POST':
+                return self.ok(mb.check(self.data().get('path')))
+            if sub == 'maint/mirror/run' and m == 'POST':
+                res = mb.start()
+                self.log('backup_db', 'db', 'mirror', None, {'path': res.get('path')})
+                return self.ok(res)
         if sub == 'maint/run' and m == 'POST':
             rec = mt.db_maintenance(st, vacuum=True)
             self.log('maintain_db', 'db', 'vacuum', None, rec.get('vacuum'))

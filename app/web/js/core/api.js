@@ -22,6 +22,8 @@ async function api(path, opts={}){
       err.code='conflict'; err.info=info; throw err; } }
   if (r.status===401 && typeof AUTH!=='undefined' && AUTH.enabled && !/^\/api\/(admin|auth)\//.test(path)) authScreen('Сессия закончилась — войдите снова.');
   if (!r.ok) throw new Error((await r.text()) || ('HTTP '+r.status));
+  // сохранение в «Настройках» прошло — отметка «несохранённые изменения» снимается (проверки и предпросмотр — не сохранение)
+  if ((opts.method||'GET')!=='GET' && typeof StDirty!=='undefined' && !/\/(preview|test|check)\b|\/connections\b/.test(path)) StDirty.saved();
   const ct = r.headers.get('content-type')||''; return ct.includes('json') ? r.json() : r.text();
 }
 

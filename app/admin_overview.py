@@ -60,7 +60,7 @@ class Attention:
 
     def items(self):
         out = []
-        for check in (self._catalog, self._backup, self._update, self._moderation, self._mail, self._ai, self._disk, self._login, self._trash):
+        for check in (self._catalog, self._backup, self._mirror, self._update, self._moderation, self._mail, self._ai, self._disk, self._login, self._trash):
             try:
                 out.extend(check())
             except Exception:        # одна проверка не должна ломать обзор
@@ -82,6 +82,17 @@ class Attention:
             return [{'level': 'bad', 'text': 'Последняя копия базы с ошибкой: %s' % (b.get('error') or '')[:120], 'tab': 'backup'}]
         if datetime.fromisoformat(b['at'][:19]) < datetime.now() - timedelta(days=self.BACKUP_DAYS):
             return [{'level': 'warn', 'text': 'Копия базы не обновлялась с %s' % b['at'][:10], 'tab': 'backup'}]
+        return []
+
+    def _mirror(self):
+        from backup_mirror import MirrorBackup
+        mb = MirrorBackup(self.store, self.cfg.DATA_DIR)
+        c, s = mb.config(), mb.state()
+        if not c['on']:
+            return [{'level': 'info', 'text': 'Копии базы хранятся только на этом диске — укажите вторую папку (сетевой диск, флешку, облако)', 'tab': 'backup'}]
+        if mb.stale():
+            why = s.get('error') or ('последняя — %s' % s['at'][:10] if s.get('at') else 'ещё не было')
+            return [{'level': 'bad' if s.get('error') else 'warn', 'text': 'Копия во вторую папку не обновляется: %s' % why[:160], 'tab': 'backup'}]
         return []
 
     def _update(self):

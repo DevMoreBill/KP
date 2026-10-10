@@ -28,8 +28,11 @@ class AdminNav {
       {key:'features', label:'Функции программы', hint:'Какие дополнительные возможности включены и кому доступны: всем, администратору или выбранным менеджерам.', open:m=>new FeaturesPanel(m).open()},
       {key:'defaults', label:'Умолчания', hint:'Что программа подставляет сама: новое КП, условия, контакты компании, экономика сделки, станции, автозаполнение.', open:m=>stDefaults(m)},
       {key:'lists', label:'Списки и выборы', hint:'Варианты в выпадающих списках: условия, причины проигрыша, единицы и т. п.', open:m=>stLists(m)},
-      {key:'texts', label:'Тексты интерфейса', hint:'Свои надписи и подсказки вместо стандартных.', open:m=>stTexts(m)}]},
+      {key:'texts', label:'Тексты интерфейса', hint:'Свои надписи и подсказки вместо стандартных.', open:m=>stTexts(m)},
+      {key:'changed', label:'Изменённые настройки', hint:'Всё, что отличается от встроенного в программу, одним списком: открыть или вернуть встроенное.', open:m=>new ChangedPanel(m).open()},
+      {key:'history', label:'История изменений', hint:'Кто, когда и что поменял в настройках; «Вернуть как было» — отменить любую правку.', open:m=>new SettingsHistoryPanel(m).open()}]},
     {title:'Подключения', tabs:[
+      {key:'connections', label:'Проверка подключений', hint:'Все внешние сервисы одной кнопкой: почта, нейросеть, ЦБ, контрагенты, перевозчики, GitHub, фиды, PDF.', open:m=>new ConnectionsPanel(m).open()},
       {key:'mail', label:'Почта', hint:'Почтовый сервер (SMTP) и письмо по умолчанию для отправки КП клиентам.', open:m=>stMail(m)},
       {key:'ai', label:'Нейросеть', hint:'Нейросеть прямо в программе для «Заполнить с ИИ»: ключ, модель, расход.', open:m=>stAi(m)},
       {key:'keys', label:'Ключи API', hint:'Контрагенты (Checko, DaData), перевозчики, PDF; резервная копия ключей.', open:m=>stKeys(m)}]},
@@ -40,7 +43,7 @@ class AdminNav {
     {title:'Обслуживание', tabs:[
       {key:'updates', label:'Обновления', hint:'Новая версия программы: проверить на GitHub и установить одной кнопкой или из файла; откат; история установок.', open:m=>AdminSystem.updates(m)},
       {key:'system', label:'Система', hint:'Версия, режим работы, адрес, папки, место на диске; перезапуск программы.', open:m=>AdminSystem.system(m)},
-      {key:'backup', label:'Копии и база', hint:'Автоматические копии, сжатие и проверка базы, экспорт и импорт, обновления базы.', open:m=>stBackup(m)},
+      {key:'backup', label:'Копии и база', hint:'Автоматические копии и вторая папка для них, сжатие и проверка базы, выгрузка и загрузка, обновления базы.', open:m=>stBackup(m)},
       {key:'trash', label:'Корзина', hint:'Удалённое хранится 30 дней — здесь его можно восстановить.', open:m=>stTrash(m)}]}];
   // прежние ключи вкладок (ссылки из других окон, сохранённый выбор)
   static ALIAS = {delete:'db-kp'};
@@ -48,11 +51,12 @@ class AdminNav {
   static tabs(){ return this.GROUPS.flatMap(g=>g.tabs); }
   static key(k){ k=this.ALIAS[k]||k; return this.tabs().some(t=>t.key===k) ? k : 'stats'; }
   static tab(k){ return this.tabs().find(t=>t.key===this.key(k)); }
-  static html(cur){ return `<nav class="st-nav">${this.GROUPS.map(g=>`<span class="st-ng">${esc(g.title)}</span>${g.tabs.map(t=>`<button type="button" class="${t.key===cur?'on':''}" data-sttab="${t.key}" title="${esc(t.hint)}">${esc(t.label)}</button>`).join('')}`).join('')}</nav>`; }
+  static html(cur){ return `<nav class="st-nav">${SettingsSearch.html()}${this.GROUPS.map(g=>`<span class="st-ng">${esc(g.title)}</span>${g.tabs.map(t=>`<button type="button" class="${t.key===cur?'on':''}" data-sttab="${t.key}" title="${esc(t.hint)}">${esc(t.label)}</button>`).join('')}`).join('')}</nav>`; }
   /** вкладка: заголовок и пояснение, под ними — содержимое (обработчику отдаётся его блок) */
   static async open(main, k){
-    const t=this.tab(k), g=this.GROUPS.find(x=>x.tabs.includes(t));
-    main.innerHTML=`<header class="st-th"><span class="muted">${esc(g.title)}</span><h4>${esc(t.label)}</h4><p class="muted">${esc(t.hint)}</p></header><div class="st-body"><p class="empty">Загружаю…</p></div>`;
+    const t=this.tab(k), g=this.GROUPS.find(x=>x.tabs.includes(t)), hist=SettingsHistoryPanel.TABS[t.key];
+    StDirty.set(false);
+    main.innerHTML=`<header class="st-th"><span class="muted">${esc(g.title)}</span><div class="st-th-r"><h4>${esc(t.label)}</h4>${hist?`<button class="btn ghost sm" type="button" data-sthist="${t.key}" title="Что и когда меняли на этой вкладке, вернуть как было">История</button>`:''}</div><p class="muted">${esc(t.hint)}</p></header><div class="st-body"><p class="empty">Загружаю…</p></div>`;
     await t.open(main.querySelector('.st-body'));
   }
 }
@@ -62,7 +66,7 @@ const ACT = { login:'Вход в «Настройки»', backup_db:'Копия 
   create_manager:'Новый менеджер', create_supplier:'Новый поставщик', edit_supplier:'Изменение поставщика', delete_supplier:'Удаление поставщика', edit_customs:'Код ТН ВЭД и пошлина', edit_manager:'Изменение менеджера', create_client:'Новый клиент', edit_client:'Изменение клиента',
   edit_types:'Категории оборудования', submit_edit:'Правка на модерацию', edit_product:'Правка товара', create_product:'Новый товар',
   price_sync:'Цены из КП', approve_edit:'Правка одобрена', reject_edit:'Правка отклонена', rollback_edit:'Откат правки',
-  toggle_moderation:'Режим модерации', update_install:'Установка обновления', update_rollback:'Откат обновления', update_remove:'Обновление убрано', restart:'Перезапуск программы', toggle_user_login:'Вход менеджеров по паролю', edit_ai:'Нейросеть в программе', edit_access:'Доступ менеджера', delete_kp:'Удаление КП', delete_catalog:'Удаление товара', delete_manager:'Удаление менеджера',
+  toggle_moderation:'Режим модерации', update_install:'Установка обновления', rollback_settings:'Откат изменения настроек', update_rollback:'Откат обновления', update_remove:'Обновление убрано', restart:'Перезапуск программы', toggle_user_login:'Вход менеджеров по паролю', edit_ai:'Нейросеть в программе', edit_access:'Доступ менеджера', delete_kp:'Удаление КП', delete_catalog:'Удаление товара', delete_manager:'Удаление менеджера',
   delete_client:'Удаление клиента', restore:'Восстановление из корзины', purge_trash:'Очистка корзины', export_db:'Экспорт базы', import_db:'Импорт базы', export_keys:'Копия ключей API', import_feed:'Загрузка фида в каталог', check_feed:'Проверка РРЦ и наличия по фиду' };
 const ENT = { supplier:'Поставщик', customs:'ТН ВЭД', product:'Товар', catalog:'Товар', kp:'КП', manager:'Менеджер', client:'Клиент', settings:'Настройки', template:'Шаблон',
   types:'Категории', admin:'Администратор', db:'База', trash:'Корзина', system:'Программа' };
@@ -122,6 +126,7 @@ function stRender(){
   d.innerHTML=head+`<div class="st-b">${AdminNav.html(ST.tab)}
     <section class="st-main" id="stMain"><p class="empty">Загружаю…</p></section></div>`;
   d.querySelector('.st-nav .on')?.scrollIntoView({block:'nearest'});
+  SettingsSearch.bind(d); StDirty.watch(d);
   stTab();
 }
 
@@ -153,7 +158,7 @@ async function stStats(m){
   const tile=(v,l)=>`<div class="st-tile"><b>${v}</b><span>${l}</span></div>`;
   const ser=s.series[ST.chart];
   m.innerHTML=`<div id="stAttn"></div>
-    <div class="row st-quick"><button class="btn" type="button" data-q="report">Отчёт по КП…</button><button class="btn" type="button" data-q="journal">Журнал КП…</button><button class="btn" type="button" data-sttab="audit">Журнал действий</button><button class="btn" type="button" data-sttab="updates">Обновления</button></div>
+    <div class="row st-quick"><button class="btn" type="button" data-q="report">Отчёт по КП…</button><button class="btn" type="button" data-q="journal">Журнал КП…</button><button class="btn" type="button" data-sttab="audit">Журнал действий</button><button class="btn" type="button" data-sttab="connections">Проверить подключения</button><button class="btn" type="button" data-sttab="changed">Изменённые настройки</button><button class="btn" type="button" data-sttab="updates">Обновления</button></div>
     <div class="st-tiles">${tile(stNum(k.total),'КП всего')}${tile(stNum(k.today),'за сегодня')}${tile(stNum(k.week),'за неделю')}${tile(stNum(k.month),'за месяц')}
       ${tile(stNum(Math.round((k.sumMonth||0)/100)),'сумма КП за месяц, руб.')}${tile(stNum(s.activeUsers),'активных за 30 дней')}
       ${tile(stNum(mo.pending),'правок на модерации')}${tile(mo.conversion==null?'—':String(mo.conversion).replace('.',',')+' %','правок одобрено')}
@@ -333,13 +338,14 @@ async function stBackup(m){
   const hist=await aapi('audit?'+new URLSearchParams({action:'export_db'})), hi=await aapi('audit?'+new URLSearchParams({action:'import_db'}));
   const ops=[...hist.items, ...hi.items].sort((a,b)=>b.id-a.id).slice(0,15);
   m.innerHTML=`<div class="st-card" id="stMaint"><p class="sub">Автоматические копии и обслуживание базы</p><p class="muted">Загружаю…</p></div>
+    <div class="st-card" id="stMirror"></div>
     ${DataTransfer.html()}
     <div class="st-card"><p class="sub">Загрузка</p>${DataTransfer.importHtml()}
       <p class="sub" style="margin-top:14px">Файл базы целиком (.sqlite3 или .zip с ним)${tip('<p>Заменяет всю базу содержимым файла — каталог, КП, клиентов, менеджеров, настройки. Перед заменой программа сохраняет копию текущей базы в data\\backup (kp-…-before-restore.sqlite3).</p><p>Так и нужно подменять базу: вручную копировать kp.sqlite3 в папку data нельзя — рядом лежат файлы kp.sqlite3-wal и -shm от прежней базы, и она повредится («database disk image is malformed»).</p>')}</p>
       <input type="file" id="impDb" accept=".sqlite3,.sqlite,.db,.zip" class="sr-file"><label for="impDb" class="btn">Выбрать файл базы…</label><p class="muted" id="impDbSt"></p></div>
     <div class="st-card" id="stMigr"></div>
     <div class="st-card"><p class="sub">История</p>${ops.map(x=>`<div class="st-row"><div><b>${esc(ACT[x.action])}</b><span class="muted">${esc(stTime(x.timestamp))} · ${esc(x.entityId||'')}${x.after&&x.after.bytes?' · '+stSize(x.after.bytes):''}</span></div></div>`).join('')||'<p class="muted">Операций ещё не было.</p>'}</div>`;
-  stMaint($('#stMaint')); stMigr($('#stMigr'));
+  stMaint($('#stMaint')); stMigr($('#stMigr')); new MirrorCard($('#stMirror')).open();
   m.onclick=null; DataTransfer.mount(m, ()=>stBackup(m)); DataTransfer.bindImport(m, ()=>stBackup(m));
   $('#impDb').onchange=async e=>{ const f=e.target.files[0]; if (!f) return; e.target.value='';
     if (!await stConfirm('Заменить всю базу файлом «'+f.name+'»?','Текущие данные будут заменены содержимым файла. Перед этим программа сохранит копию текущей базы в data\\backup.','Заменить базу')) return;
@@ -542,10 +548,11 @@ const stConfirm = (title, text, ok) => stModal(`<h3>${esc(title)}</h3><p>${esc(t
 
 const stChoose = (title, opts) => stModal(`<h3>${esc(title)}</h3><div class="st-choose">${opts.map(([v,l])=>`<button class="btn" type="button" data-v="${v}">${esc(l)}</button>`).join('')}<button class="btn ghost" type="button" data-v="0">Отмена</button></div>`);
 
-document.addEventListener('click', e=>{
+document.addEventListener('click', async e=>{
   const d=e.target.closest('#setdlg'); if (!d) return;
-  const t=e.target.closest('[data-sttab]'); if (t){ ST.tab=AdminNav.key(t.dataset.sttab); d.querySelectorAll('.st-nav [data-sttab]').forEach(b=>b.classList.toggle('on',b.dataset.sttab===ST.tab)); return stTab(); }
+  const h=e.target.closest('[data-sthist]'); if (h){ if (!await StDirty.leave()) return; SettingsHistoryPanel.filter=h.dataset.sthist; StNav.select('history'); return stTab(); }
+  const t=e.target.closest('[data-sttab]'); if (t){ if (!await StDirty.leave()) return; const f=$('#stFind'); if (f) f.value=''; StNav.select(t.dataset.sttab); return stTab(); }
   const a=e.target.closest('[data-st]'); if (!a) return;
-  if (a.dataset.st==='close') return d.close();
-  if (a.dataset.st==='logout') ajson('logout').catch(()=>{}).then(()=>{ ADMIN.on=false; ADMIN.csrf=''; stRender(); FEAT.refresh(); toast('Вы вышли из «Настроек»'); });
+  if (a.dataset.st==='close'){ if (await StDirty.leave()) d.close(); return; }
+  if (a.dataset.st==='logout'){ if (!await StDirty.leave()) return; ajson('logout').catch(()=>{}).then(()=>{ ADMIN.on=false; ADMIN.csrf=''; stRender(); FEAT.refresh(); toast('Вы вышли из «Настроек»'); }); }
 });

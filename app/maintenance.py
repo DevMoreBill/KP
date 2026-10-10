@@ -230,7 +230,9 @@ def run(store, data_dir, log=print):
     if not _lock.acquire(blocking=False):
         return
     try:
+        from backup_mirror import MirrorBackup
         for name, fn in (('копия базы', lambda: daily_backup(store, data_dir)),
+                         ('копия во вторую папку', lambda: MirrorBackup(store, data_dir).run()),
                          ('архив журнала действий', lambda: archive_audit(store, data_dir)),
                          ('кэш проверок', lambda: purge_checks(store)),
                          ('обслуживание базы', lambda: db_maintenance(store))):
