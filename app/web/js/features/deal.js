@@ -29,15 +29,6 @@ function dealAllowed(st=S){
 
 const dlMoneyAuto = () => DL.key && DL.key.rate>0 ? (DL.key.rate+dlSpread())/12 : 2;
 
-// ---------- коды ТН ВЭД и пошлины позиции: вручную в этом КП → по модели (база) → по категории (база) → справочно
-function dlHsOf(x, d=S.deal){
-  const a=attrsOf(x), cus=DL.cus||{}, cat=x.role==='container'?'container':a.cat, ref=dealHsAuto(cat,a);     // контейнер станции — свой код
-  const chain=[[d&&d.hs&&d.hs[x.id],'вручную'], [x.catId&&cus['item:'+x.catId],'по модели'], [cus['cat:'+cat],'по категории'], [ref,'справочно']];
-  const get=f=>{ for (const [o,src] of chain) if (o && o[f]!=null && String(o[f]).trim()!=='') return [String(o[f]).trim(), src]; return ['', '']; };
-  const [code, cs]=get('code'), [duty, ds]=get('duty');
-  return {code, duty, src:ds||cs};                                  // источник — по ставке (она влияет на расчёт)
-}
-
 // производственный календарь РФ (/api/calendar, данные isdayoff.ru / xmlcalendar.ru): '1' — нерабочий день
 function dlCalYears(iso){ const y=+String(iso||'').slice(0,4); return y ? [y, y+1, y+2] : []; }
 function dlCalLoad(iso){ const need=dlCalYears(iso).filter(y=>!DL.cal[y] && !DL.calLoading[y]); if (!need.length) return;
@@ -62,7 +53,7 @@ function dealKpInputs(st=S){
   const cal = d0 && dlCalReady(d0) ? { isOff:day=>dlCalOff(d0,day), workShift:day=>{ let x=day, g=0; while (dlCalOff(d0,x) && g++<20) x++; return x; }, addWork:dlAddWorkFn(d0) } : {};
   return { ...cal, sumRub: r>0 ? e.sum/100*r : 0, sumNoRate: !(r>0), cur:e.cur, vat:+st.vat||0, rates:{...(P.rates||{})}, costNoVat:!!P.costNoVat, moneyAuto:dlMoneyAuto(),
     // строки закупки: обычная позиция — как есть, сборка — по элементам (у каждого своя валюта и поставщик)
-    items:kitLines(st).map(l=>{ const x=l.item, h=dlHsOf(x, st.deal);
+    items:kitLines(st).map(l=>{ const x=l.item, h=DealHs.of(x, st.deal);
       return {id:l.id, name:l.of?`${l.of}: ${l.name}`:l.name, qty:l.qty, cost:(l.cost||0)/100, cur:l.costCur||'RUB', cat:attrsOf(x).cat, maker:l.maker||'', catId:x.catId||'', kit:!!l.part, role:(l.part&&l.part.role)||'',
         code:h.code, duty:dNum(h.duty), hsSrc:h.src}; }) };
 }
@@ -521,14 +512,22 @@ function dlCustoms(c){
     let body='';
     if (cs.mode==='calc'){
       // строки закупки поставщика: обычные позиции и элементы станций (у каждого свой код и пошлина)
-      const rows = ex ? '' : kitLines(S).filter(l=>String(l.name||'').trim() && dlSupOf(l.id)===s.id).map(l=>{ const x=l.item, h=dlHsOf(x), ln=cs.lines.find(z=>z.id===l.id);
+      const hsCats=ex ? [] : DealHs.cats();
+      const rows = ex ? '' : kitLines(S).filter(l=>String(l.name||'').trim() && dlSupOf(l.id)===s.id).map(l=>{ const x=l.item, h=DealHs.of(x), ln=cs.lines.find(z=>z.id===l.id);
         return `<tr><td class="c-nm"><b>${esc(l.name)}</b><small>${l.of?`в составе «${esc(l.of)}» · `:''}${esc(x.role==='container'?'блок-контейнер':typeById(attrsOf(x).cat).name)}</small></td>
-          <td><input type="text" class="hs" data-hs-i="${esc(x.id)}" data-f="code" value="${esc(h.code)}" placeholder="0000 00" aria-label="Код ТН ВЭД"></td>
+          <td><input type="text" class="hs" data-hs-i="${esc(x.id)}" data-f="code" value="${esc(h.code)}" placeholder="0000 00 000 0" aria-label="Код ТН ВЭД"></td>
           <td><span class="dl-in"><input type="text" inputmode="decimal" class="hs-d" data-hs-i="${esc(x.id)}" data-f="duty" value="${esc(h.duty)}" placeholder="?" aria-label="Ставка пошлины, %"><i>%</i></span></td>
-          <td class="c-src">${h.src?`<span class="dl-badge ${h.src==='справочно'?'warn':'kp'}" title="${esc(h.src==='справочно'?(dealHsAuto(attrsOf(x).cat,attrsOf(x))||{}).note||'':'')}">${esc(h.src)}</span>`:'<span class="dl-badge warn">укажите</span>'}
-            <select class="dl-hspick" data-hspick="${esc(x.id)}" aria-label="Взять код и ставку из справочника"><option value="">из справочника…</option>${dlHsCats().map(o=>`<option value="${esc(o.key)}">${esc(o.name)} · ${esc(o.code||'—')} · ${esc(o.duty||'0')} %</option>`).join('')}</select></td>
+          <td class="c-src">${DealHs.badge(x, h)}
+            <select class="dl-hspick" data-hspick="${esc(x.id)}" aria-label="Взять код и ставку из справочника"><option value="">из справочника…</option>${hsCats.map(o=>`<option value="${esc(o.key)}">${esc(o.name)} · ${esc(o.code||'—')} · ${esc(o.duty===''?'?':o.duty)} %</option>`).join('')}</select></td>
           <td class="num">${ln?dlRub0(ln.cv):'—'}</td><td class="num">${ln?dlRub0(ln.dutyA):'—'}</td></tr>`; }).join('');
-      body=`${rows?`<div class="dl-tw dl-hsw"><table class="dl-it dl-hs"><thead><tr><th>Позиция</th><th>Код ТН ВЭД</th><th>Пошлина</th><th></th><th class="num">Тамож. стоимость</th><th class="num">Пошлина, ₽</th></tr></thead><tbody>${rows}</tbody></table></div>`:''}
+      // прочая закупка у поставщика (опции, ЗИП): своя ставка или средняя по позициям поставщика
+      const xl=ex ? null : cs.lines.find(z=>z.id==='extra'), xOwn=String(s.duty??'').trim()!=='';
+      const xrow = !xl ? '' : `<tr><td class="c-nm"><b>Прочая закупка у поставщика</b><small>опции, ЗИП — из шага «Закупка»</small></td>
+          <td><input type="text" class="hs" data-dl="${P}.hsx" value="${esc(s.hsx||'')}" placeholder="0000 00 000 0" aria-label="Код ТН ВЭД прочей закупки"></td>
+          <td><span class="dl-in"><input type="text" inputmode="decimal" class="hs-d${c.err[P+'.duty']?' bad':''}" data-dl="${P}.duty" value="${esc(s.duty??'')}" placeholder="${xl.dutyAuto?esc(dlIn(xl.duty)):'?'}" aria-label="Ставка пошлины прочей закупки, %"><i>%</i></span></td>
+          <td class="c-src">${xOwn?'<span class="dl-badge kp">вручную</span>':xl.dutyAuto?'<span class="dl-badge kp" title="Средняя ставка позиций этого поставщика, взвешенная по стоимости. Впишите свою, если прочая закупка облагается иначе.">как у позиций</span>':'<span class="dl-badge warn">укажите</span>'}</td>
+          <td class="num">${dlRub0(xl.cv)}</td><td class="num">${dlRub0(xl.dutyA)}</td></tr>`;
+      body=`${rows||xrow?`<div class="dl-tw dl-hsw"><table class="dl-it dl-hs"><thead><tr><th>Позиция</th><th>Код ТН ВЭД</th><th>Пошлина</th><th></th><th class="num">Тамож. стоимость</th><th class="num">Пошлина, ₽</th></tr></thead><tbody>${rows}${xrow}</tbody></table></div>`:''}
         <div class="dl-g g3">${dlField('НДС на ввоз', P+'.ivat', {calc:c, select:[['22','22 %'],['10','10 %'],['0','0 %']]})}
           ${dlField('Таможенный сбор', P+'.fee', {calc:c, unit:'₽', auto:cs.fee, autoLabel:'по шкале', autoTitle:'Сбор за таможенные операции: '+(customsFeeBand(cs.cv)||'по таможенной стоимости')+' ('+CUSTOMS_FEES.title+')', q:'Фиксированная сумма за декларацию — зависит от общей таможенной стоимости партии (цена + доставка до границы + страховка): до 200 тыс. ₽ — 1 231 ₽, до 1,2 млн — 4 924 ₽, до 2,7 млн — 13 541 ₽, до 10 млн — 49 240 ₽, свыше — 73 860 ₽ ('+CUSTOMS_FEES.title+').'})}</div>
         ${dlCusSum(cs)}`;
@@ -542,8 +541,8 @@ function dlCustoms(c){
     return `<div class="dl-card"><div class="dl-ch"><b>${esc(cs.name)}${s.country?` · ${esc(s.country)}`:''}</b>${modeSeg}</div>${body}</div>`; }).join('');
   if (!blocks.trim()) return '';
   return dlStep(2, 'Таможня и ввозные налоги', 'Пошлина — по коду ТН ВЭД каждой позиции; ввозной НДС возвращается вычетом.',
-    `${blocks}<p class="dl-foot-n">Коды и ставки — справочные по ЕТТ ЕАЭС; точный код (10 знаков) подтверждает таможенный брокер.
-      Исправленный код и ставка запоминаются для модели. ${ex?'':'<button type="button" class="lnk" data-dlx="hsdir">Справочник кодов по категориям</button> · '}<a href="https://www.alta.ru/tnved/" target="_blank" rel="noopener">Проверить ставку на alta.ru ↗</a></p>`, '', ['Итого платим на таможне', c.Tsum, `из них в себестоимость ${dlRub0(c.sup.reduce((a,x)=>a+x.T-(x.vi||0),0))}, остальное — ввозной НДС к вычету`], 'cus');
+    `${blocks}<p class="dl-foot-n">Код ТН ВЭД (10 знаков) и ставка подбираются по виду оборудования и его характеристикам — по ЕТТ ЕАЭС (${TnVed.AT});
+      «справочно» с пометкой «проверьте» — код зависит от исполнения, его подтверждает таможенный брокер. Исправленный код и ставка запоминаются для модели. ${ex?'':'<button type="button" class="lnk" data-dlx="hsdir">Справочник кодов по категориям</button> · '}<a href="https://www.alta.ru/tnved/" target="_blank" rel="noopener">Проверить ставку на alta.ru ↗</a></p>`, '', ['Итого платим на таможне', c.Tsum, `из них в себестоимость ${dlRub0(c.sup.reduce((a,x)=>a+x.T-(x.vi||0),0))}, остальное — ввозной НДС к вычету`], 'cus');
 }
 
 // расчёт таможенных платежей наглядно: из чего складывается сумма к оплате на таможне и что вернётся вычетом
@@ -966,56 +965,86 @@ function dealRenderIn(dlg){
   lgAutoQuote();
 }
 
-// ---------- справочник кодов ТН ВЭД по категориям
-// категории справочника ТН ВЭД: встроенные виды оборудования (значение из базы или справочное) и свои (cat:x_…)
-function dlHsCats(){
-  const cus=DL.cus||{}, out=[...TYPES, {id:'container', name:'Блок-контейнер (станции)'}].map(t=>{ const o=cus['cat:'+t.id]||{}, def=DEAL_HS[t.id]||{};
-    const v=f=>o[f]!=null&&String(o[f])!==''?String(o[f]):(def[f]||'');
-    return {key:'cat:'+t.id, id:t.id, name:t.name, code:v('code'), duty:v('duty'), note:o.note||def.note||'', own:false, edited:!!(o.code||o.duty)}; });
-  for (const [k,o] of Object.entries(cus)) if (k.startsWith('cat:x_')) out.push({key:k, id:k.slice(4), name:o.name||'Своя категория', code:o.code||'', duty:o.duty||'', note:o.note||'', own:true});
-  return out;
-}
+// ---------- коды ТН ВЭД и пошлины: позиция сделки и справочник категорий
+// Позиция: вручную в этом КП → по модели (база) → по категории (база) → справочно (TnVed: 10 знаков по виду и характеристикам).
+class DealHs {
+  static REF = 'справочно';
 
-async function dlHsPut(key, o){
-  await api('/api/customs',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({key, code:o.code||'', duty:o.duty??'', note:o.note||'', name:o.name||''})});
-  DL.cus=DL.cus||{}; if (key.startsWith('cat:x_') && !o.name) delete DL.cus[key]; else DL.cus[key]={...(DL.cus[key]||{}), ...o};
-}
+  // код и ставка позиции и откуда они (источник — по ставке: она влияет на расчёт); ref — справочное значение для сверки
+  static of(x, d=S.deal){
+    const a=attrsOf(x), cus=DL.cus||{}, cat=x.role==='container'?'container':a.cat, ref=TnVed.pick(x, a, cat);   // контейнер станции — свой код
+    const chain=[[d&&d.hs&&d.hs[x.id],'вручную'], [x.catId&&cus['item:'+x.catId],'по модели'], [cus['cat:'+cat],'по категории'], [ref,DealHs.REF]];
+    const get=f=>{ for (const [o,src] of chain) if (o && o[f]!=null && String(o[f]).trim()!=='') return [String(o[f]).trim(), src]; return ['', '']; };
+    const [code, cs]=get('code'), [duty, ds]=get('duty');
+    return {code, duty, src:ds||cs, ref};
+  }
 
-function dlHsDir(){
-  const dd=$('#dlg'); dd.classList.add('wide');
-  const draw=()=>{ const cats=dlHsCats();
-    dd.innerHTML=`<div class="dlg-h"><h3>Коды ТН ВЭД и пошлины по категориям</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-    <div class="dlg-b"><p class="muted">Код и ставка категории подставляются всем её моделям. У конкретной модели их можно изменить в «Экономике сделки» или выбрать категорию из этого справочника. Значения справочные (ЕТТ ЕАЭС) — точный код из 10 знаков подтверждает таможенный брокер.</p>
-    <table class="dl-it dl-hsdir"><thead><tr><th>Категория</th><th>Код ТН ВЭД</th><th>Пошлина, %</th><th>Пояснение</th><th></th></tr></thead><tbody>
-    ${cats.map(o=>`<tr data-key="${esc(o.key)}">
-      <td>${o.own?`<input type="text" data-hf="name" value="${esc(o.name)}" placeholder="Название категории">`:`<b>${esc(o.name)}</b>${o.edited?'<small class="ok-t">изменено</small>':''}`}</td>
-      <td><input type="text" data-hf="code" value="${esc(o.code)}" placeholder="0000 00"></td>
-      <td><input type="text" inputmode="decimal" data-hf="duty" value="${esc(o.duty)}" placeholder="0"></td>
-      <td>${o.own?`<input type="text" data-hf="note" value="${esc(o.note)}" placeholder="Что входит">`:`<span class="muted">${esc(o.note)}</span>`}</td>
-      <td>${o.own?`<button type="button" class="icon" data-hdel aria-label="Удалить категорию">✕</button>`:o.edited?`<button type="button" class="lnk" data-hreset title="Вернуть справочное значение">↺</button>`:''}</td></tr>`).join('')}
-    </tbody></table>
-    <div class="row" style="gap:10px;margin-top:12px;align-items:center"><button type="button" class="btn" data-hadd>+ Добавить категорию</button><span class="muted">Изменения сохраняются сразу — в базе, для всего отдела.</span></div></div>`;
-  };
-  draw(); dd.showModal();
-  dd.onclick=async e=>{ const t=e.target;
-    if (t.closest('[data-close]')){ dd.close(); dd.classList.remove('wide'); dd.onclick=dd.onchange=null; return dealRender(); }
-    if (t.closest('[data-hadd]')){ const key='cat:x_'+uid(); try{ await dlHsPut(key, {name:'Новая категория', code:'', duty:'0'}); draw(); dd.querySelector(`[data-key="${key}"] [data-hf="name"]`)?.select(); }catch(err){ toast('Не удалось добавить: '+(err.message||err)); } return; }
-    const tr=t.closest('tr[data-key]'); if (!tr) return; const key=tr.dataset.key;
-    if (t.closest('[data-hdel]')){ if (!await stConfirm('Удалить категорию?', 'Категория пропадёт из справочника; у моделей, где её выбрали, код и ставка останутся.', 'Удалить')) return;
-      try{ await dlHsPut(key, {name:'', code:'', duty:''}); draw(); }catch(err){ toast('Не удалось удалить: '+(err.message||err)); } return; }
-    if (t.closest('[data-hreset]')){ try{ await dlHsPut(key, {code:'', duty:''}); draw(); }catch(err){ toast('Не удалось: '+(err.message||err)); } } };
-  dd.onchange=async e=>{ const t=e.target, tr=t.closest('tr[data-key]'); if (!t.dataset.hf || !tr) return;
-    const key=tr.dataset.key, o={...(DL.cus[key]||{})}; tr.querySelectorAll('[data-hf]').forEach(i=>{ o[i.dataset.hf]=i.value.trim(); });
-    if (key.startsWith('cat:x_') && !o.name){ toast('Укажите название категории'); return; }
-    try{ await dlHsPut(key, o); toast('Сохранено в справочнике'); }catch(err){ toast('Не удалось сохранить: '+(err.message||err)); } };
-}
+  // отметка источника: справочное — с надёжностью кода; своё, расходящееся со справочным по ставке, — с кнопкой «справочно N %»
+  static badge(x, h){
+    const r=h.ref, tip=TnVed.title(r);
+    if (!h.src) return `<span class="dl-badge warn" title="${esc(tip||'Код и ставка для этого вида оборудования не определены — укажите вручную или возьмите из справочника')}">укажите</span>`;
+    if (h.src===DealHs.REF) return `<span class="dl-badge ${r&&r.ok===1?'kp':'warn'}" title="${esc(tip)}">${r&&r.ok===1?'справочно':r&&r.ok===2?'справочно · проверьте':'справочно · уточните'}</span>`;
+    const differs = r && r.duty!=='' && dNum(r.duty)!==dNum(h.duty);
+    return `<span class="dl-badge kp" title="${esc(tip?'Справочно: '+tip:'')}">${esc(h.src)}</span>`
+      + (differs ? `<button type="button" class="lnk dl-hsref" data-dlx="hsref" data-id="${esc(x.id)}" title="${esc('Взять справочный код и ставку:\n'+tip)}">справочно ${esc(r.code)} · ${esc(r.duty)} %</button>` : '');
+  }
 
-// код и ставка позиции: у модели каталога — в базу (для всех следующих сделок), иначе — только в этом КП
-async function dlSaveHs(itemId, f, v){
-  const x=S.items.find(z=>z.id===itemId); if (!x) return; const d=dealEnsure(), h=dlHsOf(x), o={code:h.code, duty:h.duty}; o[f]=v.trim();
-  if (x.catId){ const key='item:'+x.catId; DL.cus=DL.cus||{}; DL.cus[key]={...o};
-    api('/api/customs',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({key, code:o.code, duty:o.duty, note:''})}).catch(()=>toast('Код не сохранён в справочнике — проверьте связь с сервером')); }
-  else { d.hs=d.hs||{}; d.hs[itemId]=o; }
+  // категории справочника: встроенные виды оборудования (значение из базы или справочное) и свои (cat:x_…)
+  static cats(){
+    const cus=DL.cus||{}, out=[...TYPES, {id:'container', name:'Блок-контейнер (станции)'}].map(t=>{ const o=cus['cat:'+t.id]||{}, def=TnVed.catDefault(t.id)||{};
+      const v=f=>o[f]!=null&&String(o[f])!==''?String(o[f]):(def[f]||'');
+      return {key:'cat:'+t.id, id:t.id, name:t.name, code:v('code'), duty:v('duty'), note:o.note||def.note||'', ok:def.ok, own:false, edited:!!(o.code||o.duty)}; });
+    for (const [k,o] of Object.entries(cus)) if (k.startsWith('cat:x_')) out.push({key:k, id:k.slice(4), name:o.name||'Своя категория', code:o.code||'', duty:o.duty||'', note:o.note||'', own:true});
+    return out;
+  }
+
+  static async put(key, o){
+    await api('/api/customs',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({key, code:o.code||'', duty:o.duty??'', note:o.note||'', name:o.name||''})});
+    DL.cus=DL.cus||{}; if (key.startsWith('cat:x_') && !o.name) delete DL.cus[key]; else DL.cus[key]={...(DL.cus[key]||{}), ...o};
+  }
+
+  // код и ставка строки закупки (позиция или элемент станции): у модели каталога — в базу (для всех следующих сделок), иначе — в этом КП
+  static set(lineId, patch){
+    const l=kitLines(S).find(z=>z.id===lineId); if (!l) return; const x=l.item, d=dealEnsure(), h=DealHs.of(x), o={code:h.code, duty:h.duty};
+    for (const f of ['code','duty']) if (patch[f]!=null) o[f]=String(patch[f]).trim();
+    if (x.catId){ const key='item:'+x.catId; DL.cus=DL.cus||{}; DL.cus[key]={...o};
+      api('/api/customs',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({key, code:o.code, duty:o.duty, note:''})}).catch(()=>toast('Код не сохранён в справочнике — проверьте связь с сервером')); }
+    else { d.hs=d.hs||{}; d.hs[lineId]=o; }
+  }
+
+  // взять справочный код и ставку (TnVed) для строки
+  static useRef(lineId){ const l=kitLines(S).find(z=>z.id===lineId), r=l && DealHs.of(l.item).ref; if (!r) return '';
+    DealHs.set(lineId, {code:r.code, duty:r.duty}); return `Код ${r.code||'—'}, пошлина ${r.duty===''?'— уточните':r.duty+' %'} — по справочнику`; }
+
+  static dir(){
+    const dd=$('#dlg'); dd.classList.add('wide');
+    const okTxt=o=>o.own||o.edited||o.ok==null ? '' : o.ok===1 ? '' : o.ok===2 ? ' · проверьте у брокера' : ' · ставку уточните у брокера';
+    const draw=()=>{ const cats=DealHs.cats();
+      dd.innerHTML=`<div class="dlg-h"><h3>Коды ТН ВЭД и пошлины по категориям</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
+      <div class="dlg-b"><p class="muted">Код позиции подбирается по виду оборудования и характеристикам (давление, производительность, мощность, объём, исполнение) — коды из 10 знаков и ставки ЕТТ ЕАЭС (${esc(TnVed.AT)}). Значение категории ниже — код по умолчанию; если его изменить, он заменит подбор для всех моделей категории. У конкретной модели код и ставку можно изменить в «Экономике сделки». Окончательно код подтверждает таможенный брокер.</p>
+      <table class="dl-it dl-hsdir"><thead><tr><th>Категория</th><th>Код ТН ВЭД</th><th>Пошлина, %</th><th>Пояснение</th><th></th></tr></thead><tbody>
+      ${cats.map(o=>`<tr data-key="${esc(o.key)}">
+        <td>${o.own?`<input type="text" data-hf="name" value="${esc(o.name)}" placeholder="Название категории">`:`<b>${esc(o.name)}</b>${o.edited?'<small class="ok-t">изменено</small>':''}`}</td>
+        <td><input type="text" data-hf="code" value="${esc(o.code)}" placeholder="0000 00 000 0"></td>
+        <td><input type="text" inputmode="decimal" data-hf="duty" value="${esc(o.duty)}" placeholder="?"></td>
+        <td>${o.own?`<input type="text" data-hf="note" value="${esc(o.note)}" placeholder="Что входит">`:`<span class="muted">${esc(o.note+okTxt(o))}</span>`}</td>
+        <td>${o.own?`<button type="button" class="icon" data-hdel aria-label="Удалить категорию">✕</button>`:o.edited?`<button type="button" class="lnk" data-hreset title="Вернуть справочное значение">↺</button>`:''}</td></tr>`).join('')}
+      </tbody></table>
+      <div class="row" style="gap:10px;margin-top:12px;align-items:center"><button type="button" class="btn" data-hadd>+ Добавить категорию</button><span class="muted">Изменения сохраняются сразу — в базе, для всего отдела.</span></div></div>`;
+    };
+    draw(); dd.showModal();
+    dd.onclick=async e=>{ const t=e.target;
+      if (t.closest('[data-close]')){ dd.close(); dd.classList.remove('wide'); dd.onclick=dd.onchange=null; return dealRender(); }
+      if (t.closest('[data-hadd]')){ const key='cat:x_'+uid(); try{ await DealHs.put(key, {name:'Новая категория', code:'', duty:'0'}); draw(); dd.querySelector(`[data-key="${key}"] [data-hf="name"]`)?.select(); }catch(err){ toast('Не удалось добавить: '+(err.message||err)); } return; }
+      const tr=t.closest('tr[data-key]'); if (!tr) return; const key=tr.dataset.key;
+      if (t.closest('[data-hdel]')){ if (!await stConfirm('Удалить категорию?', 'Категория пропадёт из справочника; у моделей, где её выбрали, код и ставка останутся.', 'Удалить')) return;
+        try{ await DealHs.put(key, {name:'', code:'', duty:''}); draw(); }catch(err){ toast('Не удалось удалить: '+(err.message||err)); } return; }
+      if (t.closest('[data-hreset]')){ try{ await DealHs.put(key, {code:'', duty:''}); draw(); }catch(err){ toast('Не удалось: '+(err.message||err)); } } };
+    dd.onchange=async e=>{ const t=e.target, tr=t.closest('tr[data-key]'); if (!t.dataset.hf || !tr) return;
+      const key=tr.dataset.key, o={...(DL.cus[key]||{})}; tr.querySelectorAll('[data-hf]').forEach(i=>{ o[i.dataset.hf]=i.value.trim(); });
+      if (key.startsWith('cat:x_') && !o.name){ toast('Укажите название категории'); return; }
+      try{ await DealHs.put(key, o); toast('Сохранено в справочнике'); }catch(err){ toast('Не удалось сохранить: '+(err.message||err)); } };
+  }
 }
 
 // ---------- события окна
@@ -1037,7 +1066,7 @@ function dealBind(dlg){
       t.classList.toggle('bad', Number.isNaN(k)||!k); d0over(); touch(); updateLive(); return dealRender(); }
     if (t.dataset.kprate!=null){ S.pricing.rates[t.dataset.kprate]=t.value; S.pricing.rateSrc='вручную'; if (S.deal&&S.deal.rates) delete S.deal.rates[t.dataset.kprate]; touch(); updateLive(); return dealRender(); }
     if (t.dataset.kpvat!=null){ S.vat=t.value.replace(/[^\d.,]/g,''); touch(); updateLive(); return dealRender(); }
-    if (t.dataset.hsI!=null){ dlSaveHs(t.dataset.hsI, t.dataset.f, t.value); touch(); return dealRender(); }
+    if (t.dataset.hsI!=null){ DealHs.set(t.dataset.hsI, {[t.dataset.f]:t.value}); touch(); return dealRender(); }
     const p=t.dataset.dl; if (!p || t.tagName==='SELECT') return;
     const d=dlDeal(); dlSet(d, p, t.value); if (!DL.ex) dealRememberDefault(p, t.value);
     if (t.dataset.combo){ DL.combo=p; DL.comboAll=false; DL.comboIx=-1; }
@@ -1081,7 +1110,7 @@ function dealBind(dlg){
     if (t.dataset.kpvat!=null || t.dataset.kprate!=null){ renderForm(); return; }
     if (t.dataset.dl && t.tagName==='SELECT'){ dlSet(dlDeal(), t.dataset.dl, t.value); if (!DL.ex) dealRememberDefault(t.dataset.dl, t.value);
       const m=/^sup\.(\d+)\./.exec(t.dataset.dl); if (m && !DL.ex) dlSaveSupplier(dlDeal().sup[+m[1]]); touch(); dealRender(); }
-    if (t.dataset.hspick!=null){ const o=dlHsCats().find(z=>z.key===t.value); if (o){ dlSaveHs(t.dataset.hspick, 'code', o.code); dlSaveHs(t.dataset.hspick, 'duty', o.duty); touch(); toast(`Код ${o.code||'—'}, пошлина ${o.duty||0} % — «${o.name}»`); } return dealRender(); }
+    if (t.dataset.hspick!=null){ const o=DealHs.cats().find(z=>z.key===t.value); if (o){ DealHs.set(t.dataset.hspick, {code:o.code, duty:o.duty}); touch(); toast(`Код ${o.code||'—'}, пошлина ${o.duty===''?'— уточните':o.duty+' %'} — «${o.name}»`); } return dealRender(); }
     if (t.dataset.dlmap){ const d=dlDeal(); d.map={...(d.map||{}), [t.dataset.dlmap]:t.value}; touch(); dealRender(); } });
   // перетаскивание этапов оплаты мышью
   dlg.addEventListener('dragstart', e=>{ const h=e.target.closest&&e.target.closest('[data-dndh]'); if (!h) return;
@@ -1120,7 +1149,8 @@ function dealBind(dlg){
     if (a==='pick') return dlComboPick(b.dataset.path, b.dataset.v);
     if (a==='cbr') return loadCBR();
     if (a==='xlsx') return dealXlsx();
-    if (a==='hsdir') return dlHsDir();
+    if (a==='hsdir') return DealHs.dir();
+    if (a==='hsref'){ const msg=DealHs.useRef(b.dataset.id); if (msg){ touch(); toast(msg); } return dealRender(); }
     if (a==='apply') return dealApplyPrice(+b.dataset.s);
     if (a==='lgcalc'){ DL.open='log'; return dealRender(); }
     if (a==='reset'){ dlSet(d, b.dataset.path, ''); }

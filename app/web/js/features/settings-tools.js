@@ -18,7 +18,7 @@ class SettingsSearch {
     logistics:'тарифы доставка перевозка машина разгрузка трал фура логистика', features:'функции включить выключить доступ кнопки',
     defaults:'умолчания значения подставляет ндс валюта город срок гарантия условия', lists:'списки выбор варианты выпадающие причины проигрыша единицы',
     texts:'тексты надписи подписи подсказки переименовать', mail:'почта smtp письмо отправка яндекс mail.ru пароль приложения',
-    ai:'нейросеть ии deepseek openrouter модель токены заполнить', keys:'ключи api checko dadata ati деловые линии кит сдэк возовоз convertapi pdf',
+    ai:'нейросеть ии deepseek openrouter модель токены заполнить', keys:'ключи api checko чекко ofdata офдата резерв rusprofile руспрофайл гир бо бухотчётность dadata ati деловые линии кит сдэк возовоз convertapi pdf',
     connections:'проверка подключений связь сервисы работает не работает', access:'вход логин пароль права менеджеров блокировать',
     users:'администраторы учётные записи', security:'мой пароль сменить', updates:'обновление версия github установить откат токен',
     system:'система папки порт адрес перезапуск диск место сервер', backup:'копии резервная копия база экспорт импорт выгрузка json zip sqlite вторая папка флешка сетевой диск облако восстановить',
@@ -35,7 +35,7 @@ class SettingsSearch {
       for (const [key, g, label, , builtin, o={}] of DEF_SCHEMA) add({label, where:'Программа → Умолчания → '+(gt[g]||g), text:(o.hint||'')+' '+(builtin??''), tab:'defaults', focus:`[data-dk="${CSS.escape(key)}"]`, kind:'Умолчание'}); }
     if (typeof FEAT!=='undefined') for (const d of FEAT.defs) add({label:d.label, where:'Программа → Функции программы', text:d.hint, tab:'features', focus:`[data-ft="${CSS.escape(d.key)}"]`, kind:'Функция'});
     if (typeof LISTS!=='undefined') for (const d of LISTS.defs.values()) add({label:d.label, where:'Программа → Списки и выборы', text:d.hint||'', tab:'lists', before:()=>{ ListsPanel.last=d.key; }, kind:'Список'});
-    if (typeof KEY_GROUPS!=='undefined') for (const [g, , fs] of KEY_GROUPS) for (const f of fs) if (f.t) add({label:f.t, where:'Подключения → Ключи API → '+g, text:(f.h||'')+' '+(f.ph||''), tab:'keys', focus:`[data-key="${CSS.escape(f.id)}"]`, kind:'Ключ'});
+    if (typeof ApiKeys!=='undefined') for (const [g, , fs] of ApiKeys.GROUPS) for (const f of fs) if (f.t) add({label:f.t, where:'Подключения → Ключи API → '+g, text:(f.h||'')+' '+(f.ph||''), tab:'keys', focus:`[data-key="${CSS.escape(f.id)}"]`, kind:'Ключ'});
     if (typeof TYPES!=='undefined') for (const t of TYPES) add({label:t.name, where:'Каталог → Категории оборудования', text:(t.group||'')+' '+t.fields.map(f=>f.label).join(' '), tab:'types', kind:'Категория', find:t.name});
     return out;
   }

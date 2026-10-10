@@ -3,7 +3,8 @@
 
 Каждая проверка — лёгкий запрос к сервису (без отправки писем и без трат платных лимитов, где можно):
 почта — вход на SMTP-сервер; нейросеть — короткий запрос; ЦБ — курсы; контрагенты — ФНС и DaData по ИНН Сбербанка
-(Checko — доступность сервиса и остаток лимита); перевозчики — пробный расчёт Москва → Санкт-Петербург; GitHub — последняя версия;
+(Checko и резерв OFData — доступность сервиса и остаток лимита; ГИР БО — бухотчётность пробной организации);
+перевозчики — пробный расчёт Москва → Санкт-Петербург; GitHub — последняя версия;
 фиды — доступность адреса прайса; PDF — Word, LibreOffice или ConvertAPI. Проверки идут параллельно, у каждой — свой
 предел времени. Результат: [{id, group, name, status: ok | warn | fail | off, msg, ms, tab}].
 """
@@ -16,6 +17,7 @@ import urllib.request
 from datetime import datetime
 
 SAMPLE_INN = '7707083893'          # ПАО Сбербанк — для проверки сервисов реквизитов
+SAMPLE_BO_INN = '7713140469'       # АО «Лаборатория Касперского» — для ГИР БО (банков там нет: они отчитываются в ЦБ)
 SAMPLE_PLACE = {'l': 1.2, 'w': 1.0, 'h': 1.0, 'm': 0.3, 'qty': 1}
 
 
@@ -23,6 +25,7 @@ class ConnectionCheck:
     TIMEOUT = 45
     FEED_TIMEOUT = 20
     CHECKO = 'https://api.checko.ru/'
+    OFDATA = 'https://api.ofdata.ru/'
 
     def __init__(self, store, data_dir, root):
         self.store, self.data_dir, self.root = store, data_dir, root
@@ -34,6 +37,8 @@ class ConnectionCheck:
                 ('fns', 'Контрагенты', 'ФНС (реквизиты без ключа)', 'keys', self._fns),
                 ('dadata', 'Контрагенты', 'DaData', 'keys', self._dadata),
                 ('checko', 'Контрагенты', 'Checko', 'keys', self._checko),
+                ('ofdata', 'Контрагенты', 'OFData — резерв Checko', 'keys', self._ofdata),
+                ('girbo', 'Контрагенты', 'ГИР БО ФНС — бухотчётность без ключа', 'keys', self._girbo),
                 ('carriers', 'Доставка', 'Перевозчики — пробный расчёт Москва → Санкт-Петербург', 'keys', self._carriers),
                 ('github', 'Обновления', 'GitHub — новая версия программы', 'updates', self._github),
                 ('pdf', 'Документы', 'Сохранение КП в PDF', 'keys', self._pdf)]
@@ -122,17 +127,32 @@ class ConnectionCheck:
         return ('ok', 'ключ действует') if r else ('warn', 'ответ пустой')
 
     def _checko(self):
-        if not self._keys().get('checkoKey'):
-            return 'off', 'ключ не задан (проверка контрагентов — бесплатная по ФНС)'
-        from counterparty import Counterparties
+        from counterparty import CheckoApi
+        return self._check_api(CheckoApi(self.store), self.CHECKO, 'ключ не задан (проверка контрагентов — бесплатная по ФНС)')
+
+    def _ofdata(self):
+        from counterparty import OfDataApi
+        return self._check_api(OfDataApi(self.store), self.OFDATA, 'ключ не задан — резерв не используется (необязательно)')
+
+    def _check_api(self, api, url, nokey):
+        if not api.key():
+            return 'off', nokey
         # связь — запросом к адресу сервиса без ключа: любой ответ сервера значит «доступен», лимит запросов не тратится
         try:
-            urllib.request.urlopen(urllib.request.Request(self.CHECKO, headers={'User-Agent': 'KP-Konstruktor'}), timeout=self.FEED_TIMEOUT).close()
+            urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'KP-Konstruktor'}), timeout=self.FEED_TIMEOUT).close()
         except urllib.error.HTTPError:
             pass
-        q = Counterparties(self.store).quota()
+        q = api.quota()
         st = 'ok' if q.get('left', 0) > 0 else 'warn'
         return st, 'сервис доступен; сегодня использовано %s из %s запросов (лимит не тратится на проверку)' % (q.get('used'), q.get('limit'))
+
+    def _girbo(self):
+        from counterparty import GirBo
+        r = GirBo.load(SAMPLE_BO_INN)
+        f = (r.get('finances') or [None])[0]
+        if not f or f.get('revenue') is None:
+            return 'warn', 'отвечает, но отчётности пробной организации нет — бухотчётность возьмётся из Checko'
+        return 'ok', 'отвечает: выручка пробной организации за %s — %s млн ₽' % (f['year'], '{:,.0f}'.format(f['revenue'] / 1e6).replace(',', ' '))
 
     def _carriers(self):
         import logistics_api

@@ -43,7 +43,7 @@ function stepClient(){
       <div class="grid" style="margin-top:12px">${field('Юридический адрес','clientAddr')}</div></div>`;
   return `<section class="step" id="st-client"><h2><span class="n">1</span>Клиент${tip(`<p>Начните вводить название или ИНН: поиск идёт по вашему справочнику клиентов${CLIENTS_ALL?` (${CLIENTS_ALL})`:''}, а по ИНН — в реестре ФНС; реквизиты заполнятся сами.</p><p>Контактное лицо и объект необязательны: контакт выводится на титуле («Вниманию: …»), объект — для каких нужд и куда поставка.</p><p>Ключи Checko и DaData, загрузка клиентов списком ИНН — в меню «⋯» вверху.</p>`)}</h2>
   ${tenderBlock()}
-  <div class="csec"><p class="sub">Кому</p>${has ? summary : finder}${(has&&edit)||S._clManual ? form : ''}${has?checkLine():''}${has?clientPrevHtml():''}</div>
+  <div class="csec"><p class="sub">Кому</p>${has ? summary : finder}${(has&&edit)||S._clManual ? form : ''}${has?PartyCheck.line():''}${has?clientPrevHtml():''}</div>
   <div class="csec"><p class="sub">Контактное лицо <span class="muted">необязательно</span></p>
    ${cons.length?`<div class="chips" style="margin-bottom:8px"><span class="muted" style="font-size:13px">Ранее:</span>${cons.slice(0,4).map((c,k)=>`<button class="chip sm" type="button" data-a="pickContact" data-k="${(cl.contacts||[]).indexOf(c)}">${esc(c.name)}${c.post?' — '+esc(c.post):''}</button>`).join('')}</div>`:''}
    <div class="grid g2">${field('ФИО','contact.name',{ph:'Иванов Иван Иванович'})}${field('Должность','contact.post',{ph:'Главный энергетик'})}</div>
