@@ -37,17 +37,17 @@ a = Analysis(
         ('app/icon.ico', 'app'),
         ('app/equipment_types.json', 'app'),
         ('templates', 'templates'),
-        ('seed/data/catalog', 'seed/data/catalog'),
-        ('seed/data/img', 'seed/data/img'),
     ],
     hiddenimports=['kp_server', 'web_api', 'version', 'geo', 'feeds', 'feed_files', 'imgfetch', 'auth_users', 'ai_llm', 'ai_profile', 'app_update', 'admin_overview', 'platform', 'pdf_text', 'defaults', 'lists', 'kp_track', 'features', 'smtplib', 'email.message', 'email.utils', 'importlib.abc', 'importlib.util', 'ipaddress', 'csv', 'zipfile', 'calendar', 'decimal',
                    'statistics', 'uuid', 'base64', 'html', 'html.parser', 'http.client', 'email', 'shutil', 'tempfile', 'subprocess', 'ctypes',
                    'config', 'data_setup', 'storage', 'counterparty', 'equipment_types', 'kp_templates', 'cbr', 'workcal', 'imgfetch', 'desktop', 'pdf_convert', 'catalog_migrate', 'admin', 'images', 'maintenance', 'logistics_api',
                    'sqlite3', '_sqlite3', 'gzip'],
     # sqlite3 НЕ исключать: на нём работает база данных программы
-    excludes=['tkinter', 'unittest', 'pydoc', 'lib2to3', 'multiprocessing'],
+    excludes=['tkinter', 'unittest', 'pydoc', 'pydoc_data', 'lib2to3', 'multiprocessing', 'xmlrpc', 'curses', 'test'],
     noarchive=False,
 )
+# азиатские кодировки (японская, китайская, корейская) программе не нужны — EXE легче почти на мегабайт
+a.binaries = [b for b in a.binaries if not _re.search(r'_codecs_(jp|hk|cn|kr|tw|iso2022)', b[0])]
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz,

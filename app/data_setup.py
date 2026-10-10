@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Подготовка данных при запуске: папки, стартовый каталог из EXE, сверка нумерации КП с файлами."""
+"""Подготовка данных при запуске: папки, признак новой базы, сверка нумерации КП с файлами."""
 import os
 import re
-import shutil
 from datetime import datetime
 
-from config import BUNDLE, DATA_DIR, DOCS_DIR, IMG_DIR, read_text, store
+from config import DATA_DIR, DOCS_DIR, IMG_DIR, store
 
 
 def prepare_dirs():
@@ -26,24 +25,10 @@ def sync_counter_with_files():
         store().ensure_counter_at_least(year, top)
 
 
-def seed_catalog():
-    """Первый запуск на новом компьютере: стартовый каталог с фото из EXE — сразу в базу."""
-    st = store()
-    if st.catalog_count():
-        return False
-    seed = os.path.join(BUNDLE, 'seed', 'data')
-    img = os.path.join(seed, 'img')
-    if os.path.isdir(img):   # изображения — с папками категорий (см. app/images.py)
-        for dp, dn, fn in os.walk(img):
-            for name in fn:
-                src = os.path.join(dp, name)
-                target = os.path.join(IMG_DIR, os.path.relpath(src, img))
-                if not os.path.exists(target):
-                    os.makedirs(os.path.dirname(target), exist_ok=True)
-                    shutil.copyfile(src, target)
-    cat = os.path.join(seed, 'catalog')
-    if os.path.isdir(cat):
-        for name in os.listdir(cat):
-            if name.endswith('.json'):
-                st.catalog_put(name[:-5], read_text(os.path.join(cat, name)))
-    return True
+class FreshBase:
+    """Новая пустая база (первый запуск на новом компьютере). Каталог и фото в EXE не входят — они хранятся
+    в базе на сервере отдела; на новый компьютер переносятся файлом базы («Настройки» → «Обслуживание»)."""
+
+    @staticmethod
+    def check():
+        return not store().catalog_count()

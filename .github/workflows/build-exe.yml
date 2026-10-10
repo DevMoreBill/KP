@@ -96,10 +96,18 @@ jobs:
             try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/ping' -TimeoutSec 2; $ok = $r.ok } catch {}
           }
           if (-not $ok) { throw 'Сервер не ответил на /api/ping' }
-          $cat = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/catalog'
-          Write-Host "Позиций в каталоге: $($cat.Count)"
-          if ($cat.Count -lt 1) { throw 'Каталог пуст' }
+          # каталог и фото в EXE не входят (они в базе на сервере отдела): новая база пустая — создаём пробную позицию с фото
+          $cat = @(Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/catalog')
+          if ($cat.Count -ne 0) { throw "Новая база не пустая: $($cat.Count)" }
           if (-not (Test-Path -LiteralPath (Join-Path $dir 'data\kp.sqlite3'))) { throw 'База SQLite не создана' }
+          $png = Join-Path $env:RUNNER_TEMP 'ci-photo.png'
+          [IO.File]::WriteAllBytes($png, [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='))
+          $im = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/img?cat=dgu&maker=CI&model=Test%201&name=CI%20Test%201' -InFile $png -ContentType 'image/png'
+          $item = @{ id = 'ci_item'; name = 'CI Test 1'; cat = 'dgu'; maker = 'CI'; model = 'Test 1'; photo = @{ src = '/img/' + $im.name } } | ConvertTo-Json -Compress
+          Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:17845/api/catalog/ci_item' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($item)) | Out-Null
+          $cat = @(Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/catalog')
+          Write-Host "Позиций в каталоге: $($cat.Count)"
+          if ($cat.Count -lt 1) { throw 'Позиция каталога не сохранилась' }
           $one = Invoke-RestMethod -Uri ("http://127.0.0.1:17845/api/catalog/" + $cat[0].id)
           if (-not $one.name) { throw 'Позиция каталога не читается из базы' }
           # изображения разложены по папкам категорий и отдаются по адресу /img/<раздел>/<категория>/…
@@ -107,7 +115,6 @@ jobs:
           if ($withPhoto.photo.src -cnotmatch '^/img/[a-z0-9-]+/[a-z0-9-]+/[a-z0-9-]+/[a-z0-9_.-]+$') { throw "Фото не в папке категории латиницей: $($withPhoto.photo.src)" }
           $ph = Invoke-WebRequest -Uri ("http://127.0.0.1:17845" + $withPhoto.photo.src) -UseBasicParsing
           if ($ph.StatusCode -ne 200) { throw 'Фото из папки категории не отдаётся' }
-          if (-not (Test-Path -LiteralPath (Join-Path $dir 'data\img\logos'))) { throw 'Нет папки логотипов' }
           $tpl = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/templates'
           if ($tpl.Count -lt 1) { throw 'Шаблоны КП не найдены' }
           if (-not ($tpl | Where-Object { $_.id -eq 'tender' })) { throw 'Нет тендерного шаблона' }
@@ -117,7 +124,6 @@ jobs:
           foreach ($id in @('comp_diesel', 'comp_scroll', 'dryer_refrig', 'dryer_ads', 'filter', 'receiver', 'spare')) {
             if (-not ($types.types | Where-Object { $_.id -eq $id })) { throw "Нет категории $id" }
           }
-          if ($cat.Count -lt 1000) { throw "Стартовый каталог неполный: $($cat.Count)" }
           $sk = Invoke-WebRequest -Uri 'http://127.0.0.1:17845/tpl/pnevmotekh/skeleton.js' -UseBasicParsing
           if ($sk.Content -notmatch 'function kpSkeleton') { throw 'Скелет шаблона (skeleton.js) не отдаётся' }
           $ed = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/tpl/pnevmotekh/editor.json'
