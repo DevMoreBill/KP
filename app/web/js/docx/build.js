@@ -21,22 +21,11 @@ function sectWithPage(sect, page){
 
 const SHORT_T={dgu:'ДГУ',light:'Мачта',welder:'Сварочный',comp_screw:'Компрессор',comp_piston:'Компрессор',comp_centrifugal:'Компрессор',pump:'Насос',ats:'АВР',other:''};
 
-function equipShort(){
-  const seen=new Set(), parts=[];
-  for (const x of S.items){ const a=attrsOf(x), t=typeById(a.cat); if (t.role==='accessory') continue;
-    let m=a.model || ((x.hint&&x.hint.model)||'').replace(/^(Tide Power|HERTZ|Energo|ТСС)\s+/i,'') || x.name.split(' ').slice(-1)[0];
-    const s=[(t.short ?? SHORT_T[t.id] ?? ''), m].filter(Boolean).join(' ');
-    if (!seen.has(s)){ seen.add(s); parts.push(s); } }
-  if (!parts.length) return '';
-  let out=parts.slice(0,2).join(' и '); if (parts.length>2) out+=` и ещё ${parts.length-2}`;
-  return out;
-}
-
 // имя файла КП — по образцу из шаблона (fileName), метки: {номер} {префикс} {клиент} {оборудование} {дата}
 function fileName(settings){
   if (tenderNo()) return tenderFileName(settings);
   const c = fsafe(String(S.client||'клиент').replace(/^(ООО|АО|ПАО|ЗАО|ИП|ОАО)\s+/i,'')).slice(0,40) || 'клиент';
-  const eq = fsafe(equipShort()).slice(0,60);
+  const eq = fsafe(KpModels.short()).slice(0,60);
   const pk = TPL_CACHE[S.template], tl = curTemplate() || {};
   const st = settings || (pk && pk.settings) || {};
   const pre = fsafe(st.filePrefix || tl.filePrefix || 'КП');
@@ -60,17 +49,49 @@ function tenderFileName(settings){
 
 function managerFolder(){ const m=S.manager||{}; return fsafe(m.folder || String(m.name||'').trim().split(/\s+/)[0] || '').slice(0,40); }
 
-function stationsOf(){
-  const map=new Map();
-  for (const x of S.items){
-    const a=attrsOf(x), t=typeById(a.cat); if (t.role==='accessory') continue;
-    const model=(x.hint&&x.hint.model) || (a.model&&a.maker?a.maker+' '+a.model:'') || x.name;
-    const key=norm(model); const pr=(x.groups||[]).flatMap(g=>g.rows||[]).find(r=>/основная мощность|номинальная мощность/i.test(r.k));
-    const power = a.cat==='dgu' ? (pr?pr.v:(a.kva&&a.kw?`${a.kva} кВА / ${a.kw} кВт`:(a.kw?a.kw+' кВт':''))) : mainLine(x,2);
-    const st=map.get(key)||{key:'st'+map.size, model, power, exec:a.execution||'', qty:0, photo:x.photo||null, type:a.cat, group:t.group||''};
-    st.qty+=(+x.qty||0); if(!st.photo&&x.photo) st.photo=x.photo; map.set(key,st);
+// модели КП для титула: позиции одной модели — одной строкой (количество суммируется), комплектующие не считаются;
+// станция в контейнере — по основному оборудованию и с типом контейнера; kind — вид оборудования (для сводки на титуле)
+class KpModels {
+  static list(){
+    const map=new Map();
+    for (const x of S.items){
+      const a=attrsOf(x), t=typeById(a.cat); if (t.role==='accessory') continue;
+      const station=!!stationOf(x);
+      const model=(!station && x.hint && x.hint.model) || (station ? CoverHint.model(x) : (a.model&&a.maker?a.maker+' '+a.model:'')) || x.name;
+      const key=(station?'станция ':'')+norm(model); const pr=(x.groups||[]).flatMap(g=>g.rows||[]).find(r=>/основная мощность|номинальная мощность/i.test(r.k));
+      const power = a.cat==='dgu' ? (pr?pr.v:(a.kva&&a.kw?`${a.kva} кВА / ${a.kw} кВт`:(a.kw?a.kw+' кВт':''))) : mainLine(x,2);
+      const st=map.get(key)||{key:'st'+map.size, model, power, exec:a.execution||(station?a.container:'')||'', qty:0, photo:x.photo||null, type:a.cat, group:t.group||'', kind:t.name||''};
+      st.qty+=(+x.qty||0); if(!st.photo&&x.photo) st.photo=x.photo; map.set(key,st);
+    }
+    return [...map.values()];
   }
-  return [...map.values()];
+  // оборудование коротко — для имени файла: «Компрессор EAGLE-N 110 и ДГУ 30 MP-FW-S и ещё 2»; станция — по основному оборудованию
+  static short(){
+    const seen=new Set(), parts=[];
+    for (const x of S.items){ const a=attrsOf(x), t=typeById(a.cat); if (t.role==='accessory') continue;
+      const st=stationOf(x) ? (kitMainPart(x)||{}).attrs||{} : null;
+      let m=(st ? st.model : a.model) || ((x.hint&&x.hint.model)||'').replace(/^(Tide Power|HERTZ|Energo|ТСС)\s+/i,'') || x.name.split(' ').slice(-1)[0];
+      const s=[(t.short ?? SHORT_T[t.id] ?? (st ? t.item : '')), m].filter(Boolean).join(' ');
+      if (!seen.has(s)){ seen.add(s); parts.push(s); } }
+    if (!parts.length) return '';
+    let out=parts.slice(0,2).join(' и '); if (parts.length>2) out+=` и ещё ${parts.length-2}`;
+    return out;
+  }
+}
+
+// настройки документа Word (word/settings.xml): автоматические переносы слов — по скелету шаблона (out.hyphenate);
+// элементы — на своём месте по схеме Word (сразу после defaultTabStop)
+class DocxSettings {
+  static HYPH = /<w:(autoHyphenation|consecutiveHyphenLimit|hyphenationZone|doNotHyphenateCaps)\b[^>]*\/>/g;
+  static async hyphenation(zip, on){
+    const f=zip.file('word/settings.xml'); if (!f || on==null) return;
+    let x=(await f.async('string')).replace(DocxSettings.HYPH, '');
+    if (on){ const add='<w:autoHyphenation/><w:consecutiveHyphenLimit w:val="2"/><w:hyphenationZone w:val="284"/><w:doNotHyphenateCaps/>';
+      if (/<w:defaultTabStop\b[^>]*\/>/.test(x)) x=x.replace(/(<w:defaultTabStop\b[^>]*\/>)/, '$1'+add);
+      else if (/<w:characterSpacingControl\b/.test(x)) x=x.replace(/(<w:characterSpacingControl\b)/, add+'$1');
+      else if (/<w:compat>/.test(x)) x=x.replace('<w:compat>', add+'<w:compat>'); }
+    zip.file('word/settings.xml', x);
+  }
 }
 
 // данные КП для документа (без служебных полей и изображений)
@@ -105,9 +126,9 @@ async function renderDocx(St, pack, settings){
     const ct=await zip.file('[Content_Types].xml').async('string');
     if (!/Extension="png"/i.test(ct) || !/Extension="jpg"/i.test(ct)) zip.file('[Content_Types].xml', ct.replace('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+(/Extension="png"/i.test(ct)?'':'<Default Extension="png" ContentType="image/png"/>')+(/Extension="jpg"/i.test(ct)?'':'<Default Extension="jpg" ContentType="image/jpeg"/>'))); }
   const Min={cover:null,items:{}};
-  const STS=stationsOf();
+  const STS=KpModels.list();
   if (STS.length>=2){
-    St.stations=STS.map(s=>({key:s.key,model:s.model,power:s.power,exec:s.exec,qty:s.qty}));
+    St.stations=STS.map(s=>({key:s.key,model:s.model,power:s.power,exec:s.exec,qty:s.qty,kind:s.kind}));
     Min.thumbs={};
     for (const s of STS){ if(!s.photo) continue; const du=await docImg(s.photo, s.model); if (!du) continue;
       zip.file(`word/media/${s.key}.jpg`, b64(du), {base64:true}); Min.thumbs[s.key]={file:`${s.key}.jpg`,w:s.photo.w,h:s.photo.h}; }
@@ -172,6 +193,7 @@ async function renderDocx(St, pack, settings){
   try{ out = pack.skel.build(St, Min, ROOTS, Object.assign({}, settings, {rels, sect, clients, headerLogo:hdrLogo})); }
   catch(e){ throw new Error('ошибка в скелете шаблона (skeleton.js): '+(e&&e.message||e)); }
   zip.file('word/document.xml', out.document); zip.file(pack.footerPath, out.footer); zip.file('word/_rels/document.xml.rels', out.rels);
+  await DocxSettings.hyphenation(zip, out.hyphenate);
   if (hdrOn && out.header){ zip.file('word/header_kp.xml', out.header);
     zip.file('word/_rels/header_kp.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
       (hdrLogo?`<Relationship Id="rIdHdrLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${hdrLogo.file}"/>`:'')+'</Relationships>'); }

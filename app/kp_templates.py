@@ -76,8 +76,9 @@ def ensure_templates():
 OLD_FACTORY = {
     'skeleton.js': ('5fbf889fa4d86dbd104efab151efe5cd', '318639067e897b8dab73293c9d992d68', 'bc0c2a86f14f0c4d370130d395b26824', 'af29a5feb11dd57092e059dcf1a25139', '09824be0014a7a0bf89db2432180702d', 'b25ddfbef3a810deedb3c9d2716236d1',
                     'd3336880b98d865de4c3f52861a27940', '8e2dd7b287610524eebdc53dbe7ccaeb',
-                    '4a040a94dcf49aacfcf35f431b3243b6', '875dbbef90aa8bf9000c6a3de3d44408'),
-    'editor.json': ('05add2124882dec245a673c9949a8e12', '989a6bcdabfed2bb0d2ef55ec242fc12', '59bbf5edc4966a5057382803bfb90945', 'b0fa2e8c9160d3267e23e289869b08cd'),
+                    '4a040a94dcf49aacfcf35f431b3243b6', '875dbbef90aa8bf9000c6a3de3d44408', 'ab8c92945129ccc788b3b89ffde89832'),
+    'editor.json': ('05add2124882dec245a673c9949a8e12', '989a6bcdabfed2bb0d2ef55ec242fc12', '59bbf5edc4966a5057382803bfb90945', 'b0fa2e8c9160d3267e23e289869b08cd',
+                    'a000ceecf14d89ed64628a35bd1c4b67', 'd9cdcd589e6092eeecba7641c22db0d2'),
 }
 
 

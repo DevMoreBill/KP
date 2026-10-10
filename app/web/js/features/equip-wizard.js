@@ -125,7 +125,7 @@ async function nwMakeStation(){
   NW.busy=true; nwDraw();
   try{
     if (NW.main){ const lite=catCache.find(x=>x.id===NW.main); let doc=lite; try{ doc=await api('/api/catalog/'+encodeURIComponent(lite.id)); }catch(_){}
-      const p=kitFromCat(doc); p.role='main'; it.kit.parts.push(p); if (!it.photo && p.photo) it.photo={...p.photo}; }
+      const p=KitPart.fromCat(doc); p.role='main'; it.kit.parts.push(p); if (!it.photo && p.photo) it.photo={...p.photo}; }
     const c=kitNewContainer(NW.ctype); contApply(c, {ins:NW.ins, climate:NW.climate}); it.kit.parts.push(c);
     kitSync(it); stationFill(it); stationAutoName(it);
   } finally { NW.busy=false; }

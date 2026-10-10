@@ -76,7 +76,7 @@ document.addEventListener('click', async e=>{
     case 'addOpt': (it.options=it.options||[]).push(newOpt(it)); break;
     case 'delOpt': it.options.splice(j,1); break;
     case 'optPreset': { it.options=it.options||[]; const pz=presetsFor(it)[k]; const ix=it.options.findIndex(o=>norm(o.name)===norm(pz.name)); if(ix>=0) it.options.splice(ix,1); else { const c=catCache.find(d=>norm(d.name)===norm(pz.name)); it.options.push(newOpt(it,{...pz, price:c?.price||0, catId:c?.id})); } break; }
-    case 'attrsToGroups': { const g=groupsFromAttrs(it); const keep=(it.groups||[]).filter(x=>!g.some(y=>y.name===x.name)); it.groups=[...g,...keep]; if(!it.hint) it.hint=autoHint(it); it.page=true; toast('Таблица характеристик сформирована'); break; }
+    case 'attrsToGroups': { const g=groupsFromAttrs(it); const keep=(it.groups||[]).filter(x=>!g.some(y=>y.name===x.name)); it.groups=[...g,...keep]; if(!it.hint) it.hint=CoverHint.of(it); it.page=true; toast('Таблица характеристик сформирована'); break; }
     case 'galAdd': return pickGallery(i, b.dataset.slot||'');
     case 'galPage': return galFromPage(i, e.shiftKey);
     case 'kitAdd': case 'kitCat': case 'kitMain': case 'kitCont': case 'kitSys': case 'kitPreset': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (kitAction(a, i, b)==='async') return; break; }

@@ -89,10 +89,20 @@ function mainLine(x, max=3){
   return parts.join(' · ');
 }
 
-function autoHint(x){
-  const a=attrsOf(x), t=typeById(a.cat);
-  const kp=t.fields.filter(f=>f.kpi && a[f.key]!=null && a[f.key]!=='').slice(0,4).map(f=>({num:fnum(a[f.key]).replace(/\s*[^\d,.\/-].*$/,''),unit:f.unit||'',cap:f.label.toLowerCase()}));
-  return { title:t.coverTitle||t.name, model:[a.maker,a.model].filter(Boolean).join(' ')||x.name, desc:'', kpis:kp };
+// заголовок титула по позиции: вид оборудования, модель, ключевые параметры. Станция в контейнере — по основному
+// оборудованию («Dalgakiran EAGLE 315W»), а не по разбору своего названия («EAGLE»)
+class CoverHint {
+  static of(x){
+    const a=attrsOf(x), t=typeById(a.cat);
+    const kp=t.fields.filter(f=>f.kpi && a[f.key]!=null && a[f.key]!=='').slice(0,4).map(f=>({num:fnum(a[f.key]).replace(/\s*[^\d,.\/-].*$/,''),unit:f.unit||'',cap:f.label.toLowerCase()}));
+    return { title:t.coverTitle||t.name, model:CoverHint.model(x), desc:'', kpis:kp };
+  }
+  static model(x){
+    const m=typeof stationOf==='function' && stationOf(x) ? kitMainPart(x) : null, ma=(m&&m.attrs)||{};
+    if (ma.model) return [ma.maker, ma.model].filter(Boolean).join(' ');
+    const a=attrsOf(x);
+    return [a.maker,a.model].filter(Boolean).join(' ')||x.name;
+  }
 }
 
 function groupsFromAttrs(x){

@@ -101,8 +101,20 @@ function stationFill(x){
   // строка под названием и таблица характеристик станции — тоже автоматически, пока их не правили
   const spec=[mainLine(x,3), kitContainer(x)?ctypeOf(kitContainer(x).ctype).name.toLowerCase():''].filter(Boolean).join(' · ');
   if (!String(x.spec||'').trim() || x.spec===x._saSpec){ x.spec=spec; x._saSpec=spec; }
-  const g=groupsFromAttrs(x).filter(z=>z.rows.length), gs=JSON.stringify(x.groups||[]);
+  const g=StationSpec.groups(x, groupsFromAttrs(x).filter(z=>z.rows.length)), gs=JSON.stringify(x.groups||[]);
   if (!(x.groups||[]).some(z=>(z.rows||[]).some(r=>r.k||r.v)) || gs===x._saG){ x.groups=g; x._saG=JSON.stringify(g); }
+}
+// таблица характеристик станции: вместо «Производитель / Модель», угаданных по названию станции («EAGLE»), —
+// строка основного оборудования «Компрессор: Dalgakiran EAGLE 315W»
+class StationSpec {
+  static groups(x, groups){
+    const t=typeById(attrsOf(x).cat), m=kitMainPart(x), ma=(m&&m.attrs)||{};
+    const main=[ma.maker, ma.model].filter(Boolean).join(' ') || (m&&m.name) || '';
+    const out=groups.map(g=>({...g, rows:g.rows.filter(r=>!/^(Производитель|Модель)$/.test(r.k))})).filter(g=>g.rows.length);
+    if (main && t.station){ const row={k:t.station.mainLabel||'Основное оборудование', v:main, hl:false};
+      if (out.length) out[0].rows.unshift(row); else out.push({name:'Основные', rows:[row]}); }
+    return out;
+  }
 }
 // название станции по умолчанию: «Модульная насосная станция Grundfos CR 32 в блок-контейнере»
 function stationName(x){
@@ -123,14 +135,23 @@ function kitCost(x){
 function kitSync(x){ if (!isKit(x)) return false; const c=kitCost(x); if (!Number.isFinite(c)) return false;
   const ch=x.cost!==c || (x.costCur||'RUB')!=='RUB'; x.cost=c; x.costCur='RUB'; return ch; }
 
-// элемент из позиции каталога: название, закупка, поставщик (производитель), суть описания, основные характеристики, фото
-function kitFromCat(doc){
-  const a=attrsOf(doc), feats=(doc.features||[]).filter(f=>f.text);
-  const desc=feats.map(f=>(f.label&&!/^(описание|о серии|назначение)$/i.test(f.label)?f.label+': ':'')+f.text.trim()).join(' ').slice(0,700);
-  const rows=(doc.groups||[]).flatMap(g=>(g.rows||[]).filter(r=>r.k&&r.v)).slice(0,14).map(r=>({k:r.k, v:r.v}));
-  return kitNewPart({ name:doc.name||'', catId:doc.id, cost:doc.cost||0, costCur:doc.costCur||'RUB', sup:a.maker||'', desc, rows,
-    photo:doc.photo&&doc.photo.src?{src:doc.photo.src, w:doc.photo.w, h:doc.photo.h}:null,
-    attrs:Object.fromEntries(Object.entries(a).filter(([k,v])=>k!=='type' && v!=='' && v!=null && typeof v!=='object')) });
+// элемент сборки из позиции каталога: название, закупка, поставщик (производитель), суть описания, основные характеристики, фото
+class KitPart {
+  static MAX = 700;     // описание элемента — не длиннее (знаков); обрезается по концу предложения или пункта списка
+  static fromCat(doc){
+    const a=attrsOf(doc), feats=(doc.features||[]).filter(f=>f.text);
+    // блоки описания — с новой строки (списки «• …» остаются списками и в карточке, и в документе КП)
+    const desc=KitPart.cut(feats.map(f=>(f.label&&!/^(описание|о серии|назначение)$/i.test(f.label)?f.label+': ':'')+f.text.trim()).join('\n'));
+    const rows=(doc.groups||[]).flatMap(g=>(g.rows||[]).filter(r=>r.k&&r.v)).slice(0,14).map(r=>({k:r.k, v:r.v}));
+    return kitNewPart({ name:doc.name||'', catId:doc.id, cost:doc.cost||0, costCur:doc.costCur||'RUB', sup:a.maker||'', desc, rows,
+      photo:doc.photo&&doc.photo.src?{src:doc.photo.src, w:doc.photo.w, h:doc.photo.h}:null,
+      attrs:Object.fromEntries(Object.entries(a).filter(([k,v])=>k!=='type' && v!=='' && v!=null && typeof v!=='object')) });
+  }
+  static cut(s){
+    s=String(s||'').trim(); if (s.length<=KitPart.MAX) return s;
+    const head=s.slice(0, KitPart.MAX), end=Math.max(head.lastIndexOf('. '), head.lastIndexOf('.\n'), head.lastIndexOf(';\n'), head.lastIndexOf('\n'));
+    return end>KitPart.MAX*0.5 ? head.slice(0, end+1).trim() : head.replace(/\s+\S*$/, '')+'…';
+  }
 }
 
 // позиция для документа: состав — блоками описания (с фото) и таблицами характеристик элементов
@@ -300,7 +321,7 @@ function kitPickCat(i, cats, role, name){
     it.kit.parts.push(p); it.page=true; d.close(); renderForm(); persist(); toast('Элемент добавлен — описание и характеристики: вручную или кнопкой «✨ ИИ»'); };
   $('#kitPL').onclick=async e=>{ if (e.target.closest('[data-kitnew]')) return kitPickNew(); const b=e.target.closest('[data-cid]'); if (!b) return; const lite=catCache.find(x=>x.id===b.dataset.cid);
     let doc=lite; try{ doc=await api('/api/catalog/'+encodeURIComponent(lite.id)); }catch(_){}
-    const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=kitFromCat(doc); if (role) p.role=role;
+    const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=KitPart.fromCat(doc); if (role) p.role=role;
     if (role==='main'){ const ix=it.kit.parts.findIndex(z=>z.role==='container'); it.kit.parts.splice(ix>=0?ix:0, 0, p); } else it.kit.parts.push(p);
     kitSync(it); stationFill(it); stationAutoName(it);
     d.close(); renderForm(); persist(); toast('Добавлено в состав: '+doc.name); };

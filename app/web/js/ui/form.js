@@ -51,7 +51,7 @@ function goStep(id, target){
 function stepperHtml(){
   const pr=problems(); const bad=new Set(pr.map(x=>stepOfTarget(x[1],x[0])).filter(Boolean));
   const done=id=> id==='client'? !!S.client.trim() : id==='equip'? S.items.length>0 : id==='price'? S.items.length>0 && S.items.every(x=>x.price>0)
-     : id==='cover'? !!(S.cover.model||stationsOf().length>1) : id==='conds'? S.conditions.some(c=>c.value) : id==='mgr'? !!S.manager.name : false;
+     : id==='cover'? !!(S.cover.model||KpModels.list().length>1) : id==='conds'? S.conditions.some(c=>c.value) : id==='mgr'? !!S.manager.name : false;
   return `<nav class="stepper" aria-label="Разделы КП">${StepList.visible().map((s,k)=>{
       const st = s.id===STEP ? 'cur' : bad.has(s.id) ? 'bad' : done(s.id) ? 'ok' : '';
       return `<button type="button" class="stp ${st}" data-step="${s.id}" title="${esc(s.d)}" aria-current="${s.id===STEP?'step':'false'}">
