@@ -35,7 +35,8 @@ import logistics_api
 from images import mark_organized, organize_existing
 from kp_templates import ensure_templates
 from web_api import IMAGES, ROUTER, cp
-from app_update import StartCheck
+from app_update import NightUpdate, StartCheck
+from server_log import ServerLog
 
 PAID_GET = ('/api/geo/', '/api/party', '/api/check', '/api/imgfetch', '/api/cbr')
 GZ_CACHE = {}       # сжатые большие справочники: {ETag: байты gzip} (send_cached)
@@ -229,6 +230,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.close_connection = True
                 return self.send(413, 'text/plain; charset=utf-8', 'Слишком большой запрос')
             # права, модерация и журнал действий (admin.py), вход по паролю — и для шаблонов и картинок: True — ответ уже отправлен, функция — записать в журнал
+            if m in ('POST', 'PUT', 'DELETE') and path.startswith('/api/'):
+                NightUpdate.touch()          # кто-то работает: ночное обновление подождёт
             hook = admin.guard(self, store(), m, path) if path.startswith(('/api/', '/tpl/', '/img/')) else None
             if hook is True:
                 return
@@ -241,9 +244,8 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
         except Exception as e:
-            # подробности — в журнал сервера; пользователю — без путей и внутренностей
-            import traceback
-            traceback.print_exc()
+            # подробности — в журнал сервера (data/logs/kp.log, «Настройки → Система»); пользователю — без путей и внутренностей
+            ServerLog.failure('%s %s' % (self.command, urllib.parse.urlsplit(self.path).path[:300]), e)
             try:
                 self.send(500, 'text/plain; charset=utf-8', 'Внутренняя ошибка сервера (%s). Подробности — в журнале сервера.' % type(e).__name__)
             except Exception:
@@ -270,6 +272,13 @@ class Server(ThreadingHTTPServer):
     # очередь входящих соединений: по умолчанию 5 — утром 20 браузеров по 6 соединений переполняли её, и часть запросов
     # ждала повтора соединения 1–3 с; 128 — как у обычных веб-серверов
     request_queue_size = 128
+    QUIET = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError)   # браузер закрыл соединение — не ошибка
+
+    def handle_error(self, request, client_address):
+        """Ошибка вне обработчика запроса — в журнал сервера (по умолчанию socketserver печатал её в stderr, которого у EXE нет)."""
+        e = sys.exc_info()[1]
+        if not isinstance(e, self.QUIET):
+            ServerLog.failure('соединение %s' % (client_address[0] if client_address else '?'), e)
 
 
 class Server6(Server):
@@ -302,6 +311,10 @@ def main():
     if already_running():
         webbrowser.open('http://localhost:%d/' % BASE_PORT)
         return 0
+    log = ServerLog.install(DATA_DIR)          # журнал сервера: вывод программы и ошибки — в data/logs/kp.log
+    if log:
+        log.info('Запуск: версия %s%s, %s' % (APP_VERSION, ' (обновление поверх EXE %s)' % os.environ.get('KP_BASE_VERSION', '')
+                                               if os.environ.get('KP_UPDATE_DIR') else '', 'сервер отдела' if SERVER_MODE else 'программа на этом компьютере'))
     import importlib.util
     if importlib.util.find_spec('sqlite3') is None:     # база данных программы; без модуля программа работать не может
         message_box('В сборке программы нет модуля базы данных SQLite.\n\n'
@@ -318,24 +331,27 @@ def main():
         from app_update import Updater
         Updater(store(), ROOT, DATA_DIR).absorb_failures()     # обновление не запустилось — запись в «Обновления»
         # обслуживание базы: копия за сегодня, архив журнала, сжатие раз в месяц — в фоне, затем раз в сутки
-        threading.Thread(target=maintenance.run, args=(store(), DATA_DIR), daemon=True, name='maintenance-start').start()
-        maintenance.start_daily(store(), DATA_DIR)
+        threading.Thread(target=maintenance.Background.run, args=(store(), DATA_DIR), daemon=True, name='maintenance-start').start()
+        maintenance.Background.daily(store(), DATA_DIR)
         # отложенные проверки контрагентов: когда лимит Checko обновится (после 00:00 по Москве) — выполнить очередь
-        maintenance.start_every(1800, lambda: cp().run_queue())
+        maintenance.Background.every(1800, lambda: cp().run_queue(), 'очередь проверок контрагентов')
         # ставки доставки по ATI.SU — раз в сутки (период и направления — «Настройки» → «Логистика»)
-        maintenance.start_every(3 * 3600, lambda: logistics_api.auto_refresh(store()))
+        maintenance.Background.every(3 * 3600, lambda: logistics_api.auto_refresh(store()), 'ставки доставки')
         import feeds
         feeds.IMAGE_STORE = IMAGES
-        maintenance.start_every(3600, lambda: feeds.auto_check(store()))     # фиды поставщиков: РРЦ и наличие раз в день
-        maintenance.start_every(6 * 3600, lambda: Updater(store(), ROOT, DATA_DIR).auto_check())   # новая версия на GitHub — раз в сутки
+        maintenance.Background.every(3600, lambda: feeds.auto_check(store()), 'фиды поставщиков')     # фиды поставщиков: РРЦ и наличие раз в день
+        maintenance.Background.every(6 * 3600, lambda: Updater(store(), ROOT, DATA_DIR).auto_check(), 'проверка новой версии')   # новая версия на GitHub — раз в сутки
+        from admin_alerts import AdminAlerts
+        import config
+        maintenance.Background.every(3600, lambda: AdminAlerts(store(), config).check(), 'письма администратору о проблемах')
         from server_task import ServerTask
         if ServerTask.applicable(SERVER_MODE):     # задача Планировщика: без остановки через 3 дня работы и от батареи (ИБП)
-            import config
             ServerTask(store()).start(config.STARTED)
         feeds.upgrade(store(), load_types()['types'], APP_VERSION)          # после обновления — фиды по новым правилам
         fresh = FreshBase.check()
         sync_counter_with_files()
     except Exception as e:
+        ServerLog.failure('запуск', e)
         if StartCheck.armed() and StartCheck.code_error(e):
             raise          # ошибка в коде обновления: launcher.py вернёт прежнюю версию и запустит её
         if 'malformed' in str(e) or 'not a database' in str(e):
@@ -356,15 +372,21 @@ def main():
         rep = catalog_migrate.run(store(), load_types_builtin(), (store().kv_get('types') or {}).get('types', []), IMG_DIR, os.path.join(DATA_DIR, 'backup'))
         organize_existing(store(), load_types()['types'], IMG_DIR, os.path.join(DATA_DIR, 'backup'), backup=(rep or {}).get('backup'))
     except Exception as e:
-        print('Обновление каталога или раскладка изображений не выполнены (будут повторены при следующем запуске):', e)
+        ServerLog.failure('обновление каталога или раскладка изображений (будут повторены при следующем запуске)', e)
     if DATA_DIR.startswith('\\\\'):
         message_box('Папка данных указана в сети (%s).\n\nБазу данных нельзя держать в общей сетевой папке — '
                     'при одновременной работе она может повредиться. Для работы всем отделом используйте '
                     'сервер отдела (server-setup\\1. Установить сервер отдела.bat), а dataDir оставьте пустым.' % DATA_DIR, error=False)
     httpd, port = start_server()
     if not httpd:
+        ServerLog.failure('запуск: все порты заняты (%d…)' % BASE_PORT)
         message_box('Не удалось запустить сервер: все порты заняты.')
         return 1
+    ServerLog.note('Сервер работает: порт %d' % port)
+    # ночное обновление (если включено в «Обновлениях»): проверка раз в полчаса, установка — и перезапуск этого сервера
+    from app_update import Restarter, Updater
+    maintenance.Background.every(1800, lambda: NightUpdate(Updater(store(), ROOT, DATA_DIR)).run(
+        lambda: Restarter(SERVER_MODE).restart(httpd)), 'ночное обновление')
     if not SERVER_MODE:
         start_ipv6(port, httpd)
     # адрес localhost (а не 127.0.0.1) — чтобы браузер видел черновики, сохранённые прежней версией
@@ -396,7 +418,9 @@ def main():
         pass
     httpd.server_close()
     if check and check.error:
+        ServerLog.failure(check.error)
         raise StartCheck.Failed(check.error)
+    ServerLog.note('Остановка')
     return 0
 
 

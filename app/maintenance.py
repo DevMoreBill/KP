@@ -13,6 +13,7 @@ import threading
 import time
 from datetime import date, datetime, timedelta
 
+from server_log import ServerLog
 from storage import DbZip
 
 KEEP_DAILY, KEEP_WEEKLY, KEEP_MONTHLY = 7, 4, 12
@@ -22,8 +23,6 @@ CHECKS_DAYS = 365          # кэш проверок контрагентов (C
 IMG_MIN_AGE_DAYS = 30      # изображение без ссылок считается лишним, если ему больше месяца (черновики КП в браузерах)
 IMG_RX = re.compile(r'/img/([^"\\?#\s<>]+?\.(?:jpg|jpeg|png|webp))', re.I)
 IMG_EXTS = ('.jpg', '.jpeg', '.png', '.webp')
-
-_lock = threading.Lock()
 
 
 def _now():
@@ -307,53 +306,60 @@ def purge_images(store, img_dir, images=None):
 
 
 # ---------------------------------------------------------------- запуск
-def run(store, data_dir, log=print):
-    """Плановое обслуживание: копия за сегодня, архив журнала, кэш проверок, сжатие базы раз в месяц."""
-    if not _lock.acquire(blocking=False):
-        return
-    try:
-        from backup_mirror import MirrorBackup
-        for name, fn in (('копия базы', lambda: DbCopy.daily(store, data_dir)),
-                         ('копия во вторую папку', lambda: MirrorBackup(store, data_dir).run()),
-                         ('сжатие прежних копий', lambda: DbCopy.compress_old(store, data_dir, log)),
-                         ('архив журнала действий', lambda: archive_audit(store, data_dir)),
-                         ('кэш проверок', lambda: purge_checks(store)),
-                         ('обслуживание базы', lambda: db_maintenance(store))):
-            try:
-                fn()
-            except Exception as e:
-                log('Обслуживание (%s) не выполнено: %s' % (name, e))
-        _save(store, lastRun=_now())
-    finally:
-        _lock.release()
+class Background:
+    """Фоновые задачи сервера: плановое обслуживание базы (при запуске и раз в сутки) и задачи по расписанию.
+    Сбой задачи — в журнал сервера (ServerLog, data/logs/kp.log) с трассировкой; программа работает дальше."""
+    LOCK = threading.Lock()          # плановое обслуживание — одно за раз
 
+    @classmethod
+    def run(cls, store, data_dir):
+        """Плановое обслуживание: копия за сегодня, вторая папка, прежние копии — в ZIP, архив журнала действий, кэш проверок,
+        сжатие базы раз в месяц."""
+        if not cls.LOCK.acquire(blocking=False):
+            return
+        try:
+            from backup_mirror import MirrorBackup
+            for name, fn in (('копия базы', lambda: DbCopy.daily(store, data_dir)),
+                             ('копия во вторую папку', lambda: MirrorBackup(store, data_dir).run()),
+                             ('сжатие прежних копий', lambda: DbCopy.compress_old(store, data_dir, ServerLog.failure)),
+                             ('архив журнала действий', lambda: archive_audit(store, data_dir)),
+                             ('кэш проверок', lambda: purge_checks(store)),
+                             ('обслуживание базы', lambda: db_maintenance(store))):
+                try:
+                    fn()
+                except Exception as e:
+                    ServerLog.failure('обслуживание (%s)' % name, e)
+            _save(store, lastRun=_now())
+        finally:
+            cls.LOCK.release()
 
-def start_daily(store, data_dir, log=print):
-    """Раз в час проверяем, не наступил ли новый день: сервер отдела может работать неделями без перезапуска."""
-    def loop():
-        ev = threading.Event()
-        while not ev.wait(3600):
-            if (state(store).get('lastRun') or '')[:10] != date.today().isoformat():
-                run(store, data_dir, log)
-    t = threading.Thread(target=loop, daemon=True, name='maintenance')
-    t.start()
-    return t
+    @classmethod
+    def daily(cls, store, data_dir):
+        """Раз в час проверяем, не наступил ли новый день: сервер отдела может работать неделями без перезапуска."""
+        def loop():
+            ev = threading.Event()
+            while not ev.wait(3600):
+                if (state(store).get('lastRun') or '')[:10] != date.today().isoformat():
+                    cls.run(store, data_dir)
+        t = threading.Thread(target=loop, daemon=True, name='maintenance')
+        t.start()
+        return t
 
-
-def start_every(seconds, fn, log=print):
-    """Фоновая задача раз в seconds секунд (первый запуск — через минуту после старта)."""
-    def loop():
-        ev = threading.Event()
-        wait = 60
-        while not ev.wait(wait):
-            wait = seconds
-            try:
-                fn()
-            except Exception as e:
-                log('Фоновая задача: %s' % e)
-    t = threading.Thread(target=loop, daemon=True, name='every-%d' % seconds)
-    t.start()
-    return t
+    @staticmethod
+    def every(seconds, fn, name):
+        """Задача раз в seconds секунд (первый запуск — через минуту после старта); name — для журнала сервера."""
+        def loop():
+            ev = threading.Event()
+            wait = 60
+            while not ev.wait(wait):
+                wait = seconds
+                try:
+                    fn()
+                except Exception as e:
+                    ServerLog.failure('фоновая задача «%s»' % name, e)
+        t = threading.Thread(target=loop, daemon=True, name='every-%d' % seconds)
+        t.start()
+        return t
 
 
 def summary(store, data_dir):

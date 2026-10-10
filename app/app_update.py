@@ -23,12 +23,14 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import version
+from server_log import ServerLog
 
 
 class UpdateError(Exception):
@@ -201,7 +203,9 @@ class Updater:
                 'prev': prev, 'frozen': self.frozen(), 'writable': self.writable(), 'root': self.root,
                 'repo': s.get('repo') or 'DevMoreBill/KP', 'auto': s.get('auto', True), 'hasToken': bool(self.token()),
                 'last': last, 'available': bool(last.get('version')) and version.as_tuple(last['version']) > version.as_tuple(self.current()),
-                'failed': self.failed(s), 'history': (s.get('history') or [])[-self.HISTORY:][::-1]}
+                'failed': self.failed(s), 'history': (s.get('history') or [])[-self.HISTORY:][::-1],
+                'nightly': s.get('nightly') or 'off', 'nightHour': int(s.get('nightHour', NightUpdate.HOUR)), 'nightLast': s.get('nightLast'),
+                'nightSupported': NightUpdate.supported()}
 
     def failed(self, s=None):
         """Последнее обновление, которое не запустилось (программа вернулась к прежней версии), — пока работает версия
@@ -231,6 +235,7 @@ class Updater:
                 r = {k: str(r.get(k) or '')[:limit] for k, limit in (('version', 40), ('back', 40), ('exe', 40), ('at', 40), ('reason', 600), ('trace', 6000))}
                 h.append({'version': r['back'] or r['exe'], 'from': r['version'], 'by': 'программа', 'at': r['at'],
                           'source': 'не запустилось — возврат', 'reason': r['reason']})
+                ServerLog.failure('обновление %s не запустилось, программа вернулась к %s: %s' % (r['version'], r['back'] or r['exe'], r['reason']))
                 # не запустились подряд два обновления (новое и предыдущее) — предупреждение о самом новом из них
                 old = s.get('failed') if isinstance(s.get('failed'), dict) else {}
                 if version.as_tuple(r['version']) >= version.as_tuple(old.get('version') or '0'):
@@ -240,7 +245,7 @@ class Updater:
             os.remove(path)
             return s
         except Exception as e:          # запись о сбое не должна мешать работе программы
-            print('Запись о неудачном обновлении не прочитана:', e)
+            ServerLog.failure('запись о неудачном обновлении не прочитана', e)
             return None
 
     def writable(self):
@@ -262,6 +267,18 @@ class Updater:
             s['repo'] = str(d['repo']).strip()
         if 'auto' in d:
             s['auto'] = bool(d['auto'])
+        if 'nightly' in d:
+            if d.get('nightly') not in NightUpdate.MODES:
+                raise UpdateError('Ночные обновления: выключены, только исправления или все версии')
+            s['nightly'] = d['nightly']
+        if 'nightHour' in d:
+            try:
+                h = int(d.get('nightHour'))
+            except (TypeError, ValueError):
+                h = -1
+            if not 0 <= h <= 23:
+                raise UpdateError('Час ночного обновления — от 0 до 23')
+            s['nightHour'] = h
         if 'token' in d:
             keys = self.store.kv_get('integrations') or {}
             t = str(d.get('token') or '').strip()
@@ -383,6 +400,8 @@ class Updater:
         return {'ok': True}
 
     def _log(self, rec, **extra):
+        ServerLog.note('Обновления: %s → %s (%s%s)' % (rec.get('from') or '', rec.get('version') or '', rec.get('source') or '',
+                                                       ', ' + rec['by'] if rec.get('by') else ''))
         s = self.settings()
         h = s.get('history') if isinstance(s.get('history'), list) else []
         h.append(dict(rec, at=datetime.now().isoformat(timespec='seconds')))
@@ -505,7 +524,7 @@ class StartCheck:
             self.server.shutdown()
             return
         except Exception as e:           # сама проверка не должна откатывать рабочую версию
-            print('Самопроверка запуска не выполнена:', e)
+            ServerLog.failure('самопроверка запуска не выполнена', e)
         self.ready()
 
     def _get(self, path):
@@ -523,3 +542,86 @@ class StartCheck:
             return
         except (OSError, ValueError) as e:
             raise self.Failed('%s — %s' % (path, e))
+
+
+class NightUpdate:
+    """Ночное обновление (по желанию, «Настройки → Обновления»): в выбранный час программа сама проверяет новую версию на
+    GitHub, скачивает и ставит её и перезапускается. Условия: EXE 3.51 и новее (вернёт прежнюю версию, если новая не
+    запустится — launcher.py); последние 15 минут никто ничего не сохранял (иначе — следующая проверка через полчаса);
+    одна попытка за ночь; версия, которая уже не запустилась, сама второй раз не ставится. «Только исправления» — новая
+    версия той же ветки (3.52.0 → 3.52.1), «все версии» — любая новая. Итог — kv update.nightLast, письмо администратору
+    (admin_alerts) и история установок."""
+    MODES = ('off', 'patch', 'all')
+    HOUR = 3              # час по умолчанию
+    WINDOW = 2            # часов с выбранного часа
+    QUIET = 15 * 60       # секунд без изменений от пользователей
+    MIN_EXE = (3, 51, 0)  # EXE с возвратом к прежней версии
+    BY = 'ночное обновление'
+    last_write = 0.0      # время последнего изменяющего запроса (kp_server.Handler)
+
+    def __init__(self, updater):
+        self.up = updater
+
+    @classmethod
+    def touch(cls):
+        cls.last_write = time.time()
+
+    @classmethod
+    def supported(cls):
+        """Программа запущена из EXE, который умеет вернуть прежнюю версию (встроенная в EXE версия — 3.51 и новее)."""
+        base = os.environ.get('KP_BASE_VERSION') or version.VERSION
+        return bool(getattr(sys, 'frozen', False)) and version.as_tuple(base) >= cls.MIN_EXE
+
+    def skip(self, s, now):
+        """Почему сейчас не ставить ('' — ставить можно)."""
+        if (s.get('nightly') or 'off') == 'off':
+            return 'выключено'
+        if not self.supported():
+            return 'нужен EXE 3.51 и новее'
+        h = int(s.get('nightHour', self.HOUR))
+        if (now.hour - h) % 24 >= self.WINDOW:
+            return 'не время'
+        if (s.get('nightLast') or {}).get('night') == self.night(now, h):
+            return 'уже была попытка этой ночью'
+        if time.time() - self.last_write < self.QUIET:
+            return 'кто-то работает'
+        return ''
+
+    @staticmethod
+    def night(now, h):
+        """Какая это ночь: дата начала окна (окно 23:00–01:00 — одна ночь)."""
+        start = now if now.hour >= h else now - timedelta(days=1)
+        return start.strftime('%Y-%m-%d')
+
+    def run(self, restart, now=None):
+        """Раз в полчаса (Background.every): поставить новую версию, если пора; restart — перезапуск программы. → запись или None."""
+        now = now or datetime.now()
+        s = self.up.settings()
+        if self.skip(s, now):
+            return None
+        rec = {'night': self.night(now, int(s.get('nightHour', self.HOUR))), 'at': now.isoformat(timespec='seconds'), 'from': self.up.current()}
+        try:
+            st = self.up.check()
+            last, failed = st.get('last') or {}, (self.up.settings().get('failed') or {})
+            lv, cur = last.get('version') or '', self.up.current()
+            if not st['available']:
+                rec['result'] = 'новой версии нет'
+            elif failed.get('version') == lv:
+                rec['result'] = 'версия %s уже не запустилась на этом компьютере — ставится только вручную' % lv
+            elif (s.get('nightly') == 'patch') and version.as_tuple(lv)[:2] != version.as_tuple(cur)[:2]:
+                rec['result'] = 'версия %s — не исправление текущей %s; её ставят вручную' % (lv, cur)
+            else:
+                res = self.up.download_latest(self.BY)
+                rec.update(result='установлена версия %s, перезапуск' % res['version'], version=res['version'], ok=True)
+        except UpdateError as e:
+            rec.update(result='не выполнено: %s' % e, error=True)
+            ServerLog.failure('ночное обновление', e)
+        s = self.up.settings()
+        s['nightLast'] = rec
+        self.up._save(s)
+        if rec.get('ok'):
+            from admin_alerts import AdminAlerts
+            AdminAlerts.notice(self.up.store, 'Ночью установлено обновление %s (было %s) — программа перезапустилась' % (rec['version'], rec['from']))
+            ServerLog.note('Ночное обновление: %s → %s' % (rec['from'], rec['version']))
+            restart()
+        return rec

@@ -413,7 +413,9 @@ async function stMail(m, note){
     <p class="muted">Подстановки: {номер}, {дата}, {клиент}, {поставщик} (имя отправителя), {менеджер}, {должность}, {телефон}, {e-mail}; {, контакт} — «, Иван Петрович» (если в КП указано контактное лицо); {: оборудование} — «: Винтовые компрессоры Remeza ВК10…» по заголовку титула. Менеджер может поправить текст перед отправкой.</p>
     <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" id="mlSave">Сохранить</button>
       <input type="text" id="mlTestTo" placeholder="адрес для проверки" style="max-width:260px" autocomplete="off"><button class="btn" type="button" id="mlTest"${r.on?'':' disabled'}>Отправить проверочное письмо</button>
-      ${r.hasPassword?'<button class="btn ghost" type="button" id="mlDel">Удалить пароль</button>':''}</div></div>`;
+      ${r.hasPassword?'<button class="btn ghost" type="button" id="mlDel">Удалить пароль</button>':''}</div></div>
+  <div class="st-card" id="stAlerts"></div>`;
+  new AlertsCard($('#stAlerts')).open();
   const body=()=>{ const b={host:$('#mlHost').value.trim(), port:$('#mlPort').value.trim(), security:$('#mlSec').value, login:$('#mlLogin').value.trim(),
     fromEmail:$('#mlFrom').value.trim(), fromName:$('#mlName').value.trim(), bccSelf:$('#mlBcc').checked, subject:$('#mlSubj').value, body:$('#mlBody').value};
     const pw=$('#mlPw').value; if (pw) b.password=pw; return b; };

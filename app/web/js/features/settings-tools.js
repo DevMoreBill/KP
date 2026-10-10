@@ -5,7 +5,8 @@
 //   SettingsHistoryPanel — история изменений настроек с откатом (сервер: app/settings_history.py);
 //   ConnectionsPanel — проверка всех подключений одной кнопкой (app/connections.py);
 //   ChangedPanel — всё, что отличается от встроенного, одним списком с «↺ вернуть»;
-//   MirrorCard — вторая папка для копий базы (app/backup_mirror.py), карточка во вкладке «Копии и база».
+//   MirrorCard — вторая папка для копий базы (app/backup_mirror.py), карточка во вкладке «Копии и база»;
+//   AlertsCard — письма администратору о проблемах сервера (app/admin_alerts.py), карточка во вкладке «Почта».
 
 // ---------------------------------------------------------------- поиск по настройкам
 class SettingsSearch {
@@ -269,6 +270,39 @@ class ChangedPanel {
   bind(){ this.m.onclick=async e=>{ const g=e.target.closest('[data-chgo]'), r=e.target.closest('[data-chrs]');
     if (r) return this.reset(this.rows[+r.dataset.chrs]);
     if (g){ const x=this.rows[+g.dataset.chgo]; if (x.before) x.before(); StNav.select(x.tab); await stTab(); StNav.highlight(x.focus, x.label); } }; }
+}
+
+// ---------------------------------------------------------------- письма администратору о проблемах сервера
+// app/admin_alerts.py: включить, адреса, пробное письмо — во вкладке «Почта»
+class AlertsCard {
+  constructor(box){ this.box=box; }
+  async open(note){
+    if (!this.box) return;
+    try{ this.s=await aapi('alerts'); }catch(e){ this.box.innerHTML=`<p class="sub">Письма о проблемах</p><p class="muted">${esc(e.message||e)}</p>`; return; }
+    const s=this.s, L=s.last;
+    this.box.innerHTML=`<div class="row"><p class="sub" style="margin:0">Письма администратору о проблемах</p><span class="sp"></span>
+        <label class="sw"><input type="checkbox" id="alOn"${s.on?' checked':''} data-nodirty><span>${s.on?'включены':'выключены'}</span></label></div>
+      <p class="muted">Программа сама пришлёт письмо, если копия базы не сделалась или вторая папка не обновляется, на диске мало места, обновление не запустилось,
+        задача Планировщика настроена не для сервера или в журнале сервера появились ошибки. Письмо — когда проблема появилась и раз в сутки, пока она не решена.</p>
+      ${s.mailOn?'':'<p class="msg warn">Сначала настройте почтовый сервер выше — письма уходят через него.</p>'}
+      ${note?`<p class="msg${note.err?' err':''}" style="text-align:left">${esc(note.t)}</p>`:''}
+      <label class="f"><span>Кому (до 5 адресов через запятую)</span><input type="text" id="alTo" value="${esc(s.to)}" placeholder="admin@company.ru" autocomplete="off"></label>
+      <p class="muted" style="margin:6px 0">${L?`Последнее письмо: ${esc(stTime(L.at))}${L.test?' (пробное)':''} — ${L.ok?'<span class="ok-t">отправлено</span>':`<span class="bad-t">не отправлено: ${esc(L.error||'')}</span>`}`:'Писем ещё не было.'}</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-al="save">Сохранить</button>
+        <button class="btn" type="button" data-al="test"${s.mailOn&&s.to?'':' disabled'}>Отправить пробное письмо</button></div>`;
+    this.bind();
+  }
+  body(on){ return {on, to:this.box.querySelector('#alTo').value.trim()}; }
+  bind(){
+    this.box.onchange=async e=>{ if (e.target.id!=='alOn') return;
+      try{ await ajson('alerts', this.body(e.target.checked)); this.open({t:e.target.checked?'Письма о проблемах включены':'Письма о проблемах выключены'}); }
+      catch(err){ this.open({t:err.message||String(err), err:true}); } };
+    this.box.onclick=async e=>{ const b=e.target.closest('[data-al]'); if (!b) return;
+      try{
+        if (b.dataset.al==='save'){ await ajson('alerts', this.body(this.box.querySelector('#alOn').checked)); return this.open({t:'Сохранено'}); }
+        if (b.dataset.al==='test'){ b.disabled=true; b.textContent='Отправляю…'; await ajson('alerts/test', {}); return this.open({t:'Пробное письмо отправлено'}); }
+      }catch(err){ this.open({t:err.message||String(err), err:true}); } };
+  }
 }
 
 // ---------------------------------------------------------------- вторая папка для копий базы
