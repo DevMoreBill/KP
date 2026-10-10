@@ -41,7 +41,9 @@ class Launcher:
     FAILED_LOG = 'update-failed.json'     # записи о неудачных запусках обновлений (читает app_update.Updater)
     KEEP = 10                             # сколько записей хранить
     TRIES = 10                            # попыток переименовать папку: её файлы может ненадолго занять антивирус
-    ENV = ('KP_UPDATE_DIR', 'KP_BASE_VERSION', 'KP_UPDATE_VERSION')
+    # KP_UPDATE_FALLBACK — этот EXE умеет вернуть прежнюю версию: только тогда обновление проверяет себя при запуске
+    # (app_update.StartCheck) и передаёт сюда ошибку запуска; у прежних EXE обновление запускается как раньше
+    ENV = ('KP_UPDATE_DIR', 'KP_BASE_VERSION', 'KP_UPDATE_VERSION', 'KP_UPDATE_FALLBACK')
 
     def __init__(self):
         self.frozen = bool(getattr(sys, 'frozen', False))
@@ -72,6 +74,7 @@ class Launcher:
         os.environ['KP_UPDATE_DIR'] = self.upd
         os.environ['KP_BASE_VERSION'] = version.VERSION      # версия, встроенная в EXE («Настройки → Обновления»)
         os.environ['KP_UPDATE_VERSION'] = uv
+        os.environ['KP_UPDATE_FALLBACK'] = '1'
         self.finder = _UpdateFinder(app)
         sys.meta_path.insert(0, self.finder)
         sys.modules.pop('version', None)          # версия — тоже из обновления
