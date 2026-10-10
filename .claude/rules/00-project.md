@@ -35,5 +35,7 @@
 - Ключи API, пароли и токены — не в репозиторий и не в журналы; базы и выгрузки пользователя (`*.sqlite3`, `kp*.zip`) — тоже.
 
 ## Проверки перед коммитом
-- `python3 -m pyflakes app/*.py`, ESLint для `app/web/js`, сценарии Playwright на копии базы (не на рабочей).
+- `python3 tests/run_all.py` — pyflakes, ESLint для `app/web/js` (`eslint.config.mjs`, необъявленные имена), наборы `tests/` на стенде
+  со сгенерированной базой; то же CI делает при каждой отправке, и EXE собирается только после этого. Новая функция сервера — проверка
+  в `tests/` (на `kit.Stand`/`SampleData`, без данных пользователя). Сценарии Playwright — на копии базы (не на рабочей).
 - Версия: `app/version.py` + `APP_VERSION` и журнал в `app/web/js/features/help.js`, README.

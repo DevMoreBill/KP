@@ -70,6 +70,12 @@ class ServerLog:
     def info(self, text):
         self.write(self.INFO, text)
 
+    def close(self):
+        with self.lock:
+            if self.f:
+                self.f.close()
+                self.f = None
+
     def error(self, where, exc=None, tb=None):
         """Ошибка с трассировкой: where — где (запрос, поток, задача); exc — исключение (по умолчанию — текущее)."""
         if exc is None and sys.exc_info()[1] is not None:
