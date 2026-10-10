@@ -415,7 +415,9 @@ e-mail, мобильный (последние 10 цифр) и добавочн�
 С изображениями — архив «КП_выгрузка_….zip»: `kp-backup.json` + `img/<путь>` (все `/img/…`, на которые есть ссылки, в т. ч. в КП).
 Загрузка .json или .zip — `POST import/file/preview` и `import/file?sections` (тело — сам файл): записи с теми же id заменяются,
 изображения — только недостающие, без путей наружу из `data/img` и только JPEG/PNG/WebP по содержимому. `DataBundle` (сервер),
-`DataTransfer` (интерфейс).
+`DataTransfer` (интерфейс). Разделы: каталог, клиенты, настройки программы (`ProgramSettings`: kv types, settings, uitexts,
+logistics, feeds, mail — без пароля почты; integrations, admins, mgrAccess не выгружаются, при загрузке свои секреты остаются),
+поставщики и коды ТН ВЭД, менеджеры, КП, журнал; быстрый выбор «Только каталог / клиенты / настройки».
 
 **Обновления из «Настроек»** (`app/app_update.py`): `UpdatePackage` проверяет архив «KP-Obnovlenie-X.zip» (нет путей наружу, есть
 `update/version.json`, `update/app/kp_server.py`, `update/app/web/index.html`); `ReleaseSource` — последний выпуск GitHub
