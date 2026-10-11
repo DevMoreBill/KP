@@ -2,7 +2,7 @@
 // свет (светодиодные светильники, аварийный с зелёным индикатором, светильники над дверями снаружи), отопление
 // (электроконвекторы на местах из расчёта StationHeat), вентиляция (снаружи — жалюзи с козырьками, изнутри — решётки
 // с клапанами и электроприводами, воздуховод от радиатора ДГУ), пожарная безопасность по расчёту StationFire
-// (огнетушители у выхода и у основного оборудования: верх не выше 1,5 м, над ними знак F04; извещатели и модули
+// (огнетушитель у выхода — по расчёту StationFire: верх не выше 1,5 м, над ними знак F04; извещатели и модули
 // порошкового пожаротушения «Буран-2,5» на потолке; щит ОПС, ручной пожарный извещатель и оповещатель у выхода; табло
 // «Выход» и «Порошок! Уходи!» над входной дверью), кабельный лоток, отсек топливного бака ДГУ (перегородка, поддон,
 // заливная горловина снаружи в ящике, дыхательный клапан над крышей, жалюзи отсека), снаружи — козырьки и прожекторы над
@@ -115,7 +115,8 @@ class StOutfit {
     const leftOut=x0===0 && P.door!=='end' && !this.s.g.sea;
     const intake=(wd, hh)=>{ if (leftOut) return this.vent('left', W*0.25, W*0.25+wd, 200, 200+hh, true);
       const u=this.walls.find('back', wd+260, 120, 260+hh, 'lo'); if (u!=null) this.vent('back', u+130, u+130+wd, 200, 200+hh, true); };
-    if (dgu){ this.vent('right', dgu.y+80, dgu.y+dgu.ly-80, Math.round(dgu.h*0.12), Math.round(dgu.h*0.95)); this.duct(dgu); intake(900, 750); return; }
+    if (dgu){ if (P.dguDoor) this.endDoor(P.dguDoor); else this.vent('right', dgu.y+80, dgu.y+dgu.ly-80, Math.round(dgu.h*0.12), Math.round(dgu.h*0.95));
+      this.duct(dgu); intake(900, 750); return; }
     if (this.sys.vent===false) return;
     const rc=P.items.filter(i=>i.wall==='right'), y0=rc.length ? Math.max(W*0.45, Math.max(...rc.map(i=>i.y+i.ly))+150) : W*0.45, y1=Math.min(W-120, y0+W*0.4);
     if (y1-y0>=250) this.vent('right', Math.round(y0), Math.round(y1), H-750, H-200);
@@ -137,6 +138,24 @@ class StOutfit {
     for (const [u, z, a1, b1] of [[uc, z0, du+60, 30], [uc, z1, du+60, 30], [u0, zc, 30, dz+60], [u1, zc, 30, dz+60]]) this.box(fr, w, u, z, a1, b1, 25);
     for (let z=z0+40; z<z1-20; z+=55) this.box(sl, w, uc, z, du-10, 12, 18, 0);
     this.box(dk, w, u1+130, zc, 110, 150, 90, 0.008); this.box(fr, w, u1+50, zc, 50, 20, 40, 0);   // электропривод клапана
+  }
+  /** ДГУ: в торце напротив радиатора — двустворчатая дверь-жалюзи (выброс горячего воздуха и проём для монтажа и демонтажа
+   *  ДГУ): коробка, створки с наклонными ламелями (внизу — глухая полоса), петли по краям, запорные штанги и ручка посередине,
+   *  козырёк сверху; изнутри — клапан с электроприводом */
+  endDoor(d){
+    const S=this.s, a=d.y0/1000, b=d.y1/1000, Z0=S.base+0.01, Z1=S.base+d.h/1000, x=S.Le, m=(a+b)/2, Y=u=>S.oy+u;
+    this.walls.busy('right', d.y0-60, d.y1+260, 0, d.h+120);
+    const fr=S.M(StMat.paint(RalColor.shade(S.frame, 0.9), 0.45)), lf=S.M(StMat.paint(S.wall, 0.45)), sl=S.M(StMat.paint('#5d646b', 0.55)), dk=S.M(StMat.paint('#24292e', 0.55)), mt=S.M(StMat.metal('#c3c8cd', 0.3));
+    fr.box(x, Y(a)-0.05, Z0-0.01, x+0.03, Y(a), Z1+0.05); fr.box(x, Y(b), Z0-0.01, x+0.03, Y(b)+0.05, Z1+0.05); fr.box(x, Y(a)-0.05, Z1, x+0.03, Y(b)+0.05, Z1+0.05);   // коробка
+    for (const [u0, u1, hinge] of [[a, m-0.003, a], [m+0.003, b, b]]){
+      lf.box(x, Y(u0), Z0, x+0.022, Y(u1), Z1-0.004, 0.004);                                                  // полотно-рама створки
+      for (let z=Z0+0.24; z<Z1-0.1; z+=0.07) sl.obox([x+0.022, Y(u0)+0.06, z], [0, u1-u0-0.12, 0], [0.03, 0, -0.022], [0, 0, 0.012]);   // ламели
+      for (const k of [0.15, 0.5, 0.85]){ const z=Z0+(Z1-Z0)*k, yh=Y(hinge)+(hinge===a ? 0.015 : -0.015); dk.tube([x+0.03, yh, z], [x+0.03, yh, z+0.12], 0.016, 10); } }   // петли
+    for (const u of [m-0.07, m+0.06]) mt.tube([x+0.06, Y(u), Z0+0.08], [x+0.06, Y(u), Z1-0.08], 0.012, 10);   // запорные штанги
+    dk.box(x+0.05, Y(m)+0.02, Z0+0.95, x+0.075, Y(m)+0.1, Z0+1.17, 0.005);                                     // ручка с замком
+    this.hood('right', a-0.08, b+0.08, Z1+0.08); this.log.push({ kind:'dgudoor', u:(d.y0+d.y1)/2, w:d.w, h:d.h });
+    if (!this.shown('right')) return;
+    const zc=d.h/2; this.box(dk, 'right', d.y1+150, zc, 110, 150, 90, 0.008); this.box(fr, 'right', d.y1+70, zc, 50, 20, 40, 0);   // электропривод клапана
   }
   /** козырёк над жалюзи снаружи (от дождя и снега) */
   hood(w, a, b, zt){
@@ -357,14 +376,15 @@ class StOutfit {
       if (c) S.sticker(c, [x-0.004, y0+0.3, zs+0.06], n, 0.3, 0.2);
       S.sticker({ type:'sign', id:'W08' }, [x-0.004, y0-0.3, zs+0.06], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P06' }, [x-0.004, y0-0.3, zs-0.19], n, 0.2, 0.2); }
     if (!S.closed) return;
-    const y=-0.052, n=[0, -1, 0], fy=this.frontY(); let first=true;
+    const y=-0.052, n=[0, -1, 0], fy=this.frontY(), entry=P.door!=='service'; let first=true;
     for (const c of S.openF){ const a=S.ox+c.x0/1000, b=S.ox+c.x1/1000, xm=(a+b)/2, zt=S.base+c.h/1000, zs=S.base+1.38;
       const xp=c.kind!=='service' ? xm : (c.leaves||1)>1 ? a+(b-a)*0.75 : xm-0.08;   // у сервисной двери — мимо запорных штанг
       this.canopy([xm, fy, zt], n, b-a+0.24);
       if (c.kind!=='service' && this.room(zt)) this.flood([xm, fy, zt+0.17], n);
-      const pl=c.kind==='tank' ? cat(tank) : c.kind==='entry' || (c.kind==='service' && first) ? cat(main) : null;
+      const sign=c.kind==='entry' || (c.kind==='service' && !entry && first);   // таблички — на входной двери; входа нет — на первой сервисной
+      const pl=c.kind==='tank' ? cat(tank) : sign ? cat(main) : null;
       if (pl) S.sticker(pl, [xp, y, S.base+1.72], n, 0.3, 0.2);
-      if (c.kind==='entry' || (c.kind==='service' && first)){ S.sticker({ type:'sign', id:'W08' }, [xp-0.12, y, zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P06' }, [xp+0.12, y, zs], n, 0.2, 0.2);
+      if (sign){ S.sticker({ type:'sign', id:'W08' }, [xp-0.12, y, zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P06' }, [xp+0.12, y, zs], n, 0.2, 0.2);
         if (F.auto && zt+0.2<S.top-0.04){ const hb=S.M(StMat.paint('#eceeef', 0.4));
           for (const [id, z] of [['POW_NO', zt+0.06], ['AUTO_OFF', zt-0.14]]){ hb.box(b+0.14, fy-0.04, z-0.08, b+0.53, fy, z+0.08, 0.006); S.sticker({ type:'sign', id }, [b+0.335, fy-0.04, z], n, 0.36, 0.13, 0.8); } } }
       if (c.kind==='tank'){ S.sticker({ type:'sign', id:'W01' }, [xm-0.12, y, zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P02' }, [xm+0.12, y, zs], n, 0.2, 0.2); }

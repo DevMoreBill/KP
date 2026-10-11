@@ -1,7 +1,7 @@
 // Системы контейнера станции — расчёты по расстановке (StationLayout.run → plan.fire, plan.light, plan.sockets, plan.power,
 // plan.pipe), из них — 3D-вид (StOutfit), ТЗ на сборку (TzOut), вкладка «Компоновка» и характеристики станции: пожарная
 // безопасность (StationFire), освещение (StationLight), сервисные розетки (StationSockets), электрические нагрузки и вводной
-// автомат (StationPower), диаметр трубопровода (StationPipe).
+// автомат (StationPower), диаметр трубопровода (StationPipe), масса, центр тяжести и строповка (StationMass).
 'use strict';
 
 // ---------------------------------------------------------------- пожарная безопасность
@@ -259,4 +259,66 @@ class StationPipe {
   }
 }
 
-if (typeof module!=='undefined') module.exports={ StationFire, StationLight, StationSockets, StationPower, StationPipe };
+// ---------------------------------------------------------------- масса и центр тяжести, строповка
+// Масса станции при подъёме: контейнер (морской — тара по ISO 668 и утепление изнутри; блок-контейнер и цельносварной —
+// оценка: рама — по длине, стены и кровля — по площади, пол — рифлёный лист на лагах), оборудование внутри и на крыше —
+// по паспортной массе (без неё не учтено — центр тяжести ориентировочный), трубопровод, кабели и системы — 5 % массы
+// оборудования и 100 кг. Ресиверы снаружи стоят на своей площадке — в массу не входят. Центр тяжести — от наружного
+// угла у входа: X — вдоль контейнера от торца у входа, Y — от лицевой стены (со стороны прохода), Z — от низа; у агрегата
+// на полу — на 0,4 высоты (тяжёлое внизу), у контейнера — на 0,42 высоты. Строповка блок-контейнера — четырёхветвевым
+// стропом за петли в верхних углах: крюк — над центром тяжести, угол ветви с вертикалью — не более 45° (между ветвями — не
+// более 90°, ТОИ Р-66-18-93), длины ветвей — по расчёту; длиннее 6,5 м — с траверсой. Морской контейнер с грузом за верхние
+// фитинги (ISO 1161) наклонными стропами не поднимают (ISO 3874; ICHCA, 2022) — только рамной траверсой (спредером): ветви к
+// фитингам вертикальны, рама подвешена над центром тяжести. Знаки по ГОСТ 14192-96: № 9 «Место строповки» — у каждой точки
+// строповки с двух сторон (п. 5.5.1), № 12 «Центр тяжести» — на боковой и торцовой стенах в проекции центра тяжести (п. 5.5.2).
+class StationMass {
+  static TARE = { sea10:1300, sea20:2250, sea20hc:2350, sea40:3750, sea40hc:3900 };   // кг, ISO 668 — типичная тара
+  static FRAME = 110;        // рама блок-контейнера, кг на 1 м длины
+  static PANEL = { block:22, north:27, welded:38 };   // стены и кровля, кг/м²: сэндвич-панели 100 мм, «Север», профлист с каркасом
+  static LINING = 12;        // утепление и обшивка морского контейнера изнутри, кг/м²
+  static FLOOR = 45;         // пол: рифлёный лист 4 мм на лагах, кг/м²
+  static OTHER = [0.05, 100];   // трубопровод, кабели, системы: доля массы оборудования и постоянная часть, кг
+  static ANGLE = 45;         // наибольший угол ветви стропа с вертикалью, °
+  static LUG = [90, 60];     // точка строповки от торца и от боковой стены (наружные), мм
+
+  /** {mass, cont, eq, other, cg:{x, y, z}, missing:[поз.], sling:{hook — высота крюка над крышей, legs:[{x, y, len, deg}], beam,
+   *  frame}} */
+  static calc(plan){
+    const g=plan.geo; if (!g || !g.ext || !plan.int) return null;
+    const [Le, We, He]=g.ext, [Li, Wi]=plan.int, ox=(Le-Li)/2, oy=(We-Wi)/2, zf=StationGeo.zFloor(g.type, g.t), m=v=>v/1000;
+    let cont;
+    if (g.sea) cont=(this.TARE[g.type] || 2250*Le/6058)+(g.t>0 ? this.LINING*2*(m(Li)*m(Wi)+m(Li)*m(He)+m(Wi)*m(He)) : 0);
+    else cont=this.FRAME*m(Le)+(this.PANEL[g.type]||this.PANEL.block)*(2*m(Le)*m(He)+2*m(We)*m(He)+m(Le)*m(We))+this.FLOOR*m(Le)*m(We);
+    const P=[{ m:cont, x:Le/2, y:We/2, z:He*0.42 }], missing=[];
+    let eq=0;
+    for (const it of plan.items||[]){ if (!(it.mass>0)){ if (!missing.includes(it.pos)) missing.push(it.pos); continue; }
+      const low=it.mount==='floor' || it.mount==='frame'; eq+=it.mass;
+      P.push({ m:it.mass, x:ox+it.x+it.lx/2, y:oy+it.y+it.ly/2, z:zf+it.z+it.h*(low ? 0.4 : 0.5) }); }
+    for (const r of plan.roof||[]){ if (!(r.mass>0)){ if (!missing.includes(r.pos)) missing.push(r.pos); continue; }
+      eq+=r.mass; P.push({ m:r.mass, x:ox+r.x+r.lx/2, y:oy+r.y+r.ly/2, z:He+r.gap+r.d/2 }); }
+    const other=eq*this.OTHER[0]+this.OTHER[1]; P.push({ m:other, x:Le/2, y:We/2, z:He*0.3 });
+    const M=P.reduce((s, q)=>s+q.m, 0), c=k=>P.reduce((s, q)=>s+q.m*q[k], 0)/M;
+    const cg={ x:Math.round(c('x')), y:Math.round(c('y')), z:Math.round(c('z')) };
+    return { mass:Math.round(M/10)*10, cont:Math.round(cont/10)*10, eq:Math.round(eq), other:Math.round(other), cg, missing:missing.sort((a, b)=>a-b), sling:this.sling(Le, We, cg, g.sea) };
+  }
+  static BEAM = { L:6500, z:2000, top:1500 };   // длиннее L — траверса: ветви до неё z, от неё до крюка top, мм
+  static SPREADER = { z:1500, d:1500, top:2000 };   // рамная траверса морского контейнера: высота рамы, проушины ± d от ЦТ, до крюка top
+  /** строповка: точки в верхних углах, крюк над центром тяжести на высоте, при которой угол каждой ветви с вертикалью — не
+   *  больше ANGLE; длины ветвей — с округлением до 100 мм вверх. Длинный блок-контейнер — с траверсой над ним (ветви от точек
+   *  строповки к траверсе, траверса подвешена над центром тяжести). Морской (sea) — рамной траверсой: четыре вертикальные
+   *  ветви к фитингам, к крюку — двухветвевой строп от проушин рамы над центром тяжести.
+   *  {hook, beam:{z, x0, x1}|null, frame:{z, x0, x1, y0, y1, lugs, top, len, deg}|null, legs} */
+  static sling(Le, We, cg, sea){
+    const [a, b]=this.LUG, pts=[[a, b], [Le-a, b], [a, We-b], [Le-a, We-b]], B=this.BEAM, r=v=>Math.ceil(v/100)*100, deg=(d, h)=>Math.round(Math.atan2(d, h)*180/Math.PI);
+    if (sea){ const F=this.SPREADER, d=Math.min(F.d, Math.round(Le/4)), lugs=[Math.max(a, cg.x-d), Math.min(Le-a, cg.x+d)], h=Math.max(...lugs.map(x=>Math.abs(x-cg.x)));
+      return { hook:F.z+F.top, beam:null, frame:{ z:F.z, x0:a, x1:Le-a, y0:b, y1:We-b, lugs, top:F.top, len:r(Math.hypot(h, F.top)), deg:deg(h, F.top) },
+        legs:pts.map(([x, y])=>({ x, y, len:r(F.z), deg:0 })) }; }
+    if (Le>B.L) return { hook:B.z+B.top, beam:{ z:B.z, x0:a, x1:Le-a }, frame:null, legs:pts.map(([x, y])=>{ const d=Math.abs(y-cg.y); return { x, y, len:r(Math.hypot(d, B.z)), deg:deg(d, B.z) }; }) };
+    const d=pts.map(([x, y])=>Math.hypot(x-cg.x, y-cg.y)), hook=r(Math.max(...d)/Math.tan(this.ANGLE*Math.PI/180));
+    return { hook, beam:null, frame:null, legs:pts.map(([x, y], i)=>({ x, y, len:r(Math.hypot(d[i], hook)), deg:deg(d[i], hook) })) };
+  }
+  /** строка технической характеристики: масса станции */
+  static text(Ms){ return Ms ? `Масса станции — около ${StationLayout.n(Ms.mass)} кг${Ms.missing.length ? ` (без поз. ${Ms.missing.join(', ')} — масса не указана)` : ''}` : ''; }
+}
+
+if (typeof module!=='undefined') module.exports={ StationFire, StationLight, StationSockets, StationPower, StationPipe, StationMass };

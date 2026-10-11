@@ -132,12 +132,16 @@ class StScene {
     this.base=this.dz+mm(StationGeo.zFloor(g.type, g.t)); this.ceil=this.base+this.Hi; this.top=this.dz+this.He; this.rise=g.sea ? 0 : mm(g.rise||0);
     this.wall=plan.wallColor||'#CBD0CC'; this.frame=plan.frameColor||RalColor.shade(this.wall, 0.72);
     this.lining=g.sea ? '#e3e6e8' : '#eef0f1';
-    const sd=plan.door==='service' ? plan.doors||[] : [];
+    // сервисные двери: без прохода — у каждого агрегата (в разрезе открыты), с проходом — только для монтажа и демонтажа
+    // (закрыты); входная дверь оператора и дверь отсека бака — отдельно
+    const sd=plan.doors||[]; this.svc=plan.door==='service';
     this.doorsF=sd.filter(d=>d.wall!=='back'); this.doorsB=sd.filter(d=>d.wall==='back');
     this.view=meta.view==='out' ? 'out' : 'in'; this.closed=this.view==='out';
-    this.cut=this.view==='in' && !this.doorsF.length;   // стена со стороны зрителя срезана (с сервисными дверями — стоит, двери открыты)
+    this.cut=this.view==='in' && !(this.svc && this.doorsF.length);   // стена со стороны зрителя срезана (без прохода — стоит, двери открыты)
+    // ДГУ с дверью-жалюзи в торце: снаружи — вид спереди справа (торец с дверью и выхлопом глушителя)
+    this.az=this.closed && plan.dguDoor ? -StCam.AZ : StCam.AZ;
     // проёмы стены со стороны зрителя: сервисные двери; снаружи — ещё входная дверь и дверь отсека топливного бака
-    this.openF=this.doorsF.map(d=>({ x0:d.x0, x1:d.x1, h:d.h, leaves:d.leaves, kind:'service' }));
+    this.openF=this.cut ? [] : this.doorsF.map(d=>({ x0:d.x0, x1:d.x1, h:d.h, leaves:d.leaves, kind:'service', open:this.svc }));
     if (this.closed){ const x0=g.x0||0, D=StationLayout.DOOR.h;
       if (plan.door==='side') this.openF.push({ x0:x0+StationLayout.ENTRY[0], x1:x0+StationLayout.ENTRY[1], h:D, leaves:1, kind:'entry' });
       if (plan.fuel) this.openF.push({ x0:plan.fuel.door.x0, x1:plan.fuel.door.x1, h:D, leaves:1, kind:'tank' });
@@ -199,7 +203,7 @@ class StScene {
   }
   /** габариты сцены (м): контейнер, глушитель, открытые двери */
   bounds(){
-    const R=this.plan.roof||[], up=R.reduce((s, m)=>Math.max(s, (m.gap+m.d)/1000+0.05), 0), sw=this.closed ? 0 : Math.max(0, ...[...this.doorsF, ...this.doorsB].map(d=>d.w/d.leaves/1000));
+    const R=this.plan.roof||[], up=R.reduce((s, m)=>Math.max(s, (m.gap+m.d)/1000+0.05), 0), sw=this.closed || !this.svc ? 0 : Math.max(0, ...[...this.doorsF, ...this.doorsB].map(d=>d.w/d.leaves/1000));
     const E=(this.plan.outside||[]).map(i=>this.B(i)), xo=Math.max(this.Le, ...E.map(b=>b[3]+0.45), ...R.map(m=>this.ox+(m.x+m.lx+m.outlet)/1000+0.03)), yo=Math.min(0, ...E.map(b=>b[1]-0.2)), yi=Math.max(this.We, ...E.map(b=>b[4]+0.2)), zo=Math.max(0, ...E.map(b=>b[5]+0.3));
     return { lo:[-0.15, Math.min(yo, -0.15-(this.doorsF.length ? sw*0.8 : 0)), 0], hi:[xo+0.15, Math.max(yi, this.We+0.15+(this.doorsB.length ? sw*0.8 : 0)), Math.max(zo, this.top+this.rise+up+0.05)] };
   }
@@ -241,7 +245,7 @@ class StScene {
     w.corr(1, post, W-post, L-0.03, 1, z0+0.2, zt-0.12, 0.28, 0.045);
     if (!this.cut) this.frontWall(w, z0+rail, zt-0.11, StScene.SEA_P);
     // крыша: лист с неглубокими поперечными гофрами
-    const roof=this.M(StMat.paint(RalColor.shade(this.wall, 1.04), 0.5)); roof.box(post, 0.06, zt-0.02, L-post, W-0.06, zt-0.004);
+    const roof=this.M(StMat.paint(this.frame, 0.5)); roof.box(post, 0.06, zt-0.02, L-post, W-0.06, zt-0.004);   // крыша — в цвет каркаса
     for (let x=post+0.25; x<L-post-0.1; x+=0.5) roof.box(x, 0.08, zt-0.004, x+0.2, W-0.08, zt+0.008, 0.004);
     this.cargoDoors();
   }
@@ -270,7 +274,7 @@ class StScene {
     if (this.doorsB.length) this.backWall(w, z0+0.16, zt-t, null); else panel(0, t, L-t, W-0.02, 1);
     panel(1, t, W-t, L-0.02, 1); panel(1, t, W-t, 0.02, -1);
     if (!this.cut) this.frontWall(w, z0+0.16, zt-t, null);
-    this.roof(zt, RalColor.shade(this.wall, 1.03));
+    this.roof(zt, this.frame);   // крыша — в цвет каркаса
     if (this.plan.door==='end') this.gates();
   }
   /** цельносварной: рама из гнутого швеллера и стойки, стены — профилированный лист (трапеция), приваренный к раме */
@@ -282,7 +286,7 @@ class StScene {
     if (this.doorsB.length) this.backWall(w, z0+b, zt-0.1, P); else w.corr(0, t, L-t, W-0.025, 1, z0+b, zt-0.1, ...P);
     w.corr(1, t, W-t, L-0.025, 1, z0+b, zt-0.1, ...P); w.corr(1, t, W-t, 0.025, -1, z0+b, zt-0.1, ...P);
     if (!this.cut) this.frontWall(w, z0+b, zt-0.1, P);
-    this.roof(zt, RalColor.shade(this.wall, 1.03));
+    this.roof(zt, this.frame);   // крыша — в цвет каркаса
     if (this.plan.door==='end') this.gates();
   }
   /** высота крыши над поперечной координатой y (м): плоская — верх контейнера; скатная — по скату (без толщины кровли) */
@@ -340,7 +344,7 @@ class StScene {
   /** длинная стена (yw — наружная плоскость, out — наружу) с проёмами: панели (prof — гофр [шаг, глубина] или гладкие),
    *  обрамление, открытые наружу створки */
   wallWithDoors(w, z0, z1, prof, doors, yw, out){
-    const L=this.Le, cuts=doors.map(d=>({ a:this.ox+d.x0/1000, b:this.ox+d.x1/1000, h:this.base+d.h/1000, n:d.leaves||1, kind:d.kind||'service' })).sort((p, q)=>p.a-q.a), wy=yw-out*0.03;
+    const L=this.Le, cuts=doors.map(d=>({ a:this.ox+d.x0/1000, b:this.ox+d.x1/1000, h:this.base+d.h/1000, n:d.leaves||1, kind:d.kind||'service', open:d.open!=null ? d.open : this.svc })).sort((p, q)=>p.a-q.a), wy=yw-out*0.03;
     const sheet=(a, b, za, zb)=>{ if (b<=a+0.005 || zb<=za) return; if (prof) w.corr(0, a, b, wy, out, za, zb, ...prof); else w.quad([a, yw-out*0.02, za], [b, yw-out*0.02, za], [b, yw-out*0.02, zb], [a, yw-out*0.02, zb], [0, out, 0]); };
     let x=0.16;
     for (const c of cuts){ sheet(x, c.a, z0, z1); sheet(c.a, c.b, c.h, z1); x=Math.max(x, c.b); }
@@ -349,7 +353,7 @@ class StScene {
     const y0=out<0 ? 0 : yw-depth, y1=out<0 ? depth : yw;
     for (const c of cuts){
       fr.box(c.a-0.05, y0, this.base-0.02, c.a, y1, c.h+0.05, 0.004); fr.box(c.b, y0, this.base-0.02, c.b+0.05, y1, c.h+0.05, 0.004); fr.box(c.a-0.05, y0, c.h, c.b+0.05, y1, c.h+0.05, 0.004);
-      if (this.closed){ this.shut(c, yw, out, leaf, dk); continue; }
+      if (this.closed || !c.open){ this.shut(c, yw, out, leaf, dk); continue; }
       const lw=(c.b-c.a)/c.n, H=c.h-this.base-0.02;
       for (let k=0; k<c.n; k++){ const left=k===0, hx=left ? c.a : c.b, sx=left ? 1 : -1, ph=100*Math.PI/180;   // створка открыта наружу на 100°
         const d=[sx*Math.cos(ph)*lw, out*Math.sin(ph)*lw, 0], o=[hx, yw+out*0.005, this.base+0.01], thick=StV.mul(StV.norm([-d[1], d[0], 0]), t*(left ? 1 : -1)*(-out));
@@ -699,9 +703,9 @@ class StCam {
   static AZ = 36;            // от фронта влево, °
   static EL = 19;            // над горизонтом, °
   static FOV = 24;           // по вертикали, °
-  /** b — габариты сцены {lo, hi}; asp — ширина / высота кадра; fill — доля кадра под сцену */
-  static fit(b, asp, fill=0.9){
-    const az=this.AZ*Math.PI/180, el=this.EL*Math.PI/180, d=[-Math.cos(el)*Math.sin(az), -Math.cos(el)*Math.cos(az), Math.sin(el)], fov=this.FOV*Math.PI/180;
+  /** b — габариты сцены {lo, hi}; asp — ширина / высота кадра; fill — доля кадра под сцену; deg — азимут (минус — справа) */
+  static fit(b, asp, fill=0.9, deg=this.AZ){
+    const az=deg*Math.PI/180, el=this.EL*Math.PI/180, d=[-Math.cos(el)*Math.sin(az), -Math.cos(el)*Math.cos(az), Math.sin(el)], fov=this.FOV*Math.PI/180;
     const C=[]; for (const x of [b.lo[0], b.hi[0]]) for (const y of [b.lo[1], b.hi[1]]) for (const z of [b.lo[2], b.hi[2]]) C.push([x, y, z]);
     let T=StV.mul(StV.add(b.lo, b.hi), 0.5), D=StV.len(StV.sub(b.hi, b.lo))*2.2, vp=null, eye=null, view=null, proj=null, span=[1, 1];
     for (let k=0; k<40; k++){
@@ -728,11 +732,11 @@ class StSky {
   static sky(z){ const t=Math.pow(Math.max(0, z), 0.55); return this.HOR.map((h, k)=>h+(this.ZEN[k]-h)*t); }
   /** проходы: [{dir — к свету, E — освещённость прохода с весом, sun}]; солнце — в конусе ~3° (мягкий край тени),
    *  небо — равномерно по сфере (снизу — свет, отражённый землёй) */
-  static passes(n){
-    const nSun=Math.max(1, Math.round(n*0.375)), nSky=Math.max(1, n-nSun), sun=[], sky=[], [u, v]=StV.basis(this.SUN);
+  static passes(n, S=this.SUN){
+    const nSun=Math.max(1, Math.round(n*0.375)), nSky=Math.max(1, n-nSun), sun=[], sky=[], [u, v]=StV.basis(S);
     for (let i=0; i<nSun; i++){ const r=Math.sqrt(this.halton(i+1, 2))*0.08, t=this.halton(i+1, 3)*Math.PI*2;
-      sun.push({ dir:StV.norm(StV.add(this.SUN, StV.add(StV.mul(u, r*Math.cos(t)), StV.mul(v, r*Math.sin(t))))), E:this.SUN_E.map(x=>x/nSun), sun:true }); }
-    const sinE=Math.max(0.1, this.SUN[2]), gE=this.SUN_E.map((x, k)=>this.GROUND*(x*sinE+Math.PI*0.5*(this.ZEN[k]+this.HOR[k]))/Math.PI);
+      sun.push({ dir:StV.norm(StV.add(S, StV.add(StV.mul(u, r*Math.cos(t)), StV.mul(v, r*Math.sin(t))))), E:this.SUN_E.map(x=>x/nSun), sun:true }); }
+    const sinE=Math.max(0.1, S[2]), gE=this.SUN_E.map((x, k)=>this.GROUND*(x*sinE+Math.PI*0.5*(this.ZEN[k]+this.HOR[k]))/Math.PI);
     for (let i=0; i<nSky; i++){ const z=1-2*(i+0.5)/nSky, r=Math.sqrt(1-z*z), ph=i*2.399963+0.7, d=[r*Math.cos(ph), r*Math.sin(ph), z];
       const L=z>=0 ? this.sky(z) : gE; sky.push({ dir:d, E:L.map(x=>x*4*Math.PI/nSky), sun:false }); }
     const out=[]; for (let i=0, j=0; out.length<nSun+nSky;){ if (i<nSun && (i*nSky<=j*nSun || j>=nSky)) out.push(sun[i++]); else out.push(sky[j++]); }
@@ -866,8 +870,8 @@ void main(){ vec4 a=texture(uT, vU); float c=clamp(a.a, 0.0, 1.0); vec3 col=a.a>
   async render(scene, o={}){
     const gl=this.gl, W=o.w||1600, H=o.h||1000, S=o.shadow||2048, N=o.passes||64;
     this.c.width=W; this.c.height=H; this.upload(scene); const F=this.targets(W, H, S);
-    const b=scene.bounds(), cam=StCam.fit(b, W/H), ctr=StV.mul(StV.add(b.lo, b.hi), 0.5), R=StV.len(StV.sub(b.hi, b.lo))/2+0.3;
-    const passes=StSky.passes(N), base=StM4.persp(cam.fov, W/H, Math.max(0.05, cam.D-R*2.2), cam.D+R*2.2), reach=Math.max(b.hi[0]-b.lo[0], b.hi[1]-b.lo[1]);
+    const b=scene.bounds(), cam=StCam.fit(b, W/H, 0.9, scene.az), ctr=StV.mul(StV.add(b.lo, b.hi), 0.5), R=StV.len(StV.sub(b.hi, b.lo))/2+0.3;
+    const passes=StSky.passes(N, scene.az<0 ? [-StSky.SUN[0], StSky.SUN[1], StSky.SUN[2]] : StSky.SUN), base=StM4.persp(cam.fov, W/H, Math.max(0.05, cam.D-R*2.2), cam.D+R*2.2), reach=Math.max(b.hi[0]-b.lo[0], b.hi[1]-b.lo[1]);
     gl.bindFramebuffer(gl.FRAMEBUFFER, F.acc); gl.viewport(0, 0, W, H); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
     for (let i=0; i<passes.length; i++){ const ps=passes[i], LVP=StM4.light(ps.dir, ctr, R);
       // тень: глубина со стороны света (земля тень не отбрасывает)
@@ -926,7 +930,7 @@ class StationRender {
   static key(plan, view){ return (plan.hash||'')+(view==='out' ? '|o' : ''); }
   static cached(plan, view){ return this.cache.get(this.key(plan, view))||null; }
   /** высота кадра — по сцене (длинный контейнер — ниже кадр, без пустых полей) */
-  static size(scene){ const W=this.W, c=StCam.fit(scene.bounds(), 1.6, 0.9), k=c.span[1]/c.span[0]*1.6; return [W, Math.round(Math.max(760, Math.min(1100, W/1.6*Math.max(0.62, Math.min(1, k*1.12)))))]; }
+  static size(scene){ const W=this.W, c=StCam.fit(scene.bounds(), 1.6, 0.9, scene.az), k=c.span[1]/c.span[0]*1.6; return [W, Math.round(Math.max(760, Math.min(1100, W/1.6*Math.max(0.62, Math.min(1, k*1.12)))))]; }
   /** 3D-вид картинкой: {src — JPEG, w, h}; view — 'in' (разрез, по умолчанию) или 'out' (снаружи); WebGL2 нет или сбой —
    *  null (берётся SVG-вид). По очереди, с кэшем; логотипы и знаки — наклейками (StDecal) */
   static image(plan, meta, view){
