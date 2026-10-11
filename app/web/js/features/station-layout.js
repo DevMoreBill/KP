@@ -348,7 +348,8 @@ class StationEquip {
       const k=kind||'other', c=this.color(p, k), air=/^(compressor|dryer|receiver|filter)$/.test(k) ? AirChain.info(p, k) : null;
       const pipe=k==='filter' && air.grade!=='cond' && Math.max(d.l, d.w)<=700;   // магистральный фильтр — висит на трубопроводе
       return { id:p.id, pos:++pos, name, brief:this.brief(p, k, name), short:this.short(p, k), kind:k, qty, l:d.l, w:d.w, h:d.h, known:d.known, src:d.src, mass:this.mass(p), kw:this.num((p.attrs||{}).kw), maker:String((p.attrs||{}).maker||'').trim(),
-        color:c.hex, colorKnown:c.known, colorText:c.text, shape:this.shape(p, k, d), look:this.look(p, k), place:true, pipe, mount:k==='cabinet' ? this.mount(p, d) : pipe ? 'pipe' : 'floor', air, noise:StationNorms.dba(p), pic:this.pic(p) };
+        color:c.hex, colorKnown:c.known, colorText:c.text, shape:this.shape(p, k, d), look:this.look(p, k), place:true, pipe, mount:k==='cabinet' ? this.mount(p, d) : pipe ? 'pipe' : 'floor', air, noise:StationNorms.dba(p), pic:this.pic(p),
+        flow:k==='pump' ? this.num((p.attrs||{}).flow) : null };
     });
     AirChain.assign(out, o.recv);
     // ресиверы после подготовки воздуха — снаружи, на площадке у дальнего торца (ФНП ОРПД, п. 65): в ряду внутри их нет,
@@ -494,6 +495,13 @@ class AirChain {
   /** поправка магистрального фильтра на давление (номинал — 7 бар): пропорционально абсолютному давлению, не больше 1,3 */
   static kf(bar){ return bar>0 ? Math.min(1.3, (bar+1)/8) : 1; }
   static m3(v){ return (Math.round(v*10)/10).toString().replace('.', ','); }
+  /** ресиверы без учёта в Ростехнадзоре на объём V, л, при давлении bar: {n, v} — наименьшее число одинаковых из ряда объёмов,
+   *  у каждого p·V не больше 1,0 МПа·м³; один и так без учёта (или давление неизвестно) — null */
+  static split(V, bar){
+    if (!(V>0) || !(bar>0) || bar/10*V/1000<=PressureVessel.LIMIT+1e-9) return null;
+    const v=this.RECV_SIZES.filter(x=>bar/10*x/1000<=PressureVessel.LIMIT+1e-9).pop(); if (!v) return null;
+    return { n:Math.ceil(V/v-1e-9), v };
+  }
 
   /** проверка и подбор: {chain — по ходу воздуха, q — сумма компрессоров, м³/мин, issues, recs — чего не хватает (для подбора
    *  в каталоге)}; cls — класс чистоты по ISO 8573-1 («1.4.1») или '' */
@@ -540,14 +548,26 @@ class AirChain {
         iss.push({ level:'warn', air:true, text:`Фильтр ${nm(e)} «${e.short}»: ${m3(e.air.flow*kf)} м³/мин при ${m3(bar)} бар — меньше производительности компрессоров ${m3(q)} м³/мин: перепад давления растёт, фильтр не держит класс очистки. Нужен не менее ${m3(q/kf)} м³/мин.` });
       // ресивер: по самому производительному компрессору «нагрузка — холостой ход» (частотный — меньше)
       const big=known.reduce((m, e)=>e.air.flow>m.air.flow ? e : m, known[0]), vr=big ? this.RECV_SIZES.find(v=>v>=big.air.flow*(big.air.vsd ? this.RECV_VSD : this.RECV)) || this.RECV_SIZES[this.RECV_SIZES.length-1] : 0;
-      const vol=R.reduce((s, e)=>s+(e.air.vol||0)*e.qty, 0), onRecv=C.some(e=>e.air.recv);
+      const vol=R.reduce((s, e)=>s+(e.air.vol||0)*e.qty, 0), onRecv=C.some(e=>e.air.recv), sp=vr ? this.split(vr, bar) : null;
       if (vr && !R.length && !onRecv){
-        iss.push({ level:'info', air:true, text:`Ресивера в составе нет — рекомендуется около ${StationLayout.n(vr)} л: сглаживает пульсации и пики потребления, собирает конденсат, компрессор реже переключается.` });
-        rec('receiver', { title:`Воздушный ресивер около ${StationLayout.n(vr)} л`, why:'буфер и сбор конденсата — компрессор реже переключается', cat:'receiver', name:'Воздушный ресивер', f:{}, r:{ volume:[String(Math.round(vr*0.8)), ''] },
-          attrs:{ cat:'receiver' }, rows:[{ k:'Объём', v:`около ${StationLayout.n(vr)} л` }] }); }
+        iss.push({ level:'info', air:true, text:`Ресивера в составе нет — рекомендуется около ${StationLayout.n(vr)} л: сглаживает пульсации и пики потребления, собирает конденсат, компрессор реже переключается${sp ? `; один на ${StationLayout.n(vr)} л при ${m3(bar)} бар подлежит учёту в Ростехнадзоре (p·V больше 1,0 МПа·м³) — без учёта: ${sp.n} по ${StationLayout.n(sp.v)} л` : ''}.` });
+        rec('receiver', { title:sp ? `Воздушные ресиверы ${sp.n} × ${StationLayout.n(sp.v)} л — без учёта в Ростехнадзоре` : `Воздушный ресивер около ${StationLayout.n(vr)} л`, why:sp ? `вместе ${StationLayout.n(sp.n*sp.v)} л; p·V каждого — ${m3(bar/10*sp.v/1000)} МПа·м³, не больше 1,0` : 'буфер и сбор конденсата — компрессор реже переключается',
+          cat:'receiver', name:'Воздушный ресивер', f:{}, r:{ volume:sp ? [String(Math.round(sp.v*0.8)), String(sp.v)] : [String(Math.round(vr*0.8)), ''] }, total:vr, qty:sp ? sp.n : 1,
+          attrs:{ cat:'receiver' }, rows:[{ k:'Объём', v:sp ? `${StationLayout.n(sp.v)} л` : `около ${StationLayout.n(vr)} л` }] }); }
       else if (vr && R.length && R.every(e=>e.air.vol>0) && vol<vr*0.6)
         iss.push({ level:'info', air:true, text:`Ресиверы ${StationLayout.n(vol)} л — для компрессора ${m3(big.air.flow)} м³/мин${big.air.vsd ? ' с частотным регулированием' : ' с регулированием «нагрузка — холостой ход»'} рекомендуется около ${StationLayout.n(vr)} л (не чаще одного цикла в 30 с при перепаде 1 бар).` });
     }
+    // ресиверы на учёте в Ростехнадзоре (p·V больше 1,0 МПа·м³): несколько меньших — каждый без учёта (замена из каталога)
+    const regR=R.filter(e=>e.air.vol>0 && bar/10*e.air.vol/1000>PressureVessel.LIMIT+1e-9), tot=regR.reduce((s, e)=>s+e.air.vol*e.qty, 0), rs=tot ? this.split(tot, bar) : null;
+    if (rs){ iss.push({ level:'info', air:true, text:`Ресивер ${[...new Set(regR.map(nm))].join(', ')}: p·V больше 1,0 МПа·м³ — подлежит учёту в Ростехнадзоре. Без учёта — ${rs.n} ресивера по ${StationLayout.n(rs.v)} л (p·V каждого — ${m3(bar/10*rs.v/1000)} МПа·м³): замена — на вкладке «Компоновка».` });
+      rec('recv-split', { title:`Ресиверы ${rs.n} × ${StationLayout.n(rs.v)} л вместо ${[...new Set(regR.map(nm))].join(', ')} — без учёта в Ростехнадзоре`, why:`вместе ${StationLayout.n(rs.n*rs.v)} л; p·V каждого не больше 1,0 МПа·м³`, cat:'receiver', name:'Воздушный ресивер', f:{},
+        r:{ volume:[String(Math.round(rs.v*0.8)), String(rs.v)] }, qty:rs.n, replace:[...new Set(regR.map(e=>e.id))], attrs:{ cat:'receiver' }, rows:[{ k:'Объём', v:`${StationLayout.n(rs.v)} л` }] }); }
+    // осушителя нет (и не задан класс чистоты): влага в сжатом воздухе — обычно ставят рефрижераторный с байпасом
+    if (!D.length && !builtDryer && !String(cls||'').trim()){
+      const need=q ? q*this.MARGIN/this.kp(bar) : 0;
+      iss.push({ level:'info', air:true, text:`Осушителя в составе нет: влага остаётся в сжатом воздухе — конденсат в трубах и у потребителей, зимой замерзает. Обычно ставят рефрижераторный осушитель (точка росы +3 °C)${need ? ` не менее ${m3(need)} м³/мин` : ''} с байпасом — подбор на вкладке «Компоновка».` });
+      rec('dryer-refrig', { title:`Рефрижераторный осушитель${need ? ` не менее ${m3(need)} м³/мин` : ''}`, why:'точка росы +3 °C: без конденсата в трубах; ставится с байпасом', cat:'dryer_refrig', name:'Рефрижераторный осушитель', f:{}, r:need ? { flow:[m3(need), ''] } : {},
+        attrs:{ cat:'dryer_refrig' }, rows:need ? [{ k:'Производительность', v:`не менее ${m3(need)} м³/мин` }] : [] }); }
     // ресивер — на давление не ниже компрессорного: иначе срабатывает его предохранительный клапан (или сосуд перегружен)
     const cb=Math.max(0, ...C.map(e=>e.air.bar||0));
     for (const e of R.filter(x=>x.air.bar>0 && cb>x.air.bar+0.05))
@@ -605,8 +625,9 @@ class PressureVessel {
 // ---------------------------------------------------------------- нормы: проверки и технические требования
 // Пожарная безопасность: категория помещения по взрывопожарной и пожарной опасности (СП 12.13130.2009) — табличка на
 // двери (ППР в РФ), огнетушители у выхода и у оборудования — верх корпуса не выше 1,5 м, сигнализация и пожаротушение — по
-// СП 486.1311500.2020 (расчёт модулей и огнетушителей — StationFire, station-systems.js). Электрика: щит (шкафы в ряд) длиннее 7 м — проход с двумя выходами (ПУЭ, п. 4.1.23), двери
-// электропомещений открываются наружу (п. 4.2.94), заземление и уравнивание потенциалов — гл. 1.7. Шум на рабочем месте —
+// СП 486.1311500.2020 (расчёт модулей и огнетушителей — StationFire, station-systems.js). Электрика: щит (шкафы в ряд)
+// длиннее 7 м — проход с двумя выходами (ПУЭ, п. 4.1.23), двери электропомещений открываются наружу (п. 4.2.94),
+// заземление и уравнивание потенциалов — гл. 1.7. Шум на рабочем месте —
 // не более 80 дБА (СанПиН 1.2.3685-21). Климат: исполнение контейнера по ГОСТ 15150-69 — по наружной температуре,
 // оборудование внутри — как в отапливаемом помещении. Трубопроводы — опознавательная окраска по ГОСТ Р 71918-2024, знаки
 // безопасности — ГОСТ 12.4.026-2015.
@@ -812,7 +833,7 @@ class StationHeat {
 // размера — по необходимому месту (шаг 100 мм, наименьшая площадь пола); заданный контейнер, в который не помещается, —
 // ошибка и подсказка, какой подойдёт; контейнер с большим запасом — подсказка, какой меньший подойдёт.
 class StationLayout {
-  static VER = 8;           // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
+  static VER = 9;           // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
   static MAX_L = 12000;
   static PIPE_PAD = 60;      // зазор вокруг фильтра на трубопроводе, мм
   static AIR_Y = 150;        // линия сжатого воздуха: ось — в 150 мм от задней стены (или посередине между рядами)
@@ -879,7 +900,8 @@ class StationLayout {
     plan.req=this.in.req||null; plan.climate=(this.cont && this.cont.climate)||'';
     if (plan.geo && plan.geo.ext) plan.geo.rise=StationGeo.rise(plan.geo.roof, plan.geo.ext[1]);
     if (plan.level!=='error' && plan.geo && plan.geo.ext && plan.int){ plan.heat=StationHeat.calc(plan); plan.fire=StationFire.calc(plan);
-      plan.light=StationLight.calc(plan); plan.sockets=StationSockets.calc(plan); plan.power=StationPower.calc(plan); }
+      plan.light=StationLight.calc(plan); plan.sockets=StationSockets.calc(plan); plan.power=StationPower.calc(plan); plan.pipe=StationPipe.calc(plan);
+      const pq=plan.pipe; if (pq && pq.small) plan.issues.push({ level:'warn', text:`Трубопровод DN ${pq.set} меньше расчётного DN ${pq.dn} (${pq.why}): скорость больше ${String(pq.lines[0].v).replace('.', ',')} м/с — потери давления и шум. Укажите DN ${pq.dn} в составе станции.` }); }
     if (plan.level!=='error') StationNorms.check(plan, this.eq);
     this.notes(plan);
     if (plan.level==='ok' && plan.issues.some(i=>i.level==='warn')) plan.level='warn';
@@ -1155,6 +1177,9 @@ class StationLayout {
     else line(fl.filter(i=>i.kind!=='cabinet'), Math.max(150, hang), 0.5, Math.min(zTop, 1200), 'выход', 'gen', true);
     return out;
   }
+  /** байпас осушителя: обводная линия с краном (нормально закрыт) между входом и выходом — осушитель обслуживают и меняют
+   *  без остановки подачи воздуха; на входе и выходе осушителя — свои краны: [{x0, x1, pos}] */
+  bypass(ser, P){ return ser.map((i, k)=>i.kind==='dryer' && i.air && i.air.type!=='gen' ? { x0:P[k][0].x, x1:P[k][1].x, pos:i.pos } : null).filter(b=>b && b.x1-b.x0>=150); }
   /** сжатый воздух — последовательно по ходу воздуха: компрессоры → коллектор → аппараты (ресивер, фильтр на полу, осушитель:
    *  у каждого один вход и один выход — магистраль на нём прерывается, gaps) → выход через дальний торец. Компрессоры не все
    *  до первого аппарата (два ряда) — коллектор отдельной трубой выше магистрали. segs — участки между аппаратами: на них
@@ -1166,7 +1191,7 @@ class StationLayout {
     const out=(i, yy, zz)=>Object.assign(this.branch(i, yy, zz) || { x:Math.round(i.x+i.lx/2), y0:yy, y1:yy, z1:zz, to:StationLayout.key(i) }, { role:'out' });
     const P=ser.map(i=>this.ports(i, y, z)), sb=src.map(i=>out(i, y, z)), firstIn=P.length ? P[0][0].x : L, lines=[], segs=[], stOf=k=>ser[k].air.stage;
     if (sb.every(b=>b.x<firstIn-60)){   // компрессоры — до первого аппарата: одна магистраль
-      const ln={ x0:Math.min(...sb.map(b=>b.x), firstIn), x1:L, y, z, label:'выход', medium:'air', branches:[...sb, ...P.flat()], gaps:P.map(([a, b])=>[a.x, b.x]) };
+      const ln={ x0:Math.min(...sb.map(b=>b.x), firstIn), x1:L, y, z, label:'выход', medium:'air', branches:[...sb, ...P.flat()], gaps:P.map(([a, b])=>[a.x, b.x]), bypass:this.bypass(ser, P) };
       lines.push(ln);
       let a=sb.length ? Math.max(...sb.map(b=>b.x)) : ln.x0, s0=10;
       ser.forEach((it, k)=>{ segs.push({ a, b:P[k][0].x, s0, s1:stOf(k), line:ln }); a=P[k][1].x; s0=stOf(k); });
@@ -1177,7 +1202,7 @@ class StationLayout {
     const zh=z+220<=H-120 ? z+220 : z-220, yh=Math.max(g.lo+40, Math.min(g.hi-40, y-110));
     const hb=src.map(i=>out(i, yh, zh)), hin=this.ports(ser[0], yh, zh)[0], hx=[...hb.map(b=>b.x), hin.x];
     const head={ x0:Math.min(...hx), x1:Math.max(...hx), y:yh, z:zh, label:'', medium:'air', branches:[...hb, hin], gaps:[], header:true };
-    const tr={ x0:P[0][1].x, x1:L, y, z, label:'выход', medium:'air', branches:[P[0][1], ...P.slice(1).flat()], gaps:P.slice(1).map(([a, b])=>[a.x, b.x]) };
+    const tr={ x0:P[0][1].x, x1:L, y, z, label:'выход', medium:'air', branches:[P[0][1], ...P.slice(1).flat()], gaps:P.slice(1).map(([a, b])=>[a.x, b.x]), bypass:this.bypass(ser.slice(1), P.slice(1)) };
     lines.push(head, tr);
     // до первого аппарата фильтр — на участке коллектора, по которому идёт весь воздух (компрессоры с одной стороны)
     const lw=hb.filter(b=>b.x<hin.x).map(b=>b.x), rw=hb.filter(b=>b.x>hin.x).map(b=>b.x);
@@ -1365,7 +1390,7 @@ class StationLayout {
     const e=it.o.e;
     return { id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, look:e.look||'', color:e.color, colorKnown:e.colorKnown, maker:e.maker||'',
       known:e.known, mass:e.mass, kw:e.kw, x:geo.x0+it.x, y:it.y, z:0, lx:it.lx, ly:it.d, h:e.h, rot:!!it.o.rot, face:it.face, back:it.back, aisle:it.aisle,
-      l:e.l, w:e.w, row:it.ri, mount:e.slot ? e.mount : 'floor', slot:!!e.slot, pipe:!!e.pipe, air:e.air||null, pic:e.pic||null };
+      l:e.l, w:e.w, row:it.ri, mount:e.slot ? e.mount : 'floor', slot:!!e.slot, pipe:!!e.pipe, air:e.air||null, pic:e.pic||null, flow:e.flow||null };
   }
   /** шкаф на стене или фильтр на трубе — не из ряда */
   unitItem(e, o){

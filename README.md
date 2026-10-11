@@ -455,6 +455,18 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
 `StationReq.ensureParts` (шкафы АВР и АСУ ТП в состав), `TzParse.options` / `negated` («без АВР», «не требуется»), `TzPick.oilFree`,
 частотное регулирование — штраф 0,3 без него; фильтры — по `AirChain.grade` (поле или название), `TzPick.GRADE` (пылевой — и тонкий).
 
+**Компоновка 3.62 — системы контейнера по расчёту (station-systems.js):** при расстановке (`StationLayout.run`) считаются
+`plan.fire` (`StationFire`: модули «Буран-2,5» по площади и объёму с затенением, `MOD`, `place`; огнетушители по помещениям; категория
+и класс зоны для табличек; `exit` — выход для табло), `plan.light` (`StationLight`: метод коэффициента использования, `ETA` по индексу
+помещения, аварийные — половина), `plan.sockets` (`StationSockets`), `plan.power` (`StationPower`: потребители с Кс, режимы `run`/`idle`,
+ток, вводной автомат из `BREAKERS`), `plan.pipe` (`StationPipe`: DN по расходу и скорости, `small` — замечание). 3D (`StOutfit`): `seen`
+(видно ли место с камеры: торец, потолок у среза, оборудование), `near` (место у цели по полосам высоты, видимые — в первую очередь,
+мягкие запреты `StWalls.shade` — за оборудованием и в узком проходе), `buran`, `panel` (щит ОПС), `hang` (табло над дверью — двустороннее),
+`sockets`, `transfer` (насос перекачки топлива); снаружи — таблички `CAT`, знаки `P06`, табло `POW_NO`/`AUTO_OFF` (`StDecal.rows` — текст
+строками). Сжатый воздух — `AirChain.split` (ресиверы без учёта: p·V не больше 1,0 МПа·м³), рекомендации `recv-split` (`qty`, `replace`) и
+`dryer-refrig`; байпас осушителя — `line.bypass` (3D, `StationScheme.node`, `PneuSymbol.valve(…, closed)`). Конструктив: `StationGeo.FLOORS`,
+арочная крыша (`ROOFS.arch`, `StScene.arch`/`arcR`), `lugs`, выхлоп глушителя — `StationLayout.OUTLET`. `StationLayout.VER` = 9.
+
 **Компоновка 3.61 — отсек бака, отопление, крыша, оснащение и наклейки на 3D:** `StationGeo.ROOFS` / `roof(c)` / `rise(roof, W)`
 (плоская, двускатная 8°, односкатная 5° — выше у стены с дверью; морской — всегда плоская), `plan.geo.rise`; `StationLayout.TANK`,
 `tankRoom` / `geoOf` / `tankPlace` — бак ДГУ в отсеке у торца (`plan.fuel`: `x1`, `part`, `door`, `fill` — `left` у блок-контейнера,

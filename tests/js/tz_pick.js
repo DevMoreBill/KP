@@ -69,7 +69,7 @@ class Check {
     const y=Cat.station('st_comp', [], {});
     await TzPick.run(y, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'0', work:0, recvOut:true });
     const ro=kitParts(y).find(p=>StationEquip.kindOf(p)==='receiver');
-    assert.deepStrictEqual([ro.name, ro.qty], ['Ресивер РВ-2000', 1], 'снаружи высота не ограничена — один на 2000 л');
+    assert.deepStrictEqual([ro.name, ro.qty], ['Ресивер РВ-1000', 2], 'снаружи высота не ограничена, но один на 2000 л при 7 бар — на учёт в Ростехнадзоре (p·V 1,4): два по 1000 л, каждый без учёта');
     const z=Cat.station('st_comp', [], {});
     await TzPick.run(z, { kind:'comp', flow:10, pressure:7, air:'2.4.2', reserve:'0', work:0, recv:'both' });
     assert.deepStrictEqual(kitParts(z).filter(p=>StationEquip.kindOf(p)==='receiver').map(p=>[p.name, p.qty]), [['Ресивер РВ-1000', 1], ['Ресивер РВ-1000', 1]], 'до и после осушителя — два ресивера');

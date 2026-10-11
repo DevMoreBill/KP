@@ -640,7 +640,7 @@ class StScene {
   // ---- трубопровод: магистраль, отводы со спусками, шаровые краны, фланцы, опоры, выход через торец
   piping(pp){
     const mat=pp.mat==='inox' ? StMat.metal(StScene.INOX, 0.22) : pp.mat==='pp' ? StMat.paint(pp.color, 0.32) : { c:pp.color, r:0.38, m:0.35 };
-    const m=this.M(mat), dk=this.M(StMat.paint(StScene.DARK, 0.6)), red=this.M(StMat.paint('#c83a2e', 0.4)), dn=+(String(pp.dn||'').match(/\d+/)||[0])[0];
+    const m=this.M(mat), dk=this.M(StMat.paint(StScene.DARK, 0.6)), red=this.M(StMat.paint('#c83a2e', 0.4)), dn=+(String(pp.dn||'').match(/\d+/)||[0])[0] || (this.plan.pipe && this.plan.pipe.dn) || 0;
     for (const l of pp.lines){
       const r=Math.max(0.012, Math.min(0.08, (dn || (l.medium==='fuel' ? 25 : l.medium==='air' ? 50 : 80))/2000+0.006)), A=this.P(l.x0, l.y, l.z), B=this.P(l.x1, l.y, l.z);
       const out=l.x1>=this.plan.int[0]-1, end=out ? [this.Le+0.12, B[1], B[2]] : B;
@@ -649,6 +649,9 @@ class StScene {
       // опоры у стены: кронштейн и хомут
       const yw=this.oy+this.Wi;
       if (yw-A[1]<0.6) for (let x=A[0]+0.4; x<Math.min(B[0], this.ox+this.Li)-0.2; x+=1.4){ dk.box(x-0.02, A[1]-0.03, A[2]-r-0.04, x+0.02, yw, A[2]-r-0.01); dk.tube([x-0.015, A[1], A[2]], [x+0.015, A[1], A[2]], r*1.3, 16, [false, false]); }
+      for (const bp of l.bypass||[]){ const zb=l.z-260, a=this.P(bp.x0, l.y, l.z), b=this.P(bp.x1, l.y, l.z), a1=this.P(bp.x0, l.y, zb), b1=this.P(bp.x1, l.y, zb), v=this.P((bp.x0+bp.x1)/2, l.y, zb);   // байпас осушителя
+        m.tube(a, a1, r*0.85, 16, [false, false]); m.tube(b, b1, r*0.85, 16, [false, false]); m.tube(a1, b1, r*0.85, 16, [false, false]); for (const q of [a, b, a1, b1]) m.sphere(q, r*0.92, 12);
+        m.sphere(v, r*1.45, 12); red.box(v[0]-0.012, v[1]-0.012, v[2]-r*1.3-0.018, v[0]+0.13, v[1]+0.012, v[2]-r*1.3, 0.004); }   // ручка крана — вниз (обвод под магистралью)
       for (const b of l.branches){ const p0=this.P(b.x, b.y0, l.z), p1=this.P(b.x, b.y1, l.z), p2=this.P(b.x, b.y1, b.z1), to=this.plan.items.find(i=>StationLayout.key(i)===b.to);
         m.sphere(p0, r*1.05, 12); if (StV.len(StV.sub(p1, p0))>0.01){ m.tube(p0, p1, r*0.85, 16, [false, false]); m.sphere(p1, r*0.88, 12); }
         if (b.z1<l.z) m.tube(p1, p2, r*0.85, 16, [false, false]);

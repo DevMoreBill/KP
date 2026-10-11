@@ -371,16 +371,20 @@ function kitPickCat(i, cats, role, name, preset, by){
     if (re){ draw(); } else $('#kitPL').innerHTML=list(); };
   $('#kitPF').oninput=e=>{ if (e.target.tagName==='INPUT') onF(e); }; $('#kitPF').onchange=e=>{ if (e.target.tagName==='SELECT') onF(e); };
   d.querySelector('.dlg-h [data-kitnew]').onclick=()=>kitPickNew();
+  // подбор по рекомендации: количество (preset.qty) и замена прежних элементов (preset.replace — их id; ресиверы на учёте →
+  // несколько меньших)
+  const put=(it, p)=>{ if (preset && preset.qty>1) p.qty=preset.qty; if (preset && Array.isArray(preset.replace)) it.kit.parts=it.kit.parts.filter(z=>!preset.replace.includes(z.id)); };
   const kitPickNew=()=>{ const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=StationDefaults.fill(kitNewPart({name:name||(F.q||'').trim()}), it); if (role) p.role=role;
     if (preset){ if (preset.attrs) p.attrs=Object.fromEntries(Object.entries(preset.attrs).filter(([, v])=>v!=null && v!=='')); for (const r of preset.rows||[]) if (!p.rows.some(z=>z.k===r.k)) p.rows.push({ ...r }); }
     if (by && by!==KitScope.def(p)) p.by=by;
-    it.kit.parts.push(p); it.page=true; d.close(); renderForm(); persist(); toast('Элемент добавлен — описание и характеристики: вручную или кнопкой «✨ ИИ»'); };
+    put(it, p); it.kit.parts.push(p); it.page=true; d.close(); renderForm(); persist(); toast('Элемент добавлен — описание и характеристики: вручную или кнопкой «✨ ИИ»'); };
   $('#kitPL').onclick=async e=>{ if (e.target.closest('[data-kitnew]')) return kitPickNew(); const b=e.target.closest('[data-cid]'); if (!b) return; const lite=catCache.find(x=>x.id===b.dataset.cid);
     let doc=lite; try{ doc=await api('/api/catalog/'+encodeURIComponent(lite.id)); }catch(_){}
     const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=KitPart.fromCat(doc); if (role) p.role=role; if (by && by!==KitScope.def(p)) p.by=by;
+    put(it, p);
     if (role==='main'){ const ix=it.kit.parts.findIndex(z=>z.role==='container'); it.kit.parts.splice(ix>=0?ix:0, 0, p); } else it.kit.parts.push(p);
     kitSync(it); stationFill(it); stationAutoName(it);
-    d.close(); renderForm(); persist(); toast('Добавлено в состав: '+doc.name); };
+    d.close(); renderForm(); persist(); toast((preset && preset.replace ? 'Заменено: ' : 'Добавлено в состав: ')+(p.qty>1 ? p.qty+' × ' : '')+doc.name); };
 }
 
 // действия вкладки «Состав» (вызываются из общего обработчика кнопок data-a)

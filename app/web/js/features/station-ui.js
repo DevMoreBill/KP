@@ -103,11 +103,12 @@ class StationUi {
     const f=StationPower.f, pl=StationFire.pl, row=(k, v)=>v ? `<li><b>${esc(k)}:</b> ${esc(v)}</li>` : '';
     const own=W.dgu ? 'собственные нужды' : 'расчётная';
     return `<div class="stl-air stl-sys"><div class="stl-air-h"><b>Системы контейнера и электропитание</b><span class="muted">по расчёту — подробно в ТЗ на сборку</span></div><ul class="stl-sys-l">
-      ${row('Мощность', `установленная ${f(W.inst)} кВт, ${own} — ${f(W.kw)} кВт (${W.mode==='run' ? 'при работе' : 'зимой в простое'}); ток ${f(W.amp)} А при 3 × 400 В; вводной автомат — ${W.breaker ? W.breaker+' А' : 'по проекту'}`)}
+      ${row('Мощность', `установленная (с системами контейнера) ${f(W.inst)} кВт, ${own} — ${f(W.kw)} кВт (${W.mode==='run' ? 'при работе' : 'зимой в простое'}); ток ${f(W.amp)} А при 3 × 400 В; вводной автомат — ${W.breaker ? W.breaker+' А' : 'по проекту'}`)}
       ${Lt && Lt.on ? row('Освещение', `${pl(Lt.n, ['светильник', 'светильника', 'светильников'])} по ${StationLight.LAMP.w} Вт — около ${Math.round(Lt.E)} лк (норма ${Lt.lux}); аварийное — ${Lt.em} с блоком питания на 1 ч${Lt.floods ? `; прожекторов над дверями — ${Lt.floods}` : ''}`) : ''}
       ${K ? row('Розетки', `230 В — ${K.n230}, 380 В — ${K.n380}, ЯТП-0,25 (36 В) — ${K.ytp}; на высоте 1 м`) : ''}
       ${F ? row('Пожарная безопасность', `огнетушители ${StationFire.EXT} — ${F.ext}${F.auto ? `; модули «Буран-2,5» на потолке — ${F.mods} (по площади и объёму)` : ''}${F.ops ? '; щит ОПС у входа' : ''}${F.cat && F.cat!=='Д' ? `; категория ${F.cat}${F.zone ? ', зона '+F.zone : ''} — табличка на двери` : ''}`) : ''}
-      ${h && h.on && h.n ? row('Отопление', `${h.n} × ${StationHeat.kw(h.kw)} кВт = ${StationHeat.kw(h.total)} кВт`) : ''}</ul></div>`;
+      ${h && h.on && h.n ? row('Отопление', `${h.n} × ${StationHeat.kw(h.kw)} кВт = ${StationHeat.kw(h.total)} кВт`) : ''}
+      ${plan.pipe ? row('Трубопровод', `${plan.pipe.lines.map(l=>`${l.name} — DN ${l.dn}`).join(', ')} по расчёту (${plan.pipe.why}, не более ${StationFire.f1(plan.pipe.lines[0].v)} м/с)${plan.pipe.small ? ` — в составе DN ${plan.pipe.set}, мало` : ''}`) : ''}</ul></div>`;
   }
   /** подготовка воздуха: цепочка по ходу воздуха, класс чистоты (ISO 8573-1), чего не хватает — подобрать в каталоге */
   static air(plan, x, i){
@@ -115,7 +116,7 @@ class StationUi {
     const o=this.opts(x), m3=v=>AirChain.m3(v);
     const chain=a.chain.map(c=>`<span class="stl-node${c.guess ? ' guess' : ''}"${c.guess ? ' title="Ступень фильтра не указана — место выбрано по виду осушителя"' : ''}>${esc(c.text)} <small>поз. ${c.pos}</small></span>`).join('<span class="stl-arr">→</span>');
     const cls=`<label class="f stl-cls"><span>Класс чистоты воздуха по ISO 8573-1 (частицы.вода.масло)</span><select data-stl="air" data-i="${i}"><option value="">не задан — проверка по составу</option>${AirChain.options(o.air).map(([v, t])=>`<option value="${esc(v)}"${o.air===v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`;
-    const recs=a.recs.map((r, k)=>`<li><span><b>${esc(r.title)}</b> — ${esc(r.why)}</span><button class="btn sm" type="button" data-a="stlRec" data-i="${i}" data-k="${k}">Подобрать в каталоге</button></li>`).join('');
+    const recs=a.recs.map((r, k)=>`<li><span><b>${esc(r.title)}</b> — ${esc(r.why)}</span><button class="btn sm" type="button" data-a="stlRec" data-i="${i}" data-k="${k}">${r.replace ? 'Заменить — подобрать в каталоге' : 'Подобрать в каталоге'}</button></li>`).join('');
     return `<div class="stl-air"><div class="stl-air-h"><b>Подготовка воздуха</b>${a.q ? `<span class="muted">компрессоры — ${m3(a.q)} м³/мин при ${m3(a.bar)} бар</span>` : ''}</div>
       <div class="stl-chain">${chain}<span class="stl-arr">→</span><span class="stl-node">потребителю</span></div>
       ${a.chain.some(c=>c.guess) ? '<p class="muted stl-hint">Пунктиром — фильтр, у которого не указана ступень очистки: место выбрано по виду осушителя. Укажите «Ступень очистки» в характеристиках фильтра (предварительная, тонкая, сверхтонкая, угольный).</p>' : ''}
@@ -169,7 +170,7 @@ class StationUi {
       return true;
     }
     if (a==='stlAuto'){ c.sizeAuto=true; StationSize.apply(it, true); return true; }
-    if (a==='stlRec'){ const r=((this.plan(it).air||{}).recs||[])[+b.dataset.k]; if (r) kitPickCat(i, [r.cat], null, r.name, { f:r.f, r:r.r, rows:r.rows, attrs:r.attrs }); return false; }
+    if (a==='stlRec'){ const r=((this.plan(it).air||{}).recs||[])[+b.dataset.k]; if (r) kitPickCat(i, [r.cat], null, r.name, { f:r.f, r:r.r, rows:r.rows, attrs:r.attrs, qty:r.qty, replace:r.replace }); return false; }
     return false;
   }
   /** галочки «главное фото» и «в КП» */
