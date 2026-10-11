@@ -201,6 +201,15 @@ Check.run('трубопровод: материал, трасса, отпеча�
   Check.plan(ks, 'КС трубы'); assert.strictEqual(ks.piping[0].lines.length, 1);
   assert.ok(ks.issues.some(i=>/Материал трубопровода .* не выбран/.test(i.text)), 'материал не выбран — подсказка');
   for (const p of [ns, ks]){ draw(p, 'трубы'); }
+  // магистраль выше оборудования — отвод заходит на его верх и спускается к нему; ниже верха — в заднюю стенку
+  for (const p of [ns, ks]) for (const l of p.piping[0].lines) for (const b of l.branches){
+    const it=p.items.find(i=>i.id+'#'+i.unit===b.to); assert.ok(it, 'отвод — к оборудованию станции');
+    if (l.z>it.h+50) assert.ok(b.z1===Math.round(it.h) && b.x>it.x && b.x<it.x+it.lx && b.y1>it.y && b.y1<it.y+it.ly, `спуск на верх: ${it.kind}`);
+    else assert.ok(b.z1===l.z && b.y1===Math.round(it.y+it.ly), `отвод в заднюю стенку: ${it.kind}`); }
+  assert.ok(ns.piping[0].lines.some(l=>l.branches.some(b=>b.z1<l.z)), 'напор над насосами — со спусками');
+  // номера позиций на плане — поверх трубопровода: фильтры стоят на трубе, линия не должна перечёркивать цифры
+  const sv=StationDrawing.svg(ks, {}), sec=sv.slice(sv.indexOf('Вид сверху (план)'), sv.indexOf('Вид слева'));
+  assert.ok(sec.indexOf('r="17"')>sec.lastIndexOf(`stroke="${ks.piping[0].color}" stroke-width="4.5"`), 'номера на плане — после трубопровода');
   const inp=m=>({ cont:C('sea20'), parts:[comp, P('Трубопровод', {}, { id:'tp', pipeMat:m })] });
   assert.notStrictEqual(StationLayout.hash(inp('steel')), StationLayout.hash(inp('pp')), 'материал — в отпечатке');
 });

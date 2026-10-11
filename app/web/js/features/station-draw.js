@@ -74,6 +74,7 @@ class StationDrawing {
     body.push(S.line(X(ox), Z(zf), X(ox), Z(zf+Hi), INK, 1, ' stroke-dasharray="9 5"'), S.line(X(ox+Li), Z(zf), X(ox+Li), Z(zf+Hi), INK, 1, ' stroke-dasharray="9 5"'));
     if (g.x0) body.push(S.line(X(ox+g.x0), Z(zf), X(ox+g.x0), Z(zf+Hi), INK, 1.4), S.text(X(ox+g.x0/2)+6, Z(zf+Hi/2), 'тамбур', { size:F.item, fill:this.MUTED, rot:-90 }));
     for (const pp of pipes) for (const l of pp.lines){ const z=Z(zf+l.z);
+      for (const b of l.branches) if (b.z1<l.z) body.push(S.line(X(ox+b.x), z, X(ox+b.x), Z(zf+b.z1), pp.color, 4));   // спуск к оборудованию
       body.push(S.line(X(ox+l.x0), z, X(ox+l.x1), z, pp.color, 5, ' stroke-linecap="round"'));
       if (l.label) body.push(this.arrow(X(ox+l.x1), z, X(Le)+14, pp.color), S.text(X(ox+l.x1)-10, z-10, l.label, { anchor:'end', size:F.item, fill:this.MUTED })); }
     const front=[...items].sort((a, b)=>(a.row===1)-(b.row===1) || a.y-b.y);
@@ -118,19 +119,20 @@ class StationDrawing {
       if (free && (ai.y1-ai.y0)*s>30) body.push(S.text((free[0]+free[1])/2, YP(oy+(ai.y0+ai.y1)/2)+7, lab, { size:F.aisle, fill:'#2c5d99' })); }
     this.doors(body, plan, X, YP, ox, oy, Li, Wi, s);
     if (sd.length) body.push(S.text(X(0)+2, YP(0)+swing*s+24, 'сервисные двери — створки наружу', { anchor:'start', size:F.item, fill:this.MUTED }));
+    // номера позиций (pb) — после трубопровода, поверх него: линия не перечёркивает цифры (фильтры стоят на трубе)
+    const pb=[];
     for (const it of items){ const x1=X(ox+it.x), y1=YP(oy+it.y+it.ly), w=it.lx*s, h=it.ly*s, col=tint(it.color);
       if (it.shape==='vcyl') body.push(S.circle(x1+w/2, y1+h/2, Math.min(w, h)/2, col, edge(it.color), 1.6));
       else body.push(S.rect(x1, y1, w, h, col, edge(it.color), 1.6, it.shape==='hcyl' ? ` rx="${S.f(h/2)}"` : ''));
       if (it.kind==='dgu') body.push(S.line(x1+w*0.86, y1+3, x1+w*0.86, y1+h-3, edge(it.color), 1, ' stroke-dasharray="6 4"'));
       const lab=it.short; if (h>=86 && S.tw(lab, F.item)<w-10) body.push(S.text(x1+w/2, y1+h/2+36, lab, { size:F.item, fill:this.MUTED }));
-      this.pos(body, x1+w/2, y1+h/2, it.pos);
+      pb.push([x1+w/2, y1+h/2, it.pos]);
     }
-    // глушитель на крыше — штрихом над оборудованием; номера на плане — чтобы номер трубопровода не лёг на них
-    const pb=items.map(it=>[X(ox+it.x+it.lx/2), YP(oy+it.y+it.ly/2)]);
+    // глушитель на крыше — штрихом над оборудованием
     for (const m of rf){ const x1=X(ox+m.x), y1=YP(oy+m.y+m.ly), w=m.lx*s, h=m.ly*s;
       body.push(S.rect(x1, y1, w, h, 'none', edge(m.color), 1.6, ` stroke-dasharray="9 5" rx="${S.f(h/2)}"`));
       if (S.tw('глушитель на крыше', F.item)<w-60) body.push(S.text(x1+w/2-10, y1+h/2+6, 'глушитель на крыше', { size:F.item, fill:this.MUTED }));
-      this.pos(body, x1+w-22, y1+h/2, m.pos); pb.push([x1+w-22, y1+h/2]); }
+      pb.push([x1+w-22, y1+h/2, m.pos]); }
     // трубопровод (вид сверху): магистраль у задней стены, отводы к оборудованию, выход через дальний торец
     for (const pp of pipes){ let lab=null;
       for (const l of pp.lines){ const y=YP(oy+l.y), xa=X(ox+l.x0), xb=X(ox+l.x1);
@@ -138,7 +140,8 @@ class StationDrawing {
         body.push(S.line(xa, y, xb, y, pp.color, 4.5, ' stroke-linecap="round"'));
         if (l.label){ body.push(this.arrow(xb, y, X(Le)+16, pp.color), S.text(X(Le)+20, y+6, l.label, { anchor:'start', size:F.item, fill:this.MUTED })); }
         for (let x=xb-24; !lab && x>xa+12; x-=12) if (pb.every(([bx, by])=>Math.hypot(bx-x, by-y)>=40)) lab=[x, y]; }
-      if (lab){ this.pos(body, lab[0], lab[1], pp.pos); pb.push(lab); } }
+      if (lab) pb.push([lab[0], lab[1], pp.pos]); }
+    for (const [x, y, n] of pb) this.pos(body, x, y, n);
     this.chain(body, plan, X, YP(We)-18, ox, Li, g.x0||0, YP(oy+Wi));
     this.dimH(body, X(0), X(Le), YP(0)+swing*s+46, S.n(Le), YP(0));
     this.dimV(body, X(0)-44, YP(We), YP(0), S.n(We), { left:true });
@@ -346,13 +349,17 @@ class StationView3D {
     else if (items.some(i=>i.kind==='compressor') || (plan.sys && plan.sys.vent)) out.push(V.louver([ox+Li-2, oy+Wi*0.3, base+250], [ox+Li-2, oy+Wi*0.7, base+850], 'x'));
     // трубопровод вдоль задней стены: магистраль и отводы (трубой — тёмный контур и светлый блик)
     const tube=(a, b, c, w)=>V.line(a, b, RalColor.shade(c, 0.62), w+2)+V.line(a, b, c, w)+V.line(a, b, RalColor.shade(c, 1.35), Math.max(1, w*0.3));
+    // отвод со спуском на верх оборудования — сразу после этого оборудования: стоящее ближе к зрителю его закроет
+    const over=new Map();
     for (const pp of plan.piping||[]){ const w=Math.max(4, 90*k);
       for (const l of pp.lines){ const y=oy+l.y, z=base+l.z;
         out.push(tube([ox+l.x0, y, z], [ox+l.x1, y, z], pp.color, w));
-        for (const b of l.branches) out.push(tube([ox+b.x, oy+b.y0, z], [ox+b.x, oy+b.y1, z], pp.color, w*0.8)); } }
+        for (const b of l.branches){ const t=tube([ox+b.x, oy+b.y0, z], [ox+b.x, oy+b.y1, z], pp.color, w*0.8), to=items.find(i=>i.id+'#'+i.unit===b.to);
+          if (b.z1<l.z) over.set(b.to, (over.get(b.to)||'')+t+tube([ox+b.x, oy+b.y1, z], [ox+b.x, oy+b.y1, base+(to ? Math.min(b.z1, this.top(to)) : b.z1)], pp.color, w*0.8));
+          else out.push(t); } } }
     // оборудование: тени, затем по глубине (дальнее — раньше)
     for (const it of items) out.push(V.face([[it.X0+60, it.Y0+40, base+1], [it.X1+160, it.Y0+40, base+1], [it.X1+160, it.Y1+120, base+1], [it.X0+60, it.Y1+120, base+1]], '#000000', 0, ' opacity="0.16" filter="url(#blur6)"'));
-    for (const it of V.order(items)) out.push(...this.equip(V, it, base, ceil, oy+Wi));
+    for (const it of V.order(items)){ out.push(...this.equip(V, it, base, ceil, oy+Wi)); const t=over.get(it.id+'#'+it.unit); if (t) out.push(t); }
     // срезанные стенки со стороны зрителя: торец у двери и стена прохода — до высоты пояса
     out.push(...this.band(V, plan, wall, frame, Le, We, dz, band, ox, oy, Wi));
     // рама: передние стойки и верхние балки
@@ -399,6 +406,9 @@ class StationView3D {
     return out;
   }
 
+  /** верх оборудования, каким оно нарисовано (насос — корпус ниже габарита, горизонтальная ёмкость — на опорах): сюда приходит
+   *  спуск трубопровода */
+  static top(it){ return it.kind==='pump' ? it.h*0.85 : it.shape==='hcyl' ? it.h*0.55+Math.min(it.ly, it.h)/2*0.95 : it.h; }
   /** оборудование: короба, цилиндры; у компрессора — воздуховод к задней стене, у ДГУ — рама, генератор, двигатель, радиатор */
   static equip(V, it, base, ceil, yWall){
     const c=it.color, out=[], x0=it.X0, x1=it.X1, y0=it.Y0, y1=it.Y1, z0=base, z1=base+it.h, L=x1-x0, W=y1-y0;

@@ -551,10 +551,13 @@ class StationLayout {
   route(plan){
     const ps=this.eq.filter(e=>e.kind==='piping'); if (!ps.length) return [];
     const [L, W, H]=plan.int, floor=plan.items.filter(i=>!i.pipe), pf=plan.items.filter(i=>i.pipe), has=k=>floor.some(i=>i.kind===k);
-    const cx=i=>Math.round(i.x+i.lx/2), zTop=Math.max(600, Math.min(H-400, 1500)), lines=[];
+    const zTop=Math.max(600, Math.min(H-400, 1500)), lines=[];
+    // отвод — от магистрали к задней стороне оборудования; магистраль выше оборудования — отвод заходит на верх и спускается
+    // к нему (z1), ближе к дальнему краю: посередине на виде — номер позиции
     const line=(conn, y, z, label, toEnd)=>{ if (!conn.length) return;
-      const xs=conn.map(cx), x0=Math.min(...xs), x1=toEnd ? L : Math.max(...xs);
-      lines.push({ x0, x1, y:Math.round(y), z:Math.round(z), label, branches:conn.filter(i=>i.y+i.ly<y-20).map(i=>({ x:cx(i), y0:Math.round(y), y1:Math.round(i.y+i.ly) })) }); };
+      const down=i=>z>i.h+50, cx=i=>Math.round(i.x+i.lx*(down(i) ? 0.8 : 0.5)), xs=conn.map(cx), x0=Math.min(...xs), x1=toEnd ? L : Math.max(...xs);
+      lines.push({ x0, x1, y:Math.round(y), z:Math.round(z), label, branches:conn.filter(i=>i.y+i.ly<y-20).map(i=>({ x:cx(i), y0:Math.round(y),
+        y1:Math.round(down(i) ? i.y+i.ly-Math.min(150, i.ly/4) : i.y+i.ly), z1:Math.round(down(i) ? i.h : z), to:i.id+'#'+i.unit })) }); };
     if (has('pump')){ const P=floor.filter(i=>i.kind==='pump'); line(P, W-110, 450, 'вход', true); line(P, W-240, Math.min(zTop, 1300), 'выход', true); }
     else if (has('compressor')){ const yf=pf.length ? pf[0].y+pf[0].ly/2 : W-150;
       line(floor.filter(i=>/compressor|dryer|receiver|filter|other/.test(i.kind)), yf, zTop, 'выход', true); }
