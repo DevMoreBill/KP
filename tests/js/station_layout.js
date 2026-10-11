@@ -902,6 +902,34 @@ Check.run('сжатый воздух: байпас осушителя, диам�
   assert.ok(kp && kp.medium==='water' && kp.lines.length===2 && kp.lines[0].dn===80 && kp.lines[1].dn===100, 'насосная: напорный DN 80, всасывающий DN 100 при 32 м³/ч: '+JSON.stringify(kp));
 });
 
+Check.run('масса и центр тяжести, строповка; знаки № 9 и № 12 (ГОСТ 14192-96) на 3D-виде', ()=>{
+  const ks=solve(C('block', { sizeAuto:true }), [comp, dryer, rec, flt, cab]), M=ks.mass, [Le, We, He]=ks.geo.ext;
+  assert.ok(M && M.cont>0 && M.eq===650+120+180 && Math.abs(M.mass-(M.cont+M.eq+M.other))<=10, 'масса: контейнер, оборудование с паспортной массой, трубы и системы');
+  assert.ok(M.cg.x>0 && M.cg.x<Le && M.cg.y>0 && M.cg.y<We && M.cg.z>0 && M.cg.z<He, 'центр тяжести — внутри контейнера');
+  assert.ok(M.missing.length && /без поз\. /.test(StationMass.text(M)), 'позиции без массы — названы');
+  const S=M.sling; assert.ok(!S.beam && !S.frame && S.legs.length===4 && S.legs.every(q=>q.deg<=StationMass.ANGLE && q.len%100===0), 'короткий блок-контейнер: четыре ветви к крюку над ЦТ, угол с вертикалью не более 45°');
+  const lg=solve(C('block', { size:'9000 × 2400 × 2600' }), [comp, dryer, rec, cab]).mass.sling;
+  assert.ok(lg.beam && !lg.frame && lg.legs.every(q=>q.deg<=StationMass.ANGLE), 'длинный блок-контейнер — с траверсой');
+  // морской: только рамной траверсой — ветви к верхним фитингам вертикальны (ISO 3874: наклонными стропами груз не поднимают)
+  const sp=solve(C('sea40'), [dgu, ats]), F=sp.mass.sling.frame;
+  assert.ok(F && sp.mass.sling.legs.every(q=>q.deg===0) && F.deg<=StationMass.ANGLE && F.lugs[0]<sp.mass.cg.x && F.lugs[1]>sp.mass.cg.x, 'морской: рамная траверса над ЦТ, ветви вертикальны');
+  assert.ok(StationDrawing.lift(sp).some(t=>/рамной траверсой/.test(t) && /ISO 3874/.test(t)) && StationDrawing.lift(ks).some(t=>/не более 45°/.test(t)), 'ТТ: строповка по схеме');
+  const T3=Check.texts(StationDrawing.sheets(sp, meta(sp))[2]).map(q=>q.t);
+  assert.ok(T3.includes('рамная траверса') && T3.some(t=>/вертикально/.test(t)), 'лист 3: рамная траверса');
+  // 3D снаружи: № 9 — у каждого из четырёх верхних углов (на длинной стене или на торце), № 12 — не меньше чем на двух стенах,
+  // в проекции ЦТ; «Масса брутто»; на тёмной стене — светлые (п. 5.10)
+  for (const [p, label] of [[ks, 'блок'], [sp, 'морской 40'], [solve(C('sea20', { ral:'RAL 5010' }), [comp, dryer, rec, cab]), 'морской 20, тёмный']]){
+    const sc=new StScene(p, { view:'out' }).build(), L=sc.outfit.log, D=[...sc.decals.values()], ox=sc.ox*1000, oy=sc.oy*1000, Lx=sc.Le*1000, Wy=sc.We*1000;
+    const sl=L.filter(q=>q.kind==='SLING'), cg=L.filter(q=>q.kind==='COG');
+    assert.strictEqual(sl.length, 4, label+': четыре знака № 9');
+    assert.ok(sl.every(q=>q.wall==='front' || q.wall==='back' ? Math.min(q.u+ox, Lx-q.u-ox)<=400 : Math.min(q.u+oy, Wy-q.u-oy)<=400), label+': № 9 — у углов');
+    assert.ok(new Set(cg.map(q=>q.wall)).size>=2 && cg.every(q=>{ const c=sc.outfit.cogOn(q.wall); return Math.abs(c.u-q.u)<1 && Math.abs(c.z-q.z)<1; }), label+': № 12 — на двух стенах и больше, в проекции ЦТ');
+    assert.ok(L.filter(q=>q.kind==='MASS').length===1 && D.some(d=>d.id==='MASS' && d.kg===p.mass.mass), label+': надпись «Масса брутто»');
+    const dark=label.includes('тёмный'); assert.ok(D.filter(d=>['SLING', 'COG', 'MASS'].includes(d.id)).every(d=>!!d.light===dark), label+': цвет знаков по стене');
+    for (const w of ['front', 'back', 'left', 'right']){ const R=sc.outfit.O[w].slice(-40), Q=L.filter(q=>q.wall===w && ['SLING', 'COG', 'MASS'].includes(q.kind));
+      assert.ok(Q.length<=R.length, label+': знаки учтены как занятые места'); } }
+});
+
 Check.run('цвет по фото: фон убирается, главный цвет корпуса', ()=>{
   const img=(w, h, f)=>{ const d=new Uint8ClampedArray(w*h*4); for (let y=0; y<h; y++) for (let x=0; x<w; x++){ const c=f(x, y); d.set(c.length===4 ? c : [...c, 255], (y*w+x)*4); } return d; };
   const near=(hex, c, tol=28)=>{ const v=[1, 3, 5].map(k=>parseInt(hex.slice(k, k+2), 16)); return /^#[0-9a-f]{6}$/.test(hex) && v.every((x, k)=>Math.abs(x-c[k])<=tol); };

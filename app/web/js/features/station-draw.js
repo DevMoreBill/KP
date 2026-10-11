@@ -275,18 +275,21 @@ class StationDrawing {
   }
 
   // ---- схема строповки (лист 3)
-  /** знак № 12 «Центр тяжести» (ГОСТ 14192-96): круг с перекрестием, две противоположные четверти зачернены; B — размер, мм */
+  /** знак № 12 «Центр тяжести» (ГОСТ 14192-96): толстый крест за пределы круга, круг — четыре дуги с просветами у креста;
+   *  B — размер, мм */
   static signCog(sh, cx, cy, B){
-    const r=B*0.2, f=EskdSheet.f, t=B>=8 ? 'cut' : 'main';
-    sh.path(`M${f(cx)},${f(cy)} L${f(cx-r)},${f(cy)} A${f(r)},${f(r)} 0 0 1 ${f(cx)},${f(cy-r)} Z`, 'thin', '#000');
-    sh.path(`M${f(cx)},${f(cy)} L${f(cx+r)},${f(cy)} A${f(r)},${f(r)} 0 0 1 ${f(cx)},${f(cy+r)} Z`, 'thin', '#000');
-    sh.circle(cx, cy, r, t); sh.line(cx-B/2, cy, cx+B/2, cy, t); sh.line(cx, cy-B/2, cx, cy+B/2, t);
+    const f=EskdSheet.f, a=B*0.1, R=B*0.31, r=R-B*0.09, g=Math.asin(Math.min(0.9, (a/2+B*0.05)/r)), P=(rr, t)=>`${f(cx+rr*Math.cos(t))},${f(cy+rr*Math.sin(t))}`;
+    sh.rect(cx-B/2, cy-a/2, B, a, 'thin', '#000'); sh.rect(cx-a/2, cy-B/2, a, B, 'thin', '#000');
+    for (let k=0; k<4; k++){ const t0=k*Math.PI/2+g, t1=(k+1)*Math.PI/2-g;
+      sh.path(`M${P(R, t0)} A${f(R)},${f(R)} 0 0 1 ${P(R, t1)} L${P(r, t1)} A${f(r)},${f(r)} 0 0 0 ${P(r, t0)} Z`, 'thin', '#000'); }
   }
-  /** знак № 9 «Место строповки» (ГОСТ 14192-96): цепь — кольцо, звено ребром, кольцо; H — высота, мм */
+  /** знак № 9 «Место строповки» (ГОСТ 14192-96): цепь — разомкнутое звено сверху, два звена и звенья ребром (стержень);
+   *  H — высота, мм */
   static signSling(sh, cx, cy, H){
-    const lw=H*0.36, lh=H*0.4, t=Math.max(0.3, H*0.07), y0=cy-H/2;
-    sh.rect(cx-lw/2, y0, lw, lh, 'main', 'none', lw/2); sh.rect(cx-lw/2, y0+lh*1.5, lw, lh, 'main', 'none', lw/2);
-    sh.rect(cx-t, y0+lh*0.72, 2*t, lh*1.06, 'thin', '#000', t);
+    const f=EskdSheet.f, lw=H*0.42, y0=cy-H/2, uh=H*0.22, oh=H*0.3, t=Math.max(0.3, H*0.07);
+    sh.path(`M${f(cx-lw/2)},${f(y0)} V${f(y0+uh-lw/2)} A${f(lw/2)},${f(lw/2)} 0 0 0 ${f(cx+lw/2)},${f(y0+uh-lw/2)} V${f(y0)}`, 'main');
+    for (const y of [y0+H*0.26, y0+H*0.62]) sh.rect(cx-lw/2, y, lw, oh, 'main', 'none', lw/2);
+    sh.rect(cx-t/2, y0+H*0.08, t, H*0.9, 'thin', '#000');
   }
   /** крюк над центром тяжести: кольцо стропа и крюк */
   static hook(sh, x, y){ sh.circle(x, y, 1.1, 'main'); sh.path(`M${EskdSheet.f(x)},${EskdSheet.f(y-1.1)} V${EskdSheet.f(y-5)}`, 'main'); sh.circle(x, y-6.2, 1.2, 'main'); }

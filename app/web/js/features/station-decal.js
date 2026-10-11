@@ -4,7 +4,9 @@
 // цветом, контрастным корпусу), знаки безопасности по ГОСТ 12.4.026-2015 (F04 «Огнетушитель», W01 «Пожароопасно»,
 // W08 «Опасность поражения электрическим током», P02 «Запрещается пользоваться открытым огнём и курить», P06 «Доступ
 // посторонним запрещён»), табличка категории помещения и класса зоны, световые табло в две строки («Выход», «Порошок!
-// Уходи!», «Порошок! Не входи!», «Автоматика отключена»), табличка щита ОПС, надпись «ДТ» у горловины.
+// Уходи!», «Порошок! Не входи!», «Автоматика отключена»), табличка щита ОПС, надпись «ДТ» у горловины; маркировка груза по
+// ГОСТ 14192-96 — знаки № 9 «Место строповки» (цепь), № 12 «Центр тяжести», надпись «Масса брутто» (чёрным, на тёмной стене —
+// белым).
 // PhotoTint — главный цвет фото элемента (без фона, насыщенное и в центре — весомее): им окрашено оборудование в 3D.
 'use strict';
 
@@ -46,7 +48,7 @@ class StDecal {
     if (d.type==='brand') this.brand(g, W, H, d); else if (d.type==='logo') this.logo(g, W, H, d); else this.sign(g, W, H, d.id, d);
     return c;
   }
-  static AR = { F04:1, W01:1.15, W08:1.15, P02:1, P06:1, EXIT:2.77, POW_OUT:2.77, POW_NO:2.77, AUTO_OFF:2.77, DT:1.85, CAT:1.5, OPS:2.68 };
+  static AR = { F04:1, W01:1.15, W08:1.15, P02:1, P06:1, EXIT:2.77, POW_OUT:2.77, POW_NO:2.77, AUTO_OFF:2.77, DT:1.85, CAT:1.5, OPS:2.68, SLING:0.6, COG:1, MASS:2.65 };
 
   /** скруглённый прямоугольник */
   static rr(g, x, y, w, h, r){ g.beginPath(); g.moveTo(x+r, y); g.arcTo(x+w, y, x+w, y+h, r); g.arcTo(x+w, y+h, x, y+h, r); g.arcTo(x, y+h, x, y, r); g.arcTo(x, y, x+w, y, r); g.closePath(); }
@@ -126,6 +128,7 @@ class StDecal {
       g.save(); g.translate(W*0.56, H*0.38); g.rotate(-0.9); g.fillRect(0, -s*0.025, s*0.2, s*0.05); g.restore();
       g.strokeStyle='#c8102e'; g.lineWidth=s*0.09; g.beginPath(); g.arc(W/2, H/2, s*0.43, 0, Math.PI*2); g.stroke();
       g.beginPath(); g.moveTo(W/2-s*0.3, H/2-s*0.3); g.lineTo(W/2+s*0.3, H/2+s*0.3); g.stroke(); return; }
+    if (id==='SLING' || id==='COG' || id==='MASS'){ this.cargo(g, W, H, id, d); return; }
     if (id==='CAT'){   // табличка на двери: категория помещения по пожарной опасности, класс зоны по ПУЭ
       g.fillStyle='#ffffff'; this.rr(g, 0, 0, W, H, s*0.05); g.fill(); g.strokeStyle='#111111'; g.lineWidth=s*0.035; this.rr(g, s*0.04, s*0.04, W-s*0.08, H-s*0.08, s*0.03); g.stroke();
       this.rows(g, W, H, [['КАТЕГОРИЯ', 0.14, '#111111'], [String(d.cat||''), 0.4, '#c8102e'], [d.zone ? 'КЛАСС ЗОНЫ '+d.zone : 'ПО ПОЖАРНОЙ ОПАСНОСТИ', 0.13, '#111111']]); return; }
@@ -136,6 +139,22 @@ class StDecal {
     g.fillStyle=T[1]; this.rr(g, 0, 0, W, H, s*0.08); g.fill();
     if (T[1]==='#ffffff'){ g.strokeStyle='rgba(0,0,0,0.25)'; g.lineWidth=s*0.04; this.rr(g, s*0.03, s*0.03, W-s*0.06, H-s*0.06, s*0.06); g.stroke(); }
     this.rows(g, W, H, T[0].length>1 ? T[0].map(t=>[t, 0.36, T[2]]) : [[T[0][0], 0.62, T[2]]]);
+  }
+  /** маркировка груза (ГОСТ 14192-96) прямо на стене, без фона: № 9 — цепь (разомкнутое звено, два звена, звенья ребром),
+   *  № 12 — толстый крест и круг из четырёх дуг; «Масса брутто» — в две строки */
+  static cargo(g, W, H, id, d){
+    const ink=d.light ? '#ffffff' : '#111111', s=Math.min(W, H); g.fillStyle=ink; g.strokeStyle=ink;
+    if (id==='SLING'){ const lw=W*0.66, t=W*0.11, uh=H*0.22, oh=H*0.3, x0=W/2-lw/2+t/2, w=lw-t;
+      g.lineWidth=t; g.lineCap='butt';
+      g.beginPath(); g.moveTo(x0, 0); g.lineTo(x0, uh-w/2); g.arc(W/2, uh-w/2, w/2, Math.PI, 0, true); g.lineTo(x0+w, 0); g.stroke();   // разомкнутое звено сверху
+      for (const y of [H*0.26, H*0.62]){ this.rr(g, x0, y+t/2, w, oh-t, w/2); g.stroke(); }
+      g.fillRect(W/2-t*0.6, H*0.08, t*1.2, H*0.9); return; }   // звенья ребром
+    if (id==='COG'){ const cx=W/2, cy=H/2, a=s*0.1, R=s*0.31, r=R-s*0.09, gap=Math.asin(Math.min(0.9, (a/2+s*0.05)/r));
+      g.fillRect(cx-s/2, cy-a/2, s, a); g.fillRect(cx-a/2, cy-s/2, a, s);
+      for (let k=0; k<4; k++){ const t0=k*Math.PI/2+gap, t1=(k+1)*Math.PI/2-gap; g.beginPath(); g.arc(cx, cy, R, t0, t1); g.arc(cx, cy, r, t1, t0, true); g.closePath(); g.fill(); }
+      return; }
+    const n=typeof StationLayout!=='undefined' ? StationLayout.n(d.kg||0) : String(d.kg||0);
+    this.rows(g, W, H, [['МАССА БРУТТО', 0.34, ink], [`${n} кг`, 0.42, ink]]);
   }
   /** пламя (условное): капля с языком */
   static flame(g, x, y, s, color){
