@@ -201,7 +201,7 @@ class StationDrawing {
       if (m.exhaust){ const xe=X(ox+m.exhaust.x), pw=Math.max(0.8, 130*k); sh.rect(xe-pw/2, zb, pw, Z(zf+m.exhaust.z)-zb, 'thin', '#fff'); }
       for (const f of [0.18, 0.82]) sh.line(x1+(x2-x1)*f, Z(He), x1+(x2-x1)*f, zb, 'main');
       sh.rect(xo-w/2, zo, w, zt-zo, 'thin', '#fff'); sh.line(xo-w*1.8, zo-0.4, xo+w*1.8, zo-0.4, 'main');
-      EquipIcon.hvessel(sh, x1, zt, x2, zb, false); }
+      EquipIcon.muffler(sh, x1, zt, x2, zb); }
     // выход трубопровода через дальний торец; линия сечения Б–Б — под потолком, взгляд вниз
     for (const o of this.outs){ sh.line(xR, Z(zf+o.z), xR+5, Z(zf+o.z), 'pipe'); sh.arrow(xR+7.6, Z(zf+o.z), 1, 0); }
     const zc=Z(zf+Hi-Math.min(120, Hi*0.05));
