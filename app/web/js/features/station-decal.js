@@ -2,8 +2,9 @@
 // StDecal рисует на холсте: логотип организации (фирменные цвета шаблона КП; у ПНЕВМОТЕХ «О» — глобус, внизу «группа
 // компаний»), логотипы производителей (картинка из каталога на светлой табличке; нет картинки — название производителя
 // цветом, контрастным корпусу), знаки безопасности по ГОСТ 12.4.026-2015 (F04 «Огнетушитель», W01 «Пожароопасно»,
-// W08 «Опасность поражения электрическим током», P02 «Запрещается пользоваться открытым огнём и курить»), световые табло
-// («Выход», «Аэрозоль! Уходи!», «Аэрозоль! Не входи!», «Автоматика отключена»), надпись «ДТ» у горловины.
+// W08 «Опасность поражения электрическим током», P02 «Запрещается пользоваться открытым огнём и курить», P06 «Доступ
+// посторонним запрещён»), табличка категории помещения и класса зоны, световые табло в две строки («Выход», «Порошок!
+// Уходи!», «Порошок! Не входи!», «Автоматика отключена»), табличка щита ОПС, надпись «ДТ» у горловины.
 // PhotoTint — главный цвет фото элемента (без фона, насыщенное и в центре — весомее): им окрашено оборудование в 3D.
 'use strict';
 
@@ -42,13 +43,18 @@ class StDecal {
   static canvas(d){
     const ar=Math.max(0.2, Math.min(12, d.ar || this.AR[d.id] || 1)), W=ar>=1 ? 1024 : Math.round(1024*ar), H=Math.max(16, Math.round(W/ar));
     const c=document.createElement('canvas'); c.width=W; c.height=H; const g=c.getContext('2d');
-    if (d.type==='brand') this.brand(g, W, H, d); else if (d.type==='logo') this.logo(g, W, H, d); else this.sign(g, W, H, d.id);
+    if (d.type==='brand') this.brand(g, W, H, d); else if (d.type==='logo') this.logo(g, W, H, d); else this.sign(g, W, H, d.id, d);
     return c;
   }
-  static AR = { F04:1, W01:1.15, W08:1.15, P02:1, EXIT:2.6, AERO_OUT:3.5, AERO_NO:3.5, AUTO_OFF:3.5, DT:1.85 };
+  static AR = { F04:1, W01:1.15, W08:1.15, P02:1, P06:1, EXIT:2.77, POW_OUT:2.77, POW_NO:2.77, AUTO_OFF:2.77, DT:1.85, CAT:1.5, OPS:2.68 };
 
   /** скруглённый прямоугольник */
   static rr(g, x, y, w, h, r){ g.beginPath(); g.moveTo(x+r, y); g.arcTo(x+w, y, x+w, y+h, r); g.arcTo(x+w, y+h, x, y+h, r); g.arcTo(x, y+h, x, y, r); g.arcTo(x, y, x+w, y, r); g.closePath(); }
+  /** строки текста по центру холста: [текст, доля высоты, цвет] — каждая вписана в ширину, промежутки поровну */
+  static rows(g, W, H, R){
+    const gap=(1-R.reduce((s, r)=>s+r[1], 0))/(R.length+1); let y=gap*H;
+    for (const [t, k, c] of R){ this.text(g, t, W/2, y+k*H*0.53, W*0.88, k*H*1.25, 900, c); y+=(k+gap)*H; }
+  }
   /** текст по центру, вписанный в ширину w (шрифт уменьшается) */
   static text(g, s, x, y, w, size, weight, color, font){
     g.font=`${weight} ${size}px ${font||'Arial, sans-serif'}`; const k=Math.min(1, w/Math.max(1, g.measureText(s).width));
@@ -94,8 +100,8 @@ class StDecal {
     this.text(g, String(d.maker||'').toUpperCase(), W/2, H/2, W*0.96, H*0.82, 900, lum>0.55 ? '#1d2733' : '#ffffff', this.FONT);
   }
 
-  // ---- знаки безопасности и табло
-  static sign(g, W, H, id){
+  // ---- знаки безопасности, таблички и табло; d — описание наклейки (у таблички категории — категория и класс зоны)
+  static sign(g, W, H, id, d={}){
     const s=Math.min(W, H);
     if (id==='F04'){ g.fillStyle='#c8102e'; this.rr(g, 0, 0, W, H, s*0.06); g.fill(); g.fillStyle='#ffffff';
       // огнетушитель: корпус, головка, рукоятка, шланг; справа — пламя
@@ -113,12 +119,23 @@ class StDecal {
       this.flame(g, W/2, H*0.62, s*0.34, '#000000'); g.fillStyle='#000000'; g.fillRect(W*0.47, H*0.62, W*0.06, H*0.14);
       g.strokeStyle='#c8102e'; g.lineWidth=s*0.09; g.beginPath(); g.arc(W/2, H/2, s*0.43, 0, Math.PI*2); g.stroke();
       g.beginPath(); g.moveTo(W/2-s*0.3, H/2-s*0.3); g.lineTo(W/2+s*0.3, H/2+s*0.3); g.stroke(); return; }
-    const T={ EXIT:['ВЫХОД', '#00843d', '#ffffff'], AERO_OUT:['АЭРОЗОЛЬ! УХОДИ!', '#ffffff', '#d0021b'], AERO_NO:['АЭРОЗОЛЬ! НЕ ВХОДИ!', '#ffffff', '#d0021b'],
-      AUTO_OFF:['АВТОМАТИКА ОТКЛЮЧЕНА', '#ffffff', '#1d7d2e'], DT:['ДТ', '#f9a800', '#000000'] }[id];
+    if (id==='P06'){   // «Доступ посторонним запрещён»: человек с поднятой рукой под запрещающим знаком
+      g.fillStyle='#ffffff'; g.beginPath(); g.arc(W/2, H/2, s*0.48, 0, Math.PI*2); g.fill(); g.fillStyle='#000000';
+      g.beginPath(); g.arc(W*0.5, H*0.27, s*0.075, 0, Math.PI*2); g.fill();
+      g.fillRect(W*0.44, H*0.36, W*0.12, H*0.3); g.fillRect(W*0.44, H*0.64, W*0.05, H*0.17); g.fillRect(W*0.51, H*0.64, W*0.05, H*0.17);
+      g.save(); g.translate(W*0.56, H*0.38); g.rotate(-0.9); g.fillRect(0, -s*0.025, s*0.2, s*0.05); g.restore();
+      g.strokeStyle='#c8102e'; g.lineWidth=s*0.09; g.beginPath(); g.arc(W/2, H/2, s*0.43, 0, Math.PI*2); g.stroke();
+      g.beginPath(); g.moveTo(W/2-s*0.3, H/2-s*0.3); g.lineTo(W/2+s*0.3, H/2+s*0.3); g.stroke(); return; }
+    if (id==='CAT'){   // табличка на двери: категория помещения по пожарной опасности, класс зоны по ПУЭ
+      g.fillStyle='#ffffff'; this.rr(g, 0, 0, W, H, s*0.05); g.fill(); g.strokeStyle='#111111'; g.lineWidth=s*0.035; this.rr(g, s*0.04, s*0.04, W-s*0.08, H-s*0.08, s*0.03); g.stroke();
+      this.rows(g, W, H, [['КАТЕГОРИЯ', 0.14, '#111111'], [String(d.cat||''), 0.4, '#c8102e'], [d.zone ? 'КЛАСС ЗОНЫ '+d.zone : 'ПО ПОЖАРНОЙ ОПАСНОСТИ', 0.13, '#111111']]); return; }
+    // табло и надписи: [строки, фон, цвет текста]; табло — в две строки (читается издалека)
+    const T={ EXIT:[['ВЫХОД'], '#00843d', '#ffffff'], POW_OUT:[['ПОРОШОК!', 'УХОДИ!'], '#ffffff', '#d0021b'], POW_NO:[['ПОРОШОК!', 'НЕ ВХОДИ!'], '#ffffff', '#d0021b'],
+      AUTO_OFF:[['АВТОМАТИКА', 'ОТКЛЮЧЕНА'], '#ffffff', '#0b6b22'], DT:[['ДТ'], '#f9a800', '#000000'], OPS:[['ОПС'], '#ffffff', '#c8102e'] }[id];
     if (!T) return;
     g.fillStyle=T[1]; this.rr(g, 0, 0, W, H, s*0.08); g.fill();
     if (T[1]==='#ffffff'){ g.strokeStyle='rgba(0,0,0,0.25)'; g.lineWidth=s*0.04; this.rr(g, s*0.03, s*0.03, W-s*0.06, H-s*0.06, s*0.06); g.stroke(); }
-    this.text(g, T[0], W/2, H/2+s*0.03, W*0.9, H*0.62, 900, T[2]);
+    this.rows(g, W, H, T[0].length>1 ? T[0].map(t=>[t, 0.36, T[2]]) : [[T[0][0], 0.62, T[2]]]);
   }
   /** пламя (условное): капля с языком */
   static flame(g, x, y, s, color){

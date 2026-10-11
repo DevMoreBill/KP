@@ -5,7 +5,7 @@
 'use strict';
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..');
-for (const f of ['logistics-calc.js', 'station-layout.js', 'station-eskd.js', 'station-draw.js', 'station-outfit.js', 'station-render.js', 'station-decal.js']){
+for (const f of ['logistics-calc.js', 'station-layout.js', 'station-systems.js', 'station-eskd.js', 'station-draw.js', 'station-outfit.js', 'station-render.js', 'station-decal.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 
 class Check {
@@ -787,7 +787,15 @@ Check.run('3D-вид (WebGL): сцена, камера, свет', ()=>{
 
 Check.run('3D: оснащение — пожарная безопасность, свет, двери с доводчиками, знаки, логотипы', ()=>{
   const all={ power:true, light:true, heat:true, vent:true, ops:true, fire:true };
-  const ks=solve(C('block', { sizeAuto:true, sys:all, roof:'gable' }), [comp, dryer, rec, flt, cab, P('Трубопровод', {}, { pipeMat:'steel' })]); Check.plan(ks, 'оснащение');
+  const ks=StationLayout.solve({ cont:C('block', { sizeAuto:true, sys:all, roof:'gable' }), parts:[comp, dryer, rec, flt, cab, P('Трубопровод', {}, { pipeMat:'steel' })], req:{ kind:'comp', fire:'В4' } }); Check.plan(ks, 'оснащение');
+  // расчёт пожарной безопасности: модули «Буран-2,5» по площади и объёму с затенением, огнетушители, выход
+  const F=ks.fire, q=F.rooms[0];
+  assert.ok(F.auto && F.ops && F.cls==='B' && F.cat==='В4' && !F.zone, 'пожаротушение и сигнализация, класс пожара B (масло), категория без класса зоны');
+  assert.ok(q.n===Math.ceil(Math.max(q.nS, q.nV)-1e-6) && q.n>=2 && q.mods.length===q.n && q.k2>1, 'модули: число по большему из расчётов, затенение оборудованием');
+  assert.ok(Math.abs(q.nS-q.area/7*1.2*q.k2)<1e-9 && Math.abs(q.nV-q.vol/16*1.2*q.k2)<1e-9, 'модули: N = S/7·1,2·k2 и V/16·1,2·k2');
+  assert.ok(q.mods.every(m=>m.x>q.x0 && m.x<q.x1 && m.y>0 && m.y<ks.int[1]), 'модули — над помещением');
+  assert.ok(F.ext===2 && F.exit && F.exit.wall==='front' && F.exit.top===StationLayout.DOOR.h, 'два огнетушителя, выход — входная дверь');
+  assert.ok(StationFire.tt(ks).length===4 && /Буран-2,5/.test(StationFire.autoText(F)), 'тексты ТЗ');
   for (const view of ['in', 'out']){
     const sc=new StScene(ks, { view }).build(), D=[...sc.decals.values()];
     for (const { mat, mesh } of sc.groups.values()){
@@ -798,11 +806,17 @@ Check.run('3D: оснащение — пожарная безопасность,
     if (view==='in'){
       assert.ok(sc.cut && D.some(d=>d.type==='logo' && d.maker==='Dalgakiran' && d.ar>1), 'логотип производителя на оборудовании');
       const ext=sc.outfit.log.filter(q=>q.kind==='ext'); assert.ok(ext.length>=1 && ext.every(q=>q.top<=StOutfit.EXT), 'огнетушители: верх не выше 1,5 м');
-      for (const id of ['F04', 'EXIT', 'AERO_OUT']) assert.ok(D.some(d=>d.id===id), 'знак '+id);
+      for (const id of ['F04', 'EXIT', 'POW_OUT', 'OPS']) assert.ok(D.some(d=>d.id===id), 'знак '+id);
+      assert.strictEqual(sc.outfit.log.filter(q=>q.kind==='buran').length, F.mods, 'модули «Буран-2,5» на потолке — по расчёту');
+      const ex=sc.outfit.log.find(q=>q.kind==='board' && q.id==='EXIT');
+      assert.ok(ex && ex.wall==='front' && Math.abs(ex.u-F.exit.u)<=250 && ex.z0>=F.exit.top, 'табло «Выход» — над входной дверью');
+      const op=sc.outfit.log.find(q=>q.kind==='ops'); assert.ok(op && op.seen, 'щит ОПС — на видном месте');
+      assert.ok(ext.length===2 && ext.every(q=>q.at[1]>sc.oy+0.05), 'огнетушители видны: не на срезанной стене');
       const hs=ks.heat.heaters.filter(h=>h.wall!=='front'); assert.strictEqual(sc.outfit.log.filter(q=>q.kind==='heater').length, hs.length, 'конвекторы — на местах из расчёта');
     } else {
       assert.ok(!sc.cut && sc.closed && sc.openF.some(o=>o.kind==='entry'), 'снаружи: стена с входной дверью');
-      for (const id of ['W08', 'AERO_NO', 'AUTO_OFF']) assert.ok(D.some(d=>d.id===id), 'снаружи — '+id);
+      for (const id of ['W08', 'P06', 'POW_NO', 'AUTO_OFF']) assert.ok(D.some(d=>d.id===id), 'снаружи — '+id);
+      assert.ok(D.some(d=>d.id==='CAT' && d.cat==='В4' && !d.zone), 'снаружи — табличка категории на входной двери');
       assert.ok(sc.tris()<new StScene(ks, {}).build().tris(), 'снаружи внутреннее не строится'); }
     const b=sc.bounds(); assert.ok(b.hi[2]>=sc.top+sc.rise-1e-9, view+': крыша в кадре');
   }
@@ -810,7 +824,9 @@ Check.run('3D: оснащение — пожарная безопасность,
   const dgm=Object.assign({}, dgu, { attrs:{ ...dgu.attrs, maker:'AKSA' } }), dg=solve(C('block', { sizeAuto:true }), [dgm, ats, P('Глушитель на крыше', {}), P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'1000 л' }] })]);
   const so=new StScene(dg, { view:'out' }).build(), Do=[...so.decals.values()];
   assert.ok(so.openF.some(o=>o.kind==='tank') && ['W01', 'P02', 'DT'].every(id=>Do.some(d=>d.id===id)), 'отсек бака снаружи: дверь и знаки');
-  const si=new StScene(dg, {}).build(); assert.ok(si.outfit.log.filter(q=>q.kind==='ext').length>=3, 'огнетушители: у входа, у ДГУ, в отсеке бака');
+  assert.ok(Do.some(d=>d.id==='CAT' && d.cat==='В1' && d.zone==='П-I'), 'отсек бака: табличка «Категория В1, класс зоны П-I»');
+  assert.ok(dg.fire.rooms.length===2 && dg.fire.ext===3 && !dg.fire.auto && dg.fire.mods===0, 'ДГУ с отсеком: огнетушители в двух помещениях, без пожаротушения — модулей нет');
+  const si=new StScene(dg, {}).build(); assert.ok(dg.fire.ext===3 && si.outfit.log.filter(q=>q.kind==='ext').length>=2, 'огнетушители: у входа, у ДГУ, в отсеке бака (у ДГУ и в отсеке — видны)');
   assert.ok([...si.decals.values()].some(d=>d.type==='logo' && d.maker==='AKSA'), 'логотип ДГУ — на радиаторе');
   const byName=new StScene(solve(C('block', { sizeAuto:true }), [dgu, ats]), { makers:{ [dgu.id]:'AKSA' } }).build();   // производитель из названия (в браузере — по каталогу логотипов)
   assert.ok([...byName.decals.values()].some(d=>d.type==='logo' && d.maker==='AKSA'), 'производитель по названию');
@@ -821,6 +837,24 @@ Check.run('3D: оснащение — пожарная безопасность,
   // морской (в торце — его двери): горловина бака — в задней стене за баком, не на двери отсека
   const sf=solve(C('sea40'), [dgu, ats, P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'1000 л' }] })]).fuel;
   assert.ok(sf.fill.wall==='back' && sf.fill.x>0 && sf.fill.x<sf.x1, 'горловина морского — в задней стене отсека');
+});
+
+Check.run('системы: освещение, розетки, нагрузки и вводной автомат', ()=>{
+  const ks=StationLayout.solve({ cont:C('block', { sizeAuto:true, sys:{ power:true, light:true, heat:true, vent:true, ops:true } }), parts:[comp, dryer, rec, cab], req:{ kind:'comp', fire:'В4' } });
+  const Lt=ks.light; assert.ok(Lt.on && Lt.n>=2 && Lt.E>=StationLight.LUX && Lt.em===Math.ceil(Lt.n/2), 'освещение: не ниже нормы, аварийное — половина светильников');
+  assert.ok(Lt.n>=Math.ceil(StationLight.LUX*Lt.area*StationLight.KZ/(StationLight.LAMP.lm*Lt.eta)-1e-9), 'число светильников — методом коэффициента использования');
+  assert.ok(StationLight.eta(1)===0.51 && StationLight.eta(0.1)===0.34 && StationLight.eta(9)===0.76 && Math.abs(StationLight.eta(0.9)-0.485)<1e-9, 'коэффициент использования — по индексу помещения');
+  const K=ks.sockets; assert.ok(K.n230>=2 && K.n380===1 && K.ytp===1 && K.z===1000, 'сервисные розетки');
+  const W=ks.power; assert.ok(W.inst>=37 && W.kw>=37 && W.kw<=W.inst && W.mode==='run', 'расчётная мощность — при работе компрессора');
+  assert.ok(Math.abs(W.amp-W.kw*1000/(Math.sqrt(3)*400*0.85))<0.06 && W.breaker>=W.amp*1.25 && StationPower.BREAKERS.includes(W.breaker), 'ток и вводной автомат');
+  const two=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[Object.assign({}, comp, { qty:2 })], req:{ kind:'comp', res:1 } }).power;
+  assert.ok(two.list.some(q=>/резервный/.test(q.name) && q.kc===0) && two.run<2*37, 'резервный компрессор — без нагрузки');
+  const dg=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[dgu, ats] }).power;
+  assert.ok(dg.dgu && dg.list.some(q=>/Подогреватель/.test(q.name) && q.idle && !q.run) && !dg.list.some(q=>/Компрессор/.test(q.name)), 'ДГУ — собственные нужды, подогреватель в простое');
+  assert.ok(StationPower.lines(W).length===2 && /вводной автомат — \d+ А/.test(StationPower.lines(W)[1]), 'строки итога');
+  assert.ok(/около \d+ лк/.test(StationLight.text(Lt)) && /светильника|светильников/.test(StationLight.text(Lt)) && /ЯТП-0,25/.test(StationSockets.text(K)), 'тексты ТЗ');
+  for (const [n, w] of [[21, '21 модуль'], [12, '12 модулей'], [3, '3 модуля'], [5, '5 модулей']]) assert.strictEqual(StationFire.pl(n, ['модуль', 'модуля', 'модулей']), w);
+  const sc=new StScene(ks, {}).build(); assert.ok(sc.outfit.log.some(q=>q.kind==='socket'), '3D: розетки на стенах');
 });
 
 Check.run('цвет по фото: фон убирается, главный цвет корпуса', ()=>{
