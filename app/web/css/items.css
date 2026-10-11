@@ -270,6 +270,8 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .chip.stl-chip.warn{border-color:var(--warn-line);background:var(--warn-bg);color:var(--warn-ink)}
 .chip.stl-chip.bad{border-color:var(--danger);color:var(--danger)}
 .kit-szn{margin:4px 0 0;font-size:12.5px}
+/* трубопроводная обвязка в составе станции: материал и условный проход */
+.kit-pp{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 12px;margin:6px 0 4px}
 @media (max-width:900px){ .stl-views{grid-template-columns:1fr} }
 
 /* 3.23: окно автозаполнения — шапка, источники карточками, понятные шаги */
