@@ -254,7 +254,8 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .stl-iss li.warn::before{content:'⚠'}
 .stl-iss li.info{color:var(--muted)}
 .stl-iss li.info::before{content:'i';font-style:italic;font-family:Georgia,serif;left:6px}
-.stl-views{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:12px;align-items:start}
+.stl-views{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+.stl-views .v3d{grid-column:1/-1}
 .stl-views figure{margin:0;display:grid;gap:6px;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .stl-views figcaption{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;font-size:13px}
 .stl-views img{display:block;width:100%;height:auto;background:#fff;border-radius:6px}

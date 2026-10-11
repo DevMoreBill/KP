@@ -156,7 +156,7 @@ async function renderDocx(St, pack, settings){
       zip.file(`word/media/${fnm}`, b64(du), {base64:true});
       const L=linkOf(x,g);
       if (L.kind==='feat') m.featImgs[L.f.id]={file:fnm, w:g.w, h:g.h};
-      else m.gallery.push({file:fnm, w:g.w, h:g.h, caption:(g.caption||'').trim() || (L.kind==='group'?L.name:''), wide:galWide(g), sheet:g.gen==='stdraw'}); }
+      else m.gallery.push({file:fnm, w:g.w, h:g.h, caption:(g.caption||'').trim() || (L.kind==='group'?L.name:''), wide:galWide(g), sheet:g.gen==='stdraw' || g.gen==='stschema'}); }
     Min.items[x.id]=m; }
   // дополнительные картинки шаблона и шапка из настроек (если скелет это умеет)
   const feats=pack.skel.features||[];
