@@ -233,7 +233,8 @@ async function download(){
     btn.textContent='Сохраняю в журнал…';
     await syncCatalog(S.number); await saveClient(true);
     for (const it of S.items){ it.photo=await ImgUpload.put(it.photo, imgPlace(it,'photo')); it.logo=await ImgUpload.put(it.logo, imgPlace(it,'logo')); if (it.gallery) for (const g of it.gallery){ const u=await ImgUpload.put(g, imgPlace(it,'gallery',g)); if(u) g.src=u.src; }
-      for (const p of kitParts(it)) if (p.photo) p.photo=await ImgUpload.put(p.photo, imgPlace(it,'gallery',{caption:p.name})); }
+      for (const p of kitParts(it)){ if (p.photo) p.photo=await ImgUpload.put(p.photo, imgPlace(it,'gallery',{caption:p.name})); if (p.draw) p.draw=await DrawPic.upload(p.draw, it, p.name); }
+      if (it.draw) it.draw=await DrawPic.upload(it.draw, it); }
     if (!S.managerId && String(S.manager.name||'').trim()) await saveManager(true);   // новый менеджер попадает в справочник
     if (!S.authorId) S.authorId=meId()||S.managerId||'';
     const t=totalsS(), fn=fileName();

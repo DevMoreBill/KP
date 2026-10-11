@@ -39,6 +39,12 @@ class StationUi {
   /** что вставлять в КП: 3D-вид главным фото, чертёж — в изображения (по умолчанию да); схема — только если включили */
   static opts(x){ const o=x.stLayout||{}; return { photo:o.photo!==false, draw:o.draw!==false, scheme:o.scheme===true, air:/^[1-6]\.[1-6]\.[1-4]$/.test(String(o.air||'')) ? o.air : '' }; }
   static url(svg){ return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg); }
+  /** схема станции: компрессорная — пневматическая, насосная — гидравлическая */
+  static scheme(plan){
+    if (StationScheme.ok(plan)) return { cls:StationScheme, title:'Схема пневматическая', name:'Схема пневматическая принципиальная' };
+    if (HydroScheme.ok(plan)) return { cls:HydroScheme, title:'Схема гидравлическая', name:'Схема гидравлическая принципиальная' };
+    return null;
+  }
 
   // ---- вкладка «Компоновка»
   static tab(x, i){
@@ -60,11 +66,14 @@ class StationUi {
     // замечания — все; сведения — первые два, остальные по раскрытию (окно не перегружено)
     const li=t=>`<li class="${t.level}">${esc(t.text)}</li>`, more=info.slice(2);
     const pics=plan.level!=='error' && g.ext, meta=this.meta(x, plan), photoOn=x.photo ? x.photo.gen==='st3d' : o.photo;
+    if (pics && !EskdSheet.FONT_DATA) EskdFont.load().then(ok=>{ if (ok) renderEditor(); });   // чертёж — встроенным шрифтом, как в КП
+    if (pics && typeof DrawPic!=='undefined' && DrawPic.pending(x)) DrawPic.load(x).then(ch=>{ if (ch) renderEditor(); });   // свои рисунки моделей
     StationImages.soon(x);
     // 3D-вид: готовый (WebGL) — сразу; пока рисуется — прежний SVG-вид, затем картинка подменяется
     const r3=pics ? StationRender.cached(plan) : null, src3=pics ? (r3 ? r3.src : this.url(StationView3D.svg(plan, meta))) : '';
     if (pics && !r3) StationRender.image(plan, meta).then(im=>{ if (im) for (const el of document.querySelectorAll('img[data-st3d]')) if (el.dataset.st3d===plan.hash) el.src=im.src; });
     const cutCab=plan.items.some(t=>t.mount==='wall' && t.wall==='front') && !(plan.door==='service' && (plan.doors||[]).some(d=>d.wall!=='back'));   // стена прохода срезана
+    const sch=this.scheme(plan);
     return `<div class="ed-sec stl">
       <div class="stl-st ${head[0]}"><b>${head[1]}</b><span>${dims}${this.sizeNote(c, i)}</span>${plan.suggest ? this.fix(plan.suggest, i) : ''}</div>
       ${top.length || info.length ? `<ul class="stl-iss">${[...top, ...info.slice(0, 2)].map(li).join('')}</ul>` : ''}
@@ -75,8 +84,8 @@ class StationUi {
           <img src="${esc(src3)}" data-st3d="${esc(plan.hash||'')}" alt="3D-вид станции">${cutCab ? '<small class="stl-note">Стена прохода срезана вместе со шкафами на ней — их место на чертеже.</small>' : ''}</figure>
         <figure class="dr"><figcaption><b>Габаритный чертёж</b><label class="stl-chk"><input type="checkbox" data-stl="draw" data-i="${i}"${o.draw ? ' checked' : ''}> в КП — после характеристик</label></figcaption>
           <img src="${esc(this.url(StationDrawing.svg(plan, meta)))}" alt="Габаритный чертёж станции"></figure>
-        ${StationScheme.ok(plan) ? `<figure class="dr"><figcaption><b>Схема пневматическая</b><label class="stl-chk"><input type="checkbox" data-stl="scheme" data-i="${i}"${o.scheme ? ' checked' : ''}> в КП — после чертежа</label></figcaption>
-          <img src="${esc(this.url(StationScheme.svg(plan, meta)))}" alt="Схема пневматическая принципиальная"></figure>` : ''}</div>` : ''}
+        ${sch ? `<figure class="dr"><figcaption><b>${esc(sch.title)}</b><label class="stl-chk"><input type="checkbox" data-stl="scheme" data-i="${i}"${o.scheme ? ' checked' : ''}> в КП — после чертежа</label></figcaption>
+          <img src="${esc(this.url(sch.cls.svg(plan, meta)))}" alt="${esc(sch.name)}"></figure>` : ''}</div>` : ''}
       ${this.how()}</div>`;
   }
   static rank(t){ return { error:0, warn:1, info:2 }[t.level] ?? 3; }
@@ -191,11 +200,13 @@ class StationImages {
     x.gallery=Array.isArray(x.gallery) ? x.gallery : [];
     const none=plan.level==='none' || plan.level==='error' || !plan.geo || !plan.geo.ext;   // нечего рисовать — прежние картинки не годятся
     if ((!o.photo || none) && x.photo && x.photo.gen==='st3d'){ x.photo=null; ch=true; }
-    const off={ stdraw:!o.draw || none, stschema:!o.scheme || none || !StationScheme.ok(plan) };
+    const sch=StationUi.scheme(plan), off={ stdraw:!o.draw || none, stschema:!o.scheme || none || !sch };
     for (const gen of Object.keys(off)){ const k=x.gallery.findIndex(g=>g && g.gen===gen); if (off[gen] && k>=0){ x.gallery.splice(k, 1); ch=true; } }
     if (none) return ch;
     this.busy.add(x.id);
     try{
+      await EskdFont.load();   // шрифт чертежей — встраивается в листы
+      if (typeof DrawPic!=='undefined') await DrawPic.load(x);   // свои рисунки моделей — тоже внутрь листа
       const meta=StationUi.meta(x, plan), h=plan.hash, hd=this.key(plan, meta);   // на 3D-виде надписей нет; на чертеже — название
       if (o.photo && x.photo && x.photo.gen!=='st3d' && this.partPhoto(x)){ x.photo=null; ch=true; }
       // 3D-вид WebGL (отпечаток с «.g») не заменяется SVG-видом на компьютере без WebGL2
@@ -203,9 +214,10 @@ class StationImages {
       if (o.photo && (!x.photo || x.photo.gen==='st3d') && !fresh){
         const gl=await StationRender.image(plan, meta), im=gl || await this.raster(StationView3D.svg(plan, meta), 'image/jpeg');
         x.photo={ ...im, gen:'st3d', hash:gl ? h+'.g' : h }; ch=true; }
-      // листы ЕСКД: габаритный чертёж и схема пневматическая (компрессорная) — изображениями после характеристик, по порядку
+      // листы ЕСКД: габаритный чертёж и схема (пневматическая — компрессорная, гидравлическая — насосная) — изображениями после
+      // характеристик, по порядку
       for (const [gen, on, svg, caption] of [['stdraw', o.draw, ()=>StationDrawing.svg(plan, meta), 'Габаритный чертёж'],
-        ['stschema', !off.stschema, ()=>StationScheme.svg(plan, meta), 'Схема пневматическая принципиальная']]){
+        ['stschema', !off.stschema, ()=>sch.cls.svg(plan, meta), sch ? sch.name : '']]){
         const j=x.gallery.findIndex(g=>g && g.gen===gen); if (!on || (j>=0 && x.gallery[j].hash===hd)) continue;
         const im=await this.raster(svg(), 'image/png'), old=j>=0 ? x.gallery[j] : null;
         const g={ id:old ? old.id : uid(), ...im, caption, slot:'', at:'', on:old ? old.on!==false : true, wide:'full', gen, hash:hd };
@@ -234,7 +246,7 @@ class StationImages {
     return { src:c.toDataURL(type, 0.9), w, h };
   }
   /** отпечаток листов: расстановка и надписи на них (название станции, контейнер, цвет, основная надпись) */
-  static key(plan, meta){ return plan.hash+'.'+StationLayout.fnv(JSON.stringify([meta.title, meta.cont, meta.colorText, meta.org, meta.dev, meta.date, plan.air ? plan.air.cls : ''])); }
+  static key(plan, meta){ return plan.hash+'.'+StationLayout.fnv(JSON.stringify([meta.title, meta.cont, meta.colorText, meta.org, meta.dev, meta.date, plan.air ? plan.air.cls : '', EskdSheet.FONT_DATA ? 'osi' : ''])); }
   /** менеджер убрал сгенерированную картинку сам — больше её не вставлять */
   static forget(x, what){ if (!x) return; x.stLayout={ ...StationUi.opts(x), [what]:false }; }
   /** главное фото станции — копия фото элемента состава */

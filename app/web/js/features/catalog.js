@@ -6,7 +6,8 @@ const CatSrv = {
   async get(id){ return await api('/api/catalog/'+encodeURIComponent(id)); },
   async full(){ return await api('/api/catalog?full=1'); },
   // auto — сохранение КП обновляет цены и историю (без модерации); при включённой модерации ответ {pending:true}
-  async put(doc, auto){ doc={...doc, photo:await ImgUpload.put(doc.photo, imgPlace(doc,'photo')), logo:await ImgUpload.put(doc.logo, imgPlace(doc,'logo')), gallery: doc.gallery ? await Promise.all(doc.gallery.map(async g=>({...g, ...(await ImgUpload.put(g, imgPlace(doc,'gallery',g)))}))) : doc.gallery};
+  async put(doc, auto){ doc={...doc, photo:await ImgUpload.put(doc.photo, imgPlace(doc,'photo')), logo:await ImgUpload.put(doc.logo, imgPlace(doc,'logo')), gallery: doc.gallery ? await Promise.all(doc.gallery.map(async g=>({...g, ...(await ImgUpload.put(g, imgPlace(doc,'gallery',g)))}))) : doc.gallery,
+      draw: doc.draw ? await DrawPic.upload(doc.draw, doc) : doc.draw};
     // _rev — с какой правки позиции начинали: если её успели изменить, сервер ответит «конфликт» (api спросит, перезаписать ли)
     const r=await api('/api/catalog/'+doc.id,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8',...(auto?{'X-KP-Edit':'auto'}:{}),...(doc._rev!=null?{'X-KP-Rev':String(doc._rev)}:{})},body:JSON.stringify({...doc,_rev:undefined})});
     if (r && r.pending) doc._pending=true;

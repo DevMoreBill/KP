@@ -24,6 +24,7 @@ function itemToDoc(it, base){
     options:(it.options||[]).filter(o=>o.name).map(({_priceText,...o})=>o),
     price:it.price||0, priceCur:it.priceCur||'RUB', cost:it.cost||0, costCur:it.costCur||'RUB' });
   if (isKit(it)) d.kit={parts:kitParts(it).map(({_costText,...p})=>cl(p))}; else delete d.kit;
+  if (it.draw && (it.draw.front || it.draw.top)) d.draw=cl(it.draw); else delete d.draw;   // свой рисунок для габаритного чертежа
   CAT_TMP_KEYS.forEach(k=>delete d[k]);
   if (JSON.stringify(d.photo||null)!==JSON.stringify(base.photo||null)) delete d.photoFrom;   // своё фото вместо фото похожей модели
   return d;
