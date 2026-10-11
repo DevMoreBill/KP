@@ -369,8 +369,9 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .kr-pick{display:flex;align-items:flex-start;gap:8px;margin:8px 0 0;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);font-size:12.5px;line-height:1.4}
 .kr-pick>span{flex:1 1 auto;min-width:0}
 .kr-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px 10px}
-.kit-req .chk{display:flex;align-items:flex-start;gap:8px;font-size:13px}
-.kit-req .chk input{margin-top:3px}
+.kit-req .chk{display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:0;border:0;border-radius:0;background:none}   /* не карточка проверки контрагента */
+.kit-req .chk input{margin-top:3px;width:auto;flex:0 0 auto}
+.kr-opts{display:flex;flex-wrap:wrap;gap:6px 18px}
 .kr-n textarea{width:100%}
 .kit-cont{display:grid;gap:8px;padding:10px 12px;border:1px solid var(--navy);border-radius:12px;background:var(--card)}
 .kc-g{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,.8fr) minmax(0,1.2fr) minmax(0,1.1fr);gap:8px 10px}

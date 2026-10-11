@@ -22,6 +22,18 @@ class StationReq {
   static RES = [['', 'без резерва'], ['1', 'N + 1'], ['2', 'N + 2']];
   static WORK = [['', 'по подбору'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']];
   static LOSS = { dryer:0.2, filter:0.1 };   // потери давления, бар: осушитель, ступень фильтра (чистый картридж)
+  // особые требования ТЗ: ключ, подпись, виды станций; АВР и диспетчеризация — шкафы в составе
+  static OPTS = [['oilFree', 'Безмасляный компрессор (класс 0 по маслу)', ['comp']], ['vsd', 'Частотное регулирование', ['comp', 'pump']],
+    ['ats', 'Два ввода питания с АВР', ['comp', 'pump', 'dgu']], ['scada', 'Диспетчеризация — шкаф АСУ ТП', ['comp', 'pump', 'dgu']]];
+  static ATS = /АВР|ввод\S*\s+резерв/i;
+  static SCADA = /АСУ\s?ТП|диспетчер/i;
+  /** шкафы АВР и АСУ ТП по требованиям — добавить, если их нет; ответ — названия добавленного */
+  static ensureParts(x){
+    const r=this.of(x), P=kitParts(x), has=re=>P.some(p=>re.test(String(p.name||''))), out=[];
+    if (r.ats && !has(this.ATS)){ const p=StationDefaults.part(x, 'Шкаф АВР (автоматический ввод резерва)'); p.attrs={ cat:'ats' }; P.push(p); out.push(p.name); }
+    if (r.scada && !has(this.SCADA)){ const p=StationDefaults.part(x, 'Шкаф АСУ ТП (автоматизация и диспетчеризация)'); P.push(p); out.push(p.name); }
+    return out;
+  }
   /** вид станции: comp — компрессорная, dgu — ДГУ, pump — насосная */
   static kind(x){ const id=String(attrsOf(x).cat||''); return /comp/.test(id) ? 'comp' : /dgu/.test(id) ? 'dgu' : /pump/.test(id) ? 'pump' : ''; }
   static of(x){ return (x && x.req && typeof x.req==='object') ? x.req : {}; }
@@ -59,6 +71,10 @@ class StationReq {
       if (bar>0){ const pm=Math.max(0, ...U.map(p=>AirChain.bar(p)||0)), loss=this.loss(P), o=Math.round((pm-loss)*10)/10;
         if (pm) out.push({ ok:o>=bar, text:loss ? `давление на выходе ≈ ${n(o)} бар (компрессор ${n(pm)}, потери в подготовке воздуха ≈ ${n(loss)}) — ${o>=bar ? 'не меньше' : 'меньше'} ${n(bar)}`
           : `давление ${n(pm)} бар — ${pm>=bar ? 'не меньше' : 'меньше'} ${n(bar)}` }); } }
+    if (k==='comp' && r.oilFree){ const U=units('compressor'), bad=U.filter(p=>!TzPick.oilFree(p)).length;
+      if (U.length) out.push({ ok:!bad, text:bad ? 'компрессор не безмасляный — по ТЗ класс 0 по маслу' : 'компрессоры безмасляные' }); }
+    if (r.ats && !P.some(p=>this.ATS.test(String(p.name||'')))) out.push({ ok:false, text:'нет шкафа АВР — по ТЗ два ввода питания' });
+    if (r.scada && !P.some(p=>this.SCADA.test(String(p.name||'')))) out.push({ ok:false, text:'нет шкафа АСУ ТП — по ТЗ диспетчеризация' });
     if (k==='dgu'){ const U=units('dgu'), kw=U.map(p=>StationEquip.num((p.attrs||{}).kw)||0), need=this.num(r.kw), h=this.num(r.hours);
       if (need>0) out.push(enough(kw, need, 'мощность', 'кВт'));
       // работа от бака: топливо в баках станции (и в баке ДГУ, если указан) при нагрузке 75 % рабочих ДГУ
@@ -81,7 +97,8 @@ class StationReq {
     const main=k==='comp' ? [u(r.flow, 'м³/мин'), u(r.pressure, 'бар'), cls ? 'класс '+cls : ''] : k==='dgu' ? [u(r.kw, 'кВт')] : k==='pump' ? [u(r.q, 'м³/ч'), u(r.head, 'м')] : [];
     const t=[r.tmin!=null && r.tmin!=='' ? `от ${r.tmin} °C` : '', r.tmax!=null && r.tmax!=='' ? `до ${r.tmax} °C` : ''].filter(Boolean).join(' ');
     const w=this.num(r.work), rs=this.num(r.reserve);
-    return [...main, w>0 ? `${w} раб.${rs>0 ? ' + '+rs+' рез.' : ''}` : rs>0 ? 'резерв N+'+rs : '', t, r.src && r.src.name ? 'по ТЗ «'+r.src.name+'»' : ''].filter(Boolean).join(' · ');
+    const opt=[r.oilFree && k==='comp' ? 'безмасляный' : '', r.vsd && k!=='dgu' ? 'частотное регулирование' : '', r.ats ? 'два ввода с АВР' : '', r.scada ? 'диспетчеризация' : ''];
+    return [...main, w>0 ? `${w} раб.${rs>0 ? ' + '+rs+' рез.' : ''}` : rs>0 ? 'резерв N+'+rs : '', t, ...opt, r.src && r.src.name ? 'по ТЗ «'+r.src.name+'»' : ''].filter(Boolean).join(' · ');
   }
 
   /** блок «Требования заказчика»: свёрнут — строка и проверки; развёрнут — поля */
@@ -106,6 +123,7 @@ class StationReq {
         ${sel('fire', 'Категория помещения (СП 12.13130)', this.FIRE.map(f=>[f, f+(f===this.fireDef(x) ? ' (ориент.)' : '')]), this.fire(x))}
         ${fld('noise', 'Шум на рабочем месте, не более дБА', '80', 'numeric')}</div>
       ${k==='comp' ? `<label class="chk kr-out"><input type="checkbox" data-req="${i}" data-rk="recvOut"${this.recvOut(x) ? ' checked' : ''}> Ресивер после подготовки — снаружи, на площадке у торца <span class="muted">(ФНП ОРПД, п. 65)</span></label>` : ''}
+      <div class="kr-opts">${this.OPTS.filter(([, , kinds])=>kinds.includes(k)).map(([key, label])=>`<label class="chk"><input type="checkbox" data-req="${i}" data-rk="${key}"${r[key] ? ' checked' : ''}> ${esc(label)}</label>`).join('')}</div>
       <label class="chk" title="${esc(SupplyDocs.list(x).join('; '))}"><input type="checkbox" data-req="${i}" data-rk="docs"${this.docs(x) ? ' checked' : ''}> Документы при поставке — в КП <span class="muted">(паспорта, декларации ТР ТС 010, 004, 020, 032, исполнительная документация)</span></label>
       ${r.notes ? `<label class="f kr-n"><span>Прочие требования из ТЗ</span><textarea rows="3" data-p="${P}.notes" data-req="${i}">${esc(r.notes)}</textarea></label>` : ''}</div>`;
   }
@@ -114,6 +132,7 @@ class StationReq {
     const i=+t.dataset.req, x=S.items[i]; if (!x) return; const r=this.ensure(x), k=t.dataset.rk;
     if (k) r[k]=t.type==='checkbox' ? t.checked : t.value;
     if (k==='recv' || k==='recvOut'){ StationUi.cache.delete(x.id); StationSize.apply(x, true); }
+    if ((k==='ats' || k==='scada') && t.checked){ const a=this.ensureParts(x); if (a.length){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); toast('Добавлено в состав: '+a.join(', ')); } }
     persist(); renderForm();
   }
 }

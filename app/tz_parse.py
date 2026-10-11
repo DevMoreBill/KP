@@ -72,6 +72,7 @@ class TzParse:
             self.receiver()
         self.container()
         self.systems()
+        self.options()
         self.notes()
 
     def kind(self):
@@ -261,6 +262,32 @@ class TzParse:
         m = self.first(r'паспорт\w*|сертификат\w*|деклараци\w*|ТР\s*ТС|исполнительн\w*\s+документац')
         if m:
             self.put('docs', True, m, 'Документы при поставке')
+
+    OPTIONS = (
+        ('oilFree', ('comp',), r'безмасл\w*|oil[\s-]?free|класс\w*\s+0\s+по\s+масл', 'Безмасляный компрессор (класс 0 по маслу)'),
+        ('vsd', ('comp', 'pump'), r'частотн\w*\s+(?:регулировани|преобразовател|привод|управлени)|преобразовател\w*\s+частот|'
+                                  + NOT_LETTER + r'(?:ПЧ|VSD)' + END_LETTER + r'|инверторн\w*', 'Частотное регулирование'),
+        ('ats', ('comp', 'pump', 'dgu'), NOT_LETTER + r'АВР' + END_LETTER + r'|автоматическ\w*\s+(?:включени\w*|ввод\w*)\s+резерв|'
+                                         r'(?:два|двух|2)\s+(?:независим\w+\s+)?ввод|(?<![IІ])I\s+категори\w*\s+(?:по\s+)?(?:надёжн|надежн|электроснабж)|'
+                                         r'перв\w+\s+категори\w*\s+(?:по\s+)?(?:надёжн|надежн|электроснабж)', 'Два ввода питания с АВР'),
+        ('scada', ('comp', 'pump', 'dgu'), r'диспетчер\w*|' + NOT_LETTER + r'(?:SCADA|АСУ\s?ТП|Modbus|Profinet|Profibus|OPC)' + END_LETTER
+                                           + r'|удал[её]нн\w+\s+(?:мониторинг|контрол|управлени)', 'Диспетчеризация (шкаф АСУ ТП)'),
+    )
+
+    def options(self):
+        """особые требования: безмасляный компрессор, частотное регулирование, АВР (два ввода), диспетчеризация"""
+        k = self.req.get('kind')
+        for key, kinds, rx, label in self.OPTIONS:
+            if k in kinds:
+                m = next((x for x in re.finditer(rx, self.text, re.I) if not self.negated(x)), None)
+                if m:
+                    self.put(key, True, m, label)
+
+    def negated(self, m):
+        """«без АВР», «АВР не требуется», «кроме диспетчеризации» — требования нет"""
+        before, after = self.text[max(0, m.start() - 25):m.start()], self.text[m.end():m.end() + 40]
+        return bool(re.search(r'(?:без|кроме)\s+(?:\w+\s+){0,2}$', before, re.I)
+                    or re.match(r'\W*(?:\w+\s+){0,3}не\s+(?:требу|нуж|предусм)', after, re.I))
 
     def notes(self):
         """прочие требования: предложения с «должен», «необходимо», «требуется» — до 6, без повторов"""
