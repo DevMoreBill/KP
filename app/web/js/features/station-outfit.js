@@ -1,11 +1,12 @@
 // Оснащение контейнера на 3D-виде станции (StScene, station-render.js) — всё, что видно на картинке, кроме оборудования:
 // свет (светодиодные светильники, аварийный с зелёным индикатором, светильники над дверями снаружи), отопление
 // (электроконвекторы на местах из расчёта StationHeat), вентиляция (снаружи — жалюзи с козырьками, изнутри — решётки
-// с клапанами и электроприводами, воздуховод от радиатора ДГУ), пожарная безопасность (огнетушители: верх не выше 1,5 м,
-// над ними знак F04; извещатели на потолке, ручной пожарный извещатель и оповещатель у выхода, табло «Выход»; при
-// автоматическом пожаротушении — модули аэрозольного тушения и табло «Аэрозоль! Уходи!» / «Не входи!»), кабельный лоток,
-// отсек топливного бака ДГУ (перегородка, поддон, заливная горловина снаружи в ящике, дыхательный клапан над крышей,
-// жалюзи отсека), знаки на дверях, логотип организации на контейнере. Места на стенах — без наложений (StWalls).
+// с клапанами и электроприводами, воздуховод от радиатора ДГУ), пожарная безопасность по расчёту StationFire
+// (огнетушители у выхода и у основного оборудования: верх не выше 1,5 м, над ними знак F04; извещатели и модули
+// порошкового пожаротушения «Буран-2,5» на потолке; щит ОПС, ручной пожарный извещатель и оповещатель у выхода; табло
+// «Выход» и «Порошок! Уходи!» над входной дверью), кабельный лоток, отсек топливного бака ДГУ (перегородка, поддон,
+// заливная горловина снаружи в ящике, дыхательный клапан над крышей, жалюзи отсека), снаружи — козырьки и прожекторы над
+// дверями, таблички категории помещения, знаки и табло у входа, логотип организации. Места на стенах — без наложений (StWalls).
 // Сцена — без DOM: наклейки — описания, картинки рисует StDecal (station-decal.js) в браузере.
 'use strict';
 
@@ -16,7 +17,7 @@ class StWalls {
   static NEAR = 450;      // оборудование ближе к стене — место перед ним занято (до его высоты + 150 мм)
   constructor(plan){
     const [L, W, H]=plan.int, x0=plan.geo.x0||0, I=(plan.items||[]).filter(i=>!i.tank), N=StWalls.NEAR;
-    this.L=L; this.W=W; this.x0=x0; this.B={ left:[], right:[], back:[], front:[] };
+    this.L=L; this.W=W; this.x0=x0; this.B={ left:[], right:[], back:[], front:[] }; this.S={ left:[], right:[], back:[], front:[] };   // S — «мягкие» запреты (shade)
     for (const i of I){
       if (i.mount==='wall'){ this.busy(i.wall, ...(i.wall==='front' || i.wall==='back' ? [i.x, i.x+i.lx] : [i.y, i.y+i.ly]), i.z, i.z+i.h); continue; }
       if (i.mount==='pipe') continue;
@@ -28,11 +29,22 @@ class StWalls {
     for (const h of (plan.heat && plan.heat.heaters)||[]) this.busy(h.wall, ...(h.wall==='front' || h.wall==='back' ? [h.x, h.x+h.lx] : [h.y, h.y+h.ly]), 0, h.z+h.h+100);
     if (plan.door==='side') this.busy('front', x0+StationLayout.ENTRY[0]-100, x0+StationLayout.ENTRY[1]+100, 0, StationLayout.DOOR.h+150);
     for (const d of plan.doors||[]) this.busy(d.wall==='back' ? 'back' : 'front', d.x0-100, d.x1+100, 0, d.h+150);
-    for (const l of plan.lines||[]) if (W-l.y<500) for (const [a, b] of StationLayout.runs(l)) this.busy('back', a, b, l.z-150, l.z+150);
+    for (const l of plan.lines||[]) if (W-l.y<500) for (const [a, b] of StationLayout.runs(l)) this.busy('back', a, b, l.z-100, l.z+100);
     if ((plan.sys||{}).power!==false) this.busy('back', x0, L, H-320, H);   // кабельный лоток под потолком
   }
   busy(w, u0, u1, z0, z1){ if (this.B[w]) this.B[w].push([u0, u1, z0, z1]); }
-  free(w, u0, u1, z0, z1){ return (this.B[w]||[]).every(([a, b, c, d])=>!(a<u1 && b>u0 && c<z1 && d>z0)); }
+  /** для огнетушителей и щитов — «мягкие» запреты: стены за оборудованием (на любом расстоянии от стены — к месту не
+   *  подойти, из прохода его не видно) и стена прохода там, где проход узкий (огнетушитель сузит путь эвакуации) */
+  shade(plan){
+    const [L, W]=plan.int, x0=plan.geo.x0||0, a=(plan.aisleRule||[1000, 800])[1]+250, S=(w, u0, u1, z1)=>this.S[w].push([u0, u1, 0, z1]);
+    for (const i of plan.items||[]){ if (i.tank || i.mount==='pipe' || i.mount==='wall') continue; const top=(i.z||0)+i.h+150;
+      if (i.y+i.ly>W/2) S('back', i.x-50, i.x+i.lx+50, top);
+      if (i.y<a) S('front', i.x-50, i.x+i.lx+50, top);
+      if (L-i.x-i.lx<1200) S('right', i.y-50, i.y+i.ly+50, top);
+      if (i.x-x0<1200) S('left', i.y-50, i.y+i.ly+50, top); }
+  }
+  /** участок свободен; soft — с «мягкими» запретами */
+  free(w, u0, u1, z0, z1, soft=true){ const ok=q=>!(q[0]<u1 && q[1]>u0 && q[2]<z1 && q[3]>z0); return (this.B[w]||[]).every(ok) && (!soft || (this.S[w]||[]).every(ok)); }
   range(w){ return w==='left' || w==='right' ? [0, this.W] : [this.x0, this.L]; }
   /** начало свободного участка шириной wd на высоте z0…z1: от начала стены (lo) или от конца (hi); нет — null */
   find(w, wd, z0, z1, from='lo'){
@@ -48,9 +60,10 @@ class StOutfit {
   static N = { left:[1, 0, 0], right:[-1, 0, 0], back:[0, -1, 0], front:[0, 1, 0] };   // нормаль стены — внутрь
   static EXT = 1500;      // огнетушитель: верх — не выше 1,5 м от пола (Правила противопожарного режима в РФ)
   static RED = '#c42a20';
+  static HIDE = 3000;     // место на стене, невидимое на 3D-виде, — как на 3 м дальше от цели (near)
 
   constructor(scene){ this.s=scene; this.p=scene.plan; this.sys=this.p.sys||{}; this.walls=new StWalls(this.p); this.inside=scene.view==='in'; this.log=[]; }   // log — что где поставлено (проверки)
-  build(){ this.lights(); this.tray(); this.heaters(); this.vents(); this.fire(); this.fuel(); this.doors(); this.brand(); return this; }
+  build(){ this.lights(); this.tray(); this.heaters(); this.vents(); this.fire(); this.sockets(); this.fuel(); this.doors(); this.brand(); return this; }
 
   /** точка у стены помещения: u — вдоль стены, z — от пола, o — от стены внутрь, мм → мир, м */
   at(w, u, z, o=0){ const S=this.s, x0=S.g.x0||0, [L, W]=this.p.int;
@@ -72,12 +85,13 @@ class StOutfit {
   frontY(){ const S=this.s; return S.g.sea ? -0.008 : S.g.type==='welded' ? 0.003 : 0.018; }
   leftX(){ const S=this.s; return S.g.sea ? -0.034 : this.p.door==='end' ? -0.023 : S.g.type==='welded' ? 0.003 : 0.018; }
 
-  // ---- свет: светильники вдоль помещения, у первого — аварийный блок (зелёный индикатор); в отсеке бака и тамбуре — круглый
+  // ---- свет (расчёт — StationLight, plan.light): светильники в ряд по оси помещения, у аварийных (каждый второй, первый — у
+  // выхода) — зелёный индикатор блока аварийного питания; в отсеке бака и тамбуре — круглый
   lights(){
-    const S=this.s, P=this.p, [L, W, H]=P.int, x0=S.g.x0||0; if (this.sys.light===false || !this.inside) return;
-    const lamp=S.M(StMat.glow('#fffdf4', 5)), body=S.M(StMat.paint('#e9ecee', 0.4)), n=Math.max(1, Math.round((L-x0)/2600)), y=W/2;
-    for (let i=0; i<n; i++){ const x=x0+(L-x0)*(i+0.5)/n; body.box(...S.P(x-600, y-90, H-60), ...S.P(x+600, y+90, H), 0.01); lamp.box(...S.P(x-570, y-70, H-62), ...S.P(x+570, y+70, H-55)); }
-    const xe=x0+(L-x0)*0.5/n; S.M(StMat.glow('#39d353', 3)).box(...S.P(xe+520, y-104, H-48), ...S.P(xe+565, y-92, H-28));
+    const S=this.s, P=this.p, [L, W, H]=P.int, x0=S.g.x0||0, Lt=P.light; if (!Lt || !Lt.on || !this.inside) return;
+    const lamp=S.M(StMat.glow('#fffdf4', 5)), body=S.M(StMat.paint('#e9ecee', 0.4)), led=S.M(StMat.glow('#39d353', 3)), n=Lt.n, y=W/2, hl=StationLight.LAMP.len/2;
+    for (let i=0; i<n; i++){ const x=x0+(L-x0)*(i+0.5)/n; body.box(...S.P(x-hl, y-90, H-60), ...S.P(x+hl, y+90, H), 0.01); lamp.box(...S.P(x-hl+30, y-70, H-62), ...S.P(x+hl-30, y+70, H-55));
+      if (i%2===0 && i/2<Lt.em) led.box(...S.P(x+hl-80, y-104, H-48), ...S.P(x+hl-35, y-92, H-28)); }
     const fu=P.fuel, rooms=[], tb=x0-(fu ? fu.x1+fu.part : 0); if (fu) rooms.push([0, fu.x1]); if (tb>0) rooms.push([x0-tb, x0-60]);
     for (const [a, b] of rooms){ const c=S.P((a+b)/2, W/2, H); body.tube(c, StV.add(c, [0, 0, -0.06]), 0.13, 20); lamp.tube(StV.add(c, [0, 0, -0.06]), StV.add(c, [0, 0, -0.068]), 0.1, 20); }
   }
@@ -101,7 +115,7 @@ class StOutfit {
   }
 
   // ---- вентиляция: у ДГУ — жалюзи с электроприводом напротив радиатора и воздуховод к ним, приток внизу; без ДГУ — вытяжка
-  // вверху в дальнем торце, приток внизу у входа (в своём торце или в задней стене)
+  // вверху в дальнем торце ближе к задней стене, приток внизу у входа (в своём торце или в задней стене)
   vents(){
     const P=this.p, [, W, H]=P.int, x0=this.s.g.x0||0, dgu=P.items.find(i=>i.kind==='dgu' && !i.tank);
     const leftOut=x0===0 && P.door!=='end' && !this.s.g.sea;
@@ -109,7 +123,7 @@ class StOutfit {
       const u=this.walls.find('back', wd+260, 120, 260+hh, 'lo'); if (u!=null) this.vent('back', u+130, u+130+wd, 200, 200+hh, true); };
     if (dgu){ this.vent('right', dgu.y+80, dgu.y+dgu.ly-80, Math.round(dgu.h*0.12), Math.round(dgu.h*0.95)); this.duct(dgu); intake(900, 750); return; }
     if (this.sys.vent===false) return;
-    const rc=P.items.filter(i=>i.wall==='right'), y0=rc.length ? Math.max(W*0.3, Math.max(...rc.map(i=>i.y+i.ly))+150) : W*0.3, y1=Math.min(W-120, y0+W*0.4);
+    const rc=P.items.filter(i=>i.wall==='right'), y0=rc.length ? Math.max(W*0.45, Math.max(...rc.map(i=>i.y+i.ly))+150) : W*0.45, y1=Math.min(W-120, y0+W*0.4);
     if (y1-y0>=250) this.vent('right', Math.round(y0), Math.round(y1), H-750, H-200);
     intake(Math.round(W*0.3), 450);
   }
@@ -156,35 +170,106 @@ class StOutfit {
     const f=S.M(StMat.metal('#8f969d', 0.45)); for (const x of [x1, L-40]) f.box(...S.P(x, it.y+50, it.h*0.09), ...S.P(x+40, it.y+it.ly-50, it.h*0.97), 0.006);
   }
 
-  // ---- пожарная безопасность
+  // ---- пожарная безопасность (расчёт — StationFire, plan.fire): извещатели и модули «Буран-2,5» — на потолке; над входной
+  // дверью — табло «Выход» (при пожаротушении рядом — «Порошок! Уходи!»), двустороннее: в разрезе читается и со стороны
+  // зрителя; щит ОПС, ручной извещатель, оповещатель и огнетушитель — у выхода, второй огнетушитель — у основного
+  // оборудования: на свободных местах стен не за оборудованием и не в узком проходе, видимые на 3D-виде — в первую очередь
   fire(){
-    const S=this.s, P=this.p, [L, W, H]=P.int, x0=S.g.x0||0, sys=this.sys; if (!this.inside) return;
-    const red=S.M(StMat.paint(StOutfit.RED, 0.4)), wh=S.M(StMat.paint('#f2f3f4', 0.35)), dgu=P.items.some(i=>i.kind==='dgu');
-    // извещатели на потолке: не меньше двух, через 3,5 м (у ДГУ — тепловые), индикатор
-    if (sys.ops || sys.fire){ const n=Math.max(2, Math.ceil((L-x0)/3500)), led=S.M(StMat.glow('#ff3b30', 2));
-      for (let i=0; i<n; i++){ const c=S.P(x0+(L-x0)*(i+0.5)/n, W*0.28, H); wh.tube(c, StV.add(c, [0, 0, -0.045]), 0.05, 18); wh.tube(StV.add(c, [0, 0, -0.045]), StV.add(c, [0, 0, -0.06]), 0.032, 14); led.sphere(StV.add(c, [0.036, 0, -0.04]), 0.006, 6); } }
-    // у выхода — табло «Выход» (с аккумулятором — аварийное освещение), при пожаротушении — «Аэрозоль! Уходи!» (раньше
-    // огнетушителей: на видимой стене)
-    const gTop=S.g.sea ? H : 160+Math.min(2200, S.He*1000-400)-StationGeo.zFloor(S.g.type, S.g.t);   // верх ворот в торце
-    if (P.door==='end' && x0===0 && gTop+300<H) this.board('EXIT', 'left', W/2, gTop+150, 360, 140);
-    else { const x=this.spot(['back', 'right', 'left'], 380, H-440, H-270, 'lo'); if (x) this.board('EXIT', x[0], x[1], H-355, 360, 140); }
-    if (sys.fire){ const t=this.spot(['back', 'right', 'left'], 440, H-440, H-270, 'lo'); if (t) this.board('AERO_OUT', t[0], t[1], H-355, 420, 120); }
-    // огнетушители: у выхода и в дальней части (у ДГУ и в помещении больше 15 м² — два), над каждым — знак F04
-    // (стены по порядку: видимые на разрезе — задняя и дальний торец — раньше ближнего торца)
-    const two=dgu || (L-x0)*W/1e6>15, e1=this.spot(['back', 'right', 'left'], 260, 950, 1840, 'lo');
-    const e2=two ? this.spot(['right', 'back', 'left'], 260, 950, 1840, e1 && e1[0]==='back' ? 'hi' : 'lo') : null;
-    for (const e of [e1, e2]) if (e){ this.extinguisher(this.at(e[0], e[1], StOutfit.EXT-500), StOutfit.N[e[0]]); this.sign({ type:'sign', id:'F04' }, e[0], e[1], 1720, 200, 200); }
-    if (sys.ops || sys.fire){
-      const m=this.spot(['back', 'right', 'left'], 160, 1380, 1620, 'lo'); if (m){ this.box(red, m[0], m[1], 1500, 95, 95, 45, 0.006); this.box(wh, m[0], m[1], 1508, 52, 44, 48, 0.003); }
-      const o=this.spot(['back', 'right', 'left'], 170, 1950, 2250, 'lo'); if (o){ this.box(red, o[0], o[1], 2100, 120, 140, 55, 0.012); this.box(wh, o[0], o[1], 2135, 76, 36, 58, 0.008); } }
-    // автоматическое пожаротушение: модули аэрозольного тушения на стенах под потолком (не меньше двух, через 3 м; сопло —
-    // вниз в помещение)
-    if (sys.fire){
-      const n=Math.max(2, Math.ceil((L-x0)/3000)), dk=S.M(StMat.paint('#202428', 0.6)), mr=S.M(StMat.paint('#c8302a', 0.4));
-      for (let i=0; i<n; i++){ const m=this.spot(['back', 'right', 'left'], 360, H-1000, H-560, i%2 ? 'hi' : 'lo'); if (!m) break;
-        const [w, u]=m, a=this.at(w, u, H-660, 90), b=this.at(w, u, H-860, 400);
-        this.box(dk, w, u, H-650, 80, 160, 100, 0.004); mr.tube(a, b, 0.075, 18, [true, false]); dk.tube(b, StV.add(b, StV.mul(StV.norm(StV.sub(b, a)), 0.025)), 0.062, 16); }
-    }
+    const S=this.s, P=this.p, [, W, H]=P.int, F=P.fire; if (!this.inside || !F) return;
+    const red=S.M(StMat.paint(StOutfit.RED, 0.4)), wh=S.M(StMat.paint('#f2f3f4', 0.35)), main=F.rooms[0], ex=F.exit;
+    this.walls.shade(P);
+    if (F.ops){ const n=Math.max(2, Math.ceil((main.x1-main.x0)/3500)), led=S.M(StMat.glow('#ff3b30', 2));   // извещатели: не меньше двух, через 3,5 м
+      for (let i=0; i<n; i++){ const c=S.P(main.x0+(main.x1-main.x0)*(i+0.5)/n, W*0.28, H); wh.tube(c, StV.add(c, [0, 0, -0.045]), 0.05, 18); wh.tube(StV.add(c, [0, 0, -0.045]), StV.add(c, [0, 0, -0.06]), 0.032, 14); led.sphere(StV.add(c, [0.036, 0, -0.04]), 0.006, 6); } }
+    for (const q of F.rooms) for (const m of q.mods) this.buran(S.P(m.x, m.y, H));
+    // табло над выходом: низ — не ниже верха проёма
+    if (ex){ const z=Math.max(ex.top+90, H-125), two=F.auto && ex.w>=800, du=two ? 200 : 0;
+      if (z+75<H-20){ this.hang('EXIT', ex.wall, ex.u-du, z, 360, 130); if (two) this.hang('POW_OUT', ex.wall, ex.u+du, z, 360, 130); } }
+    const d0=(P.doors||[]).find(d=>d.wall!=='back'), door=ex ? (ex.wall==='front' ? [ex.u, 0] : [P.geo.x0||0, ex.u]) : d0 ? [(d0.x0+d0.x1)/2, 0] : [P.geo.x0||0, W/2], ws=['back', 'right', 'left', 'front'];
+    // огнетушители — у основного оборудования (ДГУ, самый мощный компрессор; видное место — в первую очередь) и у выхода, щит
+    // ОПС — у входа или на видном месте: верх огнетушителя — не выше 1,5 м, знак F04 — над ним, нет места — сбоку; ниже — если
+    // на обычной высоте места нет
+    const I=P.items.filter(i=>!i.tank && (i.mount==='floor' || i.mount==='frame')), big=I.find(i=>i.kind==='dgu') || I.filter(i=>i.kind==='compressor').sort((a, b)=>(b.kw||0)-(a.kw||0))[0] || I[0];
+    const E=StOutfit.EXT, EB=[[260, E-550, E+340], [500, E-550, E+30, 150], [260, E-1050, E-160, 400], [500, E-1050, E-470, 550]];
+    const e2=main.ext>1 ? this.near(ws, EB, big ? [big.x+big.lx/2, big.y+big.ly/2>W/2 ? big.y : big.y+big.ly] : [P.int[0], W/2]) : null;
+    if (F.ops){ const o=this.near(ws, [[340, 1030, 1470], [340, 930, 1370, 200]], door, 4500); if (o) this.panel(o.w, o.u, o.z0+220); }
+    const e1=this.near(ws, EB, door, 1500);
+    for (const e of [e1, e2]) if (e && (e.w!=='front' || !S.cut)){ const side=e.wd>260, u=side ? e.u-120 : e.u;
+      this.extinguisher(this.at(e.w, u, e.z0+50), StOutfit.N[e.w]); this.sign({ type:'sign', id:'F04' }, e.w, side ? u+250 : u, side ? e.z0+430 : e.z0+770, 200, 200); }
+    // ручной пожарный извещатель (1,5 м) и оповещатель (под потолком) — у выхода
+    if (F.ops){ const m=this.near(ws, [[160, 1380, 1620]], door, 0); if (m){ this.log.push({ kind:'mcp', wall:m.w, u:m.u }); this.box(red, m.w, m.u, 1500, 95, 95, 45, 0.006); this.box(wh, m.w, m.u, 1508, 52, 44, 48, 0.003); }
+      const zs=Math.min(2100, H-190), s=this.near(ws, [[170, zs-150, zs+150]], door, 0); if (s){ this.log.push({ kind:'sounder', wall:s.w, u:s.u }); this.box(red, s.w, s.u, zs, 120, 140, 55, 0.012); this.box(wh, s.w, s.u, zs+35, 76, 36, 58, 0.008); } }
+  }
+  /** точка стены видна на 3D-виде: луч к камере не упирается в торец (перегородку) помещения, оборудование и потолок у
+   *  среза; стена со стороны зрителя изнутри не видна; при сервисных дверях (стена стоит) — только через проёмы */
+  seen(w, u, z){
+    if (w==='front' || !this.inside) return false;
+    const S=this.s, p=this.at(w, u, z, 70), az=StCam.AZ*Math.PI/180, el=StCam.EL*Math.PI/180, d=[-Math.cos(el)*Math.sin(az), -Math.cos(el)*Math.cos(az), Math.sin(el)];
+    const t0=(0-p[1])/d[1], q=StV.add(p, StV.mul(d, t0)), xl=S.ox+(S.g.x0||0)/1000, tl=(xl-p[0])/d[0];
+    if (tl>0 && tl<t0) return false;                           // торец или перегородка помещения
+    if (q[2]>S.ceil-0.01) return false;                        // за потолком у среза
+    if (!S.cut && !S.openF.some(c=>q[0]>S.ox+c.x0/1000+0.03 && q[0]<S.ox+c.x1/1000-0.03 && q[2]<S.base+c.h/1000-0.03)) return false;
+    for (const it of this.p.items){ if (it.mount==='pipe' || it.tank) continue; const b=S.B(it); let t1=1e-4, t2=t0, hit=true;
+      for (let k=0; k<3 && hit; k++){ if (Math.abs(d[k])<1e-9){ if (p[k]<b[k] || p[k]>b[k+3]) hit=false; continue; }
+        let a1=(b[k]-p[k])/d[k], a2=(b[k+3]-p[k])/d[k]; if (a1>a2) [a1, a2]=[a2, a1]; t1=Math.max(t1, a1); t2=Math.min(t2, a2); if (t1>t2) hit=false; }
+      if (hit) return false; }
+    return true;
+  }
+  /** место у точки t = [x, y] плана на стенах ws: свободный участок одной из полос bands ([ширина, z0, z1, штраф], мм),
+   *  ближайший к ней; видимое на 3D-виде — в первую очередь (невидимое — как на hide мм дальше); место занимается:
+   *  {w — стена, u — середина, wd, z0, z1} или null */
+  near(ws, bands, t, hide=StOutfit.HIDE){
+    const [L, W]=this.p.int, x0=this.s.g.x0||0; let best=null;
+    for (const soft of [true, false]){ if (best) break;     // места нет — без «мягких» запретов (тесный контейнер)
+    for (const [wd, z0, z1, pen=0] of bands) for (const w of ws){ const [lo, hi]=this.walls.range(w), zv=z0+Math.min(z1-z0, 900)*0.35;
+      for (let u=lo+120; u+wd<=hi-120; u+=50){ if (!this.walls.free(w, u, u+wd, z0, z1, soft)) continue;
+        const c=u+wd/2, x=w==='left' ? x0 : w==='right' ? L : c, y=w==='back' ? W : w==='front' ? 0 : c;
+        const sc=Math.hypot(x-t[0], y-t[1])+pen+(this.seen(w, c, zv) ? 0 : hide); if (!best || sc<best.sc) best={ w, u:c, wd, z0, z1, sc }; } } }
+    if (best) this.walls.busy(best.w, best.u-best.wd/2, best.u+best.wd/2, best.z0, best.z1);
+    return best;
+  }
+  /** модуль «Буран-2,5» на потолке (c — точка потолка): кронштейн, красный корпус Ø 250 мм с этикеткой, распылитель снизу,
+   *  тепловой замок посередине */
+  buran(c){
+    const S=this.s, red=S.M(StMat.paint('#c62d22', 0.35)), dk=S.M(StMat.paint('#2a2e33', 0.5)), gr=S.M(StMat.paint('#d3d6d9', 0.45)), lb=S.M(StMat.paint('#f1efe8', 0.6));
+    const r=0.125, z1=c[2]-0.035, z0=z1-0.11, [x, y]=c; this.log.push({ kind:'buran', at:c });
+    dk.box(x-0.1, y-0.022, c[2]-0.008, x+0.1, y+0.022, c[2]); dk.tube([x, y, c[2]-0.008], [x, y, z1], 0.018, 10);   // кронштейн
+    red.tube([x, y, z0], [x, y, z1], r, 32); lb.tube([x, y, z0+0.03], [x, y, z0+0.075], r*1.006, 32, [false, false]);
+    gr.tube([x, y, z0-0.014], [x, y, z0], r*0.9, 32, [true, false]); dk.tube([x, y, z0-0.04], [x, y, z0-0.014], 0.022, 14, [true, false]);
+  }
+  /** щит ОПС на стене (середина u, zc — середина по высоте): корпус, дисплей, индикаторы «Пожар», «Неисправность», «Питание»,
+   *  табличка */
+  panel(w, u, zc){
+    const S=this.s; this.log.push({ kind:'ops', wall:w, u, seen:this.seen(w, u, zc) }); this.box(S.M(StMat.paint('#e2e5e8', 0.4)), w, u, zc, 300, 400, 120, 0.012);
+    this.box(S.M(StMat.paint('#1d2226', 0.35)), w, u, zc+105, 200, 80, 123, 0.004);
+    S.M(StMat.glow('#9fe6b3', 1.2)).box(...this.at(w, u-85, zc+75, 124), ...this.at(w, u+85, zc+135, 125));   // экран
+    for (const [k, c] of [[-1, '#ff3b30'], [0, '#ffc21a'], [1, '#39d353']]) this.box(S.M(StMat.glow(c, 2.4)), w, u+k*45, zc+30, 22, 22, 128, 0.004);
+    this.sign({ type:'sign', id:'OPS' }, w, u, zc-90, 220, 82, 121);
+  }
+  /** табло под потолком у стены w над проёмом: корпус, надпись с обеих сторон (в разрезе стена срезана — видна и снаружи),
+   *  подвес к потолку */
+  hang(id, w, u, z, sw, sh){
+    const S=this.s, [, , H]=this.p.int, b=S.M(StMat.paint('#eceeef', 0.4)), dk=S.M(StMat.paint('#2a2e33', 0.5)), o0=20, o1=60, n=StOutfit.N[w], m=StV.mul(n, -1);
+    const a=this.at(w, u-sw/2-15, z-sh/2-15, o0), c=this.at(w, u+sw/2+15, z+sh/2+15, o1); this.log.push({ kind:'board', id, wall:w, u, z0:z-sh/2-15 });
+    b.box(Math.min(a[0], c[0]), Math.min(a[1], c[1]), a[2], Math.max(a[0], c[0]), Math.max(a[1], c[1]), c[2], 0.006);
+    for (const k of [-1, 1]){ const p=this.at(w, u+k*(sw/2-30), z+sh/2+15, (o0+o1)/2); dk.tube(p, [p[0], p[1], S.base+H/1000], 0.005, 6); }
+    S.sticker({ type:'sign', id }, this.at(w, u, z, o1), n, sw/1000, sh/1000, 1.4);
+    S.sticker({ type:'sign', id }, this.at(w, u, z, o0), m, sw/1000, sh/1000, 1.4);
+  }
+  // ---- сервисные розетки (StationSockets, plan.sockets) на высоте 1,0 м: 230 В — у входа и вдоль помещения у оборудования,
+  // 380 В (красная) — у основного оборудования, ЯТП-0,25 (36 В) — у входа; видимые места — в первую очередь
+  sockets(){
+    const S=this.s, P=this.p, K=P.sockets, [L, W]=P.int, x0=S.g.x0||0, F=P.fire||{}, ex=F.exit; if (!K || !this.inside) return;
+    const ws=['back', 'right', 'left', 'front'], door=ex ? (ex.wall==='front' ? [ex.u, 0] : [x0, ex.u]) : [x0, W/2], z=K.z;
+    const I=P.items.filter(i=>!i.tank && (i.mount==='floor' || i.mount==='frame')), big=I.find(i=>i.kind==='dgu') || I.filter(i=>i.kind==='compressor').sort((a, b)=>(b.kw||0)-(a.kw||0))[0] || I[0];
+    const gr=S.M(StMat.paint('#d9dcdf', 0.45)), lid=S.M(StMat.paint('#c3c7cb', 0.4)), red=S.M(StMat.paint('#c8352c', 0.4)), dk=S.M(StMat.paint('#2a2e33', 0.5)), yl=S.M(StMat.paint('#f2c230', 0.45));
+    const put=(w, u, kind)=>{ if (w==='front' && S.cut) return; this.log.push({ kind:'socket', type:kind, wall:w, u });
+      if (kind==='230'){ this.box(gr, w, u, z, 85, 85, 45, 0.008); this.box(lid, w, u, z+4, 66, 62, 52, 0.006); return; }
+      if (kind==='380'){ const zc=z-40; this.box(red, w, u, zc, 110, 140, 70, 0.01); const a=this.at(w, u, zc-30, 70), b=this.at(w, u, zc-85, 115); red.tube(a, b, 0.032, 16); dk.tube(b, StV.add(b, StV.mul(StV.norm(StV.sub(b, a)), 0.01)), 0.026, 14); return; }
+      this.box(gr, w, u, z+40, 230, 330, 190, 0.01); this.box(yl, w, u+60, z-60, 60, 60, 196, 0.006); this.sign({ type:'sign', id:'W08' }, w, u-40, z+120, 70, 61, 191); };
+    const t=this.near(ws, [[260, z-140, z+220]], door, 1500); if (t) put(t.w, t.u, 'ytp');
+    const a=this.near(ws, [[140, z-50, z+50]], door, 1500); if (a) put(a.w, a.u, '230');
+    for (let k=1; k<K.n230; k++){ const q=this.near(ws, [[140, z-50, z+50]], [x0+(L-x0)*(k+0.5)/K.n230, W]); if (q) put(q.w, q.u, '230'); }
+    const r=this.near(ws, [[160, z-115, z+35]], big ? [big.x+big.lx/2, big.y+big.ly/2>W/2 ? big.y : big.y+big.ly] : [L, W/2]); if (r) put(r.w, r.u, '380');
   }
   /** огнетушитель на стене: base — точка стены на высоте низа корпуса, n — от стены; корпус, головка с рычагом и манометром,
    *  шланг с раструбом, хомут кронштейна, этикетка */
@@ -202,11 +287,6 @@ class StOutfit {
     dk.tube(h0, h1, 0.009, 8); dk.sphere(h1, 0.009, 8); dk.tube(h1, h2, 0.009, 8); dk.tube(h2, StV.add(h2, [0, 0, -0.05]), 0.014, 10);   // шланг
     dk.tube([c[0], c[1], z0+0.27], [c[0], c[1], z0+0.3], r*1.06, 24, [false, false]);
     dk.box(Math.min(base[0], c[0]-t[0]*0.03), Math.min(base[1], c[1]-t[1]*0.03), z0+0.26, Math.max(base[0], c[0]+t[0]*0.03), Math.max(base[1], c[1]+t[1]*0.03), z0+0.31, 0.003);   // кронштейн
-  }
-  /** световое табло на стене: корпус и светящаяся надпись */
-  board(id, w, u, z, sw, sh){
-    this.box(this.s.M(StMat.paint('#eceeef', 0.4)), w, u, z, sw+30, sh+30, 45, 0.006);
-    this.sign({ type:'sign', id }, w, u, z, sw, sh, 46, 1.4);
   }
 
   // ---- отсек топливного бака ДГУ: перегородка (в разрезе — утеплитель), поддон, заливная труба к горловине снаружи,
@@ -252,22 +332,30 @@ class StOutfit {
     if (!S.g.sea){ const y0=S.oy+mm(W-450), y1=S.oy+mm(W-150); S.louver(1, 0, y0, y1, S.top-0.65, S.top-0.4, -1); this.hood('left', y0-S.oy-0.06, y1-S.oy+0.06, S.top-0.34); }
   }
 
-  // ---- двери снаружи: над каждой — съёмный козырёк (водостоков нет), под ним — светодиодный прожектор; знаки (вход —
-  // «Опасность поражения электрическим током», отсек бака — «Пожароопасно» и «Запрещается открытый огонь»), при
-  // пожаротушении — табло «Порошок! Не входи!» и «Автоматика отключена»; ворота в торце — так же
+  // ---- двери снаружи: над каждой — съёмный козырёк (водостоков нет), под ним — светодиодный прожектор. На входной двери —
+  // табличка категории помещения (кроме категории Д; ППР в РФ, п. 12), знаки W08 «Опасность поражения электрическим током»
+  // и P06 «Доступ посторонним запрещён», при пожаротушении справа от входа — табло «Порошок! Не входи!» и «Автоматика
+  // отключена»; на двери отсека бака — табличка категории, W01 «Пожароопасно» и P02 «Запрещается открытый огонь»; ворота
+  // и двери в торце — так же
   doors(){
-    const S=this.s, P=this.p;
-    if (P.door==='end' && !S.g.sea){ const zg=S.dz+0.16+Math.min(2.2, S.He-0.4), w=Math.min(1.8, S.We-0.4), x=this.leftX();
-      this.canopy([x, S.We/2, zg], [-1, 0, 0], w+0.2); if (this.room(zg)) this.flood([x, S.We/2, zg+0.17], [-1, 0, 0]); }
+    const S=this.s, P=this.p, F=P.fire||{}, R=F.rooms||[], main=R[0], tank=R.find(q=>q.id==='tank'), cat=q=>q && q.cat && q.cat!=='Д' ? { type:'sign', id:'CAT', cat:q.cat, zone:q.zone||'' } : null;
+    if (P.door==='end'){ const x=this.leftX(), zs=S.base+1.62;
+      if (!S.g.sea){ const zg=S.dz+0.16+Math.min(2.2, S.He-0.4), w=Math.min(1.8, S.We-0.4); this.canopy([x, S.We/2, zg], [-1, 0, 0], w+0.2); if (this.room(zg)) this.flood([x, S.We/2, zg+0.17], [-1, 0, 0]); }
+      const n=[-1, 0, 0], c=cat(main), y0=S.We/2;
+      if (c) S.sticker(c, [x-0.004, y0+0.3, zs+0.06], n, 0.3, 0.2);
+      S.sticker({ type:'sign', id:'W08' }, [x-0.004, y0-0.3, zs+0.06], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P06' }, [x-0.004, y0-0.3, zs-0.17], n, 0.18, 0.18); }
     if (!S.closed) return;
-    const y=-0.052, n=[0, -1, 0], fy=this.frontY();
-    for (const c of S.openF){ const a=S.ox+c.x0/1000, b=S.ox+c.x1/1000, xm=(a+b)/2, zt=S.base+c.h/1000, zs=S.base+1.6;
+    const y=-0.052, n=[0, -1, 0], fy=this.frontY(); let first=true;
+    for (const c of S.openF){ const a=S.ox+c.x0/1000, b=S.ox+c.x1/1000, xm=(a+b)/2, zt=S.base+c.h/1000, zs=S.base+1.38;
       this.canopy([xm, fy, zt], n, b-a+0.24);
       if (c.kind!=='service' && this.room(zt)) this.flood([xm, fy, zt+0.17], n);
-      if (c.kind==='entry'){ S.sticker({ type:'sign', id:'W08' }, [xm, y, zs], n, 0.22, 0.193);
-        if (this.sys.fire && zt+0.25<S.top-0.04){ const hb=S.M(StMat.paint('#eceeef', 0.4));
-          for (const [id, z] of [['AERO_NO', zt+0.16], ['AUTO_OFF', zt-0.02]]){ hb.box(b+0.13, fy-0.04, z-0.075, b+0.59, fy, z+0.075, 0.006); S.sticker({ type:'sign', id }, [b+0.36, fy-0.04, z], n, 0.42, 0.12, 1.2); } } }
-      if (c.kind==='tank'){ S.sticker({ type:'sign', id:'W01' }, [xm-0.12, y, zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P02' }, [xm+0.12, y, zs], n, 0.18, 0.18); } }
+      const pl=c.kind==='tank' ? cat(tank) : c.kind==='entry' || (c.kind==='service' && first) ? cat(main) : null;
+      if (pl) S.sticker(pl, [xm, y, S.base+1.72], n, 0.3, 0.2);
+      if (c.kind==='entry' || (c.kind==='service' && first)){ S.sticker({ type:'sign', id:'W08' }, [xm-0.12, y, zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P06' }, [xm+0.12, y, zs], n, 0.18, 0.18);
+        if (F.auto && zt+0.2<S.top-0.04){ const hb=S.M(StMat.paint('#eceeef', 0.4));
+          for (const [id, z] of [['POW_NO', zt+0.06], ['AUTO_OFF', zt-0.14]]){ hb.box(b+0.14, fy-0.04, z-0.08, b+0.53, fy, z+0.08, 0.006); S.sticker({ type:'sign', id }, [b+0.335, fy-0.04, z], n, 0.36, 0.13, 0.8); } } }
+      if (c.kind==='tank'){ S.sticker({ type:'sign', id:'W01' }, [xm-0.12, y, zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P02' }, [xm+0.12, y, zs], n, 0.18, 0.18); }
+      if (c.kind!=='tank') first=false; }
   }
   /** над дверью хватает места для прожектора под козырьком */
   room(zt){ return zt+0.34<this.s.top-0.04; }

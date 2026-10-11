@@ -16,7 +16,7 @@ global.typeById=id=>TYPES[id]||{};
 global.catCache=[];
 global.DEF=()=>null;   // умолчания администратора — нет
 global.api=async u=>{ const c=global.catCache.find(z=>u.endsWith('/'+encodeURIComponent(z.id))); if (!c) throw new Error('нет '+u); return c; };
-for (const f of ['logistics-calc.js', 'station-layout.js', 'kit.js', 'kit-view.js', 'station-ui.js', 'tz-import.js']){
+for (const f of ['logistics-calc.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-ui.js', 'tz-import.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 
 class Cat {

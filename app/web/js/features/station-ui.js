@@ -82,6 +82,7 @@ class StationUi {
       ${top.length || info.length ? `<ul class="stl-iss">${[...top, ...info.slice(0, 2)].map(li).join('')}</ul>` : ''}
       ${more.length ? `<details class="stl-more"><summary>Ещё сведения — ${more.length}</summary><ul class="stl-iss">${more.map(li).join('')}</ul></details>` : ''}
       ${this.air(plan, x, i)}
+      ${this.systems(plan)}
       ${pics ? `<div class="stl-views">
         <figure class="v3d"><figcaption><b>3D-вид</b><label class="stl-chk"><input type="checkbox" data-stl="photo" data-i="${i}"${photoOn ? ' checked' : ''}> главное фото станции — в строке КП и на титуле</label></figcaption>
           <img src="${esc(src3)}" data-st3d="${esc(plan.hash||'')}" alt="3D-вид станции">${cutCab ? '<small class="stl-note">Стена прохода срезана вместе со шкафами на ней — их место на чертеже.</small>' : ''}</figure>
@@ -95,6 +96,19 @@ class StationUi {
   }
   static BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';   // пока вид рисуется
   static rank(t){ return { error:0, warn:1, info:2 }[t.level] ?? 3; }
+  /** системы контейнера по расчёту: электропитание (мощность, ток, вводной автомат), освещение, розетки, пожарная
+   *  безопасность, отопление — коротко; подробно — в ТЗ на сборку */
+  static systems(plan){
+    const W=plan.power, Lt=plan.light, K=plan.sockets, F=plan.fire, h=plan.heat; if (!W) return '';
+    const f=StationPower.f, pl=StationFire.pl, row=(k, v)=>v ? `<li><b>${esc(k)}:</b> ${esc(v)}</li>` : '';
+    const own=W.dgu ? 'собственные нужды' : 'расчётная';
+    return `<div class="stl-air stl-sys"><div class="stl-air-h"><b>Системы контейнера и электропитание</b><span class="muted">по расчёту — подробно в ТЗ на сборку</span></div><ul class="stl-sys-l">
+      ${row('Мощность', `установленная ${f(W.inst)} кВт, ${own} — ${f(W.kw)} кВт (${W.mode==='run' ? 'при работе' : 'зимой в простое'}); ток ${f(W.amp)} А при 3 × 400 В; вводной автомат — ${W.breaker ? W.breaker+' А' : 'по проекту'}`)}
+      ${Lt && Lt.on ? row('Освещение', `${pl(Lt.n, ['светильник', 'светильника', 'светильников'])} по ${StationLight.LAMP.w} Вт — около ${Math.round(Lt.E)} лк (норма ${Lt.lux}); аварийное — ${Lt.em} с блоком питания на 1 ч${Lt.floods ? `; прожекторов над дверями — ${Lt.floods}` : ''}`) : ''}
+      ${K ? row('Розетки', `230 В — ${K.n230}, 380 В — ${K.n380}, ЯТП-0,25 (36 В) — ${K.ytp}; на высоте 1 м`) : ''}
+      ${F ? row('Пожарная безопасность', `огнетушители ${StationFire.EXT} — ${F.ext}${F.auto ? `; модули «Буран-2,5» на потолке — ${F.mods} (по площади и объёму)` : ''}${F.ops ? '; щит ОПС у входа' : ''}${F.cat && F.cat!=='Д' ? `; категория ${F.cat}${F.zone ? ', зона '+F.zone : ''} — табличка на двери` : ''}`) : ''}
+      ${h && h.on && h.n ? row('Отопление', `${h.n} × ${StationHeat.kw(h.kw)} кВт = ${StationHeat.kw(h.total)} кВт`) : ''}</ul></div>`;
+  }
   /** подготовка воздуха: цепочка по ходу воздуха, класс чистоты (ISO 8573-1), чего не хватает — подобрать в каталоге */
   static air(plan, x, i){
     const a=plan.air; if (!a) return '';
