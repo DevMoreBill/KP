@@ -80,6 +80,9 @@ document.addEventListener('click', async e=>{
     case 'galAdd': return pickGallery(i, b.dataset.slot||'');
     case 'galPage': return galFromPage(i, e.shiftKey);
     case 'kitAdd': case 'kitCat': case 'kitMain': case 'kitCont': case 'kitSys': case 'kitPreset': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (kitAction(a, i, b)==='async') return; break; }
+    case 'kitOpen': case 'kitBy': case 'reqOpen': { const r=KitView.act(a, i, b); if (r==='async' || !r) return; break; }
+    case 'drawPick': return DrawPic.pick(i, j, b.dataset.v);
+    case 'drawDel': DrawPic.del(i, j, b.dataset.v); break;
     case 'galDel': { const gen=it.gallery[j] && it.gallery[j].gen; if (gen==='stdraw' || gen==='stschema') StationImages.forget(it, gen==='stdraw' ? 'draw' : 'scheme'); it.gallery.splice(j,1); break; }
     case 'stPhoto': { const p=kitParts(it)[j]; if (!p || !p.photo || !p.photo.src) return; StationImages.chosen(it); it.photo={...p.photo}; delete it.photoFrom; toast('Главное фото станции — фото «'+(p.name||'элемента')+'»'); break; }
     case 'galMain': { if (!(it.gallery||[])[j]) return; const was3d=StationImages.chosen(it); if (!edSetMain(it, j)) return;

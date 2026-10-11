@@ -43,7 +43,8 @@ let EDIT=null;
 
 const ED_TABS=[['main','Основное'],['kit','Состав станции'],['layout','Компоновка'],['ai','✨ Заполнить с ИИ'],['desc','Описание и фото'],['spec','Характеристики'],['opts','Опции и услуги']];
 // вкладки позиции: «Состав станции» — только у станций в контейнере (и у сборок, заведённых раньше), «Компоновка» — у станций
-const edTabs = x => ED_TABS.filter(([k])=>(k!=='kit' || canKit(x)) && (k!=='layout' || StationUi.on(x)) && (k!=='ai' || FEAT.on('ai')));
+const edTabs = x => { const st=!!stationOf(x), T=ED_TABS.filter(([k])=>(k!=='kit' || canKit(x)) && (k!=='layout' || StationUi.on(x)) && (k!=='ai' || (FEAT.on('ai') && !st)));
+  return st ? [...T.filter(([k])=>k==='kit' || k==='layout'), ...T.filter(([k])=>k!=='kit' && k!=='layout')] : T; };   // станция: состав и компоновка — первыми
 
 function featId(f){ if(!f.id) f.id=uid(); return f.id; }
 
@@ -61,7 +62,7 @@ function featImage(x,f){ return (x.gallery||[]).find(g=>{ const L=linkOf(x,g); r
 
 function openEditor(i, tab){
   if (S.items[i] && autoLogo(S.items[i])) persist();
-  EDIT={i, tab: tab||'main'}; const d=$('#edlg'); renderEditor(); if(!d.open) d.showModal();
+  EDIT={i, tab: tab||(S.items[i] && stationOf(S.items[i]) ? 'kit' : 'main')}; const d=$('#edlg'); renderEditor(); if(!d.open) d.showModal();
 }
 
 function closeEditor(){ const d=$('#edlg'); EDIT=null; if(d.open) d.close(); renderForm(); persist(); StationImages.syncAll().then(ch=>{ if (ch) renderForm(); }); }
@@ -70,7 +71,7 @@ function renderEditor(){
   const d=$('#edlg'); if(!EDIT) return; const i=EDIT.i, x=S.items[i]; if(!x){ closeEditor(); return; }
   if (!edTabs(x).some(([k])=>k===EDIT.tab)) EDIT.tab='main';
   const focusP=document.activeElement?.dataset?.p; const sc=d.querySelector('.ed-b')?.scrollTop||0;
-  const body = EDIT.tab==='main'?edMain(x,i): EDIT.tab==='kit'?edKit(x,i): EDIT.tab==='layout'?StationUi.tab(x,i): EDIT.tab==='desc'?edDesc(x,i): EDIT.tab==='spec'?edSpec(x,i): EDIT.tab==='opts'?edOpts(x,i): edAI(x,i);
+  const body = EDIT.tab==='main'?edMain(x,i): EDIT.tab==='kit'?KitView.render(x,i): EDIT.tab==='layout'?StationUi.tab(x,i): EDIT.tab==='desc'?edDesc(x,i): EDIT.tab==='spec'?edSpec(x,i): EDIT.tab==='opts'?edOpts(x,i): edAI(x,i);
   const head = CATED ? `<h3><span class="ed-cat">Каталог</span>${esc(x.name||'Новая позиция')}</h3><button class="btn" type="button" data-catcancel>Отмена</button>${CW.mod&&!ADMIN.on?'<span class="muted ed-modnote">Изменения будут отправлены на модерацию</span>':''}<button class="btn primary" type="button" data-catsave>${catSaveLabel()}</button>`
     : `<h3>${i+1}. ${esc(x.name||'Новая позиция')}</h3>${S.items.length>1?`<button class="btn ghost" type="button" data-ednav="-1" ${i===0?'disabled':''} title="Предыдущая позиция">←</button><button class="btn ghost" type="button" data-ednav="1" ${i===S.items.length-1?'disabled':''} title="Следующая позиция">→</button>`:''}<button class="btn primary" type="button" data-edclose>Готово</button>`;
   d.classList.toggle('catmode', !!CATED);

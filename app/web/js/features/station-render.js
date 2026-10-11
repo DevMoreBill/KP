@@ -132,12 +132,30 @@ class StScene {
     for (const it of this.plan.items) this.equip(it);
     for (const pp of this.plan.piping||[]) this.piping(pp);
     for (const m of this.plan.roof||[]) this.muffler(m);
+    if ((this.plan.outside||[]).length) this.outside();
     return this;
+  }
+  /** ресиверы снаружи: бетонная площадка, ресивер; трубопровод от выхода через торец — коллектором к входам ресиверов
+   *  (сбоку внизу), с краном у стены; выход — сверху к потребителю */
+  outside(){
+    const E=this.plan.outside, pad=this.M(StMat.paint('#b9b6ae', 0.95)), mm=this.mm, P=mm(StationLayout.PAD);
+    for (const it of E){ const [x0, y0, z0, x1, y1]=this.B(it); pad.box(x0-0.2, y0-0.2, z0-P, x1+0.2, y1+0.2, z0, 0.01); this.equip(it); }
+    const pp=(this.plan.piping||[])[0], l=pp && pp.lines.find(q=>q.medium==='air' && !q.header && q.x1>=this.plan.int[0]-1); if (!l) return;
+    const m=this.M(pp.mat==='inox' ? StMat.metal(StScene.INOX, 0.22) : { c:pp.color, r:0.38, m:0.35 }), red=this.M(StMat.paint('#c83a2e', 0.4)), dn=+(String(pp.dn||'').match(/\d+/)||[0])[0];
+    const r=Math.max(0.012, Math.min(0.08, (dn || 50)/2000+0.006)), o=this.P(l.x1, l.y, l.z), x0=Math.min(...E.map(i=>this.B(i)[0])), xm=(this.Le+0.07+x0)/2;
+    const run=(...Q)=>{ for (let k=1; k<Q.length; k++){ m.tube(Q[k-1], Q[k], r, 18); m.sphere(Q[k], r*1.03, 12); } };
+    const zin=it=>{ const [, , z0, , , z1]=this.B(it); return it.shape==='vcyl' && it.h>=900 ? z0+Math.max(0.25, mm(it.h)*0.22) : (z0+z1)/2; };
+    run([this.Le+0.07, o[1], o[2]], [xm, o[1], o[2]]);
+    m.sphere([xm, o[1], o[2]], r*1.03, 12); red.box(this.Le+0.25, o[1]-0.012, o[2]+r*1.3, this.Le+0.38, o[1]+0.012, o[2]+r*1.3+0.018, 0.004);   // кран у стены
+    for (const it of E){ const [ix0, iy0, , , iy1]=this.B(it), y=(iy0+iy1)/2, z=zin(it); run([xm, o[1], o[2]], [xm, y, o[2]], [xm, y, z], [ix0, y, z]); m.tube([ix0-0.02, y, z], [ix0+0.01, y, z], r*1.6, 18); }
+    const far=E.reduce((a, c)=>c.x+c.lx>a.x+a.lx ? c : a), [fx0, fy0, , fx1, fy1, fz1]=this.B(far), cx=(fx0+fx1)/2, cy=(fy0+fy1)/2;
+    run([cx, cy, fz1+0.09], [cx, cy, fz1+0.25], [fx1+0.4, cy, fz1+0.25]); m.tube([fx1+0.38, cy, fz1+0.25], [fx1+0.42, cy, fz1+0.25], r*1.7, 20);
   }
   /** габариты сцены (м): контейнер, глушитель, открытые двери */
   bounds(){
     const up=(this.plan.roof||[]).reduce((s, m)=>Math.max(s, (m.gap+m.d+m.outlet)/1000), 0), sw=Math.max(0, ...[...this.doorsF, ...this.doorsB].map(d=>d.w/d.leaves/1000));
-    return { lo:[-0.15, -0.15-(this.doorsF.length ? sw*0.8 : 0), 0], hi:[this.Le+0.15, this.We+0.15+(this.doorsB.length ? sw*0.8 : 0), this.top+up+0.05] };
+    const E=(this.plan.outside||[]).map(i=>this.B(i)), xo=Math.max(this.Le, ...E.map(b=>b[3]+0.45)), yo=Math.min(0, ...E.map(b=>b[1]-0.2)), yi=Math.max(this.We, ...E.map(b=>b[4]+0.2)), zo=Math.max(0, ...E.map(b=>b[5]+0.3));
+    return { lo:[-0.15, Math.min(yo, -0.15-(this.doorsF.length ? sw*0.8 : 0)), 0], hi:[xo+0.15, Math.max(yi, this.We+0.15+(this.doorsB.length ? sw*0.8 : 0)), Math.max(zo, this.top+up+0.05)] };
   }
   /** число треугольников (проверка и замер) */
   tris(){ let n=0; for (const e of this.groups.values()) n+=e.mesh.i.length/3; return n; }

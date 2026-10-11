@@ -826,10 +826,11 @@ class StationScheme {
     const rows=[...U.reduce((m, u)=>{ const r=m.get(u.pos); if (r) r.qty+=u.qty||1; else m.set(u.pos, { u, qty:u.qty||1 }); return m; }, new Map()).values()]
       .concat(cond.map(c=>({ u:{ pos:c.pos, kind:'cond', brief:c.brief, name:c.name }, qty:c.qty||1 })), pipe ? [{ u:{ pos:pipe.pos, kind:'piping', brief:pipe.name }, qty:1 }] : [])
       .sort((p, q)=>p.u.pos-q.u.pos);
+    const dryer=U.some(x=>x.kind==='dryer' && (x.air||{}).type!=='gen') || comps.some(x=>(x.air||{}).dryer), out=U.filter(u=>u.kind==='receiver' && (u.air||{}).out);
     const note=u=>{ const r=u.air||{};
       if (u.kind==='compressor') return [r.dryer ? 'встроенный осушитель' : '', r.filter ? 'встроенные фильтры' : '', r.vsd ? 'частотное регулирование' : ''].filter(Boolean).join(', ');
       if (u.kind==='dryer') return (r.type==='ads' ? 'адсорбционный' : r.type==='gen' ? 'генератор' : 'рефрижераторный')+(r.filters ? ', встроенные фильтры' : '');
-      if (u.kind==='receiver') return r.role==='dry' ? 'после осушителя' : 'до осушителя';
+      if (u.kind==='receiver') return [r.role==='dry' ? (dryer ? 'после осушителя' : U.some(x=>x.kind==='filter') ? 'после фильтров' : '') : dryer ? 'до осушителя' : '', r.out ? 'снаружи' : ''].filter(Boolean).join(', ');
       if (u.kind==='filter') return AirChain.GRADES[r.grade] ? AirChain.GRADES[r.grade].short : '';
       if (u.kind==='cond') return 'очистка конденсата';
       if (u.kind==='piping') return 'краны, клапаны, манометры';
@@ -841,6 +842,7 @@ class StationScheme {
       `Арматура (запорные краны, предохранительный клапан, манометр, отвод конденсата) показана условно${pipe ? `; входит в обвязку поз. ${pipe.pos}` : ''}.`,
       'У ресивера, фильтров и осушителя — один вход и один выход: сжатый воздух проходит через них последовательно, по стрелкам; линии отвода конденсата — штриховые.',
       ...(a.cls ? [`На выходе — класс чистоты сжатого воздуха ${a.cls} по ISO 8573-1.`] : []),
+      ...(out.length ? [`${out.length>1 || (out[0].qty||1)>1 ? 'Ресиверы' : 'Ресивер'} поз. ${[...new Set(out.map(u=>u.pos))].join(', ')} — снаружи контейнера, на площадке; подключение через стену — с запорной арматурой.`] : []),
     ];
     const nH=sh.paras(25, 0, 175, notes, 2.5, false), yN=yList-8-nH;
     sh.paras(25, yN, 175, notes, 2.5);
