@@ -12,13 +12,13 @@ class StationUi {
   static on(x){ return !!x && typeof stationOf==='function' && !!stationOf(x) && FEAT.on('stLayout'); }
   static input(x){
     const c=kitContainer(x);
-    return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, ins:c.ins, ral:c.ral, sys:c.sys||null } : null, parts:kitParts(x) };
+    return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, ins:c.ins, ral:c.ral, sys:c.sys||null } : null, parts:kitParts(x), air:this.opts(x).air };
   }
-  /** расстановка — пересчитывается, только когда изменился состав или контейнер */
+  /** расстановка — пересчитывается, только когда изменился состав, контейнер или класс чистоты воздуха (на картинки не влияет) */
   static plan(x){
-    const inp=this.input(x), h=StationLayout.hash(inp), c=this.cache.get(x.id);
-    if (c && c.h===h) return c.plan;
-    const plan=StationLayout.solve(inp); plan.hash=h; this.cache.set(x.id, { h, plan });
+    const inp=this.input(x), h=StationLayout.hash(inp), k=h+'|'+inp.air, c=this.cache.get(x.id);
+    if (c && c.k===k) return c.plan;
+    const plan=StationLayout.solve(inp); plan.hash=h; this.cache.set(x.id, { k, plan });
     return plan;
   }
   /** оборудование не помещается — КП не сохраняется (пункт в «Чтобы сохранить, заполните»); по условным габаритам —
@@ -29,7 +29,7 @@ class StationUi {
     return { title:String(x.name||'').trim() || 'Станция в контейнере', cont:c ? ctypeOf(c.ctype).name : 'Контейнер', colorText:plan.colorText ? 'цвет '+plan.colorText : '' };
   }
   /** что вставлять в КП: 3D-вид главным фото, чертёж — в изображения (по умолчанию — оба) */
-  static opts(x){ const o=x.stLayout||{}; return { photo:o.photo!==false, draw:o.draw!==false }; }
+  static opts(x){ const o=x.stLayout||{}; return { photo:o.photo!==false, draw:o.draw!==false, air:/^[1-6]\.[1-6]\.[1-4]$/.test(String(o.air||'')) ? o.air : '' }; }
   static url(svg){ return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg); }
 
   // ---- вкладка «Компоновка»
@@ -39,9 +39,11 @@ class StationUi {
     if (plan.level==='none') return `<div class="ed-sec stl"><p class="stl-none">${esc(plan.text)}</p>${this.how()}</div>`;
     const g=plan.geo, c=kitContainer(x), ct=ctypeOf(c.ctype), o=this.opts(x);
     const big=plan.suggest && plan.suggest.smaller && !plan.issues.some(t=>t.level==='warn' && !t.big);   // предупреждение — только о запасе
+    const wn=plan.issues.filter(t=>t.level==='warn'), airOnly=wn.length && wn.every(t=>t.air);
     const head=plan.level==='error' ? ['err', plan.assumed ? '✕ Не помещается по условным габаритам — укажите размеры оборудования' : '✕ Оборудование не помещается в контейнер']
       : plan.door==='service' ? ['warn', '⚠ Помещается без прохода — обслуживание снаружи через сервисные двери']
       : big ? ['warn', '⚠ Помещается с запасом — достаточно контейнера меньше']
+      : airOnly ? ['warn', '⚠ Помещается — есть замечания по подготовке воздуха']
       : plan.level==='warn' ? ['warn', '⚠ Помещается, но часть отступов меньше рекомендуемых'] : ['ok', '✓ Оборудование помещается с рекомендуемыми отступами'];
     const dims=g.ext ? `${esc(ct.name)} · ${n(g.ext[0])} × ${n(g.ext[1])} × ${n(g.ext[2])} мм${plan.int ? ` · внутри ${n(plan.int[0])} × ${n(plan.int[1])} × ${n(plan.int[2])} мм` : ''}` : esc(ct.name);
     const iss=[...plan.issues].sort((a, b)=>this.rank(a)-this.rank(b));
@@ -56,6 +58,7 @@ class StationUi {
     return `<div class="ed-sec stl">
       <div class="stl-st ${head[0]}"><b>${head[1]}</b><span>${dims}${this.sizeNote(c, i)}</span>${plan.suggest ? this.fix(plan.suggest, i) : ''}</div>
       ${iss.length ? `<ul class="stl-iss">${iss.map(t=>`<li class="${t.level}">${esc(t.text)}</li>`).join('')}</ul>` : ''}
+      ${this.air(plan, x, i)}
       ${pics ? `<div class="stl-views">
         <figure><figcaption><b>3D-вид</b><label class="stl-chk"><input type="checkbox" data-stl="photo" data-i="${i}"${photoOn ? ' checked' : ''}> главное фото станции — в строке КП и на титуле</label></figcaption>
           <img src="${esc(src3)}" data-st3d="${esc(plan.hash||'')}" alt="3D-вид станции">${cutCab ? '<small class="stl-note">Стена прохода срезана вместе со шкафами на ней — их место на чертеже.</small>' : ''}</figure>
@@ -64,6 +67,18 @@ class StationUi {
       ${this.how()}</div>`;
   }
   static rank(t){ return { error:0, warn:1, info:2 }[t.level] ?? 3; }
+  /** подготовка воздуха: цепочка по ходу воздуха, класс чистоты (ISO 8573-1), чего не хватает — подобрать в каталоге */
+  static air(plan, x, i){
+    const a=plan.air; if (!a) return '';
+    const o=this.opts(x), m3=v=>AirChain.m3(v);
+    const chain=a.chain.map(c=>`<span class="stl-node${c.guess ? ' guess' : ''}"${c.guess ? ' title="Ступень фильтра не указана — место выбрано по виду осушителя"' : ''}>${esc(c.text)} <small>поз. ${c.pos}</small></span>`).join('<span class="stl-arr">→</span>');
+    const cls=`<label class="f stl-cls"><span>Класс чистоты воздуха по ISO 8573-1 (частицы.вода.масло)</span><select data-stl="air" data-i="${i}"><option value="">не задан — проверка по составу</option>${AirChain.CLASSES.map(([v, t])=>`<option value="${v}"${o.air===v ? ' selected' : ''}>${v} — ${esc(t)}</option>`).join('')}</select></label>`;
+    const recs=a.recs.map((r, k)=>`<li><span><b>${esc(r.title)}</b> — ${esc(r.why)}</span><button class="btn sm" type="button" data-a="stlRec" data-i="${i}" data-k="${k}">Подобрать в каталоге</button></li>`).join('');
+    return `<div class="stl-air"><div class="stl-air-h"><b>Подготовка воздуха</b>${a.q ? `<span class="muted">компрессоры — ${m3(a.q)} м³/мин при ${m3(a.bar)} бар</span>` : ''}</div>
+      <div class="stl-chain">${chain}<span class="stl-arr">→</span><span class="stl-node">потребителю</span></div>
+      ${a.chain.some(c=>c.guess) ? '<p class="muted stl-hint">Пунктиром — фильтр, у которого не указана ступень очистки: место выбрано по виду осушителя. Укажите «Ступень очистки» в характеристиках фильтра (предварительная, тонкая, сверхтонкая, угольный).</p>' : ''}
+      ${cls}${recs ? `<p class="stl-rec-h">Не хватает в составе:</p><ul class="stl-recs">${recs}</ul>` : ''}</div>`;
+  }
   /** подпись размера блок-контейнера: подобран или задан вручную (вернуть подбор) */
   static sizeNote(c, i){
     if (!c || !StationGeo.FLEX[c.ctype]) return '';
@@ -79,7 +94,10 @@ class StationUi {
   static how(){
     const [aRec, aMin]=StationClear.aisle(), n=StationLayout.n;
     return `<details class="stl-how"><summary>Как расставляется оборудование и какие отступы</summary>
-      <p>Оборудование стоит вдоль задней стены лицевой стороной к проходу обслуживания (проход — вдоль стены с дверью); если не хватает длины, а ширина позволяет, — в два ряда с проходом посередине. Порядок — как в составе станции (стрелки ↑↓ на вкладке «Состав станции»); ДГУ — в дальнем торце радиатором к жалюзи. Шкафы — на стене прохода напротив оборудования (низ — от 300 мм, верх — до 1,9 м; проход перед ними — не уже 600 мм, ПУЭ, п. 4.1.23); напольный шкаф (выбрано в составе, назван так или большой по габаритам) — в ряду у двери. Магистральные фильтры висят на трубопроводе после осушителя — там, где к ним подойти из прохода (колба и элемент снимаются вниз), места на полу не занимают. Габариты, масса и цвет — из характеристик элементов (цвет контейнера — поле «Цвет» в составе).</p>
+      <p>Оборудование стоит вдоль задней стены лицевой стороной к проходу обслуживания (проход — вдоль стены с дверью); если не хватает длины, а ширина позволяет, — в два ряда с проходом посередине. Порядок — как в составе станции (стрелки ↑↓ на вкладке «Состав станции»), у компрессорной — по ходу воздуха; ДГУ — в дальнем торце радиатором к жалюзи. Габариты, масса и цвет — из характеристик элементов (цвет контейнера — поле «Цвет» в составе).</p>
+      <p>Сжатый воздух — последовательно, по ходу: компрессоры → коллектор → «мокрый» ресивер → фильтры до осушителя → осушитель → фильтры после → угольный → «сухой» ресивер → потребителю. У осушителя, ресивера и фильтра — один вход и один выход: магистраль проходит через них, у ресивера вход внизу, выход вверху. Фильтры — по ступени очистки (поле «Ступень очистки» или название): предварительный и тонкий — перед осушителем, сверхтонкий от масла — после рефрижераторного; перед адсорбционным — всегда фильтр очистки от масла, после него — пылевой; угольный — последним. Фильтр без указанной ступени ставится по виду осушителя. Встроенные фильтры осушителя и встроенный осушитель компрессора учитываются. Фильтры висят на трубопроводе у осушителя — там, где к ним подойти из прохода (колба и элемент снимаются вниз).</p>
+      <p>Подбор: осушитель и фильтры — не меньше суммы производительности компрессоров с поправкой на давление (номинал — при 7 бар, +35 °C на входе, +25 °C вокруг, ISO 7183), осушитель — с запасом 15 % на лето; ресивер — около 125 л на 1 м³/мин компрессора с регулированием «нагрузка — холостой ход» (с частотным — меньше). Класс чистоты по ISO 8573-1 (частицы.вода.масло) — какой нужен осушитель (вода 1–3 — адсорбционный, 4–6 — рефрижераторный) и какие ступени фильтров. Чего не хватает — кнопка «Подобрать в каталоге»: каталог открывается с нужным видом, ступенью и производительностью.</p>
+      <p>Шкафы — на стене и не мешают проходу оператора: перед шкафом — не меньше прохода обслуживания (ПУЭ, п. 4.1.23: у щитов не менее 0,8 м в свету; сужение до 0,6 м допускается только строительными конструкциями). Сначала — на стене прохода у двери напротив промежутка между оборудованием, затем — на торце у двери или на дальнем торце, затем — на стене прохода с проходом «не менее»; низ — от 300 мм, верх — до 1,9 м. Напольный шкаф (выбрано в составе, назван так или большой по габаритам) — в ряду у двери. Входная дверь оператора — 900 мм, не уже 600 мм в свету, открывается наружу.</p>
       <p>Отступы — сначала «не менее» (помещается ли), затем свободное место раздаётся до рекомендуемых:</p>
       <ul><li>проход обслуживания — рекомендуется ${n(aRec)} мм (руководства производителей компрессоров: не менее 1 м), не менее ${n(aMin)} мм (ПУЭ, п. 4.1.23); вдоль ДГУ — не менее 600 мм (там же: сужение прохода до 0,6 м);</li>
         <li>между оборудованием — 700 мм (СП 30.13330.2020, п. 13.22: между выступающими частями 0,7 м), не менее 300 мм; насосы — 1000 мм (СП 31.13330.2021, п. 10.15), малые (до 22 кВт) — 700 мм, у стены и парой на общей раме — от 250 мм;</li>
@@ -108,12 +126,14 @@ class StationUi {
       return true;
     }
     if (a==='stlAuto'){ c.sizeAuto=true; StationSize.apply(it, true); return true; }
+    if (a==='stlRec'){ const r=((this.plan(it).air||{}).recs||[])[+b.dataset.k]; if (r) kitPickCat(i, [r.cat], null, r.name, { f:r.f, r:r.r, rows:r.rows, attrs:r.attrs }); return false; }
     return false;
   }
   /** галочки «главное фото» и «в КП» */
   static async check(t){
     const it=S.items[+t.dataset.i]; if (!it) return;
-    it.stLayout={ ...this.opts(it), [t.dataset.stl]:t.checked };
+    it.stLayout={ ...this.opts(it), [t.dataset.stl]:t.type==='checkbox' ? t.checked : t.value };
+    if (t.dataset.stl==='air'){ persist(); renderEditor(); renderForm(); return; }
     if (t.dataset.stl==='photo' && t.checked && it.photo && it.photo.gen!=='st3d'){
       const part=StationImages.partPhoto(it);   // фото элемента состава — и так стоит в КП у его описания
       if (!confirm(part ? 'Заменить главное фото станции 3D-видом? Фото элемента останется у его описания.' : 'Заменить главное фото станции 3D-видом? Прежнее фото останется в изображениях позиции.')){ it.stLayout.photo=false; t.checked=false; return; }
