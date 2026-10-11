@@ -1,8 +1,8 @@
 // Компоновка станции в контейнере — в программе: вкладка «Компоновка» карточки станции (помещается ли оборудование,
-// чертёж и 3D-вид, подбор контейнера), размер блок-контейнера по оборудованию, картинки для КП (3D-вид — главное фото
-// станции, габаритный чертёж — в изображениях после характеристик), проверка перед сохранением КП.
-// Расчёт — station-layout.js (StationLayout), чертёж — station-draw.js (StationDrawing), 3D-вид — station-render.js
-// (StationRender, WebGL2); нет WebGL2 — прежний SVG-вид (StationView3D).
+// чертёж, схема и 3D-вид, подбор контейнера), размер блок-контейнера по оборудованию, картинки для КП (3D-вид — главное
+// фото станции, габаритный чертёж и схема пневматическая — в изображениях после характеристик), проверка перед сохранением.
+// Расчёт — station-layout.js (StationLayout), лист ЕСКД и схема — station-eskd.js (EskdSheet, StationScheme), чертёж —
+// station-draw.js (StationDrawing), 3D-вид — station-render.js (StationRender, WebGL2); нет WebGL2 — SVG-вид (StationView3D).
 'use strict';
 
 class StationUi {
@@ -25,11 +25,17 @@ class StationUi {
    *  только предупреждение: программа не уверена */
   static blocked(x){ if (!this.on(x) || !isKit(x)) return false; const p=this.plan(x); return p.level==='error' && !p.assumed; }
   static meta(x, plan){
-    const c=kitContainer(x);
-    return { title:String(x.name||'').trim() || 'Станция в контейнере', cont:c ? ctypeOf(c.ctype).name : 'Контейнер', colorText:plan.colorText ? 'цвет '+plan.colorText : '' };
+    const c=kitContainer(x), dev=String((S.manager||{}).name||'').trim().replace(/\s+/g, ' ');
+    return { title:String(x.name||'').trim() || 'Станция в контейнере', cont:c ? ctypeOf(c.ctype).name : 'Контейнер', colorText:plan.colorText ? 'цвет '+plan.colorText : '',
+      org:this.org(), dev:this.short(dev), date:S.date||'' };   // основная надпись чертежей: организация, «Разраб.», дата
   }
-  /** что вставлять в КП: 3D-вид главным фото, чертёж — в изображения (по умолчанию — оба) */
-  static opts(x){ const o=x.stLayout||{}; return { photo:o.photo!==false, draw:o.draw!==false, air:/^[1-6]\.[1-6]\.[1-4]$/.test(String(o.air||'')) ? o.air : '' }; }
+  /** организация для основной надписи: из настроек шаблона КП */
+  static org(){ const pk=TPL_CACHE[S.template], st=(pk && pk.settings) || {}, tl=curTemplate() || {};
+    return String(st.company || tl.company || (st.brandParts||[]).map(x=>x[0]).join('') || 'ПНЕВМОТЕХ').trim(); }
+  /** «Иванов Иван Иванович» → «Иванов И. И.»; два слова — как есть */
+  static short(n){ const w=n.split(' ').filter(Boolean); return w.length>=3 ? `${w[0]} ${w[1][0]}. ${w[2][0]}.` : n; }
+  /** что вставлять в КП: 3D-вид главным фото, чертёж и схема — в изображения (по умолчанию — всё) */
+  static opts(x){ const o=x.stLayout||{}; return { photo:o.photo!==false, draw:o.draw!==false, scheme:o.scheme!==false, air:/^[1-6]\.[1-6]\.[1-4]$/.test(String(o.air||'')) ? o.air : '' }; }
   static url(svg){ return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg); }
 
   // ---- вкладка «Компоновка»
@@ -60,10 +66,12 @@ class StationUi {
       ${iss.length ? `<ul class="stl-iss">${iss.map(t=>`<li class="${t.level}">${esc(t.text)}</li>`).join('')}</ul>` : ''}
       ${this.air(plan, x, i)}
       ${pics ? `<div class="stl-views">
-        <figure><figcaption><b>3D-вид</b><label class="stl-chk"><input type="checkbox" data-stl="photo" data-i="${i}"${photoOn ? ' checked' : ''}> главное фото станции — в строке КП и на титуле</label></figcaption>
+        <figure class="v3d"><figcaption><b>3D-вид</b><label class="stl-chk"><input type="checkbox" data-stl="photo" data-i="${i}"${photoOn ? ' checked' : ''}> главное фото станции — в строке КП и на титуле</label></figcaption>
           <img src="${esc(src3)}" data-st3d="${esc(plan.hash||'')}" alt="3D-вид станции">${cutCab ? '<small class="stl-note">Стена прохода срезана вместе со шкафами на ней — их место на чертеже.</small>' : ''}</figure>
         <figure class="dr"><figcaption><b>Габаритный чертёж</b><label class="stl-chk"><input type="checkbox" data-stl="draw" data-i="${i}"${o.draw ? ' checked' : ''}> в КП — после характеристик</label></figcaption>
-          <img src="${esc(this.url(StationDrawing.svg(plan, meta)))}" alt="Габаритный чертёж станции"></figure></div>` : ''}
+          <img src="${esc(this.url(StationDrawing.svg(plan, meta)))}" alt="Габаритный чертёж станции"></figure>
+        ${StationScheme.ok(plan) ? `<figure class="dr"><figcaption><b>Схема пневматическая</b><label class="stl-chk"><input type="checkbox" data-stl="scheme" data-i="${i}"${o.scheme ? ' checked' : ''}> в КП — после чертежа</label></figcaption>
+          <img src="${esc(this.url(StationScheme.svg(plan, meta)))}" alt="Схема пневматическая принципиальная"></figure>` : ''}</div>` : ''}
       ${this.how()}</div>`;
   }
   static rank(t){ return { error:0, warn:1, info:2 }[t.level] ?? 3; }
@@ -106,7 +114,8 @@ class StationUi {
       <p>Прохода внутри не получается — оборудование обслуживается снаружи через сервисные двери с любой стороны: один ряд лицом к стене с дверями или, если так короче, два ряда спиной друг к другу с дверями в обеих стенах (между рядами — трубопровод); ДГУ посередине — двери с обеих сторон. До двери ${n(StationLayout.DOOR_GAP[1])}–${n(StationLayout.DOOR_GAP[0])} мм, проём напротив каждого агрегата (между соседними — стойка), створки до 1,2 м открываются наружу, у дверей на площадке — свободная зона не менее 1,5 м; шкаф — на раме за своей дверью.</p>
       <p>ДГУ: дополнительный топливный бак — рядом с ДГУ; глушитель — на крыше прямо над ДГУ, на опорах, выхлопная труба от двигателя — вертикально в глушитель, вывод выхлопа вверх (высота с глушителем — на чертеже; при перевозке глушитель снимают: с платформой — не выше 4 м). Трубопровод — вдоль задней стены с отводами к оборудованию и выходом через дальний торец; материал (сталь, нержавеющая сталь, полипропилен) — в «Составе станции», цвет трассы на чертеже и 3D-виде — по материалу.</p>
       <p>3D-вид рисуется по расстановке: перспектива, мягкие тени, окраска по RAL, оцинковка, нержавеющая сталь, полипропилен. Стена со стороны зрителя срезана (шкафы на ней — на чертеже); если в ней сервисные двери — стена стоит, створки открыты. Без WebGL2 (старая видеокарта, удалённый рабочий стол) — упрощённый вид.</p>
-      <p>Блок-контейнер без своего размера — по необходимому месту, без запаса: длина, ширина и высота с шагом 100 мм, наименьшая площадь пола (сначала все отступы рекомендуемые; не выходит в ширину, которую везут без спецразрешения, — проход и отступ от стены «не менее»; затем без прохода — с сервисными дверями; затем шире 2 550 мм). Морской контейнер, в который всё не помещается, — ошибка (КП не сохраняется) и подсказка, какой подойдёт; с большим запасом — подсказка, какой меньший (в том числе 10 футов) подойдёт так же. Проход обслуживания администратор меняет в «Настройки → Умолчания → Станции в контейнере».</p></details>`;
+      <p>Блок-контейнер без своего размера — по необходимому месту, без запаса: длина, ширина и высота с шагом 100 мм, наименьшая площадь пола (сначала все отступы рекомендуемые; не выходит в ширину, которую везут без спецразрешения, — проход и отступ от стены «не менее»; затем без прохода — с сервисными дверями; затем шире 2 550 мм). Морской контейнер, в который всё не помещается, — ошибка (КП не сохраняется) и подсказка, какой подойдёт; с большим запасом — подсказка, какой меньший (в том числе 10 футов) подойдёт так же. Проход обслуживания администратор меняет в «Настройки → Умолчания → Станции в контейнере».</p>
+      <p>Чертёж — лист А4 по ЕСКД: рамка и основная надпись (ГОСТ Р 2.104), литера «П» — техническое предложение, масштаб из ряда ГОСТ 2.302, линии — ГОСТ 2.303, шрифт типа Б — ГОСТ 2.304, разрезы А–А и Б–Б и вид слева — ГОСТ 2.305, размеры габаритные, установочные и присоединительные — ГОСТ 2.307 и ГОСТ Р 2.109, упрощённые изображения оборудования, перечень составных частей, техническая характеристика и технические требования — ГОСТ 2.316. Схема пневматическая принципиальная (компрессорная) — ГОСТ 2.701 и 2.704, обозначения — ГОСТ 2.780, 2.781, 2.782, 2.785 и ISO 1219-1; позиции — те же, что в составе станции и на чертеже. Обозначение документа (например, «ПНЕВ.012345.001 ГЧ») — по организации из шаблона КП и отпечатку расстановки: тот же состав — то же обозначение.</p></details>`;
   }
   /** метка на позиции в разделе «Оборудование» */
   static chip(x, i){
@@ -167,18 +176,18 @@ class StationImages {
   static busy = new Set();
   static timer = 0;
 
-  /** 3D-вид (главное фото) и габаритный чертёж (изображение после характеристик) — по текущей расстановке.
+  /** 3D-вид (главное фото), габаритный чертёж и схема пневматическая (изображения после характеристик) — по расстановке.
    *  Своё фото менеджера не заменяется; фото элемента состава, подставленное мастером само, — заменяется (у элемента оно
-   *  остаётся); убранный из изображений чертёж — выключает «в КП». true — что-то изменилось. */
+   *  остаётся); убранный из изображений чертёж или схема — выключает «в КП». true — что-то изменилось. */
   static async sync(x){
     if (!StationUi.on(x) || !isKit(x) || this.busy.has(x.id)) return false;
     StationSize.apply(x);
     const plan=StationUi.plan(x), o=StationUi.opts(x); let ch=false;
     x.gallery=Array.isArray(x.gallery) ? x.gallery : [];
-    const k=x.gallery.findIndex(g=>g && g.gen==='stdraw');
     const none=plan.level==='none' || plan.level==='error' || !plan.geo || !plan.geo.ext;   // нечего рисовать — прежние картинки не годятся
     if ((!o.photo || none) && x.photo && x.photo.gen==='st3d'){ x.photo=null; ch=true; }
-    if ((!o.draw || none) && k>=0){ x.gallery.splice(k, 1); ch=true; }
+    const off={ stdraw:!o.draw || none, stschema:!o.scheme || none || !StationScheme.ok(plan) };
+    for (const gen of Object.keys(off)){ const k=x.gallery.findIndex(g=>g && g.gen===gen); if (off[gen] && k>=0){ x.gallery.splice(k, 1); ch=true; } }
     if (none) return ch;
     this.busy.add(x.id);
     try{
@@ -189,11 +198,13 @@ class StationImages {
       if (o.photo && (!x.photo || x.photo.gen==='st3d') && !fresh){
         const gl=await StationRender.image(plan, meta), im=gl || await this.raster(StationView3D.svg(plan, meta), 'image/jpeg');
         x.photo={ ...im, gen:'st3d', hash:gl ? h+'.g' : h }; ch=true; }
-      const j=x.gallery.findIndex(g=>g && g.gen==='stdraw');
-      if (o.draw && (j<0 || x.gallery[j].hash!==hd)){
-        const im=await this.raster(StationDrawing.svg(plan, meta), 'image/png'), old=j>=0 ? x.gallery[j] : null;
-        const g={ id:old ? old.id : uid(), ...im, caption:'Габаритный чертёж и схема расстановки оборудования', slot:'', at:'', on:old ? old.on!==false : true, wide:'full', gen:'stdraw', hash:hd };
-        if (old) x.gallery[j]=g; else x.gallery.push(g);
+      // листы ЕСКД: габаритный чертёж и схема пневматическая (компрессорная) — изображениями после характеристик, по порядку
+      for (const [gen, on, svg, caption] of [['stdraw', o.draw, ()=>StationDrawing.svg(plan, meta), 'Габаритный чертёж'],
+        ['stschema', !off.stschema, ()=>StationScheme.svg(plan, meta), 'Схема пневматическая принципиальная']]){
+        const j=x.gallery.findIndex(g=>g && g.gen===gen); if (!on || (j>=0 && x.gallery[j].hash===hd)) continue;
+        const im=await this.raster(svg(), 'image/png'), old=j>=0 ? x.gallery[j] : null;
+        const g={ id:old ? old.id : uid(), ...im, caption, slot:'', at:'', on:old ? old.on!==false : true, wide:'full', gen, hash:hd };
+        if (old) x.gallery[j]=g; else if (gen==='stschema'){ const d=x.gallery.findIndex(q=>q && q.gen==='stdraw'); x.gallery.splice(d>=0 ? d+1 : x.gallery.length, 0, g); } else x.gallery.push(g);
         x.page=true; ch=true; }
     } catch(e){ /* картинка не собралась — КП собирается без неё */ }
     finally{ this.busy.delete(x.id); }
@@ -217,8 +228,8 @@ class StationImages {
     const g=c.getContext('2d'); g.fillStyle='#ffffff'; g.fillRect(0, 0, w, h); g.drawImage(im, 0, 0, w, h);
     return { src:c.toDataURL(type, 0.9), w, h };
   }
-  /** отпечаток чертежа: расстановка и подписи на нём (название станции, контейнер, цвет) */
-  static key(plan, meta){ return plan.hash+'.'+StationLayout.fnv(JSON.stringify([meta.title, meta.cont, meta.colorText])); }
+  /** отпечаток листов: расстановка и надписи на них (название станции, контейнер, цвет, основная надпись) */
+  static key(plan, meta){ return plan.hash+'.'+StationLayout.fnv(JSON.stringify([meta.title, meta.cont, meta.colorText, meta.org, meta.dev, meta.date, plan.air ? plan.air.cls : ''])); }
   /** менеджер убрал сгенерированную картинку сам — больше её не вставлять */
   static forget(x, what){ if (!x) return; x.stLayout={ ...StationUi.opts(x), [what]:false }; }
   /** главное фото станции — копия фото элемента состава */

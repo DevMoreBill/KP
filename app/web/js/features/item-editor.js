@@ -97,7 +97,7 @@ function imgBox(src, attrs, text){ return `<div class="ibox" ${attrs} tabindex="
 
 // выбор главного фото среди изображений позиции (фото со страницы поставщика, загруженные вручную)
 function edMainPick(x,i){
-  const free=edFreeGal(x).filter(j=>x.gallery[j] && x.gallery[j].src && x.gallery[j].gen!=='stdraw'); if (!free.length) return '';   // чертёж станции — не фото
+  const free=edFreeGal(x).filter(j=>x.gallery[j] && x.gallery[j].src && x.gallery[j].gen!=='stdraw' && x.gallery[j].gen!=='stschema'); if (!free.length) return '';   // чертёж и схема станции — не фото
   return `<div class="mainpick"><span class="muted">Главное фото — выбрать из изображений позиции:</span>
     <div class="mainpick-l">${free.map(j=>`<button type="button" class="mainpick-i" data-a="galMain" data-i="${i}" data-j="${j}" title="Сделать главным"><img src="${esc(x.gallery[j].src)}" alt=""></button>`).join('')}</div></div>`;
 }

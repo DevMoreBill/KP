@@ -1,10 +1,11 @@
-// Компоновка станций в контейнере (app/web/js/features/station-layout.js, station-draw.js): разбор габаритов и цвета,
-// расстановка с проходами обслуживания, подбор контейнера, отпечаток, габаритный чертёж и 3D-вид.
+// Компоновка станций в контейнере (app/web/js/features/station-layout.js, station-eskd.js, station-draw.js): разбор габаритов
+// и цвета, расстановка с проходами обслуживания, подбор контейнера, отпечаток, габаритный чертёж и схема пневматическая
+// принципиальная на листе А4 по ЕСКД, 3D-вид.
 // Запуск из корня репозитория: node tests/js/station_layout.js — код выхода 0, если всё прошло (tests/test_station_layout.py).
 'use strict';
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..');
-for (const f of ['logistics-calc.js', 'station-layout.js', 'station-draw.js', 'station-render.js']){
+for (const f of ['logistics-calc.js', 'station-layout.js', 'station-eskd.js', 'station-draw.js', 'station-render.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 
 class Check {
@@ -79,14 +80,40 @@ class Check {
     assert.ok(w>0 && h>0, label+': размер листа');
     return { w, h };
   }
+
+  /** лист ЕСКД: А4 (210 × 297 мм, растр — EskdSheet.K точек на мм), надписи — внутри листа и не наезжают друг на друга
+   *  (ширина — по EskdSheet.tw; обозначение в графе 26 повёрнуто на 180° — не проверяется) */
+  static sheet(s, label){
+    const sz=Check.svg(s, label), K=EskdSheet.K, [W, H]=EskdSheet.FMT.A4;
+    assert.ok(sz.w===W*K && sz.h===H*K && s.includes(`viewBox="0 0 ${W} ${H}"`), `${label}: лист ${sz.w}×${sz.h}`);
+    const T=Check.texts(s);
+    assert.strictEqual(T.length, (s.match(/<text /g)||[]).length, label+': надпись не в формате листа');
+    const V=T.filter(q=>q.rot!==180);
+    for (const q of V){ const [x0, y0, x1, y1]=q.b; assert.ok(x0>=7.8 && x1<=W-4.7 && y0>=4.8 && y1<=H, `${label}: «${q.t}» вне листа (${q.b.map(v=>v.toFixed(1))})`); }
+    for (let i=0; i<V.length; i++) for (let j=i+1; j<V.length; j++){ const a=V[i].b, b=V[j].b, ox=Math.min(a[2], b[2])-Math.max(a[0], b[0]), oy=Math.min(a[3], b[3])-Math.max(a[1], b[1]);
+      assert.ok(!(ox>0.4 && oy>0.4), `${label}: «${V[i].t}» наезжает на «${V[j].t}»`); }
+    return sz;
+  }
+  /** надписи листа: текст, поворот и границы [x0, y0, x1, y1], мм */
+  static texts(s){
+    const out=[], re=/<text x="([\d.-]+)" y="([\d.-]+)" font-size="([\d.]+)"(?: text-anchor="(\w+)")?(?: transform="rotate\(([-\d.]+)[^"]*\)")?[^>]*>([^<]*)<\/text>/g; let m;
+    while ((m=re.exec(s))){
+      const x=+m[1], y=+m[2], h=+m[3]/EskdSheet.CAP, a=m[4]||'start', rot=+(m[5]||0), t=m[6].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&'), w=EskdSheet.tw(t, h);
+      let b; if (!rot){ const x0=a==='middle' ? x-w/2 : a==='end' ? x-w : x; b=[x0, y-h, x0+w, y+0.25*h]; }
+      else { const y0=a==='middle' ? y-w/2 : a==='end' ? y : y-w; b=[x-h, y0, x+0.25*h, y0+w]; }
+      out.push({ t, rot, b }); }
+    return out;
+  }
 }
 
 let seq=0;
 const P=(name, attrs, extra)=>Object.assign({ id:'p'+(++seq), name, qty:1, attrs:attrs||{}, rows:[] }, extra||{});
 const C=(ctype, o)=>Object.assign({ role:'container', ctype, ins:'100 мм', size:'', sizeAuto:false, ral:'RAL 7035 / RAL 5005' }, o||{});
 const solve=(cont, parts)=>StationLayout.solve({ cont, parts });
-const meta=(p, title)=>({ title:title||'Станция <проверка> & «кавычки»', cont:'Контейнер', colorText:p.colorText ? 'цвет '+p.colorText : '' });
-const draw=(p, label)=>{ Check.svg(StationView3D.svg(p, meta(p)), label+' (3D)'); return Check.svg(StationDrawing.svg(p, meta(p)), label+' (чертёж)'); };
+const meta=(p, title)=>({ title:title||'Станция <проверка> & «кавычки»', cont:'Контейнер', colorText:p.colorText ? 'цвет '+p.colorText : '', org:'ООО «ПНЕВМОТЕХ»', dev:'Иванов И. И.', date:'2026-10-11' });
+const draw=(p, label)=>{ Check.svg(StationView3D.svg(p, meta(p)), label+' (3D)');
+  if (StationScheme.ok(p)) Check.sheet(StationScheme.svg(p, meta(p)), label+' (схема)');
+  return Check.sheet(StationDrawing.svg(p, meta(p)), label+' (чертёж)'); };
 
 const comp=P('Винтовой компрессор Dalgakiran DVK 37', { cat:'comp_screw', maker:'Dalgakiran', model:'DVK 37', kw:37, size:'1400 × 900 × 1500', mass:650 }, { role:'main' });
 const dryer=P('Рефрижераторный осушитель DK 60', { cat:'dryer_refrig', model:'DK 60', size:'900 × 600 × 1100', mass:120 });
@@ -274,7 +301,8 @@ Check.run('сжатый воздух: последовательно, фильт
   assert.ok(F[1].air.grade==='micro' && F[1].x>=port('dryer', 'out').x, 'тонкой очистки — после выхода осушителя');
   assert.ok(port('receiver', 'in').z1<port('receiver', 'out').z1, 'ресивер: вход внизу, выход вверху');
   assert.ok(!ks.issues.some(i=>i.air && i.level==='warn'), 'по составу замечаний нет: '+ks.issues.filter(i=>i.air).map(i=>i.text).join(' | '));
-  const sv=StationDrawing.svg(ks, meta(ks)); assert.ok(sv.includes('Сжатый воздух по ходу') && sv.includes('один вход и один выход'), 'на чертеже — цепочка');
+  const sv=StationDrawing.svg(ks, meta(ks)); assert.ok(/Сжатый воздух — последовательно: поз\. [\d → ]+ → к потребителю/.test(sv), 'на чертеже — цепочка');
+  assert.ok(StationScheme.svg(ks, meta(ks)).includes('один вход и один выход'), 'на схеме — один вход и один выход');
   // адсорбционный: перед ним — фильтр от масла (нет — предупреждение и подбор), после — пылевой
   const ad=P('Адсорбционный осушитель', { cat:'dryer_ads', model:'A 60', flow:7, size:'900 × 700 × 1700' });
   const a0=solve(C('block'), [c62, ad, rc]); Check.plan(a0, 'адсорбционный без фильтров');
@@ -327,10 +355,10 @@ Check.run('шкафы не сужают проход, торец; двери н�
   const dg=solve(C('sea20'), [dgu, cab]); assert.ok(!dg.items.some(i=>i.wall==='left' || i.wall==='right'), 'у морского — в торце двери, у ДГУ — жалюзи: не на торцах');
   const aMin=p.aisleRule[1];
   for (const c of cabs.filter(x=>x.wall==='front')) for (const i of p.items.filter(x=>x.mount==='floor' && x.x<c.x+c.lx && x.x+x.lx>c.x)) assert.ok(i.y-c.ly>=aMin-1, 'шкаф не сужает проход');
-  assert.ok(StationDrawing.svg(p, meta(p)).includes('проход оператора не сужают'));
+  assert.ok(/на стене, низ на высоте [\d ]+ мм; проход перед ними — не менее/.test(StationDrawing.svg(p, meta(p))), 'шкафы не сужают проход — в технических требованиях');
   assert.strictEqual(StationLayout.DOOR_MIN, 600);
   assert.ok(StationLayout.ENTRY[1]-StationLayout.ENTRY[0]>=StationLayout.DOOR_MIN, 'входная дверь — не уже 600 мм');
-  const sv=StationDrawing.svg(solve(C('block'), [comp]), meta(p)); assert.ok(/Входная дверь оператора — 900 мм \(не менее 600 мм в свету\)/.test(sv), 'на чертеже — дверь оператора');
+  const sv=StationDrawing.svg(solve(C('block'), [comp]), meta(p)); assert.ok(/Входная дверь 900 мм \(не менее 600 мм в свету\) открывается наружу/.test(sv), 'на чертеже — дверь оператора');
 });
 
 Check.run('морской контейнер с запасом — подсказка меньшего', ()=>{
@@ -354,8 +382,10 @@ Check.run('ДГУ: глушитель на крыше, бак рядом, топ
   assert.ok(p.issues.some(i=>i.text.includes('высота станции с глушителем '+StationLayout.n(3791)) && /снимают/.test(i.text)), 'высота с глушителем и пометка о перевозке');
   const pp=p.piping[0]; assert.strictEqual(pp.mat, 'steel'); assert.strictEqual(pp.lines.length, 1, 'топливо: от бака к ДГУ');
   assert.ok(pp.lines[0].x0<=t.x+t.lx && pp.lines[0].x1>=g.x, 'линия от бака до ДГУ');
-  const svg=StationDrawing.svg(p, meta(p)); Check.svg(svg, 'ДГУ+ чертёж');
-  assert.ok(svg.includes('Глушитель на крыше') && svg.includes('Топливопровод'), 'глушитель и трубопровод — в экспликации');
+  const svg=StationDrawing.svg(p, meta(p)); Check.sheet(svg, 'ДГУ+ чертёж');
+  assert.ok(svg.includes('Глушитель на крыше') && svg.includes('Топливопровод'), 'глушитель и трубопровод — в перечне');
+  assert.ok(/Глушитель поз\. \d+ — на крыше над ДГУ; при перевозке снимается/.test(svg), 'глушитель — в технических требованиях');
+  assert.ok(!StationScheme.ok(p), 'ДГУ — схемы пневматической нет');
   const sz=Check.svg(StationView3D.svg(p, meta(p)), 'ДГУ+ 3D'); assert.ok(sz.h>0);
   const bad=solve(C('sea40'), [dgu, fuel, Object.assign({}, fl, { pipeMat:'pp' })]);
   assert.ok(bad.issues.some(i=>i.level==='warn' && /полипропилена не применяют/.test(i.text)), 'топливо в полипропилене — предупреждение');
@@ -388,8 +418,8 @@ Check.run('трубопровод: материал, трасса, отпеча�
     else assert.ok(b.z1===l.z && side, `отвод в ближнюю стенку: ${it.kind}`); }
   assert.ok(ns.piping[0].lines.some(l=>l.branches.some(b=>b.z1<l.z)), 'напор над насосами — со спусками');
   // номера позиций на плане — поверх трубопровода: фильтры стоят на трубе, линия не должна перечёркивать цифры
-  const sv=StationDrawing.svg(ks, {}), sec=sv.slice(sv.indexOf('Вид сверху (план)'), sv.indexOf('Вид слева'));
-  assert.ok(sec.indexOf('r="17"')>sec.lastIndexOf(`stroke="${ks.piping[0].color}" stroke-width="4.5"`), 'номера на плане — после трубопровода');
+  const sv=StationDrawing.svg(ks, {}), sec=sv.slice(sv.indexOf('>Б–Б<'));
+  assert.ok(sec.includes('stroke-width="0.7"') && sec.indexOf('r="0.5" fill="#000"')>sec.lastIndexOf('stroke-width="0.7"'), 'номера на плане — после трубопровода');
   const inp=m=>({ cont:C('sea20'), parts:[comp, P('Трубопровод', {}, { id:'tp', pipeMat:m })] });
   assert.notStrictEqual(StationLayout.hash(inp('steel')), StationLayout.hash(inp('pp')), 'материал — в отпечатке');
 });
@@ -428,13 +458,64 @@ Check.run('отпечаток расстановки', ()=>{
   assert.notStrictEqual(StationLayout.hash(ral), h0, 'цвет контейнера — влияет');
 });
 
-Check.run('чертёж: лист и надписи', ()=>{
+Check.run('чертёж: лист А4 по ЕСКД', ()=>{
   const p=solve(C('sea40'), [dgu, ats, tank]), d=StationDrawing.svg(p, meta(p, 'Название <b>с разметкой</b> & амперсандом'));
-  const sz=Check.svg(d, 'чертёж');
-  assert.strictEqual(sz.w, StationDrawing.W);
-  assert.ok(sz.h>=StationDrawing.HMIN && sz.h<=StationDrawing.HMAX, 'высота листа '+sz.h);
+  const sz=Check.sheet(d, 'чертёж');
+  assert.ok(sz.w===StationDrawing.W && sz.h===StationDrawing.H, 'лист А4');
   assert.ok(!d.includes('<b>') && d.includes('&lt;b&gt;'), 'название экранировано');
-  assert.ok(d.includes('Экспликация оборудования') && d.includes('Проход обслуживания'), 'экспликация и проход на листе');
+  // основная надпись (форма 1) и дополнительные графы
+  const T=Check.texts(d).map(q=>q.t);
+  for (const t of ['Изм.', 'Лист', '№ докум.', 'Подп.', 'Дата', 'Разраб.', 'Пров.', 'Т.контр.', 'Н.контр.', 'Утв.', 'Лит.', 'Масса', 'Масштаб', 'Листов',
+    'Инв. № подл.', 'Подп. и дата', 'Взам. инв. №', 'Инв. № дубл.', 'Перв. примен.', 'Справ. №', 'Копировал', 'Формат A4', 'Габаритный чертёж', 'Иванов И. И.', '11.10.26', 'П'])
+    assert.ok(T.includes(t), 'в основной надписи нет «'+t+'»');
+  const code=EskdSheet.code('ООО «ПНЕВМОТЕХ»', p.hash, 'ГЧ'); assert.ok(/^ПНЕВ\.\d{6}\.001 ГЧ$/.test(code), code);
+  assert.strictEqual(T.filter(t=>t===code).length, 2, 'обозначение — в графе 2 и в графе 26');
+  // масштаб — из ряда ГОСТ 2.302
+  const sc=T.find(t=>/^1:[\d,]+$/.test(t)); assert.ok(sc && EskdSheet.SCALES.includes(+sc.slice(2).replace(',', '.')), 'масштаб '+sc);
+  // разрезы, перечень, характеристика, требования
+  for (const t of ['А–А', 'Б–Б', 'Поз.', 'Наименование', 'Кол.', 'Масса, кг', 'Техническая характеристика', 'Технические требования', 'Проход обслуживания'])
+    assert.ok(T.includes(t), 'на листе нет «'+t+'»');
+  assert.ok(T.some(t=>/^\d\. Внутри — [\d ]+ × [\d ]+ × [\d ]+ мм$/.test(t)), 'внутренние размеры — в технической характеристике');
+  // позиции: номер на полке у каждой позиции перечня — ровно один раз
+  const pos=[...d.matchAll(/<text x="[\d.-]+" y="[\d.-]+" font-size="7"[^>]*>(\d+)<\/text>/g)].map(m=>+m[1]).sort((a, b)=>a-b);
+  const want=[...new Set([...p.items, ...(p.roof||[])].map(i=>i.pos))].sort((a, b)=>a-b);
+  assert.deepStrictEqual(pos, want, 'номера позиций на чертеже');
+  // установочные размеры морского контейнера — между фитингами (ISO 1161)
+  assert.ok(T.includes(StationLayout.n(StationDrawing.FIT[p.geo.ext[0]])) && T.includes(StationLayout.n(StationDrawing.FIT_W)), 'размеры между фитингами');
+  // дата и разработчик — не обязательны; обозначение без организации — по умолчанию
+  const bare=StationDrawing.svg(p, {}); Check.sheet(bare, 'чертёж без сведений');
+  assert.ok(Check.texts(bare).some(q=>/^КПСТ\.\d{6}\.001 ГЧ$/.test(q.t)), 'обозначение без организации');
+  assert.strictEqual(EskdSheet.date('2026-10-11'), '11.10.26'); assert.strictEqual(EskdSheet.scale(2.5), '1:2,5');
+});
+
+Check.run('схема пневматическая принципиальная', ()=>{
+  const c62=P('Винтовой компрессор', { cat:'comp_screw', model:'K 37', kw:37, flow:6.2, pressure:8, size:'1400 × 900 × 1500' }, { role:'main' });
+  const dr=P('Рефрижераторный осушитель', { cat:'dryer_refrig', model:'R 70', flow:7.5, size:'900 × 600 × 1100' });
+  const rc=P('Ресивер', { cat:'receiver', model:'РВ 900', volume:900, size:'750 × 750 × 2100' });
+  const two=P('Магистральный фильтр FA 110', { cat:'filter', model:'FA 110', flow:8, size:'610*140' }, { qty:2 });
+  const ks=StationLayout.solve({ cont:C('block'), parts:[c62, dr, rc, two, P('Трубопровод', {}, { pipeMat:'steel' })], air:'1.4.1' });
+  assert.ok(StationScheme.ok(ks), 'компрессорная — схема есть');
+  const s=StationScheme.svg(ks, meta(ks)); Check.sheet(s, 'схема КС');
+  const T=Check.texts(s).map(q=>q.t);
+  for (const t of ['Перечень элементов', 'Поз.', 'Наименование', 'Кол.', 'Примечание', 'К потребителю', 'класс 1.4.1'])
+    assert.ok(T.includes(t), 'на схеме нет «'+t+'»');
+  assert.ok(T.join(' ').includes('Схема пневматическая принципиальная'), 'наименование документа — в графе 1');
+  const code=EskdSheet.code('ООО «ПНЕВМОТЕХ»', ks.hash, 'П3'); assert.strictEqual(T.filter(t=>t===code).length, 2, 'обозначение П3');
+  assert.ok(s.includes('класс чистоты сжатого воздуха 1.4.1 по ISO 8573-1'), 'класс — в указаниях');
+  // перечень элементов: все аппараты цепочки и обвязка, номера — как в составе станции
+  for (const u of ks.air.units) assert.ok(T.includes(u.brief||u.name), 'в перечне нет '+u.name);
+  assert.ok(T.includes('Трубопровод'), 'обвязка — в перечне');
+  assert.ok(/stroke-dasharray/.test(s) && /M<\/text>/.test(s), 'двигатель компрессора и штриховой отвод конденсата');
+  // встроенный осушитель — внутри штрихпунктирной границы компрессора
+  const ff=solve(C('block'), [P('Компрессор GA 37 FF со встроенным осушителем', { cat:'comp_screw', flow:6, size:'1800 × 900 × 1600' }, { role:'main' }), rc]);
+  const sf=StationScheme.svg(ff, meta(ff)); Check.sheet(sf, 'схема со встроенным');
+  assert.ok(new RegExp(`stroke-dasharray="${EskdSheet.LINE.axis[1]}"`).test(sf), 'граница компрессорной установки — штрихпунктирная');
+  assert.ok(sf.includes('встроенный осушитель'), 'примечание: встроенный осушитель');
+  // несколько компрессоров и длинная цепочка — помещается на листе
+  const many=solve(C('block'), [Object.assign({}, c62, { qty:4 }), Object.assign({}, dr, { qty:2 }), Object.assign({}, rc, { qty:2 }), Object.assign({}, two, { qty:3 })]);
+  assert.ok(StationScheme.ok(many)); Check.sheet(StationScheme.svg(many, meta(many)), 'схема — много');
+  // не компрессорная — схемы нет
+  assert.ok(!StationScheme.ok(solve(C('block'), [pumpS, cab])) && !StationScheme.ok(null), 'насосная — схемы нет');
 });
 
 Check.run('3D-вид (WebGL): сцена, камера, свет', ()=>{
