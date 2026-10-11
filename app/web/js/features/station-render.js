@@ -84,7 +84,7 @@ class StMesh {
     const prof=[[0, 0], [0.26, 0], [0.37, depth], [0.63, depth], [0.74, 0], [1, 0]];   // доли шага: наружная грань — выступ
     for (let u=u0; u<u1-1e-6; u+=pitch){ const span=Math.min(pitch, u1-u);
       for (let k=0; k<prof.length-1; k++){ const a=prof[k], b=prof[k+1], ua=u+a[0]*pitch, ub=Math.min(u+b[0]*pitch, u+span); if (ub<=ua) continue;
-        const t=StV.norm(along===0 ? [ub-ua, out*(b[1]-a[1]), 0] : [out*(b[1]-a[1]), ub-ua, 0]), n=along===0 ? [-t[1]*out*out, t[0]*out, 0] : [t[1]*out, -t[0]*out*out, 0];
+        const t=StV.norm(along===0 ? [ub-ua, out*(b[1]-a[1]), 0] : [out*(b[1]-a[1]), ub-ua, 0]), n=[t[1], -t[0], 0];   // перпендикуляр к грани — наружу
         const nn=StV.dot(n, along===0 ? [0, out, 0] : [out, 0, 0])<0 ? StV.mul(n, -1) : n;
         this.quad(P(ua, a[1], z0), P(ub, b[1], z0), P(ub, b[1], z1), P(ua, a[1], z1), StV.norm(nn)); } }
   }
@@ -106,6 +106,8 @@ class StScene {
   static DARK = '#2b3036';    // рамы, решётки, основания
   static GALV = '#b9c0c6';    // оцинковка
   static INOX = '#c9cfd5';
+  static SEA_P = [0.278, 0.036];   // гофр морского контейнера: шаг, глубина, м
+  static WELD_P = [0.2, 0.02];     // профлист цельносварного
 
   /** plan — StationLayout.solve(...), meta: {deck — высота шасси, мм} */
   constructor(plan, meta={}){
@@ -114,7 +116,7 @@ class StScene {
     this.g=g; this.mm=mm; [this.Le, this.We, this.He]=g.ext.map(mm); [this.Li, this.Wi, this.Hi]=plan.int.map(mm);
     this.ox=(this.Le-this.Li)/2; this.oy=(this.We-this.Wi)/2;
     this.dz=plan.chassis ? mm(meta.deck||1150) : 0;
-    this.base=this.dz+mm(StationGeo.zFloor(g.type, g.t)); this.ceil=this.base+this.Hi; this.top=this.dz+this.He;
+    this.base=this.dz+mm(StationGeo.zFloor(g.type, g.t)); this.ceil=this.base+this.Hi; this.top=this.dz+this.He; this.rise=g.sea ? 0 : mm(g.rise||0);
     this.wall=plan.wallColor||'#CBD0CC'; this.frame=plan.frameColor||RalColor.shade(this.wall, 0.72);
     this.lining=g.sea ? '#e3e6e8' : '#eef0f1';
     const sd=plan.door==='service' ? plan.doors||[] : [];
@@ -155,7 +157,7 @@ class StScene {
   bounds(){
     const up=(this.plan.roof||[]).reduce((s, m)=>Math.max(s, (m.gap+m.d+m.outlet)/1000), 0), sw=Math.max(0, ...[...this.doorsF, ...this.doorsB].map(d=>d.w/d.leaves/1000));
     const E=(this.plan.outside||[]).map(i=>this.B(i)), xo=Math.max(this.Le, ...E.map(b=>b[3]+0.45)), yo=Math.min(0, ...E.map(b=>b[1]-0.2)), yi=Math.max(this.We, ...E.map(b=>b[4]+0.2)), zo=Math.max(0, ...E.map(b=>b[5]+0.3));
-    return { lo:[-0.15, Math.min(yo, -0.15-(this.doorsF.length ? sw*0.8 : 0)), 0], hi:[xo+0.15, Math.max(yi, this.We+0.15+(this.doorsB.length ? sw*0.8 : 0)), Math.max(zo, this.top+up+0.05)] };
+    return { lo:[-0.15, Math.min(yo, -0.15-(this.doorsF.length ? sw*0.8 : 0)), 0], hi:[xo+0.15, Math.max(yi, this.We+0.15+(this.doorsB.length ? sw*0.8 : 0)), Math.max(zo, this.top+this.rise+up+0.05)] };
   }
   /** число треугольников (проверка и замер) */
   tris(){ let n=0; for (const e of this.groups.values()) n+=e.mesh.i.length/3; return n; }
@@ -177,7 +179,7 @@ class StScene {
 
   // ---- контейнер
   container(){
-    if (this.g.sea) this.sea(); else this.block();
+    if (this.g.sea) this.sea(); else if (this.g.type==='welded') this.welded(); else this.block();
     this.inside();
   }
   /** морской контейнер: рама, угловые фитинги, гофрированные стены, крыша, торцевые двери */
@@ -191,9 +193,9 @@ class StScene {
     for (const x of [0, L-0.178]) for (const y of [0, W-0.162]) for (const z of [z0, zt-0.118]){ cast.box(x-0.004, y-0.004, z, x+0.182, y+0.166, z+0.118, 0.01);
       const dk=this.M(StMat.paint('#15181b', 0.8)); dk.box(x+0.05, y-0.006, z+0.035, x+0.13, y+0.004, z+0.085, 0.01); }
     // задняя стена и дальний торец — гофр наружу; передняя — срезана или с проёмами дверей
-    if (this.doorsB.length) this.backWall(w, z0+rail, zt-0.11, true); else w.corr(0, post, L-post, W-0.03, 1, z0+rail, zt-0.11);
+    if (this.doorsB.length) this.backWall(w, z0+rail, zt-0.11, StScene.SEA_P); else w.corr(0, post, L-post, W-0.03, 1, z0+rail, zt-0.11);
     w.corr(1, post, W-post, L-0.03, 1, z0+0.2, zt-0.12, 0.28, 0.045);
-    if (!this.cut) this.frontWall(w, z0+rail, zt-0.11, true);
+    if (!this.cut) this.frontWall(w, z0+rail, zt-0.11, StScene.SEA_P);
     // крыша: лист с неглубокими поперечными гофрами
     const roof=this.M(StMat.paint(RalColor.shade(this.wall, 1.04), 0.5)); roof.box(post, 0.06, zt-0.02, L-post, W-0.06, zt-0.004);
     for (let x=post+0.25; x<L-post-0.1; x+=0.5) roof.box(x, 0.08, zt-0.004, x+0.2, W-0.08, zt+0.008, 0.004);
@@ -221,20 +223,60 @@ class StScene {
       w.quad(P(u0, z0+0.16), P(u1, z0+0.16), P(u1, zt-t), P(u0, zt-t), n);
       const k=Math.max(1, Math.round((u1-u0)/1.15)); for (let i=1; i<k; i++){ const u=u0+(u1-u0)*i/k, o=out*0.004;
         seam.box(...(along===0 ? [u-0.006, wv+o-0.002, z0+0.16, u+0.006, wv+o+0.002, zt-t] : [wv+o-0.002, u-0.006, z0+0.16, wv+o+0.002, u+0.006, zt-t])); } };
-    if (this.doorsB.length) this.backWall(w, z0+0.16, zt-t, false); else panel(0, t, L-t, W-0.02, 1);
+    if (this.doorsB.length) this.backWall(w, z0+0.16, zt-t, null); else panel(0, t, L-t, W-0.02, 1);
     panel(1, t, W-t, L-0.02, 1); panel(1, t, W-t, 0.02, -1);
-    if (!this.cut) this.frontWall(w, z0+0.16, zt-t, false);
-    // кровля с отливом
-    const roof=this.M(StMat.paint(RalColor.shade(this.wall, 1.03), 0.45)); roof.box(-0.03, -0.03, zt-0.02, L+0.03, W+0.03, zt+0.03, 0.01);
+    if (!this.cut) this.frontWall(w, z0+0.16, zt-t, null);
+    this.roof(zt, RalColor.shade(this.wall, 1.03));
     if (this.plan.door==='end') this.gates();
   }
+  /** цельносварной: рама из гнутого швеллера и стойки, стены — профилированный лист (трапеция), приваренный к раме */
+  welded(){
+    const L=this.Le, W=this.We, z0=this.dz, zt=z0+this.He, f=this.M(StMat.paint(this.frame, 0.45)), w=this.M(StMat.paint(this.wall, 0.45)), t=0.12, b=0.2, P=StScene.WELD_P;
+    for (const x of [0, L-t]) for (const y of [0, W-t]) f.box(x, y, z0, x+t, y+t, zt, 0.006);
+    for (const y of [0, W-t]){ f.box(0, y, z0, L, y+t, z0+b, 0.006); f.box(0, y, zt-0.1, L, y+t, zt, 0.006); }
+    for (const x of [0, L-t]){ f.box(x, 0, z0, x+t, W, z0+b, 0.006); f.box(x, 0, zt-0.1, x+t, W, zt, 0.006); }
+    if (this.doorsB.length) this.backWall(w, z0+b, zt-0.1, P); else w.corr(0, t, L-t, W-0.025, 1, z0+b, zt-0.1, ...P);
+    w.corr(1, t, W-t, L-0.025, 1, z0+b, zt-0.1, ...P); w.corr(1, t, W-t, 0.025, -1, z0+b, zt-0.1, ...P);
+    if (!this.cut) this.frontWall(w, z0+b, zt-0.1, P);
+    this.roof(zt, RalColor.shade(this.wall, 1.03));
+    if (this.plan.door==='end') this.gates();
+  }
+  /** высота крыши над поперечной координатой y (м): плоская — верх контейнера; скатная — по скату (без толщины кровли) */
+  roofZ(y){
+    const R=this.rise, W=this.We, t=Math.max(0, Math.min(W, y)); if (!(R>0)) return this.top;
+    return this.top+(this.g.roof==='gable' ? R*(1-Math.abs(t-W/2)/(W/2)) : R*(1-t/W));
+  }
+  /** крыша блок-контейнера и цельносварного: плоская — с отливом; двускатная — конёк вдоль контейнера, фронтоны в торцах,
+   *  водостоки с обеих сторон; односкатная — выше у стены с дверью, скат и водосток — к задней стене (вода не льётся на
+   *  вход); кровельные панели — с рёбрами по скату */
+  roof(zt, col){
+    const L=this.Le, W=this.We, R=this.rise, m=this.M(StMat.paint(col, 0.45));
+    if (!(R>0)){ m.box(-0.03, -0.03, zt-0.02, L+0.03, W+0.03, zt+0.03, 0.01); return; }
+    const o=0.06, t=0.04, rib=this.M(StMat.paint(RalColor.shade(col, 0.93), 0.45)), gb=this.M(StMat.paint(this.wall, 0.42)), gut=this.M(StMat.metal(StScene.GALV, 0.4)), gable=this.g.roof==='gable';
+    const slope=(ya, za, yb, zb)=>{ const dy=yb-ya, dz=zb-za, l=Math.hypot(dy, dz), s=Math.sign(dy), n=[0, -dz*s/l, dy*s/l], v=[0, dy, dz], w=StV.mul(n, t);
+      m.obox([-o, ya, za], [L+2*o, 0, 0], v, w);
+      for (let x=0.12; x<L+2*o-0.08; x+=0.333) rib.obox(StV.add([x-o, ya, za], w), [0.035, 0, 0], v, StV.mul(n, 0.028)); };
+    const gutter=(y, z, sy)=>{ gut.tube([-o, y, z], [L+o, y, z], 0.05, 16); for (const x of [0.14, L-0.14]){ gut.sphere([x, y, z-0.04], 0.04, 10);
+      gut.tube([x, y, z-0.04], [x, y-sy*0.05, this.dz+0.25], 0.035, 12); gut.tube([x, y-sy*0.05, this.dz+0.25], [x, y-sy*0.16, this.dz+0.12], 0.035, 12); } };
+    if (gable){ const k=R/(W/2), ze=zt-o*k;
+      slope(-o, ze, W/2, zt+R); slope(W+o, ze, W/2, zt+R);
+      m.box(-o, W/2-0.09, zt+R+t*0.3, L+o, W/2+0.09, zt+R+t+0.02, 0.01);   // конёк
+      for (const [x, n] of [[0, -1], [L, 1]]) gb.tri([x, 0, zt], [x, W, zt], [x, W/2, zt+R], [n, 0, 0]);
+      gutter(-o-0.03, ze-0.03, 1); gutter(W+o+0.03, ze-0.03, -1);
+    } else { const k=R/W;
+      slope(W+o, zt-o*k, -o, zt+R+o*k);
+      for (const [x, n] of [[0, -1], [L, 1]]) gb.tri([x, 0, zt], [x, W, zt], [x, 0, zt+R], [n, 0, 0]);
+      if (!this.cut) gb.quad([0, 0, zt], [L, 0, zt], [L, 0, zt+R], [0, 0, zt+R], [0, -1, 0]);
+      gutter(W+o+0.03, zt-o*k-0.03, -1); }
+  }
   /** стена со стороны зрителя, когда она не срезана: панели между проёмами сервисных дверей, двери открыты */
-  frontWall(w, z0, z1, sea){ this.wallWithDoors(w, z0, z1, sea, this.doorsF, 0, -1); }
-  backWall(w, z0, z1, sea){ this.wallWithDoors(w, z0, z1, sea, this.doorsB, this.We, 1); }
-  /** длинная стена (yw — наружная плоскость, out — наружу) с проёмами: панели, обрамление, открытые наружу створки */
-  wallWithDoors(w, z0, z1, sea, doors, yw, out){
+  frontWall(w, z0, z1, prof){ this.wallWithDoors(w, z0, z1, prof, this.doorsF, 0, -1); }
+  backWall(w, z0, z1, prof){ this.wallWithDoors(w, z0, z1, prof, this.doorsB, this.We, 1); }
+  /** длинная стена (yw — наружная плоскость, out — наружу) с проёмами: панели (prof — гофр [шаг, глубина] или гладкие),
+   *  обрамление, открытые наружу створки */
+  wallWithDoors(w, z0, z1, prof, doors, yw, out){
     const L=this.Le, cuts=doors.map(d=>({ a:this.ox+d.x0/1000, b:this.ox+d.x1/1000, h:this.base+d.h/1000, n:d.leaves })).sort((p, q)=>p.a-q.a), wy=yw-out*0.03;
-    const sheet=(a, b, za, zb)=>{ if (b<=a+0.005 || zb<=za) return; if (sea) w.corr(0, a, b, wy, out, za, zb); else w.quad([a, yw-out*0.02, za], [b, yw-out*0.02, za], [b, yw-out*0.02, zb], [a, yw-out*0.02, zb], [0, out, 0]); };
+    const sheet=(a, b, za, zb)=>{ if (b<=a+0.005 || zb<=za) return; if (prof) w.corr(0, a, b, wy, out, za, zb, ...prof); else w.quad([a, yw-out*0.02, za], [b, yw-out*0.02, za], [b, yw-out*0.02, zb], [a, yw-out*0.02, zb], [0, out, 0]); };
     let x=0.16;
     for (const c of cuts){ sheet(x, c.a, z0, z1); sheet(c.a, c.b, c.h, z1); x=Math.max(x, c.b); }
     sheet(x, L-0.16, z0, z1);
@@ -282,12 +324,13 @@ class StScene {
     // пол
     const fl=this.M({ c:'#9aa1a8', r:0.55, m:0.6, k:1 }); fl.quad([ox, oy, b], [ox+Li, oy, b], [ox+Li, oy+Wi, b], [ox, oy+Wi, b], [0, 0, 1]);
     // разрез на месте срезанной стены: крыша, пол и торцевые стены в сечении — утеплитель между обшивками
-    if (this.cut){ const ins=this.M(StMat.paint(StScene.INS, 0.9)), y=0.002, n=[0, -1, 0], x0=0.15, x1=this.Le-0.15, zr=this.top-(this.g.sea ? 0.11 : 0.1);
+    if (this.cut){ const ins=this.M(StMat.paint(StScene.INS, 0.9)), y=0.002, n=[0, -1, 0], x0=0.15, x1=this.Le-0.15, zr=this.g.roof==='mono' && this.rise>0 ? this.top+this.rise : this.top-(this.g.sea ? 0.11 : 0.1);
       if (zr>c) ins.quad([x0, y, c], [x1, y, c], [x1, y, zr], [x0, y, zr], n);
       if (b>this.dz+0.16) ins.quad([x0, y, this.dz+0.16], [x1, y, this.dz+0.16], [x1, y, b], [x0, y, b], n);
       for (const [a, z] of [[x0, ox], [this.Le-ox, x1]]) if (z>a) ins.quad([a, y, b], [z, y, b], [z, y, c], [a, y, c], n); }
-    // тамбур «Север»: перегородка с дверью
-    if (this.g.x0){ const x=ox+this.g.x0/1000, d=this.M(StMat.paint(this.lining, 0.55)), dw=this.M(StMat.paint(RalColor.shade(this.wall, 0.95), 0.45));
+    // тамбур «Север»: перегородка с дверью (после отсека бака, если он есть)
+    const fu=this.plan.fuel, tamb=(this.g.x0||0)-(fu ? fu.x1+fu.part : 0);
+    if (tamb>0){ const x=ox+this.g.x0/1000, d=this.M(StMat.paint(this.lining, 0.55)), dw=this.M(StMat.paint(RalColor.shade(this.wall, 0.95), 0.45));
       d.box(x-0.06, oy, b, x, oy+Wi-1.0, c); d.box(x-0.06, oy+Wi-0.1, b, x, oy+Wi, c); d.box(x-0.06, oy+Wi-1.0, b+2.0, x, oy+Wi-0.1, c);
       dw.box(x-0.05, oy+Wi-0.98, b, x-0.01, oy+Wi-0.12, b+1.98, 0.004); }
   }
@@ -548,15 +591,16 @@ class StScene {
 
   // ---- глушитель на крыше над ДГУ: опоры, корпус, выход с колпаком; выхлопная труба в изоляции — сквозь крышу
   muffler(m){
-    const mm=this.mm, x0=this.ox+mm(m.x), x1=x0+mm(m.lx), r=mm(m.d)/2, cy=this.oy+mm(m.y)+r, cz=this.top+mm(m.gap)+r, body=this.M(StMat.paint(m.color, 0.5)), dk=this.M(StMat.paint(StScene.DARK, 0.55));
-    for (const f of [0.18, 0.82]){ const x=x0+(x1-x0)*f; dk.box(x-0.05, cy-r*0.75, this.top, x+0.05, cy+r*0.75, cz-r*0.55, 0.004); dk.box(x-0.06, cy-r*0.8, this.top, x+0.06, cy+r*0.8, this.top+0.02); }
+    const mm=this.mm, x0=this.ox+mm(m.x), x1=x0+mm(m.lx), r=mm(m.d)/2, cy=this.oy+mm(m.y)+r, body=this.M(StMat.paint(m.color, 0.5)), dk=this.M(StMat.paint(StScene.DARK, 0.55));
+    const zr=this.rise>0 ? Math.max(this.roofZ(cy-r), this.roofZ(cy+r))+0.04 : this.top, cz=zr+mm(m.gap)+r, zb=this.rise>0 ? Math.min(this.roofZ(cy-r), this.roofZ(cy+r)) : this.top;   // скатная крыша — опоры от ската
+    for (const f of [0.18, 0.82]){ const x=x0+(x1-x0)*f; dk.box(x-0.05, cy-r*0.75, zb, x+0.05, cy+r*0.75, cz-r*0.55, 0.004); dk.box(x-0.06, cy-r*0.8, zr-0.02, x+0.06, cy+r*0.8, zr); }
     body.tube([x0+r*0.25, cy, cz], [x1-r*0.25, cy, cz], r, 32, [false, false]);
     body.tube([x0, cy, cz], [x0+r*0.25, cy, cz], r*0.7, 32, [true, false], r); body.tube([x1-r*0.25, cy, cz], [x1, cy, cz], r, 32, [false, true], r*0.7);
     const st=this.M(StMat.metal('#a7adb3', 0.4)), xo=x0+(x1-x0)*0.86, ro=Math.max(0.05, r*0.28);
     st.tube([xo, cy, cz+r*0.8], [xo, cy, cz+r+mm(m.outlet)], ro, 20); dk.tube([xo, cy, cz+r+mm(m.outlet)], [xo, cy, cz+r+mm(m.outlet)+0.015], ro*1.6, 20);
     if (m.exhaust){ const ex=this.ox+mm(m.exhaust.x), ey=this.oy+mm(m.exhaust.y), wrap=this.M(StMat.metal('#c4c9cd', 0.55));
       wrap.tube([ex, ey, this.base+mm(m.exhaust.z)], [ex, ey, cz-r*0.8], Math.max(0.06, ro*1.15), 22);
-      dk.tube([ex, ey, this.top], [ex, ey, this.top+0.06], Math.max(0.06, ro*1.15)*1.6, 22); }   // проходка через крышу
+      const zp=this.rise>0 ? this.roofZ(ey)+0.04 : this.top; dk.tube([ex, ey, zp-0.02], [ex, ey, zp+0.06], Math.max(0.06, ro*1.15)*1.6, 22); }   // проходка через крышу
   }
 }
 

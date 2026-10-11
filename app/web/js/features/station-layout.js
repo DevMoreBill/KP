@@ -84,6 +84,12 @@ class StationGeo {
     return a.every(v=>v>=500 && v<=30000) ? a : null;
   }
   static ins(text){ const n=parseFloat(String(text||'').replace(',', '.')); return n>0 && n<400 ? n : 100; }
+  // крыша блок-контейнера: плоская или скатная — двускатная (конёк вдоль контейнера) или односкатная (выше у задней стены);
+  // уклон, ° — подъём над стенами (у морского контейнера крыша штатная, плоская)
+  static ROOFS = { flat:{ name:'плоская', deg:0 }, gable:{ name:'двускатная', deg:8 }, mono:{ name:'односкатная', deg:5 } };
+  static roof(c){ const r=String((c && c.roof) || ''); return c && this.SEA[c.ctype] ? 'flat' : this.ROOFS[r] ? r : 'flat'; }
+  /** подъём крыши над стенами, мм: W — ширина контейнера */
+  static rise(roof, W){ const d=(this.ROOFS[roof]||this.ROOFS.flat).deg*Math.PI/180; return Math.round(roof==='gable' ? W/2*Math.tan(d) : roof==='mono' ? W*Math.tan(d) : 0); }
   static flex(type){ return this.FLEX[type] || (this.SEA[type] ? null : this.FLEX.block); }
 
   /** внутренние размеры по наружным: морской — штатные стенки + утепление, блок-контейнер — стены, пол и кровля */
@@ -102,7 +108,7 @@ class StationGeo {
     const type=c.ctype || 'block', t=this.ins(c.ins), sea=this.SEA[type], own=!c.sizeAuto ? this.mm(c.size) : null, f=this.flex(type);
     const ext=own || (sea ? sea.ext.slice() : null);
     return { type, t, sea:!!sea, own:!!own, auto:!ext, ext, int:ext ? this.inner(type, ext, t) : null, x0:(f && f.tambour) || 0,
-      door: sea ? sea.door : null };
+      door: sea ? sea.door : null, roof:this.roof(c) };
   }
   /** высота пола внутри над низом контейнера, мм (морской: штатный пол + утеплённый, блок-контейнер — основание) */
   static zFloor(type, t){ const sea=this.SEA[type]; return sea ? (sea.ext[2]-sea.int[2]-40)+this.SEA_FLOOR : this.flex(type).floor; }
@@ -643,9 +649,140 @@ class StationNorms {
     const r=this.req(plan), med=(plan.piping||[]).some(p=>(p.lines||[]).some(l=>l.medium==='fuel')) ? 'fuel' : r.kind==='pump' ? 'water' : r.kind==='comp' ? 'air' : '';
     const dgu=(plan.items||[]).some(i=>i.kind==='dgu');
     return [
-      `Категория помещения по пожарной опасности${r.fire ? ' '+r.fire : ''} (СП 12.13130.2009${r.fireAuto ? ', уточняется расчётом' : ''}) — обозначение на двери снаружи; огнетушители — у входа, верх корпуса не выше 1,5 м (ППР в РФ); знаки безопасности — по ГОСТ 12.4.026-2015${dgu ? '; топливный бак — с поддоном, вместимость и размещение — по СП 4.13130.2013' : ''}.`,
+      `Категория помещения по пожарной опасности${r.fire ? ' '+r.fire : ''} (СП 12.13130.2009${r.fireAuto ? ', уточняется расчётом' : ''}) — обозначение на двери снаружи; огнетушители — у входа, верх корпуса не выше 1,5 м (ППР в РФ); знаки безопасности — по ГОСТ 12.4.026-2015${dgu && !plan.fuel ? '; топливный бак — с поддоном, вместимость и размещение — по СП 4.13130.2013' : ''}.`,
       `Заземление и уравнивание потенциалов — по ПУЭ, гл. 1.7; трубопроводы — опознавательная окраска по ГОСТ Р 71918-2024${med ? ` (${this.PIPE[med]})` : ''}; уровень звука на рабочем месте — не более ${r.noise>0 ? r.noise : this.NOISE} дБА (СанПиН 1.2.3685-21).`,
     ];
+  }
+}
+
+// ---------------------------------------------------------------- отопление и вентиляция контейнера
+// Теплопотери: ограждения — утеплитель (минеральная вата, λ = 0,045 Вт/(м·°C)) с поправкой на мостики холода каркаса
+// (сэндвич-панели — 1,15, «Север» — 1,1, цельносварной — 1,3, морской — 1,4), двери и жалюзи с закрытыми клапанами,
+// инфильтрация — 0,5 объёма в час; наружный воздух — из требований («от»), иначе — по климатическому исполнению; внутри —
+// не ниже +5 °C; отсек топливного бака не отапливается (перегородка к нему — с половиной перепада). Два режима:
+// оборудование остановлено — конвекторы держат +5 °C; работает самый малый агрегат — его тепло остаётся в помещении (с
+// рециркуляцией тёплого воздуха — рекуперацией: компрессор — около 90 % мощности двигателя, ДГУ — радиатор и корпус около
+// 58 %; без неё — только корпус, 8 %), а воздух на сжатие и горение забирается из помещения (его подогрев — потери).
+// Конвекторы — по большему из режимов с запасом 10 %: число и мощность — из ряда 0,5…2,5 кВт, места — свободные участки
+// стен у пола (низ 150 мм), первый — у входа, остальные — равномерно. Лето: тепло корпусов, осушителей, насосов и солнца
+// отводит вентиляция с перегревом не более 5 °C; воздух охлаждения компрессоров и радиатора ДГУ — через жалюзи.
+class StationHeat {
+  static LAMBDA = 0.045;     // минеральная вата в конструкции, Вт/(м·°C)
+  static R_SURF = 0.17;      // теплообмен у поверхностей: внутри 0,13 + снаружи 0,04, м²·°C/Вт
+  static BRIDGE = { block:1.15, north:1.1, welded:1.3, sea:1.4 };
+  static U_DOOR = 2.0;       // утеплённая стальная дверь, Вт/(м²·°C)
+  static U_LOUVER = 3.0;     // жалюзи с закрытым утеплённым клапаном
+  static ACH = 0.5;          // инфильтрация, объёмов в час
+  static AIR = 0.335;        // теплоёмкость воздуха, Вт·ч/(м³·°C)
+  static RESERVE = 1.1;      // запас мощности конвекторов
+  static CASE = 0.08;        // тепло корпуса в помещение — доля мощности
+  static REC = { compressor:0.9, dgu:0.58 };   // с рециркуляцией (рекуперацией) — доля мощности в тепло помещения
+  static LOSS = { pump:0.1, dryer:1.0 };       // насос — потери двигателя, осушитель — тепло конденсатора
+  static COMB = 7;           // ДГУ: воздух на горение, м³/ч на 1 кВт
+  static SUN = 0.03;         // солнце на крышу летом, кВт/м²
+  static FACE = 2.5;         // скорость воздуха в живом сечении жалюзи, м/с
+  // конвектор: [кВт, длина, мм]; высота 400, глубина 90, низ — 150 мм от пола
+  static UNITS = [[0.5, 460], [1, 640], [1.5, 800], [2, 960], [2.5, 1120]];
+  static CONV = { h:400, d:90, z:150, gap:300, edge:150, front:400 };
+
+  /** расчёт по расстановке: теплопотери, режим работы, конвекторы (heaters — места), вентиляция летом */
+  static calc(plan){
+    const g=plan.geo, [Le, We, He]=g.ext, [Li, Wi, Hi]=plan.int, sys=plan.sys||{}, r=plan.req||{}, m=v=>v/1000, I=plan.items||[], fuel=plan.fuel;
+    const rec=sys.rec!==false, cold=StationNorms.COLD[plan.climate], tout=Number.isFinite(r.tmin) ? r.tmin : cold!=null ? cold : -40;
+    const tin=StationNorms.INSIDE, dT=Math.max(0, tin-tout), Lt=fuel ? fuel.x1+fuel.part : 0;
+    const kind=g.sea ? 'sea' : this.BRIDGE[g.type] ? g.type : 'block', U=this.BRIDGE[kind]/(this.R_SURF+m(g.t)/this.LAMBDA);
+    // ограждения отапливаемой части; перегородка к холодному отсеку бака — с половиной перепада
+    const L=m(Le-Lt), W=m(We), H=m(He), A=2*(L*W+L*H+W*H)-(fuel ? W*H : 0), Apart=fuel ? m(Wi)*m(Hi) : 0;
+    const doors=[]; if (plan.door==='side') doors.push(0.9*2.0); else if (plan.door==='end') doors.push(g.sea && g.door ? m(g.door[0])*m(g.door[1]) : 1.8*2.2);
+    for (const d of plan.doors||[]) doors.push(m(d.w)*m(d.h));
+    const dgu=I.find(i=>i.kind==='dgu'), Ad=doors.reduce((s, v)=>s+v, 0), Al=(sys.vent!==false ? 0.8 : 0)+(dgu ? m(dgu.ly)*m(dgu.h)*0.75 : 0);
+    const qEnv=(U*Math.max(0, A-Ad-Al)+this.U_DOOR*Ad+this.U_LOUVER*Al)*dT+U*Apart*dT/2;
+    const qInf=this.ACH*m(Li-Lt)*m(Wi)*m(Hi)*this.AIR*dT, qStop=qEnv+qInf;
+    // работа: самый «холодный» режим — один агрегат (тепло в помещение минус подогрев забираемого им воздуха)
+    const units=I.filter(i=>!i.tank && i.mount!=='wall' && /^(compressor|dgu|pump)$/.test(i.kind) && i.kw>0);
+    const heat=i=>i.kw*1000*(this.LOSS[i.kind] || (rec ? this.REC[i.kind] : 0) || this.CASE);
+    const air=i=>i.kind==='compressor' ? (i.air && i.air.flow>0 ? i.air.flow*60 : i.kw*0.16*60) : i.kind==='dgu' ? i.kw*this.COMB : 0;   // м³/ч
+    const run=units.map(i=>({ i, q:heat(i), a:air(i) })), net=o=>o.q-o.a*this.AIR*dT;
+    const base=run.length ? run.reduce((a, b)=>net(a)<=net(b) ? a : b) : null, qRun=base ? qStop-net(base) : null;
+    const need=Math.max(qStop, qRun||0)*this.RESERVE/1000, on=sys.heat!==false;
+    const pick=on ? this.pick(plan, need) : { n:0, kw:0, len:0, heaters:[], short:false };
+    // лето: рабочие агрегаты (без резерва)
+    const tmax=Number.isFinite(r.tmax) ? r.tmax : 35, work=this.working(units, Math.max(0, r.res||0));
+    const qSum=work.reduce((s, i)=>s+i.kw*1000*(this.LOSS[i.kind]||this.CASE), 0)+this.SUN*1000*m(Le)*m(We)+I.filter(i=>i.kind==='dryer').reduce((s, i)=>s+(i.kw||0)*1000, 0);
+    const cool=Math.round(work.filter(i=>i.kind==='compressor').reduce((s, i)=>s+i.kw*1000*this.REC.compressor, 0)/(this.AIR*12));
+    const rad=Math.round(work.filter(i=>i.kind==='dgu').reduce((s, i)=>s+i.kw*1000*0.5, 0)/(this.AIR*10));
+    const m3h=Math.round(qSum/(this.AIR*5)+work.reduce((s, i)=>s+air(i), 0));
+    return { tout, tin, dT, rec, on, U:Math.round(U*1000)/1000, A:Math.round(A*10)/10, qEnv:Math.round(qEnv), qInf:Math.round(qInf), qStop:Math.round(qStop),
+      base:base ? { pos:base.i.pos, kind:base.i.kind, q:Math.round(base.q), a:Math.round(base.a) } : null, qRun:qRun==null ? null : Math.round(qRun),
+      need:Math.round(need*100)/100, n:pick.n, kw:pick.kw, total:Math.round(pick.n*pick.kw*10)/10, short:pick.short, heaters:pick.heaters,
+      vent:{ tmax, m3h, cool, rad, area:Math.round((m3h+cool+rad)/3600/this.FACE*100)/100 } };
+  }
+  /** рабочие агрегаты: без res самых мощных каждого вида (резерв) */
+  static working(units, res){
+    const out=[]; for (const k of ['compressor', 'pump', 'dgu']){ const L=units.filter(i=>i.kind===k).sort((a, b)=>b.kw-a.kw); out.push(...(L.length>res ? L.slice(res) : L.slice(-1))); }
+    return out;
+  }
+  /** число и мощность конвекторов: наименьший избыток, лишний конвектор — штраф; мест на стенах не хватает — сколько есть */
+  static pick(plan, need){
+    if (!(need>0)) return { n:0, kw:0, len:0, heaters:[], short:false };
+    let best=null;
+    const nMin=Math.max(need>1.2 ? 2 : 1, Math.ceil((plan.int[0]-(plan.geo.x0||0))/4500));   // равномерно: конвектор на 4,5 м длины
+    for (const [kw, len] of this.UNITS){ const S=this.spots(plan, len), n=Math.max(nMin, Math.ceil(need/kw-1e-9));
+      if (n>S.length) continue; const score=(n*kw-need)/need+0.15*n; if (!best || score<best.score) best={ n, kw, len, score, S }; }
+    if (!best){ const [kw, len]=this.UNITS[this.UNITS.length-1], S=this.spots(plan, len); best={ n:S.length, kw, len, S }; }
+    return { n:best.n, kw:best.kw, len:best.len, short:best.n*best.kw<need-1e-9, heaters:this.spread(best.S, best.n, plan, best.kw) };
+  }
+  /** свободные места конвектора длиной len у пола: участки стен без оборудования перед ними (не ближе 400 мм), шкафов,
+   *  дверей, жалюзи радиатора ДГУ и тамбура; в стене прохода — только где проход остаётся не уже допустимого */
+  static spots(plan, len){
+    const [L, W]=plan.int, C=this.CONV, x0=plan.geo.x0||0, I=(plan.items||[]).filter(i=>!i.tank), aMin=(plan.aisleRule||[1000, 800])[1], out=[];
+    const fl=I.filter(i=>i.mount==='floor' || i.mount==='frame'), B={ front:[], back:[], left:[], right:[] };
+    for (const i of fl){
+      if (i.y<C.d+C.front || (i.y<W/2 && i.y-C.d<aMin)) B.front.push([i.x, i.x+i.lx]);
+      if (i.y+i.ly>W-C.d-C.front) B.back.push([i.x, i.x+i.lx]);
+      if (i.x<x0+C.d+C.front) B.left.push([i.y, i.y+i.ly]);
+      if (i.x+i.lx>L-C.d-C.front) B.right.push([i.y, i.y+i.ly]); }
+    for (const i of I.filter(i=>i.mount==='wall' && B[i.wall])) B[i.wall].push(i.wall==='front' || i.wall==='back' ? [i.x, i.x+i.lx] : [i.y, i.y+i.ly]);   // не под шкафом
+    if (plan.door==='side') B.front.push([x0+StationLayout.ENTRY[0], x0+StationLayout.ENTRY[1]]);
+    if (plan.door==='end'){ const w=plan.geo.sea && plan.geo.door ? Math.min(plan.geo.door[0], W) : Math.min(1800, W-200); B.left.push([(W-w)/2, (W+w)/2]); }
+    for (const d of plan.doors||[]) B[d.wall==='back' ? 'back' : 'front'].push([d.x0, d.x1]);
+    const dgu=fl.find(i=>i.kind==='dgu'); if (dgu) B.right.push([dgu.y-200, dgu.y+dgu.ly+200]);
+    if (plan.geo.type==='north' && x0>0) B.left.push([W-1100, W]);   // дверь тамбура «Севера» — у задней стены
+    for (const [w, a0, b0] of [['front', x0, L], ['back', x0, L], ['left', 0, W], ['right', 0, W]]){
+      const bl=B[w].map(([a, b])=>[a-100, b+100]).sort((p, q)=>p[0]-q[0]), free=[]; let a=a0+C.edge;
+      for (const [p, q] of bl){ if (p>a) free.push([a, Math.min(p, b0-C.edge)]); a=Math.max(a, q); }
+      if (b0-C.edge>a) free.push([a, b0-C.edge]);
+      for (const [p, q] of free){ const k=Math.floor((q-p+C.gap)/(len+C.gap)); if (k<1) continue;
+        const step=(q-p-k*len)/(k+1);
+        for (let j=0; j<k; j++){ const u=Math.round(p+step*(j+1)+j*len);
+          out.push(w==='front' ? { wall:w, x:u, y:0, lx:len, ly:C.d } : w==='back' ? { wall:w, x:u, y:W-C.d, lx:len, ly:C.d }
+            : w==='left' ? { wall:w, x:x0, y:u, lx:C.d, ly:len } : { wall:w, x:L-C.d, y:u, lx:C.d, ly:len }); } } }
+    return out.map(o=>Object.assign(o, { z:C.z, h:C.h, cx:o.x+o.lx/2, cy:o.y+o.ly/2 }));
+  }
+  /** n мест из свободных: первое — ближе ко входу (холодный воздух), следующие — дальше всего от уже выбранных */
+  static spread(S, n, plan, kw){
+    if (!n || !S.length) return [];
+    const x0=plan.geo.x0||0, W=plan.int[1], D=(plan.doors||[])[0];
+    const E=plan.door==='side' ? [x0+(StationLayout.ENTRY[0]+StationLayout.ENTRY[1])/2, 0] : D ? [(D.x0+D.x1)/2, D.wall==='back' ? W : 0] : [x0, W/2];
+    const d=s=>Math.hypot(s.cx-E[0], s.cy-E[1]), got=[S.reduce((a, b)=>d(a)<=d(b) ? a : b)];
+    while (got.length<n){ let best=null, bd=-1;
+      for (const s of S){ if (got.includes(s)) continue; const q=Math.min(...got.map(t=>Math.hypot(s.cx-t.cx, s.cy-t.cy))); if (q>bd){ bd=q; best=s; } }
+      if (!best) break; got.push(best); }
+    return got.map(s=>({ kind:'heater', wall:s.wall, x:s.x, y:s.y, z:s.z, lx:s.lx, ly:s.ly, h:s.h, kw }));
+  }
+  static kw(v){ return String(Math.round(v*10)/10).replace('.', ','); }
+  /** сведения для окна «Компоновка» и требований */
+  static notes(plan){
+    const h=plan.heat; if (!h) return;
+    const iss=plan.issues, k=v=>this.kw(v/1000), t=StationNorms.deg(h.tout), nm={ compressor:'компрессор', dgu:'ДГУ', pump:'насос' };
+    if (h.on){
+      const run=h.base ? (h.qRun<=0 ? ` При работе ${nm[h.base.kind]||'агрегат'} поз. ${h.base.pos} даёт ${k(h.base.q)} кВт тепла${h.rec && h.base.kind!=='pump' ? ' (рециркуляция тёплого воздуха — рекуперация)' : ''} — потери покрыты, конвекторы отключаются терморегуляторами.`
+        : ` При работе поз. ${h.base.pos}: ${k(h.base.q)} кВт тепла, подогрев забираемого воздуха ${k(h.base.a*this.AIR*h.dT)} кВт — конвекторы нужны и при работе (${k(h.qRun)} кВт).`) : '';
+      iss.push({ level:'info', text:`Отопление: теплопотери при ${t} снаружи — ${k(h.qStop)} кВт (ограждения ${k(h.qEnv)}, воздух ${k(h.qInf)}; внутри +${h.tin} °C).${run} Конвекторы: ${h.n} × ${this.kw(h.kw)} кВт = ${this.kw(h.total)} кВт (запас 10 %) — у стен, места на чертеже и 3D-виде.` });
+      if (h.short) iss.push({ level:'warn', text:`Отопление: нужно ${this.kw(h.need)} кВт, а свободных мест на стенах — для ${this.kw(h.total)} кВт: добавьте мощность иначе (тепловентилятор, обогрев пола) или освободите стену.` });
+      if (!h.rec && h.qRun>h.qStop) iss.push({ level:'info', text:`Без рециркуляции тёплого воздуха при работе отопление больше: подогрев воздуха на сжатие или горение. С рекуперацией (заслонка с термостатом на выбросе тёплого воздуха) — тепло оборудования остаётся в помещении.` });
+    }
+    const v=h.vent; if (v && (v.cool || v.rad || v.m3h>300)) iss.push({ level:'info', text:`Вентиляция летом (до ${StationNorms.deg(v.tmax)}): около ${StationLayout.n(v.m3h)} м³/ч${v.cool ? `, воздух охлаждения компрессоров — ${StationLayout.n(v.cool)} м³/ч` : ''}${v.rad ? `, радиатора ДГУ — ${StationLayout.n(v.rad)} м³/ч` : ''}; живое сечение жалюзи — не менее ${String(v.area).replace('.', ',')} м².` });
   }
 }
 
@@ -661,7 +798,7 @@ class StationNorms {
 // размера — по необходимому месту (шаг 100 мм, наименьшая площадь пола); заданный контейнер, в который не помещается, —
 // ошибка и подсказка, какой подойдёт; контейнер с большим запасом — подсказка, какой меньший подойдёт.
 class StationLayout {
-  static VER = 7;           // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
+  static VER = 8;           // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
   static MAX_L = 12000;
   static PIPE_PAD = 60;      // зазор вокруг фильтра на трубопроводе, мм
   static AIR_Y = 150;        // линия сжатого воздуха: ось — в 150 мм от задней стены (или посередине между рядами)
@@ -684,7 +821,7 @@ class StationLayout {
   /** отпечаток всего, от чего зависит компоновка: изменился — чертёж и 3D-вид пора обновить */
   static hash(input){
     const c=input.cont||{}, pick=a=>a ? {cat:a.cat, size:a.size, mass:a.mass, model:a.model, maker:a.maker, orient:a.orient, kw:a.kw, volume:a.volume, color:a.color, flow:a.flow, pressure:a.pressure, stage:a.stage, dryer:a.dryer, vsd:a.vsd, dewPoint:a.dewPoint, receiver:a.receiver} : null;
-    const s=JSON.stringify([this.VER, StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.ins, c.ral, c.sys||null, c.climate||''], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
+    const s=JSON.stringify([this.VER, StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.ins, c.ral, c.sys||null, c.climate||'', c.roof||''], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
       (input.parts||[]).filter(p=>p && p.role!=='container').map(p=>[p.name, p.qty, p.role||'', p.pipeMat||'', p.dn||'', p.mount||'', pick(p.attrs), (p.rows||[]).filter(r=>r && /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы/i.test(String(r.k||'')+' '+String(r.v||''))).map(r=>[r.k, r.v]), StationEquip.pic(p)])]);
     return this.fnv(s);
   }
@@ -707,7 +844,11 @@ class StationLayout {
     const base={ items:[], extra, chassis:extra.some(e=>e.kind==='chassis'), muffler:extra.some(e=>e.kind==='muffler'), aisleRule:this.aisle, issues:[] };
     if (!this.cont) return Object.assign(base, { level:'none', text:'Выберите контейнер в составе станции.' });
     if (!placed.length) return Object.assign(base, { level:'none', text:'Добавьте в состав оборудование — компрессор, насос, ДГУ и т. п.' });
-    const units=this.units(placed), geo=StationGeo.of(this.cont);
+    let units=this.units(placed);
+    const g0=StationGeo.of(this.cont), Wi=g0.int ? g0.int[1] : StationGeo.inner(g0.type, [10000, StationGeo.ROAD_W, 2600], g0.t)[1];
+    this.tank=this.tankRoom(units, Wi);        // ДГУ с дополнительным баком — бак в отдельном отсеке у ближнего торца
+    if (this.tank) units=units.filter(e=>e.kind!=='tank');
+    const geo=this.geoOf(this.cont);
     let plan=geo.auto ? this.autoSize(units, geo) : this.fit(units, geo);
     if (plan.level==='error' && !geo.auto) plan.suggest=this.suggest(units, geo);
     else if (plan.level!=='error' && !geo.auto){
@@ -722,6 +863,8 @@ class StationLayout {
     if (air && plan.level!=='error'){ plan.air=air; plan.issues.push(...air.issues); }
     plan.vessels=PressureVessel.list(this.eq, Math.max(0, ...this.eq.filter(e=>e.kind==='compressor' && e.air).map(e=>e.air.bar||0)));
     plan.req=this.in.req||null; plan.climate=(this.cont && this.cont.climate)||'';
+    if (plan.geo && plan.geo.ext) plan.geo.rise=StationGeo.rise(plan.geo.roof, plan.geo.ext[1]);
+    if (plan.level!=='error' && plan.geo && plan.geo.ext && plan.int) plan.heat=StationHeat.calc(plan);
     if (plan.level!=='error') StationNorms.check(plan, this.eq);
     this.notes(plan);
     if (plan.level==='ok' && plan.issues.some(i=>i.level==='warn')) plan.level='warn';
@@ -735,6 +878,33 @@ class StationLayout {
     const dgu=placed.some(e=>e.kind==='dgu'), air=placed.some(e=>e.kind==='compressor');
     const rank=e=>e.kind==='cabinet' ? 0 : e.kind==='dgu' ? 2 : e.kind==='tank' && dgu ? 1.5 : air && e.air && e.air.stage!=null ? 1+e.air.stage/100 : air ? 1.8 : 1;
     return u.map((e, i)=>[e, i]).sort((a, b)=>rank(a[0])-rank(b[0]) || a[1]-b[1]).map(([e])=>e);
+  }
+  // ДГУ с дополнительным топливным баком: бак — в отдельном отсеке у ближнего торца. Отсек отделён противопожарной
+  // перегородкой 1-го типа (EI 45, без проёмов; топливопровод — через гильзу с уплотнением), вход — своя дверь снаружи,
+  // заливная горловина — снаружи в запираемом ящике, дыхательный клапан с огнепреградителем — над крышей, бак — в поддоне
+  // на полный объём, в отсеке — естественная вентиляция (жалюзи внизу и вверху)
+  static TANK = { pad:300, gap:300, back:100, aisle:600, part:100, door:800, fill:1000 };
+  /** отсек бака: {units — [{e, lx — вдоль контейнера, ly — поперёк}], room — длина отсека внутри, len — с перегородкой};
+   *  бак — поперёк, если перед ним остаётся проход (отсек короче); нет ДГУ или бака — null. Wi — ширина внутри */
+  tankRoom(units, Wi){
+    const T=units.filter(e=>e.kind==='tank'); if (!T.length || !units.some(e=>e.kind==='dgu')) return null;
+    const C=StationLayout.TANK, U=T.map(e=>{ const a=Math.max(e.l, e.w), b=Math.min(e.l, e.w); return Wi-C.back-a>=C.aisle ? { e, lx:b, ly:a } : { e, lx:a, ly:b }; });
+    const body=U.reduce((s, u)=>s+u.lx, 0)+C.gap*(U.length-1), room=Math.max(body+2*C.pad, C.door+2*C.pad);
+    return { units:U, room, len:room+C.part };
+  }
+  /** геометрия контейнера: оборудование — после отсека бака (и тамбура «Севера») */
+  geoOf(c){ const g=StationGeo.of(c); if (this.tank) g.x0=(g.x0||0)+this.tank.len; return g; }
+  /** баки — в отсеке вдоль задней стены (в поддоне); дверь отсека — в стене прохода посередине отсека; горловина — снаружи
+   *  в торце напротив бака (у морского контейнера в торце — его двери: горловина в боковой стене) */
+  tankPlace(r, geo){
+    const [, W, H]=geo.int, C=StationLayout.TANK, t=this.tank, n=StationLayout.n; let x=C.pad;
+    for (const { e, lx, ly } of t.units){ const y=Math.max(0, W-C.back-ly);
+      r.items.push(this.unitItem(e, { x, y, z:0, lx, ly, rot:lx<e.l, mount:'floor', face:-1, row:0, back:C.back, aisle:y, tank:true })); x+=lx+C.gap; }
+    const T=r.items.filter(i=>i.tank), d0=Math.round((t.room-C.door)/2), f=T[0];
+    r.fuel={ x1:t.room, part:C.part, door:{ x0:d0, x1:d0+C.door }, fill:geo.sea ? { wall:'front', x:Math.round(f.x+f.lx/2), z:C.fill } : { wall:'left', y:Math.round(f.y+f.ly/2), z:C.fill } };
+    const iss=r.issues=r.issues||[], aisle=Math.min(...T.map(i=>i.y));
+    if (aisle<C.aisle) iss.push({ level:'warn', text:`Отсек топливного бака: проход перед баком ${n(aisle)} мм — меньше ${n(C.aisle)} мм.` });
+    for (const i of T) if (i.h+200>H){ r.bad=true; iss.push({ level:'error', text:`Топливный бак поз. ${i.pos} не проходит по высоте отсека: ${n(i.h)} мм, внутри ${n(H)} мм.` }); }
   }
   /** в два ряда — в задний ряд: ДГУ; аппараты цепочки сжатого воздуха (если есть компрессоры) — подряд по ходу воздуха */
   backRow(e, units){ return e.kind==='dgu' || (units.some(u=>u.kind==='compressor') && (StationLayout.series(e) || (e.slot && e.kind==='filter'))); }
@@ -755,7 +925,7 @@ class StationLayout {
     for (const e of units){ if (e.unit || e.pipe) continue;
       if (e.mount==='wall'){ if (e.h+StationLayout.CAB_LOW>H-50){ bad=true; iss.push({ level:'error', text:`Поз. ${e.pos} «${e.short}» не помещается на стене по высоте: ${n(e.h)} мм и не ниже ${n(StationLayout.CAB_LOW)} мм от пола, а высота внутри — ${n(H)} мм.` }); } continue; }
       const top=e.c.top, room=H-e.h;
-      if (room<top[1]){ bad=true; iss.push({ level:'error', text:`Поз. ${e.pos} «${e.short}» не проходит по высоте: ${n(e.h)} мм и не менее ${n(top[1])} мм над ним, а высота внутри — ${n(H)} мм.` }); }
+      if (room<top[1]){ bad=true; iss.push({ level:'error', text:`Поз. ${e.pos} «${e.short}» не проходит по высоте: ${n(e.h)} мм и не менее ${n(top[1])} мм над ним, а высота внутри — ${n(H)} мм.${e.kind==='receiver' ? ` Замените на горизонтальный ресивер или несколько меньших${e.air && e.air.vol>0 ? ` (например, 2 × ${n(Math.ceil(e.air.vol/2/100)*100)} л)` : ''}, либо ресивер — снаружи (ФНП ОРПД, п. 65).` : ''}` }); }
       else if (room<top[0]){
         if (e.kind==='compressor') iss.push({ level:'info', text:`Над компрессором (поз. ${e.pos}) ${n(room)} мм до потолка — горячий воздух отводится воздуховодом (в помещении рекомендуется 1 м).` });
         else iss.push({ level:'warn', text:`Над поз. ${e.pos} «${e.short}» ${n(room)} мм до потолка — рекомендуется ${n(top[0])} мм.` }); }
@@ -874,11 +1044,13 @@ class StationLayout {
     if (!floor.length){ floor=units.map(e=>Object.assign({}, e, { slot:true })); wall=[]; hang=[]; }
     let r=this.fitRow(floor, geo, units);
     if (r.level==='error') return r;
+    if (this.tank) this.tankPlace(r, geo);
     const left=this.attach(r, wall, hang, geo);
     if (left.length){
       const ids=new Set(left.map(StationLayout.key)), rest=e=>!ids.has(StationLayout.key(e));
       const r2=this.fitRow([...floor, ...left.map(e=>Object.assign({}, e, { slot:true }))], geo, units);
       if (r2.level==='error') return r2;
+      if (this.tank) this.tankPlace(r2, geo);
       this.attach(r2, wall.filter(rest), hang.filter(rest), geo);
       r=r2;
     }
@@ -908,7 +1080,7 @@ class StationLayout {
       return Object.assign(res, { level:'error', issues:iss, need:{ L:r.needL||null, W:r.needW||null } });
     }
     const items=r.items.map(it=>this.item(it, geo)), iss=[...hh.iss, ...r.iss];
-    return Object.assign(res, { level:hh.bad ? 'error' : 'ok', bad:hh.bad, items, rows:r.rows, service:!!r.doors, needW:need, door:r.doors ? 'service' : r.rows===2 || geo.sea ? 'end' : 'side',
+    return Object.assign(res, { level:hh.bad ? 'error' : 'ok', bad:hh.bad, items, rows:r.rows, service:!!r.doors, needW:need, door:r.doors ? 'service' : this.tank ? 'side' : r.rows===2 || geo.sea ? 'end' : 'side',
       doors:null, aisle:{ w:r.doors ? 0 : r.aisleW, rows:r.rows, service:!!r.doors }, issues:iss });
   }
 
@@ -945,7 +1117,7 @@ class StationLayout {
     const [L, W, H]=geo.int, fl=r.items.filter(i=>i.mount==='floor'), has=k=>fl.some(i=>i.kind===k), out=[];
     r.segs=[];
     if (!fl.length) return out;
-    const mid=r.service && r.rows===2, A=fl.filter(i=>i.row===1), B=fl.filter(i=>i.row!==1), zTop=Math.max(600, Math.min(H-400, 1500));
+    const A=fl.filter(i=>i.row===1 && !i.tank), B=fl.filter(i=>i.row!==1 && !i.tank), mid=r.service && r.rows===2 && A.length>0 && B.length>0, zTop=Math.max(600, Math.min(H-400, 1500));   // бак в отсеке — не ряд
     const over=r.rows===2 && !r.service, room={ fuel:50, air:100, in:140, out:140, gen:100 }, hang=(dh||0)/2+40;
     // ось линии: conn — что соединяет; off — от стены, мм (part — доля полосы, если полоса уже); z — высота оси; x0…x1 — путь
     const place=(conn, off, part, z, medium, x0, x1)=>{
@@ -1080,7 +1252,7 @@ class StationLayout {
       return null; };
     // торец: шкаф вдоль торцевой стены в зоне прохода — перед ним (вдоль контейнера) проход «не менее» свободен
     const end=side=>{
-      if (side==='left' && (r.door==='end' || x0>0)) return null;   // у морского — двери в торце, у «Севера» — тамбур
+      if (side==='left' && (r.door==='end' || (x0>0 && geo.type==='north'))) return null;   // у морского — двери в торце, у «Севера» — тамбур (перегородка отсека бака — сплошная: можно)
       if (side==='right' && fl.some(i=>i.kind==='dgu')) return null;
       const xa=side==='left' ? x0 : L-d, zone=[side==='left' ? x0 : L-d-this.aisle[1], side==='left' ? x0+d+this.aisle[1] : L];
       const taken=cabs.filter(i=>i.wall===side).map(i=>[i.y-100, i.y+i.ly+100]);
@@ -1117,7 +1289,7 @@ class StationLayout {
    *  [{wall:'front'|'back', x0, x1, w, leaves, h}] (мм внутри) */
   serviceDoors(items, geo){
     const [L, , H]=geo.int, D=StationLayout.DOOR, x0=geo.x0||0, iv={ front:[], back:[] };
-    for (const it of items.filter(i=>i.mount==='floor' || i.mount==='frame')){ const w=Math.max(D.min, Math.min(D.max, Math.ceil((it.lx+200)/100)*100)), c=it.x+it.lx/2;
+    for (const it of items.filter(i=>(i.mount==='floor' || i.mount==='frame') && !i.tank)){ const w=Math.max(D.min, Math.min(D.max, Math.ceil((it.lx+200)/100)*100)), c=it.x+it.lx/2;
       const span=[Math.max(x0+D.pad, c-w/2), Math.min(L-D.pad, c+w/2), it.x, it.x+it.lx];
       if (it.face<=0) iv.front.push(span.slice()); if (it.face>=0) iv.back.push(span.slice()); }
     const out=[];
@@ -1185,7 +1357,7 @@ class StationLayout {
     return Object.assign({ id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, look:e.look||'', color:e.color, colorKnown:e.colorKnown,
       known:e.known, mass:e.mass, kw:e.kw, lx:e.l, ly:e.w, h:e.h, rot:false, face:-1, back:0, aisle:0, l:e.l, w:e.w, row:-1, slot:false, pipe:!!e.pipe, air:e.air||null, pic:e.pic||null }, o);
   }
-  used(items, geo){ const fl=items.filter(i=>i.mount!=='wall' && i.mount!=='pipe'), I=fl.length ? fl : items;
+  used(items, geo){ const fl=items.filter(i=>i.mount!=='wall' && i.mount!=='pipe' && !i.tank), I=fl.length ? fl : items;
     const x0=Math.min(...I.map(i=>i.x)), x1=Math.max(...I.map(i=>i.x+i.lx)); return { x0, x1, free:Math.max(0, geo.int[0]-(x1-x0)-geo.x0) }; }
 
   /** длина ряда(ов) при ширине Wi, мм: row1 — один ряд, row2 — два ряда с проходом, rowsBack — два ряда без прохода;
@@ -1204,7 +1376,7 @@ class StationLayout {
    *  (сервисные двери, промежутки «не менее») — в ширине, которую везут без спецразрешения; затем шире. В варианте — наименьшая площадь пола
    *  (длина × ширина); два ряда — только если заметно меньше одного (на четверть: один ряд удобнее в обслуживании и обвязке) */
   autoSize(units, geo, aisleOnly){
-    const G=StationGeo, B=G.BLOCK, t=geo.t, f=G.flex(geo.type), n=StationLayout.n, x0=f.tambour||0, wallX=2*(t+f.wall), hOf=f.floor+t+f.roof;
+    const G=StationGeo, B=G.BLOCK, t=geo.t, f=G.flex(geo.type), n=StationLayout.n, x0=geo.x0||0, wallX=2*(t+f.wall), hOf=f.floor+t+f.roof;
     const floor=units.filter(e=>!e.pipe && e.mount!=='wall'), probe=floor.length ? floor : units.map(e=>Object.assign({}, e, { slot:true }));
     const needH=(lvl, walk)=>Math.max(walk ? B.hWalk : 0, ...units.filter(e=>!e.pipe).map(e=>e.mount==='wall' ? e.h+StationLayout.CAB_LOW+150 : e.h+(e.kind==='compressor' ? e.c.top[1] : e.c.top[lvl])));
     const tiers=[];
@@ -1254,11 +1426,11 @@ class StationLayout {
       if (geo.sea && !geo.own){
         let warnFit=null; const cur=StationGeo.SEA[geo.type];
         for (const t of StationGeo.SEA_ORDER){ const s=StationGeo.SEA[t]; if (t===geo.type || (s.ext[0]<=cur.ext[0] && s.ext[2]<=cur.ext[2])) continue;   // не больше — не поможет
-          const r=this.fit(units, StationGeo.of({ ctype:t, ins:geo.t+' мм' })); if (aisleOnly && r.door==='service') continue;
+          const r=this.fit(units, this.geoOf({ ctype:t, ins:geo.t+' мм' })); if (aisleOnly && r.door==='service') continue;
           if (r.level==='ok') return { ctype:t, level:'ok', aisle:!!aisleOnly }; if (r.level==='warn' && !warnFit) warnFit={ ctype:t, level:'warn', aisle:!!aisleOnly }; }
         if (warnFit) return warnFit;
       }
-      const type=StationGeo.FLEX[geo.type] ? geo.type : 'block', r=this.autoSize(units, StationGeo.of({ ctype:type, ins:geo.t+' мм', sizeAuto:true }), aisleOnly);
+      const type=StationGeo.FLEX[geo.type] ? geo.type : 'block', r=this.autoSize(units, this.geoOf({ ctype:type, ins:geo.t+' мм', sizeAuto:true }), aisleOnly);
       return r.level==='error' ? null : { ctype:type, size:r.geo.ext, level:r.level, aisle:!!aisleOnly };
     } finally { this.allowDoors=keep; }
   }
@@ -1271,13 +1443,13 @@ class StationLayout {
       const cur=StationGeo.SEA[geo.type];
       for (const t of StationGeo.SEA_ORDER){ const s=StationGeo.SEA[t];
         if (t===geo.type || s.ext[0]>cur.ext[0] || s.ext[2]>cur.ext[2] || (s.ext[0]===cur.ext[0] && s.ext[2]===cur.ext[2])) continue;
-        const r=this.fit(units, StationGeo.of({ ctype:t, ins:geo.t+' мм' }));
+        const r=this.fit(units, this.geoOf({ ctype:t, ins:geo.t+' мм' }));
         if (r.level==='error' || r.door==='service' || rank[r.level]>lv) continue;
         plan.suggest={ ctype:t, level:r.level, smaller:true };
         plan.issues.push({ level:'warn', big:true, text:`Контейнер с запасом: всё помещается в морской контейнер ${s.label} — меньше по размеру, массе и цене.` });
         return; }
     } else if (geo.own && StationGeo.FLEX[geo.type]){
-      const r=this.autoSize(units, StationGeo.of({ ctype:geo.type, ins:geo.t+' мм', sizeAuto:true }));
+      const r=this.autoSize(units, this.geoOf({ ctype:geo.type, ins:geo.t+' мм', sizeAuto:true }));
       if (r.level==='error' || !r.geo || !r.geo.ext || rank[r.level]>lv) return;
       const e=r.geo.ext; if (geo.ext[0]-e[0]<500 && geo.ext[1]-e[1]<300 && geo.ext[2]-e[2]<300) return;
       plan.suggest={ ctype:geo.type, size:e, level:r.level, smaller:true };
@@ -1304,6 +1476,9 @@ class StationLayout {
       if (!D.length) iss.push({ level:'warn', text:`Ресивер снаружи без осушителя: зимой конденсат в ресивере и отводе замерзает — нужен обогреваемый отвод конденсата (греющий кабель, теплоизоляция) или осушитель перед ресивером.` });
       else if (!D.some(e=>e.air.type==='ads')) iss.push({ level:'info', text:`Ресивер снаружи после рефрижераторного осушителя (точка росы +3 °C): при морозе в нём выпадает и замерзает конденсат — нужен обогреваемый отвод конденсата или адсорбционный осушитель (точка росы −40 °C).` });
       if (plan.chassis) iss.push({ level:'info', text:`Станция на шасси: ресивер снаружи перевозится отдельно и ставится на площадку на объекте.` }); }
+    if (plan.fuel){ const P=[...new Set((plan.items||[]).filter(i=>i.tank).map(i=>i.pos))].join(', ');
+      iss.push({ level:'info', text:`Топливный бак поз. ${P} — в отдельном отсеке у торца: противопожарная перегородка 1-го типа (EI 45) без проёмов, топливопровод — через гильзу с уплотнением; вход в отсек — своя дверь снаружи; заливная горловина — снаружи в запираемом ящике; дыхательный клапан с огнепреградителем — над крышей; бак — в поддоне на полный объём; в отсеке — естественная вентиляция.` }); }
+    StationHeat.notes(plan);
     // учёт в Ростехнадзоре — по произведению давления на вместимость
     const V=(plan.vessels||[]).filter(v=>v.pv!=null), reg=V.filter(v=>v.reg), free=V.filter(v=>!v.reg);
     if (reg.length) iss.push({ level:'info', text:`Подлежат учёту в Ростехнадзоре (ФНП ОРПД: p·V больше 1,0 МПа·м³): ${reg.map(v=>`поз. ${v.pos} — ${PressureVessel.text(v)}`).join('; ')}. Регистрация, техническое освидетельствование и ответственные за исправное состояние — у эксплуатирующей организации${reg.some(v=>!v.out) ? '; размещают на открытой площадке или в отдельном здании, в помещении — когда иначе нельзя (п. 65): «Ресивер снаружи» — в требованиях заказчика на вкладке «Состав станции»' : ''}.` });

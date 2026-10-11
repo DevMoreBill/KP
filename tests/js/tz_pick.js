@@ -63,7 +63,16 @@ class Check {
     assert.strictEqual(kitParts(x).find(p=>StationEquip.kindOf(p)==='compressor').name, 'Компрессор винтовой К-130', '10 м³/мин + продувка 15 % — один на 13 м³/мин');
     assert.ok(K.some(k=>k[0]==='dryer' && k[2]==='dryer_ads'), 'класс воды 2 (−40 °C) — адсорбционный осушитель');
     assert.ok(K.filter(k=>k[0]==='filter').length>=2, 'фильтры до и после адсорбционного осушителя: '+JSON.stringify(K));
-    assert.strictEqual(kitParts(x).find(p=>StationEquip.kindOf(p)==='receiver').name, 'Ресивер РВ-2000', 'ресивер по расчёту — около 2000 л');
+    const rv=kitParts(x).find(p=>StationEquip.kindOf(p)==='receiver');
+    assert.deepStrictEqual([rv.name, rv.qty], ['Ресивер РВ-1000', 2], 'около 2000 л: вертикальный на 2000 л (2,9 м) не проходит по высоте блок-контейнера — два по 1000 л');
+    assert.ok(/ресиверы 2 × Ресивер РВ-1000 \(2 по 1 000 л/.test(note), note);
+    const y=Cat.station('st_comp', [], {});
+    await TzPick.run(y, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'0', work:0, recvOut:true });
+    const ro=kitParts(y).find(p=>StationEquip.kindOf(p)==='receiver');
+    assert.deepStrictEqual([ro.name, ro.qty], ['Ресивер РВ-2000', 1], 'снаружи высота не ограничена — один на 2000 л');
+    const z=Cat.station('st_comp', [], {});
+    await TzPick.run(z, { kind:'comp', flow:10, pressure:7, air:'2.4.2', reserve:'0', work:0, recv:'both' });
+    assert.deepStrictEqual(kitParts(z).filter(p=>StationEquip.kindOf(p)==='receiver').map(p=>[p.name, p.qty]), [['Ресивер РВ-1000', 1], ['Ресивер РВ-1000', 1]], 'до и после осушителя — два ресивера');
     assert.ok(/продувку адсорбционного осушителя/.test(note), note);
     assert.strictEqual(K[K.length-1][0], 'piping', 'прочий состав — после подобранного');
     // требования: за вычетом продувки, давление на выходе — с потерями в подготовке воздуха
