@@ -511,7 +511,10 @@ jobs:
             try { $r = Invoke-WebRequest -Method Post -Uri 'http://127.0.0.1:17845/api/admin/setup' -ContentType 'application/json' -Body '{"login":"admin","password":"Ci-Passw0rd1"}' -SessionVariable s -UseBasicParsing }
             catch { $r = Invoke-WebRequest -Method Post -Uri 'http://127.0.0.1:17845/api/admin/login' -ContentType 'application/json' -Body '{"login":"admin","password":"Ci-Passw0rd1"}' -SessionVariable s -UseBasicParsing }
             $H = @{ 'X-CSRF-Token' = ($r.Content | ConvertFrom-Json).csrf }
-            $sys = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/admin/system' -Headers $H -WebSession $s
+            # итог проверки программа записывает после повторного чтения задачи (ещё один вызов PowerShell) —
+            # чуть позже, чем исправление видно в Планировщике; пока не записан, «Система» отвечает pending
+            $sys = $null
+            for ($i = 0; $i -lt 30; $i++) { $sys = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/admin/system' -Headers $H -WebSession $s; if (-not $sys.task.pending) { break }; Start-Sleep -Seconds 1 }
             Write-Host ('«Система»: ' + ($sys.task | ConvertTo-Json -Compress -Depth 4))
             if (-not $sys.task.exists -or @($sys.task.problems).Count -or -not $sys.task.fixed) { throw '«Система» не показывает исправленную задачу' }
             $att = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/admin/attention' -Headers $H -WebSession $s
