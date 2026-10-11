@@ -675,6 +675,8 @@ class StScene {
         m.tube(a, a1, r*0.85, 16, [false, false]); m.tube(b, b1, r*0.85, 16, [false, false]); m.tube(a1, b1, r*0.85, 16, [false, false]); for (const q of [a, b, a1, b1]) m.sphere(q, r*0.92, 12);
         m.sphere(v, r*1.45, 12); red.box(v[0]-0.012, v[1]-0.012, v[2]-r*1.3-0.018, v[0]+0.13, v[1]+0.012, v[2]-r*1.3, 0.004); }   // ручка крана — вниз (обвод под магистралью)
       for (const b of l.branches){ const p0=this.P(b.x, b.y0, l.z), p1=this.P(b.x, b.y1, l.z), p2=this.P(b.x, b.y1, b.z1), to=this.plan.items.find(i=>StationLayout.key(i)===b.to);
+        if (b.tee){ for (const [a, c] of [[p0, p1], [p1, p2]]) if (StV.len(StV.sub(c, a))>0.01){ m.tube(a, c, r, 16, [false, false]); m.sphere(c, r*1.02, 12); }   // подъём от магистрали к коллектору входов параллельных аппаратов
+          m.sphere(p0, r*1.02, 12); continue; }
         m.sphere(p0, r*1.05, 12); if (StV.len(StV.sub(p1, p0))>0.01){ m.tube(p0, p1, r*0.85, 16, [false, false]); m.sphere(p1, r*0.88, 12); }
         if (b.z1<l.z) m.tube(p1, p2, r*0.85, 16, [false, false]);
         const down=b.z1<l.z, side=down && to && b.z1<to.h-30, hz=StV.sub(p1, p0), hl=StV.len(hz);

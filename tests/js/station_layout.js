@@ -369,6 +369,37 @@ Check.run('сжатый воздух: последовательно, фильт
   if (AL.length>1) assert.ok(AL.some(l=>l.header) && new Set(AL.map(l=>l.z)).size===2, 'коллектор — на другой высоте');
 });
 
+Check.run('параллельно: одинаковые осушители и фильтры — общий коллектор, краны у каждого; на схеме — ветвями', ()=>{
+  const c=P('Винтовой компрессор', { cat:'comp_screw', model:'K 37', kw:37, flow:6, pressure:8, size:'1450 × 900 × 1550' }, { role:'main', qty:2 });
+  const dr=P('Рефрижераторный осушитель', { cat:'dryer_refrig', model:'R 75', flow:7.5, size:'900 × 650 × 1050' }, { qty:2 });
+  const pre=P('Фильтр предварительной очистки 3 мкм', { cat:'filter', flow:15, size:'180 × 180 × 650' });
+  const mic=P('Фильтр тонкой очистки 0,01 мкм', { cat:'filter', flow:7.5, size:'180 × 180 × 650' }, { qty:2 });
+  const rv=P('Ресивер', { cat:'receiver', model:'РВ 1000', volume:1000, pressure:11, size:'800 × 800 × 2250' });
+  const p=solve(C('block', { sizeAuto:true }), [c, pre, dr, mic, rv, P('Трубопровод', {}, { pipeMat:'steel' })]); Check.plan(p, 'параллельно'); draw(p, 'параллельно');
+  assert.ok(/^Одинаковые осушители поз\. \d+ \(2 шт\.\); фильтры поз\. \d+ \(2 шт\.\) включены параллельно/.test(AirChain.parText(p.air.units)), 'указание о параллельных: '+AirChain.parText(p.air.units));
+  // осушители: входы — от своего коллектора на другой высоте (подъём от магистрали — tee), выходы — в магистраль, без байпаса
+  const D=p.items.filter(i=>i.kind==='dryer'), main=p.lines.find(l=>l.medium==='air' && !l.header && !l.par), head=p.lines.find(l=>l.par && !l.loop);
+  assert.ok(D.length===2 && head && head.z!==main.z && head.branches.filter(b=>b.tee).length===1, 'коллектор входов — на другой высоте, подъём от магистрали');
+  for (const d of D){ const k=d.id+'#'+d.unit; assert.ok(head.branches.some(b=>b.to===k && b.role==='in') && main.branches.some(b=>b.to===k && b.role==='out'), 'вход — от коллектора, выход — в магистраль'); }
+  const tee=head.branches.find(b=>b.tee), out0=Math.min(...main.branches.filter(b=>D.some(d=>b.to===d.id+'#'+d.unit)).map(b=>b.x));
+  assert.ok(main.gaps.some(([a, b])=>a===tee.x && b===out0) && !StationLayout.runs(main).some(([a, b])=>a<out0-1 && b>tee.x+1), 'магистраль прервана от подъёма до первого выхода');
+  assert.ok(!(main.bypass||[]).length, 'параллельным осушителям байпас не нужен');
+  // фильтры на трубе: первый — на магистрали, второй — на обводной петле рядом, между её перемычками
+  const F=p.items.filter(i=>i.kind==='filter' && i.air.grade==='micro'), loop=p.lines.find(l=>l.loop), on=(f, l)=>f.y<=l.y && l.y<=f.y+f.ly && f.x>l.x0 && f.x+f.lx<l.x1;
+  assert.ok(F.length===2 && loop && loop.branches.length===2 && loop.branches.every(b=>b.tee && b.y1===main.y && b.z1===main.z), 'петля с двумя перемычками к магистрали');
+  assert.ok(F.some(f=>f.y<=main.y && main.y<=f.y+f.ly) && F.some(f=>on(f, loop)), 'один — на магистрали, другой — на петле');
+  // производительность параллельных складывается
+  assert.ok(!p.issues.some(i=>/Фильтр.* меньше производительности/.test(i.text)), 'два фильтра по 7,5 на 12 м³/мин — хватает');
+  const one=solve(C('block', { sizeAuto:true }), [c, pre, dr, P('Фильтр тонкой очистки 0,01 мкм', { cat:'filter', flow:7.5, size:'180 × 180 × 650' }), rv]);
+  assert.ok(one.issues.some(i=>/^Фильтр поз\. \d+ .* меньше производительности компрессоров/.test(i.text)), 'один фильтр 7,5 на 12 м³/мин — мал');
+  // чертёж и схема
+  assert.ok(new StationDrawing(p, meta(p)).reqs().some(t=>/поз\. \d+ \(2 шт\. параллельно\) → \d+ → \d+ \(2 шт\. параллельно\) → \d+ \(2 шт\. параллельно\) → \d+ → к потребителю/.test(t)), 'на чертеже — параллельно в цепочке');
+  assert.ok(StationScheme.svg(p, meta(p)).includes('параллельно'), 'на схеме — указание');
+  // три одинаковых и больше трёх — на схеме три ветви и число
+  const many=solve(C('block', { sizeAuto:true }), [c, Object.assign({}, dr, { id:'dr4', qty:4 }), rv]); Check.plan(many, 'четыре осушителя'); draw(many, 'четыре осушителя');
+  assert.ok(StationScheme.svg(many, meta(many)).includes('4 шт.'), 'больше трёх — число');
+});
+
 Check.run('двери: оператора — одностворчатая наружу; ворота для демонтажа — в торце; сервисные — где нет отступов', ()=>{
   // отступы выдержаны (проход внутри): дверь оператора одностворчатая, не уже 600 мм; компрессор в неё не проходит — распашные
   // ворота в торце (по возможности в дальнем), сервисных дверей в боковых стенах нет

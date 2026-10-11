@@ -979,10 +979,13 @@ class StationScheme {
     const TB=237, cols=[14, 95, 12, 64], rh=6, listH=6+rows.length*rh, yList=TB-12-listH;
     sh.table(20, yList, cols, ['Поз.', 'Наименование', 'Кол.', 'Примечание'], rows.map(({ u, qty })=>[[String(u.pos), 'c'], u.brief||u.name||'', [String(qty), 'c'], note(u)]), rh, 6, 2.5);
     sh.text(20+92.5, yList-2.5, 'Перечень элементов', 3.5, { a:'middle' });
+    // одинаковые осушители (генераторы) и фильтры подряд — параллельно (AirChain.groups), ресиверы — последовательно
+    const qn=G=>G.reduce((s, u)=>s+(u.qty||1), 0), groups=AirChain.groups(chain), par=AirChain.parText(chain);
     const notes=[
       `Арматура (запорные краны, предохранительный клапан, манометр, отвод конденсата) показана условно${pipe ? `; входит в обвязку поз. ${pipe.pos}` : ''}.`,
       'У ресивера, фильтров и осушителя — один вход и один выход: сжатый воздух проходит через них последовательно, по стрелкам; линии отвода конденсата — штриховые.',
-      ...(chain.some(u=>u.kind==='dryer' && (u.air||{}).type!=='gen') ? ['У осушителя — байпас: обводная линия с краном (нормально закрыт), на входе и выходе осушителя — краны; осушитель обслуживают без остановки подачи воздуха.'] : []),
+      ...(par ? [par] : []),
+      ...(groups.some(G=>qn(G)===1 && G[0].kind==='dryer' && (G[0].air||{}).type!=='gen') ? ['У осушителя — байпас: обводная линия с краном (нормально закрыт), на входе и выходе осушителя — краны; осушитель обслуживают без остановки подачи воздуха.'] : []),
       ...(a.cls ? [`На выходе — класс чистоты сжатого воздуха ${a.cls} по ISO 8573-1.`] : []),
       ...(out.length ? [`${out.length>1 || (out[0].qty||1)>1 ? 'Ресиверы' : 'Ресивер'} поз. ${[...new Set(out.map(u=>u.pos))].join(', ')} — снаружи контейнера, на площадке; подключение через стену — с запорной арматурой.`] : []),
     ];
@@ -991,11 +994,18 @@ class StationScheme {
     // ---- схема: компрессоры слева столбцом, коллектор, аппараты по ходу воздуха строками (змейкой), выход к потребителю —
     // в конце последней строки (нет места — на следующей); модуль m — крупнее, пока помещается над указаниями
     const comp=comps.flatMap(u=>Array.from({ length:Math.min(u.qty||1, 4) }, ()=>u)).slice(0, 6);
-    const nodes=chain.flatMap(u=>Array.from({ length:Math.min(u.qty||1, 3) }, ()=>u));
+    // узлы по ходу воздуха: аппарат (одинаковые последовательно — до трёх подряд) или группа параллельно — на два места
+    const nodes=groups.flatMap(G=>{ const n=qn(G);
+      if (G[0].kind==='receiver' || n<2) return G.flatMap(u=>Array.from({ length:Math.min(u.qty||1, 3) }, ()=>({ u, w:1, half:this.half(u), ex:0 })));
+      // обозначения: до трёх — у каждой строки состава хотя бы одно (номер позиции на схеме), остальные — по порядку
+      const all=G.flatMap(u=>Array(u.qty||1).fill(u)), pick=new Set(G.slice(0, 3).map(u=>all.indexOf(u)));
+      for (let i=0; i<all.length && pick.size<3; i++) pick.add(i);
+      const U=[...pick].sort((p, q)=>p-q).map(i=>all[i]), g=this.par(U[0], U.length);
+      return [{ u:G[0], par:U, n, w:2, half:g.hw, ex:g.ex }]; });
     const built=u=>!!((u.air||{}).dryer || (u.air||{}).filter), wide=comp.some(built), tw=t=>EskdSheet.tw(t, 2.5);
     const outW=Math.max(tw('К потребителю'), a.cls ? tw(`класс ${a.cls}`) : 0);
-    const G=this.layout(comp.length, nodes.map(u=>this.half(u)), wide, outW, 30, yN-6);
-    const { m, xCol, xs0, xR, xL, S, per, dy, yT, rows:nr, colBot }=G, xM=29+4*(m-1), xC=xM+13*m, yRow=r=>yT+r*this.ROW*m;
+    const G=this.layout(comp.length, nodes, wide, outW, 30, yN-6);
+    const { m, xCol, xR, xL, dy, yT, rows:nr, colBot }=G, xM=29+4*(m-1), xC=xM+13*m, yRow=r=>G.Y[r];
     comp.forEach((u, i)=>{ const yo=yT+i*dy, cy=yo+8*m, r=u.air||{};
       PneuSymbol.motor(sh, xM, cy, xC-5*m, 3.4*m); PneuSymbol.compressor(sh, xC, cy, 5*m);
       sh.line(xC, cy-5*m, xC, yo, 'bold'); sh.line(xC, yo, xCol-7.8*m, yo, 'bold');
@@ -1008,16 +1018,17 @@ class StationScheme {
       PneuSymbol.valve(sh, xCol-6*m, yo, 1.8*m); sh.line(xCol-4.2*m, yo, xCol, yo, 'bold');
       if (comp.length>1) sh.dot(xCol, yo, 0.6); });
     if (comp.length>1) sh.line(xCol, yT, xCol, yT+(comp.length-1)*dy, 'bold');
-    // аппараты: единицы по ходу воздуха (одинаковые — до трёх подряд); перенос строки — у правого (xR) или левого (xL) края
-    const P=nodes.map((u, i)=>{ const r=Math.floor(i/per), j=i%per, ltr=r%2===0; return { u, r, ltr, x:ltr ? xs0+j*S : xs0+(per-1-j)*S, y:yRow(r), m }; });
+    // аппараты по ходу воздуха; перенос строки — у правого (xR) или левого (xL) края
+    const P=nodes.map((n, i)=>Object.assign({}, n, G.pos[i], { y:yRow(G.pos[i].r), m }));
     const drains=[]; let px=xCol, py=yT, pr=0;
     const seg=(x1, y1, x2, y2)=>{ sh.line(x1, y1, x2, y2, 'bold'); if (y1===y2 && Math.abs(x2-x1)>10*m) PneuSymbol.flow(sh, (x1+x2)/2, y1, x2>x1 ? 1 : -1); };
     const wrap=r=>{ const ex=pr%2===0 ? xR : xL; seg(px, py, ex, py); sh.line(ex, py, ex, yRow(r), 'bold'); px=ex; py=yRow(r); pr=r; };
     for (const n of P){
-      const w=this.half(n.u)*m;
+      const w=n.half*m;
       if (n.r!==pr) wrap(n.r);
       seg(px, py, n.ltr ? n.x-w : n.x+w, n.y);
-      const d=this.node(sh, n); if (d) drains.push({ x:d[0], y:d[1], r:n.r });
+      if (n.par) drains.push(...this.group(sh, n));
+      else { const d=this.node(sh, n); if (d) drains.push({ x:d[0], y:d[1], r:n.r }); }
       px=n.ltr ? n.x+w : n.x-w; py=n.y; }
     // выход к потребителю: кран, стрелка, класс чистоты — за стрелкой, по ходу строки
     if (nr-1>pr) wrap(nr-1);
@@ -1029,7 +1040,7 @@ class StationScheme {
     // компрессоры, иначе — под линией
     const lab=cond.length ? `конденсат — к поз. ${cond[0].pos}` : 'конденсат', lw=tw(lab);
     for (const r of [...new Set(drains.map(d=>d.r))]){
-      const D=drains.filter(d=>d.r===r), yd=yRow(r)+17*m, x0=Math.min(...D.map(d=>d.x)), x1=Math.max(...D.map(d=>d.x)), ltr=r%2===0, next=r<nr-1;
+      const D=drains.filter(d=>d.r===r), yd=yRow(r)+(17+G.ex[r])*m, x0=Math.min(...D.map(d=>d.x)), x1=Math.max(...D.map(d=>d.x)), ltr=r%2===0, next=r<nr-1;
       const hi=ltr && next ? xR-2 : 200, lo=!ltr && next ? xL+2 : colBot<yd-4 ? 26 : xCol+2;
       for (const d of D) sh.line(d.x, d.y, d.x, yd, 'drain');
       const o=(ltr ? [1, -1] : [-1, 1]).map(d=>({ d, xe:d>0 ? x1+6 : x0-6 })).find(q=>q.d>0 ? q.xe+3.6+lw<=hi : q.xe-3.6-lw>=lo);
@@ -1041,18 +1052,23 @@ class StationScheme {
     sh.frame({ name:meta.title||'Станция компрессорная', doc:'Схема пневматическая принципиальная', code, lit:'П', sheets:1, org:meta.org, dev:meta.dev, date:meta.date });
     return sh.svg();
   }
-  /** раскладка схемы при модуле m: столбец компрессоров (nc), аппараты строками змейкой (halves — полуширины), выход к
-   *  потребителю шириной outW после последнего аппарата — по ходу строки, а если не помещается — на следующей строке.
-   *  Модуль 0,7…1,6: из помещающихся над указаниями — меньше строк, затем крупнее (не мельче 0,9, если можно) */
-  static layout(nc, halves, wide, outW, top, bottom){
+  /** раскладка схемы при модуле m: столбец компрессоров (nc), узлы строками змейкой (nodes: {half — полуширина, w — мест,
+   *  ex — выше и ниже строки, мм}), выход к потребителю шириной outW после последнего узла — по ходу строки, а если не
+   *  помещается — на следующей строке. Модуль 0,7…1,6: из помещающихся над указаниями — меньше строк, затем крупнее (не
+   *  мельче 0,9, если можно). pos — места узлов {r, ltr, x}, Y — оси строк, ex — запас строк */
+  static layout(nc, nodes, wide, outW, top, bottom){
     const geo=m=>{
       const xCol=25+(wide ? 54 : 35)*m, xs0=xCol+14*m, xR=201-2*m, xL=xs0-9*m, S=this.STEP*m, per=Math.max(1, Math.floor((xR-9*m-xs0)/S)+1);
-      const dy=wide ? 21.5*m+5.5 : 24*m, yT=top+12, colBot=yT+Math.max(0, nc-1)*dy+15*m, yRow=r=>yT+r*this.ROW*m, n=halves.length;
-      const lr=n ? Math.floor((n-1)/per) : 0, ltr=lr%2===0, j=n ? (n-1)%per : 0;
-      const px=n ? (ltr ? xs0+j*S+halves[n-1]*m : xs0+(per-1-j)*S-halves[n-1]*m) : xCol;
-      const need=14*m+3.8+outW+1, lo=colBot<yRow(lr)-3 ? 26 : xCol+2, room=ltr ? 200-px : px-lo;
-      const rows=lr+1+(room>=need ? 0 : 1), h=Math.max(colBot, yRow(rows-1)+17*m+6)-top;
-      return { m, xCol, xs0, xR, xL, S, per, dy, yT, rows, colBot, h };
+      // места: узел на w мест (группа параллельно — на два), не помещается в строку — с начала следующей
+      const pos=[]; let r=0, j=0;
+      for (const n of nodes){ const w=Math.min(n.w||1, per); if (j+w>per){ r++; j=0; } const ltr=r%2===0, c=j+(w-1)/2; pos.push({ r, ltr, x:ltr ? xs0+c*S : xs0+(per-1-c)*S }); j+=w; }
+      const lr=pos.length ? pos[pos.length-1].r : 0, ltr=lr%2===0, ex=Array.from({ length:lr+2 }, (_, i)=>Math.max(0, ...nodes.filter((n, k)=>pos[k].r===i).map(n=>n.ex||0)));
+      const dy=wide ? 21.5*m+5.5 : 24*m, yT=top+12+ex[0]*m, colBot=yT+Math.max(0, nc-1)*dy+15*m, Y=[yT];
+      for (let i=1; i<=lr+1; i++) Y.push(Y[i-1]+(this.ROW+ex[i-1]+ex[i])*m);
+      const last=pos[pos.length-1], px=last ? last.x+(ltr ? 1 : -1)*nodes[nodes.length-1].half*m : xCol;
+      const need=14*m+3.8+outW+1, lo=colBot<Y[lr]-3 ? 26 : xCol+2, room=ltr ? 200-px : px-lo;
+      const rows=lr+1+(room>=need ? 0 : 1), h=Math.max(colBot, Y[rows-1]+(17+ex[rows-1])*m+6)-top;
+      return { m, xCol, xs0, xR, xL, S, per, dy, yT, rows, colBot, h, pos, Y, ex };
     };
     const C=[16, 15, 14, 13, 12, 11, 10, 9, 8, 7].map(v=>geo(v/10)), fit=C.filter(g=>top+g.h<=bottom), big=fit.filter(g=>g.m>=0.9);
     const pool=big.length ? big : fit.length ? fit : [C[C.length-1]];
@@ -1060,9 +1076,32 @@ class StationScheme {
   }
   /** полуширина обозначения по линии (при модуле 1) */
   static half(u){ return u.kind==='receiver' ? 8 : u.kind==='dryer' ? 6 : 5; }
-  /** аппарат на линии: обозначение, арматура, номер позиции; возвращает точку слива конденсата или null */
+  /** группа k одинаковых параллельно (при модуле 1): a, ah — полуширина и полувысота обозначения, dy — шаг ветвей по высоте,
+   *  sx — уступ по линии (слив верхнего проходит мимо нижнего), hw — от середины до разветвления, ex — запас строки по высоте */
+  static par(u, k){
+    const a=u.kind==='dryer' ? 6 : 5, ah=u.kind==='dryer' ? ((u.air||{}).type==='gen' ? 4.5 : 6) : 5, dy=2*ah+3, sx=a+1.5;
+    return { a, ah, dy, sx, hw:(k-1)/2*sx+a+7.5, ex:k>2 ? Math.max(0, dy+ah+3-17) : 0 };
+  }
+  /** одинаковые аппараты параллельно: разветвление — кран — аппарат — кран — слияние на каждой ветви; аппараты уступом по ходу
+   *  строки, номера — с другой стороны от сливов; больше трёх — три и число. Возвращает точки слива [{x, y, r}] */
+  static group(sh, n){
+    const { x, y, m, ltr, r, par:U }=n, k=U.length, g=this.par(U[0], k), d=ltr ? 1 : -1, xs=x-d*g.hw*m, xe=x+d*g.hw*m, v=1.8*m, out=[];
+    const ys=U.map((u, i)=>y+(i-(k-1)/2)*g.dy*m), xc=U.map((u, i)=>x+d*(i-(k-1)/2)*g.sx*m);
+    sh.line(xs, ys[0], xs, ys[k-1], 'bold'); sh.line(xe, ys[0], xe, ys[k-1], 'bold'); sh.dot(xs, y, 0.6); sh.dot(xe, y, 0.6);
+    U.forEach((u, i)=>{ const yi=ys[i], xi=xc[i], a=g.a*m, xv0=xs+d*4*m, xv1=xe-d*4*m;
+      sh.line(xs, yi, xv0-d*v, yi, 'bold'); PneuSymbol.valve(sh, xv0, yi, v); sh.line(xv0+d*v, yi, xi-d*a, yi, 'bold');
+      sh.line(xi+d*a, yi, xv1-d*v, yi, 'bold'); PneuSymbol.valve(sh, xv1, yi, v); sh.line(xv1+d*v, yi, xe, yi, 'bold');
+      const p=this.node(sh, { u, x:xi, y:yi, m, ltr, bare:true, flip:!ltr }); if (p) out.push({ x:p[0], y:p[1], r }); });
+    if (n.n>k){ const [dx, dl]=this.lab(U[0]), w=EskdSheet.tw(String(U[0].pos), 3.5)+1.2;   // всего — за номером верхнего
+      sh.text(xc[0]+d*(dx*m+w), ys[0]-dl*m, `${n.n} шт.`, 2.5, { a:ltr ? 'start' : 'end' }); }
+    return out;
+  }
+  /** номер позиции у обозначения (при модуле 1): [вправо (flip — влево), вверх от середины] */
+  static lab(u){ return u.kind==='dryer' ? ((u.air||{}).type==='gen' ? [6.8, 5.5] : [4, 6.2]) : [3.6, 5.4]; }
+  /** аппарат на линии: обозначение, арматура, номер позиции (flip — слева); bare — без байпаса (в группе параллельно);
+   *  возвращает точку слива конденсата или null */
   static node(sh, n){
-    const { u, x, y, m }=n, r=u.air||{};
+    const { u, x, y, m }=n, r=u.air||{}, [dx, dl]=this.lab(u), lab=()=>sh.text(n.flip ? x-dx*m : x+dx*m, y-dl*m, String(u.pos), 3.5, n.flip ? { a:'end' } : undefined);
     if (u.kind==='receiver'){
       const s=PneuSymbol.receiver(sh, x, y, 16*m, 7*m);
       sh.line(x+3.5*m, s.top, x+3.5*m, s.top-2.6*m, 'bold'); PneuSymbol.safety(sh, x+3.5*m, s.top-2.6*m, 1.8*m);
@@ -1070,14 +1109,15 @@ class StationScheme {
       sh.line(x, y+3.5*m, x, y+6*m, 'bold'); PneuSymbol.valve(sh, x, y+7.8*m, 1.6*m, true);
       sh.text(x-8.5*m, y-4.5*m, String(u.pos), 3.5, { a:'end' });
       return [x, y+9.4*m]; }
-    if (u.kind==='dryer' && r.type==='gen'){ PneuSymbol.generator(sh, x, y, /кислород|O2|О2/i.test(u.name||'') ? 'O₂' : 'N₂', m); sh.text(x+6.8*m, y-5.5*m, String(u.pos), 3.5); return null; }
-    if (u.kind==='dryer'){ const s=PneuSymbol.dryer(sh, x, y, 6*m); sh.text(x+4*m, y-6.2*m, String(u.pos), 3.5);
+    if (u.kind==='dryer' && r.type==='gen'){ PneuSymbol.generator(sh, x, y, /кислород|O2|О2/i.test(u.name||'') ? 'O₂' : 'N₂', m); lab(); return null; }
+    if (u.kind==='dryer'){ const s=PneuSymbol.dryer(sh, x, y, 6*m); lab();
+      if (n.bare) return r.type==='ads' ? null : s.bot;
       const xa=n.ltr ? x-8.5*m : x+8.5*m, xb=n.ltr ? x+8.5*m : x-8.5*m, yb=y-12.5*m;   // байпас: обвод с краном (нормально закрыт)
       sh.dot(xa, y, 0.6); sh.dot(xb, y, 0.6); sh.line(xa, y, xa, yb, 'bold'); sh.line(xb, y, xb, yb, 'bold');
       sh.line(xa, yb, x-1.8*m, yb, 'bold'); sh.line(x+1.8*m, yb, xb, yb, 'bold'); PneuSymbol.valve(sh, x, yb, 1.8*m, false, true);
       return r.type==='ads' ? null : s.bot; }
     const g=r.grade, drain=g==='carbon' || g==='dust' ? '' : 'auto', s=PneuSymbol.filter(sh, x, y, 5*m, drain, g!=='sep');
-    sh.text(x+3.6*m, y-5.4*m, String(u.pos), 3.5);
+    lab();
     return drain ? s.bot : null;
   }
 }
