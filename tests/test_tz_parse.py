@@ -143,6 +143,17 @@ class TzParseTest(unittest.TestCase):
         self.assertNotIn('air', P('Компрессор, производительность 1.2.3 м3/мин'), 'класс — только с «ISO 8573» или «класс»')
         self.assertEqual(TzParse.parse('Просто текст без требований к станции, ничего подходящего здесь нет.')['req'], {})
 
+    def test_options(self):
+        P = lambda t: TzParse.parse(t)['req']   # noqa: E731
+        q = P('Насосная станция, насосы с преобразователем частоты, два ввода с АВР, передача данных в диспетчерскую по Modbus TCP.')
+        self.assertEqual((q.get('vsd'), q.get('ats'), q.get('scada')), (True, True, True))
+        self.assertTrue(P('Компрессорная станция с безмасляными компрессорами, класс 0 по маслу.')['oilFree'])
+        self.assertNotIn('oilFree', P('Насосная станция, безмасляный насос'), 'безмасляный — только у компрессорной')
+        self.assertTrue(P('ДГУ, I категория надёжности электроснабжения.')['ats'])
+        q = P('Компрессорная, II категории надежности, без АВР в составе поставки; диспетчеризация не предусматривается.')
+        self.assertNotIn('ats', q, 'II категория и «без АВР» — не АВР')
+        self.assertNotIn('scada', q, '«не предусматривается» — нет')
+
 
 class TzPickJs(unittest.TestCase):
     def test_pick(self):

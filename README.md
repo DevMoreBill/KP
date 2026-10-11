@@ -451,6 +451,9 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
 фильтры и ресивер — по `plan.air.recs`; ДГУ — `StationDefaults.retank`). ТЗ на сборку — `TzOut` (tz-out.js) на `DocxWriter`
 (docx-writer.js: WordprocessingML через JSZip — стили, таблицы с повтором шапки, рисунки PNG/JPEG, номер страницы). Проверки —
 `tests/test_tz_parse.py` (+ `tests/js/tz_pick.js`), `tests/test_tz_out.py` (+ `tests/js/docx_writer.js`), `tests/js/station_layout.js`.
+3.60.1: особые требования — `StationReq.OPTS` (`oilFree`, `vsd`, `ats`, `scada`; галочки в окне и в блоке требований),
+`StationReq.ensureParts` (шкафы АВР и АСУ ТП в состав), `TzParse.options` / `negated` («без АВР», «не требуется»), `TzPick.oilFree`,
+частотное регулирование — штраф 0,3 без него; фильтры — по `AirChain.grade` (поле или название), `TzPick.GRADE` (пылевой — и тонкий).
 
 **Компоновка 3.59 — узнаваемые рисунки оборудования:** `EquipIcon` (station-eskd.js) рисует оборудование схематически сходным
 с изделием, а не условными знаками: `ctx(...)` — рамка рисунка и `S(v, min)` (размер детали в мм изделия на листе, не мельче `min`);

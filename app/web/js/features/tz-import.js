@@ -59,6 +59,7 @@ class TzImport {
           ${sel('cont', 'Контейнер', CONTAINER_TYPES.map(t=>[t.id, t.name]))}${sel('ins', 'Утепление', [['', 'по типу контейнера'], ...CONTAINER_INS.map(v=>[v, v])])}
           ${sel('climate', 'Климатическое исполнение', [['', 'по температуре'], ...CLIMATES.map(z=>[z[0], z[0]+' — до '+z[2]+' °C'])])}</div>
         <div class="tzi-sys"><span class="muted">Системы контейнера:</span>${CONT_SYSTEMS.map(([id, l])=>chk('sys.'+id, esc(l), sys[id] ?? CONT_SYS_DEF[id])).join('')}</div>
+        <div class="tzi-sys">${StationReq.OPTS.filter(([, , kinds])=>kinds.includes(k)).map(([key, label])=>chk(key, esc(label), q[key])).join('')}</div>
         ${k==='comp' ? chk('recvOut', 'Ресивер после подготовки — снаружи (ФНП ОРПД, п. 65)', q.recvOut) : ''}
         ${chk('docs', 'Документы при поставке — в КП', q.docs!==false)}
         <label class="f"><span>Прочие требования из ТЗ</span><textarea rows="3" data-tz="notes">${esc(q.notes||'')}</textarea></label>
@@ -94,12 +95,13 @@ class TzImport {
     const prompt=`Из технического задания ниже выпиши требования к станции в контейнере. Ответ — только JSON без пояснений:
 {"kind":"comp|pump|dgu","flow":м³/мин,"pressure":бар,"air":"класс ISO 8573-1 вида 1.4.1","q":м³/ч,"head":м,"kw":кВт,"work":рабочих агрегатов 1…4,"reserve":0|1|2,
 "tmin":°C,"tmax":°C,"climate":"У1|УХЛ1|ХЛ1","fire":"А|Б|В1|В2|В3|В4|Г|Д","noise":дБА,"recvOut":true|false,"cont":"block|sea20|sea40|sea20hc|sea40hc|north",
-"notes":"прочие требования кратко"}. Неизвестное — не указывай.\n\nТЕКСТ ТЗ:\n${text}`;
+"oilFree":true|false,"vsd":true|false,"ats":true|false,"scada":true|false,"notes":"прочие требования кратко"}. Неизвестное — не указывай.\n\nТЕКСТ ТЗ:\n${text}`;
     toast('Спрашиваю ИИ…');
     let a; try{ a=JSON.parse(String(await aiDirect(prompt)).replace(/^[^{]*/, '').replace(/[^}]*$/, '')); }
     catch(err){ return toast('ИИ не ответил понятно — поля оставлены как есть'); }
     let n=0;
     for (const [k, v] of Object.entries(a||{})){ if (v==null || v==='' || typeof v==='object') continue;
+      if (StationReq.OPTS.some(o=>o[0]===k)){ if (v===true && !q[k]){ q[k]=true; n++; } continue; }
       if (q[k]==null || q[k]===''){ q[k]=k==='reserve' ? String(Math.max(0, Math.min(2, Math.round(+v||0)))) : k==='work' ? String(Math.max(1, Math.min(4, Math.round(+v||1)))) : String(v).slice(0, 600); n++; } }
     this.redraw(); toast(n ? `ИИ дополнил полей: ${n}` : 'ИИ не нашёл ничего сверх найденного');
   }
@@ -123,6 +125,8 @@ class TzImport {
     for (const k of ['flow', 'pressure', 'q', 'head', 'kw', 'hours', 'tmin', 'tmax', 'noise', 'recvVol']) if (q[k]!=null && q[k]!=='') r[k]=num(q[k]);
     for (const k of ['recv', 'reserve', 'work', 'fire']) if (q[k]!=null) r[k]=q[k];
     r.recvOut=!!q.recvOut; r.docs=q.docs!==false; if (q.notes) r.notes=String(q.notes).slice(0, 2000);
+    for (const [k, , kinds] of StationReq.OPTS) if (kinds.includes(q.kind)) r[k]=!!q[k];
+    const added=StationReq.ensureParts(x);
     r.src={ name:String(c.name||'').slice(0, 120) };
     if (q.kind==='comp' && q.air) x.stLayout={ ...StationUi.opts(x), air:q.air };
     let note='';
@@ -130,6 +134,7 @@ class TzImport {
     else { delete r.pick; if (q.kind==='dgu' && +num(q.hours)>0) StationDefaults.retank(x, +num(q.hours)); }
     kitSync(x); stationFill(x); stationAutoName(x); StationUi.cache.delete(x.id); StationSize.apply(x, true);
     persist(); this.m.close(); renderForm(); openEditor(i, 'kit');
+    if (added.length) r.pick=[r.pick, 'Добавлено по ТЗ: '+added.join(', ')].filter(Boolean).join('. ').slice(0, 900);
     toast(c.pick ? 'Станция собрана по ТЗ — проверьте состав' : 'Требования из ТЗ записаны в станцию');
   }
 }
@@ -142,6 +147,7 @@ class TzImport {
 // фильтры и ресивер — по рекомендациям расчёта цепочки (AirChain).
 class TzPick {
   static LOSS = 0.5;   // потери давления в осушителе и фильтрах, бар — запас компрессора к требуемому давлению
+  static GRADE = { dust:['dust', 'fine'] };   // после адсорбционного осушителя годится и фильтр тонкой очистки 1 мкм
   static num(v){ return StationEquip.num(v); }
   /** производительность позиции каталога в единицах подбора: компрессоры и осушители — м³/мин, насосы — м³/ч */
   static flow(c){ const a=attrsOf(c), f=this.num(a.flow); return f>0 ? (a.cat==='comp_piston' ? f/1000 : f) : 0; }
@@ -158,6 +164,8 @@ class TzPick {
   }
   /** штраф компрессора по давлению: меньше нужного с запасом на потери — сильный, больше — по 0,05 за бар */
   static barPen(p, B){ if (!(B>0) || !(p>0)) return 0; const need=B+this.LOSS; return p<need-0.05 ? 0.5 : 0.05*(p-need); }
+  /** безмасляный компрессор: по названию или характеристикам («безмасляный», oil-free, класс 0) */
+  static oilFree(c){ const a=attrsOf(c); return /безмасл|oil[\s-]?free|класс\w*\s*0(?![.,\d])/i.test([c.name, a.model, a.series, a.lubrication, a.oil].filter(Boolean).join(' ')); }
   /** «осушитель …» — без повтора, если название уже начинается с этого слова */
   static lbl(word, name){ return String(name||'').toLowerCase().startsWith(word.slice(0, 5)) ? name : word+' '+name; }
 
@@ -176,10 +184,14 @@ class TzPick {
     if (kind==='comp'){
       const B=q.pressure, wc=+(String(q.air||'').split('.')[1]||0), ads=(wc && wc<=3) || (q.pdp!=null && +q.pdp<=-20);
       const Q=ads && q.flow>0 ? q.flow/(1-AirChain.PURGE) : q.flow;   // адсорбционный осушитель — компрессоры с запасом на продувку
-      if (Q>0){ const u=this.units(pool.map(c=>({ c, v:this.flow(c), p:this.num(attrsOf(c).pressure) })).filter(o=>o.v>0 && (!(B>0) || !(o.p>0) || o.p>=B-0.05)), Q, q.work, o=>this.barPen(o.p, B));
+      const comp=c=>({ name:c.name, attrs:attrsOf(c), rows:[] }), vsd=c=>AirChain.info(comp(c), 'compressor').vsd;
+      const cand=pool.filter(c=>!q.oilFree || this.oilFree(c));   // класс 0 по маслу — только безмасляные
+      if (Q>0){ const u=this.units(cand.map(c=>({ c, v:this.flow(c), p:this.num(attrsOf(c).pressure), f:!q.vsd || vsd(c) })).filter(o=>o.v>0 && (!(B>0) || !(o.p>0) || o.p>=B-0.05)), Q, q.work,
+          o=>this.barPen(o.p, B)+(o.f ? 0 : 0.3));   // частотное регулирование по ТЗ — такие в приоритете
         if (u){ add.push(await this.part(u.o.c, u.n+res, 'main')); got.push(`компрессоры ${u.n}${res ? ' + '+res+' резервн.' : ''} × ${u.o.c.name}${ads ? ` (с запасом ${Math.round(AirChain.PURGE*100)} % на продувку адсорбционного осушителя)` : ''}`);
           if (B>0 && u.o.p>0 && u.o.p<B+this.LOSS-0.05) got.push(`давление компрессора ${AirChain.m3(u.o.p)} бар — почти без запаса на потери в осушителе и фильтрах (нужно около ${AirChain.m3(B+this.LOSS)})`); }
-        else miss.push(`${q.work>1 ? q.work+' компрессора' : 'компрессор'} на ${AirChain.m3(Q)} м³/мин${B ? ' и '+AirChain.m3(B)+' бар' : ''}`);
+        else miss.push(`${q.oilFree ? 'безмасляный ' : ''}${q.work>1 ? q.work+' компрессора' : 'компрессор'} на ${AirChain.m3(Q)} м³/мин${B ? ' и '+AirChain.m3(B)+' бар' : ''}`);
+        if (u && q.vsd && !u.o.f) got.push('компрессора с частотным регулированием в каталоге нет — подобран без него');
         const need=Q*AirChain.MARGIN/AirChain.kp(B>0 ? B : 7);
         const dc=ads ? 'dryer_ads' : 'dryer_refrig', d=this.best(catCache.filter(c=>attrsOf(c).cat===dc).map(c=>({ c, v:this.flow(c) })).filter(o=>o.v>=need), 'v');
         if (d){ add.push(await this.part(d.c, 1)); got.push(this.lbl('осушитель', d.c.name)); } else miss.push(`${ads ? 'адсорбционный' : 'рефрижераторный'} осушитель от ${AirChain.m3(need)} м³/мин`); }
@@ -190,7 +202,9 @@ class TzPick {
         const lo=Object.fromEntries(Object.entries(rec.r||{}).map(([k, v])=>[k, this.num((v||[])[0])]));
         if (rec.cat==='receiver' && q.recvVol>0) lo.volume=q.recvVol;
         const ok=c=>{ const a=attrsOf(c); if (a.cat!==rec.cat) return false;
-          for (const [k, v] of Object.entries(rec.f||{})) if (v && !String(a[k]||'').toLowerCase().includes(String(v).toLowerCase().slice(0, 6))) return false;
+          if (rec.cat==='filter'){ const p={ name:c.name, attrs:a, rows:[] };   // ступень — по полю или названию (DD, PD, «0,01 мкм»…)
+            if (!(this.GRADE[rec.key]||[rec.key]).includes(AirChain.grade(p, a.cat, AirChain.text(p)))) return false; }
+          else for (const [k, v] of Object.entries(rec.f||{})) if (v && !String(a[k]||'').toLowerCase().includes(String(v).toLowerCase().slice(0, 6))) return false;
           for (const [k, v] of Object.entries(lo)) if (v>0 && !(this.num(a[k])>=v*0.98)) return false;
           return !(rec.cat==='receiver' && q.pressure>0 && this.num(a.pressure)>0 && this.num(a.pressure)<q.pressure); };
         const key=Object.keys(lo)[0]||'flow', c=this.best(catCache.filter(ok).map(c=>({ c, v:this.num(attrsOf(c)[key])||0 })), 'v');

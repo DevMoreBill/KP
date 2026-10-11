@@ -84,6 +84,48 @@ class Check {
     assert.ok(!/продувк/.test(note), note);
   });
 
+  await Check.run('фильтры без поля «Ступень очистки» — по названию', async ()=>{
+    global.catCache=[
+      Cat.item('Компрессор винтовой К-130', { cat:'comp_screw', flow:13, pressure:10, kw:75 }),
+      Cat.item('Осушитель адсорбционный ОА-16', { cat:'dryer_ads', flow:16, dewPoint:'−40' }),
+      Cat.item('Фильтр магистральный PD 44, 0,01 мкм', { cat:'filter', flow:20 }),
+      Cat.item('Фильтр магистральный DDp 44 пылевой', { cat:'filter', flow:20 }),
+      Cat.item('Фильтр магистральный QD 44 угольный', { cat:'filter', flow:20 }),
+    ];
+    const x=Cat.station('st_comp', [], {});
+    const note=await TzPick.run(x, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'0', work:0 });
+    const F=kitParts(x).filter(p=>StationEquip.kindOf(p)==='filter').map(p=>p.name).sort();
+    assert.deepStrictEqual(F, ['Фильтр магистральный DDp 44 пылевой', 'Фильтр магистральный PD 44, 0,01 мкм'], note);
+    assert.ok(!/В каталоге нет: .*фильтр/.test(note), note);
+  });
+
+  await Check.run('особые требования: безмасляный, частотное регулирование, АВР, АСУ ТП', async ()=>{
+    global.catCache=[
+      Cat.item('Компрессор винтовой К-130', { cat:'comp_screw', flow:13, pressure:10, kw:75 }),
+      Cat.item('Компрессор винтовой К-130 VSD', { cat:'comp_screw', flow:13, pressure:10, kw:75 }),
+      Cat.item('Компрессор безмасляный БК-140', { cat:'comp_screw', flow:14, pressure:10, kw:90 }),
+    ];
+    const main=x=>kitParts(x).find(p=>StationEquip.kindOf(p)==='compressor');
+    let x=Cat.station('st_comp', [], {});
+    await TzPick.run(x, { kind:'comp', flow:10, pressure:7, reserve:'0', work:0, oilFree:true });
+    assert.strictEqual(main(x).name, 'Компрессор безмасляный БК-140', 'класс 0 по маслу — только безмасляный');
+    x=Cat.station('st_comp', [], {});
+    await TzPick.run(x, { kind:'comp', flow:10, pressure:7, reserve:'0', work:0, vsd:true });
+    assert.strictEqual(main(x).name, 'Компрессор винтовой К-130 VSD', 'частотное регулирование — в приоритете');
+    global.catCache=global.catCache.filter(c=>!/безмасл/i.test(c.name));
+    x=Cat.station('st_comp', [], {});
+    const note=await TzPick.run(x, { kind:'comp', flow:10, pressure:7, reserve:'0', work:0, oilFree:true });
+    assert.ok(!main(x) && /В каталоге нет: безмасляный компрессор на/.test(note), note);
+    // АВР и АСУ ТП: нет шкафов — замечания, добавляются один раз
+    x=Cat.station('st_comp', [], { ats:true, scada:true });
+    const warn=()=>StationReq.checks(x).filter(c=>!c.ok).map(c=>c.text);
+    assert.deepStrictEqual(warn(), ['нет шкафа АВР — по ТЗ два ввода питания', 'нет шкафа АСУ ТП — по ТЗ диспетчеризация']);
+    assert.deepStrictEqual(StationReq.ensureParts(x), ['Шкаф АВР (автоматический ввод резерва)', 'Шкаф АСУ ТП (автоматизация и диспетчеризация)']);
+    assert.deepStrictEqual(StationReq.ensureParts(x), [], 'второй раз — ничего');
+    assert.deepStrictEqual(warn(), []);
+    assert.ok(kitParts(x).filter(p=>/^Шкаф/.test(p.name)).every(p=>KitScope.of(p)==='asm' && p.desc), 'шкафы — у сборщика, с описанием');
+  });
+
   await Check.run('ДГУ: резерв и бак под время работы', async ()=>{
     global.catCache=[Cat.item('ДГУ АД-120', { cat:'dgu', kw:120 }), Cat.item('ДГУ АД-250', { cat:'dgu', kw:250 }), Cat.item('ДГУ АД-500', { cat:'dgu', kw:500 })];
     const x=Cat.station('st_dgu', [], { reserve:'1', hours:'24', kw:'200' });
