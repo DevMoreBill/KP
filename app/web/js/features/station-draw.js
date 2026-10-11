@@ -82,12 +82,12 @@ class StationDrawing {
       if (it.mount==='pipe') body.push(S.rect(x1, zt, x2-x1, zb-zt, col, edge(it.color), 1.6, ` rx="${S.f(Math.min(8, (x2-x1)/3))}"`), S.rect(x1-2, zt, x2-x1+4, Math.min(zb-zt, Math.max(6, 0.16*(zb-zt))), RalColor.shade(it.color, 0.8), edge(it.color), 1.2));
       else if (it.shape==='vcyl') body.push(this.dome(x1, x2, zt, zb, col, edge(it.color), 1.6));
       else body.push(S.rect(x1, zt, x2-x1, zb-zt, col, edge(it.color), 1.6, it.shape==='hcyl' ? ` rx="${S.f(Math.min(16, (zb-zt)/2))}"` : '')); };
-    const shown=items.filter(i=>!onFront(i)).sort((a, b)=>b.y-a.y);
+    const shown=items.filter(i=>!onFront(i)).sort((a, b)=>b.y-a.y), labs=[];
     for (const it of shown.filter(i=>i.y>py)) elev(it);
     for (const pp of pipes) for (const l of pp.lines){ const z=Z(zf+l.z);
       for (const b of l.branches) if (b.z1<l.z) body.push(S.line(X(ox+b.x), z, X(ox+b.x), Z(zf+b.z1), pp.color, 4));   // спуск к оборудованию
       body.push(S.line(X(ox+l.x0), z, X(ox+l.x1), z, pp.color, 5, ' stroke-linecap="round"'));
-      if (l.label) body.push(this.arrow(X(ox+l.x1), z, X(Le)+14, pp.color), S.text(X(ox+l.x1)-10, z-10, l.label, { anchor:'end', size:F.item, fill:this.MUTED })); }
+      if (l.label){ body.push(this.arrow(X(ox+l.x1), z, X(Le)+14, pp.color)); labs.push([X(ox+l.x1)-10, z-10, l.label]); } }
     for (const it of shown.filter(i=>i.y<=py)) elev(it);
     for (const it of items.filter(onFront)) body.push(S.rect(X(ox+it.x), Z(zf+it.z+it.h), it.lx*s, it.h*s, 'none', this.MUTED, 1.4, ' stroke-dasharray="8 5"'));
     const bub=[];
@@ -102,6 +102,11 @@ class StationDrawing {
       body.push(S.rect(xo-w/2, zo, w, zt-zo, '#8a9097', INK, 1.2), S.rect(xo-w*1.7, zo-4, w*3.4, 5, INK));
       body.push(S.rect(x1, zt, x2-x1, zb-zt, tint(m.color), edge(m.color), 1.6, ` rx="${S.f(Math.min(14, (zb-zt)/2))}"`));
       this.pos(body, x1+Math.min(40, (x2-x1)/4), zt-24, m.pos); bub.push([x1+Math.min(40, (x2-x1)/4), zt-24]); }
+    // подпись линии у выхода — если не на номере позиции и не на фильтре у торца (иначе — только стрелка; на плане подписано)
+    const hang=items.filter(i=>i.mount==='pipe').map(i=>[X(ox+i.x)-4, Z(zf+i.z+i.h)-4, X(ox+i.x+i.lx)+4, Z(zf+i.z)+4]);
+    for (const [x, y, t] of labs){ const b=[x-S.tw(t, F.item), y-F.item, x, y+4];
+      if (bub.some(([bx, by])=>bx>b[0]-18 && bx<b[2]+18 && by>b[1]-18 && by<b[3]+18) || hang.some(r=>r[0]<b[2] && r[2]>b[0] && r[1]<b[3] && r[3]>b[1])) continue;
+      body.push(S.text(x, y, t, { anchor:'end', size:F.item, fill:this.MUTED })); }
     // сервисные двери в стене прохода (стена условно не показана); в задней стене — на плане
     sdF.forEach((d, k)=>{ const xa=X(ox+d.x0), xb=X(ox+d.x1), zt=Z(zf+d.h);
       body.push(S.rect(xa, zt, xb-xa, Z(zf)-zt, 'none', this.MUTED, 1.2, ' stroke-dasharray="7 5"'));
