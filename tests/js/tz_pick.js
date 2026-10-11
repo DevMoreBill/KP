@@ -16,8 +16,9 @@ global.typeById=id=>TYPES[id]||{};
 global.catCache=[];
 global.DEF=()=>null;   // умолчания администратора — нет
 global.api=async u=>{ const c=global.catCache.find(z=>u.endsWith('/'+encodeURIComponent(z.id))); if (!c) throw new Error('нет '+u); return c; };
-for (const f of ['logistics-calc.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-ui.js', 'tz-import.js']){
+for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
+StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
 
 class Cat {
   static n=0;
@@ -48,7 +49,8 @@ class Check {
       Cat.item('Компрессор винтовой К-65', { cat:'comp_screw', flow:6.5, pressure:9.7, kw:37 }),
       Cat.item('Компрессор винтовой К-130', { cat:'comp_screw', flow:13, pressure:10, kw:75 }),
       Cat.item('Осушитель рефрижераторный ОР-20', { cat:'dryer_refrig', flow:20 }),
-      Cat.item('Осушитель адсорбционный ОА-16', { cat:'dryer_ads', flow:16, dewPoint:'−40' }),
+      Cat.item('Осушитель адсорбционный ОА-16', { cat:'dryer_ads', flow:16, dewPoint:'−40' }),   // 16 · 0,81 (типовые поправки DA: 7,1 бар, вход 40 °C) = 13,0 — мало на 13
+      Cat.item('Осушитель адсорбционный ОА-20', { cat:'dryer_ads', flow:20, dewPoint:'−40' }),
       Cat.item('Фильтр ФС-20', { cat:'filter', stage:'Сверхтонкая (микрофильтр)', flow:20 }),
       Cat.item('Фильтр ФТ-20', { cat:'filter', stage:'Тонкая', flow:20 }),
       Cat.item('Фильтр ФП-20', { cat:'filter', stage:'Предварительная', flow:20 }),
@@ -96,7 +98,8 @@ class Check {
   await Check.run('фильтры без поля «Ступень очистки» — по названию', async ()=>{
     global.catCache=[
       Cat.item('Компрессор винтовой К-130', { cat:'comp_screw', flow:13, pressure:10, kw:75 }),
-      Cat.item('Осушитель адсорбционный ОА-16', { cat:'dryer_ads', flow:16, dewPoint:'−40' }),
+      Cat.item('Осушитель адсорбционный ОА-16', { cat:'dryer_ads', flow:16, dewPoint:'−40' }),   // 16 · 0,81 (типовые поправки DA: 7,1 бар, вход 40 °C) = 13,0 — мало на 13
+      Cat.item('Осушитель адсорбционный ОА-20', { cat:'dryer_ads', flow:20, dewPoint:'−40' }),
       Cat.item('Фильтр магистральный PD 44, 0,01 мкм', { cat:'filter', flow:20 }),
       Cat.item('Фильтр магистральный DDp 44 пылевой', { cat:'filter', flow:20 }),
       Cat.item('Фильтр магистральный QD 44 угольный', { cat:'filter', flow:20 }),
@@ -142,12 +145,15 @@ class Check {
     const note=await TzPick.run(x, { kind:'dgu', kw:200, hours:24, reserve:'1', work:0 });
     const d=kitParts(x).find(z=>StationEquip.kindOf(z)==='dgu'), t=kitParts(x).find(z=>StationDefaults.FUEL.test(z.name));
     assert.deepStrictEqual([d.name, d.qty], ['ДГУ АД-250', 2], 'ДГУ 250 кВт: рабочая + резервная');
-    assert.strictEqual(t.rows.find(r=>r.k==='Объём').v, '1500 л', '250 кВт × 0,75 × 0,25 л/кВт·ч × 24 ч ≈ 1125 л → 1500 л');
-    assert.ok(/бак 1500 л — на 24 ч/.test(note), note);
+    // как в расчётной записке: нагрузка 200/250 = 80 %; расхода в паспорте нет — 0,25 л/кВт·ч · 0,8 · 250 = 50 л/ч;
+    // 50 · 24 ч · 1,1 (запас) = 1320 л, бака у ДГУ нет → ближайший типовой 1500 л
+    assert.strictEqual(t.rows.find(r=>r.k==='Объём').v, '1500 л', '1320 л → 1500 л');
+    assert.ok(/бак 1500 л — на 24 ч при нагрузке 80 % с запасом 10 %/.test(note), note);
     const ck=StationReq.checks(x);
-    assert.ok(ck.some(c=>c.ok && /работа от бака ≈ 32 ч при нагрузке 75 % — не меньше 24/.test(c.text)), JSON.stringify(ck));
+    // 1500 / (50 · 1,1) = 27,3 ч
+    assert.ok(ck.some(c=>c.ok && /работа от баков ≈ 27 ч при нагрузке 80 % \(с запасом\) — не меньше 24/.test(c.text)), JSON.stringify(ck));
     x.req.hours='48';
-    assert.ok(StationReq.checks(x).some(c=>!c.ok && /меньше 48: нужен бак около 3000 л/.test(c.text)), JSON.stringify(StationReq.checks(x)));
+    assert.ok(StationReq.checks(x).some(c=>!c.ok && /меньше 48: нужно топлива 2640 л, в баках 1500/.test(c.text)), JSON.stringify(StationReq.checks(x)));
   });
 
   await Check.run('насосная: два рабочих, напор без большого избытка', async ()=>{

@@ -455,6 +455,33 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
 `StationReq.ensureParts` (шкафы АВР и АСУ ТП в состав), `TzParse.options` / `negated` («без АВР», «не требуется»), `TzPick.oilFree`,
 частотное регулирование — штраф 0,3 без него; фильтры — по `AirChain.grade` (поле или название), `TzPick.GRADE` (пылевой — и тонкий).
 
+**Конструктор модульных станций 3.65 — расчёт, правила с источниками, чтение ТЗ:**
+- Правила — `app/web/rules/stations.json` (`kp-station-rules`, версия, `rules[]` — id, group, title, value, unit, source {doc, item, url},
+  status `confirmed` / `practice` / `unconfirmed`; `series[]` — поправки производителей: maker, `match` (рег. выражение по названию,
+  модели, серии), `f` {p, inlet, ambient} таблицами [[x, y]]). Сервер — `app/station_rules.py` (`StationRules`: файл поставки или
+  своя версия администратора в kv `stationRules`, проверка структуры, прежняя — `stationRulesPrev`); браузер получает правила
+  скриптом `/api/rules/stations.js` (`StationRules.use`, `station-rules.js`), JSON — `/api/rules/stations`; загрузка и возврат —
+  `/api/admin/rules/stations` (сессия администратора и `X-CSRF-Token`). Константы компоновки, тепла, электрики, ресиверов,
+  подбора берутся из правил (геттеры `StationRules.raw(id)`). Документ «Инженерные правила и источники» и вкладка «Настроек» —
+  `station-rules-doc.js` (`StationRulesDoc`, `RulesPanel`).
+- Расчёт — `station-calc.js`: `CalcNote` (шаги: формула, данные, правила, результат, запас %; ошибки / предупреждения;
+  «требует подтверждения» — правила `unconfirmed` и недостающие данные; допущения; вопросы), `CalcInput`, `AirDemand` (ГОСТ 2939-63,
+  ГОСТ 4401-81, Магнус; запас — по ТЗ; продувка `flow.purge` по `regen`; резерв — самые крупные), `PressureBudget` (паспортный
+  перепад или `loss.*`, `pressure.band`, давление аппаратов), `DryerSizing` (`factor`: серия или `dryer.generic`; `temps`: помещение
+  `tmax + heat.vent_dt`, вход `+ dryer.inlet_dt`; PDP по классу; нет осушителя при классе — ошибка), `FilterSizing` (серия или
+  (p+1)/8; ступени по `air.chain`), `ReceiverSizing`, `ElectricLoad` (Iном, пуск по строке «Тип/Способ пуска»), `GensetSizing`
+  (PRP/ESP, 70 %, ISO 3046-1, пуск двигателя от ДГУ, `fuelPlan` — расход по строкам «При нагрузке N %»), `StationCalc` (кэш,
+  `errors` → «Чтобы сохранить, заполните», `html` — вкладка «Компоновка», `docGroups` — приложение к КП через `kitDocItem` /
+  `kitDocData`). Требования станции — новые поля `basis, alt, rh, margin, tin, mode, load, motor, start, accept`.
+- ТЗ — `doc_text.py` (`TextQuality`, PDF: текстовый слой против `ocr_win.WinOcr` — Windows.Media.Ocr + Windows.Data.Pdf через
+  Windows PowerShell, лучший по качеству; картинки — распознавание; страницы — `\f`), `tz_parse.py` (страница цитаты, новые
+  поля, `conflicts`, `TzReview` — анкета `fields` со статусами и `questions`); окно — `TzImport` (анкета, способы чтения,
+  сравнение с ИИ), `TzQuestions` (вопросы — Word); подбор `TzPick` — `barNeed` (потери + регулирование), штраф безмасляным
+  без требования, осушитель и фильтры с поправками, давление аппаратов — по компрессору; бак ДЭС — `StationDefaults.retank`
+  по `GensetSizing.plan`. Проверки — `tests/test_station_rules.py`, `tests/js/station_calc.js` (формулы с ручными примерами),
+  `tests/test_station_scenarios.py` + `tests/js/station_scenarios.js` (12 эталонных сценариев ТЗ → КП), `tests/test_tz_parse.py`.
+  `StationLayout.VER` = 12.
+
 **Компоновка 3.64 — фильтры по данным производителей, ничего не теряется:** `AirChain.grade` — циклон / влагоотделитель
 по названию раньше поля «Ступень очистки» (`GRADES.sep.stage` — «Влагоотделитель (циклон)»), ступень — и из строки «Ступень очистки»,
 `AirChain.micron` (тонкость, мкм; «Мкн» — опечатка поставщиков) и `AirChain.oil` (масло после фильтра, мг/м³) — в `info().um / .oil`;

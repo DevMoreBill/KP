@@ -698,7 +698,9 @@ class ToolsController(Controller):
         if self.body_size() > pdf_text.MAX_BYTES:
             return self.text(413, 'PDF больше 40 МБ')
         try:
-            return self.send_json(pdf_text.text(self.body()))
+            r = pdf_text.text(self.body())
+            r.pop('per', None)                 # текст по страницам — только для разбора ТЗ
+            return self.send_json(r)
         except Exception as e:
             return self.text(422, 'PDF не прочитан: %s' % str(e)[:200])
 
@@ -713,8 +715,21 @@ class ToolsController(Controller):
         except Exception as e:
             return self.text(422, 'ТЗ не прочитано: %s' % str(e)[:200])
         r = TzParse.parse(doc['text'])
-        r.update(text=doc['text'][:20000], doc={'kind': doc['kind'], 'pages': doc.get('pages'), 'chars': len(doc['text'])})
+        r.update(text=doc['text'][:20000].replace('\f', '\n'), doc={'kind': doc['kind'], 'pages': doc.get('pages'), 'chars': len(doc['text']),
+                                                                    'quality': doc.get('quality'), 'low': doc.get('low'), 'methods': doc.get('methods') or []})
         return self.send_json(r)
+
+    @route(r'/api/rules/stations\.js', 'GET')   # инженерные правила станций — скриптом до модулей расчёта (StationRules.use)
+    def rules_stations_js(self):
+        from station_rules import StationRules
+        return self.send(200, 'text/javascript; charset=utf-8', StationRules(store()).js().encode('utf-8'),
+                         {'Cache-Control': 'no-cache'})
+
+    @route(r'/api/rules/stations', 'GET')      # то же — JSON (просмотр, выгрузка, документ «Инженерные правила и источники»)
+    def rules_stations(self):
+        from station_rules import StationRules
+        sr = StationRules(store())
+        return self.send_json({'rules': sr.current(), 'info': sr.info()})
 
     @route(r'/api/pagephotos', 'POST')     # фото со страницы товара на сайте поставщика — в изображения позиции
     def pagephotos(self):

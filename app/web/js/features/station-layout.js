@@ -141,17 +141,7 @@ class StationGeo {
 // • шкафы управления: спереди — проход обслуживания (ПУЭ, п. 4.1.23), сзади и сбоку можно вплотную; настенные — на стене
 //   прохода напротив оборудования, проход перед ними — не уже 0,6 м (там же: сужение выступающими частями).
 class StationClear {
-  static KIND = {
-    compressor: { back:[600, 300], side:[700, 300], top:[1000, 300] },
-    dryer:      { back:[500, 150], side:[500, 300], top:[650, 300] },
-    filter:     { back:[150, 50],  side:[300, 150], top:[300, 150] },
-    receiver:   { back:[300, 300], side:[300, 300], top:[300, 200] },
-    pump:       { back:[300, 100], side:[1000, 1000], top:[300, 100] },
-    dgu:        { back:[600, 300], side:[1000, 800], far:[300, 150], top:[500, 300], front:600 },
-    cabinet:    { back:[0, 0],     side:[0, 0],     top:[0, 0] },
-    tank:       { back:[100, 50],  side:[300, 100], top:[300, 100] },
-    other:      { back:[300, 100], side:[500, 300], top:[300, 150] },
-  };
+  static get KIND(){ return StationRules.raw('clear.kind'); }   // из файла инженерных правил (группа «Компоновка»)
   // насосы — СП 31.13330.2021, п. 10.15: между агрегатами 1 м; малые (до 1000 В, нагнетательный патрубок до DN 100 —
   // здесь: до 22 кВт и до 1,2 м длиной) можно ставить у стены и по два на общей раме без прохода, вокруг — 0,7 м
   static PUMP_SMALL = { back:[300, 100], side:[700, 250], top:[300, 100] };
@@ -163,7 +153,7 @@ class StationClear {
   /** проход обслуживания [рекомендуется, не менее] — из «Умолчаний» администратора */
   static aisle(){
     const D=(k, fb)=>typeof DEFN==='function' ? DEFN(k, fb) : fb;
-    const rec=Math.max(500, Math.min(3000, D('st.aisle', 1000))), min=Math.max(500, Math.min(rec, D('st.aisleMin', 800)));
+    const A=StationRules.raw('norm.aisle'), rec=Math.max(500, Math.min(3000, D('st.aisle', A[0]))), min=Math.max(500, Math.min(rec, D('st.aisleMin', A[1])));
     return [rec, min];
   }
 }
@@ -387,23 +377,20 @@ class AirChain {
     dust:{ name:'Пылевой фильтр после адсорбционного осушителя (1 мкм)', short:'пылевой', stage:'Тонкая' },
     carbon:{ name:'Угольный фильтр (пары масла и запах, 0,003 мг/м³)', short:'угольный', stage:'Угольный (от паров масла)' },
   };
-  // поправка производительности рефрижераторного осушителя на рабочее давление, бар → множитель (номинал — 7 бар)
-  static KP = [[3, 0.64], [4, 0.75], [5, 0.84], [6, 0.92], [7, 1], [8, 1.05], [10, 1.12], [13, 1.22], [16, 1.27]];
-  static MARGIN = 1.15;      // запас осушителя: летом в контейнере на входе +40 °C — производительность ×0,8
-  static PURGE = 0.15;       // адсорбционный (мембранный) осушитель без нагрева: на продувку — 15–20 % сжатого воздуха
-  static RECV = 125;         // ресивер, л на 1 м³/мин компрессора «нагрузка — холостой ход» (1 цикл в 30 с, перепад 1 бар)
-  static RECV_VSD = 40;      // с частотным регулированием — меньше
-  static RECV_SIZES = [100, 200, 270, 500, 900, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 10000];
+  // числа — из файла инженерных правил (StationRules): поправка осушителя на давление, запас осушителя, продувка
+  // адсорбционного, ресивер (формула «нагрузка — холостой ход» и частотный), ряд объёмов, классы ISO 8573-1
+  static get KP(){ return StationRules.raw('dryer.kp'); }                 // бар → множитель (номинал — 7 бар)
+  static get MARGIN(){ return StationRules.raw('dryer.margin'); }         // запас осушителя на лето
+  static get PURGE(){ return StationRules.raw('flow.purge').default; }   // адсорбционный без нагрева: продувка — доля воздуха
+  /** продувка адсорбционного осушителя по типу регенерации (поле «regen» каталога) — доля производительности */
+  static purge(regen){ const P=StationRules.raw('flow.purge'); return P[String(regen||'')]!=null ? P[String(regen||'')] : P.default; }
+  /** ресивер, л на 1 м³/мин компрессора «нагрузка — холостой ход»: V = k · qc · p1 · T0 / (fmax · Δp · T1), qc = 1000/60 л/с */
+  static get RECV(){ const f=StationRules.raw('receiver.formula'); return f.k*(1000/60)*f.p1*f.T0*f.cycle/(f.dp*f.T1); }
+  static get RECV_VSD(){ return StationRules.raw('receiver.vsd'); }
+  static get RECV_SIZES(){ return StationRules.raw('receiver.sizes'); }
   // класс чистоты по ISO 8573-1 (частицы.вода.масло) и где применяют
-  static CLASSES = [
-    ['3.4.3', 'пневмоинструмент, обдув — общепромышленный'],
-    ['2.4.2', 'пневмоавтоматика, пневмоцилиндры'],
-    ['1.4.1', 'окраска, упаковка, пищевая без контакта с продуктом'],
-    ['2.2.2', 'КИПиА — приборный воздух, точка росы −40 °C'],
-    ['1.2.1', 'пищевая с контактом с продуктом, фармацевтика, электроника'],
-    ['1.1.1', 'медицина, лаборатории — точка росы −70 °C'],
-  ];
-  static PDP = [null, -70, -40, -20, 3, 7, 10];   // точка росы под давлением по классу воды, °C
+  static get CLASSES(){ return StationRules.raw('air.classes'); }
+  static get PDP(){ return StationRules.raw('air.pdp'); }   // точка росы под давлением по классу воды, °C
   /** пункты выбора класса: [значение, подпись]; класс не из списка (из ТЗ) — добавляется в конец */
   static options(cur){ const L=this.CLASSES.map(([v, t])=>[v, v+' — '+t]); return cur && !this.CLASSES.some(c=>c[0]===cur) ? [...L, [cur, cur+' — по ТЗ']] : L; }
 
@@ -441,7 +428,7 @@ class AirChain {
     if (/предвар/i.test(st)) return 'pre'; if (/сверхтонк|микро/i.test(st)) return 'micro'; if (/уголь/i.test(st)) return 'carbon'; if (/тонк/i.test(st)) return 'fine';
     if (/угол|угольн|активированн|пар\S*\s+масл|запах|(?:^|[^a-z])(?:QD|ACS)\s?\d/i.test(t)) return 'carbon';
     const um=this.micron(p);                       // тонкость по частицам (поле «Тонкость» или строка «…частиц / пыли, мкм»)
-    if (um>=3) return 'pre'; if (um!=null && um<=0.01 && !/пылев/i.test(t)) return 'micro';
+    const G=StationRules.raw('air.grade.micron'); if (um>=G.pre) return 'pre'; if (um!=null && um<=G.micro && !/пылев/i.test(t)) return 'micro';
     if (/пылев|после адсорбц|пыл\S*\s+адсорбент|(?:^|[^a-z])(?:DDp|PDp)\s?\d/i.test(t)) return 'dust';
     if (/сверхтонк|микрофильтр|0[.,]01\s*мкм|(?:^|[^a-z])(?:PD|AA)\s?\d/i.test(t)) return 'micro';
     if (/тонк\S*\s+(?:очистк|фильтр)|(?:^|\D)1\s*мкм|0[.,]1\s*мг|от масла|маслоотдел|коалесц|(?:^|[^a-z])(?:DD|AO)\s?\d/i.test(t)) return 'fine';
@@ -531,13 +518,9 @@ class AirChain {
     return `Одинаковые ${P.map(what).join('; ')} включены параллельно: производительность складывается; на входе и выходе каждого — кран, аппарат отключают на обслуживание, не останавливая остальные.`;
   }
   /** поправка осушителя на давление */
-  static kp(bar){
-    const T=this.KP; if (!(bar>0)) return 1; if (bar<=T[0][0]) return T[0][1]; if (bar>=T[T.length-1][0]) return T[T.length-1][1];
-    for (let i=1; i<T.length; i++) if (bar<=T[i][0]){ const [p0, k0]=T[i-1], [p1, k1]=T[i]; return k0+(k1-k0)*(bar-p0)/(p1-p0); }
-    return 1;
-  }
-  /** поправка магистрального фильтра на давление (номинал — 7 бар): пропорционально абсолютному давлению, не больше 1,3 */
-  static kf(bar){ return bar>0 ? Math.min(1.3, (bar+1)/8) : 1; }
+  static kp(bar){ return bar>0 ? StationRules.interp(this.KP, bar) : 1; }
+  /** поправка магистрального фильтра на давление (правило filter.kp: пропорционально абсолютному давлению к номиналу) */
+  static kf(bar){ const f=StationRules.raw('filter.kp'); return bar>0 ? Math.min(f.cap, (bar+1)/(f.ref+1)) : 1; }
   static m3(v){ return (Math.round(v*10)/10).toString().replace('.', ','); }
   /** ресиверы без учёта в Ростехнадзоре на объём V, л, при давлении bar: {n, v} — наименьшее число одинаковых из ряда объёмов,
    *  у каждого p·V не больше 1,0 МПа·м³; один и так без учёта (или давление неизвестно) — null */
@@ -654,7 +637,7 @@ class AirChain {
 // до 200 °C); давление — наибольшее рабочее на станции (компрессор), без него — расчётное ресивера. Размещают сосуды на
 // открытых площадках или в отдельных зданиях, в помещении — когда иначе нельзя (п. 65), с доступом для осмотра.
 class PressureVessel {
-  static LIMIT = 1;          // МПа·м³: больше — на учёт
+  static get LIMIT(){ return StationRules.raw('vessel.pv'); }   // МПа·м³: больше — на учёт (ФНП ОРПД)
   /** ресиверы состава: [{pos, qty, vol — л, mpa, pv — МПа·м³, reg — подлежит учёту (null — не оценить), out — снаружи}];
    *  bar — рабочее давление станции, бар (0 — неизвестно) */
   static list(eq, bar){
@@ -678,10 +661,10 @@ class PressureVessel {
 // оборудование внутри — как в отапливаемом помещении. Трубопроводы — опознавательная окраска по ГОСТ Р 71918-2024, знаки
 // безопасности — ГОСТ 12.4.026-2015.
 class StationNorms {
-  static NOISE = 80;                                    // дБА на рабочем месте
-  static COLD = { 'У1':-45, 'УХЛ1':-60, 'ХЛ1':-60 };     // нижняя рабочая температура исполнения, °C
-  static INSIDE = 5;                                    // внутри при работе — не ниже, °C (компрессоры, осушители, насосы)
-  static SHIELD = 7000;                                 // щит длиннее — два выхода, мм
+  static get NOISE(){ return StationRules.raw('norm.noise'); }      // дБА на рабочем месте
+  static get COLD(){ return StationRules.raw('norm.cold'); }        // нижняя рабочая температура исполнения, °C
+  static get INSIDE(){ return StationRules.raw('heat.inside'); }    // внутри при работе — не ниже, °C
+  static get SHIELD(){ return StationRules.raw('norm.shield'); }    // щит длиннее — два выхода, мм
   static PIPE = { air:'сжатый воздух — синий', water:'вода — зелёный', fuel:'топливо — коричневый' };
   /** уровень звука по паспорту, дБА: поле «noise» или строка «Уровень шума (звука)» */
   static dba(p){
@@ -748,20 +731,21 @@ class StationNorms {
 // стен у пола (низ 150 мм), первый — у входа, остальные — равномерно. Лето: тепло корпусов, осушителей, насосов и солнца
 // отводит вентиляция с перегревом не более 5 °C; воздух охлаждения компрессоров и радиатора ДГУ — через жалюзи.
 class StationHeat {
-  static LAMBDA = 0.045;     // минеральная вата в конструкции, Вт/(м·°C)
-  static R_SURF = 0.17;      // теплообмен у поверхностей: внутри 0,13 + снаружи 0,04, м²·°C/Вт
-  static BRIDGE = { block:1.15, north:1.1, welded:1.3, sea:1.4 };
-  static U_DOOR = 2.0;       // утеплённая стальная дверь, Вт/(м²·°C)
-  static U_LOUVER = 3.0;     // жалюзи с закрытым утеплённым клапаном
-  static ACH = 0.5;          // инфильтрация, объёмов в час
-  static AIR = 0.335;        // теплоёмкость воздуха, Вт·ч/(м³·°C)
-  static RESERVE = 1.1;      // запас мощности конвекторов
-  static CASE = 0.08;        // тепло корпуса в помещение — доля мощности
-  static REC = { compressor:0.9, dgu:0.58 };   // с рециркуляцией (рекуперацией) — доля мощности в тепло помещения
-  static LOSS = { pump:0.1, dryer:1.0 };       // насос — потери двигателя, осушитель — тепло конденсатора
-  static COMB = 7;           // ДГУ: воздух на горение, м³/ч на 1 кВт
-  static SUN = 0.03;         // солнце на крышу летом, кВт/м²
-  static FACE = 2.5;         // скорость воздуха в живом сечении жалюзи, м/с
+  // числа — из файла инженерных правил (StationRules, группа «Тепло и вентиляция»)
+  static get LAMBDA(){ return StationRules.raw('heat.lambda'); }     // утеплитель в конструкции, Вт/(м·°C)
+  static get R_SURF(){ return StationRules.raw('heat.rsurf'); }      // теплообмен у поверхностей, м²·°C/Вт
+  static get BRIDGE(){ return StationRules.raw('heat.bridge'); }
+  static get U_DOOR(){ return StationRules.raw('heat.u_door'); }     // утеплённая стальная дверь, Вт/(м²·°C)
+  static get U_LOUVER(){ return StationRules.raw('heat.u_louver'); } // жалюзи с закрытым утеплённым клапаном
+  static get ACH(){ return StationRules.raw('heat.ach'); }           // инфильтрация, объёмов в час
+  static get AIR(){ return StationRules.raw('heat.air'); }           // теплоёмкость воздуха, Вт·ч/(м³·°C)
+  static get RESERVE(){ return StationRules.raw('heat.reserve'); }   // запас мощности конвекторов
+  static get CASE(){ return StationRules.raw('heat.case'); }         // тепло корпуса в помещение — доля мощности
+  static get REC(){ return StationRules.raw('heat.rec'); }           // с рециркуляцией — доля мощности в тепло помещения
+  static get LOSS(){ return StationRules.raw('heat.loss'); }         // насос — потери двигателя, осушитель — тепло конденсатора
+  static get COMB(){ return StationRules.raw('heat.comb'); }         // ДГУ: воздух на горение, м³/ч на 1 кВт
+  static get SUN(){ return StationRules.raw('heat.sun'); }           // солнце на крышу летом, кВт/м²
+  static get FACE(){ return StationRules.raw('heat.face'); }         // скорость воздуха в живом сечении жалюзи, м/с
   // конвектор: [кВт, длина, мм]; высота 400, глубина 90, низ — 150 мм от пола
   static UNITS = [[0.5, 460], [1, 640], [1.5, 800], [2, 960], [2.5, 1120]];
   static CONV = { h:400, d:90, z:150, gap:300, edge:150, front:400 };
@@ -882,7 +866,7 @@ class StationHeat {
 // размера — по необходимому месту (шаг 100 мм, наименьшая площадь пола); заданный контейнер, в который не помещается, —
 // ошибка и подсказка, какой подойдёт; контейнер с большим запасом — подсказка, какой меньший подойдёт.
 class StationLayout {
-  static VER = 11;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
+  static VER = 12;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
   static MAX_L = 12000;
   static PIPE_PAD = 60;      // зазор вокруг фильтра на трубопроводе, мм
   static AIR_Y = 150;        // линия сжатого воздуха: ось — в 150 мм от задней стены (или посередине между рядами)

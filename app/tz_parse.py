@@ -4,8 +4,16 @@
 температуры наружного воздуха, климатическое исполнение, категория помещения, шум, ресивер (объём, снаружи, до или
 после осушителя), контейнер (тип, утепление), системы (ОПС, пожаротушение, шумоизоляция, ворота), документы.
 
-Каждое найденное значение — с цитатой из ТЗ (src), чтобы менеджер проверил его в окне разбора. Единицы приводятся:
-производительность — м³/мин, давление — бар, подача — м³/ч, напор — м, мощность — кВт.
+Каждое найденное значение — с цитатой из ТЗ (src) и номером страницы (page; страницы PDF разделены символом «\\f»),
+чтобы менеджер проверил его в окне разбора. Единицы приводятся: производительность — м³/мин, давление — бар, подача —
+м³/ч, напор — м, мощность — кВт.
+
+Для расчёта станции — ещё: к каким условиям приведена производительность (FAD или нормальные м³), высота над уровнем
+моря, влажность, запас производительности; ДЭС — режим (основной или резервный источник), средняя нагрузка,
+наибольший двигатель и способ его пуска, категория надёжности; общие — гарантия, срок поставки, допустимые и
+недопустимые производители. Разные значения одного параметра в ТЗ — противоречие (conflicts). TzReview — анкета
+по ТЗ: у каждого параметра статус «найдено в ТЗ» / «принято по умолчанию (почему)» / «отсутствует» / «противоречие»
+и вопросы заказчику.
 """
 import re
 
@@ -22,14 +30,17 @@ class TzParse:
     def __init__(self, text):
         self.text = re.sub(r'[ \t\xa0]+', ' ', str(text or ''))
         self.low = self.text.lower()
-        self.req, self.found = {}, []
+        self.req, self.found, self.conflicts = {}, [], []
+        self.paged = '\f' in self.text
 
     @classmethod
     def parse(cls, text):
-        """{'kind', 'req': {…}, 'found': [{key, label, value, src}]}"""
+        """{'kind', 'req': {…}, 'found': [{key, label, value, src, page}], 'conflicts', 'fields', 'questions'}"""
         p = cls(text)
         p.run()
-        return {'kind': p.req.get('kind', ''), 'req': p.req, 'found': p.found}
+        rv = TzReview(p)
+        return {'kind': p.req.get('kind', ''), 'req': p.req, 'found': p.found, 'conflicts': p.conflicts,
+                'fields': rv.fields(), 'questions': rv.questions()}
 
     # ---- помощники
     @staticmethod
@@ -38,14 +49,36 @@ class TzParse:
 
     def src(self, m):
         a, b = max(0, m.start() - 60), min(len(self.text), m.end() + 60)
-        s = self.text[a:b].replace('\n', ' ').strip()
+        s = re.sub(r'\s+', ' ', self.text[a:b].replace('\f', ' ')).strip()
         return ('…' if a else '') + s + ('…' if b < len(self.text) else '')
+
+    def page(self, m):
+        """номер страницы цитаты (PDF) или None"""
+        return self.text.count('\f', 0, m.start()) + 1 if m and self.paged else None
 
     def put(self, key, value, m, label):
         if key in self.req or value in (None, ''):
             return
         self.req[key] = value
-        self.found.append({'key': key, 'label': label, 'value': value, 'src': self.src(m) if m else ''})
+        self.found.append({'key': key, 'label': label, 'value': value, 'src': self.src(m) if m else '', 'page': self.page(m)})
+
+    def conflict(self, key, label, hits):
+        """разные значения одного параметра в ТЗ: hits — [(значение, совпадение)]; одинаковые (до 2 %) — не противоречие"""
+        vals = []
+        for v, m in hits:
+            if v is None or any(abs(v - x[0]) <= 0.02 * max(abs(v), abs(x[0]), 1e-9) for x in vals):
+                continue
+            vals.append((v, m))
+        if len(vals) > 1:
+            self.conflicts.append({'key': key, 'label': label, 'values': [{'value': v, 'src': self.src(m), 'page': self.page(m)} for v, m in vals[:4]]})
+
+    def sentence(self, m):
+        """предложение (пункт) с совпадением — от начала предложения до конца совпадения"""
+        a = max(self.text.rfind('. ', 0, m.start()), self.text.rfind('\n', 0, m.start()), self.text.rfind('; ', 0, m.start()))
+        return self.text[a + 1:m.end()]
+
+    def all(self, rx, flags=re.I):
+        return list(re.finditer(rx, self.text, flags))
 
     def first(self, rx, flags=re.I):
         return re.search(rx, self.text, flags)
@@ -60,12 +93,16 @@ class TzParse:
         k = self.req.get('kind')
         if k == 'comp':
             self.air()
+            self.air_more()
         elif k == 'pump':
             self.pump()
         elif k == 'dgu':
             self.dgu()
+            self.dgu_more()
         self.reserve()
         self.climate()
+        self.site()
+        self.terms()
         self.fire()
         self.noise()
         if k == 'comp':
@@ -91,16 +128,29 @@ class TzParse:
         u = r'(н?м3/мин|н?м³/мин|н?м3/ч|н?м³/ч|л/мин|л/с|nm3/min|m3/min)'
         m = (self.first(r'(?:производительн\w*|расход\w*(?:\s+сжат\w*)?\s+воздух\w*|потребност\w*\s+в\s+сжат\w*\s+воздух\w*|объ[её]м\w* сжат\w* воздух\w*)'
                         r'[^\n]{0,80}?' + NUM + r'\s*' + u) or self.first(NUM + r'\s*' + u))
-        if m:
+        def m3min(m):
             v, unit = self.num(m.group(1)), m.group(2).lower()
-            q = v / 60 if '/ч' in unit else v / 1000 if 'л/мин' in unit else v * 0.06 if 'л/с' in unit else v
-            self.put('flow', round(q, 2), m, 'Производительность, м³/мин')
-        m = self.first(r'(?:рабоч\w*\s+|избыточн\w*\s+|номинальн\w*\s+|выходн\w*\s+)?давлени\w*[^\n]{0,60}?' + NUM + r'\s*(бар|bar|мпа|кгс/см2|кгс/см²|атм|ати)' + END_LETTER)
+            return round(v / 60 if '/ч' in unit else v / 1000 if 'л/мин' in unit else v * 0.06 if 'л/с' in unit else v, 2)
         if m:
+            self.put('flow', m3min(m), m, 'Производительность, м³/мин')
+            if re.match(r'н|nm', m.group(2), re.I):
+                self.put('basis', 'normal', m, 'Производительность — в нормальных м³ (0 °C, 101,325 кПа)')
+            self.conflict('flow', 'Производительность, м³/мин', [(m3min(x), x) for x in self.all(
+                r'(?:производительн\w*\s+(?:станци\w*|компрессорн\w*)|потребност\w*\s+в\s+сжат\w*\s+воздух\w*|расход\w*\s+сжат\w*\s+воздух\w*)[^\n]{0,60}?' + NUM + r'\s*' + u)])
+        P = r'(?:рабоч\w*\s+|избыточн\w*\s+|номинальн\w*\s+|выходн\w*\s+)?давлени\w*[^\n]{0,60}?' + NUM + r'\s*(бар|bar|мпа|кгс/см2|кгс/см²|атм|ати)' + END_LETTER
+
+        def to_bar(m):
             v, unit = self.num(m.group(1)), m.group(2).lower()
-            bar = v * 10 if unit == 'мпа' else v * 0.981 if unit.startswith('кгс') else v * 1.013 if unit in ('атм', 'ати') else v
+            return round(v * 10 if unit == 'мпа' else v * 0.981 if unit.startswith('кгс') else v * 1.013 if unit in ('атм', 'ати') else v, 1)
+        m = self.first(P)
+        if m:
+            bar = to_bar(m)
             if 0.5 <= bar <= 400:
-                self.put('pressure', round(bar, 1), m, 'Давление, бар')
+                self.put('pressure', bar, m, 'Давление, бар')
+            # противоречие — только рабочее давление сжатого воздуха (не воды, масла, испытаний)
+            self.conflict('pressure', 'Давление, бар', [(to_bar(x), x) for x in self.all(P) if to_bar(x) >= 1 and not re.search(
+                r'вод|масл|охлажд|испыт|пробн|гидрав|топлив|газ|ресивер|сосуд|колебан|перепад|потер|отклонен|±|клапан|минимальн|расч[её]тн',
+                self.sentence(x), re.I)])
         m = (self.first(r'(?:ISO|ИСО)\s*8573[^\n]{0,80}?(?<![\d.])([1-6])\s*[.:]\s*([1-6])\s*[.:]\s*([1-4])(?!\d|\.\d)')
              or self.first(r'класс\w*\s+(?:чистоты\s+)?(?:сжат\w*\s+)?(?:воздух\w*\s+)?(?:по\s+[^\s\d]+\s+)?(?:[—–-]\s*)?(?<![\d.])([1-6])\s*[.:]\s*([1-6])\s*[.:]\s*([1-4])(?!\d|\.\d)'))
         if m:
@@ -131,6 +181,77 @@ class TzParse:
                 if f['key'] == 'air':
                     f['value'], f['label'] = self.req['air'], f['label'] + ' (вода — по точке росы)'
 
+    def air_more(self):
+        """к каким условиям приведена производительность, запас производительности"""
+        if 'basis' not in self.req:
+            m = self.first(r'(?:н\.\s?м[3³]|нм[3³]|nm3|нормальн\w*\s+(?:кубическ\w*\s+)?метр|(?:при|к)\s+нормальн\w*\s+условия)')
+            if m:
+                self.put('basis', 'normal', m, 'Производительность — в нормальных м³ (0 °C, 101,325 кПа)')
+            else:
+                m = self.first(r'(?:' + NOT_LETTER + r'FAD' + END_LETTER + r'|ISO\s*1217|ИСО\s*1217|ГОСТ\s*(?:Р\s*)?(?:ИСО\s*)?1217|услови\w*\s+всасывани|на\s+всасывании|free\s+air\s+delivery)')
+                if m:
+                    self.put('basis', 'fad', m, 'Производительность — на условиях всасывания (FAD, ISO 1217)')
+        m = (self.first(r'запас\w*\s+(?:по\s+)?производительност\w*[^\n]{0,30}?(?:не\s+менее\s+)?(\d{1,3}(?:[.,]\d+)?)\s*%')
+             or self.first(r'производительн\w*[^\n]{0,60}?с\s+запасом\s+(?:не\s+менее\s+)?(\d{1,3}(?:[.,]\d+)?)\s*%'))
+        if m and 0 <= self.num(m.group(1)) <= 100:
+            self.put('margin', self.num(m.group(1)), m, 'Запас производительности, %')
+
+    def dgu_more(self):
+        """режим ДЭС, средняя нагрузка, наибольший двигатель и его пуск, категория надёжности"""
+        m = self.first(r'(?:резервн\w*|аварийн\w*)\s+(?:источник\w*|электроснабжени\w*|питани\w*)|' + NOT_LETTER + r'(?:standby|ESP)' + END_LETTER + r'\s*(?:режим|мощност)')
+        m2 = self.first(r'(?:основн\w*|постоянн\w*|автономн\w*)\s+(?:источник\w*|электроснабжени\w*|питани\w*|режим\w*\s+работ)|круглосуточн\w*\s+(?:работ|режим|электроснабж)')
+        if m and (not m2 or m.start() < m2.start()):
+            self.put('mode', 'standby', m, 'Режим ДЭС — резервный источник (ESP, до 200 ч в год)')
+        elif m2:
+            self.put('mode', 'prime', m2, 'Режим ДЭС — основной источник (PRP)')
+        m = self.first(r'(?:средн\w*\s+(?:суточн\w*\s+)?нагрузк\w*|коэффициент\w*\s+загрузк\w*|загрузк\w*\s+(?:ДГУ|ДЭС|генератор\w*))[^\n]{0,30}?(\d{1,3})\s*%')
+        if m and 5 <= int(m.group(1)) <= 110:
+            self.put('load', int(m.group(1)), m, 'Средняя нагрузка, % от мощности')
+        m = self.first(r'(?:наибольш\w*|крупн\w*|пуск\w*|асинхронн\w*)[^\n]{0,40}?двигател\w*[^\n]{0,40}?' + NUM + r'\s*квт' + END_LETTER)
+        if m:
+            self.put('motor', self.num(m.group(1)), m, 'Наибольший двигатель нагрузки, кВт')
+        for key, rx, label in (('stardelta', r'звезд\w*\s*[-–—]?\s*треугольн', 'звезда — треугольник'), ('soft', r'плавн\w*\s+пуск|устройств\w*\s+плавного\s+пуска', 'плавный пуск'),
+                               ('vsd', r'частотн\w*\s+(?:пуск|преобразовател)|преобразовател\w*\s+частот', 'частотный преобразователь'), ('direct', r'прям\w*\s+пуск|пуск\w*\s+прям', 'прямой')):
+            m = self.first(rx)
+            if m:
+                self.put('start', key, m, 'Пуск двигателя нагрузки — ' + label)
+                break
+        m = self.first(r'(?<![IІ\w])(III|II|I|1|2|3|перв\w+|втор\w+|трет\w+)\s+категори\w*\s+(?:по\s+)?(?:надёжн|надежн|электроснабж)')
+        if m:
+            g = m.group(1).lower()
+            c = '1' if g in ('i', '1') or g.startswith('перв') else '2' if g in ('ii', '2') or g.startswith('втор') else '3'
+            self.put('rel', c, m, 'Категория надёжности электроснабжения — %s' % {'1': 'I', '2': 'II', '3': 'III'}[c])
+
+    def site(self):
+        """условия площадки: высота над уровнем моря, относительная влажность"""
+        m = self.first(r'(?:высот\w*\s+(?:над\s+уровнем\s+моря|площадки|установки|размещени\w*)|над\s+уровнем\s+моря)[^\n]{0,40}?(?:до\s+|не\s+более\s+)?(\d{1,4})\s*м' + END_LETTER)
+        if m and 0 <= int(m.group(1)) <= 5000:
+            self.put('alt', int(m.group(1)), m, 'Высота над уровнем моря, м')
+        m = self.first(r'(?:относительн\w*\s+)?влажност\w*\s+(?:наружн\w*\s+|окружающ\w*\s+)?(?:воздух\w*\s+)?[^\n]{0,30}?(\d{1,3})\s*%')
+        if m and 0 < int(m.group(1)) <= 100:
+            self.put('rh', int(m.group(1)), m, 'Относительная влажность воздуха, %')
+
+    def terms(self):
+        """гарантия, срок поставки, допустимые и недопустимые производители"""
+        m = self.first(r'гаранти\w*[^\n]{0,50}?(\d{1,3})\s*(месяц\w*|мес\.?|год\w*|лет)')
+        if m:
+            n = int(m.group(1))
+            mon = n * 12 if m.group(2).lower().startswith(('год', 'лет')) else n
+            if 1 <= mon <= 120:
+                self.put('warranty', mon, m, 'Гарантия, мес.')
+        m = self.first(r'срок\w*\s+(?:поставки|изготовлени\w*|выполнени\w*)[^\n]{0,50}?(\d{1,3})\s*((?:рабоч\w*|календарн\w*)\s+)?(дн\w*|недел\w*|месяц\w*|мес\.?)')
+        if m:
+            self.put('deadline', ('%s %s%s' % (m.group(1), m.group(2) or '', m.group(3))).strip(), m, 'Срок поставки')
+        m = self.first(r'(?:производств\w*|производител\w*|марк\w*|бренд\w*)[^\n]{0,30}?(?:только|исключительно)\s+([^\n.;]{3,80})')
+        if m:
+            self.put('brands', m.group(1).strip(' ,:—-'), m, 'Допустимые производители')
+        m = self.first(r'(?:не\s+допуска\w*|запрещ\w*|исключ\w*)[^\n]{0,30}?(?:оборудовани\w*\s+)?(?:производств\w*|производител\w*|марк\w*)\s+([^\n.;]{3,80})')
+        if m:
+            self.put('noBrands', m.group(1).strip(' ,:—-'), m, 'Недопустимые производители')
+        m = self.first(r'аналог\w*\s+(?:не\s+допуска|не\s+принима)|без\s+(?:права\s+)?замен\w*')
+        if m:
+            self.put('noAnalogs', True, m, 'Аналоги не допускаются')
+
     def pump(self):
         m = self.first(r'(?:подач\w*|производительн\w*|расход\w*)[^\n]{0,60}?' + NUM + r'\s*(м3/ч|м³/ч|м3/час|м³/час|л/с|л/мин|м3/сут|м³/сут)')
         if m:
@@ -150,6 +271,8 @@ class TzParse:
         if m:
             v, unit = self.num(m.group(1)), m.group(2).lower()
             self.put('kw', round(v * 0.8 if unit in ('ква', 'kva') else v, 1), m, 'Мощность, кВт' + (' (из кВА × 0,8)' if unit in ('ква', 'kva') else ''))
+            self.conflict('kw', 'Мощность, кВт', [(round(self.num(x.group(1)) * (0.8 if x.group(2).lower() in ('ква', 'kva') else 1), 1), x) for x in self.all(
+                r'(?:мощност\w*\s+(?:ДГУ|ДЭС|электростанци\w*|нагрузк\w*|станци\w*)|потребляем\w*\s+мощност\w*)[^\n]{0,40}?' + NUM + r'\s*(квт|ква|kw|kva)' + END_LETTER)])
         m = self.first(r'(?:работ\w*|автономн\w*)[^\n]{0,40}?(?:без дозаправки|от (?:встроенного )?бака)[^\n]{0,30}?(\d+)\s*ч')
         if m:
             self.put('hours', int(m.group(1)), m, 'Работа от бака, ч')
@@ -196,6 +319,10 @@ class TzParse:
             if -70 <= a < b <= 60:
                 self.put('tmin', a, m, 'Наружный воздух от, °C')
                 self.put('tmax', b, m, 'Наружный воздух до, °C')
+            R = r'(?:температур\w*|наружн\w*\s+воздух\w*|окружающ\w*\s+сред\w*)[^\n]{0,90}?от\s*' + t + r'\s*(?:°\s*[сc])?\s*до\s*' + t
+            hits = [x for x in self.all(R) if not re.search(r'хранени|транспортир|вод|масл|помещени|внутри|на входе|сжат', self.sentence(x), re.I)]
+            self.conflict('tmin', 'Наружный воздух от, °C', [(self.signed(x.group(1), x.group(2)), x) for x in hits])
+            self.conflict('tmax', 'Наружный воздух до, °C', [(self.signed(x.group(3), x.group(4)), x) for x in hits])
         if 'tmin' not in self.req:
             m = self.first(r'(?:минимальн\w*|наиболее холодн\w*|абсолютн\w*\s+минимум\w*|расч[её]тн\w*\s+(?:зимн\w*\s+)?температур\w*)[^\n]{0,60}?([' + MINUS_RX + r'])\s*(\d{1,2})')
             if m:
@@ -300,3 +427,102 @@ class TzParse:
                 break
         if out:
             self.req['notes'] = '\n'.join(out)
+
+
+class TzReview:
+    """Анкета по ТЗ для расчёта станции: каждый нужный параметр — статус found (найдено в ТЗ, с цитатой и страницей),
+    default (принято по умолчанию — значение и почему), missing (отсутствует), conflict (в ТЗ разные значения); вопросы
+    заказчику — по отсутствующим, принятым по умолчанию и противоречивым параметрам."""
+    STATUS = {'found': 'найдено в ТЗ', 'default': 'принято по умолчанию', 'missing': 'отсутствует', 'conflict': 'противоречие'}
+    # ключ, подпись, значение по умолчанию (None — нет: отсутствует), почему так, вопрос заказчику (None — не спрашивать)
+    COMMON_T = [
+        ('tmin', 'Наружный воздух от, °C', None, '', 'Минимальная температура наружного воздуха на площадке (зимой), °C.'),
+        ('tmax', 'Наружный воздух до, °C', None, '', 'Максимальная температура наружного воздуха на площадке (летом), °C.'),
+        ('alt', 'Высота над уровнем моря, м', 0, 'в ТЗ не указана — принято 0 м (на высоте больше 1000 м мощность оборудования снижается)', 'Высота площадки над уровнем моря, м.'),
+    ]
+    FIELDS = {
+        'comp': [
+            ('flow', 'Производительность, м³/мин', None, '', 'Требуемая производительность станции, м³/мин.'),
+            ('basis', 'Производительность приведена к условиям', 'fad', 'в ТЗ не сказано — принято FAD (условия всасывания, ISO 1217), как в паспортах компрессоров',
+             'К каким условиям приведена производительность: условия всасывания (FAD, ISO 1217) или нормальные м³ (0 °C, 101,325 кПа)?'),
+            ('pressure', 'Давление у потребителя, бар', None, '', 'Требуемое рабочее давление сжатого воздуха у потребителя (на выходе станции), бар.'),
+            ('air', 'Класс чистоты ISO 8573-1', None, '', 'Класс чистоты сжатого воздуха по ГОСТ Р ИСО 8573-1 (частицы.вода.масло) или требуемая точка росы.'),
+            ('margin', 'Запас производительности, %', 0, 'нормами РФ не установлен (ПБ 03-581-03 отменены) — по ТЗ; не указан — 0 %',
+             'Нужен ли запас производительности сверх потребности (утечки, развитие производства), %?'),
+            ('reserve', 'Резерв компрессоров', '0', 'в ТЗ не указан — без резерва', 'Нужен ли резервный компрессор (N+1)?'),
+        ] + COMMON_T + [
+            ('rh', 'Относительная влажность воздуха, %', 100, 'для перевода нормальных м³ в FAD принято 100 % (с запасом)', 'Относительная влажность наружного воздуха летом, %.'),
+            ('fire', 'Категория помещения', None, '', 'Категория помещения станции по взрывопожарной и пожарной опасности (СП 12.13130) — если определена проектом.'),
+        ],
+        'dgu': [
+            ('kw', 'Мощность нагрузки, кВт', None, '', 'Мощность нагрузки ДЭС, кВт (длительная и максимальная).'),
+            ('mode', 'Режим ДЭС', 'prime', 'в ТЗ не указан — принят основной источник (PRP): мощность с запасом', 'ДЭС — основной источник электроснабжения или резервный (при отключении сети, до 200 ч в год)?'),
+            ('load', 'Средняя нагрузка за сутки, %', 100, 'график нагрузки не задан — принята постоянная 100 % (с запасом)', 'График нагрузки за сутки: средняя нагрузка, % от максимальной.'),
+            ('motor', 'Наибольший двигатель нагрузки, кВт', None, '', 'Мощность наибольшего электродвигателя нагрузки, кВт, и как он пускается (прямой пуск, звезда — треугольник, плавный пуск, частотный преобразователь).'),
+            ('start', 'Пуск наибольшего двигателя', 'direct', 'не указан — принят прямой пуск (наибольший пусковой ток)', None),
+            ('hours', 'Работа от бака, ч', None, '', 'Требуемое время работы без дозаправки, ч.'),
+            ('rel', 'Категория надёжности электроснабжения', None, '', 'Категория надёжности электроснабжения потребителей (I, II, III) — нужен ли автоматический ввод резерва.'),
+            ('reserve', 'Резерв ДГУ', '0', 'в ТЗ не указан — без резерва', 'Нужен ли резервный ДГУ (N+1)?'),
+        ] + COMMON_T + [
+            ('fire', 'Категория помещения', None, '', 'Категория помещения ДЭС по взрывопожарной и пожарной опасности (СП 12.13130) — если определена проектом.'),
+        ],
+        'pump': [
+            ('q', 'Подача, м³/ч', None, '', 'Требуемая подача, м³/ч.'),
+            ('head', 'Напор, м', None, '', 'Требуемый напор, м.'),
+            ('reserve', 'Резерв насосов', '0', 'в ТЗ не указан — без резерва', 'Нужен ли резервный насос (N+1)?'),
+        ] + COMMON_T[:2],
+    }
+    TERMS = [
+        ('noise', 'Шум на рабочем месте, дБА', 80, 'не указан — по СанПиН 1.2.3685-21 не более 80 дБА', None),
+        ('warranty', 'Гарантия, мес.', None, '', 'Требуемый гарантийный срок, мес.'),
+        ('deadline', 'Срок поставки', None, '', 'Требуемый срок поставки.'),
+    ]
+
+    def __init__(self, p):
+        self.p = p
+        self.kind = p.req.get('kind') or 'comp'
+        self.byKey = {f['key']: f for f in p.found}
+        self.conf = {c['key']: c for c in p.conflicts}
+
+    def spec(self):
+        L = self.FIELDS.get(self.kind, self.FIELDS['comp']) + self.TERMS
+        if self.kind == 'comp' and self.p.req.get('basis') != 'normal':
+            L = [x for x in L if x[0] != 'rh']        # влажность нужна только для пересчёта нормальных м³
+        if self.kind == 'dgu' and not self.p.req.get('motor'):
+            L = [x for x in L if x[0] != 'start']
+        return L
+
+    def fields(self):
+        out = []
+        for key, label, dflt, why, _ in self.spec():
+            f, c = self.byKey.get(key), self.conf.get(key)
+            if c:
+                out.append({'key': key, 'label': label, 'status': 'conflict', 'value': f['value'] if f else None, 'values': c['values'],
+                            'why': 'в ТЗ разные значения — принято первое, уточните'})
+            elif f:
+                out.append({'key': key, 'label': label, 'status': 'found', 'value': f['value'], 'src': f['src'], 'page': f.get('page')})
+            elif key == 'air' and 'pdp' in self.p.req:
+                out.append({'key': key, 'label': label, 'status': 'found', 'value': self.p.req.get('air')})
+            elif dflt is not None:
+                out.append({'key': key, 'label': label, 'status': 'default', 'value': dflt, 'why': why})
+            else:
+                out.append({'key': key, 'label': label, 'status': 'missing', 'value': None})
+        return out
+
+    @staticmethod
+    def fmt(v):
+        if isinstance(v, float) and v.is_integer():
+            v = int(v)
+        return str(v).replace('.', ',').replace('-', '−')
+
+    def questions(self):
+        ask = {key: q for key, _, _, _, q in self.spec()}
+        out = []
+        for f in self.fields():
+            q = ask.get(f['key'])
+            if f['status'] == 'conflict':
+                vals = '; '.join('%s%s' % (self.fmt(v['value']), ' (стр. %s)' % v['page'] if v.get('page') else '') for v in f['values'])
+                out.append('%s: в ТЗ указаны разные значения — %s. Какое верное?' % (f['label'], vals))
+            elif f['status'] in ('missing', 'default') and q:
+                out.append(q)
+        return out

@@ -4,6 +4,11 @@
 PDF (pdf_text), Word DOCX, Excel XLSX, OpenDocument ODT и ODS, RTF, обычный текст (UTF-8 или Windows-1251). Таблицы —
 строками «ячейка | ячейка». Старые двоичные .doc и .xls не читаются — ValueError с пояснением (сохранить как DOCX, XLSX
 или PDF). Защита: размер файла, размер распакованных частей архива, XML без DOCTYPE и сущностей.
+
+Сканы: PDF без текстового слоя (или с нечитаемым — «кракозябры» шрифтов) и картинки (PNG, JPEG, TIFF, BMP) распознаются
+встроенным распознаванием Windows 10/11 (ocr_win.WinOcr). Способы сравниваются по качеству текста (TextQuality) —
+берётся лучший; в ответе — methods: какие способы пробовались, качество каждого, ошибка. Страницы PDF разделены символом
+«\\f» (номер страницы для цитат из ТЗ).
 """
 import os
 import re
@@ -12,6 +17,27 @@ from io import BytesIO
 from xml.etree import ElementTree as ET
 
 import pdf_text
+from ocr_win import WinOcr
+
+
+class TextQuality:
+    """Качество извлечённого текста, 0…1: доля «нормальных» символов (буквы, цифры, знаки препинания) и доля слов из
+    букв одного алфавита. Ниже LOW — текст плохой (скан, неверная кодировка шрифта): нужен другой способ или ИИ."""
+    LOW = 0.6
+    GOOD_CH = re.compile(r'[0-9A-Za-zА-Яа-яЁё.,:;!?()«»"\'%№°+\-–—/×*=<>\[\]|]')
+    WORD = re.compile(r'\S+')
+
+    @classmethod
+    def score(cls, text):
+        t = str(text or '')
+        chars = [c for c in t if not c.isspace()]
+        if len(chars) < 20:
+            return 0.0
+        good = sum(1 for c in chars if cls.GOOD_CH.match(c)) / len(chars)
+        words = [w.strip('.,:;!?()«»"\'') for w in cls.WORD.findall(t)]
+        words = [w for w in words if len(w) >= 3 and not re.search(r'\d', w)]
+        clean = sum(1 for w in words if re.fullmatch(r'[А-Яа-яЁё-]+|[A-Za-z-]+', w)) / len(words) if words else 0.0
+        return round(0.5 * good + 0.5 * clean, 3)
 
 
 class DocText:
@@ -20,17 +46,22 @@ class DocText:
     MAX_PART = 30 * 1024 * 1024       # распакованная часть архива — не больше
     KINDS = 'PDF, DOCX, XLSX, ODT, ODS, RTF или TXT'
 
+    IMAGE_EXT = ('.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp')
+
     @classmethod
-    def extract(cls, name, data):
-        """{'text', 'kind', 'pages'}; ошибка — ValueError понятным текстом"""
+    def extract(cls, name, data, ocr=None):
+        """{'text', 'kind', 'pages', 'quality', 'methods': [{id, name, chars, quality, error}]}; ошибка — ValueError
+        понятным текстом. ocr — класс распознавания (по умолчанию WinOcr; в проверках — заглушка)."""
         if not data:
             raise ValueError('файл пустой')
         if len(data) > cls.MAX_BYTES:
             raise ValueError('файл больше 40 МБ')
+        ocr = ocr or WinOcr
         ext = os.path.splitext(str(name or '').lower())[1]
         if data[:4] == b'%PDF' or ext == '.pdf':
-            r = pdf_text.text(data)
-            return {'text': r['text'], 'kind': 'pdf', 'pages': r.get('pages')}
+            return cls._pdf(data, ocr)
+        if WinOcr.image_ext(data) or ext in cls.IMAGE_EXT:
+            return cls._image(data, ocr)
         if data[:4] == b'\xd0\xcf\x11\xe0':
             raise ValueError('старый формат Word или Excel (.doc, .xls) — сохраните файл как DOCX, XLSX или PDF')
         if data[:2] == b'PK':
@@ -42,12 +73,63 @@ class DocText:
         raise ValueError('формат не распознан — нужен ' + cls.KINDS)
 
     @classmethod
-    def _done(cls, text, kind, pages=None):
+    def _done(cls, text, kind, pages=None, methods=None):
         t = re.sub(r'[ \t\xa0]+', ' ', text.replace('\r\n', '\n').replace('\r', '\n'))
-        t = re.sub(r'\n\s*\n\s*\n+', '\n\n', t).strip()
+        t = re.sub(r'\n[ \t\xa0]*\n[ \t\xa0]*\n+', '\n\n', t).strip()      # \f — граница страниц — остаётся
         if len(re.sub(r'\W', '', t)) < 20:
             raise ValueError('в документе нет текста')
-        return {'text': t[:cls.MAX_TEXT], 'kind': kind, 'pages': pages}
+        q = TextQuality.score(t)
+        methods = methods or [{'id': 'text', 'name': 'Текст документа', 'chars': len(t), 'quality': q}]
+        return {'text': t[:cls.MAX_TEXT], 'kind': kind, 'pages': pages, 'quality': q, 'low': q < TextQuality.LOW, 'methods': methods}
+
+    @staticmethod
+    def _pages(per):
+        return '\n\f\n'.join(p.strip() for p in per)
+
+    @classmethod
+    def _pdf(cls, data, ocr):
+        """текстовый слой; если его нет или он плохой — распознавание Windows; лучший по качеству"""
+        r = pdf_text.text(data, need_text=False)
+        per = r.get('per') or []
+        t0 = cls._pages(per)
+        q0 = TextQuality.score(t0)
+        methods = [{'id': 'pdf', 'name': 'Текстовый слой PDF', 'chars': len(t0.replace('\f', '')), 'quality': q0}]
+        best, kind = per, 'pdf'
+        empty = sum(1 for p in per if len(p.strip()) < 30)
+        if q0 < TextQuality.LOW or (per and empty * 2 >= len(per)):     # скан или нечитаемые шрифты (половина страниц пустые)
+            if ocr.available():
+                try:
+                    o = ocr.recognize(data, 'pdf')
+                    t1 = cls._pages(o['pages'])
+                    q1 = TextQuality.score(t1)
+                    methods.append({'id': 'ocr', 'name': 'Распознавание Windows (OCR, %s)' % (o.get('lang') or 'язык профиля'),
+                                    'chars': len(t1.replace('\f', '')), 'quality': q1, 'pages': len(o['pages'])})
+                    if q1 > q0:
+                        best, kind = o['pages'], 'pdf-ocr'
+                except ValueError as e:
+                    methods.append({'id': 'ocr', 'name': 'Распознавание Windows (OCR)', 'error': str(e)[:300]})
+            else:
+                methods.append({'id': 'ocr', 'name': 'Распознавание Windows (OCR)', 'error': 'доступно на сервере под Windows 10/11'})
+        text = cls._pages(best)
+        if len(re.sub(r'\W', '', text)) < 20:
+            err = next((m.get('error') for m in methods if m.get('error')), '')
+            raise ValueError('в PDF нет текста — похоже на скан' + ('; распознавание: ' + err if err else '') +
+                             '. Пришлите текстовый PDF или DOCX либо скопируйте текст вручную')
+        for m in methods:
+            m['used'] = (m['id'] == 'ocr') == (kind == 'pdf-ocr') and not m.get('error')
+        return cls._done(text, kind, r.get('pages'), methods)
+
+    @classmethod
+    def _image(cls, data, ocr):
+        """картинка (фото или скан ТЗ) — распознавание Windows"""
+        if not ocr.available():
+            raise ValueError('картинка ТЗ распознаётся на сервере под Windows 10/11 (встроенное распознавание текста) — '
+                             'здесь недоступно: пришлите PDF с текстом, DOCX или скопируйте текст')
+        o = ocr.recognize(data, 'image')
+        text = cls._pages(o['pages'])
+        q = TextQuality.score(text)
+        return cls._done(text, 'image', 1, [{'id': 'ocr', 'name': 'Распознавание Windows (OCR, %s)' % (o.get('lang') or 'язык профиля'),
+                                             'chars': len(text), 'quality': q, 'used': True}])
 
     @staticmethod
     def _texty(data):

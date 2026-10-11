@@ -118,9 +118,9 @@ class StationFire {
 // «Выход» — с аккумулятором. Отсек топливного бака и тамбур — по круглому светильнику 15 Вт IP65; снаружи над дверями —
 // светодиодные прожекторы 30 Вт IP65 с фотореле и блоком аварийного питания (перед выходом — не менее 5 лк).
 class StationLight {
-  static LUX = 200;
+  static get LUX(){ return StationRules.raw('norm.lux').lux; }
   static PLANE = 800;         // рабочая плоскость над полом, мм
-  static KZ = 1.4;
+  static get KZ(){ return StationRules.raw('norm.lux').kz; }
   static LAMP = { w:36, lm:3600, len:1200 };
   static SMALL = 15;          // круглый светильник в отсеке бака и тамбуре, Вт
   static FLOOD = 30;          // прожектор над дверью, Вт
@@ -176,9 +176,9 @@ class StationSockets {
 // cos φ 0,85; вводной автомат — ближайший номинал не меньше 1,25 расчётного тока. У ДГУ — собственные нужды станции (от
 // сети через АВР в ожидании, при работе — от ДГУ).
 class StationPower {
-  static U = 400;
-  static COS = 0.85;
-  static BREAKERS = [16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600];
+  static get U(){ return StationRules.raw('el.u'); }
+  static get COS(){ return StationRules.raw('el.cos'); }
+  static get BREAKERS(){ return StationRules.raw('el.breakers'); }
   static f(v){ return String(Math.abs(v)<1 ? Math.round(v*100)/100 : Math.round(v*10)/10).replace('.', ','); }
   /** мощность осушителя, кВт: по паспорту или оценка по производительности (рефрижераторный — 0,2 кВт на 1 м³/мин) */
   static dryer(i){ if (i.kw>0) return i.kw; const q=i.air && i.air.flow>0 ? i.air.flow : 0, t=i.air && i.air.type; return t==='refrig' || !t ? Math.max(0.3, Math.round(q*0.2*10)/10) : 0.1; }
@@ -207,7 +207,7 @@ class StationPower {
     const inst=out.reduce((s, q)=>s+q.n*q.kw, 0), mode=k=>out.reduce((s, q)=>s+(q[k] ? q.n*q.kw*q.kc+(q.extra||0) : 0), 0);
     const run=mode('run'), idle=mode('idle'), P=Math.max(run, idle), A=P*1000/(Math.sqrt(3)*this.U*this.COS);
     return { list:out, inst:Math.round(inst*10)/10, run:Math.round(run*10)/10, idle:Math.round(idle*10)/10, kw:Math.round(P*10)/10, mode:run>=idle ? 'run' : 'idle',
-      amp:Math.round(A*10)/10, breaker:this.BREAKERS.find(b=>b>=A*1.25) || null, dgu:!!dgu };
+      amp:Math.round(A*10)/10, breaker:this.BREAKERS.find(b=>b>=A*StationRules.raw('el.breaker_k')) || null, dgu:!!dgu };
   }
   /** строки итога: для ТЗ и вкладки «Компоновка» */
   static lines(W){
@@ -226,7 +226,7 @@ class StationPower {
 // насоса перекачки (около 2,4 м³/ч). DN в составе меньше расчётного — замечание в компоновке.
 class StationPipe {
   static DN = [[15, 15.7], [20, 20.9], [25, 26.6], [32, 35.1], [40, 40.9], [50, 52.5], [65, 68], [80, 80.9], [100, 106], [125, 131], [150, 156], [200, 207], [250, 259], [300, 309]];
-  static V = { air:8, out:2, in:1.2, fuel:1.5 };
+  static get V(){ return StationRules.raw('el.pipe_v'); }
   static FUEL = 2.4;          // подача насоса перекачки топлива, м³/ч
   /** DN по внутреннему диаметру, мм */
   static dn(d){ const r=this.DN.find(([, di])=>di>=d-1e-9); return r ? r[0] : this.DN[this.DN.length-1][0]; }
