@@ -13,7 +13,7 @@ class StationUi {
   static input(x){
     const c=kitContainer(x);
     const R=typeof StationReq!=='undefined' ? StationReq : null;   // где ресивер и снаружи ли — из требований станции
-    return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, ins:c.ins, ral:c.ral, sys:c.sys||null, climate:c.climate||'' } : null, parts:kitParts(x), air:this.opts(x).air,
+    return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, ins:c.ins, ral:c.ral, sys:c.sys||null, climate:c.climate||'', roof:c.roof||'' } : null, parts:kitParts(x), air:this.opts(x).air,
       recv:R ? R.recv(x) : 'after', recvOut:R ? R.recvOut(x) : false, req:R ? R.plan(x) : null };
   }
   /** расстановка — пересчитывается, только когда изменился состав, контейнер или класс чистоты воздуха (на картинки не влияет) */
