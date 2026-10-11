@@ -291,6 +291,11 @@ class StationEquip {
     if (kind==='filter' && d.l<=1.3*d.w && d.h>=1.2*d.l) return 'vcyl';
     return 'box';
   }
+  /** вид изделия для рисунка на чертеже: поршневой компрессор (на ресивере) — 'piston', иначе '' */
+  static look(p, kind){
+    const cat=String((p.attrs&&p.attrs.cat)||p.cat||'');
+    return kind==='compressor' && (cat==='comp_piston' || /поршнев/i.test(String(p.name||''))) ? 'piston' : '';
+  }
   /** короткая подпись на чертеже: модель или первые слова названия */
   static short(p, kind){
     const a=p.attrs||{}, m=String(a.model||'').trim();
@@ -320,7 +325,7 @@ class StationEquip {
       const k=kind||'other', c=this.color(p, k), air=/^(compressor|dryer|receiver|filter)$/.test(k) ? AirChain.info(p, k) : null;
       const pipe=k==='filter' && air.grade!=='cond' && Math.max(d.l, d.w)<=700;   // магистральный фильтр — висит на трубопроводе
       return { id:p.id, pos:++pos, name, brief:this.brief(p, k, name), short:this.short(p, k), kind:k, qty, l:d.l, w:d.w, h:d.h, known:d.known, src:d.src, mass:this.mass(p), kw:this.num((p.attrs||{}).kw),
-        color:c.hex, colorKnown:c.known, colorText:c.text, shape:this.shape(p, k, d), place:true, pipe, mount:k==='cabinet' ? this.mount(p, d) : pipe ? 'pipe' : 'floor', air };
+        color:c.hex, colorKnown:c.known, colorText:c.text, shape:this.shape(p, k, d), look:this.look(p, k), place:true, pipe, mount:k==='cabinet' ? this.mount(p, d) : pipe ? 'pipe' : 'floor', air };
     });
     AirChain.assign(out);
     const dgu=out.find(e=>e.kind==='dgu');
@@ -552,7 +557,7 @@ class AirChain {
 // размера — по необходимому месту (шаг 100 мм, наименьшая площадь пола); заданный контейнер, в который не помещается, —
 // ошибка и подсказка, какой подойдёт; контейнер с большим запасом — подсказка, какой меньший подойдёт.
 class StationLayout {
-  static VER = 5;           // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
+  static VER = 6;           // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
   static MAX_L = 12000;
   static PIPE_PAD = 60;      // зазор вокруг фильтра на трубопроводе, мм
   static AIR_Y = 150;        // линия сжатого воздуха: ось — в 150 мм от задней стены (или посередине между рядами)
@@ -1039,13 +1044,13 @@ class StationLayout {
 
   item(it, geo){
     const e=it.o.e;
-    return { id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, color:e.color, colorKnown:e.colorKnown,
+    return { id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, look:e.look||'', color:e.color, colorKnown:e.colorKnown,
       known:e.known, mass:e.mass, kw:e.kw, x:geo.x0+it.x, y:it.y, z:0, lx:it.lx, ly:it.d, h:e.h, rot:!!it.o.rot, face:it.face, back:it.back, aisle:it.aisle,
       l:e.l, w:e.w, row:it.ri, mount:e.slot ? e.mount : 'floor', slot:!!e.slot, pipe:!!e.pipe, air:e.air||null };
   }
   /** шкаф на стене или фильтр на трубе — не из ряда */
   unitItem(e, o){
-    return Object.assign({ id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, color:e.color, colorKnown:e.colorKnown,
+    return Object.assign({ id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, look:e.look||'', color:e.color, colorKnown:e.colorKnown,
       known:e.known, mass:e.mass, kw:e.kw, lx:e.l, ly:e.w, h:e.h, rot:false, face:-1, back:0, aisle:0, l:e.l, w:e.w, row:-1, slot:false, pipe:!!e.pipe, air:e.air||null }, o);
   }
   used(items, geo){ const fl=items.filter(i=>i.mount!=='wall' && i.mount!=='pipe'), I=fl.length ? fl : items;

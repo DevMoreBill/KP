@@ -94,6 +94,14 @@ class Check {
       assert.ok(!(ox>0.4 && oy>0.4), `${label}: «${V[i].t}» наезжает на «${V[j].t}»`); }
     return sz;
   }
+  /** схема: подписи не пересекают линии связи, переносы строк и отвод конденсата (отрезки толще 0,3 мм и штриховые 2 1) */
+  static crossing(s, label){
+    const L=[], re=/<line x1="([\d.-]+)" y1="([\d.-]+)" x2="([\d.-]+)" y2="([\d.-]+)" fill="none" stroke="#000" stroke-width="([\d.]+)"(?: stroke-dasharray="([^"]+)")?/g; let m;
+    while ((m=re.exec(s))) if (+m[5]>=0.3 || m[6]==='2 1') L.push([+m[1], +m[2], +m[3], +m[4]]);
+    for (const q of Check.texts(s).filter(t=>t.rot!==180 && t.b[1]<200)){ const [x0, y0, x1, y1]=q.b;
+      const hit=L.find(([a, b, c, d])=>Math.max(a, c)>x0+0.3 && Math.min(a, c)<x1-0.3 && Math.max(b, d)>y0+0.3 && Math.min(b, d)<y1-0.3);
+      assert.ok(!hit, `${label}: линия через «${q.t}»`); }
+  }
   /** надписи листа: текст, поворот и границы [x0, y0, x1, y1], мм */
   static texts(s){
     const out=[], re=/<text x="([\d.-]+)" y="([\d.-]+)" font-size="([\d.]+)"(?: text-anchor="(\w+)")?(?: transform="rotate\(([-\d.]+)[^"]*\)")?[^>]*>([^<]*)<\/text>/g; let m;
@@ -112,7 +120,7 @@ const C=(ctype, o)=>Object.assign({ role:'container', ctype, ins:'100 мм', siz
 const solve=(cont, parts)=>StationLayout.solve({ cont, parts });
 const meta=(p, title)=>({ title:title||'Станция <проверка> & «кавычки»', cont:'Контейнер', colorText:p.colorText ? 'цвет '+p.colorText : '', org:'ООО «ПНЕВМОТЕХ»', dev:'Иванов И. И.', date:'2026-10-11' });
 const draw=(p, label)=>{ Check.svg(StationView3D.svg(p, meta(p)), label+' (3D)');
-  if (StationScheme.ok(p)) Check.sheet(StationScheme.svg(p, meta(p)), label+' (схема)');
+  if (StationScheme.ok(p)){ const s=StationScheme.svg(p, meta(p)); Check.sheet(s, label+' (схема)'); Check.crossing(s, label+' (схема)'); }
   return Check.sheet(StationDrawing.svg(p, meta(p)), label+' (чертёж)'); };
 
 const comp=P('Винтовой компрессор Dalgakiran DVK 37', { cat:'comp_screw', maker:'Dalgakiran', model:'DVK 37', kw:37, size:'1400 × 900 × 1500', mass:650 }, { role:'main' });
@@ -488,6 +496,31 @@ Check.run('чертёж: лист А4 по ЕСКД', ()=>{
   assert.strictEqual(EskdSheet.date('2026-10-11'), '11.10.26'); assert.strictEqual(EskdSheet.scale(2.5), '1:2,5');
 });
 
+Check.run('рисунки оборудования: узнаваемые, во всех видах', ()=>{
+  const L=[['compressor', 'box', [1400, 900, 1500]], ['compressor', 'box', [1900, 700, 1700], { air:{ recv:true } }], ['compressor', 'box', [1900, 600, 1300], { look:'piston' }],
+    ['receiver', 'vcyl', [650, 650, 2000]], ['receiver', 'hcyl', [2000, 750, 900]], ['dryer', 'box', [900, 600, 1100], { air:{ type:'refrig' } }], ['dryer', 'box', [1000, 700, 1800], { air:{ type:'ads' } }],
+    ['filter', 'vcyl', [140, 140, 610], { mount:'pipe' }], ['filter', 'vcyl', [400, 400, 1200]], ['filter', 'box', [500, 300, 600], { air:{ grade:'cond' } }], ['cabinet', 'box', [600, 250, 800], { mount:'wall' }],
+    ['cabinet', 'box', [800, 600, 2000]], ['dgu', 'box', [3200, 1150, 1900]], ['pump', 'box', [2600, 1100, 1300]], ['pump', 'box', [400, 400, 1200]], ['tank', 'box', [1500, 800, 1100]], ['other', 'box', [800, 600, 900]]];
+  for (const N of [20, 75, 200]) for (const [kind, shape, [lx, ly, h], o] of L) for (const v of [{ face:-1 }, { face:1 }, { face:-2 }, { face:-1, rot:true }]){
+    const it=Object.assign({ kind, shape, lx, ly, h, mount:'floor', air:{}, look:'' }, o||{}, v), sh=new EskdSheet('A4'), k=1/N;
+    EquipIcon.front(sh, it, 30, 40, 30+lx*k, 40+h*k); EquipIcon.plan(sh, it, 30, 150, 30+lx*k, 150+ly*k);
+    const s=sh.svg(); Check.svg(s, `${kind} ${shape} 1:${N} ${JSON.stringify(v)}`);
+    assert.ok((s.match(/<(rect|path|circle|polygon|line)/g)||[]).length>(N<100 ? 3 : 1), `${kind} 1:${N}: рисунок пустой`); }
+  const draw=(it, N=20)=>{ const sh=new EskdSheet('A4'), k=1/N; EquipIcon.front(sh, it, 30, 40, 30+it.lx*k, 40+it.h*k); return sh.svg(); };
+  const base={ shape:'box', ly:900, mount:'floor', face:-1, air:{} };
+  assert.ok(draw(Object.assign({ kind:'compressor', lx:1400, h:1500 }, base)).includes(`fill="${EquipIcon.DARK}"`), 'компрессор спереди: пульт с дисплеем');
+  assert.ok(!draw(Object.assign({ kind:'compressor', lx:1400, h:1500 }, base, { face:1 })).includes(`fill="${EquipIcon.DARK}"`), 'сзади пульта нет — решётка охладителя');
+  assert.ok(draw(Object.assign({ kind:'compressor', lx:1900, h:1300, look:'piston' }, base)).includes('<polygon'), 'поршневой: цилиндры');
+  const sh=new EskdSheet('A4'); EquipIcon.plan(sh, Object.assign({ kind:'compressor', lx:900, ly:1400, h:1500 }, base, { rot:true }), 30, 40, 48, 68);
+  assert.ok(sh.svg().includes('<g transform="rotate(90'), 'повёрнутое поперёк — рисунок на плане повёрнут');
+  // вид изделия: поршневой — по категории или названию
+  assert.strictEqual(StationEquip.look({ name:'Компрессор', attrs:{ cat:'comp_piston' } }, 'compressor'), 'piston');
+  assert.strictEqual(StationEquip.look({ name:'Поршневой компрессор Remeza СБ4', attrs:{} }, 'compressor'), 'piston');
+  assert.strictEqual(StationEquip.look({ name:'Винтовой компрессор', attrs:{ cat:'comp_screw' } }, 'compressor'), '');
+  const pp=solve(C('block'), [P('Поршневой компрессор', { cat:'comp_piston', size:'1900 × 600 × 1300' }, { role:'main' })]);
+  assert.strictEqual(pp.items.find(i=>i.kind==='compressor').look, 'piston', 'вид — в элементе расстановки');
+});
+
 Check.run('схема пневматическая принципиальная', ()=>{
   const c62=P('Винтовой компрессор', { cat:'comp_screw', model:'K 37', kw:37, flow:6.2, pressure:8, size:'1400 × 900 × 1500' }, { role:'main' });
   const dr=P('Рефрижераторный осушитель', { cat:'dryer_refrig', model:'R 70', flow:7.5, size:'900 × 600 × 1100' });
@@ -514,6 +547,16 @@ Check.run('схема пневматическая принципиальная'
   // несколько компрессоров и длинная цепочка — помещается на листе
   const many=solve(C('block'), [Object.assign({}, c62, { qty:4 }), Object.assign({}, dr, { qty:2 }), Object.assign({}, rc, { qty:2 }), Object.assign({}, two, { qty:3 })]);
   assert.ok(StationScheme.ok(many)); Check.sheet(StationScheme.svg(many, meta(many)), 'схема — много');
+  // длинная цепочка — строками змейкой, выход к потребителю — по ходу последней строки или на следующей; подписи не на линиях
+  const lng=solve(C('block'), [Object.assign({}, c62, { qty:2 }), Object.assign({}, rc, { qty:2 }), P('Фильтр предварительной очистки', { cat:'filter', stage:'Предварительная', size:'610*140' }, { qty:3 }),
+    Object.assign({}, dr, { qty:2 }), P('Фильтр сверхтонкой очистки', { cat:'filter', stage:'Сверхтонкая (микрофильтр)', size:'610*140' }, { qty:3 }), P('Угольный фильтр', { cat:'filter', size:'610*140' }),
+    P('Ресивер сухой', { cat:'receiver', volume:500, size:'650 × 650 × 1800' })]);
+  const s2=StationScheme.svg(lng, meta(lng)); Check.sheet(s2, 'схема — две строки'); Check.crossing(s2, 'схема — две строки');
+  const four=solve(C('block'), [P('Компрессор со встроенным осушителем', { cat:'comp_screw', flow:4, size:'1400 × 900 × 1500' }, { role:'main', qty:4 }),
+    P('Фильтр', { cat:'filter', size:'610*140' }, { qty:3 }), P('Генератор азота', { cat:'gen_n2', size:'800 × 600 × 1500' }, { qty:3 }), P('Ресивер', { cat:'receiver', volume:500, size:'650 × 650 × 1900' }, { qty:2 })]);
+  const s4=StationScheme.svg(four, meta(four)); Check.sheet(s4, 'схема — 4 компрессора'); Check.crossing(s4, 'схема — 4 компрессора');
+  for (const g of [StationScheme.layout(4, [8, 5, 5, 5, 6, 6, 6, 5, 5, 5, 8], true, 26, 30, 150), StationScheme.layout(1, [5, 6, 5, 8], false, 26, 30, 170)])
+    assert.ok(g.m>=0.7 && g.m<=1.6 && g.per>=1 && g.rows>=1 && 30+g.h<=170, 'раскладка схемы '+JSON.stringify(g));
   // не компрессорная — схемы нет
   assert.ok(!StationScheme.ok(solve(C('block'), [pumpS, cab])) && !StationScheme.ok(null), 'насосная — схемы нет');
 });
