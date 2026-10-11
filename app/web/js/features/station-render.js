@@ -199,8 +199,8 @@ class StScene {
   }
   /** габариты сцены (м): контейнер, глушитель, открытые двери */
   bounds(){
-    const up=(this.plan.roof||[]).reduce((s, m)=>Math.max(s, (m.gap+m.d+m.outlet)/1000), 0), sw=this.closed ? 0 : Math.max(0, ...[...this.doorsF, ...this.doorsB].map(d=>d.w/d.leaves/1000));
-    const E=(this.plan.outside||[]).map(i=>this.B(i)), xo=Math.max(this.Le, ...E.map(b=>b[3]+0.45)), yo=Math.min(0, ...E.map(b=>b[1]-0.2)), yi=Math.max(this.We, ...E.map(b=>b[4]+0.2)), zo=Math.max(0, ...E.map(b=>b[5]+0.3));
+    const R=this.plan.roof||[], up=R.reduce((s, m)=>Math.max(s, (m.gap+m.d)/1000+0.05), 0), sw=this.closed ? 0 : Math.max(0, ...[...this.doorsF, ...this.doorsB].map(d=>d.w/d.leaves/1000));
+    const E=(this.plan.outside||[]).map(i=>this.B(i)), xo=Math.max(this.Le, ...E.map(b=>b[3]+0.45), ...R.map(m=>this.ox+(m.x+m.lx+m.outlet)/1000+0.03)), yo=Math.min(0, ...E.map(b=>b[1]-0.2)), yi=Math.max(this.We, ...E.map(b=>b[4]+0.2)), zo=Math.max(0, ...E.map(b=>b[5]+0.3));
     return { lo:[-0.15, Math.min(yo, -0.15-(this.doorsF.length ? sw*0.8 : 0)), 0], hi:[xo+0.15, Math.max(yi, this.We+0.15+(this.doorsB.length ? sw*0.8 : 0)), Math.max(zo, this.top+this.rise+up+0.05)] };
   }
   /** число треугольников (проверка и замер) */
@@ -288,30 +288,51 @@ class StScene {
   /** высота крыши над поперечной координатой y (м): плоская — верх контейнера; скатная — по скату (без толщины кровли) */
   roofZ(y){
     const R=this.rise, W=this.We, t=Math.max(0, Math.min(W, y)); if (!(R>0)) return this.top;
+    if (this.g.roof==='arch'){ const rc=this.arcR(); return this.top+R-rc+Math.sqrt(Math.max(0, rc*rc-(t-W/2)*(t-W/2))); }
     return this.top+(this.g.roof==='gable' ? R*(1-Math.abs(t-W/2)/(W/2)) : R*(1-t/W));
   }
-  /** крыша блок-контейнера и цельносварного: плоская — с отливом; двускатная — конёк вдоль контейнера, фронтоны в торцах,
-   *  водостоки с обеих сторон; односкатная — выше у стены с дверью, скат и водосток — к задней стене (вода не льётся на
-   *  вход); кровельные панели — с рёбрами по скату */
+  /** радиус дуги арочной крыши: хорда — ширина контейнера, стрела — подъём */
+  arcR(){ const R=this.rise, h=this.We/2; return (h*h+R*R)/(2*R); }
+  /** крыша блок-контейнера и цельносварного: плоская — с отливом; двускатная — конёк вдоль контейнера, фронтоны в торцах;
+   *  односкатная — выше у стены с дверью, скат — к задней стене (вода не льётся на вход); арочная (покатая) — дуга поперёк
+   *  контейнера; кровельные панели — с рёбрами по скату. Водостоков нет (над дверями — съёмные козырьки) */
   roof(zt, col){
     const L=this.Le, W=this.We, R=this.rise, m=this.M(StMat.paint(col, 0.45));
-    if (!(R>0)){ m.box(-0.03, -0.03, zt-0.02, L+0.03, W+0.03, zt+0.03, 0.01); return; }
-    const o=0.06, t=0.04, rib=this.M(StMat.paint(RalColor.shade(col, 0.93), 0.45)), gb=this.M(StMat.paint(this.wall, 0.42)), gut=this.M(StMat.metal(StScene.GALV, 0.4)), gable=this.g.roof==='gable';
+    if (!(R>0)){ m.box(-0.03, -0.03, zt-0.02, L+0.03, W+0.03, zt+0.03, 0.01); this.lugs(zt); return; }
+    const o=0.06, t=0.04, rib=this.M(StMat.paint(RalColor.shade(col, 0.93), 0.45)), gb=this.M(StMat.paint(this.wall, 0.42)), gable=this.g.roof==='gable';
+    if (this.g.roof==='arch'){ this.arch(zt, m, rib, gb, o, t); this.lugs(zt); return; }
     const slope=(ya, za, yb, zb)=>{ const dy=yb-ya, dz=zb-za, l=Math.hypot(dy, dz), s=Math.sign(dy), n=[0, -dz*s/l, dy*s/l], v=[0, dy, dz], w=StV.mul(n, t);
       m.obox([-o, ya, za], [L+2*o, 0, 0], v, w);
       for (let x=0.12; x<L+2*o-0.08; x+=0.333) rib.obox(StV.add([x-o, ya, za], w), [0.035, 0, 0], v, StV.mul(n, 0.028)); };
-    const gutter=(y, z, sy)=>{ gut.tube([-o, y, z], [L+o, y, z], 0.05, 16); for (const x of [0.14, L-0.14]){ gut.sphere([x, y, z-0.04], 0.04, 10);
-      gut.tube([x, y, z-0.04], [x, y-sy*0.05, this.dz+0.25], 0.035, 12); gut.tube([x, y-sy*0.05, this.dz+0.25], [x, y-sy*0.16, this.dz+0.12], 0.035, 12); } };
     if (gable){ const k=R/(W/2), ze=zt-o*k;
       slope(-o, ze, W/2, zt+R); slope(W+o, ze, W/2, zt+R);
       m.box(-o, W/2-0.09, zt+R+t*0.3, L+o, W/2+0.09, zt+R+t+0.02, 0.01);   // конёк
       for (const [x, n] of [[0, -1], [L, 1]]) gb.tri([x, 0, zt], [x, W, zt], [x, W/2, zt+R], [n, 0, 0]);
-      gutter(-o-0.03, ze-0.03, 1); gutter(W+o+0.03, ze-0.03, -1);
     } else { const k=R/W;
       slope(W+o, zt-o*k, -o, zt+R+o*k);
       for (const [x, n] of [[0, -1], [L, 1]]) gb.tri([x, 0, zt], [x, W, zt], [x, 0, zt+R], [n, 0, 0]);
-      if (!this.cut) gb.quad([0, 0, zt], [L, 0, zt], [L, 0, zt+R], [0, 0, zt+R], [0, -1, 0]);
-      gutter(W+o+0.03, zt-o*k-0.03, -1); }
+      if (!this.cut) gb.quad([0, 0, zt], [L, 0, zt], [L, 0, zt+R], [0, 0, zt+R], [0, -1, 0]); }
+    this.lugs(zt);
+  }
+  /** арочная крыша: лист по дуге (гладкие нормали) толщиной t со свесами o, рёбра по дуге, торцы под дугой — стеной */
+  arch(zt, m, rib, gb, o, t){
+    const L=this.Le, W=this.We, R=this.rise, rc=this.arcR(), zc=zt+R-rc, N=20;
+    const P=[]; for (let k=0; k<=N; k++){ const y=-o+(W+2*o)*k/N, z=zc+Math.sqrt(Math.max(0, rc*rc-(y-W/2)*(y-W/2))), n=StV.norm([0, y-W/2, z-zc]); P.push({ y, z, n }); }
+    const strip=(mesh, x0, x1, off, flip)=>{ for (let k=0; k<N; k++){ const a=P[k], b=P[k+1], q=(p, x)=>[x, p.y+p.n[1]*off, p.z+p.n[2]*off], s=flip ? -1 : 1, i=mesh.count;
+      mesh.vert(q(a, x0), StV.mul(a.n, s)); mesh.vert(q(a, x1), StV.mul(a.n, s)); mesh.vert(q(b, x1), StV.mul(b.n, s)); mesh.vert(q(b, x0), StV.mul(b.n, s)); mesh.i.push(i, i+1, i+2, i, i+2, i+3); } };
+    strip(m, -o, L+o, 0, false); strip(m, -o, L+o, -t, true);
+    for (const [x, sx] of [[-o, -1], [L+o, 1]]) for (let k=0; k<N; k++){ const a=P[k], b=P[k+1];   // торцы листа
+      m.quad([x, a.y, a.z], [x, b.y, b.z], [x, b.y-b.n[1]*t, b.z-b.n[2]*t], [x, a.y-a.n[1]*t, a.z-a.n[2]*t], [sx, 0, 0]); }
+    for (let x=0.12; x<L+2*o-0.08; x+=0.333){ const x0=x-o, x1=x0+0.035; strip(rib, x0, x1, 0.026, false);
+      for (const xs of [x0, x1]) for (let k=0; k<N; k++){ const a=P[k], b=P[k+1]; rib.quad([xs, a.y, a.z], [xs, b.y, b.z], [xs, b.y+b.n[1]*0.026, b.z+b.n[2]*0.026], [xs, a.y+a.n[1]*0.026, a.z+a.n[2]*0.026], [xs===x0 ? -1 : 1, 0, 0]); } }
+    for (const [x, sx] of [[0, -1], [L, 1]]) for (let k=0; k<N; k++){ const a=P[k], b=P[k+1]; if (a.y<0 || b.y>W) continue;   // торец под дугой
+      gb.tri([x, W/2, zt], [x, a.y, Math.max(zt, a.z-t)], [x, b.y, Math.max(zt, b.z-t)], [sx, 0, 0]); }
+  }
+  /** строповочные петли в верхних углах рамы (блок-контейнер, цельносварной): пластина с отверстием над крышей у угла */
+  lugs(zt){
+    const L=this.Le, W=this.We, m=this.M(StMat.paint(RalColor.shade(this.frame, 0.9), 0.45)), dk=this.M(StMat.paint('#15181b', 0.8));
+    for (const x of [0.09, L-0.09]) for (const y of [0.05, W-0.05]){ const z0=this.rise>0 ? this.roofZ(y)+0.03 : zt+0.03;
+      m.box(x-0.08, y-0.012, z0-0.02, x+0.08, y+0.012, z0+0.12, 0.008); dk.tube([x, y-0.015, z0+0.07], [x, y+0.015, z0+0.07], 0.03, 16); }
   }
   /** стена со стороны зрителя, когда она не срезана: панели между проёмами сервисных дверей, двери открыты */
   frontWall(w, z0, z1, prof){ this.wallWithDoors(w, z0, z1, prof, this.openF, 0, -1); }
@@ -355,11 +376,11 @@ class StScene {
     mt.box(lock-0.13, Math.min(yf+out*0.035, yf+out*0.055), zh+0.03, lock+0.01, Math.max(yf+out*0.035, yf+out*0.055), zh+0.05, 0.008);
     mt.box(lock-0.008, Math.min(yf, yf+out*0.055), zh+0.025, lock+0.012, Math.max(yf, yf+out*0.055), zh+0.055, 0.004);
     mt.tube([lock, yf, zh-0.05], [lock, yf+out*0.015, zh-0.05], 0.011, 12);
-    // доводчик: корпус на полотне у петель, рычаг к верху коробки
-    if (hingeA!=null){ const x=hingeA+0.07, zc=z1-0.07, yc=yf+out*0.035, bd=this.M(StMat.metal('#9aa1a8', 0.35));
-      bd.box(x, Math.min(yf, yf+out*0.06), zc-0.035, x+0.27, Math.max(yf, yf+out*0.06), zc+0.035, 0.012);
-      const p0=[x+0.24, yc+out*0.03, zc+0.01], p1=[x+0.4, yc+out*0.05, zc+0.02], p2=[x+0.46, yw+out*0.03, c.h+0.03];
-      dk.tube(p0, p1, 0.009, 8); dk.sphere(p1, 0.012, 8); dk.tube(p1, p2, 0.008, 8); dk.box(p2[0]-0.04, Math.min(yw, p2[1]), c.h+0.005, p2[0]+0.04, Math.max(yw, p2[1]), c.h+0.05, 0.004); }
+    // доводчик — всегда внутри: корпус у петель со стороны помещения, рычаг к верху коробки
+    if (hingeA!=null){ const x=hingeA+0.07, zc=z1-0.07, si=-out, yin=yw+si*this.oy, bd=this.M(StMat.metal('#9aa1a8', 0.35));
+      bd.box(x, Math.min(yin, yin+si*0.06), zc-0.035, x+0.27, Math.max(yin, yin+si*0.06), zc+0.035, 0.012);
+      const p0=[x+0.24, yin+si*0.05, zc+0.01], p1=[x+0.4, yin+si*0.07, zc+0.02], p2=[x+0.46, yin+si*0.03, c.h+0.03];
+      dk.tube(p0, p1, 0.009, 8); dk.sphere(p1, 0.012, 8); dk.tube(p1, p2, 0.008, 8); }
     if (c.kind==='tank') for (let i=0; i<7; i++){ const z=z0+0.12+i*0.045; dk.box(c.a+0.12, Math.min(yf, yf+out*0.012), z, c.b-0.12, Math.max(yf, yf+out*0.012), z+0.022); }   // решётка внизу
   }
   /** обшивка изнутри стены с проёмами */
@@ -388,7 +409,8 @@ class StScene {
     const sm=this.M(StMat.paint(RalColor.shade(this.lining, 0.86), 0.6)), step=sea ? 1.2 : 1.15;
     for (let x=ox+step; x<ox+Li-0.2; x+=step){ sm.box(x-0.004, oy+Wi-0.004, b, x+0.004, oy+Wi, c); sm.box(x-0.004, oy, c-0.004, x+0.004, oy+Wi, c); }
     // пол
-    const fl=this.M({ c:'#9aa1a8', r:0.55, m:0.6, k:1 }); fl.quad([ox, oy, b], [ox+Li, oy, b], [ox+Li, oy+Wi, b], [ox, oy+Wi, b], [0, 0, 1]);
+    const F=StationGeo.FLOORS[this.g.floor] || StationGeo.FLOORS.steel, fl=this.M({ c:F.color, r:F.r, m:F.m, k:1 });   // рифлёный лист: сталь чёрная или алюминий
+    fl.quad([ox, oy, b], [ox+Li, oy, b], [ox+Li, oy+Wi, b], [ox, oy+Wi, b], [0, 0, 1]);
     // разрез на месте срезанной стены: крыша, пол и торцевые стены в сечении — утеплитель между обшивками
     if (this.cut){ const ins=this.M(StMat.paint(StScene.INS, 0.9)), y=0.002, n=[0, -1, 0], x0=0.15, x1=this.Le-0.15, zr=this.g.roof==='mono' && this.rise>0 ? this.top+this.rise : this.top-(this.g.sea ? 0.11 : 0.1);
       if (zr>c) ins.quad([x0, y, c], [x1, y, c], [x1, y, zr], [x0, y, zr], n);
@@ -646,8 +668,9 @@ class StScene {
     for (const f of [0.18, 0.82]){ const x=x0+(x1-x0)*f; dk.box(x-0.05, cy-r*0.75, zb, x+0.05, cy+r*0.75, cz-r*0.55, 0.004); dk.box(x-0.06, cy-r*0.8, zr-0.02, x+0.06, cy+r*0.8, zr); }
     body.tube([x0+r*0.25, cy, cz], [x1-r*0.25, cy, cz], r, 32, [false, false]);
     body.tube([x0, cy, cz], [x0+r*0.25, cy, cz], r*0.7, 32, [true, false], r); body.tube([x1-r*0.25, cy, cz], [x1, cy, cz], r, 32, [false, true], r*0.7);
-    const st=this.M(StMat.metal('#a7adb3', 0.4)), xo=x0+(x1-x0)*0.86, ro=Math.max(0.05, r*0.28);
-    st.tube([xo, cy, cz+r*0.8], [xo, cy, cz+r+mm(m.outlet)], ro, 20); dk.tube([xo, cy, cz+r+mm(m.outlet)], [xo, cy, cz+r+mm(m.outlet)+0.015], ro*1.6, 20);
+    const st=this.M(StMat.metal('#a7adb3', 0.4)), ro=Math.max(0.05, r*0.28), xe=x1+mm(m.outlet);   // выхлоп — горизонтально в сторону радиатора
+    st.tube([x1-0.02, cy, cz], [xe, cy, cz], ro, 20); st.tube([xe-0.012, cy, cz], [xe, cy, cz], ro*1.2, 20, [false, false]);
+    dk.tube([xe-0.002, cy, cz], [xe, cy, cz], ro*0.9, 20, [true, true]);
     if (m.exhaust){ const ex=this.ox+mm(m.exhaust.x), ey=this.oy+mm(m.exhaust.y), wrap=this.M(StMat.metal('#c4c9cd', 0.55));
       wrap.tube([ex, ey, this.base+mm(m.exhaust.z)], [ex, ey, cz-r*0.8], Math.max(0.06, ro*1.15), 22);
       const zp=this.rise>0 ? this.roofZ(ey)+0.04 : this.top; dk.tube([ex, ey, zp-0.02], [ex, ey, zp+0.06], Math.max(0.06, ro*1.15)*1.6, 22); }   // проходка через крышу

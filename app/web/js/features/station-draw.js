@@ -58,7 +58,7 @@ class StationDrawing {
     [this.Le, this.We, this.He]=g.ext; [this.Li, this.Wi, this.Hi]=plan.int;
     this.ox=(this.Le-this.Li)/2; this.oy=(this.We-this.Wi)/2; this.zf=StationGeo.zFloor(g.type, g.t);
     this.dz=plan.chassis ? (this.m.deck||1150) : 0;
-    this.rf=plan.roof||[]; this.up=this.rf.length ? Math.max(...this.rf.map(m=>m.gap+m.d+m.outlet)) : 0;
+    this.rf=plan.roof||[]; this.up=this.rf.length ? Math.max(...this.rf.map(m=>m.gap+m.d)) : 0;   // выхлоп глушителя — горизонтально
     this.rise=g.rise||0; this.fuel=plan.fuel||null; this.heaters=(plan.heat && plan.heat.heaters)||[];   // скатная крыша, отсек бака ДГУ, конвекторы
     this.pipes=plan.piping||[]; this.lines=this.pipes.length ? this.pipes[0].lines : [];
     const sd=plan.door==='service' ? plan.doors||[] : [], leaf=D=>D.length ? Math.max(...D.map(d=>d.w/d.leaves)) : 0;
@@ -101,7 +101,7 @@ class StationDrawing {
     if (mass) out.push(`Масса оборудования — ${n(mass)} кг`);
     out.push(`Внутри — ${n(this.Li)} × ${n(this.Wi)} × ${n(this.Hi)} мм`);
     if (this.g.t) out.push(`Утепление стен — ${n(this.g.t)} мм`);
-    if (this.rise) out.push(`Крыша — ${StationGeo.ROOFS[this.g.roof].name}, уклон ${StationGeo.ROOFS[this.g.roof].deg}°`);
+    if (this.rise){ const R=StationGeo.ROOFS[this.g.roof]; out.push(`Крыша — ${R.name}${R.deg ? `, уклон ${R.deg}°` : ''}`); }
     const col=String(this.m.colorText||'').replace(/^цвет\s+/i, ''); if (col) out.push(`Окраска — ${col}`);
     out.push(...StationNorms.tech(this.p));
     return out;
@@ -122,7 +122,7 @@ class StationDrawing {
       frame.length ? `${frame.length>1 ? 'Шкафы' : 'Шкаф'} ${list(frame)} — на раме за сервисной дверью.` : '',
       chain.length ? `Сжатый воздух — последовательно: поз. ${chain.join(' → ')} → к потребителю${hang.length ? `; фильтры ${list(hang)} — на трубопроводе` : ''}.` : hang.length ? `Фильтры ${list(hang)} — на трубопроводе.` : '',
       p.door==='side' ? `Входная дверь ${n(StationLayout.ENTRY[1]-StationLayout.ENTRY[0])} мм (не менее ${n(StationLayout.DOOR_MIN)} мм в свету) открывается наружу.` : '',
-      this.up ? `Глушитель ${list([...new Set(this.rf.map(m=>m.pos))])} — на крыше над ДГУ; при перевозке снимается.` : '',
+      this.up ? `Глушитель ${list([...new Set(this.rf.map(m=>m.pos))])} — на крыше над ДГУ, выхлоп — горизонтально в сторону; съёмный (при перевозке снимается).` : '',
       this.ext.length ? `${this.ext.length>1 ? 'Ресиверы' : 'Ресивер'} ${list([...new Set(this.ext.map(i=>i.pos))])} — снаружи на бетонной площадке (ФНП ОРПД, п. 65); подключение через стену — с запорной арматурой${p.air && !p.air.units.some(u=>u.kind==='dryer' && u.air && u.air.type==='ads') ? ', отвод конденсата — с обогревом' : ''}.` : '',
       this.fuel ? `Бак ${list(P(i=>i.tank))} — в отсеке за противопожарной перегородкой (EI 45), вход — своя дверь снаружи, горловина — снаружи в запираемом ящике, бак — в поддоне.` : '',
       ...StationDrawing.heat(p),
@@ -212,6 +212,8 @@ class StationDrawing {
     sh.section(X(ox), Z(zf), Li*k, zf*k); sh.section(X(ox), Z(He), Li*k, roof*k);
     sh.rect(xL, Z(He), Le*k, He*k, 'main');
     if (this.rise) sh.rect(xL, Z(He+this.rise), Le*k, this.rise*k, 'main');   // скатная крыша: конёк (верх ската) — за секущей плоскостью
+    if (!this.g.sea){ const lw=Math.max(0.8, 160*k), lh=Math.max(0.6, 120*k);   // строповочные петли в верхних углах
+      for (const x of [xL+30*k, xL+(Le-190)*k]){ sh.rect(x, Z(He)-lh, lw, lh, 'main', '#fff'); sh.circle(x+lw/2, Z(He)-lh*0.45, Math.max(0.2, lh*0.25), 'thin', '#fff'); } }
     const fu=this.fuel, tamb=this.g.x0-(fu ? fu.x1+fu.part : 0);
     if (tamb>0) sh.line(X(ox+this.g.x0), Z(zf), X(ox+this.g.x0), Z(zf+Hi), 'main');
     if (fu){ sh.section(X(ox+fu.x1), Z(zf+Hi), fu.part*k, Hi*k);   // противопожарная перегородка отсека бака
@@ -228,10 +230,10 @@ class StationDrawing {
     this.pipesMain(sh);
     for (const it of shown.filter(i=>i.y<=py)) one(it);
     // глушитель на крыше: опоры, корпус, вывод выхлопа с колпаком; выхлопная труба от ДГУ сквозь крышу
-    for (const m of this.rf){ const x1=X(ox+m.x), x2=X(ox+m.x+m.lx), zb=Z(He+m.gap), zt=Z(He+m.gap+m.d), xo=x1+(x2-x1)*0.86, w=Math.max(0.8, 120*k), zo=Z(He+m.gap+m.d+m.outlet);
+    for (const m of this.rf){ const x1=X(ox+m.x), x2=X(ox+m.x+m.lx), zb=Z(He+m.gap), zt=Z(He+m.gap+m.d), w=Math.max(0.8, 120*k), zm=(zb+zt)/2, xo=X(ox+m.x+m.lx+m.outlet);
       if (m.exhaust){ const xe=X(ox+m.exhaust.x), pw=Math.max(0.8, 130*k); sh.rect(xe-pw/2, zb, pw, Z(zf+m.exhaust.z)-zb, 'thin', '#fff'); }
       for (const f of [0.18, 0.82]) sh.line(x1+(x2-x1)*f, Z(He), x1+(x2-x1)*f, zb, 'main');
-      sh.rect(xo-w/2, zo, w, zt-zo, 'thin', '#fff'); sh.line(xo-w*1.8, zo-0.4, xo+w*1.8, zo-0.4, 'main');
+      sh.rect(x2, zm-w/2, xo-x2, w, 'thin', '#fff'); sh.line(xo, zm-w*0.9, xo, zm+w*0.9, 'main');   // вывод выхлопа — горизонтально в сторону
       EquipIcon.muffler(sh, x1, zt, x2, zb); }
     // выход трубопровода через дальний торец (ресиверы снаружи — к ним); линия сечения Б–Б — под потолком, взгляд вниз
     const xE=this.xE, ro=this.ext.length ? this.outMain(sh) : null;
@@ -304,6 +306,8 @@ class StationDrawing {
     sh.rect(XL(We), Z(He), We*k, He*k, 'main', '#fff');
     const rz=this.rise, roof=g.roof;
     if (rz && roof==='gable') sh.poly([[XL(We), Z(He)], [XL(We/2), Z(He+rz)], [XL(0), Z(He)]], 'main', '#fff');
+    else if (rz && roof==='arch'){ const rc=(We*We/4+rz*rz)/(2*rz), P=[]; for (let j=0; j<=16; j++){ const y=We*j/16; P.push([XL(y), Z(He+rz-rc+Math.sqrt(Math.max(0, rc*rc-(y-We/2)*(y-We/2))))]); }
+      sh.poly(P, 'main', '#fff'); }   // арочная — дуга
     else if (rz) sh.poly([[XL(We), Z(He)], [XL(0), Z(He+rz)], [XL(0), Z(He)]], 'main', '#fff');   // односкатная — выше у стены с дверью, скат к задней
     if (this.fuel && this.fuel.fill.wall==='left'){ const b=Math.max(1.2, 220*k), yc=XL(this.oy+this.fuel.fill.y), zc=Z(this.zf+this.fuel.fill.z);
       sh.rect(yc-b/2, zc-b/2, b, b, 'main', '#fff'); sh.line(yc-b/2, zc-b/2+0.5, yc+b/2, zc-b/2+0.5, 'thin'); }
@@ -314,8 +318,7 @@ class StationDrawing {
       for (const f of [0.18, 0.36, 0.64, 0.82]){ const x=XL(We)+We*k*f; sh.line(x, y1+0.6, x, y2-0.6, 'thin'); }
     } else if (!g.sea){ sh.line(XL(We)+cw*0.5, Z(He)+chh, XL(We)+cw*0.5, Z(0)-chh, 'thin'); sh.line(XL(0)-cw*0.5, Z(He)+chh, XL(0)-cw*0.5, Z(0)-chh, 'thin'); }
     for (const m of this.rf){ const xc=XL(this.oy+m.y+m.d/2), r=m.d/2*k;
-      sh.line(xc, Z(He), xc, Z(He+m.gap), 'main'); sh.circle(xc, Z(He+m.gap+m.d/2), r, 'main', '#fff');
-      const w=Math.max(0.8, 120*k), zo=Z(He+m.gap+m.d+m.outlet); sh.rect(xc-w/2, zo, w, m.outlet*k, 'thin', '#fff'); sh.line(xc-w*1.8, zo-0.4, xc+w*1.8, zo-0.4, 'main'); }
+      sh.line(xc, Z(He), xc, Z(He+m.gap), 'main'); sh.circle(xc, Z(He+m.gap+m.d/2), r, 'main', '#fff'); }
   }
 
   // ---- разрез Б–Б: план под потолком
@@ -460,7 +463,7 @@ class StationView3D {
   static svg(plan, meta={}){
     const S=StSvg, g=plan.geo, [Le, We, He]=g.ext, [Li, Wi, Hi]=plan.int, ox=(Le-Li)/2, oy=(We-Wi)/2;
     const dz=plan.chassis ? (meta.deck||1150) : 0, base=dz+StationGeo.zFloor(g.type, g.t), ceil=base+Hi, top=dz+He;
-    const rf=plan.roof||[], up=rf.length ? Math.max(...rf.map(m=>m.gap+m.d+m.outlet)) : 0;
+    const rf=plan.roof||[], up=rf.length ? Math.max(...rf.map(m=>m.gap+m.d)) : 0;
     const az=this.AZ*Math.PI/180, el=this.EL*Math.PI/180, cs=Math.cos(az), sn=Math.sin(az), ce=Math.cos(el), se=Math.sin(el);
     const P0=(x, y, z)=>[x*cs-y*sn, -((x*sn+y*cs)*se+z*ce)];
     // масштаб — по габаритам контейнера (с шасси и дышлом)
@@ -524,7 +527,7 @@ class StationView3D {
       if (m.exhaust){ const ex=ox+m.exhaust.x, ey=oy+m.exhaust.y; out.push(V.vcyl(ex, ey, 65, base+m.exhaust.z, cz, steel, false), V.line([ex, ey, cz], [ex, cy, cz], RalColor.shade(steel, 0.7), Math.max(3, 130*k))); }
       for (const f of [0.18, 0.82]) out.push(...V.box(x0+m.lx*f-40, cy-r*0.7, top, x0+m.lx*f+40, cy+r*0.7, cz-r*0.6, '#3a3f45'));
       out.push(V.hcyl(x0, x1, cy, cz, r, m.color));
-      const xo=x0+m.lx*0.86; out.push(V.vcyl(xo, cy, 60, cz+r*0.7, cz+r+m.outlet, steel, false), ...V.box(xo-110, cy-110, cz+r+m.outlet, xo+110, cy+110, cz+r+m.outlet+30, '#3a3f45')); }
+      out.push(V.hcyl(x1, x1+m.outlet, cy, cz, 60, steel)); }   // выхлоп — горизонтально в сторону
     const defs=`<filter id="blur6" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6"/></filter><filter id="blur18" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>${V.defs.join('')}`;
     return S.doc(this.W, H, S.rect(0, 0, this.W, H, '#ffffff')+out.join(''), defs);
   }

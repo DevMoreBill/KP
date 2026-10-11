@@ -397,12 +397,12 @@ Check.run('ДГУ: глушитель на крыше, бак рядом, топ
   assert.ok(t.tank && t.x+t.lx<=p.fuel.x1 && g.x>=p.geo.x0 && p.geo.x0>=p.fuel.x1+p.fuel.part, 'бак — в отсеке у торца, ДГУ — за перегородкой');
   assert.ok(m && Math.abs(m.x+m.lx/2-(g.x+g.lx/2))<=1 && Math.abs(m.y+m.d/2-(g.y+g.ly/2))<=1, 'глушитель — прямо над ДГУ, по центру');
   assert.ok(m.exhaust && m.exhaust.z===g.h && m.exhaust.x>m.x && m.exhaust.x<m.x+m.lx && Math.abs(m.exhaust.y-(m.y+m.d/2))<=1, 'выхлоп от двигателя — вертикально в глушитель');
-  assert.ok(p.issues.some(i=>i.text.includes('высота станции с глушителем '+StationLayout.n(3791)) && /снимают/.test(i.text)), 'высота с глушителем и пометка о перевозке');
+  assert.ok(p.issues.some(i=>i.text.includes('высота станции с глушителем '+StationLayout.n(3791-500)) && /снимают/.test(i.text) && /горизонтально в сторону/.test(i.text)), 'высота с глушителем (выхлоп — вбок) и пометка о перевозке');
   const pp=p.piping[0]; assert.strictEqual(pp.mat, 'steel'); assert.strictEqual(pp.lines.length, 1, 'топливо: от бака к ДГУ');
   assert.ok(pp.lines[0].x0<=t.x+t.lx && pp.lines[0].x1>=g.x, 'линия от бака до ДГУ');
   const svg=StationDrawing.svg(p, meta(p)); Check.sheet(svg, 'ДГУ+ чертёж');
   assert.ok(svg.includes('Глушитель на крыше') && svg.includes('Топливопровод'), 'глушитель и трубопровод — в перечне');
-  assert.ok(/Глушитель поз\. \d+ — на крыше над ДГУ; при перевозке снимается/.test(svg), 'глушитель — в технических требованиях');
+  assert.ok(/Глушитель поз\. \d+ — на крыше над ДГУ, выхлоп — горизонтально в сторону; съёмный/.test(svg), 'глушитель — в технических требованиях');
   assert.ok(!StationScheme.ok(p), 'ДГУ — схемы пневматической нет');
   const sz=Check.svg(StationView3D.svg(p, meta(p)), 'ДГУ+ 3D'); assert.ok(sz.h>0);
   const bad=solve(C('sea40'), [dgu, fuel, Object.assign({}, fl, { pipeMat:'pp' })]);
@@ -766,7 +766,7 @@ Check.run('3D-вид (WebGL): сцена, камера, свет', ()=>{
       assert.ok([...mesh.p, ...mesh.n].every(Number.isFinite), `${label}: NaN в геометрии`);
       for (let k=0; k<mesh.n.length; k+=3) assert.ok(Math.abs(Math.hypot(mesh.n[k], mesh.n[k+1], mesh.n[k+2])-1)<1e-3, `${label}: нормаль не единичная`); }
     assert.ok(b.hi[0]>=sc.Le && b.hi[2]>=sc.top-1e-9, `${label}: габарит сцены меньше контейнера`);
-    if (p.roof && p.roof.length){ const m=p.roof[0]; assert.ok(b.hi[2]>=sc.top+(m.gap+m.d+m.outlet)/1000-1e-6, `${label}: глушитель — в кадре`); }
+    if (p.roof && p.roof.length){ const m=p.roof[0]; assert.ok(b.hi[2]>=sc.top+(m.gap+m.d)/1000-1e-6 && b.hi[0]>=sc.ox+(m.x+m.lx+m.outlet)/1000, `${label}: глушитель с выхлопом вбок — в кадре`); }
     const cam=StCam.fit(b, 1.6), vp=StM4.mul(StM4.persp(cam.fov, 1.6, 0.1, cam.D*4), cam.view);
     for (const x of [b.lo[0], b.hi[0]]) for (const y of [b.lo[1], b.hi[1]]) for (const z of [b.lo[2], b.hi[2]]){ const q=StM4.apply(vp, [x, y, z]);
       assert.ok(Math.abs(q[0])<=0.93 && Math.abs(q[1])<=0.93, `${label}: угол сцены вне кадра ${q.map(v=>v.toFixed(2))}`); }
