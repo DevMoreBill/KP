@@ -233,6 +233,44 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .st-phi img{width:86px;height:60px;object-fit:contain;background:#fff;border-radius:4px}
 .st-phi small{font-size:11px;color:var(--muted);max-width:86px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .st-phi.on,.st-phi:hover{border-color:var(--navy)}
+/* компоновка станции: статус «помещается ли», замечания, 3D-вид и габаритный чертёж, как расставляется */
+.stl{display:grid;gap:12px}
+.stl-st{display:grid;gap:4px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}
+.stl-st b{font-size:14.5px}
+.stl-st span{font-size:13px;color:var(--muted);line-height:1.45}
+.stl-st .btn{justify-self:start;margin-top:4px;white-space:normal;text-align:left}
+.stl-st.ok{border-color:var(--ok)}
+.stl-st.ok b{color:var(--ok)}
+.stl-st.warn{background:var(--warn-bg);border-color:var(--warn-line)}
+.stl-st.warn b{color:var(--warn-ink)}
+.stl-st.err{background:color-mix(in srgb, var(--danger) 8%, var(--card));border-color:var(--danger)}
+.stl-st.err b{color:var(--danger)}
+.stl-iss{margin:0;padding:0;list-style:none;display:grid;gap:4px;font-size:13px;line-height:1.45}
+.stl-iss li{padding:4px 0 4px 22px;position:relative}
+.stl-iss li::before{position:absolute;left:2px;top:4px;font-weight:700}
+.stl-iss li.error{color:var(--danger)}
+.stl-iss li.error::before{content:'✕'}
+.stl-iss li.warn{color:var(--warn-ink)}
+.stl-iss li.warn::before{content:'⚠'}
+.stl-iss li.info{color:var(--muted)}
+.stl-iss li.info::before{content:'i';font-style:italic;font-family:Georgia,serif;left:6px}
+.stl-views{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:12px;align-items:start}
+.stl-views figure{margin:0;display:grid;gap:6px;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.stl-views figcaption{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;font-size:13px}
+.stl-views img{display:block;width:100%;height:auto;background:#fff;border-radius:6px}
+.stl-chk{display:inline-flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer}
+.stl-chk input{width:auto;margin:0}
+.stl-how{font-size:13px;line-height:1.5;color:var(--muted)}
+.stl-how summary{cursor:pointer;color:var(--navy);font-weight:600}
+.stl-how p,.stl-how ul{margin:6px 0}
+.stl-how ul{padding-left:18px}
+.stl-none{margin:0;padding:10px 12px;border-radius:10px;background:var(--soft);font-size:13.5px}
+.chip.stl-chip{background:var(--card);font-weight:600}
+.chip.stl-chip.on{border-color:var(--ok);color:var(--ok)}
+.chip.stl-chip.warn{border-color:var(--warn-line);background:var(--warn-bg);color:var(--warn-ink)}
+.chip.stl-chip.bad{border-color:var(--danger);color:var(--danger)}
+.kit-szn{margin:4px 0 0;font-size:12.5px}
+@media (max-width:900px){ .stl-views{grid-template-columns:1fr} }
 
 /* 3.23: окно автозаполнения — шапка, источники карточками, понятные шаги */
 .ed-sec.ai3{display:grid;gap:12px}

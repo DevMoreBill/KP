@@ -37,12 +37,15 @@ function conflictAsk(info, path){
 }
 
 // place — что это за изображение (imgPlace): категория, производитель, модель; папку выбирает сервер
-async function uploadImg(img, place){
-  if (!img || !String(img.src).startsWith('data:')) return img;
-  const ext = img.src.startsWith('data:image/png') ? 'png' : 'jpg';
-  const q = 'ext='+ext+Object.entries(place||{}).map(([k,v])=>'&'+k+'='+encodeURIComponent(v||'')).join('');
-  const r = await api('/api/img?'+q, {method:'POST', body: await dataURLtoBlobAsync(img.src)});
-  return { src:'/img/'+r.name, w:img.w, h:img.h };
+// картинка из data: — файлом на сервер (папка картинок); пометки картинки (3D-вид станции: gen, hash) сохраняются
+class ImgUpload {
+  static async put(img, place){
+    if (!img || !String(img.src).startsWith('data:')) return img;
+    const ext = img.src.startsWith('data:image/png') ? 'png' : 'jpg';
+    const q = 'ext='+ext+Object.entries(place||{}).map(([k,v])=>'&'+k+'='+encodeURIComponent(v||'')).join('');
+    const r = await api('/api/img?'+q, {method:'POST', body: await dataURLtoBlobAsync(img.src)});
+    return { ...img, src:'/img/'+r.name };
+  }
 }
 
 function remoteResult(r){

@@ -850,7 +850,8 @@ function kpSkeleton(KP) {
   }
 
   // фото и схемы: карточки по 2 в ряд (от трёх фото — по 3, ниже), схемы и чертежи — на всю ширину;
-  // ряд переносится на новую страницу целиком, неполный ряд — по центру
+  // ряд переносится на новую страницу целиком, неполный ряд — по центру; лист чертежа (g.sheet — габаритный
+  // чертёж станции) — во всю ширину без ограничения высоты в 10 см, чтобы подписи и размеры читались
   function galleryXml(list) {
     if (!list || !list.length) return '';
     const out = [subheading(T.galleryTitle)];
@@ -861,7 +862,7 @@ function kpSkeleton(KP) {
         (g.caption ? p(r(g.caption, 'galleryCaption'), { jc: 'center', line: 240 }) : '');
       return tc(body, w, { bdr: B(FRAME, FRAME, FRAME, FRAME), va: 'center', mar: [140, 120, 140, 120] });
     };
-    const box = [(CW - 260) * E, per === 3 ? 1450000 : list.length <= 2 ? 1450000 : 1850000], fullBox = [(FULL - 260) * E, 3600000];
+    const box = [(CW - 260) * E, per === 3 ? 1450000 : list.length <= 2 ? 1450000 : 1850000], fullBox = [(FULL - 260) * E, 3600000], sheetBox = [(FULL - 260) * E, 7200000];
     // раскладка: обычные фото рядами по порядку; широкое изображение, попавшее внутрь ряда, ставится после него
     const rows = [], deferred = [];
     let cur = [];
@@ -874,7 +875,7 @@ function kpSkeleton(KP) {
     while (deferred.length) rows.push([deferred.shift()]);
     rows.forEach((row, n) => {
       if (n) out.push(spacer(160));
-      if (row[0].wide) { out.push(tbl([[card(row[0], FULL, ...fullBox)]], [FULL])); return; }
+      if (row[0].wide) { out.push(tbl([[card(row[0], FULL, ...(row[0].sheet ? sheetBox : fullBox))]], [FULL])); return; }
       const used = row.length * CW + (row.length - 1) * GAP, side = Math.floor((FULL - used) / 2), cells = [], ws = [];
       if (side > 0) { cells.push(gapCell(side)); ws.push(side); }
       row.forEach((g, i) => { if (i) { cells.push(gapCell(GAP)); ws.push(GAP); } cells.push(card(g, CW, ...box)); ws.push(CW); });
