@@ -51,7 +51,7 @@ class StationReq {
   /** для расстановки, проверок и чертежа: вид станции, категория (своя или ориентировочная), шум, наружный воздух, °C */
   static plan(x){
     const r=this.of(x), t=v=>this.num(String(v??'').replace(/[−–]/g, '-').replace(/^\+/, ''));
-    return { kind:this.kind(x), fire:this.fire(x), fireAuto:!this.FIRE.includes(r.fire), noise:this.noise(x), tmin:t(r.tmin), tmax:t(r.tmax) };
+    return { kind:this.kind(x), fire:this.fire(x), fireAuto:!this.FIRE.includes(r.fire), noise:this.noise(x), tmin:t(r.tmin), tmax:t(r.tmax), res:Math.max(0, Math.round(this.num(r.reserve)||0)) };
   }
   /** документы при поставке — в КП (по умолчанию да) */
   static docs(x){ return this.of(x).docs!==false; }
@@ -199,19 +199,23 @@ class KitView {
   /** контейнер: тип, размер, утепление, климат, цвет, сборщик и закупка — одной строкой; системы — кнопками */
   static cont(x, i, p, j){
     const sel=(attr, list, cur, lab)=>`<label class="f"><span>${lab}</span><select data-kitct="${i}.${j}" data-fld="${attr}">${list.map(([v, l])=>`<option value="${esc(v)}"${v===cur ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
-    const ct=p._costText ?? (p.cost ? String(p.cost/100).replace('.', ',') : ''), P=`items.${i}.kit.parts.${j}`, sys=p.sys||CONT_SYS_DEF;
+    const ct=p._costText ?? (p.cost ? String(p.cost/100).replace('.', ',') : ''), P=`items.${i}.kit.parts.${j}`;
     const auto=StationUi.on(x) && StationGeo.FLEX[p.ctype], sz=String(p.size||'').trim();
     return `<div class="kit-cont">
       <div class="kc-g">${sel('ctype', CONTAINER_TYPES.map(c=>[c.id, c.name]), p.ctype, 'Контейнер')}
         <label class="f"><span>Размер Д × Ш × В, мм${auto && p.sizeAuto && sz ? ' <small class="muted">по оборудованию</small>' : ''}</span><input type="text" data-kitct="${i}.${j}" data-fld="size" value="${esc(p.size||'')}" placeholder="${esc(ctypeOf(p.ctype).size)}"></label>
         ${sel('ins', CONTAINER_INS.map(v=>[v, v]), p.ins, 'Утепление')}
         ${sel('climate', CLIMATES.map(c=>[c[0], c[0]+' — до '+c[2]+' °C']), p.climate, 'Климатическое исполнение')}
+        ${StationGeo.SEA[p.ctype] ? '' : sel('roof', Object.entries(StationGeo.ROOFS).map(([k, r])=>[k, r.deg ? `${r.name} (${r.deg}°)` : r.name]), StationGeo.roof(p), 'Крыша')}
         <label class="f"><span>Цвет</span><input type="text" data-kitct="${i}.${j}" data-fld="ral" value="${esc(p.ral||'')}" placeholder="RAL 7004 / RAL 5005"></label>
         <label class="f"><span>Сборщик (поставщик контейнера)${tip('Кто изготавливает контейнер и собирает станцию. Элементы «Сборщика контейнера» без своего поставщика в «Экономике сделки» попадут к нему; наше оборудование едет к нему на сборку.')}</span><input type="text" list="kitSupL" data-p="${P}.sup" value="${esc(p.sup||'')}" placeholder="производитель контейнеров"></label>
         <label class="f"><span>Закупка контейнера</span><span class="kit-cost"><input type="text" inputmode="decimal" data-kitcost="${i}.${j}" value="${esc(ct)}" placeholder="цена из счёта"><select data-kitcur="${i}.${j}" aria-label="Валюта закупки">${DEAL_CURS.map(c=>`<option${(p.costCur||'RUB')===c ? ' selected' : ''}>${c}</option>`).join('')}</select></span></label></div>
       ${auto && !p.sizeAuto && sz ? `<p class="muted kit-szn">Размер задан вручную — <button type="button" class="lnk" data-a="stlAuto" data-i="${i}">подобрать по оборудованию</button></p>` : ''}
-      <div class="kit-sys"><span class="muted">Системы:</span>${CONT_SYSTEMS.map(([id, k])=>`<button type="button" class="chip sm${sys[id] ? ' on' : ''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!sys[id]}">${esc(k)}</button>`).join('')}</div></div>`;
+      <div class="kit-sys"><span class="muted">Системы:</span>${CONT_SYSTEMS.map(([id, k, v])=>{ const on=KitView.sysOn(x, p, id); return `<button type="button" class="chip sm${on ? ' on' : ''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!on}" title="${esc(v)}">${esc(k)}</button>`; }).join('')}</div></div>`;
   }
+
+  /** система контейнера включена: своё значение, иначе по умолчанию (рекуперация — у компрессорных и ДГУ, насосы почти не греют) */
+  static sysOn(x, p, id){ const v=(p.sys||{})[id]; return v ?? (id==='rec' ? StationReq.kind(x)!=='pump' : !!CONT_SYS_DEF[id]); }
 
   /** группа элементов: таблица строк и кнопки добавления */
   static group(x, i, by, idx, st, t){

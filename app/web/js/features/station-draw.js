@@ -59,15 +59,16 @@ class StationDrawing {
     this.ox=(this.Le-this.Li)/2; this.oy=(this.We-this.Wi)/2; this.zf=StationGeo.zFloor(g.type, g.t);
     this.dz=plan.chassis ? (this.m.deck||1150) : 0;
     this.rf=plan.roof||[]; this.up=this.rf.length ? Math.max(...this.rf.map(m=>m.gap+m.d+m.outlet)) : 0;
+    this.rise=g.rise||0; this.fuel=plan.fuel||null; this.heaters=(plan.heat && plan.heat.heaters)||[];   // скатная крыша, отсек бака ДГУ, конвекторы
     this.pipes=plan.piping||[]; this.lines=this.pipes.length ? this.pipes[0].lines : [];
     const sd=plan.door==='service' ? plan.doors||[] : [], leaf=D=>D.length ? Math.max(...D.map(d=>d.w/d.leaves)) : 0;
     this.sdF=sd.filter(d=>d.wall!=='back'); this.sdB=sd.filter(d=>d.wall==='back');
-    this.swing=plan.door==='side' ? StationLayout.ENTRY[1]-StationLayout.ENTRY[0] : leaf(this.sdF); this.swingB=leaf(this.sdB);
+    this.swing=Math.max(plan.door==='side' ? StationLayout.ENTRY[1]-StationLayout.ENTRY[0] : leaf(this.sdF), this.fuel ? this.fuel.door.x1-this.fuel.door.x0 : 0); this.swingB=leaf(this.sdB);
     this.ai=sd.length ? null : StationDrawing.aisle(plan, this.Wi);
     // ресиверы снаружи — на площадке за дальним торцом: сколько добавляют к длине (с площадкой) и над крышей
     this.ext=plan.outside||[];
     this.outL=this.ext.length ? Math.max(...this.ext.map(i=>this.ox+i.x+i.lx+200))-this.Le : 0;
-    this.hTop=Math.max(this.up, ...this.ext.map(i=>this.zf+i.z+i.h-this.He));
+    this.hTop=Math.max(this.up, this.rise, ...this.ext.map(i=>this.zf+i.z+i.h-this.He));
     this.hidden=plan.items.filter(i=>i.mount==='wall' && i.wall==='front');           // на стене прохода — на разрезе А–А не видны
     this.outs=this.lines.filter(l=>l.label && l.x1>=this.Li-1).map(l=>({ y:l.y, z:l.z })).sort((a, b)=>a.z-b.z);
     this.fit=g.sea && StationDrawing.FIT[this.Le] ? [StationDrawing.FIT[this.Le], StationDrawing.FIT_W] : null;
@@ -100,6 +101,7 @@ class StationDrawing {
     if (mass) out.push(`Масса оборудования — ${n(mass)} кг`);
     out.push(`Внутри — ${n(this.Li)} × ${n(this.Wi)} × ${n(this.Hi)} мм`);
     if (this.g.t) out.push(`Утепление стен — ${n(this.g.t)} мм`);
+    if (this.rise) out.push(`Крыша — ${StationGeo.ROOFS[this.g.roof].name}, уклон ${StationGeo.ROOFS[this.g.roof].deg}°`);
     const col=String(this.m.colorText||'').replace(/^цвет\s+/i, ''); if (col) out.push(`Окраска — ${col}`);
     out.push(...StationNorms.tech(this.p));
     return out;
@@ -122,12 +124,19 @@ class StationDrawing {
       p.door==='side' ? `Входная дверь ${n(StationLayout.ENTRY[1]-StationLayout.ENTRY[0])} мм (не менее ${n(StationLayout.DOOR_MIN)} мм в свету) открывается наружу.` : '',
       this.up ? `Глушитель ${list([...new Set(this.rf.map(m=>m.pos))])} — на крыше над ДГУ; при перевозке снимается.` : '',
       this.ext.length ? `${this.ext.length>1 ? 'Ресиверы' : 'Ресивер'} ${list([...new Set(this.ext.map(i=>i.pos))])} — снаружи на бетонной площадке (ФНП ОРПД, п. 65); подключение через стену — с запорной арматурой${p.air && !p.air.units.some(u=>u.kind==='dryer' && u.air && u.air.type==='ads') ? ', отвод конденсата — с обогревом' : ''}.` : '',
+      this.fuel ? `Бак ${list(P(i=>i.tank))} — в отсеке за противопожарной перегородкой (EI 45), вход — своя дверь снаружи, горловина — снаружи в запираемом ящике, бак — в поддоне.` : '',
+      ...StationDrawing.heat(p),
       ...StationDrawing.vessels(p),
       ...StationNorms.tt(p),
       sys.length ? `Не показаны: ${StationDrawing.cut(sys.join(', '), 150)}.` : '',
     ].filter(Boolean);
   }
   static cut(s, n){ s=String(s||''); return s.length>n ? s.slice(0, n-1).replace(/\s+\S*$/, '')+'…' : s; }
+  /** пункт ТТ об отоплении: конвекторы по расчёту (на плане — у стен) */
+  static heat(p){
+    const h=p.heat; if (!h || !h.on || !h.n) return [];
+    return [`Электроконвекторы ${h.n} × ${StationHeat.kw(h.kw)} кВт с терморегуляторами — у стен (на плане): не ниже +${h.tin} °C при ${StationNorms.deg(h.tout)} снаружи.`];
+  }
   /** пункт ТТ об учёте сосудов под давлением в Ростехнадзоре (ФНП ОРПД): p·V больше 1,0 МПа·м³ — подлежит */
   static vessels(p){
     const V=(p.vessels||[]).filter(v=>v.pv!=null), reg=V.filter(v=>v.reg), free=V.filter(v=>!v.reg), pos=L=>'поз. '+[...new Set(L.map(v=>v.pos))].join(', ');
@@ -140,7 +149,7 @@ class StationDrawing {
   /** размеры блоков видов при масштабе k (мм листа на мм) — для выбора масштаба; end — с видом слева, col — номера
    *  позиций колонкой справа от плана (иначе строкой под ним) */
   box(k, end, col){
-    const nOut=this.outs.length, nDim=nOut+1+(this.up ? 1 : 0)+(this.dz ? 1 : 0), dimsR=16+7*(nDim-1)+2, endW=end ? 10+this.We*k : 0;
+    const nOut=this.outs.length, nDim=nOut+1+(this.up ? 1 : 0)+(this.rise ? 1 : 0)+(this.dz ? 1 : 0), dimsR=16+7*(nDim-1)+2, endW=end ? 10+this.We*k : 0;
     const nY=this.ext.length ? 0 : new Set(this.outs.map(o=>o.y)).size, left=19+(this.fit ? 7 : 0), outR=(nY ? 16+7*(nY-1)+2 : 8)+(col ? 17 : 0);
     const top=this.chainTop(k), mainH=this.head()+(this.He+this.hTop+this.dz)*k;
     const planH=6+top+this.swingB*k+this.We*k+this.swing*k+(col ? 0 : 11)+10+(this.fit ? 7 : 0);
@@ -202,7 +211,14 @@ class StationDrawing {
     sh.section(xL, Z(He), ox*k, He*k); sh.section(X(Le-ox), Z(He), ox*k, He*k);
     sh.section(X(ox), Z(zf), Li*k, zf*k); sh.section(X(ox), Z(He), Li*k, roof*k);
     sh.rect(xL, Z(He), Le*k, He*k, 'main');
-    if (this.g.x0) sh.line(X(ox+this.g.x0), Z(zf), X(ox+this.g.x0), Z(zf+Hi), 'main');
+    if (this.rise) sh.rect(xL, Z(He+this.rise), Le*k, this.rise*k, 'main');   // скатная крыша: конёк (верх ската) — за секущей плоскостью
+    const fu=this.fuel, tamb=this.g.x0-(fu ? fu.x1+fu.part : 0);
+    if (tamb>0) sh.line(X(ox+this.g.x0), Z(zf), X(ox+this.g.x0), Z(zf+Hi), 'main');
+    if (fu){ sh.section(X(ox+fu.x1), Z(zf+Hi), fu.part*k, Hi*k);   // противопожарная перегородка отсека бака
+      if (fu.fill.wall==='left'){ const t=this.p.items.find(i=>i.tank), zb=Z(zf+fu.fill.z), b=Math.max(1.2, 220*k);
+        sh.rect(xL-b, zb-b/2, b, b, 'main', '#fff');   // ящик заливной горловины снаружи
+        if (t) sh.path(`M${EskdSheet.f(xL)},${EskdSheet.f(zb)} H${EskdSheet.f(X(ox+t.x+Math.min(150, t.lx/3)))} V${EskdSheet.f(Z(zf+t.h))}`, 'main'); } }
+    for (const h of this.heaters.filter(q=>q.wall==='back')) sh.rect(X(ox+h.x), Z(zf+h.z+h.h), h.lx*k, h.h*k, 'thin', '#fff');
     const fz=i=>Z(zf+i.z), py=this.lines.length ? Math.max(...this.lines.map(l=>l.y)) : -Infinity;
     const shown=this.p.items.filter(i=>!this.hidden.includes(i)).sort((a, c)=>c.y-a.y);
     const one=it=>{ const x1=X(ox+it.x), x2=X(ox+it.x+it.lx);
@@ -228,6 +244,7 @@ class StationDrawing {
     if (ro){ sh.dimV(ro.y, Z(-this.dz), xd, n(ro.z+this.dz), ro.x, xE); xd+=7; }
     else for (const o of this.outs){ sh.dimV(Z(zf+o.z), Z(0), xd, n(zf+o.z), xR+7.6, xR); xd+=7; }
     sh.dimV(Z(He), Z(0), xd, n(He), xR, xR); xd+=7;
+    if (this.rise){ sh.dimV(Z(He+this.rise), Z(0), xd, n(He+this.rise), xR, xR); xd+=7; }
     if (this.up){ const m=this.rf[0]; sh.dimV(Z(He+this.up), Z(0), xd, n(He+this.up), X(ox+m.x+m.lx*0.86), xR); xd+=7; }
     if (this.dz) sh.dimV(Z(He+this.up), this.Yg, xd, n(He+this.up+this.dz), null, xR);
   }
@@ -285,6 +302,11 @@ class StationDrawing {
     if (this.dz){ const r=420*k, w=300*k; sh.rect(XL(We)+40*k, Z(0), We*k-80*k, 200*k, 'main', '#fff');
       for (const x of [XL(We)+60*k, XL(0)-60*k-w]) sh.rect(x, this.Yg-2*r, w, 2*r, 'main', '#fff'); sh.line(XL(We)-3, this.Yg, XL(0)+3, this.Yg, 'thin'); }
     sh.rect(XL(We), Z(He), We*k, He*k, 'main', '#fff');
+    const rz=this.rise, roof=g.roof;
+    if (rz && roof==='gable') sh.poly([[XL(We), Z(He)], [XL(We/2), Z(He+rz)], [XL(0), Z(He)]], 'main', '#fff');
+    else if (rz) sh.poly([[XL(We), Z(He)], [XL(0), Z(He+rz)], [XL(0), Z(He)]], 'main', '#fff');   // односкатная — выше у стены с дверью, скат к задней
+    if (this.fuel && this.fuel.fill.wall==='left'){ const b=Math.max(1.2, 220*k), yc=XL(this.oy+this.fuel.fill.y), zc=Z(this.zf+this.fuel.fill.z);
+      sh.rect(yc-b/2, zc-b/2, b, b, 'main', '#fff'); sh.line(yc-b/2, zc-b/2+0.5, yc+b/2, zc-b/2+0.5, 'thin'); }
     const cw=Math.max(0.6, 160*k), chh=Math.max(0.6, 120*k);   // угловые фитинги / стойки
     for (const [x, y] of [[XL(We), Z(He)], [XL(0)-cw, Z(He)], [XL(We), Z(0)-chh], [XL(0)-cw, Z(0)-chh]]) sh.rect(x, y, cw, chh, 'thin');
     if (this.p.door==='end'){   // двери (ворота) в торце: две створки, запорные штанги
@@ -304,7 +326,13 @@ class StationDrawing {
     sh.section(xL, YP(oy), Le*k, oy*k); sh.section(xL, YP(We), Le*k, oy*k);
     sh.section(xL, YP(We-oy), ox*k, Wi*k); sh.section(X(Le-ox), YP(We-oy), ox*k, Wi*k);
     sh.rect(xL, YP(We), Le*k, We*k, 'main'); sh.rect(X(ox), YP(oy+Wi), Li*k, Wi*k, 'thin');
-    if (g.x0) sh.rect(X(ox+g.x0)-Math.max(0.5, 30*k), YP(oy+Wi), Math.max(1, 60*k), (Wi-1000)*k, 'thin', '#000');
+    const fu=this.fuel, tamb=(g.x0||0)-(fu ? fu.x1+fu.part : 0);
+    if (tamb>0) sh.rect(X(ox+g.x0)-Math.max(0.5, 30*k), YP(oy+Wi), Math.max(1, 60*k), (Wi-1000)*k, 'thin', '#000');
+    if (fu){ sh.section(X(ox+fu.x1), YP(oy+Wi), fu.part*k, Wi*k);   // перегородка отсека бака — сплошная
+      const b=Math.max(1.2, 220*k);
+      if (fu.fill.wall==='left') sh.rect(xL-b*0.7, YP(oy+fu.fill.y)-b/2, b*0.7, b, 'main', '#fff');
+      else sh.rect(X(ox+fu.fill.x)-b/2, YP(0), b, b*0.7, 'main', '#fff'); }
+    for (const h of this.heaters) sh.rect(X(ox+h.x), YP(oy+h.y+h.ly), h.lx*k, h.ly*k, 'main', '#fff');
     this.doorsPlan(sh, YP);
     const ai=this.ai;
     // оборудование — по высоте: выше стоящее (шкафы, фильтры на трубе) — поверх
@@ -373,6 +401,7 @@ class StationDrawing {
       sh.line(xh, yw, xh, ye, 'phantom');
       sh.path(`M${f(xh)},${f(ye)} A${f(r)},${f(r)} 0 0 ${(xf>xh)===(dir>0) ? 0 : 1} ${f(xf)},${f(yw)}`, 'phantom'); };
     const gap=(x0, x1, back)=>{ const y0=back ? YP(We) : YP(oy), h=oy*k; sh.rect(X(x0), y0, (x1-x0)*k, h, 'thin', '#fff'); sh.line(X(x0), y0, X(x0), y0+h, 'main'); sh.line(X(x1), y0, X(x1), y0+h, 'main'); };
+    if (p.fuel){ const d0=ox+p.fuel.door.x0, d1=ox+p.fuel.door.x1; gap(d0, d1, false); leafSwing(X(d0), X(d1), YP(0), 1); }   // вход в отсек бака
     if (p.door==='side'){ const d0=ox+(g.x0 ? g.x0+300 : StationLayout.ENTRY[0]), d1=d0+(StationLayout.ENTRY[1]-StationLayout.ENTRY[0]);
       gap(d0, d1, false); leafSwing(X(d0), X(d1), YP(0), 1); }
     else if (p.door==='service') for (const d of p.doors||[]){ const back=d.wall==='back', lw=d.w/d.leaves;

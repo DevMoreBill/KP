@@ -41,9 +41,10 @@ const CONT_SYSTEMS = [
   ['ops', 'Охранно-пожарная сигнализация', 'Прибор приёмно-контрольный, дымовые датчики, датчик открытия двери, сирена, вывод сигналов «сухими контактами»'],
   ['fire', 'Автоматическое пожаротушение', 'Аэрозольное: модули пожаротушения, табло «Аэрозоль уходи» / «Аэрозоль не входи»'],
   ['noise', 'Шумоизоляция', 'Внутренняя обшивка шумопоглощающим материалом, камеры шумоглушения на приточных и вытяжных жалюзи'],
+  ['rec', 'Рекуперация тепла', 'Зимой тёплый воздух от охлаждения оборудования возвращается в помещение заслонкой рециркуляции с термостатом — при работе отопление не требуется'],
   ['gate', 'Ворота', 'Утеплённые распашные ворота для монтажа и обслуживания оборудования'],
 ];
-const CONT_SYS_DEF = { power:true, light:true, heat:true, vent:true };
+const CONT_SYS_DEF = { power:true, light:true, heat:true, vent:true, rec:true };
 const CLIMATES = [['У1','умеренный климат, до −45 °C', -45], ['УХЛ1','умеренно-холодный климат, до −60 °C', -60], ['ХЛ1','холодный климат, до −60 °C', -60]];
 const ctypeOf = id => CONTAINER_TYPES.find(c=>c.id===id) || CONTAINER_TYPES[0];
 
@@ -60,10 +61,11 @@ function contApply(p, o={}){
   const prevAuto=p._autoDesc; p.name=(!p.name || CONTAINER_TYPES.some(z=>z.name===p.name)) ? c.name : p.name;
   if (!p.desc || p.desc===prevAuto) p.desc=c.desc; p._autoDesc=c.desc;
   const cl=CLIMATES.find(z=>z[0]===p.climate);
+  const rf=StationGeo.roof(p), roof=rf!=='flat' ? StationGeo.ROOFS[rf] : null;
   const set={ 'Тип': c.name, 'Габариты (Д × Ш × В)': String(p.size||'').trim() ? String(p.size).trim()+(/мм|м\b/.test(p.size)?'':' мм') : c.size,
-    'Утепление': p.ins?'минеральная вата '+p.ins:'', 'Климатическое исполнение': cl?`${cl[0]} (${cl[1]})`:'', 'Цвет': String(p.ral||'').trim() };
+    'Утепление': p.ins?'минеральная вата '+p.ins:'', 'Климатическое исполнение': cl?`${cl[0]} (${cl[1]})`:'', 'Крыша': roof ? `${roof.name}, уклон ${roof.deg}°` : '', 'Цвет': String(p.ral||'').trim() };
   p.rows=p.rows||[]; if (!p.sys) p.sys={...CONT_SYS_DEF};
-  for (const [k,v] of Object.entries(set)){ const r=p.rows.find(z=>z.k===k); if (r){ if (v) r.v=v; else if (k==='Цвет') p.rows.splice(p.rows.indexOf(r),1); } else if (v) p.rows.push({k, v}); }
+  for (const [k,v] of Object.entries(set)){ const r=p.rows.find(z=>z.k===k); if (r){ if (v) r.v=v; else if (k==='Цвет' || k==='Крыша') p.rows.splice(p.rows.indexOf(r),1); } else if (v) p.rows.push({k, v}); }
   for (const [id, k, v] of CONT_SYSTEMS){ const ix=p.rows.findIndex(z=>z.k===k);
     if (p.sys[id] && ix<0) p.rows.push({k, v}); else if (!p.sys[id] && ix>=0) p.rows.splice(ix,1); }
   return p;
@@ -223,6 +225,7 @@ class StationDefaults {
       P.push(this.part(it, 'Глушитель на крыше'), this.part(it, 'Дополнительный топливный бак'));
       const fl=this.part(it, 'Топливопровод и запорная арматура'); fl.pipeMat='steel'; KitPipe.rows(fl); P.push(fl);   // топливо — по металлу
     } else if (typeId==='st_pump' || typeId==='st_comp') P.push(this.part(it, 'Трубопроводная обвязка и запорная арматура'));
+    const c=P.find(p=>p.role==='container'); if (c && typeId==='st_pump'){ c.sys={ ...(c.sys||CONT_SYS_DEF), rec:false }; contApply(c); }   // насосы почти не греют — рекуперация не нужна
   }
   static part(it, name){ const p=kitNewPart({ name }); this.fill(p, it); return p; }
   /** новый элемент с узнаваемым названием — описание и строки характеристик (своё не перезаписывается) */
@@ -373,7 +376,7 @@ function kitAction(a, i, b){
   if (a==='kitCat'){ kitPickCat(i, null, null, '', null, b.dataset.by); return 'async'; }
   if (a==='kitPreset'){ const c=b.dataset.cat; kitPickCat(i, c&&TYPES.some(t=>t.id===c)?[c]:null, null, b.dataset.n, null, b.dataset.by); return 'async'; }
   if (a==='kitMain'){ kitPickCat(i, (stationOf(it)||{}).main, 'main'); return 'async'; }
-  if (a==='kitSys'){ const p=P[j]; p.sys={...(p.sys||CONT_SYS_DEF)}; p.sys[b.dataset.sys]=!p.sys[b.dataset.sys]; contApply(p); return true; }
+  if (a==='kitSys'){ const p=P[j], id=b.dataset.sys; p.sys={...(p.sys||CONT_SYS_DEF)}; p.sys[id]=!KitView.sysOn(it, p, id); contApply(p); return true; }
   if (a==='kitCont'){ P.push(kitNewContainer(b.dataset.ct)); it.page=true; stationFill(it); stationAutoName(it); return true; }
   if (a==='kitDel'){ if (!confirm(`Убрать из состава «${P[j].name||'элемент'}»?`)) return 'async'; P.splice(j,1); kitSync(it); return true; }
   if (a==='kitMv'){ const k=j+(+b.dataset.d); if (P[k]){ [P[j],P[k]]=[P[k],P[j]]; } return true; }

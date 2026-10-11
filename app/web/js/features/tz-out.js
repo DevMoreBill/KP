@@ -56,18 +56,21 @@ class TzOut {
 
     // ---- 2. контейнер
     d.h1('2. Контейнер и его системы');
-    const ct=ctypeOf(c.ctype), cl=CLIMATES.find(z=>z[0]===c.climate), sys=c.sys||{}, n=this.N;
+    const ct=ctypeOf(c.ctype), cl=CLIMATES.find(z=>z[0]===c.climate), n=this.N;
     const dims=ok ? `наружные ${n(plan.geo.ext[0])} × ${n(plan.geo.ext[1])} × ${n(plan.geo.ext[2])} мм, внутри ${n(plan.int[0])} × ${n(plan.int[1])} × ${n(plan.int[2])} мм` : (String(c.size||'').trim() || ct.size);
+    const rf=StationGeo.roof(c), ro=StationGeo.ROOFS[rf], rise=ok ? plan.geo.rise||0 : 0;
     d.table([42, 128], ['Параметр', 'Требование'], [
-      ['Тип', ct.name], ['Размеры (Д × Ш × В)', dims],
+      ['Тип', ct.name], ['Исполнение', this.BUILD[StationGeo.SEA[c.ctype] ? 'sea' : c.ctype] || this.BUILD.block], ['Размеры (Д × Ш × В)', dims],
+      ['Крыша', rf==='flat' ? (StationGeo.SEA[c.ctype] ? 'штатная' : 'плоская, с уклоном к водостоку и отливами') : `${ro.name}, уклон ${ro.deg}°${rf==='mono' ? ', скат — к задней стене (не на вход)' : ''}${rise ? `, высота ${rf==='gable' ? 'по коньку' : 'у стены с дверью'} ${n(plan.geo.ext[2]+rise)} мм` : ''}, с водостоком`],
+      ['Пол', 'рифлёный стальной лист по утеплённому основанию; под оборудованием — закладные или рама'],
       ['Утепление', c.ins ? 'минеральная вата '+c.ins+', пароизоляция, внутренняя обшивка' : 'по типу контейнера'],
       ['Климатическое исполнение', cl ? `${cl[0]} по ГОСТ 15150-69 (${cl[1]})` : 'по ГОСТ 15150-69 — по месту установки'],
       ['Наружный воздух', [req.tmin!=null ? 'от '+StationNorms.deg(req.tmin) : '', req.tmax!=null ? 'до '+StationNorms.deg(req.tmax) : ''].filter(Boolean).join(' ') || 'по месту установки'],
       ['Окраска', String(c.ral||'').trim() || 'по согласованию'],
-      ['Двери', this.doors(plan)],
-      ...CONT_SYSTEMS.filter(([id])=>sys[id]).map(([id, k, v])=>[k, this.sysText(id, v, plan, req, c)]),
+      ['Двери', this.doors(plan)+(plan.fuel ? `; отсек топливного бака — отдельная дверь ${n(plan.fuel.door.x1-plan.fuel.door.x0)} мм наружу, с замком, доводчиком и светильником над ней` : '')],
+      ...CONT_SYSTEMS.filter(([id])=>KitView.sysOn(x, c, id)).map(([id, k, v])=>[k, this.sysText(id, v, plan, req, c)]),
     ]);
-    const off=CONT_SYSTEMS.filter(([id])=>!sys[id]).map(([, k])=>k.toLowerCase());
+    const off=CONT_SYSTEMS.filter(([id])=>!KitView.sysOn(x, c, id)).map(([, k])=>k.toLowerCase());
     if (off.length) d.p(`Не требуются (не входят в поставку): ${off.join(', ')}.`, { after:6, run:{ color:'555555' } });
 
     // ---- 3. наше оборудование
@@ -98,6 +101,13 @@ class TzOut {
       d.table([12, 66, 20, 20, 20, 32], ['Поз.', 'Наименование', 'X, мм', 'Y, мм', 'Z, мм', 'Установка'], [
         ...I.map(i=>[String(i.pos), (i.short||i.name||'')+(i.unit ? ` (${i.unit+1})` : ''), n(i.x), n(i.y), n(i.z||0), mt(i)]),
         ...out.map(i=>[String(i.pos), (i.short||i.name||'')+(i.unit ? ` (${i.unit+1})` : ''), '—', '—', '—', `снаружи, ${n(StationLayout.OUT_GAP)} мм от дальнего торца, на площадке`])]);
+      const hs=(plan.heat && plan.heat.heaters)||[], wl={ front:'стена с дверью', back:'задняя стена', left:'левый торец', right:'правый торец' };
+      if (hs.length){ d.h2('Электроконвекторы'); d.table([12, 66, 20, 20, 20, 32], ['№', 'Конвектор', 'X, мм', 'Y, мм', 'Z, мм', 'Где'],
+        hs.map((h, k)=>[String(k+1), `${StationHeat.kw(h.kw)} кВт, ${n(Math.max(h.lx, h.ly))} × ${n(h.h)} мм`, n(h.x), n(h.y), n(h.z), wl[h.wall]||''])); }
+      if (plan.fuel){ const f=plan.fuel; d.h2('Отсек топливного бака');
+        d.items([`Отсек — у левого торца, длина внутри ${n(f.x1)} мм; противопожарная перегородка 1-го типа (EI 45) толщиной ${n(f.part)} мм на всю ширину и высоту, без проёмов; топливопровод — через перегородку в гильзе с негорючим уплотнением.`,
+          `Дверь отсека — в стене с дверью, X ${n(f.door.x0)}…${n(f.door.x1)} мм, открывается наружу; заливная горловина — снаружи ${f.fill.wall==='left' ? 'в левом торце' : 'в стене с дверью'} на высоте ${n(f.fill.z)} мм, в запираемом ящике, с трубой до бака.`,
+          'Бак — в поддоне на полный объём бака; дыхательный клапан с огнепреградителем — над крышей; указатель уровня; естественная вентиляция отсека — жалюзи внизу и вверху; огнетушитель и знаки безопасности у двери.'], '5.'); }
       const iss=plan.issues.filter(t=>t.level==='warn').map(t=>t.text);
       if (iss.length){ d.h2('Учесть при сборке'); d.items(iss, '5.'); } }
 
@@ -167,6 +177,9 @@ class TzOut {
     ], (ok ? 11 : 10)+'.');
   }
 
+  // исполнение контейнера: как видно на чертеже и 3D-виде
+  static BUILD = { block:'каркас из гнутого профиля, стены и кровля — сэндвич-панели с минеральной ватой', welded:'цельносварной стальной каркас и корпус, наружная обшивка — профилированный лист от 1,5 мм с антикоррозионной обработкой',
+    north:'сэндвич-панели с усиленным утеплением, тамбур у входа', sea:'морской контейнер ISO: гофрированные стальные стены, штатные двери в торце' };
   /** двери по расстановке */
   static doors(plan){
     if (plan.door==='service') return `сервисные — ${(plan.doors||[]).length} шт. напротив оборудования (обслуживание снаружи), утеплённые, с замками и фиксаторами`;
@@ -176,11 +189,14 @@ class TzOut {
   /** система контейнера: текст требования (отопление и вентиляция — с оценкой мощности и расхода) */
   static sysText(id, v, plan, req, c){
     const n=this.N;
-    if (id==='heat' && plan.geo && plan.geo.ext){
-      const [L, W, H]=plan.geo.ext.map(q=>q/1000), A=2*(L*W+L*H+W*H), ins=StationGeo.ins(c.ins)/1000, U=0.04/Math.max(0.04, ins)*1.3, t=req.tmin!=null ? req.tmin : -40;
-      const kW=Math.max(1, Math.ceil(U*A*(StationNorms.INSIDE-t)/100)/10);
-      return `${v}; внутри не ниже +${StationNorms.INSIDE} °C; мощность — не менее ${String(kW).replace('.', ',')} кВт (теплопотери при ${StationNorms.deg(t)} снаружи, без тепла оборудования)`;
+    const h=plan.heat, kw=StationHeat.kw;
+    if (id==='heat' && h && h.n){
+      const run=h.base ? (h.qRun<=0 ? `; при работе тепла оборудования (${kw(h.base.q/1000)} кВт${h.rec && h.base.kind!=='pump' ? ', с рециркуляцией' : ''}) достаточно — конвекторы отключаются терморегуляторами` : `; при работе — дополнительно подогрев забираемого воздуха (${kw(h.qRun/1000)} кВт)`) : '';
+      return `${v}: ${h.n} × ${kw(h.kw)} кВт = ${kw(h.total)} кВт, места — по чертежу (раздел 5); внутри не ниже +${h.tin} °C при ${StationNorms.deg(h.tout)} снаружи — теплопотери ${kw(h.qStop/1000)} кВт при остановленном оборудовании, запас 10 %${run}${h.short ? '; мест у стен не хватает — недостающую мощность добавить тепловентилятором или обогревом пола' : ''}`;
     }
+    if (id==='vent' && h && h.vent){ const g=h.vent;
+      return `${v}; летом (до ${StationNorms.deg(g.tmax)}) — не менее ${n(g.m3h)} м³/ч, перегрев не более 5 °C${g.cool ? `; воздух охлаждения компрессоров — ${n(g.cool)} м³/ч, выброс — воздуховодами наружу` : ''}${g.rad ? `; радиатора ДГУ — ${n(g.rad)} м³/ч, жалюзи с электроприводом напротив радиатора` : ''}; живое сечение жалюзи — не менее ${String(g.area).replace('.', ',')} м²`; }
+    if (id==='rec') return `${v}: заслонка рециркуляции с электроприводом и термостатом на выбросе тёплого воздуха${(plan.items||[]).some(i=>i.kind==='dgu') ? ' радиатора ДГУ' : ' компрессоров'}`;
     if (id==='vent'){
       const heat=(plan.items||[]).filter(i=>i.kind==='compressor' && i.kw>0).reduce((s, i)=>s+i.kw*0.9, 0);
       if (heat>0){ const m3=Math.ceil(heat*3600/(1.2*1.005*10)/100)*100;

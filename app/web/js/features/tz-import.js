@@ -166,6 +166,20 @@ class TzPick {
   static barPen(p, B){ if (!(B>0) || !(p>0)) return 0; const need=B+this.LOSS; return p<need-0.05 ? 0.5 : 0.05*(p-need); }
   /** безмасляный компрессор: по названию или характеристикам («безмасляный», oil-free, класс 0) */
   static oilFree(c){ const a=attrsOf(c); return /безмасл|oil[\s-]?free|класс\w*\s*0(?![.,\d])/i.test([c.name, a.model, a.series, a.lubrication, a.oil].filter(Boolean).join(' ')); }
+  /** ресиверы на объём V, л: один, иначе несколько одинаковых (2…4) — наименьшее число, затем наименьший объём; давление — не ниже B,
+   *  высота с арматурой (+300 мм) — не выше Hmax (0 — без ограничения: ресивер снаружи) */
+  static receivers(V, B, Hmax){
+    const L=catCache.filter(c=>attrsOf(c).cat==='receiver').map(c=>{ const a=attrsOf(c); return { c, v:this.num(a.volume)||0, p:this.num(a.pressure), h:StationEquip.dims({ name:c.name, attrs:a, rows:[] }, 'receiver').h }; })
+      .filter(o=>o.v>0 && (!(B>0) || !(o.p>0) || o.p>=B-0.05) && (!(Hmax>0) || o.h+300<=Hmax));
+    if (!(V>0)) return L.length ? { o:this.best(L, 'v'), n:1 } : null;
+    for (let n=1; n<=4; n++){ const o=this.best(L.filter(z=>z.v>=V/n*0.98), 'v'); if (o) return { o, n }; }
+    return null;
+  }
+  /** высота внутри контейнера станции, мм: блок-контейнер по оборудованию — до наибольшей высоты ряда */
+  static hmax(x){
+    const g=StationGeo.of(kitContainer(x)||{ ctype:'block' });
+    return g.int ? g.int[2] : StationGeo.inner(g.type, [10000, StationGeo.ROAD_W, StationGeo.BLOCK.maxH], g.t)[2];
+  }
   /** «осушитель …» — без повтора, если название уже начинается с этого слова */
   static lbl(word, name){ return String(name||'').toLowerCase().startsWith(word.slice(0, 5)) ? name : word+' '+name; }
 
@@ -201,6 +215,13 @@ class TzPick {
       for (const rec of (plan.air && plan.air.recs || []).filter(r=>r.cat==='filter' || r.cat==='receiver')){
         const lo=Object.fromEntries(Object.entries(rec.r||{}).map(([k, v])=>[k, this.num((v||[])[0])]));
         if (rec.cat==='receiver' && q.recvVol>0) lo.volume=q.recvVol;
+        if (rec.cat==='receiver'){   // ресиверы: один или несколько; «до и после осушителя» — два (до — «мокрый», после — «сухой»)
+          const both=q.recv==='both', V=lo.volume||0, r=this.receivers(both ? V/2 : V, q.pressure, q.recvOut ? 0 : this.hmax(x));
+          if (!r){ miss.push(rec.title.toLowerCase()); continue; }
+          for (let j=0; j<(both ? 2 : 1); j++) x.kit.parts.splice(at++, 0, await this.part(r.o.c, r.n));
+          const n=r.n*(both ? 2 : 1);
+          got.push((n>1 ? `ресиверы ${n} × ` : '')+this.lbl('ресивер', r.o.c.name)+(r.n>1 ? ` (${r.n} по ${StationLayout.n(r.o.v)} л: одного на ${StationLayout.n(both ? V/2 : V)} л в каталоге нет или он не проходит по высоте контейнера)` : ''));
+          continue; }
         const ok=c=>{ const a=attrsOf(c); if (a.cat!==rec.cat) return false;
           if (rec.cat==='filter'){ const p={ name:c.name, attrs:a, rows:[] };   // ступень — по полю или названию (DD, PD, «0,01 мкм»…)
             if (!(this.GRADE[rec.key]||[rec.key]).includes(AirChain.grade(p, a.cat, AirChain.text(p)))) return false; }
