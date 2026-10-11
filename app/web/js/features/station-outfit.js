@@ -29,7 +29,9 @@ class StWalls {
       if (i.x-x0<N) this.busy('left', i.y, i.y+i.ly, 0, top);
       if (L-i.x-i.lx<N) this.busy('right', i.y, i.y+i.ly, 0, top); }
     for (const h of (plan.heat && plan.heat.heaters)||[]) this.busy(h.wall, ...(h.wall==='front' || h.wall==='back' ? [h.x, h.x+h.lx] : [h.y, h.y+h.ly]), 0, h.z+h.h+100);
-    if (plan.door==='side') this.busy('front', x0+StationLayout.ENTRY[0]-100, x0+StationLayout.ENTRY[1]+100, 0, StationLayout.DOOR.h+150);
+    const en=plan.entry, G=plan.gates;   // дверь оператора, ворота в торце (у морского — его двери): изнутри на них ничего не вешать
+    if (en) this.busy(en.wall, ...(en.wall==='front' ? [en.x0-100, en.x1+100] : [en.y0-100, en.y1+100]), 0, en.h+150);
+    if (G) this.busy(G.wall, G.y0-100, G.y1+100, 0, G.h+150);
     for (const d of plan.doors||[]) this.busy(d.wall==='back' ? 'back' : 'front', d.x0-100, d.x1+100, 0, d.h+150);
     for (const l of plan.lines||[]) if (W-l.y<500) for (const [a, b] of StationLayout.runs(l)) this.busy('back', a, b, l.z-100, l.z+100);
     if ((plan.sys||{}).power!==false) this.busy('back', x0, L, H-320, H);   // кабельный лоток под потолком
@@ -85,7 +87,7 @@ class StOutfit {
   shown(w){ return this.inside && !(w==='front' && this.s.cut); }
   /** наружная поверхность стены со стороны зрителя (y) и торца у двери (x): гофр и профлист выступают */
   frontY(){ const S=this.s; return S.g.sea ? -0.008 : S.g.type==='welded' ? 0.003 : 0.018; }
-  leftX(){ const S=this.s; return S.g.sea ? -0.034 : this.p.door==='end' ? -0.023 : S.g.type==='welded' ? 0.003 : 0.018; }
+  leftX(){ const S=this.s, G=this.p.gates; return S.g.sea ? -0.034 : this.p.door==='end' || (G && G.wall==='left') ? -0.028 : S.g.type==='welded' ? 0.003 : 0.018; }
 
   // ---- свет (расчёт — StationLight, plan.light): светильники в ряд по оси помещения, у аварийных (каждый второй, первый — у
   // выхода) — зелёный индикатор блока аварийного питания; в отсеке бака и тамбуре — круглый
@@ -120,7 +122,7 @@ class StOutfit {
   // вверху в дальнем торце ближе к задней стене, приток внизу у входа (в своём торце или в задней стене)
   vents(){
     const P=this.p, [, W, H]=P.int, x0=this.s.g.x0||0, dgu=P.items.find(i=>i.kind==='dgu' && !i.tank);
-    const leftOut=x0===0 && P.door!=='end' && !this.s.g.sea;
+    const G=P.gates && !P.gates.sea ? P.gates.wall : '', leftOut=x0===0 && P.door!=='end' && !this.s.g.sea && G!=='left';   // в торце с воротами — жалюзи нет
     const intake=(wd, hh)=>{ if (leftOut){ const u=this.clear('left', Math.round(W*0.25), wd, 200, 200+hh); return this.vent('left', u, u+wd, 200, 200+hh, true); }
       const ok=u=>!this.cogHit('back', u+130, wd, 200, 200+hh), u=this.walls.find('back', wd+260, 120, 260+hh, 'lo', ok) ?? this.walls.find('back', wd+260, 120, 260+hh, 'lo');
       if (u!=null) this.vent('back', u+130, u+130+wd, 200, 200+hh, true); };
@@ -128,7 +130,8 @@ class StOutfit {
       this.duct(dgu); intake(900, 750); return; }
     if (this.sys.vent===false) return;
     const rc=P.items.filter(i=>i.wall==='right'), y0=rc.length ? Math.max(W*0.45, Math.max(...rc.map(i=>i.y+i.ly))+150) : W*0.45, y1=Math.min(W-120, y0+W*0.4);
-    if (y1-y0>=250) this.vent('right', Math.round(y0), Math.round(y1), H-750, H-200);
+    if (G==='right'){ const wd=Math.round(W*0.4), u=this.walls.find('back', wd+260, H-850, H-100, 'hi'); if (u!=null) this.vent('back', u+130, u+130+wd, H-750, H-200); }   // вытяжка — в задней стене у дальнего торца
+    else if (y1-y0>=250) this.vent('right', Math.round(y0), Math.round(y1), H-750, H-200);
     intake(Math.round(W*0.3), 450);
   }
   /** проём вентиляции в стене помещения: снаружи — жалюзи с козырьком (приток при снегозащите — с откидным коробом),
@@ -381,12 +384,19 @@ class StOutfit {
   // и двери в торце — так же
   doors(){
     const S=this.s, P=this.p, F=P.fire||{}, R=F.rooms||[], main=R[0], tank=R.find(q=>q.id==='tank'), cat=q=>q && q.cat && q.cat!=='Д' ? { type:'sign', id:'CAT', cat:q.cat, zone:q.zone||'' } : null;
-    if (P.door==='end'){ const x=this.leftX(), zs=S.base+1.62;
-      if (!S.g.sea){ const zg=S.dz+0.16+Math.min(2.2, S.He-0.4), w=Math.min(1.8, S.We-0.4); this.canopy([x, S.We/2, zg], [-1, 0, 0], w+0.2); if (this.room(zg)) this.flood([x, S.We/2, zg+0.17], [-1, 0, 0]); }
-      const n=[-1, 0, 0], c=cat(main), y0=S.We/2, zf=(zs-S.base)*1000, yi=y0*1000-S.oy*1000;
-      this.outer('left', yi-450, yi+500, zf-320, zf+200);
-      if (c) S.sticker(c, [x-0.004, y0+0.3, zs+0.06], n, 0.3, 0.2);
-      S.sticker({ type:'sign', id:'W08' }, [x-0.004, y0-0.3, zs+0.06], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P06' }, [x-0.004, y0-0.3, zs-0.19], n, 0.2, 0.2); }
+    const en=P.entry, G=P.gates;
+    if (G && !G.sea){   // ворота для демонтажа в торце: козырёк над ними
+      const x=G.wall==='left' ? this.leftX() : this.rightX(), nn=[G.wall==='left' ? -1 : 1, 0, 0], zt=S.base+G.h/1000;
+      this.canopy([x, S.oy+(G.y0+G.y1)/2000, zt], nn, (G.y1-G.y0)/1000+0.24); this.outer(G.wall, G.y0-100, G.y1+100, 0, G.h+620); }
+    if (en && en.wall==='left'){   // дверь оператора в торце: козырёк, прожектор; таблички и знаки — на полотне (у морского — на его дверях)
+      const x=this.leftX(), n=[-1, 0, 0], c=cat(main), yc=S.oy+(en.y0+en.y1)/2000, zt=S.base+en.h/1000;
+      this.outer('left', en.y0-100, en.y1+100, 0, en.h+620);
+      if (!en.sea){ this.canopy([x, yc, zt], n, en.w/1000+0.24); if (this.room(zt)) this.flood([x, yc, zt+0.17], n); }
+      const zs=S.base+(en.sea ? 1.62 : 1.38), dy=en.sea ? 0.3 : 0.12;
+      if (c) S.sticker(c, [x-0.004, en.sea ? yc+0.3 : yc, en.sea ? zs+0.06 : S.base+1.72], n, 0.3, 0.2);
+      S.sticker({ type:'sign', id:'W08' }, [x-0.004, yc-dy, en.sea ? zs+0.06 : zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P06' }, [x-0.004, en.sea ? yc-dy : yc+dy, en.sea ? zs-0.19 : zs], n, 0.2, 0.2);
+      if (F.auto && !en.sea && zt+0.2<S.top-0.04){ const hb=S.M(StMat.paint('#eceeef', 0.4)), W=S.Wi*1000, right=en.y1+560<=W-100, a=S.oy+(right ? en.y1+140 : en.y0-530)/1000, b=a+0.39;
+        if (right || en.y0-530>=100) for (const [id, z] of [['POW_NO', zt+0.06], ['AUTO_OFF', zt-0.14]]){ hb.box(x-0.04, a, z-0.08, x, b, z+0.08, 0.006); S.sticker({ type:'sign', id }, [x-0.04, (a+b)/2, z], n, 0.36, 0.13, 0.8); } } }
     for (const d of S.doorsB) this.outer('back', d.x0-170, d.x1+170, 0, d.h+620);   // двери в задней стене — с фурнитурой
     if (!S.closed){ for (const c of S.openF) this.outer('front', c.x0-60, c.x1+60, 0, c.h+620); return; }   // в разрезе открыты
     const y=-0.052, n=[0, -1, 0], fy=this.frontY(), entry=P.door!=='service'; let first=true;
@@ -432,7 +442,7 @@ class StOutfit {
   }
 
   /** наружная поверхность дальнего торца (виден снаружи у ДГУ с дверью-жалюзи) */
-  rightX(){ const S=this.s; return S.Le+(S.g.sea ? 0.008 : S.g.type==='welded' ? -0.003 : -0.018); }
+  rightX(){ const S=this.s, G=this.p.gates; return S.Le+(S.g.sea ? 0.008 : G && G.wall==='right' ? 0.028 : S.g.type==='welded' ? -0.003 : -0.018); }
 
   // ---- маркировка для подъёма (ГОСТ 14192-96, StationMass — plan.mass): знак № 9 «Место строповки» — у верхних углов
   // (у точек строповки) на обеих длинных стенах (п. 5.5.1), где у угла дверь с козырьком — на торце у того же угла;
@@ -463,13 +473,12 @@ class StOutfit {
     const free=(w, u, z, a, b)=>(w!=='front' || !S.cut) && this.outFree(w, u-a/2-40, u+a/2+40, z-b/2-40, z+b/2+40);
     const put=(d, w, u, z, a, b)=>{ S.sticker(d, at(w, u, z), StOutfit.N_OUT[w], a/1000, b/1000); this.outer(w, u-a/2-40, u+a/2+40, z-b/2-40, z+b/2+40); this.log.push({ kind:d.id, wall:w, u, z }); };
     if (S.g.sea) for (const f of [0.14, 0.36, 0.64, 0.86]) this.outer('left', We*f-oy-180, We*f-oy+180, -500, S.He*1000);   // торцевые двери: штанги и ручки
-    else if (this.p.door==='end') this.outer('left', We/2-oy-160, We/2-oy+160, 700, 1300);                                 // ручки ворот
     // № 9: верх — на 130 мм ниже верха контейнера; места мало — знак на 1–2 градации меньше (ГОСТ 14192-96, п. 6.9)
-    for (const [w, e] of [['front', 'left'], ['front', 'right'], ['back', 'left'], ['back', 'right']]){
-      const u=e==='left' ? 300-ox : Le-300-ox, v=w==='front' ? 300-oy : We-300-oy;
-      for (const k of [1, 0.7, 0.5]){ const a=sw*k, b=sh*k, z=S.He*1000-zf-b/2-130;
-        if (free(w, u, z, a, b)){ put({ type:'sign', id:'SLING', light }, w, u, z, a, b); break; }
-        if (free(e, v, z, a, b)){ put({ type:'sign', id:'SLING', light }, e, v, z, a, b); if (e==='left') this.slingL={ ...this.slingL, [w]:true }; break; } } }
+    corner: for (const [w, e] of [['front', 'left'], ['front', 'right'], ['back', 'left'], ['back', 'right']])
+      for (const k of [1, 0.7, 0.5]) for (const c of [300, 220, 160]){ const a=sw*k, b=sh*k, z=S.He*1000-zf-b/2-130;   // от угла по наружной стене, мм
+        const u=e==='left' ? c-ox : Le-c-ox, v=w==='front' ? c-oy : We-c-oy;
+        if (free(w, u, z, a, b)){ put({ type:'sign', id:'SLING', light }, w, u, z, a, b); continue corner; }
+        if (free(e, v, z, a, b)){ put({ type:'sign', id:'SLING', light }, e, v, z, a, b); if (e==='left') this.slingL={ ...this.slingL, [w]:true }; continue corner; } }
     let mass=false;
     for (const w of ['front', 'back', 'left', 'right']){ const c=this.cogOn(w), k=[1, 0.7, 0.5].find(k=>free(w, c.u, c.z, cs*k, cs*k)); if (!k) continue;
       const a=cs*k; put({ type:'sign', id:'COG', light }, w, c.u, c.z, a, a);
@@ -485,9 +494,12 @@ class StOutfit {
     const S=this.s, m=S.meta.brand, parts=Array.isArray(m) && m.length ? m : StOutfit.BRAND, txt=parts.map(p=>p[0]).join('');
     const own=/^пневмотех$/i.test(txt), rgb=RalColor.rgb(S.wall), lum=(0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2])/255;   // на тёмной стене — белыми буквами
     const d={ type:'brand', parts, tag:own ? 'ГРУППА КОМПАНИЙ' : '', globe:own, light:lum<0.5, ar:Math.max(2.6, Math.min(8, (own ? 0.5 : 0.7)*txt.length)) };
-    const sl=this.slingL||{}, top=S.top-(S.g.sea ? 0.22 : 0.15), y1=this.p.fuel && !S.g.sea ? S.We-0.62 : S.We-(sl.back ? 0.5 : 0.12), y0=sl.front ? 0.5 : 0.12;   // мимо жалюзи отсека бака и знаков строповки
+    const sl=this.slingL||{}, top=S.top-(S.g.sea ? 0.22 : 0.15);
+    let y1=this.p.fuel && !S.g.sea ? S.We-0.62 : S.We-(sl.back ? 0.5 : 0.12), y0=sl.front ? 0.5 : 0.12;   // мимо жалюзи отсека бака и знаков строповки
+    for (const q of [this.p.entry, this.p.gates]) if (q && q.wall==='left' && !q.sea){ const a=S.oy+q.y0/1000-0.15, b=S.oy+q.y1/1000+0.15;   // мимо двери оператора и ворот в торце
+      if (a-y0>=y1-b) y1=Math.min(y1, a); else y0=Math.max(y0, b); }
     const w=Math.min(1.9, (y1-y0)*0.92, 0.42*d.ar), h=w/d.ar;
-    S.sticker(d, [this.leftX(), (y0+y1)/2, top-0.1-h/2], [-1, 0, 0], w, h);
+    if (w>=0.6) S.sticker(d, [this.leftX(), (y0+y1)/2, top-0.1-h/2], [-1, 0, 0], w, h);
     if (!S.closed) return;
     const gaps=[], cuts=S.openF.map(c=>[S.ox+c.x0/1000-0.3, S.ox+c.x1/1000+0.75]).sort((a, b)=>a[0]-b[0]); let x=0.5;   // у углов — знаки строповки
     for (const [a, b] of cuts){ if (a>x) gaps.push([x, a]); x=Math.max(x, b); }
