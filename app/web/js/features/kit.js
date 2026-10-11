@@ -42,6 +42,7 @@ const CONT_SYSTEMS = [
   ['fire', 'Автоматическое пожаротушение', 'Аэрозольное: модули пожаротушения, табло «Аэрозоль уходи» / «Аэрозоль не входи»'],
   ['noise', 'Шумоизоляция', 'Внутренняя обшивка шумопоглощающим материалом, камеры шумоглушения на приточных и вытяжных жалюзи'],
   ['rec', 'Рекуперация тепла', 'Зимой тёплый воздух от охлаждения оборудования возвращается в помещение заслонкой рециркуляции с термостатом — при работе отопление не требуется'],
+  ['snow', 'Снегозащита воздухозаборов', 'Откидные защитные козырьки перед приточными жалюзи — от снега и дождя; открываются для обслуживания и очистки'],
   ['gate', 'Ворота', 'Утеплённые распашные ворота для монтажа и обслуживания оборудования'],
 ];
 const CONT_SYS_DEF = { power:true, light:true, heat:true, vent:true, rec:true };
@@ -61,9 +62,10 @@ function contApply(p, o={}){
   const prevAuto=p._autoDesc; p.name=(!p.name || CONTAINER_TYPES.some(z=>z.name===p.name)) ? c.name : p.name;
   if (!p.desc || p.desc===prevAuto) p.desc=c.desc; p._autoDesc=c.desc;
   const cl=CLIMATES.find(z=>z[0]===p.climate);
-  const rf=StationGeo.roof(p), roof=rf!=='flat' ? StationGeo.ROOFS[rf] : null;
+  const rf=StationGeo.roof(p), roof=rf!=='flat' ? StationGeo.ROOFS[rf] : null, fl=StationGeo.floor(p); p.floor=fl;
   const set={ 'Тип': c.name, 'Габариты (Д × Ш × В)': String(p.size||'').trim() ? String(p.size).trim()+(/мм|м\b/.test(p.size)?'':' мм') : c.size,
-    'Утепление': p.ins?'минеральная вата '+p.ins:'', 'Климатическое исполнение': cl?`${cl[0]} (${cl[1]})`:'', 'Крыша': roof ? `${roof.name}, уклон ${roof.deg}°` : '', 'Цвет': String(p.ral||'').trim() };
+    'Утепление': p.ins?'минеральная вата '+p.ins:'', 'Климатическое исполнение': cl?`${cl[0]} (${cl[1]})`:'', 'Крыша': roof ? (roof.deg ? `${roof.name}, уклон ${roof.deg}°` : roof.name) : '',
+    'Пол': StationGeo.FLOORS[fl].name[0].toUpperCase()+StationGeo.FLOORS[fl].name.slice(1), 'Цвет': String(p.ral||'').trim() };
   p.rows=p.rows||[]; if (!p.sys) p.sys={...CONT_SYS_DEF};
   for (const [k,v] of Object.entries(set)){ const r=p.rows.find(z=>z.k===k); if (r){ if (v) r.v=v; else if (k==='Цвет' || k==='Крыша') p.rows.splice(p.rows.indexOf(r),1); } else if (v) p.rows.push({k, v}); }
   for (const [id, k, v] of CONT_SYSTEMS){ const ix=p.rows.findIndex(z=>z.k===k);

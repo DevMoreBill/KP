@@ -105,17 +105,19 @@ class StOutfit {
   vents(){
     const P=this.p, [, W, H]=P.int, x0=this.s.g.x0||0, dgu=P.items.find(i=>i.kind==='dgu' && !i.tank);
     const leftOut=x0===0 && P.door!=='end' && !this.s.g.sea;
-    const intake=(wd, hh)=>{ if (leftOut) return this.vent('left', W*0.25, W*0.25+wd, 200, 200+hh);
-      const u=this.walls.find('back', wd+260, 120, 260+hh, 'lo'); if (u!=null) this.vent('back', u+130, u+130+wd, 200, 200+hh); };
+    const intake=(wd, hh)=>{ if (leftOut) return this.vent('left', W*0.25, W*0.25+wd, 200, 200+hh, true);
+      const u=this.walls.find('back', wd+260, 120, 260+hh, 'lo'); if (u!=null) this.vent('back', u+130, u+130+wd, 200, 200+hh, true); };
     if (dgu){ this.vent('right', dgu.y+80, dgu.y+dgu.ly-80, Math.round(dgu.h*0.12), Math.round(dgu.h*0.95)); this.duct(dgu); intake(900, 750); return; }
     if (this.sys.vent===false) return;
     const rc=P.items.filter(i=>i.wall==='right'), y0=rc.length ? Math.max(W*0.3, Math.max(...rc.map(i=>i.y+i.ly))+150) : W*0.3, y1=Math.min(W-120, y0+W*0.4);
     if (y1-y0>=250) this.vent('right', Math.round(y0), Math.round(y1), H-750, H-200);
     intake(Math.round(W*0.3), 450);
   }
-  /** проём вентиляции в стене помещения: снаружи — жалюзи с козырьком, изнутри — решётка и клапан с электроприводом */
-  vent(w, u0, u1, z0, z1){
+  /** проём вентиляции в стене помещения: снаружи — жалюзи с козырьком (приток при снегозащите — с откидным коробом),
+   *  изнутри — решётка и клапан с электроприводом */
+  vent(w, u0, u1, z0, z1, intake){
     const S=this.s, a=u0/1000, b=u1/1000, Z0=S.base+z0/1000, Z1=S.base+z1/1000;
+    if (intake && this.sys.snow) this.snow(w, a, b, Z0, Z1);
     this.walls.busy(w, u0-90, u1+260, z0-90, z1+90);
     if (w==='right') S.louver(1, S.Le, S.oy+a, S.oy+b, Z0, Z1, 1);
     else if (w==='left') S.louver(1, 0, S.oy+a, S.oy+b, Z0, Z1, -1);
@@ -135,6 +137,17 @@ class StOutfit {
     else if (w==='left') m.obox([0, S.oy+a, zt], [0, b-a, 0], [-0.14, 0, -0.07], t);
     else if (w==='back') m.obox([S.ox+a, S.We, zt], [b-a, 0, 0], [0, 0.14, -0.07], t);
     else if (!S.cut) m.obox([S.ox+a, 0, zt], [b-a, 0, 0], [0, -0.14, -0.07], t);
+  }
+  /** снегозащитный короб перед приточными жалюзи: крышка и боковины, снизу открыт, откидывается на петлях вверху (для
+   *  обслуживания) — от снега и дождя */
+  snow(w, a, b, Z0, Z1){
+    const S=this.s, m=S.M(StMat.paint(RalColor.shade(S.wall, 0.86), 0.45)), dk=S.M(StMat.paint('#24292e', 0.5)), d=0.34, t=0.006, zt=Z1+0.1, zb=Z0-0.12;
+    const at=(u, o, z)=>w==='right' ? [S.Le+o, S.oy+u, z] : w==='left' ? [-o, S.oy+u, z] : w==='back' ? [S.ox+u, S.We+o, z] : [S.ox+u, -o, z];
+    const box=(u0, u1, o0, o1, z0, z1)=>{ const p=at(u0, o0, z0), q=at(u1, o1, z1); m.box(Math.min(p[0], q[0]), Math.min(p[1], q[1]), Math.min(p[2], q[2]), Math.max(p[0], q[0]), Math.max(p[1], q[1]), Math.max(p[2], q[2]), 0.003); };
+    box(a-0.08, b+0.08, 0.01, d, zt, zt+t);                              // крышка
+    box(a-0.08, b+0.08, d-t, d, zb+0.18, zt);                            // лицевой лист (снизу — открыт)
+    for (const u of [a-0.08, b+0.08-t]) box(u, u+t, 0.01, d, zb, zt);    // боковины
+    for (const u of [a, b-0.06]){ const p=at(u, 0.02, zt+0.01), q=at(u+0.06, 0.02, zt+0.01); dk.tube(p, q, 0.012, 8); }   // петли
   }
   /** воздуховод от радиатора ДГУ к жалюзи — гибкая вставка из ткани с рамками */
   duct(it){
@@ -239,28 +252,40 @@ class StOutfit {
     if (!S.g.sea){ const y0=S.oy+mm(W-450), y1=S.oy+mm(W-150); S.louver(1, 0, y0, y1, S.top-0.65, S.top-0.4, -1); this.hood('left', y0-S.oy-0.06, y1-S.oy+0.06, S.top-0.34); }
   }
 
-  // ---- двери: светильник над дверью снаружи, знаки (вход — «Опасность поражения электрическим током», отсек бака —
-  // «Пожароопасно» и «Запрещается пользоваться открытым огнём»), при пожаротушении — табло «Аэрозоль! Не входи!» и
-  // «Автоматика отключена»; ворота в торце — светильник над ними
+  // ---- двери снаружи: над каждой — съёмный козырёк (водостоков нет), под ним — светодиодный прожектор; знаки (вход —
+  // «Опасность поражения электрическим током», отсек бака — «Пожароопасно» и «Запрещается открытый огонь»), при
+  // пожаротушении — табло «Порошок! Не входи!» и «Автоматика отключена»; ворота в торце — так же
   doors(){
     const S=this.s, P=this.p;
-    if (P.door==='end'){ const zg=S.dz+0.16+Math.min(2.2, S.He-0.4); if (zg+0.3<S.top-0.04) this.lamp([this.leftX(), S.We/2, zg+0.2], [-1, 0, 0]); }
+    if (P.door==='end' && !S.g.sea){ const zg=S.dz+0.16+Math.min(2.2, S.He-0.4), w=Math.min(1.8, S.We-0.4), x=this.leftX();
+      this.canopy([x, S.We/2, zg], [-1, 0, 0], w+0.2); if (this.room(zg)) this.flood([x, S.We/2, zg+0.17], [-1, 0, 0]); }
     if (!S.closed) return;
-    const y=-0.052, n=[0, -1, 0];
+    const y=-0.052, n=[0, -1, 0], fy=this.frontY();
     for (const c of S.openF){ const a=S.ox+c.x0/1000, b=S.ox+c.x1/1000, xm=(a+b)/2, zt=S.base+c.h/1000, zs=S.base+1.6;
-      if (c.kind!=='service' && zt+0.36<S.top-0.04) this.lamp([xm, this.frontY(), zt+0.27], n);
+      this.canopy([xm, fy, zt], n, b-a+0.24);
+      if (c.kind!=='service' && this.room(zt)) this.flood([xm, fy, zt+0.17], n);
       if (c.kind==='entry'){ S.sticker({ type:'sign', id:'W08' }, [xm, y, zs], n, 0.22, 0.193);
-        if (this.sys.fire && zt+0.25<S.top-0.04){ const hb=S.M(StMat.paint('#eceeef', 0.4)), fy=this.frontY();
+        if (this.sys.fire && zt+0.25<S.top-0.04){ const hb=S.M(StMat.paint('#eceeef', 0.4));
           for (const [id, z] of [['AERO_NO', zt+0.16], ['AUTO_OFF', zt-0.02]]){ hb.box(b+0.13, fy-0.04, z-0.075, b+0.59, fy, z+0.075, 0.006); S.sticker({ type:'sign', id }, [b+0.36, fy-0.04, z], n, 0.42, 0.12, 1.2); } } }
       if (c.kind==='tank'){ S.sticker({ type:'sign', id:'W01' }, [xm-0.12, y, zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P02' }, [xm+0.12, y, zs], n, 0.18, 0.18); } }
   }
-  /** светильник на наружной стене: корпус, светящийся рассеиватель снизу; c — точка крепления, n — от стены */
-  lamp(c, n){
-    const S=this.s, r=StV.norm(StV.cross(StV.mul(n, -1), [0, 0, 1])), U=StV.mul(r, 0.12), D=StV.mul(n, 0.14);
-    const box=(m, o, u, d, z0, z1)=>{ const Q=[StV.sub(o, u), StV.add(o, u), StV.add(StV.add(o, u), d), StV.add(StV.sub(o, u), d)];
-      m.box(Math.min(...Q.map(p=>p[0])), Math.min(...Q.map(p=>p[1])), z0, Math.max(...Q.map(p=>p[0])), Math.max(...Q.map(p=>p[1])), z1, 0.008); };
-    const g=S.M(StMat.glow('#fff4d6', 3.2)); box(S.M(StMat.paint('#30363c', 0.5)), c, U, D, c[2]-0.04, c[2]+0.05); box(g, StV.add(c, StV.mul(n, 0.02)), StV.mul(U, 0.85), StV.mul(D, 0.78), c[2]-0.047, c[2]-0.039);
-    box(g, StV.add(c, StV.mul(n, 0.135)), StV.mul(U, 0.8), StV.mul(n, 0.012), c[2]-0.038, c[2]-0.012);   // рассеиватель виден и спереди
+  /** над дверью хватает места для прожектора под козырьком */
+  room(zt){ return zt+0.34<this.s.top-0.04; }
+  /** съёмный козырёк над дверью: лист с уклоном наружу и бортом, два кронштейна; c — середина над проёмом (верх двери), n — наружу */
+  canopy(c, n, w){
+    const S=this.s, r=StV.norm(StV.cross(StV.mul(n, -1), [0, 0, 1])), z=Math.min(S.top-0.07, c[2]+0.42), d=0.32, m=S.M(StMat.paint(RalColor.shade(S.wall, 0.9), 0.45)), br=S.M(StMat.paint(RalColor.shade(S.frame, 0.85), 0.5));
+    const o=StV.sub([c[0], c[1], z], StV.mul(r, w/2)), v=StV.add(StV.mul(n, d), [0, 0, -0.06]);
+    m.obox(o, StV.mul(r, w), v, [0, 0, 0.008]); m.obox(StV.add(o, v), StV.mul(r, w), StV.mul(n, 0.008), [0, 0, -0.05]);   // лист и борт
+    for (const k of [0.06, w-0.06]){ const p=StV.add(o, StV.mul(r, k)); br.tube(StV.add(p, [0, 0, -0.2]), StV.add(StV.add(p, StV.mul(n, d*0.85)), [0, 0, -0.05]), 0.01, 8); }
+  }
+  /** светодиодный прожектор над дверью: корпус с рёбрами на скобе, наклонён вниз на 30°, светящееся стекло; c — точка на стене */
+  flood(c, n){
+    const S=this.s, r=StV.norm(StV.cross(StV.mul(n, -1), [0, 0, 1])), t=30*Math.PI/180, f=StV.norm(StV.add(StV.mul(n, Math.cos(t)), [0, 0, -Math.sin(t)])), up=StV.cross(f, r);
+    const body=S.M(StMat.paint('#2d3237', 0.45)), W=0.2, H=0.15, D=0.05, o=StV.add(c, StV.mul(n, 0.08)), C=StV.sub(StV.sub(StV.sub(o, StV.mul(r, W/2)), StV.mul(up, H/2)), StV.mul(f, D/2));
+    body.obox(C, StV.mul(r, W), StV.mul(up, H), StV.mul(f, D));
+    S.M(StMat.glow('#fff6dc', 3.4)).obox(StV.add(C, StV.add(StV.add(StV.mul(r, 0.016), StV.mul(up, 0.016)), StV.mul(f, D))), StV.mul(r, W-0.032), StV.mul(up, H-0.032), StV.mul(f, 0.004));
+    for (let k=1; k<6; k++) body.obox(StV.add(C, StV.add(StV.mul(r, W*k/6-0.003), StV.mul(f, -0.018))), StV.mul(r, 0.006), StV.mul(up, H), StV.mul(f, 0.018));   // рёбра охлаждения
+    for (const k of [-1, 1]) body.box(...[0, 1, 2].map(i=>Math.min(c[i]+r[i]*k*(W/2+0.008), c[i]+r[i]*k*(W/2+0.008)+n[i]*0.09)-(i===2 ? 0.015 : 0)), ...[0, 1, 2].map(i=>Math.max(c[i]+r[i]*k*(W/2+0.008), c[i]+r[i]*k*(W/2+0.008)+n[i]*0.09)+(i===2 ? 0.015 : 0.004)));   // скоба
   }
 
   // ---- логотип организации: на торце у двери (виден и в разрезе); снаружи — ещё на длинной стене в самом широком простенке

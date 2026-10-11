@@ -86,10 +86,16 @@ class StationGeo {
   static ins(text){ const n=parseFloat(String(text||'').replace(',', '.')); return n>0 && n<400 ? n : 100; }
   // крыша блок-контейнера: плоская или скатная — двускатная (конёк вдоль контейнера) или односкатная (выше у задней стены);
   // уклон, ° — подъём над стенами (у морского контейнера крыша штатная, плоская)
-  static ROOFS = { flat:{ name:'плоская', deg:0 }, gable:{ name:'двускатная', deg:8 }, mono:{ name:'односкатная', deg:5 } };
+  static ROOFS = { flat:{ name:'плоская', deg:0 }, gable:{ name:'двускатная', deg:8 }, mono:{ name:'односкатная', deg:5 }, arch:{ name:'арочная (покатая)', deg:0, k:0.075 } };
   static roof(c){ const r=String((c && c.roof) || ''); return c && this.SEA[c.ctype] ? 'flat' : this.ROOFS[r] ? r : 'flat'; }
-  /** подъём крыши над стенами, мм: W — ширина контейнера */
-  static rise(roof, W){ const d=(this.ROOFS[roof]||this.ROOFS.flat).deg*Math.PI/180; return Math.round(roof==='gable' ? W/2*Math.tan(d) : roof==='mono' ? W*Math.tan(d) : 0); }
+  /** подъём крыши над стенами, мм: двускатная — до конька посередине, односкатная — у стены с дверью, арочная — дуга */
+  static rise(roof, W){ const R=this.ROOFS[roof]||this.ROOFS.flat, d=R.deg*Math.PI/180;
+    return Math.round(roof==='gable' ? W/2*Math.tan(d) : roof==='mono' ? W*Math.tan(d) : roof==='arch' ? W*R.k : 0); }
+  // пол: рифлёный стальной лист (окраска чёрная) или рифлёный алюминиевый лист без окраски; в характеристиках — строка «Пол»
+  static FLOORS = { steel:{ name:'рифлёный стальной лист, окраска чёрная', short:'сталь рифлёная, чёрная', color:'#26292c', m:0.25, r:0.55 },
+    alu:{ name:'рифлёный алюминиевый лист без окраски', short:'алюминий рифлёный', color:'#c9cdd2', m:1, r:0.3 } };
+  static floor(c){ const f=String((c && c.floor) || ''); if (this.FLOORS[f]) return f;
+    const r=((c && c.rows) || []).find(q=>q && /^пол(?![а-яё])/i.test(String(q.k||'').trim())); return r && /алюмин/i.test(String(r.v||'')) ? 'alu' : 'steel'; }
   static flex(type){ return this.FLEX[type] || (this.SEA[type] ? null : this.FLEX.block); }
 
   /** внутренние размеры по наружным: морской — штатные стенки + утепление, блок-контейнер — стены, пол и кровля */
@@ -108,7 +114,7 @@ class StationGeo {
     const type=c.ctype || 'block', t=this.ins(c.ins), sea=this.SEA[type], own=!c.sizeAuto ? this.mm(c.size) : null, f=this.flex(type);
     const ext=own || (sea ? sea.ext.slice() : null);
     return { type, t, sea:!!sea, own:!!own, auto:!ext, ext, int:ext ? this.inner(type, ext, t) : null, x0:(f && f.tambour) || 0,
-      door: sea ? sea.door : null, roof:this.roof(c) };
+      door: sea ? sea.door : null, roof:this.roof(c), floor:this.floor(c) };
   }
   /** высота пола внутри над низом контейнера, мм (морской: штатный пол + утеплённый, блок-контейнер — основание) */
   static zFloor(type, t){ const sea=this.SEA[type]; return sea ? (sea.ext[2]-sea.int[2]-40)+this.SEA_FLOOR : this.flex(type).floor; }
@@ -817,7 +823,7 @@ class StationLayout {
   static CAB_TOP = 1900;     // настенный шкаф: верх — на 1,9 м от пола (рукоятки и панель оператора — на уровне глаз),
   static CAB_LOW = 300;      // низ — не ниже 300 мм
   static ROOF_GAP = 200;     // глушитель на опорах над крышей, мм
-  static OUTLET = 500;       // вывод выхлопа над глушителем (с дождевым колпаком), мм
+  static OUTLET = 300;       // вывод выхлопа — горизонтально в сторону радиатора (от входа и воздухозаборов), мм
   static ROAD_H = 4000;      // наибольшая высота при перевозке (с платформой), мм
   static OUT_GAP = 1000;     // ресивер снаружи: от торцевой стены — проход для осмотра и обслуживания, мм
   static OUT_STEP = 600;     // между ресиверами снаружи, мм
@@ -828,7 +834,7 @@ class StationLayout {
   /** отпечаток всего, от чего зависит компоновка: изменился — чертёж и 3D-вид пора обновить */
   static hash(input){
     const c=input.cont||{}, pick=a=>a ? {cat:a.cat, size:a.size, mass:a.mass, model:a.model, maker:a.maker, orient:a.orient, kw:a.kw, volume:a.volume, color:a.color, flow:a.flow, pressure:a.pressure, stage:a.stage, dryer:a.dryer, vsd:a.vsd, dewPoint:a.dewPoint, receiver:a.receiver} : null;
-    const s=JSON.stringify([this.VER, StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.ins, c.ral, c.sys||null, c.climate||'', c.roof||''], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
+    const s=JSON.stringify([this.VER, StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.ins, c.ral, c.sys||null, c.climate||'', c.roof||'', StationGeo.floor(c)], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
       (input.parts||[]).filter(p=>p && p.role!=='container').map(p=>[p.name, p.qty, p.role||'', p.pipeMat||'', p.dn||'', p.mount||'', pick(p.attrs), StationEquip.tint(p), (p.rows||[]).filter(r=>r && /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы/i.test(String(r.k||'')+' '+String(r.v||''))).map(r=>[r.k, r.v]), StationEquip.pic(p)])]);
     return this.fnv(s);
   }
@@ -1491,8 +1497,8 @@ class StationLayout {
     if (reg.length) iss.push({ level:'info', text:`Подлежат учёту в Ростехнадзоре (ФНП ОРПД: p·V больше 1,0 МПа·м³): ${reg.map(v=>`поз. ${v.pos} — ${PressureVessel.text(v)}`).join('; ')}. Регистрация, техническое освидетельствование и ответственные за исправное состояние — у эксплуатирующей организации${reg.some(v=>!v.out) ? '; размещают на открытой площадке или в отдельном здании, в помещении — когда иначе нельзя (п. 65): «Ресивер снаружи» — в требованиях заказчика на вкладке «Состав станции»' : ''}.` });
     if (free.length) iss.push({ level:'info', text:`Учёту в Ростехнадзоре не подлежат (p·V не больше 1,0 МПа·м³): ${free.map(v=>`поз. ${v.pos} — ${PressureVessel.text(v)}`).join('; ')}.` });
     const rf=plan.roof||[]; if (rf.length && plan.geo && plan.geo.ext){
-      const top=Math.max(...rf.map(m=>m.gap+m.d+m.outlet)), h=plan.geo.ext[2]+top, ch=plan.chassis ? 1150 : 0;
-      iss.push({ level:'info', text:`Глушитель на крыше над ДГУ: высота станции с глушителем ${n(h)} мм${ch ? ` (на шасси — ${n(h+ch)} мм)` : ''}. При перевозке глушитель снимают и ставят на объекте: высота с платформой — не более ${n(StationLayout.ROAD_H)} мм.` });
+      const top=Math.max(...rf.map(m=>m.gap+m.d)), h=plan.geo.ext[2]+Math.max(top, plan.geo.rise||0), ch=plan.chassis ? 1150 : 0;
+      iss.push({ level:'info', text:`Глушитель на крыше над ДГУ, выхлоп — горизонтально в сторону (не вверх): высота станции с глушителем ${n(h)} мм${ch ? ` (на шасси — ${n(h+ch)} мм)` : ''}. Глушитель съёмный: при перевозке его снимают и ставят на объекте — высота с платформой не более ${n(StationLayout.ROAD_H)} мм.` });
       if (rf.some(m=>!m.known)) iss.push({ level:'info', text:`Размер глушителя не указан — взят условный по мощности ДГУ: ${rf.filter(m=>!m.known).map(m=>`поз. ${m.pos} — ${n(m.lx)} × Ø${n(m.d)} мм`).join('; ')}.` }); }
     const hang=(plan.items||[]).filter(i=>i.mount==='pipe' && !i.unit);
     for (const pp of plan.piping||[]){
