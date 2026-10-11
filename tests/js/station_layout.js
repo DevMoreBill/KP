@@ -965,6 +965,17 @@ Check.run('масса и центр тяжести, строповка; знак
       assert.ok(Q.length<=R.length, label+': знаки учтены как занятые места'); } }
 });
 
+Check.run('трубы: опознавательная окраска (ГОСТ 14202-69) и стрелки направления потока', ()=>{
+  assert.ok(PipeMaterial.idColor('air', '#000')===PipeMaterial.ID.air && PipeMaterial.idColor('fuel', '#000')===PipeMaterial.ID.fuel && PipeMaterial.idColor('gen', '#123456')==='#123456', 'воздух — синий, топливо — коричневый, прочее — цвет материала');
+  for (const mat of ['steel', 'inox', 'pp']){
+    const p=solve(C('block', { sizeAuto:true }), [comp, dryer, rec, P('Трубопровод', {}, { pipeMat:mat })]), sc=new StScene(p, {}).build(), D=[...sc.decals.values()];
+    const blue=[...sc.groups.values()].some(({ mat:m })=>String(m.c||'').toLowerCase()===PipeMaterial.ID.air);
+    assert.ok(blue, mat+': трубы сжатого воздуха — синие при любом материале');
+    assert.ok(D.some(d=>d.id==='FLOW' && d.dir===1) && D.some(d=>d.id==='FLOWV'), mat+': стрелки по ходу воздуха — на магистрали (к выходу) и на спусках'); }
+  const l={ medium:'air', header:true, to:2000 }; assert.ok(PipeMaterial.flow(l, 1000)===1 && PipeMaterial.flow(l, 3000)===-1 && PipeMaterial.flow({ medium:'in' }, 0)===-1, 'коллектор — к входу аппарата, всас насосов — от торца');
+  assert.ok(StationNorms.tt(solve(C('block', { sizeAuto:true }), [comp])).some(t=>/опознавательная окраска .* со стрелками направления потока/.test(t)), 'в ТТ — окраска и стрелки');
+});
+
 Check.run('цвет по фото: фон убирается, главный цвет корпуса', ()=>{
   const img=(w, h, f)=>{ const d=new Uint8ClampedArray(w*h*4); for (let y=0; y<h; y++) for (let x=0; x<w; x++){ const c=f(x, y); d.set(c.length===4 ? c : [...c, 255], (y*w+x)*4); } return d; };
   const near=(hex, c, tol=28)=>{ const v=[1, 3, 5].map(k=>parseInt(hex.slice(k, k+2), 16)); return /^#[0-9a-f]{6}$/.test(hex) && v.every((x, k)=>Math.abs(x-c[k])<=tol); };

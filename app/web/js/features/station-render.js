@@ -191,7 +191,7 @@ class StScene {
     const E=this.plan.outside, pad=this.M(StMat.paint('#b9b6ae', 0.95)), mm=this.mm, P=mm(StationLayout.PAD);
     for (const it of E){ const [x0, y0, z0, x1, y1]=this.B(it); pad.box(x0-0.2, y0-0.2, z0-P, x1+0.2, y1+0.2, z0, 0.01); this.equip(it); }
     const pp=(this.plan.piping||[])[0], l=pp && pp.lines.find(q=>q.medium==='air' && !q.header && q.x1>=this.plan.int[0]-1); if (!l) return;
-    const m=this.M(pp.mat==='inox' ? StMat.metal(StScene.INOX, 0.22) : { c:pp.color, r:0.38, m:0.35 }), red=this.M(StMat.paint('#c83a2e', 0.4)), dn=+(String(pp.dn||'').match(/\d+/)||[0])[0];
+    const m=this.M(pp.mat==='inox' ? StMat.metal(StScene.INOX, 0.22) : { c:PipeMaterial.idColor('air', pp.color), r:0.38, m:0.35 }), red=this.M(StMat.paint('#c83a2e', 0.4)), dn=+(String(pp.dn||'').match(/\d+/)||[0])[0];
     const r=Math.max(0.012, Math.min(0.08, (dn || 50)/2000+0.006)), o=this.P(l.x1, l.y, l.z), x0=Math.min(...E.map(i=>this.B(i)[0])), xm=(this.Le+0.07+x0)/2;
     const run=(...Q)=>{ for (let k=1; k<Q.length; k++){ m.tube(Q[k-1], Q[k], r, 18); m.sphere(Q[k], r*1.03, 12); } };
     const zin=it=>{ const [, , z0, , , z1]=this.B(it); return it.shape==='vcyl' && it.h>=900 ? z0+Math.max(0.25, mm(it.h)*0.22) : (z0+z1)/2; };
@@ -655,14 +655,18 @@ class StScene {
     this.panel(this.M(StMat.paint(RalColor.shade(c, 0.75), 0.5)), it, 0.08, 0.3, 0.7, 0.85, 0.006, 0.003);
   }
 
-  // ---- трубопровод: магистраль, отводы со спусками, шаровые краны, фланцы, опоры, выход через торец
+  // ---- трубопровод: магистраль, отводы со спусками, шаровые краны, фланцы, опоры, выход через торец. Опознавательная
+  // окраска по ГОСТ 14202-69 (PipeMaterial.ID) — сплошь, из любого материала (сжатый воздух — синий); на магистрали и
+  // спусках — стрелки направления потока
   piping(pp){
-    const mat=pp.mat==='inox' ? StMat.metal(StScene.INOX, 0.22) : pp.mat==='pp' ? StMat.paint(pp.color, 0.32) : { c:pp.color, r:0.38, m:0.35 };
-    const m=this.M(mat), dk=this.M(StMat.paint(StScene.DARK, 0.6)), red=this.M(StMat.paint('#c83a2e', 0.4)), dn=+(String(pp.dn||'').match(/\d+/)||[0])[0] || (this.plan.pipe && this.plan.pipe.dn) || 0;
+    const dk=this.M(StMat.paint(StScene.DARK, 0.6)), red=this.M(StMat.paint('#c83a2e', 0.4)), dn=+(String(pp.dn||'').match(/\d+/)||[0])[0] || (this.plan.pipe && this.plan.pipe.dn) || 0;
     for (const l of pp.lines){
+      const id=PipeMaterial.idColor(l.medium, ''), c=id || pp.color;
+      const m=this.M(!id && pp.mat==='inox' ? StMat.metal(StScene.INOX, 0.22) : pp.mat==='pp' ? StMat.paint(c, 0.32) : { c, r:0.38, m:0.35 });
       const r=Math.max(0.012, Math.min(0.08, (dn || (l.medium==='fuel' ? 25 : l.medium==='air' ? 50 : 80))/2000+0.006)), A=this.P(l.x0, l.y, l.z), B=this.P(l.x1, l.y, l.z);
       const out=l.x1>=this.plan.int[0]-1, end=out ? [this.Le+0.12, B[1], B[2]] : B;
       for (const [a, b] of StationLayout.runs(l)){ const p=this.P(a, l.y, l.z), q=b>=l.x1 ? end : this.P(b, l.y, l.z); m.tube(p, q, r, 20); m.sphere(p, r*1.02, 12); if (b<l.x1) m.sphere(q, r*1.02, 12); }
+      if (id) this.marks(l, r);
       if (out){ m.tube([this.Le+0.04, B[1], B[2]], [this.Le+0.07, B[1], B[2]], r*1.7, 20); dk.tube([this.Le-0.03, B[1], B[2]], [this.Le+0.03, B[1], B[2]], r*1.4, 18); }
       // опоры у стены: кронштейн и хомут
       const yw=this.oy+this.Wi;
@@ -680,6 +684,18 @@ class StScene {
         const v=hl>0.15 ? StV.add(p0, StV.mul(hz, Math.min(0.12, hl*0.5)/hl)) : StV.add(p1, [0, 0, -Math.min(0.12, Math.max(0, (l.z-b.z1)/1000*0.5))]);
         m.sphere(v, r*1.45, 12); red.box(v[0]-0.012, v[1]-0.012, v[2]+r*1.3, v[0]+0.13, v[1]+0.012, v[2]+r*1.3+0.018, 0.004); }   // шаровой кран
     }
+  }
+
+  /** стрелки направления потока (наклейки сбоку, к зрителю): на магистрали l — через 1 м, мимо отводов и кранов; на спусках
+   *  сжатого воздуха — вниз к входу аппарата, вверх от выхода (и от компрессора) */
+  marks(l, r){
+    const B=(l.branches||[]).map(b=>b.x), by=(l.bypass||[]).flatMap(q=>[q.x0, q.x1]), h=Math.max(0.035, r*1.3), w=h*3.2;
+    for (const [a, b] of StationLayout.runs(l)){ if (b-a<500) continue;
+      for (let x=a+450; x<=b-300; x+=1000){ if ([...B, ...by].some(v=>Math.abs(v-x)<200)) continue;
+        const p=this.P(x, l.y, l.z); this.sticker({ type:'sign', id:'FLOW', dir:PipeMaterial.flow(l, x) }, [p[0], p[1]-r-0.003, p[2]], [0, -1, 0], w, h); } }
+    if (l.medium!=='air') return;
+    for (const br of l.branches||[]){ const len=l.z-br.z1; if (!br.role || len<350) continue;
+      const p=this.P(br.x, br.y1, br.z1+len/2), rr=r*0.85; this.sticker({ type:'sign', id:'FLOWV', dir:br.role==='in' ? -1 : 1 }, [p[0], p[1]-rr-0.003, p[2]], [0, -1, 0], Math.max(0.03, rr*1.3), Math.max(0.03, rr*1.3)*3.2); }
   }
 
   // ---- глушитель на крыше над ДГУ: опоры, корпус, выход с колпаком; выхлопная труба в изоляции — сквозь крышу
