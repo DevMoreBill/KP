@@ -156,7 +156,7 @@ async function renderDocx(St, pack, settings){
       zip.file(`word/media/${fnm}`, b64(du), {base64:true});
       const L=linkOf(x,g);
       if (L.kind==='feat') m.featImgs[L.f.id]={file:fnm, w:g.w, h:g.h};
-      else m.gallery.push({file:fnm, w:g.w, h:g.h, caption:(g.caption||'').trim() || (L.kind==='group'?L.name:''), wide:galWide(g)}); }
+      else m.gallery.push({file:fnm, w:g.w, h:g.h, caption:(g.caption||'').trim() || (L.kind==='group'?L.name:''), wide:galWide(g), sheet:g.gen==='stdraw'}); }
     Min.items[x.id]=m; }
   // дополнительные картинки шаблона и шапка из настроек (если скелет это умеет)
   const feats=pack.skel.features||[];
@@ -206,6 +206,7 @@ async function renderDocx(St, pack, settings){
 async function previewDocx(id, settings){
   if (!S.items.length) throw new Error('добавьте в КП хотя бы одну позицию — пробный файл строится по текущему КП');
   const pack=await templatePack(id);
+  await StationImages.syncAll();
   const St=docState(); if (!St.number) St.number='ПРОБНЫЙ';
   const blob=await renderDocx(St, pack, settings || pack.settings);
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='Пробный_'+fileName(settings || pack.settings);
@@ -218,6 +219,7 @@ async function download(){
   if (!window.JSZip){ msg.className='msg err'; msg.textContent='Не загрузился модуль сборки файла. Обновите страницу.'; return; }
   btn.disabled=true; btn.textContent='Собираю файл…'; msg.textContent='';
   try{
+    await StationImages.syncAll();          // 3D-вид и чертёж станций — по текущему составу
     const St = docState(), isNew = !S.kpId;
     if (!S.template) throw new Error('не выбран шаблон КП (папка templates рядом с программой пуста)');
     let pack;
@@ -230,8 +232,8 @@ async function download(){
     const blob = await renderDocx(St, pack, pack.settings);
     btn.textContent='Сохраняю в журнал…';
     await syncCatalog(S.number); await saveClient(true);
-    for (const it of S.items){ it.photo=await uploadImg(it.photo, imgPlace(it,'photo')); it.logo=await uploadImg(it.logo, imgPlace(it,'logo')); if (it.gallery) for (const g of it.gallery){ const u=await uploadImg(g, imgPlace(it,'gallery',g)); if(u) g.src=u.src; }
-      for (const p of kitParts(it)) if (p.photo) p.photo=await uploadImg(p.photo, imgPlace(it,'gallery',{caption:p.name})); }
+    for (const it of S.items){ it.photo=await ImgUpload.put(it.photo, imgPlace(it,'photo')); it.logo=await ImgUpload.put(it.logo, imgPlace(it,'logo')); if (it.gallery) for (const g of it.gallery){ const u=await ImgUpload.put(g, imgPlace(it,'gallery',g)); if(u) g.src=u.src; }
+      for (const p of kitParts(it)) if (p.photo) p.photo=await ImgUpload.put(p.photo, imgPlace(it,'gallery',{caption:p.name})); }
     if (!S.managerId && String(S.manager.name||'').trim()) await saveManager(true);   // новый менеджер попадает в справочник
     if (!S.authorId) S.authorId=meId()||S.managerId||'';
     const t=totalsS(), fn=fileName();

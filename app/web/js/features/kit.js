@@ -211,6 +211,7 @@ function edKit(x,i){
       <label class="f"><span>Климатическое исполнение</span>${sel('climate', j, CLIMATES.map(c=>[c[0], c[0]+' — '+c[1]]), p.climate)}</label>
       <label class="f"><span>Размер Д × Ш × В, мм</span><input type="text" data-kitct="${i}.${j}" data-fld="size" value="${esc(p.size||'')}" placeholder="${esc(ctypeOf(p.ctype).size)}"></label>
       <label class="f"><span>Цвет</span><input type="text" data-kitct="${i}.${j}" data-fld="ral" value="${esc(p.ral||'')}" placeholder="например, RAL 7004 / RAL 5005"></label></div>
+      ${StationUi.on(x) && StationGeo.FLEX[p.ctype] ? `<p class="muted kit-szn">${p.sizeAuto && String(p.size||'').trim() ? 'Размер подобран по оборудованию (вкладка «Компоновка»). Впишите свой — подбор отключится.' : String(p.size||'').trim() ? `Размер задан вручную — <button type="button" class="lnk" data-a="stlAuto" data-i="${i}">подобрать по оборудованию</button>.` : 'Размер подберётся по оборудованию, когда в составе будет что расставлять.'}</p>` : ''}
       <div class="kit-sys"><span class="muted">Системы контейнера:</span>${CONT_SYSTEMS.map(([id,k])=>`<button type="button" class="chip${(p.sys||CONT_SYS_DEF)[id]?' on':''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!(p.sys||CONT_SYS_DEF)[id]}">${esc(k)}</button>`).join('')}</div>`:''}
     <div class="kit-body">
     <div class="kit-phw"><span class="kit-phl">Фото элемента</span>
@@ -354,8 +355,9 @@ document.addEventListener('focusout', e=>{ const t=e.target; if (t.dataset.kitco
   const [i,j]=t.dataset.kitcost.split('.').map(Number), p=kitParts(S.items[i])[j]; if (p && !Number.isNaN(dNum(p._costText))) delete p._costText; renderForm(); if (typeof dealRender==='function') dealRender(); });
 document.addEventListener('change', e=>{ const t=e.target;
   if (t.dataset.kitct!=null){ const [i,j]=t.dataset.kitct.split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
-    const o={[t.dataset.fld]:t.value}; if (t.dataset.fld==='ctype'){ const c=ctypeOf(t.value); if (c.ins) o.ins=c.ins; if (c.climate) o.climate=c.climate; }
-    contApply(p, o); stationFill(it); stationAutoName(it); renderForm(); persist(); return; }
+    const o={[t.dataset.fld]:t.value}; if (t.dataset.fld==='ctype'){ const c=ctypeOf(t.value); if (c.ins) o.ins=c.ins; if (c.climate) o.climate=c.climate; if (p.sizeAuto) o.size=''; }
+    if (t.dataset.fld==='size') o.sizeAuto=!String(t.value).trim();     // вписан свой размер — подбор по оборудованию отключается
+    contApply(p, o); StationSize.apply(it); stationFill(it); stationAutoName(it); renderForm(); persist(); return; }
   if (t.dataset.kitcur!=null){ const [i,j]=t.dataset.kitcur.split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
     p.costCur=t.value; if (t.value!=='RUB' && !(rateOf(t.value)>0)) loadCBR(); kitSync(it); renderForm(); persist(); if (typeof dealRender==='function') dealRender(); return; }
   if (/^items\.\d+\.kit\.parts\.\d+\.qty$/.test(t.dataset.p||'')){ const it=S.items[+t.dataset.p.split('.')[1]]; kitSync(it); renderForm(); persist(); } });

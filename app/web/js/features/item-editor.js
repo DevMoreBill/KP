@@ -41,9 +41,9 @@ function drop(img, kind, i, text, small){
 
 let EDIT=null;
 
-const ED_TABS=[['main','Основное'],['kit','Состав станции'],['ai','✨ Заполнить с ИИ'],['desc','Описание и фото'],['spec','Характеристики'],['opts','Опции и услуги']];
-// вкладки позиции: «Состав станции» — только у станций в контейнере (и у сборок, заведённых раньше)
-const edTabs = x => ED_TABS.filter(([k])=>(k!=='kit' || canKit(x)) && (k!=='ai' || FEAT.on('ai')));
+const ED_TABS=[['main','Основное'],['kit','Состав станции'],['layout','Компоновка'],['ai','✨ Заполнить с ИИ'],['desc','Описание и фото'],['spec','Характеристики'],['opts','Опции и услуги']];
+// вкладки позиции: «Состав станции» — только у станций в контейнере (и у сборок, заведённых раньше), «Компоновка» — у станций
+const edTabs = x => ED_TABS.filter(([k])=>(k!=='kit' || canKit(x)) && (k!=='layout' || StationUi.on(x)) && (k!=='ai' || FEAT.on('ai')));
 
 function featId(f){ if(!f.id) f.id=uid(); return f.id; }
 
@@ -64,13 +64,13 @@ function openEditor(i, tab){
   EDIT={i, tab: tab||'main'}; const d=$('#edlg'); renderEditor(); if(!d.open) d.showModal();
 }
 
-function closeEditor(){ const d=$('#edlg'); EDIT=null; if(d.open) d.close(); renderForm(); persist(); }
+function closeEditor(){ const d=$('#edlg'); EDIT=null; if(d.open) d.close(); renderForm(); persist(); StationImages.syncAll().then(ch=>{ if (ch) renderForm(); }); }
 
 function renderEditor(){
   const d=$('#edlg'); if(!EDIT) return; const i=EDIT.i, x=S.items[i]; if(!x){ closeEditor(); return; }
   if (!edTabs(x).some(([k])=>k===EDIT.tab)) EDIT.tab='main';
   const focusP=document.activeElement?.dataset?.p; const sc=d.querySelector('.ed-b')?.scrollTop||0;
-  const body = EDIT.tab==='main'?edMain(x,i): EDIT.tab==='kit'?edKit(x,i): EDIT.tab==='desc'?edDesc(x,i): EDIT.tab==='spec'?edSpec(x,i): EDIT.tab==='opts'?edOpts(x,i): edAI(x,i);
+  const body = EDIT.tab==='main'?edMain(x,i): EDIT.tab==='kit'?edKit(x,i): EDIT.tab==='layout'?StationUi.tab(x,i): EDIT.tab==='desc'?edDesc(x,i): EDIT.tab==='spec'?edSpec(x,i): EDIT.tab==='opts'?edOpts(x,i): edAI(x,i);
   const head = CATED ? `<h3><span class="ed-cat">Каталог</span>${esc(x.name||'Новая позиция')}</h3><button class="btn" type="button" data-catcancel>Отмена</button>${CW.mod&&!ADMIN.on?'<span class="muted ed-modnote">Изменения будут отправлены на модерацию</span>':''}<button class="btn primary" type="button" data-catsave>${catSaveLabel()}</button>`
     : `<h3>${i+1}. ${esc(x.name||'Новая позиция')}</h3>${S.items.length>1?`<button class="btn ghost" type="button" data-ednav="-1" ${i===0?'disabled':''} title="Предыдущая позиция">←</button><button class="btn ghost" type="button" data-ednav="1" ${i===S.items.length-1?'disabled':''} title="Следующая позиция">→</button>`:''}<button class="btn primary" type="button" data-edclose>Готово</button>`;
   d.classList.toggle('catmode', !!CATED);
@@ -97,7 +97,7 @@ function imgBox(src, attrs, text){ return `<div class="ibox" ${attrs} tabindex="
 
 // выбор главного фото среди изображений позиции (фото со страницы поставщика, загруженные вручную)
 function edMainPick(x,i){
-  const free=edFreeGal(x).filter(j=>x.gallery[j] && x.gallery[j].src); if (!free.length) return '';
+  const free=edFreeGal(x).filter(j=>x.gallery[j] && x.gallery[j].src && x.gallery[j].gen!=='stdraw'); if (!free.length) return '';   // чертёж станции — не фото
   return `<div class="mainpick"><span class="muted">Главное фото — выбрать из изображений позиции:</span>
     <div class="mainpick-l">${free.map(j=>`<button type="button" class="mainpick-i" data-a="galMain" data-i="${i}" data-j="${j}" title="Сделать главным"><img src="${esc(x.gallery[j].src)}" alt=""></button>`).join('')}</div></div>`;
 }
@@ -117,7 +117,7 @@ function edStationPhoto(x,i){
   const ps=kitParts(x).map((p,j)=>({p,j})).filter(o=>o.p.photo && o.p.photo.src), cur=x.photo && x.photo.src;
   const from=cur ? ps.find(o=>o.p.photo.src===cur) : null;
   return `<div class="st-ph"><p class="st-phn"><b>Это фото станции целиком</b> — оно стоит в строке КП и на титульном листе. Лучше всего — общий вид станции или контейнера.
-      ${from?`Сейчас — фото элемента «${esc(from.p.name||'без названия')}» из состава.`:cur?'Сейчас — своё фото.':'Фото пока нет.'}
+      ${from?`Сейчас — фото элемента «${esc(from.p.name||'без названия')}» из состава.`:x.photo&&x.photo.gen==='st3d'?'Сейчас — 3D-вид с вкладки «Компоновка»: он сам обновляется при изменении состава и контейнера.':cur?'Сейчас — своё фото.':StationUi.on(x)?'Фото пока нет — 3D-вид станции вставляется с вкладки «Компоновка».':'Фото пока нет.'}
       Фото компрессора, насоса, осушителя и других элементов — на вкладке «Состав станции»: в КП они стоят рядом с описанием элемента.</p>
     ${ps.length?`<div class="st-phl"><span class="muted">Взять фото элемента состава:</span>${ps.map(({p,j})=>`<button type="button" class="st-phi${p.photo.src===cur?' on':''}" data-a="stPhoto" data-i="${i}" data-j="${j}" title="${esc(p.name||'')}"><img src="${esc(p.photo.src)}" alt=""><small>${esc(p.role==='container'?'контейнер':p.name||'элемент')}</small></button>`).join('')}</div>`:''}</div>`;
 }

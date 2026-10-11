@@ -80,9 +80,10 @@ document.addEventListener('click', async e=>{
     case 'galAdd': return pickGallery(i, b.dataset.slot||'');
     case 'galPage': return galFromPage(i, e.shiftKey);
     case 'kitAdd': case 'kitCat': case 'kitMain': case 'kitCont': case 'kitSys': case 'kitPreset': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (kitAction(a, i, b)==='async') return; break; }
-    case 'galDel': it.gallery.splice(j,1); break;
-    case 'stPhoto': { const p=kitParts(it)[j]; if (!p || !p.photo || !p.photo.src) return; it.photo={...p.photo}; delete it.photoFrom; toast('Главное фото станции — фото «'+(p.name||'элемента')+'»'); break; }
-    case 'galMain': if (!edSetMain(it, j)) return; toast('Главное фото заменено — прежнее перенесено в изображения'); break;
+    case 'galDel': if (it.gallery[j] && it.gallery[j].gen==='stdraw') StationImages.forget(it, 'draw'); it.gallery.splice(j,1); break;
+    case 'stPhoto': { const p=kitParts(it)[j]; if (!p || !p.photo || !p.photo.src) return; StationImages.chosen(it); it.photo={...p.photo}; delete it.photoFrom; toast('Главное фото станции — фото «'+(p.name||'элемента')+'»'); break; }
+    case 'galMain': { if (!(it.gallery||[])[j]) return; const was3d=StationImages.chosen(it); if (!edSetMain(it, j)) return;
+      toast(was3d ? 'Главное фото заменено — 3D-вид вернуть можно на вкладке «Компоновка»' : 'Главное фото заменено — прежнее перенесено в изображения'); break; }
     case 'edit': return openEditor(i, b.dataset.tab);
     case 'catOf': { const c=b.dataset.cat; if (typeById(c).station || !catCache.some(x=>attrsOf(x).cat===c)) return newEquip('kp', c); return openCatalog({cat:c}); }
     case 'dupItem': { const cp=JSON.parse(JSON.stringify(it)); cp.id=uid(); (cp.features||[]).forEach(f=>{ const old=f.id; f.id=uid(); (cp.gallery||[]).forEach(g=>{ if(g.at==='feat:'+old) g.at='feat:'+f.id; }); });
@@ -101,7 +102,8 @@ document.addEventListener('click', async e=>{
     case 'addRow': it.groups[j].rows.push({k:'',v:''}); break;
     case 'delRow': it.groups[j].rows.splice(k,1); break;
     case 'star': it.groups[j].rows[k].hl=!it.groups[j].rows[k].hl; break;
-    case 'rmImg': it[b.dataset.k]=null; break;
+    case 'rmImg': if (b.dataset.k==='photo' && it.photo && it.photo.gen==='st3d') StationImages.forget(it, 'photo'); it[b.dataset.k]=null; break;
+    case 'stlFix': case 'stlAuto': if (!StationUi.act(a, i, b)) return; break;
     case 'pickImg': return pickImage(b.dataset.k, i);
     case 'clients': S.showClients=!S.showClients; break;
     case 'coverFrom': S.cover.touched=false; S.cover._src=''; coverSync(); toast('Заголовок и параметры — по оборудованию КП'); break;

@@ -8,6 +8,7 @@ async function buildKpBlob(){
   if (!S.items.length) throw new Error('добавьте в КП хотя бы одну позицию');
   if (!window.docx || !window.JSZip) throw new Error('не загрузился модуль предпросмотра — обновите страницу');
   const pack=await templatePack(S.template);
+  await StationImages.syncAll();          // 3D-вид и чертёж станций — по текущему составу
   const St=docState(); if (!St.number) St.number=S.number||'—';
   return renderDocx(St, pack, pack.settings);
 }

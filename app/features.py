@@ -16,6 +16,7 @@ from datetime import datetime
 FEATURES = {
     'tender': (True, 'КП для тендера'),
     'stations': (True, 'Станции в контейнере'),
+    'stLayout': (True, 'Компоновка станций: чертёж и 3D-вид'),
     'check': (True, 'Проверка контрагента'),
     'clientPrev': (True, 'Предупреждение о КП клиента'),
     'ai': (True, 'Заполнение с ИИ'),
