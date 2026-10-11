@@ -14,10 +14,12 @@ const KIT_PRESETS = ['Шасси (прицеп)', 'Глушитель', 'Шка�
 // в equipment_types.json: main — категории основного оборудования, parts — типовые элементы). Контейнер — особый элемент
 // (role 'container'): тип, утепление, климатическое исполнение; основное оборудование — role 'main'.
 const CONTAINER_TYPES = [
-  { id:'block', name:'Блок-контейнер утеплённый', short:'блок-контейнере', size:'по проекту (длина 3–12 м, ширина 2,4–3 м)',
+  { id:'block', name:'Блок-контейнер утеплённый', short:'блок-контейнере', size:'по оборудованию (длина 2–12 м, ширина 1,5–2,55 м)',
     desc:'Каркас из гнутого стального профиля, стены и кровля — сэндвич-панели с минераловатным утеплителем, пол — рифлёный стальной лист по утеплённому основанию. Размеры подбираются под оборудование; двери и проёмы — по проекту.' },
   { id:'welded', name:'Блок-контейнер цельносварной', short:'цельносварном блок-контейнере', size:'по проекту, например 5000 × 2400 × 2500 мм',
     desc:'Цельносварной стальной каркас и корпус: наружная обшивка — стальной лист от 1,5 мм с антикоррозионной обработкой, утепление стен, крыши и пола минеральной ватой, пол — рифлёный стальной лист, крыша — профилированный лист. Закладные под оборудование, проушины для погрузки, дверь и утеплённые ворота — по проекту.' },
+  { id:'sea10', name:'Морской контейнер 10 футов', short:'контейнере 10 футов', size:'2991 × 2438 × 2591 мм',
+    desc:'Стандартный морской контейнер ISO 10 футов, переоборудованный под оборудование: утепление и внутренняя обшивка, дверь обслуживания, вентиляционные проёмы, кабельные и трубные вводы.' },
   { id:'sea20', name:'Морской контейнер 20 футов', short:'контейнере 20 футов', size:'6058 × 2438 × 2591 мм',
     desc:'Стандартный морской контейнер ISO 20 футов, переоборудованный под оборудование: утепление и внутренняя обшивка, дверь обслуживания, вентиляционные проёмы, кабельные и трубные вводы.' },
   { id:'sea40', name:'Морской контейнер 40 футов', short:'контейнере 40 футов', size:'12192 × 2438 × 2591 мм',
@@ -178,6 +180,28 @@ class KitPipe {
   }
 }
 
+// шкафы станции: на стене (чаще так — по умолчанию) или на полу — поле в составе и строка «Установка» характеристик
+// элемента; на компоновке настенный висит на стене прохода, напольный стоит в ряду (StationEquip.mount, station-layout.js)
+class KitCabinet {
+  static ROW = 'Установка';
+  static OPTS = [['wall', 'на стене', 'настенный'], ['floor', 'на полу', 'напольный']];
+  static is(p){ return !!p && p.role!=='container' && p.role!=='main' && StationEquip.kindOf(p)==='cabinet'; }
+  static fields(p, i, j){
+    if (!this.is(p)) return '';
+    const cur=StationEquip.mount(p, StationEquip.dims(p, 'cabinet'));
+    return `<div class="kit-pp"><label class="f"><span>Установка шкафа</span><select data-kitcab="${i}.${j}">${this.OPTS.map(([v, l])=>`<option value="${v}"${v===cur?' selected':''}>${esc(l)}</option>`).join('')}</select></label></div>`;
+  }
+  /** поле в составе → элемент и строка «Установка» */
+  static change(t){
+    const [i, j]=t.dataset.kitcab.split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
+    p.mount=t.value==='floor' ? 'floor' : 'wall'; this.rows(p); renderForm(); persist();
+  }
+  static rows(p){
+    p.rows=p.rows||[]; const o=this.OPTS.find(z=>z[0]===p.mount), r=p.rows.find(z=>z.k===this.ROW);
+    if (r){ if (o) r.v=o[2]; else p.rows.splice(p.rows.indexOf(r), 1); } else if (o) p.rows.push({ k:this.ROW, v:o[2] });
+  }
+}
+
 // элементы станции, без которых её не бывает: мастер кладёт их в состав сразу (ДГУ — глушитель на крыше, дополнительный
 // топливный бак, топливопровод; насосная и компрессорная — трубопроводная обвязка), новый элемент с таким названием
 // получает описание. Закупку, поставщика и подробности менеджер уточняет в составе.
@@ -273,7 +297,7 @@ function edKit(x,i){
       <label class="f"><span>Размер Д × Ш × В, мм</span><input type="text" data-kitct="${i}.${j}" data-fld="size" value="${esc(p.size||'')}" placeholder="${esc(ctypeOf(p.ctype).size)}"></label>
       <label class="f"><span>Цвет</span><input type="text" data-kitct="${i}.${j}" data-fld="ral" value="${esc(p.ral||'')}" placeholder="например, RAL 7004 / RAL 5005"></label></div>
       ${StationUi.on(x) && StationGeo.FLEX[p.ctype] ? `<p class="muted kit-szn">${p.sizeAuto && String(p.size||'').trim() ? 'Размер подобран по оборудованию (вкладка «Компоновка»). Впишите свой — подбор отключится.' : String(p.size||'').trim() ? `Размер задан вручную — <button type="button" class="lnk" data-a="stlAuto" data-i="${i}">подобрать по оборудованию</button>.` : 'Размер подберётся по оборудованию, когда в составе будет что расставлять.'}</p>` : ''}
-      <div class="kit-sys"><span class="muted">Системы контейнера:</span>${CONT_SYSTEMS.map(([id,k])=>`<button type="button" class="chip${(p.sys||CONT_SYS_DEF)[id]?' on':''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!(p.sys||CONT_SYS_DEF)[id]}">${esc(k)}</button>`).join('')}</div>`:''}${KitPipe.fields(p, i, j)}
+      <div class="kit-sys"><span class="muted">Системы контейнера:</span>${CONT_SYSTEMS.map(([id,k])=>`<button type="button" class="chip${(p.sys||CONT_SYS_DEF)[id]?' on':''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!(p.sys||CONT_SYS_DEF)[id]}">${esc(k)}</button>`).join('')}</div>`:''}${KitPipe.fields(p, i, j)}${KitCabinet.fields(p, i, j)}
     <div class="kit-body">
     <div class="kit-phw"><span class="kit-phl">Фото элемента</span>
       <div class="kit-ph${p.photo&&p.photo.src?' has':''}">${p.photo&&p.photo.src?`<img src="${esc(p.photo.src)}" alt="${esc(p.name||'Фото элемента')}"><button class="icon x" type="button" data-a="kitPhotoDel" data-i="${i}" data-j="${j}" aria-label="Убрать фото">✕</button>`:`<button type="button" class="kit-phb" data-a="kitPhoto" data-i="${i}" data-j="${j}"><b>+ фото</b><small>выбрать файл</small></button>`}</div>
@@ -416,6 +440,7 @@ document.addEventListener('focusout', e=>{ const t=e.target; if (t.dataset.kitco
   const [i,j]=t.dataset.kitcost.split('.').map(Number), p=kitParts(S.items[i])[j]; if (p && !Number.isNaN(dNum(p._costText))) delete p._costText; renderForm(); if (typeof dealRender==='function') dealRender(); });
 document.addEventListener('change', e=>{ const t=e.target;
   if (t.dataset.kitpp!=null){ KitPipe.change(t); return; }
+  if (t.dataset.kitcab!=null){ KitCabinet.change(t); return; }
   if (t.dataset.kitct!=null){ const [i,j]=t.dataset.kitct.split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
     const o={[t.dataset.fld]:t.value}; if (t.dataset.fld==='ctype'){ const c=ctypeOf(t.value); if (c.ins) o.ins=c.ins; if (c.climate) o.climate=c.climate; if (p.sizeAuto) o.size=''; }
     if (t.dataset.fld==='size') o.sizeAuto=!String(t.value).trim();     // вписан свой размер — подбор по оборудованию отключается

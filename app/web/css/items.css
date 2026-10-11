@@ -260,6 +260,7 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .stl-views img{display:block;width:100%;height:auto;background:#fff;border-radius:6px}
 .stl-chk{display:inline-flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer}
 .stl-chk input{width:auto;margin:0}
+.stl-note{color:var(--muted);font-size:12px}
 .stl-how{font-size:13px;line-height:1.5;color:var(--muted)}
 .stl-how summary{cursor:pointer;color:var(--navy);font-weight:600}
 .stl-how p,.stl-how ul{margin:6px 0}
