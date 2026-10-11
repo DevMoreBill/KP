@@ -6,7 +6,7 @@
 // посторонним запрещён»), табличка категории помещения и класса зоны, световые табло в две строки («Выход», «Порошок!
 // Уходи!», «Порошок! Не входи!», «Автоматика отключена»), табличка щита ОПС, надпись «ДТ» у горловины; маркировка груза по
 // ГОСТ 14192-96 — знаки № 9 «Место строповки» (цепь), № 12 «Центр тяжести», надпись «Масса брутто» (чёрным, на тёмной стене —
-// белым).
+// белым); стрелки направления потока на трубах.
 // PhotoTint — главный цвет фото элемента (без фона, насыщенное и в центре — весомее): им окрашено оборудование в 3D.
 'use strict';
 
@@ -48,7 +48,7 @@ class StDecal {
     if (d.type==='brand') this.brand(g, W, H, d); else if (d.type==='logo') this.logo(g, W, H, d); else this.sign(g, W, H, d.id, d);
     return c;
   }
-  static AR = { F04:1, W01:1.15, W08:1.15, P02:1, P06:1, EXIT:2.77, POW_OUT:2.77, POW_NO:2.77, AUTO_OFF:2.77, DT:1.85, CAT:1.5, OPS:2.68, SLING:0.6, COG:1, MASS:2.65 };
+  static AR = { F04:1, W01:1.15, W08:1.15, P02:1, P06:1, EXIT:2.77, POW_OUT:2.77, POW_NO:2.77, AUTO_OFF:2.77, DT:1.85, CAT:1.5, OPS:2.68, SLING:0.6, COG:1, MASS:2.65, FLOW:3.2, FLOWV:0.3125 };
 
   /** скруглённый прямоугольник */
   static rr(g, x, y, w, h, r){ g.beginPath(); g.moveTo(x+r, y); g.arcTo(x+w, y, x+w, y+h, r); g.arcTo(x+w, y+h, x, y+h, r); g.arcTo(x, y+h, x, y, r); g.arcTo(x, y, x+w, y, r); g.closePath(); }
@@ -129,6 +129,10 @@ class StDecal {
       g.strokeStyle='#c8102e'; g.lineWidth=s*0.09; g.beginPath(); g.arc(W/2, H/2, s*0.43, 0, Math.PI*2); g.stroke();
       g.beginPath(); g.moveTo(W/2-s*0.3, H/2-s*0.3); g.lineTo(W/2+s*0.3, H/2+s*0.3); g.stroke(); return; }
     if (id==='SLING' || id==='COG' || id==='MASS'){ this.cargo(g, W, H, id, d); return; }
+    if (id==='FLOW' || id==='FLOWV'){   // стрелка направления потока на трубе: острие — по ходу среды (FLOW: 1 — вправо, -1 — влево;
+      const v=id==='FLOWV', F=d.dir<0, P=(a, c)=>v ? [W*c, F ? H*a : H-H*a] : [F ? W-W*a : W*a, H*c];   // FLOWV: 1 — вверх, -1 — вниз)
+      const pts=[[0.04, 0.36], [0.62, 0.36], [0.62, 0.08], [0.97, 0.5], [0.62, 0.92], [0.62, 0.64], [0.04, 0.64]].map(([a, c])=>P(a, c));
+      g.fillStyle=d.ink||'#ffffff'; g.beginPath(); pts.forEach(([x, y], i)=>i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill(); return; }
     if (id==='CAT'){   // табличка на двери: категория помещения по пожарной опасности, класс зоны по ПУЭ
       g.fillStyle='#ffffff'; this.rr(g, 0, 0, W, H, s*0.05); g.fill(); g.strokeStyle='#111111'; g.lineWidth=s*0.035; this.rr(g, s*0.04, s*0.04, W-s*0.08, H-s*0.08, s*0.03); g.stroke();
       this.rows(g, W, H, [['КАТЕГОРИЯ', 0.14, '#111111'], [String(d.cat||''), 0.4, '#c8102e'], [d.zone ? 'КЛАСС ЗОНЫ '+d.zone : 'ПО ПОЖАРНОЙ ОПАСНОСТИ', 0.13, '#111111']]); return; }

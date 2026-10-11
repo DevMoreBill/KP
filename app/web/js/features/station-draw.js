@@ -751,15 +751,16 @@ class StationView3D {
     const over=new Map();
     for (const pp of plan.piping||[]){ const w=Math.max(4, 90*k);
       for (const l of pp.lines){ const y=oy+l.y, z=base+l.z;
-        for (const [a, b] of StationLayout.runs(l)) out.push(tube([ox+a, y, z], [ox+b, y, z], pp.color, w));
-        for (const b of l.branches){ const t=tube([ox+b.x, oy+b.y0, z], [ox+b.x, oy+b.y1, z], pp.color, w*0.8), to=items.find(i=>i.id+'#'+i.unit===b.to);
-          if (b.z1<l.z) over.set(b.to, (over.get(b.to)||'')+t+tube([ox+b.x, oy+b.y1, z], [ox+b.x, oy+b.y1, base+(to ? Math.min(b.z1, this.top(to)) : b.z1)], pp.color, w*0.8));
+        const c=PipeMaterial.idColor(l.medium, pp.color);   // опознавательная окраска (ГОСТ 14202-69)
+        for (const [a, b] of StationLayout.runs(l)) out.push(tube([ox+a, y, z], [ox+b, y, z], c, w));
+        for (const b of l.branches){ const t=tube([ox+b.x, oy+b.y0, z], [ox+b.x, oy+b.y1, z], c, w*0.8), to=items.find(i=>i.id+'#'+i.unit===b.to);
+          if (b.z1<l.z) over.set(b.to, (over.get(b.to)||'')+t+tube([ox+b.x, oy+b.y1, z], [ox+b.x, oy+b.y1, base+(to ? Math.min(b.z1, this.top(to)) : b.z1)], c, w*0.8));
           else out.push(t); } } }
     // оборудование: тени, затем по глубине (дальнее — раньше)
     for (const it of items.filter(i=>i.mount==='floor' || i.mount==='frame')) out.push(V.face([[it.X0+60, it.Y0+40, base+1], [it.X1+160, it.Y0+40, base+1], [it.X1+160, it.Y1+120, base+1], [it.X0+60, it.Y1+120, base+1]], '#000000', 0, ' opacity="0.16" filter="url(#blur6)"'));
     for (const it of V.order(items)){ out.push(...this.equip(V, it, base, ceil, oy+Wi)); const t=over.get(it.id+'#'+it.unit); if (t) out.push(t); }
     // ресиверы снаружи — за дальним торцом на площадке; трубопровод от торца к ним
-    if (O.length){ const l=(plan.piping||[]).flatMap(q=>q.lines).find(q=>q.medium==='air' && !q.header && q.x1>=Li-1), c=((plan.piping||[])[0]||{}).color||'#8d949b', w=Math.max(4, 90*k);
+    if (O.length){ const l=(plan.piping||[]).flatMap(q=>q.lines).find(q=>q.medium==='air' && !q.header && q.x1>=Li-1), c=PipeMaterial.idColor('air', '#8d949b'), w=Math.max(4, 90*k);
       for (const it of O) out.push(V.face([[it.X0-200, it.Y0-200, base+it.z], [it.X1+200, it.Y0-200, base+it.z], [it.X1+200, it.Y1+200, base+it.z], [it.X0-200, it.Y1+200, base+it.z]], '#b9b6ae', 1));
       if (l){ const xm=(Le+Math.min(...O.map(i=>i.X0)))/2, y=oy+l.y, z=base+l.z;
         out.push(tube([Le, y, z], [xm, y, z], c, w)); for (const it of O){ const yc=(it.Y0+it.Y1)/2, zi=base+it.z+Math.max(250, it.h*0.22);
