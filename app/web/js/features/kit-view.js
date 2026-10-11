@@ -21,7 +21,7 @@ class StationReq {
   static FIRE = ['А', 'Б', 'В1', 'В2', 'В3', 'В4', 'Г', 'Д'];
   static RES = [['', 'без резерва'], ['1', 'N + 1'], ['2', 'N + 2']];
   static WORK = [['', 'по подбору'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']];
-  static LOSS = { dryer:0.2, filter:0.1 };   // потери давления, бар: осушитель, ступень фильтра (чистый картридж)
+  static get LOSS(){ return { dryer:StationRules.raw('loss.dryer').refrig, filter:StationRules.raw('loss.filter') }; }   // потери давления, бар (файл правил)
   // особые требования ТЗ: ключ, подпись, виды станций; АВР и диспетчеризация — шкафы в составе
   static OPTS = [['oilFree', 'Безмасляный компрессор (класс 0 по маслу)', ['comp']], ['vsd', 'Частотное регулирование', ['comp', 'pump']],
     ['ats', 'Два ввода питания с АВР', ['comp', 'pump', 'dgu']], ['scada', 'Диспетчеризация — шкаф АСУ ТП', ['comp', 'pump', 'dgu']]];
@@ -65,9 +65,9 @@ class StationReq {
     const enough=(vals, need, what, unit)=>{ const s=[...vals].sort((a, b)=>b-a), sum=s.reduce((a, b)=>a+b, 0), work=s.slice(res).reduce((a, b)=>a+b, 0), ok=work>=need;
       const rs=res && s.length>res ? ` + ${n(sum-work)} в резерве` : '';
       return { ok, text:`${what} ${n(work)} ${unit}${rs} — ${ok ? 'не меньше' : 'меньше требуемых'} ${n(need)}` }; };
-    if (k==='comp'){ const U=units('compressor'), need=this.num(r.flow), bar=this.num(r.pressure);
-      const purge=P.some(p=>StationEquip.kindOf(p)==='dryer' && AirChain.info(p, 'dryer').type==='ads') ? AirChain.PURGE : 0, q=U.map(p=>(AirChain.flow(p)||0)*(1-purge));
-      if (need>0) out.push(enough(q, need, purge ? 'производительность за вычетом продувки осушителя' : 'производительность', 'м³/мин'));
+    if (k==='comp'){ const U=units('compressor'), q0=this.num(r.flow), bar=this.num(r.pressure), nd=q0>0 ? this.need(r, q0) : null, need=nd ? nd.v : null;
+      const ads=P.find(p=>StationEquip.kindOf(p)==='dryer' && AirChain.info(p, 'dryer').type==='ads'), purge=ads ? AirChain.purge((ads.attrs||{}).regen) : 0, q=U.map(p=>(AirChain.flow(p)||0)*(1-purge));
+      if (need>0) out.push(enough(q, need, (purge ? 'производительность за вычетом продувки осушителя' : 'производительность')+(nd.why ? ` (потребность: ${nd.why})` : ''), 'м³/мин'));
       if (bar>0){ const pm=Math.max(0, ...U.map(p=>AirChain.bar(p)||0)), loss=this.loss(P), o=Math.round((pm-loss)*10)/10;
         if (pm) out.push({ ok:o>=bar, text:loss ? `давление на выходе ≈ ${n(o)} бар (компрессор ${n(pm)}, потери в подготовке воздуха ≈ ${n(loss)}) — ${o>=bar ? 'не меньше' : 'меньше'} ${n(bar)}`
           : `давление ${n(pm)} бар — ${pm>=bar ? 'не меньше' : 'меньше'} ${n(bar)}` }); } }
@@ -80,7 +80,10 @@ class StationReq {
       // работа от бака: топливо в баках станции (и в баке ДГУ, если указан) при нагрузке 75 % рабочих ДГУ
       const work=[...kw].sort((a, b)=>b-a).slice(res).reduce((a, b)=>a+b, 0), fuel=P.filter(p=>StationEquip.kindOf(p)==='tank' || StationEquip.kindOf(p)==='dgu')
         .reduce((s, p)=>s+(StationEquip.kindOf(p)==='tank' ? AirChain.volume(p)||StationEquip.num((p.attrs||{}).tank)||0 : StationEquip.num((p.attrs||{}).tank)||0)*Math.max(1, +p.qty||1), 0);
-      if (h>0 && work>0 && fuel>0){ const t=fuel/(work*0.75*StationDefaults.LPH);
+      const fp=h>0 && typeof GensetSizing!=='undefined' && StationRules.ok() ? GensetSizing.plan(x) : null;   // как в расчётной записке
+      if (fp){ const t=fp.have/(fp.c*fp.n*StationRules.raw('dgu.fuel_margin')), ok=fp.have>=fp.need*0.98;
+        out.push({ ok, text:ok ? `работа от баков ≈ ${n(Math.floor(t))} ч при нагрузке ${Math.round(fp.x*100)} % (с запасом) — не меньше ${n(h)}` : `работа от баков ≈ ${n(Math.floor(t))} ч — меньше ${n(h)}: нужно топлива ${n(Math.ceil(fp.need))} л, в баках ${n(fp.have)}` }); }
+      else if (h>0 && work>0 && fuel>0){ const t=fuel/(work*0.75*StationDefaults.LPH);
         out.push({ ok:t>=h*0.98, text:t>=h*0.98 ? `работа от бака ≈ ${n(Math.floor(t))} ч при нагрузке 75 % — не меньше ${n(h)}` : `работа от бака ≈ ${n(Math.floor(t))} ч — меньше ${n(h)}: нужен бак около ${StationDefaults.tank(work, h)} л` }); } }
     if (k==='pump'){ const U=units('pump'), q=U.map(p=>StationEquip.num((p.attrs||{}).flow)||0), need=this.num(r.q), head=this.num(r.head);
       if (need>0) out.push(enough(q, need, 'подача', 'м³/ч'));
@@ -88,17 +91,30 @@ class StationReq {
     return out;
   }
 
+  /** требуемая производительность компрессоров, м³/мин FAD: потребность из ТЗ (нормальные м³ — к условиям всасывания на
+   *  высоте и при влажности, AirDemand) с запасом из ТЗ; {v, why} */
+  static need(r, q){
+    const t=v=>this.num(String(v??'').replace(/[−–]/g, '-').replace(/^\+/, '')), why=[]; let v=q;
+    if (r.basis==='normal' && typeof AirDemand!=='undefined'){ const tm=t(r.tmax), rh=t(r.rh); v=AirDemand.fad(q, t(r.alt)||0, tm!=null ? tm : StationRules.raw('flow.fad_ref').t, rh!=null ? rh : 100); why.push('н. м³ → FAD'); }
+    const m=t(r.margin); if (m>0){ v*=1+m/100; why.push('запас '+String(m).replace('.', ',')+' %'); }
+    return { v, why:why.join(', ') };
+  }
+  static BASIS = [['fad', 'к условиям всасывания (FAD, ISO 1217)'], ['normal', 'к нормальным условиям (н. м³: 0 °C, 101,3 кПа)']];
+  static MODE = [['prime', 'основной источник (PRP)'], ['standby', 'резервный — до 200 ч в год (ESP)']];
+  static START = [['', 'не указан'], ['direct', 'прямой'], ['stardelta', 'звезда — треугольник'], ['soft', 'плавный пуск'], ['vsd', 'частотный преобразователь']];
+
   /** потери давления в подготовке воздуха, бар (оценка): осушитель и ступени фильтров по ходу воздуха */
   static loss(P){ const k=P.map(p=>StationEquip.kindOf(p)); return Math.round(((k.includes('dryer') ? this.LOSS.dryer : 0)+this.LOSS.filter*Math.min(4, k.filter(z=>z==='filter').length))*100)/100; }
 
   /** короткая строка требований для заголовка блока */
   static line(x){
     const r=this.of(x), k=this.kind(x), u=(v, s)=>v ? `${String(v).replace('.', ',')} ${s}` : '', cls=StationUi.opts(x).air;
-    const main=k==='comp' ? [u(r.flow, 'м³/мин'), u(r.pressure, 'бар'), cls ? 'класс '+cls : ''] : k==='dgu' ? [u(r.kw, 'кВт')] : k==='pump' ? [u(r.q, 'м³/ч'), u(r.head, 'м')] : [];
+    const main=k==='comp' ? [u(r.flow, r.basis==='normal' ? 'н. м³/мин' : 'м³/мин'), u(r.pressure, 'бар'), cls ? 'класс '+cls : '', this.num(r.margin)>0 ? 'запас '+u(r.margin, '%') : '']
+      : k==='dgu' ? [u(r.kw, 'кВт'), r.mode==='standby' ? 'резервный (ESP)' : '', this.num(r.load)>0 ? 'средняя нагрузка '+u(r.load, '%') : ''] : k==='pump' ? [u(r.q, 'м³/ч'), u(r.head, 'м')] : [];
     const t=[r.tmin!=null && r.tmin!=='' ? `от ${r.tmin} °C` : '', r.tmax!=null && r.tmax!=='' ? `до ${r.tmax} °C` : ''].filter(Boolean).join(' ');
     const w=this.num(r.work), rs=this.num(r.reserve);
     const opt=[r.oilFree && k==='comp' ? 'безмасляный' : '', r.vsd && k!=='dgu' ? 'частотное регулирование' : '', r.ats ? 'два ввода с АВР' : '', r.scada ? 'диспетчеризация' : ''];
-    return [...main, w>0 ? `${w} раб.${rs>0 ? ' + '+rs+' рез.' : ''}` : rs>0 ? 'резерв N+'+rs : '', t, ...opt, r.src && r.src.name ? 'по ТЗ «'+r.src.name+'»' : ''].filter(Boolean).join(' · ');
+    return [...main, w>0 ? `${w} раб.${rs>0 ? ' + '+rs+' рез.' : ''}` : rs>0 ? 'резерв N+'+rs : '', t, this.num(r.alt)>0 ? u(r.alt, 'м над уровнем моря') : '', ...opt, r.src && r.src.name ? 'по ТЗ «'+r.src.name+'»' : ''].filter(Boolean).join(' · ');
   }
 
   /** блок «Требования заказчика»: свёрнут — строка и проверки; развёрнут — поля */
@@ -122,6 +138,12 @@ class StationReq {
         ${fld('tmin', 'Наружный воздух от, °C', '−45', 'text')}${fld('tmax', 'до, °C', '+40', 'text')}
         ${sel('fire', 'Категория помещения (СП 12.13130)', this.FIRE.map(f=>[f, f+(f===this.fireDef(x) ? ' (ориент.)' : '')]), this.fire(x))}
         ${fld('noise', 'Шум на рабочем месте, не более дБА', '80', 'numeric')}</div>
+      ${k==='comp' || k==='dgu' ? `<details class="kr-calc"${r.basis || r.alt || r.rh || r.margin || r.tin || r.load || r.motor || r.start || r.mode ? ' open' : ''}><summary>Условия для расчёта станции</summary><div class="kr-g">${k==='comp'
+        ? sel('basis', 'Производительность приведена', this.BASIS, r.basis||'fad')+fld('margin', 'Запас производительности, %', '0 — по ТЗ')+fld('alt', 'Высота над уровнем моря, м', '0', 'numeric')
+          +fld('rh', 'Влажность воздуха, % (для н. м³)', '100 — с запасом', 'numeric')+fld('tin', 'Воздух на входе в осушитель, °C', 'по расчёту', 'text')
+        : sel('mode', 'Режим ДЭС', this.MODE, r.mode||'prime')+fld('load', 'Средняя нагрузка за сутки, %', '100')+fld('motor', 'Наибольший двигатель нагрузки, кВт', '—')
+          +sel('start', 'Пуск этого двигателя', this.START, r.start||'')+fld('alt', 'Высота над уровнем моря, м', '0', 'numeric')}</div>
+        <p class="muted kr-hint">Не заданы — в расчёте принимаются значения по умолчанию, они попадают в «Требует подтверждения» и в вопросы заказчику (вкладка «Компоновка» → «Расчёт станции»).</p></details>` : ''}
       ${k==='comp' ? `<label class="chk kr-out"><input type="checkbox" data-req="${i}" data-rk="recvOut"${this.recvOut(x) ? ' checked' : ''}> Ресивер после подготовки — снаружи, на площадке у торца <span class="muted">(ФНП ОРПД, п. 65)</span></label>` : ''}
       <div class="kr-opts">${this.OPTS.filter(([, , kinds])=>kinds.includes(k)).map(([key, label])=>`<label class="chk"><input type="checkbox" data-req="${i}" data-rk="${key}"${r[key] ? ' checked' : ''}> ${esc(label)}</label>`).join('')}</div>
       <label class="chk" title="${esc(SupplyDocs.list(x).join('; '))}"><input type="checkbox" data-req="${i}" data-rk="docs"${this.docs(x) ? ' checked' : ''}> Документы при поставке — в КП <span class="muted">(паспорта, декларации ТР ТС 010, 004, 020, 032, исполнительная документация)</span></label>

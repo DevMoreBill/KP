@@ -256,12 +256,18 @@ class StationDefaults {
   /** объём бака, л: на hours ч работы при нагрузке 75 % (по умолчанию 16 ч, с баком ДГУ — около суток), ближайший типовой;
    *  больше типовых — с округлением до 500 л */
   static tank(kw, hours=16){ if (!(kw>0)) return 1000; const need=kw*0.75*this.LPH*hours; return this.TANKS.find(v=>v>=need) || Math.ceil(need/500)*500; }
-  /** бак станции — под время работы из требований (ТЗ): объём и строка «время работы» */
+  /** бак станции — под время работы из требований (ТЗ): объём и строка «время работы». С расчётом станции (GensetSizing) —
+   *  по расходу ДГУ на нагрузке из требований с запасом, за вычетом бака ДГУ (как в расчётной записке); без него — 75 %, 0,25 л/кВт·ч */
   static retank(it, hours){
     const p=kitParts(it).find(z=>this.FUEL.test(String(z.name||''))), d=kitParts(it).filter(z=>StationEquip.kindOf(z)==='dgu' && z.role==='main');
     const res=Math.max(0, Math.round(StationReq.num(StationReq.of(it).reserve)||0)), kw=d.reduce((s, z)=>s+(StationEquip.num((z.attrs||{}).kw)||0)*Math.max(0, (+z.qty||1)-res), 0);
     if (!p || !(kw>0) || !(hours>0)) return null;
-    const v=this.tank(kw, hours); p.rows=(p.rows||[]).filter(r=>!/^объ[её]м|^время работы/i.test(String(r.k||'')));
+    p.rows=(p.rows||[]).filter(r=>!/^объ[её]м|^время работы/i.test(String(r.k||'')));
+    const fp=typeof GensetSizing!=='undefined' && StationRules.ok() ? GensetSizing.plan(it) : null;
+    if (fp){ const L=Math.max(0, fp.need-fp.built), v=L>0 ? this.TANKS.find(t=>t>=L) || Math.ceil(L/500)*500 : this.TANKS[0];
+      p.rows.push({ k:'Объём', v:v+' л' }, { k:`Время работы ДГУ от баков (с баком ДГУ) при нагрузке ${Math.round(fp.x*100)} %`, v:'около '+Math.floor((v+fp.built)/(fp.c*fp.n))+' ч' });
+      return v; }
+    const v=this.tank(kw, hours);
     p.rows.push({ k:'Объём', v:v+' л' }, { k:'Время работы ДГУ от бака при нагрузке 75 %', v:'около '+Math.round(v/(kw*0.75*this.LPH))+' ч' });
     return v;
   }
@@ -278,8 +284,9 @@ function kitDocItem(x){
   const groups=parts.filter(p=>(p.rows||[]).some(r=>r.k&&r.v)).map(p=>({name:p.name.trim(), rows:p.rows.filter(r=>r.k&&r.v).map(r=>({k:r.k, v:r.v, hl:false}))}));
   const gal=parts.filter(p=>p.photo&&p.photo.src&&feats.some(f=>f.id==='kit_'+p.id)).map(p=>({id:'kitg_'+p.id, src:p.photo.src, w:p.photo.w, h:p.photo.h, caption:p.name.trim(), slot:'', at:'feat:kit_'+p.id, on:true}));
   const docs=SupplyDocs.feature(x);   // станция: документы при поставке — последним блоком
+  const calc=typeof StationCalc!=='undefined' ? StationCalc.docGroups(x) : [];   // приложение «Расчётная записка и состав станции»
   return { ...x, page:true, spec:x.spec||('В составе: '+parts.map(p=>p.name.trim()).join(', ')).slice(0,200),
-    features:[...(x.features||[]).filter(f=>f.label||f.text), list, ...feats, ...(docs ? [docs] : [])], groups:[...(x.groups||[]), ...groups], gallery:[...(x.gallery||[]), ...gal] };
+    features:[...(x.features||[]).filter(f=>f.label||f.text), list, ...feats, ...(docs ? [docs] : [])], groups:[...(x.groups||[]), ...groups, ...calc], gallery:[...(x.gallery||[]), ...gal] };
 }
 
 // состав для шаблона, умеющего сборки (feature 'kit'): элементы как есть (без закупки и поставщика) и описание изделия
@@ -288,7 +295,8 @@ function kitDocData(x){
   const parts=kitParts(x).filter(p=>String(p.name||'').trim()).map(p=>({id:p.id, name:p.name.trim(), qty:+p.qty||1, desc:String(p.desc||'').trim(),
     rows:(p.rows||[]).filter(r=>r.k&&r.v).map(r=>({k:r.k, v:r.v})), maker:(p.attrs&&p.attrs.maker)||'', model:(p.attrs&&p.attrs.model)||''}));
   const docs=SupplyDocs.feature(x);
-  return { parts, base:{ page:true, spec:x.spec||'', features:[...(x.features||[]).filter(f=>f.label||f.text), ...(docs ? [docs] : [])], groups:x.groups||[], gallery:x.gallery||[] } };
+  const calc=typeof StationCalc!=='undefined' ? StationCalc.docGroups(x) : [];   // приложение «Расчётная записка и состав станции»
+  return { parts, base:{ page:true, spec:x.spec||'', features:[...(x.features||[]).filter(f=>f.label||f.text), ...(docs ? [docs] : [])], groups:[...(x.groups||[]), ...calc], gallery:x.gallery||[] } };
 }
 
 // строки закупки для экономики сделки: элемент сборки — своя строка (своя валюта и поставщик); обычная позиция — как есть

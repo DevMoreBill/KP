@@ -923,6 +923,19 @@ class AdminApi:
                 info['password'] = 'изменён'
             self.log('edit_access', 'manager', mid, None, info)
             return self.ok({'login': rec.get('login') or '', 'hasPassword': bool(rec.get('pw')), 'perms': auth_users.perms_of(rec), 'blocked': bool(rec.get('blocked'))})
+        if sub == 'rules/stations':      # инженерные правила станций: своя версия файла администратора или файл поставки
+            from station_rules import StationRules
+            sr = StationRules(st)
+            if m == 'POST':
+                before = sr.info()
+                try:
+                    res = sr.reset() if q.get('reset') == '1' else sr.save(self.h.body(), me or 'admin')
+                except ValueError as e:
+                    return self.err(400, str(e))
+                self.log('edit_settings', 'settings', 'stationRules', {'version': before['version'], 'own': before['own']},
+                         {'version': res['version'], 'own': res['own']})
+                return self.ok({'info': res})
+            return self.ok({'info': sr.info()})
         if sub == 'features':    # функции программы: включить / выключить
             from features import FeatureAccess
             fa = FeatureAccess(st)

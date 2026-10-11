@@ -14,6 +14,8 @@ function problems(){
     if (!(Number.isInteger(+x.qty) && +x.qty>=1)) p.push([`Позиция ${i+1}: количество — целое число от 1`,'item-'+x.id]);
     if (!x.price || Number.isNaN(parsePrice(x._priceText ?? fmtPrice(x.price)))) p.push([`Позиция ${i+1}: укажите цену`,'prow-'+x.id]);
     if (StationUi.blocked(x)) p.push([`Позиция ${i+1}: оборудование станции не помещается в контейнер`,'item-'+x.id]);
+    { const ce=typeof StationCalc!=='undefined' ? StationCalc.errors(x) : [];   // расчёт станции: станция не пройдёт по требованиям
+      if (ce.length) p.push([`Позиция ${i+1}: расчёт станции — ${ce[0].text}${ce.length>1 ? ` (и ещё ${ce.length-1})` : ''}`,'item-'+x.id]); }
     if (x._discBad) p.push([`Позиция ${i+1}: скидка — ${discType(x)==='sum'?'сумма не больше цены за единицу':'процент от 0 до 99,99'}`,'prow-'+x.id]);
     (x.options||[]).forEach((o,j)=>{ if(!o.name.trim()) return;
       if (!(Number.isInteger(+o.qty)&&+o.qty>=1)) p.push([`Позиция ${i+1}, опция «${o.short||o.name}»: количество`,'item-'+x.id]);

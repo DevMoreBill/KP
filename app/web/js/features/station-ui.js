@@ -38,7 +38,7 @@ class StationUi {
   static short(n){ const w=n.split(' ').filter(Boolean); return w.length>=3 ? `${w[0]} ${w[1][0]}. ${w[2][0]}.` : n; }
   /** что вставлять в КП: 3D-вид главным фото, чертёж — в изображения (по умолчанию да, кроме листов skip, убранных
    *  менеджером); схема — только если включили */
-  static opts(x){ const o=x.stLayout||{}; return { photo:o.photo!==false, out:o.out!==false, draw:o.draw!==false, scheme:o.scheme===true, air:/^[1-6]\.[1-6]\.[1-4]$/.test(String(o.air||'')) ? o.air : '',
+  static opts(x){ const o=x.stLayout||{}; return { photo:o.photo!==false, out:o.out!==false, draw:o.draw!==false, scheme:o.scheme===true, calc:o.calc!==false, air:/^[1-6]\.[1-6]\.[1-4]$/.test(String(o.air||'')) ? o.air : '',
     skip:Array.isArray(o.skip) ? o.skip.filter(v=>Number.isInteger(v) && v>0 && v<10) : [] }; }
   static url(svg){ return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg); }
   /** схема станции: компрессорная — пневматическая, насосная — гидравлическая */
@@ -85,6 +85,7 @@ class StationUi {
       ${more.length ? `<details class="stl-more"><summary>Ещё сведения — ${more.length}</summary><ul class="stl-iss">${more.map(li).join('')}</ul></details>` : ''}
       ${this.air(plan, x, i)}
       ${this.systems(plan)}
+      ${typeof StationCalc!=='undefined' ? StationCalc.html(x, i) : ''}
       ${pics ? `<div class="stl-views">
         <figure class="v3d"><figcaption><b>3D-вид</b><label class="stl-chk"><input type="checkbox" data-stl="photo" data-i="${i}"${photoOn ? ' checked' : ''}> главное фото станции — в строке КП и на титуле</label></figcaption>
           <img src="${esc(src3)}" data-st3d="${esc(plan.hash||'')}" alt="3D-вид станции">${cutCab ? '<small class="stl-note">Стена прохода срезана вместе со шкафами на ней — их место на чертеже.</small>' : ''}</figure>
@@ -185,7 +186,7 @@ class StationUi {
     const it=S.items[+t.dataset.i]; if (!it) return;
     it.stLayout={ ...this.opts(it), [t.dataset.stl]:t.type==='checkbox' ? t.checked : t.value };
     if (t.dataset.stl==='draw' && t.checked) it.stLayout.skip=[];   // снова в КП — все листы
-    if (t.dataset.stl==='air'){ persist(); renderEditor(); renderForm(); return; }
+    if (t.dataset.stl==='air' || t.dataset.stl==='calc'){ persist(); renderForm(); return; }   // класс воздуха, расчётная записка — картинки не меняются
     if (t.dataset.stl==='photo' && t.checked && it.photo && it.photo.gen!=='st3d'){
       const part=StationImages.partPhoto(it);   // фото элемента состава — и так стоит в КП у его описания
       if (!confirm(part ? 'Заменить главное фото станции 3D-видом? Фото элемента останется у его описания.' : 'Заменить главное фото станции 3D-видом? Прежнее фото останется в изображениях позиции.')){ it.stLayout.photo=false; t.checked=false; return; }

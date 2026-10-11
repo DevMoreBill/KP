@@ -14,8 +14,50 @@ import zipfile
 from kit import APP, REPO, SampleData, Stand
 
 sys.path.insert(0, APP)
-from doc_text import DocText   # noqa: E402
+from doc_text import DocText, TextQuality   # noqa: E402
 from tz_parse import TzParse   # noqa: E402
+
+
+class NoOcr:
+    """распознавание недоступно (не Windows)"""
+    @staticmethod
+    def available():
+        return False
+
+
+class FakeOcr:
+    """распознавание Windows — заглушка: страницы скана заданным текстом"""
+    pages = []
+    calls = []
+
+    @staticmethod
+    def available():
+        return True
+
+    @classmethod
+    def recognize(cls, data, kind):
+        cls.calls.append(kind)
+        return {'pages': list(cls.pages), 'total': len(cls.pages), 'lang': 'ru'}
+
+
+def pdf(pages):
+    """маленький PDF: страницы с текстом (латиница, шрифт Helvetica) или пустые — как скан без текстового слоя"""
+    objs = ['<< /Type /Catalog /Pages 2 0 R >>', None, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>']
+    kids = []
+    for t in pages:
+        body = ('BT /F1 12 Tf 72 720 Td (%s) Tj ET' % t) if t else ''
+        objs.append('<< /Length %d >>\nstream\n%s\nendstream' % (len(body), body))
+        objs.append('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents %d 0 R >>' % len(objs))
+        kids.append('%d 0 R' % len(objs))
+    objs[1] = '<< /Type /Pages /Kids [%s] /Count %d >>' % (' '.join(kids), len(kids))
+    out, offs = b'%PDF-1.4\n', []
+    for i, o in enumerate(objs, 1):
+        offs.append(len(out))
+        out += ('%d 0 obj\n%s\nendobj\n' % (i, o)).encode('latin-1')
+    x = len(out)
+    out += ('xref\n0 %d\n0000000000 65535 f \n' % (len(objs) + 1)).encode() + b''.join(b'%010d 00000 n \n' % o for o in offs)
+    out += ('trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n' % (len(objs) + 1, x)).encode()
+    return out
 
 TZ = """Техническое задание на поставку компрессорной станции в блок-контейнере.
 1. Производительность станции — не менее 12,5 м³/мин при рабочем давлении 0,8 МПа.
@@ -93,11 +135,11 @@ class DocTextTest(unittest.TestCase):
 
     def test_refusals(self):
         cases = [(b'', 'пустой'), (b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1' + b'\0' * 100, 'DOCX'), (b'PK\x03\x04garbage', 'повреждён'),
-                 (Office.zipped({'a.txt': 'x'}), 'не похож'), (b'\x89PNG\r\n\x1a\n' + b'\0' * 50, 'не распознан'),
+                 (Office.zipped({'a.txt': 'x'}), 'не похож'), (b'\x89PNG\r\n\x1a\n' + b'\0' * 50, 'Windows 10/11'), (pdf(['', '']), 'скан'),
                  (Office.zipped({'word/document.xml': '<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "aaaa">]><x>&a;</x>'}), 'недопустимой')]
         for data, word in cases:
             with self.subTest(word), self.assertRaises(ValueError) as e:
-                DocText.extract('tz.bin', data)
+                DocText.extract('tz.bin', data, ocr=NoOcr)
             self.assertIn(word, str(e.exception))
         old = DocText.MAX_PART
         DocText.MAX_PART = 1000
@@ -106,6 +148,40 @@ class DocTextTest(unittest.TestCase):
                 DocText.extract('tz.docx', Office.docx(['x' * 5000]))
         finally:
             DocText.MAX_PART = old
+
+
+class ScanTest(unittest.TestCase):
+    """сканы: текстовый слой PDF против распознавания Windows (заглушка) — берётся лучший, страницы — в цитатах"""
+    SCAN = ['Техническое задание. Компрессорная станция в блок-контейнере.',
+            'Производительность станции не менее 20 нм3/мин. Рабочее давление 7 бар. Высота площадки над уровнем моря 900 м.']
+
+    def test_quality(self):
+        self.assertGreater(TextQuality.score(TZ), 0.85, 'обычный русский текст')
+        self.assertLess(TextQuality.score('ÐŸÑ€Ð¾Ð¸Ð·Ð²Ð¾Ð´Ð¸Ñ‚ÐµÐ»ÑŒÐ½Ð¾ÑÑ‚ÑŒ ÑÑ‚Ð°Ð½Ñ†Ð¸Ð¸ Ð½Ðµ Ð¼ÐµÐ½ÐµÐµ ' * 3), TextQuality.LOW, 'кракозябры')
+        self.assertEqual(TextQuality.score('ab'), 0.0)
+
+    def test_scanned_pdf(self):
+        FakeOcr.pages, FakeOcr.calls = self.SCAN, []
+        d = DocText.extract('tz.pdf', pdf(['', '']), ocr=FakeOcr)
+        self.assertEqual((d['kind'], d['pages'], FakeOcr.calls), ('pdf-ocr', 2, ['pdf']))
+        self.assertEqual([m['id'] for m in d['methods']], ['pdf', 'ocr'], 'оба способа — в ответе')
+        self.assertTrue(next(m for m in d['methods'] if m['id'] == 'ocr')['used'])
+        self.assertIn('\f', d['text'], 'граница страниц')
+        r = TzParse.parse(d['text'])
+        f = {x['key']: x for x in r['found']}
+        self.assertEqual((f['flow']['value'], f['flow']['page'], f['basis']['value'], f['alt']['value']), (20.0, 2, 'normal', 900))
+        self.assertNotIn('\f', f['flow']['src'])
+
+    def test_text_pdf_no_ocr(self):
+        FakeOcr.pages, FakeOcr.calls = self.SCAN, []
+        d = DocText.extract('tz.pdf', pdf(['Compressor station technical requirements page one', 'Flow rate 20 m3/min, pressure 7 bar, page two']), ocr=FakeOcr)
+        self.assertEqual((d['kind'], FakeOcr.calls), ('pdf', []), 'текст хороший — распознавание не нужно')
+
+    def test_image(self):
+        FakeOcr.pages, FakeOcr.calls = self.SCAN[1:], []
+        d = DocText.extract('tz.png', b'\x89PNG\r\n\x1a\n' + b'\0' * 50, ocr=FakeOcr)
+        self.assertEqual((d['kind'], FakeOcr.calls), ('image', ['image']))
+        self.assertIn('нм3/мин', d['text'])
 
 
 class TzParseTest(unittest.TestCase):
@@ -155,6 +231,52 @@ class TzParseTest(unittest.TestCase):
         self.assertNotIn('scada', q, '«не предусматривается» — нет')
 
 
+class TzReviewTest(unittest.TestCase):
+    """анкета по ТЗ: статусы параметров, противоречия, новые поля для расчёта станции, вопросы заказчику"""
+
+    def test_statuses(self):
+        r = TzParse.parse(TZ)
+        st = {f['key']: f['status'] for f in r['fields']}
+        self.assertEqual((st['flow'], st['pressure'], st['air'], st['reserve']), ('found', 'found', 'found', 'found'))
+        self.assertEqual((st['basis'], st['margin'], st['alt']), ('default', 'default', 'default'))
+        self.assertEqual(st['deadline'], 'missing')
+        self.assertNotIn('rh', st, 'влажность — только для нормальных м³')
+        q = ' '.join(r['questions'])
+        self.assertIn('К каким условиям приведена производительность', q)
+        self.assertIn('запас производительности', q)
+        self.assertEqual(r['conflicts'], [])
+        b = next(f for f in r['fields'] if f['key'] == 'basis')
+        self.assertEqual(b['value'], 'fad')
+        self.assertIn('ISO 1217', b['why'])
+
+    def test_conflicts(self):
+        t = ('Компрессорная станция. Производительность станции не менее 10 м3/мин при давлении 8 бар.\n'
+             'Таблица 1. Производительность станции — 12 м3/мин. Колебание давления не более ±0,3 бар. Ресивер на давление 11 бар.')
+        r = TzParse.parse(t)
+        self.assertEqual([c['key'] for c in r['conflicts']], ['flow'], 'давление ±0,3 и давление ресивера — не противоречие')
+        self.assertEqual([v['value'] for v in r['conflicts'][0]['values']], [10.0, 12.0])
+        f = next(x for x in r['fields'] if x['key'] == 'flow')
+        self.assertEqual(f['status'], 'conflict')
+        self.assertTrue(any('разные значения — 10; 12' in x for x in r['questions']), r['questions'])
+
+    def test_new_fields(self):
+        P = lambda t: TzParse.parse(t)['req']   # noqa: E731
+        q = P('Компрессорная станция производительностью 15 нм3/мин с запасом 10 %. Высота над уровнем моря 1200 м, '
+              'относительная влажность 80 %. Гарантия 2 года. Срок поставки 60 календарных дней. Аналоги не допускаются.')
+        self.assertEqual((q['flow'], q['basis'], q['margin'], q['alt'], q['rh'], q['warranty'], q['deadline'], q['noAnalogs']),
+                         (15.0, 'normal', 10.0, 1200, 80, 24, '60 календарных дней', True))
+        self.assertEqual(P('Компрессор, производительность по ISO 1217 — 8 м3/мин')['basis'], 'fad')
+        d = P('ДЭС — резервный источник электроснабжения 300 кВт. Средняя нагрузка 60 %. Пуск асинхронного двигателя насоса 55 кВт '
+              'через устройство плавного пуска. Потребители I категории надёжности.')
+        self.assertEqual((d['kind'], d['mode'], d['load'], d['motor'], d['start'], d['rel']), ('dgu', 'standby', 60, 55.0, 'soft', '1'))
+        d = P('Дизельная электростанция — основной источник питания, 500 кВт, круглосуточная работа.')
+        self.assertEqual(d['mode'], 'prime')
+        r = TzParse.parse('Дизельная электростанция 400 кВт.')
+        st = {f['key']: f['status'] for f in r['fields']}
+        self.assertEqual((st['kw'], st['mode'], st['load'], st['motor'], st['hours']), ('found', 'default', 'default', 'missing', 'missing'))
+        self.assertNotIn('start', st, 'пуск — когда известен двигатель')
+
+
 class TzPickJs(unittest.TestCase):
     def test_pick(self):
         node = shutil.which('node')
@@ -180,6 +302,9 @@ class TzRouteTest(unittest.TestCase):
         self.assertEqual(st, 200, b[:300])
         r = self.stand.http.js(b)
         self.assertEqual((r['kind'], r['req']['flow'], r['doc']['kind']), ('comp', 12.5, 'docx'))
+        self.assertTrue(r['fields'] and r['questions'], 'анкета и вопросы заказчику')
+        self.assertGreater(r['doc']['quality'], 0.8)
+        self.assertEqual([m['id'] for m in r['doc']['methods']], ['text'])
         self.assertIn('Производительность', r['text'])
         st, b, _ = self.stand.http.req('POST', '/api/tz/parse?name=old.doc', b'\xd0\xcf\x11\xe0' + b'\0' * 64, headers=self.H)
         self.assertEqual(st, 422)

@@ -479,12 +479,13 @@ def _run(doc, data, res, out, fonts, depth=0):
     nl()
 
 
-def text(data):
-    """Текст PDF (строки, страницы через пустую строку). ValueError — понятным текстом."""
+def text(data, need_text=True):
+    """Текст PDF (строки, страницы через пустую строку) и текст каждой страницы (per — '' у страницы без текста, скана).
+    need_text=False — PDF без текста не ошибка (дальше — распознавание скана). ValueError — понятным текстом."""
     if len(data) > MAX_BYTES:
         raise ValueError('файл больше 40 МБ')
     doc = Doc(data)
-    pages, fonts, parts = doc.pages(), {}, []
+    pages, fonts, parts, per = doc.pages(), {}, [], []
     for pg, res in pages:
         c = pg.get('Contents')
         cs = doc.get(c)
@@ -496,12 +497,13 @@ def text(data):
         except RecursionError:
             pass
         t = '\n'.join(re.sub(r'[ \t\xa0]+', ' ', x).strip() for x in lines)
-        t = re.sub(r'\n{2,}', '\n', t).strip()
+        t = re.sub(r'\n{2,}', '\n', t).strip().replace('\x00', '')
+        per.append(t)
         if t:
             parts.append(t)
         if sum(len(x) for x in parts) > MAX_TEXT:
             break
-    out = '\n\n'.join(parts).replace('\x00', '')
-    if len(re.sub(r'\W', '', out)) < 20:
+    out = '\n\n'.join(parts)
+    if need_text and len(re.sub(r'\W', '', out)) < 20:
         raise ValueError('в PDF нет текста — похоже на скан (картинки). Приложите PDF прямо в окне ИИ-чата или скопируйте текст вручную')
-    return {'text': out[:MAX_TEXT], 'pages': len(pages)}
+    return {'text': out[:MAX_TEXT], 'pages': len(pages), 'per': per}

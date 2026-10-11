@@ -438,3 +438,38 @@ dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
 .tzi-f ul{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:5px;max-height:240px;overflow:auto}
 .tzi-f li{font-size:13px;line-height:1.35}
 .tzi-f li small{display:block;font-size:11.5px}
+/* 3.65: расчёт станции на вкладке «Компоновка» — шаги с формулами, данными, результатом и источником */
+.calc>summary{cursor:pointer;list-style-position:inside}
+.calc[open]>summary{margin-bottom:6px}
+.calc-opts{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px}
+.calc-h{margin:10px 0 4px;font-size:13.5px;color:var(--navy)}
+.calc-t{width:100%;border-collapse:collapse;font-size:12.5px;line-height:1.45}
+.calc-t td{padding:5px 6px;border-top:1px solid var(--line);vertical-align:top}
+.calc-t .calc-s{width:18px;padding-right:0}
+.calc-t .calc-res{width:34%}
+.calc-f{color:var(--muted);font-style:italic}
+.calc-d{display:flex;flex-wrap:wrap;gap:2px 12px;color:var(--ink)}
+.calc-src{color:var(--muted);font-size:11.5px;margin-top:2px}
+.calc-l{margin:0;padding-left:20px;font-size:12.5px;line-height:1.5}
+@media (max-width:700px){ .calc-t,.calc-t tbody,.calc-t tr,.calc-t td{display:block;width:auto} .calc-t .calc-s{display:inline-block} .calc-t .calc-res{width:auto;padding-left:24px} }
+.kr-calc{margin:8px 0 4px}
+.kr-calc>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:13px}
+.kr-calc .kr-g{margin-top:6px}
+.kr-hint{margin:4px 0 0;font-size:12px}
+/* 3.65: окно ТЗ — как прочитан документ, анкета со статусами, сравнение с ИИ, вопросы заказчику */
+.tzi-m{margin:4px 0 8px;font-size:13px}
+.tzi-m ul{margin:0;padding-left:18px}
+.tzi-m li.on{color:var(--ok)}
+.tzi-m.low{padding:8px 10px;border:1px solid var(--warn-line);border-radius:10px;background:var(--warn-bg);color:var(--warn-ink)}
+.tzi-m p{margin:4px 0 0}
+.tzi-tw{overflow:auto;max-height:340px;margin-top:6px}
+.tzi-t{width:100%;border-collapse:collapse;font-size:12.5px;line-height:1.4}
+.tzi-t th{position:sticky;top:0;background:var(--card);text-align:left;font-weight:600;padding:4px 6px;border-bottom:1px solid var(--line)}
+.tzi-t td{padding:4px 6px;border-top:1px solid var(--line);vertical-align:top}
+.tzi-t td:first-child{white-space:nowrap}
+.tzi-t .chip{white-space:nowrap}
+.chip.sm.off{color:var(--muted)}
+.chip.sm.bad{border-color:var(--danger);color:var(--danger)}
+.tzi-q ol{margin:6px 0 8px;padding-left:22px;font-size:13px;line-height:1.45}
+.tzi-ai ul li{font-size:13px}
+@media (max-width:700px){ .tzi-t td:first-child{white-space:normal} }
