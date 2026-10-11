@@ -50,9 +50,11 @@ class StationDrawing {
   static svg(plan, meta={}){
     const S=StSvg, F=this.FS, g=plan.geo, [Le, We, He]=g.ext, [Li, Wi, Hi]=plan.int, ox=(Le-Li)/2, oy=(We-Wi)/2, zf=StationGeo.zFloor(g.type, g.t);
     const dz=plan.chassis ? (meta.deck||1150) : 0, INK=this.INK, W=this.W, RX=W-40-this.RW;
-    const swing=plan.door==='side' ? 900 : 0, LX0=124, LW=RX-130-LX0;
-    const s=Math.min(LW/Le, 980/(He+dz+We+swing), (this.RW-90)/We);
-    const yTop=146, X0=LX0+(LW-Le*s)/2, Yb=yTop+76+(He+dz)*s, yDimF=Yb+(dz ? 24 : 0)+48, yPlanT=yDimF+72, Y0p=yPlanT+60+We*s;
+    // на крыше — глушитель (выше контейнера), трубопроводы, сервисные двери (створки наружу — место под планом)
+    const rf=plan.roof||[], up=rf.length ? Math.max(...rf.map(m=>m.gap+m.d+m.outlet)) : 0, pipes=plan.piping||[], sd=plan.door==='service' ? plan.doors||[] : [];
+    const swing=plan.door==='side' ? 900 : sd.length ? Math.max(...sd.map(d=>d.w/d.leaves)) : 0, LX0=124, LW=RX-78-(dz ? 54 : 0)-(up ? 54 : 0)-LX0;
+    const s=Math.min(LW/Le, 980/(He+up+dz+We+swing), (this.RW-90)/We);
+    const yTop=146, X0=LX0+(LW-Le*s)/2, Yb=yTop+76+(He+up+dz)*s, yDimF=Yb+(dz ? 24 : 0)+48, yPlanT=yDimF+72, Y0p=yPlanT+60+We*s;
     const XS=RX+(this.RW-We*s-70)/2;
     const X=x=>X0+x*s, Z=z=>Yb-(dz+z)*s, YP=y=>Y0p-y*s, XL=y=>XS+(We-y)*s;
     const items=plan.items.slice(), body=[], defs=`<pattern id="hw" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#eef1f4"/><line x1="0" y1="0" x2="0" y2="8" stroke="#9aa5b1" stroke-width="1.5"/></pattern>`;
@@ -71,6 +73,9 @@ class StationDrawing {
     body.push(S.line(X(ox), Z(zf), X(ox+Li), Z(zf), INK, 1.2), S.line(X(ox), Z(zf+Hi), X(ox+Li), Z(zf+Hi), INK, 1, ' stroke-dasharray="9 5"'));
     body.push(S.line(X(ox), Z(zf), X(ox), Z(zf+Hi), INK, 1, ' stroke-dasharray="9 5"'), S.line(X(ox+Li), Z(zf), X(ox+Li), Z(zf+Hi), INK, 1, ' stroke-dasharray="9 5"'));
     if (g.x0) body.push(S.line(X(ox+g.x0), Z(zf), X(ox+g.x0), Z(zf+Hi), INK, 1.4), S.text(X(ox+g.x0/2)+6, Z(zf+Hi/2), 'тамбур', { size:F.item, fill:this.MUTED, rot:-90 }));
+    for (const pp of pipes) for (const l of pp.lines){ const z=Z(zf+l.z);
+      body.push(S.line(X(ox+l.x0), z, X(ox+l.x1), z, pp.color, 5, ' stroke-linecap="round"'));
+      if (l.label) body.push(this.arrow(X(ox+l.x1), z, X(Le)+14, pp.color), S.text(X(ox+l.x1)-10, z-10, l.label, { anchor:'end', size:F.item, fill:this.MUTED })); }
     const front=[...items].sort((a, b)=>(a.row===1)-(b.row===1) || a.y-b.y);
     for (const it of front){ const x1=X(ox+it.x), x2=X(ox+it.x+it.lx), zt=Z(zf+it.h), zb=Z(zf), col=it.row===1 ? tint(it.color) : RalColor.mix(tint(it.color), '#ffffff', it.row===0 && plan.rows===2 ? 0.35 : 0);
       if (it.shape==='vcyl') body.push(this.dome(x1, x2, zt, zb, col, edge(it.color), 1.6));
@@ -78,19 +83,33 @@ class StationDrawing {
     }
     const bub=items.map(it=>[X(ox+it.x+it.lx/2), Z(zf+it.h)-24]);
     for (const [k, it] of items.entries()) this.pos(body, bub[k][0], bub[k][1], it.pos);
+    // глушитель на крыше: опоры, корпус, вывод выхлопа с колпаком; выхлопная труба — от ДГУ сквозь крышу
+    for (const m of rf){ const x1=X(ox+m.x), x2=X(ox+m.x+m.lx), zb=Z(He+m.gap), zt=Z(He+m.gap+m.d), w=Math.max(4, 120*s), xo=x1+(x2-x1)*0.86, zo=Z(He+m.gap+m.d+m.outlet);
+      if (m.exhaust){ const xe=X(ox+m.exhaust.x), pw=Math.max(3, 130*s); body.push(S.rect(xe-pw/2, zb, pw, Z(zf+m.exhaust.z)-zb, '#9aa1a8', INK, 1)); }
+      for (const f of [0.18, 0.82]) body.push(S.line(x1+(x2-x1)*f, Z(He), x1+(x2-x1)*f, zb, INK, 1.8));
+      body.push(S.rect(xo-w/2, zo, w, zt-zo, '#8a9097', INK, 1.2), S.rect(xo-w*1.7, zo-4, w*3.4, 5, INK));
+      body.push(S.rect(x1, zt, x2-x1, zb-zt, tint(m.color), edge(m.color), 1.6, ` rx="${S.f(Math.min(14, (zb-zt)/2))}"`));
+      this.pos(body, x1+Math.min(40, (x2-x1)/4), zt-24, m.pos); bub.push([x1+Math.min(40, (x2-x1)/4), zt-24]); }
+    // сервисные двери в стене прохода (стена условно не показана)
+    sd.forEach((d, k)=>{ const xa=X(ox+d.x0), xb=X(ox+d.x1), zt=Z(zf+d.h);
+      body.push(S.rect(xa, zt, xb-xa, Z(zf)-zt, 'none', this.MUTED, 1.2, ' stroke-dasharray="7 5"'));
+      for (let i=1; i<d.leaves; i++) body.push(S.line(xa+(xb-xa)*i/d.leaves, zt, xa+(xb-xa)*i/d.leaves, Z(zf), this.MUTED, 1, ' stroke-dasharray="4 4"'));
+      const lt='сервисная дверь', lx=(xa+xb)/2, lw=S.tw(lt, F.item)/2+6;
+      if (!k && lw*2<xb-xa+80 && !bub.some(([bx, by])=>Math.abs(bx-lx)<lw+18 && Math.abs(by-(zt-14))<30)) body.push(S.text(lx, zt-8, lt, { size:F.item, fill:this.MUTED })); });
     if (plan.door==='side'){ const d0=ox+(g.x0 ? g.x0+300 : 300), lx=X(d0+450), ly=Z(zf+2000)-8, lw=S.tw('дверь', F.item)/2+6;
       body.push(S.rect(X(d0), Z(zf+2000), 900*s, 2000*s, 'none', this.MUTED, 1.2, ' stroke-dasharray="7 5"'));
       if (!bub.some(([bx, by])=>Math.abs(bx-lx)<lw+18 && Math.abs(by-(ly-6))<30)) body.push(S.text(lx, ly, 'дверь', { size:F.item, fill:this.MUTED })); }
     this.dimH(body, X(0), X(Le), yDimF, S.n(Le), Z(0));
     this.dimV(body, X(Le)+52, Z(He), Z(0), S.n(He));
     if (dz) this.dimV(body, X(Le)+106, Z(He), Yb, S.n(He+dz)+' (на шасси)');
+    if (up) this.dimV(body, X(Le)+(dz ? 160 : 106), Z(He+up), Yb, S.n(He+up+dz)+' (с глушителем)');
     this.dimV(body, X(0)-44, Z(zf+Hi), Z(zf), S.n(Hi), { left:true });
 
     // ---- вид сверху (план)
     body.push(S.text(X(0), yPlanT, 'Вид сверху (план)', { anchor:'start', size:F.view, weight:700 }));
     body.push(S.rect(X(0), YP(We), Le*s, We*s, 'url(#hw)', INK, 2.6), S.rect(X(ox), YP(oy+Wi), Li*s, Wi*s, '#ffffff', INK, 1.4));
     if (g.x0) body.push(S.rect(X(ox+g.x0)-3, YP(oy+Wi), 6, (Wi-1000)*s, INK), S.text(X(ox+g.x0/2)+6, YP(oy+Wi/2), 'тамбур', { size:F.item, fill:this.MUTED, rot:-90 }));
-    const ai=this.aisle(plan, Wi);
+    const ai=sd.length ? null : this.aisle(plan, Wi);
     if (ai){ const xa=X(ox+(g.x0||0)), xb=X(ox+Li);
       body.push(S.rect(xa, YP(oy+ai.y1), xb-xa, (ai.y1-ai.y0)*s, '#e6f0fb', '#6f9fd8', 1.4, ' stroke-dasharray="11 6"'));
       // подпись — посередине свободной части прохода, не на размерной линии его ширины
@@ -98,6 +117,7 @@ class StationDrawing {
       const free=[[xa+10, xm-44], [xm+18, xb-10]].filter(([a, b])=>b-a>lw+16).sort((p, q)=>(q[1]-q[0])-(p[1]-p[0]))[0];
       if (free && (ai.y1-ai.y0)*s>30) body.push(S.text((free[0]+free[1])/2, YP(oy+(ai.y0+ai.y1)/2)+7, lab, { size:F.aisle, fill:'#2c5d99' })); }
     this.doors(body, plan, X, YP, ox, oy, Li, Wi, s);
+    if (sd.length) body.push(S.text(X(0)+2, YP(0)+swing*s+24, 'сервисные двери — створки наружу', { anchor:'start', size:F.item, fill:this.MUTED }));
     for (const it of items){ const x1=X(ox+it.x), y1=YP(oy+it.y+it.ly), w=it.lx*s, h=it.ly*s, col=tint(it.color);
       if (it.shape==='vcyl') body.push(S.circle(x1+w/2, y1+h/2, Math.min(w, h)/2, col, edge(it.color), 1.6));
       else body.push(S.rect(x1, y1, w, h, col, edge(it.color), 1.6, it.shape==='hcyl' ? ` rx="${S.f(h/2)}"` : ''));
@@ -105,6 +125,20 @@ class StationDrawing {
       const lab=it.short; if (h>=86 && S.tw(lab, F.item)<w-10) body.push(S.text(x1+w/2, y1+h/2+36, lab, { size:F.item, fill:this.MUTED }));
       this.pos(body, x1+w/2, y1+h/2, it.pos);
     }
+    // глушитель на крыше — штрихом над оборудованием; номера на плане — чтобы номер трубопровода не лёг на них
+    const pb=items.map(it=>[X(ox+it.x+it.lx/2), YP(oy+it.y+it.ly/2)]);
+    for (const m of rf){ const x1=X(ox+m.x), y1=YP(oy+m.y+m.ly), w=m.lx*s, h=m.ly*s;
+      body.push(S.rect(x1, y1, w, h, 'none', edge(m.color), 1.6, ` stroke-dasharray="9 5" rx="${S.f(h/2)}"`));
+      if (S.tw('глушитель на крыше', F.item)<w-60) body.push(S.text(x1+w/2-10, y1+h/2+6, 'глушитель на крыше', { size:F.item, fill:this.MUTED }));
+      this.pos(body, x1+w-22, y1+h/2, m.pos); pb.push([x1+w-22, y1+h/2]); }
+    // трубопровод (вид сверху): магистраль у задней стены, отводы к оборудованию, выход через дальний торец
+    for (const pp of pipes){ let lab=null;
+      for (const l of pp.lines){ const y=YP(oy+l.y), xa=X(ox+l.x0), xb=X(ox+l.x1);
+        for (const b of l.branches) body.push(S.line(X(ox+b.x), YP(oy+b.y0), X(ox+b.x), YP(oy+b.y1), pp.color, 3));
+        body.push(S.line(xa, y, xb, y, pp.color, 4.5, ' stroke-linecap="round"'));
+        if (l.label){ body.push(this.arrow(xb, y, X(Le)+16, pp.color), S.text(X(Le)+20, y+6, l.label, { anchor:'start', size:F.item, fill:this.MUTED })); }
+        for (let x=xb-24; !lab && x>xa+12; x-=12) if (pb.every(([bx, by])=>Math.hypot(bx-x, by-y)>=40)) lab=[x, y]; }
+      if (lab){ this.pos(body, lab[0], lab[1], pp.pos); pb.push(lab); } }
     this.chain(body, plan, X, YP(We)-18, ox, Li, g.x0||0, YP(oy+Wi));
     this.dimH(body, X(0), X(Le), YP(0)+swing*s+46, S.n(Le), YP(0));
     this.dimV(body, X(0)-44, YP(We), YP(0), S.n(We), { left:true });
@@ -118,6 +152,9 @@ class StationDrawing {
       if (it.shape==='vcyl') body.push(this.dome(xa, xb, Z(zf+it.h), Z(zf), col, edge(it.color), 1.4));
       else body.push(S.rect(xa, Z(zf+it.h), xb-xa, it.h*s, col, edge(it.color), 1.4)); }
     if (g.sea) body.push(S.rect(XL(oy+Wi), Z(zf+(g.door ? g.door[1] : 2280)), Wi*s, (g.door ? g.door[1] : 2280)*s, 'none', this.MUTED, 1.2, ' stroke-dasharray="7 5"'));
+    for (const pp of pipes) for (const l of pp.lines) body.push(S.circle(XL(oy+l.y), Z(zf+l.z), 5, pp.color, INK, 1));
+    for (const m of rf){ const xc=XL(oy+m.y+m.d/2); body.push(S.line(xc, Z(He), xc, Z(He+m.gap), INK, 1.8), S.circle(xc, Z(He+m.gap+m.d/2), m.d/2*s, tint(m.color), edge(m.color), 1.4),
+      S.rect(xc-Math.max(2, 60*s), Z(He+m.gap+m.d+m.outlet), Math.max(4, 120*s), m.outlet*s, '#8a9097', INK, 1)); }
     this.dimH(body, XL(We), XL(0), yDimF, S.n(We), Z(0));
     this.dimV(body, XL(0)+52, Z(He), Z(0), S.n(He));
 
@@ -129,6 +166,11 @@ class StationDrawing {
     return S.doc(W, H, body.join(''), defs);
   }
 
+  /** стрелка трубопровода через стену: от x1 до x2 на высоте y */
+  static arrow(x1, y, x2, color){
+    const S=StSvg, d=x2>x1 ? 1 : -1;
+    return S.line(x1, y, x2-d*10, y, color, 4)+S.poly([[x2, y], [x2-d*14, y-7], [x2-d*14, y+7]], color);
+  }
   static cut(s, n){ s=String(s||''); return s.length>n ? s.slice(0, n-1).replace(/\s+\S*$/, '')+'…' : s; }
   static pos(body, x, y, n){ body.push(StSvg.circle(x, y, 17, '#ffffff', this.INK, 1.6), StSvg.text(x, y+7, n, { size:this.FS.pos, weight:700 })); }
   /** вертикальный цилиндр сбоку: прямоугольник со скруглённым верхом (днище) */
@@ -139,7 +181,7 @@ class StationDrawing {
 
   /** проход: [y0, y1] поперёк контейнера, ширина в самом узком месте и где мерить */
   static aisle(plan, Wi){
-    const it=plan.items.filter(i=>!i.pipe); if (!it.length) return null;
+    const it=plan.items.filter(i=>!i.pipe); if (!it.length || plan.door==='service') return null;
     if (plan.rows===2){ const A=it.filter(i=>i.row===1), B=it.filter(i=>i.row===0); if (!A.length || !B.length) return null;
       const y0=Math.max(...A.map(i=>i.y+i.ly)), y1=Math.min(...B.map(i=>i.y)); const m=B.find(i=>i.y===y1); return { y0, y1, w:y1-y0, xm:m.x+m.lx/2 }; }
     const y1=Math.min(...it.map(i=>i.y)), m=it.find(i=>i.y===y1); return { y0:0, y1, w:y1, xm:m.x+m.lx/2, dgu:m.kind==='dgu' };
@@ -153,6 +195,11 @@ class StationDrawing {
       body.push(S.rect(X(0)-1, YP(y1), ox*s+2, w*s, '#ffffff'));
       body.push(S.rect(X(0)+1, YP(y1), Math.max(3, ox*s*0.45), (w/2)*s-1.5, '#dfe5ec', INK, 1.4), S.rect(X(0)+1, YP(y0+w/2)+1.5, Math.max(3, ox*s*0.45), (w/2)*s-1.5, '#dfe5ec', INK, 1.4));
       body.push(S.text(X(0)-12, YP(oy+Wi/2), `${g.sea ? 'двери' : 'ворота'} ${S.n(w)}`, { size:this.FS.item, fill:this.MUTED, rot:-90 }));
+    } else if (plan.door==='service'){
+      for (const d of plan.doors||[]){ const lw=d.w/d.leaves;
+        body.push(S.rect(X(ox+d.x0), YP(oy)-1, d.w*s, oy*s+2, '#ffffff'));
+        for (let i=0; i<d.leaves; i++){ const a=ox+d.x0+i*lw, b=a+lw, left=i%2===0, hx=left ? a : b, fx=left ? b : a;
+          body.push(S.line(X(hx), YP(0), X(hx), YP(0)+lw*s, INK, 2), `<path d="M${S.f(X(hx))},${S.f(YP(0)+lw*s)} A${S.f(lw*s)},${S.f(lw*s)} 0 0 ${left ? 0 : 1} ${S.f(X(fx))},${S.f(YP(0))}" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="6 5"/>`); } }
     } else {
       const d0=ox+(g.x0 ? g.x0+300 : 300), d1=d0+900;
       body.push(S.rect(X(d0), YP(oy)-1, (d1-d0)*s, oy*s+2, '#ffffff'));
@@ -202,7 +249,8 @@ class StationDrawing {
   /** экспликация: позиция, наименование, количество, габариты, масса; итог массы. Возвращает низ (y) */
   static legend(body, plan, x, y, w, hMax){
     const S=StSvg, INK=this.INK, F=this.FS, cols=this.COLS, fs=F.leg, lh=25, wrapN=Math.floor((cols[1]-16)/(fs*0.56));
-    const byPos=new Map(); for (const it of plan.items){ const e=byPos.get(it.pos); if (e) e.n++; else byPos.set(it.pos, { it, n:1 }); }
+    const byPos=new Map(); for (const it of [...plan.items, ...(plan.roof||[])]){ const e=byPos.get(it.pos); if (e) e.n++; else byPos.set(it.pos, { it, n:1 }); }
+    for (const p of plan.piping||[]) byPos.set(p.pos, { it:{ pos:p.pos, kind:'piping', name:p.name, mat:[{ steel:'сталь', inox:'нерж. сталь', pp:'полипропилен' }[p.mat]||'', p.dn].filter(Boolean).join(', ') || '—', known:true, mass:null }, n:p.qty||1 });
     const rows=[...byPos.values()].sort((a, b)=>a.it.pos-b.it.pos);
     body.push(S.text(x, y, 'Экспликация оборудования', { anchor:'start', size:F.view, weight:700 }));
     let yy=y+16; const head=['Поз.', 'Наименование', 'Кол.', 'Д × Ш × В, мм', 'Масса, кг'];
@@ -211,11 +259,11 @@ class StationDrawing {
     let cx=x; head.forEach((t, i)=>{ body.push(cell(cx, i, t, { dy:24, weight:700, size:F.legHead })); cx+=cols[i]; });
     yy+=36; let assumed=false, total=0, allMass=true, cutRows=0;
     for (const { it, n } of rows){
-      const lines=this.lines(it.brief||it.name, wrapN, 3), h=lines.length*lh+14;
+      const lines=this.lines(it.kind==='piping' ? it.name : it.brief||it.name, wrapN, 3), h=lines.length*lh+14;
       if (yy+h>y+hMax-80){ cutRows++; continue; }
       body.push(S.rect(x, yy, w, h, '#ffffff', INK, 1));
-      cx=x; const dims=`${S.n(it.l)} × ${S.n(it.w)} × ${S.n(it.h)}${it.known ? '' : '*'}`;
-      if (!it.known) assumed=true; if (it.mass>0) total+=it.mass*n; else allMass=false;
+      cx=x; const dims=it.kind==='piping' ? it.mat : it.kind==='muffler' ? `${S.n(it.lx)} × Ø${S.n(it.d)}${it.known ? '' : '*'}` : `${S.n(it.l)} × ${S.n(it.w)} × ${S.n(it.h)}${it.known ? '' : '*'}`;
+      if (!it.known) assumed=true; if (it.kind!=='piping'){ if (it.mass>0) total+=it.mass*n; else allMass=false; }
       [String(it.pos), lines, String(n), dims, it.mass>0 ? S.n(it.mass) : '—'].forEach((t, i)=>{
         if (Array.isArray(t)) t.forEach((ln, k)=>body.push(cell(cx, i, ln, { dy:24+k*lh }))); else body.push(cell(cx, i, t, { dy:24, weight:i===0 ? 700 : 400 }));
         cx+=cols[i]; });
@@ -238,11 +286,14 @@ class StationDrawing {
   /** примечания: строки по ширине листа; возвращает число строк */
   static notes(body, plan, x, y, w){
     const S=StSvg, F=this.FS, [aRec, aMin]=plan.aisleRule||[1000, 800], sys=(plan.extra||[]).filter(e=>e.kind==='skip' && !e.nodims).map(e=>e.name), dgu=plan.items.some(i=>i.kind==='dgu');
+    const rf=plan.roof||[], up=rf.length ? Math.max(...rf.map(m=>m.gap+m.d+m.outlet)) : 0;
     const L=[
-      '1. Схема расстановки для коммерческого предложения: размеры, привязки и трассы уточняются рабочим проектом.',
-      `2. Проход обслуживания — не менее ${S.n(aMin)} мм (ПУЭ, п. 4.1.23), рекомендуется ${S.n(aRec)} мм${dgu ? '; вдоль ДГУ — не менее 600 мм (сужение прохода, там же)' : ''}; между оборудованием — 700 мм (СП 30.13330.2020, п. 13.22).`,
-      sys.length ? `3. Также в составе (на схеме не показаны): ${this.cut(sys.join(', '), 200)}.` : '',
-    ].filter(Boolean);
+      'Схема расстановки для коммерческого предложения: размеры, привязки и трассы уточняются рабочим проектом.',
+      plan.door==='service' ? 'Прохода обслуживания внутри нет — обслуживание снаружи через сервисные двери (створки открываются наружу); у дверей на площадке — свободная зона не менее 1,5 м.'
+        : `Проход обслуживания — не менее ${S.n(aMin)} мм (ПУЭ, п. 4.1.23), рекомендуется ${S.n(aRec)} мм${dgu ? '; вдоль ДГУ — не менее 600 мм (сужение прохода, там же)' : ''}; между оборудованием — 700 мм (СП 30.13330.2020, п. 13.22).`,
+      up ? `Глушитель — на крыше, на опорах; высота с глушителем ${S.n(plan.geo.ext[2]+up)} мм — при перевозке глушитель снимается.` : '',
+      sys.length ? `Также в составе (на схеме не показаны): ${this.cut(sys.join(', '), 200)}.` : '',
+    ].filter(Boolean).map((t, i)=>`${i+1}. ${t}`);
     const max=Math.floor((w-26)/(F.note*0.56)), out=L.flatMap(t=>S.wrap(t, max).map((ln, k)=>[ln, k>0]));
     body.push(S.text(x, y, 'Примечания', { anchor:'start', size:F.note, weight:700 }));
     out.forEach(([t, ind], i)=>body.push(S.text(x+(ind ? 26 : 0), y+30+i*27, t, { anchor:'start', size:F.note, fill:this.MUTED })));
@@ -261,10 +312,11 @@ class StationView3D {
   static svg(plan, meta={}){
     const S=StSvg, g=plan.geo, [Le, We, He]=g.ext, [Li, Wi, Hi]=plan.int, ox=(Le-Li)/2, oy=(We-Wi)/2;
     const dz=plan.chassis ? (meta.deck||1150) : 0, base=dz+StationGeo.zFloor(g.type, g.t), ceil=base+Hi, top=dz+He;
+    const rf=plan.roof||[], up=rf.length ? Math.max(...rf.map(m=>m.gap+m.d+m.outlet)) : 0;
     const az=this.AZ*Math.PI/180, el=this.EL*Math.PI/180, cs=Math.cos(az), sn=Math.sin(az), ce=Math.cos(el), se=Math.sin(el);
     const P0=(x, y, z)=>[x*cs-y*sn, -((x*sn+y*cs)*se+z*ce)];
     // масштаб — по габаритам контейнера (с шасси и дышлом)
-    const ext=[]; for (const x of [0, Le]) for (const y of [0, We]) for (const z of [0, top]) ext.push(P0(x, y, z));
+    const ext=[]; for (const x of [0, Le]) for (const y of [0, We]) for (const z of [0, top+up]) ext.push(P0(x, y, z));
     const minX=Math.min(...ext.map(p=>p[0])), maxX=Math.max(...ext.map(p=>p[0])), minY=Math.min(...ext.map(p=>p[1])), maxY=Math.max(...ext.map(p=>p[1]));
     const H=Math.round(Math.max(760, Math.min(this.H, this.W*0.9*(maxY-minY)/(maxX-minX)/0.84)));
     const k=Math.min(this.W*0.9/(maxX-minX), H*0.84/(maxY-minY)), tx=(this.W-(maxX-minX)*k)/2-minX*k, ty=(H-(maxY-minY)*k)/2-minY*k+H*0.02;
@@ -292,6 +344,12 @@ class StationView3D {
     const dgu=items.find(i=>i.kind==='dgu');
     if (dgu) out.push(V.louver([ox+Li-2, dgu.Y0+dgu.ly*0.1, base+dgu.h*0.15], [ox+Li-2, dgu.Y1-dgu.ly*0.1, base+dgu.h*0.92], 'x'));
     else if (items.some(i=>i.kind==='compressor') || (plan.sys && plan.sys.vent)) out.push(V.louver([ox+Li-2, oy+Wi*0.3, base+250], [ox+Li-2, oy+Wi*0.7, base+850], 'x'));
+    // трубопровод вдоль задней стены: магистраль и отводы (трубой — тёмный контур и светлый блик)
+    const tube=(a, b, c, w)=>V.line(a, b, RalColor.shade(c, 0.62), w+2)+V.line(a, b, c, w)+V.line(a, b, RalColor.shade(c, 1.35), Math.max(1, w*0.3));
+    for (const pp of plan.piping||[]){ const w=Math.max(4, 90*k);
+      for (const l of pp.lines){ const y=oy+l.y, z=base+l.z;
+        out.push(tube([ox+l.x0, y, z], [ox+l.x1, y, z], pp.color, w));
+        for (const b of l.branches) out.push(tube([ox+b.x, oy+b.y0, z], [ox+b.x, oy+b.y1, z], pp.color, w*0.8)); } }
     // оборудование: тени, затем по глубине (дальнее — раньше)
     for (const it of items) out.push(V.face([[it.X0+60, it.Y0+40, base+1], [it.X1+160, it.Y0+40, base+1], [it.X1+160, it.Y1+120, base+1], [it.X0+60, it.Y1+120, base+1]], '#000000', 0, ' opacity="0.16" filter="url(#blur6)"'));
     for (const it of V.order(items)) out.push(...this.equip(V, it, base, ceil, oy+Wi));
@@ -300,6 +358,12 @@ class StationView3D {
     // рама: передние стойки и верхние балки
     out.push(...V.box(0, 0, dz, 150, 150, top, frame), ...V.box(Le-150, 0, dz, Le, 150, top, frame));
     out.push(...V.box(0, 0, top-110, Le, 110, top, frame), ...V.box(0, 0, top-110, 110, We, top, frame));
+    // глушитель на крыше: выхлопная труба от ДГУ сквозь крышу, опоры, корпус, вывод выхлопа с колпаком
+    for (const m of rf){ const x0=ox+m.x, x1=x0+m.lx, cy=oy+m.y+m.d/2, r=m.d/2, cz=top+m.gap+r, steel='#8d949b';
+      if (m.exhaust){ const ex=ox+m.exhaust.x, ey=oy+m.exhaust.y; out.push(V.vcyl(ex, ey, 65, base+m.exhaust.z, cz, steel, false), V.line([ex, ey, cz], [ex, cy, cz], RalColor.shade(steel, 0.7), Math.max(3, 130*k))); }
+      for (const f of [0.18, 0.82]) out.push(...V.box(x0+m.lx*f-40, cy-r*0.7, top, x0+m.lx*f+40, cy+r*0.7, cz-r*0.6, '#3a3f45'));
+      out.push(V.hcyl(x0, x1, cy, cz, r, m.color));
+      const xo=x0+m.lx*0.86; out.push(V.vcyl(xo, cy, 60, cz+r*0.7, cz+r+m.outlet, steel, false), ...V.box(xo-110, cy-110, cz+r+m.outlet, xo+110, cy+110, cz+r+m.outlet+30, '#3a3f45')); }
     const defs=`<filter id="blur6" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6"/></filter><filter id="blur18" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>${V.defs.join('')}`;
     return S.doc(this.W, H, S.rect(0, 0, this.W, H, '#ffffff')+out.join(''), defs);
   }
@@ -318,6 +382,15 @@ class StationView3D {
       const w=g.sea && g.door ? Math.min(g.door[0], Wi) : Math.min(1800, Wi-200), y0=oy+(Wi-w)/2;
       for (const f of [0.12, 0.38, 0.62, 0.88]) out.push(V.line([-6, y0+w*f, dz+40], [-6, y0+w*f, dz+band], '#3b4148', 2.6));
       out.push(V.line([-6, y0+w/2, dz], [-6, y0+w/2, dz+band], RalColor.shade(wall, 0.55), 1.6));
+    } else if (plan.door==='service'){
+      const zf=StationGeo.zFloor(g.type, g.t), dk=RalColor.shade(wall, 0.7);
+      for (const d of plan.doors||[]){ const x0=ox+d.x0, x1=ox+d.x1, lw=(x1-x0)/d.leaves, zt=dz+zf+d.h;
+        out.push(V.face([[x0, -3, dz+60], [x1, -3, dz+60], [x1, -3, dz+band], [x0, -3, dz+band]], RalColor.shade(wall, 0.94), 1.2));
+        for (let i=0; i<d.leaves; i++){ const a=x0+lw*i;
+          if (i) out.push(V.line([a, -4, dz+60], [a, -4, dz+band], dk, 1.6));
+          for (let z=dz+band*0.35; z<dz+band-40; z+=70) out.push(V.line([a+lw*0.2, -4, z], [a+lw*0.8, -4, z], dk, 1.4));
+          out.push(V.line([a+lw*(i%2 ? 0.12 : 0.88), -5, dz+band*0.55], [a+lw*(i%2 ? 0.12 : 0.88), -5, dz+band*0.8], '#2d3238', 3)); }
+        out.push(...V.box(x0-45, -3, dz+band, x0, 60, zt, frame), ...V.box(x1, -3, dz+band, x1+45, 60, zt, frame), ...V.box(x0-45, -3, zt, x1+45, 60, zt+50, frame)); }
     } else {
       const d0=ox+(g.x0 ? g.x0+300 : 300);
       out.push(V.face([[d0, -3, dz+60], [d0+900, -3, dz+60], [d0+900, -3, dz+band], [d0, -3, dz+band]], RalColor.shade(wall, 0.93), 1.2));

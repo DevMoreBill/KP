@@ -127,6 +127,7 @@ async function nwMakeStation(){
     if (NW.main){ const lite=catCache.find(x=>x.id===NW.main); let doc=lite; try{ doc=await api('/api/catalog/'+encodeURIComponent(lite.id)); }catch(_){}
       const p=KitPart.fromCat(doc); p.role='main'; it.kit.parts.push(p); if (!it.photo && p.photo) it.photo={...p.photo}; }
     const c=kitNewContainer(NW.ctype); contApply(c, {ins:NW.ins, climate:NW.climate}); it.kit.parts.push(c);
+    StationDefaults.add(it, t.id);      // глушитель и бак ДГУ, трубопроводная обвязка
     kitSync(it); stationFill(it); stationAutoName(it);
   } finally { NW.busy=false; }
   nwFinish(it, 'kit');

@@ -28,7 +28,13 @@ class Check {
       assert.ok(!(ox>1 && oy>1), `${label}: поз. ${a.pos} и ${b.pos} пересекаются`);
     }
     const floor=I.filter(i=>!i.pipe);
-    if (p.rows===2){
+    if (p.door==='service'){   // без прохода: перед каждым — сервисная дверь, до неё не меньше зазора
+      assert.ok(Array.isArray(p.doors) && p.doors.length, label+': нет сервисных дверей');
+      for (const it of floor){
+        assert.ok(it.y>=StationLayout.DOOR_GAP[1]-1, `${label}: поз. ${it.pos} ближе ${StationLayout.DOOR_GAP[1]} мм к двери`);
+        assert.ok(p.doors.some(d=>d.x0<it.x+it.lx && d.x1>it.x), `${label}: перед поз. ${it.pos} нет двери`); }
+      for (const d of p.doors) assert.ok(d.x0>=0 && d.x1<=L && d.leaves>=1 && d.h>0, label+': дверь вне стены');
+    } else if (p.rows===2){
       const A=floor.filter(i=>i.row===1), B=floor.filter(i=>i.row===0), gap=Math.min(...B.map(i=>i.y))-Math.max(...A.map(i=>i.y+i.ly));
       assert.ok(gap>=aMin-1, `${label}: проход между рядами ${gap} < ${aMin}`);
     } else for (const it of floor){ const need=it.kind==='dgu' ? Math.min(aMin, 600) : aMin;
@@ -111,9 +117,9 @@ Check.run('КС в контейнере 20 футов', ()=>{
 Check.run('не помещается в морской — ошибка и подсказка', ()=>{
   const p=solve(C('sea20'), [big, dryer, rec, cab]);
   assert.strictEqual(p.level, 'error');
-  assert.ok(p.issues.some(i=>i.level==='error' && /ширине/.test(i.text)));
-  assert.ok(p.suggest && p.suggest.ctype==='block' && Array.isArray(p.suggest.size), JSON.stringify(p.suggest));
-  const q=solve(C('block', { size:p.suggest.size.join(' × ') }), [big, dryer, rec, cab]);
+  assert.ok(p.issues.some(i=>i.level==='error' && /длине|ширине/.test(i.text)));
+  assert.ok(p.suggest && (p.suggest.ctype==='block' ? Array.isArray(p.suggest.size) : StationGeo.SEA[p.suggest.ctype]), JSON.stringify(p.suggest));
+  const q=solve(C(p.suggest.ctype, { size:p.suggest.size ? p.suggest.size.join(' × ') : '' }), [big, dryer, rec, cab]);
   assert.notStrictEqual(q.level, 'error', 'предложенный размер подходит');
   Check.plan(q, 'подсказка');
   const d=solve(C('sea20'), [dgu, ats, tank]);
@@ -140,10 +146,63 @@ Check.run('блок-контейнер: размер по оборудовани
 });
 
 Check.run('ошибка по условным габаритам — не точная', ()=>{
-  const sure=solve(C('sea20'), [big, cab]);
+  const sure=solve(C('sea20'), [Object.assign({}, big, { qty:3 }), cab]);
   assert.strictEqual(sure.level, 'error'); assert.ok(!sure.assumed, 'шкаф без габаритов не делает ошибку неточной');
   const guess=solve(C('sea20'), [P('Компрессор 250 кВт', { cat:'comp_screw', kw:250 }, { role:'main' }), cab]);
   assert.strictEqual(guess.level, 'error'); assert.ok(guess.assumed, 'не помещается только по условным габаритам');
+});
+
+Check.run('нет места для прохода — сервисные двери', ()=>{
+  const deep=P('Компрессор глубокий', { cat:'comp_screw', model:'D 90', kw:90, size:'2000 × 1500 × 1800' }, { role:'main' });
+  const p=solve(C('sea20'), [deep, dryer]);
+  Check.plan(p, 'двери 20');
+  assert.strictEqual(p.door, 'service'); assert.strictEqual(p.level, 'warn');
+  assert.ok(p.issues[0].level==='warn' && /сервисные двери/.test(p.issues[0].text), p.issues[0].text);
+  assert.ok(p.items.every(i=>i.y<=StationLayout.DOOR_GAP[0]+1), 'оборудование — у стены с дверями');
+  const d=draw(p, 'двери 20'); assert.ok(d.w===StationDrawing.W);
+  assert.ok(StationDrawing.svg(p, meta(p)).includes('сервисн'), 'на чертеже — сервисные двери');
+  const auto=solve(C('block'), [deep, dryer]);
+  Check.plan(auto, 'двери блок'); assert.strictEqual(auto.door, 'service');
+  assert.ok(auto.geo.ext[1]<=StationGeo.ROAD_W, 'сервисные двери раньше негабаритной ширины');
+  const ok=solve(C('sea20'), [comp, dryer]); assert.notStrictEqual(ok.door, 'service', 'проход помещается — двери не нужны');
+});
+
+Check.run('ДГУ: глушитель на крыше, бак рядом, топливопровод', ()=>{
+  const muf=P('Глушитель на крыше', {}), fuel=P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'1000 л' }] }), fl=P('Топливопровод и запорная арматура', {}, { pipeMat:'steel' });
+  const p=solve(C('sea40'), [dgu, ats, muf, fuel, fl]);
+  Check.plan(p, 'ДГУ+');
+  const g=p.items.find(i=>i.kind==='dgu'), t=p.items.find(i=>i.kind==='tank'), m=p.roof[0];
+  assert.ok(t.x+t.lx<=g.x, 'бак — перед ДГУ'); assert.ok(!p.items.some(i=>i.x>t.x && i.x<g.x), 'между баком и ДГУ ничего');
+  assert.ok(m && m.x>=g.x-1 && m.x+m.lx<=p.int[0], 'глушитель — над ДГУ'); assert.ok(m.exhaust && m.exhaust.z===g.h, 'выхлоп от ДГУ');
+  assert.ok(p.issues.some(i=>i.text.includes('высота станции с глушителем '+StationLayout.n(3791)) && /снимают/.test(i.text)), 'высота с глушителем и пометка о перевозке');
+  const pp=p.piping[0]; assert.strictEqual(pp.mat, 'steel'); assert.strictEqual(pp.lines.length, 1, 'топливо: от бака к ДГУ');
+  assert.ok(pp.lines[0].x0<=t.x+t.lx && pp.lines[0].x1>=g.x, 'линия от бака до ДГУ');
+  const svg=StationDrawing.svg(p, meta(p)); Check.svg(svg, 'ДГУ+ чертёж');
+  assert.ok(svg.includes('Глушитель на крыше') && svg.includes('Топливопровод'), 'глушитель и трубопровод — в экспликации');
+  const sz=Check.svg(StationView3D.svg(p, meta(p)), 'ДГУ+ 3D'); assert.ok(sz.h>0);
+  const bad=solve(C('sea40'), [dgu, fuel, Object.assign({}, fl, { pipeMat:'pp' })]);
+  assert.ok(bad.issues.some(i=>i.level==='warn' && /полипропилена не применяют/.test(i.text)), 'топливо в полипропилене — предупреждение');
+  assert.strictEqual(bad.level, 'warn');
+  const inside=solve(C('sea40'), [dgu, P('Глушитель внутри контейнера', {})]); assert.strictEqual((inside.roof||[]).length, 0, '«внутри» — не на крыше');
+});
+
+Check.run('трубопровод: материал, трасса, отпечаток', ()=>{
+  assert.strictEqual(PipeMaterial.of({ name:'Обвязка', rows:[{ k:'Материал', v:'нержавеющая сталь AISI 304' }] }).id, 'inox');
+  assert.strictEqual(PipeMaterial.of({ name:'Трубопровод из полипропилена PP-R' }).id, 'pp');
+  assert.strictEqual(PipeMaterial.of({ name:'Трубопровод', rows:[{ k:'Материал трубопровода', v:'сталь' }] }).id, 'steel');
+  assert.strictEqual(PipeMaterial.of({ name:'Трубопровод' }), null);
+  assert.strictEqual(PipeMaterial.dn({ rows:[{ k:'Условный проход', v:'Ду 50' }] }), 'DN 50');
+  const ns=solve(C('block'), [pumpS, cab, P('Трубопроводная обвязка и запорная арматура', {}, { pipeMat:'inox' })]);
+  Check.plan(ns, 'НС трубы'); const L=ns.piping[0].lines;
+  assert.strictEqual(L.length, 2, 'насосы: всас и напор'); assert.deepStrictEqual(L.map(l=>l.label), ['вход', 'выход']);
+  assert.ok(L.every(l=>l.x1===ns.int[0] && l.branches.length===2), 'выход через торец, отводы к обоим насосам');
+  assert.strictEqual(ns.piping[0].matText, 'нержавеющая сталь');
+  const ks=solve(C('sea20'), [comp, dryer, rec, flt, P('Трубопровод', {})]);
+  Check.plan(ks, 'КС трубы'); assert.strictEqual(ks.piping[0].lines.length, 1);
+  assert.ok(ks.issues.some(i=>/Материал трубопровода .* не выбран/.test(i.text)), 'материал не выбран — подсказка');
+  for (const p of [ns, ks]){ draw(p, 'трубы'); }
+  const inp=m=>({ cont:C('sea20'), parts:[comp, P('Трубопровод', {}, { id:'tp', pipeMat:m })] });
+  assert.notStrictEqual(StationLayout.hash(inp('steel')), StationLayout.hash(inp('pp')), 'материал — в отпечатке');
 });
 
 Check.run('ДГУ в 40 футах, «Север», шасси', ()=>{
@@ -191,13 +250,14 @@ Check.run('чертёж: лист и надписи', ()=>{
 
 Check.run('случайные составы: без сбоев и нарушений', ()=>{
   let seed=20261011; const rnd=()=>((seed=(seed*1103515245+12345)%2147483648)/2147483648), pick=a=>a[Math.floor(rnd()*a.length)];
-  const kinds=[['comp_screw', 'Компрессор'], ['dryer_refrig', 'Осушитель'], ['receiver', 'Ресивер'], ['filter', 'Фильтр'], ['pump', 'Насос'], ['dgu', 'ДГУ'], ['ats', 'Шкаф'], ['', 'Бак топливный'], ['', 'Агрегат']];
+  const kinds=[['comp_screw', 'Компрессор'], ['dryer_refrig', 'Осушитель'], ['receiver', 'Ресивер'], ['filter', 'Фильтр'], ['pump', 'Насос'], ['dgu', 'ДГУ'], ['ats', 'Шкаф'], ['', 'Бак топливный'], ['', 'Агрегат'],
+    ['', 'Глушитель на крыше'], ['', 'Трубопроводная обвязка'], ['', 'Шкаф АСУ ТП']];
   const types=['sea20', 'sea20hc', 'sea40', 'sea40hc', 'block', 'welded', 'north'], levels={};
   for (let k=0; k<400; k++){
     const parts=[]; const m=1+Math.floor(rnd()*6);
     for (let j=0; j<m; j++){ const [cat, nm]=pick(kinds), dims=rnd()<0.8;
       const sz=dims ? [200+Math.floor(rnd()*2800), 200+Math.floor(rnd()*1400), 200+Math.floor(rnd()*2200)].join(' × ') : '';
-      parts.push(P(nm+' '+k+'-'+j, { cat, size:sz, kw:Math.floor(rnd()*300), model:'M'+j }, { qty:1+Math.floor(rnd()*3), role:j ? '' : 'main' })); }
+      parts.push(P(nm+' '+k+'-'+j, { cat, size:sz, kw:Math.floor(rnd()*300), model:'M'+j }, { qty:1+Math.floor(rnd()*3), role:j ? '' : 'main', pipeMat:pick(['', 'steel', 'inox', 'pp']) })); }
     const own=rnd()<0.3 ? [3000+500*Math.floor(rnd()*19), pick([2400, 2500, 3000]), pick([2500, 2800, 3000])].join(' × ') : '';
     const cont=C(pick(types), { size:own, ins:pick(['50 мм', '100 мм', '150 мм']), ral:pick(['', 'RAL 7035', 'RAL 5010 / RAL 9003', 'синий']) });
     let p; try{ p=solve(cont, parts); } catch(e){ throw new Error(`состав ${k} (${cont.ctype} ${own}): ${e.message}`); }

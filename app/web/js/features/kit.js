@@ -154,6 +154,67 @@ class KitPart {
   }
 }
 
+// трубопроводная обвязка станции: материал (сталь, нержавеющая сталь, полипропилен) и условный проход — поля в составе
+// и строки характеристик элемента (в КП); на компоновке — цвет трассы (PipeMaterial, station-layout.js)
+class KitPipe {
+  static is(p){ return !!p && p.role!=='container' && p.role!=='main' && StationEquip.PIPING.test(String(p.name||'')); }
+  static fields(p, i, j){
+    if (!this.is(p)) return '';
+    const cur=(PipeMaterial.of(p)||{}).id||'';
+    return `<div class="kit-pp"><label class="f"><span>Материал трубопровода</span><select data-kitpp="${i}.${j}" data-fld="pipeMat"><option value=""${cur?'':' selected'}>— выберите —</option>${PipeMaterial.LIST.map(m=>`<option value="${m.id}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('')}</select></label>
+      <label class="f"><span>Условный проход</span><input type="text" data-kitpp="${i}.${j}" data-fld="dn" value="${esc(p.dn||'')}" placeholder="например, DN 50" maxlength="20"></label></div>`;
+  }
+  /** поле в составе → элемент и строки «Материал трубопровода», «Условный проход» */
+  static change(t){
+    const [i, j]=t.dataset.kitpp.split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
+    if (t.dataset.fld==='pipeMat') p.pipeMat=PipeMaterial.get(t.value) ? t.value : '';
+    else p.dn=String(t.value||'').trim().slice(0, 20);
+    this.rows(p); renderForm(); persist();
+  }
+  static rows(p){
+    p.rows=p.rows||[]; const m=PipeMaterial.get(p.pipeMat), dn=PipeMaterial.dn({ dn:p.dn });
+    for (const [k, v] of [[PipeMaterial.ROW, m ? m.row : ''], [PipeMaterial.DN_ROW, dn]]){ const r=p.rows.find(z=>z.k===k);
+      if (r){ if (v) r.v=v; else p.rows.splice(p.rows.indexOf(r), 1); } else if (v) p.rows.push({ k, v }); }
+  }
+}
+
+// элементы станции, без которых её не бывает: мастер кладёт их в состав сразу (ДГУ — глушитель на крыше, дополнительный
+// топливный бак, топливопровод; насосная и компрессорная — трубопроводная обвязка), новый элемент с таким названием
+// получает описание. Закупку, поставщика и подробности менеджер уточняет в составе.
+class StationDefaults {
+  static TANKS = [500, 1000, 1500, 2000, 3000];   // типовые объёмы дополнительного бака, л
+  static FUEL = /топливн\S* бак|дополнительн\S* бак|бак топлив/i;   // топливный бак ДГУ (не бак для воды)
+  static LPH = 0.25;                              // расход дизельного топлива, л на кВт·ч (около 210 г/кВт·ч)
+  static TEXT = [
+    [/глушител/i, 'Глушитель выхлопа на крыше контейнера, на опорах: сильфонный компенсатор, термоизоляция выхлопной трубы, дождевой колпак. На время перевозки снимается.', [['Установка', 'на крыше контейнера']]],
+    [StationDefaults.FUEL, 'Дополнительный топливный бак для увеличения времени автономной работы ДГУ: датчик уровня, заливная горловина, дыхательный клапан, поддон, подключение к топливной системе ДГУ.', []],
+    [/трубопровод|топливопровод|обвязк/i, 'Трубопроводная обвязка оборудования станции: магистраль, отводы к оборудованию, запорная арматура, крепления. Материал труб и условный проход — в составе станции.', []],
+    [/асу ?тп/i, 'Шкаф АСУ ТП: контроллер, панель оператора, сбор сигналов и аварий оборудования станции, архив событий, передача данных в диспетчерскую.', [['Связь с диспетчерской', 'Modbus TCP / Ethernet или GSM — по проекту']]],
+    [/\bАВР\b|ввод\S* резерв/i, 'Шкаф автоматического ввода резерва: переключение питания станции на резервный ввод при пропадании основного, индикация, ручной режим.', [['Вводы', 'основной и резервный']]],
+  ];
+  /** мастер станции: добавить обязательные элементы по виду станции */
+  static add(it, typeId){
+    const P=it.kit.parts;
+    if (typeId==='st_dgu'){
+      P.push(this.part(it, 'Глушитель на крыше'), this.part(it, 'Дополнительный топливный бак'));
+      const fl=this.part(it, 'Топливопровод и запорная арматура'); fl.pipeMat='steel'; KitPipe.rows(fl); P.push(fl);   // топливо — по металлу
+    } else if (typeId==='st_pump' || typeId==='st_comp') P.push(this.part(it, 'Трубопроводная обвязка и запорная арматура'));
+  }
+  static part(it, name){ const p=kitNewPart({ name }); this.fill(p, it); return p; }
+  /** новый элемент с узнаваемым названием — описание и строки характеристик (своё не перезаписывается) */
+  static fill(p, it){
+    const t=this.TEXT.find(([re])=>re.test(String(p.name||''))); if (!t) return p;
+    if (!String(p.desc||'').trim()) p.desc=t[1];
+    p.rows=p.rows||[]; for (const [k, v] of t[2]) if (!p.rows.some(r=>r.k===k)) p.rows.push({ k, v });
+    if (this.FUEL.test(p.name) && !p.rows.some(r=>/объ[её]м/i.test(r.k))){ const kw=this.kw(it), v=this.tank(kw);
+      p.rows.push({ k:'Объём', v:v+' л' }); if (kw) p.rows.push({ k:'Время работы ДГУ от бака при нагрузке 75 %', v:'около '+Math.round(v/(kw*0.75*this.LPH))+' ч' }); }
+    return p;
+  }
+  static kw(it){ const d=kitParts(it).find(p=>StationEquip.kindOf(p)==='dgu'); return d ? StationEquip.num((d.attrs||{}).kw) : null; }
+  /** объём бака, л: на 16 ч работы при нагрузке 75 % (с баком ДГУ — около суток), ближайший типовой */
+  static tank(kw){ if (!(kw>0)) return 1000; const need=kw*0.75*this.LPH*16; return this.TANKS.find(v=>v>=need) || this.TANKS[this.TANKS.length-1]; }
+}
+
 // позиция для документа: состав — блоками описания (с фото) и таблицами характеристик элементов
 function kitDocItem(x){
   if (!isKit(x)) return x;
@@ -212,7 +273,7 @@ function edKit(x,i){
       <label class="f"><span>Размер Д × Ш × В, мм</span><input type="text" data-kitct="${i}.${j}" data-fld="size" value="${esc(p.size||'')}" placeholder="${esc(ctypeOf(p.ctype).size)}"></label>
       <label class="f"><span>Цвет</span><input type="text" data-kitct="${i}.${j}" data-fld="ral" value="${esc(p.ral||'')}" placeholder="например, RAL 7004 / RAL 5005"></label></div>
       ${StationUi.on(x) && StationGeo.FLEX[p.ctype] ? `<p class="muted kit-szn">${p.sizeAuto && String(p.size||'').trim() ? 'Размер подобран по оборудованию (вкладка «Компоновка»). Впишите свой — подбор отключится.' : String(p.size||'').trim() ? `Размер задан вручную — <button type="button" class="lnk" data-a="stlAuto" data-i="${i}">подобрать по оборудованию</button>.` : 'Размер подберётся по оборудованию, когда в составе будет что расставлять.'}</p>` : ''}
-      <div class="kit-sys"><span class="muted">Системы контейнера:</span>${CONT_SYSTEMS.map(([id,k])=>`<button type="button" class="chip${(p.sys||CONT_SYS_DEF)[id]?' on':''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!(p.sys||CONT_SYS_DEF)[id]}">${esc(k)}</button>`).join('')}</div>`:''}
+      <div class="kit-sys"><span class="muted">Системы контейнера:</span>${CONT_SYSTEMS.map(([id,k])=>`<button type="button" class="chip${(p.sys||CONT_SYS_DEF)[id]?' on':''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!(p.sys||CONT_SYS_DEF)[id]}">${esc(k)}</button>`).join('')}</div>`:''}${KitPipe.fields(p, i, j)}
     <div class="kit-body">
     <div class="kit-phw"><span class="kit-phl">Фото элемента</span>
       <div class="kit-ph${p.photo&&p.photo.src?' has':''}">${p.photo&&p.photo.src?`<img src="${esc(p.photo.src)}" alt="${esc(p.name||'Фото элемента')}"><button class="icon x" type="button" data-a="kitPhotoDel" data-i="${i}" data-j="${j}" aria-label="Убрать фото">✕</button>`:`<button type="button" class="kit-phb" data-a="kitPhoto" data-i="${i}" data-j="${j}"><b>+ фото</b><small>выбрать файл</small></button>`}</div>
@@ -318,7 +379,7 @@ function kitPickCat(i, cats, role, name){
     if (re){ draw(); } else $('#kitPL').innerHTML=list(); };
   $('#kitPF').oninput=e=>{ if (e.target.tagName==='INPUT') onF(e); }; $('#kitPF').onchange=e=>{ if (e.target.tagName==='SELECT') onF(e); };
   d.querySelector('.dlg-h [data-kitnew]').onclick=()=>kitPickNew();
-  const kitPickNew=()=>{ const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=kitNewPart({name:name||(F.q||'').trim()}); if (role) p.role=role;
+  const kitPickNew=()=>{ const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=StationDefaults.fill(kitNewPart({name:name||(F.q||'').trim()}), it); if (role) p.role=role;
     it.kit.parts.push(p); it.page=true; d.close(); renderForm(); persist(); toast('Элемент добавлен — описание и характеристики: вручную или кнопкой «✨ ИИ»'); };
   $('#kitPL').onclick=async e=>{ if (e.target.closest('[data-kitnew]')) return kitPickNew(); const b=e.target.closest('[data-cid]'); if (!b) return; const lite=catCache.find(x=>x.id===b.dataset.cid);
     let doc=lite; try{ doc=await api('/api/catalog/'+encodeURIComponent(lite.id)); }catch(_){}
@@ -354,6 +415,7 @@ document.addEventListener('input', e=>{ const t=e.target; if (t.dataset.kitcost=
 document.addEventListener('focusout', e=>{ const t=e.target; if (t.dataset.kitcost==null) return;
   const [i,j]=t.dataset.kitcost.split('.').map(Number), p=kitParts(S.items[i])[j]; if (p && !Number.isNaN(dNum(p._costText))) delete p._costText; renderForm(); if (typeof dealRender==='function') dealRender(); });
 document.addEventListener('change', e=>{ const t=e.target;
+  if (t.dataset.kitpp!=null){ KitPipe.change(t); return; }
   if (t.dataset.kitct!=null){ const [i,j]=t.dataset.kitct.split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
     const o={[t.dataset.fld]:t.value}; if (t.dataset.fld==='ctype'){ const c=ctypeOf(t.value); if (c.ins) o.ins=c.ins; if (c.climate) o.climate=c.climate; if (p.sizeAuto) o.size=''; }
     if (t.dataset.fld==='size') o.sizeAuto=!String(t.value).trim();     // вписан свой размер — подбор по оборудованию отключается
