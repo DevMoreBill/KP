@@ -261,6 +261,18 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .stl-chk{display:inline-flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer}
 .stl-chk input{width:auto;margin:0}
 .stl-note{color:var(--muted);font-size:12px}
+.stl-air{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.stl-air-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+.stl-chain{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px}
+.stl-node{padding:3px 8px;border:1px solid var(--line);border-radius:999px;background:var(--soft)}
+.stl-node.guess{border-style:dashed}
+.stl-node small{color:var(--muted)}
+.stl-arr{color:var(--muted)}
+.stl-hint{margin:0;font-size:12px}
+.stl-cls{max-width:560px}
+.stl-rec-h{margin:2px 0 0;font-weight:600;font-size:13px}
+.stl-recs{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+.stl-recs li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;font-size:13px}
 .stl-how{font-size:13px;line-height:1.5;color:var(--muted)}
 .stl-how summary{cursor:pointer;color:var(--navy);font-weight:600}
 .stl-how p,.stl-how ul{margin:6px 0}

@@ -388,9 +388,11 @@ function pfSet(F, el){
 }
 const pfRow = (x, act) => `<button type="button" class="kit-pick" ${act}="${esc(x.id)}">${x.photo&&x.photo.src?`<img src="${esc(x.photo.src)}" alt="">`:'<span class="kit-noimg"></span>'}<span><b>${esc(x.name)}</b><small class="muted">${esc(typeById(attrsOf(x).cat).name)}${mainLine(x,3)?' · '+esc(mainLine(x,3)):''}${x.cost?' · закупка '+money(x.cost)+' '+(x.costCur||'RUB'):''}</small></span></button>`;
 
-// выбор позиции каталога для элемента: cats — только эти категории (основное оборудование станции), role — роль элемента
-function kitPickCat(i, cats, role, name){
+// выбор позиции каталога для элемента: cats — только эти категории (основное оборудование станции), role — роль элемента,
+// preset — подбор «Компоновки»: фильтры {f, r} и для нового элемента строки характеристик rows и attrs
+function kitPickCat(i, cats, role, name, preset){
   const d=$('#dlg'); d.classList.add('wide'); const F=pfNew(cats); if (name && !cats) F.q=name;
+  if (preset){ Object.assign(F.f, preset.f||{}); Object.assign(F.r, preset.r||{}); }
   const newBtn=`<button class="btn" type="button" data-kitnew="1">+ Новый элемент${name?` «${esc(name)}»`:''}</button>`;
   const list=()=>{ const r=pfList(F, cats, 60); return `<p class="muted pf-n">Найдено: ${r.n}${r.n>60?' — показаны первые 60, уточните фильтры':''}</p>`+(r.list.map(x=>pfRow(x,'data-cid')).join('')
     || `<div class="kit-none"><p>В каталоге нет подходящего${name?` для «${esc(name)}»`:''}.</p>${newBtn}<small class="muted">Элемент появится в составе — описание и характеристики заполните вручную или кнопкой «✨ ИИ».</small></div>`); };
@@ -404,6 +406,7 @@ function kitPickCat(i, cats, role, name){
   $('#kitPF').oninput=e=>{ if (e.target.tagName==='INPUT') onF(e); }; $('#kitPF').onchange=e=>{ if (e.target.tagName==='SELECT') onF(e); };
   d.querySelector('.dlg-h [data-kitnew]').onclick=()=>kitPickNew();
   const kitPickNew=()=>{ const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=StationDefaults.fill(kitNewPart({name:name||(F.q||'').trim()}), it); if (role) p.role=role;
+    if (preset){ if (preset.attrs) p.attrs=Object.fromEntries(Object.entries(preset.attrs).filter(([, v])=>v!=null && v!=='')); for (const r of preset.rows||[]) if (!p.rows.some(z=>z.k===r.k)) p.rows.push({ ...r }); }
     it.kit.parts.push(p); it.page=true; d.close(); renderForm(); persist(); toast('Элемент добавлен — описание и характеристики: вручную или кнопкой «✨ ИИ»'); };
   $('#kitPL').onclick=async e=>{ if (e.target.closest('[data-kitnew]')) return kitPickNew(); const b=e.target.closest('[data-cid]'); if (!b) return; const lite=catCache.find(x=>x.id===b.dataset.cid);
     let doc=lite; try{ doc=await api('/api/catalog/'+encodeURIComponent(lite.id)); }catch(_){}

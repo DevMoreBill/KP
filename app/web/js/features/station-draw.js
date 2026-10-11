@@ -37,7 +37,7 @@ class StSvg {
 class StationDrawing {
   static W = 1800;
   static HMIN = 760;         // высота листа — по содержимому (длинный контейнер — ниже лист, без пустого поля)
-  static HMAX = 1700;
+  static HMAX = 2100;
   static INK = '#1d2733';
   static DIM = '#24508f';
   static MUTED = '#5b6776';
@@ -86,7 +86,8 @@ class StationDrawing {
     for (const it of shown.filter(i=>i.y>py)) elev(it);
     for (const pp of pipes) for (const l of pp.lines){ const z=Z(zf+l.z);
       for (const b of l.branches) if (b.z1<l.z) body.push(S.line(X(ox+b.x), z, X(ox+b.x), Z(zf+b.z1), pp.color, 4));   // спуск к оборудованию
-      body.push(S.line(X(ox+l.x0), z, X(ox+l.x1), z, pp.color, 5, ' stroke-linecap="round"'));
+      for (const [a, b] of StationLayout.runs(l)){ body.push(S.line(X(ox+a), z, X(ox+b), z, pp.color, 5, ' stroke-linecap="round"'));
+        if (l.medium==='air' && !l.header && (b-a)*s>70) body.push(this.flow(X(ox+(a+b)/2), z, pp.color)); }   // по ходу воздуха
       if (l.label){ body.push(this.arrow(X(ox+l.x1), z, X(Le)+14, pp.color)); labs.push([X(ox+l.x1)-10, z-10, l.label]); } }
     for (const it of shown.filter(i=>i.y<=py)) elev(it);
     for (const it of items.filter(onFront)) body.push(S.rect(X(ox+it.x), Z(zf+it.z+it.h), it.lx*s, it.h*s, 'none', this.MUTED, 1.4, ' stroke-dasharray="8 5"'));
@@ -113,9 +114,9 @@ class StationDrawing {
       for (let i=1; i<d.leaves; i++) body.push(S.line(xa+(xb-xa)*i/d.leaves, zt, xa+(xb-xa)*i/d.leaves, Z(zf), this.MUTED, 1, ' stroke-dasharray="4 4"'));
       const lt='сервисная дверь', lx=(xa+xb)/2, lw=S.tw(lt, F.item)/2+6;
       if (!k && lw*2<xb-xa+80 && !bub.some(([bx, by])=>Math.abs(bx-lx)<lw+18 && Math.abs(by-(zt-14))<30)) body.push(S.text(lx, zt-8, lt, { size:F.item, fill:this.MUTED })); });
-    if (plan.door==='side'){ const d0=ox+(g.x0 ? g.x0+300 : 300), lx=X(d0+450), ly=Z(zf+2000)-8, lw=S.tw('дверь', F.item)/2+6;
+    if (plan.door==='side'){ const d0=ox+(g.x0 ? g.x0+300 : 300), lx=X(d0+450), ly=Z(zf+2000)-8, dl=`дверь ${S.n(StationLayout.ENTRY[1]-StationLayout.ENTRY[0])}`, lw=S.tw(dl, F.item)/2+6;
       body.push(S.rect(X(d0), Z(zf+2000), 900*s, 2000*s, 'none', this.MUTED, 1.2, ' stroke-dasharray="7 5"'));
-      if (!bub.some(([bx, by])=>Math.abs(bx-lx)<lw+18 && Math.abs(by-(ly-6))<30)) body.push(S.text(lx, ly, 'дверь', { size:F.item, fill:this.MUTED })); }
+      if (!bub.some(([bx, by])=>Math.abs(bx-lx)<lw+18 && Math.abs(by-(ly-6))<30)) body.push(S.text(lx, ly, dl, { size:F.item, fill:this.MUTED })); }
     this.dimH(body, X(0), X(Le), yDimF, S.n(Le), Z(0));
     this.dimV(body, X(Le)+52, Z(He), Z(0), S.n(He));
     if (dz) this.dimV(body, X(Le)+106, Z(He), Yb, S.n(He+dz)+' (на шасси)');
@@ -156,7 +157,7 @@ class StationDrawing {
     for (const pp of pipes){ let lab=null;
       for (const l of pp.lines){ const y=YP(oy+l.y), xa=X(ox+l.x0), xb=X(ox+l.x1);
         for (const b of l.branches) body.push(S.line(X(ox+b.x), YP(oy+b.y0), X(ox+b.x), YP(oy+b.y1), pp.color, 3));
-        body.push(S.line(xa, y, xb, y, pp.color, 4.5, ' stroke-linecap="round"'));
+        for (const [a, b] of StationLayout.runs(l)) body.push(S.line(X(ox+a), y, X(ox+b), y, pp.color, 4.5, ' stroke-linecap="round"'));
         if (l.label){ body.push(this.arrow(xb, y, X(Le)+16, pp.color), S.text(X(Le)+20, y+6, l.label, { anchor:'start', size:F.item, fill:this.MUTED })); }
         for (let x=xb-24; !lab && x>xa+12; x-=12) if (pb.every(([bx, by])=>Math.hypot(bx-x, by-y)>=40)) lab=[x, y]; }
       if (lab && pp.pos!=null) pb.push([lab[0], lab[1], pp.pos]); }
@@ -306,6 +307,15 @@ class StationDrawing {
     const out=L.slice(0, n); out[n-1]=this.cut(out[n-1]+' '+L[n], max); return out;
   }
 
+  /** где висят настенные шкафы — для примечания */
+  static cabWhere(plan){
+    const W=new Set(plan.items.filter(i=>i.mount==='wall').map(i=>i.wall)), t=[];
+    if (W.has('front')) t.push('на стене прохода у двери'); if (W.has('left') || W.has('right')) t.push(W.has('left') && W.has('right') ? 'на торцевых стенах' : W.has('left') ? 'на торцевой стене у двери' : 'на дальней торцевой стене');
+    if (W.has('back')) t.push('за своим местом в ряду');
+    return t.join(', ');
+  }
+  /** стрелка по ходу воздуха на магистрали (главный вид) */
+  static flow(x, y, c){ return `<path d="M${StSvg.f(x-7)} ${StSvg.f(y-7)} L${StSvg.f(x+5)} ${StSvg.f(y)} L${StSvg.f(x-7)} ${StSvg.f(y+7)}" fill="none" stroke="${c}" stroke-width="3" stroke-linejoin="round"/>`; }
   /** примечания: строки по ширине листа; возвращает число строк */
   static notes(body, plan, x, y, w){
     const S=StSvg, F=this.FS, [aRec, aMin]=plan.aisleRule||[1000, 800], sys=(plan.extra||[]).filter(e=>e.kind==='skip' && !e.nodims).map(e=>e.name), dgu=plan.items.some(i=>i.kind==='dgu');
@@ -317,9 +327,10 @@ class StationDrawing {
       'Схема расстановки для коммерческого предложения: размеры, привязки и трассы уточняются рабочим проектом.',
       plan.door==='service' ? `Прохода обслуживания внутри нет — обслуживание снаружи через сервисные двери${two ? ' в обеих боковых стенах' : ''} (створки открываются наружу); у дверей на площадке — свободная зона не менее 1,5 м.`
         : `Проход обслуживания — не менее ${S.n(aMin)} мм (ПУЭ, п. 4.1.23), рекомендуется ${S.n(aRec)} мм${dgu ? '; вдоль ДГУ — не менее 600 мм (сужение прохода, там же)' : ''}; между оборудованием — 700 мм (СП 30.13330.2020, п. 13.22).`,
-      wall.length ? `Шкафы (${list(wall)}) — настенные, на стене ${plan.items.some(i=>i.mount==='wall' && i.wall==='front') ? 'прохода напротив оборудования' : 'за своим местом в ряду'}, низ на высоте ${S.n(z0)} мм от пола; проход перед ними — не уже 600 мм (ПУЭ, п. 4.1.23).` : '',
+      wall.length ? `Шкафы (${list(wall)}) — настенные, ${this.cabWhere(plan)}, низ на высоте ${S.n(z0)} мм от пола; проход оператора не сужают: перед шкафами — не менее ${S.n(aMin)} мм в свету (ПУЭ, п. 4.1.23).` : '',
       frame.length ? `Шкафы (${list(frame)}) — на раме за сервисной дверью.` : '',
-      hang.length ? `Магистральные фильтры (${list(hang)}) — на трубопроводе (подвесные), после осушителя по ходу воздуха.` : '',
+      plan.air && plan.air.chain.length>1 ? `Сжатый воздух по ходу: ${plan.air.chain.map(c=>`${c.text} (поз. ${c.pos})`).filter((t, i, a)=>a.indexOf(t)===i).join(' → ')} → потребителю. У осушителя, ресивера и фильтров — один вход и один выход: воздух проходит через них последовательно${hang.length ? `; фильтры (${list(hang)}) — на трубопроводе (подвесные)` : ''}.` : hang.length ? `Магистральные фильтры (${list(hang)}) — на трубопроводе (подвесные).` : '',
+      plan.door==='side' ? `Входная дверь оператора — ${S.n(StationLayout.ENTRY[1]-StationLayout.ENTRY[0])} мм (не менее ${S.n(StationLayout.DOOR_MIN)} мм в свету), открывается наружу.` : '',
       up ? `Глушитель — на крыше прямо над ДГУ, на опорах; высота с глушителем ${S.n(plan.geo.ext[2]+up)} мм — при перевозке глушитель снимается.` : '',
       sys.length ? `Также в составе (на схеме не показаны): ${this.cut(sys.join(', '), 200)}.` : '',
     ].filter(Boolean).map((t, i)=>`${i+1}. ${t}`);
@@ -380,7 +391,7 @@ class StationView3D {
     const over=new Map();
     for (const pp of plan.piping||[]){ const w=Math.max(4, 90*k);
       for (const l of pp.lines){ const y=oy+l.y, z=base+l.z;
-        out.push(tube([ox+l.x0, y, z], [ox+l.x1, y, z], pp.color, w));
+        for (const [a, b] of StationLayout.runs(l)) out.push(tube([ox+a, y, z], [ox+b, y, z], pp.color, w));
         for (const b of l.branches){ const t=tube([ox+b.x, oy+b.y0, z], [ox+b.x, oy+b.y1, z], pp.color, w*0.8), to=items.find(i=>i.id+'#'+i.unit===b.to);
           if (b.z1<l.z) over.set(b.to, (over.get(b.to)||'')+t+tube([ox+b.x, oy+b.y1, z], [ox+b.x, oy+b.y1, base+(to ? Math.min(b.z1, this.top(to)) : b.z1)], pp.color, w*0.8));
           else out.push(t); } } }

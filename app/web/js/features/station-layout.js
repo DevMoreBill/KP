@@ -317,14 +317,223 @@ class StationEquip {
           l:d.l, w:d.w, h:d.h, known:d.known, src:d.src, mass:this.mass(p), color:this.color(p, kind).hex }; }
       const d=this.dims(p, kind);
       if (!kind && !d.known) return { id:p.id, name, kind:'skip', qty, place:false, nodims:true };
-      const k=kind||'other', c=this.color(p, k);
-      const pipe=k==='filter' && Math.max(d.l, d.w)<=700;   // магистральный фильтр — висит на трубопроводе
+      const k=kind||'other', c=this.color(p, k), air=/^(compressor|dryer|receiver|filter)$/.test(k) ? AirChain.info(p, k) : null;
+      const pipe=k==='filter' && air.grade!=='cond' && Math.max(d.l, d.w)<=700;   // магистральный фильтр — висит на трубопроводе
       return { id:p.id, pos:++pos, name, brief:this.brief(p, k, name), short:this.short(p, k), kind:k, qty, l:d.l, w:d.w, h:d.h, known:d.known, src:d.src, mass:this.mass(p), kw:this.num((p.attrs||{}).kw),
-        color:c.hex, colorKnown:c.known, colorText:c.text, shape:this.shape(p, k, d), place:true, pipe, mount:k==='cabinet' ? this.mount(p, d) : pipe ? 'pipe' : 'floor' };
+        color:c.hex, colorKnown:c.known, colorText:c.text, shape:this.shape(p, k, d), place:true, pipe, mount:k==='cabinet' ? this.mount(p, d) : pipe ? 'pipe' : 'floor', air };
     });
+    AirChain.assign(out);
     const dgu=out.find(e=>e.kind==='dgu');
     for (const e of out) if (e.kind==='muffler' && !e.known){ const g=this.guessMuffler(dgu ? dgu.kw : null); e.l=g[0]; e.w=g[1]; e.h=g[2]; }
     return out;
+  }
+}
+
+// ---------------------------------------------------------------- подготовка сжатого воздуха
+// По ходу воздуха: компрессоры → (влагоотделитель) → «мокрый» ресивер → фильтры до осушителя → осушитель → фильтры после
+// осушителя → угольный → «сухой» ресивер → генератор азота (кислорода) → потребителю. У осушителя, ресивера и фильтра —
+// один вход и один выход: воздух проходит через них последовательно. Перед адсорбционным осушителем — всегда фильтр
+// очистки от масла (масло выводит адсорбент из строя), после него — пылевой (пыль адсорбента). У рефрижераторного фильтры
+// часто встроены; компрессор бывает со встроенным осушителем и (или) фильтрами. Подбор: осушитель и фильтры — не меньше
+// суммы производительности компрессоров с поправкой на давление (номинал — при 7 бар, +35 °C на входе, +25 °C вокруг,
+// ISO 7183); ресивер — по частоте циклов компрессора; класс чистоты по ISO 8573-1 — какие ступени нужны.
+class AirChain {
+  // ступени фильтров: name — для подсказок и нового элемента, stage — «Ступень очистки» в каталоге
+  static GRADES = {
+    sep:{ name:'Влагоотделитель (циклонный сепаратор)', short:'влагоотделитель', stage:'' },
+    pre:{ name:'Фильтр предварительной очистки (3–5 мкм)', short:'предварительной очистки', stage:'Предварительная' },
+    fine:{ name:'Фильтр тонкой очистки (1 мкм, масло до 0,1 мг/м³)', short:'тонкой очистки', stage:'Тонкая' },
+    micro:{ name:'Фильтр сверхтонкой очистки от масла (0,01 мкм, 0,01 мг/м³)', short:'сверхтонкой очистки от масла', stage:'Сверхтонкая (микрофильтр)' },
+    dust:{ name:'Пылевой фильтр после адсорбционного осушителя (1 мкм)', short:'пылевой', stage:'Тонкая' },
+    carbon:{ name:'Угольный фильтр (пары масла и запах, 0,003 мг/м³)', short:'угольный', stage:'Угольный (от паров масла)' },
+  };
+  // поправка производительности рефрижераторного осушителя на рабочее давление, бар → множитель (номинал — 7 бар)
+  static KP = [[3, 0.64], [4, 0.75], [5, 0.84], [6, 0.92], [7, 1], [8, 1.05], [10, 1.12], [13, 1.22], [16, 1.27]];
+  static MARGIN = 1.15;      // запас осушителя: летом в контейнере на входе +40 °C — производительность ×0,8
+  static RECV = 125;         // ресивер, л на 1 м³/мин компрессора «нагрузка — холостой ход» (1 цикл в 30 с, перепад 1 бар)
+  static RECV_VSD = 40;      // с частотным регулированием — меньше
+  static RECV_SIZES = [100, 200, 270, 500, 900, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 10000];
+  // класс чистоты по ISO 8573-1 (частицы.вода.масло) и где применяют
+  static CLASSES = [
+    ['3.4.3', 'пневмоинструмент, обдув — общепромышленный'],
+    ['2.4.2', 'пневмоавтоматика, пневмоцилиндры'],
+    ['1.4.1', 'окраска, упаковка, пищевая без контакта с продуктом'],
+    ['2.2.2', 'КИПиА — приборный воздух, точка росы −40 °C'],
+    ['1.2.1', 'пищевая с контактом с продуктом, фармацевтика, электроника'],
+    ['1.1.1', 'медицина, лаборатории — точка росы −70 °C'],
+  ];
+  static PDP = [null, -70, -40, -20, 3, 7, 10];   // точка росы под давлением по классу воды, °C
+
+  /** текст элемента для распознавания: название, модель, ступень, тонкость, характеристики */
+  static text(p){ const a=p.attrs||{}; return [p.name, a.model, a.stage, a.fineness, a.isoClass, a.series, ...(p.rows||[]).map(r=>r ? String(r.k||'')+': '+String(r.v||'') : '')].filter(Boolean).join(' · '); }
+  /** число из строки характеристики */
+  static first(v){ const m=String(v??'').match(/\d[\d\s]*(?:[.,]\d+)?/); return m ? StationEquip.num(m[0]) : null; }
+  /** производительность, м³/мин: поле каталога или строка «Производительность / Пропускная способность» (л/мин, м³/ч, л/с) */
+  static flow(p){
+    const n=StationEquip.num((p.attrs||{}).flow); if (n>0) return n;
+    for (const r of p.rows||[]){ if (!r || !/производительн|пропускн|расход воздух/i.test(String(r.k||''))) continue;
+      const t=String(r.k||'')+' '+String(r.v||''), v=this.first(r.v); if (!(v>0)) continue;
+      if (/л\s*\/\s*мин/i.test(t)) return v/1000; if (/м[³3]\s*\/\s*ч/i.test(t)) return v/60; if (/л\s*\/\s*с/i.test(t)) return v*0.06;
+      return v; }
+    return null;
+  }
+  /** рабочее давление, бар */
+  static bar(p){
+    const n=StationEquip.num((p.attrs||{}).pressure); if (n>0) return n;
+    const r=(p.rows||[]).find(x=>x && /давлени/i.test(String(x.k||''))); if (!r) return null;
+    const v=this.first(r.v); return v>0 ? (/мпа/i.test(String(r.k||'')+String(r.v||'')) ? v*10 : v) : null;
+  }
+  /** объём, л */
+  static volume(p){
+    const n=StationEquip.num((p.attrs||{}).volume); if (n>0) return n;
+    const r=(p.rows||[]).find(x=>x && /^объ[её]м/i.test(String(x.k||'').trim())); if (!r) return null;
+    const v=this.first(r.v); return v>0 ? (/м[³3]/i.test(String(r.k||'')+String(r.v||'')) && v<100 ? v*1000 : v) : null;
+  }
+  /** ступень фильтра: поле «Ступень очистки», иначе по названию и характеристикам; cond — сепаратор конденсата (не на линии) */
+  static grade(p, cat, t){
+    if (cat==='oil_sep' || /конденсат|масловод|водомасл|масляного тумана/i.test(t)) return 'cond';
+    const st=String((p.attrs||{}).stage||'');
+    if (/предвар/i.test(st)) return 'pre'; if (/сверхтонк|микро/i.test(st)) return 'micro'; if (/уголь/i.test(st)) return 'carbon'; if (/тонк/i.test(st)) return 'fine';
+    if (/угол|угольн|активированн|пар\S*\s+масл|запах|(?:^|[^a-z])(?:QD|ACS)\s?\d/i.test(t)) return 'carbon';
+    if (/пылев|после адсорбц|пыл\S*\s+адсорбент|(?:^|[^a-z])(?:DDp|PDp)\s?\d/i.test(t)) return 'dust';
+    if (/сверхтонк|микрофильтр|0[.,]01\s*мкм|(?:^|[^a-z])(?:PD|AA)\s?\d/i.test(t)) return 'micro';
+    if (/тонк\S*\s+(?:очистк|фильтр)|(?:^|\D)1\s*мкм|0[.,]1\s*мг|от масла|маслоотдел|коалесц|(?:^|[^a-z])(?:DD|AO)\s?\d/i.test(t)) return 'fine';
+    if (/предварит|грубой|общей очистк|общего назначени|(?:^|\D)[35]\s*мкм|механическ/i.test(t)) return 'pre';
+    if (/циклон|влагоотдел|сепаратор\S*\s+(?:влаг|вод)|водоотдел/i.test(t)) return 'sep';
+    return '';
+  }
+  /** сведения для цепочки: компрессор — встроенные осушитель и фильтр, частотное регулирование; осушитель — вид и встроенные
+   *  фильтры; ресивер — «мокрый» (до осушителя) или «сухой» (после); фильтр — ступень; у всех — производительность и давление */
+  static info(p, kind){
+    const a=p.attrs||{}, cat=String(a.cat||p.cat||''), t=this.text(p), nm=String(p.name||''), o={ flow:this.flow(p), bar:this.bar(p) };
+    const yes=v=>/^(да|есть|встроен)/i.test(String(v??'').trim()), set=v=>v!=null && String(v).trim()!=='';
+    if (kind==='compressor'){
+      o.dryer=set(a.dryer) ? yes(a.dryer) : /(?:^|\s)со?\s+(?:встроенн\S*\s+)?(?:рефрижераторн\S*\s+)?осушител|встроенн\S*\s+(?:\S+\s+)?осушител|осушител\S*\s+встроен|(?:^|[^a-z])FF(?:[^a-z]|$)/i.test(nm)
+        || (p.rows||[]).some(r=>r && /осушител/i.test(String(r.k||'')) && yes(r.v));
+      o.filter=/встроенн\S*\s+(?:\S+\s+){0,2}фильтр|(?:^|\s)с\s+(?:\S+\s+){0,3}фильтр/i.test(nm) || (p.rows||[]).some(r=>r && /фильтр/i.test(String(r.k||'')) && /встроен/i.test(String(r.k||'')+' '+String(r.v||'')) && !/нет/i.test(String(r.v||'')));
+      o.vsd=set(a.vsd) ? yes(a.vsd) : /частотн|инвертор|(?:^|[^a-z])VSD(?:[^a-z]|$)|(?:^|\s)ПЧ(?:\s|$)|переменн\S*\s+скорост/i.test(t);
+      o.recv=StationEquip.num(a.receiver)>0 || /на ресивере/i.test(t); }
+    else if (kind==='dryer'){
+      o.type=/^gen_/.test(cat) || /генератор/i.test(nm) ? 'gen' : cat==='dryer_ads' || /адсорбц|десикант|мембран/i.test(t) ? 'ads' : 'refrig';
+      o.filters=/встроенн\S*\s+(?:\S+\s+){0,2}фильтр|фильтр\S*\s+(?:\S+\s+)?встроен|(?:^|\s)с\s+(?:\S+\s+)?фильтрам|интегрированн\S*\s+(?:\S+\s+)?фильтр/i.test(t);
+      o.pdp=this.first(String(a.dewPoint||'').replace('−', '-')); if (o.pdp!=null && /[−-]/.test(String(a.dewPoint))) o.pdp=-Math.abs(o.pdp); }
+    else if (kind==='receiver'){ o.role=/сух/i.test(nm) || /после осушител/i.test(t) ? 'dry' : /мокр|влажн/i.test(nm) ? 'wet' : ''; o.vol=this.volume(p); }
+    else if (kind==='filter') o.grade=this.grade(p, cat, t);
+    return o;
+  }
+
+  /** порядок по ходу воздуха (e.air.stage, меньше — раньше), роли ресиверов и ступени фильтров без указания */
+  static assign(eq){
+    const A=eq.filter(e=>e.air), D=A.filter(e=>e.kind==='dryer' && e.air.type!=='gen'), ads=D.some(e=>e.air.type==='ads'), refrig=D.some(e=>e.air.type==='refrig');
+    const R=A.filter(e=>e.kind==='receiver');
+    if (!D.length) R.forEach(e=>{ if (!e.air.role) e.air.role='wet'; });
+    else { const un=R.filter(e=>!e.air.role); let wet=R.some(e=>e.air.role==='wet'), dry=R.some(e=>e.air.role==='dry');
+      un.forEach((e, k)=>{ e.air.role=!wet ? 'wet' : k===un.length-1 && !dry ? 'dry' : 'wet'; if (e.air.role==='wet') wet=true; else dry=true; }); }
+    // фильтры без указанной ступени — чего не хватает по виду осушителя (адсорбционный: от масла до, пылевой после)
+    // (несколько одинаковых фильтров одной строкой состава — каждому своя ступень)
+    const F=A.filter(e=>e.kind==='filter' && e.air.grade!=='cond'), have=new Set(F.map(e=>e.air.grade).filter(Boolean)), built=D.some(e=>e.air.filters);
+    const want=ads ? ['micro', 'dust', 'carbon'] : refrig ? (built ? ['micro', 'carbon'] : ['pre', 'micro', 'carbon']) : ['pre', 'fine', 'micro', 'carbon'];
+    for (const e of F.filter(x=>!x.air.grade)){ const gs=[];
+      for (let k=0; k<e.qty; k++){ const g=want.find(w=>!have.has(w)) || 'fine'; have.add(g); gs.push(g); }
+      e.air.grade=gs[0]; e.air.guess=true; if (gs.some(g=>g!==gs[0])) e.air.grades=gs; }
+    const st=(e, gr)=>{ const k=e.kind, a=e.air;
+      if (k==='compressor') return 10;
+      if (k==='receiver') return a.role==='dry' ? 60 : 20;
+      if (k==='dryer') return a.type==='gen' ? 70 : a.type==='ads' ? 45 : 40;
+      if (k!=='filter' || gr==='cond') return null;
+      if (!D.length) return { sep:15, pre:31, fine:32, micro:33, dust:34, carbon:35 }[gr];
+      return { sep:15, pre:31, fine:32, micro:ads ? 43 : 51, dust:52, carbon:55 }[gr]; };
+    for (const e of A){ e.air.stage=st(e, e.air.grade); if (e.air.grades) e.air.stages=e.air.grades.map(g=>st(e, g)); }
+  }
+  /** единица k строки состава — её ступень (одинаковые фильтры одной строкой — разные ступени) */
+  static unit(air, k){ return air && air.grades ? Object.assign({}, air, { grade:air.grades[k], stage:air.stages[k] }) : air; }
+  /** по единицам: строка состава с разными ступенями — отдельными записями (qty 1) */
+  static expand(A){ return A.flatMap(e=>e.air && e.air.grades ? e.air.grades.map((g, k)=>Object.assign({}, e, { qty:1, air:this.unit(e.air, k) })) : [e]); }
+  /** поправка осушителя на давление */
+  static kp(bar){
+    const T=this.KP; if (!(bar>0)) return 1; if (bar<=T[0][0]) return T[0][1]; if (bar>=T[T.length-1][0]) return T[T.length-1][1];
+    for (let i=1; i<T.length; i++) if (bar<=T[i][0]){ const [p0, k0]=T[i-1], [p1, k1]=T[i]; return k0+(k1-k0)*(bar-p0)/(p1-p0); }
+    return 1;
+  }
+  /** поправка магистрального фильтра на давление (номинал — 7 бар): пропорционально абсолютному давлению, не больше 1,3 */
+  static kf(bar){ return bar>0 ? Math.min(1.3, (bar+1)/8) : 1; }
+  static m3(v){ return (Math.round(v*10)/10).toString().replace('.', ','); }
+
+  /** проверка и подбор: {chain — по ходу воздуха, q — сумма компрессоров, м³/мин, issues, recs — чего не хватает (для подбора
+   *  в каталоге)}; cls — класс чистоты по ISO 8573-1 («1.4.1») или '' */
+  static check(eq, cls){
+    const A=this.expand(eq.filter(e=>e.air && e.air.stage!=null && e.place!==false)), C=A.filter(e=>e.kind==='compressor');
+    if (!C.length) return null;
+    const m3=v=>this.m3(v), nm=e=>`поз. ${e.pos}`, iss=[], recs=[], key=new Set();
+    const D=A.filter(e=>e.kind==='dryer' && e.air.type!=='gen'), ads=D.filter(e=>e.air.type==='ads'), refrig=D.filter(e=>e.air.type==='refrig');
+    const F=A.filter(e=>e.kind==='filter'), R=A.filter(e=>e.kind==='receiver'), g=x=>F.filter(e=>e.air.grade===x);
+    const known=C.filter(e=>e.air.flow>0), q=known.reduce((s, e)=>s+e.air.flow*e.qty, 0), bar=Math.max(0, ...C.map(e=>e.air.bar||0)) || 8;
+    const builtDryer=C.some(e=>e.air.dryer), builtFilter=C.some(e=>e.air.filter) || D.some(e=>e.air.filters);
+    const rec=(k, o)=>{ if (key.has(k)) return; key.add(k); recs.push(Object.assign({ key:k }, o)); };
+    const need=(v, u)=>({ k:u==='л' ? 'Объём' : 'Производительность', v:`не менее ${u==='л' ? StationLayout.n(v) : m3(v)} ${u}` });
+    const fRec=(grade, why)=>rec(grade, { title:this.GRADES[grade].name, why, cat:'filter', name:this.GRADES[grade].name, f:this.GRADES[grade].stage ? { stage:this.GRADES[grade].stage } : {}, r:q ? { flow:[m3(q/this.kf(bar)), ''] } : {},
+      attrs:{ cat:'filter', stage:this.GRADES[grade].stage||undefined }, rows:[...(this.GRADES[grade].stage ? [{ k:'Ступень очистки', v:this.GRADES[grade].stage }] : []), ...(q ? [need(q/this.kf(bar), 'м³/мин')] : [])] });
+    // ступени очистки по виду осушителя
+    if (ads.length){
+      const before=F.filter(e=>(e.air.grade==='micro' || e.air.grade==='fine') && e.air.stage<45);
+      if (!before.length && !ads.every(e=>e.air.filters)){
+        iss.push({ level:'warn', air:true, text:`Перед адсорбционным осушителем (${ads.map(nm).join(', ')}) нужен фильтр очистки от масла (коалесцентный, 0,01 мкм): масло выводит адсорбент из строя. Добавьте фильтр в состав.` });
+        fRec('micro', 'перед адсорбционным осушителем — всегда: масло выводит адсорбент из строя'); }
+      if (!g('dust').length && !ads.every(e=>e.air.filters)){
+        iss.push({ level:'info', air:true, text:`После адсорбционного осушителя рекомендуется пылевой фильтр (1 мкм) — задерживает пыль адсорбента.` });
+        fRec('dust', 'после адсорбционного осушителя — задерживает пыль адсорбента'); } }
+    if (refrig.length && !F.length && !builtFilter){
+      iss.push({ level:'info', air:true, text:`Фильтров в составе нет: перед рефрижераторным осушителем рекомендуется фильтр предварительной очистки (защищает теплообменник), после — тонкой очистки от масла (0,01 мкм), если в осушителе их нет.` });
+      fRec('pre', 'перед рефрижераторным осушителем — защищает теплообменник'); fRec('micro', 'после рефрижераторного осушителя — масляный аэрозоль'); }
+    if (g('carbon').length && !g('micro').length && !g('fine').length)
+      iss.push({ level:'info', air:true, text:`Угольный фильтр (${g('carbon').map(nm).join(', ')}) ставят после фильтра тонкой очистки от масла — иначе уголь быстро насыщается.` });
+    // производительность: осушитель и фильтры — не меньше суммы компрессоров с поправкой на давление
+    if (q>0){
+      const kp=this.kp(bar);
+      const groups=[['refrig', refrig], ['ads', ads]].filter(([, L])=>L.length);
+      for (const [type, L] of groups){ if (L.some(e=>!(e.air.flow>0))) continue;
+        const cap=L.reduce((s, e)=>s+e.air.flow*e.qty, 0)*kp, ids=L.map(nm).join(', ');
+        if (cap<q*0.98){ iss.push({ level:'warn', air:true, text:`Осушитель (${ids}): ${m3(cap)} м³/мин при ${m3(bar)} бар — меньше производительности компрессоров ${m3(q)} м³/мин. Нужен не менее ${m3(q*this.MARGIN/kp)} м³/мин (номинал при 7 бар).` });
+          rec('dryer-'+type, { title:(type==='ads' ? 'Адсорбционный' : 'Рефрижераторный')+` осушитель не менее ${m3(q*this.MARGIN/kp)} м³/мин`, why:'производительность — с запасом на лето и давление', cat:type==='ads' ? 'dryer_ads' : 'dryer_refrig', name:(type==='ads' ? 'Адсорбционный' : 'Рефрижераторный')+' осушитель', f:{}, r:{ flow:[m3(q*this.MARGIN/kp), ''] },
+            attrs:{ cat:type==='ads' ? 'dryer_ads' : 'dryer_refrig' }, rows:[need(q*this.MARGIN/kp, 'м³/мин')] }); }
+        else if (cap<q*this.MARGIN) iss.push({ level:'info', air:true, text:`Осушитель (${ids}) почти без запаса: ${m3(cap)} м³/мин при ${m3(bar)} бар на ${m3(q)} м³/мин компрессоров. Летом при +40 °C на входе производительность осушителя падает примерно на 20 % — рекомендуется запас ${Math.round((this.MARGIN-1)*100)} % и больше.` }); }
+      const kf=this.kf(bar);
+      for (const e of F.filter(x=>x.air.flow>0 && x.air.grade!=='cond' && x.air.grade!=='sep')) if (e.air.flow*kf<q*0.98)
+        iss.push({ level:'warn', air:true, text:`Фильтр ${nm(e)} «${e.short}»: ${m3(e.air.flow*kf)} м³/мин при ${m3(bar)} бар — меньше производительности компрессоров ${m3(q)} м³/мин: перепад давления растёт, фильтр не держит класс очистки. Нужен не менее ${m3(q/kf)} м³/мин.` });
+      // ресивер: по самому производительному компрессору «нагрузка — холостой ход» (частотный — меньше)
+      const big=known.reduce((m, e)=>e.air.flow>m.air.flow ? e : m, known[0]), vr=big ? this.RECV_SIZES.find(v=>v>=big.air.flow*(big.air.vsd ? this.RECV_VSD : this.RECV)) || this.RECV_SIZES[this.RECV_SIZES.length-1] : 0;
+      const vol=R.reduce((s, e)=>s+(e.air.vol||0)*e.qty, 0), onRecv=C.some(e=>e.air.recv);
+      if (vr && !R.length && !onRecv){
+        iss.push({ level:'info', air:true, text:`Ресивера в составе нет — рекомендуется около ${StationLayout.n(vr)} л: сглаживает пульсации и пики потребления, собирает конденсат, компрессор реже переключается.` });
+        rec('receiver', { title:`Воздушный ресивер около ${StationLayout.n(vr)} л`, why:'буфер и сбор конденсата — компрессор реже переключается', cat:'receiver', name:'Воздушный ресивер', f:{}, r:{ volume:[String(Math.round(vr*0.8)), ''] },
+          attrs:{ cat:'receiver' }, rows:[{ k:'Объём', v:`около ${StationLayout.n(vr)} л` }] }); }
+      else if (vr && R.length && R.every(e=>e.air.vol>0) && vol<vr*0.6)
+        iss.push({ level:'info', air:true, text:`Ресиверы ${StationLayout.n(vol)} л — для компрессора ${m3(big.air.flow)} м³/мин${big.air.vsd ? ' с частотным регулированием' : ' с регулированием «нагрузка — холостой ход»'} рекомендуется около ${StationLayout.n(vr)} л (не чаще одного цикла в 30 с при перепаде 1 бар).` });
+    }
+    // класс чистоты по ISO 8573-1: какой осушитель и какие ступени фильтров нужны
+    const cl=String(cls||'').match(/^([1-6])\.([1-6])\.([1-4])$/), before=recs.length;
+    if (cl){ const [pc, wc, oc]=cl.slice(1).map(Number), pdp=this.PDP[wc], hasDry=D.length || builtDryer, dp=(pdp>0 ? '+' : '−')+Math.abs(pdp)+' °C';
+      const want=(grades, why)=>{ if (!grades.some(x=>g(x).length) && !(builtFilter && grades.some(x=>x==='pre' || x==='fine'))) fRec(grades[0], why); };
+      if (wc<=3 && !ads.some(e=>e.air.pdp==null || e.air.pdp<=pdp)){
+        iss.push({ level:'warn', air:true, text:`Класс ${cls}: точка росы ${dp} — нужен адсорбционный осушитель${refrig.length || builtDryer ? ' (рефрижераторный даёт +3 °C)' : ''}.` });
+        rec('dryer-ads', { title:`Адсорбционный осушитель (точка росы ${dp})${q ? `, не менее ${m3(q*this.MARGIN/this.kp(bar))} м³/мин` : ''}`, why:`класс воды ${wc} по ISO 8573-1`, cat:'dryer_ads', name:'Адсорбционный осушитель', f:{ dewPoint:pdp<=-70 ? '−70' : pdp<=-40 ? '−40' : '−20' }, r:q ? { flow:[m3(q*this.MARGIN/this.kp(bar)), ''] } : {},
+          attrs:{ cat:'dryer_ads' }, rows:[{ k:'Точка росы', v:dp }, ...(q ? [need(q*this.MARGIN/this.kp(bar), 'м³/мин')] : [])] });
+        if (!g('micro').length) fRec('micro', 'перед адсорбционным осушителем — всегда'); }
+      else if (wc<=6 && !hasDry){
+        iss.push({ level:'warn', air:true, text:`Класс ${cls}: точка росы ${dp} — нужен осушитель (рефрижераторный).` });
+        rec('dryer-refrig', { title:`Рефрижераторный осушитель${q ? ` не менее ${m3(q*this.MARGIN/this.kp(bar))} м³/мин` : ''}`, why:`класс воды ${wc} по ISO 8573-1 — точка росы до ${dp}`, cat:'dryer_refrig', name:'Рефрижераторный осушитель', f:{}, r:q ? { flow:[m3(q*this.MARGIN/this.kp(bar)), ''] } : {},
+          attrs:{ cat:'dryer_refrig' }, rows:q ? [need(q*this.MARGIN/this.kp(bar), 'м³/мин')] : [] }); }
+      if (pc===1 || oc===1) want(['micro'], `класс ${cls}: частицы и масло — до 0,01 мкм и 0,01 мг/м³`);
+      else if (pc===2 || oc===2) want(['fine', 'micro'], `класс ${cls}: частицы до 1 мкм, масло до 0,1 мг/м³`);
+      else if (pc<=3 || oc<=3) want(['pre', 'fine', 'micro'], `класс ${cls}: частицы до 5 мкм, масло до 1 мг/м³`);
+      if (oc===1 && !g('carbon').length) fRec('carbon', `класс масла 1 — с парами масла (0,003 мг/м³)`);
+      if (recs.length>before) iss.push({ level:'info', air:true, text:`Для класса ${cls} в составе не хватает: ${recs.slice(before).map(x=>x.title.replace(/\s*\(.*?\)/g, '').replace(/,.*$/, '').toLowerCase()).join(', ')} — подбор на вкладке «Компоновка».` });
+    }
+    // цепочка по ходу воздуха
+    const order=[...A].filter(e=>e.kind!=='filter' || e.air.grade!=='cond').sort((a, b)=>a.air.stage-b.air.stage);
+    const word=e=>e.kind==='compressor' ? 'компрессор'+(e.air.dryer ? ' со встроенным осушителем' : '') : e.kind==='receiver' ? (e.air.role==='dry' ? '«сухой» ресивер' : 'ресивер') : e.kind==='dryer' ? (e.air.type==='ads' ? 'адсорбционный осушитель' : e.air.type==='gen' ? 'генератор' : 'рефрижераторный осушитель')+(e.air.filters ? ' (встроенные фильтры)' : '') : 'фильтр '+this.GRADES[e.air.grade].short;
+    const chain=order.map(e=>({ pos:e.pos, kind:e.kind, text:word(e), guess:!!e.air.guess }));
+    return { chain, q, bar, issues:iss, recs };
   }
 }
 
@@ -340,7 +549,7 @@ class StationEquip {
 // размера — по необходимому месту (шаг 100 мм, наименьшая площадь пола); заданный контейнер, в который не помещается, —
 // ошибка и подсказка, какой подойдёт; контейнер с большим запасом — подсказка, какой меньший подойдёт.
 class StationLayout {
-  static VER = 3;           // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
+  static VER = 4;           // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
   static MAX_L = 12000;
   static PIPE_PAD = 60;      // зазор вокруг фильтра на трубопроводе, мм
   static AIR_Y = 150;        // линия сжатого воздуха: ось — в 150 мм от задней стены (или посередине между рядами)
@@ -348,7 +557,7 @@ class StationLayout {
   // сервисные двери: проём шире оборудования на 200 мм (от 800 до 2400), створка до 1200, высота 2000, от углов — 100
   static DOOR = { min:800, max:2400, leaf:1200, h:2000, pad:100 };
   static ENTRY = [300, 1200];     // дверь в стене прохода блок-контейнера: от торца (за тамбуром), мм
-  static NARROW = 600;       // проход перед настенным шкафом — не уже 600 мм (ПУЭ, п. 4.1.23: сужение выступающими частями)
+  static DOOR_MIN = 600;     // дверь оператора и сервисный проём — не уже 600 мм в свету
   static CAB_TOP = 1900;     // настенный шкаф: верх — на 1,9 м от пола (рукоятки и панель оператора — на уровне глаз),
   static CAB_LOW = 300;      // низ — не ниже 300 мм
   static ROOF_GAP = 200;     // глушитель на опорах над крышей, мм
@@ -359,9 +568,9 @@ class StationLayout {
 
   /** отпечаток всего, от чего зависит компоновка: изменился — чертёж и 3D-вид пора обновить */
   static hash(input){
-    const c=input.cont||{}, pick=a=>a ? {cat:a.cat, size:a.size, mass:a.mass, model:a.model, maker:a.maker, orient:a.orient, kw:a.kw, volume:a.volume, color:a.color} : null;
+    const c=input.cont||{}, pick=a=>a ? {cat:a.cat, size:a.size, mass:a.mass, model:a.model, maker:a.maker, orient:a.orient, kw:a.kw, volume:a.volume, color:a.color, flow:a.flow, pressure:a.pressure, stage:a.stage, dryer:a.dryer, vsd:a.vsd, dewPoint:a.dewPoint, receiver:a.receiver} : null;
     const s=JSON.stringify([this.VER, StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.ins, c.ral, c.sys||null], input.chassisH||null,
-      (input.parts||[]).filter(p=>p && p.role!=='container').map(p=>[p.name, p.qty, p.role||'', p.pipeMat||'', p.dn||'', p.mount||'', pick(p.attrs), (p.rows||[]).filter(r=>r && /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен/i.test(String(r.k||'')+' '+String(r.v||''))).map(r=>[r.k, r.v])])]);
+      (input.parts||[]).filter(p=>p && p.role!=='container').map(p=>[p.name, p.qty, p.role||'', p.pipeMat||'', p.dn||'', p.mount||'', pick(p.attrs), (p.rows||[]).filter(r=>r && /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы/i.test(String(r.k||'')+' '+String(r.v||''))).map(r=>[r.k, r.v])])]);
     return this.fnv(s);
   }
   /** FNV-1a, 8 шестнадцатеричных знаков */
@@ -394,17 +603,25 @@ class StationLayout {
     if (plan.level==='error' && units.some(e=>!e.known)){ const k=units.filter(e=>e.known);
       plan.assumed=!k.length || (geo.auto ? this.autoSize(k, geo) : this.fit(k, geo)).level!=='error'; }
     plan=Object.assign(base, plan, { issues:plan.issues||[] }, this.colors());
+    const air=AirChain.check(this.eq, this.in.air);
+    if (air && plan.level!=='error'){ plan.air=air; plan.issues.push(...air.issues); }
     this.notes(plan);
     if (plan.level==='ok' && plan.issues.some(i=>i.level==='warn')) plan.level='warn';
     return plan;
   }
 
-  /** единицы оборудования в порядке расстановки от двери: шкафы, остальное по составу, топливный бак, ДГУ — в дальнем торце */
+  /** единицы оборудования в порядке расстановки от двери: шкафы, остальное по составу (сжатый воздух — по ходу воздуха:
+   *  компрессоры, ресивер, фильтры, осушитель…), топливный бак, ДГУ — в дальнем торце */
   units(placed){
-    const u=[]; for (const e of placed) for (let k=0; k<e.qty; k++) u.push(Object.assign({}, e, { unit:k, c:StationClear.of(e.kind, e) }));
-    const dgu=placed.some(e=>e.kind==='dgu'), rank=e=>e.kind==='cabinet' ? 0 : e.kind==='dgu' ? 2 : e.kind==='tank' && dgu ? 1.5 : 1;
+    const u=[]; for (const e of placed) for (let k=0; k<e.qty; k++) u.push(Object.assign({}, e, { unit:k, c:StationClear.of(e.kind, e), air:AirChain.unit(e.air, k) }));
+    const dgu=placed.some(e=>e.kind==='dgu'), air=placed.some(e=>e.kind==='compressor');
+    const rank=e=>e.kind==='cabinet' ? 0 : e.kind==='dgu' ? 2 : e.kind==='tank' && dgu ? 1.5 : air && e.air && e.air.stage!=null ? 1+e.air.stage/100 : air ? 1.8 : 1;
     return u.map((e, i)=>[e, i]).sort((a, b)=>rank(a[0])-rank(b[0]) || a[1]-b[1]).map(([e])=>e);
   }
+  /** в два ряда — в задний ряд: ДГУ; аппараты цепочки сжатого воздуха (если есть компрессоры) — подряд по ходу воздуха */
+  backRow(e, units){ return e.kind==='dgu' || (units.some(u=>u.kind==='compressor') && (StationLayout.series(e) || (e.slot && e.kind==='filter'))); }
+  /** аппарат на линии сжатого воздуха с одним входом и одним выходом (ресивер, осушитель, фильтр на полу) */
+  static series(e){ return !!e.air && e.air.stage!=null && e.kind!=='compressor' && e.mount!=='pipe' && !e.pipe; }
   static key(e){ return e.id+'#'+e.unit; }
 
   /** перед оборудованием [рекомендуется, не менее]: проход обслуживания (вдоль ДГУ «не менее» — своё) или, при обслуживании
@@ -447,7 +664,7 @@ class StationLayout {
   // ---- два ряда у длинных стен, проход посередине
   row2(units, Lu, W){
     const A=[], B=[], lenOf=(R, lvl)=>this.chain(R.map(o=>o.e), lvl).sum+R.reduce((s, o)=>s+o.e.l, 0);
-    for (const e of units){ const o={ e, rot:false }; if (e.kind==='dgu') B.push(o); else (lenOf(A, 1)<=lenOf(B, 1) ? A : B).push(o); }
+    for (const e of units){ const o={ e, rot:false }; if (this.backRow(e, units)) B.push(o); else (lenOf(A, 1)<=lenOf(B, 1) ? A : B).push(o); }
     if (!A.length || !B.length) return { ok:false, why:'rows' };
     const dmax=R=>Math.max(...R.map(o=>o.e.w+o.e.c.back[1])), aMin=Math.max(...[...A, ...B].map(o=>this.front(o.e)[1]));
     if (W-dmax(A)-dmax(B)<aMin) return { ok:false, why:'width2' };
@@ -458,7 +675,7 @@ class StationLayout {
   // ---- без прохода, два ряда спиной друг к другу: каждый — лицом к своей стене с сервисными дверями
   rowsBack(units, Lu, W){
     const A=[], B=[], lenOf=(R, lvl)=>this.chain(R.map(o=>o.e), lvl).sum+R.reduce((s, o)=>s+o.e.l, 0);
-    for (const e of units){ const o={ e, rot:false }; if (e.kind==='dgu') B.push(o); else (lenOf(A, 1)<=lenOf(B, 1) ? A : B).push(o); }
+    for (const e of units){ const o={ e, rot:false }; if (this.backRow(e, units)) B.push(o); else (lenOf(A, 1)<=lenOf(B, 1) ? A : B).push(o); }
     if (!A.length || !B.length) return { ok:false, why:'rows' };
     const g=StationLayout.DOOR_GAP[1], dmax=R=>Math.max(...R.map(o=>o.e.w)), mid=Math.max(150, ...[...A, ...B].map(o=>o.e.c.back[1]));
     if (W-dmax(A)-dmax(B)-2*g-mid<0) return { ok:false, why:'width2' };
@@ -585,16 +802,21 @@ class StationLayout {
       r.issues.unshift({ level:'warn', text:`Прохода обслуживания внутри нет${r.needW ? ` — по ширине нужно ${n(r.needW)} мм, внутри ${n(geo.int[1])} мм` : ''}: оборудование обслуживается снаружи через сервисные двери ${where}. У дверей на площадке — свободная зона не менее 1,5 м.` }); }
     r.level=r.bad ? 'error' : r.issues.some(i=>i.level==='warn') ? 'warn' : 'ok';
     r.used=this.used(r.items, geo);
+    delete r.segs;
   }
 
   /** на стены и трубы: трубопровод (геометрия), места в ряду для шкафов и фильтров, настенные шкафы, фильтры на линии.
    *  Возвращает то, чему места не нашлось */
   attach(r, cabs, hang, geo){
-    const left=[], dh=Math.max(0, ...[...hang, ...r.items.filter(i=>i.slot && i.kind==='filter')].map(e=>Math.max(e.l, e.w)));
+    const left=[], dh=Math.max(0, ...[...hang, ...r.items.filter(i=>i.slot && i.kind==='filter')].map(e=>Math.max(e.l, e.w))), st=e=>e.air && e.air.stage!=null ? e.air.stage : 50;
     r.lines=this.lines(r, geo, dh);
     for (const it of r.items.filter(i=>i.slot)) this.mountSlot(it, r, geo);
     for (const e of cabs){ const it=this.wallSpot(e, r, geo); if (it) r.items.push(it); else left.push(e); }
-    for (const e of hang){ const it=this.pipeSpot(e, r, geo); if (it) r.items.push(it); else left.push(e); }
+    // фильтры на трубе — у осушителя: перед ним — справа налево от его входа, после — слева направо от выхода (по ходу воздуха)
+    const groups=new Map(); for (const e of hang){ const g=this.segOf(r, e); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(e); }
+    for (const [g, E] of groups){ const back=!!g && g.s1>=40 && g.s1<50;
+      E.sort((a, b)=>back ? st(b)-st(a) : st(a)-st(b));
+      for (const e of E){ const it=this.pipeSpot(e, r, geo, g, back); if (it) r.items.push(it); else left.push(e); } }
     return left;
   }
 
@@ -603,27 +825,88 @@ class StationLayout {
    *  осушители и ресиверы, ДГУ — топливо от бака. dh — наибольший фильтр на линии: ось — дальше от стены на его половину */
   lines(r, geo, dh){
     const [L, W, H]=geo.int, fl=r.items.filter(i=>i.mount==='floor'), has=k=>fl.some(i=>i.kind===k), out=[];
+    r.segs=[];
     if (!fl.length) return out;
     const mid=r.service && r.rows===2, A=fl.filter(i=>i.row===1), B=fl.filter(i=>i.row!==1), zTop=Math.max(600, Math.min(H-400, 1500));
     const over=r.rows===2 && !r.service, room={ fuel:50, air:100, in:140, out:140, gen:100 }, hang=(dh||0)/2+40;
-    // conn — что соединяет линия; off — ось от стены, мм (part — доля полосы, если полоса уже); z — высота оси
-    const line=(conn, off, part, z, label, medium, toEnd)=>{ if (!conn.length) return;
+    // ось линии: conn — что соединяет; off — от стены, мм (part — доля полосы, если полоса уже); z — высота оси; x0…x1 — путь
+    const place=(conn, off, part, z, medium, x0, x1)=>{
       // полоса: между рядами — от задних сторон одного ряда до другого; иначе — за этим оборудованием до стены
       const back=conn.filter(i=>i.row!==1), lo=mid ? Math.max(...A.map(i=>i.y+i.ly)) : back.length ? Math.max(...back.map(i=>i.y+i.ly)) : 0, hi=mid ? Math.min(...B.map(i=>i.y)) : W, bw=hi-lo;
       const y=Math.round(mid ? lo+bw*part : Math.min(W-40, hi-Math.min(off, bw*part)));
       // нет места под трубу за оборудованием или ряды напротив (через проход) — над оборудованием
       if (bw<room[medium] || over) z=Math.min(H-150, Math.max(z, ...conn.map(i=>i.h+(medium==='out' ? 450 : 200))));
-      const x0=Math.min(...conn.map(i=>i.x+i.lx/2)), x1=toEnd ? L : Math.max(...conn.map(i=>i.x+i.lx/2));
       // линия не проходит сквозь оборудование: на её пути выше неё — над ним
       const hit=fl.filter(i=>i.x<x1 && i.x+i.lx>x0 && i.y<y+60 && i.y+i.ly>y-60 && i.h>z-60);
       if (hit.length) z=Math.min(H-120, Math.max(z, ...hit.map(i=>i.h+150)));
-      const br=conn.map(i=>this.branch(i, y, z)).filter(Boolean), xs=[...br.map(b=>b.x), ...conn.filter(i=>!br.some(b=>b.to===StationLayout.key(i))).map(i=>Math.round(i.x+i.lx/2))];
-      out.push({ x0:Math.min(...xs), x1:toEnd ? L : Math.max(...xs), y, z:Math.round(z), label, medium, branches:br }); };
+      return { y, z:Math.round(z), lo, hi }; };
+    const line=(conn, off, part, z, label, medium, toEnd)=>{ if (!conn.length) return;
+      const g=place(conn, off, part, z, medium, Math.min(...conn.map(i=>i.x+i.lx/2)), toEnd ? L : Math.max(...conn.map(i=>i.x+i.lx/2)));
+      const br=conn.map(i=>this.branch(i, g.y, g.z)).filter(Boolean), xs=[...br.map(b=>b.x), ...conn.filter(i=>!br.some(b=>b.to===StationLayout.key(i))).map(i=>Math.round(i.x+i.lx/2))];
+      out.push({ x0:Math.min(...xs), x1:toEnd ? L : Math.max(...xs), y:g.y, z:g.z, label, medium, branches:br }); };
     if (has('pump')){ const P=fl.filter(i=>i.kind==='pump'); line(P, 110, mid ? 0.33 : 0.3, 450, 'вход', 'in', true); line(P, 240, mid ? 0.67 : 0.7, Math.min(zTop, 1300), 'выход', 'out', true); }
-    else if (has('compressor')) line(fl.filter(i=>/compressor|dryer|receiver|filter|other/.test(i.kind)), Math.max(StationLayout.AIR_Y, hang), 0.5, zTop, 'выход', 'air', true);
+    else if (has('compressor')){ const a=this.airLines(fl, place, L, H, Math.max(StationLayout.AIR_Y, hang), zTop); out.push(...a.lines); r.segs=a.segs; }
     else if (has('dgu')){ if (has('tank')) line(fl.filter(i=>i.kind==='tank' || i.kind==='dgu'), 120, 0.5, 300, '', 'fuel', false); }
     else line(fl.filter(i=>i.kind!=='cabinet'), Math.max(150, hang), 0.5, Math.min(zTop, 1200), 'выход', 'gen', true);
     return out;
+  }
+  /** сжатый воздух — последовательно по ходу воздуха: компрессоры → коллектор → аппараты (ресивер, фильтр на полу, осушитель:
+   *  у каждого один вход и один выход — магистраль на нём прерывается, gaps) → выход через дальний торец. Компрессоры не все
+   *  до первого аппарата (два ряда) — коллектор отдельной трубой выше магистрали. segs — участки между аппаратами: на них
+   *  висят фильтры по своей ступени (s0 < ступень < s1) */
+  airLines(fl, place, L, H, off, z0){
+    const src=fl.filter(i=>i.kind==='compressor'), ser=fl.filter(i=>StationLayout.series(i)).sort((a, b)=>a.air.stage-b.air.stage || a.x-b.x), conn=[...src, ...ser];
+    if (!conn.length) return { lines:[], segs:[] };
+    const g=place(conn, off, 0.5, z0, 'air', Math.min(...conn.map(i=>i.x)), L), y=g.y, z=g.z;
+    const out=(i, yy, zz)=>Object.assign(this.branch(i, yy, zz) || { x:Math.round(i.x+i.lx/2), y0:yy, y1:yy, z1:zz, to:StationLayout.key(i) }, { role:'out' });
+    const P=ser.map(i=>this.ports(i, y, z)), sb=src.map(i=>out(i, y, z)), firstIn=P.length ? P[0][0].x : L, lines=[], segs=[], stOf=k=>ser[k].air.stage;
+    if (sb.every(b=>b.x<firstIn-60)){   // компрессоры — до первого аппарата: одна магистраль
+      const ln={ x0:Math.min(...sb.map(b=>b.x), firstIn), x1:L, y, z, label:'выход', medium:'air', branches:[...sb, ...P.flat()], gaps:P.map(([a, b])=>[a.x, b.x]) };
+      lines.push(ln);
+      let a=sb.length ? Math.max(...sb.map(b=>b.x)) : ln.x0, s0=10;
+      ser.forEach((it, k)=>{ segs.push({ a, b:P[k][0].x, s0, s1:stOf(k), line:ln }); a=P[k][1].x; s0=stOf(k); });
+      segs.push({ a, b:L, s0, s1:Infinity, line:ln });
+      return { lines, segs };
+    }
+    // коллектор компрессоров — выше (или ниже) магистрали и чуть в стороне на плане: к входу первого аппарата
+    const zh=z+220<=H-120 ? z+220 : z-220, yh=Math.max(g.lo+40, Math.min(g.hi-40, y-110));
+    const hb=src.map(i=>out(i, yh, zh)), hin=this.ports(ser[0], yh, zh)[0], hx=[...hb.map(b=>b.x), hin.x];
+    const head={ x0:Math.min(...hx), x1:Math.max(...hx), y:yh, z:zh, label:'', medium:'air', branches:[...hb, hin], gaps:[], header:true };
+    const tr={ x0:P[0][1].x, x1:L, y, z, label:'выход', medium:'air', branches:[P[0][1], ...P.slice(1).flat()], gaps:P.slice(1).map(([a, b])=>[a.x, b.x]) };
+    lines.push(head, tr);
+    // до первого аппарата фильтр — на участке коллектора, по которому идёт весь воздух (компрессоры с одной стороны)
+    const lw=hb.filter(b=>b.x<hin.x).map(b=>b.x), rw=hb.filter(b=>b.x>hin.x).map(b=>b.x);
+    const a0=lw.length ? Math.max(...lw) : null, b0=rw.length ? Math.min(...rw) : null;
+    segs.push(a0!=null && (b0==null || hin.x-a0>=b0-hin.x) ? { a:a0, b:hin.x, s0:10, s1:stOf(0), line:head } : { a:hin.x, b:b0, s0:10, s1:stOf(0), line:head });
+    let a=P[0][1].x, s0=stOf(0);
+    ser.slice(1).forEach((it, k)=>{ segs.push({ a, b:P[k+1][0].x, s0, s1:stOf(k+1), line:tr }); a=P[k+1][1].x; s0=stOf(k+1); });
+    segs.push({ a, b:L, s0, s1:Infinity, line:tr });
+    return { lines, segs };
+  }
+  /** вход и выход аппарата на магистрали (по ходу воздуха — слева направо): патрубки сверху у задней стороны (магистраль
+   *  ниже верха — в заднюю стенку); у вертикального ресивера вход — внизу сбоку, выход — вверху */
+  ports(i, y, z){
+    const to=StationLayout.key(i), u=i.shape==='hcyl' ? [0.15, 0.85] : i.shape==='vcyl' ? [0.3, 0.7] : [0.25, 0.75];
+    const behind=i.y+i.ly<y-20, front=i.y>y+20, back=behind ? i.y+i.ly : front ? i.y : null, sg=behind ? -1 : 1, dz=Math.min(150, i.ly/4), top=z>i.h+50;
+    const low=i.shape==='vcyl' && i.h>=900 ? Math.round(Math.max(250, i.h*0.22)) : 0;
+    const at=(uu, role, lo)=>{ const x=Math.round(i.x+i.lx*uu);
+      if (back==null) return { x, y0:y, y1:y, z1:Math.round(top ? i.h : z), to, role };
+      if (lo) return { x, y0:y, y1:back, z1:lo, to, role };
+      return top ? { x, y0:y, y1:Math.round(back+sg*dz), z1:Math.round(i.h), to, role } : { x, y0:y, y1:back, z1:Math.round(z), to, role }; };
+    return [at(u[0], 'in', low), at(u[1], 'out', 0)];
+  }
+  /** участки линии без разрывов (внутри аппарата магистраль прервана): [[x0, x1], …] */
+  static runs(l){
+    const g=(l.gaps||[]).filter(([a, b])=>b>a).sort((p, q)=>p[0]-q[0]), out=[]; let x=l.x0;
+    for (const [a, b] of g){ if (a>x) out.push([x, Math.min(a, l.x1)]); x=Math.max(x, b); }
+    if (l.x1>x) out.push([x, l.x1]);
+    return out;
+  }
+  /** участок для фильтра на трубе по его ступени; без цепочки воздуха — самая высокая линия, где он висит не ниже 150 мм */
+  segOf(r, e){
+    const S=r.segs||[], s=e.air && e.air.stage!=null ? e.air.stage : 50;
+    if (S.length) return S.find(g=>s>g.s0 && s<g.s1) || S[S.length-1];
+    const ln=this.airLine(r, e.h); return ln ? { a:ln.x0-100, b:ln.x1+100, s0:-Infinity, s1:Infinity, line:ln } : null;
   }
   /** отвод от магистрали (y, z) к оборудованию: к его задней стороне; магистраль выше оборудования — заходит на верх и
    *  спускается к нему (z1), ближе к дальнему краю: посередине на виде — номер позиции */
@@ -651,36 +934,52 @@ class StationLayout {
       it.mount='wall'; if (it.row===1){ it.y=0; it.wall='front'; } else { it.y=W-it.ly; it.wall='back'; }
       return;
     }
-    const ln=this.airLine(r, it.h); if (!ln){ it.mount='floor'; it.z=0; return; }
+    const g=this.segOf(r, it), ln=g && g.line; if (!ln || ln.z+Math.max(60, it.h*0.12)-it.h<150){ it.mount='floor'; it.z=0; return; }
     it.mount='pipe'; this.hangOn(it, ln, W);
     ln.x0=Math.min(ln.x0, Math.round(it.x+it.lx/2)); ln.x1=Math.max(ln.x1, Math.round(it.x+it.lx/2));
   }
 
-  /** настенный шкаф: на стене прохода напротив оборудования — ближе к двери, не на двери; проход перед ним — не уже 600 мм.
-   *  Без прохода и при двух рядах — null (своё место в ряду) */
+  /** настенный шкаф не мешает проходу оператора: проход перед ним — не уже прохода обслуживания (ПУЭ, п. 4.1.23: у щитов —
+   *  не менее 0,8 м в свету; сужение до 0,6 м — только строительными конструкциями). Места по порядку: на стене прохода у
+   *  двери, где перед шкафом остаётся рекомендуемый проход (напротив промежутка между оборудованием или неглубокого); на торце
+   *  у двери; на дальнем торце (не у ДГУ — там жалюзи радиатора); на стене прохода с проходом «не менее». Без прохода и при
+   *  двух рядах, или места нет — null (своё место в ряду) */
   wallSpot(e, r, geo){
     if (r.service || r.rows!==1) return null;
-    const [L, , H]=geo.int, x0=geo.x0||0, w=e.l, d=e.w, z=Math.max(StationLayout.CAB_LOW, Math.min(StationLayout.CAB_TOP, H-150)-e.h);
+    const [L, W, H]=geo.int, x0=geo.x0||0, w=e.l, d=e.w, z=Math.max(StationLayout.CAB_LOW, Math.min(StationLayout.CAB_TOP, H-150)-e.h);
     if (z+e.h>H-50) return null;
-    const busy=r.items.filter(i=>i.mount==='wall' && i.wall==='front').map(i=>[i.x-100, i.x+i.lx+100]);
-    if (r.door==='side') busy.push([x0+StationLayout.ENTRY[0]-150, x0+StationLayout.ENTRY[1]+150]);
-    const fl=r.items.filter(i=>i.mount!=='wall' && i.mount!=='pipe');
-    const ok=x=>!busy.some(([a, b])=>x<b && x+w>a) && fl.every(i=>i.x>=x+w || i.x+i.lx<=x || i.y-d>=StationLayout.NARROW);
-    for (let x=x0+150; x+w<=L-150; x+=50) if (ok(x)) return this.unitItem(e, { x, y:0, z, mount:'wall', wall:'front', face:1 });
-    return null;
+    const fl=r.items.filter(i=>i.mount!=='wall' && i.mount!=='pipe'), cabs=r.items.filter(i=>i.mount==='wall');
+    const front=need=>{
+      const busy=cabs.filter(i=>i.wall==='front').map(i=>[i.x-100, i.x+i.lx+100]);
+      if (r.door==='side') busy.push([x0+StationLayout.ENTRY[0]-150, x0+StationLayout.ENTRY[1]+150]);
+      const ok=x=>!busy.some(([a, b])=>x<b && x+w>a) && fl.every(i=>i.x>=x+w || i.x+i.lx<=x || i.y-d>=need);
+      for (let x=x0+150; x+w<=L-150; x+=50) if (ok(x)) return this.unitItem(e, { x, y:0, z, mount:'wall', wall:'front', face:1 });
+      return null; };
+    // торец: шкаф вдоль торцевой стены в зоне прохода — перед ним (вдоль контейнера) проход «не менее» свободен
+    const end=side=>{
+      if (side==='left' && (r.door==='end' || x0>0)) return null;   // у морского — двери в торце, у «Севера» — тамбур
+      if (side==='right' && fl.some(i=>i.kind==='dgu')) return null;
+      const xa=side==='left' ? x0 : L-d, zone=[side==='left' ? x0 : L-d-this.aisle[1], side==='left' ? x0+d+this.aisle[1] : L];
+      const taken=cabs.filter(i=>i.wall===side).map(i=>[i.y-100, i.y+i.ly+100]);
+      for (let y=100; y+w<=W-100; y+=50){
+        if (taken.some(([a, b])=>y<b && y+w>a)) continue;
+        if (fl.some(i=>i.x<zone[1] && i.x+i.lx>zone[0] && i.y<y+w && i.y+i.ly>y)) continue;
+        return this.unitItem(e, { x:xa, y, z, lx:d, ly:w, mount:'wall', wall:side, face:side==='left' ? 2 : -2 }); }
+      return null; };
+    return front(this.aisle[0]) || end('left') || end('right') || front(this.aisle[1]);
   }
 
-  /** фильтр на трубопроводе: после осушителя и ресивера (ближе к выходу), в промежутках, где под ним нет оборудования;
-   *  сначала — где к нему подойти из прохода: перед ним на полу ничего нет (колба и элемент снимаются вниз) */
-  pipeSpot(e, r, geo){
-    const ln=this.airLine(r, e.h); if (!ln) return null;
+  /** фильтр на трубопроводе — на своём участке по ходу воздуха (до осушителя или после — по ступени), по порядку ступеней;
+   *  где под ним нет оборудования, сначала — где к нему подойти из прохода (колба и элемент снимаются вниз) */
+  pipeSpot(e, r, geo, g, back){
+    const ln=g && g.line; if (!ln || ln.z+Math.max(60, e.h*0.12)-e.h<150) return null;
     const d=Math.max(e.l, e.w), pad=StationLayout.PIPE_PAD, it=this.unitItem(e, { x:0, y:0, z:0, mount:'pipe', lx:d, ly:d }); this.hangOn(it, ln, geo.int[1]);
-    const end=Math.min(ln.x1, geo.int[0])-100, after=Math.max(ln.x0, ...r.items.filter(i=>i.mount==='floor' && /dryer|receiver/.test(i.kind)).map(i=>i.x+i.lx));
+    const lo=Math.ceil(Math.max(g.a+80, g.next ?? -Infinity, ln.x0-d/2)/10)*10, hi=Math.floor((Math.min(g.b-80, g.lim ?? Infinity, ln.x1+d/2, geo.int[0]-100)-d)/10)*10;
     const open=x=>r.service || r.rows!==1 || !r.items.some(i=>i.mount==='floor' && i.x<x+d && i.x+i.lx>x && i.y<it.y);
-    const free=(x, o)=>x>=ln.x0-d/2 && x+d<=end && !ln.branches.some(b=>b.x>x-80 && b.x<x+d+80) && !r.items.some(i=>this.hit({ x, y:it.y, z:it.z, lx:d, ly:d, h:it.h }, i, pad)) && (!o || open(x));
+    const free=(x, o)=>!ln.branches.some(b=>b.x>x-80 && b.x<x+d+80) && !r.items.some(i=>this.hit({ x, y:it.y, z:it.z, lx:d, ly:d, h:it.h }, i, pad)) && (!o || open(x));
     for (const o of [true, false]){
-      for (let x=after+pad; x+d<=end; x+=20) if (free(x, o)){ it.x=x; return it; }
-      for (let x=end-d; x>=ln.x0-d/2; x-=20) if (free(x, o)){ it.x=x; return it; } }
+      if (back){ for (let x=hi; x>=lo; x-=20) if (free(x, o)){ it.x=x; g.lim=x-pad; return it; } }
+      else for (let x=lo; x<=hi; x+=20) if (free(x, o)){ it.x=x; g.next=x+d+pad; return it; } }
     return null;
   }
   /** пересекаются ли a и b (короба x, y, z, lx, ly, h) с зазором pad по длине */
@@ -690,7 +989,8 @@ class StationLayout {
   }
 
   /** сервисные двери — напротив каждого агрегата в стене, к которой он обращён (ДГУ посередине — в обеих). Соседние проёмы
-   *  делятся посередине промежутка — между ними стойка 100 мм; сливаются, только если проём вышел бы уже 600 мм:
+   *  делятся посередине промежутка — между ними стойка 100 мм; сливаются, только если проём вышел бы уже 600 мм (дверь
+   *  оператора — не уже DOOR_MIN):
    *  [{wall:'front'|'back', x0, x1, w, leaves, h}] (мм внутри) */
   serviceDoors(items, geo){
     const [L, , H]=geo.int, D=StationLayout.DOOR, x0=geo.x0||0, iv={ front:[], back:[] };
@@ -701,7 +1001,7 @@ class StationLayout {
     for (const wall of ['front', 'back']){ const list=iv[wall].sort((a, b)=>a[0]-b[0]), got=[];
       for (const [a, b, u0, u1] of list){ const last=got[got.length-1];
         if (last && a<last.x1+100){ const m=(last.u1+u0)/2;
-          if (m-50-last.x0>=600 && b-(m+50)>=600){ last.x1=m-50; got.push({ wall, x0:m+50, x1:b, u1 }); continue; }
+          if (m-50-last.x0>=StationLayout.DOOR_MIN && b-(m+50)>=StationLayout.DOOR_MIN){ last.x1=m-50; got.push({ wall, x0:m+50, x1:b, u1 }); continue; }
           last.x1=Math.max(last.x1, b); last.u1=Math.max(last.u1, u1); continue; }
         got.push({ wall, x0:a, x1:b, u1 }); }
       for (const d of got) delete d.u1;
@@ -738,12 +1038,12 @@ class StationLayout {
     const e=it.o.e;
     return { id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, color:e.color, colorKnown:e.colorKnown,
       known:e.known, mass:e.mass, x:geo.x0+it.x, y:it.y, z:0, lx:it.lx, ly:it.d, h:e.h, rot:!!it.o.rot, face:it.face, back:it.back, aisle:it.aisle,
-      l:e.l, w:e.w, row:it.ri, mount:e.slot ? e.mount : 'floor', slot:!!e.slot, pipe:!!e.pipe };
+      l:e.l, w:e.w, row:it.ri, mount:e.slot ? e.mount : 'floor', slot:!!e.slot, pipe:!!e.pipe, air:e.air||null };
   }
   /** шкаф на стене или фильтр на трубе — не из ряда */
   unitItem(e, o){
     return Object.assign({ id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, color:e.color, colorKnown:e.colorKnown,
-      known:e.known, mass:e.mass, lx:e.l, ly:e.w, h:e.h, rot:false, face:-1, back:0, aisle:0, l:e.l, w:e.w, row:-1, slot:false, pipe:!!e.pipe }, o);
+      known:e.known, mass:e.mass, lx:e.l, ly:e.w, h:e.h, rot:false, face:-1, back:0, aisle:0, l:e.l, w:e.w, row:-1, slot:false, pipe:!!e.pipe, air:e.air||null }, o);
   }
   used(items, geo){ const fl=items.filter(i=>i.mount!=='wall' && i.mount!=='pipe'), I=fl.length ? fl : items;
     const x0=Math.min(...I.map(i=>i.x)), x1=Math.max(...I.map(i=>i.x+i.lx)); return { x0, x1, free:Math.max(0, geo.int[0]-(x1-x0)-geo.x0) }; }
@@ -780,7 +1080,7 @@ class StationLayout {
           const Wi=G.inner(geo.type, [10000, Wx, Hx], t)[1];
           for (const arr of mode==='aisle' ? ['row1', 'row2'] : ['row1', 'rowsBack']){
             const L=this.need(probe, Wi, arr, ll); if (L==null) continue;
-            const Lx=Math.max(B.minL, G.up(L+x0+wallX)); if (Lx<=StationLayout.MAX_L) cand.push({ Lx, Wx, a:Lx*Wx/(arr==='row1' ? 1 : 0.75) });
+            const Lx=Math.max(B.minL, G.up(L+x0+wallX)); if (Lx<=StationLayout.MAX_L) cand.push({ Lx, Wx, two:arr!=='row1', a:Lx*Wx/(arr==='row1' ? 1 : 0.75) });
           } }
         cand.sort((p, q)=>p.a-q.a || p.Lx-q.Lx);
         const seen=new Set();
@@ -788,6 +1088,7 @@ class StationLayout {
           for (let Lx=c.Lx; Lx<=Math.min(StationLayout.MAX_L, c.Lx+1500); Lx+=G.STEP){   // шкафам и фильтрам может понадобиться место в ряду
             const g2=Object.assign({}, geo, { auto:false, ext:[Lx, c.Wx, Hx] }); g2.int=G.inner(geo.type, g2.ext, t);
             const r=this.fit(units, g2); if (r.level==='error') continue;
+            if (c.two && r.rows===1) break;                                          // вышел один ряд — его место среди однорядных
             const w=r.issues.filter(i=>i.level==='warn').map(i=>i.text);
             if (lw===0 && w.some(x=>/^Проход|стоит в/.test(x))) break;              // рекомендуемый проход не вышел — другая ширина
             if (ll===0 && w.some(x=>/^Промежутки|^Отступы/.test(x))) continue;      // промежутки — длиннее (место шкафу или фильтру в ряду)

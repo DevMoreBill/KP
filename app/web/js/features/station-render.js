@@ -291,7 +291,8 @@ class StScene {
     // вентиляция: приток — в торце у двери внизу, вытяжка — в дальнем торце вверху (у ДГУ — жалюзи напротив радиатора)
     const dgu=this.plan.items.find(i=>i.kind==='dgu');
     if (dgu){ const y0=this.mm(dgu.y)+oy+0.08, y1=this.mm(dgu.y+dgu.ly)+oy-0.08; this.louver(1, this.Le, y0, y1, b+this.mm(dgu.h)*0.12, b+this.mm(dgu.h)*0.95, 1); }
-    else if (sys.vent!==false) this.louver(1, this.Le, oy+Wi*0.3, oy+Wi*0.7, c-0.75, c-0.2, 1);
+    else if (sys.vent!==false){ const rc=this.plan.items.filter(i=>i.wall==='right'), y0=rc.length ? Math.max(oy+Wi*0.3, oy+Math.max(...rc.map(i=>i.y+i.ly))/1000+0.15) : oy+Wi*0.3;
+      this.louver(1, this.Le, y0, Math.min(oy+Wi-0.12, y0+Wi*0.4), c-0.75, c-0.2, 1); }
     if (sys.vent!==false && !this.g.sea) this.louver(1, 0, oy+Wi*0.25, oy+Wi*0.55, b+0.2, b+0.65, -1);
   }
   /** жалюзи в стене: along 1 — в торце (x = w), 0 — в длинной стене (y = w); out — наружу (±1) */
@@ -320,10 +321,16 @@ class StScene {
   /** габарит в мире: [x0, y0, z0, x1, y1, z1] и сторона обслуживания (−1 — к стене прохода, 1 — к задней) */
   B(it){ const a=this.P(it.x, it.y, it.z||0), b=this.P(it.x+it.lx, it.y+it.ly, (it.z||0)+it.h); return [...a, ...b]; }
   side(it){ return it.face>0 ? 1 : -1; }
+  /** лицевая сторона вдоль торца (шкаф на торцевой стене: face ±2) */
+  endwise(it){ return Math.abs(it.face)===2; }
+  /** наружу от лицевой стороны на k, м */
+  out(it, k){ const s=this.side(it)*k; return this.endwise(it) ? [s, 0, 0] : [0, s, 0]; }
   /** точка на лицевой стороне: u — доля длины, v — доля высоты, o — выступ наружу, м */
-  front(it, u, v, o=0){ const [x0, y0, z0, x1, y1, z1]=this.B(it), s=this.side(it); return [x0+(x1-x0)*u, (s<0 ? y0 : y1)+s*o, z0+(z1-z0)*v]; }
+  front(it, u, v, o=0){ const [x0, y0, z0, x1, y1, z1]=this.B(it), s=this.side(it);
+    return this.endwise(it) ? [(s<0 ? x0 : x1)+s*o, y0+(y1-y0)*u, z0+(z1-z0)*v] : [x0+(x1-x0)*u, (s<0 ? y0 : y1)+s*o, z0+(z1-z0)*v]; }
   /** прямоугольник на лицевой стороне: u0…u1, v0…v1, толщина o (наружу) */
-  panel(m, it, u0, u1, v0, v1, o, r=0.003){ const a=this.front(it, u0, v0, 0), b=this.front(it, u1, v1, o); m.box(a[0], Math.min(a[1], b[1]), a[2], b[0], Math.max(a[1], b[1]), b[2], r); }
+  panel(m, it, u0, u1, v0, v1, o, r=0.003){ const a=this.front(it, u0, v0, 0), b=this.front(it, u1, v1, o);
+    m.box(Math.min(a[0], b[0]), Math.min(a[1], b[1]), a[2], Math.max(a[0], b[0]), Math.max(a[1], b[1]), b[2], r); }
   /** решётка: горизонтальные ламели на лицевой стороне или торце (end: −1 — торец x0, 1 — x1) */
   grille(it, u0, u1, v0, v1, n, end){
     const m=this.M(StMat.paint('#24292e', 0.7)), [x0, y0, z0, x1, y1, z1]=this.B(it);
@@ -480,10 +487,13 @@ class StScene {
     const nm=String(it.name||'');
     if (/асу/i.test(nm)){ this.panel(this.M(StMat.paint('#1f2429', 0.25)), it, 0.2, 0.75, 0.52, 0.86, 0.008, 0.004); this.panel(this.M(StMat.glow('#79b8ff', 1.5)), it, 0.24, 0.71, 0.56, 0.82, 0.01, 0); }
     else { const lamps=/авр|резерв/i.test(nm) ? ['#3ccf5a', '#e2b33a', '#d84a3a'] : ['#3ccf5a', '#d84a3a'];
-      lamps.forEach((col, k)=>{ const p=this.front(it, 0.22+k*0.13, 0.76, 0); this.M(StMat.glow(col, 1.4)).tube(p, StV.add(p, [0, s*0.022, 0]), 0.018, 14); });
-      const q=this.front(it, 0.32, 0.5, 0); dk.tube(q, StV.add(q, [0, s*0.03, 0]), 0.035, 18); dk.box(q[0]-0.008, q[1]+s*0.03, q[2]-0.04, q[0]+0.008, q[1]+s*0.045, q[2]+0.04, 0.003);
+      lamps.forEach((col, k)=>{ const p=this.front(it, 0.22+k*0.13, 0.76, 0); this.M(StMat.glow(col, 1.4)).tube(p, StV.add(p, this.out(it, 0.022)), 0.018, 14); });
+      const q=this.front(it, 0.32, 0.5, 0), h0=StV.add(q, this.out(it, 0.03)), h1=StV.add(q, this.out(it, 0.045)), t=this.endwise(it) ? [0, 0.008, 0.04] : [0.008, 0, 0.04];
+      dk.tube(q, h0, 0.035, 18); dk.box(...[0, 1, 2].map(k=>Math.min(h0[k], h1[k])-t[k]), ...[0, 1, 2].map(k=>Math.max(h0[k], h1[k])+t[k]), 0.003);
       this.panel(this.M(StMat.paint('#f2f2ee', 0.4)), it, 0.15, 0.6, 0.86, 0.93, 0.004, 0); }
-    if (it.mount==='wall'){ const back=s<0 ? y1 : y0;
+    if (it.mount==='wall' && this.endwise(it)){ const back=s<0 ? x1 : x0;   // кронштейны у стены
+      for (const v of [0.08, 0.92]) dk.box(Math.min(back, back+s*0.03), y0+0.03, z0+(z1-z0)*v-0.02, Math.max(back, back+s*0.03), y1-0.03, z0+(z1-z0)*v+0.02);
+    } else if (it.mount==='wall'){ const back=s<0 ? y1 : y0;
       for (const v of [0.08, 0.92]) dk.box(x0+0.03, Math.min(back, back+s*0.03), z0+(z1-z0)*v-0.02, x1-0.03, Math.max(back, back+s*0.03), z0+(z1-z0)*v+0.02);
     } else if (it.mount==='frame'){ for (const x of [x0+(x1-x0)*0.12, x1-(x1-x0)*0.12-0.042]) st.box(x, (y0+y1)/2-0.021, this.base, x+0.042, (y0+y1)/2+0.021, z0, 0.004);
       st.box(x0+0.02, (y0+y1)/2-0.15, this.base, x1-0.02, (y0+y1)/2+0.15, this.base+0.01); }
@@ -501,15 +511,17 @@ class StScene {
     for (const l of pp.lines){
       const r=Math.max(0.012, Math.min(0.08, (dn || (l.medium==='fuel' ? 25 : l.medium==='air' ? 50 : 80))/2000+0.006)), A=this.P(l.x0, l.y, l.z), B=this.P(l.x1, l.y, l.z);
       const out=l.x1>=this.plan.int[0]-1, end=out ? [this.Le+0.12, B[1], B[2]] : B;
-      m.tube(A, end, r, 20); m.sphere(A, r*1.02, 12);
+      for (const [a, b] of StationLayout.runs(l)){ const p=this.P(a, l.y, l.z), q=b>=l.x1 ? end : this.P(b, l.y, l.z); m.tube(p, q, r, 20); m.sphere(p, r*1.02, 12); if (b<l.x1) m.sphere(q, r*1.02, 12); }
       if (out){ m.tube([this.Le+0.04, B[1], B[2]], [this.Le+0.07, B[1], B[2]], r*1.7, 20); dk.tube([this.Le-0.03, B[1], B[2]], [this.Le+0.03, B[1], B[2]], r*1.4, 18); }
       // опоры у стены: кронштейн и хомут
       const yw=this.oy+this.Wi;
       if (yw-A[1]<0.6) for (let x=A[0]+0.4; x<Math.min(B[0], this.ox+this.Li)-0.2; x+=1.4){ dk.box(x-0.02, A[1]-0.03, A[2]-r-0.04, x+0.02, yw, A[2]-r-0.01); dk.tube([x-0.015, A[1], A[2]], [x+0.015, A[1], A[2]], r*1.3, 16, [false, false]); }
-      for (const b of l.branches){ const p0=this.P(b.x, b.y0, l.z), p1=this.P(b.x, b.y1, l.z), p2=this.P(b.x, b.y1, b.z1);
+      for (const b of l.branches){ const p0=this.P(b.x, b.y0, l.z), p1=this.P(b.x, b.y1, l.z), p2=this.P(b.x, b.y1, b.z1), to=this.plan.items.find(i=>StationLayout.key(i)===b.to);
         m.sphere(p0, r*1.05, 12); if (StV.len(StV.sub(p1, p0))>0.01){ m.tube(p0, p1, r*0.85, 16, [false, false]); m.sphere(p1, r*0.88, 12); }
         if (b.z1<l.z) m.tube(p1, p2, r*0.85, 16, [false, false]);
-        const down=b.z1<l.z, last=down ? p2 : p1, hz=StV.sub(p1, p0), hl=StV.len(hz), dir=down ? [0, 0, -1] : hl>1e-3 ? StV.mul(hz, 1/hl) : [0, 0, -1];
+        const down=b.z1<l.z, side=down && to && b.z1<to.h-30, hz=StV.sub(p1, p0), hl=StV.len(hz);
+        let last=down ? p2 : p1, dir=down ? [0, 0, -1] : hl>1e-3 ? StV.mul(hz, 1/hl) : [0, 0, -1];
+        if (side){ const c=this.P(to.x+to.lx/2, to.y+to.ly/2, b.z1), v=StV.norm([0, c[1]-p2[1], 0]), q=StV.add(p2, StV.mul(v, 0.07)); m.sphere(p2, r*0.88, 12); m.tube(p2, q, r*0.85, 16, [false, false]); last=q; dir=v; }   // вход сбоку (ресивер — внизу)
         m.tube(StV.add(last, StV.mul(dir, -0.02)), last, r*1.6, 18);                  // фланец у оборудования
         const v=hl>0.15 ? StV.add(p0, StV.mul(hz, Math.min(0.12, hl*0.5)/hl)) : StV.add(p1, [0, 0, -Math.min(0.12, Math.max(0, (l.z-b.z1)/1000*0.5))]);
         m.sphere(v, r*1.45, 12); red.box(v[0]-0.012, v[1]-0.012, v[2]+r*1.3, v[0]+0.13, v[1]+0.012, v[2]+r*1.3+0.018, 0.004); }   // шаровой кран

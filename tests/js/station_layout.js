@@ -11,9 +11,9 @@ class Check {
   static n=0;
   static run(name, fn){ try{ fn(); Check.n++; } catch(e){ console.error('ОШИБКА — '+name+':\n'+(e && e.stack || e)); process.exitCode=1; } }
 
-  /** расстановка без нарушений: всё внутри (и по высоте), ничего не пересекается, проход не меньше нормы, перед настенным
-   *  шкафом — не уже 600 мм, фильтры — на трубопроводе, без прохода — у каждого агрегата сервисная дверь в стене, к которой он
-   *  обращён */
+  /** расстановка без нарушений: всё внутри (и по высоте), ничего не пересекается, проход не меньше нормы — и перед настенным
+   *  шкафом (шкаф его не сужает), фильтры — на трубопроводе, у аппаратов цепочки сжатого воздуха — один вход и один выход,
+   *  без прохода — у каждого агрегата сервисная дверь в стене, к которой он обращён */
   static plan(p, label){
     assert.ok(['ok', 'warn', 'error', 'none'].includes(p.level), label+': уровень '+p.level);
     if (p.level==='none' || p.level==='error'){ if (p.level==='error') assert.ok(p.issues.some(i=>i.level==='error'), label+': у ошибки нет текста'); return; }
@@ -26,11 +26,11 @@ class Check {
       assert.ok(it.y>=-1 && it.y+it.ly<=W+1, `${label}: поз. ${it.pos} вне контейнера по ширине (${it.y}…${it.y+it.ly} из ${W})`);
       assert.ok(it.z>=-1 && it.z+it.h<=H+1, `${label}: поз. ${it.pos} вне контейнера по высоте (${it.z}…${it.z+it.h} из ${H})`);
       if (it.mount==='floor') assert.strictEqual(it.z, 0, `${label}: поз. ${it.pos} на полу`);
-      if (it.mount==='wall'){ assert.ok(Math.abs(it.y)<=1 || Math.abs(it.y+it.ly-W)<=1, `${label}: настенный шкаф поз. ${it.pos} не на стене`);
+      if (it.mount==='wall'){ assert.ok(Math.abs(it.y)<=1 || Math.abs(it.y+it.ly-W)<=1 || Math.abs(it.x-x0)<=1 || Math.abs(it.x+it.lx-L)<=1, `${label}: настенный шкаф поз. ${it.pos} не на стене`);
         assert.ok(it.z>=StationLayout.CAB_LOW-1, `${label}: настенный шкаф поз. ${it.pos} ниже ${StationLayout.CAB_LOW} мм`); }
       if (it.mount==='frame') assert.strictEqual(p.door, 'service', `${label}: шкаф на раме — только без прохода`);
       if (it.mount==='pipe'){ const xc=it.x+it.lx/2;
-        assert.ok((p.lines||[]).some(l=>l.y>=it.y-1 && l.y<=it.y+it.ly+1 && xc>=l.x0-1 && xc<=l.x1+1 && l.z>=it.z && l.z<=it.z+it.h), `${label}: фильтр поз. ${it.pos} не на трубопроводе`);
+        assert.ok((p.lines||[]).some(l=>l.y>=it.y-1 && l.y<=it.y+it.ly+1 && StationLayout.runs(l).some(([a, b])=>xc>=a-1 && xc<=b+1) && l.z>=it.z && l.z<=it.z+it.h), `${label}: фильтр поз. ${it.pos} не на трубопроводе`);
         assert.ok(it.z>=149, `${label}: фильтр поз. ${it.pos} ниже 150 мм от пола`); }
     }
     for (let i=0; i<I.length; i++) for (let j=i+1; j<I.length; j++){
@@ -44,6 +44,7 @@ class Check {
         if (fr){ assert.ok(it.y>=G[1]-1, `${label}: поз. ${it.pos} ближе ${G[1]} мм к двери`); assert.ok(p.doors.some(d=>d.wall==='front' && d.x0<it.x+it.lx && d.x1>it.x), `${label}: перед поз. ${it.pos} нет двери`); }
         if (bk){ assert.ok(W-it.y-it.ly>=G[1]-1, `${label}: поз. ${it.pos} ближе ${G[1]} мм к двери в задней стене`); assert.ok(p.doors.some(d=>d.wall==='back' && d.x0<it.x+it.lx && d.x1>it.x), `${label}: за поз. ${it.pos} нет двери`); } }
       for (const d of p.doors) assert.ok(['front', 'back'].includes(d.wall) && d.x0>=0 && d.x1<=L && d.leaves>=1 && d.h>0, label+': дверь вне стены');
+      for (const d of p.doors) assert.ok(d.w>=StationLayout.DOOR_MIN, `${label}: проём ${d.w} мм уже ${StationLayout.DOOR_MIN} мм`);
       for (const w of ['front', 'back']){ const D=p.doors.filter(d=>d.wall===w).sort((a, b)=>a.x0-b.x0);
         for (let k=1; k<D.length; k++) assert.ok(D[k].x0>=D[k-1].x1+99, `${label}: проёмы в стене ${w} без простенка`); }
     } else if (p.rows===2){
@@ -51,8 +52,19 @@ class Check {
       assert.ok(gap>=aMin-1, `${label}: проход между рядами ${gap} < ${aMin}`);
     } else for (const it of floor){ const need=it.kind==='dgu' ? Math.min(aMin, 600) : aMin;
       assert.ok(it.y>=need-1, `${label}: проход перед поз. ${it.pos} ${it.y} < ${need}`);
-      for (const c of I.filter(i=>i.mount==='wall' && i.wall==='front' && i.x<it.x+it.lx && i.x+i.lx>it.x))
-        assert.ok(it.y-c.y-c.ly>=StationLayout.NARROW-1, `${label}: перед шкафом поз. ${c.pos} проход ${it.y-c.y-c.ly} < ${StationLayout.NARROW}`); }
+      for (const c of I.filter(i=>i.mount==='wall' && i.wall==='front' && i.x<it.x+it.lx && i.x+i.lx>it.x))   // шкаф не сужает проход
+        assert.ok(it.y-c.y-c.ly>=aMin-1, `${label}: перед шкафом поз. ${c.pos} проход ${it.y-c.y-c.ly} < ${aMin}`); }
+    for (const c of I.filter(i=>i.mount==='wall' && (i.wall==='left' || i.wall==='right'))){   // на торце: перед ним вдоль контейнера — проход
+      const z0=c.wall==='left' ? c.x : c.x-aMin, z1=c.wall==='left' ? c.x+c.lx+aMin : c.x+c.lx;
+      assert.ok(Math.abs(c.face)===2 && (c.wall==='left' ? c.x<=1+(p.geo.x0||0) : c.x+c.lx>=L-1), `${label}: шкаф поз. ${c.pos} не на торце`);
+      assert.ok(!floor.some(i=>i.x<z1 && i.x+i.lx>z0 && i.y<c.y+c.ly && i.y+i.ly>c.y), `${label}: перед шкафом на торце поз. ${c.pos} нет прохода`); }
+    // сжатый воздух: у аппарата цепочки — один вход и один выход, магистраль внутри него прервана, по ходу — слева направо
+    for (const l of (p.lines||[]).filter(x=>x.medium==='air')) for (const it of floor.filter(StationLayout.series)){
+      const B=l.branches.filter(b=>b.to===it.id+'#'+it.unit); if (!B.length) continue;
+      const pin=B.filter(b=>b.role==='in'), pout=B.filter(b=>b.role==='out');
+      assert.ok(pin.length<=1 && pout.length<=1 && B.length===pin.length+pout.length, `${label}: у поз. ${it.pos} не один вход и один выход`);
+      if (pin.length && pout.length){ assert.ok(pin[0].x<pout[0].x, `${label}: поз. ${it.pos} — вход после выхода`);
+        assert.ok(!StationLayout.runs(l).some(([a, b])=>a<pout[0].x-1 && b>pin[0].x+1), `${label}: магистраль идёт мимо поз. ${it.pos}, а не через неё`); } }
   }
 
   /** SVG собран: без NaN/undefined, теги закрыты, текст экранирован */
@@ -236,6 +248,91 @@ Check.run('шкафы на стене, фильтры на трубопрово�
   draw(np, 'фильтры без обвязки');
 });
 
+Check.run('сжатый воздух: последовательно, фильтры по назначению, подбор', ()=>{
+  const G=(name, attrs, rows)=>AirChain.grade({ name, attrs:attrs||{}, rows:rows||[] }, (attrs||{}).cat||'filter', AirChain.text({ name, attrs:attrs||{}, rows:rows||[] }));
+  assert.strictEqual(G('Фильтр', { stage:'Предварительная' }), 'pre'); assert.strictEqual(G('Фильтр', { stage:'Сверхтонкая (микрофильтр)' }), 'micro');
+  assert.strictEqual(G('Фильтр угольный FD'), 'carbon'); assert.strictEqual(G('Фильтр коалесцентный 0,01 мкм'), 'micro'); assert.strictEqual(G('Фильтр тонкой очистки 1 мкм'), 'fine');
+  assert.strictEqual(G('Пылевой фильтр'), 'dust'); assert.strictEqual(G('Фильтр предварительной очистки 3 мкм'), 'pre'); assert.strictEqual(G('Atlas Copco PD 32+'), 'micro');
+  assert.strictEqual(G('Сепаратор конденсата', { cat:'oil_sep' }), 'cond'); assert.strictEqual(G('Циклонный влагоотделитель'), 'sep'); assert.strictEqual(G('Магистральный фильтр FA 110'), '');
+  const I=(name, attrs, kind, rows)=>AirChain.info({ name, attrs:attrs||{}, rows:rows||[] }, kind);
+  assert.ok(I('Компрессор Remeza ВК15 со встроенным осушителем', {}, 'compressor').dryer && I('Компрессор', { dryer:'Да' }, 'compressor').dryer && !I('Компрессор', { dryer:'Нет' }, 'compressor').dryer);
+  assert.ok(I('Компрессор GA 37 VSD', {}, 'compressor').vsd && I('Компрессор с осушителем и фильтрами', {}, 'compressor').filter);
+  assert.ok(I('Осушитель DK 60 со встроенными фильтрами', {}, 'dryer').filters && I('Осушитель CD 50', { cat:'dryer_ads' }, 'dryer').type==='ads');
+  assert.strictEqual(I('Ресивер сухой 500 л', {}, 'receiver').role, 'dry'); assert.ok(Math.abs(AirChain.flow({ attrs:{}, rows:[{ k:'Производительность', v:'6 200 л/мин' }] })-6.2)<1e-9);
+  assert.ok(Math.abs(AirChain.kp(7)-1)<1e-9 && AirChain.kp(10)>1.1 && AirChain.kp(5)<0.9, 'поправка на давление');
+  // КС: компрессор → ресивер → фильтр до осушителя → осушитель → фильтр после; у осушителя и ресивера — вход и выход
+  const c62=P('Винтовой компрессор', { cat:'comp_screw', model:'K 37', kw:37, flow:6.2, pressure:8, size:'1400 × 900 × 1500' }, { role:'main' });
+  const dr6=P('Рефрижераторный осушитель', { cat:'dryer_refrig', model:'R 70', flow:7.5, size:'900 × 600 × 1100' });
+  const rc=P('Ресивер', { cat:'receiver', model:'РВ 900', volume:900, size:'750 × 750 × 2100' });
+  const two=P('Магистральный фильтр FA 110', { cat:'filter', model:'FA 110', flow:8, size:'610*140' }, { qty:2 });
+  const ks=solve(C('block'), [c62, dr6, rc, two, P('Трубопровод', {}, { pipeMat:'steel' })]); Check.plan(ks, 'КС цепочка'); draw(ks, 'КС цепочка');
+  assert.deepStrictEqual(ks.air.chain.map(c=>c.kind), ['compressor', 'receiver', 'filter', 'dryer', 'filter'], 'по ходу воздуха');
+  const it=k=>ks.items.find(i=>i.kind===k), air=ks.lines.find(l=>l.medium==='air'), port=(k, r)=>air.branches.find(b=>b.to===it(k).id+'#0' && b.role===r);
+  assert.ok(it('compressor').x<it('receiver').x && it('receiver').x<it('dryer').x, 'ряд — по ходу воздуха');
+  const F=ks.items.filter(i=>i.kind==='filter').sort((a, b)=>a.x-b.x);
+  assert.ok(F[0].air.grade==='pre' && F[0].x+F[0].lx<=port('dryer', 'in').x && F[0].x>port('receiver', 'out').x, 'фильтр предварительной очистки — между ресивером и входом осушителя');
+  assert.ok(F[1].air.grade==='micro' && F[1].x>=port('dryer', 'out').x, 'тонкой очистки — после выхода осушителя');
+  assert.ok(port('receiver', 'in').z1<port('receiver', 'out').z1, 'ресивер: вход внизу, выход вверху');
+  assert.ok(!ks.issues.some(i=>i.air && i.level==='warn'), 'по составу замечаний нет: '+ks.issues.filter(i=>i.air).map(i=>i.text).join(' | '));
+  const sv=StationDrawing.svg(ks, meta(ks)); assert.ok(sv.includes('Сжатый воздух по ходу') && sv.includes('один вход и один выход'), 'на чертеже — цепочка');
+  // адсорбционный: перед ним — фильтр от масла (нет — предупреждение и подбор), после — пылевой
+  const ad=P('Адсорбционный осушитель', { cat:'dryer_ads', model:'A 60', flow:7, size:'900 × 700 × 1700' });
+  const a0=solve(C('block'), [c62, ad, rc]); Check.plan(a0, 'адсорбционный без фильтров');
+  assert.ok(a0.issues.some(i=>i.level==='warn' && /Перед адсорбционным осушителем .* фильтр очистки от масла/.test(i.text)), 'нет фильтра от масла — предупреждение');
+  assert.ok(a0.air.recs.some(r=>r.key==='micro' && r.cat==='filter' && r.f.stage) && a0.air.recs.some(r=>r.key==='dust'), 'подбор: от масла и пылевой');
+  const a1=solve(C('block'), [c62, ad, rc, P('Магистральный фильтр', { cat:'filter', model:'X 1', size:'610*140' })]); Check.plan(a1, 'адсорбционный + фильтр');
+  const f1=a1.items.find(i=>i.kind==='filter'), adIt=a1.items.find(i=>i.kind==='dryer'), aIn=a1.lines.find(l=>l.medium==='air').branches.find(b=>b.to===adIt.id+'#0' && b.role==='in');
+  assert.ok(f1.air.grade==='micro' && f1.x+f1.lx<=aIn.x, 'фильтр без ступени — от масла перед адсорбционным');
+  assert.ok(!a1.issues.some(i=>/Перед адсорбционным/.test(i.text)));
+  // встроенные: фильтры в осушителе — без подсказки; осушитель в компрессоре — осушитель для класса не нужен
+  const bi=solve(C('block'), [c62, P('Осушитель DK 80 со встроенными фильтрами', { cat:'dryer_refrig', flow:8, size:'900 × 600 × 1100' }), rc]);
+  assert.ok(!bi.issues.some(i=>/Фильтров в составе нет/.test(i.text)), 'встроенные фильтры осушителя');
+  const ff=solve(C('block'), [P('Компрессор GA 37 FF со встроенным осушителем', { cat:'comp_screw', flow:6, size:'1800 × 900 × 1600' }, { role:'main' }), rc]);
+  assert.ok(ff.air.chain[0].text.includes('встроенным осушителем'));
+  const ffc=StationLayout.solve({ cont:C('block'), parts:[ff.items.find(i=>i.kind==='compressor') && P('Компрессор GA 37 FF со встроенным осушителем', { cat:'comp_screw', flow:6, size:'1800 × 900 × 1600' }, { role:'main' }), rc], air:'2.4.2' });
+  assert.ok(!ffc.air.recs.some(r=>/^dryer/.test(r.key)), 'класс 2.4.2: встроенного осушителя достаточно');
+  // производительность: осушитель и фильтр меньше компрессоров — предупреждение и подбор
+  const small=solve(C('block'), [c62, P('Осушитель', { cat:'dryer_refrig', flow:3, size:'700 × 500 × 900' }), rc, P('Фильтр тонкой очистки', { cat:'filter', flow:2, size:'500*120' })]);
+  assert.ok(small.issues.some(i=>i.level==='warn' && /Осушитель .* меньше производительности компрессоров/.test(i.text)), 'осушитель мал');
+  assert.ok(small.issues.some(i=>i.level==='warn' && /Фильтр .* меньше производительности/.test(i.text)), 'фильтр мал');
+  assert.ok(small.air.recs.some(r=>r.key==='dryer-refrig' && +String(r.r.flow[0]).replace(',', '.')>=6.2), 'подбор осушителя с запасом');
+  // ресивер: нет — рекомендуемый объём; частотный компрессор — меньше
+  const nr=solve(C('block'), [c62, dr6]); const rr=nr.air.recs.find(r=>r.key==='receiver');
+  assert.ok(rr && nr.issues.some(i=>/Ресивера в составе нет/.test(i.text)), 'ресивер рекомендован');
+  const vs=solve(C('block'), [P('Компрессор VSD', { cat:'comp_screw', flow:6.2, vsd:'Да', size:'1400 × 900 × 1500' }, { role:'main' }), dr6]);
+  assert.ok(+vs.air.recs.find(r=>r.key==='receiver').r.volume[0]<+rr.r.volume[0], 'с частотным — ресивер меньше');
+  // класс чистоты: вода класса 2 — адсорбционный (−40 °C)
+  const cl=StationLayout.solve({ cont:C('block'), parts:[c62, dr6, rc, two], air:'1.2.1' });
+  assert.ok(cl.issues.some(i=>i.level==='warn' && /нужен адсорбционный осушитель/.test(i.text)));
+  const ra=cl.air.recs.find(r=>r.key==='dryer-ads'); assert.ok(ra && ra.f.dewPoint==='−40' && ra.cat==='dryer_ads', 'подбор адсорбционного −40 °C');
+  assert.ok(cl.air.recs.some(r=>r.key==='carbon'), 'масло класса 1 — угольный');
+  assert.strictEqual(StationLayout.hash({ cont:C('block'), parts:[c62] }), StationLayout.hash({ cont:C('block'), parts:[c62], air:'1.2.1' }), 'класс не меняет картинки');
+  // два ряда, компрессоры по обе стороны от входа ресивера — коллектор отдельной трубой
+  const tw=solve(C('sea20'), [P('Компрессор', { cat:'comp_screw', flow:5, size:'1200 × 800 × 1500' }, { role:'main', qty:3 }), P('Осушитель', { cat:'dryer_refrig', flow:16, size:'900 × 700 × 1200' }),
+    P('Ресивер', { cat:'receiver', volume:900, size:'750 × 750 × 1900' }), P('Шкаф управления', {})]);
+  assert.strictEqual(tw.rows, 2, 'два ряда');
+  Check.plan(tw, 'два ряда цепочка'); draw(tw, 'два ряда цепочка');
+  const AL=tw.lines.filter(l=>l.medium==='air'); for (const c of tw.items.filter(i=>i.kind==='compressor')) assert.ok(AL.some(l=>l.branches.some(b=>b.to===c.id+'#'+c.unit && b.role==='out')), 'каждый компрессор — в коллектор');
+  if (AL.length>1) assert.ok(AL.some(l=>l.header) && new Set(AL.map(l=>l.z)).size===2, 'коллектор — на другой высоте');
+});
+
+Check.run('шкафы не сужают проход, торец; двери не уже 600 мм', ()=>{
+  // компрессор напротив почти всей стены прохода: шкаф там сузил бы проход — шкафы на торцах (у двери и дальнем)
+  const long=P('Компрессор', { cat:'comp_screw', size:'2500 × 900 × 1500' }, { role:'main' });
+  const p=solve(C('block', { size:'3600 × 2300 × 2600' }), [long, P('Шкаф управления', {}), P('Шкаф АСУ ТП', {})]); Check.plan(p, 'шкафы — торец');
+  const cabs=p.items.filter(i=>i.kind==='cabinet');
+  assert.deepStrictEqual(cabs.map(c=>c.wall).sort(), ['left', 'right'], 'шкафы — на торцах: '+cabs.map(c=>c.wall).join(','));
+  assert.ok(cabs.every(c=>c.mount==='wall' && Math.abs(c.face)===2 && c.lx===250 && c.ly===600), 'на торце — вдоль стены, дверцей в помещение');
+  draw(p, 'шкафы — торец');
+  const dg=solve(C('sea20'), [dgu, cab]); assert.ok(!dg.items.some(i=>i.wall==='left' || i.wall==='right'), 'у морского — в торце двери, у ДГУ — жалюзи: не на торцах');
+  const aMin=p.aisleRule[1];
+  for (const c of cabs.filter(x=>x.wall==='front')) for (const i of p.items.filter(x=>x.mount==='floor' && x.x<c.x+c.lx && x.x+x.lx>c.x)) assert.ok(i.y-c.ly>=aMin-1, 'шкаф не сужает проход');
+  assert.ok(StationDrawing.svg(p, meta(p)).includes('проход оператора не сужают'));
+  assert.strictEqual(StationLayout.DOOR_MIN, 600);
+  assert.ok(StationLayout.ENTRY[1]-StationLayout.ENTRY[0]>=StationLayout.DOOR_MIN, 'входная дверь — не уже 600 мм');
+  const sv=StationDrawing.svg(solve(C('block'), [comp]), meta(p)); assert.ok(/Входная дверь оператора — 900 мм \(не менее 600 мм в свету\)/.test(sv), 'на чертеже — дверь оператора');
+});
+
 Check.run('морской контейнер с запасом — подсказка меньшего', ()=>{
   const p=solve(C('sea40'), [dgu, ats, tank]);
   assert.ok(p.suggest && p.suggest.smaller && p.suggest.ctype==='sea20', 'ДГУ в 40 футах — достаточно 20: '+JSON.stringify(p.suggest));
@@ -284,8 +381,11 @@ Check.run('трубопровод: материал, трасса, отпеча�
   // магистраль выше оборудования — отвод заходит на его верх и спускается к нему; ниже верха — в заднюю стенку
   for (const p of [ns, ks]) for (const l of p.piping[0].lines) for (const b of l.branches){
     const it=p.items.find(i=>i.id+'#'+i.unit===b.to); assert.ok(it, 'отвод — к оборудованию станции');
-    if (l.z>it.h+50) assert.ok(b.z1===Math.round(it.h) && b.x>it.x && b.x<it.x+it.lx && b.y1>=it.y && b.y1<=it.y+it.ly, `спуск на верх: ${it.kind}`);
-    else assert.ok(b.z1===l.z && b.y1===Math.round(it.y+it.ly<l.y ? it.y+it.ly : it.y), `отвод в ближнюю стенку: ${it.kind}`); }
+    const side=b.y1===Math.round(it.y+it.ly<l.y ? it.y+it.ly : it.y);   // в ближнюю стенку (вход ресивера — внизу)
+    assert.ok(b.x>it.x && b.x<it.x+it.lx, `отвод в габарите: ${it.kind}`);
+    if (b.role==='in' && it.shape==='vcyl' && it.h>=900) assert.ok(side && b.z1<l.z && b.z1<it.h/2, `вход ресивера — внизу сбоку: ${it.kind}`);
+    else if (l.z>it.h+50) assert.ok(b.z1===Math.round(it.h) && b.y1>=it.y && b.y1<=it.y+it.ly, `спуск на верх: ${it.kind}`);
+    else assert.ok(b.z1===l.z && side, `отвод в ближнюю стенку: ${it.kind}`); }
   assert.ok(ns.piping[0].lines.some(l=>l.branches.some(b=>b.z1<l.z)), 'напор над насосами — со спусками');
   // номера позиций на плане — поверх трубопровода: фильтры стоят на трубе, линия не должна перечёркивать цифры
   const sv=StationDrawing.svg(ks, {}), sec=sv.slice(sv.indexOf('Вид сверху (план)'), sv.indexOf('Вид слева'));
