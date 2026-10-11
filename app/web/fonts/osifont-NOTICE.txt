@@ -1,0 +1,20 @@
+osifont-italic.ttf — шрифт чертежей (габаритный чертёж и схемы станций)
+
+Шрифт: osifont, начертание Italic, версия 0.1.20221020
+Автор: Zefram Cochrane (hikikomori82@gmail.com)
+Исходники: https://github.com/hikikomori82/osifont
+Изменения (11.10.2026, .github/scripts/osifont_fix.py): в исходном файле на месте «Э», «Ё» и «ё» — прямоугольники-
+заглушки; «Ё» и «ё» получили рисунок «Ë» и «ë» (те же буквы), «Э» — зеркальное отражение «Є» с сохранением наклона.
+Ширины этих трёх знаков — по образцам; остальные знаки и названия шрифта не изменены. Исходный файл — в репозитории
+автора (ссылка выше). Исключение для шрифтов (ниже) распространяется и на изменённый файл.
+
+Лицензия: GNU Lesser General Public License версии 3 с исключением для шрифтов (GPL font exception):
+  As a special exception, if you create a document which uses this font, and embed this font or unaltered portions
+  of this font into the document, this font does not by itself cause the resulting document to be covered by the GNU
+  General Public License. This exception does not however invalidate any other reasons why the document might be
+  covered by the GNU General Public License.
+
+Тексты лицензий: https://www.gnu.org/licenses/lgpl-3.0.txt и https://www.gnu.org/licenses/gpl-3.0.txt
+
+Программа встраивает шрифт в листы чертежей (SVG, затем PNG в документе КП) — по исключению для шрифтов документ
+лицензии GPL не подпадает.

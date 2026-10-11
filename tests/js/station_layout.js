@@ -609,6 +609,62 @@ Check.run('ресивер: после подготовки воздуха, до 
   assert.strictEqual(PressureVessel.list([{ kind:'receiver', pos:1, qty:1, air:{ vol:null, bar:10 } }], 8)[0].reg, null, 'без объёма — не оценить');
 });
 
+Check.run('чертёжный шрифт osifont: встраивается в лист, строки по его ширинам без наложений', ()=>{
+  const ttf=fs.readFileSync(path.join(ROOT, 'app', 'web', 'fonts', 'osifont-italic.ttf'));
+  assert.ok(ttf.length>50000 && ttf.readUInt32BE(0)===0x00010000, 'TTF на месте');
+  assert.ok(fs.existsSync(path.join(ROOT, 'app', 'web', 'fonts', 'osifont-NOTICE.txt')), 'при шрифте — лицензия');
+  const before=EskdSheet.tw('Технические требования', 3.5);
+  EskdSheet.FONT_DATA=ttf.toString('base64');
+  try{
+    assert.strictEqual(EskdSheet.CAP, 1.352); assert.ok(EskdSheet.tw('Технические требования', 3.5)<before*0.85, 'osifont уже Arial');
+    assert.ok(EskdSheet.tw('→', 3.5)>0 && EskdSheet.tw('₽', 3.5)>0, 'знаков нет в шрифте — по Arial');
+    const C2=(ctype, o)=>Object.assign(C(ctype), { sys:{ power:true, light:true, heat:true, vent:true } }, o||{});
+    const cases=[[C2('block', { sizeAuto:true }), [comp, dryer, rec, flt, cab, P('Трубопровод', {}, { pipeMat:'steel' })]],
+      [C2('sea20'), [P('Компрессор', { cat:'comp_screw', flow:6, pressure:8, size:'1300 × 800 × 1500' }, { role:'main', qty:2 }), P('Ресивер 900 л', { cat:'receiver', volume:900, size:'750 × 750 × 1900' }), P('Осушитель адсорбционный', { cat:'dryer_ads', flow:11, size:'1000 × 700 × 1800' }), P('Фильтр', { cat:'filter', size:'610*140' }, { qty:2 })]],
+      [C2('sea20'), [P('ДГУ', { cat:'dgu', kw:176, size:'3200 × 1150 × 1900' }, { role:'main' }), P('Шкаф АВР', { cat:'ats' }), P('Глушитель на крыше', {}), P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'1000 л' }] })]],
+      [C2('block', { sizeAuto:true }), [P('Насосный агрегат CR 45', { cat:'pump', kw:15, size:'700 × 500 × 1400' }, { role:'main', qty:6 }), P('Гидробак мембранный 300 л', {}, { rows:[{ k:'Габариты', v:'650 × 650 × 1200' }] }), P('Трубопроводная обвязка', {}, { pipeMat:'inox' })]]];
+    for (const [k, [cont, parts]] of cases.entries()){ const p=solve(cont, parts); Check.plan(p, 'шрифт '+k);
+      const sv=StationDrawing.svg(p, meta(p)); Check.sheet(sv, 'шрифт '+k+' (чертёж)');
+      assert.ok(/@font-face\{font-family:osifont;font-style:italic;src:url\(data:font\/ttf;base64,AAEAAA/.test(sv) && /font-family="osifont, Arial/.test(sv), 'шрифт встроен в лист');
+      for (const S of [StationScheme, HydroScheme]) if (S.ok(p)){ const sc=S.svg(p, meta(p)); Check.sheet(sc, 'шрифт '+k+' (схема)'); Check.crossing(sc, 'шрифт '+k+' (схема)'); } }
+  } finally { EskdSheet.FONT_DATA=''; }
+  assert.ok(!/@font-face/.test(StationDrawing.svg(solve(C('block'), [comp]), meta({}))), 'без шрифта — без @font-face');
+});
+
+Check.run('свой рисунок модели: вид спереди и сверху вместо рисунка программы', ()=>{
+  const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const c2=P('Компрессор с рисунком', { cat:'comp_screw', flow:6, pressure:8, size:'1400 × 900 × 1500' }, { role:'main', draw:{ front:{ src:png, w:1, h:1 }, top:{ src:png, w:1, h:1 } } });
+  const p=solve(C('block', { sizeAuto:true }), [c2, dryer, P('Трубопровод', {}, { pipeMat:'steel' })]); Check.plan(p, 'рисунок');
+  const it=p.items.find(i=>i.kind==='compressor'); assert.ok(it.pic && it.pic.front===png && it.pic.top===png, 'рисунок у элемента расстановки');
+  const sv=StationDrawing.svg(p, meta(p)); Check.sheet(sv, 'рисунок');
+  assert.strictEqual((sv.match(/<image /g)||[]).length, 2, 'спереди (А–А) и сверху (Б–Б)');
+  assert.ok(sv.includes('preserveAspectRatio="xMidYMax meet" href="'+png+'"'), 'спереди — вписан по низу');
+  const bare=solve(C('block', { sizeAuto:true }), [P('Компрессор с рисунком', { cat:'comp_screw', flow:6, pressure:8, size:'1400 × 900 × 1500' }, { role:'main' }), dryer, P('Трубопровод', {}, { pipeMat:'steel' })]);
+  assert.notStrictEqual(bare.hash||StationLayout.hash({ cont:C('block'), parts:[c2] }), StationLayout.hash({ cont:C('block'), parts:[Object.assign({}, c2, { draw:null })] }), 'отпечаток: рисунок');
+  assert.ok(!/<image /.test(StationDrawing.svg(bare, meta(bare))), 'без рисунка — рисунок программы');
+  // адрес не data: (не загружен) и не картинка — не попадают в лист
+  const bad=solve(C('block', { sizeAuto:true }), [P('Компрессор', { cat:'comp_screw', size:'1400 × 900 × 1500' }, { role:'main', draw:{ front:{ src:'/img/x.png' }, top:{ src:'data:image/svg+xml;base64,PHN2Zz4=' } } })]);
+  assert.ok(!/<image /.test(StationDrawing.svg(bad, meta(bad))), 'внешний адрес и SVG — нет');
+  const sh=new EskdSheet('A4'); assert.strictEqual(sh.image(0, 0, 10, 10, 'javascript:alert(1)'), false); assert.strictEqual(sh.image(0, 0, 10, 10, png+'"/><script>'), false);
+});
+
+Check.run('схема гидравлическая принципиальная: насосы параллельно, арматура, гидробак', ()=>{
+  for (const n of [1, 2, 3, 4, 6, 8]) for (const withTank of [false, true]){
+    const parts=[P('Насосный агрегат CR '+n, { cat:'pump', model:'CR 32', kw:11, size:'600 × 450 × 1300' }, { role:'main', qty:n }), P('Шкаф управления насосами', {}), P('Трубопроводная обвязка', {}, { pipeMat:'steel' })];
+    if (withTank) parts.push(P('Гидробак мембранный 300 л', {}, { rows:[{ k:'Габариты', v:'650 × 650 × 1200' }] }));
+    const p=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts, req:{ kind:'pump', q:120, head:45, reserve:1 } }), label=`насосы ${n}${withTank ? ' + бак' : ''}`;
+    if (p.level==='error') continue;
+    assert.ok(HydroScheme.ok(p) && !StationScheme.ok(p), label+': гидравлическая, не пневматическая');
+    const sv=HydroScheme.svg(p, meta(p)); Check.sheet(sv, label); Check.crossing(sv, label);
+    assert.ok(sv.includes('Схема гидравлическая') && sv.includes('принципиальная') && /\.\d{3} Г3</.test(sv), label+': название и код Г3');
+    assert.strictEqual((sv.match(/fill="#000"/g)||[]).length>=Math.min(n, 6)*2, true, label+': насосы и обратные клапаны — зачернённые треугольники');
+    if (withTank) assert.ok(sv.includes('на напорном коллекторе'), label+': гидробак в перечне');
+    if (n>6) assert.ok(sv.includes('Показаны 6 насосов из '+n), label+': больше шести — примечание');
+    if (n>1) assert.ok(sv.includes(`${n-1} рабочих, 1 резервн.`), label+': резерв');
+  }
+  assert.ok(!HydroScheme.ok(solve(C('block'), [comp, dryer])), 'у компрессорной — нет');
+});
+
 Check.run('3D-вид (WebGL): сцена, камера, свет', ()=>{
   const muf=P('Глушитель на крыше', {}), fuel=P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'1000 л' }] }), fl=P('Топливопровод и запорная арматура', {}, { pipeMat:'steel' });
   const deep=P('Компрессор глубокий', { cat:'comp_screw', model:'D 90', kw:90, size:'2000 × 1500 × 1800' }, { role:'main' });

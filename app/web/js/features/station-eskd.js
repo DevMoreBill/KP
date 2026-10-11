@@ -9,13 +9,34 @@
 // Без DOM: строки SVG в миллиметрах листа (viewBox), растр — 8 точек на мм; проверяется node-тестом.
 'use strict';
 
+// ---------------------------------------------------------------- шрифт чертежей
+// osifont Italic (наклонный, близкий к типу Б по ГОСТ 2.304; GNU LGPL 3 с исключением для шрифтов — app/web/fonts): один
+// раз загружается и встраивается в каждый лист (@font-face, data:) — картинка чертежа в окне и в КП одинакова на любом
+// компьютере. Не загрузился — Arial курсивом (ширины строк считаются по тому шрифту, которым рисуется).
+class EskdFont {
+  static URL = '/web/fonts/osifont-italic.ttf';
+  static p = null;
+  /** загрузить (один раз); true — шрифт есть */
+  static load(){
+    if (!this.p) this.p=(async ()=>{
+      try{ const r=await fetch(this.URL); if (!r.ok) return false;
+        const b=new Uint8Array(await r.arrayBuffer()); let s=''; for (let i=0; i<b.length; i+=0x8000) s+=String.fromCharCode(...b.subarray(i, i+0x8000));
+        EskdSheet.FONT_DATA=btoa(s); return true; }
+      catch(e){ return false; } })();
+    return this.p;
+  }
+}
+
 // ---------------------------------------------------------------- лист ЕСКД
 class EskdSheet {
   static K = 8;                  // точек растра на 1 мм листа: А4 — 1680 × 2376
   static FMT = { A4:[210, 297] };
-  // шрифт типа Б (ГОСТ 2.304) — если установлен (КОМПАС, AutoCAD); иначе Arial курсивом
-  static FONT = "'GOST type B', 'GOST Type BU', ISOCPEUR, Arial, Helvetica, sans-serif";
-  static CAP = 1.4;              // кегль = высота прописных × 1,4 (у Arial прописная — 0,72 кегля)
+  // шрифт: встроенный osifont (наклонный, близкий к типу Б по ГОСТ 2.304 — EskdFont); не загрузился — тип Б, если
+  // установлен (КОМПАС, AutoCAD), иначе Arial курсивом
+  static FONT_DATA = '';         // TTF osifont в base64 (EskdFont.load) — встраивается в лист
+  static get FONT(){ return this.FONT_DATA ? 'osifont, Arial, Helvetica, sans-serif' : "'GOST type B', 'GOST Type BU', ISOCPEUR, Arial, Helvetica, sans-serif"; }
+  /** кегль = высота прописных × CAP: у osifont прописная — 0,74 кегля, у Arial — 0,72 */
+  static get CAP(){ return this.FONT_DATA ? 1.352 : 1.4; }
   // линии (ГОСТ 2.303): толщина, мм, и штрихи; сплошная основная s = 0,5 мм, тонкие — s/2
   static LINE = {
     main:[0.5], thin:[0.25], fine:[0.18], frame:[0.6], bold:[0.35], pipe:[0.7],   // fine — ламели, рёбра, штрихи светотени
@@ -44,6 +65,10 @@ class EskdSheet {
     this.out.push(`<rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}"${rx ? ` rx="${f(Math.min(rx, w/2, h/2))}"` : ''} ${EskdSheet.st(type, fill)} stroke-linejoin="round"/>`); }
   circle(cx, cy, r, type='thin', fill){ if (r>0){ const f=EskdSheet.f; this.out.push(`<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" ${EskdSheet.st(type, fill)}/>`); } }
   poly(P, type='thin', fill, open){ const f=EskdSheet.f; this.out.push(`<${open ? 'polyline' : 'polygon'} points="${P.map(p=>f(p[0])+','+f(p[1])).join(' ')}" ${EskdSheet.st(type, fill)} stroke-linejoin="round"/>`); }
+  /** растровый рисунок (data:image/…) в прямоугольник: вписан с сохранением пропорций; par — выравнивание (xMidYMax — по низу) */
+  image(x, y, w, h, href, par='xMidYMid'){
+    if (!(w>0 && h>0) || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(String(href||''))) return false; const f=EskdSheet.f;
+    this.out.push(`<image x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" preserveAspectRatio="${par} meet" href="${href}"/>`); return true; }
   /** группа с преобразованием SVG (поворот изображения) */
   group(tr, fn){ this.out.push(`<g transform="${tr}">`); fn(); this.out.push('</g>'); }
   dot(x, y, r=0.45){ const f=EskdSheet.f; this.out.push(`<circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" fill="#000"/>`); }
@@ -54,11 +79,22 @@ class EskdSheet {
   }
   /** текст по центру (cx, cy) снизу вверх (поворот на −90°) */
   vtext(cx, cy, s, h=2.5){ this.text(cx+h/2, cy, s, h, { a:'middle', rot:-90 }); }
-  /** примерная ширина строки, мм: по Arial курсивом (замерено; шрифт типа Б уже — с запасом) */
+  /** примерная ширина строки, мм: по osifont (встроен) или Arial курсивом (замерено; шрифт типа Б уже — с запасом);
+   *  знаков, которых в osifont нет (−, →, …, кавычки „“, ₽), — по Arial тем же кеглем */
   static tw(s, h){
-    const W=this.cw||(this.cw=this.widths()); let w=0;
-    for (const c of String(s??'')) w+=W[c] ?? (/[A-Z]/.test(c) ? 0.97 : 0.8);
+    const A=this.cw||(this.cw=this.widths()), O=this.FONT_DATA ? this.ow||(this.ow=this.osiWidths()) : null, k=O ? 1.352/1.4 : 1; let w=0;
+    for (const c of String(s??'')) w+=(O && O[c]) ?? (A[c] ?? (/[A-Z]/.test(c) ? 0.97 : 0.8))*k;
     return w*h;
+  }
+  /** ширина знаков osifont Italic в долях высоты прописных (по таблице шрифта; с запасом 3 %, вверх до 0,05; «Э», «Ё», «ё» —
+   *  по исправленным знакам, .github/scripts/osifont_fix.py) */
+  static osiWidths(){
+    const W={}, put=(chars, v)=>{ for (const c of chars) W[c]=v; };
+    put('ijI.,:!|\'', 0.3); put('l;()[]', 0.35); put('сt1³²{}`', 0.45); put('зухcr', 0.5); put('бгеоэяУfJ"°^', 0.55);
+    put('авкртчъёСaksvxyz -=+*<>±?$_~\\', 0.6); put('лнпьЕЁЗТЧЬЭbdeghnopquCEFL0235679/–×', 0.65); put('джцГКХЯSTZ48«»', 0.7);
+    put('имфшБВОРwBGKPR#&', 0.75); put('йщыюАДИЙНПmADHNOQUVXY', 0.8); put('ЛЦ—', 0.85); put('МФM', 0.9); put('Ъ', 0.95); put('ЫЮW%', 1);
+    put('ЖШ@', 1.05); put('Щ', 1.1); put('№', 1.2); put('’', 0.3); put('·', 0.3);
+    return W;
   }
   /** ширина знаков в долях высоты прописных (кегль 1,4 h) */
   static widths(){
@@ -206,7 +242,8 @@ class EskdSheet {
 
   /** документ SVG: лист в мм, растр — K точек на мм */
   svg(){
-    const K=EskdSheet.K, defs=this.hatch ? '<pattern id="eskd-h" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="1.4" stroke="#000" stroke-width="0.18"/></pattern>' : '';
+    const K=EskdSheet.K, font=EskdSheet.FONT_DATA ? `<style>@font-face{font-family:osifont;font-style:italic;src:url(data:font/ttf;base64,${EskdSheet.FONT_DATA}) format('truetype')}</style>` : '';
+    const defs=font+(this.hatch ? '<pattern id="eskd-h" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="1.4" stroke="#000" stroke-width="0.18"/></pattern>' : '');
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${this.W*K}" height="${this.H*K}" viewBox="0 0 ${this.W} ${this.H}" font-family="${EskdSheet.FONT}" font-style="italic" style="font-synthesis:none"><defs>${defs}</defs><rect width="${this.W}" height="${this.H}" fill="#ffffff"/>${this.out.join('')}</svg>`;
   }
   /** масштаб для основной надписи: 1:50 */
@@ -245,6 +282,8 @@ class EquipIcon {
     const c=this.ctx(sh, it, x0, y0, x1, y1); if (!c) return;
     const k=it.kind, a=it.air||{}, look=it.look||'';
     c.side=!!it.rot || Math.abs(it.face)===2; c.rear=!c.side && it.face>0;
+    // свой рисунок модели (вид спереди) — когда изделие видно спереди; сбоку и сзади — рисунок программы
+    if (!c.side && !c.rear && it.pic && sh.image(x0, y0, x1-x0, y1-y0, this.src(it.pic.front), 'xMidYMax')) return;
     if (it.mount==='pipe') return this.filter(c);
     if (k==='receiver' || it.shape==='hcyl' || it.shape==='vcyl')
       return it.shape==='hcyl' ? this.hreceiver(c, k==='receiver') : it.shape==='vcyl' ? this.vreceiver(c, k==='receiver' ? 'receiver' : 'housing') : this.box(c);
@@ -257,6 +296,9 @@ class EquipIcon {
     if (k==='tank') return this.tank(c);
     this.box(c);
   }
+  /** рисунок модели для SVG — только data:image (в картинку чертежа внешние адреса не попадают); адрес /img/… — из кэша
+   *  загруженных (DrawPic, вкладка «Состав станции») */
+  static src(s){ s=String(s||''); return s.startsWith('data:image/') ? s : typeof DrawPic!=='undefined' ? DrawPic.data(s) : ''; }
   /** вид сверху (разрез Б–Б): лицевая сторона — к проходу (вниз), к задней стене (вверх) или вдоль торца */
   static plan(sh, it, x0, y0, x1, y1){
     if (it.rot && it.mount!=='pipe' && it.shape==='box'){   // повёрнуто поперёк: рисунок вдоль длины изделия, повёрнутый на 90°
@@ -265,6 +307,10 @@ class EquipIcon {
     const c=this.ctx(sh, it, x0, y0, x1, y1); if (!c) return;
     const k=it.kind, a=it.air||{}, look=it.look||'', f=it.face;
     c.front=f===2 ? 'r' : f===-2 ? 'l' : f>0 ? 't' : 'b';
+    // свой рисунок модели (вид сверху, лицевая сторона — внизу рисунка): к задней стене — повёрнут на 180°
+    const src=it.pic ? this.src(it.pic.top) : '';
+    if (src && c.front==='b' && sh.image(x0, y0, x1-x0, y1-y0, src)) return;
+    if (src && c.front==='t'){ const F=EskdSheet.f; let ok=false; sh.group(`rotate(180 ${F((x0+x1)/2)} ${F((y0+y1)/2)})`, ()=>{ ok=sh.image(x0, y0, x1-x0, y1-y0, src); }); if (ok) return; }
     if (it.mount==='pipe') return this.filterTop(c);
     if (it.shape==='vcyl') return this.vesselTop(c, k==='receiver');
     if (it.shape==='hcyl') return this.hvesselTop(c);
@@ -762,7 +808,7 @@ class PneuSymbol {
   /** электродвигатель привода: окружность с буквой M, вал — двойная линия */
   static motor(sh, cx, cy, x2, r=3.4){
     sh.line(cx+r, cy-0.55, x2, cy-0.55, 'bold'); sh.line(cx+r, cy+0.55, x2, cy+0.55, 'bold');
-    sh.circle(cx, cy, r, 'bold', '#fff'); sh.text(cx, cy+1.6, 'M', 3.5, { a:'middle' });
+    sh.circle(cx, cy, r, 'bold', '#fff'); const h=r<3 ? 2.5 : 3.5; sh.text(cx, cy+h*0.46, 'M', h, { a:'middle' });
   }
   /** ресивер: горизонтальная «капсула», вход и выход по бокам, слив снизу */
   static receiver(sh, cx, cy, w=16, h=7){ sh.rect(cx-w/2, cy-h/2, w, h, 'bold', '#fff', h/2); return { inl:[cx-w/2, cy], out:[cx+w/2, cy], top:cy-h/2, bot:[cx, cy+h/2] }; }
@@ -804,8 +850,78 @@ class PneuSymbol {
     sh.circle(cx, cy, r, 'bold', '#fff'); sh.line(cx+r*0.5, cy+r*0.5, cx-r*0.45, cy-r*0.45, 'thin');
     sh.poly([[cx-r*0.62, cy-r*0.62], [cx-r*0.62+0.85, cy-r*0.62+0.3], [cx-r*0.62+0.3, cy-r*0.62+0.85]], 'thin', '#000');
   }
+  /** насос (ГОСТ 2.782-96): окружность, зачернённый треугольник (гидравлика) вершиной к выходу — вверх */
+  static pump(sh, cx, cy, r=5){
+    sh.circle(cx, cy, r, 'bold', '#fff');
+    const t=r*0.6; sh.poly([[cx, cy-r], [cx-t*0.62, cy-r+t], [cx+t*0.62, cy-r+t]], 'bold', '#000');
+    return { out:[cx, cy-r], inl:[cx, cy+r] };
+  }
+  /** клапан обратный (ГОСТ 2.785-70): поток — от незачернённого треугольника к зачернённому; на вертикальной линии, поток вверх */
+  static check(sh, cx, cy, s=2){
+    sh.poly([[cx-s*0.6, cy+s], [cx+s*0.6, cy+s], [cx, cy]], 'bold', '#fff');
+    sh.poly([[cx-s*0.6, cy-s], [cx+s*0.6, cy-s], [cx, cy]], 'bold', '#000');
+  }
+  /** гидробак мембранный (гидроаккумулятор): вертикальная «капсула» с мембраной, подключение сверху */
+  static membrane(sh, cx, top, w=8, h=12){ sh.rect(cx-w/2, top, w, h, 'bold', '#fff', w/2); sh.line(cx-w/2, top+h*0.45, cx+w/2, top+h*0.45, 'thin'); }
   /** стрелка направления потока на линии */
   static flow(sh, x, y, dir=1){ sh.poly([[x+dir*1.1, y], [x-dir*0.9, y-0.8], [x-dir*0.9, y+0.8]], 'thin', '#000'); }
+}
+
+// ---------------------------------------------------------------- схема гидравлическая принципиальная (насосные станции)
+// ГОСТ 2.704: насосы (с двигателями) включены параллельно между всасывающим и напорным коллекторами; на каждом — задвижки до
+// и после, обратный клапан на напоре, мановакуумметр и манометр; на напорном коллекторе — манометр и гидробак, если он есть
+// в составе. Позиционные обозначения — номера позиций состава (как на габаритном чертеже), перечень — над основной надписью.
+class HydroScheme {
+  static ok(plan){ return !!plan && (plan.items||[]).some(i=>i.kind==='pump'); }
+  static TANK = /мембран|гидроаккум|гидробак|расширит/i;
+
+  static svg(plan, meta={}){
+    const sh=new EskdSheet('A4'), I=plan.items||[], P=I.filter(i=>i.kind==='pump').sort((a, b)=>a.pos-b.pos || a.unit-b.unit);
+    const tank=I.find(i=>i.kind==='tank' && this.TANK.test(i.name||'')), pipe=(plan.piping||[]).find(p=>p.pos!=null), r=plan.req||{};
+    // ---- перечень элементов и указания — над основной надписью
+    const by=new Map(); for (const it of [...P, ...(tank ? [tank] : [])]){ const e=by.get(it.pos); if (e) e.qty++; else by.set(it.pos, { it, qty:1 }); }
+    const res=Math.max(0, Math.round(+r.reserve||0)), rows=[...by.values()].map(({ it, qty })=>[[String(it.pos), 'c'], it.brief||it.name, [String(qty), 'c'],
+      it.kind==='pump' ? (res && qty>res ? `${qty-res} рабочих, ${res} резервн.` : 'параллельно') : 'на напорном коллекторе']);
+    if (pipe) rows.push([[String(pipe.pos), 'c'], pipe.brief||pipe.name, ['1', 'c'], 'задвижки, обратные клапаны, манометры']);
+    rows.sort((a, b)=>+a[0][0]-+b[0][0]);
+    const TB=237, cols=[14, 95, 12, 64], rh=6, listH=6+rows.length*rh, yList=TB-12-listH;
+    sh.table(20, yList, cols, ['Поз.', 'Наименование', 'Кол.', 'Примечание'], rows, rh, 6, 2.5);
+    sh.text(112.5, yList-2.5, 'Перечень элементов', 3.5, { a:'middle' });
+    const q=+r.q>0 ? String(r.q).replace('.', ',') : '', head=+r.head>0 ? String(r.head).replace('.', ',') : '';
+    const notes=[
+      `Арматура (задвижки, обратные клапаны, мановакуумметры и манометры) показана условно${pipe ? `; входит в обвязку поз. ${pipe.pos}` : ''}.`,
+      'Насосы включены параллельно: из всасывающего коллектора — в напорный; на каждом насосе — задвижки до и после, обратный клапан на напорной линии.',
+      ...(q || head ? [`Подача станции — ${q ? q+' м³/ч' : 'по проекту'}, напор — ${head ? head+' м' : 'по проекту'}${res ? `, резерв N + ${res}` : ''}.`] : []),
+      ...(P.length>6 ? [`Показаны 6 насосов из ${P.length} — остальные подключены так же.`] : []),
+    ];
+    const nH=sh.paras(25, 0, 175, notes, 2.5, false), yN=yList-8-nH;
+    sh.paras(25, yN, 175, notes, 2.5);
+    // ---- схема: насосы колонками между коллекторами (двигатель — слева от насоса, манометры — справа); модуль m —
+    // крупнее, пока схема помещается по высоте над указаниями и по ширине поля (до 200 мм)
+    const U=P.slice(0, 6), n=Math.max(1, U.length), top=30, xL=26;
+    const geo=m=>{ const Lp=11*m+4, colW=16*m+9.6, w=xL+8+Lp+(n-0.5)*colW+30, h=80*m+16; return { m, Lp, colW, ok:w<=200 && top+h<=yN-6 }; };
+    const G=[14, 13, 12, 11, 10, 9, 8, 7].map(v=>geo(v/10)).find(g=>g.ok) || geo(0.7), { m, Lp, colW }=G;
+    const yD=top+8, yS=yD+80*m, x0=xL+8+Lp, xs=U.map((u, k)=>x0+k*colW), xE=xs[xs.length-1]+colW/2, xR=xE+30, xt=xR-8;
+    // коллекторы: напорный — к потребителю (вправо), всасывающий — из источника (слева)
+    sh.line(x0-Lp, yD, xR, yD, 'pipe'); sh.line(xL, yS, xE, yS, 'pipe');
+    PneuSymbol.flow(sh, xE+6, yD, 1); sh.arrow(xR+2.6, yD, 1, 0); sh.text(xR+2.6, yD-2.4, 'К потребителю', 2.5, { a:'end' });
+    sh.arrow(xL+2.6, yS, 1, 0); PneuSymbol.flow(sh, xL+8, yS, 1); sh.text(xL, yS+5, 'Из источника', 2.5);
+    sh.line(xE+2, yD, xE+2, yD-4.4, 'bold'); PneuSymbol.gauge(sh, xE+2, yD-6.2, 1.8);   // манометр на напорном коллекторе
+    if (tank){ sh.line(xt, yD, xt, yD+7*m, 'bold'); PneuSymbol.valve(sh, xt, yD+3.5*m, 1.6, true); PneuSymbol.membrane(sh, xt, yD+7*m, 7*m, 11*m); sh.text(xt+3.5*m+1, yD+12*m, String(tank.pos), 3.5); }
+    U.forEach((u, k)=>{ const x=xs[k], s=1.8*m, yP=yD+46*m, rp=5*m;
+      sh.line(x, yD, x, yS, 'bold');
+      PneuSymbol.valve(sh, x, yD+8*m, s, true);                      // задвижка на напоре
+      PneuSymbol.check(sh, x, yD+18*m, s);                           // обратный клапан: поток вверх
+      sh.line(x, yD+28*m, x+5*m, yD+28*m, 'thin'); PneuSymbol.gauge(sh, x+5*m+1.8, yD+28*m, 1.8);   // манометр
+      PneuSymbol.pump(sh, x, yP, rp); PneuSymbol.motor(sh, x-rp-4-3*m, yP, x-rp, 3*m);              // насос, двигатель с валом
+      sh.text(x+rp+0.8, yP-rp+0.8, String(u.pos), 3.5);
+      sh.line(x, yP+14*m, x+5*m, yP+14*m, 'thin'); PneuSymbol.gauge(sh, x+5*m+1.8, yP+14*m, 1.8);   // мановакуумметр
+      PneuSymbol.valve(sh, x, yS-8*m, s, true);                      // задвижка на всасывании
+      sh.dot(x, yD, 0.6); sh.dot(x, yS, 0.6); });
+    const code=EskdSheet.code(meta.org, plan.hash, 'Г3');
+    sh.frame({ name:meta.title||'Станция насосная', doc:'Схема гидравлическая принципиальная', code, lit:'П', sheets:1, org:meta.org, dev:meta.dev, date:meta.date });
+    return sh.svg();
+  }
 }
 
 // ---------------------------------------------------------------- схема пневматическая принципиальная

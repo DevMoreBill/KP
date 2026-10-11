@@ -256,6 +256,21 @@ class DrawPic {
     return `<div class="kd-draw"><span class="muted">Рисунок модели для габаритного чертежа${tip('Свой рисунок изделия (вид спереди и сверху, PNG или JPEG). На чертеже он вписывается в габарит элемента вместо автоматического. Удобно завести один раз в карточке позиции каталога — тогда он придёт в состав сам.')}</span>
       <div class="kd-dv">${this.VIEWS.map(([v, l])=>`<div class="kd-pic">${d[v] && d[v].src ? `<img src="${esc(d[v].src)}" alt="Рисунок для чертежа — ${l}"><button class="icon x" type="button" data-a="drawDel" data-i="${i}" data-j="${j}" data-v="${v}" aria-label="Убрать рисунок ${l}">✕</button>` : `<button type="button" class="kit-phb" data-a="drawPick" data-i="${i}" data-j="${j}" data-v="${v}">+ ${l}</button>`}<small>${l}</small></div>`).join('')}</div></div>`;
   }
+  static DRAWN = /^(compressor|dryer|receiver|filter|dgu|pump|cabinet|tank)$/;
+  /** карточка позиции (КП или каталог): оборудование, которое рисуется на чертеже станции, — свой рисунок модели */
+  static forItem(x, i){
+    if (stationOf(x) || !this.DRAWN.test(StationEquip.kindOf(x)||'')) return '';
+    return `<div class="ed-sec">${this.fields(x, i, -1)}<p class="muted kd-hint">Попадёт в состав станции вместе с позицией: на габаритном чертеже — вместо рисунка программы.</p></div>`;
+  }
+  /** сохранение: рисунки data:… — файлами на сервер (как фото), в данных — адреса /img/… */
+  static async upload(draw, owner, name){
+    const out={ ...draw };
+    for (const [v, l] of this.VIEWS) if (out[v] && out[v].src){ const was=out[v].src; out[v]=await ImgUpload.put(out[v], imgPlace(owner, 'gallery', { caption:(name ? name+' — ' : '')+'рисунок для чертежа, '+l }));
+      if (out[v].src!==was && was.startsWith('data:')) this.cache.set(out[v].src, was); }   // для чертежа — тот же рисунок без повторной загрузки
+    return out;
+  }
+  /** есть рисунки, ещё не загруженные для чертежа */
+  static pending(x){ return kitParts(x).some(p=>this.VIEWS.some(([v])=>{ const s=p.draw && p.draw[v] && p.draw[v].src; return s && !this.cache.has(s) && !s.startsWith('data:'); })); }
   /** выбрать файл рисунка: элемент станции (j>=0) или позиция в карточке (j<0) */
   static pick(i, j, v){
     const f=$('#filePick'); f.value=''; f.multiple=false; f.accept='image/png,image/jpeg,image/webp';

@@ -52,7 +52,8 @@ def cp():
 
 WEB_DIR = os.path.join(APP_DIR, 'web')      # интерфейс: index.html, css/, js/, vendor/
 WEB_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-             '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2'}
+             '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2',
+             '.ttf': 'font/ttf'}
 
 # политика безопасности страницы: скрипты — только файлы программы (внедрённый в данные скрипт не выполнится);
 # unsafe-eval — скелет шаблона КП (skeleton.js) собирается из текста; картинки — свои, data:, blob: и с сайтов поставщиков
