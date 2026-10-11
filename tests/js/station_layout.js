@@ -1025,6 +1025,34 @@ Check.run('цвет по фото: фон убирается, главный ц�
   PhotoTint.cache.delete('/img/test-tint.jpg');
 });
 
+Check.run('фильтры по каталогу: циклон, тонкость, опечатка «Мкн», ступень из характеристик, порядок одной ступени', ()=>{
+  const F=(name, attrs, rows, extra)=>P(name, Object.assign({ cat:'filter', flow:3, size:'120 × 120 × 300' }, attrs), Object.assign({ rows:rows||[] }, extra||{}));
+  const g=p=>AirChain.info(p, 'filter').grade;
+  assert.strictEqual(g(F('Циклонный сепаратор Remeza R0106-CKL-A', { stage:'Предварительная' })), 'sep', 'циклон — влагоотделитель, хоть ступень «Предварительная»');
+  assert.strictEqual(g(F('Магистральный фильтр ФМ 40/16', { fineness:'10 мкм' })), 'pre', 'тонкость 10 мкм — предварительная');
+  assert.strictEqual(g(F('Фильтр DLF2', {}, [{ k:'Фильтрация по пыли', v:'0,01 Мкн' }])), 'micro', '«Мкн» (опечатка) 0,01 — сверхтонкий');
+  assert.strictEqual(g(F('Фильтр', {}, [{ k:'Ступень очистки', v:'Угольный (от паров масла)' }])), 'carbon', 'ступень — из строки характеристик');
+  assert.strictEqual(AirChain.info(F('Фильтр', {}, [{ k:'Фильтрация по маслу', v:'0,01 мг/м³' }]), 'filter').oil, 0.01, 'масло после фильтра, мг/м³');
+  // 3 мкм и 1 мкм — оба «предварительные»: по ходу воздуха сначала грубый; два одинаковых — параллельно (одна ступень)
+  const comp=P('Компрессор', { cat:'comp_screw', flow:2, kw:15, size:'1200 × 800 × 1300' }, { role:'main' }), dr=P('Осушитель', { cat:'dryer_refrig', flow:3, size:'500 × 500 × 800' });
+  const c5=F('Фильтр 3 мкм', { stage:'Предварительная' }, [{ k:'Фильтрация по пыли', v:'3 мкм' }, { k:'Фильтрация по маслу', v:'5 мг/м³' }]);
+  const c4=F('Фильтр 1 мкм', { stage:'Предварительная' }, [{ k:'Фильтрация по пыли', v:'1 мкм' }, { k:'Фильтрация по маслу', v:'1 мг/м³' }], { qty:2 });
+  const p=solve(C('block', { sizeAuto:true }), [comp, dr, c4, c5]); Check.plan(p, 'фильтры одной ступени');
+  const st=n=>p.items.filter(i=>i.name===n).map(i=>i.air.stage), s5=st('Фильтр 3 мкм'), s4=st('Фильтр 1 мкм'), sd=st('Осушитель')[0];
+  assert.ok(s5[0]<s4[0] && s4[0]<sd, `3 мкм → 1 мкм → осушитель: ${s5} ${s4} ${sd}`);
+  assert.strictEqual(s4.length, 2); assert.strictEqual(s4[0], s4[1], 'одинаковые фильтры — одна ступень (параллельно)');
+});
+
+Check.run('ни один фильтр не теряется, когда места на трубе мало; конвектор — сколько поместится', ()=>{
+  const F=(n, el)=>P('Фильтр '+n, { cat:'filter', flow:25, size:'194 × 194 × 726', stage:el });
+  const parts=[P('Компрессор 45 кВт', { cat:'comp_screw', flow:6.8, kw:45, size:'1575 × 1030 × 1750' }, { role:'main', qty:4 }), P('Адсорбционный осушитель', { cat:'dryer_ads', flow:20.8, kw:10, size:'1610 × 1270 × 2468' }, { qty:2 }),
+    F('MP', 'Предварительная'), F('X', 'Тонкая'), F('Y', 'Сверхтонкая (микрофильтр)'), F('A', 'Угольный (от паров масла)')];
+  for (const ct of ['north', 'block']){ const p=solve(C(ct, { sizeAuto:true, ins:'150 мм' }), parts); Check.plan(p, 'фильтры на трубе '+ct);
+    assert.deepStrictEqual([...new Set(p.items.map(i=>i.pos))].sort((a, b)=>a-b), [1, 2, 3, 4, 5, 6], ct+': все позиции на месте'); }
+  const n=solve(C('north', { ins:'150 мм', sizeAuto:true, roof:'gable' }), [P('ДГУ 144 кВт', { cat:'dgu', kw:144, size:'2345 × 1045 × 1500' }, { role:'main' }), P('Дополнительный топливный бак 500 л', { tank:500 }), P('Глушитель на крыше', {})]);
+  Check.plan(n, 'Север, ДГУ с баком'); assert.ok(n.heat && n.heat.total>0, 'мест на все конвекторы нет — ставятся те, что помещаются: '+JSON.stringify(n.heat && { need:n.heat.need, total:n.heat.total }));
+});
+
 Check.run('случайные составы: без сбоев и нарушений', ()=>{
   let seed=20261011; const rnd=()=>((seed=(seed*1103515245+12345)%2147483648)/2147483648), pick=a=>a[Math.floor(rnd()*a.length)];
   const kinds=[['comp_screw', 'Компрессор'], ['dryer_refrig', 'Осушитель'], ['receiver', 'Ресивер'], ['filter', 'Фильтр'], ['pump', 'Насос'], ['dgu', 'ДГУ'], ['ats', 'Шкаф'], ['', 'Бак топливный'], ['', 'Агрегат'],

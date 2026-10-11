@@ -70,6 +70,7 @@ function closeEditor(){ const d=$('#edlg'); EDIT=null; if(d.open) d.close(); ren
 function renderEditor(){
   const d=$('#edlg'); if(!EDIT) return; const i=EDIT.i, x=S.items[i]; if(!x){ closeEditor(); return; }
   if (!edTabs(x).some(([k])=>k===EDIT.tab)) EDIT.tab='main';
+  if (!CATED && EDIT.tab!=='layout' && StationUi.on(x)) StationImages.soon(x);   // 3D-вид в разрезе и листы — сразу по составу, не только на «Компоновке»
   const focusP=document.activeElement?.dataset?.p; const sc=d.querySelector('.ed-b')?.scrollTop||0;
   const body = EDIT.tab==='main'?edMain(x,i): EDIT.tab==='kit'?KitView.render(x,i): EDIT.tab==='layout'?StationUi.tab(x,i): EDIT.tab==='desc'?edDesc(x,i): EDIT.tab==='spec'?edSpec(x,i): EDIT.tab==='opts'?edOpts(x,i): edAI(x,i);
   const head = CATED ? `<h3><span class="ed-cat">Каталог</span>${esc(x.name||'Новая позиция')}</h3><button class="btn" type="button" data-catcancel>Отмена</button>${CW.mod&&!ADMIN.on?'<span class="muted ed-modnote">Изменения будут отправлены на модерацию</span>':''}<button class="btn primary" type="button" data-catsave>${catSaveLabel()}</button>`

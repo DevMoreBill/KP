@@ -380,7 +380,7 @@ class StationEquip {
 class AirChain {
   // ступени фильтров: name — для подсказок и нового элемента, stage — «Ступень очистки» в каталоге
   static GRADES = {
-    sep:{ name:'Влагоотделитель (циклонный сепаратор)', short:'влагоотделитель', stage:'' },
+    sep:{ name:'Влагоотделитель (циклонный сепаратор)', short:'влагоотделитель', stage:'Влагоотделитель (циклон)' },
     pre:{ name:'Фильтр предварительной очистки (3–5 мкм)', short:'предварительной очистки', stage:'Предварительная' },
     fine:{ name:'Фильтр тонкой очистки (1 мкм, масло до 0,1 мг/м³)', short:'тонкой очистки', stage:'Тонкая' },
     micro:{ name:'Фильтр сверхтонкой очистки от масла (0,01 мкм, 0,01 мг/м³)', short:'сверхтонкой очистки от масла', stage:'Сверхтонкая (микрофильтр)' },
@@ -435,15 +435,32 @@ class AirChain {
   /** ступень фильтра: поле «Ступень очистки», иначе по названию и характеристикам; cond — сепаратор конденсата (не на линии) */
   static grade(p, cat, t){
     if (cat==='oil_sep' || /конденсат|масловод|водомасл|масляного тумана/i.test(t)) return 'cond';
-    const st=String((p.attrs||{}).stage||'');
+    const a=p.attrs||{}, sr=(p.rows||[]).find(r=>r && /^ступень очистки/i.test(String(r.k||'').trim())), st=String(a.stage||(sr && sr.v)||'');
+    if (/циклон|влагоотдел|водоотдел/i.test(String(p.name||'')+' '+st)) return 'sep';    // циклонный сепаратор — не фильтр, даже со ступенью «Предварительная»
+    if (/пылев/i.test(st)) return 'dust';
     if (/предвар/i.test(st)) return 'pre'; if (/сверхтонк|микро/i.test(st)) return 'micro'; if (/уголь/i.test(st)) return 'carbon'; if (/тонк/i.test(st)) return 'fine';
     if (/угол|угольн|активированн|пар\S*\s+масл|запах|(?:^|[^a-z])(?:QD|ACS)\s?\d/i.test(t)) return 'carbon';
+    const um=this.micron(p);                       // тонкость по частицам (поле «Тонкость» или строка «…частиц / пыли, мкм»)
+    if (um>=3) return 'pre'; if (um!=null && um<=0.01 && !/пылев/i.test(t)) return 'micro';
     if (/пылев|после адсорбц|пыл\S*\s+адсорбент|(?:^|[^a-z])(?:DDp|PDp)\s?\d/i.test(t)) return 'dust';
     if (/сверхтонк|микрофильтр|0[.,]01\s*мкм|(?:^|[^a-z])(?:PD|AA)\s?\d/i.test(t)) return 'micro';
     if (/тонк\S*\s+(?:очистк|фильтр)|(?:^|\D)1\s*мкм|0[.,]1\s*мг|от масла|маслоотдел|коалесц|(?:^|[^a-z])(?:DD|AO)\s?\d/i.test(t)) return 'fine';
     if (/предварит|грубой|общей очистк|общего назначени|(?:^|\D)[35]\s*мкм|механическ/i.test(t)) return 'pre';
     if (/циклон|влагоотдел|сепаратор\S*\s+(?:влаг|вод)|водоотдел/i.test(t)) return 'sep';
     return '';
+  }
+  /** тонкость фильтрации по частицам, мкм (опечатка поставщика «Мкн» — тоже); нет — null */
+  static micron(p){
+    const a=p.attrs||{}, rx=/(\d+(?:[.,]\d+)?)\s*мк[мн]/i, m=String(a.fineness||'').match(rx); if (m) return StationEquip.num(m[1]);
+    for (const r of p.rows||[]){ if (!r || !/частиц|пыл|тонкост|степень (?:очистки|фильтрац)/i.test(String(r.k||'')) || /масл|вод/i.test(String(r.k||''))) continue;
+      const x=String(r.v||'').match(rx) || (/мк[мн]/i.test(String(r.k||'')) ? String(r.v||'').match(/(\d+(?:[.,]\d+)?)/) : null); if (x) return StationEquip.num(x[1]); }
+    return null;
+  }
+  /** остаточное содержание масла после фильтра, мг/м³ (строка «…масл…» в мг/м³); нет — null */
+  static oil(p){
+    for (const r of p.rows||[]){ if (!r || !/масл/i.test(String(r.k||''))) continue;
+      const t=String(r.k||'')+' '+String(r.v||''); if (!/мг/i.test(t)) continue; const v=this.first(r.v); if (v!=null && v>0) return v; }
+    return null;
   }
   /** сведения для цепочки: компрессор — встроенные осушитель и фильтр, частотное регулирование; осушитель — вид и встроенные
    *  фильтры; ресивер — «мокрый» (до осушителя) или «сухой» (после); фильтр — ступень; у всех — производительность и давление */
@@ -461,7 +478,7 @@ class AirChain {
       o.filters=/встроенн\S*\s+(?:\S+\s+){0,2}фильтр|фильтр\S*\s+(?:\S+\s+)?встроен|(?:^|\s)с\s+(?:\S+\s+)?фильтрам|интегрированн\S*\s+(?:\S+\s+)?фильтр/i.test(t);
       o.pdp=this.first(String(a.dewPoint||'').replace('−', '-')); if (o.pdp!=null && /[−-]/.test(String(a.dewPoint))) o.pdp=-Math.abs(o.pdp); }
     else if (kind==='receiver'){ o.role=/сух/i.test(nm) || /после осушител/i.test(t) ? 'dry' : /мокр|влажн/i.test(nm) ? 'wet' : ''; o.vol=this.volume(p); }
-    else if (kind==='filter') o.grade=this.grade(p, cat, t);
+    else if (kind==='filter'){ o.grade=this.grade(p, cat, t); o.oil=this.oil(p); o.um=this.micron(p); }
     return o;
   }
 
@@ -486,8 +503,12 @@ class AirChain {
       if (k==='receiver') return a.role==='dry' ? 60 : 20;
       if (k==='dryer') return a.type==='gen' ? 70 : a.type==='ads' ? 45 : 40;
       if (k!=='filter' || gr==='cond') return null;
-      if (!D.length) return { sep:15, pre:31, fine:32, micro:33, dust:34, carbon:35 }[gr];
-      return { sep:15, pre:31, fine:32, micro:ads ? 43 : 51, dust:52, carbon:55 }[gr]; };
+      const base=!D.length ? { sep:15, pre:31, fine:32, micro:33, dust:34, carbon:35 }[gr] : { sep:15, pre:31, fine:32, micro:ads ? 43 : 51, dust:52, carbon:55 }[gr];
+      // разные фильтры одной ступени (3 и 1 мкм — оба «предварительные») — по ходу воздуха от грубого к тонкому: тоньше
+      // фильтрация по частицам (а при равной — меньше масла после фильтра) — дальше; одинаковые — одна ступень (параллельно)
+      const fine=v=>v>0 ? -Math.log10(v) : null, f=fine(a.um)??fine(a.oil);
+      if (base==null || f==null || (e.air.grades && e.air.grades.length>1)) return base;
+      return base+Math.round(Math.min(0.9, Math.max(0.05, 0.5+0.1*f+(a.um>0 && a.oil>0 ? 0.01*fine(a.oil) : 0)))*100)/1000; };
     for (const e of A){ e.air.stage=st(e, e.air.grade); if (e.air.grades) e.air.stages=e.air.grades.map(g=>st(e, g)); }
   }
   /** единица k строки состава — её ступень (одинаковые фильтры одной строкой — разные ступени) */
@@ -790,7 +811,9 @@ class StationHeat {
     const nMin=Math.max(need>1.2 ? 2 : 1, Math.ceil((plan.int[0]-(plan.geo.x0||0))/4500));   // равномерно: конвектор на 4,5 м длины
     for (const [kw, len] of this.UNITS){ const S=this.spots(plan, len), n=Math.max(nMin, Math.ceil(need/kw-1e-9));
       if (n>S.length) continue; const score=(n*kw-need)/need+0.15*n; if (!best || score<best.score) best={ n, kw, len, score, S }; }
-    if (!best){ const [kw, len]=this.UNITS[this.UNITS.length-1], S=this.spots(plan, len); best={ n:S.length, kw, len, S }; }
+    if (!best) for (const [kw, len] of this.UNITS){   // мест на все не хватает — сколько поместится, с наибольшей мощностью
+      const S=this.spots(plan, len), n=Math.min(S.length, Math.ceil(need/kw-1e-9));
+      if (!best || n*kw>best.n*best.kw+1e-9) best={ n, kw, len, S }; }
     return { n:best.n, kw:best.kw, len:best.len, short:best.n*best.kw<need-1e-9, heaters:this.spread(best.S, best.n, plan, best.kw) };
   }
   /** свободные места конвектора длиной len у пола: участки стен без оборудования перед ними (не ближе 400 мм), шкафов,
@@ -859,7 +882,7 @@ class StationHeat {
 // размера — по необходимому месту (шаг 100 мм, наименьшая площадь пола); заданный контейнер, в который не помещается, —
 // ошибка и подсказка, какой подойдёт; контейнер с большим запасом — подсказка, какой меньший подойдёт.
 class StationLayout {
-  static VER = 10;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
+  static VER = 11;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
   static MAX_L = 12000;
   static PIPE_PAD = 60;      // зазор вокруг фильтра на трубопроводе, мм
   static AIR_Y = 150;        // линия сжатого воздуха: ось — в 150 мм от задней стены (или посередине между рядами)
@@ -1117,13 +1140,15 @@ class StationLayout {
     // нет места и там — демонтаж через сервисную дверь в боковой стене
     for (const avoid of [r.gates && !r.gates.sea ? [r.gates.wall] : null, ['left', 'right']]){ if (!left.length || !avoid || !(r.gates && !r.gates.sea)) break;
       const t=pass(avoid); if (t.left.length<left.length){ r=t.q; left=t.left; } }
-    if (left.length){
-      const ids=new Set(left.map(StationLayout.key)), rest=e=>!ids.has(StationLayout.key(e));
-      const r2=this.fitRow([...floor, ...left.map(e=>Object.assign({}, e, { slot:true }))], geo, units);
+    // не нашлось места на стене или трубе — своё место в ряду; после перестановки трубопровод короче, и места может не
+    // хватить следующему фильтру — тогда и ему (ничего не теряется: не поместилось в ряд — контейнер мал)
+    for (let slots=left; left.length; slots=[...slots, ...left]){
+      const ids=new Set(slots.map(StationLayout.key)), rest=e=>!ids.has(StationLayout.key(e));
+      const r2=this.fitRow([...floor, ...slots.map(e=>Object.assign({}, e, { slot:true }))], geo, units);
       if (r2.level==='error') return r2;
       if (this.tank) this.tankPlace(r2, geo);
       this.exits(r2, geo);
-      this.attach(r2, wall.filter(rest), hang.filter(rest), geo);
+      left=this.attach(r2, wall.filter(rest), hang.filter(rest), geo);
       r=r2;
     }
     this.finish(r, geo);
@@ -1339,12 +1364,16 @@ class StationLayout {
       return;
     }
     const g=this.segOf(r, it), ln=g && g.line; if (!ln || ln.z+Math.max(60, it.h*0.12)-it.h<150){ it.mount='floor'; it.z=0; return; }
+    const was={ x:it.x, y:it.y, z:it.z };
     it.mount='pipe'; this.hangOn(it, ln, W);
     // не заходит в соседнее оборудование (труба между рядами): сдвиг поперёк трубы — труба остаётся внутри его габарита
     const fl=r.items.filter(i=>i!==it && i.mount!=='pipe' && i.mount!=='wall'), y0=it.y;
     if (fl.some(i=>this.hit(it, i, 0))) found: for (let d=10; d<=it.ly; d+=10) for (const sg of [1, -1]){ const y=y0+sg*d;
       if (ln.y<y+20 || ln.y>y+it.ly-20 || y<20 || y+it.ly>W-20) continue;
       if (!fl.some(i=>this.hit(Object.assign({}, it, { y }), i, 0))){ it.y=y; break found; } }
+    // на трубе это место уже занято другим фильтром (несколько фильтров на своих местах у конца трубы) — стоит на своём
+    // месте в ряду, на полу
+    if (r.items.some(i=>i!==it && i.mount==='pipe' && this.hit(it, i, 0))){ Object.assign(it, was, { mount:'floor', z:0 }); return; }
     ln.x0=Math.min(ln.x0, Math.round(it.x+it.lx/2)); ln.x1=Math.max(ln.x1, Math.round(it.x+it.lx/2));
   }
 
