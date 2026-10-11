@@ -158,6 +158,8 @@ class TzPick {
   }
   /** штраф компрессора по давлению: меньше нужного с запасом на потери — сильный, больше — по 0,05 за бар */
   static barPen(p, B){ if (!(B>0) || !(p>0)) return 0; const need=B+this.LOSS; return p<need-0.05 ? 0.5 : 0.05*(p-need); }
+  /** «осушитель …» — без повтора, если название уже начинается с этого слова */
+  static lbl(word, name){ return String(name||'').toLowerCase().startsWith(word.slice(0, 5)) ? name : word+' '+name; }
 
   static async part(c, qty, role){
     let doc=c; try{ doc=await api('/api/catalog/'+encodeURIComponent(c.id)); }catch(_){}
@@ -180,7 +182,7 @@ class TzPick {
         else miss.push(`${q.work>1 ? q.work+' компрессора' : 'компрессор'} на ${AirChain.m3(Q)} м³/мин${B ? ' и '+AirChain.m3(B)+' бар' : ''}`);
         const need=Q*AirChain.MARGIN/AirChain.kp(B>0 ? B : 7);
         const dc=ads ? 'dryer_ads' : 'dryer_refrig', d=this.best(catCache.filter(c=>attrsOf(c).cat===dc).map(c=>({ c, v:this.flow(c) })).filter(o=>o.v>=need), 'v');
-        if (d){ add.push(await this.part(d.c, 1)); got.push('осушитель '+d.c.name); } else miss.push(`${ads ? 'адсорбционный' : 'рефрижераторный'} осушитель от ${AirChain.m3(need)} м³/мин`); }
+        if (d){ add.push(await this.part(d.c, 1)); got.push(this.lbl('осушитель', d.c.name)); } else miss.push(`${ads ? 'адсорбционный' : 'рефрижераторный'} осушитель от ${AirChain.m3(need)} м³/мин`); }
       // фильтры и ресивер — по расчёту цепочки на подобранном составе
       x.kit.parts=[...add, ...keep]; let at=add.length;   // фильтры и ресивер — после подобранного, перед прочим составом
       const plan=StationLayout.solve(StationUi.input(x));
@@ -192,7 +194,7 @@ class TzPick {
           for (const [k, v] of Object.entries(lo)) if (v>0 && !(this.num(a[k])>=v*0.98)) return false;
           return !(rec.cat==='receiver' && q.pressure>0 && this.num(a.pressure)>0 && this.num(a.pressure)<q.pressure); };
         const key=Object.keys(lo)[0]||'flow', c=this.best(catCache.filter(ok).map(c=>({ c, v:this.num(attrsOf(c)[key])||0 })), 'v');
-        if (c){ x.kit.parts.splice(at++, 0, await this.part(c.c, 1)); got.push((rec.cat==='receiver' ? 'ресивер ' : 'фильтр ')+c.c.name); }
+        if (c){ x.kit.parts.splice(at++, 0, await this.part(c.c, 1)); got.push(this.lbl(rec.cat==='receiver' ? 'ресивер' : 'фильтр', c.c.name)); }
         else miss.push(rec.title.toLowerCase()); }
       return this.note(got, miss);
     }
