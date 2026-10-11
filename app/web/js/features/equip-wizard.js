@@ -23,7 +23,7 @@ function nwDraw(){
   const back=NW.cat?`<button class="btn ghost" type="button" data-nw="back">← Назад</button>`:'';
   let body;
   if (!NW.cat) body=nwStart();
-  else if (NW.cat==='station') body=`<p class="muted nw-lead">Какую станцию собираем? Комплектуем только станции в контейнере.</p>${nwStationCards()}`;
+  else if (NW.cat==='station') body=`<p class="muted nw-lead">Какую станцию собираем? Комплектуем только станции в контейнере.</p>${nwStationCards()}${nwTz()}`;
   else if (t.station) body=nwStation(t);
   else body=nwUnit(t);
   d.innerHTML=`<div class="dlg-h"><h3>${NW.where==='catalog'?'Новая позиция каталога':'Добавить оборудование'}${t?` <small class="muted">· ${esc(t.station?t.item:t.name)}</small>`:''}</h3>${back}<button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
@@ -35,11 +35,14 @@ function nwStationCards(){
   return `<div class="nw-cards">${nwStations().map(t=>`<button type="button" class="nw-card st" data-nwcat="${esc(t.id)}"><i>${ic[t.id]||'▣'}</i><b>${esc(t.item)}</b><small>${esc(t.coverTitle||t.name)}: контейнер, ${esc((t.station.mainLabel||'').toLowerCase())}, обвязка и системы — одним изделием</small></button>`).join('')}</div>`;
 }
 
+// станция по ТЗ заказчика: вид станции, требования, контейнер и оборудование — из файла ТЗ (features/tz-import.js)
+const nwTz = () => NW.where==='kp' ? `<div class="nw-tz"><button class="btn" type="button" data-nw="tz">📄 По ТЗ заказчика</button><span class="muted">PDF, Word, Excel — найдём требования, подберём контейнер и оборудование; всё проверите перед созданием</span></div>` : '';
+
 function nwStart(){
   const groups=[...new Set(TYPES.filter(t=>!t.station && (NW.where==='catalog' || t.role!=='accessory')).map(t=>t.group||'Прочее'))];
   const cnt=new Map(); catCache.forEach(x=>{ const c=attrsOf(x).cat; cnt.set(c,(cnt.get(c)||0)+1); });
   return `${NW.where==='kp'?`<div class="nw-sec"><p class="nw-h">Есть в каталоге?</p><input type="search" id="nwQ" value="${esc(NW.q)}" placeholder="Модель, производитель, мощность — Enter добавит первую" autocomplete="off"><div class="nw-res" id="nwRes">${nwFound()}</div></div>`:''}
-    ${FEAT.on('stations')?`<div class="nw-sec"><p class="nw-h">Станция в контейнере <span class="muted">— комплектуем сами</span></p>${nwStationCards()}</div>`:''}
+    ${FEAT.on('stations')?`<div class="nw-sec"><p class="nw-h">Станция в контейнере <span class="muted">— комплектуем сами</span></p>${nwStationCards()}${nwTz()}</div>`:''}
     <div class="nw-sec"><p class="nw-h">Единица оборудования <span class="muted">— ${NW.where==='kp'?'нет в каталоге: заведём карточку':'выберите категорию'}</span></p>
       ${groups.map(g=>`<div class="nw-grp"><span>${esc(g)}</span><div class="tpick">${TYPES.filter(t=>!t.station && (NW.where==='catalog' || t.role!=='accessory') && (t.group||'Прочее')===g).map(t=>`<button type="button" class="btn" data-nwcat="${esc(t.id)}">${esc(t.name)}${cnt.get(t.id)?` <small class="muted">${cnt.get(t.id)}</small>`:''}</button>`).join('')}</div></div>`).join('')}
       ${NW.where==='catalog'?'<button class="btn ghost" type="button" data-nw="newtype">+ Новая категория…</button>':'<p class="muted">Нужной категории нет? Её можно добавить в каталоге: «Каталог» → «+ Новая позиция» → «+ Новая категория…».</p>'}</div>`;
@@ -146,6 +149,7 @@ document.addEventListener('click', e=>{
   if (b.dataset.nw==='newtype'){ d.close(); d.className=''; cwNewType(id=>newEquip('catalog', id)); return; }
   if (b.dataset.nw==='unmain'){ NW.main=null; nwDraw(); return; }
   if (b.dataset.nw==='mkStation') nwMakeStation();
+  if (b.dataset.nw==='tz'){ d.close(); d.className=''; TzImport.pick(null); }
 });
 document.addEventListener('input', e=>{ if (!e.target.closest('#dlg.nw')) return; const t=e.target;
   if (t.id==='nwQ'){ NW.q=t.value; $('#nwRes').innerHTML=nwFound(); }

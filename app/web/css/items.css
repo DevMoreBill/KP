@@ -366,6 +366,8 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .kr-a{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
 .kr-ck{display:flex;flex-wrap:wrap;gap:6px}
 .kr-ck .chip.warn{border-color:var(--warn-line);background:var(--warn-bg);color:var(--warn-ink)}
+.kr-pick{display:flex;align-items:flex-start;gap:8px;margin:8px 0 0;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);font-size:12.5px;line-height:1.4}
+.kr-pick>span{flex:1 1 auto;min-width:0}
 .kr-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px 10px}
 .kit-req .chk{display:flex;align-items:flex-start;gap:8px;font-size:13px}
 .kit-req .chk input{margin-top:3px}
@@ -414,3 +416,18 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
   .kt-d{grid-column:1/-1}
   .kd-g{grid-template-columns:1fr}
 }
+
+/* ТЗ заказчика: окно разбора и вход в мастере */
+.nw-tz{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:10px}
+.nw-tz .muted{font-size:12.5px}
+dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
+.tzi .tzi-g{margin:6px 0 4px}
+.tzi-sys{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin:6px 0}
+.tzi-c{display:flex;align-items:flex-start;gap:8px;margin:6px 0;font-size:13.5px;line-height:1.35;cursor:pointer}
+.tzi-c input{width:auto;margin:2px 0 0;flex:0 0 auto}
+.tzi-sys .tzi-c{display:inline-flex;margin:0;font-size:13px}
+.tzi-f{margin:8px 0 2px}
+.tzi-f>summary{cursor:pointer;font-weight:600}
+.tzi-f ul{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:5px;max-height:240px;overflow:auto}
+.tzi-f li{font-size:13px;line-height:1.35}
+.tzi-f li small{display:block;font-size:11.5px}

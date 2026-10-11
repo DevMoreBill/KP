@@ -702,6 +702,20 @@ class ToolsController(Controller):
         except Exception as e:
             return self.text(422, 'PDF не прочитан: %s' % str(e)[:200])
 
+    @route(r'/api/tz/parse', 'POST')       # ТЗ заказчика (PDF, DOCX, XLSX, ODT, RTF, TXT): текст и требования к станции
+    def tz_parse(self):
+        from doc_text import DocText
+        from tz_parse import TzParse
+        if self.body_size() > DocText.MAX_BYTES:
+            return self.text(413, 'Файл больше 40 МБ')
+        try:
+            doc = DocText.extract(str(self.q.get('name') or '')[:200], self.body())
+        except Exception as e:
+            return self.text(422, 'ТЗ не прочитано: %s' % str(e)[:200])
+        r = TzParse.parse(doc['text'])
+        r.update(text=doc['text'][:20000], doc={'kind': doc['kind'], 'pages': doc.get('pages'), 'chars': len(doc['text'])})
+        return self.send_json(r)
+
     @route(r'/api/pagephotos', 'POST')     # фото со страницы товара на сайте поставщика — в изображения позиции
     def pagephotos(self):
         import feeds

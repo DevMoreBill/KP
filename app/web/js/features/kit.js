@@ -235,8 +235,18 @@ class StationDefaults {
     return p;
   }
   static kw(it){ const d=kitParts(it).find(p=>StationEquip.kindOf(p)==='dgu'); return d ? StationEquip.num((d.attrs||{}).kw) : null; }
-  /** объём бака, л: на 16 ч работы при нагрузке 75 % (с баком ДГУ — около суток), ближайший типовой */
-  static tank(kw){ if (!(kw>0)) return 1000; const need=kw*0.75*this.LPH*16; return this.TANKS.find(v=>v>=need) || this.TANKS[this.TANKS.length-1]; }
+  /** объём бака, л: на hours ч работы при нагрузке 75 % (по умолчанию 16 ч, с баком ДГУ — около суток), ближайший типовой;
+   *  больше типовых — с округлением до 500 л */
+  static tank(kw, hours=16){ if (!(kw>0)) return 1000; const need=kw*0.75*this.LPH*hours; return this.TANKS.find(v=>v>=need) || Math.ceil(need/500)*500; }
+  /** бак станции — под время работы из требований (ТЗ): объём и строка «время работы» */
+  static retank(it, hours){
+    const p=kitParts(it).find(z=>this.FUEL.test(String(z.name||''))), d=kitParts(it).filter(z=>StationEquip.kindOf(z)==='dgu' && z.role==='main');
+    const res=Math.max(0, Math.round(StationReq.num(StationReq.of(it).reserve)||0)), kw=d.reduce((s, z)=>s+(StationEquip.num((z.attrs||{}).kw)||0)*Math.max(0, (+z.qty||1)-res), 0);
+    if (!p || !(kw>0) || !(hours>0)) return null;
+    const v=this.tank(kw, hours); p.rows=(p.rows||[]).filter(r=>!/^объ[её]м|^время работы/i.test(String(r.k||'')));
+    p.rows.push({ k:'Объём', v:v+' л' }, { k:'Время работы ДГУ от бака при нагрузке 75 %', v:'около '+Math.round(v/(kw*0.75*this.LPH))+' ч' });
+    return v;
+  }
 }
 
 // позиция для документа: состав — блоками описания (с фото) и таблицами характеристик элементов
