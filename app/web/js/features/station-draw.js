@@ -122,7 +122,10 @@ class StationDrawing {
     const wall=P(i=>i.mount==='wall'), frame=P(i=>i.mount==='frame'), hang=P(i=>i.mount==='pipe');
     const zw=p.items.filter(i=>i.mount==='wall').map(i=>i.z), z0=zw.length ? Math.min(...zw) : 0, two=this.sdB.length && this.sdF.length;
     const sys=(p.extra||[]).filter(e=>e.kind==='skip' && !e.nodims).map(e=>String(e.name||'').trim().replace(/^./, c=>c.toLowerCase())).filter(Boolean);
-    const chain=p.air && p.air.chain.length>1 ? p.air.chain.map(c=>c.pos).filter((v, i, A)=>!i || A[i-1]!==v) : [];
+    // цепочка по ходу воздуха: компрессоры — в коллектор, одинаковые осушители и фильтры подряд — параллельно (AirChain.groups)
+    const U=p.air && p.air.chain.length>1 ? p.air.units||[] : [], qn=G=>G.reduce((s, u)=>s+(u.qty||1), 0), C=U.filter(u=>u.kind==='compressor');
+    const step=(G, par)=>{ const k=qn(G), ps=[...new Set(G.map(u=>u.pos))].join(', '); return k>1 ? `${ps} (${k} шт. ${par ? 'параллельно' : 'последовательно'})` : ps; };
+    const chain=U.length ? [...(C.length ? [step(C, true)] : []), ...AirChain.groups(U.filter(u=>u.kind!=='compressor')).map(G=>step(G, G[0].kind!=='receiver'))] : [];
     return [
       'Размеры, привязки и трассы уточняются рабочим проектом.',
       p.door==='service' ? `Прохода внутри нет — обслуживание снаружи через сервисные двери${two ? ' в обеих стенах' : ''}; у дверей — свободная зона не менее 1,5 м.`
@@ -445,7 +448,7 @@ class StationDrawing {
   pipesMain(sh){
     const X=v=>this.X(v), Z=v=>this.Z(v), { ox, zf }=this;
     for (const l of this.lines){ const z=Z(zf+l.z);
-      for (const br of l.branches) if (br.z1<l.z) sh.line(X(ox+br.x), z, X(ox+br.x), Z(zf+br.z1), 'main');
+      for (const br of l.branches) if (br.z1<l.z || br.tee) sh.line(X(ox+br.x), z, X(ox+br.x), Z(zf+br.z1), br.tee ? 'pipe' : 'main');
       for (const [a, c] of StationLayout.runs(l)){ sh.line(X(ox+a), z, X(ox+c), z, 'pipe');
         if (l.medium==='air' && !l.header && (c-a)*this.k>9) PneuSymbol.flow(sh, X(ox+(a+c)/2), z, 1); } }
   }
@@ -586,7 +589,7 @@ class StationDrawing {
     for (const it of items) EquipIcon.plan(sh, it, X(ox+it.x), YP(oy+it.y+it.ly), X(ox+it.x+it.lx), YP(oy+it.y));
     // трубопровод
     for (const l of this.lines){ const y=YP(oy+l.y);
-      for (const br of l.branches) sh.line(X(ox+br.x), YP(oy+br.y0), X(ox+br.x), YP(oy+br.y1), 'main');
+      for (const br of l.branches) sh.line(X(ox+br.x), YP(oy+br.y0), X(ox+br.x), YP(oy+br.y1), br.tee ? 'pipe' : 'main');
       for (const [a, c] of StationLayout.runs(l)){ sh.line(X(ox+a), y, X(ox+c), y, 'pipe'); if (l.medium==='air' && !l.header && (c-a)*k>9) PneuSymbol.flow(sh, X(ox+(a+c)/2), y, 1); } }
     if (this.ext.length) this.outPlan(sh, YP);
     else for (const o of this.outs){ const y=YP(oy+o.y); sh.line(xR, y, xR+5, y, 'pipe'); sh.arrow(xR+7.6, y, 1, 0); }
@@ -754,7 +757,8 @@ class StationView3D {
         const c=PipeMaterial.idColor(l.medium, pp.color);   // опознавательная окраска (ГОСТ 14202-69)
         for (const [a, b] of StationLayout.runs(l)) out.push(tube([ox+a, y, z], [ox+b, y, z], c, w));
         for (const b of l.branches){ const t=tube([ox+b.x, oy+b.y0, z], [ox+b.x, oy+b.y1, z], c, w*0.8), to=items.find(i=>i.id+'#'+i.unit===b.to);
-          if (b.z1<l.z) over.set(b.to, (over.get(b.to)||'')+t+tube([ox+b.x, oy+b.y1, z], [ox+b.x, oy+b.y1, base+(to ? Math.min(b.z1, this.top(to)) : b.z1)], c, w*0.8));
+          if (b.tee) out.push(tube([ox+b.x, oy+b.y0, z], [ox+b.x, oy+b.y1, z], c, w)+tube([ox+b.x, oy+b.y1, z], [ox+b.x, oy+b.y1, base+b.z1], c, w));   // подъём к коллектору входов
+          else if (b.z1<l.z) over.set(b.to, (over.get(b.to)||'')+t+tube([ox+b.x, oy+b.y1, z], [ox+b.x, oy+b.y1, base+(to ? Math.min(b.z1, this.top(to)) : b.z1)], c, w*0.8));
           else out.push(t); } } }
     // оборудование: тени, затем по глубине (дальнее — раньше)
     for (const it of items.filter(i=>i.mount==='floor' || i.mount==='frame')) out.push(V.face([[it.X0+60, it.Y0+40, base+1], [it.X1+160, it.Y0+40, base+1], [it.X1+160, it.Y1+120, base+1], [it.X0+60, it.Y1+120, base+1]], '#000000', 0, ' opacity="0.16" filter="url(#blur6)"'));

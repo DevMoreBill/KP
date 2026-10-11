@@ -494,6 +494,21 @@ class AirChain {
   static unit(air, k){ return air && air.grades ? Object.assign({}, air, { grade:air.grades[k], stage:air.stages[k] }) : air; }
   /** по единицам: строка состава с разными ступенями — отдельными записями (qty 1) */
   static expand(A){ return A.flatMap(e=>e.air && e.air.grades ? e.air.grades.map((g, k)=>Object.assign({}, e, { qty:1, air:this.unit(e.air, k) })) : [e]); }
+  /** одинаковые аппараты подряд по ходу воздуха — параллельно: осушители (генераторы) и фильтры одного вида и ступени —
+   *  одной группой, производительность складывается; ресиверы — последовательно. list — по ходу воздуха: [[…], …] */
+  static groups(list){
+    const out=[];
+    for (const e of list){ const g=out[out.length-1], a=g && g[0];
+      if (a && (e.kind==='dryer' || e.kind==='filter') && a.kind===e.kind && e.air && a.air && a.air.stage===e.air.stage) g.push(e); else out.push([e]); }
+    return out;
+  }
+  /** указание о параллельных группах для схемы и ТЗ (units — plan.air.units, по ходу воздуха) или '' */
+  static parText(units){
+    const qn=G=>G.reduce((s, u)=>s+(u.qty||1), 0), P=this.groups((units||[]).filter(u=>u.kind!=='compressor')).filter(G=>G[0].kind!=='receiver' && qn(G)>1);
+    if (!P.length) return '';
+    const what=G=>`${G[0].kind==='filter' ? 'фильтры' : (G[0].air||{}).type==='gen' ? 'генераторы' : 'осушители'} поз. ${[...new Set(G.map(u=>u.pos))].join(', ')} (${qn(G)} шт.)`;
+    return `Одинаковые ${P.map(what).join('; ')} включены параллельно: производительность складывается; на входе и выходе каждого — кран, аппарат отключают на обслуживание, не останавливая остальные.`;
+  }
   /** поправка осушителя на давление */
   static kp(bar){
     const T=this.KP; if (!(bar>0)) return 1; if (bar<=T[0][0]) return T[0][1]; if (bar>=T[T.length-1][0]) return T[T.length-1][1];
@@ -551,9 +566,11 @@ class AirChain {
           rec('dryer-'+type, { title:(type==='ads' ? 'Адсорбционный' : 'Рефрижераторный')+` осушитель не менее ${m3(q*this.MARGIN/kp)} м³/мин`, why:'производительность — с запасом на лето и давление', cat:type==='ads' ? 'dryer_ads' : 'dryer_refrig', name:(type==='ads' ? 'Адсорбционный' : 'Рефрижераторный')+' осушитель', f:{}, r:{ flow:[m3(q*this.MARGIN/kp), ''] },
             attrs:{ cat:type==='ads' ? 'dryer_ads' : 'dryer_refrig' }, rows:[need(q*this.MARGIN/kp, 'м³/мин')] }); }
         else if (cap<q*this.MARGIN) iss.push({ level:'info', air:true, text:`Осушитель (${ids}) почти без запаса: ${m3(cap)} м³/мин при ${m3(bar)} бар на ${m3(q)} м³/мин компрессоров. Летом при +40 °C на входе производительность осушителя падает примерно на 20 % — рекомендуется запас ${Math.round((this.MARGIN-1)*100)} % и больше.` }); }
+      // фильтры одной ступени — параллельно (groups): пропускная способность складывается
       const kf=this.kf(bar);
-      for (const e of F.filter(x=>x.air.flow>0 && x.air.grade!=='cond' && x.air.grade!=='sep')) if (e.air.flow*kf<q*0.98)
-        iss.push({ level:'warn', air:true, text:`Фильтр ${nm(e)} «${e.short}»: ${m3(e.air.flow*kf)} м³/мин при ${m3(bar)} бар — меньше производительности компрессоров ${m3(q)} м³/мин: перепад давления растёт, фильтр не держит класс очистки. Нужен не менее ${m3(q/kf)} м³/мин.` });
+      for (const G of this.groups([...F].sort((a, b)=>a.air.stage-b.air.stage)).filter(L=>L[0].air.grade!=='cond' && L[0].air.grade!=='sep' && L.every(e=>e.air.flow>0))){
+        const cap=G.reduce((s, e)=>s+e.air.flow*e.qty, 0)*kf, e=G[0], n=G.reduce((s, x)=>s+x.qty, 0);
+        if (cap<q*0.98) iss.push({ level:'warn', air:true, text:`${n>1 ? `Фильтры ${[...new Set(G.map(nm))].join(', ')} (${n} шт. параллельно)` : `Фильтр ${nm(e)}`} «${e.short}»: ${m3(cap)} м³/мин при ${m3(bar)} бар — меньше производительности компрессоров ${m3(q)} м³/мин: перепад давления растёт, фильтр не держит класс очистки. Нужно не менее ${m3(q/kf)} м³/мин.` }); }
       // ресивер: по самому производительному компрессору «нагрузка — холостой ход» (частотный — меньше)
       const big=known.reduce((m, e)=>e.air.flow>m.air.flow ? e : m, known[0]), vr=big ? this.RECV_SIZES.find(v=>v>=big.air.flow*(big.air.vsd ? this.RECV_VSD : this.RECV)) || this.RECV_SIZES[this.RECV_SIZES.length-1] : 0;
       const vol=R.reduce((s, e)=>s+(e.air.vol||0)*e.qty, 0), onRecv=C.some(e=>e.air.recv), sp=vr ? this.split(vr, bar) : null;
@@ -1170,10 +1187,29 @@ class StationLayout {
     for (const e of cabs){ const it=this.wallSpot(e, r, geo); if (it) r.items.push(it); else left.push(e); }
     // фильтры на трубе — у осушителя: перед ним — справа налево от его входа, после — слева направо от выхода (по ходу воздуха)
     const groups=new Map(); for (const e of hang){ const g=this.segOf(r, e); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(e); }
-    for (const [g, E] of groups){ const back=!!g && g.s1>=40 && g.s1<50;
-      E.sort((a, b)=>back ? st(b)-st(a) : st(a)-st(b));
-      for (const e of E){ const it=this.pipeSpot(e, r, geo, g, back); if (it) r.items.push(it); else left.push(e); } }
+    // одинаковые (одна ступень) — параллельно: первый — на магистрали, следующие — на обводных петлях рядом с ним (loop)
+    for (const [g, E] of groups){ const back=!!g && g.s1>=40 && g.s1<50, base=new Map(), cnt=new Map();
+      E.sort((a, b)=>back ? st(b)-st(a) : st(a)-st(b)); for (const e of E) cnt.set(st(e), (cnt.get(st(e))||0)+1);
+      for (const e of E){ const b=base.get(st(e)), it=(b && this.loop(e, b, r, geo)) || this.pipeSpot(e, r, geo, g, back, !b && cnt.get(st(e))>1);
+        if (!it){ left.push(e); continue; }
+        r.items.push(it); if (!b) base.set(st(e), { it, n:0 }); } }
     return left;
+  }
+  /** фильтр e параллельно фильтру b.it на магистрали: на своей обводной петле рядом (нет места — над или под магистралью):
+   *  петля — линия вдоль фильтра с двумя перемычками к магистрали по краям (tee; место под них оставлено — pipeSpot wide),
+   *  фильтр на ней — напротив первого. Места нет — null (тогда — на магистрали подряд) */
+  loop(e, b, r, geo){
+    const [, W, H]=geo.int, f=b.it, ln=(r.lines||[])[f.on]; if (!ln || ln.loop) return null;
+    const d=f.lx, xa=f.x-100, xb=f.x+d+100, s=b.n+1, dy=s*(d+100), dz=s*(e.h-Math.max(60, e.h*0.12)+90);   // над магистралью — низ корпуса в 90 мм над её осью
+    const stub=(y, z)=>({ x:xa-30, y:Math.min(y, ln.y)-30, z:Math.min(z, ln.z)-30, lx:xb-xa+60, ly:Math.abs(y-ln.y)+60, h:Math.abs(z-ln.z)+60 });
+    for (const [y, z] of [[ln.y-dy, ln.z], [ln.y+dy, ln.z], [ln.y, ln.z+dz], [ln.y, ln.z-dz]]){
+      if (y<40 || y>W-40 || z>H-120) continue;   // у стены — как на магистрали: корпус сдвинут в помещение, труба — в его габарите
+      const it=this.unitItem(e, { x:f.x, y:Math.round(Math.max(20, Math.min(W-d-20, y-d/2))), z:Math.round(z+Math.max(60, e.h*0.12)-e.h), mount:'pipe', lx:d, ly:d, line:ln.medium, on:-1 });
+      if (it.z<150 || it.z+e.h>H-50) continue;
+      if (r.items.some(i=>this.hit(it, i, 0) || (i!==f && i.mount!=='pipe' && this.hit(stub(y, z), i, 0)))) continue;
+      r.lines.push({ x0:xa, x1:xb, y:Math.round(y), z:Math.round(z), label:'', medium:ln.medium, branches:[xa, xb].map(x=>({ x, y0:Math.round(y), y1:ln.y, z1:ln.z, tee:true })), gaps:[], par:[f.pos, e.pos], loop:true });
+      b.n=s; return it; }
+    return null;
   }
 
   /** трубопровод (геометрия): магистрали за оборудованием — у задней стены или между рядами, спиной друг к другу, с
@@ -1207,39 +1243,48 @@ class StationLayout {
     return out;
   }
   /** байпас осушителя: обводная линия с краном (нормально закрыт) между входом и выходом — осушитель обслуживают и меняют
-   *  без остановки подачи воздуха; на входе и выходе осушителя — свои краны: [{x0, x1, pos}] */
-  bypass(ser, P){ return ser.map((i, k)=>i.kind==='dryer' && i.air && i.air.type!=='gen' ? { x0:P[k][0].x, x1:P[k][1].x, pos:i.pos } : null).filter(b=>b && b.x1-b.x0>=150); }
-  /** сжатый воздух — последовательно по ходу воздуха: компрессоры → коллектор → аппараты (ресивер, фильтр на полу, осушитель:
-   *  у каждого один вход и один выход — магистраль на нём прерывается, gaps) → выход через дальний торец. Компрессоры не все
-   *  до первого аппарата (два ряда) — коллектор отдельной трубой выше магистрали. segs — участки между аппаратами: на них
-   *  висят фильтры по своей ступени (s0 < ступень < s1) */
+   *  без остановки подачи воздуха; на входе и выходе осушителя — свои краны: {x0, x1, pos} или null */
+  bypass(i, p){ return i.kind==='dryer' && i.air && i.air.type!=='gen' && p[1].x-p[0].x>=150 ? { x0:p[0].x, x1:p[1].x, pos:i.pos } : null; }
+  /** сжатый воздух — по ходу воздуха: компрессоры → коллектор → аппараты (ресивер, фильтр на полу, осушитель: у каждого один
+   *  вход и один выход — магистраль на нём прерывается, gaps) → выход через дальний торец. Компрессоры не все до первого
+   *  аппарата (два ряда) — коллектор отдельной трубой выше магистрали. Одинаковые аппараты подряд (AirChain.groups) —
+   *  параллельно: выходы — в магистраль, входы — от своего коллектора на другой высоте (подъём от магистрали — tee), у
+   *  каждого краны на входе и выходе, без байпаса. segs — участки между аппаратами: на них висят фильтры по своей ступени
+   *  (s0 < ступень < s1) */
   airLines(fl, place, L, H, off, z0){
     const src=fl.filter(i=>i.kind==='compressor'), ser=fl.filter(i=>StationLayout.series(i)).sort((a, b)=>a.air.stage-b.air.stage || a.x-b.x), conn=[...src, ...ser];
     if (!conn.length) return { lines:[], segs:[] };
     const g=place(conn, off, 0.5, z0, 'air', Math.min(...conn.map(i=>i.x)), L), y=g.y, z=g.z;
-    const out=(i, yy, zz)=>Object.assign(this.branch(i, yy, zz) || { x:Math.round(i.x+i.lx/2), y0:yy, y1:yy, z1:zz, to:StationLayout.key(i) }, { role:'out' });
-    const P=ser.map(i=>this.ports(i, y, z)), sb=src.map(i=>out(i, y, z)), firstIn=P.length ? P[0][0].x : L, lines=[], segs=[], stOf=k=>ser[k].air.stage;
-    if (sb.every(b=>b.x<firstIn-60)){   // компрессоры — до первого аппарата: одна магистраль
-      const ln={ x0:Math.min(...sb.map(b=>b.x), firstIn), x1:L, y, z, label:'выход', medium:'air', branches:[...sb, ...P.flat()], gaps:P.map(([a, b])=>[a.x, b.x]), bypass:this.bypass(ser, P) };
-      lines.push(ln);
-      let a=sb.length ? Math.max(...sb.map(b=>b.x)) : ln.x0, s0=10;
-      ser.forEach((it, k)=>{ segs.push({ a, b:P[k][0].x, s0, s1:stOf(k), line:ln }); a=P[k][1].x; s0=stOf(k); });
-      segs.push({ a, b:L, s0, s1:Infinity, line:ln });
-      return { lines, segs };
-    }
-    // коллектор компрессоров — выше (или ниже) магистрали и чуть в стороне на плане: к входу первого аппарата
     const zh=z+220<=H-120 ? z+220 : z-220, yh=Math.max(g.lo+40, Math.min(g.hi-40, y-110));
-    const hb=src.map(i=>out(i, yh, zh)), hin=this.ports(ser[0], yh, zh)[0], hx=[...hb.map(b=>b.x), hin.x];
-    const head={ x0:Math.min(...hx), x1:Math.max(...hx), y:yh, z:zh, label:'', medium:'air', branches:[...hb, hin], gaps:[], header:true, to:hin.x };
-    const tr={ x0:P[0][1].x, x1:L, y, z, label:'выход', medium:'air', branches:[P[0][1], ...P.slice(1).flat()], gaps:P.slice(1).map(([a, b])=>[a.x, b.x]), bypass:this.bypass(ser.slice(1), P.slice(1)) };
-    lines.push(head, tr);
-    // до первого аппарата фильтр — на участке коллектора, по которому идёт весь воздух (компрессоры с одной стороны)
-    const lw=hb.filter(b=>b.x<hin.x).map(b=>b.x), rw=hb.filter(b=>b.x>hin.x).map(b=>b.x);
-    const a0=lw.length ? Math.max(...lw) : null, b0=rw.length ? Math.min(...rw) : null;
-    segs.push(a0!=null && (b0==null || hin.x-a0>=b0-hin.x) ? { a:a0, b:hin.x, s0:10, s1:stOf(0), line:head } : { a:hin.x, b:b0, s0:10, s1:stOf(0), line:head });
-    let a=P[0][1].x, s0=stOf(0);
-    ser.slice(1).forEach((it, k)=>{ segs.push({ a, b:P[k+1][0].x, s0, s1:stOf(k+1), line:tr }); a=P[k+1][1].x; s0=stOf(k+1); });
+    const out=(i, yy, zz)=>Object.assign(this.branch(i, yy, zz) || { x:Math.round(i.x+i.lx/2), y0:yy, y1:yy, z1:zz, to:StationLayout.key(i) }, { role:'out' });
+    const steps=AirChain.groups(ser).map(G=>({ G, st:G[0].air.stage, P:G.map(i=>this.ports(i, y, z)) }));
+    const sb=src.map(i=>out(i, y, z)), firstIn=steps.length ? steps[0].P[0][0].x : L, lines=[], segs=[], heads=[];
+    const tr={ x0:0, x1:L, y, z, label:'выход', medium:'air', branches:[], gaps:[], bypass:[] };
+    let head=null, a, s0=10, k0=0;
+    if (sb.every(b=>b.x<firstIn-60)){ tr.x0=Math.min(...sb.map(b=>b.x), firstIn); tr.branches.push(...sb); a=sb.length ? Math.max(...sb.map(b=>b.x)) : tr.x0; }   // компрессоры — до первого аппарата: одна магистраль
+    else {   // коллектор компрессоров — выше (или ниже) магистрали и чуть в стороне на плане: к входу первого аппарата (группы)
+      const s=steps[0], hb=src.map(i=>out(i, yh, zh)), hin=s.G.map(i=>this.ports(i, yh, zh)[0]), hx=[...hb.map(b=>b.x), ...hin.map(b=>b.x)], x=hin[0].x;
+      head={ x0:Math.min(...hx), x1:Math.max(...hx), y:yh, z:zh, label:'', medium:'air', branches:[...hb, ...hin], gaps:[], header:true, to:Math.round((x+hin[hin.length-1].x)/2) };
+      if (hin.length>1) head.par=s.G.map(i=>i.pos);
+      // до первого аппарата фильтр — на участке коллектора, по которому идёт весь воздух (компрессоры с одной стороны)
+      const lw=hb.filter(b=>b.x<x).map(b=>b.x), rw=hb.filter(b=>b.x>x).map(b=>b.x), a0=lw.length ? Math.max(...lw) : null, b0=rw.length ? Math.min(...rw) : null;
+      segs.push(a0!=null && (b0==null || x-a0>=b0-x) ? { a:a0, b:x, s0:10, s1:s.st, line:head } : { a:x, b:b0, s0:10, s1:s.st, line:head });
+      const po=s.P.map(p=>p[1]); tr.x0=Math.min(...po.map(b=>b.x)); tr.branches.push(...po); a=Math.max(...po.map(b=>b.x)); s0=s.st; k0=1; }
+    for (const s of steps.slice(k0)){
+      const fi=s.P[0][0].x;
+      if (s.G.length===1){ const [pi, po]=s.P[0], bp=this.bypass(s.G[0], s.P[0]);
+        segs.push({ a, b:pi.x, s0, s1:s.st, line:tr }); tr.branches.push(pi, po); tr.gaps.push([pi.x, po.x]); if (bp) tr.bypass.push(bp); a=po.x; }
+      else {   // параллельно: магистраль прервана от подъёма (xs) до первого выхода; коллектор входов — на другой высоте
+        const xs=Math.round(Math.min(fi-40, Math.max((a+fi)/2, fi-150))), po=s.P.map(p=>p[1]);
+        let yg=yh, zg=zh;
+        if (head && head.x1>xs-100){ const zm=2*z-zh; if (zm>=300 && zm<=H-120) zg=zm; else yg=Math.max(g.lo+40, yh-110); }   // мимо коллектора компрессоров
+        const pin=s.G.map(i=>this.ports(i, yg, zg)[0]);
+        segs.push({ a, b:xs, s0, s1:s.st, line:tr }); tr.branches.push(...po); tr.gaps.push([xs, po[0].x]);
+        heads.push({ x0:xs, x1:Math.max(...pin.map(b=>b.x)), y:yg, z:zg, label:'', medium:'air', branches:[{ x:xs, y0:yg, y1:y, z1:z, tee:true }, ...pin], gaps:[], par:s.G.map(i=>i.pos) });
+        a=Math.max(...po.map(b=>b.x)); }
+      s0=s.st; }
     segs.push({ a, b:L, s0, s1:Infinity, line:tr });
+    lines.push(...(head ? [head] : []), tr, ...heads);
     return { lines, segs };
   }
   /** вход и выход аппарата на магистрали (по ходу воздуха — слева направо): патрубки сверху у задней стороны (магистраль
@@ -1313,11 +1358,16 @@ class StationLayout {
     const [L, W, H]=geo.int, x0=geo.x0||0, w=e.l, d=e.w, z=Math.max(StationLayout.CAB_LOW, Math.min(StationLayout.CAB_TOP, H-150)-e.h);
     if (z+e.h>H-50) return null;
     const fl=r.items.filter(i=>i.mount!=='wall' && i.mount!=='pipe'), cabs=r.items.filter(i=>i.mount==='wall');
+    // на стене прохода — не на пути к воротам в торце: то, что выносят через них, проходит мимо шкафа
+    const G=r.gates && r.gates.pos.length ? r.gates : null, P=StationLayout.PASS, out=G ? this.bulky(r, geo).filter(b=>G.pos.includes(b.it.pos)) : [];
+    const clear=x=>{ if (!out.length) return true;
+      const u=fl.filter(i=>i.x<x+w && i.x+i.lx>x), room=(u.length ? Math.min(...u.map(i=>i.y)) : W)-d;
+      return out.every(b=>(G.wall==='right' ? b.it.x>=x+w : b.it.x+b.it.lx<=x) || b.narrow+2*P<=room); };
     const front=need=>{
       const busy=cabs.filter(i=>i.wall==='front').map(i=>[i.x-100, i.x+i.lx+100]);
       if (r.door==='side') busy.push([x0+StationLayout.ENTRY[0]-150, x0+StationLayout.ENTRY[1]+150]);
       for (const dd of (r.doors||[]).filter(dd=>dd.wall==='front')) busy.push([dd.x0-150, dd.x1+150]);   // не на сервисной двери
-      const ok=x=>!busy.some(([a, b])=>x<b && x+w>a) && fl.every(i=>i.x>=x+w || i.x+i.lx<=x || i.y-d>=need) && !r.items.some(i=>this.hit({ x, y:0, z, lx:w, ly:d, h:e.h }, i, 0));
+      const ok=x=>!busy.some(([a, b])=>x<b && x+w>a) && fl.every(i=>i.x>=x+w || i.x+i.lx<=x || i.y-d>=need) && clear(x) && !r.items.some(i=>this.hit({ x, y:0, z, lx:w, ly:d, h:e.h }, i, 0));
       for (let x=x0+150; x+w<=L-150; x+=50) if (ok(x)) return this.unitItem(e, { x, y:0, z, mount:'wall', wall:'front', face:1 });
       return null; };
     // торец: шкаф вдоль торцевой стены в зоне прохода — перед ним (вдоль контейнера) проход «не менее» свободен
@@ -1337,13 +1387,14 @@ class StationLayout {
   }
 
   /** фильтр на трубопроводе — на своём участке по ходу воздуха (до осушителя или после — по ступени), по порядку ступеней;
-   *  где под ним нет оборудования, сначала — где к нему подойти из прохода (колба и элемент снимаются вниз) */
-  pipeSpot(e, r, geo, g, back){
+   *  где под ним нет оборудования, сначала — где к нему подойти из прохода (колба и элемент снимаются вниз); wide — первый
+   *  из одинаковых: по краям — место под перемычки обводных петель (loop) */
+  pipeSpot(e, r, geo, g, back, wide){
     const ln=g && g.line; if (!ln || ln.z+Math.max(60, e.h*0.12)-e.h<150) return null;
-    const d=Math.max(e.l, e.w), pad=StationLayout.PIPE_PAD, it=this.unitItem(e, { x:0, y:0, z:0, mount:'pipe', lx:d, ly:d }); this.hangOn(it, ln, geo.int[1]);
-    const lo=Math.ceil(Math.max(g.a+80, g.next ?? -Infinity, ln.x0-d/2)/10)*10, hi=Math.floor((Math.min(g.b-80, g.lim ?? Infinity, ln.x1+d/2, geo.int[0]-100)-d)/10)*10;
+    const d=Math.max(e.l, e.w), ex=wide ? 100 : 0, pad=StationLayout.PIPE_PAD+ex, it=this.unitItem(e, { x:0, y:0, z:0, mount:'pipe', lx:d, ly:d, on:(r.lines||[]).indexOf(ln) }); this.hangOn(it, ln, geo.int[1]);
+    const lo=Math.ceil(Math.max(g.a+80+ex, (g.next ?? -Infinity)+ex, ln.x0-d/2)/10)*10, hi=Math.floor((Math.min(g.b-80-ex, (g.lim ?? Infinity)-ex, ln.x1+d/2, geo.int[0]-100)-d)/10)*10;
     const open=x=>r.service || r.rows!==1 || !r.items.some(i=>i.mount==='floor' && i.x<x+d && i.x+i.lx>x && i.y<it.y);
-    const free=(x, o)=>!ln.branches.some(b=>b.x>x-80 && b.x<x+d+80) && !r.items.some(i=>this.hit({ x, y:it.y, z:it.z, lx:d, ly:d, h:it.h }, i, pad)) && (!o || open(x));
+    const free=(x, o)=>!ln.branches.some(b=>b.x>x-80-ex && b.x<x+d+80+ex) && !r.items.some(i=>this.hit({ x, y:it.y, z:it.z, lx:d, ly:d, h:it.h }, i, pad)) && (!o || open(x));
     for (const o of [true, false]){
       if (back){ for (let x=hi; x>=lo; x-=20) if (free(x, o)){ it.x=x; g.lim=x-pad; return it; } }
       else for (let x=lo; x<=hi; x+=20) if (free(x, o)){ it.x=x; g.next=x+d+pad; return it; } }
@@ -1444,7 +1495,8 @@ class StationLayout {
       if (wall==='front' && ex && d0<ex[1]+100 && d0+w>ex[0]-100) d0=Math.min(L-D.pad-w, ex[1]+100);   // мимо двери оператора
       out.push({ wall, x0:Math.round(d0), x1:Math.round(d0+w), h:Math.min(H-100, Math.max(D.h, it.h+100)), kind:'service', pos:[it.pos], why:[why] }); }
     const got=[]; for (const d of out.sort((p, q)=>p.wall.localeCompare(q.wall) || p.x0-q.x0)){ const last=got[got.length-1];
-      if (last && last.wall===d.wall && d.x0<last.x1+300){ last.x1=Math.max(last.x1, d.x1); last.h=Math.max(last.h, d.h); for (const v of d.pos) if (!last.pos.includes(v)) last.pos.push(v); last.why.push(...d.why); }
+      if (last && last.wall===d.wall && d.x0<last.x1+300){ last.x1=Math.max(last.x1, d.x1); last.h=Math.max(last.h, d.h);
+        for (const v of d.pos) if (!last.pos.includes(v)) last.pos.push(v); for (const t of d.why) if (!last.why.includes(t)) last.why.push(t); }
       else got.push(d); }
     for (const d of got){ d.x1=Math.min(L-D.pad, d.x1); d.w=d.x1-d.x0; d.leaves=Math.max(1, Math.ceil(d.w/D.leaf)); }
     return got;
@@ -1575,7 +1627,13 @@ class StationLayout {
           } }
         cand.sort((p, q)=>p.a-q.a || p.Lx-q.Lx);
         const seen=new Set();
-        for (const c of cand){ if (seen.has(c.Lx+'×'+c.Wx)) continue; seen.add(c.Lx+'×'+c.Wx);
+        const done=(r, g2, Wx)=>{ r.geo=g2; r.picked=true;
+          if (wide) r.issues.push({ level:'info', text:`Ширина ${n(Wx)} мм — при перевозке негабарит (без разрешения — до ${n(G.ROAD_W)} мм).` });
+          return r; };
+        // шкафы заняли торцы, и демонтаж — через сервисные ворота в боковой стене (дорого): сначала — длиннее или шире (площадь —
+        // до 1,2 от первого варианта), чтобы шкафы встали на стену прохода, а ворота — в торец; не вышло — первый вариант
+        let alt=null;
+        for (const c of cand){ if (alt && c.a>alt.a*1.2) break; if (seen.has(c.Lx+'×'+c.Wx)) continue; seen.add(c.Lx+'×'+c.Wx);
           for (let Lx=c.Lx; Lx<=Math.min(StationLayout.MAX_L, c.Lx+1500); Lx+=G.STEP){   // шкафам и фильтрам может понадобиться место в ряду
             const g2=Object.assign({}, geo, { auto:false, ext:[Lx, c.Wx, Hx] }); g2.int=G.inner(geo.type, g2.ext, t);
             const r=this.fit(units, g2); if (r.level==='error') continue;
@@ -1583,10 +1641,10 @@ class StationLayout {
             const w=r.issues.filter(i=>i.level==='warn').map(i=>i.text);
             if (lw===0 && w.some(x=>/^Проход|стоит в/.test(x))) break;              // рекомендуемый проход не вышел — другая ширина
             if (ll===0 && w.some(x=>/^Промежутки|^Отступы/.test(x))) continue;      // промежутки — длиннее (место шкафу или фильтру в ряду)
-            r.geo=g2; r.picked=true;
-            if (wide) r.issues.push({ level:'info', text:`Ширина ${n(c.Wx)} мм — при перевозке негабарит (без разрешения — до ${n(G.ROAD_W)} мм).` });
-            return r;
+            if ((r.doors||[]).some(d=>(d.why||[]).some(x=>/торцы заняты шкафами/.test(x)))){ alt=alt || { r, g2, Wx:c.Wx, a:c.a }; continue; }
+            return done(r, g2, c.Wx);
           } }
+        if (alt) return done(alt.r, alt.g2, alt.Wx);
       }
     } finally { this.mode='aisle'; this.allowDoors=true; }
     const Wi=G.inner(geo.type, [10000, B.maxW, B.maxH], t)[1]; this.mode='aisle';
