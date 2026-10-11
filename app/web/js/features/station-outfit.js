@@ -75,12 +75,6 @@ class StOutfit {
   sign(d, w, u, z, sw, sh, o=0, e=0){ this.s.sticker(d, this.at(w, u, z, o), StOutfit.N[w], sw/1000, sh/1000, e); }
   /** стена видна: снаружи внутреннего не видно, стена со стороны зрителя в разрезе срезана */
   shown(w){ return this.inside && !(w==='front' && this.s.cut); }
-  /** первое свободное место на стенах ws (по порядку), место занимается: [стена, середина] или null */
-  spot(ws, wd, z0, z1, from='lo'){
-    for (const w of ws){ if (!this.shown(w)) continue; const u=this.walls.find(w, wd, z0, z1, from);
-      if (u!=null){ this.walls.busy(w, u, u+wd, z0, z1); return [w, u+wd/2]; } }
-    return null;
-  }
   /** наружная поверхность стены со стороны зрителя (y) и торца у двери (x): гофр и профлист выступают */
   frontY(){ const S=this.s; return S.g.sea ? -0.008 : S.g.type==='welded' ? 0.003 : 0.018; }
   leftX(){ const S=this.s; return S.g.sea ? -0.034 : this.p.door==='end' ? -0.023 : S.g.type==='welded' ? 0.003 : 0.018; }
