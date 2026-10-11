@@ -70,6 +70,7 @@ class SecurityTest(unittest.TestCase):
         self.assertIn(self.req('GET', '/api/cbr')[0], (401, 403))
         for method, p, body in [('POST', '/api/kp/new', {}), ('PUT', '/api/kp/zz1/state', {'a': 1}), ('POST', '/api/img', b'\x89PNG\r\n\x1a\n0000'),
                                 ('POST', '/api/pagetext', {'url': 'http://example.com'}), ('POST', '/api/ai/fill', {'prompt': 'x'}),
+                                ('POST', '/api/tz/parse?name=tz.txt', b'\xd0\xa2\xd0\x97 ' * 20),
                                 ('PUT', '/api/clients/x1', {'name': 'x'}), ('PUT', '/api/me/prefs', {})]:
             with self.subTest(p):
                 self.assertEqual(self.req(method, p, body)[0], 401)

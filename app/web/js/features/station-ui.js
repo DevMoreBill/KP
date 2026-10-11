@@ -94,7 +94,7 @@ class StationUi {
     const a=plan.air; if (!a) return '';
     const o=this.opts(x), m3=v=>AirChain.m3(v);
     const chain=a.chain.map(c=>`<span class="stl-node${c.guess ? ' guess' : ''}"${c.guess ? ' title="Ступень фильтра не указана — место выбрано по виду осушителя"' : ''}>${esc(c.text)} <small>поз. ${c.pos}</small></span>`).join('<span class="stl-arr">→</span>');
-    const cls=`<label class="f stl-cls"><span>Класс чистоты воздуха по ISO 8573-1 (частицы.вода.масло)</span><select data-stl="air" data-i="${i}"><option value="">не задан — проверка по составу</option>${AirChain.CLASSES.map(([v, t])=>`<option value="${v}"${o.air===v ? ' selected' : ''}>${v} — ${esc(t)}</option>`).join('')}</select></label>`;
+    const cls=`<label class="f stl-cls"><span>Класс чистоты воздуха по ISO 8573-1 (частицы.вода.масло)</span><select data-stl="air" data-i="${i}"><option value="">не задан — проверка по составу</option>${AirChain.options(o.air).map(([v, t])=>`<option value="${esc(v)}"${o.air===v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`;
     const recs=a.recs.map((r, k)=>`<li><span><b>${esc(r.title)}</b> — ${esc(r.why)}</span><button class="btn sm" type="button" data-a="stlRec" data-i="${i}" data-k="${k}">Подобрать в каталоге</button></li>`).join('');
     return `<div class="stl-air"><div class="stl-air-h"><b>Подготовка воздуха</b>${a.q ? `<span class="muted">компрессоры — ${m3(a.q)} м³/мин при ${m3(a.bar)} бар</span>` : ''}</div>
       <div class="stl-chain">${chain}<span class="stl-arr">→</span><span class="stl-node">потребителю</span></div>

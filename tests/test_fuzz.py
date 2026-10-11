@@ -41,7 +41,7 @@ class FuzzTest(unittest.TestCase):
                 '/api/history?limit=%s&offset=%s&q=%s&kind=%s', k + '/state', k + '/meta', k + '/rev', k + '/versions', k + '/versions/%s',
                 k + '/docx?name=%s&dir=%s', k + '/pdf', k + '/track', k + '/mailform', k + '/send', k + '/openpdf', k + '/open', k + '/folder',
                 '/api/folder?dir=%s', '/api/cbr', '/api/cbr/keyrate', '/api/logos', '/api/imgfetch?url=%s', '/api/ai/status', '/api/ai/fill', '/api/pagetext',
-                '/api/pdftext', '/api/pagephotos', '/api/lists', '/api/defaults', '/api/logistics/quote', '/api/logistics/status', '/api/logistics',
+                '/api/pdftext', '/api/tz/parse?name=%s', '/api/pagephotos', '/api/lists', '/api/defaults', '/api/logistics/quote', '/api/logistics/status', '/api/logistics',
                 '/api/uitexts', '/api/version', '/api/calendar?year=%s', '/api/suppliers', '/api/suppliers/s%s', '/api/customs', '/api/auth/status',
                 '/api/auth/login', '/api/integrations/export', '/api/admin/status', '/api/admin/access', '/api/admin/access/' + mg, '/api/admin/ai',
                 '/api/admin/ai/test', '/api/admin/audit?limit=%s&offset=%s&q=%s', '/api/admin/audit/filters', '/api/admin/audit/%s/rollback',

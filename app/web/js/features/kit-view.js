@@ -20,6 +20,8 @@ class KitScope {
 class StationReq {
   static FIRE = ['А', 'Б', 'В1', 'В2', 'В3', 'В4', 'Г', 'Д'];
   static RES = [['', 'без резерва'], ['1', 'N + 1'], ['2', 'N + 2']];
+  static WORK = [['', 'по подбору'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']];
+  static LOSS = { dryer:0.2, filter:0.1 };   // потери давления, бар: осушитель, ступень фильтра (чистый картридж)
   /** вид станции: comp — компрессорная, dgu — ДГУ, pump — насосная */
   static kind(x){ const id=String(attrsOf(x).cat||''); return /comp/.test(id) ? 'comp' : /dgu/.test(id) ? 'dgu' : /pump/.test(id) ? 'pump' : ''; }
   static of(x){ return (x && x.req && typeof x.req==='object') ? x.req : {}; }
@@ -47,24 +49,39 @@ class StationReq {
     const r=this.of(x), k=this.kind(x), out=[], P=kitParts(x), n=v=>String(Math.round(v*100)/100).replace('.', ',');
     const units=kind=>P.filter(p=>StationEquip.kindOf(p)===kind).flatMap(p=>Array.from({ length:Math.max(1, Math.min(20, +p.qty||1)) }, ()=>p));
     const res=Math.max(0, Math.round(this.num(r.reserve)||0));
-    const enough=(vals, need)=>{ const s=[...vals].sort((a, b)=>b-a), work=s.slice(res); return [s.reduce((a, b)=>a+b, 0), work.reduce((a, b)=>a+b, 0)>=need]; };
-    if (k==='comp'){ const U=units('compressor'), q=U.map(p=>AirChain.flow(p)||0), need=this.num(r.flow), bar=this.num(r.pressure);
-      if (need>0){ const [sum, ok]=enough(q, need); out.push({ ok, text:ok ? `производительность ${n(sum)} м³/мин${res ? ' с резервом' : ''} — не меньше ${n(need)}` : `производительность ${n(sum)} м³/мин${res ? `, без ${res} резервн.` : ''} — меньше требуемых ${n(need)}` }); }
-      if (bar>0){ const pm=Math.max(0, ...U.map(p=>AirChain.bar(p)||0)); if (pm) out.push({ ok:pm>=bar, text:`давление ${n(pm)} бар — ${pm>=bar ? 'не меньше' : 'меньше'} ${n(bar)}` }); } }
-    if (k==='dgu'){ const U=units('dgu'), kw=U.map(p=>StationEquip.num((p.attrs||{}).kw)||0), need=this.num(r.kw);
-      if (need>0){ const [sum, ok]=enough(kw, need); out.push({ ok, text:`мощность ${n(sum)} кВт${ok ? ' — не меньше' : ' — меньше'} ${n(need)} кВт` }); } }
+    // рабочие — без res самых больших агрегатов (отказать может любой); текст: «12,6 + 12,6 в резерве — не меньше 12,5»
+    const enough=(vals, need, what, unit)=>{ const s=[...vals].sort((a, b)=>b-a), sum=s.reduce((a, b)=>a+b, 0), work=s.slice(res).reduce((a, b)=>a+b, 0), ok=work>=need;
+      const rs=res && s.length>res ? ` + ${n(sum-work)} в резерве` : '';
+      return { ok, text:`${what} ${n(work)} ${unit}${rs} — ${ok ? 'не меньше' : 'меньше требуемых'} ${n(need)}` }; };
+    if (k==='comp'){ const U=units('compressor'), need=this.num(r.flow), bar=this.num(r.pressure);
+      const purge=P.some(p=>StationEquip.kindOf(p)==='dryer' && AirChain.info(p, 'dryer').type==='ads') ? AirChain.PURGE : 0, q=U.map(p=>(AirChain.flow(p)||0)*(1-purge));
+      if (need>0) out.push(enough(q, need, purge ? 'производительность за вычетом продувки осушителя' : 'производительность', 'м³/мин'));
+      if (bar>0){ const pm=Math.max(0, ...U.map(p=>AirChain.bar(p)||0)), loss=this.loss(P), o=Math.round((pm-loss)*10)/10;
+        if (pm) out.push({ ok:o>=bar, text:loss ? `давление на выходе ≈ ${n(o)} бар (компрессор ${n(pm)}, потери в подготовке воздуха ≈ ${n(loss)}) — ${o>=bar ? 'не меньше' : 'меньше'} ${n(bar)}`
+          : `давление ${n(pm)} бар — ${pm>=bar ? 'не меньше' : 'меньше'} ${n(bar)}` }); } }
+    if (k==='dgu'){ const U=units('dgu'), kw=U.map(p=>StationEquip.num((p.attrs||{}).kw)||0), need=this.num(r.kw), h=this.num(r.hours);
+      if (need>0) out.push(enough(kw, need, 'мощность', 'кВт'));
+      // работа от бака: топливо в баках станции (и в баке ДГУ, если указан) при нагрузке 75 % рабочих ДГУ
+      const work=[...kw].sort((a, b)=>b-a).slice(res).reduce((a, b)=>a+b, 0), fuel=P.filter(p=>StationEquip.kindOf(p)==='tank' || StationEquip.kindOf(p)==='dgu')
+        .reduce((s, p)=>s+(StationEquip.kindOf(p)==='tank' ? AirChain.volume(p)||StationEquip.num((p.attrs||{}).tank)||0 : StationEquip.num((p.attrs||{}).tank)||0)*Math.max(1, +p.qty||1), 0);
+      if (h>0 && work>0 && fuel>0){ const t=fuel/(work*0.75*StationDefaults.LPH);
+        out.push({ ok:t>=h*0.98, text:t>=h*0.98 ? `работа от бака ≈ ${n(Math.floor(t))} ч при нагрузке 75 % — не меньше ${n(h)}` : `работа от бака ≈ ${n(Math.floor(t))} ч — меньше ${n(h)}: нужен бак около ${StationDefaults.tank(work, h)} л` }); } }
     if (k==='pump'){ const U=units('pump'), q=U.map(p=>StationEquip.num((p.attrs||{}).flow)||0), need=this.num(r.q), head=this.num(r.head);
-      if (need>0){ const [sum, ok]=enough(q, need); out.push({ ok, text:`подача ${n(sum)} м³/ч${ok ? ' — не меньше' : ' — меньше'} ${n(need)} м³/ч` }); }
+      if (need>0) out.push(enough(q, need, 'подача', 'м³/ч'));
       if (head>0){ const hm=Math.max(0, ...U.map(p=>StationEquip.num((p.attrs||{}).head)||0)); if (hm) out.push({ ok:hm>=head, text:`напор ${n(hm)} м — ${hm>=head ? 'не меньше' : 'меньше'} ${n(head)}` }); } }
     return out;
   }
+
+  /** потери давления в подготовке воздуха, бар (оценка): осушитель и ступени фильтров по ходу воздуха */
+  static loss(P){ const k=P.map(p=>StationEquip.kindOf(p)); return Math.round(((k.includes('dryer') ? this.LOSS.dryer : 0)+this.LOSS.filter*Math.min(4, k.filter(z=>z==='filter').length))*100)/100; }
 
   /** короткая строка требований для заголовка блока */
   static line(x){
     const r=this.of(x), k=this.kind(x), u=(v, s)=>v ? `${String(v).replace('.', ',')} ${s}` : '', cls=StationUi.opts(x).air;
     const main=k==='comp' ? [u(r.flow, 'м³/мин'), u(r.pressure, 'бар'), cls ? 'класс '+cls : ''] : k==='dgu' ? [u(r.kw, 'кВт')] : k==='pump' ? [u(r.q, 'м³/ч'), u(r.head, 'м')] : [];
     const t=[r.tmin!=null && r.tmin!=='' ? `от ${r.tmin} °C` : '', r.tmax!=null && r.tmax!=='' ? `до ${r.tmax} °C` : ''].filter(Boolean).join(' ');
-    return [...main, this.num(r.reserve)>0 ? 'резерв N+'+this.num(r.reserve) : '', t, r.src && r.src.name ? 'по ТЗ «'+r.src.name+'»' : ''].filter(Boolean).join(' · ');
+    const w=this.num(r.work), rs=this.num(r.reserve);
+    return [...main, w>0 ? `${w} раб.${rs>0 ? ' + '+rs+' рез.' : ''}` : rs>0 ? 'резерв N+'+rs : '', t, r.src && r.src.name ? 'по ТЗ «'+r.src.name+'»' : ''].filter(Boolean).join(' · ');
   }
 
   /** блок «Требования заказчика»: свёрнут — строка и проверки; развёрнут — поля */
@@ -74,16 +91,17 @@ class StationReq {
     const sel=(key, label, list, cur)=>`<label class="f"><span>${label}</span><select data-req="${i}" data-rk="${key}">${list.map(([v, l])=>`<option value="${esc(v)}"${String(cur)===String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
     const head=`<div class="kr-h"><b>Требования заказчика</b><span class="${ln ? '' : 'muted'}">${ln ? esc(ln) : 'не заданы — загрузите ТЗ или впишите'}</span>
       <span class="kr-a">${typeof TzImport!=='undefined' ? `<button class="btn sm" type="button" data-a="tzLoad" data-i="${i}">Загрузить ТЗ заказчика</button>` : ''}<button class="btn ghost sm" type="button" data-a="reqOpen" data-i="${i}" aria-expanded="${open}">${open ? 'Свернуть' : 'Изменить'}</button></span></div>
-      ${ck.length ? `<div class="kr-ck">${ck.map(c=>`<span class="chip sm ${c.ok ? 'on' : 'warn'}">${c.ok ? '✓' : '⚠'} ${esc(c.text)}</span>`).join('')}</div>` : ''}`;
+      ${ck.length ? `<div class="kr-ck">${ck.map(c=>`<span class="chip sm ${c.ok ? 'on' : 'warn'}">${c.ok ? '✓' : '⚠'} ${esc(c.text)}</span>`).join('')}</div>` : ''}
+      ${r.pick ? `<p class="kr-pick"><span>${esc(r.pick)}</span><button class="icon sm" type="button" data-a="reqPickX" data-i="${i}" title="Скрыть" aria-label="Скрыть итог подбора">✕</button></p>` : ''}`;
     if (!open) return `<div class="kit-req">${head}</div>`;
     const cls=StationUi.opts(x).air;
     const main=k==='comp' ? fld('flow', 'Производительность, м³/мин', 'например, 10')+fld('pressure', 'Давление, бар', '8')
-        +`<label class="f"><span>Класс воздуха ISO 8573-1</span><select data-stl="air" data-i="${i}"><option value="">не задан</option>${AirChain.CLASSES.map(([v, t])=>`<option value="${v}"${cls===v ? ' selected' : ''}>${v} — ${esc(t)}</option>`).join('')}</select></label>`
+        +`<label class="f"><span>Класс воздуха ISO 8573-1</span><select data-stl="air" data-i="${i}"><option value="">не задан</option>${AirChain.options(cls).map(([v, t])=>`<option value="${esc(v)}"${cls===v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`
         +sel('recv', 'Ресивер', this.RECV, this.recv(x))
       : k==='dgu' ? fld('kw', 'Мощность, кВт', 'например, 200')+fld('hours', 'Работа от бака, ч', '16', 'numeric')
       : k==='pump' ? fld('q', 'Подача, м³/ч', 'например, 50')+fld('head', 'Напор, м', '40') : '';
     return `<div class="kit-req open">${head}
-      <div class="kr-g">${main}${sel('reserve', 'Резерв', this.RES, r.reserve||'')}
+      <div class="kr-g">${main}${sel('work', 'Рабочих агрегатов', this.WORK, r.work||'')}${sel('reserve', 'Резерв', this.RES, r.reserve||'')}
         ${fld('tmin', 'Наружный воздух от, °C', '−45', 'text')}${fld('tmax', 'до, °C', '+40', 'text')}
         ${sel('fire', 'Категория помещения (СП 12.13130)', this.FIRE.map(f=>[f, f+(f===this.fireDef(x) ? ' (ориент.)' : '')]), this.fire(x))}
         ${fld('noise', 'Шум на рабочем месте, не более дБА', '80', 'numeric')}</div>
@@ -241,6 +259,7 @@ class KitView {
     if (a==='kitOpen' && p){ if (this.open.has(p.id)) this.open.delete(p.id); else this.open.add(p.id); renderEditor(); return 'async'; }
     if (a==='kitBy' && p){ p.by=b.dataset.by==='our' ? 'our' : 'asm'; if (p.by===KitScope.def(p)) delete p.by; kitSync(it); return true; }
     if (a==='reqOpen'){ if (this.reqOpen.has(it.id)) this.reqOpen.delete(it.id); else this.reqOpen.add(it.id); renderEditor(); return 'async'; }
+    if (a==='reqPickX'){ delete StationReq.ensure(it).pick; persist(); renderEditor(); return 'async'; }
     return false;
   }
 }
