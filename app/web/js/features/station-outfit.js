@@ -355,7 +355,7 @@ class StOutfit {
       if (!S.g.sea){ const zg=S.dz+0.16+Math.min(2.2, S.He-0.4), w=Math.min(1.8, S.We-0.4); this.canopy([x, S.We/2, zg], [-1, 0, 0], w+0.2); if (this.room(zg)) this.flood([x, S.We/2, zg+0.17], [-1, 0, 0]); }
       const n=[-1, 0, 0], c=cat(main), y0=S.We/2;
       if (c) S.sticker(c, [x-0.004, y0+0.3, zs+0.06], n, 0.3, 0.2);
-      S.sticker({ type:'sign', id:'W08' }, [x-0.004, y0-0.3, zs+0.06], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P06' }, [x-0.004, y0-0.3, zs-0.17], n, 0.18, 0.18); }
+      S.sticker({ type:'sign', id:'W08' }, [x-0.004, y0-0.3, zs+0.06], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P06' }, [x-0.004, y0-0.3, zs-0.19], n, 0.2, 0.2); }
     if (!S.closed) return;
     const y=-0.052, n=[0, -1, 0], fy=this.frontY(); let first=true;
     for (const c of S.openF){ const a=S.ox+c.x0/1000, b=S.ox+c.x1/1000, xm=(a+b)/2, zt=S.base+c.h/1000, zs=S.base+1.38;
@@ -364,10 +364,10 @@ class StOutfit {
       if (c.kind!=='service' && this.room(zt)) this.flood([xm, fy, zt+0.17], n);
       const pl=c.kind==='tank' ? cat(tank) : c.kind==='entry' || (c.kind==='service' && first) ? cat(main) : null;
       if (pl) S.sticker(pl, [xp, y, S.base+1.72], n, 0.3, 0.2);
-      if (c.kind==='entry' || (c.kind==='service' && first)){ S.sticker({ type:'sign', id:'W08' }, [xp-0.12, y, zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P06' }, [xp+0.12, y, zs], n, 0.18, 0.18);
+      if (c.kind==='entry' || (c.kind==='service' && first)){ S.sticker({ type:'sign', id:'W08' }, [xp-0.12, y, zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P06' }, [xp+0.12, y, zs], n, 0.2, 0.2);
         if (F.auto && zt+0.2<S.top-0.04){ const hb=S.M(StMat.paint('#eceeef', 0.4));
           for (const [id, z] of [['POW_NO', zt+0.06], ['AUTO_OFF', zt-0.14]]){ hb.box(b+0.14, fy-0.04, z-0.08, b+0.53, fy, z+0.08, 0.006); S.sticker({ type:'sign', id }, [b+0.335, fy-0.04, z], n, 0.36, 0.13, 0.8); } } }
-      if (c.kind==='tank'){ S.sticker({ type:'sign', id:'W01' }, [xm-0.12, y, zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P02' }, [xm+0.12, y, zs], n, 0.18, 0.18); }
+      if (c.kind==='tank'){ S.sticker({ type:'sign', id:'W01' }, [xm-0.12, y, zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P02' }, [xm+0.12, y, zs], n, 0.2, 0.2); }
       if (c.kind!=='tank') first=false; }
   }
   /** над дверью хватает места для прожектора под козырьком */

@@ -901,6 +901,7 @@ class StationLayout {
     if (plan.geo && plan.geo.ext) plan.geo.rise=StationGeo.rise(plan.geo.roof, plan.geo.ext[1]);
     if (plan.level!=='error' && plan.geo && plan.geo.ext && plan.int){ plan.heat=StationHeat.calc(plan); plan.fire=StationFire.calc(plan);
       plan.light=StationLight.calc(plan); plan.sockets=StationSockets.calc(plan); plan.power=StationPower.calc(plan); plan.pipe=StationPipe.calc(plan);
+      if (plan.fire.low) plan.issues.push({ level:'info', text:`Высота помещения ${StationLayout.n(plan.int[2])} мм — ниже паспортной высоты установки модулей «Буран-2,5» (2,5–3,5 м): зона тушения — по диаграмме распыла изготовителя при этой высоте (согласовать с проектировщиком пожаротушения).` });
       const pq=plan.pipe; if (pq && pq.small) plan.issues.push({ level:'warn', text:`Трубопровод DN ${pq.set} меньше расчётного DN ${pq.dn} (${pq.why}): скорость больше ${String(pq.lines[0].v).replace('.', ',')} м/с — потери давления и шум. Укажите DN ${pq.dn} в составе станции.` }); }
     if (plan.level!=='error') StationNorms.check(plan, this.eq);
     this.notes(plan);
@@ -1521,7 +1522,7 @@ class StationLayout {
     StationHeat.notes(plan);
     // учёт в Ростехнадзоре — по произведению давления на вместимость
     const V=(plan.vessels||[]).filter(v=>v.pv!=null), reg=V.filter(v=>v.reg), free=V.filter(v=>!v.reg);
-    if (reg.length) iss.push({ level:'info', text:`Подлежат учёту в Ростехнадзоре (ФНП ОРПД: p·V больше 1,0 МПа·м³): ${reg.map(v=>`поз. ${v.pos} — ${PressureVessel.text(v)}`).join('; ')}. Регистрация, техническое освидетельствование и ответственные за исправное состояние — у эксплуатирующей организации${reg.some(v=>!v.out) ? '; размещают на открытой площадке или в отдельном здании, в помещении — когда иначе нельзя (п. 65): «Ресивер снаружи» — в требованиях заказчика на вкладке «Состав станции»' : ''}.` });
+    if (reg.length) iss.push({ level:'info', text:`Подлежат учёту в Ростехнадзоре (ФНП ОРПД, п. 223: p·V больше 1,0 МПа·м³): ${reg.map(v=>`поз. ${v.pos} — ${PressureVessel.text(v)}`).join('; ')}. Регистрация, техническое освидетельствование и ответственные за исправное состояние — у эксплуатирующей организации${reg.some(v=>!v.out) ? '; размещают на открытой площадке или в отдельном здании, в помещении — когда иначе нельзя (п. 65): «Ресивер снаружи» — в требованиях заказчика на вкладке «Состав станции»' : ''}.` });
     if (free.length) iss.push({ level:'info', text:`Учёту в Ростехнадзоре не подлежат (p·V не больше 1,0 МПа·м³): ${free.map(v=>`поз. ${v.pos} — ${PressureVessel.text(v)}`).join('; ')}.` });
     const rf=plan.roof||[]; if (rf.length && plan.geo && plan.geo.ext){
       const top=Math.max(...rf.map(m=>m.gap+m.d)), h=plan.geo.ext[2]+Math.max(top, plan.geo.rise||0), ch=plan.chassis ? 1150 : 0;

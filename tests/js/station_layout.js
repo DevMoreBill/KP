@@ -788,13 +788,19 @@ Check.run('3D-вид (WebGL): сцена, камера, свет', ()=>{
 Check.run('3D: оснащение — пожарная безопасность, свет, двери с доводчиками, знаки, логотипы', ()=>{
   const all={ power:true, light:true, heat:true, vent:true, ops:true, fire:true };
   const ks=StationLayout.solve({ cont:C('block', { sizeAuto:true, sys:all, roof:'gable' }), parts:[comp, dryer, rec, flt, cab, P('Трубопровод', {}, { pipeMat:'steel' })], req:{ kind:'comp', fire:'В4' } }); Check.plan(ks, 'оснащение');
-  // расчёт пожарной безопасности: модули «Буран-2,5» по площади и объёму с затенением, огнетушители, выход
-  const F=ks.fire, q=F.rooms[0];
+  // расчёт пожарной безопасности (СП 485.1311500.2020, прил. И; паспорт «Буран-2,5»): по площади и объёму, по геометрии
+  // распыла (квадрат 2,64 × 2,64 м), над затенёнными зонами за агрегатами; огнетушители (ППР в РФ), выход
+  const F=ks.fire, q=F.rooms[0], Wf=ks.int[1];
   assert.ok(F.auto && F.ops && F.cls==='B' && F.cat==='В4' && !F.zone, 'пожаротушение и сигнализация, класс пожара B (масло), категория без класса зоны');
-  assert.ok(q.n===Math.ceil(Math.max(q.nS, q.nV)-1e-6) && q.n>=2 && q.mods.length===q.n && q.k2>1, 'модули: число по большему из расчётов, затенение оборудованием');
-  assert.ok(Math.abs(q.nS-q.area/7*1.2*q.k2)<1e-9 && Math.abs(q.nV-q.vol/16*1.2*q.k2)<1e-9, 'модули: N = S/7·1,2·k2 и V/16·1,2·k2');
-  assert.ok(q.mods.every(m=>m.x>q.x0 && m.x<q.x1 && m.y>0 && m.y<ks.int[1]), 'модули — над помещением');
-  assert.ok(F.ext===2 && F.exit && F.exit.wall==='front' && F.exit.top===StationLayout.DOOR.h, 'два огнетушителя, выход — входная дверь');
+  assert.ok(Math.abs(q.nS-q.area/7)<1e-9 && Math.abs(q.nV-q.vol/16)<1e-9 && q.calc===Math.ceil(Math.max(q.nS, q.nV)-1e-6), 'модули: N = S/7 и V/16 (k1 = k3 = k4 = 1,0 по паспорту), большее');
+  assert.ok(q.n>=q.calc && q.n===q.mods.length && q.grid===Math.ceil(Wf/2640)*Math.ceil((q.x1-q.x0)/2640) && q.shade>=1 && q.n===q.grid+q.shade, 'модули: сетка по квадрату распыла и над затенёнными зонами');
+  let cover=true; for (let x=q.x0; x<=q.x1; x+=100) for (let y=0; y<=Wf; y+=100) if (!q.mods.some(m=>Math.abs(m.x-x)<=1320 && Math.abs(m.y-y)<=1320)) cover=false;
+  assert.ok(cover, 'весь пол помещения — в квадратах распыла модулей');
+  assert.ok(q.mods.filter(m=>m.shade).every(m=>m.y>Wf/2) && q.mods.every(m=>m.x>q.x0 && m.x<q.x1 && m.y>0 && m.y<Wf), 'над затенёнными зонами — у задней стены за агрегатами, все — над помещением');
+  assert.ok(F.ext===1 && q.need===1 && q.rank==='3А, 70В, С, Е' && F.exit && F.exit.wall==='front' && F.exit.top===StationLayout.DOOR.h, 'огнетушитель у выхода — один (до него не более 30 м), ранг для категории В4; выход — входная дверь');
+  const Fd=StationFire.calc(Object.assign({}, ks, { req:{ kind:'comp', fire:'Д' } })).rooms[0];
+  assert.ok(Fd.need===0 && Fd.ext===1 && Fd.rank==='2А, 55В, С, Е', 'категория Д до 100 м²: по ППР (п. 401) можно без огнетушителя — один рекомендуется, ранг 2А, 55В');
+  assert.ok(/квадрат 2,64 × 2,64 м/.test(StationFire.autoText(F)) && /100 %/.test(StationFire.autoText(F)), 'в тексте — геометрия распыла и запас модулей');
   assert.ok(StationFire.tt(ks).length===4 && /Буран-2,5/.test(StationFire.autoText(F)), 'тексты ТЗ');
   for (const view of ['in', 'out']){
     const sc=new StScene(ks, { view }).build(), D=[...sc.decals.values()];
@@ -811,7 +817,7 @@ Check.run('3D: оснащение — пожарная безопасность,
       const ex=sc.outfit.log.find(q=>q.kind==='board' && q.id==='EXIT');
       assert.ok(ex && ex.wall==='front' && Math.abs(ex.u-F.exit.u)<=250 && ex.z0>=F.exit.top, 'табло «Выход» — над входной дверью');
       const op=sc.outfit.log.find(q=>q.kind==='ops'); assert.ok(op && op.seen, 'щит ОПС — на видном месте');
-      assert.ok(ext.length===2 && ext.every(q=>q.at[1]>sc.oy+0.05), 'огнетушители видны: не на срезанной стене');
+      assert.ok(ext.length===1 && ext.every(q=>q.at[1]>sc.oy+0.05), 'огнетушитель виден: не на срезанной стене');
       const hs=ks.heat.heaters.filter(h=>h.wall!=='front'); assert.strictEqual(sc.outfit.log.filter(q=>q.kind==='heater').length, hs.length, 'конвекторы — на местах из расчёта');
     } else {
       assert.ok(!sc.cut && sc.closed && sc.openF.some(o=>o.kind==='entry'), 'снаружи: стена с входной дверью');
@@ -825,8 +831,8 @@ Check.run('3D: оснащение — пожарная безопасность,
   const so=new StScene(dg, { view:'out' }).build(), Do=[...so.decals.values()];
   assert.ok(so.openF.some(o=>o.kind==='tank') && ['W01', 'P02', 'DT'].every(id=>Do.some(d=>d.id===id)), 'отсек бака снаружи: дверь и знаки');
   assert.ok(Do.some(d=>d.id==='CAT' && d.cat==='В1' && d.zone==='П-I'), 'отсек бака: табличка «Категория В1, класс зоны П-I»');
-  assert.ok(dg.fire.rooms.length===2 && dg.fire.ext===3 && !dg.fire.auto && dg.fire.mods===0, 'ДГУ с отсеком: огнетушители в двух помещениях, без пожаротушения — модулей нет');
-  const si=new StScene(dg, {}).build(); assert.ok(dg.fire.ext===3 && si.outfit.log.filter(q=>q.kind==='ext').length>=2, 'огнетушители: у входа, у ДГУ, в отсеке бака (у ДГУ и в отсеке — видны)');
+  assert.ok(dg.fire.rooms.length===2 && dg.fire.ext===2 && !dg.fire.auto && dg.fire.mods===0, 'ДГУ с отсеком: огнетушители в двух помещениях, без пожаротушения — модулей нет');
+  const si=new StScene(dg, {}).build(); assert.ok(dg.fire.ext===2 && si.outfit.log.filter(q=>q.kind==='ext').length===2, 'огнетушители: у входа и в отсеке бака');
   const fp=si.outfit.log.find(q=>q.kind==='fuelpump');
   assert.ok(fp && fp.x<dg.fuel.x1 && dg.power.list.some(q=>/Насос перекачки топлива/.test(q.name)) && dg.pipe && dg.pipe.medium==='fuel', 'насос перекачки топлива — в отсеке бака, в нагрузках, топливопровод по расчёту');
   assert.ok([...si.decals.values()].some(d=>d.type==='logo' && d.maker==='AKSA'), 'логотип ДГУ — на радиаторе');
