@@ -331,6 +331,7 @@ class StationDrawing {
     if (fu){ sh.section(X(ox+fu.x1), YP(oy+Wi), fu.part*k, Wi*k);   // перегородка отсека бака — сплошная
       const b=Math.max(1.2, 220*k);
       if (fu.fill.wall==='left') sh.rect(xL-b*0.7, YP(oy+fu.fill.y)-b/2, b*0.7, b, 'main', '#fff');
+      else if (fu.fill.wall==='back') sh.rect(X(ox+fu.fill.x)-b/2, YP(We)-b*0.7, b, b*0.7, 'main', '#fff');
       else sh.rect(X(ox+fu.fill.x)-b/2, YP(0), b, b*0.7, 'main', '#fff'); }
     for (const h of this.heaters) sh.rect(X(ox+h.x), YP(oy+h.y+h.ly), h.lx*k, h.ly*k, 'main', '#fff');
     this.doorsPlan(sh, YP);

@@ -20,7 +20,7 @@ class TzOut {
 
   /** документ .docx (Blob) */
   static async make(x){
-    await EskdFont.load(); if (typeof DrawPic!=='undefined') await DrawPic.load(x);
+    await EskdFont.load(); if (typeof DrawPic!=='undefined') await DrawPic.load(x); await PhotoTint.load(x);
     const plan=StationUi.plan(x), meta=StationUi.meta(x, plan), org=StationUi.org(), d=new DocxWriter({ title:'ТЗ на сборку: '+(x.name||''), author:org, footer:'ТЗ на сборку — '+(x.name||'станция') });
     this.write(d, x, plan, org);
     // приложения: габаритный чертёж, схема, 3D-вид
@@ -30,7 +30,8 @@ class TzOut {
       add(await StationImages.raster(StationDrawing.svg(plan, meta), 'image/png'), 'Габаритный чертёж', 225, false);
       if (sch) add(await StationImages.raster(sch.cls.svg(plan, meta), 'image/png'), sch.name, 240, true);
       const gl=await StationRender.image(plan, meta), v3=gl || await StationImages.raster(StationView3D.svg(plan, meta), 'image/jpeg');
-      add(v3, '3D-вид (стены со стороны зрителя срезаны)', 200, true); }
+      add(v3, '3D-вид (стены со стороны зрителя срезаны)', 200, true);
+      add(await StationRender.image(plan, meta, 'out'), 'Вид снаружи: двери, жалюзи, светильники, знаки, логотип', 200, true); }
     return d.pack('blob');
   }
 
@@ -106,7 +107,7 @@ class TzOut {
         hs.map((h, k)=>[String(k+1), `${StationHeat.kw(h.kw)} кВт, ${n(Math.max(h.lx, h.ly))} × ${n(h.h)} мм`, n(h.x), n(h.y), n(h.z), wl[h.wall]||''])); }
       if (plan.fuel){ const f=plan.fuel; d.h2('Отсек топливного бака');
         d.items([`Отсек — у левого торца, длина внутри ${n(f.x1)} мм; противопожарная перегородка 1-го типа (EI 45) толщиной ${n(f.part)} мм на всю ширину и высоту, без проёмов; топливопровод — через перегородку в гильзе с негорючим уплотнением.`,
-          `Дверь отсека — в стене с дверью, X ${n(f.door.x0)}…${n(f.door.x1)} мм, открывается наружу; заливная горловина — снаружи ${f.fill.wall==='left' ? 'в левом торце' : 'в стене с дверью'} на высоте ${n(f.fill.z)} мм, в запираемом ящике, с трубой до бака.`,
+          `Дверь отсека — в стене с дверью, X ${n(f.door.x0)}…${n(f.door.x1)} мм, открывается наружу; заливная горловина — снаружи ${f.fill.wall==='left' ? 'в левом торце' : f.fill.wall==='back' ? 'в задней стене за баком' : 'в стене с дверью'} на высоте ${n(f.fill.z)} мм, в запираемом ящике, с трубой до бака.`,
           'Бак — в поддоне на полный объём бака; дыхательный клапан с огнепреградителем — над крышей; указатель уровня; естественная вентиляция отсека — жалюзи внизу и вверху; огнетушитель и знаки безопасности у двери.'], '5.'); }
       const iss=plan.issues.filter(t=>t.level==='warn').map(t=>t.text);
       if (iss.length){ d.h2('Учесть при сборке'); d.items(iss, '5.'); } }

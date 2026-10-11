@@ -262,6 +262,7 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .stl-views figure{margin:0;display:grid;gap:6px;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .stl-views figcaption{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;font-size:13px}
 .stl-views img{display:block;width:100%;height:auto;background:#fff;border-radius:6px}
+.stl-views img.wait{aspect-ratio:16/10;background:#f3f4f6}
 .stl-chk{display:inline-flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer}
 .stl-chk input{width:auto;margin:0}
 .stl-note{color:var(--muted);font-size:12px}
