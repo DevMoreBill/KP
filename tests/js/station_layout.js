@@ -5,7 +5,7 @@
 'use strict';
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..');
-for (const f of ['logistics-calc.js', 'station-layout.js', 'station-eskd.js', 'station-draw.js', 'station-render.js']){
+for (const f of ['logistics-calc.js', 'station-layout.js', 'station-eskd.js', 'station-draw.js', 'station-outfit.js', 'station-render.js', 'station-decal.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 
 class Check {
@@ -740,7 +740,7 @@ Check.run('ДГУ: отсек топливного бака — перегоро
     if (p.level==='error') continue;
     const f=p.fuel, t=p.items.find(i=>i.tank); assert.ok(f && t, label+': отсек есть');
     assert.ok(f.part>=StationLayout.TANK.part && f.x1>=t.x+t.lx, label+': бак за перегородкой');
-    assert.ok(f.fill && ['left', 'front'].includes(f.fill.wall) && f.fill.z>0 && f.fill.z<p.int[2], label+': горловина снаружи');
+    assert.ok(f.fill && ['left', 'back'].includes(f.fill.wall) && f.fill.z>0 && f.fill.z<p.int[2], label+': горловина снаружи');
     assert.ok(!(p.doors||[]).some(d=>d.x0<f.x1+f.part && d.x1>0 && d.wall==='front' && !(d.x0===f.door.x0 && d.x1===f.door.x1)), label+': в отсек — только своя дверь');
     const sv=StationDrawing.svg(p, meta(p)); Check.sheet(sv, label+': чертёж');
     assert.ok(/Бак поз\. \d+ — в отсеке за противопожарной перегородкой \(EI 45\)/.test(sv), label+': требование в ТТ');
@@ -783,6 +783,62 @@ Check.run('3D-вид (WebGL): сцена, камера, свет', ()=>{
   assert.ok(Math.abs(sun.reduce((s, q)=>s+q.E[0], 0)-StSky.SUN_E[0])<1e-6, 'солнце: сумма по проходам');
   assert.ok(L.some(q=>!q.sun && q.dir[2]<0), 'снизу — свет, отражённый землёй');
   const c=[1, 2, 1.2], lp=StM4.apply(StM4.light(StSky.SUN, c, 8), c); assert.ok(Math.abs(lp[0])<1e-6 && Math.abs(lp[1])<1e-6, 'карта теней — по центру сцены');
+});
+
+Check.run('3D: оснащение — пожарная безопасность, свет, двери с доводчиками, знаки, логотипы', ()=>{
+  const all={ power:true, light:true, heat:true, vent:true, ops:true, fire:true };
+  const ks=solve(C('block', { sizeAuto:true, sys:all, roof:'gable' }), [comp, dryer, rec, flt, cab, P('Трубопровод', {}, { pipeMat:'steel' })]); Check.plan(ks, 'оснащение');
+  for (const view of ['in', 'out']){
+    const sc=new StScene(ks, { view }).build(), D=[...sc.decals.values()];
+    for (const { mat, mesh } of sc.groups.values()){
+      if (mat.k===3) assert.ok(mesh.t.length===mesh.count*2 && sc.decals.has(mat.tex), view+': у наклейки — координаты текстуры и картинка');
+      else assert.strictEqual(mesh.t.length, 0, view+': координаты текстуры — только у наклеек');
+      assert.ok(mesh.p.every(Number.isFinite) && mesh.t.every(v=>v>=0 && v<=1), view+': геометрия'); }
+    assert.ok(D.some(d=>d.type==='brand' && d.globe && d.parts.map(p=>p[0]).join('')==='ПНЕВМОТЕХ' && d.tag), view+': логотип ПНЕВМОТЕХ на контейнере');
+    if (view==='in'){
+      assert.ok(sc.cut && D.some(d=>d.type==='logo' && d.maker==='Dalgakiran' && d.ar>1), 'логотип производителя на оборудовании');
+      const ext=sc.outfit.log.filter(q=>q.kind==='ext'); assert.ok(ext.length>=1 && ext.every(q=>q.top<=StOutfit.EXT), 'огнетушители: верх не выше 1,5 м');
+      for (const id of ['F04', 'EXIT', 'AERO_OUT']) assert.ok(D.some(d=>d.id===id), 'знак '+id);
+      const hs=ks.heat.heaters.filter(h=>h.wall!=='front'); assert.strictEqual(sc.outfit.log.filter(q=>q.kind==='heater').length, hs.length, 'конвекторы — на местах из расчёта');
+    } else {
+      assert.ok(!sc.cut && sc.closed && sc.openF.some(o=>o.kind==='entry'), 'снаружи: стена с входной дверью');
+      for (const id of ['W08', 'AERO_NO', 'AUTO_OFF']) assert.ok(D.some(d=>d.id===id), 'снаружи — '+id);
+      assert.ok(sc.tris()<new StScene(ks, {}).build().tris(), 'снаружи внутреннее не строится'); }
+    const b=sc.bounds(); assert.ok(b.hi[2]>=sc.top+sc.rise-1e-9, view+': крыша в кадре');
+  }
+  // ДГУ с отсеком бака: снаружи — дверь отсека (решётка внизу, доводчик), «Пожароопасно», «Открытый огонь запрещён», «ДТ»
+  const dgm=Object.assign({}, dgu, { attrs:{ ...dgu.attrs, maker:'AKSA' } }), dg=solve(C('block', { sizeAuto:true }), [dgm, ats, P('Глушитель на крыше', {}), P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'1000 л' }] })]);
+  const so=new StScene(dg, { view:'out' }).build(), Do=[...so.decals.values()];
+  assert.ok(so.openF.some(o=>o.kind==='tank') && ['W01', 'P02', 'DT'].every(id=>Do.some(d=>d.id===id)), 'отсек бака снаружи: дверь и знаки');
+  const si=new StScene(dg, {}).build(); assert.ok(si.outfit.log.filter(q=>q.kind==='ext').length>=3, 'огнетушители: у входа, у ДГУ, в отсеке бака');
+  assert.ok([...si.decals.values()].some(d=>d.type==='logo' && d.maker==='AKSA'), 'логотип ДГУ — на радиаторе');
+  const byName=new StScene(solve(C('block', { sizeAuto:true }), [dgu, ats]), { makers:{ [dgu.id]:'AKSA' } }).build();   // производитель из названия (в браузере — по каталогу логотипов)
+  assert.ok([...byName.decals.values()].some(d=>d.type==='logo' && d.maker==='AKSA'), 'производитель по названию');
+  // морской: логотип на дверях в торце, исполнение без скатной крыши
+  const sea=new StScene(solve(C('sea20'), [comp, dryer]), {}).build(); assert.ok(sea.rise===0 && [...sea.decals.values()].some(d=>d.type==='brand'), 'морской');
+  // тёмная стена — логотип белыми буквами
+  const dark=new StScene(solve(C('block', { sizeAuto:true, ral:'RAL 5010' }), [comp]), {}).build(); assert.ok([...dark.decals.values()].find(d=>d.type==='brand').light, 'на тёмной стене — белыми');
+  // морской (в торце — его двери): горловина бака — в задней стене за баком, не на двери отсека
+  const sf=solve(C('sea40'), [dgu, ats, P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'1000 л' }] })]).fuel;
+  assert.ok(sf.fill.wall==='back' && sf.fill.x>0 && sf.fill.x<sf.x1, 'горловина морского — в задней стене отсека');
+});
+
+Check.run('цвет по фото: фон убирается, главный цвет корпуса', ()=>{
+  const img=(w, h, f)=>{ const d=new Uint8ClampedArray(w*h*4); for (let y=0; y<h; y++) for (let x=0; x<w; x++){ const c=f(x, y); d.set(c.length===4 ? c : [...c, 255], (y*w+x)*4); } return d; };
+  const near=(hex, c, tol=28)=>{ const v=[1, 3, 5].map(k=>parseInt(hex.slice(k, k+2), 16)); return /^#[0-9a-f]{6}$/.test(hex) && v.every((x, k)=>Math.abs(x-c[k])<=tol); };
+  const W=[255, 255, 255], blue=[30, 80, 160], gray=[205, 208, 212];
+  assert.ok(near(PhotoTint.pick(img(60, 40, (x, y)=>x>12 && x<48 && y>6 && y<36 ? (x%6===0 ? [20, 20, 20] : blue) : W), 60, 40), blue), 'синий корпус на белом с тёмными решётками');
+  assert.ok(near(PhotoTint.pick(img(40, 40, (x, y)=>Math.hypot(x-20, y-20)<14 ? [200, 120, 30] : [0, 0, 0, 0]), 40, 40), [200, 120, 30]), 'прозрачный фон (PNG)');
+  assert.ok(near(PhotoTint.pick(img(80, 60, (x, y)=>x>10 && x<70 && y>5 && y<55 ? (x>50 && y<20 ? blue : gray) : W), 80, 60), gray), 'серый корпус с синей панелью — серый');
+  assert.ok(near(PhotoTint.pick(img(60, 40, (x, y)=>x>8 && x<52 && y>4 && y<36 ? [235, 236, 238] : [120, 124, 128]), 60, 40), [235, 236, 238]), 'светлый корпус на сером фоне');
+  assert.strictEqual(PhotoTint.pick(img(40, 40, (x, y)=>x===20 && y===20 ? [255, 0, 0] : W), 40, 40), '', 'почти всё — фон: цвет не определить');
+  // цвет из фото — в расстановке и в отпечатке (3D обновится), подпись RAL — из характеристик
+  const ph=P('Компрессор с фото', { cat:'comp_screw', size:'1400 × 900 × 1500' }, { role:'main', photo:{ src:'/img/test-tint.jpg' }, rows:[{ k:'Цвет', v:'RAL 7035' }] });
+  const h0=StationLayout.hash({ cont:C('block'), parts:[ph] }); PhotoTint.cache.set('/img/test-tint.jpg', '#1e50a0');
+  const it=solve(C('block', { sizeAuto:true }), [ph]).items.find(i=>i.kind==='compressor');
+  assert.ok(it.color==='#1e50a0' && StationLayout.hash({ cont:C('block'), parts:[ph] })!==h0, 'цвет корпуса — по фото, отпечаток изменился');
+  assert.strictEqual(StationEquip.color(ph, 'compressor').text, 'RAL 7035', 'подпись цвета — из характеристик');
+  PhotoTint.cache.delete('/img/test-tint.jpg');
 });
 
 Check.run('случайные составы: без сбоев и нарушений', ()=>{

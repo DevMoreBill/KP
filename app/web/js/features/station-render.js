@@ -23,12 +23,21 @@ class StV {
 
 // ---------------------------------------------------------------- геометрия одного материала: треугольники с нормалями
 class StMesh {
-  constructor(){ this.p=[]; this.n=[]; this.i=[]; }
+  constructor(){ this.p=[]; this.n=[]; this.i=[]; this.t=[]; }   // t — координаты текстуры (только у наклеек)
   get count(){ return this.p.length/3; }
   vert(p, n){ this.p.push(p[0], p[1], p[2]); this.n.push(n[0], n[1], n[2]); return this.p.length/3-1; }
   /** плоский четырёхугольник a-b-c-d (по кругу) с нормалью n (не задана — по обходу) */
   quad(a, b, c, d, n){ n=n || StV.norm(StV.cross(StV.sub(b, a), StV.sub(d, a))); const k=this.vert(a, n); this.vert(b, n); this.vert(c, n); this.vert(d, n); this.i.push(k, k+1, k+2, k, k+2, k+3); }
   tri(a, b, c, n){ n=n || StV.norm(StV.cross(StV.sub(b, a), StV.sub(c, a))); const k=this.vert(a, n); this.vert(b, n); this.vert(c, n); this.i.push(k, k+1, k+2); }
+  /** наклейка: четырёхугольник a-b-c-d (a — левый нижний, по кругу) с текстурой (строка 0 картинки — вверху) */
+  decal(a, b, c, d, n){ const k=this.vert(a, n); this.vert(b, n); this.vert(c, n); this.vert(d, n); this.t.push(0, 1, 1, 1, 1, 0, 0, 0); this.i.push(k, k+1, k+2, k, k+2, k+3); }
+  /** наклейка на цилиндре (ось z в точке cx, cy, радиус r): по дуге от угла a0 до a1, по высоте z0…z1 */
+  decalArc(cx, cy, r, a0, a1, z0, z1, seg=12){
+    const k0=this.count;
+    for (let j=0; j<=seg; j++){ const a=a0+(a1-a0)*j/seg, n=[Math.cos(a), Math.sin(a), 0], u=j/seg;
+      this.vert([cx+r*n[0], cy+r*n[1], z0], n); this.t.push(u, 1); this.vert([cx+r*n[0], cy+r*n[1], z1], n); this.t.push(u, 0); }
+    for (let j=0; j<seg; j++){ const q=k0+j*2; this.i.push(q, q+2, q+3, q, q+3, q+1); }
+  }
   /** короб от (x0, y0, z0) до (x1, y1, z1); r — фаска по рёбрам (блик на гранях, как у гнутого листа) */
   box(x0, y0, z0, x1, y1, z1, r=0){
     const lo=[Math.min(x0, x1), Math.min(y0, y1), Math.min(z0, z1)], hi=[Math.max(x0, x1), Math.max(y0, y1), Math.max(z0, z1)];
@@ -91,12 +100,14 @@ class StMesh {
 }
 
 // ---------------------------------------------------------------- материалы
-// c — цвет (sRGB), r — шероховатость, m — металл, e — свечение, k — рисунок: 1 — рифлёный лист пола, 2 — земля (уходит в фон)
+// c — цвет (sRGB), r — шероховатость, m — металл, e — свечение, k — рисунок: 1 — рифлёный лист пола, 2 — земля (уходит в фон),
+// 3 — наклейка (tex — описание картинки в сцене: логотип, знак, табло)
 class StMat {
   static paint(c, r=0.45){ return { c, r, m:0 }; }
   static metal(c, r=0.35){ return { c, r, m:1 }; }
   static glow(c, e=4){ return { c, r:0.3, m:0, e }; }
-  static key(m){ return [m.c, m.r, m.m, m.e||0, m.k||0].join('|'); }
+  static decal(tex, e=0){ return { c:'#ffffff', r:0.5, m:0, e, k:3, tex }; }
+  static key(m){ return [m.c, m.r, m.m, m.e||0, m.k||0, m.tex||''].join('|'); }
   static lin(hex){ return RalColor.rgb(hex).map(v=>{ const c=v/255; return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); }); }
 }
 
@@ -109,9 +120,11 @@ class StScene {
   static SEA_P = [0.278, 0.036];   // гофр морского контейнера: шаг, глубина, м
   static WELD_P = [0.2, 0.02];     // профлист цельносварного
 
-  /** plan — StationLayout.solve(...), meta: {deck — высота шасси, мм} */
+  /** plan — StationLayout.solve(...), meta: {deck — высота шасси, мм; view — 'in' (разрез: стена со стороны зрителя
+   *  срезана) или 'out' (вид снаружи, двери закрыты); brand — [[текст, цвет]] логотипа на контейнере; logos — {производитель:
+   *  пропорция таблички}} */
   constructor(plan, meta={}){
-    this.plan=plan; this.meta=meta; this.groups=new Map();
+    this.plan=plan; this.meta=meta; this.groups=new Map(); this.decals=new Map();   // decals: ключ → описание картинки наклейки
     const g=plan.geo, mm=v=>v/1000;
     this.g=g; this.mm=mm; [this.Le, this.We, this.He]=g.ext.map(mm); [this.Li, this.Wi, this.Hi]=plan.int.map(mm);
     this.ox=(this.Le-this.Li)/2; this.oy=(this.We-this.Wi)/2;
@@ -121,7 +134,39 @@ class StScene {
     this.lining=g.sea ? '#e3e6e8' : '#eef0f1';
     const sd=plan.door==='service' ? plan.doors||[] : [];
     this.doorsF=sd.filter(d=>d.wall!=='back'); this.doorsB=sd.filter(d=>d.wall==='back');
-    this.cut=!this.doorsF.length;   // стена со стороны зрителя срезана (с сервисными дверями — стоит, двери открыты)
+    this.view=meta.view==='out' ? 'out' : 'in'; this.closed=this.view==='out';
+    this.cut=this.view==='in' && !this.doorsF.length;   // стена со стороны зрителя срезана (с сервисными дверями — стоит, двери открыты)
+    // проёмы стены со стороны зрителя: сервисные двери; снаружи — ещё входная дверь и дверь отсека топливного бака
+    this.openF=this.doorsF.map(d=>({ x0:d.x0, x1:d.x1, h:d.h, leaves:d.leaves, kind:'service' }));
+    if (this.closed){ const x0=g.x0||0, D=StationLayout.DOOR.h;
+      if (plan.door==='side') this.openF.push({ x0:x0+StationLayout.ENTRY[0], x1:x0+StationLayout.ENTRY[1], h:D, leaves:1, kind:'entry' });
+      if (plan.fuel) this.openF.push({ x0:plan.fuel.door.x0, x1:plan.fuel.door.x1, h:D, leaves:1, kind:'tank' });
+      this.openF.sort((a, b)=>a.x0-b.x0); }
+  }
+  /** наклейка: описание d (картинку рисует StDecal), центр c, нормаль n (наружу от поверхности), размер w × h, м;
+   *  e — свечение (световое табло) */
+  sticker(d, c, n, w, h, e=0){
+    const key=JSON.stringify(d); this.decals.set(key, d);
+    const r=StV.norm(StV.cross(StV.mul(n, -1), [0, 0, 1])), o=StV.add(c, StV.mul(n, 0.002)), U=StV.mul(r, w/2), V=[0, 0, h/2];
+    this.M(StMat.decal(key, e)).decal(StV.sub(StV.sub(o, U), V), StV.sub(StV.add(o, U), V), StV.add(StV.add(o, U), V), StV.add(StV.sub(o, U), V), n);
+  }
+  /** пропорция таблички логотипа (ширина / высота): картинка из каталога или название производителя */
+  logoAr(mk){ const r=(this.meta.logos||{})[mk.toLowerCase()]; return r>0 ? r : Math.max(1.6, Math.min(7, 0.62*mk.length+0.5)); }
+  /** логотип производителя на лицевой стороне — там, где он у изделий этого вида: над решёткой компрессора, у пульта
+   *  осушителя, на радиаторе ДГУ, на корпусе ресивера */
+  badge(it){
+    const mk=String(it.maker || (this.meta.makers||{})[it.id] || '').trim(); if (!mk || it.mount==='pipe' || it.mount==='wall') return;
+    const [x0, y0, z0, x1, y1, z1]=this.B(it), s=this.side(it), ar=this.logoAr(mk), d={ type:'logo', maker:mk, bg:it.color, ar };
+    const fit=(mw, mh)=>{ const w=Math.min(mw, mh*ar); return [w, w/ar]; };
+    if (it.kind==='receiver' && it.shape!=='hcyl'){ const cx=(x0+x1)/2, cy=(y0+y1)/2, r=Math.min(x1-x0, y1-y0)/2, [w, h]=fit(r*1.3, 0.1), a=w/2/r, ac=s<0 ? -Math.PI/2 : Math.PI/2, z=z0+(z1-z0)*0.62;
+      const key=JSON.stringify(d); this.decals.set(key, d);
+      return this.M(StMat.decal(key)).decalArc(cx, cy, r+0.003, ac+(s<0 ? -a : a), ac+(s<0 ? a : -a), z-h/2, z+h/2); }
+    const at={ compressor:[0.06, 0.3, 0.84, 0.93], dryer:[0.52, 0.9, 0.77, 0.9], other:[0.06, 0.4, 0.85, 0.94], receiver:[0.3, 0.7, 0.55, 0.75] }[it.kind];
+    if (it.kind==='dgu'){ const L=x1-x0, H=z1-z0, xr=x0+L*0.84, [w, h]=fit((x1-xr)*0.85, H*0.1), y=s<0 ? y0+(y1-y0)*0.04 : y1-(y1-y0)*0.04;
+      return this.sticker(d, [(xr+x1)/2, y, z0+H*0.8], [0, s, 0], w, h); }
+    if (!at || (it.kind==='dryer' && /адсорбц/i.test(it.name||''))) return;
+    const span=this.endwise(it) ? y1-y0 : x1-x0, [w, h]=fit((at[1]-at[0])*span, (at[3]-at[2])*(z1-z0));
+    this.sticker(d, this.front(it, (at[0]+at[1])/2, (at[2]+at[3])/2, 0.001), this.out(it, 1), w, h);
   }
   /** геометрия материала m */
   M(m){ const k=StMat.key(m); let e=this.groups.get(k); if (!e){ e={ mat:m, mesh:new StMesh() }; this.groups.set(k, e); } return e.mesh; }
@@ -130,9 +175,8 @@ class StScene {
 
   build(){
     this.ground(); if (this.dz) this.chassis();
-    this.container(); this.systems();
-    for (const it of this.plan.items) this.equip(it);
-    for (const pp of this.plan.piping||[]) this.piping(pp);
+    this.container(); this.outfit=new StOutfit(this).build();
+    if (this.view==='in'){ for (const it of this.plan.items) this.equip(it); for (const pp of this.plan.piping||[]) this.piping(pp); }   // снаружи внутреннего не видно
     for (const m of this.plan.roof||[]) this.muffler(m);
     if ((this.plan.outside||[]).length) this.outside();
     return this;
@@ -155,7 +199,7 @@ class StScene {
   }
   /** габариты сцены (м): контейнер, глушитель, открытые двери */
   bounds(){
-    const up=(this.plan.roof||[]).reduce((s, m)=>Math.max(s, (m.gap+m.d+m.outlet)/1000), 0), sw=Math.max(0, ...[...this.doorsF, ...this.doorsB].map(d=>d.w/d.leaves/1000));
+    const up=(this.plan.roof||[]).reduce((s, m)=>Math.max(s, (m.gap+m.d+m.outlet)/1000), 0), sw=this.closed ? 0 : Math.max(0, ...[...this.doorsF, ...this.doorsB].map(d=>d.w/d.leaves/1000));
     const E=(this.plan.outside||[]).map(i=>this.B(i)), xo=Math.max(this.Le, ...E.map(b=>b[3]+0.45)), yo=Math.min(0, ...E.map(b=>b[1]-0.2)), yi=Math.max(this.We, ...E.map(b=>b[4]+0.2)), zo=Math.max(0, ...E.map(b=>b[5]+0.3));
     return { lo:[-0.15, Math.min(yo, -0.15-(this.doorsF.length ? sw*0.8 : 0)), 0], hi:[xo+0.15, Math.max(yi, this.We+0.15+(this.doorsB.length ? sw*0.8 : 0)), Math.max(zo, this.top+this.rise+up+0.05)] };
   }
@@ -270,12 +314,12 @@ class StScene {
       gutter(W+o+0.03, zt-o*k-0.03, -1); }
   }
   /** стена со стороны зрителя, когда она не срезана: панели между проёмами сервисных дверей, двери открыты */
-  frontWall(w, z0, z1, prof){ this.wallWithDoors(w, z0, z1, prof, this.doorsF, 0, -1); }
+  frontWall(w, z0, z1, prof){ this.wallWithDoors(w, z0, z1, prof, this.openF, 0, -1); }
   backWall(w, z0, z1, prof){ this.wallWithDoors(w, z0, z1, prof, this.doorsB, this.We, 1); }
   /** длинная стена (yw — наружная плоскость, out — наружу) с проёмами: панели (prof — гофр [шаг, глубина] или гладкие),
    *  обрамление, открытые наружу створки */
   wallWithDoors(w, z0, z1, prof, doors, yw, out){
-    const L=this.Le, cuts=doors.map(d=>({ a:this.ox+d.x0/1000, b:this.ox+d.x1/1000, h:this.base+d.h/1000, n:d.leaves })).sort((p, q)=>p.a-q.a), wy=yw-out*0.03;
+    const L=this.Le, cuts=doors.map(d=>({ a:this.ox+d.x0/1000, b:this.ox+d.x1/1000, h:this.base+d.h/1000, n:d.leaves||1, kind:d.kind||'service' })).sort((p, q)=>p.a-q.a), wy=yw-out*0.03;
     const sheet=(a, b, za, zb)=>{ if (b<=a+0.005 || zb<=za) return; if (prof) w.corr(0, a, b, wy, out, za, zb, ...prof); else w.quad([a, yw-out*0.02, za], [b, yw-out*0.02, za], [b, yw-out*0.02, zb], [a, yw-out*0.02, zb], [0, out, 0]); };
     let x=0.16;
     for (const c of cuts){ sheet(x, c.a, z0, z1); sheet(c.a, c.b, c.h, z1); x=Math.max(x, c.b); }
@@ -284,6 +328,7 @@ class StScene {
     const y0=out<0 ? 0 : yw-depth, y1=out<0 ? depth : yw;
     for (const c of cuts){
       fr.box(c.a-0.05, y0, this.base-0.02, c.a, y1, c.h+0.05, 0.004); fr.box(c.b, y0, this.base-0.02, c.b+0.05, y1, c.h+0.05, 0.004); fr.box(c.a-0.05, y0, c.h, c.b+0.05, y1, c.h+0.05, 0.004);
+      if (this.closed){ this.shut(c, yw, out, leaf, dk); continue; }
       const lw=(c.b-c.a)/c.n, H=c.h-this.base-0.02;
       for (let k=0; k<c.n; k++){ const left=k===0, hx=left ? c.a : c.b, sx=left ? 1 : -1, ph=100*Math.PI/180;   // створка открыта наружу на 100°
         const d=[sx*Math.cos(ph)*lw, out*Math.sin(ph)*lw, 0], o=[hx, yw+out*0.005, this.base+0.01], thick=StV.mul(StV.norm([-d[1], d[0], 0]), t*(left ? 1 : -1)*(-out));
@@ -295,6 +340,27 @@ class StScene {
       // откос проёма: утеплитель между обшивками
       const ins=this.M(StMat.paint(StScene.INS, 0.9)); ins.quad([c.a, y0, c.h], [c.b, y0, c.h], [c.b, y1, c.h], [c.a, y1, c.h], [0, 0, -1]);
     }
+  }
+  /** закрытая дверь в проёме (вид снаружи): полотно, ручка с замком, доводчик сверху на стороне петель (дверь открывается
+   *  наружу), у сервисных — запорная штанга; у двери отсека бака — решётка внизу (приток воздуха в отсек) */
+  shut(c, yw, out, leaf, dk){
+    const t=0.045, z0=this.base+0.01, z1=c.h-0.005, lw=(c.b-c.a)/c.n, yo=yw+out*0.005, yi=yo+out*t, mt=this.M(StMat.metal('#c3c8cd', 0.3)), sm=this.M(StMat.paint(RalColor.shade(this.wall, 0.82), 0.5));
+    for (let k=0; k<c.n; k++){ const a=c.a+k*lw+0.004, b=c.a+(k+1)*lw-0.004; leaf.box(a, Math.min(yo, yi), z0, b, Math.max(yo, yi), z1, 0.006);
+      for (const z of [z0+0.12, z1-0.12]) sm.box(a+0.05, Math.min(yi, yi+out*0.003), z-0.004, b-0.05, Math.max(yi, yi+out*0.003), z+0.004); }   // рёбра полотна
+    const hingeA=c.n===1 ? c.a : null, lock=c.n===1 ? c.b-0.09 : (c.a+c.b)/2+0.06, zh=this.base+1.0, yf=yi+out*0.004;
+    if (c.kind==='service'){ for (const x of c.n===1 ? [lock] : [(c.a+c.b)/2-0.07, lock]){ mt.tube([x, yf+out*0.02, z0+0.08], [x, yf+out*0.02, z1-0.08], 0.012, 10);
+        dk.box(x-0.03, Math.min(yf, yf+out*0.05), zh-0.12, x+0.03, Math.max(yf, yf+out*0.05), zh+0.12, 0.005); } return; }
+    // ручка-скоба с замком
+    dk.box(lock-0.025, Math.min(yf, yf+out*0.012), zh-0.09, lock+0.025, Math.max(yf, yf+out*0.012), zh+0.09, 0.006);
+    mt.box(lock-0.13, Math.min(yf+out*0.035, yf+out*0.055), zh+0.03, lock+0.01, Math.max(yf+out*0.035, yf+out*0.055), zh+0.05, 0.008);
+    mt.box(lock-0.008, Math.min(yf, yf+out*0.055), zh+0.025, lock+0.012, Math.max(yf, yf+out*0.055), zh+0.055, 0.004);
+    mt.tube([lock, yf, zh-0.05], [lock, yf+out*0.015, zh-0.05], 0.011, 12);
+    // доводчик: корпус на полотне у петель, рычаг к верху коробки
+    if (hingeA!=null){ const x=hingeA+0.07, zc=z1-0.07, yc=yf+out*0.035, bd=this.M(StMat.metal('#9aa1a8', 0.35));
+      bd.box(x, Math.min(yf, yf+out*0.06), zc-0.035, x+0.27, Math.max(yf, yf+out*0.06), zc+0.035, 0.012);
+      const p0=[x+0.24, yc+out*0.03, zc+0.01], p1=[x+0.4, yc+out*0.05, zc+0.02], p2=[x+0.46, yw+out*0.03, c.h+0.03];
+      dk.tube(p0, p1, 0.009, 8); dk.sphere(p1, 0.012, 8); dk.tube(p1, p2, 0.008, 8); dk.box(p2[0]-0.04, Math.min(yw, p2[1]), c.h+0.005, p2[0]+0.04, Math.max(yw, p2[1]), c.h+0.05, 0.004); }
+    if (c.kind==='tank') for (let i=0; i<7; i++){ const z=z0+0.12+i*0.045; dk.box(c.a+0.12, Math.min(yf, yf+out*0.012), z, c.b-0.12, Math.max(yf, yf+out*0.012), z+0.022); }   // решётка внизу
   }
   /** обшивка изнутри стены с проёмами */
   holes(m, y, n, doors, b, c){
@@ -316,7 +382,7 @@ class StScene {
     lin.quad([ox+Li, oy, b], [ox+Li, oy+Wi, b], [ox+Li, oy+Wi, c], [ox+Li, oy, c], [-1, 0, 0]);
     lin.quad([ox, oy, b], [ox, oy+Wi, b], [ox, oy+Wi, c], [ox, oy, c], [1, 0, 0]);
     lin.quad([ox, oy, c], [ox+Li, oy, c], [ox+Li, oy+Wi, c], [ox, oy+Wi, c], [0, 0, -1]);
-    if (!this.cut) this.holes(lin, oy, 1, this.doorsF, b, c);
+    if (!this.cut) this.holes(lin, oy, 1, this.openF, b, c);
     if (this.doorsB.length) this.holes(lin, oy+Wi, -1, this.doorsB, b, c);
     // швы обшивки
     const sm=this.M(StMat.paint(RalColor.shade(this.lining, 0.86), 0.6)), step=sea ? 1.2 : 1.15;
@@ -332,30 +398,11 @@ class StScene {
     const fu=this.plan.fuel, tamb=(this.g.x0||0)-(fu ? fu.x1+fu.part : 0);
     if (tamb>0){ const x=ox+this.g.x0/1000, d=this.M(StMat.paint(this.lining, 0.55)), dw=this.M(StMat.paint(RalColor.shade(this.wall, 0.95), 0.45));
       d.box(x-0.06, oy, b, x, oy+Wi-1.0, c); d.box(x-0.06, oy+Wi-0.1, b, x, oy+Wi, c); d.box(x-0.06, oy+Wi-1.0, b+2.0, x, oy+Wi-0.1, c);
-      dw.box(x-0.05, oy+Wi-0.98, b, x-0.01, oy+Wi-0.12, b+1.98, 0.004); }
+      dw.box(x-0.05, oy+Wi-0.98, b, x-0.01, oy+Wi-0.12, b+1.98, 0.004);
+      const cl=this.M(StMat.metal('#9aa1a8', 0.35)), dk=this.M(StMat.paint('#24292e', 0.55)); cl.box(x-0.11, oy+Wi-0.92, b+1.84, x-0.05, oy+Wi-0.65, b+1.91, 0.01);   // доводчик
+      dk.tube([x-0.09, oy+Wi-0.68, b+1.9], [x-0.12, oy+Wi-0.55, b+1.94], 0.008, 8); dk.tube([x-0.12, oy+Wi-0.55, b+1.94], [x-0.07, oy+Wi-0.5, b+2.0], 0.008, 8); }
   }
 
-  // ---- системы: свет, отопление, вентиляция, сигнализация, кабельный лоток, входная дверь
-  systems(){
-    const sys=this.plan.sys||{}, ox=this.ox, oy=this.oy, Li=this.Li, Wi=this.Wi, b=this.base, c=this.ceil;
-    if (sys.light!==false){ const lamp=this.M(StMat.glow('#fffdf4', 5)), body=this.M(StMat.paint('#e9ecee', 0.4)), n=Math.max(1, Math.round(Li/2.6));
-      for (let i=0; i<n; i++){ const x=ox+Li*(i+0.5)/n; body.box(x-0.6, oy+Wi/2-0.09, c-0.06, x+0.6, oy+Wi/2+0.09, c, 0.01); lamp.box(x-0.57, oy+Wi/2-0.07, c-0.062, x+0.57, oy+Wi/2+0.07, c-0.055); } }
-    if (sys.ops){ const s=this.M(StMat.paint('#f2f3f4', 0.35)); for (let x=ox+1.3; x<ox+Li-0.5; x+=3.2) s.tube([x, oy+Wi*0.3, c], [x, oy+Wi*0.3, c-0.05], 0.05, 16); }
-    // кабельный лоток вдоль задней стены под потолком
-    if (sys.power!==false){ const tr=this.M(StMat.metal(StScene.GALV, 0.45)); tr.box(ox+0.15, oy+Wi-0.22, c-0.26, ox+Li-0.15, oy+Wi-0.02, c-0.21, 0.003);
-      for (let x=ox+0.6; x<ox+Li-0.3; x+=1.5) tr.box(x, oy+Wi-0.24, c-0.28, x+0.03, oy+Wi, c-0.26); }
-    // отопление: конвекторы у задней стены, где нет оборудования
-    if (sys.heat!==false){ const cv=this.M(StMat.paint('#f4f5f6', 0.35)), gr=this.M(StMat.paint('#c5cacf', 0.5)), busy=this.plan.items.filter(i=>i.mount!=='wall' || i.wall==='back');
-      let n=0; for (let x=400; x<this.plan.int[0]-1000 && n<2; x+=200){ const a=x, z=x+800;
-        if (busy.some(i=>i.x<z+150 && i.x+i.lx>a-150 && i.y+i.ly>this.plan.int[1]-450)) continue;
-        const p0=this.P(a, this.plan.int[1]-110, 150), p1=this.P(z, this.plan.int[1], 550); cv.box(...p0, ...p1, 0.01); gr.box(p0[0]+0.04, p0[1]-0.002, p1[2]-0.06, p1[0]-0.04, p0[1]+0.01, p1[2]-0.02); n++; x+=1200; } }
-    // вентиляция: приток — в торце у двери внизу, вытяжка — в дальнем торце вверху (у ДГУ — жалюзи напротив радиатора)
-    const dgu=this.plan.items.find(i=>i.kind==='dgu');
-    if (dgu){ const y0=this.mm(dgu.y)+oy+0.08, y1=this.mm(dgu.y+dgu.ly)+oy-0.08; this.louver(1, this.Le, y0, y1, b+this.mm(dgu.h)*0.12, b+this.mm(dgu.h)*0.95, 1); }
-    else if (sys.vent!==false){ const rc=this.plan.items.filter(i=>i.wall==='right'), y0=rc.length ? Math.max(oy+Wi*0.3, oy+Math.max(...rc.map(i=>i.y+i.ly))/1000+0.15) : oy+Wi*0.3;
-      this.louver(1, this.Le, y0, Math.min(oy+Wi-0.12, y0+Wi*0.4), c-0.75, c-0.2, 1); }
-    if (sys.vent!==false && !this.g.sea) this.louver(1, 0, oy+Wi*0.25, oy+Wi*0.55, b+0.2, b+0.65, -1);
-  }
   /** жалюзи в стене: along 1 — в торце (x = w), 0 — в длинной стене (y = w); out — наружу (±1) */
   louver(along, w, u0, u1, z0, z1, out){
     const fr=this.M(StMat.paint('#8f969d', 0.5)), sl=this.M(StMat.paint('#5d646b', 0.55)), n=Math.max(3, Math.round((z1-z0)/0.07)), P=(u, o, z)=>along===1 ? [w+out*o, u, z] : [u, w+out*o, z];
@@ -367,6 +414,9 @@ class StScene {
   // ---- оборудование
   equip(it){
     if (it.mount==='wall' && it.wall==='front' && this.cut) return;   // на стене со стороны зрителя: срезана вместе со стеной (на чертеже — есть)
+    this.body(it); this.badge(it);
+  }
+  body(it){
     const k=it.kind;
     if (k==='cabinet') return this.cabinet(it);
     if (it.mount==='pipe') return this.filter(it);
@@ -667,20 +717,23 @@ class StSky {
 // ---------------------------------------------------------------- отрисовка на WebGL2
 class StGl {
   static VS = `#version 300 es
-in vec3 aP; in vec3 aN; uniform mat4 uVP; out vec3 vP; out vec3 vN;
-void main(){ vP=aP; vN=aN; gl_Position=uVP*vec4(aP, 1.0); }`;
-  // свет одного прохода: GGX + Ламберт, тень — карта глубины (9 выборок), рисунок рифлёного листа, земля — уходит в фон
+in vec3 aP; in vec3 aN; in vec2 aT; uniform mat4 uVP; out vec3 vP; out vec3 vN; out vec2 vT;
+void main(){ vP=aP; vN=aN; vT=aT; gl_Position=uVP*vec4(aP, 1.0); }`;
+  // свет одного прохода: GGX + Ламберт, тень — карта глубины (9 выборок), рисунок рифлёного листа, земля — уходит в фон,
+  // наклейка — цвет из картинки (прозрачное — не рисуется)
   static FS = `#version 300 es
 precision highp float; precision highp sampler2DShadow;
-in vec3 vP; in vec3 vN; out vec4 o;
+in vec3 vP; in vec3 vN; in vec2 vT; out vec4 o;
 uniform vec3 uCam, uL, uE, uAlb, uCtr, uIn0, uIn1; uniform float uRough, uMetal, uEmis, uW, uMinA, uTexel, uR0, uR1, uFill; uniform int uKind;
-uniform mat4 uLVP; uniform sampler2DShadow uSh;
+uniform mat4 uLVP; uniform sampler2DShadow uSh; uniform sampler2D uTex;
 float vis(vec3 p, vec3 n, float nl){
   vec3 q=p+n*(0.004+0.016*(1.0-nl)); vec4 s=uLVP*vec4(q, 1.0); vec3 c=s.xyz/s.w*0.5+0.5;
   if (c.x<0.0 || c.x>1.0 || c.y<0.0 || c.y>1.0 || c.z>1.0) return 1.0;
   float v=0.0; for (int i=-1; i<=1; i++) for (int j=-1; j<=1; j++) v+=texture(uSh, vec3(c.xy+vec2(float(i), float(j))*uTexel, c.z-0.0005));
   return v/9.0; }
 void main(){
+  vec3 alb=uAlb;
+  if (uKind==3){ vec4 t=texture(uTex, vT); if (t.a<0.5) discard; alb=pow(t.rgb, vec3(2.2)); }
   vec3 n=normalize(vN), v=normalize(uCam-vP); if (dot(n, v)<0.0) n=-n;
   if (uKind==1){ vec2 g=vP.xy*24.0, f=fract(g)-0.5; float a=mod(floor(g.x)+floor(g.y), 2.0)<0.5 ? 1.0 : -1.0;
     vec2 d=vec2(f.x*0.92+a*f.y*0.38, f.y*0.92-a*f.x*0.38); if (length(d*vec2(1.0, 3.4))<0.36) n=normalize(n+vec3(d*1.5, 0.0)); }
@@ -688,13 +741,13 @@ void main(){
   if (nl>0.0){ float V=vis(vP, n, nl);
     if (V>0.0){ vec3 h=normalize(uL+v); float nh=max(dot(n, h), 0.0), nv=max(dot(n, v), 1e-3), vh=max(dot(v, h), 0.0);
       float a=max(uRough*uRough, uMinA), a2=a*a, dd=nh*nh*(a2-1.0)+1.0, D=a2/(3.14159*dd*dd), k=(uRough+1.0)*(uRough+1.0)/8.0;
-      float G=nv/(nv*(1.0-k)+k)*nl/(nl*(1.0-k)+k); vec3 F0=mix(vec3(0.04), uAlb, uMetal), F=F0+(1.0-F0)*pow(1.0-vh, 5.0);
-      vec3 spec=D*G*F/max(4.0*nv*nl, 1e-3), dif=(1.0-uMetal)*(1.0-F)*uAlb/3.14159;
+      float G=nv/(nv*(1.0-k)+k)*nl/(nl*(1.0-k)+k); vec3 F0=mix(vec3(0.04), alb, uMetal), F=F0+(1.0-F0)*pow(1.0-vh, 5.0);
+      vec3 spec=D*G*F/max(4.0*nv*nl, 1e-3), dif=(1.0-uMetal)*(1.0-F)*alb/3.14159;
       col=(dif+spec)*uE*nl*V;
-      if (uMinA>0.0) col+=uMetal*uAlb*0.7/3.14159*uE*nl*V; } }   // металл под светом неба — матовое отражение (без чёрных пятен)
+      if (uMinA>0.0) col+=uMetal*alb*0.7/3.14159*uE*nl*V; } }   // металл под светом неба — матовое отражение (без чёрных пятен)
   // внутри — мягкий заполняющий свет светильников, без теней: оборудование в глубине видно
-  if (all(greaterThan(vP, uIn0)) && all(lessThan(vP, uIn1))) col+=uAlb*(1.0-0.5*uMetal)*uFill*(0.62+0.38*n.z)/3.14159*uW;
-  col+=uAlb*uEmis*uW; float w=uW;
+  if (all(greaterThan(vP, uIn0)) && all(lessThan(vP, uIn1))) col+=alb*(1.0-0.5*uMetal)*uFill*(0.62+0.38*n.z)/3.14159*uW;
+  col+=alb*uEmis*uW; float w=uW;
   if (uKind==2){ float f=1.0-smoothstep(uR0, uR1, length(vP.xy-uCtr.xy)); col*=f; w*=f; }
   o=vec4(col, w); }`;
   static VS_SH = `#version 300 es
@@ -723,12 +776,14 @@ void main(){ vec4 a=texture(uT, vU); float c=clamp(a.a, 0.0, 1.0); vec3 col=a.a>
     this.gl=gl; this.c=canvas; this.objs=[]; this.fb=null;
     this.main=this.prog(StGl.VS, StGl.FS); this.sh=this.prog(StGl.VS_SH, StGl.FS_SH); this.add=this.prog(StGl.VS_Q, StGl.FS_ADD); this.out=this.prog(StGl.VS_Q, StGl.FS_OUT);
     this.vaoQ=gl.createVertexArray();
+    this.white=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, this.white);   // для материалов без картинки
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
   }
   prog(vs, fs){
     const gl=this.gl, p=gl.createProgram();
     for (const [t, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]){ const s=gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s);
       if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('шейдер: '+gl.getShaderInfoLog(s)); gl.attachShader(p, s); }
-    gl.bindAttribLocation(p, 0, 'aP'); gl.bindAttribLocation(p, 1, 'aN'); gl.linkProgram(p);
+    gl.bindAttribLocation(p, 0, 'aP'); gl.bindAttribLocation(p, 1, 'aN'); gl.bindAttribLocation(p, 2, 'aT'); gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('программа: '+gl.getProgramInfoLog(p));
     p.loc={}; return p;
   }
@@ -741,10 +796,24 @@ void main(){ vec4 a=texture(uT, vU); float c=clamp(a.a, 0.0, 1.0); vec3 col=a.a>
       gl.bindBuffer(gl.ARRAY_BUFFER, bp); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mesh.p), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
       gl.bindBuffer(gl.ARRAY_BUFFER, bn); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mesh.n), gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bi); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(mesh.i), gl.STATIC_DRAW);
+      const bufs=[bp, bn, bi];
+      if (mesh.t.length){ const bt=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bt); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mesh.t), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 0, 0); bufs.push(bt); }
       gl.bindVertexArray(null);
-      this.objs.push({ vao, bufs:[bp, bn, bi], n:mesh.i.length, mat, alb:StMat.lin(mat.c) }); }
+      this.objs.push({ vao, bufs, n:mesh.i.length, mat, alb:StMat.lin(mat.c), tex:mat.k===3 ? this.texture(scene.decals.get(mat.tex)) : null }); }
   }
-  free(){ const gl=this.gl; for (const o of this.objs){ gl.deleteVertexArray(o.vao); o.bufs.forEach(b=>gl.deleteBuffer(b)); } this.objs=[]; }
+  /** картинка наклейки (StDecal рисует на холсте) → текстура с mip-уровнями; не нарисовалась — прозрачная */
+  texture(d){
+    const gl=this.gl, t=gl.createTexture(); let c=null;
+    try{ c=d && typeof StDecal!=='undefined' ? StDecal.canvas(d) : null; } catch(e){ c=null; }
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    if (c) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+    gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return t;
+  }
+  free(){ const gl=this.gl; for (const o of this.objs){ gl.deleteVertexArray(o.vao); o.bufs.forEach(b=>gl.deleteBuffer(b)); if (o.tex) gl.deleteTexture(o.tex); } this.objs=[]; }
   /** кадр: накопление (RGBA16F), кадр прохода (RGBA16F + глубина), карта теней (глубина S × S) */
   targets(W, H, S){
     const gl=this.gl; if (this.fb && this.fb.W===W && this.fb.H===H && this.fb.S===S) return this.fb;
@@ -778,7 +847,7 @@ void main(){ vec4 a=texture(uT, vU); float c=clamp(a.a, 0.0, 1.0); vec3 col=a.a>
       // тень: глубина со стороны света (земля тень не отбрасывает)
       gl.bindFramebuffer(gl.FRAMEBUFFER, F.sh); gl.viewport(0, 0, S, S); gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
       gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1.6, 2.0); gl.useProgram(this.sh); gl.uniformMatrix4fv(this.u(this.sh, 'uVP'), false, LVP);
-      for (const ob of this.objs) if (ob.mat.k!==2){ gl.bindVertexArray(ob.vao); gl.drawElements(gl.TRIANGLES, ob.n, gl.UNSIGNED_INT, 0); }
+      for (const ob of this.objs) if (ob.mat.k!==2 && ob.mat.k!==3){ gl.bindVertexArray(ob.vao); gl.drawElements(gl.TRIANGLES, ob.n, gl.UNSIGNED_INT, 0); }
       gl.disable(gl.POLYGON_OFFSET_FILL);
       // проход: камера со сдвигом на долю пикселя (сглаживание)
       const P=new Float32Array(base), jx=(StSky.halton(i+1, 2)-0.5)*2/W, jy=(StSky.halton(i+1, 3)-0.5)*2/H; P[8]-=jx; P[9]-=jy;
@@ -789,8 +858,9 @@ void main(){ vec4 a=texture(uT, vU); float c=clamp(a.a, 0.0, 1.0); vec3 col=a.a>
       gl.uniform1f(this.u(pr, 'uW'), 1/passes.length); gl.uniform1f(this.u(pr, 'uMinA'), ps.sun ? 0 : 0.14); gl.uniform1f(this.u(pr, 'uTexel'), 1/S);
       gl.uniform1f(this.u(pr, 'uR0'), reach*0.55); gl.uniform1f(this.u(pr, 'uR1'), reach*1.25);
       gl.uniform3fv(this.u(pr, 'uIn0'), [scene.ox-0.01, scene.oy-0.01, scene.base-0.01]); gl.uniform3fv(this.u(pr, 'uIn1'), [scene.ox+scene.Li+0.01, scene.oy+scene.Wi+0.01, scene.ceil+0.01]); gl.uniform1f(this.u(pr, 'uFill'), StGl.FILL);
-      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, F.shT); gl.uniform1i(this.u(pr, 'uSh'), 0);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, F.shT); gl.uniform1i(this.u(pr, 'uSh'), 0); gl.uniform1i(this.u(pr, 'uTex'), 1);
       for (const ob of this.objs){ const m=ob.mat;
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, ob.tex || this.white);
         gl.uniform3fv(this.u(pr, 'uAlb'), ob.alb); gl.uniform1f(this.u(pr, 'uRough'), m.r); gl.uniform1f(this.u(pr, 'uMetal'), m.m); gl.uniform1f(this.u(pr, 'uEmis'), m.e||0); gl.uniform1i(this.u(pr, 'uKind'), m.k||0);
         gl.bindVertexArray(ob.vao); gl.drawElements(gl.TRIANGLES, ob.n, gl.UNSIGNED_INT, 0); }
       // в накопление
@@ -827,16 +897,19 @@ class StationRender {
     catch(e){ this.okFlag=false; }
     return this.okFlag;
   }
-  static cached(plan){ return this.cache.get(plan.hash||'')||null; }
+  static key(plan, view){ return (plan.hash||'')+(view==='out' ? '|o' : ''); }
+  static cached(plan, view){ return this.cache.get(this.key(plan, view))||null; }
   /** высота кадра — по сцене (длинный контейнер — ниже кадр, без пустых полей) */
   static size(scene){ const W=this.W, c=StCam.fit(scene.bounds(), 1.6, 0.9), k=c.span[1]/c.span[0]*1.6; return [W, Math.round(Math.max(760, Math.min(1100, W/1.6*Math.max(0.62, Math.min(1, k*1.12)))))]; }
-  /** 3D-вид картинкой: {src — JPEG, w, h}; WebGL2 нет или сбой — null (берётся SVG-вид). По очереди, с кэшем */
-  static image(plan, meta){
-    const key=plan.hash||''; if (this.cache.has(key)) return Promise.resolve(this.cache.get(key));
+  /** 3D-вид картинкой: {src — JPEG, w, h}; view — 'in' (разрез, по умолчанию) или 'out' (снаружи); WebGL2 нет или сбой —
+   *  null (берётся SVG-вид). По очереди, с кэшем; логотипы и знаки — наклейками (StDecal) */
+  static image(plan, meta, view){
+    const key=this.key(plan, view); if (this.cache.has(key)) return Promise.resolve(this.cache.get(key));
     if (!plan.geo || !plan.geo.ext || !this.ok()) return Promise.resolve(null);
     const run=async ()=>{ if (this.cache.has(key)) return this.cache.get(key);
       try{
-        const sc=new StScene(plan, meta).build(), [w, h]=this.size(sc);
+        const m=await StDecal.meta(plan, { ...meta, view:view==='out' ? 'out' : 'in' }), sc=new StScene(plan, m).build(), [w, h]=this.size(sc);
+        await StDecal.prepare(sc);
         if (!this.gl) this.gl=new StGl(document.createElement('canvas'));
         const c=await this.gl.render(sc, { w, h, passes:this.soft ? Math.min(this.PASSES, 24) : this.PASSES, shadow:this.soft ? 1536 : 2048 });
         const im={ src:c.toDataURL('image/jpeg', 0.92), w:c.width, h:c.height };
