@@ -455,6 +455,22 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
 `StationReq.ensureParts` (шкафы АВР и АСУ ТП в состав), `TzParse.options` / `negated` («без АВР», «не требуется»), `TzPick.oilFree`,
 частотное регулирование — штраф 0,3 без него; фильтры — по `AirChain.grade` (поле или название), `TzPick.GRADE` (пылевой — и тонкий).
 
+**Компоновка 3.61 — отсек бака, отопление, крыша, оснащение и наклейки на 3D:** `StationGeo.ROOFS` / `roof(c)` / `rise(roof, W)`
+(плоская, двускатная 8°, односкатная 5° — выше у стены с дверью; морской — всегда плоская), `plan.geo.rise`; `StationLayout.TANK`,
+`tankRoom` / `geoOf` / `tankPlace` — бак ДГУ в отсеке у торца (`plan.fuel`: `x1`, `part`, `door`, `fill` — `left` у блок-контейнера,
+`back` у морского), оборудование — после `geo.x0`; `StationHeat.calc(plan)` → `plan.heat` (теплопотери `qEnv`/`qInf`/`qStop`, режим работы
+`base`/`qRun` с `REC`/`LOSS`/`CASE`, `pick` — число и мощность из `UNITS`, `spots`/`spread` — места у стен, `vent` — лето), `CONT_SYSTEMS.rec`,
+`KitView.sysOn`; несколько ресиверов — `TzPick.receivers` (высота — `hmax`). 3D: `StMesh.decal`/`decalArc` (координаты текстуры),
+`StMat.decal` (`k:3`, `tex` — ключ описания в `StScene.decals`), шейдер `uTex` (прозрачное — `discard`, в тени не участвует);
+`StScene` — `view: 'in' | 'out'` (`openF` — проёмы с закрытыми дверями, `shut` — полотно, ручка, доводчик), `roof`/`roofZ`, `welded`,
+`badge` (логотип производителя: `meta.logos` — пропорции, `meta.makers` — по названию), `sticker`; `StOutfit` (station-outfit.js) —
+свет, лоток, конвекторы по `plan.heat.heaters`, вентиляция (`vent`, `hood`, `duct`), пожарная безопасность (`fire`, `extinguisher` — верх
+не выше `EXT`, `board`), отсек бака (`fuel`), двери и светильники (`doors`, `lamp`), логотип (`brand`); места на стенах — `StWalls`
+(`busy`/`find`). `StDecal` (station-decal.js) рисует картинки наклеек на холсте (логотип по `brandParts` шаблона, «О» — глобус; знаки
+F04, W01, W08, P02; табло), `PhotoTint` — главный цвет фото элемента (`pick` по пикселям: фон — заливкой от краёв), учитывается
+в `StationEquip.color` и в отпечатке. `StationRender.image(plan, meta, view)`, вид снаружи — изображение `gen:'stout'` (галочка `out`).
+`StationLayout.VER` = 8. Проверки — `tests/js/station_layout.js` (крыша, отопление, отсек бака, оснащение и наклейки, цвет по фото).
+
 **Компоновка 3.59 — узнаваемые рисунки оборудования:** `EquipIcon` (station-eskd.js) рисует оборудование схематически сходным
 с изделием, а не условными знаками: `ctx(...)` — рамка рисунка и `S(v, min)` (размер детали в мм изделия на листе, не мельче `min`);
 вид спереди — `front` (сзади — `face > 0`, сбоку — `rot` или шкаф на торце), сверху — `plan` (повёрнутое поперёк — рисунок в своих осях
