@@ -138,12 +138,12 @@ class StScene {
     this.doorsF=sd.filter(d=>d.wall!=='back'); this.doorsB=sd.filter(d=>d.wall==='back');
     this.view=meta.view==='out' ? 'out' : 'in'; this.closed=this.view==='out';
     this.cut=this.view==='in' && !(this.svc && this.doorsF.length);   // стена со стороны зрителя срезана (без прохода — стоит, двери открыты)
-    // ДГУ с дверью-жалюзи в торце: снаружи — вид спереди справа (торец с дверью и выхлопом глушителя)
-    this.az=this.closed && plan.dguDoor ? -StCam.AZ : StCam.AZ;
-    // проёмы стены со стороны зрителя: сервисные двери; снаружи — ещё входная дверь и дверь отсека топливного бака
+    // ДГУ с дверью-жалюзи или ворота для демонтажа в дальнем торце: снаружи — вид спереди справа (на этот торец)
+    this.az=this.closed && (plan.dguDoor || (plan.gates && plan.gates.wall==='right' && !plan.gates.sea)) ? -StCam.AZ : StCam.AZ;
+    // проёмы стены со стороны зрителя: сервисные двери; снаружи — ещё дверь оператора и дверь отсека топливного бака
     this.openF=this.cut ? [] : this.doorsF.map(d=>({ x0:d.x0, x1:d.x1, h:d.h, leaves:d.leaves, kind:'service', open:this.svc }));
-    if (this.closed){ const x0=g.x0||0, D=StationLayout.DOOR.h;
-      if (plan.door==='side') this.openF.push({ x0:x0+StationLayout.ENTRY[0], x1:x0+StationLayout.ENTRY[1], h:D, leaves:1, kind:'entry' });
+    if (this.closed){ const D=StationLayout.DOOR.h, en=plan.entry;
+      if (en && en.wall==='front') this.openF.push({ x0:en.x0, x1:en.x1, h:en.h, leaves:1, kind:'entry' });
       if (plan.fuel) this.openF.push({ x0:plan.fuel.door.x0, x1:plan.fuel.door.x1, h:D, leaves:1, kind:'tank' });
       this.openF.sort((a, b)=>a.x0-b.x0); }
   }
@@ -275,7 +275,7 @@ class StScene {
     panel(1, t, W-t, L-0.02, 1); panel(1, t, W-t, 0.02, -1);
     if (!this.cut) this.frontWall(w, z0+0.16, zt-t, null);
     this.roof(zt, this.frame);   // крыша — в цвет каркаса
-    if (this.plan.door==='end') this.gates();
+    this.endDoors();
   }
   /** цельносварной: рама из гнутого швеллера и стойки, стены — профилированный лист (трапеция), приваренный к раме */
   welded(){
@@ -287,7 +287,7 @@ class StScene {
     w.corr(1, t, W-t, L-0.025, 1, z0+b, zt-0.1, ...P); w.corr(1, t, W-t, 0.025, -1, z0+b, zt-0.1, ...P);
     if (!this.cut) this.frontWall(w, z0+b, zt-0.1, P);
     this.roof(zt, this.frame);   // крыша — в цвет каркаса
-    if (this.plan.door==='end') this.gates();
+    this.endDoors();
   }
   /** высота крыши над поперечной координатой y (м): плоская — верх контейнера; скатная — по скату (без толщины кровли) */
   roofZ(y){
@@ -395,11 +395,25 @@ class StScene {
     q(x, this.ox+this.Li, b, c);
   }
   /** ворота в торце блок-контейнера (два ряда оборудования — дверь в торце) */
-  gates(){
-    const W=this.We, d=this.M(StMat.paint(RalColor.shade(this.wall, 0.95), 0.45)), dk=this.M(StMat.paint('#23272b', 0.6)), w=Math.min(1.8, W-0.4), y0=(W-w)/2, z0=this.dz+0.16, z1=z0+Math.min(2.2, this.He-0.4);
-    d.box(-0.02, y0, z0, 0.0, y0+w/2-0.005, z1, 0.004); d.box(-0.02, y0+w/2+0.005, z0, 0.0, y0+w, z1, 0.004);
-    for (const y of [y0+w/2-0.08, y0+w/2+0.06]) dk.box(-0.05, y, z0+0.95, -0.02, y+0.02, z0+1.15, 0.004);
+  /** в торцах блок-контейнера: распашные ворота для демонтажа (plan.gates) и одностворчатая дверь оператора (plan.entry в
+   *  торце) — полотна поверх торцевой стены, ручки; у морского — его штатные двери (cargoDoors) */
+  endDoors(){
+    const P=this.plan, G=P.gates, en=P.entry;
+    if (G && !G.sea) this.endLeaves(G, G.wall, 2);
+    if (en && en.wall==='left' && !en.sea) this.endLeaves(en, 'left', 1);
   }
+  /** створки в торце side ('left' — x = 0, 'right' — x = Le): проём d.y0…d.y1 (мм внутри), высота d.h от пола; n — створок */
+  endLeaves(d, side, n){
+    const s=side==='left' ? -1 : 1, xw=side==='left' ? 0 : this.Le, y0=this.oy+d.y0/1000, w=(d.y1-d.y0)/1000, lw=w/n, z0=this.base, z1=this.base+d.h/1000;
+    const lf=this.M(StMat.paint(RalColor.shade(this.wall, 0.95), 0.45)), dk=this.M(StMat.paint('#23272b', 0.6)), fr=this.M(StMat.paint(RalColor.shade(this.frame, 0.9), 0.45));
+    const X=(a, b)=>[Math.min(xw+s*a, xw+s*b), Math.max(xw+s*a, xw+s*b)];
+    const [fa, fb]=X(0, 0.03); fr.box(fa, y0-0.05, z0, fb, y0, z1+0.05); fr.box(fa, y0+w, z0, fb, y0+w+0.05, z1+0.05); fr.box(fa, y0-0.05, z1, fb, y0+w+0.05, z1+0.05);   // коробка
+    const [la, lb]=X(0, 0.025); for (let i=0; i<n; i++) lf.box(la, y0+lw*i+0.004, z0+0.01, lb, y0+lw*(i+1)-0.004, z1-0.004, 0.004);
+    const [ha, hb]=X(0.025, 0.055), yh=n>1 ? [y0+w/2-0.08, y0+w/2+0.06] : [y0+w-0.12];
+    for (const y of yh) dk.box(ha, y, z0+0.95, hb, y+0.02, z0+1.15, 0.004);   // ручки (у ворот — запорные, по сторонам притвора)
+    if (n>1){ const mt=this.M(StMat.metal('#c3c8cd', 0.3)), [ba, bb]=X(0.04, 0.06); for (const y of [y0+w/2-0.07, y0+w/2+0.05]) mt.box(ba, y, z0+0.08, bb, y+0.02, z1-0.08, 0.004); }   // запорные штанги
+  }
+
   /** внутри: обшивка стен и потолка, пол из рифлёного листа, разрез стены со стороны зрителя (утеплитель) */
   inside(){
     const ox=this.ox, oy=this.oy, Li=this.Li, Wi=this.Wi, b=this.base, c=this.ceil, lin=this.M(StMat.paint(this.lining, 0.6)), sea=this.g.sea;

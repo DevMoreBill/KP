@@ -73,14 +73,12 @@ class StationFire {
     for (let i=1; i<X.length; i++) if (X[i]-X[i-1]>X[g+1]-X[g]) g=i-1;
     return { x:Math.round((X[g]+X[g+1])/2), y:Math.round(W/2), shade:false };
   }
-  /** выход из помещения оборудования: стена (front — входная дверь в стене прохода, left — ворота в торце), середина проёма
-   *  вдоль стены и верх проёма, мм; без прохода внутри (сервисные двери) — null */
+  /** выход из помещения оборудования — дверь оператора (front — в стене прохода, left — в торце): стена, середина проёма
+   *  вдоль стены, ширина и верх проёма, мм; без прохода внутри (сервисные двери) — null */
   static exit(plan){
-    const x0=plan.geo.x0||0, E=StationLayout.ENTRY;
-    if (plan.door==='side') return { wall:'front', u:x0+(E[0]+E[1])/2, w:E[1]-E[0], top:StationLayout.DOOR.h };
-    if (plan.door==='end' && !x0){ const g=plan.geo, sea=!!g.sea, W=plan.int[1];
-      return { wall:'left', u:W/2, w:Math.min(1800, g.ext[1]-400), top:sea ? plan.int[2] : 160+Math.min(2200, g.ext[2]-400)-StationGeo.zFloor(g.type, g.t) }; }
-    return null;
+    const en=plan.entry; if (!en || (en.wall==='left' && plan.geo.x0)) return null;
+    if (en.wall==='front') return { wall:'front', u:(en.x0+en.x1)/2, w:en.w, top:en.h };
+    return { wall:'left', u:(en.y0+en.y1)/2, w:en.w, top:en.sea ? plan.int[2] : en.h };
   }
   static f1(v){ return String(Math.round(v*10)/10).replace('.', ','); }
   /** число со словом в нужной форме: pl(2, ['светильник', 'светильника', 'светильников']) → «2 светильника» */
@@ -140,7 +138,7 @@ class StationLight {
     const i=S/(h*(A+B)), eta=this.eta(i), M=this.LAMP;
     const n=Math.max(2, Math.ceil(this.LUX*S*this.KZ/(M.lm*eta)-1e-9), Math.ceil(A/(1.5*h)));
     const tb=x0-(f ? f.x1+f.part : 0), small=(f ? 1 : 0)+(tb>0 ? 1 : 0);
-    const floods=(plan.door==='side' ? 1 : 0)+(plan.door==='end' && !(plan.geo && plan.geo.sea) ? 1 : 0)+(f ? 1 : 0);
+    const floods=(plan.entry && !plan.entry.sea ? 1 : 0)+(f ? 1 : 0);   // прожектор над дверью оператора и дверью отсека бака
     const on=sys.light!==false, kw=on ? (n*M.w+small*this.SMALL+floods*this.FLOOD+this.EXIT)/1000 : 0;
     return { on, lux:this.LUX, n, em:Math.max(1, Math.ceil(n/2)), eta, i, area:S, E:n*M.lm*eta/(S*this.KZ), small, floods, kw };
   }

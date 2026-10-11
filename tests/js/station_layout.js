@@ -45,9 +45,9 @@ class Check {
       assert.ok(f.door.x0>=0 && f.door.x1<=f.x1 && f.door.x1-f.door.x0>=StationLayout.DOOR_MIN, `${label}: дверь отсека бака`);
       for (const t of tanks) assert.ok(t.y>=StationLayout.TANK.aisle-1, `${label}: проход перед баком ${t.y} мм`); }
     const floor=I.filter(i=>(i.mount==='floor' || i.mount==='frame') && !i.tank);
-    if (p.door==='service'){   // без прохода: перед каждым — сервисная дверь в его стене, до неё не меньше зазора
-      assert.ok(Array.isArray(p.doors) && p.doors.length, label+': нет сервисных дверей');
-      for (const it of floor){ const fr=it.face<=0, bk=it.face>=0;
+    if (p.door==='service'){   // без прохода: перед каждым (кроме небольших — ресивер, фильтр, рефрижераторный осушитель) — сервисная дверь в его стене
+      assert.ok(Array.isArray(p.doors) && (p.doors.length || floor.every(StationLayout.minor)), label+': нет сервисных дверей');
+      for (const it of floor.filter(i=>!StationLayout.minor(i))){ const fr=it.face<=0, bk=it.face>=0;
         if (fr){ assert.ok(it.y>=G[1]-1, `${label}: поз. ${it.pos} ближе ${G[1]} мм к двери`); assert.ok(p.doors.some(d=>d.wall==='front' && d.x0<it.x+it.lx && d.x1>it.x), `${label}: перед поз. ${it.pos} нет двери`); }
         if (bk){ assert.ok(W-it.y-it.ly>=G[1]-1, `${label}: поз. ${it.pos} ближе ${G[1]} мм к двери в задней стене`); assert.ok(p.doors.some(d=>d.wall==='back' && d.x0<it.x+it.lx && d.x1>it.x), `${label}: за поз. ${it.pos} нет двери`); } }
       for (const d of p.doors) assert.ok(['front', 'back'].includes(d.wall) && d.x0>=0 && d.x1<=L && d.leaves>=1 && d.h>0, label+': дверь вне стены');
@@ -176,7 +176,9 @@ Check.run('КС в контейнере 20 футов', ()=>{
   Check.plan(p, 'КС 20');
   assert.ok(['ok', 'warn'].includes(p.level), p.issues.map(i=>i.text).join(' | '));
   assert.strictEqual(p.items.filter(i=>i.kind==='filter' && i.mount==='pipe').length, 2, 'фильтры — на трубопроводе');
-  const cb=p.items.find(i=>i.kind==='cabinet'); assert.ok(cb.mount==='wall' && cb.wall==='front' && cb.x<=300, 'шкаф — на стене прохода у двери');
+  const cb=p.items.find(i=>i.kind==='cabinet'), en=p.entry;
+  assert.ok(p.door==='side' && en && en.wall==='front' && en.w===900 && p.gates && p.gates.sea && p.gates.wall==='left', 'морской: дверь оператора одностворчатая в боковой стене, штатные двери в торце — для демонтажа');
+  assert.ok(cb.mount==='wall' && cb.wall==='front' && (cb.x>=en.x1+100 || cb.x+cb.lx<=en.x0-100), 'шкаф — на стене прохода, не на двери оператора');
   assert.ok(p.extra.some(e=>e.kind==='skip' && /отоплен/.test(e.name)), 'системы — в примечании, не на полу');
   draw(p, 'КС 20');
 });
@@ -258,8 +260,12 @@ Check.run('нет места для прохода — сервисные две
   Check.plan(g, 'ДГУ без прохода'); const gi=g.items.find(i=>i.kind==='dgu');
   assert.strictEqual(g.door, 'service'); assert.strictEqual(gi.face, 0, 'ДГУ — посередине');
   assert.ok(g.doors.some(x=>x.wall==='front') && g.doors.some(x=>x.wall==='back'), 'у ДГУ — двери с обеих сторон');
+  // небольшим аппаратам сервисная дверь не нужна (рефрижераторный осушитель проходит в дверь оператора), компрессору — нужна
+  const dr=auto.items.find(i=>i.kind==='dryer'), cp=auto.items.find(i=>i.kind==='compressor');
+  assert.ok(StationLayout.minor(dr) && !auto.doors.some(d=>d.x0<dr.x+dr.lx && d.x1>dr.x && !(d.x0<cp.x+cp.lx && d.x1>cp.x)) && auto.doors.some(d=>d.x0<cp.x+cp.lx && d.x1>cp.x), 'двери — только там, где они нужны: '+JSON.stringify(auto.doors));
   // соседние проёмы — со стойкой между ними, не сливаются в один
-  assert.ok(auto.doors.length>=2, 'отдельные проёмы: '+JSON.stringify(auto.doors));
+  const pair=solve(C('block'), [Object.assign({}, deep, { qty:2 })]);
+  Check.plan(pair, 'два компрессора без прохода'); assert.ok(pair.door==='service' && pair.doors.length>=2, 'отдельные проёмы: '+JSON.stringify(pair.doors));
 });
 
 Check.run('шкафы на стене, фильтры на трубопроводе', ()=>{
@@ -268,7 +274,8 @@ Check.run('шкафы на стене, фильтры на трубопрово�
   Check.plan(p, 'шкафы и фильтры');
   const cabs=p.items.filter(i=>i.kind==='cabinet');
   assert.ok(cabs.length===2 && cabs.every(c=>c.mount==='wall') && cabs.some(c=>c.wall==='front'), 'шкафы без габаритов — настенные: на стене прохода (мимо сервисной двери) и на торце');
-  assert.ok(p.door==='end' && p.doors.length===1 && p.doors[0].pos.includes(1) && cabs.every(c=>c.wall!=='front' || c.x+c.lx<=p.doors[0].x0-100 || c.x>=p.doors[0].x1+100), 'сервисная дверь — только для компрессора (проход уже него), шкаф — не на ней');
+  assert.ok(p.door==='side' && !p.doors.length && p.gates.sea && p.gates.pos.includes(1) && !p.gates.pos.includes(2) && cabs.every(c=>c.wall!=='left' && (c.wall!=='front' || c.x+c.lx<=p.entry.x0-100 || c.x>=p.entry.x1+100)),
+    'компрессор — через штатные двери в торце (в дверь оператора не проходит), осушитель — через дверь оператора; шкафы — не на дверях');
   assert.ok(cabs.every(c=>c.z+c.h<=StationLayout.CAB_TOP+1), 'верх шкафа — не выше 1,9 м');
   const F=p.items.filter(i=>i.kind==='filter');
   assert.ok(F.length===2 && F.every(f=>f.mount==='pipe' && f.z>0), 'фильтры висят на трубе');
@@ -362,6 +369,33 @@ Check.run('сжатый воздух: последовательно, фильт
   if (AL.length>1) assert.ok(AL.some(l=>l.header) && new Set(AL.map(l=>l.z)).size===2, 'коллектор — на другой высоте');
 });
 
+Check.run('двери: оператора — одностворчатая наружу; ворота для демонтажа — в торце; сервисные — где нет отступов', ()=>{
+  // отступы выдержаны (проход внутри): дверь оператора одностворчатая, не уже 600 мм; компрессор в неё не проходит — распашные
+  // ворота в торце (по возможности в дальнем), сервисных дверей в боковых стенах нет
+  const ks=solve(C('block', { sizeAuto:true }), [comp, dryer, rec, cab]); Check.plan(ks, 'ворота');
+  assert.ok(ks.door==='side' && ks.entry && ks.entry.wall==='front' && ks.entry.w>=StationLayout.DOOR_MIN && ks.entry.w===StationLayout.ENTRY[1]-StationLayout.ENTRY[0], 'дверь оператора — одностворчатая в стене прохода');
+  const G=ks.gates; assert.ok(G && G.wall==='right' && G.leaves===2 && G.pos.includes(1) && !ks.doors.length, 'компрессор — через распашные ворота в дальнем торце: '+JSON.stringify(G));
+  const cp=ks.items.find(i=>i.kind==='compressor'); assert.ok(G.w>=Math.min(cp.l, cp.w)+2*StationLayout.PASS && G.h>=cp.h+StationLayout.PASS, 'ворота — шире и выше компрессора');
+  assert.ok(!G.pos.includes(ks.items.find(i=>i.kind==='dryer').pos) && !G.pos.includes(ks.items.find(i=>i.kind==='receiver').pos), 'ресивер и рефрижераторный осушитель — через дверь оператора');
+  assert.ok(ks.issues.some(i=>/Распашные ворота .* в дальнем торце/.test(i.text) && /одностворчатая/.test(i.text)), 'сведения о воротах и двери оператора');
+  assert.ok(!ks.items.some(i=>i.mount==='wall' && i.wall==='right'), 'на торце с воротами шкафов нет');
+  // небольшие аппараты — ворота не нужны
+  const small=solve(C('block', { sizeAuto:true }), [P('Компрессор поршневой', { cat:'comp_piston', size:'700 × 500 × 800' }, { role:'main' }), dryer, rec]); Check.plan(small, 'без ворот');
+  assert.ok(!small.gates && !small.doors.length, 'всё проходит в дверь оператора — ни ворот, ни сервисных дверей');
+  // крупный адсорбционный осушитель — ворота (или, если к торцу не провезти, сервисные ворота в боковой стене)
+  const ads=P('Адсорбционный осушитель крупный', { cat:'dryer_ads', size:'1300 × 1000 × 2000' });
+  const a=solve(C('block', { sizeAuto:true }), [comp, ads, rec]), ap=a.items.find(i=>i.kind==='dryer').pos; Check.plan(a, 'адсорбционный');
+  assert.ok((a.gates && a.gates.pos.includes(ap)) || a.doors.some(d=>d.pos.includes(ap)), 'крупному адсорбционному — ворота');
+  // морской: дверь оператора — в боковой стене, ворота — его штатные двери в торце
+  const sea=solve(C('sea20'), [comp, dryer, rec]); Check.plan(sea, 'морской');
+  assert.ok(sea.door==='side' && sea.entry.w===900 && sea.gates && sea.gates.sea && sea.gates.wall==='left' && sea.gates.pos.includes(1), 'морской: ворота — штатные двери');
+  // ДГУ: в дальнем торце — дверь-жалюзи; ворота — не там
+  const dg=solve(C('block', { sizeAuto:true }), [dgu, ats]); Check.plan(dg, 'ДГУ');
+  assert.ok(dg.dguDoor && (!dg.gates || dg.gates.wall==='left'), 'у ДГУ дальний торец — дверь-жалюзи');
+  // чертёж, ТЗ: ворота и дверь оператора
+  const T=StationDrawing.lift ? StationDrawing.svg(ks, meta(ks)) : ''; assert.ok(/Распашные ворота/.test(T) && /Дверь оператора — одностворчатая/.test(T), 'на чертеже — ворота и дверь оператора');
+});
+
 Check.run('шкафы не сужают проход, торец; двери не уже 600 мм', ()=>{
   // компрессор напротив почти всей стены прохода: шкаф там сузил бы проход — шкафы на торцах (у двери и дальнем)
   const long=P('Компрессор', { cat:'comp_screw', size:'2500 × 900 × 1500' }, { role:'main' });
@@ -376,7 +410,7 @@ Check.run('шкафы не сужают проход, торец; двери н�
   assert.ok(/на стене, низ на высоте [\d ]+ мм; проход перед ними — не менее/.test(StationDrawing.svg(p, meta(p))), 'шкафы не сужают проход — в технических требованиях');
   assert.strictEqual(StationLayout.DOOR_MIN, 600);
   assert.ok(StationLayout.ENTRY[1]-StationLayout.ENTRY[0]>=StationLayout.DOOR_MIN, 'входная дверь — не уже 600 мм');
-  const sv=StationDrawing.svg(solve(C('block'), [comp]), meta(p)); assert.ok(/Входная дверь 900 мм \(не менее 600 мм в свету\) открывается наружу/.test(sv), 'на чертеже — дверь оператора');
+  const sv=StationDrawing.svg(solve(C('block'), [comp]), meta(p)); assert.ok(/Дверь оператора — одностворчатая 900 мм \(не менее 600 мм в свету\), открывается наружу/.test(sv), 'на чертеже — дверь оператора');
 });
 
 Check.run('морской контейнер с запасом — подсказка меньшего', ()=>{
@@ -826,7 +860,8 @@ Check.run('3D: оснащение — пожарная безопасность,
       assert.strictEqual(sc.outfit.log.filter(q=>q.kind==='buran').length, F.mods, 'модули «Буран-2,5» на потолке — по расчёту');
       const ex=sc.outfit.log.find(q=>q.kind==='board' && q.id==='EXIT');
       assert.ok(ex && ex.wall==='front' && Math.abs(ex.u-F.exit.u)<=250 && ex.z0>=F.exit.top, 'табло «Выход» — над входной дверью');
-      const op=sc.outfit.log.find(q=>q.kind==='ops'); assert.ok(op && op.seen, 'щит ОПС — на видном месте');
+      const op=sc.outfit.log.find(q=>q.kind==='ops'), en=ks.entry, near=op && en && en.wall==='front' && (op.wall==='left' ? Math.hypot(en.x1-(ks.geo.x0||0), op.u)<2500 : op.wall==='front' && Math.abs(op.u-(en.x0+en.x1)/2)<2500);
+      assert.ok(op && (op.seen || near), 'щит ОПС — на видном месте или у входа: '+JSON.stringify(op));
       assert.ok(ext.length===1 && ext.every(q=>q.at[1]>sc.oy+0.05), 'огнетушитель виден: не на срезанной стене');
       const hs=ks.heat.heaters.filter(h=>h.wall!=='front'); assert.strictEqual(sc.outfit.log.filter(q=>q.kind==='heater').length, hs.length, 'конвекторы — на местах из расчёта');
     } else {

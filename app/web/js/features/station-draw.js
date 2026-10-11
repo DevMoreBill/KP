@@ -63,11 +63,13 @@ class StationDrawing {
     this.rf=plan.roof||[]; this.up=this.rf.length ? Math.max(...this.rf.map(m=>m.gap+m.d)) : 0;   // выхлоп глушителя — горизонтально
     this.rise=g.rise||0; this.fuel=plan.fuel||null; this.heaters=(plan.heat && plan.heat.heaters)||[];   // скатная крыша, отсек бака ДГУ, конвекторы
     this.pipes=plan.piping||[]; this.lines=this.pipes.length ? this.pipes[0].lines : [];
-    // двери: входная оператора (в стене прохода или ворота в торце) и сервисные (без прохода — у каждого агрегата, с проходом —
-    // только для монтажа и демонтажа), у ДГУ — дверь-жалюзи в торце; на плане — створки и дуги открывания
+    // двери: оператора — одностворчатая в стене прохода или в торце (entry), ворота для демонтажа в торце (gates; у морского —
+    // его двери), сервисные — где не выдержаны отступы (без прохода — у агрегатов) или к торцу не провезти; у ДГУ — дверь-жалюзи
+    // в торце; на плане — створки и дуги открывания
     const sd=plan.doors||[], leaf=D=>D.length ? Math.max(...D.map(d=>d.w/d.leaves)) : 0; this.svc=plan.door==='service'; this.dg=plan.dguDoor||null;
+    this.en=plan.entry||null; this.gt=plan.gates||null;
     this.sdF=sd.filter(d=>d.wall!=='back'); this.sdB=sd.filter(d=>d.wall==='back');
-    this.swing=Math.max(plan.door==='side' ? StationLayout.ENTRY[1]-StationLayout.ENTRY[0] : 0, leaf(this.sdF), this.fuel ? this.fuel.door.x1-this.fuel.door.x0 : 0); this.swingB=leaf(this.sdB);
+    this.swing=Math.max(this.en && this.en.wall==='front' ? this.en.w : 0, leaf(this.sdF), this.fuel ? this.fuel.door.x1-this.fuel.door.x0 : 0); this.swingB=leaf(this.sdB);
     this.swingR=this.dg ? this.dg.w/2 : 0;
     this.ai=this.svc ? null : StationDrawing.aisle(plan, this.Wi);
     this.ms=plan.mass||null;
@@ -128,8 +130,10 @@ class StationDrawing {
       wall.length ? `${wall.length>1 ? 'Шкафы' : 'Шкаф'} ${list(wall)} — на стене, низ на высоте ${n(z0)} мм; проход перед ${wall.length>1 ? 'ними' : 'ним'} — не менее ${n(aMin)} мм.` : '',
       frame.length ? `${frame.length>1 ? 'Шкафы' : 'Шкаф'} ${list(frame)} — на раме за сервисной дверью.` : '',
       chain.length ? `Сжатый воздух — последовательно: поз. ${chain.join(' → ')} → к потребителю${hang.length ? `; фильтры ${list(hang)} — на трубопроводе` : ''}.` : hang.length ? `Фильтры ${list(hang)} — на трубопроводе.` : '',
-      p.door==='side' ? `Входная дверь ${n(StationLayout.ENTRY[1]-StationLayout.ENTRY[0])} мм (не менее ${n(StationLayout.DOOR_MIN)} мм в свету) открывается наружу.` : '',
-      !this.svc && p.doors && p.doors.length ? `Сервисные двери — только для монтажа и демонтажа: ${p.doors.map(d=>`${n(d.w)} × ${n(d.h)} мм — поз. ${d.pos.join(', ')}`).join('; ')} (через входную дверь не выносится); с запорными штангами, без доводчиков.` : '',
+      this.en && !this.en.sea ? `Дверь оператора — одностворчатая ${n(this.en.w)} мм (не менее ${n(StationLayout.DOOR_MIN)} мм в свету)${this.en.wall==='left' ? ' в торце' : ''}, открывается наружу, с доводчиком; рядом — знаки и огнетушители.` : '',
+      this.gt && this.gt.pos.length ? (this.gt.sea ? `Монтаж и демонтаж ${list(this.gt.pos)} — через штатные двери контейнера в торце.`
+        : `Распашные ворота ${n(this.gt.w)} × ${n(this.gt.h)} мм в ${this.gt.wall==='left' ? 'торце у входа' : 'дальнем торце'} — для монтажа и демонтажа ${list(this.gt.pos)} (в дверь оператора не проходит); утеплённые, с запорными штангами.`) : '',
+      !this.svc && p.doors && p.doors.length ? `Сервисные ${p.doors.some(d=>d.leaves>1) ? 'ворота' : 'двери'} в боковой стене — для монтажа и демонтажа: ${p.doors.map(d=>`${n(d.w)} × ${n(d.h)} мм — поз. ${d.pos.join(', ')}`).join('; ')} (к торцу не провезти); с запорными штангами.` : '',
       this.dg ? `ДГУ поз. ${this.dg.pos}: в торце — двустворчатая дверь-жалюзи ${n(this.dg.w)} × ${n(this.dg.h)} мм (выброс воздуха радиатора, монтаж и демонтаж ДГУ).` : '',
       this.up ? `Глушитель ${list([...new Set(this.rf.map(m=>m.pos))])} — на крыше над ДГУ, выхлоп — горизонтально в сторону; съёмный (при перевозке снимается).` : '',
       this.ext.length ? `${this.ext.length>1 ? 'Ресиверы' : 'Ресивер'} ${list([...new Set(this.ext.map(i=>i.pos))])} — снаружи на бетонной площадке (ФНП ОРПД, п. 65); подключение через стену — с запорной арматурой${p.air && !p.air.units.some(u=>u.kind==='dryer' && u.air && u.air.type==='ads') ? ', отвод конденсата — с обогревом' : ''}.` : '',
@@ -481,10 +485,12 @@ class StationDrawing {
       sh.rect(yc-b/2, zc-b/2, b, b, 'main', '#fff'); sh.line(yc-b/2, zc-b/2+0.5, yc+b/2, zc-b/2+0.5, 'thin'); }
     const cw=Math.max(0.6, 160*k), chh=Math.max(0.6, 120*k);   // угловые фитинги / стойки
     for (const [x, y] of [[XL(We), Z(He)], [XL(0)-cw, Z(He)], [XL(We), Z(0)-chh], [XL(0)-cw, Z(0)-chh]]) sh.rect(x, y, cw, chh, 'thin');
-    if (this.p.door==='end' || g.sea){   // двери (ворота) в торце, у морского — штатные: две створки, запорные штанги
+    if (g.sea){   // штатные двери морского контейнера: две створки, запорные штанги
       const xm=(XL(We)+XL(0))/2, y1=Z(He)+chh, y2=Z(0)-chh; sh.line(xm, y1, xm, y2, 'main');
       for (const f of [0.18, 0.36, 0.64, 0.82]){ const x=XL(We)+We*k*f; sh.line(x, y1+0.6, x, y2-0.6, 'thin'); }
-    } else if (!g.sea){ sh.line(XL(We)+cw*0.5, Z(He)+chh, XL(We)+cw*0.5, Z(0)-chh, 'thin'); sh.line(XL(0)-cw*0.5, Z(He)+chh, XL(0)-cw*0.5, Z(0)-chh, 'thin'); }
+    } else { sh.line(XL(We)+cw*0.5, Z(He)+chh, XL(We)+cw*0.5, Z(0)-chh, 'thin'); sh.line(XL(0)-cw*0.5, Z(He)+chh, XL(0)-cw*0.5, Z(0)-chh, 'thin');
+      if (this.gt && this.gt.wall==='left') this.gateEnd(sh, XL, this.gt);
+      if (this.en && this.en.wall==='left') this.doorEnd(sh, XL, this.en); }
     const v=this.vents().left; if (v) this.louverEnd(sh, XL(this.oy+v[1]), XL(this.oy+v[0]), Z(this.zf+v[3]), Z(this.zf+v[2]));   // приточные жалюзи
     for (const m of this.rf){ const xc=XL(this.oy+m.y+m.d/2), r=m.d/2*k;
       sh.line(xc, Z(He), xc, Z(He+m.gap), 'main'); sh.circle(xc, Z(He+m.gap+m.d/2), r, 'main', '#fff'); }
@@ -496,9 +502,21 @@ class StationDrawing {
     const p=this.p, g=this.g, sys=p.sys||{}, W=this.Wi, H=this.Hi, dgu=p.items.some(i=>i.kind==='dgu' && !i.tank), out={ left:null, right:null };
     const on=dgu || (sys.vent!==false && (p.items.some(i=>i.kind==='compressor') || sys.vent));
     if (!on) return out;
-    if ((g.x0||0)===0 && p.door!=='end' && !g.sea) out.left=dgu ? [W*0.25, W*0.25+900, 200, 950] : [W*0.25, W*0.55, 200, 650];
-    if (!dgu && sys.vent!==false){ const y0=W*0.45, y1=Math.min(W-120, y0+W*0.4); if (y1-y0>=250) out.right=[y0, y1, H-750, H-200]; }
+    const G=p.gates && !p.gates.sea ? p.gates.wall : '';
+    if ((g.x0||0)===0 && p.door!=='end' && !g.sea && G!=='left') out.left=dgu ? [W*0.25, W*0.25+900, 200, 950] : [W*0.25, W*0.55, 200, 650];
+    if (!dgu && sys.vent!==false && G!=='right'){ const y0=W*0.45, y1=Math.min(W-120, y0+W*0.4); if (y1-y0>=250) out.right=[y0, y1, H-750, H-200]; }
     return out;
+  }
+  /** распашные ворота на виде с торца: проём y0…y1 (мм внутри), две створки, запорные штанги; X — y → x на листе */
+  gateEnd(sh, X, d){
+    const Z=v=>this.Z(v), xa=X(this.oy+d.y0), xb=X(this.oy+d.y1), za=Z(this.zf+d.h), zb=Z(this.zf), xm=(xa+xb)/2, a=Math.min(xa, xb), w=Math.abs(xb-xa);
+    sh.rect(a, za, w, zb-za, 'main', '#fff'); sh.line(xm, za, xm, zb, 'main');
+    for (const dx of [-0.7, 0.7]) sh.line(xm+dx, za+0.6, xm+dx, zb-0.6, 'thin');
+  }
+  /** одностворчатая дверь оператора на виде с торца: полотно, ручка */
+  doorEnd(sh, X, d){
+    const Z=v=>this.Z(v), xa=X(this.oy+d.y0), xb=X(this.oy+d.y1), za=Z(this.zf+d.h), zb=Z(this.zf), a=Math.min(xa, xb), w=Math.abs(xb-xa);
+    sh.rect(a, za, w, zb-za, 'main', '#fff'); const hx=a+w*0.85, zh=Z(this.zf+1000); sh.line(hx, zh-0.8, hx, zh+0.8, 'main');
   }
   /** жалюзи на виде с торца: рамка и ламели */
   louverEnd(sh, xa, xb, za, zb){ const k=this.k; sh.rect(Math.min(xa, xb), za, Math.abs(xb-xa), zb-za, 'main', '#fff'); for (let z=za+Math.max(0.8, 70*k); z<zb-0.4; z+=Math.max(0.8, 70*k)) sh.line(Math.min(xa, xb)+0.4, z, Math.max(xa, xb)-0.4, z, 'fine'); }
@@ -522,6 +540,7 @@ class StationDrawing {
       for (const f of [0.15, 0.5, 0.85]){ const z=za+(zb-za)*f, hl=Math.max(0.8, 120*k); sh.rect(xa-0.5, z, 0.8, hl, 'thin', '#000'); sh.rect(xb-0.3, z, 0.8, hl, 'thin', '#000'); }
       for (const dx of [-0.7, 0.7]) sh.line(xm+dx, za+0.6, xm+dx, zb-0.6, 'thin');
     } else { const v=this.vents().right; if (v) this.louverEnd(sh, XR(oy+v[0]), XR(oy+v[1]), Z(zf+v[3]), Z(zf+v[2])); }
+    if (this.gt && this.gt.wall==='right' && !this.gt.sea) this.gateEnd(sh, XR, this.gt);
     for (const o of this.outs){ const x=XR(oy+o.y), z=Z(zf+o.z), r=Math.max(0.9, 60*k); sh.circle(x, z, r, 'main', '#fff'); EquipIcon.axes(sh, x, z, r*1.6); }   // выходы трубопровода
     for (const m of this.rf){ const xc=XR(oy+m.y+m.d/2), r=m.d/2*k;
       sh.line(xc, Z(He), xc, Z(He+m.gap), 'main'); sh.circle(xc, Z(He+m.gap+m.d/2), r, 'main', '#fff'); sh.circle(xc, Z(He+m.gap+m.d/2), Math.max(0.6, 60*k), 'main', '#fff'); }
@@ -625,23 +644,24 @@ class StationDrawing {
   /** двери на плане: входная в стене прохода и сервисные — проём, створка в открытом положении и дуга (крайнее положение —
    *  штрихпунктирной с двумя точками); двери (ворота) в торце — створки в проёме */
   doorsPlan(sh, YP){
-    const k=this.k, X=v=>this.X(v), { ox, oy, We, Wi }=this, g=this.g, p=this.p;
+    const k=this.k, X=v=>this.X(v), { ox, oy, We }=this, p=this.p;
     const leafSwing=(xh, xf, yw, dir)=>{ const r=Math.abs(xf-xh), ye=yw+dir*r, f=EskdSheet.f;
       sh.line(xh, yw, xh, ye, 'phantom');
       sh.path(`M${f(xh)},${f(ye)} A${f(r)},${f(r)} 0 0 ${(xf>xh)===(dir>0) ? 0 : 1} ${f(xf)},${f(yw)}`, 'phantom'); };
     const gap=(x0, x1, back)=>{ const y0=back ? YP(We) : YP(oy), h=oy*k; sh.rect(X(x0), y0, (x1-x0)*k, h, 'thin', '#fff'); sh.line(X(x0), y0, X(x0), y0+h, 'main'); sh.line(X(x1), y0, X(x1), y0+h, 'main'); };
     if (p.fuel){ const d0=ox+p.fuel.door.x0, d1=ox+p.fuel.door.x1; gap(d0, d1, false); leafSwing(X(d0), X(d1), YP(0), 1); }   // вход в отсек бака
-    if (p.door==='side'){ const d0=ox+(g.x0 ? g.x0+300 : StationLayout.ENTRY[0]), d1=d0+(StationLayout.ENTRY[1]-StationLayout.ENTRY[0]);
-      gap(d0, d1, false); leafSwing(X(d0), X(d1), YP(0), 1); }
+    const en=this.en; if (en && en.wall==='front'){ const d0=ox+en.x0, d1=ox+en.x1; gap(d0, d1, false); leafSwing(X(d0), X(d1), YP(0), 1); }
     for (const d of p.doors||[]){ const back=d.wall==='back', lw=d.w/d.leaves;   // сервисные: без прохода — у каждого агрегата, с проходом — для демонтажа
       gap(ox+d.x0, ox+d.x1, back);
       for (let i=0; i<d.leaves; i++){ const a=ox+d.x0+i*lw, b=a+lw, left=i%2===0; leafSwing(X(left ? a : b), X(left ? b : a), back ? YP(We) : YP(0), back ? -1 : 1); } }
     if (this.dg){ const d=this.dg, ya=YP(oy+d.y0), yb=YP(oy+d.y1), x0=X(this.Le-ox), x1=X(this.Le), r=(ya-yb)/2, f=EskdSheet.f;   // дверь-жалюзи ДГУ в торце
       sh.rect(x0, yb, x1-x0, ya-yb, 'thin', '#fff'); sh.line(x0, ya, x1, ya, 'main'); sh.line(x0, yb, x1, yb, 'main');
       for (const [yh, s] of [[ya, -1], [yb, 1]]){ const ye=yh+s*r; sh.line(x1, yh, x1+r, yh, 'phantom'); sh.path(`M${f(x1+r)},${f(yh)} A${f(r)},${f(r)} 0 0 ${s>0 ? 1 : 0} ${f(x1)},${f(ye)}`, 'phantom'); } }
-    if (p.door==='end'){ const w=g.sea && g.door ? Math.min(g.door[0], Wi) : Math.min(1800, Wi-200), y0=oy+(Wi-w)/2;
-      sh.rect(this.xL, YP(y0+w), ox*k, w*k, 'thin', '#fff');
-      for (const [a, c] of [[y0, y0+w/2], [y0+w/2, y0+w]]) sh.rect(this.xL+ox*k*0.25, YP(c), Math.max(0.4, ox*k*0.5), (c-a)*k, 'main', '#fff'); }
+    // в торцах: ворота (у морского — штатные двери) и дверь оператора — створки в проёме
+    const inEnd=(d, left, n)=>{ const xw=left ? this.xL : X(this.Le-ox), y0=oy+d.y0, w=d.y1-d.y0, lw=w/n; sh.rect(xw, YP(y0+w), ox*k, w*k, 'thin', '#fff');
+      for (let i=0; i<n; i++) sh.rect(xw+ox*k*0.25, YP(y0+lw*(i+1)), Math.max(0.4, ox*k*0.5), lw*k, 'main', '#fff'); };
+    if (this.gt) inEnd(this.gt, this.gt.wall==='left', 2);
+    if (en && en.wall==='left' && !en.sea) inEnd(en, true, 1);
   }
   /** цепочка размеров вдоль задней стены по заднему ряду: отрезки; тесным числам — место выше (до трёх строк) со сдвигом
    *  вбок, без наложений; x — середина числа от внутренней левой грани, мм листа */
@@ -770,11 +790,13 @@ class StationView3D {
     const rib=g.sea ? 280 : 1150, dark=RalColor.shade(wall, g.sea ? 0.9 : 0.8);
     for (let x=rib; x<Le-100; x+=rib*(g.sea ? 2 : 1)) out.push(g.sea ? V.face([[x, -1, dz], [x+rib*0.6, -1, dz], [x+rib*0.6, -1, dz+band], [x, -1, dz+band]], dark, 0) : V.line([x, -1, dz], [x, -1, dz+band], dark, 1.4));
     for (let y=rib; y<We-100; y+=rib*(g.sea ? 2 : 1)) out.push(g.sea ? V.face([[-1, y, dz], [-1, y+rib*0.6, dz], [-1, y+rib*0.6, dz+band], [-1, y, dz+band]], RalColor.shade(dark, 0.86), 0) : V.line([-1, y, dz], [-1, y, dz+band], RalColor.shade(dark, 0.85), 1.4));
-    if (plan.door==='end'){   // торцевые двери: запорные штанги
-      const w=g.sea && g.door ? Math.min(g.door[0], Wi) : Math.min(1800, Wi-200), y0=oy+(Wi-w)/2;
+    const G=plan.gates && plan.gates.wall==='left' ? plan.gates : null, en=plan.entry;
+    if (G){   // в торце у входа — ворота (у морского — его двери): запорные штанги
+      const w=G.y1-G.y0, y0=oy+G.y0;
       for (const f of [0.12, 0.38, 0.62, 0.88]) out.push(V.line([-6, y0+w*f, dz+40], [-6, y0+w*f, dz+band], '#3b4148', 2.6));
-      out.push(V.line([-6, y0+w/2, dz], [-6, y0+w/2, dz+band], RalColor.shade(wall, 0.55), 1.6));
-    } else if (plan.door==='service'){
+      out.push(V.line([-6, y0+w/2, dz], [-6, y0+w/2, dz+band], RalColor.shade(wall, 0.55), 1.6)); }
+    if (en && en.wall==='left' && !en.sea) out.push(V.face([[-3, oy+en.y0, dz+60], [-3, oy+en.y1, dz+60], [-3, oy+en.y1, dz+band], [-3, oy+en.y0, dz+band]], RalColor.shade(wall, 0.93), 1.2));
+    if (plan.door==='service'){
       const zf=StationGeo.zFloor(g.type, g.t), dk=RalColor.shade(wall, 0.7);
       for (const d of plan.doors||[]){ const x0=ox+d.x0, x1=ox+d.x1, lw=(x1-x0)/d.leaves, zt=dz+zf+d.h;
         out.push(V.face([[x0, -3, dz+60], [x1, -3, dz+60], [x1, -3, dz+band], [x0, -3, dz+band]], RalColor.shade(wall, 0.94), 1.2));
@@ -783,9 +805,9 @@ class StationView3D {
           for (let z=dz+band*0.35; z<dz+band-40; z+=70) out.push(V.line([a+lw*0.2, -4, z], [a+lw*0.8, -4, z], dk, 1.4));
           out.push(V.line([a+lw*(i%2 ? 0.12 : 0.88), -5, dz+band*0.55], [a+lw*(i%2 ? 0.12 : 0.88), -5, dz+band*0.8], '#2d3238', 3)); }
         out.push(...V.box(x0-45, -3, dz+band, x0, 60, zt, frame), ...V.box(x1, -3, dz+band, x1+45, 60, zt, frame), ...V.box(x0-45, -3, zt, x1+45, 60, zt+50, frame)); }
-    } else {
-      const d0=ox+(g.x0 ? g.x0+300 : 300);
-      out.push(V.face([[d0, -3, dz+60], [d0+900, -3, dz+60], [d0+900, -3, dz+band], [d0, -3, dz+band]], RalColor.shade(wall, 0.93), 1.2));
+    } else if (en && en.wall==='front'){
+      const d0=ox+en.x0, d1=ox+en.x1;
+      out.push(V.face([[d0, -3, dz+60], [d1, -3, dz+60], [d1, -3, dz+band], [d0, -3, dz+band]], RalColor.shade(wall, 0.93), 1.2));
     }
     void frame;
     return out;
