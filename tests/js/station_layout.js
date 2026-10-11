@@ -300,7 +300,8 @@ Check.run('сжатый воздух: последовательно, фильт
   const dr6=P('Рефрижераторный осушитель', { cat:'dryer_refrig', model:'R 70', flow:7.5, size:'900 × 600 × 1100' });
   const rc=P('Ресивер', { cat:'receiver', model:'РВ 900', volume:900, size:'750 × 750 × 2100' });
   const two=P('Магистральный фильтр FA 110', { cat:'filter', model:'FA 110', flow:8, size:'610*140' }, { qty:2 });
-  const ks=solve(C('block'), [c62, dr6, rc, two, P('Трубопровод', {}, { pipeMat:'steel' })]); Check.plan(ks, 'КС цепочка'); draw(ks, 'КС цепочка');
+  // ресивер до осушителя («мокрый») — по требованию станции; по умолчанию — после подготовки воздуха (проверка ниже)
+  const ks=StationLayout.solve({ cont:C('block'), parts:[c62, dr6, rc, two, P('Трубопровод', {}, { pipeMat:'steel' })], recv:'before' }); Check.plan(ks, 'КС цепочка'); draw(ks, 'КС цепочка');
   assert.deepStrictEqual(ks.air.chain.map(c=>c.kind), ['compressor', 'receiver', 'filter', 'dryer', 'filter'], 'по ходу воздуха');
   const it=k=>ks.items.find(i=>i.kind===k), air=ks.lines.find(l=>l.medium==='air'), port=(k, r)=>air.branches.find(b=>b.to===it(k).id+'#0' && b.role===r);
   assert.ok(it('compressor').x<it('receiver').x && it('receiver').x<it('dryer').x, 'ряд — по ходу воздуха');
@@ -559,6 +560,53 @@ Check.run('схема пневматическая принципиальная'
     assert.ok(g.m>=0.7 && g.m<=1.6 && g.per>=1 && g.rows>=1 && 30+g.h<=170, 'раскладка схемы '+JSON.stringify(g));
   // не компрессорная — схемы нет
   assert.ok(!StationScheme.ok(solve(C('block'), [pumpS, cab])) && !StationScheme.ok(null), 'насосная — схемы нет');
+});
+
+Check.run('ресивер: после подготовки воздуха, до и после, снаружи; учёт в Ростехнадзоре', ()=>{
+  const comp=()=>P('Винтовой компрессор', { cat:'comp_screw', model:'K 37', kw:37, flow:6.2, pressure:8, size:'1400 × 900 × 1500' }, { role:'main' });
+  const dry=()=>P('Рефрижераторный осушитель', { cat:'dryer_refrig', model:'R 70', flow:7.5, size:'900 × 600 × 1100' });
+  const rc=(v, bar, extra)=>P('Воздушный ресивер', { cat:'receiver', model:'РВ '+v, volume:v, pressure:bar||11, size:v>=1500 ? '1000 × 1000 × 2400' : '750 × 750 × 1900' }, extra);
+  const flt=()=>P('Магистральный фильтр FA 110', { cat:'filter', model:'FA 110', flow:8, size:'610*140' }, { qty:2 });
+  const run=(parts, o)=>StationLayout.solve(Object.assign({ cont:C('block', { sizeAuto:true }), parts:[...parts, P('Трубопровод', {}, { pipeMat:'steel' })] }, o||{}));
+  // по умолчанию — после осушителя и фильтров («сухой»), последний по ходу воздуха
+  const a=run([comp(), dry(), rc(900), flt()]); Check.plan(a, 'ресивер после'); draw(a, 'ресивер после');
+  assert.deepStrictEqual(a.air.chain.map(c=>c.kind), ['compressor', 'filter', 'dryer', 'filter', 'receiver'], 'по умолчанию ресивер — после подготовки');
+  assert.ok(/«сухой» ресивер/.test(a.air.chain.at(-1).text));
+  const ra=a.items.find(i=>i.kind==='receiver'), dr=a.items.find(i=>i.kind==='dryer'); assert.ok(ra.x>dr.x, 'в ряду ресивер — после осушителя');
+  // без осушителя — после фильтров, без слова «сухой»
+  const nd=run([comp(), rc(900), flt()]); assert.strictEqual(nd.air.chain.at(-1).kind, 'receiver'); assert.ok(!/сухой/.test(nd.air.chain.at(-1).text));
+  // до и после: первый — до осушителя, второй — после
+  const b=run([comp(), rc(500, 11, { name:'Воздушный ресивер 500' }), dry(), rc(900), flt()], { recv:'both' });
+  assert.deepStrictEqual(b.air.chain.map(c=>c.kind), ['compressor', 'receiver', 'filter', 'dryer', 'filter', 'receiver'], 'до и после осушителя');
+  // явная роль в названии сильнее требования
+  const w=run([comp(), dry(), P('Ресивер мокрый 500 л', { cat:'receiver', volume:500, size:'650 × 650 × 1600' }), flt()]);
+  assert.strictEqual(w.air.chain[1].kind, 'receiver', '«мокрый» в названии — до осушителя');
+  // снаружи: не в контейнере, за дальним торцом на площадке; по ходу воздуха — последний; на чертеже, в ТТ и в 3D
+  const o=run([comp(), dry(), rc(2000), flt()], { recvOut:true }); Check.plan(o, 'ресивер снаружи'); draw(o, 'ресивер снаружи');
+  assert.ok(!o.items.some(i=>i.kind==='receiver') && o.outside.length===1, 'ресивер — снаружи');
+  const [Le, We]=o.geo.ext, [Li, Wi]=o.int, ox=(Le-Li)/2, oy=(We-Wi)/2, r=o.outside[0], zf=StationGeo.zFloor(o.geo.type, o.geo.t);
+  assert.ok(ox+r.x>=Le+StationLayout.OUT_GAP-1 && r.y>=-oy-1 && r.y+r.ly<=Wi+oy+1, 'за торцом, в ширину контейнера');
+  assert.strictEqual(r.z, -zf+StationLayout.PAD, 'на площадке на земле');
+  assert.strictEqual(o.air.chain.at(-1).kind, 'receiver'); assert.ok(/снаружи/.test(o.air.chain.at(-1).text));
+  assert.notStrictEqual(StationLayout.hash({ cont:C('block'), parts:[comp(), rc(900)] }), StationLayout.hash({ cont:C('block'), parts:[comp(), rc(900)], recvOut:true }), 'отпечаток: снаружи');
+  assert.ok(o.issues.some(i=>/снаружи, на бетонной площадке/.test(i.text)) && o.issues.some(i=>/рефрижераторного осушителя .* конденсат/.test(i.text)), 'замечания: площадка, конденсат зимой');
+  const sv=StationDrawing.svg(o, meta(o)); Check.sheet(sv, 'ресивер снаружи');
+  assert.ok(/снаружи на бетонной площадке/.test(sv) && /подлежит учёту в Ростехнадзоре/.test(sv), 'ТТ: снаружи и учёт');
+  const sc=new StScene(o, {}).build(), bb=sc.bounds(); assert.ok(bb.hi[0]>Le/1000+StationLayout.OUT_GAP/1000, '3D: ресивер в кадре');
+  for (const { mesh } of sc.groups.values()) assert.ok(mesh.p.every(Number.isFinite), '3D без NaN');
+  // два ресивера снаружи не помещаются по ширине — второй ряд дальше от стены
+  const o2=run([comp(), dry(), rc(2000, 11, { qty:2 }), flt()], { recvOut:true }); Check.plan(o2, 'два снаружи'); draw(o2, 'два снаружи');
+  assert.ok(o2.outside.length===2 && o2.outside[1].x>o2.outside[0].x+o2.outside[0].lx, 'второй ряд');
+  Check.sheet(StationDrawing.svg(o2, meta(o2)), 'два снаружи');
+  // «снаружи» и ресивер до осушителя — остаётся внутри
+  const ob=run([comp(), dry(), rc(900), flt()], { recv:'before', recvOut:true }); assert.ok(!(ob.outside||[]).length && ob.items.some(i=>i.kind==='receiver'));
+  // без осушителя снаружи — предупреждение про конденсат
+  const on=run([comp(), rc(900), flt()], { recvOut:true }); assert.ok(on.issues.some(i=>i.level==='warn' && /без осушителя/.test(i.text)));
+  // учёт: 0,8 МПа × 2 м³ = 1,6 — подлежит; 0,8 × 0,9 = 0,72 — нет; давление ресивера ниже компрессора — предупреждение
+  assert.ok(o.vessels[0].reg && Math.abs(o.vessels[0].pv-1.6)<1e-9 && o.issues.some(i=>/Подлежат учёту в Ростехнадзоре/.test(i.text)));
+  assert.ok(a.vessels[0].reg===false && a.issues.some(i=>/Учёту в Ростехнадзоре не подлежат/.test(i.text)) && /не подлежит/.test(StationDrawing.svg(a, meta(a))));
+  const lo=run([comp(), dry(), rc(900, 6), flt()]); assert.ok(lo.issues.some(i=>i.level==='warn' && /рассчитан на 6 бар — меньше давления компрессоров 8 бар/.test(i.text)));
+  assert.strictEqual(PressureVessel.list([{ kind:'receiver', pos:1, qty:1, air:{ vol:null, bar:10 } }], 8)[0].reg, null, 'без объёма — не оценить');
 });
 
 Check.run('3D-вид (WebGL): сцена, камера, свет', ()=>{

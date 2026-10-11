@@ -311,7 +311,8 @@ class StationEquip {
   }
 
   /** состав → оборудование: [{id, pos, name, brief, short, kind, qty, l, w, h, known, mass, color, shape, place}] (pos — номер на чертеже) */
-  static list(parts){
+  /** o: {recv — где ресивер без своей роли ('after' | 'before' | 'both'), recvOut — ресиверы после подготовки снаружи} */
+  static list(parts, o={}){
     let pos=0;
     const out=(parts||[]).filter(p=>p && p.role!=='container').map(p=>{
       const kind=this.kindOf(p), name=String(p.name||'').trim() || this.LABEL[kind] || 'Элемент', qty=Math.max(1, Math.min(20, Math.round(this.num(p.qty)||1)));
@@ -325,9 +326,12 @@ class StationEquip {
       const k=kind||'other', c=this.color(p, k), air=/^(compressor|dryer|receiver|filter)$/.test(k) ? AirChain.info(p, k) : null;
       const pipe=k==='filter' && air.grade!=='cond' && Math.max(d.l, d.w)<=700;   // магистральный фильтр — висит на трубопроводе
       return { id:p.id, pos:++pos, name, brief:this.brief(p, k, name), short:this.short(p, k), kind:k, qty, l:d.l, w:d.w, h:d.h, known:d.known, src:d.src, mass:this.mass(p), kw:this.num((p.attrs||{}).kw),
-        color:c.hex, colorKnown:c.known, colorText:c.text, shape:this.shape(p, k, d), look:this.look(p, k), place:true, pipe, mount:k==='cabinet' ? this.mount(p, d) : pipe ? 'pipe' : 'floor', air };
+        color:c.hex, colorKnown:c.known, colorText:c.text, shape:this.shape(p, k, d), look:this.look(p, k), place:true, pipe, mount:k==='cabinet' ? this.mount(p, d) : pipe ? 'pipe' : 'floor', air, noise:StationNorms.dba(p) };
     });
-    AirChain.assign(out);
+    AirChain.assign(out, o.recv);
+    // ресиверы после подготовки воздуха — снаружи, на площадке у дальнего торца (ФНП ОРПД, п. 65): в ряду внутри их нет,
+    // по ходу воздуха — последние
+    if (o.recvOut) for (const e of out) if (e.kind==='receiver' && e.air && e.air.role==='dry'){ e.place=false; e.outside=true; e.air.stage=80; e.air.out=true; }
     const dgu=out.find(e=>e.kind==='dgu');
     for (const e of out) if (e.kind==='muffler' && !e.known){ const g=this.guessMuffler(dgu ? dgu.kw : null); e.l=g[0]; e.w=g[1]; e.h=g[2]; }
     return out;
@@ -427,13 +431,15 @@ class AirChain {
     return o;
   }
 
-  /** порядок по ходу воздуха (e.air.stage, меньше — раньше), роли ресиверов и ступени фильтров без указания */
-  static assign(eq){
+  /** порядок по ходу воздуха (e.air.stage, меньше — раньше), роли ресиверов и ступени фильтров без указания; recv — где
+   *  ресивер без своей роли: 'after' (по умолчанию) — после осушителя и фильтров («сухой»: так чаще — потребитель получает
+   *  подготовленный воздух, в ресивере нет конденсата), 'before' — до осушителя («мокрый»: собирает конденсат, гасит
+   *  пульсации), 'both' — первый до осушителя, остальные после */
+  static assign(eq, recv){
     const A=eq.filter(e=>e.air), D=A.filter(e=>e.kind==='dryer' && e.air.type!=='gen'), ads=D.some(e=>e.air.type==='ads'), refrig=D.some(e=>e.air.type==='refrig');
-    const R=A.filter(e=>e.kind==='receiver');
-    if (!D.length) R.forEach(e=>{ if (!e.air.role) e.air.role='wet'; });
-    else { const un=R.filter(e=>!e.air.role); let wet=R.some(e=>e.air.role==='wet'), dry=R.some(e=>e.air.role==='dry');
-      un.forEach((e, k)=>{ e.air.role=!wet ? 'wet' : k===un.length-1 && !dry ? 'dry' : 'wet'; if (e.air.role==='wet') wet=true; else dry=true; }); }
+    const R=A.filter(e=>e.kind==='receiver'), mode=recv==='before' || recv==='both' ? recv : 'after';
+    let wet=R.some(e=>e.air.role==='wet');
+    for (const e of R.filter(x=>!x.air.role)){ e.air.role=mode==='before' || (mode==='both' && !wet) ? 'wet' : 'dry'; if (e.air.role==='wet') wet=true; }
     // фильтры без указанной ступени — чего не хватает по виду осушителя (адсорбционный: от масла до, пылевой после)
     // (несколько одинаковых фильтров одной строкой состава — каждому своя ступень)
     const F=A.filter(e=>e.kind==='filter' && e.air.grade!=='cond'), have=new Set(F.map(e=>e.air.grade).filter(Boolean)), built=D.some(e=>e.air.filters);
@@ -467,7 +473,7 @@ class AirChain {
   /** проверка и подбор: {chain — по ходу воздуха, q — сумма компрессоров, м³/мин, issues, recs — чего не хватает (для подбора
    *  в каталоге)}; cls — класс чистоты по ISO 8573-1 («1.4.1») или '' */
   static check(eq, cls){
-    const A=this.expand(eq.filter(e=>e.air && e.air.stage!=null && e.place!==false)), C=A.filter(e=>e.kind==='compressor');
+    const A=this.expand(eq.filter(e=>e.air && e.air.stage!=null && (e.place!==false || e.outside))), C=A.filter(e=>e.kind==='compressor');
     if (!C.length) return null;
     const m3=v=>this.m3(v), nm=e=>`поз. ${e.pos}`, iss=[], recs=[], key=new Set();
     const D=A.filter(e=>e.kind==='dryer' && e.air.type!=='gen'), ads=D.filter(e=>e.air.type==='ads'), refrig=D.filter(e=>e.air.type==='refrig');
@@ -515,6 +521,10 @@ class AirChain {
       else if (vr && R.length && R.every(e=>e.air.vol>0) && vol<vr*0.6)
         iss.push({ level:'info', air:true, text:`Ресиверы ${StationLayout.n(vol)} л — для компрессора ${m3(big.air.flow)} м³/мин${big.air.vsd ? ' с частотным регулированием' : ' с регулированием «нагрузка — холостой ход»'} рекомендуется около ${StationLayout.n(vr)} л (не чаще одного цикла в 30 с при перепаде 1 бар).` });
     }
+    // ресивер — на давление не ниже компрессорного: иначе срабатывает его предохранительный клапан (или сосуд перегружен)
+    const cb=Math.max(0, ...C.map(e=>e.air.bar||0));
+    for (const e of R.filter(x=>x.air.bar>0 && cb>x.air.bar+0.05))
+      iss.push({ level:'warn', air:true, text:`Ресивер ${nm(e)} рассчитан на ${m3(e.air.bar)} бар — меньше давления компрессоров ${m3(cb)} бар: нужен ресивер не ниже ${m3(cb)} бар.` });
     // класс чистоты по ISO 8573-1: какой осушитель и какие ступени фильтров нужны
     const cl=String(cls||'').match(/^([1-6])\.([1-6])\.([1-4])$/), before=recs.length;
     if (cl){ const [pc, wc, oc]=cl.slice(1).map(Number), pdp=this.PDP[wc], hasDry=D.length || builtDryer, dp=(pdp>0 ? '+' : '−')+Math.abs(pdp)+' °C';
@@ -536,12 +546,99 @@ class AirChain {
     }
     // цепочка по ходу воздуха
     const order=[...A].filter(e=>e.kind!=='filter' || e.air.grade!=='cond').sort((a, b)=>a.air.stage-b.air.stage);
-    const word=e=>e.kind==='compressor' ? 'компрессор'+(e.air.dryer ? ' со встроенным осушителем' : '') : e.kind==='receiver' ? (e.air.role==='dry' ? '«сухой» ресивер' : 'ресивер') : e.kind==='dryer' ? (e.air.type==='ads' ? 'адсорбционный осушитель' : e.air.type==='gen' ? 'генератор' : 'рефрижераторный осушитель')+(e.air.filters ? ' (встроенные фильтры)' : '') : 'фильтр '+this.GRADES[e.air.grade].short;
+    const word=e=>e.kind==='compressor' ? 'компрессор'+(e.air.dryer ? ' со встроенным осушителем' : '') : e.kind==='receiver' ? (e.air.role==='dry' && D.length ? '«сухой» ресивер' : e.air.role==='dry' && F.length ? 'ресивер после фильтров' : 'ресивер')+(e.air.out ? ' снаружи' : '') : e.kind==='dryer' ? (e.air.type==='ads' ? 'адсорбционный осушитель' : e.air.type==='gen' ? 'генератор' : 'рефрижераторный осушитель')+(e.air.filters ? ' (встроенные фильтры)' : '') : 'фильтр '+this.GRADES[e.air.grade].short;
     const chain=order.map(e=>({ pos:e.pos, kind:e.kind, text:word(e), guess:!!e.air.guess }));
     // для схемы пневматической: единицы по ходу воздуха и очистка конденсата (масловодоотделитель — не на линии)
     const units=order.map(e=>({ pos:e.pos, kind:e.kind, qty:e.qty||1, name:e.name, brief:e.brief, short:e.short, air:e.air }));
     const cond=eq.filter(e=>e.kind==='filter' && e.air && e.air.grade==='cond' && e.place!==false).map(e=>({ pos:e.pos, qty:e.qty||1, name:e.name, brief:e.brief }));
     return { chain, q, bar, issues:iss, recs, cls:cl ? String(cls) : '', units, cond };
+  }
+}
+
+// ---------------------------------------------------------------- сосуды под давлением
+// Воздушный ресивер — сосуд под давлением (ФНП ОРПД — приказ Ростехнадзора от 15.12.2020 № 536; ТР ТС 032/2013). На учёт
+// в Ростехнадзоре ставят, если произведение давления, МПа, на вместимость, м³, больше 1,0 (воздух — рабочая среда 2-й группы,
+// до 200 °C); давление — наибольшее рабочее на станции (компрессор), без него — расчётное ресивера. Размещают сосуды на
+// открытых площадках или в отдельных зданиях, в помещении — когда иначе нельзя (п. 65), с доступом для осмотра.
+class PressureVessel {
+  static LIMIT = 1;          // МПа·м³: больше — на учёт
+  /** ресиверы состава: [{pos, qty, vol — л, mpa, pv — МПа·м³, reg — подлежит учёту (null — не оценить), out — снаружи}];
+   *  bar — рабочее давление станции, бар (0 — неизвестно) */
+  static list(eq, bar){
+    return eq.filter(e=>e.kind==='receiver' && e.air && (e.place!==false || e.outside)).map(e=>{
+      const vol=e.air.vol>0 ? e.air.vol : null, b=bar>0 ? bar : e.air.bar>0 ? e.air.bar : null, mpa=b ? b/10 : null;
+      const pv=vol && mpa ? Math.round(mpa*vol/1000*1000)/1000 : null;
+      return { pos:e.pos, qty:e.qty||1, vol, mpa, pv, reg:pv==null ? null : pv>this.LIMIT, out:!!e.outside };
+    });
+  }
+  /** 0,8 МПа × 1,0 м³ = 0,8 */
+  static text(v){ const f=x=>String(Math.round(x*100)/100).replace('.', ','); return `${f(v.mpa)} МПа × ${f(v.vol/1000)} м³ = ${f(v.pv)}`; }
+}
+
+// ---------------------------------------------------------------- нормы: проверки и технические требования
+// Пожарная безопасность: категория помещения по взрывопожарной и пожарной опасности (СП 12.13130.2009) — обозначение на
+// двери (ППР в РФ), огнетушители у входа — верх корпуса не выше 1,5 м, сигнализация и пожаротушение — по
+// СП 486.1311500.2020. Электрика: щит (шкафы в ряд) длиннее 7 м — проход с двумя выходами (ПУЭ, п. 4.1.23), двери
+// электропомещений открываются наружу (п. 4.2.94), заземление и уравнивание потенциалов — гл. 1.7. Шум на рабочем месте —
+// не более 80 дБА (СанПиН 1.2.3685-21). Климат: исполнение контейнера по ГОСТ 15150-69 — по наружной температуре,
+// оборудование внутри — как в отапливаемом помещении. Трубопроводы — опознавательная окраска по ГОСТ Р 71918-2024, знаки
+// безопасности — ГОСТ 12.4.026-2015.
+class StationNorms {
+  static NOISE = 80;                                    // дБА на рабочем месте
+  static COLD = { 'У1':-45, 'УХЛ1':-60, 'ХЛ1':-60 };     // нижняя рабочая температура исполнения, °C
+  static INSIDE = 5;                                    // внутри при работе — не ниже, °C (компрессоры, осушители, насосы)
+  static SHIELD = 7000;                                 // щит длиннее — два выхода, мм
+  static PIPE = { air:'сжатый воздух — синий', water:'вода — зелёный', fuel:'топливо — коричневый' };
+  /** уровень звука по паспорту, дБА: поле «noise» или строка «Уровень шума (звука)» */
+  static dba(p){
+    const n=StationEquip.num((p.attrs||{}).noise); if (n>20 && n<160) return n;
+    const r=(p.rows||[]).find(x=>x && /шум|звук/i.test(String(x.k||'')) && /д\s*б/i.test(String(x.k||'')+' '+String(x.v||'')));
+    const v=r ? AirChain.first(r.v) : null; return v>20 && v<160 ? v : null;
+  }
+  /** уровень звука нескольких источников: 10·lg Σ 10^(L/10) */
+  static sum(L){ return L.length ? 10*Math.log10(L.reduce((s, v)=>s+Math.pow(10, v/10), 0)) : 0; }
+  /** требования станции (из окна): {kind, fire, fireAuto, noise, tmin, tmax} */
+  static req(plan){ return plan.req || {}; }
+
+  /** замечания по нормам — в plan.issues */
+  static check(plan, eq){
+    const iss=plan.issues, r=this.req(plan), sys=plan.sys||{}, n=StationLayout.n, has=k=>eq.some(e=>e.place && e.kind===k);
+    const lim=r.noise>0 ? r.noise : this.NOISE, tmin=Number.isFinite(r.tmin) ? r.tmin : null, tmax=Number.isFinite(r.tmax) ? r.tmax : null;
+    // шум: паспортные уровни (на 1 м) складываются
+    const L=eq.filter(e=>e.place && e.noise>0).flatMap(e=>Array.from({ length:e.qty }, ()=>e.noise)), tot=this.sum(L);
+    if (L.length && tot>lim+0.5) iss.push({ level:'warn', text:`Шум: оборудование по паспортам — около ${Math.round(tot)} дБА, больше ${lim} дБА на рабочем месте (СанПиН 1.2.3685-21). Внутри при работе — средства защиты слуха и знак об этом на двери${sys.noise ? '' : '; снаружи — шумоизоляция контейнера (системы контейнера)'}.` });
+    // климат: исполнение контейнера по наружной температуре; внутри — отопление и вентиляция
+    const cl=plan.climate, lo=this.COLD[cl];
+    if (tmin!=null && lo!=null && tmin<lo) iss.push({ level:'warn', text:`Наружный воздух до ${this.deg(tmin)}, а исполнение контейнера ${cl} — до ${this.deg(lo)} (ГОСТ 15150-69): нужно ${tmin<-60 ? 'особое (по согласованию)' : 'УХЛ1 или ХЛ1'}.` });
+    const warm=['compressor', 'dryer', 'pump'].filter(has);
+    if (warm.length && sys.heat===false && (tmin==null || tmin<this.INSIDE))
+      iss.push({ level:'warn', text:`Без отопления зимой внутри ниже +${this.INSIDE} °C: ${warm.map(k=>({ compressor:'компрессоры', dryer:'осушитель', pump:'насосы' })[k]).join(', ')} работают в отапливаемом помещении — включите «Отопление» в системах контейнера.` });
+    if (has('dgu') && sys.heat===false && (tmin==null || tmin<this.INSIDE)) iss.push({ level:'info', text:`ДГУ при морозе: для пуска — отопление контейнера и подогреватель двигателя.` });
+    if ((has('compressor') || has('dgu')) && sys.vent===false) iss.push({ level:'warn', text:`${has('dgu') ? 'ДГУ и компрессоры выделяют' : 'Компрессоры выделяют'} тепло: без вентиляции контейнер перегревается — включите «Вентиляцию» в системах контейнера.` });
+    if (tmax!=null && tmax>40 && has('compressor')) iss.push({ level:'info', text:`Летом до ${this.deg(tmax)}: компрессоры и осушитель работают обычно до +40…+45 °C — вентиляция с запасом, осушитель — с запасом производительности.` });
+    // электрика: шкафы в ряд длиннее 7 м — два выхода
+    const cab=(plan.items||[]).filter(i=>i.kind==='cabinet'), len=cab.reduce((s, i)=>s+Math.max(i.lx, i.ly), 0);
+    if (len>this.SHIELD && plan.door!=='service') iss.push({ level:'warn', text:`Шкафы вместе — ${n(len)} мм, длиннее 7 м: проход обслуживания у щита — с двумя выходами (ПУЭ, п. 4.1.23).` });
+    // пожарная безопасность: категория; А и Б — взрывоопасные
+    if (/^[АБ]$/.test(r.fire||'')) iss.push({ level:'warn', text:`Категория ${r.fire} — взрывопожароопасное помещение: электрооборудование во взрывозащищённом исполнении (ПУЭ, гл. 7.3), легкосбрасываемые конструкции — по проекту.` });
+    if (plan.geo && plan.sys && !sys.ops && !sys.fire){ const [L0, W0]=plan.int||[0, 0];
+      iss.push({ level:'info', text:`Пожарная сигнализация и пожаротушение в системах контейнера не выбраны: нужны ли — по СП 486.1311500.2020 (категория ${r.fire||'—'}, площадь ${String(Math.round(L0*W0/1e5)/10).replace('.', ',')} м²).` }); }
+  }
+  static deg(t){ return (t>0 ? '+' : t<0 ? '−' : '')+Math.abs(t)+' °C'; }
+
+  /** строки технической характеристики: категория и климатическое исполнение */
+  static tech(plan){
+    const r=this.req(plan);
+    return [r.fire ? `Категория помещения — ${r.fire}${r.fireAuto ? ' (ориентир.)' : ''}` : '', plan.climate ? `Климатическое исполнение — ${plan.climate}` : ''].filter(Boolean);
+  }
+  /** пункты технических требований: пожарная безопасность, электрика и окраска, шум */
+  static tt(plan){
+    const r=this.req(plan), med=(plan.piping||[]).some(p=>(p.lines||[]).some(l=>l.medium==='fuel')) ? 'fuel' : r.kind==='pump' ? 'water' : r.kind==='comp' ? 'air' : '';
+    const dgu=(plan.items||[]).some(i=>i.kind==='dgu');
+    return [
+      `Категория помещения по пожарной опасности${r.fire ? ' '+r.fire : ''} (СП 12.13130.2009${r.fireAuto ? ', уточняется расчётом' : ''}) — обозначение на двери снаружи; огнетушители — у входа, верх корпуса не выше 1,5 м (ППР в РФ); знаки безопасности — по ГОСТ 12.4.026-2015${dgu ? '; топливный бак — с поддоном, вместимость и размещение — по СП 4.13130.2013' : ''}.`,
+      `Заземление и уравнивание потенциалов — по ПУЭ, гл. 1.7; трубопроводы — опознавательная окраска по ГОСТ Р 71918-2024${med ? ` (${this.PIPE[med]})` : ''}; уровень звука на рабочем месте — не более ${r.noise>0 ? r.noise : this.NOISE} дБА (СанПиН 1.2.3685-21).`,
+    ];
   }
 }
 
@@ -571,13 +668,16 @@ class StationLayout {
   static ROOF_GAP = 200;     // глушитель на опорах над крышей, мм
   static OUTLET = 500;       // вывод выхлопа над глушителем (с дождевым колпаком), мм
   static ROAD_H = 4000;      // наибольшая высота при перевозке (с платформой), мм
+  static OUT_GAP = 1000;     // ресивер снаружи: от торцевой стены — проход для осмотра и обслуживания, мм
+  static OUT_STEP = 600;     // между ресиверами снаружи, мм
+  static PAD = 100;          // бетонная площадка под ресивером снаружи: высота над землёй, мм; выступ за ресивер — 200 мм
 
   static solve(input){ return new StationLayout(input).run(); }
 
   /** отпечаток всего, от чего зависит компоновка: изменился — чертёж и 3D-вид пора обновить */
   static hash(input){
     const c=input.cont||{}, pick=a=>a ? {cat:a.cat, size:a.size, mass:a.mass, model:a.model, maker:a.maker, orient:a.orient, kw:a.kw, volume:a.volume, color:a.color, flow:a.flow, pressure:a.pressure, stage:a.stage, dryer:a.dryer, vsd:a.vsd, dewPoint:a.dewPoint, receiver:a.receiver} : null;
-    const s=JSON.stringify([this.VER, StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.ins, c.ral, c.sys||null], input.chassisH||null,
+    const s=JSON.stringify([this.VER, StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.ins, c.ral, c.sys||null, c.climate||''], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
       (input.parts||[]).filter(p=>p && p.role!=='container').map(p=>[p.name, p.qty, p.role||'', p.pipeMat||'', p.dn||'', p.mount||'', pick(p.attrs), (p.rows||[]).filter(r=>r && /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы/i.test(String(r.k||'')+' '+String(r.v||''))).map(r=>[r.k, r.v])])]);
     return this.fnv(s);
   }
@@ -589,7 +689,7 @@ class StationLayout {
 
   constructor(input){
     this.in=input||{}; this.cont=this.in.cont||null;
-    this.eq=StationEquip.list(this.in.parts||[]);
+    this.eq=StationEquip.list(this.in.parts||[], { recv:this.in.recv, recvOut:this.in.recvOut });
     this.aisle=StationClear.aisle();
     this.mode='aisle';          // aisle — проход внутри, doors — обслуживание снаружи через сервисные двери
     this.allowDoors=true;       // заданный контейнер: нет места для прохода — сервисные двери
@@ -606,13 +706,16 @@ class StationLayout {
     else if (plan.level!=='error' && !geo.auto){
       if (plan.door==='service') plan.suggest=this.suggest(units, geo, true);   // с проходом внутри — какой контейнер нужен
       else this.excess(units, geo, plan); }
-    if (plan.level!=='error' && plan.items && plan.items.length){ plan.roof=this.roof(plan); plan.piping=this.route(plan); }
+    if (plan.level!=='error' && plan.items && plan.items.length){ plan.roof=this.roof(plan); plan.piping=this.route(plan); plan.outside=this.outside(plan, extra.some(e=>e.kind==='chassis')); }
     // «не помещается» точно, если не помещается и без оборудования с условными габаритами; иначе — лишь оценка (assumed)
     if (plan.level==='error' && units.some(e=>!e.known)){ const k=units.filter(e=>e.known);
       plan.assumed=!k.length || (geo.auto ? this.autoSize(k, geo) : this.fit(k, geo)).level!=='error'; }
     plan=Object.assign(base, plan, { issues:plan.issues||[] }, this.colors());
     const air=AirChain.check(this.eq, this.in.air);
     if (air && plan.level!=='error'){ plan.air=air; plan.issues.push(...air.issues); }
+    plan.vessels=PressureVessel.list(this.eq, Math.max(0, ...this.eq.filter(e=>e.kind==='compressor' && e.air).map(e=>e.air.bar||0)));
+    plan.req=this.in.req||null; plan.climate=(this.cont && this.cont.climate)||'';
+    if (plan.level!=='error') StationNorms.check(plan, this.eq);
     this.notes(plan);
     if (plan.level==='ok' && plan.issues.some(i=>i.level==='warn')) plan.level='warn';
     return plan;
@@ -944,6 +1047,11 @@ class StationLayout {
     }
     const g=this.segOf(r, it), ln=g && g.line; if (!ln || ln.z+Math.max(60, it.h*0.12)-it.h<150){ it.mount='floor'; it.z=0; return; }
     it.mount='pipe'; this.hangOn(it, ln, W);
+    // не заходит в соседнее оборудование (труба между рядами): сдвиг поперёк трубы — труба остаётся внутри его габарита
+    const fl=r.items.filter(i=>i!==it && i.mount!=='pipe' && i.mount!=='wall'), y0=it.y;
+    if (fl.some(i=>this.hit(it, i, 0))) found: for (let d=10; d<=it.ly; d+=10) for (const sg of [1, -1]){ const y=y0+sg*d;
+      if (ln.y<y+20 || ln.y>y+it.ly-20 || y<20 || y+it.ly>W-20) continue;
+      if (!fl.some(i=>this.hit(Object.assign({}, it, { y }), i, 0))){ it.y=y; break found; } }
     ln.x0=Math.min(ln.x0, Math.round(it.x+it.lx/2)); ln.x1=Math.max(ln.x1, Math.round(it.x+it.lx/2));
   }
 
@@ -1019,6 +1127,23 @@ class StationLayout {
 
   /** на крыше: глушитель ДГУ — прямо над ДГУ (по центру его длины и ширины), на опорах, вывод выхлопа вверх; выхлопная
    *  труба — от двигателя вертикально сквозь крышу в глушитель */
+  /** ресиверы снаружи (ФНП ОРПД, п. 65) — на бетонной площадке за дальним торцом, где выходит трубопровод: первый — по оси
+   *  выхода, следующие — к стене прохода через 600 мм; не помещаются по ширине контейнера — следующий ряд дальше от стены.
+   *  Координаты — как у оборудования внутри (от внутренних стен и пола): x за торцом, z — от площадки на земле */
+  outside(plan, chassis){
+    const E=this.eq.filter(e=>e.outside); if (!E.length) return [];
+    const [L, W]=plan.int, ext=plan.geo.ext, ox=(ext[0]-L)/2, oy=(ext[1]-W)/2, zf=StationGeo.zFloor(plan.geo.type, plan.geo.t), C=StationLayout;
+    const air=(plan.piping||[]).flatMap(p=>p.lines||[]).filter(l=>l.medium==='air' && !l.header && l.x1>=L-1), yc=air.length ? air[0].y : W-C.AIR_Y;
+    const lo=-oy, hi=W+oy, first=ly=>Math.round(Math.min(hi-ly, Math.max(lo, yc-ly/2))), out=[];
+    let x=L+ox+C.OUT_GAP, top=null, col=0;
+    for (const e of E) for (let k=0; k<e.qty; k++){
+      const lx=e.l, ly=e.w; let y=top==null ? first(ly) : top-C.OUT_STEP-ly;
+      if (top!=null && y<lo){ x+=col+C.OUT_STEP; col=0; y=first(ly); }
+      top=y; col=Math.max(col, lx);
+      out.push(this.unitItem(e, { unit:k, x:Math.round(x), y, z:-(zf+(chassis ? 1150 : 0))+C.PAD, mount:'out', face:-2, air:AirChain.unit(e.air, k) })); }
+    return out;
+  }
+
   roof(plan){
     const ms=this.eq.filter(e=>e.kind==='muffler' && e.roof); if (!ms.length) return [];
     const [L, W]=plan.int, ow=plan.geo && plan.geo.ext ? (plan.geo.ext[1]-W)/2 : 100, dg=plan.items.filter(i=>i.kind==='dgu').sort((a, b)=>a.x-b.x), out=[];
@@ -1165,6 +1290,17 @@ class StationLayout {
     const iss=plan.issues, nm=e=>`поз. ${e.pos} «${e.short}»`, n=StationLayout.n;
     const g=this.eq.filter(e=>e.place && !e.known); if (g.length) iss.push({ level:'info', text:`Габариты не указаны в характеристиках — взяты условные: ${g.map(e=>`${nm(e)} ${n(e.l)} × ${n(e.w)} × ${n(e.h)} мм`).join('; ')}. Укажите размеры в составе станции (характеристики элемента).` });
     const nd=this.eq.filter(e=>e.nodims); if (nd.length) iss.push({ level:'info', text:`Не размещены — нет габаритов: ${nd.map(e=>'«'+e.name+'»').join(', ')}.` });
+    // ресиверы снаружи: площадка, подключение; при морозе — конденсат, если воздух не осушен адсорбционным осушителем
+    const out=plan.outside||[];
+    if (out.length){ const P=[...new Set(out.map(i=>i.pos))].join(', '), D=this.eq.filter(e=>e.kind==='dryer' && e.air && e.air.type!=='gen');
+      iss.push({ level:'info', text:`${out.length>1 ? 'Ресиверы' : 'Ресивер'} поз. ${P} — снаружи, на бетонной площадке в ${n(StationLayout.OUT_GAP)} мм от дальнего торца (ФНП ОРПД, п. 65): трубопровод — через стену с запорной арматурой, на ресивере — предохранительный клапан и манометр, площадка — с ограждением от наезда.` });
+      if (!D.length) iss.push({ level:'warn', text:`Ресивер снаружи без осушителя: зимой конденсат в ресивере и отводе замерзает — нужен обогреваемый отвод конденсата (греющий кабель, теплоизоляция) или осушитель перед ресивером.` });
+      else if (!D.some(e=>e.air.type==='ads')) iss.push({ level:'info', text:`Ресивер снаружи после рефрижераторного осушителя (точка росы +3 °C): при морозе в нём выпадает и замерзает конденсат — нужен обогреваемый отвод конденсата или адсорбционный осушитель (точка росы −40 °C).` });
+      if (plan.chassis) iss.push({ level:'info', text:`Станция на шасси: ресивер снаружи перевозится отдельно и ставится на площадку на объекте.` }); }
+    // учёт в Ростехнадзоре — по произведению давления на вместимость
+    const V=(plan.vessels||[]).filter(v=>v.pv!=null), reg=V.filter(v=>v.reg), free=V.filter(v=>!v.reg);
+    if (reg.length) iss.push({ level:'info', text:`Подлежат учёту в Ростехнадзоре (ФНП ОРПД: p·V больше 1,0 МПа·м³): ${reg.map(v=>`поз. ${v.pos} — ${PressureVessel.text(v)}`).join('; ')}. Регистрация, техническое освидетельствование и ответственные за исправное состояние — у эксплуатирующей организации${reg.some(v=>!v.out) ? '; размещают на открытой площадке или в отдельном здании, в помещении — когда иначе нельзя (п. 65): «Ресивер снаружи» — в требованиях заказчика на вкладке «Состав станции»' : ''}.` });
+    if (free.length) iss.push({ level:'info', text:`Учёту в Ростехнадзоре не подлежат (p·V не больше 1,0 МПа·м³): ${free.map(v=>`поз. ${v.pos} — ${PressureVessel.text(v)}`).join('; ')}.` });
     const rf=plan.roof||[]; if (rf.length && plan.geo && plan.geo.ext){
       const top=Math.max(...rf.map(m=>m.gap+m.d+m.outlet)), h=plan.geo.ext[2]+top, ch=plan.chassis ? 1150 : 0;
       iss.push({ level:'info', text:`Глушитель на крыше над ДГУ: высота станции с глушителем ${n(h)} мм${ch ? ` (на шасси — ${n(h+ch)} мм)` : ''}. При перевозке глушитель снимают и ставят на объекте: высота с платформой — не более ${n(StationLayout.ROAD_H)} мм.` });

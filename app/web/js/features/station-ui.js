@@ -12,7 +12,9 @@ class StationUi {
   static on(x){ return !!x && typeof stationOf==='function' && !!stationOf(x) && FEAT.on('stLayout'); }
   static input(x){
     const c=kitContainer(x);
-    return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, ins:c.ins, ral:c.ral, sys:c.sys||null } : null, parts:kitParts(x), air:this.opts(x).air };
+    const R=typeof StationReq!=='undefined' ? StationReq : null;   // где ресивер и снаружи ли — из требований станции
+    return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, ins:c.ins, ral:c.ral, sys:c.sys||null, climate:c.climate||'' } : null, parts:kitParts(x), air:this.opts(x).air,
+      recv:R ? R.recv(x) : 'after', recvOut:R ? R.recvOut(x) : false, req:R ? R.plan(x) : null };
   }
   /** расстановка — пересчитывается, только когда изменился состав, контейнер или класс чистоты воздуха (на картинки не влияет) */
   static plan(x){
@@ -34,8 +36,8 @@ class StationUi {
     return String(st.company || tl.company || (st.brandParts||[]).map(x=>x[0]).join('') || 'ПНЕВМОТЕХ').trim(); }
   /** «Иванов Иван Иванович» → «Иванов И. И.»; два слова — как есть */
   static short(n){ const w=n.split(' ').filter(Boolean); return w.length>=3 ? `${w[0]} ${w[1][0]}. ${w[2][0]}.` : n; }
-  /** что вставлять в КП: 3D-вид главным фото, чертёж и схема — в изображения (по умолчанию — всё) */
-  static opts(x){ const o=x.stLayout||{}; return { photo:o.photo!==false, draw:o.draw!==false, scheme:o.scheme!==false, air:/^[1-6]\.[1-6]\.[1-4]$/.test(String(o.air||'')) ? o.air : '' }; }
+  /** что вставлять в КП: 3D-вид главным фото, чертёж — в изображения (по умолчанию да); схема — только если включили */
+  static opts(x){ const o=x.stLayout||{}; return { photo:o.photo!==false, draw:o.draw!==false, scheme:o.scheme===true, air:/^[1-6]\.[1-6]\.[1-4]$/.test(String(o.air||'')) ? o.air : '' }; }
   static url(svg){ return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg); }
 
   // ---- вкладка «Компоновка»
@@ -52,9 +54,11 @@ class StationUi {
       : airOnly ? ['warn', '⚠ Помещается — есть замечания по подготовке воздуха']
       : plan.level==='warn' ? ['warn', '⚠ Помещается, но часть отступов меньше рекомендуемых'] : ['ok', '✓ Оборудование помещается с рекомендуемыми отступами'];
     const dims=g.ext ? `${esc(ct.name)} · ${n(g.ext[0])} × ${n(g.ext[1])} × ${n(g.ext[2])} мм${plan.int ? ` · внутри ${n(plan.int[0])} × ${n(plan.int[1])} × ${n(plan.int[2])} мм` : ''}` : esc(ct.name);
-    const iss=[...plan.issues].sort((a, b)=>this.rank(a)-this.rank(b));
-    if (plan.level==='error' && plan.assumed) iss.push({ level:'info', text:'Пока габариты части оборудования условные, КП сохранится, но контейнер может не подойти: впишите «Габариты» элементов на вкладке «Состав станции».' });
-    else if (plan.level==='error') iss.push({ level:'info', text:'КП не сохранится, пока оборудование не поместится: замените контейнер (кнопка выше) или измените состав.' });
+    const iss=[...plan.issues].sort((a, b)=>this.rank(a)-this.rank(b)), top=iss.filter(t=>t.level!=='info'), info=iss.filter(t=>t.level==='info');
+    if (plan.level==='error' && plan.assumed) info.unshift({ level:'info', text:'Пока габариты части оборудования условные, КП сохранится, но контейнер может не подойти: впишите «Габариты» элементов на вкладке «Состав станции».' });
+    else if (plan.level==='error') info.unshift({ level:'info', text:'КП не сохранится, пока оборудование не поместится: замените контейнер (кнопка выше) или измените состав.' });
+    // замечания — все; сведения — первые два, остальные по раскрытию (окно не перегружено)
+    const li=t=>`<li class="${t.level}">${esc(t.text)}</li>`, more=info.slice(2);
     const pics=plan.level!=='error' && g.ext, meta=this.meta(x, plan), photoOn=x.photo ? x.photo.gen==='st3d' : o.photo;
     StationImages.soon(x);
     // 3D-вид: готовый (WebGL) — сразу; пока рисуется — прежний SVG-вид, затем картинка подменяется
@@ -63,7 +67,8 @@ class StationUi {
     const cutCab=plan.items.some(t=>t.mount==='wall' && t.wall==='front') && !(plan.door==='service' && (plan.doors||[]).some(d=>d.wall!=='back'));   // стена прохода срезана
     return `<div class="ed-sec stl">
       <div class="stl-st ${head[0]}"><b>${head[1]}</b><span>${dims}${this.sizeNote(c, i)}</span>${plan.suggest ? this.fix(plan.suggest, i) : ''}</div>
-      ${iss.length ? `<ul class="stl-iss">${iss.map(t=>`<li class="${t.level}">${esc(t.text)}</li>`).join('')}</ul>` : ''}
+      ${top.length || info.length ? `<ul class="stl-iss">${[...top, ...info.slice(0, 2)].map(li).join('')}</ul>` : ''}
+      ${more.length ? `<details class="stl-more"><summary>Ещё сведения — ${more.length}</summary><ul class="stl-iss">${more.map(li).join('')}</ul></details>` : ''}
       ${this.air(plan, x, i)}
       ${pics ? `<div class="stl-views">
         <figure class="v3d"><figcaption><b>3D-вид</b><label class="stl-chk"><input type="checkbox" data-stl="photo" data-i="${i}"${photoOn ? ' checked' : ''}> главное фото станции — в строке КП и на титуле</label></figcaption>

@@ -146,7 +146,7 @@ class KitPart {
     const desc=KitPart.cut(feats.map(f=>(f.label&&!/^(описание|о серии|назначение)$/i.test(f.label)?f.label+': ':'')+f.text.trim()).join('\n'));
     const rows=(doc.groups||[]).flatMap(g=>(g.rows||[]).filter(r=>r.k&&r.v)).slice(0,14).map(r=>({k:r.k, v:r.v}));
     return kitNewPart({ name:doc.name||'', catId:doc.id, cost:doc.cost||0, costCur:doc.costCur||'RUB', sup:a.maker||'', desc, rows,
-      photo:doc.photo&&doc.photo.src?{src:doc.photo.src, w:doc.photo.w, h:doc.photo.h}:null,
+      photo:doc.photo&&doc.photo.src?{src:doc.photo.src, w:doc.photo.w, h:doc.photo.h}:null, ...(doc.draw&&typeof doc.draw==='object'?{draw:JSON.parse(JSON.stringify(doc.draw))}:{}),
       attrs:Object.fromEntries(Object.entries(a).filter(([k,v])=>k!=='type' && v!=='' && v!=null && typeof v!=='object')) });
   }
   static cut(s){
@@ -249,8 +249,9 @@ function kitDocItem(x){
     return {id:'kit_'+p.id, label:p.name.trim()+q(p), text:String(p.desc||'').trim() || (rowTxt?rowTxt+'.':'')}; }).filter(f=>f.text);
   const groups=parts.filter(p=>(p.rows||[]).some(r=>r.k&&r.v)).map(p=>({name:p.name.trim(), rows:p.rows.filter(r=>r.k&&r.v).map(r=>({k:r.k, v:r.v, hl:false}))}));
   const gal=parts.filter(p=>p.photo&&p.photo.src&&feats.some(f=>f.id==='kit_'+p.id)).map(p=>({id:'kitg_'+p.id, src:p.photo.src, w:p.photo.w, h:p.photo.h, caption:p.name.trim(), slot:'', at:'feat:kit_'+p.id, on:true}));
+  const docs=SupplyDocs.feature(x);   // станция: документы при поставке — последним блоком
   return { ...x, page:true, spec:x.spec||('В составе: '+parts.map(p=>p.name.trim()).join(', ')).slice(0,200),
-    features:[...(x.features||[]).filter(f=>f.label||f.text), list, ...feats], groups:[...(x.groups||[]), ...groups], gallery:[...(x.gallery||[]), ...gal] };
+    features:[...(x.features||[]).filter(f=>f.label||f.text), list, ...feats, ...(docs ? [docs] : [])], groups:[...(x.groups||[]), ...groups], gallery:[...(x.gallery||[]), ...gal] };
 }
 
 // состав для шаблона, умеющего сборки (feature 'kit'): элементы как есть (без закупки и поставщика) и описание изделия
@@ -258,7 +259,8 @@ function kitDocItem(x){
 function kitDocData(x){
   const parts=kitParts(x).filter(p=>String(p.name||'').trim()).map(p=>({id:p.id, name:p.name.trim(), qty:+p.qty||1, desc:String(p.desc||'').trim(),
     rows:(p.rows||[]).filter(r=>r.k&&r.v).map(r=>({k:r.k, v:r.v})), maker:(p.attrs&&p.attrs.maker)||'', model:(p.attrs&&p.attrs.model)||''}));
-  return { parts, base:{ page:true, spec:x.spec||'', features:(x.features||[]).filter(f=>f.label||f.text), groups:x.groups||[], gallery:x.gallery||[] } };
+  const docs=SupplyDocs.feature(x);
+  return { parts, base:{ page:true, spec:x.spec||'', features:[...(x.features||[]).filter(f=>f.label||f.text), ...(docs ? [docs] : [])], groups:x.groups||[], gallery:x.gallery||[] } };
 }
 
 // строки закупки для экономики сделки: элемент сборки — своя строка (своя валюта и поставщик); обычная позиция — как есть
@@ -268,7 +270,7 @@ function kitLines(st=S){
     if (!isKit(x)){ out.push({id:x.id, i, name:x.name, qty:+x.qty||0, cost:x.cost||0, costCur:x.costCur||'RUB', maker:attrsOf(x).maker||'', item:x}); return; }
     kitParts(x).forEach((p,j)=>{ if (!String(p.name||'').trim() && !p.cost) return;
       out.push({id:x.id+'~'+p.id, i, j, part:p, name:p.name||'Элемент', of:x.name, qty:(+x.qty||0)*(+p.qty||0), cost:p.cost||0, costCur:p.costCur||'RUB',
-        maker:p.sup||(p.attrs&&p.attrs.maker)||'', item:{id:x.id+'~'+p.id, catId:p.catId||'', name:p.name, role:p.role||'', attrs:{...(p.attrs||{}), cat:(p.attrs&&p.attrs.cat)||attrsOf(x).cat}}}); }); });
+        maker:KitScope.sup(x, p)||(p.attrs&&p.attrs.maker)||'', item:{id:x.id+'~'+p.id, catId:p.catId||'', name:p.name, role:p.role||'', attrs:{...(p.attrs||{}), cat:(p.attrs&&p.attrs.cat)||attrsOf(x).cat}}}); }); });
   return out;
 }
 
@@ -277,70 +279,6 @@ function kitLines(st=S){
 function kitCargo(st=S){
   return (st.items||[]).flatMap(x=>!isKit(x) ? [x] : kitParts(x).map(p=>{ p.rows=p.rows||[];
     return {id:x.id+'~'+p.id, name:`${p.name||'Элемент'} (${x.name})`, qty:(+x.qty||0)*(+p.qty||0), groups:[{name:p.name, rows:p.rows}], cost:p.cost, costCur:p.costCur||'RUB', price:0, catId:p.catId||''}; }));
-}
-
-// ---------- вкладка «Состав станции» в карточке позиции
-function edKit(x,i){
-  const P=`items.${i}.kit.parts`, parts=kitParts(x), cost=kitCost(x), st=stationOf(x), t=typeById(attrsOf(x).cat);
-  const sel=(attr, j, list, cur)=>`<select data-kitct="${i}.${j}" data-fld="${attr}">${list.map(([v,l])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
-  const card=(p,j)=>{ const ct=p._costText ?? (p.cost?String(p.cost/100).replace('.',','):'');
-    const role=p.role==='container'?'<span class="kit-role">Контейнер</span>':p.role==='main'?`<span class="kit-role main">${esc(st?st.mainLabel:'Основное')}</span>`:'';
-    return `<div class="kit-card${p.role?' r-'+p.role:''}" data-kitj="${j}">
-    <div class="kit-h"><span class="kit-n">${j+1}</span>${role}
-      <input type="text" data-p="${P}.${j}.name" value="${esc(p.name)}" placeholder="Название элемента" aria-label="Название элемента" class="kit-nm${p.name?'':' need'}">
-      <button class="btn ghost sm" type="button" data-a="aiPart" data-i="${i}" data-j="${j}" title="Описание и характеристики элемента — с помощью любого ИИ">✨ ИИ</button>
-      <button class="icon" type="button" data-a="kitMv" data-i="${i}" data-j="${j}" data-d="-1" ${j?'':'disabled'} aria-label="Выше">↑</button><button class="icon" type="button" data-a="kitMv" data-i="${i}" data-j="${j}" data-d="1" ${j<parts.length-1?'':'disabled'} aria-label="Ниже">↓</button>
-      <button class="icon" type="button" data-a="kitDel" data-i="${i}" data-j="${j}" aria-label="Убрать элемент">✕</button></div>
-    ${p.role==='container'?`<div class="kit-ct"><label class="f"><span>Тип контейнера</span>${sel('ctype', j, CONTAINER_TYPES.map(c=>[c.id, c.name+' — '+c.size]), p.ctype)}</label>
-      <label class="f"><span>Утепление</span>${sel('ins', j, CONTAINER_INS.map(v=>[v,v]), p.ins)}</label>
-      <label class="f"><span>Климатическое исполнение</span>${sel('climate', j, CLIMATES.map(c=>[c[0], c[0]+' — '+c[1]]), p.climate)}</label>
-      <label class="f"><span>Размер Д × Ш × В, мм</span><input type="text" data-kitct="${i}.${j}" data-fld="size" value="${esc(p.size||'')}" placeholder="${esc(ctypeOf(p.ctype).size)}"></label>
-      <label class="f"><span>Цвет</span><input type="text" data-kitct="${i}.${j}" data-fld="ral" value="${esc(p.ral||'')}" placeholder="например, RAL 7004 / RAL 5005"></label></div>
-      ${StationUi.on(x) && StationGeo.FLEX[p.ctype] ? `<p class="muted kit-szn">${p.sizeAuto && String(p.size||'').trim() ? 'Размер подобран по оборудованию (вкладка «Компоновка»). Впишите свой — подбор отключится.' : String(p.size||'').trim() ? `Размер задан вручную — <button type="button" class="lnk" data-a="stlAuto" data-i="${i}">подобрать по оборудованию</button>.` : 'Размер подберётся по оборудованию, когда в составе будет что расставлять.'}</p>` : ''}
-      <div class="kit-sys"><span class="muted">Системы контейнера:</span>${CONT_SYSTEMS.map(([id,k])=>`<button type="button" class="chip${(p.sys||CONT_SYS_DEF)[id]?' on':''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!(p.sys||CONT_SYS_DEF)[id]}">${esc(k)}</button>`).join('')}</div>`:''}${KitPipe.fields(p, i, j)}${KitCabinet.fields(p, i, j)}
-    <div class="kit-body">
-    <div class="kit-phw"><span class="kit-phl">Фото элемента</span>
-      <div class="kit-ph${p.photo&&p.photo.src?' has':''}">${p.photo&&p.photo.src?`<img src="${esc(p.photo.src)}" alt="${esc(p.name||'Фото элемента')}"><button class="icon x" type="button" data-a="kitPhotoDel" data-i="${i}" data-j="${j}" aria-label="Убрать фото">✕</button>`:`<button type="button" class="kit-phb" data-a="kitPhoto" data-i="${i}" data-j="${j}"><b>+ фото</b><small>выбрать файл</small></button>`}</div>
-      ${p.photo&&p.photo.src?`<button type="button" class="lnk kit-phr" data-a="kitPhoto" data-i="${i}" data-j="${j}">Заменить фото</button>`:''}</div>
-    <div class="kit-main">
-    <div class="kit-g">
-      <label class="f"><span>Кол-во</span><input type="text" inputmode="numeric" data-p="${P}.${j}.qty" value="${esc(p.qty)}"></label>
-      <label class="f"><span>Закупка за ед.</span><span class="kit-cost"><input type="text" inputmode="decimal" data-kitcost="${i}.${j}" value="${esc(ct)}" placeholder="цена из счёта"><select data-kitcur="${i}.${j}" aria-label="Валюта закупки">${DEAL_CURS.map(c=>`<option${(p.costCur||'RUB')===c?' selected':''}>${c}</option>`).join('')}</select></span></label>
-      <label class="f kit-sup"><span>Поставщик${tip('У кого покупаем этот элемент. В «Экономике сделки» элементы с разными поставщиками попадут в разные карточки — со своими сроками и условиями оплаты.')}</span><input type="text" data-p="${P}.${j}.sup" value="${esc(p.sup)}" list="kitSupL" placeholder="Производитель или поставщик" autocomplete="off"></label>
-    </div>
-      <label class="f kit-desc"><span>Техническое описание${p.catId?' <small class="muted">из каталога</small>':''}</span><textarea rows="3" data-p="${P}.${j}.desc" placeholder="Назначение, конструкция, комплектация элемента — попадёт в КП">${esc(p.desc||'')}</textarea></label></div></div>
-    <details class="kit-rows"${(p.rows||[]).length&&(p.rows||[]).length<=6?' open':''}><summary>Характеристики элемента <span class="muted">${(p.rows||[]).length?(p.rows.length+' '+plural(p.rows.length,'строка','строки','строк')):'— таблица в КП'}</span></summary>
-      ${(p.rows||[]).map((r,k)=>`<div class="kit-row"><input type="text" data-p="${P}.${j}.rows.${k}.k" value="${esc(r.k)}" placeholder="Параметр"><input type="text" data-p="${P}.${j}.rows.${k}.v" value="${esc(r.v)}" placeholder="Значение"><button class="icon" type="button" data-a="kitRowDel" data-i="${i}" data-j="${j}" data-k="${k}" aria-label="Убрать строку">✕</button></div>`).join('')}
-      <button class="btn ghost" type="button" data-a="kitRowAdd" data-i="${i}" data-j="${j}">+ строка</button></details>
-  </div>`; };
-  const sups=[...new Set([...(typeof DL!=='undefined'&&DL.sups||[]).map(s=>s.name), ...catCache.map(c=>attrsOf(c).maker)].filter(Boolean))].slice(0,400);
-  if (!st && !parts.length) return `<div class="ed-sec"><p class="muted">Состав есть только у станций в контейнере. Чтобы собрать станцию, выберите категорию «Насосные / Компрессорные / Дизель-генераторные станции в контейнере» на вкладке «Основное».</p></div>`;
-  const cont=kitContainer(x), main=kitMainPart(x);
-  const have=new Set(parts.map(p=>norm(p.name)));
-  // типовые элементы: [название, категория каталога] — подбор в этой категории; без категории — поиск по названию
-  const presets=(st?st.parts:KIT_PRESETS).map(z=>Array.isArray(z)?z:[z,'']).filter(([n])=>!have.has(norm(n)));
-  // что ещё не выбрано — крупными шагами сверху
-  const todo=st ? [
-    cont?'':`<div class="kit-todo"><b>1. Контейнер</b><span class="muted">В чём поставляем станцию — дальше можно уточнить утепление и климатическое исполнение.</span>
-      <div class="kit-cts">${CONTAINER_TYPES.map(c=>`<button type="button" class="kit-ctb" data-a="kitCont" data-i="${i}" data-ct="${esc(c.id)}"><b>${esc(c.name)}</b><small>${esc(c.size)}</small></button>`).join('')}</div></div>`,
-    main?'':`<div class="kit-todo"><b>${cont?'1':'2'}. ${esc(st.mainLabel)}</b><span class="muted">Из каталога — с описанием, характеристиками, фото и закупкой; или своё.</span>
-      <div class="row"><button class="btn primary" type="button" data-a="kitMain" data-i="${i}">Выбрать в каталоге</button><button class="btn ghost" type="button" data-a="kitAdd" data-i="${i}" data-n="${esc(st.mainLabel)}" data-role="main">+ Своё</button></div></div>`].join('') : '';
-  const others=parts.filter(p=>!p.role), noCost=parts.filter(p=>!p.cost).length;
-  const stp=(ok, n, title, sub)=>`<li class="${ok?'done':'todo'}"><span class="kit-sn">${ok?'✓':n}</span><span><b>${title}</b><small>${sub}</small></span></li>`;
-  const steps = st ? `<ol class="kit-steps" aria-label="Как собрать станцию">
-      ${stp(!!cont, 1, 'Контейнер', cont?esc(ctypeOf(cont.ctype).name):'выберите ниже')}
-      ${stp(!!main, 2, esc(st.mainLabel), main?esc(main.name||'без названия'):'из каталога или своё')}
-      ${stp(others.length>0, 3, 'Дополнительные элементы', others.length?`${others.length} ${plural(others.length,'элемент','элемента','элементов')}`:'кнопки «+» внизу')}
-      ${stp(parts.length>0 && !noCost, 4, 'Закупка', !parts.length?'—':noCost?`нет цены у ${noCost}`:'цены указаны')}</ol>` : '';
-  return `<div class="ed-sec"><p class="sub">${st?`Состав: ${esc(t.item.toLowerCase())}`:'Состав изделия'}${tip('Станция в контейнере — одно изделие для заказчика: одна строка и одна цена в КП. Закупка, поставщик, описание и характеристики — у каждого элемента: в КП это таблица «Состав изделия» и карточки элементов, в «Экономике сделки» — свои поставщики и сроки.')}</p>
-    ${steps}${todo}
-    <div class="kit-l">${parts.map(card).join('')}</div>
-    <datalist id="kitSupL">${sups.map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
-    <div class="kit-add"><b>${st?'3. ':''}Добавить в состав</b><span class="muted">— нажмите элемент: откроется подбор в каталоге; нет в каталоге — добавите своим.</span>
-      <span class="chips">${presets.map(([n,c])=>`<button class="chip" type="button" data-a="kitPreset" data-i="${i}" data-n="${esc(n)}" data-cat="${esc(c)}" title="${c?'Подобрать в каталоге: '+esc(typeById(c).name):'Найти в каталоге или добавить новым элементом'}">+ ${esc(n)}</button>`).join('')}</span>
-      <span class="row"><button class="btn ghost" type="button" data-a="kitCat" data-i="${i}">+ Из каталога</button><button class="btn ghost" type="button" data-a="kitAdd" data-i="${i}">+ Свой элемент</button></span></div>
-    ${parts.length?`<div class="kit-sum"><span>Закупка изделия${parts.some(p=>p.costCur&&p.costCur!=='RUB')?' (по курсам КП)':''}</span><b>${Number.isFinite(cost)?money(cost)+' ₽':'нет курса валюты — укажите в шаге «Цены»'}</b>
-      ${parts.some(p=>!p.cost)?`<small class="warn-t">не указана закупка: ${parts.filter(p=>!p.cost).map(p=>esc(p.name||'без названия')).join(', ')}</small>`:''}</div>`:''}</div>`;
 }
 
 // ---------- подбор по фильтрам категории: вид (если категорий несколько), производитель, списки и «от–до» по параметрам
@@ -390,7 +328,7 @@ const pfRow = (x, act) => `<button type="button" class="kit-pick" ${act}="${esc(
 
 // выбор позиции каталога для элемента: cats — только эти категории (основное оборудование станции), role — роль элемента,
 // preset — подбор «Компоновки»: фильтры {f, r} и для нового элемента строки характеристик rows и attrs
-function kitPickCat(i, cats, role, name, preset){
+function kitPickCat(i, cats, role, name, preset, by){
   const d=$('#dlg'); d.classList.add('wide'); const F=pfNew(cats); if (name && !cats) F.q=name;
   if (preset){ Object.assign(F.f, preset.f||{}); Object.assign(F.r, preset.r||{}); }
   const newBtn=`<button class="btn" type="button" data-kitnew="1">+ Новый элемент${name?` «${esc(name)}»`:''}</button>`;
@@ -407,10 +345,11 @@ function kitPickCat(i, cats, role, name, preset){
   d.querySelector('.dlg-h [data-kitnew]').onclick=()=>kitPickNew();
   const kitPickNew=()=>{ const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=StationDefaults.fill(kitNewPart({name:name||(F.q||'').trim()}), it); if (role) p.role=role;
     if (preset){ if (preset.attrs) p.attrs=Object.fromEntries(Object.entries(preset.attrs).filter(([, v])=>v!=null && v!=='')); for (const r of preset.rows||[]) if (!p.rows.some(z=>z.k===r.k)) p.rows.push({ ...r }); }
+    if (by && by!==KitScope.def(p)) p.by=by;
     it.kit.parts.push(p); it.page=true; d.close(); renderForm(); persist(); toast('Элемент добавлен — описание и характеристики: вручную или кнопкой «✨ ИИ»'); };
   $('#kitPL').onclick=async e=>{ if (e.target.closest('[data-kitnew]')) return kitPickNew(); const b=e.target.closest('[data-cid]'); if (!b) return; const lite=catCache.find(x=>x.id===b.dataset.cid);
     let doc=lite; try{ doc=await api('/api/catalog/'+encodeURIComponent(lite.id)); }catch(_){}
-    const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=KitPart.fromCat(doc); if (role) p.role=role;
+    const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=KitPart.fromCat(doc); if (role) p.role=role; if (by && by!==KitScope.def(p)) p.by=by;
     if (role==='main'){ const ix=it.kit.parts.findIndex(z=>z.role==='container'); it.kit.parts.splice(ix>=0?ix:0, 0, p); } else it.kit.parts.push(p);
     kitSync(it); stationFill(it); stationAutoName(it);
     d.close(); renderForm(); persist(); toast('Добавлено в состав: '+doc.name); };
@@ -419,9 +358,10 @@ function kitPickCat(i, cats, role, name, preset){
 // действия вкладки «Состав» (вызываются из общего обработчика кнопок data-a)
 function kitAction(a, i, b){
   const it=S.items[i]; if (!it) return false; it.kit=it.kit||{parts:[]}; const P=it.kit.parts, j=+b.dataset.j;
-  if (a==='kitAdd'){ const p=kitNewPart({name:b.dataset.n||''}); if (b.dataset.role) p.role=b.dataset.role; P.push(p); it.page=true; return true; }
-  if (a==='kitCat'){ kitPickCat(i); return 'async'; }
-  if (a==='kitPreset'){ const c=b.dataset.cat; kitPickCat(i, c&&TYPES.some(t=>t.id===c)?[c]:null, null, b.dataset.n); return 'async'; }
+  if (a==='kitAdd'){ const p=kitNewPart({name:b.dataset.n||''}); if (b.dataset.role) p.role=b.dataset.role; const by=b.dataset.by; if (by && by!==KitScope.def(p)) p.by=by;
+    P.push(p); KitView.open.add(p.id); it.page=true; return true; }
+  if (a==='kitCat'){ kitPickCat(i, null, null, '', null, b.dataset.by); return 'async'; }
+  if (a==='kitPreset'){ const c=b.dataset.cat; kitPickCat(i, c&&TYPES.some(t=>t.id===c)?[c]:null, null, b.dataset.n, null, b.dataset.by); return 'async'; }
   if (a==='kitMain'){ kitPickCat(i, (stationOf(it)||{}).main, 'main'); return 'async'; }
   if (a==='kitSys'){ const p=P[j]; p.sys={...(p.sys||CONT_SYS_DEF)}; p.sys[b.dataset.sys]=!p.sys[b.dataset.sys]; contApply(p); return true; }
   if (a==='kitCont'){ P.push(kitNewContainer(b.dataset.ct)); it.page=true; stationFill(it); stationAutoName(it); return true; }
