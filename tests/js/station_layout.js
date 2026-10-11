@@ -827,6 +827,8 @@ Check.run('3D: оснащение — пожарная безопасность,
   assert.ok(Do.some(d=>d.id==='CAT' && d.cat==='В1' && d.zone==='П-I'), 'отсек бака: табличка «Категория В1, класс зоны П-I»');
   assert.ok(dg.fire.rooms.length===2 && dg.fire.ext===3 && !dg.fire.auto && dg.fire.mods===0, 'ДГУ с отсеком: огнетушители в двух помещениях, без пожаротушения — модулей нет');
   const si=new StScene(dg, {}).build(); assert.ok(dg.fire.ext===3 && si.outfit.log.filter(q=>q.kind==='ext').length>=2, 'огнетушители: у входа, у ДГУ, в отсеке бака (у ДГУ и в отсеке — видны)');
+  const fp=si.outfit.log.find(q=>q.kind==='fuelpump');
+  assert.ok(fp && fp.x<dg.fuel.x1 && dg.power.list.some(q=>/Насос перекачки топлива/.test(q.name)) && dg.pipe && dg.pipe.medium==='fuel', 'насос перекачки топлива — в отсеке бака, в нагрузках, топливопровод по расчёту');
   assert.ok([...si.decals.values()].some(d=>d.type==='logo' && d.maker==='AKSA'), 'логотип ДГУ — на радиаторе');
   const byName=new StScene(solve(C('block', { sizeAuto:true }), [dgu, ats]), { makers:{ [dgu.id]:'AKSA' } }).build();   // производитель из названия (в браузере — по каталогу логотипов)
   assert.ok([...byName.decals.values()].some(d=>d.type==='logo' && d.maker==='AKSA'), 'производитель по названию');
@@ -855,6 +857,33 @@ Check.run('системы: освещение, розетки, нагрузки 
   assert.ok(/около \d+ лк/.test(StationLight.text(Lt)) && /светильника|светильников/.test(StationLight.text(Lt)) && /ЯТП-0,25/.test(StationSockets.text(K)), 'тексты ТЗ');
   for (const [n, w] of [[21, '21 модуль'], [12, '12 модулей'], [3, '3 модуля'], [5, '5 модулей']]) assert.strictEqual(StationFire.pl(n, ['модуль', 'модуля', 'модулей']), w);
   const sc=new StScene(ks, {}).build(); assert.ok(sc.outfit.log.some(q=>q.kind==='socket'), '3D: розетки на стенах');
+});
+
+Check.run('сжатый воздух: байпас осушителя, диаметр трубы по расчёту, ресиверы без учёта, осушитель', ()=>{
+  const pipe=P('Трубопровод', {}, { pipeMat:'steel', dn:'DN 25' });
+  const ks=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[Object.assign({}, comp, { attrs:{ ...comp.attrs, flow:6, pressure:8 } }), Object.assign({}, dryer, { attrs:{ ...dryer.attrs, flow:7 } }), rec, pipe], req:{ kind:'comp' } });
+  const ln=ks.lines.find(l=>l.medium==='air' && !l.header), bp=(ln.bypass||[])[0], dr=ks.items.find(i=>i.kind==='dryer');
+  assert.ok(bp && bp.pos===dr.pos && bp.x1>bp.x0 && ln.gaps.some(([a, b])=>a===bp.x0 && b===bp.x1), 'байпас — между входом и выходом осушителя');
+  const sc=new StScene(ks, {}).build(); assert.ok(sc.tris()>0, '3D с байпасом');
+  const sch=StationScheme.svg(ks, meta(ks)); assert.ok(/fill="#000"/.test(sch) && /байпас/.test(sch), 'схема: байпас с нормально закрытым краном и примечание');
+  Check.sheet(sch, 'схема с байпасом'); Check.crossing(sch, 'схема с байпасом');
+  // диаметр: 6 м³/мин при 8 бар → 0,67 м³/мин в трубе, не более 8 м/с → внутри не менее 42 мм → DN 50; в составе DN 25 — мало
+  const Q=ks.pipe; assert.ok(Q && Q.medium==='air' && Q.dn===50 && Q.set===25 && Q.small && Math.abs(Q.lines[0].d-42.3)<0.6, 'DN по расчёту: '+JSON.stringify(Q));
+  assert.ok(ks.issues.some(t=>t.level==='warn' && /DN 25 меньше расчётного DN 50/.test(t.text)), 'замечание: DN в составе мал');
+  assert.ok(/DN 50/.test(StationPipe.text(Q)) && /принять DN 50/.test(StationPipe.text(Q)), 'текст ТЗ');
+  assert.ok(StationPipe.dn(42.3)===50 && StationPipe.dn(52.5)===50 && StationPipe.dn(52.6)===65 && StationPipe.dn(10)===15, 'ряд DN');
+  // ресиверы: 2000 л при 8 бар — p·V 1,6: без учёта — 2 × 1000 л; 900 л — без учёта и так
+  assert.deepStrictEqual(AirChain.split(2000, 8), { n:2, v:1000 }); assert.strictEqual(AirChain.split(900, 8), null); assert.deepStrictEqual(AirChain.split(1500, 13), { n:3, v:500 });
+  const big=P('Воздушный ресивер РВ 2000', { cat:'receiver', model:'РВ 2000/11', volume:2000, size:'1000 × 1000 × 2600', mass:400 });
+  const kr=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[Object.assign({}, comp, { attrs:{ ...comp.attrs, flow:6, pressure:8 } }), dryer, big], req:{ kind:'comp' } });
+  const rs=kr.air.recs.find(r=>r.key==='recv-split'); assert.ok(rs && rs.qty===2 && rs.replace.includes(big.id) && /2 × 1 000 л/.test(rs.title), 'замена ресивера на учёте: '+JSON.stringify(rs));
+  // осушителя нет — рекомендация рефрижераторного с байпасом
+  const nd=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[Object.assign({}, comp, { attrs:{ ...comp.attrs, flow:6, pressure:8 } }), rec], req:{ kind:'comp' } });
+  assert.ok(nd.air.recs.some(r=>r.key==='dryer-refrig' && r.cat==='dryer_refrig') && nd.issues.some(t=>/Осушителя в составе нет/.test(t.text)), 'рекомендация рефрижераторного осушителя');
+  // насосная: DN по подаче рабочих насосов (без резервного)
+  const pm=P('Насос CR 32', { cat:'pump', flow:32, head:50, kw:7.5, size:'600 × 400 × 1000' }, { role:'main', qty:2 });
+  const kp=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[pm, P('Трубопровод', {}, { pipeMat:'inox' })], req:{ kind:'pump', res:1 } }).pipe;
+  assert.ok(kp && kp.medium==='water' && kp.lines.length===2 && kp.lines[0].dn===80 && kp.lines[1].dn===100, 'насосная: напорный DN 80, всасывающий DN 100 при 32 м³/ч: '+JSON.stringify(kp));
 });
 
 Check.run('цвет по фото: фон убирается, главный цвет корпуса', ()=>{

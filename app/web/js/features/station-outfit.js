@@ -290,7 +290,8 @@ class StOutfit {
   }
 
   // ---- отсек топливного бака ДГУ: перегородка (в разрезе — утеплитель), поддон, заливная труба к горловине снаружи,
-  // дыхательный клапан с огнепреградителем над крышей, огнетушитель, жалюзи отсека; дверь — в стене прохода (StScene.shut)
+  // насос перекачки топлива в бак ДГУ, дыхательный клапан с огнепреградителем над крышей, огнетушитель, жалюзи отсека; дверь —
+  // в стене прохода (StScene.shut)
   fuel(){
     const S=this.s, P=this.p, f=P.fuel; if (!f) return;
     const [, W, H]=P.int, mm=S.mm, T=P.items.filter(i=>i.tank), dk=S.M(StMat.paint('#2b3036', 0.6)), st=S.M(StMat.metal(StScene.GALV, 0.4)), fl=f.fill;
@@ -308,6 +309,7 @@ class StOutfit {
           : [S.P(fl.x, 0, fl.z), S.P(fl.x, 120, fl.z), S.P(fl.x, 120, zr), S.P(fl.x, ty, zr), S.P(bx, ty, zr), S.P(bx, ty, top)];
         for (let k=1; k<Q.length; k++){ st.tube(Q[k-1], Q[k], 0.026, 12); if (k<Q.length-1) st.sphere(Q[k], 0.027, 10); } }
       const ex=S.P(f.x1, 350, StOutfit.EXT-500); this.extinguisher(ex, [-1, 0, 0]); S.sticker({ type:'sign', id:'F04' }, S.P(f.x1, 350, 1720), [-1, 0, 0], 0.2, 0.2);
+      if (t) this.transfer(t, f, st, dk);
     }
     // дыхательный клапан с огнепреградителем — над крышей
     if (t){ const p=S.P(t.x+t.lx*0.8, t.y+t.ly*0.7, top), zr=S.roofZ(p[1])+(S.rise>0 ? 0.04 : 0);
@@ -330,6 +332,22 @@ class StOutfit {
       S.sticker({ type:'sign', id:'W01' }, [x-0.07, y-0.15, z-0.02], [0, -1, 0], 0.14, 0.123); S.sticker({ type:'sign', id:'DT' }, [x+0.1, y-0.15, z-0.02], [0, -1, 0], 0.13, 0.07); }
     // жалюзи отсека вверху в торце (внизу — решётка в двери отсека); у морского в торце — его двери
     if (!S.g.sea){ const y0=S.oy+mm(W-450), y1=S.oy+mm(W-150); S.louver(1, 0, y0, y1, S.top-0.65, S.top-0.4, -1); this.hood('left', y0-S.oy-0.06, y1-S.oy+0.06, S.top-0.34); }
+  }
+
+  /** насос перекачки топлива из дополнительного бака в бак ДГУ: на раме у бака перед перегородкой, всасывание — из нижнего
+   *  патрубка бака с краном, нагнетание — вверх к топливопроводу у задней стены */
+  transfer(t, f, st, dk){
+    const S=this.s, [, W]=this.p.int, x=Math.min(f.x1-130, t.x+t.lx+170), y0=Math.max(220, t.y-330), y1=y0+240, zc=170, red=S.M(StMat.paint('#c83a2e', 0.4)), mo=S.M(StMat.paint('#4f5d6b', 0.45));
+    if (x-100<t.x+t.lx+40) return;
+    this.log.push({ kind:'fuelpump', x, y:y0 });
+    dk.box(...S.P(x-100, y0, 0), ...S.P(x+100, y1, 60), 0.006);                                      // рама
+    mo.tube(S.P(x, y0+20, zc), S.P(x, y0+170, zc), 0.07, 20); dk.tube(S.P(x, y0+15, zc), S.P(x, y0+22, zc), 0.072, 20);   // двигатель
+    red.tube(S.P(x, y0+170, zc), S.P(x, y1-10, zc), 0.06, 20); dk.box(...S.P(x-60, y0+40, 60), ...S.P(x+60, y0+150, zc-60));   // насос, опора
+    const ty=t.y-1, a=S.P(t.x+t.lx-120, ty, 120), b=S.P(t.x+t.lx-120, y1+60, 120), c=S.P(x, y1+60, 120), d=S.P(x, y1-10, zc);   // всасывание из бака
+    st.tube(a, b, 0.016, 10); st.sphere(b, 0.017, 8); st.tube(b, c, 0.016, 10); st.sphere(c, 0.017, 8); st.tube(c, d, 0.016, 10);
+    st.sphere(b, 0.026, 10); red.box(b[0]-0.01, b[1]-0.01, b[2]+0.03, b[0]+0.09, b[1]+0.01, b[2]+0.045, 0.003);   // кран
+    const l=(this.p.lines||[]).find(q=>q.medium==='fuel'), zl=l ? l.z : 1150, yl=l ? l.y : W-50, u=S.P(x, (y0+y1)/2, zc+70), v=S.P(x, (y0+y1)/2, zl), w=S.P(x, yl, zl);   // нагнетание
+    st.tube(u, v, 0.016, 10); st.sphere(v, 0.017, 8); st.tube(v, w, 0.016, 10); st.sphere(w, 0.022, 8);
   }
 
   // ---- двери снаружи: над каждой — съёмный козырёк (водостоков нет), под ним — светодиодный прожектор. На входной двери —

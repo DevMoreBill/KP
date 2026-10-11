@@ -831,9 +831,9 @@ class PneuSymbol {
   /** генератор азота (кислорода): прямоугольник с обозначением газа */
   static generator(sh, cx, cy, gas, m=1){ sh.rect(cx-6*m, cy-4.5*m, 12*m, 9*m, 'bold', '#fff'); sh.text(cx, cy+1.6, gas||'N₂', 3.5, { a:'middle' }); return { inl:[cx-6*m, cy], out:[cx+6*m, cy], bot:[cx, cy+4.5*m] }; }
   /** запорный кран (ГОСТ 2.785-70): два треугольника вершинами друг к другу; vertical — на вертикальной линии */
-  static valve(sh, cx, cy, s=2, vertical){
+  static valve(sh, cx, cy, s=2, vertical, closed){
     const P=vertical ? [[cx-s*0.6, cy-s], [cx+s*0.6, cy-s], [cx-s*0.6, cy+s], [cx+s*0.6, cy+s]] : [[cx-s, cy-s*0.6], [cx-s, cy+s*0.6], [cx+s, cy-s*0.6], [cx+s, cy+s*0.6]];
-    sh.poly(P, 'bold', '#fff');
+    sh.poly(P, 'bold', closed ? '#000' : '#fff');   // нормально закрытый — зачернён
   }
   /** клапан предохранительный угловой (ГОСТ 2.785-70): вход снизу, выход вбок, пружина сверху; выход в атмосферу */
   static safety(sh, cx, cy, s=1.8){
@@ -957,6 +957,7 @@ class StationScheme {
     const notes=[
       `Арматура (запорные краны, предохранительный клапан, манометр, отвод конденсата) показана условно${pipe ? `; входит в обвязку поз. ${pipe.pos}` : ''}.`,
       'У ресивера, фильтров и осушителя — один вход и один выход: сжатый воздух проходит через них последовательно, по стрелкам; линии отвода конденсата — штриховые.',
+      ...(chain.some(u=>u.kind==='dryer' && (u.air||{}).type!=='gen') ? ['У осушителя — байпас: обводная линия с краном (нормально закрыт), на входе и выходе осушителя — краны; осушитель обслуживают без остановки подачи воздуха.'] : []),
       ...(a.cls ? [`На выходе — класс чистоты сжатого воздуха ${a.cls} по ISO 8573-1.`] : []),
       ...(out.length ? [`${out.length>1 || (out[0].qty||1)>1 ? 'Ресиверы' : 'Ресивер'} поз. ${[...new Set(out.map(u=>u.pos))].join(', ')} — снаружи контейнера, на площадке; подключение через стену — с запорной арматурой.`] : []),
     ];
@@ -1045,7 +1046,11 @@ class StationScheme {
       sh.text(x-8.5*m, y-4.5*m, String(u.pos), 3.5, { a:'end' });
       return [x, y+9.4*m]; }
     if (u.kind==='dryer' && r.type==='gen'){ PneuSymbol.generator(sh, x, y, /кислород|O2|О2/i.test(u.name||'') ? 'O₂' : 'N₂', m); sh.text(x+6.8*m, y-5.5*m, String(u.pos), 3.5); return null; }
-    if (u.kind==='dryer'){ const s=PneuSymbol.dryer(sh, x, y, 6*m); sh.text(x+4*m, y-6.2*m, String(u.pos), 3.5); return r.type==='ads' ? null : s.bot; }
+    if (u.kind==='dryer'){ const s=PneuSymbol.dryer(sh, x, y, 6*m); sh.text(x+4*m, y-6.2*m, String(u.pos), 3.5);
+      const xa=n.ltr ? x-8.5*m : x+8.5*m, xb=n.ltr ? x+8.5*m : x-8.5*m, yb=y-12.5*m;   // байпас: обвод с краном (нормально закрыт)
+      sh.dot(xa, y, 0.6); sh.dot(xb, y, 0.6); sh.line(xa, y, xa, yb, 'bold'); sh.line(xb, y, xb, yb, 'bold');
+      sh.line(xa, yb, x-1.8*m, yb, 'bold'); sh.line(x+1.8*m, yb, xb, yb, 'bold'); PneuSymbol.valve(sh, x, yb, 1.8*m, false, true);
+      return r.type==='ads' ? null : s.bot; }
     const g=r.grade, drain=g==='carbon' || g==='dust' ? '' : 'auto', s=PneuSymbol.filter(sh, x, y, 5*m, drain, g!=='sep');
     sh.text(x+3.6*m, y-5.4*m, String(u.pos), 3.5);
     return drain ? s.bot : null;
