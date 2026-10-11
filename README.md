@@ -432,6 +432,26 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
 компрессорная — обвязка; описания новых элементов: глушитель, бак, трубопровод, АСУ ТП, АВР). Типовые элементы станций — в
 `app/equipment_types.json` (`station.parts`).
 
+**Станции 3.60 — требования заказчика, стороны поставки, ТЗ:** `StationReq` (kit-view.js) — требования станции в `x.req`
+(`flow`, `pressure`, `q`, `head`, `kw`, `hours`, `work`, `reserve`, `recv` — `after` | `before` | `both`, `recvOut`, `tmin`, `tmax`, `fire`,
+`noise`, `docs`, `notes`, `src`, `pick` — итог подбора); `checks(x)` — рабочие агрегаты без `reserve` самых больших, с адсорбционным
+осушителем — за вычетом `AirChain.PURGE` (0,15), давление на выходе — минус `loss()` (осушитель 0,2 бар, ступень фильтра 0,1), бак ДГУ —
+`StationDefaults.LPH` при нагрузке 75 %. `KitScope` — сторона поставки элемента (`our` — основное, осушители, фильтры, ресиверы, насосы,
+ДГУ; `asm` — шкафы, трубопровод, обвязка, системы; своё — `p.by`), `KitView` — группы «Наше оборудование» / «Сборщик контейнера»,
+`SupplyDocs` — блок документов в КП, `DrawPic` — свой рисунок модели (`doc.draw` / `p.draw`: `front`, `top` — `data:image/png|jpeg|webp`,
+на сервер файлами при сохранении). Ресивер: `AirChain.assign(eq, recv)`, снаружи — `place:false, outside:true`, `StationLayout.outside`
+(площадка за торцом, `OUT_GAP`), `PressureVessel` (p·V > 1 МПа·м³ — учёт), `StationNorms` (шум, климат ГОСТ 15150, отопление,
+вентиляция, ПУЭ 4.1.23, категория помещения; `tech`, `tt` — строки ТТ чертежа). Листы ЕСКД: шрифт `EskdFont` — osifont
+(`app/web/fonts/osifont-italic.ttf`, LGPL 3 с исключением для шрифтов; «Э», «Ё», «ё» дорисованы — `.github/scripts/osifont_fix.py`,
+`osifont-NOTICE.txt`), `EskdSheet.image`, `EquipIcon.src`, `HydroScheme` (Г3, насосная), `StationLayout.VER` = 7. ТЗ заказчика: сервер —
+`DocText` (app/doc_text.py: PDF через `pdf_text`, DOCX, XLSX, ODT/ODS, RTF, TXT; без DOCTYPE и сущностей, предел размера частей) и
+`TzParse` (app/tz_parse.py: правила, единицы, цитата `src` у каждого значения, класс воды по точке росы), маршрут `POST /api/tz/parse?name=`
+(тело — файл, 413 / 422 с понятным текстом); интерфейс — `TzImport` (окно разбора, ИИ — только пустые поля, запись в станцию) и
+`TzPick` (tz-import.js: `units` — рабочие 1…3 или из ТЗ со штрафом `barPen` за давление, `part` — полная карточка из каталога;
+фильтры и ресивер — по `plan.air.recs`; ДГУ — `StationDefaults.retank`). ТЗ на сборку — `TzOut` (tz-out.js) на `DocxWriter`
+(docx-writer.js: WordprocessingML через JSZip — стили, таблицы с повтором шапки, рисунки PNG/JPEG, номер страницы). Проверки —
+`tests/test_tz_parse.py` (+ `tests/js/tz_pick.js`), `tests/test_tz_out.py` (+ `tests/js/docx_writer.js`), `tests/js/station_layout.js`.
+
 **Компоновка 3.59 — узнаваемые рисунки оборудования:** `EquipIcon` (station-eskd.js) рисует оборудование схематически сходным
 с изделием, а не условными знаками: `ctx(...)` — рамка рисунка и `S(v, min)` (размер детали в мм изделия на листе, не мельче `min`);
 вид спереди — `front` (сзади — `face > 0`, сбоку — `rot` или шкаф на торце), сверху — `plan` (повёрнутое поперёк — рисунок в своих осях
