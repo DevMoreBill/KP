@@ -267,7 +267,8 @@ Check.run('шкафы на стене, фильтры на трубопрово�
   const p=solve(C('sea20'), [comp, dryer, rec, flt, cab, ats, pipe]);
   Check.plan(p, 'шкафы и фильтры');
   const cabs=p.items.filter(i=>i.kind==='cabinet');
-  assert.ok(cabs.length===2 && cabs.every(c=>c.mount==='wall' && c.wall==='front'), 'шкафы без габаритов — настенные, на стене прохода');
+  assert.ok(cabs.length===2 && cabs.every(c=>c.mount==='wall') && cabs.some(c=>c.wall==='front'), 'шкафы без габаритов — настенные: на стене прохода (мимо сервисной двери) и на торце');
+  assert.ok(p.door==='end' && p.doors.length===1 && p.doors[0].pos.includes(1) && cabs.every(c=>c.wall!=='front' || c.x+c.lx<=p.doors[0].x0-100 || c.x>=p.doors[0].x1+100), 'сервисная дверь — только для компрессора (проход уже него), шкаф — не на ней');
   assert.ok(cabs.every(c=>c.z+c.h<=StationLayout.CAB_TOP+1), 'верх шкафа — не выше 1,9 м');
   const F=p.items.filter(i=>i.kind==='filter');
   assert.ok(F.length===2 && F.every(f=>f.mount==='pipe' && f.z>0), 'фильтры висят на трубе');
@@ -436,7 +437,7 @@ Check.run('трубопровод: материал, трасса, отпеча�
     else assert.ok(b.z1===l.z && side, `отвод в ближнюю стенку: ${it.kind}`); }
   assert.ok(ns.piping[0].lines.some(l=>l.branches.some(b=>b.z1<l.z)), 'напор над насосами — со спусками');
   // номера позиций на плане — поверх трубопровода: фильтры стоят на трубе, линия не должна перечёркивать цифры
-  const sv=StationDrawing.svg(ks, {}), sec=sv.slice(sv.indexOf('>Б–Б<'));
+  const sv=StationDrawing.sheets(ks, {})[1], sec=sv.slice(sv.indexOf('>Б–Б'));
   assert.ok(sec.includes('stroke-width="0.7"') && sec.indexOf('r="0.5" fill="#000"')>sec.lastIndexOf('stroke-width="0.7"'), 'номера на плане — после трубопровода');
   const inp=m=>({ cont:C('sea20'), parts:[comp, P('Трубопровод', {}, { id:'tp', pipeMat:m })] });
   assert.notStrictEqual(StationLayout.hash(inp('steel')), StationLayout.hash(inp('pp')), 'материал — в отпечатке');
@@ -476,9 +477,16 @@ Check.run('отпечаток расстановки', ()=>{
   assert.notStrictEqual(StationLayout.hash(ral), h0, 'цвет контейнера — влияет');
 });
 
-Check.run('чертёж: лист А4 по ЕСКД', ()=>{
-  const p=solve(C('sea40'), [dgu, ats, tank]), d=StationDrawing.svg(p, meta(p, 'Название <b>с разметкой</b> & амперсандом'));
+Check.run('чертёж: листы А4 по ЕСКД', ()=>{
+  const p=solve(C('sea40'), [dgu, ats, tank]), L=StationDrawing.sheets(p, meta(p, 'Название <b>с разметкой</b> & амперсандом')), d=L[0], d2=L[1];
   const sz=Check.sheet(d, 'чертёж');
+  // три листа: 1 — разрез А–А и текстовая часть (только на первом листе), 2 — план и виды с торцов, 3 — схема строповки
+  assert.strictEqual(L.length, 3, 'три листа'); L.slice(1).forEach((x, i)=>Check.sheet(x, 'чертёж, лист '+(i+2)));
+  const T2=Check.texts(d2).map(q=>q.t), T3=Check.texts(L[2]).map(q=>q.t);
+  assert.ok(T2.includes('Лист') && T2.includes('2') && !T2.includes('Разраб.') && !T2.some(t=>t==='Технические требования'), 'лист 2: основная надпись формы 2а, без текстовой части');
+  assert.ok(T2.some(t=>/^Б–Б/.test(t)) && T2.some(t=>/^В( \(|$)/.test(t)) && T2.some(t=>/^Г( \(|$)/.test(t)), 'лист 2: план и виды с торцов В и Г');
+  assert.ok(T3.some(t=>/^Схема строповки/.test(t)) && T3.includes('ЦТ') && T3.some(t=>/«Место строповки»/.test(t)) && T3.some(t=>/«Центр тяжести»/.test(t)), 'лист 3: схема строповки, центр тяжести, знаки № 9 и № 12');
+  assert.ok(Check.texts(d).some(q=>q.t==='Листов') && d.includes('>3<'), 'листов — 3');
   assert.ok(sz.w===StationDrawing.W && sz.h===StationDrawing.H, 'лист А4');
   assert.ok(!d.includes('<b>') && d.includes('&lt;b&gt;'), 'название экранировано');
   // основная надпись (форма 1) и дополнительные графы
@@ -491,15 +499,16 @@ Check.run('чертёж: лист А4 по ЕСКД', ()=>{
   // масштаб — из ряда ГОСТ 2.302
   const sc=T.find(t=>/^1:[\d,]+$/.test(t)); assert.ok(sc && EskdSheet.SCALES.includes(+sc.slice(2).replace(',', '.')), 'масштаб '+sc);
   // разрезы, перечень, характеристика, требования
-  for (const t of ['А–А', 'Б–Б', 'Поз.', 'Наименование', 'Кол.', 'Масса, кг', 'Техническая характеристика', 'Технические требования', 'Проход обслуживания'])
+  for (const t of ['А–А', 'Поз.', 'Наименование', 'Кол.', 'Масса, кг', 'Техническая характеристика', 'Технические требования'])
     assert.ok(T.includes(t), 'на листе нет «'+t+'»');
+  assert.ok(T2.includes('Проход обслуживания'), 'на плане — проход обслуживания');
   assert.ok(T.some(t=>/^\d\. Внутри — [\d ]+ × [\d ]+ × [\d ]+ мм$/.test(t)), 'внутренние размеры — в технической характеристике');
   // позиции: номер на полке у каждой позиции перечня — ровно один раз
-  const pos=[...d.matchAll(/<text x="[\d.-]+" y="[\d.-]+" font-size="7"[^>]*>(\d+)<\/text>/g)].map(m=>+m[1]).sort((a, b)=>a-b);
+  const pos=[...d2.matchAll(/<text x="[\d.-]+" y="[\d.-]+" font-size="7"[^>]*>(\d+)<\/text>/g)].map(m=>+m[1]).sort((a, b)=>a-b);
   const want=[...new Set([...p.items, ...(p.roof||[])].map(i=>i.pos))].sort((a, b)=>a-b);
   assert.deepStrictEqual(pos, want, 'номера позиций на чертеже');
   // установочные размеры морского контейнера — между фитингами (ISO 1161)
-  assert.ok(T.includes(StationLayout.n(StationDrawing.FIT[p.geo.ext[0]])) && T.includes(StationLayout.n(StationDrawing.FIT_W)), 'размеры между фитингами');
+  assert.ok(T2.includes(StationLayout.n(StationDrawing.FIT[p.geo.ext[0]])) && T2.includes(StationLayout.n(StationDrawing.FIT_W)), 'размеры между фитингами');
   // дата и разработчик — не обязательны; обозначение без организации — по умолчанию
   const bare=StationDrawing.svg(p, {}); Check.sheet(bare, 'чертёж без сведений');
   assert.ok(Check.texts(bare).some(q=>/^КПСТ\.\d{6}\.001 ГЧ$/.test(q.t)), 'обозначение без организации');
@@ -645,8 +654,8 @@ Check.run('свой рисунок модели: вид спереди и све
   const c2=P('Компрессор с рисунком', { cat:'comp_screw', flow:6, pressure:8, size:'1400 × 900 × 1500' }, { role:'main', draw:{ front:{ src:png, w:1, h:1 }, top:{ src:png, w:1, h:1 } } });
   const p=solve(C('block', { sizeAuto:true }), [c2, dryer, P('Трубопровод', {}, { pipeMat:'steel' })]); Check.plan(p, 'рисунок');
   const it=p.items.find(i=>i.kind==='compressor'); assert.ok(it.pic && it.pic.front===png && it.pic.top===png, 'рисунок у элемента расстановки');
-  const sv=StationDrawing.svg(p, meta(p)); Check.sheet(sv, 'рисунок');
-  assert.strictEqual((sv.match(/<image /g)||[]).length, 2, 'спереди (А–А) и сверху (Б–Б)');
+  const [sv, sv2]=StationDrawing.sheets(p, meta(p)); Check.sheet(sv, 'рисунок');
+  assert.strictEqual((sv.match(/<image /g)||[]).length+(sv2.match(/<image /g)||[]).length, 2, 'спереди (А–А) и сверху (Б–Б)');
   assert.ok(sv.includes('preserveAspectRatio="xMidYMax meet" href="'+png+'"'), 'спереди — вписан по низу');
   const bare=solve(C('block', { sizeAuto:true }), [P('Компрессор с рисунком', { cat:'comp_screw', flow:6, pressure:8, size:'1400 × 900 × 1500' }, { role:'main' }), dryer, P('Трубопровод', {}, { pipeMat:'steel' })]);
   assert.notStrictEqual(bare.hash||StationLayout.hash({ cont:C('block'), parts:[c2] }), StationLayout.hash({ cont:C('block'), parts:[Object.assign({}, c2, { draw:null })] }), 'отпечаток: рисунок');
@@ -753,7 +762,8 @@ Check.run('ДГУ: отсек топливного бака — перегоро
 Check.run('3D-вид (WebGL): сцена, камера, свет', ()=>{
   const muf=P('Глушитель на крыше', {}), fuel=P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'1000 л' }] }), fl=P('Топливопровод и запорная арматура', {}, { pipeMat:'steel' });
   const deep=P('Компрессор глубокий', { cat:'comp_screw', model:'D 90', kw:90, size:'2000 × 1500 × 1800' }, { role:'main' });
-  const plans={ 'КС': solve(C('block', { sys:{ light:true, heat:true, vent:true, ops:true } }), [comp, dryer, rec, flt, cab, P('Трубопровод', {}, { pipeMat:'inox' })]),
+  const compS=P('Винтовой компрессор DVK 22', { cat:'comp_screw', maker:'Dalgakiran', model:'DVK 22', kw:22, size:'1100 × 750 × 1300', mass:420 }, { role:'main' });
+  const plans={ 'КС': solve(C('block', { sys:{ light:true, heat:true, vent:true, ops:true } }), [compS, dryer, rec, flt, cab, P('Трубопровод', {}, { pipeMat:'inox' })]),
     'ДГУ': solve(C('sea20'), [dgu, ats, muf, fuel, fl]), 'двери': solve(C('sea20'), [deep, dryer, cab]), 'НС': solve(C('block'), [pumpS, cab, P('Обвязка', {}, { pipeMat:'pp' })]),
     'шасси': solve(C('block'), [pumpS, cab, P('Шасси (прицеп)', {})]), 'Север': solve(C('north', { ins:'150 мм' }), [comp, dryer, rec]), '10 футов': solve(C('sea10'), [P('Компрессор', { cat:'comp_screw', kw:7, size:'800 × 600 × 900' }, { role:'main' })]) };
   for (const [label, p] of Object.entries(plans)){

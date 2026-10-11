@@ -106,10 +106,10 @@ class EskdSheet {
     put('0123456789', 0.78); put(' .,:;/', 0.39); put('()-³²\'', 0.47); put('"', 0.5); put('«»–×', 0.8); put('—→…№', 1.46);
     return W;
   }
-  /** перенос по словам на ширину w, мм */
+  /** перенос по словам на ширину w, мм (по обычным пробелам: неразрывный держит «№ 9» вместе) */
   static wrap(s, w, h){
     const out=[]; let cur='';
-    for (const word of String(s||'').trim().split(/\s+/).filter(Boolean)){ const t=cur ? cur+' '+word : word; if (cur && this.tw(t, h)>w){ out.push(cur); cur=word; } else cur=t; }
+    for (const word of String(s||'').trim().split(/[ \t\n]+/).filter(Boolean)){ const t=cur ? cur+' '+word : word; if (cur && this.tw(t, h)>w){ out.push(cur); cur=word; } else cur=t; }
     if (cur) out.push(cur); return out;
   }
   /** строка в ширину w: шрифт меньше, до hMin; не влезает — с многоточием. [строка, высота] */
@@ -131,24 +131,27 @@ class EskdSheet {
   arrow(x, y, ux, uy){ const [L, b]=EskdSheet.AR, px=-uy, py=ux; this.poly([[x, y], [x-ux*L+px*b, y-uy*L+py*b], [x-ux*L-px*b, y-uy*L-py*b]], 'thin', '#000'); }
   /** горизонтальный размер от x1 до x2 на уровне y; e1, e2 — y точек контура (выносные линии; null — без них);
    *  o.lift — число выше на столько строк (тесная цепочка размеров), o.tx — его середина; o.tick — засечки вместо стрелок;
-   *  o.h — высота цифр */
+   *  o.h — высота цифр; o.out ('r' | 'l') — число, которое не помещается, — на продолжении размерной линии справа или слева */
   dimH(x1, x2, y, t, e1, e2, o={}){
-    const L=EskdSheet.AR[0], h=o.h||3.5, s=String(t), span=x2-x1, mid=(x1+x2)/2, tw=EskdSheet.tw(s, h);
+    const L=EskdSheet.AR[0], h=o.h||3.5, s=String(t), span=x2-x1, mid=(x1+x2)/2, tw=EskdSheet.tw(s, h), out=o.out && tw+1>span && !o.force ? o.out : '';
+    const xa=out==='l' ? x1-tw-3 : x1, xb=out==='r' ? x2+tw+3 : x2;
     for (const [x, e] of [[x1, e1], [x2, e2]]) if (e!=null) this.line(x, e, x, e>y ? y-2 : y+2);
     if (o.tick){ this.line(x1-1.5, y, x2+1.5, y); for (const x of [x1, x2]) this.line(x-1, y+1, x+1, y-1, 'main'); }   // засечки под 45°
-    else if (span>=2*L+1.5){ this.line(x1, y, x2, y); this.arrow(x1, y, -1, 0); this.arrow(x2, y, 1, 0); }
-    else { this.line(x1-L-2.5, y, x2+L+2.5, y); this.arrow(x1, y, 1, 0); this.arrow(x2, y, -1, 0); }
+    else if (span>=2*L+1.5){ this.line(xa, y, xb, y); this.arrow(x1, y, -1, 0); this.arrow(x2, y, 1, 0); }
+    else { this.line(Math.min(xa, x1-L-2.5), y, Math.max(xb, x2+L+2.5), y); this.arrow(x1, y, 1, 0); this.arrow(x2, y, -1, 0); }
+    if (out) return this.text(out==='r' ? x2+2+tw/2 : x1-2-tw/2, y-0.8, s, h, { a:'middle' });
     const lift=o.lift??(tw+1>span && !o.force ? 1 : 0);
     if (!lift) return this.text(mid, y-0.8, s, h, { a:'middle' });
     const yt=y-0.8-lift*(h+1.6), tx=o.tx??mid; this.line(mid, y, tx, yt+0.6); this.text(tx, yt, s, h, { a:'middle' });
   }
-  /** вертикальный размер от y1 (верх) до y2 (низ) на x; e1, e2 — x точек контура; число — слева от линии, снизу вверх */
+  /** вертикальный размер от y1 (верх) до y2 (низ) на x; e1, e2 — x точек контура; число — слева от линии, снизу вверх;
+   *  o.out — число, которое не помещается между выносными линиями, — над верхней из них, на продолжении размерной линии */
   dimV(y1, y2, x, t, e1, e2, o={}){
-    const L=EskdSheet.AR[0], h=o.h||3.5, s=String(t), span=y2-y1;
+    const L=EskdSheet.AR[0], h=o.h||3.5, s=String(t), span=y2-y1, tw=EskdSheet.tw(s, h), out=o.out && tw+2>span;
     for (const [y, e] of [[y1, e1], [y2, e2]]) if (e!=null) this.line(e, y, e>x ? x-2 : x+2, y);
-    if (span>=2*L+1.5){ this.line(x, y1, x, y2); this.arrow(x, y1, 0, -1); this.arrow(x, y2, 0, 1); }
-    else { this.line(x, y1-L-2.5, x, y2+L+2.5); this.arrow(x, y1, 0, 1); this.arrow(x, y2, 0, -1); }
-    this.text(x-0.8, (y1+y2)/2, s, h, { a:'middle', rot:-90 });
+    if (span>=2*L+1.5){ this.line(x, out ? y1-tw-3 : y1, x, y2); this.arrow(x, y1, 0, -1); this.arrow(x, y2, 0, 1); }
+    else { this.line(x, y1-(out ? tw+3 : L+2.5), x, y2+L+2.5); this.arrow(x, y1, 0, 1); this.arrow(x, y2, 0, -1); }
+    this.text(x-0.8, out ? y1-2-tw/2 : (y1+y2)/2, s, h, { a:'middle', rot:-90 });
   }
 
   // ---- номер позиции (ГОСТ Р 2.109): точка на изображении, линия-выноска, полка; номер на размер больше размерных чисел
@@ -197,9 +200,11 @@ class EskdSheet {
 
   // ---- рамка и основная надпись
   /** рамка (поля 20 мм слева, 5 мм — остальные), основная надпись формы 1 (185 × 55 мм) в правом нижнем углу, дополнительные
-   *  графы 19–25 на поле подшивки, графа 26 — обозначение, повёрнутое на 180°, в левом верхнем углу (А4).
-   *  tb — {name, doc, code, lit, mass, scale, sheet, sheets, org, dev, date} */
+   *  графы 19–25 на поле подшивки, графа 26 — обозначение, повёрнутое на 180°, в левом верхнем углу (А4). Последующие листы
+   *  (tb.next) — основная надпись формы 2а (185 × 15 мм): изменения, обозначение документа, номер листа.
+   *  tb — {name, doc, code, lit, mass, scale, sheet, sheets, org, dev, date, next} */
   frame(tb){
+    if (tb.next) return this.frame2a(tb);
     const R=205, B=292, X=v=>R-v, Y=v=>B-v, h=2.5;
     this.rect(20, 5, 185, 287, 'frame');
     // основная надпись: координаты — от правого нижнего угла рамки, как в форме 1
@@ -237,6 +242,26 @@ class EskdSheet {
     this.rect(20, 5, 70, 14, 'frame');
     if (tb.code){ const [t, hs]=EskdSheet.fit(tb.code, 66, 5, 2.5); this.text(55, 12-hs/2, t, hs, { a:'middle', rot:180 }); }
     // под рамкой: «Копировал», формат
+    this.text(95, 296, 'Копировал', h); this.text(163, 296, 'Формат '+this.fmt, h);
+  }
+
+  /** последующий лист: рамка, основная надпись формы 2а (графы 14–18 — изменения; 2 — обозначение; 7 — лист), графы 19–23
+   *  на поле подшивки, графа 26 */
+  frame2a(tb){
+    const R=205, B=292, X=v=>R-v, Y=v=>B-v, h=2.5;
+    this.rect(20, 5, 185, 287, 'frame');
+    this.line(X(185), Y(15), R, Y(15), 'frame');
+    for (const x of [178, 168, 145, 130, 120, 10]) this.line(X(x), Y(15), X(x), B, 'frame');
+    this.line(X(185), Y(5), X(120), Y(5), 'frame'); this.line(X(185), Y(10), X(120), Y(10), 'thin'); this.line(X(10), Y(8), R, Y(8), 'frame');
+    for (const [x, t] of [[181.5, 'Изм.'], [173, 'Лист'], [156.5, '№ докум.'], [137.5, 'Подп.'], [125, 'Дата']]) this.text(X(x), Y(2.5)+h/2, t, h, { a:'middle' });
+    this.text(X(5), Y(11.5)+h/2, 'Лист', h, { a:'middle' });
+    if (tb.sheet) this.text(X(5), Y(4)+1.75, String(tb.sheet), 3.5, { a:'middle' });
+    if (tb.code){ const [t, hs]=EskdSheet.fit(tb.code, 104, 7, 3.5); this.text(X(65), Y(7.5)+hs/2, t, hs, { a:'middle' }); }
+    for (const y of [292, 267, 232, 207, 182, 147]) this.line(8, y, 20, y, 'frame');
+    for (const x of [8, 13]) this.line(x, 147, x, 292, 'frame');
+    for (const [y, t] of [[279.5, 'Инв. № подл.'], [249.5, 'Подп. и дата'], [219.5, 'Взам. инв. №'], [194.5, 'Инв. № дубл.'], [164.5, 'Подп. и дата']]) this.vtext(10.5, y, t, h);
+    this.rect(20, 5, 70, 14, 'frame');
+    if (tb.code){ const [t, hs]=EskdSheet.fit(tb.code, 66, 5, 2.5); this.text(55, 12-hs/2, t, hs, { a:'middle', rot:180 }); }
     this.text(95, 296, 'Копировал', h); this.text(163, 296, 'Формат '+this.fmt, h);
   }
 

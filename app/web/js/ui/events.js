@@ -85,7 +85,7 @@ document.addEventListener('click', async e=>{
     case 'tzOut': return TzOut.download(i);
     case 'tzLoad': return TzImport.pick(i);
     case 'drawDel': DrawPic.del(i, j, b.dataset.v); break;
-    case 'galDel': { const gen=it.gallery[j] && it.gallery[j].gen, opt={ stdraw:'draw', stschema:'scheme', stout:'out' }[gen]; if (opt) StationImages.forget(it, opt); it.gallery.splice(j,1); break; }
+    case 'galDel': StationImages.drop(it, j); break;
     case 'stPhoto': { const p=kitParts(it)[j]; if (!p || !p.photo || !p.photo.src) return; StationImages.chosen(it); it.photo={...p.photo}; delete it.photoFrom; toast('Главное фото станции — фото «'+(p.name||'элемента')+'»'); break; }
     case 'galMain': { if (!(it.gallery||[])[j]) return; const was3d=StationImages.chosen(it); if (!edSetMain(it, j)) return;
       toast(was3d ? 'Главное фото заменено — 3D-вид вернуть можно на вкладке «Компоновка»' : 'Главное фото заменено — прежнее перенесено в изображения'); break; }
