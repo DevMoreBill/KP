@@ -140,6 +140,59 @@ Check.run('ДГУ: расход топлива по строкам паспор�
   assert.strictEqual(GensetSizing.tank({ rows:[{ k:'Объём топливного бака', v:'1000 л' }], attrs:{} }), 1000);
 });
 
+// ---------------------------------------------------------------- вентиляция: пример «винтовой 75 кВт» (docs/vent-calc.md)
+Check.run('вентиляция: пример — винтовой 75 кВт, 20-футовый контейнер 6,06 × 2,44 × 2,59, лето +30/+40, зима −25/+5', ()=>{
+  const W=[], V=6.06*2.44*2.59, A=2*(6.06*2.44+6.06*2.59+2.44*2.59), U=StationRules.raw('heat.bridge').block/(StationRules.raw('heat.rsurf')+0.1/StationRules.raw('heat.lambda'));
+  // U по утеплителю 100 мм (как в расчёте отопления): 1,15 / (0,17 + 0,1 / 0,045) = 0,481 Вт/(м²·°C)
+  near(U, 0.4807, 0.0001, 'U'); near(V, 38.297, 0.001, 'объём, м³'); near(A, 73.603, 0.001, 'площадь ограждений, м²');
+  const inp={ units:[{ key:'c1', pos:1, type:'screw', kw:75 }], qRoom:0, use:0, V, tSum:30, tWin:-25, tInMin:5, ex:{} };
+  const S=VentCalc.summer(inp, W);
+  // 1. Q = N·k = 75 · 0,9 = 67,5 кВт; 2. Δt = 40 − 30 = 10 °C; ρ(30) = 353 / 303 = 1,165 кг/м³
+  assert.strictEqual(S.units[0].k, 0.9); assert.strictEqual(S.Qc, 67.5); assert.strictEqual(S.dt, 10); assert.strictEqual(S.rho, 1.165);
+  // 3. L = 67,5 · 3600 / (1,005 · 1,16502 · 10) = 243 000 / 11,7084 = 20 754 → 20 750 м³/ч; 20 750 / 1,69901 = 12 213 CFM
+  assert.strictEqual(S.Lcool, 20750); assert.strictEqual(S.Lin, 20750); assert.strictEqual(S.cfmIn, 12213);
+  // 4. кратность: 3V = 114,9 → 110 м³/ч, аварийная 8V = 306,4 → 310 м³/ч — расход охлаждения больше, не увеличивается
+  assert.strictEqual(S.Lmin, 110); assert.strictEqual(S.Lemerg, 310); assert.strictEqual(S.raised, false);
+  // 5. выброс по рамке: 20 750 / (3600 · 3) = 1,921 → 1,92 м²; 6. приток: 20 750 / (3600 · 2) · 1,2 = 3,458 → 3,46 м²
+  assert.strictEqual(S.Sout, 1.92); assert.strictEqual(S.Sin, 3.46);
+  // справочно: скорость в живом сечении (доля vent.free) — 2 / 1,2 / free и 3 / free
+  near(S.vLiveOut, VentCalc.r1(3/S.free), 1e-9, 'живое сечение выброса');
+  // зима, Δt = 5 − (−25) = 30 °C: Q_огр = 0,481 · 73,6 · 30 = 1 062 Вт; L_зима = max(2V = 76,6) → 80 м³/ч;
+  // Q_вент = 80 · 1,005 · (353/248 = 1,4234) · 30 / 3600 = 0,954 кВт; потери 2,02 кВт; тепло компрессора 67,5 — избыток
+  const Wn=VentCalc.winter({ ...inp, env:{ U, A, qEnv:U*A*30 }, Qrun:67.5, useRun:0 }, S, W);
+  assert.strictEqual(Wn.dt, 30); assert.strictEqual(Wn.Qenv, 1.06); assert.strictEqual(Wn.Lw, 80); assert.strictEqual(Wn.Qvent, 0.95);
+  assert.strictEqual(Wn.Qloss, 2.02); assert.strictEqual(Wn.bal, 65.48); assert.strictEqual(Wn.heat, 0);
+  // жалюзи зимой: 80 / 20 750 = 0,39 % — меньше наименьшего открытия клапана (20 %) → 20 %
+  assert.strictEqual(Wn.ratio, 0.4); assert.strictEqual(Wn.open, 20);
+  // рекуператор: по расчёту не нужен (2,02 < 0,3 · 67,5 = 20,25 кВт, подогрев не нужен)
+  const R0=VentCalc.recup(false, Wn, inp, W); assert.strictEqual(R0.worth, false);
+  // по требованию заказчика: с промежуточным теплоносителем, η = 0,5; t_после = −25 + 0,5 · (5 − (−25)) = −10 °C;
+  // влажность 50 % ≤ 60 % — обмерзания нет; −25 < −15 — байпас и предподогрев до +5 °C;
+  // Q_рекуп = 80 · 1,005 · 1,4234 · 15 / 3600 = 0,477 кВт; за год: 80 · 1,005 · (353/270,8) · 0,5 · 7,2 / 3600 = 0,1048 кВт × 205 сут × 24 ч = 516 кВт·ч
+  const R=VentCalc.recup(true, Wn, inp, W);
+  assert.strictEqual(R.type, 'glycol'); assert.strictEqual(R.eta, 0.5); assert.strictEqual(R.tAfter, -10); assert.strictEqual(R.frost, false);
+  assert.strictEqual(R.bypass, true); assert.strictEqual(R.measures.length, 2); assert.strictEqual(R.Q, 0.48); assert.strictEqual(R.year, 516);
+  assert.deepStrictEqual(W.map(w=>w.level), [], W.map(w=>w.text).join(' | '));
+});
+
+Check.run('вентиляция: предупреждения и режим «эксперт»', ()=>{
+  const W=[], V=38.3, inp={ units:[{ key:'c1', pos:1, type:'piston', kw:75 }], qRoom:0, use:0, V, tSum:38, ex:{ k:1.2, vOut:6 } };
+  const S=VentCalc.summer(inp, W);
+  // Δt = 40 − 38 = 2 < 5 — предупреждение, расчёт при 5; k 1,2 вне 0,70…0,95 (поршневой) — взято 0,9; 6 м/с > 5 — предупреждение
+  assert.strictEqual(S.dtRaw, 2); assert.strictEqual(S.dt, 5); assert.strictEqual(S.units[0].k, 0.9); assert.strictEqual(S.vOut, 6);
+  assert.ok(W.some(w=>/Недостаточный перепад/.test(w.text)) && W.some(w=>/k для типа «поршневой» 1,2 — вне/.test(w.text)) && W.some(w=>/больше 5 м\/с/.test(w.text)), W.map(w=>w.text).join(' | '));
+  // паспорт важнее формулы: тепловыделение 60 кВт и воздух охлаждения 18 000 м³/ч
+  const P=VentCalc.summer({ ...inp, units:[{ key:'c1', type:'screw', kw:75, heat:60, cool:18000 }], ex:{} }, []);
+  assert.strictEqual(P.units[0].Q, 60); assert.strictEqual(P.units[0].cool, 18000); assert.strictEqual(P.units[0].src, 'паспорт');
+  // эксперт: k 0,8 для винтового (0,65…1,0) — принят; U 2,0 для неутеплённого — Q = 2 · 73,6 · 30 = 4,42 кВт
+  const E=VentCalc.summer({ ...inp, tSum:30, units:[{ key:'c1', type:'screw', kw:75 }], ex:{ k:0.8, U:2 } }, []);
+  assert.strictEqual(E.Qc, 60);
+  const Wn=VentCalc.winter({ tWin:-25, tInMin:5, V, env:{ U:0.481, A:73.6, qEnv:1062 }, Qrun:60, useRun:0, ex:{ U:2 } }, E, []);
+  assert.strictEqual(Wn.U, 2); assert.strictEqual(Wn.Qenv, 4.42);
+  // естественная тяга: h = 2 м, +30 / +40 → (1,165 − 1,128) · 9,81 · 2 = 0,7 Па < 5 — вентилятор
+  const D=VentCalc.draft(E, 2, 500, {}, []); assert.strictEqual(D.need, true); assert.strictEqual(D.fan.L, 580);
+});
+
 // ---------------------------------------------------------------- станции целиком
 const DK=(model, flow)=>part('Осушитель рефрижераторный Dalgakiran '+model, { cat:'dryer_refrig', maker:'Dalgakiran', model, flow, pressure:16, dewPoint:'+3' });
 const GON=(model, flow, stage)=>part('Фильтр Dalgakiran '+model, { cat:'filter', maker:'Dalgakiran', model, series:'GON', flow, pressure:16, stage });

@@ -526,6 +526,19 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.76.0 — станции: уточнённый расчёт вентиляции (приток и выброс горячего воздуха), зима, рекуператор:**
+- `VentCalc` (station-systems.js): `summer` — Q = N·k (`vent.k_heat`, паспорт важнее), Δt = t_вн − t_нар (не меньше
+  `vent.temps.dtMin`), ρ = 353/(273 + t), L = Q·3600/(c·ρ·Δt), кратность `vent.ach`, проёмы по рамке `vent.speed` (решение
+  12.10), CFM; `draft` — естественная тяга и вытяжной вентилятор `vent.fan`; `winter` — U·A·Δt, L_зима = max(2V, на сжатие),
+  баланс, открытие жалюзи `vent.winter.openMin`; `recup` — целесообразность, тип и КПД `vent.recup`, обмерзание, экономия за
+  период `vent.season`. Числа «эксперт» — `StationReq.vent` (kit-view.js, `req.vent`) с проверкой диапазонов.
+- `StationHeat.calc` (station-layout.js) → `plan.heat.vent.{sum, win, rec, warn}`; `StationHeat.coolOf`; `StationEquip.airRows` —
+  тепловыделение по паспорту (`heat`), `ctype` — тип компрессора. `StationVent.calc/notes` — проёмы по рамке, тяга, зимние и
+  рекуператорные строки. Система контейнера `hrv` «Рекуператор (по требованию)» (kit.js); `rec` переименована в «Рециркуляция тепла». `VentSizing` (station-calc.js) — шаги записки по формулам.
+- Правила: `vent.k_heat`, `vent.temps`, `vent.ach`, `vent.speed`, `vent.fan`, `vent.winter`, `vent.recup`, `vent.season`, `air.cp`
+  (stations.json, версия 2026.10.12-11). Описание, предупреждения и пример — `docs/vent-calc.md`.
+- Проверки: `tests/js/station_calc.js` («пример — винтовой 75 кВт…», «предупреждения и режим «эксперт»»), `tests/js/station_layout.js`.
+
 **3.75.0 — станции: расстановка по матрице, ворота, выходы, 4 вида снаружи, окно станции:**
 - `StationMatrix` (station-layout.js) — матрица расстановки из правил `layout.matrix` (app/web/rules/stations.json; недостающее —
   `StationMatrix.DEF`): соседи по длине `pair` (рекомендуется max(база; k·размер), «не менее», вплотную — ресиверы и фильтры),

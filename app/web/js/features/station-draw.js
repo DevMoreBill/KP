@@ -171,8 +171,8 @@ class StationDrawing {
     if (h && h.on && h.n) out.push(`Электроконвекторы ${h.n} × ${StationHeat.kw(h.kw)} кВт с терморегуляторами — у стен (на плане): не ниже +${h.tin} °C при ${StationNorms.deg(h.tout)} снаружи.`);
     if (V){ const n=StationLayout.n, f=v=>String(v).replace('.', ','), t=[];
       const wh=StationVent.where(V), rf=StationVent.roofList(V), ow=V.louvers.some(q=>q.kind==='out') ? StationVent.list(V, 'out', null, 3) : '';
-      if (V.size.in) t.push(`приточные ${StationVent.list(V, 'in', null, 3)} внизу${wh.in ? ' '+wh.in : ''} (${n(V.q.in)} м³/ч, живое сечение не менее ${f(V.need.in.free)} м²)`);
-      if (V.need.out) t.push(`выброс горячего воздуха ${[ow ? `— жалюзи ${ow} вверху` : '', rf ? `через крышу — колпаки ${rf}` : ''].filter(Boolean).join(', ')} (${n(V.q.out)} м³/ч, не менее ${f(V.need.out.free)} м²); приток и выброс — на разных стенах`);
+      if (V.size.in) t.push(`приточные ${StationVent.list(V, 'in', null, 3)} внизу${wh.in ? ' '+wh.in : ''} (${n(V.q.in)} м³/ч, по рамке не менее ${f(V.need.in.gross)} м²)`);
+      if (V.need.out) t.push(`выброс горячего воздуха ${[ow ? `— жалюзи ${ow} вверху` : '', rf ? `через крышу — колпаки ${rf}` : ''].filter(Boolean).join(', ')} (${n(V.q.out)} м³/ч, по рамке не менее ${f(V.need.out.gross)} м²); приток и выброс — на разных стенах`);
       if (Object.keys(V.ducts||{}).length) t.push(`компрессоры — воздуховодами с клапанами рециркуляции (зимой тёплый воздух — в помещение)`);
       if (V.hood) t.push(`на приточных — маркизы (снегозащита): откидные козырьки на петлях с боковыми створками-ограничителями, закрытые — щит на проёме, ${StationVent.hoodText(V)}`);
       if (V.hoodOut) t.push(`на жалюзи выброса — маркизы (по требованию) ${StationVent.hoodText(V, 'out')}`);
