@@ -276,10 +276,12 @@ class VentSizing {
         result:`A ≥ ${f(nd.free)} м², по рамке ≥ ${f(nd.gross)} м²; ${list || 'жалюзи —'}${wh ? ' ('+wh+')' : ''}`, ok, margin:CalcNote.pct(placed, nd.gross) });
       if (!ok) N.issue('warn', `${what}: на стенах не поместилось ${f(V.short[kind])} м² жалюзи (по рамке) — освободите стену или выведите воздух воздуховодом через крышу.`); };
     step('Приточные жалюзи', 'in'); step('Выброс горячего воздуха', 'out');
-    if (V.hood){ const I=V.louvers.filter(q=>q.kind==='in' && q.hood), q0=I.reduce((a, q)=>q.hood.v>a.hood.v ? q : a, I[0]), A=I.reduce((s, q)=>s+q.w*q.h, 0), Qi=Math.round(V.q.in*q0.w*q0.h/A);
-      N.step({ what:'Маркиза на приточных жалюзи (снегозащита)', formula:'вылет d = Q / (3600 · v · B), B — ширина маркизы; 250…1000 мм; у всех маркиз один — по самой нагруженной', rules:['vent.hood_v'],
-        data:[['Q', n(Qi)+' м³/ч (доля жалюзи '+n(q0.w)+' × '+n(q0.h)+' мм)'], ['B', n(q0.hood.w)+' мм'], ['v', f(N.rule('vent.hood_v'), 1)+' м/с']],
-        result:StationVent.hoodText(V), ok:!V.hood.over }); }
+    // маркизы: угол открытия — по скорости во входе (на притоке) или выходе (на выбросе) под козырьком
+    for (const [kind, H, what, rule, vmax] of [['in', V.hood, 'Маркиза на приточных жалюзи (снегозащита)', 'vent.hood_v', N.rule('vent.hood_v')], ['out', V.hoodOut, 'Маркиза на жалюзи выброса (по требованию)', 'heat.face', V.face]]){
+      if (!H) continue; const I=V.louvers.filter(q=>q.kind===kind && q.hood), q0=I.reduce((a, q)=>q.hood.v>a.hood.v ? q : a, I[0]), Qi=Math.round(q0.hood.v*3600*q0.hood.w/1000*q0.hood.d/1000);
+      N.step({ what, formula:'вход (выход) под козырьком B × d, d = L · sin α — вылет; α — наименьший угол открытия 30…75° (шаг 5°), при котором Q / (3600 · B · d) ≤ v; у всех маркиз один — по самой нагруженной; L — высота жалюзи + 100 мм', rules:[rule],
+        data:[['Q', n(Qi)+' м³/ч (жалюзи '+n(q0.w)+' × '+n(q0.h)+' мм)'], ['B × L', n(q0.hood.w)+' × '+n(q0.hood.l)+' мм'], ['v', f(vmax, 1)+' м/с']],
+        result:StationVent.hoodText(V, kind), ok:!H.over }); }
     if (V.rad) N.step({ what:'Выброс воздуха радиатора ДГУ', formula:'v = Q / (3600 · A)', rules:['vent.free'], data:[['Q', n(V.rad.q)+' м³/ч'], [V.rad.door ? 'дверь-жалюзи' : 'жалюзи', n(V.rad.w)+' × '+n(V.rad.h)+' мм'], ['A', f(V.rad.free)+' м²']],
       result:'v = '+f(V.rad.v, 1)+' м/с', ok:V.rad.v<=StationVent.RAD_V, note:V.rad.v>StationVent.RAD_V ? 'Больше '+f(StationVent.RAD_V, 1)+' м/с — проверьте по паспорту ДГУ (расход воздуха радиатора, допустимое сопротивление).' : '' });
   }

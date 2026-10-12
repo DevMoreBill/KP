@@ -173,7 +173,8 @@ class StationDrawing {
       if (V.size.in) t.push(`приточные ${StationVent.list(V, 'in', null, 3)} внизу${wh.in ? ' '+wh.in : ''} (${n(V.q.in)} м³/ч, живое сечение не менее ${f(V.need.in.free)} м²)`);
       if (V.need.out) t.push(`выброс горячего воздуха ${[ow ? `— жалюзи ${ow} вверху` : '', rf ? `через крышу — колпаки ${rf}` : ''].filter(Boolean).join(', ')} (${n(V.q.out)} м³/ч, не менее ${f(V.need.out.free)} м²); приток и выброс — на разных стенах`);
       if (Object.keys(V.ducts||{}).length) t.push(`компрессоры — воздуховодами с клапанами рециркуляции (зимой тёплый воздух — в помещение)`);
-      if (V.hood) t.push(`на приточных — маркизы (снегозащита) ${StationVent.hoodText(V)}, откидные, на время перевозки снимаются`);
+      if (V.hood) t.push(`на приточных — маркизы (снегозащита): откидные козырьки на петлях с боковыми створками-ограничителями, закрытые — щит на проёме, ${StationVent.hoodText(V)}`);
+      if (V.hoodOut) t.push(`на жалюзи выброса — маркизы (по требованию) ${StationVent.hoodText(V, 'out')}`);
       if (V.rad) t.push(`радиатора ДГУ — ${V.rad.door ? 'дверь-жалюзи' : 'жалюзи'} ${n(V.rad.w)} × ${n(V.rad.h)} мм`);
       if (t.length) out.push(`Жалюзи (размер по рамке) с утеплёнными клапанами и электроприводами: ${t.join('; ')}.`); }
     return out;
@@ -558,9 +559,9 @@ class StationDrawing {
       if (this.gt && this.gt.wall==='left') this.gateEnd(sh, XL, this.gt);
       if (this.en && this.en.wall==='left') this.doorEnd(sh, XL, this.en); }
     for (const v of this.vents('left', true)) this.louverEnd(sh, XL(this.oy+v.u1), XL(this.oy+v.u0), Z(this.zf+v.z1), Z(this.zf+v.z0));   // приток в створках
-    for (const v of [...this.vents('left'), ...this.vents('left', true)].filter(v=>v.hood)) this.hoodEnd(sh, XL, v);   // маркизы
     for (const R of this.hoods()){ const hz=Math.max(1, StationVent.HOOD*k); sh.rect(Math.min(XL(this.oy+R.y0), XL(this.oy+R.y1)), Z(He)-hz, (R.y1-R.y0)*k, hz, 'main', '#fff'); }
     for (const v of this.vents('left')) this.louverEnd(sh, XL(this.oy+v.u1), XL(this.oy+v.u0), Z(this.zf+v.z1), Z(this.zf+v.z0));   // жалюзи по расчёту
+    for (const v of [...this.vents('left'), ...this.vents('left', true)].filter(v=>v.hood)) this.hoodEnd(sh, XL, v);   // маркизы — поверх жалюзи
     for (const m of this.rf){ const xc=XL(this.oy+m.y+m.d/2), r=m.d/2*k;
       sh.line(xc, Z(He), xc, Z(He+m.gap), 'main'); sh.circle(xc, Z(He+m.gap+m.d/2), r, 'main', '#fff'); }
   }
@@ -583,7 +584,7 @@ class StationDrawing {
     const Z=v=>this.Z(v), xa=X(this.oy+d.y0), xb=X(this.oy+d.y1), za=Z(this.zf+d.h), zb=Z(this.zf), a=Math.min(xa, xb), w=Math.abs(xb-xa);
     sh.rect(a, za, w, zb-za, 'main', '#fff'); const hx=a+w*0.85, zh=Z(this.zf+1000); sh.line(hx, zh-0.8, hx, zh+0.8, 'main');
   }
-  /** маркизы на приточных жалюзи на плане: выступ за наружной стеной (тонкой штрихпунктирной — съёмные) */
+  /** маркизы на плане: открытый козырёк за наружной стеной (тонкой штрихпунктирной — откидные) */
   hoodsPlan(sh, YP){
     const k=this.k, X=v=>this.X(v), { ox, oy, Le, We }=this, s=StationVent.HOOD_SIDE;
     for (const q of ((this.p.vent && this.p.vent.louvers)||[]).filter(q=>q.hood)){ const d=q.hood.d;
@@ -592,11 +593,14 @@ class StationDrawing {
       else if (q.wall==='left') sh.rect(X(-d), YP(oy+q.u1+s), d*k, (q.u1-q.u0+2*s)*k, 'phantom');
       else sh.rect(X(Le), YP(oy+q.u1+s), d*k, (q.u1-q.u0+2*s)*k, 'phantom'); }
   }
-  /** маркиза на виде с торца: лицевой лист перед жалюзи (жалюзи за ним — штриховой), снизу — вход воздуха */
+  /** маркиза на виде с торца: открытый козырёк от петель до кромки (жалюзи за ним — штриховой), ниже кромки — вход воздуха;
+   *  боковые створки — рёбрами по краям */
   hoodEnd(sh, X, v){
-    const Z=v=>this.Z(v), s=StationVent.HOOD_SIDE, xa=X(this.oy+v.u0-s), xb=X(this.oy+v.u1+s), a=Math.min(xa, xb), w=Math.abs(xb-xa), zt=Z(this.zf+v.z1+100), zb=Z(this.zf+v.z0-120);
-    sh.rect(Math.min(X(this.oy+v.u0), X(this.oy+v.u1)), Z(this.zf+v.z1), Math.abs(X(this.oy+v.u1)-X(this.oy+v.u0)), Z(this.zf+v.z0)-Z(this.zf+v.z1), 'dash');
-    sh.rect(a, zt, w, zb-zt, 'main'); sh.line(a, zb-180*this.k, a+w, zb-180*this.k, 'thin');
+    const Z=v=>this.Z(v), H=v.hood, s=StationVent.HOOD_SIDE, zh=this.zf+v.z1+StationVent.HOOD_LAP, xa=X(this.oy+v.u0-s), xb=X(this.oy+v.u1+s), a=Math.min(xa, xb), w=Math.abs(xb-xa);
+    const zt=Z(zh), zl=Z(zh-H.drop), la=Math.min(X(this.oy+v.u0), X(this.oy+v.u1)), lw=Math.abs(X(this.oy+v.u1)-X(this.oy+v.u0));
+    sh.rect(a, zt, w, zl-zt, 'main', '#fff');
+    const z0=Z(this.zf+v.z1), z1=Math.min(zl, Z(this.zf+v.z0)); if (z1>z0) sh.rect(la, z0, lw, z1-z0, 'dash');   // жалюзи за козырьком
+    sh.line(a, zl-Math.max(0.4, 35*this.k), a+w, zl-Math.max(0.4, 35*this.k), 'thin');   // отбортовка кромки
   }
   /** жалюзи на виде с торца: рамка и ламели */
   louverEnd(sh, xa, xb, za, zb){ const k=this.k; sh.rect(Math.min(xa, xb), za, Math.abs(xb-xa), zb-za, 'main', '#fff'); for (let z=za+Math.max(0.8, 70*k); z<zb-0.4; z+=Math.max(0.8, 70*k)) sh.line(Math.min(xa, xb)+0.4, z, Math.max(xa, xb)-0.4, z, 'fine'); }
