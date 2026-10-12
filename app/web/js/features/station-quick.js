@@ -32,7 +32,7 @@ class StationQuick {
   /** блок «Подбор станции»: главные требования, кнопки, итог; всё остальное — в раскрывающемся блоке */
   static html(x, i){
     const r=StationReq.of(x), k=StationReq.kind(x), P=`items.${i}.req`, main=kitMainPart(x), cls=StationUi.opts(x).air;
-    const fld=([key, label, ph, mode='decimal'])=>`<label class="f"><span>${label}</span><input type="text" inputmode="${mode}" data-p="${P}.${key}" data-req="${i}" value="${esc(r[key]??'')}" placeholder="${esc(ph)}" autocomplete="off"></label>`;
+    const hint=this.hint(x), fld=([key, label, ph, mode='decimal'])=>`<label class="f"><span>${label}</span><input type="text" inputmode="${mode}" data-p="${P}.${key}" data-req="${i}" value="${esc(r[key]??'')}" placeholder="${esc(hint[key]||ph)}" autocomplete="off"></label>`;
     const sel=(key, label, list, cur)=>`<label class="f"><span>${label}</span><select data-req="${i}" data-rk="${key}">${list.map(([v, l])=>`<option value="${esc(v)}"${String(cur)===String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
     const air=k==='comp' ? `<label class="f"><span>Качество воздуха</span><select data-stl="air" data-i="${i}"><option value="">обычное — осушитель и фильтры по умолчанию</option>${AirChain.options(cls).map(([v, t])=>`<option value="${esc(v)}"${cls===v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`
       : k==='dgu' ? sel('mode', 'Назначение', StationReq.MODE, r.mode||'prime') : '';
@@ -45,6 +45,12 @@ class StationQuick {
         ${r.src && r.src.name ? `<span class="muted">по ТЗ «${esc(r.src.name)}»</span>` : ''}</div>
       ${main ? this.result(x, i) : ''}
       <details class="sq-more"${Spoiler.attr('req:'+x.id)}><summary>Все требования, условия расчёта и проверки</summary>${StationReq.details(x, i)}</details></div>`;
+  }
+
+  /** подсказка в пустых полях компрессорной: что дают выбранные компрессоры («сейчас 12,6 — по компрессорам») */
+  static hint(x){
+    const C=StationReq.kind(x)==='comp' ? KitNeed.comps(x) : [], q=C.reduce((s, e)=>s+(e.air.flow>0 ? e.air.flow*e.qty : 0), 0), bar=KitNeed.bar(x);
+    return { ...(q>0 ? { flow:`по компрессорам: ${AirChain.m3(q)}` } : {}), ...(bar>0 ? { pressure:`компрессоры: до ${AirChain.m3(bar)}` } : {}) };
   }
 
   /** итог подбора: статус одной строкой, что подобрано, проверки значками, 3D-вид */

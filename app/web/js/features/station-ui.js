@@ -179,7 +179,7 @@ class StationUi {
       return true;
     }
     if (a==='stlAuto'){ c.sizeAuto=true; StationSize.apply(it, true); return true; }
-    if (a==='stlRec'){ const r=((this.plan(it).air||{}).recs||[])[+b.dataset.k]; if (r) kitPickCat(i, [r.cat], null, r.name, { f:r.f, r:r.r, rows:r.rows, attrs:r.attrs, qty:r.qty, replace:r.replace }); return false; }
+    if (a==='stlRec'){ const r=((this.plan(it).air||{}).recs||[])[+b.dataset.k]; if (r) KitNeed.open(i, r); return false; }
     return false;
   }
   /** галочки «главное фото» и «в КП» */

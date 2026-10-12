@@ -322,7 +322,8 @@ function kitCargo(st=S){
 }
 
 // ---------- подбор по фильтрам категории: вид (если категорий несколько), производитель, списки и «от–до» по параметрам
-// F = {cat, maker, q, f:{ключ: значение}, r:{ключ: [от, до]}}; cats — допустимые категории (null — все)
+// F = {cat, maker, q, f:{ключ: значение}, r:{ключ: [от, до]}, min:{ключ: не меньше}, test(x)}; cats — допустимые категории
+// (null — все); min и test — подбор по нужному (KitNeed): давление не ниже компрессорного (без данных не отсекается)
 const pfNew = cats => ({ cat:cats&&cats.length===1?cats[0]:'', maker:'', q:'', f:{}, r:{} });
 const pfNum = v => { const n=parseFloat(String(v??'').replace(/\s+/g,'').replace(',','.')); return Number.isFinite(n)?n:null; };
 function pfPool(cats){ return catCache.filter(x=>!cats || cats.includes(attrsOf(x).cat)); }
@@ -346,6 +347,8 @@ function pfMatch(x, F, cats){
   for (const [k,v] of Object.entries(F.f)) if (v && String(a[k]??'')!==v) return false;
   for (const [k,[lo,hi]] of Object.entries(F.r)){ const l=pfNum(lo), h=pfNum(hi); if (l==null && h==null) continue;
     const n=numOf(a[k]); if (n==null || (l!=null && n<l) || (h!=null && n>h)) return false; }
+  for (const [k,v] of Object.entries(F.min||{})){ const t=KitNeed.top(a[k]); if (t!=null && t<v-1e-9) return false; }
+  if (F.test && !F.test(x)) return false;
   if (F.q.trim()){ const w=norm(F.q).split(' ').filter(Boolean), hay=norm([x.name, a.maker, a.model, a.series].join(' ')); if (!w.every(v=>hay.includes(v))) return false; }
   return true;
 }
@@ -364,39 +367,51 @@ function pfSet(F, el){
   if (t==='f'){ F.f[key]=v; return false; }
   const r=F.r[key]=F.r[key]||['','']; r[t==='rmin'?0:1]=v; return false;
 }
-const pfRow = (x, act) => `<button type="button" class="kit-pick" ${act}="${esc(x.id)}">${x.photo&&x.photo.src?`<img src="${esc(x.photo.src)}" alt="">`:'<span class="kit-noimg"></span>'}<span><b>${esc(x.name)}</b><small class="muted">${esc(typeById(attrsOf(x).cat).name)}${mainLine(x,3)?' · '+esc(mainLine(x,3)):''}${x.cost?' · закупка '+money(x.cost)+' '+(x.costCur||'RUB'):''}</small></span></button>`;
+const pfRow = (x, act, tag='', cls='') => `<button type="button" class="kit-pick${cls}" ${act}="${esc(x.id)}">${x.photo&&x.photo.src?`<img src="${esc(x.photo.src)}" alt="">`:'<span class="kit-noimg"></span>'}<span>${tag}<b>${esc(x.name)}</b><small class="muted">${esc(typeById(attrsOf(x).cat).name)}${mainLine(x,3)?' · '+esc(mainLine(x,3)):''}${x.cost?' · закупка '+money(x.cost)+' '+(x.costCur||'RUB'):''}</small></span></button>`;
 
 // выбор позиции каталога для элемента: cats — только эти категории (основное оборудование станции), role — роль элемента,
-// preset — подбор «Компоновки»: фильтры {f, r} и для нового элемента строки характеристик rows и attrs
+// preset — подбор по нужному (KitNeed, «Компоновка»): фильтры {f, r, min, test}, строка need («что нужно» — над списком, с
+// кнопкой «Показать все»), рекомендуемый best {id, n} — первым; для нового элемента — строки характеристик rows и attrs
 function kitPickCat(i, cats, role, name, preset, by){
   const d=$('#dlg'); d.classList.add('wide'); const F=pfNew(cats); if (name && !cats) F.q=name;
-  if (preset){ Object.assign(F.f, preset.f||{}); Object.assign(F.r, preset.r||{}); }
+  const use=()=>{ if (!preset) return; Object.assign(F.f, preset.f||{}); for (const [k, v] of Object.entries(preset.r||{})) F.r[k]=[...v]; F.min={ ...(preset.min||{}) }; F.test=preset.test||null; };
+  let all=false; use();
+  const best=preset && preset.best ? catCache.find(x=>x.id===preset.best.id) : null;
   const newBtn=`<button class="btn" type="button" data-kitnew="1">+ Новый элемент${name?` «${esc(name)}»`:''}</button>`;
-  const list=()=>{ const r=pfList(F, cats, 60); return `<p class="muted pf-n">Найдено: ${r.n}${r.n>60?' — показаны первые 60, уточните фильтры':''}</p>`+(r.list.map(x=>pfRow(x,'data-cid')).join('')
+  const head=()=>preset && preset.need ? `<div class="pf-need${all ? ' all' : ''}"><span>${all ? 'Показаны все. Отметка «мало» — не подходит по нужному.' : '✓ '+esc(preset.need)}</span><button class="btn sm ghost" type="button" data-pfall>${all ? 'Только подходящие' : 'Показать все'}</button></div>` : '';
+  // рекомендуемый — первым, даже если считан точнее фильтров (поправки производителя); поиск, вид и производитель — соблюдаем
+  const top=()=>best && (all ? pfMatch(best, F, cats) : pfMatch(best, { ...F, f:{}, r:{}, min:{}, test:null }, cats));
+  const list=()=>{ const r=pfList(F, cats, 60), L=top() ? [best, ...r.list.filter(x=>x.id!==best.id)] : r.list;
+    const tag=x=>x===best ? `<span class="pf-best">★ Рекомендуем${preset.best.label ? ': '+esc(preset.best.label) : preset.best.n>1 ? `: ${preset.best.n} шт. параллельно` : ''}</span>` : all && preset && !KitNeed.fits(x, preset) ? '<span class="pf-low">мало</span>' : '';
+    return `<p class="muted pf-n">Найдено: ${r.n}${r.n>60?' — показаны первые 60, уточните фильтры':''}</p>`+(L.map(x=>pfRow(x,'data-cid', tag(x), x===best ? ' best' : '')).join('')
     || `<div class="kit-none"><p>В каталоге нет подходящего${name?` для «${esc(name)}»`:''}.</p>${newBtn}<small class="muted">Элемент появится в составе — описание и характеристики заполните вручную или кнопкой «✨ ИИ».</small></div>`); };
-  const draw=()=>{ $('#kitPF').innerHTML=pfHtml(F, cats); $('#kitPL').innerHTML=list(); };
+  const draw=()=>{ $('#kitPN').innerHTML=head(); $('#kitPF').innerHTML=pfHtml(F, cats); $('#kitPL').innerHTML=list(); };
   d.innerHTML=`<div class="dlg-h"><h3>${role==='main'?esc(stationOf(S.items[i]).mainLabel)+' — подбор в каталоге':name?esc(name)+' — подбор в каталоге':'Элемент из каталога'}</h3>${newBtn}<button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-    <div class="dlg-b"><div id="kitPF"></div><div class="kit-pl" id="kitPL"></div></div>`;
+    <div class="dlg-b"><div id="kitPN"></div><div id="kitPF"></div><div class="kit-pl" id="kitPL"></div></div>`;
   d.showModal(); d.querySelector('[data-close]').onclick=()=>d.close(); draw();
-  setTimeout(()=>d.querySelector('[data-pf="q"]')?.focus(), 30);
+  if (!preset) setTimeout(()=>d.querySelector('[data-pf="q"]')?.focus(), 30);
   const onF=e=>{ const el=e.target.closest('[data-pf]'); if (!el) return; const re=pfSet(F, el);
     if (re){ draw(); } else $('#kitPL').innerHTML=list(); };
   $('#kitPF').oninput=e=>{ if (e.target.tagName==='INPUT') onF(e); }; $('#kitPF').onchange=e=>{ if (e.target.tagName==='SELECT') onF(e); };
   d.querySelector('.dlg-h [data-kitnew]').onclick=()=>kitPickNew();
-  // подбор по рекомендации: количество (preset.qty) и замена прежних элементов (preset.replace — их id; ресиверы на учёте →
-  // несколько меньших)
-  const put=(it, p)=>{ if (preset && preset.qty>1) p.qty=preset.qty; if (preset && Array.isArray(preset.replace)) it.kit.parts=it.kit.parts.filter(z=>!preset.replace.includes(z.id)); };
+  // подбор по рекомендации: количество (рекомендуемый — сколько нужно параллельно, иначе preset.qty) и замена прежних
+  // элементов (preset.replace — их id: осушитель меньше нужного, ресиверы на учёте → несколько меньших)
+  const put=(it, p, id)=>{ const n=best && id===best.id ? preset.best.n : preset && preset.qty; if (n>1) p.qty=n;
+    if (preset && Array.isArray(preset.replace)) it.kit.parts=it.kit.parts.filter(z=>!preset.replace.includes(z.id)); };
   const kitPickNew=()=>{ const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=StationDefaults.fill(kitNewPart({name:name||(F.q||'').trim()}), it); if (role) p.role=role;
     if (preset){ if (preset.attrs) p.attrs=Object.fromEntries(Object.entries(preset.attrs).filter(([, v])=>v!=null && v!=='')); for (const r of preset.rows||[]) if (!p.rows.some(z=>z.k===r.k)) p.rows.push({ ...r }); }
     if (by && by!==KitScope.def(p)) p.by=by;
     put(it, p); it.kit.parts.push(p); it.page=true; d.close(); renderForm(); persist(); toast('Элемент добавлен — описание и характеристики: вручную или кнопкой «✨ ИИ»'); };
+  // «Показать все» — без фильтров по нужному (неподходящие — с отметкой «мало»), «Только подходящие» — вернуть фильтры
+  $('#kitPN').onclick=e=>{ if (!e.target.closest('[data-pfall]')) return; all=!all; if (all){ F.f={}; F.r={}; F.min={}; F.test=null; F.maker=''; } else use(); draw(); };
   $('#kitPL').onclick=async e=>{ if (e.target.closest('[data-kitnew]')) return kitPickNew(); const b=e.target.closest('[data-cid]'); if (!b) return; const lite=catCache.find(x=>x.id===b.dataset.cid);
     let doc=lite; try{ doc=await api('/api/catalog/'+encodeURIComponent(lite.id)); }catch(_){}
     const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=KitPart.fromCat(doc); if (role) p.role=role; if (by && by!==KitScope.def(p)) p.by=by;
-    put(it, p);
+    put(it, p, lite.id);
     if (role==='main'){ const ix=it.kit.parts.findIndex(z=>z.role==='container'); it.kit.parts.splice(ix>=0?ix:0, 0, p); } else it.kit.parts.push(p);
-    kitSync(it); stationFill(it); stationAutoName(it);
-    d.close(); renderForm(); persist(); toast((preset && preset.replace ? 'Заменено: ' : 'Добавлено в состав: ')+(p.qty>1 ? p.qty+' × ' : '')+doc.name); };
+    if (preset && preset.twin && best && lite.id===best.id){ const p2=KitPart.fromCat(doc); p2.qty=p.qty; it.kit.parts.push(p2); }   // ресиверы до и после осушителя
+    kitSync(it); stationFill(it); stationAutoName(it); if (typeof StationUi!=='undefined') StationUi.cache.delete(it.id);
+    d.close(); renderForm(); persist(); toast((preset && preset.replace ? 'Заменено: ' : 'Добавлено в состав: ')+(+p.qty>1 ? p.qty+' × ' : '')+doc.name); };
 }
 
 // действия вкладки «Состав» (вызываются из общего обработчика кнопок data-a)
@@ -405,8 +420,8 @@ function kitAction(a, i, b){
   if (a==='kitAdd'){ const p=kitNewPart({name:b.dataset.n||''}); if (b.dataset.role) p.role=b.dataset.role; const by=b.dataset.by; if (by && by!==KitScope.def(p)) p.by=by;
     P.push(p); KitView.open.add(p.id); it.page=true; return true; }
   if (a==='kitCat'){ kitPickCat(i, null, null, '', null, b.dataset.by); return 'async'; }
-  if (a==='kitPreset'){ const c=b.dataset.cat; kitPickCat(i, c&&TYPES.some(t=>t.id===c)?[c]:null, null, b.dataset.n, null, b.dataset.by); return 'async'; }
-  if (a==='kitMain'){ kitPickCat(i, (stationOf(it)||{}).main, 'main'); return 'async'; }
+  if (a==='kitPreset'){ const c=b.dataset.cat; kitPickCat(i, c&&TYPES.some(t=>t.id===c)?[c]:null, null, b.dataset.n, c ? KitNeed.presetFor(it, c) : null, b.dataset.by); return 'async'; }
+  if (a==='kitMain'){ kitPickCat(i, (stationOf(it)||{}).main, 'main', '', KitNeed.mainPreset(it)); return 'async'; }
   if (a==='kitSys'){ const p=P[j], id=b.dataset.sys; p.sys={...(p.sys||CONT_SYS_DEF)}; p.sys[id]=!KitView.sysOn(it, p, id); contApply(p); return true; }
   if (a==='kitCont'){ P.push(kitNewContainer(b.dataset.ct)); it.page=true; stationFill(it); stationAutoName(it); return true; }
   if (a==='kitDel'){ if (!confirm(`Убрать из состава «${P[j].name||'элемент'}»?`)) return 'async'; P.splice(j,1); kitSync(it); return true; }
