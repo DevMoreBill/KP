@@ -190,7 +190,7 @@ class PipeMaterial {
   }
   /** условный проход: поле DN или строка «Условный проход» / «Диаметр» */
   static dn(p){
-    const v=String((p && p.dn) || ((p && p.rows) || []).filter(r=>r && /условн\S* проход|диаметр|\bDN\b|\bДу\b/i.test(String(r.k||''))).map(r=>r.v)[0] || '').trim();
+    const v=String((p && p.dn) || ((p && p.rows) || []).filter(r=>r && /условн\S* проход|диаметр|\bDN\b|(?:^|[^а-яё])Ду(?![а-яё])/i.test(String(r.k||''))).map(r=>r.v)[0] || '').trim();
     const m=v.match(/\d{2,4}/); return m ? 'DN '+m[0] : '';
   }
 }
@@ -203,12 +203,12 @@ class StationEquip {
     ['dryer', /^(dryer_|gen_n2$|gen_o2$)/, /осушител|генератор азота|генератор кислорода/i],
     ['receiver', /^receiver$/, /ресивер|воздухосборник/i],
     ['filter', /^(filter|oil_sep)$/, /фильтр|сепаратор|циклон/i],
-    ['dgu', /^dgu$/, /дизель-?генератор|\bДГУ\b|\bДЭС\b|генераторн\S* установ/i],
+    ['dgu', /^dgu$/, /дизель-?генератор|(?:^|[^а-яё])(?:ДГУ|ДЭС)(?![а-яё])|генераторн\S* установ/i],
     ['pump', /^pump$/, /насос|мотопомп/i],
-    ['cabinet', /^ats$/, /шкаф|щит|\bАВР\b|пульт/i],
+    ['cabinet', /^ats$/, /шкаф|щит|(?:^|[^а-яё])АВР(?![а-яё])|пульт/i],
     ['tank', null, /бак|[её]мкост/i],
   ];
-  static CABINET = /шкаф|щит|\bАВР\b|пульт/i;
+  static CABINET = /шкаф|щит|(?:^|[^а-яё])АВР(?![а-яё])|пульт/i;   // кириллица: \b в JavaScript её не видит
   static CAB_FLOOR = /напольн/i;
   static CAB_WALL = /настенн|навесн|на стене/i;
   static CHASSIS = /шасси|прицеп/i;
@@ -387,7 +387,7 @@ class AirChain {
     pre:{ name:'Фильтр предварительной очистки (3–5 мкм)', short:'предварительной очистки', stage:'Предварительная' },
     fine:{ name:'Фильтр тонкой очистки (1 мкм, масло до 0,1 мг/м³)', short:'тонкой очистки', stage:'Тонкая' },
     micro:{ name:'Фильтр сверхтонкой очистки от масла (0,01 мкм, 0,01 мг/м³)', short:'сверхтонкой очистки от масла', stage:'Сверхтонкая (микрофильтр)' },
-    dust:{ name:'Пылевой фильтр после адсорбционного осушителя (1 мкм)', short:'пылевой', stage:'Тонкая' },
+    dust:{ name:'Пылевой фильтр после адсорбционного осушителя (сухой фильтр частиц)', short:'пылевой', stage:'Пылевой (после адсорбционного осушителя)' },
     carbon:{ name:'Угольный фильтр (пары масла и запах, 0,003 мг/м³)', short:'угольный', stage:'Угольный (от паров масла)' },
   };
   // числа — из файла инженерных правил (StationRules): поправка осушителя на давление, запас осушителя, продувка
@@ -469,18 +469,23 @@ class AirChain {
   static info(p, kind){
     const a=p.attrs||{}, cat=String(a.cat||p.cat||''), t=this.text(p), nm=String(p.name||''), o={ flow:this.flow(p), bar:this.bar(p) };
     const yes=v=>/^(да|есть|встроен)/i.test(String(v??'').trim()), set=v=>v!=null && String(v).trim()!=='';
+    // фильтры в комплекте аппарата: строка «…фильтры в комплекте / в составе / встроенные: MX+MY» (не «нет»)
+    const kitF=()=>(p.rows||[]).some(r=>r && /фильтр/i.test(String(r.k||'')) && /встроен|в\s+комплект|в\s+составе/i.test(String(r.k||'')+' '+String(r.v||'')) && !/^\s*(нет|-|—)\s*$/i.test(String(r.v||'')));
     if (kind==='compressor'){
       o.dryer=set(a.dryer) ? yes(a.dryer) : /(?:^|\s)со?\s+(?:встроенн\S*\s+)?(?:рефрижераторн\S*\s+)?осушител|встроенн\S*\s+(?:\S+\s+)?осушител|осушител\S*\s+встроен|(?:^|[^a-z])FF(?:[^a-z]|$)/i.test(nm)
         || (p.rows||[]).some(r=>r && /осушител/i.test(String(r.k||'')) && yes(r.v));
-      o.filter=/встроенн\S*\s+(?:\S+\s+){0,2}фильтр|(?:^|\s)с\s+(?:\S+\s+){0,3}фильтр/i.test(nm) || (p.rows||[]).some(r=>r && /фильтр/i.test(String(r.k||'')) && /встроен/i.test(String(r.k||'')+' '+String(r.v||'')) && !/нет/i.test(String(r.v||'')));
+      // встроенные магистральные фильтры: поле каталога «filters», иначе — по названию и характеристикам («4 в 1»: с осушителем и фильтрами)
+      o.filter=set(a.filters) ? yes(a.filters) : /встроенн\S*\s+(?:\S+\s+){0,2}фильтр|(?:^|\s)с\s+(?:\S+\s+){0,3}фильтр/i.test(nm) || kitF()
+        || (p.rows||[]).some(r=>r && /осушител\S*\s+и\s+(?:магистральн\S*\s+)?фильтр/i.test(String(r.v||'')));
       o.vsd=set(a.vsd) ? yes(a.vsd) : /частотн|инвертор|(?:^|[^a-z])VSD(?:[^a-z]|$)|(?:^|\s)ПЧ(?:\s|$)|переменн\S*\s+скорост/i.test(t);
       o.recv=StationEquip.num(a.receiver)>0 || /на ресивере/i.test(t); }
     else if (kind==='dryer'){
       o.type=/^gen_/.test(cat) || /генератор/i.test(nm) ? 'gen' : cat==='dryer_ads' || /адсорбц|десикант|мембран/i.test(t) ? 'ads' : 'refrig';
-      o.filters=/встроенн\S*\s+(?:\S+\s+){0,2}фильтр|фильтр\S*\s+(?:\S+\s+)?встроен|(?:^|\s)с\s+(?:\S+\s+)?фильтрам|интегрированн\S*\s+(?:\S+\s+)?фильтр/i.test(t);
+      o.filters=set(a.filters) ? yes(a.filters) : /встроенн\S*\s+(?:\S+\s+){0,2}фильтр|фильтр\S*\s+(?:\S+\s+)?встроен|(?:^|\s)с\s+(?:\S+\s+)?фильтрам|интегрированн\S*\s+(?:\S+\s+)?фильтр/i.test(t) || kitF();
       o.pdp=this.first(String(a.dewPoint||'').replace('−', '-')); if (o.pdp!=null && /[−-]/.test(String(a.dewPoint))) o.pdp=-Math.abs(o.pdp); }
     else if (kind==='receiver'){ o.role=/сух/i.test(nm) || /после осушител/i.test(t) ? 'dry' : /мокр|влажн/i.test(nm) ? 'wet' : ''; o.vol=this.volume(p); }
-    else if (kind==='filter'){ o.grade=this.grade(p, cat, t); o.oil=this.oil(p); o.um=this.micron(p); }
+    else if (kind==='filter'){ const g=String(p.airGrade||'');   // ступень, под которую фильтр подобран («Нужно: пылевой…») — главнее каталожной
+      o.grade=this.GRADES[g] ? g : this.grade(p, cat, t); o.pinned=!!this.GRADES[g]; o.oil=this.oil(p); o.um=this.micron(p); }
     return o;
   }
 
@@ -495,6 +500,8 @@ class AirChain {
     for (const e of R.filter(x=>!x.air.role)){ e.air.role=mode==='before' || (mode==='both' && !wet) ? 'wet' : 'dry'; if (e.air.role==='wet') wet=true; }
     // фильтры без указанной ступени — чего не хватает по виду осушителя (адсорбционный: от масла до, пылевой после)
     // (несколько одинаковых фильтров одной строкой состава — каждому своя ступень)
+    // сухой фильтр частиц («пылевой») без адсорбционного осушителя — предварительный (перед осушителем и тонкими фильтрами)
+    if (!ads) for (const e of A) if (e.kind==='filter' && e.air.grade==='dust' && !e.air.pinned) e.air.grade='pre';
     const F=A.filter(e=>e.kind==='filter' && e.air.grade!=='cond'), have=new Set(F.map(e=>e.air.grade).filter(Boolean)), built=D.some(e=>e.air.filters);
     const want=ads ? ['micro', 'dust', 'carbon'] : refrig ? (built ? ['micro', 'carbon'] : ['pre', 'micro', 'carbon']) : ['pre', 'fine', 'micro', 'carbon'];
     for (const e of F.filter(x=>!x.air.grade)){ const gs=[];

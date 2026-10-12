@@ -11,7 +11,8 @@ const ROOT=path.resolve(__dirname, '..', '..');
 global.document={ addEventListener(){} };
 global.uid=(()=>{ let n=0; return ()=>'p'+(++n); })();
 global.attrsOf=d=>Object.assign({}, d.attrs||{});
-const TYPES={ st_comp:{ station:{ main:['comp_screw', 'comp_piston'] }, fields:[] }, st_pump:{ station:{ main:['pump'] }, fields:[] }, st_dgu:{ station:{ main:['dgu'] }, fields:[] } };
+// основное оборудование станций — как в app/equipment_types.json
+const TYPES={ st_comp:{ station:{ main:['comp_screw', 'comp_scroll', 'comp_piston', 'comp_diesel', 'comp_centrifugal'] }, fields:[] }, st_pump:{ station:{ main:['pump'] }, fields:[] }, st_dgu:{ station:{ main:['dgu'] }, fields:[] } };
 global.typeById=id=>TYPES[id]||{};
 global.catCache=[];
 global.DEF=()=>null;   // умолчания администратора — нет
@@ -350,6 +351,67 @@ class Check {
     assert.ok(/масляный — по требованию заказчика/.test(StationReq.line(x)), StationReq.line(x));
     x.req.oilOk=false; x.req.industry='med'; assert.ok(StationReq.oilFree(x) && /медицинской и фармацевтической/.test(StationReq.oilWhy(x)));
     x.req.industry=''; assert.ok(!StationReq.oilFree(x), 'общепромышленная — без ограничения');
+  });
+
+  // контрольные значения каталога (правки номенклатуры 12.10): ступень «Пылевой», встроенные фильтры, «Безмасляный (класс 0)»,
+  // станция — без передвижных и дизельных при наличии электрических, аппараты — по высоте контейнера
+  await Check.run('номенклатура: пылевой после адсорбционного, встроенные фильтры, безмасляный, передвижные, высота', async ()=>{
+    const H=TzPick.hmax(Cat.station('st_comp', [], {}));
+    global.catCache=[
+      Cat.item('Компрессор винтовой передвижной К-130П', { cat:'comp_screw', flow:13, pressure:10, execution:'Передвижной' }),
+      Cat.item('Компрессор дизельный КД-130', { cat:'comp_diesel', flow:13, pressure:10 }),
+      Cat.item('Компрессор винтовой К-150', { cat:'comp_screw', flow:15, pressure:10 }),
+      Cat.item('Осушитель адсорбционный ОА-20 высокий', { cat:'dryer_ads', flow:20, dewPoint:'−40', size:`900 × 800 × ${H}` }),
+      Cat.item('Осушитель адсорбционный ОА-25', { cat:'dryer_ads', flow:25, dewPoint:'−40', size:`900 × 800 × ${H-300}` }),
+      Cat.item('Фильтр ФС-30', { cat:'filter', stage:'Сверхтонкая (микрофильтр)', flow:30 }),
+      Cat.item('Фильтр ФТ-30', { cat:'filter', stage:'Тонкая', flow:30 }),
+      Cat.item('Фильтр частиц ФЧ-30', { cat:'filter', stage:'Пылевой (после адсорбционного осушителя)', flow:30 }),
+    ];
+    const C=global.catCache, x=Cat.station('st_comp', [], {});
+    x.stLayout={ air:'2.2.2' };
+    const note=await TzPick.run(x, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'0', work:0 });
+    const P=kitParts(x), name=k=>P.filter(p=>StationEquip.kindOf(p)===k).map(p=>p.name);
+    assert.deepStrictEqual(name('compressor'), ['Компрессор винтовой К-150'], 'передвижной и дизельный — не в станцию: '+note);
+    assert.deepStrictEqual(name('dryer'), ['Осушитель адсорбционный ОА-25'], 'высокий осушитель не проходит по высоте контейнера: '+note);
+    const dust=P.find(p=>p.name==='Фильтр частиц ФЧ-30');
+    assert.ok(dust && dust.airGrade==='dust', 'пылевой после адсорбционного — ступень «Пылевой» из каталога (а не тонкий 1 мкм): '+note);
+    assert.strictEqual((P.find(p=>p.name==='Фильтр ФТ-30')||{}).airGrade, 'fine', 'тонкий 1 мкм — ступенью перед микрофильтром, не вместо пылевого');
+    const A=KitNeed.air(x), ch=A.chain.map(z=>z.text), di=ch.findIndex(t=>/адсорбционный осушитель/.test(t));
+    assert.ok(di>0 && /пылев/.test(ch[di+1]||''), 'пылевой — сразу после осушителя: '+ch.join(' → '));
+    // пылевой без адсорбционного осушителя — предварительный; подобранный под «пылевой» (airGrade) — остаётся пылевым
+    const y=Cat.station('st_comp', [await TzPick.part(C[2], 1, 'main'), await TzPick.part(C[7], 1)], {});
+    assert.strictEqual(KitNeed.air(y).units.find(e=>e.kind==='filter').air.grade, 'pre', 'сухой фильтр частиц без адсорбционного — предварительный');
+    kitParts(y).find(p=>StationEquip.kindOf(p)==='filter').airGrade='dust';
+    assert.strictEqual(KitNeed.air(y).units.find(e=>e.kind==='filter').air.grade, 'dust', 'ступень подбора главнее');
+    // нет пылевого в каталоге — тонкий 1 мкм; компоновка не сложилась — фильтры всё равно по цепочке воздуха
+    global.catCache=C.filter(c=>c.name!=='Фильтр частиц ФЧ-30');
+    const solve=StationLayout.solve; StationLayout.solve=()=>({});
+    try{ const z=Cat.station('st_comp', [], {}); z.stLayout={ air:'2.2.2' };
+      await TzPick.run(z, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'0', work:0 });
+      const fz=kitParts(z).filter(p=>StationEquip.kindOf(p)==='filter');
+      assert.deepStrictEqual(fz.map(p=>[p.name, p.airGrade]).sort(), [['Фильтр ФС-30', 'micro'], ['Фильтр ФТ-30', 'dust'], ['Фильтр ФТ-30', 'fine']],
+        'тонкий 1 мкм — и перед микрофильтром, и пылевым после осушителя: '+JSON.stringify(fz.map(p=>p.name)));
+    } finally { StationLayout.solve=solve; }
+    // только дизельные — тогда дизельный
+    global.catCache=[C[1], C[4]];
+    const d=Cat.station('st_comp', [], {}); await TzPick.run(d, { kind:'comp', flow:10, pressure:7, air:'2.4.2', reserve:'0', work:0 });
+    assert.ok(kitParts(d).some(p=>p.name==='Компрессор дизельный КД-130'), 'электрических нет — дизельный');
+    // встроенные фильтры: поле каталога «filters» или строка «Фильтры в комплекте» (не «нет»)
+    const info=(attrs, rows, kind)=>AirChain.info({ name:'Аппарат', attrs, rows }, kind);
+    assert.strictEqual(info({ cat:'dryer_refrig', filters:'Да' }, [], 'dryer').filters, true);
+    assert.strictEqual(info({ cat:'dryer_refrig', filters:'Нет' }, [{ k:'Тип', v:'со встроенными фильтрами' }], 'dryer').filters, false, 'поле главнее описания');
+    assert.strictEqual(info({ cat:'dryer_refrig' }, [{ k:'Фильтры в комплекте', v:'GKON MX+MY' }], 'dryer').filters, true);
+    assert.strictEqual(info({ cat:'dryer_refrig' }, [{ k:'Фильтры в комплекте', v:'нет' }], 'dryer').filters, false);
+    assert.strictEqual(info({ cat:'comp_screw', filters:'Да' }, [], 'compressor').filter, true);
+    assert.strictEqual(info({ cat:'comp_screw' }, [{ k:'Тип', v:'На ресивере (с осушителем и фильтрами)' }], 'compressor').filter, true, 'компрессор «4 в 1»');
+    // безмасляный: поле «Безмасляный (класс 0)» главнее названия; не заполнено — по названию
+    const of=(name, attrs)=>TzPick.oilFree({ name, attrs });
+    assert.deepStrictEqual([of('Компрессор К-1', { oilFree:'Да' }), of('Безмасляный компрессор К-2', { oilFree:'Нет' }), of('Безмасляный компрессор К-3', {}), of('Компрессор К-4', {})],
+      [true, false, true, false]);
+    // габариты и масса для компоновки — из любых строк характеристик, в т. ч. дальше первых 14 и в метрах
+    assert.deepStrictEqual(KitPart.dimsOf({}, [{ k:'Габариты Д × Ш × В', v:'1200 × 800 × 1500 мм' }, { k:'Масса', v:'350 кг' }]), { size:'1200 × 800 × 1500', mass:350 });
+    assert.deepStrictEqual(KitPart.dimsOf({}, [{ k:'Длина, м', v:'2,5' }, { k:'Ширина, м', v:'1,2' }, { k:'Высота, м', v:'1,9' }, { k:'Вес брутто', v:'900' }]), { size:'2500 × 1200 × 1900' });
+    assert.deepStrictEqual(KitPart.dimsOf({ size:'1 × 1 × 1', mass:5 }, [{ k:'Габариты', v:'9 × 9 × 9' }, { k:'Масса', v:'9' }]), { size:'1 × 1 × 1', mass:5 }, 'заполненное в каталоге не меняется');
   });
 
   console.log(process.exitCode ? 'есть ошибки' : `подбор по ТЗ: проверок пройдено — ${Check.n}`);

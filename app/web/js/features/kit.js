@@ -165,10 +165,24 @@ class KitPart {
     const a=attrsOf(doc), feats=(doc.features||[]).filter(f=>f.text);
     // блоки описания — с новой строки (списки «• …» остаются списками и в карточке, и в документе КП)
     const desc=KitPart.cut(feats.map(f=>(f.label&&!/^(описание|о серии|назначение)$/i.test(f.label)?f.label+': ':'')+f.text.trim()).join('\n'));
-    const rows=(doc.groups||[]).flatMap(g=>(g.rows||[]).filter(r=>r.k&&r.v)).slice(0,14).map(r=>({k:r.k, v:r.v}));
+    const all=(doc.groups||[]).flatMap(g=>(g.rows||[]).filter(r=>r.k&&r.v)), rows=all.slice(0,14).map(r=>({k:r.k, v:r.v}));
+    KitPart.dimsOf(a, all);
     return kitNewPart({ name:doc.name||'', catId:doc.id, cost:doc.cost||0, costCur:doc.costCur||'RUB', sup:a.maker||'', desc, rows,
       photo:doc.photo&&doc.photo.src?{src:doc.photo.src, w:doc.photo.w, h:doc.photo.h}:null, ...(doc.draw&&typeof doc.draw==='object'?{draw:JSON.parse(JSON.stringify(doc.draw))}:{}),
       attrs:Object.fromEntries(Object.entries(a).filter(([k,v])=>k!=='type' && v!=='' && v!=null && typeof v!=='object')) });
+  }
+  /** габариты и масса для компоновки станции — из всех строк характеристик (в составе их только первые 14): «Габариты»
+   *  или «Длина / Ширина / Высота», «Масса / Вес»; заполненные в каталоге не меняются */
+  static dimsOf(a, all){
+    const num=v=>{ const m=String(v??'').replace(/\s/g, '').replace(',', '.').match(/\d+(?:\.\d+)?/); return m ? +m[0] : null; };
+    // «м» отдельным словом (не «мм»): \b в JavaScript не видит границ кириллических слов
+    const mm=r=>{ const v=num(r.v); return v==null ? null : /(?:^|[^а-яё])м(?![а-яё])/i.test(String(r.k)+' '+String(r.v)) && v<30 ? Math.round(v*1000) : v; };
+    const row=re=>all.find(r=>re.test(String(r.k).trim()) && !/упаков|присоедин|фланц|патрубк|бак|ресивер|сопл/i.test(String(r.k)));
+    if (!a.size){ const g=row(/^габарит|^размеры?\b/i), L=row(/^длина/i), W=row(/^ширина/i), H=row(/^высота/i);
+      if (g && /\d\s*[×xх*]\s*\d/i.test(String(g.v))) a.size=String(g.v).replace(/\s*мм\s*$/i, '').trim();
+      else if (L && W && H && mm(L) && mm(W) && mm(H)) a.size=`${mm(L)} × ${mm(W)} × ${mm(H)}`; }
+    if (!a.mass){ const m=row(/^(масса|вес)(?!\s*(брутто|в упаковке))/i), v=m ? num(m.v) : null; if (v>0) a.mass=v; }
+    return a;
   }
   static cut(s){
     s=String(s||'').trim(); if (s.length<=KitPart.MAX) return s;
@@ -235,7 +249,7 @@ class StationDefaults {
     [StationDefaults.FUEL, 'Дополнительный топливный бак для увеличения времени автономной работы ДГУ: датчик уровня, заливная горловина, дыхательный клапан, поддон, подключение к топливной системе ДГУ.', []],
     [/трубопровод|топливопровод|обвязк/i, 'Трубопроводная обвязка оборудования станции: магистраль, отводы к оборудованию, запорная арматура, крепления. Материал труб и условный проход — в составе станции.', []],
     [/асу ?тп/i, 'Шкаф АСУ ТП: контроллер, панель оператора, сбор сигналов и аварий оборудования станции, архив событий, передача данных в диспетчерскую.', [['Связь с диспетчерской', 'Modbus TCP / Ethernet или GSM — по проекту']]],
-    [/\bАВР\b|ввод\S* резерв/i, 'Шкаф автоматического ввода резерва: переключение питания станции на резервный ввод при пропадании основного, индикация, ручной режим.', [['Вводы', 'основной и резервный']]],
+    [/(?:^|[^а-яё])АВР(?![а-яё])|ввод\S* резерв/i, 'Шкаф автоматического ввода резерва: переключение питания станции на резервный ввод при пропадании основного, индикация, ручной режим.', [['Вводы', 'основной и резервный']]],
   ];
   /** мастер станции: добавить обязательные элементы по виду станции */
   static add(it, typeId){
@@ -400,6 +414,7 @@ function kitPickCat(i, cats, role, name, preset, by){
   // подбор по рекомендации: количество (рекомендуемый — сколько нужно параллельно, иначе preset.qty) и замена прежних
   // элементов (preset.replace — их id: осушитель меньше нужного, ресиверы на учёте → несколько меньших)
   const put=(it, p, id)=>{ const n=best && id===best.id ? preset.best.n : preset && preset.qty; if (n>1) p.qty=n;
+    if (preset && preset.grade) p.airGrade=preset.grade;   // фильтр подобран под ступень («Нужно: пылевой…») — на своё место в цепочке
     if (preset && Array.isArray(preset.replace)) it.kit.parts=it.kit.parts.filter(z=>!preset.replace.includes(z.id)); };
   const kitPickNew=()=>{ const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=StationDefaults.fill(kitNewPart({name:name||(F.q||'').trim()}), it); if (role) p.role=role;
     if (preset){ if (preset.attrs) p.attrs=Object.fromEntries(Object.entries(preset.attrs).filter(([, v])=>v!=null && v!=='')); for (const r of preset.rows||[]) if (!p.rows.some(z=>z.k===r.k)) p.rows.push({ ...r }); }

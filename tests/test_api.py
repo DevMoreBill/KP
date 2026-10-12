@@ -304,6 +304,16 @@ class ApiTest(unittest.TestCase):
         st, b2, _ = self.J('POST', '/api/admin/import/file/preview', b, who='adm', extra={'Content-Type': 'application/zip'})
         r = Http.js(b2)
         self.assertEqual((r['report']['catalog']['new'], r['report']['catalog']['updated']), (0, len(body['sections']['catalog'])))
+        # правки каталога (kp-catalog-patch): предпросмотр, затем запись только перечисленных полей
+        x = body['sections']['catalog'][0]
+        patch = json.dumps({'format': 'kp-catalog-patch', 'version': 1, 'title': 'стенд', 'items': [
+            {'id': x['id'], 'attrs': {'oilFree': [None, 'Нет']}}]}, ensure_ascii=False).encode('utf-8')
+        for path, written in (('/api/admin/import/file/preview', 0), ('/api/admin/import/file', 1)):
+            st, b2, _ = self.J('POST', path, patch, who='adm', extra={'Content-Type': 'application/octet-stream'})
+            p = (Http.js(b2) or {}).get('patch') or {}
+            self.assertTrue(st == 200 and (p.get('items'), p.get('fields'), p.get('written')) == (1, 1, written), (st, b2[:300]))
+        st, b2, _ = self.J('GET', '/api/catalog/' + x['id'])
+        self.assertEqual((Http.js(b2)['attrs']['oilFree'], Http.js(b2)['price']), ('Нет', x['price']), 'поле внесено, цена не тронута')
         # архив с путями ../ и не-картинкой
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, 'w') as z:
