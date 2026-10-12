@@ -153,6 +153,11 @@ Check.run('габариты из текста', ()=>{
   assert.deepStrictEqual([f.l, f.w, f.h, f.known], [140, 140, 610, true], 'два числа у фильтра: диаметр и высота');
   const r=StationEquip.dims(P('Ресивер', { cat:'receiver' }, { rows:[{ k:'Габариты (Д×Ш×В)', v:'1005 × 960 × 2175 мм' }] }), 'receiver');
   assert.deepStrictEqual([r.l, r.w, r.h, r.known], [1005, 960, 2175, true], 'габариты из строки характеристик');
+  const radRow={ k:'Габариты радиатора (раст. от пола, В, Ш, мм)', v:'512,5, 1180 × 1110 мм' };
+  const rad=StationEquip.dims(P('ДГУ ТСС АД-320С', { cat:'dgu', kw:256 }, { rows:[radRow, { k:'Масса', v:'2450 кг' }] }), 'dgu');
+  assert.ok(!rad.known && rad.l>=4000, 'строка радиатора ДГУ — не габариты установки (условные по мощности)');
+  const rad2=StationEquip.dims(P('ДГУ ТСС АД-320С', { cat:'dgu', kw:256 }, { rows:[radRow, { k:'Габариты Д × Ш × В', v:'3017 × 1550 × 1924 мм' }] }), 'dgu');
+  assert.deepStrictEqual([rad2.l, rad2.w, rad2.h, rad2.known], [3017, 1550, 1924, true], 'габариты установки, а не радиатора');
   const g=StationEquip.dims(P('ДГУ 200 кВт', { cat:'dgu', kw:200 }), 'dgu');
   assert.ok(!g.known && g.l>=2500 && g.h>=1500, 'нет габаритов — условные по мощности');
 });
