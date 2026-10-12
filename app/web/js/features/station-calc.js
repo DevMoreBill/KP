@@ -1,7 +1,9 @@
 // Расчёт модульной станции (компрессорной и ДЭС) — по требованиям заказчика (x.req), составу станции из каталога и
 // файлу инженерных правил (StationRules). Каждый шаг — исходные данные, формула, коэффициенты (с правилом и его
 // источником), результат, выбранная позиция и запас в %. Ошибки (станция не пройдёт) и предупреждения — отдельно;
-// правила со статусом «требует подтверждения» и данные, которых нет в каталоге, — отдельным списком.
+// правила со статусом «требует подтверждения» и данные, которых нет в каталоге, — отдельным списком. Недобор в пределах
+// погрешности данных (правило calc.tolerance) — не ошибка; вопросы заказчику — только без ответа на которые станцию не
+// подобрать, остальное — «можно уточнить позже» (расчёт берёт значение по умолчанию с запасом).
 // Классы: CalcNote (записка), AirDemand (потребность → FAD), PressureBudget (давление и потери), DryerSizing, FilterSizing,
 // ReceiverSizing, ElectricLoad (мощность, ток, пуск), GensetSizing (ДГУ), StationCalc (весь расчёт, вкладка и КП).
 'use strict';
@@ -10,7 +12,7 @@
 class CalcNote {
   /** «Осушитель …», если название не начинается с этого слова */
   static lbl(word, name){ return String(name||'').toLowerCase().startsWith(word.toLowerCase().slice(0, 5)) ? name : word+' '+name; }
-  constructor(){ this.sections=[]; this.cur=null; this.issues=[]; this.weak=new Map(); this.assumptions=[]; this.questions=[]; this.used=new Set(); }
+  constructor(){ this.sections=[]; this.cur=null; this.issues=[]; this.weak=new Map(); this.assumptions=[]; this.questions=[]; this.later=[]; this.used=new Set(); }
   static f(v, d=2){ if (v==null || !Number.isFinite(+v)) return '—'; const k=Math.pow(10, d), s=String(Math.round(+v*k)/k); return s.replace('.', ',').replace(/^-/, '−'); }
   static pct(a, b){ return b>0 ? Math.round((a/b-1)*1000)/10 : null; }
   section(id, title){ this.cur={ id, title, steps:[] }; this.sections.push(this.cur); return this; }
@@ -21,14 +23,21 @@ class CalcNote {
   /** шаг: {what, formula, data:[[подпись, значение]], rules:[id], result, ok — true / false / null, margin — %, pick, note} */
   step(o){ if (!this.cur) this.section('misc', 'Прочее'); o.rules=(o.rules||[]).filter(Boolean); this.cur.steps.push(o); return o; }
   issue(level, text){ this.issues.push({ level, text, sec:this.cur ? this.cur.id : '' }); }
-  /** данных нет в каталоге или в ТЗ — пункт «требует подтверждения» */
-  missing(key, text, ask){ if (!this.weak.has(key)) this.weak.set(key, { id:key, title:text, src:'нет данных', note:'' }); if (ask) this.ask(ask); }
+  /** хватает ли с учётом погрешности данных (calc.tolerance): ok — не меньше нужного за вычетом допуска (незначительный
+   *  недобор трактуется в пользу заказчика — не ошибка и не вопрос), edge — в допуске, но меньше нужного; note — пояснение */
+  fits(have, need){ const t=this.rule('calc.tolerance'), ok=have>=need*(1-t)-1e-9, edge=ok && have<need-1e-9;
+    return { ok, edge, note:edge ? `На пределе: недобор ${CalcNote.f((1-have/need)*100, 1)} % — в пределах погрешности данных каталога; при желании — следующий типоразмер.` : '' }; }
+  /** данных нет в каталоге или в ТЗ — пункт «требует подтверждения»; вопрос по нему — «можно уточнить позже»
+   *  (расчёт уже взял значение с запасом в пользу заказчика) */
+  missing(key, text, ask){ if (!this.weak.has(key)) this.weak.set(key, { id:key, title:text, src:'нет данных', note:'' }); if (ask) this.ask(ask, true); }
   assume(text){ if (!this.assumptions.includes(text)) this.assumptions.push(text); }
-  ask(text){ if (!this.questions.includes(text)) this.questions.push(text); }
+  /** вопрос заказчику: обязательный — без ответа станцию не подобрать (производительность, давление, мощность нагрузки);
+   *  later — уточнение, без которого расчёт идёт по умолчанию */
+  ask(text, later){ const L=later ? this.later : this.questions; if (!L.includes(text)) L.push(text); }
   result(){
     const err=this.issues.filter(i=>i.level==='error'), warn=this.issues.filter(i=>i.level==='warn');
     return { sections:this.sections.filter(s=>s.steps.length), issues:this.issues, errors:err, warnings:warn, weak:[...this.weak.values()],
-      assumptions:this.assumptions, questions:this.questions, rules:[...this.used], version:StationRules.version(), ok:!err.length };
+      assumptions:this.assumptions, questions:this.questions, later:this.later, rules:[...this.used], version:StationRules.version(), ok:!err.length };
   }
 }
 
@@ -71,7 +80,7 @@ class AirDemand {
     const r=q.req, f=CalcNote.f; N.section('air', 'Производительность');
     if (!(r.flow>0)){ N.issue('info', 'Производительность станции не задана — расчёт по потребности не выполнен.'); N.ask('Требуемая производительность станции, м³/мин, и к каким условиям она приведена (FAD — условия всасывания или нормальные м³).'); return null; }
     const H=r.alt!=null ? r.alt : 0, tAir=r.tmax!=null ? r.tmax : StationRules.raw('flow.fad_ref').t;
-    if (r.alt==null){ N.assume('Высота над уровнем моря в ТЗ не указана — принято 0 м.'); N.ask('Высота площадки над уровнем моря, м.'); }
+    if (r.alt==null){ N.assume('Высота над уровнем моря в ТЗ не указана — принято 0 м.'); N.ask('Высота площадки над уровнем моря, м.', true); }
     if (r.tmax==null){ N.missing('t.max', 'Наружная температура летом не задана — для расчёта принята '+f(tAir, 0)+' °C', 'Максимальная температура наружного воздуха на площадке (летом), °C.'); }
     let Q=r.flow;
     if (r.basis==='normal'){
@@ -100,9 +109,9 @@ class AirDemand {
     if (r.reserve==null){ N.rule('flow.reserve'); N.missing('flow.reserve.tz', 'Резерв компрессоров в ТЗ не задан — расчёт без резерва', 'Нужен ли резервный компрессор (N+1)?'); }
     const unknown=C.filter(o=>!(o.v>0));
     if (unknown.length) N.missing('comp.flow', 'Нет производительности: '+[...new Set(unknown.map(o=>o.u.name))].join(', '));
-    const ok=sum>=need*0.999, mg=CalcNote.pct(sum, need);
+    const fit=N.fits(sum, need), ok=fit.ok, mg=CalcNote.pct(sum, need);
     N.step({ what:'Компрессоры: рабочие против требуемой', formula:'Σ Qраб ≥ Qтр', data:[['рабочих', work.length+' шт.'], ['резервных', res+' шт.'+(res ? ' (самые крупные — не учитываются)' : '')],
-      ...work.slice(0, 6).map((o, i)=>['№ '+(i+1), o.u.name+' — '+f(o.v)+' м³/мин'])], result:'Σ Qраб = '+f(sum)+' м³/мин', ok, margin:mg, pick:[...new Set(C.map(o=>o.u.name))].join('; ') });
+      ...work.slice(0, 6).map((o, i)=>['№ '+(i+1), o.u.name+' — '+f(o.v)+' м³/мин'])], result:'Σ Qраб = '+f(sum)+' м³/мин', ok, margin:mg, note:fit.note, rules:fit.edge ? ['calc.tolerance'] : [], pick:[...new Set(C.map(o=>o.u.name))].join('; ') });
     if (!ok) N.issue('error', `Производительность рабочих компрессоров ${f(sum)} м³/мин меньше требуемой ${f(need)} м³/мин.`);
     if (res){ const big=work.length ? work[0].v : 0, low=spare.filter(o=>o.v<big-1e-9);
       N.step({ what:'Резерв', formula:'резервный не меньше самого крупного рабочего', rules:['flow.reserve'], data:spare.map(o=>['резервный', o.u.name+' — '+f(o.v)+' м³/мин']), ok:!low.length, result:low.length ? 'резервный меньше рабочего' : 'N + '+res });
@@ -135,7 +144,7 @@ class PressureBudget {
     const ok=low>=need-1e-9;
     N.step({ what:vsd ? 'Компрессоры с частотным регулированием: давление поддержания' : 'Компрессоры «нагрузка — холостой ход»: давление включения', formula:vsd ? 'pmax ≥ pтр' : 'pmax − Δpрег ≥ pтр',
       data:[['pmax (паспорт)', f(pmax)+' бар'], ...(vsd ? [] : [['Δpрег', f(band)+' бар']])], rules:vsd ? [] : ['pressure.band'], result:(vsd ? 'pmax = ' : 'pвкл = ')+f(low)+' бар', ok, margin:CalcNote.pct(low, need) });
-    if (pmax<need-1e-9) N.issue('error', `Компрессор на ${f(pmax)} бар не обеспечит ${f(r.pressure)} бар у потребителя с потерями ${f(loss)} бар (нужно ${f(need)}).`);
+    if (!N.fits(pmax, need).ok) N.issue('error', `Компрессор на ${f(pmax)} бар не обеспечит ${f(r.pressure)} бар у потребителя с потерями ${f(loss)} бар (нужно ${f(need)}).`);
     else if (!ok) N.issue('warn', `В нижней точке регулирования (${f(low)} бар) давление ниже требуемого ${f(need)} бар — сузьте диапазон регулирования или выберите компрессор на большее давление.`);
     // давление аппаратов
     for (const u of q.units.filter(u=>/^(receiver|dryer|filter)$/.test(u.kind))){ const b=u.info.bar||CalcInput.num(u.attrs.pressure);
@@ -187,9 +196,9 @@ class DryerSizing {
       else { N.rule('dryer.kp'); N.rule('dryer.margin'); rules.push('dryer.kp', 'dryer.margin');
         data=[['давление', f(p, 1)+' бар → '+f(o.kp.k, 3)+' (типовая таблица)'], ['запас на температуру', '÷ '+f(StationRules.raw('dryer.margin'))]];
         N.missing('series.dryer.'+(u.attrs.maker||'')+'.'+(u.attrs.model||u.name), `Данные для расчёта неполные: поправки производителя для осушителя «${u.name}» не найдены — типовая таблица`); }
-      const corr=cap*o.F, ok=corr>=Q*0.98;
+      const corr=cap*o.F, fit=N.fits(corr, Q), ok=fit.ok; if (fit.edge) rules.push('calc.tolerance');
       N.step({ what:`${u.name}${u.qty>1 ? ' × '+u.qty+' (параллельно)' : ''}`, formula:o.s ? 'Qосуш · Fp · Fвх'+(o.s.f.ambient ? ' · Fокр' : '')+' ≥ Σ Qраб' : 'Qосуш · Kp ÷ запас ≥ Σ Qраб', data:[['номинал', f(cap)+' м³/мин'], ...data, ['через осушитель', f(Q)+' м³/мин']],
-        rules, result:'с поправками '+f(corr)+' м³/мин', ok, margin:CalcNote.pct(corr, Q), pick:u.name });
+        rules, result:'с поправками '+f(corr)+' м³/мин', ok, margin:CalcNote.pct(corr, Q), note:fit.note, pick:u.name });
       if (!ok) N.issue('error', `${CalcNote.lbl('Осушитель', u.name)}: с поправками ${f(corr)} м³/мин — меньше производительности компрессоров ${f(Q)} м³/мин.`);
       if (o.out.length) N.issue('warn', `${CalcNote.lbl('Осушитель', u.name)}: условия вне таблицы производителя (${o.out.join(', ')}) — взяты крайние значения, уточните у производителя.`);
       if (pdpNeed!=null){ const pdp=u.info.pdp;
@@ -213,14 +222,14 @@ class FilterSizing {
         if (o.out) N.issue('warn', `${CalcNote.lbl('Фильтр', u.name)}: давление вне таблицы производителя.`); }
       else { k=AirChain.kf(p); N.rule('filter.kp'); rules=['filter.kp']; data=[['давление', f(p, 1)+' бар → '+f(k, 3)+' (типовая формула)']];
         N.missing('series.filter.'+(u.attrs.maker||'')+'.'+(u.attrs.series||u.attrs.model||u.name), `Данные для расчёта неполные: поправки производителя для фильтров «${[u.attrs.maker, u.attrs.series||u.attrs.model||u.name].filter(Boolean).join(' ')}» не найдены — типовая формула`); }
-      const corr=cap*k, ok=corr>=Q*0.98;
+      const corr=cap*k, fit=N.fits(corr, Q), ok=fit.ok; if (fit.edge) rules.push('calc.tolerance');
       N.step({ what:`${u.name}${u.qty>1 ? ' × '+u.qty+' (параллельно)' : ''} — ${AirChain.GRADES[u.info.grade] ? AirChain.GRADES[u.info.grade].short : 'ступень не определена'}`, formula:'Qф · Kp ≥ Σ Qраб',
-        data:[['номинал', f(cap)+' м³/мин'], ...data, ['через фильтр', f(Q)+' м³/мин']], rules, result:'с поправкой '+f(corr)+' м³/мин', ok, margin:CalcNote.pct(corr, Q), pick:u.name });
+        data:[['номинал', f(cap)+' м³/мин'], ...data, ['через фильтр', f(Q)+' м³/мин']], rules, result:'с поправкой '+f(corr)+' м³/мин', ok, margin:CalcNote.pct(corr, Q), note:fit.note, pick:u.name });
       if (!ok) N.issue('error', `${CalcNote.lbl('Фильтр', u.name)}: с поправкой на давление ${f(corr)} м³/мин — меньше ${f(Q)} м³/мин.`);
       if (!u.info.grade) N.missing('filter.grade.'+u.name, 'Ступень очистки фильтра не определена: '+u.name);
     }
     // ступени по классу ISO 8573-1
-    const cls=String(q.cls||'').match(/^([1-6])\.([1-6])\.([1-4])$/); if (!cls) { if (Fl.length) N.ask('Класс чистоты сжатого воздуха по ГОСТ Р ИСО 8573-1 (частицы.вода.масло) или требуемая точка росы.'); return; }
+    const cls=String(q.cls||'').match(/^([1-6])\.([1-6])\.([1-4])$/); if (!cls) { if (Fl.length) N.ask('Класс чистоты сжатого воздуха по ГОСТ Р ИСО 8573-1 (частицы.вода.масло) или требуемая точка росы.', true); return; }
     const R=N.rule('air.chain'), [pc, , oc]=[+cls[1], +cls[2], +cls[3]], have=new Set(Fl.map(u=>u.info.grade)), D=q.units.filter(u=>u.kind==='dryer');
     const need=[]; const lvl=Math.min(pc, oc); if (lvl===1) need.push(['частицы / масло класса 1', R['1']]); else if (lvl===2) need.push(['частицы / масло класса 2', R['2']]);
     if (oc===1) need.push(['масло класса 1 (пары)', R.oil1]);
@@ -244,9 +253,9 @@ class ReceiverSizing {
     N.step({ what:'Объём ресивера', formula:vsd ? 'V = '+f(per, 0)+' л на 1 м³/мин (частотное регулирование)' : 'V = 0,25 · qc · p1 · T0 / (fmax · Δp · T1)',
       data:[['наибольший компрессор', big.name+' — '+f(big.info.flow)+' м³/мин'], ...(vsd ? [] : [['p1 · T0 / T1', f(fr.p1)+' бар · '+fr.T0+' / '+fr.T1+' K'], ['цикл', fr.cycle+' с'], ['Δp', f(fr.dp)+' бар']]),
         ...(tz ? [['по ТЗ', f(tz, 0)+' л']] : [])], rules:['receiver.formula', vsd ? 'receiver.vsd' : ''], result:'нужно ≥ '+f(need, 0)+' л; в составе '+f(have, 0)+' л',
-      ok:have>=need*0.98, margin:CalcNote.pct(have, need), pick:Rv.map(u=>u.name+(u.qty>1 ? ' × '+u.qty : '')).join('; ') });
+      ok:N.fits(have, need).ok, margin:CalcNote.pct(have, need), note:N.fits(have, need).note, pick:Rv.map(u=>u.name+(u.qty>1 ? ' × '+u.qty : '')).join('; ') });
     if (!Rv.length) N.issue('warn', `Ресиверов в составе нет — нужно около ${f(need, 0)} л.`);
-    else if (have<need*0.98) N.issue(tz && have<tz*0.98 ? 'error' : 'warn', `Объём ресиверов ${f(have, 0)} л меньше ${tz && have<tz*0.98 ? 'требуемого по ТЗ' : 'расчётного'} ${f(need, 0)} л.`);
+    else if (!N.fits(have, need).ok) N.issue(tz && !N.fits(have, tz).ok ? 'error' : 'warn', `Объём ресиверов ${f(have, 0)} л меньше ${tz && !N.fits(have, tz).ok ? 'требуемого по ТЗ' : 'расчётного'} ${f(need, 0)} л.`);
     const pv=N.rule('vessel.pv'), bar=Math.max(0, ...C.map(u=>u.info.bar||0));
     for (const u of Rv){ const v=u.info.vol||0, x=bar/10*v/1000;
       if (v>0 && bar>0) N.step({ what:'Учёт в Ростехнадзоре: '+u.name, formula:'p · V ≤ '+f(pv)+' МПа·м³', rules:['vessel.pv'], data:[['p', f(bar/10, 2)+' МПа'], ['V', f(v/1000, 3)+' м³']], result:'p·V = '+f(x, 3), ok:x<=pv+1e-9 });
@@ -306,15 +315,15 @@ class GensetSizing {
     if (r.reserve==null) N.missing('dgu.reserve.tz', 'Резерв ДГУ в ТЗ не задан — расчёт без резерва', 'Нужен ли резервный ДГУ (N+1)?');
     if (!(r.kw>0)){ N.issue('info', 'Мощность нагрузки не задана — проверка мощности ДГУ не выполнена.'); N.ask('Мощность нагрузки ДЭС, кВт (длительная и максимальная).'); }
     const standby=/standby|резерв|аварийн/i.test(r.mode||'');
-    if (r.kw>0){ const cap=standby ? ESP : PRP, ok=cap>=r.kw*0.999;
+    if (r.kw>0){ const cap=standby ? ESP : PRP, fit=N.fits(cap, r.kw), ok=fit.ok;
       N.step({ what:standby ? 'Мощность ESP (резервный источник) против нагрузки' : 'Мощность PRP против нагрузки', formula:'Σ Pраб ≥ Pнагр', rules:[standby ? 'dgu.esp_hours' : 'dgu.prp_avg'],
         data:[['нагрузка', f(r.kw, 0)+' кВт'], ['рабочих ДГУ', work.length+(res ? ' (+'+res+' резерв)' : '')], ...work.slice(0, 4).map(o=>['ДГУ', o.u.name+' — PRP '+f(o.prp, 0)+' / ESP '+f(o.esp, 0)+' кВт'])],
-        result:(standby ? 'ESP = ' : 'PRP = ')+f(cap, 0)+' кВт', ok, margin:CalcNote.pct(cap, r.kw), pick:[...new Set(G.map(u=>u.name))].join('; ') });
+        result:(standby ? 'ESP = ' : 'PRP = ')+f(cap, 0)+' кВт', ok, margin:CalcNote.pct(cap, r.kw), note:fit.note, pick:[...new Set(G.map(u=>u.name))].join('; ') });
       N.rule(standby ? 'dgu.esp_hours' : 'dgu.prp_avg');
       if (!ok) N.issue('error', `Мощность ДГУ ${f(cap, 0)} кВт меньше нагрузки ${f(r.kw, 0)} кВт.`);
       const avg=r.load>0 ? r.kw*r.load/100 : r.kw, lim=N.rule('dgu.prp_avg')*PRP;
       if (!standby){ N.step({ what:'Средняя нагрузка за 24 ч', formula:'Pср ≤ 0,7 · PRP', rules:['dgu.prp_avg'], data:[['Pср', f(avg, 0)+' кВт'+(r.load>0 ? ' ('+f(r.load, 0)+' % от нагрузки)' : ' (график не задан — принята постоянной)')]], result:'0,7 · PRP = '+f(lim, 0)+' кВт', ok:avg<=lim+1e-9, margin:CalcNote.pct(lim, avg) });
-        if (!(r.load>0)) N.ask('График нагрузки за сутки: средняя нагрузка, % от максимальной.');
+        if (!(r.load>0)) N.ask('График нагрузки за сутки: средняя нагрузка, % от максимальной.', true);
         if (avg>lim+1e-9) N.issue('warn', `Средняя нагрузка ${f(avg, 0)} кВт больше 70 % PRP (${f(lim, 0)} кВт): для постоянной круглосуточной нагрузки нужна мощность COP (уточните у производителя) или больше ДГУ.`); } }
     // высота и температура
     const ref=N.rule('dgu.ref'), pb=AirDemand.baro(r.alt||0);
@@ -336,8 +345,8 @@ class GensetSizing {
       const need=fp.need, have=fp.have;
       N.step({ what:'Запас топлива на автономность', formula:'V = расход(нагрузка) · n · часы · запас', rules:['dgu.fuel_margin', fp.src==='паспорт ДГУ' ? '' : 'dgu.lph', r.kw>0 ? '' : 'dgu.fuel_load'],
         data:[['нагрузка', f(fp.x*100, 0)+' % PRP'], ['расход', f(fp.c, 1)+' л/ч на ДГУ ('+fp.src+')'], ['рабочих ДГУ', String(fp.n)], ['часы', f(r.hours, 0)], ['баки', `ДГУ ${f(fp.built, 0)} л + дополнительные ${f(fp.extra, 0)} л`]],
-        result:`нужно ${f(need, 0)} л; в баках ${f(have, 0)} л`, ok:have>=need*0.98, margin:CalcNote.pct(have, need) });
-      if (have<need*0.98) N.issue('error', `Топлива в баках ${f(have, 0)} л — меньше нужного на ${f(r.hours, 0)} ч (${f(need, 0)} л).`); }
+        result:`нужно ${f(need, 0)} л; в баках ${f(have, 0)} л`, ok:N.fits(have, need).ok, margin:CalcNote.pct(have, need), note:N.fits(have, need).note });
+      if (!N.fits(have, need).ok) N.issue('error', `Топлива в баках ${f(have, 0)} л — меньше нужного на ${f(r.hours, 0)} ч (${f(need, 0)} л).`); }
   }
 }
 
@@ -359,24 +368,29 @@ class StationCalc {
   /** блокирующие ошибки расчёта — КП не сохраняется, пока их не исправят или не отметят «отклонения согласованы с заказчиком» */
   static errors(x){ if (!StationUi.on(x) || !isKit(x)) return []; const R=this.run(x); return R.accept ? [] : R.errors; }
 
-  /** блок на вкладке «Компоновка»: итог, замечания, шаги расчёта по разделам, «требует подтверждения», допущения, вопросы */
+  /** блок на вкладке «Компоновка» — под раскрытием (по умолчанию закрыт, открыт при ошибке): итог, замечания, обязательные
+   *  вопросы, шаги расчёта по разделам; допущения, «требует подтверждения» и уточнения «на потом» — ещё одним раскрытием */
   static html(x, i){
     const R=this.run(x), o=StationUi.opts(x), f=CalcNote.f, st=v=>v===true ? '<b class="ok-t">✓</b>' : v===false ? '<b class="bad-t">✕</b>' : '';
     const lvl={ error:'Ошибка — станция не пройдёт', warn:'Предупреждение' }, src=ids=>[...new Set((ids||[]).map(id=>StationRules.short(id)))].join('; ');
+    const mg=o=>o.margin==null ? '' : `<div class="${o.margin<0 ? (o.ok ? 'warn-t' : 'bad-t') : 'muted'}">запас ${o.margin>0 ? '+' : ''}${f(o.margin, 1)} %</div>`;
     const sec=R.sections.map(s=>`<h5 class="calc-h">${esc(s.title)}</h5><table class="calc-t"><tbody>${s.steps.map(o=>`<tr><td class="calc-s">${st(o.ok)}</td>
       <td><b>${esc(o.what)}</b>${o.formula ? `<div class="calc-f">${esc(o.formula)}</div>` : ''}${(o.data||[]).length ? `<div class="calc-d">${o.data.map(([k, v])=>`<span>${esc(k)}: ${esc(v)}</span>`).join('')}</div>` : ''}${o.note ? `<div class="muted">${esc(o.note)}</div>` : ''}</td>
-      <td class="calc-res">${esc(o.result||'')}${o.margin!=null ? `<div class="${o.margin<0 ? 'bad-t' : 'muted'}">запас ${o.margin>0 ? '+' : ''}${f(o.margin, 1)} %</div>` : ''}${(o.rules||[]).length ? `<div class="calc-src">${esc(src(o.rules))}</div>` : ''}</td></tr>`).join('')}</tbody></table>`).join('');
+      <td class="calc-res">${esc(o.result||'')}${mg(o)}${(o.rules||[]).length ? `<div class="calc-src">${esc(src(o.rules))}</div>` : ''}</td></tr>`).join('')}</tbody></table>`).join('');
     const iss=R.issues.filter(t=>t.level!=='info'), head=R.errors.length ? ['bad-t', `✕ Ошибок: ${R.errors.length}${R.accept ? ' — отклонения согласованы с заказчиком' : ' — КП не сохранится'}`]
       : R.warnings.length ? ['warn-t', '⚠ Предупреждений: '+R.warnings.length] : R.sections.length ? ['ok-t', '✓ Проверки пройдены'] : ['muted', 'нет данных для расчёта'];
-    return `<details class="stl-air calc"${R.errors.length && !R.accept ? ' open' : ''}><summary class="stl-air-h"><b>Расчёт станции</b><span class="${head[0]}">${head[1]}</span>${R.weak.length ? `<span class="muted">требует подтверждения: ${R.weak.length}</span>` : ''}<small class="muted">правила ${esc(R.version)}</small></summary>
+    const li=L=>L.map(a=>`<li>${esc(a)}</li>`).join(''), more=R.assumptions.length+R.weak.length+R.later.length;
+    return `<details class="stl-air calc stl-sp"${Spoiler.attr('calc:'+x.id, !!(R.errors.length && !R.accept))}><summary class="stl-air-h"><b>Расчёт станции</b><span class="${head[0]}">${head[1]}</span><small class="muted">формулы, коэффициенты, источники · правила ${esc(R.version)}</small></summary>
       <div class="calc-opts"><label class="stl-chk"><input type="checkbox" data-stl="calc" data-i="${i}"${o.calc ? ' checked' : ''}> в КП — приложение «Расчётная записка и состав станции»</label>
         ${R.errors.length ? `<label class="stl-chk"><input type="checkbox" data-req="${i}" data-rk="accept"${R.accept ? ' checked' : ''}> отклонения согласованы с заказчиком — КП сохраняется</label>` : ''}</div>
       ${iss.length ? `<ul class="stl-iss">${iss.map(t=>`<li class="${t.level}"><b>${lvl[t.level]}:</b> ${esc(t.text)}</li>`).join('')}</ul>` : ''}
-      ${sec || '<p class="muted">Заполните требования заказчика на вкладке «Состав станции» (производительность и давление или мощность нагрузки) — расчёт появится здесь.</p>'}
-      ${R.weak.length ? `<h5 class="calc-h">Требует подтверждения</h5><ul class="calc-l">${R.weak.map(w=>`<li>${esc(w.title)}${w.src && w.src!=='нет данных' ? ` <span class="muted">— ${esc(w.src)}</span>` : ''}</li>`).join('')}</ul>` : ''}
-      ${R.assumptions.length ? `<h5 class="calc-h">Допущения</h5><ul class="calc-l">${R.assumptions.map(a=>`<li>${esc(a)}</li>`).join('')}</ul>` : ''}
-      ${R.questions.length ? `<h5 class="calc-h">Вопросы заказчику</h5><ol class="calc-l">${R.questions.map(a=>`<li>${esc(a)}</li>`).join('')}</ol>` : ''}
-      <p class="stl-hint muted">Условия для расчёта (высота, влажность, запас, к каким условиям приведена производительность, нагрузка ДЭС) — в «Требованиях заказчика» на вкладке «Состав станции».
+      ${R.questions.length ? `<h5 class="calc-h">Нужно узнать у заказчика</h5><ol class="calc-l">${li(R.questions)}</ol>` : ''}
+      ${sec || '<p class="muted">Укажите производительность и давление (или мощность нагрузки) в «Подборе станции» — расчёт появится здесь.</p>'}
+      ${more ? `<details class="calc-more"${Spoiler.attr('calcm:'+x.id)}><summary>Допущения и данные «по умолчанию» (${more}) — расчёт принял их с запасом в пользу заказчика</summary>
+        ${R.assumptions.length ? `<h5 class="calc-h">Допущения</h5><ul class="calc-l">${li(R.assumptions)}</ul>` : ''}
+        ${R.weak.length ? `<h5 class="calc-h">Требует подтверждения</h5><ul class="calc-l">${R.weak.map(w=>`<li>${esc(w.title)}${w.src && w.src!=='нет данных' ? ` <span class="muted">— ${esc(w.src)}</span>` : ''}</li>`).join('')}</ul>` : ''}
+        ${R.later.length ? `<h5 class="calc-h">Можно уточнить у заказчика позже</h5><ul class="calc-l">${li(R.later)}</ul>` : ''}</details>` : ''}
+      <p class="stl-hint muted">Условия для расчёта (высота, влажность, запас, к каким условиям приведена производительность, нагрузка ДЭС) — в «Подборе станции» → «Все требования, условия расчёта и проверки».
         <button class="btn ghost sm" type="button" data-rulesdoc>Инженерные правила и источники (DOCX)</button></p></details>`;
   }
 
@@ -385,18 +399,18 @@ class StationCalc {
     if (!StationUi.on(x) || !isKit(x) || StationUi.opts(x).calc===false) return [];
     const R=this.run(x), f=CalcNote.f; if (!R.sections.length) return [];
     const ok=v=>v===true ? ' — выполняется' : v===false ? ' — НЕ выполняется' : '';
+    const mg=o=>o.margin==null ? '' : o.margin<0 && o.ok ? ' (в пределах погрешности данных)' : ' (запас '+f(o.margin, 1)+' %)';
     const req=StationReq.line(x), parts=kitParts(x).filter(p=>p.role!=='container' && String(p.name||'').trim()), c=kitContainer(x);
     const head={ name:'Приложение. Расчётная записка и состав станции', rows:[
       ...(req ? [{ k:'Требования заказчика', v:req }] : []),
       ...(c ? [{ k:'Контейнер', v:[ctypeOf(c.ctype).name, c.size, c.ins, c.climate].filter(Boolean).join(', ') }] : []),
       ...parts.map((p, n)=>({ k:`${n+1}. ${String(p.name).trim()}`, v:`${Math.max(1, +p.qty||1)} шт.`+(KitScope.of(p)==='asm' ? ' (сборщик контейнера)' : '') })),
       { k:'Инженерные правила', v:'версия '+R.version+' — значения коэффициентов и источники в документе «Инженерные правила и источники»' }] };
-    const out=[head, ...R.sections.map(s=>({ name:'Расчётная записка: '+s.title.toLowerCase(), rows:s.steps.map(o=>({ k:o.what, v:[o.formula, (o.data||[]).map(([k, v])=>k+': '+v).join('; '), (o.result||'')+ok(o.ok)+(o.margin!=null ? ' (запас '+f(o.margin, 1)+' %)' : '')].filter(Boolean).join('. ') })) }))];
-    const I=R.issues.filter(i=>i.level!=='info'); if (I.length) out.push({ name:'Расчётная записка: замечания', rows:I.map(i=>({ k:i.level==='error' ? 'Ошибка' : 'Предупреждение', v:i.text })) });
-    if (R.weak.length) out.push({ name:'Требует подтверждения', rows:R.weak.map(w=>({ k:w.title, v:w.src && w.src!=='нет данных' ? w.src : 'данные производителя / заказчика' })) });
+    const out=[head, ...R.sections.map(s=>({ name:'Расчётная записка: '+s.title.toLowerCase(), rows:s.steps.map(o=>({ k:o.what, v:[o.formula, (o.data||[]).map(([k, v])=>k+': '+v).join('; '), (o.result||'')+ok(o.ok)+mg(o)].filter(Boolean).join('. ') })) }))];
+    // заказчику — только расчёт и принятые допущения; внутренние списки («требует подтверждения», вопросы, предупреждения)
+    // остаются в программе; ошибки попадают в КП лишь как согласованные отклонения
     if (R.assumptions.length) out.push({ name:'Допущения расчёта', rows:R.assumptions.map((a, i)=>({ k:String(i+1), v:a })) });
-    if (R.questions.length) out.push({ name:'Вопросы к заказчику', rows:R.questions.map((a, i)=>({ k:String(i+1), v:a })) });
-    if (R.accept && R.errors.length) out.push({ name:'Отклонения', rows:[{ k:'Согласование', v:'Отклонения от расчёта согласованы с заказчиком' }] });
+    if (R.accept && R.errors.length) out.push({ name:'Отклонения, согласованные с заказчиком', rows:R.errors.map((e, i)=>({ k:String(i+1), v:e.text })) });
     return out;
   }
 }

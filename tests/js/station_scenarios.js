@@ -65,7 +65,7 @@ class Scenario {
     const steps=R.sections.flatMap(s=>s.steps.map(o=>({ sec:s.id, what:o.what, result:o.result||'', ok:o.ok, margin:o.margin, data:(o.data||[]).map(([k, v])=>k+': '+v) })));
     return { n:sc.n, name:sc.name, req:r, cls:(x.stLayout||{}).air||'', note,
       parts:kitParts(x).filter(p=>p.role!=='container').map(p=>({ name:p.name, qty:+p.qty||1, kind:StationEquip.kindOf(p), attrs:p.attrs||{}, rows:(p.rows||[]).filter(r=>r && r.k) })),
-      errors:R.errors.map(e=>e.text), warnings:R.warnings.map(e=>e.text), weak:R.weak.map(w=>w.title), assumptions:R.assumptions, questions:R.questions,
+      errors:R.errors.map(e=>e.text), warnings:R.warnings.map(e=>e.text), weak:R.weak.map(w=>w.title), assumptions:R.assumptions, questions:R.questions, later:R.later,
       steps, groups:G.map(g=>g.name), version:R.version };
   }
 }

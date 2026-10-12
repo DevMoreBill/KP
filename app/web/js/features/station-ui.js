@@ -65,8 +65,8 @@ class StationUi {
     const iss=[...plan.issues].sort((a, b)=>this.rank(a)-this.rank(b)), top=iss.filter(t=>t.level!=='info'), info=iss.filter(t=>t.level==='info');
     if (plan.level==='error' && plan.assumed) info.unshift({ level:'info', text:'Пока габариты части оборудования условные, КП сохранится, но контейнер может не подойти: впишите «Габариты» элементов на вкладке «Состав станции».' });
     else if (plan.level==='error') info.unshift({ level:'info', text:'КП не сохранится, пока оборудование не поместится: замените контейнер (кнопка выше) или измените состав.' });
-    // замечания — все; сведения — первые два, остальные по раскрытию (окно не перегружено)
-    const li=t=>`<li class="${t.level}">${esc(t.text)}</li>`, more=info.slice(2);
+    // замечания и сведения — под раскрывающимся блоком (раскрыт сам, если оборудование не помещается)
+    const li=t=>`<li class="${t.level}">${esc(t.text)}</li>`;
     const pics=plan.level!=='error' && g.ext, meta=this.meta(x, plan), photoOn=x.photo ? x.photo.gen==='st3d' : o.photo;
     if (pics && !EskdSheet.FONT_DATA) EskdFont.load().then(ok=>{ if (ok) renderEditor(); });   // чертёж — встроенным шрифтом, как в КП
     if (pics && typeof DrawPic!=='undefined' && DrawPic.pending(x)) DrawPic.load(x).then(ch=>{ if (ch) renderEditor(); });   // свои рисунки моделей
@@ -81,11 +81,6 @@ class StationUi {
     const sch=this.scheme(plan);
     return `<div class="ed-sec stl">
       <div class="stl-st ${head[0]}"><b>${head[1]}</b><span>${dims}${this.sizeNote(c, i)}</span>${plan.suggest ? this.fix(plan.suggest, i) : ''}</div>
-      ${top.length || info.length ? `<ul class="stl-iss">${[...top, ...info.slice(0, 2)].map(li).join('')}</ul>` : ''}
-      ${more.length ? `<details class="stl-more"><summary>Ещё сведения — ${more.length}</summary><ul class="stl-iss">${more.map(li).join('')}</ul></details>` : ''}
-      ${this.air(plan, x, i)}
-      ${this.systems(plan)}
-      ${typeof StationCalc!=='undefined' ? StationCalc.html(x, i) : ''}
       ${pics ? `<div class="stl-views">
         <figure class="v3d"><figcaption><b>3D-вид</b><label class="stl-chk"><input type="checkbox" data-stl="photo" data-i="${i}"${photoOn ? ' checked' : ''}> главное фото станции — в строке КП и на титуле</label></figcaption>
           <img src="${esc(src3)}" data-st3d="${esc(plan.hash||'')}" alt="3D-вид станции">${cutCab ? '<small class="stl-note">Стена прохода срезана вместе со шкафами на ней — их место на чертеже.</small>' : ''}</figure>
@@ -94,6 +89,11 @@ class StationUi {
         ${this.sheets(plan, meta, i, o)}
         ${sch ? `<figure class="dr"><figcaption><b>${esc(sch.title)}</b><label class="stl-chk"><input type="checkbox" data-stl="scheme" data-i="${i}"${o.scheme ? ' checked' : ''}> в КП — после чертежа</label></figcaption>
           <img src="${esc(this.url(sch.cls.svg(plan, meta)))}" alt="${esc(sch.name)}"></figure>` : ''}</div>` : ''}
+      ${top.length || info.length ? `<details class="stl-air stl-sp"${Spoiler.attr('iss:'+x.id, plan.level==='error')}><summary class="stl-air-h"><b>Замечания по компоновке</b>${top.length ? `<span class="warn-t">⚠ ${top.length}</span>` : '<span class="ok-t">✓ нет</span>'}${info.length ? `<span class="muted">сведений: ${info.length}</span>` : ''}</summary>
+        <ul class="stl-iss">${[...top, ...info].map(li).join('')}</ul></details>` : ''}
+      ${this.air(plan, x, i)}
+      ${this.systems(plan, x)}
+      ${typeof StationCalc!=='undefined' ? StationCalc.html(x, i) : ''}
       ${this.how()}</div>`;
   }
   static BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';   // пока вид рисуется
@@ -106,17 +106,17 @@ class StationUi {
   static rank(t){ return { error:0, warn:1, info:2 }[t.level] ?? 3; }
   /** системы контейнера по расчёту: электропитание (мощность, ток, вводной автомат), освещение, розетки, пожарная
    *  безопасность, отопление — коротко; подробно — в ТЗ на сборку */
-  static systems(plan){
+  static systems(plan, x){
     const W=plan.power, Lt=plan.light, K=plan.sockets, F=plan.fire, h=plan.heat; if (!W) return '';
     const f=StationPower.f, pl=StationFire.pl, row=(k, v)=>v ? `<li><b>${esc(k)}:</b> ${esc(v)}</li>` : '';
     const own=W.dgu ? 'собственные нужды' : 'расчётная';
-    return `<div class="stl-air stl-sys"><div class="stl-air-h"><b>Системы контейнера и электропитание</b><span class="muted">по расчёту — подробно в ТЗ на сборку</span></div><ul class="stl-sys-l">
+    return `<details class="stl-air stl-sys stl-sp"${Spoiler.attr('sys:'+(x ? x.id : ''))}><summary class="stl-air-h"><b>Системы контейнера и электропитание</b><span class="muted">${f(W.inst)} кВт, ввод ${W.breaker ? W.breaker+' А' : 'по проекту'} — подробно в ТЗ на сборку</span></summary><ul class="stl-sys-l">
       ${row('Мощность', `установленная (с системами контейнера) ${f(W.inst)} кВт, ${own} — ${f(W.kw)} кВт (${W.mode==='run' ? 'при работе' : 'зимой в простое'}); ток ${f(W.amp)} А при 3 × 400 В; вводной автомат — ${W.breaker ? W.breaker+' А' : 'по проекту'}`)}
       ${Lt && Lt.on ? row('Освещение', `${pl(Lt.n, ['светильник', 'светильника', 'светильников'])} по ${StationLight.LAMP.w} Вт — около ${Math.round(Lt.E)} лк на 0,8 м (норма ${Lt.lux}); аварийное — ${Lt.em} с блоком питания на 1 ч${Lt.floods ? `; прожекторов над дверями — ${Lt.floods}` : ''}`) : ''}
       ${K ? row('Розетки', `230 В — ${K.n230}, 380 В — ${K.n380}, ЯТП-0,25 (36 В) — ${K.ytp}; на высоте 1 м`) : ''}
       ${F ? row('Пожарная безопасность', `огнетушители ${StationFire.EXT} — ${F.ext}${F.auto ? `; модули «Буран-2,5» на потолке — ${F.mods} (по площади, объёму и геометрии распыла${F.rooms.some(q=>q.shade) ? ', над затенёнными зонами' : ''})` : ''}${F.ops ? '; щит ОПС у входа' : ''}${F.cat && F.cat!=='Д' ? `; категория ${F.cat}${F.zone ? ', зона '+F.zone : ''} — табличка на двери` : ''}`) : ''}
       ${h && h.on && h.n ? row('Отопление', `${h.n} × ${StationHeat.kw(h.kw)} кВт = ${StationHeat.kw(h.total)} кВт`) : ''}
-      ${plan.pipe ? row('Трубопровод', `${plan.pipe.lines.map(l=>`${l.name} — DN ${l.dn}`).join(', ')} по расчёту (${plan.pipe.why}, не более ${StationFire.f1(plan.pipe.lines[0].v)} м/с)${plan.pipe.small ? ` — в составе DN ${plan.pipe.set}, мало` : ''}`) : ''}</ul></div>`;
+      ${plan.pipe ? row('Трубопровод', `${plan.pipe.lines.map(l=>`${l.name} — DN ${l.dn}`).join(', ')} по расчёту (${plan.pipe.why}, не более ${StationFire.f1(plan.pipe.lines[0].v)} м/с)${plan.pipe.small ? ` — в составе DN ${plan.pipe.set}, мало` : ''}`) : ''}</ul></details>`;
   }
   /** подготовка воздуха: цепочка по ходу воздуха, класс чистоты (ISO 8573-1), чего не хватает — подобрать в каталоге */
   static air(plan, x, i){
@@ -125,10 +125,10 @@ class StationUi {
     const chain=a.chain.map(c=>`<span class="stl-node${c.guess ? ' guess' : ''}"${c.guess ? ' title="Ступень фильтра не указана — место выбрано по виду осушителя"' : ''}>${esc(c.text)} <small>поз. ${c.pos}</small></span>`).join('<span class="stl-arr">→</span>');
     const cls=`<label class="f stl-cls"><span>Класс чистоты воздуха по ISO 8573-1 (частицы.вода.масло)</span><select data-stl="air" data-i="${i}"><option value="">не задан — проверка по составу</option>${AirChain.options(o.air).map(([v, t])=>`<option value="${esc(v)}"${o.air===v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`;
     const recs=a.recs.map((r, k)=>`<li><span><b>${esc(r.title)}</b> — ${esc(r.why)}</span><button class="btn sm" type="button" data-a="stlRec" data-i="${i}" data-k="${k}">${r.replace ? 'Заменить — подобрать в каталоге' : 'Подобрать в каталоге'}</button></li>`).join('');
-    return `<div class="stl-air"><div class="stl-air-h"><b>Подготовка воздуха</b>${a.q ? `<span class="muted">компрессоры — ${m3(a.q)} м³/мин при ${m3(a.bar)} бар</span>` : ''}</div>
+    return `<details class="stl-air stl-sp"${Spoiler.attr('air:'+x.id)}><summary class="stl-air-h"><b>Подготовка воздуха</b>${a.recs.length ? `<span class="warn-t">⚠ не хватает: ${a.recs.length}</span>` : '<span class="ok-t">✓ цепочка полная</span>'}${a.q ? `<span class="muted">компрессоры — ${m3(a.q)} м³/мин при ${m3(a.bar)} бар</span>` : ''}</summary>
       <div class="stl-chain">${chain}<span class="stl-arr">→</span><span class="stl-node">потребителю</span></div>
       ${a.chain.some(c=>c.guess) ? '<p class="muted stl-hint">Пунктиром — фильтр, у которого не указана ступень очистки: место выбрано по виду осушителя. Укажите «Ступень очистки» в характеристиках фильтра (предварительная, тонкая, сверхтонкая, угольный).</p>' : ''}
-      ${cls}${recs ? `<p class="stl-rec-h">Не хватает в составе:</p><ul class="stl-recs">${recs}</ul>` : ''}</div>`;
+      ${cls}${recs ? `<p class="stl-rec-h">Не хватает в составе:</p><ul class="stl-recs">${recs}</ul>` : ''}</details>`;
   }
   /** подпись размера блок-контейнера: подобран или задан вручную (вернуть подбор) */
   static sizeNote(c, i){

@@ -11,9 +11,10 @@
 Для расчёта станции — ещё: к каким условиям приведена производительность (FAD или нормальные м³), высота над уровнем
 моря, влажность, запас производительности; ДЭС — режим (основной или резервный источник), средняя нагрузка,
 наибольший двигатель и способ его пуска, категория надёжности; общие — гарантия, срок поставки, допустимые и
-недопустимые производители. Разные значения одного параметра в ТЗ — противоречие (conflicts). TzReview — анкета
-по ТЗ: у каждого параметра статус «найдено в ТЗ» / «принято по умолчанию (почему)» / «отсутствует» / «противоречие»
-и вопросы заказчику.
+недопустимые производители. Разные значения одного параметра в ТЗ — противоречие (conflicts): принимается более
+требовательное значение (станция с запасом в пользу заказчика), заказчика не спрашиваем. TzReview — анкета по ТЗ: у
+каждого параметра статус «найдено в ТЗ» / «принято по умолчанию (почему)» / «отсутствует» / «противоречие»; вопросы
+заказчику — только без ответа на которые станцию не подобрать, остальное — «можно уточнить позже».
 """
 import re
 
@@ -26,6 +27,7 @@ END_LETTER = r'(?![А-Яа-яЁёA-Za-z0-9])'
 
 class TzParse:
     FIRE = ('А', 'Б', 'В1', 'В2', 'В3', 'В4', 'Г', 'Д')
+    LOW_WINS = ('tmin',)               # противоречие: здесь требовательнее меньшее значение (холоднее), в остальных — большее
 
     def __init__(self, text):
         self.text = re.sub(r'[ \t\xa0]+', ' ', str(text or ''))
@@ -35,12 +37,12 @@ class TzParse:
 
     @classmethod
     def parse(cls, text):
-        """{'kind', 'req': {…}, 'found': [{key, label, value, src, page}], 'conflicts', 'fields', 'questions'}"""
+        """{'kind', 'req': {…}, 'found': [{key, label, value, src, page}], 'conflicts', 'fields', 'questions', 'later'}"""
         p = cls(text)
         p.run()
         rv = TzReview(p)
         return {'kind': p.req.get('kind', ''), 'req': p.req, 'found': p.found, 'conflicts': p.conflicts,
-                'fields': rv.fields(), 'questions': rv.questions()}
+                'fields': rv.fields(), 'questions': rv.questions(), 'later': rv.later()}
 
     # ---- помощники
     @staticmethod
@@ -63,14 +65,23 @@ class TzParse:
         self.found.append({'key': key, 'label': label, 'value': value, 'src': self.src(m) if m else '', 'page': self.page(m)})
 
     def conflict(self, key, label, hits):
-        """разные значения одного параметра в ТЗ: hits — [(значение, совпадение)]; одинаковые (до 2 %) — не противоречие"""
+        """разные значения одного параметра в ТЗ: hits — [(значение, совпадение)]; одинаковые (до 2 %) — не противоречие.
+        Принимается более требовательное значение (в пользу заказчика: больше производительность, давление, мощность, жарче
+        лето, холоднее зима) — в требованиях и в найденном (с цитатой); заказчика не спрашиваем"""
         vals = []
         for v, m in hits:
             if v is None or any(abs(v - x[0]) <= 0.02 * max(abs(v), abs(x[0]), 1e-9) for x in vals):
                 continue
             vals.append((v, m))
         if len(vals) > 1:
-            self.conflicts.append({'key': key, 'label': label, 'values': [{'value': v, 'src': self.src(m), 'page': self.page(m)} for v, m in vals[:4]]})
+            v, m = (min if key in self.LOW_WINS else max)(vals, key=lambda x: x[0])
+            if key in self.req:
+                self.req[key] = v
+                for f in self.found:
+                    if f['key'] == key:
+                        f.update(value=v, src=self.src(m), page=self.page(m))
+            self.conflicts.append({'key': key, 'label': label, 'value': v,
+                                   'values': [{'value': x, 'src': self.src(y), 'page': self.page(y)} for x, y in vals[:4]]})
 
     def sentence(self, m):
         """предложение (пункт) с совпадением — от начала предложения до конца совпадения"""
@@ -431,9 +442,11 @@ class TzParse:
 
 class TzReview:
     """Анкета по ТЗ для расчёта станции: каждый нужный параметр — статус found (найдено в ТЗ, с цитатой и страницей),
-    default (принято по умолчанию — значение и почему), missing (отсутствует), conflict (в ТЗ разные значения); вопросы
-    заказчику — по отсутствующим, принятым по умолчанию и противоречивым параметрам."""
+    default (принято по умолчанию — значение и почему), missing (отсутствует), conflict (в ТЗ разные значения — принято
+    более требовательное). Вопросы заказчику (questions) — только по параметрам, без которых станцию не подобрать (NEED);
+    остальное (later) — «можно уточнить позже»: расчёт уже взял значение по умолчанию с запасом в пользу заказчика."""
     STATUS = {'found': 'найдено в ТЗ', 'default': 'принято по умолчанию', 'missing': 'отсутствует', 'conflict': 'противоречие'}
+    NEED = {'comp': ('flow', 'pressure'), 'dgu': ('kw',), 'pump': ('q', 'head')}
     # ключ, подпись, значение по умолчанию (None — нет: отсутствует), почему так, вопрос заказчику (None — не спрашивать)
     COMMON_T = [
         ('tmin', 'Наружный воздух от, °C', None, '', 'Минимальная температура наружного воздуха на площадке (зимой), °C.'),
@@ -497,8 +510,9 @@ class TzReview:
         for key, label, dflt, why, _ in self.spec():
             f, c = self.byKey.get(key), self.conf.get(key)
             if c:
-                out.append({'key': key, 'label': label, 'status': 'conflict', 'value': f['value'] if f else None, 'values': c['values'],
-                            'why': 'в ТЗ разные значения — принято первое, уточните'})
+                out.append({'key': key, 'label': label, 'status': 'conflict', 'value': f['value'] if f else c.get('value'), 'values': c['values'],
+                            'why': 'в ТЗ разные значения — принято %s %s (с запасом в пользу заказчика)' % (
+                                'меньшее' if key in TzParse.LOW_WINS else 'большее', self.fmt(f['value'] if f else c.get('value')))})
             elif f:
                 out.append({'key': key, 'label': label, 'status': 'found', 'value': f['value'], 'src': f['src'], 'page': f.get('page')})
             elif key == 'air' and 'pdp' in self.p.req:
@@ -516,13 +530,20 @@ class TzReview:
         return str(v).replace('.', ',').replace('-', '−')
 
     def questions(self):
-        ask = {key: q for key, _, _, _, q in self.spec()}
-        out = []
+        """обязательные вопросы: без ответа станцию не подобрать"""
+        need = self.NEED.get(self.kind, ())
+        return [q for key, _, _, _, q in self.spec() if key in need and q
+                for f in self.fields() if f['key'] == key and f['status'] == 'missing']
+
+    def later(self):
+        """можно уточнить позже: параметры по умолчанию и отсутствующие (кроме обязательных), противоречия — подтвердить
+        принятое значение"""
+        ask, need, out = {key: q for key, _, _, _, q in self.spec()}, self.NEED.get(self.kind, ()), []
         for f in self.fields():
             q = ask.get(f['key'])
             if f['status'] == 'conflict':
                 vals = '; '.join('%s%s' % (self.fmt(v['value']), ' (стр. %s)' % v['page'] if v.get('page') else '') for v in f['values'])
-                out.append('%s: в ТЗ указаны разные значения — %s. Какое верное?' % (f['label'], vals))
-            elif f['status'] in ('missing', 'default') and q:
+                out.append('%s: в ТЗ разные значения — %s; принято %s. Подтвердите.' % (f['label'], vals, self.fmt(f['value'])))
+            elif f['status'] in ('missing', 'default') and q and f['key'] not in need:
                 out.append(q)
         return out

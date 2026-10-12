@@ -63,7 +63,7 @@ def run_scenarios():
     data = []
     for n, name, tz, edit in SCENARIOS:
         r = TzParse.parse(tz)
-        data.append({'n': n, 'name': name, 'req': r['req'], 'edit': edit, 'tz': {'fields': r['fields'], 'questions': r['questions'], 'conflicts': r['conflicts']}})
+        data.append({'n': n, 'name': name, 'req': r['req'], 'edit': edit, 'tz': {'fields': r['fields'], 'questions': r['questions'], 'later': r['later'], 'conflicts': r['conflicts']}})
     node = shutil.which('node')
     if not node:
         return data, None
@@ -200,15 +200,18 @@ class StationScenarios(unittest.TestCase):
     def test_10_conflict(self):
         o = self.sc(10)
         self.assertEqual([c['key'] for c in o['tz']['conflicts']], ['flow'])
-        self.assertTrue(any('разные значения — 10; 12' in q for q in o['tz']['questions']))
-        self.assertEqual(o['req']['flow'], '10', 'принято первое — менеджер уточняет')
+        self.assertTrue(any('разные значения — 10; 12; принято 12' in q for q in o['tz']['later']))
+        self.assertEqual(o['tz']['questions'], [], 'заказчика не дёргаем')
+        self.assertEqual(o['req']['flow'], '12', 'принято большее — в пользу заказчика')
 
     def test_11_minimal(self):
         o = self.sc(11)
         st = {f['key']: f['status'] for f in o['tz']['fields']}
         self.assertEqual((st['flow'], st['pressure'], st['tmax']), ('found', 'missing', 'missing'))
         self.assertTrue(any('давление' in q for q in o['questions']))
-        self.assertTrue(any('Максимальная температура' in q for q in o['questions']))
+        # остальное заказчика не дёргает: по умолчанию с запасом, вопрос — «можно уточнить позже»
+        self.assertTrue(any('Максимальная температура' in q for q in o['later']))
+        self.assertFalse(any('Максимальная температура' in q for q in o['questions']))
         self.assertEqual(o['errors'], [], 'без данных — не ошибка')
 
     def test_12_manual_edit(self):

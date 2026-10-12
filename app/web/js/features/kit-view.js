@@ -117,33 +117,26 @@ class StationReq {
     return [...main, w>0 ? `${w} раб.${rs>0 ? ' + '+rs+' рез.' : ''}` : rs>0 ? 'резерв N+'+rs : '', t, this.num(r.alt)>0 ? u(r.alt, 'м над уровнем моря') : '', ...opt, r.src && r.src.name ? 'по ТЗ «'+r.src.name+'»' : ''].filter(Boolean).join(' · ');
   }
 
-  /** блок «Требования заказчика»: свёрнут — строка и проверки; развёрнут — поля */
-  static html(x, i){
-    const r=this.of(x), k=this.kind(x), open=KitView.reqOpen.has(x.id), P=`items.${i}.req`, ck=this.checks(x), ln=this.line(x);
+  /** «Все требования, условия расчёта и проверки» — под раскрывающимся блоком «Подбора станции» (StationQuick): проверки
+   *  состава, итог подбора, остальные требования ТЗ (главные — в «Подборе станции»), условия расчёта, особые требования */
+  static details(x, i){
+    const r=this.of(x), k=this.kind(x), P=`items.${i}.req`, ck=this.checks(x);
     const fld=(key, label, ph, mode='decimal')=>`<label class="f"><span>${label}</span><input type="text" inputmode="${mode}" data-p="${P}.${key}" data-req="${i}" value="${esc(r[key]??'')}" placeholder="${esc(ph||'')}" autocomplete="off"></label>`;
     const sel=(key, label, list, cur)=>`<label class="f"><span>${label}</span><select data-req="${i}" data-rk="${key}">${list.map(([v, l])=>`<option value="${esc(v)}"${String(cur)===String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
-    const head=`<div class="kr-h"><b>Требования заказчика</b><span class="${ln ? '' : 'muted'}">${ln ? esc(ln) : 'не заданы — загрузите ТЗ или впишите'}</span>
-      <span class="kr-a">${typeof TzImport!=='undefined' ? `<button class="btn sm" type="button" data-a="tzLoad" data-i="${i}">Загрузить ТЗ заказчика</button>` : ''}<button class="btn ghost sm" type="button" data-a="reqOpen" data-i="${i}" aria-expanded="${open}">${open ? 'Свернуть' : 'Изменить'}</button></span></div>
-      ${ck.length ? `<div class="kr-ck">${ck.map(c=>`<span class="chip sm ${c.ok ? 'on' : 'warn'}">${c.ok ? '✓' : '⚠'} ${esc(c.text)}</span>`).join('')}</div>` : ''}
+    const head=`${ck.length ? `<div class="kr-ck">${ck.map(c=>`<span class="chip sm ${c.ok ? 'on' : 'warn'}">${c.ok ? '✓' : '⚠'} ${esc(c.text)}</span>`).join('')}</div>` : ''}
       ${r.pick ? `<p class="kr-pick"><span>${esc(r.pick)}</span><button class="icon sm" type="button" data-a="reqPickX" data-i="${i}" title="Скрыть" aria-label="Скрыть итог подбора">✕</button></p>` : ''}`;
-    if (!open) return `<div class="kit-req">${head}</div>`;
-    const cls=StationUi.opts(x).air;
-    const main=k==='comp' ? fld('flow', 'Производительность, м³/мин', 'например, 10')+fld('pressure', 'Давление, бар', '8')
-        +`<label class="f"><span>Класс воздуха ISO 8573-1</span><select data-stl="air" data-i="${i}"><option value="">не задан</option>${AirChain.options(cls).map(([v, t])=>`<option value="${esc(v)}"${cls===v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`
-        +sel('recv', 'Ресивер', this.RECV, this.recv(x))
-      : k==='dgu' ? fld('kw', 'Мощность, кВт', 'например, 200')+fld('hours', 'Работа от бака, ч', '16', 'numeric')
-      : k==='pump' ? fld('q', 'Подача, м³/ч', 'например, 50')+fld('head', 'Напор, м', '40') : '';
+    const main=k==='comp' ? sel('recv', 'Ресивер', this.RECV, this.recv(x))+fld('recvVol', 'Ресивер по ТЗ, л', 'по расчёту', 'numeric') : '';
     return `<div class="kit-req open">${head}
-      <div class="kr-g">${main}${sel('work', 'Рабочих агрегатов', this.WORK, r.work||'')}${sel('reserve', 'Резерв', this.RES, r.reserve||'')}
+      <div class="kr-g">${main}${sel('work', 'Рабочих агрегатов', this.WORK, r.work||'')}
         ${fld('tmin', 'Наружный воздух от, °C', '−45', 'text')}${fld('tmax', 'до, °C', '+40', 'text')}
         ${sel('fire', 'Категория помещения (СП 12.13130)', this.FIRE.map(f=>[f, f+(f===this.fireDef(x) ? ' (ориент.)' : '')]), this.fire(x))}
         ${fld('noise', 'Шум на рабочем месте, не более дБА', '80', 'numeric')}</div>
-      ${k==='comp' || k==='dgu' ? `<details class="kr-calc"${r.basis || r.alt || r.rh || r.margin || r.tin || r.load || r.motor || r.start || r.mode ? ' open' : ''}><summary>Условия для расчёта станции</summary><div class="kr-g">${k==='comp'
+      ${k==='comp' || k==='dgu' ? `<details class="kr-calc"${Spoiler.attr('cond:'+x.id)}><summary>Условия для расчёта станции</summary><div class="kr-g">${k==='comp'
         ? sel('basis', 'Производительность приведена', this.BASIS, r.basis||'fad')+fld('margin', 'Запас производительности, %', '0 — по ТЗ')+fld('alt', 'Высота над уровнем моря, м', '0', 'numeric')
           +fld('rh', 'Влажность воздуха, % (для н. м³)', '100 — с запасом', 'numeric')+fld('tin', 'Воздух на входе в осушитель, °C', 'по расчёту', 'text')
-        : sel('mode', 'Режим ДЭС', this.MODE, r.mode||'prime')+fld('load', 'Средняя нагрузка за сутки, %', '100')+fld('motor', 'Наибольший двигатель нагрузки, кВт', '—')
+        : fld('load', 'Средняя нагрузка за сутки, %', '100')+fld('motor', 'Наибольший двигатель нагрузки, кВт', '—')
           +sel('start', 'Пуск этого двигателя', this.START, r.start||'')+fld('alt', 'Высота над уровнем моря, м', '0', 'numeric')}</div>
-        <p class="muted kr-hint">Не заданы — в расчёте принимаются значения по умолчанию, они попадают в «Требует подтверждения» и в вопросы заказчику (вкладка «Компоновка» → «Расчёт станции»).</p></details>` : ''}
+        <p class="muted kr-hint">Не заданы — расчёт берёт значения с запасом в пользу заказчика; они перечислены в «Расчёте станции» (вкладка «Компоновка»).</p></details>` : ''}
       ${k==='comp' ? `<label class="chk kr-out"><input type="checkbox" data-req="${i}" data-rk="recvOut"${this.recvOut(x) ? ' checked' : ''}> Ресивер после подготовки — снаружи, на площадке у торца <span class="muted">(ФНП ОРПД, п. 65)</span></label>` : ''}
       <div class="kr-opts">${this.OPTS.filter(([, , kinds])=>kinds.includes(k)).map(([key, label])=>`<label class="chk"><input type="checkbox" data-req="${i}" data-rk="${key}"${r[key] ? ' checked' : ''}> ${esc(label)}</label>`).join('')}</div>
       <label class="chk" title="${esc(SupplyDocs.list(x).join('; '))}"><input type="checkbox" data-req="${i}" data-rk="docs"${this.docs(x) ? ' checked' : ''}> Документы при поставке — в КП <span class="muted">(паспорта, декларации ТР ТС 010, 004, 020, 032, исполнительная документация)</span></label>
@@ -190,7 +183,6 @@ class SupplyDocs {
 class KitView {
   static open = new Set();       // раскрытые строки (id элементов)
   static SYS = /отоплен|вентиляц|освещен|электроснабж|сигнализац|пожаротуш|шумо/i;   // как системы контейнера — не элементы
-  static reqOpen = new Set();    // раскрытые требования (id станций)
   static pos = new Map();        // id элемента → номер позиции на чертеже (при отрисовке вкладки)
 
   static render(x, i){
@@ -202,7 +194,7 @@ class KitView {
     const sups=[...new Set([...(typeof DL!=='undefined' && DL.sups || []).map(s=>s.name), ...catCache.map(c=>attrsOf(c).maker)].filter(Boolean))].slice(0, 400);
     this.pos=new Map(StationEquip.list(parts).filter(e=>e.pos).map(e=>[e.id, e.pos]));   // номера позиций на чертеже
     return `<div class="ed-sec kit2">
-      ${st ? StationReq.html(x, i) : ''}
+      ${st ? StationQuick.html(x, i) : ''}
       ${cont ? this.cont(x, i, cont, parts.indexOf(cont)) : this.pickCont(i)}
       ${st && !main ? `<div class="kit-todo"><b>${esc(st.mainLabel)}</b><span class="muted">Основное оборудование станции — из каталога (с описанием, характеристиками, фото и закупкой) или своё.</span>
         <div class="row"><button class="btn primary" type="button" data-a="kitMain" data-i="${i}">Выбрать в каталоге</button><button class="btn ghost" type="button" data-a="kitAdd" data-i="${i}" data-n="${esc(st.mainLabel)}" data-role="main">+ Своё</button></div></div>` : ''}
@@ -304,7 +296,6 @@ class KitView {
     const it=S.items[i]; if (!it) return false; const P=kitParts(it), p=P[+b.dataset.j];
     if (a==='kitOpen' && p){ if (this.open.has(p.id)) this.open.delete(p.id); else this.open.add(p.id); renderEditor(); return 'async'; }
     if (a==='kitBy' && p){ p.by=b.dataset.by==='our' ? 'our' : 'asm'; if (p.by===KitScope.def(p)) delete p.by; kitSync(it); return true; }
-    if (a==='reqOpen'){ if (this.reqOpen.has(it.id)) this.reqOpen.delete(it.id); else this.reqOpen.add(it.id); renderEditor(); return 'async'; }
     if (a==='reqPickX'){ delete StationReq.ensure(it).pick; persist(); renderEditor(); return 'async'; }
     return false;
   }

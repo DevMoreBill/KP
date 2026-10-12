@@ -80,7 +80,7 @@ document.addEventListener('click', async e=>{
     case 'galAdd': return pickGallery(i, b.dataset.slot||'');
     case 'galPage': return galFromPage(i, e.shiftKey);
     case 'kitAdd': case 'kitCat': case 'kitMain': case 'kitCont': case 'kitSys': case 'kitPreset': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (kitAction(a, i, b)==='async') return; break; }
-    case 'kitOpen': case 'kitBy': case 'reqOpen': case 'reqPickX': { const r=KitView.act(a, i, b); if (r==='async' || !r) return; break; }
+    case 'kitOpen': case 'kitBy': case 'reqPickX': { const r=KitView.act(a, i, b); if (r==='async' || !r) return; break; }
     case 'drawPick': return DrawPic.pick(i, j, b.dataset.v);
     case 'tzOut': return TzOut.download(i);
     case 'tzLoad': return TzImport.pick(i);
