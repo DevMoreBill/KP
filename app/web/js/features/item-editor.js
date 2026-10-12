@@ -18,10 +18,16 @@ function optsBlock(x,i){
    ${opts.length?'<span class="muted">Пустая цена — «включено в стоимость».</span>':''}</div></div>`;
 }
 
+// варианты выбора параметра позиции: значение не из списка категории («2/1» в ступенях Remeza, «Прямой» в приводе) остаётся
+// в списке — иначе окно показало бы «—» и при сохранении карточки стёрло бы его
+class AttrChoices {
+  static list(f, val){ const v=String(val??''), L=(f.values||[]).map(String); return v && !L.includes(v) ? [...L, v] : L; }
+}
+
 function attrsBlock(x,i){
   const P=`items.${i}.attrs`, a=x.attrs||{}, auto=attrsOf(x), cat=auto.cat, t=typeById(cat);
   const inp=(f)=>{ const val=a[f.key]??''; const ph=auto[f.key]!=null&&auto[f.key]!==''?String(auto[f.key]):'';
-    if (f.values&&f.values.length) return `<label class="f"><span>${esc(f.label)}${f.unit?', '+esc(f.unit):''}</span><select data-p="${P}.${f.key}"><option value="">${ph?esc(ph)+' (авто)':'—'}</option>${f.values.map(v=>`<option${String(val)===String(v)?' selected':''}>${esc(v)}</option>`).join('')}</select></label>`;
+    if (f.values&&f.values.length) return `<label class="f"><span>${esc(f.label)}${f.unit?', '+esc(f.unit):''}</span><select data-p="${P}.${f.key}"><option value="">${ph?esc(ph)+' (авто)':'—'}</option>${AttrChoices.list(f,val).map(v=>`<option${String(val)===String(v)?' selected':''}>${esc(v)}</option>`).join('')}</select></label>`;
     return `<label class="f"><span>${esc(f.label)}${f.unit?', '+esc(f.unit):''}</span><input type="text" ${f.num?'inputmode="decimal"':''} data-p="${P}.${f.key}" value="${esc(val)}" placeholder="${esc(ph)}" autocomplete="off"></label>`; };
   // параметры — по группам категории (основные, двигатель, комплектация, применимость…)
   const grp=new Map(); for (const f of t.fields){ const g=f.group||'Основные'; if(!grp.has(g)) grp.set(g,[]); grp.get(g).push(f); }
