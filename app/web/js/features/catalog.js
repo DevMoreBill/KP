@@ -37,7 +37,7 @@ function fillFromCat(it, x){
   if (!x.hint) x={...x, hint:CoverHint.of(x)};
   if (!(x.groups||[]).length) x={...x, groups:groupsFromAttrs(x)};
   Object.assign(it,{ name:x.name||it.name, spec:x.spec||'', price:x.price||0, pageTitle:x.pageTitle||'', photoCaption:x.photoCaption||'',
-    features:JSON.parse(JSON.stringify(x.features||[])), groups:JSON.parse(JSON.stringify(x.groups||[])), hint:x.hint||null, catId:x.id, photo:x.photo||null, logo:x.logo||null,
+    features:JSON.parse(JSON.stringify(CatFeatures.forKp(x.features))), groups:JSON.parse(JSON.stringify(x.groups||[])), hint:x.hint||null, catId:x.id, photo:x.photo||null, logo:x.logo||null,
     attrs:{...(x.attrs||{})}, options:JSON.parse(JSON.stringify(x.options||[])).map(o=>({...o,id:uid(),qty:o.unit==='усл.'?1:(+it.qty||1)})) });
   delete it._priceText; delete it._costText;
   // другое оборудование — без следов прежнего: адрес страницы, фото со страницы, черновик автозаполнения

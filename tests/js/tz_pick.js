@@ -412,6 +412,8 @@ class Check {
     assert.deepStrictEqual(KitPart.dimsOf({}, [{ k:'Габариты Д × Ш × В', v:'1200 × 800 × 1500 мм' }, { k:'Масса', v:'350 кг' }]), { size:'1200 × 800 × 1500', mass:350 });
     assert.deepStrictEqual(KitPart.dimsOf({}, [{ k:'Длина, м', v:'2,5' }, { k:'Ширина, м', v:'1,2' }, { k:'Высота, м', v:'1,9' }, { k:'Вес брутто', v:'900' }]), { size:'2500 × 1200 × 1900' });
     assert.deepStrictEqual(KitPart.dimsOf({}, [{ k:'Габариты радиатора (от пола, В, Ш)', v:'526 мм, 580 × 535 мм' }, { k:'Длина', v:'2600 мм' }, { k:'Ширина', v:'1000 мм' }, { k:'Высота', v:'1280 мм' }]), { size:'2600 × 1000 × 1280' }, 'строка радиатора ДГУ — не габариты установки');
+    assert.deepStrictEqual(CatFeatures.forKp([{ label:'Назначение', text:'а' }, { label:'Опции по прайсу поставщика', text:'Опция — 1 000 EUR', feed:true, feedOpts:true }]).map(f=>f.label), ['Назначение'], 'блок цен прайса поставщика — не в КП');
+    assert.ok(!/1 000 EUR/.test(KitPart.fromCat({ id:'c1', name:'К', attrs:{ cat:'comp_screw' }, features:[{ label:'Назначение', text:'Компрессор.' }, { label:'Опции по прайсу поставщика', text:'Опция — 1 000 EUR', feedOpts:true }] }).desc), 'описание элемента станции — без цен прайса');
     assert.deepStrictEqual(KitPart.dimsOf({ size:'1 × 1 × 1', mass:5 }, [{ k:'Габариты', v:'9 × 9 × 9' }, { k:'Масса', v:'9' }]), { size:'1 × 1 × 1', mass:5 }, 'заполненное в каталоге не меняется');
   });
 
