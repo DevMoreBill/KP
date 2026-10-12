@@ -141,7 +141,7 @@ class StScene {
     // ДГУ с дверью-жалюзи или ворота для демонтажа в дальнем торце: снаружи — вид спереди справа (на этот торец)
     this.az=this.closed && (plan.dguDoor || (plan.gates && plan.gates.wall==='right' && !plan.gates.sea)) ? -StCam.AZ : StCam.AZ;
     // проёмы стены со стороны зрителя: сервисные двери; снаружи — ещё дверь оператора и дверь отсека топливного бака
-    this.openF=this.cut ? [] : this.doorsF.map(d=>({ x0:d.x0, x1:d.x1, h:d.h, leaves:d.leaves, kind:'service', open:false }));
+    this.openF=this.cut ? [] : this.doorsF.map(d=>({ x0:d.x0, x1:d.x1, h:d.h, leaves:d.leaves, kind:d.kind||'service', open:false }));
     if (this.closed){ const D=StationLayout.DOOR.h, en=plan.entry;
       if (en && en.wall==='front') this.openF.push({ x0:en.x0, x1:en.x1, h:en.h, leaves:1, kind:'entry' });
       if (plan.fuel) this.openF.push({ x0:plan.fuel.door.x0, x1:plan.fuel.door.x1, h:D, leaves:1, kind:'tank' });
@@ -395,12 +395,14 @@ class StScene {
     q(x, this.ox+this.Li, b, c);
   }
   /** ворота в торце блок-контейнера (два ряда оборудования — дверь в торце) */
-  /** в торцах блок-контейнера: распашные ворота для демонтажа (plan.gates) и одностворчатая дверь оператора (plan.entry в
-   *  торце) — полотна поверх торцевой стены, ручки; у морского — его штатные двери (cargoDoors) */
+  /** в торцах блок-контейнера: распашные ворота для демонтажа (plan.gates, в створке — калитка wicket) и одностворчатые двери
+   *  оператора (plan.entry в торце, вторая — plan.exit) — полотна поверх торцевой стены, ручки; у морского — его штатные двери
+   *  (cargoDoors) */
   endDoors(){
     const P=this.plan, G=P.gates, en=P.entry;
     if (G && !G.sea) this.endLeaves(G, G.wall, 2);
     if (en && en.wall==='left' && !en.sea) this.endLeaves(en, 'left', 1);
+    if (P.exit) this.endLeaves(P.exit, P.exit.wall, 1);
   }
   /** створки в торце side ('left' — x = 0, 'right' — x = Le): проём d.y0…d.y1 (мм внутри), высота d.h от пола; n — створок */
   endLeaves(d, side, n){
@@ -412,6 +414,9 @@ class StScene {
     const [ha, hb]=X(0.025, 0.055), yh=n>1 ? [y0+w/2-0.08, y0+w/2+0.06] : [y0+w-0.12];
     for (const y of yh) dk.box(ha, y, z0+0.95, hb, y+0.02, z0+1.15, 0.004);   // ручки (у ворот — запорные, по сторонам притвора)
     if (n>1){ const mt=this.M(StMat.metal('#c3c8cd', 0.3)), [ba, bb]=X(0.04, 0.06); for (const y of [y0+w/2-0.07, y0+w/2+0.05]) mt.box(ba, y, z0+0.08, bb, y+0.02, z1-0.08, 0.004); }   // запорные штанги
+    if (d.wicket){ const ww=d.wicket.w/1000, wh=d.wicket.h/1000, ya=y0+0.08, yb=ya+ww, za=z0+0.06, zb=za+wh, [ka, kb]=X(0.025, 0.03);   // калитка в створке: контур, ручка
+      for (const [p, q, r, t] of [[ya, yb, za, za+0.012], [ya, yb, zb-0.012, zb], [ya, ya+0.012, za, zb], [yb-0.012, yb, za, zb]]) dk.box(ka, p, r, kb, q, t);
+      dk.box(ha, yb-0.1, z0+0.95, hb, yb-0.08, z0+1.15, 0.004); }
   }
 
   /** внутри: обшивка стен и потолка, пол из рифлёного листа, разрез стены со стороны зрителя (утеплитель) */
@@ -503,13 +508,26 @@ class StScene {
     this.panel(this.M(StMat.glow('#8fc7ff', 1.6)), it, 0.75, 0.87, 0.73, 0.85, 0.014, 0);
     const eb=this.front(it, 0.91, 0.72, 0.012); this.M(StMat.paint('#c0262d', 0.35)).tube(eb, StV.add(eb, [0, this.side(it)*0.025, 0]), 0.02, 14);
     this.grille(it, 0.38, 0.62, 0.15, 0.6, 8); this.grille(it, 0.2, 0.8, 0.2, 0.75, 9, -1); this.grille(it, 0.2, 0.8, 0.2, 0.75, 9, 1);
-    // выход горячего воздуха вверху и воздуховод к задней стене под потолком
+    // выход горячего воздуха вверху: воздуховод с клапаном рециркуляции — к жалюзи в задней стене (короб у стены по размеру
+    // жалюзи) или вверх через крышу (колпак — StOutfit.roofHood)
     const cx=(x0+x1)/2, cy=(y0+y1)/2, dw=Math.min((x1-x0)*0.45, 0.9), dd=Math.min((y1-y0)*0.45, 0.65), dh=Math.min(0.38, this.ceil-0.09-z1-0.06);
     dk.box(cx-dw/2, cy-dd/2, z1, cx+dw/2, cy+dd/2, z1+0.006);
-    if (dh>=0.18){ const g=this.M(StMat.metal(StScene.GALV, 0.42)), zt=this.ceil-0.09, zd=zt-dh, yW=this.oy+this.Wi, toBack=this.side(it)<0;
-      g.box(cx-dw/2, cy-dd/2, z1, cx+dw/2, cy+dd/2, zd, 0.004);
-      if (toBack){ g.box(cx-dw/2, cy-dd/2, zd, cx+dw/2, yW, zt, 0.004); this.louver(0, yW, cx-dw/2-0.07, cx+dw/2+0.07, zd-0.07, Math.min(this.ceil, zt+0.07), 1); }
-      else { g.box(cx-dw/2, cy-dd/2, zd, cx+dw/2, cy+dd/2, zt, 0.004); } }
+    const V=this.plan.vent, kk=StationLayout.key(it), to=V && V.ducts ? V.ducts[kk] : null, Lv=to==='wall' ? V.louvers.find(q=>q.duct===kk) : null;
+    if (dh>=0.18 && to){ const g=this.M(StMat.metal(StScene.GALV, 0.42)), zt=this.ceil-0.09, zd=zt-dh, yW=this.oy+this.Wi;
+      const zr=Lv ? Math.min(zd, this.base+Lv.z0/1000+0.05) : null, zs=z1+Math.min(0.5, Math.max(0.12, ((zr ?? zd)-z1)*0.45));   // клапан — на вертикальном участке
+      g.box(cx-dw/2, cy-dd/2, z1, cx+dw/2, cy+dd/2, Lv ? zd : this.ceil, 0.004);
+      if (Lv){ const a=this.ox+Lv.u0/1000, b=this.ox+Lv.u1/1000, za=this.base+Lv.z0/1000, zb=this.base+Lv.z1/1000;
+        g.box(Math.min(cx-dw/2, a), cy-dd/2, zd, Math.max(cx+dw/2, b), yW, zt, 0.004);   // по потолку к стене
+        g.box(a, yW-0.2, za, b, yW, zb, 0.004); }   // короб у жалюзи
+      if ((this.plan.sys||{}).rec!==false) this.recirc(it, cx, cy, dw, dd, zs); }
+  }
+  /** клапан рециркуляции на воздуховоде компрессора: корпус, решётка в сторону прохода (зимой — тёплый воздух в помещение),
+   *  электропривод с термостатом */
+  recirc(it, cx, cy, dw, dd, z){
+    const g=this.M(StMat.metal(StScene.GALV, 0.36)), dk=this.M(StMat.paint('#23272b', 0.55)), act=this.M(StMat.paint('#3a4048', 0.5)), h=0.22, s=this.side(it), yf=s>0 ? cy+dd/2 : cy-dd/2;
+    g.box(cx-dw/2-0.03, cy-dd/2-0.03, z, cx+dw/2+0.03, cy+dd/2+0.03, z+h, 0.004);
+    for (let k=0; k<4; k++){ const zz=z+0.04+k*0.045; dk.box(cx-dw/2+0.04, Math.min(yf+s*0.03, yf+s*0.04), zz, cx+dw/2-0.04, Math.max(yf+s*0.03, yf+s*0.04), zz+0.018); }   // решётка
+    act.box(cx+dw/2+0.03, cy-0.06, z+0.04, cx+dw/2+0.12, cy+0.06, z+0.16, 0.006);   // электропривод
   }
   dryer(it){
     const [x0, y0, z0, x1, y1, z1]=this.B(it), c=it.color, body=this.M(StMat.paint(c, 0.4)), dk=this.M(StMat.paint(StScene.DARK, 0.6));

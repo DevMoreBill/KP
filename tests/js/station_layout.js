@@ -241,7 +241,7 @@ Check.run('нет места для прохода — контейнер бол
   const auto=solve(C('block'), [deep, dryer]);
   Check.plan(auto, 'глубокий, блок'); assert.ok(auto.level!=='error' && auto.entry && auto.aisle.w>=auto.aisleRule[1]-1, 'блок по оборудованию — с проходом: '+JSON.stringify(auto.aisle));
   draw(auto, 'глубокий, блок');
-  const ok=solve(C('sea20'), [comp, dryer]); assert.ok(ok.entry && !ok.doors.length, 'проход помещается — сервисные двери не нужны');
+  const ok=solve(C('sea20'), [comp, dryer]); assert.ok(ok.entry && ok.doors.every(d=>d.rear && d.wall==='back'), 'проход помещается — сервисные ворота только за агрегатом, стоящим плотно к стене');
   // много аппаратов — с проходом: один ряд или два ряда с проходом посередине
   const unit=P('Осушитель адсорбционный', { cat:'dryer_ads', model:'A 13', size:'800 × 800 × 1200' }, { qty:5 });
   for (const ct of ['sea20', 'sea40', 'block']){ const r=solve(C(ct), [unit]); Check.plan(r, 'пять осушителей '+ct); if (r.level!=='error') assert.ok(r.entry, ct+': дверь оператора'); }
@@ -261,8 +261,8 @@ Check.run('шкафы на стене, фильтры на трубопрово�
   Check.plan(p, 'шкафы и фильтры');
   const cabs=p.items.filter(i=>i.kind==='cabinet');
   assert.ok(cabs.length===2 && cabs.every(c=>c.mount==='wall') && cabs.some(c=>c.wall==='front'), 'шкафы без габаритов — настенные: на стене прохода (мимо сервисной двери) и на торце');
-  assert.ok(p.door==='side' && !p.doors.length && p.gates.sea && p.gates.pos.includes(1) && !p.gates.pos.includes(2) && cabs.every(c=>c.wall!=='left' && (c.wall!=='front' || c.x+c.lx<=p.entry.x0-100 || c.x>=p.entry.x1+100)),
-    'компрессор — через штатные двери в торце (в дверь оператора не проходит), осушитель — через дверь оператора; шкафы — не на дверях');
+  assert.ok(p.door==='side' && p.doors.length===1 && p.doors[0].rear && p.doors[0].pos.includes(1) && p.gates.sea && !p.gates.pos.includes(1) && !p.gates.pos.includes(2) && cabs.every(c=>c.wall!=='left' && (c.wall!=='front' || c.x+c.lx<=p.entry.x0-100 || c.x>=p.entry.x1+100)),
+    'компрессор стоит плотно к стене — через сервисные ворота за ним (штатные двери в торце ему не нужны), осушитель — через дверь оператора; шкафы — не на дверях');
   assert.ok(cabs.every(c=>c.z+c.h<=StationLayout.CAB_TOP+1), 'верх шкафа — не выше 1,9 м');
   const F=p.items.filter(i=>i.kind==='filter');
   assert.ok(F.length===2 && F.every(f=>f.mount==='pipe' && f.z>0), 'фильтры висят на трубе');
@@ -384,30 +384,77 @@ Check.run('параллельно: одинаковые осушители и ф
 });
 
 Check.run('двери: оператора — одностворчатая наружу; ворота для демонтажа — в торце; сервисные — где нет отступов', ()=>{
-  // отступы выдержаны (проход внутри): дверь оператора одностворчатая, не уже 600 мм; компрессор в неё не проходит — распашные
-  // ворота в торце (по возможности в дальнем), сервисных дверей в боковых стенах нет
-  const ks=solve(C('block', { sizeAuto:true }), [comp, dryer, rec, cab]); Check.plan(ks, 'ворота');
+  // отступы выдержаны (проход внутри): дверь оператора одностворчатая, не уже 600 мм; к компрессору есть доступ для
+  // обслуживания — распашные ворота в торце (по возможности в дальнем), сервисных дверей в боковых стенах нет
+  const ks=solve(C('block', { size:'5400 × 2700 × 2700' }), [comp, dryer, rec, cab]); Check.plan(ks, 'ворота');
   assert.ok(ks.door==='side' && ks.entry && ks.entry.wall==='front' && ks.entry.w>=StationLayout.DOOR_MIN && ks.entry.w===StationLayout.ENTRY[1]-StationLayout.ENTRY[0], 'дверь оператора — одностворчатая в стене прохода');
   const G=ks.gates; assert.ok(G && G.wall==='right' && G.leaves===2 && G.pos.includes(1) && !ks.doors.length, 'компрессор — через распашные ворота в дальнем торце: '+JSON.stringify(G));
   const cp=ks.items.find(i=>i.kind==='compressor'); assert.ok(G.w>=Math.min(cp.l, cp.w)+2*StationLayout.PASS && G.h>=cp.h+StationLayout.PASS, 'ворота — шире и выше компрессора');
   assert.ok(!G.pos.includes(ks.items.find(i=>i.kind==='dryer').pos) && !G.pos.includes(ks.items.find(i=>i.kind==='receiver').pos), 'ресивер и рефрижераторный осушитель — через дверь оператора');
-  assert.ok(ks.issues.some(i=>/Распашные ворота .* в дальнем торце/.test(i.text) && /одностворчатая/.test(i.text)), 'сведения о воротах и двери оператора');
+  assert.ok(ks.issues.some(i=>/Распашные ворота .* в дальнем торце/.test(i.text)) && ks.issues.some(i=>/^Вход: дверь оператора — одностворчатая/.test(i.text)), 'сведения о воротах и двери оператора');
   assert.ok(!ks.items.some(i=>i.mount==='wall' && i.wall==='right'), 'на торце с воротами шкафов нет');
-  // небольшие аппараты — ворота не нужны
-  const small=solve(C('block', { sizeAuto:true }), [P('Компрессор поршневой', { cat:'comp_piston', size:'700 × 500 × 800' }, { role:'main' }), dryer, rec]); Check.plan(small, 'без ворот');
-  assert.ok(!small.gates && !small.doors.length, 'всё проходит в дверь оператора — ни ворот, ни сервисных дверей');
+  // небольшой компрессор проходит в дверь оператора, но к нему есть доступ — ворота в торце всё равно (монтаж и демонтаж);
+  // без компрессоров небольшие аппараты — через дверь оператора, ворота не нужны
+  const small=solve(C('block', { sizeAuto:true }), [P('Компрессор поршневой', { cat:'comp_piston', size:'700 × 500 × 800' }, { role:'main' }), dryer, rec]); Check.plan(small, 'малый компрессор');
+  assert.ok(small.gates && small.gates.pos.includes(1) && !small.doors.length, 'компрессор — ворота в торце: '+JSON.stringify(small.gates));
+  const none=solve(C('block', { sizeAuto:true }), [dryer, rec]); Check.plan(none, 'без ворот');
+  assert.ok(!none.gates && !none.doors.length, 'всё проходит в дверь оператора — ни ворот, ни сервисных дверей');
   // крупный адсорбционный осушитель — ворота (или, если к торцу не провезти, сервисные ворота в боковой стене)
   const ads=P('Адсорбционный осушитель крупный', { cat:'dryer_ads', size:'1300 × 1000 × 2000' });
   const a=solve(C('block', { sizeAuto:true }), [comp, ads, rec]), ap=a.items.find(i=>i.kind==='dryer').pos; Check.plan(a, 'адсорбционный');
   assert.ok((a.gates && a.gates.pos.includes(ap)) || a.doors.some(d=>d.pos.includes(ap)), 'крупному адсорбционному — ворота');
   // морской: дверь оператора — в боковой стене, ворота — его штатные двери в торце
   const sea=solve(C('sea20'), [comp, dryer, rec]); Check.plan(sea, 'морской');
-  assert.ok(sea.door==='side' && sea.entry.w===900 && sea.gates && sea.gates.sea && sea.gates.wall==='left' && sea.gates.pos.includes(1), 'морской: ворота — штатные двери');
+  assert.ok(sea.door==='side' && sea.entry.w===900 && sea.gates && sea.gates.sea && sea.gates.wall==='left' && (sea.gates.pos.includes(1) || sea.doors.some(d=>d.rear && d.pos.includes(1))), 'морской: ворота — штатные двери (компрессор плотно к стене — ворота за ним)');
   // ДГУ: в дальнем торце — дверь-жалюзи; ворота — не там
   const dg=solve(C('block', { sizeAuto:true }), [dgu, ats]); Check.plan(dg, 'ДГУ');
   assert.ok(dg.dguDoor && (!dg.gates || dg.gates.wall==='left'), 'у ДГУ дальний торец — дверь-жалюзи');
   // чертёж, ТЗ: ворота и дверь оператора
   const T=StationDrawing.lift ? StationDrawing.svg(ks, meta(ks)) : ''; assert.ok(/Распашные ворота/.test(T) && /Дверь оператора — одностворчатая/.test(T), 'на чертеже — ворота и дверь оператора');
+});
+
+Check.run('двери: плотно к стене — сервисные ворота сзади; проход длиннее 7 м — вторая дверь оператора', ()=>{
+  // компрессор плотно к стене (узкий блок): сервисные распашные ворота в задней стене за ним, ворота в торце ему не нужны;
+  // трубопровод вдоль задней стены — над воротами; замечания «стоит в … от стены» нет — обслуживание через ворота
+  const t=solve(C('block', { size:'5400 × 2300 × 2700' }), [comp, dryer, rec]); Check.plan(t, 'плотно к стене');
+  const cp=t.items.find(i=>i.kind==='compressor'), R=t.doors.find(d=>d.rear && d.pos.includes(cp.pos));
+  assert.ok(cp.tight && cp.back<cp.backRec-StationLayout.REAR_TOL, 'компрессор плотно к стене: '+cp.back);
+  assert.ok(R && R.wall==='back' && R.x0<=cp.x && R.x1>=cp.x+cp.lx && R.h>=cp.h+100 && R.leaves===2 && R.kind==='service', 'ворота за компрессором: '+JSON.stringify(R));
+  assert.ok(!t.gates || !t.gates.pos.includes(cp.pos), 'ворота в торце компрессору не нужны');
+  for (const l of t.lines) if (t.int[1]-l.y<600 && StationLayout.runs(l).some(([a, b])=>a<R.x1 && b>R.x0)) assert.ok(l.z>=R.h+100, 'трубопровод — над воротами');
+  assert.ok(!t.issues.some(i=>i.level==='warn' && i.tight===cp.pos), 'с воротами сзади — не замечание');
+  assert.ok(t.issues.some(i=>/^Сервисные распашные ворота .* в задней стене за оборудованием — для обслуживания, монтажа и демонтажа поз\. 1/.test(i.text)), 'сведения о воротах сзади');
+  const T=StationDrawing.lift ? StationDrawing.svg(t, meta(t)) : ''; assert.ok(!T || /Сервисные распашные ворота в стене за оборудованием/.test(T), 'на чертеже — ворота сзади');
+  draw(t, 'плотно к стене');
+  // недобор до 100 мм — не плотно: подойти можно, ворот нет
+  assert.ok(!StationLayout.prototype.tight.call(null, Object.assign({}, cp, { back:cp.backRec-90 })), 'недобор 90 мм — ворота не нужны');
+  // короткий: одна дверь оператора
+  assert.ok(!t.second && !t.doors.some(d=>d.kind==='entry') && !t.exit, 'короткий — одна дверь оператора');
+  // один ряд, проход длиннее 7 м — вторая дверь оператора в стене прохода у дальнего торца, табло «Выход» над ней
+  const lg=solve(C('block', { size:'9000 × 2700 × 2700' }), [comp, dryer, rec]); Check.plan(lg, 'длинный');
+  const e2=lg.doors.find(d=>d.kind==='entry');
+  assert.ok(lg.second && e2 && e2.wall==='front' && e2.leaves===1 && e2.x1>=lg.int[0]-StationLayout.ENTRY[0]-1 && e2.w===lg.entry.w, 'вторая дверь — у дальнего торца: '+JSON.stringify(lg.doors));
+  assert.ok(lg.fire.exit2 && lg.fire.exit2.wall==='front', 'вторая дверь — выход');
+  assert.ok(lg.issues.some(i=>/вторая дверь оператора — в стене прохода у дальнего торца/.test(i.text)), 'сведения о второй двери');
+  assert.ok(!lg.items.some(i=>i.mount==='wall' && i.wall==='front' && i.x<e2.x1+100 && i.x+i.lx>e2.x0-100), 'шкафы — не на второй двери');
+  assert.ok(lg.gates && lg.gates.wall==='right' && lg.gates.pos.includes(1), 'к компрессору есть доступ — ворота в торце');
+  draw(lg, 'длинный');
+  // два ряда, плотно: у каждого — ворота за ним (комплекс дверей и ворот), вторая дверь — в дальнем торце по оси прохода
+  const cq=P('Компрессор', { cat:'comp_screw', flow:5, size:'1200 × 800 × 1500' }, { role:'main', qty:6 }), dq=P('Осушитель', { cat:'dryer_refrig', flow:40, size:'900 × 700 × 1200' }), rq=P('Ресивер', { cat:'receiver', volume:900, size:'750 × 750 × 1900' });
+  const two=solve(C('block', { size:'9000 × 3600 × 2700' }), [cq, dq, rq]); Check.plan(two, 'два ряда плотно');
+  assert.strictEqual(two.rows, 2, 'два ряда');
+  for (const it of two.items.filter(i=>i.tight)) assert.ok(two.doors.some(d=>d.rear && d.pos.includes(it.pos) && d.wall===(it.row===1 ? 'front' : 'back') && d.x0<it.x+it.lx && d.x1>it.x), `поз. ${it.pos}: ворота за ним`);
+  assert.ok(two.doors.some(d=>d.wall==='front') && two.doors.some(d=>d.wall==='back'), 'ворота в обеих стенах');
+  for (const w of ['front', 'back']){ const D=two.doors.filter(d=>d.wall===w).sort((a, b)=>a.x0-b.x0); for (let i=1; i<D.length; i++) assert.ok(D[i].x0>=D[i-1].x1+150, 'между воротами — стойка'); assert.ok(D.every(d=>d.w<=StationLayout.DOOR.max), 'не шире 2400 мм'); }
+  assert.ok(two.exit && two.exit.wall==='right' && two.exit.y0>=StationLayout.DOOR.pad, 'вторая дверь оператора — в дальнем торце: '+JSON.stringify(two.exit));
+  assert.ok(two.heat.heaters.every(h=>h.wall!=='right' || h.y+h.ly<=two.exit.y0 || h.y>=two.exit.y1), 'конвектор — не на двери');
+  draw(two, 'два ряда плотно');
+  // два ряда с доступом к компрессорам: ворота в дальнем торце, вторая дверь — калитка в створке
+  const cw=P('Компрессор узкий', { cat:'comp_screw', flow:5, size:'1200 × 550 × 1300' }, { role:'main', qty:12 });
+  const wk=solve(C('block', { size:'10000 × 3500 × 2700' }), [cw]); Check.plan(wk, 'калитка');
+  assert.ok(wk.rows===2 && wk.gates && wk.gates.wall==='right' && wk.gates.wicket && wk.gates.wicket.w>=StationLayout.DOOR_MIN && wk.gates.wicket.w<=wk.gates.w/2-150, 'калитка в воротах: '+JSON.stringify(wk.gates)+' '+wk.rows);
+  assert.ok(!wk.exit && wk.fire.exit2 && wk.issues.some(i=>/калитка .* в створке ворот/.test(i.text)), 'калитка — вторая дверь');
+  draw(wk, 'калитка');
 });
 
 Check.run('шкафы не сужают проход, торец; двери не уже 600 мм', ()=>{
@@ -1091,10 +1138,40 @@ Check.run('жалюзи: размеры по расходу воздуха, ме
   assert.strictEqual(solve(C('block', { sys:{ vent:false } }), [comp]).vent, null);
   // 3D: жалюзи по расчёту и подписи размеров; чертёж — пункт ТТ о жалюзи
   const sc=new StScene(p, {}).build();
-  assert.ok(sc.tags.length && sc.tags.every(t=>t.p.every(Number.isFinite) && /^(Приток|Вытяжка|Радиатор ДГУ).*: .*\d мм$/.test(t.text)), JSON.stringify(sc.tags));
+  assert.ok(sc.tags.length && sc.tags.every(t=>t.p.every(Number.isFinite) && /^(Приток|Выброс|Радиатор ДГУ).*: .*\d мм$/.test(t.text)), JSON.stringify(sc.tags));
   assert.ok(sc.outfit.walls.B.back.length+sc.outfit.walls.B.left.length+sc.outfit.walls.B.right.length>0);
   assert.ok(StationDrawing.heat(p).some(t=>/^Жалюзи \(размер по рамке\).*приточные .* мм/.test(t)), StationDrawing.heat(p).join(' | '));
   assert.ok(StationView3D.svg(p, meta(p)).includes('Приток:'), 'SVG-вид: подпись жалюзи');
+  // приток и выброс горячего воздуха — никогда на одной стене; приток — сначала напротив выброса, затем в створках ворот
+  const same=V=>{ const w=k=>new Set(V.louvers.filter(q=>k.includes(q.kind)).map(q=>q.wall)), a=w(['in']), b=w(['out', 'rad']); return [...a].filter(x=>b.has(x)); };
+  const cq=P('Компрессор', { cat:'comp_screw', flow:5, kw:22, size:'1200 × 800 × 1500' }, { role:'main', qty:6 });
+  const cases=[['КС 20', solve(C('sea20'), [comp, dryer, rec, flt, cab])], ['КС блок', p], ['КС с отступом', solve(C('block', { size:'5400 × 2700 × 2700' }), [comp, dryer, rec, cab])],
+    ['ДГУ 20', g], ['ДГУ блок', solve(C('block'), [dgu, ats])], ['два ряда', solve(C('block', { size:'9000 × 3600 × 2700' }), [cq])],
+    ['12 компрессоров', solve(C('block', { size:'10000 × 3500 × 2700' }), [P('Компрессор узкий', { cat:'comp_screw', flow:5, kw:15, size:'1200 × 550 × 1300' }, { role:'main', qty:12 })])]];
+  for (const [nm, q] of cases){ const V=q.vent; Check.plan(q, nm);
+    assert.deepStrictEqual(same(V), [], nm+': приток и выброс на одной стене');
+    const R=V.roof||[]; for (let i=0; i<R.length; i++){ const a=R[i]; assert.ok(a.x0>=(q.geo.x0||0) && a.x1<=q.int[0] && a.y0>=0 && a.y1<=q.int[1], nm+': колпак на крыше');
+      for (let j=i+1; j<R.length; j++){ const b=R[j]; assert.ok(a.x1<=b.x0 || b.x1<=a.x0 || a.y1<=b.y0 || b.y1<=a.y0, nm+': колпаки не накладываются'); } }
+    for (const L of V.louvers.filter(L=>L.leaf)) assert.ok([...(q.doors||[]).map(d=>[d.wall, d.x0, d.x1]), ...(q.gates ? [[q.gates.wall, q.gates.y0, q.gates.y1]] : [])].some(([w, a, b])=>w===L.wall && L.u0>=a && L.u1<=b), nm+': жалюзи в створке — в проёме ворот или двери');
+    for (const c of q.items.filter(i=>i.kind==='compressor' && i.mount==='floor')) assert.ok(['wall', 'roof'].includes(V.ducts[StationLayout.key(c)]), nm+': воздуховод компрессора');
+    if (V.exhaust==='back'){ const fi=V.louvers.find(L=>L.kind==='in'); assert.ok(fi && fi.wall==='front', nm+': приток — сначала на стене напротив выброса'); }
+    if (q.items.some(i=>i.kind==='compressor')) assert.ok(q.issues.some(i=>/^Рекуперация тепла: на воздуховодах компрессоров — клапаны рециркуляции/.test(i.text)), nm+': рекуперация');
+    assert.ok(q.issues.some(i=>/Приток и выброс — на разных стенах/.test(i.text)), nm+': сведения');
+    draw(q, nm); new StScene(q, { view:'out' }).build(); new StScene(q, {}).build(); }
+  // компрессор плотно к стене, ворота за ним: выброс — через крышу (колпак над компрессором), приток — и в створках ворот сзади
+  const t=cases[0][1], tc=t.items.find(i=>i.kind==='compressor'), tk=StationLayout.key(tc);
+  assert.ok(t.doors.some(d=>d.rear && d.wall==='back') && t.vent.exhaust===null && t.vent.ducts[tk]==='roof', 'плотно к стене — выброс через крышу');
+  const hd=t.vent.roof.find(R=>R.duct===tk); assert.ok(hd && hd.x0<tc.x+tc.lx && hd.x1>tc.x && hd.w*hd.l/1e6>=hd.q/3600/StationRules.raw('heat.face')/StationRules.raw('vent.free')-0.01 && hd.w%50===0 && hd.l%50===0, 'колпак над компрессором: '+JSON.stringify(hd));
+  assert.ok(!t.vent.louvers.some(L=>L.kind==='out'), 'на стенах выброса нет');
+  // с отступом: воздуховод к жалюзи в задней стене над компрессором, приток — в стене прохода и створках ворот в торце
+  const w2=cases[2][1], wc=w2.items.find(i=>i.kind==='compressor'), wl=w2.vent.louvers.find(L=>L.duct===StationLayout.key(wc));
+  assert.ok(w2.vent.exhaust==='back' && wl && wl.wall==='back' && wl.u0<wc.x+wc.lx && wl.u1>wc.x && wl.z1<=w2.int[2]-StationVent.OUT.top, 'жалюзи выброса — над компрессором: '+JSON.stringify(wl));
+  assert.ok(w2.vent.louvers.some(L=>L.kind==='in' && L.leaf && L.wall===w2.gates.wall), 'приток — в створках ворот');
+  const T2=StationDrawing.heat(w2).join(' '); assert.ok(/приток и выброс — на разных стенах/.test(T2) && /клапанами рециркуляции/.test(T2), 'ТТ на чертеже: '+T2);
+  // ДГУ: радиатор — в дальнем торце; приток не там, у торца с радиатором — нет
+  for (const q of [cases[3][1], cases[4][1]]) assert.ok(q.vent.louvers.filter(L=>L.kind==='in').every(L=>L.wall!=='right' && ((L.wall!=='back' && L.wall!=='front') || L.u1<=q.int[0]-1500)), 'ДГУ: приток — дальше от радиатора');
+  // два ряда: компрессоры у стены прохода — выброс через крышу
+  const tw=cases[5][1]; for (const c of tw.items.filter(i=>i.kind==='compressor' && i.row===1)) assert.strictEqual(tw.vent.ducts[StationLayout.key(c)], 'roof', 'ряд у стены прохода — через крышу');
 });
 
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);

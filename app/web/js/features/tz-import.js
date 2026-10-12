@@ -254,13 +254,20 @@ class TzPick {
   /** лучшая позиция: из подходящих — с наименьшим значением key (самая «впритык») */
   static best(list, key){ return list.reduce((b, o)=>!b || o[key]<b[key] ? o : b, null); }
 
+  static MAX = 4;   // добор производительности количеством: до четырёх одинаковых рабочих агрегатов или аппаратов параллельно
   /** рабочие агрегаты из pool [{c, v}] на нагрузку need: {o, n}; n0 — число рабочих из ТЗ, pen(o) — штраф позиции;
-   *  подбор — без недобора (в пользу заказчика): сумма рабочих не меньше нужного */
+   *  подбор — без недобора (в пользу заказчика): сумма рабочих не меньше нужного; одного не хватает — несколько (до MAX) */
   static units(pool, need, n0, pen=()=>0){
     let pick=null;
-    for (let n=n0||1; n<=(n0||3); n++) for (const o of pool){ if (o.v*n<need-1e-9) continue;
+    for (let n=n0||1; n<=(n0||this.MAX); n++) for (const o of pool){ if (o.v*n<need-1e-9) continue;
       const score=(o.v*n-need)/need+0.08*(n-1)+pen(o); if (!pick || score<pick.score) pick={ o, n, score }; }
     return pick;
+  }
+  /** одинаковые аппараты параллельно на нагрузку need (осушители, фильтры): один, иначе несколько (до MAX) — наименьшее
+   *  число, затем наименьший запас; list — [{c, cap}]: {o, n} | null */
+  static many(list, need, max=this.MAX){
+    for (let n=1; n<=max; n++){ const o=this.best(list.filter(z=>z.cap*n>=need-1e-9).map(z=>Object.assign({}, z, { over:z.cap*n-need })), 'over'); if (o) return { o, n }; }
+    return null;
   }
   /** давление компрессора, бар, нужное для B у потребителя: потери в подготовке воздуха (loss.pick) и — без частотного
    *  регулирования — диапазон «нагрузка — холостой ход» (pressure.band): давление включения не ниже нужного */
@@ -325,9 +332,10 @@ class TzPick {
         // осушитель — на всю производительность рабочих компрессоров с поправками производителя (серия в файле правил:
         // давление, вход, помещение; нет — типовая таблица и запас), давление — у потребителя (не выше фактического)
         const Qd=u ? u.o.v*u.n : Q, t=DryerSizing.temps({ tmax:StationReq.num(String(q.tmax??'').replace(/[−–]/g, '-')), tin:null }), pb=B>0 ? B : StationRules.raw('dryer.ref').p;
-        const dc=ads ? 'dryer_ads' : 'dryer_refrig', d=this.best(catCache.filter(c=>attrsOf(c).cat===dc).map(c=>{ const a=attrsOf(c), F=DryerSizing.factor({ name:c.name, attrs:a, rows:[] }, pb, t, ads ? 'ads' : 'refrig').F; return { c, v:this.flow(c), cap:this.flow(c)*F }; })
-          .filter(o=>o.v>0 && o.cap>=Qd-1e-9 && (!(Bc>0) || !(this.num(attrsOf(o.c).pressure)>0) || this.num(attrsOf(o.c).pressure)>=Bc-0.05)), 'v');
-        if (d){ add.push(await this.part(d.c, 1)); got.push(this.lbl('осушитель', d.c.name)+` (с поправками ${AirChain.m3(d.cap)} м³/мин)`); }
+        // одного не хватает — несколько одинаковых параллельно (добор количеством)
+        const dc=ads ? 'dryer_ads' : 'dryer_refrig', dm=this.many(catCache.filter(c=>attrsOf(c).cat===dc).map(c=>{ const a=attrsOf(c), F=DryerSizing.factor({ name:c.name, attrs:a, rows:[] }, pb, t, ads ? 'ads' : 'refrig').F; return { c, v:this.flow(c), cap:this.flow(c)*F }; })
+          .filter(o=>o.v>0 && (!(Bc>0) || !(this.num(attrsOf(o.c).pressure)>0) || this.num(attrsOf(o.c).pressure)>=Bc-0.05)), Qd), d=dm && dm.o;
+        if (d){ add.push(await this.part(d.c, dm.n)); got.push((dm.n>1 ? `осушители ${dm.n} × ${d.c.name} параллельно` : this.lbl('осушитель', d.c.name))+` (с поправками ${dm.n>1 ? dm.n+' × ' : ''}${AirChain.m3(d.cap)}${dm.n>1 ? ' = '+AirChain.m3(d.cap*dm.n) : ''} м³/мин)`); }
         else miss.push(`${ads ? 'адсорбционный' : 'рефрижераторный'} осушитель на ${AirChain.m3(Qd)} м³/мин с поправками на давление и температуру`); }
       // фильтры и ресивер — по расчёту цепочки на подобранном составе
       x.kit.parts=[...add, ...keep]; let at=add.length;   // фильтры и ресивер — после подобранного, перед прочим составом
@@ -352,12 +360,14 @@ class TzPick {
         const ok=c=>{ const a=attrsOf(c); if (a.cat!==rec.cat) return false;
           if (rec.cat==='filter'){ const p={ name:c.name, attrs:a, rows:[] };   // ступень — по полю или названию (DD, PD, «0,01 мкм»…)
             if (!(this.GRADE[rec.key]||[rec.key]).includes(AirChain.grade(p, a.cat, AirChain.text(p)))) return false;
-            if (Qf>0 && !(this.flow(c)*kf(c, a)>=Qf-1e-9)) return false; }
+            if (Qf>0 && !(this.flow(c)>0)) return false; }
           else for (const [k, v] of Object.entries(rec.f||{})) if (v && !String(a[k]||'').toLowerCase().includes(String(v).toLowerCase().slice(0, 6))) return false;
           for (const [k, v] of Object.entries(lo)) if (v>0 && !(this.num(a[k])>=v-1e-9)) return false;
           return !(Bc>0 && this.num(a.pressure)>0 && this.num(a.pressure)<Bc-0.05); };
-        const key=Object.keys(lo)[0]||'flow', c=this.best(catCache.filter(ok).map(c=>({ c, v:this.num(attrsOf(c)[key])||0 })), 'v');
-        if (c){ x.kit.parts.splice(at++, 0, await this.part(c.c, 1)); got.push(this.lbl(rec.cat==='receiver' ? 'ресивер' : 'фильтр', c.c.name)); }
+        // фильтр на всю производительность; одного не хватает — несколько одинаковых параллельно (добор количеством)
+        const key=Object.keys(lo)[0]||'flow', fm=rec.cat==='filter' && Qf>0 ? this.many(catCache.filter(ok).map(c=>({ c, cap:this.flow(c)*kf(c, attrsOf(c)) })), Qf) : null;
+        const c=fm ? fm.o : rec.cat==='filter' && Qf>0 ? null : this.best(catCache.filter(ok).map(c=>({ c, v:this.num(attrsOf(c)[key])||0 })), 'v'), fn=fm ? fm.n : 1;
+        if (c){ x.kit.parts.splice(at++, 0, await this.part(c.c, fn)); got.push(fn>1 ? `фильтры ${fn} × ${c.c.name} параллельно` : this.lbl(rec.cat==='receiver' ? 'ресивер' : 'фильтр', c.c.name)); }
         else miss.push(rec.title.toLowerCase()); }
       return this.note(got, miss);
     }
