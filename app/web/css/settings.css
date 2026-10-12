@@ -256,7 +256,7 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .ac-t td.acts{white-space:nowrap;text-align:right}
 .sw{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600}
 .sw input{width:auto}
-.ac-t th:first-child,.ac-t td:first-child{text-align:left}
+.ac-t th:first-child,.ac-t td:first-child{text-align:left;min-width:150px}   /* на телефоне имя и должность не рвутся по буквам */
 .ac-t td:nth-child(2){white-space:nowrap;min-width:110px}
 .ac-t td:nth-child(2) small{display:block;white-space:normal}
 

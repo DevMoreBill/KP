@@ -194,6 +194,8 @@ class TzParseTest(unittest.TestCase):
         self.assertEqual((q['recvVol'], q['recvOut'], q['recv'], q['cont'], q['ins']), (2000, True, 'after', 'block', '100 мм'))
         self.assertEqual(q['sys'], {'ops': True, 'fire': True})
         self.assertTrue(q['docs'])
+        snow = TzParse.parse('Компрессорная станция 10 м3/мин, 8 бар. Жалюзи воздухозабора — с маркизами (снегозащита).')['req']
+        self.assertTrue(snow.get('sys', {}).get('snow'), 'маркизы на притоке — система «snow»')
         self.assertIn('предоставить паспорта', q['notes'])
         for f in r['found']:
             self.assertTrue(f['src'] and f['label'], f)

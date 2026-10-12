@@ -91,7 +91,7 @@ class EskdSheet {
   static osiWidths(){
     const W={}, put=(chars, v)=>{ for (const c of chars) W[c]=v; };
     put('ijI.,:!|\'', 0.3); put('l;()[]', 0.35); put('сt1³²{}`', 0.45); put('зухcr', 0.5); put('бгеоэяУfJ"°^', 0.55);
-    put('авкртчъёСaksvxyz -=+*<>±?$_~\\', 0.6); put('лнпьЕЁЗТЧЬЭbdeghnopquCEFL0235679/–×', 0.65); put('джцГКХЯSTZ48«»', 0.7);
+    put('авкртчъёСaksvxyz \u00a0-=+*<>±?$_~\\', 0.6); put('лнпьЕЁЗТЧЬЭbdeghnopquCEFL0235679/–×', 0.65); put('джцГКХЯSTZ48«»', 0.7);
     put('имфшБВОРwBGKPR#&', 0.75); put('йщыюАДИЙНПmADHNOQUVXY', 0.8); put('ЛЦ—', 0.85); put('МФM', 0.9); put('Ъ', 0.95); put('ЫЮW%', 1);
     put('ЖШ@', 1.05); put('Щ', 1.1); put('№', 1.2); put('’', 0.3); put('·', 0.3);
     return W;
@@ -103,14 +103,18 @@ class EskdSheet {
     put('АБВЕЁРХЯЬ', 0.94); put('ГТКУЗ', 0.88); put('ДИЙНПСЦЧЭЛ', 1.02); put('ОФЪ', 1.13); put('МЫ', 1.24); put('ЖШЩ', 1.3); put('Ю', 1.44);
     put('abcdeghnopqu', 0.78); put('kvxyzs', 0.71); put('ilj', 0.32); put('ft', 0.4); put('r', 0.47); put('mw', 1.17);
     put('IJ', 0.7); put('W', 1.33); put('M', 1.17);
-    put('0123456789', 0.78); put(' .,:;/', 0.39); put('()-³²\'', 0.47); put('"', 0.5); put('«»–×', 0.8); put('—→…№', 1.46);
+    put('0123456789', 0.78); put(' \u00a0.,:;/', 0.39); put('()-³²\'', 0.47); put('"', 0.5); put('«»–×', 0.8); put('—→…№', 1.46);
     return W;
   }
-  /** перенос по словам на ширину w, мм (по обычным пробелам: неразрывный держит «№ 9» вместе) */
+  /** перенос по словам на ширину w, мм (по обычным пробелам: неразрывный держит «№ 9» вместе; разряды числа и число с
+   *  единицей — «1 100 мм», «−40 °C» — не разрываются) */
   static wrap(s, w, h){
     const out=[]; let cur='';
-    for (const word of String(s||'').trim().split(/[ \t\n]+/).filter(Boolean)){ const t=cur ? cur+' '+word : word; if (cur && this.tw(t, h)>w){ out.push(cur); cur=word; } else cur=t; }
-    if (cur) out.push(cur); return out;
+    for (const word of this.glue(s).trim().split(/[ \t\n]+/).filter(Boolean)){ const t=cur ? cur+' '+word : word; if (cur && this.tw(t, h)>w){ out.push(cur); cur=word; } else cur=t; }
+    if (cur) out.push(cur); return out.map(t=>t.replace(/\u00a0/g, ' '));   // перенос сделан — в строке обычные пробелы
+  }
+  static glue(s){
+    return String(s||'').replace(/(\d) (?=\d{3}(?!\d))/g, '$1\u00a0').replace(/(\d) (?=(?:мм|м²|м³|м\/с|м|°C|кВт|кг|бар|дБА|МПа|В|А)(?![А-Яа-яЁёA-Za-z]))/g, '$1\u00a0');
   }
   /** строка в ширину w: шрифт меньше, до hMin; не влезает — с многоточием. [строка, высота] */
   static fit(s, w, h, hMin){
@@ -278,7 +282,7 @@ class EskdSheet {
   /** обозначение документа: код организации (4 буквы), 6 цифр по отпечатку расстановки, исполнение, код документа (ГЧ, П3) */
   static code(org, hash, kind){
     const L=String(org||'').toUpperCase().replace(/[^А-ЯЁ]/g, '').replace(/^(ООО|АО|ПАО|ЗАО|ИП)/, '').slice(0, 4) || 'КПСТ';
-    const d=String(parseInt(String(hash||'0').slice(0, 8), 16) % 1000000).padStart(6, '0');
+    const h=String(hash||'0'), v=parseInt(h.slice(0, 8), 16), d=String((Number.isFinite(v) ? v : [...h].reduce((a, c)=>(a*31+c.charCodeAt(0))>>>0, 7)) % 1000000).padStart(6, '0');
     return `${L}.${d}.001 ${kind}`;
   }
 }
