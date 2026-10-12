@@ -881,18 +881,19 @@ class StationHeat {
     // лето: рабочие агрегаты (без резерва)
     const tmax=Number.isFinite(r.tmax) ? r.tmax : 35, work=this.working(units, Math.max(0, r.res||0));
     const qSum=work.reduce((s, i)=>s+i.kw*1000*(this.LOSS[i.kind]||this.CASE), 0)+this.SUN*1000*m(Le)*m(We)+I.filter(i=>i.kind==='dryer').reduce((s, i)=>s+(i.kw||0)*1000, 0);
-    // лето (VentCalc): охлаждение компрессоров — по паспорту, иначе Q = N·k при Δt = t_вн − t_нар; помещение — тем же Δt;
-    // не меньше 3 объёмов в час; радиатор ДГУ — по паспорту, иначе по мощности (нагрев на 10 °C)
+    // лето (VentCalc): охлаждение компрессоров — по паспорту, иначе Q = N·k при нагреве воздуха в компрессоре heat.cool_dt;
+    // помещение — перепадом t_вн − t_нар, один поток с охлаждением; не меньше 3 объёмов в час; при остановке — вентилятор с
+    // термостатом; радиатор ДГУ — по паспорту, иначе по мощности (нагрев на 10 °C)
     const rad=Math.round(work.filter(i=>i.kind==='dgu').reduce((s, i)=>s+(i.cool>0 ? i.cool : i.kw*1000*0.5/(this.AIR*10)), 0));
     const V=m(Li-Lt)*m(Wi)*m(Hi), comp=work.filter(i=>i.kind==='compressor');
-    const vc={ units:comp.map(i=>({ key:StationLayout.key(i), pos:i.pos, type:i.ctype, kw:i.kw, heat:i.heat, cool:i.cool })), qRoom:qSum/1000, use:work.reduce((s, i)=>s+air(i), 0), V, tSum:tmax, tWin:tout, tInMin:tin, ex };
+    const vc={ units:comp.map(i=>({ key:StationLayout.key(i), pos:i.pos, type:i.ctype, kw:i.kw, heat:i.heat, cool:i.cool })), qRoom:qSum/1000, qSun:this.SUN*m(Le)*m(We), use:work.reduce((s, i)=>s+air(i), 0), V, tSum:tmax, tWin:tout, tInMin:tin, boost:!!sys.boost, ex };
     const S=VentCalc.summer(vc, VW);
     // зима: потери ограждений (U по утеплителю) и минимального воздухообмена против тепла работающего (самый холодный режим)
     const Wn=VentCalc.winter({ ...vc, env:{ U, A, qEnv }, Qrun:base ? base.q/1000 : 0, useRun:base ? base.a : 0 }, S, VW), Rc=VentCalc.recup(!!sys.hrv, Wn, vc, VW);
     return { tout, tin, dT, rec, on, U:Math.round(U*1000)/1000, A:Math.round(A*10)/10, qEnv:Math.round(qEnv), qInf:Math.round(qInf), qStop:Math.round(qStop),
       base:base ? { pos:base.i.pos, kind:base.i.kind, q:Math.round(base.q), a:Math.round(base.a) } : null, qRun:qRun==null ? null : Math.round(qRun),
       need:Math.round(need*100)/100, n:pick.n, kw:pick.kw, total:Math.round(pick.n*pick.kw*10)/10, short:pick.short, heaters:pick.heaters,
-      vent:{ tmax, m3h:S.Lroom+S.use, use:S.use, cool:S.Lcool, rad, sum:S, win:Wn, rec:Rc, warn:VW, ex } };
+      vent:{ tmax, m3h:S.Lgen+S.use, use:S.use, cool:S.Lcool, rad, sum:S, win:Wn, rec:Rc, warn:VW, ex } };
   }
   /** воздух охлаждения компрессора i, м³/ч — из летнего расчёта (VentCalc) */
   static coolOf(i, plan){ const S=plan && plan.heat && plan.heat.vent && plan.heat.vent.sum, u=S && S.units.find(q=>q.key===StationLayout.key(i)); return u ? u.cool : (i.cool>0 ? i.cool : 0); }
@@ -981,7 +982,7 @@ class StationHeat {
 // размера — по необходимому месту (шаг 100 мм, наименьшая площадь пола); заданный контейнер, в который не помещается, —
 // ошибка и подсказка, какой подойдёт; контейнер с большим запасом — подсказка, какой меньший подойдёт.
 class StationLayout {
-  static VER = 16;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
+  static VER = 17;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
   static MAX_L = 12000;
   static PIPE_PAD = 60;      // зазор вокруг фильтра на трубопроводе, мм
   static AIR_Y = 150;        // линия сжатого воздуха: ось — в 150 мм от задней стены (или посередине между рядами)

@@ -147,23 +147,36 @@ Check.run('вентиляция: пример — винтовой 75 кВт, 20
   near(U, 0.4807, 0.0001, 'U'); near(V, 38.297, 0.001, 'объём, м³'); near(A, 73.603, 0.001, 'площадь ограждений, м²');
   const inp={ units:[{ key:'c1', pos:1, type:'screw', kw:75 }], qRoom:0, use:0, V, tSum:30, tWin:-25, tInMin:5, ex:{} };
   const S=VentCalc.summer(inp, W);
-  // 1. Q = N·k = 75 · 0,9 = 67,5 кВт; 2. Δt = 40 − 30 = 10 °C; ρ(30) = 353 / 303 = 1,165 кг/м³
+  // 1. Q = N·k = 75 · 0,9 = 67,5 кВт; 2. Δt помещения = 40 − 30 = 10 °C; ρ(30) = 353 / 303 = 1,165 кг/м³
   assert.strictEqual(S.units[0].k, 0.9); assert.strictEqual(S.Qc, 67.5); assert.strictEqual(S.dt, 10); assert.strictEqual(S.rho, 1.165);
-  // 3. L = 67,5 · 3600 / (1,005 · 1,16502 · 10) = 243 000 / 11,7084 = 20 754 → 20 750 м³/ч; 20 750 / 1,69901 = 12 213 CFM
-  assert.strictEqual(S.Lcool, 20750); assert.strictEqual(S.Lin, 20750); assert.strictEqual(S.cfmIn, 12213);
+  // 3. воздух охлаждения — вентилятором компрессора, нагрев в нём Δt_к = 15 °C (heat.cool_dt; горячий — воздуховодом наружу):
+  //    L = 67,5 · 3600 / (1,005 · 1,16502 · 15) = 243 000 / 17,5627 = 13 836 → 13 840 м³/ч; 13 840 / 1,69901 = 8 146 CFM
+  assert.strictEqual(S.dtc, 15); assert.strictEqual(S.Lcool, 13840); assert.strictEqual(S.Lin, 13840); assert.strictEqual(S.cfmIn, 8146);
   // 4. кратность: 3V = 114,9 → 110 м³/ч, аварийная 8V = 306,4 → 310 м³/ч — расход охлаждения больше, не увеличивается
   assert.strictEqual(S.Lmin, 110); assert.strictEqual(S.Lemerg, 310); assert.strictEqual(S.raised, false);
-  // 5. выброс по рамке: 20 750 / (3600 · 3) = 1,921 → 1,92 м²; 6. приток: 20 750 / (3600 · 2) · 1,2 = 3,458 → 3,46 м²
-  assert.strictEqual(S.Sout, 1.92); assert.strictEqual(S.Sin, 3.46);
-  // справочно: скорость в живом сечении (доля vent.free) — 2 / 1,2 / free и 3 / free
-  near(S.vLiveOut, VentCalc.r1(3/S.free), 1e-9, 'живое сечение выброса');
+  // 5. при остановке — вытяжной вентилятор с термостатом: max(солнце 0, 3V = 114,9) · 1,15 = 132 → не меньше 500 м³/ч;
+  //    выброс = воздуховод 13 840 + общая вытяжка 500 = 14 340 м³/ч
+  assert.strictEqual(S.stand.L, 500); assert.strictEqual(S.Lgen, 500); assert.strictEqual(S.Lout, 14340);
+  // 6. выброс по рамке: 14 340 / (3600 · 4) = 0,996 → 1,00 м²; приток: 13 840 / (3600 · 3) · 1,1 = 1,410 → 1,41 м²
+  assert.strictEqual(S.Sout, 1); assert.strictEqual(S.Sin, 1.41);
+  // справочно: скорость в живом сечении (доля vent.free) — 4 / free
+  near(S.vLiveOut, VentCalc.r1(4/S.free), 1e-9, 'живое сечение выброса');
+  // лето +35 °C с теплом помещения 6,5 кВт и воздухом на сжатие 780 м³/ч: охлаждение 14 060 м³/ч, помещение (Δt 5) — 4 040,
+  // один поток — 14 060 + 780 = 14 840 м³/ч; у входа компрессора 35 + 6,5 · 3600 / (1,005 · 1,146 · 14 840) = 36,4 °C;
+  // приток 14 840 / 10 800 · 1,1 = 1,51 м², выброс (14 060 + 500) / 14 400 = 1,01 м² (было 7,84 и 4,28)
+  const S35=VentCalc.summer({ ...inp, tSum:35, qRoom:6.5, qSun:0.5, use:780 }, W);
+  assert.strictEqual(S35.Lcool, 14060); assert.strictEqual(S35.Lin, 14840); assert.strictEqual(S35.tComp, 36.4); assert.strictEqual(S35.Sin, 1.51); assert.strictEqual(S35.Sout, 1.01);
+  // «Вентилятор в воздуховоде выброса»: приток 4 м/с — 14 840 / 14 400 · 1,1 = 1,13 м², выброс 6 м/с — 14 560 / 21 600 = 0,67 м²;
+  // вентилятор 14 060 м³/ч · 100 Па / (3600 · 1000 · 0,5) = 0,78 кВт
+  const SB=VentCalc.summer({ ...inp, tSum:35, qRoom:6.5, qSun:0.5, use:780, boost:true }, W);
+  assert.strictEqual(SB.Sin, 1.13); assert.strictEqual(SB.Sout, 0.67); assert.strictEqual(SB.boost.P, 0.781);
   // зима, Δt = 5 − (−25) = 30 °C: Q_огр = 0,481 · 73,6 · 30 = 1 062 Вт; L_зима = max(2V = 76,6) → 80 м³/ч;
   // Q_вент = 80 · 1,005 · (353/248 = 1,4234) · 30 / 3600 = 0,954 кВт; потери 2,02 кВт; тепло компрессора 67,5 — избыток
   const Wn=VentCalc.winter({ ...inp, env:{ U, A, qEnv:U*A*30 }, Qrun:67.5, useRun:0 }, S, W);
   assert.strictEqual(Wn.dt, 30); assert.strictEqual(Wn.Qenv, 1.06); assert.strictEqual(Wn.Lw, 80); assert.strictEqual(Wn.Qvent, 0.95);
   assert.strictEqual(Wn.Qloss, 2.02); assert.strictEqual(Wn.bal, 65.48); assert.strictEqual(Wn.heat, 0);
-  // жалюзи зимой: 80 / 20 750 = 0,39 % — меньше наименьшего открытия клапана (20 %) → 20 %
-  assert.strictEqual(Wn.ratio, 0.4); assert.strictEqual(Wn.open, 20);
+  // жалюзи зимой: 80 / 13 840 = 0,58 % — меньше наименьшего открытия клапана (20 %) → 20 %
+  assert.strictEqual(Wn.ratio, 0.6); assert.strictEqual(Wn.open, 20);
   // рекуператор: по расчёту не нужен (2,02 < 0,3 · 67,5 = 20,25 кВт, подогрев не нужен)
   const R0=VentCalc.recup(false, Wn, inp, W); assert.strictEqual(R0.worth, false);
   // по требованию заказчика: с промежуточным теплоносителем, η = 0,5; t_после = −25 + 0,5 · (5 − (−25)) = −10 °C;
@@ -191,6 +204,9 @@ Check.run('вентиляция: предупреждения и режим «э
   assert.strictEqual(Wn.U, 2); assert.strictEqual(Wn.Qenv, 4.42);
   // естественная тяга: h = 2 м, +30 / +40 → (1,165 − 1,128) · 9,81 · 2 = 0,7 Па < 5 — вентилятор
   const D=VentCalc.draft(E, 2, 500, {}, []); assert.strictEqual(D.need, true); assert.strictEqual(D.fan.L, 580);
+  // вентилятор стоянки заказчика 300 м³/ч меньше нужных 500 — предупреждение
+  const Wf=[]; const F=VentCalc.summer({ ...inp, tSum:30, ex:{ fan:300 } }, Wf);
+  assert.strictEqual(F.stand.user.ok, false); assert.ok(Wf.some(w=>/меньше нужного при остановленных компрессорах 500/.test(w.text)), Wf.map(w=>w.text).join(' | '));
 });
 
 // ---------------------------------------------------------------- станции целиком

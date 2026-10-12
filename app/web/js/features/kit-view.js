@@ -65,13 +65,13 @@ class StationReq {
     return { kind:this.kind(x), fire:this.fire(x), fireAuto:!this.FIRE.includes(r.fire), noise:this.noise(x), tmin:t(r.tmin), tmax:t(r.tmax), res:Math.max(0, Math.round(this.num(r.reserve)||0)), vent:this.vent(x) };
   }
   // режим «эксперт» вентиляции (решение 12.10): [ключ требований, ключ расчёта, подпись, подсказка]; пусто — по правилам
-  static VENT = [['ventK', 'k', 'k — доля мощности в тепло', '0,9'], ['ventTin', 'tIn', 't_вн летом, °C', '40'], ['ventDt', 'dt', 'Δt летом, °C', 't_вн − t_нар'],
-    ['ventVin', 'vIn', 'Скорость притока (по рамке), м/с', '2'], ['ventVout', 'vOut', 'Скорость выброса (по рамке), м/с', '3'], ['ventRes', 'res', 'Запас притока', '1,2'],
+  static VENT = [['ventK', 'k', 'k — доля мощности в тепло', '0,9'], ['ventTin', 'tIn', 't_вн летом, °C', '40'], ['ventDt', 'dt', 'Δt помещения летом, °C', 't_вн − t_нар'],
+    ['ventDtc', 'dtc', 'Нагрев воздуха в компрессоре, °C', '15'], ['ventVin', 'vIn', 'Скорость притока (по рамке), м/с', '3'], ['ventVout', 'vOut', 'Скорость выброса (по рамке), м/с', '4'], ['ventRes', 'res', 'Запас притока', '1,1'],
     ['ventU', 'U', 'U стенки, Вт/(м²·°C)', 'по утеплителю'], ['ventFan', 'fan', 'Вытяжной вентилятор, м³/ч', 'нет'],
     ['ventEta', 'eta', 'КПД рекуператора', 'по типу'], ['ventTexh', 'tExh', 't выбросного воздуха зимой, °C', '+5'], ['ventPhi', 'phi', 'Влажность выбросного воздуха, %', '50'],
     ['ventDays', 'days', 'Отопительный период, сут', '205'], ['ventTavg', 'tavg', 'Средняя температура периода, °C', '−2,2']];
   static HRV = [['', 'с промежуточным теплоносителем (по умолчанию)'], ['plate', 'пластинчатый перекрёстный'], ['rotary', 'роторный'], ['glycol', 'с промежуточным теплоносителем']];
-  /** числа режима «эксперт» для расчёта (VentCalc): {k, tIn, dt, vIn, vOut, res, U, fan, eta, tExh, phi, days, tavg, hrvType} */
+  /** числа режима «эксперт» для расчёта (VentCalc): {k, tIn, dt, dtc, vIn, vOut, res, U, fan, eta, tExh, phi, days, tavg, hrvType} */
   static vent(x){
     const r=this.of(x), o={}; for (const [rk, k] of this.VENT){ const v=this.num(String(r[rk]??'').replace(/[−–]/g, '-').replace(/^\+/, '')); if (v!=null) o[k]=v; }
     if (r.hrvType) o.hrvType=r.hrvType; return o;
@@ -150,8 +150,8 @@ class StationReq {
       ${r.pick ? `<p class="kr-pick"><span>${esc(r.pick)}</span><button class="icon sm" type="button" data-a="reqPickX" data-i="${i}" title="Скрыть" aria-label="Скрыть итог подбора">✕</button></p>` : ''}`;
     // режим «эксперт» вентиляции — внутри «Условий для расчёта станции» (решение ПНЕВМОТЕХ 12.10)
     const vx=`<details class="kr-calc"${Spoiler.attr('vent:'+x.id)}><summary>Вентиляция и отопление — режим «эксперт»</summary>
-        <div class="kr-g">${this.VENT.filter(([rk])=>k==='comp' || rk!=='ventK').map(([rk, , label, ph])=>fld(rk, label, ph, 'text')).join('')}${sel('hrvType', 'Тип рекуператора', this.HRV, r.hrvType||'')}</div>
-        <p class="muted kr-hint">Для нестандартных условий. Не заданы — значения из инженерных правил (k = 0,9, t_вн = 40 °C, приток 2 м/с с запасом 20 %, выброс 3 м/с, U — по утеплителю). k и U сильнее всего влияют на результат. Рекуператор — система контейнера «Рекуператор».</p></details>`;
+        <div class="kr-g">${this.VENT.filter(([rk])=>k==='comp' || !/^vent(K|Dtc)$/.test(rk)).map(([rk, , label, ph])=>fld(rk, label, ph, 'text')).join('')}${sel('hrvType', 'Тип рекуператора', this.HRV, r.hrvType||'')}</div>
+        <p class="muted kr-hint">Для нестандартных условий. Не заданы — значения из инженерных правил (k = 0,9, нагрев воздуха в компрессоре 15 °C, t_вн = 40 °C, приток 3 м/с с запасом 10 %, выброс 4 м/с, U — по утеплителю). k и U сильнее всего влияют на результат; паспортный расход охлаждающего воздуха важнее расчёта. Компактнее — система «Вентилятор в воздуховоде выброса», рекуператор — система «Рекуператор (по требованию)».</p></details>`;
     const main=k==='comp' ? sel('recv', 'Ресивер', this.RECV, this.recv(x))+fld('recvVol', 'Ресивер по ТЗ, л', 'по расчёту', 'numeric') : '';
     return `<div class="kit-req open">${head}
       <div class="kr-g">${main}${sel('work', 'Рабочих агрегатов', this.WORK, r.work||'')}
