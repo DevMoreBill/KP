@@ -277,17 +277,24 @@ class VentSizing {
       if (S.units.length){
         N.step({ what:'Тепловыделение компрессоров (лето)', formula:'Q = N · k; паспортное тепловыделение — важнее', rules:['vent.k_heat'],
           data:S.units.map(u=>[`поз. ${u.pos} (${VentCalc.TYPE[u.type]})`, u.k!=null ? `${f(u.kw, 1)} кВт · ${f(u.k, 2)}` : 'по паспорту']), result:`Q = ${f(S.Qc, 1)} кВт` });
-        N.step({ what:'Перепад температур летом', formula:'Δt = t_вн − t_нар; меньше 5 °C — расчёт при 5 °C', rules:['vent.temps'], data:[['t_вн', f(S.tIn, 1)+' °C'], ['t_нар', f(S.tSum, 1)+' °C']],
+        N.step({ what:'Перепад температур помещения летом', formula:'Δt = t_вн − t_нар (для тепла помещения); меньше 5 °C — расчёт при 5 °C', rules:['vent.temps'], data:[['t_вн', f(S.tIn, 1)+' °C'], ['t_нар', f(S.tSum, 1)+' °C']],
           result:`Δt = ${f(S.dt, 1)} °C${S.dtRaw<S.dt ? ` (по температурам ${f(S.dtRaw, 1)} °C — мало)` : ''}`, ok:S.dtRaw>=S.dt ? null : false,
           note:S.dtRaw<S.dt ? 'Недостаточный перепад: нужна принудительная вентиляция повышенной мощности или предварительное охлаждение воздуха.' : '' });
-        N.step({ what:'Воздух охлаждения компрессоров', formula:'L = Q · 3600 / (c · ρ · Δt), ρ = 353 / (273 + t_нар); паспортный расход — важнее', rules:['air.cp'],
-          data:[['c', f(N.rule('air.cp').c, 3)+' кДж/(кг·°C)'], ['ρ', f(S.rho, 3)+' кг/м³'], ...S.units.map(u=>[`поз. ${u.pos}`, `${n(u.cool)} м³/ч (${u.src})`])], result:`L = ${n(S.Lcool)} м³/ч` }); }
+        N.step({ what:'Воздух охлаждения компрессоров', formula:'L = Q · 3600 / (c · ρ · Δt_к), ρ = 353 / (273 + t_нар); Δt_к — нагрев воздуха в компрессоре (его вентилятор, горячий воздух — воздуховодом наружу); паспортный расход — важнее', rules:['air.cp', 'heat.cool_dt'],
+          data:[['c', f(N.rule('air.cp').c, 3)+' кДж/(кг·°C)'], ['ρ', f(S.rho, 3)+' кг/м³'], ['Δt_к', f(S.dtc, 1)+' °C'], ...S.units.map(u=>[`поз. ${u.pos}`, `${n(u.cool)} м³/ч (${u.src})`])], result:`L = ${n(S.Lcool)} м³/ч` }); }
       N.step({ what:'Вентиляция помещения', formula:'L = Q_пом · 3600 / (c · ρ · Δt) + воздух на сжатие и горение', rules:['heat.case', 'heat.sun'],
-        data:[['Q_пом (корпуса, осушители, солнце)', f(S.qRoom, 1)+' кВт'], ['на сжатие и горение', n(S.use)+' м³/ч']], result:`L = ${n(S.Lroom+S.use)} м³/ч` });
+        data:[['Q_пом (корпуса, осушители, солнце)', f(S.qRoom, 1)+' кВт'], ['на сжатие и горение', n(S.use)+' м³/ч']], result:`L = ${n(S.Lroom)} м³/ч + ${n(S.use)} м³/ч` });
       N.step({ what:'Проверка по кратности воздухообмена', formula:'L_мин = 3 · V, L_авар = 8 · V', rules:['vent.ach'], data:[['V', f(S.V, 1)+' м³']],
         result:`L_мин = ${n(S.Lmin)} м³/ч, аварийная — ${n(S.Lemerg)} м³/ч${S.raised ? '; расход увеличен до нормативного минимума' : ''}`, ok:true });
-      N.step({ what:'Расход воздуха летом', formula:'приток = охлаждение + помещение; выброс = приток − воздух на сжатие', data:[['1 CFM', '1,699 м³/ч']],
-        result:`приток ${n(S.Lin)} м³/ч (${n(S.cfmIn)} CFM), выброс ${n(S.Lout)} м³/ч (${n(S.cfmOut)} CFM)` }); }
+      N.step({ what:'Расход воздуха летом', formula:S.units.length ? 'приток = max(охлаждение, помещение) + воздух на сжатие — компрессор протягивает воздух через помещение (один поток); t у входа компрессора = t_нар + Q_пом · 3600 / (c · ρ · L); выброс = воздуховоды компрессоров + общая вытяжка' : 'приток = помещение + воздух на сжатие и горение; выброс = помещение',
+        data:[['1 CFM', '1,699 м³/ч'], ...(S.units.length ? [['t у входа компрессора', f(S.tComp, 1)+' °C'], ['общая вытяжка', n(S.Lgen)+' м³/ч']] : [])],
+        result:`приток ${n(S.Lin)} м³/ч (${n(S.cfmIn)} CFM), выброс ${n(S.Lout)} м³/ч (${n(S.cfmOut)} CFM)`, ok:S.units.length ? S.tComp<=S.tIn : null });
+      if (S.stand){ N.rule('vent.fan');
+        N.step({ what:'Вытяжной вентилятор при остановленных компрессорах', formula:'L = max(солнце · 3600 / (c · ρ · Δt), 3 · V) · 1,15, не меньше 500 м³/ч; P = L · ΔP / (3600 · 1000 · η); с термостатом', rules:['vent.fan', 'heat.sun'],
+          data:[['ΔP', S.stand.dp+' Па'], ['η', f(S.stand.eta, 2)]], result:`${n(S.stand.L)} м³/ч, около ${f(S.stand.P, 2)} кВт${S.stand.user ? `; заданный ${n(S.stand.user.q)} м³/ч — ${S.stand.user.ok ? 'достаточно' : 'мал'}` : ''}`, ok:S.stand.user ? S.stand.user.ok : null }); }
+      if (S.boost){ N.rule('vent.boost');
+        N.step({ what:'Вентилятор в воздуховоде выброса', formula:'P = L · ΔP / (3600 · 1000 · η); приток и выброс — с большей скоростью (компактные жалюзи)', rules:['vent.boost'],
+          data:[['L', n(S.boost.L)+' м³/ч'], ['ΔP', S.boost.dp+' Па'], ['η', f(S.boost.eta, 2)]], result:`около ${f(S.boost.P, 2)} кВт; приток ${f(S.vIn, 1)} м/с, выброс ${f(S.vOut, 1)} м/с по рамке` }); } }
     // проёмы по рамке: S = L / (3600 · v), приток — с запасом; поставлено на стенах (и крыше) — против нужного
     const step=(what, kind)=>{ const nd=V.need[kind]; if (!nd) return;
       const roof=kind==='out' ? (V.roof||[]) : [], placed=V.louvers.filter(q=>q.kind===kind).reduce((s, q)=>s+q.w*q.h/1e6, 0)+roof.reduce((s, q)=>s+q.w*q.l/1e6, 0), ok=!(V.short[kind]>0);
@@ -296,7 +303,7 @@ class VentSizing {
       N.step({ what, formula:kind==='in' ? 'S = L / (3600 · v) · запас — по рамке' : 'S = L / (3600 · v) — по рамке', rules:['vent.speed', 'vent.free'],
         data:[['L', n(V.q[kind])+' м³/ч'], ['v', f(nd.v, 1)+' м/с'], ...(kind==='in' ? [['запас', f(V.res, 2)]] : [])],
         result:`S ≥ ${f(nd.gross)} м²; ${list || 'жалюзи —'}${wh ? ' ('+wh+')' : ''}`, ok, margin:CalcNote.pct(placed, nd.gross),
-        note:`В живом сечении решётки (${Math.round(V.free*100)} % рамки) — около ${f(vl, 1)} м/с.` });
+        note:`В живом сечении решётки (${Math.round(V.free*100)} % рамки) — около ${f(vl, 1)} м/с.`+(kind==='out' && S && S.units.length && !S.boost ? ` Воздуховод с жалюзи — не более ${S.ductDp} Па (штатный вентилятор компрессора): жалюзи с малым сопротивлением, подтвердить по паспорту.` : '') });
       if (!ok) N.issue('warn', `${what}: на стенах не поместилось ${f(V.short[kind])} м² жалюзи (по рамке) — освободите стену или выведите воздух воздуховодом через крышу.`); };
     step('Приточные жалюзи', 'in'); step('Выброс горячего воздуха', 'out');
     const D=V.draft; if (D){ N.rule('vent.fan');
