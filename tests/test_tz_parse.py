@@ -196,6 +196,9 @@ class TzParseTest(unittest.TestCase):
         self.assertTrue(q['docs'])
         snow = TzParse.parse('Компрессорная станция 10 м3/мин, 8 бар. Жалюзи воздухозабора — с маркизами (снегозащита).')['req']
         self.assertTrue(snow.get('sys', {}).get('snow'), 'маркизы на притоке — система «snow»')
+        self.assertFalse(snow.get('sys', {}).get('snowout'), 'на выбросе — только если сказано')
+        out = TzParse.parse('Компрессорная станция 10 м3/мин. Маркизы на жалюзи притока и выброса горячего воздуха.')['req']
+        self.assertTrue(out.get('sys', {}).get('snow') and out.get('sys', {}).get('snowout'), 'маркизы и на выбросе — «snowout»')
         self.assertIn('предоставить паспорта', q['notes'])
         for f in r['found']:
             self.assertTrue(f['src'] and f['label'], f)
