@@ -158,11 +158,17 @@ function kitCost(x){
 function kitSync(x){ if (!isKit(x)) return false; const c=kitCost(x); if (!Number.isFinite(c)) return false;
   const ch=x.cost!==c || (x.costCur||'RUB')!=='RUB'; x.cost=c; x.costCur='RUB'; return ch; }
 
+// блоки описания позиции каталога, которые уходят в КП: без «Опций по прайсу поставщика» (блок фида с ценами прайса —
+// у прайса «наша закупка» это закупочные цены; менеджер видит его в каталоге, заказчику он не нужен)
+class CatFeatures {
+  static forKp(list){ return (list||[]).filter(f=>f && !f.feedOpts); }
+}
+
 // элемент сборки из позиции каталога: название, закупка, поставщик (производитель), суть описания, основные характеристики, фото
 class KitPart {
   static MAX = 700;     // описание элемента — не длиннее (знаков); обрезается по концу предложения или пункта списка
   static fromCat(doc){
-    const a=attrsOf(doc), feats=(doc.features||[]).filter(f=>f.text);
+    const a=attrsOf(doc), feats=CatFeatures.forKp(doc.features).filter(f=>f.text);
     // блоки описания — с новой строки (списки «• …» остаются списками и в карточке, и в документе КП)
     const desc=KitPart.cut(feats.map(f=>(f.label&&!/^(описание|о серии|назначение)$/i.test(f.label)?f.label+': ':'')+f.text.trim()).join('\n'));
     const all=(doc.groups||[]).flatMap(g=>(g.rows||[]).filter(r=>r.k&&r.v)), rows=all.slice(0,14).map(r=>({k:r.k, v:r.v}));
