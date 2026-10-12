@@ -40,7 +40,9 @@ class StationQuick {
     const busy=this.busy.has(x.id);
     return `<div class="sq">
       <div class="sq-h"><b>Подбор станции</b><span class="muted">Главное — ниже; остальное программа подберёт сама: оборудование из каталога, контейнер, компоновку и изображения для КП.</span></div>
-      <div class="sq-g">${(this.KEYS[k]||[]).map(fld).join('')}${air}${sel('reserve', 'Резерв', StationReq.RES, r.reserve||'')}</div>
+      <div class="sq-g">${(this.KEYS[k]||[]).map(fld).join('')}${air}${sel('reserve', 'Резерв', StationReq.RES, r.reserve||'')}${k==='comp' ? sel('industry', 'Отрасль заказчика', StationReq.INDUSTRY, r.industry||'') : ''}</div>
+      ${k==='comp' && StationReq.INDUSTRY_WORD[r.industry] ? `<p class="sq-oil"><span class="${r.oilOk ? 'muted' : ''}">${r.oilOk ? 'Масляный компрессор допущен по требованию заказчика.' : `Компрессоры — только безмасляные (класс 0 по маслу): правило для ${esc(StationReq.INDUSTRY_WORD[r.industry])} промышленности.`}</span>
+        <label class="chk"><input type="checkbox" data-req="${i}" data-rk="oilOk"${r.oilOk ? ' checked' : ''}> масляный — по требованию заказчика</label></p>` : ''}
       <div class="sq-a"><button class="btn primary" type="button" data-sq="pick" data-i="${i}"${busy ? ' disabled' : ''}>${busy ? 'Подбираю…' : main ? 'Подобрать заново' : 'Подобрать оборудование'}</button>
         ${typeof TzImport!=='undefined' ? `<button class="btn ghost" type="button" data-a="tzLoad" data-i="${i}">Загрузить ТЗ заказчика</button>` : ''}
         ${r.src && r.src.name ? `<span class="muted">по ТЗ «${esc(r.src.name)}»</span>` : ''}</div>
@@ -121,7 +123,7 @@ class StationQuick {
   /** требования станции → запрос подбора (числа) */
   static query(x){
     const r=StationReq.of(x), n=v=>StationReq.num(String(v??'').replace(/[−–]/g, '-').replace(/^\+/, ''))||0;
-    return { ...r, kind:StationReq.kind(x), air:StationUi.opts(x).air, flow:n(r.flow), pressure:n(r.pressure), q:n(r.q), head:n(r.head), kw:n(r.kw), hours:n(r.hours), recvVol:n(r.recvVol), work:+r.work||0 };
+    return { ...r, kind:StationReq.kind(x), oilFree:StationReq.oilFree(x), air:StationUi.opts(x).air, flow:n(r.flow), pressure:n(r.pressure), q:n(r.q), head:n(r.head), kw:n(r.kw), hours:n(r.hours), recvVol:n(r.recvVol), work:+r.work||0 };
   }
 }
 document.addEventListener('click', e=>{ const b=e.target.closest && e.target.closest('[data-sq]'); if (b && b.dataset.sq==='pick') StationQuick.pick(+b.dataset.i); });

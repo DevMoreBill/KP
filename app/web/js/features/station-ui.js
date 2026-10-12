@@ -58,6 +58,7 @@ class StationUi {
     const wn=plan.issues.filter(t=>t.level==='warn'), airOnly=wn.length && wn.every(t=>t.air);
     const head=plan.level==='error' ? ['err', plan.assumed ? '✕ Не помещается по условным габаритам — укажите размеры оборудования' : '✕ Оборудование не помещается в контейнер']
       : big ? ['warn', '⚠ Помещается с запасом — достаточно контейнера меньше']
+      : plan.mode && (plan.mode.cross || plan.mode.tight) ? ['warn', `⚠ Помещается в габарит перевозки — исключение: ${[plan.mode.tight ? 'проход оператора сужен' : '', plan.mode.cross && plan.cross ? 'без сквозного прохода, две двери оператора' : ''].filter(Boolean).join(', ')} (согласуйте с заказчиком)`]
       : airOnly ? ['warn', '⚠ Помещается — есть замечания по подготовке воздуха']
       : plan.level==='warn' ? ['warn', '⚠ Помещается, но часть отступов меньше рекомендуемых'] : ['ok', '✓ Оборудование помещается с рекомендуемыми отступами'];
     const dims=g.ext ? `${esc(ct.name)} · ${n(g.ext[0])} × ${n(g.ext[1])} × ${n(g.ext[2])} мм${plan.int ? ` · внутри ${n(plan.int[0])} × ${n(plan.int[1])} × ${n(plan.int[2])} мм` : ''}` : esc(ct.name);

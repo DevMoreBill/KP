@@ -26,6 +26,17 @@ class StationReq {
   static OPTS = [['oilFree', 'Безмасляный компрессор (класс 0 по маслу)', ['comp']], ['vsd', 'Частотное регулирование', ['comp', 'pump']],
     ['ats', 'Два ввода питания с АВР', ['comp', 'pump', 'dgu']], ['scada', 'Диспетчеризация — шкаф АСУ ТП', ['comp', 'pump', 'dgu']]];
   static ATS = /АВР|ввод\S*\s+резерв/i;
+  /** отрасль заказчика: в пищевой и медицинской — компрессоры только безмасляные (правило comp.oil_free) */
+  static INDUSTRY = [['', 'общепромышленная'], ['food', 'пищевая (в т. ч. напитки)'], ['med', 'медицинская, фармацевтическая']];
+  static INDUSTRY_WORD = { food:'пищевой', med:'медицинской и фармацевтической' };
+  /** безмасляный компрессор нужен: по требованию (галочка) или по отрасли (пищевая, медицинская), если заказчик не разрешил масляный */
+  static oilFree(x){
+    const r=this.of(x); if (this.kind(x)!=='comp') return false; if (r.oilFree) return true;
+    const L=(StationRules.opt('comp.oil_free')||{ industries:['food', 'med'] }).industries||[];
+    return L.includes(r.industry) && !r.oilOk;
+  }
+  /** безмасляный — по отрасли (а не галочкой): «для пищевой промышленности» */
+  static oilWhy(x){ const r=this.of(x); return !r.oilFree && this.oilFree(x) ? `для ${this.INDUSTRY_WORD[r.industry]} промышленности` : 'по ТЗ'; }
   static SCADA = /АСУ\s?ТП|диспетчер/i;
   /** шкафы АВР и АСУ ТП по требованиям — добавить, если их нет; ответ — названия добавленного */
   static ensureParts(x){
@@ -71,8 +82,8 @@ class StationReq {
       if (bar>0){ const pm=Math.max(0, ...U.map(p=>AirChain.bar(p)||0)), loss=this.loss(P), o=Math.round((pm-loss)*10)/10;
         if (pm) out.push({ ok:o>=bar, text:loss ? `давление на выходе ≈ ${n(o)} бар (компрессор ${n(pm)}, потери в подготовке воздуха ≈ ${n(loss)}) — ${o>=bar ? 'не меньше' : 'меньше'} ${n(bar)}`
           : `давление ${n(pm)} бар — ${pm>=bar ? 'не меньше' : 'меньше'} ${n(bar)}` }); } }
-    if (k==='comp' && r.oilFree){ const U=units('compressor'), bad=U.filter(p=>!TzPick.oilFree(p)).length;
-      if (U.length) out.push({ ok:!bad, text:bad ? 'компрессор не безмасляный — по ТЗ класс 0 по маслу' : 'компрессоры безмасляные' }); }
+    if (k==='comp' && this.oilFree(x)){ const U=units('compressor'), bad=U.filter(p=>!TzPick.oilFree(p)).length;
+      if (U.length) out.push({ ok:!bad, text:bad ? `компрессор не безмасляный — ${this.oilWhy(x)} нужен класс 0 по маслу` : 'компрессоры безмасляные' }); }
     if (r.ats && !P.some(p=>this.ATS.test(String(p.name||'')))) out.push({ ok:false, text:'нет шкафа АВР — по ТЗ два ввода питания' });
     if (r.scada && !P.some(p=>this.SCADA.test(String(p.name||'')))) out.push({ ok:false, text:'нет шкафа АСУ ТП — по ТЗ диспетчеризация' });
     if (k==='dgu'){ const U=units('dgu'), kw=U.map(p=>StationEquip.num((p.attrs||{}).kw)||0), need=this.num(r.kw), h=this.num(r.hours);
@@ -113,7 +124,7 @@ class StationReq {
       : k==='dgu' ? [u(r.kw, 'кВт'), r.mode==='standby' ? 'резервный (ESP)' : '', this.num(r.load)>0 ? 'средняя нагрузка '+u(r.load, '%') : ''] : k==='pump' ? [u(r.q, 'м³/ч'), u(r.head, 'м')] : [];
     const t=[r.tmin!=null && r.tmin!=='' ? `от ${r.tmin} °C` : '', r.tmax!=null && r.tmax!=='' ? `до ${r.tmax} °C` : ''].filter(Boolean).join(' ');
     const w=this.num(r.work), rs=this.num(r.reserve);
-    const opt=[r.oilFree && k==='comp' ? 'безмасляный' : '', r.vsd && k!=='dgu' ? 'частотное регулирование' : '', r.ats ? 'два ввода с АВР' : '', r.scada ? 'диспетчеризация' : ''];
+    const opt=[k==='comp' && r.industry ? (this.INDUSTRY.find(o=>o[0]===r.industry)||['', ''])[1].replace(/\s*\(.*\)$/, '')+' отрасль' : '', this.oilFree(x) ? 'безмасляный' : k==='comp' && r.oilOk && r.industry ? 'масляный — по требованию заказчика' : '', r.vsd && k!=='dgu' ? 'частотное регулирование' : '', r.ats ? 'два ввода с АВР' : '', r.scada ? 'диспетчеризация' : ''];
     return [...main, w>0 ? `${w} раб.${rs>0 ? ' + '+rs+' рез.' : ''}` : rs>0 ? 'резерв N+'+rs : '', t, this.num(r.alt)>0 ? u(r.alt, 'м над уровнем моря') : '', ...opt, r.src && r.src.name ? 'по ТЗ «'+r.src.name+'»' : ''].filter(Boolean).join(' · ');
   }
 
@@ -138,7 +149,9 @@ class StationReq {
           +sel('start', 'Пуск этого двигателя', this.START, r.start||'')+fld('alt', 'Высота над уровнем моря, м', '0', 'numeric')}</div>
         <p class="muted kr-hint">Не заданы — расчёт берёт значения с запасом в пользу заказчика; они перечислены в «Расчёте станции» (вкладка «Компоновка»).</p></details>` : ''}
       ${k==='comp' ? `<label class="chk kr-out"><input type="checkbox" data-req="${i}" data-rk="recvOut"${this.recvOut(x) ? ' checked' : ''}> Ресивер после подготовки — снаружи, на площадке у торца <span class="muted">(ФНП ОРПД, п. 65)</span></label>` : ''}
-      <div class="kr-opts">${this.OPTS.filter(([, , kinds])=>kinds.includes(k)).map(([key, label])=>`<label class="chk"><input type="checkbox" data-req="${i}" data-rk="${key}"${r[key] ? ' checked' : ''}> ${esc(label)}</label>`).join('')}</div>
+      <div class="kr-opts">${this.OPTS.filter(([, , kinds])=>kinds.includes(k)).map(([key, label])=>key==='oilFree' && !r.oilFree && this.oilFree(x)
+        ? `<label class="chk" title="Правило: в пищевой и медицинской промышленности — только безмасляные компрессоры"><input type="checkbox" checked disabled> ${esc(label)} <span class="muted">— ${esc(this.oilWhy(x))}</span></label>`
+        : `<label class="chk"><input type="checkbox" data-req="${i}" data-rk="${key}"${r[key] ? ' checked' : ''}> ${esc(label)}</label>`).join('')}</div>
       <label class="chk" title="${esc(SupplyDocs.list(x).join('; '))}"><input type="checkbox" data-req="${i}" data-rk="docs"${this.docs(x) ? ' checked' : ''}> Документы при поставке — в КП <span class="muted">(паспорта, декларации ТР ТС 010, 004, 020, 032, исполнительная документация)</span></label>
       ${r.notes ? `<label class="f kr-n"><span>Прочие требования из ТЗ</span><textarea rows="3" data-p="${P}.notes" data-req="${i}">${esc(r.notes)}</textarea></label>` : ''}</div>`;
   }
@@ -213,7 +226,8 @@ class KitNeed {
     if (k==='comp'){ const ads=kitParts(x).find(z=>StationEquip.kindOf(z)==='dryer' && AirChain.info(z, 'dryer').type==='ads'), purge=ads ? AirChain.purge((ads.attrs||{}).regen) : 0;
       cap=(AirChain.flow(p)||0)*(1-purge); need=this.n(r.flow)>0 ? StationReq.need(r, this.n(r.flow)).v : 0;
       const B=this.n(r.pressure), pm=AirChain.bar(p)||0, loss=StationReq.loss(kitParts(x));
-      if (B>0 && pm>0 && pm-loss<B-1e-9) bad=`давление ${m3(pm)} бар${loss ? ` (с потерями в осушителе и фильтрах ≈ ${m3(pm-loss)})` : ''} меньше ${m3(B)} бар у потребителя`; }
+      if (B>0 && pm>0 && pm-loss<B-1e-9) bad=`давление ${m3(pm)} бар${loss ? ` (с потерями в осушителе и фильтрах ≈ ${m3(pm-loss)})` : ''} меньше ${m3(B)} бар у потребителя`;
+      if (!bad && StationReq.oilFree(x) && !TzPick.oilFree(p)) bad=`масляный, а ${StationReq.oilWhy(x)} нужен безмасляный (класс 0 по маслу)`; }
     if (k==='dgu'){ cap=(r.mode==='standby' ? this.n(a.kwMax) : null) || this.n(a.kw) || 0; need=this.n(r.kw)||0; }
     if (k==='pump'){ cap=this.n(a.flow)||0; need=this.n(r.q)||0; const H=this.n(r.head), h=this.n(a.head); if (H>0 && h>0 && h<H-1e-9) bad=`напор ${m3(h)} м меньше нужного ${m3(H)} м`; }
     const W=Math.max(work, need>0 && cap>0 ? Math.ceil(need/cap-1e-9) : 1);
@@ -284,9 +298,9 @@ class KitNeed {
     const out=(u, n, test, need, extra={})=>({ test, qty:n+res, best:u ? { id:u.o.c.id, n:u.n+res, label:u.n+res>1 ? `${u.n} рабоч.${res ? ` + ${res} резерв.` : ''} = ${u.n+res} шт.` : '' } : null, need, ...extra });
     if (k==='comp'){ const q0=this.n(r.flow), B=this.n(r.pressure)||0; if (!(q0>0)) return null;
       const cls=String(StationUi.opts(x).air||''), wc=+(cls.split('.')[1]||0), ads=wc>0 && wc<=3, nd=StationReq.need(r, q0), Q=ads ? nd.v/(1-AirChain.PURGE) : nd.v;
-      const u=TzPick.comps(pool, Q, B, { oilFree:!!r.oilFree, vsd:!!r.vsd, work }), n=u ? u.n : work||1, per=Q/n;
-      return out(u, n, c=>TzPick.flow(c)>=per-1e-9 && (!r.oilFree || TzPick.oilFree(c)),
-        `Нужно ${m3(Q)} м³/мин${B ? ` при ${m3(B)} бар у потребителя` : ''}${nd.why || ads ? ` (${[nd.why, ads ? 'с запасом на продувку адсорбционного осушителя' : ''].filter(Boolean).join(', ')})` : ''}${tail(n)}. Показаны компрессоры от ${m3(per)} м³/мин${B ? `, давление от ${m3(B)} бар` : ''}${r.oilFree ? ', безмасляные' : ''}.`,
+      const of=StationReq.oilFree(x), u=TzPick.comps(pool, Q, B, { oilFree:of, vsd:!!r.vsd, work }), n=u ? u.n : work||1, per=Q/n;
+      return out(u, n, c=>TzPick.flow(c)>=per-1e-9 && (!of || TzPick.oilFree(c)),
+        `Нужно ${m3(Q)} м³/мин${B ? ` при ${m3(B)} бар у потребителя` : ''}${nd.why || ads ? ` (${[nd.why, ads ? 'с запасом на продувку адсорбционного осушителя' : ''].filter(Boolean).join(', ')})` : ''}${tail(n)}. Показаны компрессоры от ${m3(per)} м³/мин${B ? `, давление от ${m3(B)} бар` : ''}${of ? `, безмасляные (${StationReq.oilWhy(x)})` : ''}.`,
         { min:B>0 ? { pressure:B } : {} }); }
     if (k==='dgu'){ const P=this.n(r.kw); if (!(P>0)) return null; const sb=r.mode==='standby', kw=c=>(sb ? this.n(attrsOf(c).kwMax) : null) || this.n(attrsOf(c).kw) || 0;
       const u=TzPick.units(pool.map(c=>({ c, v:kw(c) })).filter(o=>o.v>0), P, work||1), n=u ? u.n : work||1, per=P/n;

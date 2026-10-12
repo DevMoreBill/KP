@@ -15,7 +15,7 @@ class TzImport {
   static NUMS = ['flow', 'pressure', 'q', 'head', 'kw', 'hours', 'tmin', 'tmax', 'noise', 'recvVol', 'alt', 'rh', 'margin', 'load', 'motor'];
   static LABELS = { flow:'Производительность, м³/мин', pressure:'Давление, бар', air:'Класс воздуха', q:'Подача, м³/ч', head:'Напор, м', kw:'Мощность, кВт', hours:'Работа от бака, ч',
     tmin:'Наружный воздух от, °C', tmax:'Наружный воздух до, °C', reserve:'Резерв', work:'Рабочих агрегатов', basis:'Производительность приведена', alt:'Высота над уровнем моря, м',
-    rh:'Влажность, %', margin:'Запас производительности, %', mode:'Режим ДЭС', load:'Средняя нагрузка, %', motor:'Наибольший двигатель, кВт', start:'Пуск двигателя', fire:'Категория помещения', noise:'Шум, дБА' };
+    rh:'Влажность, %', margin:'Запас производительности, %', mode:'Режим ДЭС', load:'Средняя нагрузка, %', motor:'Наибольший двигатель, кВт', start:'Пуск двигателя', fire:'Категория помещения', noise:'Шум, дБА', industry:'Отрасль заказчика' };
   static cur = null;
 
   /** выбрать файл ТЗ: i — станция в КП (требования — к ней), null — новая станция */
@@ -96,7 +96,8 @@ class TzImport {
 
   /** значение параметра анкеты словами (ключи выбора — понятным текстом) */
   static VAL = { basis:{ fad:'FAD — условия всасывания', normal:'нормальные м³' }, mode:{ prime:'основной (PRP)', standby:'резервный (ESP)' },
-    start:{ direct:'прямой', stardelta:'звезда — треугольник', soft:'плавный пуск', vsd:'частотный преобразователь' }, reserve:{ 0:'без резерва', 1:'N + 1', 2:'N + 2' }, rel:{ 1:'I', 2:'II', 3:'III' } };
+    start:{ direct:'прямой', stardelta:'звезда — треугольник', soft:'плавный пуск', vsd:'частотный преобразователь' }, reserve:{ 0:'без резерва', 1:'N + 1', 2:'N + 2' }, rel:{ 1:'I', 2:'II', 3:'III' },
+    industry:{ food:'пищевая — компрессоры безмасляные', med:'медицинская, фармацевтическая — компрессоры безмасляные' } };
   static val(key, v){ if (v===true) return 'да'; if (v==null || v==='') return '—'; const m=this.VAL[key]; return m && m[v]!=null ? m[v] : String(v).replace('.', ',').replace(/^-(?=\d)/, '−'); }
   static kindName(k){ return { 'pdf-ocr':'PDF-скан, распознан', image:'картинка, распознана' }[k] || String(k||'').toUpperCase(); }
   /** как прочитан документ: способы (текстовый слой, распознавание Windows) и качество; низкое — совет проверить и уточнить с ИИ */
@@ -161,7 +162,7 @@ class TzImport {
 "margin":запас производительности %,"q":м³/ч,"head":м,"kw":кВт,"mode":"prime|standby" (ДЭС — основной или резервный источник),"load":средняя нагрузка %,"motor":кВт наибольшего двигателя нагрузки,
 "start":"direct|stardelta|soft|vsd","hours":работа от бака ч,"work":рабочих агрегатов 1…4,"reserve":0|1|2,"tmin":°C,"tmax":°C,"alt":высота над уровнем моря м,"rh":влажность %,
 "climate":"У1|УХЛ1|ХЛ1","fire":"А|Б|В1|В2|В3|В4|Г|Д","noise":дБА,"recvOut":true|false,"cont":"block|sea20|sea40|sea20hc|sea40hc|north",
-"oilFree":true|false,"vsd":true|false,"ats":true|false,"scada":true|false,"notes":"прочие требования кратко"}. Неизвестное — не указывай, не выдумывай.\n\nТЕКСТ ТЗ:\n${text}`;
+"oilFree":true|false,"industry":"food|med" (food — пищевая, напитки; med — медицинская, фармацевтическая),"vsd":true|false,"ats":true|false,"scada":true|false,"notes":"прочие требования кратко"}. Неизвестное — не указывай, не выдумывай.\n\nТЕКСТ ТЗ:\n${text}`;
     toast('Спрашиваю ИИ…');
     let a; try{ a=JSON.parse(String(await aiDirect(prompt)).replace(/^[^{]*/, '').replace(/[^}]*$/, '')); }
     catch(err){ return toast('ИИ не ответил понятно — поля оставлены как есть'); }
@@ -197,6 +198,7 @@ class TzImport {
     const r=StationReq.ensure(x);
     for (const k of this.NUMS) if (q[k]!=null && q[k]!=='') r[k]=num(q[k]);
     for (const k of ['recv', 'reserve', 'work', 'fire']) if (q[k]!=null) r[k]=q[k];
+    if (q.kind==='comp' && StationReq.INDUSTRY.some(o=>o[0]===q.industry)) r.industry=q.industry;   // пищевая, медицинская — только безмасляные
     for (const [k, L] of [['basis', StationReq.BASIS], ['mode', StationReq.MODE], ['start', StationReq.START]]) if (L.some(o=>o[0]===q[k])) r[k]=q[k];
     r.recvOut=!!q.recvOut; r.docs=q.docs!==false;
     // коммерческие условия из ТЗ — в прочие требования (для КП и переписки)
