@@ -136,7 +136,11 @@ class StationSpec {
     const W=t.station ? this.power(x) : null;
     if (W && W.kw>0){ const row={k:W.dgu ? 'Собственные нужды станции' : 'Потребляемая мощность (расчётная)', v:`${StationPower.f(W.kw)} кВт, 3 × 400 В${W.breaker ? `, вводной автомат ${W.breaker} А` : ''}`, hl:false};
       if (out.length) out[0].rows.push(row); else out.push({name:'Основные', rows:[row]}); }
-    return out;
+    // свои параметры станции (ручной режим): после автоматических; совпадающая строка — заменяется своей
+    const own=t.station && typeof StationParams!=='undefined' ? StationParams.rows(x) : [];
+    if (own.length){ const has=new Set(own.map(r=>r.k.toLowerCase())); for (const g of out) g.rows=g.rows.filter(r=>!has.has(String(r.k||'').toLowerCase()));
+      const rows=own.map(r=>({ k:r.k, v:r.v, hl:false })); if (out.length) out[0].rows.push(...rows); else out.push({ name:'Основные', rows }); }
+    return out.filter(g=>g.rows.length);
   }
 }
 // название станции по умолчанию: «Модульная насосная станция Grundfos CR 32 в блок-контейнере»

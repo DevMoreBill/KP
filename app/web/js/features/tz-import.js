@@ -18,16 +18,36 @@ class TzImport {
     rh:'Влажность, %', margin:'Запас производительности, %', mode:'Режим ДЭС', load:'Средняя нагрузка, %', motor:'Наибольший двигатель, кВт', start:'Пуск двигателя', fire:'Категория помещения', noise:'Шум, дБА', industry:'Отрасль заказчика' };
   static cur = null;
 
-  /** выбрать файл ТЗ: i — станция в КП (требования — к ней), null — новая станция */
+  /** ТЗ заказчика: файл или текст, вставленный в окно; i — станция в КП (требования — к ней), null — новая станция */
   static pick(i){
+    const m=new Modal(`<div class="dlg-h"><h3>ТЗ заказчика</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
+      <p class="muted" style="margin:0 0 10px">Файл (PDF, Word, Excel, скан) — или скопируйте текст ТЗ из письма, сайта тендера или документа и вставьте ниже.</p>
+      <button class="btn" type="button" data-tzf>Выбрать файл ТЗ…</button>
+      <label class="f" style="margin-top:12px"><span>Текст ТЗ</span><textarea rows="10" data-tzt maxlength="200000" placeholder="Например: Компрессорная станция в блок-контейнере, производительность 12 м³/мин, давление 8 бар, точка росы +3 °C, климат УХЛ1, от −45 до +40 °C…"></textarea></label>
+      <div class="row" style="gap:8px;margin-top:10px;justify-content:flex-end"><button class="btn ghost" type="button" data-x>Отмена</button><button class="btn primary" type="button" data-tzp>Разобрать текст</button></div>`, 'tzi-in');
+    m.d.addEventListener('click', e=>{
+      if (e.target.closest('[data-x]')) return m.close();
+      if (e.target.closest('[data-tzf]')){ m.close(); return this.file(i); }
+      if (e.target.closest('[data-tzp]')){ const t=String(m.$('[data-tzt]').value||'').trim();
+        if (t.length<20) return toast('Вставьте текст ТЗ — хотя бы пару строк с требованиями');
+        m.close(); toast('Читаю ТЗ…');
+        this.parse(new Blob([t], { type:'text/plain;charset=utf-8' }), 'ТЗ (текст из окна).txt', i); } });
+    setTimeout(()=>{ const t=m.$('[data-tzt]'); if (t) t.focus(); }, 50);
+  }
+  /** выбрать файл ТЗ */
+  static file(i){
     const f=$('#filePick'); f.value=''; f.multiple=false; f.accept=this.ACCEPT;
-    f.onchange=async ()=>{ const fl=f.files[0]; f.accept=''; if (!fl) return;
+    f.onchange=()=>{ const fl=f.files[0]; f.accept=''; if (!fl) return;
       if (fl.size>40*1024*1024) return toast('Файл больше 40 МБ');
       toast(/\.(png|jpe?g|tiff?|bmp)$/i.test(fl.name) ? 'Распознаю скан ТЗ…' : 'Читаю ТЗ…');
-      let r; try{ r=await api('/api/tz/parse?name='+encodeURIComponent(fl.name), { method:'POST', headers:{ 'Content-Type':'application/octet-stream' }, body:fl }); }
-      catch(e){ return toast(String(e && e.message || e)); }
-      this.open(r, fl.name, i); };
+      this.parse(fl, fl.name, i); };
     f.click();
+  }
+  /** разбор на сервере → окно разбора */
+  static async parse(body, name, i){
+    let r; try{ r=await api('/api/tz/parse?name='+encodeURIComponent(name), { method:'POST', headers:{ 'Content-Type':'application/octet-stream' }, body }); }
+    catch(e){ return toast(String(e && e.message || e)); }
+    this.open(r, name, i);
   }
 
   /** окно разбора: найденное (с цитатами) и поля требований */

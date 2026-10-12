@@ -31,8 +31,8 @@ class TzOut {
       for (let k=0; k<L.length; k++) add(await StationImages.raster(L[k], 'image/png'), L.length>1 ? `Габаритный чертёж, лист ${k+1}` : 'Габаритный чертёж', 225, k>0);
       if (sch) add(await StationImages.raster(sch.cls.svg(plan, meta), 'image/png'), sch.name, 240, true);
       const gl=await StationRender.image(plan, meta), v3=gl || await StationImages.raster(StationView3D.svg(plan, meta), 'image/jpeg');
-      add(v3, '3D-вид (стены со стороны зрителя срезаны)', 200, true);
-      add(await StationRender.image(plan, meta, 'out'), 'Вид снаружи: двери, жалюзи, светильники, знаки, логотип', 200, true); }
+      add(v3, 'Разрез (3D-вид, стены со стороны зрителя срезаны)', 200, true);
+      for (const [, az, cap] of StationImages.VIEWS) add(await StationRender.image(plan, meta, 'out', az), `${cap} снаружи: двери, ворота, жалюзи, светильники, знаки`, 200, true); }
     return d.pack('blob');
   }
 
@@ -198,9 +198,9 @@ class TzOut {
   static doors(plan){
     const n=this.N, S=plan.doors||[], en=plan.entry, G=plan.gates, out=[];
     if (en && en.sea) out.push('оператора — штатные двери контейнера в торце');
-    else if (en) out.push(`оператора — одностворчатая ${n(en.w)} мм (не менее 600 мм в свету)${en.wall==='left' ? ' в торце' : ''}, утеплённая, открывается наружу, с замком и доводчиком (доводчик — внутри); рядом — таблички, знаки и огнетушители`);
+    else if (en) out.push(`оператора — одностворчатая ${n(en.w)} мм (не менее ${n(StationLayout.DOOR_MIN)} мм в свету)${en.wall==='left' ? ' в торце' : ''}, утеплённая, открывается наружу, с замком и доводчиком (доводчик — внутри); рядом — таблички, знаки и огнетушители`);
     if (G && G.sea) out.push(`в торце — штатные двери контейнера${G.pos.length ? ` (монтаж и демонтаж поз. ${G.pos.join(', ')})` : ''}`);
-    else if (G) out.push(`распашные ворота для монтажа и демонтажа ${n(G.w)} × ${n(G.h)} мм в ${G.wall==='left' ? 'торце у входа' : 'дальнем торце'} — поз. ${G.pos.join(', ')}; утеплённые, с замками, запорными штангами и фиксаторами открытого положения`);
+    for (const Q of [G && !G.sea ? G : null, plan.gates2].filter(Boolean)) out.push(`распашные монтажные ворота ${Q.full ? 'во весь торец ' : ''}${n(Q.w)} × ${n(Q.h)} мм в ${Q.wall==='left' ? 'торце у входа' : 'дальнем торце'} (открываются наружу, это и выход)${Q.pos.length ? ' — поз. '+Q.pos.join(', ') : ''}; утеплённые, с замками, запорными штангами и фиксаторами открытого положения`);
     const two=S.find(d=>d.kind==='entry'), wk=G && G.wicket;
     if (plan.second) out.push(`вторая дверь оператора (${plan.second}) — ${plan.exit ? `одностворчатая ${n(plan.exit.w)} мм в дальнем торце` : wk ? `калитка ${n(wk.w)} × ${n(wk.h)} мм в створке ворот` : plan.secondDgu ? 'выход через дверь-жалюзи ДГУ' : two ? `одностворчатая ${n(two.w)} мм в стене прохода у дальнего торца` : ''}, открывается наружу, изнутри — без ключа, с доводчиком`);
     const R=S.filter(d=>d.kind!=='entry' && d.rear), F=S.filter(d=>d.kind!=='entry' && !d.rear), txt=D=>D.map(d=>`${n(d.w)} × ${n(d.h)} мм в ${d.wall==='back' ? 'задней' : 'передней'} стене (${d.leaves>1 ? 'двустворчатые' : 'одностворчатые'}, поз. ${d.pos.join(', ')})`).join(', ');

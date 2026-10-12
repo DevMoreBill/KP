@@ -84,6 +84,7 @@ document.addEventListener('click', async e=>{
     case 'drawPick': return DrawPic.pick(i, j, b.dataset.v);
     case 'tzOut': return TzOut.download(i);
     case 'tzLoad': return TzImport.pick(i);
+    case 'stParAdd': case 'stParDel': if (!StationParams.act(a, i, b)) return; break;
     case 'drawDel': DrawPic.del(i, j, b.dataset.v); break;
     case 'galDel': StationImages.drop(it, j); break;
     case 'stPhoto': { const p=kitParts(it)[j]; if (!p || !p.photo || !p.photo.src) return; StationImages.chosen(it); it.photo={...p.photo}; delete it.photoFrom; toast('Главное фото станции — фото «'+(p.name||'элемента')+'»'); break; }

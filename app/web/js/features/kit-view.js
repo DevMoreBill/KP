@@ -159,6 +159,7 @@ class StationReq {
   static change(t){
     const i=+t.dataset.req, x=S.items[i]; if (!x) return; const r=this.ensure(x), k=t.dataset.rk;
     if (k) r[k]=t.type==='checkbox' ? t.checked : t.value;
+    if (t.dataset.stpar!=null) StationParams.changed(x);
     if (k==='recv' || k==='recvOut'){ StationUi.cache.delete(x.id); StationSize.apply(x, true); }
     if ((k==='ats' || k==='scada') && t.checked){ const a=this.ensureParts(x); if (a.length){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); toast('Добавлено в состав: '+a.join(', ')); } }
     persist(); renderForm();

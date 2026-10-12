@@ -66,10 +66,29 @@ class RulesFileTest(unittest.TestCase):
         d = copy.deepcopy(self.d)
         d['series'][0]['match'] = '(('
         bad.append((d, 'match'))
+        # значения компоновки (матрица расстановки, проходы, отступы — правятся в «Настройках» таблицами)
+        def lay(rid, fix):
+            d = copy.deepcopy(self.d)
+            fix(next(r for r in d['rules'] if r['id'] == rid))
+            return d
+        bad += [
+            (lay('layout.matrix', lambda r: r['value']['pair']['rows'][0].update(a='robot')), 'неизвестный вид'),
+            (lay('layout.matrix', lambda r: r['value']['pair']['rows'][0].update(base=-5)), 'база'),
+            (lay('layout.matrix', lambda r: r['value']['pair']['rows'][0].update(k=0, base=300, min=700)), 'не менее'),
+            (lay('layout.matrix', lambda r: r['value']['sides']['rows'][0].update(s='XYZ')), 'буквы'),
+            (lay('layout.matrix', lambda r: r['value'].update(evil={'x': 1})), 'неизвестный раздел'),
+            (lay('layout.matrix', lambda r: r['value']['door'].update(w=600)), 'ширина двери'),
+            (lay('layout.matrix', lambda r: r['value']['gate'].update(addW='1000; drop')), 'число'),
+            (lay('norm.aisle', lambda r: r.update(value=[600, 1000])), 'допустимый'),
+            (lay('clear.kind', lambda r: r['value']['compressor'].update(back=[100, 300])), 'допустимый'),
+        ]
         for d, word in bad:
             with self.subTest(word), self.assertRaises(ValueError) as e:
                 StationRules.validate(d)
             self.assertIn(word.lower(), str(e.exception).lower())
+        # исправная правка матрицы проходит
+        ok = lay('layout.matrix', lambda r: r['value']['pair']['rows'][0].update(base=1200, min=800))
+        self.assertTrue(StationRules.validate(ok))
 
 
 class RulesRouteTest(unittest.TestCase):
