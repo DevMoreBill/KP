@@ -177,7 +177,7 @@ class KitPart {
     const num=v=>{ const m=String(v??'').replace(/\s/g, '').replace(',', '.').match(/\d+(?:\.\d+)?/); return m ? +m[0] : null; };
     // «м» отдельным словом (не «мм»): \b в JavaScript не видит границ кириллических слов
     const mm=r=>{ const v=num(r.v); return v==null ? null : /(?:^|[^а-яё])м(?![а-яё])/i.test(String(r.k)+' '+String(r.v)) && v<30 ? Math.round(v*1000) : v; };
-    const row=re=>all.find(r=>re.test(String(r.k).trim()) && !/упаков|присоедин|фланц|патрубк|бак|ресивер|сопл/i.test(String(r.k)));
+    const row=re=>all.find(r=>re.test(String(r.k).trim()) && !/упаков|присоедин|фланц|патрубк|бак|ресивер|сопл|радиатор|про[её]м|отверсти/i.test(String(r.k)));
     if (!a.size){ const g=row(/^габарит|^размеры?\b/i), L=row(/^длина/i), W=row(/^ширина/i), H=row(/^высота/i);
       if (g && /\d\s*[×xх*]\s*\d/i.test(String(g.v))) a.size=String(g.v).replace(/\s*мм\s*$/i, '').trim();
       else if (L && W && H && mm(L) && mm(W) && mm(H)) a.size=`${mm(L)} × ${mm(W)} × ${mm(H)}`; }

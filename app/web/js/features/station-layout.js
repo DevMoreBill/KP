@@ -261,7 +261,8 @@ class StationEquip {
     const a=p.attrs||{};
     let n=this.nums(a.size), src=n ? 'Габариты' : '';
     if (!n || n.length<3){
-      const rows=(p.rows||[]).filter(r=>r && /габарит|размер|д\s*[×xх*]\s*ш/i.test(String(r.k||'')) && !/упаков|присоедин|фланц|патрубк/i.test(String(r.k||'')));
+      // не размеры частей: упаковки, патрубков, радиатора ДГУ («Габариты радиатора (раст. от пола, В, Ш)»), проёмов
+      const rows=(p.rows||[]).filter(r=>r && /габарит|размер|д\s*[×xх*]\s*ш/i.test(String(r.k||'')) && !/упаков|присоедин|фланц|патрубк|радиатор|про[её]м|отверсти/i.test(String(r.k||'')));
       for (const r of rows){ const t=this.nums(r.v); if (t && (!n || t.length>n.length)){ n=t; src=String(r.k); if (t.length===3) break; } }
     }
     if ((!n || n.length<3) && typeof lgCargoOf==='function'){
