@@ -184,8 +184,10 @@ class SupplyDocs {
 // По выбранным компрессорам программа сама знает, какой нужен осушитель, какие фильтры и ресивер (AirChain.check): в составе
 // — строки «Нужно: …» с кнопкой «Подобрать»; окно каталога открывается сразу с подходящими (производительность и объём — не
 // меньше нужных, давление — не ниже компрессорного), рекомендуемый — первым (тот же расчёт, что у «Подобрать оборудование»:
-// TzPick — поправки производителя, добор количеством, ресиверы без учёта в Ростехнадзоре). «Подобрать всё недостающее» —
-// одной кнопкой. Компрессор — по требованиям «Подбора станции», если они заданы.
+// TzPick — поправки производителя, добор количеством, ресиверы по 900 л без учёта в Ростехнадзоре). «Подобрать всё
+// недостающее» — одной кнопкой. Для всех станций — основное оборудование против требований «Подбора станции»: сколько
+// рабочих и резервных («Нужно: ещё 1 × …»), мало (давление, напор, больше четырёх рабочих) — «Заменить» с подбором по
+// требованиям; у ДГУ — топливный бак под время работы без дозаправки.
 class KitNeed {
   static n(v){ return StationReq.num(String(v??'').replace(/[−–]/g, '-').replace(/^\+/, '')); }
   /** цепочка воздуха по составу (контейнер не нужен): {q, bar, recs, …} или null (не компрессорная, нет компрессоров) */
@@ -197,8 +199,43 @@ class KitNeed {
   static comps(x){ return StationEquip.list(kitParts(x)).filter(e=>e.kind==='compressor' && e.air); }
   /** наибольшее давление компрессоров, бар (0 — неизвестно) */
   static bar(x){ return Math.max(0, ...this.comps(x).map(e=>e.air.bar||0)); }
-  /** чего не хватает (или что мало — замена): рекомендации цепочки; осушитель при уже выбранном того же вида — замена */
-  static recs(x){
+  /** чего не хватает (или что мало — замена): основное оборудование, бак ДГУ, подготовка воздуха компрессорной */
+  static recs(x){ return [...this.main(x), ...this.fuel(x), ...this.airRecs(x)]; }
+  static MAIN = { comp:['compressor', 'компрессор', 'м³/мин'], dgu:['dgu', 'ДГУ', 'кВт'], pump:['pump', 'насос', 'м³/ч'] };
+  /** основное оборудование против требований «Подбора станции» (как в проверках требований): одна модель в составе —
+   *  сколько нужно рабочих (по производительности, мощности, подаче; не меньше заданного числа) и резервных; давление
+   *  (с потерями в подготовке воздуха), напор или больше четырёх рабочих — «Заменить». Несколько моделей — собрано вручную */
+  static main(x){
+    const k=StationReq.kind(x), M=this.MAIN[k]; if (!M) return [];
+    const P=kitParts(x).filter(p=>StationEquip.kindOf(p)===M[0]); if (P.length!==1) return [];
+    const p=P[0], r=StationReq.of(x), a=p.attrs||{}, U=Math.max(1, Math.round(+p.qty||1)), res=Math.max(0, Math.round(this.n(r.reserve)||0)), work=Math.max(0, Math.round(+r.work||0)), m3=AirChain.m3;
+    let cap=0, need=0, bad='';
+    if (k==='comp'){ const ads=kitParts(x).find(z=>StationEquip.kindOf(z)==='dryer' && AirChain.info(z, 'dryer').type==='ads'), purge=ads ? AirChain.purge((ads.attrs||{}).regen) : 0;
+      cap=(AirChain.flow(p)||0)*(1-purge); need=this.n(r.flow)>0 ? StationReq.need(r, this.n(r.flow)).v : 0;
+      const B=this.n(r.pressure), pm=AirChain.bar(p)||0, loss=StationReq.loss(kitParts(x));
+      if (B>0 && pm>0 && pm-loss<B-1e-9) bad=`давление ${m3(pm)} бар${loss ? ` (с потерями в осушителе и фильтрах ≈ ${m3(pm-loss)})` : ''} меньше ${m3(B)} бар у потребителя`; }
+    if (k==='dgu'){ cap=(r.mode==='standby' ? this.n(a.kwMax) : null) || this.n(a.kw) || 0; need=this.n(r.kw)||0; }
+    if (k==='pump'){ cap=this.n(a.flow)||0; need=this.n(r.q)||0; const H=this.n(r.head), h=this.n(a.head); if (H>0 && h>0 && h<H-1e-9) bad=`напор ${m3(h)} м меньше нужного ${m3(H)} м`; }
+    const W=Math.max(work, need>0 && cap>0 ? Math.ceil(need/cap-1e-9) : 1);
+    if (!bad && W>TzPick.MAX) bad=`слишком мал: нужно ${m3(need)} ${M[2]}, у одного ${m3(cap)} (больше ${TzPick.MAX} рабочих)`;
+    if (bad) return [{ key:'main', main:true, swap:true, replace:[p.id], head:`Заменить: ${M[1]} — ${bad}`, why:'«Подобрать» откроет каталог с подходящими по требованиям «Подбора станции»' }];
+    if (U<W+res) return [{ key:'main-qty', act:'qty', id:p.id, qty:W+res, head:`Нужно: ещё ${W+res-U} × ${String(p.name||'').trim() || StationEquip.LABEL[M[0]]}`,
+      why:`всего ${W+res}: ${W} рабоч.${res ? ` + ${res} резерв.` : ''}${need>0 ? ` на ${m3(need)} ${M[2]}` : ''} — по «Подбору станции»` }];
+    return [];
+  }
+  /** ДГУ: топливный бак под время работы без дозаправки (требования): нет бака — «Нужно», мал — «Заменить» (расчёт —
+   *  StationDefaults.tankFor, как в расчётной записке) */
+  static fuel(x){
+    if (StationReq.kind(x)!=='dgu') return [];
+    const h=this.n(StationReq.of(x).hours), t=h>0 ? StationDefaults.tankFor(x, h) : null; if (!t) return [];
+    const T=kitParts(x).filter(z=>StationEquip.kindOf(z)!=='dgu' && StationDefaults.FUEL.test(String(z.name||''))), cur=T.reduce((s, z)=>s+(AirChain.volume(z)||0)*Math.max(1, +z.qty||1), 0);
+    if (T.length && cur>=t.v) return [];
+    return [{ key:'tank', act:'tank', hours:h, by:'asm', match:StationDefaults.FUEL, swap:!!T.length,
+      head:T.length ? `Заменить: топливный бак ${StationLayout.n(cur)} л — нужен ${StationLayout.n(t.v)} л` : `Нужно: топливный бак ${StationLayout.n(t.v)} л`,
+      why:`работа без дозаправки ${AirChain.m3(h)} ч — по «Подбору станции»${t.rows[1] ? '; '+t.rows[1].k.charAt(0).toLowerCase()+t.rows[1].k.slice(1)+' — '+t.rows[1].v : ''}` }];
+  }
+  /** подготовка воздуха компрессорной: рекомендации цепочки; осушитель при уже выбранном того же вида — замена */
+  static airRecs(x){
     const A=this.air(x); if (!A) return [];
     const rank=r=>/^dryer/.test(r.cat) ? 0 : r.cat==='filter' ? 1 : 2;   // по ходу воздуха: осушитель, фильтры, ресиверы
     return [...A.recs].sort((a, b)=>rank(a)-rank(b)).map(r=>{ if (!/^dryer-/.test(r.key) || r.replace) return r;
@@ -232,23 +269,32 @@ class KitNeed {
     const need=[...Object.entries(F.r).filter(([, v])=>v && v[0]).map(([k, v])=>`${lab[k]||k} ${String(v[0]).replace('.', ',')} ${unit[k]||''}`.trim()),
       ...(F.min.pressure ? [`давление от ${AirChain.m3(F.min.pressure)} бар`] : []), ...Object.values(F.f).filter(Boolean)];
     return { f:F.f, r:F.r, min:F.min, rows:r.rows, attrs:r.attrs, qty:r.qty, replace:r.replace, twin:b && b.twin,
-      best:b ? { id:b.c.id, n:b.n } : null, title:r.title,
+      best:b ? { id:b.c.id, n:b.n, label:b.n>1 && r.cat==='receiver' ? `${b.n} шт.${b.twin ? ' до и после осушителя' : ''}` : '' } : null, title:r.title,
       need:`${r.swap ? 'Заменить: ' : 'Нужно: '}${r.title.charAt(0).toLowerCase()+r.title.slice(1)}${A && A.q ? ` — к компрессорам ${AirChain.m3(A.q)} м³/мин, ${AirChain.m3(A.bar)} бар` : ''}.`
         +(need.length ? ' Показаны подходящие: '+need.join(', ')+'.' : '') };
   }
   /** «+ Осушитель», «+ Фильтр», «+ Ресивер»: рекомендация этой категории (если есть) — иначе обычный подбор */
   static presetFor(x, cat){ const r=this.recs(x).find(z=>z.cat===cat && !z.swap); return r ? this.preset(x, r) : null; }
-  /** компрессор по требованиям «Подбора станции» (производительность, давление у потребителя, безмасляный, частотный):
-   *  показаны подходящие, рекомендуемый (тот же подбор, что у кнопки «Подобрать оборудование») — первым */
+  /** основное оборудование по требованиям «Подбора станции»: показаны подходящие на рабочий агрегат, рекомендуемый (тот же
+   *  подбор, что у кнопки «Подобрать оборудование») — первым, с числом рабочих и резервных. Компрессор — производительность,
+   *  давление у потребителя, безмасляный, частотный; ДГУ — мощность (резервный источник — ESP); насос — подача и напор */
   static mainPreset(x){
-    if (StationReq.kind(x)!=='comp') return null;
-    const r=StationReq.of(x), q0=this.n(r.flow), B=this.n(r.pressure)||0; if (!(q0>0)) return null;
-    const cls=String(StationUi.opts(x).air||''), wc=+(cls.split('.')[1]||0), ads=wc>0 && wc<=3, nd=StationReq.need(r, q0), Q=ads ? nd.v/(1-AirChain.PURGE) : nd.v;
-    const cats=(stationOf(x)||{}).main||[], res=Math.max(0, Math.round(this.n(r.reserve)||0)), work=+r.work||0;
-    const u=TzPick.comps(catCache.filter(c=>cats.includes(attrsOf(c).cat)), Q, B, { oilFree:!!r.oilFree, vsd:!!r.vsd, work }), n=u ? u.n : work||1;
-    const per=Q/n, test=c=>TzPick.flow(c)>=per-1e-9 && (!r.oilFree || TzPick.oilFree(c));
-    return { min:B>0 ? { pressure:B } : {}, test, qty:n+res, best:u ? { id:u.o.c.id, n:u.n+res, label:u.n+res>1 ? `${u.n} рабоч.${res ? ` + ${res} резерв.` : ''} = ${u.n+res} шт.` : '' } : null,
-      need:`Нужно ${AirChain.m3(Q)} м³/мин${B ? ` при ${AirChain.m3(B)} бар у потребителя` : ''}${nd.why || ads ? ` (${[nd.why, ads ? 'с запасом на продувку адсорбционного осушителя' : ''].filter(Boolean).join(', ')})` : ''}${n>1 ? ` — ${n} рабочих` : ''}${res ? ` + ${res} в резерве` : ''}. Показаны компрессоры от ${AirChain.m3(per)} м³/мин${B ? `, давление от ${AirChain.m3(B)} бар` : ''}${r.oilFree ? ', безмасляные' : ''}.` };
+    const k=StationReq.kind(x), r=StationReq.of(x), m3=AirChain.m3, cats=(stationOf(x)||{}).main||[], res=Math.max(0, Math.round(this.n(r.reserve)||0)), work=+r.work||0;
+    const pool=catCache.filter(c=>cats.includes(attrsOf(c).cat)), tail=n=>`${n>1 ? ` — ${n} рабочих` : ''}${res ? ` + ${res} в резерве` : ''}`;
+    const out=(u, n, test, need, extra={})=>({ test, qty:n+res, best:u ? { id:u.o.c.id, n:u.n+res, label:u.n+res>1 ? `${u.n} рабоч.${res ? ` + ${res} резерв.` : ''} = ${u.n+res} шт.` : '' } : null, need, ...extra });
+    if (k==='comp'){ const q0=this.n(r.flow), B=this.n(r.pressure)||0; if (!(q0>0)) return null;
+      const cls=String(StationUi.opts(x).air||''), wc=+(cls.split('.')[1]||0), ads=wc>0 && wc<=3, nd=StationReq.need(r, q0), Q=ads ? nd.v/(1-AirChain.PURGE) : nd.v;
+      const u=TzPick.comps(pool, Q, B, { oilFree:!!r.oilFree, vsd:!!r.vsd, work }), n=u ? u.n : work||1, per=Q/n;
+      return out(u, n, c=>TzPick.flow(c)>=per-1e-9 && (!r.oilFree || TzPick.oilFree(c)),
+        `Нужно ${m3(Q)} м³/мин${B ? ` при ${m3(B)} бар у потребителя` : ''}${nd.why || ads ? ` (${[nd.why, ads ? 'с запасом на продувку адсорбционного осушителя' : ''].filter(Boolean).join(', ')})` : ''}${tail(n)}. Показаны компрессоры от ${m3(per)} м³/мин${B ? `, давление от ${m3(B)} бар` : ''}${r.oilFree ? ', безмасляные' : ''}.`,
+        { min:B>0 ? { pressure:B } : {} }); }
+    if (k==='dgu'){ const P=this.n(r.kw); if (!(P>0)) return null; const sb=r.mode==='standby', kw=c=>(sb ? this.n(attrsOf(c).kwMax) : null) || this.n(attrsOf(c).kw) || 0;
+      const u=TzPick.units(pool.map(c=>({ c, v:kw(c) })).filter(o=>o.v>0), P, work||1), n=u ? u.n : work||1, per=P/n;
+      return out(u, n, c=>kw(c)>=per-1e-9, `Нужно ${m3(P)} кВт${sb ? ' (резервный источник — по ESP)' : ''}${tail(n)}. Показаны ДГУ от ${m3(per)} кВт.`); }
+    if (k==='pump'){ const Q=this.n(r.q), H=this.n(r.head)||0; if (!(Q>0)) return null; const f=c=>this.n(attrsOf(c).flow)||0, hd=c=>this.n(attrsOf(c).head);
+      const u=TzPick.units(pool.map(c=>({ c, v:f(c), h:hd(c) })).filter(o=>o.v>0 && (!(H>0) || o.h>=H)), Q, work, o=>H>0 && o.h>0 ? 0.3*(o.h-H)/H : 0), n=u ? u.n : work||1, per=Q/n;
+      return out(u, n, c=>f(c)>=per-1e-9 && (!(H>0) || (hd(c)||0)>=H), `Нужно ${m3(Q)} м³/ч${H ? `, напор ${m3(H)} м` : ''}${tail(n)}. Показаны насосы от ${m3(per)} м³/ч${H ? `, напор от ${m3(H)} м` : ''}.`); }
+    return null;
   }
   /** подходит ли позиция каталога по пресету (отметка «мало» в окне подбора, когда показаны все) */
   static fits(c, P){
@@ -261,32 +307,56 @@ class KitNeed {
   /** наибольшее число в значении («7,5 / 10 / 13 бар» → 13) */
   static top(v){ const m=String(v??'').replace(/\s+/g, '').replace(/[−–]/g, '-').match(/-?\d+(?:[.,]\d+)?/g); return m ? Math.max(...m.map(z=>+z.replace(',', '.'))) : null; }
 
-  /** строки «Нужно: …» в таблице «Наше оборудование» */
-  static rows(x, i){
-    return this.recs(x).map(r=>{ const has=!!this.best(x, r);
+  /** заголовок строки: «Нужно: …» / «Заменить: …» */
+  static head(r){ return r.head || (r.swap ? 'Заменить: ' : 'Нужно: ')+r.title.charAt(0).toLowerCase()+r.title.slice(1); }
+  /** есть чем закрыть: действие в составе, рекомендуемый из каталога */
+  static can(x, r){ return r.act ? true : r.main ? !!(this.mainPreset(x)||{}).best : !!this.best(x, r); }
+  /** строки «Нужно: …» в группе by (наше оборудование / сборщик контейнера) */
+  static rows(x, i, by='our'){
+    return this.recs(x).filter(r=>(r.by||'our')===by).map(r=>{ const has=this.can(x, r), lab=r.act ? (r.swap ? 'Заменить' : 'Добавить') : 'Подобрать';
       return `<div class="kt-r kt-need${r.swap ? ' swap' : ''}" role="row"><span class="kt-n" aria-hidden="true">${r.swap ? '⚠' : '+'}</span>
-        <span class="kt-nw"><b>${esc((r.swap ? 'Заменить: ' : 'Нужно: ')+r.title.charAt(0).toLowerCase()+r.title.slice(1))}</b><small class="muted">${esc(r.why||'')}${has ? '' : ' · в каталоге подходящего нет — «Подобрать» откроет каталог, можно добавить своё'}</small></span>
-        <span class="kt-go"><button class="btn sm${has ? ' primary' : ''}" type="button" data-a="kitNeed" data-i="${i}" data-k="${esc(r.key)}">Подобрать</button></span></div>`; }).join('');
+        <span class="kt-nw"><b>${esc(this.head(r))}</b><small class="muted">${esc(r.why||'')}${has ? '' : ' · в каталоге подходящего нет — «Подобрать» откроет каталог, можно добавить своё'}</small></span>
+        <span class="kt-go"><button class="btn sm${has ? ' primary' : ''}" type="button" data-a="kitNeed" data-i="${i}" data-k="${esc(r.key)}">${lab}</button></span></div>`; }).join('');
   }
+  /** что закрывает «Подобрать всё недостающее»: всё, кроме замены основного оборудования (её выбирает менеджер) */
+  static fillable(x){ return this.recs(x).filter(r=>!r.main); }
   /** кнопка «Подобрать всё недостающее» (если рекомендаций больше одной) */
-  static allBtn(x, i){ const n=this.recs(x).length; return n>1 ? `<button class="btn primary sm kt-all" type="button" data-a="kitNeedAll" data-i="${i}">Подобрать всё недостающее (${n})</button>` : ''; }
-  /** окно каталога по рекомендации (вкладки «Состав станции» и «Компоновка») */
-  static open(i, r){ const x=S.items[i]; if (!x || !r) return; kitPickCat(i, [r.cat], null, r.name, this.preset(x, r)); }
-  /** одна кнопка: по каждой рекомендации — рекомендуемый из каталога (после осушителя могут понадобиться фильтры — до 4 проходов) */
+  static allBtn(x, i){ const n=this.fillable(x).length; return n>1 ? `<button class="btn primary sm kt-all" type="button" data-a="kitNeedAll" data-i="${i}">Подобрать всё недостающее (${n})</button>` : ''; }
+  /** окно каталога по рекомендации (вкладки «Состав станции» и «Компоновка»); основное — по требованиям, с заменой */
+  static open(i, r){
+    const x=S.items[i]; if (!x || !r) return;
+    if (r.main) return kitPickCat(i, (stationOf(x)||{}).main, 'main', '', { ...(this.mainPreset(x)||{}), replace:r.replace });
+    kitPickCat(i, [r.cat], null, r.name, this.preset(x, r));
+  }
+  /** действие в составе (без каталога): число агрегатов, топливный бак; ответ — что сделано (для сообщения) */
+  static apply(x, r){
+    if (r.act==='qty'){ const p=kitParts(x).find(z=>z.id===r.id); if (!p) return ''; p.qty=r.qty; return `${String(p.name||'').trim()} — ${r.qty} шт.`; }
+    if (r.act==='tank'){ if (!kitParts(x).some(z=>StationEquip.kindOf(z)!=='dgu' && StationDefaults.FUEL.test(String(z.name||'')))) x.kit.parts.push(StationDefaults.part(x, 'Дополнительный топливный бак'));
+      const v=StationDefaults.retank(x, r.hours); return v ? `топливный бак ${StationLayout.n(v)} л` : ''; }
+    return '';
+  }
+  /** состав изменился: закупка, характеристики и название станции, компоновка, перерисовка */
+  static done(x){ kitSync(x); stationFill(x); stationAutoName(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); x.page=true; persist(); renderEditor(); renderForm(); }
+  /** одна кнопка: число агрегатов и бак — в составе, остальное — рекомендуемый из каталога (после осушителя могут
+   *  понадобиться фильтры — до 4 проходов) */
   static async fillAll(i){
     const x=S.items[i]; if (!x) return; x.kit=x.kit||{ parts:[] }; const got=[], none=[], seen=new Set();
-    for (let pass=0; pass<4; pass++){ const R=this.recs(x).filter(r=>!seen.has(r.key)); if (!R.length) break;
-      for (const r of R){ seen.add(r.key); const b=this.best(x, r); if (!b){ none.push(r.title.replace(/\s*\(.*?\)/g, '')); continue; }
+    for (let pass=0; pass<4; pass++){ const R=this.fillable(x).filter(r=>!seen.has(r.key)); if (!R.length) break;
+      for (const r of R){ seen.add(r.key);
+        if (r.act){ const t=this.apply(x, r); if (t) got.push(t); continue; }
+        const b=this.best(x, r); if (!b){ none.push(r.title.replace(/\s*\(.*?\)/g, '')); continue; }
         if (Array.isArray(r.replace)) x.kit.parts=x.kit.parts.filter(z=>!r.replace.includes(z.id));
         for (let k=0; k<(b.twin ? 2 : 1); k++){ const p=await TzPick.part(b.c, b.n); x.kit.parts.push(p); }
         got.push((b.twin ? '2 × ' : '')+(b.n>1 ? b.n+' × ' : '')+b.c.name); } }
-    kitSync(x); stationFill(x); stationAutoName(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); x.page=true; persist(); renderEditor(); renderForm();
+    this.done(x);
     toast((got.length ? 'Добавлено: '+got.join('; ') : 'Ничего не добавлено')+(none.length ? '. В каталоге нет: '+none.join('; ')+' — добавьте вручную' : ''));
   }
-  /** действия (data-a): kitNeed — окно подбора по рекомендации, kitNeedAll — всё недостающее */
+  /** действия (data-a): kitNeed — строка «Нужно: …» (действие в составе или окно подбора), kitNeedAll — всё недостающее */
   static act(a, i, b){
     const x=S.items[i]; if (!x) return false;
-    if (a==='kitNeed'){ this.open(i, this.recs(x).find(r=>r.key===b.dataset.k)); return 'async'; }
+    if (a==='kitNeed'){ const r=this.recs(x).find(z=>z.key===b.dataset.k); if (!r) return false;
+      if (r.act){ const t=this.apply(x, r); this.done(x); if (t) toast('В составе: '+t); return 'async'; }
+      this.open(i, r); return 'async'; }
     if (a==='kitNeedAll'){ this.fillAll(i); return 'async'; }
     return false;
   }
@@ -356,9 +426,9 @@ class KitView {
   static group(x, i, by, idx, st, t){
     const presets=(st ? st.parts : KIT_PRESETS).map(z=>Array.isArray(z) ? z : [z, '']), have=new Set(kitParts(x).map(p=>norm(p.name)));
     const kinds=new Set(kitParts(x).map(p=>StationEquip.kindOf(p)).filter(k=>k==='dryer' || k==='receiver'));   // уже есть — не предлагать
-    // «Нужно: …» — чего не хватает к выбранным компрессорам (KitNeed); кнопки этих категорий не дублируем
-    const need=by==='our' ? KitNeed.rows(x, i) : '', needCats=new Set(by==='our' ? KitNeed.recs(x).map(r=>r.cat) : []);
-    const mine=presets.filter(([n, c])=>!have.has(norm(n)) && KitScope.def({ name:n, attrs:{ cat:c } })===by && !KitView.SYS.test(n) && !kinds.has(StationEquip.kindOf({ name:n, attrs:{ cat:c } })) && !needCats.has(c));   // системы — кнопками у контейнера
+    // «Нужно: …» — чего не хватает (KitNeed); кнопки этих категорий и элементов не дублируем
+    const R=KitNeed.recs(x).filter(r=>(r.by||'our')===by), need=KitNeed.rows(x, i, by), needCats=new Set(R.map(r=>r.cat).filter(Boolean)), hide=n=>R.some(r=>r.match && r.match.test(n));
+    const mine=presets.filter(([n, c])=>!have.has(norm(n)) && KitScope.def({ name:n, attrs:{ cat:c } })===by && !KitView.SYS.test(n) && !kinds.has(StationEquip.kindOf({ name:n, attrs:{ cat:c } })) && !needCats.has(c) && !hide(n));   // системы — кнопками у контейнера
     const lead=by==='our' ? 'привозим на сборку сами' : 'шкафы, трубопровод, обвязка, системы безопасности — по ТЗ на сборку';
     return `<section class="kit-grp ${by}"><h4>${KitScope.LABEL[by]} <small class="muted">— ${lead}</small></h4>
       ${idx.length || need ? `<div class="kit-t" role="table">

@@ -336,7 +336,9 @@ Check.run('сжатый воздух: последовательно, фильт
   const nr=solve(C('block'), [c62, dr6]); const rr=nr.air.recs.find(r=>r.key==='receiver');
   assert.ok(rr && nr.issues.some(i=>/Ресивера в составе нет/.test(i.text)), 'ресивер рекомендован');
   const vs=solve(C('block'), [P('Компрессор VSD', { cat:'comp_screw', flow:6.2, vsd:'Да', size:'1400 × 900 × 1500' }, { role:'main' }), dr6]);
-  assert.ok(+vs.air.recs.find(r=>r.key==='receiver').r.volume[0]<+rr.r.volume[0], 'с частотным — ресивер меньше');
+  assert.ok(vs.air.recs.find(r=>r.key==='receiver').total<rr.total, 'с частотным — нужный объём меньше');
+  // по умолчанию — ресиверы по 900 л (receiver.base, решение ПНЕВМОТЕХ): 6,2 м³/мин → около 775 л → один на 900 л
+  assert.ok(rr.qty===1 && rr.r.volume[0]==='900' && /^Воздушный ресивер 900 л$/.test(rr.title) && rr.total===775, 'ресивер 900 л: '+JSON.stringify(rr));
   // класс чистоты: вода класса 2 — адсорбционный (−40 °C)
   const cl=StationLayout.solve({ cont:C('block'), parts:[c62, dr6, rc, two], air:'1.2.1' });
   assert.ok(cl.issues.some(i=>i.level==='warn' && /нужен адсорбционный осушитель/.test(i.text)));
@@ -986,9 +988,12 @@ Check.run('сжатый воздух: байпас осушителя, диам�
   assert.ok(StationPipe.dn(42.3)===50 && StationPipe.dn(52.5)===50 && StationPipe.dn(52.6)===65 && StationPipe.dn(10)===15, 'ряд DN');
   // ресиверы: 2000 л при 8 бар — p·V 1,6: без учёта — 2 × 1000 л; 900 л — без учёта и так
   assert.deepStrictEqual(AirChain.split(2000, 8), { n:2, v:1000 }); assert.strictEqual(AirChain.split(900, 8), null); assert.deepStrictEqual(AirChain.split(1500, 13), { n:3, v:500 });
+  // по умолчанию — по 900 л, сколько нужно без недобора (объём до литра); выше 11 бар 900 л на учёте — прежний подбор
+  assert.deepStrictEqual([AirChain.base(1000, 10), AirChain.base(775, 8), AirChain.base(900.4, 11), AirChain.base(1625, 10)], [{ n:2, v:900 }, { n:1, v:900 }, { n:1, v:900 }, { n:2, v:900 }]);
+  assert.strictEqual(AirChain.base(1000, 13), null, '13 бар: 900 л — p·V 1,17, на учёте');
   const big=P('Воздушный ресивер РВ 2000', { cat:'receiver', model:'РВ 2000/11', volume:2000, size:'1000 × 1000 × 2600', mass:400 });
   const kr=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[Object.assign({}, comp, { attrs:{ ...comp.attrs, flow:6, pressure:8 } }), dryer, big], req:{ kind:'comp' } });
-  const rs=kr.air.recs.find(r=>r.key==='recv-split'); assert.ok(rs && rs.qty===2 && rs.replace.includes(big.id) && /2 × 1 000 л/.test(rs.title), 'замена ресивера на учёте: '+JSON.stringify(rs));
+  const rs=kr.air.recs.find(r=>r.key==='recv-split'); assert.ok(rs && rs.qty===3 && rs.replace.includes(big.id) && /3 × 900 л/.test(rs.title), 'замена ресивера на учёте — по 900 л: '+JSON.stringify(rs));
   // осушителя нет — рекомендация рефрижераторного с байпасом
   const nd=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[Object.assign({}, comp, { attrs:{ ...comp.attrs, flow:6, pressure:8 } }), rec], req:{ kind:'comp' } });
   assert.ok(nd.air.recs.some(r=>r.key==='dryer-refrig' && r.cat==='dryer_refrig') && nd.issues.some(t=>/Осушителя в составе нет/.test(t.text)), 'рекомендация рефрижераторного осушителя');

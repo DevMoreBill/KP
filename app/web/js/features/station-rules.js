@@ -23,6 +23,9 @@ class StationRules {
   }
   /** значение правила (копия — менять его нельзя) */
   static v(id){ const v=this.rule(id).value; return v && typeof v==='object' ? JSON.parse(JSON.stringify(v)) : v; }
+  /** значение необязательного правила или null — в своей версии файла администратора (сделанной до появления правила)
+   *  его может не быть: тогда расчёт идёт по-прежнему */
+  static opt(id){ const r=this.map.get(id); return r ? r.value : null; }
   /** значение без копии — для частых обращений из расчёта (только чтение) */
   static raw(id){ return this.rule(id).value; }
   static status(id){ return this.rule(id).status; }

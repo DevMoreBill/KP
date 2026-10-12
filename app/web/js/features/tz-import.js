@@ -312,17 +312,34 @@ class TzPick {
     const L=catCache.filter(c=>attrsOf(c).cat==='receiver').map(c=>{ const a=attrsOf(c); return { c, v:this.num(a.volume)||0, p:this.num(a.pressure), h:StationEquip.dims({ name:c.name, attrs:a, rows:[] }, 'receiver').h }; })
       .filter(o=>o.v>0 && (!(B>0) || !(o.p>0) || o.p>=B-0.05) && (!(Hmax>0) || o.h+300<=Hmax));
     const free=o=>!(B>0) || B/10*o.v/1000<=PressureVessel.LIMIT+1e-9;
+    // по умолчанию — одинаковые по 900 л (receiver.base, решение ПНЕВМОТЕХ), сколько нужно по объёму: производитель в
+    // приоритете (АСО) — первым, затем в наличии, наименьшее достаточное давление, дешевле, ниже; нет таких — прежний подбор
+    const B0=AirChain.BASE, bs=B0 ? AirChain.base(V>0 ? V : B0.volume, B) : null;
+    if (bs && bs.n<=6){ const mk=String(B0.maker||'').trim().toLowerCase(), pri=o=>mk && String(attrsOf(o.c).maker||'').trim().toLowerCase()===mk ? 0 : 1;
+      const C=L.filter(o=>Math.abs(o.v-bs.v)<0.5 && free(o)).sort((a, b)=>pri(a)-pri(b) || this.stock(b.c)-this.stock(a.c) || (a.p||99)-(b.p||99) || this.cheaper(a.c, b.c) || a.h-b.h);
+      if (C.length) return { o:C[0], n:bs.n, free:true, base:true }; }
     if (!(V>0)) return L.length ? { o:this.best(L, 'v'), n:1, free:true } : null;
     for (const [only, max] of [[true, 6], [false, 4]]) for (let n=1; n<=max; n++){ const o=this.best(L.filter(z=>z.v*n>=V-1e-9 && (!only || free(z))), 'v'); if (o) return { o, n, free:free(o) }; }
     return null;
   }
+  /** сравнение по закупке, иначе по цене (одна валюта; без цены — в конце): < 0 — a дешевле */
+  static cheaper(a, b){
+    for (const [k, cur] of [['cost', 'costCur'], ['price', 'priceCur']]){
+      const va=+a[k]>0 ? +a[k] : Infinity, vb=+b[k]>0 ? +b[k] : Infinity;
+      if (va===Infinity && vb===Infinity) continue;
+      if (va!==Infinity && vb!==Infinity && (a[cur]||'RUB')!==(b[cur]||'RUB')) return 0;
+      return va===vb ? 0 : va<vb ? -1 : 1; }
+    return 0;
+  }
+  /** в наличии на складе поставщика (остатки фида): 1 / 0 */
+  static stock(c){ return typeof CatalogIndex!=='undefined' && CatalogIndex.inStock(c) ? 1 : 0; }
   /** высота внутри контейнера станции, мм: блок-контейнер по оборудованию — до наибольшей высоты ряда */
   static hmax(x){
     const g=StationGeo.of(kitContainer(x)||{ ctype:'block' });
     return g.int ? g.int[2] : StationGeo.inner(g.type, [10000, StationGeo.ROAD_W, StationGeo.BLOCK.maxH], g.t)[2];
   }
-  /** «осушитель …» — без повтора, если название уже начинается с этого слова */
-  static lbl(word, name){ return String(name||'').toLowerCase().startsWith(word.slice(0, 5)) ? name : word+' '+name; }
+  /** «осушитель …» — без повтора, если это слово уже есть в названии («Воздушный ресивер АСО…») */
+  static lbl(word, name){ return String(name||'').toLowerCase().includes(word.slice(0, 5)) ? name : word+' '+name; }
 
   /** подбор и сборка станции: шкафы по особым требованиям (АВР, АСУ ТП), оборудование из каталога, название и
    *  характеристики станции, контейнер по оборудованию; ответ — итог подбора для менеджера */
@@ -373,7 +390,8 @@ class TzPick {
           if (!r){ miss.push(rec.title.toLowerCase()); continue; }
           for (let j=0; j<(both ? 2 : 1); j++) x.kit.parts.splice(at++, 0, await this.part(r.o.c, r.n));
           const n=r.n*(both ? 2 : 1);
-          got.push((n>1 ? `ресиверы ${n} × ` : '')+this.lbl('ресивер', r.o.c.name)+(r.n>1 ? ` (${r.n} по ${StationLayout.n(r.o.v)} л: ${r.free && Bc>0 && Bc/10*(both ? V/2 : V)/1000>PressureVessel.LIMIT ? 'каждый без учёта в Ростехнадзоре, p·V не больше 1,0 МПа·м³' : `одного на ${StationLayout.n(both ? V/2 : V)} л в каталоге нет или он не проходит по высоте контейнера`})` : ''));
+          got.push((n>1 ? `ресиверы ${n} × ` : '')+this.lbl('ресивер', r.o.c.name)+(r.base ? (r.n>1 ? ` (${r.n} по ${StationLayout.n(r.o.v)} л — нужно около ${StationLayout.n(Math.round(both ? V/2 : V))} л)` : '')
+            : r.n>1 ? ` (${r.n} по ${StationLayout.n(r.o.v)} л: ${r.free && Bc>0 && Bc/10*(both ? V/2 : V)/1000>PressureVessel.LIMIT ? 'каждый без учёта в Ростехнадзоре, p·V не больше 1,0 МПа·м³' : `одного на ${StationLayout.n(both ? V/2 : V)} л в каталоге нет или он не проходит по высоте контейнера`})` : ''));
           continue; }
         const fm=this.filter(rec, picked ? picked.o.v*picked.n : Q, B, Bc), c=fm && fm.o, fn=fm ? fm.n : 1;
         if (c){ x.kit.parts.splice(at++, 0, await this.part(c.c, fn)); got.push(fn>1 ? `фильтры ${fn} × ${c.c.name} параллельно` : this.lbl('фильтр', c.c.name)); }

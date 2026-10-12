@@ -32,7 +32,8 @@ class StationQuick {
   /** блок «Подбор станции»: главные требования, кнопки, итог; всё остальное — в раскрывающемся блоке */
   static html(x, i){
     const r=StationReq.of(x), k=StationReq.kind(x), P=`items.${i}.req`, main=kitMainPart(x), cls=StationUi.opts(x).air;
-    const hint=this.hint(x), fld=([key, label, ph, mode='decimal'])=>`<label class="f"><span>${label}</span><input type="text" inputmode="${mode}" data-p="${P}.${key}" data-req="${i}" value="${esc(r[key]??'')}" placeholder="${esc(hint[key]||ph)}" autocomplete="off"></label>`;
+    const hint=this.hint(x), ask=this.ask(x) ? (this.NEED[k]||[])[0] : '';   // главное поле не заполнено — подсветить
+    const fld=([key, label, ph, mode='decimal'])=>`<label class="f"><span>${label}</span><input type="text" inputmode="${mode}" data-p="${P}.${key}" data-req="${i}" value="${esc(r[key]??'')}" placeholder="${esc(hint[key]||ph)}" autocomplete="off"${key===ask ? ' class="need"' : ''}></label>`;
     const sel=(key, label, list, cur)=>`<label class="f"><span>${label}</span><select data-req="${i}" data-rk="${key}">${list.map(([v, l])=>`<option value="${esc(v)}"${String(cur)===String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
     const air=k==='comp' ? `<label class="f"><span>Качество воздуха</span><select data-stl="air" data-i="${i}"><option value="">обычное — осушитель и фильтры по умолчанию</option>${AirChain.options(cls).map(([v, t])=>`<option value="${esc(v)}"${cls===v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`
       : k==='dgu' ? sel('mode', 'Назначение', StationReq.MODE, r.mode||'prime') : '';
@@ -47,6 +48,13 @@ class StationQuick {
       <details class="sq-more"${Spoiler.attr('req:'+x.id)}><summary>Все требования, условия расчёта и проверки</summary>${StationReq.details(x, i)}</details></div>`;
   }
 
+  static WHO = { comp:'компрессоров', dgu:'мощности ДГУ', pump:'насосов' };
+  /** главное требование не указано, а основное оборудование выбрано: «Укажите производительность по ТЗ — проверим, хватает
+   *  ли компрессоров» (поле подсвечено); иначе '' */
+  static ask(x){
+    const k=StationReq.kind(x), need=this.NEED[k]; if (!need || !kitMainPart(x) || StationReq.num(StationReq.of(x)[need[0]])>0) return '';
+    return `Укажите ${need[1]} по ТЗ — проверим, хватает ли ${this.WHO[k]}`;
+  }
   /** подсказка в пустых полях компрессорной: что дают выбранные компрессоры («сейчас 12,6 — по компрессорам») */
   static hint(x){
     const C=StationReq.kind(x)==='comp' ? KitNeed.comps(x) : [], q=C.reduce((s, e)=>s+(e.air.flow>0 ? e.air.flow*e.qty : 0), 0), bar=KitNeed.bar(x);
@@ -57,9 +65,12 @@ class StationQuick {
   static result(x, i){
     const plan=StationUi.on(x) && kitContainer(x) ? StationUi.plan(x) : null, R=StationRules.ok() && typeof StationCalc!=='undefined' ? StationCalc.run(x) : null, r=StationReq.of(x);
     const errs=R && !R.accept ? R.errors : [], fit=plan && plan.level==='error' && !plan.assumed, miss=String(r.pick||'').match(/В каталоге нет: ([^]*?)(?: — добавьте вручную|$)/);
-    // причина — первой: не помещается; в каталоге нет нужного (из-за этого и ошибки расчёта); ошибка расчёта; нет данных
+    // причина — первой: не помещается; в каталоге нет нужного (из-за этого и ошибки расчёта); ошибка расчёта; главное
+    // требование не указано (оборудование выбрано вручную) — спокойная подсказка, а не «не хватает данных»; нет данных
+    const ask=this.ask(x);
     const st=fit ? ['bad', '✕ Оборудование не помещается в контейнер'] : miss ? [errs.length ? 'bad' : 'warn', (errs.length ? '✕' : '⚠')+' В каталоге не нашлось: '+miss[1]]
-      : errs.length ? ['bad', '✕ '+errs[0].text+(errs.length>1 ? ` (и ещё ${errs.length-1})` : '')] : R && R.questions.length ? ['warn', '⚠ Не хватает данных: '+R.questions[0]]
+      : errs.length ? ['bad', '✕ '+errs[0].text+(errs.length>1 ? ` (и ещё ${errs.length-1})` : '')] : ask ? ['info', 'ⓘ '+ask]
+      : R && R.questions.length ? ['warn', '⚠ Не хватает данных: '+R.questions[0]]
       : ['ok', '✓ Станция подобрана — требования заказчика выполнены'];
     const chips=R ? R.sections.map(s=>{ const L=s.steps.filter(o=>o.ok===true || o.ok===false), bad=L.some(o=>o.ok===false);
       return L.length ? `<button type="button" class="chip sm ${bad ? 'bad' : 'ok'}" data-edtab="layout" title="Подробный расчёт — вкладка «Компоновка»">${bad ? '✕' : '✓'} ${esc(this.SEC[s.id]||s.title)}</button>` : ''; }).join('') : '';
