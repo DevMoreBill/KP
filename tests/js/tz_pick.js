@@ -95,6 +95,28 @@ class Check {
     assert.ok(!/продувк/.test(note), note);
   });
 
+  await Check.run('добор количеством: компрессоры, осушители и фильтры параллельно', async ()=>{
+    global.catCache=[
+      Cat.item('Компрессор винтовой К-130', { cat:'comp_screw', flow:13, pressure:10, kw:75 }),
+      Cat.item('Осушитель рефрижераторный ОР-20', { cat:'dryer_refrig', flow:20 }),
+      Cat.item('Фильтр ФС-20', { cat:'filter', stage:'Сверхтонкая (микрофильтр)', flow:20 }),
+      Cat.item('Фильтр ФТ-20', { cat:'filter', stage:'Тонкая', flow:20 }),
+      Cat.item('Фильтр ФП-20', { cat:'filter', stage:'Предварительная', flow:20 }),
+      Cat.item('Ресивер РВ-1000', { cat:'receiver', volume:1000, pressure:11 }),
+    ];
+    const x=Cat.station('st_comp', [], {});
+    const note=await TzPick.run(x, { kind:'comp', flow:36, pressure:7, air:'2.4.2', reserve:'0', work:0 });
+    const one=k=>kitParts(x).filter(p=>StationEquip.kindOf(p)===k), c=one('compressor')[0], d=one('dryer')[0], Qc=13*c.qty;
+    assert.ok(c && c.qty>=3 && c.qty<=TzPick.MAX && Qc>=36, 'компрессоров — сколько нужно (до четырёх): '+JSON.stringify(c && c.qty));
+    assert.ok(d && d.name==='Осушитель рефрижераторный ОР-20' && d.qty>=2, 'один осушитель мал — несколько одинаковых параллельно: '+note);
+    const plan=StationLayout.solve(StationUi.input(x)), F=one('filter');
+    assert.ok(F.length>=1 && F.every(f=>f.qty>=2), 'фильтры — тоже параллельно: '+JSON.stringify(F.map(f=>[f.name, f.qty])));
+    assert.ok(/осушители \d × Осушитель рефрижераторный ОР-20 параллельно/.test(note) && /фильтры \d × Фильтр .* параллельно/.test(note) && !/В каталоге нет/.test(note), note);
+    assert.ok(TzPick.many([{ cap:5 }, { cap:9 }], 20).n===3 && TzPick.many([{ cap:5 }, { cap:9 }], 20).o.cap===9, 'наименьшее число одинаковых, затем запас');
+    assert.strictEqual(TzPick.many([{ cap:1 }], 20), null, 'больше четырёх — нет');
+    assert.ok(['ok', 'warn', 'error'].includes(plan.level), 'расстановка считается');
+  });
+
   await Check.run('фильтры без поля «Ступень очистки» — по названию', async ()=>{
     global.catCache=[
       Cat.item('Компрессор винтовой К-130', { cat:'comp_screw', flow:13, pressure:10, kw:75 }),

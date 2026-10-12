@@ -50,7 +50,7 @@ class StationFire {
       // огнетушители: по расстоянию — один; категория Д до 100 м² — можно без них (один у выхода рекомендуется)
       q.need=q.cat==='Д' && S<=100 ? 0 : 1; q.ext=1; q.rank=/^[ГД]$/.test(q.cat) ? this.RANK.low : this.RANK.high;
       delete q.I; }
-    return { cat, zone:rooms[0].zone, cls, auto:!!sys.fire, ops:!!(sys.ops || sys.fire), rooms, exit:this.exit(plan),
+    return { cat, zone:rooms[0].zone, cls, auto:!!sys.fire, ops:!!(sys.ops || sys.fire), rooms, exit:this.exit(plan), exit2:this.exit2(plan),
       mods:rooms.reduce((s, q)=>s+q.n, 0), ext:rooms.reduce((s, q)=>s+q.ext, 0), low:!!sys.fire && H<M.z[0] };
   }
   /** модули на потолке: сетка по геометрии распыла — рядов по ширине, шаг вдоль помещения не больше стороны квадрата, у торцов
@@ -80,6 +80,13 @@ class StationFire {
     const en=plan.entry; if (!en || (en.wall==='left' && plan.geo.x0)) return null;
     if (en.wall==='front') return { wall:'front', u:(en.x0+en.x1)/2, w:en.w, top:en.h };
     return { wall:'left', u:(en.y0+en.y1)/2, w:en.w, top:en.sea ? plan.int[2] : en.h };
+  }
+  /** вторая дверь оператора (проход длиннее 7 м): в стене прохода у дальнего торца, в дальнем торце или калитка в воротах */
+  static exit2(plan){
+    const d=(plan.doors||[]).find(d=>d.kind==='entry'); if (d) return { wall:d.wall, u:(d.x0+d.x1)/2, w:d.w, top:d.h };
+    const e=plan.exit; if (e) return { wall:e.wall, u:(e.y0+e.y1)/2, w:e.w, top:e.h };
+    const G=plan.gates; if (G && G.wicket) return { wall:G.wall, u:G.y0+80+G.wicket.w/2, w:G.wicket.w, top:G.wicket.h+60 };
+    return null;
   }
   static f1(v){ return String(Math.round(v*10)/10).replace('.', ','); }
   /** число со словом в нужной форме: pl(2, ['светильник', 'светильника', 'светильников']) → «2 светильника» */
@@ -139,8 +146,9 @@ class StationLight {
     const i=S/(h*(A+B)), eta=this.eta(i), M=this.LAMP;
     const n=Math.max(2, Math.ceil(this.LUX*S*this.KZ/(M.lm*eta)-1e-9), Math.ceil(A/(1.5*h)));
     const tb=x0-(f ? f.x1+f.part : 0), small=(f ? 1 : 0)+(tb>0 ? 1 : 0);
-    const floods=(plan.entry && !plan.entry.sea ? 1 : 0)+(f ? 1 : 0);   // прожектор над дверью оператора и дверью отсека бака
-    const on=sys.light!==false, kw=on ? (n*M.w+small*this.SMALL+floods*this.FLOOD+this.EXIT)/1000 : 0;
+    const two=(plan.doors||[]).some(d=>d.kind==='entry') || plan.exit ? 1 : 0, exits=1+(two || (plan.gates && plan.gates.wicket) ? 1 : 0);
+    const floods=(plan.entry && !plan.entry.sea ? 1 : 0)+two+(f ? 1 : 0);   // прожекторы над дверями оператора и дверью отсека бака
+    const on=sys.light!==false, kw=on ? (n*M.w+small*this.SMALL+floods*this.FLOOD+exits*this.EXIT)/1000 : 0;
     return { on, lux:this.LUX, n, em:Math.max(1, Math.ceil(n/2)), eta, i, area:S, E:n*M.lm*eta/(S*this.KZ), small, floods, kw };
   }
   /** строка системы контейнера «Освещение» */
@@ -341,6 +349,7 @@ class StWalls {
     const en=plan.entry, G=plan.gates;   // дверь оператора, ворота в торце (у морского — его двери): изнутри на них ничего не вешать
     if (en) this.busy(en.wall, ...(en.wall==='front' ? [en.x0-100, en.x1+100] : [en.y0-100, en.y1+100]), 0, en.h+150);
     if (G) this.busy(G.wall, G.y0-100, G.y1+100, 0, G.h+150);
+    if (plan.exit) this.busy(plan.exit.wall, plan.exit.y0-100, plan.exit.y1+100, 0, plan.exit.h+150);   // вторая дверь оператора в торце
     for (const d of plan.doors||[]) this.busy(d.wall==='back' ? 'back' : 'front', d.x0-100, d.x1+100, 0, d.h+150);
     if (o.equip!==false) for (const l of plan.lines||[]) if (W-l.y<500) for (const [a, b] of StationLayout.runs(l)) this.busy('back', a, b, l.z-100, l.z+100);   // жалюзи за трубой — можно
     if ((plan.sys||{}).power!==false) this.busy('back', x0, L, H-320, H);   // кабельный лоток под потолком
@@ -382,7 +391,9 @@ class StationVent {
   static STEP = 50;
   static GAP = 200;                                         // между жалюзи на стене, мм
   static IN = { z0:200, h:[300, 1000], w:[400, 1500] };     // приток: низ на 200 мм от пола, высота и ширина «от–до», мм
+  static LIFT = 750;                                        // приток над конвектором (внизу места нет): низ, мм
   static OUT = { top:420, h:[300, 800], w:[400, 1500] };    // вытяжка: верх на 420 мм ниже потолка (под кабельным лотком)
+  static HOOD = 420;                                        // колпак выброса на крыше: высота над крышей, мм
   static PIECE = 600;                                       // добавочные жалюзи (остаток сечения) — не уже, мм
   static get FACE(){ return StationRules.raw('heat.face'); }
   static get FREE(){ return StationRules.raw('vent.free'); }
@@ -401,42 +412,96 @@ class StationVent {
     const M=plan.mass, g=plan.geo; if (!M || !g || !g.ext) return null; const c=M.cg, [Le, We]=g.ext, [Li, Wi]=plan.int, zf=StationGeo.zFloor(g.type, g.t);
     return { u:w==='left' || w==='right' ? c.y-(We-Wi)/2 : c.x-(Le-Li)/2, z:c.z-zf };
   }
-  /** расчёт и места: {q:{in, out, rad}, need:{in, out} — живое сечение и площадь по рамке, м²; size:{in, out}; louvers:
-   *  [{kind:'in'|'out'|'rad', wall, u0, u1, z0, z1, w, h}]; short:{in, out} — не поместилось, м² по рамке; rad — радиатор ДГУ} */
+  /** расчёт и места. Приток и выброс горячего воздуха — никогда на одной стене: выброс — радиатор ДГУ в дальнем торце или
+   *  вверху задней стены (за компрессорами — их воздуховоды с клапаном рециркуляции), что не поместилось — через крышу; в
+   *  задней стене сервисные ворота — выброс весь через крышу, а приток — и в их створках. Приток — внизу на стене напротив
+   *  выброса, затем в створках ворот и сервисных дверей (не на стене выброса), затем на остальных стенах (у ДГУ — в
+   *  половине у входа, дальше от радиатора). {q:{in, out, rad}, need:{in, out} — живое сечение и площадь по рамке, м²;
+   *  size:{in, out}; louvers:[{kind:'in'|'out'|'rad', wall, u0, u1, z0, z1, w, h[, leaf, duct]}]; roof:[{kind:'out', x0, x1,
+   *  y0, y1, w, l, q[, duct]}] — выброс через крышу; exhaust — стена выброса | null; ducts:{ключ компрессора: 'wall'|'roof'};
+   *  short:{in, out} — не поместилось, м² по рамке; rad — радиатор ДГУ} */
   static calc(plan){
-    const h=plan.heat, v=h && h.vent, sys=plan.sys||{}, I=plan.items||[], [, , H]=plan.int, dgu=I.find(i=>i.kind==='dgu' && !i.tank);
+    const h=plan.heat, v=h && h.vent, sys=plan.sys||{}, I=plan.items||[], [L, Wd, H]=plan.int, dgu=I.find(i=>i.kind==='dgu' && !i.tank);
     if (!v || (!dgu && sys.vent===false)) return null;
-    const F=this.FACE, k=this.FREE, r=x=>Math.round(x*100)/100;
-    const room=Math.max(0, v.m3h-v.use), qRad=dgu ? Math.max(v.rad, room) : 0, qIn=dgu ? qRad+v.use+v.cool : v.m3h+v.cool, qOut=dgu ? v.cool : room+v.cool;
+    const F=this.FACE, k=this.FREE, r=x=>Math.round(x*100)/100, S=this.STEP, key=StationLayout.key, x0=plan.geo.x0||0;
+    const room=Math.max(0, v.m3h-v.use), qRad=dgu ? Math.max(v.rad, room) : 0, qIn=dgu ? qRad+v.use+v.cool : v.m3h+v.cool;
+    const comp=I.filter(i=>i.kind==='compressor' && i.mount==='floor' && !i.tank), qc=c=>Math.round(StationHeat.coolOf(c));
+    const qOut=(dgu ? 0 : room)+comp.reduce((s, c)=>s+qc(c), 0);
     const need=q=>{ const free=q/3600/F; return { q, free:r(free), gross:r(free/k) }; };
-    const out={ q:{ in:Math.round(qIn), out:Math.round(qOut), rad:Math.round(qRad) }, need:{ in:need(qIn), out:qOut>0 ? need(qOut) : null }, size:{}, louvers:[], short:{ in:0, out:0 }, face:F, free:k, rad:null };
-    const W=new StWalls(plan, { equip:false }), G=plan.gates && !plan.gates.sea ? plan.gates.wall : '', x0=plan.geo.x0||0;
-    const leftOk=x0===0 && plan.door!=='end' && !plan.geo.sea && G!=='left', rightOk=!dgu && G!=='right';
+    const rearBack=(plan.doors||[]).some(d=>d.rear && d.wall==='back');
+    const E=dgu ? 'right' : rearBack ? null : 'back';   // стена выброса
+    const out={ q:{ in:Math.round(qIn), out:Math.round(qOut), rad:Math.round(qRad) }, need:{ in:need(qIn), out:qOut>0 ? need(qOut) : null }, size:{}, louvers:[], roof:[],
+      exhaust:E, ducts:{}, short:{ in:0, out:0 }, face:F, free:k, rad:null };
+    const W=new StWalls(plan, { equip:false });
     // радиатор ДГУ: дверь-жалюзи в торце или жалюзи напротив радиатора
-    if (dgu){ const d=plan.dguDoor, L=d ? { kind:'rad', wall:'right', u0:d.y0, u1:d.y1, z0:0, z1:d.h, door:true }
+    if (dgu){ const d=plan.dguDoor, Lr=d ? { kind:'rad', wall:'right', u0:d.y0, u1:d.y1, z0:0, z1:d.h, door:true }
         : { kind:'rad', wall:'right', u0:Math.round(dgu.y+80), u1:Math.round(dgu.y+dgu.ly-80), z0:Math.round(dgu.h*0.12), z1:Math.round(dgu.h*0.95) };
-      L.w=L.u1-L.u0; L.h=L.z1-L.z0; out.louvers.push(L); W.busy('right', L.u0-90, L.u1+260, L.z0, L.z1+120);
-      const fr=L.w*L.h/1e6*k; out.rad={ q:Math.round(qRad), free:r(fr), w:L.w, h:L.h, door:!!L.door, v:fr>0 ? Math.round(qRad/3600/fr*10)/10 : null }; }
+      Lr.w=Lr.u1-Lr.u0; Lr.h=Lr.z1-Lr.z0; out.louvers.push(Lr); W.busy('right', Lr.u0-90, Lr.u1+260, Lr.z0, Lr.z1+120);
+      const fr=Lr.w*Lr.h/1e6*k; out.rad={ q:Math.round(qRad), free:r(fr), w:Lr.w, h:Lr.h, door:!!Lr.door, v:fr>0 ? Math.round(qRad/3600/fr*10)/10 : null }; }
     const cogHit=(w, u0, u1, z0, z1)=>{ const c=this.cog(plan, w), hh=150+120; return !!c && c.z+hh>z0 && c.z-hh<z1+220 && u0<c.u+hh && u1>c.u-hh; };
-    // сначала — одинаковые по расчёту (size); не встали все — остаток той же высоты, ширина — под свободные участки стен
-    // (не шире w[1]); приток и вытяжка на одной стене — каждая в своей половине высоты
-    const band=Math.floor(((H-this.OUT.top-this.IN.z0)/2-90)/this.STEP)*this.STEP, both=qOut>0;
-    const place=(kind, o0, walls)=>{
-      const nd=out.need[kind]; if (!nd) return;
-      const o={ ...o0, h:[o0.h[0], Math.max(o0.h[0], both ? Math.min(o0.h[1], band) : Math.min(o0.h[1], H-this.OUT.top-o0.z0))] };
-      const sz=this.size(nd.gross, o), S=this.STEP; out.size[kind]=sz; if (!sz) return;
-      const h=sz.h, z0=kind==='in' ? o.z0 : H-o.top-h, z1=z0+h; let left=nd.gross*1e6, uni=sz.n;
-      const put=(wall, w, u)=>{ const u0=u+100, L={ kind, wall, u0, u1:u0+w, z0, z1, w, h }; out.louvers.push(L); W.busy(wall, u0-90-this.GAP, L.u1+260+this.GAP, z0-90, z1+90); left-=w*h; };
-      const spot=(wall, from, w)=>W.find(wall, w+360, z0-90, z1+90, from, a=>!cogHit(wall, a+100, a+100+w, z0, z1));
-      for (const [wall, from] of walls) while (uni>0 && left>1){ const u=spot(wall, from, sz.w); if (u==null) break; put(wall, sz.w, u); uni--; }
-      for (const [wall, from] of walls) while (left>1){
-        let w=Math.min(o.w[1], Math.max(this.PIECE, Math.ceil(left/h/S)*S)), u=null;
-        for (; w>=this.PIECE; w-=S){ u=spot(wall, from, w); if (u!=null) break; }
+    const gross=q=>q/3600/F/k*1e6;   // по рамке, мм²
+    // выброс через крышу: колпак над источником (компрессор — над ним), по площади; мимо глушителя и других колпаков
+    const roofs=(plan.roof||[]).map(m=>[m.x-150, m.x+m.lx+150, m.y-150, m.y+m.ly+150]);
+    // место — ближе к источнику: сдвиг вдоль крыши и поперёк; нет места — двумя колпаками поменьше; не вышло — не поместилось
+    const hood=(q, xc, yc, duct, depth=0)=>{ const a=gross(q), sy=Math.min(Wd-300, Math.max(400, Math.ceil(Math.sqrt(a)/S)*S)), sx=Math.max(400, Math.ceil(a/sy/S)*S);
+      const hit=(x, y)=>x<x0+150 || x+sx>L-150 || roofs.some(([a, b, c, d])=>x<b && x+sx>a && y<d && y+sy>c);
+      const ys=[...new Set([yc-sy/2, 150, Wd-150-sy].map(y=>Math.round(Math.max(150, Math.min(Wd-150-sy, y)))))], x1=Math.round(xc-sx/2);
+      let at=null; for (let d=0; d<=L && !at; d+=S) for (const x of d ? [x1+d, x1-d] : [x1]) for (const y of ys) if (!at && !hit(x, y)) at=[x, y];
+      if (!at){ if (depth<2 && a>0.5e6){ hood(q/2, xc, yc, duct, depth+1); hood(q/2, xc, yc, duct, depth+1); } else out.short.out=r(out.short.out+a/1e6); return; }
+      const [xa, ya]=at; roofs.push([xa-150, xa+sx+150, ya-150, ya+sy+150]);
+      out.roof.push({ kind:'out', x0:xa, x1:xa+sx, y0:ya, y1:ya+sy, w:sx, l:sy, q:Math.round(q), ...(duct ? { duct } : {}) }); };
+    const OB=this.OUT, oh=Math.max(OB.h[0], Math.min(OB.h[1], H-OB.top-this.IN.z0-this.IN.h[0]-200));   // вытяжка — вверху: высота жалюзи
+    let qWall=dgu ? 0 : room;
+    // компрессоры: горячий воздух — воздуховодом с клапаном рециркуляции; у стены выброса — жалюзи над компрессором (не
+    // больше 2400 мм, остаток — в общую вытяжку на этой стене), иначе — через крышу над ним
+    for (const c of comp){ const q=qc(c), kk=key(c);
+      if (E==='back' && !(plan.rows===2 && c.row===1)){
+        const z1=H-OB.top, z0=z1-oh, w=Math.max(OB.w[0], Math.min(2400, Math.ceil(gross(q)/oh/S)*S)), cx=c.x+c.lx/2;
+        let u=null; for (let d=0; d<=600 && u==null; d+=S) for (const sg of d ? [1, -1] : [1]){ const a=Math.round(cx-w/2+sg*d);
+          if (a>=x0+100 && a+w<=L-100 && W.free('back', a-90, a+w+90, z0-90, z1+90) && !cogHit('back', a, a+w, z0, z1)){ u=a; break; } }
+        if (u!=null){ out.louvers.push({ kind:'out', wall:'back', u0:u, u1:u+w, z0, z1, w, h:oh, duct:kk }); W.busy('back', u-90-this.GAP, u+w+260+this.GAP, z0-90, z1+90);
+          out.ducts[kk]='wall'; qWall+=Math.max(0, q-w*oh/1e6*k*F*3600); continue; } }
+      out.ducts[kk]='roof'; hood(q, c.x+c.lx/2, c.y+c.ly/2, kk); }
+    // одинаковые жалюзи по расчёту (size); не встали все — остаток той же высоты, ширина — под свободные участки стен
+    const place=(kind, o, walls, need0)=>{
+      const nd=need0; if (!nd || nd.gross<=0) return 0;
+      const sz=this.size(nd.gross, o); out.size[kind]=out.size[kind]||sz; if (!sz) return nd.gross*1e6;
+      const hh=sz.h, z0=kind==='in' ? o.z0 : H-o.top-hh, z1=z0+hh; let left=nd.gross*1e6, uni=sz.n;
+      const put=(wall, w, u)=>{ const u0=u+100, Lv={ kind, wall, u0, u1:u0+w, z0, z1, w, h:hh }; out.louvers.push(Lv); W.busy(wall, u0-90-this.GAP, Lv.u1+260+this.GAP, z0-90, z1+90); left-=w*hh; };
+      const spot=(wall, from, w, lim)=>W.find(wall, w+360, z0-90, z1+90, from, a=>!cogHit(wall, a+100, a+100+w, z0, z1) && (!lim || a+100+w<=lim));
+      for (const [wall, from, lim] of walls) while (uni>0 && left>1){ const u=spot(wall, from, sz.w, lim); if (u==null) break; put(wall, sz.w, u); uni--; }
+      for (const [wall, from, lim] of walls) while (left>1){
+        let w=Math.min(o.w[1], Math.max(this.PIECE, Math.ceil(left/hh/S)*S)), u=null;
+        for (; w>=this.PIECE; w-=S){ u=spot(wall, from, w, lim); if (u==null) continue; break; }
         if (u==null) break; put(wall, w, u); }
-      out.short[kind]=r(Math.max(0, left)/1e6);
+      return Math.max(0, left);
     };
-    place('in', this.IN, [...(leftOk ? [['left', 'lo']] : []), ['back', 'lo'], ...(rightOk ? [['right', 'lo']] : []), ['front', 'hi']]);   // лицевая (с дверями и логотипом) — последней
-    if (qOut>0) place('out', this.OUT, [...(rightOk ? [['right', 'lo']] : []), ['back', 'hi'], ['front', 'hi']]);
+    // общая вытяжка (тепло корпусов, осушителей, солнца; остаток от компрессоров) — вверху на стене выброса, остальное — крыша
+    if (qWall>0){ const o={ ...OB, h:[OB.h[0], oh] };
+      const left=E==='back' ? place('out', o, [['back', 'hi']], need(qWall)) : need(qWall).gross*1e6;
+      if (left>1) hood(left/1e6*k*F*3600, L-Math.min(1500, (L-x0)/4), Wd/2, null); }
+    if (!out.size.out && out.need.out) out.size.out=this.size(out.need.out.gross, OB);
+    // приток: стена напротив выброса → створки ворот и сервисных дверей (не на стене выброса) → остальные стены (не выброса)
+    const opp={ back:'front', front:'back', left:'right', right:'left' }, IN=this.IN;
+    const first=E ? opp[E] : 'front', leftOk=x0===0 && !plan.geo.sea, G=plan.gates;
+    let left=need(qIn).gross*1e6;
+    const wallsOf=list=>list.filter(([w])=>w!==E && (w!=='left' || leftOk));
+    left=place('in', IN, wallsOf([[first, first==='front' ? 'hi' : 'lo']]), { gross:left/1e6 });
+    // в створках: ворота в торце (не морского), сервисные ворота и двери — внизу полотна, мимо запорных штанг и калитки
+    const leaves=(d, wall, u0, u1, n, skip)=>{ const lw=(u1-u0)/n, z0=IN.z0, hh=Math.floor(Math.min(d.h-350-z0, IN.h[1])/S)*S;
+      for (let i=0; i<n && left>1 && hh>=IN.h[0]; i++){ if (i===skip) continue;
+        const a0=u0+i*lw+(i===0 ? 120 : 160), b0=u0+(i+1)*lw-(i===n-1 ? 120 : 160), w=Math.min(IN.w[1], Math.floor((b0-a0)/S)*S); if (w<IN.w[0]) continue;
+        const a=Math.round((a0+b0-w)/2); out.louvers.push({ kind:'in', wall, u0:a, u1:a+w, z0, z1:z0+hh, w, h:hh, leaf:true }); left-=w*hh; } };
+    if (left>1 && G && G.wall!==E) leaves(G, G.wall, G.y0+(G.sea ? 150 : 0), G.y1-(G.sea ? 150 : 0), G.leaves||2, G.wicket ? 0 : -1);   // у морского — в его дверях
+    for (const d of (plan.doors||[]).filter(d=>d.kind!=='entry' && d.wall!==E)) if (left>1) leaves(d, d.wall, d.x0, d.x1, d.leaves||1, -1);
+    const lim=dgu ? Math.round(L-1500) : null;   // у ДГУ — не у радиатора
+    const rest=wallsOf(dgu ? [['left', 'lo'], ['back', 'lo', lim], ['front', 'lo', lim]] : [['left', 'lo'], ['right', 'lo'], ['back', 'lo'], ['front', 'hi']]);
+    if (left>1) left=place('in', IN, rest.filter(([w])=>w!==first), { gross:left/1e6 });
+    // внизу места нет (конвекторы, знаки) — над конвекторами, на тех же стенах
+    if (left>1){ const hl=Math.min(IN.h[1], Math.floor((H-OB.top-90-this.LIFT)/S)*S);
+      if (hl>=IN.h[0]) left=place('in', { ...IN, z0:this.LIFT, h:[IN.h[0], hl] }, [...wallsOf([[first, first==='front' ? 'hi' : 'lo']]), ...rest.filter(([w])=>w!==first)], { gross:left/1e6 }); }
+    if (!out.size.in) out.size.in=this.size(out.need.in.gross, IN);
+    out.short.in=r(Math.max(0, left)/1e6);
     return out;
   }
   /** «2 × 1000 × 800 мм» */
@@ -447,17 +512,33 @@ class StationVent {
     const g=new Map(); for (const q of L){ const k=q.w+'×'+q.h; g.set(k, (g.get(k)||0)+1); }
     return [...g].map(([k, c])=>{ const [w, h]=k.split('×').map(Number); return this.text({ n:c, w, h }); }).join(' + ');
   }
-  /** замечания для «Компоновки»: расходы, сечения, размеры; не поместилось — предупреждение */
+  /** выброс через крышу: «2 × 1000 × 800 мм» (колпаки, размер проёма) */
+  static roofList(V){ const g=new Map(); for (const q of V.roof||[]){ const k=q.w+'×'+q.l; g.set(k, (g.get(k)||0)+1); }
+    return [...g].map(([k, c])=>{ const [w, l]=k.split('×').map(Number); return this.text({ n:c, w, h:l }); }).join(' + '); }
+  static WALL = { back:'задней стене', front:'стене прохода', left:'торце у входа', right:'дальнем торце' };
+  /** где приток и где выброс — словами: «приток — в стене прохода и в створках ворот; выброс — вверху задней стены и через крышу» */
+  static where(V){
+    const I=V.louvers.filter(q=>q.kind==='in'), ws=[...new Set(I.filter(q=>!q.leaf).map(q=>this.WALL[q.wall]))], lf=I.some(q=>q.leaf);
+    const O=V.louvers.filter(q=>q.kind==='out'), ow=[...new Set(O.map(q=>this.WALL[q.wall]))];
+    const a=[...ws.map(w=>'в '+w), ...(lf ? ['в створках ворот и сервисных дверей'] : [])].join(', ');
+    const b=[...(ow.length ? ['вверху в '+ow.join(', ')] : []), ...((V.roof||[]).length ? ['через крышу'] : []), ...(V.rad ? ['радиатор ДГУ — в дальнем торце'] : [])].join(', ');
+    return { in:a, out:b };
+  }
+  /** замечания для «Компоновки»: расходы, сечения, размеры, где приток и выброс (не на одной стене); рециркуляция; не
+   *  поместилось — предупреждение */
   static notes(plan){
     const V=plan.vent, iss=plan.issues; if (!V) return;
-    const n=StationLayout.n, f=v=>String(v).replace('.', ','), H=plan.heat && plan.heat.vent, tm=H ? StationNorms.deg(H.tmax) : '';
-    const part=(nm, kind)=>`${nm} ${n(V.q[kind])} м³/ч — живое сечение не менее ${f(V.need[kind].free)} м² (скорость ${f(V.face)} м/с), жалюзи ${this.list(V, kind) || 'по месту'}`;
-    const t=[part('приток', 'in')];
-    if (V.need.out) t.push(part('вытяжка', 'out'));
-    if (V.rad) t.push(`радиатор ДГУ — ${n(V.rad.q)} м³/ч через ${V.rad.door ? 'дверь-жалюзи' : 'жалюзи'} ${n(V.rad.w)} × ${n(V.rad.h)} мм (живое сечение ${f(V.rad.free)} м², ${f(V.rad.v)} м/с)`);
-    iss.push({ level:'info', text:`Вентиляция летом${tm ? ` (до ${tm})` : ''}: ${t.join('; ')}. Размеры — по рамке при живом сечении ${Math.round(V.free*100)} %; места жалюзи — на чертеже и 3D-виде.` });
-    for (const [kind, nm] of [['in', 'приточных'], ['out', 'вытяжных']]) if (V.short[kind]>0) iss.push({ level:'warn', text:`Не поместилось ${nm} жалюзи на ${f(V.short[kind])} м² (по рамке): стены заняты дверями, шкафами и конвекторами — освободите место на стене или примите приток (вытяжку) воздуховодом через крышу.` });
-    if (V.rad && V.rad.v>StationVent.RAD_V) iss.push({ level:'warn', text:`Через жалюзи радиатора ДГУ скорость воздуха около ${f(V.rad.v)} м/с — больше ${f(StationVent.RAD_V)} м/с: проверьте по паспорту ДГУ (расход воздуха радиатора и допустимое сопротивление) или увеличьте проём.` });
+    const n=StationLayout.n, f=v=>String(v).replace('.', ','), H=plan.heat && plan.heat.vent, tm=H ? StationNorms.deg(H.tmax) : '', wh=this.where(V);
+    const t=[`приток ${n(V.q.in)} м³/ч — живое сечение не менее ${f(V.need.in.free)} м² (скорость ${f(V.face)} м/с), жалюзи ${this.list(V, 'in') || 'по месту'}${wh.in ? ' — '+wh.in : ''}`];
+    if (V.need.out){ const w=V.louvers.some(q=>q.kind==='out') ? this.list(V, 'out') : '', rf=this.roofList(V);
+      t.push(`выброс горячего воздуха ${n(V.q.out)} м³/ч — не менее ${f(V.need.out.free)} м²: ${[w ? `жалюзи ${w} вверху в ${[...new Set(V.louvers.filter(q=>q.kind==='out').map(q=>this.WALL[q.wall]))].join(', ')}` : '', rf ? `через крышу — колпаки ${rf}` : ''].filter(Boolean).join(', ')}`); }
+    if (V.rad) t.push(`радиатор ДГУ — ${n(V.rad.q)} м³/ч через ${V.rad.door ? 'дверь-жалюзи' : 'жалюзи'} ${n(V.rad.w)} × ${n(V.rad.h)} мм в дальнем торце (живое сечение ${f(V.rad.free)} м², ${f(V.rad.v)} м/с)`);
+    iss.push({ level:'info', text:`Вентиляция летом${tm ? ` (до ${tm})` : ''}: ${t.join('; ')}. Приток и выброс — на разных стенах. Размеры — по рамке при живом сечении ${Math.round(V.free*100)} %; места жалюзи — на чертеже и 3D-виде.` });
+    const ducts=Object.keys(V.ducts||{}).length;
+    if ((ducts || V.rad) && (plan.sys||{}).rec!==false) iss.push({ level:'info', text:`Рекуперация тепла: ${ducts ? `на воздуховодах компрессоров — клапаны рециркуляции с электроприводом и термостатом` : ''}${ducts && V.rad ? ', ' : ''}${V.rad ? 'у радиатора ДГУ — заслонка рециркуляции' : ''}: зимой горячий воздух — в помещение (отопление без конвекторов при работе), летом — наружу.` });
+    if (V.short.out>0) iss.push({ level:'warn', text:`Не поместилось колпаков выброса на крыше на ${f(V.short.out)} м² (по рамке): крыша занята глушителем и другими колпаками — примите выброс общим коробом или увеличьте контейнер.` });
+    if (V.short.in>0) iss.push({ level:'warn', text:`Не поместилось приточных жалюзи на ${f(V.short.in)} м² (по рамке): стена напротив выброса, створки ворот и свободные стены заняты дверями, шкафами и конвекторами — освободите место на стене или примите приток воздуховодом через крышу.` });
+    if (V.rad && V.rad.v>StationVent.RAD_V) iss.push({ level:'warn', text:`Через жалюзи радиатора ДГУ скорость воздуха около ${f(V.rad.v)} м/с — больше ${f(StationVent.RAD_V)} м/с: проверьте по паспорту ДГУ (расход воздуха радиатора, допустимое сопротивление) или увеличьте проём.` });
   }
   static RAD_V = 7.5;   // скорость выброса воздуха радиатора ДГУ через жалюзи, м/с — выше: проверить по паспорту ДГУ
 }

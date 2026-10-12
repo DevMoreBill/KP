@@ -270,11 +270,12 @@ class VentSizing {
     const f=CalcNote.f, n=StationLayout.n, F=N.rule('heat.face'), k=N.rule('vent.free');
     N.section('vent', 'Вентиляция');
     const step=(what, kind)=>{ const nd=V.need[kind]; if (!nd) return;
-      const placed=V.louvers.filter(q=>q.kind===kind).reduce((s, q)=>s+q.w*q.h/1e6, 0), ok=!(V.short[kind]>0);
+      const roof=kind==='out' ? (V.roof||[]) : [], placed=V.louvers.filter(q=>q.kind===kind).reduce((s, q)=>s+q.w*q.h/1e6, 0)+roof.reduce((s, q)=>s+q.w*q.l/1e6, 0), ok=!(V.short[kind]>0);
+      const wh=StationVent.where(V)[kind], list=[V.louvers.some(q=>q.kind===kind) ? 'жалюзи '+StationVent.list(V, kind) : '', roof.length ? 'через крышу '+StationVent.roofList(V) : ''].filter(Boolean).join(', ');
       N.step({ what, formula:'A = Q / (3600 · v); по рамке = A / k', rules:['heat.face', 'vent.free'], data:[['Q', n(V.q[kind])+' м³/ч'], ['v', f(F, 1)+' м/с'], ['k', f(k, 2)]],
-        result:`A ≥ ${f(nd.free)} м², по рамке ≥ ${f(nd.gross)} м²; жалюзи ${StationVent.list(V, kind) || '—'}`, ok, margin:CalcNote.pct(placed, nd.gross) });
+        result:`A ≥ ${f(nd.free)} м², по рамке ≥ ${f(nd.gross)} м²; ${list || 'жалюзи —'}${wh ? ' ('+wh+')' : ''}`, ok, margin:CalcNote.pct(placed, nd.gross) });
       if (!ok) N.issue('warn', `${what}: на стенах не поместилось ${f(V.short[kind])} м² жалюзи (по рамке) — освободите стену или выведите воздух воздуховодом через крышу.`); };
-    step('Приточные жалюзи', 'in'); step('Вытяжные жалюзи', 'out');
+    step('Приточные жалюзи', 'in'); step('Выброс горячего воздуха', 'out');
     if (V.rad) N.step({ what:'Выброс воздуха радиатора ДГУ', formula:'v = Q / (3600 · A)', rules:['vent.free'], data:[['Q', n(V.rad.q)+' м³/ч'], [V.rad.door ? 'дверь-жалюзи' : 'жалюзи', n(V.rad.w)+' × '+n(V.rad.h)+' мм'], ['A', f(V.rad.free)+' м²']],
       result:'v = '+f(V.rad.v, 1)+' м/с', ok:V.rad.v<=StationVent.RAD_V, note:V.rad.v>StationVent.RAD_V ? 'Больше '+f(StationVent.RAD_V, 1)+' м/с — проверьте по паспорту ДГУ (расход воздуха радиатора, допустимое сопротивление).' : '' });
   }
