@@ -46,11 +46,17 @@ class Check {
       for (const t of tanks) assert.ok(t.y>=StationLayout.TANK.aisle-1, `${label}: проход перед баком ${t.y} мм`); }
     const floor=I.filter(i=>i.mount==='floor' && !i.tank);
     assert.ok(p.door==='side' || p.door==='end', `${label}: дверь оператора ${p.door} — станция только с проходом`);
+    // без сквозного прохода — вторая дверь оператора за агрегатом поперёк; проход не уже 500 мм (исключение)
+    if (p.cross){ const X=I.find(i=>i.cross); assert.ok(X && X.pos===p.cross.pos, `${label}: агрегат поперёк`);
+      assert.ok((p.doors||[]).some(d=>d.kind==='entry' && d.x0>=p.cross.x1) || (p.exit && p.exit.wall==='right') || (p.gates && p.gates.wicket), `${label}: нет второй двери оператора за поз. ${p.cross.pos}`);
+      assert.ok(p.issues.some(i=>/^Сквозного прохода нет/.test(i.text)), `${label}: замечание «без сквозного прохода»`); }
+    assert.ok(aMin>=500, `${label}: проход не менее ${aMin} мм`);
     assert.ok(p.entry, `${label}: нет двери оператора`);
     if (p.rows===2){
       const A=floor.filter(i=>i.row===1), B=floor.filter(i=>i.row===0), gap=Math.min(...B.map(i=>i.y))-Math.max(...A.map(i=>i.y+i.ly));
       assert.ok(gap>=aMin-1, `${label}: проход между рядами ${gap} < ${aMin}`);
     } else for (const it of floor){ const need=it.kind==='dgu' ? Math.min(aMin, 600) : aMin;
+      if (it.cross) continue;   // поперёк станции (без сквозного прохода): спереди и сзади — части станции со своими дверями
       assert.ok(it.y>=need-1, `${label}: проход перед поз. ${it.pos} ${it.y} < ${need}`);
       for (const c of I.filter(i=>i.mount==='wall' && i.wall==='front' && i.x<it.x+it.lx && i.x+i.lx>it.x))   // шкаф не сужает проход
         assert.ok(it.y-c.y-c.ly>=aMin-1, `${label}: перед шкафом поз. ${c.pos} проход ${it.y-c.y-c.ly} < ${aMin}`); }
@@ -229,8 +235,44 @@ Check.run('ошибка по условным габаритам — не точ
   assert.strictEqual(guess.level, 'error'); assert.ok(guess.assumed, 'не помещается только по условным габаритам');
 });
 
+// компрессорная — в габарит перевозки (решение ПНЕВМОТЕХ 12.10): поворот боком и два ряда; ресиверы — в два ряда; исключения
+// (проход до 500 мм; без сквозного прохода — агрегат поперёк и вторая дверь оператора) — раньше негабарита
+Check.run('компрессорная в габарите перевозки: проход 500 мм, поперёк с двумя дверями, ресиверы в два ряда', ()=>{
+  const K=(size, kw)=>P('Компрессор', { cat:'comp_screw', model:'K '+kw, kw, size }, { role:'main' }), R=StationGeo.ROAD_W;
+  const S=(cont, parts)=>StationLayout.solve({ cont, parts, req:{ kind:'comp' } });
+  // 2000 × 1500: с проходом 800 мм нужно 2 600 мм внутри — проход 500 мм, блок 2 550 мм (раньше — негабарит 3 400)
+  const a=S(C('block', { sizeAuto:true }), [K('2000 × 1500 × 1800', 90), dryer]);
+  Check.plan(a, 'проход 500'); draw(a, 'проход 500');
+  assert.ok(a.geo.ext[1]<=R && a.mode && a.mode.tight && a.aisle.w>=500 && a.aisleRule[1]===500, 'в габарите, проход сужен: '+JSON.stringify([a.geo.ext, a.mode, a.aisle, a.aisleRule]));
+  assert.ok(a.issues.some(i=>i.level==='warn' && /^Проход оператора сужен до \d+ мм \(норма — не менее 800 мм/.test(i.text) && /габариту перевозки/.test(i.text)), a.issues.map(i=>i.text).join(' | '));
+  assert.ok(!a.issues.some(i=>/негабарит/.test(i.text)), 'не негабарит');
+  // 2200 × 1700: и с проходом 500 мм не встаёт — поперёк станции, вторая дверь оператора за ним, ширина в габарите
+  const b=S(C('block', { sizeAuto:true }), [K('2200 × 1700 × 2000', 160), dryer]);
+  Check.plan(b, 'поперёк'); draw(b, 'поперёк');
+  assert.ok(b.geo.ext[1]<=R && b.cross && b.cross.pos===1, 'поперёк, в габарите: '+JSON.stringify([b.geo.ext, b.cross]));
+  const X=b.items.find(i=>i.cross); assert.ok(X.face===-2 && X.rot && X.ly===2200 && X.lx===1700, 'лицом к входу, длиной поперёк');
+  assert.ok(b.items.filter(i=>i.mount==='floor' && !i.cross).every(i=>i.x>=b.cross.x1), 'осушитель — во второй части (за ним)');
+  // заданный 20-футовый: глубокий компрессор поперёк, а не «не помещается»
+  const c=S(C('sea20'), [K('2000 × 1500 × 1800', 90), dryer]);
+  Check.plan(c, 'поперёк, 20 футов'); assert.ok(c.level==='warn' && c.cross, '20 футов — поперёк: '+c.issues.map(i=>i.text).join(' | '));
+  const e=c.entry, two=(c.doors||[]).find(d=>d.kind==='entry' && d.x0>=c.cross.x1);
+  assert.ok(e && e.wall==='front' && e.x1<=c.cross.x0 && two, 'дверь оператора — до агрегата, вторая — за ним: '+JSON.stringify([e, c.doors]));
+  // насосная и ДГУ — без исключений (только компрессорная)
+  const pmp=P('Насос', { cat:'pump', kw:30, size:'2000 × 1500 × 1200' }, { role:'main' });
+  const d=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[pmp], req:{ kind:'pump' } });
+  assert.ok(!d.mode || (!d.mode.tight && !d.mode.cross), 'насосная — без сужения прохода');
+  // ресиверы в два ряда: малые (500 л) — парой один за другим, когда по длине не хватает места
+  const rv=P('Ресивер РВ 500', { cat:'receiver', model:'РВ 500/10', volume:500, size:'600 × 600 × 1900' }, { qty:4 });
+  const f=S(C('block', { size:'6000 × 3000 × 2600' }), [K('1400 × 900 × 1500', 37), dryer, rv]);
+  Check.plan(f, 'ресиверы парами'); draw(f, 'ресиверы парами');
+  const pr=f.items.filter(i=>i.pair);
+  assert.ok(pr.length>=2 && f.issues.some(i=>/^Ресиверы поз\. \d+ — в два ряда/.test(i.text)), 'ресиверы — в два ряда: '+JSON.stringify(f.items.map(i=>[i.pos, i.x, i.y, !!i.pair]))+' '+f.issues.map(i=>i.text).join(' | '));
+  const fr=pr.filter(i=>i.y<f.int[1]/2), bk=pr.filter(i=>i.y>=f.int[1]/2); assert.ok(fr.length && bk.length, 'передний и задний ряд');
+});
+
 Check.run('нет места для прохода — контейнер больше: станций только с сервисными дверями нет', ()=>{
-  const deep=P('Компрессор глубокий', { cat:'comp_screw', model:'D 90', kw:90, size:'2000 × 1500 × 1800' }, { role:'main' });
+  // длиннее ширины контейнера: ни с проходом, ни поперёк (без сквозного прохода) не встаёт
+  const deep=P('Компрессор глубокий', { cat:'comp_screw', model:'D 90', kw:90, size:'2600 × 1500 × 1800' }, { role:'main' });
   const p=solve(C('sea20'), [deep, dryer]);
   Check.plan(p, 'глубокий в 20 футах');
   assert.strictEqual(p.level, 'error');

@@ -331,5 +331,26 @@ class Check {
     assert.strictEqual(StationQuick.ask(Cat.station('st_dgu', [await TzPick.part(C[4], 1, 'main')], {})), 'Укажите мощность нагрузки по ТЗ — проверим, хватает ли мощности ДГУ');
   });
 
+  // пищевая и медицинская промышленность — компрессоры только безмасляные; масляный — по требованию заказчика
+  await Check.run('отрасль: пищевая — только безмасляные, масляный по требованию', async ()=>{
+    global.catCache=[
+      Cat.item('Компрессор винтовой К-130', { cat:'comp_screw', flow:13, pressure:10 }),
+      Cat.item('Компрессор винтовой безмасляный КБ-130', { cat:'comp_screw', flow:13, pressure:10 }),
+    ];
+    const C=global.catCache, x=Cat.station('st_comp', [await TzPick.part(C[0], 1, 'main')], { flow:'10', industry:'food' });
+    assert.strictEqual(StationReq.oilFree(x), true, 'пищевая — безмасляный');
+    const r=KitNeed.recs(x).find(z=>z.key==='main');
+    assert.ok(r && /^Заменить: компрессор — масляный, а для пищевой промышленности нужен безмасляный \(класс 0 по маслу\)$/.test(KitNeed.head(r)), JSON.stringify(r));
+    const M=KitNeed.mainPreset(x); assert.ok(!M.test(C[0]) && M.test(C[1]) && C.find(c=>c.id===M.best.id)===C[1] && /безмасляные \(для пищевой промышленности\)/.test(M.need), M.need);
+    assert.ok(StationReq.checks(x).some(c=>!c.ok && /компрессор не безмасляный — для пищевой промышленности нужен класс 0 по маслу/.test(c.text)), JSON.stringify(StationReq.checks(x)));
+    assert.ok(/пищевая отрасль · безмасляный/.test(StationReq.line(x)), StationReq.line(x));
+    assert.strictEqual(StationQuick.query(x).oilFree, true, 'подбор станции — только безмасляные');
+    x.req.oilOk=true;   // заказчик разрешил масляный
+    assert.ok(!StationReq.oilFree(x) && !KitNeed.recs(x).some(z=>z.key==='main') && StationReq.checks(x).every(c=>!/безмасл/.test(c.text)), 'масляный по требованию — без замены');
+    assert.ok(/масляный — по требованию заказчика/.test(StationReq.line(x)), StationReq.line(x));
+    x.req.oilOk=false; x.req.industry='med'; assert.ok(StationReq.oilFree(x) && /медицинской и фармацевтической/.test(StationReq.oilWhy(x)));
+    x.req.industry=''; assert.ok(!StationReq.oilFree(x), 'общепромышленная — без ограничения');
+  });
+
   console.log(process.exitCode ? 'есть ошибки' : `подбор по ТЗ: проверок пройдено — ${Check.n}`);
 })();

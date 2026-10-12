@@ -511,6 +511,8 @@ dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
 .sq-st.ok{border-color:var(--ok);color:var(--ok)}
 .sq-st.warn{border-color:var(--warn-line);background:var(--warn-bg);color:var(--warn-ink)}
 .sq-st.bad{border-color:var(--danger);color:var(--danger)}
+.sq-oil{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin:0;font-size:13px}
+.sq-oil>span{flex:1 1 260px;min-width:0}
 .sq-st.info{border-color:color-mix(in srgb,var(--sky) 55%,var(--line));background:color-mix(in srgb,var(--sky) 8%,var(--card));color:var(--ink)}
 .sq-g input.need{border-color:var(--sky);box-shadow:0 0 0 2px color-mix(in srgb,var(--sky) 30%,transparent)}
 .sq-b{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
