@@ -1123,7 +1123,7 @@ Check.run('жалюзи: размеры по расходу воздуха, ме
   const [L, W, H]=p.int, len=w=>w==='left' || w==='right' ? W : L;
   for (const q of V.louvers){
     assert.ok(q.u0>=0 && q.u1<=len(q.wall) && q.z0>=0 && q.z1<=H, 'жалюзи в пределах стены: '+JSON.stringify(q));
-    assert.ok(q.w>=StationVent.IN.w[0] && q.w<=StationVent.IN.w[1] && q.w%50===0 && q.h%50===0, 'размер кратен 50 мм: '+JSON.stringify(q));
+    assert.ok(q.w>=StationVent.IN.w[0] && q.w<=StationVent.WHOLE && q.w%50===0 && q.h%50===0, 'размер кратен 50 мм: '+JSON.stringify(q));
     if (q.kind==='in') assert.strictEqual(q.z0, StationVent.IN.z0, 'приток — внизу');
     const en=p.entry; if (en && en.wall===q.wall) assert.ok(q.u1<=en.x0 || q.u0>=en.x1, 'не на двери оператора');
     for (const r of V.louvers) if (r!==q && r.wall===q.wall) assert.ok(r.u1<=q.u0 || r.u0>=q.u1 || r.z1<=q.z0 || r.z0>=q.z1, 'жалюзи не накладываются'); }
@@ -1148,16 +1148,36 @@ Check.run('жалюзи: размеры по расходу воздуха, ме
   const cases=[['КС 20', solve(C('sea20'), [comp, dryer, rec, flt, cab])], ['КС блок', p], ['КС с отступом', solve(C('block', { size:'5400 × 2700 × 2700' }), [comp, dryer, rec, cab])],
     ['ДГУ 20', g], ['ДГУ блок', solve(C('block'), [dgu, ats])], ['два ряда', solve(C('block', { size:'9000 × 3600 × 2700' }), [cq])],
     ['12 компрессоров', solve(C('block', { size:'10000 × 3500 × 2700' }), [P('Компрессор узкий', { cat:'comp_screw', flow:5, kw:15, size:'1200 × 550 × 1300' }, { role:'main', qty:12 })])]];
+  // целиком на стенах не встаёт — створки ворот, остаток — одним проёмом (не россыпью разных)
+  { const V=cases[2][1].vent, wl=V.louvers.filter(L=>L.kind==='in' && !L.leaf);
+    assert.ok(V.louvers.some(L=>L.kind==='in' && L.leaf) && wl.length===1 && V.short.in===0, JSON.stringify(V.louvers)); }
   for (const [nm, q] of cases){ const V=q.vent; Check.plan(q, nm);
     assert.deepStrictEqual(same(V), [], nm+': приток и выброс на одной стене');
     const R=V.roof||[]; for (let i=0; i<R.length; i++){ const a=R[i]; assert.ok(a.x0>=(q.geo.x0||0) && a.x1<=q.int[0] && a.y0>=0 && a.y1<=q.int[1], nm+': колпак на крыше');
       for (let j=i+1; j<R.length; j++){ const b=R[j]; assert.ok(a.x1<=b.x0 || b.x1<=a.x0 || a.y1<=b.y0 || b.y1<=a.y0, nm+': колпаки не накладываются'); } }
     for (const L of V.louvers.filter(L=>L.leaf)) assert.ok([...(q.doors||[]).map(d=>[d.wall, d.x0, d.x1]), ...(q.gates ? [[q.gates.wall, q.gates.y0, q.gates.y1]] : [])].some(([w, a, b])=>w===L.wall && L.u0>=a && L.u1<=b), nm+': жалюзи в створке — в проёме ворот или двери');
     for (const c of q.items.filter(i=>i.kind==='compressor' && i.mount==='floor')) assert.ok(['wall', 'roof'].includes(V.ducts[StationLayout.key(c)]), nm+': воздуховод компрессора');
-    if (V.exhaust==='back'){ const fi=V.louvers.find(L=>L.kind==='in'); assert.ok(fi && fi.wall==='front', nm+': приток — сначала на стене напротив выброса'); }
+    if (V.exhaust==='back') assert.ok(V.louvers.some(L=>L.kind==='in' && !L.leaf && L.wall==='front'), nm+': приток на стенах — сначала напротив выброса');
     if (q.items.some(i=>i.kind==='compressor')) assert.ok(q.issues.some(i=>/^Рекуперация тепла: на воздуховодах компрессоров — клапаны рециркуляции/.test(i.text)), nm+': рекуперация');
     assert.ok(q.issues.some(i=>/Приток и выброс — на разных стенах/.test(i.text)), nm+': сведения');
     draw(q, nm); new StScene(q, { view:'out' }).build(); new StScene(q, {}).build(); }
+  // приток без лишнего разбиения: на длинной свободной стене — одним проёмом (не шире 2 400 мм)
+  const one=solve(C('block', { size:'9000 × 2700 × 2700' }), [comp, dryer, rec]), oi=one.vent.louvers.filter(L=>L.kind==='in');
+  assert.ok(oi.length===1 && oi[0].w<=StationVent.WHOLE && oi[0].w*oi[0].h/1e6>=one.vent.need.in.gross-1e-6, 'приток одним проёмом: '+JSON.stringify(oi));
+  assert.deepStrictEqual(StationVent.sizeN(2.36, { h:[300, 1200], w:[400, 2400] }, 1), { n:1, w:2000, h:1200 }, 'один проём — 2 000 × 1 200');
+  // маркизы (снегозащита): на каждой приточной жалюзи, вылет — по скорости входа снизу, выше конвекторов; на чертеже,
+  // в ТТ и на 3D-виде
+  const SYS={ power:true, light:true, heat:true, vent:true, rec:true, snow:true };
+  const sn=solve(C('block', { size:'9000 × 2700 × 2700', sys:SYS }), [comp, dryer, rec]), SV=sn.vent, si=SV.louvers.filter(L=>L.kind==='in');
+  assert.ok(si.length && si.every(L=>L.hood && L.hood.d>=StationVent.HOOD_D[0] && L.hood.d<=StationVent.HOOD_D[1] && L.hood.d%50===0 && L.hood.w===L.w+2*StationVent.HOOD_SIDE), 'маркизы: '+JSON.stringify(si));
+  const hv=StationRules.raw('vent.hood_v'); for (const L of si){ const q=SV.q.in*L.w*L.h/si.reduce((a, x)=>a+x.w*x.h, 0);
+    assert.ok(Math.abs(L.hood.v-q/3600/(L.hood.w/1000*L.hood.d/1000))<0.01 && (L.hood.v<=hv+0.005 || L.hood.d===StationVent.HOOD_D[1]), 'скорость входа под маркизой: '+JSON.stringify(L.hood)); }
+  assert.ok(si.every(L=>L.z0>=StationVent.LIFT), 'с маркизой — приток выше (вход над снегом)');
+  assert.ok(SV.hood && SV.hood.n===si.length && sn.issues.some(i=>/^Маркизы на приточных жалюзи \(снегозащита\): .*вылет \d/.test(i.text)), 'сведения о маркизах');
+  for (const d of [...sn.doors, sn.entry].filter(Boolean)) for (const L of si.filter(L=>L.wall===(d.wall||'front'))) assert.ok(L.u1+StationVent.HOOD_SIDE<=d.x0-StationVent.HOOD_GAP || L.u0-StationVent.HOOD_SIDE>=d.x1+StationVent.HOOD_GAP, 'маркиза — не у двери');
+  assert.ok(StationDrawing.heat(sn).some(t=>/маркизы \(снегозащита\) .*вылет/.test(t)), 'ТТ на чертеже — маркизы');
+  assert.ok(!solve(C('block', { size:'9000 × 2700 × 2700' }), [comp, dryer, rec]).vent.louvers.some(L=>L.hood), 'без опции — без маркиз');
+  draw(sn, 'маркизы'); new StScene(sn, { view:'out' }).build();
   // компрессор плотно к стене, ворота за ним: выброс — через крышу (колпак над компрессором), приток — и в створках ворот сзади
   const t=cases[0][1], tc=t.items.find(i=>i.kind==='compressor'), tk=StationLayout.key(tc);
   assert.ok(t.doors.some(d=>d.rear && d.wall==='back') && t.vent.exhaust===null && t.vent.ducts[tk]==='roof', 'плотно к стене — выброс через крышу');
