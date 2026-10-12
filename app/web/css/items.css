@@ -194,6 +194,15 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .pf-rr{display:flex;gap:6px}
 .pf-rr input{min-width:0;width:50%}
 .pf-n{margin:4px 0 6px;font-size:12.5px}
+/* подбор по нужному: что нужно и «Показать все»; рекомендуемый — первым; «мало» — не подходит */
+.pf-need{margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--ok) 45%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--ok) 8%,var(--card));font-size:13px}
+.pf-need>span{flex:1 1 260px;min-width:0}
+.pf-need.all{border-color:var(--line);background:var(--soft)}
+.kit-pick.best{border:2px solid var(--ok)}
+.pf-best,.pf-low{display:inline-block;margin:0 0 2px;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:700}
+.pf-best{background:var(--ok);color:#fff}
+.pf-low{background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line)}
+.kit-pick .pf-best+b,.kit-pick .pf-low+b{display:block}
 
 .kit-none{display:grid;justify-items:start;gap:8px;padding:14px;border:1.5px dashed var(--line);border-radius:12px}
 .kit-none p{margin:0;font-weight:600}
@@ -380,8 +389,9 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .kr-opts{display:flex;flex-wrap:wrap;gap:6px 18px}
 .kr-n textarea{width:100%}
 .kit-cont{display:grid;gap:8px;padding:10px 12px;border:1px solid var(--navy);border-radius:12px;background:var(--card)}
-.kc-g{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,.8fr) minmax(0,1.2fr) minmax(0,1.1fr);gap:8px 10px}
-.kc-g>.f:nth-child(6),.kc-g>.f:nth-child(7){grid-column:span 2}
+.kc-g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px}
+.kc-more>summary{cursor:pointer;font-size:13px;color:var(--navy);padding:2px 0}
+.kc-more>.kc-g{margin-top:6px}
 .kit-sys{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .kit-grp{display:grid;gap:6px}
 .kit-grp>h4{margin:4px 0 0;font-size:14px}
@@ -393,9 +403,19 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .kt-r.open{background:color-mix(in srgb,var(--soft) 55%,var(--card))}
 .kt-r input,.kt-r select{min-height:34px}
 .kt-n{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--soft);color:var(--navy);font-size:12px;font-weight:700}
-.kt-nm{display:flex;align-items:center;gap:6px;min-width:0}
+.kt-nm{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;min-width:0}
 .kt-nm input{flex:1;min-width:0;font-weight:600}
 .kt-nm small{flex:none;font-size:11px}
+.kt-nm .kt-sub{flex:1 1 100%;min-width:0;padding-left:2px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* «Нужно: …» — чего не хватает к компрессорам; «Заменить» — что мало */
+.kt-r.kt-need{grid-template-columns:28px minmax(0,1fr) auto;background:var(--warn-bg);border-top:1px dashed var(--warn-line)}
+.kt-need .kt-n{background:var(--warn);color:#fff}
+.kt-need.swap .kt-n{background:var(--danger)}
+.kt-nw{display:grid;gap:1px;min-width:0}
+.kt-nw b{font-size:13.5px;color:var(--ink)}
+.kt-nw small{font-size:12px}
+.kt-go .btn{white-space:nowrap}
+.kit-grp .kt-all{justify-self:start;margin-top:2px}
 .kt-a{display:flex;gap:2px;justify-content:flex-end}
 .kt-d{grid-column:1/-1;display:grid;gap:10px;padding:8px 2px 4px}
 .kd-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
@@ -416,10 +436,11 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .kit-sum .chip{margin-left:4px}
 @media (max-width:900px){
   .kc-g{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .kc-g>.f:nth-child(6),.kc-g>.f:nth-child(7){grid-column:auto}
   .kt-h{display:none}
-  .kt-r{grid-template-columns:24px minmax(0,1fr) 56px;grid-template-areas:"n nm q" ". c c" ". s s" ". a a"}
+  .kt-r{grid-template-columns:24px minmax(0,1fr) 64px;grid-template-areas:"n nm nm" ". c q" ". s s" ". a a"}
   .kt-n{grid-area:n}.kt-nm{grid-area:nm}.kt-q{grid-area:q}.kt-r>.kit-cost{grid-area:c}.kt-s{grid-area:s}.kt-a{grid-area:a;justify-content:flex-start}
+  .kt-r.kt-need{grid-template-columns:24px minmax(0,1fr);grid-template-areas:"n w" ". go"}
+  .kt-need .kt-nw{grid-area:w}.kt-need .kt-go{grid-area:go}
   .kt-d{grid-column:1/-1}
   .kd-g{grid-template-columns:1fr}
 }

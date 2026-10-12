@@ -11,10 +11,14 @@ const ROOT=path.resolve(__dirname, '..', '..');
 global.document={ addEventListener(){} };
 global.uid=(()=>{ let n=0; return ()=>'p'+(++n); })();
 global.attrsOf=d=>Object.assign({}, d.attrs||{});
-const TYPES={ st_comp:{ station:{ main:['comp_screw', 'comp_piston'] } }, st_pump:{ station:{ main:['pump'] } }, st_dgu:{ station:{ main:['dgu'] } } };
+const TYPES={ st_comp:{ station:{ main:['comp_screw', 'comp_piston'] }, fields:[] }, st_pump:{ station:{ main:['pump'] }, fields:[] }, st_dgu:{ station:{ main:['dgu'] }, fields:[] } };
 global.typeById=id=>TYPES[id]||{};
 global.catCache=[];
 global.DEF=()=>null;   // умолчания администратора — нет
+global.numOf=v=>{ if (typeof v==='number') return v; const m=String(v??'').replace(/\s/g, '').replace(',', '.').match(/-?\d+(\.\d+)?/); return m ? +m[0] : null; };   // как в core/util.js
+global.FEAT={ on:()=>false };   // компоновка выключена: размер контейнера по оборудованию здесь не подбирается
+global.mainLine=()=>''; global.groupsFromAttrs=()=>[];   // характеристики станции для КП — здесь не проверяются
+global.esc=v=>String(v??'').replace(/[&<>"']/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 global.api=async u=>{ const c=global.catCache.find(z=>u.endsWith('/'+encodeURIComponent(z.id))); if (!c) throw new Error('нет '+u); return c; };
 for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
@@ -189,6 +193,58 @@ class Check {
     const y=Cat.station('st_pump', [], {});
     const note=await TzPick.run(y, { kind:'pump', q:500, head:30, reserve:'0', work:0 });
     assert.ok(/В каталоге нет: насос на 500 м³\/ч и 30 м/.test(note), note);
+  });
+
+  // состав компрессорной «вручную» (KitNeed, kit-view.js): к выбранному компрессору программа сама называет, чего не хватает,
+  // окно каталога открывается с фильтрами по нужному, «Подобрать всё недостающее» добавляет то же, что подобрал бы TzPick
+  await Check.run('состав компрессорной: чего не хватает, фильтры подбора, «Подобрать всё недостающее»', async ()=>{
+    global.catCache=[
+      Cat.item('Компрессор винтовой К-65', { cat:'comp_screw', flow:6.5, pressure:9.7, kw:37 }),
+      Cat.item('Компрессор винтовой К-130', { cat:'comp_screw', flow:13, pressure:10, kw:75 }),
+      Cat.item('Осушитель рефрижераторный ОР-5', { cat:'dryer_refrig', flow:5 }),
+      Cat.item('Осушитель рефрижераторный ОР-20', { cat:'dryer_refrig', flow:20, pressure:'13' }),
+      Cat.item('Осушитель рефрижераторный ОР-25 (8 бар)', { cat:'dryer_refrig', flow:25, pressure:'8' }),
+      Cat.item('Фильтр ФС-20', { cat:'filter', stage:'Сверхтонкая (микрофильтр)', flow:20 }),
+      Cat.item('Фильтр ФП-20', { cat:'filter', stage:'Предварительная', flow:20 }),
+      Cat.item('Ресивер РВ-1000', { cat:'receiver', volume:1000, pressure:11 }),
+    ];
+    const toasts=[]; global.toast=t=>toasts.push(t); global.persist=()=>{}; global.renderEditor=()=>{}; global.renderForm=()=>{};
+    const comp=await TzPick.part(global.catCache[1], 1, 'main'), x=Cat.station('st_comp', [comp], {}); global.S={ items:[x] };
+    let R=KitNeed.recs(x);
+    assert.deepStrictEqual(R.map(r=>r.key).sort(), ['dryer-refrig', 'receiver'], 'к компрессору: осушитель и ресивер — '+JSON.stringify(R.map(r=>r.key)));
+    const P=KitNeed.preset(x, R.find(r=>r.key==='dryer-refrig'));
+    assert.deepStrictEqual(P.min, { pressure:10 }, 'давление — не ниже компрессорного');
+    assert.ok(P.r.flow && +P.r.flow[0].replace(',', '.')>13, 'производительность — с запасом и поправкой на давление: '+P.r.flow);
+    assert.ok(/^Нужно: рефрижераторный осушитель не менее .* — к компрессорам 13 м³\/мин, 10 бар\. Показаны подходящие: производительность от .* м³\/мин, давление от 10 бар\.$/.test(P.need), P.need);
+    assert.strictEqual(P.best && global.catCache.find(c=>c.id===P.best.id).name, 'Осушитель рефрижераторный ОР-20', 'рекомендуемый — самый маленький подходящий, на давление компрессора (8 бар — нет)');
+    // окно каталога: подходящие — без маленького и без низкого давления; давление без данных не отсекается
+    const F=KitNeed.filters(x, R.find(r=>r.key==='dryer-refrig')), L=pfList(F, ['dryer_refrig']).list.map(c=>c.name);
+    assert.deepStrictEqual(L, ['Осушитель рефрижераторный ОР-20'], 'подходящие: '+JSON.stringify(L));
+    assert.strictEqual(KitNeed.fits(global.catCache[2], P), false, 'ОР-5 — «мало»');
+    assert.strictEqual(KitNeed.top('7,5 / 10 / 13 бар'), 13, 'давление «7,5 / 10 / 13» — до 13 бар');
+    const rows=KitNeed.rows(x, 0);
+    assert.ok(/Нужно: рефрижераторный осушитель/.test(rows) && /data-a="kitNeed" data-i="0" data-k="receiver"/.test(rows), 'строки «Нужно: …» с кнопкой «Подобрать»');
+    assert.ok(/Подобрать всё недостающее \(2\)/.test(KitNeed.allBtn(x, 0)), 'одна кнопка на всё');
+    // одной кнопкой: осушитель, затем фильтры до и после него, ресивер; ничего не нужно — строк нет
+    await KitNeed.fillAll(0);
+    const K=Cat.kinds(x).map(k=>k[0]);
+    assert.ok(K.includes('dryer') && K.filter(k=>k==='filter').length===2 && K.includes('receiver'), 'добавлено: '+JSON.stringify(K)+' — '+toasts.join(' | '));
+    assert.deepStrictEqual(KitNeed.recs(x).map(r=>r.key), [], 'всё на месте');
+    const tt=toasts.pop();   // 13 м³/мин → около 1625 л; один при 10 бар — на учёт в Ростехнадзоре (p·V 1,6): два по 1000 л
+    assert.ok(/^Добавлено: Осушитель рефрижераторный ОР-20; 2 × Ресивер РВ-1000; Фильтр ФП-20; Фильтр ФС-20$/.test(tt), tt);
+    // осушитель меньше нужного — «Заменить», старый уходит из состава
+    const y=Cat.station('st_comp', [await TzPick.part(global.catCache[1], 1, 'main'), await TzPick.part(global.catCache[2], 1)], {}); global.S={ items:[y] };
+    const sw=KitNeed.recs(y).find(r=>r.key==='dryer-refrig');
+    assert.ok(sw && sw.swap && sw.replace.length===1, 'мало — замена: '+JSON.stringify(sw));
+    await KitNeed.fillAll(0);
+    assert.deepStrictEqual(kitParts(y).filter(p=>StationEquip.kindOf(p)==='dryer').map(p=>p.name), ['Осушитель рефрижераторный ОР-20'], 'ОР-5 заменён');
+    // компрессор по требованиям «Подбора станции»: показаны подходящие, рекомендуемый — как у «Подобрать оборудование»
+    const z=Cat.station('st_comp', [], { flow:'10', pressure:'7', reserve:'1' }), M=KitNeed.mainPreset(z);
+    assert.strictEqual(global.catCache.find(c=>c.id===M.best.id).name, 'Компрессор винтовой К-130', 'один на 13 м³/мин');
+    assert.deepStrictEqual([M.best.n, M.qty], [2, 2], 'рабочий + резервный');
+    assert.deepStrictEqual(global.catCache.filter(c=>/^comp_/.test(c.attrs.cat) && M.test(c)).map(c=>c.name), ['Компрессор винтовой К-130'], 'К-65 — мал для одного');
+    assert.ok(/^Нужно 10 м³\/мин при 7 бар у потребителя \+ 1 в резерве\. Показаны компрессоры от 10 м³\/мин, давление от 7 бар\.$/.test(M.need), M.need);
+    assert.strictEqual(KitNeed.mainPreset(Cat.station('st_comp', [], {})), null, 'требований нет — обычный каталог');
   });
 
   console.log(process.exitCode ? 'есть ошибки' : `подбор по ТЗ: проверок пройдено — ${Check.n}`);
