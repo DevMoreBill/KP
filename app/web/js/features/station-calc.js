@@ -254,7 +254,8 @@ class ReceiverSizing {
       data:[['наибольший компрессор', big.name+' — '+f(big.info.flow)+' м³/мин'], ...(vsd ? [] : [['p1 · T0 / T1', f(fr.p1)+' бар · '+fr.T0+' / '+fr.T1+' K'], ['цикл', fr.cycle+' с'], ['Δp', f(fr.dp)+' бар']]),
         ...(tz ? [['по ТЗ', f(tz, 0)+' л']] : [])], rules:['receiver.formula', vsd ? 'receiver.vsd' : ''], result:'нужно ≥ '+f(need, 0)+' л; в составе '+f(have, 0)+' л',
       ok:N.fits(have, need).ok, margin:CalcNote.pct(have, need), note:N.fits(have, need).note, pick:Rv.map(u=>u.name+(u.qty>1 ? ' × '+u.qty : '')).join('; ') });
-    if (!Rv.length) N.issue('warn', `Ресиверов в составе нет — нужно около ${f(need, 0)} л.`);
+    const bs=AirChain.base(need, Math.max(0, ...C.map(u=>u.info.bar||0)));   // по умолчанию — по 900 л (receiver.base)
+    if (!Rv.length) N.issue('warn', `Ресиверов в составе нет — нужно около ${f(need, 0)} л${bs ? ` (${bs.n} × ${f(bs.v, 0)} л)` : ''}.`);
     else if (!N.fits(have, need).ok) N.issue(tz && !N.fits(have, tz).ok ? 'error' : 'warn', `Объём ресиверов ${f(have, 0)} л меньше ${tz && !N.fits(have, tz).ok ? 'требуемого по ТЗ' : 'расчётного'} ${f(need, 0)} л.`);
     const pv=N.rule('vessel.pv'), bar=Math.max(0, ...C.map(u=>u.info.bar||0));
     for (const u of Rv){ const v=u.info.vol||0, x=bar/10*v/1000;

@@ -263,17 +263,20 @@ class StationDefaults {
   /** бак станции — под время работы из требований (ТЗ): объём и строка «время работы». С расчётом станции (GensetSizing) —
    *  по расходу ДГУ на нагрузке из требований с запасом, за вычетом бака ДГУ (как в расчётной записке); без него — 75 %, 0,25 л/кВт·ч */
   static retank(it, hours){
-    const p=kitParts(it).find(z=>this.FUEL.test(String(z.name||''))), d=kitParts(it).filter(z=>StationEquip.kindOf(z)==='dgu' && z.role==='main');
+    const p=kitParts(it).find(z=>this.FUEL.test(String(z.name||''))), t=p ? this.tankFor(it, hours) : null; if (!t) return null;
+    p.rows=(p.rows||[]).filter(r=>!/^объ[её]м|^время работы/i.test(String(r.k||''))); p.rows.push(...t.rows);
+    return t.v;
+  }
+  /** какой нужен бак на hours ч (без изменения состава): {v — л, rows — строки «Объём» и «Время работы»} или null */
+  static tankFor(it, hours){
+    const d=kitParts(it).filter(z=>StationEquip.kindOf(z)==='dgu' && z.role==='main');
     const res=Math.max(0, Math.round(StationReq.num(StationReq.of(it).reserve)||0)), kw=d.reduce((s, z)=>s+(StationEquip.num((z.attrs||{}).kw)||0)*Math.max(0, (+z.qty||1)-res), 0);
-    if (!p || !(kw>0) || !(hours>0)) return null;
-    p.rows=(p.rows||[]).filter(r=>!/^объ[её]м|^время работы/i.test(String(r.k||'')));
+    if (!(kw>0) || !(hours>0)) return null;
     const fp=typeof GensetSizing!=='undefined' && StationRules.ok() ? GensetSizing.plan(it) : null;
     if (fp){ const L=Math.max(0, fp.need-fp.built), v=L>0 ? this.TANKS.find(t=>t>=L) || Math.ceil(L/500)*500 : this.TANKS[0];
-      p.rows.push({ k:'Объём', v:v+' л' }, { k:`Время работы ДГУ от баков (с баком ДГУ) при нагрузке ${Math.round(fp.x*100)} %`, v:'около '+Math.floor((v+fp.built)/(fp.c*fp.n))+' ч' });
-      return v; }
+      return { v, rows:[{ k:'Объём', v:v+' л' }, { k:`Время работы ДГУ от баков (с баком ДГУ) при нагрузке ${Math.round(fp.x*100)} %`, v:'около '+Math.floor((v+fp.built)/(fp.c*fp.n))+' ч' }] }; }
     const v=this.tank(kw, hours);
-    p.rows.push({ k:'Объём', v:v+' л' }, { k:'Время работы ДГУ от бака при нагрузке 75 %', v:'около '+Math.round(v/(kw*0.75*this.LPH))+' ч' });
-    return v;
+    return { v, rows:[{ k:'Объём', v:v+' л' }, { k:'Время работы ДГУ от бака при нагрузке 75 %', v:'около '+Math.round(v/(kw*0.75*this.LPH))+' ч' }] };
   }
 }
 

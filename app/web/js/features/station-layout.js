@@ -401,6 +401,8 @@ class AirChain {
   static get RECV(){ const f=StationRules.raw('receiver.formula'); return f.k*(1000/60)*f.p1*f.T0*f.cycle/(f.dp*f.T1); }
   static get RECV_VSD(){ return StationRules.raw('receiver.vsd'); }
   static get RECV_SIZES(){ return StationRules.raw('receiver.sizes'); }
+  /** ресивер по умолчанию (receiver.base, решение ПНЕВМОТЕХ): {volume — л, maker — производитель в приоритете} или null */
+  static get BASE(){ const b=StationRules.opt('receiver.base'); return b && b.volume>0 ? b : null; }
   // класс чистоты по ISO 8573-1 (частицы.вода.масло) и где применяют
   static get CLASSES(){ return StationRules.raw('air.classes'); }
   static get PDP(){ return StationRules.raw('air.pdp'); }   // точка росы под давлением по классу воды, °C
@@ -535,6 +537,13 @@ class AirChain {
   /** поправка магистрального фильтра на давление (правило filter.kp: пропорционально абсолютному давлению к номиналу) */
   static kf(bar){ const f=StationRules.raw('filter.kp'); return bar>0 ? Math.min(f.cap, (bar+1)/(f.ref+1)) : 1; }
   static m3(v){ return (Math.round(v*10)/10).toString().replace('.', ','); }
+  /** ресиверы по умолчанию на объём V, л, при давлении bar: {n, v} — одинаковые по BASE.volume (900 л), сколько нужно без
+   *  недобора; null — правила нет или такой ресивер при этом давлении подлежит учёту в Ростехнадзоре (p·V больше 1,0) */
+  static base(V, bar){
+    const b=this.BASE; if (!b || !(V>0)) return null; const v=b.volume;
+    if (bar>0 && bar/10*v/1000>PressureVessel.LIMIT+1e-9) return null;
+    return { n:Math.max(1, Math.ceil(Math.round(V)/v-1e-9)), v };   // объём — до литра (как в расчётной записке)
+  }
   /** ресиверы без учёта в Ростехнадзоре на объём V, л, при давлении bar: {n, v} — наименьшее число одинаковых из ряда объёмов,
    *  у каждого p·V не больше 1,0 МПа·м³; один и так без учёта (или давление неизвестно) — null */
   static split(V, bar){
@@ -588,19 +597,24 @@ class AirChain {
       for (const G of this.groups([...F].sort((a, b)=>a.air.stage-b.air.stage)).filter(L=>L[0].air.grade!=='cond' && L[0].air.grade!=='sep' && L.every(e=>e.air.flow>0))){
         const cap=G.reduce((s, e)=>s+e.air.flow*e.qty, 0)*kf, e=G[0], n=G.reduce((s, x)=>s+x.qty, 0);
         if (cap<q*0.98) iss.push({ level:'warn', air:true, text:`${n>1 ? `Фильтры ${[...new Set(G.map(nm))].join(', ')} (${n} шт. параллельно)` : `Фильтр ${nm(e)}`} «${e.short}»: ${m3(cap)} м³/мин при ${m3(bar)} бар — меньше производительности компрессоров ${m3(q)} м³/мин: перепад давления растёт, фильтр не держит класс очистки. Нужно не менее ${m3(q/kf)} м³/мин.` }); }
-      // ресивер: по самому производительному компрессору «нагрузка — холостой ход» (частотный — меньше)
-      const big=known.reduce((m, e)=>e.air.flow>m.air.flow ? e : m, known[0]), vr=big ? this.RECV_SIZES.find(v=>v>=big.air.flow*(big.air.vsd ? this.RECV_VSD : this.RECV)-1e-6) || this.RECV_SIZES[this.RECV_SIZES.length-1] : 0;
-      const vol=R.reduce((s, e)=>s+(e.air.vol||0)*e.qty, 0), onRecv=C.some(e=>e.air.recv), sp=vr ? this.split(vr, bar) : null;
+      // ресивер: по самому производительному компрессору «нагрузка — холостой ход» (частотный — меньше); по умолчанию —
+      // одинаковые по 900 л (receiver.base), если каждый без учёта в Ростехнадзоре, иначе — из ряда объёмов
+      const big=known.reduce((m, e)=>e.air.flow>m.air.flow ? e : m, known[0]), vn=big ? big.air.flow*(big.air.vsd ? this.RECV_VSD : this.RECV) : 0;
+      const vr=big ? this.RECV_SIZES.find(v=>v>=vn-1e-6) || this.RECV_SIZES[this.RECV_SIZES.length-1] : 0, bs=this.base(vn, bar);
+      const vol=R.reduce((s, e)=>s+(e.air.vol||0)*e.qty, 0), onRecv=C.some(e=>e.air.recv), sp=vr && !bs ? this.split(vr, bar) : null, N=StationLayout.n;
       if (vr && !R.length && !onRecv){
-        iss.push({ level:'info', air:true, text:`Ресивера в составе нет — рекомендуется около ${StationLayout.n(vr)} л: сглаживает пульсации и пики потребления, собирает конденсат, компрессор реже переключается${sp ? `; один на ${StationLayout.n(vr)} л при ${m3(bar)} бар подлежит учёту в Ростехнадзоре (p·V больше 1,0 МПа·м³) — без учёта: ${sp.n} по ${StationLayout.n(sp.v)} л` : ''}.` });
-        rec('receiver', { title:sp ? `Воздушные ресиверы ${sp.n} × ${StationLayout.n(sp.v)} л — без учёта в Ростехнадзоре` : `Воздушный ресивер около ${StationLayout.n(vr)} л`, why:sp ? `вместе ${StationLayout.n(sp.n*sp.v)} л; p·V каждого — ${m3(bar/10*sp.v/1000)} МПа·м³, не больше 1,0` : 'буфер и сбор конденсата — компрессор реже переключается',
-          cat:'receiver', name:'Воздушный ресивер', f:{}, r:{ volume:sp ? [String(Math.round(sp.v*0.8)), String(sp.v)] : [String(Math.round(vr*0.8)), ''] }, total:vr, qty:sp ? sp.n : 1,
-          attrs:{ cat:'receiver' }, rows:[{ k:'Объём', v:sp ? `${StationLayout.n(sp.v)} л` : `около ${StationLayout.n(vr)} л` }] }); }
+        const what=bs ? `${bs.n>1 ? bs.n+' ресивера по' : 'ресивер'} ${N(bs.v)} л${bs.n>1 || Math.round(vn)<bs.v ? ` (нужно около ${N(Math.round(vn))} л)` : ''}` : `около ${N(vr)} л`;
+        iss.push({ level:'info', air:true, text:`Ресивера в составе нет — рекомендуется ${what}: сглаживает пульсации и пики потребления, собирает конденсат, компрессор реже переключается${bs ? `; ${N(bs.v)} л при ${m3(bar)} бар — без учёта в Ростехнадзоре` : sp ? `; один на ${N(vr)} л при ${m3(bar)} бар подлежит учёту в Ростехнадзоре (p·V больше 1,0 МПа·м³) — без учёта: ${sp.n} по ${N(sp.v)} л` : ''}.` });
+        const one=bs || sp;
+        rec('receiver', { title:bs ? (bs.n>1 ? `Воздушные ресиверы ${bs.n} × ${N(bs.v)} л` : `Воздушный ресивер ${N(bs.v)} л`) : sp ? `Воздушные ресиверы ${sp.n} × ${N(sp.v)} л — без учёта в Ростехнадзоре` : `Воздушный ресивер около ${N(vr)} л`,
+          why:bs ? `нужно около ${N(Math.round(vn))} л${bs.n>1 ? `, вместе ${N(bs.n*bs.v)} л` : ''}; p·V каждого — ${m3(bar/10*bs.v/1000)} МПа·м³: без учёта в Ростехнадзоре` : sp ? `вместе ${N(sp.n*sp.v)} л; p·V каждого — ${m3(bar/10*sp.v/1000)} МПа·м³, не больше 1,0` : 'буфер и сбор конденсата — компрессор реже переключается',
+          cat:'receiver', name:'Воздушный ресивер', f:{}, r:{ volume:bs ? [String(bs.v), String(bs.v)] : sp ? [String(Math.round(sp.v*0.8)), String(sp.v)] : [String(Math.round(vr*0.8)), ''] }, total:bs ? Math.round(vn) : vr, qty:one ? one.n : 1,
+          attrs:{ cat:'receiver' }, rows:[{ k:'Объём', v:one ? `${N(one.v)} л` : `около ${N(vr)} л` }] }); }
       else if (vr && R.length && R.every(e=>e.air.vol>0) && vol<vr*0.6)
-        iss.push({ level:'info', air:true, text:`Ресиверы ${StationLayout.n(vol)} л — для компрессора ${m3(big.air.flow)} м³/мин${big.air.vsd ? ' с частотным регулированием' : ' с регулированием «нагрузка — холостой ход»'} рекомендуется около ${StationLayout.n(vr)} л (не чаще одного цикла в 30 с при перепаде 1 бар).` });
+        iss.push({ level:'info', air:true, text:`Ресиверы ${N(vol)} л — для компрессора ${m3(big.air.flow)} м³/мин${big.air.vsd ? ' с частотным регулированием' : ' с регулированием «нагрузка — холостой ход»'} рекомендуется около ${N(vr)} л (не чаще одного цикла в 30 с при перепаде 1 бар).` });
     }
     // ресиверы на учёте в Ростехнадзоре (p·V больше 1,0 МПа·м³): несколько меньших — каждый без учёта (замена из каталога)
-    const regR=R.filter(e=>e.air.vol>0 && bar/10*e.air.vol/1000>PressureVessel.LIMIT+1e-9), tot=regR.reduce((s, e)=>s+e.air.vol*e.qty, 0), rs=tot ? this.split(tot, bar) : null;
+    const regR=R.filter(e=>e.air.vol>0 && bar/10*e.air.vol/1000>PressureVessel.LIMIT+1e-9), tot=regR.reduce((s, e)=>s+e.air.vol*e.qty, 0), rs=tot ? this.base(tot, bar) || this.split(tot, bar) : null;
     if (rs){ iss.push({ level:'info', air:true, text:`Ресивер ${[...new Set(regR.map(nm))].join(', ')}: p·V больше 1,0 МПа·м³ — подлежит учёту в Ростехнадзоре. Без учёта — ${rs.n} ресивера по ${StationLayout.n(rs.v)} л (p·V каждого — ${m3(bar/10*rs.v/1000)} МПа·м³): замена — на вкладке «Компоновка».` });
       rec('recv-split', { title:`Ресиверы ${rs.n} × ${StationLayout.n(rs.v)} л вместо ${[...new Set(regR.map(nm))].join(', ')} — без учёта в Ростехнадзоре`, why:`вместе ${StationLayout.n(rs.n*rs.v)} л; p·V каждого не больше 1,0 МПа·м³`, cat:'receiver', name:'Воздушный ресивер', f:{},
         r:{ volume:[String(Math.round(rs.v*0.8)), String(rs.v)] }, qty:rs.n, replace:[...new Set(regR.map(e=>e.id))], attrs:{ cat:'receiver' }, rows:[{ k:'Объём', v:`${StationLayout.n(rs.v)} л` }] }); }
