@@ -482,6 +482,22 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   `tests/test_station_scenarios.py` + `tests/js/station_scenarios.js` (12 эталонных сценариев ТЗ → КП), `tests/test_tz_parse.py`.
   `StationLayout.VER` = 12.
 
+**Станция 3.67 — проход всегда, жалюзи по расчёту:**
+- Режим «без прохода — сервисные двери» удалён (`rowsBack`, `rowsDoors`, `serviceDoors`, `mode`/`allowDoors`, ярус `doors` в
+  `autoSize`): `fitRow` — один ряд, затем два с проходом; не помещается — `level:'error'` и `suggest` (контейнер с проходом).
+  Сервисные двери остаются только для демонтажа (`exits` / `sideDoors`). `StationLayout.VER` = 13.
+- `StWalls` перенесён в station-systems.js (общий для расчёта и 3D; `o.equip=false` — оборудование и трубы место не занимают).
+  `StationVent.calc(plan)` → `plan.vent`: расходы из `plan.heat.vent` (`m3h`, `use` — сжатие и горение, `cool`, `rad`; паспортные
+  `StationEquip.airRows` — «Расход воздуха на охлаждение/горение», м³/ч, м³/мин, м³/с), живое сечение `Q/(3600·heat.face)`,
+  по рамке `/vent.free` (новое правило 0,5), `size` — одинаковые 3 : 2, кратно 50 мм; места — `StWalls.find` по стенам (приток
+  внизу: left, back, right, front; вытяжка вверху под лотком: right, back, front), мимо знака «Центр тяжести»; остаток —
+  жалюзи той же высоты под свободные участки (не уже `PIECE`), `short` — не поместилось. ДГУ: `qIn = max(rad, room) + use`,
+  `rad` — дверь-жалюзи или жалюзи напротив радиатора, скорость выброса (`RAD_V` = 7,5 м/с). `StationVent.notes`, `list`.
+- 3D: `StOutfit.vents` — по `plan.vent.louvers`; подписи — `scene.tags` → `StTags.draw` (выноска и рамка на картинке по той
+  же камере, только видимые стены); логотип на лицевой стене обходит вытяжные жалюзи. SVG-вид, чертёж (`vents(w)`, разрез
+  А–А, торцы, пункт ТТ), ТЗ на сборку (`TzOut`) и расчётная записка (`VentSizing`, раздел «Вентиляция») — по тем же данным.
+  Проверки — `tests/js/station_layout.js` («жалюзи: размеры по расходу воздуха…», «нет места для прохода — контейнер больше…»).
+
 **Станция 3.66 — простой экран менеджера, знания под раскрытием, в пользу заказчика:**
 - «Подбор станции» — `StationQuick` (station-quick.js): главные поля (`KEYS` по виду станции, качество воздуха, резерв, режим ДЭС),
   кнопка `data-sq="pick"` → `TzPick.assemble` (подбор из каталога, `kitSync`, `stationFill`, название, контейнер `StationSize.apply`)
