@@ -482,6 +482,23 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   `tests/test_station_scenarios.py` + `tests/js/station_scenarios.js` (12 эталонных сценариев ТЗ → КП), `tests/test_tz_parse.py`.
   `StationLayout.VER` = 12.
 
+**Станция 3.66 — простой экран менеджера, знания под раскрытием, в пользу заказчика:**
+- «Подбор станции» — `StationQuick` (station-quick.js): главные поля (`KEYS` по виду станции, качество воздуха, резерв, режим ДЭС),
+  кнопка `data-sq="pick"` → `TzPick.assemble` (подбор из каталога, `kitSync`, `stationFill`, название, контейнер `StationSize.apply`)
+  → `StationImages.soon`; итог `result` — одна строка (не помещается / нет в каталоге / ошибка расчёта / нет данных / ✓), состав
+  `lines`, значки разделов `StationCalc` (`data-edtab="layout"`), 3D `pic` (`StationRender.cached`, иначе SVG и подмена).
+  Подробности — `<details data-sp>`: `Spoiler` помнит, какие открыты (`Spoiler.attr(key, def)`); требования — `StationReq.details`.
+- «Компоновка»: изображения сразу под строкой статуса; замечания, подготовка воздуха, системы и «Расчёт станции» — раскрытием
+  (`stl-sp`; расчёт открыт только при ошибке); допущения, «требует подтверждения» и уточнения — ещё одним (`calc-more`).
+- Погрешность данных — правило `calc.tolerance` (0,02, ISO 1217 Annex C): `CalcNote.fits(have, need)` — `ok` с допуском, `edge` —
+  «на пределе» (`note`, правило в шаге); применяется к производительности, давлению, осушителям, фильтрам, ресиверам, ДГУ, топливу.
+  Автоподбор `TzPick` — строго без недобора (`units`, `receivers`, осушитель, фильтры); объём ресиверов — как в `ReceiverSizing`.
+- Вопросы: `CalcNote.ask(text, later)` — обязательные (`questions`: производительность, давление, мощность) и «позже» (`later`);
+  `TzReview.NEED`, `questions()` / `later()`; противоречия `TzParse.conflict` — более требовательное значение (`LOW_WINS` — `tmin`),
+  в `req` и в `found` (цитата), `conflicts[].value`. `docGroups` — без «Требует подтверждения», вопросов и предупреждений.
+- Окно ТЗ (`TzImport.html`) — главное сверху, остальное раскрытием; `TzQuestions.make(cur, Q, F, L)` — обязательные и «позже».
+  Проверки — `tests/js/station_calc.js` («погрешность данных…», вопросы), `tests/test_tz_parse.py`, `tests/test_station_scenarios.py`.
+
 **Компоновка 3.64 — фильтры по данным производителей, ничего не теряется:** `AirChain.grade` — циклон / влагоотделитель
 по названию раньше поля «Ступень очистки» (`GRADES.sep.stage` — «Влагоотделитель (циклон)»), ступень — и из строки «Ступень очистки»,
 `AirChain.micron` (тонкость, мкм; «Мкн» — опечатка поставщиков) и `AirChain.oil` (масло после фильтра, мг/м³) — в `info().um / .oil`;

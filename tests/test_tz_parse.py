@@ -241,9 +241,15 @@ class TzReviewTest(unittest.TestCase):
         self.assertEqual((st['basis'], st['margin'], st['alt']), ('default', 'default', 'default'))
         self.assertEqual(st['deadline'], 'missing')
         self.assertNotIn('rh', st, 'влажность — только для нормальных м³')
-        q = ' '.join(r['questions'])
+        # производительность и давление найдены — обязательных вопросов нет; остальное — «можно уточнить позже»
+        self.assertEqual(r['questions'], [])
+        q = ' '.join(r['later'])
         self.assertIn('К каким условиям приведена производительность', q)
         self.assertIn('запас производительности', q)
+        r2 = TzParse.parse('Компрессорная станция производительностью 10 м3/мин.')
+        self.assertEqual(r2['questions'], ['Требуемое рабочее давление сжатого воздуха у потребителя (на выходе станции), бар.'])
+        self.assertNotIn(r2['questions'][0], r2['later'])
+        self.assertEqual(TzParse.parse('Дизельная электростанция.')['questions'], ['Мощность нагрузки ДЭС, кВт (длительная и максимальная).'])
         self.assertEqual(r['conflicts'], [])
         b = next(f for f in r['fields'] if f['key'] == 'basis')
         self.assertEqual(b['value'], 'fad')
@@ -257,7 +263,15 @@ class TzReviewTest(unittest.TestCase):
         self.assertEqual([v['value'] for v in r['conflicts'][0]['values']], [10.0, 12.0])
         f = next(x for x in r['fields'] if x['key'] == 'flow')
         self.assertEqual(f['status'], 'conflict')
-        self.assertTrue(any('разные значения — 10; 12' in x for x in r['questions']), r['questions'])
+        # в пользу заказчика: принято большее (с цитатой), заказчика не спрашиваем — подтвердить можно позже
+        self.assertEqual((r['req']['flow'], f['value'], r['conflicts'][0]['value']), (12.0, 12.0, 12.0))
+        self.assertIn('12 м3/мин', next(x for x in r['found'] if x['key'] == 'flow')['src'])
+        self.assertIn('принято большее 12', f['why'])
+        self.assertEqual(r['questions'], [])
+        self.assertTrue(any('разные значения — 10; 12; принято 12' in x for x in r['later']), r['later'])
+        # зима — меньшее (холоднее), лето — большее
+        r = TzParse.parse('Температура наружного воздуха от −40 до +35 °C. Станция работает при температуре наружного воздуха от −45 до +40 °C.')
+        self.assertEqual((r['req']['tmin'], r['req']['tmax']), (-45, 40))
 
     def test_new_fields(self):
         P = lambda t: TzParse.parse(t)['req']   # noqa: E731
@@ -302,7 +316,8 @@ class TzRouteTest(unittest.TestCase):
         self.assertEqual(st, 200, b[:300])
         r = self.stand.http.js(b)
         self.assertEqual((r['kind'], r['req']['flow'], r['doc']['kind']), ('comp', 12.5, 'docx'))
-        self.assertTrue(r['fields'] and r['questions'], 'анкета и вопросы заказчику')
+        self.assertTrue(r['fields'] and r['later'], 'анкета и вопросы «уточнить позже»')
+        self.assertEqual(r['questions'], [], 'производительность и давление в ТЗ есть — обязательных вопросов нет')
         self.assertGreater(r['doc']['quality'], 0.8)
         self.assertEqual([m['id'] for m in r['doc']['methods']], ['text'])
         self.assertIn('Производительность', r['text'])

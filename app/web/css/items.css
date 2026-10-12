@@ -473,3 +473,40 @@ dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
 .tzi-q ol{margin:6px 0 8px;padding-left:22px;font-size:13px;line-height:1.45}
 .tzi-ai ul li{font-size:13px}
 @media (max-width:700px){ .tzi-t td:first-child{white-space:normal} }
+
+/* 3.66: «Подбор станции» — простой экран менеджера: главные поля, одна кнопка, итог одной строкой, состав коротко,
+   проверки значками и 3D-вид; подробности — под раскрытием (details[data-sp] помнит, открыт ли) */
+.sq{display:grid;gap:10px;margin:0 0 12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.sq-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+.sq-h>b{font-size:15px;color:var(--navy)}
+.sq-h>span{flex:1 1 260px;min-width:0;font-size:12.5px}
+.sq-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px 10px}
+.sq-a{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.sq-a .muted{font-size:12.5px}
+.sq-r{display:grid;gap:8px}
+.sq-st{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;font-size:13.5px;line-height:1.4}
+.sq-st>b{flex:1 1 260px;min-width:0}
+.sq-st>.muted{flex:1 1 100%;font-size:12.5px}
+.sq-st.ok{border-color:var(--ok);color:var(--ok)}
+.sq-st.warn{border-color:var(--warn-line);background:var(--warn-bg);color:var(--warn-ink)}
+.sq-st.bad{border-color:var(--danger);color:var(--danger)}
+.sq-b{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
+.sq-l{flex:1 1 280px;min-width:0;display:grid;gap:3px;font-size:13px;line-height:1.4}
+.sq-ck{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.sq-ck .chip{cursor:pointer}
+.sq-ck .chip.ok{border-color:var(--ok);color:var(--ok);background:transparent}
+.sq-pic{flex:0 1 300px;display:grid;gap:4px;padding:4px;border:1px solid var(--line);border-radius:10px;background:var(--paper);cursor:pointer;text-align:center;color:var(--navy)}
+.sq-pic img{display:block;width:100%;height:auto;max-height:200px;object-fit:contain;border-radius:6px}
+.sq-pic small{font-size:12px}
+.sq-pic:hover{border-color:var(--navy)}
+.sq-more>summary,.stl-sp>summary,.calc-more>summary,.tzi-more>summary{cursor:pointer}
+.sq-more>summary{font-weight:600;font-size:13px;color:var(--navy)}
+.sq-more[open]>summary{margin-bottom:8px}
+.calc-more{margin:10px 0 4px}
+.calc-more>summary{font-size:13px;color:var(--navy)}
+.tzi-sum{margin:6px 0;font-size:13px}
+.tzi-need{margin:8px 0;padding:8px 12px;border:1px solid var(--warn-line);border-radius:10px;background:var(--warn-bg);color:var(--warn-ink);font-size:13px}
+.tzi-need ol{margin:6px 0 8px;padding-left:22px;line-height:1.45}
+.tzi-m details>summary{cursor:pointer}
+@media (max-width:700px){ .sq{padding:10px} .sq-pic{flex:1 1 100%} .sq-g{grid-template-columns:1fr 1fr} }
+@media (max-width:420px){ .sq-g{grid-template-columns:1fr} }

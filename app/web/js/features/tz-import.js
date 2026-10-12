@@ -1,7 +1,8 @@
 // ТЗ заказчика → станция. Файл (PDF, DOCX, XLSX, ODT, ODS, RTF, TXT, скан — PDF или картинка) читает сервер:
 // /api/tz/parse — текст (скан — встроенным распознаванием Windows, способы сравниваются по качеству) и требования по
-// правилам, у каждого значения — цитата из ТЗ и страница. Окно (TzImport): анкета — у параметра статус «найдено в ТЗ» /
-// «принято по умолчанию» / «отсутствует» / «противоречие», вопросы заказчику (копировать, DOCX — TzQuestions); по желанию —
+// правилам, у каждого значения — цитата из ТЗ и страница. Окно (TzImport): сверху — главное (ключевые параметры, итог,
+// вопросы, без которых станцию не подобрать, кнопка подбора); под раскрытием — условия расчёта, анкета (у параметра статус
+// «найдено в ТЗ» / «принято по умолчанию» / «отсутствует» / «противоречие»), «уточнить позже» (DOCX — TzQuestions); по желанию —
 // уточнение с ИИ: пустые поля заполняются, расхождения с найденным правилами показываются; затем требования записываются
 // в станцию (новую — из мастера, или уже открытую), контейнер — по ним, оборудование подбирается из каталога (TzPick).
 'use strict';
@@ -42,44 +43,56 @@ class TzImport {
     const t=$('#toast'); if (t) t.classList.remove('on');
     const m=this.m=new Modal(this.html(), 'wide tzi');
     m.d.addEventListener('click', e=>this.click(e));
-    m.d.addEventListener('change', e=>{ if (e.target.dataset.tz==='kind'){ this.read(); this.redraw(); } });
+    m.d.addEventListener('change', e=>{ if (['kind', 'pick'].includes(e.target.dataset.tz)){ this.read(); this.redraw(); } });
   }
   static redraw(){ if (this.m && this.m.d.open) this.m.d.innerHTML=this.html(); }
 
+  /** окно: сверху — главное (вид станции, ключевые параметры, итог разбора, обязательные вопросы, подбор); всё
+   *  остальное — под раскрытием: условия расчёта и системы, анкета с цитатами, «уточнить позже», сравнение с ИИ */
   static html(){
     const c=this.cur, q=c.q, k=q.kind, x=c.i!=null ? S.items[c.i] : null, found=(c.r.found||[]).filter(f=>f.key!=='kind');
     const fld=(key, label, ph, mode='decimal')=>`<label class="f"><span>${label}</span><input type="text" inputmode="${mode}" data-tz="${key}" value="${esc(q[key]??'')}" placeholder="${esc(ph||'')}" autocomplete="off"></label>`;
     const sel=(key, label, list)=>`<label class="f"><span>${label}</span><select data-tz="${key}">${list.map(([v, l])=>`<option value="${esc(v)}"${String(q[key]??'')===String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
     const chk=(key, label, on)=>`<label class="tzi-c"><input type="checkbox" data-tz="${key}"${on ? ' checked' : ''}><span>${label}</span></label>`;
-    const main=k==='comp' ? fld('flow', 'Производительность, м³/мин', 'например, 10')+sel('basis', 'Приведена', StationReq.BASIS)+fld('pressure', 'Давление у потребителя, бар', '8')
-        +sel('air', 'Класс воздуха ISO 8573-1', [['', 'не задан'], ...AirChain.options(q.air)])+fld('margin', 'Запас производительности, %', '0 — по ТЗ')
+    const main=k==='comp' ? fld('flow', 'Производительность, м³/мин', 'например, 10')+fld('pressure', 'Давление у потребителя, бар', 'например, 7')
+        +sel('air', 'Качество воздуха (ISO 8573-1)', [['', 'обычное — по умолчанию'], ...AirChain.options(q.air)])
+      : k==='pump' ? fld('q', 'Подача, м³/ч', 'например, 50')+fld('head', 'Напор, м', 'например, 40')
+      : fld('kw', 'Мощность нагрузки, кВт', 'например, 200')+fld('hours', 'Работа без дозаправки, ч', 'например, 8', 'numeric')+sel('mode', 'Назначение', StationReq.MODE);
+    const more=k==='comp' ? sel('basis', 'Производительность приведена', StationReq.BASIS)+fld('margin', 'Запас производительности, %', '0 — по ТЗ')
         +sel('recv', 'Ресивер', StationReq.RECV)+fld('recvVol', 'Ресивер, л', 'по расчёту', 'numeric')+fld('alt', 'Высота над уровнем моря, м', '0', 'numeric')+fld('rh', 'Влажность, % (для н. м³)', '100', 'numeric')
-      : k==='pump' ? fld('q', 'Подача, м³/ч', 'например, 50')+fld('head', 'Напор, м', '40')
-      : fld('kw', 'Мощность, кВт', 'например, 200')+sel('mode', 'Режим ДЭС', StationReq.MODE)+fld('load', 'Средняя нагрузка, %', '100')+fld('motor', 'Наибольший двигатель, кВт', '—')
-        +sel('start', 'Пуск двигателя', StationReq.START)+fld('hours', 'Работа от бака, ч', '16', 'numeric')+fld('alt', 'Высота над уровнем моря, м', '0', 'numeric');
-    const sys=q.sys||{};
+      : k==='pump' ? ''
+      : fld('load', 'Средняя нагрузка, %', '100')+fld('motor', 'Наибольший двигатель, кВт', '—')+sel('start', 'Пуск двигателя', StationReq.START)+fld('alt', 'Высота над уровнем моря, м', '0', 'numeric');
+    const sys=q.sys||{}, F=c.r.fields||[], n=st=>F.filter(f=>f.status===st).length, Q=c.r.questions||[], L=c.r.later||[];
+    const sum=F.length ? `Из ТЗ взято ${n('found')} ${this.plural(n('found'), 'параметр', 'параметра', 'параметров')}${n('default')+n('missing') ? `; остальное — по умолчанию, с запасом в пользу заказчика` : ''}${n('conflict') ? `; разные значения в ТЗ (${n('conflict')}) — принято более требовательное` : ''}.`
+      : found.length ? `Из ТЗ взято ${found.length} ${this.plural(found.length, 'значение', 'значения', 'значений')}.` : 'В тексте не нашлось числовых требований — впишите главное сами.';
     return `<div class="dlg-h"><h3>ТЗ заказчика <small class="muted">· ${esc(c.name)}${c.r.doc ? ` · ${esc(this.kindName(c.r.doc.kind))}${c.r.doc.pages ? ', стр. '+c.r.doc.pages : ''}` : ''}</small></h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <div class="dlg-b">
         ${this.methods(c.r.doc)}
-        ${x ? '' : sel('kind', 'Станция', this.KINDS.map(([v, l])=>[v, l]))}
-        <div class="kr-g tzi-g">${main}${sel('work', 'Рабочих агрегатов', StationReq.WORK)}${sel('reserve', 'Резерв', StationReq.RES)}
-          ${fld('tmin', 'Наружный воздух от, °C', '−45', 'text')}${fld('tmax', 'до, °C', '+40', 'text')}
-          ${sel('fire', 'Категория помещения', [['', 'ориентировочно по виду станции'], ...StationReq.FIRE.map(f=>[f, f])])}${fld('noise', 'Шум, не более дБА', '80', 'numeric')}
-          ${sel('cont', 'Контейнер', CONTAINER_TYPES.map(t=>[t.id, t.name]))}${sel('ins', 'Утепление', [['', 'по типу контейнера'], ...CONTAINER_INS.map(v=>[v, v])])}
-          ${sel('climate', 'Климатическое исполнение', [['', 'по температуре'], ...CLIMATES.map(z=>[z[0], z[0]+' — до '+z[2]+' °C'])])}</div>
-        <div class="tzi-sys"><span class="muted">Системы контейнера:</span>${CONT_SYSTEMS.map(([id, l])=>chk('sys.'+id, esc(l), sys[id] ?? CONT_SYS_DEF[id])).join('')}</div>
-        <div class="tzi-sys">${StationReq.OPTS.filter(([, , kinds])=>kinds.includes(k)).map(([key, label])=>chk(key, esc(label), q[key])).join('')}</div>
-        ${k==='comp' ? chk('recvOut', 'Ресивер после подготовки — снаружи (ФНП ОРПД, п. 65)', q.recvOut) : ''}
-        ${chk('docs', 'Документы при поставке — в КП', q.docs!==false)}
-        <label class="f"><span>Прочие требования из ТЗ</span><textarea rows="3" data-tz="notes">${esc(q.notes||'')}</textarea></label>
+        <div class="kr-g tzi-g tzi-main">${x ? '' : sel('kind', 'Станция', this.KINDS.map(([v, l])=>[v, l]))}${main}${sel('reserve', 'Резерв', StationReq.RES)}</div>
+        <p class="tzi-sum">${esc(sum)}</p>
+        ${Q.length ? `<div class="tzi-need"><b>Без этого станцию не подобрать — узнайте у заказчика:</b><ol>${Q.map(t=>`<li>${esc(t)}</li>`).join('')}</ol>
+          <div class="row" style="gap:8px"><button class="btn sm" type="button" data-tzqc>Копировать вопросы</button><button class="btn sm" type="button" data-tzqd>Вопросы — DOCX</button></div></div>` : ''}
+        ${chk('pick', `<b>Подобрать и скомпоновать станцию</b> <span class="muted">— оборудование из каталога, контейнер, компоновка и изображения${x && kitMainPart(x) ? '; прежнее основное оборудование заменится' : ''}</span>`, c.pick)}
+        <details class="tzi-f tzi-more"${Spoiler.attr('tz:more')}><summary>Все параметры, условия расчёта и системы контейнера</summary>
+          <div class="kr-g tzi-g">${more}${sel('work', 'Рабочих агрегатов', StationReq.WORK)}
+            ${fld('tmin', 'Наружный воздух от, °C', '−45', 'text')}${fld('tmax', 'до, °C', '+40', 'text')}
+            ${sel('fire', 'Категория помещения', [['', 'ориентировочно по виду станции'], ...StationReq.FIRE.map(f=>[f, f])])}${fld('noise', 'Шум, не более дБА', '80', 'numeric')}
+            ${sel('cont', 'Контейнер', CONTAINER_TYPES.map(t=>[t.id, t.name]))}${sel('ins', 'Утепление', [['', 'по типу контейнера'], ...CONTAINER_INS.map(v=>[v, v])])}
+            ${sel('climate', 'Климатическое исполнение', [['', 'по температуре'], ...CLIMATES.map(z=>[z[0], z[0]+' — до '+z[2]+' °C'])])}</div>
+          <div class="tzi-sys"><span class="muted">Системы контейнера:</span>${CONT_SYSTEMS.map(([id, l])=>chk('sys.'+id, esc(l), sys[id] ?? CONT_SYS_DEF[id])).join('')}</div>
+          <div class="tzi-sys">${StationReq.OPTS.filter(([, , kinds])=>kinds.includes(k)).map(([key, label])=>chk(key, esc(label), q[key])).join('')}</div>
+          ${k==='comp' ? chk('recvOut', 'Ресивер после подготовки — снаружи (ФНП ОРПД, п. 65)', q.recvOut) : ''}
+          ${chk('docs', 'Документы при поставке — в КП', q.docs!==false)}
+          <label class="f"><span>Прочие требования из ТЗ</span><textarea rows="3" data-tz="notes">${esc(q.notes||'')}</textarea></label></details>
         ${this.anketa(c.r, found)}
+        ${L.length ? `<details class="tzi-f tzi-q"${Spoiler.attr('tz:later')}><summary>Можно уточнить у заказчика позже — ${L.length} <span class="muted">(расчёт уже идёт по значениям по умолчанию)</span></summary><ol>${L.map(t=>`<li>${esc(t)}</li>`).join('')}</ol>
+          <div class="row" style="gap:8px"><button class="btn sm" type="button" data-tzqc>Копировать вопросы</button><button class="btn sm" type="button" data-tzqd>Вопросы — DOCX</button></div></details>` : ''}
         ${this.aiDiff()}
-        ${this.questions(c.r)}
-        ${chk('pick', `<b>Подобрать оборудование из каталога</b> <span class="muted">— ${k==='comp' ? 'компрессоры с резервом, осушитель и фильтры по классу, ресивер' : k==='pump' ? 'насосы с резервом' : 'ДГУ с резервом'}${x && kitMainPart(x) ? '; прежнее основное оборудование заменится' : ''}</span>`, c.pick)}
         <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px">
           ${typeof AI_DIRECT!=='undefined' && AI_DIRECT.enabled ? '<button class="btn ghost" type="button" data-tzai>✨ Уточнить с ИИ</button>' : ''}
-          <button class="btn" type="button" data-x>Отмена</button><button class="btn primary" type="button" data-tzok>${x ? 'Применить к станции' : 'Создать станцию'}</button></div></div>`;
+          <button class="btn" type="button" data-x>Отмена</button><button class="btn primary" type="button" data-tzok>${c.pick ? 'Подобрать станцию' : x ? 'Применить к станции' : 'Создать станцию'}</button></div></div>`;
   }
+  static plural(n, one, few, many){ const a=Math.abs(n)%100, b=a%10; return a>10 && a<20 ? many : b===1 ? one : b>=2 && b<=4 ? few : many; }
 
   /** значение параметра анкеты словами (ключи выбора — понятным текстом) */
   static VAL = { basis:{ fad:'FAD — условия всасывания', normal:'нормальные м³' }, mode:{ prime:'основной (PRP)', standby:'резервный (ESP)' },
@@ -91,34 +104,29 @@ class TzImport {
     if (!d || !(d.methods||[]).length) return '';
     const pct=v=>v!=null ? Math.round(v*100)+' %' : '—';
     const L=d.methods.map(m=>`<li${m.used ? ' class="on"' : ''}>${esc(m.name)}: ${m.error ? `<span class="muted">${esc(m.error)}</span>` : `качество ${pct(m.quality)}, ${m.chars} знаков${m.used ? ' — <b>использован</b>' : ''}`}</li>`).join('');
-    return `<div class="tzi-m${d.low ? ' low' : ''}">${d.methods.length>1 || d.low ? `<ul>${L}</ul>` : `<span class="muted">Качество текста ${pct(d.quality)}</span>`}
-      ${d.low ? `<p><b>Качество текста низкое</b> — значения могли прочитаться с ошибками: сверьте с документом${typeof AI_DIRECT!=='undefined' && AI_DIRECT.enabled ? ' и нажмите «Уточнить с ИИ»' : ''}.</p>` : ''}</div>`;
+    const low=d.low ? `<p><b>Качество текста низкое</b> — значения могли прочитаться с ошибками: сверьте с документом${typeof AI_DIRECT!=='undefined' && AI_DIRECT.enabled ? ' и нажмите «Уточнить с ИИ»' : ''}.</p>` : '';
+    if (d.methods.length<2) return `<div class="tzi-m${d.low ? ' low' : ''}">${low || `<span class="muted">Качество текста ${pct(d.quality)}</span>`}</div>`;
+    return `<div class="tzi-m${d.low ? ' low' : ''}">${low}<details${Spoiler.attr('tz:read')}><summary class="muted">Как прочитан документ — качество ${pct(d.quality)}</summary><ul>${L}</ul></details></div>`;
   }
   /** анкета: статус каждого параметра, значение, цитата со страницей или почему принято по умолчанию */
   static anketa(r, found){
     const F=r.fields||[];
-    if (!F.length) return found.length ? `<details class="tzi-f" open><summary>Найдено в ТЗ — ${found.length}</summary><ul>${found.map(f=>`<li><b>${esc(f.label)}</b>${f.value===true ? '' : ': '+esc(String(f.value))}<small class="muted">${esc(f.src||'')}</small></li>`).join('')}</ul></details>`
-      : '<p class="muted">В тексте не нашлось числовых требований — впишите их сами или уточните с ИИ.</p>';
+    if (!F.length) return found.length ? `<details class="tzi-f"${Spoiler.attr('tz:anketa')}><summary>Найдено в ТЗ — ${found.length}</summary><ul>${found.map(f=>`<li><b>${esc(f.label)}</b>${f.value===true ? '' : ': '+esc(String(f.value))}<small class="muted">${esc(f.src||'')}</small></li>`).join('')}</ul></details>`
+      : '';
     const n=k=>F.filter(f=>f.status===k).length, pg=p=>p ? `стр. ${p}: ` : '';
     const row=f=>{ const [t, cls]=this.STATUS[f.status]||['', ''];
       const note=f.status==='conflict' ? (f.values||[]).map(v=>`${this.val(f.key, v.value)} — ${pg(v.page)}${v.src}`).join(' | ') : f.status==='found' ? pg(f.page)+(f.src||'') : f.why||'';
       return `<tr><td>${esc(f.label)}</td><td><span class="chip sm ${cls}">${esc(t)}</span></td><td>${esc(this.val(f.key, f.value))}</td><td class="muted">${esc(note)}</td></tr>`; };
     const extra=found.filter(f=>!F.some(x=>x.key===f.key) && !['kind', 'pdp'].includes(f.key));
-    return `<details class="tzi-f tzi-a" open><summary>Анкета по ТЗ — найдено ${n('found')}, по умолчанию ${n('default')}, нет ${n('missing')}${n('conflict') ? `, противоречий ${n('conflict')}` : ''}</summary>
+    return `<details class="tzi-f tzi-a"${Spoiler.attr('tz:anketa')}><summary>Анкета по ТЗ с цитатами — найдено ${n('found')}, по умолчанию ${n('default')}, нет ${n('missing')}${n('conflict') ? `, разные значения ${n('conflict')}` : ''}</summary>
       <div class="tzi-tw"><table class="tzi-t"><thead><tr><th>Параметр</th><th>Статус</th><th>Значение</th><th>Цитата из ТЗ / почему</th></tr></thead><tbody>${F.map(row).join('')}</tbody></table></div>
       ${extra.length ? `<ul>${extra.map(f=>`<li><b>${esc(f.label)}</b>${f.value===true ? '' : ': '+esc(String(f.value))}<small class="muted">${esc((f.page ? 'стр. '+f.page+': ' : '')+(f.src||''))}</small></li>`).join('')}</ul>` : ''}</details>`;
-  }
-  /** вопросы заказчику: отсутствующие, принятые по умолчанию и противоречивые параметры */
-  static questions(r){
-    const Q=r.questions||[]; if (!Q.length) return '';
-    return `<details class="tzi-f tzi-q"><summary>Вопросы заказчику — ${Q.length}</summary><ol>${Q.map(t=>`<li>${esc(t)}</li>`).join('')}</ol>
-      <div class="row" style="gap:8px"><button class="btn sm" type="button" data-tzqc>Копировать вопросы</button><button class="btn sm" type="button" data-tzqd>Вопросы — DOCX</button></div></details>`;
   }
   /** сравнение с ИИ: что ИИ прочитал иначе, чем правила (поле не меняется — решает менеджер) */
   static aiDiff(){
     const A=this.cur && this.cur.ai; if (!A) return '';
     const same=A.filter(d=>d.same).length, diff=A.filter(d=>!d.same && d.rule!=null), add=A.filter(d=>d.rule==null);
-    return `<details class="tzi-f tzi-ai" open><summary>Сравнение с ИИ — совпало ${same}, расхождений ${diff.length}, ИИ дополнил ${add.length}</summary>
+    return `<details class="tzi-f tzi-ai"${Spoiler.attr('tz:ai')}><summary>Сравнение с ИИ — совпало ${same}, расхождений ${diff.length}, ИИ дополнил ${add.length}</summary>
       ${diff.length ? `<ul>${diff.map(d=>`<li class="bad-t"><b>${esc(this.LABELS[d.key]||d.key)}</b>: правила — ${esc(String(d.rule))}, ИИ — ${esc(String(d.ai))} <small class="muted">проверьте по документу; в поле оставлено значение правил</small></li>`).join('')}</ul>` : ''}
       ${add.length ? `<p class="muted">ИИ заполнил пустые поля: ${esc(add.map(d=>(this.LABELS[d.key]||d.key)+' — '+d.ai).join('; '))}</p>` : ''}</details>`;
   }
@@ -136,7 +144,7 @@ class TzImport {
   static async click(e){
     if (e.target.closest('[data-x]')) return this.m.close();
     if (e.target.closest('[data-tzai]')) return this.ai();
-    if (e.target.closest('[data-tzqc]')){ const t=(this.cur.r.questions||[]).map((q, k)=>`${k+1}. ${q}`).join('\n');
+    if (e.target.closest('[data-tzqc]')){ const t=[...(this.cur.r.questions||[]), ...(this.cur.r.later||[])].map((q, k)=>`${k+1}. ${q}`).join('\n');
       try{ await navigator.clipboard.writeText(t); toast('Вопросы скопированы'); } catch(_){ toast('Не удалось скопировать — выделите текст вручную'); } return; }
     if (e.target.closest('[data-tzqd]')) return TzQuestions.download(this.cur);
     const ok=e.target.closest('[data-tzok]'); if (!ok) return;
@@ -197,16 +205,14 @@ class TzImport {
     const notes=[String(q.notes||'').trim(), ...terms.filter(t=>!String(q.notes||'').includes(t))].filter(Boolean).join('\n');
     if (notes) r.notes=notes.slice(0, 2000);
     for (const [k, , kinds] of StationReq.OPTS) if (kinds.includes(q.kind)) r[k]=!!q[k];
-    const added=StationReq.ensureParts(x);
     r.src={ name:String(c.name||'').slice(0, 120) };
     if (q.kind==='comp' && q.air) x.stLayout={ ...StationUi.opts(x), air:q.air };
-    let note='';
-    if (c.pick){ note=await TzPick.run(x, { ...q, flow:+num(q.flow), pressure:+num(q.pressure), q:+num(q.q), head:+num(q.head), kw:+num(q.kw), hours:+num(q.hours), pdp:q.pdp, recvVol:+num(q.recvVol), work:+q.work||0 }); r.pick=note.slice(0, 900); }
-    else { delete r.pick; if (q.kind==='dgu' && +num(q.hours)>0) StationDefaults.retank(x, +num(q.hours)); }
-    kitSync(x); stationFill(x); stationAutoName(x); StationUi.cache.delete(x.id); StationSize.apply(x, true);
-    persist(); this.m.close(); renderForm(); openEditor(i, 'kit');
-    if (added.length) r.pick=[r.pick, 'Добавлено по ТЗ: '+added.join(', ')].filter(Boolean).join('. ').slice(0, 900);
-    toast(c.pick ? 'Станция собрана по ТЗ — проверьте состав' : 'Требования из ТЗ записаны в станцию');
+    if (c.pick) r.pick=(await TzPick.assemble(x, { ...q, flow:+num(q.flow), pressure:+num(q.pressure), q:+num(q.q), head:+num(q.head), kw:+num(q.kw), hours:+num(q.hours), pdp:q.pdp, recvVol:+num(q.recvVol), work:+q.work||0 })).slice(0, 900);
+    else { delete r.pick; const added=StationReq.ensureParts(x); if (added.length) r.pick='Добавлено по ТЗ: '+added.join(', ');
+      if (q.kind==='dgu' && +num(q.hours)>0) StationDefaults.retank(x, +num(q.hours));
+      kitSync(x); stationFill(x); stationAutoName(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); }
+    persist(); this.m.close(); renderForm(); openEditor(i, 'kit'); StationImages.soon(x);
+    toast(c.pick ? 'Станция подобрана и скомпонована по ТЗ — итог в «Подборе станции»' : 'Требования из ТЗ записаны в станцию');
   }
 }
 
@@ -214,17 +220,17 @@ class TzImport {
 class TzQuestions {
   /** cur — окно разбора (TzImport.cur): вопросы, анкета, имя файла ТЗ */
   static async download(cur){
-    const Q=(cur.r.questions||[]), F=cur.r.fields||[]; if (!Q.length) return toast('Вопросов нет — всё нужное найдено в ТЗ');
-    try{ const b=await this.make(cur, Q, F); saveFileA(`Вопросы по ТЗ — ${TzOut.NAME(cur.name) || 'заказчик'}.docx`, b); }
+    const Q=(cur.r.questions||[]), L=cur.r.later||[], F=cur.r.fields||[]; if (!Q.length && !L.length) return toast('Вопросов нет — всё нужное найдено в ТЗ');
+    try{ const b=await this.make(cur, Q, F, L); saveFileA(`Вопросы по ТЗ — ${TzOut.NAME(cur.name) || 'заказчик'}.docx`, b); }
     catch(e){ toast('Не удалось подготовить документ: '+(e && e.message || e)); }
   }
-  static async make(cur, Q, F){
+  static async make(cur, Q, F, L=[]){
     const org=StationUi.org(), d=new DocxWriter({ title:'Вопросы по техническому заданию', author:org, footer:'Вопросы по ТЗ — '+(cur.name||'') });
     const st=TzImport.STATUS, fmt=(k, v)=>TzImport.val(k, v);
     d.title1('Вопросы по техническому заданию');
     d.p([['Документ: ', { b:true }], [cur.name||'', {}]]).p([['От: ', { b:true }], [org+(S.manager && S.manager.name ? ', '+S.manager.name : '')+(S.manager && S.manager.phone ? ', '+S.manager.phone : ''), {}]]);
-    d.p('Для точного подбора оборудования и расчёта станции просим уточнить:', { before:6 });
-    d.items(Q);
+    if (Q.length){ d.p('Для подбора оборудования просим сообщить:', { before:6 }); d.items(Q); }
+    if (L.length){ d.p(Q.length ? 'По возможности уточните также (без ответа расчёт выполнен по значениям с запасом):' : 'Расчёт выполнен по ТЗ; по возможности уточните (без ответа приняты значения с запасом):', { before:6 }); d.items(L); }
     if (F.length){ d.h2('Что принято из ТЗ');
       d.table([50, 28, 28, 74], ['Параметр', 'Статус', 'Значение', 'Источник / почему'], F.map(f=>[f.label, (st[f.status]||[''])[0], fmt(f.key, f.value),
         f.status==='found' ? (f.page ? 'стр. '+f.page+': ' : '')+(f.src||'') : f.status==='conflict' ? (f.values||[]).map(v=>fmt(f.key, v.value)+(v.page ? ' (стр. '+v.page+')' : '')).join('; ') : f.why||''])); }
@@ -248,10 +254,11 @@ class TzPick {
   /** лучшая позиция: из подходящих — с наименьшим значением key (самая «впритык») */
   static best(list, key){ return list.reduce((b, o)=>!b || o[key]<b[key] ? o : b, null); }
 
-  /** рабочие агрегаты из pool [{c, v}] на нагрузку need: {o, n}; n0 — число рабочих из ТЗ, pen(o) — штраф позиции */
+  /** рабочие агрегаты из pool [{c, v}] на нагрузку need: {o, n}; n0 — число рабочих из ТЗ, pen(o) — штраф позиции;
+   *  подбор — без недобора (в пользу заказчика): сумма рабочих не меньше нужного */
   static units(pool, need, n0, pen=()=>0){
     let pick=null;
-    for (let n=n0||1; n<=(n0||3); n++) for (const o of pool){ if (o.v<need/n*0.98) continue;
+    for (let n=n0||1; n<=(n0||3); n++) for (const o of pool){ if (o.v*n<need-1e-9) continue;
       const score=(o.v*n-need)/need+0.08*(n-1)+pen(o); if (!pick || score<pick.score) pick={ o, n, score }; }
     return pick;
   }
@@ -270,7 +277,7 @@ class TzPick {
       .filter(o=>o.v>0 && (!(B>0) || !(o.p>0) || o.p>=B-0.05) && (!(Hmax>0) || o.h+300<=Hmax));
     const free=o=>!(B>0) || B/10*o.v/1000<=PressureVessel.LIMIT+1e-9;
     if (!(V>0)) return L.length ? { o:this.best(L, 'v'), n:1, free:true } : null;
-    for (const [only, max] of [[true, 6], [false, 4]]) for (let n=1; n<=max; n++){ const o=this.best(L.filter(z=>z.v>=V/n*0.98 && (!only || free(z))), 'v'); if (o) return { o, n, free:free(o) }; }
+    for (const [only, max] of [[true, 6], [false, 4]]) for (let n=1; n<=max; n++){ const o=this.best(L.filter(z=>z.v*n>=V-1e-9 && (!only || free(z))), 'v'); if (o) return { o, n, free:free(o) }; }
     return null;
   }
   /** высота внутри контейнера станции, мм: блок-контейнер по оборудованию — до наибольшей высоты ряда */
@@ -280,6 +287,14 @@ class TzPick {
   }
   /** «осушитель …» — без повтора, если название уже начинается с этого слова */
   static lbl(word, name){ return String(name||'').toLowerCase().startsWith(word.slice(0, 5)) ? name : word+' '+name; }
+
+  /** подбор и сборка станции: шкафы по особым требованиям (АВР, АСУ ТП), оборудование из каталога, название и
+   *  характеристики станции, контейнер по оборудованию; ответ — итог подбора для менеджера */
+  static async assemble(x, q){
+    const added=StationReq.ensureParts(x), note=await this.run(x, q);
+    kitSync(x); stationFill(x); stationAutoName(x); StationUi.cache.delete(x.id); StationSize.apply(x, true);
+    return [note, added.length ? 'Добавлено по ТЗ: '+added.join(', ') : ''].filter(Boolean).join('. ');
+  }
 
   static async part(c, qty, role){
     let doc=c; try{ doc=await api('/api/catalog/'+encodeURIComponent(c.id)); }catch(_){}
@@ -311,7 +326,7 @@ class TzPick {
         // давление, вход, помещение; нет — типовая таблица и запас), давление — у потребителя (не выше фактического)
         const Qd=u ? u.o.v*u.n : Q, t=DryerSizing.temps({ tmax:StationReq.num(String(q.tmax??'').replace(/[−–]/g, '-')), tin:null }), pb=B>0 ? B : StationRules.raw('dryer.ref').p;
         const dc=ads ? 'dryer_ads' : 'dryer_refrig', d=this.best(catCache.filter(c=>attrsOf(c).cat===dc).map(c=>{ const a=attrsOf(c), F=DryerSizing.factor({ name:c.name, attrs:a, rows:[] }, pb, t, ads ? 'ads' : 'refrig').F; return { c, v:this.flow(c), cap:this.flow(c)*F }; })
-          .filter(o=>o.v>0 && o.cap>=Qd*0.98 && (!(Bc>0) || !(this.num(attrsOf(o.c).pressure)>0) || this.num(attrsOf(o.c).pressure)>=Bc-0.05)), 'v');
+          .filter(o=>o.v>0 && o.cap>=Qd-1e-9 && (!(Bc>0) || !(this.num(attrsOf(o.c).pressure)>0) || this.num(attrsOf(o.c).pressure)>=Bc-0.05)), 'v');
         if (d){ add.push(await this.part(d.c, 1)); got.push(this.lbl('осушитель', d.c.name)+` (с поправками ${AirChain.m3(d.cap)} м³/мин)`); }
         else miss.push(`${ads ? 'адсорбционный' : 'рефрижераторный'} осушитель на ${AirChain.m3(Qd)} м³/мин с поправками на давление и температуру`); }
       // фильтры и ресивер — по расчёту цепочки на подобранном составе
@@ -319,7 +334,8 @@ class TzPick {
       const plan=StationLayout.solve(StationUi.input(x));
       for (const rec of (plan.air && plan.air.recs || []).filter(r=>(r.cat==='filter' || r.cat==='receiver') && !r.replace)){
         const lo=Object.fromEntries(Object.entries(rec.r||{}).map(([k, v])=>[k, this.num((v||[])[0])]));
-        if (rec.cat==='receiver' && rec.total>0) lo.volume=Math.round(rec.total*0.8);   // общий объём (по одному — подбор ниже)
+        // общий объём ресиверов — как в расчёте станции (ReceiverSizing): по наибольшему подобранному компрессору, без недобора
+        if (rec.cat==='receiver' && rec.total>0) lo.volume=picked && picked.o.v>0 ? Math.round(picked.o.v*(picked.o.vsd ? StationRules.raw('receiver.vsd') : AirChain.RECV)) : rec.total;
         if (rec.cat==='receiver' && q.recvVol>0) lo.volume=q.recvVol;
         if (rec.cat==='receiver'){   // ресиверы: один или несколько; «до и после осушителя» — два (до — «мокрый», после — «сухой»)
           const both=q.recv==='both', V=lo.volume||0, r=this.receivers(both ? V/2 : V, Bc, q.recvOut ? 0 : this.hmax(x));
@@ -336,9 +352,9 @@ class TzPick {
         const ok=c=>{ const a=attrsOf(c); if (a.cat!==rec.cat) return false;
           if (rec.cat==='filter'){ const p={ name:c.name, attrs:a, rows:[] };   // ступень — по полю или названию (DD, PD, «0,01 мкм»…)
             if (!(this.GRADE[rec.key]||[rec.key]).includes(AirChain.grade(p, a.cat, AirChain.text(p)))) return false;
-            if (Qf>0 && !(this.flow(c)*kf(c, a)>=Qf*0.98)) return false; }
+            if (Qf>0 && !(this.flow(c)*kf(c, a)>=Qf-1e-9)) return false; }
           else for (const [k, v] of Object.entries(rec.f||{})) if (v && !String(a[k]||'').toLowerCase().includes(String(v).toLowerCase().slice(0, 6))) return false;
-          for (const [k, v] of Object.entries(lo)) if (v>0 && !(this.num(a[k])>=v*0.98)) return false;
+          for (const [k, v] of Object.entries(lo)) if (v>0 && !(this.num(a[k])>=v-1e-9)) return false;
           return !(Bc>0 && this.num(a.pressure)>0 && this.num(a.pressure)<Bc-0.05); };
         const key=Object.keys(lo)[0]||'flow', c=this.best(catCache.filter(ok).map(c=>({ c, v:this.num(attrsOf(c)[key])||0 })), 'v');
         if (c){ x.kit.parts.splice(at++, 0, await this.part(c.c, 1)); got.push(this.lbl(rec.cat==='receiver' ? 'ресивер' : 'фильтр', c.c.name)); }

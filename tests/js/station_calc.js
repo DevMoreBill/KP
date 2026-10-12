@@ -168,7 +168,26 @@ Check.run('компрессорная: ошибки — мало произво�
   assert.ok(StationCalc.errors(x).length>0);
   x.req.accept=true;
   assert.deepStrictEqual(StationCalc.errors(x), [], 'отклонения согласованы — КП сохраняется');
-  assert.ok(StationCalc.docGroups(x).some(g=>g.name==='Отклонения'));
+  const G=StationCalc.docGroups(x).map(g=>g.name);
+  assert.ok(G.includes('Отклонения, согласованные с заказчиком'), G.join(' | '));
+  // заказчику — без внутренних списков программы
+  assert.ok(!G.some(n=>/Требует подтверждения|Вопросы|замечания/.test(n)), G.join(' | '));
+});
+
+Check.run('погрешность данных (calc.tolerance): недобор до 2 % — не ошибка, больше — ошибка', ()=>{
+  assert.strictEqual(StationRules.raw('calc.tolerance'), 0.02);
+  const mk=flow=>station('st_comp', { flow:'10', pressure:'7', basis:'fad', tmax:'30', margin:'0', reserve:'0', alt:'0' },
+    [part('Компрессор винтовой К', { cat:'comp_screw', maker:'Пример', flow, pressure:10, kw:55 })]);
+  // 9,85 против 10: недобор 1,5 % — выполняется, «на пределе», в КП — «в пределах погрешности данных»
+  let x=mk(9.85), R=StationCalc.run(x), st=R.sections.find(s=>s.id==='air').steps.find(o=>/рабочие против/.test(o.what));
+  assert.ok(!R.errors.some(e=>/Производительность/.test(e.text)), R.errors.map(e=>e.text).join(' | '));
+  assert.strictEqual(st.ok, true); assert.strictEqual(st.margin, -1.5); assert.ok(/погрешности данных/.test(st.note), st.note);
+  assert.ok(st.rules.includes('calc.tolerance'));
+  const row=StationCalc.docGroups(x).find(g=>/производительность/.test(g.name)).rows.find(r=>/рабочие против/.test(r.k));
+  assert.ok(/выполняется \(в пределах погрешности данных\)/.test(row.v), row.v);
+  // 9,7 против 10: недобор 3 % — ошибка
+  x=mk(9.7); R=StationCalc.run(x);
+  assert.ok(R.errors.some(e=>/Производительность рабочих компрессоров 9,7/.test(e.text)), R.errors.map(e=>e.text).join(' | '));
 });
 
 Check.run('компрессорная без данных: вопросы и допущения, без ошибок', ()=>{
@@ -176,6 +195,12 @@ Check.run('компрессорная без данных: вопросы и д�
   const R=StationCalc.run(x);
   assert.deepStrictEqual(R.errors, []);
   assert.ok(R.questions.some(q=>/производительность станции/.test(q)), R.questions.join(' | '));
+  assert.ok(R.questions.some(q=>/рабочее давление/.test(q)), 'давление — обязательный вопрос');
+  // остальное — не дёргаем заказчика: значения по умолчанию, вопрос «можно уточнить позже»
+  const y=station('st_comp', { flow:'10', pressure:'7' }, [part('Компрессор К', { cat:'comp_screw', maker:'Пример', flow:12, pressure:10 })]), Q=StationCalc.run(y);
+  assert.deepStrictEqual(Q.questions, [], Q.questions.join(' | '));
+  assert.ok(Q.later.some(q=>/Высота площадки/.test(q)) && Q.later.some(q=>/резервный компрессор/.test(q)), Q.later.join(' | '));
+  assert.ok(Q.assumptions.some(a=>/принято 0 м/.test(a)));
   assert.ok(R.issues.some(i=>i.level==='info'));
 });
 
