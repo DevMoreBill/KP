@@ -221,13 +221,13 @@ class TzOut {
     }
     if (id==='vent' && plan.vent){ const V=plan.vent, f=x=>String(x).replace('.', ','), t=[];
       const wh=StationVent.where(V), rf=StationVent.roofList(V), ow=V.louvers.some(q=>q.kind==='out') ? StationVent.list(V, 'out') : '';
-      t.push(`приток ${n(V.q.in)} м³/ч — жалюзи ${StationVent.list(V, 'in')} внизу${wh.in ? ' '+wh.in : ''}, живое сечение не менее ${f(V.need.in.free)} м²`);
-      if (V.need.out) t.push(`выброс горячего воздуха ${n(V.q.out)} м³/ч — ${[ow ? `жалюзи ${ow} вверху` : '', rf ? `через крышу (колпаки ${rf})` : ''].filter(Boolean).join(' и ')}${wh.out ? ' — '+wh.out : ''}, не менее ${f(V.need.out.free)} м²; компрессоры — воздуховодами с клапанами рециркуляции`);
+      t.push(`приток ${n(V.q.in)} м³/ч — жалюзи ${StationVent.list(V, 'in')} внизу${wh.in ? ' '+wh.in : ''}, проёмы по рамке не менее ${f(V.need.in.gross)} м²`);
+      if (V.need.out) t.push(`выброс горячего воздуха ${n(V.q.out)} м³/ч — ${[ow ? `жалюзи ${ow} вверху` : '', rf ? `через крышу (колпаки ${rf})` : ''].filter(Boolean).join(' и ')}${wh.out ? ' — '+wh.out : ''}, по рамке не менее ${f(V.need.out.gross)} м²; компрессоры — воздуховодами с клапанами рециркуляции`);
       t.push('приток и выброс — на разных стенах (не на одной стене)');
       if (V.hood) t.push(`на приточных жалюзи — маркизы (снегозащита) из оцинкованной стали: ${StationVent.hoodText(V)}; ${StationVent.HOOD_WHAT}; в открытом положении фиксируются упорами`);
       if (V.hoodOut) t.push(`на жалюзи выброса горячего воздуха — маркизы (по требованию): ${StationVent.hoodText(V, 'out')}; открытые — горячий воздух уходит вниз, закрытые — защитный щит на проёме`);
       if (V.rad) t.push(`радиатор ДГУ — ${n(V.rad.q)} м³/ч через ${V.rad.door ? 'дверь-жалюзи' : 'жалюзи'} ${n(V.rad.w)} × ${n(V.rad.h)} мм, воздуховод от радиатора`);
-      return `${v}; летом (до ${StationNorms.deg(h.vent.tmax)}): ${t.join('; ')}; скорость в живом сечении — не более ${f(V.face)} м/с, размеры жалюзи — по рамке (живое сечение ${Math.round(V.free*100)} %), места — по чертежу; жалюзи с утеплёнными клапанами и электроприводами`; }
+      return `${v}; летом (до ${StationNorms.deg(h.vent.tmax)}): ${t.join('; ')}; скорость по рамке — приток ${f(V.vIn)} м/с (с запасом ${Math.round((V.res-1)*100)} %), выброс ${f(V.vOut)} м/с, места — по чертежу; жалюзи с утеплёнными клапанами и электроприводами${h.vent.win && !h.vent.win.warm ? `; зимой клапаны прикрываются до ${h.vent.win.open} % (минимальный воздухообмен ${n(h.vent.win.Lw)} м³/ч)` : ''}`; }
     if (id==='snow' && plan.vent && plan.vent.hood) return `${v}. По расчёту: ${StationVent.hoodText(plan.vent)}`;
     if (id==='snowout' && plan.vent && plan.vent.hoodOut) return `${v}. По расчёту: ${StationVent.hoodText(plan.vent, 'out')}`;
     if (id==='rec') return `${v}: заслонка рециркуляции с электроприводом и термостатом на выбросе тёплого воздуха${(plan.items||[]).some(i=>i.kind==='dgu') ? ' радиатора ДГУ' : ' компрессоров'}`;

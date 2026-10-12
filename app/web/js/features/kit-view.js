@@ -62,7 +62,19 @@ class StationReq {
   /** для расстановки, проверок и чертежа: вид станции, категория (своя или ориентировочная), шум, наружный воздух, °C */
   static plan(x){
     const r=this.of(x), t=v=>this.num(String(v??'').replace(/[−–]/g, '-').replace(/^\+/, ''));
-    return { kind:this.kind(x), fire:this.fire(x), fireAuto:!this.FIRE.includes(r.fire), noise:this.noise(x), tmin:t(r.tmin), tmax:t(r.tmax), res:Math.max(0, Math.round(this.num(r.reserve)||0)) };
+    return { kind:this.kind(x), fire:this.fire(x), fireAuto:!this.FIRE.includes(r.fire), noise:this.noise(x), tmin:t(r.tmin), tmax:t(r.tmax), res:Math.max(0, Math.round(this.num(r.reserve)||0)), vent:this.vent(x) };
+  }
+  // режим «эксперт» вентиляции (решение 12.10): [ключ требований, ключ расчёта, подпись, подсказка]; пусто — по правилам
+  static VENT = [['ventK', 'k', 'k — доля мощности в тепло', '0,9'], ['ventTin', 'tIn', 't_вн летом, °C', '40'], ['ventDt', 'dt', 'Δt летом, °C', 't_вн − t_нар'],
+    ['ventVin', 'vIn', 'Скорость притока (по рамке), м/с', '2'], ['ventVout', 'vOut', 'Скорость выброса (по рамке), м/с', '3'], ['ventRes', 'res', 'Запас притока', '1,2'],
+    ['ventU', 'U', 'U стенки, Вт/(м²·°C)', 'по утеплителю'], ['ventFan', 'fan', 'Вытяжной вентилятор, м³/ч', 'нет'],
+    ['ventEta', 'eta', 'КПД рекуператора', 'по типу'], ['ventTexh', 'tExh', 't выбросного воздуха зимой, °C', '+5'], ['ventPhi', 'phi', 'Влажность выбросного воздуха, %', '50'],
+    ['ventDays', 'days', 'Отопительный период, сут', '205'], ['ventTavg', 'tavg', 'Средняя температура периода, °C', '−2,2']];
+  static HRV = [['', 'с промежуточным теплоносителем (по умолчанию)'], ['plate', 'пластинчатый перекрёстный'], ['rotary', 'роторный'], ['glycol', 'с промежуточным теплоносителем']];
+  /** числа режима «эксперт» для расчёта (VentCalc): {k, tIn, dt, vIn, vOut, res, U, fan, eta, tExh, phi, days, tavg, hrvType} */
+  static vent(x){
+    const r=this.of(x), o={}; for (const [rk, k] of this.VENT){ const v=this.num(String(r[rk]??'').replace(/[−–]/g, '-').replace(/^\+/, '')); if (v!=null) o[k]=v; }
+    if (r.hrvType) o.hrvType=r.hrvType; return o;
   }
   /** документы при поставке — в КП (по умолчанию да) */
   static docs(x){ return this.of(x).docs!==false; }
@@ -136,6 +148,10 @@ class StationReq {
     const sel=(key, label, list, cur)=>`<label class="f"><span>${label}</span><select data-req="${i}" data-rk="${key}">${list.map(([v, l])=>`<option value="${esc(v)}"${String(cur)===String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
     const head=`${ck.length ? `<div class="kr-ck">${ck.map(c=>`<span class="chip sm ${c.ok ? 'on' : 'warn'}">${c.ok ? '✓' : '⚠'} ${esc(c.text)}</span>`).join('')}</div>` : ''}
       ${r.pick ? `<p class="kr-pick"><span>${esc(r.pick)}</span><button class="icon sm" type="button" data-a="reqPickX" data-i="${i}" title="Скрыть" aria-label="Скрыть итог подбора">✕</button></p>` : ''}`;
+    // режим «эксперт» вентиляции — внутри «Условий для расчёта станции» (решение ПНЕВМОТЕХ 12.10)
+    const vx=`<details class="kr-calc"${Spoiler.attr('vent:'+x.id)}><summary>Вентиляция и отопление — режим «эксперт»</summary>
+        <div class="kr-g">${this.VENT.filter(([rk])=>k==='comp' || rk!=='ventK').map(([rk, , label, ph])=>fld(rk, label, ph, 'text')).join('')}${sel('hrvType', 'Тип рекуператора', this.HRV, r.hrvType||'')}</div>
+        <p class="muted kr-hint">Для нестандартных условий. Не заданы — значения из инженерных правил (k = 0,9, t_вн = 40 °C, приток 2 м/с с запасом 20 %, выброс 3 м/с, U — по утеплителю). k и U сильнее всего влияют на результат. Рекуператор — система контейнера «Рекуператор».</p></details>`;
     const main=k==='comp' ? sel('recv', 'Ресивер', this.RECV, this.recv(x))+fld('recvVol', 'Ресивер по ТЗ, л', 'по расчёту', 'numeric') : '';
     return `<div class="kit-req open">${head}
       <div class="kr-g">${main}${sel('work', 'Рабочих агрегатов', this.WORK, r.work||'')}
@@ -147,7 +163,8 @@ class StationReq {
           +fld('rh', 'Влажность воздуха, % (для н. м³)', '100 — с запасом', 'numeric')+fld('tin', 'Воздух на входе в осушитель, °C', 'по расчёту', 'text')
         : fld('load', 'Средняя нагрузка за сутки, %', '100')+fld('motor', 'Наибольший двигатель нагрузки, кВт', '—')
           +sel('start', 'Пуск этого двигателя', this.START, r.start||'')+fld('alt', 'Высота над уровнем моря, м', '0', 'numeric')}</div>
-        <p class="muted kr-hint">Не заданы — расчёт берёт значения с запасом в пользу заказчика; они перечислены в «Расчёте станции» (вкладка «Компоновка»).</p></details>` : ''}
+        <p class="muted kr-hint">Не заданы — расчёт берёт значения с запасом в пользу заказчика; они перечислены в «Расчёте станции» (вкладка «Компоновка»).</p>${vx}</details>` : ''}
+      ${k==='comp' || k==='dgu' ? '' : vx}
       ${k==='comp' ? `<label class="chk kr-out"><input type="checkbox" data-req="${i}" data-rk="recvOut"${this.recvOut(x) ? ' checked' : ''}> Ресивер после подготовки — снаружи, на площадке у торца <span class="muted">(ФНП ОРПД, п. 65)</span></label>` : ''}
       <div class="kr-opts">${this.OPTS.filter(([, , kinds])=>kinds.includes(k)).map(([key, label])=>key==='oilFree' && !r.oilFree && this.oilFree(x)
         ? `<label class="chk" title="Правило: в пищевой и медицинской промышленности — только безмасляные компрессоры"><input type="checkbox" checked disabled> ${esc(label)} <span class="muted">— ${esc(this.oilWhy(x))}</span></label>`

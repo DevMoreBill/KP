@@ -266,25 +266,64 @@ class ReceiverSizing {
   }
 }
 
-// ---------------------------------------------------------------- вентиляция: жалюзи (расчёт и места — StationVent, plan.vent)
+// ---------------------------------------------------------------- вентиляция: лето, зима, рекуперация (VentCalc), жалюзи (StationVent)
+// Решение ПНЕВМОТЕХ 12.10: каждый шаг — формула, исходные числа, результат; коэффициенты — из правил vent.*, air.cp.
 class VentSizing {
   static run(N, plan){
-    const V=plan && plan.vent; if (!V) return;
-    const f=CalcNote.f, n=StationLayout.n, F=N.rule('heat.face'), k=N.rule('vent.free');
-    N.section('vent', 'Вентиляция');
+    const V=plan && plan.vent, H=plan && plan.heat && plan.heat.vent; if (!V) return;
+    const f=CalcNote.f, n=StationLayout.n, S=H && H.sum, Wn=H && H.win, Rc=H && H.rec;
+    N.section('vent', 'Вентиляция и отопление');
+    if (S){ N.rule('air.cp'); N.rule('vent.temps');
+      if (S.units.length){
+        N.step({ what:'Тепловыделение компрессоров (лето)', formula:'Q = N · k; паспортное тепловыделение — важнее', rules:['vent.k_heat'],
+          data:S.units.map(u=>[`поз. ${u.pos} (${VentCalc.TYPE[u.type]})`, u.k!=null ? `${f(u.kw, 1)} кВт · ${f(u.k, 2)}` : 'по паспорту']), result:`Q = ${f(S.Qc, 1)} кВт` });
+        N.step({ what:'Перепад температур летом', formula:'Δt = t_вн − t_нар; меньше 5 °C — расчёт при 5 °C', rules:['vent.temps'], data:[['t_вн', f(S.tIn, 1)+' °C'], ['t_нар', f(S.tSum, 1)+' °C']],
+          result:`Δt = ${f(S.dt, 1)} °C${S.dtRaw<S.dt ? ` (по температурам ${f(S.dtRaw, 1)} °C — мало)` : ''}`, ok:S.dtRaw>=S.dt ? null : false,
+          note:S.dtRaw<S.dt ? 'Недостаточный перепад: нужна принудительная вентиляция повышенной мощности или предварительное охлаждение воздуха.' : '' });
+        N.step({ what:'Воздух охлаждения компрессоров', formula:'L = Q · 3600 / (c · ρ · Δt), ρ = 353 / (273 + t_нар); паспортный расход — важнее', rules:['air.cp'],
+          data:[['c', f(N.rule('air.cp').c, 3)+' кДж/(кг·°C)'], ['ρ', f(S.rho, 3)+' кг/м³'], ...S.units.map(u=>[`поз. ${u.pos}`, `${n(u.cool)} м³/ч (${u.src})`])], result:`L = ${n(S.Lcool)} м³/ч` }); }
+      N.step({ what:'Вентиляция помещения', formula:'L = Q_пом · 3600 / (c · ρ · Δt) + воздух на сжатие и горение', rules:['heat.case', 'heat.sun'],
+        data:[['Q_пом (корпуса, осушители, солнце)', f(S.qRoom, 1)+' кВт'], ['на сжатие и горение', n(S.use)+' м³/ч']], result:`L = ${n(S.Lroom+S.use)} м³/ч` });
+      N.step({ what:'Проверка по кратности воздухообмена', formula:'L_мин = 3 · V, L_авар = 8 · V', rules:['vent.ach'], data:[['V', f(S.V, 1)+' м³']],
+        result:`L_мин = ${n(S.Lmin)} м³/ч, аварийная — ${n(S.Lemerg)} м³/ч${S.raised ? '; расход увеличен до нормативного минимума' : ''}`, ok:true });
+      N.step({ what:'Расход воздуха летом', formula:'приток = охлаждение + помещение; выброс = приток − воздух на сжатие', data:[['1 CFM', '1,699 м³/ч']],
+        result:`приток ${n(S.Lin)} м³/ч (${n(S.cfmIn)} CFM), выброс ${n(S.Lout)} м³/ч (${n(S.cfmOut)} CFM)` }); }
+    // проёмы по рамке: S = L / (3600 · v), приток — с запасом; поставлено на стенах (и крыше) — против нужного
     const step=(what, kind)=>{ const nd=V.need[kind]; if (!nd) return;
       const roof=kind==='out' ? (V.roof||[]) : [], placed=V.louvers.filter(q=>q.kind===kind).reduce((s, q)=>s+q.w*q.h/1e6, 0)+roof.reduce((s, q)=>s+q.w*q.l/1e6, 0), ok=!(V.short[kind]>0);
       const wh=StationVent.where(V)[kind], list=[V.louvers.some(q=>q.kind===kind) ? 'жалюзи '+StationVent.list(V, kind) : '', roof.length ? 'через крышу '+StationVent.roofList(V) : ''].filter(Boolean).join(', ');
-      N.step({ what, formula:'A = Q / (3600 · v); по рамке = A / k', rules:['heat.face', 'vent.free'], data:[['Q', n(V.q[kind])+' м³/ч'], ['v', f(F, 1)+' м/с'], ['k', f(k, 2)]],
-        result:`A ≥ ${f(nd.free)} м², по рамке ≥ ${f(nd.gross)} м²; ${list || 'жалюзи —'}${wh ? ' ('+wh+')' : ''}`, ok, margin:CalcNote.pct(placed, nd.gross) });
+      const vl=kind==='in' ? V.vIn/V.res/V.free : V.vOut/V.free;
+      N.step({ what, formula:kind==='in' ? 'S = L / (3600 · v) · запас — по рамке' : 'S = L / (3600 · v) — по рамке', rules:['vent.speed', 'vent.free'],
+        data:[['L', n(V.q[kind])+' м³/ч'], ['v', f(nd.v, 1)+' м/с'], ...(kind==='in' ? [['запас', f(V.res, 2)]] : [])],
+        result:`S ≥ ${f(nd.gross)} м²; ${list || 'жалюзи —'}${wh ? ' ('+wh+')' : ''}`, ok, margin:CalcNote.pct(placed, nd.gross),
+        note:`В живом сечении решётки (${Math.round(V.free*100)} % рамки) — около ${f(vl, 1)} м/с.` });
       if (!ok) N.issue('warn', `${what}: на стенах не поместилось ${f(V.short[kind])} м² жалюзи (по рамке) — освободите стену или выведите воздух воздуховодом через крышу.`); };
     step('Приточные жалюзи', 'in'); step('Выброс горячего воздуха', 'out');
+    const D=V.draft; if (D){ N.rule('vent.fan');
+      N.step({ what:'Естественная тяга общей вытяжки', formula:'ΔP = (ρ_нар − ρ_вн) · g · h, ρ = 353 / (273 + t)', rules:['vent.fan'],
+        data:[['ρ_нар', f(D.rhoOut, 3)+' кг/м³'], ['ρ_вн', f(D.rhoIn, 3)+' кг/м³'], ['h', f(D.h, 2)+' м']], result:`ΔP = ${f(D.dp, 1)} Па${D.need ? ' — меньше 5 Па' : ''}`, ok:D.need ? null : true });
+      if (D.fan) N.step({ what:'Вытяжной вентилятор помещения', formula:'L_в = L · 1,15; P = L_в · ΔP / (3600 · 1000 · η)', rules:['vent.fan'],
+        data:[['L', n(D.L)+' м³/ч'], ['ΔP', D.fan.dp+' Па'], ['η', f(D.fan.eta, 2)]], result:`${n(D.fan.L)} м³/ч, напор ≥ ${D.fan.dp} Па, около ${f(D.fan.P, 2)} кВт${D.user ? `; заданный ${n(D.user.q)} м³/ч — ${D.user.ok ? 'достаточно' : 'мало, заменить'}` : ''}`, ok:D.user ? D.user.ok : null }); }
+    if (Wn && !Wn.warm){ N.rule('vent.winter');
+      N.step({ what:'Зимой: потери через ограждения', formula:'Q = U · A · Δt, Δt = t_вн_мин − t_нар_зима; U — по утеплителю', rules:['heat.lambda', 'heat.rsurf', 'heat.bridge'],
+        data:[['U', f(Wn.U, 3)+' Вт/(м²·°C)'], ['A', f(Wn.A, 1)+' м²'], ['Δt', f(Wn.dt, 1)+' °C']], result:`Q_огр = ${f(Wn.Qenv, 2)} кВт` });
+      N.step({ what:'Зимой: минимальный воздухообмен', formula:'L = max(2 · V, воздух на сжатие); Q = L · c · ρ · Δt / 3600', rules:['vent.ach'],
+        data:[['L', n(Wn.Lw)+' м³/ч']], result:`Q_вент = ${f(Wn.Qvent, 2)} кВт` });
+      N.step({ what:'Тепловой баланс зимой при работе', formula:'Q_баланс = Q_тепл − Q_огр − Q_вент (один работающий агрегат, рециркуляция)', rules:['heat.rec'],
+        data:[['Q_тепл', f(Wn.Qrun, 2)+' кВт'], ['Q_потерь', f(Wn.Qloss, 2)+' кВт']], result:Wn.bal>=0 ? `профицит ${f(Wn.bal, 2)} кВт — частичная рециркуляция` : `дефицит ${f(-Wn.bal, 2)} кВт — подогрев`, ok:Wn.bal>=0 ? true : null });
+      N.step({ what:'Зимой: открытие регулируемых жалюзи', formula:'доля = L_зима / L_лето (не меньше наименьшего открытия клапана); S_зима = S · L_зима / L_лето', rules:['vent.winter'],
+        data:[['L_зима / L_лето', f(Wn.ratio, 1)+' %']], result:`открытие ${Wn.open} %; приток ${f(Wn.SinW)} м², выброс ${f(Wn.SoutW)} м²` }); }
+    if (Rc && (Rc.on || Rc.worth)){ N.rule('vent.recup'); N.rule('vent.season');
+      N.step({ what:`Рекуператор${Rc.on ? '' : ' (оценка — опция не включена)'}`, formula:'t_после = t_нар + η · (t_выб − t_нар); Q = L · ρ · c · η · (t_выб − t_нар) / 3600', rules:['vent.recup'],
+        data:[['тип', VentCalc.TYPES[Rc.type]], ['η', f(Rc.eta, 2)], ['t_выб', f(Rc.tExh, 1)+' °C'], ['φ_выб', Rc.phi+' %']],
+        result:`t_после = ${f(Rc.tAfter, 1)} °C; Q = ${f(Rc.Q, 2)} кВт; за год ≈ ${n(Rc.year)} кВт·ч (${Rc.days} сут, средняя ${f(Rc.tavg, 1)} °C)`,
+        ok:Rc.frost ? false : null, note:[Rc.why.length ? 'Целесообразность: '+Rc.why.join('; ')+'.' : '', Rc.frost ? 'Риск обмерзания.' : '', Rc.measures.length ? 'Защита: '+Rc.measures.join(', ')+'.' : ''].filter(Boolean).join(' ') }); }
     // маркизы: угол открытия — по скорости во входе (на притоке) или выходе (на выбросе) под козырьком
-    for (const [kind, H, what, rule, vmax] of [['in', V.hood, 'Маркиза на приточных жалюзи (снегозащита)', 'vent.hood_v', N.rule('vent.hood_v')], ['out', V.hoodOut, 'Маркиза на жалюзи выброса (по требованию)', 'heat.face', V.face]]){
-      if (!H) continue; const I=V.louvers.filter(q=>q.kind===kind && q.hood), q0=I.reduce((a, q)=>q.hood.v>a.hood.v ? q : a, I[0]), Qi=Math.round(q0.hood.v*3600*q0.hood.w/1000*q0.hood.d/1000);
+    for (const [kind, Hd, what, rule, vmax] of [['in', V.hood, 'Маркиза на приточных жалюзи (снегозащита)', 'vent.hood_v', N.rule('vent.hood_v')], ['out', V.hoodOut, 'Маркиза на жалюзи выброса (по требованию)', 'vent.speed', V.face]]){
+      if (!Hd) continue; const I=V.louvers.filter(q=>q.kind===kind && q.hood), q0=I.reduce((a, q)=>q.hood.v>a.hood.v ? q : a, I[0]), Qi=Math.round(q0.hood.v*3600*q0.hood.w/1000*q0.hood.d/1000);
       N.step({ what, formula:'вход (выход) под козырьком B × d, d = L · sin α — вылет; α — наименьший угол открытия 30…75° (шаг 5°), при котором Q / (3600 · B · d) ≤ v; у всех маркиз один — по самой нагруженной; L — высота жалюзи + 100 мм', rules:[rule],
         data:[['Q', n(Qi)+' м³/ч (жалюзи '+n(q0.w)+' × '+n(q0.h)+' мм)'], ['B × L', n(q0.hood.w)+' × '+n(q0.hood.l)+' мм'], ['v', f(vmax, 1)+' м/с']],
-        result:StationVent.hoodText(V, kind), ok:!H.over }); }
+        result:StationVent.hoodText(V, kind), ok:!Hd.over }); }
     if (V.rad) N.step({ what:'Выброс воздуха радиатора ДГУ', formula:'v = Q / (3600 · A)', rules:['vent.free'], data:[['Q', n(V.rad.q)+' м³/ч'], [V.rad.door ? 'дверь-жалюзи' : 'жалюзи', n(V.rad.w)+' × '+n(V.rad.h)+' мм'], ['A', f(V.rad.free)+' м²']],
       result:'v = '+f(V.rad.v, 1)+' м/с', ok:V.rad.v<=StationVent.RAD_V, note:V.rad.v>StationVent.RAD_V ? 'Больше '+f(StationVent.RAD_V, 1)+' м/с — проверьте по паспорту ДГУ (расход воздуха радиатора, допустимое сопротивление).' : '' });
   }

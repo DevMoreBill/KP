@@ -302,8 +302,10 @@ class StationEquip {
   /** расход воздуха из паспорта, м³/ч: cool — на охлаждение (компрессор — охладитель, ДГУ — радиатор), comb — на горение;
    *  нет строки — null (расчёт по мощности) */
   static airRows(p){
-    const out={ cool:null, comb:null };
+    const out={ cool:null, comb:null, heat:null };
     for (const r of p.rows||[]){ if (!r) continue; const k=String(r.k||''), t=k+' '+String(r.v||'');
+      // тепловыделение по паспорту, кВт (рекуперируемая доля — не всё тепло, не берётся)
+      if (/тепловыделен|теплоотдач|тепловой поток|тепловая мощность/i.test(k) && !/рекупер|возврат/i.test(k)){ const h=String(r.v||'').match(/(\d+(?:[.,]\d+)?)\s*(квт|kw)/i); if (h && !out.heat) out.heat=this.num(h[1]); continue; }
       if (!/воздух/i.test(k) || !/расход|поток|производительн/i.test(k)) continue;
       const m=String(r.v||'').replace(/(\d)\s+(?=\d{3}(?!\d))/g, '$1').match(/(\d+(?:[.,]\d+)?)\s*(м³|м3|m³|m3)\s*\/\s*(ч|час|h|мин|min|с|сек|s)(?![А-Яа-яЁёA-Za-z])/i); if (!m) continue;
       const v=this.num(m[1]), u=m[3].toLowerCase(), q=Math.round(v*(/^(мин|min)$/.test(u) ? 60 : /^(с|сек|s)$/.test(u) ? 3600 : 1));
@@ -388,6 +390,9 @@ class StationEquip {
     if (kind==='filter' && d.l<=1.3*d.w && d.h>=1.2*d.l) return 'vcyl';
     return 'box';
   }
+  /** тип компрессора для расчёта тепла (vent.k_heat): screw / piston / centrifugal / scroll */
+  static ctype(p){ const cat=String((p.attrs&&p.attrs.cat)||p.cat||''), n=String(p.name||'');
+    return cat==='comp_piston' || /поршнев/i.test(n) ? 'piston' : cat==='comp_centrifugal' || /центробеж|турбокомпрес/i.test(n) ? 'centrifugal' : cat==='comp_scroll' || /спиральн/i.test(n) ? 'scroll' : 'screw'; }
   /** вид изделия для рисунка на чертеже: поршневой компрессор (на ресивере) — 'piston', иначе '' */
   static look(p, kind){
     const cat=String((p.attrs&&p.attrs.cat)||p.cat||'');
@@ -426,7 +431,7 @@ class StationEquip {
       const pipe=k==='filter' && air.grade!=='cond' && Math.max(d.l, d.w)<=700;   // магистральный фильтр — висит на трубопроводе
       return { id:p.id, pos:++pos, name, brief:this.brief(p, k, name), short:this.short(p, k), kind:k, qty, l:d.l, w:d.w, h:d.h, known:d.known, src:d.src, mass:this.mass(p), kw:this.num((p.attrs||{}).kw), maker:String((p.attrs||{}).maker||'').trim(),
         color:c.hex, colorKnown:c.known, colorText:c.text, shape:this.shape(p, k, d), look:this.look(p, k), place:true, pipe, mount:k==='cabinet' ? this.mount(p, d) : pipe ? 'pipe' : 'floor', air, noise:StationNorms.dba(p), pic:this.pic(p),
-        flow:k==='pump' ? this.num((p.attrs||{}).flow) : null, ...(k==='compressor' || k==='dgu' ? this.airRows(p) : {}) };
+        flow:k==='pump' ? this.num((p.attrs||{}).flow) : null, ...(k==='compressor' || k==='dgu' ? this.airRows(p) : {}), ...(k==='compressor' ? { ctype:this.ctype(p) } : {}) };
     });
     AirChain.assign(out, o.recv);
     // ресиверы после подготовки воздуха — снаружи, на площадке у дальнего торца (ФНП ОРПД, п. 65): в ряду внутри их нет,
@@ -845,7 +850,6 @@ class StationHeat {
   static get LOSS(){ return StationRules.raw('heat.loss'); }         // насос — потери двигателя, осушитель — тепло конденсатора
   static get COMB(){ return StationRules.raw('heat.comb'); }         // ДГУ: воздух на горение, м³/ч на 1 кВт
   static get SUN(){ return StationRules.raw('heat.sun'); }           // солнце на крышу летом, кВт/м²
-  static get FACE(){ return StationRules.raw('heat.face'); }         // скорость воздуха в живом сечении жалюзи, м/с
   // конвектор: [кВт, длина, мм]; высота 400, глубина 90, низ — 150 мм от пола
   static UNITS = [[0.5, 460], [1, 640], [1.5, 800], [2, 960], [2.5, 1120]];
   static CONV = { h:400, d:90, z:150, gap:300, edge:150, front:400 };
@@ -866,8 +870,9 @@ class StationHeat {
     const qEnv=(U*Math.max(0, A-Ad-Al)+this.U_DOOR*Ad+this.U_LOUVER*Al)*dT+U*Apart*dT/2;
     const qInf=this.ACH*m(Li-Lt)*m(Wi)*m(Hi)*this.AIR*dT, qStop=qEnv+qInf;
     // работа: самый «холодный» режим — один агрегат (тепло в помещение минус подогрев забираемого им воздуха)
-    const units=I.filter(i=>!i.tank && i.mount!=='wall' && /^(compressor|dgu|pump)$/.test(i.kind) && i.kw>0);
-    const heat=i=>i.kw*1000*(this.LOSS[i.kind] || (rec ? this.REC[i.kind] : 0) || this.CASE);
+    const units=I.filter(i=>!i.tank && i.mount!=='wall' && /^(compressor|dgu|pump)$/.test(i.kind) && i.kw>0), ex=r.vent||{}, VW=[];
+    // тепло в помещение при работе: компрессор с рециркуляцией — всё его тепло (паспорт или N·k, VentCalc), без неё — корпус
+    const heat=i=>i.kind==='compressor' && rec ? (i.heat>0 ? i.heat : i.kw*VentCalc.k(i.ctype, ex, []))*1000 : i.kw*1000*(this.LOSS[i.kind] || (rec ? this.REC[i.kind] : 0) || this.CASE);
     const air=i=>i.kind==='compressor' ? (i.air && i.air.flow>0 ? i.air.flow*60 : i.kw*0.16*60) : i.kind==='dgu' ? (i.comb>0 ? i.comb : i.kw*this.COMB) : 0;   // м³/ч, ДГУ — по паспорту
     const run=units.map(i=>({ i, q:heat(i), a:air(i) })), net=o=>o.q-o.a*this.AIR*dT;
     const base=run.length ? run.reduce((a, b)=>net(a)<=net(b) ? a : b) : null, qRun=base ? qStop-net(base) : null;
@@ -876,17 +881,21 @@ class StationHeat {
     // лето: рабочие агрегаты (без резерва)
     const tmax=Number.isFinite(r.tmax) ? r.tmax : 35, work=this.working(units, Math.max(0, r.res||0));
     const qSum=work.reduce((s, i)=>s+i.kw*1000*(this.LOSS[i.kind]||this.CASE), 0)+this.SUN*1000*m(Le)*m(We)+I.filter(i=>i.kind==='dryer').reduce((s, i)=>s+(i.kw||0)*1000, 0);
-    // охлаждение компрессоров и радиатор ДГУ — расход из паспорта, иначе по мощности (нагрев воздуха 12 и 10 °C — с запасом)
-    const cool=Math.round(work.filter(i=>i.kind==='compressor').reduce((s, i)=>s+this.coolOf(i), 0));
+    // лето (VentCalc): охлаждение компрессоров — по паспорту, иначе Q = N·k при Δt = t_вн − t_нар; помещение — тем же Δt;
+    // не меньше 3 объёмов в час; радиатор ДГУ — по паспорту, иначе по мощности (нагрев на 10 °C)
     const rad=Math.round(work.filter(i=>i.kind==='dgu').reduce((s, i)=>s+(i.cool>0 ? i.cool : i.kw*1000*0.5/(this.AIR*10)), 0));
-    const use=Math.round(work.reduce((s, i)=>s+air(i), 0)), m3h=Math.round(qSum/(this.AIR*5))+use;
+    const V=m(Li-Lt)*m(Wi)*m(Hi), comp=work.filter(i=>i.kind==='compressor');
+    const vc={ units:comp.map(i=>({ key:StationLayout.key(i), pos:i.pos, type:i.ctype, kw:i.kw, heat:i.heat, cool:i.cool })), qRoom:qSum/1000, use:work.reduce((s, i)=>s+air(i), 0), V, tSum:tmax, tWin:tout, tInMin:tin, ex };
+    const S=VentCalc.summer(vc, VW);
+    // зима: потери ограждений (U по утеплителю) и минимального воздухообмена против тепла работающего (самый холодный режим)
+    const Wn=VentCalc.winter({ ...vc, env:{ U, A, qEnv }, Qrun:base ? base.q/1000 : 0, useRun:base ? base.a : 0 }, S, VW), Rc=VentCalc.recup(!!sys.hrv, Wn, vc, VW);
     return { tout, tin, dT, rec, on, U:Math.round(U*1000)/1000, A:Math.round(A*10)/10, qEnv:Math.round(qEnv), qInf:Math.round(qInf), qStop:Math.round(qStop),
       base:base ? { pos:base.i.pos, kind:base.i.kind, q:Math.round(base.q), a:Math.round(base.a) } : null, qRun:qRun==null ? null : Math.round(qRun),
       need:Math.round(need*100)/100, n:pick.n, kw:pick.kw, total:Math.round(pick.n*pick.kw*10)/10, short:pick.short, heaters:pick.heaters,
-      vent:{ tmax, m3h, use, cool, rad, area:Math.round((m3h+cool+rad)/3600/this.FACE*100)/100 } };
+      vent:{ tmax, m3h:S.Lroom+S.use, use:S.use, cool:S.Lcool, rad, sum:S, win:Wn, rec:Rc, warn:VW, ex } };
   }
-  /** воздух охлаждения компрессора, м³/ч: по паспорту, иначе по мощности (нагрев на 12 °C) */
-  static coolOf(i){ return i.cool>0 ? i.cool : (i.kw||0)*1000*this.REC.compressor/(this.AIR*12); }
+  /** воздух охлаждения компрессора i, м³/ч — из летнего расчёта (VentCalc) */
+  static coolOf(i, plan){ const S=plan && plan.heat && plan.heat.vent && plan.heat.vent.sum, u=S && S.units.find(q=>q.key===StationLayout.key(i)); return u ? u.cool : (i.cool>0 ? i.cool : 0); }
   /** рабочие агрегаты: без res самых мощных каждого вида (резерв) */
   static working(units, res){
     const out=[]; for (const k of ['compressor', 'pump', 'dgu']){ const L=units.filter(i=>i.kind===k).sort((a, b)=>b.kw-a.kw); out.push(...(L.length>res ? L.slice(res) : L.slice(-1))); }
@@ -972,7 +981,7 @@ class StationHeat {
 // размера — по необходимому месту (шаг 100 мм, наименьшая площадь пола); заданный контейнер, в который не помещается, —
 // ошибка и подсказка, какой подойдёт; контейнер с большим запасом — подсказка, какой меньший подойдёт.
 class StationLayout {
-  static VER = 15;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
+  static VER = 16;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
   static MAX_L = 12000;
   static PIPE_PAD = 60;      // зазор вокруг фильтра на трубопроводе, мм
   static AIR_Y = 150;        // линия сжатого воздуха: ось — в 150 мм от задней стены (или посередине между рядами)
@@ -1001,7 +1010,7 @@ class StationLayout {
   static hash(input){
     const c=input.cont||{}, pick=a=>a ? {cat:a.cat, size:a.size, mass:a.mass, model:a.model, maker:a.maker, orient:a.orient, kw:a.kw, volume:a.volume, color:a.color, flow:a.flow, pressure:a.pressure, stage:a.stage, dryer:a.dryer, vsd:a.vsd, dewPoint:a.dewPoint, receiver:a.receiver} : null;
     const s=JSON.stringify([this.VER, StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.ins, c.ral, c.sys||null, c.climate||'', c.roof||'', StationGeo.floor(c)], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
-      (input.parts||[]).filter(p=>p && p.role!=='container').map(p=>[p.name, p.qty, p.role||'', p.pipeMat||'', p.dn||'', p.mount||'', pick(p.attrs), StationEquip.tint(p), (p.rows||[]).filter(r=>r && /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы/i.test(String(r.k||'')+' '+String(r.v||''))).map(r=>[r.k, r.v]), StationEquip.pic(p)])]);
+      (input.parts||[]).filter(p=>p && p.role!=='container').map(p=>[p.name, p.qty, p.role||'', p.pipeMat||'', p.dn||'', p.mount||'', pick(p.attrs), StationEquip.tint(p), (p.rows||[]).filter(r=>r && /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы|воздух|теплов|охлажд/i.test(String(r.k||'')+' '+String(r.v||''))).map(r=>[r.k, r.v]), StationEquip.pic(p)])]);
     return this.fnv(s);
   }
   /** FNV-1a, 8 шестнадцатеричных знаков */
@@ -1874,7 +1883,7 @@ class StationLayout {
     const e=it.o.e;
     return { id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, look:e.look||'', color:e.color, colorKnown:e.colorKnown, maker:e.maker||'',
       known:e.known, mass:e.mass, kw:e.kw, x:geo.x0+this.G+it.x, y:it.y+this.G, z:0, lx:it.lx, ly:it.d, h:e.h, rot:!!it.o.rot || !!e.cross, face:it.face, back:it.back+this.G, backRec:e.cross ? 0 : e.c.back[0]+this.G, aisle:it.aisle+this.G, cross:!!e.cross,
-      l:e.l, w:e.w, row:it.ri, mount:e.slot ? e.mount : 'floor', slot:!!e.slot, pipe:!!e.pipe, air:e.air||null, pic:e.pic||null, flow:e.flow||null, cool:e.cool||null, comb:e.comb||null };
+      l:e.l, w:e.w, row:it.ri, mount:e.slot ? e.mount : 'floor', slot:!!e.slot, pipe:!!e.pipe, air:e.air||null, pic:e.pic||null, flow:e.flow||null, cool:e.cool||null, comb:e.comb||null, heat:e.heat||null, ctype:e.ctype||'' };
   }
   /** шкаф на стене или фильтр на трубе — не из ряда */
   unitItem(e, o){
