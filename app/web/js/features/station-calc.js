@@ -5,7 +5,7 @@
 // погрешности данных (правило calc.tolerance) — не ошибка; вопросы заказчику — только без ответа на которые станцию не
 // подобрать, остальное — «можно уточнить позже» (расчёт берёт значение по умолчанию с запасом).
 // Классы: CalcNote (записка), AirDemand (потребность → FAD), PressureBudget (давление и потери), DryerSizing, FilterSizing,
-// ReceiverSizing, ElectricLoad (мощность, ток, пуск), GensetSizing (ДГУ), StationCalc (весь расчёт, вкладка и КП).
+// ReceiverSizing, VentSizing (жалюзи), ElectricLoad (мощность, ток, пуск), GensetSizing (ДГУ), StationCalc (весь расчёт, вкладка и КП).
 'use strict';
 
 // ---------------------------------------------------------------- расчётная записка: шаги, замечания, допущения
@@ -263,6 +263,23 @@ class ReceiverSizing {
   }
 }
 
+// ---------------------------------------------------------------- вентиляция: жалюзи (расчёт и места — StationVent, plan.vent)
+class VentSizing {
+  static run(N, plan){
+    const V=plan && plan.vent; if (!V) return;
+    const f=CalcNote.f, n=StationLayout.n, F=N.rule('heat.face'), k=N.rule('vent.free');
+    N.section('vent', 'Вентиляция');
+    const step=(what, kind)=>{ const nd=V.need[kind]; if (!nd) return;
+      const placed=V.louvers.filter(q=>q.kind===kind).reduce((s, q)=>s+q.w*q.h/1e6, 0), ok=!(V.short[kind]>0);
+      N.step({ what, formula:'A = Q / (3600 · v); по рамке = A / k', rules:['heat.face', 'vent.free'], data:[['Q', n(V.q[kind])+' м³/ч'], ['v', f(F, 1)+' м/с'], ['k', f(k, 2)]],
+        result:`A ≥ ${f(nd.free)} м², по рамке ≥ ${f(nd.gross)} м²; жалюзи ${StationVent.list(V, kind) || '—'}`, ok, margin:CalcNote.pct(placed, nd.gross) });
+      if (!ok) N.issue('warn', `${what}: на стенах не поместилось ${f(V.short[kind])} м² жалюзи (по рамке) — освободите стену или выведите воздух воздуховодом через крышу.`); };
+    step('Приточные жалюзи', 'in'); step('Вытяжные жалюзи', 'out');
+    if (V.rad) N.step({ what:'Выброс воздуха радиатора ДГУ', formula:'v = Q / (3600 · A)', rules:['vent.free'], data:[['Q', n(V.rad.q)+' м³/ч'], [V.rad.door ? 'дверь-жалюзи' : 'жалюзи', n(V.rad.w)+' × '+n(V.rad.h)+' мм'], ['A', f(V.rad.free)+' м²']],
+      result:'v = '+f(V.rad.v, 1)+' м/с', ok:V.rad.v<=StationVent.RAD_V, note:V.rad.v>StationVent.RAD_V ? 'Больше '+f(StationVent.RAD_V, 1)+' м/с — проверьте по паспорту ДГУ (расход воздуха радиатора, допустимое сопротивление).' : '' });
+  }
+}
+
 // ---------------------------------------------------------------- электрика: мощность, ток, пуск
 class ElectricLoad {
   /** способ пуска компрессора: частотный — по полю vsd; иначе по строке «пуск» каталога; не указан — прямой (с запасом) */
@@ -362,6 +379,7 @@ class StationCalc {
       if (q.kind==='comp'){ const A=AirDemand.run(N, q), P=PressureBudget.run(N, q, A); DryerSizing.run(N, q, A, P); FilterSizing.run(N, q, A, P); ReceiverSizing.run(N, q, A); ElectricLoad.run(N, q, plan); }
       else if (q.kind==='dgu') GensetSizing.run(N, q, ElectricLoad.run(N, q, plan));
       else ElectricLoad.run(N, q, plan);
+      VentSizing.run(N, plan);
     } catch(e){ N.issue('warn', 'Расчёт прерван: '+String(e && e.message || e).slice(0, 200)); }   // ошибка программы не мешает сохранить КП
     const res=N.result(); res.accept=!!StationReq.of(x).accept; this.cache.set(x.id, { key, res }); return res;
   }

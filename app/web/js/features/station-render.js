@@ -125,6 +125,7 @@ class StScene {
    *  пропорция таблички}} */
   constructor(plan, meta={}){
     this.plan=plan; this.meta=meta; this.groups=new Map(); this.decals=new Map();   // decals: ключ → описание картинки наклейки
+    this.tags=[];   // подписи на картинке (размеры жалюзи): {p — точка, м; text}
     const g=plan.geo, mm=v=>v/1000;
     this.g=g; this.mm=mm; [this.Le, this.We, this.He]=g.ext.map(mm); [this.Li, this.Wi, this.Hi]=plan.int.map(mm);
     this.ox=(this.Le-this.Li)/2; this.oy=(this.We-this.Wi)/2;
@@ -132,16 +133,15 @@ class StScene {
     this.base=this.dz+mm(StationGeo.zFloor(g.type, g.t)); this.ceil=this.base+this.Hi; this.top=this.dz+this.He; this.rise=g.sea ? 0 : mm(g.rise||0);
     this.wall=plan.wallColor||'#CBD0CC'; this.frame=plan.frameColor||RalColor.shade(this.wall, 0.72);
     this.lining=g.sea ? '#e3e6e8' : '#eef0f1';
-    // сервисные двери: без прохода — у каждого агрегата (в разрезе открыты), с проходом — только для монтажа и демонтажа
-    // (закрыты); входная дверь оператора и дверь отсека бака — отдельно
-    const sd=plan.doors||[]; this.svc=plan.door==='service';
+    // сервисные двери — только для монтажа и демонтажа (закрыты); входная дверь оператора и дверь отсека бака — отдельно
+    const sd=plan.doors||[];
     this.doorsF=sd.filter(d=>d.wall!=='back'); this.doorsB=sd.filter(d=>d.wall==='back');
     this.view=meta.view==='out' ? 'out' : 'in'; this.closed=this.view==='out';
-    this.cut=this.view==='in' && !(this.svc && this.doorsF.length);   // стена со стороны зрителя срезана (без прохода — стоит, двери открыты)
+    this.cut=this.view==='in';   // стена со стороны зрителя срезана
     // ДГУ с дверью-жалюзи или ворота для демонтажа в дальнем торце: снаружи — вид спереди справа (на этот торец)
     this.az=this.closed && (plan.dguDoor || (plan.gates && plan.gates.wall==='right' && !plan.gates.sea)) ? -StCam.AZ : StCam.AZ;
     // проёмы стены со стороны зрителя: сервисные двери; снаружи — ещё дверь оператора и дверь отсека топливного бака
-    this.openF=this.cut ? [] : this.doorsF.map(d=>({ x0:d.x0, x1:d.x1, h:d.h, leaves:d.leaves, kind:'service', open:this.svc }));
+    this.openF=this.cut ? [] : this.doorsF.map(d=>({ x0:d.x0, x1:d.x1, h:d.h, leaves:d.leaves, kind:'service', open:false }));
     if (this.closed){ const D=StationLayout.DOOR.h, en=plan.entry;
       if (en && en.wall==='front') this.openF.push({ x0:en.x0, x1:en.x1, h:en.h, leaves:1, kind:'entry' });
       if (plan.fuel) this.openF.push({ x0:plan.fuel.door.x0, x1:plan.fuel.door.x1, h:D, leaves:1, kind:'tank' });
@@ -201,11 +201,11 @@ class StScene {
     const far=E.reduce((a, c)=>c.x+c.lx>a.x+a.lx ? c : a), [fx0, fy0, , fx1, fy1, fz1]=this.B(far), cx=(fx0+fx1)/2, cy=(fy0+fy1)/2;
     run([cx, cy, fz1+0.09], [cx, cy, fz1+0.25], [fx1+0.4, cy, fz1+0.25]); m.tube([fx1+0.38, cy, fz1+0.25], [fx1+0.42, cy, fz1+0.25], r*1.7, 20);
   }
-  /** габариты сцены (м): контейнер, глушитель, открытые двери */
+  /** габариты сцены (м): контейнер, глушитель, ресиверы снаружи */
   bounds(){
-    const R=this.plan.roof||[], up=R.reduce((s, m)=>Math.max(s, (m.gap+m.d)/1000+0.05), 0), sw=this.closed || !this.svc ? 0 : Math.max(0, ...[...this.doorsF, ...this.doorsB].map(d=>d.w/d.leaves/1000));
+    const R=this.plan.roof||[], up=R.reduce((s, m)=>Math.max(s, (m.gap+m.d)/1000+0.05), 0);
     const E=(this.plan.outside||[]).map(i=>this.B(i)), xo=Math.max(this.Le, ...E.map(b=>b[3]+0.45), ...R.map(m=>this.ox+(m.x+m.lx+m.outlet)/1000+0.03)), yo=Math.min(0, ...E.map(b=>b[1]-0.2)), yi=Math.max(this.We, ...E.map(b=>b[4]+0.2)), zo=Math.max(0, ...E.map(b=>b[5]+0.3));
-    return { lo:[-0.15, Math.min(yo, -0.15-(this.doorsF.length ? sw*0.8 : 0)), 0], hi:[xo+0.15, Math.max(yi, this.We+0.15+(this.doorsB.length ? sw*0.8 : 0)), Math.max(zo, this.top+this.rise+up+0.05)] };
+    return { lo:[-0.15, Math.min(yo, -0.15), 0], hi:[xo+0.15, Math.max(yi, this.We+0.15), Math.max(zo, this.top+this.rise+up+0.05)] };
   }
   /** число треугольников (проверка и замер) */
   tris(){ let n=0; for (const e of this.groups.values()) n+=e.mesh.i.length/3; return n; }
@@ -344,7 +344,7 @@ class StScene {
   /** длинная стена (yw — наружная плоскость, out — наружу) с проёмами: панели (prof — гофр [шаг, глубина] или гладкие),
    *  обрамление, открытые наружу створки */
   wallWithDoors(w, z0, z1, prof, doors, yw, out){
-    const L=this.Le, cuts=doors.map(d=>({ a:this.ox+d.x0/1000, b:this.ox+d.x1/1000, h:this.base+d.h/1000, n:d.leaves||1, kind:d.kind||'service', open:d.open!=null ? d.open : this.svc })).sort((p, q)=>p.a-q.a), wy=yw-out*0.03;
+    const L=this.Le, cuts=doors.map(d=>({ a:this.ox+d.x0/1000, b:this.ox+d.x1/1000, h:this.base+d.h/1000, n:d.leaves||1, kind:d.kind||'service', open:!!d.open })).sort((p, q)=>p.a-q.a), wy=yw-out*0.03;
     const sheet=(a, b, za, zb)=>{ if (b<=a+0.005 || zb<=za) return; if (prof) w.corr(0, a, b, wy, out, za, zb, ...prof); else w.quad([a, yw-out*0.02, za], [b, yw-out*0.02, za], [b, yw-out*0.02, zb], [a, yw-out*0.02, zb], [0, out, 0]); };
     let x=0.16;
     for (const c of cuts){ sheet(x, c.a, z0, z1); sheet(c.a, c.b, c.h, z1); x=Math.max(x, c.b); }
@@ -941,6 +941,29 @@ void main(){ vec4 a=texture(uT, vU); float c=clamp(a.a, 0.0, 1.0); vec3 col=a.a>
   }
 }
 
+// ---------------------------------------------------------------- подписи на картинке: выноска к точке сцены и текст в рамке
+class StTags {
+  static FONT = '600 22px Arial, "Segoe UI", sans-serif';
+  /** точка сцены → пиксели кадра w × h (та же камера, что у отрисовки) */
+  static proj(sc, w, h){ const cam=StCam.fit(sc.bounds(), w/h, 0.9, sc.az), vp=StM4.mul(StM4.persp(cam.fov, w/h, 0.1, cam.D*4), cam.view);
+    return p=>{ const q=StM4.apply(vp, p); return [(q[0]+1)/2*w, (1-q[1])/2*h]; }; }
+  /** canvas c с подписями sc.tags (новый canvas 2D) или c, если подписей нет */
+  static draw(c, sc){
+    const T=sc.tags||[]; if (!T.length) return c;
+    const out=document.createElement('canvas'); out.width=c.width; out.height=c.height; const g=out.getContext('2d'); g.drawImage(c, 0, 0);
+    const P=this.proj(sc, c.width, c.height), used=[], pad=10, H=34; g.font=this.FONT; g.textBaseline='middle';
+    for (const t of T){ const [x, y]=P(t.p); if (!(x>0 && x<out.width && y>0 && y<out.height)) continue;
+      const w=g.measureText(t.text).width+2*pad; let bx=Math.min(out.width-w-12, Math.max(12, x-w/2)), by=Math.max(12, y-110);
+      while (used.some(r=>bx<r[0]+r[2]+8 && bx+w+8>r[0] && by<r[1]+H+6 && by+H+6>r[1])) by+=H+8;
+      used.push([bx, by, w]);
+      g.strokeStyle='#1f2a36'; g.lineWidth=2; g.beginPath(); g.moveTo(x, y); g.lineTo(Math.max(bx+8, Math.min(bx+w-8, x)), by+H); g.stroke();
+      g.fillStyle='#1f2a36'; g.beginPath(); g.arc(x, y, 5, 0, Math.PI*2); g.fill();
+      g.fillStyle='rgba(255,255,255,0.94)'; g.fillRect(bx, by, w, H); g.strokeRect(bx, by, w, H);
+      g.fillStyle='#1b2430'; g.fillText(t.text, bx+pad, by+H/2+1); }
+    return out;
+  }
+}
+
 // ---------------------------------------------------------------- картинка для КП и вкладки «Компоновка»
 class StationRender {
   static PASSES = 64;        // проходов накопления: тени и сглаживание (программная отрисовка — меньше)
@@ -973,7 +996,7 @@ class StationRender {
         const m=await StDecal.meta(plan, { ...meta, view:view==='out' ? 'out' : 'in' }), sc=new StScene(plan, m).build(), [w, h]=this.size(sc);
         await StDecal.prepare(sc);
         if (!this.gl) this.gl=new StGl(document.createElement('canvas'));
-        const c=await this.gl.render(sc, { w, h, passes:this.soft ? Math.min(this.PASSES, 24) : this.PASSES, shadow:this.soft ? 1536 : 2048 });
+        const c=StTags.draw(await this.gl.render(sc, { w, h, passes:this.soft ? Math.min(this.PASSES, 24) : this.PASSES, shadow:this.soft ? 1536 : 2048 }), sc);
         const im={ src:c.toDataURL('image/jpeg', 0.92), w:c.width, h:c.height };
         this.cache.set(key, im); if (this.cache.size>16) this.cache.delete(this.cache.keys().next().value);
         return im;
@@ -982,4 +1005,4 @@ class StationRender {
   }
 }
 
-if (typeof module!=='undefined') module.exports={ StV, StMesh, StMat, StScene, StM4, StCam, StSky };
+if (typeof module!=='undefined') module.exports={ StV, StMesh, StMat, StScene, StM4, StCam, StSky, StTags };

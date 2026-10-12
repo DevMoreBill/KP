@@ -174,6 +174,10 @@ Check.run('компрессорная: ошибки — мало произво�
   assert.ok(!G.some(n=>/Требует подтверждения|Вопросы|замечания/.test(n)), G.join(' | '));
 });
 
+Check.run('справка «Как расставляется оборудование» собирается (без удалённых констант)', ()=>{
+  const t=StationUi.how(); assert.ok(/проход для оператора и обслуживания/.test(t) && /Вентиляция/.test(t) && !/undefined|NaN/.test(t), t.slice(0, 300));
+});
+
 Check.run('погрешность данных (calc.tolerance): недобор до 2 % — не ошибка, больше — ошибка', ()=>{
   assert.strictEqual(StationRules.raw('calc.tolerance'), 0.02);
   const mk=flow=>station('st_comp', { flow:'10', pressure:'7', basis:'fad', tmax:'30', margin:'0', reserve:'0', alt:'0' },
