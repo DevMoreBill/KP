@@ -125,7 +125,6 @@ class StScene {
    *  пропорция таблички}} */
   constructor(plan, meta={}){
     this.plan=plan; this.meta=meta; this.groups=new Map(); this.decals=new Map();   // decals: ключ → описание картинки наклейки
-    this.tags=[];   // подписи на картинке (размеры жалюзи): {p — точка, м; text}
     const g=plan.geo, mm=v=>v/1000;
     this.g=g; this.mm=mm; [this.Le, this.We, this.He]=g.ext.map(mm); [this.Li, this.Wi, this.Hi]=plan.int.map(mm);
     this.ox=(this.Le-this.Li)/2; this.oy=(this.We-this.Wi)/2;
@@ -139,7 +138,7 @@ class StScene {
     this.view=meta.view==='out' ? 'out' : 'in'; this.closed=this.view==='out';
     this.cut=this.view==='in';   // стена со стороны зрителя срезана
     // ДГУ с дверью-жалюзи или ворота для демонтажа в дальнем торце: снаружи — вид спереди справа (на этот торец)
-    this.az=this.closed && (plan.dguDoor || (plan.gates && plan.gates.wall==='right' && !plan.gates.sea)) ? -StCam.AZ : StCam.AZ;
+    this.az=meta.az!=null ? meta.az : this.closed && (plan.dguDoor || [plan.gates, plan.gates2].some(q=>q && q.wall==='right' && !q.sea)) ? -StCam.AZ : StCam.AZ;
     // проёмы стены со стороны зрителя: сервисные двери; снаружи — ещё дверь оператора и дверь отсека топливного бака
     this.openF=this.cut ? [] : this.doorsF.map(d=>({ x0:d.x0, x1:d.x1, h:d.h, leaves:d.leaves, kind:d.kind||'service', open:false }));
     if (this.closed){ const D=StationLayout.DOOR.h, en=plan.entry;
@@ -399,8 +398,8 @@ class StScene {
    *  оператора (plan.entry в торце, вторая — plan.exit) — полотна поверх торцевой стены, ручки; у морского — его штатные двери
    *  (cargoDoors) */
   endDoors(){
-    const P=this.plan, G=P.gates, en=P.entry;
-    if (G && !G.sea) this.endLeaves(G, G.wall, 2);
+    const P=this.plan, en=P.entry;
+    for (const G of [P.gates, P.gates2]) if (G && !G.sea) this.endLeaves(G, G.wall, 2);
     if (en && en.wall==='left' && !en.sea) this.endLeaves(en, 'left', 1);
     if (P.exit) this.endLeaves(P.exit, P.exit.wall, 1);
   }
@@ -423,8 +422,11 @@ class StScene {
   inside(){
     const ox=this.ox, oy=this.oy, Li=this.Li, Wi=this.Wi, b=this.base, c=this.ceil, lin=this.M(StMat.paint(this.lining, 0.6)), sea=this.g.sea;
     if (!this.doorsB.length) lin.quad([ox, oy+Wi, b], [ox+Li, oy+Wi, b], [ox+Li, oy+Wi, c], [ox, oy+Wi, c], [0, -1, 0]);
-    lin.quad([ox+Li, oy, b], [ox+Li, oy+Wi, b], [ox+Li, oy+Wi, c], [ox+Li, oy, c], [-1, 0, 0]);
-    lin.quad([ox, oy, b], [ox, oy+Wi, b], [ox, oy+Wi, c], [ox, oy, c], [1, 0, 0]);
+    // торцы: обшивка с проёмами ворот и дверей; в разрезе ворота видны изнутри (створки, коробка, запорные штанги, петли)
+    const E=this.endOpenings();
+    this.endLining(lin, ox+Li, -1, this.cut ? E.filter(d=>d.wall==='right') : [], b, c);
+    this.endLining(lin, ox, 1, this.cut ? E.filter(d=>d.wall==='left') : [], b, c);
+    if (this.cut){ for (const d of E) this.innerLeaves(d, d.wall, d.n); for (const d of this.doorsB) this.innerLeaves(d, 'back', d.leaves||1); }
     lin.quad([ox, oy, c], [ox+Li, oy, c], [ox+Li, oy+Wi, c], [ox, oy+Wi, c], [0, 0, -1]);
     if (!this.cut) this.holes(lin, oy, 1, this.openF, b, c);
     if (this.doorsB.length) this.holes(lin, oy+Wi, -1, this.doorsB, b, c);
@@ -448,6 +450,44 @@ class StScene {
       dk.tube([x-0.09, oy+Wi-0.68, b+1.9], [x-0.12, oy+Wi-0.55, b+1.94], 0.008, 8); dk.tube([x-0.12, oy+Wi-0.55, b+1.94], [x-0.07, oy+Wi-0.5, b+2.0], 0.008, 8); }
   }
 
+  /** проёмы в торцах: монтажные ворота (у морского — его двери), дверь оператора и вторая дверь в торце, дверь-жалюзи ДГУ:
+   *  [{wall, y0, y1, h, n — створок, kind}] (мм внутри) */
+  endOpenings(){
+    const P=this.plan, out=[];
+    for (const G of [P.gates, P.gates2]) if (G) out.push({ wall:G.wall, y0:G.y0, y1:G.y1, h:G.h, n:2, kind:'gate', wicket:G.wicket||null });
+    if (P.entry && P.entry.wall==='left' && !P.entry.sea) out.push({ wall:'left', y0:P.entry.y0, y1:P.entry.y1, h:P.entry.h, n:1, kind:'entry' });
+    if (P.exit) out.push({ wall:P.exit.wall, y0:P.exit.y0, y1:P.exit.y1, h:P.exit.h, n:1, kind:'entry' });
+    if (P.dguDoor) out.push({ wall:'right', y0:P.dguDoor.y0, y1:P.dguDoor.y1, h:P.dguDoor.h, n:2, kind:'dgu' });
+    return out;
+  }
+  /** обшивка торца изнутри (x — плоскость, nx — нормаль внутрь) с проёмами cuts: участки до, между и над проёмами */
+  endLining(m, x, nx, cuts, b, c){
+    const C=cuts.map(d=>[this.oy+d.y0/1000, this.oy+d.y1/1000, this.base+d.h/1000]).sort((p, q)=>p[0]-q[0]);
+    const q=(a, z, za, zb)=>{ if (z>a+0.005 && zb>za) m.quad([x, a, za], [x, z, za], [x, z, zb], [x, a, zb], [nx, 0, 0]); };
+    let y=this.oy; for (const [a, z, h] of C){ q(y, a, b, c); q(a, z, h, c); y=Math.max(y, z); }
+    q(y, this.oy+this.Wi, b, c);
+  }
+  /** ворота (дверь) изнутри — вид в разрезе: коробка, створки с обшивкой и рёбрами, запорные штанги у притвора, петли,
+   *  ручки: в торце (wall 'left' | 'right', d.y0…d.y1) или в задней стене ('back', d.x0…d.x1); n — створок */
+  innerLeaves(d, wall, n){
+    const end=wall==='left' || wall==='right', pl=wall==='left' ? this.ox : wall==='right' ? this.ox+this.Li : this.oy+this.Wi, s=wall==='left' ? 1 : -1;
+    const u0=(end ? this.oy+d.y0/1000 : this.ox+d.x0/1000), u1=(end ? this.oy+d.y1/1000 : this.ox+d.x1/1000), z0=this.base, z1=this.base+d.h/1000;
+    const box=(m, a, b, za, zb, t0, t1, r=0.004)=>{ const w0=pl+s*t0, w1=pl+s*t1, lo=Math.min(w0, w1), hi=Math.max(w0, w1);
+      if (end) m.box(lo, a, za, hi, b, zb, r); else m.box(a, lo, za, b, hi, zb, r); };
+    const fr=this.M(StMat.paint(RalColor.shade(this.frame, 0.9), 0.45)), lf=this.M(StMat.paint(RalColor.shade(this.lining, 0.9), 0.5)), rib=this.M(StMat.paint(RalColor.shade(this.lining, 0.78), 0.55));
+    const mt=this.M(StMat.metal('#c3c8cd', 0.3)), dk=this.M(StMat.paint('#23272b', 0.6)), f=0.05;
+    box(fr, u0-f, u0, z0, z1+f, 0, 0.03); box(fr, u1, u1+f, z0, z1+f, 0, 0.03); box(fr, u0-f, u1+f, z1, z1+f, 0, 0.03);   // коробка
+    const lw=(u1-u0)/n;
+    for (let i=0; i<n; i++){ const a=u0+lw*i+0.005, b=u0+lw*(i+1)-0.005; box(lf, a, b, z0+0.01, z1-0.005, 0.004, 0.018);
+      for (const k of [0.25, 0.5, 0.75]){ const z=z0+(z1-z0)*k; box(rib, a+0.04, b-0.04, z-0.02, z+0.02, 0.018, 0.03); }   // рёбра каркаса створки
+      const hx=i===0 ? a+0.02 : b-0.02; for (const k of [0.12, 0.5, 0.88]){ const z=z0+(z1-z0)*k; box(dk, hx-0.02, hx+0.02, z-0.06, z+0.06, 0.018, 0.045); } }   // петли
+    if (n>1 && d.kind!=='entry'){ const m=(u0+u1)/2;   // запорные штанги и ручки у притвора
+      for (const x of [m-0.06, m+0.04]) box(mt, x, x+0.02, z0+0.06, z1-0.06, 0.03, 0.05, 0.008);
+      for (const x of [m-0.1, m+0.08]) box(dk, x, x+0.02, z0+0.95, z0+1.15, 0.03, 0.06); }
+    else box(dk, u1-0.12, u1-0.1, z0+0.95, z0+1.15, 0.03, 0.06);   // ручка двери
+    if (d.kind==='dgu') for (let z=z0+0.25; z<z1-0.2; z+=0.06) box(rib, u0+0.08, u1-0.08, z, z+0.02, 0.03, 0.04);   // жалюзи двери ДГУ
+    if (d.wicket){ const ww=d.wicket.w/1000, wh=d.wicket.h/1000, ya=u1-0.08-ww; for (const [p, q, r2, t] of [[ya, ya+ww, z0+0.06, z0+0.075], [ya, ya+ww, z0+0.06+wh, z0+0.075+wh], [ya, ya+0.015, z0+0.06, z0+0.06+wh], [ya+ww-0.015, ya+ww, z0+0.06, z0+0.06+wh]]) box(dk, p, q, r2, t, 0.018, 0.024); }
+  }
   /** жалюзи в стене: along 1 — в торце (x = w), 0 — в длинной стене (y = w); out — наружу (±1) */
   louver(along, w, u0, u1, z0, z1, out){
     const fr=this.M(StMat.paint('#8f969d', 0.5)), sl=this.M(StMat.paint('#5d646b', 0.55)), n=Math.max(3, Math.round((z1-z0)/0.07)), P=(u, o, z)=>along===1 ? [w+out*o, u, z] : [u, w+out*o, z];
@@ -959,29 +999,6 @@ void main(){ vec4 a=texture(uT, vU); float c=clamp(a.a, 0.0, 1.0); vec3 col=a.a>
   }
 }
 
-// ---------------------------------------------------------------- подписи на картинке: выноска к точке сцены и текст в рамке
-class StTags {
-  static FONT = '600 22px Arial, "Segoe UI", sans-serif';
-  /** точка сцены → пиксели кадра w × h (та же камера, что у отрисовки) */
-  static proj(sc, w, h){ const cam=StCam.fit(sc.bounds(), w/h, 0.9, sc.az), vp=StM4.mul(StM4.persp(cam.fov, w/h, 0.1, cam.D*4), cam.view);
-    return p=>{ const q=StM4.apply(vp, p); return [(q[0]+1)/2*w, (1-q[1])/2*h]; }; }
-  /** canvas c с подписями sc.tags (новый canvas 2D) или c, если подписей нет */
-  static draw(c, sc){
-    const T=sc.tags||[]; if (!T.length) return c;
-    const out=document.createElement('canvas'); out.width=c.width; out.height=c.height; const g=out.getContext('2d'); g.drawImage(c, 0, 0);
-    const P=this.proj(sc, c.width, c.height), used=[], pad=10, H=34; g.font=this.FONT; g.textBaseline='middle';
-    for (const t of T){ const [x, y]=P(t.p); if (!(x>0 && x<out.width && y>0 && y<out.height)) continue;
-      const w=g.measureText(t.text).width+2*pad; let bx=Math.min(out.width-w-12, Math.max(12, x-w/2)), by=Math.max(12, y-110);
-      while (used.some(r=>bx<r[0]+r[2]+8 && bx+w+8>r[0] && by<r[1]+H+6 && by+H+6>r[1])) by+=H+8;
-      used.push([bx, by, w]);
-      g.strokeStyle='#1f2a36'; g.lineWidth=2; g.beginPath(); g.moveTo(x, y); g.lineTo(Math.max(bx+8, Math.min(bx+w-8, x)), by+H); g.stroke();
-      g.fillStyle='#1f2a36'; g.beginPath(); g.arc(x, y, 5, 0, Math.PI*2); g.fill();
-      g.fillStyle='rgba(255,255,255,0.94)'; g.fillRect(bx, by, w, H); g.strokeRect(bx, by, w, H);
-      g.fillStyle='#1b2430'; g.fillText(t.text, bx+pad, by+H/2+1); }
-    return out;
-  }
-}
-
 // ---------------------------------------------------------------- картинка для КП и вкладки «Компоновка»
 class StationRender {
   static PASSES = 64;        // проходов накопления: тени и сглаживание (программная отрисовка — меньше)
@@ -1000,27 +1017,28 @@ class StationRender {
     catch(e){ this.okFlag=false; }
     return this.okFlag;
   }
-  static key(plan, view){ return (plan.hash||'')+(view==='out' ? '|o' : ''); }
-  static cached(plan, view){ return this.cache.get(this.key(plan, view))||null; }
+  static key(plan, view, az){ return (plan.hash||'')+(view==='out' ? '|o'+(az!=null ? az : '') : ''); }
+  static cached(plan, view, az){ return this.cache.get(this.key(plan, view, az))||null; }
   /** высота кадра — по сцене (длинный контейнер — ниже кадр, без пустых полей) */
   static size(scene){ const W=this.W, c=StCam.fit(scene.bounds(), 1.6, 0.9, scene.az), k=c.span[1]/c.span[0]*1.6; return [W, Math.round(Math.max(760, Math.min(1100, W/1.6*Math.max(0.62, Math.min(1, k*1.12)))))]; }
-  /** 3D-вид картинкой: {src — JPEG, w, h}; view — 'in' (разрез, по умолчанию) или 'out' (снаружи); WebGL2 нет или сбой —
-   *  null (берётся SVG-вид). По очереди, с кэшем; логотипы и знаки — наклейками (StDecal) */
-  static image(plan, meta, view){
-    const key=this.key(plan, view); if (this.cache.has(key)) return Promise.resolve(this.cache.get(key));
+  /** 3D-вид картинкой: {src — JPEG, w, h}; view — 'in' (разрез, по умолчанию) или 'out' (снаружи; az — ракурс, °: 0 —
+   *  спереди, 90 — слева, −90 — справа, 180 — сзади); WebGL2 нет или сбой — null (берётся SVG-вид). По очереди, с кэшем;
+   *  логотипы и знаки — наклейками (StDecal) */
+  static image(plan, meta, view, az){
+    const key=this.key(plan, view, az); if (this.cache.has(key)) return Promise.resolve(this.cache.get(key));
     if (!plan.geo || !plan.geo.ext || !this.ok()) return Promise.resolve(null);
     const run=async ()=>{ if (this.cache.has(key)) return this.cache.get(key);
       try{
-        const m=await StDecal.meta(plan, { ...meta, view:view==='out' ? 'out' : 'in' }), sc=new StScene(plan, m).build(), [w, h]=this.size(sc);
+        const m=await StDecal.meta(plan, { ...meta, view:view==='out' ? 'out' : 'in', ...(view==='out' && az!=null ? { az } : {}) }), sc=new StScene(plan, m).build(), [w, h]=this.size(sc);
         await StDecal.prepare(sc);
         if (!this.gl) this.gl=new StGl(document.createElement('canvas'));
-        const c=StTags.draw(await this.gl.render(sc, { w, h, passes:this.soft ? Math.min(this.PASSES, 24) : this.PASSES, shadow:this.soft ? 1536 : 2048 }), sc);
+        const c=await this.gl.render(sc, { w, h, passes:this.soft ? Math.min(this.PASSES, 24) : this.PASSES, shadow:this.soft ? 1536 : 2048 });
         const im={ src:c.toDataURL('image/jpeg', 0.92), w:c.width, h:c.height };
-        this.cache.set(key, im); if (this.cache.size>16) this.cache.delete(this.cache.keys().next().value);
+        this.cache.set(key, im); if (this.cache.size>24) this.cache.delete(this.cache.keys().next().value);
         return im;
       } catch(e){ this.gl=null; this.okFlag=false; return null; } };   // сбой — до перезапуска SVG-вид
     const p=this.queue.then(run, run); this.queue=p.catch(()=>null); return p;
   }
 }
 
-if (typeof module!=='undefined') module.exports={ StV, StMesh, StMat, StScene, StM4, StCam, StSky, StTags };
+if (typeof module!=='undefined') module.exports={ StV, StMesh, StMat, StScene, StM4, StCam, StSky };

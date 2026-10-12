@@ -429,3 +429,15 @@ dialog.st-confirm:has(.sh-t){width:min(820px,calc(100vw - 32px));max-width:none}
 /* «Мои настройки» менеджера */
 .mp-dlg label.mp-ck{display:flex;align-items:center;gap:8px;margin:8px 0;cursor:pointer}
 .mp-dlg .dlg-h h3 small{display:block;font-size:13px;font-weight:400;color:var(--muted)}
+/* матрица расстановки станций (Настройки → Инженерные правила станций) */
+.st-card.mx>summary{cursor:pointer;list-style-position:inside}
+.mx-h{margin:14px 0 6px;font-size:14px}
+.mx-tw{max-height:none;overflow-x:auto}
+.mx-t input[type=text]{padding:3px 6px;font-size:13px}
+.mx-t{width:auto;min-width:100%}
+.mx-t select{padding:3px 4px;font-size:13px;width:auto;min-width:118px;max-width:160px}
+.mx-t input[type=text]{min-width:52px}
+.mx-t input[type=checkbox]{width:auto}
+.mx-t td{vertical-align:middle;white-space:nowrap}
+.mx-sc{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px 14px}
+.mx-sc .f span{font-size:12.5px}
