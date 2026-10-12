@@ -76,6 +76,18 @@ Check.run('осушитель Dalgakiran DK: поправки производи
   assert.ok(h && /HPN/.test(h.title), 'DK HPN: '+(h && h.title));
 });
 
+Check.run('осушитель EXELUTE XRD: номинал при точке росы +10 °C — поправка серии 0,70 на +3 °C', ()=>{
+  // каталог EXELUTE 2026: 8 бар → 1,04; вход 40 °C → 0,96; помещение 30 °C → 1,06; F4 (+3 °C) = 0,70:
+  // F = 1,04 · 0,96 · 1,06 · 0,70 = 0,7408128
+  const p={ name:'Рефрижераторный осушитель EXELUTE XRD 100', attrs:{ maker:'EXELUTE', model:'XRD 100' } };
+  const o=DryerSizing.factor(p, 8, { tin:40, amb:30 });
+  assert.ok(o.s && /XRD 13–130/.test(o.s.title), 'серия XRD: '+(o.s && o.s.title));
+  near(o.kc, 0.7, 1e-12, 'поправка серии'); near(o.F, 1.04*0.96*1.06*0.7, 1e-9, 'F с поправкой серии');
+  // XRD P — своя серия (вход до 60 °C), XHD/XED — адсорбционные; у DK поправки серии нет (kc = 1)
+  assert.ok(/XRD P/.test(StationRules.series({ name:'Осушитель EXELUTE XRD 460 P', attrs:{ maker:'EXELUTE' } }, 'dryer').title));
+  assert.strictEqual(DryerSizing.factor({ name:'Осушитель Dalgakiran DK 100', attrs:{ maker:'Dalgakiran', model:'DK 100' } }, 7, { tin:35, amb:25 }).kc, 1);
+});
+
 Check.run('осушитель без данных производителя: типовые поправки серии (требует подтверждения)', ()=>{
   const p={ name:'Осушитель ОР-20', attrs:{ maker:'Пример' } };
   // рефрижераторный — по таблице DK: 9 бар → 1,075; вход 45 °C → 0,78; помещение 30 °C → 0,98: F = 0,821730

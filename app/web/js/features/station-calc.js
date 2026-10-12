@@ -167,8 +167,9 @@ class DryerSizing {
   static factor(p, bar, t, type){
     let s=StationRules.series(p, 'dryer'), generic=false;
     if (!s){ const g=StationRules.raw('dryer.generic')||{}, title=g[type==='ads' ? 'ads' : 'refrig']; s=((StationRules.data||{}).series||[]).find(z=>z.kind==='dryer' && z.title===title)||null; generic=!!s; }
-    if (s){ const kp=this.k(s.f.p, bar), ki=this.k(s.f.inlet, s.f.inlet ? t.tin : null), ka=this.k(s.f.ambient, s.f.ambient ? t.amb : null);
-      return { F:kp.k*ki.k*ka.k, s, generic, kp, ki, ka, out:[kp.out && 'давление', ki.out && 'температура входа', ka.out && 'температура помещения'].filter(Boolean) }; }
+    // s.k — постоянный множитель серии: номинал производителя указан не для точки росы +3 °C (EXELUTE XRD — для +10 °C)
+    if (s){ const kp=this.k(s.f.p, bar), ki=this.k(s.f.inlet, s.f.inlet ? t.tin : null), ka=this.k(s.f.ambient, s.f.ambient ? t.amb : null), kc=s.k>0 ? s.k : 1;
+      return { F:kp.k*ki.k*ka.k*kc, s, generic, kp, ki, ka, kc, out:[kp.out && 'давление', ki.out && 'температура входа', ka.out && 'температура помещения'].filter(Boolean) }; }
     const kp=AirChain.kp(bar); return { F:kp/StationRules.raw('dryer.margin'), s:null, generic:false, kp:{ k:kp }, out:[] };
   }
   static run(N, q, A, P){
@@ -190,6 +191,7 @@ class DryerSizing {
       if (!(cap>0)){ N.missing('dryer.flow.'+u.name, 'Нет производительности осушителя '+u.name); continue; }
       let data;
       if (o.s){ data=[['давление', f(p, 1)+' бар → '+f(o.kp.k, 3)], ...(o.s.f.inlet ? [['вход', f(t.tin, 0)+' °C → '+f(o.ki.k, 3)]] : []), ...(o.s.f.ambient ? [['помещение', f(t.amb, 0)+' °C → '+f(o.ka.k, 3)]] : []),
+          ...(o.kc!==1 ? [[o.s.kWhat||'поправка серии', f(o.kc, 2)]] : []),
           ['источник', (o.generic ? 'типовые поправки по таблице «'+o.s.title+'» — ' : '')+[o.s.source.doc, o.s.source.item].filter(Boolean).join(', ')]];
         if (o.generic){ N.rule('dryer.generic'); rules.push('dryer.generic');
           N.missing('series.dryer.'+(u.attrs.maker||'')+'.'+(u.attrs.model||u.name), `Данные для расчёта неполные: поправок производителя для осушителя «${u.name}» нет — типовые по таблице «${o.s.title}»`); } }
@@ -197,7 +199,7 @@ class DryerSizing {
         data=[['давление', f(p, 1)+' бар → '+f(o.kp.k, 3)+' (типовая таблица)'], ['запас на температуру', '÷ '+f(StationRules.raw('dryer.margin'))]];
         N.missing('series.dryer.'+(u.attrs.maker||'')+'.'+(u.attrs.model||u.name), `Данные для расчёта неполные: поправки производителя для осушителя «${u.name}» не найдены — типовая таблица`); }
       const corr=cap*o.F, fit=N.fits(corr, Q), ok=fit.ok; if (fit.edge) rules.push('calc.tolerance');
-      N.step({ what:`${u.name}${u.qty>1 ? ' × '+u.qty+' (параллельно)' : ''}`, formula:o.s ? 'Qосуш · Fp · Fвх'+(o.s.f.ambient ? ' · Fокр' : '')+' ≥ Σ Qраб' : 'Qосуш · Kp ÷ запас ≥ Σ Qраб', data:[['номинал', f(cap)+' м³/мин'], ...data, ['через осушитель', f(Q)+' м³/мин']],
+      N.step({ what:`${u.name}${u.qty>1 ? ' × '+u.qty+' (параллельно)' : ''}`, formula:o.s ? 'Qосуш · Fp · Fвх'+(o.s.f.ambient ? ' · Fокр' : '')+(o.kc!==1 ? ' · Fтр' : '')+' ≥ Σ Qраб' : 'Qосуш · Kp ÷ запас ≥ Σ Qраб', data:[['номинал', f(cap)+' м³/мин'], ...data, ['через осушитель', f(Q)+' м³/мин']],
         rules, result:'с поправками '+f(corr)+' м³/мин', ok, margin:CalcNote.pct(corr, Q), note:fit.note, pick:u.name });
       if (!ok) N.issue('error', `${CalcNote.lbl('Осушитель', u.name)}: с поправками ${f(corr)} м³/мин — меньше производительности компрессоров ${f(Q)} м³/мин.`);
       if (o.out.length) N.issue('warn', `${CalcNote.lbl('Осушитель', u.name)}: условия вне таблицы производителя (${o.out.join(', ')}) — взяты крайние значения, уточните у производителя.`);

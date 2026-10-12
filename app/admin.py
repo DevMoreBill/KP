@@ -1562,6 +1562,15 @@ class AdminApi:
         """Резервная копия файлом: .json или .zip с изображениями — предпросмотр или загрузка (изображения — только недостающие)."""
         b = self.bundle()
         d, z, imgs = b.read(data)
+        from catalog_patch import CatalogPatch
+        if CatalogPatch.is_patch(d):        # правки каталога: только перечисленные поля позиций, цены и остатки не трогаются
+            if z:
+                z.close()
+            res = CatalogPatch(self.st).run(d, apply, actor(self.h, True)[1], self.import_backup)
+            if apply:
+                self.log('import_db', 'db', 'catalog-patch', None, {'title': res['patch']['title'], 'items': res['patch']['written'],
+                                                                     'fields': res['patch']['fields'], 'skipped': res['patch']['conflictCount']})
+            return res
         try:
             res = self.import_(d, apply, sections)
             res['images'] = b.plan(imgs) if imgs else None

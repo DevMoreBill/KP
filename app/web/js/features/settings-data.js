@@ -87,10 +87,11 @@ class DataTransfer {
   static bindImport(m, done){
     m.querySelector('#impF').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if (f) DataTransfer._preview(m, f); };
     m.querySelector('#impP').addEventListener('click', async e=>{ const b=e.target.closest('[data-imp]'); if (!b || !DataTransfer.file) return;
-      if (!await stConfirm('Загрузить данные из «'+DataTransfer.file.name+'»?','Перед загрузкой программа сохранит копию текущей базы. Записи с теми же id будут заменены, новые — добавлены, ничего не удаляется. Изображения добавляются только недостающие.','Загрузить')) return;
+      const patch=b.dataset.patch==='1';
+      if (!await stConfirm('Загрузить данные из «'+DataTransfer.file.name+'»?', patch ? 'Перед загрузкой программа сохранит копию текущей базы. В позициях каталога изменятся только перечисленные в файле поля; цены, закупка, остатки и фото не меняются. Поля, изменённые после выгрузки копии, пропускаются.' : 'Перед загрузкой программа сохранит копию текущей базы. Записи с теми же id будут заменены, новые — добавлены, ничего не удаляется. Изображения добавляются только недостающие.','Загрузить')) return;
       b.disabled=true;
       try{ const r=await DataTransfer._send('import/file?sections='+b.dataset.imp, DataTransfer.file);
-        DataTransfer.file=null; toast('Загружено'+(r.images?`, изображений добавлено: ${stNum(r.images.written)}`:''));
+        DataTransfer.file=null; toast(r.patch ? `Правки внесены: позиций ${stNum(r.patch.written)}, полей ${stNum(r.patch.fields)}${r.patch.conflictCount ? `, пропущено ${stNum(r.patch.conflictCount)}` : ''}` : 'Загружено'+(r.images?`, изображений добавлено: ${stNum(r.images.written)}`:''));
         refreshCat(); loadManagers(); loadClients(); if (done) done(); }
       catch(err){ b.disabled=false; toast('Не загружено: '+err.message); } });
   }
@@ -100,11 +101,23 @@ class DataTransfer {
   static async _preview(m, f){
     const box=m.querySelector('#impP'); box.innerHTML=`<p class="muted">Проверяю «${esc(f.name)}» (${stSize(f.size)})…</p>`;
     try{ const r=await DataTransfer._send('import/file/preview', f); DataTransfer.file=f;
+      if (r.patch){ box.innerHTML=DataTransfer._patchHtml(r); return; }
       const im=r.images;
       box.innerHTML=`<p class="muted">Копия от ${esc(stTime(r.createdAt))}. Будет:</p><table class="pv-t">${Object.entries(r.report).map(([k,v])=>`<tr><td>${DataTransfer.NAMES[k]||esc(k)}</td><td>новых ${v.new}, заменится ${v.updated}${v.invalid?`, <span class="bad-t">с ошибками ${v.invalid}</span>`:''}</td></tr>`).join('')}
           ${im?`<tr><td>Изображения</td><td>добавится ${stNum(im.new)}, уже есть ${stNum(im.exist)}${im.invalid?`, <span class="bad-t">пропущено ${im.invalid}</span>`:''}</td></tr>`:''}</table>
         ${r.errors.length?`<p class="msg err" style="text-align:left">${r.errors.map(esc).join('<br>')}</p>`:''}
         <button class="btn primary" type="button" data-imp="${esc(Object.keys(r.report).join(','))}" style="margin-top:10px">Загрузить</button>`; }
     catch(err){ DataTransfer.file=null; box.innerHTML=`<p class="msg err" style="text-align:left">${esc(err.message)}</p>`; }
+  }
+
+  /** предпросмотр файла правок каталога (CatalogPatch на сервере): сколько позиций и полей изменится, что пропущено */
+  static _patchHtml(r){
+    const p=r.patch;
+    return `<p class="muted">${esc(p.title||'Правки каталога')} — от ${esc(stTime(r.createdAt))}. Будет:</p><table class="pv-t">
+        <tr><td>Каталог</td><td>изменится позиций ${stNum(p.items)}, полей ${stNum(p.fields)}${p.same ? `; уже как в файле — ${stNum(p.same)}` : ''}${p.missing ? `; нет в базе — ${stNum(p.missing)}` : ''}</td></tr>
+        ${p.conflictCount ? `<tr><td>Пропущено</td><td><span class="bad-t">${stNum(p.conflictCount)}</span> — изменены после выгрузки копии</td></tr>` : ''}</table>
+      ${p.conflicts.length ? `<details style="margin-top:6px"><summary class="muted">Что пропущено</summary><p class="muted" style="text-align:left">${p.conflicts.map(esc).join('<br>')}${p.conflictCount>p.conflicts.length ? '<br>…' : ''}</p></details>` : ''}
+      ${r.errors.length ? `<p class="msg err" style="text-align:left">${r.errors.map(esc).join('<br>')}</p>` : ''}
+      ${p.items ? `<button class="btn primary" type="button" data-imp="catalog" data-patch="1" style="margin-top:10px">Внести правки</button>` : '<p class="muted">Изменять нечего.</p>'}`;
   }
 }

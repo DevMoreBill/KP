@@ -260,7 +260,7 @@ class KitNeed {
   static best(x, r){
     const A=this.air(x), q=A ? A.q : 0, req=StationReq.of(x), B=this.n(req.pressure)||0, Bc=this.bar(x); let o=null;
     if (/^dryer-/.test(r.key)){ const ads=r.cat==='dryer_ads', pdp=ads && r.f && r.f.dewPoint ? this.n(r.f.dewPoint) : null;
-      o=q>0 ? TzPick.dryer(ads, q, B, Bc, this.n(req.tmax), pdp) : null; }
+      o=q>0 ? TzPick.dryer(ads, q, B, Bc, this.n(req.tmax), pdp, TzPick.hmax(x)) : null; }
     else if (r.cat==='filter') o=TzPick.filter(r, q, B, Bc);
     else if (r.cat==='receiver'){
       const big=this.comps(x).filter(e=>e.air.flow>0).reduce((m, e)=>!m || e.air.flow>m.air.flow ? e : m, null);
@@ -282,7 +282,7 @@ class KitNeed {
     const A=this.air(x), F=this.filters(x, r), b=this.best(x, r), lab={ flow:'производительность от', volume:'объём от' }, unit={ flow:'м³/мин', volume:'л' };
     const need=[...Object.entries(F.r).filter(([, v])=>v && v[0]).map(([k, v])=>`${lab[k]||k} ${String(v[0]).replace('.', ',')} ${unit[k]||''}`.trim()),
       ...(F.min.pressure ? [`давление от ${AirChain.m3(F.min.pressure)} бар`] : []), ...Object.values(F.f).filter(Boolean)];
-    return { f:F.f, r:F.r, min:F.min, rows:r.rows, attrs:r.attrs, qty:r.qty, replace:r.replace, twin:b && b.twin,
+    return { f:F.f, r:F.r, min:F.min, rows:r.rows, attrs:r.attrs, qty:r.qty, replace:r.replace, twin:b && b.twin, grade:r.cat==='filter' && AirChain.GRADES[r.key] ? r.key : '',
       best:b ? { id:b.c.id, n:b.n, label:b.n>1 && r.cat==='receiver' ? `${b.n} шт.${b.twin ? ' до и после осушителя' : ''}` : '' } : null, title:r.title,
       need:`${r.swap ? 'Заменить: ' : 'Нужно: '}${r.title.charAt(0).toLowerCase()+r.title.slice(1)}${A && A.q ? ` — к компрессорам ${AirChain.m3(A.q)} м³/мин, ${AirChain.m3(A.bar)} бар` : ''}.`
         +(need.length ? ' Показаны подходящие: '+need.join(', ')+'.' : '') };
@@ -294,11 +294,12 @@ class KitNeed {
    *  давление у потребителя, безмасляный, частотный; ДГУ — мощность (резервный источник — ESP); насос — подача и напор */
   static mainPreset(x){
     const k=StationReq.kind(x), r=StationReq.of(x), m3=AirChain.m3, cats=(stationOf(x)||{}).main||[], res=Math.max(0, Math.round(this.n(r.reserve)||0)), work=+r.work||0;
-    const pool=catCache.filter(c=>cats.includes(attrsOf(c).cat)), tail=n=>`${n>1 ? ` — ${n} рабочих` : ''}${res ? ` + ${res} в резерве` : ''}`;
+    const pool=TzPick.stationPool(cats), tail=n=>`${n>1 ? ` — ${n} рабочих` : ''}${res ? ` + ${res} в резерве` : ''}`;
     const out=(u, n, test, need, extra={})=>({ test, qty:n+res, best:u ? { id:u.o.c.id, n:u.n+res, label:u.n+res>1 ? `${u.n} рабоч.${res ? ` + ${res} резерв.` : ''} = ${u.n+res} шт.` : '' } : null, need, ...extra });
     if (k==='comp'){ const q0=this.n(r.flow), B=this.n(r.pressure)||0; if (!(q0>0)) return null;
       const cls=String(StationUi.opts(x).air||''), wc=+(cls.split('.')[1]||0), ads=wc>0 && wc<=3, nd=StationReq.need(r, q0), Q=ads ? nd.v/(1-AirChain.PURGE) : nd.v;
-      const of=StationReq.oilFree(x), u=TzPick.comps(pool, Q, B, { oilFree:of, vsd:!!r.vsd, work }), n=u ? u.n : work||1, per=Q/n;
+      const H=TzPick.hmax(x), cp=pool.filter(c=>TzPick.fitsH(c, 'compressor', H)), cq={ oilFree:StationReq.oilFree(x), vsd:!!r.vsd, work };
+      const of=cq.oilFree, u=TzPick.comps(TzPick.electric(cp), Q, B, cq) || TzPick.comps(cp, Q, B, cq), n=u ? u.n : work||1, per=Q/n;
       return out(u, n, c=>TzPick.flow(c)>=per-1e-9 && (!of || TzPick.oilFree(c)),
         `Нужно ${m3(Q)} м³/мин${B ? ` при ${m3(B)} бар у потребителя` : ''}${nd.why || ads ? ` (${[nd.why, ads ? 'с запасом на продувку адсорбционного осушителя' : ''].filter(Boolean).join(', ')})` : ''}${tail(n)}. Показаны компрессоры от ${m3(per)} м³/мин${B ? `, давление от ${m3(B)} бар` : ''}${of ? `, безмасляные (${StationReq.oilWhy(x)})` : ''}.`,
         { min:B>0 ? { pressure:B } : {} }); }
@@ -360,7 +361,7 @@ class KitNeed {
         if (r.act){ const t=this.apply(x, r); if (t) got.push(t); continue; }
         const b=this.best(x, r); if (!b){ none.push(r.title.replace(/\s*\(.*?\)/g, '')); continue; }
         if (Array.isArray(r.replace)) x.kit.parts=x.kit.parts.filter(z=>!r.replace.includes(z.id));
-        for (let k=0; k<(b.twin ? 2 : 1); k++){ const p=await TzPick.part(b.c, b.n); x.kit.parts.push(p); }
+        for (let k=0; k<(b.twin ? 2 : 1); k++){ const p=await TzPick.part(b.c, b.n); if (r.cat==='filter' && AirChain.GRADES[r.key]) p.airGrade=r.key; x.kit.parts.push(p); }
         got.push((b.twin ? '2 × ' : '')+(b.n>1 ? b.n+' × ' : '')+b.c.name); } }
     this.done(x);
     toast((got.length ? 'Добавлено: '+got.join('; ') : 'Ничего не добавлено')+(none.length ? '. В каталоге нет: '+none.join('; ')+' — добавьте вручную' : ''));
