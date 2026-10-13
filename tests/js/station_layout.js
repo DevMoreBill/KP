@@ -1590,6 +1590,30 @@ Check.run('ресиверы в два ряда в конце ряда — ста
   draw(p, 'ресиверы в два ряда');
 });
 
+Check.run('ручные правила доходят до станций: отпечаток по значениям, ресиверы в паре раздвигаются, ворота по правилам', ()=>{
+  const base=JSON.parse(JSON.stringify(StationRules.data)), mod=f=>{ const b=JSON.parse(JSON.stringify(base)); f(b.rules.find(r=>r.id==='layout.matrix').value); return b; };
+  const dl=P('Винтовой компрессор Dali DL-55/8GA', { cat:'comp_screw', kw:55, flow:10, size:'1650 × 1450 × 1840' }, { role:'main', qty:2 });
+  const dry=P('Осушитель SMC IDFA150F-40', { cat:'dryer_refrig', flow:22.3, size:'950 × 1290 × 1332' }), rec=P('Ресивер АСО РВ 900/10', { cat:'receiver', volume:900, size:'890 × 870 × 2040' }, { qty:2 });
+  const inp={ cont:C('block', { sizeAuto:true }), parts:[dl, dry, rec] }, h0=StationLayout.hash(inp);
+  const pairOf=p=>{ const R=p.items.filter(i=>i.kind==='receiver').sort((a, b)=>a.y-b.y); return R.length===2 && R[0].x===R[1].x ? R[1].y-(R[0].y+R[0].ly) : null; };
+  try{
+    // любое значение в «Настройках» меняет отпечаток (номер версии файла при правке — прежний): станция пересобирается
+    StationRules.use(mod(M=>{ M.service.addW=0; })); assert.notStrictEqual(StationLayout.hash(inp), h0, 'правка значения — другой отпечаток');
+    StationRules.use(JSON.parse(JSON.stringify(base))); assert.strictEqual(StationLayout.hash(inp), h0, 'те же значения — тот же отпечаток');
+    // пример владельца: ресиверы 900 л в паре поперёк у торца — не вплотную (от стен — 100 мм, промежуток — сколько есть)
+    const p=solve(inp.cont, inp.parts), g=pairOf(p); assert.ok(p.mode && p.mode.ends && g>=200, 'ресиверы в паре — с промежутком: '+g);
+    // «вплотную нельзя» и «не менее» больше, чем есть места, — правило соблюдается (не в паре поперёк)
+    StationRules.use(mod(M=>{ Object.assign(M.pair.rows.find(r=>r.a==='receiver' && r.b==='receiver'), { close:false, min:400, base:400 }); }));
+    const q=solve(inp.cont, inp.parts), gq=pairOf(q); assert.ok(gq==null || gq>=400, 'не менее 400 — соблюдено: '+gq);
+    // сервисные ворота — в размер агрегата
+    StationRules.use(mod(M=>{ Object.assign(M.service, { addW:0, addH:0, step:10, wall:0, minH:300, min:300 }); }));
+    const sv=(solve(inp.cont, inp.parts).doors||[]).filter(d=>d.kind==='service'); assert.ok(sv.length && sv.every(d=>d.x1-d.x0===1650 && d.h===1840), 'ворота в размер: '+JSON.stringify(sv.map(d=>[d.x1-d.x0, d.h])));
+    // торцевые ворота: «высота не меньше» и «ниже потолка» — из правил
+    StationRules.use(mod(M=>{ Object.assign(M.gate, { minH:2600, top:300 }); })); const gt=solve(inp.cont, inp.parts);
+    assert.ok(gt.gates && gt.gates.h===Math.min(2600, gt.int[2]-300), 'ворота в торце по правилам: '+[gt.gates && gt.gates.h, gt.int[2]]);
+  } finally { StationRules.use(base); }
+});
+
 Check.run('без продольного прохода: компрессор у торца, ворота с обеих сторон и в торцах, ресиверы в два ряда (пример ПНЕВМОТЕХ 13.10)', ()=>{
   const k90=P('Винтовой компрессор Dalgakiran DVK 90', { cat:'comp_screw', maker:'Dalgakiran', kw:90, size:'1900 × 1200 × 1800', mass:1900 }, { role:'main' });
   const ads=P('Адсорбционный осушитель DAD 150', { cat:'dryer_ads', size:'1100 × 700 × 2000', mass:400 });

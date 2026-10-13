@@ -520,7 +520,7 @@ class PumpSizing {
 class StationCalc {
   static cache=new Map();
   static run(x){
-    const q=CalcInput.of(x), plan=StationUi.plan(x), key=JSON.stringify([ReqNum.errors(x), q.req, q.cls, !!StationReq.of(x).accept, q.units.map(u=>[u.name, u.qty, u.attrs]), StationRules.version(), plan.hash]);
+    const q=CalcInput.of(x), plan=StationUi.plan(x), key=JSON.stringify([ReqNum.errors(x), q.req, q.cls, !!StationReq.of(x).accept, q.units.map(u=>[u.name, u.qty, u.attrs]), StationRules.version()+StationRules.stamp(), plan.hash]);
     const c=this.cache.get(x.id); if (c && c.key===key) return c.res;
     const N=new CalcNote();
     if (!StationRules.ok()){ N.issue('warn', 'Файл инженерных правил станций не загружен — расчёт не выполнен.'); return N.result(); }

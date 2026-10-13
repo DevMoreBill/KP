@@ -37,7 +37,9 @@ async function stFeeds(m){
         ${x.job&&x.job.state==='run'?`<span class="ok-t">${x.job.kind==='import'?'Загружаю':'Проверяю'}… ${x.job.done}/${x.job.total||'?'}</span>`:''}</div>
         <div class="acts"><button class="btn" type="button" data-fd="open" data-id="${esc(x.id)}">${x.id===FD.sel?'Свернуть':'Открыть'}</button></div></div>`).join('')}</div>`:'<p class="muted">Фидов пока нет.</p>'}</div>
     ${FD.edit?fdForm(FD.edit, true):''}
-    ${f?`<div class="st-card fd-panel" id="fdPanel">${fdForm(f)}${fdIsFiles(f)?fdFiles(f):fdExtra(f)}<div id="fdDisc">${fdDisc(f)}</div>${fdActions(f)}<div id="fdJob">${fdJob(f.job)}</div><div id="fdPrev">${FD.prev&&FD.prev.id===f.id?fdPreview(FD.prev, f):''}</div><div id="fdLog"></div></div>`:''}`;
+    ${f?`<div class="st-card fd-panel" id="fdPanel">${fdForm(f)}${fdIsFiles(f)?fdFiles(f):fdExtra(f)}<div id="fdDisc">${fdDisc(f)}</div>${fdActions(f)}<div id="fdJob">${fdJob(f.job)}</div><div id="fdPrev">${FD.prev&&FD.prev.id===f.id?fdPreview(FD.prev, f):''}</div><div id="fdLog"></div></div>`:''}
+    ${MakerLogoPanel.html()}`;
+  MakerLogoPanel.bind(m);
   m.onclick=e=>fdClick(e, m);
   m.oninput=e=>{ const t=e.target; if (t.dataset.fdd==='kwMax'){ const l=t.parentNode.querySelector('.fd-dku'); if (l) l.hidden=!t.value.trim(); } };
   m.onchange=e=>{ const t=e.target;
