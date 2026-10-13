@@ -185,7 +185,7 @@ class StationMatrix {
       { kind:'dgu', on:false }, { kind:'cabinet', on:false }] },
     gate:{ addW:200, addH:200, full:0.75, twoAt:8000, minW:1500 },
     service:{ addW:200, addH:200 },
-    door:{ w:900, h:2000 },
+    door:{ w:900, h:2000, gap:300, edge:300 },
     aisle:{ service:600, mountAdd:200 },
     exits:{ n:2, dist:5000 },
     exhaust:{ louvre:300 },
@@ -217,7 +217,7 @@ class StationMatrix {
   static rot(kind){ const r=(this.M.rotate.rows||[]).find(q=>q.kind===kind); return r ? r.on!==false : !/^(dgu|cabinet)$/.test(kind); }
   static gate(){ const g=this.M.gate; return { addW:this.num(g.addW, 200), addH:this.num(g.addH, 200), full:this.num(g.full, 0.75), twoAt:this.num(g.twoAt, 8000), minW:this.num(g.minW, 1500) }; }
   static service(){ const g=this.M.service; return { addW:this.num(g.addW, 200), addH:this.num(g.addH, 200) }; }
-  static door(){ const d=this.M.door; return { w:Math.max(900, this.num(d.w, 900)), h:Math.max(2000, this.num(d.h, 2000)) }; }
+  static door(){ const d=this.M.door; return { w:Math.max(900, this.num(d.w, 900)), h:Math.max(2000, this.num(d.h, 2000)), gap:Math.max(0, this.num(d.gap, 300)), edge:Math.max(0, this.num(d.edge, 300)) }; }
   static aisle(){ const a=this.M.aisle; return { service:this.num(a.service, 600), mountAdd:this.num(a.mountAdd, 200) }; }
   static exits(){ const x=this.M.exits; return { n:Math.max(1, this.num(x.n, 2)), dist:this.num(x.dist, 5000) }; }
   static louvre(){ return Math.max(200, this.num(this.M.exhaust.louvre, 300)); }
@@ -759,11 +759,14 @@ class ReceiverPlan {
    *  'mass' (обоснование 500 л), space — 900 л не помещается (по высоте), не задано — по правилу ряда */
   static size(V, o={}){
     const U=this.UNIT, Sm=this.SMALL, ex=this.M.excess; if (!(V>0)) return null;
-    const by900=()=>{ const n=Math.max(1, Math.ceil(V/U-1e-9)); return { size:U, n, total:n*U }; };
+    // число — наименьшее допустимое (решение ПНЕВМОТЕХ 13.10 «слишком много ресиверов»): не меньше o.min (по методике — 80 %
+    // нужного объёма и 15 % минутной производительности), а не всегда вверх до полного нужного объёма
+    const Vn=o.min>0 ? o.min : V, short=Vn<V-1e-9;
+    const by900=()=>{ const n=Math.max(1, Math.ceil(Vn/U-1e-9)); return { size:U, n, total:n*U }; };
     if (o.force==='900') return { ...by900(), why:`${this.l(U)} л — выбор вручную` };
     if (o.force==='500' || o.space) return { size:Sm, n:1, total:Sm, why:`${this.l(Sm)} л — ${o.space ? 'ресивер 900 л не помещается по высоте' : o.reason==='space' ? 'нехватка места (вручную)' : o.reason==='mass' ? 'ограничение по массе (вручную)' : 'выбор вручную'}`, forced:true, reason:o.space ? 'space' : o.reason||'' };
     if (V<=Sm && U>ex*V) return { size:Sm, n:1, total:Sm, why:`${this.l(Sm)} л — ресивер ${this.l(U)} л дал бы запас ${Math.round(U/V*100)} % (больше ${Math.round(ex*100)} %)`, reason:'excess' };
-    const b=by900(); return { ...b, why:`кратно ${this.l(U)} л: ${b.n} × ${this.l(U)} = ${this.l(b.total)} л${V<=Sm ? ` (${this.l(Sm)} л не применён: ${this.l(U)} л даёт запас не больше ${Math.round(ex*100)} %)` : ''}` };
+    const b=by900(); return { ...b, why:`кратно ${this.l(U)} л: ${b.n} × ${this.l(U)} = ${this.l(b.total)} л${short && b.total<V-1e-9 ? ` — наименьшее допустимое по методике (${Math.round(b.total/V*100)} % нужного, не меньше ${Math.round(this.M.low*100)} %)` : ''}${V<=Sm ? ` (${this.l(Sm)} л не применён: ${this.l(U)} л даёт запас не больше ${Math.round(ex*100)} %)` : ''}` };
   }
   /** расчёт: o — {Q — наибольший компрессор, м³/мин, piston — он поршневой, S — подача рабочих компрессоров, м³/мин,
    *  dp — ΔP нагрузка/разгрузка, бар (не задан — правило pressure.band), cyc — {T, C, drop} | null, point — пик точки, м³/мин,
@@ -775,14 +778,20 @@ class ReceiverPlan {
     const M=this.M, Q=o.Q>0 ? o.Q : 0; if (!Q) return null;
     const dp=o.dp>0 ? o.dp : StationRules.raw('pressure.band'), dpSrc=o.dp>0 ? 'задан' : 'по правилу pressure.band';
     const V={ p1:Q/(M.cycles*dp)*1000 }, cyc=o.cyc && o.cyc.T>0 && o.cyc.C>0 && o.cyc.drop>0 ? o.cyc : null;
+    // по приоритетам (уточнено 13.10 «слишком много ресиверов»): винтовой — цикл нагрузки/разгрузки (1), с циклограммой — и
+    // пиковый разбор (2); базовый буфер (3) — у поршневого (пуск-останов) без циклограммы; объём по ТЗ — нижняя граница
     if (cyc) V.p2=Math.max(0, cyc.T*(cyc.C-(o.S||Q))*M.pa/cyc.drop*1000);
-    else V.p3=(o.piston ? M.base.piston : M.base.screw)*Q*1000;
+    else if (o.piston) V.p3=M.base.piston*Q*1000;
     if (o.tz>0) V.tz=o.tz;
     const cand=[['p1', 1], ['p2', 2], ['p3', 3], ['tz', 'ТЗ']].filter(([k])=>V[k]!=null), gov=cand.reduce((m, c)=>V[c[0]]>V[m[0]]+1e-9 ? c : m, cand[0]);
-    const theor=Math.round(V[gov[0]]), main=this.size(theor, o), wetOn=o.dryer && !o.mode;
-    const wet=wetOn && main ? this.size(main.total*M.wet[0]) : null;
+    // основной — наименьшее допустимое число; мокрый — если задан («основной + мокрый») или по методике при риске проскока
+    // влаги (пик по циклограмме или у точки больше производительности осушителя), иначе не нужен
+    const theor=Math.round(V[gov[0]]), main=this.size(theor, { ...o, min:gov[0]==='tz' ? theor : Math.max(M.low*theor, M.ratio[0]*Q*1000) });   // объём по ТЗ — полностью
+    const peak=Math.max(cyc ? cyc.C : 0, o.point||0), risk=o.dryerCap>0 && peak>o.dryerCap;
+    const wetOn=o.dryer && (o.mode==='both' || (!o.mode && risk)), wv=main ? main.total*M.wet[0] : 0;
+    const wet=wetOn && main ? this.size(wv, { min:wv }) : null;
     const local=o.point>M.local*Q ? this.size(M.base.screw*o.point*1000) : null;
-    const R={ prio:gov[1], V, theor, main, wet, local, dp, dpSrc, cyc, Q, S:o.S||Q, piston:!!o.piston, mode:o.mode||'', checks:[] };
+    const R={ prio:gov[1], V, theor, main, wet, local, dp, dpSrc, cyc, Q, S:o.S||Q, piston:!!o.piston, mode:o.mode||'', risk, dryer:!!o.dryer, checks:[] };
     R.checks=this.checks(R, o);
     return R;
   }
@@ -820,7 +829,7 @@ class ReceiverPlan {
   /** рекомендация одной строкой: «основной 900 л × 3 = 2 700 л (после осушителя); мокрый 500 л × 1 (до осушителя)» */
   static text(R){
     const u=(x, w)=>x ? `${w} ${this.l(x.size)} л × ${x.n}${x.n>1 ? ` = ${this.l(x.total)} л` : ''}` : '';
-    const where=R.mode==='before' ? ' (до осушителя)' : R.wet || R.mode==='after' ? ' (после осушителя)' : '';
+    const where=R.mode==='before' ? ' (до осушителя)' : R.wet || R.dryer || R.mode==='after' ? ' (после осушителя)' : '';
     return [u(R.main, 'основной')+where, R.wet ? u(R.wet, 'мокрый')+' (до осушителя)' : '', R.local ? u(R.local, 'у потребителя') : ''].filter(Boolean).join('; ');
   }
   /** расчёт по составу станции: eq — StationEquip.list (компрессоры, осушители, ресиверы с air), rq — StationReq.recvIn */
@@ -1085,7 +1094,7 @@ class StationHeat {
 // размера — по необходимому месту (шаг 100 мм, наименьшая площадь пола); заданный контейнер, в который не помещается, —
 // ошибка и подсказка, какой подойдёт; контейнер с большим запасом — подсказка, какой меньший подойдёт.
 class StationLayout {
-  static VER = 19;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
+  static VER = 20;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
   static MAX_L = 12000;
   static PIPE_PAD = 60;      // зазор вокруг фильтра на трубопроводе, мм
   static AIR_Y = 150;        // линия сжатого воздуха: ось — в 150 мм от задней стены (или посередине между рядами)
@@ -1095,6 +1104,13 @@ class StationLayout {
   // 900–1000 × 2000–2100) и коробка 50 мм с каждой стороны
   static get ENTRY(){ const d=StationMatrix.door(); return [300, 300+d.w+100]; }
   static get DOOR_MIN(){ return StationMatrix.door().w; }   // дверь оператора — не уже 900 мм в свету
+  /** проёмы дверей и ворот (решение ПНЕВМОТЕХ 13.10): на одной стене между ними — не меньше door.gap, от края станции
+   *  (наружного угла) — не меньше door.edge (матрица расстановки): {gap, eL — от торца по длине внутри, eW — от боковой стены
+   *  по ширине внутри}, мм */
+  /** начало проёма шириной w на стене длиной W: по месту v, но не ближе pad к краям; стена уже — по середине */
+  static inWall(v, w, W, pad){ return Math.round(W-2*pad<w ? (W-w)/2 : Math.max(pad, Math.min(W-pad-w, v))); }
+  static gaps(geo){ const d=StationMatrix.door(), e=geo && geo.ext, i=geo && geo.int, tL=e && i ? (e[0]-i[0])/2 : 0, tW=e && i ? (e[1]-i[1])/2 : 0;
+    return { gap:d.gap, eL:Math.max(this.DOOR.pad, Math.ceil(d.edge-tL)), eW:Math.max(this.DOOR.pad, Math.ceil(d.edge-tW)) }; }
   static PASS = 25;          // вынос агрегата через проём и по проходу (на роликах): зазор с каждой стороны, мм
   static TILT = /^(receiver|filter|cabinet|tank)$/;
   static NO_DOOR = /^(dryer|receiver)$/;   // осушителям и ресиверам сервисных дверей не делают — через ворота в торце (решение ПНЕВМОТЕХ 13.10)   // при выносе можно наклонить (сосуд, фильтр, шкаф, бак); остальное — стоя (масло, хладагент)
@@ -1382,7 +1398,7 @@ class StationLayout {
   // дверь оператора (между компрессором и осушителем), дальше — осушители и прочее с проходом перед ними; ресиверы — в два
   // ряда у дальнего торца, доступ — через ворота там, при необходимости плотнее (в паре — до вплотную, от стен — как
   // «плотно» у компрессора). Контейнер уже — в габарит перевозки
-  rowE(units, Lu, W, T=0){
+  rowE(units, Lu, W, T=0, pe=StationMatrix.door().edge){
     const C=units.filter(e=>e.kind==='compressor' && !e.slot);
     if (C.length!==1 || units.some(e=>/^(dgu|pump|tank)$/.test(e.kind))) return { ok:false, why:'mode' };
     const c=C[0], n=StationLayout.n, aRec=this.aisle[0], wt=StationMatrix.wall(c), tw=wt ? wt[1] : c.c.back[1];
@@ -1397,11 +1413,12 @@ class StationLayout {
       U.splice(j, 2, { e:Object.assign({}, a, { l:Math.max(a.l, b.l), w:a.w+g+b.w, h:Math.max(a.h, b.h), pairD:Math.max(a.w, b.w) }), rot:false, pair:[a, b], gap:g, end:true }); }
     const need=o=>o.e.w+o.e.c.back[1]+this.front(o.e)[1], bad=U.filter(o=>!o.ends && !o.end && need(o)>W);
     if (bad.length) return { ok:false, why:'width', bad:bad.map(o=>o.e), needW:Math.max(...bad.map(need)) };
-    // промежуток за компрессором: дверь оператора (с коробкой) мимо его сервисных ворот (шире его на addW, с шагом 100 мм)
-    const D=StationLayout.DOOR, SM=StationMatrix.service(), Ew=StationLayout.ENTRY[1]-StationLayout.ENTRY[0];
-    const sw=Math.max(D.min, Math.min(D.max, Math.ceil((c.l+SM.addW+2*T)/100)*100)), ov=Math.max(0, (sw-c.l)/2), dn=Math.ceil(ov+2*D.pad+Ew);
+    // промежуток за компрессором: дверь оператора (с коробкой) мимо его сервисных ворот (шире его на addW, с шагом 100 мм) —
+    // через door.gap; от края станции — не ближе door.edge (pe — внутри от торца)
+    const D=StationLayout.DOOR, SM=StationMatrix.service(), Ew=StationLayout.ENTRY[1]-StationLayout.ENTRY[0], dg=StationMatrix.door().gap;
+    const sw=Math.max(D.min, Math.min(D.max, Math.ceil((c.l+SM.addW+2*T)/100)*100)), ov=Math.max(0, (sw-c.l)/2), dn=Math.ceil(ov+dg+Ew+D.pad);
     // от торца — «плотно», но его сервисные ворота (шире его) не упираются в угол
-    const E=U.map(o=>o.e), gapsOf=lvl=>{ const g=this.chain(E, lvl).gaps; g[0]=Math.max(tw, Math.ceil(ov+D.pad-this.G)); g[1]=Math.max(g[1], dn); return g; };
+    const E=U.map(o=>o.e), gapsOf=lvl=>{ const g=this.chain(E, lvl).gaps; g[0]=Math.max(tw, Math.ceil(ov+Math.max(D.pad, pe)-this.G)); g[1]=Math.max(g[1], dn); return g; };
     const body=U.reduce((s, o)=>s+o.e.l, 0), rec=gapsOf(0), mn=gapsOf(1), sum=a=>a.reduce((s, v)=>s+v, 0);
     if (body+sum(mn)>Lu) return { ok:false, why:'length', needL:body+sum(mn), needL0:body+sum(rec) };
     const q=sum(rec)>sum(mn) ? Math.max(0, Math.min(1, (Lu-body-sum(mn))/(sum(rec)-sum(mn)))) : 1;
@@ -1411,7 +1428,7 @@ class StationLayout {
       if (o.ends || o.end){ it.back=Math.round(budget/2); it.aisle=budget-it.back; }
       else { const b=o.e.c.back, fr=this.front(o.e)[0]; it.back=budget-b[0]>=fr ? b[0] : budget-fr>=b[1] ? budget-fr : b[1]; it.aisle=budget-it.back; }
       it.y=W-it.back-d; items.push(it); x+=o.e.l+gaps[i+1]; });
-    const ce=items[0].x+c.l, entry=[Math.round(Math.max(ce+ov+D.pad, ce+(gaps[1]-Ew)/2)), 0]; entry[1]=entry[0]+Ew;
+    const ce=items[0].x+c.l, entry=[Math.round(Math.max(ce+ov+dg, ce+(gaps[1]-Ew)/2)), 0]; entry[1]=entry[0]+Ew;
     const eq=items.filter(i=>!i.o.ends && !i.o.end && !i.o.e.slot), aisleW=eq.length ? Math.min(...eq.map(i=>i.aisle)) : W-c.w;
     if (eq.length && aisleW<aRec) iss.push({ level:'warn', text:`Проход обслуживания ${n(aisleW)} мм — меньше рекомендуемых ${n(aRec)} мм (допустимо от ${n(this.aisle[1])} мм).` });
     if (q<1 && gaps.length>2) iss.push({ level:'warn', text:`Промежутки между оборудованием уменьшены до ${n(Math.min(...gaps.slice(1, -1)))} мм — по длине не хватает места для рекомендуемых.` });
@@ -1522,7 +1539,7 @@ class StationLayout {
   fitRow(units, geo, all){
     const g=this.G, [L, Wi, H]=geo.int, Lu=L-geo.x0-2*g, W=Wi-2*g, hh=this.heights(all, H), n=StationLayout.n;   // полезные размеры (под потолком зазор G — внутри отступа сверху)
     this.closeOk=!geo.auto && !geo.road;   // вплотную (ресиверы, фильтры) — только в заданном контейнере
-    let r=this.mode.ends ? (geo.x0 ? { ok:false, why:'mode' } : this.rowE(units, Lu, W, geo.t||0)) : this.row1(units, Lu, W);
+    let r=this.mode.ends ? (geo.x0 ? { ok:false, why:'mode' } : this.rowE(units, Lu, W, geo.t||0, StationLayout.gaps(geo).eL)) : this.row1(units, Lu, W);
     if (!this.mode.ends && (!r.ok || r.iss.some(i=>i.level==='warn'))){ const r2=this.row2(units, Lu, W); if (r2.ok && (!r.ok || !r2.iss.some(i=>i.level==='warn'))) r=r2; }
     if (!r.ok && this.mode.cross){ const r3=this.rowX(units, Lu, W); if (r3.ok) r=r3; }   // исключение: агрегат поперёк, две двери
     const res={ geo, ext:geo.ext, int:geo.int };
@@ -1566,12 +1583,28 @@ class StationLayout {
       r.issues.push({ level:'info', text:`Вход: ${who}${two ? `; вторая дверь оператора — ${r.exit ? 'в дальнем торце по оси прохода' : G && G.wicket ? `калитка ${n(G.wicket.w)} × ${n(G.wicket.h)} мм в створке ворот в дальнем торце` : r.secondDgu ? 'выход через дверь-жалюзи ДГУ в дальнем торце' : 'в стене прохода у дальнего торца'} (${r.second})` : ''}.` }); }
     r.entry=this.entry(r, geo);
     r.dguDoor=this.dguDoor(r, geo);
+    for (const t of this.openings(r, geo)) r.issues.push({ level:'warn', gap:true, text:t });
     if (r.dguDoor){ const d=r.dguDoor; r.issues.push({ level:'info', text:`ДГУ поз. ${d.pos}: в торце — двустворчатая дверь-жалюзи ${n(d.w)} × ${n(d.h)} мм — выброс горячего воздуха радиатора и проём для монтажа и демонтажа ДГУ (отдельная сервисная дверь не нужна).${d.fits ? '' : ' ДГУ шире проёма — демонтаж со снятием торцевой панели.'}` }); }
     r.access=this.access(r, geo);
     for (const q of r.access) if (q.miss.length) r.issues.push({ level:'warn', text:`Поз. ${q.pos}: к ${q.miss.map(k=>StationLayout.SIDE[k][1]).join(' и ')} не подойти для обслуживания (${q.miss.map(k=>q.s[k].t).join('; ')}) — нужен проход или сервисные ворота; увеличьте контейнер или поменяйте порядок в составе.` });
     r.level=r.bad ? 'error' : r.issues.some(i=>i.level==='warn') ? 'warn' : 'ok';
     r.used=this.used(r.items, geo);
     delete r.segs;
+  }
+  /** проёмы дверей и ворот по стенам: ближе door.edge к краю станции или ближе door.gap друг к другу (не уместились) —
+   *  тексты замечаний (решение ПНЕВМОТЕХ 13.10) */
+  openings(r, geo){
+    const [L, W]=geo.int, Q=StationLayout.gaps(geo), n=StationLayout.n, O={ front:[], back:[], left:[], right:[] }, out=[];
+    const name={ front:'боковой стене (вход)', back:'задней стене', left:'торце у входа', right:'дальнем торце' }, put=(w, a, b, t)=>O[w] && O[w].push([a, b, t]);
+    for (const d of r.doors||[]) put(d.wall, d.x0, d.x1, d.kind==='entry' ? 'дверь оператора' : 'сервисные ворота');
+    const e=r.entry; if (e && !e.sea) e.wall==='front' ? put('front', e.x0, e.x1, 'дверь оператора') : put(e.wall, e.y0, e.y1, 'дверь оператора');
+    for (const g of [r.gates, r.gates2]) if (g && !g.sea) put(g.wall, g.y0, g.y1, 'ворота');
+    if (r.exit) put(r.exit.wall, r.exit.y0, r.exit.y1, 'дверь оператора'); if (r.dguDoor) put('right', r.dguDoor.y0, r.dguDoor.y1, 'дверь-жалюзи ДГУ');
+    if (r.fuel && r.fuel.door) put('front', r.fuel.door.x0, r.fuel.door.x1, 'дверь отсека бака');
+    for (const [w, list] of Object.entries(O)){ const lim=w==='front' || w==='back' ? [Q.eL, L-Q.eL] : [Q.eW, W-Q.eW]; list.sort((a, b)=>a[0]-b[0]);
+      for (const [a, b, t] of list) if (a<lim[0]-1 || b>lim[1]+1) out.push(`${t[0].toUpperCase()+t.slice(1)} в ${name[w]} — ближе ${n(StationMatrix.door().edge)} мм к краю станции: стена мала для проёма с отступами — проверьте у изготовителя или увеличьте контейнер.`);
+      for (let k=1; k<list.length; k++) if (list[k][0]-list[k-1][1]<Q.gap-1) out.push(`В ${name[w]}: между проёмами (${list[k-1][2]} и ${list[k][2]}) ${n(Math.max(0, list[k][0]-list[k-1][1]))} мм — меньше ${n(Q.gap)} мм.`); }
+    return [...new Set(out)];
   }
   static SIDE = { F:['спереди', 'лицевой стороне'], B:['сзади', 'задней стороне'], L:['слева', 'левому боку'], R:['справа', 'правому боку'] };
   /** матрица доступа: у каждого агрегата на полу — 4 стороны (Ф, З, Л, П) и чем к ним подойти: проход, зазор, сервисные
@@ -1863,16 +1896,16 @@ class StationLayout {
   /** дверь оператора: одностворчатая, наружу, с доводчиком — в стене прохода у торца ('side') или в торце по оси прохода
    *  (два ряда, 'end'; у морского — его двери в торце): {wall, x0, x1 | y0, y1, w, h}; без прохода — null */
   entry(r, geo){
-    const E=StationLayout.ENTRY, D={ h:StationMatrix.door().h+100, pad:StationLayout.DOOR.pad }, w=E[1]-E[0], W=geo.int[1];
+    const E=StationLayout.ENTRY, D={ h:StationMatrix.door().h+100, pad:StationLayout.gaps(geo).eW }, w=E[1]-E[0], W=geo.int[1];
     if (r.door==='side'){ const ex=this.entrySpan(r, geo); return { wall:'front', x0:ex[0], x1:ex[1], w, h:D.h }; }
     if (r.door!=='end') return null;
     if (geo.sea && geo.door){ const dw=Math.min(geo.door[0], W); return { wall:'left', y0:Math.round((W-dw)/2), y1:Math.round((W+dw)/2), w:dw, h:geo.door[1], sea:true }; }
-    const y0=Math.round(Math.max(D.pad, Math.min(W-D.pad-w, this.aisleMid(r, W)-w/2)));
+    const y0=StationLayout.inWall(this.aisleMid(r, W)-w/2, w, W, D.pad);
     return { wall:'left', y0, y1:y0+w, w, h:D.h };
   }
   /** дверь оператора в стене прохода: [от, до] по длине, мм — у торца (за тамбуром) или, без продольного прохода, между
    *  компрессором и следующим оборудованием (r.entryX) */
-  entrySpan(r, geo){ const x0=geo.x0||0, E=StationLayout.ENTRY; return r.entryX || [x0+E[0], x0+E[1]]; }
+  entrySpan(r, geo){ const x0=geo.x0||0, E=StationLayout.ENTRY, a=Math.max(x0+E[0], StationLayout.gaps(geo).eL); return r.entryX || [a, a+E[1]-E[0]]; }
   /** середина прохода поперёк контейнера, мм: один ряд — между стеной прохода и оборудованием, два ряда — между рядами */
   /** полоса прохода поперёк контейнера [от, до], мм: один ряд — от передней стены до оборудования, два — между рядами */
   aisleBand(r, W){
@@ -2010,7 +2043,7 @@ class StationLayout {
    *  станции + addH + T (решение ПНЕВМОТЕХ 13.10: ворота в обоих торцах одной высоты), не ниже проёма двери оператора (ворота —
    *  и выход) и не выше помещения; шире доли торца — во весь торец */
   gateFor(r, geo, s, U){
-    const [, W, H]=geo.int, D=StationLayout.DOOR, n=StationLayout.n, T=geo.t||0, GM=StationMatrix.gate();
+    const [, W, H]=geo.int, D={ ...StationLayout.DOOR, pad:StationLayout.gaps(geo).eW }, n=StationLayout.n, T=geo.t||0, GM=StationMatrix.gate();
     const nw=Math.max(0, ...U.map(i=>Math.min(i.l, i.w))), hh=Math.max(0, ...r.items.filter(i=>(i.mount==='floor' || i.mount==='frame') && !i.tank).map(i=>i.h));
     let w=Math.max(GM.minW, Math.ceil((nw+GM.addW+2*T)/100)*100); const full=w>=GM.full*W || w>W-2*D.pad;
     if (full) w=W-2*D.pad;
@@ -2039,31 +2072,43 @@ class StationLayout {
    *  мимо двери оператора; соседние — одними воротами, пока не шире 2400 мм, иначе — рядом через стойку 200 мм */
   sideDoors(list, r, geo){
     const [L, , H]=geo.int, x0=geo.x0||0, D=StationLayout.DOOR, ex=r.door==='side' ? this.entrySpan(r, geo) : null, out=[], T=geo.t||0, SM=StationMatrix.service();
+    const { gap, eL }=StationLayout.gaps(geo), lo=Math.max(x0+D.pad, eL), hi=L-eL;   // от края станции и между проёмами (решение 13.10)
+    const keep=(r.doors||[]).filter(d=>d.kind==='entry');   // вторая дверь оператора (сервисные ворота пересчитываются после неё)
     for (const { it, why, rear, wall:w0, both } of list){
       const wall=w0 || (rear ? (r.rows===2 && it.row===1 ? 'front' : 'back') : r.rows===2 && it.row!==1 ? 'back' : 'front');
       // Ш = сторона агрегата + addW + 2·T, В = высота агрегата + addH + T (матрица расстановки)
       const w=Math.max(D.min, Math.min(D.max, Math.ceil((it.lx+SM.addW+2*T)/100)*100)), c=it.x+it.lx/2;
-      let d0=Math.max(x0+D.pad, Math.min(L-D.pad-w, c-w/2));
-      if (wall==='front' && ex && d0<ex[1]+100 && d0+w>ex[0]-100) d0=Math.min(L-D.pad-w, ex[1]+100);   // мимо двери оператора
+      let d0=Math.max(lo, Math.min(hi-w, c-w/2));
+      if (wall==='front' && ex && d0<ex[1]+gap && d0+w>ex[0]-gap) d0=d0+w/2<(ex[0]+ex[1])/2 && ex[0]-gap-w>=lo ? ex[0]-gap-w : Math.min(hi-w, ex[1]+gap);   // мимо двери оператора
+      for (const q of keep) if (wall===q.wall && d0<q.x1+gap && d0+w>q.x0-gap) d0=q.x0-gap-w>=lo ? q.x0-gap-w : Math.min(hi-w, q.x1+gap);   // мимо второй двери
       out.push({ wall, x0:Math.round(d0), x1:Math.round(d0+w), h:Math.min(H-100, Math.max(rear ? StationLayout.REAR_H : D.h, Math.ceil((it.h+SM.addH+T)/50)*50)), kind:'service', pos:[it.pos], why:[why], rear:!!rear, both:!!both }); }
     const got=[]; for (const d of out.sort((p, q)=>p.wall.localeCompare(q.wall) || p.x0-q.x0)){ const last=got[got.length-1];
-      if (last && last.wall===d.wall && d.x0<last.x1+300){
+      if (last && last.wall===d.wall && d.x0<last.x1+gap){
         if (Math.max(last.x1, d.x1)-last.x0<=D.max){ last.x1=Math.max(last.x1, d.x1); last.h=Math.max(last.h, d.h); last.rear=last.rear || d.rear;
           for (const v of d.pos) if (!last.pos.includes(v)) last.pos.push(v); for (const t of d.why) if (!last.why.includes(t)) last.why.push(t); continue; }
-        const w=d.x1-d.x0; d.x0=last.x1+200; d.x1=Math.min(L-D.pad, d.x0+w); if (d.x1-d.x0<D.min) continue; }   // некуда — агрегат обслуживают через соседние ворота
+        const w=d.x1-d.x0; d.x0=last.x1+gap; d.x1=Math.min(hi, d.x0+w); if (d.x1-d.x0<D.min) continue; }   // некуда — агрегат обслуживают через соседние ворота
       got.push(d); }
-    for (const d of got){ d.x1=Math.min(L-D.pad, d.x1); d.w=d.x1-d.x0; d.leaves=Math.max(1, Math.ceil(d.w/D.leaf)); }
-    return got;
+    // итог по стене: мимо двери оператора и друг от друга — не ближе gap, в пределах стены; не уместилась — агрегат
+    // обслуживают через соседние ворота
+    const res=[];
+    for (const wall of ['front', 'back']){ let prev=null;
+      for (const d of got.filter(q=>q.wall===wall).sort((p, q)=>p.x0-q.x0)){ const w=d.x1-d.x0;
+        if (prev && d.x0<prev.x1+gap){ d.x0=prev.x1+gap; d.x1=d.x0+w; }
+        if (wall==='front' && ex && d.x0<ex[1]+gap && d.x1>ex[0]-gap){ d.x0=ex[1]+gap; d.x1=d.x0+w; }
+        for (const q of keep) if (q.wall===wall && d.x0<q.x1+gap && d.x1>q.x0-gap){ d.x0=q.x1+gap; d.x1=d.x0+w; }
+        d.x1=Math.min(hi, d.x1); if (d.x1-d.x0<D.min) continue;
+        d.w=d.x1-d.x0; d.leaves=Math.max(1, Math.ceil(d.w/D.leaf)); res.push(d); prev=d; } }
+    return res;
   }
   /** вторая дверь оператора: проход от двери оператора до дальнего конца длиннее 7 м или шкафы вдоль прохода длиннее 7 м
    *  (ПУЭ, п. 4.1.23) — в дальнем конце прохода: один ряд — в стене прохода у дальнего торца (в r.doors, kind:'entry'), два
    *  ряда — в дальнем торце по оси прохода (r.exit); там ворота — калитка в створке ворот (gates.wicket), дверь-жалюзи ДГУ —
    *  выход через неё */
   second(r, geo){
-    const L=geo.int[0], x0=geo.x0||0, E=StationLayout.ENTRY, eh=StationMatrix.door().h+100, n=StationLayout.n, X=StationMatrix.exits();
+    const L=geo.int[0], x0=geo.x0||0, E=StationLayout.ENTRY, eh=StationMatrix.door().h+100, n=StationLayout.n, X=StationMatrix.exits(), { gap, eL }=StationLayout.gaps(geo), aR=Math.max(E[0], eL);
     if (r.cross){   // без сквозного прохода: вторая дверь оператора — во второй части (за агрегатом поперёк)
       const C=r.cross, w=E[1]-E[0]; r.second=`сквозного прохода нет — поз. ${C.pos} стоит поперёк станции: к нему сзади и к оборудованию за ним`;
-      let a=L-E[0]-w; for (const d of r.doors.filter(d=>d.wall==='front').sort((p, q)=>q.x0-p.x0)) if (a<d.x1+200 && a+w>d.x0-200) a=d.x0-200-w;
+      let a=L-aR-w; for (const d of r.doors.filter(d=>d.wall==='front').sort((p, q)=>q.x0-p.x0)) if (a<d.x1+gap && a+w>d.x0-gap) a=d.x0-gap-w;
       if (a>=C.x1+100){ r.doors.push({ wall:'front', x0:Math.round(a), x1:Math.round(a+w), w, h:eh, leaves:1, kind:'entry', pos:[], why:[r.second] }); return; }
       const G=r.gates2 && r.gates2.wall==='right' ? r.gates2 : r.gates; if (G && G.wall==='right' && !G.sea && G.w/2>=StationLayout.DOOR_MIN+150){ G.wicket={ w:Math.min(StationLayout.DOOR_MIN, G.w/2-150), h:Math.min(StationMatrix.door().h, G.h-150) }; return; }
       r.exit=this.endExit(r, geo, 'right'); return; }
@@ -2080,8 +2125,8 @@ class StationLayout {
       : cab>StationNorms.SHIELD ? `шкафы вдоль прохода — ${n(cab)} мм, длиннее 7 м (ПУЭ, п. 4.1.23)` : ''; if (!why) return;
     r.second=why;
     if (r.door==='side'){ const w=E[1]-E[0];
-      let a=Math.min(L-E[0]-w, lim-w); for (const d of r.doors.filter(d=>d.wall==='front').sort((p, q)=>q.x0-p.x0)) if (a<d.x1+200 && a+w>d.x0-200) a=d.x0-200-w;
-      if (a>=es[1]+1000){ r.doors.push({ wall:'front', x0:Math.round(a), x1:Math.round(a+w), w, h:eh, leaves:1, kind:'entry', pos:[], why:[why] }); return; } }
+      let a=Math.min(L-aR-w, lim-w); for (const d of r.doors.filter(d=>d.wall==='front').sort((p, q)=>q.x0-p.x0)) if (a<d.x1+gap && a+w>d.x0-gap) a=d.x0-gap-w;
+      if (a>=es[1]+Math.max(1000, gap)){ r.doors.push({ wall:'front', x0:Math.round(a), x1:Math.round(a+w), w, h:eh, leaves:1, kind:'entry', pos:[], why:[why] }); return; } }
     if (pe.length){   // дальний торец закрыт ресиверами — калитка и дверь там не выход; второй выход — ворота у входа
       if (r.gates && r.gates.wall==='left' && r.issues) r.issues.push({ level:'info', text:`Выходы — дверь оператора и ворота в торце у входа: дальний торец закрыт ресиверами в два ряда, второй двери оператора до них места нет (${why}).` });
       delete r.second; return; }
@@ -2092,15 +2137,15 @@ class StationLayout {
   }
   /** дверь оператора в торце по оси прохода: одностворчатая, наружу, с доводчиком */
   endExit(r, geo, wall){
-    const W=geo.int[1], E=StationLayout.ENTRY, D={ h:StationMatrix.door().h+100, pad:StationLayout.DOOR.pad }, w=E[1]-E[0];
+    const W=geo.int[1], E=StationLayout.ENTRY, D={ h:StationMatrix.door().h+100, pad:StationLayout.gaps(geo).eW }, w=E[1]-E[0];
     if (r.cross && !r.items.some(i=>(i.mount==='floor' || i.mount==='frame') && !i.cross && i.x>=r.cross.x1)){ const y0=Math.round((W-w)/2); return { wall, y0, y1:y0+w, w, h:D.h }; }
-    const y0=Math.round(Math.max(D.pad, Math.min(W-D.pad-w, this.aisleMid(r, W)-w/2)));
+    const y0=StationLayout.inWall(this.aisleMid(r, W)-w/2, w, W, D.pad);
     return { wall, y0, y1:y0+w, w, h:D.h };
   }
   /** ДГУ в дальнем торце: напротив радиатора — двустворчатая дверь-жалюзи: выброс горячего воздуха и проём для монтажа и
    *  демонтажа ДГУ (шире его на 200 мм, выше на 150 мм); {wall:'right', y0, y1, w, h, leaves:2, pos, fits} или null */
   dguDoor(r, geo){
-    const [L, W, H]=geo.int, D=StationLayout.DOOR, g=r.items.find(i=>i.kind==='dgu' && !i.tank); if (!g || L-(g.x+g.lx)>600) return null;
+    const [L, W, H]=geo.int, D={ ...StationLayout.DOOR, pad:StationLayout.gaps(geo).eW }, g=r.items.find(i=>i.kind==='dgu' && !i.tank); if (!g || L-(g.x+g.lx)>600) return null;
     const w=Math.min(W-2*D.pad, Math.max(D.min, Math.ceil((g.ly+200)/100)*100)), y0=Math.round(Math.max(D.pad, Math.min(W-D.pad-w, g.y+g.ly/2-w/2)));
     return { wall:'right', y0, y1:y0+w, w, h:Math.min(H-100, Math.max(D.h, g.h+150)), leaves:2, pos:g.pos, fits:w>=g.ly+2*StationLayout.PASS };
   }
@@ -2177,8 +2222,8 @@ class StationLayout {
   overGate(r){ const D=(r.doors||[]).filter(d=>d.rear); return D.length ? Math.max(...D.map(d=>d.h))+StationLayout.OVER_GATE+StationMatrix.louvre()+this.G : 0; }
   static RECV2 = 1000;
   // без продольного прохода (две пары сервисных ворот и ворота в обоих торцах — дороже): при подборе размера — если с
-  // проходом всё рекомендуемое не вышло и площадь пола меньше хотя бы на пятую часть
-  static ENDS_K = 0.8;
+  // проходом всё рекомендуемое не вышло и площадь пола меньше хотя бы на 15 % (уточнено 13.10: с отступами между проёмами станция длиннее)
+  static ENDS_K = 0.85;
   static PAIR_SIDE = 300;    // ресиверы в два ряда: осмотр сбоку — через промежуток не меньше, мм       // ресиверы в два ряда в конце ряда — если станция так короче хотя бы на 1 м
   static OVER_GATE = 300;    // над сервисными воротами: перемычка и трубопровод до низа жалюзи выброса, мм
   /** блок-контейнер «по проекту» — по необходимому месту, без запаса (шаг 100 мм), всегда с проходом для оператора и

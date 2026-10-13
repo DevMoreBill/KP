@@ -95,9 +95,10 @@ class StationReq {
   static of(x){ return (x && x.req && typeof x.req==='object') ? x.req : {}; }
   static ensure(x){ if (!x.req || typeof x.req!=='object') x.req={}; return x.req; }
   static num(v){ return ReqNum.num(v); }
-  /** ресиверы: по методике (решение 13.10) — основной после осушителя и мокрый до него; или только после / только до */
-  static RECV = [['', 'по методике (основной + мокрый)'], ['after', 'только после осушителя'], ['before', 'только до осушителя']];
-  static recv(x){ const v=this.of(x).recv; return v==='before' || v==='after' ? v : ''; }   // прежнее «до и после» — по методике
+  /** ресиверы: по методике — основной после осушителя, мокрый до него — только при риске проскока влаги (решение 13.10);
+   *  или основной + мокрый всегда, только после, только до */
+  static RECV = [['', 'по методике (мокрый — при пиках)'], ['both', 'основной + мокрый'], ['after', 'только после осушителя'], ['before', 'только до осушителя']];
+  static recv(x){ const v=this.of(x).recv; return v==='before' || v==='after' || v==='both' ? v : ''; }
   static RSIZE = [['', 'авто: кратно 900 л'], ['900', '900 л'], ['500', '500 л (крайняя необх.)']];
   static RWHY = [['', 'обоснование 500 л —'], ['space', 'нехватка места'], ['mass', 'ограничение по массе']];
   /** расчёт ресиверов по составу станции (ReceiverPlan) или null */
@@ -416,15 +417,30 @@ class KitNeed {
   static airRecs(x){
     const A=this.air(x); if (!A) return [];
     const rank=r=>/^dryer/.test(r.cat) ? 0 : r.cat==='filter' ? 1 : 2;   // по ходу воздуха: осушитель, фильтры, ресиверы
-    return [...A.recs].sort((a, b)=>rank(a)-rank(b)).map(r=>{ if (!/^dryer-/.test(r.key) || r.replace) return r;
+    return [...A.recs, ...this.dryerFit(x, A)].sort((a, b)=>rank(a)-rank(b)).map(r=>{ if (!/^dryer-/.test(r.key) || r.replace) return r;
       const old=kitParts(x).filter(p=>attrsOf(p).cat===r.cat || (StationEquip.kindOf(p)==='dryer' && AirChain.info(p, 'dryer').type===(r.cat==='dryer_ads' ? 'ads' : 'refrig'))).map(p=>p.id);
       return old.length ? { ...r, replace:old, swap:true } : r; });
+  }
+  /** осушитель состава не проходит по высоте или в плане с проходом (габариты известны) — заменить на подходящий: меньший
+   *  или два одинаковых параллельно на ту же производительность (решение ПНЕВМОТЕХ 13.10); подбор — TzPick.dryer */
+  static dryerFit(x, A){
+    const H=TzPick.hmax(x), W=TzPick.wmax(x), out=[], q=A.q||0;
+    for (const t of ['ads', 'refrig']){ const cat=t==='ads' ? 'dryer_ads' : 'dryer_refrig';
+      if ((A.recs||[]).some(r=>r.key==='dryer-'+t)) continue;   // уже рекомендована замена по производительности
+      const L=kitParts(x).filter(p=>StationEquip.kindOf(p)==='dryer' && AirChain.info(p, 'dryer').type===t), c=p=>({ name:p.name, attrs:p.attrs||{}, rows:p.rows||[] });
+      const bad=L.filter(p=>{ const d=StationEquip.dims(c(p), 'dryer'); return d.known && (!(TzPick.fitsH(c(p), 'dryer', H)) || !TzPick.fitsW(c(p), 'dryer', W)); });
+      if (!bad.length) continue;
+      const d=StationEquip.dims(c(bad[0]), 'dryer'), why=!TzPick.fitsH(c(bad[0]), 'dryer', H) ? `по высоте (${StationLayout.n(d.h)} мм, помещение ${StationLayout.n(H)} мм)` : `в плане с проходом (${StationLayout.n(Math.min(d.l, d.w))} мм, ширина ${StationLayout.n(W)} мм)`;
+      out.push({ key:'dryer-'+t, cat, title:`${t==='ads' ? 'Адсорбционный' : 'Рефрижераторный'} осушитель, который помещается — или два параллельно${q ? ` (всего не менее ${AirChain.m3(q*AirChain.MARGIN/AirChain.kp(A.bar||7))} м³/мин)` : ''}`,
+        why:`«${bad[0].name}» не проходит ${why} — меньший или два одинаковых параллельно на ту же производительность`, name:(t==='ads' ? 'Адсорбционный' : 'Рефрижераторный')+' осушитель', f:{}, r:{},
+        attrs:{ cat }, rows:[], replace:bad.map(p=>p.id), swap:true, fit:true }); }
+    return out;
   }
   /** рекомендуемая позиция каталога по рекомендации r: {c, n — штук параллельно, role — роль ресивера (основной, мокрый, у потребителя)} | null */
   static best(x, r){
     const A=this.air(x), q=A ? A.q : 0, req=StationReq.of(x), B=this.n(req.pressure)||0, Bc=this.bar(x); let o=null;
     if (/^dryer-/.test(r.key)){ const ads=r.cat==='dryer_ads', pdp=ads && r.f && r.f.dewPoint ? this.n(r.f.dewPoint) : null;
-      o=q>0 ? TzPick.dryer(ads, q, B, Bc, this.n(req.tmax), pdp, TzPick.hmax(x)) : null; }
+      o=q>0 ? TzPick.dryer(ads, q, B, Bc, this.n(req.tmax), pdp, TzPick.hmax(x), TzPick.wmax(x)) : null; }
     else if (r.cat==='filter') o=TzPick.filter(r, q, B, Bc);
     else if (r.cat==='receiver'){
       // замена ресиверов на учёте (recv-split) — как раньше; остальные — типоразмер и число по методике (ReceiverPlan)

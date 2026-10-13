@@ -303,10 +303,10 @@ class TzPick {
   /** осушитель на Qd, м³/мин (вся производительность рабочих компрессоров) с поправками производителя (серия в файле правил:
    *  давление B у потребителя, температура tmax; нет — типовая таблица и запас); давление аппарата — не ниже Bc (компрессор);
    *  точка росы адсорбционного — не выше pdp (если известна). Одного не хватает — несколько одинаковых параллельно: {o, n} */
-  static dryer(ads, Qd, B, Bc, tmax, pdp=null, H=0){
+  static dryer(ads, Qd, B, Bc, tmax, pdp=null, H=0, W=0){
     const t=DryerSizing.temps({ tmax, tin:null }), pb=B>0 ? B : StationRules.raw('dryer.ref').p, dc=ads ? 'dryer_ads' : 'dryer_refrig';
     const dp=c=>this.num(String(attrsOf(c).dewPoint??'').replace(/[−–]/g, '-'));
-    return this.many(catCache.filter(c=>attrsOf(c).cat===dc && (pdp==null || dp(c)==null || dp(c)<=pdp+0.5) && this.fitsH(c, 'dryer', H)).map(c=>{ const a=attrsOf(c), F=DryerSizing.factor({ name:c.name, attrs:a, rows:[] }, pb, t, ads ? 'ads' : 'refrig').F; return { c, v:this.flow(c), cap:this.flow(c)*F }; })
+    return this.many(catCache.filter(c=>attrsOf(c).cat===dc && (pdp==null || dp(c)==null || dp(c)<=pdp+0.5) && this.fitsH(c, 'dryer', H) && this.fitsW(c, 'dryer', W)).map(c=>{ const a=attrsOf(c), F=DryerSizing.factor({ name:c.name, attrs:a, rows:[] }, pb, t, ads ? 'ads' : 'refrig').F; return { c, v:this.flow(c), cap:this.flow(c)*F }; })
       .filter(o=>o.v>0 && (!(Bc>0) || !(this.num(attrsOf(o.c).pressure)>0) || this.num(attrsOf(o.c).pressure)>=Bc-0.05)), Qd);
   }
   /** фильтр ступени rec.key (рекомендация AirChain) на Qf, м³/мин: с поправкой производителя на давление у потребителя (как в
@@ -393,6 +393,18 @@ class TzPick {
     const g=StationGeo.of(kitContainer(x)||{ ctype:'block' });
     return g.int ? g.int[2] : StationGeo.inner(g.type, [10000, StationGeo.ROAD_W, StationGeo.BLOCK.maxH], g.t)[2];
   }
+  /** полезная ширина помещения станции, мм: внутри минус зазоры на коммуникации; без размера (по оборудованию) — блок в
+   *  ширину перевозки без спецразрешения */
+  static wmax(x){
+    const g=StationGeo.of(kitContainer(x)||{ ctype:'block' }), Wi=g.int && !g.auto ? g.int[1] : StationGeo.inner(g.type, [10000, StationGeo.ROAD_W, StationGeo.BLOCK.maxH], g.t)[1];
+    return Wi-2*StationMatrix.gap();
+  }
+  /** помещается в плане с проходом (W, мм; 0 — без ограничения): меньшая сторона + отступ от стены «плотно» + проход
+   *  «не менее» не больше W. Не помещается один — несколько меньших параллельно (решение ПНЕВМОТЕХ 13.10) */
+  static fitsW(c, kind, W){
+    if (!(W>0)) return true; const d=StationEquip.dims({ name:c.name, attrs:attrsOf(c), rows:c.rows||[] }, kind); if (!d.known) return true;
+    const s=Math.min(d.l, d.w), wr=StationMatrix.wall({ kind, w:s }); return s+(wr ? wr[1] : 100)+StationClear.aisle()[1]<=W;
+  }
   /** проходит по высоте помещения станции H, мм (0 — без ограничения): габариты из каталога; неизвестны — не отсекается.
    *  Над аппаратом — место на подключение трубопровода (осушитель — 100 мм) */
   static fitsH(c, kind, H){
@@ -452,7 +464,7 @@ class TzPick {
         if (u && q.vsd && !u.o.f) got.push('компрессора с частотным регулированием в каталоге нет — подобран без него');
         // осушитель — на всю производительность рабочих компрессоров с поправками производителя (серия в файле правил:
         // давление, вход, помещение; нет — типовая таблица и запас), давление — у потребителя (не выше фактического)
-        const Qd=u ? u.o.v*u.n : Q, dm=this.dryer(ads, Qd, B, Bc, StationReq.num(String(q.tmax??'').replace(/[−–]/g, '-')), null, H), d=dm && dm.o;
+        const Qd=u ? u.o.v*u.n : Q, dm=this.dryer(ads, Qd, B, Bc, StationReq.num(String(q.tmax??'').replace(/[−–]/g, '-')), null, H, this.wmax(x)), d=dm && dm.o;
         if (d){ add.push(await this.part(d.c, dm.n)); got.push((dm.n>1 ? `осушители ${dm.n} × ${d.c.name} параллельно` : this.lbl('осушитель', d.c.name))+` (с поправками ${dm.n>1 ? dm.n+' × ' : ''}${AirChain.m3(d.cap)}${dm.n>1 ? ' = '+AirChain.m3(d.cap*dm.n) : ''} м³/мин)`); }
         else miss.push(`${ads ? 'адсорбционный' : 'рефрижераторный'} осушитель на ${AirChain.m3(Qd)} м³/мин с поправками на давление и температуру`); }
       // фильтры и ресивер — по расчёту цепочки на подобранном составе
