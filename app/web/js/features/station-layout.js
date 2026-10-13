@@ -202,7 +202,7 @@ class StationMatrix {
     cab:{ top:1900, low:300 },
     move:{ pass:25 },
     tank:{ pad:300, gap:300, back:100, aisle:600, part:100, door:800, fill:1000 },
-    conv:{ z:150, gap:300, edge:150, front:400 },
+    conv:{ z:150, gap:100, edge:100, front:150 },   // отступы уменьшены по решению ПНЕВМОТЕХ 13.10 («можно значительно уменьшить»)
     muffler:{ gap:200, outlet:300 },
   };
   /** матрица: из правил (недостающее — по умолчанию); пересобирается, только когда сменились правила */
@@ -250,7 +250,10 @@ class StationMatrix {
   static conv(){ return this.grp('conv'); }
   static muffler(){ return this.grp('muffler'); }
   /** вид без сервисных ворот — монтаж и демонтаж через ворота в торце (осушители, ресиверы) */
-  static noDoor(kind){ const r=(this.M.sides.rows||[]).find(q=>q.kind===kind); return r ? r.door===false : /^(dryer|receiver)$/.test(kind); }
+  // осушителям и ресиверам — никогда (жёсткое правило ПНЕВМОТЕХ 13.10, повторено владельцем: правила, сохранённые раньше без
+  // этой отметки, его не отменяют); остальным — по отметке таблицы «Стороны»
+  static NO_DOOR = /^(dryer|receiver)$/;
+  static noDoor(kind){ if (this.NO_DOOR.test(kind)) return true; const r=(this.M.sides.rows||[]).find(q=>q.kind===kind); return !!r && r.door===false; }
   /** при выносе можно наклонить */
   static tilt(kind){ const r=(this.M.sides.rows||[]).find(q=>q.kind===kind); return r ? !!r.tilt : /^(receiver|filter|cabinet|tank)$/.test(kind); }
 }
@@ -1454,7 +1457,7 @@ class StationLayout {
     return { ...c, back:[w[0], StationLayout.gated(e.kind) ? w[1] : Math.max(w[1], Math.min(w[0], c.back[1]))] };
   }
   /** вид обслуживают сзади (матрица: сторона «З») и ему допускаются сервисные ворота за ним (ДГУ — своя дверь-жалюзи) */
-  static gated(kind){ return kind!=='dgu' && kind!=='cabinet' && kind!=='tank' && StationMatrix.sides(kind).B; }
+  static gated(kind){ return kind!=='dgu' && kind!=='cabinet' && kind!=='tank' && !StationMatrix.noDoor(kind) && StationMatrix.sides(kind).B; }
   // ДГУ с дополнительным топливным баком: бак — в отдельном отсеке у ближнего торца. Отсек отделён противопожарной
   // перегородкой 1-го типа (EI 45, без проёмов; топливопровод — через гильзу с уплотнением), вход — своя дверь снаружи,
   // заливная горловина — снаружи в запираемом ящике, дыхательный клапан с огнепреградителем — над крышей, бак — в поддоне
