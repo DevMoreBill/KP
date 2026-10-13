@@ -1639,7 +1639,7 @@ class StationLayout {
     // от торца — «плотно», но его сервисные ворота (шире его) не упираются в угол; между компрессорами — не меньше modes.next
     // и чтобы их сервисные ворота стояли через door.gap; за последним — дверь оператора, не меньше modes.next
     const E=U.map(o=>o.e), gapsOf=lvl=>{ const g=this.chain(E, lvl).gaps; g[0]=Math.max(tw, Math.ceil(ov+Math.max(D.pad, pe)-this.G));
-      for (let i=1; i<nc; i++) g[i]=Math.max(g[i], nx, Math.ceil(ovOf(C[i-1])+ovOf(C[i])+dg));
+      for (let i=1; i<nc; i++) g[i]=Math.max(g[i], nx, Math.ceil(ovOf(C[i-1])+ovOf(C[i])+2*dg+Ew));   // и дверь оператора между ними
       g[nc]=Math.max(g[nc], dn, nx); return g; };
     const body=U.reduce((s, o)=>s+o.e.l, 0), rec=gapsOf(0), mn=gapsOf(1), sum=a=>a.reduce((s, v)=>s+v, 0);
     if (body+sum(mn)>Lu) return { ok:false, why:'length', needL:body+sum(mn), needL0:body+sum(rec) };
@@ -2256,11 +2256,16 @@ class StationLayout {
       r.gates2.why.push(`поз. ${pr.join(', ')} — ресиверы в два ряда у дальнего торца: осмотр, обслуживание, монтаж и демонтаж — через ворота в торце`); }
     for (const it of C) for (const wall of ['front', 'back'])
       side.push({ it, wall, both:true, rear:true, why:`поз. ${it.pos} — без продольного прохода: обслуживание ${wall==='front' ? 'спереди' : 'сзади'}` });
+    // между компрессорами — своя дверь оператора в стене прохода (решение ПНЕВМОТЕХ 13.10: «для доступа в пространство между
+    // компрессорами нужно организовать дверь оператора»; напротив неё — место конвектору)
+    const E=StationLayout.ENTRY, ew=E[1]-E[0], eh=StationMatrix.door().h+100, CS=C.slice().sort((a, b)=>a.x-b.x), mid=[];
+    for (let i=1; i<CS.length; i++){ const a=CS[i-1].x+CS[i-1].lx, b=CS[i].x, x0=Math.round((a+b-ew)/2);
+      mid.push({ wall:'front', x0, x1:x0+ew, w:ew, h:eh, leaves:1, kind:'entry', between:true, pos:[], why:[`между компрессорами поз. ${CS[i-1].pos} и ${CS[i].pos} — доступ к ним сбоку`] }); }
     for (const b of this.bulky(r, geo).filter(b=>!C.includes(b.it) && !T.includes(b.it))){
       const G=[r.gates, r.gates2].find(g=>g && b.narrow+2*P<=this.pathTo(b.it, g.wall, r, geo));
       if (G){ if (!G.pos.includes(b.it.pos)){ G.pos.push(b.it.pos); G.why.push(`${b.why}, монтаж и демонтаж — через ворота в торце`); } }
       else if (!this.toGate(r, geo, b, [])) side.push(Object.assign({}, b, { why:`${b.why}, к воротам в торце не провезти` })); }
-    r.side=side; r.doors=this.sideDoors(side, r, geo);
+    r.side=side; r.doors=mid; r.doors=[...this.sideDoors(side, r, geo), ...mid];
     this.regate(r, geo);
     this.second(r, geo);
   }
