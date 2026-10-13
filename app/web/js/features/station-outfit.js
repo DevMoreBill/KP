@@ -74,10 +74,25 @@ class StOutfit {
   // или жалюзи напротив радиатора и воздуховод к ним; у каждой группы жалюзи на стене — подпись размера на картинке
   vents(){
     const P=this.p, V=P.vent, dgu=P.items.find(i=>i.kind==='dgu' && !i.tank); if (!V) return;
-    for (const L of V.louvers){ if (L.kind==='rad' && L.door) this.endDoor(P.dguDoor); else if (L.leaf) this.leafVent(L); else this.vent(L.wall, L.u0, L.u1, L.z0, L.z1, L.kind==='in', L.hood); }
+    for (const L of V.louvers){ if (L.kind==='rad' && L.door) this.endDoor(P.dguDoor); else if (L.leaf) this.leafVent(L); else { this.vent(L.wall, L.u0, L.u1, L.z0, L.z1, L.kind==='in', L.hood); if (L.fan) this.fan(L); } }
     for (const R of V.roof||[]) this.roofHood(R);
     if (dgu) this.duct(dgu);
     // подписей (сносок) на 3D-виде нет — размеры жалюзи на чертеже и в тексте (решение ПНЕВМОТЕХ 12.10)
+  }
+  /** вентилятор в проёме (вытяжной — система «Вытяжные вентиляторы», приточный — если жалюзи притока не встали): изнутри —
+   *  монтажная плита с осевыми вентиляторами (обечайка, ступица с двигателем) и датчик температуры рядом; снаружи — те же
+   *  жалюзи (гравитационные) с козырьком. Число вентиляторов в проёме — по его форме (ширина / высота) */
+  fan(L){
+    if (!this.shown(L.wall)) return;
+    const S=this.s, w=L.wall, n=Math.max(1, Math.round((L.u1-L.u0)/(L.z1-L.z0))), du=(L.u1-L.u0)/n, zc=(L.z0+L.z1)/2, r=Math.min(du, L.z1-L.z0)*0.42;
+    const pl=S.M(StMat.paint('#b9bfc5', 0.45)), ring=S.M(StMat.metal(StScene.GALV, 0.35)), dk=S.M(StMat.paint('#2a2f34', 0.55));
+    this.box(pl, w, (L.u0+L.u1)/2, zc, L.u1-L.u0+40, L.z1-L.z0+40, 30);   // монтажная плита
+    for (let i=0; i<n; i++){ const u=L.u0+du*(i+0.5);
+      ring.tube(this.at(w, u, zc, 30), this.at(w, u, zc, 190), r/1000, 28, [false, false]);   // обечайка
+      dk.tube(this.at(w, u, zc, 60), this.at(w, u, zc, 230), r*0.28/1000, 18);                // ступица с двигателем
+      for (let k=0; k<3; k++){ const a=k*Math.PI*2/3, e=[Math.cos(a)*r*0.8, Math.sin(a)*r*0.8];   // кронштейны двигателя
+        dk.tube(this.at(w, u, zc, 200), this.at(w, u+e[0], zc+e[1], 200), 0.008, 6); } }
+    this.box(dk, w, L.u1+120, zc-(L.z1-L.z0)/2+60, 70, 90, 35, 0.006);   // датчик температуры (термостат)
   }
   /** приток в створке ворот или сервисной двери: жалюзи на полотне (снаружи), изнутри — решётка */
   leafVent(L){

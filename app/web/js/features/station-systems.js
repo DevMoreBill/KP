@@ -437,9 +437,10 @@ class VentCalc {
   /** летний режим (решение ПНЕВМОТЕХ 12.10, «сбалансированная вентиляция»). inp: {units:[{key, pos, type, kw, heat?, cool?}] —
    *  рабочие компрессоры, qRoom — тепло в помещение (корпуса, осушители, солнце), кВт, qSun — солнце (остановленная станция),
    *  кВт, use — воздух на сжатие и горение из помещения, м³/ч, V — объём помещения, м³, tSum — наружная летом, boost —
-   *  система «Вентилятор в воздуховоде выброса», ex — «эксперт»} */
+   *  система «Вентилятор в воздуховоде выброса», exfan — система «Вытяжные вентиляторы» (осевые в стене напротив притока,
+   *  решение ПНЕВМОТЕХ 13.10), ex — «эксперт»} */
   static summer(inp, W){
-    const ex=inp.ex||{}, T=this.R('vent.temps'), A=this.R('vent.ach'), Sp=this.R('vent.speed'), F=this.R('vent.fan'), B=this.R('vent.boost'), tSum=inp.tSum, ac=this.R('air.cp');
+    const ex=inp.ex||{}, T=this.R('vent.temps'), A=this.R('vent.ach'), Sp=this.R('vent.speed'), F=this.R('vent.fan'), B=this.R('vent.boost'), E=StationRules.opt('vent.exfan'), tSum=inp.tSum, ac=this.R('air.cp');
     // Δt помещения = t_вн − t_нар: допустимая внутри минус наружная летом; меньше наименьшего — предупреждение и расчёт при наименьшем
     const tIn=this.ex(ex, 'tIn', 20, 60, W, 't_вн летом, °C') ?? T.tIn, dtSet=this.ex(ex, 'dt', 1, 40, W, 'Δt, °C');
     const dtRaw=dtSet ?? tIn-tSum, dt=Math.max(T.dtMin, dtRaw);
@@ -464,13 +465,17 @@ class VentCalc {
     // воздух у входа компрессора: наружный + нагрев теплом помещения в общем потоке (Atlas Copco — до 46 °C)
     const tComp=this.r1(tSum+(inp.qRoom||0)*3600/(ac.c*this.rho(tSum)*Math.max(1, Lrun+use)));
     if (comp && tComp>tIn) W.push({ level:'warn', text:`Воздух у входа компрессора около ${this.f(tComp)} °C — выше допустимых ${this.f(tIn)} °C: увеличьте приток или проверьте паспорт компрессора.` });
-    // проёмы — по рамке: S = L / (3600·v), приток — с запасом; «Вентилятор в воздуховоде выброса» — компактнее
-    const boost=!!inp.boost && comp, vIn=this.ex(ex, 'vIn', 0.5, 8, W, 'скорость притока, м/с') ?? (boost ? B.vIn : Sp.in), vOut=this.ex(ex, 'vOut', 0.5, 10, W, 'скорость выброса, м/с') ?? (boost ? B.vOut : Sp.out);
+    // проёмы — по рамке: S = L / (3600·v), приток — с запасом; «Вентилятор в воздуховоде выброса» — компактнее; «Вытяжные
+    // вентиляторы» в стене напротив притока (по термостату) — выброс через их проёмы, приток — до предела Atlas Copco 4 м/с;
+    // с ними канальный вентилятор не нужен
+    const exfan=!!inp.exfan && comp && !!E, boost=!!inp.boost && comp && !exfan;
+    if (inp.boost && exfan) W.push({ level:'info', text:'Вентилятор в воздуховоде выброса не нужен: горячий воздух выводят вытяжные вентиляторы в стене — систему «Вентилятор в воздуховоде выброса» можно выключить.' });
+    const vIn=this.ex(ex, 'vIn', 0.5, 8, W, 'скорость притока, м/с') ?? (exfan ? E.vIn : boost ? B.vIn : Sp.in), vOut=this.ex(ex, 'vOut', 0.5, 10, W, 'скорость выброса, м/с') ?? (exfan ? E.vOut : boost ? B.vOut : Sp.out);
     const res=this.ex(ex, 'res', 1, 2, W, 'запас притока') ?? Sp.inReserve;
     if (vIn>Sp.max) W.push({ level:'warn', text:`Скорость воздуха в притоке ${this.f(vIn)} м/с больше ${Sp.max} м/с (Atlas Copco) — высокие потери давления и шум; увеличьте проём.` });
     else if (vIn<Sp.inRange[0] || vIn>Sp.inRange[1]) W.push({ level:'info', text:`Скорость воздуха в притоке ${this.f(vIn)} м/с — вне рекомендуемого диапазона ${this.f(Sp.inRange[0])}…${this.f(Sp.inRange[1])} м/с.` });
-    if (!boost && vOut>Sp.max) W.push({ level:'warn', text:`Скорость воздуха в выбросе ${this.f(vOut)} м/с больше ${Sp.max} м/с — штатный вентилятор компрессора может не справиться; увеличьте проём или включите «Вентилятор в воздуховоде выброса».` });
-    else if (!boost && (vOut<Sp.outRange[0] || vOut>Sp.outRange[1])) W.push({ level:'info', text:`Скорость воздуха в выбросе ${this.f(vOut)} м/с — вне рекомендуемого диапазона ${this.f(Sp.outRange[0])}…${this.f(Sp.outRange[1])} м/с.` });
+    if (!boost && !exfan && vOut>Sp.max) W.push({ level:'warn', text:`Скорость воздуха в выбросе ${this.f(vOut)} м/с больше ${Sp.max} м/с — штатный вентилятор компрессора может не справиться; увеличьте проём или включите «Вентилятор в воздуховоде выброса».` });
+    else if (!boost && !exfan && (vOut<Sp.outRange[0] || vOut>Sp.outRange[1])) W.push({ level:'info', text:`Скорость воздуха в выбросе ${this.f(vOut)} м/с — вне рекомендуемого диапазона ${this.f(Sp.outRange[0])}…${this.f(Sp.outRange[1])} м/с.` });
     const Sin=this.r2(Lin/(3600*vIn)*res), Sout=this.r2(Lout/(3600*vOut)), free=this.R('vent.free');
     const fanP=(L, dp, eta)=>Math.round(L*dp/(3600*1000*eta)*1000)/1000;   // P = L·ΔP / (3600·1000·η), кВт
     const user=comp ? this.ex(ex, 'fan', 1, 1e6, W, 'вытяжной вентилятор, м³/ч') : null;
@@ -478,7 +483,9 @@ class VentCalc {
     return { tSum, tIn, dtRaw:this.r1(dtRaw), dt, dtc, rho:Math.round(this.rho(tSum)*1000)/1000, units, Qc:this.r1(Qc), qRoom:this.r1(inp.qRoom||0), Lcool, Lroom, Lrun, Lgen, use, Lin, Lout, V:this.r1(V),
       Lmin, Lemerg, raised, tComp, cfmIn:this.cfm(Lin), cfmOut:this.cfm(Lout), vIn, vOut, res, Sin, Sout, free, vLiveIn:this.r1(vIn/res/free), vLiveOut:this.r1(vOut/free), ductDp:Sp.ductDp,
       stand:comp ? { L:Lst, dp:F.dp, eta:F.eta, P:fanP(Lst, F.dp, F.eta), user:user ? { q:user, ok:user>=Lst } : null } : null,
-      boost:boost ? { L:Lcool, dp:B.dp, eta:B.eta, P:fanP(Lcool, B.dp, B.eta) } : null };
+      boost:boost ? { L:Lcool, dp:B.dp, eta:B.eta, P:fanP(Lcool, B.dp, B.eta) } : null,
+      // вытяжные вентиляторы: весь выброс (охлаждение компрессоров и помещение) с запасом; при остановке — они же по термостату
+      exfan:exfan ? { L:this.r10(Lout*E.reserve), dp:E.dp, eta:E.eta, P:fanP(this.r10(Lout*E.reserve), E.dp, E.eta), reserve:E.reserve } : null };
   }
   /** естественная тяга общей вытяжки помещения (жалюзи выброса без воздуховода компрессора): ΔP = (ρ_нар − ρ_вн)·g·h,
    *  h — от середины приточных до середины вытяжных, м. Меньше vent.fan.draft — вытяжной вентилятор (L·запас, напор, мощность) */
@@ -561,6 +568,7 @@ class StationVent {
   static OUT = { top:420, h:[300, 800], w:[400, 1500] };    // вытяжка: верх на 420 мм ниже потолка (под кабельным лотком)
   static HOOD = 420;                                        // колпак выброса на крыше: высота над крышей, мм
   static PIECE = 600;                                       // добавочные жалюзи (остаток сечения) — не уже, мм
+  static FAN_MIN = 500;                                     // проём вытяжного вентилятора — не ниже, мм (осевой вентилятор от Ø 400 мм)
   static get FACE(){ return StationRules.raw('heat.face'); }
   static get FREE(){ return StationRules.raw('vent.free'); }
   /** одинаковые жалюзи на площадь по рамке area, м²: {n, w, h} — площадь не меньше нужной, форма ближе к 3 : 2, меньше штук */
@@ -660,43 +668,64 @@ class StationVent {
     let qWall=dgu ? 0 : room, outRest=0;   // outRest — общая вытяжка, не вставшая на стену выброса (мм² по рамке)
     // компрессоры: горячий воздух — воздуховодом с клапаном рециркуляции к стене, у которой компрессор стоит (задняя; второй
     // ряд — стена прохода, если приток весь встаёт на торцах, иначе крыша). За компрессором сервисные ворота — жалюзи НАД
-    // воротами (по ширине его части ворот), остаток — в верхней части створок (поровну, одного размера); ворот нет — вверху
-    // стены над компрессором (сдвиг до 1,5 м); через крышу — только крайний случай (решения ПНЕВМОТЕХ 12.10 и 13.10).
-    // Одинаковые компрессоры — одинаковые решётки: размер, найденный для первого, ставится и остальным
+    // воротами (по ширине его части ворот); в створки ворот выброс НЕ ставится (решение ПНЕВМОТЕХ 13.10); ворот нет — вверху
+    // стены над компрессором (сдвиг до 1,5 м). Не встало или остаток — на ближайшей боковой стене: торец, у которого
+    // компрессор стоит (между ним и торцом нет оборудования), если в этом торце нет ворот (уточнение ПНЕВМОТЕХ 13.10).
+    // Не вывести из стены хоть одного компрессора — через крышу ВСЕ компрессоры, каналы на крыше одного размера.
+    // Одинаковые компрессоры — одинаковые решётки: размер, найденный для первого, ставится и остальным. С системой «Вытяжные
+    // вентиляторы» на тех же местах — проёмы осевых вентиляторов (скорость выброса vOut — из расчёта)
     const exWall=c=>E!=='back' ? null : plan.rows===2 && c.row===1 ? (front ? 'front' : null) : 'back';
     const gate=(c, w)=>(plan.doors||[]).find(d=>d.rear && d.wall===w && d.pos.includes(c.pos) && d.x0<c.x+c.lx && d.x1>c.x);
     const share=(G, w)=>comp.filter(c=>exWall(c)===w && gate(c, w)===G).sort((a, b)=>a.x-b.x);   // компрессоры за одними воротами
-    const same=new Map(), z1T=H-100;
+    const same=new Map(), z1T=H-100, leftOk0=x0===0 && !plan.geo.sea, hMin=Sm && Sm.exfan ? this.FAN_MIN : OB.h[0];   // с вентиляторами — проём не ниже FAN_MIN
+    const zTop=w=>H-(w==='back' && rearBack ? 100 : OB.top);
+    // свободное место для жалюзи w × hh вверху стены wall: ближе всего к uc, сдвиг не больше maxd → {u, z0, z1, d} | null
+    const fitAt=(wall, w, hh, uc, maxd)=>{ const z1=zTop(wall), z0=z1-hh, end=wall==='left' || wall==='right', lo=end ? 100 : x0+100, hi=end ? Wd-100 : L-100;
+      for (let d=0; d<=maxd; d+=S) for (const sg of d ? [1, -1] : [1]){ const a=Math.round(uc-w/2+sg*d);
+        if (a>=lo && a+w<=hi && W.free(wall, a-90, a+w+90, z0-90, z1+90) && !cogHit(wall, a, a+w, z0, z1)) return { u:a, z0, z1, d }; }
+      return null; };
+    // ближайшая боковая стена — торец, у которого компрессор стоит: между ним и торцом (в его полосе по ширине) нет
+    // оборудования, в торце нет ворот; торцы — только пока второй ряд не выбрасывает в стену прохода (тогда приток — на
+    // торцах); размер — как у такого же компрессора, иначе по расходу (ниже — шире)
+    const endsOk=!comp.some(c=>exWall(c)==='front'), gatesOn=w=>[plan.gates, plan.gates2].some(g=>g && g.wall===w);
+    const floor=I.filter(i=>!i.tank && i.mount!=='pipe' && i.mount!=='wall');
+    const atEnd=(c, e)=>!floor.some(i=>i!==c && i.y<c.y+c.ly && i.y+i.ly>c.y && (e==='right' ? i.x>=c.x+c.lx-1 : i.x+i.lx<=c.x+1));
+    const side=(c, q, was)=>{ const cx=c.x+c.lx/2, cy=c.y+c.ly/2;
+      const ends=endsOk ? ['right', ...(leftOk0 ? ['left'] : [])].filter(e=>!gatesOn(e) && atEnd(c, e)) : [];
+      const sizes=[...(was ? [was] : [])]; for (let h=oh; h>=hMin; h-=50) sizes.push([Math.max(OB.w[0], Math.min(this.WHOLE, Math.ceil(gross(q)/h/S)*S)), h]);
+      for (const [w, hh] of sizes){ let best=null;
+        for (const e of ends){ if (w>Wd-200) continue; const r2=fitAt(e, w, hh, cy, Wd); if (!r2) continue;
+          const len=(e==='right' ? L-cx : cx-x0)+r2.d; if (!best || len<best.len) best={ wall:e, ...r2, len }; }
+        if (best) return { ...best, w, h:hh }; }
+      return null; };
+    // откат к состоянию до компрессоров: если хоть один не выводится из стены — все через крышу
+    const mC=Object.fromEntries(Object.entries(W.B).map(([k, v])=>[k, v.length])), nC=out.louvers.length, nR0=out.roof.length, qW0=qWall;
+    let viaRoof=false;
     for (const c of comp){ let q=qc(c); const kk=key(c), wall=exWall(c), G=wall && gate(c, wall);
-      if (!wall){ out.ducts[kk]='roof'; hood(q, c.x+c.lx/2, c.y+c.ly/2, kk); continue; }
+      if (!wall){ viaRoof=true; break; }
       const sk=[wall, Math.round(q/50), G ? [G.h, G.x1-G.x0, share(G, wall).length].join('/') : '-'].join('|'), was=same.get(sk), got=[];
-      const add=L=>{ out.louvers.push(L); got.push(L); W.busy(wall, L.u0-90-this.GAP, L.u1+260+this.GAP, L.z0-90, L.z1+90); q=Math.max(0, q-L.w*L.h/1e6*F*3600); };
+      const add=L=>{ out.louvers.push(L); got.push(L); W.busy(L.wall, L.u0-90-this.GAP, L.u1+260+this.GAP, L.z0-90, L.z1+90); q=Math.max(0, q-L.w*L.h/1e6*F*3600); };
       if (G){ const S2=share(G, wall), i=S2.indexOf(c), sw=(G.x1-G.x0)/S2.length, a0=G.x0+i*sw, gap=S2.length>1 ? this.GAP/2 : 0;
         // над воротами: низ — над перемычкой и трубопроводом (+240 мм), верх — 100 мм под потолком
         const hA=Math.floor(Math.min(OB.h[1], z1T-(G.h+240))/S)*S, wMax=Math.floor((sw-2*gap)/S)*S;
-        if (hA>=OB.h[0] && wMax>=OB.w[0]){ const w=was ? was.over : Math.max(OB.w[0], Math.min(wMax, Math.ceil(gross(q)/hA/S)*S)), u=Math.round(a0+(sw-w)/2);
-          if (w) add({ kind:'out', wall, u0:u, u1:u+w, z0:z1T-hA, z1:z1T, w, h:hA, duct:kk, over:true }); }
-        // остаток — в верхней части створок за этим компрессором (короб-воздухоотвод к створкам, разъёмный), все одного размера
-        const n=G.leaves||1, lw=(G.x1-G.x0)/n, mine=[...Array(n).keys()].filter(j=>{ const m=G.x0+(j+0.5)*lw; return m>=a0 && m<a0+sw; });
-        const zz1=G.h-150, zz0=Math.max(Math.round(G.h*0.45), zz1-1200), ww=Math.floor((lw-240)/S)*S, hmax=Math.floor((zz1-zz0)/S)*S;
-        if ((q>1 || (was && was.leaf)) && mine.length && ww>=OB.w[0] && hmax>=OB.h[0]){
-          const hh=was && was.leaf ? was.leaf : Math.min(hmax, Math.max(OB.h[0], Math.ceil(gross(q)/(mine.length*ww)/S)*S));
-          for (const j of mine){ const u=Math.round(G.x0+j*lw+(lw-ww)/2); add({ kind:'out', wall, u0:u, u1:u+ww, z0:zz1-hh, z1:zz1, w:ww, h:hh, duct:kk, leaf:true }); } } }
+        if (hA>=hMin && wMax>=OB.w[0]){ const w=was ? was.over : Math.max(OB.w[0], Math.min(wMax, Math.ceil(gross(q)/hA/S)*S)), u=Math.round(a0+(sw-w)/2);
+          if (w) add({ kind:'out', wall, u0:u, u1:u+w, z0:z1T-hA, z1:z1T, w, h:hA, duct:kk, over:true }); } }
       else {
-        // вверху стены над компрессором: размер — как у такого же компрессора; не встал — ниже, затем со сдвигом до 1,5 м
-        const z1=H-(wall==='back' && rearBack ? 100 : OB.top), cx=c.x+c.lx/2, try1=(w, hh)=>{ const z0=z1-hh;
-          for (let d=0; d<=1500; d+=S) for (const sg of d ? [1, -1] : [1]){ const a=Math.round(cx-w/2+sg*d);
-            if (a>=x0+100 && a+w<=L-100 && W.free(wall, a-90, a+w+90, z0-90, z1+90) && !cogHit(wall, a, a+w, z0, z1)) return a; }
-          return null; };
-        let u=null, w=0, hh=0;
-        if (was && was.wall){ [w, hh]=was.wall; u=try1(w, hh); }
-        for (let h=oh; h>=OB.h[0] && u==null; h-=50){ w=Math.max(OB.w[0], Math.min(this.WHOLE, Math.ceil(gross(q)/h/S)*S)); hh=h; u=try1(w, hh); }
-        if (u!=null) add({ kind:'out', wall, u0:u, u1:u+w, z0:z1-hh, z1, w, h:hh, duct:kk }); }
-      if (!got.length){ out.ducts[kk]='roof'; hood(q, c.x+c.lx/2, c.y+c.ly/2, kk); continue; }
+        // вверху стены над компрессором: размер — как у такого же компрессора; не встал — ниже, сдвиг до 1,5 м
+        const cx=c.x+c.lx/2; let r=null, w=0, hh=0;
+        if (was && was.wall){ [w, hh]=was.wall; r=fitAt(wall, w, hh, cx, 1500); }
+        for (let h=oh; h>=hMin && !r; h-=50){ w=Math.max(OB.w[0], Math.min(this.WHOLE, Math.ceil(gross(q)/h/S)*S)); hh=h; r=fitAt(wall, w, hh, cx, 1500); }
+        if (r) add({ kind:'out', wall, u0:r.u, u1:r.u+w, z0:r.z0, z1:r.z1, w, h:hh, duct:kk }); }
+      // не встало или остаток — в торец, у которого компрессор стоит (не в створках ворот)
+      if (q>1){ const sd=side(c, q, was && was.side); if (sd) add({ kind:'out', wall:sd.wall, u0:sd.u, u1:sd.u+sd.w, z0:sd.z0, z1:sd.z1, w:sd.w, h:sd.h, duct:kk, side:true }); }
+      if (!got.length){ viaRoof=true; break; }
       out.ducts[kk]='wall';
-      if (!was) same.set(sk, { over:(got.find(L=>L.over)||{}).w||0, leaf:(got.find(L=>L.leaf)||{}).h||0, wall:(L=>L && [L.w, L.h])(got.find(L=>!L.over && !L.leaf)) });
-      // не хватило — остаток в общую вытяжку стены выброса (задняя), у стены прохода — колпаком
-      if (q>1){ if (wall==='back') qWall+=q; else hood(q, c.x+c.lx/2, c.y+c.ly/2, kk); } }
+      if (!was) same.set(sk, { over:(got.find(L=>L.over)||{}).w||0, wall:(L=>L && [L.w, L.h])(got.find(L=>!L.over && !L.side)), side:(L=>L && [L.w, L.h])(got.find(L=>L.side)) });
+      // не хватило и сбоку — остаток в общую вытяжку стены выброса (задняя), у стены прохода — колпаком
+      if (q>1){ if (wall==='back') qWall+=q; else { viaRoof=true; break; } } }
+    // через крышу — все компрессоры, колпаки одного размера (по наибольшему расходу)
+    if (viaRoof){ for (const k in mC) W.B[k].length=mC[k]; out.louvers.length=nC; out.roof.length=nR0; qWall=qW0; out.ducts={};
+      const qMax=Math.max(...comp.map(qc)); for (const c of comp){ const kk=key(c); out.ducts[kk]='roof'; hood(qMax, c.x+c.lx/2, c.y+c.ly/2, kk); } }
     const exW=new Set([E, ...out.louvers.filter(q=>q.kind==='out').map(q=>q.wall)]);   // стены выброса: притока на них нет
     // места на стене: жалюзи u0…u1 (слева 100 мм, справа 260 мм — электропривод клапана), мимо знака «Центр тяжести»
     const spotAt=(wall, from, w, lim, z0, z1)=>W.find(wall, w+360, z0-90, z1+90, from, a=>!cogHit(wall, a+100, a+100+w, z0, z1) && (!lim || a+100+w<=lim));
@@ -752,7 +781,7 @@ class StationVent {
       for (let i=0; i<n && left>1 && hh>=IN.h[0]; i++){ if (i===skip) continue;
         const a0=u0+i*lw+(i===0 ? 120 : 160), b0=u0+(i+1)*lw-(i===n-1 ? 120 : 160), w=Math.min(IN.w[1], Math.floor((b0-a0)/S)*S); if (w<IN.w[0]) continue;
         const a=Math.round((a0+b0-w)/2); out.louvers.push({ kind:'in', wall, u0:a, u1:a+w, z0, z1:z0+hh, w, h:hh, leaf:true }); left-=w*hh; } };
-    const allLeaves=()=>{ for (const Q of [G, plan.gates2]) if (left>1 && Q && Q.wall!==E) leaves(Q, Q.wall, Q.y0+(Q.sea ? 150 : 0), Q.y1-(Q.sea ? 150 : 0), Q.leaves||2, Q.wicket ? 0 : -1);   // у морского — в его дверях
+    const allLeaves=()=>{ for (const Q of [G, plan.gates2]) if (left>1 && Q && !exW.has(Q.wall)) leaves(Q, Q.wall, Q.y0+(Q.sea ? 150 : 0), Q.y1-(Q.sea ? 150 : 0), Q.leaves||2, Q.wicket ? 0 : -1);   // у морского — в его дверях
       for (const d of (plan.doors||[]).filter(d=>d.kind!=='entry' && !exW.has(d.wall))) if (left>1) leaves(d, d.wall, d.x0, d.x1, d.leaves||1, -1); };
     // или: створки ворот и сервисных дверей (проём уже есть), остаток — так же; из двух — где жалюзи меньше (поровну — на стенах)
     const l0=left, nL=out.louvers.length, m0=Object.fromEntries(Object.entries(W.B).map(([k, v])=>[k, v.length])), sz0=out.size.in;
@@ -768,16 +797,20 @@ class StationVent {
     // на этой высоте места нет (конвекторы, знаки) — на другой, на тех же стенах
     if (left>1 && hi.h[1]>=hi.h[0]) left=place('in', hi, allW, { gross:left/1e6 });
     if (!out.size.in) out.size.in=this.size(out.need.in.gross, IN);
+    // жалюзи притока не встали — приточные вентиляторы на остаток (решение ПНЕВМОТЕХ 13.10, «при необходимости»): проём
+    // меньше (скорость vFanIn по рамке), включаются по датчику температуры; не встали и они — нехватка притока
+    const Ef=StationRules.opt('vent.exfan'), fanP=(q, e)=>Math.round(q*e.dp/(3600*1000*e.eta)*1000)/1000;
+    if (left>1 && Ef && sys.infan!==false && qIn>0){ const qs=left/1e6*3600*vIn/res, g0=qs*Ef.reserve/3600/Ef.vFanIn, nL0=out.louvers.length;
+      let fl=place('in', IN, allW, { gross:g0 }); if (fl>1 && hi.h[1]>=hi.h[0]) fl=place('in', hi, allW, { gross:fl/1e6 });
+      const Fi=out.louvers.slice(nL0); Fi.forEach(q=>{ q.fan=true; });
+      if (Fi.length){ const done=Math.min(1, 1-Math.max(0, fl)/(g0*1e6)), q=Math.round(qs*done/10)*10, Lf=Math.round(q*Ef.reserve/10)*10;
+        out.infan={ n:Fi.length, q, L:Lf, dp:Ef.dp, eta:Ef.eta, P:fanP(Lf, Ef), v:Ef.vFanIn }; left=left*(1-done); } }
     out.short.in=r(Math.max(0, left)/1e6);
     // остаток вытяжки — сбоку, на торцах без притока (наверху), и только потом — через крышу (самый крайний случай)
     if (outRest>1){ const ends=['right', ...(leftOk ? ['left'] : [])].filter(w=>w!==E && !out.louvers.some(q=>q.kind==='in' && q.wall===w));
       const hT=Math.floor(Math.max(OB.h[0], H-OB.top-600)/S)*S;
       if (ends.length) outRest=place('out', { ...OB, h:[OB.h[0], hT] }, ends.map(w=>[w, 'hi']), { gross:outRest/1e6 });
-      // затем — в верхней части створок монтажных ворот этих торцов (короб-воздухоотвод к створкам)
-      for (const Q of [G, plan.gates2]) if (outRest>1 && Q && !Q.sea && ends.includes(Q.wall)){ const n=Q.leaves||2, lw=(Q.y1-Q.y0)/n, zz1=Q.h-150, zz0=Math.max(Math.round(Q.h*0.45), zz1-1200);
-        for (let i=0; i<n && outRest>1; i++){ const a=Math.round(Q.y0+i*lw+120), b=Math.round(Q.y0+(i+1)*lw-120), ww=Math.floor((b-a)/S)*S; if (ww<OB.w[0] || zz1-zz0<OB.h[0]) continue;
-          const hh2=Math.floor(Math.min(zz1-zz0, Math.max(OB.h[0], outRest/ww))/S)*S;
-          out.louvers.push({ kind:'out', wall:Q.wall, u0:a, u1:a+ww, z0:zz1-hh2, z1:zz1, w:ww, h:hh2, leaf:true }); outRest=Math.max(0, outRest-ww*hh2); } }
+      // в створки ворот выброс не ставится (решение ПНЕВМОТЕХ 13.10) — остаток через крышу
       if (outRest>1) hood(outRest/1e6*F*3600, L-Math.min(1500, (L-x0)/4), Wd/2, null); }
     // маркизы: на приточных (снегозащита; расход — по площади жалюзи, вход снизу не быстрее vent.hood_v) и по требованию на
     // жалюзи выброса (расход — по сечению жалюзи; выход вниз не меньше живого сечения — не быстрее heat.face); угол открытия у
@@ -794,6 +827,9 @@ class StationVent {
       out.draft=VentCalc.draft(Sm, (zo-zc(Li))/1000, room, v.ex||{}, v.warn||[]); }
     if (snow){ const I=out.louvers.filter(q=>q.kind==='in'), A=I.reduce((s, q)=>s+q.w*q.h, 0); out.hood=marks(I, q=>qIn*q.w*q.h/A, this.HOOD_V); }
     if (snowOut) out.hoodOut=marks(out.louvers.filter(q=>q.kind==='out'), q=>q.w*q.h/1e6*F*3600, F);
+    // «Вытяжные вентиляторы»: все проёмы выброса на стенах и колпаки на крыше — с осевыми вентиляторами (по термостату)
+    if (Sm && Sm.exfan){ const Lx=out.louvers.filter(q=>q.kind==='out'); Lx.forEach(q=>{ q.fan=true; }); (out.roof||[]).forEach(q=>{ q.fan=true; });
+      out.exfan={ n:Lx.length+(out.roof||[]).length, L:Sm.exfan.L, dp:Sm.exfan.dp, P:Sm.exfan.P }; }
     return out;
   }
   /** «2 × 1000 × 800 мм» */
@@ -811,13 +847,12 @@ class StationVent {
     return [...g].map(([k, c])=>{ const [w, l]=k.split('×').map(Number); return this.text({ n:c, w, h:l }); }).join(' + '); }
   static WALL = { back:'задней стене', front:'стене прохода', left:'торце у входа', right:'дальнем торце' };
   /** где приток и где выброс — словами: «приток — в стене прохода и в створках ворот; выброс — вверху задней стены и через крышу» */
-  /** где жалюзи выброса (без крыши): «над сервисными воротами, в верхней части створок ворот, вверху в задней стене»;
+  /** где жалюзи выброса (без крыши): «над сервисными воротами, вверху в задней стене»;
    *  sizes — с размерами по местам: «над сервисными воротами 2 × 1 400 × 350 мм, вверху в задней стене 400 × 300 мм» */
   static outAt(V, sizes=false){
     const O=V.louvers.filter(q=>q.kind==='out'), part=(t, L)=>L.length ? [t+(sizes ? ' '+this.list({ louvers:L, size:{} }, 'out') : '')] : [];
-    const R=O.filter(q=>!q.over && !q.leaf), ws=[...new Set(R.map(q=>q.wall))];
-    return [...part('над сервисными воротами', O.filter(q=>q.over)), ...part('в верхней части створок ворот', O.filter(q=>q.leaf)),
-      ...ws.flatMap(w=>part('вверху в '+this.WALL[w], R.filter(q=>q.wall===w)))].join(', ');
+    const R=O.filter(q=>!q.over), ws=[...new Set(R.map(q=>q.wall))];
+    return [...part('над сервисными воротами', O.filter(q=>q.over)), ...ws.flatMap(w=>part('вверху в '+this.WALL[w], R.filter(q=>q.wall===w)))].join(', ');
   }
   static where(V){
     const I=V.louvers.filter(q=>q.kind==='in'), ws=[...new Set(I.filter(q=>!q.leaf).map(q=>this.WALL[q.wall]))], lf=I.some(q=>q.leaf);
@@ -846,9 +881,14 @@ class StationVent {
       t.push(`выброс горячего воздуха ${n(V.q.out)} м³/ч${cfm(V.q.out)} — не менее ${f(V.need.out.gross)} м² (${f(V.vOut)} м/с): ${[w ? `жалюзи ${this.outAt(V, true)}` : '', rf ? `через крышу — колпаки ${rf}` : ''].filter(Boolean).join(', ')}`); }
     if (V.rad) t.push(`радиатор ДГУ — ${n(V.rad.q)} м³/ч через ${V.rad.door ? 'дверь-жалюзи' : 'жалюзи'} ${n(V.rad.w)} × ${n(V.rad.h)} мм в дальнем торце (живое сечение ${f(V.rad.free)} м², ${f(V.rad.v)} м/с)`);
     const dtx=Sm && Sm.units.length ? ` Тепло компрессоров ${f(Sm.Qc)} кВт (N·k или паспорт); воздух охлаждения ${n(Sm.Lcool)} м³/ч — вентилятором компрессора (нагрев в нём ${f(Sm.dtc)} °C, паспорт важнее), горячий — воздуховодом наружу; тот же поток продувает помещение — у входа компрессора около ${VentCalc.f(Sm.tComp)} °C (не выше ${f(Sm.tIn)} °C).`
-      +(Sm.stand ? ` При остановленных компрессорах — вытяжной вентилятор с термостатом ${n(Sm.stand.L)} м³/ч (около ${f(Sm.stand.P)} кВт).` : '')
-      +(Sm.boost ? ` Вентилятор в воздуховоде выброса: ${n(Sm.boost.L)} м³/ч, напор не менее ${Sm.boost.dp} Па, около ${f(Sm.boost.P)} кВт.` : ` Жалюзи выброса — с малым сопротивлением: воздуховод с жалюзи не более ${Sm.ductDp} Па (штатный вентилятор компрессора).`) : '';
+      +(Sm.stand ? Sm.exfan ? ' При остановленных компрессорах помещение продувают те же вытяжные вентиляторы (по датчику температуры).' : ` При остановленных компрессорах — вытяжной вентилятор с термостатом ${n(Sm.stand.L)} м³/ч (около ${f(Sm.stand.P)} кВт).` : '')
+      +(Sm.exfan ? ` Вытяжные вентиляторы — вверху стены напротив притока (осевые, с гравитационными жалюзи, включаются автоматически по датчику температуры): ${n(Sm.exfan.L)} м³/ч (запас ${Math.round((Sm.exfan.reserve-1)*100)} %)${V.exfan ? ` в ${V.exfan.n} ${V.exfan.n===1 ? 'проёме' : 'проёмах'}` : ''}, напор не менее ${Sm.exfan.dp} Па, около ${f(Sm.exfan.P)} кВт; воздуховоды компрессоров подведены к ним.`
+      : Sm.boost ? ` Вентилятор в воздуховоде выброса: ${n(Sm.boost.L)} м³/ч, напор не менее ${Sm.boost.dp} Па, около ${f(Sm.boost.P)} кВт.` : ` Жалюзи выброса — с малым сопротивлением: воздуховод с жалюзи не более ${Sm.ductDp} Па (штатный вентилятор компрессора).`) : '';
     iss.push({ level:'info', text:`Вентиляция летом${tm ? ` (до ${tm})` : ''}: ${t.join('; ')}.${dtx} Приток и выброс — на разных стенах; размеры — по рамке (в живом сечении решётки скорость выше), места жалюзи — на чертеже и 3D-виде.` });
+    if (V.infan) iss.push({ level:'info', text:`Приточные вентиляторы: приточные жалюзи целиком не встали — ${V.infan.n} ${V.infan.n===1 ? 'проём' : 'проёма(ов)'} с осевыми вентиляторами на ${n(V.infan.q)} м³/ч (с запасом ${n(V.infan.L)} м³/ч, ${f(V.infan.v)} м/с по рамке, напор не менее ${V.infan.dp} Па, около ${f(V.infan.P)} кВт); включаются автоматически по датчику температуры.` });
+    // выброс компрессора через крышу — исключение (решение ПНЕВМОТЕХ 13.10): на стенах места нет
+    const viaRoof=Object.values(V.ducts||{}).filter(t=>t==='roof').length;
+    if (viaRoof && Sm && Sm.units.length) iss.push({ level:'info', text:`Выброс горячего воздуха ${viaRoof>1 ? 'всех '+viaRoof+' компрессоров' : 'компрессора'} — через крышу, каналы одного размера: над воротами места нет, а в торце выброс невозможен (компрессор не у торца или в торце ворота).` });
     // зима: баланс тепла при работе и открытие регулируемых жалюзи; рекуператор — по требованию заказчика
     const Wn=H && H.win, Rc=H && H.rec;
     if (Wn && !Wn.warm) iss.push({ level:'info', text:`Вентиляция зимой (${StationNorms.deg(Wn.tWin)}): потери ограждений ${f(Wn.Qenv)} кВт + минимальный воздухообмен ${n(Wn.Lw)} м³/ч — ${f(Wn.Qvent)} кВт; тепло работающего компрессора ${f(Wn.Qrun)} кВт — ${Wn.bal>=0 ? `профицит ${f(Wn.bal)} кВт, достаточно частичной рециркуляции` : `дефицит ${f(-Wn.bal)} кВт — подогрев`}. Регулируемые жалюзи зимой открыты на ${Wn.open} % (нужно ${String(Wn.ratio).replace('.', ',')} % летнего расхода).` });

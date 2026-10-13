@@ -1267,14 +1267,11 @@ Check.run('жалюзи: размеры по расходу воздуха, ме
   assert.ok(StationDrawing.heat(sn).some(t=>/маркизы \(снегозащита\): откидные козырьки .*открыты на \d+°/.test(t)), 'ТТ на чертеже — маркизы');
   assert.ok(!solve(C('block', { size:'9000 × 2700 × 2700' }), [comp, dryer, rec]).vent.louvers.some(L=>L.hood), 'без опции — без маркиз');
   draw(sn, 'маркизы'); new StScene(sn, { view:'out' }).build();
-  // компрессор плотно к стене, ворота за ним: выброс — сбоку, в задней стене над воротами (короб-воздухоотвод) или, если над
-  // ними места нет, в верхней части створок ворот; на крышу — только в самом крайнем случае (решение 12.10)
-  const t=cases[0][1], tc=t.items.find(i=>i.kind==='compressor'), tk=StationLayout.key(tc), tg=t.doors.find(d=>d.rear && d.wall==='back');
-  assert.ok(tg && t.vent.exhaust==='back' && t.vent.ducts[tk]==='wall' && !(t.vent.roof||[]).length, 'плотно к стене — выброс в стене, не через крышу: '+JSON.stringify(t.vent.ducts));
-  const tl=t.vent.louvers.filter(L=>L.kind==='out' && L.duct===tk);
-  // над воротами 20-футового морского места нет (до потолка меньше 300 мм) — рядом с ними (сдвиг до 1,5 м) и в створках
-  const tcx=tc.x+tc.lx/2;
-  assert.ok(tl.length && tl.every(L=>L.wall==='back' && (L.leaf ? L.u0>=tg.x0 && L.u1<=tg.x1 : L.over ? L.u0<tg.x1 && L.u1>tg.x0 && L.z0>=tg.h : Math.abs((L.u0+L.u1)/2-tcx)<=1500+L.w/2)), 'над воротами, рядом с ними или в их створках: '+JSON.stringify(tl));
+  // компрессор плотно к стене, ворота за ним (20-футовый морской): над воротами места нет (до потолка меньше 300 мм), в
+  // створки ворот выброс не ставится, компрессор не у торца (уточнение 13.10) — через крышу; на стене рядом с воротами — нет
+  const t=cases[0][1], tc=t.items.find(i=>i.kind==='compressor'), tk=StationLayout.key(tc);
+  assert.ok(t.vent.exhaust==='back' && t.vent.ducts[tk]==='roof' && (t.vent.roof||[]).some(r=>r.duct===tk), 'морской 20: через крышу: '+JSON.stringify(t.vent.ducts));
+  assert.ok(!t.vent.louvers.some(L=>L.kind==='out' && L.duct), 'у компрессора жалюзи в стене нет');
   // с отступом: воздуховод к жалюзи в задней стене над компрессором, приток — в стене прохода и створках ворот в торце
   const w2=cases[2][1], wc=w2.items.find(i=>i.kind==='compressor'), wl=w2.vent.louvers.find(L=>L.duct===StationLayout.key(wc));
   assert.ok(w2.vent.exhaust==='back' && wl && wl.wall==='back' && wl.u0<wc.x+wc.lx && wl.u1>wc.x && wl.z1<=w2.int[2]-StationVent.OUT.top, 'жалюзи выброса — над компрессором: '+JSON.stringify(wl));
@@ -1382,9 +1379,50 @@ Check.run('выброс горячего воздуха — над сервис�
   const p3=solve(C('block'), [c22, dryer, rec, cab]), by=new Map();
   for (const q of out(p3)) by.set(q.duct, [...(by.get(q.duct)||[]), q.w+'×'+q.h+(q.over ? 'н' : q.leaf ? 'с' : '')]);
   const sets=[...by.values()].map(v=>v.sort().join(',')); assert.ok(sets.length===3 && new Set(sets).size===1, 'одинаковые решётки: '+JSON.stringify([...by]));
-  // морской контейнер: над воротами места нет — в верхней части створок, одного размера
+  // морской контейнер: над воротами места нет, в створки ворот выброс НЕ ставится, компрессоры не у торца (уточнение 13.10)
+  // — через крышу ВСЕ компрессоры, каналы на крыше одного размера
   const ps=solve(C('sea40'), [P('Винтовой компрессор 37', { cat:'comp_screw', kw:37, size:'1400 × 900 × 1500', mass:650 }, { role:'main', qty:2 }), dryer, rec, cab]);
-  const L=out(ps); assert.ok(L.length && L.every(q=>q.leaf) && new Set(L.map(q=>q.w+'×'+q.h)).size===1, 'створки, один размер: '+JSON.stringify(L.map(q=>[q.w, q.h, q.leaf])));
+  const R=(ps.vent.roof||[]).filter(r=>r.duct); assert.ok(!out(ps).length && R.length===2 && new Set(R.map(r=>r.w+'×'+r.l)).size===1, 'крыша, один размер: '+JSON.stringify(R.map(r=>[r.w, r.l])));
+  assert.ok(ps.items.filter(i=>i.kind==='compressor').every(c=>ps.vent.ducts[StationLayout.key(c)]==='roof'), 'все компрессоры — через крышу');
+  const inGate=(p, q)=>[...(p.doors||[]).map(d=>[d.wall==='back' ? 'back' : 'front', d.x0, d.x1, d.h]), ...[p.gates, p.gates2].filter(Boolean).map(g=>[g.wall, g.y0, g.y1, g.h])].some(([w, a, b, h])=>w===q.wall && q.u0<b && q.u1>a && q.z0<h);
+  for (const p of [p1, p3, ps]) for (const q of p.vent.louvers.filter(q=>q.kind==='out')) assert.ok(!q.leaf && !inGate(p, q), 'выброс не в воротах: '+JSON.stringify(q));
+  // компрессор у торца (между ним и торцом нет оборудования), в торце нет ворот: над воротами не хватило — в торец
+  const c75=P('Винтовой компрессор 75', { cat:'comp_screw', kw:75, size:'1800 × 1100 × 1700', mass:1500 }, { role:'main' });
+  const pe=solve(C('block'), [c75, dryer, rec, cab]), ce=pe.items.find(i=>i.kind==='compressor'), Le=out(pe).filter(q=>q.side);
+  assert.ok(Le.length && Le.every(q=>(q.wall==='left' || q.wall==='right') && ![pe.gates, pe.gates2].some(g=>g && g.wall===q.wall)), 'в торце без ворот: '+JSON.stringify(Le));
+  for (const q of Le) assert.ok(!pe.items.some(i=>i!==ce && !i.tank && i.mount!=='pipe' && i.mount!=='wall' && i.y<ce.y+ce.ly && i.y+i.ly>ce.y && (q.wall==='right' ? i.x>=ce.x+ce.lx : i.x+i.lx<=ce.x)), 'компрессор — у этого торца');
+});
+
+Check.run('вытяжные вентиляторы в стене напротив притока; приточные — если жалюзи не встают; по датчику температуры', ()=>{
+  // решение ПНЕВМОТЕХ 13.10: вентилятор принудительного выдува горячего воздуха — в стене напротив притока, меняет расчёт и
+  // уменьшает проёмы; приточные вентиляторы — при необходимости; все — автоматически по датчику температуры
+  const c75=P('Винтовой компрессор 75', { cat:'comp_screw', kw:75, size:'1800 × 1100 × 1700', mass:1500 }, { role:'main' });
+  const p0=solve(C('block'), [c75, dryer, rec, cab]), p1=solve(C('block', { sys:{ exfan:true } }), [c75, dryer, rec, cab]);
+  Check.plan(p1, 'вытяжные вентиляторы'); const S0=p0.heat.vent.sum, S1=p1.heat.vent.sum, E=StationRules.raw('vent.exfan');
+  assert.ok(!S0.exfan && S1.exfan && S1.vIn===E.vIn && S1.vOut===E.vOut, 'скорости с вентиляторами: '+JSON.stringify([S1.vIn, S1.vOut]));
+  // пример 75 кВт: приток 1,51 → 1,13 м², выброс 1,01 → 0,67 м² (как с канальным вентилятором)
+  assert.deepStrictEqual([p0.vent.need.in.gross, p0.vent.need.out.gross, p1.vent.need.in.gross, p1.vent.need.out.gross], [1.51, 1.01, 1.13, 0.67]);
+  assert.strictEqual(S1.exfan.L, Math.round(S1.Lout*E.reserve/10)*10, 'расход вентиляторов — весь выброс с запасом');
+  assert.ok(Math.abs(S1.exfan.P-S1.exfan.L*E.dp/(3600*1000*E.eta))<0.001, 'P = L · ΔP / (3600 · 1000 · η)');
+  const O=p1.vent.louvers.filter(q=>q.kind==='out'), I=p1.vent.louvers.filter(q=>q.kind==='in');
+  assert.ok(O.length && O.every(q=>q.fan) && p1.vent.exfan.n===O.length+(p1.vent.roof||[]).length, 'все проёмы выброса — с вентиляторами');
+  assert.ok(!I.some(q=>O.some(o=>o.wall===q.wall)) && O.some(q=>q.wall==='back') && I.some(q=>q.wall==='front'), 'вентиляторы — на стене напротив притока');
+  const A=L=>L.reduce((s, q)=>s+q.w*q.h, 0)/1e6, O0=p0.vent.louvers.filter(q=>q.kind==='out');
+  assert.ok(A(O)<A(O0) && A(I)<A(p0.vent.louvers.filter(q=>q.kind==='in')), 'проёмы меньше: '+[A(O0), A(O)].join(' → '));
+  const T=p1.issues.map(i=>i.text).join(' | ');
+  assert.ok(/Вытяжные вентиляторы — вверху стены напротив притока .*по датчику температуры/.test(T) && /те же вытяжные вентиляторы/.test(T), T);
+  assert.ok(StationDrawing.heat(p1).some(t=>/вытяжные вентиляторы/.test(t)), 'ТТ на чертеже');
+  new StScene(p1, {}).build(); new StScene(p1, { view:'out', az:180 }).build(); draw(p1, 'вытяжные вентиляторы');
+  // с вытяжными вентиляторами канальный не нужен
+  const pb=solve(C('block', { sys:{ exfan:true, boost:true } }), [c75, dryer, rec, cab]);
+  assert.ok(!pb.heat.vent.sum.boost && pb.heat.vent.sum.exfan && pb.heat.vent.warn.some(w=>/не нужен/.test(w.text)), 'канальный — не нужен');
+  // приточные жалюзи целиком не встали — приточные вентиляторы на недостающий расход (проём меньше), по датчику температуры
+  const c132=P('Винтовой компрессор 132', { cat:'comp_screw', kw:132, size:'2200 × 1300 × 1900', mass:1500 }, { role:'main' });
+  const pi=solve(C('sea20', { sys:{ snow:true } }), [c132, dryer, rec, cab]), F=pi.vent.louvers.filter(q=>q.kind==='in' && q.fan);
+  assert.ok(pi.vent.infan && F.length===pi.vent.infan.n && pi.vent.short.in===0, 'приточные вентиляторы: '+JSON.stringify(pi.vent.infan));
+  assert.ok(pi.issues.some(i=>/^Приточные вентиляторы: .*по датчику температуры/.test(i.text)), 'замечание о приточных вентиляторах');
+  assert.ok(!solve(C('sea20', { sys:{ snow:true, infan:false } }), [c132, dryer, rec, cab]).vent.infan, 'запрещены — не ставятся');
+  new StScene(pi, {}).build(); draw(pi, 'приточные вентиляторы');
 });
 
 Check.run('ресиверы в два ряда в конце ряда — станция короче; вид адсорбционного осушителя', ()=>{
