@@ -43,16 +43,17 @@ class CalcNote {
 
 // ---------------------------------------------------------------- исходные данные расчёта
 class CalcInput {
-  static num(v){ const n=parseFloat(String(v??'').replace(/\s+/g, '').replace(',', '.').replace(/[−–]/g, '-').replace(/^\+/, '')); return Number.isFinite(n) ? n : null; }
+  static num(v){ return ReqNum.num(v); }   // ошибочное и вне допустимого — не в расчёт (ошибка поля — StationCalc.run)
   /** {kind, req — числа, cls, units — элементы состава по видам, parts} */
   static of(x){
-    const r=StationReq.of(x), n=this.num, P=kitParts(x).filter(p=>p.role!=='container');
+    const r=StationReq.of(x), P=kitParts(x).filter(p=>p.role!=='container'), n=v=>this.num(v), g=k=>ReqNum.check(k, r[k]) ? null : this.num(r[k]);   // g — с проверкой диапазона
     const units=P.map(p=>{ const kind=StationEquip.kindOf(p), info=/^(compressor|dryer|filter|receiver)$/.test(kind) ? AirChain.info(p, kind) : {};
       return { p, kind, qty:Math.max(1, Math.min(20, Math.round(+p.qty||1))), info, name:String(p.name||'').trim(), attrs:p.attrs||{}, rows:p.rows||[] }; });
     return { kind:StationReq.kind(x), cls:StationUi.opts(x).air || '', units, parts:P,
-      req:{ flow:n(r.flow), pressure:n(r.pressure), basis:r.basis==='normal' ? 'normal' : 'fad', alt:n(r.alt), rh:n(r.rh), margin:n(r.margin),
-        reserve:r.reserve!=null && r.reserve!=='' ? Math.max(0, Math.round(n(r.reserve)||0)) : null, work:n(r.work), tmin:n(r.tmin), tmax:n(r.tmax), tin:n(r.tin),
-        kw:n(r.kw), load:n(r.load), hours:n(r.hours), motor:n(r.motor), start:r.start||'', recvVol:n(r.recvVol), mode:r.mode||'' } };
+      req:{ flow:g('flow'), pressure:g('pressure'), basis:r.basis==='normal' ? 'normal' : 'fad', alt:g('alt'), rh:g('rh'), margin:g('margin'),
+        reserve:r.reserve!=null && r.reserve!=='' ? Math.max(0, Math.round(n(r.reserve)||0)) : null, work:n(r.work), tmin:g('tmin'), tmax:g('tmax'), tin:g('tin'),
+        kw:g('kw'), load:g('load'), hours:g('hours'), motor:g('motor'), start:r.start||'', recvVol:g('recvVol'), mode:r.mode||'',
+        q:g('q'), head:g('head'), hsuct:g('hsuct'), tliq:g('tliq'), liquid:r.liquid||'' } };
   }
   /** строка характеристик по ключу (рег. выражение) → число в единицах строки; unitRx — единица должна совпасть */
   static row(u, keyRx, unitRx){ for (const r of u.rows||[]){ if (!r || !keyRx.test(String(r.k||''))) continue; const t=String(r.k||'')+' '+String(r.v||'');
@@ -108,7 +109,9 @@ class AirDemand {
     const res=r.reserve!=null ? Math.min(r.reserve, C.length-1) : 0, work=C.slice(res), spare=C.slice(0, res), sum=work.reduce((a, o)=>a+o.v, 0);
     if (r.reserve==null){ N.rule('flow.reserve'); N.missing('flow.reserve.tz', 'Резерв компрессоров в ТЗ не задан — расчёт без резерва', 'Нужен ли резервный компрессор (N+1)?'); }
     const unknown=C.filter(o=>!(o.v>0));
-    if (unknown.length) N.missing('comp.flow', 'Нет производительности: '+[...new Set(unknown.map(o=>o.u.name))].join(', '));
+    if (unknown.length){ N.missing('comp.flow', 'Нет производительности: '+[...new Set(unknown.map(o=>o.u.name))].join(', '));
+      for (const nm of new Set(unknown.map(o=>o.u.name))) N.issue('warn', `У «${nm}» в карточке не указана производительность — по нему проверка не выполнена; заполните карточку оборудования.`); }
+    if (!work.some(o=>o.v>0)) return { need, Q };   // ни у одного рабочего нет производительности — сравнивать не с чем
     const fit=N.fits(sum, need), ok=fit.ok, mg=CalcNote.pct(sum, need);
     N.step({ what:'Компрессоры: рабочие против требуемой', formula:'Σ Qраб ≥ Qтр', data:[['рабочих', work.length+' шт.'], ['резервных', res+' шт.'+(res ? ' (самые крупные — не учитываются)' : '')],
       ...work.slice(0, 6).map((o, i)=>['№ '+(i+1), o.u.name+' — '+f(o.v)+' м³/мин'])], result:'Σ Qраб = '+f(sum)+' м³/мин', ok, margin:mg, note:fit.note, rules:fit.edge ? ['calc.tolerance'] : [], pick:[...new Set(C.map(o=>o.u.name))].join('; ') });
@@ -118,7 +121,7 @@ class AirDemand {
       if (low.length) N.issue('error', 'Резервный компрессор меньше самого крупного рабочего — при его отказе станция не обеспечит потребность.'); }
     // электродвигатель на высоте и в жару
     const ma=N.rule('flow.motor_alt');
-    if (H>ma.h || (r.tmax!=null && r.tmax>ma.t)){ N.issue('warn', `Условия выше номинальных для электродвигателя (до ${ma.h} м и +${ma.t} °C): высота ${f(H, 0)} м, до ${f(r.tmax, 0)} °C — снижение мощности по данным изготовителя.`);
+    if (H>ma.h || (r.tmax!=null && r.tmax>ma.t)){ N.issue('warn', `Условия выше номинальных для электродвигателя (до ${ma.h} м и +${ma.t} °C): ${[H>ma.h ? `высота ${f(H, 0)} м` : '', r.tmax!=null && r.tmax>ma.t ? `до +${f(r.tmax, 0)} °C` : ''].filter(Boolean).join(', ')} — снижение мощности по данным изготовителя.`);
       N.missing('motor.derate', 'Снижение мощности двигателей компрессоров на высоте / в жару — по данным изготовителя'); }
     return { need, Q, sum, work, res };
   }
@@ -252,6 +255,7 @@ class ReceiverSizing {
     const Rv=q.units.filter(u=>u.kind==='receiver'), have=Rv.reduce((s, u)=>s+(u.info.vol||0)*u.qty, 0);
     const big=C.reduce((m, u)=>(u.info.flow||0)>(m.info.flow||0) ? u : m, C[0]), vsd=!!big.info.vsd, fr=N.rule('receiver.formula');
     const per=vsd ? N.rule('receiver.vsd') : AirChain.RECV, V=Math.round((big.info.flow||0)*per), tz=q.req.recvVol>0 ? q.req.recvVol : 0, need=Math.max(V, tz);
+    if (!(need>0)){ N.missing('recv.flow', 'Объём ресивера не рассчитан: у компрессоров не указана производительность'); return; }
     N.step({ what:'Объём ресивера', formula:vsd ? 'V = '+f(per, 0)+' л на 1 м³/мин (частотное регулирование)' : 'V = 0,25 · qc · p1 · T0 / (fmax · Δp · T1)',
       data:[['наибольший компрессор', big.name+' — '+f(big.info.flow)+' м³/мин'], ...(vsd ? [] : [['p1 · T0 / T1', f(fr.p1)+' бар · '+fr.T0+' / '+fr.T1+' K'], ['цикл', fr.cycle+' с'], ['Δp', f(fr.dp)+' бар']]),
         ...(tz ? [['по ТЗ', f(tz, 0)+' л']] : [])], rules:['receiver.formula', vsd ? 'receiver.vsd' : ''], result:'нужно ≥ '+f(need, 0)+' л; в составе '+f(have, 0)+' л',
@@ -343,6 +347,8 @@ class ElectricLoad {
     return /частот|чрп|vsd|преобразовател/.test(t) ? 'vsd' : /звезд|треуг|y\s*\/\s*[dδ]|star/.test(t) ? 'stardelta' : /плавн|soft/.test(t) ? 'soft' : /прям/.test(t) ? 'direct' : ''; }
   static run(N, q, plan){
     const f=CalcNote.f, W=plan && plan.power; N.section('el', 'Электропитание');
+    for (const nm of new Set(q.units.filter(u=>/^(compressor|pump)$/.test(u.kind) && !(CalcInput.num(u.attrs.kw)>0)).map(u=>u.name)))
+      N.issue('warn', `У «${nm}» в карточке не указана мощность двигателя — в электрическую нагрузку станции не вошёл; заполните карточку.`);
     if (W) N.step({ what:'Мощность и ток станции', formula:'I = P / (√3 · U · cos φ)', rules:['el.u', 'el.cos', 'el.breaker_k'],
       data:[['установленная', f(W.inst, 1)+' кВт'], ['расчётная', f(W.kw, 1)+' кВт ('+(W.mode==='run' ? 'работа' : 'простой зимой')+')'], ['U', N.rule('el.u')+' В'], ['cos φ', f(N.rule('el.cos'))]],
       result:'I = '+f(W.amp, 1)+' А; вводной автомат '+(W.breaker ? W.breaker+' А' : 'по проекту'), ok:null });
@@ -361,6 +367,7 @@ class ElectricLoad {
 
 // ---------------------------------------------------------------- ДГУ: мощность, нагрузка, высота и жара, пуск, топливо
 class GensetSizing {
+  static TANK_MAX = 4500;   // наибольший бак в отсеке контейнера, л (3 000 × 1 000 × 1 500 мм — StationEquip.guess)
   /** расход топлива ДГУ при доле нагрузки x, л/ч: строки «При нагрузке N %» / «Расход топлива при N % нагрузки»; нет — null */
   static fuel(u, x){
     const T=[]; for (const r of u.rows||[]){ const m=String(r && r.k||'').match(/(\d{2,3})\s*%/); if (!m || !/нагрузк/i.test(String(r.k)) || !/л\s*\/\s*ч/i.test(String(r.k)+' '+String(r.v))) continue;
@@ -369,57 +376,124 @@ class GensetSizing {
   }
   /** топливо на автономность (часы из требований): доля нагрузки, расход одной рабочей ДГУ — по строкам паспорта, иначе
    *  удельный (правило dgu.lph); нужно с запасом dgu.fuel_margin; есть — баки ДГУ и дополнительные. Нет часов или ДГУ — null */
+  /** мощность ДГУ, кВт: основной источник — PRP (kw); резервный — ESP (kwMax), нет ESP — PRP (с пометкой, в запас) */
+  static cap(attrs, standby){ const prp=CalcInput.num((attrs||{}).kw)||0, esp=CalcInput.num((attrs||{}).kwMax)||0; return standby && esp>0 ? esp : prp; }
+  /** полная мощность генератора, кВА: паспорт (kva), нет — PRP / cos φ ном. (dgu.cos) */
+  static kva(attrs){ const k=CalcInput.num((attrs||{}).kva)||0, prp=CalcInput.num((attrs||{}).kw)||0; return k>0 ? { v:k, src:'паспорт' } : prp>0 ? { v:prp/StationRules.raw('dgu.cos'), src:'по мощности' } : { v:0, src:'' }; }
+  /** топливо на автономность (часы из требований): доля нагрузки, расход каждой рабочей ДГУ — по строкам паспорта, иначе
+   *  удельный (правило dgu.lph); c — суммарный расход рабочих, л/ч; нужно с запасом dgu.fuel_margin; есть — баки ДГУ и
+   *  дополнительные. Нет часов, ДГУ или мощности — null */
   static fuelPlan(q){
     const r=q.req, G=q.units.filter(u=>u.kind==='dgu'); if (!G.length || !(r.hours>0)) return null;
     const U=G.flatMap(u=>Array.from({ length:u.qty }, ()=>({ u, prp:CalcInput.num(u.attrs.kw)||0 }))).sort((a, b)=>b.prp-a.prp);
     const res=r.reserve!=null ? Math.min(r.reserve, U.length-1) : 0, work=U.slice(res), PRP=work.reduce((s, o)=>s+o.prp, 0);
-    const x=r.kw>0 && PRP>0 ? Math.min(1.1, (r.load>0 ? r.kw*r.load/100 : r.kw)/PRP) : StationRules.raw('dgu.fuel_load');
-    let c=this.fuel(work[0].u, x), src='паспорт ДГУ'; if (c==null){ c=StationRules.raw('dgu.lph')*x*work[0].prp; src='удельный расход (правило)'; }
+    if (!(PRP>0)) return null;
+    const x=r.kw>0 ? Math.min(1.1, (r.load>0 ? r.kw*r.load/100 : r.kw)/PRP) : StationRules.raw('dgu.fuel_load');
+    let c=0, src='паспорт ДГУ'; for (const o of work){ const v=this.fuel(o.u, x); if (v!=null) c+=v; else { c+=StationRules.raw('dgu.lph')*x*o.prp; src='удельный расход (правило)'; } }
     const built=G.reduce((s, u)=>s+this.tank(u)*u.qty, 0), extra=q.units.filter(u=>u.kind==='tank').reduce((s, u)=>s+(AirChain.volume(u.p)||CalcInput.num(u.attrs.tank)||0)*u.qty, 0);
-    return { x, c, src, n:work.length, need:c*work.length*r.hours*StationRules.raw('dgu.fuel_margin'), built, extra, have:built+extra };
+    return { x, c, src, n:work.length, need:c*r.hours*StationRules.raw('dgu.fuel_margin'), built, extra, have:built+extra };
   }
   static plan(x){ return this.fuelPlan(CalcInput.of(x)); }
   static tank(u){ const r=CalcInput.row(u, /^(?:встроенн\S*\s+)?топливн\S*\s+бак|объ[её]м\s+(?:топливного\s+)?бака|[её]мкость\s.*бака/i, /(?:^|[^а-я])л(?:[^а-я]|$)/i); return r ? r.v : CalcInput.num(u.attrs.tank) || 0; }
   static run(N, q, E){
     const r=q.req, f=CalcNote.f, G=q.units.filter(u=>u.kind==='dgu'); N.section('dgu', 'ДГУ');
     if (!G.length){ N.issue('error', 'В составе нет ДГУ.'); return; }
-    const units=G.flatMap(u=>Array.from({ length:u.qty }, ()=>u)).map(u=>({ u, prp:CalcInput.num(u.attrs.kw)||0, esp:CalcInput.num(u.attrs.kwMax)||0, kva:CalcInput.num(u.attrs.kva)||0 })).sort((a, b)=>b.prp-a.prp);
-    const res=r.reserve!=null ? Math.min(r.reserve, units.length-1) : 0, work=units.slice(res), PRP=work.reduce((s, o)=>s+o.prp, 0), ESP=work.reduce((s, o)=>s+o.esp, 0), KVA=work.reduce((s, o)=>s+o.kva, 0);
-    if (r.reserve==null) N.missing('dgu.reserve.tz', 'Резерв ДГУ в ТЗ не задан — расчёт без резерва', 'Нужен ли резервный ДГУ (N+1)?');
-    if (!(r.kw>0)){ N.issue('info', 'Мощность нагрузки не задана — проверка мощности ДГУ не выполнена.'); N.ask('Мощность нагрузки ДЭС, кВт (длительная и максимальная).'); }
     const standby=/standby|резерв|аварийн/i.test(r.mode||'');
-    if (r.kw>0){ const cap=standby ? ESP : PRP, fit=N.fits(cap, r.kw), ok=fit.ok;
+    const units=G.flatMap(u=>Array.from({ length:u.qty }, ()=>u)).map(u=>{ const k=this.kva(u.attrs); return { u, prp:CalcInput.num(u.attrs.kw)||0, esp:CalcInput.num(u.attrs.kwMax)||0, cap:this.cap(u.attrs, standby), kva:k.v, ksrc:k.src }; }).sort((a, b)=>b.prp-a.prp);
+    const res=r.reserve!=null ? Math.min(r.reserve, units.length-1) : 0, work=units.slice(res), PRP=work.reduce((s, o)=>s+o.prp, 0), CAP=work.reduce((s, o)=>s+o.cap, 0), KVA=work.reduce((s, o)=>s+o.kva, 0);
+    if (r.reserve==null) N.missing('dgu.reserve.tz', 'Резерв ДГУ в ТЗ не задан — расчёт без резерва', 'Нужен ли резервный ДГУ (N+1)?');
+    const noKw=[...new Set(units.filter(o=>!(o.prp>0)).map(o=>o.u.name))];
+    for (const nm of noKw) N.issue('warn', `У «${nm}» в карточке не указана мощность (PRP) — проверки мощности, нагрузки и топлива по нему не выполнены; заполните карточку.`);
+    if (standby && work.some(o=>o.prp>0 && !(o.esp>0))) N.assume('Мощность ESP (резервный режим) в карточке ДГУ не указана — для проверки взята PRP (в запас).');
+    if (!(r.kw>0)){ N.issue('info', 'Мощность нагрузки не задана — проверка мощности ДГУ не выполнена.'); N.ask('Мощность нагрузки ДЭС, кВт (длительная и максимальная).'); }
+    if (r.kw>0 && CAP>0){ const fit=N.fits(CAP, r.kw), ok=fit.ok;
       N.step({ what:standby ? 'Мощность ESP (резервный источник) против нагрузки' : 'Мощность PRP против нагрузки', formula:'Σ Pраб ≥ Pнагр', rules:[standby ? 'dgu.esp_hours' : 'dgu.prp_avg'],
-        data:[['нагрузка', f(r.kw, 0)+' кВт'], ['рабочих ДГУ', work.length+(res ? ' (+'+res+' резерв)' : '')], ...work.slice(0, 4).map(o=>['ДГУ', o.u.name+' — PRP '+f(o.prp, 0)+' / ESP '+f(o.esp, 0)+' кВт'])],
-        result:(standby ? 'ESP = ' : 'PRP = ')+f(cap, 0)+' кВт', ok, margin:CalcNote.pct(cap, r.kw), note:fit.note, pick:[...new Set(G.map(u=>u.name))].join('; ') });
+        data:[['нагрузка', f(r.kw, 0)+' кВт'], ['рабочих ДГУ', work.length+(res ? ' (+'+res+' резерв)' : '')], ...work.slice(0, 4).map(o=>['ДГУ', o.u.name+' — PRP '+f(o.prp, 0)+(o.esp>0 ? ' / ESP '+f(o.esp, 0) : '')+' кВт'])],
+        result:(standby ? 'ESP = ' : 'PRP = ')+f(CAP, 0)+' кВт', ok, margin:CalcNote.pct(CAP, r.kw), note:fit.note, pick:[...new Set(G.map(u=>u.name))].join('; ') });
       N.rule(standby ? 'dgu.esp_hours' : 'dgu.prp_avg');
-      if (!ok) N.issue('error', `Мощность ДГУ ${f(cap, 0)} кВт меньше нагрузки ${f(r.kw, 0)} кВт.`);
-      const avg=r.load>0 ? r.kw*r.load/100 : r.kw, lim=N.rule('dgu.prp_avg')*PRP;
-      if (!standby){ N.step({ what:'Средняя нагрузка за 24 ч', formula:'Pср ≤ 0,7 · PRP', rules:['dgu.prp_avg'], data:[['Pср', f(avg, 0)+' кВт'+(r.load>0 ? ' ('+f(r.load, 0)+' % от нагрузки)' : ' (график не задан — принята постоянной)')]], result:'0,7 · PRP = '+f(lim, 0)+' кВт', ok:avg<=lim+1e-9, margin:CalcNote.pct(lim, avg) });
+      if (!ok) N.issue('error', `Мощность ДГУ ${f(CAP, 0)} кВт меньше нагрузки ${f(r.kw, 0)} кВт.`);
+      const avg=r.load>0 ? r.kw*r.load/100 : r.kw, lim=N.rule('dgu.prp_avg')*PRP, low=N.rule('dgu.minload')*PRP;
+      if (!standby && PRP>0){ N.step({ what:'Средняя нагрузка за 24 ч', formula:'Pср ≤ 0,7 · PRP', rules:['dgu.prp_avg'], data:[['Pср', f(avg, 0)+' кВт'+(r.load>0 ? ' ('+f(r.load, 0)+' % от нагрузки)' : ' (график не задан — принята постоянной)')]], result:'0,7 · PRP = '+f(lim, 0)+' кВт', ok:avg<=lim+1e-9 ? true : null });
         if (!(r.load>0)) N.ask('График нагрузки за сутки: средняя нагрузка, % от максимальной.', true);
-        if (avg>lim+1e-9) N.issue('warn', `Средняя нагрузка ${f(avg, 0)} кВт больше 70 % PRP (${f(lim, 0)} кВт): для постоянной круглосуточной нагрузки нужна мощность COP (уточните у производителя) или больше ДГУ.`); } }
-    // высота и температура
-    const ref=N.rule('dgu.ref'), pb=AirDemand.baro(r.alt||0);
-    if (pb<ref.p-1e-9 || (r.tmax!=null && r.tmax>ref.t)) { N.missing('dgu.derate', `Условия площадки хуже стандартных ISO 3046-1 (${f(pb, 1)} кПа${r.tmax!=null ? ', до +'+f(r.tmax, 0)+' °C' : ''}) — снижение мощности по данным изготовителя двигателя (в каталоге нет)`);
-      N.step({ what:'Высота и температура (ISO 3046-1)', formula:'местные условия против 100 кПа, 25 °C, 30 %', rules:['dgu.ref'], data:[['высота', f(r.alt||0, 0)+' м → '+f(pb, 1)+' кПа'], ['до', r.tmax!=null ? f(r.tmax, 0)+' °C' : '—']], result:'требуется снижение мощности по данным изготовителя', ok:null }); }
+        if (avg>lim+1e-9) N.issue('warn', `Средняя нагрузка ${f(avg, 0)} кВт больше 70 % PRP (${f(lim, 0)} кВт): для постоянной круглосуточной нагрузки нужна мощность COP (уточните у производителя) или больше ДГУ.`);
+        if (avg<low-1e-9) N.issue('warn', `Средняя нагрузка ${f(avg, 0)} кВт меньше ${Math.round(N.rule('dgu.minload')*100)} % PRP (${f(low, 0)} кВт): длительная работа на малой нагрузке ведёт к нагарообразованию — уточните у изготовителя минимальную нагрузку или подберите ДГУ меньшей мощности.`); } }
+    // высота и температура: базовые условия изготовителя (dgu.site); выше — мощность снижается по его таблице (в каталоге нет)
+    const site=N.rule('dgu.site'), hot=r.tmax!=null && r.tmax>site.t, high=(r.alt||0)>site.alt;
+    if (hot || high){ const pb=AirDemand.baro(r.alt||0);
+      N.issue('warn', `Условия площадки (${high ? 'высота '+f(r.alt, 0)+' м' : ''}${high && hot ? ', ' : ''}${hot ? 'до +'+f(r.tmax, 0)+' °C' : ''}) выше базовых условий изготовителей ДГУ (до ${f(site.alt, 0)} м и +${f(site.t, 0)} °C): мощность снижается по таблице изготовителя — в каталоге её нет; проверьте запас мощности по паспорту.`);
+      N.missing('dgu.derate', 'Снижение мощности ДГУ по высоте и температуре — по таблице изготовителя (в каталоге нет)');
+      N.step({ what:'Высота и температура площадки', formula:'местные условия против базовых условий изготовителя', rules:['dgu.site', 'dgu.ref'],
+        data:[['высота', f(r.alt||0, 0)+' м → '+f(pb, 1)+' кПа'], ['до', r.tmax!=null ? f(r.tmax, 0)+' °C' : 'не задано']], result:'требуется снижение мощности по данным изготовителя', ok:null }); }
     // пуск наибольшего двигателя от ДГУ
     if (r.motor>0 || (E && E.Sst)){
       const K=N.rule('el.start'), how=r.start && K[r.start] ? r.start : (E && E.how) || '', cos=N.rule('el.cos'), eta=N.rule('el.eta'), P=r.motor>0 ? r.motor : E.kw;
       const S=(how ? K[how] : K.default)*P/(cos*eta), ratio=KVA>0 ? S/KVA : null, dip=N.rule('dgu.dip');
+      if (work.some(o=>o.ksrc==='по мощности')) N.assume(`Полная мощность генератора в карточке ДГУ не указана — принята PRP / ${f(N.rule('dgu.cos'), 2)} (cos φ ном.).`);
       if (!how) N.missing('dgu.start', 'Способ пуска двигателя нагрузки не указан — принят прямой');
-      N.step({ what:'Пуск наибольшего двигателя от ДГУ', formula:'Sпуск = k · P / (cos φ · η)', rules:['el.start', 'dgu.dip'], data:[['P', f(P, 1)+' кВт'], ['k', f(how ? K[how] : K.default, 1)], ['генератор', f(KVA, 0)+' кВА']],
+      N.step({ what:'Пуск наибольшего двигателя от ДГУ', formula:'Sпуск = k · P / (cos φ · η)', rules:['el.start', 'dgu.dip'], data:[['P', f(P, 1)+' кВт'], ['k', f(how ? K[how] : K.default, 1)], ['генератор', KVA>0 ? f(KVA, 0)+' кВА'+(work.some(o=>o.ksrc==='по мощности') ? ' (по мощности)' : '') : 'мощность не указана']],
         result:'Sпуск ≈ '+f(S, 0)+' кВА'+(ratio!=null ? ' ('+f(ratio*100, 0)+' % мощности генератора)' : ''), ok:null,
         note:`Допустимый провал напряжения по ISO 8528-5: G1 — ${dip.G1} %, G2 — ${dip.G2} %, G3 — ${dip.G3} %. Проверка — по паспорту генератора (кВА пуска при провале), в каталоге этих данных нет.` });
       N.missing('dgu.skva', 'Способность генератора к пуску двигателей (кВА пуска при допустимом провале) — по паспорту генератора');
-      if (ratio>1) N.issue('warn', `Пусковая мощность двигателя ≈ ${f(S, 0)} кВА больше мощности генератора ${f(KVA, 0)} кВА — нужен плавный пуск или частотный преобразователь, либо ДГУ больше (проверить по паспорту генератора).`); }
+      if (ratio!=null && ratio>1) N.issue('warn', `Пусковая мощность двигателя ≈ ${f(S, 0)} кВА больше мощности генератора ${f(KVA, 0)} кВА — нужен плавный пуск или частотный преобразователь, либо ДГУ больше (проверить по паспорту генератора).`); }
     // топливо
     const fp=this.fuelPlan(q);
     if (fp){ N.rule('dgu.fuel_margin'); if (fp.src!=='паспорт ДГУ') N.rule('dgu.lph'); if (!(r.kw>0)) N.rule('dgu.fuel_load');
       const need=fp.need, have=fp.have;
-      N.step({ what:'Запас топлива на автономность', formula:'V = расход(нагрузка) · n · часы · запас', rules:['dgu.fuel_margin', fp.src==='паспорт ДГУ' ? '' : 'dgu.lph', r.kw>0 ? '' : 'dgu.fuel_load'],
-        data:[['нагрузка', f(fp.x*100, 0)+' % PRP'], ['расход', f(fp.c, 1)+' л/ч на ДГУ ('+fp.src+')'], ['рабочих ДГУ', String(fp.n)], ['часы', f(r.hours, 0)], ['баки', `ДГУ ${f(fp.built, 0)} л + дополнительные ${f(fp.extra, 0)} л`]],
+      N.step({ what:'Запас топлива на автономность', formula:'V = Σ расход рабочих ДГУ(нагрузка) · часы · запас', rules:['dgu.fuel_margin', fp.src==='паспорт ДГУ' ? '' : 'dgu.lph', r.kw>0 ? '' : 'dgu.fuel_load'],
+        data:[['нагрузка', f(fp.x*100, 0)+' % PRP'], ['расход', f(fp.c, 1)+' л/ч, все рабочие ДГУ ('+fp.src+')'], ['рабочих ДГУ', String(fp.n)], ['часы', f(r.hours, 0)], ['баки', `ДГУ ${f(fp.built, 0)} л + дополнительные ${f(fp.extra, 0)} л`]],
         result:`нужно ${f(need, 0)} л; в баках ${f(have, 0)} л`, ok:N.fits(have, need).ok, margin:CalcNote.pct(have, need), note:N.fits(have, need).note });
-      if (!N.fits(have, need).ok) N.issue('error', `Топлива в баках ${f(have, 0)} л — меньше нужного на ${f(r.hours, 0)} ч (${f(need, 0)} л).`); }
+      if (!N.fits(have, need).ok) N.issue('error', `Топлива в баках ${f(have, 0)} л — меньше нужного на ${f(r.hours, 0)} ч (${f(need, 0)} л).`); 
+      const big=q.units.filter(u=>u.kind==='tank').map(u=>AirChain.volume(u.p)||CalcInput.num(u.attrs.tank)||0).filter(v=>v>this.TANK_MAX);
+      if (big.length) N.issue('warn', `Дополнительный бак ${f(Math.max(...big), 0)} л больше ${f(this.TANK_MAX, 0)} л (3 000 × 1 000 × 1 500 мм) — в отсеке не поместится одним баком: два бака или бак вне контейнера.`); }
+  }
+}
+
+// ---------------------------------------------------------------- насосная станция: подача, напор, резерв, кавитация
+// Рабочие насосы (самые крупные — резерв, N + резерв из ТЗ) работают параллельно на общий коллектор: Σ Qраб ≥ Qтреб, каждый
+// рабочий при своей доле подачи Q/n даёт напор не меньше требуемого. Кривые Q–H в каталоге нет — проверка по номинальной
+// точке паспорта (подача и напор), рабочая точка по кривой — «требует подтверждения». Кавитационный запас (NPSH):
+// NPSHa = (pатм − pнп(t)) / (ρ·g) − hвс − hпот ≥ NPSHr + запас (pump.npsh) — только если в паспорте есть NPSHr, а в ТЗ —
+// условия всасывания; жидкость — вода (другая — по паспорту и данным заказчика).
+class PumpSizing {
+  static G = 9.81;
+  static units(q){ return q.units.filter(u=>u.kind==='pump').flatMap(u=>Array.from({ length:u.qty }, ()=>u)).map(u=>{
+    const Q=StationEquip.top(u.attrs.flow), H=StationEquip.top(u.attrs.head), np=CalcInput.row(u, /NPSH|кавитацион/i);
+    return { u, Q:Q ? Q.v : 0, H:H ? H.v : null, range:!!((Q && Q.range) || (H && H.range)), npsh:np ? np.v : null }; }); }
+  static run(N, q){
+    const r=q.req, f=CalcNote.f, U=this.units(q); N.section('pump', 'Насосы');
+    if (!U.length){ N.issue('error', 'В составе нет насосов.'); return; }
+    const noQ=[...new Set(U.filter(o=>!(o.Q>0)).map(o=>o.u.name))], noH=[...new Set(U.filter(o=>!(o.H>0)).map(o=>o.u.name))];
+    for (const nm of noQ) N.issue('warn', `У «${nm}» в карточке не указана подача — по нему проверка подачи не выполнена; заполните карточку оборудования.`);
+    for (const nm of noH) N.issue('warn', `У «${nm}» в карточке не указан напор — по нему проверка напора не выполнена; заполните карточку оборудования.`);
+    if (U.some(o=>o.range)) N.assume('Подача или напор насоса в карточке заданы диапазоном («до …») — в расчёте взята верхняя граница; рабочая точка — по кривой Q–H из паспорта.');
+    if (r.reserve==null) N.missing('pump.reserve.tz', 'Резерв насосов в ТЗ не задан — расчёт без резерва', 'Нужен ли резервный насос (N+1)?');
+    const L=[...U].sort((a, b)=>b.Q-a.Q), res=r.reserve!=null ? Math.min(r.reserve, L.length-1) : 0, work=L.slice(res), Q=work.reduce((s, o)=>s+o.Q, 0), n=work.length;
+    if (!(r.q>0)){ N.issue('info', 'Подача станции не задана — проверка насосов не выполнена.'); N.ask('Подача насосной станции, м³/ч, и требуемый напор, м.'); return; }
+    const fq=N.fits(Q, r.q), qKnown=work.some(o=>o.Q>0);
+    if (qKnown) N.step({ what:'Подача рабочих насосов против требуемой', formula:'Σ Qраб ≥ Qтреб (резервные — самые крупные, не считаются)', rules:['calc.tolerance'],
+      data:[['Qтреб', f(r.q, 1)+' м³/ч'], ['рабочих', n+(res ? ' (+'+res+' резерв)' : '')], ...work.slice(0, 4).map(o=>['насос', o.u.name+' — '+(o.Q>0 ? f(o.Q, 1)+' м³/ч' : 'подача не указана')])],
+      result:'Σ Qраб = '+f(Q, 1)+' м³/ч', ok:fq.ok, margin:CalcNote.pct(Q, r.q), note:fq.note, pick:[...new Set(work.map(o=>o.u.name))].join('; ') });
+    if (qKnown && !fq.ok) N.issue('error', `Подача рабочих насосов ${f(Q, 1)} м³/ч меньше требуемой ${f(r.q, 1)} м³/ч.`);
+    // напор: каждый рабочий насос при своей доле подачи (параллельная работа на общий коллектор)
+    if (r.head>0){ const H=work.filter(o=>o.H>0);
+      if (!H.length) N.missing('pump.head', 'Напор насосов в карточках не указан — проверка напора не выполнена', 'Напор насосов по паспорту, м.');
+      else { const low=H.reduce((a, b)=>b.H<a.H ? b : a), share=r.q/n, fh=N.fits(low.H, r.head), over=low.Q>0 && share>low.Q*(1+N.rule('calc.tolerance'));
+        N.step({ what:'Напор рабочих насосов против требуемого', formula:'Hнас ≥ Hтреб при подаче каждого Qтреб / n (номинальная точка паспорта)', rules:['calc.tolerance'],
+          data:[['Hтреб', f(r.head, 1)+' м'], ['подача на насос', f(share, 1)+' м³/ч'], ['наименьший напор', low.u.name+' — '+f(low.H, 1)+' м'+(low.Q>0 ? ' при '+f(low.Q, 1)+' м³/ч' : '')]],
+          result:'Hнас = '+f(low.H, 1)+' м', ok:fh.ok && !over, margin:CalcNote.pct(low.H, r.head), note:fh.note || (over ? 'Подача на насос больше номинальной — напор в этой точке ниже паспортного; проверьте по кривой Q–H.' : '') });
+        if (!fh.ok) N.issue('error', `Напор насоса «${low.u.name}» ${f(low.H, 1)} м меньше требуемого ${f(r.head, 1)} м.`);
+        N.missing('pump.curve', 'Рабочая точка — по кривой Q–H из паспорта насоса (в каталоге кривых нет), проверка по номинальной точке'); } }
+    else N.ask('Требуемый напор насосной станции, м.', true);
+    // кавитационный запас: нужны NPSHr (паспорт) и условия всасывания (ТЗ)
+    const np=work.filter(o=>o.npsh>0);
+    if (r.hsuct!=null && np.length){ const t=r.tliq!=null ? r.tliq : 20, A=N.rule('pump.antoine'), pv=Math.pow(10, A.A-A.B/(A.C+t))*0.133322, pa=AirDemand.baro(r.alt||0), rho=1000, loss=N.rule('pump.suct_loss'), mg=N.rule('pump.npsh');
+      const NPSHa=(pa-pv)*1000/(rho*this.G)-r.hsuct-loss, need=Math.max(...np.map(o=>o.npsh))+mg, ok=NPSHa>=need-1e-9;
+      N.step({ what:'Кавитационный запас на всасывании', formula:'NPSHa = (pатм − pнп(t)) / (ρ·g) − hвс − hпот ≥ NPSHr + запас', rules:['pump.suct_loss', 'pump.npsh', 'pump.antoine'],
+        data:[['pатм', f(pa, 1)+' кПа'], ['pнп('+f(t, 0)+' °C)', f(pv, 2)+' кПа'], ['hвс', f(r.hsuct, 1)+' м'], ['hпот', f(loss, 1)+' м'], ['NPSHr', f(Math.max(...np.map(o=>o.npsh)), 1)+' м']],
+        result:'NPSHa = '+f(NPSHa, 1)+' м', ok, margin:CalcNote.pct(NPSHa, need) });
+      if (!ok) N.issue('error', `Кавитационный запас на всасывании ${f(NPSHa, 1)} м меньше нужного ${f(need, 1)} м — уменьшите высоту всасывания или подберите насос с меньшим NPSHr.`);
+      if (!r.liquid) N.assume('Перекачиваемая жидкость — вода (плотность 1000 кг/м³); другая жидкость — по паспорту насоса и данным заказчика.'); }
+    else N.missing('pump.npsh.data', 'Кавитационный запас (NPSH) не проверен: нужны NPSHr по паспорту насоса и высота всасывания по ТЗ');
   }
 }
 
@@ -427,20 +501,24 @@ class GensetSizing {
 class StationCalc {
   static cache=new Map();
   static run(x){
-    const q=CalcInput.of(x), plan=StationUi.plan(x), key=JSON.stringify([q.req, q.cls, !!StationReq.of(x).accept, q.units.map(u=>[u.name, u.qty, u.attrs]), StationRules.version(), plan.hash]);
+    const q=CalcInput.of(x), plan=StationUi.plan(x), key=JSON.stringify([ReqNum.errors(x), q.req, q.cls, !!StationReq.of(x).accept, q.units.map(u=>[u.name, u.qty, u.attrs]), StationRules.version(), plan.hash]);
     const c=this.cache.get(x.id); if (c && c.key===key) return c.res;
     const N=new CalcNote();
     if (!StationRules.ok()){ N.issue('warn', 'Файл инженерных правил станций не загружен — расчёт не выполнен.'); return N.result(); }
+    for (const e of ReqNum.errors(x)) N.issue('error', `Требования: «${e.label}» — ${e.text}. Исправьте значение в «Подборе станции».`);
+    for (const G of [plan.gates, plan.gates2].filter(Boolean)) if (G.off && !G.offWhy)
+      N.issue('error', `Требования: «Причина смещения ворот» — ворота в торце смещены от оси на ${StationLayout.n(Math.abs(G.off))} мм без причины; укажите причину («Условия для расчёта станции» → «Ворота в торце»).`);
     try{
       if (q.kind==='comp'){ const A=AirDemand.run(N, q), P=PressureBudget.run(N, q, A); DryerSizing.run(N, q, A, P); FilterSizing.run(N, q, A, P); ReceiverSizing.run(N, q, A); ElectricLoad.run(N, q, plan); }
       else if (q.kind==='dgu') GensetSizing.run(N, q, ElectricLoad.run(N, q, plan));
+      else if (q.kind==='pump'){ PumpSizing.run(N, q); ElectricLoad.run(N, q, plan); }
       else ElectricLoad.run(N, q, plan);
       VentSizing.run(N, plan);
     } catch(e){ N.issue('warn', 'Расчёт прерван: '+String(e && e.message || e).slice(0, 200)); }   // ошибка программы не мешает сохранить КП
     const res=N.result(); res.accept=!!StationReq.of(x).accept; this.cache.set(x.id, { key, res }); return res;
   }
   /** блокирующие ошибки расчёта — КП не сохраняется, пока их не исправят или не отметят «отклонения согласованы с заказчиком» */
-  static errors(x){ if (!StationUi.on(x) || !isKit(x)) return []; const R=this.run(x); return R.accept ? [] : R.errors; }
+  static errors(x){ if (!StationUi.on(x) || !isKit(x)) return []; const R=this.run(x); return R.accept ? R.errors.filter(e=>/^Требования: «/.test(e.text)) : R.errors; }   // ошибки ввода «согласованием» не снимаются
 
   /** блок на вкладке «Компоновка» — под раскрытием (по умолчанию закрыт, открыт при ошибке): итог, замечания, обязательные
    *  вопросы, шаги расчёта по разделам; допущения, «требует подтверждения» и уточнения «на потом» — ещё одним раскрытием */
@@ -474,11 +552,12 @@ class StationCalc {
     const R=this.run(x), f=CalcNote.f; if (!R.sections.length) return [];
     const ok=v=>v===true ? ' — выполняется' : v===false ? ' — НЕ выполняется' : '';
     const mg=o=>o.margin==null ? '' : o.margin<0 && o.ok ? ' (в пределах погрешности данных)' : ' (запас '+f(o.margin, 1)+' %)';
-    const req=StationReq.line(x), parts=kitParts(x).filter(p=>p.role!=='container' && String(p.name||'').trim()), c=kitContainer(x);
+    // имя файла ТЗ заказчику не показываем; состав — один раз, в разделе «Состав изделия» (здесь — ссылка)
+    const req=StationReq.line(Object.assign({}, x, { req:Object.assign({}, x.req||{}, { src:null }) })), parts=kitParts(x).filter(p=>p.role!=='container' && String(p.name||'').trim()), c=kitContainer(x);
     const head={ name:'Приложение. Расчётная записка и состав станции', rows:[
       ...(req ? [{ k:'Требования заказчика', v:req }] : []),
       ...(c ? [{ k:'Контейнер', v:[ctypeOf(c.ctype).name, c.size, c.ins, c.climate].filter(Boolean).join(', ') }] : []),
-      ...parts.map((p, n)=>({ k:`${n+1}. ${String(p.name).trim()}`, v:`${Math.max(1, +p.qty||1)} шт.`+(KitScope.of(p)==='asm' ? ' (сборщик контейнера)' : '') })),
+      ...(parts.length ? [{ k:'Состав станции', v:`${parts.length} поз. — перечень и характеристики в разделе «Состав изделия»` }] : []),
       { k:'Инженерные правила', v:'версия '+R.version+' — значения коэффициентов и источники в документе «Инженерные правила и источники»' }] };
     const out=[head, ...R.sections.map(s=>({ name:'Расчётная записка: '+s.title.toLowerCase(), rows:s.steps.map(o=>({ k:o.what, v:[o.formula, (o.data||[]).map(([k, v])=>k+': '+v).join('; '), (o.result||'')+ok(o.ok)+mg(o)].filter(Boolean).join('. ') })) }))];
     // заказчику — только расчёт и принятые допущения; внутренние списки («требует подтверждения», вопросы, предупреждения)

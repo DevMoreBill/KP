@@ -310,7 +310,23 @@ class StationMass {
     const other=eq*this.OTHER[0]+this.OTHER[1]; P.push({ m:other, x:Le/2, y:We/2, z:He*0.3 });
     const M=P.reduce((s, q)=>s+q.m, 0), c=k=>P.reduce((s, q)=>s+q.m*q[k], 0)/M;
     const cg={ x:Math.round(c('x')), y:Math.round(c('y')), z:Math.round(c('z')) };
-    return { mass:Math.round(M/10)*10, cont:Math.round(cont/10)*10, eq:Math.round(eq), other:Math.round(other), cg, missing:missing.sort((a, b)=>a-b), sling:this.sling(Le, We, cg, g.sea) };
+    const mass=Math.round(M/10)*10, sling=this.sling(Le, We, cg, g.sea);
+    return { mass, cont:Math.round(cont/10)*10, eq:Math.round(eq), other:Math.round(other), cg, missing:missing.sort((a, b)=>a-b), sling:{ ...sling, wll:this.wll(mass, sling) },
+      max:g.sea ? this.max(g.type) : null };
+  }
+  /** наибольшая масса брутто морского контейнера по типу (ISO 668; правило mass.iso_max — требует подтверждения), кг */
+  static max(type){ const v=StationRules.v('mass.iso_max')||{}; return v[type] || (/^sea40/.test(type) ? v.sea40 : /^sea10/.test(type) ? v.sea10 : v.sea20) || null; }
+  /** грузоподъёмность ветви стропа, т: S = Q / (n · cos α), n — ветвей в расчёте (РД 10-33-93, п. 2.1.4: две), α — наибольший
+   *  угол ветви с вертикалью; с округлением до 0,1 т вверх. Рамная траверса: ветви вертикальны; к крюку — двухветвевой строп */
+  static wll(mass, S){
+    const n=Math.max(1, +StationRules.v('sling.legs')||2), t=mass/1000, a=Math.max(0, ...S.legs.map(q=>q.deg||0)), up=v=>Math.ceil(v*10-1e-9)/10;
+    return { leg:up(t/(n*Math.cos(a*Math.PI/180))), top:S.frame ? up(t/(2*Math.cos(S.frame.deg*Math.PI/180))) : null, n, deg:a };
+  }
+  /** замечания по массе: брутто больше допустимого для морского контейнера */
+  static issues(Ms){
+    if (!Ms || !(Ms.max>0) || Ms.mass<=Ms.max) return [];
+    const n=StationLayout.n;
+    return [{ level:'warn', text:`Масса станции около ${n(Ms.mass)} кг — больше наибольшей массы брутто контейнера ${n(Ms.max)} кг (ISO 668, требует подтверждения по табличке CSC): облегчите состав или выберите другой контейнер.` }];
   }
   static BEAM = { L:6500, z:2000, top:1500 };   // длиннее L — траверса: ветви до неё z, от неё до крюка top, мм
   static SPREADER = { z:1500, d:1500, top:2000 };   // рамная траверса морского контейнера: высота рамы, проушины ± d от ЦТ, до крюка top

@@ -651,7 +651,7 @@ Check.run('чертёж: листы А4 по ЕСКД', ()=>{
   for (const t of ['А–А', 'Поз.', 'Наименование', 'Кол.', 'Масса, кг', 'Техническая характеристика', 'Технические требования'])
     assert.ok(T.includes(t), 'на листе нет «'+t+'»');
   assert.ok(T2.includes('Проход обслуживания'), 'на плане — проход обслуживания');
-  assert.ok(T.some(t=>/^\d\. Внутри — [\d ]+ × [\d ]+ × [\d ]+ мм$/.test(t)), 'внутренние размеры — в технической характеристике');
+  assert.ok(T.some(t=>/^(\d\. )?Внутри — [\d ]+ × [\d ]+ × [\d ]+ мм$/.test(t)), 'внутренние размеры — в технической характеристике (номер пункта — отдельно при переносе)');
   // позиции: номер на полке у каждой позиции перечня — ровно один раз
   const pos=[...d2.matchAll(/<text x="[\d.-]+" y="[\d.-]+" font-size="7"[^>]*>(\d+)<\/text>/g)].map(m=>+m[1]).sort((a, b)=>a-b);
   const want=[...new Set([...p.items, ...(p.roof||[])].map(i=>i.pos))].sort((a, b)=>a-b);
@@ -1316,6 +1316,41 @@ Check.run('матрица расстановки: правила, доступ �
   // 3D: без сносок; виды снаружи — по азимуту
   assert.strictEqual(typeof StTags, 'undefined', 'сносок на 3D нет');
   const so=new StScene(p, { view:'out', az:-162 }).build(); assert.ok(so && !so.tags, 'вид сзади');
+});
+
+Check.run('ворота в торце — по оси торца; своё смещение — с причиной; ось и размеры на виде с торца', ()=>{
+  const parts=[comp, Object.assign({}, comp, { id:'c2', role:'' }), dryer];
+  const p=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts, req:{ kind:'comp' } }), G=[p.gates, p.gates2].filter(q=>q && !q.sea);
+  assert.ok(G.length, 'есть ворота в торце');
+  for (const q of G){ if (q.full) continue; const W=p.geo.ext[1], oy=(W-p.int[1])/2;
+    assert.ok(Math.abs(oy+(q.y0+q.y1)/2-W/2)<=1 || q.off, 'ворота по оси торца (или смещение с причиной)');
+    assert.ok(StationLayout.gateAxis(q), 'фраза о положении ворот'); }
+  assert.ok(p.issues.some(i=>/усилением/.test(i.text)), 'усиление проёма в замечаниях');
+  const m=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts, req:{ kind:'comp', gate:{ off:300, why:'колонна навеса' } } });
+  const q=[m.gates, m.gates2].find(g=>g && !g.sea && !g.full);
+  if (q){ assert.ok(q.manual && q.off!==0, 'ручное смещение применено'); assert.ok(/причина: колонна навеса/.test(StationLayout.gateAxis(q)), StationLayout.gateAxis(q));
+    const svg=StationDrawing.sheets(m, meta(m)).join(''); assert.ok(svg.includes('stroke-dasharray'), 'штрихпунктирные оси на листе'); }
+});
+
+Check.run('масса: брутто морского контейнера (ISO 668) и грузоподъёмность ветви стропа (РД 10-33-93)', ()=>{
+  const p=solve(C('sea40'), [dgu, ats, tank]), M=p.mass;
+  assert.ok(M && M.max===30480, 'наибольшая масса брутто 40-футового — 30 480 кг (правило, требует подтверждения)');
+  // S = Q / (n · cos α): n = 2, рамная траверса — ветви вертикальны: Q / 2, с округлением до 0,1 т вверх
+  assert.strictEqual(M.sling.wll.n, 2); assert.strictEqual(M.sling.wll.leg, Math.ceil(M.mass/1000/2*10-1e-9)/10);
+  assert.ok(M.sling.wll.top>=M.sling.wll.leg, 'строп рамы под углом — не меньше вертикальной ветви');
+  const T=Check.texts(StationDrawing.sheets(p, meta(p))[2]).map(q=>q.t).join(' ');
+  assert.ok(/Грузоподъёмность каждой ветви стропа — не менее/.test(T) && /РД 10-33-93/.test(T), 'на схеме строповки — грузоподъёмность ветви');
+  assert.deepStrictEqual(StationMass.issues({ ...M, mass:M.max-10 }), [], 'в пределах — без замечаний');
+  assert.ok(/больше наибольшей массы брутто/.test(StationMass.issues({ ...M, mass:M.max+10 })[0].text), 'сверх предела — предупреждение');
+  assert.strictEqual(StationMass.wll(10000, { legs:[{ deg:45 }], frame:null }).leg, 7.1, '10 т, 45°: 10 / (2 · 0,7071) = 7,07 → 7,1 т');
+});
+
+Check.run('полки номеров позиций: тесно — через один на второй полке, без наложений', ()=>{
+  const A=Array.from({ length:30 }, (_, i)=>({ x:30+i*4, y:50, n:i+1 }));
+  const L=EskdSheet.shelves(A, 'x', 27, 192, 100, 9, 107), one=L.filter(q=>q.sy===100), two=L.filter(q=>q.sy===107);
+  assert.ok(one.length && two.length && one.length+two.length===30, 'две полки');
+  for (const T of [one, two]){ const xs=T.map(q=>q.sx).sort((a, b)=>a-b); for (let i=1; i<xs.length; i++) assert.ok(xs[i]-xs[i-1]>=EskdSheet.shelfMin(A)-1e-6, 'шаг не меньше полки номера'); }
+  assert.strictEqual(EskdSheet.shelves(A.slice(0, 5), 'x', 27, 192, 100, 9, 107).every(q=>q.sy===100), true, 'просторно — одна полка');
 });
 
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);

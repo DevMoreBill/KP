@@ -165,9 +165,13 @@ class EskdSheet {
     this.text(sx+dir*w/2, sy-0.9, String(n), h, { a:'middle' });
   }
   /** полки номеров позиций в строку (axis 'x') или колонку ('y'): A — [{x, y, n}] — точки на изображениях; lo…hi — где
-   *  можно ставить полки, at — их линия; шаг — не меньше gap; выноски не пересекаются. [{px, py, sx, sy, n}] */
-  static shelves(A, axis, lo, hi, at, gap){
+   *  можно ставить полки, at — их линия; шаг — не меньше gap; выноски не пересекаются. Тесно (шаг меньше полки номера) и
+   *  задана вторая линия at2 — номера через один на второй полке, чтобы не налезали. [{px, py, sx, sy, n}] */
+  static shelves(A, axis, lo, hi, at, gap, at2=null){
     if (!A.length) return [];
+    if (at2!=null && A.length>1 && (hi-lo)/(A.length-1)<this.shelfMin(A)){ const k=axis==='x' ? 'x' : 'y', S=[...A].sort((a, b)=>a[k]-b[k]);
+      return [...this.shelves(S.filter((a, i)=>i%2===0), axis, lo, hi, at, gap), ...this.shelves(S.filter((a, i)=>i%2===1), axis, lo, hi, at2, gap)]; }
+    if (axis==='x') gap=Math.max(gap, this.shelfMin(A));   // в строку — не теснее ширины полки номера
     const k=axis==='x' ? 'x' : 'y', S=[...A].sort((a, b)=>a[k]-b[k]), n=S.length, span=Math.max(0, hi-lo), g=Math.min(gap, n>1 ? span/(n-1) : gap);
     const c=S.map(a=>Math.max(lo, Math.min(hi, a[k])));
     for (let i=1; i<n; i++) c[i]=Math.max(c[i], c[i-1]+g);
@@ -181,6 +185,9 @@ class EskdSheet {
         const a=L[i], b=L[j], t=k==='x' ? 'sx' : 'sy'; [a[t], b[t]]=[b[t], a[t]]; ch=true; } }
     return L;
   }
+
+  /** наименьший шаг полок, при котором номера не налезают: полка самого длинного номера + зазор */
+  static shelfMin(A){ return Math.max(...A.map(a=>this.tw(String(a.n), 5)))+1.6+0.6; }
 
   // ---- текстовая часть
   /** пункты с номерами (ГОСТ 2.316): перенос с отступом; рисовать — draw; возвращает высоту, мм */

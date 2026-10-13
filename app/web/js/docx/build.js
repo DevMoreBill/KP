@@ -145,7 +145,8 @@ async function renderDocx(St, pack, settings){
   // фото на титул: выбранное в разделе «Титульный лист» или первой позиции с фото
   const covers=[S.items.find(x=>x.id===S.cover.photoFrom && x.photo), ...S.items.filter(x=>x.photo)].filter(Boolean);
   for (const ci of covers){ const du=await docImg(ci.photo, ci.name); if (!du) continue;
-    zip.file('word/media/cover.jpg', b64(du), {base64:true}); Min.cover={file:'cover.jpg',w:ci.photo.w,h:ci.photo.h}; break; }
+    const cf=`cover.${/^data:image\/png/.test(du) ? 'png' : 'jpg'}`;   // имя по формату картинки
+    zip.file(`word/media/${cf}`, b64(du), {base64:true}); Min.cover={file:cf,w:ci.photo.w,h:ci.photo.h}; break; }
   for (const x of S.items.map(kitDocItem)){ if(!x.page) continue; const m={};
     if (x.photo){ const t=await docTile(x.photo, x.name); if (t){ zip.file(`word/media/tile_${x.id}.png`, b64(t.url), {base64:true}); m.tile={file:`tile_${x.id}.png`,w:t.w,h:t.h}; } }
     if (x.logo){ const du=await docImg(x.logo, x.name+' (логотип)'); if (du){ zip.file(`word/media/logo_${x.id}.png`, b64(du), {base64:true}); m.logo={file:`logo_${x.id}.png`,w:x.logo.w,h:x.logo.h}; } }
@@ -220,6 +221,7 @@ async function download(){
   btn.disabled=true; btn.textContent='Собираю файл…'; msg.textContent='';
   try{
     await StationImages.syncAll();          // 3D-вид и чертёж станций — по текущему составу
+    if (!StationImages.confirmSave()) throw Object.assign(new Error('изображения станции не готовы'), { code:'declined' });   // «Сохранение отменено.»
     const St = docState(), isNew = !S.kpId;
     if (!S.template) throw new Error('не выбран шаблон КП (папка templates рядом с программой пуста)');
     let pack;

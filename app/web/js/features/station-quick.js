@@ -27,13 +27,13 @@ class StationQuick {
   static NEED = { comp:['flow', 'производительность'], dgu:['kw', 'мощность нагрузки'], pump:['q', 'подачу'] };
   /** ключи, которые стоят в главном блоке (в «Все требования» их нет) */
   static MAIN = new Set(['flow', 'pressure', 'kw', 'hours', 'q', 'head', 'reserve', 'mode']);
-  static SEC = { air:'Производительность', press:'Давление', dryer:'Осушитель', filter:'Фильтры', recv:'Ресиверы', dgu:'ДГУ', el:'Электропитание', vent:'Вентиляция' };
+  static SEC = { air:'Производительность', press:'Давление', dryer:'Осушитель', filter:'Фильтры', recv:'Ресиверы', dgu:'ДГУ', pump:'Насосы', el:'Электропитание', vent:'Вентиляция' };
 
   /** блок «Подбор станции»: главные требования, кнопки, итог; всё остальное — в раскрывающемся блоке */
   static html(x, i){
     const r=StationReq.of(x), k=StationReq.kind(x), P=`items.${i}.req`, main=kitMainPart(x), cls=StationUi.opts(x).air;
     const hint=this.hint(x), ask=this.ask(x) ? (this.NEED[k]||[])[0] : '';   // главное поле не заполнено — подсветить
-    const fld=([key, label, ph, mode='decimal'])=>`<label class="f"><span>${label}</span><input type="text" inputmode="${mode}" data-p="${P}.${key}" data-req="${i}" value="${esc(r[key]??'')}" placeholder="${esc(hint[key]||ph)}" autocomplete="off"${key===ask ? ' class="need"' : ''}></label>`;
+    const fld=([key, label, ph, mode='decimal'])=>{ const m=ReqNum.mark(x, key); return `<label class="f"><span>${label}</span><input type="text" inputmode="${mode}" data-p="${P}.${key}" data-req="${i}" value="${esc(r[key]??'')}" placeholder="${esc(hint[key]||ph)}" autocomplete="off"${m.cls ? ' class="bad"' : key===ask ? ' class="need"' : ''}>${m.msg}</label>`; };
     const sel=(key, label, list, cur)=>`<label class="f"><span>${label}</span><select data-req="${i}" data-rk="${key}">${list.map(([v, l])=>`<option value="${esc(v)}"${String(cur)===String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
     const air=k==='comp' ? `<label class="f"><span>Качество воздуха</span><select data-stl="air" data-i="${i}"><option value="">обычное — осушитель и фильтры по умолчанию</option>${AirChain.options(cls).map(([v, t])=>`<option value="${esc(v)}"${cls===v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`
       : k==='dgu' ? sel('mode', 'Назначение', StationReq.MODE, r.mode||'prime') : '';
@@ -126,6 +126,7 @@ class StationQuick {
   /** «Подобрать оборудование»: требования станции → подбор из каталога, контейнер, компоновка, изображения */
   static async pick(i){
     const x=S.items[i]; if (!x) return; const k=StationReq.kind(x), r=StationReq.ensure(x), need=this.NEED[k];
+    const bad=ReqNum.errors(x); if (bad.length) return toast(`Исправьте «${bad[0].label}»: ${bad[0].text}`);
     if (need && !(StationReq.num(r[need[0]])>0)) return toast('Укажите '+need[1]+' — без неё станцию не подобрать');
     if (kitMainPart(x) && !confirm(`Подобрать оборудование заново? ${k==='comp' ? 'Компрессоры, осушители, фильтры и ресиверы' : k==='dgu' ? 'ДГУ и бак' : 'Насосы'} заменятся подобранными из каталога; контейнер, шкафы и обвязка останутся.`)) return;
     this.busy.add(x.id); renderEditor();

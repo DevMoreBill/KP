@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """История изменений настроек с откатом.
 
-Каждая запись настроек (kv: общие настройки, категории, тексты интерфейса, тарифы доставки, почта, фиды), сделанная
+Каждая запись настроек (kv: общие настройки, категории, тексты интерфейса, тарифы доставки, почта, фиды, инженерные
+правила станций — своя версия файла), сделанная
 по запросу человека, сохраняет снимок «было — стало» и кто изменил. Фоновые записи (проверка фидов по расписанию,
 обслуживание) и служебные поля (время проверки, итоги) в историю не попадают. Пароли и ключи — никогда:
 ключи API хранятся отдельно (integrations), пароль почты из снимка убирается.
@@ -15,15 +16,15 @@ from datetime import datetime
 
 class SettingsHistory:
     KEYS = {'settings': 'Общие настройки', 'types': 'Категории оборудования', 'uitexts': 'Тексты интерфейса',
-            'logistics': 'Тарифы доставки', 'mail': 'Почта', 'feeds': 'Фиды поставщиков'}
+            'logistics': 'Тарифы доставки', 'mail': 'Почта', 'feeds': 'Фиды поставщиков', 'stationRules': 'Инженерные правила станций'}
     # части общих настроек — для понятных подписей и поиска вкладки
     PARTS = {'defaults': ('Умолчания', 'defaults'), 'lists': ('Списки и выборы', 'lists'), 'features': ('Функции программы', 'features'),
              'userLogin': ('Вход менеджеров', 'access'), 'productEditModeration': ('Модерация правок', 'moderation'),
              'ai': ('Нейросеть', 'ai'), 'auditYears': ('Срок хранения журнала', 'backup'), 'backup2': ('Вторая папка копий', 'backup')}
-    TAB = {'types': 'types', 'uitexts': 'texts', 'logistics': 'logistics', 'mail': 'mail', 'feeds': 'feeds'}
+    TAB = {'types': 'types', 'uitexts': 'texts', 'logistics': 'logistics', 'mail': 'mail', 'feeds': 'feeds', 'stationRules': 'rules'}
     SECRET = ('password', 'token', 'key', 'secret')
     # служебные поля: меняются сами (проверки, отметки времени) — не изменение настроек
-    VOLATILE = ('last', 'checked', 'stats', 'report', 'log', 'result', 'run')
+    VOLATILE = ('last', 'checked', 'stats', 'report', 'log', 'result', 'run', '_saved')
     KEEP = 500
     _ctx = threading.local()
 
