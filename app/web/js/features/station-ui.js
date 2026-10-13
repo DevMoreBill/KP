@@ -68,8 +68,9 @@ class StationUi {
     if (plan.level==='error' && plan.assumed) info.unshift({ level:'info', text:'Пока габариты части оборудования условные, КП сохранится, но контейнер может не подойти: впишите «Габариты» элементов на вкладке «Состав станции».' });
     else if (plan.level==='error') info.unshift({ level:'info', text:'КП не сохранится, пока оборудование не поместится: замените контейнер (кнопка выше) или измените состав.' });
     // замечания и сведения — под раскрывающимся блоком (раскрыт сам, если оборудование не помещается)
+    let xf=null; const fix=t=>{ if (t.level==='info' || typeof ExpertFix==='undefined') return ''; xf=xf || ExpertFix.list(x); return ExpertFix.btn(x, i, t.text, xf); };   // «решить» — режим «эксперт»
     const li=t=>{ const j=plan.issues.indexOf(t), sp=j>=0 && IssueSpot.has(t.text, plan);
-      return `<li class="${t.level}">${esc(t.text)}${sp ? ` <button class="lnk is-spot" type="button" data-a="stSpot" data-i="${i}" data-j="${j}" title="Открыть чертёж с подсветкой">на чертеже</button>` : ''}</li>`; };
+      return `<li class="${t.level}">${esc(t.text)}${sp ? ` <button class="lnk is-spot" type="button" data-a="stSpot" data-i="${i}" data-j="${j}" title="Открыть чертёж с подсветкой">на чертеже</button>` : ''}${fix(t)}</li>`; };
     const pics=plan.level!=='error' && g.ext, meta=this.meta(x, plan), photoOn=x.photo ? x.photo.gen==='st3d' : o.photo;
     if (pics && !EskdSheet.FONT_DATA) EskdFont.load().then(ok=>{ if (ok) renderEditor(); });   // чертёж — встроенным шрифтом, как в КП
     if (pics && typeof DrawPic!=='undefined' && DrawPic.pending(x)) DrawPic.load(x).then(ch=>{ if (ch) renderEditor(); });   // свои рисунки моделей

@@ -167,7 +167,7 @@ class StScene {
     const at={ compressor:[0.06, 0.3, 0.84, 0.93], dryer:[0.52, 0.9, 0.77, 0.9], other:[0.06, 0.4, 0.85, 0.94], receiver:[0.3, 0.7, 0.55, 0.75] }[it.kind];
     if (it.kind==='dgu'){ const L=x1-x0, H=z1-z0, xr=x0+L*0.84, [w, h]=fit((x1-xr)*0.85, H*0.1), y=s<0 ? y0+(y1-y0)*0.04 : y1-(y1-y0)*0.04;
       return this.sticker(d, [(xr+x1)/2, y, z0+H*0.8], [0, s, 0], w, h); }
-    if (!at || (it.kind==='dryer' && /адсорбц/i.test(it.name||''))) return;
+    if (!at || (it.kind==='dryer' && StationLayout.twinDryer(it))) return;
     const span=this.endwise(it) ? y1-y0 : x1-x0, [w, h]=fit((at[1]-at[0])*span, (at[3]-at[2])*(z1-z0));
     this.sticker(d, this.front(it, (at[0]+at[1])/2, (at[2]+at[3])/2, 0.001), this.out(it, 1), w, h);
   }
@@ -507,7 +507,7 @@ class StScene {
     if (it.mount==='pipe') return this.filter(it);
     if (k==='receiver') return it.shape==='hcyl' ? this.receiverH(it) : this.receiver(it);
     if (k==='compressor') return this.compressor(it);
-    if (k==='dryer') return /адсорбц/i.test(it.name) ? this.dryerAds(it) : this.dryer(it);
+    if (k==='dryer') return StationLayout.twinDryer(it) ? this.dryerAds(it) : this.dryer(it);
     if (k==='pump') return this.pump(it);
     if (k==='dgu') return this.dgu(it);
     if (k==='tank') return this.tank(it);
@@ -552,13 +552,13 @@ class StScene {
     // жалюзи) или вверх через крышу (колпак — StOutfit.roofHood)
     const cx=(x0+x1)/2, cy=(y0+y1)/2, dw=Math.min((x1-x0)*0.45, 0.9), dd=Math.min((y1-y0)*0.45, 0.65), dh=Math.min(0.38, this.ceil-0.09-z1-0.06);
     dk.box(cx-dw/2, cy-dd/2, z1, cx+dw/2, cy+dd/2, z1+0.006);
-    const V=this.plan.vent, kk=StationLayout.key(it), to=V && V.ducts ? V.ducts[kk] : null, Lv=to==='wall' ? V.louvers.find(q=>q.duct===kk) : null;
-    if (dh>=0.18 && to){ const g=this.M(StMat.metal(StScene.GALV, 0.42)), zt=this.ceil-0.09, zd=zt-dh, yW=this.oy+this.Wi;
+    const V=this.plan.vent, kk=StationLayout.key(it), to=V && V.ducts ? V.ducts[kk] : null, Ls=to==='wall' ? V.louvers.filter(q=>q.duct===kk) : [], Lv=Ls.length ? { wall:Ls[0].wall, u0:Math.min(...Ls.map(q=>q.u0)), u1:Math.max(...Ls.map(q=>q.u1)), z0:Math.min(...Ls.map(q=>q.z0)), z1:Math.max(...Ls.map(q=>q.z1)) } : null;   // все его жалюзи (над воротами и в створках) — одним коробом
+    if (dh>=0.18 && to){ const g=this.M(StMat.metal(StScene.GALV, 0.42)), zt=this.ceil-0.09, zd=zt-dh, fr=!!Lv && Lv.wall==='front', yW=fr ? this.oy : this.oy+this.Wi;
       const zr=Lv ? Math.min(zd, this.base+Lv.z0/1000+0.05) : null, zs=z1+Math.min(0.5, Math.max(0.12, ((zr ?? zd)-z1)*0.45));   // клапан — на вертикальном участке
       g.box(cx-dw/2, cy-dd/2, z1, cx+dw/2, cy+dd/2, Lv ? zd : this.ceil, 0.004);
       if (Lv){ const a=this.ox+Lv.u0/1000, b=this.ox+Lv.u1/1000, za=this.base+Lv.z0/1000, zb=this.base+Lv.z1/1000;
-        g.box(Math.min(cx-dw/2, a), cy-dd/2, zd, Math.max(cx+dw/2, b), yW, zt, 0.004);   // по потолку к стене
-        g.box(a, yW-0.2, za, b, yW, zb, 0.004); }   // короб у жалюзи
+        g.box(Math.min(cx-dw/2, a), fr ? yW : cy-dd/2, zd, Math.max(cx+dw/2, b), fr ? cy+dd/2 : yW, zt, 0.004);   // по потолку к стене
+        g.box(a, fr ? yW : yW-0.2, za, b, fr ? yW+0.2 : yW, zb, 0.004); }   // короб у жалюзи
       if ((this.plan.sys||{}).rec!==false) this.recirc(it, cx, cy, dw, dd, zs); }
   }
   /** клапан рециркуляции на воздуховоде компрессора: корпус, решётка в сторону прохода (зимой — тёплый воздух в помещение),
