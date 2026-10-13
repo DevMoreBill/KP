@@ -59,7 +59,7 @@ class Check {
       Cat.item('Фильтр ФС-20', { cat:'filter', stage:'Сверхтонкая (микрофильтр)', flow:20 }),
       Cat.item('Фильтр ФТ-20', { cat:'filter', stage:'Тонкая', flow:20 }),
       Cat.item('Фильтр ФП-20', { cat:'filter', stage:'Предварительная', flow:20 }),
-      Cat.item('Ресивер РВ-1000', { cat:'receiver', volume:1000, pressure:11 }),
+      Cat.item('Ресивер РВ-900/11', { cat:'receiver', volume:900, pressure:11, size:'930 × 940 × 2040' }),
       Cat.item('Ресивер РВ-2000', { cat:'receiver', volume:2000, pressure:11 }),
     ];
     const x=Cat.station('st_comp', [kitNewPart({ name:'Трубопроводная обвязка и запорная арматура' })], { reserve:'1' });
@@ -70,16 +70,17 @@ class Check {
     assert.strictEqual(kitParts(x).find(p=>StationEquip.kindOf(p)==='compressor').name, 'Компрессор винтовой К-130', '10 м³/мин + продувка 15 % — один на 13 м³/мин');
     assert.ok(K.some(k=>k[0]==='dryer' && k[2]==='dryer_ads'), 'класс воды 2 (−40 °C) — адсорбционный осушитель');
     assert.ok(K.filter(k=>k[0]==='filter').length>=2, 'фильтры до и после адсорбционного осушителя: '+JSON.stringify(K));
-    const rv=kitParts(x).find(p=>StationEquip.kindOf(p)==='receiver');
-    assert.deepStrictEqual([rv.name, rv.qty], ['Ресивер РВ-1000', 2], 'около 2000 л: вертикальный на 2000 л (2,9 м) не проходит по высоте блок-контейнера — два по 1000 л');
-    assert.ok(/ресиверы 2 × Ресивер РВ-1000 \(2 по 1 000 л/.test(note), note);
+    // методика ПНЕВМОТЕХ (13.10): 13 м³/мин — базовый буфер 0,25 · 13 000 = 3 250 л → 4 × 900 л (основной, после осушителя);
+    // мокрый до осушителя: 0,3 · 3 600 = 1 080 л → 2 × 900 л; 2000 л — не из ряда 900/500
+    const RV=p=>kitParts(p).filter(z=>StationEquip.kindOf(z)==='receiver').map(z=>[z.name, z.qty, z.recvRole]);
+    assert.deepStrictEqual(RV(x), [['Ресивер РВ-900/11', 4, 'dry'], ['Ресивер РВ-900/11', 2, 'wet']], JSON.stringify(RV(x)));
+    assert.ok(/основной ресивер: 4 × Ресивер РВ-900\/11/.test(note) && /мокрый ресивер \(до осушителя\): 2 × Ресивер РВ-900\/11/.test(note), note);
     const y=Cat.station('st_comp', [], {});
     await TzPick.run(y, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'0', work:0, recvOut:true });
-    const ro=kitParts(y).find(p=>StationEquip.kindOf(p)==='receiver');
-    assert.deepStrictEqual([ro.name, ro.qty], ['Ресивер РВ-1000', 2], 'снаружи высота не ограничена, но один на 2000 л при 7 бар — на учёт в Ростехнадзоре (p·V 1,4): два по 1000 л, каждый без учёта');
+    assert.deepStrictEqual(RV(y)[0], ['Ресивер РВ-900/11', 4, 'dry'], 'снаружи — тоже по 900 л (каждый без учёта в Ростехнадзоре)');
     const z=Cat.station('st_comp', [], {});
-    await TzPick.run(z, { kind:'comp', flow:10, pressure:7, air:'2.4.2', reserve:'0', work:0, recv:'both' });
-    assert.deepStrictEqual(kitParts(z).filter(p=>StationEquip.kindOf(p)==='receiver').map(p=>[p.name, p.qty]), [['Ресивер РВ-1000', 1], ['Ресивер РВ-1000', 1]], 'до и после осушителя — два ресивера');
+    await TzPick.run(z, { kind:'comp', flow:10, pressure:7, air:'2.4.2', reserve:'0', work:0, recv:'after' });
+    assert.deepStrictEqual(RV(z), [['Ресивер РВ-900/11', 4, 'dry']], '«только после осушителя» — без мокрого');
     assert.ok(/продувку адсорбционного осушителя/.test(note), note);
     assert.strictEqual(K[K.length-1][0], 'piping', 'прочий состав — после подобранного');
     // требования: за вычетом продувки, давление на выходе — с потерями в подготовке воздуха
@@ -107,7 +108,7 @@ class Check {
       Cat.item('Фильтр ФС-20', { cat:'filter', stage:'Сверхтонкая (микрофильтр)', flow:20 }),
       Cat.item('Фильтр ФТ-20', { cat:'filter', stage:'Тонкая', flow:20 }),
       Cat.item('Фильтр ФП-20', { cat:'filter', stage:'Предварительная', flow:20 }),
-      Cat.item('Ресивер РВ-1000', { cat:'receiver', volume:1000, pressure:11 }),
+      Cat.item('Ресивер РВ-900/11', { cat:'receiver', volume:900, pressure:11 }),
     ];
     const x=Cat.station('st_comp', [], {});
     const note=await TzPick.run(x, { kind:'comp', flow:36, pressure:7, air:'2.4.2', reserve:'0', work:0 });
@@ -207,12 +208,12 @@ class Check {
       Cat.item('Осушитель рефрижераторный ОР-25 (8 бар)', { cat:'dryer_refrig', flow:25, pressure:'8' }),
       Cat.item('Фильтр ФС-20', { cat:'filter', stage:'Сверхтонкая (микрофильтр)', flow:20 }),
       Cat.item('Фильтр ФП-20', { cat:'filter', stage:'Предварительная', flow:20 }),
-      Cat.item('Ресивер РВ-1000', { cat:'receiver', volume:1000, pressure:11 }),
+      Cat.item('Ресивер РВ-900/11', { cat:'receiver', volume:900, pressure:11 }),
     ];
     const toasts=[]; global.toast=t=>toasts.push(t); global.persist=()=>{}; global.renderEditor=()=>{}; global.renderForm=()=>{};
     const comp=await TzPick.part(global.catCache[1], 1, 'main'), x=Cat.station('st_comp', [comp], {}); global.S={ items:[x] };
     let R=KitNeed.recs(x);
-    assert.deepStrictEqual(R.map(r=>r.key).sort(), ['dryer-refrig', 'receiver'], 'к компрессору: осушитель и ресивер — '+JSON.stringify(R.map(r=>r.key)));
+    assert.deepStrictEqual(R.map(r=>r.key).sort(), ['dryer-refrig', 'receiver'], 'к компрессору: осушитель и ресивер (мокрый — когда будет осушитель) — '+JSON.stringify(R.map(r=>r.key)));
     const P=KitNeed.preset(x, R.find(r=>r.key==='dryer-refrig'));
     assert.deepStrictEqual(P.min, { pressure:10 }, 'давление — не ниже компрессорного');
     assert.ok(P.r.flow && +P.r.flow[0].replace(',', '.')>13, 'производительность — с запасом и поправкой на давление: '+P.r.flow);
@@ -231,8 +232,9 @@ class Check {
     const K=Cat.kinds(x).map(k=>k[0]);
     assert.ok(K.includes('dryer') && K.filter(k=>k==='filter').length===2 && K.includes('receiver'), 'добавлено: '+JSON.stringify(K)+' — '+toasts.join(' | '));
     assert.deepStrictEqual(KitNeed.recs(x).map(r=>r.key), [], 'всё на месте');
-    const tt=toasts.pop();   // 13 м³/мин → около 1625 л; один при 10 бар — на учёт в Ростехнадзоре (p·V 1,6): два по 1000 л
-    assert.ok(/^Добавлено: Осушитель рефрижераторный ОР-20; 2 × Ресивер РВ-1000; Фильтр ФП-20; Фильтр ФС-20$/.test(tt), tt);
+    const tt=toasts.pop();   // 13 м³/мин → 3 250 л → 4 × 900 л; с осушителем — мокрый 2 × 900 л
+    assert.ok(/^Добавлено: Осушитель рефрижераторный ОР-20; 4 × Ресивер РВ-900\/11; .*2 × Ресивер РВ-900\/11/.test(tt), tt);
+    assert.deepStrictEqual(kitParts(x).filter(p=>StationEquip.kindOf(p)==='receiver').map(p=>[p.qty, p.recvRole]), [[4, 'dry'], [2, 'wet']], 'роли ресиверов');
     // осушитель меньше нужного — «Заменить», старый уходит из состава
     const y=Cat.station('st_comp', [await TzPick.part(global.catCache[1], 1, 'main'), await TzPick.part(global.catCache[2], 1)], {}); global.S={ items:[y] };
     const sw=KitNeed.recs(y).find(r=>r.key==='dryer-refrig');
@@ -260,23 +262,25 @@ class Check {
       Cat.item('Ресивер РВ-2000/11', { cat:'receiver', volume:2000, pressure:11 }),
       Cat.item('Ресивер РВ-500/16', { cat:'receiver', volume:500, pressure:16 }),
     ];
-    // 13 м³/мин · 125 л = 1625 л → 2 × 900 л; АСО — первым, из АСО — на наименьшее достаточное давление (10 бар)
-    let R=TzPick.receivers(1625, 10, 2890);
-    assert.deepStrictEqual([R.o.c.name, R.n, R.base], ['Воздушный ресивер АСО РВ 900/10', 2, true], JSON.stringify(R && [R.o.c.name, R.n]));
-    R=TzPick.receivers(300, 10, 2890); assert.deepStrictEqual([R.o.c.name, R.n], ['Воздушный ресивер АСО РВ 900/10', 1], 'мало нужно — всё равно 900 л');
-    R=TzPick.receivers(1625, 10, 2400); assert.strictEqual(R.o.c.name, 'Воздушный ресивер АСО РВ 900/11', 'низкий контейнер: 2220 + 300 мм не проходит — АСО пониже');
-    R=TzPick.receivers(1625, 13, 2890); assert.deepStrictEqual([R.o.c.name, R.n, !!R.base], ['Ресивер РВ-500/16', 4, false], '13 бар: 900 л на учёте и не на это давление — прежний подбор без учёта');
-    // состав: «Нужно: воздушные ресиверы 2 × 900 л» → АСО
+    // ряд 900/500 (методика ПНЕВМОТЕХ 13.10): АСО — первым; давление — с запасом 1 бар над компрессором (10 → от 11 бар)
+    let R=TzPick.recvPick(900, 10, 2890);
+    assert.strictEqual(R.o.c.name, 'Воздушный ресивер АСО РВ 900/11', JSON.stringify(R && R.o && R.o.c.name));
+    R=TzPick.recvPick(900, 8, 2890); assert.strictEqual(R.o.c.name, 'Воздушный ресивер АСО РВ 900/10', '8 бар — АСО на наименьшее достаточное давление (10 ≥ 8 + 1)');
+    R=TzPick.recvPick(900, 8, 2400); assert.strictEqual(R.o.c.name, 'Воздушный ресивер АСО РВ 900/11', 'низкий контейнер: 2220 + 300 мм не проходит — АСО пониже');
+    R=TzPick.recvPick(900, 8, 2200); assert.ok(R && !R.o && R.tall, 'все 900 л выше — «по высоте не помещается»');
+    assert.strictEqual(TzPick.recvPick(900, 13, 2890), null, '13 бар: 900 л на это давление нет');
+    R=TzPick.recvPick(500, 13, 2890); assert.strictEqual(R.o.c.name, 'Ресивер РВ-500/16');
+    // состав: «Нужно: воздушные ресиверы 4 × 900 л» → АСО (13 м³/мин: 0,25 · 13 000 = 3 250 л → 4 × 900)
     const x=Cat.station('st_comp', [await TzPick.part(global.catCache[0], 1, 'main')], {}); global.S={ items:[x] };
     const r=KitNeed.recs(x).find(z=>z.key==='receiver');
-    assert.ok(r && /^Воздушные ресиверы 2 × 900 л$/.test(r.title) && /нужно около 1 625 л/.test(r.why), JSON.stringify(r));
-    const P=KitNeed.preset(x, r); assert.deepStrictEqual([global.catCache.find(c=>c.id===P.best.id).name, P.best.n, P.r.volume], ['Воздушный ресивер АСО РВ 900/10', 2, ['900', '900']]);
+    assert.ok(r && /^Воздушные ресиверы 4 × 900 л$/.test(r.title) && /нужно 3 250 л \(приоритет 3\)/.test(r.why), JSON.stringify(r));
+    const P=KitNeed.preset(x, r); assert.deepStrictEqual([global.catCache.find(c=>c.id===P.best.id).name, P.best.n, P.r.volume, P.role], ['Воздушный ресивер АСО РВ 900/11', 4, ['900', '900'], 'dry']);
     // подбор станции целиком — тоже по 900 л
     const y=Cat.station('st_comp', [], {});
     const note=await TzPick.run(y, { kind:'comp', flow:12, pressure:7, air:'', reserve:'0', work:0 });
     const rv=kitParts(y).filter(p=>StationEquip.kindOf(p)==='receiver').map(p=>[p.name, p.qty]);
-    assert.deepStrictEqual(rv, [['Воздушный ресивер АСО РВ 900/10', 2]], JSON.stringify(rv)+' — '+note);
-    assert.ok(/ресиверы 2 × Воздушный ресивер АСО РВ 900\/10 \(2 по 900 л — нужно около 1 625 л\)/.test(note), note);
+    assert.deepStrictEqual(rv[0], ['Воздушный ресивер АСО РВ 900/11', 4], JSON.stringify(rv)+' — '+note);
+    assert.ok(rv.every(z=>/900/.test(z[0])), 'только 900 л');
   });
 
   // основное оборудование против требований «Подбора станции» — для всех станций; бак ДГУ под время работы

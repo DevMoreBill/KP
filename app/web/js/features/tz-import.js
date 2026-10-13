@@ -365,6 +365,18 @@ class TzPick {
     for (const [only, max] of [[true, 6], [false, 4]]) for (let n=1; n<=max; n++){ const o=this.best(L.filter(z=>z.v*n>=V-1e-9 && (!only || free(z))), 'v'); if (o) return { o, n, free:free(o) }; }
     return null;
   }
+  /** ресивер типоразмера size, л (900 или 500 — методика ПНЕВМОТЕХ 13.10): давление — с запасом над компрессором (правило
+   *  receiver.method.margin), нет такого — не ниже компрессорного (тогда ошибка в расчёте); высота с арматурой (+300 мм) — не выше
+   *  Hmax (0 — без ограничения); производитель в приоритете (АСО), в наличии, наименьшее достаточное давление, дешевле, ниже.
+   *  {o} | {o:null, tall — на это давление есть, но выше Hmax} | null */
+  static recvPick(size, B, Hmax){
+    const all=catCache.filter(c=>attrsOf(c).cat==='receiver').map(c=>{ const a=attrsOf(c); return { c, v:this.num(a.volume)||0, p:this.num(a.pressure), h:StationEquip.dims({ name:c.name, attrs:a, rows:[] }, 'receiver').h }; })
+      .filter(o=>Math.abs(o.v-size)<0.5 && (!(B>0) || !(o.p>0) || o.p>=B-0.05)), fit=all.filter(o=>!(Hmax>0) || o.h+300<=Hmax);
+    const B0=AirChain.BASE, mk=String((B0 && B0.maker)||'').trim().toLowerCase(), pri=o=>mk && String(attrsOf(o.c).maker||'').trim().toLowerCase()===mk ? 0 : 1, m=ReceiverPlan.M.margin;
+    const sort=L=>L.sort((a, b)=>pri(a)-pri(b) || this.stock(b.c)-this.stock(a.c) || (a.p||99)-(b.p||99) || this.cheaper(a.c, b.c) || a.h-b.h)[0];
+    for (const ok of [o=>!(B>0) || !(o.p>0) || o.p>=B+m-0.05, o=>!(B>0) || !(o.p>0) || o.p>=B-0.05]){ const o=sort(fit.filter(ok)); if (o) return { o }; }
+    return all.length ? { o:null, tall:true } : null;
+  }
   /** сравнение по закупке, иначе по цене (одна валюта; без цены — в конце): < 0 — a дешевле */
   static cheaper(a, b){
     for (const [k, cur] of [['cost', 'costCur'], ['price', 'priceCur']]){
@@ -427,6 +439,7 @@ class TzPick {
     if (kind==='comp'){
       const B=q.pressure, wc=+(String(q.air||'').split('.')[1]||0), ads=(wc && wc<=3) || (q.pdp!=null && +q.pdp<=-20);
       let Bc=B, picked=null;   // давление аппаратов (осушитель, фильтры, ресиверы) — не ниже наибольшего давления компрессора
+      { const rq=StationReq.ensure(x); if (q.recv==='after' || q.recv==='before') rq.recv=q.recv; if (q.recvOut) rq.recvOut=true; }   // где ресиверы — для расчёта цепочки
       // потребность из ТЗ → FAD с запасом (StationReq.need); адсорбционный осушитель — компрессоры с запасом на продувку
       const nd=q.flow>0 ? StationReq.need(q, q.flow) : { v:0, why:'' }, Q=ads && nd.v>0 ? nd.v/(1-AirChain.PURGE) : nd.v;
       // по высоте — помещаются в контейнер (габариты известны); электрические — первыми, дизельные — если их нет
@@ -447,17 +460,16 @@ class TzPick {
       // цепочка воздуха — и когда компоновка не сложилась (оборудование не помещается): фильтры и ресиверы всё равно нужны
       const plan=StationLayout.solve(StationUi.input(x)), air=plan.air || KitNeed.air(x);
       for (const rec of (air && air.recs || []).filter(r=>(r.cat==='filter' || r.cat==='receiver') && !r.replace)){
-        const lo=Object.fromEntries(Object.entries(rec.r||{}).map(([k, v])=>[k, this.num((v||[])[0])]));
-        // общий объём ресиверов — как в расчёте станции (ReceiverSizing): по наибольшему подобранному компрессору, без недобора
-        if (rec.cat==='receiver' && rec.total>0) lo.volume=picked && picked.o.v>0 ? Math.round(picked.o.v*(picked.o.vsd ? StationRules.raw('receiver.vsd') : AirChain.RECV)) : rec.total;
-        if (rec.cat==='receiver' && q.recvVol>0) lo.volume=q.recvVol;
-        if (rec.cat==='receiver'){   // ресиверы: один или несколько; «до и после осушителя» — два (до — «мокрый», после — «сухой»)
-          const both=q.recv==='both', V=lo.volume||0, r=this.receivers(both ? V/2 : V, Bc, q.recvOut ? 0 : this.hmax(x));
-          if (!r){ miss.push(rec.title.toLowerCase()); continue; }
-          for (let j=0; j<(both ? 2 : 1); j++) x.kit.parts.splice(at++, 0, await this.part(r.o.c, r.n));
-          const n=r.n*(both ? 2 : 1);
-          got.push((n>1 ? `ресиверы ${n} × ` : '')+this.lbl('ресивер', r.o.c.name)+(r.base ? (r.n>1 ? ` (${r.n} по ${StationLayout.n(r.o.v)} л — нужно около ${StationLayout.n(Math.round(both ? V/2 : V))} л)` : '')
-            : r.n>1 ? ` (${r.n} по ${StationLayout.n(r.o.v)} л: ${r.free && Bc>0 && Bc/10*(both ? V/2 : V)/1000>PressureVessel.LIMIT ? 'каждый без учёта в Ростехнадзоре, p·V не больше 1,0 МПа·м³' : `одного на ${StationLayout.n(both ? V/2 : V)} л в каталоге нет или он не проходит по высоте контейнера`})` : ''));
+        // ресиверы — по методике ПНЕВМОТЕХ (ReceiverPlan): типоразмер и число — из рекомендации цепочки (основной, мокрый,
+        // у потребителя); 900 л не помещается по высоте, а нужно не больше 500 л — 500 л с обоснованием «нехватка места»
+        if (rec.cat==='receiver'){
+          const role=rec.role||'dry', size=this.num((rec.r.volume||[])[0])||0, H=(q.recvOut && role==='dry') || role==='local' ? 0 : this.hmax(x);
+          let r=size>0 ? this.recvPick(size, Bc, H) : null, n=rec.qty||1;
+          if ((!r || !r.o) && size===ReceiverPlan.UNIT && rec.need>0 && rec.need<=ReceiverPlan.SMALL){ const r5=this.recvPick(ReceiverPlan.SMALL, Bc, H);
+            if (r5 && r5.o){ r=r5; n=1; StationReq.ensure(x).recvWhy='space'; } }
+          if (!r || !r.o){ miss.push(rec.title.toLowerCase()+(r && r.tall ? ' — по высоте не помещается' : ' — подходящих в каталоге нет')); continue; }
+          const fp=await this.part(r.o.c, n); fp.recvRole=role; x.kit.parts.splice(at++, 0, fp);
+          got.push(`${role==='wet' ? 'мокрый ресивер (до осушителя)' : role==='local' ? 'ресивер у потребителя' : 'основной ресивер'}: ${n>1 ? n+' × ' : ''}${r.o.c.name}`);
           continue; }
         const fm=this.filter(rec, picked ? picked.o.v*picked.n : Q, B, Bc), c=fm && fm.o, fn=fm ? fm.n : 1;
         if (c){ const fp=await this.part(c.c, fn); fp.airGrade=rec.key;   // ступень, под которую подобран (пылевой — после адсорбционного осушителя)

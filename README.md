@@ -526,6 +526,19 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.79.0 — ресиверы по методике ПНЕВМОТЕХ, «на чертеже» у замечаний:**
+- `ReceiverPlan` (station-layout.js): `calc` — приоритеты 1 (Q / (8 · ΔP)), 2 (T · (C − S) · Pa / (P1 − P2)), 3 (0,25 / 1 · Q); нужный —
+  наибольший; `size` — ряд 900/500 (500 — запас 900 л больше 200 %, нет места по высоте, вручную с обоснованием); мокрый
+  (30–50 %), локальный (пик точки > 50 % Q); `checks` — шесть проверок; `from(eq, rq)` — по составу. Правило `receiver.method`;
+  `receiver.formula` и `receiver.vsd` убраны. Правила `2026.10.13-3`.
+- Роли ресиверов в составе — `p.recvRole` ('dry' | 'wet' | 'local'; локальный — не в контейнере); `AirChain.check(eq, cls, rq)` —
+  рекомендации `receiver`, `receiver-wet`, `receiver-local`, `receiver-more`; `TzPick.recvPick(size, B, Hmax)` — АСО первым,
+  давление ≥ компрессора + 1 бар; `KitNeed.best/preset` — роль; «до и после» (twin) убрано.
+- Записка `ReceiverSizing` — приоритеты, нужный объём, рекомендация, обоснование типоразмера, проверки; ошибки — в замечания.
+- Ввод — `StationReq.recvIn/recvPlan/recvBlock`, поля `recvDp, recvT, recvC, recvDrop, recvPoint, recvValve, recvSize, recvWhy`.
+- «На чертеже» — `IssueSpot` (station-ui.js), `StationDrawing.hlPlan`, `EskdSheet.mark` (подсветка только при `meta.hl`).
+- Проверки: `tests/js/station_calc.js` (24), `station_layout.js` (46), `tz_pick.js` (14), сценарии ТЗ.
+
 **3.78.0 — станции: исправления по аудиту (ввод, насосы, ДГУ, ворота, эксперт, описание, изображения, масса):**
 - Ввод требований — `ReqNum` (kit-view.js): единый разбор чисел (запятая, минус, пробелы), диапазоны `ReqNum.R`, ошибка под
   полем (`.f-err`), блокирующие ошибки «Требования: …» в `StationCalc.errors` (их не снимает «отклонение согласовано»).

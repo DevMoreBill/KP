@@ -476,6 +476,7 @@ function kitPickCat(i, cats, role, name, preset, by){
   // элементов (preset.replace — их id: осушитель меньше нужного, ресиверы на учёте → несколько меньших)
   const put=(it, p, id)=>{ const n=best && id===best.id ? preset.best.n : preset && preset.qty; if (n>1) p.qty=n;
     if (preset && preset.grade) p.airGrade=preset.grade;   // фильтр подобран под ступень («Нужно: пылевой…») — на своё место в цепочке
+    if (preset && preset.role) p.recvRole=preset.role;   // ресивер: основной (сухой), мокрый или у потребителя — по методике
     if (preset && Array.isArray(preset.replace)) it.kit.parts=it.kit.parts.filter(z=>!preset.replace.includes(z.id)); };
   const kitPickNew=()=>{ const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=StationDefaults.fill(kitNewPart({name:name||(F.q||'').trim()}), it); if (role) p.role=role;
     if (preset){ if (preset.attrs) p.attrs=Object.fromEntries(Object.entries(preset.attrs).filter(([, v])=>v!=null && v!=='')); for (const r of preset.rows||[]) if (!p.rows.some(z=>z.k===r.k)) p.rows.push({ ...r }); }
@@ -488,7 +489,6 @@ function kitPickCat(i, cats, role, name, preset, by){
     const it=S.items[i]; it.kit=it.kit||{parts:[]}; const p=KitPart.fromCat(doc); if (role) p.role=role; if (by && by!==KitScope.def(p)) p.by=by;
     put(it, p, lite.id);
     if (role==='main'){ const ix=it.kit.parts.findIndex(z=>z.role==='container'); it.kit.parts.splice(ix>=0?ix:0, 0, p); } else it.kit.parts.push(p);
-    if (preset && preset.twin && best && lite.id===best.id){ const p2=KitPart.fromCat(doc); p2.qty=p.qty; it.kit.parts.push(p2); }   // ресиверы до и после осушителя
     kitSync(it); stationFill(it); stationAutoName(it); if (typeof StationUi!=='undefined') StationUi.cache.delete(it.id);
     d.close(); renderForm(); persist(); toast((preset && preset.replace ? 'Заменено: ' : 'Добавлено в состав: ')+(+p.qty>1 ? p.qty+' × ' : '')+doc.name); };
 }

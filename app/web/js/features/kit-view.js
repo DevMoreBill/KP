@@ -26,6 +26,7 @@ class ReqNum {
     tin:[0, 70, '°C'], tmin:[-65, 15, '°C'], tmax:[0, 60, '°C'], noise:[40, 120, 'дБА'], recvVol:[1, 100000, 'л'],
     kw:[1, 20000, 'кВт'], hours:[0.5, 720, 'ч'], load:[1, 100, '%'], motor:[0.1, 5000, 'кВт'], q:[0.1, 20000, 'м³/ч'], head:[0.5, 2500, 'м'],
     hsuct:[-10, 8, 'м'], tliq:[1, 100, '°C'], gateOff:[-1500, 1500, 'мм'],
+    recvDp:[0.1, 5, 'бар'], recvT:[0.05, 120, 'мин'], recvC:[0.05, 500, 'м³/мин'], recvDrop:[0.1, 5, 'бар'], recvPoint:[0.01, 500, 'м³/мин'], recvValve:[1, 40, 'бар'],
     ventK:[0.5, 1, ''], ventTin:[20, 60, '°C'], ventDt:[1, 40, '°C'], ventDtc:[5, 30, '°C'], ventVin:[0.5, 8, 'м/с'], ventVout:[0.5, 10, 'м/с'], ventRes:[1, 2, ''],
     ventU:[0.1, 6, 'Вт/(м²·°C)'], ventFan:[1, 1e6, 'м³/ч'], ventEta:[0.3, 0.95, ''], ventTexh:[0, 40, '°C'], ventPhi:[5, 100, '%'], ventDays:[0, 365, 'сут'], ventTavg:[-40, 8, '°C'] };
   /** разбор: {n — число или null, bad — текст ошибки ('' — нет)} */
@@ -53,6 +54,7 @@ class ReqNum {
     tin:'Воздух на входе в осушитель', tmin:'Наружный воздух от', tmax:'Наружный воздух до', noise:'Шум на рабочем месте', recvVol:'Ресивер по ТЗ',
     kw:'Мощность нагрузки', hours:'Работа без дозаправки', load:'Средняя нагрузка', motor:'Наибольший двигатель нагрузки', q:'Подача', head:'Напор',
     hsuct:'Высота всасывания', tliq:'Температура жидкости', gateOff:'Смещение ворот от оси торца',
+    recvDp:'ΔP нагрузка/разгрузка', recvT:'Длительность пика', recvC:'Расход в пике', recvDrop:'Допустимый перепад в ресивере', recvPoint:'Пиковый расход точки', recvValve:'Уставка предохранительного клапана',
     ventK:'k', ventTin:'t_вн летом', ventDt:'Δt помещения', ventDtc:'Нагрев воздуха в компрессоре', ventVin:'Скорость притока', ventVout:'Скорость выброса', ventRes:'Запас притока',
     ventU:'U стенки', ventFan:'Вытяжной вентилятор', ventEta:'КПД рекуператора', ventTexh:'t выбросного воздуха', ventPhi:'Влажность выбросного воздуха', ventDays:'Отопительный период', ventTavg:'Средняя температура периода' };
   /** для поля ввода: класс и подпись ошибки под полем */
@@ -93,9 +95,35 @@ class StationReq {
   static of(x){ return (x && x.req && typeof x.req==='object') ? x.req : {}; }
   static ensure(x){ if (!x.req || typeof x.req!=='object') x.req={}; return x.req; }
   static num(v){ return ReqNum.num(v); }
-  /** ресивер — после подготовки воздуха (так чаще), до осушителя или до и после */
-  static RECV = [['after', 'после осушителя'], ['before', 'до осушителя'], ['both', 'до и после']];
-  static recv(x){ const v=this.of(x).recv; return v==='before' || v==='both' ? v : 'after'; }
+  /** ресиверы: по методике (решение 13.10) — основной после осушителя и мокрый до него; или только после / только до */
+  static RECV = [['', 'по методике (основной + мокрый)'], ['after', 'только после осушителя'], ['before', 'только до осушителя']];
+  static recv(x){ const v=this.of(x).recv; return v==='before' || v==='after' ? v : ''; }   // прежнее «до и после» — по методике
+  static RSIZE = [['', 'авто: кратно 900 л'], ['900', '900 л'], ['500', '500 л (крайняя необх.)']];
+  static RWHY = [['', 'обоснование 500 л —'], ['space', 'нехватка места'], ['mass', 'ограничение по массе']];
+  /** расчёт ресиверов по составу станции (ReceiverPlan) или null */
+  static recvPlan(x){ return ReceiverPlan.from(StationEquip.list(kitParts(x), { recv:this.recv(x), recvOut:this.recvOut(x) }), this.recvIn(x)); }
+  /** блок «Ресиверы»: где ставить, типоразмер, ТЗ, ΔP, клапан, циклограмма, пик точки — и итог расчёта одной строкой */
+  static recvBlock(x, i, fld, sel){
+    const r=this.of(x), R=this.recvPlan(x), n=StationLayout.n, E=R ? R.checks : [], er=E.filter(c=>c.level==='error').length;
+    const sum=R ? `<p class="kr-rp"><b>Приоритет ${esc(String(R.prio))}</b>: нужно ${n(R.theor)} л → ${esc(ReceiverPlan.text(R))}. <span class="${er ? 'bad-t' : E.length ? 'warn-t' : 'ok-t'}">${E.length ? `${er ? 'ошибок: '+er+(E.length>er ? ', ' : '') : ''}${E.length>er ? 'предупреждений: '+(E.length-er) : ''} — подробно в «Расчёте станции»` : 'Все проверки пройдены.'}</span></p>`
+      : '<p class="muted kr-rp">Расчёт ресиверов — после выбора компрессора с производительностью.</p>';
+    return `<details class="kr-calc"${Spoiler.attr('recv:'+x.id)}><summary>Ресиверы — исходные данные и расчёт</summary>${sum}
+      <div class="kr-g">${sel('recv', 'Где ставить', this.RECV, this.recv(x))}${sel('recvSize', 'Типоразмер', this.RSIZE, r.recvSize||'')}
+        ${r.recvSize==='500' || r.recvWhy ? sel('recvWhy', 'Обоснование 500 л', this.RWHY, r.recvWhy||'') : ''}
+        ${fld('recvVol', 'Объём по ТЗ, л', 'по расчёту', 'numeric')}${fld('recvDp', 'ΔP разгрузка − нагрузка, бар', '1 — по правилу')}
+        ${fld('recvValve', 'Уставка предохранительного клапана, бар', 'по паспорту')}</div>
+      <p class="kr-sub">Циклограмма потребления — если есть (приоритет 2)</p>
+      <div class="kr-g">${fld('recvT', 'Длительность пика T, мин', '—')}${fld('recvC', 'Расход в пике C, м³/мин', '—')}${fld('recvDrop', 'Допустимый перепад P1 − P2, бар', '—')}
+        ${fld('recvPoint', 'Пик отдельной точки, м³/мин', '—')}</div>
+      <p class="muted kr-hint">Методика ПНЕВМОТЕХ: 1 — цикл V = Q / (8 · ΔP); 2 — пик V = T · (C − S) · Pa / (P1 − P2); 3 — без циклограммы 0,25 · Q (винтовой), 1 · Q (поршневой). Нужен наибольший; ресиверы — по 900 л (500 л — крайняя необходимость), мокрый до осушителя — 30–50 % основного, у потребителя — если пик точки больше 50 % компрессора.</p></details>`;
+  }
+  /** исходные данные расчёта ресиверов (ReceiverPlan): ошибочные поля — как не заданные (ошибка — под полем) */
+  static recvIn(x){
+    const r=this.of(x), g=k=>ReqNum.check(k, r[k]) ? null : this.num(r[k]), T=g('recvT'), C=g('recvC'), D=g('recvDrop');
+    return { dp:g('recvDp'), cyc:T>0 && C>0 && D>0 ? { T, C, drop:D } : null, point:g('recvPoint'), tz:g('recvVol'), mode:this.recv(x),
+      force:r.recvSize==='500' || r.recvSize==='900' ? r.recvSize : '', reason:r.recvWhy==='space' || r.recvWhy==='mass' ? r.recvWhy : '', valve:g('recvValve'),
+      reserve:Math.max(0, Math.round(this.num(r.reserve)||0)) };
+  }
   static recvOut(x){ return !!this.of(x).recvOut; }
   /** категория помещения по СП 12.13130.2009: своя или ориентировочная по виду станции (уточняется расчётом) */
   static fire(x){ const f=this.of(x).fire; return this.FIRE.includes(f) ? f : this.fireDef(x); }
@@ -106,7 +134,7 @@ class StationReq {
   static plan(x){
     const r=this.of(x), t=v=>this.num(String(v??'').replace(/[−–]/g, '-').replace(/^\+/, ''));
     return { kind:this.kind(x), fire:this.fire(x), fireAuto:!this.FIRE.includes(r.fire), noise:this.noise(x), tmin:t(r.tmin), tmax:t(r.tmax), res:Math.max(0, Math.round(this.num(r.reserve)||0)), vent:this.vent(x),
-      gate:{ off:ReqNum.check('gateOff', r.gateOff) ? null : t(r.gateOff), why:String(r.gateWhy||'').trim().slice(0, 300) } };
+      gate:{ off:ReqNum.check('gateOff', r.gateOff) ? null : t(r.gateOff), why:String(r.gateWhy||'').trim().slice(0, 300) }, recvIn:this.kind(x)==='comp' ? this.recvIn(x) : null };
   }
   // режим «эксперт» вентиляции (решение 12.10): [ключ требований, ключ расчёта, подпись, подсказка]; пусто — по правилам
   static VENT = [['ventK', 'k', 'k — доля мощности в тепло', '0,9'], ['ventTin', 'tIn', 't_вн летом, °C', '40'], ['ventDt', 'dt', 'Δt помещения летом, °C', 't_вн − t_нар'],
@@ -202,12 +230,12 @@ class StationReq {
         <div class="kr-g">${this.VENT.filter(([rk])=>k==='comp' || !/^vent(K|Dtc)$/.test(rk)).map(([rk, , label, ph])=>fld(rk, label, ph, 'text', ExpertLog.mark(x, i, rk))).join('')}${sel('hrvType', 'Тип рекуператора', this.HRV, r.hrvType||'')}</div>
         ${ExpertLog.foot(x, i, ExpertLog.VENT())}
         <p class="muted kr-hint">Для нестандартных условий. Не заданы — значения из инженерных правил (k = 0,9, нагрев воздуха в компрессоре 15 °C, t_вн = 40 °C, приток 3 м/с с запасом 10 %, выброс 4 м/с, U — по утеплителю). k и U сильнее всего влияют на результат; паспортный расход охлаждающего воздуха важнее расчёта. Компактнее — система «Вентилятор в воздуховоде выброса», рекуператор — система «Рекуператор (по требованию)».</p></details>`;
-    const main=k==='comp' ? sel('recv', 'Ресивер', this.RECV, this.recv(x))+fld('recvVol', 'Ресивер по ТЗ, л', 'по расчёту', 'numeric') : '';
     return `<div class="kit-req open">${head}
-      <div class="kr-g">${main}${sel('work', 'Рабочих агрегатов', this.WORK, r.work||'')}
+      <div class="kr-g">${sel('work', 'Рабочих агрегатов', this.WORK, r.work||'')}
         ${fld('tmin', 'Наружный воздух от, °C', '−45', 'text')}${fld('tmax', 'до, °C', '+40', 'text')}
         ${sel('fire', 'Категория помещения (СП 12.13130)', this.FIRE.map(f=>[f, f+(f===this.fireDef(x) ? ' (ориент.)' : '')]), this.fire(x))}
         ${fld('noise', 'Шум на рабочем месте, не более дБА', '80', 'numeric')}</div>
+      ${k==='comp' ? this.recvBlock(x, i, fld, sel) : ''}
       ${k==='comp' || k==='dgu' || k==='pump' ? `<details class="kr-calc"${Spoiler.attr('cond:'+x.id)}><summary>Условия для расчёта станции</summary><div class="kr-g">${k==='pump'
         ? sel('liquid', 'Перекачиваемая жидкость', this.LIQUID, r.liquid||'')+fld('tliq', 'Температура жидкости, °C', '20', 'text')
           +fld('hsuct', 'Высота всасывания, м (подпор — с минусом)', 'по ТЗ', 'text')+fld('alt', 'Высота над уровнем моря, м', '0', 'text')
@@ -314,7 +342,7 @@ class KitNeed {
   /** цепочка воздуха по составу (контейнер не нужен): {q, bar, recs, …} или null (не компрессорная, нет компрессоров) */
   static air(x){
     if (StationReq.kind(x)!=='comp') return null;
-    return AirChain.check(StationEquip.list(kitParts(x), { recv:StationReq.recv(x), recvOut:StationReq.recvOut(x) }), StationUi.opts(x).air);
+    return AirChain.check(StationEquip.list(kitParts(x), { recv:StationReq.recv(x), recvOut:StationReq.recvOut(x) }), StationUi.opts(x).air, StationReq.recvIn(x));
   }
   /** компрессоры состава с характеристиками */
   static comps(x){ return StationEquip.list(kitParts(x)).filter(e=>e.kind==='compressor' && e.air); }
@@ -364,19 +392,18 @@ class KitNeed {
       const old=kitParts(x).filter(p=>attrsOf(p).cat===r.cat || (StationEquip.kindOf(p)==='dryer' && AirChain.info(p, 'dryer').type===(r.cat==='dryer_ads' ? 'ads' : 'refrig'))).map(p=>p.id);
       return old.length ? { ...r, replace:old, swap:true } : r; });
   }
-  /** рекомендуемая позиция каталога по рекомендации r: {c, n — штук параллельно, twin — два ресивера (до и после осушителя)} | null */
+  /** рекомендуемая позиция каталога по рекомендации r: {c, n — штук параллельно, role — роль ресивера (основной, мокрый, у потребителя)} | null */
   static best(x, r){
     const A=this.air(x), q=A ? A.q : 0, req=StationReq.of(x), B=this.n(req.pressure)||0, Bc=this.bar(x); let o=null;
     if (/^dryer-/.test(r.key)){ const ads=r.cat==='dryer_ads', pdp=ads && r.f && r.f.dewPoint ? this.n(r.f.dewPoint) : null;
       o=q>0 ? TzPick.dryer(ads, q, B, Bc, this.n(req.tmax), pdp, TzPick.hmax(x)) : null; }
     else if (r.cat==='filter') o=TzPick.filter(r, q, B, Bc);
     else if (r.cat==='receiver'){
-      const big=this.comps(x).filter(e=>e.air.flow>0).reduce((m, e)=>!m || e.air.flow>m.air.flow ? e : m, null);
-      const old=kitParts(x).filter(p=>(r.replace||[]).includes(p.id)).reduce((s, p)=>s+(AirChain.volume(p)||0)*Math.max(1, +p.qty||1), 0);
-      const both=StationReq.recv(x)==='both' && r.key==='receiver';
-      const V=this.n(req.recvVol)>0 ? this.n(req.recvVol) : r.key==='recv-split' ? old : big ? big.air.flow*(big.air.vsd ? AirChain.RECV_VSD : AirChain.RECV) : 0;
-      const R=V>0 ? TzPick.receivers(both ? V/2 : V, Bc, StationReq.recvOut(x) ? 0 : TzPick.hmax(x)) : null;
-      return R ? { c:R.o.c, n:R.n, twin:both } : null; }
+      // замена ресиверов на учёте (recv-split) — как раньше; остальные — типоразмер и число по методике (ReceiverPlan)
+      if (r.key==='recv-split'){ const old=kitParts(x).filter(p=>(r.replace||[]).includes(p.id)).reduce((s, p)=>s+(AirChain.volume(p)||0)*Math.max(1, +p.qty||1), 0);
+        const R=old>0 ? TzPick.receivers(old, Bc, StationReq.recvOut(x) ? 0 : TzPick.hmax(x)) : null; return R ? { c:R.o.c, n:R.n } : null; }
+      const role=r.role||'dry', R=TzPick.recvPick(this.n((r.r.volume||[])[0])||0, Bc, (StationReq.recvOut(x) && role==='dry') || role==='local' ? 0 : TzPick.hmax(x));
+      return R && R.o ? { c:R.o.c, n:Math.max(1, +r.qty||1), role } : null; }
     if (o) return { c:o.o.c, n:o.n };
     const L=pfList(this.filters(x, r), [r.cat], 1).list; return L.length ? { c:L[0], n:Math.max(1, +r.qty||1) } : null;
   }
@@ -390,8 +417,8 @@ class KitNeed {
     const A=this.air(x), F=this.filters(x, r), b=this.best(x, r), lab={ flow:'производительность от', volume:'объём от' }, unit={ flow:'м³/мин', volume:'л' };
     const need=[...Object.entries(F.r).filter(([, v])=>v && v[0]).map(([k, v])=>`${lab[k]||k} ${String(v[0]).replace('.', ',')} ${unit[k]||''}`.trim()),
       ...(F.min.pressure ? [`давление от ${AirChain.m3(F.min.pressure)} бар`] : []), ...Object.values(F.f).filter(Boolean)];
-    return { f:F.f, r:F.r, min:F.min, rows:r.rows, attrs:r.attrs, qty:r.qty, replace:r.replace, twin:b && b.twin, grade:r.cat==='filter' && AirChain.GRADES[r.key] ? r.key : '',
-      best:b ? { id:b.c.id, n:b.n, label:b.n>1 && r.cat==='receiver' ? `${b.n} шт.${b.twin ? ' до и после осушителя' : ''}` : '' } : null, title:r.title,
+    return { f:F.f, r:F.r, min:F.min, rows:r.rows, attrs:r.attrs, qty:r.qty, replace:r.replace, role:r.cat==='receiver' ? r.role||'' : '', grade:r.cat==='filter' && AirChain.GRADES[r.key] ? r.key : '',
+      best:b ? { id:b.c.id, n:b.n, label:b.n>1 && r.cat==='receiver' ? `${b.n} шт.` : '' } : null, title:r.title,
       need:`${r.swap ? 'Заменить: ' : 'Нужно: '}${r.title.charAt(0).toLowerCase()+r.title.slice(1)}${A && A.q ? ` — к компрессорам ${AirChain.m3(A.q)} м³/мин, ${AirChain.m3(A.bar)} бар` : ''}.`
         +(need.length ? ' Показаны подходящие: '+need.join(', ')+'.' : '') };
   }
@@ -469,8 +496,8 @@ class KitNeed {
         if (r.act){ const t=this.apply(x, r); if (t) got.push(t); continue; }
         const b=this.best(x, r); if (!b){ none.push(r.title.replace(/\s*\(.*?\)/g, '')); continue; }
         if (Array.isArray(r.replace)) x.kit.parts=x.kit.parts.filter(z=>!r.replace.includes(z.id));
-        for (let k=0; k<(b.twin ? 2 : 1); k++){ const p=await TzPick.part(b.c, b.n); if (r.cat==='filter' && AirChain.GRADES[r.key]) p.airGrade=r.key; x.kit.parts.push(p); }
-        got.push((b.twin ? '2 × ' : '')+(b.n>1 ? b.n+' × ' : '')+b.c.name); } }
+        const p=await TzPick.part(b.c, b.n); if (r.cat==='filter' && AirChain.GRADES[r.key]) p.airGrade=r.key; if (b.role) p.recvRole=b.role; x.kit.parts.push(p);
+        got.push((b.n>1 ? b.n+' × ' : '')+b.c.name); } }
     this.done(x);
     toast((got.length ? 'Добавлено: '+got.join('; ') : 'Ничего не добавлено')+(none.length ? '. В каталоге нет: '+none.join('; ')+' — добавьте вручную' : ''));
   }

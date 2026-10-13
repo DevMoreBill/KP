@@ -58,6 +58,9 @@ class EskdSheet {
     const [w, d]=this.LINE[type]||this.LINE.thin;
     return `fill="${fill||'none'}" stroke="#000" stroke-width="${w}"${d ? ` stroke-dasharray="${d}"` : ' stroke-linecap="round"'}`;
   }
+  /** подсветка на экране («Показать на чертеже»): красная полупрозрачная рамка — только в окне программы, не в КП */
+  mark(x, y, w, h){ if (!(w>0 && h>0)) return; const f=EskdSheet.f;
+    this.out.push(`<rect class="hl" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" rx="1" fill="rgba(229,57,53,0.14)" stroke="#e53935" stroke-width="0.7" stroke-dasharray="1.6 0.8"/>`); }
   line(x1, y1, x2, y2, type='thin'){ const f=EskdSheet.f; this.out.push(`<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" ${EskdSheet.st(type)}/>`); }
   path(d, type='thin', fill){ this.out.push(`<path d="${d}" ${EskdSheet.st(type, fill)} stroke-linejoin="round"/>`); }
   rect(x, y, w, h, type='thin', fill, rx){
