@@ -77,8 +77,10 @@ class Check {
       if (it.cross) continue;   // поперёк станции (без сквозного прохода): спереди и сзади — части станции со своими дверями
       // без продольного прохода: компрессор у торца — сервисные ворота с обеих сторон, ворота в торце у него
       if (it.ends){ const D=(p.doors||[]).filter(d=>d.both && d.pos.includes(it.pos) && Math.min(d.x1, it.x+it.lx)-Math.max(d.x0, it.x)>=Math.min(it.lx, StationLayout.DOOR.max)-1);
-        assert.ok(p.ends && D.some(d=>d.wall==='front') && D.some(d=>d.wall==='back') && p.gates && p.gates.wall==='left' && it.x-(p.geo.x0||0)<=600, `${label}: поз. ${it.pos} без продольного прохода — нет ворот с обеих сторон или в торце`);
-        assert.ok(p.entry && p.entry.x0>=it.x+it.lx && D.filter(d=>d.wall==='front').every(d=>d.x1<=p.entry.x0-100), `${label}: дверь оператора — за компрессором, мимо его ворот`); continue; }
+        // два компрессора (3.86.2) — по одному у каждого торца, ворота — в своём торце
+        const left=it.x+it.lx/2<L/2, G=left ? p.gates : p.gates2;
+        assert.ok(p.ends && D.some(d=>d.wall==='front') && D.some(d=>d.wall==='back') && G && G.wall===(left ? 'left' : 'right') && G.pos.includes(it.pos) && (left ? it.x-(p.geo.x0||0) : L-it.x-it.lx)<=600, `${label}: поз. ${it.pos} без продольного прохода — нет ворот с обеих сторон или в торце`);
+        assert.ok(p.entry && (left ? p.entry.x0>=it.x+it.lx && D.filter(d=>d.wall==='front').every(d=>d.x1<=p.entry.x0-100) : p.entry.x1<=it.x && D.filter(d=>d.wall==='front').every(d=>d.x0>=p.entry.x1+100)), `${label}: дверь оператора — за компрессором, мимо его ворот`); continue; }
       // ресиверы в два ряда в конце ряда — поперёк во всю ширину: проход доходит до них сбоку, от стен — не меньше 300 мм
       if (it.pairEnd){ const pw=p.ends ? 149 : 299; assert.ok(it.kind==='receiver' && it.y>=pw && W-it.y-it.ly>=pw && !floor.some(o=>!o.pairEnd && o.x+o.lx>it.x), `${label}: ресиверы в два ряда поз. ${it.pos} — не в конце ряда или ближе 300 мм к стене`); continue; }
       assert.ok(it.y>=need-1, `${label}: проход перед поз. ${it.pos} ${it.y} < ${need}`);
@@ -280,8 +282,19 @@ Check.run('компрессорная в габарите перевозки: п
   const a1=S(C('block', { sizeAuto:true }), [K('2000 × 1500 × 1800', 90), dryer]);
   Check.plan(a1, 'без продольного прохода'); draw(a1, 'без продольного прохода');
   assert.ok(a1.geo.ext[1]===R && a1.mode && a1.mode.ends && a1.ends && a1.ends.pos===1, 'без продольного прохода, в габарите: '+JSON.stringify([a1.geo.ext, a1.mode]));
-  // два таких — исключение «проход в крайнем случае» (600 мм)
-  const a=S(C('block', { sizeAuto:true }), [P('Компрессор', { cat:'comp_screw', model:'K 90', kw:90, size:'2000 × 1500 × 1800' }, { role:'main', qty:2 }), dryer]);
+  // два таких (рабочий и резервный; 3.86.2, скриншот ПНЕВМОТЕХ 13.10 «всё равно не даёт») — тоже без продольного прохода:
+  // по одному у каждого торца, ворота в обоих торцах, у каждого — сервисные ворота спереди и сзади
+  const K2=P('Компрессор', { cat:'comp_screw', model:'K 90', kw:90, size:'2000 × 1500 × 1800' }, { role:'main', qty:2 });
+  const e2=S(C('block', { sizeAuto:true }), [K2, dryer, Object.assign({}, rec, { qty:2 })]);
+  Check.plan(e2, 'два компрессора у торцов'); draw(e2, 'два компрессора у торцов');
+  const E2=e2.items.filter(i=>i.ends).sort((p, q)=>p.x-q.x);
+  assert.ok(e2.geo.ext[1]===R && e2.mode && e2.mode.ends && E2.length===2 && e2.ends.pos2 && e2.gates.wall==='left' && e2.gates2 && e2.gates2.wall==='right', 'два компрессора у торцов: '+JSON.stringify([e2.geo.ext, e2.mode, E2.map(i=>i.x)]));
+  assert.ok(e2.items.filter(i=>i.mount==='floor' && !i.ends).every(i=>i.x>E2[0].x+E2[0].lx && i.x+i.lx<E2[1].x), 'остальное — между компрессорами');
+  assert.ok(e2.issues.some(i=>/компрессоры поз\. 1 \(оба\) — по одному у каждого торца/.test(i.text)), e2.issues.map(i=>i.text).join(' | '));
+  // режим без продольного прохода выключен в «Настройках» — исключение «проход в крайнем случае» (600 мм)
+  const rb=JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')), rm=JSON.parse(JSON.stringify(rb));
+  rm.rules.find(r=>r.id==='layout.matrix').value.modes.ends=0; StationRules.use(rm);
+  let a; try{ a=S(C('block', { sizeAuto:true }), [K2, dryer]); } finally { StationRules.use(rb); }
   Check.plan(a, 'проход 600'); draw(a, 'проход 600');
   assert.ok(a.geo.ext[1]<=R && a.mode && a.mode.tight && a.aisle.w>=600 && a.aisleRule[1]===600, 'в габарите, проход сужен: '+JSON.stringify([a.geo.ext, a.mode, a.aisle, a.aisleRule]));
   assert.ok(a.issues.some(i=>i.level==='warn' && /^Проход оператора сужен до \d+ мм \(норма — не менее 800 мм/.test(i.text) && /габариту перевозки/.test(i.text)), a.issues.map(i=>i.text).join(' | '));
