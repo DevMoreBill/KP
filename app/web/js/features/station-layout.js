@@ -580,8 +580,10 @@ class StationEquip {
    *  «Окраска…», «…покрытие» или любой код RAL; иначе — условный по виду. Подпись (код RAL) — из характеристик */
   static color(p, kind){
     const c=this.colorRows(p, kind), t=this.tint(p);
-    return t ? { hex:t, known:true, text:c.text, photo:true } : c;
+    return t ? { hex:t, known:true, text:c.text, photo:true, tones:this.tones(p) } : c;
   }
+  /** зоны других цветов по фото (как окрашены части изделия в карточке): [{ u0, u1, v0, v1, hex }] или null */
+  static tones(p){ const s=p && p.photo && p.photo.src, z=s && typeof PhotoTint!=='undefined' ? PhotoTint.tones(String(s)) : []; return z.length ? z : null; }
   /** главный цвет фото элемента (определяется в браузере заранее) или '' */
   static tint(p){ const s=p && p.photo && p.photo.src; return s && typeof PhotoTint!=='undefined' ? PhotoTint.get(String(s))||'' : ''; }
   static colorRows(p, kind){
@@ -639,7 +641,7 @@ class StationEquip {
       const k=kind||'other', c=this.color(p, k), air=/^(compressor|dryer|receiver|filter)$/.test(k) ? AirChain.info(p, k) : null;
       const pipe=k==='filter' && air.grade!=='cond' && Math.max(d.l, d.w)<=700;   // магистральный фильтр — висит на трубопроводе
       return { id:p.id, pos:++pos, name, brief:this.brief(p, k, name), short:this.short(p, k), kind:k, qty, l:d.l, w:d.w, h:d.h, known:d.known, src:d.src, mass:this.mass(p), kw:this.num((p.attrs||{}).kw), maker:String((p.attrs||{}).maker||'').trim(),
-        color:c.hex, colorKnown:c.known, colorText:c.text, shape:this.shape(p, k, d), look:this.look(p, k), place:true, pipe, mount:k==='cabinet' ? this.mount(p, d) : pipe ? 'pipe' : 'floor', air, noise:StationNorms.dba(p), pic:this.pic(p),
+        color:c.hex, colorKnown:c.known, colorText:c.text, tones:c.tones||null, shape:this.shape(p, k, d), look:this.look(p, k), place:true, pipe, mount:k==='cabinet' ? this.mount(p, d) : pipe ? 'pipe' : 'floor', air, noise:StationNorms.dba(p), pic:this.pic(p),
         flow:k==='pump' ? this.num((p.attrs||{}).flow) : null, ...(k==='compressor' || k==='dgu' ? this.airRows(p) : {}), ...(k==='compressor' ? { ctype:this.ctype(p) } : {}) };
     });
     AirChain.assign(out, o.recv);
@@ -1297,7 +1299,7 @@ class StationHeat {
 // размера — по необходимому месту (шаг 100 мм, наименьшая площадь пола); заданный контейнер, в который не помещается, —
 // ошибка и подсказка, какой подойдёт; контейнер с большим запасом — подсказка, какой меньший подойдёт.
 class StationLayout {
-  static VER = 23;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются (ещё — версия программы в отпечатке)
+  static VER = 24;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются (ещё — версия программы в отпечатке)
   static get MAX_L(){ return StationMatrix.fit().maxL; }
   static PIPE_PAD = 60;      // зазор вокруг фильтра на трубопроводе, мм
   static AIR_Y = 150;        // линия сжатого воздуха: ось — в 150 мм от задней стены (или посередине между рядами)
@@ -1340,7 +1342,7 @@ class StationLayout {
     const c=input.cont||{}, pick=a=>a ? {cat:a.cat, size:a.size, mass:a.mass, model:a.model, maker:a.maker, orient:a.orient, kw:a.kw, volume:a.volume, color:a.color, flow:a.flow, pressure:a.pressure, stage:a.stage, dryer:a.dryer, vsd:a.vsd, dewPoint:a.dewPoint, receiver:a.receiver} : null;
     // версия программы — в отпечатке: новая программа всегда пересобирает картинки, даже при своих сохранённых правилах (3.86.7)
     const s=JSON.stringify([this.VER, typeof APP_VERSION!=='undefined' ? APP_VERSION : '', typeof StationRules!=='undefined' && StationRules.ok() ? StationRules.version() : '', StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.ins, c.ral, c.sys||null, c.climate||'', c.roof||'', StationGeo.floor(c)], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
-      (input.parts||[]).filter(p=>p && p.role!=='container').map(p=>[p.name, p.qty, p.role||'', p.pipeMat||'', p.dn||'', p.mount||'', pick(p.attrs), StationEquip.tint(p), (p.rows||[]).filter(r=>r && /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы|воздух|теплов|охлажд/i.test(String(r.k||'')+' '+String(r.v||''))).map(r=>[r.k, r.v]), StationEquip.pic(p)])]);
+      (input.parts||[]).filter(p=>p && p.role!=='container').map(p=>[p.name, p.qty, p.role||'', p.pipeMat||'', p.dn||'', p.mount||'', pick(p.attrs), StationEquip.tint(p), StationEquip.tones(p), (p.rows||[]).filter(r=>r && /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы|воздух|теплов|охлажд/i.test(String(r.k||'')+' '+String(r.v||''))).map(r=>[r.k, r.v]), StationEquip.pic(p)])]);
     return this.fnv(s);
   }
   /** FNV-1a, 8 шестнадцатеричных знаков */
@@ -2435,13 +2437,13 @@ class StationLayout {
 
   item(it, geo){
     const e=it.o.e;
-    return { id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, look:e.look||'', color:e.color, colorKnown:e.colorKnown, maker:e.maker||'',
+    return { id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, look:e.look||'', color:e.color, colorKnown:e.colorKnown, tones:e.tones||null, maker:e.maker||'',
       known:e.known, mass:e.mass, kw:e.kw, x:geo.x0+this.G+it.x, y:it.y+this.G, z:0, lx:it.lx, ly:it.d, h:e.h, rot:!!it.o.rot || !!e.cross, face:it.face, back:it.back+this.G, backRec:e.cross ? 0 : e.c.back[0]+this.G, aisle:it.aisle+this.G, cross:!!e.cross,
       l:e.l, w:e.w, row:it.ri, mount:e.slot ? e.mount : 'floor', slot:!!e.slot, pipe:!!e.pipe, air:e.air||null, pic:e.pic||null, flow:e.flow||null, cool:e.cool||null, comb:e.comb||null, heat:e.heat||null, ctype:e.ctype||'' };
   }
   /** шкаф на стене или фильтр на трубе — не из ряда */
   unitItem(e, o){
-    return Object.assign({ id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, look:e.look||'', color:e.color, colorKnown:e.colorKnown, maker:e.maker||'',
+    return Object.assign({ id:e.id, pos:e.pos, unit:e.unit, name:e.name, brief:e.brief, short:e.short, kind:e.kind, shape:e.shape, look:e.look||'', color:e.color, colorKnown:e.colorKnown, tones:e.tones||null, maker:e.maker||'',
       known:e.known, mass:e.mass, kw:e.kw, lx:e.l, ly:e.w, h:e.h, rot:false, face:-1, back:0, aisle:0, l:e.l, w:e.w, row:-1, slot:false, pipe:!!e.pipe, air:e.air||null, pic:e.pic||null }, o);
   }
   used(items, geo){ const fl=items.filter(i=>i.mount!=='wall' && i.mount!=='pipe' && !i.tank), I=fl.length ? fl : items;

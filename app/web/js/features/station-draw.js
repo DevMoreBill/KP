@@ -1020,9 +1020,15 @@ class StationView3D {
       out.push(...V.box(x0+L*0.18, yc-W*0.08, z1-it.h*0.1, x1-L*0.18, yc+W*0.08, z1, dk));   // верхний коллектор
       out.push(...V.box(x0+L*0.4, y0, z0+it.h*0.45, x1-L*0.4, y0+W*0.18, z0+it.h*0.7, '#d8dcdf'));   // блок управления
       return out; }
-    const deco=(f, F)=>this.deco(V, it, f, F);
-    out.push(...V.box(x0, y0, z0, x1, y1, z0+Math.min(80, it.h*0.06), RalColor.shade(c, 0.6)));
-    out.push(...V.box(x0, y0, z0+Math.min(80, it.h*0.06), x1, y1, z1, c, deco));
+    const zb=z0+Math.min(80, it.h*0.06), vb=(zb-z0)/it.h, T=(it.tones||[]).filter(t=>t.v1-Math.max(vb, t.v0)>=0.02);
+    // окраска частей по фото (как в карточке товара): зоны поверх корпуса, под деталями; пояс во всю ширину — и на торце, и сверху
+    const zone=(f, F)=>T.filter(t=>F==='front' || (t.u0<=0.001 && t.u1>=0.999)).map(t=>{ const v0=(Math.max(vb, t.v0)-vb)/(1-vb), v1=(t.v1-vb)/(1-vb);
+      return F==='front' ? V.rectOn(f, t.u0, t.u1, v0, v1, t.hex) : V.rectOn(f, 0, 1, v0, v1, RalColor.shade(t.hex, 0.8)); }).join('');
+    const deco=(f, F)=>zone(f, F)+this.deco(V, it, f, F);
+    out.push(...V.box(x0, y0, z0, x1, y1, zb, RalColor.shade(c, 0.6)));
+    out.push(...V.box(x0, y0, zb, x1, y1, z1, c, deco));
+    const top=T.find(t=>t.u0<=0.001 && t.u1>=0.999 && t.v1>=0.999);
+    if (top) out.push(V.face([[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], RalColor.shade(top.hex, RalColor.light(top.hex)<0.3 ? 1.25 : 1.1), 1));
     if (it.kind==='compressor'){   // воздуховод отвода горячего воздуха — под потолком к его жалюзи (над воротами, в створках) или вверх через крышу
       const dh=Math.min(380, ceil-90-z1-60), dw=Math.min(L*0.45, 900), dd=Math.min(W*0.45, 650), cx=(x0+x1)/2, cy=(y0+y1)/2;
       const Vt=at && at.vent, kk=StationLayout.key(it), to=Vt && Vt.ducts ? Vt.ducts[kk] : 'wall', Ls=Vt && to==='wall' ? (Vt.louvers||[]).filter(q=>q.duct===kk) : [];
