@@ -481,3 +481,11 @@ tr.re-on{background:var(--soft)}
 .lp-pb small{color:var(--muted);font-size:12px}
 .lp-pb:hover,.lp-pb.on{border-color:var(--navy)}
 .lp-pb.on{box-shadow:inset 0 0 0 1px var(--navy)}
+/* логотипы производителей (Фиды поставщиков) */
+.ml-list{max-height:420px;overflow:auto}
+.st-row.ml-row>.ml-pic{width:96px;height:40px;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--line);border-radius:6px;flex:0 0 96px}
+.st-row.ml-row>.ml-t{flex:1 1 auto;min-width:0}
+.ml-row>.ml-t>.muted{display:block}
+.mob .ml-row{flex-direction:row;flex-wrap:wrap;align-items:center}
+.mob .ml-row>.acts{flex:1 1 100%}
+.ml-pic img{max-width:90px;max-height:34px;object-fit:contain}

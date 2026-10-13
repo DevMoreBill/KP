@@ -1039,6 +1039,19 @@ class AdminApi:
         r = re.match(r'^audit/(\d{1,9})/rollback$', sub)
         if r and m == 'POST':
             return self.rollback(int(r.group(1)))
+        if sub == 'logos':       # логотипы производителей: закрепить за маркой (на всё её оборудование и в будущем) или снять
+            from maker_logos import MakerLogos
+            import web_api
+            ml = MakerLogos(st, web_api.IMAGES)
+            if m == 'POST':
+                d = self.data()
+                try:
+                    res = ml.unpin(d.get('maker')) if d.get('unpin') else ml.set(d.get('maker'), d.get('image'), me or 'admin')
+                except ValueError as e:
+                    return self.err(400, str(e))
+                self.log('edit_settings', 'settings', 'makerLogo', None, {'maker': res['maker'], 'unpin': bool(d.get('unpin')), 'items': res.get('items', 0)})
+                return self.ok(res)
+            return self.ok({'items': ml.list()})
         if sub == 'feeds' or sub.startswith('feeds/'):          # товарные фиды поставщиков (feeds.py)
             return self.feeds(m, sub, me)
         r = re.match(r'^list/(kp|catalog|manager|client|supplier)$', sub)

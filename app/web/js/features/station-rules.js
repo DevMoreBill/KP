@@ -12,10 +12,18 @@ class StationRules {
   /** правила из файла: {version, rules:[{id, value, unit, source, status}], series:[…]} */
   static use(d){
     if (!d || !Array.isArray(d.rules)) return;
-    this.data=d; this.map=new Map(d.rules.map(r=>[r.id, r]));
+    this.data=d; this.map=new Map(d.rules.map(r=>[r.id, r])); this._stamp=null;
   }
   static ok(){ return !!this.data; }
   static version(){ return this.data ? String(this.data.version||'') : ''; }
+  /** отпечаток значений правил (FNV-1a): правка любого значения в «Настройках» меняет его — станции и их картинки
+   *  пересобираются; номер версии файла при такой правке прежний (ошибка до 3.86.10: правки не доходили до станций) */
+  static stamp(){
+    if (!this.data) return '';
+    if (this._stamp==null){ const s=JSON.stringify([this.data.rules.map(r=>[r.id, r.value]), this.data.series||[]]);
+      let h=0x811c9dc5; for (let i=0; i<s.length; i++){ h^=s.charCodeAt(i); h=Math.imul(h, 0x01000193)>>>0; } this._stamp=h.toString(16).padStart(8, '0'); }
+    return this._stamp;
+  }
   /** правило целиком; нет — ошибка (правила обязательны: без них расчёт не выполняется) */
   static rule(id){
     const r=this.map.get(id); if (!r) throw new Error('Нет инженерного правила «'+id+'» — файл правил станций не загружен или неполный');

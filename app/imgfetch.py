@@ -43,6 +43,12 @@ def logos(store):
         n, maker, lg = max(variants.values(), key=lambda v: (str(v[2]['src']).startswith('/img/logos/'), v[0]))
         for m in names.get(g, {maker}):
             out[m.lower()] = {'maker': m, 'src': lg['src'], 'w': lg.get('w'), 'h': lg.get('h')}
+    # закреплённый администратором логотип марки — главнее найденного в каталоге (maker_logos.MakerLogos)
+    from maker_logos import MakerLogos
+    for g, lg in MakerLogos(store).pins().items():
+        for m in names.get(g, set()) | {str(lg.get('maker') or '').strip()}:
+            if m:
+                out[m.lower()] = {'maker': m, 'src': lg['src'], 'w': lg.get('w'), 'h': lg.get('h')}
     return out
 
 

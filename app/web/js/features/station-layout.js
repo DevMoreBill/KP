@@ -418,6 +418,7 @@ class LayoutDigest {
         `Несколько компрессоров — рядом в ряд от торца (короче трубопровод), у каждого — сервисные ворота спереди и сзади; между компрессорами и за последним — не меньше ${n(M.next)} мм; дверь оператора — за последним компрессором.`] }] : []),
       { h:'Ресиверы и осушители', items:[
         `Ресиверы — в два ряда (пара один за другим или парами поперёк), осмотр заднего — через промежуток не меньше ${n(R.pairSide)} мм; число — наименьшее допустимое по методике.`,
+        'Пара поперёк у торца (без продольного прохода): от стен — до 100 мм, промежуток в паре — по «Ресивер ↔ ресивер»: рекомендуемый, при нехватке ширины — сколько есть; меньше «не менее» (до вплотную) — только с отметкой «вплотную можно», иначе ресиверы — в ряд.',
         'Осушитель не проходит по высоте или в плане — два меньших параллельно.'] },
       { h:'Выброс горячего воздуха', items:[
         'Над сервисными воротами → вверху стены над компрессором → торец у компрессора без ворот → иначе все компрессоры через крышу каналами одного размера. В створки ворот — никогда; приток и выброс — никогда на одной стене.'] },
@@ -1341,7 +1342,7 @@ class StationLayout {
   static hash(input){
     const c=input.cont||{}, pick=a=>a ? {cat:a.cat, size:a.size, mass:a.mass, model:a.model, maker:a.maker, orient:a.orient, kw:a.kw, volume:a.volume, color:a.color, flow:a.flow, pressure:a.pressure, stage:a.stage, dryer:a.dryer, vsd:a.vsd, dewPoint:a.dewPoint, receiver:a.receiver} : null;
     // версия программы — в отпечатке: новая программа всегда пересобирает картинки, даже при своих сохранённых правилах (3.86.7)
-    const s=JSON.stringify([this.VER, typeof APP_VERSION!=='undefined' ? APP_VERSION : '', typeof StationRules!=='undefined' && StationRules.ok() ? StationRules.version() : '', StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.ins, c.ral, c.sys||null, c.climate||'', c.roof||'', StationGeo.floor(c)], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
+    const s=JSON.stringify([this.VER, typeof APP_VERSION!=='undefined' ? APP_VERSION : '', typeof StationRules!=='undefined' && StationRules.ok() ? StationRules.version()+'.'+StationRules.stamp() : '', StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.ins, c.ral, c.sys||null, c.climate||'', c.roof||'', StationGeo.floor(c)], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
       (input.parts||[]).filter(p=>p && p.role!=='container').map(p=>[p.name, p.qty, p.role||'', p.pipeMat||'', p.dn||'', p.mount||'', pick(p.attrs), StationEquip.tint(p), StationEquip.tones(p), (p.rows||[]).filter(r=>r && /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы|воздух|теплов|охлажд/i.test(String(r.k||'')+' '+String(r.v||''))).map(r=>[r.k, r.v]), StationEquip.pic(p)])]);
     return this.fnv(s);
   }
@@ -1638,10 +1639,14 @@ class StationLayout {
     // шкафы и фильтры, которым места на стене и трубе не нашлось, — перед ресиверами (ресиверы — у дальнего торца)
     const isR=e=>e.kind==='receiver' && !e.slot, rest=units.filter(e=>!C.includes(e)); let t=rest.length; while (t>0 && (isR(rest[t-1]) || rest[t-1].slot)) t--;
     const U=[...C.map(e=>({ e, rot:false, ends:true })), ...[...rest.slice(0, t), ...rest.slice(t).filter(e=>!isR(e)), ...rest.slice(t).filter(isR)].map(e=>({ e, rot:false }))];
-    // ресиверы в конце — парами поперёк: сначала меньше промежуток в паре (до вплотную), затем — от стен (не ближе «плотно»)
+    // ресиверы в конце — парами поперёк (решение ПНЕВМОТЕХ 13.10: «плотнее для сохранения 2-рядной компоновки»): сначала от
+    // стен — до 100 мм («плотно» компрессора), промежуток в паре — по правилу «ресивер — ресивер»: рекомендуемый, при нехватке
+    // ширины — сколько есть, но не меньше «не менее»; меньше (до вплотную) — только при отметке «вплотную можно»; иначе
+    // ресиверы — в ряд. Ошибка до 3.86.10: от стен оставалось 300 мм, и промежуток урезался до нуля при любых правилах
     let k=U.length; while (k>1 && U[k-1].e.kind==='receiver' && !U[k-1].e.slot) k--;
-    for (let j=U.length-2; j>=k; j-=2){ const a=U[j].e, b=U[j+1].e, pr=StationMatrix.pair(a, b), rw=Math.max(a.c.back[1], b.c.back[1]);
-      const g=Math.max(0, Math.min(pr ? pr[0] : 300, W-a.w-b.w-2*rw)); if (W-a.w-b.w-g<2*tw) break;
+    const cw=(StationMatrix.wall({ kind:'compressor', w:0 })||[0, 100])[1];   // от стен — до «плотно» компрессора (100 мм, подтверждено владельцем 13.10)
+    for (let j=U.length-2; j>=k; j-=2){ const a=U[j].e, b=U[j+1].e, pr=StationMatrix.pair(a, b), rw=Math.min(Math.max(a.c.back[1], b.c.back[1]), cw);
+      const lo=pr ? (pr[2]===0 ? 0 : pr[1]) : 300, g=Math.min(pr ? pr[0] : 300, W-a.w-b.w-2*rw); if (g<lo || W-a.w-b.w-g<2*tw) break;
       U.splice(j, 2, { e:Object.assign({}, a, { l:Math.max(a.l, b.l), w:a.w+g+b.w, h:Math.max(a.h, b.h), pairD:Math.max(a.w, b.w) }), rot:false, pair:[a, b], gap:g, end:true }); }
     const need=o=>o.e.w+o.e.c.back[1]+this.front(o.e)[1], bad=U.filter(o=>!o.ends && !o.end && need(o)>W);
     if (bad.length) return { ok:false, why:'width', bad:bad.map(o=>o.e), needW:Math.max(...bad.map(need)) };
@@ -2299,7 +2304,7 @@ class StationLayout {
       if (off) why=`смещены на ${n(Math.abs(off))} мм от оси торца к проходу у ${band[1]<=W/2 ? 'передней' : 'задней'} стены: агрегат шириной ${n(nw)} мм провозят по проходу ${n(Math.round(band[1]-band[0]))} мм, по оси торца проём над проходом уже агрегата`; }
     const G0=(this.in.req && this.in.req.gate)||{};
     if (!full && Number.isFinite(G0.off) && G0.off){ y0=Math.round(Math.max(D.pad, Math.min(W-D.pad-w, yc+G0.off))); off=y0-yc; why=String(G0.why||'').trim(); }
-    return { wall:s, y0, y1:y0+w, w, h:Math.min(H-100, Math.max(D.h+100, Math.ceil((hh+GM.addH+T)/50)*50)), leaves:2, pos:[], why:[], full, off, offWhy:why, manual:!!(Number.isFinite(G0.off) && G0.off) };
+    return { wall:s, y0, y1:y0+w, w, h:Math.min(H-GM.top, Math.max(GM.minH, Math.ceil((hh+GM.addH+T)/50)*50)), leaves:2, pos:[], why:[], full, off, offWhy:why, manual:!!(Number.isFinite(G0.off) && G0.off) };
   }
   /** со шкафами на стене: проход до ворот ещё есть; нет — тому агрегату сервисные ворота в боковой стене */
   recheck(r, geo){

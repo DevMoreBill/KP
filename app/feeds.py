@@ -40,6 +40,7 @@ import catalog_migrate
 import feed_files
 import images
 import imgfetch
+from maker_logos import MakerLogos
 from config import DATA_DIR
 
 MAX_FEED = 150 * 1024 * 1024
@@ -1726,12 +1727,19 @@ def _logo_filler(store, image_store, feed):
     JSON-парса («logos»: картинка сохраняется в папку логотипов). → fill(doc) → True, если логотип поставлен."""
     have = {_brand_key(v['maker']): v for v in imgfetch.logos(store).values()}
     jl = {_brand_key(k): v for k, v in (feed.get('logos') or {}).items() if v}
+    pins = MakerLogos(store)     # логотип, закреплённый администратором за маркой, — всегда, даже поверх логотипа позиции
     state = {'put': None, 'save': None}
 
     def fill(doc):
+        maker = (doc.get('attrs') or {}).get('maker') or ''
+        pin = pins.pinned(maker) if maker else None
+        if pin:
+            if (doc.get('logo') or {}).get('src') == pin['src']:
+                return False
+            doc['logo'] = {'src': pin['src'], 'w': pin.get('w'), 'h': pin.get('h')}
+            return True
         if (doc.get('logo') or {}).get('src'):
             return False
-        maker = (doc.get('attrs') or {}).get('maker') or ''
         mk = _brand_key(maker)
         if not mk:
             return False
