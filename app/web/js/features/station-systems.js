@@ -685,9 +685,9 @@ class StationVent {
     const z1T=H-100, leftOk0=x0===0 && !plan.geo.sea, hMin=Sm && Sm.exfan ? this.FAN_MIN : OB.h[0];   // с вентиляторами — проём не ниже FAN_MIN
     const zTop=w=>H-(w==='back' && rearBack ? 100 : OB.top);
     // свободное место для жалюзи w × hh вверху стены wall: ближе всего к uc, сдвиг не больше maxd → {u, z0, z1, d} | null
-    const fitAt=(wall, w, hh, uc, maxd)=>{ const z1=zTop(wall), z0=z1-hh, end=wall==='left' || wall==='right', lo=end ? 100 : x0+100, hi=end ? Wd-100 : L-100;
+    const fitAt=(wall, w, hh, uc, maxd, ok)=>{ const z1=zTop(wall), z0=z1-hh, end=wall==='left' || wall==='right', lo=end ? 100 : x0+100, hi=end ? Wd-100 : L-100;
       for (let d=0; d<=maxd; d+=S) for (const sg of d ? [1, -1] : [1]){ const a=Math.round(uc-w/2+sg*d);
-        if (a>=lo && a+w<=hi && W.free(wall, a-90, a+w+90, z0-90, z1+90) && !cogHit(wall, a, a+w, z0, z1)) return { u:a, z0, z1, d }; }
+        if (a>=lo && a+w<=hi && W.free(wall, a-90, a+w+90, z0-90, z1+90) && !cogHit(wall, a, a+w, z0, z1) && (!ok || ok(a))) return { u:a, z0, z1, d }; }
       return null; };
     // ближайшая боковая стена — торец, у которого компрессор стоит: между ним и торцом (в его полосе по ширине) нет
     // оборудования, в торце нет ворот; торцы — только пока второй ряд не выбрасывает в стену прохода (тогда приток — на торцах)
@@ -770,6 +770,14 @@ class StationVent {
     // у компрессорной — рядом с осушителем (решение ПНЕВМОТЕХ 13.10: «дополнительный канал отвода тепла — рядом с осушителем, а
     // не в случайном месте», на этом же канале — вытяжной вентилятор по необходимости)
     const dr=comp.length ? I.filter(i=>i.kind==='dryer' && i.mount==='floor').sort((a, b)=>a.x-b.x)[0] : null, hub=dr ? Math.round(dr.x+dr.lx/2) : 'hi';
+    // решётки общей вытяжки на стене выброса — того же размера, что у компрессоров (решение ПНЕВМОТЕХ 13.10: «вентканалы
+    // формируются непонятно по какому принципу»), у осушителя и не над сервисными воротами (там — только компрессорные)
+    const base=E==='back' && out.louvers.find(q=>q.kind==='out' && q.duct && !q.side && q.wall==='back');
+    if (qWall>0 && base){ const w=base.w, hh=base.h, nG=Math.ceil(gross(qWall)/(w*hh)), m=mark(), GX=(plan.doors||[]).filter(d=>d.wall==='back');
+      let ok=nG<=this.MAXN;
+      for (let i=0; i<nG && ok; i++){ const r2=fitAt('back', w, hh, typeof hub==='number' ? hub : L-1000, L, a=>!GX.some(d=>a<d.x1+150 && a+w>d.x0-150));
+        if (r2) add({ kind:'out', wall:'back', u0:r2.u, u1:r2.u+w, z0:r2.z0, z1:r2.z1, w, h:hh, same:true }); else ok=false; }
+      if (ok) qWall=0; else unmark(m); }
     if (qWall>0){ const o={ ...OB, h:[OB.h[0], oh] };
       let left=E==='back' ? (whole('out', o, [['back', hub]], need(qWall, 'out').gross, [0]) ? 0 : place('out', o, [['back', hub]], need(qWall, 'out'))) : need(qWall, 'out').gross*1e6;
       // не встало — остаток выше ростом (на стене выброса притока нет): на крышу — только в самом крайнем случае

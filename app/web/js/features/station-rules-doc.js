@@ -111,7 +111,7 @@ class LayoutEditor {
     const rot=new Map((M.rotate.rows||[]).map(r=>[r.kind, r.on!==false]));
     const sides=(M.sides.rows||[]).map((r, j)=>`<tr><td>${esc(E.label(r.kind))}</td>${E.SIDES.map(([c, t])=>`<td><input type="checkbox" data-mxs="${j}" value="${c}"${String(r.s||'').includes(c) ? ' checked' : ''} aria-label="${esc(t)}"></td>`).join('')}
       <td>${rot.has(r.kind) ? `<input type="checkbox" data-mx="r|${esc(r.kind)}"${rot.get(r.kind) ? ' checked' : ''} aria-label="Можно повернуть">` : '—'}</td>
-      <td><input type="checkbox" data-mx="m|sides.rows.${j}.door"${r.door===false ? '' : ' checked'} aria-label="Сервисные ворота можно"></td>
+      <td>${StationMatrix.NO_DOOR.test(r.kind) ? '<span class="muted" title="Осушителям и ресиверам — никогда (решение ПНЕВМОТЕХ)">нет</span>' : `<input type="checkbox" data-mx="m|sides.rows.${j}.door"${r.door===false ? '' : ' checked'} aria-label="Сервисные ворота можно">`}</td>
       <td><input type="checkbox" data-mx="m|sides.rows.${j}.tilt"${r.tilt ? ' checked' : ''} aria-label="Можно наклонить при выносе"></td></tr>`).join('');
     const tables=[
       this.sec('pair', 'Расстояния между соседними агрегатами по длине', 'Рекомендуется — большее из «не меньше» и «доля × размер»; «плотно» — при плотной компоновке (по умолчанию); вплотную — только где отмечено и только в заданном контейнере.',

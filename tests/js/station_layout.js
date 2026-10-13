@@ -295,6 +295,17 @@ Check.run('компрессорная в габарите перевозки: п
   // между компрессорами — дверь оператора, напротив неё можно конвектор (решение ПНЕВМОТЕХ 13.10)
   const md=e2.doors.filter(d=>d.between); assert.ok(md.length===1 && md[0].kind==='entry' && md[0].wall==='front' && md[0].x0>=E2[0].x+E2[0].lx && md[0].x1<=E2[1].x, 'дверь между компрессорами: '+JSON.stringify(md));
   for (const d of e2.doors.filter(d=>!d.between && d.wall==='front')) assert.ok(d.x1<=md[0].x0-StationMatrix.door().gap+1 || d.x0>=md[0].x1+StationMatrix.door().gap-1, 'проёмы — через door.gap');
+  // все решётки выброса на задней стене — одного размера: общая вытяжка — как у компрессоров, не над сервисными воротами
+  const ob=e2.vent.louvers.filter(q=>q.kind==='out' && q.wall==='back'), cg=e2.doors.filter(d=>d.wall==='back');
+  assert.ok(new Set(ob.map(q=>q.w+'×'+q.h)).size===1, 'решётки одного размера: '+JSON.stringify(ob.map(q=>[q.w, q.h, !!q.duct])));
+  assert.ok(ob.filter(q=>!q.duct).every(q=>!cg.some(d=>q.u0<d.x1 && q.u1>d.x0)), 'общая вытяжка — не над сервисными воротами');
+  // правила, сохранённые раньше без отметки «без сервисных ворот», — осушителю и ресиверу ворота всё равно не ставятся
+  const rs=JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')), ro=JSON.parse(JSON.stringify(rs));
+  for (const r of ro.rules.find(r=>r.id==='layout.matrix').value.sides.rows) delete r.door;
+  StationRules.use(ro); try{ assert.ok(StationMatrix.noDoor('dryer') && StationMatrix.noDoor('receiver') && !StationMatrix.noDoor('compressor'), 'осушителю и ресиверу — никогда');
+    const pd=solve(C('block', { size:'7270 × 2300 × 2700', ins:'150 мм' }), [P('Компрессор 75', { cat:'comp_screw', kw:75, size:'923 × 737 × 1000' }, { role:'main' }), P('Осушитель', { cat:'dryer_refrig', size:'1338 × 985 × 726' })]);
+    const dp=pd.items.filter(i=>i.kind==='dryer').map(i=>i.pos); assert.ok(!(pd.doors||[]).some(d=>d.kind!=='entry' && d.pos.some(x=>dp.includes(x))), 'осушитель без сервисных ворот: '+JSON.stringify(pd.doors)); }
+  finally { StationRules.use(rs); }
   // дополнительный канал отвода тепла (общая вытяжка) — рядом с осушителем (решение ПНЕВМОТЕХ 13.10)
   const dr2=e2.items.find(i=>i.kind==='dryer'), gw=e2.vent.louvers.filter(q=>q.kind==='out' && !q.duct);
   if (gw.length) assert.ok(gw.every(q=>q.wall==='back' && Math.abs((q.u0+q.u1)/2-(dr2.x+dr2.lx/2))<=1500), 'общая вытяжка — у осушителя: '+JSON.stringify(gw));
@@ -1486,7 +1497,11 @@ Check.run('вытяжные вентиляторы в стене напроти�
   assert.ok(!pb.heat.vent.sum.boost && pb.heat.vent.sum.exfan && pb.heat.vent.warn.some(w=>/не нужен/.test(w.text)), 'канальный — не нужен');
   // приточные жалюзи целиком не встали — приточные вентиляторы на недостающий расход (проём меньше), по датчику температуры
   const c132=P('Винтовой компрессор 132', { cat:'comp_screw', kw:132, size:'2200 × 1300 × 1900', mass:1500 }, { role:'main' });
-  const pi=solve(C('sea20', { sys:{ snow:true } }), [c132, dryer, rec, cab]), F=pi.vent.louvers.filter(q=>q.kind==='in' && q.fan);
+  // (стены заняты конвекторами с прежними отступами 300 / 150 / 400 мм — с уменьшенными 13.10 жалюзи притока здесь уже встают)
+  const rb=JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')), rc=JSON.parse(JSON.stringify(rb));
+  Object.assign(rc.rules.find(r=>r.id==='layout.matrix').value.conv, { gap:300, edge:150, front:400 }); StationRules.use(rc);
+  let pi; try{ pi=solve(C('sea20', { sys:{ snow:true } }), [c132, dryer, rec, cab]); } finally { StationRules.use(rb); }
+  const F=pi.vent.louvers.filter(q=>q.kind==='in' && q.fan);
   assert.ok(pi.vent.infan && F.length===pi.vent.infan.n && pi.vent.short.in===0, 'приточные вентиляторы: '+JSON.stringify(pi.vent.infan));
   assert.ok(pi.issues.some(i=>/^Приточные вентиляторы: .*по датчику температуры/.test(i.text)), 'замечание о приточных вентиляторах');
   assert.ok(!solve(C('sea20', { sys:{ snow:true, infan:false } }), [c132, dryer, rec, cab]).vent.infan, 'запрещены — не ставятся');
