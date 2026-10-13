@@ -1661,4 +1661,19 @@ Check.run('длина задана: ширина, высота и плотнос
   const s=solve(C('block', { sizeAuto:true, lenFix:3000 }), [dl, dry, rec]);   // и негабаритом не встаёт
   assert.strictEqual(s.level, 'error'); assert.ok(/не помещается даже максимально плотно/.test(s.issues[0].text) && s.issues[0].text.includes(StationLayout.n(L0)), s.issues[0].text);
 });
+Check.run('вертикальный ресивер с габаритами «высота × Ø × Ø» стоит; меньшие отступы в правилах не делают станцию больше (3.86.12)', ()=>{
+  const d=StationEquip.dims({ name:'Ресивер вертикальный РВ 900.40', attrs:{ cat:'receiver', size:'2200 × 1000 × 1000' }, rows:[] }, 'receiver');
+  assert.deepStrictEqual([d.l, d.w, d.h], [1000, 1000, 2200], 'стоит: '+JSON.stringify(d));
+  const g=StationEquip.dims({ name:'Ресивер горизонтальный РГ 900', attrs:{ cat:'receiver', size:'2200 × 1000 × 1000' }, rows:[] }, 'receiver');
+  assert.strictEqual(g.l, 2200, 'горизонтальный — лежит');
+  // малая станция: «плотно» К↔Ос и Ос↔Р меньше — размер не больше (ошибка до 3.86.12: при «к боку не подойти» — сразу другая ширина)
+  const k=P('Винтовой компрессор 22 кВт', { cat:'comp_screw', kw:22, flow:3, size:'1380 × 850 × 1300' }, { role:'main' });
+  const dr=P('Осушитель 3', { cat:'dryer_refrig', flow:3.5, size:'553 × 503 × 874' }), rv=P('Ресивер 500 л', { cat:'receiver', volume:500, size:'680 × 650 × 1900' });
+  const base=JSON.parse(JSON.stringify(StationRules.data)), a=solve(C('block', { sizeAuto:true }), [k, dr, rv]);
+  try{ const b=JSON.parse(JSON.stringify(base)); b.rules.find(r=>r.id==='layout.matrix').value.pair.rows.forEach(r=>{ if (r.a!==r.b) r.min=Math.min(r.min, 300); }); StationRules.use(b);
+    const c=solve(C('block', { sizeAuto:true }), [k, dr, rv]); Check.plan(c, 'меньшие отступы');
+    assert.ok(c.geo.ext[0]*c.geo.ext[1]<=a.geo.ext[0]*a.geo.ext[1]*1.02, 'не больше: '+[a.geo.ext, c.geo.ext]);
+  } finally { StationRules.use(base); }
+});
+
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);
