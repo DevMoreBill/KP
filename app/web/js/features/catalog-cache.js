@@ -39,7 +39,7 @@ class CatalogCache {
   }
 
   /** карточка без служебных полей окна каталога (они пересчитываются) */
-  static clean(x){ if (!x._a && !x._hay && !x._nv && !x._sup) return x; const y={...x}; delete y._a; delete y._hay; delete y._nv; delete y._sup; return y; }
+  static clean(x){ if (!x._a && !x._hay && !x._nv && !x._sup && !x._pq) return x; const y={...x}; delete y._a; delete y._hay; delete y._nv; delete y._sup; delete y._pq; return y; }
 
   /** применить изменения: заменить и добавить карточки, убрать удалённые */
   static apply(snap, r){

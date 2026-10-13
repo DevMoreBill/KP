@@ -172,6 +172,17 @@ function extractAttrs(d){
   return a;
 }
 
-function attrsOf(d){ const a=extractAttrs(d); const o=d.attrs||{}; for(const k in o){ if(o[k]!==''&&o[k]!=null) a[k]=o[k]; } a.cat=detectCat(d,a);
+// разбор характеристик карточек каталога — один раз на карточку: подбор и поиск перебирают весь каталог (7 500+ позиций, дальше
+// 20 000) на каждое нажатие, а разбор строк характеристик дорогой. Карточка каталога не меняется на месте — правка приходит новой
+// карточкой (CatalogCache), окно каталога сбрасывает разбор (CatalogIndex.forget). Позиции КП и элементы станций — не карточки:
+// у них разбор каждый раз (их правят)
+class CatAttrs {
+  static cards = new WeakSet();
+  static mark(L){ for (const x of L||[]) if (x && typeof x==='object') this.cards.add(x); }
+  static of(d){ return d && d._a && this.cards.has(d) ? d._a : null; }
+  static keep(d, a){ if (d && this.cards.has(d)) d._a=a; return a; }
+}
+
+function attrsOf(d){ const m=CatAttrs.of(d); if (m) return m; const a=extractAttrs(d); const o=d.attrs||{}; for(const k in o){ if(o[k]!==''&&o[k]!=null) a[k]=o[k]; } a.cat=detectCat(d,a);
   const t=typeById(a.cat); if ((d.groups||[]).length){ const s=attrsFromSpec(d,t); for (const k in s) if (o[k]===''||o[k]==null) a[k]=s[k]; }
-  a.type=t.name; return a; }
+  a.type=t.name; return CatAttrs.keep(d, a); }

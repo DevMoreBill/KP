@@ -22,7 +22,7 @@ let catCache = [];
 
 // каталог: из IndexedDB + изменения с сервера (CatalogCache); не вышло — целиком с сервера
 async function refreshCat(){ try{ catCache = await CatalogCache.load(); }catch(e){ try{ catCache = await store().list(); }catch(_){ catCache=[]; } }
-  CatalogSearch.drop(); renderDatalist(); warmCat(); }
+  CatAttrs.mark(catCache); CatalogSearch.drop(); renderDatalist(); warmCat(); }
 
 function warmCat(){ let k=0; const L=catCache; const step=(dl)=>{ const end=performance.now()+12; while(k<L.length && performance.now()<end){ const x=L[k++]; if(!x._a) x._a=attrsOf(x); } if(k<L.length) (window.requestIdleCallback||setTimeout)(step); }; (window.requestIdleCallback||setTimeout)(step); }
 

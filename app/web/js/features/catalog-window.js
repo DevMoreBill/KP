@@ -22,7 +22,7 @@ class CatalogIndex {
   static attrs(x){ return x._a || (x._a = attrsOf(x)); }
   static nv(x, k){ const c=x._nv||(x._nv={}); return k in c ? c[k] : (c[k]=norm(CatalogIndex.attrs(x)[k])); }
   /** позиция изменилась — запомненное сбрасывается, совпадения с поиском считаются заново */
-  static forget(x){ delete x._a; delete x._nv; delete x._hay; delete x._sup; FI.dropQuery(); FO.dropQuery(); }
+  static forget(x){ delete x._a; delete x._nv; delete x._hay; delete x._sup; delete x._pq; FI.dropQuery(); FO.dropQuery(); }
   // облегчённая карточка несёт src / art, полная (после сохранения) — feed.id / feed.sku
   static src(x){ return x.src || x.feed?.id || ''; }
   static art(x){ return x.art || x.feed?.sku || CatalogIndex.attrs(x).article || ''; }
@@ -523,7 +523,7 @@ class CatalogWindow {
       this.busy=''; await this.reload(); this.note=`Загружено позиций: ${n}`+(nt?`, новых категорий: ${nt}`:'')+(pend?`, на модерации: ${pend}`:'')+(rm?`; дубликаты к удалению (${rm}) удаляет администратор в «Настройках»`:''); this.redraw(); }
     catch(e){ this.busy=''; this.say('Это не файл каталога КП'); }
   }
-  async exportFile(){ const all=(await store().full()).map(x=>{ const y={...x}; delete y._a; delete y._nv; delete y._hay; delete y._sup; return y; }); if(!all.length) return this.say('Каталог пуст');
+  async exportFile(){ const all=(await store().full()).map(x=>{ const y={...x}; delete y._a; delete y._nv; delete y._hay; delete y._sup; delete y._pq; return y; }); if(!all.length) return this.say('Каталог пуст');
     saveFile(`Каталог_КП_Пневмотех_${today()}.json`, new Blob([JSON.stringify({format:'kp-catalog',version:1,items:all})],{type:'application/json'})); }
   close(){ const d=this.dlg(); if (d.open) d.close(); }
 
