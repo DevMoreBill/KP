@@ -174,7 +174,7 @@ class StationDrawing {
     if (V){ const n=StationLayout.n, f=v=>String(v).replace('.', ','), t=[];
       const wh=StationVent.where(V), rf=StationVent.roofList(V), ow=V.louvers.some(q=>q.kind==='out') ? StationVent.list(V, 'out', null, 3) : '';
       if (V.size.in) t.push(`приточные ${StationVent.list(V, 'in', null, 3)} внизу${wh.in ? ' '+wh.in : ''} (${n(V.q.in)} м³/ч, по рамке не менее ${f(V.need.in.gross)} м²)`);
-      if (V.need.out) t.push(`выброс горячего воздуха ${[ow ? `— жалюзи ${ow} вверху` : '', rf ? `через крышу — колпаки ${rf}` : ''].filter(Boolean).join(', ')} (${n(V.q.out)} м³/ч, по рамке не менее ${f(V.need.out.gross)} м²); приток и выброс — на разных стенах`);
+      if (V.need.out) t.push(`выброс горячего воздуха ${[ow ? `— жалюзи ${ow} ${StationVent.outAt(V)}` : '', rf ? `через крышу — колпаки ${rf}` : ''].filter(Boolean).join(', ')} (${n(V.q.out)} м³/ч, по рамке не менее ${f(V.need.out.gross)} м²); приток и выброс — на разных стенах`);
       if (Object.keys(V.ducts||{}).length) t.push(`компрессоры — воздуховодами с клапанами рециркуляции (зимой тёплый воздух — в помещение)`);
       if (V.hood) t.push(`на приточных — маркизы (снегозащита): откидные козырьки на петлях с боковыми створками-ограничителями, закрытые — щит на проёме, ${StationVent.hoodText(V)}`);
       if (V.hoodOut) t.push(`на жалюзи выброса — маркизы (по требованию) ${StationVent.hoodText(V, 'out')}`);
@@ -890,7 +890,7 @@ class StationView3D {
           else out.push(t); } } }
     // оборудование: тени, затем по глубине (дальнее — раньше)
     for (const it of items.filter(i=>i.mount==='floor' || i.mount==='frame')) out.push(V.face([[it.X0+60, it.Y0+40, base+1], [it.X1+160, it.Y0+40, base+1], [it.X1+160, it.Y1+120, base+1], [it.X0+60, it.Y1+120, base+1]], '#000000', 0, ' opacity="0.16" filter="url(#blur6)"'));
-    for (const it of V.order(items)){ out.push(...this.equip(V, it, base, ceil, oy+Wi)); const t=over.get(it.id+'#'+it.unit); if (t) out.push(t); }
+    for (const it of V.order(items)){ out.push(...this.equip(V, it, base, ceil, oy+Wi, { vent:plan.vent, ox, oy })); const t=over.get(it.id+'#'+it.unit); if (t) out.push(t); }
     // ресиверы снаружи — за дальним торцом на площадке; трубопровод от торца к ним
     if (O.length){ const l=(plan.piping||[]).flatMap(q=>q.lines).find(q=>q.medium==='air' && !q.header && q.x1>=Li-1), c=PipeMaterial.idColor('air', '#8d949b'), w=Math.max(4, 90*k);
       for (const it of O) out.push(V.face([[it.X0-200, it.Y0-200, base+it.z], [it.X1+200, it.Y0-200, base+it.z], [it.X1+200, it.Y1+200, base+it.z], [it.X0-200, it.Y1+200, base+it.z]], '#b9b6ae', 1));
@@ -941,7 +941,7 @@ class StationView3D {
    *  спуск трубопровода */
   static top(it){ return it.kind==='pump' ? it.h*0.85 : it.shape==='hcyl' ? it.h*0.55+Math.min(it.ly, it.h)/2*0.95 : it.h; }
   /** оборудование: короба, цилиндры; у компрессора — воздуховод к задней стене, у ДГУ — рама, генератор, двигатель, радиатор */
-  static equip(V, it, base, ceil, yWall){
+  static equip(V, it, base, ceil, yWall, at){
     const c=it.color, out=[], x0=it.X0, x1=it.X1, y0=it.Y0, y1=it.Y1, z0=base+(it.z||0), z1=z0+it.h, L=x1-x0, W=y1-y0;
     if (it.mount==='frame') for (const f of [0.12, 0.82]) out.push(...V.box(x0+L*f, y0+W*0.3, base, x0+L*f+40, y0+W*0.3+40, z0, '#3a3f45'));   // рама шкафа
     if (it.mount==='pipe'){   // фильтр на трубе: головка и корпус вниз
@@ -970,15 +970,26 @@ class StationView3D {
       out.push(...V.box(x0+L*0.04, y0+W*0.12, fb, x0+L*0.42, y1-W*0.12, z0+it.h*0.75, '#6b7886'));
       return out;
     }
+    if (it.kind==='dryer' && StationLayout.twinDryer(it)){   // адсорбционный (генератор): две колонны на раме, коллекторы, блок управления
+      const fb=z0+Math.min(100, it.h*0.07), r=Math.min(L/4.6, W/2.3), yc=(y0+y1)/2, dk=RalColor.shade(c, 0.55);
+      out.push(...V.box(x0, y0, z0, x1, y1, fb, '#3a3f45'));
+      out.push(...V.box(x0+L*0.18, yc-W*0.08, fb+it.h*0.04, x1-L*0.18, yc+W*0.08, fb+it.h*0.12, dk));   // нижний коллектор
+      for (const u of [0.27, 0.73]) out.push(V.vcyl(x0+L*u, yc, r, fb, z1-it.h*0.1, c, true));
+      out.push(...V.box(x0+L*0.18, yc-W*0.08, z1-it.h*0.1, x1-L*0.18, yc+W*0.08, z1, dk));   // верхний коллектор
+      out.push(...V.box(x0+L*0.4, y0, z0+it.h*0.45, x1-L*0.4, y0+W*0.18, z0+it.h*0.7, '#d8dcdf'));   // блок управления
+      return out; }
     const deco=(f, F)=>this.deco(V, it, f, F);
     out.push(...V.box(x0, y0, z0, x1, y1, z0+Math.min(80, it.h*0.06), RalColor.shade(c, 0.6)));
     out.push(...V.box(x0, y0, z0+Math.min(80, it.h*0.06), x1, y1, z1, c, deco));
-    if (it.kind==='compressor'){   // воздуховод отвода горячего воздуха — к задней стене под потолком
+    if (it.kind==='compressor'){   // воздуховод отвода горячего воздуха — под потолком к его жалюзи (над воротами, в створках) или вверх через крышу
       const dh=Math.min(380, ceil-90-z1-60), dw=Math.min(L*0.45, 900), dd=Math.min(W*0.45, 650), cx=(x0+x1)/2, cy=(y0+y1)/2;
+      const Vt=at && at.vent, kk=StationLayout.key(it), to=Vt && Vt.ducts ? Vt.ducts[kk] : 'wall', Ls=Vt && to==='wall' ? (Vt.louvers||[]).filter(q=>q.duct===kk) : [], Lv=Ls.length ? { wall:Ls[0].wall, u0:Math.min(...Ls.map(q=>q.u0)), u1:Math.max(...Ls.map(q=>q.u1)) } : null;
       if (dh>=180){ const zt=ceil-90, zd=zt-dh, gal='#c3c9cf';
-        out.unshift(V.louver([cx-dw/2-70, yWall-2, zd-70], [cx+dw/2+70, yWall-2, Math.min(ceil, zt+70)], 'y'));
+        if (to==='roof'){ out.push(...V.box(cx-dw/2, cy-dd/2, z1, cx+dw/2, cy+dd/2, ceil, gal)); return out; }
+        const yw=Lv && Lv.wall==='front' ? at.oy : yWall, a=Lv ? Math.min(cx-dw/2, at.ox+Lv.u0) : cx-dw/2, b=Lv ? Math.max(cx+dw/2, at.ox+Lv.u1) : cx+dw/2;
+        if (!Lv) out.unshift(V.louver([cx-dw/2-70, yWall-2, zd-70], [cx+dw/2+70, yWall-2, Math.min(ceil, zt+70)], 'y'));
         out.push(...V.box(cx-dw/2, cy-dd/2, z1, cx+dw/2, cy+dd/2, zd, gal));
-        out.push(...V.box(cx-dw/2, cy-dd/2, zd, cx+dw/2, yWall, zt, gal)); }
+        out.push(...V.box(a, Math.min(cy-dd/2, yw), zd, b, Math.max(cy+dd/2, yw), zt, gal)); }
     }
     if (it.kind==='tank') out.push(V.vcyl(x0+L*0.2, y0+W*0.5, Math.min(90, W*0.15), z1, z1+90, '#5a6168', false));
     return out;

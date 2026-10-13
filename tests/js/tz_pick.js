@@ -21,7 +21,7 @@ global.FEAT={ on:()=>false };   // компоновка выключена: ра
 global.mainLine=()=>''; global.groupsFromAttrs=()=>[];   // характеристики станции для КП — здесь не проверяются
 global.esc=v=>String(v??'').replace(/[&<>"']/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 global.api=async u=>{ const c=global.catCache.find(z=>u.endsWith('/'+encodeURIComponent(z.id))); if (!c) throw new Error('нет '+u); return c; };
-for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js', 'station-quick.js']){
+for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js', 'station-quick.js', 'station-fix.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
 
@@ -81,6 +81,25 @@ class Check {
     const z=Cat.station('st_comp', [], {});
     await TzPick.run(z, { kind:'comp', flow:10, pressure:7, air:'2.4.2', reserve:'0', work:0, recv:'after' });
     assert.deepStrictEqual(RV(z), [['Ресивер РВ-900/11', 4, 'dry']], '«только после осушителя» — без мокрого');
+    // объём по ТЗ введён вручную — число ресиверов в составе по расчёту (замечание владельца 13.10: не менялось)
+    z.req.recvVol='5400'; assert.strictEqual(ReceiverSync.apply(z), 'основной 6 × 900 л');
+    assert.deepStrictEqual(RV(z), [['Ресивер РВ-900/11', 6, 'dry']], 'ТЗ 5 400 л → 6 × 900 л');
+    z.req.recvVol=''; assert.strictEqual(ReceiverSync.apply(z), 'основной 4 × 900 л', 'поле очищено — снова по расчёту');
+    assert.strictEqual(ReceiverSync.apply(z), '', 'без изменений — ничего не пишем');
+    // режим «эксперт»: замечание — в своём разделе, с пояснением и решением; «Решить автоматически» приводит состав к расчёту
+    z.req.recvVol='5400';
+    let XL=ExpertFix.list(z), q=XL.find(o=>o.fix && o.fix.id==='recv');
+    assert.ok(q && q.sec==='recv' && /нужно основной 6 × 900 л/.test(q.text) && q.how, JSON.stringify(XL));
+    z.req.flow='abc'; ExpertFix.memo=null; XL=ExpertFix.list(z);   // список считается раз за перерисовку — после правки заново
+    const e=XL.find(o=>o.sec==='input' && o.bad); assert.ok(e && e.fix.id==='clr:flow' && !ExpertFix.auto(e.fix.id), 'ошибка поля — «Очистить поле», не в «Решить всё»');
+    const got=await ExpertFix.all(z);
+    assert.ok(got.includes('ресиверы: основной 6 × 900 л'), got.join('; '));
+    assert.deepStrictEqual(RV(z), [['Ресивер РВ-900/11', 6, 'dry']]);
+    assert.strictEqual(z.req.flow, 'abc', 'поле менеджера «Решить всё» не трогает');
+    assert.strictEqual(await ExpertFix.fix(z, 'clr:flow'), 'поле «Производительность» очищено'); assert.ok(!('flow' in z.req));
+    ExpertFix.memo=null; assert.ok(!ExpertFix.list(z).some(o=>o.sec==='recv' && o.fix && o.fix.id==='recv'), 'после решения замечания нет');
+    assert.ok(/class="xf"/.test(ExpertFix.html(z, 0, null, { all:true })) || !ExpertFix.list(z).length);
+    z.req.recvVol='';
     assert.ok(/продувку адсорбционного осушителя/.test(note), note);
     assert.strictEqual(K[K.length-1][0], 'piping', 'прочий состав — после подобранного');
     // требования: за вычетом продувки, давление на выходе — с потерями в подготовке воздуха
@@ -182,6 +201,14 @@ class Check {
     assert.ok(ck.some(c=>c.ok && /работа от баков ≈ 27 ч при нагрузке 80 % \(с запасом\) — не меньше 24/.test(c.text)), JSON.stringify(ck));
     x.req.hours='48';
     assert.ok(StationReq.checks(x).some(c=>!c.ok && /меньше 48: нужно топлива 2640 л, в баках 1500/.test(c.text)), JSON.stringify(StationReq.checks(x)));
+    // режим «эксперт» у ДГУ: бак мал, ДГУ одна вместо двух — в своих разделах, «Решить автоматически» — бак и число ДГУ
+    d.qty=1; ExpertFix.memo=null;
+    const XL=ExpertFix.list(x), fuel=XL.find(q=>q.sec==='fuel' && q.bad), main=XL.find(q=>q.sec==='main' && q.fix);
+    assert.ok(fuel && /Топлива в баках 1500 л/.test(fuel.text) && /Бак под время работы/.test(fuel.how) && main && /ещё 1 × ДГУ АД-250/.test(main.text), JSON.stringify(XL));
+    assert.ok(!XL.some(q=>/Средняя нагрузка/.test(q.text) && q.fix), 'к замечанию о нагрузке «Добавить ДГУ» не цепляется');
+    const got=await ExpertFix.all(x);
+    assert.strictEqual(d.qty, 2, 'ДГУ — снова рабочая + резервная: '+got.join('; '));
+    assert.ok(got.some(m=>/топливный бак 3 ?\d00 л/.test(m)), got.join('; '));
   });
 
   await Check.run('насосная: два рабочих, напор без большого избытка', async ()=>{

@@ -57,6 +57,8 @@ class Check {
       assert.ok(gap>=aMin-1, `${label}: проход между рядами ${gap} < ${aMin}`);
     } else for (const it of floor){ const need=it.kind==='dgu' ? Math.min(aMin, 600) : aMin;
       if (it.cross) continue;   // поперёк станции (без сквозного прохода): спереди и сзади — части станции со своими дверями
+      // ресиверы в два ряда в конце ряда — поперёк во всю ширину: проход доходит до них сбоку, от стен — не меньше 300 мм
+      if (it.pairEnd){ assert.ok(it.kind==='receiver' && it.y>=299 && W-it.y-it.ly>=299 && !floor.some(o=>!o.pairEnd && o.x+o.lx>it.x), `${label}: ресиверы в два ряда поз. ${it.pos} — не в конце ряда или ближе 300 мм к стене`); continue; }
       assert.ok(it.y>=need-1, `${label}: проход перед поз. ${it.pos} ${it.y} < ${need}`);
       for (const c of I.filter(i=>i.mount==='wall' && i.wall==='front' && i.x<it.x+it.lx && i.x+i.lx>it.x))   // шкаф не сужает проход
         assert.ok(it.y-c.y-c.ly>=aMin-1, `${label}: перед шкафом поз. ${c.pos} проход ${it.y-c.y-c.ly} < ${aMin}`); }
@@ -1365,6 +1367,38 @@ Check.run('«на чертеже»: подсветка позиций, воро�
   const sh=L.find(svg=>svg.includes('class="hl"')); assert.ok(sh && /Б–Б/.test(sh), 'подсветка — на листе с планом');
   assert.ok((sh.match(/class="hl"/g)||[]).length>=3, 'позиция, ворота, проход');
   Check.sheet(sh, 'подсветка');
+});
+
+Check.run('выброс горячего воздуха — над сервисными воротами, решётки одинаковые; крыша — только крайний случай', ()=>{
+  // решение ПНЕВМОТЕХ 13.10: за компрессором сервисные ворота — жалюзи над ними, остаток — в верхней части створок
+  const out=p=>p.vent.louvers.filter(q=>q.kind==='out' && q.duct);
+  const p1=solve(C('block'), [comp, dryer, rec, cab]); Check.plan(p1, 'выброс над воротами');
+  const G=p1.doors.find(d=>d.rear && d.wall==='back'); assert.ok(G, 'сервисные ворота за компрессором');
+  const O=out(p1).find(q=>q.over); assert.ok(O && O.wall==='back' && O.z0>=G.h+240-1 && O.u0>=G.x0-1 && O.u1<=G.x1+1, 'жалюзи над воротами: '+JSON.stringify(out(p1)));
+  assert.ok(!(p1.vent.roof||[]).length, 'через крышу — ничего');
+  assert.ok(/над сервисными воротами/.test(StationVent.where(p1.vent).out), StationVent.where(p1.vent).out);
+  // три одинаковых компрессора — у каждого тот же набор решёток (размеры)
+  const c22=P('Винтовой компрессор 22', { cat:'comp_screw', kw:22, size:'1200 × 800 × 1300', mass:500 }, { role:'main', qty:3 });
+  const p3=solve(C('block'), [c22, dryer, rec, cab]), by=new Map();
+  for (const q of out(p3)) by.set(q.duct, [...(by.get(q.duct)||[]), q.w+'×'+q.h+(q.over ? 'н' : q.leaf ? 'с' : '')]);
+  const sets=[...by.values()].map(v=>v.sort().join(',')); assert.ok(sets.length===3 && new Set(sets).size===1, 'одинаковые решётки: '+JSON.stringify([...by]));
+  // морской контейнер: над воротами места нет — в верхней части створок, одного размера
+  const ps=solve(C('sea40'), [P('Винтовой компрессор 37', { cat:'comp_screw', kw:37, size:'1400 × 900 × 1500', mass:650 }, { role:'main', qty:2 }), dryer, rec, cab]);
+  const L=out(ps); assert.ok(L.length && L.every(q=>q.leaf) && new Set(L.map(q=>q.w+'×'+q.h)).size===1, 'створки, один размер: '+JSON.stringify(L.map(q=>[q.w, q.h, q.leaf])));
+});
+
+Check.run('ресиверы в два ряда в конце ряда — станция короче; вид адсорбционного осушителя', ()=>{
+  const r500=P('Ресивер 500', { cat:'receiver', volume:500, size:'650 × 650 × 2000', mass:150 }, { qty:2 });
+  const p=solve(C('block'), [comp, dryer, r500, cab]); Check.plan(p, 'ресиверы в два ряда');
+  const R=p.items.filter(i=>i.kind==='receiver'); assert.ok(R.length===2 && R.every(i=>i.pairEnd) && R[0].x===R[1].x, 'пара поперёк: '+JSON.stringify(R.map(i=>[i.x, i.y])));
+  assert.ok(p.issues.some(i=>/в конце ряда поперёк контейнера/.test(i.text)), 'замечание о двух рядах');
+  assert.ok(!(p.gates && p.gates.wall==='right') || p.doors.some(d=>d.kind==='entry' && d.x1<=R[0].x) || p.door==='end', 'второй выход — до ресиверов');
+  const q=(p.access||[]).filter(a=>a.kind==='receiver' || /3/.test(String(a.pos))); assert.ok(!p.issues.some(i=>/^Поз\. 3.*не подойти/.test(i.text)), 'ресиверы обслуживаются сбоку: '+JSON.stringify(q));
+  // в одну линию станция была бы длиннее не меньше чем на 1 м
+  const one=StationLayout.solve({ cont:C('block'), parts:[comp, dryer, P('Ресивер 500', { cat:'receiver', volume:500, size:'650 × 650 × 2000', mass:150 }), cab] });
+  assert.ok(p.geo.ext[0]<=one.geo.ext[0]+StationLayout.RECV2, 'короче или как с одним ресивером');
+  assert.ok(StationLayout.twinDryer({ kind:'dryer', name:'Осушитель DCH 70', air:{ type:'ads' } }) && !StationLayout.twinDryer({ kind:'dryer', name:'Осушитель DK 60', air:{ type:'refrig' } }), 'вид осушителя — по виду из цепочки');
+  draw(p, 'ресиверы в два ряда');
 });
 
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);

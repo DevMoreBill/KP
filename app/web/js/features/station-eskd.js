@@ -327,7 +327,7 @@ class EquipIcon {
     if (k==='receiver' || it.shape==='hcyl' || it.shape==='vcyl')
       return it.shape==='hcyl' ? this.hreceiver(c, k==='receiver') : it.shape==='vcyl' ? this.vreceiver(c, k==='receiver' ? 'receiver' : 'housing') : this.box(c);
     if (k==='compressor') return look==='piston' ? this.piston(c) : a.recv ? this.tankMounted(c) : this.screw(c);
-    if (k==='dryer') return a.type==='ads' || a.type==='gen' ? this.twin(c) : this.refrig(c);
+    if (k==='dryer') return StationLayout.twinDryer(it) ? this.twin(c) : this.refrig(c);
     if (k==='filter') return a.grade==='cond' ? this.separator(c) : this.box(c);
     if (k==='cabinet') return this.cabinet(c, it.mount==='floor' || it.mount==='frame');
     if (k==='dgu') return this.dgu(c);
@@ -344,7 +344,7 @@ class EquipIcon {
       const cx=(x0+x1)/2, cy=(y0+y1)/2, hw=(y1-y0)/2, hh=(x1-x0)/2, f=EskdSheet.f;
       return sh.group(`rotate(90 ${f(cx)} ${f(cy)})`, ()=>this.plan(sh, Object.assign({}, it, { rot:false, lx:it.ly, ly:it.lx, face:-1 }), cx-hw, cy-hh, cx+hw, cy+hh)); }
     const c=this.ctx(sh, it, x0, y0, x1, y1); if (!c) return;
-    const k=it.kind, a=it.air||{}, look=it.look||'', f=it.face;
+    const k=it.kind, look=it.look||'', f=it.face;
     c.front=f===2 ? 'r' : f===-2 ? 'l' : f>0 ? 't' : 'b';
     // свой рисунок модели (вид сверху, лицевая сторона — внизу рисунка): к задней стене — повёрнут на 180°
     const src=it.pic ? this.src(it.pic.top) : '';
@@ -354,7 +354,7 @@ class EquipIcon {
     if (it.shape==='vcyl') return this.vesselTop(c, k==='receiver');
     if (it.shape==='hcyl') return this.hvesselTop(c);
     if (k==='compressor') return look==='piston' ? this.pistonTop(c) : this.screwTop(c);
-    if (k==='dryer') return a.type==='ads' || a.type==='gen' ? this.twinTop(c) : this.refrigTop(c);
+    if (k==='dryer') return StationLayout.twinDryer(it) ? this.twinTop(c) : this.refrigTop(c);
     if (k==='cabinet') return this.cabinetTop(c);
     if (k==='dgu') return this.dguTop(c);
     if (k==='pump') return it.h>it.lx*1.2 ? this.vpumpTop(c) : this.pumpTop(c);

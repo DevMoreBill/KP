@@ -107,7 +107,7 @@ class StationReq {
     const r=this.of(x), R=this.recvPlan(x), n=StationLayout.n, E=R ? R.checks : [], er=E.filter(c=>c.level==='error').length;
     const sum=R ? `<p class="kr-rp"><b>Приоритет ${esc(String(R.prio))}</b>: нужно ${n(R.theor)} л → ${esc(ReceiverPlan.text(R))}. <span class="${er ? 'bad-t' : E.length ? 'warn-t' : 'ok-t'}">${E.length ? `${er ? 'ошибок: '+er+(E.length>er ? ', ' : '') : ''}${E.length>er ? 'предупреждений: '+(E.length-er) : ''} — подробно в «Расчёте станции»` : 'Все проверки пройдены.'}</span></p>`
       : '<p class="muted kr-rp">Расчёт ресиверов — после выбора компрессора с производительностью.</p>';
-    return `<details class="kr-calc"${Spoiler.attr('recv:'+x.id)}><summary>Ресиверы — исходные данные и расчёт</summary>${sum}
+    return `<details class="kr-calc"${Spoiler.attr('recv:'+x.id, ExpertFix.has(x, ['recv']))}><summary>Ресиверы — исходные данные и расчёт</summary>${sum}${ExpertFix.html(x, i, ['recv'], { all:true })}
       <div class="kr-g">${sel('recv', 'Где ставить', this.RECV, this.recv(x))}${sel('recvSize', 'Типоразмер', this.RSIZE, r.recvSize||'')}
         ${r.recvSize==='500' || r.recvWhy ? sel('recvWhy', 'Обоснование 500 л', this.RWHY, r.recvWhy||'') : ''}
         ${fld('recvVol', 'Объём по ТЗ, л', 'по расчёту', 'numeric')}${fld('recvDp', 'ΔP разгрузка − нагрузка, бар', '1 — по правилу')}
@@ -223,11 +223,14 @@ class StationReq {
     const r=this.of(x), k=this.kind(x), P=`items.${i}.req`, ck=this.checks(x);
     const fld=(key, label, ph, mode='decimal', ex='')=>{ const m=ReqNum.mark(x, key); return `<label class="f"><span>${label}</span><input type="text" inputmode="${mode}" data-p="${P}.${key}" data-req="${i}" value="${esc(r[key]??'')}" placeholder="${esc(ph||'')}" autocomplete="off"${m.cls ? ' class="bad"' : ''}>${m.msg}${ex}</label>`; };
     const sel=(key, label, list, cur)=>`<label class="f"><span>${label}</span><select data-req="${i}" data-rk="${key}">${list.map(([v, l])=>`<option value="${esc(v)}"${String(cur)===String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+    // замечания с решениями (ExpertFix): все — в «Подборе станции», ресиверы, вентиляция и ворота — ещё и в своих разделах
+    // (раздел с замечанием раскрыт)
+    const own=[...(k==='comp' ? ['recv'] : []), 'vent', ...(k==='comp' || k==='pump' ? ['gate'] : [])];
     const head=`${ck.length ? `<div class="kr-ck">${ck.map(c=>`<span class="chip sm ${c.ok ? 'on' : 'warn'}">${c.ok ? '✓' : '⚠'} ${esc(c.text)}</span>`).join('')}</div>` : ''}
       ${r.pick ? `<p class="kr-pick"><span>${esc(r.pick)}</span><button class="icon sm" type="button" data-a="reqPickX" data-i="${i}" title="Скрыть" aria-label="Скрыть итог подбора">✕</button></p>` : ''}`;
     // режим «эксперт» вентиляции — внутри «Условий для расчёта станции» (решение ПНЕВМОТЕХ 12.10)
-    const vx=`<details class="kr-calc"${Spoiler.attr('vent:'+x.id)}><summary>Вентиляция и отопление — режим «эксперт»</summary>
-        <div class="kr-g">${this.VENT.filter(([rk])=>k==='comp' || !/^vent(K|Dtc)$/.test(rk)).map(([rk, , label, ph])=>fld(rk, label, ph, 'text', ExpertLog.mark(x, i, rk))).join('')}${sel('hrvType', 'Тип рекуператора', this.HRV, r.hrvType||'')}</div>
+    const vx=`<details class="kr-calc"${Spoiler.attr('vent:'+x.id, ExpertFix.has(x, ['vent']))}><summary>Вентиляция и отопление — режим «эксперт»</summary>
+        ${ExpertFix.html(x, i, ['vent'], { all:true })}<div class="kr-g">${this.VENT.filter(([rk])=>k==='comp' || !/^vent(K|Dtc)$/.test(rk)).map(([rk, , label, ph])=>fld(rk, label, ph, 'text', ExpertLog.mark(x, i, rk))).join('')}${sel('hrvType', 'Тип рекуператора', this.HRV, r.hrvType||'')}</div>
         ${ExpertLog.foot(x, i, ExpertLog.VENT())}
         <p class="muted kr-hint">Для нестандартных условий. Не заданы — значения из инженерных правил (k = 0,9, нагрев воздуха в компрессоре 15 °C, t_вн = 40 °C, приток 3 м/с с запасом 10 %, выброс 4 м/с, U — по утеплителю). k и U сильнее всего влияют на результат; паспортный расход охлаждающего воздуха важнее расчёта. Компактнее — система «Вентилятор в воздуховоде выброса», рекуператор — система «Рекуператор (по требованию)».</p></details>`;
     return `<div class="kit-req open">${head}
@@ -236,7 +239,7 @@ class StationReq {
         ${sel('fire', 'Категория помещения (СП 12.13130)', this.FIRE.map(f=>[f, f+(f===this.fireDef(x) ? ' (ориент.)' : '')]), this.fire(x))}
         ${fld('noise', 'Шум на рабочем месте, не более дБА', '80', 'numeric')}</div>
       ${k==='comp' ? this.recvBlock(x, i, fld, sel) : ''}
-      ${k==='comp' || k==='dgu' || k==='pump' ? `<details class="kr-calc"${Spoiler.attr('cond:'+x.id)}><summary>Условия для расчёта станции</summary><div class="kr-g">${k==='pump'
+      ${k==='comp' || k==='dgu' || k==='pump' ? `<details class="kr-calc"${Spoiler.attr('cond:'+x.id, ExpertFix.has(x, own.filter(s=>s!=='recv')))}><summary>Условия для расчёта станции</summary><div class="kr-g">${k==='pump'
         ? sel('liquid', 'Перекачиваемая жидкость', this.LIQUID, r.liquid||'')+fld('tliq', 'Температура жидкости, °C', '20', 'text')
           +fld('hsuct', 'Высота всасывания, м (подпор — с минусом)', 'по ТЗ', 'text')+fld('alt', 'Высота над уровнем моря, м', '0', 'text')
         : k==='comp'
@@ -245,7 +248,7 @@ class StationReq {
         : fld('load', 'Средняя нагрузка за сутки, %', '100')+fld('motor', 'Наибольший двигатель нагрузки, кВт', '—')
           +sel('start', 'Пуск этого двигателя', this.START, r.start||'')+fld('alt', 'Высота над уровнем моря, м', '0', 'text')}</div>
         <p class="muted kr-hint">Не заданы — расчёт берёт значения с запасом в пользу заказчика; они перечислены в «Расчёте станции» (вкладка «Компоновка»).</p>
-        ${k!=='dgu' ? `<details class="kr-calc"${Spoiler.attr('gate:'+x.id)}><summary>Ворота в торце — режим «эксперт»</summary><div class="kr-g">${fld('gateOff', 'Смещение от оси торца, мм (+ к задней стене)', '0 — по оси', 'text', ExpertLog.mark(x, i, 'gateOff'))}
+        ${k!=='dgu' ? `<details class="kr-calc"${Spoiler.attr('gate:'+x.id, ExpertFix.has(x, ['gate']))}><summary>Ворота в торце — режим «эксперт»</summary>${ExpertFix.html(x, i, ['gate'], { all:true })}<div class="kr-g">${fld('gateOff', 'Смещение от оси торца, мм (+ к задней стене)', '0 — по оси', 'text', ExpertLog.mark(x, i, 'gateOff'))}
           <label class="f kr-n"><span>Причина смещения (обязательна)</span><input type="text" data-p="${P}.gateWhy" data-req="${i}" value="${esc(r.gateWhy||'')}" maxlength="300" placeholder="например: проход к воротам у передней стены" autocomplete="off"${this.num(r.gateOff) && !String(r.gateWhy||'').trim() ? ' class="bad"' : ''}></label></div>
           <p class="muted kr-hint">По умолчанию ворота — по оси торца; программа смещает их сама, только если агрегат иначе не провезти (причина — в замечаниях и ТЗ). Своё смещение без причины не сохранится в КП.</p>${ExpertLog.foot(x, i, ExpertLog.GATE)}</details>` : ''}${vx}</details>` : ''}
       ${k==='comp' || k==='dgu' || k==='pump' ? '' : vx}
@@ -263,8 +266,33 @@ class StationReq {
     ExpertLog.note(x);
     if (t.dataset.stpar!=null) StationParams.changed(x);
     if (k==='recv' || k==='recvOut'){ StationUi.cache.delete(x.id); StationSize.apply(x, true); }
+    // исходные данные ресиверов — число ресиверов в составе по расчёту
+    const fk=k || String(t.dataset.p||'').split('.').pop();
+    if (ReceiverSync.KEYS.includes(fk)){ const m=ReceiverSync.apply(x); if (m){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); toast('Ресиверы по расчёту: '+m); } }
     if ((k==='ats' || k==='scada') && t.checked){ const a=this.ensureParts(x); if (a.length){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); toast('Добавлено в состав: '+a.join(', ')); } }
     persist(); renderForm();
+  }
+}
+
+// ---------------------------------------------------------------- ресиверы: число в составе — по расчёту
+/** исходные данные ресиверов изменились (объём по ТЗ, ΔP, циклограмма, пик точки, типоразмер, где ставить) — число ресиверов
+ *  в составе приводится к расчёту (ReceiverPlan): у строки ресивера нужного объёма и роли (основной, мокрый, у потребителя)
+ *  меняется количество; ресивер другого объёма не трогаем — замену предлагает «Нужно…» */
+class ReceiverSync {
+  static KEYS = ['recv', 'recvSize', 'recvWhy', 'recvVol', 'recvDp', 'recvValve', 'recvT', 'recvC', 'recvDrop', 'recvPoint', 'reserve'];
+  static WORD = { dry:'основной', wet:'мокрый', local:'у потребителя' };
+  /** что изменено словами («основной 4 × 900 л») или ''; dry — только узнать, что изменилось бы */
+  static apply(x, dry=false){
+    const R=StationReq.recvPlan(x); if (!R) return '';
+    const eq=StationEquip.list(kitParts(x), { recv:StationReq.recv(x), recvOut:StationReq.recvOut(x) }), P=kitParts(x), done=[];
+    const role=e=>e.local ? 'local' : e.kind==='receiver' && e.air ? (e.air.role==='wet' ? 'wet' : 'dry') : '';
+    for (const [k, g] of [['dry', R.main], ['wet', R.wet], ['local', R.local]]){
+      if (!g || !(g.n>0)) continue;
+      const ids=[...new Set(eq.filter(e=>role(e)===k && Math.round((e.local ? e.vol : e.air.vol)||0)===g.size).map(e=>e.id))];
+      if (ids.length!==1 || eq.some(e=>role(e)===k && !ids.includes(e.id))) continue;   // несколько строк или другой объём — вручную / «Нужно…»
+      const p=P.find(z=>z.id===ids[0]); if (!p || (+p.qty||1)===g.n) continue;
+      if (!dry) p.qty=g.n; done.push(`${this.WORD[k]} ${g.n} × ${StationLayout.n(g.size)} л`); }
+    return done.join(', ');
   }
 }
 

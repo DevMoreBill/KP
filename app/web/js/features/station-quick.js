@@ -74,29 +74,16 @@ class StationQuick {
     const st=fit ? ['bad', '✕ Оборудование не помещается в контейнер'] : miss ? [errs.length ? 'bad' : 'warn', (errs.length ? '✕' : '⚠')+' В каталоге не нашлось: '+miss[1]]
       : errs.length ? ['bad', '✕ '+errs[0].text+(errs.length>1 ? ` (и ещё ${errs.length-1})` : '')] : ask ? ['info', 'ⓘ '+ask]
       : R && R.questions.length ? ['warn', '⚠ Не хватает данных: '+R.questions[0]]
-      : ['ok', '✓ Станция подобрана — требования заказчика выполнены'];
+      : (b=>b ? ['bad', '✕ '+b.text] : ['ok', '✓ Станция подобрана — требования заказчика выполнены'])(ExpertFix.list(x).find(q=>q.bad));   // и замечания компоновки (габариты условные)
     const chips=R ? R.sections.map(s=>{ const L=s.steps.filter(o=>o.ok===true || o.ok===false), bad=L.some(o=>o.ok===false);
       return L.length ? `<button type="button" class="chip sm ${bad ? 'bad' : 'ok'}" data-edtab="layout" title="Подробный расчёт — вкладка «Компоновка»">${bad ? '✕' : '✓'} ${esc(this.SEC[s.id]||s.title)}</button>` : ''; }).join('') : '';
     const c=kitContainer(x), ct=c ? ctypeOf(c.ctype).name+(String(c.size||'').trim() ? ', '+c.size+' мм' : '') : '';
-    const pr=this.problems(x, plan, R).filter(t=>t.text!==st[1].replace(/^[✕⚠ⓘ✓] /, '')), more=pr.length>6 ? pr.length-6 : 0;
+    const fx=ExpertFix.html(x, i, null, { all:true, max:6, skip:st[1].replace(/^[✕⚠ⓘ✓] /, '') });   // что не выполняется — с решениями (режим «эксперт»)
     return `<div class="sq-r">
-      <div class="sq-st ${st[0]}"><b>${esc(st[1])}</b>${fit && plan.suggest ? StationUi.fix(plan.suggest, i) : ''}${!fit && miss ? '<span class="muted">Добавьте позицию в каталог или выберите аналог в составе ниже; затем — «Подобрать заново».</span>' : errs.length && !fit ? '<span class="muted">Замените оборудование в составе ниже или нажмите «Подобрать заново»; подробно — на вкладке «Компоновка».</span>' : ''}</div>
-      ${pr.length ? `<ul class="sq-pr">${pr.slice(0, 6).map(t=>`<li class="${t.bad ? 'bad' : 'warn'}">${t.bad ? '✕' : '⚠'} ${esc(t.text)}</li>`).join('')}${more ? `<li class="muted">и ещё ${more} — на вкладке «Компоновка»</li>` : ''}</ul>` : ''}
+      <div class="sq-st ${st[0]}"><b>${esc(st[1])}</b>${fit && plan.suggest ? StationUi.fix(plan.suggest, i) : ExpertFix.hint(x, i, st[1].replace(/^[✕⚠ⓘ✓] /, '')) || (!fit && miss ? '<span class="muted">Добавьте позицию в каталог или выберите аналог в составе ниже; затем — «Подобрать заново».</span>' : errs.length && !fit ? '<span class="muted">Замените оборудование в составе ниже или нажмите «Подобрать заново»; подробно — на вкладке «Компоновка».</span>' : '')}</div>
+      ${fx}
       <div class="sq-b"><div class="sq-l">${this.lines(x).map(t=>`<div>${esc(t)}</div>`).join('')}${ct ? `<div class="muted">${esc(ct)}</div>` : ''}
         ${chips ? `<div class="sq-ck">${chips}</div>` : ''}</div>${this.pic(x, plan)}</div></div>`;
-  }
-
-  // замечания компоновки, которые касаются выбора оборудования (обратная проверка после ручной замены)
-  static ISSUE = /меньше производительности|рассчитан на|не подойти|меньше расчётного|не проходит|не помещается|не хватает|нет шкафа/i;
-  /** обратная проверка состава: всё, что не выполняется, — расчёт по требованиям, проверки требований, компоновка
-   *  (производительность осушителя и фильтров против компрессоров, давление ресивера, доступ к сторонам, трубопровод) */
-  static problems(x, plan, R){
-    const out=[], seen=new Set(), add=(text, bad)=>{ const t=String(text||'').trim(); if (t && !seen.has(t)){ seen.add(t); out.push({ text:t, bad }); } };
-    if (R && !R.accept) for (const e of R.errors) add(e.text, true);
-    // производительность, давление и мощность — уже в расчёте (R); из проверок требований — остальное (безмасляный, АВР, АСУ ТП)
-    for (const c of StationReq.checks(x)) if (!c.ok && (!R || !/^(производительность|давление|мощность)/.test(c.text))) add(c.text[0].toUpperCase()+c.text.slice(1), !R);
-    if (plan && plan.level!=='none') for (const q of plan.issues||[]) if (q.level==='error' || (q.level==='warn' && this.ISSUE.test(q.text))) add(q.text, q.level==='error');
-    return out;
   }
 
   /** состав коротко: основное оборудование (рабочих + резерв), подготовка воздуха, ресиверы, баки */

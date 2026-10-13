@@ -224,7 +224,7 @@ class TzOut {
     if (id==='vent' && plan.vent){ const V=plan.vent, f=x=>String(x).replace('.', ','), t=[];
       const wh=StationVent.where(V), rf=StationVent.roofList(V), ow=V.louvers.some(q=>q.kind==='out') ? StationVent.list(V, 'out') : '';
       t.push(`приток ${n(V.q.in)} м³/ч — жалюзи ${StationVent.list(V, 'in')} внизу${wh.in ? ' '+wh.in : ''}, проёмы по рамке не менее ${f(V.need.in.gross)} м²`);
-      if (V.need.out) t.push(`выброс горячего воздуха ${n(V.q.out)} м³/ч — ${[ow ? `жалюзи ${ow} вверху` : '', rf ? `через крышу (колпаки ${rf})` : ''].filter(Boolean).join(' и ')}${wh.out ? ' — '+wh.out : ''}, по рамке не менее ${f(V.need.out.gross)} м²; компрессоры — воздуховодами с клапанами рециркуляции`);
+      if (V.need.out) t.push(`выброс горячего воздуха ${n(V.q.out)} м³/ч — ${[ow ? `жалюзи ${StationVent.outAt(V, true)}` : '', rf ? `через крышу (колпаки ${rf})` : ''].filter(Boolean).join(' и ')}, по рамке не менее ${f(V.need.out.gross)} м²; компрессоры — воздуховодами с клапанами рециркуляции`);
       t.push('приток и выброс — на разных стенах (не на одной стене)');
       if (V.hood) t.push(`на приточных жалюзи — маркизы (снегозащита) из оцинкованной стали: ${StationVent.hoodText(V)}; ${StationVent.HOOD_WHAT}; в открытом положении фиксируются упорами`);
       if (V.hoodOut) t.push(`на жалюзи выброса горячего воздуха — маркизы (по требованию): ${StationVent.hoodText(V, 'out')}; открытые — горячий воздух уходит вниз, закрытые — защитный щит на проёме`);
