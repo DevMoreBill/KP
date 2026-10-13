@@ -1419,6 +1419,14 @@ Check.run('выброс горячего воздуха — над сервис�
   const p3=solve(C('block'), [c22, dryer, rec, cab]), by=new Map();
   for (const q of out(p3)) by.set(q.duct, [...(by.get(q.duct)||[]), q.w+'×'+q.h+(q.over ? 'н' : q.leaf ? 'с' : '')]);
   const sets=[...by.values()].map(v=>v.sort().join(',')); assert.ok(sets.length===3 && new Set(sets).size===1, 'одинаковые решётки: '+JSON.stringify([...by]));
+  // жёсткое правило ПНЕВМОТЕХ 13.10 (скриншот 3D «сзади»): у компрессоров одной модели решётки всегда одинаковые — и когда
+  // над воротами не хватает площади (добавка в торце была только у крайнего), и когда у одного нет своих ворот
+  const same=p=>{ const m=new Map(); for (const q of out(p)) m.set(q.duct, [...(m.get(q.duct)||[]), q.w+'×'+q.h]);
+    const v=[...m.values()].map(x=>x.sort().join(',')); return v.length===p.items.filter(i=>i.kind==='compressor').length && new Set(v).size===1 ? '' : JSON.stringify([...m]); };
+  for (const [kw, size, n] of [[55, '1600 × 1000 × 1600', 2], [90, '1900 × 1200 × 1800', 3], [15, '1000 × 700 × 1100', 4], [132, '2200 × 1300 × 1900', 2]]){
+    const c=P('Винтовой компрессор '+kw, { cat:'comp_screw', kw, size, mass:kw*15 }, { role:'main', qty:n });
+    for (const cont of [C('block', { sizeAuto:true }), C('block'), C('sea40')]){ const p=solve(cont, [c, dryer, rec, cab]), d=same(p);
+      if (Object.values(p.vent.ducts).every(v=>v==='wall')) assert.ok(!d, `${kw} кВт × ${n}, ${cont.ctype}: решётки разные ${d}`); } }
   // морской контейнер: над воротами места нет, в створки ворот выброс НЕ ставится, компрессоры не у торца (уточнение 13.10)
   // — через крышу ВСЕ компрессоры, каналы на крыше одного размера
   const ps=solve(C('sea40'), [P('Винтовой компрессор 37', { cat:'comp_screw', kw:37, size:'1400 × 900 × 1500', mass:650 }, { role:'main', qty:2 }), dryer, rec, cab]);

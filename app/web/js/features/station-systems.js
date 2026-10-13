@@ -670,15 +670,16 @@ class StationVent {
     // компрессоры: горячий воздух — воздуховодом с клапаном рециркуляции к стене, у которой компрессор стоит (задняя; второй
     // ряд — стена прохода, если приток весь встаёт на торцах, иначе крыша). За компрессором сервисные ворота — жалюзи НАД
     // воротами (по ширине его части ворот); в створки ворот выброс НЕ ставится (решение ПНЕВМОТЕХ 13.10); ворот нет — вверху
-    // стены над компрессором (сдвиг до 1,5 м). Не встало или остаток — на ближайшей боковой стене: торец, у которого
+    // стены над компрессором (сдвиг до 1,5 м). Не хватило площади — добавка на ближайшей боковой стене: торец, у которого
     // компрессор стоит (между ним и торцом нет оборудования), если в этом торце нет ворот (уточнение ПНЕВМОТЕХ 13.10).
     // Не вывести из стены хоть одного компрессора — через крышу ВСЕ компрессоры, каналы на крыше одного размера.
-    // Одинаковые компрессоры — одинаковые решётки: размер, найденный для первого, ставится и остальным. С системой «Вытяжные
-    // вентиляторы» на тех же местах — проёмы осевых вентиляторов (скорость выброса vOut — из расчёта)
+    // ЖЁСТКОЕ ПРАВИЛО (ПНЕВМОТЕХ 13.10): у компрессоров одной модели решётки выброса всегда одинаковые — размер общий для
+    // группы и встаёт у каждого; добавку в торце получают все или никто (иначе остаток всех — в общую вытяжку стены выброса).
+    // С системой «Вытяжные вентиляторы» на тех же местах — проёмы осевых вентиляторов (скорость выброса vOut — из расчёта)
     const exWall=c=>E!=='back' ? null : plan.rows===2 && c.row===1 ? (front ? 'front' : null) : 'back';
     const gate=(c, w)=>(plan.doors||[]).find(d=>d.rear && d.wall===w && d.pos.includes(c.pos) && d.x0<c.x+c.lx && d.x1>c.x);
     const share=(G, w)=>comp.filter(c=>exWall(c)===w && gate(c, w)===G).sort((a, b)=>a.x-b.x);   // компрессоры за одними воротами
-    const same=new Map(), z1T=H-100, leftOk0=x0===0 && !plan.geo.sea, hMin=Sm && Sm.exfan ? this.FAN_MIN : OB.h[0];   // с вентиляторами — проём не ниже FAN_MIN
+    const z1T=H-100, leftOk0=x0===0 && !plan.geo.sea, hMin=Sm && Sm.exfan ? this.FAN_MIN : OB.h[0];   // с вентиляторами — проём не ниже FAN_MIN
     const zTop=w=>H-(w==='back' && rearBack ? 100 : OB.top);
     // свободное место для жалюзи w × hh вверху стены wall: ближе всего к uc, сдвиг не больше maxd → {u, z0, z1, d} | null
     const fitAt=(wall, w, hh, uc, maxd)=>{ const z1=zTop(wall), z0=z1-hh, end=wall==='left' || wall==='right', lo=end ? 100 : x0+100, hi=end ? Wd-100 : L-100;
@@ -686,44 +687,49 @@ class StationVent {
         if (a>=lo && a+w<=hi && W.free(wall, a-90, a+w+90, z0-90, z1+90) && !cogHit(wall, a, a+w, z0, z1)) return { u:a, z0, z1, d }; }
       return null; };
     // ближайшая боковая стена — торец, у которого компрессор стоит: между ним и торцом (в его полосе по ширине) нет
-    // оборудования, в торце нет ворот; торцы — только пока второй ряд не выбрасывает в стену прохода (тогда приток — на
-    // торцах); размер — как у такого же компрессора, иначе по расходу (ниже — шире)
+    // оборудования, в торце нет ворот; торцы — только пока второй ряд не выбрасывает в стену прохода (тогда приток — на торцах)
     const endsOk=!comp.some(c=>exWall(c)==='front'), gatesOn=w=>[plan.gates, plan.gates2].some(g=>g && g.wall===w);
     const floor=I.filter(i=>!i.tank && i.mount!=='pipe' && i.mount!=='wall');
     const atEnd=(c, e)=>!floor.some(i=>i!==c && i.y<c.y+c.ly && i.y+i.ly>c.y && (e==='right' ? i.x>=c.x+c.lx-1 : i.x+i.lx<=c.x+1));
-    const side=(c, q, was)=>{ const cx=c.x+c.lx/2, cy=c.y+c.ly/2;
-      const ends=endsOk ? ['right', ...(leftOk0 ? ['left'] : [])].filter(e=>!gatesOn(e) && atEnd(c, e)) : [];
-      const sizes=[...(was ? [was] : [])]; for (let h=oh; h>=hMin; h-=50) sizes.push([Math.max(OB.w[0], Math.min(this.WHOLE, Math.ceil(gross(q)/h/S)*S)), h]);
-      for (const [w, hh] of sizes){ let best=null;
-        for (const e of ends){ if (w>Wd-200) continue; const r2=fitAt(e, w, hh, cy, Wd); if (!r2) continue;
-          const len=(e==='right' ? L-cx : cx-x0)+r2.d; if (!best || len<best.len) best={ wall:e, ...r2, len }; }
-        if (best) return { ...best, w, h:hh }; }
-      return null; };
-    // откат к состоянию до компрессоров: если хоть один не выводится из стены — все через крышу
+    const side=(c, w, hh)=>{ const cx=c.x+c.lx/2, cy=c.y+c.ly/2; let best=null;
+      for (const e of endsOk ? ['right', ...(leftOk0 ? ['left'] : [])].filter(e=>!gatesOn(e) && atEnd(c, e)) : []){
+        if (w>Wd-200) continue; const r2=fitAt(e, w, hh, cy, Wd); if (!r2) continue;
+        const len=(e==='right' ? L-cx : cx-x0)+r2.d; if (!best || len<best.len) best={ wall:e, ...r2, len }; }
+      return best; };
+    const mark=()=>({ b:Object.fromEntries(Object.entries(W.B).map(([k, v])=>[k, v.length])), n:out.louvers.length });
+    const unmark=m=>{ for (const k in m.b) W.B[k].length=m.b[k]; out.louvers.length=m.n; };
+    const add=L=>{ out.louvers.push(L); W.busy(L.wall, L.u0-90-this.GAP, L.u1+260+this.GAP, L.z0-90, L.z1+90); return L; };
+    // место компрессора: над его воротами (его часть ворот: ширина, высота от перемычки +240 мм до 100 мм под потолком) или
+    // вверху стены над ним
+    const slot=c=>{ const wall=exWall(c), G=wall && gate(c, wall); if (!G) return { c, wall, hMax:oh, wMax:this.WHOLE };
+      const S2=share(G, wall), i=S2.indexOf(c), sw=(G.x1-G.x0)/S2.length, gap=S2.length>1 ? this.GAP/2 : 0;
+      return { c, wall, G, a0:G.x0+i*sw, sw, hMax:Math.floor(Math.min(OB.h[1], z1T-(G.h+240))/S)*S, wMax:Math.min(this.WHOLE, Math.floor((sw-2*gap)/S)*S) }; };
+    const at=(s, w, hh)=>{ const kk=key(s.c);
+      if (s.G){ const u=Math.round(s.a0+(s.sw-w)/2); return add({ kind:'out', wall:s.wall, u0:u, u1:u+w, z0:z1T-hh, z1:z1T, w, h:hh, duct:kk, over:true }); }
+      const r=fitAt(s.wall, w, hh, s.c.x+s.c.lx/2, 1500); return r && add({ kind:'out', wall:s.wall, u0:r.u, u1:r.u+w, z0:r.z0, z1:r.z1, w, h:hh, duct:kk }); };
+    // одна решётка w × hh у каждого компрессора группы; не встала хоть у одного — ничего не ставится
+    const all=(G, w, hh, f)=>{ const m=mark(); for (const s of G) if (!f(s, w, hh)){ unmark(m); return false; } return true; };
+    // одна модель — одна группа (название, габарит, расход охлаждения)
+    const model=c=>[c.name||c.id, [c.lx, c.ly, c.h].sort((a, b)=>a-b).join('×'), qc(c)].join('|');
+    const groups=[...comp.reduce((m, c)=>m.set(model(c), [...(m.get(model(c))||[]), c]), new Map()).values()];
     const mC=Object.fromEntries(Object.entries(W.B).map(([k, v])=>[k, v.length])), nC=out.louvers.length, nR0=out.roof.length, qW0=qWall;
-    let viaRoof=false;
-    for (const c of comp){ let q=qc(c); const kk=key(c), wall=exWall(c), G=wall && gate(c, wall);
-      if (!wall){ viaRoof=true; break; }
-      const sk=[wall, Math.round(q/50), G ? [G.h, G.x1-G.x0, share(G, wall).length].join('/') : '-'].join('|'), was=same.get(sk), got=[];
-      const add=L=>{ out.louvers.push(L); got.push(L); W.busy(L.wall, L.u0-90-this.GAP, L.u1+260+this.GAP, L.z0-90, L.z1+90); q=Math.max(0, q-L.w*L.h/1e6*F*3600); };
-      if (G){ const S2=share(G, wall), i=S2.indexOf(c), sw=(G.x1-G.x0)/S2.length, a0=G.x0+i*sw, gap=S2.length>1 ? this.GAP/2 : 0;
-        // над воротами: низ — над перемычкой и трубопроводом (+240 мм), верх — 100 мм под потолком
-        const hA=Math.floor(Math.min(OB.h[1], z1T-(G.h+240))/S)*S, wMax=Math.floor((sw-2*gap)/S)*S;
-        if (hA>=hMin && wMax>=OB.w[0]){ const w=was ? was.over : Math.max(OB.w[0], Math.min(wMax, Math.ceil(gross(q)/hA/S)*S)), u=Math.round(a0+(sw-w)/2);
-          if (w) add({ kind:'out', wall, u0:u, u1:u+w, z0:z1T-hA, z1:z1T, w, h:hA, duct:kk, over:true }); } }
-      else {
-        // вверху стены над компрессором: размер — как у такого же компрессора; не встал — ниже, сдвиг до 1,5 м
-        const cx=c.x+c.lx/2; let r=null, w=0, hh=0;
-        if (was && was.wall){ [w, hh]=was.wall; r=fitAt(wall, w, hh, cx, 1500); }
-        for (let h=oh; h>=hMin && !r; h-=50){ w=Math.max(OB.w[0], Math.min(this.WHOLE, Math.ceil(gross(q)/h/S)*S)); hh=h; r=fitAt(wall, w, hh, cx, 1500); }
-        if (r) add({ kind:'out', wall, u0:r.u, u1:r.u+w, z0:r.z0, z1:r.z1, w, h:hh, duct:kk }); }
-      // не встало или остаток — в торец, у которого компрессор стоит (не в створках ворот)
-      if (q>1){ const sd=side(c, q, was && was.side); if (sd) add({ kind:'out', wall:sd.wall, u0:sd.u, u1:sd.u+sd.w, z0:sd.z0, z1:sd.z1, w:sd.w, h:sd.h, duct:kk, side:true }); }
-      if (!got.length){ viaRoof=true; break; }
-      out.ducts[kk]='wall';
-      if (!was) same.set(sk, { over:(got.find(L=>L.over)||{}).w||0, wall:(L=>L && [L.w, L.h])(got.find(L=>!L.over && !L.side)), side:(L=>L && [L.w, L.h])(got.find(L=>L.side)) });
+    let viaRoof=comp.some(c=>!exWall(c));
+    for (const Cs of viaRoof ? [] : groups){ const q=qc(Cs[0]), need0=gross(q), Sl=Cs.map(slot);
+      const hTop=Math.min(...Sl.map(s=>s.hMax)), wTop=Math.min(...Sl.map(s=>s.wMax)); let got=null, part=null;
+      // размер — по самому стеснённому месту группы: выше решётка — уже; полностью не хватает — наибольшая, что встаёт у всех
+      for (let hh=hTop; hh>=hMin && wTop>=OB.w[0]; hh-=50){ const w=Math.max(OB.w[0], Math.min(wTop, Math.ceil(need0/hh/S)*S)), m=mark();
+        if (!all(Sl, w, hh, at)) continue;
+        if (w*hh>=need0){ got=[w, hh]; break; }
+        unmark(m); if (!part || w*hh>part[0]*part[1]) part=[w, hh]; }
+      if (!got && part && all(Sl, part[0], part[1], at)) got=part;
+      if (!got){ viaRoof=true; break; }
+      let rest=Math.max(0, q-got[0]*got[1]/1e6*F*3600);
+      // остаток — добавка одного размера в торце у каждого; хоть одному некуда — у всех в общую вытяжку
+      if (rest>1){ for (let hh=oh; hh>=hMin && rest>1; hh-=50){ const w=Math.max(OB.w[0], Math.min(this.WHOLE, Math.ceil(gross(rest)/hh/S)*S));
+          if (all(Sl, w, hh, (s, w2, h2)=>{ const r=side(s.c, w2, h2); return r && add({ kind:'out', wall:r.wall, u0:r.u, u1:r.u+w2, z0:r.z0, z1:r.z1, w:w2, h:h2, duct:key(s.c), side:true }); })) rest=Math.max(0, rest-w*hh/1e6*F*3600); } }
+      for (const c of Cs) out.ducts[key(c)]='wall';
       // не хватило и сбоку — остаток в общую вытяжку стены выброса (задняя), у стены прохода — колпаком
-      if (q>1){ if (wall==='back') qWall+=q; else { viaRoof=true; break; } } }
+      if (rest>1){ if (Sl.every(s=>s.wall==='back')) qWall+=rest*Cs.length; else { viaRoof=true; break; } } }
     // через крышу — все компрессоры, колпаки одного размера (по наибольшему расходу)
     if (viaRoof){ for (const k in mC) W.B[k].length=mC[k]; out.louvers.length=nC; out.roof.length=nR0; qWall=qW0; out.ducts={};
       const qMax=Math.max(...comp.map(qc)); for (const c of comp){ const kk=key(c); out.ducts[kk]='roof'; hood(qMax, c.x+c.lx/2, c.y+c.ly/2, kk); } }
