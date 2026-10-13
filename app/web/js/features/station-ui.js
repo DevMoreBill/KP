@@ -64,6 +64,7 @@ class StationUi {
       : plan.level==='warn' ? ['warn', '⚠ Помещается, но часть отступов меньше рекомендуемых'] : ['ok', '✓ Оборудование помещается с рекомендуемыми отступами'];
     const dims=g.ext ? `${esc(ct.name)} · ${n(g.ext[0])} × ${n(g.ext[1])} × ${n(g.ext[2])} мм${plan.int ? ` · внутри ${n(plan.int[0])} × ${n(plan.int[1])} × ${n(plan.int[2])} мм` : ''}` : esc(ct.name);
     const iss=[...plan.issues].sort((a, b)=>this.rank(a)-this.rank(b)), top=iss.filter(t=>t.level!=='info'), info=iss.filter(t=>t.level==='info');
+    if (StationImages.issues.has(x.id)) top.unshift({ level:'warn', text:'Изображения не готовы: '+StationImages.issues.get(x.id)+'.' });
     if (plan.level==='error' && plan.assumed) info.unshift({ level:'info', text:'Пока габариты части оборудования условные, КП сохранится, но контейнер может не подойти: впишите «Габариты» элементов на вкладке «Состав станции».' });
     else if (plan.level==='error') info.unshift({ level:'info', text:'КП не сохранится, пока оборудование не поместится: замените контейнер (кнопка выше) или измените состав.' });
     // замечания и сведения — под раскрывающимся блоком (раскрыт сам, если оборудование не помещается)
@@ -233,6 +234,12 @@ class StationSize {
 class StationImages {
   static busy = new Set();
   static timer = 0;
+  static issues = new Map();   // позиция → почему изображения станции не попадут в КП (показать до сохранения)
+
+  /** что не так с изображениями станций текущего КП: ['Станция …: …'] */
+  static problems(){ return S.items.filter(x=>this.issues.has(x.id)).map(x=>`${String(x.name||'').trim() || 'Станция'}: ${this.issues.get(x.id)}`); }
+  /** перед сохранением КП: изображения не готовы — спросить; true — сохранять */
+  static confirmSave(){ const P=this.problems(); return !P.length || confirm(`Изображения станции не готовы:\n\n${P.join('\n')}\n\nСохранить КП без них?`); }
 
   /** 3D-вид (главное фото), габаритный чертёж и схема пневматическая (изображения после характеристик) — по расстановке.
    *  Своё фото менеджера не заменяется; фото элемента состава, подставленное мастером само, — заменяется (у элемента оно
@@ -243,6 +250,9 @@ class StationImages {
     const plan=StationUi.plan(x), o=StationUi.opts(x); let ch=false;
     x.gallery=Array.isArray(x.gallery) ? x.gallery : [];
     const none=plan.level==='none' || plan.level==='error' || !plan.geo || !plan.geo.ext;   // нечего рисовать — прежние картинки не годятся
+    this.issues.delete(x.id);
+    if (none && (o.photo || o.draw || o.out) && plan.level!=='none'){ const e=(plan.issues||[]).find(q=>q.level==='error');
+      this.issues.set(x.id, `компоновка не собрана${e ? ` (${String(e.text).replace(/\.$/, '')})` : ''} — 3D-вида и чертежа в КП не будет; исправьте на вкладке «Компоновка»`); }
     if ((!o.photo || none) && x.photo && x.photo.gen==='st3d'){ x.photo=null; ch=true; }
     const sch=StationUi.scheme(plan), off={ stout:!o.out || none, stdraw:!o.draw || none, stschema:!o.scheme || none || !sch };
     for (const gen of Object.keys(off)) if (off[gen] && x.gallery.some(g=>g && g.gen===gen)){ x.gallery=x.gallery.filter(g=>!(g && g.gen===gen)); ch=true; }
@@ -252,13 +262,14 @@ class StationImages {
       await EskdFont.load();   // шрифт чертежей — встраивается в листы
       if (typeof DrawPic!=='undefined') await DrawPic.load(x);   // свои рисунки моделей — тоже внутрь листа
       if (await PhotoTint.load(x)){ this.busy.delete(x.id); return (await this.sync(x)) || ch; }   // цвета по фото изменили расстановку — заново
-      const meta=StationUi.meta(x, plan), h=plan.hash, hd=this.key(plan, meta);   // на 3D-виде надписей нет; на чертеже — название
+      const meta=StationUi.meta(x, plan), h=plan.hash+StationRender.brandKey(), hd=this.key(plan, meta);   // на 3D-виде надписей нет; на чертеже — название
       if (o.photo && x.photo && x.photo.gen!=='st3d' && this.partPhoto(x)){ x.photo=null; ch=true; }
       // 3D-вид WebGL (отпечаток с «.g») не заменяется SVG-видом на компьютере без WebGL2
       const fresh=x.photo && x.photo.gen==='st3d' && (x.photo.hash===h+'.g' || (x.photo.hash===h && !StationRender.ok()));
       if (o.photo && (!x.photo || x.photo.gen==='st3d') && !fresh){
         const gl=await StationRender.image(plan, meta), im=gl || await this.raster(StationView3D.svg(plan, meta), 'image/jpeg');
-        x.photo={ ...im, gen:'st3d', hash:gl ? h+'.g' : h }; ch=true; }
+        x.photo={ ...im, gen:'st3d', hash:gl ? h+'.g' : h }; ch=true;
+        if (!gl && StationRender.fails) this.issues.set(x.id, '3D-вид не построен (сбой WebGL) — в КП упрощённый вид и чертёж; повтор — при следующем построении'); }
       // виды снаружи со всех четырёх сторон (только WebGL): изображениями после характеристик, перед чертежом, по два в ряд;
       // без WebGL прежние остаются; убранный менеджером ракурс больше не вставляется
       if (o.out && StationRender.ok() && await this.outside(x, plan, meta, h, o)) ch=true;
@@ -271,7 +282,7 @@ class StationImages {
         const g={ id:old ? old.id : uid(), ...im, caption:sch.name, slot:'', at:'', on:old ? old.on!==false : true, wide:'full', gen:'stschema', hash:hd };
         if (old) x.gallery[j]=g; else x.gallery.splice(this.after(x.gallery, 'stdraw'), 0, g);
         x.page=true; ch=true; }
-    } catch(e){ /* картинка не собралась — КП собирается без неё */ }
+    } catch(e){ this.issues.set(x.id, `изображения не собрались (${String((e && e.message)||e).slice(0, 120)})`); }   // КП собирается без них
     finally{ this.busy.delete(x.id); }
     return ch;
   }

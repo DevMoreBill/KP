@@ -141,6 +141,16 @@ class RulesRouteTest(unittest.TestCase):
         self.assertEqual((st, http.js(b)['info']['own']), (200, False))
         st, b, _ = http.req('GET', '/api/rules/stations', headers=self.H)
         self.assertEqual(http.js(b)['info']['version'], StationRules.bundled()['version'])
+        # история настроек: своя версия и возврат файла поставки — записи с откатом
+        st, b, _ = http.req('GET', '/api/admin/history?key=stationRules', cookie=cookie, headers=csrf)
+        items = http.js(b)['items']
+        self.assertGreaterEqual(len(items), 2, b[:300])
+        self.assertEqual(items[0]['title'], 'Инженерные правила станций')
+        self.assertEqual(items[0]['tab'], 'rules')
+        st, b, _ = http.req('POST', '/api/admin/history/%s/rollback' % items[0]['id'], b'{}', cookie=cookie, headers=dict(csrf, **{'Content-Type': 'application/json'}))
+        self.assertEqual(st, 200, b[:300])
+        st, b, _ = http.req('GET', '/api/rules/stations', headers=self.H)
+        self.assertEqual((http.js(b)['info']['version'], http.js(b)['info']['own']), ('2099.01.01-test', True), 'откат вернул свою версию')
         self.assertEqual(self.stand.request_errors(), [], 'без ошибок сервера')
 
 

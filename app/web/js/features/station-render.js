@@ -1017,7 +1017,11 @@ class StationRender {
     catch(e){ this.okFlag=false; }
     return this.okFlag;
   }
-  static key(plan, view, az){ return (plan.hash||'')+(view==='out' ? '|o'+(az!=null ? az : '') : ''); }
+  static key(plan, view, az){ return (plan.hash||'')+this.brandKey()+(view==='out' ? '|o'+(az!=null ? az : '') : ''); }
+  /** фирменный стиль шаблона (надпись логотипа и цвета) — в отпечатке картинки: сменили — 3D перерисуется */
+  static brandKey(){ try{ return typeof StDecal!=='undefined' ? '.b'+StationLayout.fnv(JSON.stringify(StDecal.brandParts())) : ''; } catch(e){ return ''; } }
+  static FAILS = 3;          // сбоев WebGL подряд — после стольких до перезапуска только упрощённый вид
+  static fails = 0;
   static cached(plan, view, az){ return this.cache.get(this.key(plan, view, az))||null; }
   /** высота кадра — по сцене (длинный контейнер — ниже кадр, без пустых полей) */
   static size(scene){ const W=this.W, c=StCam.fit(scene.bounds(), 1.6, 0.9, scene.az), k=c.span[1]/c.span[0]*1.6; return [W, Math.round(Math.max(760, Math.min(1100, W/1.6*Math.max(0.62, Math.min(1, k*1.12)))))]; }
@@ -1035,8 +1039,10 @@ class StationRender {
         const c=await this.gl.render(sc, { w, h, passes:this.soft ? Math.min(this.PASSES, 24) : this.PASSES, shadow:this.soft ? 1536 : 2048 });
         const im={ src:c.toDataURL('image/jpeg', 0.92), w:c.width, h:c.height };
         this.cache.set(key, im); if (this.cache.size>24) this.cache.delete(this.cache.keys().next().value);
+        this.fails=0; this.lastErr='';
         return im;
-      } catch(e){ this.gl=null; this.okFlag=false; return null; } };   // сбой — до перезапуска SVG-вид
+      } catch(e){ this.gl=null; this.fails++; this.lastErr=String((e && e.message)||e).slice(0, 200);   // сбой — повтор при следующем построении
+        if (this.fails>=this.FAILS) this.okFlag=false; return null; } };
     const p=this.queue.then(run, run); this.queue=p.catch(()=>null); return p;
   }
 }

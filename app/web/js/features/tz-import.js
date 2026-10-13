@@ -340,6 +340,12 @@ class TzPick {
   /** компрессоры для станции в контейнере: без передвижных (на шасси, колёсных) и бензиновых; дизельные — только если
    *  электрических подходящих нет (станция по умолчанию — с электроприводом) */
   static mobile(c){ const a=attrsOf(c); return /шасси|передвижн|мобильн|колёсн|колесн/i.test(String(a.execution||'')+' '+c.name) || /бензин/i.test(c.name); }
+  /** насос для стационарной насосной станции в контейнере: электрический, не погружной, не скважинный, не дренажный, не
+   *  мотопомпа (вид и привод — из карточки; не указаны — допускается) */
+  static pumpOk(c){ const a=attrsOf(c); return !/мотопомп|погружн|скважин|дренаж|фекал/i.test(String(a.kind||'')+' '+c.name) && !/дизел|бензин/i.test(String(a.drive||'')); }
+  /** ДГУ для станции 0,4 кВ: не однофазная (220/230 В, «1 фаза»); исполнение — открытое или под контейнер (передвижные
+   *  отсеяны в stationPool) */
+  static dguOk(c){ const a=attrsOf(c), t=String(a.voltage||'')+' '+String(a.phases||'')+' '+c.name; return !/однофазн|1\s*фаз|(?:^|[^\d\/])(?:220|230)\s*В(?![а-яё])(?!\s*\/)/i.test(t); }
   static stationPool(cats){ return catCache.filter(c=>cats.includes(attrsOf(c).cat) && !this.mobile(c)); }
   static electric(pool){ return pool.filter(c=>attrsOf(c).cat!=='comp_diesel'); }
   /** ресиверы на объём V, л: один, иначе несколько одинаковых — наименьшее число, затем наименьший объём; сначала — каждый без
@@ -398,7 +404,21 @@ class TzPick {
   }
 
   /** подбор в станцию x; ответ — строка для менеджера: что подобрано и чего в каталоге нет */
+  /** подбор с защитой состава: чего в каталоге не нашлось — прежнее оборудование этого вида остаётся (не пропадает) */
   static async run(x, q){
+    const drop=this.DROP[q.kind]||/^$/, before=kitParts(x).filter(p=>p.role!=='container' && drop.test(StationEquip.kindOf(p)||''));
+    let note=await this.pick(x, q); const kept=[];
+    for (const k of [...new Set(before.map(p=>StationEquip.kindOf(p)))]){
+      if (kitParts(x).some(p=>StationEquip.kindOf(p)===k)) continue;
+      const old=before.filter(p=>StationEquip.kindOf(p)===k), at=kitParts(x).findIndex(p=>p.role==='container');
+      x.kit.parts.splice(at<0 ? x.kit.parts.length : at, 0, ...old); kept.push(...old.map(p=>p.name));
+    }
+    if (kept.length) note+=`. Оставлено прежнее: ${kept.join('; ')}`;
+    return note;
+  }
+  static DROP = { comp:/^(compressor|dryer|filter|receiver)$/, pump:/^pump$/, dgu:/^dgu$/ };
+  /** подбор в станцию x по требованиям q (без защиты состава — run) */
+  static async pick(x, q){
     const res=Math.max(0, Math.round(+q.reserve||0)), got=[], miss=[], kind=q.kind;
     const drop=kind==='comp' ? /^(compressor|dryer|filter|receiver)$/ : kind==='pump' ? /^pump$/ : /^dgu$/;
     const keep=kitParts(x).filter(p=>p.role==='container' || !drop.test(StationEquip.kindOf(p)||'')), add=[];
@@ -446,13 +466,17 @@ class TzPick {
       return this.note(got, miss);
     }
     if (kind==='pump' && q.q>0){
-      const u=this.units(pool.map(c=>({ c, v:this.num(attrsOf(c).flow)||0, h:this.num(attrsOf(c).head) })).filter(o=>o.v>0 && (!(q.head>0) || o.h>=q.head)), q.q, q.work,
+      const top=v=>{ const t=StationEquip.top(v); return t ? t.v : null; };
+      const u=this.units(pool.filter(c=>this.pumpOk(c)).map(c=>({ c, v:top(attrsOf(c).flow)||0, h:top(attrsOf(c).head) })).filter(o=>o.v>0 && (!(q.head>0) || o.h>=q.head)), q.q, q.work,
         o=>q.head>0 && o.h>0 ? 0.3*(o.h-q.head)/q.head : 0);
       if (u){ add.push(await this.part(u.o.c, u.n+res, 'main')); got.push(`насосы ${u.n}${res ? ' + '+res+' резервн.' : ''} × ${u.o.c.name}`); }
       else miss.push(`${q.work>1 ? q.work+' насоса' : 'насос'} на ${AirChain.m3(q.q)} м³/ч${q.head ? ' и '+AirChain.m3(q.head)+' м' : ''}`);
     }
     if (kind==='dgu' && q.kw>0){
-      const u=this.units(pool.map(c=>({ c, v:this.num(attrsOf(c).kw)||0 })).filter(o=>o.v>0), q.kw, q.work||1), n=u ? u.n+res : 0;   // ДГУ — одна рабочая, если в ТЗ не сказано иначе
+      // мощность — по назначению (резервный — ESP, иначе PRP); только трёхфазные стационарные; одна рабочая, если в ТЗ не сказано
+      // иначе; одной не хватает — несколько одинаковых параллельно (до MAX)
+      const L=pool.filter(c=>this.dguOk(c)).map(c=>({ c, v:GensetSizing.cap(attrsOf(c), q.mode==='standby') })).filter(o=>o.v>0);
+      const u=this.units(L, q.kw, q.work||1) || (q.work ? null : this.units(L, q.kw, 0)), n=u ? u.n+res : 0;
       if (u){ add.push(await this.part(u.o.c, n, 'main')); got.push(`ДГУ ${n>1 ? `${u.n}${res ? ' + '+res+' резервн.' : ''} × ` : ''}${u.o.c.name}`); } else miss.push(`ДГУ от ${AirChain.m3(q.kw)} кВт`);
       x.kit.parts=[...add, ...keep];
       const v=q.hours>0 ? StationDefaults.retank(x, q.hours) : null, fp=v && StationRules.ok() ? GensetSizing.plan(x) : null;

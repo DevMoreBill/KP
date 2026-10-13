@@ -130,8 +130,10 @@ class StationDrawing {
     const U=p.air && p.air.chain.length>1 ? p.air.units||[] : [], qn=G=>G.reduce((s, u)=>s+(u.qty||1), 0), C=U.filter(u=>u.kind==='compressor');
     const step=(G, par)=>{ const k=qn(G), ps=[...new Set(G.map(u=>u.pos))].join(', '); return k>1 ? `${ps} (${k} шт. ${par ? 'параллельно' : 'последовательно'})` : ps; };
     const chain=U.length ? [...(C.length ? [step(C, true)] : []), ...AirChain.groups(U.filter(u=>u.kind!=='compressor')).map(G=>step(G, G[0].kind!=='receiver'))] : [];
+    const gu=[...new Set([...p.items, ...this.ext].filter(i=>i.known===false && i.pos!=null).map(i=>i.pos))].sort((a, b)=>a-b);   // габариты угаданы
     return [
       'Размеры, привязки и трассы уточняются рабочим проектом.',
+      ...(gu.length ? [`Габариты ${list(gu)} — условные (данных изготовителя нет): уточнить по паспорту до изготовления.`] : []),
       p.mode && p.mode.tight ? `Проход для оператора и обслуживания — ${n(p.aisle && p.aisle.w || aMin)} мм в свету: сужен по согласованию с заказчиком, чтобы станция прошла по габариту перевозки (норма — не менее ${n(StationClear.aisle()[1])} мм, ПУЭ, п. 4.1.23).`
         : `Проход для оператора и обслуживания — не менее ${n(aMin)} мм в свету (ПУЭ, п. 4.1.23), рекомендуется ${n(aRec)} мм${dgu ? '; вдоль ДГУ — не менее 600 мм' : ''}.`,
       wall.length ? `${wall.length>1 ? 'Шкафы' : 'Шкаф'} ${list(wall)} — на стене, низ на высоте ${n(z0)} мм; проход перед ${wall.length>1 ? 'ними' : 'ним'} — не менее ${n(aMin)} мм.` : '',
@@ -139,7 +141,7 @@ class StationDrawing {
       this.en && !this.en.sea ? `Дверь оператора — одностворчатая ${n(StationMatrix.door().w)} × ${n(StationMatrix.door().h)} мм в свету${this.en.wall==='left' ? ' в торце' : ''}, открывается наружу, с доводчиком; рядом — знаки и огнетушители.` : '',
       p.second ? `Вторая дверь оператора — ${p.exit ? `одностворчатая ${n(p.exit.w)} мм в дальнем торце` : this.gt && this.gt.wicket ? `калитка ${n(this.gt.wicket.w)} × ${n(this.gt.wicket.h)} мм в створке ворот` : p.secondDgu ? 'выход через дверь-жалюзи ДГУ' : 'одностворчатая в стене прохода у дальнего торца'} (${p.second}); открывается наружу, с доводчиком.` : '',
       ...this.gts.map(q=>q.sea ? (q.pos.length ? `Монтаж и демонтаж ${list(q.pos)} — через штатные двери контейнера в торце.` : '')
-        : `Распашные монтажные ворота ${q.full ? 'во весь торец ' : ''}${n(q.w)} × ${n(q.h)} мм в ${q.wall==='left' ? 'торце у входа' : 'дальнем торце'}${q.pos.length ? ` — для монтажа и демонтажа ${list(q.pos)}` : ''}; открываются наружу (выход), утеплённые, с запорными штангами.`),
+        : `Распашные монтажные ворота ${q.full ? 'во весь торец ' : ''}${n(q.w)} × ${n(q.h)} мм в ${q.wall==='left' ? 'торце у входа' : 'дальнем торце'}${q.pos.length ? ` — для монтажа и демонтажа ${list(q.pos)}` : ''}; открываются наружу (выход), утеплённые, с запорными штангами. ${StationLayout.gateAxis(q)} Проём в торцевой раме — с усилением по расчёту изготовителя.`),
       ...[[true, 'в стене за оборудованием (стоит плотно к стене) — для обслуживания, монтажа и демонтажа'], [false, 'в боковой стене — для монтажа и демонтажа (к торцу не провезти)']].map(([rear, t])=>{
         const D=(p.doors||[]).filter(d=>d.kind!=='entry' && !!d.rear===rear); if (!D.length) return '';
         return `Сервисные распашные ${D.some(d=>d.leaves>1) ? 'ворота' : 'двери'} ${t}: ${D.map(d=>`${n(d.w)} × ${n(d.h)} мм — поз. ${d.pos.join(', ')}`).join('; ')}; утеплённые, с запорными штангами.`; }),
@@ -203,13 +205,15 @@ class StationDrawing {
   /** разрез Б–Б (план) с размерами и номерами позиций (col — колонкой справа, иначе строкой под планом) */
   planBox(k, col){
     const nY=this.ext.length ? 0 : new Set(this.outs.map(o=>o.y)).size, left=19+(this.fit ? 7 : 0)+this.mkL*k, outR=Math.max((nY ? 16+7*(nY-1)+2 : 8)+(col ? 17 : 0)+this.mkR*k, this.swingR*k+12);
-    const top=this.chainTop(k), h=6+top+this.swingB*k+this.We*k+this.swing*k+(col ? 0 : 11)+10+(this.fit ? 7 : 0);
+    const two=!col && this.nPos>1 && (StationDrawing.L1-StationDrawing.L0-10)/(this.nPos-1)<EskdSheet.shelfMin([{ n:this.nPos }]);   // номера — на двух полках
+    const top=this.chainTop(k), h=6+top+this.swingB*k+this.We*k+this.swing*k+(col ? 0 : 11+(two ? 7 : 0))+10+(this.fit ? 7 : 0);
     return { w:left+(this.Le+this.outL)*k+outR, h, left, top };
   }
   /** виды с торцов В и Г рядом: размеры слева (высоты) и снизу (ширина) */
   endsBox(k){
-    const one=this.We*k, hv=(this.He+this.hTop+this.dz)*k, wl=13+(this.rise ? 7 : 0), wr=this.dg ? 13 : 3;
-    return { w:wl+one+16+wl+one+wr, h:9+hv+(this.dg ? 23 : 16), one, hv, wl };
+    const G=this.gts.filter(q=>!q.sea), gR=G.some(q=>q.wall==='right'), gW=G.some(q=>!q.full);
+    const one=this.We*k, hv=(this.He+this.hTop+this.dz)*k, wl=13+(this.rise ? 7 : 0), wr=(this.dg ? 13 : 3)+(gR ? (this.dg ? 6 : 10) : 0);
+    return { w:wl+one+16+wl+one+wr, h:9+hv+(this.dg || gW ? 23 : 16)+(this.dg && gW ? 7 : 0), one, hv, wl };
   }
   /** схема строповки: вид сбоку и с торца рядом (или друг под другом), подписи и знаки */
   slingBox(k, stack){
@@ -253,10 +257,12 @@ class StationDrawing {
   /** лист 1: место по высоте — снизу вверх над основной надписью: ТТ, техническая характеристика, перечень; room — над ними */
   lay1(){
     const C=StationDrawing, tt=this.reqs(), tc=this.tech(), rows=this.rows(), hTT=new EskdSheet('A4').paras(0, 0, 175, tt, 2.5, false);
-    const twoCol=tc.every(t=>EskdSheet.tw(t, 2.5)<=86), nTC=twoCol ? Math.ceil(tc.length/2) : tc.length, hTC=tc.length ? 5+nTC*3.8+0.8 : 0;
+    const twoCol=tc.every(t=>EskdSheet.tw(t, 2.5)<=86), ind=EskdSheet.tw('10. ', 2.5);
+    const tcL=twoCol ? [] : tc.map((t, i)=>EskdSheet.wrap(t, 175-ind, 2.5).map((ln, j)=>({ t:ln, num:j ? '' : `${i+1}. ` }))).flat();   // длинные — с переносом
+    const nTC=twoCol ? Math.ceil(tc.length/2) : tcL.length, hTC=tc.length ? 5+nTC*3.8+0.8 : 0;
     const half=Math.ceil(rows.length/2), hTab=rows.length ? 5+half*4 : 0;
     const yTT=C.TB-2.5-hTT, yTTh=yTT-(tc.length ? 4.6 : 0), yTC=yTTh-hTC, yTab=yTC-(hTab ? hTab+3 : 0);
-    return { tt, tc, rows, twoCol, half, yTT, yTTh, yTC, yTab, room:yTab-3-C.TOP };
+    return { tt, tc, tcL, ind, rows, twoCol, half, yTT, yTTh, yTC, yTab, room:yTab-3-C.TOP };
   }
   /** разрез А–А в наибольшем масштабе, который помещается в room по высоте */
   pickMain(room){ const C=StationDrawing; return C.scaleFor((k, last)=>{ const b=this.mainBox(k); return b.w<=C.L1-C.L0 && b.h<=room || last ? { b } : null; }); }
@@ -270,7 +276,7 @@ class StationDrawing {
   /** лист 1: разрез А–А крупно (не помещается — sepA: на своём листе), над основной надписью — перечень составных частей,
    *  техническая характеристика, ТТ */
   sheet1(total, sepA){
-    const sh=new EskdSheet('A4'), C=StationDrawing, L=this.lay1(), { tt, tc, rows, twoCol, half }=L;
+    const sh=new EskdSheet('A4'), C=StationDrawing, L=this.lay1(), { tt, tc, tcL, ind, rows, twoCol, half }=L;
     // без разреза — текстовая часть сверху листа
     const dy=sepA ? L.yTab-C.TOP-2 : 0, yTT=L.yTT-dy, yTTh=L.yTTh-dy, yTC=L.yTC-dy, yTab=L.yTab-dy;
     if (!sepA){ const pick=this.pickMain(L.room); this.N1=pick.N; this.drawMain(sh, C.TOP, pick); }
@@ -279,7 +285,8 @@ class StationDrawing {
       sh.table(20, yTab, cols, head, H.map(cell), 4, 5, 2.5);
       if (R.length) sh.table(112.5, yTab, cols, head, H.map((x, i)=>cell(R[i])), 4, 5, 2.5); }
     if (tc.length){ sh.text(112.5, yTC+3.9, 'Техническая характеристика', 3.5, { a:'middle' });
-      tc.forEach((t, i)=>{ const r=twoCol ? Math.floor(i/2) : i, c=twoCol ? i%2 : 0; sh.text(25+c*90, yTC+5+(r+1)*3.8-0.6, `${i+1}. ${t}`, 2.5); });
+      if (twoCol) tc.forEach((t, i)=>sh.text(25+(i%2)*90, yTC+5+(Math.floor(i/2)+1)*3.8-0.6, `${i+1}. ${t}`, 2.5));
+      else tcL.forEach((q, r)=>{ const yy=yTC+5+(r+1)*3.8-0.6; if (q.num) sh.text(25, yy, q.num, 2.5); sh.text(25+ind, yy, q.t, 2.5); });
       sh.text(112.5, yTTh+3.9, 'Технические требования', 3.5, { a:'middle' }); }
     sh.paras(25, yTT, 175, tt, 2.5);
     sh.frame(this.tb(1, total, this.N1));
@@ -417,7 +424,11 @@ class StationDrawing {
     sh.dimH(hx, XL(0), yg+8, n(cg.y), Z(cg.z), Z(0), { out:'r' }); sh.dimH(XL(We), XL(0), yg+15, n(We), Z(0), Z(0));
   }
   /** подписи под схемой: знаки (что о них сказано в ГОСТ 14192-96), масса и центр тяжести */
-  legendItems(){ const M=this.ms, n=StationLayout.n, c=M.cg;
+  legendItems(){ const M=this.ms, n=StationLayout.n, c=M.cg, W=M.sling.wll, t=v=>String(v).replace('.', ',');
+    const wl=W ? [`Грузоподъёмность каждой ветви стропа — не менее ${t(W.leg)} т${W.top ? `, ветви стропа рамы траверсы — не менее ${t(W.top)} т` : ''}: S = Q / (n · cos α), в расчёте n = ${W.n} ветви (РД 10-33-93, п. 2.1.4), α = ${W.deg}°.`] : [];
+    return [...this._legend(M, n, c), ...wl];
+  }
+  _legend(M, n, c){
     return ['№ 9 «Место строповки» — у каждой точки строповки, с двух сторон (ГОСТ 14192-96, п. 5.5.1).',
       '№ 12 «Центр тяжести» — на боковой и торцовой стенах в проекции центра тяжести (ГОСТ 14192-96, п. 5.5.2).',
       `Масса станции — около ${n(M.mass)} кг; центр тяжести (ЦТ): X = ${n(c.x)}, Y = ${n(c.y)}, Z = ${n(c.z)} мм — от торца у входа, от лицевой стены, от низа${M.missing.length ? `; без поз. ${M.missing.join(', ')} (масса не указана) — уточняется` : ''}.`]; }
@@ -644,6 +655,18 @@ class StationDrawing {
     if (this.rise){ xd-=7; sh.dimV(Z(He+this.rise), Z(0), xd, n(He+this.rise), (xa+xb)/2, xa); }
     const d=this.dg;
     if (!left && d){ const x1=X(this.oy+d.y0), x2=X(this.oy+d.y1); sh.dimH(x1, x2, this.Yg+15, n(d.w), Z(this.zf), Z(this.zf)); sh.dimV(Z(this.zf+d.h), Z(this.zf), xb+6, n(d.h), x2, x2); }
+    this.gateDims(sh, X, xb, left);
+  }
+  /** ворота в торце: ось торца (штрихпунктирная), ширина и высота проёма; смещённые — ось ворот и размер смещения */
+  gateDims(sh, X, xb, left){
+    const Z=v=>this.Z(v), n=StationLayout.n, two=!left && this.dg, ax=X(this.We/2);
+    for (const q of this.gts.filter(q=>!q.sea && q.wall===(left ? 'left' : 'right'))){
+      const x1=X(this.oy+q.y0), x2=X(this.oy+q.y1), lo=Math.min(x1, x2), hi=Math.max(x1, x2), gx=(lo+hi)/2, yd=this.Yg+(two ? 22 : 15);
+      sh.line(ax, Z(this.He)-3, ax, this.Yg+3, 'axis');
+      if (!q.full) sh.dimH(lo, hi, yd, n(q.w), Z(this.zf), Z(this.zf));
+      if (q.off){ sh.line(gx, Z(this.zf+q.h)-7, gx, this.Yg+3, 'axis'); sh.dimH(Math.min(ax, gx), Math.max(ax, gx), Z(this.zf+q.h)-4, n(Math.abs(q.off)), null, null, { out:gx>ax ? 'r' : 'l' }); }   // над проёмом
+      sh.dimV(Z(this.zf+q.h), Z(this.zf), xb+(two ? 12 : 6), n(q.h), hi, hi);
+    }
   }
   /** стрелка направления взгляда с буквой (ГОСТ 2.305): острие у контура, dir — куда смотрит (±1 по x) */
   viewArrow(sh, x, y, dir, ch){
@@ -708,7 +731,7 @@ class StationDrawing {
     if (this.pipePos){ const l=this.lines.find(q=>!q.header) || this.lines[0], r=l ? [...StationLayout.runs(l)].sort((a, c)=>(c[1]-c[0])-(a[1]-a[0]))[0] : null;
       if (r) A.push({ x:X(ox+(r[0]+r[1])/2), y:YP(oy+l.y), n:this.pipePos.pos }); }
     const xc=(ys.length ? xo-7+5 : xE+10+this.mkR*k)+2;
-    const L=col ? EskdSheet.shelves(A, 'y', yB+8, YP(0)+this.swing*k+4, xc, 7) : EskdSheet.shelves(A, 'x', StationDrawing.L0+2, StationDrawing.L1-8, YP(0)+this.swing*k+8, 9);
+    const L=col ? EskdSheet.shelves(A, 'y', yB+8, YP(0)+this.swing*k+4, xc, 7) : EskdSheet.shelves(A, 'x', StationDrawing.L0+2, StationDrawing.L1-8, YP(0)+this.swing*k+8, 9, YP(0)+this.swing*k+15);
     for (const q of L) sh.pos(q.px, q.py, q.sx, q.sy, q.n, 1);
     // проход: надпись в свободной от выносок части
     if (ai && (ai.y1-ai.y0)*k>3.5){ const lab='Проход обслуживания', lw=EskdSheet.tw(lab, 2.5), yc=YP(oy+(ai.y0+ai.y1)/2)+1.2, xm=X(ox+ai.xm), x0=X(ox+(g.x0||0))+2, x1=xR-2;
@@ -758,23 +781,24 @@ class StationDrawing {
   /** цепочка размеров вдоль задней стены по заднему ряду: отрезки; тесным числам — место выше (до трёх строк) со сдвигом
    *  вбок, без наложений; x — середина числа от внутренней левой грани, мм листа */
   chainPlan(k){
-    const x0=this.g.x0||0, row=this.p.items.filter(i=>i.row===0 && i.mount!=='pipe').sort((a, c)=>a.x-c.x); if (!row.length) return { segs:[], lift:0, tick:false };
+    const x0=this.g.x0||0, row=this.p.items.filter(i=>i.row===0 && i.mount!=='pipe').sort((a, c)=>a.x-c.x); if (!row.length) return { segs:[], lift:0, tick:false, skip:[] };
     const pts=[x0]; for (const it of row) pts.push(it.x, it.x+it.lx); pts.push(this.Li);
-    const xs=[...new Set(pts.map(v=>Math.round(v)))].filter(v=>v>=x0 && v<=this.Li).sort((a, c)=>a-c), busy=[[], [], [], [], [], []], segs=[];
+    const xs=[...new Set(pts.map(v=>Math.round(v)))].filter(v=>v>=x0 && v<=this.Li).sort((a, c)=>a-c), busy=[[], [], [], [], [], []], segs=[], skip=[];
     const free=(lv, x, w)=>!busy[lv].some(([p, q])=>x-w/2-1<q && x+w/2+1>p);
     for (let i=1; i<xs.length; i++){ const a=xs[i-1]*k, c=xs[i]*k, t=StationLayout.n(xs[i]-xs[i-1]), w=EskdSheet.tw(t, 3.5), m=(a+c)/2;
       let lift=0, x=m;
       if (w+1>c-a){ lift=-1; const steps=[0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6];
         found: for (const lv of [1, 2, 3, 4, 5]) for (const s of steps){ const xx=m+s*(w/2+1.2); if (free(lv, xx, w)){ lift=lv; x=xx; break found; } } }
-      if (lift<0) continue;   // мелкий шаг в тесной цепочке — без размера (числа не наезжают друг на друга)
+      if (lift<0){ skip.push(t); continue; }   // мелкий шаг в тесной цепочке — без размера (числа не наезжают), но в перечне над цепочкой
       busy[lift].push([x-w/2, x+w/2]); segs.push({ a:xs[i-1], c:xs[i], t, lift, x }); }
-    return { segs, lift:Math.max(0, ...segs.map(q=>q.lift)), tick:segs.some(q=>(q.c-q.a)*k<2*EskdSheet.AR[0]+1.5) };
+    return { segs, lift:Math.max(0, ...segs.map(q=>q.lift)), tick:segs.some(q=>(q.c-q.a)*k<2*EskdSheet.AR[0]+1.5), skip };
   }
-  /** запас над планом под цепочку размеров, мм */
-  chainTop(k){ const c=this.chainPlan(k); return c.segs.length ? 8+4.6+c.lift*5.1 : 4; }
+  /** запас над планом под цепочку размеров, мм (и строка «не показаны …») */
+  chainTop(k){ const c=this.chainPlan(k); return c.segs.length ? 8+4.6+c.lift*5.1+(c.skip.length ? 4.2 : 0) : 4; }
   chain(sh, y, from){
     const X=v=>this.X(v), ox=this.ox, c=this.chainPlan(this.k), base=X(ox);
     c.segs.forEach((q, i)=>sh.dimH(X(ox+q.a), X(ox+q.c), y, q.t, i ? null : from, from, { lift:q.lift, tick:c.tick, tx:base+q.x }));
+    if (c.skip.length) sh.text(base, y-0.8-c.lift*5.1-5, `Мелкие размеры цепочки не показаны в масштабе: ${c.skip.join('; ')} мм`, 2.5);
   }
   /** проход: [y0, y1] поперёк контейнера, ширина в самом узком месте и где мерить */
   static aisle(plan, Wi){

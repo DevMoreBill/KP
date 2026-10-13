@@ -10,7 +10,8 @@ const ROOT=path.resolve(__dirname, '..', '..');
 global.document={ addEventListener(){} };
 global.uid=(()=>{ let n=0; return ()=>'p'+(++n); })();
 global.attrsOf=d=>Object.assign({}, d.attrs||{});
-const TYPES={ st_comp:{ station:{ main:['comp_screw'] } }, st_dgu:{ station:{ main:['dgu'] } } };
+const TYPES={ st_comp:{ item:'Компрессорная станция', station:{ main:['comp_screw'] } }, st_dgu:{ item:'Дизельная электростанция', station:{ main:['dgu'] } } };
+global.mainLine=x=>{ const a=x.attrs||{}; return [a.flow!=null ? a.flow+' м³/мин' : '', a.pressure!=null ? a.pressure+' бар' : ''].filter(Boolean).join(' · '); };
 global.typeById=id=>TYPES[id]||{};
 global.catCache=[]; global.DEF=()=>null; global.FEAT={ on:()=>true };
 global.esc=s=>String(s??'').replace(/[&<>"]/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
@@ -230,8 +231,20 @@ Check.run('компрессорная: всё проходит, приложен
   assert.ok(R.weak.some(w=>/Потери давления/.test(w.title)), 'потери по правилу — требует подтверждения');
   const G=StationCalc.docGroups(x);
   assert.strictEqual(G[0].name, 'Приложение. Расчётная записка и состав станции');
-  assert.ok(G[0].rows.some(r=>/Компрессор винтовой К-130/.test(r.k) && r.v==='2 шт.'), 'состав станции');
+  assert.ok(G[0].rows.some(r=>r.k==='Состав станции' && /в разделе «Состав изделия»/.test(r.v)), 'состав — ссылкой, без повтора');
+  assert.ok(!G[0].rows.some(r=>/Компрессор винтовой К-130/.test(r.k)), 'состав в приложении не повторяется');
+  x.req=Object.assign({}, x.req, { src:{ name:'ТЗ_Заказчик.pdf' } });
+  assert.ok(!JSON.stringify(StationCalc.docGroups(x)).includes('ТЗ_Заказчик'), 'имя файла ТЗ — не в КП');
   assert.ok(G.some(g=>g.name==='Расчётная записка: осушители'));
+  // «Назначение и состав» — из данных станции; свой блок менеджера — вместо него
+  const D=kitDocItem(x), pf=D.features[0];
+  assert.strictEqual(pf.label, 'Назначение и состав'); assert.ok(/^Компрессорная станция предназначена для выработки/.test(pf.text), pf.text);
+  assert.ok(/Компрессор винтовой К-130 — 2 шт\./.test(pf.text) && /В составе:/.test(pf.text), pf.text);
+  assert.ok(!D.features.some(f=>f.id==='kit_all'), 'перечень состава не повторяется отдельным блоком');
+  assert.ok(!/undefined|NaN|null/.test(pf.text), pf.text);
+  const own=Object.assign({}, x, { features:[{ label:'Назначение', text:'Своё' }] });
+  assert.ok(!kitDocItem(own).features.some(f=>f.id==='st_purpose') && kitDocItem(own).features.some(f=>f.id==='kit_all'), 'свой блок — без шаблона');
+  assert.ok(!/В составе/.test(kitDocData(x).base.features[0].text), 'шаблон со своим составом — без перечня');
   assert.ok(kitDocItem(x).groups.some(g=>g.name==='Расчётная записка: производительность'), 'в документе КП');
   x.stLayout.calc=false; assert.deepStrictEqual(StationCalc.docGroups(x), [], 'выключено — не в КП');
 });
@@ -324,6 +337,35 @@ Check.run('подбор осушителя по ТЗ — с поправками
     assert.ok(kitParts(x).some(p=>/DK 1450/.test(p.name)), note);
     assert.ok(/с поправками 13,1/.test(note), note);
   });
+});
+
+Check.run('характеристики станции: без NaN и дробного «мусора», ручные строки сохраняются', ()=>{
+  global.numOf=v=>{ if (typeof v==='number') return v; const m=String(v??'').replace(/\s/g, '').replace(',', '.').match(/-?\d+(\.\d+)?/); return m ? +m[0] : null; };
+  assert.strictEqual(StationAutoVal.of('1,1', 3), 3.3, '1,1 × 3 = 3,3, а не 3,3000000000000003');
+  assert.strictEqual(StationAutoVal.of('8–10', 2), '16–20', 'диапазон × 2');
+  assert.strictEqual(StationAutoVal.of('8–10'), '8–10', 'диапазон — как есть');
+  assert.strictEqual(StationAutoVal.of('нет данных', 2), 'нет данных', 'текст без числа — не NaN');
+  const old=[{ name:'Основные', rows:[{ k:'Подача', v:'10' }, { k:'Давление', v:'8' }] }];
+  const cur=[{ name:'Основные', rows:[{ k:'Подача', v:'10' }, { k:'Давление', v:'7,5' }, { k:'Своя строка', v:'x' }] }];
+  const now=[{ name:'Основные', rows:[{ k:'Подача', v:'20' }, { k:'Давление', v:'10' }, { k:'Масса', v:'900' }] }];
+  assert.deepStrictEqual(StationAutoVal.merge(cur, old, now)[0].rows.map(r=>r.k+'='+r.v), ['Подача=20', 'Давление=7,5', 'Масса=900', 'Своя строка=x'],
+    'автоматические — новые, правленые и свои — менеджера');
+});
+
+Check.run('режим «эксперт»: отметка «вручную», сброс к правилам, журнал правок', ()=>{
+  global.S={ manager:{ name:'Иванов И. И.' } };
+  const x=station('st_comp', { ventK:'0,8' }, []);
+  ExpertLog.note(x); assert.deepStrictEqual(x.req.xlog, undefined, 'первый снимок — без записи в журнал');
+  assert.ok(/вручную/.test(ExpertLog.mark(x, 0, 'ventK')) && ExpertLog.mark(x, 0, 'ventTin')==='', 'отметка только у заданного');
+  x.req.ventTin='45'; ExpertLog.note(x);
+  assert.deepStrictEqual(x.req.xlog.map(e=>[e.k, e.from, e.to, e.who]), [['ventTin', '', '45', 'Иванов И. И.']]);
+  ExpertLog.reset(x, ['ventK', 'ventTin', 'notes']);
+  assert.ok(x.req.ventK==null && x.req.ventTin==null, 'сброшено к правилам');
+  assert.deepStrictEqual(x.req.xlog.slice(1).map(e=>[e.k, e.from, e.to]), [['ventK', '0,8', ''], ['ventTin', '45', '']]);
+  assert.ok(/Журнал правок \(3\)/.test(ExpertLog.foot(x, 0, ExpertLog.VENT())), 'журнал в блоке');
+  for (let n=0; n<60; n++){ x.req.gateOff=String(n); ExpertLog.note(x); }
+  assert.strictEqual(x.req.xlog.length, ExpertLog.MAX, 'журнал ограничен');
+  assert.ok(!('xlog' in StationReq.plan(x)) && !/xlog|_xs/.test(JSON.stringify(StationReq.plan(x))), 'журнал не влияет на компоновку');
 });
 
 process.on('beforeExit', ()=>{ if (!process.exitCode) console.log('расчёт станции: проверок пройдено — '+Check.n); });

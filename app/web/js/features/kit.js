@@ -101,9 +101,9 @@ function stationAuto(x){
   if (P.length && ms.every(v=>v>0)) out.mass=Math.round(ms.reduce((a,b)=>a+b,0));
   for (const f of t.fields){ if (['container','climate','tmin','size','mass'].includes(f.key)) continue;
     if (f.key==='kw' && /установленн/i.test(f.label)){ const s=P.reduce((a,p)=>{ const n=numOf(pa(p).kw); return n>0 ? a+n*q(p) : a; },0); if (s>0) out.kw=Math.round(s*10)/10; continue; }
-    if (m && pa(m)[f.key]!=null && pa(m)[f.key]!==''){ const v=pa(m)[f.key]; out[f.key]=f.num ? ((numOf(v)??v)*(f.key==='flow'?q(m):1)) : v; continue; }
+    if (m && pa(m)[f.key]!=null && pa(m)[f.key]!==''){ const v=pa(m)[f.key]; out[f.key]=f.num ? StationAutoVal.of(v, f.key==='flow' ? q(m) : 1) : v; continue; }
     if (STATION_MAIN_KEYS.includes(f.key)) continue;      // подача, давление, напор, мощность ДГУ — только основного оборудования
-    const o=P.find(p=>p!==m && pa(p)[f.key]!=null && pa(p)[f.key]!==''); if (o) out[f.key]=f.num ? (numOf(pa(o)[f.key])??pa(o)[f.key]) : pa(o)[f.key]; }
+    const o=P.find(p=>p!==m && pa(p)[f.key]!=null && pa(p)[f.key]!==''); if (o) out[f.key]=f.num ? StationAutoVal.of(pa(o)[f.key]) : pa(o)[f.key]; }
   return out;
 }
 function stationFill(x){
@@ -119,6 +119,52 @@ function stationFill(x){
   if (!String(x.spec||'').trim() || x.spec===x._saSpec){ x.spec=spec; x._saSpec=spec; }
   const g=StationSpec.groups(x, groupsFromAttrs(x).filter(z=>z.rows.length)), gs=JSON.stringify(x.groups||[]);
   if (!(x.groups||[]).some(z=>(z.rows||[]).some(r=>r.k||r.v)) || gs===x._saG){ x.groups=g; x._saG=JSON.stringify(g); }
+  else if (x._saG){ x.groups=StationAutoVal.merge(x.groups, JSON.parse(x._saG), g); x._saG=JSON.stringify(g); }   // правили вручную — автоматические строки обновить, свои оставить
+}
+/** связный текст «Назначение и состав» станции — только из её данных (вид, основное оборудование, параметры, состав,
+ *  контейнер и исполнение), без выдуманных значений; в КП — если менеджер не написал свой блок «Назначение…» */
+class StationPurpose {
+  static LABEL='Назначение и состав';
+  static WHAT={ comp:'выработки, подготовки (осушки и очистки) и подачи сжатого воздуха потребителям', dgu:'электроснабжения объекта',
+    pump:'перекачки жидкости с заданными подачей и напором' };
+  /** есть ли у станции свой блок назначения (вписан менеджером или ИИ) */
+  static own(x){ return (x.features||[]).some(f=>/назначени/i.test(String(f.label||'')) && String(f.text||'').trim()); }
+  /** list — перечислить остальной состав (в документе без раздела «Состав изделия» шаблона) */
+  static text(x, list=true){
+    const t=typeById(attrsOf(x).cat); if (!t.station) return '';
+    const m=kitMainPart(x), c=kitContainer(x), nm=p=>String(p.name||'').trim(), qn=p=>((+p.qty||1)>1 ? ` — ${p.qty} шт.` : '');
+    const rest=kitParts(x).filter(p=>p!==m && p.role!=='container' && nm(p)), kpi=mainLine(x, 4), out=[];
+    out.push(`${t.item||t.name} предназначена для ${this.WHAT[StationReq.kind(x)]||'работы в составе объекта заказчика'}.`);
+    if (m && nm(m)) out.push(`Основное оборудование — ${nm(m)}${qn(m)}.`);
+    if (kpi) out.push(`Основные параметры: ${kpi}.`);
+    if (list && rest.length) out.push(`В составе${m && nm(m) ? ' также' : ''}: ${rest.map(p=>nm(p)+qn(p)).join('; ')}.`);
+    if (c){ const ct=ctypeOf(c.ctype), cl=[c.climate ? `климатическое исполнение ${c.climate}` : '', c.ins ? `утепление ${c.ins}` : ''].filter(Boolean).join(', ');
+      out.push(`Оборудование размещено в контейнере: ${String(ct.name||'').toLowerCase()}${cl ? `; ${cl}` : ''}.`); }
+    return out.join(' ');
+  }
+  /** блок описания для документа КП или null */
+  static feature(x, list=true){ if (this.own(x)) return null; const text=this.text(x, list); return text ? { id:'st_purpose', label:this.LABEL, text } : null; }
+}
+/** значения, подставляемые в станцию из её оборудования */
+class StationAutoVal {
+  /** число поля × k (подача — на число агрегатов): без дробного «мусора»; диапазон «8–10» — диапазоном; текст без числа — как есть */
+  static of(v, k=1){
+    const s=String(v??'').trim(), R=s.replace(/\s/g, '').replace(/,/g, '.').match(/^(\d+(?:\.\d+)?)[–—-](\d+(?:\.\d+)?)$/);
+    if (R) return k===1 ? s : `${this.r(R[1]*k)}–${this.r(R[2]*k)}`;
+    const n=numOf(s); return n==null || !Number.isFinite(n) ? s : this.r(n*k);
+  }
+  static r(v){ return Math.round(v*1000)/1000; }
+  /** таблица характеристик: новые автоматические строки + строки менеджера (новые или изменённые им — по разделу и названию);
+   *  автоматическая строка, которую не трогали, — берётся новая (или пропадает вместе с оборудованием) */
+  static merge(cur, old, now){
+    const key=(g, r)=>`${g.name||''}\u0001${r.k||''}`, auto=new Map(); for (const g of old||[]) for (const r of g.rows||[]) auto.set(key(g, r), String(r.v??''));
+    const out=now.map(g=>({ ...g, rows:g.rows.map(r=>({ ...r })) }));
+    for (const g of cur||[]) for (const r of g.rows||[]){ if (!(r.k||r.v)) continue; const k=key(g, r);
+      if (auto.has(k) && auto.get(k)===String(r.v??'')) continue;
+      let G=out.find(z=>(z.name||'')===(g.name||'')); if (!G){ G={ ...g, rows:[] }; out.push(G); }
+      const i=G.rows.findIndex(z=>(z.k||'')===(r.k||'')); if (i>=0 && r.k) G.rows[i]={ ...r }; else G.rows.push({ ...r }); }
+    return out;
+  }
 }
 // таблица характеристик станции: вместо «Производитель / Модель», угаданных по названию станции («EAGLE»), —
 // строка основного оборудования «Компрессор: Dalgakiran EAGLE 315W»
@@ -255,7 +301,8 @@ class KitCabinet {
 class StationDefaults {
   static TANKS = [500, 1000, 1500, 2000, 3000];   // типовые объёмы дополнительного бака, л
   static FUEL = /топливн\S* бак|дополнительн\S* бак|бак топлив/i;   // топливный бак ДГУ (не бак для воды)
-  static LPH = 0.25;                              // расход дизельного топлива, л на кВт·ч (около 210 г/кВт·ч)
+  static get LPH(){ return StationRules.ok() ? StationRules.raw('dgu.lph') : 0.25; }       // расход топлива, л на кВт·ч (файл правил)
+  static get LOAD(){ return StationRules.ok() ? StationRules.raw('dgu.fuel_load') : 0.75; }  // нагрузка по умолчанию (файл правил)
   static TEXT = [
     [/глушител/i, 'Глушитель выхлопа на крыше контейнера, на опорах: сильфонный компенсатор, термоизоляция выхлопной трубы, дождевой колпак. На время перевозки снимается.', [['Установка', 'на крыше контейнера']]],
     [StationDefaults.FUEL, 'Дополнительный топливный бак для увеличения времени автономной работы ДГУ: датчик уровня, заливная горловина, дыхательный клапан, поддон, подключение к топливной системе ДГУ.', []],
@@ -279,13 +326,13 @@ class StationDefaults {
     if (!String(p.desc||'').trim()) p.desc=t[1];
     p.rows=p.rows||[]; for (const [k, v] of t[2]) if (!p.rows.some(r=>r.k===k)) p.rows.push({ k, v });
     if (this.FUEL.test(p.name) && !p.rows.some(r=>/объ[её]м/i.test(r.k))){ const kw=this.kw(it), v=this.tank(kw);
-      p.rows.push({ k:'Объём', v:v+' л' }); if (kw) p.rows.push({ k:'Время работы ДГУ от бака при нагрузке 75 %', v:'около '+Math.round(v/(kw*0.75*this.LPH))+' ч' }); }
+      p.rows.push({ k:'Объём', v:v+' л' }); if (kw) p.rows.push({ k:`Время работы ДГУ от бака при нагрузке ${Math.round(this.LOAD*100)} %`, v:'около '+Math.round(v/(kw*this.LOAD*this.LPH))+' ч' }); }
     return p;
   }
   static kw(it){ const d=kitParts(it).find(p=>StationEquip.kindOf(p)==='dgu'); return d ? StationEquip.num((d.attrs||{}).kw) : null; }
   /** объём бака, л: на hours ч работы при нагрузке 75 % (по умолчанию 16 ч, с баком ДГУ — около суток), ближайший типовой;
    *  больше типовых — с округлением до 500 л */
-  static tank(kw, hours=16){ if (!(kw>0)) return 1000; const need=kw*0.75*this.LPH*hours; return this.TANKS.find(v=>v>=need) || Math.ceil(need/500)*500; }
+  static tank(kw, hours=16){ if (!(kw>0)) return 1000; const need=kw*this.LOAD*this.LPH*hours; return this.TANKS.find(v=>v>=need) || Math.ceil(need/500)*500; }
   /** бак станции — под время работы из требований (ТЗ): объём и строка «время работы». С расчётом станции (GensetSizing) —
    *  по расходу ДГУ на нагрузке из требований с запасом, за вычетом бака ДГУ (как в расчётной записке); без него — 75 %, 0,25 л/кВт·ч */
   static retank(it, hours){
@@ -300,9 +347,9 @@ class StationDefaults {
     if (!(kw>0) || !(hours>0)) return null;
     const fp=typeof GensetSizing!=='undefined' && StationRules.ok() ? GensetSizing.plan(it) : null;
     if (fp){ const L=Math.max(0, fp.need-fp.built), v=L>0 ? this.TANKS.find(t=>t>=L) || Math.ceil(L/500)*500 : this.TANKS[0];
-      return { v, rows:[{ k:'Объём', v:v+' л' }, { k:`Время работы ДГУ от баков (с баком ДГУ) при нагрузке ${Math.round(fp.x*100)} %`, v:'около '+Math.floor((v+fp.built)/(fp.c*fp.n))+' ч' }] }; }
+      return { v, rows:[{ k:'Объём', v:v+' л' }, { k:`Время работы ДГУ от баков (с баком ДГУ) при нагрузке ${Math.round(fp.x*100)} %`, v:'около '+Math.floor((v+fp.built)/fp.c)+' ч' }] }; }
     const v=this.tank(kw, hours);
-    return { v, rows:[{ k:'Объём', v:v+' л' }, { k:'Время работы ДГУ от бака при нагрузке 75 %', v:'около '+Math.round(v/(kw*0.75*this.LPH))+' ч' }] };
+    return { v, rows:[{ k:'Объём', v:v+' л' }, { k:`Время работы ДГУ от бака при нагрузке ${Math.round(this.LOAD*100)} %`, v:'около '+Math.round(v/(kw*this.LOAD*this.LPH))+' ч' }] };
   }
 }
 
@@ -318,8 +365,9 @@ function kitDocItem(x){
   const gal=parts.filter(p=>p.photo&&p.photo.src&&feats.some(f=>f.id==='kit_'+p.id)).map(p=>({id:'kitg_'+p.id, src:p.photo.src, w:p.photo.w, h:p.photo.h, caption:p.name.trim(), slot:'', at:'feat:kit_'+p.id, on:true}));
   const docs=SupplyDocs.feature(x);   // станция: документы при поставке — последним блоком
   const calc=typeof StationCalc!=='undefined' ? StationCalc.docGroups(x) : [];   // приложение «Расчётная записка и состав станции»
+  const pur=StationPurpose.feature(x);   // станция: связный текст назначения вместе с составом — вместо голого перечня
   return { ...x, page:true, spec:x.spec||('В составе: '+parts.map(p=>p.name.trim()).join(', ')).slice(0,200),
-    features:[...(x.features||[]).filter(f=>f.label||f.text), list, ...feats, ...(docs ? [docs] : [])], groups:[...(x.groups||[]), ...groups, ...calc], gallery:[...(x.gallery||[]), ...gal] };
+    features:[...(pur ? [pur] : []), ...(x.features||[]).filter(f=>f.label||f.text), ...(pur ? [] : [list]), ...feats, ...(docs ? [docs] : [])], groups:[...(x.groups||[]), ...groups, ...calc], gallery:[...(x.gallery||[]), ...gal] };
 }
 
 // состав для шаблона, умеющего сборки (feature 'kit'): элементы как есть (без закупки и поставщика) и описание изделия
@@ -329,7 +377,8 @@ function kitDocData(x){
     rows:(p.rows||[]).filter(r=>r.k&&r.v).map(r=>({k:r.k, v:r.v})), maker:(p.attrs&&p.attrs.maker)||'', model:(p.attrs&&p.attrs.model)||''}));
   const docs=SupplyDocs.feature(x);
   const calc=typeof StationCalc!=='undefined' ? StationCalc.docGroups(x) : [];   // приложение «Расчётная записка и состав станции»
-  return { parts, base:{ page:true, spec:x.spec||'', features:[...(x.features||[]).filter(f=>f.label||f.text), ...(docs ? [docs] : [])], groups:[...(x.groups||[]), ...calc], gallery:x.gallery||[] } };
+  const pur=StationPurpose.feature(x, false);   // состав шаблон покажет сам
+  return { parts, base:{ page:true, spec:x.spec||'', features:[...(pur ? [pur] : []), ...(x.features||[]).filter(f=>f.label||f.text), ...(docs ? [docs] : [])], groups:[...(x.groups||[]), ...calc], gallery:x.gallery||[] } };
 }
 
 // строки закупки для экономики сделки: элемент сборки — своя строка (своя валюта и поставщик); обычная позиция — как есть

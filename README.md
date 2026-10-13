@@ -526,6 +526,25 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.78.0 — станции: исправления по аудиту (ввод, насосы, ДГУ, ворота, эксперт, описание, изображения, масса):**
+- Ввод требований — `ReqNum` (kit-view.js): единый разбор чисел (запятая, минус, пробелы), диапазоны `ReqNum.R`, ошибка под
+  полем (`.f-err`), блокирующие ошибки «Требования: …» в `StationCalc.errors` (их не снимает «отклонение согласовано»).
+- Насосы — `PumpSizing` (station-calc.js): подача, напор рабочих после резерва, NPSH: давление пара по Антуану (`pump.antoine`),
+  потери всасывания `pump.suct_loss`, запас `pump.npsh`; `TzPick.pumpOk` — без мотопомп, погружных, дренажных, с ДВС.
+- ДГУ — `GensetSizing.cap/kva`, `fuelPlan` по каждой ДГУ, `TANK_MAX` 4 500 л, `dgu.cos`, `dgu.site`, `dgu.minload`
+  (требуют подтверждения); `TzPick.dguOk` — без однофазных.
+- Ворота — `StationLayout.gateAxis`, проём по оси торца, смещение только если агрегат шире полосы прохода не провезти или
+  `req.gate {off, why}` («эксперт»); `StationDrawing.gateDims` — ось торца, ширина, высота, смещение на видах В и Г.
+- «Эксперт» — `ExpertLog` (kit-view.js): `mark`, `foot`, `reset`, журнал `req.xlog` (до 40 записей); `SettingsHistory.KEYS`
+  + `stationRules` (откат своей версии правил).
+- Описание — `StationAutoVal.of/merge` (kit.js), `StationPurpose` («Назначение и состав»); приложение без повтора состава и
+  без имени файла ТЗ; `cover.png` по формату картинки.
+- Изображения — `StationImages.issues/problems/confirmSave`; `StationRender.brandKey`, повтор WebGL до `FAILS` (3) сбоев;
+  `EskdSheet.shelves(…, at2)` и `shelfMin`; `chainPlan().skip`; перенос строк технической характеристики.
+- Масса — `StationMass.max` (`mass.iso_max`, требует подтверждения), `wll` (`sling.legs` = 2, РД 10-33-93 п. 2.1.4),
+  `issues`. Правила `2026.10.13-2`.
+- Проверки: `tests/js/station_calc.js` (22), `tests/js/station_layout.js` (45), `tests/test_station_rules.py` (история правил).
+
 **3.77.0 — станции: сбалансированная вентиляция (жалюзи в 4–5 раз меньше):**
 - `VentCalc.summer` (station-systems.js): воздух охлаждения — паспорт или L = Q·3600/(c·ρ·Δt_к), Δt_к = `heat.cool_dt` (15 °C,
   «эксперт» `dtc`); помещение — перепадом t_вн − t_нар; приток — один поток `Lrun = max(Lcool, Lroom)` + воздух на сжатие,

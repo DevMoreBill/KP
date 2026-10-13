@@ -299,6 +299,9 @@ class StationEquip {
   }
 
   static num(v){ const n=parseFloat(String(v??'').replace(/\s+/g, '').replace(',', '.')); return Number.isFinite(n) ? n : null; }
+  /** число из поля каталога; диапазон или «до 40» — по верхней границе: {v, range} (null — нет числа) */
+  static top(v){ const n=this.num(v); if (n!=null && /^\s*[\d.,\s]+\s*$/.test(String(v))) return { v:n, range:false };
+    const L=(String(v??'').match(/\d[\d\s]*(?:[.,]\d+)?/g)||[]).map(t=>this.num(t)).filter(x=>x!=null); return L.length ? { v:Math.max(...L), range:true } : null; }
   /** расход воздуха из паспорта, м³/ч: cool — на охлаждение (компрессор — охладитель, ДГУ — радиатор), comb — на горение;
    *  нет строки — null (расчёт по мощности) */
   static airRows(p){
@@ -347,7 +350,8 @@ class StationEquip {
     if (kind==='compressor') return kw==null||kw<=15 ? [1000, 700, 1100] : kw<=37 ? [1400, 900, 1500] : kw<=90 ? [2000, 1100, 1800] : [2700, 1500, 2000];
     if (kind==='dgu') return kw==null||kw<=30 ? [1800, 800, 1300] : kw<=100 ? [2500, 1000, 1600] : kw<=250 ? [3200, 1200, 1900] : kw<=500 ? [4000, 1600, 2200] : [5200, 2000, 2400];
     if (kind==='receiver'){ const v=vol||500, d=v<=300 ? 550 : v<=600 ? 650 : v<=1100 ? 800 : v<=2200 ? 1000 : 1200, h=v<=300 ? 1600 : v<=600 ? 2000 : v<=1100 ? 2300 : v<=2200 ? 2900 : 3100; return [d, d, h]; }
-    if (kind==='tank'){ const v=this.num(a.tank)||vol||1000, l=Math.round(Math.max(800, Math.min(3000, v/0.8))/50)*50; return [l, 800, 1000]; }
+    // бак: сечение 800 × 1000 мм до 2 400 л, больше — 1 000 × 1 500 мм; длина — по объёму (до 3 000 мм; больше — замечание в расчёте)
+    if (kind==='tank'){ const v=this.num(a.tank)||vol||1000, big=v>2400, A=big ? 1.5 : 0.8, l=Math.round(Math.max(800, Math.min(3000, v/A))/50)*50; return big ? [l, 1000, 1500] : [l, 800, 1000]; }
     if (kind==='muffler') return this.guessMuffler(kw);
     if (kind==='cabinet') return this.cabWord(p)==='floor' ? [800, 400, 1800] : [600, 250, 800];   // настенный — по умолчанию
     return { dryer:[900, 600, 1100], filter:[300, 300, 900], pump:[800, 500, 700] }[kind] || [800, 600, 1000];
@@ -1006,6 +1010,9 @@ class StationLayout {
   static PAD = 100;          // бетонная площадка под ресивером снаружи: высота над землёй, мм; выступ за ресивер — 200 мм
 
   static solve(input){ return new StationLayout(input).run(); }
+  /** положение ворот в торце одной фразой: по оси торца, или смещены — на сколько и почему (вручную — с причиной менеджера) */
+  static gateAxis(q){ if (!q || q.sea) return ''; if (q.full) return 'Ворота во весь торец — по оси торца.';
+    return q.off ? `Ворота смещены от оси торца на ${this.n(Math.abs(q.off))} мм${q.offWhy ? ` — ${q.manual ? 'причина: ' : ''}${q.offWhy.replace(/^смещены на \S+ мм от оси торца /, '')}` : ' — причина не указана'}.` : 'Ворота — по оси торца.'; }
 
   /** отпечаток всего, от чего зависит компоновка: изменился — чертёж и 3D-вид пора обновить */
   static hash(input){
@@ -1063,7 +1070,7 @@ class StationLayout {
     const geo=this.geoOf(this.cont);
     let plan=geo.auto ? this.autoSize(units, geo) : this.fit(units, geo);
     if (plan.level==='error' && !geo.auto) plan.suggest=this.suggest(units, geo);   // какой контейнер нужен (с проходом)
-    else if (plan.level!=='error' && !geo.auto) this.excess(units, geo, plan);
+    else if (plan.level!=='error' && !geo.auto && !this.in._grow) this.excess(units, geo, plan);
     if (plan.level!=='error' && plan.items && plan.items.length){ plan.roof=this.roof(plan); plan.piping=this.route(plan); plan.outside=this.outside(plan, extra.some(e=>e.kind==='chassis')); }
     // «не помещается» точно, если не помещается и без оборудования с условными габаритами; иначе — лишь оценка (assumed)
     if (plan.level==='error' && units.some(e=>!e.known)){ const k=units.filter(e=>e.known);
@@ -1075,13 +1082,29 @@ class StationLayout {
     plan.req=this.in.req||null; plan.climate=(this.cont && this.cont.climate)||'';
     if (plan.geo && plan.geo.ext) plan.geo.rise=StationGeo.rise(plan.geo.roof, plan.geo.ext[1]);
     if (plan.level!=='error' && plan.geo && plan.geo.ext && plan.int){ plan.heat=StationHeat.calc(plan); plan.fire=StationFire.calc(plan);
-      plan.light=StationLight.calc(plan); plan.sockets=StationSockets.calc(plan); plan.power=StationPower.calc(plan); plan.pipe=StationPipe.calc(plan); plan.mass=StationMass.calc(plan);
+      plan.light=StationLight.calc(plan); plan.sockets=StationSockets.calc(plan); plan.power=StationPower.calc(plan); plan.pipe=StationPipe.calc(plan); plan.mass=StationMass.calc(plan); plan.issues.push(...StationMass.issues(plan.mass));
       plan.vent=StationVent.calc(plan);   // жалюзи: размеры по расходу воздуха, места — мимо дверей, шкафов, конвекторов и знаков
       if (plan.fire.low) plan.issues.push({ level:'info', text:`Высота помещения ${StationLayout.n(plan.int[2])} мм — ниже паспортной высоты установки модулей «Буран-2,5» (2,5–3,5 м): зона тушения — по диаграмме распыла изготовителя при этой высоте (согласовать с проектировщиком пожаротушения).` });
       const pq=plan.pipe; if (pq && pq.small) plan.issues.push({ level:'warn', text:`Трубопровод DN ${pq.set} меньше расчётного DN ${pq.dn} (${pq.why}): скорость больше ${String(pq.lines[0].v).replace('.', ',')} м/с — потери давления и шум. Укажите DN ${pq.dn} в составе станции.` }); }
     if (plan.level!=='error') StationNorms.check(plan, this.eq);
     this.notes(plan);
     if (plan.level==='ok' && plan.issues.some(i=>i.level==='warn')) plan.level='warn';
+    return this.grow(plan, geo);
+  }
+  /** размер «по оборудованию»: жалюзи притока или выброса не поместились на стенах — контейнер длиннее (поиск шагами по
+   *  500 мм, затем наименьшая длина с шагом 100 мм; до +3 000 мм и не длиннее наибольшего); не вышло — как есть (с замечанием) */
+  grow(plan, geo){
+    const V=plan.vent; if (!geo.auto || this.in._grow || plan.level==='error' || !V || !(V.short.in>0 || V.short.out>0) || !plan.geo || !plan.geo.ext) return plan;
+    const [L0, W, H]=plan.geo.ext, S=StationGeo.STEP;
+    const at=Lx=>{ const p=new StationLayout({ ...this.in, _grow:true, cont:{ ...this.cont, size:`${Lx} × ${W} × ${H}`, sizeAuto:false } }).run();
+      return p.level==='error' || !p.vent || p.vent.short.in>0 || p.vent.short.out>0 ? null : p; };
+    for (let Lx=L0+5*S; Lx<=Math.min(StationLayout.MAX_L, L0+30*S); Lx+=5*S){
+      let p=at(Lx); if (!p) continue;
+      for (let L2=Lx-4*S; L2<Lx; L2+=S){ const q=L2>L0 ? at(L2) : null; if (q){ p=q; Lx=L2; break; } }   // наименьшая длина — с шагом 100 мм
+      p.geo.auto=true; p.picked=true;
+      p.issues.push({ level:'info', text:`Длина контейнера ${StationLayout.n(Lx)} мм (по оборудованию — ${StationLayout.n(L0)} мм): так помещаются жалюзи притока и выброса.` });
+      return p;
+    }
     return plan;
   }
 
@@ -1365,7 +1388,7 @@ class StationLayout {
     { const E=this.entryOpen(geo, r.door), G=r.gates, two=r.doors.some(d=>d.kind==='entry') || r.exit || (G && G.wicket) || (r.gates2 && r.gates2.wicket) || r.secondDgu;
       const who=`дверь оператора — ${r.door==='end' && geo.sea ? 'штатные двери в торце' : `одностворчатая, ${n(E.w)} × ${n(E.h)} мм в свету, открывается наружу, с доводчиком`}`;
       for (const q of [G, r.gates2]) if (q && (q.pos.length || !q.sea)) r.issues.push({ level:'info', text:q.sea ? `Монтаж и демонтаж поз. ${q.pos.join(', ')} — через штатные двери контейнера в торце (${n(q.w)} × ${n(q.h)} мм): ${q.why.join('; ')}.`
-        : `Распашные монтажные ворота ${q.full ? 'во весь торец ' : ''}${n(q.w)} × ${n(q.h)} мм в ${q.wall==='left' ? 'торце у входа' : 'дальнем торце'}, открываются наружу (это и выход)${q.pos.length ? ` — для монтажа и демонтажа поз. ${q.pos.join(', ')}` : ' — для монтажа и демонтажа оборудования'}${q.why.length ? ': '+q.why.join('; ') : ''}.` });
+        : `Распашные монтажные ворота ${q.full ? 'во весь торец ' : ''}${n(q.w)} × ${n(q.h)} мм в ${q.wall==='left' ? 'торце у входа' : 'дальнем торце'}, открываются наружу (это и выход)${q.pos.length ? ` — для монтажа и демонтажа поз. ${q.pos.join(', ')}` : ' — для монтажа и демонтажа оборудования'}${q.why.length ? ': '+q.why.join('; ') : ''}. ${StationLayout.gateAxis(q)} Проём в торцевой раме — с усилением (ригель над проёмом, стойки по краям) по расчёту изготовителя контейнера.` });
       // одинаковые ворота (несколько одинаковых агрегатов) — одной строкой с числом
       const sv=new Map(); for (const d of r.doors.filter(d=>d.kind!=='entry')){
         const t=`${d.leaves>1 ? 'Сервисные распашные ворота' : 'Сервисная распашная дверь'} ${n(d.w)} × ${n(d.h)} мм в ${d.wall==='back' ? 'задней' : 'боковой'} стене${d.rear ? ' за оборудованием' : ''}`;
@@ -1674,6 +1697,12 @@ class StationLayout {
     return { wall:'left', y0, y1:y0+w, w, h:D.h };
   }
   /** середина прохода поперёк контейнера, мм: один ряд — между стеной прохода и оборудованием, два ряда — между рядами */
+  /** полоса прохода поперёк контейнера [от, до], мм: один ряд — от передней стены до оборудования, два — между рядами */
+  aisleBand(r, W){
+    const fl=r.items.filter(i=>(i.mount==='floor' || i.mount==='frame') && !i.tank && !i.cross); if (!fl.length) return [0, W];
+    if (r.rows!==2) return [0, Math.min(...fl.map(i=>i.y))];
+    const A=fl.filter(i=>i.row===1), B=fl.filter(i=>i.row!==1); return [A.length ? Math.max(...A.map(i=>i.y+i.ly)) : 0, B.length ? Math.min(...B.map(i=>i.y)) : W];
+  }
   aisleMid(r, W){
     const fl=r.items.filter(i=>(i.mount==='floor' || i.mount==='frame') && !i.tank && !i.cross); if (!fl.length) return W/2;
     if (r.rows!==2) return Math.min(...fl.map(i=>i.y))/2;
@@ -1744,8 +1773,16 @@ class StationLayout {
       const nw=Math.max(0, ...U.map(i=>Math.min(i.l, i.w))), hh=Math.max(0, ...U.map(i=>i.h));
       let w=Math.max(GM.minW, Math.ceil((nw+GM.addW+2*T)/100)*100); const full=w>=GM.full*W || w>W-2*D.pad;
       if (full) w=W-2*D.pad;
-      const y0=full ? D.pad : Math.round(Math.max(D.pad, Math.min(W-D.pad-w, this.aisleMid(r, W)-w/2)));
-      return { wall:s, y0, y1:y0+w, w, h:Math.min(H-100, Math.max(D.h+100, Math.ceil((hh+GM.addH+T)/50)*50)), leaves:2, pos:[], why:[], full }; };
+      // по оси торца (решение ПНЕВМОТЕХ 13.10); смещение — только если агрегат по проходу у стены к центральным воротам не
+      // провезти (проём над проходом уже агрегата с зазорами) — на наименьшее нужное, с причиной; вручную — «эксперт» (gate.off)
+      const yc=Math.round((W-w)/2), band=this.aisleBand(r, W), needW=nw+2*StationLayout.PASS, lap=y=>Math.min(y+w, band[1])-Math.max(y, band[0]);
+      let y0=full ? D.pad : yc, off=0, why='';
+      if (!full && U.length && needW<=band[1]-band[0]+1e-9 && lap(yc)<needW-1e-9){ const y=band[1]<=W/2 ? Math.min(yc, band[1]-needW) : Math.max(yc, band[0]+needW-w);
+        y0=Math.round(Math.max(D.pad, Math.min(W-D.pad-w, y))); off=y0-yc;
+        if (off) why=`смещены на ${n(Math.abs(off))} мм от оси торца к проходу у ${band[1]<=W/2 ? 'передней' : 'задней'} стены: агрегат шириной ${n(nw)} мм провозят по проходу ${n(Math.round(band[1]-band[0]))} мм, по оси торца проём над проходом уже агрегата`; }
+      const G0=(this.in.req && this.in.req.gate)||{};
+      if (!full && Number.isFinite(G0.off) && G0.off){ y0=Math.round(Math.max(D.pad, Math.min(W-D.pad-w, yc+G0.off))); off=y0-yc; why=String(G0.why||'').trim(); }
+      return { wall:s, y0, y1:y0+w, w, h:Math.min(H-100, Math.max(D.h+100, Math.ceil((hh+GM.addH+T)/50)*50)), leaves:2, pos:[], why:[], full, off, offWhy:why, manual:!!(Number.isFinite(G0.off) && G0.off) }; };
     if (best){ const ok=best.ok;
       if (!r.gates) r.gates=mk(best.s, ok);
       for (const b of ok) if (!r.gates.pos.includes(b.it.pos)){ r.gates.pos.push(b.it.pos); r.gates.why.push(b.why); } }
