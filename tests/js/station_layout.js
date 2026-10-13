@@ -302,7 +302,14 @@ Check.run('компрессорная в габарите перевозки: п
   // правила, сохранённые раньше без отметки «без сервисных ворот», — осушителю и ресиверу ворота всё равно не ставятся
   const rs=JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')), ro=JSON.parse(JSON.stringify(rs));
   for (const r of ro.rules.find(r=>r.id==='layout.matrix').value.sides.rows) delete r.door;
-  StationRules.use(ro); try{ assert.ok(StationMatrix.noDoor('dryer') && StationMatrix.noDoor('receiver') && !StationMatrix.noDoor('compressor'), 'осушителю и ресиверу — никогда');
+  // включить осушителю сервисные ворота можно отметкой (решение ПНЕВМОТЕХ 13.10: «верни возможность включения»)
+  const ry=JSON.parse(JSON.stringify(rs)); ry.rules.find(r=>r.id==='layout.matrix').value.sides.rows.find(r=>r.kind==='dryer').door=true;
+  StationRules.use(ry); try{ assert.ok(!StationMatrix.noDoor('dryer'), 'отметка «можно» — осушителю ворота можно'); } finally { StationRules.use(rs); }
+  // сервисные ворота в размер оборудования: «+ …» = 0, округление 10, без стенки
+  const rz=JSON.parse(JSON.stringify(rs)); Object.assign(rz.rules.find(r=>r.id==='layout.matrix').value.service, { addW:0, addH:0, step:10, wall:0, min:300, minH:300 });
+  StationRules.use(rz); try{ assert.deepStrictEqual([StationLayout.svcW(1655, 100), StationLayout.svcH(1842, 100, true, 2900)], [1660, 1850], 'в размер оборудования'); } finally { StationRules.use(rs); }
+  assert.deepStrictEqual([StationLayout.svcW(1650, 100), StationLayout.svcH(1840, 100, true, 2900)], [2100, 2150], 'по умолчанию: +200 и стенка, шаг 100');
+  StationRules.use(ro); try{ assert.ok(StationMatrix.noDoor('dryer') && StationMatrix.noDoor('receiver') && !StationMatrix.noDoor('compressor'), 'без отметки — осушителю и ресиверу нет');
     const pd=solve(C('block', { size:'7270 × 2300 × 2700', ins:'150 мм' }), [P('Компрессор 75', { cat:'comp_screw', kw:75, size:'923 × 737 × 1000' }, { role:'main' }), P('Осушитель', { cat:'dryer_refrig', size:'1338 × 985 × 726' })]);
     const dp=pd.items.filter(i=>i.kind==='dryer').map(i=>i.pos); assert.ok(!(pd.doors||[]).some(d=>d.kind!=='entry' && d.pos.some(x=>dp.includes(x))), 'осушитель без сервисных ворот: '+JSON.stringify(pd.doors)); }
   finally { StationRules.use(rs); }
@@ -1454,6 +1461,10 @@ Check.run('выброс горячего воздуха — над сервис�
   // над воротами не хватает площади (добавка в торце была только у крайнего), и когда у одного нет своих ворот
   const same=p=>{ const m=new Map(); for (const q of out(p)) m.set(q.duct, [...(m.get(q.duct)||[]), q.w+'×'+q.h]);
     const v=[...m.values()].map(x=>x.sort().join(',')); return v.length===p.items.filter(i=>i.kind==='compressor').length && new Set(v).size===1 ? '' : JSON.stringify([...m]); };
+  // DL-55/8GA и DL-55/8GA-F (частотник) — один габарит и расход: одна модель, решётки одинаковые (скриншот ПНЕВМОТЕХ 13.10)
+  { const a=P('Винтовой компрессор Dali DL-55/8GA', { cat:'comp_screw', kw:55, size:'1650 × 1450 × 1840' }, { role:'main' }), b=P('Винтовой компрессор Dali DL-55/8GA-F', { cat:'comp_screw', kw:55, vsd:'Да', size:'1650 × 1450 × 1840' }, { role:'main' });
+    const p=solve(C('block', { sizeAuto:true }), [a, b, dryer, rec, cab]), d=same(p); assert.ok(!d, 'DL-55/8GA и -F: '+d);
+    const ob=p.vent.louvers.filter(q=>q.kind==='out' && q.wall==='back'); assert.ok(new Set(ob.map(q=>q.w+'×'+q.h)).size===1, 'все решётки на стене — одного размера'); }
   for (const [kw, size, n] of [[55, '1600 × 1000 × 1600', 2], [90, '1900 × 1200 × 1800', 3], [15, '1000 × 700 × 1100', 4], [132, '2200 × 1300 × 1900', 2]]){
     const c=P('Винтовой компрессор '+kw, { cat:'comp_screw', kw, size, mass:kw*15 }, { role:'main', qty:n });
     for (const cont of [C('block', { sizeAuto:true }), C('block'), C('sea40')]){ const p=solve(cont, [c, dryer, rec, cab]), d=same(p);

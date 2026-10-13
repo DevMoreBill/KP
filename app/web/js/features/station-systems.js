@@ -712,8 +712,9 @@ class StationVent {
       const r=fitAt(s.wall, w, hh, s.c.x+s.c.lx/2, 1500); return r && add({ kind:'out', wall:s.wall, u0:r.u, u1:r.u+w, z0:r.z0, z1:r.z1, w, h:hh, duct:kk }); };
     // одна решётка w × hh у каждого компрессора группы; не встала хоть у одного — ничего не ставится
     const all=(G, w, hh, f)=>{ const m=mark(); for (const s of G) if (!f(s, w, hh)){ unmark(m); return false; } return true; };
-    // одна модель — одна группа (название, габарит, расход охлаждения)
-    const model=c=>[c.name||c.id, [c.lx, c.ly, c.h].sort((a, b)=>a-b).join('×'), qc(c)].join('|');
+    // одна модель — одна группа: габарит и расход охлаждения (название не важно: DL-55/8GA и DL-55/8GA-F с частотным
+    // регулированием — одна модель, скриншот ПНЕВМОТЕХ 13.10)
+    const model=c=>[[c.lx, c.ly, c.h].sort((a, b)=>a-b).join('×'), Math.round(qc(c)/100)].join('|');
     const groups=[...comp.reduce((m, c)=>m.set(model(c), [...(m.get(model(c))||[]), c]), new Map()).values()];
     const mC=Object.fromEntries(Object.entries(W.B).map(([k, v])=>[k, v.length])), nC=out.louvers.length, nR0=out.roof.length, qW0=qWall;
     let viaRoof=comp.some(c=>!exWall(c));

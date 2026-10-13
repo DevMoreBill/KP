@@ -187,7 +187,7 @@ class StationMatrix {
     rotate:{ rows:[{ kind:'compressor', on:true }, { kind:'dryer', on:true }, { kind:'receiver', on:true }, { kind:'pump', on:true }, { kind:'other', on:true },
       { kind:'dgu', on:false }, { kind:'cabinet', on:false }] },
     gate:{ addW:200, addH:200, full:0.75, twoAt:8000, minW:1500, minH:2100, top:100 },
-    service:{ addW:200, addH:200, minH:1500, min:800, max:2400, leaf:1200 },
+    service:{ addW:200, addH:200, minH:1500, min:800, max:2400, leaf:1200, step:100, wall:1 },
     door:{ w:900, h:2000, gap:300, edge:300, pad:100 },
     aisle:{ service:600 },
     exits:{ n:2, dist:5000 },
@@ -250,10 +250,10 @@ class StationMatrix {
   static conv(){ return this.grp('conv'); }
   static muffler(){ return this.grp('muffler'); }
   /** вид без сервисных ворот — монтаж и демонтаж через ворота в торце (осушители, ресиверы) */
-  // осушителям и ресиверам — никогда (жёсткое правило ПНЕВМОТЕХ 13.10, повторено владельцем: правила, сохранённые раньше без
-  // этой отметки, его не отменяют); остальным — по отметке таблицы «Стороны»
+  // по отметке таблицы «Стороны» (door: true / false); без отметки — осушителям и ресиверам нет (решение ПНЕВМОТЕХ 13.10;
+  // правила, сохранённые раньше без отметки, ворот им не дают), остальным — можно. Включить осушителю — отметкой в «Настройках»
   static NO_DOOR = /^(dryer|receiver)$/;
-  static noDoor(kind){ if (this.NO_DOOR.test(kind)) return true; const r=(this.M.sides.rows||[]).find(q=>q.kind===kind); return !!r && r.door===false; }
+  static noDoor(kind){ const r=(this.M.sides.rows||[]).find(q=>q.kind===kind); return r && typeof r.door==='boolean' ? !r.door : this.NO_DOOR.test(kind); }
   /** при выносе можно наклонить */
   static tilt(kind){ const r=(this.M.sides.rows||[]).find(q=>q.kind===kind); return r ? !!r.tilt : /^(receiver|filter|cabinet|tank)$/.test(kind); }
 }
@@ -306,11 +306,13 @@ class LayoutParams {
       { g:'access', k:'back', t:'Нужны, если сзади свободно меньше', u:'мм', lo:0, hi:2000 },
       { g:'access', k:'side', t:'Проход к боку агрегата у торца — не меньше', u:'мм', lo:300, hi:2000 },
       { g:'service', k:'addW', t:'Ширина = длина агрегата + …', u:'мм', lo:0, hi:1000 },
-      { g:'service', k:'min', t:'Ширина — не меньше', u:'мм', lo:600, hi:2000 },
+      { g:'service', k:'min', t:'Ширина — не меньше', u:'мм', lo:300, hi:2000 },
       { g:'service', k:'max', t:'Ширина — не больше', u:'мм', lo:1000, hi:6000 },
-      { g:'service', k:'leaf', t:'Створка — не шире', u:'мм', lo:500, hi:2000 },
+      { g:'service', k:'leaf', t:'Створка — не шире', u:'мм', lo:300, hi:2000 },
       { g:'service', k:'addH', t:'Высота = высота агрегата + …', u:'мм', lo:0, hi:1000 },
-      { g:'service', k:'minH', t:'Высота — не меньше', u:'мм', lo:800, hi:2500 }] },
+      { g:'service', k:'minH', t:'Высота — не меньше', u:'мм', lo:300, hi:2500 },
+      { g:'service', k:'step', t:'Ширину округлять до', u:'мм', lo:10, hi:500, h:'Решение ПНЕВМОТЕХ 13.10: «тонкая настройка — чтобы сделать в размер оборудования». В размер оборудования: «+ …» = 0, округление 10, без толщины стенки, «не меньше» — небольшие.' },
+      { g:'service', k:'wall', t:'Прибавлять толщину стенки (проём в каркасе)', opt:null }] },
     { id:'aisle', title:'Проходы и зазоры', f:[
       { g:'aisle', k:'service', t:'Проход обслуживания (крайний, к стороне агрегата)', u:'мм', lo:300, hi:2000 },
       { g:'gap', k:'v', t:'Зазор на коммуникации у стен и под потолком (компрессорная), G', u:'мм', lo:0, hi:150, h:'Полезные размеры = внутренние − 2·G (решение ПНЕВМОТЕХ 12.10: 50–100 мм).' },
@@ -1314,7 +1316,12 @@ class StationLayout {
   static gaps(geo){ const d=StationMatrix.door(), e=geo && geo.ext, i=geo && geo.int, tL=e && i ? (e[0]-i[0])/2 : 0, tW=e && i ? (e[1]-i[1])/2 : 0;
     return { gap:d.gap, eL:Math.max(this.DOOR.pad, Math.ceil(d.edge-tL)), eW:Math.max(this.DOOR.pad, Math.ceil(d.edge-tW)) }; }
   static get PASS(){ return StationMatrix.move().pass; }   // вынос агрегата через проём и по проходу (на роликах): зазор с каждой стороны, мм
-  static get REAR_H(){ return StationMatrix.service().minH; }   // сервисные ворота за агрегатом — проём обслуживания: по высоте агрегата, не ниже
+  static get REAR_H(){ return StationMatrix.service().minH; }
+  /** сервисные ворота по размеру агрегата: ширина = сторона + service.addW (+ 2·T стенки), с округлением service.step, от
+   *  service.min до service.max; высота = высота + service.addH (+ T), не ниже service.minH (не у стоящего плотно к стене — не
+   *  ниже двери оператора) и под потолком на 100 мм */
+  static svcW(len, T=0){ const s=StationMatrix.service(), st=s.step||100; return Math.max(s.min, Math.min(s.max, Math.ceil((len+s.addW+(s.wall===0 ? 0 : 2*T))/st)*st)); }
+  static svcH(h, T, rear, H){ const s=StationMatrix.service(), st=Math.min(50, s.step||50); return Math.min(H-100, Math.max(rear ? s.minH : StationMatrix.door().h, Math.ceil((h+s.addH+(s.wall===0 ? 0 : T))/st)*st)); }   // сервисные ворота за агрегатом — проём обслуживания: по высоте агрегата, не ниже
   static get CAB_TOP(){ return StationMatrix.cab().top; }       // настенный шкаф: верх — на уровне глаз (рукоятки и панель оператора),
   static get CAB_LOW(){ return StationMatrix.cab().low; }       // низ — не ниже
   static get OUT_GAP(){ return StationMatrix.recv().outGap; }   // ресивер снаружи: от торцевой стены — проход для осмотра и обслуживания, мм
@@ -1637,8 +1644,8 @@ class StationLayout {
     if (bad.length) return { ok:false, why:'width', bad:bad.map(o=>o.e), needW:Math.max(...bad.map(need)) };
     // промежуток за компрессором: дверь оператора (с коробкой) мимо его сервисных ворот (шире его на addW, с шагом 100 мм) —
     // через door.gap; от края станции — не ближе door.edge (pe — внутри от торца)
-    const D=StationLayout.DOOR, SM=StationMatrix.service(), Ew=StationLayout.ENTRY[1]-StationLayout.ENTRY[0], dg=StationMatrix.door().gap;
-    const ovOf=e=>Math.max(0, (Math.max(D.min, Math.min(D.max, Math.ceil((e.l+SM.addW+2*T)/100)*100))-e.l)/2), ov=ovOf(c), cl=C[nc-1], dn=Math.ceil(ovOf(cl)+dg+Ew+D.pad), nx=StationMatrix.modes().next;
+    const D=StationLayout.DOOR, Ew=StationLayout.ENTRY[1]-StationLayout.ENTRY[0], dg=StationMatrix.door().gap;
+    const ovOf=e=>Math.max(0, (StationLayout.svcW(e.l, T)-e.l)/2), ov=ovOf(c), cl=C[nc-1], dn=Math.ceil(ovOf(cl)+dg+Ew+D.pad), nx=StationMatrix.modes().next;
     // от торца — «плотно», но его сервисные ворота (шире его) не упираются в угол; между компрессорами — не меньше modes.next
     // и чтобы их сервисные ворота стояли через door.gap; за последним — дверь оператора, не меньше modes.next
     const E=U.map(o=>o.e), gapsOf=lvl=>{ const g=this.chain(E, lvl).gaps; g[0]=Math.max(tw, Math.ceil(ov+Math.max(D.pad, pe)-this.G));
@@ -2304,17 +2311,17 @@ class StationLayout {
    *  боковой стене напротив (два ряда — в стене за ним); шире агрегата на service.addW (service.min…service.max), выше на service.addH (не ниже service.minH / двери),
    *  мимо двери оператора; соседние — одними воротами, пока не шире 2400 мм, иначе — рядом через стойку 200 мм */
   sideDoors(list, r, geo){
-    const [L, , H]=geo.int, x0=geo.x0||0, D=StationLayout.DOOR, ex=r.door==='side' ? this.entrySpan(r, geo) : null, out=[], T=geo.t||0, SM=StationMatrix.service();
+    const [L, , H]=geo.int, x0=geo.x0||0, D=StationLayout.DOOR, ex=r.door==='side' ? this.entrySpan(r, geo) : null, out=[], T=geo.t||0;
     const { gap, eL }=StationLayout.gaps(geo), lo=Math.max(x0+D.pad, eL), hi=L-eL;   // от края станции и между проёмами (решение 13.10)
     const keep=(r.doors||[]).filter(d=>d.kind==='entry');   // вторая дверь оператора (сервисные ворота пересчитываются после неё)
     for (const { it, why, rear, wall:w0, both } of list){
       const wall=w0 || (rear ? (r.rows===2 && it.row===1 ? 'front' : 'back') : r.rows===2 && it.row!==1 ? 'back' : 'front');
       // Ш = сторона агрегата + addW + 2·T, В = высота агрегата + addH + T (матрица расстановки)
-      const w=Math.max(D.min, Math.min(D.max, Math.ceil((it.lx+SM.addW+2*T)/100)*100)), c=it.x+it.lx/2;
+      const w=StationLayout.svcW(it.lx, T), c=it.x+it.lx/2;
       let d0=Math.max(lo, Math.min(hi-w, c-w/2));
       if (wall==='front' && ex && d0<ex[1]+gap && d0+w>ex[0]-gap) d0=d0+w/2<(ex[0]+ex[1])/2 && ex[0]-gap-w>=lo ? ex[0]-gap-w : Math.min(hi-w, ex[1]+gap);   // мимо двери оператора
       for (const q of keep) if (wall===q.wall && d0<q.x1+gap && d0+w>q.x0-gap) d0=q.x0-gap-w>=lo ? q.x0-gap-w : Math.min(hi-w, q.x1+gap);   // мимо второй двери
-      out.push({ wall, x0:Math.round(d0), x1:Math.round(d0+w), h:Math.min(H-100, Math.max(rear ? StationLayout.REAR_H : D.h, Math.ceil((it.h+SM.addH+T)/50)*50)), kind:'service', pos:[it.pos], why:[why], rear:!!rear, both:!!both }); }
+      out.push({ wall, x0:Math.round(d0), x1:Math.round(d0+w), h:StationLayout.svcH(it.h, T, rear, H), kind:'service', pos:[it.pos], why:[why], rear:!!rear, both:!!both }); }
     const got=[]; for (const d of out.sort((p, q)=>p.wall.localeCompare(q.wall) || p.x0-q.x0)){ const last=got[got.length-1];
       if (last && last.wall===d.wall && d.x0<last.x1+gap){
         if (Math.max(last.x1, d.x1)-last.x0<=D.max){ last.x1=Math.max(last.x1, d.x1); last.h=Math.max(last.h, d.h); last.rear=last.rear || d.rear;
