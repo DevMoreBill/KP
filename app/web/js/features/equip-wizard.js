@@ -76,7 +76,9 @@ function nwUnit(t){
 // оборудование вручную — окно каталога с фильтрами по требованиям и «★ Рекомендуем» первым (KitNeed.mainPreset)
 class NewStation {
   static S = { ctype:'block', ins:'', climate:'', req:{}, cont:false };
-  static reset(){ this.S={ ctype:'block', ins:DEF('st.ins')||'100 мм', climate:DEF('st.climate')||'УХЛ1', req:{}, cont:false }; }
+  static pv = null;      // предпросмотр: {key, x — подобранная станция (ещё не в КП), busy}
+  static WAIT = 700;     // пауза ввода перед подбором для предпросмотра, мс
+  static reset(){ this.S={ ctype:'block', ins:DEF('st.ins')||'100 мм', climate:DEF('st.climate')||'УХЛ1', req:{}, cont:false }; this.pv=null; clearTimeout(this.t); }
   static kind(t){ return /comp/.test(t.id) ? 'comp' : /dgu/.test(t.id) ? 'dgu' : /pump/.test(t.id) ? 'pump' : ''; }
   /** контейнер одной строкой */
   static cont(){
@@ -94,16 +96,54 @@ class NewStation {
       ${S.cont ? `<div class="ns-row"><label class="f"><span>Тип</span><select id="nsCt">${CONTAINER_TYPES.map(c=>opt(c.id, c.name, S.ctype===c.id)).join('')}</select></label>
         <label class="f"><span>Утепление</span><select id="nsIns">${CONTAINER_INS.map(v=>opt(v, v, v===S.ins)).join('')}</select></label>
         <label class="f"><span>Климатическое исполнение</span><select id="nsCl">${CLIMATES.map(c=>opt(c[0], c[0]+' — '+c[1], c[0]===S.climate)).join('')}</select></label></div>` : ''}
-      <div class="row nw-go"><button class="btn primary" type="button" data-nw="nsPick"${NW.busy ? ' disabled' : ''}>${NW.busy ? 'Подбираю…' : 'Подобрать станцию'}</button>
+      <div class="ns-pv" id="nsPv">${this.pvHtml(t)}</div>
+      <div class="row nw-go"><button class="btn primary" type="button" data-nw="nsPick"${NW.busy ? ' disabled' : ''}>${NW.busy ? 'Подбираю…' : this.ready() ? 'Взять в КП' : 'Подобрать станцию'}</button>
         ${NW.where==='kp' ? '<button class="btn" type="button" data-nw="tz">📄 По ТЗ заказчика</button>' : ''}</div>
       <p class="muted ns-alt"><button class="link" type="button" data-nw="nsMain">Выбрать ${esc((t.station.mainLabel||'оборудование').toLowerCase())} вручную</button> · <button class="link" type="button" data-nw="mkStation">пустая станция</button> — состав и требования в карточке</p>`;
   }
-  /** поле требования → состояние (ошибка — под полем, без перерисовки всего окна) */
+  /** поле требования → состояние (ошибка — под полем, без перерисовки всего окна); после паузы — предпросмотр */
   static input(el){ const k=el.dataset.nsr; this.S.req[k]=el.value; const bad=ReqNum.check(k, el.value);
-    el.classList.toggle('bad', !!bad); let s=el.parentNode.querySelector('small.err'); if (bad){ if (!s){ s=document.createElement('small'); s.className='err'; el.after(s); } s.textContent=bad; } else if (s) s.remove(); }
+    el.classList.toggle('bad', !!bad); let s=el.parentNode.querySelector('small.err'); if (bad){ if (!s){ s=document.createElement('small'); s.className='err'; el.after(s); } s.textContent=bad; } else if (s) s.remove();
+    this.later(); }
   static change(el){ const S=this.S;
-    if (el.id==='nsCt'){ S.ctype=el.value; const c=ctypeOf(S.ctype); if (c.ins) S.ins=c.ins; if (c.climate) S.climate=c.climate; nwDraw(); }
-    else if (el.id==='nsIns'){ S.ins=el.value; nwDraw(); } else if (el.id==='nsCl'){ S.climate=el.value; nwDraw(); } }
+    if (el.id==='nsCt'){ S.ctype=el.value; const c=ctypeOf(S.ctype); if (c.ins) S.ins=c.ins; if (c.climate) S.climate=c.climate; }
+    else if (el.id==='nsIns') S.ins=el.value; else if (el.id==='nsCl') S.climate=el.value;
+    nwDraw(); this.later(); }
+
+  // ---- предпросмотр: размер контейнера и 3D-вид сразу, до карточки (решение ПНЕВМОТЕХ 13.10, 3.86) — тот же подбор, что у
+  // «Подобрать оборудование», на станции, которая ещё не в КП; «Взять в КП» добавляет её как есть
+  static key(){ const S=this.S; return JSON.stringify([NW.cat, S.req, S.ctype, S.ins, S.climate]); }
+  static ready(){ return !!(this.pv && this.pv.x && !this.pv.busy && this.pv.key===this.key()); }
+  static later(){ clearTimeout(this.t); this.t=setTimeout(()=>this.preview(), this.WAIT); }
+  static async preview(){
+    const t=NW.cat && typeById(NW.cat); if (!t || !t.station || NW.where!=='kp') return;
+    const k=this.kind(t), need=(StationQuick.NEED[k]||[])[0], key=this.key();
+    if (ReqNum.errors({ req:this.S.req }).length || !(ReqNum.num(this.S.req[need])>0)){ this.pv=null; this.pvDraw(t); return; }
+    if (this.pv && this.pv.key===key) return;
+    const pv=this.pv={ key, x:null, busy:true }; this.pvDraw(t);
+    try{ const x=this.make(t), note=await TzPick.assemble(x, StationQuick.query(x)); StationReq.ensure(x).pick=String(note||'').slice(0, 900); pv.x=x; }
+    catch(e){ pv.err=String(e && e.message || e); }
+    pv.busy=false; if (this.pv===pv) this.pvDraw(t);
+  }
+  static pvDraw(t){ const el=$('#nsPv'); if (!el) return; el.innerHTML=this.pvHtml(t);
+    const b=document.querySelector('#dlg.nw [data-nw="nsPick"]'); if (b && !NW.busy) b.textContent=this.ready() ? 'Взять в КП' : 'Подобрать станцию'; }
+  /** итог подбора: состав коротко, контейнер с размером, главное замечание, 3D-вид */
+  static pvHtml(t){
+    const pv=this.pv; if (!pv || pv.key!==this.key()) return '';
+    if (pv.busy) return '<p class="muted ns-pv-w">Подбираю станцию…</p>';
+    if (pv.err || !pv.x) return `<p class="msg err">Не получилось подобрать: ${esc(pv.err||'')}</p>`;
+    const x=pv.x, plan=StationUi.on(x) ? StationUi.plan(x) : null, c=kitContainer(x), n=StationLayout.n;
+    const size=plan && plan.geo && plan.geo.ext ? `${n(plan.geo.ext[0])} × ${n(plan.geo.ext[1])} × ${n(plan.geo.ext[2])} мм` : '';
+    const miss=String(StationReq.of(x).pick||'').match(/В каталоге нет: ([^]*?)(?: — добавьте вручную|$)/);
+    const bad=plan && plan.level==='error' ? (plan.issues.find(i=>i.level==='error')||{}).text : '', wide=plan && (plan.issues||[]).find(i=>i.wide);
+    const mode=plan && plan.mode && plan.mode.ends ? 'без продольного прохода (компрессор у торца)' : plan && plan.mode && plan.mode.tight ? 'проход «в крайнем случае»' : plan && plan.mode && plan.mode.cross ? 'агрегат поперёк' : '';
+    const img=plan && plan.level!=='error' && plan.geo && plan.geo.ext ? `<img src="${esc(StationUi.url(StationView3D.svg(plan, StationUi.meta(x, plan))))}" alt="3D-вид станции">` : '';
+    return `<div class="ns-pv-b"><div class="ns-pv-t"><b>${esc(String(x.name||t.item))}</b>
+        ${StationQuick.lines(x).map(l=>`<div>${esc(l)}</div>`).join('')}
+        ${c ? `<div class="muted">${esc(ctypeOf(c.ctype).name)}${size ? ', '+esc(size) : ''}${mode ? ' — '+esc(mode) : ''}</div>` : ''}
+        ${bad ? `<p class="msg err">✕ ${esc(bad)}</p>` : wide ? `<p class="msg warn">⚠ ${esc(wide.text.split('.')[0])}</p>` : ''}
+        ${miss ? `<p class="msg warn">⚠ В каталоге не нашлось: ${esc(miss[1])}</p>` : ''}</div>${img}</div>`;
+  }
   /** новая станция: контейнер, элементы по умолчанию, требования */
   static make(t){
     const it=newItem(); it.attrs={ cat:t.id }; it.page=true; it.features=[]; it.kit={ parts:[] };
@@ -119,8 +159,11 @@ class NewStation {
     const n=(StationQuick.NEED[k]||[]); if (need && n.length && !(ReqNum.num(this.S.req[n[0]])>0)){ toast('Укажите '+n[1]+' — без неё станцию не подобрать'); $(`[data-nsr="${n[0]}"]`)?.focus(); return false; }
     return true;
   }
-  /** «Подобрать станцию»: станция в КП и сразу подбор оборудования (как «Подобрать оборудование» в карточке) */
-  static async pick(t){ if (!this.ok(t, true)) return; const it=this.make(t); nwFinish(it, 'kit', NW.where==='kp' ? i=>StationQuick.pick(i) : null); }
+  /** «Подобрать станцию»: станция в КП и сразу подбор оборудования (как «Подобрать оборудование» в карточке); подобранная в
+   *  предпросмотре — «Взять в КП» как есть */
+  static async pick(t){ if (!this.ok(t, true)) return;
+    if (this.ready()){ const x=this.pv.x; this.pv=null; nwFinish(x, 'kit', ()=>StationImages.soon(x)); return; }
+    const it=this.make(t); nwFinish(it, 'kit', NW.where==='kp' ? i=>StationQuick.pick(i) : null); }
   /** «Выбрать вручную»: станция и окно каталога основного оборудования (по требованиям — рекомендуемый первым) */
   static main(t){ if (!this.ok(t, false)) return; const it=this.make(t);
     nwFinish(it, 'kit', i=>{ if (NW.where!=='kp') return; kitPickCat(i, t.station.main, 'main', '', KitNeed.mainPreset(S.items[i]) || { test:c=>!TzPick.mobile(c), need:'Укажите производительность в «Подборе станции» — покажем подходящие и рекомендуемый первым. Сейчас — все стационарные.' }); }); }

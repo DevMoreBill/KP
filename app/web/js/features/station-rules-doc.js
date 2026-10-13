@@ -125,10 +125,19 @@ class LayoutEditor {
         `<div class="tzi-tw mx-tw"><table class="tzi-t mx-t"><thead><tr><th>Вид</th>${E.SIDES.map(([, t])=>`<th>${t}</th>`).join('')}<th>Можно повернуть</th><th>Сервисные ворота</th><th>Наклонить при выносе</th></tr></thead><tbody>${sides}</tbody></table></div>`, on)];
     return `<div class="lp-top"><label class="f lp-q"><span>Найти параметр</span><input type="search" data-lpq data-nodirty value="${esc(this.q)}" placeholder="например: ворота, ресивер, габарит" autocomplete="off"></label>
         <span class="muted">Изменённые значения подсвечены; «↺» — вернуть значение по умолчанию. Сохранение — новая версия правил, прежняя остаётся для отката.</span></div>
+      ${this.presets()}
       <details class="lp-s lp-dg"><summary><b>Как программа компонует станцию — свод по действующим значениям</b></summary>${LayoutDigest.html()}</details>
       ${secs.join('')}${tables.join('')}
       <div class="row lp-go"><button class="btn primary" type="button" data-rl="mxsave">Сохранить правила компоновки</button><button class="btn ghost" type="button" data-rl="mxdef">Все значения — по умолчанию</button></div>`;
   }
+  /** готовые наборы правил: кнопка — заполнить форму (сохранится после «Сохранить правила компоновки») */
+  presets(){
+    const cur=LayoutParams.which(this.w.m);
+    return `<div class="lp-pre"><span class="lp-pre-h"><b>Готовые наборы</b> <span class="muted">— сейчас: ${esc(cur ? cur.title.toLowerCase() : 'свои значения')}</span></span>
+      ${LayoutParams.PRESETS.map(P=>`<button type="button" class="lp-pb${cur && cur.id===P.id ? ' on' : ''}" data-lppre="${esc(P.id)}"><b>${esc(P.title)}</b><small>${esc(P.t)}</small></button>`).join('')}</div>`;
+  }
+  /** набор → форма (только стратегия подбора; нормы отступов не меняются) */
+  usePreset(id){ const v=LayoutParams.preset(id); if (!v) return; for (const [k, x] of Object.entries(v)){ const [g, f]=k.split('.'); this.w.m[g][f]=x; } }
   /** поиск параметра: строки и разделы без совпадений скрыты */
   filter(root){
     const q=this.q.trim().toLowerCase();
@@ -279,6 +288,8 @@ class RulesPanel {
     this.m.onclick=async e=>{ const box=this.box(), dl=e.target.closest('[data-mxdel]'), df=e.target.closest('[data-lpdef]'), ro=e.target.closest('[data-reopen]');
       if (dl){ try{ this.mx.del(box, +dl.dataset.mxdel); this.render(); } catch(er){ toast(er.message); } return; }
       if (df){ try{ this.mx.read(box); this.mx.def(df.dataset.lpdef); this.render(); } catch(er){ toast(er.message); } return; }
+      const pre=e.target.closest('[data-lppre]');
+      if (pre){ try{ this.mx.read(box); this.mx.usePreset(pre.dataset.lppre); this.render(); toast('Набор «'+(LayoutParams.PRESETS.find(p=>p.id===pre.dataset.lppre)||{}).title+'» — в форме; сохранится кнопкой «Сохранить правила компоновки»'); } catch(er){ toast(er.message); } return; }
       if (ro){ const r=this.data.rules.find(q=>q.id===ro.dataset.reopen); if (r){ this.re.open(r); this.render(); } return; }
       const ra=e.target.closest('[data-readd]'), rd=e.target.closest('[data-redel]'), rb=this.m.querySelector('.re');
       if (ra || rd){ try{ ra ? this.re.add(rb, ra.dataset.readd) : this.re.del(rb, rd.dataset.redel); this.render(); } catch(er){ toast(er.message); } return; }

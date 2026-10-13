@@ -252,7 +252,7 @@ Check.run('блок-контейнер: размер по необходимом
     assert.ok(W-100<StationGeo.BLOCK.minW || worse(p, parts, [L, W-100, H]), label+': на 100 мм уже — тоже годится '+p.geo.ext);
     draw(p, 'блок '+label);
   }
-  assert.deepStrictEqual(solve(C('block'), [pumpS]).geo.ext, [2800, 1900, 2500], 'два малых насоса — плотно 2,8 × 1,9 м (было 4,3 × 1,9; конвектору — +300 мм)');
+  assert.deepStrictEqual(solve(C('block'), [pumpS]).geo.ext, [2300, 2200, 2500], 'два малых насоса — плотно 2,3 × 2,2 м, по два на раме без прохода между ними (СП 31.13330, п. 10.15)');
   const big2=solve(C('block'), [pumpL]), [a, b]=big2.items.slice().sort((x, y)=>x.x-y.x);
   assert.ok(b.x-(a.x+a.lx)>=1000-1, 'между большими насосами не менее 1 м (СП 31.13330, п. 10.15)');
   const own=solve(C('block', { size:'3000 × 2400 × 2500' }), [comp, dryer, rec, flt, cab]);
@@ -1408,7 +1408,8 @@ Check.run('«на чертеже»: подсветка позиций, воро�
 Check.run('выброс горячего воздуха — над сервисными воротами, решётки одинаковые; крыша — только крайний случай', ()=>{
   // решение ПНЕВМОТЕХ 13.10: за компрессором сервисные ворота — жалюзи над ними, остаток — в верхней части створок
   const out=p=>p.vent.louvers.filter(q=>q.kind==='out' && q.duct);
-  const p1=solve(C('block'), [comp, dryer, rec, cab]); Check.plan(p1, 'выброс над воротами');
+  // плотно к стене (узкий заданный контейнер; подбор размера ставит компрессор с отступом — без сервисных ворот, 3.86)
+  const p1=solve(C('block', { size:'5000 × 2100 × 2900' }), [comp, dryer, rec, cab]); Check.plan(p1, 'выброс над воротами');
   const G=p1.doors.find(d=>d.rear && d.wall==='back'); assert.ok(G, 'сервисные ворота за компрессором');
   const O=out(p1).find(q=>q.over); assert.ok(O && O.wall==='back' && O.z0>=G.h+240-1 && O.u0>=G.x0-1 && O.u1<=G.x1+1, 'жалюзи над воротами: '+JSON.stringify(out(p1)));
   assert.ok(!(p1.vent.roof||[]).length, 'через крышу — ничего');
@@ -1462,6 +1463,19 @@ Check.run('вытяжные вентиляторы в стене напроти�
   assert.ok(pi.issues.some(i=>/^Приточные вентиляторы: .*по датчику температуры/.test(i.text)), 'замечание о приточных вентиляторах');
   assert.ok(!solve(C('sea20', { sys:{ snow:true, infan:false } }), [c132, dryer, rec, cab]).vent.infan, 'запрещены — не ставятся');
   new StScene(pi, {}).build(); draw(pi, 'приточные вентиляторы');
+});
+
+Check.run('подбор размера: сначала без сервисных ворот (отступ сзади важнее прохода шире допустимого); наборы правил', ()=>{
+  // решение 3.86 (прогон на копии базы): малые компрессорные получали сервисные ворота ради прохода 1 000 мм
+  const p=solve(C('block'), [comp, dryer, rec, cab]); Check.plan(p, 'без сервисных ворот');
+  assert.ok(!(p.doors||[]).some(d=>d.kind!=='entry') && p.geo.ext[1]<=StationGeo.ROAD_W, 'без сервисных ворот и дверей: '+JSON.stringify([p.geo.ext, p.doors]));
+  const cp=p.items.find(i=>i.kind==='compressor'); assert.ok(cp.back>=StationMatrix.access().back && p.aisleRule[1]<=p.aisle.w, 'сзади — без ворот, проход не уже допустимого');
+  // готовые наборы: «плотно» — значения программы; набор меняет только стратегию, нормы отступов — нет
+  assert.strictEqual(LayoutParams.which(StationMatrix.M).id, 'def');
+  const M=JSON.parse(JSON.stringify(StationMatrix.M)), v=LayoutParams.preset('wide');
+  for (const [k, x] of Object.entries(v)){ const [g, f]=k.split('.'); M[g][f]=x; }
+  assert.strictEqual(LayoutParams.which(M).id, 'wide'); assert.deepStrictEqual(M.pair, StationMatrix.M.pair, 'нормы не тронуты');
+  for (const P of LayoutParams.PRESETS) for (const [k, x] of Object.entries(LayoutParams.preset(P.id))){ const f=LayoutParams.field(...k.split('.')); assert.ok(f && x>=f.lo && x<=f.hi, P.id+' '+k); }
 });
 
 Check.run('ресиверы в два ряда в конце ряда — станция короче; вид адсорбционного осушителя', ()=>{

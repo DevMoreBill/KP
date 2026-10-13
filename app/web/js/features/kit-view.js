@@ -483,7 +483,7 @@ class KitNeed {
         `Нужно ${m3(Q)} м³/мин${B ? ` при ${m3(B)} бар у потребителя` : ''}${nd.why || ads ? ` (${[nd.why, ads ? 'с запасом на продувку адсорбционного осушителя' : ''].filter(Boolean).join(', ')})` : ''}${tail(n)}. Показаны компрессоры от ${m3(per)} м³/мин${B ? `, давление от ${m3(B)} бар` : ''}${of ? `, безмасляные (${StationReq.oilWhy(x)})` : ''}.`,
         { min:B>0 ? { pressure:B } : {} }); }
     if (k==='dgu'){ const P=this.n(r.kw); if (!(P>0)) return null; const sb=r.mode==='standby', kw=c=>GensetSizing.cap(attrsOf(c), sb);
-      const u=TzPick.units(pool.map(c=>({ c, v:kw(c) })).filter(o=>o.v>0), P, work||1), n=u ? u.n : work||1, per=P/n;
+      const u=TzPick.units(pool.filter(c=>TzPick.dguOk(c)).map(c=>({ c, v:kw(c) })).filter(o=>o.v>0), P, work||1, o=>TzPick.dguPen(o.c)), n=u ? u.n : work||1, per=P/n;
       return out(u, n, c=>kw(c)>=per-1e-9, `Нужно ${m3(P)} кВт${sb ? ' (резервный источник — по ESP)' : ''}${tail(n)}. Показаны ДГУ от ${m3(per)} кВт.`); }
     if (k==='pump'){ const Q=this.n(r.q), H=this.n(r.head)||0; if (!(Q>0)) return null; const tp=v=>{ const t=StationEquip.top(v); return t ? t.v : null; }, f=c=>tp(attrsOf(c).flow)||0, hd=c=>tp(attrsOf(c).head);
       const u=TzPick.units(pool.filter(c=>TzPick.pumpOk(c)).map(c=>({ c, v:f(c), h:hd(c) })).filter(o=>o.v>0 && (!(H>0) || o.h>=H)), Q, work, o=>H>0 && o.h>0 ? 0.3*(o.h-H)/H : 0), n=u ? u.n : work||1, per=Q/n;
