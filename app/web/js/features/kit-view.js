@@ -264,12 +264,16 @@ class StationReq {
   static change(t){
     const i=+t.dataset.req, x=S.items[i]; if (!x) return; const r=this.ensure(x), k=t.dataset.rk;
     if (k) r[k]=t.type==='checkbox' ? t.checked : t.value;
+    if (k==='recvOut') delete r.recvOutAuto;   // менеджер решил сам — подбор «снаружи» больше не меняет
     ExpertLog.note(x);
     if (t.dataset.stpar!=null) StationParams.changed(x);
     if (k==='recv' || k==='recvOut'){ StationUi.cache.delete(x.id); StationSize.apply(x, true); }
     // исходные данные ресиверов — число ресиверов в составе по расчёту
     const fk=k || String(t.dataset.p||'').split('.').pop();
     if (ReceiverSync.KEYS.includes(fk)){ const m=ReceiverSync.apply(x); if (m){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); toast('Ресиверы по расчёту: '+m); } }
+    // главное требование (расход, давление; мощность ДГУ; подача и напор насосов) изменилось у подобранной станции —
+    // комплектующие подбираются заново сами, с уведомлением, что заменено (решение ПНЕВМОТЕХ 13.10, 3.86.11)
+    if (StationQuick.AUTO.includes(fk) && t.dataset.p && kitMainPart(x)){ r[fk]=t.value; persist(); StationQuick.auto(i, fk); return; }
     if ((k==='ats' || k==='scada') && t.checked){ const a=this.ensureParts(x); if (a.length){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); toast('Добавлено в состав: '+a.join(', ')); } }
     persist(); renderForm();
   }
@@ -618,7 +622,7 @@ class KitView {
     const auto=StationUi.on(x) && StationGeo.FLEX[p.ctype], sz=String(p.size||'').trim();
     return `<div class="kit-cont">
       <div class="kc-g">${sel('ctype', CONTAINER_TYPES.map(c=>[c.id, c.name]), p.ctype, 'Контейнер')}
-        <label class="f"><span>Размер Д × Ш × В, мм${auto && p.sizeAuto && sz ? ' <small class="muted">по оборудованию</small>' : ''}</span><input type="text" data-kitct="${i}.${j}" data-fld="size" value="${esc(p.size||'')}" placeholder="${esc(ctypeOf(p.ctype).size)}"></label>
+        <label class="f"><span>Размер Д × Ш × В, мм${auto && p.sizeAuto && sz ? ` <small class="muted">${p.lenFix ? 'длина задана' : 'по оборудованию'}</small>` : ''}${auto ? tip('Пусто — размер по оборудованию. Только длина (например, 10000) — длина заданная, ширина, высота и плотность компоновки (просторно, плотно, максимально плотно) — по оборудованию. Три числа — размер целиком вручную.') : ''}</span><input type="text" data-kitct="${i}.${j}" data-fld="size" value="${esc(p.size||'')}" placeholder="${esc(ctypeOf(p.ctype).size)}"></label>
         ${sel('ins', CONTAINER_INS.map(v=>[v, v]), p.ins, 'Утепление')}
         ${sel('climate', CLIMATES.map(c=>[c[0], c[0]+' — до '+c[2]+' °C']), p.climate, 'Климатическое исполнение')}
         <label class="f"><span>Сборщик контейнера${tip('Кто изготавливает контейнер и собирает станцию. Элементы «Сборщика контейнера» без своего поставщика в «Экономике сделки» попадут к нему; наше оборудование едет к нему на сборку.')}</span><input type="text" list="kitSupL" data-p="${P}.sup" value="${esc(p.sup||'')}" placeholder="производитель контейнеров"></label>
@@ -627,6 +631,7 @@ class KitView {
         ${StationGeo.SEA[p.ctype] ? '' : sel('roof', Object.entries(StationGeo.ROOFS).map(([k, r])=>[k, r.deg ? `${r.name} (${r.deg}°)` : r.name]), StationGeo.roof(p), 'Крыша')}
         ${sel('floor', Object.entries(StationGeo.FLOORS).map(([k, f])=>[k, f.short]), StationGeo.floor(p), 'Пол')}
         <label class="f"><span>Цвет</span><input type="text" data-kitct="${i}.${j}" data-fld="ral" value="${esc(p.ral||'')}" placeholder="RAL 7004 / RAL 5005"></label></div></details>
+      ${auto && p.lenFix ? StationSize.note(p, StationUi.plan(x), i) : ''}
       ${auto && !p.sizeAuto && sz ? `<p class="muted kit-szn">Размер задан вручную — <button type="button" class="lnk" data-a="stlAuto" data-i="${i}">подобрать по оборудованию</button></p>` : ''}
       <div class="kit-sys"><span class="muted">Системы:</span>${CONT_SYSTEMS.map(([id, k, v])=>{ const on=KitView.sysOn(x, p, id); return `<button type="button" class="chip sm${on ? ' on' : ''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!on}" title="${esc(v)}">${esc(k)}</button>`; }).join('')}</div></div>`;
   }

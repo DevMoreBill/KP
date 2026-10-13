@@ -490,6 +490,30 @@ class Check {
     assert.deepStrictEqual(KitPart.dimsOf({ size:'1 × 1 × 1', mass:5 }, [{ k:'Габариты', v:'9 × 9 × 9' }, { k:'Масса', v:'9' }]), { size:'1 × 1 × 1', mass:5 }, 'заполненное в каталоге не меняется');
   });
 
+  // большая производительность (решение ПНЕВМОТЕХ 13.10): один агрегат не встаёт в контейнер — несколько одинаковых
+  // компактных, всё в габарите перевозки; запас производительности не больше 30 %; давление — с запасом
+  await Check.run('большая производительность: несколько одинаковых компрессоров, станция в габарите перевозки', async ()=>{
+    global.catCache=[
+      Cat.item('Компрессор винтовой БК-400 большой', { cat:'comp_screw', flow:40, pressure:10, kw:250, size:'4400 × 2100 × 2100' }),
+      Cat.item('Компрессор винтовой СК-200', { cat:'comp_screw', flow:20, pressure:10, kw:110, size:'2775 × 1805 × 2000' }),
+      Cat.item('Компрессор винтовой МК-140 компактный', { cat:'comp_screw', flow:14, pressure:10, kw:75, size:'1400 × 1300 × 1900' }),
+      Cat.item('Компрессор винтовой МК-140/8 без запаса давления', { cat:'comp_screw', flow:14, pressure:8, kw:75, size:'1300 × 1200 × 1800' }),
+      Cat.item('Компрессор центробежный Ц-1000', { cat:'comp_centrifugal', flow:100, pressure:10, kw:500, size:'3000 × 1500 × 2000' }),
+      Cat.item('Осушитель рефрижераторный ОР-500', { cat:'dryer_refrig', flow:60, pressure:13, size:'1200 × 800 × 1700' }),
+      Cat.item('Ресивер РВ 900/11', { cat:'receiver', volume:900, pressure:11, size:'930 × 940 × 2040' }),
+    ];
+    const x=Cat.station('st_comp', [], { flow:'40', pressure:'8' }); global.S={ items:[x] };
+    const note=await TzPick.assemble(x, StationQuick.query(x)), m=kitParts(x).find(p=>p.role==='main');
+    const plan=StationLayout.solve(StationUi.input(x));
+    assert.ok(m && m.qty>=2 && /МК-140 компактный/.test(m.name), 'несколько одинаковых компактных: '+(m && m.qty+' × '+m.name));
+    assert.ok(plan.level!=='error' && !plan.issues.some(i=>i.wide) && plan.geo.ext[1]<=StationGeo.ROAD_W, 'в габарите перевозки: '+JSON.stringify(plan.geo && plan.geo.ext));
+    assert.ok(/одинаковых/.test(note), note);
+    assert.strictEqual(TzPick.area(global.catCache[2]), 0.3*1.4*1.3, 'штраф за площадь — 0,3 на м²');
+    // запрос меньше — тот же порядок без лишнего: один компрессор, ресиверы внутри (снаружи — только если выбрала программа)
+    x.req.flow='12'; await TzPick.assemble(x, StationQuick.query(x));
+    assert.ok(!x.req.recvOut && kitParts(x).find(p=>p.role==='main').qty===1, 'малая станция — один агрегат, всё внутри');
+  });
+
   await Check.run('карточка позиции: значение параметра не из списка категории не теряется', ()=>{
     const p=path.join(ROOT, 'app', 'web', 'js', 'features', 'item-editor.js'); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p });
     const f={ key:'stages', values:['1', '2'] };

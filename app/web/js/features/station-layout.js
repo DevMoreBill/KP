@@ -85,6 +85,12 @@ class StationGeo {
     a=a.map(Math.round);
     return a.every(v=>v>=500 && v<=30000) ? a : null;
   }
+  /** заданная длина блок-контейнера, мм: «10000», «10 000 мм», «10 м», «10,5» → число в пределах длины блок-контейнера; иначе null */
+  static len(text){
+    const s=String(text??'').trim().replace(/(\d)\s+(?=\d{3}\b)/g, '$1'), m=s.match(/^(\d+(?:[.,]\d+)?)\s*(мм|м)?$/i); if (!m) return null;
+    let v=parseFloat(m[1].replace(',', '.')); if (/^м$/i.test(m[2]||'') || v<40) v*=1000;
+    v=Math.round(v); const f=StationMatrix.fit(); return v>=f.minL && v<=f.maxL ? v : null;
+  }
   static ins(text){ const n=parseFloat(String(text||'').replace(',', '.')); return n>0 && n<400 ? n : 100; }
   // крыша блок-контейнера: плоская или скатная — двускатная (конёк вдоль контейнера) или односкатная (выше у задней стены);
   // уклон, ° — подъём над стенами (у морского контейнера крыша штатная, плоская)
@@ -115,7 +121,8 @@ class StationGeo {
   static of(c){
     const type=c.ctype || 'block', t=this.ins(c.ins), sea=this.SEA[type], own=!c.sizeAuto ? this.mm(c.size) : null, f=this.flex(type);
     const ext=own || (sea ? sea.ext.slice() : null);
-    return { type, t, sea:!!sea, own:!!own, auto:!ext, ext, int:ext ? this.inner(type, ext, t) : null, x0:(f && f.tambour) || 0,
+    const fixL=!ext && !sea ? this.len(c.lenFix) : null;   // длина задана, ширина и высота — по оборудованию (3.86.11)
+    return { type, t, sea:!!sea, own:!!own, auto:!ext, fixL, ext, int:ext ? this.inner(type, ext, t) : null, x0:(f && f.tambour) || 0,
       door: sea ? sea.door : null, roof:this.roof(c), floor:this.floor(c) };
   }
   /** высота пола внутри над низом контейнера, мм (морской: штатный пол + утеплённый, блок-контейнер — основание) */
@@ -1342,7 +1349,7 @@ class StationLayout {
   static hash(input){
     const c=input.cont||{}, pick=a=>a ? {cat:a.cat, size:a.size, mass:a.mass, model:a.model, maker:a.maker, orient:a.orient, kw:a.kw, volume:a.volume, color:a.color, flow:a.flow, pressure:a.pressure, stage:a.stage, dryer:a.dryer, vsd:a.vsd, dewPoint:a.dewPoint, receiver:a.receiver} : null;
     // версия программы — в отпечатке: новая программа всегда пересобирает картинки, даже при своих сохранённых правилах (3.86.7)
-    const s=JSON.stringify([this.VER, typeof APP_VERSION!=='undefined' ? APP_VERSION : '', typeof StationRules!=='undefined' && StationRules.ok() ? StationRules.version()+'.'+StationRules.stamp() : '', StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.ins, c.ral, c.sys||null, c.climate||'', c.roof||'', StationGeo.floor(c)], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
+    const s=JSON.stringify([this.VER, typeof APP_VERSION!=='undefined' ? APP_VERSION : '', typeof StationRules!=='undefined' && StationRules.ok() ? StationRules.version()+'.'+StationRules.stamp() : '', StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.lenFix||null, c.ins, c.ral, c.sys||null, c.climate||'', c.roof||'', StationGeo.floor(c)], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
       (input.parts||[]).filter(p=>p && p.role!=='container').map(p=>[p.name, p.qty, p.role||'', p.pipeMat||'', p.dn||'', p.mount||'', pick(p.attrs), StationEquip.tint(p), StationEquip.tones(p), (p.rows||[]).filter(r=>r && /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы|воздух|теплов|охлажд/i.test(String(r.k||'')+' '+String(r.v||''))).map(r=>[r.k, r.v]), StationEquip.pic(p)])]);
     return this.fnv(s);
   }
@@ -1421,6 +1428,15 @@ class StationLayout {
     if (plan.level==='ok' && plan.issues.some(i=>i.level==='warn')) plan.level='warn';
     return this.grow(plan, geo);
   }
+  /** плотность компоновки подобранного размера (названия — как у готовых наборов правил): просторно — рекомендуемые
+   *  отступы и проход; плотно — допустимые; максимально плотно — исключения (без продольного прохода, проход 600 мм,
+   *  агрегат поперёк) */
+  static density(lw, m, r, wide){
+    const md={ ...(m||{}), ...(r.mode||{}) }, ex=[md.ends && 'без продольного прохода', md.tight && 'проход в крайнем случае', md.cross && 'агрегат поперёк'].filter(Boolean);
+    const roomy=lw===0 || !(r.issues||[]).some(i=>/рекоменд/i.test(i.text));   // всё рекомендуемое вышло и на уровне «плотно» (длина задана с запасом)
+    const d=ex.length ? { id:'max', title:'Максимально плотно', text:ex.join(', ') } : roomy ? { id:'roomy', title:'Просторно', text:'рекомендуемые отступы и проход' } : { id:'dense', title:'Плотно', text:'допустимые отступы и проход' };
+    if (wide) d.text+=', негабарит по ширине'; return d;
+  }
   /** размер подобран плотно (решение ПНЕВМОТЕХ 13.10): отступы и проход меньше рекомендуемых, но не меньше допустимых — так
    *  задумано, а не недочёт: сведения, а не предупреждения */
   static soft(r){
@@ -1433,13 +1449,13 @@ class StationLayout {
    *  500 мм, затем наименьшая длина с шагом 100 мм; до +3 000 мм и не длиннее наибольшего); не вышло — как есть (с замечанием) */
   grow(plan, geo){
     const hs=p=>!!(p.heat && p.heat.short), vs=p=>!!(p.vent && (p.vent.short.in>0 || p.vent.short.out>0));
-    if (!geo.auto || this.in._grow || plan.level==='error' || !plan.vent || !(vs(plan) || hs(plan)) || !plan.geo || !plan.geo.ext) return plan;
+    if (!geo.auto || geo.fixL || this.in._grow || plan.level==='error' || !plan.vent || !(vs(plan) || hs(plan)) || !plan.geo || !plan.geo.ext) return plan;
     // жалюзи не встают — длиннее до 3 000 мм; конвекторам нет места — длиннее не больше чем на 500 мм (иначе — замечание:
     // мощность другим способом; плотная компоновка важнее)
     const [L0, W, H]=plan.geo.ext, S=StationGeo.STEP, V=vs(plan), bad=p=>V ? vs(p) : hs(p);
     const at=Lx=>{ const p=new StationLayout({ ...this.in, _grow:true, _mode:plan.mode||{}, cont:{ ...this.cont, size:`${Lx} × ${W} × ${H}`, sizeAuto:false } }).run();
       return p.level==='error' || !p.vent || bad(p) ? null : p; };
-    const ok=(p, Lx)=>{ p.geo.auto=true; p.picked=true; StationLayout.soft(p);
+    const ok=(p, Lx)=>{ p.geo.auto=true; p.picked=true; p.density=plan.density; StationLayout.soft(p);
       const wd=plan.issues.filter(i=>i.wide); if (wd.length){ p.issues.unshift(...wd); if (p.level==='ok') p.level='warn'; }   // негабарит — и в удлинённом
       p.issues.push({ level:'info', text:`Длина контейнера ${StationLayout.n(Lx)} мм (по оборудованию — ${StationLayout.n(L0)} мм): так помещаются ${V ? 'жалюзи притока и выброса' : 'конвекторы отопления'}.` });
       return p; };
@@ -2489,7 +2505,9 @@ class StationLayout {
     // уровень: [отступ сзади и проход, промежутки, что недопустимо в варианте]: 'rec' — всё рекомендуемое; 'gate' — без
     // сервисных ворот (они дороже: сначала шире или длиннее в пределах габарита) и с доступом ко всем сторонам; 'acc' — с
     // доступом ко всем сторонам (сервисные ворота или без продольного прохода — что меньше); '' — как вышло
-    const F=StationMatrix.fit(), lv=F.dense ? [[1, 1, 'gate'], [1, 1, 'acc'], [1, 1, '']] : [[0, 0, 'rec'], [1, 0, ''], [1, 1, '']], tiers=[];
+    // длина задана (fixL): ширина и высота — по оборудованию, плотность — какая нужна в этой длине: сначала просторно,
+    // затем плотно, затем исключения (решение ПНЕВМОТЕХ 13.10, 3.86.11)
+    const F=StationMatrix.fit(), fixL=geo.fixL||0, lv=fixL ? [[0, 0, 'rec'], [1, 0, ''], [1, 1, 'gate'], [1, 1, 'acc'], [1, 1, '']] : F.dense ? [[1, 1, 'gate'], [1, 1, 'acc'], [1, 1, '']] : [[0, 0, 'rec'], [1, 0, ''], [1, 1, '']], tiers=[];
     for (const [lw, ll, st] of lv) tiers.push([lw, ll, false, {}, st]);
     for (const m of this.modes().slice(1).filter(m=>!m.ends)) tiers.push([1, 1, false, m, '']);
     if (F.wide) for (const [lw, ll, st] of lv) tiers.push([lw, ll, true, {}, st]);
@@ -2505,14 +2523,17 @@ class StationLayout {
           // ширине без спецразрешения (уже — плотнее без нужды)
           for (const arr of ['row1', 'row2', ...(m.cross ? ['rowX'] : []), ...(this.comp && lw && !m.cross && !x0 && Wx===G.ROAD_W && StationMatrix.modes().ends ? ['rowE'] : [])]){
             const L=this.need(probe, Wi-g2, arr, ll); if (L==null) continue;
-            const Lx=Math.max(B.minL, G.up(L+g2+x0+wallX)); if (Lx<=StationLayout.MAX_L) cand.push({ Lx, Wx, two:arr==='row2', a:Lx*Wx/(arr==='row2' ? 1-F.two/100 : arr==='rowE' ? StationLayout.ENDS_K : 1), m:arr==='rowE' ? { ...m, ends:true } : m });
+            const Lx=Math.max(B.minL, G.up(L+g2+x0+wallX)); if (fixL && Lx>fixL) continue;
+            if (Lx<=StationLayout.MAX_L) cand.push({ Lx, Wx, two:arr==='row2', a:Lx*Wx/(arr==='row2' ? 1-F.two/100 : arr==='rowE' ? StationLayout.ENDS_K : 1), m:arr==='rowE' ? { ...m, ends:true } : m });
             // ресиверы в два ряда в конце ряда (поперёк) — если станция так заметно короче (решение ПНЕВМОТЕХ 13.10)
             if (arr==='row1'){ this.recv2=true; let L2=null; try{ L2=this.need(probe, Wi-g2, arr, ll); } finally{ this.recv2=false; }
-              const Lx2=L2==null ? null : Math.max(B.minL, G.up(L2+g2+x0+wallX)); if (Lx2!=null && Lx2<=Lx-StationLayout.RECV2) cand.push({ Lx:Lx2, Wx, two:false, a:Lx2*Wx, m }); }
+              const Lx2=L2==null ? null : Math.max(B.minL, G.up(L2+g2+x0+wallX)); if (Lx2!=null && Lx2<=Lx-StationLayout.RECV2 && !fixL) cand.push({ Lx:Lx2, Wx, two:false, a:Lx2*Wx, m }); }
           } }
         cand.sort((p, q)=>p.a-q.a || p.Lx-q.Lx);
         const seen=new Set();
         const done=(r, g2, Wx)=>{ r.geo=g2; r.picked=true;
+          r.density=StationLayout.density(lw, m, r, wide);
+          if (fixL) r.issues.push({ level:'info', fixL:true, text:`Длина задана: ${n(fixL)} мм — компоновка «${r.density.title}» (${r.density.text}); ширина и высота — по оборудованию.` });
           StationLayout.soft(r);
           if (wide) r.issues.push({ level:'warn', wide:true, text:`Негабарит: ширина ${n(Wx)} мм — шире габарита перевозки (без спецразрешения — до ${n(G.ROAD_W)} мм). Исключение: в ${n(G.ROAD_W)} мм не помещается даже плотно и без продольного прохода — перевозка со спецразрешением; иначе — две станции или меньше оборудования.` });
           return r; };
@@ -2520,7 +2541,7 @@ class StationLayout {
         // до 1,2 от первого варианта), чтобы шкафы встали на стену прохода, а ворота — в торец; не вышло — первый вариант
         let alt=null;
         for (const c of cand){ if (alt && c.a>alt.a*1.2) break; const key=c.Lx+'×'+c.Wx+(c.m.ends ? 'E' : ''); if (seen.has(key)) continue; seen.add(key);
-          for (let Lx=c.Lx; Lx<=Math.min(StationLayout.MAX_L, c.Lx+1500); Lx+=G.STEP){   // шкафам и фильтрам может понадобиться место в ряду
+          for (let Lx=fixL || c.Lx; Lx<=(fixL || Math.min(StationLayout.MAX_L, c.Lx+1500)); Lx+=G.STEP){   // шкафам и фильтрам может понадобиться место в ряду
             let g2=Object.assign({}, geo, { auto:false, road:true, ext:[Lx, c.Wx, Hx] }); g2.int=G.inner(geo.type, g2.ext, t);
             let r=this.fit(units, g2, [c.m]); if (r.level==='error') continue;
             // сервисные ворота за агрегатом: над ними — трубопровод и выброс горячего воздуха коробом (решение ПНЕВМОТЕХ) —
@@ -2539,6 +2560,8 @@ class StationLayout {
           } }
         return alt ? done(alt.r, alt.g2, alt.Wx) : null; });
       if (got) return got; }
+    if (fixL){ const r0=this.autoSize(units, { ...geo, fixL:null }), L0=r0.geo && r0.geo.ext ? r0.geo.ext[0] : null;
+      return { level:'error', geo, ext:null, int:null, issues:[{ level:'error', text:L0 ? `В заданную длину ${n(fixL)} мм оборудование не помещается даже максимально плотно — в габарите перевозки нужно не меньше ${n(L0)} мм. Увеличьте длину или уберите её (размер — по оборудованию).` : `В заданную длину ${n(fixL)} мм оборудование не помещается. ${r0.issues && r0.issues[0] ? r0.issues[0].text : ''}` }] }; }
     const Wi=G.inner(geo.type, [10000, F.wide ? B.maxW : G.ROAD_W, B.maxH], t)[1];
     const wideOk=this.need(probe, Wi-g2, 'row1', 1)!=null;
     const text=!F.wide && !wideOk ? `Оборудование с проходом для оператора и обслуживания не проходит по ширине перевозки ${n(G.ROAD_W)} мм, а негабарит отключён в правилах компоновки («Настройки → Инженерные правила станций») — разделите станцию на два модуля или уменьшите состав.`

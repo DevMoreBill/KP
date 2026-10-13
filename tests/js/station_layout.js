@@ -1644,4 +1644,21 @@ Check.run('без продольного прохода: компрессор у
   new StScene(p, {}).build(); draw(p, 'без продольного прохода');
 });
 
+
+Check.run('длина задана: ширина, высота и плотность — по оборудованию, длина не меняется; короче нужного — ошибка с нужной длиной (3.86.11)', ()=>{
+  assert.deepStrictEqual(['10000', '10 000 мм', '10 м', '10,5', '1000', '20000', 'abc', '6000 × 2400 × 2600'].map(v=>StationGeo.len(v)), [10000, 10000, 10000, 10500, null, null, null, null], 'разбор длины');
+  const dl=P('Винтовой компрессор Dali DL-55/8GA', { cat:'comp_screw', kw:55, flow:10, size:'1650 × 1450 × 1840' }, { role:'main', qty:2 });
+  const dry=P('Осушитель SMC IDFA150F-40', { cat:'dryer_refrig', flow:22.3, size:'950 × 1290 × 1332' }), rec=P('Ресивер АСО РВ 900/10', { cat:'receiver', volume:900, size:'890 × 870 × 2040' }, { qty:2 });
+  const auto=solve(C('block', { sizeAuto:true }), [dl, dry, rec]); Check.plan(auto, 'по оборудованию');
+  const L0=auto.geo.ext[0], seen=new Set();
+  for (const L of [L0, L0+1000, 12000]){
+    const p=solve(C('block', { sizeAuto:true, lenFix:L }), [dl, dry, rec]); Check.plan(p, 'длина '+L);
+    assert.strictEqual(p.geo.ext[0], L, 'длина — заданная: '+p.geo.ext);
+    assert.ok(p.density && ['roomy', 'dense', 'max'].includes(p.density.id), 'плотность названа: '+JSON.stringify(p.density));
+    assert.ok(p.issues.some(i=>i.fixL && i.text.includes(p.density.title)), 'сведения о плотности'); seen.add(p.density.id);
+  }
+  assert.notStrictEqual(StationLayout.hash({ cont:C('block', { sizeAuto:true, lenFix:12000 }), parts:[dl] }), StationLayout.hash({ cont:C('block', { sizeAuto:true }), parts:[dl] }), 'длина — в отпечатке');
+  const s=solve(C('block', { sizeAuto:true, lenFix:3000 }), [dl, dry, rec]);   // и негабаритом не встаёт
+  assert.strictEqual(s.level, 'error'); assert.ok(/не помещается даже максимально плотно/.test(s.issues[0].text) && s.issues[0].text.includes(StationLayout.n(L0)), s.issues[0].text);
+});
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);

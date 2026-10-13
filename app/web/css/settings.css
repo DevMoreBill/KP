@@ -460,6 +460,7 @@ dialog.st-confirm:has(.sh-t){width:min(820px,calc(100vw - 32px));max-width:none}
 .lp-d{font-size:12px;color:var(--muted)}
 .lp-d small{display:block}
 .lp-d .icon{padding:0 6px;font-size:15px}
+.lp-d .icon[hidden]{display:none}
 .lp-go{gap:8px;flex-wrap:wrap;margin-top:12px}
 .lp-dg .ld-l{margin:4px 0 8px;padding-left:20px;font-size:13px}
 .re{display:flex;flex-direction:column;gap:8px;min-width:260px}

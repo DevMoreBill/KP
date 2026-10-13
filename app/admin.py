@@ -935,7 +935,7 @@ class AdminApi:
                 self.log('edit_settings', 'settings', 'stationRules', {'version': before['version'], 'own': before['own']},
                          {'version': res['version'], 'own': res['own']})
                 return self.ok({'info': res})
-            return self.ok({'info': sr.info()})
+            return self.ok({'info': sr.info(), 'layoutDef': sr.layout_defaults()})
         if sub == 'features':    # функции программы: включить / выключить
             from features import FeatureAccess
             fa = FeatureAccess(st)

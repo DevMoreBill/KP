@@ -119,6 +119,10 @@ class StationRules:
         self.store.kv_set(self.KV, None)
         return self.info()
 
+    def layout_defaults(self):
+        """значения правил компоновки из файла поставки ({id: значение}) — для «Все значения — по умолчанию» в «Настройках»"""
+        return {r['id']: r.get('value') for r in self.bundled()['rules'] if r.get('id') in LayoutValues.IDS}
+
     def info(self):
         d, b = self.current(), self.bundled()
         own = self.own()
