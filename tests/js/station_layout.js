@@ -51,6 +51,11 @@ class Check {
       assert.ok((p.doors||[]).some(d=>d.kind==='entry' && d.x0>=p.cross.x1) || (p.exit && p.exit.wall==='right') || (p.gates && p.gates.wicket), `${label}: нет второй двери оператора за поз. ${p.cross.pos}`);
       assert.ok(p.issues.some(i=>/^Сквозного прохода нет/.test(i.text)), `${label}: замечание «без сквозного прохода»`); }
     assert.ok(aMin>=500, `${label}: проход не менее ${aMin} мм`);
+    // осушителям и ресиверам сервисных дверей не делают — через ворота в торце; ворота в торцах — одной высоты, по самому
+    // высокому оборудованию (решение ПНЕВМОТЕХ 13.10)
+    for (const d of (p.doors||[]).filter(d=>d.kind!=='entry')) assert.ok(d.pos.every(v=>!floor.some(i=>i.pos===v && StationLayout.NO_DOOR.test(i.kind))), `${label}: сервисные ворота осушителю или ресиверу поз. ${d.pos.join(', ')}`);
+    const GT=[p.gates, p.gates2].filter(g=>g && !g.sea); if (GT.length && floor.length){ const hh=Math.max(...floor.map(i=>i.h));
+      for (const g of GT) assert.ok(g.h>=Math.min(H-100, hh+StationMatrix.gate().addH) && (GT.length<2 || g.h===GT[0].h), `${label}: ворота в торце ${g.h} мм — ниже самого высокого оборудования ${hh} мм + запас или разной высоты`); }
     assert.ok(p.entry, `${label}: нет двери оператора`);
     if (p.rows===2){
       const A=floor.filter(i=>i.row===1), B=floor.filter(i=>i.row===0), gap=Math.min(...B.map(i=>i.y))-Math.max(...A.map(i=>i.y+i.ly));
@@ -1466,6 +1471,8 @@ Check.run('без продольного прохода: компрессор у
   assert.ok(p.issues.some(i=>/^Без продольного прохода: поз\. 1 \(компрессор\)/.test(i.text)) && !p.second, 'замечание режима, второй двери не выдумано');
   const tt=new StationDrawing(p, meta(p)).reqs().join(' '); assert.ok(/с обеих сторон компрессора/.test(tt) && /ресиверы в два ряда — не выход/.test(tt), 'ТТ: ворота с обеих сторон, дальние — не выход');
   assert.ok(!p.vent.louvers.some(q=>q.kind==='out' && q.leaf), 'выброс — не в створках');
+  assert.ok(p.gates2.pos.includes(2) && !(p.doors||[]).some(d=>d.kind!=='entry' && d.pos.includes(2)), 'осушитель — через ворота в торце, без сервисных дверей');
+  assert.ok(p.gates.h===p.gates2.h && p.gates.h>=2040+StationMatrix.gate().addH, 'ворота в торцах — одной высоты по самому высокому: '+[p.gates.h, p.gates2.h]);
   // заданный контейнер той же ширины: с проходом не встаёт по длине — без продольного прохода
   const q=solve(C('block', { size:'8300 × 2550 × 3100' }), [k90, ads, r900, cab]); Check.plan(q, 'заданный 8,3 м');
   assert.ok(q.level!=='error' && q.mode && q.mode.ends, 'заданный: '+JSON.stringify([q.level, q.mode]));

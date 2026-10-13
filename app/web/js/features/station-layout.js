@@ -1096,7 +1096,8 @@ class StationLayout {
   static get ENTRY(){ const d=StationMatrix.door(); return [300, 300+d.w+100]; }
   static get DOOR_MIN(){ return StationMatrix.door().w; }   // дверь оператора — не уже 900 мм в свету
   static PASS = 25;          // вынос агрегата через проём и по проходу (на роликах): зазор с каждой стороны, мм
-  static TILT = /^(receiver|filter|cabinet|tank)$/;   // при выносе можно наклонить (сосуд, фильтр, шкаф, бак); остальное — стоя (масло, хладагент)
+  static TILT = /^(receiver|filter|cabinet|tank)$/;
+  static NO_DOOR = /^(dryer|receiver)$/;   // осушителям и ресиверам сервисных дверей не делают — через ворота в торце (решение ПНЕВМОТЕХ 13.10)   // при выносе можно наклонить (сосуд, фильтр, шкаф, бак); остальное — стоя (масло, хладагент)
   static REAR_H = 1500;      // сервисные ворота за агрегатом — не проход, а проём обслуживания: по высоте агрегата (матрица), не ниже 1500 мм
   static GATE = { min:1500, add:400, h:2000 };   // распашные ворота для демонтажа в торце: не уже 1500 мм и шире агрегата на 400 мм, не ниже 2000 мм
   static CAB_TOP = 1900;     // настенный шкаф: верх — на 1,9 м от пола (рукоятки и панель оператора — на уровне глаз),
@@ -1958,10 +1959,31 @@ class StationLayout {
         for (const b of ok2){ r.gates2.pos.push(b.it.pos); r.gates2.why.push(b.why.replace(/ через ворота в торце$/, ' через ворота во втором торце')); }
         if (long && !ok2.length) r.gates2.why.push(`оборудование стоит на ${n(used)} мм — длиннее ${n(GM.twoAt)} мм: ворота с обоих торцов`);
         far=far.filter(b=>!ok2.includes(b)); } }
+    far=far.filter(b=>!this.toGate(r, geo, b, sides));
     far=far.map(b=>{ const w=Math.max(0, ...sides.map(s=>this.pathTo(b.it, s, r, geo)).filter(Number.isFinite));
       return Object.assign({}, b, { why:b.why.replace(/, монтаж и демонтаж — через ворота в торце$/, '')+(sides.length ? `, по проходу к торцу не провезти (${w ? `проход ${n(w)} мм, ` : ''}агрегат — ${n(b.narrow)} мм)` : avoid.length ? ', торцы заняты шкафами на стене' : ', торцы заняты (отсек бака, дверь-жалюзи ДГУ, вход оператора)') }); });
     r.side=[...rear, ...far]; r.doors=this.sideDoors(r.side, r, geo);
+    this.regate(r, geo);
     this.second(r, geo);
+  }
+  /** осушитель или ресивер, которого к воротам по проходу не провезти: сервисных дверей им не делают (решение ПНЕВМОТЕХ
+   *  13.10) — монтаж и демонтаж через ближние ворота в торце (нет ворот — новые в ближнем свободном торце), при демонтаже
+   *  соседнее оборудование переставляют. true — отнесён к воротам; false — не осушитель и не ресивер или торцы заняты */
+  toGate(r, geo, b, sides){
+    if (!StationLayout.NO_DOOR.test(b.it.kind)) return false;
+    const L=geo.int[0], x0=geo.x0||0, far=s=>s==='left' ? b.it.x-x0 : L-b.it.x-b.it.lx, near=a=>a.sort((p, q)=>far(p)-far(q))[0];
+    let G=[r.gates, r.gates2].filter(Boolean).sort((p, q)=>far(p.wall)-far(q.wall))[0];
+    if (!G){ const s=near(sides.slice()); if (!s) return false; G=r.gates=this.gateFor(r, geo, s, [b.it]); }
+    if (!G.pos.includes(b.it.pos)){ G.pos.push(b.it.pos);
+      G.why.push(`${b.why.replace(/, монтаж и демонтаж — через ворота в торце$/, '')}: сервисных дверей осушителям и ресиверам не делают — монтаж и демонтаж через ворота в торце, при демонтаже соседнее оборудование переставляют`); }
+    return true;
+  }
+  /** ворота в торце по итогу: ширина — по агрегатам, которые через них монтируют, высота — по самому высокому оборудованию
+   *  станции (gateFor); положение, вручную смещённое, — как задано */
+  regate(r, geo){
+    for (const G of [r.gates, r.gates2]){ if (!G || G.sea) continue;
+      const U=r.items.filter(i=>G.pos.includes(i.pos) && (i.mount==='floor' || i.mount==='frame') && !i.tank), q=this.gateFor(r, geo, G.wall, U);
+      for (const k of ['y0', 'y1', 'w', 'h', 'full', 'off', 'offWhy', 'manual']) G[k]=q[k]; }
   }
   /** без продольного прохода (r.ends): компрессору — сервисные ворота с обеих сторон (спереди и сзади) и ворота в торце у
    *  него (у морского — его штатные двери); ресиверам в два ряда у дальнего торца — ворота там; остальному, что не пройдёт в
@@ -1979,15 +2001,17 @@ class StationLayout {
     for (const b of this.bulky(r, geo).filter(b=>!C.includes(b.it) && !T.includes(b.it))){
       const G=[r.gates, r.gates2].find(g=>g && b.narrow+2*P<=this.pathTo(b.it, g.wall, r, geo));
       if (G){ if (!G.pos.includes(b.it.pos)){ G.pos.push(b.it.pos); G.why.push(`${b.why}, монтаж и демонтаж — через ворота в торце`); } }
-      else side.push(Object.assign({}, b, { why:`${b.why}, к воротам в торце не провезти` })); }
+      else if (!this.toGate(r, geo, b, [])) side.push(Object.assign({}, b, { why:`${b.why}, к воротам в торце не провезти` })); }
     r.side=side; r.doors=this.sideDoors(side, r, geo);
+    this.regate(r, geo);
     this.second(r, geo);
   }
-  /** распашные монтажные ворота в торце s для агрегатов U: Ш = max W агрегатов + addW + 2·T, В = max H + addH + T (не меньше
-   *  прохода в рост); шире доли торца — во весь торец */
+  /** распашные монтажные ворота в торце s для агрегатов U: Ш = max W агрегатов + addW + 2·T, В = самое высокое оборудование
+   *  станции + addH + T (решение ПНЕВМОТЕХ 13.10: ворота в обоих торцах одной высоты), не ниже проёма двери оператора (ворота —
+   *  и выход) и не выше помещения; шире доли торца — во весь торец */
   gateFor(r, geo, s, U){
     const [, W, H]=geo.int, D=StationLayout.DOOR, n=StationLayout.n, T=geo.t||0, GM=StationMatrix.gate();
-    const nw=Math.max(0, ...U.map(i=>Math.min(i.l, i.w))), hh=Math.max(0, ...U.map(i=>i.h));
+    const nw=Math.max(0, ...U.map(i=>Math.min(i.l, i.w))), hh=Math.max(0, ...r.items.filter(i=>(i.mount==='floor' || i.mount==='frame') && !i.tank).map(i=>i.h));
     let w=Math.max(GM.minW, Math.ceil((nw+GM.addW+2*T)/100)*100); const full=w>=GM.full*W || w>W-2*D.pad;
     if (full) w=W-2*D.pad;
     // по оси торца (решение ПНЕВМОТЕХ 13.10); смещение — только если агрегат по проходу у стены к центральным воротам не
@@ -2004,7 +2028,7 @@ class StationLayout {
   /** со шкафами на стене: проход до ворот ещё есть; нет — тому агрегату сервисные ворота в боковой стене */
   recheck(r, geo){
     const G=r.gates, side=r.side||[]; delete r.side; if (!G || !G.pos.length) return;
-    const P=StationLayout.PASS, lost=this.mounts(r, geo).filter(b=>G.pos.includes(b.it.pos) && !side.some(q=>q.it===b.it) && b.narrow+2*P>this.pathTo(b.it, G.wall, r, geo)); if (!lost.length) return;
+    const P=StationLayout.PASS, lost=this.mounts(r, geo).filter(b=>G.pos.includes(b.it.pos) && !StationLayout.NO_DOOR.test(b.it.kind) && !side.some(q=>q.it===b.it) && b.narrow+2*P>this.pathTo(b.it, G.wall, r, geo)); if (!lost.length) return;
     for (const b of lost){ const k=G.pos.indexOf(b.it.pos); if (k<0) continue; G.pos.splice(k, 1); G.why=G.why.filter(t=>!t.startsWith(`поз. ${b.it.pos} `)); }
     if (!G.pos.length && !G.sea){ if (G.wicket && !r.exit) r.exit=this.endExit(r, geo, 'right'); r.gates=null; }
     const keep=r.doors.filter(d=>d.kind==='entry');
