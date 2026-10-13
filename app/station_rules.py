@@ -207,6 +207,7 @@ class LayoutValues:
         'modes.ends': (0, 1),
         'modes.tight': (0, 1),
         'modes.cross': (0, 1),
+        'modes.next': (600, 3000),
         'door.w': (900, 1000),
         'door.h': (2000, 2100),
         'door.gap': (0, 2000),
