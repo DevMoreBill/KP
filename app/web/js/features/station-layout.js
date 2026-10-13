@@ -989,7 +989,7 @@ class StationHeat {
     // термостатом; радиатор ДГУ — по паспорту, иначе по мощности (нагрев на 10 °C)
     const rad=Math.round(work.filter(i=>i.kind==='dgu').reduce((s, i)=>s+(i.cool>0 ? i.cool : i.kw*1000*0.5/(this.AIR*10)), 0));
     const V=m(Li-Lt)*m(Wi)*m(Hi), comp=work.filter(i=>i.kind==='compressor');
-    const vc={ units:comp.map(i=>({ key:StationLayout.key(i), pos:i.pos, type:i.ctype, kw:i.kw, heat:i.heat, cool:i.cool })), qRoom:qSum/1000, qSun:this.SUN*m(Le)*m(We), use:work.reduce((s, i)=>s+air(i), 0), V, tSum:tmax, tWin:tout, tInMin:tin, boost:!!sys.boost, ex };
+    const vc={ units:comp.map(i=>({ key:StationLayout.key(i), pos:i.pos, type:i.ctype, kw:i.kw, heat:i.heat, cool:i.cool })), qRoom:qSum/1000, qSun:this.SUN*m(Le)*m(We), use:work.reduce((s, i)=>s+air(i), 0), V, tSum:tmax, tWin:tout, tInMin:tin, boost:!!sys.boost, exfan:!!sys.exfan, ex };
     const S=VentCalc.summer(vc, VW);
     // зима: потери ограждений (U по утеплителю) и минимального воздухообмена против тепла работающего (самый холодный режим)
     const Wn=VentCalc.winter({ ...vc, env:{ U, A, qEnv }, Qrun:base ? base.q/1000 : 0, useRun:base ? base.a : 0 }, S, VW), Rc=VentCalc.recup(!!sys.hrv, Wn, vc, VW);
@@ -1085,7 +1085,7 @@ class StationHeat {
 // размера — по необходимому месту (шаг 100 мм, наименьшая площадь пола); заданный контейнер, в который не помещается, —
 // ошибка и подсказка, какой подойдёт; контейнер с большим запасом — подсказка, какой меньший подойдёт.
 class StationLayout {
-  static VER = 17;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
+  static VER = 18;          // версия правил и рисунков: изменилась — картинки станций в КП пересобираются
   static MAX_L = 12000;
   static PIPE_PAD = 60;      // зазор вокруг фильтра на трубопроводе, мм
   static AIR_Y = 150;        // линия сжатого воздуха: ось — в 150 мм от задней стены (или посередине между рядами)
