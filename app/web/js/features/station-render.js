@@ -159,16 +159,16 @@ class StScene {
    *  осушителя, на радиаторе ДГУ, на корпусе ресивера */
   badge(it){
     const mk=String(it.maker || (this.meta.makers||{})[it.id] || '').trim(); if (!mk || it.mount==='pipe' || it.mount==='wall') return;
-    const [x0, y0, z0, x1, y1, z1]=this.B(it), s=this.side(it), ar=this.logoAr(mk), d={ type:'logo', maker:mk, bg:it.color, ar };
+    const [x0, y0, z0, x1, y1, z1]=this.B(it), s=this.side(it), ar=this.logoAr(mk), d={ type:'logo', maker:mk, bg:it.color, ar }, crop=t=>Object.assign(d, { bg:this.toneAt(it, (t[0]+t[1])/2, (t[2]+t[3])/2) });
     const fit=(mw, mh)=>{ const w=Math.min(mw, mh*ar); return [w, w/ar]; };
-    if (it.kind==='receiver' && it.shape!=='hcyl'){ const cx=(x0+x1)/2, cy=(y0+y1)/2, r=Math.min(x1-x0, y1-y0)/2, [w, h]=fit(r*1.3, 0.1), a=w/2/r, ac=s<0 ? -Math.PI/2 : Math.PI/2, z=z0+(z1-z0)*0.62;
+    if (it.kind==='receiver' && it.shape!=='hcyl'){ const cx=(x0+x1)/2, cy=(y0+y1)/2, r=Math.min(x1-x0, y1-y0)/2, [w, h]=fit(r*1.6, 0.16), a=w/2/r, ac=s<0 ? -Math.PI/2 : Math.PI/2, z=z0+(z1-z0)*0.62;
       const key=JSON.stringify(d); this.decals.set(key, d);
       return this.M(StMat.decal(key)).decalArc(cx, cy, r+0.003, ac+(s<0 ? -a : a), ac+(s<0 ? a : -a), z-h/2, z+h/2); }
-    const at={ compressor:[0.06, 0.3, 0.84, 0.93], dryer:[0.52, 0.9, 0.77, 0.9], other:[0.06, 0.4, 0.85, 0.94], receiver:[0.3, 0.7, 0.55, 0.75] }[it.kind];
-    if (it.kind==='dgu'){ const L=x1-x0, H=z1-z0, xr=x0+L*0.84, [w, h]=fit((x1-xr)*0.85, H*0.1), y=s<0 ? y0+(y1-y0)*0.04 : y1-(y1-y0)*0.04;
+    const at={ compressor:[0.04, 0.66, 0.76, 0.95], dryer:[0.46, 0.94, 0.72, 0.92], other:[0.05, 0.5, 0.78, 0.95], receiver:[0.25, 0.75, 0.5, 0.78] }[it.kind];   // крупно — для узнаваемости
+    if (it.kind==='dgu'){ const L=x1-x0, H=z1-z0, xr=x0+L*0.84, [w, h]=fit((x1-xr)*0.92, H*0.16), y=s<0 ? y0+(y1-y0)*0.04 : y1-(y1-y0)*0.04;
       return this.sticker(d, [(xr+x1)/2, y, z0+H*0.8], [0, s, 0], w, h); }
     if (!at || (it.kind==='dryer' && StationLayout.twinDryer(it))) return;
-    const span=this.endwise(it) ? y1-y0 : x1-x0, [w, h]=fit((at[1]-at[0])*span, (at[3]-at[2])*(z1-z0));
+    crop(at); const span=this.endwise(it) ? y1-y0 : x1-x0, [w, h]=fit((at[1]-at[0])*span, (at[3]-at[2])*(z1-z0));
     this.sticker(d, this.front(it, (at[0]+at[1])/2, (at[2]+at[3])/2, 0.001), this.out(it, 1), w, h);
   }
   /** геометрия материала m */
@@ -527,6 +527,19 @@ class StScene {
   /** прямоугольник на лицевой стороне: u0…u1, v0…v1, толщина o (наружу) */
   panel(m, it, u0, u1, v0, v1, o, r=0.003){ const a=this.front(it, u0, v0, 0), b=this.front(it, u1, v1, o);
     m.box(Math.min(a[0], b[0]), Math.min(a[1], b[1]), a[2], Math.max(a[0], b[0]), Math.max(a[1], b[1]), b[2], r); }
+  /** доля u на лицевой стороне по фото: на фото — вид спереди слева направо, на изделии — как его видит стоящий перед ним */
+  fu(it, u){ return (this.endwise(it) ? this.side(it)<0 : this.side(it)>0) ? 1-u : u; }
+  /** окраска частей по фото (it.tones — зоны других цветов, как в карточке товара): зона во всю ширину — пояс корпуса
+   *  со всех сторон (и сверху, если доходит до верха); часть ширины — участок лицевой стороны. Поверх корпуса, под деталями */
+  tones(it, x0, y0, zA, x1, y1, z1, r){
+    const T=it.tones; if (!T || !T.length) return; const [, , Z0, , , Z1]=this.B(it), e=0.0015, va=(zA-Z0)/(Z1-Z0||1);
+    for (const t of T){ const m=this.M(StMat.paint(t.hex, 0.42)), v0=Math.max(va, t.v0), v1=t.v1; if (v1-v0<0.02) continue;
+      if (t.u0<=0.001 && t.u1>=0.999){ const za=Z0+(Z1-Z0)*v0, zb=Z0+(Z1-Z0)*v1, top=v1>=0.999;
+        m.box(x0-e, y0-e, za, x1+e, y1+e, top ? z1+e : zb, top ? r : Math.min(r, 0.004)); continue; }
+      const a=this.fu(it, t.u0), b=this.fu(it, t.u1); this.panel(m, it, Math.min(a, b), Math.max(a, b), v0, v1, e, 0); }
+  }
+  /** цвет изделия в точке лицевой стороны (u, v): зона по фото или главный */
+  toneAt(it, u, v){ const t=(it.tones||[]).find(t=>{ const a=this.fu(it, t.u0), b=this.fu(it, t.u1); return u>=Math.min(a, b) && u<=Math.max(a, b) && v>=t.v0 && v<=t.v1; }); return t ? t.hex : it.color; }
   /** решётка: горизонтальные ламели на лицевой стороне или торце (end: −1 — торец x0, 1 — x1) */
   grille(it, u0, u1, v0, v1, n, end){
     const m=this.M(StMat.paint('#24292e', 0.7)), [x0, y0, z0, x1, y1, z1]=this.B(it);
@@ -539,7 +552,7 @@ class StScene {
     const [x0, y0, z0, x1, y1, z1]=this.B(it), c=it.color, body=this.M(StMat.paint(c, 0.42)), dk=this.M(StMat.paint(StScene.DARK, 0.65)), hb=Math.min(0.1, (z1-z0)*0.07);
     dk.box(x0+0.02, y0+0.02, z0, x1-0.02, y1-0.02, z0+hb, 0.005);
     for (const u of [0.18, 0.72]) this.panel(this.M(StMat.paint('#15181b', 0.8)), it, u, u+0.1, 0.012, 0.055, 0.001, 0);   // карманы под вилы
-    body.box(x0, y0, z0+hb, x1, y1, z1, 0.018);
+    body.box(x0, y0, z0+hb, x1, y1, z1, 0.018); this.tones(it, x0, y0, z0+hb, x1, y1, z1, 0.018);
     const sm=this.M(StMat.paint(RalColor.shade(c, 0.7), 0.6));   // швы панелей, ручки
     for (const u of [0.34, 0.67]) this.panel(sm, it, u-0.002, u+0.002, 0.08, 0.97, 0.002, 0);
     for (const u of [0.31, 0.64]) this.panel(dk, it, u-0.012, u-0.004, 0.5, 0.62, 0.012, 0.002);
@@ -580,7 +593,7 @@ class StScene {
   }
   dryer(it){
     const [x0, y0, z0, x1, y1, z1]=this.B(it), c=it.color, body=this.M(StMat.paint(c, 0.4)), dk=this.M(StMat.paint(StScene.DARK, 0.6));
-    dk.box(x0+0.02, y0+0.02, z0, x1-0.02, y1-0.02, z0+0.05, 0.004); body.box(x0, y0, z0+0.05, x1, y1, z1, 0.016);
+    dk.box(x0+0.02, y0+0.02, z0, x1-0.02, y1-0.02, z0+0.05, 0.004); body.box(x0, y0, z0+0.05, x1, y1, z1, 0.016); this.tones(it, x0, y0, z0+0.05, x1, y1, z1, 0.016);
     this.panel(this.M(StMat.paint('#2c3238', 0.4)), it, 0.1, 0.42, 0.72, 0.9, 0.01, 0.004); this.panel(this.M(StMat.glow('#9fe0a6', 1.2)), it, 0.13, 0.25, 0.77, 0.85, 0.012, 0);
     this.grille(it, 0.1, 0.9, 0.12, 0.5, 7); this.grille(it, 0.15, 0.85, 0.2, 0.7, 7, 1);
     const g=this.M(StMat.metal(StScene.GALV, 0.35)), s=this.side(it), yb=s<0 ? y1-0.12 : y0+0.12;
@@ -687,7 +700,7 @@ class StScene {
   }
   tank(it){
     const [x0, y0, z0, x1, y1, z1]=this.B(it), m=this.M(StMat.paint(it.color, 0.42)), dk=this.M(StMat.paint(StScene.DARK, 0.6));
-    dk.box(x0-0.02, y0-0.02, z0, x1+0.02, y1+0.02, z0+0.06, 0.004); m.box(x0, y0, z0+0.06, x1, y1, z1, 0.03);
+    dk.box(x0-0.02, y0-0.02, z0, x1+0.02, y1+0.02, z0+0.06, 0.004); m.box(x0, y0, z0+0.06, x1, y1, z1, 0.03); this.tones(it, x0, y0, z0+0.06, x1, y1, z1, 0.03);
     dk.tube([x0+(x1-x0)*0.2, (y0+y1)/2, z1], [x0+(x1-x0)*0.2, (y0+y1)/2, z1+0.09], 0.07, 20);
     this.M(StMat.metal(StScene.GALV, 0.35)).tube([x0+(x1-x0)*0.75, (y0+y1)/2, z1], [x0+(x1-x0)*0.75, (y0+y1)/2, z1+0.15], 0.015, 10);
     const lv=this.front(it, 0.88, 0.15, 0.015); this.M(StMat.paint('#d9e0e6', 0.15)).box(lv[0]-0.015, Math.min(lv[1], lv[1]-this.side(it)*0.015), lv[2], lv[0]+0.015, Math.max(lv[1], lv[1]-this.side(it)*0.015), lv[2]+(z1-z0)*0.7);
@@ -697,7 +710,7 @@ class StScene {
   cabinet(it){
     const [x0, y0, z0, x1, y1, z1]=this.B(it), c=it.color, body=this.M(StMat.paint(c, 0.38)), dk=this.M(StMat.paint(StScene.DARK, 0.6)), s=this.side(it), st=this.M(StMat.metal(StScene.GALV, 0.45));
     if (it.mount==='floor') dk.box(x0+0.01, y0+0.01, z0, x1-0.01, y1-0.01, z0+0.1, 0.004);
-    body.box(x0, y0, z0+(it.mount==='floor' ? 0.1 : 0), x1, y1, z1, 0.012);
+    body.box(x0, y0, z0+(it.mount==='floor' ? 0.1 : 0), x1, y1, z1, 0.012); this.tones(it, x0, y0, z0+(it.mount==='floor' ? 0.1 : 0), x1, y1, z1, 0.012);
     const sm=this.M(StMat.paint(RalColor.shade(c, 0.72), 0.5));
     this.panel(sm, it, 0.03, 0.97, 0.025, 0.03, 0.002, 0); this.panel(sm, it, 0.03, 0.97, 0.97, 0.975, 0.002, 0); this.panel(sm, it, 0.03, 0.035, 0.03, 0.97, 0.002, 0); this.panel(sm, it, 0.965, 0.97, 0.03, 0.97, 0.002, 0);
     this.panel(dk, it, 0.86, 0.9, 0.42, 0.58, 0.02, 0.003);
@@ -718,7 +731,7 @@ class StScene {
   }
   other(it){
     const [x0, y0, z0, x1, y1, z1]=this.B(it), c=it.color, body=this.M(StMat.paint(c, 0.42));
-    this.M(StMat.paint(StScene.DARK, 0.6)).box(x0+0.02, y0+0.02, z0, x1-0.02, y1-0.02, z0+0.06, 0.004); body.box(x0, y0, z0+0.06, x1, y1, z1, 0.015);
+    this.M(StMat.paint(StScene.DARK, 0.6)).box(x0+0.02, y0+0.02, z0, x1-0.02, y1-0.02, z0+0.06, 0.004); body.box(x0, y0, z0+0.06, x1, y1, z1, 0.015); this.tones(it, x0, y0, z0+0.06, x1, y1, z1, 0.015);
     this.panel(this.M(StMat.paint(RalColor.shade(c, 0.75), 0.5)), it, 0.08, 0.3, 0.7, 0.85, 0.006, 0.003);
   }
 

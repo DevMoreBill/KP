@@ -1196,6 +1196,43 @@ Check.run('цвет по фото: фон убирается, главный ц�
   PhotoTint.cache.delete('/img/test-tint.jpg');
 });
 
+Check.run('цвета по фото: части другого цвета — зонами, как в карточке; логотип крупно на цвете своей зоны', ()=>{
+  const img=(w, h, f)=>{ const d=new Uint8ClampedArray(w*h*4); for (let y=0; y<h; y++) for (let x=0; x<w; x++){ const c=f(x, y); d.set(c.length===4 ? c : [...c, 255], (y*w+x)*4); } return d; };
+  const near=(hex, c, tol=28)=>{ const v=[1, 3, 5].map(k=>parseInt(hex.slice(k, k+2), 16)); return /^#[0-9a-f]{6}$/.test(hex) && v.every((x, k)=>Math.abs(x-c[k])<=tol); };
+  const W=[255, 255, 255], blue=[30, 80, 160], gray=[205, 208, 212], orange=[230, 120, 20], red=[180, 40, 40];
+  const at=(z, u0, u1, v0, v1)=>[z.u0-u0, z.u1-u1, z.v0-v0, z.v1-v1].every(e=>Math.abs(e)<=0.05);
+  assert.deepStrictEqual(PhotoTint.parts(img(60, 40, (x, y)=>x>8 && x<52 && y>4 && y<36 ? gray : W), 60, 40).zones, [], 'один цвет — без зон');
+  // верхняя четверть — синяя (крышка), остальное серое: пояс во всю ширину сверху
+  let r=PhotoTint.parts(img(80, 60, (x, y)=>x>=10 && x<70 && y>=6 && y<54 ? (y<18 ? blue : gray) : W), 80, 60);
+  assert.ok(near(r.hex, gray) && r.zones.length===1 && r.zones[0].u0===0 && r.zones[0].u1===1 && at(r.zones[0], 0, 1, 0.75, 1) && r.zones[0].v1===1 && near(r.zones[0].hex, blue), 'синий верх — пояс по всей ширине сверху: '+JSON.stringify(r.zones));
+  // панель справа вверху
+  r=PhotoTint.parts(img(80, 60, (x, y)=>x>10 && x<70 && y>5 && y<55 ? (x>50 && y<20 ? blue : gray) : W), 80, 60);
+  assert.ok(near(r.hex, gray) && r.zones.length===1 && at(r.zones[0], 0.68, 1, 0.71, 1) && near(r.zones[0].hex, blue), 'синяя панель справа вверху — участок: '+JSON.stringify(r.zones));
+  // нижняя половина оранжевая, верх серый с маленькой тёмной решёткой — она не зона
+  r=PhotoTint.parts(img(80, 60, (x, y)=>x>=10 && x<70 && y>=6 && y<54 ? (y>=30 ? orange : x>=32 && x<48 && y>=10 && y<20 && y%2 ? [20, 20, 20] : gray) : W), 80, 60);
+  assert.ok(r.zones.length===1 && (near(r.hex, gray) ? at(r.zones[0], 0, 1, 0, 0.5) && near(r.zones[0].hex, orange) : at(r.zones[0], 0, 1, 0.5, 1) && near(r.zones[0].hex, gray)), 'две половины — два цвета: '+r.hex+' '+JSON.stringify(r.zones));
+  // узкая красная полоса слева во всю высоту (с белой надписью) на тёмно-сером корпусе — полоса, как у Dalgakiran
+  const dk=[66, 69, 70]; r=PhotoTint.parts(img(100, 80, (x, y)=>x>=10 && x<90 && y>=8 && y<72 ? (x<18 ? (y%9===0 && x>12 && x<16 ? W : red) : dk) : W), 100, 80);
+  assert.ok(near(r.hex, dk) && r.zones.length===1 && at(r.zones[0], 0, 0.1, 0, 1) && near(r.zones[0].hex, red, 40), 'красная полоса по высоте: '+JSON.stringify(r.zones));
+  // решётка (пёстрая) другого цвета — не окраска; свет и тень граней (серое к серому) — не окраска
+  r=PhotoTint.parts(img(80, 60, (x, y)=>x>=10 && x<70 && y>=6 && y<54 ? (x>=40 && x<60 && y>=20 && y<45 ? (y%2 ? [20, 20, 20] : [235, 235, 235]) : blue) : W), 80, 60);
+  assert.deepStrictEqual(r.zones, [], 'решётка — не зона: '+JSON.stringify(r.zones));
+  r=PhotoTint.parts(img(80, 60, (x, y)=>x>=10 && x<70 && y>=6 && y<54 ? (x>=50 ? [120, 124, 128] : [70, 72, 75]) : W), 80, 60);
+  assert.deepStrictEqual(r.zones, [], 'боковая грань светлее — не другая краска: '+JSON.stringify(r.zones));
+  // зоны — в расстановке, отпечатке, 3D (пояс и участок поверх корпуса) и на картинке КП; логотип — на цвете своей зоны
+  const src='/img/test-tones.jpg', ph=P('Компрессор двухцветный', { cat:'comp_screw', size:'1400 × 900 × 1500', maker:'Dalgakiran' }, { role:'main', photo:{ src } });
+  PhotoTint.cache.set(src, '#cdd0d4'); const h0=StationLayout.hash({ cont:C('block'), parts:[ph] });
+  PhotoTint.zones.set(src, [{ u0:0, u1:1, v0:0.75, v1:1, hex:'#1e50a0' }, { u0:0, u1:1/3, v0:0, v1:0.25, hex:'#e67814' }]);
+  const p=solve(C('block', { sizeAuto:true }), [ph]), it=p.items.find(i=>i.kind==='compressor');
+  assert.ok(it.color==='#cdd0d4' && it.tones && it.tones.length===2 && StationLayout.hash({ cont:C('block'), parts:[ph] })!==h0, 'зоны — у элемента, отпечаток изменился');
+  const sc=new StScene(p, {}).build();
+  assert.ok([...sc.groups.keys()].some(k=>/1e50a0/i.test(k)) && [...sc.groups.keys()].some(k=>/e67814/i.test(k)), '3D: части окрашены цветами зон');
+  const lg=[...sc.decals.values()].find(d=>d.type==='logo' && d.maker==='Dalgakiran');
+  assert.ok(lg && lg.bg==='#1e50a0', '3D: логотип вверху — на цвете верхней зоны');
+  assert.ok(/#1e50a0/i.test(StationView3D.svg(p, meta(p))) && /#e67814/i.test(StationView3D.svg(p, meta(p))), 'картинка КП: зоны цвета');
+  PhotoTint.cache.delete(src); PhotoTint.zones.delete(src);
+});
+
 Check.run('фильтры по каталогу: циклон, тонкость, опечатка «Мкн», ступень из характеристик, порядок одной ступени', ()=>{
   const F=(name, attrs, rows, extra)=>P(name, Object.assign({ cat:'filter', flow:3, size:'120 × 120 × 300' }, attrs), Object.assign({ rows:rows||[] }, extra||{}));
   const g=p=>AirChain.info(p, 'filter').grade;

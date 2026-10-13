@@ -172,30 +172,92 @@ class StDecal {
 // ---------------------------------------------------------------- цвет оборудования по главному фото
 class PhotoTint {
   static cache = new Map();   // адрес фото → '#rrggbb' или '' (цвет не определить)
+  static zones = new Map();   // адрес фото → зоны других цветов [{ u0, u1, v0, v1, hex }] (u — слева направо, v — снизу вверх)
+  static GRID = 8;            // сетка участков по очертанию изделия на фото (клеток по каждой стороне)
+  static TEX = 50;            // пестрота участка (средняя разница соседних точек) выше — решётка, табличка, деталь: не окраска
+  static SIDE = 128;          // фото уменьшается до стольких точек по большей стороне
   static src(p){ return String((p && p.photo && p.photo.src) || ''); }
   static get(src){ return this.cache.get(src); }
+  static tones(src){ return this.zones.get(src) || []; }
   /** у элементов станции есть фото, цвет которых ещё не определён */
   static pending(x){ return kitParts(x).some(p=>{ const s=this.src(p); return s && !this.cache.has(s); }); }
   /** определить цвета фото элементов станции (по одному разу на адрес); true — что-то определено */
   static async load(x){
     let ch=false;
     for (const p of kitParts(x)){ const s=this.src(p); if (!s || this.cache.has(s)) continue;
-      try{ this.cache.set(s, this.of(await readImg(s))); } catch(e){ this.cache.set(s, ''); }
+      try{ const r=this.of(await readImg(s)); this.cache.set(s, r.hex); if (r.zones.length) this.zones.set(s, r.zones); } catch(e){ this.cache.set(s, ''); }
       ch=true; }
     return ch;
   }
-  /** картинка → главный цвет (уменьшается до 96 точек по большей стороне) */
+  /** картинка → { hex — главный цвет, zones — зоны других цветов } (уменьшается до SIDE точек по большей стороне) */
   static of(im){
-    const iw=im.naturalWidth||im.width, ih=im.naturalHeight||im.height; if (!iw || !ih) return '';
-    const k=Math.min(1, 96/Math.max(iw, ih)), w=Math.max(1, Math.round(iw*k)), h=Math.max(1, Math.round(ih*k));
+    const iw=im.naturalWidth||im.width, ih=im.naturalHeight||im.height; if (!iw || !ih) return { hex:'', zones:[] };
+    const k=Math.min(1, this.SIDE/Math.max(iw, ih)), w=Math.max(1, Math.round(iw*k)), h=Math.max(1, Math.round(ih*k));
     const c=document.createElement('canvas'); c.width=w; c.height=h; const g=c.getContext('2d'); g.drawImage(im, 0, 0, w, h);
-    let d; try{ d=g.getImageData(0, 0, w, h).data; } catch(e){ return ''; }   // чужой сайт без разрешения — цвет не узнать
-    return this.pick(d, w, h);
+    let d; try{ d=g.getImageData(0, 0, w, h).data; } catch(e){ return { hex:'', zones:[] }; }   // чужой сайт без разрешения — цвет не узнать
+    return this.parts(d, w, h);
   }
-  /** главный цвет по пикселям RGBA: фон — заливкой от краёв (цвета, близкие к краевому), прозрачное — тоже фон; остальное —
-   *  по корзинам (тон × яркость; серые — по яркости; тёмные — отдельно), насыщенные и ближе к центру — весомее; тёмная
-   *  корзина (тени, решётки) побеждает, только если её больше половины. Фона больше 96 % — '' */
-  static pick(d, w, h){
+  /** главный цвет по пикселям RGBA (см. parts) */
+  static pick(d, w, h){ return this.parts(d, w, h).hex; }
+  /** цвета по пикселям RGBA: фон — заливкой от краёв (цвета, близкие к краевому), прозрачное — тоже фон; главный цвет — по
+   *  корзинам (тон × яркость; серые — по яркости; тёмные — отдельно), насыщенные и ближе к центру — весомее; тёмная корзина
+   *  (тени, решётки) побеждает, только если её больше половины. Фона больше 96 % — ''. Зоны — части другой окраски (_zones) */
+  static parts(d, w, h){
+    const bg=this._bg(d, w, h), main=this._dom(d, w, h, bg, 0, 0, w, h, true);
+    return main ? { hex:main.hex, zones:this._zones(d, w, h, bg, main) } : { hex:'', zones:[] };
+  }
+  /** зоны другой окраски, как на фото в карточке: палитра — до трёх заметных цветов кроме главного (насыщенный — от 3 % изделия,
+   *  серый — от 6 %, тёмный — от 15 %); каждая точка изделия — к ближайшему цвету; цвет занимает столбцы почти по всей высоте —
+   *  вертикальная полоса, строки почти по всей ширине — пояс; иначе — сплошные участки сетки GRID × GRID (от трёх клеток, у верха
+   *  и низа — от двух). Пёстрое (решётки, таблички) — не окраска; на насыщенной краске надписи допустимы. Координаты — доли очертания изделия: u — слева
+   *  направо, v — снизу вверх; у края (6 %) — до края */
+  static _zones(d, w, h, bg, main){
+    const dist=(a, b)=>Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1])+Math.abs(a[2]-b[2]), sat=c=>{ const mx=Math.max(...c); return mx ? (mx-Math.min(...c))/mx : 0; };
+    // отличие от главного: цветное — от 90; серое от серого — от 200 (иначе это свет и тень граней на фото, а не краска)
+    const far=c=>dist(c, main.rgb)>(sat(c)<0.25 && sat(main.rgb)<0.25 ? 200 : 90);
+    const grp=[]; for (const b of main.bins){ if (b.key===main.key || !far(b.rgb)) continue;   // светлый и тёмный оттенки одной краски — вместе
+      const p=grp.find(q=>dist(q.rgb, b.rgb)<100);
+      if (p){ p.rgb=p.rgb.map((v, k)=>(v*p.w+b.rgb[k]*b.w)/(p.w+b.w)); p.w+=b.w; p.dark=p.dark && b.key==='d'; } else grp.push({ rgb:b.rgb.slice(), w:b.w, dark:b.key==='d' }); }
+    const pal=grp.filter(p=>far(p.rgb) && p.w>=(p.dark ? 0.15 : sat(p.rgb)>=0.35 ? 0.03 : 0.06)).sort((a, b)=>b.w-a.w).slice(0, 3);
+    if (!pal.length) return [];
+    let bx0=w, bx1=-1, by0=h, by1=-1;
+    for (let i=0; i<w*h; i++){ if (bg[i]) continue; const x=i%w, y=(i-x)/w; bx0=Math.min(bx0, x); bx1=Math.max(bx1, x); by0=Math.min(by0, y); by1=Math.max(by1, y); }
+    const BW=bx1-bx0+1, BH=by1-by0+1, lab=new Int8Array(w*h).fill(-1), all=[main.rgb, ...pal.map(p=>p.rgb)];
+    for (let i=0; i<w*h; i++){ if (bg[i]) continue; const c=[d[i*4], d[i*4+1], d[i*4+2]]; let k=0, m=1e9; all.forEach((q, j)=>{ const e=dist(c, q); if (e<m){ m=e; k=j; } }); lab[i]=k && m<110 ? k : 0; }
+    const share=(k, x0, x1, y0, y1)=>{ let n=0, f=0; for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){ const i=y*w+x; if (bg[i]) continue; f++; if (lab[i]===k) n++; } return f ? n/f : 0; };
+    // пестрота: средняя разница с соседом справа и снизу (решётка, жалюзи, табличка — пёстрые)
+    const dif=(i, j)=>Math.abs(d[i*4]-d[j*4])+Math.abs(d[i*4+1]-d[j*4+1])+Math.abs(d[i*4+2]-d[j*4+2]);
+    const tex=(x0, x1, y0, y1)=>{ let t=0, n=0; for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++){ const i=y*w+x; if (bg[i]) continue;
+      if (x<x1 && !bg[i+1]){ t+=dif(i, i+1); n++; } if (y<y1 && !bg[i+w]){ t+=dif(i, i+w); n++; } } return n ? t/n : 0; };
+    // отрезки подряд идущих i, где ok(i); разрывы до gap (надписи, логотип на полосе) не делят отрезок
+    const runs=(n, ok, min, gap)=>{ const R=[]; for (let i=0; i<n; i++){ if (!ok(i)) continue; const L=R[R.length-1]; if (L && i-L[1]-1<=gap) L[1]=i; else R.push([i, i]); } return R.filter(r=>r[1]-r[0]+1>=min); };
+    const span=(n, ok)=>{ const R=runs(n, ok, 1, Math.round(n*0.25)); return R.length ? R.reduce((m, r)=>r[1]-r[0]>m[1]-m[0] ? r : m) : null; };
+    const out=[], hex=v=>Math.round(v).toString(16).padStart(2, '0');
+    pal.forEach((col, j)=>{ const k=j+1, before=out.length, tl=sat(col.rgb)>=0.35 ? this.TEX*2 : this.TEX;   // на яркой краске надписи допустимы
+      // вертикальные полосы и пояса
+      for (const [xa, xb] of runs(BW, x=>share(k, bx0+x, bx0+x, by0, by1)>=0.3, Math.max(2, Math.round(BW*0.03)), Math.round(BW*0.02))){ const r=span(BH, y=>share(k, bx0+xa, bx0+xb, by0+y, by0+y)>=0.5);
+        if (r && r[1]-r[0]+1>=BH*0.3 && tex(bx0+xa, bx0+xb, by0+r[0], by0+r[1])<=tl) out.push({ x0:xa, x1:xb, y0:r[0], y1:r[1], col }); }
+      for (const [ya, yb] of runs(BH, y=>share(k, bx0, bx1, by0+y, by0+y)>=0.3, Math.max(2, Math.round(BH*0.04)), Math.round(BH*0.02))){ const r=span(BW, x=>share(k, bx0+x, bx0+x, by0+ya, by0+yb)>=0.5);
+        if (r && r[1]-r[0]+1>=BW*0.3 && tex(bx0+r[0], bx0+r[1], by0+ya, by0+yb)<=tl) out.push({ x0:r[0], x1:r[1], y0:ya, y1:yb, col }); }
+      if (out.length>before) return;
+      // участки сетки
+      const G=this.GRID, X=i=>Math.floor(BW*i/G), Y=i=>Math.floor(BH*i/G), cell=[];
+      for (let r=0; r<G; r++){ cell.push([]); for (let c=0; c<G; c++){ const x0=bx0+X(c), x1=bx0+X(c+1)-1, y0=by0+Y(r), y1=by0+Y(r+1)-1;
+        cell[r].push(x1>=x0 && y1>=y0 && share(k, x0, x1, y0, y1)>=0.6 && tex(x0, x1, y0, y1)<=tl); } }
+      const blk=[]; for (let r=0; r<G; r++) for (let c=0; c<G; c++){ if (!cell[r][c]) continue; let c1=c; while (c1+1<G && cell[r][c1+1]) c1++;
+        const b=blk.find(q=>q.c0===c && q.c1===c1 && q.r1===r-1); if (b) b.r1=r; else blk.push({ r0:r, r1:r, c0:c, c1 }); for (let q=c; q<=c1; q++) cell[r][q]=false; }
+      for (const b of blk) if ((b.r1-b.r0+1)*(b.c1-b.c0+1)>=(b.r0===0 || b.r1===G-1 ? 2 : 3)) out.push({ x0:X(b.c0), x1:X(b.c1+1)-1, y0:Y(b.r0), y1:Y(b.r1+1)-1, col });
+    });
+    // одна краска по соседству (пояс, разорванный решёткой или надписью) — одна зона
+    const tx=Math.max(1, BW*0.04), ty=Math.max(1, BH*0.04), near=(a, b)=>a.col===b.col && ((Math.abs(a.x0-b.x0)<=tx && Math.abs(a.x1-b.x1)<=tx && a.y0<=b.y1+ty && b.y0<=a.y1+ty) || (Math.abs(a.y0-b.y0)<=ty && Math.abs(a.y1-b.y1)<=ty && a.x0<=b.x1+tx && b.x0<=a.x1+tx));
+    for (let i=0; i<out.length; i++) for (let j=out.length-1; j>i; j--){ const a=out[i], b=out[j]; if (!near(a, b)) continue;
+      Object.assign(a, { x0:Math.min(a.x0, b.x0), x1:Math.max(a.x1, b.x1), y0:Math.min(a.y0, b.y0), y1:Math.max(a.y1, b.y1) }); out.splice(j, 1); j=out.length; }
+    const lo=v=>v<0.06 ? 0 : Math.round(v*1000)/1000, hi=v=>v>0.94 ? 1 : Math.round(v*1000)/1000;
+    return out.sort((a, b)=>(b.x1-b.x0+1)*(b.y1-b.y0+1)-(a.x1-a.x0+1)*(a.y1-a.y0+1)).slice(0, 10)
+      .map(z=>({ u0:lo(z.x0/BW), u1:hi((z.x1+1)/BW), v0:lo(1-(z.y1+1)/BH), v1:hi(1-z.y0/BH), hex:'#'+z.col.rgb.map(hex).join('') }));
+  }
+  /** маска фона: заливка от краёв цветом, близким к краевому (медиана), и прозрачное */
+  static _bg(d, w, h){
     const n=w*h, bg=new Uint8Array(n), px=i=>[d[i*4], d[i*4+1], d[i*4+2]], dist=(a, b)=>Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1])+Math.abs(a[2]-b[2]);
     const edge=[]; for (let x=0; x<w; x++){ edge.push(x, (h-1)*w+x); } for (let y=1; y<h-1; y++){ edge.push(y*w, y*w+w-1); }
     const ec=edge.filter(i=>d[i*4+3]>=128).map(px), med=k=>ec.map(c=>c[k]).sort((a, b)=>a-b)[ec.length>>1], M=ec.length ? [med(0), med(1), med(2)] : null;
@@ -203,17 +265,21 @@ class PhotoTint {
     while (q.length){ const i=q.pop(), x=i%w, y=(i-x)/w;
       for (const j of [x>0 ? i-1 : -1, x<w-1 ? i+1 : -1, y>0 ? i-w : -1, y<h-1 ? i+w : -1]){ if (j<0 || bg[j]) continue;
         if (d[j*4+3]<128 || (M && dist(px(j), M)<=60)){ bg[j]=1; q.push(j); } } }
+    return bg;
+  }
+  /** главный цвет в прямоугольнике x0…x1 × y0…y1 (без фона): { hex, rgb, key, fg }; весь кадр (whole) — '' при фоне > 96 % */
+  static _dom(d, w, h, bg, x0, y0, x1, y1, whole){
     const bins=new Map(); let fg=0, all=0;
-    for (let i=0; i<n; i++){ if (bg[i]) continue; fg++;
-      const [r, g, b]=px(i), mx=Math.max(r, g, b), mn=Math.min(r, g, b), v=mx/255, s=mx ? (mx-mn)/mx : 0;
+    for (let y=y0; y<y1; y++) for (let x=x0; x<x1; x++){ const i=y*w+x; if (bg[i]) continue; fg++;
+      const r=d[i*4], g=d[i*4+1], b=d[i*4+2], mx=Math.max(r, g, b), mn=Math.min(r, g, b), v=mx/255, s=mx ? (mx-mn)/mx : 0;
       let key, wt; if (v<0.16){ key='d'; wt=0.45; } else if (s<0.18){ key='g'+Math.min(5, Math.floor(v*6)); wt=0.9; }
       else { const hh=mx===r ? ((g-b)/(mx-mn)+6)%6 : mx===g ? (b-r)/(mx-mn)+2 : (r-g)/(mx-mn)+4; key='h'+Math.floor(hh*3)+(v<0.55 ? 'd' : 'l'); wt=1.15+0.6*s; }
-      const x=i%w, y=(i-x)/w, cw=1-0.6*Math.min(1, Math.hypot((x+0.5)/w-0.5, (y+0.5)/h-0.5)/0.7071), W8=wt*cw;
+      const cw=whole ? 1-0.6*Math.min(1, Math.hypot((x+0.5)/w-0.5, (y+0.5)/h-0.5)/0.7071) : 1, W8=wt*cw;
       const e=bins.get(key)||{ w:0, r:0, g:0, b:0 }; e.w+=W8; e.r+=r*W8; e.g+=g*W8; e.b+=b*W8; bins.set(key, e); all+=W8; }
-    if (fg<n*0.04 || !all) return '';
-    const L=[...bins.entries()].sort((a, b)=>b[1].w-a[1].w), best=L[0][0]==='d' && L[0][1].w<all*0.5 && L[1] ? L[1][1] : L[0][1];
-    const hex=v=>Math.round(v/best.w).toString(16).padStart(2, '0');
-    return '#'+hex(best.r)+hex(best.g)+hex(best.b);
+    if ((whole && fg<w*h*0.04) || !all) return null;
+    const L=[...bins.entries()].sort((a, b)=>b[1].w-a[1].w), [key, best]=L[0][0]==='d' && L[0][1].w<all*0.5 && L[1] ? L[1] : L[0];
+    const rgb=[best.r, best.g, best.b].map(v=>v/best.w), hex=v=>Math.round(v).toString(16).padStart(2, '0');
+    return { hex:'#'+rgb.map(hex).join(''), rgb, key, fg, bins:L.map(([k, e])=>({ key:k, w:e.w/all, rgb:[e.r/e.w, e.g/e.w, e.b/e.w] })) };
   }
 }
 
