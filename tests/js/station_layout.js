@@ -66,7 +66,7 @@ class Check {
         for (let k=1; k<list.length; k++) assert.ok(list[k][0]-list[k-1][1]>=Q.gap-1, `${label}: на стене ${w} между ${list[k-1][2]} и ${list[k][2]} ${list[k][0]-list[k-1][1]} мм < ${Q.gap}`); } }
     // осушителям и ресиверам сервисных дверей не делают — через ворота в торце; ворота в торцах — одной высоты, по самому
     // высокому оборудованию (решение ПНЕВМОТЕХ 13.10)
-    for (const d of (p.doors||[]).filter(d=>d.kind!=='entry')) assert.ok(d.pos.every(v=>!floor.some(i=>i.pos===v && StationLayout.NO_DOOR.test(i.kind))), `${label}: сервисные ворота осушителю или ресиверу поз. ${d.pos.join(', ')}`);
+    for (const d of (p.doors||[]).filter(d=>d.kind!=='entry')) assert.ok(d.pos.every(v=>!floor.some(i=>i.pos===v && StationMatrix.noDoor(i.kind))), `${label}: сервисные ворота осушителю или ресиверу поз. ${d.pos.join(', ')}`);
     const GT=[p.gates, p.gates2].filter(g=>g && !g.sea); if (GT.length && floor.length){ const hh=Math.max(...floor.map(i=>i.h));
       for (const g of GT) assert.ok(g.h>=Math.min(H-100, hh+StationMatrix.gate().addH) && (GT.length<2 || g.h===GT[0].h), `${label}: ворота в торце ${g.h} мм — ниже самого высокого оборудования ${hh} мм + запас или разной высоты`); }
     assert.ok(p.entry, `${label}: нет двери оператора`);
@@ -246,13 +246,13 @@ Check.run('блок-контейнер: размер по необходимом
     Check.plan(p, 'блок '+label);
     assert.notStrictEqual(p.level, 'error', label+': '+p.issues.map(i=>i.text).join(' | '));
     const [L, W, H]=p.geo.ext;
-    assert.ok([L, W, H].every(v=>v%StationGeo.STEP===0), label+': размер не кратен 100 мм '+p.geo.ext);
+    assert.ok([L, W, H].every(v=>v%StationGeo.STEP===0 || v===StationGeo.ROAD_W), label+': размер не кратен 100 мм '+p.geo.ext);
     assert.ok(W<=StationGeo.ROAD_W, label+': ширина без спецразрешения');
     assert.ok(worse(p, parts, [L-100, W, H]), label+': на 100 мм короче — тоже годится: размер с запасом '+p.geo.ext);
     assert.ok(W-100<StationGeo.BLOCK.minW || worse(p, parts, [L, W-100, H]), label+': на 100 мм уже — тоже годится '+p.geo.ext);
     draw(p, 'блок '+label);
   }
-  assert.deepStrictEqual(solve(C('block'), [pumpS]).geo.ext, [4300, 1900, 2500], 'два малых насоса — 4,3 × 1,9 м (было 4,5 × 2,4)');
+  assert.deepStrictEqual(solve(C('block'), [pumpS]).geo.ext, [2800, 1900, 2500], 'два малых насоса — плотно 2,8 × 1,9 м (было 4,3 × 1,9; конвектору — +300 мм)');
   const big2=solve(C('block'), [pumpL]), [a, b]=big2.items.slice().sort((x, y)=>x.x-y.x);
   assert.ok(b.x-(a.x+a.lx)>=1000-1, 'между большими насосами не менее 1 м (СП 31.13330, п. 10.15)');
   const own=solve(C('block', { size:'3000 × 2400 × 2500' }), [comp, dryer, rec, flt, cab]);

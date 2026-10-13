@@ -1,19 +1,19 @@
 // Мастер «Добавить оборудование» — один порядок для КП и для каталога:
 //   1) что добавляем: найти в каталоге (только в КП) · станция в контейнере (насосная, компрессорная, ДГУ) · единица оборудования;
 //   2а) единица — как заполнить карточку: по ссылке на страницу товара, с помощью ИИ, таблицей из паспорта / Excel, вручную;
-//   2б) станция — контейнер (тип, утепление, климат) и основное оборудование из каталога подходящего вида;
+//   2б) станция — что нужно заказчику (главные требования) → «Подобрать станцию»; контейнер — строкой, другой — по ссылке;
 //   3) карточка открывается сразу на нужной вкладке (в каталоге — карточка каталога).
 'use strict';
 
-const NW = { where:'kp', cat:'', ctype:'block', ins:'100 мм', climate:'УХЛ1', main:null, q:'', pf:null, url:'', name:'', busy:false };
+const NW = { where:'kp', cat:'', q:'', url:'', name:'', busy:false };
 
 function newEquip(where, pre){
   if (where==='catalog' && !can('catAdd')) return cannot('catAdd');
-  Object.assign(NW, { where:where||'kp', cat:'', ctype:'block', ins:'100 мм', climate:'УХЛ1', main:null, q:'', pf:null, url:'', name:'', busy:false });
+  Object.assign(NW, { where:where||'kp', cat:'', q:'', url:'', name:'', busy:false }); NewStation.reset();
   if (pre==='station') NW.cat='station';
   else if (pre && TYPES.some(t=>t.id===pre)) NW.cat=pre;
   const d=$('#dlg'); d.className='wide nw'; nwDraw(); if (!d.open) d.showModal();
-  setTimeout(()=>($('#nwQ')||$('#nwName')||$('#nwUrl'))?.focus(), 40);
+  setTimeout(()=>($('#nwQ')||$('#nwName')||$('#nwUrl')||$('[data-nsr]'))?.focus(), 40);
 }
 
 const nwStations = () => TYPES.filter(t=>t.station);
@@ -24,7 +24,7 @@ function nwDraw(){
   let body;
   if (!NW.cat) body=nwStart();
   else if (NW.cat==='station') body=`<p class="muted nw-lead">Какую станцию собираем? Комплектуем только станции в контейнере.</p>${nwStationCards()}${nwTz()}`;
-  else if (t.station) body=nwStation(t);
+  else if (t.station) body=NewStation.html(t);
   else body=nwUnit(t);
   d.innerHTML=`<div class="dlg-h"><h3>${NW.where==='catalog'?'Новая позиция каталога':'Добавить оборудование'}${t?` <small class="muted">· ${esc(t.station?t.item:t.name)}</small>`:''}</h3>${back}<button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
     <div class="dlg-b">${body}</div>`;
@@ -69,26 +69,62 @@ function nwUnit(t){
     </div>`;
 }
 
-// станция: контейнер и основное оборудование
-function nwStation(t){
-  const cats=t.station.main||[];
-  if (!NW.pf || NW.pfFor!==t.id){ NW.pf=pfNew(cats); NW.pfFor=t.id; }
-  const m=NW.main && catCache.find(x=>x.id===NW.main);
-  return `<p class="muted nw-lead">${esc(t.item)} — одно изделие для заказчика: одна строка и одна цена в КП, а закупка, поставщики и описание — по каждому элементу. Остальные элементы (${esc(t.station.parts.slice(0,3).map(z=>Array.isArray(z)?z[0]:z).join(', '))}…) добавите в карточке одним нажатием.</p>
-    <p class="nw-h">1. Контейнер</p>
-    <div class="kit-cts">${CONTAINER_TYPES.map(c=>`<button type="button" class="kit-ctb${NW.ctype===c.id?' on':''}" data-nwct="${esc(c.id)}"><b>${esc(c.name)}</b><small>${esc(c.size)}</small></button>`).join('')}</div>
-    <div class="nw-row"><label class="f"><span>Утепление</span><select id="nwIns">${CONTAINER_INS.map(v=>`<option${v===NW.ins?' selected':''}>${v}</option>`).join('')}</select></label>
-      <label class="f"><span>Климатическое исполнение</span><select id="nwCl">${CLIMATES.map(c=>`<option value="${c[0]}"${c[0]===NW.climate?' selected':''}>${c[0]} — ${esc(c[1])}</option>`).join('')}</select></label></div>
-    <p class="nw-h">2. ${esc(t.station.mainLabel)} <span class="muted">— из каталога или позже</span></p>
-    ${m?`<div class="nw-chosen">${m.photo?`<img src="${esc(m.photo.src)}" alt="">`:''}<b>${esc(m.name)}</b><button class="btn ghost" type="button" data-nw="unmain">Другое</button></div>`
-      :`<div id="nwPf">${pfHtml(NW.pf, cats)}</div><div class="nw-res nw-mlist" id="nwMl">${nwMainList(cats)}</div>`}
-    <div class="row nw-go"><button class="btn primary" type="button" data-nw="mkStation"${NW.busy?' disabled':''}>Создать станцию</button><span class="muted">Откроется карточка станции на вкладке «Состав станции».</span></div>`;
-}
-
-function nwMainList(cats){
-  const r=pfList(NW.pf, cats, 30);
-  return `<p class="muted pf-n">Подходит: ${r.n}${r.n>30?' — показаны первые 30, уточните фильтры':''}</p>`+(r.list.map(x=>`<button type="button" class="nw-hit" data-nwmain="${esc(x.id)}">${x.photo?`<img src="${esc(x.photo.src)}" alt="">`:'<i></i>'}<span><b>${esc(x.name)}</b><small>${esc(mainLine(x,3)||'')}</small></span><em>Выбрать</em></button>`).join('')
-    || '<p class="muted">Подходящего нет — измените фильтры или добавьте своё в карточке станции.</p>');
+// станция: «Что нужно заказчику» → «Подобрать станцию» (решение ПНЕВМОТЕХ 13.10: прежний экран — 8 карточек контейнеров и
+// список всего каталога — «избыточен, перегружен, неинформативен»). Главные требования — те же поля, что в «Подборе станции»
+// (StationQuick.KEYS); контейнер — строкой (блок-контейнер по оборудованию в габарите перевозки, утепление и климат — из
+// «Умолчаний»), другой — по ссылке; подбор — тот же, что у кнопки «Подобрать оборудование» (TzPick); выбрать основное
+// оборудование вручную — окно каталога с фильтрами по требованиям и «★ Рекомендуем» первым (KitNeed.mainPreset)
+class NewStation {
+  static S = { ctype:'block', ins:'', climate:'', req:{}, cont:false };
+  static reset(){ this.S={ ctype:'block', ins:DEF('st.ins')||'100 мм', climate:DEF('st.climate')||'УХЛ1', req:{}, cont:false }; }
+  static kind(t){ return /comp/.test(t.id) ? 'comp' : /dgu/.test(t.id) ? 'dgu' : /pump/.test(t.id) ? 'pump' : ''; }
+  /** контейнер одной строкой */
+  static cont(){
+    const S=this.S, c=ctypeOf(S.ctype), flex=!!StationGeo.FLEX[S.ctype], n=StationLayout.n;
+    return `${c.name}${flex ? ` — размер по оборудованию, в габарите перевозки (ширина до ${n(StationGeo.ROAD_W)} мм)` : c.size ? ` (${c.size})` : ''}; утепление ${S.ins}; ${S.climate}`;
+  }
+  static html(t){
+    const S=this.S, k=this.kind(t), F=StationQuick.KEYS[k]||[], need=(StationQuick.NEED[k]||[])[0];
+    const fld=([key, label, ph, mode='decimal'])=>{ const bad=ReqNum.check(key, S.req[key]??'');
+      return `<label class="f"><span>${esc(label)}${key===need ? ' *' : ''}</span><input type="text" inputmode="${mode}" data-nsr="${esc(key)}" value="${esc(S.req[key]??'')}" placeholder="${esc(ph)}" autocomplete="off"${bad ? ' class="bad"' : ''}>${bad ? `<small class="err">${esc(bad)}</small>` : ''}</label>`; };
+    const opt=(v, l, on)=>`<option value="${esc(v)}"${on ? ' selected' : ''}>${esc(l)}</option>`;
+    return `<p class="muted nw-lead">Что нужно заказчику (* — обязательно) — программа подберёт оборудование из каталога, контейнер, компоновку и изображения для КП. Всё можно поправить в карточке станции.</p>
+      <div class="ns-g">${F.map(fld).join('')}</div>
+      <div class="ns-c"><span class="muted">Контейнер:</span> <span>${esc(this.cont())}</span> <button class="link" type="button" data-nw="nsCont">${S.cont ? 'скрыть' : 'другой'}</button></div>
+      ${S.cont ? `<div class="ns-row"><label class="f"><span>Тип</span><select id="nsCt">${CONTAINER_TYPES.map(c=>opt(c.id, c.name, S.ctype===c.id)).join('')}</select></label>
+        <label class="f"><span>Утепление</span><select id="nsIns">${CONTAINER_INS.map(v=>opt(v, v, v===S.ins)).join('')}</select></label>
+        <label class="f"><span>Климатическое исполнение</span><select id="nsCl">${CLIMATES.map(c=>opt(c[0], c[0]+' — '+c[1], c[0]===S.climate)).join('')}</select></label></div>` : ''}
+      <div class="row nw-go"><button class="btn primary" type="button" data-nw="nsPick"${NW.busy ? ' disabled' : ''}>${NW.busy ? 'Подбираю…' : 'Подобрать станцию'}</button>
+        ${NW.where==='kp' ? '<button class="btn" type="button" data-nw="tz">📄 По ТЗ заказчика</button>' : ''}</div>
+      <p class="muted ns-alt"><button class="link" type="button" data-nw="nsMain">Выбрать ${esc((t.station.mainLabel||'оборудование').toLowerCase())} вручную</button> · <button class="link" type="button" data-nw="mkStation">пустая станция</button> — состав и требования в карточке</p>`;
+  }
+  /** поле требования → состояние (ошибка — под полем, без перерисовки всего окна) */
+  static input(el){ const k=el.dataset.nsr; this.S.req[k]=el.value; const bad=ReqNum.check(k, el.value);
+    el.classList.toggle('bad', !!bad); let s=el.parentNode.querySelector('small.err'); if (bad){ if (!s){ s=document.createElement('small'); s.className='err'; el.after(s); } s.textContent=bad; } else if (s) s.remove(); }
+  static change(el){ const S=this.S;
+    if (el.id==='nsCt'){ S.ctype=el.value; const c=ctypeOf(S.ctype); if (c.ins) S.ins=c.ins; if (c.climate) S.climate=c.climate; nwDraw(); }
+    else if (el.id==='nsIns'){ S.ins=el.value; nwDraw(); } else if (el.id==='nsCl'){ S.climate=el.value; nwDraw(); } }
+  /** новая станция: контейнер, элементы по умолчанию, требования */
+  static make(t){
+    const it=newItem(); it.attrs={ cat:t.id }; it.page=true; it.features=[]; it.kit={ parts:[] };
+    const req=Object.fromEntries(Object.entries(this.S.req).map(([k, v])=>[k, String(v).trim()]).filter(([, v])=>v)); if (Object.keys(req).length) it.req=req;
+    const c=kitNewContainer(this.S.ctype); contApply(c, { ins:this.S.ins, climate:this.S.climate }); it.kit.parts.push(c);
+    StationDefaults.add(it, t.id);      // глушитель и бак ДГУ, трубопроводная обвязка
+    kitSync(it); stationFill(it); stationAutoName(it);
+    return it;
+  }
+  /** проверка ввода: ошибка — подсказка и фокус на поле; need — главное поле обязательно */
+  static ok(t, need){
+    const k=this.kind(t), bad=ReqNum.errors({ req:this.S.req }); if (bad.length){ toast(`Исправьте «${bad[0].label}»: ${bad[0].text}`); $(`[data-nsr="${bad[0].key}"]`)?.focus(); return false; }
+    const n=(StationQuick.NEED[k]||[]); if (need && n.length && !(ReqNum.num(this.S.req[n[0]])>0)){ toast('Укажите '+n[1]+' — без неё станцию не подобрать'); $(`[data-nsr="${n[0]}"]`)?.focus(); return false; }
+    return true;
+  }
+  /** «Подобрать станцию»: станция в КП и сразу подбор оборудования (как «Подобрать оборудование» в карточке) */
+  static async pick(t){ if (!this.ok(t, true)) return; const it=this.make(t); nwFinish(it, 'kit', NW.where==='kp' ? i=>StationQuick.pick(i) : null); }
+  /** «Выбрать вручную»: станция и окно каталога основного оборудования (по требованиям — рекомендуемый первым) */
+  static main(t){ if (!this.ok(t, false)) return; const it=this.make(t);
+    nwFinish(it, 'kit', i=>{ if (NW.where!=='kp') return; kitPickCat(i, t.station.main, 'main', '', KitNeed.mainPreset(S.items[i]) || { test:c=>!TzPick.mobile(c), need:'Укажите производительность в «Подборе станции» — покажем подходящие и рекомендуемый первым. Сейчас — все стационарные.' }); }); }
+  static empty(t){ nwFinish(this.make(t), 'kit'); }
 }
 
 // новая позиция → в КП (карточка позиции) или в каталог (карточка каталога), открыть на вкладке tab
@@ -123,44 +159,32 @@ async function nwMakeUnit(how){
   return nwFinish(it, 'main');
 }
 
-async function nwMakeStation(){
-  const t=typeById(NW.cat), it=newItem(); it.attrs={cat:t.id}; it.page=true; it.features=[]; it.kit={parts:[]};
-  NW.busy=true; nwDraw();
-  try{
-    if (NW.main){ const lite=catCache.find(x=>x.id===NW.main); let doc=lite; try{ doc=await api('/api/catalog/'+encodeURIComponent(lite.id)); }catch(_){}
-      const p=KitPart.fromCat(doc); p.role='main'; it.kit.parts.push(p); if (!it.photo && p.photo) it.photo={...p.photo}; }
-    const c=kitNewContainer(NW.ctype); contApply(c, {ins:NW.ins, climate:NW.climate}); it.kit.parts.push(c);
-    StationDefaults.add(it, t.id);      // глушитель и бак ДГУ, трубопроводная обвязка
-    kitSync(it); stationFill(it); stationAutoName(it);
-  } finally { NW.busy=false; }
-  nwFinish(it, 'kit');
-}
-
 document.addEventListener('click', e=>{
   const d=e.target.closest('#dlg.nw'); if (!d) return;
   if (e.target.closest('[data-close]')){ d.close(); d.className=''; return; }
-  const c=e.target.closest('[data-nwcat]'); if (c){ NW.cat=c.dataset.nwcat; nwDraw(); setTimeout(()=>($('#nwName')||document.querySelector('#dlg [data-pf="q"]'))?.focus(),30); return; }
+  const c=e.target.closest('[data-nwcat]'); if (c){ NW.cat=c.dataset.nwcat; nwDraw(); setTimeout(()=>($('#nwName')||document.querySelector('#dlg [data-nsr]'))?.focus(),30); return; }
   const h=e.target.closest('[data-nwadd]'); if (h){ const x=catCache.find(z=>z.id===h.dataset.nwadd); d.close(); d.className=''; if (x) addFromCatalog(x); return; }
-  const ct=e.target.closest('[data-nwct]'); if (ct){ NW.ctype=ct.dataset.nwct; const cc=ctypeOf(NW.ctype); if (cc.ins) NW.ins=cc.ins; if (cc.climate) NW.climate=cc.climate; nwDraw(); return; }
-  const mn=e.target.closest('[data-nwmain]'); if (mn){ NW.main=mn.dataset.nwmain; nwDraw(); return; }
   const go=e.target.closest('[data-nwgo]'); if (go){ NW.name=($('#nwName')||{}).value||NW.name; nwMakeUnit(go.dataset.nwgo); return; }
   const b=e.target.closest('[data-nw]'); if (!b) return;
   if (b.dataset.nw==='back'){ const t=typeById(NW.cat); NW.cat = NW.cat!=='station' && t.station ? 'station' : ''; nwDraw(); return; }
   if (b.dataset.nw==='newtype'){ d.close(); d.className=''; cwNewType(id=>newEquip('catalog', id)); return; }
-  if (b.dataset.nw==='unmain'){ NW.main=null; nwDraw(); return; }
-  if (b.dataset.nw==='mkStation') nwMakeStation();
+  const st=typeById(NW.cat);
+  if (b.dataset.nw==='nsCont'){ NewStation.S.cont=!NewStation.S.cont; nwDraw(); return; }
+  if (b.dataset.nw==='nsPick') return NewStation.pick(st);
+  if (b.dataset.nw==='nsMain') return NewStation.main(st);
+  if (b.dataset.nw==='mkStation') return NewStation.empty(st);
   if (b.dataset.nw==='tz'){ d.close(); d.className=''; TzImport.pick(null); }
 });
 document.addEventListener('input', e=>{ if (!e.target.closest('#dlg.nw')) return; const t=e.target;
   if (t.id==='nwQ'){ NW.q=t.value; $('#nwRes').innerHTML=nwFound(); }
-  if (t.dataset.pf && t.tagName==='INPUT'){ pfSet(NW.pf, t); $('#nwMl').innerHTML=nwMainList(typeById(NW.cat).station.main); }
+  if (t.dataset.nsr) NewStation.input(t);
   if (t.id==='nwName') NW.name=t.value;
   if (t.id==='nwUrl') NW.url=t.value; });
 document.addEventListener('change', e=>{ if (!e.target.closest('#dlg.nw')) return;
-  if (e.target.id==='nwIns') NW.ins=e.target.value; if (e.target.id==='nwCl') NW.climate=e.target.value;
-  const t=e.target; if (t.dataset.pf && t.tagName==='SELECT'){ const cats=typeById(NW.cat).station.main; if (pfSet(NW.pf, t)) $('#nwPf').innerHTML=pfHtml(NW.pf, cats); $('#nwMl').innerHTML=nwMainList(cats); } });
+  if (/^ns(Ct|Ins|Cl)$/.test(e.target.id)) NewStation.change(e.target); });
 document.addEventListener('keydown', e=>{ if (!e.target.closest || !e.target.closest('#dlg.nw') || e.key!=='Enter') return;
   if (e.target.id==='nwQ'){ const x=quickMatches(NW.q)[0]; if (x){ e.preventDefault(); const d=$('#dlg'); d.close(); d.className=''; addFromCatalog(x); } }
-  if (e.target.id==='nwUrl'){ e.preventDefault(); NW.name=($('#nwName')||{}).value||NW.name; nwMakeUnit('url'); } });
+  if (e.target.id==='nwUrl'){ e.preventDefault(); NW.name=($('#nwName')||{}).value||NW.name; nwMakeUnit('url'); }
+  if (e.target.dataset.nsr){ e.preventDefault(); NewStation.pick(typeById(NW.cat)); } });
 // событие close приходит позже самого закрытия: окно могли уже открыть снова (тем же мастером) — тогда не трогаем
 document.addEventListener('close', e=>{ if (e.target.id==='dlg' && !e.target.open && e.target.classList.contains('nw')) e.target.className=''; }, true);

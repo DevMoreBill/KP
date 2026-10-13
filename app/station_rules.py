@@ -103,6 +103,7 @@ class StationRules:
         except ValueError:
             raise ValueError('Файл не читается как JSON')
         self.validate(d)
+        RuleShape.check(d, self.bundled())
         old = self.own()
         if old:
             self.store.kv_set(self.KV_PREV, old)
@@ -131,13 +132,128 @@ class StationRules:
         return 'StationRules.use(%s);\n' % body
 
 
+class RuleShape:
+    """правка значения правила в «Настройках» (или своя версия файла): значение — той же формы, что в файле поставки
+    (число — число, таблица [[x, y]] — таблица, параметры — те же ключи); значения компоновки проверяет LayoutValues"""
+    MAX = 1e9
+
+    @classmethod
+    def check(cls, d, bundled):
+        base = {r['id']: r.get('value') for r in bundled.get('rules', [])}
+        for r in d.get('rules', []):
+            rid = r.get('id')
+            if rid in base and rid not in LayoutValues.IDS:
+                cls.same(base[rid], r.get('value'), 'Правило %s' % rid)
+        return True
+
+    @classmethod
+    def table(cls, v):
+        return isinstance(v, list) and len(v) > 0 and all(isinstance(x, list) and len(x) == 2 and all(cls.number(y) for y in x) for x in v)
+
+    @staticmethod
+    def number(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+    @classmethod
+    def same(cls, b, v, where):
+        if isinstance(b, bool):
+            if not isinstance(v, bool):
+                raise ValueError(where + ': нужно «да» или «нет»')
+        elif cls.number(b):
+            if not cls.number(v) or v != v or abs(v) > cls.MAX:
+                raise ValueError(where + ': нужно число')
+        elif isinstance(b, str):
+            if not isinstance(v, str) or len(v) > 500:
+                raise ValueError(where + ': нужен текст до 500 знаков')
+        elif cls.table(b):
+            if not cls.table(v) or len(v) > 200:
+                raise ValueError(where + ': нужна таблица из пар чисел (до 200 строк)')
+        elif isinstance(b, list):
+            if not isinstance(v, list) or len(v) != len(b):
+                raise ValueError(where + ': нужен список из %d значений' % len(b))
+            for i, (x, y) in enumerate(zip(b, v)):
+                cls.same(x, y, '%s [%d]' % (where, i + 1))
+        elif isinstance(b, dict):
+            if not isinstance(v, dict) or set(v) != set(b):
+                raise ValueError(where + ': набор параметров не совпадает с файлом поставки')
+            for k in b:
+                cls.same(b[k], v[k], '%s, %s' % (where, str(k)[:30]))
+
+
 class LayoutValues:
     """значения компоновки станции: матрица расстановки (layout.matrix), проходы (norm.aisle, norm.aisle_tight), отступы
     (clear.kind) — правятся в «Настройках» таблицами; проверка: известные виды и ключи, числа в разумных пределах"""
     IDS = ('layout.matrix', 'norm.aisle', 'norm.aisle_tight', 'clear.kind')
     KINDS = ('compressor', 'dryer', 'receiver', 'filter', 'pump', 'dgu', 'cabinet', 'tank', 'other')
-    GROUPS = ('gap', 'pair', 'wall', 'access', 'sides', 'rotate', 'gate', 'service', 'door', 'aisle', 'exits', 'exhaust')
+    GROUPS = ('gap', 'pair', 'wall', 'access', 'sides', 'rotate', 'gate', 'service', 'door', 'aisle', 'exits', 'exhaust',
+              'fit', 'modes', 'recv', 'cab', 'move', 'tank', 'conv', 'muffler')
     MAX_MM = 20000
+    # пределы чисел матрицы (те же — в форме «Настроек», LayoutParams в station-layout.js; тест сверяет)
+    SCALAR = {
+        'fit.dense': (0, 1),
+        'fit.roadW': (2000, 3500),
+        'fit.wide': (0, 1),
+        'fit.maxL': (3000, 20000),
+        'fit.minL': (1000, 6000),
+        'fit.minW': (1000, 2550),
+        'fit.maxW': (2550, 5000),
+        'fit.minH': (1500, 3000),
+        'fit.hWalk': (1900, 3000),
+        'fit.maxH': (2400, 4000),
+        'fit.step': (10, 500),
+        'fit.two': (0, 60),
+        'fit.recv2': (0, 5000),
+        'fit.ends': (0, 60),
+        'modes.ends': (0, 1),
+        'modes.tight': (0, 1),
+        'modes.cross': (0, 1),
+        'door.w': (900, 1000),
+        'door.h': (2000, 2100),
+        'door.gap': (0, 2000),
+        'door.edge': (0, 2000),
+        'door.pad': (0, 1000),
+        'exits.n': (1, 4),
+        'exits.dist': (0, 20000),
+        'gate.addW': (0, 1000),
+        'gate.minW': (800, 3000),
+        'gate.full': (0.3, 1),
+        'gate.addH': (0, 1000),
+        'gate.minH': (1500, 3000),
+        'gate.top': (0, 500),
+        'gate.twoAt': (2000, 20000),
+        'access.back': (0, 2000),
+        'access.side': (300, 2000),
+        'service.addW': (0, 1000),
+        'service.min': (600, 2000),
+        'service.max': (1000, 6000),
+        'service.leaf': (500, 2000),
+        'service.addH': (0, 1000),
+        'service.minH': (800, 2500),
+        'aisle.service': (300, 2000),
+        'gap.v': (0, 150),
+        'move.pass': (0, 300),
+        'recv.pairSide': (0, 1000),
+        'recv.outGap': (300, 5000),
+        'recv.outStep': (0, 3000),
+        'recv.pad': (0, 500),
+        'exhaust.louvre': (200, 1500),
+        'exhaust.over': (0, 1000),
+        'cab.top': (1200, 2500),
+        'cab.low': (0, 1200),
+        'tank.pad': (0, 1500),
+        'tank.gap': (0, 1500),
+        'tank.back': (0, 1000),
+        'tank.aisle': (300, 2000),
+        'tank.part': (50, 500),
+        'tank.door': (600, 1500),
+        'tank.fill': (300, 2000),
+        'conv.z': (0, 1000),
+        'conv.gap': (0, 2000),
+        'conv.edge': (0, 1000),
+        'conv.front': (0, 2000),
+        'muffler.gap': (0, 1000),
+        'muffler.outlet': (0, 1500),
+    }
 
     @classmethod
     def num(cls, v, where, lo=0, hi=None):
@@ -157,11 +273,11 @@ class LayoutValues:
         if rid == 'norm.aisle':
             if not isinstance(v, list) or len(v) != 2:
                 raise ValueError(where + ': нужны два числа — рекомендуемый и допустимый проход')
-            a, b = (cls.num(x, where, 300, 3000) for x in v)
+            a, b = (cls.num(x, where, 600, 3000) for x in v)
             if b > a:
                 raise ValueError(where + ': допустимый проход больше рекомендуемого')
         elif rid == 'norm.aisle_tight':
-            cls.num(v, where, 300, 3000)
+            cls.num(v, where, 600, 3000)
         elif rid == 'clear.kind':
             cls.clear(v, where)
         else:
@@ -212,7 +328,8 @@ class LayoutValues:
             if g not in ('pair', 'wall', 'sides', 'rotate'):
                 for k, y in x.items():
                     if k != 't':
-                        cls.num(y, '%s, %s.%s' % (where, g, str(k)[:20]), 0, 100 if k == 'n' else cls.MAX_MM)
+                        lo, hi = cls.SCALAR.get('%s.%s' % (g, k), (0, cls.MAX_MM))
+                        cls.num(y, '%s, %s.%s' % (where, g, str(k)[:20]), lo, hi)
         for j, r in enumerate(cls.rows(v, 'pair', where)):
             w = '%s, пара %d' % (where, j + 1)
             cls.kind(r.get('a'), w)
@@ -234,13 +351,16 @@ class LayoutValues:
             cls.kind(r.get('kind'), w)
             if not isinstance(r.get('s'), str) or not re.match('^[ФЗЛП]{1,4}$', r['s']):
                 raise ValueError(w + ': стороны — буквы Ф, З, Л, П')
+            for f in ('door', 'tilt'):
+                if f in r and not isinstance(r[f], bool):
+                    raise ValueError(w + ': отметка «%s» — да или нет' % f)
         for j, r in enumerate(cls.rows(v, 'rotate', where)):
             cls.kind(r.get('kind'), '%s, поворот %d' % (where, j + 1))
-        g = v.get('gate') or {}
-        if 'full' in g:
-            cls.num(g['full'], where + ', gate.full', 0.3, 1)
         d = v.get('door') or {}
         if 'w' in d:
-            cls.num(d['w'], where + ', ширина двери', 900, 1200)
+            cls.num(d['w'], where + ', ширина двери', *cls.SCALAR['door.w'])
         if 'h' in d:
-            cls.num(d['h'], where + ', высота двери', 2000, 2400)
+            cls.num(d['h'], where + ', высота двери', *cls.SCALAR['door.h'])
+        s = v.get('service') or {}
+        if isinstance(s.get('min'), (int, float)) and isinstance(s.get('max'), (int, float)) and s['min'] > s['max']:
+            raise ValueError(where + ': сервисные ворота — «не меньше» больше «не больше»')

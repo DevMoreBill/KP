@@ -203,7 +203,6 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .nw-lead{margin:0 0 6px}
 .nw-res{display:grid;gap:4px}
 .nw-res:empty{display:none}
-.nw-mlist{max-height:300px;overflow:auto;margin-top:6px}
 .nw-hit{display:flex;align-items:center;gap:10px;text-align:left;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);cursor:pointer}
 .nw-hit:hover{border-color:var(--navy)}
 .nw-hit img,.nw-hit i{flex:none;width:44px;height:36px;object-fit:contain;border-radius:6px;background:var(--soft)}
@@ -230,12 +229,8 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .nw-optb small{color:var(--muted);font-size:13px}
 .nw-url{display:flex;gap:8px;padding:0 14px 14px 48px}
 .nw-url input{flex:1;min-width:0}
-.nw-row{display:grid;grid-template-columns:1fr 1.4fr;gap:10px;margin-top:10px}
-.nw-chosen{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1.5px solid var(--navy);border-radius:10px}
-.nw-chosen img{width:52px;height:40px;object-fit:contain}
-.nw-chosen b{flex:1}
 .nw-go{margin-top:18px;align-items:center;gap:12px}
-@media (max-width:700px){ .nw-row{grid-template-columns:1fr} .nw-url{padding-left:14px;flex-direction:column} }
+@media (max-width:700px){ .nw-url{padding-left:14px;flex-direction:column} }
 .tile.st b{font-size:14px} .tile.st span{font-size:12px}
 
 /* поиск в каталоге: отступ под значок лупы не перебивается общими стилями полей; кнопка сброса — рядом с поиском */
@@ -303,3 +298,12 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .catwin.pvwide .pv-scroll::after{content:"";display:block;clear:both}
 .catwin.pvwide .pv-g,.catwin.pvwide .pv-cap,.catwin.pvwide .pv-gal{clear:both}
 .catwin.pvwide .pv-x{display:none}
+/* станция: «что нужно заказчику» → «Подобрать станцию» (NewStation) */
+.ns-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin:8px 0 4px}
+.ns-g small.err{color:var(--danger);font-size:12px}
+.ns-g input.bad{border-color:var(--danger)}
+.ns-c{margin:12px 0 0;font-size:13.5px;line-height:1.45}
+.ns-row{display:grid;grid-template-columns:1.3fr .8fr 1.4fr;gap:10px;margin-top:8px}
+.ns-alt{margin:14px 0 0;font-size:13px}
+#dlg.nw .link{border:0;background:none;padding:0;color:var(--navy);font:inherit;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+@media (max-width:700px){ .ns-row{grid-template-columns:1fr} }
