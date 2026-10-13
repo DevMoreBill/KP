@@ -57,8 +57,12 @@ class Check {
       assert.ok(gap>=aMin-1, `${label}: проход между рядами ${gap} < ${aMin}`);
     } else for (const it of floor){ const need=it.kind==='dgu' ? Math.min(aMin, 600) : aMin;
       if (it.cross) continue;   // поперёк станции (без сквозного прохода): спереди и сзади — части станции со своими дверями
+      // без продольного прохода: компрессор у торца — сервисные ворота с обеих сторон, ворота в торце у него
+      if (it.ends){ const D=(p.doors||[]).filter(d=>d.both && d.pos.includes(it.pos) && Math.min(d.x1, it.x+it.lx)-Math.max(d.x0, it.x)>=Math.min(it.lx, StationLayout.DOOR.max)-1);
+        assert.ok(p.ends && D.some(d=>d.wall==='front') && D.some(d=>d.wall==='back') && p.gates && p.gates.wall==='left' && it.x-(p.geo.x0||0)<=600, `${label}: поз. ${it.pos} без продольного прохода — нет ворот с обеих сторон или в торце`);
+        assert.ok(p.entry && p.entry.x0>=it.x+it.lx && D.filter(d=>d.wall==='front').every(d=>d.x1<=p.entry.x0-100), `${label}: дверь оператора — за компрессором, мимо его ворот`); continue; }
       // ресиверы в два ряда в конце ряда — поперёк во всю ширину: проход доходит до них сбоку, от стен — не меньше 300 мм
-      if (it.pairEnd){ assert.ok(it.kind==='receiver' && it.y>=299 && W-it.y-it.ly>=299 && !floor.some(o=>!o.pairEnd && o.x+o.lx>it.x), `${label}: ресиверы в два ряда поз. ${it.pos} — не в конце ряда или ближе 300 мм к стене`); continue; }
+      if (it.pairEnd){ const pw=p.ends ? 149 : 299; assert.ok(it.kind==='receiver' && it.y>=pw && W-it.y-it.ly>=pw && !floor.some(o=>!o.pairEnd && o.x+o.lx>it.x), `${label}: ресиверы в два ряда поз. ${it.pos} — не в конце ряда или ближе 300 мм к стене`); continue; }
       assert.ok(it.y>=need-1, `${label}: проход перед поз. ${it.pos} ${it.y} < ${need}`);
       for (const c of I.filter(i=>i.mount==='wall' && i.wall==='front' && i.x<it.x+it.lx && i.x+i.lx>it.x))   // шкаф не сужает проход
         assert.ok(it.y-c.y-c.ly>=aMin-1, `${label}: перед шкафом поз. ${c.pos} проход ${it.y-c.y-c.ly} < ${aMin}`); }
@@ -247,20 +251,26 @@ Check.run('ошибка по условным габаритам — не точ
 Check.run('компрессорная в габарите перевозки: проход 600 мм, поперёк с двумя дверями, ресиверы в два ряда', ()=>{
   const K=(size, kw)=>P('Компрессор', { cat:'comp_screw', model:'K '+kw, kw, size }, { role:'main' }), R=StationGeo.ROAD_W;
   const S=(cont, parts)=>StationLayout.solve({ cont, parts, req:{ kind:'comp' } });
-  // 2000 × 1500: с проходом 800 мм нужно 2 600 мм внутри — проход 500 мм, блок 2 550 мм (раньше — негабарит 3 400)
-  const a=S(C('block', { sizeAuto:true }), [K('2000 × 1500 × 1800', 90), dryer]);
+  // 2000 × 1500: с проходом 800 мм нужно 2 600 мм внутри — один компрессор: без продольного прохода (у торца, ворота с обеих
+  // сторон и в торцах, решение ПНЕВМОТЕХ 13.10), блок 2 550 мм
+  const a1=S(C('block', { sizeAuto:true }), [K('2000 × 1500 × 1800', 90), dryer]);
+  Check.plan(a1, 'без продольного прохода'); draw(a1, 'без продольного прохода');
+  assert.ok(a1.geo.ext[1]===R && a1.mode && a1.mode.ends && a1.ends && a1.ends.pos===1, 'без продольного прохода, в габарите: '+JSON.stringify([a1.geo.ext, a1.mode]));
+  // два таких — исключение «проход в крайнем случае» (600 мм)
+  const a=S(C('block', { sizeAuto:true }), [P('Компрессор', { cat:'comp_screw', model:'K 90', kw:90, size:'2000 × 1500 × 1800' }, { role:'main', qty:2 }), dryer]);
   Check.plan(a, 'проход 600'); draw(a, 'проход 600');
   assert.ok(a.geo.ext[1]<=R && a.mode && a.mode.tight && a.aisle.w>=600 && a.aisleRule[1]===600, 'в габарите, проход сужен: '+JSON.stringify([a.geo.ext, a.mode, a.aisle, a.aisleRule]));
   assert.ok(a.issues.some(i=>i.level==='warn' && /^Проход оператора сужен до \d+ мм \(норма — не менее 800 мм/.test(i.text) && /габариту перевозки/.test(i.text)), a.issues.map(i=>i.text).join(' | '));
   assert.ok(!a.issues.some(i=>/негабарит/.test(i.text)), 'не негабарит');
-  // 2200 × 1700: и с проходом 500 мм не встаёт — поперёк станции, вторая дверь оператора за ним, ширина в габарите
-  const b=S(C('block', { sizeAuto:true }), [K('2200 × 1700 × 2000', 160), dryer]);
+  // 2200 × 2100: ни с проходом 600 мм, ни у торца с воротами с обеих сторон не встаёт — поперёк станции, вторая дверь
+  // оператора за ним, ширина в габарите
+  const b=S(C('block', { sizeAuto:true }), [K('2200 × 2100 × 2000', 160), dryer]);
   Check.plan(b, 'поперёк'); draw(b, 'поперёк');
   assert.ok(b.geo.ext[1]<=R && b.cross && b.cross.pos===1, 'поперёк, в габарите: '+JSON.stringify([b.geo.ext, b.cross]));
-  const X=b.items.find(i=>i.cross); assert.ok(X.face===-2 && X.rot && X.ly===2200 && X.lx===1700, 'лицом к входу, длиной поперёк');
+  const X=b.items.find(i=>i.cross); assert.ok(X.face===-2 && X.rot && X.ly===2200 && X.lx===2100, 'лицом к входу, длиной поперёк');
   assert.ok(b.items.filter(i=>i.mount==='floor' && !i.cross).every(i=>i.x>=b.cross.x1), 'осушитель — во второй части (за ним)');
   // заданный 20-футовый: глубокий компрессор поперёк, а не «не помещается»
-  const c=S(C('sea20'), [K('2000 × 1500 × 1800', 90), dryer]);
+  const c=S(C('sea20'), [K('2000 × 1900 × 1800', 90), dryer]);
   Check.plan(c, 'поперёк, 20 футов'); assert.ok(c.level==='warn' && c.cross, '20 футов — поперёк: '+c.issues.map(i=>i.text).join(' | '));
   const e=c.entry, two=(c.doors||[]).find(d=>d.kind==='entry' && d.x0>=c.cross.x1);
   assert.ok(e && e.wall==='front' && e.x1<=c.cross.x0 && two, 'дверь оператора — до агрегата, вторая — за ним: '+JSON.stringify([e, c.doors]));
@@ -279,7 +289,7 @@ Check.run('компрессорная в габарите перевозки: п
 
 Check.run('нет места для прохода — контейнер больше: станций только с сервисными дверями нет', ()=>{
   // длиннее ширины контейнера: ни с проходом, ни поперёк (без сквозного прохода) не встаёт
-  const deep=P('Компрессор глубокий', { cat:'comp_screw', model:'D 90', kw:90, size:'2600 × 1500 × 1800' }, { role:'main' });
+  const deep=P('Компрессор глубокий', { cat:'comp_screw', model:'D 90', kw:90, size:'2600 × 2000 × 1800' }, { role:'main' });
   const p=solve(C('sea20'), [deep, dryer]);
   Check.plan(p, 'глубокий в 20 футах');
   assert.strictEqual(p.level, 'error');
@@ -1437,6 +1447,32 @@ Check.run('ресиверы в два ряда в конце ряда — ста
   assert.ok(p.geo.ext[0]<=one.geo.ext[0]+StationLayout.RECV2, 'короче или как с одним ресивером');
   assert.ok(StationLayout.twinDryer({ kind:'dryer', name:'Осушитель DCH 70', air:{ type:'ads' } }) && !StationLayout.twinDryer({ kind:'dryer', name:'Осушитель DK 60', air:{ type:'refrig' } }), 'вид осушителя — по виду из цепочки');
   draw(p, 'ресиверы в два ряда');
+});
+
+Check.run('без продольного прохода: компрессор у торца, ворота с обеих сторон и в торцах, ресиверы в два ряда (пример ПНЕВМОТЕХ 13.10)', ()=>{
+  const k90=P('Винтовой компрессор Dalgakiran DVK 90', { cat:'comp_screw', maker:'Dalgakiran', kw:90, size:'1900 × 1200 × 1800', mass:1900 }, { role:'main' });
+  const ads=P('Адсорбционный осушитель DAD 150', { cat:'dryer_ads', size:'1100 × 700 × 2000', mass:400 });
+  const r900=P('Воздушный ресивер РВ 900/11', { cat:'receiver', volume:900, pressure:11, size:'930 × 940 × 2040', mass:250 }, { qty:4 });
+  const p=solve(C('block', { sizeAuto:true }), [k90, ads, r900, cab]); Check.plan(p, 'без продольного прохода');
+  const [L]=p.int, K=p.items.find(i=>i.ends), D=p.items.find(i=>i.kind==='dryer'), R=p.items.filter(i=>i.kind==='receiver');
+  assert.ok(p.mode && p.mode.ends && p.geo.ext[1]===StationGeo.ROAD_W && p.geo.ext[0]<=9000, 'в габарите перевозки и короче: '+JSON.stringify([p.geo.ext, p.mode]));
+  assert.ok(K && K.pos===1 && Math.abs(K.y-(p.int[1]-K.y-K.ly))<=1, 'компрессор у торца — по середине ширины');
+  assert.ok(p.entry.wall==='front' && p.entry.x0>=K.x+K.lx && p.entry.x1<=D.x, 'дверь оператора — между компрессором и осушителем: '+JSON.stringify([p.entry, K.x+K.lx, D.x]));
+  assert.ok(R.length===4 && R.every(i=>i.pairEnd) && new Set(R.map(i=>i.x)).size===2 && R.every(i=>i.x>D.x), 'ресиверы — две пары поперёк у дальнего торца');
+  assert.ok(R.every(i=>i.y>=149 && p.int[1]-i.y-i.ly>=149), 'ресиверы плотнее, от стен — не ближе «плотно»');
+  assert.ok(p.gates.wall==='left' && p.gates.pos.includes(1) && p.gates2 && p.gates2.wall==='right' && p.gates2.pos.includes(3), 'ворота в обоих торцах: '+JSON.stringify([p.gates, p.gates2]));
+  assert.ok(L-Math.max(...R.map(i=>i.x+i.lx))<=600, 'ресиверы — у ворот дальнего торца');
+  assert.ok(!(p.access||[]).some(a=>a.miss.length), 'доступ ко всем сторонам: '+JSON.stringify((p.access||[]).filter(a=>a.miss.length)));
+  assert.ok(p.issues.some(i=>/^Без продольного прохода: поз\. 1 \(компрессор\)/.test(i.text)) && !p.second, 'замечание режима, второй двери не выдумано');
+  const tt=new StationDrawing(p, meta(p)).reqs().join(' '); assert.ok(/с обеих сторон компрессора/.test(tt) && /ресиверы в два ряда — не выход/.test(tt), 'ТТ: ворота с обеих сторон, дальние — не выход');
+  assert.ok(!p.vent.louvers.some(q=>q.kind==='out' && q.leaf), 'выброс — не в створках');
+  // заданный контейнер той же ширины: с проходом не встаёт по длине — без продольного прохода
+  const q=solve(C('block', { size:'8300 × 2550 × 3100' }), [k90, ads, r900, cab]); Check.plan(q, 'заданный 8,3 м');
+  assert.ok(q.level!=='error' && q.mode && q.mode.ends, 'заданный: '+JSON.stringify([q.level, q.mode]));
+  // два компрессора — так не ставится (у торца — один)
+  const two=P('Винтовой компрессор 90', { cat:'comp_screw', kw:90, size:'1900 × 1200 × 1800' }, { role:'main', qty:2 });
+  const w=solve(C('block', { sizeAuto:true }), [two, ads, r900, cab]); Check.plan(w, 'два компрессора'); assert.ok(!(w.mode && w.mode.ends), 'два компрессора — не у торца');
+  new StScene(p, {}).build(); draw(p, 'без продольного прохода');
 });
 
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);
