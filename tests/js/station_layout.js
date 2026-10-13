@@ -292,6 +292,9 @@ Check.run('компрессорная в габарите перевозки: п
   assert.ok(e2.geo.ext[1]===R && e2.mode && e2.mode.ends && E2.length===2 && e2.ends.n===2 && e2.gates.wall==='left' && E2[1].x-E2[0].x-E2[0].lx>=1000-1, 'два компрессора рядом: '+JSON.stringify([e2.geo.ext, e2.mode, E2.map(i=>i.x)]));
   assert.ok(e2.items.filter(i=>i.mount==='floor' && !i.ends).every(i=>i.x>=E2[1].x+E2[1].lx+1000-1), 'остальное — за компрессорами');
   assert.ok(e2.issues.some(i=>/компрессоры поз\. 1 \(2 шт\.\) — рядом в ряд от торца/.test(i.text)), e2.issues.map(i=>i.text).join(' | '));
+  // между компрессорами — дверь оператора, напротив неё можно конвектор (решение ПНЕВМОТЕХ 13.10)
+  const md=e2.doors.filter(d=>d.between); assert.ok(md.length===1 && md[0].kind==='entry' && md[0].wall==='front' && md[0].x0>=E2[0].x+E2[0].lx && md[0].x1<=E2[1].x, 'дверь между компрессорами: '+JSON.stringify(md));
+  for (const d of e2.doors.filter(d=>!d.between && d.wall==='front')) assert.ok(d.x1<=md[0].x0-StationMatrix.door().gap+1 || d.x0>=md[0].x1+StationMatrix.door().gap-1, 'проёмы — через door.gap');
   // дополнительный канал отвода тепла (общая вытяжка) — рядом с осушителем (решение ПНЕВМОТЕХ 13.10)
   const dr2=e2.items.find(i=>i.kind==='dryer'), gw=e2.vent.louvers.filter(q=>q.kind==='out' && !q.duct);
   if (gw.length) assert.ok(gw.every(q=>q.wall==='back' && Math.abs((q.u0+q.u1)/2-(dr2.x+dr2.lx/2))<=1500), 'общая вытяжка — у осушителя: '+JSON.stringify(gw));
@@ -1542,7 +1545,8 @@ Check.run('без продольного прохода: компрессор у
   // два компрессора — рядом в ряд от торца (уточнение ПНЕВМОТЕХ 13.10), между ними и за последним — не меньше 1 000 мм
   const two=P('Винтовой компрессор 90', { cat:'comp_screw', kw:90, size:'1900 × 1200 × 1800' }, { role:'main', qty:2 });
   const w=solve(C('block', { sizeAuto:true }), [two, ads, r900, cab]); Check.plan(w, 'два компрессора'); draw(w, 'два компрессора');
-  assert.ok(w.geo.ext[1]<=StationGeo.ROAD_W && !w.issues.some(i=>i.wide), 'два компрессора — в габарите перевозки: '+JSON.stringify([w.geo.ext, w.mode]));
+  // с дверью оператора между компрессорами и 4 × 900 л у торца — длиннее 12 м: тогда негабарит с предупреждением (исключение)
+  assert.ok(w.level!=='error' && (w.geo.ext[1]<=StationGeo.ROAD_W ? w.mode && w.mode.ends : w.issues.some(i=>i.wide)), 'два компрессора: '+JSON.stringify([w.geo.ext, w.mode]));
   new StScene(p, {}).build(); draw(p, 'без продольного прохода');
 });
 
