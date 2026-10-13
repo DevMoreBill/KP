@@ -295,9 +295,9 @@ Check.run('компрессорная в габарите перевозки: п
   // между компрессорами — дверь оператора, напротив неё можно конвектор (решение ПНЕВМОТЕХ 13.10)
   const md=e2.doors.filter(d=>d.between); assert.ok(md.length===1 && md[0].kind==='entry' && md[0].wall==='front' && md[0].x0>=E2[0].x+E2[0].lx && md[0].x1<=E2[1].x, 'дверь между компрессорами: '+JSON.stringify(md));
   for (const d of e2.doors.filter(d=>!d.between && d.wall==='front')) assert.ok(d.x1<=md[0].x0-StationMatrix.door().gap+1 || d.x0>=md[0].x1+StationMatrix.door().gap-1, 'проёмы — через door.gap');
-  // все решётки выброса на задней стене — одного размера: общая вытяжка — как у компрессоров, не над сервисными воротами
+  // компрессорные решётки — одного размера; общая вытяжка у осушителя — своего расчётного размера, не над сервисными воротами
   const ob=e2.vent.louvers.filter(q=>q.kind==='out' && q.wall==='back'), cg=e2.doors.filter(d=>d.wall==='back');
-  assert.ok(new Set(ob.map(q=>q.w+'×'+q.h)).size===1, 'решётки одного размера: '+JSON.stringify(ob.map(q=>[q.w, q.h, !!q.duct])));
+  assert.ok(new Set(ob.filter(q=>q.duct).map(q=>q.w+'×'+q.h)).size===1, 'решётки компрессоров одного размера: '+JSON.stringify(ob.map(q=>[q.w, q.h, !!q.duct])));
   assert.ok(ob.filter(q=>!q.duct).every(q=>!cg.some(d=>q.u0<d.x1 && q.u1>d.x0)), 'общая вытяжка — не над сервисными воротами');
   // правила, сохранённые раньше без отметки «без сервисных ворот», — осушителю и ресиверу ворота всё равно не ставятся
   const rs=JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')), ro=JSON.parse(JSON.stringify(rs));
@@ -1464,7 +1464,7 @@ Check.run('выброс горячего воздуха — над сервис�
   // DL-55/8GA и DL-55/8GA-F (частотник) — один габарит и расход: одна модель, решётки одинаковые (скриншот ПНЕВМОТЕХ 13.10)
   { const a=P('Винтовой компрессор Dali DL-55/8GA', { cat:'comp_screw', kw:55, size:'1650 × 1450 × 1840' }, { role:'main' }), b=P('Винтовой компрессор Dali DL-55/8GA-F', { cat:'comp_screw', kw:55, vsd:'Да', size:'1650 × 1450 × 1840' }, { role:'main' });
     const p=solve(C('block', { sizeAuto:true }), [a, b, dryer, rec, cab]), d=same(p); assert.ok(!d, 'DL-55/8GA и -F: '+d);
-    const ob=p.vent.louvers.filter(q=>q.kind==='out' && q.wall==='back'); assert.ok(new Set(ob.map(q=>q.w+'×'+q.h)).size===1, 'все решётки на стене — одного размера'); }
+    const ob=p.vent.louvers.filter(q=>q.kind==='out' && q.wall==='back' && q.duct); assert.ok(new Set(ob.map(q=>q.w+'×'+q.h)).size===1, 'компрессорные решётки — одного размера'); }
   // разные компрессоры в одной станции (37 и 55 кВт) — решётки всё равно одного размера (по наибольшему расходу)
   { const p=solve(C('block', { sizeAuto:true }), [P('Компрессор 55', { cat:'comp_screw', kw:55, size:'1650 × 1450 × 1840' }, { role:'main' }), P('Компрессор 37', { cat:'comp_screw', kw:37, size:'1400 × 900 × 1500' }, { role:'main' }), dryer, rec, cab]);
     if (Object.values(p.vent.ducts).every(v=>v==='wall')){ const m=new Map(); for (const q of out(p)) m.set(q.duct, [...(m.get(q.duct)||[]), q.w+'×'+q.h]);

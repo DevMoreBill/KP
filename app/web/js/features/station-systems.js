@@ -770,14 +770,9 @@ class StationVent {
     // у компрессорной — рядом с осушителем (решение ПНЕВМОТЕХ 13.10: «дополнительный канал отвода тепла — рядом с осушителем, а
     // не в случайном месте», на этом же канале — вытяжной вентилятор по необходимости)
     const dr=comp.length ? I.filter(i=>i.kind==='dryer' && i.mount==='floor').sort((a, b)=>a.x-b.x)[0] : null, hub=dr ? Math.round(dr.x+dr.lx/2) : 'hi';
-    // решётки общей вытяжки на стене выброса — того же размера, что у компрессоров (решение ПНЕВМОТЕХ 13.10: «вентканалы
-    // формируются непонятно по какому принципу»), у осушителя и не над сервисными воротами (там — только компрессорные)
-    const base=E==='back' && out.louvers.find(q=>q.kind==='out' && q.duct && !q.side && q.wall==='back');
-    if (qWall>0 && base){ const w=base.w, hh=base.h, nG=Math.ceil(gross(qWall)/(w*hh)), m=mark(), GX=(plan.doors||[]).filter(d=>d.wall==='back');
-      let ok=nG<=this.MAXN;
-      for (let i=0; i<nG && ok; i++){ const r2=fitAt('back', w, hh, typeof hub==='number' ? hub : L-1000, L, a=>!GX.some(d=>a<d.x1+150 && a+w>d.x0-150));
-        if (r2) add({ kind:'out', wall:'back', u0:r2.u, u1:r2.u+w, z0:r2.z0, z1:r2.z1, w, h:hh, same:true }); else ok=false; }
-      if (ok) qWall=0; else unmark(m); }
+    // общая вытяжка (дополнительный канал у осушителя) — своего расчётного размера (уточнение ПНЕВМОТЕХ 13.10: «решётка над
+    // осушителем должна быть своего размера, расчётного»), никогда над сервисными воротами — там только компрессорные
+    for (const d of (plan.doors||[]).filter(d=>d.wall==='back')) W.busy('back', d.x0-150, d.x1+150, 0, H);
     if (qWall>0){ const o={ ...OB, h:[OB.h[0], oh] };
       let left=E==='back' ? (whole('out', o, [['back', hub]], need(qWall, 'out').gross, [0]) ? 0 : place('out', o, [['back', hub]], need(qWall, 'out'))) : need(qWall, 'out').gross*1e6;
       // не встало — остаток выше ростом (на стене выброса притока нет): на крышу — только в самом крайнем случае

@@ -552,7 +552,32 @@ class KitNeed {
       if (r.act){ const t=this.apply(x, r); this.done(x); if (t) toast('В составе: '+t); return 'async'; }
       this.open(i, r); return 'async'; }
     if (a==='kitNeedAll'){ this.fillAll(i); return 'async'; }
+    if (a==='kitSwap'){ const p=kitParts(x)[+b.dataset.j]; if (p) this.swap(i, p); return 'async'; }
     return false;
+  }
+  /** виды, которые можно заменить из каталога прямо из строки состава (решение ПНЕВМОТЕХ 13.10) */
+  static SWAP = /^(compressor|dryer|filter|receiver|dgu|pump|tank)$/;
+  static canSwap(p){ return !!(p && (p.role==='main' || this.SWAP.test(StationEquip.kindOf(p)) || (p.attrs && p.attrs.cat))); }
+  /** «⇄ Заменить» в строке: окно каталога с фильтрами по требованиям станции (основное — как «Подобрать оборудование»,
+   *  остальное — по рекомендации этого вида или по расходу компрессоров, давлению, объёму), выбранное встаёт вместо этой
+   *  строки с тем же количеством */
+  static swap(i, p){
+    const x=S.items[i], kind=StationEquip.kindOf(p), cat=(p.attrs||{}).cat, qty=Math.max(1, +p.qty||1), name=String(p.name||'').trim();
+    const tag=`Замена «${name || 'элемента'}». `;
+    if (p.role==='main'){ const m=this.mainPreset(x)||{};
+      return kitPickCat(i, (stationOf(x)||{}).main, 'main', '', { ...m, replace:[p.id], swapRow:true, qty:m.qty||qty, need:tag+(m.need||'Показано основное оборудование станции.') }); }
+    const cats=cat && TYPES.some(t=>t.id===cat) ? [cat] : null;
+    // своя рекомендация этого вида («Нужно» / «Заменить») — её фильтры и рекомендуемый; иначе — по требованиям станции
+    const rec=cats && this.recs(x).find(z=>z.cat===cat && !z.main);
+    let pre=rec ? this.preset(x, rec) : null;
+    if (!pre && cats){ const A=this.air(x), q=A && A.q>0 ? A.q : 0, V=AirChain.volume(p)||0;
+      const r={ key:kind==='dryer' ? 'dryer-'+(cat==='dryer_ads' ? 'ads' : 'refrig') : kind==='filter' ? p.airGrade||'' : 'swap', cat, name, title:StationEquip.LABEL[kind] || 'элемент', f:{},
+        r:kind==='receiver' ? (V>0 ? { volume:[V] } : {}) : (kind==='dryer' || kind==='filter') && q ? { flow:[AirChain.m3(q).replace(',', '.')] } : {}, qty, swap:true, role:p.recvRole||'' };
+      pre=this.preset(x, r); }
+    pre={ ...(pre||{}), replace:[p.id], swapRow:true, qty:pre && pre.qty ? pre.qty : qty, grade:p.airGrade || (pre && pre.grade) || '', role:p.recvRole || (pre && pre.role) || '' };
+    const nd=pre.need ? pre.need.replace(/^(Нужно|Заменить): /, '') : 'Показан каталог этого вида — выберите, что поставить вместо.';
+    pre.need=tag+nd.charAt(0).toUpperCase()+nd.slice(1);
+    kitPickCat(i, cats, p.role||null, cats ? '' : name, pre, p.by);
   }
 }
 
@@ -644,6 +669,7 @@ class KitView {
       <span class="kit-cost"><input type="text" inputmode="decimal" data-kitcost="${i}.${j}" value="${esc(ct)}" placeholder="${by==='asm' ? 'в цене сборки' : 'цена из счёта'}" aria-label="Закупка за единицу"><select data-kitcur="${i}.${j}" aria-label="Валюта закупки">${DEAL_CURS.map(c=>`<option${(p.costCur||'RUB')===c ? ' selected' : ''}>${c}</option>`).join('')}</select></span>
       <span class="kt-s"><input type="text" list="kitSupL" data-p="${P}.sup" value="${esc(p.sup||'')}" placeholder="${esc(asmSup ? 'сборщик: '+asmSup : by==='asm' ? 'сборщик' : 'производитель или поставщик')}" aria-label="Поставщик"></span>
       <span class="kt-a"><button class="icon" type="button" data-a="kitOpen" data-i="${i}" data-j="${j}" aria-expanded="${open}" title="${open ? 'Свернуть' : 'Описание, характеристики, фото, рисунок для чертежа'}">${open ? '▾' : '▸'}</button>
+        ${KitNeed.canSwap(p) ? `<button class="icon" type="button" data-a="kitSwap" data-i="${i}" data-j="${j}" title="Заменить: окно каталога с фильтрами по требованиям станции" aria-label="Заменить из каталога">⇄</button>` : ''}
         <button class="icon" type="button" data-a="kitMv" data-i="${i}" data-j="${j}" data-d="-1" ${j ? '' : 'disabled'} aria-label="Выше">↑</button><button class="icon" type="button" data-a="kitMv" data-i="${i}" data-j="${j}" data-d="1" ${j<last ? '' : 'disabled'} aria-label="Ниже">↓</button>
         <button class="icon" type="button" data-a="kitDel" data-i="${i}" data-j="${j}" aria-label="Убрать элемент">✕</button></span>
       ${open ? this.details(x, i, p, j, by) : ''}</div>`;
@@ -691,7 +717,7 @@ class KitView {
     if (a==='kitBy' && p){ p.by=b.dataset.by==='our' ? 'our' : 'asm'; if (p.by===KitScope.def(p)) delete p.by; kitSync(it); return true; }
     if (a==='reqPickX'){ delete StationReq.ensure(it).pick; persist(); renderEditor(); return 'async'; }
     if (a==='reqReset'){ ExpertLog.reset(it, String(b.dataset.k||'').split(',')); StationUi.cache.delete(it.id); persist(); renderEditor(); return 'async'; }
-    if (a==='kitNeed' || a==='kitNeedAll') return KitNeed.act(a, i, b);
+    if (a==='kitNeed' || a==='kitNeedAll' || a==='kitSwap') return KitNeed.act(a, i, b);
     return false;
   }
 }
