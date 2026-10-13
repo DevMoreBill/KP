@@ -49,7 +49,7 @@ class CalcInput {
     const r=StationReq.of(x), P=kitParts(x).filter(p=>p.role!=='container'), n=v=>this.num(v), g=k=>ReqNum.check(k, r[k]) ? null : this.num(r[k]);   // g — с проверкой диапазона
     const units=P.map(p=>{ const kind=StationEquip.kindOf(p), info=/^(compressor|dryer|filter|receiver)$/.test(kind) ? AirChain.info(p, kind) : {};
       return { p, kind, qty:Math.max(1, Math.min(20, Math.round(+p.qty||1))), info, name:String(p.name||'').trim(), attrs:p.attrs||{}, rows:p.rows||[] }; });
-    return { kind:StationReq.kind(x), cls:StationUi.opts(x).air || '', units, parts:P,
+    return { kind:StationReq.kind(x), cls:StationUi.opts(x).air || '', units, parts:P, recvIn:StationReq.recvIn(x), recvOut:StationReq.recvOut(x),
       req:{ flow:g('flow'), pressure:g('pressure'), basis:r.basis==='normal' ? 'normal' : 'fad', alt:g('alt'), rh:g('rh'), margin:g('margin'),
         reserve:r.reserve!=null && r.reserve!=='' ? Math.max(0, Math.round(n(r.reserve)||0)) : null, work:n(r.work), tmin:g('tmin'), tmax:g('tmax'), tin:g('tin'),
         kw:g('kw'), load:g('load'), hours:g('hours'), motor:g('motor'), start:r.start||'', recvVol:g('recvVol'), mode:r.mode||'',
@@ -249,21 +249,33 @@ class FilterSizing {
 
 // ---------------------------------------------------------------- ресиверы: объём по формуле, давление
 class ReceiverSizing {
-  static run(N, q, A){
-    const f=CalcNote.f, C=q.units.filter(u=>u.kind==='compressor'); if (!C.length) return;
+  /** раздел «Ресиверы» по методике ПНЕВМОТЕХ (ReceiverPlan): приоритеты 1–3, теоретический объём, рекомендация с обоснованием
+   *  типоразмера, проверки «на здравый смысл» (ошибки и предупреждения — в замечания); затем учёт в Ростехнадзоре */
+  static run(N, q){
+    const f=CalcNote.f, l=v=>f(v, 0), C=q.units.filter(u=>u.kind==='compressor'); if (!C.length) return;
     N.section('recv', 'Ресиверы');
-    const Rv=q.units.filter(u=>u.kind==='receiver'), have=Rv.reduce((s, u)=>s+(u.info.vol||0)*u.qty, 0);
-    const big=C.reduce((m, u)=>(u.info.flow||0)>(m.info.flow||0) ? u : m, C[0]), vsd=!!big.info.vsd, fr=N.rule('receiver.formula');
-    const per=vsd ? N.rule('receiver.vsd') : AirChain.RECV, V=Math.round((big.info.flow||0)*per), tz=q.req.recvVol>0 ? q.req.recvVol : 0, need=Math.max(V, tz);
-    if (!(need>0)){ N.missing('recv.flow', 'Объём ресивера не рассчитан: у компрессоров не указана производительность'); return; }
-    N.step({ what:'Объём ресивера', formula:vsd ? 'V = '+f(per, 0)+' л на 1 м³/мин (частотное регулирование)' : 'V = 0,25 · qc · p1 · T0 / (fmax · Δp · T1)',
-      data:[['наибольший компрессор', big.name+' — '+f(big.info.flow)+' м³/мин'], ...(vsd ? [] : [['p1 · T0 / T1', f(fr.p1)+' бар · '+fr.T0+' / '+fr.T1+' K'], ['цикл', fr.cycle+' с'], ['Δp', f(fr.dp)+' бар']]),
-        ...(tz ? [['по ТЗ', f(tz, 0)+' л']] : [])], rules:['receiver.formula', vsd ? 'receiver.vsd' : ''], result:'нужно ≥ '+f(need, 0)+' л; в составе '+f(have, 0)+' л',
-      ok:N.fits(have, need).ok, margin:CalcNote.pct(have, need), note:N.fits(have, need).note, pick:Rv.map(u=>u.name+(u.qty>1 ? ' × '+u.qty : '')).join('; ') });
-    const bs=AirChain.base(need, Math.max(0, ...C.map(u=>u.info.bar||0)));   // по умолчанию — по 900 л (receiver.base)
-    if (!Rv.length) N.issue('warn', `Ресиверов в составе нет — нужно около ${f(need, 0)} л${bs ? ` (${bs.n} × ${f(bs.v, 0)} л)` : ''}.`);
-    else if (!N.fits(have, need).ok) N.issue(tz && !N.fits(have, tz).ok ? 'error' : 'warn', `Объём ресиверов ${f(have, 0)} л меньше ${tz && !N.fits(have, tz).ok ? 'требуемого по ТЗ' : 'расчётного'} ${f(need, 0)} л.`);
-    const pv=N.rule('vessel.pv'), bar=Math.max(0, ...C.map(u=>u.info.bar||0));
+    const rq=q.recvIn||{}, eq=StationEquip.list(q.parts, { recv:rq.mode, recvOut:q.recvOut }), R=ReceiverPlan.from(eq, rq);
+    if (!R){ N.missing('recv.flow', 'Объём ресивера не рассчитан: у компрессоров не указана производительность'); return; }
+    const M=N.rule('receiver.method'), Rv=q.units.filter(u=>u.kind==='receiver');
+    N.step({ what:'Приоритет 1. Цикл нагрузки/разгрузки (не более 10–15 циклов в час)', formula:`V = Q / (${M.cycles} · ΔP)`, rules:['receiver.method', ...(rq.dp>0 ? [] : ['pressure.band'])],
+      data:[['Q — наибольший компрессор', `${R.big.name} — ${f(R.Q)} м³/мин`], ['ΔP (разгрузка − нагрузка)', `${f(R.dp)} бар${rq.dp>0 ? '' : ' (по правилу, не задан)'}`]], result:`V = ${l(R.V.p1)} л` });
+    if (R.V.p2!=null) N.step({ what:'Приоритет 2. Пиковый разбор по циклограмме', formula:'V = T · (C − S) · Pa / (P1 − P2)', rules:['receiver.method'],
+      data:[['T — длительность пика', f(R.cyc.T)+' мин'], ['C — расход в пике', f(R.cyc.C)+' м³/мин'], ['S — подача рабочих компрессоров', f(R.S)+' м³/мин'], ['Pa', f(M.pa)+' бар'], ['P1 − P2', f(R.cyc.drop)+' бар']],
+      result:R.cyc.C>R.S ? `V = ${l(R.V.p2)} л` : 'компрессоры покрывают пик (C ≤ S): V = 0' });
+    if (R.V.p3!=null) N.step({ what:'Приоритет 3. Базовый буфер (циклограммы нет)', formula:R.piston ? 'V ≥ 1 · Q (поршневой компрессор)' : 'V ≥ 0,25 · Q (винтовой компрессор)', rules:['receiver.method'],
+      data:[['Q', `${f(R.Q)} м³/мин = ${l(R.Q*1000)} л/мин`]], result:`V = ${l(R.V.p3)} л` });
+    N.step({ what:'Теоретически необходимый суммарный объём', formula:'наибольший из применимых приоритетов (каждый — нижняя граница)'+(R.V.tz ? ', не меньше объёма по ТЗ' : ''),
+      data:R.V.tz ? [['по ТЗ', l(R.V.tz)+' л']] : [], result:`V = ${l(R.theor)} л — сработал приоритет ${ReceiverPlan.PRIO[R.prio]}` });
+    N.step({ what:'Рекомендация', formula:'ряд 500 → 900 → 1 800 → 2 700 → …: объём ресивера кратно 900 л, 500 л — только при крайней необходимости', rules:['receiver.method'],
+      data:[['основной', R.main.why], ...(R.wet ? [['мокрый (30–50 % основного)', R.wet.why]] : []), ...(R.local ? [['у потребителя', R.local.why]] : [])],
+      result:ReceiverPlan.text(R), pick:Rv.map(u=>u.name+(u.qty>1 ? ' × '+u.qty : '')).join('; ') });
+    const E=R.checks;
+    N.step({ what:'Проверки «на здравый смысл»'+(Rv.length ? ' (по составу)' : ' (по рекомендации)'), formula:'запас 80–200 %; 15 % — 5-кратная минутная производительность; запас по давлению; «мёртвый объём»; ряд 900/500; осушитель',
+      rules:['receiver.method'], data:E.map(c=>[c.level==='error' ? 'ошибка' : 'предупреждение', c.text]), result:E.length ? `сработало: ${E.length}` : 'Все проверки пройдены.',
+      ok:E.some(c=>c.level==='error') ? false : E.length ? null : true });
+    for (const c of E) N.issue(c.level, c.text);
+    if (!Rv.length) N.issue('warn', `Ресиверов в составе нет — нужно: ${ReceiverPlan.text(R)}.`);
+    const pv=N.rule('vessel.pv'), bar=R.bar;
     for (const u of Rv){ const v=u.info.vol||0, x=bar/10*v/1000;
       if (v>0 && bar>0) N.step({ what:'Учёт в Ростехнадзоре: '+u.name, formula:'p · V ≤ '+f(pv)+' МПа·м³', rules:['vessel.pv'], data:[['p', f(bar/10, 2)+' МПа'], ['V', f(v/1000, 3)+' м³']], result:'p·V = '+f(x, 3), ok:x<=pv+1e-9 });
       if (x>pv+1e-9) N.issue('warn', `${u.name}: p·V = ${f(x, 3)} МПа·м³ — подлежит учёту в Ростехнадзоре (ФНП ОРПД).`); }
@@ -509,7 +521,7 @@ class StationCalc {
     for (const G of [plan.gates, plan.gates2].filter(Boolean)) if (G.off && !G.offWhy)
       N.issue('error', `Требования: «Причина смещения ворот» — ворота в торце смещены от оси на ${StationLayout.n(Math.abs(G.off))} мм без причины; укажите причину («Условия для расчёта станции» → «Ворота в торце»).`);
     try{
-      if (q.kind==='comp'){ const A=AirDemand.run(N, q), P=PressureBudget.run(N, q, A); DryerSizing.run(N, q, A, P); FilterSizing.run(N, q, A, P); ReceiverSizing.run(N, q, A); ElectricLoad.run(N, q, plan); }
+      if (q.kind==='comp'){ const A=AirDemand.run(N, q), P=PressureBudget.run(N, q, A); DryerSizing.run(N, q, A, P); FilterSizing.run(N, q, A, P); ReceiverSizing.run(N, q); ElectricLoad.run(N, q, plan); }
       else if (q.kind==='dgu') GensetSizing.run(N, q, ElectricLoad.run(N, q, plan));
       else if (q.kind==='pump'){ PumpSizing.run(N, q); ElectricLoad.run(N, q, plan); }
       else ElectricLoad.run(N, q, plan);

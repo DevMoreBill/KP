@@ -54,10 +54,10 @@ Check.run('нормальные м³ → FAD (ISO 1217, ГОСТ 2939-63)', ()=>
   near(AirDemand.fad(10, 500, 35, 100), 12.722, 0.003, '500 м, 35 °C, 100 %');
 });
 
-Check.run('ресивер «нагрузка — холостой ход» (Atlas Copco)', ()=>{
-  // V = 0,25 · qc · p1 · T0 / (fmax · Δp · T1): qc = 1000/60 л/с на 1 м³/мин, fmax = 1/30 с⁻¹, Δp = 1 бар → 0,25 · 16,667 · 30 = 125 л
-  near(AirChain.RECV, 125, 1e-9, 'л на 1 м³/мин');
-  assert.strictEqual(StationRules.raw('receiver.vsd'), 40);
+Check.run('ресивер: правило методики ПНЕВМОТЕХ (receiver.method)', ()=>{
+  // 10–15 циклов в час: V = Q / (8 · ΔP); буфер 0,25 · Q (винтовой), 1 · Q (поршневой); ряд 900 / 500 л
+  const M=ReceiverPlan.M; assert.deepStrictEqual([M.cycles, M.base.screw, M.base.piston, M.unit, M.small, M.excess, M.low], [8, 0.25, 1, 900, 500, 2, 0.8]);
+  assert.strictEqual(StationRules.raw('pressure.band'), 1, 'ΔP по умолчанию — 1 бар');
 });
 
 Check.run('осушитель Dalgakiran DK: поправки производителя', ()=>{
@@ -218,7 +218,7 @@ Check.run('компрессорная: всё проходит, приложен
   const x=station('st_comp', { flow:'10', pressure:'7', basis:'fad', tmax:'+30', reserve:'1', margin:'0', alt:'0' },
     [part('Компрессор винтовой К-130', { cat:'comp_screw', maker:'Пример', flow:13, pressure:10, kw:75 }, 2, [{ k:'Тип запуска', v:'звезда-треугольник' }]),
       DK('DK 1450', 24), GON('GON 1550 MX', 25.8, 'Тонкая'), GON('GON 1550 MY', 25.8, 'Сверхтонкая (микрофильтр)'),
-      part('Ресивер РВ-1000', { cat:'receiver', maker:'Пример', volume:1000, pressure:11 }), part('Ресивер РВ-900', { cat:'receiver', maker:'Пример', volume:900, pressure:11 })], '2.4.2');
+      part('Ресивер РВ-900', { cat:'receiver', maker:'Пример', volume:900, pressure:11 }, 4), part('Ресивер мокрый РВ-900', { cat:'receiver', maker:'Пример', volume:900, pressure:11 }, 2)], '2.4.2');
   const R=StationCalc.run(x);
   assert.deepStrictEqual(R.errors, [], JSON.stringify(R.errors));
   const step=(sec, re)=>R.sections.find(s=>s.id===sec).steps.find(o=>re.test(o.what));
@@ -226,8 +226,13 @@ Check.run('компрессорная: всё проходит, приложен
   assert.strictEqual(step('air', /рабочие против/).margin, 30);
   // осушитель: p = 7 + 0,1 = 7,1 бар → 1,004; помещение 30 + 5 = 35 °C → 0,93; вход 45 °C → 0,78: 24 · 0,7283 = 17,48 м³/мин
   const d=step('dryer', /DK 1450/); assert.strictEqual(d.ok, true); assert.ok(/17,48/.test(d.result), d.result);
-  // ресиверы: 13 · 125 = 1625 л, в составе 1900 л
-  assert.ok(/1625 л; в составе 1900 л/.test(step('recv', /Объём ресивера/).result), step('recv', /Объём ресивера/).result);
+  // ресиверы (методика ПНЕВМОТЕХ 13.10): цикл 13 / (8 · 1) = 1 625 л; базовый буфер 0,25 · 13 000 = 3 250 л — сработал приоритет 3;
+  // кратно 900 л: 4 × 900 = 3 600 л; мокрый 0,3 · 3 600 = 1 080 л → 2 × 900 л; проверки пройдены
+  assert.ok(/V = 1625 л/.test(step('recv', /^Приоритет 1/).result), step('recv', /^Приоритет 1/).result);
+  assert.ok(/V = 3250 л/.test(step('recv', /^Приоритет 3/).result));
+  assert.ok(/V = 3250 л — сработал приоритет 3/.test(step('recv', /^Теоретически/).result), step('recv', /^Теоретически/).result);
+  assert.strictEqual(step('recv', /^Рекомендация/).result, 'основной 900 л × 4 = 3 600 л (после осушителя); мокрый 900 л × 2 = 1 800 л (до осушителя)');
+  assert.ok(step('recv', /^Проверки/).result==='Все проверки пройдены.' && step('recv', /^Проверки/).ok===true);
   assert.ok(R.weak.some(w=>/Потери давления/.test(w.title)), 'потери по правилу — требует подтверждения');
   const G=StationCalc.docGroups(x);
   assert.strictEqual(G[0].name, 'Приложение. Расчётная записка и состав станции');
@@ -366,6 +371,50 @@ Check.run('режим «эксперт»: отметка «вручную», с�
   for (let n=0; n<60; n++){ x.req.gateOff=String(n); ExpertLog.note(x); }
   assert.strictEqual(x.req.xlog.length, ExpertLog.MAX, 'журнал ограничен');
   assert.ok(!('xlog' in StationReq.plan(x)) && !/xlog|_xs/.test(JSON.stringify(StationReq.plan(x))), 'журнал не влияет на компоновку');
+});
+
+Check.run('ресиверы — методика ПНЕВМОТЕХ: приоритеты, ряд 900/500, мокрый и локальный, проверки', ()=>{
+  const S=(V, o)=>{ const r=ReceiverPlan.size(V, o||{}); return r && [r.size, r.n, r.total]; };
+  // ряд: 500 — только если 900 л даёт запас больше 200 %; иначе кратно 900 л (вверх)
+  assert.deepStrictEqual(S(300), [500, 1, 500], '300 л: 900 — запас 300 % → 500 л');
+  assert.deepStrictEqual(S(460), [900, 1, 900], '460 л: 900 — запас 196 % → 900 л');
+  assert.deepStrictEqual(S(1550), [900, 2, 1800]); assert.deepStrictEqual(S(3250), [900, 4, 3600]);
+  assert.deepStrictEqual(S(1550, { force:'500', reason:'space' }), [500, 1, 500], 'вручную 500 л');
+  // приоритет 1: Q / (8 · ΔP); 3: 0,25 · Q (винтовой), 1 · Q (поршневой); наибольший — «сработавший»
+  let R=ReceiverPlan.calc({ Q:10, S:10 });
+  assert.ok(Math.abs(R.V.p1-1250)<1e-6 && Math.abs(R.V.p3-2500)<1e-6 && R.prio===3 && R.theor===2500, JSON.stringify(R.V));
+  R=ReceiverPlan.calc({ Q:10, S:10, dp:0.25 }); assert.ok(R.prio===1 && R.theor===5000, 'ΔP 0,25 бар: 10 / 2 = 5 м³ — сработал приоритет 1');
+  R=ReceiverPlan.calc({ Q:1, piston:true }); assert.ok(R.theor===1000 && R.main.total===1800, 'поршневой 1 м³/мин: 1 000 л → 2 × 900');
+  // приоритет 2 (циклограмма): T · (C − S) · Pa / (P1 − P2) = 2 · (15 − 10) · 1 / 1 = 10 м³; базового буфера нет
+  R=ReceiverPlan.calc({ Q:10, S:10, cyc:{ T:2, C:15, drop:1 } });
+  assert.ok(R.prio===2 && R.theor===10000 && R.V.p3==null && R.main.n===12, JSON.stringify([R.prio, R.theor, R.main]));
+  // мокрый: 0,3 основного → по ряду; при «только после осушителя» — нет; без осушителя — нет
+  R=ReceiverPlan.calc({ Q:10, S:10, dryer:true }); assert.deepStrictEqual([R.wet.size, R.wet.n], [900, 1], '0,3 · 2 700 = 810 → 900');
+  assert.strictEqual(ReceiverPlan.calc({ Q:10, S:10, dryer:true, mode:'after' }).wet, null);
+  // локальный: пик точки больше 50 % компрессора; 900 л избыточен → 500 л
+  R=ReceiverPlan.calc({ Q:10, S:10, point:6 }); assert.deepStrictEqual([R.local.size, R.local.n], [900, 2], '0,25 · 6 000 = 1 500 л → 2 × 900');
+  R=ReceiverPlan.calc({ Q:2, S:2, point:1.5 }); assert.deepStrictEqual([R.local.size, R.local.n], [500, 1], '0,25 · 1 500 = 375 л → 500 л');
+  const T=o=>ReceiverPlan.calc(Object.assign({ Q:10, S:10, bar:10 }, o)).checks.map(c=>c.level+': '+c.text.slice(0, 40));
+  assert.deepStrictEqual(T({ have:[{ vol:900, qty:3, bar:11, role:'dry' }] }), [], '2 700 на 2 500 л, 11 бар — всё пройдено');
+  assert.ok(T({ have:[{ vol:900, qty:2, bar:11, role:'dry' }] }).some(t=>/^error: Объём ниже минимально/.test(t)), '1 800 < 0,8 · 2 500');
+  assert.ok(T({ have:[{ vol:900, qty:6, bar:11, role:'dry' }] }).some(t=>/^warn: Запас превышает 200%/.test(t)), '5 400 > 2 · 2 500');
+  assert.ok(T({ have:[{ vol:1000, qty:3, bar:11, role:'dry' }] }).some(t=>/^error: Нарушено правило типоразмерного ряда/.test(t)), '1 000 л — не из ряда');
+  assert.ok(T({ have:[{ vol:900, qty:3, bar:10, role:'dry' }] }).some(t=>/^error: Ресивер должен иметь запас по давлению/.test(t)), 'ресивер 10 бар при компрессоре 10 бар');
+  assert.ok(T({ valve:12, have:[{ vol:900, qty:3, bar:11, role:'dry' }] }).some(t=>/^error: Уставка предохранительного клапана/.test(t)), 'клапан 12 > 11 бар');
+  assert.ok(T({ have:[{ vol:500, qty:1, bar:11, role:'dry' }] }).some(t=>/^warn: 500 л применён без достаточного/.test(t)), '500 л без обоснования');
+  assert.ok(T({ have:[{ vol:500, qty:1, bar:11, role:'dry' }] }).some(t=>/^warn: Объём менее 15% минутной/.test(t)), '500 < 0,15 · 10 000');
+  assert.ok(T({ Q:0.5, S:0.5, have:[{ vol:900, qty:3, bar:11, role:'dry' }] }).some(t=>/^warn: Объём более 5-кратной/.test(t)), '2 700 > 5 · 500');
+  assert.ok(T({ cyc:{ T:1, C:10.5, drop:1 }, have:[{ vol:900, qty:2, bar:11, role:'dry' }] }).some(t=>/^warn: Система имеет избыточную аккумулирующую/.test(t)), '«мёртвый объём»: 1 800 > 3 · 500');
+  assert.ok(T({ dryer:true, dryerCap:12, cyc:{ T:1, C:15, drop:1 }, have:[{ vol:900, qty:6, bar:11, role:'dry' }] }).some(t=>/^warn: Возможен проскок влаги/.test(t)), 'пик 15 > осушитель 12, мокрого нет');
+  assert.ok(!T({ dryer:true, dryerCap:12, cyc:{ T:1, C:15, drop:1 }, have:[{ vol:900, qty:6, bar:11, role:'dry' }, { vol:900, qty:2, bar:11, role:'wet' }] }).some(t=>/проскок/.test(t)), 'с мокрым — без предупреждения');
+});
+
+Check.run('«на чертеже»: что подсветить по тексту замечания', ()=>{
+  const plan={ items:[{ pos:1 }, { pos:2 }, { pos:3 }, { pos:5 }], gates:{ sea:false }, doors:[], vent:{ louvers:[{}] } };
+  assert.deepStrictEqual(IssueSpot.of('Проход перед поз. 2 и 3 меньше нормы', plan), { pos:[2, 3], kinds:['aisle'] });
+  assert.deepStrictEqual(IssueSpot.of('Поз. 1–3: ворота в торце узкие', plan), { pos:[1, 2, 3], kinds:['gate'] });
+  assert.deepStrictEqual(IssueSpot.of('поз. 9 — нет на плане; жалюзи притока малы', plan), { pos:[], kinds:['vent'] });
+  assert.strictEqual(IssueSpot.has('Масса станции около 7 т', plan), false, 'нечего показать — без кнопки');
 });
 
 process.on('beforeExit', ()=>{ if (!process.exitCode) console.log('расчёт станции: проверок пройдено — '+Check.n); });

@@ -68,7 +68,8 @@ class StationUi {
     if (plan.level==='error' && plan.assumed) info.unshift({ level:'info', text:'Пока габариты части оборудования условные, КП сохранится, но контейнер может не подойти: впишите «Габариты» элементов на вкладке «Состав станции».' });
     else if (plan.level==='error') info.unshift({ level:'info', text:'КП не сохранится, пока оборудование не поместится: замените контейнер (кнопка выше) или измените состав.' });
     // замечания и сведения — под раскрывающимся блоком (раскрыт сам, если оборудование не помещается)
-    const li=t=>`<li class="${t.level}">${esc(t.text)}</li>`;
+    const li=t=>{ const j=plan.issues.indexOf(t), sp=j>=0 && IssueSpot.has(t.text, plan);
+      return `<li class="${t.level}">${esc(t.text)}${sp ? ` <button class="lnk is-spot" type="button" data-a="stSpot" data-i="${i}" data-j="${j}" title="Открыть чертёж с подсветкой">на чертеже</button>` : ''}</li>`; };
     const pics=plan.level!=='error' && g.ext, meta=this.meta(x, plan), photoOn=x.photo ? x.photo.gen==='st3d' : o.photo;
     if (pics && !EskdSheet.FONT_DATA) EskdFont.load().then(ok=>{ if (ok) renderEditor(); });   // чертёж — встроенным шрифтом, как в КП
     if (pics && typeof DrawPic!=='undefined' && DrawPic.pending(x)) DrawPic.load(x).then(ch=>{ if (ch) renderEditor(); });   // свои рисунки моделей
@@ -227,6 +228,37 @@ class StationSize {
     if (txt===String(c.size||'') && c.sizeAuto) return false;
     contApply(c, { size:txt, sizeAuto:true }); stationFill(x);
     return true;
+  }
+}
+
+// ---------------------------------------------------------------- «Показать на чертеже» у замечаний «Компоновки»
+/** что показать на плане по тексту замечания: номера позиций («поз. 3», «поз. 2, 4 и 5», «поз. 2–4») и элементы по словам
+ *  (ворота, двери, жалюзи, проход); окно — лист с планом (разрез Б–Б), найденное — в красной рамке (только на экране) */
+class IssueSpot {
+  static KINDS = [['gate', /ворот/i], ['door', /двер(?!ь-жалюзи)|калитк/i], ['vent', /жалюзи|приток|выброс|воздухозабор/i], ['aisle', /проход/i]];
+  /** {pos:[номера], kinds:[…]} — только то, что есть на плане */
+  static of(text, plan){
+    const t=String(text||''), pos=new Set(), have=new Set([...(plan.items||[]), ...(plan.outside||[]), ...(plan.roof||[])].map(it=>it.pos));
+    for (const m of t.matchAll(/поз\.\s*([\d,\s–\-и]+)/gi)) for (const part of m[1].split(/,|\sи\s/)){ const r=part.trim().match(/^(\d+)(?:\s*[–-]\s*(\d+))?$/); if (!r) continue;
+      for (let n=+r[1]; n<=(r[2] ? Math.min(+r[2], +r[1]+30) : +r[1]); n++) if (have.has(n)) pos.add(n); }
+    const can={ gate:[plan.gates, plan.gates2].some(q=>q && !q.sea), door:(plan.doors||[]).length>0 || !!(plan.entry && plan.entry.wall==='front') || !!plan.dguDoor,
+      vent:!!(plan.vent && (plan.vent.louvers||[]).length), aisle:(plan.items||[]).length>0 };
+    return { pos:[...pos], kinds:this.KINDS.filter(([k, re])=>can[k] && re.test(t)).map(([k])=>k) };
+  }
+  static has(text, plan){ const s=this.of(text, plan); return s.pos.length>0 || s.kinds.length>0; }
+  /** окно: лист с планом, подсветка; i — позиция КП, j — номер замечания в plan.issues */
+  static open(i, j){
+    const x=S.items[i]; if (!x) return; const plan=StationUi.plan(x), t=(plan.issues||[])[j]; if (!t || !plan.geo || !plan.geo.ext) return;
+    const hl=this.of(t.text, plan), L=StationDrawing.sheets(plan, { ...StationUi.meta(x, plan), hl }), k=Math.max(0, L.findIndex(svg=>svg.includes('class="hl"')));
+    const what=[hl.pos.length ? 'поз. '+hl.pos.join(', ') : '', ...hl.kinds.map(z=>({ gate:'ворота', door:'двери', vent:'жалюзи', aisle:'проход' }[z]))].filter(Boolean).join(', ');
+    const m=new Modal(`<div class="dlg-h"><h3>На чертеже: ${esc(what)}</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
+      <p class="is-txt ${esc(t.level)}">${esc(t.text)}</p>
+      ${L.length>1 ? `<div class="is-tabs" role="tablist">${L.map((_, n)=>`<button type="button" class="chip sm${n===k ? ' on' : ''}" data-sh="${n}">Лист ${n+1}</button>`).join('')}</div>` : ''}
+      <div class="is-sheet">${L[k]}</div>`, 'is-dlg');
+    const go=()=>{ const h=m.$('.is-sheet .hl'), box=m.$('.is-sheet'); if (h && box) box.scrollTop+=h.getBoundingClientRect().top-box.getBoundingClientRect().top-box.clientHeight/3; };   // к подсветке
+    setTimeout(go, 30);
+    m.d.onclick=e=>{ const b=e.target.closest('[data-x],[data-sh]'); if (!b) return; if (b.dataset.x!=null) return m.close();
+      m.$('.is-sheet').innerHTML=L[+b.dataset.sh]; m.d.querySelectorAll('[data-sh]').forEach(z=>z.classList.toggle('on', z===b)); setTimeout(go, 30); };
   }
 }
 

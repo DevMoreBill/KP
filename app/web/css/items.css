@@ -480,6 +480,8 @@ dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
 .kr-calc>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:13px}
 .kr-calc .kr-g{margin-top:6px}
 .kr-hint{margin:4px 0 0;font-size:12px}
+.kr-rp{margin:4px 0 8px;font-size:13px;line-height:1.4}
+.kr-sub{margin:8px 0 2px;font-size:12.5px;font-weight:600;color:var(--muted)}
 /* 3.65: окно ТЗ — как прочитан документ, анкета со статусами, сравнение с ИИ, вопросы заказчику */
 .tzi-m{margin:4px 0 8px;font-size:13px}
 .tzi-m ul{margin:0;padding-left:18px}
@@ -545,3 +547,11 @@ dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
 .tzi-m details>summary{cursor:pointer}
 @media (max-width:700px){ .sq{padding:10px} .sq-pic{flex:1 1 100%} .sq-g{grid-template-columns:1fr 1fr} }
 @media (max-width:420px){ .sq-g{grid-template-columns:1fr} }
+
+/* «Показать на чертеже» — окно с листом и подсветкой */
+.is-spot{margin-left:6px;font-size:12px;white-space:nowrap}
+.is-dlg{width:min(980px, 96vw)!important;max-width:min(980px, 96vw)!important}
+.is-txt{margin:0 0 8px;font-size:13px}
+.is-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.is-sheet{background:#fff;border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:72vh}
+.is-sheet svg{display:block;width:100%;height:auto}

@@ -115,8 +115,10 @@ class StationScenarios(unittest.TestCase):
         self.assertIn('10,05', self.step(o, 'dryer', 'DK 120')['result'])
         # давление: 7 + 3 × 0,1 (фильтры) + 0,2 (осушитель) + 0,1 (трубы) = 7,6; включение 10 − 1 = 9
         self.assertIn('7,6', self.step(o, 'press', 'Требуемое давление')['result'])
-        # ресивер: 5 · 125 = 625 л
-        self.assertIn('625 л', self.step(o, 'recv', 'Объём ресивера')['result'])
+        # ресиверы (методика ПНЕВМОТЕХ 13.10): цикл 5 / (8 · 1) = 625 л; базовый буфер 0,25 · 5 000 = 1 250 л → 2 × 900 л
+        self.assertIn('625 л', self.step(o, 'recv', 'Приоритет 1')['result'])
+        self.assertIn('1250 л — сработал приоритет 3', self.step(o, 'recv', 'Теоретически')['result'])
+        self.assertTrue(self.step(o, 'recv', 'Рекомендация')['result'].startswith('основной 900 л × 2 = 1 800 л'), self.step(o, 'recv', 'Рекомендация')['result'])
         self.assertEqual(o['errors'], [])
         self.assertIn('Приложение. Расчётная записка и состав станции', o['groups'])
         st = {f['key']: f['status'] for f in o['tz']['fields']}

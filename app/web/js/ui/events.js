@@ -83,6 +83,7 @@ document.addEventListener('click', async e=>{
     case 'kitOpen': case 'kitBy': case 'reqPickX': case 'reqReset': case 'kitNeed': case 'kitNeedAll': { const r=KitView.act(a, i, b); if (r==='async' || !r) return; break; }
     case 'drawPick': return DrawPic.pick(i, j, b.dataset.v);
     case 'tzOut': return TzOut.download(i);
+    case 'stSpot': return IssueSpot.open(i, j);
     case 'tzLoad': return TzImport.pick(i);
     case 'stParAdd': case 'stParDel': if (!StationParams.act(a, i, b)) return; break;
     case 'drawDel': DrawPic.del(i, j, b.dataset.v); break;

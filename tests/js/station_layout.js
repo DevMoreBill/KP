@@ -383,10 +383,13 @@ Check.run('сжатый воздух: последовательно, фильт
   // ресивер: нет — рекомендуемый объём; частотный компрессор — меньше
   const nr=solve(C('block'), [c62, dr6]); const rr=nr.air.recs.find(r=>r.key==='receiver');
   assert.ok(rr && nr.issues.some(i=>/Ресивера в составе нет/.test(i.text)), 'ресивер рекомендован');
-  const vs=solve(C('block'), [P('Компрессор VSD', { cat:'comp_screw', flow:6.2, vsd:'Да', size:'1400 × 900 × 1500' }, { role:'main' }), dr6]);
-  assert.ok(vs.air.recs.find(r=>r.key==='receiver').total<rr.total, 'с частотным — нужный объём меньше');
-  // по умолчанию — ресиверы по 900 л (receiver.base, решение ПНЕВМОТЕХ): 6,2 м³/мин → около 775 л → один на 900 л
-  assert.ok(rr.qty===1 && rr.r.volume[0]==='900' && /^Воздушный ресивер 900 л$/.test(rr.title) && rr.total===775, 'ресивер 900 л: '+JSON.stringify(rr));
+  // методика ПНЕВМОТЕХ (13.10): 6,2 м³/мин — цикл 6,2 / (8 · 1) = 775 л, базовый буфер 0,25 · 6 200 = 1 550 л → кратно 900 л: 2 × 900;
+  // с осушителем — мокрый до него: 0,3 · 1 800 = 540 л → 900 л (500 л — только если 900 л даёт запас больше 200 %)
+  assert.ok(rr.qty===2 && rr.r.volume[0]==='900' && /^Воздушные ресиверы 2 × 900 л \(после осушителя\)$/.test(rr.title) && rr.total===1800 && rr.role==='dry', 'ресиверы 2 × 900 л: '+JSON.stringify(rr));
+  // ресиверы есть, но меньше расчёта — добрать по 900 л
+  const one=solve(C('block'), [c62, dr6, P('Ресивер 900', { cat:'receiver', volume:900, pressure:11, size:'930 × 940 × 2040' })]);
+  const rm=one.air.recs.find(r=>r.key==='receiver-more'); assert.ok(rm && rm.qty===1 && rm.role==='dry' && /^Ещё 1 × 900 л/.test(rm.title), JSON.stringify(rm));
+  const rw=nr.air.recs.find(r=>r.key==='receiver-wet'); assert.ok(rw && rw.qty===1 && rw.r.volume[0]==='900' && rw.role==='wet', 'мокрый ресивер: '+JSON.stringify(rw));
   // класс чистоты: вода класса 2 — адсорбционный (−40 °C)
   const cl=StationLayout.solve({ cont:C('block'), parts:[c62, dr6, rc, two], air:'1.2.1' });
   assert.ok(cl.issues.some(i=>i.level==='warn' && /нужен адсорбционный осушитель/.test(i.text)));
@@ -742,9 +745,11 @@ Check.run('ресивер: после подготовки воздуха, до 
   const ra=a.items.find(i=>i.kind==='receiver'), dr=a.items.find(i=>i.kind==='dryer'); assert.ok(ra.x>dr.x, 'в ряду ресивер — после осушителя');
   // без осушителя — после фильтров, без слова «сухой»
   const nd=run([comp(), rc(900), flt()]); assert.strictEqual(nd.air.chain.at(-1).kind, 'receiver'); assert.ok(!/сухой/.test(nd.air.chain.at(-1).text));
-  // до и после: первый — до осушителя, второй — после
-  const b=run([comp(), rc(500, 11, { name:'Воздушный ресивер 500' }), dry(), rc(900), flt()], { recv:'both' });
+  // по методике: мокрый (подобран как мокрый) — до осушителя, основной — после
+  const b=run([comp(), rc(900, 11, { recvRole:'wet' }), dry(), rc(900), flt()]);
   assert.deepStrictEqual(b.air.chain.map(c=>c.kind), ['compressor', 'receiver', 'filter', 'dryer', 'filter', 'receiver'], 'до и после осушителя');
+  // локальный — у потребителя: в составе, но не в контейнере
+  const lc=run([comp(), dry(), rc(900), rc(500, 11, { recvRole:'local' }), flt()]); assert.strictEqual(lc.items.filter(i=>i.kind==='receiver').length, 1, 'локальный — не в контейнере');
   // явная роль в названии сильнее требования
   const w=run([comp(), dry(), P('Ресивер мокрый 500 л', { cat:'receiver', volume:500, size:'650 × 650 × 1600' }), flt()]);
   assert.strictEqual(w.air.chain[1].kind, 'receiver', '«мокрый» в названии — до осушителя');
@@ -1351,6 +1356,15 @@ Check.run('полки номеров позиций: тесно — через �
   assert.ok(one.length && two.length && one.length+two.length===30, 'две полки');
   for (const T of [one, two]){ const xs=T.map(q=>q.sx).sort((a, b)=>a-b); for (let i=1; i<xs.length; i++) assert.ok(xs[i]-xs[i-1]>=EskdSheet.shelfMin(A)-1e-6, 'шаг не меньше полки номера'); }
   assert.strictEqual(EskdSheet.shelves(A.slice(0, 5), 'x', 27, 192, 100, 9, 107).every(q=>q.sy===100), true, 'просторно — одна полка');
+});
+
+Check.run('«на чертеже»: подсветка позиций, ворот и прохода — только по запросу', ()=>{
+  const p=solve(C('block', { sizeAuto:true }), [comp, Object.assign({}, comp, { id:'c9', role:'' }), dryer]);
+  const plain=StationDrawing.sheets(p, meta(p)).join(''), L=StationDrawing.sheets(p, { ...meta(p), hl:{ pos:[1], kinds:['gate', 'aisle'] } });
+  assert.ok(!plain.includes('class="hl"'), 'в КП — без подсветки');
+  const sh=L.find(svg=>svg.includes('class="hl"')); assert.ok(sh && /Б–Б/.test(sh), 'подсветка — на листе с планом');
+  assert.ok((sh.match(/class="hl"/g)||[]).length>=3, 'позиция, ворота, проход');
+  Check.sheet(sh, 'подсветка');
 });
 
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);

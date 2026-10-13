@@ -56,7 +56,7 @@ class StationDrawing {
   static sheets(plan, meta={}){ return new StationDrawing(plan, meta).sheets(); }
 
   constructor(plan, meta){
-    const g=plan.geo; this.p=plan; this.m=meta||{}; this.g=g;
+    const g=plan.geo; this.p=plan; this.m=meta||{}; this.g=g; this.hl=this.m.hl||null;   // hl — подсветка «Показать на чертеже»
     [this.Le, this.We, this.He]=g.ext; [this.Li, this.Wi, this.Hi]=plan.int;
     this.ox=(this.Le-this.Li)/2; this.oy=(this.We-this.Wi)/2; this.zf=StationGeo.zFloor(g.type, g.t);
     this.dz=plan.chassis ? (this.m.deck||1150) : 0;
@@ -740,6 +740,20 @@ class StationDrawing {
         return Math.max(xa, xb)>a && Math.min(xa, xb)<c && Math.max(q.py, q.sy)>yc-3 && Math.min(q.py, q.sy)<yc+0.6; }) || (xm>a-4 && xm<c+4)
         || wallIt.some(i=>X(ox+i.x)-1<c && X(ox+i.x+i.lx)+1>a);
       for (let a=x0; a+lw<=x1; a+=1) if (!hit(a, a+lw)){ sh.text(a+lw/2, yc, lab, 2.5, { a:'middle' }); break; } }
+    if (this.hl) this.hlPlan(sh, YP);
+  }
+  /** «Показать на чертеже»: рамки вокруг позиций, ворот, дверей, жалюзи или прохода из замечания (meta.hl) */
+  hlPlan(sh, YP){
+    const H=this.hl, X=v=>this.X(v), { ox, oy, Le, We }=this, p=this.p, pad=1.2, m=(x0, x1, y0, y1)=>sh.mark(Math.min(x0, x1)-pad, Math.min(y0, y1)-pad, Math.abs(x1-x0)+2*pad, Math.abs(y1-y0)+2*pad);
+    const pos=new Set(H.pos||[]), kinds=new Set(H.kinds||[]);
+    for (const it of [...p.items, ...this.ext, ...this.rf]) if (pos.has(it.pos) && it.lx>0) m(X(ox+it.x), X(ox+it.x+it.lx), YP(oy+it.y), YP(oy+it.y+(it.ly||it.lx)));
+    if (kinds.has('gate')) for (const q of this.gts){ const xa=q.wall==='left' ? X(0) : X(Le-ox), xb=q.wall==='left' ? X(ox) : X(Le); m(xa, xb, YP(oy+q.y0), YP(oy+q.y1)); }
+    if (kinds.has('door')){ for (const d of [...(p.doors||[]), ...(this.en && this.en.wall==='front' ? [this.en] : [])]) m(X(ox+d.x0), X(ox+d.x1), d.wall==='back' ? YP(We) : YP(oy), d.wall==='back' ? YP(We-oy) : YP(0));
+      if (this.dg) m(X(Le-ox), X(Le), YP(oy+this.dg.y0), YP(oy+this.dg.y1)); }
+    if (kinds.has('vent')) for (const q of ((p.vent && p.vent.louvers)||[])){ const t=Math.max(oy, 120);
+      if (q.wall==='front' || q.wall==='back') m(X(ox+q.u0), X(ox+q.u1), q.wall==='back' ? YP(We) : YP(0), q.wall==='back' ? YP(We-t) : YP(t));
+      else m(q.wall==='left' ? X(0) : X(Le-t), q.wall==='left' ? X(t) : X(Le), YP(oy+q.u0), YP(oy+q.u1)); }
+    if (kinds.has('aisle') && this.ai) m(X(ox+(this.g.x0||0)), X(Le-ox), YP(oy+this.ai.y0), YP(oy+this.ai.y1));
   }
   /** ресиверы снаружи на плане: площадка, ресивер; трубопровод от выхода через торец — коллектором ко всем ресиверам
    *  (параллельно), выход — от дальнего края к потребителю */
