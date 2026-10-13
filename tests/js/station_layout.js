@@ -77,10 +77,11 @@ class Check {
       if (it.cross) continue;   // поперёк станции (без сквозного прохода): спереди и сзади — части станции со своими дверями
       // без продольного прохода: компрессор у торца — сервисные ворота с обеих сторон, ворота в торце у него
       if (it.ends){ const D=(p.doors||[]).filter(d=>d.both && d.pos.includes(it.pos) && Math.min(d.x1, it.x+it.lx)-Math.max(d.x0, it.x)>=Math.min(it.lx, StationLayout.DOOR.max)-1);
-        // два компрессора (3.86.2) — по одному у каждого торца, ворота — в своём торце
-        const left=it.x+it.lx/2<L/2, G=left ? p.gates : p.gates2;
-        assert.ok(p.ends && D.some(d=>d.wall==='front') && D.some(d=>d.wall==='back') && G && G.wall===(left ? 'left' : 'right') && G.pos.includes(it.pos) && (left ? it.x-(p.geo.x0||0) : L-it.x-it.lx)<=600, `${label}: поз. ${it.pos} без продольного прохода — нет ворот с обеих сторон или в торце`);
-        assert.ok(p.entry && (left ? p.entry.x0>=it.x+it.lx && D.filter(d=>d.wall==='front').every(d=>d.x1<=p.entry.x0-100) : p.entry.x1<=it.x && D.filter(d=>d.wall==='front').every(d=>d.x0>=p.entry.x1+100)), `${label}: дверь оператора — за компрессором, мимо его ворот`); continue; }
+        // несколько компрессоров — рядом в ряд от торца (решение ПНЕВМОТЕХ 13.10): между ними и за последним — не меньше modes.next
+        const CE=floor.filter(i=>i.ends).sort((a, b)=>a.x-b.x), k=CE.indexOf(it), nx=StationMatrix.modes().next;
+        assert.ok(p.ends && D.some(d=>d.wall==='front') && D.some(d=>d.wall==='back') && p.gates && p.gates.wall==='left' && (k ? it.x-CE[k-1].x-CE[k-1].lx>=nx-1 : it.x-(p.geo.x0||0)<=600), `${label}: поз. ${it.pos} без продольного прохода — нет ворот с обеих сторон или в торце, или к нему не подойти сбоку`);
+        const nxt=floor.filter(i=>!i.ends && i.x>=it.x+it.lx).sort((a, b)=>a.x-b.x)[0]; if (k===CE.length-1 && nxt) assert.ok(nxt.x-it.x-it.lx>=nx-1, `${label}: за последним компрессором меньше ${nx} мм`);
+        assert.ok(p.entry && p.entry.x0>=CE[CE.length-1].x+CE[CE.length-1].lx && D.filter(d=>d.wall==='front').every(d=>d.x1<=p.entry.x0-100), `${label}: дверь оператора — за компрессорами, мимо их ворот`); continue; }
       // ресиверы в два ряда в конце ряда — поперёк во всю ширину: проход доходит до них сбоку, от стен — не меньше 300 мм
       if (it.pairEnd){ const pw=p.ends ? 149 : 299; assert.ok(it.kind==='receiver' && it.y>=pw && W-it.y-it.ly>=pw && !floor.some(o=>!o.pairEnd && o.x+o.lx>it.x), `${label}: ресиверы в два ряда поз. ${it.pos} — не в конце ряда или ближе 300 мм к стене`); continue; }
       assert.ok(it.y>=need-1, `${label}: проход перед поз. ${it.pos} ${it.y} < ${need}`);
@@ -282,15 +283,18 @@ Check.run('компрессорная в габарите перевозки: п
   const a1=S(C('block', { sizeAuto:true }), [K('2000 × 1500 × 1800', 90), dryer]);
   Check.plan(a1, 'без продольного прохода'); draw(a1, 'без продольного прохода');
   assert.ok(a1.geo.ext[1]===R && a1.mode && a1.mode.ends && a1.ends && a1.ends.pos===1, 'без продольного прохода, в габарите: '+JSON.stringify([a1.geo.ext, a1.mode]));
-  // два таких (рабочий и резервный; 3.86.2, скриншот ПНЕВМОТЕХ 13.10 «всё равно не даёт») — тоже без продольного прохода:
-  // по одному у каждого торца, ворота в обоих торцах, у каждого — сервисные ворота спереди и сзади
+  // два таких (рабочий и резервный; скриншот ПНЕВМОТЕХ 13.10 «всё равно не даёт») — тоже без продольного прохода: рядом в ряд
+  // от торца (короче трубопровод), между ними и за последним — не меньше 1 000 мм, у каждого — сервисные ворота спереди и сзади
   const K2=P('Компрессор', { cat:'comp_screw', model:'K 90', kw:90, size:'2000 × 1500 × 1800' }, { role:'main', qty:2 });
   const e2=S(C('block', { sizeAuto:true }), [K2, dryer, Object.assign({}, rec, { qty:2 })]);
   Check.plan(e2, 'два компрессора у торцов'); draw(e2, 'два компрессора у торцов');
   const E2=e2.items.filter(i=>i.ends).sort((p, q)=>p.x-q.x);
-  assert.ok(e2.geo.ext[1]===R && e2.mode && e2.mode.ends && E2.length===2 && e2.ends.pos2 && e2.gates.wall==='left' && e2.gates2 && e2.gates2.wall==='right', 'два компрессора у торцов: '+JSON.stringify([e2.geo.ext, e2.mode, E2.map(i=>i.x)]));
-  assert.ok(e2.items.filter(i=>i.mount==='floor' && !i.ends).every(i=>i.x>E2[0].x+E2[0].lx && i.x+i.lx<E2[1].x), 'остальное — между компрессорами');
-  assert.ok(e2.issues.some(i=>/компрессоры поз\. 1 \(оба\) — по одному у каждого торца/.test(i.text)), e2.issues.map(i=>i.text).join(' | '));
+  assert.ok(e2.geo.ext[1]===R && e2.mode && e2.mode.ends && E2.length===2 && e2.ends.n===2 && e2.gates.wall==='left' && E2[1].x-E2[0].x-E2[0].lx>=1000-1, 'два компрессора рядом: '+JSON.stringify([e2.geo.ext, e2.mode, E2.map(i=>i.x)]));
+  assert.ok(e2.items.filter(i=>i.mount==='floor' && !i.ends).every(i=>i.x>=E2[1].x+E2[1].lx+1000-1), 'остальное — за компрессорами');
+  assert.ok(e2.issues.some(i=>/компрессоры поз\. 1 \(2 шт\.\) — рядом в ряд от торца/.test(i.text)), e2.issues.map(i=>i.text).join(' | '));
+  // дополнительный канал отвода тепла (общая вытяжка) — рядом с осушителем (решение ПНЕВМОТЕХ 13.10)
+  const dr2=e2.items.find(i=>i.kind==='dryer'), gw=e2.vent.louvers.filter(q=>q.kind==='out' && !q.duct);
+  if (gw.length) assert.ok(gw.every(q=>q.wall==='back' && Math.abs((q.u0+q.u1)/2-(dr2.x+dr2.lx/2))<=1500), 'общая вытяжка — у осушителя: '+JSON.stringify(gw));
   // режим без продольного прохода выключен в «Настройках» — исключение «проход в крайнем случае» (600 мм)
   const rb=JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')), rm=JSON.parse(JSON.stringify(rb));
   rm.rules.find(r=>r.id==='layout.matrix').value.modes.ends=0; StationRules.use(rm);
@@ -1535,9 +1539,10 @@ Check.run('без продольного прохода: компрессор у
   // заданный контейнер той же ширины: с проходом не встаёт по длине — без продольного прохода
   const q=solve(C('block', { size:'8300 × 2550 × 3100' }), [k90, ads, r900, cab]); Check.plan(q, 'заданный 8,3 м');
   assert.ok(q.level!=='error' && q.mode && q.mode.ends, 'заданный: '+JSON.stringify([q.level, q.mode]));
-  // два компрессора — так не ставится (у торца — один)
+  // два компрессора — рядом в ряд от торца (уточнение ПНЕВМОТЕХ 13.10), между ними и за последним — не меньше 1 000 мм
   const two=P('Винтовой компрессор 90', { cat:'comp_screw', kw:90, size:'1900 × 1200 × 1800' }, { role:'main', qty:2 });
-  const w=solve(C('block', { sizeAuto:true }), [two, ads, r900, cab]); Check.plan(w, 'два компрессора'); assert.ok(!(w.mode && w.mode.ends), 'два компрессора — не у торца');
+  const w=solve(C('block', { sizeAuto:true }), [two, ads, r900, cab]); Check.plan(w, 'два компрессора'); draw(w, 'два компрессора');
+  assert.ok(w.geo.ext[1]<=StationGeo.ROAD_W && !w.issues.some(i=>i.wide), 'два компрессора — в габарите перевозки: '+JSON.stringify([w.geo.ext, w.mode]));
   new StScene(p, {}).build(); draw(p, 'без продольного прохода');
 });
 

@@ -197,7 +197,7 @@ class StationMatrix {
     fit:{ dense:1, roadW:2550, wide:1, maxL:12000, minL:2000, minW:1500, minH:2000, hWalk:2100, maxW:3500, maxH:3200, step:100, two:25, ends:10, recv2:1000 },
     // исключения компрессорной — только если иначе станция не в габарите перевозки (по порядку: без продольного прохода,
     // проход «в крайнем случае», агрегат поперёк)
-    modes:{ ends:1, tight:1, cross:1 },
+    modes:{ ends:1, tight:1, cross:1, next:1000 },
     recv:{ pairSide:300, outGap:1000, outStep:600, pad:100 },
     cab:{ top:1900, low:300 },
     move:{ pass:25 },
@@ -279,9 +279,10 @@ class LayoutParams {
       { g:'fit', k:'recv2', t:'Ресиверы парами поперёк в конце ряда — если станция короче хотя бы на', u:'мм', lo:0, hi:5000 },
       { g:'fit', k:'ends', t:'Без продольного прохода — если площадь меньше хотя бы на', u:'%', lo:0, hi:60, h:'Две пары сервисных ворот и ворота в обоих торцах — дороже, поэтому только при заметном выигрыше. 10 % — решение программы (3.85: при плотном подборе пример ПНЕВМОТЕХ 13.10 — 90 кВт, 4 × 900 л — короче на 1,3 м), владелец может поправить.' }] },
     { id:'modes', title:'Исключения ради габарита перевозки (компрессорная)', t:'Только если иначе станция не проходит по ширине перевозки или в заданный контейнер; в замечаниях — «исключение». Порядок: без продольного прохода → проход «в крайнем случае» → агрегат поперёк → негабарит.', f:[
-      { g:'modes', k:'ends', t:'Без продольного прохода: компрессор у торца, сервисные ворота с двух сторон, ворота в торцах', opt:null, h:'Решение ПНЕВМОТЕХ 13.10. Дверь оператора — между компрессором и осушителем, к ресиверам — ворота в дальнем торце, ресиверы — парами плотнее. Два компрессора — по одному у каждого торца (3.86.2).' },
+      { g:'modes', k:'ends', t:'Без продольного прохода: компрессор у торца, сервисные ворота с двух сторон, ворота в торцах', opt:null, h:'Решение ПНЕВМОТЕХ 13.10. Дверь оператора — между компрессором и осушителем, к ресиверам — ворота в дальнем торце, ресиверы — парами плотнее. Несколько компрессоров — рядом в ряд от торца.' },
       { g:'modes', k:'tight', t:'Проход оператора «в крайнем случае» (ширина — ниже, в «Проходах»)', opt:null },
-      { g:'modes', k:'cross', t:'Агрегат поперёк лицом к входу — без сквозного прохода, вторая дверь оператора за ним', opt:null }] },
+      { g:'modes', k:'cross', t:'Агрегат поперёк лицом к входу — без сквозного прохода, вторая дверь оператора за ним', opt:null },
+      { g:'modes', k:'next', t:'Без продольного прохода: между компрессорами и за последним — не меньше', u:'мм', lo:600, hi:3000, h:'Решение ПНЕВМОТЕХ 13.10: компрессоры — рядом в ряд от торца (так короче трубопровод), к каждому следующему — доступ со всех сторон с отступом в метр.' }] },
     { id:'door', title:'Дверь оператора и проёмы', f:[
       { g:'door', k:'w', t:'Дверь оператора: ширина в свету', u:'мм', lo:900, hi:1000, h:'Решение ПНЕВМОТЕХ 12.10: 900–1 000 мм.' },
       { g:'door', k:'h', t:'Дверь оператора: высота в свету', u:'мм', lo:2000, hi:2100 },
@@ -409,7 +410,7 @@ class LayoutDigest {
       ...(M.ends ? [{ h:'Без продольного прохода (компрессорная)', items:[
         'Один компрессор у торца по середине ширины: сервисные ворота спереди и сзади, ворота в этом торце; дверь оператора — между компрессором и осушителем.',
         `Ресиверы — парами поперёк у дальнего торца (плотнее: промежуток до вплотную, от стен до «плотно»), ворота в дальнем торце; приток — допускается на торцевых воротах.`,
-        'Два компрессора (рабочий и резервный) — по одному у каждого торца, у каждого — сервисные ворота спереди и сзади и ворота в своём торце; остальное — между ними с проходом, дверь оператора — за первым компрессором.'] }] : []),
+        `Несколько компрессоров — рядом в ряд от торца (короче трубопровод), у каждого — сервисные ворота спереди и сзади; между компрессорами и за последним — не меньше ${n(M.next)} мм; дверь оператора — за последним компрессором.`] }] : []),
       { h:'Ресиверы и осушители', items:[
         `Ресиверы — в два ряда (пара один за другим или парами поперёк), осмотр заднего — через промежуток не меньше ${n(R.pairSide)} мм; число — наименьшее допустимое по методике.`,
         'Осушитель не проходит по высоте или в плане — два меньших параллельно.'] },
@@ -1367,7 +1368,7 @@ class StationLayout {
     const n=StationLayout.n, why=geo.auto || geo.road ? `станция прошла по габариту перевозки без спецразрешения (ширина до ${n(StationGeo.ROAD_W)} мм)` : 'оборудование поместилось в заданный контейнер';
     if (m.tight){ const w=r.aisle && r.aisle.w; r.aisleRule=[this.aisle0[0], Math.min(this.aisle0[1], StationLayout.TIGHT)];
       if (w<this.aisle0[1]) r.issues.push({ level:'warn', text:`Проход оператора сужен до ${n(w)} мм (норма — не менее ${n(this.aisle0[1])} мм, ПУЭ, п. 4.1.23): исключение, чтобы ${why}. Согласуйте с заказчиком.` }); }
-    if (m.ends && r.ends && r.ends.pos2){ const E=r.ends; r.issues.push({ level:'info', text:`Без продольного прохода: компрессоры поз. ${E.pos===E.pos2 ? E.pos+' (оба)' : E.pos+' и '+E.pos2} — по одному у каждого торца по середине ширины, обслуживание спереди и сзади — через сервисные ворота с обеих сторон, сбоку — через ворота в своём торце; дверь оператора — между первым компрессором и ${E.next ? `поз. ${E.next}` : 'остальным оборудованием'}, остальное — между компрессорами с проходом перед ним. Так ${why}.` }); }
+    if (m.ends && r.ends && r.ends.n>1){ const E=r.ends; r.issues.push({ level:'info', text:`Без продольного прохода: компрессоры поз. ${E.all.join(', ')} (${E.n} шт.) — рядом в ряд от торца по середине ширины, обслуживание спереди и сзади — через сервисные ворота с обеих сторон, сбоку — через ворота в торце и промежутки не меньше ${StationLayout.n(StationMatrix.modes().next)} мм между компрессорами и за последним; дверь оператора — между последним компрессором и ${E.next ? `поз. ${E.next}` : 'остальным оборудованием'}${E.recv.length ? `; ресиверы поз. ${E.recv.join(', ')} — в два ряда у дальнего торца, доступ — через ворота там` : ''}. Так ${why}.` }); }
     else if (m.ends && r.ends){ const E=r.ends; r.issues.push({ level:'info', text:`Без продольного прохода: поз. ${E.pos} (компрессор) — у торца по середине ширины, обслуживание спереди и сзади — через сервисные ворота с обеих сторон, сбоку — через ворота в торце; дверь оператора — между компрессором и ${E.next ? `поз. ${E.next}` : 'остальным оборудованием'}${E.recv.length ? `; ресиверы поз. ${E.recv.join(', ')} — в два ряда у дальнего торца, доступ — через ворота там` : ''}. Так ${why}.` }); }
     if (m.cross && r.cross) r.issues.push({ level:'warn', text:`Сквозного прохода нет: поз. ${r.cross.pos} стоит поперёк станции лицом к входу — к нему спереди и к оборудованию до него подходят от двери оператора, к нему сзади и к оборудованию за ним — через вторую дверь оператора. Доступ ко всему оборудованию остаётся с разных сторон. Исключение, чтобы ${why}.` });
     r.mode=m;
@@ -1613,17 +1614,17 @@ class StationLayout {
   // дверь оператора (между компрессором и осушителем), дальше — осушители и прочее с проходом перед ними; ресиверы — в два
   // ряда у дальнего торца, доступ — через ворота там, при необходимости плотнее (в паре — до вплотную, от стен — как
   // «плотно» у компрессора). Контейнер уже — в габарит перевозки.
-  // Два компрессора (рабочий и резервный; решение 3.86.2 по скриншоту ПНЕВМОТЕХ 13.10 «всё равно не даёт»): по одному у
-  // каждого торца, у каждого — сервисные ворота спереди и сзади и ворота в своём торце; остальное — между ними с проходом,
-  // дверь оператора — за первым компрессором; ресиверы — в ряд у стены (к дальнему торцу не подойти — там компрессор)
+  // Несколько компрессоров (решение ПНЕВМОТЕХ 13.10, уточнено после 3.86.2 — «не по одному в торцах, а рядом»: так короче
+  // трубопровод): в ряд от торца, каждый по середине ширины с сервисными воротами спереди и сзади; между компрессорами и за
+  // последним — не меньше modes.next (1 000 мм) для обслуживания сбоку; дверь оператора — за последним компрессором
   rowE(units, Lu, W, T=0, pe=StationMatrix.door().edge){
     const C=units.filter(e=>e.kind==='compressor' && !e.slot);
-    if (!C.length || C.length>2 || units.some(e=>/^(dgu|pump|tank)$/.test(e.kind))) return { ok:false, why:'mode' };
-    const c=C[0], c2=C[1]||null, n=StationLayout.n, aRec=this.aisle[0], twOf=e=>{ const wt=StationMatrix.wall(e); return wt ? wt[1] : e.c.back[1]; }, tw=twOf(c);
+    if (!C.length || units.some(e=>/^(dgu|pump|tank)$/.test(e.kind))) return { ok:false, why:'mode' };
+    const c=C[0], nc=C.length, n=StationLayout.n, aRec=this.aisle[0], twOf=e=>{ const wt=StationMatrix.wall(e); return wt ? wt[1] : e.c.back[1]; }, tw=twOf(c);
     const wide=C.filter(e=>e.w+2*twOf(e)>W); if (wide.length) return { ok:false, why:'width', bad:wide, needW:Math.max(...wide.map(e=>e.w+2*twOf(e))) };
     // шкафы и фильтры, которым места на стене и трубе не нашлось, — перед ресиверами (ресиверы — у дальнего торца)
     const isR=e=>e.kind==='receiver' && !e.slot, rest=units.filter(e=>!C.includes(e)); let t=rest.length; while (t>0 && (isR(rest[t-1]) || rest[t-1].slot)) t--;
-    const U=[{ e:c, rot:false, ends:true }, ...[...rest.slice(0, t), ...rest.slice(t).filter(e=>!isR(e)), ...rest.slice(t).filter(isR)].map(e=>({ e, rot:false })), ...(c2 ? [{ e:c2, rot:false, ends:true }] : [])];
+    const U=[...C.map(e=>({ e, rot:false, ends:true })), ...[...rest.slice(0, t), ...rest.slice(t).filter(e=>!isR(e)), ...rest.slice(t).filter(isR)].map(e=>({ e, rot:false }))];
     // ресиверы в конце — парами поперёк: сначала меньше промежуток в паре (до вплотную), затем — от стен (не ближе «плотно»)
     let k=U.length; while (k>1 && U[k-1].e.kind==='receiver' && !U[k-1].e.slot) k--;
     for (let j=U.length-2; j>=k; j-=2){ const a=U[j].e, b=U[j+1].e, pr=StationMatrix.pair(a, b), rw=Math.max(a.c.back[1], b.c.back[1]);
@@ -1634,22 +1635,22 @@ class StationLayout {
     // промежуток за компрессором: дверь оператора (с коробкой) мимо его сервисных ворот (шире его на addW, с шагом 100 мм) —
     // через door.gap; от края станции — не ближе door.edge (pe — внутри от торца)
     const D=StationLayout.DOOR, SM=StationMatrix.service(), Ew=StationLayout.ENTRY[1]-StationLayout.ENTRY[0], dg=StationMatrix.door().gap;
-    const ovOf=e=>Math.max(0, (Math.max(D.min, Math.min(D.max, Math.ceil((e.l+SM.addW+2*T)/100)*100))-e.l)/2), ov=ovOf(c), dn=Math.ceil(ov+dg+Ew+D.pad);
-    // от торца — «плотно», но его сервисные ворота (шире его) не упираются в угол; второй компрессор — так же у своего торца,
-    // перед его сервисными воротами оборудование не стоит, к боку со стороны прохода — подойти (access.side)
-    const E=U.map(o=>o.e), gapsOf=lvl=>{ const g=this.chain(E, lvl).gaps, k=g.length-1; g[0]=Math.max(tw, Math.ceil(ov+Math.max(D.pad, pe)-this.G)); g[1]=Math.max(g[1], dn);
-      if (c2){ const o2=ovOf(c2); g[k]=Math.max(twOf(c2), Math.ceil(o2+Math.max(D.pad, pe)-this.G)); if (k>1) g[k-1]=Math.max(g[k-1], Math.ceil(o2+100), StationMatrix.access().side); }   // к его боку — проход сбоку
-      return g; };
+    const ovOf=e=>Math.max(0, (Math.max(D.min, Math.min(D.max, Math.ceil((e.l+SM.addW+2*T)/100)*100))-e.l)/2), ov=ovOf(c), cl=C[nc-1], dn=Math.ceil(ovOf(cl)+dg+Ew+D.pad), nx=StationMatrix.modes().next;
+    // от торца — «плотно», но его сервисные ворота (шире его) не упираются в угол; между компрессорами — не меньше modes.next
+    // и чтобы их сервисные ворота стояли через door.gap; за последним — дверь оператора, не меньше modes.next
+    const E=U.map(o=>o.e), gapsOf=lvl=>{ const g=this.chain(E, lvl).gaps; g[0]=Math.max(tw, Math.ceil(ov+Math.max(D.pad, pe)-this.G));
+      for (let i=1; i<nc; i++) g[i]=Math.max(g[i], nx, Math.ceil(ovOf(C[i-1])+ovOf(C[i])+dg));
+      g[nc]=Math.max(g[nc], dn, nx); return g; };
     const body=U.reduce((s, o)=>s+o.e.l, 0), rec=gapsOf(0), mn=gapsOf(1), sum=a=>a.reduce((s, v)=>s+v, 0);
     if (body+sum(mn)>Lu) return { ok:false, why:'length', needL:body+sum(mn), needL0:body+sum(rec) };
     const q=sum(rec)>sum(mn) ? Math.max(0, Math.min(1, (Lu-body-sum(mn))/(sum(rec)-sum(mn)))) : 1;
-    const gaps=mn.map((v, i)=>Math.floor(v+(rec[i]-v)*q)); gaps[1]+=Lu-body-sum(gaps);   // свободная длина — у двери оператора
+    const gaps=mn.map((v, i)=>Math.floor(v+(rec[i]-v)*q)); gaps[nc]+=Lu-body-sum(gaps);   // свободная длина — у двери оператора
     const items=[], iss=[]; let x=gaps[0];
     U.forEach((o, i)=>{ const d=o.e.w, budget=W-d, it={ o, ri:0, x, lx:o.e.l, d, face:-1 };
       if (o.ends || o.end){ it.back=Math.round(budget/2); it.aisle=budget-it.back; }
       else { const b=o.e.c.back, fr=this.front(o.e)[0]; it.back=budget-b[0]>=fr ? b[0] : budget-fr>=b[1] ? budget-fr : b[1]; it.aisle=budget-it.back; }
       it.y=W-it.back-d; items.push(it); x+=o.e.l+gaps[i+1]; });
-    const ce=items[0].x+c.l, entry=[Math.round(Math.max(ce+ov+dg, ce+(gaps[1]-Ew)/2)), 0]; entry[1]=entry[0]+Ew;
+    const ce=items[nc-1].x+cl.l, entry=[Math.round(Math.max(ce+ovOf(cl)+dg, ce+(gaps[nc]-Ew)/2)), 0]; entry[1]=entry[0]+Ew;
     const eq=items.filter(i=>!i.o.ends && !i.o.end && !i.o.e.slot), aisleW=eq.length ? Math.min(...eq.map(i=>i.aisle)) : W-c.w;
     if (eq.length && aisleW<aRec) iss.push({ level:'warn', text:`Проход обслуживания ${n(aisleW)} мм — меньше рекомендуемых ${n(aRec)} мм (допустимо от ${n(this.aisle[1])} мм).` });
     if (q<1 && gaps.length>2) iss.push({ level:'warn', text:`Промежутки между оборудованием уменьшены до ${n(Math.min(...gaps.slice(1, -1)))} мм — по длине не хватает места для рекомендуемых.` });
@@ -1768,7 +1769,7 @@ class StationLayout {
     const res={ geo, ext:geo.ext, int:geo.int };
     if (!r.ok){
       const iss=[...hh.iss];
-      if (r.why==='mode') iss.unshift({ level:'error', text:'Без продольного прохода — только с одним или двумя компрессорами (без ДГУ и насосов).' });
+      if (r.why==='mode') iss.unshift({ level:'error', text:'Без продольного прохода — только компрессорная (без ДГУ и насосов).' });
       else if (r.why==='width') iss.unshift({ level:'error', text:`Не проходит по ширине: ${r.bad.filter(e=>!e.unit).slice(0, 3).map(e=>`поз. ${e.pos} «${e.short}» (${n(e.w)} мм)`).join(', ')} — вместе с проходом для оператора и обслуживания, отступом от стены и зазором на коммуникации нужно ${n(r.needW+2*g)} мм, а ширина внутри — ${n(Wi)} мм.` });
       else iss.unshift({ level:'error', text:`Не помещается по длине: нужно ${n(r.needL+2*g)} мм, а внутри контейнера ${n(Lu+2*g)} мм — не хватает ${n(r.needL-Lu)} мм.` });
       return Object.assign(res, { level:'error', issues:iss, need:{ L:r.needL||null, W:r.needW||null } });
@@ -1779,8 +1780,8 @@ class StationLayout {
     if (P.length) iss.push({ level:'info', text:`Ресиверы поз. ${P.join(', ')} — в два ряда (один за другим${items.some(i=>i.pairEnd) ? ', в конце ряда поперёк контейнера — станция короче' : ''}): осмотр и обслуживание заднего — сбоку, через промежутки между ресиверами.` });
     // дверь оператора: агрегат поперёк — в стене прохода перед ним, если места хватает, иначе — в ближнем торце
     const door=cross ? (cross.x0-geo.x0>=StationLayout.ENTRY[1]+100 ? 'side' : 'end') : !this.tank && r.rows===2 ? 'end' : 'side';
-    const CE=items.filter(i=>i.ends).sort((a, b)=>a.x-b.x), C=CE[0], C2=CE[1]||null, ends=C ? { pos:C.pos, x0:C.x, x1:C.x+C.lx, next:(items.filter(i=>i.mount==='floor' && !i.ends && i.x>=C.x+C.lx).sort((a, b)=>a.x-b.x)[0]||{}).pos||null,
-      recv:[...new Set(items.filter(i=>i.pairEnd).map(i=>i.pos))], ...(C2 ? { pos2:C2.pos, x2:C2.x } : {}) } : null;
+    const CE=items.filter(i=>i.ends).sort((a, b)=>a.x-b.x), C=CE[0], CZ=CE[CE.length-1], ends=C ? { pos:C.pos, x0:C.x, x1:CZ.x+CZ.lx, n:CE.length, all:[...new Set(CE.map(i=>i.pos))],
+      next:(items.filter(i=>i.mount==='floor' && !i.ends && i.x>=CZ.x+CZ.lx).sort((a, b)=>a.x-b.x)[0]||{}).pos||null, recv:[...new Set(items.filter(i=>i.pairEnd).map(i=>i.pos))] } : null;
     const entryX=r.entry ? r.entry.map(v=>Math.round(geo.x0+this.G+v)) : null;
     return Object.assign(res, { level:hh.bad ? 'error' : 'ok', bad:hh.bad, items, rows:r.rows, door, cross, ends, entryX,
       doors:null, aisle:{ w:r.aisleW, rows:r.rows }, issues:iss });
@@ -2246,15 +2247,12 @@ class StationLayout {
    *  него (у морского — его штатные двери); ресиверам в два ряда у дальнего торца — ворота там; остальному, что не пройдёт в
    *  дверь оператора, — ворота в торце, если к ним по проходу провезти, иначе сервисные ворота напротив */
   endsExits(r, geo){
-    const [L, W]=geo.int, P=StationLayout.PASS, C=r.items.filter(i=>i.ends), T=r.items.filter(i=>i.pairEnd), side=[], uniq=a=>[...new Set(a)];
-    const CL=C.filter(i=>i.x+i.lx/2<L/2), CR=C.filter(i=>!CL.includes(i));   // два компрессора — по одному у каждого торца
+    const W=geo.int[1], P=StationLayout.PASS, C=r.items.filter(i=>i.ends), T=r.items.filter(i=>i.pairEnd), side=[], uniq=a=>[...new Set(a)];
     for (const it of C) it.tight=false;
     if (geo.sea && geo.door){ const dw=Math.min(geo.door[0], W); r.gates={ wall:'left', y0:Math.round((W-dw)/2), y1:Math.round((W+dw)/2), w:dw, h:geo.door[1], leaves:2, pos:[], why:[], sea:true }; }
-    else r.gates=this.gateFor(r, geo, 'left', CL);
-    const pc=uniq(CL.map(i=>i.pos)); r.gates.pos.push(...pc); r.gates.why.push(`поз. ${pc.join(', ')} — компрессор у торца без продольного прохода: обслуживание сбоку, монтаж и демонтаж — через ворота в торце`);
-    if (CR.length){ const p2=uniq(CR.map(i=>i.pos)); r.gates2=this.gateFor(r, geo, 'right', CR); r.gates2.pos.push(...p2);
-      r.gates2.why.push(`поз. ${p2.join(', ')} — второй компрессор у дальнего торца без продольного прохода: обслуживание сбоку, монтаж и демонтаж — через ворота в торце`); }
-    else if (T.length){ const pr=uniq(T.map(i=>i.pos)); r.gates2=this.gateFor(r, geo, 'right', T); r.gates2.pos.push(...pr);
+    else r.gates=this.gateFor(r, geo, 'left', C);
+    const pc=uniq(C.map(i=>i.pos)); r.gates.pos.push(...pc); r.gates.why.push(`поз. ${pc.join(', ')} — ${C.length>1 ? 'компрессоры в ряд от торца' : 'компрессор у торца'} без продольного прохода: обслуживание сбоку, монтаж и демонтаж — через ворота в торце${C.length>1 ? ' и сервисные ворота' : ''}`);
+    if (T.length){ const pr=uniq(T.map(i=>i.pos)); r.gates2=this.gateFor(r, geo, 'right', T); r.gates2.pos.push(...pr);
       r.gates2.why.push(`поз. ${pr.join(', ')} — ресиверы в два ряда у дальнего торца: осмотр, обслуживание, монтаж и демонтаж — через ворота в торце`); }
     for (const it of C) for (const wall of ['front', 'back'])
       side.push({ it, wall, both:true, rear:true, why:`поз. ${it.pos} — без продольного прохода: обслуживание ${wall==='front' ? 'спереди' : 'сзади'}` });
