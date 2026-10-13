@@ -75,11 +75,16 @@ class LayoutEditor {
   static rule(d, id){ return ((d && d.rules) || []).find(r=>r.id===id); }
   static copy(v){ return JSON.parse(JSON.stringify(v)); }
   static n(v){ return typeof v==='number' ? String(v).replace('.', ',') : ''; }
+  /** матрица v поверх значений программы (недостающее — из StationMatrix.DEF) */
+  static merge(v){ const D=StationMatrix.DEF, mx={}; v=v && typeof v==='object' ? v : {};
+    for (const k of Object.keys(D)) mx[k]=LayoutEditor.copy(v[k] && typeof v[k]==='object' ? { ...D[k], ...v[k] } : D[k]); return mx; }
+  /** значения по умолчанию — из файла поставки программы (сервер: layoutDef), без него — заложенные в программу */
+  defs(){ const L=this.p.layoutDef||{};
+    return { m:LayoutEditor.merge(L['layout.matrix']), a:LayoutEditor.copy(L['norm.aisle'] || LayoutEditor.AISLE), t:+(L['norm.aisle_tight'] || LayoutEditor.TIGHT), c:LayoutEditor.copy(L['clear.kind'] || (this.w && this.w.c) || {}) }; }
   /** рабочая копия: матрица (недостающее — значения программы), проходы, отступы */
   load(){
-    const d=this.p.data, R=id=>LayoutEditor.rule(d, id), m=R('layout.matrix'), D=StationMatrix.DEF, v=m && m.value && typeof m.value==='object' ? m.value : {};
-    const mx={}; for (const k of Object.keys(D)) mx[k]=LayoutEditor.copy(v[k] && typeof v[k]==='object' ? { ...D[k], ...v[k] } : D[k]);
-    this.w={ m:mx, a:LayoutEditor.copy((R('norm.aisle') || {}).value || LayoutEditor.AISLE), t:+((R('norm.aisle_tight') || {}).value || LayoutEditor.TIGHT),
+    const d=this.p.data, R=id=>LayoutEditor.rule(d, id), m=R('layout.matrix');
+    this.w={ m:LayoutEditor.merge(m && m.value), a:LayoutEditor.copy((R('norm.aisle') || {}).value || LayoutEditor.AISLE), t:+((R('norm.aisle_tight') || {}).value || LayoutEditor.TIGHT),
       c:LayoutEditor.copy((R('clear.kind') || {}).value || {}) };
   }
   inp(path, v, w=76){ return `<input type="text" inputmode="decimal" data-mx="${esc(path)}" value="${esc(LayoutEditor.n(v))}" style="width:${w}px">`; }
@@ -89,18 +94,25 @@ class LayoutEditor {
     const chg=def!=null && String(v)!==String(def), u=f && f.u && f.u!=='доля' ? `<i>${esc(f.u)}</i>` : '';
     const ctl=f && f.opt ? this.sel(path, v, f.opt) : this.inp(path, v)+u;
     const lim=f && !f.opt ? `от ${LayoutParams.show({}, f.lo)} до ${LayoutParams.show({}, f.hi)}` : '';
-    return `<div class="lp-r${chg ? ' chg' : ''}" data-lps="${esc((label+' '+(hint||'')).toLowerCase())}"><div class="lp-t">${esc(label)}${hint ? `<small>${esc(hint)}</small>` : ''}</div>
-      <div class="lp-v">${ctl}</div><div class="lp-d">${def!=null ? `по умолчанию ${esc(f ? LayoutParams.show(f, def) : String(def))}` : ''}${lim ? `<small>${esc(lim)}</small>` : ''}${chg ? ` <button class="icon" type="button" data-lpdef="${esc(path)}" title="Вернуть значение по умолчанию" aria-label="Вернуть значение по умолчанию">↺</button>` : ''}</div></div>`;
+    return `<div class="lp-r${chg ? ' chg' : ''}" data-lps="${esc((label+' '+(hint||'')).toLowerCase())}"${def!=null ? ` data-lpd="${esc(String(def))}"` : ''}><div class="lp-t">${esc(label)}${hint ? `<small>${esc(hint)}</small>` : ''}</div>
+      <div class="lp-v">${ctl}</div><div class="lp-d">${def!=null ? `по умолчанию ${esc(f ? LayoutParams.show(f, def) : String(def))}` : ''}${lim ? `<small>${esc(lim)}</small>` : ''}${def!=null ? ` <button class="icon" type="button" data-lpdef="${esc(path)}" title="Вернуть значение по умолчанию" aria-label="Вернуть значение по умолчанию"${chg ? '' : ' hidden'}>↺</button>` : ''}</div></div>`;
+  }
+  /** строка после правки — на месте: подсветка «изменено» и «↺» (без перерисовки формы: иначе ввод в следующее поле,
+   *  куда уже перешёл пользователь, пропадает — ошибка до 3.86.11) */
+  static mark(r){
+    const el=r.querySelector('[data-mx]'); if (!el || r.dataset.lpd==null) return;
+    const v=el.type==='checkbox' ? String(el.checked) : el.value.trim().replace(/\s+/g, '').replace(',', '.'), chg=String(+v===+v && v!=='' ? +v : v)!==r.dataset.lpd;
+    r.classList.toggle('chg', chg); const b=r.querySelector('[data-lpdef]'); if (b) b.hidden=!chg;
   }
   sec(id, title, hint, body, open){ return `<details class="lp-s" data-lpsec="${esc(id)}"${open ? ' open' : ''}><summary><b>${esc(title)}</b></summary>${hint ? `<p class="muted lp-h">${esc(hint)}</p>` : ''}${body}</details>`; }
   html(){
     if (!this.w) this.load();
-    const E=LayoutEditor, M=this.w.m, D=StationMatrix.DEF, K=E.KINDS.map(k=>[k, E.label(k)]), C=this.w.c, on=!!this.q;
+    const E=LayoutEditor, M=this.w.m, DF=this.defs(), D=DF.m, K=E.KINDS.map(k=>[k, E.label(k)]), C=this.w.c, on=!!this.q;
     const secs=LayoutParams.SECTIONS.map(s=>{
       let body=s.f.map(f=>this.row(`m|${f.g}.${f.k}`, f.t, M[f.g][f.k], D[f.g][f.k], f, f.h)).join('');
-      if (s.id==='aisle') body=this.row('a|0', 'Проход оператора: рекомендуется', this.w.a[0], E.AISLE[0], { u:'мм', lo:600, hi:3000 }, 'Вдоль оборудования, от двери.')
-        +this.row('a|1', 'Проход оператора: допустимо (плотная компоновка)', this.w.a[1], E.AISLE[1], { u:'мм', lo:600, hi:3000 }, 'ПУЭ, п. 4.1.23: не менее 0,8 м.')
-        +this.row('t|', 'Проход оператора: в крайнем случае (исключение)', this.w.t, E.TIGHT, { u:'мм', lo:600, hi:3000 }, 'Решение ПНЕВМОТЕХ 12.10: не меньше 600 мм; только ради габарита перевозки.')+body;
+      if (s.id==='aisle') body=this.row('a|0', 'Проход оператора: рекомендуется', this.w.a[0], DF.a[0], { u:'мм', lo:600, hi:3000 }, 'Вдоль оборудования, от двери.')
+        +this.row('a|1', 'Проход оператора: допустимо (плотная компоновка)', this.w.a[1], DF.a[1], { u:'мм', lo:600, hi:3000 }, 'ПУЭ, п. 4.1.23: не менее 0,8 м.')
+        +this.row('t|', 'Проход оператора: в крайнем случае (исключение)', this.w.t, DF.t, { u:'мм', lo:600, hi:3000 }, 'Решение ПНЕВМОТЕХ 12.10: не меньше 600 мм; только ради габарита перевозки.')+body;
       return this.sec(s.id, s.title, s.t, body, on || s.id==='fit'); });
     const pair=(M.pair.rows||[]).map((r, j)=>`<tr><td>${this.sel(`m|pair.rows.${j}.a`, r.a, K)} ↔ ${this.sel(`m|pair.rows.${j}.b`, r.b, K)}</td>
       <td>${this.inp(`m|pair.rows.${j}.base`, r.base, 70)}</td><td>${this.inp(`m|pair.rows.${j}.k`, r.k, 52)} × ${this.sel(`m|pair.rows.${j}.of`, r.of||'', [['', '—'], ...[...new Set([r.a, r.b])].map(k=>[k+'.w', E.OF[k]||'ширины'])])}</td>
@@ -130,11 +142,12 @@ class LayoutEditor {
       ${secs.join('')}${tables.join('')}
       <div class="row lp-go"><button class="btn primary" type="button" data-rl="mxsave">Сохранить правила компоновки</button><button class="btn ghost" type="button" data-rl="mxdef">Все значения — по умолчанию</button></div>`;
   }
-  /** готовые наборы правил: кнопка — заполнить форму (сохранится после «Сохранить правила компоновки») */
+  /** готовые наборы правил: какой действует сейчас (сохранённые правила) и кнопки — применить набор сразу (новая версия правил) */
   presets(){
-    const cur=LayoutParams.which(this.w.m);
-    return `<div class="lp-pre"><span class="lp-pre-h"><b>Готовые наборы</b> <span class="muted">— сейчас: ${esc(cur ? cur.title.toLowerCase() : 'свои значения')}</span></span>
-      ${LayoutParams.PRESETS.map(P=>`<button type="button" class="lp-pb${cur && cur.id===P.id ? ' on' : ''}" data-lppre="${esc(P.id)}"><b>${esc(P.title)}</b><small>${esc(P.t)}</small></button>`).join('')}</div>`;
+    const m=LayoutEditor.rule(this.p.data, 'layout.matrix'), act=LayoutParams.which(LayoutEditor.merge(m && m.value)), cur=LayoutParams.which(this.w.m);
+    const nm=P=>P ? '«'+P.title+'»' : 'свои значения', diff=(act && act.id)!==(cur && cur.id);
+    return `<div class="lp-pre"><span class="lp-pre-h"><b>Готовые наборы</b> — действует сейчас: <b class="ok-t">${esc(nm(act))}</b>${diff ? ` <span class="warn-t">(в форме — ${esc(nm(cur))}, не сохранено)</span>` : ''}</span>
+      ${LayoutParams.PRESETS.map(P=>`<button type="button" class="lp-pb${act && act.id===P.id ? ' on' : ''}" data-lppre="${esc(P.id)}" aria-pressed="${act && act.id===P.id ? 'true' : 'false'}"><b>${esc(P.title)}${act && act.id===P.id ? ' ✓ действует' : ''}</b><small>${esc(P.t)}</small></button>`).join('')}</div>`;
   }
   /** набор → форма (только стратегия подбора; нормы отступов не меняются) */
   usePreset(id){ const v=LayoutParams.preset(id); if (!v) return; for (const [k, x] of Object.entries(v)){ const [g, f]=k.split('.'); this.w.m[g][f]=x; } }
@@ -165,12 +178,13 @@ class LayoutEditor {
     (w.m.sides.rows||[]).forEach((r, j)=>{ r.s=[...root.querySelectorAll(`[data-mxs="${j}"]`)].filter(c=>c.checked).map(c=>c.value).join('') || 'Ф'; });
   }
   /** «↺»: одно значение — по умолчанию программы */
-  def(path){ const [t, p]=path.split('|');
-    if (t==='m'){ const [g, k]=p.split('.'); this.w.m[g][k]=StationMatrix.DEF[g][k]; }
-    else if (t==='a') this.w.a[+p]=LayoutEditor.AISLE[+p]; else if (t==='t') this.w.t=LayoutEditor.TIGHT; }
+  def(path){ const [t, p]=path.split('|'), D=this.defs();
+    if (t==='m'){ const [g, k]=p.split('.'); this.w.m[g][k]=LayoutEditor.copy(D.m[g][k]); }
+    else if (t==='a') this.w.a[+p]=D.a[+p]; else if (t==='t') this.w.t=D.t; }
   add(root){ this.read(root); this.w.m.pair.rows.push({ a:'other', b:'other', base:500, k:0, of:'', min:300, close:false }); }
   del(root, j){ this.read(root); this.w.m.pair.rows.splice(j, 1); }
-  reset(){ this.w.m=LayoutEditor.copy(StationMatrix.DEF); this.w.a=[...LayoutEditor.AISLE]; this.w.t=LayoutEditor.TIGHT; }
+  /** все значения компоновки — как в файле поставки (матрица, проходы, отступы по видам) */
+  reset(){ this.w=this.defs(); }
   /** новая версия правил с этими значениями */
   build(){
     const w=this.w;
@@ -250,15 +264,16 @@ class RulesPanel {
   static LAYOUT = new Set(['layout.matrix', 'norm.aisle', 'norm.aisle_tight', 'clear.kind']);   // правятся формой «Правила компоновки» (как LayoutValues.IDS на сервере)
   constructor(m){ this.m=m; this.info=null; this.data=null; this.flt=''; this.rq=''; this.mx=new LayoutEditor(this); this.re=new RuleEdit(this); this.mxOpen=true; }
   async open(){
-    try{ const [a, d]=await Promise.all([aapi('rules/stations'), StationRulesDoc.load()]); this.info=a.info; this.data=d; }
+    try{ const [a, d]=await Promise.all([aapi('rules/stations'), StationRulesDoc.load()]); this.info=a.info; this.layoutDef=a.layoutDef||null; this.data=d; }
     catch(e){ this.m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; return; }
     this.render(); this.bind();
   }
   box(){ return this.m.querySelector('[data-mxbox]'); }
   keep(){ const b=this.box(); if (b && this.mx.w) try{ this.mx.read(b); } catch(e){ /* неверное число — останется прежнее значение */ }
     const o=new Set([...this.m.querySelectorAll('[data-lpsec]')].filter(s=>s.open).map(s=>s.dataset.lpsec)); if (o.size) this.secOpen=o; }
-  render(){
-    this.keep();
+  /** keep — сначала забрать введённое в форму (после программной правки формы — нет: иначе старые значения полей затрут её) */
+  render(keep=true){
+    if (keep) this.keep();
     const i=this.info||{}, d=this.data||{ rules:[] }, st=StationRulesDoc.STATUS, q=this.rq.trim().toLowerCase();
     const R=(d.rules||[]).filter(r=>(!this.flt || r.status===this.flt) && (!q || [r.title, r.id, r.group, r.note, StationRulesDoc.val(r.value, r.unit)].join(' ').toLowerCase().includes(q)));
     const chip={ confirmed:'on', practice:'', unconfirmed:'warn' }, ed=this.re.id;
@@ -281,21 +296,28 @@ class RulesPanel {
   bind(){
     this.m.onchange=e=>{ if (e.target.matches('[data-rlf]')){ this.flt=e.target.value; this.render(); }
       else if (/^m\|pair\.rows\.\d+\.[ab]$/.test(e.target.dataset.mx||'')){ try{ this.mx.read(this.box()); this.render(); } catch(er){ toast(er.message); } }
-      else if (e.target.dataset.mx){ const r=e.target.closest('.lp-r'); if (r) try{ this.mx.read(this.box()); this.render(); } catch(er){ toast(er.message); } } };
+      else if (e.target.dataset.mx){ const r=e.target.closest('.lp-r'); if (r) try{ this.mx.read(this.box()); LayoutEditor.mark(r); } catch(er){ toast(er.message); } } };
     this.m.oninput=e=>{ if (e.target.matches('[data-lpq]')){ this.mx.q=e.target.value; this.mx.filter(this.box()); }
       else if (e.target.matches('[data-rlq]')){ this.rq=e.target.value; const p=e.target.selectionStart; this.render(); const x=this.m.querySelector('[data-rlq]'); if (x){ x.focus(); x.setSelectionRange(p, p); } } };
     this.m.addEventListener('toggle', e=>{ if (e.target.matches && e.target.matches('[data-mxbox]')) this.mxOpen=e.target.open; }, true);
     this.m.onclick=async e=>{ const box=this.box(), dl=e.target.closest('[data-mxdel]'), df=e.target.closest('[data-lpdef]'), ro=e.target.closest('[data-reopen]');
       if (dl){ try{ this.mx.del(box, +dl.dataset.mxdel); this.render(); } catch(er){ toast(er.message); } return; }
-      if (df){ try{ this.mx.read(box); this.mx.def(df.dataset.lpdef); this.render(); } catch(er){ toast(er.message); } return; }
+      if (df){ try{ this.mx.read(box); this.mx.def(df.dataset.lpdef); this.render(false); } catch(er){ toast(er.message); } return; }
       const pre=e.target.closest('[data-lppre]');
-      if (pre){ try{ this.mx.read(box); this.mx.usePreset(pre.dataset.lppre); this.render(); toast('Набор «'+(LayoutParams.PRESETS.find(p=>p.id===pre.dataset.lppre)||{}).title+'» — в форме; сохранится кнопкой «Сохранить правила компоновки»'); } catch(er){ toast(er.message); } return; }
+      // набор — сразу в действие (новая версия правил; прежняя — для отката); видно, какой действует (3.86.11)
+      if (pre){ const P=LayoutParams.PRESETS.find(p=>p.id===pre.dataset.lppre)||{}; let d;
+        try{ this.mx.read(box); this.mx.usePreset(P.id); d=this.mx.build(); } catch(er){ return toast(er.message); }
+        return this.post({ method:'POST', headers:{ 'Content-Type':'application/json; charset=utf-8' }, body:JSON.stringify(d) }, '', 'Набор «'+P.title+'» действует'); }
       if (ro){ const r=this.data.rules.find(q=>q.id===ro.dataset.reopen); if (r){ this.re.open(r); this.render(); } return; }
       const ra=e.target.closest('[data-readd]'), rd=e.target.closest('[data-redel]'), rb=this.m.querySelector('.re');
       if (ra || rd){ try{ ra ? this.re.add(rb, ra.dataset.readd) : this.re.del(rb, rd.dataset.redel); this.render(); } catch(er){ toast(er.message); } return; }
       const b=e.target.closest('[data-rl]'); if (!b) return; const a=b.dataset.rl;
       if (a==='mxadd'){ try{ this.mx.add(box); this.render(); } catch(er){ toast(er.message); } return; }
-      if (a==='mxdef'){ if (!confirm('Вернуть в форму все значения компоновки, заложенные в программу? Сохранятся только после «Сохранить правила компоновки».')) return; this.mx.reset(); this.render(); return; }
+      // все значения — как в файле поставки, и сразу новой версией правил (ошибка до 3.86.11: значения возвращались только в
+      // форму, а перерисовка тут же затирала их прежними из полей — «не сбрасывается»)
+      if (a==='mxdef'){ if (!await stConfirm('Все правила компоновки — по умолчанию?', 'Матрица расстановки, проходы и отступы станут как в файле поставки программы и сразу сохранятся новой версией правил; прежняя версия останется для отката.', 'Вернуть по умолчанию')) return;
+        const old=this.mx.w; let d; try{ this.mx.reset(); d=this.mx.build(); } catch(er){ this.mx.w=old; return toast(er.message); }
+        return this.post({ method:'POST', headers:{ 'Content-Type':'application/json; charset=utf-8' }, body:JSON.stringify(d) }, '', 'Правила компоновки — по умолчанию'); }
       if (a==='mxsave'){ let d; try{ this.mx.read(box); d=this.mx.build(); } catch(er){ return toast(er.message); }
         return this.post({ method:'POST', headers:{ 'Content-Type':'application/json; charset=utf-8' }, body:JSON.stringify(d) }); }
       if (a==='recancel'){ this.re.id=''; this.render(); return; }
@@ -310,10 +332,10 @@ class RulesPanel {
           this.post({ method:'POST', headers:{ 'Content-Type':'application/json; charset=utf-8' }, body:fl }); };
         f.click(); } };
   }
-  async post(opts, qs=''){
+  async post(opts, qs='', what='Правила станций'){
     try{ const r=await aapi('rules/stations'+qs, opts); this.info=r.info; this.data=await StationRulesDoc.load(); StationRules.use(this.data); this.mx.w=null; this.re.id='';
       if (typeof StationUi!=='undefined') StationUi.cache.clear(); if (typeof StationCalc!=='undefined') StationCalc.cache.clear();
-      toast('Правила станций: версия '+(this.info.version||'')); this.render(); }
+      toast(what+': сохранено, версия '+(this.info.version||'')); this.render(false); }
     catch(e){ toast('Не принято: '+(e.message||e)); }
   }
 }

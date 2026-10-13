@@ -24,8 +24,8 @@ const norm = s => String(s||'').toLowerCase().replace(/ё/g,'е').replace(/[«»
 async function toDataURL(img){ if (!img) return null; if (String(img.src).startsWith('data:')) return img.src; return blobToURL(await (await fetch(img.src)).blob()); }
 
 // уведомление показывается поверх открытого окна: всё, что вне модального окна, браузер прячет под затемнением
-function toast(t){ let el=$('#toast'); if (!el){ el=document.createElement('div'); el.id='toast'; el.className='toast'; el.setAttribute('role','status'); }   // окно могло перерисоваться вместе с уведомлением
-  const host=[...document.querySelectorAll('dialog[open]')].pop()||document.body; if (el.parentNode!==host) host.appendChild(el); el.textContent=t; el.classList.add('on'); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('on'),2600); }
+function toast(t, ms=2600){ let el=$('#toast'); if (!el){ el=document.createElement('div'); el.id='toast'; el.className='toast'; el.setAttribute('role','status'); }   // окно могло перерисоваться вместе с уведомлением
+  const host=[...document.querySelectorAll('dialog[open]')].pop()||document.body; if (el.parentNode!==host) host.appendChild(el); el.textContent=t; el.classList.add('on'); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('on'), ms); }
 
 function parsePrice(s){
   s = String(s||'').replace(/[\s\u00A0]/g,'').replace(',', '.');

@@ -15,7 +15,7 @@ import unittest
 from kit import APP, REPO, SampleData, Stand
 
 sys.path.insert(0, APP)
-from station_rules import StationRules   # noqa: E402
+from station_rules import LayoutValues, StationRules   # noqa: E402
 
 
 class RulesFileTest(unittest.TestCase):
@@ -155,6 +155,11 @@ class RulesRouteTest(unittest.TestCase):
         cookie, csrf = self.stand.admin()
         st, _, _ = http.req('POST', '/api/admin/rules/stations', json.dumps(own), cookie=cookie, headers={'Content-Type': 'application/json'})
         self.assertIn(st, (401, 403), 'без токена CSRF')
+        # значения правил компоновки из файла поставки — для «Все значения — по умолчанию» (3.86.11)
+        st, b, _ = http.req('GET', '/api/admin/rules/stations', cookie=cookie, headers=csrf)
+        d = http.js(b)['layoutDef']
+        self.assertEqual(sorted(d), sorted(LayoutValues.IDS))
+        self.assertEqual(d['layout.matrix'], next(x['value'] for x in StationRules.bundled()['rules'] if x['id'] == 'layout.matrix'))
         # ошибка в файле — понятный отказ, действующая версия не меняется
         bad = copy.deepcopy(own)
         bad['rules'][0]['status'] = 'maybe'

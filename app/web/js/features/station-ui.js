@@ -13,7 +13,7 @@ class StationUi {
   static input(x){
     const c=kitContainer(x);
     const R=typeof StationReq!=='undefined' ? StationReq : null;   // где ресивер и снаружи ли — из требований станции
-    return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, ins:c.ins, ral:c.ral, sys:c.sys||null, climate:c.climate||'', roof:c.roof||'', floor:StationGeo.floor(c) } : null, parts:kitParts(x), air:this.opts(x).air,
+    return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, lenFix:c.lenFix||null, ins:c.ins, ral:c.ral, sys:c.sys||null, climate:c.climate||'', roof:c.roof||'', floor:StationGeo.floor(c) } : null, parts:kitParts(x), air:this.opts(x).air,
       recv:R ? R.recv(x) : 'after', recvOut:R ? R.recvOut(x) : false, req:R ? R.plan(x) : null };
   }
   /** расстановка — пересчитывается, только когда изменился состав, контейнер или класс чистоты воздуха (на картинки не влияет) */
@@ -192,7 +192,7 @@ class StationUi {
       toast('Контейнер заменён: '+ctypeOf(c.ctype).name+'. Проверьте закупку контейнера в составе станции.');
       return true;
     }
-    if (a==='stlAuto'){ c.sizeAuto=true; StationSize.apply(it, true); return true; }
+    if (a==='stlAuto'){ c.sizeAuto=true; delete c.lenFix; StationSize.apply(it, true); return true; }
     if (a==='stlRec'){ const r=((this.plan(it).air||{}).recs||[])[+b.dataset.k]; if (r) KitNeed.open(i, r); return false; }
     return false;
   }
@@ -214,6 +214,24 @@ class StationUi {
 // ---------------------------------------------------------------- размер блок-контейнера по оборудованию
 class StationSize {
   static last = new Map();
+  static dens = new Map();
+  /** длина задана: компоновка пересобрана — уведомление, если сменилась плотность (просторно / плотно / максимально плотно)
+   *  или длина не подходит (3.86.11) */
+  static notify(x, c, plan){
+    const L=StationGeo.len(c.lenFix); if (!L){ this.dens.delete(x.id); return; }
+    const d=plan.level==='error' ? 'error' : plan.density ? plan.density.id : '', k=L+'|'+d, was=this.dens.get(x.id); this.dens.set(x.id, k);
+    if (was===k || typeof toast!=='function') return;
+    // после перерисовки окна (иначе уведомление пропадает вместе со старым содержимым)
+    const msg=plan.level==='error' ? (plan.issues[0]||{}).text||'Не помещается' : plan.density ? `Длина ${StationLayout.n(L)} мм: компоновка пересобрана — «${plan.density.title}» (${plan.density.text})` : '';
+    if (msg)
+    setTimeout(()=>toast(msg, 7000), 0);
+  }
+  /** подпись под полем размера: длина задана — плотность и «снять» */
+  static note(c, plan, i){
+    const L=StationGeo.len(c && c.lenFix); if (!L) return '';
+    const d=plan && plan.density;
+    return `<p class="muted kit-szn">Длина задана: <b>${esc(StationLayout.n(L))} мм</b>${d ? ` — компоновка «${esc(d.title)}» (${esc(d.text)})` : plan && plan.level==='error' ? ' — <span class="bad-t">не помещается</span>' : ''}. <button type="button" class="lnk" data-a="stlAuto" data-i="${i}">размер — по оборудованию</button></p>`;
+  }
   /** блок-контейнер «по проекту» без своего размера — наименьший размер из ряда, при котором всё помещается.
    *  Возвращает true, если размер изменился. Размер, вписанный менеджером, не трогается. */
   static apply(x, force){
@@ -224,6 +242,7 @@ class StationSize {
     if (!force && L && L.h===h && L.size===String(c.size||'')) return false;
     const plan=StationLayout.solve(inp), txt=plan.level!=='error' && plan.level!=='none' && plan.geo && plan.geo.ext ? plan.geo.ext.join(' × ') : '';
     this.last.set(x.id, { h, size:txt });
+    this.notify(x, c, plan);
     if (txt===String(c.size||'') && c.sizeAuto) return false;
     contApply(c, { size:txt, sizeAuto:true }); stationFill(x);
     return true;

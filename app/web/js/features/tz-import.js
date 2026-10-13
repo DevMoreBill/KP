@@ -298,7 +298,13 @@ class TzPick {
   static comps(pool, Q, B, q){
     const comp=c=>({ name:c.name, attrs:attrsOf(c), rows:[] }), vsd=c=>AirChain.info(comp(c), 'compressor').vsd;
     return this.units(pool.filter(c=>!q.oilFree || this.oilFree(c)).map(c=>({ c, v:this.flow(c), p:this.num(attrsOf(c).pressure), vsd:vsd(c), f:!q.vsd || vsd(c), of:!q.oilFree && this.oilFree(c) }))
-      .filter(o=>o.v>0 && (!(B>0) || !(o.p>0) || o.p>=B-0.05)), Q, q.work, o=>this.barPen(o.p, B, o.vsd)+(o.f ? 0 : 0.3)+(o.of ? 0.5 : 0));
+      .filter(o=>o.v>0 && (!(B>0) || !(o.p>0) || o.p>=B-0.05) && !(q.compact && (o.of || this.barPen(o.p, B, o.vsd)>=0.5 || (q.work && o.v*q.work>Q*this.OVER)))), Q, q.work, o=>this.barPen(o.p, B, o.vsd)+(o.f ? 0 : 0.3)+(o.of ? 0.5 : 0)+(q.compact ? this.area(o.c) : 0));
+  }
+  static OVER = 1.3;   // подбор «чтобы поместилось»: запас производительности — не больше 30 % (не центробежный на 60 м³/мин), безмасляный — только по требованию, давление — с запасом на потери
+  /** штраф за площадь агрегата (подбор «чтобы станция поместилась»): 0,3 на м² пола; габарит неизвестен — как 3,5 м² */
+  static area(c){
+    const d=StationEquip.dims({ name:c.name, attrs:attrsOf(c), rows:[] }, 'compressor');
+    return 0.3*(d.known ? d.l*d.w/1e6 : 3.5);
   }
   /** осушитель на Qd, м³/мин (вся производительность рабочих компрессоров) с поправками производителя (серия в файле правил:
    *  давление B у потребителя, температура tmax; нет — типовая таблица и запас); давление аппарата — не ниже Bc (компрессор);
@@ -440,9 +446,13 @@ class TzPick {
   /** подбор с защитой состава: чего в каталоге не нашлось — прежнее оборудование этого вида остаётся (не пропадает) */
   static async run(x, q){
     const drop=this.DROP[q.kind]||/^$/, before=kitParts(x).filter(p=>p.role!=='container' && drop.test(StationEquip.kindOf(p)||''));
-    let note=await this.pick(x, q); const kept=[];
+    let note=await this.fit(x, q); const kept=[];
+    // фильтры и ресиверы — только если цепочка воздуха их по-прежнему просит (осушитель со встроенными фильтрами — фильтры
+    // не нужны: прежние на меньший расход не оставлять — ошибка до 3.86.11)
+    let air=null; const need=k=>{ if (k!=='filter' && k!=='receiver') return true;
+      if (!air) air=StationLayout.solve(StationUi.input(x)).air || KitNeed.air(x) || { recs:[] }; return (air.recs||[]).some(r=>r.cat===k && !r.replace); };
     for (const k of [...new Set(before.map(p=>StationEquip.kindOf(p)))]){
-      if (kitParts(x).some(p=>StationEquip.kindOf(p)===k)) continue;
+      if (kitParts(x).some(p=>StationEquip.kindOf(p)===k) || !need(k)) continue;
       const old=before.filter(p=>StationEquip.kindOf(p)===k), at=kitParts(x).findIndex(p=>p.role==='container');
       x.kit.parts.splice(at<0 ? x.kit.parts.length : at, 0, ...old); kept.push(...old.map(p=>p.name));
     }
@@ -450,6 +460,37 @@ class TzPick {
     return note;
   }
   static DROP = { comp:/^(compressor|dryer|filter|receiver)$/, pump:/^pump$/, dgu:/^dgu$/ };
+  /** подбор, при котором станция помещается в контейнер (решение ПНЕВМОТЕХ 13.10): один большой агрегат не встаёт —
+   *  несколько одинаковых меньших (2, 3 … до MAX; меньшим агрегатам — и меньше ресиверов). Порядок: всё внутри в габарите
+   *  перевозки (наименьшее число агрегатов); ресиверы после подготовки — снаружи у стены станции (ФНП ОРПД п. 65) в
+   *  габарите перевозки; негабарит (исключение); иначе — первый вариант и подсказка разделить станцию. Число рабочих из
+   *  ТЗ («work») не меняется */
+  static async fit(x, q){
+    { const rq=StationReq.ensure(x); if (rq.recvOutAuto){ delete rq.recvOut; delete rq.recvOutAuto; q={ ...q, recvOut:false }; } }   // «снаружи» выбрала программа — каждый подбор заново
+    const note=await this.pick(x, q);
+    if (q.work || q.kind!=='comp' || !(q.flow>0)) return note;   // компрессорные (решение ПНЕВМОТЕХ 13.10); ДГУ и насосы параллельно — решение проектировщика
+    const res=Math.max(0, Math.round(+q.reserve||0)), main=()=>kitParts(x).find(p=>p.role==='main'), req=StationReq.ensure(x), out0=!!req.recvOut;
+    const state=()=>{ if (!main()) return 'bad'; const p=StationLayout.solve(StationUi.input(x)); return p.level==='error' ? 'bad' : (p.issues||[]).some(i=>i.wide) ? 'wide' : 'ok'; };   // нет контейнера — проверять нечего
+    const n0=main() ? main().qty-res : 1, s0=state(); if (s0==='ok') return note;
+    const keep=(nt, n, out)=>({ parts:JSON.parse(JSON.stringify(x.kit.parts)), note:nt, n, out }), first=keep(note, n0, out0);
+    const outs=q.kind==='comp' && !out0 ? [false, true] : [out0];
+    let wide=s0==='wide' ? first : null;
+    // меньшие по площади агрегаты (compact): станция короче и уже
+    for (const out of outs) for (let n=n0; n<=this.MAX; n++){
+      if (out){ req.recvOut=true; req.recvOutAuto=true; } else { delete req.recvOut; delete req.recvOutAuto; }
+      const nt=await this.pick(x, { ...q, work:n, compact:true, recvOut:out }), st=state(), v=keep(nt, n, out);
+      if (st==='ok') return this._fitNote(v, n0, false);
+      if (st==='wide' && !wide) wide=v;
+    }
+    const v=wide || first; x.kit.parts=v.parts; if (v.out && !out0){ req.recvOut=true; req.recvOutAuto=true; } else if (!out0){ delete req.recvOut; delete req.recvOutAuto; }
+    return wide ? this._fitNote(v, n0, true) : `${v.note}. Станция не помещается в один контейнер даже из ${this.MAX} одинаковых агрегатов и с ресиверами снаружи — разделите её на две станции (по половине производительности) или задайте контейнер вручную`;
+  }
+  /** уведомление о том, как станция встала в контейнер */
+  static _fitNote(v, n0, wide){
+    const why=[]; if (v.n>n0) why.push(`подобрано ${v.n} одинаковых`); if (v.out) why.push('ресиверы — снаружи у стены станции (ФНП ОРПД, п. 65)');
+    if (wide) why.push('ширина больше габарита перевозки — негабарит (исключение)');
+    return why.length ? `${v.note}. Одним ${n0>1 ? 'набором' : 'агрегатом'} со всем оборудованием внутри станция не помещается в контейнер в габарите перевозки — ${why.join('; ')}` : v.note;
+  }
   /** подбор в станцию x по требованиям q (без защиты состава — run) */
   static async pick(x, q){
     const res=Math.max(0, Math.round(+q.reserve||0)), got=[], miss=[], kind=q.kind;

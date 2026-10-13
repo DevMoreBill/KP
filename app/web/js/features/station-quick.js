@@ -110,6 +110,35 @@ class StationQuick {
   }
 
   static busy = new Set();
+  static AUTO = ['flow', 'pressure', 'kw', 'q', 'head'];
+  /** главное требование изменено у подобранной станции: подбор заново без вопроса (контейнер, шкафы и обвязка остаются)
+   *  и уведомление — что заменено; значение с ошибкой или пустое — без подбора (ошибка — под полем) */
+  static async auto(i, key){
+    const x=S.items[i]; if (!x || this.busy.has(x.id)) return; const k=StationReq.kind(x), r=StationReq.ensure(x), need=this.NEED[k];
+    if (ReqNum.errors(x).length || (need && !(StationReq.num(r[need[0]])>0))){ renderForm(); return; }
+    const q=this.query(x), sig=JSON.stringify(this.AUTO.map(f=>q[f]||0)); if (r.pickSig===sig){ renderForm(); return; }
+    const before=this.parts(x);
+    this.busy.add(x.id); renderEditor();
+    try{ const note=await TzPick.assemble(x, q); r.pick=note.slice(0, 900); r.pickSig=sig; persist(); }
+    catch(e){ toast('Не получилось подобрать: '+(e && e.message || e)); }
+    finally{ this.busy.delete(x.id); }
+    renderEditor(); renderForm(); StationImages.soon(x);
+    const ch=this.diff(before, this.parts(x)), what={ flow:'производительность', pressure:'давление', kw:'мощность', q:'подача', head:'напор' }[key]||'требование';
+    toast(`Изменено ${what} — комплектующие подобраны заново${ch.length ? ': '+ch.join('; ') : ' (состав тот же)'}`, 9000);
+  }
+  /** подбираемое оборудование станции: вид → «2 × название» */
+  static parts(x){
+    const m=new Map(); for (const p of kitParts(x)){ const kd=StationEquip.kindOf(p)||''; if (!/^(compressor|dryer|filter|receiver|dgu|pump)$/.test(kd)) continue;
+      m.set(kd, [...(m.get(kd)||[]), `${p.qty>1 ? p.qty+' × ' : ''}${p.name}`]); }
+    return m;
+  }
+  static WORDS = { compressor:'компрессоры', dryer:'осушитель', filter:'фильтры', receiver:'ресиверы', dgu:'ДГУ', pump:'насосы' };
+  /** что заменено: «компрессоры: 1 × A → 2 × B» */
+  static diff(a, b){
+    const out=[]; for (const kd of new Set([...a.keys(), ...b.keys()])){ const x=(a.get(kd)||[]).join(', '), y=(b.get(kd)||[]).join(', ');
+      if (x!==y) out.push(`${this.WORDS[kd]||kd}: ${x||'—'} → ${y||'—'}`); }
+    return out;
+  }
   /** «Подобрать оборудование»: требования станции → подбор из каталога, контейнер, компоновка, изображения */
   static async pick(i){
     const x=S.items[i]; if (!x) return; const k=StationReq.kind(x), r=StationReq.ensure(x), need=this.NEED[k];
@@ -117,7 +146,7 @@ class StationQuick {
     if (need && !(StationReq.num(r[need[0]])>0)) return toast('Укажите '+need[1]+' — без неё станцию не подобрать');
     if (kitMainPart(x) && !confirm(`Подобрать оборудование заново? ${k==='comp' ? 'Компрессоры, осушители, фильтры и ресиверы' : k==='dgu' ? 'ДГУ и бак' : 'Насосы'} заменятся подобранными из каталога; контейнер, шкафы и обвязка останутся.`)) return;
     this.busy.add(x.id); renderEditor();
-    try{ const note=await TzPick.assemble(x, this.query(x)); r.pick=note.slice(0, 900); persist(); }
+    try{ const q=this.query(x), note=await TzPick.assemble(x, q); r.pick=note.slice(0, 900); r.pickSig=JSON.stringify(this.AUTO.map(f=>q[f]||0)); persist(); }
     catch(e){ toast('Не получилось подобрать: '+(e && e.message || e)); }
     finally{ this.busy.delete(x.id); }
     renderEditor(); renderForm(); StationImages.soon(x);
