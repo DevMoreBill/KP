@@ -302,6 +302,8 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .stl-how{font-size:13px;line-height:1.5;color:var(--muted)}
 .stl-how summary{cursor:pointer;color:var(--navy);font-weight:600}
 .stl-how p,.stl-how ul{margin:6px 0}
+.stl-how .ld-h{margin:10px 0 2px;color:var(--ink)}
+.stl-how .ld-l{padding-left:20px}
 .stl-how ul{padding-left:18px}
 .stl-none{margin:0;padding:10px 12px;border-radius:10px;background:var(--soft);font-size:13.5px}
 .chip.stl-chip{background:var(--card);font-weight:600}

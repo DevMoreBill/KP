@@ -77,7 +77,12 @@ class RulesFileTest(unittest.TestCase):
             (lay('layout.matrix', lambda r: r['value']['pair']['rows'][0].update(k=0, base=300, min=700)), 'не менее'),
             (lay('layout.matrix', lambda r: r['value']['sides']['rows'][0].update(s='XYZ')), 'буквы'),
             (lay('layout.matrix', lambda r: r['value'].update(evil={'x': 1})), 'неизвестный раздел'),
-            (lay('layout.matrix', lambda r: r['value']['door'].update(w=600)), 'ширина двери'),
+            (lay('layout.matrix', lambda r: r['value']['door'].update(w=600)), 'door.w'),
+            (lay('layout.matrix', lambda r: r['value']['fit'].update(roadW=9000)), 'fit.roadw'),
+            (lay('layout.matrix', lambda r: r['value']['fit'].update(dense=2)), 'fit.dense'),
+            (lay('layout.matrix', lambda r: r['value']['service'].update(min=2000, max=1200)), 'сервисные ворота'),
+            (lay('layout.matrix', lambda r: r['value']['sides']['rows'][1].update(door='нет')), 'да или нет'),
+            (lay('norm.aisle_tight', lambda r: r.update(value=500)), 'от 600'),
             (lay('layout.matrix', lambda r: r['value']['gate'].update(addW='1000; drop')), 'число'),
             (lay('norm.aisle', lambda r: r.update(value=[600, 1000])), 'допустимый'),
             (lay('clear.kind', lambda r: r['value']['compressor'].update(back=[100, 300])), 'допустимый'),
@@ -89,6 +94,35 @@ class RulesFileTest(unittest.TestCase):
         # исправная правка матрицы проходит
         ok = lay('layout.matrix', lambda r: r['value']['pair']['rows'][0].update(base=1200, min=800))
         self.assertTrue(StationRules.validate(ok))
+        ok = lay('layout.matrix', lambda r: r['value']['fit'].update(dense=0, wide=0, roadW=2500))
+        self.assertTrue(StationRules.validate(ok))
+
+    def test_layout_params_match(self):
+        """пределы чисел компоновки в форме «Настроек» (LayoutParams, station-layout.js) и на сервере (LayoutValues.SCALAR)
+        совпадают; у каждого числа матрицы по умолчанию есть поле формы, значение файла поставки — в пределах"""
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('нет Node.js')
+        js = os.path.join(APP, 'web', 'js', 'features', 'station-layout.js')
+        code = ("const vm=require('vm'),fs=require('fs');global.StationRules={ok:()=>false};"
+                "vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));const o={},d=[];"
+                "for(const [k,f] of LayoutParams.all())o[k]=[f.lo,f.hi];"
+                "const D=StationMatrix.DEF;for(const g of Object.keys(D))for(const k of Object.keys(D[g]))"
+                "if(typeof D[g][k]==='number'&&!LayoutParams.field(g,k))d.push(g+'.'+k);"
+                "console.log(JSON.stringify({o,d,def:D}))")
+        r = subprocess.run([node, '-e', code, js], capture_output=True, text=True, encoding='utf-8')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = json.loads(r.stdout)
+        from station_rules import LayoutValues
+        self.assertEqual({k: tuple(v) for k, v in out['o'].items()}, {k: tuple(v) for k, v in LayoutValues.SCALAR.items()})
+        self.assertEqual(out['d'], [], 'числа матрицы без поля в форме')
+        m = next(x for x in self.d['rules'] if x['id'] == 'layout.matrix')['value']
+        for k, (lo, hi) in LayoutValues.SCALAR.items():
+            g, f = k.split('.')
+            with self.subTest(k):
+                self.assertIn(f, m.get(g, {}), 'в файле поставки')
+                self.assertEqual(m[g][f], out['def'][g][f], 'файл поставки = значения программы')
+                self.assertTrue(lo <= m[g][f] <= hi)
 
 
 class RulesRouteTest(unittest.TestCase):
@@ -130,6 +164,19 @@ class RulesRouteTest(unittest.TestCase):
         st, b, _ = http.req('POST', '/api/admin/rules/stations', b'{not json', cookie=cookie, headers=dict(csrf, **{'Content-Type': 'application/json'}))
         self.assertEqual(st, 400)
         self.assertIn('JSON', b)
+        # правка значения в «Настройках» — только той же формы, что в файле поставки (число — числом, параметры — те же)
+        shape = copy.deepcopy(own)
+        r = next(x for x in shape['rules'] if isinstance(x['value'], dict) and x['id'] not in ('layout.matrix', 'clear.kind'))
+        r['value'] = dict(r['value'], lishnee=1)
+        st, b, _ = http.req('POST', '/api/admin/rules/stations', json.dumps(shape), cookie=cookie, headers=dict(csrf, **{'Content-Type': 'application/json'}))
+        self.assertEqual(st, 400)
+        self.assertIn('набор параметров', b)
+        num = next(x for x in own['rules'] if isinstance(x['value'], (int, float)) and not isinstance(x['value'], bool) and x['id'] != 'norm.aisle_tight')
+        num['value'] = 'много'
+        st, b, _ = http.req('POST', '/api/admin/rules/stations', json.dumps(own), cookie=cookie, headers=dict(csrf, **{'Content-Type': 'application/json'}))
+        self.assertEqual(st, 400)
+        self.assertIn('нужно число', b)
+        num['value'] = StationRules.bundled()['rules'][own['rules'].index(num)]['value'] * 1.1
         # своя версия: действует для всех, в журнале — запись
         st, b, _ = http.req('POST', '/api/admin/rules/stations', json.dumps(own), cookie=cookie, headers=dict(csrf, **{'Content-Type': 'application/json'}))
         self.assertEqual(st, 200, b[:300])

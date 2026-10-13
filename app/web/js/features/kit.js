@@ -410,7 +410,8 @@ class PickFind {
   static WAIT = 160;
   static hay(x, a){ if (x._pq!=null && CatAttrs.cards.has(x)) return x._pq;
     const h=norm([x.name, a.maker, a.model, a.series].join(' ')); if (CatAttrs.cards.has(x)) x._pq=h; return h; }
-  static key(x){ const a=attrsOf(x); return numOf(a[typeById(a.cat).main||'kw'])??9e9; }
+  // компрессоры — по производительности в м³/мин (у поршневых в каталоге — л/мин: иначе 500 л/мин встают после 15 м³/мин)
+  static key(x){ const a=attrsOf(x); if (/^comp_/.test(a.cat) && typeof TzPick!=='undefined') return TzPick.flow(x)||9e9; return numOf(a[typeById(a.cat).main||'kw'])??9e9; }
   static later(fn){ clearTimeout(this.t); this.t=setTimeout(fn, this.WAIT); }
 }
 const pfNum = v => { const n=parseFloat(String(v??'').replace(/\s+/g,'').replace(',','.')); return Number.isFinite(n)?n:null; };
