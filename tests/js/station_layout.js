@@ -51,6 +51,19 @@ class Check {
       assert.ok((p.doors||[]).some(d=>d.kind==='entry' && d.x0>=p.cross.x1) || (p.exit && p.exit.wall==='right') || (p.gates && p.gates.wicket), `${label}: нет второй двери оператора за поз. ${p.cross.pos}`);
       assert.ok(p.issues.some(i=>/^Сквозного прохода нет/.test(i.text)), `${label}: замечание «без сквозного прохода»`); }
     assert.ok(aMin>=500, `${label}: проход не менее ${aMin} мм`);
+    // проёмы дверей и ворот: на одной стене между ними — не меньше door.gap, от края станции — не меньше door.edge (решение 13.10)
+    { const Q=StationLayout.gaps(p.geo), O={ front:[], back:[], left:[], right:[] }, put=(w, a, b, t)=>O[w].push([a, b, t]);
+      for (const d of p.doors||[]) put(d.wall, d.x0, d.x1, d.kind);
+      if (p.entry && !p.entry.sea) p.entry.wall==='front' ? put('front', p.entry.x0, p.entry.x1, 'вход') : put(p.entry.wall, p.entry.y0, p.entry.y1, 'вход');
+      for (const g of [p.gates, p.gates2]) if (g && !g.sea) put(g.wall, g.y0, g.y1, 'ворота');
+      if (p.exit) put(p.exit.wall, p.exit.y0, p.exit.y1, 'выход'); if (p.dguDoor) put('right', p.dguDoor.y0, p.dguDoor.y1, 'ДГУ');
+      if (p.fuel && p.fuel.door) put('front', p.fuel.door.x0, p.fuel.door.x1, 'бак');
+      for (const [w, list] of Object.entries(O)){ const lim=w==='front' || w==='back' ? [Q.eL, L-Q.eL] : [Q.eW, W-Q.eW];
+        list.sort((a, b)=>a[0]-b[0]);
+        // не уместились (стена мала) — только с замечанием, по середине стены
+        const warned=p.issues.some(i=>i.gap);
+        for (const [a, b, t] of list) assert.ok((a>=lim[0]-1 && b<=lim[1]+1) || (warned && lim[1]-lim[0]<b-a), `${label}: ${t} ${a}…${b} на стене ${w} — ближе ${Q.eL}/${Q.eW} мм к краю (внутри ${lim.join('…')})`);
+        for (let k=1; k<list.length; k++) assert.ok(list[k][0]-list[k-1][1]>=Q.gap-1, `${label}: на стене ${w} между ${list[k-1][2]} и ${list[k][2]} ${list[k][0]-list[k-1][1]} мм < ${Q.gap}`); } }
     // осушителям и ресиверам сервисных дверей не делают — через ворота в торце; ворота в торцах — одной высоты, по самому
     // высокому оборудованию (решение ПНЕВМОТЕХ 13.10)
     for (const d of (p.doors||[]).filter(d=>d.kind!=='entry')) assert.ok(d.pos.every(v=>!floor.some(i=>i.pos===v && StationLayout.NO_DOOR.test(i.kind))), `${label}: сервисные ворота осушителю или ресиверу поз. ${d.pos.join(', ')}`);
@@ -120,11 +133,17 @@ class Check {
   }
   /** надписи листа: текст, поворот и границы [x0, y0, x1, y1], мм */
   static texts(s){
-    const out=[], re=/<text x="([\d.-]+)" y="([\d.-]+)" font-size="([\d.]+)"(?: text-anchor="(\w+)")?(?: transform="rotate\(([-\d.]+)[^"]*\)")?[^>]*>([^<]*)<\/text>/g; let m;
+    // лист с изображением, повёрнутым на 90° (StationDrawing.page): надписи группы translate(a,b) rotate(90) — в координатах листа
+    const out=[], re=/<g transform="translate\(([\d.-]+),([\d.-]+)\) rotate\(90\)">|<g[ >]|<\/g>|<text x="([\d.-]+)" y="([\d.-]+)" font-size="([\d.]+)"(?: text-anchor="(\w+)")?(?: transform="rotate\(([-\d.]+)[^"]*\)")?[^>]*>([^<]*)<\/text>/g; let m;
+    const G=[];
     while ((m=re.exec(s))){
-      const x=+m[1], y=+m[2], h=+m[3]/EskdSheet.CAP, a=m[4]||'start', rot=+(m[5]||0), t=m[6].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&'), w=EskdSheet.tw(t, h);
+      if (m[1]!=null){ G.push([+m[1], +m[2]]); continue; }
+      if (m[0].startsWith('<g')){ G.push(null); continue; }
+      if (m[0]==='</g>'){ G.pop(); continue; }
+      const x=+m[3], y=+m[4], h=+m[5]/EskdSheet.CAP, a=m[6]||'start', rot=+(m[7]||0), t=m[8].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&'), w=EskdSheet.tw(t, h);
       let b; if (!rot){ const x0=a==='middle' ? x-w/2 : a==='end' ? x-w : x; b=[x0, y-h, x0+w, y+0.25*h]; }
       else { const y0=a==='middle' ? y-w/2 : a==='end' ? y : y-w; b=[x-h, y0, x+0.25*h, y0+w]; }
+      const R=G.filter(Boolean).pop(); if (R) b=[R[0]-b[3], R[1]+b[0], R[0]-b[1], R[1]+b[2]];
       out.push({ t, rot, b }); }
     return out;
   }
@@ -400,13 +419,13 @@ Check.run('сжатый воздух: последовательно, фильт
   // ресивер: нет — рекомендуемый объём; частотный компрессор — меньше
   const nr=solve(C('block'), [c62, dr6]); const rr=nr.air.recs.find(r=>r.key==='receiver');
   assert.ok(rr && nr.issues.some(i=>/Ресивера в составе нет/.test(i.text)), 'ресивер рекомендован');
-  // методика ПНЕВМОТЕХ (13.10): 6,2 м³/мин — цикл 6,2 / (8 · 1) = 775 л, базовый буфер 0,25 · 6 200 = 1 550 л → кратно 900 л: 2 × 900;
-  // с осушителем — мокрый до него: 0,3 · 1 800 = 540 л → 900 л (500 л — только если 900 л даёт запас больше 200 %)
+  // методика ПНЕВМОТЕХ (13.10, уточнено 13.10): 6,2 м³/мин — цикл 6,2 / (8 · 1) = 775 л; наименьшее допустимое — не меньше
+  // 80 % (620 л) и 15 % минутной производительности (930 л) → 2 × 900; мокрый — только при пиках (их нет)
   assert.ok(rr.qty===2 && rr.r.volume[0]==='900' && /^Воздушные ресиверы 2 × 900 л \(после осушителя\)$/.test(rr.title) && rr.total===1800 && rr.role==='dry', 'ресиверы 2 × 900 л: '+JSON.stringify(rr));
   // ресиверы есть, но меньше расчёта — добрать по 900 л
   const one=solve(C('block'), [c62, dr6, P('Ресивер 900', { cat:'receiver', volume:900, pressure:11, size:'930 × 940 × 2040' })]);
   const rm=one.air.recs.find(r=>r.key==='receiver-more'); assert.ok(rm && rm.qty===1 && rm.role==='dry' && /^Ещё 1 × 900 л/.test(rm.title), JSON.stringify(rm));
-  const rw=nr.air.recs.find(r=>r.key==='receiver-wet'); assert.ok(rw && rw.qty===1 && rw.r.volume[0]==='900' && rw.role==='wet', 'мокрый ресивер: '+JSON.stringify(rw));
+  assert.ok(!nr.air.recs.some(r=>r.key==='receiver-wet'), 'мокрый ресивер без пиков не нужен');
   // класс чистоты: вода класса 2 — адсорбционный (−40 °C)
   const cl=StationLayout.solve({ cont:C('block'), parts:[c62, dr6, rc, two], air:'1.2.1' });
   assert.ok(cl.issues.some(i=>i.level==='warn' && /нужен адсорбционный осушитель/.test(i.text)));
@@ -606,7 +625,7 @@ Check.run('трубопровод: материал, трасса, отпеча�
     else assert.ok(b.z1===l.z && side, `отвод в ближнюю стенку: ${it.kind}`); }
   assert.ok(ns.piping[0].lines.some(l=>l.branches.some(b=>b.z1<l.z)), 'напор над насосами — со спусками');
   // номера позиций на плане — поверх трубопровода: фильтры стоят на трубе, линия не должна перечёркивать цифры
-  const sv=StationDrawing.sheets(ks, {})[1], sec=sv.slice(sv.indexOf('>Б–Б'));
+  const sv=StationDrawing.sheets(ks, {}).find(x=>x.includes('>Б–Б')), sec=sv.slice(sv.indexOf('>Б–Б'));
   assert.ok(sec.includes('stroke-width="0.7"') && sec.indexOf('r="0.5" fill="#000"')>sec.lastIndexOf('stroke-width="0.7"'), 'номера на плане — после трубопровода');
   const inp=m=>({ cont:C('sea20'), parts:[comp, P('Трубопровод', {}, { id:'tp', pipeMat:m })] });
   assert.notStrictEqual(StationLayout.hash(inp('steel')), StationLayout.hash(inp('pp')), 'материал — в отпечатке');
@@ -647,15 +666,19 @@ Check.run('отпечаток расстановки', ()=>{
 });
 
 Check.run('чертёж: листы А4 по ЕСКД', ()=>{
-  const p=solve(C('sea40'), [dgu, ats, tank]), L=StationDrawing.sheets(p, meta(p, 'Название <b>с разметкой</b> & амперсандом')), d=L[0], d2=L[1];
+  const p=solve(C('sea40'), [dgu, ats, tank]), L=StationDrawing.sheets(p, meta(p, 'Название <b>с разметкой</b> & амперсандом')), d=L[0], d2=L.find(x=>x.includes('>Б–Б'));
   const sz=Check.sheet(d, 'чертёж');
-  // три листа: 1 — разрез А–А и текстовая часть (только на первом листе), 2 — план и виды с торцов, 3 — схема строповки
-  assert.strictEqual(L.length, 3, 'три листа'); L.slice(1).forEach((x, i)=>Check.sheet(x, 'чертёж, лист '+(i+2)));
-  const T2=Check.texts(d2).map(q=>q.t), T3=Check.texts(L[2]).map(q=>q.t);
-  assert.ok(T2.includes('Лист') && T2.includes('2') && !T2.includes('Разраб.') && !T2.some(t=>t==='Технические требования'), 'лист 2: основная надпись формы 2а, без текстовой части');
-  assert.ok(T2.some(t=>/^Б–Б/.test(t)) && T2.some(t=>/^В( \(|$)/.test(t)) && T2.some(t=>/^Г( \(|$)/.test(t)), 'лист 2: план и виды с торцов В и Г');
-  assert.ok(T3.some(t=>/^Схема строповки/.test(t)) && T3.includes('ЦТ') && T3.some(t=>/«Место строповки»/.test(t)) && T3.some(t=>/«Центр тяжести»/.test(t)), 'лист 3: схема строповки, центр тяжести, знаки № 9 и № 12');
-  assert.ok(Check.texts(d).some(q=>q.t==='Листов') && d.includes('>3<'), 'листов — 3');
+  // 40 футов (решение ПНЕВМОТЕХ 13.10: крупно, листов сколько нужно): 1 — текстовая часть, разрез А–А — своим листом,
+  // повёрнутым на 90° (крупнее), план — своим (повёрнутым), виды с торцов — своим, схема строповки — последним
+  assert.strictEqual(L.length, 5, 'пять листов'); L.slice(1).forEach((x, i)=>Check.sheet(x, 'чертёж, лист '+(i+2)));
+  assert.ok(L[1].includes(' rotate(90)">') && L[2].includes(' rotate(90)">') && !L[3].includes(' rotate(90)">'), 'разрез А–А и план — повёрнуты на 90°, виды с торцов — нет');
+  const SN=t=>L.map(x=>Check.texts(x).map(q=>q.t)).findIndex(T=>T.some(q=>t.test(q)));
+  assert.deepStrictEqual([SN(/^А–А/), SN(/^Б–Б/), SN(/^Схема строповки/)], [1, 2, 4], 'порядок листов');
+  const T2=Check.texts(L[SN(/^Б–Б/)]).map(q=>q.t), T3=Check.texts(L[4]).map(q=>q.t);
+  assert.ok(T2.includes('Лист') && T2.includes('3') && !T2.includes('Разраб.') && !T2.some(t=>t==='Технические требования'), 'лист 3: основная надпись формы 2а, без текстовой части');
+  const T4=Check.texts(L[3]).map(q=>q.t); assert.ok(T4.some(t=>/^В( \(|$)/.test(t)) && T4.some(t=>/^Г( \(|$)/.test(t)), 'лист 4: виды с торцов В и Г');
+  assert.ok(T3.some(t=>/^Схема строповки/.test(t)) && T3.includes('ЦТ') && T3.some(t=>/«Место строповки»/.test(t)) && T3.some(t=>/«Центр тяжести»/.test(t)), 'лист 5: схема строповки, центр тяжести, знаки № 9 и № 12');
+  assert.ok(Check.texts(d).some(q=>q.t==='Листов') && d.includes('>5<'), 'листов — 5');
   assert.ok(sz.w===StationDrawing.W && sz.h===StationDrawing.H, 'лист А4');
   assert.ok(!d.includes('<b>') && d.includes('&lt;b&gt;'), 'название экранировано');
   // основная надпись (форма 1) и дополнительные графы
@@ -668,8 +691,9 @@ Check.run('чертёж: листы А4 по ЕСКД', ()=>{
   // масштаб — из ряда ГОСТ 2.302
   const sc=T.find(t=>/^1:[\d,]+$/.test(t)); assert.ok(sc && EskdSheet.SCALES.includes(+sc.slice(2).replace(',', '.')), 'масштаб '+sc);
   // разрезы, перечень, характеристика, требования
-  for (const t of ['А–А', 'Поз.', 'Наименование', 'Кол.', 'Масса, кг', 'Техническая характеристика', 'Технические требования'])
+  for (const t of ['Поз.', 'Наименование', 'Кол.', 'Масса, кг', 'Техническая характеристика', 'Технические требования'])
     assert.ok(T.includes(t), 'на листе нет «'+t+'»');
+  assert.ok(Check.texts(L[1]).some(q=>/^А–А/.test(q.t)), 'разрез А–А — на листе 2');
   assert.ok(T2.includes('Проход обслуживания'), 'на плане — проход обслуживания');
   assert.ok(T.some(t=>/^(\d\. )?Внутри — [\d ]+ × [\d ]+ × [\d ]+ мм$/.test(t)), 'внутренние размеры — в технической характеристике (номер пункта — отдельно при переносе)');
   // позиции: номер на полке у каждой позиции перечня — ровно один раз
@@ -825,9 +849,9 @@ Check.run('свой рисунок модели: вид спереди и све
   const c2=P('Компрессор с рисунком', { cat:'comp_screw', flow:6, pressure:8, size:'1400 × 900 × 1500' }, { role:'main', draw:{ front:{ src:png, w:1, h:1 }, top:{ src:png, w:1, h:1 } } });
   const p=solve(C('block', { sizeAuto:true }), [c2, dryer, P('Трубопровод', {}, { pipeMat:'steel' })]); Check.plan(p, 'рисунок');
   const it=p.items.find(i=>i.kind==='compressor'); assert.ok(it.pic && it.pic.front===png && it.pic.top===png, 'рисунок у элемента расстановки');
-  const [sv, sv2]=StationDrawing.sheets(p, meta(p)); Check.sheet(sv, 'рисунок');
-  assert.strictEqual((sv.match(/<image /g)||[]).length+(sv2.match(/<image /g)||[]).length, 2, 'спереди (А–А) и сверху (Б–Б)');
-  assert.ok(sv.includes('preserveAspectRatio="xMidYMax meet" href="'+png+'"'), 'спереди — вписан по низу');
+  const SV=StationDrawing.sheets(p, meta(p)); Check.sheet(SV[0], 'рисунок');
+  assert.strictEqual(SV.reduce((s, x)=>s+(x.match(/<image /g)||[]).length, 0), 2, 'спереди (А–А) и сверху (Б–Б)');
+  assert.ok(SV.some(sv=>sv.includes('preserveAspectRatio="xMidYMax meet" href="'+png+'"')), 'спереди — вписан по низу');
   const bare=solve(C('block', { sizeAuto:true }), [P('Компрессор с рисунком', { cat:'comp_screw', flow:6, pressure:8, size:'1400 × 900 × 1500' }, { role:'main' }), dryer, P('Трубопровод', {}, { pipeMat:'steel' })]);
   assert.notStrictEqual(bare.hash||StationLayout.hash({ cont:C('block'), parts:[c2] }), StationLayout.hash({ cont:C('block'), parts:[Object.assign({}, c2, { draw:null })] }), 'отпечаток: рисунок');
   assert.ok(!/<image /.test(StationDrawing.svg(bare, meta(bare))), 'без рисунка — рисунок программы');
@@ -1089,7 +1113,7 @@ Check.run('масса и центр тяжести, строповка; знак
   const sp=solve(C('sea40'), [dgu, ats]), F=sp.mass.sling.frame;
   assert.ok(F && sp.mass.sling.legs.every(q=>q.deg===0) && F.deg<=StationMass.ANGLE && F.lugs[0]<sp.mass.cg.x && F.lugs[1]>sp.mass.cg.x, 'морской: рамная траверса над ЦТ, ветви вертикальны');
   assert.ok(StationDrawing.lift(sp).some(t=>/рамной траверсой/.test(t) && /ISO 3874/.test(t)) && StationDrawing.lift(ks).some(t=>/не более 45°/.test(t)), 'ТТ: строповка по схеме');
-  const T3=Check.texts(StationDrawing.sheets(sp, meta(sp))[2]).map(q=>q.t);
+  const T3=Check.texts(StationDrawing.sheets(sp, meta(sp)).slice(-1)[0]).map(q=>q.t);
   assert.ok(T3.includes('рамная траверса') && T3.some(t=>/вертикально/.test(t)), 'лист 3: рамная траверса');
   // 3D снаружи: № 9 — у каждого из четырёх верхних углов (на длинной стене или на торце), № 12 — не меньше чем на двух стенах,
   // в проекции ЦТ; «Масса брутто»; на тёмной стене — светлые (п. 5.10)
@@ -1357,7 +1381,7 @@ Check.run('масса: брутто морского контейнера (ISO 6
   // S = Q / (n · cos α): n = 2, рамная траверса — ветви вертикальны: Q / 2, с округлением до 0,1 т вверх
   assert.strictEqual(M.sling.wll.n, 2); assert.strictEqual(M.sling.wll.leg, Math.ceil(M.mass/1000/2*10-1e-9)/10);
   assert.ok(M.sling.wll.top>=M.sling.wll.leg, 'строп рамы под углом — не меньше вертикальной ветви');
-  const T=Check.texts(StationDrawing.sheets(p, meta(p))[2]).map(q=>q.t).join(' ');
+  const T=Check.texts(StationDrawing.sheets(p, meta(p)).slice(-1)[0]).map(q=>q.t).join(' ');
   assert.ok(/Грузоподъёмность каждой ветви стропа — не менее/.test(T) && /РД 10-33-93/.test(T), 'на схеме строповки — грузоподъёмность ветви');
   assert.deepStrictEqual(StationMass.issues({ ...M, mass:M.max-10 }), [], 'в пределах — без замечаний');
   assert.ok(/больше наибольшей массы брутто/.test(StationMass.issues({ ...M, mass:M.max+10 })[0].text), 'сверх предела — предупреждение');

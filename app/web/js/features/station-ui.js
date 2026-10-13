@@ -114,11 +114,13 @@ class StationUi {
       <p class="muted" style="margin:6px 0 0">Какие стороны обслуживаются у вида оборудования, сколько нужно места и когда ставятся ворота — «Настройки → Инженерные правила станций → Матрица расстановки». Класс: узкое — помещается с основным проходом; широкое — с проходом «в крайнем случае» и сервисными воротами; сверхширокое — только поперёк или шире габарита перевозки.</p></details>`;
   }
   static BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';   // пока вид рисуется
-  /** габаритный чертёж — все листы рядом (лист 1 — разрез и текст, 2 — план и торцы, 3 — схема строповки) */
+  /** габаритный чертёж — все листы в полный размер, один под другим (решение ПНЕВМОТЕХ 13.10: для удобства чтения); лист с
+   *  изображением, повёрнутым на 90°, на экране — повёрнут обратно (читается без поворота головы) */
   static sheets(plan, meta, i, o){
     const L=StationDrawing.sheets(plan, meta), n=L.length;
     return `<figure class="dr${n>1 ? ' dr-all' : ''}"><figcaption><b>Габаритный чертёж${n>1 ? ` — ${n} ${n<5 ? 'листа' : 'листов'}` : ''}</b><label class="stl-chk"><input type="checkbox" data-stl="draw" data-i="${i}"${o.draw ? ' checked' : ''}> в КП — после характеристик${n>1 ? ', все листы' : ''}</label></figcaption>
-          <div class="stl-sheets">${L.map((svg, k)=>`<img src="${esc(this.url(svg))}" alt="Габаритный чертёж станции, лист ${k+1}">`).join('')}</div></figure>`;
+          <div class="stl-sheets">${L.map((svg, k)=>{ const im=`<img src="${esc(this.url(svg))}" alt="Габаритный чертёж станции, лист ${k+1}">`;
+            return svg.includes(' rotate(90)">') ? `<div class="stl-rot">${im}</div>` : im; }).join('')}</div></figure>`;
   }
   static rank(t){ return { error:0, warn:1, info:2 }[t.level] ?? 3; }
   /** системы контейнера по расчёту: электропитание (мощность, ток, вводной автомат), освещение, розетки, пожарная
