@@ -988,14 +988,24 @@ void main(){ vec4 a=texture(uT, vU); float c=clamp(a.a, 0.0, 1.0); vec3 col=a.a>
       gl.useProgram(this.add); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, F.tmpT); gl.uniform1i(this.u(this.add, 'uT'), 0);
       gl.bindVertexArray(this.vaoQ); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.disable(gl.BLEND);
       if (o.onPass) o.onPass(i+1, passes.length);
-      if (i%4===3) await new Promise(r=>setTimeout(r, 0));   // интерфейс не замирает
+      if (i%2===1) await this.idle();   // видеокарта считает, интерфейс не замирает
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H); gl.useProgram(this.out);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, F.accT); gl.uniform1i(this.u(this.out, 'uT'), 0);
     gl.uniform3fv(this.u(this.out, 'uBg'), RalColor.rgb(StGl.BG).map(v=>v/255)); gl.uniform1f(this.u(this.out, 'uExp'), o.exposure||StGl.EXP);
     gl.bindVertexArray(this.vaoQ); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.bindVertexArray(null);
+    await this.idle();
     if (gl.isContextLost()) throw new Error('контекст WebGL потерян');
     return this.c;
+  }
+  /** дождаться, пока видеокарта выполнит отданные команды, не останавливая окно: метка (fenceSync) и проверка по таймеру.
+   *  Без этого вся работа кадра (десятки проходов) выполнялась бы при чтении картинки — окно замирало на секунды */
+  async idle(){
+    const gl=this.gl; if (!gl.fenceSync){ await new Promise(r=>setTimeout(r, 0)); return; }
+    const f=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); gl.flush();
+    try{ for (let k=0; k<6000; k++){ await new Promise(r=>setTimeout(r, k<5 ? 0 : 8));
+        if (gl.isContextLost() || gl.getSyncParameter(f, gl.SYNC_STATUS)===gl.SIGNALED) return; } }
+    finally{ gl.deleteSync(f); }
   }
 }
 
@@ -1023,6 +1033,11 @@ class StationRender {
   static FAILS = 3;          // сбоев WebGL подряд — после стольких до перезапуска только упрощённый вид
   static fails = 0;
   static cached(plan, view, az){ return this.cache.get(this.key(plan, view, az))||null; }
+  /** кадр → JPEG (data URL) в фоне: toBlob кодирует вне основного потока (toDataURL держал окно на время сжатия) */
+  static jpeg(c){
+    return new Promise((res, rej)=>{ if (!c.toBlob) return res(c.toDataURL('image/jpeg', 0.92));
+      c.toBlob(b=>{ if (!b) return rej(new Error('кадр не сохранился')); const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>rej(fr.error); fr.readAsDataURL(b); }, 'image/jpeg', 0.92); });
+  }
   /** высота кадра — по сцене (длинный контейнер — ниже кадр, без пустых полей) */
   static size(scene){ const W=this.W, c=StCam.fit(scene.bounds(), 1.6, 0.9, scene.az), k=c.span[1]/c.span[0]*1.6; return [W, Math.round(Math.max(760, Math.min(1100, W/1.6*Math.max(0.62, Math.min(1, k*1.12)))))]; }
   /** 3D-вид картинкой: {src — JPEG, w, h}; view — 'in' (разрез, по умолчанию) или 'out' (снаружи; az — ракурс, °: 0 —
@@ -1037,7 +1052,7 @@ class StationRender {
         await StDecal.prepare(sc);
         if (!this.gl) this.gl=new StGl(document.createElement('canvas'));
         const c=await this.gl.render(sc, { w, h, passes:this.soft ? Math.min(this.PASSES, 24) : this.PASSES, shadow:this.soft ? 1536 : 2048 });
-        const im={ src:c.toDataURL('image/jpeg', 0.92), w:c.width, h:c.height };
+        const im={ src:await this.jpeg(c), w:c.width, h:c.height };
         this.cache.set(key, im); if (this.cache.size>24) this.cache.delete(this.cache.keys().next().value);
         this.fails=0; this.lastErr='';
         return im;

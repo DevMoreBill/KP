@@ -4,7 +4,7 @@
 // черновик КП в это время не сохраняется и не перерисовывается, после закрытия всё возвращается как было.
 'use strict';
 
-const CAT_TMP_KEYS=['_light','_a','_nv','_hay','_sup','pricesCount','st','src','art'];   // служебные поля облегчённой карточки и окна каталога
+const CAT_TMP_KEYS=['_light','_a','_nv','_hay','_sup','_pq','pricesCount','st','src','art'];   // служебные поля облегчённой карточки и окна каталога
 
 function docToItem(doc){
   const x=JSON.parse(JSON.stringify(doc)); CAT_TMP_KEYS.forEach(k=>delete x[k]);

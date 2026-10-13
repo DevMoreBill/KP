@@ -353,15 +353,17 @@ class StationImages {
   /** место перед первой картинкой gen (нет таких — в конец) */
   static before(G, gen){ const k=G.findIndex(g=>g && g.gen===gen); return k>=0 ? k : G.length; }
   static async syncAll(){ let ch=false; for (const x of S.items) if (await this.sync(x)) ch=true; if (ch) persist(); return ch; }
-  /** после правок — через полсекунды, без лишних перерисовок; окно позиции — только на вкладке «Компоновка»
-   *  (на других вкладках поля ввода: перерисовка под рукой сбила бы набираемое) */
+  /** после правок — через полторы секунды тишины (картинки 3D считаются долго: не на каждое нажатие при наборе), без лишних
+   *  перерисовок; окно позиции — только на вкладке «Компоновка» (на других вкладках поля ввода: перерисовка под рукой сбила бы
+   *  набираемое) */
+  static WAIT = 1500;
   static soon(x){
     clearTimeout(this.timer);
     this.timer=setTimeout(async ()=>{
       if (!(await this.sync(x))) return;
       persist(); renderForm();
       if (EDIT && EDIT.tab==='layout' && S.items[EDIT.i]===x) renderEditor();
-    }, 500);
+    }, this.WAIT);
   }
   /** SVG → картинка (3D-вид — JPEG, чертёж — PNG: чёткие линии) */
   static async raster(svg, type){

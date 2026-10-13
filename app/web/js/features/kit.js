@@ -220,7 +220,7 @@ class CatFeatures {
 class KitPart {
   static MAX = 700;     // описание элемента — не длиннее (знаков); обрезается по концу предложения или пункта списка
   static fromCat(doc){
-    const a=attrsOf(doc), feats=CatFeatures.forKp(doc.features).filter(f=>f.text);
+    const a={ ...attrsOf(doc) }, feats=CatFeatures.forKp(doc.features).filter(f=>f.text);   // копия: габариты дописываются
     // блоки описания — с новой строки (списки «• …» остаются списками и в карточке, и в документе КП)
     const desc=KitPart.cut(feats.map(f=>(f.label&&!/^(описание|о серии|назначение)$/i.test(f.label)?f.label+': ':'')+f.text.trim()).join('\n'));
     const all=(doc.groups||[]).flatMap(g=>(g.rows||[]).filter(r=>r.k&&r.v)), rows=all.slice(0,14).map(r=>({k:r.k, v:r.v}));
@@ -403,6 +403,15 @@ function kitCargo(st=S){
 // F = {cat, maker, q, f:{ключ: значение}, r:{ключ: [от, до]}, min:{ключ: не меньше}, test(x)}; cats — допустимые категории
 // (null — все); min и test — подбор по нужному (KitNeed): давление не ниже компрессорного (без данных не отсекается)
 const pfNew = cats => ({ cat:cats&&cats.length===1?cats[0]:'', maker:'', q:'', f:{}, r:{} });
+// быстрый поиск в окне подбора: строка поиска карточки и ключ сортировки — один раз на карточку (каталог 7 500+ позиций
+// перебирается на каждое нажатие), набор в поле поиска — с короткой задержкой, чтобы список не перерисовывался на каждую букву
+class PickFind {
+  static WAIT = 160;
+  static hay(x, a){ if (x._pq!=null && CatAttrs.cards.has(x)) return x._pq;
+    const h=norm([x.name, a.maker, a.model, a.series].join(' ')); if (CatAttrs.cards.has(x)) x._pq=h; return h; }
+  static key(x){ const a=attrsOf(x); return numOf(a[typeById(a.cat).main||'kw'])??9e9; }
+  static later(fn){ clearTimeout(this.t); this.t=setTimeout(fn, this.WAIT); }
+}
 const pfNum = v => { const n=parseFloat(String(v??'').replace(/\s+/g,'').replace(',','.')); return Number.isFinite(n)?n:null; };
 function pfPool(cats){ return catCache.filter(x=>!cats || cats.includes(attrsOf(x).cat)); }
 function pfFields(F){ return F.cat ? typeById(F.cat).fields.filter(f=>f.facet || f.range).slice(0,8) : []; }
@@ -427,13 +436,12 @@ function pfMatch(x, F, cats){
     const n=numOf(a[k]); if (n==null || (l!=null && n<l) || (h!=null && n>h)) return false; }
   for (const [k,v] of Object.entries(F.min||{})){ const t=KitNeed.top(a[k]); if (t!=null && t<v-1e-9) return false; }
   if (F.test && !F.test(x)) return false;
-  if (F.q.trim()){ const w=norm(F.q).split(' ').filter(Boolean), hay=norm([x.name, a.maker, a.model, a.series].join(' ')); if (!w.every(v=>hay.includes(v))) return false; }
+  if (F.q.trim()){ const w=F._w && F._w.q===F.q ? F._w.w : (F._w={ q:F.q, w:norm(F.q).split(' ').filter(Boolean) }).w, hay=PickFind.hay(x, a); if (!w.every(v=>hay.includes(v))) return false; }
   return true;
 }
 function pfList(F, cats, lim=40){
-  const res=pfPool(cats).filter(x=>pfMatch(x,F,cats));
-  const mv=x=>numOf(attrsOf(x)[typeById(attrsOf(x).cat).main||'kw'])??9e9;
-  return { n:res.length, list:res.sort((p,q)=>mv(p)-mv(q)).slice(0,lim) };
+  const res=pfPool(cats).filter(x=>pfMatch(x,F,cats)), K=new Map(res.map(x=>[x, PickFind.key(x)]));
+  return { n:res.length, list:res.sort((p,q)=>K.get(p)-K.get(q)).slice(0,lim) };
 }
 // изменение поля фильтра; true — поменялся набор полей (нужно перерисовать фильтры)
 function pfSet(F, el){
@@ -445,7 +453,7 @@ function pfSet(F, el){
   if (t==='f'){ F.f[key]=v; return false; }
   const r=F.r[key]=F.r[key]||['','']; r[t==='rmin'?0:1]=v; return false;
 }
-const pfRow = (x, act, tag='', cls='') => `<button type="button" class="kit-pick${cls}" ${act}="${esc(x.id)}">${x.photo&&x.photo.src?`<img src="${esc(x.photo.src)}" alt="">`:'<span class="kit-noimg"></span>'}<span>${tag}<b>${esc(x.name)}</b><small class="muted">${esc(typeById(attrsOf(x).cat).name)}${mainLine(x,3)?' · '+esc(mainLine(x,3)):''}${x.cost?' · закупка '+money(x.cost)+' '+(x.costCur||'RUB'):''}</small></span></button>`;
+const pfRow = (x, act, tag='', cls='') => `<button type="button" class="kit-pick${cls}" ${act}="${esc(x.id)}">${x.photo&&x.photo.src?`<img src="${esc(x.photo.src)}" alt="" loading="lazy" decoding="async">`:'<span class="kit-noimg"></span>'}<span>${tag}<b>${esc(x.name)}</b><small class="muted">${esc(typeById(attrsOf(x).cat).name)}${mainLine(x,3)?' · '+esc(mainLine(x,3)):''}${x.cost?' · закупка '+money(x.cost)+' '+(x.costCur||'RUB'):''}</small></span></button>`;
 
 // выбор позиции каталога для элемента: cats — только эти категории (основное оборудование станции), role — роль элемента,
 // preset — подбор по нужному (KitNeed, «Компоновка»): фильтры {f, r, min, test}, строка need («что нужно» — над списком, с
@@ -470,7 +478,7 @@ function kitPickCat(i, cats, role, name, preset, by){
   if (!preset) setTimeout(()=>d.querySelector('[data-pf="q"]')?.focus(), 30);
   const onF=e=>{ const el=e.target.closest('[data-pf]'); if (!el) return; const re=pfSet(F, el);
     if (re){ draw(); } else $('#kitPL').innerHTML=list(); };
-  $('#kitPF').oninput=e=>{ if (e.target.tagName==='INPUT') onF(e); }; $('#kitPF').onchange=e=>{ if (e.target.tagName==='SELECT') onF(e); };
+  $('#kitPF').oninput=e=>{ if (e.target.tagName!=='INPUT') return; if (e.target.dataset.pf==='q') PickFind.later(()=>d.open && onF(e)); else onF(e); }; $('#kitPF').onchange=e=>{ if (e.target.tagName==='SELECT') onF(e); };
   d.querySelector('.dlg-h [data-kitnew]').onclick=()=>kitPickNew();
   // подбор по рекомендации: количество (рекомендуемый — сколько нужно параллельно, иначе preset.qty) и замена прежних
   // элементов (preset.replace — их id: осушитель меньше нужного, ресиверы на учёте → несколько меньших)

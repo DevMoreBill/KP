@@ -39,9 +39,48 @@ function freshState(){
     condAuto: Object.fromEntries(COND.map(c=>[c[0], DEF('cond.'+c[0])]).filter(x=>x[1])), condExtra:'', manager:{...manager}, managerId:'' };
 }
 
+// черновик КП в браузере (на случай закрытия вкладки). Большие картинки (data:, 3D-виды и листы чертежа станции — мегабайты)
+// хранятся отдельными записями и пишутся один раз: иначе каждая правка КП ждала бы запись нескольких мегабайт (на слабом ПК —
+// заметная задержка после каждого нажатия). В черновике вместо картинки — ссылка REF+номер
+class LocalDraft {
+  static KEY = 'kp.draft';
+  static PRE = 'kp.img.';
+  static REF = '\u0000img:';
+  static MIN = 20000;          // меньше — прямо в черновике
+  static ids = new Map();      // картинка → номер записи (уже записана)
+  static n = 0;
+  static save(st){
+    const used=new Set();
+    const s=JSON.stringify(st, (k, v)=>typeof v==='string' && v.length>=this.MIN && v.startsWith('data:') ? this.REF+this.put(v, used) : v);
+    localStorage.setItem(this.KEY, s); this.sweep(used);
+  }
+  /** черновик без картинок (не хватило места в браузере) */
+  static saveLite(st){ localStorage.setItem(this.KEY, JSON.stringify(st)); this.sweep(new Set()); }
+  static put(v, used){
+    let id=this.ids.get(v);
+    if (!id){ id=Date.now().toString(36)+'_'+(++this.n); localStorage.setItem(this.PRE+id, v); this.ids.set(v, id); }
+    used.add(id); return id;
+  }
+  /** убрать записи картинок, на которые черновик больше не ссылается */
+  static sweep(used){
+    for (let k=localStorage.length-1; k>=0; k--){ const key=localStorage.key(k);
+      if (key && key.startsWith(this.PRE) && !used.has(key.slice(this.PRE.length))) localStorage.removeItem(key); }
+    for (const [v, id] of this.ids) if (!used.has(id)) this.ids.delete(v);
+  }
+  static load(){
+    const d=localStorage.getItem(this.KEY); if (!d) return null;
+    return JSON.parse(d, (k, v)=>{ if (typeof v!=='string' || !v.startsWith(this.REF)) return v;
+      const id=v.slice(this.REF.length), src=localStorage.getItem(this.PRE+id); if (src==null) return null;
+      this.ids.set(src, id); return src; });
+  }
+  /** черновик переписан в другой вкладке (она могла убрать «чужие» картинки) — следующее сохранение пишет картинки заново */
+  static watch(){ window.addEventListener('storage', e=>{ if (e.key==null || e.key===this.KEY || e.key.startsWith(this.PRE)) this.ids.clear(); }); }
+}
+LocalDraft.watch();
+
 let S = freshState();
 
-try { const d = localStorage.getItem('kp.draft'); if (d) { S = Object.assign(freshState(), JSON.parse(d)); S.pricing = Object.assign(freshState().pricing, S.pricing||{}); S.contact=Object.assign(freshState().contact,S.contact||{}); S.object=Object.assign(freshState().object,S.object||{}); S.items.forEach(x=>{ x._busy=false; x._srcImg=null; x.options=x.options||[]; x.attrs=x.attrs||{}; }); } } catch(e){}
+try { const d = LocalDraft.load(); if (d) { S = Object.assign(freshState(), d); S.pricing = Object.assign(freshState().pricing, S.pricing||{}); S.contact=Object.assign(freshState().contact,S.contact||{}); S.object=Object.assign(freshState().object,S.object||{}); S.items.forEach(x=>{ x._busy=false; x._srcImg=null; x.options=x.options||[]; x.attrs=x.attrs||{}; }); } } catch(e){}
 
 let saveT;
 
@@ -56,9 +95,9 @@ function persist(){
   saveT = setTimeout(()=>{
     if (CATED) return;
     const el = $('#saved');
-    try { localStorage.setItem('kp.draft', JSON.stringify(S)); el.textContent = 'Черновик сохранён'; }
+    try { LocalDraft.save(S); el.textContent = 'Черновик сохранён'; }
     catch(e){
-      try { const lite = JSON.parse(JSON.stringify(S)); lite.items.forEach(i=>{i.photo=null;i.logo=null; if(i.gallery) i.gallery=i.gallery.filter(g=>!String(g.src).startsWith('data:'));}); localStorage.setItem('kp.draft', JSON.stringify(lite)); el.textContent = 'Черновик сохранён без фото'; }
+      try { const lite = JSON.parse(JSON.stringify(S)); lite.items.forEach(i=>{i.photo=null;i.logo=null; if(i.gallery) i.gallery=i.gallery.filter(g=>!String(g.src).startsWith('data:'));}); LocalDraft.saveLite(lite); el.textContent = 'Черновик сохранён без фото'; }
       catch(e2){ el.textContent = ''; }
     }
     try { localStorage.setItem('kp.manager', JSON.stringify(S.manager)); } catch(e){}
