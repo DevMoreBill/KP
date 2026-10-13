@@ -208,6 +208,25 @@ class Check {
     assert.ok(kitParts(x).filter(p=>/^Шкаф/.test(p.name)).every(p=>KitScope.of(p)==='asm' && p.desc), 'шкафы — у сборщика, с описанием');
   });
 
+  // «400 / 230 В» — трёхфазная с нейтралью (до 3.86 по ошибке отсекалась как однофазная, и для 800 кВт бралась ДГУ на
+  // 10,5 кВ мощностью 2000 кВт); однофазные и высоковольтные — не для станции 0,4 кВ
+  await Check.run('ДГУ: «400 / 230 В» — трёхфазная, однофазные и 6,3 / 10,5 кВ — нет', async ()=>{
+    const I=(n, v, ph, kw)=>Cat.item(n, { cat:'dgu', kw, voltage:v, phases:ph });
+    const ok=c=>TzPick.dguOk(c);
+    assert.ok(ok(I('ДГУ HERTZ HG 1100 CL', '400 / 230 В', '3 фазы', 800)) && ok(I('ДГУ А', '400/230 В', '', 100)) && ok(I('ДГУ Б', '400 В', '', 100)));
+    assert.ok(!ok(I('ДГУ В', '230 В', '1 фаза', 10)) && !ok(I('ДГУ Г', '220 В', '', 10)) && !ok(I('ДГУ Д', '10500 В', '3 фазы', 2000)) && !ok(I('ДГУ Е', '6 300 В', '3 фазы', 1000)) && !ok(I('ДГУ 6,3 кВ', '', '', 1000)));
+    global.catCache=[I('ДГУ HERTZ HG 1100 CL', '400 / 230 В', '3 фазы', 800), I('ДГУ ТСС АД-2000С-Т10500', '10500 В', '3 фазы', 2000)];
+    const x=Cat.station('st_dgu', [], { kw:'800' }); StationDefaults.add(x, 'st_dgu');
+    await TzPick.run(x, { kind:'dgu', kw:800, hours:0, work:0 });
+    assert.strictEqual(kitParts(x).find(z=>StationEquip.kindOf(z)==='dgu').name, 'ДГУ HERTZ HG 1100 CL');
+    // в контейнер — открытого исполнения (в кожухе шире, станция уходит в негабарит), кожух — если открытой нет
+    const J=(n, ex, kw)=>Cat.item(n, { cat:'dgu', kw, voltage:'400 / 230 В', phases:'3 фазы', execution:ex });
+    global.catCache=[J('ДГУ Energo 1000 MP-SD-S в кожухе', 'В кожухе', 800), J('ДГУ Energo MP1000S открытого исполнения', 'Открытое', 800)];
+    const y=Cat.station('st_dgu', [], { kw:'800' }); StationDefaults.add(y, 'st_dgu');
+    await TzPick.run(y, { kind:'dgu', kw:800, hours:0, work:0 });
+    assert.strictEqual(kitParts(y).find(z=>StationEquip.kindOf(z)==='dgu').name, 'ДГУ Energo MP1000S открытого исполнения');
+  });
+
   await Check.run('ДГУ: резерв и бак под время работы', async ()=>{
     global.catCache=[Cat.item('ДГУ АД-120', { cat:'dgu', kw:120 }), Cat.item('ДГУ АД-250', { cat:'dgu', kw:250 }), Cat.item('ДГУ АД-500', { cat:'dgu', kw:500 })];
     const x=Cat.station('st_dgu', [], { reserve:'1', hours:'24', kw:'200' });

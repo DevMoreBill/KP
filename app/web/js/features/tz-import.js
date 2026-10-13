@@ -343,9 +343,18 @@ class TzPick {
   /** насос для стационарной насосной станции в контейнере: электрический, не погружной, не скважинный, не дренажный, не
    *  мотопомпа (вид и привод — из карточки; не указаны — допускается) */
   static pumpOk(c){ const a=attrsOf(c); return !/мотопомп|погружн|скважин|дренаж|фекал/i.test(String(a.kind||'')+' '+c.name) && !/дизел|бензин/i.test(String(a.drive||'')); }
-  /** ДГУ для станции 0,4 кВ: не однофазная (220/230 В, «1 фаза»); исполнение — открытое или под контейнер (передвижные
+  /** ДГУ для станции 0,4 кВ: трёхфазная 400 В (не однофазная 220/230 В и не высоковольтная 6,3 / 10,5 кВ); «400 / 230 В» —
+   *  трёхфазная с нейтралью (до 3.86 по ошибке считалась однофазной); исполнение — открытое или под контейнер (передвижные
    *  отсеяны в stationPool) */
-  static dguOk(c){ const a=attrsOf(c), t=String(a.voltage||'')+' '+String(a.phases||'')+' '+c.name; return !/однофазн|1\s*фаз|(?:^|[^\d\/])(?:220|230)\s*В(?![а-яё])(?!\s*\/)/i.test(t); }
+  /** в контейнер — ДГУ открытого исполнения: в кожухе она шире и выше, контейнер выходит за габарит перевозки (решение 3.86:
+   *  кожух — только если открытой нужной мощности нет); штраф к оценке подбора */
+  static dguPen(c){ return /кожух|капот|шумозащит/i.test(String(attrsOf(c).execution||'')+' '+c.name) ? 0.15 : 0; }
+  static dguOk(c){
+    const a=attrsOf(c), v=String(a.voltage||''), t=v+' '+String(a.phases||'')+' '+c.name;
+    if (/\d{4,}\s*В(?![а-яё])|\d+(?:[.,]\d+)?\s*кВ(?![а-яёА-ЯЁ])/i.test(t.replace(/(\d)\s+(?=\d{3}\b)/g, '$1'))) return false;   // 6 300 / 10 500 В, 10,5 кВ
+    if (/3\s*фаз|тр[её]хфазн/i.test(t)) return true;
+    return !/однофазн|1\s*фаз|(?<![\d\/]\s*)(?<!\d)(?:220|230)\s*В(?![а-яё])(?!\s*\/)/i.test(t);
+  }
   static stationPool(cats){ return catCache.filter(c=>cats.includes(attrsOf(c).cat) && !this.mobile(c)); }
   static electric(pool){ return pool.filter(c=>attrsOf(c).cat!=='comp_diesel'); }
   /** ресиверы на объём V, л: один, иначе несколько одинаковых — наименьшее число, затем наименьший объём; сначала — каждый без
@@ -500,7 +509,8 @@ class TzPick {
       // мощность — по назначению (резервный — ESP, иначе PRP); только трёхфазные стационарные; одна рабочая, если в ТЗ не сказано
       // иначе; одной не хватает — несколько одинаковых параллельно (до MAX)
       const L=pool.filter(c=>this.dguOk(c)).map(c=>({ c, v:GensetSizing.cap(attrsOf(c), q.mode==='standby') })).filter(o=>o.v>0);
-      const u=this.units(L, q.kw, q.work||1) || (q.work ? null : this.units(L, q.kw, 0)), n=u ? u.n+res : 0;
+      const cov=o=>this.dguPen(o.c);
+      const u=this.units(L, q.kw, q.work||1, cov) || (q.work ? null : this.units(L, q.kw, 0, cov)), n=u ? u.n+res : 0;
       if (u){ add.push(await this.part(u.o.c, n, 'main')); got.push(`ДГУ ${n>1 ? `${u.n}${res ? ' + '+res+' резервн.' : ''} × ` : ''}${u.o.c.name}`); } else miss.push(`ДГУ от ${AirChain.m3(q.kw)} кВт`);
       x.kit.parts=[...add, ...keep];
       const v=q.hours>0 ? StationDefaults.retank(x, q.hours) : null, fp=v && StationRules.ok() ? GensetSizing.plan(x) : null;
