@@ -506,7 +506,7 @@ class TzPick {
       const nd=q.flow>0 ? StationReq.need(q, q.flow) : { v:0, why:'' }, Q=ads && nd.v>0 ? nd.v/(1-AirChain.PURGE) : nd.v;
       // по высоте — помещаются в контейнер (габариты известны); электрические — первыми, дизельные — если их нет
       const cp=pool.filter(c=>this.fitsH(c, 'compressor', H));
-      if (Q>0){ const u=this.comps(this.electric(cp), Q, B, q) || this.comps(cp, Q, B, q);
+      if (Q>0){ const u=this.comps(this.electric(cp), Q, B, q) || (q.compact && this.electric(cp).length ? null : this.comps(cp, Q, B, q));   // «чтобы поместилось» — не дизельный вместо электрического
         if (u){ Bc=u.o.p||B; picked=u; }
         if (u){ add.push(await this.part(u.o.c, u.n+res, 'main')); got.push(`компрессоры ${u.n}${res ? ' + '+res+' резервн.' : ''} × ${u.o.c.name}${nd.why ? ` (потребность: ${nd.why})` : ''}${ads ? ` (с запасом ${Math.round(AirChain.PURGE*100)} % на продувку адсорбционного осушителя)` : ''}`);
           if (B>0 && u.o.p>0 && u.o.p<this.barNeed(B, u.o.vsd)-0.05) got.push(`давление компрессора ${AirChain.m3(u.o.p)} бар — без запаса на потери в осушителе и фильтрах${u.o.vsd ? '' : ' и диапазон регулирования'} (нужно около ${AirChain.m3(this.barNeed(B, u.o.vsd))})`); }

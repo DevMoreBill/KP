@@ -552,6 +552,10 @@ class StationEquip {
     if (n && n.length===2){   // «1150 × 430» — у фильтров и ресиверов: высота × диаметр; у глушителя — длина × диаметр
       const [p1, p2]=n, lo=Math.min(p1, p2), hi=Math.max(p1, p2);
       n=kind==='muffler' ? [hi, lo, lo] : ['filter', 'receiver', 'dryer', 'tank'].includes(kind) ? [lo, lo, hi] : [p1, p2, this.guess(p, kind)[2]]; }
+    // вертикальный ресивер (поле «Исполнение» или название), а габариты записаны «высота × Ø × Ø» — стоит: наибольший — высота
+    // (было до 3.86.12: «Ресивер вертикальный … 2200 × 1000 × 1000» ложился на бок — станция длиннее на 1,2 м на каждый)
+    if (n && n.length===3 && kind==='receiver' && /верт/i.test(String(a.orient||'')+' '+String(p.name||'')) && !/гориз/i.test(String(a.orient||'')) && Math.max(...n)>n[2]){
+      const s=[...n].sort((x, y)=>y-x); n=[s[1], s[2], s[0]]; }
     if (n && n.length===3){ const [l, w]=n[0]>=n[1] ? [n[0], n[1]] : [n[1], n[0]]; return { l, w, h:n[2], known:true, src }; }
     const g=this.guess(p, kind); return { l:g[0], w:g[1], h:g[2], known:false, src:'' };
   }
@@ -2553,7 +2557,9 @@ class StationLayout {
             if (st==='rec' && (w.some(x=>/^Проход|стоит в/.test(x)) || r.items.some(i=>i.tight))) break;   // рекомендуемые проход и отступ сзади не вышли — другая ширина
             if (st==='gate' && r.items.some(i=>i.ends)) break;   // без продольного прохода — не в этом уровне
             if (st==='gate' && (r.items.some(i=>i.tight) || (r.doors||[]).some(d=>d.kind!=='entry'))) continue;   // без сервисных ворот и дверей не вышло — длиннее (без поворота агрегата) или другая ширина
-            if ((st==='gate' || st==='acc') && w.some(x=>/не подойти/.test(x))) break;   // не ко всем сторонам есть доступ
+            // не ко всем сторонам есть доступ — длиннее (промежутки растут; ошибка до 3.86.12: другая ширина сразу — станция
+            // выходила больше при меньших отступах в правилах)
+            if ((st==='gate' || st==='acc') && w.some(x=>/не подойти/.test(x))) continue;
             if (ll===0 && w.some(x=>/^Промежутки|^Отступы/.test(x))) continue;      // промежутки — длиннее (место шкафу или фильтру в ряду)
             if ((r.doors||[]).some(d=>(d.why||[]).some(x=>/торцы заняты шкафами/.test(x)))){ alt=alt || { r, g2, Wx:c.Wx, a:c.a }; continue; }
             return done(r, g2, c.Wx);
