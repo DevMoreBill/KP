@@ -111,7 +111,7 @@ class LayoutEditor {
     const rot=new Map((M.rotate.rows||[]).map(r=>[r.kind, r.on!==false]));
     const sides=(M.sides.rows||[]).map((r, j)=>`<tr><td>${esc(E.label(r.kind))}</td>${E.SIDES.map(([c, t])=>`<td><input type="checkbox" data-mxs="${j}" value="${c}"${String(r.s||'').includes(c) ? ' checked' : ''} aria-label="${esc(t)}"></td>`).join('')}
       <td>${rot.has(r.kind) ? `<input type="checkbox" data-mx="r|${esc(r.kind)}"${rot.get(r.kind) ? ' checked' : ''} aria-label="Можно повернуть">` : '—'}</td>
-      <td>${StationMatrix.NO_DOOR.test(r.kind) ? '<span class="muted" title="Осушителям и ресиверам — никогда (решение ПНЕВМОТЕХ)">нет</span>' : `<input type="checkbox" data-mx="m|sides.rows.${j}.door"${r.door===false ? '' : ' checked'} aria-label="Сервисные ворота можно">`}</td>
+      <td><input type="checkbox" data-mx="m|sides.rows.${j}.door"${StationMatrix.noDoor(r.kind) ? '' : ' checked'} aria-label="Сервисные ворота можно"></td>
       <td><input type="checkbox" data-mx="m|sides.rows.${j}.tilt"${r.tilt ? ' checked' : ''} aria-label="Можно наклонить при выносе"></td></tr>`).join('');
     const tables=[
       this.sec('pair', 'Расстояния между соседними агрегатами по длине', 'Рекомендуется — большее из «не меньше» и «доля × размер»; «плотно» — при плотной компоновке (по умолчанию); вплотную — только где отмечено и только в заданном контейнере.',
@@ -158,7 +158,7 @@ class LayoutEditor {
         if (!s || !Number.isFinite(v) || v<0) throw new Error(`Не число: «${el.value}» — ${lab}`);
         const f=t==='m' ? LayoutParams.field(...path.split('.')) : null;
         if (f && (v<f.lo || v>f.hi)) throw new Error(`${lab}: от ${LayoutParams.show({}, f.lo)} до ${LayoutParams.show({}, f.hi)}${f.u && f.u!=='доля' ? ' '+f.u : ''}`); }
-      if (t==='m'){ if (/^sides\.rows\.\d+\.door$/.test(path)) v=v ? undefined : false; else if (/^sides\.rows\.\d+\.tilt$/.test(path)) v=v || undefined;
+      if (t==='m'){ if (/^sides\.rows\.\d+\.door$/.test(path)) v=!!v; else if (/^sides\.rows\.\d+\.tilt$/.test(path)) v=v || undefined;
         put(w.m, path, v); if (v===undefined){ const k=path.split('.'); delete w.m.sides.rows[+k[2]][k[3]]; } }
       else if (t==='c') put(w.c, path, v); else if (t==='a') w.a[+path]=v; else if (t==='t') w.t=v;
       else if (t==='r'){ const r=(w.m.rotate.rows||[]).find(q=>q.kind===path); if (r) r.on=v; } }
