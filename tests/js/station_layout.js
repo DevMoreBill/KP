@@ -1465,6 +1465,13 @@ Check.run('выброс горячего воздуха — над сервис�
   { const a=P('Винтовой компрессор Dali DL-55/8GA', { cat:'comp_screw', kw:55, size:'1650 × 1450 × 1840' }, { role:'main' }), b=P('Винтовой компрессор Dali DL-55/8GA-F', { cat:'comp_screw', kw:55, vsd:'Да', size:'1650 × 1450 × 1840' }, { role:'main' });
     const p=solve(C('block', { sizeAuto:true }), [a, b, dryer, rec, cab]), d=same(p); assert.ok(!d, 'DL-55/8GA и -F: '+d);
     const ob=p.vent.louvers.filter(q=>q.kind==='out' && q.wall==='back'); assert.ok(new Set(ob.map(q=>q.w+'×'+q.h)).size===1, 'все решётки на стене — одного размера'); }
+  // разные компрессоры в одной станции (37 и 55 кВт) — решётки всё равно одного размера (по наибольшему расходу)
+  { const p=solve(C('block', { sizeAuto:true }), [P('Компрессор 55', { cat:'comp_screw', kw:55, size:'1650 × 1450 × 1840' }, { role:'main' }), P('Компрессор 37', { cat:'comp_screw', kw:37, size:'1400 × 900 × 1500' }, { role:'main' }), dryer, rec, cab]);
+    if (Object.values(p.vent.ducts).every(v=>v==='wall')){ const m=new Map(); for (const q of out(p)) m.set(q.duct, [...(m.get(q.duct)||[]), q.w+'×'+q.h]);
+      assert.ok(new Set([...m.values()].map(v=>v.sort().join())).size===1, 'разные компрессоры — одни решётки: '+JSON.stringify([...m])); } }
+  // версия программы — в отпечатке станции: новая программа пересобирает картинки и при своих сохранённых правилах
+  { const inp={ cont:C('block'), parts:[comp, dryer] }, h0=StationLayout.hash(inp); global.APP_VERSION='9.9.9'; const h1=StationLayout.hash(inp); delete global.APP_VERSION;
+    assert.ok(h0!==h1, 'отпечаток зависит от версии программы'); }
   for (const [kw, size, n] of [[55, '1600 × 1000 × 1600', 2], [90, '1900 × 1200 × 1800', 3], [15, '1000 × 700 × 1100', 4], [132, '2200 × 1300 × 1900', 2]]){
     const c=P('Винтовой компрессор '+kw, { cat:'comp_screw', kw, size, mass:kw*15 }, { role:'main', qty:n });
     for (const cont of [C('block', { sizeAuto:true }), C('block'), C('sea40')]){ const p=solve(cont, [c, dryer, rec, cab]), d=same(p);
