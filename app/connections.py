@@ -84,7 +84,7 @@ class ConnectionCheck:
     def _mail(self):
         m = self.store.kv_get('mail') or {}
         if not m.get('host'):
-            return 'off', 'не настроена — «Подключения → Почта»'
+            return 'off', 'не настроена — «КП и документы → Почта для отправки КП»'
         host, port, sec = m['host'], int(m.get('port') or 465), m.get('security') or 'ssl'
         srv = smtplib.SMTP_SSL(host, port, timeout=20, context=ssl.create_default_context()) if sec == 'ssl' else smtplib.SMTP(host, port, timeout=20)
         with srv:
@@ -101,7 +101,7 @@ class ConnectionCheck:
         import ai_llm
         s = ai_llm.status(self.store)
         if not ai_llm._key(self.store):
-            return 'off', 'ключ не задан — «Подключения → Нейросеть»'
+            return 'off', 'ключ не задан — «Внешние сервисы → Нейросеть»'
         r = ai_llm.ask(self.store, 'Ответь одним словом: да', force=True)
         return ('ok' if s.get('enabled') else 'warn'), 'модель %s отвечает%s' % (r.get('model') or '', '' if s.get('enabled') else '; у менеджеров выключена')
 

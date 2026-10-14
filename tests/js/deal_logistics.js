@@ -119,9 +119,9 @@ check('значения программы меняют расчёт', ()=>{
 });
 
 check('значения логистики: умолчания и реестр', ()=>{
-  assert.strictEqual(LgValues.unload(), 'auto'); assert.strictEqual(LgValues.mode(), 'auto'); assert.strictEqual(LgValues.manCur(), 'RUB'); assert.strictEqual(LgValues.setDays(), true);
-  DEFS_SRV={'log.unload':{on:true, v:'none'}, 'log.mode':{on:true, v:'manual'}, 'log.manCur':{on:true, v:'USD'}, 'log.setDays':{on:false}};
-  assert.strictEqual(LgValues.unload(), 'none'); assert.strictEqual(LgValues.mode(), 'manual'); assert.strictEqual(LgValues.manCur(), 'USD'); assert.strictEqual(LgValues.setDays(), false);
+  assert.strictEqual(LgValues.unload(), 'none', 'по умолчанию разгружает заказчик (14.10)'); assert.strictEqual(LgValues.mode(), 'auto'); assert.strictEqual(LgValues.manCur(), 'RUB'); assert.strictEqual(LgValues.setDays(), true);
+  DEFS_SRV={'log.unload':{on:true, v:'auto'}, 'log.mode':{on:true, v:'manual'}, 'log.manCur':{on:true, v:'USD'}, 'log.setDays':{on:false}};
+  assert.strictEqual(LgValues.unload(), 'auto'); assert.strictEqual(LgValues.mode(), 'manual'); assert.strictEqual(LgValues.manCur(), 'USD'); assert.strictEqual(LgValues.setDays(), false);
   assert.strictEqual(LgMoney.setDays({lg:{}}), false); assert.strictEqual(LgMoney.setDays({lg:{setDays:true}}), true, 'галочка в сделке главнее');
   // ключи раздела — с префиксом, в своих разделах, у чисел — пределы и подробная подсказка; встроенное — в пределах
   const mine=DEF_SCHEMA.filter(r=>/^(deal\.(fee|defer|supAdv|monthDays|moneyFb|xcCost|bg(AdvPct|Pct|WarrDays|Min)))|^log\./.test(r[0]));

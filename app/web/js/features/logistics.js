@@ -247,7 +247,7 @@ function dlLogistics(c){
       <label class="f lg-un"><span>Разгрузка на объекте</span><select data-lgf="unload" data-k="${k}"${ex?' disabled':''}>
         <option value="auto"${(lg.unload||LgValues.unload())==='auto'?' selected':''}>Подобрать по самому тяжёлому месту</option>
         <option value="none"${(lg.unload||LgValues.unload())==='none'?' selected':''}>Не нужна (разгружает заказчик)</option>
-        ${T.unload.map(u=>`<option value="${esc(u.id)}"${lg.unload===u.id?' selected':''}>${esc(u.name)} — ${lgRub(u.cost)}</option>`).join('')}</select></label>
+        ${T.unload.map(u=>`<option value="${esc(u.id)}"${(lg.unload||LgValues.unload())===u.id?' selected':''}>${esc(u.name)} — ${lgRub(u.cost)}</option>`).join('')}</select></label>
       ${veh}<p class="muted lg-note">Ставки за км: ${esc(lgRateSrc(r))}. Погрузка на складе поставщика обычно за его счёт.</p></div>`;
     // 5. цены перевозчиков — все «дверь в дверь», с агентом и страхованием; выбор — любое или максимальное
     const pv=(LG.status&&LG.status.providers)||{}, noKey=[!pv.ati?'ATI.SU':'', !pv.dellin?'Деловые Линии':'', !pv.kit?'КИТ':'', !pv.cdek?'СДЭК':'', !pv.vozovoz?'Возовоз':''].filter(Boolean);
