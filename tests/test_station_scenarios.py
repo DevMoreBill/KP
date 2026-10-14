@@ -226,6 +226,7 @@ class StationScenarios(unittest.TestCase):
         for o in self.out:
             with self.subTest(o['name']):
                 if o['steps']:
+                    self.assertEqual(o['groupsOff'], 0, 'ТКП: без галочки расчётной записки в КП нет')
                     self.assertIn('Приложение. Расчётная записка и состав станции', o['groups'])
                     self.assertTrue(o['version'])
 

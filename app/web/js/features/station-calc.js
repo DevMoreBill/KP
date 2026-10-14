@@ -552,7 +552,7 @@ class StationCalc {
       : R.warnings.length ? ['warn-t', '⚠ Предупреждений: '+R.warnings.length] : R.sections.length ? ['ok-t', '✓ Проверки пройдены'] : ['muted', 'нет данных для расчёта'];
     const li=L=>L.map(a=>`<li>${esc(a)}</li>`).join(''), more=R.assumptions.length+R.weak.length+R.later.length;
     return `<details class="stl-air calc stl-sp"${Spoiler.attr('calc:'+x.id, !!(R.errors.length && !R.accept))}><summary class="stl-air-h"><b>Расчёт станции</b><span class="${head[0]}">${head[1]}</span><small class="muted">формулы, коэффициенты, источники · правила ${esc(R.version)}</small></summary>
-      <div class="calc-opts"><label class="stl-chk"><input type="checkbox" data-stl="calc" data-i="${i}"${o.calc ? ' checked' : ''}> в КП — приложение «Расчётная записка и состав станции»</label>
+      <div class="calc-opts"><label class="stl-chk"><input type="checkbox" data-stl="calc" data-i="${i}"${o.calc ? ' checked' : ''}> в КП — приложение «Расчётная записка» (только по запросу заказчика: ТКП — без расчётов)</label>
         ${R.errors.length ? `<label class="stl-chk"><input type="checkbox" data-req="${i}" data-rk="accept"${R.accept ? ' checked' : ''}> отклонения согласованы с заказчиком — КП сохраняется</label>` : ''}</div>
       ${iss.length ? `<ul class="stl-iss">${iss.map(t=>`<li class="${t.level}"><b>${lvl[t.level]}:</b> ${esc(t.text)}</li>`).join('')}</ul>` : ''}
       ${R.questions.length ? `<h5 class="calc-h">Нужно узнать у заказчика</h5><ol class="calc-l">${li(R.questions)}</ol>` : ''}
@@ -567,8 +567,11 @@ class StationCalc {
 
   /** приложение к КП «Расчётная записка и состав станции» — таблицами характеристик (группы {name, rows:[{k, v}]}) */
   static docGroups(x){
-    if (!StationUi.on(x) || !isKit(x) || StationUi.opts(x).calc===false) return [];
+    if (!StationUi.on(x) || !isKit(x)) return [];
     const R=this.run(x), f=CalcNote.f; if (!R.sections.length) return [];
+    // ТКП (решение ПНЕВМОТЕХ 14.10): расчётная записка — только галочкой; согласованные отклонения — в КП всегда
+    const dev=R.accept && R.errors.length ? [{ name:'Отклонения, согласованные с заказчиком', rows:R.errors.map((e, i)=>({ k:String(i+1), v:e.text })) }] : [];
+    if (StationUi.opts(x).calc===false) return dev;
     const ok=v=>v===true ? ' — выполняется' : v===false ? ' — НЕ выполняется' : '';
     const mg=o=>o.margin==null ? '' : o.margin<0 && o.ok ? ' (в пределах погрешности данных)' : ' (запас '+f(o.margin, 1)+' %)';
     // имя файла ТЗ заказчику не показываем; состав — один раз, в разделе «Состав изделия» (здесь — ссылка)
@@ -582,7 +585,6 @@ class StationCalc {
     // заказчику — только расчёт и принятые допущения; внутренние списки («требует подтверждения», вопросы, предупреждения)
     // остаются в программе; ошибки попадают в КП лишь как согласованные отклонения
     if (R.assumptions.length) out.push({ name:'Допущения расчёта', rows:R.assumptions.map((a, i)=>({ k:String(i+1), v:a })) });
-    if (R.accept && R.errors.length) out.push({ name:'Отклонения, согласованные с заказчиком', rows:R.errors.map((e, i)=>({ k:String(i+1), v:e.text })) });
-    return out;
+    return [...out, ...dev];
   }
 }

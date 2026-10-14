@@ -17,6 +17,13 @@ class StationUi {
       recv:R ? R.recv(x) : 'after', recvOut:R ? R.recvOut(x) : false, req:R ? R.plan(x) : null };
   }
   /** расстановка — пересчитывается, только когда изменился состав, контейнер или класс чистоты воздуха (на картинки не влияет) */
+  /** значок на вкладке «Компоновка»: число замечаний (красный — не помещается), иначе '' */
+  static badge(x){
+    if (!this.on(x) || !kitContainer(x)) return '';
+    const plan=this.plan(x); if (!plan || plan.level==='none') return '';
+    const n=(plan.issues||[]).filter(t=>t.level==='error' || t.level==='warn').length;
+    return n ? ` <span class="ed-n ${plan.level==='error' ? 'err' : 'warn'}" title="Замечаний по компоновке: ${n}">${plan.level==='error' ? '✕' : '⚠'} ${n}</span>` : '';
+  }
   static plan(x){
     const inp=this.input(x), h=StationLayout.hash(inp), k=h+'|'+inp.air, c=this.cache.get(x.id);
     if (c && c.k===k) return c.plan;
@@ -38,7 +45,7 @@ class StationUi {
   static short(n){ const w=n.split(' ').filter(Boolean); return w.length>=3 ? `${w[0]} ${w[1][0]}. ${w[2][0]}.` : n; }
   /** что вставлять в КП: 3D-вид главным фото, чертёж — в изображения (по умолчанию да, кроме листов skip, убранных
    *  менеджером); схема — только если включили */
-  static opts(x){ const o=x.stLayout||{}; return { photo:o.photo!==false, out:o.out!==false, draw:o.draw!==false, scheme:o.scheme===true, calc:o.calc!==false, air:/^[1-6]\.[1-6]\.[1-4]$/.test(String(o.air||'')) ? o.air : '',
+  static opts(x){ const o=x.stLayout||{}; return { photo:o.photo!==false, out:o.out!==false, draw:o.draw!==false, scheme:o.scheme===true, calc:o.calc===true, air:/^[1-6]\.[1-6]\.[1-4]$/.test(String(o.air||'')) ? o.air : '',
     skip:Array.isArray(o.skip) ? o.skip.filter(v=>Number.isInteger(v) && v>0 && v<10) : [],
     outSkip:Array.isArray(o.outSkip) ? o.outSkip.filter(v=>StationImages.VIEWS.some(w=>w[0]===v)) : [] }; }
   static url(svg){ return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg); }
@@ -68,7 +75,7 @@ class StationUi {
     if (StationImages.issues.has(x.id)) top.unshift({ level:'warn', text:'Изображения не готовы: '+StationImages.issues.get(x.id)+'.' });
     if (plan.level==='error' && plan.assumed) info.unshift({ level:'info', text:'Пока габариты части оборудования условные, КП сохранится, но контейнер может не подойти: впишите «Габариты» элементов на вкладке «Состав станции».' });
     else if (plan.level==='error') info.unshift({ level:'info', text:'КП не сохранится, пока оборудование не поместится: замените контейнер (кнопка выше) или измените состав.' });
-    // замечания и сведения — под раскрывающимся блоком (раскрыт сам, если оборудование не помещается)
+    // замечания — сразу под строкой состояния, цветным блоком (раскрыт сам, если есть замечания); сведения — там же, приглушённо
     let xf=null; const fix=t=>{ if (t.level==='info' || typeof ExpertFix==='undefined') return ''; xf=xf || ExpertFix.list(x); return ExpertFix.btn(x, i, t.text, xf); };   // «решить» — режим «эксперт»
     const li=t=>{ const j=plan.issues.indexOf(t), sp=j>=0 && IssueSpot.has(t.text, plan);
       return `<li class="${t.level}">${esc(t.text)}${sp ? ` <button class="lnk is-spot" type="button" data-a="stSpot" data-i="${i}" data-j="${j}" title="Открыть чертёж с подсветкой">на чертеже</button>` : ''}${fix(t)}</li>`; };
@@ -87,6 +94,9 @@ class StationUi {
     const sch=this.scheme(plan);
     return `<div class="ed-sec stl">
       <div class="stl-st ${head[0]}"><b>${head[1]}</b><span>${dims}${this.sizeNote(c, i)}</span>${plan.suggest ? this.fix(plan.suggest, i) : ''}</div>
+      ${top.length || info.length ? `<details class="stl-air stl-sp stl-isb ${top.some(t=>t.level==='error') ? 'err' : top.length ? 'warn' : 'ok'}"${Spoiler.attr('iss:'+x.id, top.length>0)}><summary class="stl-air-h"><b>Замечания по компоновке</b>${top.length ? `<span class="stl-cnt">⚠ ${top.length}</span>` : '<span class="ok-t">✓ нет</span>'}</summary>
+        ${top.length ? `<ul class="stl-iss">${top.map(li).join('')}</ul>` : ''}
+        ${info.length ? `<details class="stl-inf"${Spoiler.attr('inf:'+x.id, !top.length && plan.level==='error')}><summary>Сведения о компоновке: ${info.length} — ворота, двери, ресиверы, отопление, вентиляция</summary><ul class="stl-iss">${info.map(li).join('')}</ul></details>` : ''}</details>` : ''}
       ${pics ? `<div class="stl-views">
         <figure class="v3d"><figcaption><b>Разрез (3D-вид)</b><label class="stl-chk"><input type="checkbox" data-stl="photo" data-i="${i}"${photoOn ? ' checked' : ''}> главное фото станции — в строке КП и на титуле</label></figcaption>
           <img src="${esc(src3)}" data-st3d="${esc(plan.hash||'')}" alt="3D-вид станции">${cutCab ? '<small class="stl-note">Стена прохода срезана вместе со шкафами на ней — их место на чертеже.</small>' : ''}</figure>
@@ -95,8 +105,6 @@ class StationUi {
         ${this.sheets(plan, meta, i, o)}
         ${sch ? `<figure class="dr"><figcaption><b>${esc(sch.title)}</b><label class="stl-chk"><input type="checkbox" data-stl="scheme" data-i="${i}"${o.scheme ? ' checked' : ''}> в КП — после чертежа</label></figcaption>
           <img src="${esc(this.url(sch.cls.svg(plan, meta)))}" alt="${esc(sch.name)}"></figure>` : ''}</div>` : ''}
-      ${top.length || info.length ? `<details class="stl-air stl-sp"${Spoiler.attr('iss:'+x.id, plan.level==='error')}><summary class="stl-air-h"><b>Замечания по компоновке</b>${top.length ? `<span class="warn-t">⚠ ${top.length}</span>` : '<span class="ok-t">✓ нет</span>'}${info.length ? `<span class="muted">сведений: ${info.length}</span>` : ''}</summary>
-        <ul class="stl-iss">${[...top, ...info].map(li).join('')}</ul></details>` : ''}
       ${this.access(plan, x)}
       ${this.air(plan, x, i)}
       ${this.systems(plan, x)}
