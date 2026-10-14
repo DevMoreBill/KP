@@ -180,6 +180,46 @@ function keysImpHtml(k){ const F=KB.file; if (!F) return '';
   return `<div class="key-imp">${head}${names.length?names.map(id=>`<label class="ck"><input type="checkbox" data-kik="${esc(id)}" checked> <b>${esc(lab(id))}</b> <span class="muted">${ApiKeys.DAILY[id]?esc(F.keys[id]):esc(mask(F.keys[id]))}${(all.find(f=>f.id===id)||{}).mask&&k[(all.find(f=>f.id===id)).mask]?' · заменит текущий':''}</span></label>`).join(''):'<p class="muted">В файле нет ключей.</p>'}
     <div class="row"><button class="btn primary" type="button" data-kiok${names.length?'':' disabled'}>Восстановить отмеченные</button><button class="btn ghost" type="button" data-kix>Отмена</button></div></div>`; }
 
+// Перевозчики: включение и адреса API («Настройки → Внешние сервисы → Ключи API», под ключами доставки). Адрес пустой —
+// действует адрес программы; перевозчик сменил адрес — вписать новый и «Проверить». Сервер: /api/logistics/carriers.
+class CarrierApis {
+  static async card(){
+    let r={carriers:[]}; try{ r=await api('/api/logistics/carriers'); }catch(e){ return `<div class="st-card"><p class="msg err">Перевозчики: ${esc(e.message||e)}</p></div>`; }
+    return `<div class="st-card ca-card"><p class="sub">Перевозчики: включение и адреса API</p>
+      <p class="muted">Выключенный перевозчик не участвует в расчёте доставки. Если перевозчик сменил адрес API (ошибка «адрес сервиса изменился», HTTP 404 или 307) — впишите новый адрес из его документации и нажмите «Проверить». Пустое поле — адрес программы, «↺» — вернуть его.</p>
+      ${r.carriers.map(c=>`<div class="ca-row" data-ca="${esc(c.id)}">
+        <div class="ca-h"><label class="sw df-sw" title="Включить / выключить"><input type="checkbox" data-caon${c.on?' checked':''}><span></span></label>
+          <b>${esc(c.name)}</b>${c.docs?`<a class="lnk" href="${esc(c.docs)}" target="_blank" rel="noopener noreferrer">документация API ↗</a>`:''}
+          <span class="sp"></span><button class="btn ghost sm" type="button" data-catest>Проверить</button></div>
+        ${c.fields.map(f=>`<label class="f ca-f"><span>${esc(f.label)}</span><span class="ca-in"><input type="url" data-caf="${esc(f.id)}" value="${esc(f.value)}" placeholder="${esc(f.default)}" autocomplete="off" spellcheck="false">
+          <button class="icon" type="button" data-careset title="Вернуть адрес программы: ${esc(f.default)}" aria-label="Вернуть адрес программы"${f.value?'':' disabled'}>↺</button></span></label>`).join('')}
+        <p class="muted ca-res" hidden></p></div>`).join('')}
+      <div class="row"><span class="sp"></span><button class="btn primary" type="button" data-casave>Сохранить перевозчиков</button></div></div>`;
+  }
+  static _body(m){ const out={};
+    m.querySelectorAll('[data-ca]').forEach(rw=>{ const urls={}; rw.querySelectorAll('[data-caf]').forEach(i=>{ urls[i.dataset.caf]=i.value.trim(); });
+      out[rw.dataset.ca]={on:rw.querySelector('[data-caon]').checked, urls}; });
+    return out; }
+  static async save(m, quiet){
+    try{ await api('/api/logistics/carriers',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(CarrierApis._body(m))});
+      if (typeof LG!=='undefined') LG.status=null; if (!quiet) toast('Перевозчики сохранены'); return true; }
+    catch(e){ toast('Не сохранено: '+(e.message||e)); return false; }
+  }
+  /** клик внутри вкладки ключей; true — обработано */
+  static async click(e, m){
+    const rs=e.target.closest('[data-careset]'); if (rs){ const i=rs.parentElement.querySelector('[data-caf]'); i.value=''; rs.disabled=true; return true; }
+    if (e.target.closest('[data-casave]')){ await CarrierApis.save(m); return true; }
+    const t=e.target.closest('[data-catest]'); if (!t) return false;
+    const rw=t.closest('[data-ca]'), out=rw.querySelector('.ca-res');
+    if (!await CarrierApis.save(m, true)) return true;          // проверяется то, что вписано сейчас
+    t.disabled=true; out.hidden=false; out.className='muted ca-res'; out.textContent='Проверяю…';
+    try{ const r=await api('/api/logistics/carriers/test',{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({id:rw.dataset.ca})});
+      out.className='ca-res '+(r.ok?'ok-t':'warn-t'); out.textContent=(r.ok?'✓ ':'✕ ')+r.msg; }
+    catch(err){ out.className='ca-res warn-t'; out.textContent='✕ '+(err.message||err); }
+    t.disabled=false; return true;
+  }
+}
+
 // Ключи API — форма прямо в «Настройки → Ключи API» (отдельного окна нет). Ключи на сервере; в браузер приходит только маска.
 class ApiKeys {
   static GROUPS=[
@@ -216,7 +256,8 @@ class ApiKeys {
 
   static async form(m){
     let k={}; try{ k=await api('/api/integrations'); }catch(e){}
-    m.innerHTML=ApiKeys.GROUPS.map(([t,h,fs])=>`<div class="st-card"><p class="sub">${esc(t)}</p>${h?`<p class="muted">${esc(h)}</p>`:''}<div class="key-grid">${fs.map(f=>ApiKeys._field(f, k)).join('')}</div></div>`).join('')
+    const ca=await CarrierApis.card();
+    m.innerHTML=ApiKeys.GROUPS.map(([t,h,fs])=>`<div class="st-card"><p class="sub">${esc(t)}</p>${h?`<p class="muted">${esc(h)}</p>`:''}<div class="key-grid">${fs.map(f=>ApiKeys._field(f, k)).join('')}</div></div>${t.startsWith('Доставка')?ca:''}`).join('')
       +`<div class="st-card"><p class="sub">Резервная копия ключей</p>
         <p class="muted">Файл со всеми ключами — чтобы перенести их на другой компьютер или восстановить после переустановки. С паролем файл зашифрован (AES-256): без пароля ключи из него не прочитать. Без пароля храните файл как пароль — в нём ключи открытым текстом; не выкладывайте его в репозиторий, почту и общие папки.</p>
         <div class="row key-bk"><label class="f"><span>Пароль для файла (необязательно)</span><input type="password" data-kpw autocomplete="new-password" placeholder="${KB.crypto?'пароль копии':'шифрование доступно только при входе через localhost или https'}"${KB.crypto?'':' disabled'}></label>
@@ -228,7 +269,8 @@ class ApiKeys {
       try{ const j=JSON.parse(await f.text()); if (!j || j.kind!=='kp-keys' || !(j.keys||j.enc)) throw new Error('это не копия ключей программы');
         KB.file={name:f.name, at:j.at, keys:j.keys||null, enc:j.enc||null, err:''}; }catch(err){ return toast('Файл не подходит: '+(err.message||err)); }
       m.querySelector('#kImp').innerHTML=keysImpHtml(k); m.querySelector('#kImp [data-kipw]')?.focus(); };
-    m.onclick=async e=>{ const d=e.target.closest('[data-kdel]'); if (d) return put({[d.dataset.kdel]:''});
+    m.oninput=e=>{ const i=e.target.closest('[data-caf]'); if (i) i.parentElement.querySelector('[data-careset]').disabled=!i.value.trim(); };
+    m.onclick=async e=>{ if (await CarrierApis.click(e, m)) return; const d=e.target.closest('[data-kdel]'); if (d) return put({[d.dataset.kdel]:''});
       if (e.target.closest('[data-kimp]')) return m.querySelector('#kFile').click();
       if (e.target.closest('[data-kexp]')){ try{ const j=await api('/api/integrations/export'), pw=(m.querySelector('[data-kpw]')||{}).value||'';
           const out = pw ? {kind:'kp-keys', v:1, at:j.at, enc:await keysEnc(JSON.stringify(j.keys), pw)} : j;
@@ -248,7 +290,8 @@ class ApiKeys {
       m.querySelectorAll('[data-kday]').forEach(i=>{ const dl=+i.value, id=i.dataset.kday; if (dl>0 && dl!==(k[id]||ApiKeys.FREE_DAILY)) b[id]=dl; });
       if (!Object.keys(b).length) return toast('Нечего сохранять — введите ключ');
       put(b); };
-    m.onkeydown=e=>{ if (e.key==='Enter' && e.target.matches('[data-key],[data-kday]')){ e.preventDefault(); m.querySelector('[data-ksave]').click(); } };
+    m.onkeydown=e=>{ if (e.key==='Enter' && e.target.matches('[data-caf]')){ e.preventDefault(); return CarrierApis.save(m); }
+      if (e.key==='Enter' && e.target.matches('[data-key],[data-kday]')){ e.preventDefault(); m.querySelector('[data-ksave]').click(); } };
   }
 }
 
