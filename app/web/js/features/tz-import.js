@@ -277,7 +277,7 @@ class TzPick {
   /** лучшая позиция: из подходящих — с наименьшим значением key (самая «впритык») */
   static best(list, key){ return list.reduce((b, o)=>!b || o[key]<b[key] ? o : b, null); }
 
-  static MAX = 4;   // добор производительности количеством: до четырёх одинаковых рабочих агрегатов или аппаратов параллельно
+  static get MAX(){ return StationMatrix.grp('pick').max; }   // добор производительности количеством: до четырёх одинаковых рабочих агрегатов или аппаратов параллельно
   /** рабочие агрегаты из pool [{c, v}] на нагрузку need: {o, n}; n0 — число рабочих из ТЗ, pen(o) — штраф позиции;
    *  подбор — без недобора (в пользу заказчика): сумма рабочих не меньше нужного; одного не хватает — несколько (до MAX) */
   static units(pool, need, n0, pen=()=>0){
@@ -299,7 +299,7 @@ class TzPick {
     return this.units(pool.filter(c=>!q.oilFree || this.oilFree(c)).map(c=>({ c, v:this.flow(c), p:this.num(attrsOf(c).pressure), vsd:vsd(c), f:!q.vsd || vsd(c), of:!q.oilFree && this.oilFree(c) }))
       .filter(o=>o.v>0 && (!(B>0) || !(o.p>0) || o.p>=B-0.05) && !(q.compact && (o.of || this.barPen(o.p, B, o.vsd)>=0.5 || (q.work && o.v*q.work>Q*this.OVER)))), Q, q.work, o=>this.barPen(o.p, B, o.vsd)+(o.f ? 0 : 0.3)+(o.of ? 0.5 : 0)+(q.compact ? this.area(o.c) : 0));
   }
-  static OVER = 1.3;   // подбор «чтобы поместилось»: запас производительности — не больше 30 % (не центробежный на 60 м³/мин), безмасляный — только по требованию, давление — с запасом на потери
+  static get OVER(){ return 1+StationMatrix.grp('pick').over/100; }   // подбор «чтобы поместилось»: запас производительности — не больше 30 % (не центробежный на 60 м³/мин), безмасляный — только по требованию, давление — с запасом на потери
   /** штраф за площадь агрегата (подбор «чтобы станция поместилась»): 0,3 на м² пола; габарит неизвестен — как 3,5 м² */
   static area(c){
     const d=StationEquip.dims({ name:c.name, attrs:attrsOf(c), rows:[] }, 'compressor');
@@ -365,9 +365,11 @@ class TzPick {
   /** ресиверы на объём V, л: один, иначе несколько одинаковых — наименьшее число, затем наименьший объём; сначала — каждый без
    *  учёта в Ростехнадзоре (p·V не больше 1,0 МПа·м³, до шести), иначе — любые (до четырёх); давление — не ниже B, высота с
    *  арматурой (+300 мм) — не выше Hmax (0 — без ограничения: ресивер снаружи). {o, n, free — без учёта} */
+  /** ресивер внутри: над ним — место на арматуру (клапан, манометр, отвод конденсата), мм — раздел pick матрицы */
+  static get RECV_TOP(){ return StationMatrix.grp('pick').recvFit; }
   static receivers(V, B, Hmax){
     const L=catCache.filter(c=>attrsOf(c).cat==='receiver').map(c=>{ const a=attrsOf(c); return { c, v:this.num(a.volume)||0, p:this.num(a.pressure), h:StationEquip.dims({ name:c.name, attrs:a, rows:[] }, 'receiver').h }; })
-      .filter(o=>o.v>0 && (!(B>0) || !(o.p>0) || o.p>=B-0.05) && (!(Hmax>0) || o.h+300<=Hmax));
+      .filter(o=>o.v>0 && (!(B>0) || !(o.p>0) || o.p>=B-0.05) && (!(Hmax>0) || o.h+this.RECV_TOP<=Hmax));
     const free=o=>!(B>0) || B/10*o.v/1000<=PressureVessel.LIMIT+1e-9;
     // по умолчанию — одинаковые по 900 л (receiver.base, решение ПНЕВМОТЕХ), сколько нужно по объёму: производитель в
     // приоритете (АСО) — первым, затем в наличии, наименьшее достаточное давление, дешевле, ниже; нет таких — прежний подбор
@@ -376,7 +378,8 @@ class TzPick {
       const C=L.filter(o=>Math.abs(o.v-bs.v)<0.5 && free(o)).sort((a, b)=>pri(a)-pri(b) || this.stock(b.c)-this.stock(a.c) || (a.p||99)-(b.p||99) || this.cheaper(a.c, b.c) || a.h-b.h);
       if (C.length) return { o:C[0], n:bs.n, free:true, base:true }; }
     if (!(V>0)) return L.length ? { o:this.best(L, 'v'), n:1, free:true } : null;
-    for (const [only, max] of [[true, 6], [false, 4]]) for (let n=1; n<=max; n++){ const o=this.best(L.filter(z=>z.v*n>=V-1e-9 && (!only || free(z))), 'v'); if (o) return { o, n, free:free(o) }; }
+    const P=StationMatrix.grp('pick');
+    for (const [only, max] of [[true, P.recvFree], [false, P.recvAny]]) for (let n=1; n<=max; n++){ const o=this.best(L.filter(z=>z.v*n>=V-1e-9 && (!only || free(z))), 'v'); if (o) return { o, n, free:free(o) }; }
     return null;
   }
   /** ресивер типоразмера size, л (900 или 500 — методика ПНЕВМОТЕХ 13.10): давление — с запасом над компрессором (правило
@@ -385,7 +388,7 @@ class TzPick {
    *  {o} | {o:null, tall — на это давление есть, но выше Hmax} | null */
   static recvPick(size, B, Hmax){
     const all=catCache.filter(c=>attrsOf(c).cat==='receiver').map(c=>{ const a=attrsOf(c); return { c, v:this.num(a.volume)||0, p:this.num(a.pressure), h:StationEquip.dims({ name:c.name, attrs:a, rows:[] }, 'receiver').h }; })
-      .filter(o=>Math.abs(o.v-size)<0.5 && (!(B>0) || !(o.p>0) || o.p>=B-0.05)), fit=all.filter(o=>!(Hmax>0) || o.h+300<=Hmax);
+      .filter(o=>Math.abs(o.v-size)<0.5 && (!(B>0) || !(o.p>0) || o.p>=B-0.05)), fit=all.filter(o=>!(Hmax>0) || o.h+this.RECV_TOP<=Hmax);
     const B0=AirChain.BASE, mk=String((B0 && B0.maker)||'').trim().toLowerCase(), pri=o=>mk && String(attrsOf(o.c).maker||'').trim().toLowerCase()===mk ? 0 : 1, m=ReceiverPlan.M.margin;
     const sort=L=>L.sort((a, b)=>pri(a)-pri(b) || this.stock(b.c)-this.stock(a.c) || (a.p||99)-(b.p||99) || this.cheaper(a.c, b.c) || a.h-b.h)[0];
     for (const ok of [o=>!(B>0) || !(o.p>0) || o.p>=B+m-0.05, o=>!(B>0) || !(o.p>0) || o.p>=B-0.05]){ const o=sort(fit.filter(ok)); if (o) return { o }; }
@@ -423,7 +426,7 @@ class TzPick {
    *  Над аппаратом — место на подключение трубопровода (осушитель — 100 мм) */
   static fitsH(c, kind, H){
     if (!(H>0)) return true; const d=StationEquip.dims({ name:c.name, attrs:attrsOf(c), rows:[] }, kind);
-    return !d.known || d.h+(kind==='dryer' ? 100 : 0)<=H;
+    return !d.known || d.h+(kind==='dryer' ? StationMatrix.grp('pick').dryerFit : 0)<=H;
   }
   /** «осушитель …» — без повтора, если это слово уже есть в названии («Воздушный ресивер АСО…») */
   static lbl(word, name){ return String(name||'').toLowerCase().includes(word.slice(0, 5)) ? name : word+' '+name; }
@@ -459,34 +462,56 @@ class TzPick {
     return note;
   }
   static DROP = { comp:/^(compressor|dryer|filter|receiver)$/, pump:/^pump$/, dgu:/^dgu$/ };
-  /** подбор, при котором станция помещается в контейнер (решение ПНЕВМОТЕХ 13.10): один большой агрегат не встаёт —
-   *  несколько одинаковых меньших (2, 3 … до MAX; меньшим агрегатам — и меньше ресиверов). Порядок: всё внутри в габарите
-   *  перевозки (наименьшее число агрегатов); ресиверы после подготовки — снаружи у стены станции (ФНП ОРПД п. 65) в
-   *  габарите перевозки; негабарит (исключение); иначе — первый вариант и подсказка разделить станцию. Число рабочих из
-   *  ТЗ («work») не меняется */
+  /** подбор, при котором станция помещается в контейнер (решение ПНЕВМОТЕХ 13.10, уточнено 14.10 — «ресиверы — внутри,
+   *  применив все приёмы компоновки»): один большой агрегат не встаёт — несколько одинаковых меньших (2, 3 … до MAX; меньшим
+   *  агрегатам — и меньше ресиверов). Порядок: всё внутри в габарите перевозки — для каждого числа агрегатов сначала ресиверы
+   *  900 л, затем по 500 л без учёта в Ростехнадзоре («нехватка места», методика ПНЕВМОТЕХ; меньше по диаметру — встают парами
+   *  поперёк); компоновка сама перебирает два ряда, пары, поворот, плотные отступы, длину до наибольшей и в крайнем случае —
+   *  ресиверы вплотную. Только если внутри не встаёт никак — ресиверы после подготовки снаружи у стены станции (ФНП ОРПД
+   *  п. 65) в габарите перевозки; негабарит (исключение); иначе — первый вариант и подсказка разделить станцию. Число рабочих
+   *  из ТЗ («work») не меняется; типоразмер ресиверов, выбранный менеджером, — тоже */
   static async fit(x, q){
-    { const rq=StationReq.ensure(x); if (rq.recvOutAuto){ delete rq.recvOut; delete rq.recvOutAuto; q={ ...q, recvOut:false }; } }   // «снаружи» выбрала программа — каждый подбор заново
+    { const rq=StationReq.ensure(x);   // «снаружи» и «по 500 л» выбрала программа — каждый подбор заново
+      if (rq.recvOutAuto){ delete rq.recvOut; delete rq.recvOutAuto; q={ ...q, recvOut:false }; }
+      if (rq.recvSizeAuto){ delete rq.recvSize; delete rq.recvWhy; delete rq.recvSizeAuto; } }
     const note=await this.pick(x, q);
     if (q.work || q.kind!=='comp' || !(q.flow>0)) return note;   // компрессорные (решение ПНЕВМОТЕХ 13.10); ДГУ и насосы параллельно — решение проектировщика
-    const res=Math.max(0, Math.round(+q.reserve||0)), main=()=>kitParts(x).find(p=>p.role==='main'), req=StationReq.ensure(x), out0=!!req.recvOut;
-    const state=()=>{ if (!main()) return 'bad'; const p=StationLayout.solve(StationUi.input(x)); return p.level==='error' ? 'bad' : (p.issues||[]).some(i=>i.wide) ? 'wide' : 'ok'; };   // нет контейнера — проверять нечего
+    const res=Math.max(0, Math.round(+q.reserve||0)), main=()=>kitParts(x).find(p=>p.role==='main'), req=StationReq.ensure(x), out0=!!req.recvOut, sz0=!!req.recvSize;
+    // нет контейнера — проверять нечего; close — помещается только с ресиверами вплотную (крайний случай: сначала другие варианты внутри)
+    const state=()=>{ if (!main()) return 'bad'; const p=StationLayout.solve(StationUi.input(x)), I=p.issues||[]; return p.level==='error' ? 'bad' : I.some(i=>i.wide) ? 'wide' : I.some(i=>i.close) ? 'close' : 'ok'; };
     const n0=main() ? main().qty-res : 1, s0=state(); if (s0==='ok') return note;
-    const keep=(nt, n, out)=>({ parts:JSON.parse(JSON.stringify(x.kit.parts)), note:nt, n, out }), first=keep(note, n0, out0);
-    const outs=q.kind==='comp' && !out0 ? [false, true] : [out0];
-    let wide=s0==='wide' ? first : null;
+    const keep=(nt, n, out, s5)=>({ parts:JSON.parse(JSON.stringify(x.kit.parts)), note:nt, n, out, s5 }), first=keep(note, n0, out0, false);
+    const set=(out, s5)=>{ if (out){ req.recvOut=true; req.recvOutAuto=true; } else if (!out0){ delete req.recvOut; delete req.recvOutAuto; }
+      if (s5){ req.recvSize='500'; req.recvWhy='space'; req.recvSizeAuto=true; } else if (req.recvSizeAuto){ delete req.recvSize; delete req.recvWhy; delete req.recvSizeAuto; } };
+    // варианты по порядку: [снаружи, по 500 л] — внутри 900 л, внутри по 500 л (если типоразмер не задан менеджером), снаружи
+    const tries=[];
+    if (!out0) for (let n=n0; n<=this.MAX; n++){ tries.push([n, false, false]); if (!sz0) tries.push([n, false, true]); }
+    for (let n=n0; n<=this.MAX; n++) tries.push([n, true, false]);
+    let wide=s0==='wide' ? first : null, close=s0==='close' ? first : null;
     // меньшие по площади агрегаты (compact): станция короче и уже
-    for (const out of outs) for (let n=n0; n<=this.MAX; n++){
-      if (out){ req.recvOut=true; req.recvOutAuto=true; } else { delete req.recvOut; delete req.recvOutAuto; }
-      const nt=await this.pick(x, { ...q, work:n, compact:true, recvOut:out }), st=state(), v=keep(nt, n, out);
+    let hadR=true, t5=false;   // в предыдущем варианте были ресиверы (нет — вариант «по 500 л» не нужен); по 500 л — проверено
+    for (const [n, out, s5] of tries){
+      if (s5 && !hadR) continue;
+      if (out && close) break;   // внутри помещается с ресиверами вплотную — лучше, чем снаружи (решение ПНЕВМОТЕХ 14.10)
+      set(out, s5);
+      const nt=await this.pick(x, { ...q, work:n, compact:true, recvOut:out }), st=state(), v=keep(nt, n, out, s5);
+      const dryR=kitParts(x).some(p=>StationEquip.kindOf(p)==='receiver' && p.recvRole!=='local' && p.recvRole!=='wet');
+      if (!s5) hadR=dryR; else if (!dryR) continue; else t5=true;   // ресиверов по 500 л в каталоге нет — вариант не годится (станция без ресиверов)
+      v.t5=t5;
       if (st==='ok') return this._fitNote(v, n0, false);
+      if (st==='close' && !close) close=v;
       if (st==='wide' && !wide) wide=v;
     }
-    const v=wide || first; x.kit.parts=v.parts; if (v.out && !out0){ req.recvOut=true; req.recvOutAuto=true; } else if (!out0){ delete req.recvOut; delete req.recvOutAuto; }
-    return wide ? this._fitNote(v, n0, true) : `${v.note}. Станция не помещается в один контейнер даже из ${this.MAX} одинаковых агрегатов и с ресиверами снаружи — разделите её на две станции (по половине производительности) или задайте контейнер вручную`;
+    const v=close || wide || first; x.kit.parts=v.parts; set(v.out && !out0, v.s5);
+    if (close) return this._fitNote(v, n0, false, true);
+    return wide ? this._fitNote(v, n0, true) : `${v.note}. Станция не помещается в один контейнер даже из ${this.MAX} одинаковых агрегатов${t5 ? ', с ресиверами по 500 л' : ''} и с ресиверами снаружи — разделите её на две станции (по половине производительности) или задайте контейнер вручную`;
   }
   /** уведомление о том, как станция встала в контейнер */
-  static _fitNote(v, n0, wide){
-    const why=[]; if (v.n>n0) why.push(`подобрано ${v.n} одинаковых`); if (v.out) why.push('ресиверы — снаружи у стены станции (ФНП ОРПД, п. 65)');
+  static _fitNote(v, n0, wide, close){
+    const why=[]; if (v.n>n0) why.push(`подобрано ${v.n} одинаковых`);
+    if (close) why.push('ресиверы и фильтры — вплотную друг к другу (исключение: иначе ресиверы пришлось бы выносить наружу)');
+    if (v.s5) why.push('ресиверы — по 500 л (без учёта в Ростехнадзоре): с ресиверами 900 л станция не помещается в габарит перевозки');
+    if (v.out) why.push(`ресиверы — снаружи у стены станции (ФНП ОРПД, п. 65): внутри в габарите перевозки не помещаются${v.t5 ? ' — ни по 900 л, ни по 500 л' : ''}, хотя компоновка пробует два ряда, пары, поворот и плотные отступы`);
     if (wide) why.push('ширина больше габарита перевозки — негабарит (исключение)');
     return why.length ? `${v.note}. Одним ${n0>1 ? 'набором' : 'агрегатом'} со всем оборудованием внутри станция не помещается в контейнер в габарите перевозки — ${why.join('; ')}` : v.note;
   }

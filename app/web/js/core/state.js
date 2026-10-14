@@ -1,9 +1,13 @@
 // Состояние КП (S): новое КП, черновик в браузере, доступ к полям по пути, итоги.
 'use strict';
 
-const DEF_MANAGER = { name:'', position:'',
-  phone:'+7 (495) 690-91-96', ext:'', mobile:'', email:'', site:'www.kompr.ru',
-  address:'Москва, ул. Малая Пироговская, д. 18с1', hours:'Пн–Пт, 9:00–18:00' };
+// контакты компании (телефон, сайт, адрес, режим работы) — из «Значений программы» (mgr.*), см. defManager
+const DEF_MANAGER = { name:'', position:'', phone:'', ext:'', mobile:'', email:'', site:'', address:'', hours:'' };
+
+// что ещё подставляется в новое КП («Настройки → Значения программы → КП и документы → Новое КП»)
+DefRegistry.add([], [
+  ['kp.showClients', 'kp', 'Страница «Наши клиенты» в новом КП', 'bool', true, {hint:'Включено — в новом КП сразу стоит переключатель «Страница „Наши клиенты“ в КП» (раздел «Оформление КП»): в документ попадает страница с логотипами клиентов компании. Выключено — страницы нет, менеджер включает её сам, когда нужно.'}],
+]);
 
 // условия КП и базовые варианты для быстрого выбора (раздел «Условия», кнопка ▾ у поля)
 const COND = [
@@ -31,7 +35,7 @@ function freshState(){
   return { client:'', clientId:'', clientInn:'', clientKpp:'', clientOgrn:'', clientFull:'', clientAddr:'', clientDir:'', clientDirPost:'', clientStatus:'',
     contact:{name:'',post:'',phone:'',email:''}, object:{purpose:'',address:''}, check:null,
     tender:{on:false, number:'', url:''},      // вид КП: обычное или для тендера (номер и ссылка на закупку — в КП, журнале и имени файла)
-    date:today(), city:DEF('kp.city')||'', vat:DEFN('kp.vat', 22), showClients:true,
+    date:today(), city:DEF('kp.city')||'', vat:DEFN('kp.vat', 22), showClients:DEF('kp.showClients')!==false,
     cover:{ title:'', model:'', desc:'', kpis:[{},{},{},{}], touched:false },
     pricing:{ cur:DEF('kp.cur')||'RUB', rates:{USD:'',EUR:'',CNY:''}, rateDate:'', rateSrc:'', margin:35, mode:'margin', costNoVat:false, round:DEF('kp.round')||'1' },
     items:[], conditions: COND.map(c=>({label:c[0], value:DEF('cond.'+c[0])||''})),

@@ -1,6 +1,18 @@
 // Каталог: хранилище на сервере, окно подбора с фильтрами, подстановка позиции в КП, пополнение каталога.
 'use strict';
 
+// поиск и список каталога — «Настройки → Значения программы → Каталог, фото, фиды, ИИ»
+DefRegistry.add([['catsearch', 'Поиск и список каталога', 'cat', 'Окно каталога и строка «Быстро добавить из каталога» в разделе «Оборудование».']], [
+  ['cat.page', 'catsearch', 'Строк каталога за раз', 'num', '60', {unit:'шт.', req:true, min:20, max:500,
+    hint:'Сколько позиций окно каталога показывает сразу; следующие подгружаются при прокрутке вниз. Больше — меньше подгрузок, но на слабом компьютере и телефоне список открывается медленнее (150 строк уже заметно тормозили). Пример: 60.'}],
+  ['cat.qDelay', 'catsearch', 'Задержка поиска в каталоге', 'num', '180', {unit:'мс', req:true, min:0, max:2000,
+    hint:'Сколько программа ждёт после последней нажатой клавиши, прежде чем искать в большом каталоге (больше 2000 позиций). 1000 мс = 1 секунда. Меньше — список обновляется быстрее, но на слабом компьютере набор может «подтормаживать». В маленьком каталоге поиск идёт почти сразу (не дольше 60 мс).'}],
+  ['cat.quickN', 'catsearch', 'Подсказок в «Быстро добавить из каталога»', 'num', '8', {unit:'шт.', req:true, min:3, max:30,
+    hint:'Сколько найденных моделей показывать под строкой быстрого добавления в разделе «Оборудование». Enter добавляет первую.'}],
+  ['cat.priceKeep', 'catsearch', 'Хранить цен из прошлых КП', 'num', '50', {unit:'шт.', req:true, min:5, max:500,
+    hint:'Сколько последних цен модели (из сохранённых КП) каталог помнит у каждой позиции — для подсказки «В прошлых КП» в разделе «Цены и валюта». Более старые цены забываются при следующем сохранении КП с этой моделью.'}],
+]);
+
 const CatSrv = {
   async list(){ return await api('/api/catalog'); },
   async get(id){ return await api('/api/catalog/'+encodeURIComponent(id)); },
@@ -85,7 +97,7 @@ async function syncCatalog(number){
     if (base.photoFrom && (!doc || JSON.stringify(base.photo||null)!==JSON.stringify(doc.photo||null))) delete base.photoFrom;
     base.prices = (base.prices||[]).filter(p => !number || p.number!==number);
     base.prices.unshift({ date:S.date, client:S.client, price:it.price, cur:kpCur(), cost:it.cost||0, costCur:it.costCur||'RUB', qty:+it.qty, number:number||'' });
-    base.prices = base.prices.slice(0,50);
+    base.prices = base.prices.slice(0, Math.round(DEFN('cat.priceKeep', 50)));
     const saved = await store().put(base, true);
     it.catId = base.id;
     if (saved){ if (saved.photo) it.photo = saved.photo; if (saved.logo) it.logo = saved.logo; if (saved.gallery && it.gallery && saved.gallery.length===it.gallery.length) it.gallery=it.gallery.map((g,k)=>({...g, src:saved.gallery[k].src})); }
@@ -94,7 +106,7 @@ async function syncCatalog(number){
       const ok=norm(o.name), od = await fullDoc(list.find(d=>d.id===o.catId) || list.find(d=>norm(d.name)===ok));   // полная позиция, а не карточка списка
       const ob = od ? JSON.parse(JSON.stringify(od)) : { id: uid()+uid(), kind:'option', prices: [], features:[], groups:[] };   // новая — всегда опция
       Object.assign(ob,{ name:o.name, price:o.price, spec:ob.spec||'', updatedAt:new Date().toISOString(), short:o.short||ob.short||'', unit:o.unit||'шт.' });
-      ob.prices=(ob.prices||[]).filter(p=>!number||p.number!==number); ob.prices.unshift({date:S.date,client:S.client,price:o.price,qty:+o.qty,number:number||''}); ob.prices=ob.prices.slice(0,50);
+      ob.prices=(ob.prices||[]).filter(p=>!number||p.number!==number); ob.prices.unshift({date:S.date,client:S.client,price:o.price,qty:+o.qty,number:number||''}); ob.prices=ob.prices.slice(0, Math.round(DEFN('cat.priceKeep', 50)));
       await store().put(ob, true); o.catId=ob.id; list.push(ob);
     }
   }

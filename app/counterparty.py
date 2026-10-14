@@ -33,12 +33,14 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, date, timedelta, timezone
 
+from defaults import SrvVal
+
 TIMEOUT = 15
-CHECK_TTL_DAYS = 7
 CHECKO_DAILY = 100       # бесплатный лимит Checko, запросов в календарный день (меняется в «Ключах API»)
-CHECKO_RESERVE = 20      # очередь не тратит последние запросы дня — они остаются для проверок «вручную»
 CHECK_COST = 3           # полная проверка: карточка, суды (ответчик), ФССП; бухотчётность — из ГИР БО ФНС
-FIN_REUSE_DAYS = 120     # бухотчётность годовая: при повторной проверке берём из прежней (экономия запроса)
+# Сроки и пороги проверок — «Настройки → Значения программы» (defaults.SrvVal): cp.ttlDays — свежая проверка не повторяется
+# (дней); cp.reserve — очередь и поиск по ИНН не тратят последние запросы дня; cp.finReuseDays — бухотчётность из прежней
+# проверки; cp.fullReuseDays — суды и ФССП из недавней полной проверки; cp.youngYears, cp.courtsPct — пороги отметок риска.
 MSK = timezone(timedelta(hours=3))
 
 
@@ -460,7 +462,7 @@ class Counterparties:
             sources.append(('DaData', self._lookup_dadata))
         sources.append(('ФНС ЕГРЮЛ', self._lookup_egrul))
         for a in self.apis():             # Checko, затем OFData — их запросы берегутся для проверок
-            if a.quota()['left'] > CHECKO_RESERVE:
+            if a.quota()['left'] > SrvVal.get(self.store, 'cp.reserve'):
                 sources.append((a.NAME, lambda inn, keys, a=a: self._lookup_api(a, inn)))
         for name, fn in sources:
             try:
@@ -566,13 +568,12 @@ class Counterparties:
             qu.append({'inn': inn, 'at': datetime.now().isoformat(timespec='seconds'), 'by': by})
             self.store.kv_set('checkQueue', qu[-500:])
 
-    @staticmethod
-    def _spare(api):
+    def _spare(self, api):
         """Сколько запросов дня очередь оставляет для проверок «вручную»."""
-        return min(CHECKO_RESERVE, api.limit() // 5)
+        return min(SrvVal.get(self.store, 'cp.reserve'), api.limit() // 5)
 
     def run_queue(self, log=print):
-        """Отложенные полные проверки — когда лимит Checko (или резерва OFData) обновился; последние CHECKO_RESERVE
+        """Отложенные полные проверки — когда лимит Checko (или резерва OFData) обновился; последние cp.reserve
         запросов каждого сервиса не трогаем. Результат — в кэш проверок и в карточку клиента."""
         qu = self.store.kv_get('checkQueue') or []
         if not qu or not self.apis():
@@ -615,14 +616,14 @@ class Counterparties:
         apis = self.apis()
         if cached and not force:
             # краткую / бесплатную проверку заменяем полной, как только хватает запросов
-            if self._age(cached) < CHECK_TTL_DAYS and not (cached.get('partial') and any(a.quota()['left'] >= CHECK_COST for a in apis)):
+            if self._age(cached) < SrvVal.get(self.store, 'cp.ttlDays') and not (cached.get('partial') and any(a.quota()['left'] >= CHECK_COST for a in apis)):
                 cached['cached'] = True
                 cached['quotaNow'] = self.quota()
                 return cached
         # бухотчётность (у ИП её нет): из прежней полной проверки (годовая — не меняется неделями) или бесплатно из ГИР БО
         fin = None
         if not ip:
-            if cached and not cached.get('partial') and cached.get('finances') and self._age(cached) < FIN_REUSE_DAYS:
+            if cached and not cached.get('partial') and cached.get('finances') and self._age(cached) < SrvVal.get(self.store, 'cp.finReuseDays'):
                 dt = '.'.join(reversed(str(cached.get('checkedAt') or '')[:10].split('-')))
                 fin = {'finances': cached['finances'], 'src': 'из проверки от %s' % dt, 'url': cached.get('finUrl') or ''}
             else:
@@ -714,7 +715,7 @@ class Counterparties:
             res['links'] = manual_links(inn)
             prev = cached if cached and not cached.get('partial') else None
             fresh_fin = bool(res.get('finances'))
-            if prev and self._age(prev) < 30:     # суды и ФССП — из недавней полной проверки (с датой), карточка — свежая
+            if prev and self._age(prev) < SrvVal.get(self.store, 'cp.fullReuseDays'):     # суды и ФССП — из недавней полной проверки (с датой), карточка — свежая
                 for k in missing:
                     res[k] = prev.get(k)
                 if not res.get('finances') and prev.get('finances'):
@@ -737,7 +738,7 @@ class Counterparties:
         res['rusprofile'] = Rusprofile.url(inn)
         # прежнюю полную проверку не затираем краткой / бесплатной: она остаётся в кэше, пока не устарела
         if res.get('partial') and keep_full and not keep_full.get('partial') and not res.get('nokey'):
-            if self._age(keep_full) < 30:
+            if self._age(keep_full) < SrvVal.get(self.store, 'cp.fullReuseDays'):
                 keep_full['cached'] = True
                 keep_full['quotaNow'] = q
                 keep_full['note'] = res.get('note') or ''
@@ -753,16 +754,16 @@ class Counterparties:
         lv = [f['level'] for f in flags]
         return 'bad' if 'red' in lv else ('warn' if 'yellow' in lv else empty)
 
-    @staticmethod
-    def _reg_age(reg, add):
+    def _reg_age(self, reg, add):
         """Возраст организации, лет, по дате регистрации (ГГГГ-ММ-ДД) с отметками «менее года» / «более N лет»;
         дата не читается — None."""
         try:
             age = (date.today() - date.fromisoformat(str(reg or '')[:10])).days / 365.25
         except Exception:
             return None
-        if age < 1:
-            add('yellow', 'Зарегистрирована менее года назад')
+        young = SrvVal.get(self.store, 'cp.youngYears')
+        if age < young:
+            add('yellow', 'Зарегистрирована менее года назад' if young == 1 else 'Зарегистрирована менее %d %s назад' % (young, 'года' if young in (2, 3, 4) else 'лет'))
         elif age >= 3:
             add('green', 'Работает более %d лет' % int(age))
         return age
@@ -861,7 +862,7 @@ class Counterparties:
         c_sum = _num((courts or {}).get('ОбщСуммИск')) or 0
         if c_cnt:
             rev = fin[0]['revenue'] if fin and fin[0]['revenue'] else None
-            add('red' if (rev and c_sum > rev * 0.1) else 'yellow',
+            add('red' if (rev and c_sum > rev * SrvVal.get(self.store, 'cp.courtsPct') / 100) else 'yellow',
                 'Арбитражные дела в роли ответчика: %d на %s руб.' % (c_cnt, self._money(c_sum)))
         fssp = raw.get('fssp')
         f_cnt = _num((fssp or {}).get('ЗапВсего')) or 0

@@ -26,7 +26,7 @@ class AdminNav {
       {key:'logistics', label:'Тарифы доставки', hint:'Тарифы перевозки по России для «Экономики сделки»: транспорт, расстояния, разгрузка; загрузка файлом.', open:m=>FreightSettings.open(m)}]},
     {title:'Программа', tabs:[
       {key:'features', label:'Функции программы', hint:'Какие дополнительные возможности включены и кому доступны: всем, администратору или выбранным менеджерам.', open:m=>new FeaturesPanel(m).open()},
-      {key:'defaults', label:'Умолчания', hint:'Что программа подставляет сама: новое КП, условия, контакты компании, экономика сделки, станции, автозаполнение.', open:m=>stDefaults(m)},
+      {key:'defaults', label:'Значения программы', hint:'Все числа и значения программы по разделам: новое КП, экономика сделки, логистика, станции, каталог, сервер — с пояснениями и поиском.', open:m=>stDefaults(m)},
       {key:'rules', label:'Инженерные правила станций', hint:'Коэффициенты и нормы расчёта компрессорных и дизель-генераторных станций: значение, источник, статус; документ «Инженерные правила и источники», своя версия файла.', open:m=>new RulesPanel(m).open()},
       {key:'lists', label:'Списки и выборы', hint:'Варианты в выпадающих списках: условия, причины проигрыша, единицы и т. п.', open:m=>stLists(m)},
       {key:'texts', label:'Тексты интерфейса', hint:'Свои надписи и подсказки вместо стандартных.', open:m=>stTexts(m)},
@@ -45,7 +45,7 @@ class AdminNav {
       {key:'updates', label:'Обновления', hint:'Новая версия программы: проверить на GitHub и установить одной кнопкой или из файла; откат; история установок.', open:m=>AdminSystem.updates(m)},
       {key:'system', label:'Система', hint:'Версия, режим работы, адрес, папки, место на диске; перезапуск программы.', open:m=>AdminSystem.system(m)},
       {key:'backup', label:'Копии и база', hint:'Автоматические копии и вторая папка для них, сжатие и проверка базы, выгрузка и загрузка, обновления базы.', open:m=>stBackup(m)},
-      {key:'trash', label:'Корзина', hint:'Удалённое хранится 30 дней — здесь его можно восстановить.', open:m=>stTrash(m)}]}];
+      {key:'trash', label:'Корзина', get hint(){ return `Удалённое хранится ${DEFN('srv.trashDays', 30)} дн. — здесь его можно восстановить.`; }, open:m=>stTrash(m)}]}];
   // прежние ключи вкладок (ссылки из других окон, сохранённый выбор)
   static ALIAS = {delete:'db-kp'};
 
@@ -108,7 +108,7 @@ function stRender(){
       ${setup&&!s.canSetup?'<p class="msg err" style="text-align:left">Администратор ещё не создан. Создайте учётную запись на компьютере, где работает программа (сервер отдела).</p>':`
       <label class="f"><span>Логин</span><input type="text" id="stLg" autocomplete="username" required value="${setup?'admin':esc(localStorage.getItem('kp.adminLogin')||'')}" placeholder="admin"></label>
       ${setup?'<label class="f"><span>Имя (для журнала действий)</span><input type="text" id="stNm" autocomplete="name" placeholder="Например, Петров А. В."></label>':''}
-      <label class="f"><span>${setup?'Пароль (не короче 8 символов, буквы и цифры)':'Пароль'}</span><input type="password" id="stPw" autocomplete="${setup?'new-password':'current-password'}" required></label>
+      <label class="f"><span>${setup?`Пароль (не короче ${DEFN('srv.adminPwMin', 8)} символов, буквы и цифры)`:'Пароль'}</span><input type="password" id="stPw" autocomplete="${setup?'new-password':'current-password'}" required></label>
       ${setup?'<label class="f"><span>Повторите пароль</span><input type="password" id="stPw2" autocomplete="new-password" required></label>':''}
       <p class="msg err" id="stErr" style="text-align:left"></p>
       <button class="btn primary" type="submit">${setup?'Создать и войти':'Войти'}</button>
@@ -161,7 +161,7 @@ async function stStats(m){
   m.innerHTML=`<div id="stAttn"></div>
     <div class="row st-quick"><button class="btn" type="button" data-q="report">Отчёт по КП…</button><button class="btn" type="button" data-q="journal">Журнал КП…</button><button class="btn" type="button" data-sttab="audit">Журнал действий</button><button class="btn" type="button" data-sttab="connections">Проверить подключения</button><button class="btn" type="button" data-sttab="changed">Изменённые настройки</button><button class="btn" type="button" data-sttab="updates">Обновления</button></div>
     <div class="st-tiles">${tile(stNum(k.total),'КП всего')}${tile(stNum(k.today),'за сегодня')}${tile(stNum(k.week),'за неделю')}${tile(stNum(k.month),'за месяц')}
-      ${tile(stNum(Math.round((k.sumMonth||0)/100)),'сумма КП за месяц, руб.')}${tile(stNum(s.activeUsers),'активных за 30 дней')}
+      ${tile(stNum(Math.round((k.sumMonth||0)/100)),'сумма КП за месяц, руб.')}${tile(stNum(s.activeUsers),`активных за ${s.activeDays||DEFN('srv.statActiveDays', 30)} дн.`)}
       ${tile(stNum(mo.pending),'правок на модерации')}${tile(mo.conversion==null?'—':String(mo.conversion).replace('.',',')+' %','правок одобрено')}
       ${tile(stNum(s.deletions.month),'удалений за месяц')}${tile(stSize(s.db.bytes),'размер базы')}</div>
     <div class="st-card"><div class="row st-ch-h"><p class="sub" style="margin:0">КП по ${ST.chart==='day'?'дням (30 дней)':ST.chart==='week'?'неделям (12 недель)':'месяцам (12 месяцев)'}</p><span class="sp"></span>
@@ -287,7 +287,7 @@ async function stDelete(m, type){
       try{ await stEdit(D.type, ed.dataset.dedit, ()=>stDelete(m)); }catch(err){ toast(err.message||String(err)); } return; }
     if (!e.target.closest('[data-del]')) return;
     const n=D.sel.size, label=(DEL_TYPES.find(x=>x[0]===D.type)||[])[1];
-    if (!await stConfirm(`Удалить? ${label}: ${n}`,'Записи будут в корзине 30 дней (их можно восстановить), затем удалятся окончательно.','Удалить')) return;
+    if (!await stConfirm(`Удалить? ${label}: ${n}`,`Записи будут в корзине ${DEFN('srv.trashDays', 30)} дн. (их можно восстановить), затем удалятся окончательно.`,'Удалить')) return;
     const res=await ajson('delete',{type:D.type, ids:[...D.sel]}); D.sel.clear(); toast(`Удалено: ${res.deleted}`);
     if (D.type==='catalog') refreshCat(); if (D.type==='manager') loadManagers().then(renderForm); stDelete(m); };
 }
@@ -489,7 +489,7 @@ async function stUsers(m){
     <div class="st-card"><form id="uAdd" autocomplete="off"><p class="sub">Добавить администратора</p>
       <div class="grid g3"><label class="f"><span>Логин</span><input type="text" id="uL" required placeholder="ivanov" autocomplete="off"></label>
       <label class="f"><span>Имя</span><input type="text" id="uN" placeholder="Иванов И. И."></label>
-      <label class="f"><span>Пароль</span><input type="password" id="uP" required autocomplete="new-password" placeholder="не короче 8, буквы и цифры"></label></div>
+      <label class="f"><span>Пароль</span><input type="password" id="uP" required autocomplete="new-password" placeholder="не короче ${DEFN('srv.adminPwMin', 8)}, буквы и цифры"></label></div>
       <p class="msg err" id="uE" style="text-align:left"></p><button class="btn primary" type="submit">Добавить</button></form>
       <p class="muted">Каждый администратор входит под своим логином; в журнале действий видно, кто что изменил.</p></div>`;
   $('#uAdd').onsubmit=async e=>{ e.preventDefault();
@@ -501,7 +501,7 @@ async function stUsers(m){
       if (a==='edit'){ const v=await stForm(`Изменить: ${login}`, [['newLogin','Логин',u.login],['name','Имя',u.name||'']]); if (!v) return;
         await ajson('users',{action:'edit', login, newLogin:v.newLogin, name:v.name}); toast('Сохранено');
         if (login===r.me){ ST.status={...ST.status, login:v.newLogin, name:v.name||v.newLogin}; } }
-      if (a==='password'){ const v=await stForm(`Новый пароль: ${login}`, [['password','Новый пароль (не короче 8, буквы и цифры)','','password']]); if (!v) return;
+      if (a==='password'){ const v=await stForm(`Новый пароль: ${login}`, [['password',`Новый пароль (не короче ${DEFN('srv.adminPwMin', 8)}, буквы и цифры)`,'','password']]); if (!v) return;
         await ajson('users',{action:'password', login, password:v.password}); toast('Пароль изменён'); }
       stUsers(m);
     }catch(err){ toast(err.message||String(err)); } };
@@ -530,7 +530,7 @@ async function stAccess(m){
     try{ await post(mid,{perms}); toast('Права сохранены'); }catch(err){ toast(err.message||String(err)); stAccess(m); } };
   m.onclick=async e=>{ const b=e.target.closest('[data-ac]'); if (!b) return; const mid=b.closest('[data-mid]').dataset.mid, x=r.managers.find(z=>z.id===mid);
     try{
-      if (b.dataset.ac==='login'){ const v=await stForm(`Вход: ${x.name}`, [['login','Логин (латиница или кириллица, без пробелов)',x.login||''],['password',x.hasPassword?'Новый пароль (пусто — не менять), не короче 4 символов':'Пароль, не короче 4 символов','','password']]); if (!v) return;
+      if (b.dataset.ac==='login'){ const v=await stForm(`Вход: ${x.name}`, [['login','Логин (латиница или кириллица, без пробелов)',x.login||''],['password',x.hasPassword?`Новый пароль (пусто — не менять), не короче ${DEFN('srv.userPwMin', 4)} символов`:`Пароль, не короче ${DEFN('srv.userPwMin', 4)} символов`,'','password']]); if (!v) return;
         if (!x.hasPassword && !v.password) return toast('Задайте пароль');
         await post(mid,{login:v.login, ...(v.password?{password:v.password}:{})}); toast('Сохранено'); }
       if (b.dataset.ac==='block'){ await post(mid,{blocked:!x.blocked}); toast(x.blocked?'Вход разрешён':'Вход запрещён, сессии закрыты'); }

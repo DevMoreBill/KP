@@ -14,6 +14,7 @@ import time
 from datetime import datetime, timedelta
 
 import version
+from defaults import SrvVal
 
 
 class SystemInfo:
@@ -60,8 +61,6 @@ class SystemInfo:
 class Attention:
     """Пункты «Требует внимания»: {level: bad | warn | info, text, tab}; у проблем сервера — постоянный key и alert:
     о них администратору приходит письмо (admin_alerts.AdminAlerts)."""
-    LOW_DISK = 2 * 1024 ** 3
-    BACKUP_DAYS = 2
 
     def __init__(self, store, cfg):
         self.store, self.cfg = store, cfg
@@ -88,7 +87,7 @@ class Attention:
             return [{'level': 'warn', 'text': 'Автоматической копии базы ещё не было', 'tab': 'backup'}]
         if not b.get('ok'):
             return [{'level': 'bad', 'text': 'Последняя копия базы с ошибкой: %s' % (b.get('error') or '')[:120], 'tab': 'backup', 'key': 'backup', 'alert': True}]
-        if datetime.fromisoformat(b['at'][:19]) < datetime.now() - timedelta(days=self.BACKUP_DAYS):
+        if datetime.fromisoformat(b['at'][:19]) < datetime.now() - timedelta(days=SrvVal.get(self.store, 'srv.backupStaleDays')):
             return [{'level': 'warn', 'text': 'Копия базы не обновлялась с %s' % b['at'][:10], 'tab': 'backup', 'key': 'backup', 'alert': True}]
         return []
 
@@ -159,7 +158,7 @@ class Attention:
 
     def _disk(self):
         d = SystemInfo._free(self.cfg.DATA_DIR)
-        if d and d['free'] < self.LOW_DISK:
+        if d and d['free'] < SrvVal.get(self.store, 'srv.lowDiskGB') * 1024 ** 3:
             return [{'level': 'bad', 'text': 'На диске с базой осталось %.1f ГБ' % (d['free'] / 1024 ** 3), 'tab': 'system', 'key': 'disk', 'alert': True}]
         return []
 
@@ -171,4 +170,4 @@ class Attention:
 
     def _trash(self):
         n = len(self.store.trash_list())
-        return [{'level': 'info', 'text': 'В корзине записей: %d (хранятся 30 дней)' % n, 'tab': 'trash'}] if n else []
+        return [{'level': 'info', 'text': 'В корзине записей: %d (хранятся %d дн.)' % (n, SrvVal.get(self.store, 'srv.trashDays')), 'tab': 'trash'}] if n else []

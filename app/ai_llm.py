@@ -16,6 +16,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
+from defaults import SrvVal
+
 DEFAULT_BASE = 'https://api.deepseek.com'
 MODELS = [('deepseek-chat', 'DeepSeek-V3 (deepseek-chat) — быстро, рекомендуется'),
           ('deepseek-reasoner', 'DeepSeek-R1 (deepseek-reasoner) — рассуждает дольше, дороже')]
@@ -26,7 +28,8 @@ SYSTEM = ('Ты — инженер компании-поставщика про�
           'опубликованные данные производителя именно этой модели, в которых ты уверен. Не выводи значения по аналогии с другими '
           'моделями, не рассчитывай и не округляй; если данных нет или ты не уверен — оставляй пустую строку или пустой массив.')
 LOCK = threading.Lock()
-RATE = (30, 60)          # не больше 30 запросов в минуту на весь отдел: защита баланса от зацикливания и случайных повторов
+# не больше 30 запросов в минуту на весь отдел (ai.rateMin): защита баланса от зацикливания и случайных повторов;
+# «точность» (temperature, ai.temperature) и длина ответа (ai.maxTokens) — тоже «Настройки → Значения программы»
 _RECENT = []
 
 
@@ -114,11 +117,11 @@ def ask(store, prompt, force=False):
         raise RuntimeError('Пустой запрос')
     now = time.time()
     with LOCK:
-        _RECENT[:] = [t for t in _RECENT if now - t < RATE[1]]
-        if len(_RECENT) >= RATE[0]:
+        _RECENT[:] = [t for t in _RECENT if now - t < 60]
+        if len(_RECENT) >= SrvVal.get(store, 'ai.rateMin'):
             raise RuntimeError('Слишком много запросов к нейросети за минуту — подождите немного и повторите')
         _RECENT.append(now)
-    body = {'model': s['model'], 'temperature': 0.2, 'max_tokens': 8000, 'stream': False,
+    body = {'model': s['model'], 'temperature': SrvVal.get(store, 'ai.temperature'), 'max_tokens': SrvVal.get(store, 'ai.maxTokens'), 'stream': False,
             'messages': [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': prompt[:MAX_PROMPT]}]}
     if 'reasoner' not in s['model']:                 # у DeepSeek-R1 режима JSON нет — разбор ответа и так терпимый
         body['response_format'] = {'type': 'json_object'}

@@ -43,8 +43,8 @@ import images
 import imgfetch
 from maker_logos import MakerLogos
 from config import DATA_DIR
+from defaults import SrvVal
 
-MAX_FEED = 150 * 1024 * 1024
 KV = 'feeds'
 IMAGE_STORE = None      # хранилище изображений data/img (images.ImageStore) — задаёт kp_server при запуске
 JOBS = {}               # id фида → {kind, state, done, total, msg, startedAt, result}
@@ -261,7 +261,7 @@ def log_of(store, fid):
 
 def _log_add(store, fid, rec):
     lg = [rec] + log_of(store, fid)
-    store.kv_set('feedlog:' + fid, lg[:30])
+    store.kv_set('feedlog:' + fid, lg[:SrvVal.get(store, 'cat.feedLog')])
 
 
 # ---------------------------------------------------------------- загрузка и разбор YML
@@ -270,15 +270,16 @@ def fetch(url):
     imgfetch._check_url(url)        # только http(s) и не адреса локальной сети
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (KP-Pnevmotekh feed)', 'Accept': 'application/xml,text/xml,*/*'})
     with urllib.request.build_opener(imgfetch._SafeRedirect).open(req, timeout=120) as r:
-        data = r.read(MAX_FEED + 1)
-    if len(data) > MAX_FEED:
-        raise ValueError('Фид больше 150 МБ')
+        mb = SrvVal.now('cat.feedMaxMB')
+        data = r.read(mb * 1024 * 1024 + 1)
+    if len(data) > mb * 1024 * 1024:
+        raise ValueError('Фид больше %d МБ (предел — «Настройки → Значения программы»)' % mb)
     return data
 
 
 PAGE_MAX = 3 * 1024 * 1024
 PAGE_V = 5                              # версия разбора страницы: при смене кэш перечитывается
-PAGE_DAYS = 30                          # описание со страницы товара запоминается на 30 дней
+# описание со страницы товара запоминается на 30 дней — cat.pageDays («Значения программы»)
 _PAGE_SEM = threading.Semaphore(3)      # не больше 3 страниц сайта одновременно
 
 
@@ -704,7 +705,7 @@ def page_info(html, url):
 def _page_getter(store):
     """Данные со страниц товаров (описание, фото, свойства, применимость) с кэшем в kv «feeddesc» {адрес: {…, at}}."""
     cache = store.kv_get('feeddesc') or {}
-    lock, errors, today = threading.Lock(), [], date.today()
+    lock, errors, today, days = threading.Lock(), [], date.today(), SrvVal.get(store, 'cat.pageDays')
 
     def get(url):
         if not url:
@@ -714,7 +715,7 @@ def _page_getter(store):
         if hit and hit.get('v') == PAGE_V:
             try:
                 # страница без фото перечитывается на следующий день: сайт мог отдать её не полностью
-                if (today - date.fromisoformat(hit['at'])).days < (PAGE_DAYS if hit.get('imgs') else 1):
+                if (today - date.fromisoformat(hit['at'])).days < (days if hit.get('imgs') else 1):
                     return hit
             except (KeyError, ValueError):
                 pass
@@ -2192,8 +2193,8 @@ def _safe(fn, *a, **k):
 
 
 def auto_check(store, log=print):
-    """Раз в день (после 6 утра): РРЦ и наличие по всем фидам с автопроверкой."""
-    if datetime.now().hour < 6:
+    """Раз в день (после 6 утра — cat.feedHour в «Значениях программы»): РРЦ и наличие по всем фидам с автопроверкой."""
+    if datetime.now().hour < SrvVal.get(store, 'cat.feedHour'):
         return
     today = date.today().isoformat()
     for f in feeds(store):

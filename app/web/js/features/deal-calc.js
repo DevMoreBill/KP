@@ -33,11 +33,60 @@ function dNum(s){
 
 const DEAL_CURS=['RUB','CNY','USD','EUR'];
 
-// Таможенные сборы за таможенные операции (ввоз), ₽ — фиксированная сумма за декларацию по её общей таможенной
-// стоимости (цена товара + доставка до границы ЕАЭС + страховка, в рублях по курсу ЦБ на дату подачи декларации).
-// ПП РФ от 28.11.2024 № 1637 в редакции ПП РФ от 23.10.2025 № 1638 — ставки с 01.01.2026.
-// При изменении ставок поправьте таблицу; в расчёте сбор можно вписать вручную.
-const CUSTOMS_FEES = { title:'ПП РФ № 1637 в ред. № 1638, с 01.01.2026', scale:[[200000,1231],[450000,2462],[1200000,4924],[2700000,13541],[4200000,18465],[5500000,21344],[10000000,49240],[Infinity,73860]] };
+// Значения экономики сделки, которые правит администратор: «Настройки → Значения программы → Экономика сделки»
+// (реестр — js/core/defaults.js, DefRegistry). Встроенные — прежние значения программы; читаются в момент расчёта.
+class DealValues {
+  // Таможенные сборы за таможенные операции (ввоз), ₽ — фиксированная сумма за декларацию по её общей таможенной
+  // стоимости (цена товара + доставка до границы ЕАЭС + страховка, в рублях по курсу ЦБ на дату подачи декларации).
+  // ПП РФ от 28.11.2024 № 1637 в редакции ПП РФ от 23.10.2025 № 1638 — ставки с 01.01.2026. [до, сбор]
+  static FEE = [[200000,1231],[450000,2462],[1200000,4924],[2700000,13541],[4200000,18465],[5500000,21344],[10000000,49240],[Infinity,73860]];
+  static FEE_TITLE = 'ПП РФ № 1637 в ред. № 1638, с 01.01.2026';
+  static n(key, fb){ return typeof DEFN==='function' ? DEFN(key, fb) : fb; }
+  /** шкала сбора из «Значений программы»; границы не по возрастанию — встроенная шкала (ошибку видно в «Настройках») */
+  static feeScale(){ const B=this.FEE, out=B.map(([lim, fee], i)=>[i<B.length-1 ? this.n('deal.feeLim'+(i+1), lim) : Infinity, this.n('deal.fee'+(i+1), fee)]);
+    for (let i=1; i<out.length; i++) if (!(out[i][0]>out[i-1][0])) return B.map(x=>[...x]);
+    return out; }
+  static feeOwn(){ return this.feeScale().some((x, i)=>x[0]!==this.FEE[i][0] || x[1]!==this.FEE[i][1]); }
+  static rub(v){ return Math.round(v).toLocaleString('ru-RU'); }
+  /** шкала текстом для подсказки: «до 200 000 ₽ — 1 231 ₽, …, свыше 10 000 000 ₽ — 73 860 ₽» */
+  static feeText(){ const sc=this.feeScale(); return sc.map(([lim, fee], i)=>`${lim===Infinity ? 'свыше '+this.rub(sc[i-1][0]) : 'до '+this.rub(lim)} ₽ — ${this.rub(fee)} ₽`).join(', '); }
+  static register(){
+    if (typeof DefRegistry==='undefined') return;
+    const B=this.FEE, last=B.length-1, rows=[];
+    B.forEach(([lim, fee], i)=>{
+      if (i<last) rows.push(['deal.feeLim'+(i+1), 'dealFee', `Интервал ${i+1}: таможенная стоимость до`, 'num', String(lim), {unit:'₽', req:true, min:1, max:1e10,
+        hint:`Таможенная стоимость ${i ? 'больше границы интервала '+i+' и ' : ''}не больше этой суммы — сбор интервала ${i+1}. Границы должны расти от интервала к интервалу, иначе программа считает по шкале постановления.`}]);
+      rows.push(['deal.fee'+(i+1), 'dealFee', i<last ? `Интервал ${i+1}: сбор` : `Интервал ${i+1} (дороже последней границы): сбор`, 'num', String(fee), {unit:'₽', req:true, min:0, max:1e6,
+        hint:`Сколько платим на таможне за одну декларацию в интервале ${i+1}. Пример: таможенная стоимость ${this.rub(!i ? lim/2 : i<last ? (B[i-1][0]+lim)/2 : B[i-1][0]*1.5)} ₽ → сбор ${this.rub(fee)} ₽.`}]); });
+    DefRegistry.add([
+      ['dealFee', 'Таможенный сбор — шкала', 'deal', 'Сбор за таможенное оформление ввоза — одна сумма за декларацию, зависит от таможенной стоимости (цена оборудования + доставка до границы + страхование, в рублях). Ставки — ПП РФ от 28.11.2024 № 1637 в ред. ПП РФ от 23.10.2025 № 1638, действуют с 01.01.2026. Вышло новое постановление — поправьте границы и суммы здесь: расчёт сделки и Excel возьмут их сразу. В сделке сбор можно вписать и вручную.'],
+      ['dealPay', 'Сроки и оплата — когда менеджер не выбрал своё', 'deal', 'Запасные значения: подставляются, если в «Значениях программы» выключены готовые варианты оплаты (выше) или менеджер их не выбрал.'],
+      ['dealMoney', 'Деньги, наличные, банковская гарантия', 'deal', 'С чем считается стоимость денег, прочие расходы наличными и банковская гарантия в новой сделке. В каждой сделке менеджер может вписать своё.'],
+    ], [...rows,
+      ['deal.defer', 'dealPay', 'Окончательная оплата заказчика — через сколько дней после поставки', 'num', '30', {unit:'дн.', req:true, min:0, max:365,
+        hint:'Отсрочка последнего платежа заказчика, если вариант «Оплата заказчика» не выбран. Пример: 30 — заказчик платит через 30 календарных дней после поставки, на эти дни программа считает стоимость денег.'}],
+      ['deal.supAdv', 'dealPay', 'Аванс поставщику, если вариант оплаты поставщику не выбран', 'num', '20', {unit:'%', req:true, min:0, max:100,
+        hint:'Доля цены оборудования, которую платим поставщику при заказе; остаток — перед отгрузкой. Действует, когда выключено значение «Оплата поставщику» в разделе «Экономика сделки». Пример: 20 % от 1 000 000 ₽ — 200 000 ₽ при заказе и 800 000 ₽ перед отгрузкой.'}],
+      ['deal.monthDays', 'dealPay', 'Дней в месяце для стоимости денег', 'num', '30', {unit:'дн.', req:true, min:28, max:31,
+        hint:'Финансирование = недостающие деньги × ставка % в месяц × дней / это число. По методике расчёта сделки месяц — 30 дней. Пример: 1 000 000 ₽ × 2 % × 45 дн. / 30 = 30 000 ₽.'}],
+      ['deal.moneyFb', 'dealMoney', 'Стоимость денег, если ключевая ставка ЦБ не получена', 'num', '2', {unit:'% в месяц', req:true, min:0, max:20,
+        hint:'Обычно стоимость денег = (ключевая ставка ЦБ + надбавка) / 12. Когда сайт ЦБ недоступен и сохранённой ставки нет — берётся это число. 2 % в месяц ≈ 24 % годовых.'}],
+      ['deal.xcCost', 'dealMoney', 'Стоимость получения наличных', 'num', '0', {unit:'%', req:true, min:0, max:90,
+        hint:'Для «Прочих расходов наличными»: сколько процентов от перечисленной суммы удерживают за выдачу наличных. Расход компании = сумма на руки / (1 − % / 100). Пример: на руки 100 000 ₽ при 10 % → расход 111 111 ₽. 0 — менеджер вписывает сам.'}],
+      ['deal.bgAdvPct', 'dealMoney', 'Гарантия на возврат аванса — сумма, % от аванса', 'num', '100', {unit:'%', req:true, min:0, max:100,
+        hint:'Новая банковская гарантия «На возврат аванса» — на эту долю авансов заказчика (все оплаты до поставки). Обычно заказчик требует гарантию на весь аванс — 100 %.'}],
+      ['deal.bgPct', 'dealMoney', 'Гарантия исполнения и гарантийных обязательств — сумма, % от цены КП', 'num', '10', {unit:'%', req:true, min:0, max:100,
+        hint:'Новая гарантия «Исполнения договора» или «Гарантийных обязательств» — на эту долю цены КП с НДС. По 44-ФЗ (ст. 96) обеспечение исполнения контракта — от 0,5 до 30 % начальной цены; точную долю пишет заказчик в документации.'}],
+      ['deal.bgWarrDays', 'dealMoney', 'Срок гарантии гарантийных обязательств', 'num', '365', {unit:'дн.', req:true, min:1, max:3650,
+        hint:'На сколько дней берётся гарантия «Гарантийных обязательств», если менеджер не вписал свой срок. Комиссия банка = сумма × ставка % годовых × дней / 365. Пример: гарантия 1 000 000 ₽, 3 % годовых, 365 дн. → 30 000 ₽.'}],
+      ['deal.bgMin', 'dealMoney', 'Минимальная комиссия банка за гарантию', 'num', '0', {unit:'₽', req:true, min:0, max:1e7,
+        hint:'У многих банков есть минимальная комиссия за выдачу гарантии — уточните в своём банке. Если комиссия по ставке меньше — в расчёт идёт эта сумма. 0 — без минимума.'}],
+    ]);
+  }
+}
+DealValues.register();
+
+const CUSTOMS_FEES = { title:DealValues.FEE_TITLE, get scale(){ return DealValues.feeScale(); } };
 
 function customsFee(cv){ if (!(cv>0)) return 0; for (const [lim,fee] of CUSTOMS_FEES.scale) if (cv<=lim) return fee; return 0; }
 // интервал шкалы для подсказки: «таможенная стоимость 3 100 000 ₽ — интервал 2 700 000,01–4 200 000 ₽»
@@ -68,7 +117,7 @@ const DEAL_DOC_KINDS = { pd:'проектная', rd:'рабочая', id:'ис�
 const dealDocKinds = d => Object.keys(DEAL_DOC_KINDS).filter(k=>d && d.docK && d.docK[k]).map(k=>DEAL_DOC_KINDS[k]).join(', ');
 // ставка банка за гарантию по умолчанию, % годовых от суммы гарантии за её срок. Рынок 2026: обычно 1–3,5 %,
 // в среднем ~2,2 % (Сбербанк — от 2 %, ВТБ — от 3,7 %); 3 % — с запасом для коммерческого договора. Правится в каждой гарантии.
-const dealBgRate = () => typeof DEFN==='function' ? DEFN('deal.bgRate', 3) : 3;     // ставка банковской гарантии по умолчанию, % годовых (Настройки → Умолчания)
+const dealBgRate = () => DealValues.n('deal.bgRate', 3);     // ставка банковской гарантии по умолчанию, % годовых (Настройки → Умолчания)
 
 // этапы оплаты поставщику: событие поставки + дней после него; последний этап — остаток до 100 %
 const DEAL_SUP_EVENTS = { order:'при заказе', ready:'перед отгрузкой (готовность)', delivery:'после поставки', pnr:'после шефмонтажа и ПНР' };
@@ -85,7 +134,7 @@ const dealDef = (k, fb) => typeof DEF==='function' ? DEF(k) : fb;
 function dealNewSupplier(id, def={}){
   const country=def.country!==undefined ? def.country : (dealDef('deal.country', 'Россия')||'');
   const p=dealCountryPreset(country) || {cusMode:'sum', vatIn:false};
-  const s={ id, name:'', country, vatIn:p.vatIn, adv:def.adv??'20', prod:def.prod??dealDef('deal.prod','40')??'', ship:def.ship??dealDef('deal.ship','40')??'',
+  const s={ id, name:'', country, vatIn:p.vatIn, adv:def.adv??String(DealValues.n('deal.supAdv', 20)), prod:def.prod??dealDef('deal.prod','40')??'', ship:def.ship??dealDef('deal.ship','40')??'',
     extra:{v:'',cur:'RUB'}, log:{v:'',cur:'RUB'}, logRu:{v:''}, cusMode:p.cusMode, cus:{v:'',cur:'RUB'}, vi:'', vo:'',
     duty:'', ivat:dealDef('deal.ivat','22')||'22', fee:'', ins:'', fx:'', brk:{v:''}, voRu:'' };
   const pp=dealDef('deal.supPay', null);
@@ -94,9 +143,9 @@ function dealNewSupplier(id, def={}){
 }
 
 function dealBlank(def={}){
-  const adv=def.cAdv&&+def.cAdv>0 ? String(def.cAdv) : '', cp=dealDef('deal.custPay', null), tg=dealDef('deal.target', null);
-  const tr = adv ? [{pct:adv, ev:'sign', off:'0'}, {pct:'', ev:'delivery', off:def.defer??'30'}]
-    : cp && typeof DL_TR_PRESETS!=='undefined' && DL_TR_PRESETS[cp] ? JSON.parse(JSON.stringify(DL_TR_PRESETS[cp][1])) : [{pct:'', ev:'delivery', off:def.defer??'30'}];
+  const adv=def.cAdv&&+def.cAdv>0 ? String(def.cAdv) : '', cp=dealDef('deal.custPay', null), tg=dealDef('deal.target', null), defer=def.defer??String(DealValues.n('deal.defer', 30));
+  const tr = adv ? [{pct:adv, ev:'sign', off:'0'}, {pct:'', ev:'delivery', off:defer}]
+    : cp && typeof DL_TR_PRESETS!=='undefined' && DL_TR_PRESETS[cp] ? JSON.parse(JSON.stringify(DL_TR_PRESETS[cp][1])) : [{pct:'', ev:'delivery', off:defer}];
   return { v:3, touched:false, over:{price:'',vat:''}, rates:{}, sup:[dealNewSupplier('s1',def)], map:{},
     mnt:'', pnr:'', oth:'', doc:'', docK:{}, vo:'', warr:'', bonus:'', tax:def.tax??dealDef('deal.tax','25')??'25',
     cust:{ tr }, money:def.money??'', days:{}, target:{type:'margin', v:tg||''} };
@@ -173,7 +222,8 @@ class DealCalculator {
       lines.push({id:'extra', name:'Прочая закупка у поставщика', qty:1, rub:exRub, duty: own!=null ? own : wb>0 ? wd.reduce((a,l)=>a+l.rub*l.duty,0)/wb : null,
         dutyAuto: own==null && wb>0, code:String(s.hsx||'').trim()}); }
     const L=money(P+'.log', s.log), Lfx=(s.log&&s.log.cur||'RUB')!=='RUB' ? L : 0;
-    const Lru=money(P+'.logRu', s.logRu, 'RUB'), brk=money(P+'.brk', s.brk, 'RUB');
+    // доставка по России: «по расчёту» — рубли; «своя сумма» — в рублях или валюте (s.logRu.cur), в рубли по курсу
+    const Lru=money(P+'.logRu', s.logRu), LruFx=(s.logRu&&s.logRu.cur||'RUB')!=='RUB', brk=money(P+'.brk', s.brk, 'RUB');
     const adv=num(P+'.adv', s.adv, {def:0, max:100}), prod=num(P+'.prod', s.prod, {def:0, int:true}), ship=num(P+'.ship', s.ship, {def:0, int:true});
     const insP=num(P+'.ins', s.ins, {def:0, max:100}), fxP=num(P+'.fx', s.fx, {def:0, max:100});
     const ins=equip*insP/100, fxE=equipFx*fxP/100, fxL=Lfx*fxP/100;
@@ -206,7 +256,7 @@ class DealCalculator {
     if (voRu>Lru+brk+0.005) this.err[P+'.voRu']='Не больше суммы услуг в России';
     const cash=equip+fxE+fxL+ins+L+T+brk+Lru;
     const prodK=s.prodK==='work'?'work':'', shipK=s.shipK==='work'?'work':'', rdy=this.addD(0, prod, prodK), arr=this.addD(rdy, ship, shipK);
-    return { id:s.id, name:(s.name||'').trim()||`Поставщик ${k+1}`, country:s.country||'', items, noCost, lines, byCur, noVat, equip, equipFx, L, Lru, brk, T, adv, prod, ship, prodK, shipK, rdy, arr, ins, fxE, fxL, stages,
+    return { id:s.id, name:(s.name||'').trim()||`Поставщик ${k+1}`, country:s.country||'', items, noCost, lines, byCur, noVat, equip, equipFx, L, Lru, LruFx, brk, T, adv, prod, ship, prodK, shipK, rdy, arr, ins, fxE, fxL, stages,
       mode, calc:mode==='calc', cv, dutyA, fee, feeAuto, ivatA, ivP, noDuty, vi, vo, voAuto, suggest, voRu, voRuAuto, ruSuggest, cash, active: cash>0 }; }
   suppliers(){ const d=this.d;
     const sup=(d.sup&&d.sup.length?d.sup:[dealNewSupplier('s1')]);
@@ -237,10 +287,10 @@ class DealCalculator {
   expenses(){ const d=this.d, num=(...a)=>this.num(...a);
     this.M=num('mnt', d.mnt, {def:0}); this.E=num('oth', d.oth, {def:0}); this.Dc=num('doc', d.doc, {def:0}); this.pnrDays=num('pnr', d.pnr, {def:0, int:true});
     this.Vo=num('vo', d.vo, {def:0});
-    this.warrP=num('warr', d.warr, {def:0, max:100}); this.bonusP=num('bonus', d.bonus, {def:0, max:100}); this.taxP=num('tax', d.tax, {def:25, max:100});
+    this.warrP=num('warr', d.warr, {def:0, max:100}); this.bonusP=num('bonus', d.bonus, {def:0, max:100}); this.taxP=num('tax', d.tax, {def:DealValues.n('deal.tax', 25), max:100});
     const xc=d.xc||{}; this.xc=xc; this.xMode=['net','sale','salevat','sum'].includes(xc.mode)?xc.mode:'net';
-    this.xV=num('xc.v', xc.v, {def:0, max:this.xMode==='sum'?null:100}); this.xCost=num('xc.cost', xc.cost, {def:0, max:90}); this.xG=1/(1-this.xCost/100);
-    const moneyOwn=num('money', d.money); this.moneyAuto=moneyOwn==null; this.i=this.moneyAuto ? (this.kp.moneyAuto ?? 2) : moneyOwn;
+    this.xV=num('xc.v', xc.v, {def:0, max:this.xMode==='sum'?null:100}); this.xCost=num('xc.cost', xc.cost, {def:DealValues.n('deal.xcCost', 0), max:90}); this.xG=1/(1-this.xCost/100);
+    const moneyOwn=num('money', d.money); this.moneyAuto=moneyOwn==null; this.i=this.moneyAuto ? (this.kp.moneyAuto ?? DealValues.n('deal.moneyFb', 2)) : moneyOwn;
     this.R=this.S/this.vatK; this.VATs=this.S-this.R;
     this.W=this.R*this.warrP/100; this.Bn=this.R*this.bonusP/100;
     const S_=this.S_, sumOf=f=>S_.reduce((a,s)=>a+f(s),0); this.sumOf=sumOf;
@@ -288,11 +338,11 @@ class DealCalculator {
     const advSum=this.advSum=trs.filter(t=>t.p>0 && (t.ev==='sign'||t.ev==='ready')).reduce((a,t)=>a+(t.bySum?t.sum:S*t.p/100),0);
     const bgs=this.bgs=(Array.isArray(d.bg)?d.bg:[]).map((g,k)=>{ const P=`bg.${k}`, type=DEAL_BG_TYPES[g.type]?g.type:'adv';
       const base=['adv','pct','sum'].includes(g.base)?g.base:(type==='adv'?'adv':'pct');
-      const v=this.num(P+'.v', g.v, {def:base==='adv'?100:base==='pct'?10:0, max:base==='sum'?null:100});
+      const v=this.num(P+'.v', g.v, {def:base==='adv'?DealValues.n('deal.bgAdvPct', 100):base==='pct'?DealValues.n('deal.bgPct', 10):0, max:base==='sum'?null:100});
       const amount = base==='adv' ? advSum*v/100 : base==='pct' ? S*v/100 : v;
-      const daysAuto = type==='adv' ? this.D : type==='perf' ? this.pnrEnd : 365;
+      const daysAuto = type==='adv' ? this.D : type==='perf' ? this.pnrEnd : Math.round(DealValues.n('deal.bgWarrDays', 365));
       const dOwn=this.num(P+'.days', g.days, {int:true}), days=dOwn==null?daysAuto:dOwn;
-      const rate=this.num(P+'.rate', g.rate, {def:dealBgRate(), max:100}), min=this.num(P+'.min', g.min, {def:0});
+      const rate=this.num(P+'.rate', g.rate, {def:dealBgRate(), max:100}), min=this.num(P+'.min', g.min, {def:DealValues.n('deal.bgMin', 0)});
       const fee = amount>0 && (rate>0||min>0) ? Math.max(min, amount*rate/100*days/365) : 0;
       return {k, type, base, v, amount, days, daysAuto, daysOwn:dOwn!=null, rate, min, fee}; });
     this.BG=bgs.reduce((a,g)=>a+g.fee,0);
@@ -311,7 +361,7 @@ class DealCalculator {
 
   // ---------- финансирование: простой процент на недостающие деньги по графику до последней оплаты заказчика
   static isX(r){ return String(r.key).startsWith('xc'); }
-  finance(){ const rows=this.rows, Tend=this.Tend, i=this.i, isX=DealCalculator.isX;
+  finance(){ const rows=this.rows, Tend=this.Tend, i=this.i, isX=DealCalculator.isX, M=DealValues.n('deal.monthDays', 30);
     const tail=r=>isX(r)?2:(r.key==='bonus'||r.key==='warr')?1:0;
     // в один день: сначала деньги заказчика, потом платежи; постоплата (после поставки, после ПНР) — после платежей этого дня
     const inRank=r=>r.inflow ? (r.post?1:-1) : 0;
@@ -319,7 +369,7 @@ class DealCalculator {
     let bal=0, Fsum=0;
     rows.forEach((r,k)=>{ bal+=r.amount; r.balance=bal; const nx=rows[k+1];
       r.days=Math.max(0, Math.min(nx?nx.day:Tend, Tend)-r.day); if (r.day>=Tend) r.days=0;
-      r.fin=Math.max(0,-bal)*r.days*i/100/30; Fsum+=r.fin; });
+      r.fin=Math.max(0,-bal)*r.days*i/100/M; Fsum+=r.fin; });
     return Fsum; }
   /** прочие расходы наличными в графике: с оплат заказчика (пропорционально) или после последней оплаты */
   setCash(K){ const rows=this.rows, isX=DealCalculator.isX, xFrom=this.xFrom, xBase=this.xBase, trs=this.trs;
@@ -392,4 +442,4 @@ function dlPctTxt(p){ return (Math.round(p*100)/100).toString().replace('.',',')
 // цена с НДС, при которой показатель равен цели — DealCalculator.solve
 function dealSolve(kp, d, type, value){ return DealCalculator.solve(kp, d, type, value); }
 
-if (typeof module!=='undefined') module.exports={DealCalculator, dealAddDays, dlDaysTxt, DEAL_BG_TYPES, dealBgRate, DEAL_SUP_EVENTS, dealSupPay, dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, customsFeeBand, dNum, CUSTOMS_FEES, DEAL_EVENTS, dealCountryPreset};
+if (typeof module!=='undefined') module.exports={DealCalculator, DealValues, dealAddDays, dlDaysTxt, DEAL_BG_TYPES, dealBgRate, DEAL_SUP_EVENTS, dealSupPay, dealCalc, dealBlank, dealNewSupplier, dealUpgrade, dealSolve, customsFee, customsFeeBand, dNum, CUSTOMS_FEES, DEAL_EVENTS, dealCountryPreset};

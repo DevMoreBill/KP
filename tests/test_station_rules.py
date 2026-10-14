@@ -97,6 +97,21 @@ class RulesFileTest(unittest.TestCase):
         ok = lay('layout.matrix', lambda r: r['value']['fit'].update(dense=0, wide=0, roadW=2500))
         self.assertTrue(StationRules.validate(ok))
 
+    def test_own_version_gets_new_rules(self):
+        """своя версия администратора, сохранённая до новых правил поставки, получает их из файла поставки (14.10: числа станции
+        перенесены в правила — в старой своей версии их нет, а расчёт обязан их найти); своё значение не заменяется"""
+        own = copy.deepcopy(self.d)
+        own['rules'] = [r for r in own['rules'] if r['id'] not in ('heat.conv_units', 'dgu.tank_sizes')]
+        next(r for r in own['rules'] if r['id'] == 'heat.ach')['value'] = 0.7
+        full = StationRules.complete(own)
+        ids = [r['id'] for r in full['rules']]
+        self.assertIn('heat.conv_units', ids)
+        self.assertIn('dgu.tank_sizes', ids)
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(next(r for r in full['rules'] if r['id'] == 'heat.ach')['value'], 0.7, 'своё значение — своё')
+        self.assertTrue(StationRules.validate(full))
+        self.assertIs(StationRules.complete(self.d), self.d, 'полный файл — без копии')
+
     def test_layout_params_match(self):
         """пределы чисел компоновки в форме «Настроек» (LayoutParams, station-layout.js) и на сервере (LayoutValues.SCALAR)
         совпадают; у каждого числа матрицы по умолчанию есть поле формы, значение файла поставки — в пределах"""

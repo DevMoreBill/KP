@@ -3,19 +3,20 @@
 обновление не запустилось, задача Планировщика с настройками не для сервера, ошибки в журнале сервера.
 
 Источник — пункты «Требует внимания» с пометкой alert (admin_overview.Attention, у каждого — постоянный key). Письмо —
-когда проблема появилась и раз в сутки, пока она есть; проверка — раз в час (Background.every). Решённая проблема
+когда проблема появилась и раз в сутки, пока она есть; проверка — раз в час (Background.every); оба срока —
+«Значения программы» (srv.alertRemindH, srv.alertsEveryMin). Решённая проблема
 забывается: появится снова — снова письмо. Настройки (kv alerts: on, to) — «Настройки → Почта»; отправка — почтой
 программы (kp_track.Mailer, тот же сервер SMTP, что и для КП).
 """
 import socket
 from datetime import datetime, timedelta
 
+from defaults import SrvVal
 from server_log import ServerLog
 
 
 class AdminAlerts:
     KV = 'alerts'
-    REMIND_HOURS = 24
     MAX_TO = 5
     NOTICES = 10          # событий (ночное обновление) до следующего письма
     LEVEL = {'bad': 'Важно', 'warn': 'Внимание', 'info': 'К сведению'}
@@ -75,7 +76,7 @@ class AdminAlerts:
         items = self.problems()
         keys = {x['key'] for x in items}
         sent = {k: v for k, v in (s.get('sent') or {}).items() if k in keys}       # решённые — забыть
-        edge = (datetime.now() - timedelta(hours=self.REMIND_HOURS)).isoformat(timespec='seconds')
+        edge = (datetime.now() - timedelta(hours=SrvVal.get(self.store, 'srv.alertRemindH'))).isoformat(timespec='seconds')
         due = {x['key'] for x in items if sent.get(x['key'], '') < edge}
         notes = s.get('notices') or []
         if not due and not notes:

@@ -40,15 +40,24 @@ class StationRules:
         return d if isinstance(d, dict) and d.get('rules') else None
 
     def current(self):
-        """действующие правила: своя версия администратора (если исправна), иначе файл поставки"""
+        """действующие правила: своя версия администратора (если исправна), иначе файл поставки. В своей версии, сохранённой
+        до появления новых правил в поставке, их нет — они добавляются из файла поставки (значение по умолчанию; правка в
+        «Настройках» сохранит их в своей версии)"""
         d = self.own()
         if d:
             try:
                 self.validate(d)
-                return d
+                return self.complete(d)
             except ValueError:
                 pass
         return self.bundled()
+
+    @classmethod
+    def complete(cls, d):
+        """своя версия + правила поставки, которых в ней нет (копия, своя версия в базе не меняется)"""
+        have = {r.get('id') for r in d['rules']}
+        miss = [r for r in cls.bundled()['rules'] if r.get('id') not in have]
+        return dict(d, rules=d['rules'] + miss) if miss else d
 
     @classmethod
     def validate(cls, d):
@@ -190,7 +199,7 @@ class LayoutValues:
     IDS = ('layout.matrix', 'norm.aisle', 'norm.aisle_tight', 'clear.kind')
     KINDS = ('compressor', 'dryer', 'receiver', 'filter', 'pump', 'dgu', 'cabinet', 'tank', 'other')
     GROUPS = ('gap', 'pair', 'wall', 'access', 'sides', 'rotate', 'gate', 'service', 'door', 'aisle', 'exits', 'exhaust',
-              'fit', 'modes', 'recv', 'cab', 'move', 'tank', 'conv', 'muffler')
+              'fit', 'modes', 'recv', 'cab', 'move', 'tank', 'conv', 'muffler', 'shell', 'pick', 'pipe', 'pumps', 'grille', 'mass', 'light', 'fire', 'power')
     MAX_MM = 20000
     # пределы чисел матрицы (те же — в форме «Настроек», LayoutParams в station-layout.js; тест сверяет)
     SCALAR = {
@@ -243,6 +252,8 @@ class LayoutValues:
         'recv.outGap': (300, 5000),
         'recv.outStep': (0, 3000),
         'recv.pad': (0, 500),
+        'recv.upright': (0, 1),
+        'recv.close': (0, 1),
         'exhaust.louvre': (200, 1500),
         'exhaust.over': (0, 1000),
         'cab.top': (1200, 2500),
@@ -260,6 +271,130 @@ class LayoutValues:
         'conv.front': (0, 2000),
         'muffler.gap': (0, 1000),
         'muffler.outlet': (0, 1500),
+        # прочие числа станции (решение ПНЕВМОТЕХ 14.10: все значения и умолчания — правятся в «Настройках»)
+        'fit.growVent': (0, 6000),
+        'fit.growHeat': (0, 3000),
+        'tank.max': (500, 20000),
+        'pick.max': (1, 8),
+        'pick.over': (0, 100),
+        'pick.recvFit': (0, 1000),
+        'pick.dryerFit': (0, 1000),
+        'pick.recvFree': (1, 20),
+        'pick.recvAny': (1, 20),
+        'shell.ins': (0, 300),
+        'shell.blockWall': (0, 200),
+        'shell.blockFloor': (50, 500),
+        'shell.blockRoof': (0, 300),
+        'shell.weldWall': (0, 200),
+        'shell.weldFloor': (50, 500),
+        'shell.weldRoof': (0, 300),
+        'shell.northWall': (0, 200),
+        'shell.northFloor': (50, 500),
+        'shell.northRoof': (0, 300),
+        'shell.tambour': (0, 3000),
+        'shell.seaLining': (0, 100),
+        'shell.seaFloor': (0, 300),
+        'shell.gable': (0, 30),
+        'shell.mono': (0, 30),
+        'pipe.airY': (50, 600),
+        'pipe.pad': (0, 300),
+        'pumps.kw': (0, 200),
+        'pumps.len': (300, 3000),
+        'pumps.back': (0, 2000),
+        'pumps.backMin': (0, 2000),
+        'pumps.side': (0, 2000),
+        'pumps.sideMin': (0, 2000),
+        'pumps.top': (0, 2000),
+        'pumps.topMin': (0, 2000),
+        'grille.step': (10, 200),
+        'grille.gap': (0, 1000),
+        'grille.near': (0, 2000),
+        'grille.inZ': (0, 1500),
+        'grille.inHmin': (100, 2000),
+        'grille.inHmax': (200, 2500),
+        'grille.inWmin': (100, 2000),
+        'grille.inWmax': (200, 3000),
+        'grille.lift': (0, 2000),
+        'grille.outTop': (0, 1000),
+        'grille.outHmin': (100, 2000),
+        'grille.outHmax': (200, 2500),
+        'grille.outWmin': (100, 2000),
+        'grille.outWmax': (200, 3000),
+        'grille.whole': (500, 6000),
+        'grille.maxn': (1, 12),
+        'grille.piece': (100, 2000),
+        'grille.fanMin': (200, 1500),
+        'grille.roofHood': (100, 1500),
+        'grille.hoodSide': (0, 500),
+        'grille.hoodLap': (0, 300),
+        'grille.hoodAng0': (5, 60),
+        'grille.hoodAng1': (30, 90),
+        'grille.hoodLow': (0, 1000),
+        'grille.hoodGap': (0, 1500),
+        'grille.radV': (2, 20),
+        'mass.frame': (0, 1000),
+        'mass.pBlock': (0, 200),
+        'mass.pNorth': (0, 200),
+        'mass.pWelded': (0, 200),
+        'mass.lining': (0, 100),
+        'mass.floor': (0, 300),
+        'mass.otherK': (0, 0.5),
+        'mass.otherKg': (0, 2000),
+        'mass.tare10': (500, 5000),
+        'mass.tare20': (1000, 6000),
+        'mass.tare20hc': (1000, 6000),
+        'mass.tare40': (2000, 8000),
+        'mass.tare40hc': (2000, 8000),
+        'mass.angle': (10, 60),
+        'mass.lugL': (0, 1000),
+        'mass.lugW': (0, 1000),
+        'mass.beamL': (2000, 20000),
+        'mass.beamZ': (500, 6000),
+        'mass.beamTop': (500, 6000),
+        'mass.sprZ': (500, 6000),
+        'mass.sprD': (0, 6000),
+        'mass.sprTop': (500, 6000),
+        'light.plane': (0, 1500),
+        'light.lampW': (1, 500),
+        'light.lampLm': (100, 50000),
+        'light.lampLen': (100, 3000),
+        'light.small': (1, 200),
+        'light.flood': (1, 500),
+        'light.exit': (0, 50),
+        'light.fuelPump': (0.1, 50),
+        'fire.modArea': (1, 100),
+        'fire.modVolA': (1, 200),
+        'fire.modVolB': (1, 200),
+        'fire.modSide': (500, 10000),
+        'fire.modZ0': (1000, 6000),
+        'fire.modZ1': (1000, 10000),
+        'fire.k1': (0.5, 3),
+        'fire.k3': (0.5, 3),
+        'fire.k4': (0.5, 3),
+        'fire.shadeH': (0, 3000),
+        'fire.shadeGap': (0, 2000),
+        'fire.ext': (500, 2500),
+        'power.dryerK': (0, 2),
+        'power.dryerMin': (0, 20),
+        'power.dryerAds': (0, 20),
+        'power.dguHeat': (0, 20),
+        'power.dguHeatBig': (0, 30),
+        'power.dguHeatKw': (10, 5000),
+        'power.charger': (0, 5),
+        'power.fuelPumpKw': (0, 10),
+        'power.s230': (0, 20),
+        'power.s230k': (0, 1),
+        'power.s380': (0, 50),
+        'power.s380k': (0, 1),
+        'power.ytp': (0, 5),
+        'power.ytpK': (0, 1),
+        'power.valves': (0, 5),
+        'power.ops': (0, 5),
+        'power.asu': (0, 10),
+        'power.sockStep': (1000, 20000),
+        'power.sockMin': (1, 10),
+        'power.sock380': (0, 10),
+        'power.sockZ': (300, 2000),
     }
 
     @classmethod

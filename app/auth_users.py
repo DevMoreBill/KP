@@ -6,7 +6,7 @@
   Включён — без входа конструктор не открывается; кто работает, сервер знает по сессии (а не по подписи запроса).
 • Учётные данные и права — kv «mgrAccess»: {id менеджера: {login, pw (хеш), perms, lastLogin}}. Отдельно от справочника
   менеджеров: справочник уходит в каждый браузер, а хеши паролей и права — нет.
-• Сессия — cookie kp_user (HttpOnly, SameSite=Strict, 30 дней); в базе — только хеш токена (kv «userSessions»),
+• Сессия — cookie kp_user (HttpOnly, SameSite=Strict, 30 дней — srv.userSessionDays в «Значениях программы»); в базе — только хеш токена (kv «userSessions»),
   поэтому вход переживает перезапуск программы. Выход, смена пароля или права «вход запрещён» закрывают сессии.
 • Пароль — минимум 4 символа (требования минимальные, по заданию); хранится только хешем, как у администраторов.
 """
@@ -17,7 +17,8 @@ import threading
 import time
 from datetime import datetime
 
-SESSION_DAYS = 30
+from defaults import SrvVal
+
 COOKIE = 'kp_user'
 PERMS = [   # ключ, подпись, по умолчанию
     ('catAdd', 'Добавлять оборудование в каталог', True),
@@ -67,8 +68,9 @@ def public(store, managers):
 
 
 def check_password(pw):
-    if len(pw or '') < 4:
-        raise ValueError('Пароль — не короче 4 символов')
+    n = SrvVal.now('srv.userPwMin')
+    if len(pw or '') < n:
+        raise ValueError('Пароль — не короче %d символов' % n)
 
 
 def norm_login(s):
@@ -119,7 +121,7 @@ def start(store, mid):
     tok = secrets.token_urlsafe(32)
     with LOCK:
         s = _sessions(store)
-        s[_h(tok)] = {'mid': mid, 'exp': time.time() + SESSION_DAYS * 86400}
+        s[_h(tok)] = {'mid': mid, 'exp': time.time() + SrvVal.get(store, 'srv.userSessionDays') * 86400}
         store.kv_set('userSessions', s)
     return tok
 
@@ -168,7 +170,7 @@ def find_by_login(store, login):
 def cookie(tok, clear=False):
     if clear:
         return '%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict' % COOKIE
-    return '%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict' % (COOKIE, tok, SESSION_DAYS * 86400)
+    return '%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict' % (COOKIE, tok, SrvVal.now('srv.userSessionDays') * 86400)
 
 
 def touch_login(store, mid):

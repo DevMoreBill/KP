@@ -14,10 +14,10 @@ import urllib.error
 import urllib.request
 
 import images
+from defaults import SrvVal
 
 # сайты поставщиков (Bitrix и др.) на запрос «робота» отвечают 403 или страницей-проверкой — представляемся браузером
 BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
-MAX_BYTES = 15 * 1024 * 1024
 TYPES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp')     # SVG не берём: в нём бывают скрипты
 
 
@@ -116,13 +116,15 @@ def fetch_image(url, referer=None, tries=1):
     if referer:
         hd['Referer'] = referer        # защита от «горячих ссылок»: картинку отдают только со своей страницы
 
+    mb = SrvVal.now('cat.imgMaxMB')
+
     def get():
         with urllib.request.build_opener(_SafeRedirect).open(urllib.request.Request(url, headers=hd), timeout=20) as r:
             ctype = (r.headers.get('Content-Type') or '').split(';')[0].strip().lower()
             if ctype not in TYPES:
                 raise ValueError('По ссылке не картинка (нужен PNG, JPEG, GIF, WebP или BMP)')
-            data = r.read(MAX_BYTES + 1)
-        if len(data) > MAX_BYTES:
-            raise ValueError('Картинка больше 15 МБ')
+            data = r.read(mb * 1024 * 1024 + 1)
+        if len(data) > mb * 1024 * 1024:
+            raise ValueError('Картинка больше %d МБ' % mb)
         return ctype, data
     return retry(get, tries)

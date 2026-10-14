@@ -17,6 +17,8 @@ from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 
+from defaults import SrvVal
+
 
 class Val:
     """Разбор и очистка значений из запроса."""
@@ -162,12 +164,13 @@ class OfferTerm:
 
 # ---------------------------------------------------------------- напоминания менеджера
 class ReminderList:
-    """Напоминания менеджера на дату today."""
-    STALE_DAYS = 7            # «отправлено, ответа нет» — столько дней без смены статуса
-    EXPIRE_AHEAD = 3          # срок действия КП: напомнить за столько дней
+    """Напоминания менеджера на дату today. Сроки — «Значения программы» (store; без него — встроенные):
+    kp.staleDays — «отправлено, ответа нет» через столько дней без смены статуса; kp.expireAhead — о сроке действия КП
+    напомнить за столько дней; kp.expiredShow — сколько дней показывать истёкший срок."""
 
-    def __init__(self, today=None):
+    def __init__(self, today=None, store=None):
         self.today = today or date.today()
+        self.stale, self.ahead, self.expired = (SrvVal.get(store, k) for k in ('kp.staleDays', 'kp.expireAhead', 'kp.expiredShow'))
 
     def collect(self, rows, mine):
         """rows — [(id, meta-dict, track-dict, state-dict)] доступных КП; mine(meta) — КП этого менеджера.
@@ -190,12 +193,12 @@ class ReminderList:
         if st in ('won', 'lost'):
             return
         vu = OfferTerm.until(state, meta)
-        if vu and today - timedelta(days=3) <= vu <= today + timedelta(days=self.EXPIRE_AHEAD):
+        if vu and today - timedelta(days=self.expired) <= vu <= today + timedelta(days=self.ahead):
             yield dict(base, kind='expire', date=vu.isoformat(),
                        text='Срок действия КП истёк' if vu < today else 'Срок действия КП истекает', overdue=vu < today)
         if st == 'sent' and not fu:
             at = Val.day(tr.get('at'))
-            if at and (today - at).days >= self.STALE_DAYS:
+            if at and (today - at).days >= self.stale:
                 yield dict(base, kind='stale', date=at.isoformat(), text='Отправлено %d дн. назад — ответа нет?' % (today - at).days, overdue=False)
 
 

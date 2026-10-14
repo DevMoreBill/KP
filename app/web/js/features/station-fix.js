@@ -19,11 +19,11 @@ class ExpertFix {
     [/ворот|двер|выход/i, 'gate'], [/осушител|фильтр/i, 'air'], [/кабел|автомат|ввод|электр/i, 'el'],
     [/не помещается|не проходит|проход|контейнер|габарит|стоит в|промежутк|не подойти|над поз\.|высот|масс/i, 'fit']];
   /** как решить — по тексту замечания (первое совпадение) */
-  static HOW = [
-    [/Топлив|бак/i, 'Бак под время работы без дозаправки — «Решить» поставит нужный объём; больше 4 500 л — два бака или ёмкость вне контейнера.'],
+  static get HOW(){ return [
+    [/Топлив|бак/i, `Бак под время работы без дозаправки — «Решить» поставит нужный объём; больше ${StationLayout.n(StationMatrix.tank().max)} л — два бака или ёмкость вне контейнера.`],
     [/в карточке не указан/i, 'Откройте позицию в каталоге и заполните эту характеристику — проверка выполнится.'],
     [/не подойти для обслуживания/i, 'Нужен проход или сервисные ворота: возьмите контейнер больше или поменяйте порядок элементов в составе.'],
-    [/не помещается|не проходит по/i, 'Возьмите контейнер больше или вынесите ресиверы на площадку снаружи (кнопка); иначе — оборудование меньших размеров или два модуля.'],
+    [/не помещается|не проходит по/i, 'Возьмите контейнер больше или ресиверы по 500 л внутри (кнопка); не помещаются и они — ресиверы на площадку снаружи; иначе — оборудование меньших размеров или два модуля.'],
     [/Контейнер с запасом/i, 'Возьмите меньший контейнер — дешевле и легче.'],
     [/Проход .*меньше рекомендуемых/i, 'Допустимо по нормам; шире проход — в более широком контейнере (до 2 550 мм — без спецразрешения).'],
     [/учёт\S* в Ростехнадзоре/i, 'Замените на несколько ресиверов по 900 л до 11 бар — каждый без учёта.'],
@@ -40,7 +40,7 @@ class ExpertFix {
     [/Над .* до потолка/i, 'Допустимо; больше места над оборудованием — в контейнере выше.'],
     [/Причина смещения|смещены/i, 'Укажите причину смещения или верните ворота на ось торца.'],
     [/фильтр/i, 'Добавьте фильтр нужной ступени — «Нужно…» в составе.'],
-  ];
+  ]; }
   static SHORT = /меньше|не хватает|нет (фильтр|осушител|ресивер|компрессор)|ниже минимал|не кратен|без обоснования|не помести/i;
   static num(v){ return StationReq.num(v); }
   static secOf(t){ const m=this.TEXT.find(([re])=>re.test(t)); return m ? m[1] : 'other'; }
@@ -82,8 +82,11 @@ class ExpertFix {
     if (plan && plan.level!=='none') for (const q of plan.issues||[]){ if (q.level!=='error' && q.level!=='warn') continue;
       const s=q.big ? 'fit' : this.secOf(q.text);
       // не помещается и подходящего контейнера нет — ресиверы после осушителя на площадку снаружи (ФНП ОРПД, п. 65)
+      // (решение ПНЕВМОТЕХ 14.10: сначала — меньшие ресиверы по 500 л внутри, без учёта в Ростехнадзоре; наружу — только потом)
       const rOut=k==='comp' && q.level==='error' && s==='fit' && !StationReq.recvOut(x) && kitParts(x).some(z=>StationEquip.kindOf(z)==='receiver');
+      const r500=rOut && !r.recvSize && kitParts(x).some(z=>StationEquip.kindOf(z)==='receiver' && z.recvRole!=='wet' && z.recvRole!=='local' && AirChain.volume(z)>ReceiverPlan.SMALL);
       const fix=sg && s==='fit' && (q.level==='error' || q.big) ? { id:'cont', label:(sg.smaller ? 'Взять меньше: ' : 'Взять: ')+this.cont(sg) }
+        : r500 ? { id:'recv500', label:'Ресиверы по 500 л — внутри' }
         : rOut ? { id:'recvOut', label:'Ресиверы после осушителя — снаружи' }
         : s==='vent' && /Не поместил/.test(q.text) && c && !KitView.sysOn(x, c, 'exfan') && StationRules.opt('vent.exfan') ? { id:'exfan', label:'Включить вытяжные вентиляторы' }
         : s==='vent' && /Не поместил/.test(q.text) && c && !KitView.sysOn(x, c, 'boost') ? { id:'boost', label:'Включить вентилятор в воздуховоде выброса' } : secFix(s, q.text);
@@ -108,11 +111,24 @@ class ExpertFix {
     if (id==='cont'){ const plan=StationUi.plan(x), sg=plan && plan.suggest; if (!sg || !c) return '';
       contApply(c, { ctype:sg.ctype, size:sg.size ? sg.size.join(' × ') : '', sizeAuto:!!StationGeo.FLEX[sg.ctype] }); return 'контейнер — '+this.cont(sg); }
     if (id==='recvOut'){ r.recvOut=true; return 'ресиверы после осушителя — снаружи на площадке у торца (ФНП ОРПД, п. 65)'; }
+    if (id==='recv500') return this.recv500(x);
     if (id==='exfan'){ if (!c) return ''; c.sys={ ...(c.sys||CONT_SYS_DEF), exfan:true, boost:false }; contApply(c); return 'вытяжные вентиляторы в стене напротив притока — проёмы меньше'; }
     if (id==='boost'){ if (!c) return ''; c.sys={ ...(c.sys||CONT_SYS_DEF), boost:true }; contApply(c); return 'вентилятор в воздуховоде выброса — жалюзи меньше'; }
     if (id==='gate'){ ExpertLog.reset(x, ExpertLog.GATE); return 'ворота — по оси торца'; }
     if (id.startsWith('xs:')){ ExpertLog.reset(x, id==='xs:vent' ? ExpertLog.VENT() : ExpertLog.GATE); return 'значения — по инженерным правилам'; }
     return '';
+  }
+  /** основные ресиверы — по 500 л (нехватка места, методика ПНЕВМОТЕХ): число — по расчёту, ресивер — рекомендуемый из
+   *  каталога (давление с запасом, по высоте помещения); 500 л в каталоге нет — ничего не меняется ('') */
+  static async recv500(x){
+    const r=StationReq.ensure(x), P=kitParts(x), old=P.filter(z=>StationEquip.kindOf(z)==='receiver' && z.recvRole!=='wet' && z.recvRole!=='local' && AirChain.volume(z)>ReceiverPlan.SMALL);
+    if (!old.length) return '';
+    const keep={ size:r.recvSize, why:r.recvWhy }; r.recvSize='500'; r.recvWhy='space';
+    const R=StationReq.recvPlan(x), o=R && R.main ? TzPick.recvPick(ReceiverPlan.SMALL, KitNeed.bar(x), TzPick.hmax(x)) : null;
+    if (!o || !o.o){ if (keep.size) r.recvSize=keep.size; else delete r.recvSize; if (keep.why) r.recvWhy=keep.why; else delete r.recvWhy; return ''; }
+    const p=await TzPick.part(o.o.c, R.main.n); p.recvRole='dry';
+    const at=x.kit.parts.indexOf(old[0]); x.kit.parts=x.kit.parts.filter(z=>!old.includes(z)); x.kit.parts.splice(Math.max(0, Math.min(at, x.kit.parts.length)), 0, p);
+    return `ресиверы — ${R.main.n} × ${o.o.c.name} внутри (500 л, без учёта в Ростехнадзоре: нехватка места)`;
   }
   /** строка «Нужно…» без окна каталога: число и бак — в составе, остальное — рекомендуемый; основное — по требованиям */
   static async need(x, q){

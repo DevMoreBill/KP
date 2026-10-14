@@ -13,14 +13,13 @@ import threading
 import time
 from datetime import date, datetime, timedelta
 
+from defaults import SrvVal
 from server_log import ServerLog
 from storage import DbZip
 
-KEEP_DAILY, KEEP_WEEKLY, KEEP_MONTHLY = 7, 4, 12
-AUDIT_YEARS = 2            # журнал действий: сколько лет хранить в базе (старее — в архив data/backup/audit-archive)
-VACUUM_DAYS = 30           # сжатие базы — не чаще раза в месяц
-CHECKS_DAYS = 365          # кэш проверок контрагентов (Checko) старше года удаляется
-IMG_MIN_AGE_DAYS = 30      # изображение без ссылок считается лишним, если ему больше месяца (черновики КП в браузерах)
+# Сколько хранить копий, раз в сколько дней сжимать базу, срок кэша проверок контрагентов и возраст «лишнего» изображения —
+# «Настройки → Значения программы» (SrvVal: srv.backupDaily / Weekly / Monthly, srv.vacuumDays, srv.checksDays, srv.imgUnusedDays).
+AUDIT_YEARS = 2            # журнал действий: сколько лет хранить в базе (меняется в «Обслуживании», kv settings.auditYears)
 IMG_RX = re.compile(r'/img/([^"\\?#\s<>]+?\.(?:jpg|jpeg|png|webp))', re.I)
 IMG_EXTS = ('.jpg', '.jpeg', '.png', '.webp')
 
@@ -47,7 +46,8 @@ def auto_dir(data_dir):
 class DbCopy:
     """Ежедневные копии базы в data/backup/auto — архивы kp-ГГГГ-ММ-ДД.zip (DbZip: в 15–20 раз меньше файла базы);
     прежние копии без сжатия (kp-ГГГГ-ММ-ДД.sqlite3) учитываются наравне и со временем перепаковываются в ZIP.
-    Хранятся 7 последних дней, по одной на каждую из 4 последних недель и на каждый из 12 последних месяцев."""
+    Хранятся 7 последних дней, по одной на каждую из 4 последних недель и на каждый из 12 последних месяцев (числа —
+    «Значения программы»)."""
     RX = re.compile(r'^kp-(\d{4}-\d{2}-\d{2})\.(zip|sqlite3)$')
     OLD_RX = re.compile(r'^kp-.+\.sqlite3$')      # копии без сжатия: ежедневные и «перед изменением» (обновление, импорт…)
     # временные файлы копий, выгрузки и загрузки базы: остаются, если программу закрыли посреди копирования
@@ -78,18 +78,19 @@ class DbCopy:
         return sorted(by.values(), key=lambda x: x['date'], reverse=True)
 
     @staticmethod
-    def keep_set(dates):
+    def keep_set(dates, store=None):
         """Какие копии оставить: 7 последних дней, по одной (последней) на каждую из 4 последних недель
-        и на каждый из 12 последних месяцев."""
+        и на каждый из 12 последних месяцев (числа — из «Значений программы» store, без store — встроенные)."""
+        daily, weekly, monthly = (SrvVal.get(store, k) for k in ('srv.backupDaily', 'srv.backupWeekly', 'srv.backupMonthly'))
         ds = sorted(set(dates), reverse=True)
-        keep = set(ds[:KEEP_DAILY])
+        keep = set(ds[:daily])
         weeks, months = {}, {}
         for s in ds:
             d = date.fromisoformat(s)
             weeks.setdefault(d.isocalendar()[:2], s)
             months.setdefault((d.year, d.month), s)
-        keep |= set(list(weeks.values())[:KEEP_WEEKLY])
-        keep |= set(list(months.values())[:KEEP_MONTHLY])
+        keep |= set(list(weeks.values())[:weekly])
+        keep |= set(list(months.values())[:monthly])
         return keep
 
     @classmethod
@@ -113,7 +114,7 @@ class DbCopy:
                 rec.update(ok=True, bytes=os.path.getsize(dst), db=db_size(store), zip=True)
             except Exception as e:
                 rec.update(ok=False, error=str(e)[:300])
-            cls.rotate(d)
+            cls.rotate(d, store=store)
             _save(store, backup=rec)
             return rec
 
@@ -134,11 +135,11 @@ class DbCopy:
         return n
 
     @classmethod
-    def rotate(cls, folder, keep=None):
+    def rotate(cls, folder, keep=None, store=None):
         """Удалить копии, которые не нужно хранить (все файлы их даты), и остатки прерванных копий."""
         cls.sweep(folder)
         lst = cls.listing(folder)
-        keep = cls.keep_set([b['date'] for b in lst]) if keep is None else keep
+        keep = cls.keep_set([b['date'] for b in lst], store) if keep is None else keep
         for b in lst:
             if b['date'] not in keep:
                 for f in b['files']:
@@ -218,7 +219,7 @@ def archive_audit(store, data_dir, years=None):
 
 
 def purge_checks(store):
-    edge = (datetime.now() - timedelta(days=CHECKS_DAYS)).isoformat(timespec='seconds')
+    edge = (datetime.now() - timedelta(days=SrvVal.get(store, 'srv.checksDays'))).isoformat(timespec='seconds')
     n = store.one('SELECT COUNT(*) FROM checks WHERE checked < ?', (edge,))[0]
     if n:
         store.write('DELETE FROM checks WHERE checked < ?', (edge,))
@@ -230,7 +231,7 @@ def db_maintenance(store, vacuum=None):
     st = state(store)
     last = (st.get('vacuum') or {}).get('at') or ''
     if vacuum is None:
-        vacuum = not last or last < (datetime.now() - timedelta(days=VACUUM_DAYS)).isoformat(timespec='seconds')
+        vacuum = not last or last < (datetime.now() - timedelta(days=SrvVal.get(store, 'srv.vacuumDays'))).isoformat(timespec='seconds')
     size0 = db_size(store)
     rec = {}
     with store.lock:
@@ -264,9 +265,9 @@ def _referenced(store):
 
 
 def unused_images(store, img_dir):
-    """Файлы data/img, на которые нигде в базе нет ссылок (и старше месяца), плюс всё из папки unused."""
+    """Файлы data/img, на которые нигде в базе нет ссылок (и старше месяца — srv.imgUnusedDays), плюс всё из папки unused."""
     refs = _referenced(store)
-    edge = (datetime.now() - timedelta(days=IMG_MIN_AGE_DAYS)).timestamp()
+    edge = (datetime.now() - timedelta(days=SrvVal.get(store, 'srv.imgUnusedDays'))).timestamp()
     out = []
     root = os.path.abspath(img_dir)
     for dp, _dn, fn in os.walk(root):
@@ -342,17 +343,21 @@ class Background:
 
     @staticmethod
     def every(seconds, fn, name):
-        """Задача раз в seconds секунд (первый запуск — через минуту после старта); name — для журнала сервера."""
+        """Задача раз в seconds секунд (первый запуск — через минуту после старта); name — для журнала сервера.
+        seconds — число или функция без аргументов (значение из «Значений программы» — читается перед каждым ожиданием)."""
         def loop():
             ev = threading.Event()
             wait = 60
             while not ev.wait(wait):
-                wait = seconds
+                try:
+                    wait = max(60, int(seconds() if callable(seconds) else seconds))
+                except Exception:
+                    wait = 3600
                 try:
                     fn()
                 except Exception as e:
                     ServerLog.failure('фоновая задача «%s»' % name, e)
-        t = threading.Thread(target=loop, daemon=True, name='every-%d' % seconds)
+        t = threading.Thread(target=loop, daemon=True, name='every-%s' % name[:40])
         t.start()
         return t
 

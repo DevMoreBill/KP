@@ -557,5 +557,56 @@ class Check {
     assert.deepStrictEqual(AttrChoices.list(f, ''), ['1', '2']);
   });
 
+  // решение ПНЕВМОТЕХ 14.10: ресиверы выносятся наружу только если внутри действительно не встают — сначала 900 л, затем по
+  // 500 л без учёта в Ростехнадзоре, затем вплотную; снаружи вертикальные ресиверы стоят (не лежат на боку)
+  await Check.run('ресиверы — внутри: 900 л → по 500 л → вплотную → снаружи (стоят)', async ()=>{
+    const R0=StationRules.data, rules=(fn)=>{ const d=JSON.parse(JSON.stringify(R0)), m=d.rules.find(r=>r.id==='layout.matrix').value; fn(m); StationRules.use(d); };
+    const cat=(r5)=>[Cat.item('Компрессор винтовой БК-400', { cat:'comp_screw', flow:40, pressure:10, kw:250, size:'1400 × 1300 × 1900' }),
+      Cat.item('Осушитель рефрижераторный ОР-80', { cat:'dryer_refrig', flow:80, pressure:16, size:'1200 × 800 × 1500', filters:'да' }),
+      Cat.item('Ресивер РВ 900.16', { cat:'receiver', volume:900, pressure:16, size:'2200 × 1000 × 1000' }),   // исполнение не указано: «высота × Ø × Ø»
+      ...(r5 ? [Cat.item('Ресивер РВ 500/16', { cat:'receiver', volume:500, pressure:16, size:'680 × 650 × 2000' })] : [])];
+    const go=async r5=>{ global.catCache=cat(r5); const x=Cat.station('st_comp', [], { flow:'40', pressure:'8' }); global.S={ items:[x] };
+      const note=await TzPick.assemble(x, StationQuick.query(x)), p=StationLayout.solve(StationUi.input(x)), R=kitParts(x).find(q=>StationEquip.kindOf(q)==='receiver');
+      return { x, note, p, R }; };
+    try{
+      // без продольного прохода и прочих исключений (так 7 × 900 л внутри не встают): в каталоге есть 500 л — 12 × 500 л внутри
+      rules(m=>{ m.modes=Object.assign({}, m.modes, { ends:0, tight:0, cross:0 }); });
+      let r=await go(true);
+      assert.ok(/500/.test(r.R.name) && r.R.qty===12 && !(r.p.outside||[]).length && r.p.level!=='error' && r.p.geo.ext[1]<=StationGeo.ROAD_W, '12 × 500 л внутри: '+r.R.name+' ×'+r.R.qty+' '+JSON.stringify(r.p.geo && r.p.geo.ext));
+      assert.ok(r.x.req.recvSize==='500' && r.x.req.recvWhy==='space' && r.x.req.recvSizeAuto && !r.x.req.recvOut, 'типоразмер 500 л выбран подбором: '+JSON.stringify(r.x.req));
+      assert.ok(/по 500 л/.test(r.note) && /не помещается в габарит перевозки/.test(r.note), r.note);
+      const RP=StationReq.recvPlan(r.x); assert.ok(RP && RP.main.size===500 && RP.main.n===12 && !RP.checks.some(c=>c.level==='error'), 'методика: 12 × 500 л без ошибок ряда: '+JSON.stringify(RP && RP.checks));
+      assert.ok(r.p.items.filter(i=>i.kind==='receiver').every(i=>i.shape==='vcyl' && i.h===2000), 'внутри — стоят');
+      // 500 л в каталоге нет — 7 × 900 л внутри вплотную (исключение, с замечанием), не снаружи
+      r=await go(false);
+      assert.ok(/900/.test(r.R.name) && r.R.qty===7 && !(r.p.outside||[]).length && r.p.issues.some(i=>i.close && /исключение/.test(i.text)), 'вплотную внутри: '+JSON.stringify([r.p.level, r.p.geo && r.p.geo.ext, (r.p.outside||[]).length]));
+      assert.ok(/вплотную/.test(r.note) && !r.x.req.recvOut, r.note);
+      assert.ok(r.p.items.filter(i=>i.kind==='receiver').every(i=>i.shape==='vcyl' && i.lx===1000 && i.ly===1000 && i.h===2200), 'РВ 900.16 «2200 × 1000 × 1000» стоит');
+      // вплотную запрещено правилами — только тогда снаружи; снаружи стоят (решение ПНЕВМОТЕХ 14.10: «лежат на боку» — ошибка)
+      rules(m=>{ m.modes=Object.assign({}, m.modes, { ends:0, tight:0, cross:0 }); m.recv=Object.assign({}, m.recv, { close:0 }); });
+      r=await go(false);
+      assert.ok(r.x.req.recvOut && r.x.req.recvOutAuto && r.p.outside.length===7 && !r.p.items.some(i=>i.kind==='receiver'), 'снаружи: '+JSON.stringify(r.x.req));
+      assert.ok(r.p.outside.every(i=>i.shape==='vcyl' && i.lx===1000 && i.ly===1000 && i.h===2200), 'снаружи — стоят: '+JSON.stringify(r.p.outside.map(i=>[i.lx, i.ly, i.h, i.shape])));
+      assert.ok(/снаружи/.test(r.note) && !/по 500 л/.test(r.note.replace(/ни по 900 л, ни по 500 л/, '')), r.note);
+      // следующий подбор — заново: менеджер ничего не выбирал, программа снова пробует внутри
+      rules(m=>{ m.modes=Object.assign({}, m.modes, { ends:0, tight:0, cross:0 }); });
+      await TzPick.assemble(r.x, StationQuick.query(r.x)); assert.ok(!r.x.req.recvOut, 'подбор заново — сначала внутри');
+    } finally { StationRules.use(R0); }
+  });
+
+  // решение ПНЕВМОТЕХ 14.10: быстрая правка двух станций подряд — картинки пересобираются у обеих (было: один таймер на всех)
+  await Check.run('картинки станций: своя пауза у каждой станции, пересборка по очереди', async ()=>{
+    const a={ id:'sa' }, b={ id:'sb' }, done=[], W=StationImages.WAIT, sync=StationImages.sync;
+    global.S={ items:[a, b] }; global.persist=()=>{}; global.renderForm=()=>{}; global.EDIT=null;
+    StationImages.WAIT=5; StationImages.sync=async x=>{ done.push(x.id); await new Promise(r=>setTimeout(r, 5)); return true; };
+    try{
+      StationImages.soon(a); StationImages.soon(b); StationImages.soon(a);   // a — дважды подряд: один раз
+      await new Promise(r=>setTimeout(r, 80));
+      assert.deepStrictEqual(done.slice().sort(), ['sa', 'sb'], 'обе станции: '+done);
+      StationImages.soon({ id:'gone' }); await new Promise(r=>setTimeout(r, 40));
+      assert.ok(!done.includes('gone'), 'удалённая из КП позиция — пропускается');
+    } finally { StationImages.WAIT=W; StationImages.sync=sync; }
+  });
+
   console.log(process.exitCode ? 'есть ошибки' : `подбор по ТЗ: проверок пройдено — ${Check.n}`);
 })();

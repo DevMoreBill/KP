@@ -55,8 +55,41 @@ function DEF(key){
   const v = x && x.v!=null && String(x.v).trim()!=='' ? x.v : builtin;
   return v==null ? null : String(v);
 }
+// Реестр значений программы. Каждый раздел программы добавляет свои значения из своего файла — DefRegistry.add(группы,
+// значения); «Настройки → Значения программы» показывает их по разделам с поиском и подробными пояснениями.
+// Значение: [ключ, группа, подпись, тип, встроенное значение, доп.]; доп.: unit, hint (подробное пояснение «что это и на что
+// влияет»), opts (для select), min / max (для num — проверка ввода), req (всегда действует — переключателя нет), off.
+class DefRegistry {
+  // разделы админки: [id, название, пояснение]
+  static SECTIONS = [
+    ['kp', 'КП и документы', 'Что подставляется в новое КП: город, НДС, валюта, условия, контакты компании, оформление документа.'],
+    ['deal', 'Экономика сделки', 'Ставки, налоги, сроки и проценты, с которыми считается экономика сделки.'],
+    ['log', 'Логистика', 'Доставка: транспорт, ставки, страхование, агент, габариты и масса по умолчанию.'],
+    ['st', 'Станции в контейнере', 'Контейнер, климат и прочие значения станций. Отступы, нормы и расчёты станций — «Инженерные правила станций».'],
+    ['cat', 'Каталог, фото, фиды, ИИ', 'Поиск и подбор по каталогу, загрузка фото со страниц, фиды поставщиков, автозаполнение нейросетью.'],
+    ['srv', 'Сервер и обслуживание', 'Копии базы, журналы, сроки хранения, проверки и письма администратору.'],
+    ['ui', 'Интерфейс', 'Поведение экранов: сколько строк показывать, задержки поиска и т. п.'],
+  ];
+  static GSEC = { kp:'kp', cond:'kp', mgr:'kp', deal:'deal', st:'st', img:'cat', ai:'cat' };   // группа → раздел
+  /** groups: [[id, название, раздел, пояснение]]; rows: значения (повторный ключ не добавляется) */
+  static add(groups, rows){
+    for (const [g, t, sec, hint] of groups||[]){ if (!DEF_GROUPS.some(x=>x[0]===g)) DEF_GROUPS.push([g, t]); if (sec) this.GSEC[g]=sec; if (hint) DEF_GROUP_HINTS[g]=hint; }
+    for (const r of rows||[]) if (!DEF_BY[r[0]]){ DEF_SCHEMA.push(r); DEF_BY[r[0]]=r; }
+  }
+  static section(g){ return this.GSEC[g]||'ui'; }
+  /** проверка числа по min / max схемы: '' — верно, иначе текст ошибки */
+  static check(key, v){
+    const sc=DEF_BY[key]; if (!sc || sc[3]!=='num' || v==null || String(v).trim()==='') return '';
+    const n=parseFloat(String(v).replace(',', '.')), o=sc[5]||{};
+    if (!Number.isFinite(n)) return 'нужно число';
+    if (o.min!=null && n<o.min) return 'не меньше '+o.min;
+    if (o.max!=null && n>o.max) return 'не больше '+o.max;
+    return '';
+  }
+}
+
 // число по умолчанию (или запасное, если выключено / не число)
-function DEFN(key, fb){ const v=DEF(key); const n=v==null?NaN:parseFloat(String(v).replace(',','.')); return Number.isFinite(n) ? n : fb; }
+function DEFN(key, fb){ const v=DEF(key); const n=v==null?NaN:parseFloat(String(v).replace(',','.')); return Number.isFinite(n) && !DefRegistry.check(key, v) ? n : fb; }
 
 async function defaultsLoad(){
   try{ const r=await api('/api/defaults'); DEFS_SRV=r&&typeof r==='object'?r:{}; try{ localStorage.setItem('kp.defaults', JSON.stringify(DEFS_SRV)); }catch(_){} }catch(e){}

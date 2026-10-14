@@ -16,6 +16,7 @@ import zipfile
 from io import BytesIO
 from xml.etree import ElementTree as ET
 
+from defaults import SrvVal
 import pdf_text
 from ocr_win import WinOcr
 
@@ -41,7 +42,7 @@ class TextQuality:
 
 
 class DocText:
-    MAX_BYTES = 40 * 1024 * 1024
+    # наибольший файл — cat.docMaxMB («Значения программы», встроенное 40 МБ)
     MAX_TEXT = 60000
     MAX_PART = 30 * 1024 * 1024       # распакованная часть архива — не больше
     KINDS = 'PDF, DOCX, XLSX, ODT, ODS, RTF или TXT'
@@ -54,8 +55,9 @@ class DocText:
         понятным текстом. ocr — класс распознавания (по умолчанию WinOcr; в проверках — заглушка)."""
         if not data:
             raise ValueError('файл пустой')
-        if len(data) > cls.MAX_BYTES:
-            raise ValueError('файл больше 40 МБ')
+        mb = SrvVal.now('cat.docMaxMB')
+        if len(data) > mb * 1024 * 1024:
+            raise ValueError('файл больше %d МБ' % mb)
         ocr = ocr or WinOcr
         ext = os.path.splitext(str(name or '').lower())[1]
         if data[:4] == b'%PDF' or ext == '.pdf':

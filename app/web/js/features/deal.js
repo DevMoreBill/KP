@@ -27,7 +27,7 @@ function dealAllowed(st=S){
   return st.authorId ? st.authorId===me : st.managerId===me;
 }
 
-const dlMoneyAuto = () => DL.key && DL.key.rate>0 ? (DL.key.rate+dlSpread())/12 : 2;
+const dlMoneyAuto = () => DL.key && DL.key.rate>0 ? (DL.key.rate+dlSpread())/12 : DealValues.n('deal.moneyFb', 2);
 
 // производственный календарь РФ (/api/calendar, данные isdayoff.ru / xmlcalendar.ru): '1' — нерабочий день
 function dlCalYears(iso){ const y=+String(iso||'').slice(0,4); return y ? [y, y+1, y+2] : []; }
@@ -519,7 +519,7 @@ function dlCustoms(c){
           <td class="num">${dlRub0(xl.cv)}</td><td class="num">${dlRub0(xl.dutyA)}</td></tr>`;
       body=`${rows||xrow?`<div class="dl-tw dl-hsw"><table class="dl-it dl-hs"><thead><tr><th>Позиция</th><th>Код ТН ВЭД</th><th>Пошлина</th><th></th><th class="num">Тамож. стоимость</th><th class="num">Пошлина, ₽</th></tr></thead><tbody>${rows}${xrow}</tbody></table></div>`:''}
         <div class="dl-g g3">${dlField('НДС на ввоз', P+'.ivat', {calc:c, select:[['22','22 %'],['10','10 %'],['0','0 %']]})}
-          ${dlField('Таможенный сбор', P+'.fee', {calc:c, unit:'₽', auto:cs.fee, autoLabel:'по шкале', autoTitle:'Сбор за таможенные операции: '+(customsFeeBand(cs.cv)||'по таможенной стоимости')+' ('+CUSTOMS_FEES.title+')', q:'Фиксированная сумма за декларацию — зависит от общей таможенной стоимости партии (цена + доставка до границы + страховка): до 200 тыс. ₽ — 1 231 ₽, до 1,2 млн — 4 924 ₽, до 2,7 млн — 13 541 ₽, до 10 млн — 49 240 ₽, свыше — 73 860 ₽ ('+CUSTOMS_FEES.title+').'})}</div>
+          ${dlField('Таможенный сбор', P+'.fee', {calc:c, unit:'₽', auto:cs.fee, autoLabel:'по шкале', autoTitle:'Сбор за таможенные операции: '+(customsFeeBand(cs.cv)||'по таможенной стоимости')+' ('+CUSTOMS_FEES.title+')', q:'Фиксированная сумма за декларацию — зависит от общей таможенной стоимости партии (цена + доставка до границы + страховка): '+DealValues.feeText()+' ('+CUSTOMS_FEES.title+(DealValues.feeOwn()?'; шкала изменена в «Настройках»':'')+').'})}</div>
         ${dlCusSum(cs)}`;
     } else if (cs.mode==='eaeu'){
       body=`<div class="dl-g g3">${dlField('НДС при ввозе', P+'.ivat', {calc:c, select:[['22','22 %'],['10','10 %'],['0','0 %']]})}</div>
@@ -779,7 +779,7 @@ function dlSchedule(c, n=6){
       <td class="c-who"><span class="dl-pty ${pt[1]}">${pt[0]}</span></td>
       <td class="c-ev">${esc(r.label)}${r.ev&&(r.party==='log'||r.party==='oth')?`<small>${esc(r.ev)}</small>`:''}</td><td class="num c-pay ${r.inflow?'ok-t':''}">${r.inflow?'+':'−'}${dlRub0(Math.abs(r.amount))}</td><td class="num c-bal ${r.balance<0?'neg':''}">${dlRub0(r.balance)}</td><td class="num c-fin">${r.fin?dlRub0(r.fin)+`<small>${r.days} дн.</small>`:'—'}</td></tr>`; }).join('')}
     </tbody><tfoot><tr><td class="c-day"></td><td class="c-who"></td><td class="c-ev">Стоимость финансирования</td><td class="c-pay"></td><td class="c-bal"></td><td class="num c-fin"><b>${dlRub(c.F)}</b></td></tr></tfoot></table></div>
-    <div class="dl-qrow"><span>Как считается финансирование</span>${dlQ('Простой процент на недостающие деньги до последней оплаты заказчика, месяц — 30 дней; оплаты заказчика уменьшают финансирование, доход на свободный остаток не начисляется.')}<span>Как переносить платежи</span>${dlQ('Перетащите платёж за «⠿» выше или ниже (или ↑ ↓, или выберите дату) — он получит новую дату, а срок, из которого он получился (этап оплаты, срок изготовления или доставки), пересчитается в днях и датах на предыдущих вкладках.')}</div>`, 'dl-sched', null, 'sched');
+    <div class="dl-qrow"><span>Как считается финансирование</span>${dlQ('Простой процент на недостающие деньги до последней оплаты заказчика, месяц — '+DealValues.n('deal.monthDays', 30)+' дней; оплаты заказчика уменьшают финансирование, доход на свободный остаток не начисляется.')}<span>Как переносить платежи</span>${dlQ('Перетащите платёж за «⠿» выше или ниже (или ↑ ↓, или выберите дату) — он получит новую дату, а срок, из которого он получился (этап оплаты, срок изготовления или доставки), пересчитается в днях и датах на предыдущих вкладках.')}</div>`, 'dl-sched', null, 'sched');
 }
 
 // ---------- прочие расходы наличными (необязательно): % от чистой прибыли, % от выручки без НДС или сумма — всё «чистыми», на руки
@@ -794,7 +794,7 @@ function dlCash(c){
     <div class="dl-g g3">
       ${dlField('Как считать', 'xc.mode', {calc:c, select:DL_XC_MODES})}
       ${dlField(x.mode==='sum'?'Сумма на руки':'Процент', 'xc.v', {calc:c, unit, ph:x.mode==='sum'?'100 000':'10', q:'Сумма «чистыми» — столько получат на руки наличными, без каких-либо налогов. От чистой прибыли — процент от прибыли сделки после налога на прибыль (до этих расходов); от продажи — процент от суммы продажи без НДС или с НДС (цена КП).'})}
-      ${dlField('Стоимость наличных', 'xc.cost', {calc:c, unit:'%', ph:'0', q:'Сколько процентов от перечисленной суммы удерживают за выдачу наличных. Расход компании = сумма на руки ÷ (1 − процент). Если наличные уже есть — оставьте пустым.'})}</div>
+      ${dlField('Стоимость наличных', 'xc.cost', {calc:c, unit:'%', ph:dlIn(DealValues.n('deal.xcCost', 0)), q:'Сколько процентов от перечисленной суммы удерживают за выдачу наличных. Расход компании = сумма на руки ÷ (1 − процент). Пустое поле — значение по умолчанию из «Настроек» ('+dlIn(DealValues.n('deal.xcCost', 0))+' %); если наличные уже есть — впишите 0.'})}</div>
     ${x.on||open&&x.when==='pay'?`<div class="dl-g g2">${dlField('Когда выдаются', 'xc.when', {calc:c, select:DL_XC_WHEN, q:'После последней оплаты — наличные не влияют на финансирование. С оплат заказчика — с каждой отмеченной оплаты выдаётся часть, пропорционально её сумме, в день оплаты; деньги уходят раньше — финансирование может вырасти.'})}</div>
     ${x.when==='pay'?dlCashStages(c):''}`:''}
     ${r.K>0?`<p class="dl-cash-r">На руки <b>${dlRub0(r.X)}</b>${x.cost?` · расход компании с получением наличных <b>${dlRub0(r.K)}</b>`:''} <span class="muted">— ${esc(how)}</span></p>`:''}
@@ -808,10 +808,10 @@ function dlBg(c){
     return `<div class="dl-bg">
       <div class="dl-g g3">${dlField('Вид гарантии', P+'.type', {calc:c, select:Object.entries(DEAL_BG_TYPES)})}
         ${dlField('Сумма гарантии', P+'.base', {calc:c, select:cg.type==='adv'?[['adv','от аванса заказчика'],['pct','% от цены КП'],['sum','в рублях']]:[['pct','% от цены КП'],['sum','в рублях'],['adv','от аванса заказчика']]})}
-        ${dlField(cg.base==='sum'?'Сумма':'Процент', P+'.v', {calc:c, unit, ph:cg.base==='adv'?'100':cg.base==='pct'?'10':'500 000'})}</div>
-      <div class="dl-g g3">${dlField('Срок гарантии', P+'.days', {calc:c, int:true, auto:cg.daysAuto, autoLabel:cg.type==='adv'?'до поставки':cg.type==='perf'?'до конца ПНР':'год', date:{base:0, val:cg.days, kind:false}})}
+        ${dlField(cg.base==='sum'?'Сумма':'Процент', P+'.v', {calc:c, unit, ph:cg.base==='adv'?dlIn(DealValues.n('deal.bgAdvPct', 100)):cg.base==='pct'?dlIn(DealValues.n('deal.bgPct', 10)):'500 000'})}</div>
+      <div class="dl-g g3">${dlField('Срок гарантии', P+'.days', {calc:c, int:true, auto:cg.daysAuto, autoLabel:cg.type==='adv'?'до поставки':cg.type==='perf'?'до конца ПНР':cg.daysAuto===365?'год':cg.daysAuto+' дн.', date:{base:0, val:cg.days, kind:false}})}
         ${dlField('Ставка банка', P+'.rate', {calc:c, unit:'% годовых', ph:String(dealBgRate()).replace('.',','), q:'Комиссия банка за гарантию — процент годовых от суммы гарантии за её срок. По умолчанию '+String(dealBgRate()).replace('.',',')+' %; рынок 2026: обычно 1–3,5 %, в среднем около 2,2 % (Сбербанк — от 2 %, ВТБ — от 3,7 %). Впишите ставку своего банка.'})}
-        ${dlField('Минимальная комиссия', P+'.min', {calc:c, unit:'₽', ph:'0', q:'Если у банка есть минимальная комиссия за гарантию — впишите её.'})}</div>
+        ${dlField('Минимальная комиссия', P+'.min', {calc:c, unit:'₽', ph:dlIn(DealValues.n('deal.bgMin', 0)), q:'Если у банка есть минимальная комиссия за гарантию — впишите её.'})}</div>
       <p class="dl-bgr"><span>Сумма гарантии <b>${dlRub0(cg.amount)}</b> · комиссия банка <b>${dlRub0(cg.fee)}</b> <span class="muted">— при подписании договора, уменьшает прибыль</span></span><button type="button" class="lnk" data-dlx="delbg" data-k="${k}">Убрать</button></p></div>`; }).join('');
   return `<div class="dl-card dl-mb"><div class="dl-mbh"><h5>Банковская гарантия</h5>${dlQ('Если заказчик просит безотзывную банковскую гарантию — на возврат аванса, исполнения договора или гарантийных обязательств, — добавьте её: комиссия банка войдёт в расходы.')}<span class="dl-stc opt">необязательно</span>${c.BG>0?`<b class="dl-mbs">${dlRub0(c.BG)}</b>`:''}</div>
     ${rows}
@@ -945,7 +945,7 @@ function dealRenderIn(dlg){
     ${dlStep(0, 'Деньги и налог', 'Обычно менять не нужно: стоимость денег — по ключевой ставке ЦБ, НДС продажи — как в КП, налог на прибыль — 25 %.', `<div class="dl-card"><div class="dl-g dl-money">
       ${dlField('Стоимость денег', 'money', {calc:c, unit:'% в месяц', auto:kp.moneyAuto, autoLabel:keyT, autoTitle:DL.key?`Ключевая ставка ЦБ РФ ${dlIn(DL.key.rate)} % с ${DL.key.date} + ${dlSpread()} п.п. годовых, делённое на 12`:(DL.keyErr?'Ключевая ставка ЦБ недоступна: '+DL.keyErr:''),
         hint:DL.key?`Ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${dlSpread()} п.п. = ${dlIn(DL.key.rate+dlSpread())} % годовых → ${dlIn((DL.key.rate+dlSpread())/12)} % в месяц`:'Процент в месяц на деньги, вложенные до оплаты заказчика',
-        q:'Сколько стоят деньги, вложенные в сделку до оплаты заказчика: кредит или упущенный доход. По умолчанию — ключевая ставка ЦБ + 3 п.п. в год.'})}
+        q:'Сколько стоят деньги, вложенные в сделку до оплаты заказчика: кредит или упущенный доход. По умолчанию — ключевая ставка ЦБ + '+dlIn(dlSpread())+' п.п. в год (нет ставки ЦБ — '+dlIn(DealValues.n('deal.moneyFb', 2))+' % в месяц).'})}
       ${DL.ex?dlField('НДС продажи', 'over.vat', {calc:c, unit:'%', kp:kp.vat}):`<label class="f dl-f"><span>НДС продажи <i>%</i>${dlQ('Ставка НДС в цене КП — та же, что в разделе «Условия». С 2026 года основная ставка — 22 %.')}</span><span class="dl-in"><input type="text" inputmode="numeric" data-kpvat value="${esc(S.vat)}" aria-label="НДС продажи, %"></span><small class="muted">Как в КП и разделе «Условия»</small></label>`}
       ${dlField('Налог на прибыль', 'tax', {calc:c, unit:'%', hint:'С 2025 года — 25 % (ст. 284 НК РФ)', q:'Считается с прибыли после всех расходов, включая финансирование. Проценты по кредиту уменьшают налог; если «стоимость денег» — упущенный доход на свои деньги, налоговая её не учитывает, и налог будет немного больше.'})}</div></div>
       <div class="dl-card dl-vatsec"><h5>НДС к уплате${dlQ('НДС с продажи минус весь НДС к вычету по сделке. Ставка НДС продажи — из КП. Ввозной НДС платится на таможне и целиком идёт к вычету, поэтому на прибыль не влияет — только на деньги в обороте.')}</h5>${dlVat(c, c.base||c.lo, true)}</div>`, '', ['Итого финансирование и налог', c.F+(c.base||c.lo).tax, `финансирование ${dlRub0(c.F)} + налог на прибыль ${dlRub0((c.base||c.lo).tax)} · НДС к уплате ${c.unknown.length?`${dlRub0(c.hi.payable)} … ${dlRub0(c.lo.payable)}`:dlRub0((c.base||c.lo).payable)}`], 'money')}

@@ -27,6 +27,8 @@ import threading
 import zipfile
 from datetime import datetime
 
+from defaults import SrvVal
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS catalog (id TEXT PRIMARY KEY, doc TEXT NOT NULL, light TEXT NOT NULL, name TEXT, cat TEXT, maker TEXT, updated TEXT);
 CREATE INDEX IF NOT EXISTS catalog_cat ON catalog(cat);
@@ -180,7 +182,7 @@ MIGRATIONS = [
      ALTER TABLE catalog DROP COLUMN search; ALTER TABLE catalog DROP COLUMN seq;
      """),
 ]
-KP_VERSIONS = 30
+KP_VERSIONS = 30          # встроенное; действует srv.kpVersions из «Значений программы» (defaults.SrvVal)
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
 TRASH_TABLES = {'kp': 'kp', 'catalog': 'catalog', 'manager': 'managers', 'client': 'clients', 'supplier': 'suppliers'}
@@ -867,6 +869,7 @@ class Store:
         Возвращает номер правки КП."""
         if field not in ('state', 'meta', 'docx'):
             raise ValueError(field)
+        keep = SrvVal.get(self, 'srv.kpVersions') if field == 'state' else KP_VERSIONS
         with self.lock:
             c = self.conn()
             old = c.execute('SELECT state, meta, rev FROM kp WHERE id=?', (kid,)).fetchone()
@@ -883,10 +886,10 @@ class Store:
                         pass
                 rev = self._next_rev(c, 'kp', kid, base_rev)
                 if old and old[0] and old[0] != value:
-                    # прежнее состояние — в историю версий (лишнее сверх KP_VERSIONS удаляется)
+                    # прежнее состояние — в историю версий (лишнее сверх srv.kpVersions удаляется)
                     c.execute('INSERT INTO kp_versions (kp_id, created, user_name, state, meta) VALUES (?,?,?,?,?)', (kid, _now(), by, old[0], old[1]))
                     c.execute('DELETE FROM kp_versions WHERE kp_id=? AND id NOT IN (SELECT id FROM kp_versions WHERE kp_id=? ORDER BY id DESC LIMIT ?)',
-                              (kid, kid, KP_VERSIONS))
+                              (kid, kid, keep))
                 c.execute('UPDATE kp SET state=?, updated=?, rev=?, updated_by=? WHERE id=?', (value, _now(), rev, str(by or '')[:120], kid))
             elif field == 'meta':
                 try:

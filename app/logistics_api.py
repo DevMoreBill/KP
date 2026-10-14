@@ -26,6 +26,7 @@ import urllib.error
 import urllib.parse
 from datetime import date, datetime, timedelta
 
+import defaults
 from counterparty import _http
 
 ATI_BASE = 'https://api.ati.su/priceline/license/v2'
@@ -48,8 +49,27 @@ HTTP_WHY = {400: 'сервис не принял запрос', 401: 'ключ �
 ATI_CLASS = {'gazel': ('tent', 1.5), 't5': ('tent', 5), 't10': ('tent', 10), 'tent20': ('tent', 20),
              'flat': ('open', 20), 'lowbed': ('tral', 20)}
 REF_ROUTES = ['Москва — Санкт-Петербург', 'Москва — Казань', 'Москва — Екатеринбург', 'Москва — Краснодар', 'Москва — Новосибирск']
-# сборный груз: место не тяжелее и не больше (т, м) — иначе только отдельной машиной
-LTL_MAX = {'m': 3.0, 'l': 6.0, 'w': 2.4, 'h': 2.5, 'total': 20.0}
+
+
+class LtlLimits:
+    """Сборный груз: место не тяжелее и не больше — иначе только отдельной машиной. Пределы правит администратор
+    («Настройки → Значения программы → Логистика»; описание — LgValues в app/web/js/features/logistics-calc.js):
+    в килограммах и миллиметрах, для расчёта — в тоннах и метрах. Встроенные значения — как в logistics-calc.js."""
+    # поле → (ключ «Значений программы», встроенное в кг / мм, наименьшее, наибольшее)
+    KEYS = {'m': ('log.ltlKg', 3000, 100, 20000), 'l': ('log.ltlL', 6000, 1000, 13600), 'w': ('log.ltlW', 2400, 500, 2550),
+            'h': ('log.ltlH', 2500, 500, 3000), 'total': ('log.ltlTotal', 20000, 1000, 40000)}
+    ATI_DAYS = ('log.atiDays', 30, 7, 90)
+
+    @classmethod
+    def get(cls, store=None):
+        """{'m': т, 'l': м, 'w': м, 'h': м, 'total': т}"""
+        return {k: (defaults.num(store, key, b, lo, hi) if store is not None else b) / 1000.0 for k, (key, b, lo, hi) in cls.KEYS.items()}
+
+    @classmethod
+    def ati_days(cls, store=None):
+        key, b, lo, hi = cls.ATI_DAYS
+        return int(defaults.num(store, key, b, lo, hi)) if store is not None else b
+
 
 _lock = threading.Lock()
 
@@ -200,9 +220,10 @@ class AtiDirections:
         return self._idx.get((cnorm(frm), cnorm(to)))
 
 
-def ati_price(store, d, car, tonnage, days=30):
+def ati_price(store, d, car, tonnage, days=None):
     """Средняя ставка и разброс по направлению: верхняя граница за рейс (₽) и за км (₽/км), с НДС."""
     end = date.today()
+    days = days or LtlLimits.ati_days(store)
     body = {'From': {'CityId': d['fromId']}, 'To': {'CityId': d['toId']}, 'FromCityId': d['fromId'], 'ToCityId': d['toId'],
             'CarType': car, 'Tonnage': tonnage, 'DateFrom': (end - timedelta(days=days)).isoformat() + 'T00:00:00',
             'DateTo': end.isoformat() + 'T23:59:59', 'WithNds': True}
@@ -615,16 +636,17 @@ def nrg_quote(store, frm, to, places, declared):
 
 
 # ---------------------------------------------------------------- сводка предложений
-def ltl_ok(places):
+def ltl_ok(places, store=None):
     units = Carrier.units(places)
     if not units:
         return False, 'нет груза'
-    big = [u for u in units if u['m'] > LTL_MAX['m'] or sorted([u['l'], u['w']])[1] > LTL_MAX['l'] or min(u['l'], u['w']) > LTL_MAX['w'] or u['h'] > LTL_MAX['h']]
+    lim = LtlLimits.get(store)
+    big = [u for u in units if u['m'] > lim['m'] + 1e-9 or sorted([u['l'], u['w']])[1] > lim['l'] + 1e-9 or min(u['l'], u['w']) > lim['w'] + 1e-9 or u['h'] > lim['h'] + 1e-9]
+    n = lambda v: '{:,.0f}'.format(v * 1000).replace(',', ' ')
     if big:
-        return False, 'есть место тяжелее %s т или больше %s × %s × %s м — сборным грузом не принимают' % (
-            str(LTL_MAX['m']).replace('.', ','), str(LTL_MAX['l']).replace('.', ','), str(LTL_MAX['w']).replace('.', ','), str(LTL_MAX['h']).replace('.', ','))
-    if sum(u['m'] for u in units) > LTL_MAX['total']:
-        return False, 'груз тяжелее %d т — нужна отдельная машина' % LTL_MAX['total']
+        return False, 'есть место тяжелее %s кг или больше %s × %s × %s мм — сборным грузом не принимают' % (n(lim['m']), n(lim['l']), n(lim['w']), n(lim['h']))
+    if sum(u['m'] for u in units) > lim['total'] + 1e-9:
+        return False, 'груз тяжелее %s кг — нужна отдельная машина' % n(lim['total'])
     return True, ''
 
 
@@ -675,7 +697,7 @@ def quote(store, req):
         except Exception as e:
             errors.append({'src': 'ATI.SU', 'msg': _err(e)})
     # сборный груз — если место и общий вес позволяют
-    ok, why = ltl_ok(places)
+    ok, why = ltl_ok(places, store)
     if places and not ok:
         errors.append({'src': 'Сборный груз (ПЭК, Деловые Линии, КИТ, СДЭК, Возовоз, Энергия)', 'msg': why, 'skip': True})
     if places and ok:
