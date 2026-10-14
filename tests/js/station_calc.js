@@ -15,7 +15,7 @@ global.mainLine=x=>{ const a=x.attrs||{}; return [a.flow!=null ? a.flow+' м³/�
 global.typeById=id=>TYPES[id]||{};
 global.catCache=[]; global.DEF=()=>null; global.FEAT={ on:()=>true };
 global.esc=s=>String(s??'').replace(/[&<>"]/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
-for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js']){
+for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js', 'station-doc.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));
 global.isKit=x=>!!(x && x.kit);
@@ -23,7 +23,7 @@ global.isKit=x=>!!(x && x.kit);
 const near=(a, b, tol, msg)=>assert.ok(Math.abs(a-b)<=tol, `${msg}: ${a} ≠ ${b} (±${tol})`);
 const part=(name, attrs, qty=1, rows=[])=>Object.assign(kitNewPart({ name }), { attrs, qty, rows });
 let sid=0;
-const station=(cat, req, parts, air)=>({ id:'s'+(++sid), name:'', attrs:{ cat }, req, stLayout:air ? { air } : {}, kit:{ parts:[kitNewContainer('block'), ...parts] } });
+const station=(cat, req, parts, air)=>({ id:'s'+(++sid), name:'', attrs:{ cat }, req, stLayout:air ? { air, calc:true } : { calc:true }, kit:{ parts:[kitNewContainer('block'), ...parts] } });   // приложение «Расчётная записка» — с галочкой (в ТКП по умолчанию его нет)
 
 class Check {
   static n=0;
@@ -234,7 +234,8 @@ Check.run('компрессорная: всё проходит, приложен
   assert.strictEqual(step('recv', /^Рекомендация/).result, 'основной 900 л × 3 = 2 700 л (после осушителя)');
   assert.ok(step('recv', /^Проверки/).result==='Все проверки пройдены.' && step('recv', /^Проверки/).ok===true);
   assert.ok(R.weak.some(w=>/Потери давления/.test(w.title)), 'потери по правилу — требует подтверждения');
-  const G=StationCalc.docGroups(x);
+  delete x.stLayout.calc; assert.deepStrictEqual(StationCalc.docGroups(x), [], 'ТКП: без галочки расчётной записки в КП нет (решение 14.10)');
+  x.stLayout.calc=true; const G=StationCalc.docGroups(x);
   assert.strictEqual(G[0].name, 'Приложение. Расчётная записка и состав станции');
   assert.ok(G[0].rows.some(r=>r.k==='Состав станции' && /в разделе «Состав изделия»/.test(r.v)), 'состав — ссылкой, без повтора');
   assert.ok(!G[0].rows.some(r=>/Компрессор винтовой К-130/.test(r.k)), 'состав в приложении не повторяется');
@@ -267,7 +268,8 @@ Check.run('компрессорная: ошибки — мало произво�
   assert.ok(StationCalc.errors(x).length>0);
   x.req.accept=true;
   assert.deepStrictEqual(StationCalc.errors(x), [], 'отклонения согласованы — КП сохраняется');
-  const G=StationCalc.docGroups(x).map(g=>g.name);
+  delete x.stLayout.calc; assert.deepStrictEqual(StationCalc.docGroups(x).map(g=>g.name), ['Отклонения, согласованные с заказчиком'], 'отклонения — в КП и без расчётной записки');
+  x.stLayout.calc=true; const G=StationCalc.docGroups(x).map(g=>g.name);
   assert.ok(G.includes('Отклонения, согласованные с заказчиком'), G.join(' | '));
   // заказчику — без внутренних списков программы
   assert.ok(!G.some(n=>/Требует подтверждения|Вопросы|замечания/.test(n)), G.join(' | '));

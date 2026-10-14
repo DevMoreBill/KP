@@ -74,7 +74,8 @@ class StationQuick {
     const st=fit ? ['bad', '✕ Оборудование не помещается в контейнер'] : miss ? [errs.length ? 'bad' : 'warn', (errs.length ? '✕' : '⚠')+' В каталоге не нашлось: '+miss[1]]
       : errs.length ? ['bad', '✕ '+errs[0].text+(errs.length>1 ? ` (и ещё ${errs.length-1})` : '')] : ask ? ['info', 'ⓘ '+ask]
       : R && R.questions.length ? ['warn', '⚠ Не хватает данных: '+R.questions[0]]
-      : (b=>b ? ['bad', '✕ '+b.text] : ['ok', '✓ Станция подобрана — требования заказчика выполнены'])(ExpertFix.list(x).find(q=>q.bad));   // и замечания компоновки (габариты условные)
+      : (L=>{ const b=L.find(q=>q.bad), w=L.filter(q=>!q.bad).length;   // и замечания компоновки (габариты условные)
+        return b ? ['bad', '✕ '+b.text] : w ? ['warn', `⚠ Станция подобрана — есть замечания (${w}): посмотрите ниже`] : ['ok', '✓ Станция подобрана — требования заказчика выполнены']; })(ExpertFix.list(x));
     const chips=R ? R.sections.map(s=>{ const L=s.steps.filter(o=>o.ok===true || o.ok===false), bad=L.some(o=>o.ok===false);
       return L.length ? `<button type="button" class="chip sm ${bad ? 'bad' : 'ok'}" data-edtab="layout" title="Подробный расчёт — вкладка «Компоновка»">${bad ? '✕' : '✓'} ${esc(this.SEC[s.id]||s.title)}</button>` : ''; }).join('') : '';
     const c=kitContainer(x), ct=c ? ctypeOf(c.ctype).name+(String(c.size||'').trim() ? ', '+c.size+' мм' : '') : '';

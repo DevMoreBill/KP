@@ -287,6 +287,25 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .stl-air{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .stl-air>*{min-width:0}
 .stl-air-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+.stl-isb.warn{background:var(--warn-bg);border-color:var(--warn-line);border-left:4px solid var(--warn-ink)}
+.stl-isb.err{background:color-mix(in srgb, var(--danger) 7%, var(--card));border-color:var(--danger);border-left:4px solid var(--danger)}
+.stl-isb>summary{cursor:pointer}
+.ed-n{display:inline-block;margin-left:4px;padding:0 6px;border-radius:999px;font-size:11.5px;font-weight:700;line-height:18px;color:var(--card);background:var(--warn-ink)}
+.ed-n.err{background:var(--danger)}
+.stl-isb>summary b{font-size:14px}
+.stl-cnt{display:inline-block;min-width:22px;padding:1px 8px;border-radius:999px;background:var(--warn-ink);color:var(--card);font-size:12px;font-weight:700;text-align:center}
+.stl-isb.err .stl-cnt{background:var(--danger)}
+.stl-isb .stl-iss li{padding:5px 8px 5px 26px;border-radius:6px;background:var(--card)}
+.stl-isb .stl-iss li::before{left:8px;top:5px}
+.stl-isb .stl-iss li.info{background:none}
+.stl-inf>summary{cursor:pointer;font-size:13px;color:var(--navy);font-weight:600}
+.stl-inf>.stl-iss{margin-top:6px}
+.sq-iss{margin:0;padding:6px 10px 6px 12px;list-style:none;display:grid;gap:3px;border:1px solid var(--warn-line);border-left:4px solid var(--warn-ink);border-radius:8px;background:var(--warn-bg);font-size:12.5px;line-height:1.4;color:var(--warn-ink)}
+.sq-iss li{padding-left:18px;position:relative}
+.sq-iss li::before{content:'⚠';position:absolute;left:0}
+.sq-iss li.error{color:var(--danger)}
+.sq-iss li.error::before{content:'✕'}
+.sq-iss .lnk{margin-left:4px}
 .stl-sys-l{margin:0;padding:0;list-style:none;display:grid;gap:3px;font-size:13px;line-height:1.45}
 .stl-sys-l b{font-weight:600}
 .stl-chain{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px}
@@ -392,7 +411,11 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .kr-ck .chip.warn{border-color:var(--warn-line);background:var(--warn-bg);color:var(--warn-ink)}
 .kr-pick{display:flex;align-items:flex-start;gap:8px;margin:8px 0 0;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);font-size:12.5px;line-height:1.4}
 .kr-pick>span{flex:1 1 auto;min-width:0}
-.kr-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px 10px}
+.kr-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 10px;align-items:end}   /* поля — по нижнему краю: подписи в 2 строки не сдвигают ввод */
+.kr-g>label.f{gap:3px;font-size:12px;line-height:1.25}
+.kr-g>label.f>span{overflow-wrap:anywhere}
+.kr-g input[type=text],.kr-g select{padding:6px 9px;min-height:34px;font-size:13.5px}
+.kr-calc>.kr-g+.kr-hint,.kr-calc .muted{font-size:12px}
 .kit-req .chk{display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:0;border:0;border-radius:0;background:none}   /* не карточка проверки контрагента */
 .kit-req .chk input{margin-top:3px;width:auto;flex:0 0 auto}
 .kr-opts{display:flex;flex-wrap:wrap;gap:6px 18px}

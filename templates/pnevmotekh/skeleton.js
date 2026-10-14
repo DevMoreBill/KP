@@ -931,15 +931,16 @@ function kpSkeleton(KP) {
       out.push(tbl(rows, wc, { header: true, minH: { 0: 400 } }));
     }
     // карточки элементов: фото (если есть) слева, справа — название, описание и характеристики
-    const cards = BLK.equipKitCards ? parts.filter(x => x.desc || (x.rows || []).length || imgs[x.id]) : [];
+    // card === false — элемент только в таблице состава (станция: фильтры, обвязка, шкафы, контейнер); rowsKp — ключевые характеристики
+    const cards = BLK.equipKitCards ? parts.filter(x => x.card !== false && (x.desc || (x.rowsKp || x.rows || []).length || imgs[x.id])) : [];
     if (cards.length) {
       out.push(subheading(T.kitCardsTitle));
       cards.forEach((x, n) => {
         const g = imgs[x.id], wi = g ? Math.round(RULES.kitPhotoWidthCm * 567) : 0, wg = g ? X(240) : 0, wt = W - wi - wg;
         let body = p(r((n + 1) + '. ' + kitName(x), 'componentLabel'), { after: 60, keep: true });
         if (x.maker && !x.name.includes(x.maker)) body += p(r(txt('kitMaker', { maker: [x.maker, x.model].filter(Boolean).join(' ') }), 'muted'), { after: 60 });
-        if (x.desc) body += Typo.paras(x.desc, 'componentText', { line: 252, hy: true, after: (x.rows || []).length ? 80 : 0 });
-        if ((x.rows || []).length) body += KV.xml(x.rows, g ? wt : wt - 200) + END;
+        if (x.desc) body += Typo.paras(x.desc, 'componentText', { line: 252, hy: true, after: (x.rowsKp || x.rows || []).length ? 80 : 0 });
+        const kr = x.rowsKp || x.rows || []; if (kr.length) body += KV.xml(kr, g ? wt : wt - 200) + END;
         if (n) out.push(spacer(180));
         if (g) {
           const [cx, cy] = fit(g, (wi - 160) * E, cm(RULES.kitPhotoHeightCm));

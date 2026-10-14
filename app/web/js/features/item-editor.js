@@ -84,7 +84,7 @@ function renderEditor(){
   d.classList.toggle('catmode', !!CATED);
   const act=document.activeElement, tabSw=d.dataset.tab!==EDIT.tab; d.dataset.tab=EDIT.tab;
   morph(d, `<div class="dlg-h">${head}</div>
-    <div class="ed-tabs">${edTabs(x).map(([k,l])=>`<button type="button" class="ed-tab${EDIT.tab===k?' on':''}" data-edtab="${k}">${l}</button>`).join('')}</div>
+    <div class="ed-tabs">${edTabs(x).map(([k,l])=>`<button type="button" class="ed-tab${EDIT.tab===k?' on':''}" data-edtab="${k}">${l}${k==='layout' ? StationUi.badge(x) : ''}</button>`).join('')}</div>
     <div class="ed-b">${body}</div>`);
   const b=d.querySelector('.ed-b'); b.scrollTop=tabSw?0:sc;
   const tb=d.querySelector('.ed-tabs'), on=tb.querySelector('.ed-tab.on'); if (on && tb.scrollWidth>tb.clientWidth) tb.scrollLeft=on.offsetLeft-(tb.clientWidth-on.offsetWidth)/2;
@@ -159,6 +159,7 @@ function edDesc(x,i){
   return `<div class="ed-sec"><p class="sub">${isSt?'Главное фото станции и логотип':'Главное фото и логотип'}</p>${edStationPhoto(x,i)}
      <div class="media2"><div>${drop(x.photo,'photo',i,`<b>${isSt?'Главное фото станции':'Главное фото'}</b><br>нажмите, перетащите файл или картинку с сайта,<br>или вставьте из буфера (Ctrl+V).<br><small>Белые поля обрежутся сами.</small>`)}${edMainPick(x,i)}${field('Подпись под фото',`${P}.photoCaption`,{ph:'Исполнение в кожухе'})}</div>
        <div>${drop(x.logo,'logo',i,attrsOf(x).maker?(logoFor(attrsOf(x).maker)?'Логотип производителя':'Логотип производителя (PNG) — у «'+esc(attrsOf(x).maker)+'» в каталоге логотипа нет'):'Логотип подставится сам, если указать производителя (точное совпадение с каталогом)',true)}</div></div></div>
+   ${isSt && typeof StationBrief!=='undefined' ? StationBrief.html(x, i) : ''}
    <div class="ed-sec"><div class="sub">${isSt?'Описание станции по узлам':'Описание узлов'}${tip("У каждого блока — своё фото: в КП текст и фото стоят рядом."+(isSt?" Для станции — например, «Контейнер снаружи», «Внутри контейнера»; элементы состава описываются на вкладке «Состав станции».":""))}</div>
      ${blocks||'<p class="muted">Добавьте блоки описания — например, «Двигатель», «Альтернатор», «Контроллер».</p>'}
      <div class="chips">${slots.filter(s=>!have.has(norm(s))).map(s=>`<button class="chip" type="button" data-a="addFeatL" data-i="${i}" data-l="${esc(s)}">+ ${esc(s)}</button>`).join('')}<button class="chip" type="button" data-a="addFeatL" data-i="${i}" data-l="">+ свой блок</button></div></div>

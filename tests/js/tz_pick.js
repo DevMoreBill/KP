@@ -21,7 +21,7 @@ global.FEAT={ on:()=>false };   // компоновка выключена: ра
 global.mainLine=()=>''; global.groupsFromAttrs=()=>[];   // характеристики станции для КП — здесь не проверяются
 global.esc=v=>String(v??'').replace(/[&<>"']/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 global.api=async u=>{ const c=global.catCache.find(z=>u.endsWith('/'+encodeURIComponent(z.id))); if (!c) throw new Error('нет '+u); return c; };
-for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js', 'station-quick.js', 'station-fix.js']){
+for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js', 'station-quick.js', 'station-fix.js', 'station-doc.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
 
@@ -512,6 +512,41 @@ class Check {
     // запрос меньше — тот же порядок без лишнего: один компрессор, ресиверы внутри (снаружи — только если выбрала программа)
     x.req.flow='12'; await TzPick.assemble(x, StationQuick.query(x));
     assert.ok(!x.req.recvOut && kitParts(x).find(p=>p.role==='main').qty===1, 'малая станция — один агрегат, всё внутри');
+  });
+
+  await Check.run('ТКП станции: устройство, карточки агрегатов, описание ИИ (3.87)', async ()=>{
+    const x=Cat.station('st_comp', [], { flow:'12', pressure:'8' }); global.S={ items:[x] }; global.FEAT={ on:k=>k==='stLayout' };
+    await TzPick.assemble(x, StationQuick.query(x));
+    const des=StationDesign.items(x).map(([k])=>k);
+    assert.ok(des.includes('Контейнер') && des.includes('Сжатый воздух'), 'устройство станции: '+des.join(', '));
+    assert.ok(/→ потребителю/.test(StationDesign.text(x)), 'цепочка подготовки воздуха — до потребителя');
+    // карточки: основные агрегаты — да, фильтры и контейнер — нет; строки — производительность первой, не больше 8
+    const P=kitParts(x), kind=k=>P.find(p=>StationEquip.kindOf(p)===k);
+    assert.ok(StationDoc.card(kind('compressor')) && !StationDoc.card(kitContainer(x)), 'карточки — только агрегаты');
+    if (kind('filter')) assert.ok(!StationDoc.card(kind('filter')), 'фильтр — только в таблице состава');
+    const rows=StationDoc.rows({ rows:[{ k:'Страна', v:'Турция' }, { k:'Масса', v:'900 кг' }, { k:'Давление', v:'8 бар' }, { k:'Производительность', v:'12 м³/мин' },
+      ...Array.from({ length:9 }, (_, j)=>({ k:'Параметр '+j, v:String(j) }))] });
+    assert.deepStrictEqual(rows.slice(0, 3).map(r=>r.k), ['Производительность', 'Давление', 'Масса'], 'порядок важности');
+    assert.ok(rows.length===StationDoc.MAX_ROWS && !rows.some(r=>r.k==='Страна'), 'не больше 8 строк, без страны');
+    const cr=StationDoc.rows({ name:'Компрессор винтовой', attrs:{ cat:'comp_screw', flow:15.28 }, rows:[{ k:'Давление', v:'8,5 бар' }] });
+    assert.deepStrictEqual(cr[0], { k:'Производительность', v:'15,28 м³/мин' }, 'производительность из поля каталога — первой');
+    assert.strictEqual(StationDoc.rows({ name:'Компрессор поршневой', attrs:{ cat:'comp_piston', flow:500 }, rows:[] })[0].v, '0,5 м³/мин', 'поршневой — из л/мин');
+    // характеристики станции: габариты и контейнер добавляются один раз
+    const g=StationDoc.extra(x, [{ name:'Основные', rows:[{ k:'Производительность', v:'12 м³/мин' }] }]);
+    assert.ok(g[0].rows.some(r=>/^Габариты станции/.test(r.k)) && g[0].rows.some(r=>r.k==='Контейнер'), JSON.stringify(g));
+    assert.strictEqual(StationDoc.extra(x, g)[0].rows.length, g[0].rows.length, 'без повторов');
+    // описание ИИ: запрос — по фактам станции, ответ — первым блоком, повтор заменяет прежний
+    const pr=StationBrief.prompt(x);
+    assert.ok(/Данные станции:/.test(pr) && /Устройство станции:/.test(pr) && !/закупк|цена|price/i.test(pr), 'запрос без цен');
+    global.aiParse=raw=>{ try{ return { kind:'json', j:JSON.parse(raw) }; } catch(e){ return { kind:'text' }; } };
+    assert.strictEqual(StationBrief.parse('{"text":" Станция. "}'), 'Станция.');
+    assert.strictEqual(StationBrief.parse('{"oops":1}'), '', 'не тот JSON — пусто');
+    x.features=[{ id:'f1', label:'Компрессор', text:'свой блок' }];
+    assert.ok(StationBrief.apply(x, 'Первый текст') && StationBrief.apply(x, 'Второй текст'));
+    assert.deepStrictEqual(x.features.map(f=>[f.label, f.text]), [['Описание станции', 'Второй текст'], ['Компрессор', 'свой блок']]);
+    const L=StationDoc.lead(x, { label:'Назначение и состав' }, StationDesign.feature(x)).map(f=>f.label);
+    assert.deepStrictEqual(L, ['Описание станции', 'Назначение и состав', 'Устройство станции', 'Компрессор'], 'порядок блоков ТКП');
+    global.FEAT={ on:()=>false };
   });
 
   await Check.run('карточка позиции: значение параметра не из списка категории не теряется', ()=>{

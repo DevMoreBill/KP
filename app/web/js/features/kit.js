@@ -129,7 +129,7 @@ class StationPurpose {
   static WHAT={ comp:'выработки, подготовки (осушки и очистки) и подачи сжатого воздуха потребителям', dgu:'электроснабжения объекта',
     pump:'перекачки жидкости с заданными подачей и напором' };
   /** есть ли у станции свой блок назначения (вписан менеджером или ИИ) */
-  static own(x){ return (x.features||[]).some(f=>/назначени/i.test(String(f.label||'')) && String(f.text||'').trim()); }
+  static own(x){ return (x.features||[]).some(f=>/назначени|описание станции/i.test(String(f.label||'')) && String(f.text||'').trim()); }
   /** list — перечислить остальной состав (в документе без раздела «Состав изделия» шаблона) */
   static text(x, list=true){
     const t=typeById(attrsOf(x).cat); if (!t.station) return '';
@@ -357,29 +357,35 @@ class StationDefaults {
 // позиция для документа: состав — блоками описания (с фото) и таблицами характеристик элементов
 function kitDocItem(x){
   if (!isKit(x)) return x;
-  const parts=kitParts(x).filter(p=>String(p.name||'').trim());
+  const parts=kitParts(x).filter(p=>String(p.name||'').trim()), st=!!typeById(attrsOf(x).cat).station;
   const q=p=>(+p.qty||1)>1?` × ${p.qty}`:'';
+  // станция (ТКП, решение ПНЕВМОТЕХ 14.10): описание и характеристики — только основных агрегатов, ключевые строки;
+  // фильтры, обвязка, шкафы и контейнер — в перечне состава, устройство контейнера — блоком «Устройство станции»
+  const cardP=st ? parts.filter(p=>StationDoc.card(p)) : parts, rowsOf=p=>st ? StationDoc.rows(p) : (p.rows||[]).filter(r=>r.k&&r.v);
   const list={id:'kit_all', label:'Состав изделия', text:parts.map(p=>`${p.name.trim()}${q(p)}`).join('; ')+'.'};
-  const feats=parts.map(p=>{ const rowTxt=(p.rows||[]).filter(r=>r.k&&r.v).slice(0,5).map(r=>`${r.k} — ${r.v}`).join('; ');
+  const feats=cardP.map(p=>{ const rowTxt=rowsOf(p).slice(0,5).map(r=>`${r.k} — ${r.v}`).join('; ');
     return {id:'kit_'+p.id, label:p.name.trim()+q(p), text:String(p.desc||'').trim() || (rowTxt?rowTxt+'.':'')}; }).filter(f=>f.text);
-  const groups=parts.filter(p=>(p.rows||[]).some(r=>r.k&&r.v)).map(p=>({name:p.name.trim(), rows:p.rows.filter(r=>r.k&&r.v).map(r=>({k:r.k, v:r.v, hl:false}))}));
+  const groups=cardP.filter(p=>rowsOf(p).length).map(p=>({name:p.name.trim(), rows:rowsOf(p).map(r=>({k:r.k, v:r.v, hl:false}))}));
   const gal=parts.filter(p=>p.photo&&p.photo.src&&feats.some(f=>f.id==='kit_'+p.id)).map(p=>({id:'kitg_'+p.id, src:p.photo.src, w:p.photo.w, h:p.photo.h, caption:p.name.trim(), slot:'', at:'feat:kit_'+p.id, on:true}));
   const docs=SupplyDocs.feature(x);   // станция: документы при поставке — последним блоком
   const calc=typeof StationCalc!=='undefined' ? StationCalc.docGroups(x) : [];   // приложение «Расчётная записка и состав станции»
-  const pur=StationPurpose.feature(x);   // станция: связный текст назначения вместе с составом — вместо голого перечня
+  const pur=StationPurpose.feature(x), des=st ? StationDesign.feature(x) : null;   // станция: назначение и состав, устройство станции
   return { ...x, page:true, spec:x.spec||('В составе: '+parts.map(p=>p.name.trim()).join(', ')).slice(0,200),
-    features:[...(pur ? [pur] : []), ...(x.features||[]).filter(f=>f.label||f.text), ...(pur ? [] : [list]), ...feats, ...(docs ? [docs] : [])], groups:[...(x.groups||[]), ...groups, ...calc], gallery:[...(x.gallery||[]), ...gal] };
+    features:[...(st ? StationDoc.lead(x, pur, des) : [...(pur ? [pur] : []), ...(x.features||[]).filter(f=>f.label||f.text)]), ...(pur ? [] : [list]), ...feats, ...(docs ? [docs] : [])], groups:[...(st ? StationDoc.extra(x, x.groups||[]) : x.groups||[]), ...groups, ...calc], gallery:[...(x.gallery||[]), ...gal] };
 }
 
 // состав для шаблона, умеющего сборки (feature 'kit'): элементы как есть (без закупки и поставщика) и описание изделия
 // без разложенного состава — его шаблон показывает сам
 function kitDocData(x){
+  const st=!!typeById(attrsOf(x).cat).station;
+  // card:false — элемент только в таблице состава (станция: не основной агрегат); rowsKp — ключевые характеристики карточки
   const parts=kitParts(x).filter(p=>String(p.name||'').trim()).map(p=>({id:p.id, name:p.name.trim(), qty:+p.qty||1, desc:String(p.desc||'').trim(),
-    rows:(p.rows||[]).filter(r=>r.k&&r.v).map(r=>({k:r.k, v:r.v})), maker:(p.attrs&&p.attrs.maker)||'', model:(p.attrs&&p.attrs.model)||''}));
+    rows:(p.rows||[]).filter(r=>r.k&&r.v).map(r=>({k:r.k, v:r.v})), maker:(p.attrs&&p.attrs.maker)||'', model:(p.attrs&&p.attrs.model)||'',
+    ...(st ? { card:StationDoc.card(p), rowsKp:StationDoc.rows(p).map(r=>({k:r.k, v:r.v})) } : {})}));
   const docs=SupplyDocs.feature(x);
   const calc=typeof StationCalc!=='undefined' ? StationCalc.docGroups(x) : [];   // приложение «Расчётная записка и состав станции»
-  const pur=StationPurpose.feature(x, false);   // состав шаблон покажет сам
-  return { parts, base:{ page:true, spec:x.spec||'', features:[...(pur ? [pur] : []), ...(x.features||[]).filter(f=>f.label||f.text), ...(docs ? [docs] : [])], groups:[...(x.groups||[]), ...calc], gallery:x.gallery||[] } };
+  const pur=StationPurpose.feature(x, false), des=st ? StationDesign.feature(x) : null;   // состав шаблон покажет сам
+  return { parts, base:{ page:true, spec:x.spec||'', features:[...(st ? StationDoc.lead(x, pur, des) : [...(pur ? [pur] : []), ...(x.features||[]).filter(f=>f.label||f.text)]), ...(docs ? [docs] : [])], groups:[...(st ? StationDoc.extra(x, x.groups||[]) : x.groups||[]), ...calc], gallery:x.gallery||[] } };
 }
 
 // строки закупки для экономики сделки: элемент сборки — своя строка (своя валюта и поставщик); обычная позиция — как есть
