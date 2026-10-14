@@ -14,13 +14,13 @@ import uuid
 from datetime import date, datetime
 
 import maintenance
+from defaults import SrvVal
 from storage import DbZip
 
 
 class MirrorBackup:
     KEEP = 14                  # копий во второй папке по умолчанию
     KEEP_MAX = 365
-    STALE_DAYS = 2             # «Требует внимания», если последней копии во второй папке больше двух дней
     _lock = threading.Lock()   # одна копия за раз (по расписанию и кнопкой)
 
     def __init__(self, store, data_dir):
@@ -201,13 +201,13 @@ class MirrorBackup:
         return {'total': total, 'copied': copied}
 
     def stale(self):
-        """Включено, но последняя удачная копия старше STALE_DAYS дней (или её нет)."""
+        """Включено, но последняя удачная копия старше srv.mirrorStaleDays дней (или её нет; «Значения программы»)."""
         c, s = self.config(), self.state()
         if not c['on']:
             return False
         if not s.get('ok'):
             return True
         try:
-            return (datetime.now() - datetime.fromisoformat(s['at'])).days >= self.STALE_DAYS
+            return (datetime.now() - datetime.fromisoformat(s['at'])).days >= SrvVal.get(self.store, 'srv.mirrorStaleDays')
         except (KeyError, ValueError):
             return True

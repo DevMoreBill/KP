@@ -17,6 +17,46 @@ const lgV = s => { const v=parseFloat(String(s??'').replace(/\s+/g,'').replace('
 const stNumLg = v => Number(v||0).toLocaleString('ru-RU');
 const lgRu = s => /^росс/i.test(s.country||'') || s.where==='ru';
 
+// Груз, вписанный вручную на вкладке «Логистика»: габариты — в миллиметрах, масса — в килограммах (с 3.89; решение владельца 14.10).
+// Хранится в s.lg.items[позиция] = {lmm, wmm, hmm, kg} как вписано (текст поля не переписывается под пальцами — иначе
+// пропадала запятая: «2,4» превращалось в «24»). Прежние КП хранили метры и тонны {l, w, h, m} — читаются с переводом;
+// правка поля переписывает его в новые единицы. Расчёт (Freight.calc) по-прежнему в метрах и тоннах.
+class LgCargoIn {
+  static KEY = { l:'lmm', w:'wmm', h:'hmm', m:'kg' };
+  /** своё значение поля в единицах расчёта (м, т) или null — не вписано */
+  static val(o, f){ o=o||{}; const n=lgV(o[this.KEY[f]]); if (n!=null) return n/1000; return lgV(o[f]); }
+  static has(o, f){ return this.val(o, f)!=null; }
+  /** текст поля: вписанное — как вписано; прежнее (м, т) и значение из характеристик — в мм / кг */
+  static text(o, f, v){ const raw=(o||{})[this.KEY[f]]; if (raw!=null && String(raw).trim()!=='') return String(raw);
+    return v==null ? '' : this.fmt(v, f); }
+  static fmt(v, f){ return f==='m' ? String(Math.round(v*10000)/10).replace('.', ',') : String(Math.round(v*1000)); }
+  /** ввод в поле: пусто — своё значение убирается (вернутся характеристики) */
+  static set(o, f, txt){ delete o[f]; const t=String(txt??'').trim(); if (t==='') delete o[this.KEY[f]]; else o[this.KEY[f]]=t; }
+  /** в подписях: масса (т) → «12 400 кг», длина (м) → «7 200 мм» */
+  static kg(t){ return Math.round((+t||0)*1000).toLocaleString('ru-RU')+' кг'; }
+  static mm(m){ return Math.round((+m||0)*1000).toLocaleString('ru-RU')+' мм'; }
+}
+
+// «Своя сумма» доставки по России — в рублях или в валюте (RUB, USD, EUR, CNY): s.logRu = {v, cur}. В рубли переводит расчёт
+// сделки (DealCalculator.money) по курсу ЦБ из «Цены КП» (или своему курсу расчёта) — в итоги и график идут рубли.
+// Режим «По расчёту» пишет рубли без валюты (src:'module'). Последняя выбранная валюта поставщика — s.lg.manCur.
+class LgMoney {
+  static cur(s){ const o=s.logRu||{};
+    if (o.cur) return DEAL_CURS.includes(o.cur) ? o.cur : 'RUB';
+    if (String(o.v??'').trim()!=='') return 'RUB';                      // сумма прежних версий и «по расчёту» — в рублях
+    const c=(s.lg&&s.lg.manCur) || LgValues.manCur(); return DEAL_CURS.includes(c) ? c : 'RUB'; }
+  static setCur(s, c){ if (!DEAL_CURS.includes(c)) return; s.lg=s.lg||{}; s.lg.manCur=c; s.logRu={v:(s.logRu&&s.logRu.src!=='module'&&s.logRu.v)||'', cur:c}; }
+  /** переход на «Своя сумма»: сумма расчёта остаётся (в рублях), иначе — пусто в валюте по умолчанию */
+  static toManual(s){ const v=dNum(s.logRu&&s.logRu.v); s.logRu = v ? {v:String(Math.round(v)), cur:'RUB'} : {v:'', cur:(s.lg&&s.lg.manCur)||LgValues.manCur()}; }
+  static setDays(s){ const v=s.lg&&s.lg.setDays; return v==null ? LgValues.setDays() : v!==false; }
+  /** под полем: «= 92 500 ₽ по курсу ЦБ 92,50 ₽ на 14.10.2026» или «нет курса …» с кнопкой */
+  static rubNote(c, cs, cur){ if (cur==='RUB') return '';
+    const r=c.rate(cur), P=S.pricing||{};
+    if (!(r>0)) return `<small class="bad-t lg-rub">Нет курса ${esc(cur)} — <button type="button" class="lnk" data-dlx="cbr">загрузить курс ЦБ</button> или впишите его в «Цене КП»</small>`;
+    const when=c.rateSrc[cur]==='deal' ? 'курс расчёта' : `курс ЦБ${P.rateDate?' на '+esc(KPGen.ruDate(P.rateDate)):''}`;
+    return `<small class="muted lg-rub">= <b>${lgRub(cs.Lru)}</b> · ${when}: 1 ${esc(cur)} = ${esc(String(Math.round(r*10000)/10000).replace('.', ','))} ₽</small>`; }
+}
+
 // сборка станции: A — кто собирает (к нему везут элементы), toAsm — поставщики элементов (их маршрут — до A)
 function lgAsm(){
   const d=S.deal; if (!d || !d.asm || d.asm.on===false) return null;
@@ -39,7 +79,7 @@ function lgItems(s){
     : kitCargo().filter(x=>dlSupOf(x.id)===s.id);
   return list.filter(x=>String(x.name||'').trim()).map(x=>{
     const cg=lgCargoOf(x.groups), o=own[x.id]||{}, d=cg.dims||{};
-    const pick=(k,auto)=>{ const v=lgV(o[k]); return v!=null ? {v, own:true} : {v:auto??null, own:false}; };
+    const pick=(k,auto)=>{ const v=LgCargoIn.val(o, k); return v!=null ? {v, own:true, t:LgCargoIn.text(o, k, v)} : {v:auto??null, own:false, t:LgCargoIn.text({}, k, auto??null)}; };
     const l=pick('l',d.l), w=pick('w',d.w), h=pick('h',d.h), m=pick('m',cg.mass);
     return { id:x.id, name:x.name, qty:+x.qty||0, l, w, h, m, dimSrc:cg.dimSrc, massSrc:cg.massSrc }; });
 }
@@ -57,7 +97,7 @@ function lgInput(s){
   // точные адреса (с координатами) — пока текст поля совпадает с выбранной подсказкой
   const gf=s.whGeo&&String(s.whGeo.value||'').trim()===from ? s.whGeo : null;
   const gt=lg.toGeo&&String(lg.toGeo.value||'').trim()===to ? lg.toGeo : toA && asm.A.whGeo && String(asm.A.whGeo.value||'').trim()===to ? asm.A.whGeo : null;
-  return { from:{addr:from, geo:gf}, to:{addr:to, geo:gt}, km:lg.km||'', route:lg.route||null, unload:lg.unload||'auto', value,
+  return { from:{addr:from, geo:gf}, to:{addr:to, geo:gt}, km:lg.km||'', route:lg.route||null, unload:lg.unload||LgValues.unload(), value,
     items:lgItems(s).map(x=>({name:x.name, qty:x.qty, l:x.l.v, w:x.w.v, h:x.h.v, m:x.m.v})), imp };
 }
 
@@ -67,14 +107,14 @@ function lgSync(d){
   for (const s of d.sup){
     if (!s.lg) s.lg={};
     // прежние сделки: сумма вписана вручную — так и остаётся
-    if (s.lg.mode==null) s.lg.mode = s.logRu && String(s.logRu.v??'').trim()!=='' && s.logRu.src!=='module' ? 'manual' : 'auto';
+    if (s.lg.mode==null) s.lg.mode = s.logRu && String(s.logRu.v??'').trim()!=='' && s.logRu.src!=='module' ? 'manual' : LgValues.mode();
     const r=Freight.calc(lgInput(s), LG.tar), Q=lgQuoteFor(s, r), fin=lgFinal(r, Q, s.lg.pick);
     LG.res[s.id]=r; LG.fin[s.id]=fin;
     if (r.routeKey && !(s.lg.route&&s.lg.route.key===r.routeKey)) lgRoute(s, r);
     if (s.lg.mode==='auto'){
       const v = fin.price>0 && !r.need ? String(fin.price) : '';
       if (!s.logRu || s.logRu.v!==v || s.logRu.src!=='module') s.logRu={v, src:'module'};
-      if (lgRu(s) && s.lg.setDays!==false && r.days>0 && !r.need && String(s.ship)!==String(r.days)) s.ship=String(r.days);
+      if (lgRu(s) && LgMoney.setDays(s) && r.days>0 && !r.need && String(s.ship)!==String(r.days)) s.ship=String(r.days);
     }
   }
 }
@@ -164,7 +204,7 @@ function dlLogistics(c){
   const cards=d.sup.map((s,k)=>{ const cs=c.sup[k], P=`sup.${k}`, ru=lgRu(s), lg=s.lg||{}, r=LG.res[s.id]||Freight.calc(lgInput(s), T), fin=LG.fin[s.id]||lgFinal(r,null,lg.pick);
     const toA=asm && asm.toAsm.has(s.id), isA=asm && asm.A===s, aName=asm?c.sup[d.sup.indexOf(asm.A)].name:'';
     const its=lgItems(s), inp=lgInput(s), nm=cs.name, Q=lgQuoteFor(s, r);
-    const cell=(x,f,ph)=>`<input type="text" inputmode="decimal" data-lgi="${esc(x.id)}" data-k="${k}" data-f="${f}" value="${esc(lgIn(x[f].v))}" placeholder="${ph}" class="${x[f].v==null?'need':''}${x[f].own?' own':''}" aria-label="${ph}"${ex?' disabled':''}>`;
+    const cell=(x,f,ph,lab)=>`<input type="text" inputmode="decimal" data-lgi="${esc(x.id)}" data-k="${k}" data-f="${f}" value="${esc(x[f].t)}" placeholder="${ph}" class="${x[f].v==null?'need':''}${x[f].own?' own':''}" aria-label="${esc(x.name+': '+lab)}" autocomplete="off"${ex?' disabled':''}>`;
     const ownCargo=Object.values(lg.items||{}).some(o=>Object.keys(o).length);
     // 1. до границы и страхование — только импорт
     const abroad = ru ? '' : `<div class="lg-sec lg-s-abr"><h5><span class="lg-sn">1</span>До границы РФ</h5><div class="dl-g">${dlField('Перевозка до границы РФ', P+'.log.v', {calc:c, cur:P+'.log.cur', src:s.log&&s.log.src, q:'Сколько стоит довезти груз от поставщика до границы ЕАЭС. Входит в таможенную стоимость.'})}
@@ -188,16 +228,16 @@ function dlLogistics(c){
           <input type="text" inputmode="numeric" data-lgf="km" data-k="${k}" value="${esc(lg.km||'')}" placeholder="${r.km?esc(r.km)+' — авто':'авто'}"${ex?' disabled':''}></label></div>
       <p class="lg-where">${where}</p></div>`;
     // 3. груз
-    const cargo=`<div class="lg-sec lg-s-cargo"><h5><span class="lg-sn">${n0+2}</span>Груз${dlQ('Масса и габариты — из характеристик позиций («Масса», «Габариты Д × Ш × В»). Пустые поля заполните; кнопка ниже сохранит их в каталог. К местам легче '+lgIn(T.packMax)+' т добавляется упаковка +'+lgIn(T.pack)+' %.')}</h5>
-      ${its.length?`<div class="lg-tw"><table class="lg-t"><thead><tr><th>Позиция</th><th class="num">Мест</th><th>Длина, м</th><th>Ширина, м</th><th>Высота, м</th><th>Масса 1 шт, т</th></tr></thead><tbody>
+    const cargo=`<div class="lg-sec lg-s-cargo"><h5><span class="lg-sn">${n0+2}</span>Груз${dlQ('Масса и габариты — из характеристик позиций («Масса», «Габариты Д × Ш × В»). Габариты — в миллиметрах, масса одного места — в килограммах (например, 2400 × 1200 × 1800 и 1500). Пустые поля заполните; кнопка ниже сохранит их в каталог. К местам легче '+LgCargoIn.kg(T.packMax)+' добавляется упаковка +'+lgIn(T.pack)+' %.')}</h5>
+      ${its.length?`<div class="lg-tw"><table class="lg-t"><thead><tr><th>Позиция</th><th class="num">Мест</th><th>Длина, мм</th><th>Ширина, мм</th><th>Высота, мм</th><th>Масса 1 шт, кг</th></tr></thead><tbody>
         ${its.map(x=>`<tr><td class="lg-nm"><b>${esc(x.name)}</b><small>${esc([x.dimSrc, x.massSrc].filter(Boolean).join(' · ')||'нет габаритов и массы в характеристиках')}</small></td><td class="num">${esc(x.qty)}</td>
-          <td>${cell(x,'l','Д')}</td><td>${cell(x,'w','Ш')}</td><td>${cell(x,'h','В')}</td><td>${cell(x,'m','т')}</td></tr>`).join('')}</tbody></table></div>
+          <td>${cell(x,'l','Д, мм','длина, мм')}</td><td>${cell(x,'w','Ш, мм','ширина, мм')}</td><td>${cell(x,'h','В, мм','высота, мм')}</td><td>${cell(x,'m','кг','масса 1 шт, кг')}</td></tr>`).join('')}</tbody></table></div>
         ${ownCargo&&!ex?`<div class="lg-row"><button class="btn ghost" type="button" data-lgx="savecargo" data-k="${k}">Сохранить массу и габариты в каталог</button><span class="muted">вписанные значения — в карточки позиций, в следующий раз подставятся сами</span></div>`:''}`
         :'<p class="muted">У этого поставщика нет позиций в КП.</p>'}</div>`;
     // 4. транспорт и разгрузка
     const veh=r.need?`<p class="msg">${esc(r.need)}${r.missing.length?`: ${esc(r.missing.join(', '))}`:''}</p>`
       : r.vehicles.map((v,i)=>`<div class="lg-veh"><div class="lg-vh"><b>${r.vehicles.length>1?`Машина ${i+1}: `:''}${esc(v.C.name)}</b>
-        <span class="muted">${v.units.length} ${plural(v.units.length,'место','места','мест')} · ${lgT(v.fit.mass)} т · занято ${lgM(v.fit.depth)} из ${lgM(v.C.L)} м</span>
+        <span class="muted">${v.units.length} ${plural(v.units.length,'место','места','мест')} · ${LgCargoIn.kg(v.fit.mass)} · занято ${LgCargoIn.mm(v.fit.depth)} из ${LgCargoIn.mm(v.C.L)}</span>
         ${v.over?'<span class="lg-tag warn">негабарит</span>':''}${v.heavy?'<span class="lg-tag warn">тяжеловес</span>':''}${v.escort?'<span class="lg-tag bad">прикрытие</span>':''}</div>
         <table class="lg-p">${v.parts.map(([t,a])=>`<tr><td>${esc(t)}</td><td class="num">${lgRub(a)}</td></tr>`).join('')}</table></div>`).join('')
         + (r.unload?`<div class="lg-veh"><table class="lg-p"><tr><td>Разгрузка: ${esc(r.unload.name)}</td><td class="num">${lgRub(r.unload.cost)}</td></tr></table></div>`:'')
@@ -205,8 +245,8 @@ function dlLogistics(c){
         + (r.missing.length?`<p class="msg warn">Не посчитаны (нет массы или габаритов): ${esc(r.missing.join(', '))}</p>`:'');
     const trans=`<div class="lg-sec lg-s-trans"><h5><span class="lg-sn">${n0+3}</span>Транспорт и разгрузка${dlQ('Машина подбирается по массе и габаритам: самая дешёвая из тарифов, куда помещается груз. Рейс — подача + ставка за км до 1 000 км + «дальняя» ставка дальше (не меньше минимального заказа). Морской контейнер 20 или 40 футов едет на контейнеровозе. Негабарит (шире 2,55 м, выше 4 м от дороги), тяжеловес (тяжелее грузоподъёмности без разрешения) и прикрытие — по правилам РФ. Ставки — «Настройки» → «Тарифы доставки».')}</h5>
       <label class="f lg-un"><span>Разгрузка на объекте</span><select data-lgf="unload" data-k="${k}"${ex?' disabled':''}>
-        <option value="auto"${(lg.unload||'auto')==='auto'?' selected':''}>Подобрать по самому тяжёлому месту</option>
-        <option value="none"${lg.unload==='none'?' selected':''}>Не нужна (разгружает заказчик)</option>
+        <option value="auto"${(lg.unload||LgValues.unload())==='auto'?' selected':''}>Подобрать по самому тяжёлому месту</option>
+        <option value="none"${(lg.unload||LgValues.unload())==='none'?' selected':''}>Не нужна (разгружает заказчик)</option>
         ${T.unload.map(u=>`<option value="${esc(u.id)}"${lg.unload===u.id?' selected':''}>${esc(u.name)} — ${lgRub(u.cost)}</option>`).join('')}</select></label>
       ${veh}<p class="muted lg-note">Ставки за км: ${esc(lgRateSrc(r))}. Погрузка на складе поставщика обычно за его счёт.</p></div>`;
     // 5. цены перевозчиков — все «дверь в дверь», с агентом и страхованием; выбор — любое или максимальное
@@ -226,15 +266,15 @@ function dlLogistics(c){
       ${Q&&Q.res.errors.length?`<ul class="lg-errs">${Q.res.errors.map(e=>`<li class="${e.skip?'muted':''}"><b>${esc(e.src)}:</b> ${esc(e.msg)}${e.url&&!e.skip?` <a href="${esc(e.url)}" target="_blank" rel="noopener">посчитать на сайте ↗</a>`:''}</li>`).join('')}</ul>`:''}
       <p class="muted lg-note">${Q?'Цены перевозчиков запрошены '+esc(stTime(Q.res.at)):LG.busy[s.id]?'Запрашиваю цены перевозчиков…':'Цены перевозчиков ещё не запрошены — пока только расчёт по тарифам.'}</p></div>`;
     // итог — в сделку
-    const manual=lg.mode==='manual', cur=dNum(s.logRu&&s.logRu.v)||0, ch=fin.chosen;
+    const manual=lg.mode==='manual', cur=dNum(s.logRu&&s.logRu.v)||0, ch=fin.chosen, mc=LgMoney.cur(s);
     const brk=[['Перевозка', ch.base], ['Забор и доставка по городу', ch.local], [`Агент-экспедитор ${String(T.agentPct).replace('.',',')} %`, ch.agent],
       [ch.insTk?`Страхование груза — ${ch.src} (по объявленной стоимости${r.insBase?' '+lgRub(r.insBase):''})`:`Страхование груза ${String(T.insPct).replace('.',',')} %${r.insBase?' от '+lgRub(r.insBase):''}`, ch.ins], ['Разгрузка', ch.unload]].filter(x=>x[1]);
     const total=`<div class="lg-tot"><div><small>Доставка по России, дверь в дверь → в расчёт сделки</small>
-        ${manual?`<span class="dl-in lg-man"><input type="text" inputmode="decimal" data-lgman="${k}" value="${esc(s.logRu&&s.logRu.v||'')}" placeholder="сумма, ₽" aria-label="Своя сумма доставки"${ex?' disabled':''}><em>₽</em></span>`:`<b>${lgRub(cur||fin.price)}</b>`}
-        <span class="muted">${manual?'своя сумма (например, по счёту перевозчика)':(fin.picked?'выбрано: ':'максимальное предложение: ')+esc(fin.name)}${r.days&&!r.need?` · в пути ≈ ${r.days} ${plural(r.days,'день','дня','дней')}`:''}</span>
+        ${manual?`<span class="dl-in cur lg-man"><input type="text" inputmode="decimal" data-lgman="${k}" value="${esc(s.logRu&&s.logRu.v||'')}" placeholder="сумма" aria-label="Своя сумма доставки"${c.err[P+'.logRu']?' aria-invalid="true"':''}${ex?' disabled':''}><select data-lgcur="${k}" aria-label="Валюта своей суммы"${ex?' disabled':''}>${DEAL_CURS.map(x=>`<option${x===mc?' selected':''}>${x}</option>`).join('')}</select></span>${LgMoney.rubNote(c, cs, mc)}`:`<b>${lgRub(cur||fin.price)}</b>`}
+        <span class="muted">${manual?'своя сумма (например, по счёту перевозчика)'+(mc==='RUB'?'':' — в расчёт сделки идут рубли по курсу ЦБ'):(fin.picked?'выбрано: ':'максимальное предложение: ')+esc(fin.name)}${r.days&&!r.need?` · в пути ≈ ${r.days} ${plural(r.days,'день','дня','дней')}`:''}</span>
         ${manual?'':`<table class="lg-p lg-brk">${brk.map(([t,v])=>`<tr><td>${esc(t)}</td><td class="num">${lgRub(v)}</td></tr>`).join('')}</table>`}</div>
       <div class="lg-act">${ex?'':`<span class="dl-seg"><button type="button" class="${manual?'':'on'}" data-lgx="mode" data-k="${k}" data-v="auto">По расчёту</button><button type="button" class="${manual?'on':''}" data-lgx="mode" data-k="${k}" data-v="manual">Своя сумма</button></span>`}
-        ${ru&&!ex?`<label class="cw-chk"><input type="checkbox" data-lgf="setDays" data-k="${k}"${lg.setDays===false?'':' checked'}> срок в пути → «Доставка до заказчика»</label>`:''}</div></div>
+        ${ru&&!ex?`<label class="cw-chk"><input type="checkbox" data-lgf="setDays" data-k="${k}"${LgMoney.setDays(s)?' checked':''}> срок в пути → «Доставка до заказчика»</label>`:''}</div></div>
       ${manual?'':`<p class="muted lg-note lg-foot">${esc(fin.foot)}</p>`}`;
     return `<div class="dl-card lg-card">${d.sup.length>1?`<div class="lg-ch"><b>${esc(nm)}</b><span class="muted">${ru?'покупаем в России':'ввозим сами'}${toA?` · везём на сборку к «${esc(aName)}»`:isA?' · собирает станцию и везёт заказчику':''}</span></div>`:''}
       ${abroad}${route}${cargo}${trans}${offers}${total}</div>`; }).join('');
@@ -252,10 +292,10 @@ function lgBind(dlg, touch){
       else s.lg[f]=t.value;
       return true; }
     if (t.dataset.lgi){ const id=t.dataset.lgi, f=t.dataset.f; s.lg.items=s.lg.items||{}; const o=s.lg.items[id]=s.lg.items[id]||{};
-      if (String(t.value).trim()==='') delete o[f]; else o[f]=t.value; return true; }
+      LgCargoIn.set(o, f, t.value); if (!Object.keys(o).length) delete s.lg.items[id]; return true; }
     return false; };
   dlg.addEventListener('input', e=>{ const t=e.target;
-    if (t.dataset.lgman!=null){ const s=dlDeal().sup[+t.dataset.lgman]; if (!s||DL.ex) return; s.logRu={v:t.value}; touch(); return dealRender(); }
+    if (t.dataset.lgman!=null){ const s=dlDeal().sup[+t.dataset.lgman]; if (!s||DL.ex) return; s.logRu={v:t.value, cur:LgMoney.cur(s)}; touch(); return dealRender(); }
     if ((t.dataset.lgf||t.dataset.lgi) && t.tagName==='INPUT' && t.type!=='checkbox' && upd(t)){ touch(); dealRender(); } });
   // выбран точный адрес из подсказок (или по координатам / ссылке карт)
   dlg.addEventListener('geo:pick', e=>{ const t=e.target, k=+t.dataset.k, s=dlDeal().sup[k]; if (!s || DL.ex || !t.dataset.lgf) return; s.lg=s.lg||{};
@@ -264,13 +304,14 @@ function lgBind(dlg, touch){
     else if (t.dataset.lgf==='to'){ s.lg.to=g.value; s.lg.toGeo=g; }
     touch(); dealRender(); });
   dlg.addEventListener('change', e=>{ const t=e.target;
+    if (t.dataset.lgcur!=null){ const s=dlDeal().sup[+t.dataset.lgcur]; if (!s||DL.ex) return; LgMoney.setCur(s, t.value); touch(); return dealRender(); }
     if (t.dataset.lgpick!=null){ const s=dlDeal().sup[+t.dataset.k]; if (!s||DL.ex) return; s.lg=s.lg||{}; s.lg.pick=t.dataset.lgpick; touch(); return dealRender(); }
     if ((t.tagName==='SELECT'||t.type==='checkbox') && t.dataset.lgf && upd(t)){ touch(); dealRender(); } });
   dlg.addEventListener('click', e=>{ const b=e.target.closest('[data-lgx]'); if (!b || DL.ex) return; const k=+b.dataset.k, s=dlDeal().sup[k]; if (!s) return;
     if (b.dataset.lgx==='quote'){ delete LG.tried[lgQuoteKey(LG.res[s.id]||{vehicles:[]})]; return lgQuote(k); }
     if (b.dataset.lgx==='savecargo') return lgSaveCargo(s).then(()=>dealRender());
     if (b.dataset.lgx==='mode'){ s.lg=s.lg||{}; s.lg.mode=b.dataset.v;
-      if (s.lg.mode==='manual'){ const v=dNum(s.logRu&&s.logRu.v); s.logRu={v: v?String(Math.round(v)):''}; }
+      if (s.lg.mode==='manual') LgMoney.toManual(s);
       touch(); dealRender(); setTimeout(()=>{ if (s.lg.mode==='manual') dlg.querySelector(`[data-lgman="${k}"]`)?.focus(); }, 30); } });
 }
 
@@ -282,7 +323,7 @@ async function lgSaveCargo(s){
   for (const id of Object.keys(own)){
     const o=own[id], x=kitCargo().find(i=>i.id===id), it=its.find(i=>i.id===id); if (!x || !it) continue;
     const v={l:it.l.v, w:it.w.v, h:it.h.v, m:it.m.v};
-    const what={ dims:['l','w','h'].some(k=>lgV(o[k])!=null) && v.l>0 && v.w>0 && v.h>0, mass:lgV(o.m)!=null && v.m>0 };
+    const what={ dims:['l','w','h'].some(k=>LgCargoIn.has(o, k)) && v.l>0 && v.w>0 && v.h>0, mass:LgCargoIn.has(o, 'm') && v.m>0 };
     if (!what.dims && !what.mass) continue;
     lgWriteCargo(x, v, what);
     if (!x.catId){ noCat.push(x.name); delete own[id]; continue; }

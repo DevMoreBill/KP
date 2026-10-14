@@ -122,7 +122,7 @@ class StationReq {
   static recvIn(x){
     const r=this.of(x), g=k=>ReqNum.check(k, r[k]) ? null : this.num(r[k]), T=g('recvT'), C=g('recvC'), D=g('recvDrop');
     return { dp:g('recvDp'), cyc:T>0 && C>0 && D>0 ? { T, C, drop:D } : null, point:g('recvPoint'), tz:g('recvVol'), mode:this.recv(x),
-      force:r.recvSize==='500' || r.recvSize==='900' ? r.recvSize : '', reason:r.recvWhy==='space' || r.recvWhy==='mass' ? r.recvWhy : '', valve:g('recvValve'),
+      force:r.recvSize==='500' || r.recvSize==='900' ? r.recvSize : '', reason:r.recvWhy==='space' || r.recvWhy==='mass' ? r.recvWhy : '', auto:!!r.recvSizeAuto, valve:g('recvValve'),
       reserve:Math.max(0, Math.round(this.num(r.reserve)||0)) };
   }
   static recvOut(x){ return !!this.of(x).recvOut; }
@@ -130,7 +130,7 @@ class StationReq {
   static fire(x){ const f=this.of(x).fire; return this.FIRE.includes(f) ? f : this.fireDef(x); }
   static fireDef(x){ return { comp:'В4', dgu:'В1', pump:'Д' }[this.kind(x)] || 'Д'; }
   /** допустимый уровень звука на рабочем месте, дБА (СанПиН 1.2.3685-21 — 80) */
-  static noise(x){ const n=this.num(this.of(x).noise); return n>0 ? n : 80; }
+  static noise(x){ const n=this.num(this.of(x).noise); return n>0 ? n : StationRules.ok() ? StationRules.raw('norm.noise') : 80; }   // по умолчанию — правило norm.noise
   /** для расстановки, проверок и чертежа: вид станции, категория (своя или ориентировочная), шум, наружный воздух, °C */
   static plan(x){
     const r=this.of(x), t=v=>this.num(String(v??'').replace(/[−–]/g, '-').replace(/^\+/, ''));
@@ -265,6 +265,7 @@ class StationReq {
     const i=+t.dataset.req, x=S.items[i]; if (!x) return; const r=this.ensure(x), k=t.dataset.rk;
     if (k) r[k]=t.type==='checkbox' ? t.checked : t.value;
     if (k==='recvOut') delete r.recvOutAuto;   // менеджер решил сам — подбор «снаружи» больше не меняет
+    const fk0=k || String(t.dataset.p||'').split('.').pop(); if (fk0==='recvSize' || fk0==='recvWhy') delete r.recvSizeAuto;   // и типоразмер ресивера (500 л «нехватка места» подбора)
     ExpertLog.note(x);
     if (t.dataset.stpar!=null) StationParams.changed(x);
     if (k==='recv' || k==='recvOut'){ StationUi.cache.delete(x.id); StationSize.apply(x, true); }

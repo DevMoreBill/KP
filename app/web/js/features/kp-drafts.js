@@ -5,8 +5,19 @@
 // • Заготовка — КП без клиента (позиции, условия, цены), общая для всех: новое КП из заготовки за один щелчок.
 'use strict';
 
+// значения черновиков для «Настройки → Значения программы» (раздел «КП и документы»)
+DefRegistry.add([['draft', 'Черновики и автосохранение', 'kp', 'Незаконченные КП и несохранённые правки хранятся на сервере в «Черновиках» у каждого менеджера — с любого компьютера их можно продолжить.']], [
+  ['kp.autosaveMin', 'draft', 'Автосохранение черновика — раз в', 'num', '1', {unit:'мин', req:true, min:0.5, max:60,
+    hint:'Как часто программа сама записывает изменения открытого КП в «Черновики» на сервере (если в «Функциях» включено автосохранение). Ещё черновик пишется, когда менеджер уходит со страницы или сворачивает браузер. Меньше — меньше потерь при сбое компьютера, но чаще запросы к серверу. Пример: 1 — раз в минуту, 5 — раз в пять минут.'}],
+  ['kp.newKpDrafts', 'draft', 'Черновиков в окне «Новое КП»', 'num', '5', {unit:'шт.', req:true, min:0, max:50,
+    hint:'Сколько последних черновиков показывать в окне «Новое КП» в блоке «Продолжить черновик». Остальные — по кнопке «Все черновики». 0 — блок не показывать.'}],
+]);
+
 class Drafts {
-  static AUTO_MS = 60000;
+  /** интервал автосохранения, мс — из «Значений программы» (читается при каждом запуске таймера) */
+  static autoMs(){ return Math.round(DEFN('kp.autosaveMin', 1)*60000); }
+  /** «раз в минуту» / «раз в 5 мин» — для пояснений */
+  static autoText(){ const n=DEFN('kp.autosaveMin', 1); return n===1 ? 'раз в минуту' : `раз в ${String(n).replace('.', ',')} мин`; }
   static kp = null;        // КП, для которого запомнено состояние base (номер или '' — новое КП)
   static base = null;      // отпечаток состояния КП на момент последнего сохранения (в журнал или в черновик)
   static busy = false;
@@ -57,7 +68,7 @@ class Drafts {
   static tick(){ if (FEAT.on('autosave')) this.save(true); }
   static start(){
     this.pending();                       // отсчёт — с КП, открытого при запуске
-    setInterval(()=>this.tick(), this.AUTO_MS);
+    const next=()=>setTimeout(()=>{ this.tick(); next(); }, this.autoMs()); next();
     document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='hidden') this.tick(); });
   }
   static async list(){ try{ return (await api('/api/drafts')).items||[]; }catch(e){ return []; } }
@@ -81,7 +92,7 @@ class Drafts {
   /** окно «Черновики» */
   static async dialog(){
     const m=new Modal(`<div class="dlg-h"><h3>Черновики</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
-      <p class="muted" style="margin:0 0 10px">Незаконченные КП и несохранённые правки — ваши, доступны с любого компьютера.${FEAT.on('autosave')?' Изменения записываются сюда автоматически раз в минуту.':''} После сохранения КП в журнал черновик удаляется.</p>
+      <p class="muted" style="margin:0 0 10px">Незаконченные КП и несохранённые правки — ваши, доступны с любого компьютера.${FEAT.on('autosave')?` Изменения записываются сюда автоматически ${this.autoText()}.`:''} После сохранения КП в журнал черновик удаляется.</p>
       <div class="dr-l"><p class="empty">Загружаю…</p></div>`, 'drafts-dlg');
     const draw=async()=>{ const L=await this.list(); m.$('.dr-l').innerHTML = L.length ? L.map(r=>this.rowHtml(r)).join('') : '<p class="empty">Черновиков нет.</p>'; };
     m.d.onclick=async e=>{ if (e.target.closest('[data-x]')) return m.close();
@@ -144,12 +155,13 @@ class NewKp {
       return NewKp.blank();
     }
     const [P, D]=await Promise.all([useP?Presets.list():[], useD?Drafts.list():[]]);
+    const nD=Math.round(DEFN('kp.newKpDrafts', 5));
     const note = !mean ? '' : S.kpId ? `Сохранённое КП № ${esc(S.number)} останется в журнале${useD?', несохранённые правки — в черновиках':''}.` : useD ? 'Текущее КП будет отложено в черновики.' : 'Текущее КП будет очищено.';
     const m=new Modal(`<div class="dlg-h"><h3>Новое КП</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       ${note?`<p class="muted" style="margin:0 0 10px">${note}</p>`:''}
       <div class="row nk-top"><button class="btn primary" type="button" data-nk>Пустое КП</button>${useP&&S.items.length?'<button class="btn" type="button" data-nps title="Позиции, цены и условия текущего КП — для следующих КП">Сохранить текущее как заготовку</button>':''}</div>
       ${useP?`<p class="sub" style="margin:4px 0 6px">По заготовке</p>${P.length>6?'<input type="search" class="f" id="nkQ" placeholder="Найти заготовку" style="margin-bottom:6px">':''}<div class="nk-l" id="nkP">${P.length?P.map(r=>Presets.rowHtml(r)).join(''):'<p class="empty">Заготовок пока нет. Соберите КП и нажмите «Сохранить текущее как заготовку».</p>'}</div>`:''}
-      ${useD&&D.length?`<p class="sub" style="margin:14px 0 6px">Продолжить черновик</p><div class="nk-l">${D.slice(0,5).map(r=>Drafts.rowHtml(r)).join('')}</div>${D.length>5?`<button class="btn ghost" type="button" data-nall>Все черновики (${D.length})</button>`:''}`:''}`, 'newkp-dlg');
+      ${useD&&D.length&&nD?`<p class="sub" style="margin:14px 0 6px">Продолжить черновик</p><div class="nk-l">${D.slice(0,nD).map(r=>Drafts.rowHtml(r)).join('')}</div>${D.length>nD?`<button class="btn ghost" type="button" data-nall>Все черновики (${D.length})</button>`:''}`:''}`, 'newkp-dlg');
     const q=m.$('#nkQ'); if (q) q.oninput=()=>{ const s=q.value.trim().toLowerCase(); m.$('#nkP').innerHTML=P.filter(r=>!s||r.title.toLowerCase().includes(s)).map(r=>Presets.rowHtml(r)).join('')||'<p class="empty">Не найдено.</p>'; };
     m.d.onclick=async e=>{ const t=e.target;
       if (t.closest('[data-x]')) return m.close();

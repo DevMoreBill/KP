@@ -5,6 +5,18 @@
 //    видно, что заполнится, «Заполнить карточку» — одна кнопка. Тот же порядок — у элемента станции (aiPartDialog).
 'use strict';
 
+// автозаполнение нейросетью — группа «Автозаполнение» в «Настройки → Значения программы → Каталог, фото, фиды, ИИ»
+DefRegistry.add([], [
+  ['ai.supplement', 'ai', 'Дополнять карточку вторым запросом', 'bool', true,
+    {hint:'Включено — если после ответа нейросети описания или ключевых характеристик меньше, чем обычно у карточек этой категории в каталоге, программа сама задаёт второй запрос «дополнить» (только достоверные данные с указанием источника). Выключено — один запрос: быстрее и дешевле, недостающее менеджер дополняет кнопкой «Скопировать запрос „дополнить“».'}],
+  ['ai.keyShare', 'ai', 'Характеристика «обязательная» для категории, если есть у', 'num', '50', {unit:'% карточек', req:true, min:10, max:100,
+    hint:'Нейросеть просят заполнить все характеристики, которые есть у такой доли карточек этой категории в каталоге (например, «Точка росы» у осушителей). 50 % — у половины карточек и больше. Меньше — длиннее список обязательных характеристик, больше — только самые общие.'}],
+  ['ai.fileChars', 'ai', 'Текст из файла паспорта — не больше', 'num', '60000', {unit:'знаков', req:true, min:5000, max:500000,
+    hint:'Сколько знаков текста из загруженного файла (PDF, Word, Excel) передаётся нейросети как исходные данные. Остальное отбрасывается. Больше — нейросеть видит весь каталог производителя, но запрос дольше и дороже, а у некоторых нейросетей есть предел длины запроса. 60 000 знаков — примерно 30 страниц.'}],
+  ['ai.specLen', 'ai', 'Строка ключевых характеристик — до', 'num', '90', {unit:'символов', req:true, min:40, max:300,
+    hint:'Сколько символов просить у нейросети для строки под названием позиции (например, «37 кВт · 7 бар · 6,2 м³/мин»). Короче — строка не переносится в КП и списке каталога.'}],
+]);
+
 function openPaste(i){
   const d=$('#dlg');
   d.innerHTML=`<div class="dlg-h"><h3>Вставить характеристики</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
@@ -117,7 +129,7 @@ async function aiFetchInto(it){
   catch(e){ it._aiMsg=String(e.message||e)+'. Откройте страницу сами, выделите текст (Ctrl+A), скопируйте и вставьте в поле ниже.'; return false; }
   const props=(r.props||[]).filter(p=>p[0]&&p[1]);
   it._src=[`Страница: ${url}`, r.title?`Название: ${r.title}`:'', r.text||'', props.length?'Характеристики:\n'+props.map(p=>`${p[0]}: ${p[1]}`).join('\n'):''].filter(Boolean).join('\n\n');
-  it._srcProps=props; it._srcImgs=(r.imgs||[]).slice(0,12); if (!it.pageUrl && !(it.feed&&it.feed.url)) it.pageUrl=url;
+  it._srcProps=props; it._srcImgs=(r.imgs||[]).slice(0, Math.round(DEFN('img.maxCount', 12))); if (!it.pageUrl && !(it.feed&&it.feed.url)) it.pageUrl=url;
   if (!String(it.name||'').trim() && r.title) it.name=r.title.slice(0,200);
   it._aiMsg=`Со страницы загружено ${(r.text||'').length.toLocaleString('ru-RU')} знаков текста${props.length?` и ${props.length} ${plural(props.length,'характеристика','характеристики','характеристик')}`:''}${it._srcImgs.length?`, найдено фото: ${it._srcImgs.length} — выберите главное ниже`:''}${r.imgsSkipped?` (мелких и пустых картинок пропущено: ${r.imgsSkipped})`:''}. Дальше — шаг 2: ${AI_DIRECT.enabled?'«Заполнить автоматически»':'отправьте запрос в ИИ'}.`; it._aiStep=2;
   return true;
@@ -172,7 +184,8 @@ class AiFill {
   static ctx = {};                 // образец категории и данные этой же позиции из каталога: ключ — категория|производитель|наименование
   static SRC = /^(исходные данные|производитель|каталог)/i;
   static VAGUE = /≈|~|около|примерно|ориентировочн|уточн|нет данных|н\/д|не указ|неизвестн|зависит от|по запросу|может (быть|отличаться)/i;
-  static KEY_SHARE = 0.5;          // характеристика «ключевая», если есть у половины карточек категории
+  /** доля карточек категории, у которых есть характеристика, чтобы она считалась «ключевой» (ai.keyShare, 50 %) */
+  static get KEY_SHARE(){ return DEFN('ai.keyShare', 50)/100; }
 
   // ---------- образец объёма и данные той же позиции
   static ctxKey(it, cat){ const a=attrsOf(it); return [cat||a.cat||'', a.maker||'', it.name||'', it.catId||''].join('|'); }
@@ -212,7 +225,7 @@ class AiFill {
 Ответ — строго один JSON-объект в блоке кода, без пояснений до и после:
 \`\`\`json
 {"name":"полное наименование, например «${t.item} …»",
-"spec":"ключевые характеристики одной строкой через « · », до 90 символов",
+"spec":"ключевые характеристики одной строкой через « · », до ${Math.round(DEFN('ai.specLen', 90))} символов",
 "pageTitle":"заголовок страницы оборудования",
 "features":[{"label":"Узел или особенность","text":"2–4 предложения по существу"}],
 "groups":[{"name":"Основные","rows":[{"k":"Параметр, ед.","v":"значение","hl":true}]}],
@@ -301,7 +314,7 @@ ${String(it._src||'').trim()||'(только наименование выше)'
     const a=r.j.added;
     if (a && (a.rows.length || a.features.length)) h+=`<p class="ai-add">Дополнено — проверьте по паспорту: ${[a.features.length?`описание: ${a.features.join(', ')}`:'', a.rows.length?`характеристики: ${a.rows.join(', ')}`:''].filter(Boolean).join('; ')}${a.skipped?` · отброшено неуверенных: ${a.skipped}`:''}.</p>`;
     const c=this.ctx[this.ctxKey(it, r.j.attrs&&r.j.attrs.cat)]||this.ctx[this.ctxKey(it)], g=c&&this.gaps(r.j, c.profile);
-    if (g && !AI_DIRECT.busy[it.id]) h+=`<p class="ai-gap">По сравнению с каталогом не хватает: ${esc(this.gapsText(g))}.${AI_DIRECT.enabled?'':` <button class="lnk" type="button" data-a="aiMore" data-i="${S.items.indexOf(it)}">Скопировать запрос «дополнить»</button>`}</p>`;
+    if (g && !AI_DIRECT.busy[it.id]) h+=`<p class="ai-gap">По сравнению с каталогом не хватает: ${esc(this.gapsText(g))}.${AI_DIRECT.enabled && DEF('ai.supplement')!==false?'':` <button class="lnk" type="button" data-a="aiMore" data-i="${S.items.indexOf(it)}">Скопировать запрос «дополнить»</button>`}</p>`;
     return h;
   }
 
@@ -317,7 +330,7 @@ ${String(it._src||'').trim()||'(только наименование выше)'
       if (!r || r.kind==='bad'){ it._ans=ans; it._aiStep=3; it._aiMsg=r?r.err:'Пустой ответ — повторите'; return; }
       const cat=(r.j.attrs&&r.j.attrs.cat)||attrsOf(it).cat, c2=await this.context(it, cat), g=this.gaps(r.j, c2.profile);
       let j=r.j;
-      if (g){ it._aiMsg=`Не хватает: ${this.gapsText(g)} — ${who} ищет достоверные данные…`; renderForm();
+      if (g && DEF('ai.supplement')!==false){ it._aiMsg=`Не хватает: ${this.gapsText(g)} — ${who} ищет достоверные данные…`; renderForm();
         try{ const add=aiParse(await aiDirect(this.supplementPrompt(it, j, g, c2.profile, c2))); if (add && add.kind!=='bad') j=this.merge(j, add.j); }
         catch(e){ it._aiMsg=String(e.message||e); } }
       it._ans=JSON.stringify(j, null, 1); it._aiStep=3;
@@ -432,7 +445,7 @@ function aiPartCopy(i, j, url){
 document.addEventListener('change', async e=>{ const t=e.target; if (t.dataset.aifile==null || !t.files[0]) return;
   const it=S.items[+t.dataset.aifile], f=t.files[0]; t.value='';
   it._aiMsg=`Читаю «${f.name}»…`; renderForm();
-  try{ const txt=await aiFileText(f); it._src=`Файл: ${f.name}\n\n`+txt.slice(0,60000); it._aiStep=2; it._aiMsg=`Файл «${f.name}» загружен (${txt.length.toLocaleString('ru-RU')} знаков). Дальше — шаг 2.`; }
+  try{ const txt=await aiFileText(f); it._src=`Файл: ${f.name}\n\n`+txt.slice(0, Math.round(DEFN('ai.fileChars', 60000))); it._aiStep=2; it._aiMsg=`Файл «${f.name}» загружен (${txt.length.toLocaleString('ru-RU')} знаков). Дальше — шаг 2.`; }
   catch(x){ it._aiMsg=String(x.message||x); }
   renderForm(); persist(); });
 

@@ -73,9 +73,9 @@ function quickMatches(q){
   const res=[];
   for (const x of catCache){ const a=attrsOf(x); if (typeById(a.cat).role==='accessory') continue;
     const hay=QuickFind.hay(x, a);
-    if (w.every(v=>hay.includes(v))) res.push(x); if (res.length>=40) break; }
+    if (w.every(v=>hay.includes(v))) res.push(x); if (res.length>=Math.max(40, 5*DEFN('cat.quickN', 8))) break; }
   const mv=x=>numOf(attrsOf(x)[typeById(attrsOf(x).cat).main||'kw'])??9e9;
-  return res.sort((p,q)=>String(attrsOf(p).cat).localeCompare(attrsOf(q).cat)||mv(p)-mv(q)).slice(0,8);
+  return res.sort((p,q)=>String(attrsOf(p).cat).localeCompare(attrsOf(q).cat)||mv(p)-mv(q)).slice(0, Math.round(DEFN('cat.quickN', 8)));
 }
 
 async function addFromCatalog(x){

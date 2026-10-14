@@ -300,7 +300,10 @@ class KitCabinet {
 // топливный бак, топливопровод; насосная и компрессорная — трубопроводная обвязка), новый элемент с таким названием
 // получает описание. Закупку, поставщика и подробности менеджер уточняет в составе.
 class StationDefaults {
-  static TANKS = [500, 1000, 1500, 2000, 3000];   // типовые объёмы дополнительного бака, л
+  /** типовые объёмы дополнительного бака, л — правило dgu.tank_sizes (правится в «Настройках»); без файла правил — прежние */
+  static get TANKS(){ const v=StationRules.ok() ? StationRules.opt('dgu.tank_sizes') : null; return Array.isArray(v) && v.length ? v : [500, 1000, 1500, 2000, 3000]; }
+  /** время работы от бака по умолчанию (новая ДЭС без требований), ч — правило dgu.tank_hours */
+  static get HOURS(){ const v=StationRules.ok() ? StationRules.opt('dgu.tank_hours') : null; return v>0 ? v : 16; }
   static FUEL = /топливн\S* бак|дополнительн\S* бак|бак топлив/i;   // топливный бак ДГУ (не бак для воды)
   static get LPH(){ return StationRules.ok() ? StationRules.raw('dgu.lph') : 0.25; }       // расход топлива, л на кВт·ч (файл правил)
   static get LOAD(){ return StationRules.ok() ? StationRules.raw('dgu.fuel_load') : 0.75; }  // нагрузка по умолчанию (файл правил)
@@ -333,7 +336,7 @@ class StationDefaults {
   static kw(it){ const d=kitParts(it).find(p=>StationEquip.kindOf(p)==='dgu'); return d ? StationEquip.num((d.attrs||{}).kw) : null; }
   /** объём бака, л: на hours ч работы при нагрузке 75 % (по умолчанию 16 ч, с баком ДГУ — около суток), ближайший типовой;
    *  больше типовых — с округлением до 500 л */
-  static tank(kw, hours=16){ if (!(kw>0)) return 1000; const need=kw*this.LOAD*this.LPH*hours; return this.TANKS.find(v=>v>=need) || Math.ceil(need/500)*500; }
+  static tank(kw, hours=this.HOURS){ if (!(kw>0)) return 1000; const need=kw*this.LOAD*this.LPH*hours; return this.TANKS.find(v=>v>=need) || Math.ceil(need/500)*500; }
   /** бак станции — под время работы из требований (ТЗ): объём и строка «время работы». С расчётом станции (GensetSizing) —
    *  по расходу ДГУ на нагрузке из требований с запасом, за вычетом бака ДГУ (как в расчётной записке); без него — 75 %, 0,25 л/кВт·ч */
   static retank(it, hours){

@@ -13,6 +13,8 @@ import json
 import threading
 from datetime import datetime
 
+from defaults import SrvVal
+
 
 class SettingsHistory:
     KEYS = {'settings': 'Общие настройки', 'types': 'Категории оборудования', 'uitexts': 'Тексты интерфейса',
@@ -25,7 +27,7 @@ class SettingsHistory:
     SECRET = ('password', 'token', 'key', 'secret')
     # служебные поля: меняются сами (проверки, отметки времени) — не изменение настроек
     VOLATILE = ('last', 'checked', 'stats', 'report', 'log', 'result', 'run', '_saved')
-    KEEP = 500
+    KEEP = 500          # записей истории: встроенное, действует srv.settingsHistory («Значения программы»)
     _ctx = threading.local()
 
     def __init__(self, store):
@@ -84,7 +86,7 @@ class SettingsHistory:
         self.store.write('INSERT INTO settings_history (ts, key, by, paths, before, after) VALUES (?,?,?,?,?,?)',
                          (datetime.now().isoformat(timespec='seconds'), key, str(name)[:120], json.dumps(ch[:200], ensure_ascii=False),
                           json.dumps(b, ensure_ascii=False), json.dumps(a, ensure_ascii=False)))
-        self.store.write('DELETE FROM settings_history WHERE id <= (SELECT MAX(id) FROM settings_history) - ?', (self.KEEP,))
+        self.store.write('DELETE FROM settings_history WHERE id <= (SELECT MAX(id) FROM settings_history) - ?', (SrvVal.get(self.store, 'srv.settingsHistory'),))
         return ch
 
     def watches(self, key):

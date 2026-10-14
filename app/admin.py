@@ -10,6 +10,8 @@
 • Сессия администратора — cookie kp_admin (HttpOnly, SameSite=Strict) + CSRF-токен в заголовке X-CSRF-Token
   для всех изменяющих запросов; 15 минут бездействия — выход. Неверный пароль 5 раз за 10 минут — пауза 10 минут.
 • Удаление (КП, товары, менеджеры, клиенты) — только из «Настроек», в корзину (data хранится 30 дней, можно восстановить).
+• Числа выше (бездействие, попытки входа, срок корзины, длина пароля, статистика) — «Настройки → Значения программы»
+  (defaults.SrvVal: srv.adminIdleMin, srv.loginFails, srv.loginLockMin, srv.trashDays, srv.adminPwMin, srv.statTop…).
 • Журнал действий (таблица audit): кто (менеджер из заголовков X-KP-User-Id / X-KP-User — обычные сотрудники
   не входят по паролю), что, над чем, до/после (только изменённые поля), IP, браузер, результат.
 • Модерация правок товаров (kv «settings».productEditModeration): включена — правка товара сохраняется в
@@ -29,11 +31,9 @@ from datetime import datetime, timedelta
 
 import auth_users
 from config import BadRequest
+from defaults import SrvVal
 from storage import Conflict
 
-IDLE_SECONDS = 15 * 60
-TRASH_DAYS = 30
-FAIL_LIMIT, FAIL_WINDOW = 5, 10 * 60
 DENIED = 'Удаление и настройки — только в разделе «Настройки» (нужен пароль администратора)'
 # поля товара, которые меняет само сохранение КП (цены и история): такие правки не модерируются
 AUTO_KEYS = {'price', 'priceCur', 'cost', 'costCur', 'margin', 'mmode', 'prices', 'updatedAt', 'pricesCount'}
@@ -103,8 +103,9 @@ def public_account(u):
 
 
 def check_new_password(pw):
-    if len(pw or '') < 8:
-        raise ValueError('Пароль — не короче 8 символов')
+    n = SrvVal.now('srv.adminPwMin')
+    if len(pw or '') < n:
+        raise ValueError('Пароль — не короче %d символов' % n)
     if not (re.search(r'\d', pw) and re.search(r'[^\d]', pw)):
         raise ValueError('В пароле нужны и буквы, и цифры')
 
@@ -137,10 +138,11 @@ class AdminSessions:
     def _all(cls):
         if cls.items is None:
             st, now = cls._store(), time.time()
+            idle = SrvVal.get(st, 'srv.adminIdleMin') * 60
             logins = {u['login'].lower() for u in accounts(st)}
             raw = st.kv_get(cls.KV) or {}
             cls.items = {k: dict(v, saved=v.get('last', 0)) for k, v in (raw.items() if isinstance(raw, dict) else [])
-                         if isinstance(v, dict) and now - float(v.get('last') or 0) <= IDLE_SECONDS
+                         if isinstance(v, dict) and now - float(v.get('last') or 0) <= idle
                          and (not v.get('login') or v['login'].lower() in logins)}
         return cls.items
 
@@ -161,7 +163,7 @@ class AdminSessions:
             if not s:
                 return None
             now = time.time()
-            if now - s['last'] > IDLE_SECONDS:
+            if now - s['last'] > SrvVal.get(cls._store(), 'srv.adminIdleMin') * 60:
                 cls.items.pop(k, None)
                 cls._save()
                 return None
@@ -235,10 +237,11 @@ def is_admin(h, need_csrf=True):
 
 def _locked(ip):
     now = time.time()
+    window, limit = SrvVal.now('srv.loginLockMin') * 60, SrvVal.now('srv.loginFails')
     with LOCK:
-        for k in [k for k, v in FAILS.items() if not v or now - v[-1] >= FAIL_WINDOW]:     # старые попытки не копятся
+        for k in [k for k, v in FAILS.items() if not v or now - v[-1] >= window]:     # старые попытки не копятся
             del FAILS[k]
-        return len(FAILS.get(ip, [])) >= FAIL_LIMIT
+        return len(FAILS.get(ip, [])) >= limit
 
 
 def _fail(ip):
@@ -681,7 +684,7 @@ def auth_api(h, store, m, sub):
     if sub == 'login' and m == 'POST':
         ip = _ip(h)
         if _locked(ip):
-            return h.send(429, 'text/plain; charset=utf-8', 'Слишком много неверных попыток — подождите 10 минут')
+            return h.send(429, 'text/plain; charset=utf-8', 'Слишком много неверных попыток — подождите %d мин' % SrvVal.now('srv.loginLockMin'))
         d = _body_obj(h)
         mid, rec = auth_users.find_by_login(store, d.get('login'))
         if not mid or rec.get('blocked') or not rec.get('pw') or not verify_password(d.get('password') or '', rec['pw']):
@@ -744,7 +747,7 @@ class AdminApi:
             s = session(h)
             return self.ok({'hasPassword': bool(users), 'admin': bool(s), 'csrf': s['csrf'] if s else '',
                             'login': s.get('login', '') if s else '', 'name': s.get('name', '') if s else '',
-                            'canSetup': not users and h.is_local(), 'idleMinutes': IDLE_SECONDS // 60})
+                            'canSetup': not users and h.is_local(), 'idleMinutes': SrvVal.get(st, 'srv.adminIdleMin')})
         if sub == 'setup' and m == 'POST':
             if users:
                 return self.err(409, 'Администратор уже создан')
@@ -768,7 +771,7 @@ class AdminApi:
                 return self.err(409, 'Администратор ещё не создан')
             if _locked(ip):
                 log(h, st, 'login', 'admin', None, result='failed', admin=False)
-                return self.err(429, 'Слишком много неверных попыток — подождите 10 минут')
+                return self.err(429, 'Слишком много неверных попыток — подождите %d мин' % SrvVal.get(st, 'srv.loginLockMin'))
             d = self.data()
             u = find_account(users, d.get('login')) if (d.get('login') or '').strip() else (users[0] if len(users) == 1 else None)
             if not u or not verify_password(d.get('password') or '', u.get('pw') or {}):
@@ -1068,7 +1071,7 @@ class AdminApi:
         if sub == 'delete' and m == 'POST':
             return self.delete(self.data())
         if sub == 'trash':
-            return self.ok({'items': st.trash_list(), 'days': TRASH_DAYS})
+            return self.ok({'items': st.trash_list(), 'days': SrvVal.get(st, 'srv.trashDays')})
         r = re.match(r'^trash/(\d{1,9})/restore$', sub)
         if r and m == 'POST':
             etype, eid = st.trash_restore(int(r.group(1)))
@@ -1631,6 +1634,7 @@ def stats(st):
         except ValueError:
             return None
     days = [(day(x), x) for x in metas]
+    top, active = SrvVal.get(st, 'srv.statTop'), SrvVal.get(st, 'srv.statActiveDays')
 
     def count(n):
         return sum(1 for d, _ in days if d and (today - d).days < n)
@@ -1660,23 +1664,24 @@ def stats(st):
             y, mo = y - 1, mo + 12
         series['month'].append({'label': '%02d.%d' % (mo, y % 100), 'count': sum(1 for x, _ in days if x and (x.year, x.month) == (y, mo))})
     month_ago = (now - timedelta(days=30)).isoformat(timespec='seconds')
+    active_ago = (now - timedelta(days=active)).isoformat(timespec='seconds')
     q = lambda sql, *a: st.one(sql, a)[0]
     approved = q("SELECT COUNT(*) FROM pending_edits WHERE status='approved'")
     rejected = q("SELECT COUNT(*) FROM pending_edits WHERE status='rejected'")
-    users = {r[0] for r in st.all('SELECT DISTINCT user_name FROM audit WHERE ts >= ? AND user_name IS NOT NULL', (month_ago,))}
-    users |= {x.get('manager') for d, x in days if d and (today - d).days < 30 and x.get('manager')}
+    users = {r[0] for r in st.all('SELECT DISTINCT user_name FROM audit WHERE ts >= ? AND user_name IS NOT NULL', (active_ago,))}
+    users |= {x.get('manager') for d, x in days if d and (today - d).days < active and x.get('manager')}
     users.discard('Не выбран')
     from maintenance import db_size
     size = db_size(st)
     return {
         'kp': {'total': len(metas), 'today': count(1), 'week': count(7), 'month': count(30),
                'sumMonth': sum((rub(x) or 0) for d, x in days if d and (today - d).days < 30)},
-        'managers': sorted(mgr.values(), key=lambda m: -m['count'])[:10],
-        'products': [p for p in prods if p['count']][:10],
+        'managers': sorted(mgr.values(), key=lambda m: -m['count'])[:top],
+        'products': [p for p in prods if p['count']][:top],
         'moderation': {'enabled': moderation(st).get('enabled'), 'pending': q("SELECT COUNT(*) FROM pending_edits WHERE status='pending'"),
                        'approved': approved, 'rejected': rejected,
                        'conversion': round(approved * 100 / (approved + rejected), 1) if approved + rejected else None},
-        'activeUsers': len(users),
+        'activeUsers': len(users), 'activeDays': active,
         'deletions': {'month': q("SELECT COUNT(*) FROM audit WHERE action LIKE 'delete\\_%' ESCAPE '\\' AND result='success' AND ts >= ?", month_ago),
                       'total': q("SELECT COUNT(*) FROM audit WHERE action LIKE 'delete\\_%' ESCAPE '\\' AND result='success'"),
                       'trash': q('SELECT COUNT(*) FROM trash')},
@@ -1686,7 +1691,7 @@ def stats(st):
 
 
 def startup(store, data_dir, log_print=print):
-    """При запуске: сброс пароля по файлу data/admin-reset.txt, очистка корзины старше TRASH_DAYS дней."""
+    """При запуске: сброс пароля по файлу data/admin-reset.txt, очистка корзины старше srv.trashDays дней («Значения программы»)."""
     reset = os.path.join(data_dir, 'admin-reset.txt')
     if os.path.isfile(reset):
         store.write("DELETE FROM kv WHERE key IN ('admin', 'admins')")
@@ -1695,6 +1700,6 @@ def startup(store, data_dir, log_print=print):
         store.audit_add({'action': 'set_password', 'entityType': 'admin', 'entityId': 'reset', 'userName': 'Компьютер-сервер',
                          'userRole': 'admin', 'after': {'reset': True}})
         log_print('Учётные записи администраторов сброшены (data/admin-reset.txt): создайте новую в «Настройках» на этом компьютере')
-    n = store.trash_purge(TRASH_DAYS)
+    n = store.trash_purge(SrvVal.get(store, 'srv.trashDays'))
     if n:
         store.audit_add({'action': 'purge_trash', 'entityType': 'trash', 'userName': 'Программа', 'userRole': 'admin', 'after': {'count': n}})

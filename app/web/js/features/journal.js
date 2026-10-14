@@ -1,6 +1,14 @@
 // Журнал КП: список сохранённых КП, открытие, копия, удаление.
 'use strict';
 
+// журнал КП — «Настройки → Значения программы → Интерфейс»
+DefRegistry.add([['journal', 'Журнал и отчёт по КП', 'ui', 'Список сохранённых КП («⋯ → Журнал КП»): постранично, с поиском по номеру, клиенту, ИНН и позициям; отчёт за период — кнопка «Отчёт» в журнале.']], [
+  ['ui.jPage', 'journal', 'КП на одной странице журнала', 'num', '50', {unit:'шт.', req:true, min:10, max:500,
+    hint:'Сколько КП журнал загружает сразу; следующие — кнопкой «Показать ещё». Больше — меньше нажатий, но дольше открывается журнал на слабом компьютере или телефоне. Пример: 50.'}],
+  ['ui.jDelay', 'journal', 'Задержка поиска в журнале', 'num', '220', {unit:'мс', req:true, min:0, max:2000,
+    hint:'Сколько программа ждёт после последней нажатой клавиши в строке поиска журнала, прежде чем спросить сервер. 1000 мс = 1 секунда. Меньше — результат быстрее, но больше запросов при наборе; при медленной сети лучше 300–500.'}],
+]);
+
 const jTime = iso => { if (!iso) return ''; const d=new Date(iso); if (isNaN(d)) return '';
   return d.toLocaleDateString('ru-RU')+', '+d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}); };
 
@@ -64,7 +72,7 @@ async function openJournal(){
    <div class="jtot muted" id="jTot"></div><div class="jfun" id="jFun"></div><div id="jList"><p class="empty">Загружаю…</p></div></div>`;
   d.showModal(); d.querySelector('[data-close]').onclick=()=>{ d.close(); d.classList.remove('wide'); };
   // журнал — постранично: поиск, автор и итоги считает сервер, в браузер приходят только видимые КП
-  const J={rows:[], total:0, agg:null, seq:0, size:50, any:false};
+  const J={rows:[], total:0, agg:null, seq:0, size:Math.round(DEFN('ui.jPage', 50)), any:false};
   const draw=()=>{ const a=J.agg||{};
     $('#jTot').innerHTML = J.total ? `КП: <b>${J.total}</b> · на сумму <b>${money(a.sum||0)} руб.</b>${a.profitN&&FEAT.on('deal')?` · прибыль <b>${money(a.profit)} руб.</b> <span>(по ${a.profitN} КП с закупкой)</span>`:''}` : '';
     const fn=J.funnel||{}, nn=k=>(fn[k]||{}).n||0, won=nn('won'), lost=nn('lost');
@@ -86,7 +94,7 @@ async function openJournal(){
     for (const x of (r.items||[]).filter(x=>!x.econ && !x.locked)){ if (!d.open || seq!==J.seq) break;
       try{ x.econ=kpEconomics(await api(`/api/kp/${x.id}/state`)); }catch(e){ x.econ={cur:'RUB',sum:x.sum||0,withCost:0,positions:x.positions||0}; } }
     if (d.open && seq===J.seq) draw(); };
-  let qT=0; $('#jQ').oninput=()=>{ clearTimeout(qT); qT=setTimeout(()=>load(false), 220); }; $('#jA').onchange=$('#jK').onchange=$('#jS').onchange=()=>load(false);
+  let qT=0; $('#jQ').oninput=()=>{ clearTimeout(qT); qT=setTimeout(()=>load(false), DEFN('ui.jDelay', 220)); }; $('#jA').onchange=$('#jK').onchange=$('#jS').onchange=()=>load(false);
   $('#jFun').onclick=e=>{ const b=e.target.closest('[data-jf]'); if (!b) return; const s=$('#jS'); s.value = s.value===b.dataset.jf ? '' : b.dataset.jf; load(false); };
   $('#jDr').onclick=()=>Drafts.dialog();
   $('#jRep').onclick=()=>KpReport.open({author:$('#jA').value, kind:$('#jK').value});

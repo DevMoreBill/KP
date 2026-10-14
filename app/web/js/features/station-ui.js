@@ -301,7 +301,8 @@ class IssueSpot {
 // ---------------------------------------------------------------- картинки для КП
 class StationImages {
   static busy = new Set();
-  static timer = 0;
+  static timers = new Map();   // своя пауза у каждой станции: быстрая правка двух станций подряд пересобирает обе (ошибка до 3.88: один таймер на всех — только последнюю)
+  static queue = Promise.resolve();   // пересборка — по очереди (3D-вид и листы считаются долго, одновременно — мешали бы друг другу)
   static issues = new Map();   // позиция → почему изображения станции не попадут в КП (показать до сохранения)
 
   /** что не так с изображениями станций текущего КП: ['Станция …: …'] */
@@ -393,12 +394,18 @@ class StationImages {
    *  набираемое) */
   static WAIT = 1500;
   static soon(x){
-    clearTimeout(this.timer);
-    this.timer=setTimeout(async ()=>{
-      if (!(await this.sync(x))) return;
-      persist(); renderForm();
-      if (EDIT && EDIT.tab==='layout' && S.items[EDIT.i]===x) renderEditor();
-    }, this.WAIT);
+    if (!x) return; const k=x.id!=null ? x.id : x;
+    clearTimeout(this.timers.get(k));
+    this.timers.set(k, setTimeout(()=>{ this.timers.delete(k); this.queue=this.queue.then(()=>this.later(x)).catch(()=>{}); }, this.WAIT));
+  }
+  /** очередь: станция x — нынешний объект позиции КП с тем же id (позиция удалена — пропустить); занята другой пересборкой —
+   *  ещё раз после паузы */
+  static async later(x0){
+    const x=S.items.find(q=>q && x0.id!=null && q.id===x0.id) || (S.items.includes(x0) ? x0 : null); if (!x) return;
+    if (this.busy.has(x.id)){ this.soon(x); return; }
+    if (!(await this.sync(x))) return;
+    persist(); renderForm();
+    if (EDIT && EDIT.tab==='layout' && S.items[EDIT.i]===x) renderEditor();
   }
   /** SVG → картинка (3D-вид — JPEG, чертёж — PNG: чёткие линии) */
   static async raster(svg, type){

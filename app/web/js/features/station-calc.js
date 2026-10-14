@@ -386,7 +386,7 @@ class ElectricLoad {
 
 // ---------------------------------------------------------------- ДГУ: мощность, нагрузка, высота и жара, пуск, топливо
 class GensetSizing {
-  static TANK_MAX = 4500;   // наибольший бак в отсеке контейнера, л (3 000 × 1 000 × 1 500 мм — StationEquip.guess)
+  static get TANK_MAX(){ return StationMatrix.tank().max; }   // наибольший бак в отсеке контейнера, л (3 000 × 1 000 × 1 500 мм — StationEquip.guess); раздел tank матрицы
   /** расход топлива ДГУ при доле нагрузки x, л/ч: строки «При нагрузке N %» / «Расход топлива при N % нагрузки»; нет — null */
   static fuel(u, x){
     const T=[]; for (const r of u.rows||[]){ const m=String(r && r.k||'').match(/(\d{2,3})\s*%/); if (!m || !/нагрузк/i.test(String(r.k)) || !/л\s*\/\s*ч/i.test(String(r.k)+' '+String(r.v))) continue;

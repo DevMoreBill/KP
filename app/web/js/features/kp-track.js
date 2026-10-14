@@ -8,6 +8,16 @@ const KP_STATUS = { new:'Подготовлено', sent:'Отправлено',
 const KP_LOST = ['Цена выше, чем у конкурентов', 'Сроки поставки', 'Выбрали другого поставщика', 'Закупка отменена или перенесена',
   'Не прошли по техническим требованиям', 'Нет ответа от клиента', 'Другое'];
 
+// напоминания хода сделки — «Настройки → Значения программы → КП и документы»
+DefRegistry.add([['remind', 'Напоминания и ход сделки', 'kp', 'Напоминание «перезвонить» ставится в окне статуса КП (журнал → кнопка статуса). Колокольчик в шапке показывает, что пора сделать.']], [
+  ['kp.remQuick', 'remind', 'Кнопки быстрого напоминания — через сколько дней', 'text', '1, 3, 7', {req:true,
+    hint:'Числа через запятую — по кнопке на каждое (не больше 5): «1» — кнопка «Завтра», «7» — «Через неделю», остальные — «Через N дн.». Пример: «1, 2, 5, 14» — четыре кнопки. Дата напоминания всё равно выбирается и вручную в календаре.'}],
+  ['kp.remSnooze', 'remind', '«Отложить» в напоминаниях — на', 'num', '1', {unit:'дн.', req:true, min:1, max:30,
+    hint:'На сколько дней переносит напоминание кнопка «+N дн.» в окне колокольчика. Пример: 1 — на завтра, 3 — через три дня.'}],
+  ['kp.remRefresh', 'remind', 'Проверять новые напоминания — раз в', 'num', '10', {unit:'мин', req:true, min:1, max:120,
+    hint:'Как часто открытая программа сама спрашивает у сервера новые напоминания (колокольчик в шапке). Меньше — быстрее появляется напоминание, больше — реже запросы к серверу.'}],
+]);
+
 // даты хода сделки: ДД.ММ.ГГГГ, сдвиг на дни, срок действия КП (как kp_track.OfferTerm на сервере)
 class KpDate {
   static ddmm(iso){ const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}.${m[2]}.${m[1]}` : ''; }
@@ -53,7 +63,7 @@ class KpTrack {
       <label class="f"><span>Заметка</span><input type="text" id="ktN" value="${esc(tr.note||'')}" maxlength="500" placeholder="Например: ждём согласования бюджета до 20-го"></label>
       <fieldset class="kt-fu"><legend>Напоминание</legend>
         <div class="row" style="gap:8px;flex-wrap:wrap"><input type="date" id="ktD" value="${esc(fu?fu.date:'')}" aria-label="Дата напоминания">
-          ${[['+1','Завтра',1],['+3','Через 3 дня',3],['+7','Через неделю',7]].map(([k,l,n])=>`<button type="button" class="btn sm" data-kd="${n}">${l}</button>`).join('')}
+          ${KpTrack.quick().map(n=>`<button type="button" class="btn sm" data-kd="${n}">${n===1?'Завтра':n===7?'Через неделю':`Через ${n} ${plural(n,'день','дня','дней')}`}</button>`).join('')}
           ${fu?'<button type="button" class="btn sm ghost" data-kdone>Выполнено</button>':''}</div>
         <input type="text" id="ktFN" value="${esc(fu?fu.note:'')}" maxlength="300" placeholder="Что сделать: позвонить главному инженеру, уточнить решение…" aria-label="Что сделать"></fieldset>
       ${hist?`<details class="kt-h"><summary>История</summary><ul>${hist}</ul></details>`:''}
@@ -71,6 +81,11 @@ class KpTrack {
       try{ const r2=await KpTrack.put(r.id, body); onSave&&onSave(r2.track); toast('КП № '+r.number+': '+KP_STATUS[cur].toLowerCase()); m.close(); Reminders.load(); }
       catch(err){ toast('Не сохранено: '+err.message); } };
   }
+  /** дни кнопок быстрого напоминания из «Значений программы» («1, 3, 7»); неверная запись — как в программе */
+  static quick(){
+    const L=String(DEF('kp.remQuick')||'').split(/[,;\s]+/).map(x=>Math.round(+x)).filter(n=>n>=1 && n<=365);
+    return L.length ? [...new Set(L)].slice(0, 5) : [1, 3, 7];
+  }
   static put(id, body){ return api(`/api/kp/${encodeURIComponent(id)}/track`, {method:'PUT', headers:{'Content-Type':'application/json; charset=utf-8'}, body:JSON.stringify(body)}); }
 }
 
@@ -80,14 +95,17 @@ class Reminders {
   static async load(){ if (!FEAT.on('reminders')){ Reminders.items=[]; return Reminders.badge(); } try{ const r=await api('/api/reminders'); Reminders.items=r.items||[]; }catch(e){ Reminders.items=[]; } Reminders.badge(); }
   static badge(){ const b=$('#btnRem'); if (!b) return; const n=Reminders.items.length, due=Reminders.items.some(x=>x.overdue||x.date<=today());
     b.hidden=!n; b.classList.toggle('due', due); $('#remN').textContent=n||''; b.title=n?`Напоминания: ${n}`:'Напоминаний нет'; }
+  static snooze(){ return Math.round(DEFN('kp.remSnooze', 1)); }
+  /** колокольчик сам проверяет напоминания раз в N минут («Значения программы»), пока вкладка открыта */
+  static poll(){ setTimeout(()=>{ if (!document.hidden) Reminders.load(); Reminders.poll(); }, DEFN('kp.remRefresh', 10)*60*1000); }
   static icon(k){ return k==='follow'?'⏰':k==='expire'?'⌛':'✉'; }
   static open(){
-    const list=Reminders.items;
+    const list=Reminders.items, snz=Reminders.snooze();
     const m=new Modal(`<div class="dlg-h"><h3>Напоминания</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       ${list.length?`<div class="rem-l">${list.map((x,i)=>`<div class="rem-r${x.overdue?' over':''}"><span class="rem-i" aria-hidden="true">${Reminders.icon(x.kind)}</span>
         <div><b>${esc(x.text)}</b><span class="muted">КП № ${esc(x.number)} · ${esc(x.client)} · ${x.kind==='stale'?'с '+esc(KpDate.ddmm(x.date)):esc(KpDate.ddmm(x.date))}${x.overdue?' · <span class="bad-t">просрочено</span>':''}</span></div>
         <div class="acts"><button class="btn sm" type="button" data-ro="${i}">Открыть КП</button><button class="btn sm" type="button" data-rs="${i}">Статус…</button>
-        ${x.kind==='follow'?`<button class="btn sm ghost" type="button" data-rd="${i}">Выполнено</button><button class="btn sm ghost" type="button" data-rl="${i}" title="Перенести на завтра">+1 день</button>`:''}</div></div>`).join('')}</div>`
+        ${x.kind==='follow'?`<button class="btn sm ghost" type="button" data-rd="${i}">Выполнено</button><button class="btn sm ghost" type="button" data-rl="${i}" title="Перенести на ${snz===1?'завтра':snz+' '+plural(snz,'день','дня','дней')}">+${snz} ${plural(snz,'день','дня','дней')}</button>`:''}</div></div>`).join('')}</div>`
       : '<p class="empty">Напоминаний нет. Поставить напоминание — в журнале КП, кнопка статуса у КП.</p>'}`, 'rem-dlg');
     m.d.onclick=async e=>{ const t=e.target; if (t.closest('[data-x]')) return m.close();
       const b=t.closest('[data-ro],[data-rs],[data-rd],[data-rl]'); if (!b) return; const x=list[+(b.dataset.ro??b.dataset.rs??b.dataset.rd??b.dataset.rl)];
@@ -96,7 +114,7 @@ class Reminders {
         if (b.dataset.rs!=null){ const r=(await api(`/api/history?limit=1&q=${encodeURIComponent(x.number)}`)).items?.find(z=>z.id===x.id) || {id:x.id, number:x.number, client:x.client};
           m.close(); return KpTrack.open(r); }
         if (b.dataset.rd!=null) await KpTrack.put(x.id, {followUp:{done:true}});
-        if (b.dataset.rl!=null) await KpTrack.put(x.id, {followUp:{date:KpDate.addDays(today(),1), note:x.text}});
+        if (b.dataset.rl!=null) await KpTrack.put(x.id, {followUp:{date:KpDate.addDays(today(),snz), note:x.text}});
         await Reminders.load(); m.close(); Reminders.open();
       }catch(err){ toast('Не получилось: '+err.message); } };
   }

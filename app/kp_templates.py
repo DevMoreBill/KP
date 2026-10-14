@@ -20,6 +20,7 @@ import zipfile
 from datetime import datetime
 
 from config import BUNDLE, FROZEN, ROOT, SAFE_ID, UPDATE_DIR, read_text, write_bytes
+from defaults import SrvVal
 
 # Папка «templates» рядом с программой (при запуске из исходников — папка проекта).
 TEMPLATES_DIR = os.path.join(ROOT, 'templates') if FROZEN else os.path.join(BUNDLE, 'templates')
@@ -32,7 +33,7 @@ TPL_FILES = re.compile(r'^(template\.json|base\.docx|skeleton\.js|editor\.json|%
 # файлы, которых может не быть в старых или скопированных вручную шаблонах — берутся из заводского
 SHARED_FILES = ('skeleton.js', 'editor.json')
 HISTORY = '_history'
-HISTORY_KEEP = 40
+HISTORY_KEEP = 40          # прежних версий шаблона: встроенное, действует srv.tplHistory («Значения программы»)
 HIST_RE = re.compile(r'^(template|base|skeleton|editor)-\d{8}-\d{6}(-\d+)?\.(json|docx|js)$')
 
 
@@ -154,7 +155,7 @@ def _backup(d, name):
         dst = os.path.join(h, '%s-%s-%d%s' % (kind, _stamp(), n, ext))
     shutil.copyfile(f, dst)
     files = sorted(x for x in os.listdir(h) if HIST_RE.match(x) and x.startswith(kind + '-'))
-    for old in files[:-HISTORY_KEEP]:
+    for old in files[:-SrvVal.now('srv.tplHistory')]:
         try:
             os.remove(os.path.join(h, old))
         except OSError:

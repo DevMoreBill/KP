@@ -16,7 +16,7 @@
   loadLogos(); loadAppVersion(); uitLoad(); renderForm(); authMenu();
   (window.requestIdleCallback||setTimeout)(()=>CW.prewarm());     // поиск в каталоге — готов заранее
   Drafts.start();               // черновики на сервере: автосохранение раз в минуту
-  Reminders.load(); setInterval(()=>{ if (!document.hidden) Reminders.load(); }, 10*60*1000);   // колокольчик: перезвонить, срок действия КП
+  Reminders.load(); Reminders.poll();   // колокольчик: перезвонить, срок действия КП
   if (!showMigrationNotice(SRV.info.migrations) && !MyPrefs.start() && !MyDay.start() && !S.items.length && catCache.length) openCatalog({});   // «Мой день» — вместо каталога
 })();
 

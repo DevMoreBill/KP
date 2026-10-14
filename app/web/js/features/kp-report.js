@@ -3,6 +3,12 @@
 // по правам менеджера). Сравнение версий КП (журнал → «⋯» → «Прежние версии КП» → «Сравнить с текущей») — KpDiff.
 'use strict';
 
+// отчёт по КП — группа «Журнал и отчёт по КП» в «Настройки → Значения программы → Интерфейс»
+DefRegistry.add([], [
+  ['ui.repClients', 'journal', 'Клиентов в отчёте «Крупнейшие клиенты»', 'num', '20', {unit:'шт.', req:true, min:5, max:500,
+    hint:'Сколько клиентов с наибольшей суммой КП за период показывать в отчёте (журнал → «Отчёт») и на листе «Клиенты» в Excel. Остальные клиенты видны в списке КП отчёта.'}],
+]);
+
 class KpReport {
   static range(k){ const d=new Date(), y=d.getFullYear(), m=d.getMonth(), iso=x=>x.toISOString().slice(0,10), D=(a,b,c)=>new Date(Date.UTC(a,b,c));
     if (k==='month') return [iso(D(y,m,1)), today()];
@@ -48,7 +54,7 @@ class KpReport {
     const sortSum=m=>[...m.values()].sort((a,b)=>b.sum-a.sum);
     const tot=rows.reduce((t,r)=>{ const st=KpTrack.status(r.track); t.n++; t.sum+=r.sumRub||0; if (st==='won'){ t.won++; t.wonSum+=r.sumRub||0; } if (st==='lost') t.lost++; if (r.profitRub!=null){ t.profit+=r.profitRub; t.pBase+=r.sumRub||0; } return t; },
       {n:0, sum:0, won:0, wonSum:0, lost:0, profit:0, pBase:0});
-    return { tot, mgr:sortSum(byM), cat:sortSum(byC), cli:sortSum(byK).slice(0,20), list };
+    return { tot, mgr:sortSum(byM), cat:sortSum(byC), cli:sortSum(byK).slice(0, Math.round(DEFN('ui.repClients', 20))), list };
   }
   static pct(a, b){ return b ? (a/b*100).toFixed(1).replace('.',',')+' %' : '—'; }
   static conv(x){ return x.won+x.lost ? Math.round(x.won/(x.won+x.lost)*100)+' %' : '—'; }

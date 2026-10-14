@@ -1639,8 +1639,10 @@ Check.run('без продольного прохода: компрессор у
   // два компрессора — рядом в ряд от торца (уточнение ПНЕВМОТЕХ 13.10), между ними и за последним — не меньше 1 000 мм
   const two=P('Винтовой компрессор 90', { cat:'comp_screw', kw:90, size:'1900 × 1200 × 1800' }, { role:'main', qty:2 });
   const w=solve(C('block', { sizeAuto:true }), [two, ads, r900, cab]); Check.plan(w, 'два компрессора'); draw(w, 'два компрессора');
-  // с дверью оператора между компрессорами и 4 × 900 л у торца — длиннее 12 м: тогда негабарит с предупреждением (исключение)
-  assert.ok(w.level!=='error' && (w.geo.ext[1]<=StationGeo.ROAD_W ? w.mode && w.mode.ends : w.issues.some(i=>i.wide)), 'два компрессора: '+JSON.stringify([w.geo.ext, w.mode]));
+  // с дверью оператора между компрессорами и 4 × 900 л у торца — длиннее 12 м: тогда (14.10) последний приём в габарите
+  // перевозки — ресиверы вплотную (с замечанием «исключение»), и только потом негабарит с предупреждением
+  assert.ok(w.level!=='error' && (w.geo.ext[1]<=StationGeo.ROAD_W ? (w.mode && w.mode.ends) || w.issues.some(i=>i.close && /исключение/.test(i.text)) : w.issues.some(i=>i.wide)), 'два компрессора: '+JSON.stringify([w.geo.ext, w.mode]));
+  assert.ok(w.geo.ext[1]<=StationGeo.ROAD_W, 'два компрессора — в габарите перевозки (ресиверы вплотную), не негабарит: '+JSON.stringify(w.geo.ext));
   new StScene(p, {}).build(); draw(p, 'без продольного прохода');
 });
 
@@ -1674,6 +1676,42 @@ Check.run('вертикальный ресивер с габаритами «в�
     const c=solve(C('block', { sizeAuto:true }), [k, dr, rv]); Check.plan(c, 'меньшие отступы');
     assert.ok(c.geo.ext[0]*c.geo.ext[1]<=a.geo.ext[0]*a.geo.ext[1]*1.02, 'не больше: '+[a.geo.ext, c.geo.ext]);
   } finally { StationRules.use(base); }
+});
+
+// решение ПНЕВМОТЕХ 14.10: ресивер без поля «Исполнение» с габаритами «высота × Ø × Ø» (Dalgakiran РВ 900.16 «2200 × 1000 ×
+// 1000») — стоит, и внутри, и снаружи; горизонтальный — по полю или названию; отметка recv.upright в «Настройках»
+Check.run('ресиверы стоят: «высота × Ø × Ø» без исполнения — вертикальный, внутри и снаружи (14.10)', ()=>{
+  const D=(name, attrs)=>StationEquip.dims({ name, attrs, rows:[] }, 'receiver');
+  assert.deepStrictEqual([D('Ресивер Dalgakiran РВ 900.16', { size:'2200 × 1000 × 1000' })].map(d=>[d.l, d.w, d.h]), [[1000, 1000, 2200]], 'стоит');
+  assert.deepStrictEqual([D('Ресивер горизонтальный РГ 900', { size:'2200 × 1000 × 1000' }), D('Ресивер РГ 900', { size:'2200 × 1000 × 1000', orient:'Горизонтальный' })].map(d=>[d.l, d.w, d.h]), [[2200, 1000, 1000], [2200, 1000, 1000]], 'горизонтальный — лежит');
+  assert.deepStrictEqual([D('Ресивер РВ 100.10', { size:'1036 × 380 × 472' })].map(d=>[d.l, d.w, d.h]), [[1036, 380, 472]], 'стороны не «Ø × Ø» — как записаны');
+  const r9=P('Ресивер Dalgakiran РВ 900.16', { cat:'receiver', volume:900, pressure:16, size:'2200 × 1000 × 1000' }, { qty:2 });
+  const k=P('Винтовой компрессор 55', { cat:'comp_screw', kw:55, flow:10, pressure:10, size:'1650 × 1000 × 1700' }, { role:'main' });
+  const dr=P('Осушитель рефрижераторный', { cat:'dryer_refrig', flow:12, size:'900 × 700 × 1200' });
+  const pin=solve(C('block', { sizeAuto:true }), [k, dr, r9]); Check.plan(pin, 'ресиверы стоят внутри');
+  assert.ok(pin.items.filter(i=>i.kind==='receiver').every(i=>i.shape==='vcyl' && i.h===2200 && i.lx===1000), 'внутри — стоят');
+  const pout=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[k, dr, r9], recvOut:true }); Check.plan(pout, 'ресиверы снаружи');
+  assert.ok(pout.outside.length===2 && pout.outside.every(i=>i.shape==='vcyl' && i.h===2200 && i.lx===1000 && i.ly===1000), 'снаружи — стоят: '+JSON.stringify(pout.outside.map(i=>[i.lx, i.ly, i.h, i.shape])));
+  draw(pout, 'ресиверы снаружи стоят'); new StScene(pout, {}).build();
+  const base=JSON.parse(JSON.stringify(StationRules.data));
+  try{ const b=JSON.parse(JSON.stringify(base)); b.rules.find(r=>r.id==='layout.matrix').value.recv.upright=0; StationRules.use(b);
+    const d=D('Ресивер Dalgakiran РВ 900.16', { size:'2200 × 1000 × 1000' }); assert.deepStrictEqual([d.l, d.w, d.h], [2200, 1000, 1000], 'отметка «нет» — как записаны габариты');
+  } finally { StationRules.use(base); }
+});
+
+// решение ПНЕВМОТЕХ 14.10: «все значения — с возможностью менять в админке» — числа станции из правил (матрица расстановки),
+// у каждого — подпись, единица и пределы формы; правка в правилах доходит до расчёта
+Check.run('прочие числа станции — из правил: конструкция, подбор, жалюзи, масса, свет, пожаротушение (14.10)', ()=>{
+  for (const g of ['shell', 'pick', 'pipe', 'pumps', 'grille', 'mass', 'light', 'fire', 'power']) for (const k of Object.keys(StationMatrix.DEF[g])){
+    const f=LayoutParams.field(g, k); assert.ok(f && f.t && (f.u || f.opt), `поле формы ${g}.${k}`); assert.ok(f.lo<=StationMatrix.DEF[g][k] && StationMatrix.DEF[g][k]<=f.hi, `пределы ${g}.${k}`); }
+  assert.deepStrictEqual([StationGeo.FLEX.block.wall, StationGeo.LINING, StationVent.STEP, StationVent.IN.h, StationMass.LUG, StationLight.LAMP.w, StationFire.MOD.area, StationLayout.AIR_Y, StationMatrix.grp('pick').max, StationHeat.UNITS[0]],
+    [20, 15, 50, [300, 1200], [90, 60], 36, 7, 150, 4, [0.5, 460]], 'значения по умолчанию — прежние');
+  const base=JSON.parse(JSON.stringify(StationRules.data));
+  try{ const b=JSON.parse(JSON.stringify(base)), m=b.rules.find(r=>r.id==='layout.matrix').value; m.shell.blockWall=40; m.grille.step=100; m.pick.max=3; StationRules.use(b);
+    assert.deepStrictEqual([StationGeo.FLEX.block.wall, StationVent.STEP, StationMatrix.grp('pick').max], [40, 100, 3], 'правка в правилах — действует');
+    assert.ok(StationGeo.inner('block', [6000, 2500, 2800], 100)[1]===2500-2*(100+40), 'внутренняя ширина — по новой стене');
+  } finally { StationRules.use(base); }
+  assert.strictEqual(StationGeo.FLEX.block.wall, 20, 'вернулось');
 });
 
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);

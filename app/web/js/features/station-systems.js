@@ -24,8 +24,10 @@
 // входа — «Порошок! Не входи!» и «Автоматика отключена» (п. 10.3.1). На двери снаружи — табличка категории помещения по
 // пожарной опасности и класса зоны по ПУЭ (ППР в РФ, п. 12; категория Д — без таблички).
 class StationFire {
-  static MOD = { name:'«Буран-2,5»', area:7, side:2640, vol:{ A:18, B:16 }, k1:1, k3:1, k4:1, d:250, h:154, kg:3, z:[2500, 3500] };
-  static SHADE = { h:600, gap:150 };              // затеняет агрегат выше 600 мм; зона за ним — если до стены не меньше 150 мм
+  // паспорт модуля и коэффициенты — матрица расстановки, раздел fire («Настройки → Инженерные правила станций»)
+  static get MOD(){ return StationMatrix.derive('fireMod', ()=>{ const f=StationMatrix.grp('fire');
+    return { name:'«Буран-2,5»', area:f.modArea, side:f.modSide, vol:{ A:f.modVolA, B:f.modVolB }, k1:f.k1, k3:f.k3, k4:f.k4, d:250, h:154, kg:3, z:[f.modZ0, f.modZ1] }; }); }
+  static get SHADE(){ return StationMatrix.derive('fireShade', ()=>{ const f=StationMatrix.grp('fire'); return { h:f.shadeH, gap:f.shadeGap }; }); }   // затеняет агрегат выше 600 мм; зона за ним — если до стены не меньше 150 мм
   static EXT = 'ОП-5(з)';                         // огнетушитель порошковый, 5 кг: пожары классов A, B, C и электрооборудование до 1000 В
   static RANK = { high:'3А, 70В, С, Е', low:'2А, 55В, С, Е' };   // ППР в РФ, прил. 1: категории А, Б, В1–В4 и Г, Д
   static TANK = { cat:'В1', zone:'П-I' };         // отсек топливного бака ДГУ: дизельное топливо — горючая жидкость
@@ -131,12 +133,12 @@ class StationFire {
 // светодиодные прожекторы 30 Вт IP65 с фотореле и блоком аварийного питания (перед выходом — не менее 5 лк).
 class StationLight {
   static get LUX(){ return StationRules.raw('norm.lux').lux; }
-  static PLANE = 800;         // рабочая плоскость над полом, мм
+  static get PLANE(){ return StationMatrix.grp('light').plane; }   // рабочая плоскость над полом, мм (раздел light матрицы)
   static get KZ(){ return StationRules.raw('norm.lux').kz; }
-  static LAMP = { w:36, lm:3600, len:1200 };
-  static SMALL = 15;          // круглый светильник в отсеке бака и тамбуре, Вт
-  static FLOOD = 30;          // прожектор над дверью, Вт
-  static EXIT = 3;            // табло «Выход» с аккумулятором, Вт
+  static get LAMP(){ return StationMatrix.derive('lamp', ()=>{ const L=StationMatrix.grp('light'); return { w:L.lampW, lm:L.lampLm, len:L.lampLen }; }); }
+  static get SMALL(){ return StationMatrix.grp('light').small; }   // круглый светильник в отсеке бака и тамбуре, Вт
+  static get FLOOD(){ return StationMatrix.grp('light').flood; }   // прожектор над дверью, Вт
+  static get EXIT(){ return StationMatrix.grp('light').exit; }     // табло «Выход» с аккумулятором, Вт
   static ETA = [[0.5, 0.34], [0.6, 0.39], [0.8, 0.46], [1, 0.51], [1.25, 0.56], [1.5, 0.6], [2, 0.65], [2.5, 0.69], [3, 0.71], [4, 0.74], [5, 0.76]];
   /** коэффициент использования по индексу помещения (линейно между точками таблицы) */
   static eta(i){
@@ -175,10 +177,11 @@ class StationSockets {
   static calc(plan){
     if ((plan.sys||{}).power===false) return null;
     const [L]=plan.int, x0=plan.geo.x0||0;
-    return { n230:Math.max(2, Math.ceil((L-x0)/4000)), n380:1, ytp:1, z:1000 };
+    const P=StationMatrix.grp('power');   // по одной розетке 230 В на каждые sockStep мм длины, не меньше sockMin (раздел power матрицы)
+    return { n230:Math.max(P.sockMin, Math.ceil((L-x0)/P.sockStep)), n380:P.sock380, ytp:1, z:P.sockZ };
   }
   static text(K){
-    return K ? `сервисные розетки: 230 В 16 А IP54 с заземляющим контактом — ${K.n230} шт. (у входа и у оборудования, через УЗО 30 мА), 380 В 16 А IP54 (3P+N+PE) — ${K.n380} шт. у основного оборудования, ящик ЯТП-0,25 (220/36 В) для переносных светильников — ${K.ytp} шт. у входа; высота — 1,0 м от пола` : '';
+    return K ? `сервисные розетки: 230 В 16 А IP54 с заземляющим контактом — ${K.n230} шт. (у входа и у оборудования, через УЗО 30 мА), 380 В 16 А IP54 (3P+N+PE) — ${K.n380} шт. у основного оборудования, ящик ЯТП-0,25 (220/36 В) для переносных светильников — ${K.ytp} шт. у входа; высота — ${(K.z/1000).toFixed(1).replace('.', ',')} м от пола` : '';
   }
 }
 
@@ -194,10 +197,10 @@ class StationPower {
   static get BREAKERS(){ return StationRules.raw('el.breakers'); }
   static f(v){ return String(Math.abs(v)<1 ? Math.round(v*100)/100 : Math.round(v*10)/10).replace('.', ','); }
   /** мощность осушителя, кВт: по паспорту или оценка по производительности (рефрижераторный — 0,2 кВт на 1 м³/мин) */
-  static dryer(i){ if (i.kw>0) return i.kw; const q=i.air && i.air.flow>0 ? i.air.flow : 0, t=i.air && i.air.type; return t==='refrig' || !t ? Math.max(0.3, Math.round(q*0.2*10)/10) : 0.1; }
+  static dryer(i){ if (i.kw>0) return i.kw; const q=i.air && i.air.flow>0 ? i.air.flow : 0, t=i.air && i.air.type, P=StationMatrix.grp('power'); return t==='refrig' || !t ? Math.max(P.dryerMin, Math.round(q*P.dryerK*10)/10) : P.dryerAds; }
   /** потребители: [{name, n, kw — за единицу, kc, run — работает в режиме «работа», idle — в «простое»}] и итоги */
   static calc(plan){
-    const I=plan.items||[], r=plan.req||{}, h=plan.heat, Lt=plan.light, K=plan.sockets, F=plan.fire, out=[];
+    const I=plan.items||[], r=plan.req||{}, h=plan.heat, Lt=plan.light, K=plan.sockets, F=plan.fire, out=[], D=StationMatrix.grp('power');   // мощности по умолчанию — раздел power матрицы
     const add=(name, n, kw, kc, run, idle)=>{ if (n>0 && kw>0) out.push({ name, n, kw:Math.round(kw*100)/100, kc, run, idle }); };
     const group=(kind, name, kwOf)=>{ const L=I.filter(i=>i.kind===kind && !i.tank); if (!L.length) return;
       const res=kind===(r.kind==='pump' ? 'pump' : 'compressor') ? Math.max(0, Math.min(L.length-1, Math.round(r.res||0))) : 0, kws=L.map(kwOf).sort((a, b)=>b-a);
@@ -208,15 +211,15 @@ class StationPower {
     group('pump', 'Насосный агрегат', i=>i.kw>0 ? i.kw : 0);
     group('dryer', 'Осушитель', i=>this.dryer(i));
     const dgu=I.find(i=>i.kind==='dgu');
-    if (dgu){ add('Подогреватель двигателя ДГУ', 1, dgu.kw>250 ? 3 : 2, 1, false, true); add('Зарядное устройство АКБ ДГУ', 1, 0.1, 1, true, true);
-      if (plan.fuel) add('Насос перекачки топлива', 1, 0.37, 1, true, true); }
+    if (dgu){ add('Подогреватель двигателя ДГУ', 1, dgu.kw>D.dguHeatKw ? D.dguHeatBig : D.dguHeat, 1, false, true); add('Зарядное устройство АКБ ДГУ', 1, D.charger, 1, true, true);
+      if (plan.fuel) add('Насос перекачки топлива', 1, D.fuelPumpKw, 1, true, true); }
     if (h && h.on && h.total>0) add(`Электроконвекторы ${h.n} × ${StationHeat.kw(h.kw)} кВт`, 1, h.total, 1, false, true);
     if (h && h.on && h.qRun>0) out.push({ name:'Подогрев воздуха при работе (часть конвекторов)', n:1, kw:0, kc:1, run:true, idle:false, extra:Math.round(h.qRun/10)/100 });
     if (Lt && Lt.on) add('Освещение (основное, аварийное, прожекторы)', 1, Lt.kw, 1, true, true);
-    if (K){ add('Розетки 230 В (группа 16 А)', 1, 3.5, 0.3, true, true); add('Розетка 380 В 16 А', 1, 11, 0.2, true, true); add('ЯТП-0,25 (36 В)', 1, 0.25, 0.5, true, true); }
-    if ((plan.sys||{}).vent!==false) add('Клапаны вентиляции с электроприводами', 1, 0.05, 1, true, true);
-    if (F && F.ops) add(`Щит ОПС${F.auto ? ' и пожаротушения' : ''}`, 1, 0.05, 1, true, true);
-    if (I.some(i=>i.kind==='cabinet' && /АСУ|диспетч/i.test(i.name||''))) add('Шкаф АСУ ТП', 1, 0.3, 1, true, true);
+    if (K){ add('Розетки 230 В (группа 16 А)', 1, D.s230, D.s230k, true, true); add('Розетка 380 В 16 А', 1, D.s380, D.s380k, true, true); add('ЯТП-0,25 (36 В)', 1, D.ytp, D.ytpK, true, true); }
+    if ((plan.sys||{}).vent!==false) add('Клапаны вентиляции с электроприводами', 1, D.valves, 1, true, true);
+    if (F && F.ops) add(`Щит ОПС${F.auto ? ' и пожаротушения' : ''}`, 1, D.ops, 1, true, true);
+    if (I.some(i=>i.kind==='cabinet' && /АСУ|диспетч/i.test(i.name||''))) add('Шкаф АСУ ТП', 1, D.asu, 1, true, true);
     const inst=out.reduce((s, q)=>s+q.n*q.kw, 0), mode=k=>out.reduce((s, q)=>s+(q[k] ? q.n*q.kw*q.kc+(q.extra||0) : 0), 0);
     const run=mode('run'), idle=mode('idle'), P=Math.max(run, idle), A=P*1000/(Math.sqrt(3)*this.U*this.COS);
     return { list:out, inst:Math.round(inst*10)/10, run:Math.round(run*10)/10, idle:Math.round(idle*10)/10, kw:Math.round(P*10)/10, mode:run>=idle ? 'run' : 'idle',
@@ -240,7 +243,7 @@ class StationPower {
 class StationPipe {
   static DN = [[15, 15.7], [20, 20.9], [25, 26.6], [32, 35.1], [40, 40.9], [50, 52.5], [65, 68], [80, 80.9], [100, 106], [125, 131], [150, 156], [200, 207], [250, 259], [300, 309]];
   static get V(){ return StationRules.raw('el.pipe_v'); }
-  static FUEL = 2.4;          // подача насоса перекачки топлива, м³/ч
+  static get FUEL(){ return StationMatrix.grp('light').fuelPump; }   // подача насоса перекачки топлива, м³/ч
   /** DN по внутреннему диаметру, мм */
   static dn(d){ const r=this.DN.find(([, di])=>di>=d-1e-9); return r ? r[0] : this.DN[this.DN.length-1][0]; }
   static inner(dn){ const r=this.DN.find(([n])=>n===dn); return r ? r[1] : dn; }
@@ -283,14 +286,16 @@ class StationPipe {
 // фитингам вертикальны, рама подвешена над центром тяжести. Знаки по ГОСТ 14192-96: № 9 «Место строповки» — у каждой точки
 // строповки с двух сторон (п. 5.5.1), № 12 «Центр тяжести» — на боковой и торцовой стенах в проекции центра тяжести (п. 5.5.2).
 class StationMass {
-  static TARE = { sea10:1300, sea20:2250, sea20hc:2350, sea40:3750, sea40hc:3900 };   // кг, ISO 668 — типичная тара
-  static FRAME = 110;        // рама блок-контейнера, кг на 1 м длины
-  static PANEL = { block:22, north:27, welded:38 };   // стены и кровля, кг/м²: сэндвич-панели 100 мм, «Север», профлист с каркасом
-  static LINING = 12;        // утепление и обшивка морского контейнера изнутри, кг/м²
-  static FLOOR = 45;         // пол: рифлёный лист 4 мм на лагах, кг/м²
-  static OTHER = [0.05, 100];   // трубопровод, кабели, системы: доля массы оборудования и постоянная часть, кг
-  static ANGLE = 45;         // наибольший угол ветви стропа с вертикалью, °
-  static LUG = [90, 60];     // точка строповки от торца и от боковой стены (наружные), мм
+  // числа — матрица расстановки, раздел mass («Настройки → Инженерные правила станций → Масса станции и строповка»)
+  static get M(){ return StationMatrix.grp('mass'); }
+  static get TARE(){ return StationMatrix.derive('tare', ()=>{ const m=this.M; return { sea10:m.tare10, sea20:m.tare20, sea20hc:m.tare20hc, sea40:m.tare40, sea40hc:m.tare40hc }; }); }   // кг, ISO 668 — типичная тара
+  static get FRAME(){ return this.M.frame; }        // рама блок-контейнера, кг на 1 м длины
+  static get PANEL(){ return StationMatrix.derive('panel', ()=>{ const m=this.M; return { block:m.pBlock, north:m.pNorth, welded:m.pWelded }; }); }   // стены и кровля, кг/м²: сэндвич-панели 100 мм, «Север», профлист с каркасом
+  static get LINING(){ return this.M.lining; }      // утепление и обшивка морского контейнера изнутри, кг/м²
+  static get FLOOR(){ return this.M.floor; }        // пол: рифлёный лист 4 мм на лагах, кг/м²
+  static get OTHER(){ return [this.M.otherK, this.M.otherKg]; }   // трубопровод, кабели, системы: доля массы оборудования и постоянная часть, кг
+  static get ANGLE(){ return this.M.angle; }        // наибольший угол ветви стропа с вертикалью, °
+  static get LUG(){ return [this.M.lugL, this.M.lugW]; }   // точка строповки от торца и от боковой стены (наружные), мм
 
   /** {mass, cont, eq, other, cg:{x, y, z}, missing:[поз.], sling:{hook — высота крюка над крышей, legs:[{x, y, len, deg}], beam,
    *  frame}} */
@@ -328,8 +333,8 @@ class StationMass {
     const n=StationLayout.n;
     return [{ level:'warn', text:`Масса станции около ${n(Ms.mass)} кг — больше наибольшей массы брутто контейнера ${n(Ms.max)} кг (ISO 668, требует подтверждения по табличке CSC): облегчите состав или выберите другой контейнер.` }];
   }
-  static BEAM = { L:6500, z:2000, top:1500 };   // длиннее L — траверса: ветви до неё z, от неё до крюка top, мм
-  static SPREADER = { z:1500, d:1500, top:2000 };   // рамная траверса морского контейнера: высота рамы, проушины ± d от ЦТ, до крюка top
+  static get BEAM(){ const m=this.M; return { L:m.beamL, z:m.beamZ, top:m.beamTop }; }   // длиннее L — траверса: ветви до неё z, от неё до крюка top, мм
+  static get SPREADER(){ const m=this.M; return { z:m.sprZ, d:m.sprD, top:m.sprTop }; }   // рамная траверса морского контейнера: высота рамы, проушины ± d от ЦТ, до крюка top
   /** строповка: точки в верхних углах, крюк над центром тяжести на высоте, при которой угол каждой ветви с вертикалью — не
    *  больше ANGLE; длины ветвей — с округлением до 100 мм вверх. Длинный блок-контейнер — с траверсой над ним (ветви от точек
    *  строповки к траверсе, траверса подвешена над центром тяжести). Морской (sea) — рамной траверсой: четыре вертикальные
@@ -352,7 +357,7 @@ class StationMass {
 // Стены: left — у начала помещения (торец или перегородка отсека / тамбура), right — дальний торец, back — задняя,
 // front — со стороны прохода (зрителя). u — вдоль стены (left/right — y, back/front — x), z — от пола, мм.
 class StWalls {
-  static NEAR = 450;      // оборудование ближе к стене — место перед ним занято (до его высоты + 150 мм)
+  static get NEAR(){ return StationMatrix.grp('grille').near; }   // оборудование ближе к стене — место перед ним занято (до его высоты + 150 мм)
   /** o.equip=false — оборудование на полу и трубопровод место на стене не занимают (жалюзи за компрессором — забор воздуха) */
   constructor(plan, o={}){
     const [L, W, H]=plan.int, x0=plan.geo.x0||0, I=(plan.items||[]).filter(i=>!i.tank), N=StWalls.NEAR;
@@ -553,25 +558,27 @@ class VentCalc {
 // (у ДГУ — подальше от радиатора), вытяжка — вверху в дальнем торце; места — на свободных участках стен (StWalls), мимо
 // дверей, ворот, шкафов, конвекторов и знака «Центр тяжести». Чего не поместилось — замечание с недостающим сечением.
 class StationVent {
-  static STEP = 50;
-  static GAP = 200;                                         // между жалюзи на стене, мм
-  static IN = { z0:200, h:[300, 1200], w:[400, 1500] };     // приток: низ на 200 мм от пола, высота и ширина «от–до», мм
-  static WHOLE = 2400;                                      // одним проёмом — до 2 400 мм шириной; больше — несколько одинаковых
-  static MAXN = 4;                                          // одинаковых проёмов — не больше; не встали — под свободные участки
+  // размеры, пределы и отступы — матрица расстановки, раздел grille («Настройки → … → Жалюзи притока и выброса, маркизы»)
+  static get G(){ return StationMatrix.grp('grille'); }
+  static get STEP(){ return this.G.step; }
+  static get GAP(){ return this.G.gap; }                    // между жалюзи на стене, мм
+  static get IN(){ return StationMatrix.derive('ventIn', ()=>{ const g=this.G; return { z0:g.inZ, h:[g.inHmin, g.inHmax], w:[g.inWmin, g.inWmax] }; }); }   // приток: низ на 200 мм от пола, высота и ширина «от–до», мм
+  static get WHOLE(){ return this.G.whole; }                // одним проёмом — до 2 400 мм шириной; больше — несколько одинаковых
+  static get MAXN(){ return this.G.maxn; }                  // одинаковых проёмов — не больше; не встали — под свободные участки
   // маркиза — откидной козырёк на петлях над жалюзи: закрыт — закрывает проём (щит), открыт на угол от стены — с боковыми
   // створками-ограничителями, воздух проходит только снизу
-  static HOOD_SIDE = 80;                                    // козырёк шире жалюзи на 80 мм с каждой стороны
-  static HOOD_LAP = 50;                                     // закрытый — перекрывает рамку на 50 мм сверху и снизу (петли — на 50 мм выше)
-  static HOOD_ANG = [30, 75];                               // угол открытия от стены, °: меньше — вход узкий, больше — почти горизонтален
-  static HOOD_LOW = 100;                                    // длиннее (вход мал и при 75°) — закрытый не ниже 100 мм от пола
-  static HOOD_GAP = 300;                                    // маркиза — не ближе 300 мм к проёму двери или ворот (сверх обычного)
+  static get HOOD_SIDE(){ return this.G.hoodSide; }         // козырёк шире жалюзи на 80 мм с каждой стороны
+  static get HOOD_LAP(){ return this.G.hoodLap; }           // закрытый — перекрывает рамку на 50 мм сверху и снизу (петли — на 50 мм выше)
+  static get HOOD_ANG(){ return [this.G.hoodAng0, this.G.hoodAng1]; }   // угол открытия от стены, °: меньше — вход узкий, больше — почти горизонтален
+  static get HOOD_LOW(){ return this.G.hoodLow; }           // длиннее (вход мал и при 75°) — закрытый не ниже 100 мм от пола
+  static get HOOD_GAP(){ return this.G.hoodGap; }           // маркиза — не ближе 300 мм к проёму двери или ворот (сверх обычного)
   static get HOOD_V(){ return StationRules.raw('vent.hood_v'); }
   static HOOD_WHAT = 'маркиза — откидной козырёк на петлях над жалюзи: открыт — с раскрывающимися боковыми створками-ограничителями (воздух проходит только снизу, снег и дождь не задуваются), закрыт — закрывает проём жалюзи как защитный щит (перевозка, простой, непогода)';
-  static LIFT = 750;                                        // приток над конвектором (внизу места нет): низ, мм
-  static OUT = { top:420, h:[300, 800], w:[400, 1500] };    // вытяжка: верх на 420 мм ниже потолка (под кабельным лотком)
-  static HOOD = 420;                                        // колпак выброса на крыше: высота над крышей, мм
-  static PIECE = 600;                                       // добавочные жалюзи (остаток сечения) — не уже, мм
-  static FAN_MIN = 500;                                     // проём вытяжного вентилятора — не ниже, мм (осевой вентилятор от Ø 400 мм)
+  static get LIFT(){ return this.G.lift; }                  // приток над конвектором (внизу места нет): низ, мм
+  static get OUT(){ return StationMatrix.derive('ventOut', ()=>{ const g=this.G; return { top:g.outTop, h:[g.outHmin, g.outHmax], w:[g.outWmin, g.outWmax] }; }); }   // вытяжка: верх на 420 мм ниже потолка (под кабельным лотком)
+  static get HOOD(){ return this.G.roofHood; }              // колпак выброса на крыше: высота над крышей, мм
+  static get PIECE(){ return this.G.piece; }                // добавочные жалюзи (остаток сечения) — не уже, мм
+  static get FAN_MIN(){ return this.G.fanMin; }             // проём вытяжного вентилятора — не ниже, мм (осевой вентилятор от Ø 400 мм)
   static get FREE(){ return StationRules.raw('vent.free'); }
   /** одинаковые жалюзи на площадь по рамке area, м²: {n, w, h} — площадь не меньше нужной, форма ближе к 3 : 2, меньше штук */
   static size(area, o){
@@ -917,7 +924,7 @@ class StationVent {
     if (V.short.in>0) iss.push({ level:'warn', text:`Не поместилось приточных жалюзи на ${f(V.short.in)} м² (по рамке): стена напротив выброса, створки ворот и свободные стены заняты дверями, шкафами и конвекторами — освободите место на стене или примите приток воздуховодом через крышу.` });
     if (V.rad && V.rad.v>StationVent.RAD_V) iss.push({ level:'warn', text:`Через жалюзи радиатора ДГУ скорость воздуха около ${f(V.rad.v)} м/с — больше ${f(StationVent.RAD_V)} м/с: проверьте по паспорту ДГУ (расход воздуха радиатора, допустимое сопротивление) или увеличьте проём.` });
   }
-  static RAD_V = 7.5;   // скорость выброса воздуха радиатора ДГУ через жалюзи, м/с — выше: проверить по паспорту ДГУ
+  static get RAD_V(){ return this.G.radV; }   // скорость выброса воздуха радиатора ДГУ через жалюзи, м/с — выше: проверить по паспорту ДГУ
 }
 
 if (typeof module!=='undefined') module.exports={ StationFire, StationLight, StationSockets, StationPower, StationPipe, StationMass, StWalls, VentCalc, StationVent };

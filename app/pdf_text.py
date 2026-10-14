@@ -10,7 +10,9 @@ import base64
 import re
 import zlib
 
-MAX_BYTES = 40 * 1024 * 1024
+from defaults import SrvVal
+
+# наибольший файл — cat.docMaxMB («Значения программы», встроенное 40 МБ)
 MAX_TEXT = 60000
 MAX_STREAM = 64 * 1024 * 1024        # распакованный поток — не больше
 
@@ -485,8 +487,9 @@ def _run(doc, data, res, out, fonts, depth=0):
 def text(data, need_text=True):
     """Текст PDF (строки, страницы через пустую строку) и текст каждой страницы (per — '' у страницы без текста, скана).
     need_text=False — PDF без текста не ошибка (дальше — распознавание скана). ValueError — понятным текстом."""
-    if len(data) > MAX_BYTES:
-        raise ValueError('файл больше 40 МБ')
+    mb = SrvVal.now('cat.docMaxMB')
+    if len(data) > mb * 1024 * 1024:
+        raise ValueError('файл больше %d МБ' % mb)
     doc = Doc(data)
     pages, fonts, parts, per, size = doc.pages(), {}, [], [], 0
     for pg, res in pages:

@@ -26,9 +26,9 @@ import zipfile
 from datetime import datetime
 
 import images
+from defaults import SrvVal
 
 DIR_NAME = 'feeds'
-MAX_FILE = 60 * 1024 * 1024
 UNITS = {'бар', 'м³/мин', 'м3/мин', 'м³/ч', 'м3/час', 'м3/ч', 'л/мин', 'лит', 'л', 'квт', 'мм', 'кг', 'дюйм', 'дб', 'дб(а)', 'евро', 'eur', '€',
          'руб', 'руб.', '₽', 'usd', '$', 'в/гц', 'в', 'модель', 'тип', 'r', 'фланец', 'шт', '(л)', '(кг)', 'об/мин', '%', '°c', 'мбар',
          'атм', 'см', 'м', 'g', 'марка', 'м2/ч', 'r (ü)', 'мм', 'час', 'материал', 'град,°с', '°с', 'м3/мин'}
@@ -69,8 +69,9 @@ def save_file(data_dir, fid, kind, data, name, slot=None):
         raise ValueError('Неизвестный вид файла')
     if not data:
         raise ValueError('Файл пустой')
-    if len(data) > MAX_FILE:
-        raise ValueError('Файл больше %d МБ' % (MAX_FILE // 1024 // 1024))
+    mb = SrvVal.now('cat.feedFileMB')
+    if len(data) > mb * 1024 * 1024:
+        raise ValueError('Файл больше %d МБ (предел — «Настройки → Значения программы»)' % mb)
     meta = {'name': str(name or '')[:120], 'size': len(data), 'at': datetime.now().isoformat(timespec='seconds')}
     if kind == 'pages':
         rows = parse_pages(data)

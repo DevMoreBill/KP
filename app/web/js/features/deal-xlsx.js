@@ -26,7 +26,7 @@ async function dealXlsx(){
   row(['Цена для заказчика с НДС', {v:c.S, s:'inpMoney'}, '₽', {f:self(), v:c.S}], 'S');
   row(['НДС при продаже', {v:c.v, s:'inp'}, '%'], 'v');
   // курсы — всех валют, которые встречаются в расчёте (в т. ч. с нулевой суммой: на них ссылаются формулы)
-  const curs=[...new Set([...c.used, ...d.sup.flatMap(s=>[s.log&&s.log.cur, s.extra&&s.extra.cur]), ...kp.items.map(x=>x.cur)].filter(x=>x&&x!=='RUB'&&num(c.rate(x))>0))];
+  const curs=[...new Set([...c.used, ...d.sup.flatMap(s=>[s.log&&s.log.cur, s.extra&&s.extra.cur, s.logRu&&s.logRu.cur]), ...kp.items.map(x=>x.cur)].filter(x=>x&&x!=='RUB'&&num(c.rate(x))>0))];
   for (const cur of curs) row([`Курс рубля за 1 ${cur}`, {v:num(c.rate(cur)), s:'inp'}, '₽', '', note(c.rateSrc[cur]==='deal'?'Указан в расчёте':'Из КП (курс ЦБ)')], 'rate_'+cur);
   const rub=(key, cur)=> cur==='RUB' ? ref(key) : at['rate_'+cur] ? `${ref(key)}*${ref('rate_'+cur)}` : `${ref(key)}*${num(c.rate(cur))||0}`;
   const vK=`${ref('v')}/(100+${ref('v')})`;
@@ -43,7 +43,7 @@ async function dealXlsx(){
       R[r-1][3]={f:rub(key,cur)+vf, v:exA*num(c.rate(cur))*(nv?1+c.v/100:1), s:'money'}; eqKeys.push(key); lineKey.extra=key; if (cur!=='RUB') fxKeys.push(key); }
     row([{v:'Оборудование, итого', s:'bold'}, '', '', {f:eqKeys.map(x=>D(x)).join('+')||'0', v:s.equip, s:'moneyB'}, nv?note('Цены поставщика без НДС — добавлен НДС'):''], `EQ${k}`);
     const logCur=amt('Логистика до границы', 'L'+k, ds.log, null, 'Входит в таможенную стоимость');
-    amt('Доставка по России', 'LRU'+k, ds.logRu, 'RUB');
+    amt('Доставка по России', 'LRU'+k, ds.logRu, null, s.LruFx?'Своя сумма в валюте — в рубли по курсу (строка курса выше)':'');
     amt('Брокер, СВХ, сертификация', 'BRK'+k, ds.brk, 'RUB');
     row(['Страхование груза', {v:dNum(ds.ins)||0, s:'inp'}, '% от оборудования', {f:`${D('EQ'+k)}*${self()}/100`, v:s.ins, s:'money'}], 'INS'+k);
     row(['Комиссия банка или агента за перевод', {v:dNum(ds.fx)||0, s:'inp'}, '% от платежа в валюте',
@@ -56,7 +56,7 @@ async function dealXlsx(){
           {f:`IF(${D('EQ'+k)}=0,0,${D(lk)}*${D('CV'+k)}/${D('EQ'+k)})*${self()}/100`, v:ln.dutyA, s:'money'}, note((ln.code?'ТН ВЭД '+ln.code+'. ':'')+(ln.dutyAuto?'Средняя ставка позиций поставщика. ':'')+(Number.isFinite(ln.duty)?'':'Ставка не указана — 0 %'))], key); });
       row(['Пошлина, итого', '', '', {f:duK.map(x=>D(x)).join('+')||'0', v:s.dutyA, s:'money'}, note('С таможенной стоимости позиции (доля логистики и страхования — по цене)')], 'DU'+k);
       const sc=CUSTOMS_FEES.scale, lims=[0,...sc.slice(0,-1).map(x=>x[0]+0.01)], fees=sc.map(x=>x[1]);
-      row(['Таможенный сбор', s.feeAuto?{f:`LOOKUP(${D('CV'+k)},{${lims.join(',')}},{${fees.join(',')}})`, v:s.fee, s:'inpMoney'}:{v:s.fee, s:'inpMoney'}, '₽', {f:self(), v:s.fee, s:'money'}, note(s.feeAuto?'По шкале '+CUSTOMS_FEES.title:'Вписан вручную')], 'FE'+k);
+      row(['Таможенный сбор', s.feeAuto?{f:`LOOKUP(${D('CV'+k)},{${lims.join(',')}},{${fees.join(',')}})`, v:s.fee, s:'inpMoney'}:{v:s.fee, s:'inpMoney'}, '₽', {f:self(), v:s.fee, s:'money'}, note(s.feeAuto?'По шкале '+CUSTOMS_FEES.title+(DealValues.feeOwn()?' (шкала изменена в «Настройках»)':''):'Вписан вручную')], 'FE'+k);
       row(['НДС на ввоз', {v:s.ivP, s:'inp'}, '%', {f:`(${D('CV'+k)}+${D('DU'+k)})*${self()}/100`, v:s.ivatA, s:'money'}, note('(Таможенная стоимость + пошлина) × ставка. Возвращается вычетом')], 'IV'+k);
       row([{v:'Таможенные платежи', s:'bold'}, '', '', {f:`${D('DU'+k)}+${D('FE'+k)}+${D('IV'+k)}`, v:s.T, s:'moneyB'}], 'T'+k);
       row(['Ввозной НДС к вычету', '', '', {f:D('IV'+k), v:s.vi, s:'money'}], 'vi'+k);
@@ -172,7 +172,7 @@ async function dealXlsx(){
   c.rows.forEach((r,k)=>{ const n=gFirst+k;
     const D0=q(SH1)+ref('D0'), dv=xlsxDate(d.start);
     G.push([{v:r.day, s:r.fixed?'tdInt':'inpInt'}, {f:`IF(${D0}="","",${D0}+A${n})`, v:dv===''?undefined:dv+r.day, s:'tdDate'}, {v:r.label, s:'td'}, (f=>f==null?{v:r.amount, s:'tdMoney2'}:{f, v:r.amount, s:'tdMoney2'})(amountF(r)), {f:k?`E${n-1}+D${n}`:`D${n}`, v:r.balance, s:'tdMoney2'},
-      {f:k<c.rows.length-1?`MAX(0,MIN(A${n+1},$D$2)-A${n})`:'0', v:r.days, s:'tdInt'}, xIdx>=0&&k>=xIdx?{v:0, s:'tdMoney2'}:{f:`MAX(0,-E${n})*F${n}*${q(SH1)}${ref('i')}/100/30`, v:r.fin, s:'tdMoney2'}]); });
+      {f:k<c.rows.length-1?`MAX(0,MIN(A${n+1},$D$2)-A${n})`:'0', v:r.days, s:'tdInt'}, xIdx>=0&&k>=xIdx?{v:0, s:'tdMoney2'}:{f:`MAX(0,-E${n})*F${n}*${q(SH1)}${ref('i')}/100/${DealValues.n('deal.monthDays', 30)}`, v:r.fin, s:'tdMoney2'}]); });
   G.push([{v:'',s:'totL'}, {v:'',s:'totL'}, {v:'Стоимость финансирования', s:'totL'}, {v:'',s:'totL'}, {v:'',s:'totL'}, {v:'',s:'totL'}, {f:`SUM(G${gFirst}:G${gLast})`, v:c.F, s:'totMoney'}]);
 
   // ---------- лист «Сводка»

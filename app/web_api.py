@@ -731,8 +731,9 @@ class ToolsController(Controller):
 
     @route(r'/api/pdftext', 'POST')        # текст из PDF (паспорт, каталог, ТЗ) — для автозаполнения карточки
     def pdftext(self):
-        if self.body_size() > pdf_text.MAX_BYTES:
-            return self.text(413, 'PDF больше 40 МБ')
+        mb = defaults.SrvVal.get(store(), 'cat.docMaxMB')
+        if self.body_size() > mb * 1024 * 1024:
+            return self.text(413, 'PDF больше %d МБ' % mb)
         try:
             r = pdf_text.text(self.body())
             r.pop('per', None)                 # текст по страницам — только для разбора ТЗ
@@ -744,8 +745,9 @@ class ToolsController(Controller):
     def tz_parse(self):
         from doc_text import DocText
         from tz_parse import TzParse
-        if self.body_size() > DocText.MAX_BYTES:
-            return self.text(413, 'Файл больше 40 МБ')
+        mb = defaults.SrvVal.get(store(), 'cat.docMaxMB')
+        if self.body_size() > mb * 1024 * 1024:
+            return self.text(413, 'Файл больше %d МБ' % mb)
         try:
             doc = DocText.extract(str(self.q.get('name') or '')[:200], self.body())
         except Exception as e:
@@ -918,7 +920,7 @@ class TrackController(Controller):
                 return author == uid
             return bool(name) and str(m.get('manager') or '').strip().lower() == str(name).strip().lower()
         rows = []
-        for kid, meta, track in store().kp_tracked((date.today() - timedelta(days=200)).isoformat()):
+        for kid, meta, track in store().kp_tracked((date.today() - timedelta(days=defaults.SrvVal.get(store(), 'kp.remindDays'))).isoformat()):
             m = _obj(meta)
             if admin.login_on(h) and not admin.own_kp(h, m) and not admin.perm(h, 'kpOthers'):
                 continue
@@ -926,7 +928,7 @@ class TrackController(Controller):
                 continue
             # состояние КП (бывает в мегабайтах) — только своим КП и только если срок действия не записан в описании
             rows.append((kid, m, _obj(track), {} if m.get('validUntil') else _obj(store().kp_get(kid, 'state'))))
-        items = ReminderList().collect(rows, mine)
+        items = ReminderList(store=store()).collect(rows, mine)
         return self.send_json({'items': items, 'count': len(items)})
 
     @route(r'/api/features', 'GET')        # какие функции программы включены (для всех; правка — /api/admin/features)

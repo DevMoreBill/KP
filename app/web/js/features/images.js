@@ -1,6 +1,23 @@
 // Изображения: подготовка фото и схем, галерея позиции.
 'use strict';
 
+// фото и картинки, которые менеджер добавляет сам — «Настройки → Значения программы → Каталог, фото, фиды, ИИ»
+DefRegistry.add([['photo', 'Фото и картинки, добавленные вручную', 'cat', 'Файл, вставка из буфера обмена или перетаскивание: главное фото позиции, логотип, схемы и фото галереи. Программа уменьшает большие картинки и сжимает их, чтобы КП и база не разрастались.']], [
+  ['cat.photoMax', 'photo', 'Главное фото и логотип — не больше', 'num', '1600', {unit:'px', req:true, min:600, max:4000,
+    hint:'Наибольшая сторона главного фото и логотипа после загрузки (в точках). Больше — чётче при печати, но тяжелее файл КП и черновик. Для листа А4 обычно хватает 1200–1600.'}],
+  ['cat.galMax', 'photo', 'Фото галереи и схемы — не больше', 'num', '2000', {unit:'px', req:true, min:800, max:5000,
+    hint:'Наибольшая сторона картинок галереи позиции (схемы, чертежи, дополнительные фото). Схемам с мелкими надписями нужно больше точек, чем фото: 2000–3000.'}],
+  ['cat.jpegQ', 'photo', 'Качество сжатия фото (JPEG)', 'num', '90', {unit:'%', req:true, min:50, max:100,
+    hint:'100 % — без потерь качества, но файлы крупнее; 80–90 % — разница на глаз почти незаметна, а файл в 2–3 раза меньше. Логотипы и картинки PNG (с прозрачностью) не сжимаются.'}],
+  ['cat.photoCrop', 'photo', 'Обрезать белые поля вокруг фото', 'bool', true,
+    {hint:'Включено — программа сама убирает пустые белые (и прозрачные) края вокруг оборудования, оставляя небольшой отступ: фото в КП крупнее и ровнее. Выключите, если обрезка «съедает» светлые детали оборудования.'}],
+]);
+// сжатие JPEG (0…1) и обрезка полей — из «Значений программы», читаются при каждой загрузке картинки
+class ImgPrep {
+  static q(){ return Math.min(1, Math.max(0.5, DEFN('cat.jpegQ', 90)/100)); }
+  static crop(){ return DEF('cat.photoCrop')!==false; }
+}
+
 function pickImage(kind,i){ const f=$('#filePick'); f.value=''; f.onchange=()=>f.files[0]&&loadImage(f.files[0],kind,i); f.click(); }
 
 function readImg(src){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=rej; im.src=src; }); }
@@ -8,19 +25,20 @@ function readImg(src){ return new Promise((res,rej)=>{ const im=new Image(); im.
 function fileToURL(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); }
 
 async function prepImage(src, kind){
-  const im=await readImg(src); const max=1600, sc=Math.min(1, max/Math.max(im.width,im.height));
+  const im=await readImg(src); const max=DEFN('cat.photoMax', 1600), sc=Math.min(1, max/Math.max(im.width,im.height));
   let w=Math.round(im.width*sc), h=Math.round(im.height*sc);
   const c=document.createElement('canvas'); c.width=w; c.height=h; const g=c.getContext('2d'); g.drawImage(im,0,0,w,h);
   // обрезка белых/прозрачных полей
   const d=g.getImageData(0,0,w,h).data; let x0=w,y0=h,x1=-1,y1=-1;
   for(let y=0;y<h;y+=1) for(let x=0;x<w;x+=1){ const o=(y*w+x)*4; if (d[o+3]>20 && (d[o]<240||d[o+1]<240||d[o+2]<240)){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; } }
   let out=c;
-  if (x1>x0 && y1>y0){ const pad=Math.round(Math.max(w,h)*0.015); x0=Math.max(0,x0-pad); y0=Math.max(0,y0-pad); x1=Math.min(w-1,x1+pad); y1=Math.min(h-1,y1+pad);
+  if (!ImgPrep.crop()){ x0=0; y0=0; x1=w-1; y1=h-1; }      // без обрезки — картинка целиком (на белом фоне)
+  if (x1>x0 && y1>y0){ const pad=ImgPrep.crop() ? Math.round(Math.max(w,h)*0.015) : 0; x0=Math.max(0,x0-pad); y0=Math.max(0,y0-pad); x1=Math.min(w-1,x1+pad); y1=Math.min(h-1,y1+pad);
     out=document.createElement('canvas'); out.width=x1-x0+1; out.height=y1-y0+1; const og=out.getContext('2d');
     if (kind!=='logo'){ og.fillStyle='#fff'; og.fillRect(0,0,out.width,out.height); }
     og.drawImage(c,-x0,-y0); }
   const type = kind==='logo' ? 'image/png' : 'image/jpeg';
-  return { src: out.toDataURL(type, 0.9), w: out.width, h: out.height };
+  return { src: out.toDataURL(type, ImgPrep.q()), w: out.width, h: out.height };
 }
 
 async function loadImage(file, kind, i){
@@ -45,16 +63,17 @@ const galWide=g=> g.wide==='full' ? true : g.wide==='half' ? false : (WIDE_RX.te
 
 async function prepGallery(file){
   const url=await fileToURL(file); const im=await readImg(url);
-  const max=2000, sc=Math.min(1,max/Math.max(im.width,im.height)); const w=Math.round(im.width*sc), h=Math.round(im.height*sc);
+  const max=DEFN('cat.galMax', 2000), sc=Math.min(1,max/Math.max(im.width,im.height)); const w=Math.round(im.width*sc), h=Math.round(im.height*sc);
   const c=document.createElement('canvas'); c.width=w; c.height=h; const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,w,h); g.drawImage(im,0,0,w,h);
   // обрезать белые поля
   const d=g.getImageData(0,0,w,h).data; let x0=w,y0=h,x1=-1,y1=-1;
   for(let y=0;y<h;y+=2) for(let x=0;x<w;x+=2){ const o=(y*w+x)*4; if(d[o]<242||d[o+1]<242||d[o+2]<242){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; } }
   let out=c;
-  if (x1>x0&&y1>y0){ const pad=Math.round(Math.max(w,h)*0.01); x0=Math.max(0,x0-pad); y0=Math.max(0,y0-pad); x1=Math.min(w-1,x1+pad+1); y1=Math.min(h-1,y1+pad+1);
+  if (!ImgPrep.crop()){ x0=0; y0=0; x1=w-1; y1=h-1; }
+  if (x1>x0&&y1>y0){ const pad=ImgPrep.crop() ? Math.round(Math.max(w,h)*0.01) : 0; x0=Math.max(0,x0-pad); y0=Math.max(0,y0-pad); x1=Math.min(w-1,x1+pad+1); y1=Math.min(h-1,y1+pad+1);
     out=document.createElement('canvas'); out.width=x1-x0+1; out.height=y1-y0+1; const og=out.getContext('2d'); og.fillStyle='#fff'; og.fillRect(0,0,out.width,out.height); og.drawImage(c,-x0,-y0); }
   const png = file.type==='image/png' || file.type==='image/gif' || file.type==='image/bmp';
-  return { src: out.toDataURL(png?'image/png':'image/jpeg', 0.9), w: out.width, h: out.height };
+  return { src: out.toDataURL(png?'image/png':'image/jpeg', ImgPrep.q()), w: out.width, h: out.height };
 }
 
 async function addGallery(i, files, slot){

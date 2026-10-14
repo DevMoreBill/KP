@@ -11,7 +11,15 @@ function validInn(v){ const s=String(v||'').replace(/\D/g,''); const c=(d,k)=>k.
 // справочник контрагентов не грузится целиком (их тысячи): CLIENTS — последние использованные и найденные,
 // поиск идёт на сервере; CLIENTS_ALL — сколько всего в справочнике
 let CLIENTS=[], CLIENTS_ALL=0;
-const CHECK_DAYS=30;   // через сколько дней проверка контрагента считается устаревшей
+// значения раздела «Клиент» — «Настройки → Значения программы → КП и документы»
+DefRegistry.add([['client', 'Клиент в КП', 'kp', 'Раздел «Клиент» конструктора КП: поиск в справочнике контрагентов, проверка контрагента и предупреждение о параллельных КП.']], [
+  ['kp.clientSuggest', 'client', 'Подсказок при поиске клиента', 'num', '6', {unit:'шт.', req:true, min:3, max:30,
+    hint:'Сколько найденных контрагентов показывать под строкой «Название или ИНН клиента», пока менеджер печатает. Больше — шире выбор, но длиннее список на телефоне.'}],
+  ['kp.checkDays', 'client', 'Проверка контрагента устаревает через', 'num', '30', {unit:'дн.', req:true, min:1, max:365,
+    hint:'Через сколько дней после проверки (Checko, OFData) у клиента появляется пометка «проверке N дн. — обновите». Данные о компании (статус, суды, долги) меняются — перед крупной сделкой проверку лучше обновить. Пример: 30 — раз в месяц.'}],
+  ['kp.dupDays', 'client', 'Предупреждать о КП этому клиенту за последние', 'num', '120', {unit:'дн.', req:true, min:1, max:3650,
+    hint:'Если у клиента (по ИНН) уже есть КП за этот срок, в разделе «Клиент» появится жёлтое предупреждение «У этого клиента уже есть КП…» — чтобы два менеджера не готовили параллельные предложения. Пример: 120 — примерно за 4 месяца. Само предупреждение включается и выключается в «Функциях» («Предупреждение о КП клиента»).'}],
+]);
 const CL_FETCH=new Set();
 
 async function loadClients(){ try{ const r=await api('/api/clients?limit=50'); CLIENTS=r.items||[]; CLIENTS_ALL=r.all??CLIENTS.length; }catch(e){ CLIENTS=[]; } }
@@ -21,7 +29,7 @@ function clientsKeep(list){ for (const c of list||[]){ if (!c||!c.id) continue; 
 async function clientById(id){ if (!id) return null; const have=CLIENTS.find(c=>c.id===id); if (have) return have;
   try{ const c=await api('/api/clients/'+encodeURIComponent(id)); clientsKeep([c]); return c; }catch(e){ return null; } }
 
-async function clientsFind(q, limit){ try{ const r=await api('/api/clients?limit='+(limit||6)+'&q='+encodeURIComponent(q)); clientsKeep(r.items); return r.items||[]; }catch(e){ return []; } }
+async function clientsFind(q, limit){ try{ const r=await api('/api/clients?limit='+Math.round(limit||DEFN('kp.clientSuggest', 6))+'&q='+encodeURIComponent(q)); clientsKeep(r.items); return r.items||[]; }catch(e){ return []; } }
 
 function clientIdOf(){ const inn=String(S.clientInn||'').replace(/\D/g,''); if (inn) return 'inn'+inn;
   return S.clientId || ('c'+Date.now().toString(36)); }
@@ -119,7 +127,7 @@ class PartyCheck {
     // полная проверка стояла в очереди и могла уже выполниться (после 00:00 по Москве) — подтянуть её один раз
     if (c.queued && c.checkedAt && new Date(c.checkedAt).toDateString()!==new Date().toDateString() && S._chkAuto!==inn){ S._chkAuto=inn; setTimeout(()=>PartyCheck.run(false), 50); }
     const label={ok:'Существенных рисков не найдено',warn:'Есть на что обратить внимание',bad:'Высокий риск'}[c.score]||'';
-    const age=c.checkedAt?(Date.now()-new Date(c.checkedAt))/864e5:0, old=age>CHECK_DAYS;   // проверка старше месяца — предложить обновить
+    const age=c.checkedAt?(Date.now()-new Date(c.checkedAt))/864e5:0, old=age>DEFN('kp.checkDays', 30);   // проверка устарела — предложить обновить
     const name=String(c.source||'Checko').replace(/^OFData$/,'OFData (резерв Checko)');
     const nc='не проверено', src=c.free?`Бесплатная проверка (${c.source})`:c.partial?`${name}, краткая проверка`:name;
     const facts=[['Регистрация',c.regDate?KPGen.ruDate(c.regDate.slice(0,10))+(c.ageYears!=null?` (${String(c.ageYears).replace('.',',')} г.)`:''):''],['Уставный капитал',c.capital!=null?fmtRub(c.capital):''],
@@ -249,7 +257,7 @@ document.addEventListener('input', e=>{ const t=e.target; if (t.dataset && t.dat
 let clFindSeq=0, clFindT=0;
 document.addEventListener('input', e=>{ if (e.target.id!=='clFind') return; clearTimeout(clFindT); const inp=e.target; clFindT=setTimeout(()=>clFindRun(inp), 160); });
 async function clFindRun(inp){ const raw=inp.value.trim(), q=norm(raw), L=$('#clList'), seq=++clFindSeq;
-  const res=q?await clientsFind(raw, 6):[];
+  const res=q?await clientsFind(raw):[];
   if (seq!==clFindSeq || !L) return;      // пока ждали ответ, ввели ещё буквы
   const inp2=$('#clFind'); if (!inp2 || inp2.value.trim()!==raw) return;
   const inn=raw.replace(/\D/g,''), innOk=(inn.length===10||inn.length===12)&&/^\d[\d\s]*$/.test(raw)&&validInn(inn), known=res.some(c=>String(c.inn||'').replace(/\D/g,'')===inn);

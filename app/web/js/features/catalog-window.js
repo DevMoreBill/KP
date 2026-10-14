@@ -195,7 +195,8 @@ const feedStockTxt = st => FeedBadge.stockText(st);      // для раздел�
 
 // ---------- окно каталога
 class CatalogWindow {
-  static PAGE = 60;           // строк списка за раз: остальные — при прокрутке (150 строк сразу тормозили слабые ПК)
+  /** строк списка за раз: остальные — при прокрутке (150 строк сразу тормозили слабые ПК); «Значения программы» — cat.page */
+  static get PAGE(){ return Math.round(DEFN('cat.page', 60)); }
   constructor(){
     // режим (позиции КП или опции позиции), отметки, открытая карточка, последний перенос (для отмены)
     Object.assign(this, { pend:new Set(), mod:false, optFor:null, F:FI, sel:new Set(), active:null, limit:CatalogWindow.PAGE, docs:[], view:[], lastCk:null, undo:null, note:'', busy:'', drag:null,
@@ -570,7 +571,7 @@ class CatalogWindow {
     d.addEventListener('input', e=>{ const t=e.target, F=this.F;
       if (t.id==='cwQ'){ F.q=t.value; this.limit=CatalogWindow.PAGE; clearTimeout(qT); qT=setTimeout(()=>{ this.refresh(); const q=F.q;
           // поиск по характеристикам — на сервере: ответ пришёл, запрос тот же → список с найденным по характеристикам
-          if (!CatalogSearch.has(q)) CatalogSearch.ask(q).then(s=>{ if (s && s.size && F.q===q && $('#catdlg')?.open){ const n=F.addServer(q, s); if (n<0) F.dropQuery(); if (n) this.refresh(); } }); }, this.docs.length>2000?180:60); return; }
+          if (!CatalogSearch.has(q)) CatalogSearch.ask(q).then(s=>{ if (s && s.size && F.q===q && $('#catdlg')?.open){ const n=F.addServer(q, s); if (n<0) F.dropQuery(); if (n) this.refresh(); } }); }, this.docs.length>2000 ? DEFN('cat.qDelay', 180) : Math.min(60, DEFN('cat.qDelay', 180))); return; }
       if (t.dataset.rk){ const r=F.rng[t.dataset.rk]||(F.rng[t.dataset.rk]={min:'',max:''}); r[t.dataset.rs]=t.value.replace(',','.').replace(/[^\d.]/g,''); this.list(); } });
     d.addEventListener('change', e=>{ const t=e.target, F=this.F;
       if (t.dataset.cwzero!=null){ try{ localStorage.setItem('kp.cwzero', t.checked?'1':'0'); }catch(_){} return this.nav(); }

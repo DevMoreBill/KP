@@ -381,7 +381,10 @@ Check.run('ресиверы — методика ПНЕВМОТЕХ: приор�
   assert.deepStrictEqual(S(300), [500, 1, 500], '300 л: 900 — запас 300 % → 500 л');
   assert.deepStrictEqual(S(460), [900, 1, 900], '460 л: 900 — запас 196 % → 900 л');
   assert.deepStrictEqual(S(1550), [900, 2, 1800]); assert.deepStrictEqual(S(3250), [900, 4, 3600]);
-  assert.deepStrictEqual(S(1550, { force:'500', reason:'space' }), [500, 1, 500], 'вручную 500 л');
+  // 500 л вручную (нехватка места) — сколько нужно по 500 л (решение ПНЕВМОТЕХ 14.10: «13 × 500 л» вместо 900 л); до 500 л — один
+  assert.deepStrictEqual(S(1550, { force:'500', reason:'space' }), [500, 4, 2000], 'вручную 500 л — несколько');
+  assert.deepStrictEqual(S(450, { force:'500', reason:'space' }), [500, 1, 500], 'вручную 500 л — один');
+  assert.ok(/вручную/.test(ReceiverPlan.size(1550, { force:'500', reason:'space' }).why) && /габарит перевозки/.test(ReceiverPlan.size(1550, { force:'500', reason:'space', auto:true }).why), 'обоснование: вручную / подбор');
   // приоритет 1 (винтовой): Q / (8 · ΔP); 3 — базовый буфер 1 · Q только у поршневого (уточнено 13.10: «слишком много ресиверов»)
   let R=ReceiverPlan.calc({ Q:10, S:10 });
   assert.ok(Math.abs(R.V.p1-1250)<1e-6 && R.V.p3==null && R.prio===1 && R.theor===1250, JSON.stringify(R.V));

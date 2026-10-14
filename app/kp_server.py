@@ -32,6 +32,7 @@ from equipment_types import load_types, load_types_builtin
 import admin
 from version import VERSION as APP_VERSION
 import maintenance
+from defaults import SrvVal
 import logistics_api
 from images import mark_organized, organize_existing
 from kp_templates import ensure_templates
@@ -384,7 +385,7 @@ def main():
         threading.Thread(target=maintenance.Background.run, args=(store(), DATA_DIR), daemon=True, name='maintenance-start').start()
         maintenance.Background.daily(store(), DATA_DIR)
         # отложенные проверки контрагентов: когда лимит Checko обновится (после 00:00 по Москве) — выполнить очередь
-        maintenance.Background.every(1800, lambda: cp().run_queue(), 'очередь проверок контрагентов')
+        maintenance.Background.every(lambda: SrvVal.get(store(), 'cp.queueEveryMin') * 60, lambda: cp().run_queue(), 'очередь проверок контрагентов')
         # ставки доставки по ATI.SU — раз в сутки (период и направления — «Настройки» → «Логистика»)
         maintenance.Background.every(3 * 3600, lambda: logistics_api.auto_refresh(store()), 'ставки доставки')
         import feeds
@@ -393,7 +394,8 @@ def main():
         maintenance.Background.every(6 * 3600, lambda: Updater(store(), ROOT, DATA_DIR).auto_check(), 'проверка новой версии')   # новая версия на GitHub — раз в сутки
         from admin_alerts import AdminAlerts
         import config
-        maintenance.Background.every(3600, lambda: AdminAlerts(store(), config).check(), 'письма администратору о проблемах')
+        maintenance.Background.every(lambda: SrvVal.get(store(), 'srv.alertsEveryMin') * 60, lambda: AdminAlerts(store(), config).check(),
+                                     'письма администратору о проблемах')
         from server_task import ServerTask
         if ServerTask.applicable(SERVER_MODE):     # задача Планировщика: без остановки через 3 дня работы и от батареи (ИБП)
             ServerTask(store()).start(config.STARTED)

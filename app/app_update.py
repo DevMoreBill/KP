@@ -30,6 +30,7 @@ import zipfile
 from datetime import datetime, timedelta
 
 import version
+from defaults import SrvVal
 from server_log import ServerLog
 
 
@@ -553,8 +554,7 @@ class NightUpdate:
     (admin_alerts) и история установок."""
     MODES = ('off', 'patch', 'all')
     HOUR = 3              # час по умолчанию
-    WINDOW = 2            # часов с выбранного часа
-    QUIET = 15 * 60       # секунд без изменений от пользователей
+    # окно (часов с выбранного часа) и тишина (минут без изменений) — «Значения программы»: srv.nightWindowH, srv.nightQuietMin
     MIN_EXE = (3, 51, 0)  # EXE с возвратом к прежней версии
     BY = 'ночное обновление'
     last_write = 0.0      # время последнего изменяющего запроса (kp_server.Handler)
@@ -579,11 +579,11 @@ class NightUpdate:
         if not self.supported():
             return 'нужен EXE 3.51 и новее'
         h = int(s.get('nightHour', self.HOUR))
-        if (now.hour - h) % 24 >= self.WINDOW:
+        if (now.hour - h) % 24 >= SrvVal.get(self.up.store, 'srv.nightWindowH'):
             return 'не время'
         if (s.get('nightLast') or {}).get('night') == self.night(now, h):
             return 'уже была попытка этой ночью'
-        if time.time() - self.last_write < self.QUIET:
+        if time.time() - self.last_write < SrvVal.get(self.up.store, 'srv.nightQuietMin') * 60:
             return 'кто-то работает'
         return ''
 

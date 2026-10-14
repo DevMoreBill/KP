@@ -156,5 +156,5 @@ function pricingBlock(){
    </div>
    <details class="psettings"${missing.length?' open':''}><summary>${need.length?'Изменить курсы вручную, округление цен':'Округление цен'}</summary>
      <div class="grid g4" style="margin-top:10px">${need.length?rateInp('USD')+rateInp('EUR')+rateInp('CNY'):''}
-       <label class="f"><span>Округление цен из экономики сделки</span><select data-pr="round">${[['0.01','до копеек'],['1','до рубля'],['100','до 100'],['1000','до 1 000']].map(([v,l])=>`<option value="${v}"${String(P.round)===v?' selected':''}>${l}</option>`).join('')}</select></label></div></details>`;
+       <label class="f"><span>Округление цен из экономики сделки</span><select data-pr="round">${(DEF_BY['kp.round'][5].opts).map(([v,l])=>`<option value="${v}"${String(P.round)===v?' selected':''}>${l}</option>`).join('')}</select></label></div></details>`;
 }

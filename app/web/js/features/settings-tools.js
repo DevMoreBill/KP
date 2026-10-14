@@ -33,7 +33,7 @@ class SettingsSearch {
     for (const g of AdminNav.GROUPS) for (const t of g.tabs)
       add({label:t.label, where:g.title, text:t.hint+' '+(this.WORDS[t.key]||''), tab:t.key, kind:'Вкладка'});
     if (typeof DEF_SCHEMA!=='undefined'){ const gt=Object.fromEntries(DEF_GROUPS);
-      for (const [key, g, label, , builtin, o={}] of DEF_SCHEMA) add({label, where:'Программа → Умолчания → '+(gt[g]||g), text:(o.hint||'')+' '+(builtin??''), tab:'defaults', focus:`[data-dk="${CSS.escape(key)}"]`, kind:'Умолчание'}); }
+      for (const [key, g, label, , builtin, o={}] of DEF_SCHEMA) add({label, where:'Программа → Значения программы → '+(gt[g]||g), text:(o.hint||'')+' '+(builtin??''), tab:'defaults', focus:`[data-dk="${CSS.escape(key)}"]`, kind:'Умолчание'}); }
     if (typeof FEAT!=='undefined') for (const d of FEAT.defs) add({label:d.label, where:'Программа → Функции программы', text:d.hint, tab:'features', focus:`[data-ft="${CSS.escape(d.key)}"]`, kind:'Функция'});
     if (typeof LISTS!=='undefined') for (const d of LISTS.defs.values()) add({label:d.label, where:'Программа → Списки и выборы', text:d.hint||'', tab:'lists', before:()=>{ ListsPanel.last=d.key; }, kind:'Список'});
     if (typeof ApiKeys!=='undefined') for (const [g, , fs] of ApiKeys.GROUPS) for (const f of fs) if (f.t) add({label:f.t, where:'Подключения → Ключи API → '+g, text:(f.h||'')+' '+(f.ph||''), tab:'keys', focus:`[data-key="${CSS.escape(f.id)}"]`, kind:'Ключ'});
@@ -156,7 +156,7 @@ class StVal {
   static full(v){ return v==null ? '' : typeof v==='object' ? JSON.stringify(v, null, 1) : String(v); }
 
   // понятные имена полей истории: ['defaults', 'kp.vat'] → «Умолчания → НДС в ценах КП»
-  static PART = {defaults:'Умолчания', lists:'Списки', features:'Функции', ai:'Нейросеть', userLogin:'Вход менеджеров', productEditModeration:'Модерация',
+  static PART = {defaults:'Значения программы', lists:'Списки', features:'Функции', ai:'Нейросеть', userLogin:'Вход менеджеров', productEditModeration:'Модерация',
     auditYears:'Срок журнала', backup2:'Вторая папка копий', host:'Сервер', port:'Порт', security:'Защита', login:'Логин', fromEmail:'Адрес отправителя',
     fromName:'Имя отправителя', bccSelf:'Копия себе', subject:'Тема письма', body:'Текст письма', types:'Категории', items:'Фиды', enabled:'Включено',
     model:'Модель', base:'Адрес API', on:'Включено', path:'Папка', keep:'Хранить копий', images:'Изображения'};
@@ -175,7 +175,7 @@ class StVal {
 // ---------------------------------------------------------------- история изменений
 class SettingsHistoryPanel {
   static filter = '';      // вкладка, по которой отфильтрована история (кнопка «История» в заголовке вкладки)
-  static TABS = {defaults:'Умолчания', lists:'Списки и выборы', features:'Функции программы', texts:'Тексты интерфейса', types:'Категории оборудования',
+  static TABS = {defaults:'Значения программы', lists:'Списки и выборы', features:'Функции программы', texts:'Тексты интерфейса', types:'Категории оборудования',
     logistics:'Тарифы доставки', mail:'Почта', feeds:'Фиды поставщиков', access:'Вход менеджеров', moderation:'Модерация правок', ai:'Нейросеть', backup:'Копии и база'};
 
   constructor(m){ this.m=m; }
@@ -254,7 +254,7 @@ class ChangedPanel {
     if (this.mirror && this.mirror.on) out.push({label:'Вторая папка для копий базы', now:this.mirror.path, was:'не задана', tab:'backup'});
     return out; }
   render(){
-    const sec=[['Умолчания', this.defRows()], ['Функции программы', this.featRows()], ['Списки и выборы', this.listRows()], ['Другое', this.otherRows()]];
+    const sec=[['Значения программы', this.defRows()], ['Функции программы', this.featRows()], ['Списки и выборы', this.listRows()], ['Другое', this.otherRows()]];
     this.rows=sec.flatMap(([, r])=>r); let i=0;
     const total=this.rows.length;
     this.m.innerHTML=`<div class="st-card"><p class="muted" style="margin:0">Всё, что настроено «под себя», — отличается от встроенного в программу. «↺» — вернуть встроенное значение (правка попадёт в историю, её можно отменить). Изменено: <b>${total}</b>.</p></div>

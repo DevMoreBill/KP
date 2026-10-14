@@ -1,7 +1,7 @@
 // Раздел 1 «Клиент».
 'use strict';
 
-// у клиента уже есть недавние КП (за 120 дней, по ИНН) — чтобы два менеджера не готовили параллельные предложения
+// у клиента уже есть недавние КП (по ИНН, за срок «kp.dupDays» из «Значений программы» — 120 дней) — чтобы два менеджера не готовили параллельные предложения
 const CL_PREV = { key:'', items:[], busy:false };
 function clientPrevHtml(){
   if (!FEAT.on('clientPrev')) return '';
@@ -12,7 +12,7 @@ function clientPrevHtml(){
     <button type="button" class="lnk" data-a="clPrev">Показать в журнале</button></div>`;
 }
 async function clientPrevLoad(key){
-  CL_PREV.busy=true; const since=KpDate.addDays(today(), -120);
+  CL_PREV.busy=true; const since=KpDate.addDays(today(), -Math.round(DEFN('kp.dupDays', 120)));
   try{ const r=await api(`/api/history?limit=20&q=${encodeURIComponent(key)}`); CL_PREV.items=(r.items||[]).filter(x=>String(x.clientInn||'').replace(/\D/g,'')===key && (x.date||'')>=since); }
   catch(e){ CL_PREV.items=[]; }
   CL_PREV.key=key; CL_PREV.busy=false; if (STEP==='client' && CL_PREV.items.some(x=>x.id!==S.kpId)) renderForm();
