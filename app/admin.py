@@ -588,14 +588,15 @@ def guard(h, store, m, path):
             h.send(403, 'text/plain; charset=utf-8', DENIED)
             return True
         return lambda: log(h, store, 'edit_settings', 'settings', 'logistics_refresh', None, {'source': 'ATI.SU'}, admin=True)
-    if path.startswith('/api/logistics/carriers'):
+    if path.startswith('/api/logistics/carriers') or path.startswith('/api/logistics/china'):
         if not is_admin(h, need_csrf=(m != 'GET')):
             if m != 'GET':
-                log(h, store, 'edit_settings', 'settings', 'carrierApi', result='failed')
+                log(h, store, 'edit_settings', 'settings', 'chinaRates' if 'china' in path else 'carrierApi', result='failed')
             h.send(403, 'text/plain; charset=utf-8', DENIED)
             return True
         if m == 'PUT':
-            return lambda: log(h, store, 'edit_settings', 'settings', 'carrierApi', None, {'carriers': True}, admin=True)
+            what = 'chinaRates' if 'china' in path else 'carrierApi'
+            return lambda: log(h, store, 'edit_settings', 'settings', what, None, {what: True}, admin=True)
     if path == '/api/logistics' and m == 'PUT':
         if not is_admin(h):
             log(h, store, 'edit_settings', 'settings', 'logistics', result='failed')

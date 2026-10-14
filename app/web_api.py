@@ -830,6 +830,25 @@ class SettingsController(Controller):
         except ValueError as e:
             return self.text(400, str(e))
 
+    @route(r'/api/logistics/china', ('GET', 'PUT'))      # доставка из Китая (только администратор): ставки экспедиторов, направления ATI.SU
+    def china(self):
+        from china_freight import ChinaFreight
+        cf = ChinaFreight(store())
+        if self.m == 'PUT':
+            try:
+                return self.send_json(cf.save_rates((self.json_body() or {}).get('rows'), admin.actor(self.h)[1]))
+            except ValueError as e:
+                return self.text(400, str(e))
+        return self.send_json(cf.status())
+
+    @route(r'/api/logistics/china/quote', 'POST')        # расчёт Китай → граница РФ (в экономику сделки не идёт)
+    def china_quote(self):
+        from china_freight import ChinaFreight
+        try:
+            return self.send_json(ChinaFreight(store()).quote(self.json_body() or {}, cbr_saved('cbr_last', cbr_rates)))
+        except ValueError as e:
+            return self.text(400, str(e))
+
     @route(r'/api/logistics')              # тарифы доставки по России (общие для отдела; изменяет администратор)
     def logistics(self):
         if self.m == 'PUT':

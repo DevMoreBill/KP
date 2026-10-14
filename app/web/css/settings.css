@@ -518,3 +518,11 @@ tr.re-on{background:var(--soft)}
 .ca-in{ display:flex; gap:6px; align-items:center; }
 .ca-in input{ flex:1; min-width:0; }
 .ca-res{ margin:6px 0 0; overflow-wrap:anywhere; }
+
+/* доставка из Китая (только администратор) */
+.cf-form{ display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:8px 12px; align-items:end; }
+.cf-tw{ overflow-x:auto; }
+.cf-t{ width:100%; border-collapse:collapse; font-size:14px; }
+.cf-t th,.cf-t td{ padding:4px 6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+.cf-t input,.cf-t select{ width:100%; min-width:70px; }
+.cf-r{ margin-top:10px; }
