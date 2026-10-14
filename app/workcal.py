@@ -15,6 +15,7 @@ from cbr import http_get
 REFRESH = 30 * 86400
 RETRY = 3600                    # нет связи — повторная попытка не раньше чем через час
 _FAILED = {}
+APPROX_SRC = 'приблизительно: выходные и праздники без переносов (нет связи с календарём)'   # нет связи и нет сохранённого
 # нерабочие праздничные дни (ст. 112 ТК РФ): месяц, день
 HOLIDAYS = [(1, d) for d in range(1, 9)] + [(2, 23), (3, 8), (5, 1), (5, 9), (6, 12), (11, 4)]
 
@@ -69,7 +70,7 @@ def year(store, y):
     if cached and time.time() - cached.get('fetched', 0) < REFRESH and 'short' in cached:
         return cached
     if time.time() - _FAILED.get(y, 0) < RETRY:
-        return cached or {'year': y, 'days': approx(y), 'src': 'приблизительно: выходные и праздники без переносов (нет связи с календарём)', 'approx': True}
+        return cached or {'year': y, 'days': approx(y), 'src': APPROX_SRC, 'approx': True}
     errs = []
     for src, url, parse in (
             ('isdayoff.ru', 'https://isdayoff.ru/api/getdata?year=%d&cc=ru' % y, lambda b: parse_isdayoff(b.decode('utf-8'), y)),
@@ -84,5 +85,5 @@ def year(store, y):
     _FAILED[y] = time.time()
     if cached:
         return cached
-    return {'year': y, 'days': approx(y), 'src': 'приблизительно: выходные и праздники без переносов (нет связи с календарём)',
+    return {'year': y, 'days': approx(y), 'src': APPROX_SRC,
             'approx': True, 'error': '; '.join(errs)[:300]}

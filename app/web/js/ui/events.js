@@ -43,10 +43,10 @@ document.addEventListener('change', e=>{
 
 document.addEventListener('change', async e=>{
   const mo=/^items\.(\d+)\.options\.(\d+)\.name$/.exec(e.target.dataset.p||'');
-  if (mo){ const o=S.items[+mo[1]].options[+mo[2]]; const x=catCache.find(d=>norm(d.name)===norm(o.name)); const pz=allPresets().find(q=>norm(q.name)===norm(o.name));
+  if (mo){ const o=S.items[+mo[1]].options[+mo[2]]; const x=CatFind.name(o.name); const pz=allPresets().find(q=>norm(q.name)===norm(o.name));
     if (pz){ o.short=pz.short; o.unit=pz.unit; } if (x && !o.price){ o.price=x.price||0; o.catId=x.id; o.short=o.short||attrsOf(x).model||''; } renderForm(); persist(); return; }
   const m=/^items\.(\d+)\.name$/.exec(e.target.dataset.p||''); if(!m || CATED) return;
-  const it=S.items[+m[1]]; let x=catCache.find(d=>norm(d.name)===norm(it.name));
+  const it=S.items[+m[1]]; let x=CatFind.name(it.name);
   if (x && !it.price && !it.photo){ x=await fullDoc(x); fillFromCat(it,x); renderForm(); persist(); toast('Позиция подставлена из каталога'); }
 });
 
@@ -75,7 +75,7 @@ document.addEventListener('click', async e=>{
     case 'qty': { const old=+it.qty||0; it.qty=Math.max(1,old+(+b.dataset.d)); (it.options||[]).forEach(o=>{ if(o.unit!=='усл.' && +o.qty===old) o.qty=it.qty; }); break; }
     case 'addOpt': (it.options=it.options||[]).push(newOpt(it)); break;
     case 'delOpt': it.options.splice(j,1); break;
-    case 'optPreset': { it.options=it.options||[]; const pz=presetsFor(it)[k]; const ix=it.options.findIndex(o=>norm(o.name)===norm(pz.name)); if(ix>=0) it.options.splice(ix,1); else { const c=catCache.find(d=>norm(d.name)===norm(pz.name)); it.options.push(newOpt(it,{...pz, price:c?.price||0, catId:c?.id})); } break; }
+    case 'optPreset': { it.options=it.options||[]; const pz=presetsFor(it)[k]; const ix=it.options.findIndex(o=>norm(o.name)===norm(pz.name)); if(ix>=0) it.options.splice(ix,1); else { const c=CatFind.name(pz.name); it.options.push(newOpt(it,{...pz, price:c?.price||0, catId:c?.id})); } break; }
     case 'attrsToGroups': { const g=groupsFromAttrs(it); const keep=(it.groups||[]).filter(x=>!g.some(y=>y.name===x.name)); it.groups=[...g,...keep]; if(!it.hint) it.hint=CoverHint.of(it); it.page=true; toast('Таблица характеристик сформирована'); break; }
     case 'galAdd': return pickGallery(i, b.dataset.slot||'');
     case 'galPage': return galFromPage(i, e.shiftKey);
@@ -129,7 +129,6 @@ document.addEventListener('click', async e=>{
     case 'priceHist': return PriceHist.open(i);
     case 'saveCat': return saveCatalog(i);
     case 'download': { const r=await download(); if (isMob()) $('#dlmsg')?.scrollIntoView({block:'center'}); return r; }
-    case 'typesEdit': return openTypesEditor();
     case 'partyFind': return partyFind();
     case 'clientEdit': S._clEdit=!S._clEdit; break;
     case 'clientManual': S._clManual=true; break;
@@ -151,7 +150,6 @@ document.addEventListener('click', async e=>{
     case 'pickContact': { const o=(curClient()?.contacts||[])[k]; if(o) S.contact={...S.contact,...o}; break; }
     case 'dmode': { const inp=document.querySelector(`[data-disc="${i}"]`); it.discType=b.dataset.v; if (it.disc) it.disc.type=b.dataset.v;
       const txt=inp?inp.value:''; it._discText=txt; it._discBad=!setDisc(it, txt); if (!it._discBad) delete it._discText; renderForm(); persist(); return; }
-    case 'clientsImport': return openClientsImport();
     case 'toSave': { const L=StepList.visible(); if (isMob() && STEP!==L[L.length-1].id){ goStep(L[L.length-1].id); }
       const sd=$('#side'); sd.scrollIntoView({behavior:isMob()?'auto':'smooth'}); sd.classList.add('pulse'); setTimeout(()=>sd.classList.remove('pulse'),1600); return; }
     case 'cbr': return loadCBR();

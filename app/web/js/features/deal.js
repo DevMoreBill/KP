@@ -4,7 +4,7 @@
 // Видят только автор КП и администратор (на сервере расчёт чужого КП не отдаётся и не перезаписывается — app/admin.py).
 // Внешние данные: курсы ЦБ (раздел «Цены»), ключевая ставка ЦБ (/api/cbr/keyrate) — стоимость денег.
 // Справочники в базе (общие для отдела): поставщики (/api/suppliers) и коды ТН ВЭД / пошлины (/api/customs).
-// Будущий модуль логистики: dealSetLogistics(idПоставщика, {abroad:{v,cur}, ru:{v}, ship, note}).
+// Логистика поставщика (доставка по России) — js/features/logistics.js пишет её в S.deal.sup[].logRu (src:'module').
 'use strict';
 
 const DL = { cal:{}, calLoading:{}, ex:false, exKp:null, exDeal:null, key:null, keyErr:'', sups:null, cus:null, saveT:{} };
@@ -194,16 +194,6 @@ async function dealApplyPrice(Srub){
   const d=dealEnsure(); d.over.price=''; d.touched=true;
   renderForm(); persist(); dealRender();
   toast(`Цены позиций перенесены: итог КП ${money(pl.total)} ${curSh(pl.cur)}`);
-}
-
-// модуль расчёта логистики (будущий) заполняет логистику поставщика
-function dealSetLogistics(supId, o={}){
-  const d=dealEnsure(), s=d.sup.find(x=>x.id===supId)||d.sup[0];
-  if (o.abroad) s.log={v:String(o.abroad.v??''), cur:o.abroad.cur||'RUB', src:'module'};
-  if (o.ru) s.logRu={v:String(o.ru.v??''), src:'module'};
-  if (o.ship!=null) s.ship=String(o.ship);
-  if (o.note) s.logNote=String(o.note);
-  d.touched=true; persist(); dealRender(); SidePanel.render();
 }
 
 async function openDeal(){
@@ -879,7 +869,7 @@ function dlResult(c){
 }
 
 // НДС к уплате в бюджет: НДС с продажи минус вычеты (поставщики в РФ, ввозной на таможне, услуги в России, прочие)
-function dlVatRows(c, r){
+function dlVatRows(c){
   const viSum=c.sup.reduce((a,s)=>a+(s.vi||0),0), unk=c.unknown.length>0;
   const ded=[[`НДС в цене поставщиков`, c.voSup, 'выделенный в счетах российских поставщиков'],
     [`Ввозной НДС на таможне`, viSum, unk?'нет суммы у поставщика с растаможкой «суммой» — укажите ввозной НДС':'уплачен при ввозе, весь к вычету'],
@@ -888,7 +878,7 @@ function dlVatRows(c, r){
   return { viSum, unk, ded };
 }
 function dlVat(c, r, wide){
-  const {ded, unk}=dlVatRows(c, r), lo=c.lo, hi=c.hi;
+  const {ded, unk}=dlVatRows(c), lo=c.lo, hi=c.hi;
   const pay = unk ? `${dlRub0(hi.payable)} … ${dlRub0(lo.payable)}` : dlRub0(r.payable);
   return `<table class="dl-vat${wide?' wide':''}"><tbody>
     <tr><td>НДС ${dlIn(c.v)} % с продажи <small>${dlRub0(c.S)} × ${dlIn(c.v)} / ${dlIn(100+c.v)}</small></td><td class="num">${dlRub0(c.VATs)}</td></tr>
@@ -1054,6 +1044,8 @@ function dlWinSize(dlg, save){ try{
 
 function dealBind(dlg){
   const touch=()=>{ if (DL.ex) return; S.deal.touched=true; persist(); SidePanel.render(); };
+  // правка цены, закупки, курса или НДС КП: updateLive сама перерисует правую панель и сохранит черновик (раньше — дважды подряд)
+  const touchLive=()=>{ if (!DL.ex) S.deal.touched=true; updateLive(); };
   const comboClose=()=>{ if (!DL.combo) return; DL.combo=null; DL.comboIx=-1; dealRender(); };
   dlWinSize(dlg);
   lgBind(dlg, touch);
@@ -1061,11 +1053,11 @@ function dealBind(dlg){
     szT=setTimeout(()=>{ const r=dlg.getBoundingClientRect(); if (r.width>300){ dlg.style.width=Math.round(r.width)+'px'; dlg.style.height=Math.round(r.height)+'px'; dlWinSize(dlg,true); } }, 600); }).observe(dlg);
   dlg.addEventListener('input', e=>{ const t=e.target;
     if (t.dataset.costI!=null){ const x=S.items[+t.dataset.costI], n=dNum(t.value); x._costText=t.value; t.classList.toggle('bad', Number.isNaN(n));
-      if (!Number.isNaN(n)) x.cost=n==null?0:Math.round(n*100); touch(); updateLive(); return dealRender(); }
+      if (!Number.isNaN(n)) x.cost=n==null?0:Math.round(n*100); touchLive(); return dealRender(); }
     if (t.dataset.kppI!=null){ const x=S.items[+t.dataset.kppI], k=parsePrice(t.value); x._priceText=t.value; x.price=Number.isNaN(k)?0:k; x.priceManual=true;
-      t.classList.toggle('bad', Number.isNaN(k)||!k); d0over(); touch(); updateLive(); return dealRender(); }
-    if (t.dataset.kprate!=null){ S.pricing.rates[t.dataset.kprate]=t.value; S.pricing.rateSrc='вручную'; if (S.deal&&S.deal.rates) delete S.deal.rates[t.dataset.kprate]; touch(); updateLive(); return dealRender(); }
-    if (t.dataset.kpvat!=null){ S.vat=t.value.replace(/[^\d.,]/g,''); touch(); updateLive(); return dealRender(); }
+      t.classList.toggle('bad', Number.isNaN(k)||!k); d0over(); touchLive(); return dealRender(); }
+    if (t.dataset.kprate!=null){ S.pricing.rates[t.dataset.kprate]=t.value; S.pricing.rateSrc='вручную'; if (S.deal&&S.deal.rates) delete S.deal.rates[t.dataset.kprate]; touchLive(); return dealRender(); }
+    if (t.dataset.kpvat!=null){ S.vat=t.value.replace(/[^\d.,]/g,''); touchLive(); return dealRender(); }
     if (t.dataset.hsI!=null){ DealHs.set(t.dataset.hsI, {[t.dataset.f]:t.value}); touch(); return dealRender(); }
     const p=t.dataset.dl; if (!p || t.tagName==='SELECT') return;
     const d=dlDeal(); dlSet(d, p, t.value); if (!DL.ex) dealRememberDefault(p, t.value);
@@ -1106,7 +1098,7 @@ function dealBind(dlg){
       if (!(n>=0)){ toast(`Дата раньше события, от которого считается срок (${dlDayRu(+t.dataset.base||0)}) — выберите дату позже`); return dealRender(); }
       dlSet(d, t.dataset.dldd, String(n)); const m=/^sup\.(\d+)\./.exec(t.dataset.dldd); if (m) dlSaveSupplier(d.sup[+m[1]]); touch(); return dealRender(); }
     if (t.dataset.xcst!=null){ const d=dlDeal(); d.xc=d.xc||{}; const off={...(d.xc.off||{})}; if (t.checked) delete off[t.dataset.xcst]; else off[t.dataset.xcst]=false; d.xc.off=off; touch(); return dealRender(); }
-    if (t.dataset.costcurI!=null){ S.items[+t.dataset.costcurI].costCur=t.value; if (t.value!=='RUB' && !(rateOf(t.value)>0)) loadCBR(); touch(); updateLive(); return dealRender(); }
+    if (t.dataset.costcurI!=null){ S.items[+t.dataset.costcurI].costCur=t.value; if (t.value!=='RUB' && !(rateOf(t.value)>0)) loadCBR(); touchLive(); return dealRender(); }
     if (t.dataset.kpvat!=null || t.dataset.kprate!=null){ renderForm(); return; }
     if (t.dataset.dl && t.tagName==='SELECT'){ dlSet(dlDeal(), t.dataset.dl, t.value); if (!DL.ex) dealRememberDefault(t.dataset.dl, t.value);
       const m=/^sup\.(\d+)\./.exec(t.dataset.dl); if (m && !DL.ex) dlSaveSupplier(dlDeal().sup[+m[1]]); touch(); dealRender(); }
@@ -1152,7 +1144,6 @@ function dealBind(dlg){
     if (a==='hsdir') return DealHs.dir();
     if (a==='hsref'){ const msg=DealHs.useRef(b.dataset.id); if (msg){ touch(); toast(msg); } return dealRender(); }
     if (a==='apply') return dealApplyPrice(+b.dataset.s);
-    if (a==='lgcalc'){ DL.open='log'; return dealRender(); }
     if (a==='reset'){ dlSet(d, b.dataset.path, ''); }
     if (a==='resetdays') d.days={};
     if (a==='mv'){ const msg=dlMoveStage(b.dataset.grp, +b.dataset.i, +b.dataset.to); if (msg){ touch(); toast(msg); } return dealRender(); }

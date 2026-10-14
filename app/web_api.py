@@ -14,6 +14,7 @@ import re
 import socket
 import threading
 import urllib.parse
+import zlib
 from datetime import date, datetime, timedelta
 
 from cbr import cbr_key_rate, cbr_rates
@@ -153,6 +154,13 @@ class Controller(metaclass=ControllerMeta):
     def text(self, code, msg):
         return self.send(code, 'text/plain; charset=utf-8', msg)
 
+    @staticmethod
+    def kp_docx(kid):
+        """Файл Word сохранённого КП (путь в папке КП) или None — КП ещё не сохранялось в Word или файл убран."""
+        rel = store().kp_get(kid, 'docx')
+        f = docs_path(rel.strip()) if rel else None
+        return f if f and os.path.isfile(f) else None
+
 
 class Router:
     """Находит контроллер и метод по пути и методу запроса."""
@@ -187,13 +195,45 @@ class Router:
 
 
 # ---------------------------------------------------------------- интерфейс и файлы
+class WebIndex:
+    """index.html с меткой версии в адресе каждого файла интерфейса (/web/js/x.js?v=…): браузер хранит файлы год и при
+    повторном открытии не переспрашивает сервер о ~110 файлах; новая версия файла (обновление) — новый адрес."""
+    REF = re.compile(r'((?:src|href)=")(/web/[^"?#]+)(")')
+    cache = {}              # {(метка index.html, метки файлов): готовые байты}
+
+    @staticmethod
+    def tag(f):
+        st = os.stat(f)
+        return '%x-%x' % (st.st_mtime_ns, st.st_size)
+
+    @classmethod
+    def build(cls, f):
+        with open(f, 'rb') as fh:
+            html = fh.read().decode('utf-8')
+        refs = [(m.group(2), web_file(m.group(2)[len('/web/'):])) for m in cls.REF.finditer(html)]
+        key = (cls.tag(f),) + tuple(cls.tag(x) if x else '' for _, x in refs)
+        hit = cls.cache.get(key)
+        if hit is None:
+            tags = {u: '%08x' % (zlib.crc32(t.encode()) & 0xffffffff) for (u, x), t in zip(refs, key[1:]) if t}
+            hit = cls.REF.sub(lambda m: m.group(1) + m.group(2) + ('?v=' + tags[m.group(2)] if m.group(2) in tags else '') + m.group(3),
+                              html).encode('utf-8')
+            cls.cache = {key: hit}
+        return hit
+
+
 class StaticController(Controller):
+    YEAR = 'public, max-age=31536000, immutable'
+
     @route(r'/|/index\.html|/web/.*')
     def web(self):
-        f = web_file('index.html' if self.p in ('/', '/index.html') else self.p[len('/web/'):])
+        idx = self.p in ('/', '/index.html')
+        f = web_file('index.html' if idx else self.p[len('/web/'):])
         if not f:
             return self.not_found()
-        return self.send_file(f, WEB_TYPES[os.path.splitext(f)[1].lower()], 'no-cache', CSP if f.endswith('index.html') else None)
+        if idx:
+            return self.send_file(f, WEB_TYPES['.html'], 'no-cache', CSP, data=WebIndex.build(f))
+        # адрес с меткой версии (из index.html) не меняется, пока не изменится файл, — хранится в браузере год
+        return self.send_file(f, WEB_TYPES[os.path.splitext(f)[1].lower()], self.YEAR if self.q.get('v') else 'no-cache')
 
     @route(r'/favicon\.ico')
     def favicon(self):
@@ -475,8 +515,8 @@ class KpController(Controller):
     @route(r'/api/history')
     def history(self):
         if 'limit' in self.q:     # постранично, с поиском и итогами по всему отбору
-            return self.send_json(admin.history_page(self.h, store(), self.q))
-        return self.send_json(admin.history_out(self.h, store().kp_list()))
+            return self.send_json(admin.KpJournal.page(self.h, store(), self.q))
+        return self.send_json(admin.KpJournal.out(self.h, store().kp_list()))
 
     @route(r'/api/kp/new', 'POST')
     def new(self):
@@ -564,23 +604,19 @@ class KpController(Controller):
     @route(r'/api/kp/([^/]+)/docx', 'GET')
     def docx_get(self, kid):
         # скачивание готового КП — для сотрудников, открывших программу по сети
-        rel = store().kp_get(safe_id(kid), 'docx')
-        f = docs_path(rel.strip()) if rel else None
-        if not f or not os.path.isfile(f):
+        f = self.kp_docx(safe_id(kid))
+        if not f:
             return self.not_found('Файл КП не найден')
         with open(f, 'rb') as fh:
             data = fh.read()
-        fn = os.path.basename(f)
         return self.send(200, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data,
-                         {'Content-Disposition': 'attachment; filename="%s"; filename*=UTF-8\'\'%s' % (
-                             re.sub(r'[^A-Za-z0-9._-]', '_', fn.encode('ascii', 'ignore').decode()) or 'KP.docx', urllib.parse.quote(fn))})
+                         self.attachment(os.path.basename(f), 'KP.docx'))
 
     # PDF сохранённого КП: создаётся рядом с .docx (тем же именем), скачивается сотрудниками по сети
     @route(r'/api/kp/([^/]+)/pdf')
     def pdf(self, kid):
-        rel = store().kp_get(safe_id(kid), 'docx')
-        f = docs_path(rel.strip()) if rel else None
-        if not f or not os.path.isfile(f):
+        f = self.kp_docx(safe_id(kid))
+        if not f:
             return self.not_found('Файл КП не найден')
         pdf = pdf_of(f)
         if self.m == 'POST':
@@ -813,9 +849,8 @@ class SettingsController(Controller):
     @route(r'/api/calendar', 'GET')        # производственный календарь РФ (рабочие / банковские дни)
     def calendar(self):
         import workcal
-        qy = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(self.path).query)).get('year') or ''
         try:
-            return self.send_json(workcal.year(store(), int(qy or 0)))
+            return self.send_json(workcal.year(store(), int(self.q.get('year') or 0)))
         except ValueError as e:
             return self.text(400, str(e))
 
@@ -874,12 +909,6 @@ class TrackController(Controller):
         h = self.h
         uid, name, _ = admin.actor(h, admin=False)
         everyone = admin.session(h, touch=False) is not None and not uid
-        rows = []
-        for kid, meta, track, state in store().kp_tracked((date.today() - timedelta(days=200)).isoformat()):
-            m = _obj(meta)
-            if admin.login_on(h) and not admin.own_kp(h, m) and not admin.perm(h, 'kpOthers'):
-                continue
-            rows.append((kid, m, _obj(track), _obj(state)))
 
         def mine(m):
             if everyone:
@@ -888,6 +917,15 @@ class TrackController(Controller):
             if author and uid:
                 return author == uid
             return bool(name) and str(m.get('manager') or '').strip().lower() == str(name).strip().lower()
+        rows = []
+        for kid, meta, track in store().kp_tracked((date.today() - timedelta(days=200)).isoformat()):
+            m = _obj(meta)
+            if admin.login_on(h) and not admin.own_kp(h, m) and not admin.perm(h, 'kpOthers'):
+                continue
+            if not mine(m):
+                continue
+            # состояние КП (бывает в мегабайтах) — только своим КП и только если срок действия не записан в описании
+            rows.append((kid, m, _obj(track), {} if m.get('validUntil') else _obj(store().kp_get(kid, 'state'))))
         items = ReminderList().collect(rows, mine)
         return self.send_json({'items': items, 'count': len(items)})
 
@@ -903,17 +941,12 @@ class TrackController(Controller):
     def mail_status(self):
         return self.send_json({'on': Mailer(store()).on()})
 
-    def _files(self, kid):
-        rel = store().kp_get(kid, 'docx')
-        f = docs_path(rel.strip()) if rel else None
-        return f if f and os.path.isfile(f) else None
-
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/mailform', 'GET')   # письмо клиенту: адреса и текст по умолчанию
     def mailform(self, kid):
         st, mt = _obj(store().kp_get(kid, 'state')), _obj(store().kp_get(kid, 'meta'))
         mp = Mailer(store()).public()
         tpl = MailTemplate(st, mt, mp.get('fromName') or '')
-        f = self._files(kid)
+        f = self.kp_docx(kid)
         ct = st.get('contact') if isinstance(st.get('contact'), dict) else {}
         return self.send_json({'on': mp['on'], 'to': str(ct.get('email') or '').strip(), 'cc': tpl.vars['e-mail'],
                                'subject': tpl.fill(mp['subject']), 'body': tpl.fill(mp['body']),
@@ -929,7 +962,7 @@ class TrackController(Controller):
             raise BadRequest(str(e))
         if not to:
             raise BadRequest('Укажите адрес получателя')
-        f = self._files(kid)
+        f = self.kp_docx(kid)
         if not f:
             return self.not_found('Файл КП не найден — сохраните КП')
         files = []
@@ -962,9 +995,9 @@ class TrackController(Controller):
     def report(self):
         q = self.q
         d1, d2 = str(q.get('from') or '')[:10], str(q.get('to') or '')[:10] or '9999-12-31'
-        metas = [m for m in store().kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', ''))
-                 if d1 <= str(_obj(m).get('date') or '')[:10] <= d2]
-        rows = json.loads(admin.history_out(self.h, '[' + ','.join(m for m in metas if _obj(m)) + ']'))
+        docs = [d for d in map(_obj, store().kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', '')))
+                if d and d1 <= str(d.get('date') or '')[:10] <= d2]
+        rows = admin.KpJournal.rows(self.h, docs)
         deal_on = self._features()['deal']   # экономика недоступна — без прибыли
         for r in rows:
             sr, pr = admin.econ_rub(r)
@@ -1075,7 +1108,7 @@ class ClientCardController(Controller):
             name = name or str(c.get('name') or '')
         if not inn and not name:
             raise BadRequest('Нужен ИНН или название клиента')
-        res = admin.history_page(self.h, store(), {'q': inn or name, 'limit': 500})
+        res = admin.KpJournal.page(self.h, store(), {'q': inn or name, 'limit': 500})
         key = (lambda r: re.sub(r'\D', '', str(r.get('clientInn') or '')) == inn) if inn else \
               (lambda r: str(r.get('client') or '').strip().lower() == name.lower())
         rows = [r for r in res['items'] if key(r)]

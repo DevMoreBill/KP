@@ -20,11 +20,29 @@ async function fullDoc(x){ if (!x || !x._light) return x; try{ const d=await sto
 
 let catCache = [];
 
+// поиск карточки каталога по id и по названию (CatFind): словари строятся один раз на список catCache — подсказки цены
+// (история цен, РРЦ) спрашивают при каждом нажатии клавиши, перебор 7000+ карточек с norm() на каждой заметно тормозил.
+// Карточки на месте не меняются (обновлённый каталог — новый массив, refreshCat), поэтому словари сверяются только со списком.
+class CatFind {
+  static _of = null;
+  static _id = new Map();
+  static _name = new Map();
+  static _sync(){
+    if (this._of===catCache && this._n===catCache.length) return;
+    this._of=catCache; this._n=catCache.length; this._id=new Map(); this._name=new Map();
+    for (const x of catCache){ if (!this._id.has(x.id)) this._id.set(x.id, x); const k=norm(x.name); if (!this._name.has(k)) this._name.set(k, x); }
+  }
+  /** карточка по id (как catCache.find(x=>x.id===id)) */
+  static id(id){ if (id==null || id==='') return null; this._sync(); return this._id.get(id) || null; }
+  /** первая карточка с тем же названием без учёта регистра, «ё» и кавычек (как catCache.find(x=>norm(x.name)===norm(name))) */
+  static name(name){ this._sync(); return this._name.get(norm(name)) || null; }
+}
+
 // каталог: из IndexedDB + изменения с сервера (CatalogCache); не вышло — целиком с сервера
 async function refreshCat(){ try{ catCache = await CatalogCache.load(); }catch(e){ try{ catCache = await store().list(); }catch(_){ catCache=[]; } }
   CatAttrs.mark(catCache); CatalogSearch.drop(); renderDatalist(); warmCat(); }
 
-function warmCat(){ let k=0; const L=catCache; const step=(dl)=>{ const end=performance.now()+12; while(k<L.length && performance.now()<end){ const x=L[k++]; if(!x._a) x._a=attrsOf(x); } if(k<L.length) (window.requestIdleCallback||setTimeout)(step); }; (window.requestIdleCallback||setTimeout)(step); }
+function warmCat(){ let k=0; const L=catCache; const step=()=>{ const end=performance.now()+12; while(k<L.length && performance.now()<end){ const x=L[k++]; if(!x._a) x._a=attrsOf(x); } if(k<L.length) (window.requestIdleCallback||setTimeout)(step); }; (window.requestIdleCallback||setTimeout)(step); }
 
 // подсказки названий опций и услуг (поле опции позиции): опции категорий и аксессуары из каталога
 function renderDatalist(){
@@ -56,7 +74,7 @@ async function syncCatalog(number){
   let list=[]; try{ list = await store().list(); }catch(e){}
   for (const it of S.items){
     if (!it.name.trim() || !it.price) continue;
-    const doc = await fullDoc(list.find(d=>d.id===it.catId) || list.find(d=>norm(d.name)===norm(it.name)));
+    const nk=norm(it.name), doc = await fullDoc(list.find(d=>d.id===it.catId) || list.find(d=>norm(d.name)===nk));
     const base = doc ? JSON.parse(JSON.stringify(doc)) : { id: uid()+uid(), prices: [] };
     Object.assign(base, { name:it.name, spec:it.spec||base.spec||'', price:it.price, priceCur:kpCur(), cost:it.cost||base.cost||0, costCur:it.cost?(it.costCur||'RUB'):(base.costCur||'RUB'), margin:it.margin ?? base.margin, mmode:it.mmode||base.mmode, pageTitle:it.pageTitle||base.pageTitle||'',
       photoCaption:it.photoCaption||base.photoCaption||'',
@@ -73,11 +91,9 @@ async function syncCatalog(number){
     if (saved){ if (saved.photo) it.photo = saved.photo; if (saved.logo) it.logo = saved.logo; if (saved.gallery && it.gallery && saved.gallery.length===it.gallery.length) it.gallery=it.gallery.map((g,k)=>({...g, src:saved.gallery[k].src})); }
     for (const o of (it.options||[])){
       if (!o.name.trim() || !o.price) continue;
-      const od = await fullDoc(list.find(d=>d.id===o.catId) || list.find(d=>norm(d.name)===norm(o.name)));   // полная позиция, а не карточка списка
-      const ob = od ? JSON.parse(JSON.stringify(od)) : { id: uid()+uid(), kind:'option', prices: [], features:[], groups:[] };
-      if (!od && !allPresets().some(p=>norm(p.name)===norm(o.name)) && !/авр|автоматическ/i.test(o.name)) ob.kind='option';
+      const ok=norm(o.name), od = await fullDoc(list.find(d=>d.id===o.catId) || list.find(d=>norm(d.name)===ok));   // полная позиция, а не карточка списка
+      const ob = od ? JSON.parse(JSON.stringify(od)) : { id: uid()+uid(), kind:'option', prices: [], features:[], groups:[] };   // новая — всегда опция
       Object.assign(ob,{ name:o.name, price:o.price, spec:ob.spec||'', updatedAt:new Date().toISOString(), short:o.short||ob.short||'', unit:o.unit||'шт.' });
-      if (!od && allPresets().some(p=>norm(p.name)===norm(o.name))) ob.kind='option';
       ob.prices=(ob.prices||[]).filter(p=>!number||p.number!==number); ob.prices.unshift({date:S.date,client:S.client,price:o.price,qty:+o.qty,number:number||''}); ob.prices=ob.prices.slice(0,50);
       await store().put(ob, true); o.catId=ob.id; list.push(ob);
     }
@@ -89,7 +105,7 @@ async function syncCatalog(number){
 
 async function saveCatalog(i){
   const it=S.items[i]; if(!it.name.trim()) return toast('Сначала укажите наименование');
-  const need=it.catId && catCache.some(x=>x.id===it.catId) ? 'catEdit' : 'catAdd'; if (!can(need)) return cannot(need);
+  const need=CatFind.id(it.catId) ? 'catEdit' : 'catAdd'; if (!can(need)) return cannot(need);
   const id = it.catId || uid()+uid();
   const doc={ id, name:it.name, spec:it.spec, price:it.price, pageTitle:it.pageTitle, photoCaption:it.photoCaption,
     features:it.features, groups:it.groups, hint:it.hint||null, photo:it.photo||null, logo:it.logo||null, updatedAt:new Date().toISOString(),

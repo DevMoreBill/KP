@@ -37,7 +37,7 @@
 .mbar{display:none}
 /* подбор в каталоге */
 dialog.wide{max-width:min(1160px,96vw)}
-.total{background:var(--panel);color:var(--panel-ink);border-radius:18px;padding:22px 22px 20px;position:relative;overflow:hidden}
+.total{background:var(--panel);color:var(--panel-ink);border-radius:18px;position:relative;overflow:hidden}
 .total::before{content:"";position:absolute;left:22px;top:0;width:56px;height:4px;background:var(--sky);border-radius:0 0 4px 4px}
 .total .lab{font-size:13px;opacity:.75;margin-top:6px}
 .total .big{font-size:34px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.15;margin:4px 0 2px;overflow-wrap:anywhere}
@@ -50,7 +50,7 @@ dialog.wide{max-width:min(1160px,96vw)}
 .mrg dl{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:0}
 .mrg dt{color:var(--muted)}
 .mrg dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
-.total .words{font-size:13px;opacity:.85;margin-top:12px;line-height:1.45}
+.total .words{opacity:.85;line-height:1.45}
 .checks{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-top:14px}
 .checks h3{margin:0 0 8px;font-size:14px}
 .checks ul{margin:0;padding:0;list-style:none;display:grid;gap:6px;font-size:13.5px}

@@ -129,7 +129,7 @@ class AirDemand {
 
 // ---------------------------------------------------------------- давление: потребитель + потери → компрессор
 class PressureBudget {
-  static run(N, q, A){
+  static run(N, q){
     const r=q.req, f=CalcNote.f; N.section('press', 'Давление');
     const C=q.units.filter(u=>u.kind==='compressor'); if (!C.length) return null;
     const pmax=Math.min(...C.map(u=>u.info.bar||Infinity)), vsd=C.every(u=>u.info.vsd);
@@ -528,7 +528,7 @@ class StationCalc {
     for (const G of [plan.gates, plan.gates2].filter(Boolean)) if (G.off && !G.offWhy)
       N.issue('error', `Требования: «Причина смещения ворот» — ворота в торце смещены от оси на ${StationLayout.n(Math.abs(G.off))} мм без причины; укажите причину («Условия для расчёта станции» → «Ворота в торце»).`);
     try{
-      if (q.kind==='comp'){ const A=AirDemand.run(N, q), P=PressureBudget.run(N, q, A); DryerSizing.run(N, q, A, P); FilterSizing.run(N, q, A, P); ReceiverSizing.run(N, q); ElectricLoad.run(N, q, plan); }
+      if (q.kind==='comp'){ const A=AirDemand.run(N, q), P=PressureBudget.run(N, q); DryerSizing.run(N, q, A, P); FilterSizing.run(N, q, A, P); ReceiverSizing.run(N, q); ElectricLoad.run(N, q, plan); }
       else if (q.kind==='dgu') GensetSizing.run(N, q, ElectricLoad.run(N, q, plan));
       else if (q.kind==='pump'){ PumpSizing.run(N, q); ElectricLoad.run(N, q, plan); }
       else ElectricLoad.run(N, q, plan);

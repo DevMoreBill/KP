@@ -324,13 +324,13 @@ class TzParse:
 
     def climate(self):
         t = r'([' + MINUS_RX + r'+]?)\s*(\d{1,2})'
-        m = self.first(r'(?:температур\w*|наружн\w*\s+воздух\w*|окружающ\w*\s+сред\w*)[^\n]{0,90}?от\s*' + t + r'\s*(?:°\s*[сc])?\s*до\s*' + t)
+        R = r'(?:температур\w*|наружн\w*\s+воздух\w*|окружающ\w*\s+сред\w*)[^\n]{0,90}?от\s*' + t + r'\s*(?:°\s*[сc])?\s*до\s*' + t
+        m = self.first(R)
         if m:
             a, b = self.signed(m.group(1), m.group(2)), self.signed(m.group(3), m.group(4))
             if -70 <= a < b <= 60:
                 self.put('tmin', a, m, 'Наружный воздух от, °C')
                 self.put('tmax', b, m, 'Наружный воздух до, °C')
-            R = r'(?:температур\w*|наружн\w*\s+воздух\w*|окружающ\w*\s+сред\w*)[^\n]{0,90}?от\s*' + t + r'\s*(?:°\s*[сc])?\s*до\s*' + t
             hits = [x for x in self.all(R) if not re.search(r'хранени|транспортир|вод|масл|помещени|внутри|на входе|сжат', self.sentence(x), re.I)]
             self.conflict('tmin', 'Наружный воздух от, °C', [(self.signed(x.group(1), x.group(2)), x) for x in hits])
             self.conflict('tmax', 'Наружный воздух до, °C', [(self.signed(x.group(3), x.group(4)), x) for x in hits])
@@ -550,8 +550,8 @@ class TzReview:
     def questions(self):
         """обязательные вопросы: без ответа станцию не подобрать"""
         need = self.NEED.get(self.kind, ())
-        return [q for key, _, _, _, q in self.spec() if key in need and q
-                for f in self.fields() if f['key'] == key and f['status'] == 'missing']
+        missing = {f['key'] for f in self.fields() if f['status'] == 'missing'}
+        return [q for key, _, _, _, q in self.spec() if key in need and q and key in missing]
 
     def later(self):
         """можно уточнить позже: параметры по умолчанию и отсутствующие (кроме обязательных), противоречия — подтвердить

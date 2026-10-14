@@ -122,6 +122,12 @@ class ServerLog:
         return log
 
     # ---------- чтение (только администратору)
+    def _flush(self):
+        """Записанное этим процессом — на диск до чтения файлов журнала."""
+        with self.lock:
+            if self.f:
+                self.f.flush()
+
     def files(self):
         """Файлы журнала от старого к новому."""
         out = ['%s.%d' % (self.path, i) for i in range(self.KEEP, 0, -1)] + [self.path]
@@ -129,9 +135,7 @@ class ServerLog:
 
     def records(self):
         """Все записи от старых к новым: [{at, level, text, detail}]."""
-        with self.lock:
-            if self.f:
-                self.f.flush()
+        self._flush()
         out = []
         for p in self.files():
             try:
@@ -158,9 +162,7 @@ class ServerLog:
 
     def text(self):
         """Журнал целиком (до 4 МБ) — для «Скачать журнал»."""
-        with self.lock:
-            if self.f:
-                self.f.flush()
+        self._flush()
         parts = []
         for p in self.files():
             try:

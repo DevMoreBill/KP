@@ -593,7 +593,8 @@ class Store:
         if f.get('to'):
             where.append('ts < ?'); args.append(f['to'] + 'T99')
         if f.get('q'):
-            where.append('(entity_id LIKE ? OR user_name LIKE ? OR after LIKE ? OR before LIKE ?)'); args += ['%' + f['q'] + '%'] * 4
+            where.append("(entity_id LIKE ? ESCAPE '\\' OR user_name LIKE ? ESCAPE '\\' OR after LIKE ? ESCAPE '\\' OR before LIKE ? ESCAPE '\\')")
+            args += [like_arg(f['q'])] * 4
         w = (' WHERE ' + ' AND '.join(where)) if where else ''
         total = self.one('SELECT COUNT(*) FROM audit' + w, args)[0]
         rows = self.all('SELECT id, ts, user_id, user_name, role, action, entity_type, entity_id, before, after, ip, ua, result '
@@ -968,8 +969,8 @@ class Store:
 
     def kp_tracked(self, since):
         """КП для напоминаний: незакрытые, сохранённые не раньше since (ГГГГ-ММ-ДД), или с напоминанием —
-        [(id, meta, track, state)]."""
-        return self.all("SELECT id, meta, track, state FROM kp WHERE meta IS NOT NULL AND (status IS NULL OR status NOT IN ('won', 'lost')) "
+        [(id, meta, track)] (состояние КП — kp_get, только тем, кому оно нужно)."""
+        return self.all("SELECT id, meta, track FROM kp WHERE meta IS NOT NULL AND (status IS NULL OR status NOT IN ('won', 'lost')) "
                         "AND (kdate >= ? OR follow IS NOT NULL)", (since,))
 
     def kp_docx_owner(self, rel, kid):

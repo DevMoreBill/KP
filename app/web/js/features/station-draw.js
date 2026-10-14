@@ -7,7 +7,7 @@
 
 // ---------------------------------------------------------------- SVG: примитивы
 class StSvg {
-  static esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c])); }
+  static esc(s){ return EskdSheet.esc(s); }
   static f(v){ return Math.round(v*10)/10; }
   static pts(P){ return P.map(p=>this.f(p[0])+','+this.f(p[1])).join(' '); }
   static poly(P, fill, stroke, sw=1, extra=''){ return `<polygon points="${this.pts(P)}" fill="${fill}"${stroke ? ` stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"` : ''}${extra}/>`; }
@@ -21,11 +21,6 @@ class StSvg {
   static tw(s, size){ return String(s).length*size*0.56; }
   /** перенос по обычным пробелам (неразрывный пробел держит «РВ 500/11» в одной строке) */
   static wrap(s, max){ const out=[]; let cur=''; for (const w of String(s).trim().split(/[ \t\n]+/)){ if (cur && (cur+' '+w).length>max){ out.push(cur); cur=w; } else cur=(cur ? cur+' ' : '')+w; } if (cur) out.push(cur); return out; }
-  /** строка из частей разного начертания: [[текст, {weight, fill}], …] */
-  static spans(x, y, parts, o={}){
-    const t=parts.filter(q=>q[0]).map(([v, q={}])=>`<tspan${q.weight ? ` font-weight="${q.weight}"` : ''}${q.fill ? ` fill="${q.fill}"` : ''}>${this.esc(v)}</tspan>`).join('');
-    return `<text x="${this.f(x)}" y="${this.f(y)}" font-size="${o.size||18}" fill="${o.fill||'#1d2733'}" text-anchor="${o.anchor||'middle'}">${t}</text>`;
-  }
   static doc(W, H, body, defs=''){
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Arial, Helvetica, sans-serif"><defs>${defs}</defs>${body}</svg>`; }
   /** 12345 → «12 345» */
@@ -58,7 +53,7 @@ class StationDrawing {
   constructor(plan, meta){
     const g=plan.geo; this.p=plan; this.m=meta||{}; this.g=g; this.hl=this.m.hl||null;   // hl — подсветка «Показать на чертеже»
     [this.Le, this.We, this.He]=g.ext; [this.Li, this.Wi, this.Hi]=plan.int;
-    this.ox=(this.Le-this.Li)/2; this.oy=(this.We-this.Wi)/2; this.zf=StationGeo.zFloor(g.type, g.t);
+    this.ox=(this.Le-this.Li)/2; this.oy=(this.We-this.Wi)/2; this.zf=StationGeo.zFloor(g.type);
     this.dz=plan.chassis ? (this.m.deck||1150) : 0;
     this.rf=plan.roof||[]; this.up=this.rf.length ? Math.max(...this.rf.map(m=>m.gap+m.d)) : 0;   // выхлоп глушителя — горизонтально
     this.rise=g.rise||0; this.fuel=plan.fuel||null; this.heaters=(plan.heat && plan.heat.heaters)||[];   // скатная крыша, отсек бака ДГУ, конвекторы
@@ -74,7 +69,7 @@ class StationDrawing {
     // маркизы на приточных жалюзи выступают от стен — на плане место под них (как под открытые створки)
     const mk=w=>Math.max(0, ...((plan.vent && plan.vent.louvers)||[]).filter(q=>q.hood && q.wall===w).map(q=>q.hood.d));
     this.mkL=mk('left'); this.mkR=mk('right'); this.swing=Math.max(this.swing, mk('front')); this.swingB=Math.max(this.swingB, mk('back')); this.swingR=Math.max(this.swingR, mk('right'));
-    this.ai=StationDrawing.aisle(plan, this.Wi);
+    this.ai=StationDrawing.aisle(plan);
     this.ms=plan.mass||null;
     // ресиверы снаружи — на площадке за дальним торцом: сколько добавляют к длине (с площадкой) и над крышей
     this.ext=plan.outside||[];
@@ -193,7 +188,6 @@ class StationDrawing {
   }
 
   // ---- компоновка листов: на каждом — наибольший масштаб (ГОСТ 2.302), при котором его изображения с размерами помещаются
-  static TB2 = 277;              // верх основной надписи формы 2а (последующие листы), мм листа
   /** разрез А–А с размерами справа: {w, h, left} при масштабе k (мм листа на мм) */
   mainBox(k){
     const nOut=this.outs.length, nDim=nOut+1+(this.up || this.hood ? 1 : 0)+(this.rise ? 1 : 0)+(this.dz ? 1 : 0), dimsR=16+7*(nDim-1)+2, left=14;
@@ -857,18 +851,11 @@ class StationDrawing {
     if (c.skip.length) sh.text(base, y-0.8-c.lift*5.1-5, `Мелкие размеры цепочки не показаны в масштабе: ${c.skip.join('; ')} мм`, 2.5);
   }
   /** проход: [y0, y1] поперёк контейнера, ширина в самом узком месте и где мерить */
-  static aisle(plan, Wi){
+  static aisle(plan){
     const it=plan.items.filter(i=>i.mount==='floor' || i.mount==='frame'); if (!it.length) return null;
     if (plan.rows===2){ const A=it.filter(i=>i.row===1), B=it.filter(i=>i.row===0); if (!A.length || !B.length) return null;
       const y0=Math.max(...A.map(i=>i.y+i.ly)), y1=Math.min(...B.map(i=>i.y)); const m=B.find(i=>i.y===y1); return { y0, y1, w:y1-y0, xm:m.x+m.lx/2 }; }
     const y1=Math.min(...it.map(i=>i.y)), m=it.find(i=>i.y===y1); return { y0:0, y1, w:y1, xm:m.x+m.lx/2, dgu:m.kind==='dgu' };
-  }
-  /** где висят настенные шкафы — для примечаний */
-  static cabWhere(plan){
-    const W=new Set(plan.items.filter(i=>i.mount==='wall').map(i=>i.wall)), t=[];
-    if (W.has('front')) t.push('на стене прохода у двери'); if (W.has('left') || W.has('right')) t.push(W.has('left') && W.has('right') ? 'на торцевых стенах' : W.has('left') ? 'на торцевой стене у двери' : 'на дальней торцевой стене');
-    if (W.has('back')) t.push('за своим местом в ряду');
-    return t.join(', ');
   }
 }
 
@@ -882,7 +869,7 @@ class StationView3D {
   /** plan — StationLayout.solve(...); meta: {deck — высота шасси, мм} */
   static svg(plan, meta={}){
     const S=StSvg, g=plan.geo, [Le, We, He]=g.ext, [Li, Wi, Hi]=plan.int, ox=(Le-Li)/2, oy=(We-Wi)/2;
-    const dz=plan.chassis ? (meta.deck||1150) : 0, base=dz+StationGeo.zFloor(g.type, g.t), ceil=base+Hi, top=dz+He;
+    const dz=plan.chassis ? (meta.deck||1150) : 0, base=dz+StationGeo.zFloor(g.type), ceil=base+Hi, top=dz+He;
     const rf=plan.roof||[], up=rf.length ? Math.max(...rf.map(m=>m.gap+m.d)) : 0;
     const az=this.AZ*Math.PI/180, el=this.EL*Math.PI/180, cs=Math.cos(az), sn=Math.sin(az), ce=Math.cos(el), se=Math.sin(el);
     const P0=(x, y, z)=>[x*cs-y*sn, -((x*sn+y*cs)*se+z*ce)];
@@ -941,7 +928,7 @@ class StationView3D {
           out.push(tube([xm, y, z], [xm, yc, z], c, w), tube([xm, yc, z], [xm, yc, zi], c, w), tube([xm, yc, zi], [it.X0, yc, zi], c, w)); } }
       for (const it of V.order(O)) out.push(...this.equip(V, it, base, ceil, oy+Wi)); }
     // срезанные стенки со стороны зрителя: торец у двери и стена прохода — до высоты пояса
-    out.push(...this.band(V, plan, wall, frame, Le, We, dz, band, ox, oy, Wi));
+    out.push(...this.band(V, plan, wall, frame, Le, We, dz, band, ox, oy));
     // рама: передние стойки и верхние балки
     out.push(...V.box(0, 0, dz, 150, 150, top, frame), ...V.box(Le-150, 0, dz, Le, 150, top, frame));
     out.push(...V.box(0, 0, top-110, Le, 110, top, frame), ...V.box(0, 0, top-110, 110, We, top, frame));
@@ -956,7 +943,7 @@ class StationView3D {
   }
 
   /** нижний пояс срезанных стенок: торец у двери (с дверями) и стена прохода (с дверью); гофр морского контейнера */
-  static band(V, plan, wall, frame, Le, We, dz, band, ox, oy, Wi){
+  static band(V, plan, wall, frame, Le, We, dz, band, ox, oy){
     const out=[], g=plan.geo, cut=RalColor.mix('#dfe3e7', wall, 0.15);
     out.push(V.face([[0, 0, dz], [0, We, dz], [0, We, dz+band], [0, 0, dz+band]], RalColor.shade(wall, 0.82), 1));
     out.push(V.face([[0, 0, dz+band], [ox, 0, dz+band], [ox, We, dz+band], [0, We, dz+band]], cut, 1));

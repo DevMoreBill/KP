@@ -115,7 +115,7 @@ def remove_files(data_dir, fid):
     d = feed_dir(data_dir, fid)
     names = os.listdir(d) if os.path.isdir(d) else []
     for n in names:
-        if re.match(r'^(pages\.csv|price(-[a-z0-9_-]+)?\.xlsx|stock\.xlsx)(\.tmp)?$', n):
+        if re.match(r'^(pages\.csv|price(-[a-z0-9_-]+)?\.xlsx|stock\.xlsx|extra\.json)(\.tmp)?$', n):
             try:
                 os.remove(os.path.join(d, n))
             except OSError:
@@ -1200,14 +1200,21 @@ def _spec_rows(k, v):
 
 
 
+_SPEC_SEEN = {}         # подпись характеристики → класс: одни и те же подписи у тысяч позиций разбираются один раз
+
+
 def spec_class(key):
-    k = re.sub(r'\s*\([^)]*\)\s*$', '', str(key or '')).strip().lower()
+    key = str(key or '')
+    c = _SPEC_SEEN.get(key)
+    if c is not None:
+        return c
+    k = re.sub(r'\s*\([^)]*\)\s*$', '', key).strip().lower()
     k = re.sub(r'(?<=[а-я])-(?=[а-я])', '', k)         # «Производи-тельность» — перенос в ячейке прайса
     k = k.replace('производитсть', 'производительность')   # «Производит-сть» — сокращение в шапке прайса
-    for c, rx in SPEC_CLASS:
-        if re.search(rx, k):
-            return c
-    return 'k:' + re.sub(r'[^а-яa-z0-9]', '', k)
+    c = next((c for c, rx in SPEC_CLASS if re.search(rx, k)), None) or 'k:' + re.sub(r'[^а-яa-z0-9]', '', k)
+    if len(_SPEC_SEEN) < 50000:
+        _SPEC_SEEN[key] = c
+    return c
 
 
 def _tidy_label(k):
@@ -1286,8 +1293,6 @@ def merge_specs(parse_rows, price_specs):
         if c in idx:
             if not str(rows[idx[c]][1]).lower().startswith(str(v).lower()):   # «YNT55A (Baosi)» в парсе полнее «YNT55A» прайса
                 rows[idx[c]][1] = v           # прайс точнее парса
-            if c.startswith('k:'):
-                rows[idx[c]][0] = rows[idx[c]][0]
         else:
             idx[c] = len(rows)
             rows.append([label, v])
@@ -1460,30 +1465,18 @@ def match_prices(pages, prices):
             how['cfg'] += 1
             hit[pg['url']] = p
             continue
-        p = by_norm.get(_norm(pg['name']))
-        if p:
-            how['name'] += 1
-        else:
-            p = by_key.get(_key(pg['name']))
+        mk = _model_key(pg['name']) or _key(pg.get('model'))
+        ms = _model_set(pg['name'])
+        steps = (('name', lambda: by_norm.get(_norm(pg['name']))), ('key', lambda: by_key.get(_key(pg['name']))),
+                 ('model', lambda: one(by_model.get(mk)) if mk else None),
+                 ('short', lambda: one(by_short.get(_key(pg['model']))) if pg.get('model') else None),
+                 ('set', lambda: one(by_set.get(ms)) if ms else None), ('code', lambda: _by_code(pg['name'], by_code)))
+        p = None
+        for step, find in steps:      # по очереди — до первого найденного
+            p = find()
             if p:
-                how['key'] += 1
-            else:
-                mk = _model_key(pg['name']) or _key(pg.get('model'))
-                p = one(by_model.get(mk)) if mk else None
-                if p:
-                    how['model'] += 1
-                elif pg.get('model') and one(by_short.get(_key(pg['model']))):
-                    p = one(by_short[_key(pg['model'])])
-                    how['short'] += 1
-                else:
-                    ms = _model_set(pg['name'])
-                    p = one(by_set.get(ms)) if ms else None
-                    if p:
-                        how['set'] += 1
-                    else:
-                        p = _by_code(pg['name'], by_code)
-                        if p:
-                            how['code'] = how.get('code', 0) + 1
+                how[step] = how.get(step, 0) + 1
+                break
         if p and not cfg_compatible(c, p.get('_cfg') or model_cfg(p['name'])):
             how['rejected'] = how.get('rejected', 0) + 1     # «DVK 75-7» ≠ «DVK D 75-7»: другое исполнение
             p = None
@@ -1882,8 +1875,6 @@ def model_cfg(model, text=''):
                     cfg['dry'] = True
                 elif suf == 'D':                        # «DVK 220D» — серия с прямым приводом
                     cfg['ser'].add('D')
-                elif re.match(r'^\d*X\d', x):
-                    pass
                 continue
             if re.match(r'^\d+X\d', x):                 # «2X270D» — два ресивера
                 r = re.match(r'^(\d+)X(\d+)(D?)$', x)
@@ -1904,8 +1895,6 @@ def model_cfg(model, text=''):
     if len(nums) >= 3 and 50 <= nums[2] <= 3000:
         cfg['rec'] = int(nums[2])
     if re.search(r'частот|инвертор|\bvsd\b', t):
-        cfg['vsd'] = True
-    if any(s.startswith('INVERS') for s in cfg['ser']):
         cfg['vsd'] = True
     if re.search(r'водян', t):
         cfg['w'] = True
@@ -1935,7 +1924,9 @@ def match_card(name, model, attrs, prices):
         return [], 'не понятна модель'
     cand = []
     for p in prices:
-        pc = model_cfg(p['name'] or p['short'])
+        pc = p.get('_cfg')          # исполнение строки прайса разбирается один раз (match_prices или первая карточка)
+        if pc is None:
+            pc = p['_cfg'] = model_cfg(p['name'] or p['short'])
         if pc['ser'] != cfg['ser'] or pc['size'] != cfg['size'] or pc['vsd'] != cfg['vsd'] or pc['w'] != cfg['w'] or pc['dry'] != cfg['dry']:
             continue
         if (cfg['rec'] is None) != (pc['rec'] is None) or (cfg['rec'] not in (None, -1) and pc['rec'] != cfg['rec']):

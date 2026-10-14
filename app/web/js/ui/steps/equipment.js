@@ -60,11 +60,19 @@ function itemCard(x,i){
   </div>`;
 }
 
+// строка быстрого поиска карточки — один раз на карточку и её разбор (карточки каталога на месте не меняются, разбор
+// сбрасывается при смене категорий): без запоминания каждое нажатие клавиши нормализовало текст 7000+ карточек
+class QuickFind {
+  static HAY = new WeakMap();
+  static hay(x, a){ const c=this.HAY.get(x); if (c && c.a===a) return c.h;
+    const h=norm([x.name,x.spec,a.maker,a.model,a.series,a.engine,a.alternator].join(' ')); this.HAY.set(x, {a, h}); return h; }
+}
+
 function quickMatches(q){
   const w=norm(q).split(' ').filter(Boolean); if(!w.length) return [];
   const res=[];
   for (const x of catCache){ const a=attrsOf(x); if (typeById(a.cat).role==='accessory') continue;
-    const hay=norm([x.name,x.spec,a.maker,a.model,a.series,a.engine,a.alternator].join(' '));
+    const hay=QuickFind.hay(x, a);
     if (w.every(v=>hay.includes(v))) res.push(x); if (res.length>=40) break; }
   const mv=x=>numOf(attrsOf(x)[typeById(attrsOf(x).cat).main||'kw'])??9e9;
   return res.sort((p,q)=>String(attrsOf(p).cat).localeCompare(attrsOf(q).cat)||mv(p)-mv(q)).slice(0,8);
@@ -86,5 +94,5 @@ document.addEventListener('keydown', e=>{ if (e.target.id!=='quickAdd') return;
   if (e.key==='Enter'){ const x=quickMatches(e.target.value)[0]; if (x){ e.preventDefault(); e.target.value=''; addFromCatalog(x); setTimeout(()=>$('#quickAdd')?.focus(),80); } }
   if (e.key==='Escape'){ e.target.value=''; $('#qaList').hidden=true; } });
 
-document.addEventListener('click', e=>{ const b=e.target.closest('[data-qa]'); if (b){ const x=catCache.find(z=>z.id===b.dataset.qa); if (x) addFromCatalog(x); return; }
+document.addEventListener('click', e=>{ const b=e.target.closest('[data-qa]'); if (b){ const x=CatFind.id(b.dataset.qa); if (x) addFromCatalog(x); return; }
   if (!e.target.closest('.qadd')){ const L=$('#qaList'); if (L) L.hidden=true; } });

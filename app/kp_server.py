@@ -22,6 +22,7 @@ import threading
 import urllib.parse
 import urllib.request
 import webbrowser
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from config import (ALLOWED_HOSTS, APP_TITLE, BadRequest, BASE_PORT, DATA_DIR, DOCS_DIR, IMG_DIR, ROOT, SERVER_MODE, message_box, store)
@@ -41,6 +42,32 @@ from server_log import ServerLog
 PAID_GET = ('/api/geo/', '/api/party', '/api/check', '/api/imgfetch', '/api/cbr')
 GZ_CACHE = {}       # сжатые большие справочники: {ETag: байты gzip} (send_cached)
 GZ_LOCK = threading.Lock()
+
+
+class FileGzip:
+    """Сжатые файлы интерфейса: {ETag: байты gzip}. Файл сжимается один раз на версию (а не при каждой загрузке
+    страницы); всего ~1,5 МБ сжатого — держится в памяти, устаревшие версии вытесняются."""
+    MIN = 1024              # меньше — сжатие не окупается
+    MAX_N = 400             # файлов в памяти (интерфейс — ~110)
+    cache = {}
+    lock = threading.Lock()
+
+    @classmethod
+    def get(cls, tag, data, ctype):
+        """gzip-байты файла или None (маленький или не текст)."""
+        if len(data) < cls.MIN or not (ctype.startswith('text/') or 'javascript' in ctype or ctype.startswith('application/json')
+                                       or 'svg' in ctype):
+            return None
+        with cls.lock:
+            hit = cls.cache.get(tag)
+        if hit is None:
+            import gzip
+            hit = gzip.compress(data, 9)
+            with cls.lock:
+                cls.cache[tag] = hit
+                while len(cls.cache) > cls.MAX_N:
+                    cls.cache.pop(next(iter(cls.cache)))
+        return hit
 MAX_BODY = 300 * 1024 * 1024    # самый большой запрос — загрузка резервной копии базы
 # программа запустилась и отвечает (после самопроверки обновления): сбой после этого launcher.py не считает сбоем
 # запуска обновления и прежнюю версию не возвращает
@@ -72,22 +99,36 @@ class Handler(BaseHTTPRequestHandler):
         a = (self.client_address or ('',))[0]
         return a in ('127.0.0.1', '::1', '::ffff:127.0.0.1') or a.startswith('127.')
 
-    def send_file(self, f, ctype, cache, csp=None):
-        """Файл с проверкой версии (ETag): неизменённый файл браузер берёт из своего кэша — ответ 304 без тела.
-        Интерфейс (cache='no-cache') проверяется при каждой загрузке, изображения хранятся неделю."""
+    @staticmethod
+    def file_tag(f):
+        """Метка версии файла (ETag): время изменения и размер."""
         st = os.stat(f)
-        tag = '"%x-%x"' % (st.st_mtime_ns, st.st_size)
+        return '"%x-%x"' % (st.st_mtime_ns, st.st_size)
+
+    def send_file(self, f, ctype, cache, csp=None, data=None):
+        """Файл с проверкой версии (ETag): неизменённый файл браузер берёт из своего кэша — ответ 304 без тела.
+        Интерфейс (cache='no-cache') проверяется при каждой загрузке, файлы с меткой версии в адресе — хранятся год,
+        изображения — неделю. data — готовое содержимое вместо файла (index.html с метками версий)."""
+        tag = self.file_tag(f) if data is None else '"%x"' % (zlib.crc32(data) & 0xffffffff)
         if self.headers.get('If-None-Match') == tag:
             self.send_response(304)
             self.send_header('ETag', tag)
             self.send_header('Cache-Control', cache)
             self.end_headers()
             return
-        with open(f, 'rb') as fh:
-            extra = {'Cache-Control': cache, 'ETag': tag}
-            if csp:
-                extra['Content-Security-Policy'] = csp
-            return self.send(200, ctype, fh.read(), extra)
+        extra = {'Cache-Control': cache, 'ETag': tag}
+        if csp:
+            extra['Content-Security-Policy'] = csp
+        if data is None:
+            with open(f, 'rb') as fh:
+                data = fh.read()
+        # текст интерфейса (JS, CSS, HTML) — сжатый один раз на версию файла, дальше из памяти (FileGzip)
+        gz = FileGzip.get(tag, data, ctype) if 'gzip' in (self.headers.get('Accept-Encoding') or '') else None
+        if gz is not None:
+            extra['Content-Encoding'] = 'gzip'
+            extra['Vary'] = 'Accept-Encoding'
+            return self.send(200, ctype, gz, extra, compressed=True)
+        return self.send(200, ctype, data, extra)
 
     def send(self, code, ctype, body, extra=None, compressed=False):
         data = body if isinstance(body, bytes) else str(body).encode('utf-8')
@@ -149,9 +190,9 @@ class Handler(BaseHTTPRequestHandler):
     def conflict(self, e):
         return self.send(409, 'application/json; charset=utf-8', json.dumps(e.info(), ensure_ascii=False))
 
-    def attachment(self, fn):
-        """Заголовок «скачать как» с русским именем файла."""
-        ascii_fn = re.sub(r'[^A-Za-z0-9._-]', '_', fn.encode('ascii', 'ignore').decode()) or 'file'
+    def attachment(self, fn, fallback='file'):
+        """Заголовок «скачать как» с русским именем файла (fallback — латинское имя, если в имени нет латиницы)."""
+        ascii_fn = re.sub(r'[^A-Za-z0-9._-]', '_', fn.encode('ascii', 'ignore').decode()) or fallback
         return {'Content-Disposition': 'attachment; filename="%s"; filename*=UTF-8\'\'%s' % (ascii_fn, urllib.parse.quote(fn))}
 
     def not_found(self, text='not found'):

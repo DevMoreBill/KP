@@ -507,8 +507,16 @@ class KitNeed {
 
   /** заголовок строки: «Нужно: …» / «Заменить: …» */
   static head(r){ return r.head || (r.swap ? 'Заменить: ' : 'Нужно: ')+r.title.charAt(0).toLowerCase()+r.title.slice(1); }
-  /** есть чем закрыть: действие в составе, рекомендуемый из каталога */
-  static can(x, r){ return r.act ? true : r.main ? !!(this.mainPreset(x)||{}).best : !!this.best(x, r); }
+  /** есть чем закрыть: действие в составе, рекомендуемый из каталога. Подбор по каталогу долгий (тысячи позиций), а в одной
+   *  перерисовке его спрашивают и строки «Нужно…», и «эксперт» — ответ помнится до конца шага и пока станция та же */
+  static memo = null;
+  static can(x, r){
+    if (r.act) return true;
+    const inp=StationUi.input(x), k=[x.id, StationLayout.hash(inp), inp.air, JSON.stringify(x.req||{}), catCache.length, JSON.stringify([r.key, r.main, r.cat, r.f, r.r, r.qty, r.role, r.replace])].join('|');
+    if (!this.memo){ this.memo=new Map(); setTimeout(()=>{ this.memo=null; }, 0); }
+    let v=this.memo.get(k); if (v===undefined){ v=r.main ? !!(this.mainPreset(x)||{}).best : !!this.best(x, r); this.memo.set(k, v); }
+    return v;
+  }
   /** строки «Нужно: …» в группе by (наше оборудование / сборщик контейнера) */
   static rows(x, i, by='our'){
     return this.recs(x).filter(r=>(r.by||'our')===by).map(r=>{ const has=this.can(x, r), lab=r.act ? (r.swap ? 'Заменить' : 'Добавить') : 'Подобрать';
@@ -533,8 +541,9 @@ class KitNeed {
       const v=StationDefaults.retank(x, r.hours); return v ? `топливный бак ${StationLayout.n(v)} л` : ''; }
     return '';
   }
-  /** состав изменился: закупка, характеристики и название станции, компоновка, перерисовка */
-  static done(x){ kitSync(x); stationFill(x); stationAutoName(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); x.page=true; persist(); renderEditor(); renderForm(); }
+  /** состав изменился: закупка, компоновка, характеристики и название станции, перерисовка (размер контейнера — до
+   *  характеристик: они берут ту же расстановку, второй раз она не считается) */
+  static done(x){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); stationFill(x); stationAutoName(x); x.page=true; persist(); renderEditor(); renderForm(); }
   /** одна кнопка: число агрегатов и бак — в составе, остальное — рекомендуемый из каталога (после осушителя могут
    *  понадобиться фильтры — до 4 проходов) */
   static async fillAll(i){
@@ -591,7 +600,7 @@ class KitView {
   static pos = new Map();        // id элемента → номер позиции на чертеже (при отрисовке вкладки)
 
   static render(x, i){
-    const parts=kitParts(x), st=stationOf(x), t=typeById(attrsOf(x).cat);
+    const parts=kitParts(x), st=stationOf(x);
     if (!st && !parts.length) return `<div class="ed-sec"><p class="muted">Состав есть только у станций в контейнере. Чтобы собрать станцию, выберите категорию «Насосные / Компрессорные / Дизель-генераторные станции в контейнере» на вкладке «Основное».</p></div>`;
     StationReq.ensure(x);
     const cont=kitContainer(x), main=kitMainPart(x);
@@ -603,8 +612,8 @@ class KitView {
       ${cont ? this.cont(x, i, cont, parts.indexOf(cont)) : this.pickCont(i)}
       ${st && !main ? `<div class="kit-todo"><b>${esc(st.mainLabel)}</b><span class="muted">Основное оборудование станции — из каталога (с описанием, характеристиками, фото и закупкой) или своё.</span>
         <div class="row"><button class="btn primary" type="button" data-a="kitMain" data-i="${i}">Выбрать в каталоге</button><button class="btn ghost" type="button" data-a="kitAdd" data-i="${i}" data-n="${esc(st.mainLabel)}" data-role="main">+ Своё</button></div></div>` : ''}
-      ${this.group(x, i, 'our', our, st, t)}
-      ${this.group(x, i, 'asm', asm, st, t)}
+      ${this.group(x, i, 'our', our, st)}
+      ${this.group(x, i, 'asm', asm, st)}
       <datalist id="kitSupL">${sups.map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
       ${this.sum(x, i)}</div>`;
   }
@@ -647,7 +656,7 @@ class KitView {
   static sysOn(x, p, id){ const v=(p.sys||{})[id]; return v ?? (id==='rec' ? StationReq.kind(x)!=='pump' : !!CONT_SYS_DEF[id]); }
 
   /** группа элементов: таблица строк и кнопки добавления */
-  static group(x, i, by, idx, st, t){
+  static group(x, i, by, idx, st){
     const presets=(st ? st.parts : KIT_PRESETS).map(z=>Array.isArray(z) ? z : [z, '']), have=new Set(kitParts(x).map(p=>norm(p.name)));
     const kinds=new Set(kitParts(x).map(p=>StationEquip.kindOf(p)).filter(k=>k==='dryer' || k==='receiver'));   // уже есть — не предлагать
     // «Нужно: …» — чего не хватает (KitNeed); кнопки этих категорий и элементов не дублируем

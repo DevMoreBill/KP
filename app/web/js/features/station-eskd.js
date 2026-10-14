@@ -85,9 +85,18 @@ class EskdSheet {
   /** примерная ширина строки, мм: по osifont (встроен) или Arial курсивом (замерено; шрифт типа Б уже — с запасом);
    *  знаков, которых в osifont нет (−, →, …, кавычки „“, ₽), — по Arial тем же кеглем */
   static tw(s, h){
-    const A=this.cw||(this.cw=this.widths()), O=this.FONT_DATA ? this.ow||(this.ow=this.osiWidths()) : null, k=O ? 1.352/1.4 : 1; let w=0;
-    for (const c of String(s??'')) w+=(O && O[c]) ?? (A[c] ?? (/[A-Z]/.test(c) ? 0.97 : 0.8))*k;
+    const t=String(s??''), M=this.FONT_DATA ? this.twO : this.twA;
+    let w=M.get(t);   // ширина в долях высоты — одна на строку (подгонка спрашивает одни и те же строки много раз)
+    if (w===undefined){ w=this.twAdd(0, t); if (M.size>20000) M.clear(); M.set(t, w); }
     return w*h;
+  }
+  static twA = new Map();
+  static twO = new Map();
+  /** ширина w (в долях высоты) с дописанной строкой t — по знакам подряд, как у tw (перенос — без пересчёта строки с начала) */
+  static twAdd(w, t){
+    const A=this.cw||(this.cw=this.widths()), O=this.FONT_DATA ? this.ow||(this.ow=this.osiWidths()) : null, k=O ? 1.352/1.4 : 1;
+    for (const c of t) w+=(O && O[c]) ?? (A[c] ?? (/[A-Z]/.test(c) ? 0.97 : 0.8))*k;
+    return w;
   }
   /** ширина знаков osifont Italic в долях высоты прописных (по таблице шрифта; с запасом 3 %, вверх до 0,05; «Э», «Ё», «ё» —
    *  по исправленным знакам, .github/scripts/osifont_fix.py) */
@@ -112,8 +121,10 @@ class EskdSheet {
   /** перенос по словам на ширину w, мм (по обычным пробелам: неразрывный держит «№ 9» вместе; разряды числа и число с
    *  единицей — «1 100 мм», «−40 °C» — не разрываются) */
   static wrap(s, w, h){
-    const out=[]; let cur='';
-    for (const word of this.glue(s).trim().split(/[ \t\n]+/).filter(Boolean)){ const t=cur ? cur+' '+word : word; if (cur && this.tw(t, h)>w){ out.push(cur); cur=word; } else cur=t; }
+    const out=[]; let cur='', cw=0;   // cw — ширина cur в долях высоты
+    for (const word of this.glue(s).trim().split(/[ \t\n]+/).filter(Boolean)){
+      if (!cur){ cur=word; cw=this.twAdd(0, word); continue; }
+      const tw=this.twAdd(cw, ' '+word); if (tw*h>w){ out.push(cur); cur=word; cw=this.twAdd(0, word); } else { cur+=' '+word; cw=tw; } }
     if (cur) out.push(cur); return out.map(t=>t.replace(/\u00a0/g, ' '));   // перенос сделан — в строке обычные пробелы
   }
   static glue(s){

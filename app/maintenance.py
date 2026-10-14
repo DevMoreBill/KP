@@ -44,11 +44,6 @@ def auto_dir(data_dir):
     return os.path.join(data_dir, 'backup', 'auto')
 
 
-def integrity(path, quick=False):
-    """Проверка файла базы встроенной проверкой SQLite: 'ok' или текст ошибки."""
-    return DbZip.integrity(path, quick)
-
-
 class DbCopy:
     """Ежедневные копии базы в data/backup/auto — архивы kp-ГГГГ-ММ-ДД.zip (DbZip: в 15–20 раз меньше файла базы);
     прежние копии без сжатия (kp-ГГГГ-ММ-ДД.sqlite3) учитываются наравне и со временем перепаковываются в ZIP.
@@ -115,7 +110,7 @@ class DbCopy:
                     for f in x['files']:
                         if f != dst and os.path.isfile(f):
                             os.remove(f)
-                rec.update(ok=True, bytes=os.path.getsize(dst), db=_db_size(store), zip=True)
+                rec.update(ok=True, bytes=os.path.getsize(dst), db=db_size(store), zip=True)
             except Exception as e:
                 rec.update(ok=False, error=str(e)[:300])
             cls.rotate(d)
@@ -236,7 +231,7 @@ def db_maintenance(store, vacuum=None):
     last = (st.get('vacuum') or {}).get('at') or ''
     if vacuum is None:
         vacuum = not last or last < (datetime.now() - timedelta(days=VACUUM_DAYS)).isoformat(timespec='seconds')
-    size0 = _db_size(store)
+    size0 = db_size(store)
     rec = {}
     with store.lock:
         c = store.conn()
@@ -246,13 +241,13 @@ def db_maintenance(store, vacuum=None):
         c.execute('PRAGMA optimize')
         c.execute('PRAGMA wal_checkpoint(TRUNCATE)')
     if vacuum:
-        rec['vacuum'] = {'at': _now(), 'before': size0, 'after': _db_size(store), 'check': integrity(store.path, quick=True)}
-    rec['optimize'] = {'at': _now(), 'bytes': _db_size(store)}
+        rec['vacuum'] = {'at': _now(), 'before': size0, 'after': db_size(store), 'check': DbZip.integrity(store.path, quick=True)}
+    rec['optimize'] = {'at': _now(), 'bytes': db_size(store)}
     _save(store, **rec)
     return rec
 
 
-def _db_size(store):
+def db_size(store):
     return sum(os.path.getsize(store.path + s) for s in ('', '-wal') if os.path.isfile(store.path + s))
 
 
@@ -366,7 +361,7 @@ def summary(store, data_dir):
     st = state(store)
     bl = DbCopy.listing(auto_dir(data_dir))
     return {'backup': st.get('backup'), 'copies': len(bl), 'copiesBytes': sum(b['bytes'] for b in bl), 'dir': auto_dir(data_dir),
-            'others': DbCopy.others(data_dir), 'compressed': st.get('compressed'), 'dbBytes': _db_size(store),
+            'others': DbCopy.others(data_dir), 'compressed': st.get('compressed'), 'dbBytes': db_size(store),
             'oldest': bl[-1]['date'] if bl else None, 'audit': st.get('audit'), 'vacuum': st.get('vacuum'), 'optimize': st.get('optimize'),
             'images': st.get('images'), 'lastRun': st.get('lastRun'), 'auditYears': int((store.kv_get('settings') or {}).get('auditYears') or AUDIT_YEARS),
             'auditRows': store.one('SELECT COUNT(*) FROM audit')[0], 'auditOldest': (store.one('SELECT MIN(ts) FROM audit')[0] or '')[:10]}

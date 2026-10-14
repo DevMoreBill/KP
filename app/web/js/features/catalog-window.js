@@ -172,7 +172,7 @@ class CatalogPanes {
 // ---------- РРЦ и наличие у поставщика (позиции из товарного фида, feeds.py)
 class FeedBadge {
   static stockText(st){ if (!st) return ''; if (st.gone) return 'нет в фиде';
-    const n=v=>String(v).replace('.',',');
+    const n=fnum;
     if (st.qty!=null){
       if (st.qty>0) return `в наличии ${n(st.qty)} шт.${st.transit?` + ${n(st.transit)} в пути`:''}`;
       if (st.transit) return `в пути ${n(st.transit)} шт.${st.eta?' ('+st.eta+')':''}`;
@@ -181,7 +181,7 @@ class FeedBadge {
     return st.available ? 'в наличии' : 'нет в наличии'; }
   /** подробности остатков: склады, в пути / в производстве, ожидаемая дата, акция — для подсказки */
   static stockTip(st){ if (!st) return '';
-    const out=[], n=v=>String(v).replace('.',',');
+    const out=[], n=fnum;
     (st.wh||[]).forEach(([w,q])=>out.push(`${w}: ${n(q)} шт.`));
     if (st.transit) out.push(`в пути: ${n(st.transit)} шт.${st.eta?' — ожидается '+st.eta:''}`);
     if (st.prod) out.push(`в производстве: ${n(st.prod)} шт.${st.eta&&!st.transit?' — ожидается '+st.eta:''}`);
@@ -215,7 +215,9 @@ class CatalogWindow {
     return (x._sup=s); }
   kindOk(x){ if (this.optFor==null) return true; const t=typeById(CatalogIndex.attrs(x).cat); return t.role==='accessory' || x.kind==='option'; }
   pass(x, skip){ return this.F.pass(x, skip, this); }
-  doc(id){ return this.docs.find(z=>z.id===id); }
+  /** карточка по id — словарь строится один раз на список (перенос и добавление сотен отмеченных позиций не перебирают весь каталог) */
+  doc(id){ const L=this.docs; if (this._byOf!==L || this._byN!==L.length){ this._byOf=L; this._byN=L.length; this._by=new Map(); for (const x of L) if (!this._by.has(x.id)) this._by.set(x.id, x); }
+    return this._by.get(id); }
   /** поисковые строки всех позиций — заранее, в простое браузера, пачками (первый поиск — без задержки) */
   warm(){ const docs=this.docs; let i=0; const idle=window.requestIdleCallback||(f=>setTimeout(()=>f({timeRemaining:()=>8}),30));
     const step=dl=>{ if (docs!==this.docs) return; while (i<docs.length && dl.timeRemaining()>2) CatalogIndex.hay(docs[i++]); if (i<docs.length) idle(step); };

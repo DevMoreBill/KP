@@ -14,7 +14,7 @@ function typeById(id){ return TYPES.find(t=>t.id===id) || TYPES.find(t=>t.id==='
 
 // категория по названию: сначала наименование и заголовок страницы, затем заголовок титула; ДГУ — последней
 // (так же определяет app/catalog_migrate.py при обновлении каталога)
-function detectCat(d, a){
+function detectCat(d){
   if (d && d.attrs && d.attrs.cat && TYPES.some(t=>t.id===d.attrs.cat)) return d.attrs.cat;
   if (d && d.kind==='option') return 'ats';
   if (d && d.attrs && LEGACY_TYPE[d.attrs.type]) return LEGACY_TYPE[d.attrs.type];
@@ -183,6 +183,6 @@ class CatAttrs {
   static keep(d, a){ if (d && this.cards.has(d)) d._a=a; return a; }
 }
 
-function attrsOf(d){ const m=CatAttrs.of(d); if (m) return m; const a=extractAttrs(d); const o=d.attrs||{}; for(const k in o){ if(o[k]!==''&&o[k]!=null) a[k]=o[k]; } a.cat=detectCat(d,a);
+function attrsOf(d){ const m=CatAttrs.of(d); if (m) return m; const a=extractAttrs(d); const o=d.attrs||{}; for(const k in o){ if(o[k]!==''&&o[k]!=null) a[k]=o[k]; } a.cat=detectCat(d);
   const t=typeById(a.cat); if ((d.groups||[]).length){ const s=attrsFromSpec(d,t); for (const k in s) if (o[k]===''||o[k]==null) a[k]=s[k]; }
   a.type=t.name; return CatAttrs.keep(d, a); }

@@ -18,7 +18,7 @@
 .tag.tt{background:var(--soft);color:var(--navy)}
 .tpick{display:flex;flex-wrap:wrap;gap:8px}
 .kw{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.cw-mn .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.cw-mn .tags{display:flex;gap:4px}
 .tag{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--ink)}
 .tag.kwt{background:var(--navy);color:var(--on-navy)}
 @media (max-width:1000px){

@@ -8,7 +8,7 @@
 .oitem{display:inline-flex;gap:6px;align-items:center;background:var(--soft);border-radius:8px;padding:3px 4px 3px 10px;font-size:12.5px}
 .oitem button{border:0;background:none;cursor:pointer;color:var(--muted);font-size:12px;padding:0 4px}
 .icard{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 16px;align-items:start}
-.iside{grid-column:2;display:grid!important;grid-template-columns:170px 200px 1fr;gap:12px;align-items:end}
+.iside{grid-column:2;display:grid!important;grid-template-columns:170px 200px 1fr;align-items:end}
 textarea.iname{min-height:0;height:auto;resize:none;font-weight:600;font-size:15.5px;line-height:1.35;padding:8px 12px;width:100%}
 .ithumb{width:110px;height:84px;border:1.5px dashed var(--line);border-radius:12px;background:var(--soft);display:grid;place-items:center;cursor:pointer;padding:4px;color:var(--muted);font-size:13px;overflow:hidden;box-sizing:border-box;flex:0 0 auto}
 .ithumb img{display:block;width:100%;height:100%;min-width:0;min-height:0;object-fit:contain}
@@ -38,12 +38,10 @@ dialog.editor[open]{display:flex}
 .fimg{display:grid;gap:6px}
 .ibox{height:130px;border:1.5px dashed var(--line);border-radius:10px;background:var(--soft);display:grid;place-items:center;text-align:center;cursor:pointer;color:var(--muted);font-size:13px;padding:6px}
 .ibox img{max-width:100%;max-height:118px;object-fit:contain}
-.ibox.over{border-color:var(--sky)}
 .ftext{display:grid;gap:8px;align-content:start}
-.fhead{display:grid;grid-template-columns:1fr 32px 32px;gap:6px;align-items:center}
+.fhead{grid-template-columns:1fr 32px 32px}
 @media (max-width:1000px){.icard{grid-template-columns:90px 1fr}.iside{grid-column:1/-1;grid-template-columns:1fr 1fr 1fr;align-items:end}.media2,.fblock{grid-template-columns:1fr}}
 .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;border:1.5px dashed var(--line);border-radius:12px;padding:12px;min-height:70px;background:var(--soft)}
-.gal.over{border-color:var(--sky)}
 .gcard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px}
 .gcard img{width:100%;height:140px;object-fit:contain;background:#fff;border-radius:6px}
 .mainpick{margin:8px 0 4px;display:flex;flex-direction:column;gap:6px}
@@ -76,7 +74,6 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .sw[aria-checked=true] i{background:var(--navy)}
 .sw[aria-checked=true] i::after{transform:translateX(16px)}
 .drop{border:1.5px dashed var(--line);border-radius:12px;min-height:150px;display:grid;place-items:center;text-align:center;padding:10px;cursor:pointer;color:var(--muted);font-size:13px;background:var(--soft);position:relative;overflow:hidden}
-.drop.over{border-color:var(--sky)}
 .drop img{max-width:100%;max-height:170px;display:block}
 .drop .x{position:absolute;top:6px;right:6px;background:var(--card)}
 .grp{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
@@ -115,23 +112,12 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .mob .ed-hdl{display:none}
 
 /* сборка: состав изделия */
-.kit-l{display:grid;gap:12px}
-.kit-card{display:grid;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);min-width:0}
-.kit-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px}     /* на телефоне кнопки карточки переносятся, а не выходят за край */
-.kit-n{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--soft);color:var(--navy);font-weight:700;font-size:13px}
-.kit-nm{flex:1 1 140px;min-width:0;font-weight:600}
-.kit-g{display:grid;grid-template-columns:90px minmax(0,1.2fr) minmax(0,1fr);gap:10px}
 .kit-cost{display:flex;gap:6px}
 .kit-cost input{flex:1;min-width:0}
 .kit-cost select{width:auto;flex:none}
-.kit-ph{position:relative;display:grid;place-items:center;width:120px;height:100px;margin-top:20px;overflow:hidden;border:1px dashed var(--line);border-radius:10px;background:var(--field)}
-.kit-ph img{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box}
-.kit-ph .x{position:absolute;top:4px;right:4px}
-.kit-phb{border:0;background:none;color:var(--navy);font-weight:600;cursor:pointer}
-.kit-rows summary{cursor:pointer;font-weight:600;font-size:13px}
+.kit-ph{place-items:center;margin-top:20px}
+.kit-phb{font-weight:600}
 .kit-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:6px;margin-top:6px}
-.kit-rows .btn{margin-top:6px}
-.kit-add{flex-wrap:wrap;gap:8px;margin-top:12px}
 .kit-add .chips{display:flex;flex-wrap:wrap;gap:6px}
 .kit-sum{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--soft)}
 .kit-sum b{font-size:16px}
@@ -142,8 +128,6 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .kit-pick img,.kit-noimg{flex:none;width:56px;height:44px;object-fit:contain}
 .kit-pick small{display:block}
 @media (max-width:700px){
-  .kit-g{grid-template-columns:80px minmax(0,1fr)}
-  .kit-sup{grid-column:1/-1}
   .kit-ph{margin-top:0}
 }
 
@@ -155,13 +139,9 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .kit-ctb small{color:var(--muted);font-size:12px}
 .kit-ctb:hover,.kit-ctb.on{border-color:var(--navy)}
 .kit-ctb.on{box-shadow:inset 0 0 0 1px var(--navy)}
-.kit-ct{display:grid;grid-template-columns:2fr 1fr 1.4fr;gap:10px}
 .kit-role{flex:none;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-radius:999px;background:var(--soft);color:var(--navy)}
 .kit-role.main{background:var(--navy);color:var(--on-navy)}
-.kit-card.r-container,.kit-card.r-main{border-color:var(--navy)}
-.kit-add{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
 .btn.sm{padding:4px 10px;font-size:12.5px}
-@media (max-width:700px){ .kit-ct{grid-template-columns:1fr} }
 
 /* автозаполнение с ИИ: три шага */
 .ai3 .ai-steps{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:12px;counter-reset:ai}
@@ -185,9 +165,6 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .ai-list{margin:0;padding-left:18px}
 .ai-msg{margin:10px 0 0;padding:10px 12px;border-radius:10px;background:var(--soft);font-weight:500}
 @media (max-width:700px){ .ai3 .ai-steps>li{padding-left:14px;padding-top:44px} .ai-url{flex-direction:column} }
-.kit-ct{grid-template-columns:repeat(3,minmax(0,1fr))}
-.kit-sys{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-@media (max-width:700px){ .kit-ct{grid-template-columns:1fr} }
 /* подбор по фильтрам категории */
 .pf{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px 10px;margin-bottom:8px}
 .pf .pf-q{grid-column:1/-1}
@@ -207,33 +184,17 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .kit-none{display:grid;justify-items:start;gap:8px;padding:14px;border:1.5px dashed var(--line);border-radius:12px}
 .kit-none p{margin:0;font-weight:600}
 
-/* 3.23: состав станции — шаги сборки, фото элемента целиком слева, данные справа */
-.kit-steps{list-style:none;margin:0 0 12px;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;counter-reset:none}
-.kit-steps li{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--card);min-width:0}
-.kit-steps li>span:last-child{display:grid;min-width:0}
-.kit-steps b{font-size:13px;line-height:1.25}
-.kit-steps small{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kit-sn{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;background:var(--soft);color:var(--navy)}
-.kit-steps li.done{border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
-.kit-steps li.done .kit-sn{background:var(--ok);color:var(--on-navy)}
-.kit-steps li.todo{border-style:dashed}
-@media (max-width:800px){ .kit-steps{grid-template-columns:repeat(2,minmax(0,1fr))} }
-.kit-body{display:grid;grid-template-columns:168px minmax(0,1fr);gap:12px;align-items:start}
-.kit-main{display:grid;gap:10px;min-width:0}
-.kit-phw{display:grid;gap:4px;justify-items:center}
-.kit-phl{justify-self:start;font-size:12.5px;color:var(--muted)}
+/* 3.23: фото элемента состава станции и «добавить элемент» */
 .kit-ph{position:relative;display:flex;align-items:center;justify-content:center;width:168px;height:140px;margin:0;overflow:hidden;border:1px dashed var(--line);border-radius:10px;background:#fff}
 .kit-ph.has{border-style:solid}
 .kit-ph img{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;padding:6px;box-sizing:border-box}
 .kit-ph .x{position:absolute;top:4px;right:4px;background:var(--card)}
 .kit-phb{display:grid;gap:2px;justify-items:center;align-content:center;width:100%;height:100%;border:0;background:var(--field);color:var(--navy);cursor:pointer}
 .kit-phb small{color:var(--muted);font-weight:400}
-.kit-phr{font-size:12.5px}
 .kit-add{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:12px;padding:12px;border:1.5px dashed var(--navy);border-radius:12px;background:var(--soft)}
 .kit-add>b{font-size:14.5px}
 .kit-add .chips{flex-basis:100%}
 .kit-add .chip{border-color:var(--navy);color:var(--navy);background:var(--card);font-weight:600}
-@media (max-width:700px){ .kit-body{grid-template-columns:1fr} .kit-phw{justify-items:start} }
 /* главное фото станции: пояснение и выбор из фото элементов */
 .st-ph{display:grid;gap:8px;margin-bottom:10px;padding:10px 12px;border-radius:10px;background:var(--soft)}
 .st-phn{margin:0;font-size:13px;line-height:1.45}
@@ -259,9 +220,6 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .stl-iss li{padding:4px 0 4px 22px;position:relative}
 .stl-iss li::before{position:absolute;left:2px;top:4px;font-weight:700}
 .stl-iss li.error{color:var(--danger)}
-.stl-more{margin:2px 0 0}
-.stl-more>summary{cursor:pointer;font-size:13px;color:var(--navy);padding:2px 0 4px 22px;list-style-position:inside}
-.stl-more[open]>summary{margin-bottom:2px}
 .stl-iss li.error::before{content:'✕'}
 .stl-iss li.warn{color:var(--warn-ink)}
 .stl-iss li.warn::before{content:'⚠'}
@@ -300,12 +258,6 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .stl-isb .stl-iss li.info{background:none}
 .stl-inf>summary{cursor:pointer;font-size:13px;color:var(--navy);font-weight:600}
 .stl-inf>.stl-iss{margin-top:6px}
-.sq-iss{margin:0;padding:6px 10px 6px 12px;list-style:none;display:grid;gap:3px;border:1px solid var(--warn-line);border-left:4px solid var(--warn-ink);border-radius:8px;background:var(--warn-bg);font-size:12.5px;line-height:1.4;color:var(--warn-ink)}
-.sq-iss li{padding-left:18px;position:relative}
-.sq-iss li::before{content:'⚠';position:absolute;left:0}
-.sq-iss li.error{color:var(--danger)}
-.sq-iss li.error::before{content:'✕'}
-.sq-iss .lnk{margin-left:4px}
 .stl-sys-l{margin:0;padding:0;list-style:none;display:grid;gap:3px;font-size:13px;line-height:1.45}
 .stl-sys-l b{font-weight:600}
 .stl-chain{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px}
@@ -403,10 +355,6 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 /* ---- «Состав станции» (KitView): требования, контейнер строкой, две группы элементов строками, раскрытие подробностей */
 .kit2{display:grid;gap:14px}
 .kit-req{display:grid;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
-.kr-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
-.kr-h>b{font-size:14px}
-.kr-h>span:not(.kr-a){flex:1 1 220px;min-width:0;font-size:13px}
-.kr-a{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
 .kr-ck{display:flex;flex-wrap:wrap;gap:6px}
 .kr-ck .chip.warn{border-color:var(--warn-line);background:var(--warn-bg);color:var(--warn-ink)}
 .kr-pick{display:flex;align-items:flex-start;gap:8px;margin:8px 0 0;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);font-size:12.5px;line-height:1.4}

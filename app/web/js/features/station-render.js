@@ -129,7 +129,7 @@ class StScene {
     this.g=g; this.mm=mm; [this.Le, this.We, this.He]=g.ext.map(mm); [this.Li, this.Wi, this.Hi]=plan.int.map(mm);
     this.ox=(this.Le-this.Li)/2; this.oy=(this.We-this.Wi)/2;
     this.dz=plan.chassis ? mm(meta.deck||1150) : 0;
-    this.base=this.dz+mm(StationGeo.zFloor(g.type, g.t)); this.ceil=this.base+this.Hi; this.top=this.dz+this.He; this.rise=g.sea ? 0 : mm(g.rise||0);
+    this.base=this.dz+mm(StationGeo.zFloor(g.type)); this.ceil=this.base+this.Hi; this.top=this.dz+this.He; this.rise=g.sea ? 0 : mm(g.rise||0);
     this.wall=plan.wallColor||'#CBD0CC'; this.frame=plan.frameColor||RalColor.shade(this.wall, 0.72);
     this.lining=g.sea ? '#e3e6e8' : '#eef0f1';
     // сервисные двери — только для монтажа и демонтажа (закрыты); входная дверь оператора и дверь отсека бака — отдельно
