@@ -29,20 +29,12 @@ from datetime import date, datetime, timedelta
 import defaults
 from counterparty import _http
 
-ATI_BASE = 'https://api.ati.su/priceline/license/v2'
-PEC_CALC = 'https://calc.pecom.ru/bitrix/components/pecom/calc/ajax.php'
-PEC_TOWNS = 'https://pecom.ru/ru/calc/towns.php'
-DELLIN_CALC = 'https://api.dellin.ru/v2/calculator.json'
-KIT_BASE = 'https://capi.tk-kit.com'
-CDEK_BASE = 'https://api.cdek.ru/v2'
-VOZ_URL = 'https://vozovoz.ru/api/'
-NRG_BASES = ('https://api2.nrg-tk.ru/v2', 'https://api2.nrg-tk.pro/v2')
 DICT_DAYS = 7
 # защита сайтов СДЭК и Энергии отклоняет (403) запросы с «неизвестным» браузером — представляемся обычным
 BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 # коды ответов сервисов → понятное объяснение (сам код — в скобках)
 HTTP_WHY = {400: 'сервис не принял запрос', 401: 'ключ не принят — проверьте «Настройки → Ключи API»', 403: 'сервис отклонил запрос (защита сайта или доступ по ключу)',
-            404: 'адрес сервиса изменился', 429: 'исчерпан лимит запросов — повторите позже', 500: 'ошибка на стороне сервиса',
+            404: 'адрес сервиса изменился или токен не подходит к этому адресу — проверьте «Настройки → Внешние сервисы → Перевозчики: адреса API» и ключ', 429: 'исчерпан лимит запросов — повторите позже', 500: 'ошибка на стороне сервиса',
             502: 'сервис временно недоступен', 503: 'сервис временно недоступен', 504: 'сервис не ответил вовремя'}
 
 # класс машины в тарифах → тип кузова и тоннаж «Средних ставок» ATI.SU
@@ -71,6 +63,112 @@ class LtlLimits:
         return int(defaults.num(store, key, b, lo, hi)) if store is not None else b
 
 
+class CarrierApi:
+    """Перевозчики: включение и адреса API — правит администратор («Настройки → Внешние сервисы → Перевозчики: адреса API»).
+    Перевозчик сменил адрес — новый вписывается в «Настройках», без выпуска программы. Сам разбор запроса и ответа —
+    в функциях перевозчиков ниже (исполняемый код из «Настроек» не принимается — это дыра в безопасности)."""
+    KV = 'carrierApi'
+    # (код, название, сайт с документацией API, ((поле, подпись, адрес по умолчанию), …))
+    LIST = (
+        ('ati', 'ATI.SU «Средние ставки»', 'https://ati.su/developers', (('base', 'Адрес API', 'https://api.ati.su/priceline/license/v2'),)),
+        ('pec', 'ПЭК', 'https://pecom.ru/business/developers/', (('calc', 'Расчёт стоимости', 'https://calc.pecom.ru/bitrix/components/pecom/calc/ajax.php'),
+                                                                  ('towns', 'Справочник городов', 'https://pecom.ru/ru/calc/towns.php'))),
+        ('dellin', 'Деловые Линии', 'https://dev.dellin.ru/api/', (('calc', 'Расчёт стоимости', 'https://api.dellin.ru/v2/calculator.json'),)),
+        ('nrg', 'Энергия', 'https://api2.nrg-tk.ru/', (('base', 'Адрес API', 'https://api2.nrg-tk.pro/v2'),
+                                                        ('reserve', 'Резервный адрес', 'https://api2.nrg-tk.ru/v2'))),
+        ('cdek', 'СДЭК', 'https://api-docs.cdek.ru/', (('base', 'Адрес API', 'https://api.cdek.ru/v2'),)),
+        ('vozovoz', 'Возовоз', 'https://github.com/vozovoz/apiv2', (('url', 'Адрес API', 'https://vozovoz.ru/api/'),)),
+        ('kit', 'КИТ', 'https://tk-kit.ru/developers', (('base', 'Адрес API', 'https://capi.tk-kit.com'),)),
+    )
+    # только https и имя сайта (не IP и не localhost): адрес уходит в запрос сервера
+    URL = re.compile(r'^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(:\d{2,5})?(/[^\s<>"\'\\]*)?$')
+
+    @classmethod
+    def _raw(cls, store):
+        s = store.kv_get(cls.KV) if store is not None else None
+        return s if isinstance(s, dict) else {}
+
+    @classmethod
+    def _default(cls, cid, field):
+        for c, _n, _d, fields in cls.LIST:
+            if c == cid:
+                for f, _l, url in fields:
+                    if f == field:
+                        return url
+        raise KeyError(cid + '.' + field)
+
+    @classmethod
+    def url(cls, store, cid, field):
+        own = ((cls._raw(store).get(cid) or {}).get('urls') or {}).get(field)
+        return own if own and cls.URL.match(own) else cls._default(cid, field)
+
+    @classmethod
+    def on(cls, store, cid):
+        return (cls._raw(store).get(cid) or {}).get('on', True) is not False
+
+    @classmethod
+    def public(cls, store):
+        raw = cls._raw(store)
+        return {'carriers': [{'id': c, 'name': n, 'docs': d, 'on': cls.on(store, c), 'at': (raw.get(c) or {}).get('at'), 'by': (raw.get(c) or {}).get('by'),
+                              'fields': [{'id': f, 'label': lb, 'default': url, 'value': ((raw.get(c) or {}).get('urls') or {}).get(f) or ''}
+                                         for f, lb, url in fs]} for c, n, d, fs in cls.LIST]}
+
+    @classmethod
+    def save(cls, store, d, by=''):
+        """d: {код: {on: bool, urls: {поле: адрес или '' — по умолчанию}}}; неизвестное — ошибка."""
+        if not isinstance(d, dict):
+            raise ValueError('Неверный формат настроек перевозчиков')
+        known = {c: {f for f, _l, _u in fs} for c, _n, _d, fs in cls.LIST}
+        raw = cls._raw(store)
+        for cid, v in d.items():
+            if cid not in known or not isinstance(v, dict):
+                raise ValueError('Неизвестный перевозчик: %s' % str(cid)[:40])
+            cur = dict(raw.get(cid) or {})
+            if 'on' in v:
+                cur['on'] = bool(v['on'])
+            urls = dict(cur.get('urls') or {})
+            for f, u in (v.get('urls') or {}).items():
+                if f not in known[cid]:
+                    raise ValueError('Неизвестное поле адреса: %s' % str(f)[:40])
+                u = str(u or '').strip()
+                if not u or u == cls._default(cid, f):
+                    urls.pop(f, None)
+                    continue
+                if len(u) > 300 or not cls.URL.match(u):
+                    raise ValueError('%s: адрес должен начинаться с https:// и вести на сайт перевозчика (не IP-адрес), до 300 знаков' % dict((c, n) for c, n, _d, _f in cls.LIST)[cid])
+                urls[f] = u
+            cur['urls'], cur['at'], cur['by'] = urls, _now(), str(by or '')[:80]
+            raw[cid] = cur
+        store.kv_set(cls.KV, raw)
+        for cid in d:                      # справочники городов прежнего адреса — заново с нового
+            store.kv_set('lgdict:' + cid, {})
+        return cls.public(store)
+
+    SAMPLE = [{'l': 1.2, 'w': 1.0, 'h': 1.0, 'm': 0.3, 'qty': 1}]      # пробное место: 1,2 × 1 × 1 м, 300 кг
+
+    @classmethod
+    def test(cls, store, cid):
+        """Пробный расчёт одного перевозчика Москва → Санкт-Петербург: {ok, msg} — без ключа в тексте."""
+        names = dict((c, n) for c, n, _d, _f in cls.LIST)
+        if cid not in names:
+            raise ValueError('Неизвестный перевозчик')
+        need = {'ati': 'atiToken', 'dellin': 'dellinKey', 'kit': 'kitToken', 'cdek': 'cdekSecret', 'vozovoz': 'vozovozToken'}.get(cid)
+        if need and not keys(store).get(need):
+            return {'ok': False, 'msg': 'ключ не задан — впишите его выше, в «Доставка по России»'}
+        P, fl, tl = cls.SAMPLE, ['Москва'], ['Санкт-Петербург']
+        run = {'pec': lambda: pec_quote(store, fl, tl, P, 0), 'nrg': lambda: nrg_quote(store, fl, tl, P, 0),
+               'dellin': lambda: dellin_quote(store, 'Москва', 'Санкт-Петербург', P, 0), 'kit': lambda: kit_quote(store, fl, tl, P, 0),
+               'cdek': lambda: cdek_quote(store, fl, tl, P), 'vozovoz': lambda: vozovoz_quote(store, 'Москва', 'Санкт-Петербург', '', '', P)}
+        try:
+            if cid == 'ati':
+                d = AtiDirections(store).find('Москва', 'Санкт-Петербург')
+                return {'ok': bool(d), 'msg': 'отвечает: направление Москва → Санкт-Петербург есть' if d else 'отвечает, но направления Москва → Санкт-Петербург нет'}
+            r = run[cid]()
+            return {'ok': True, 'msg': 'отвечает: Москва → Санкт-Петербург, 300 кг — %s ₽' % '{:,.0f}'.format(r['price']).replace(',', ' ')}
+        except Exception as e:
+            return {'ok': False, 'msg': _err(e)}
+
+
 _lock = threading.Lock()
 
 
@@ -90,9 +188,11 @@ def keys(store):
 
 
 def providers(store):
+    """Перевозчик считает, если он включён в «Настройках» и задан его ключ (ПЭК и Энергия — без ключа)."""
     k = keys(store)
-    return {'ati': bool(k.get('atiToken')), 'pec': True, 'dellin': bool(k.get('dellinKey')), 'kit': bool(k.get('kitToken')),
-            'cdek': bool(k.get('cdekId') and k.get('cdekSecret')), 'vozovoz': bool(k.get('vozovozToken')), 'nrg': True}
+    has = {'ati': bool(k.get('atiToken')), 'pec': True, 'dellin': bool(k.get('dellinKey')), 'kit': bool(k.get('kitToken')),
+           'cdek': bool(k.get('cdekId') and k.get('cdekSecret')), 'vozovoz': bool(k.get('vozovozToken')), 'nrg': True}
+    return {c: v and CarrierApi.on(store, c) for c, v in has.items()}
 
 
 def _body_text(body):
@@ -117,7 +217,33 @@ def _body_text(body):
     return re.sub(r'\s+', ' ', body)[:200]
 
 
+def _call(url, data=None, headers=None, method=None):
+    """Запрос с переходом по 307/308: перевозчик переехал на новый адрес — POST повторяется туда же (urllib сам этого не делает)."""
+    for _ in range(3):
+        try:
+            return _http(url, data=data, headers=headers, method=method)
+        except urllib.error.HTTPError as e:
+            loc = e.headers.get('Location') if e.code in (301, 302, 307, 308) and e.headers else None
+            nxt = urllib.parse.urljoin(url, loc) if loc else ''
+            if not nxt.startswith('https://') or nxt == url:
+                raise
+            url = nxt
+    raise ValueError('сервис перенаправляет запрос по кругу — проверьте адрес API в «Настройках»')
+
+
+# ключи и токены в адресе (?token=…) и в тексте ответа не показываются и не пишутся в журнал
+_SECRET_RE = re.compile(r'(?i)((?:token|access_token|appkey|api_?key|key|secret|password|client_secret)=)[^&\s"\'<>]+')
+
+
+def _hide(text):
+    return _SECRET_RE.sub(r'\1***', str(text or ''))
+
+
 def _err(e):
+    return _hide(_err_text(e))
+
+
+def _err_text(e):
     if isinstance(e, urllib.error.HTTPError):
         try:
             text = _body_text(e.read().decode('utf-8', 'replace')[:2000])
@@ -197,7 +323,7 @@ def _ati_headers(store):
 
 def ati_directions(store):
     def load():
-        j = _http(ATI_BASE + '/all_directions', headers=_ati_headers(store))
+        j = _call(CarrierApi.url(store, 'ati', 'base') + '/all_directions', headers=_ati_headers(store))
         rows = j if isinstance(j, list) else (_find(j, lambda o: isinstance(o, list) and o and isinstance(o[0], dict) and 'FromCityId' in o[0]) or [])
         return [{'fromId': r.get('FromCityId'), 'from': r.get('FromCity') or '', 'toId': r.get('ToCityId'), 'to': r.get('ToCity') or '',
                  'info': r.get('DirectionInfo')} for r in rows if isinstance(r, dict) and r.get('FromCityId') and r.get('ToCityId')]
@@ -227,7 +353,7 @@ def ati_price(store, d, car, tonnage, days=None):
     body = {'From': {'CityId': d['fromId']}, 'To': {'CityId': d['toId']}, 'FromCityId': d['fromId'], 'ToCityId': d['toId'],
             'CarType': car, 'Tonnage': tonnage, 'DateFrom': (end - timedelta(days=days)).isoformat() + 'T00:00:00',
             'DateTo': end.isoformat() + 'T23:59:59', 'WithNds': True}
-    j = _http(ATI_BASE + '/average_prices', data=body, headers=_ati_headers(store), method='POST')
+    j = _call(CarrierApi.url(store, 'ati', 'base') + '/average_prices', data=body, headers=_ati_headers(store), method='POST')
     rec = j[0] if isinstance(j, list) and j else j
     rub = _find(rec, lambda o: isinstance(o, dict) and 'UpperPrice' in o and o is not rec) if isinstance(rec, dict) else None
     rub = (rec or {}).get('PricesInRub') or rub or {}
@@ -246,7 +372,7 @@ def ati_price(store, d, car, tonnage, days=None):
 # ---------------------------------------------------------------- ПЭК (открытый калькулятор)
 def pec_towns(store):
     def load():
-        j = _http(PEC_TOWNS)
+        j = _call(CarrierApi.url(store, 'pec', 'towns'))
         out = {}
         for region, towns in (j.items() if isinstance(j, dict) else []):
             if isinstance(towns, dict):
@@ -279,7 +405,7 @@ def pec_quote(store, frm, to, places, declared=0):
     for k, p in enumerate(units):   # место: ширина, длина, высота (м), объём (м³), вес (кг), негабарит, жёсткая упаковка
         q += [('places[%d][]' % k, v) for v in (p['w'], p['l'], p['h'], round(p['l'] * p['w'] * p['h'], 3), round(p['m'] * 1000),
                                                  1 if max(p['l'], p['w'], p['h']) > 3 or p['m'] > 0.5 else 0, 0)]
-    j = _http(PEC_CALC + '?' + urllib.parse.urlencode(q))
+    j = _call(CarrierApi.url(store, 'pec', 'calc') + '?' + urllib.parse.urlencode(q))
     auto = j.get('auto') if isinstance(j, dict) else None
     if not auto:
         raise ValueError('ПЭК: автоперевозка недоступна для этого груза' + ((' — ' + str(j.get('error'))) if isinstance(j, dict) and j.get('error') else ''))
@@ -329,7 +455,7 @@ def dellin_quote(store, frm_addr, to_addr, places, declared=0):
     if declared:                                 # страхование груза Деловыми Линиями по объявленной стоимости
         body['cargo']['insurance'] = {'statedValue': int(round(declared)), 'term': True}
     try:
-        j = _http(DELLIN_CALC, data=body, headers={'Content-Type': 'application/json'}, method='POST')
+        j = _call(CarrierApi.url(store, 'dellin', 'calc'), data=body, headers={'Content-Type': 'application/json'}, method='POST')
     except urllib.error.HTTPError as e:
         try:
             j = json.loads(e.read().decode('utf-8', 'replace'))
@@ -367,7 +493,7 @@ def _kit_headers(store):
 def _kit_call(store, path, body):
     """Запрос к KIT.API (POST JSON, токен — Bearer). Ошибки — понятным текстом: 401 — токен, 429 — лимит, 422 — поля."""
     try:
-        return _http(KIT_BASE + path, data=body, headers=_kit_headers(store), method='POST')
+        return _call(CarrierApi.url(store, 'kit', 'base') + path, data=body, headers=_kit_headers(store), method='POST')
     except urllib.error.HTTPError as e:
         try:
             j = json.loads(e.read().decode('utf-8', 'replace') or 'null')
@@ -477,7 +603,7 @@ def _cdek_headers(store):
     k = keys(store)
     t = _cdek_tok.get(k.get('cdekId'))
     if not t or t[1] < datetime.now():
-        j = _http(CDEK_BASE + '/oauth/token', data={'grant_type': 'client_credentials', 'client_id': k.get('cdekId', ''),
+        j = _call(CarrierApi.url(store, 'cdek', 'base') + '/oauth/token', data={'grant_type': 'client_credentials', 'client_id': k.get('cdekId', ''),
                                                     'client_secret': k.get('cdekSecret', '')}, headers={'User-Agent': BROWSER_UA}, method='POST')
         if not j.get('access_token'):
             raise ValueError('СДЭК: не выдан токен — проверьте идентификатор и секретный ключ')
@@ -496,7 +622,7 @@ def cdek_city(store, names, h):
         if not key:
             continue
         if key not in items:
-            j = _http(CDEK_BASE + '/location/cities?' + urllib.parse.urlencode({'city': n, 'country_codes': 'RU', 'size': 10}), headers=h)
+            j = _call(CarrierApi.url(store, 'cdek', 'base') + '/location/cities?' + urllib.parse.urlencode({'city': n, 'country_codes': 'RU', 'size': 10}), headers=h)
             rows = j if isinstance(j, list) else []
             hit = next((r for r in rows if cnorm(r.get('city')) == key), None)
             items[key] = hit.get('code') if hit else None
@@ -514,7 +640,7 @@ def cdek_quote(store, frm, to, places, frm_addr='', to_addr='', declared=0):
     pk = [{'weight': int(round(p['m'] * 1000)), 'length': int(round(p['l'] * 100)), 'width': int(round(p['w'] * 100)),
            'height': int(round(p['h'] * 100))} for p in Carrier.units(places)]
     loc = lambda code, addr: dict({'code': code}, **({'address': addr} if addr else {}))
-    j = _http(CDEK_BASE + '/calculator/tarifflist', data={'type': 2, 'currency': 1, 'lang': 'rus', 'from_location': loc(a, frm_addr),
+    j = _call(CarrierApi.url(store, 'cdek', 'base') + '/calculator/tarifflist', data={'type': 2, 'currency': 1, 'lang': 'rus', 'from_location': loc(a, frm_addr),
                                                           'to_location': loc(b, to_addr), 'packages': pk}, headers=h, method='POST')
     if isinstance(j, dict) and j.get('errors'):
         raise ValueError('СДЭК: ' + '; '.join(str((e or {}).get('message') or e) for e in j['errors'])[:300])
@@ -526,7 +652,7 @@ def cdek_quote(store, frm, to, places, frm_addr='', to_addr='', declared=0):
     price, ins = _num(r['delivery_sum']), 0
     if declared:            # страхование СДЭК (услуга INSURANCE) — расчёт выбранного тарифа с объявленной стоимостью
         try:
-            t = _http(CDEK_BASE + '/calculator/tariff', data={'type': 2, 'currency': 1, 'tariff_code': r.get('tariff_code'), 'from_location': loc(a, frm_addr),
+            t = _call(CarrierApi.url(store, 'cdek', 'base') + '/calculator/tariff', data={'type': 2, 'currency': 1, 'tariff_code': r.get('tariff_code'), 'from_location': loc(a, frm_addr),
                                                               'to_location': loc(b, to_addr), 'packages': pk,
                                                               'services': [{'code': 'INSURANCE', 'parameter': str(int(round(declared)))}]}, headers=h, method='POST')
             svc = [x for x in (t.get('services') or []) if isinstance(x, dict) and x.get('code') == 'INSURANCE'] if isinstance(t, dict) else []
@@ -555,11 +681,11 @@ def vozovoz_quote(store, frm, to, frm_addr, to_addr, places, declared=0):
                                         'height': max(u['h'] for u in units), 'weight': round(max(u['m'] for u in units) * 1000, 1)}},
                   **({'insurance': int(round(declared))} if declared else {})},
         'gateway': {'dispatch': {'point': point(frm, frm_addr)}, 'destination': {'point': point(to, to_addr)}}}}
-    j = _http(VOZ_URL + '?' + urllib.parse.urlencode({'token': keys(store).get('vozovozToken', '')}), data=body,
+    j = _call(CarrierApi.url(store, 'vozovoz', 'url') + '?' + urllib.parse.urlencode({'token': keys(store).get('vozovozToken', '')}), data=body,
               headers={'Content-Type': 'application/json'}, method='POST')
     if isinstance(j, dict) and j.get('error'):
         e = j['error']
-        raise ValueError('Возовоз: ' + str((e or {}).get('message') if isinstance(e, dict) else e)[:300])
+        raise ValueError('Возовоз: ' + _hide(str((e or {}).get('message') if isinstance(e, dict) else e)[:300]))
     r = (j or {}).get('response') or {}
     price = _num(r.get('price'))
     if not price:
@@ -572,17 +698,18 @@ def vozovoz_quote(store, frm, to, frm_addr, to_addr, places, declared=0):
 
 
 # ---------------------------------------------------------------- Энергия (открытый расчёт без ключа)
-def _nrg(path, data=None):
-    """Запрос к Энергии: два адреса API, при 5xx / обрыве связи — повтор через паузу (их API временами отвечает 502)."""
+def _nrg(store, path, data=None):
+    """Запрос к Энергии: основной и резервный адреса API, при 5xx / обрыве связи — повтор через паузу (их API временами отвечает 502)."""
     err = None
     h = {'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': BROWSER_UA}
+    bases = list(dict.fromkeys(CarrierApi.url(store, 'nrg', f) for f in ('base', 'reserve')))
     for attempt in range(2):
-        for base in NRG_BASES:
+        for base in bases:
             try:
-                return _http(base + path, data=data, headers=h, method='POST' if data is not None else None)
+                return _call(base + path, data=data, headers=h, method='POST' if data is not None else None)
             except urllib.error.HTTPError as e:
                 err = e
-                if e.code < 500:
+                if e.code < 500 and e.code not in (403, 404):     # 403/404 у одного адреса — пробуется другой
                     raise
             except Exception as e:
                 err = e
@@ -592,7 +719,7 @@ def _nrg(path, data=None):
 
 def nrg_cities(store):
     def load():
-        j = _nrg('/cities?lang=ru')
+        j = _nrg(store, '/cities?lang=ru')
         rows = j if isinstance(j, list) else (_find(j, lambda o: isinstance(o, list) and o and isinstance(o[0], dict) and 'id' in o[0] and 'name' in o[0]) or [])
         out = {}
         for r in rows:
@@ -609,7 +736,7 @@ def nrg_quote(store, frm, to, places, declared):
     if not a or not b:
         raise ValueError('город не найден в справочнике Энергии: %s' % (fa if not a else tb))
     items = [{'weight': round(p['m'] * 1000, 1), 'width': p['w'], 'height': p['h'], 'length': p['l']} for p in Carrier.units(places)]
-    j = _nrg('/price', {'idCityFrom': a, 'idCityTo': b, 'cover': 0, 'idCurrency': 0, 'items': items,
+    j = _nrg(store, '/price', {'idCityFrom': a, 'idCityTo': b, 'cover': 0, 'idCurrency': 0, 'items': items,
                         'declaredCargoPrice': int(round(declared or 0)), 'idClient': 0})
     if isinstance(j, dict) and (j.get('message') or j.get('error')) and not j.get('transfer'):
         raise ValueError('Энергия: ' + str(j.get('message') or j.get('error'))[:300])
@@ -703,10 +830,13 @@ def quote(store, req):
     if places and ok:
         decl = _num(req.get('declared')) or 0     # объявленная стоимость груза — для страхования перевозчика
         fl, tl = [frm.get('name')] + list(frm.get('alt') or []), [to.get('name')] + list(to.get('alt') or [])   # город и ближайшие крупные
-        jobs = [('ПЭК', 'https://pecom.ru/services-are/shipping-request/', lambda: pec_quote(store, fl, tl, places, decl))]
+        jobs = []
+        if pv['pec']:
+            jobs.append(('ПЭК', 'https://pecom.ru/services-are/shipping-request/', lambda: pec_quote(store, fl, tl, places, decl)))
         if pv['dellin']:
             jobs.append(('Деловые Линии', 'https://www.dellin.ru/requests/', lambda: dellin_quote(store, frm.get('addr') or frm.get('name'), to.get('addr') or to.get('name'), places, decl)))
-        jobs.append(('Энергия', 'https://nrg-tk.ru/client/calculator/', lambda: nrg_quote(store, fl, tl, places, decl)))
+        if pv['nrg']:
+            jobs.append(('Энергия', 'https://nrg-tk.ru/client/calculator/', lambda: nrg_quote(store, fl, tl, places, decl)))
         if pv['cdek']:
             jobs.append(('СДЭК', 'https://www.cdek.ru/ru/calculate', lambda: cdek_quote(store, fl, tl, places, frm.get('addr'), to.get('addr'), decl)))
         if pv['vozovoz']:

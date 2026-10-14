@@ -814,6 +814,22 @@ class SettingsController(Controller):
             return self.text(502, 'ATI.SU: %s' % e)
         return self.send_json(rec or {'error': 'Не задан ключ ATI.SU («Интеграции») или обновление уже идёт'})
 
+    @route(r'/api/logistics/carriers', ('GET', 'PUT'))   # перевозчики: включение и адреса API (изменяет администратор)
+    def logistics_carriers(self):
+        if self.m == 'PUT':
+            try:
+                return self.send_json(logistics_api.CarrierApi.save(store(), self.json_body(), admin.actor(self.h)[1]))
+            except ValueError as e:
+                return self.text(400, str(e))
+        return self.send_json(logistics_api.CarrierApi.public(store()))
+
+    @route(r'/api/logistics/carriers/test', 'POST')      # пробный расчёт одного перевозчика (администратор)
+    def logistics_carrier_test(self):
+        try:
+            return self.send_json(logistics_api.CarrierApi.test(store(), str((self.json_body() or {}).get('id') or '')))
+        except ValueError as e:
+            return self.text(400, str(e))
+
     @route(r'/api/logistics')              # тарифы доставки по России (общие для отдела; изменяет администратор)
     def logistics(self):
         if self.m == 'PUT':

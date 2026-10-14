@@ -25,6 +25,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from datetime import datetime, timedelta
@@ -104,7 +105,8 @@ class UpdatePackage:
 
 class ReleaseSource:
     """Выпуски на GitHub: последняя версия, описание изменений, архив обновления."""
-    API = os.environ.get('KP_UPDATE_API') or 'https://api.github.com'
+    WEB_API = 'https://api.github.com'
+    API = os.environ.get('KP_UPDATE_API') or WEB_API
     ASSET = re.compile(r'^KP-Obnovlenie-[\d.]+\.zip$')
     TIMEOUT = 60
 
@@ -143,18 +145,52 @@ class ReleaseSource:
             raise UpdateError('Нет связи с GitHub: %s. Скачайте архив обновления вручную и загрузите его файлом' % str(getattr(e, 'reason', e))[:120])
 
     def latest(self):
-        """{version, tag, name, notes, published, asset: {id, name, size} | None, url}."""
-        with self._open('%s/repos/%s/releases/latest' % (self.API, self.repo), 'application/vnd.github+json') as r:
-            j = json.loads(r.read().decode('utf-8'))
+        """{version, tag, name, notes, published, asset: {id, name, size, url?} | None, url}. API GitHub не ответил
+        (404 у публичного репозитория, лимит запросов с общего адреса, 403) — ищется через страницу выпусков github.com."""
+        try:
+            with self._open('%s/repos/%s/releases/latest' % (self.API, self.repo), 'application/vnd.github+json') as r:
+                j = json.loads(r.read().decode('utf-8'))
+        except UpdateError:
+            if self.token or self.API != ReleaseSource.WEB_API:
+                raise
+            return self._latest_web()
         tag = str(j.get('tag_name') or '')
         asset = next(({'id': a.get('id'), 'name': a.get('name'), 'size': a.get('size')} for a in (j.get('assets') or [])
                       if self.ASSET.match(str(a.get('name') or ''))), None)
         return {'version': tag.lstrip('vV'), 'tag': tag, 'name': str(j.get('name') or tag), 'notes': str(j.get('body') or '')[:20000],
                 'published': j.get('published_at') or '', 'asset': asset, 'url': j.get('html_url') or ''}
 
-    def download(self, asset_id):
-        url = '%s/repos/%s/releases/assets/%d' % (self.API, self.repo, int(asset_id))
-        with self._open(url, 'application/octet-stream') as r:
+    def _latest_web(self):
+        """Последний выпуск по перенаправлению github.com/<репозиторий>/releases/latest → …/releases/tag/vX.Y.Z."""
+        try:
+            with urllib.request.urlopen(urllib.request.Request('https://github.com/%s/releases/latest' % self.repo, headers=self._headers('text/html')),
+                                        timeout=self.TIMEOUT) as r:
+                final = r.geturl()
+        except urllib.error.HTTPError as e:
+            raise UpdateError('Выпуск не найден: репозиторий %s приватный или не существует (GitHub ответил %s) — укажите токен GitHub'
+                              % (self.repo, e.code))
+        except (urllib.error.URLError, OSError) as e:
+            raise UpdateError('Нет связи с GitHub: %s. Скачайте архив обновления вручную и загрузите его файлом' % str(getattr(e, 'reason', e))[:120])
+        m = re.search(r'/releases/tag/([^/?#]+)$', final or '')
+        if not m:
+            raise UpdateError('Выпусков в репозитории %s ещё нет' % self.repo)
+        tag = urllib.parse.unquote(m.group(1))
+        ver = tag.lstrip('vV')
+        name = 'KP-Obnovlenie-%s.zip' % ver
+        asset = {'id': 0, 'name': name, 'size': None,
+                 'url': 'https://github.com/%s/releases/download/%s/%s' % (self.repo, urllib.parse.quote(tag), name)} if self.ASSET.match(name) else None
+        return {'version': ver, 'tag': tag, 'name': tag, 'notes': '', 'published': '', 'asset': asset, 'url': final}
+
+    def download(self, asset):
+        """asset — {id, url?} из latest() (или номер файла выпуска)."""
+        a = asset if isinstance(asset, dict) else {'id': asset}
+        if a.get('url') and not a.get('id'):
+            if not str(a['url']).startswith('https://github.com/%s/releases/download/' % self.repo):
+                raise UpdateError('Неверная ссылка на файл выпуска')
+            url, accept = a['url'], 'application/octet-stream'
+        else:
+            url, accept = '%s/repos/%s/releases/assets/%d' % (self.API, self.repo, int(a['id'])), 'application/octet-stream'
+        with self._open(url, accept) as r:
             data = r.read(UpdatePackage.MAX_BYTES + 1)
         return data
 
@@ -326,7 +362,7 @@ class Updater:
         last = self.settings().get('last') or {}
         if not last.get('asset'):
             raise UpdateError('В выпуске нет архива обновления — сначала «Проверить обновления»')
-        return self.install(self.source().download(last['asset']['id']), by, source='GitHub ' + (last.get('tag') or ''))
+        return self.install(self.source().download(last['asset']), by, source='GitHub ' + (last.get('tag') or ''))
 
     # ---------- установка, откат
     def install(self, data, by, source='файл', force=False):

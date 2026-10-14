@@ -509,3 +509,12 @@ tr.re-on{background:var(--soft)}
 .st-hg li .lnk{justify-self:start;font-weight:600;font-size:14px;text-align:left}
 .st-hg li small{font-size:12px;line-height:1.35}
 
+
+/* перевозчики: включение и адреса API (вкладка «Ключи API») */
+.ca-row{ border-top:1px solid var(--line); padding:10px 0; }
+.ca-h{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.ca-h .sp{ flex:1; }
+.ca-f{ margin-top:6px; }
+.ca-in{ display:flex; gap:6px; align-items:center; }
+.ca-in input{ flex:1; min-width:0; }
+.ca-res{ margin:6px 0 0; overflow-wrap:anywhere; }
