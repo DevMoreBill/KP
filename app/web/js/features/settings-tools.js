@@ -33,11 +33,11 @@ class SettingsSearch {
     for (const g of AdminNav.GROUPS) for (const t of g.tabs)
       add({label:t.label, where:g.title, text:t.hint+' '+(this.WORDS[t.key]||''), tab:t.key, kind:'Вкладка'});
     if (typeof DEF_SCHEMA!=='undefined'){ const gt=Object.fromEntries(DEF_GROUPS);
-      for (const [key, g, label, , builtin, o={}] of DEF_SCHEMA) add({label, where:'Программа → Значения программы → '+(gt[g]||g), text:(o.hint||'')+' '+(builtin??''), tab:'defaults', focus:`[data-dk="${CSS.escape(key)}"]`, kind:'Умолчание'}); }
-    if (typeof FEAT!=='undefined') for (const d of FEAT.defs) add({label:d.label, where:'Программа → Функции программы', text:d.hint, tab:'features', focus:`[data-ft="${CSS.escape(d.key)}"]`, kind:'Функция'});
-    if (typeof LISTS!=='undefined') for (const d of LISTS.defs.values()) add({label:d.label, where:'Программа → Списки и выборы', text:d.hint||'', tab:'lists', before:()=>{ ListsPanel.last=d.key; }, kind:'Список'});
-    if (typeof ApiKeys!=='undefined') for (const [g, , fs] of ApiKeys.GROUPS) for (const f of fs) if (f.t) add({label:f.t, where:'Подключения → Ключи API → '+g, text:(f.h||'')+' '+(f.ph||''), tab:'keys', focus:`[data-key="${CSS.escape(f.id)}"]`, kind:'Ключ'});
-    if (typeof TYPES!=='undefined') for (const t of TYPES) add({label:t.name, where:'Каталог → Категории оборудования', text:(t.group||'')+' '+t.fields.map(f=>f.label).join(' '), tab:'types', kind:'Категория', find:t.name});
+      for (const [key, g, label, , builtin, o={}] of DEF_SCHEMA) add({label, where:AdminNav.path('defaults')+' → '+(gt[g]||g), before:()=>{ DefaultsTab.sec=DefRegistry.section(g); DefaultsTab.q=''; DefaultsTab.only=false; }, text:(o.hint||'')+' '+(builtin??''), tab:'defaults', focus:`[data-dk="${CSS.escape(key)}"]`, kind:'Умолчание'}); }
+    if (typeof FEAT!=='undefined') for (const d of FEAT.defs) add({label:d.label, where:AdminNav.path('features'), text:d.hint, tab:'features', focus:`[data-ft="${CSS.escape(d.key)}"]`, kind:'Функция'});
+    if (typeof LISTS!=='undefined') for (const d of LISTS.defs.values()) add({label:d.label, where:AdminNav.path('lists'), text:d.hint||'', tab:'lists', before:()=>{ ListsPanel.last=d.key; }, kind:'Список'});
+    if (typeof ApiKeys!=='undefined') for (const [g, , fs] of ApiKeys.GROUPS) for (const f of fs) if (f.t) add({label:f.t, where:AdminNav.path('keys')+' → '+g, text:(f.h||'')+' '+(f.ph||''), tab:'keys', focus:`[data-key="${CSS.escape(f.id)}"]`, kind:'Ключ'});
+    if (typeof TYPES!=='undefined') for (const t of TYPES) add({label:t.name, where:AdminNav.path('types'), text:(t.group||'')+' '+t.fields.map(f=>f.label).join(' '), tab:'types', kind:'Категория', find:t.name});
     return out;
   }
 

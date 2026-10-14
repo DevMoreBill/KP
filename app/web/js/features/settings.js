@@ -1,58 +1,69 @@
 // «Настройки» — админ-панель под паролем администратора (сервер: app/admin.py). Разделы и вкладки — AdminNav:
-// обзор, КП, каталог, справочники, программа, подключения, доступ, обслуживание. Сессия — 15 минут бездействия.
+// обзор, КП и документы, каталог, клиенты и поставщики, расчёты и нормы, вид и возможности, сотрудники и вход,
+// внешние сервисы, обслуживание (3.89: по задачам администратора; первая вкладка — карта «Что где»). Сессия — 15 минут бездействия.
 'use strict';
 
-const ST = { tab:'stats', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f:{}}, imp:null, chart:'day' };
+const ST = { tab:'home', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f:{}}, imp:null, chart:'day' };
 
 // Разделы «Настроек» по предметной области: что смотрим → с чем работает отдел (КП, каталог, справочники) → как ведёт себя
 // программа → внешние сервисы → кто входит → обслуживание. У вкладки: ключ, название, пояснение (под заголовком) и обработчик.
 class AdminNav {
   static GROUPS = [
-    {title:'Обзор', tabs:[
-      {key:'stats', label:'Статистика', hint:'КП по периодам, активные менеджеры, популярные товары, модерация и размер базы.', open:m=>stStats(m)},
-      {key:'audit', label:'Журнал действий', hint:'Кто, что и когда изменил: КП, каталог, справочники, настройки. Фильтры по сотруднику, действию и дате.', open:m=>stAudit(m)}]},
-    {title:'КП', tabs:[
+    {title:'Обзор', desc:'Что происходит в программе: сводка, кто что делал, что изменено в настройках.', tabs:[
+      {key:'home', label:'Что где', hint:'Карта «Настроек»: все разделы с пояснениями — с чего начать и где что меняется.', open:m=>AdminNav.home(m)},
+      {key:'stats', label:'Сводка и статистика', hint:'КП по периодам, активные менеджеры, популярные товары, «требует внимания», размер базы.', open:m=>stStats(m)},
+      {key:'audit', label:'Журнал действий', hint:'Кто, что и когда сделал: КП, каталог, справочники, настройки. Фильтры по сотруднику, действию и дате.', open:m=>stAudit(m)},
+      {key:'changed', label:'Что изменено в настройках', hint:'Всё, что отличается от программы по умолчанию, одним списком: открыть или вернуть как было.', open:m=>new ChangedPanel(m).open()},
+      {key:'history', label:'История изменений настроек', hint:'Кто, когда и что поменял в настройках; «Вернуть как было» отменяет любую правку.', open:m=>new SettingsHistoryPanel(m).open()}]},
+    {title:'КП и документы', desc:'Как выглядит КП и что с ним происходит после сохранения.', tabs:[
       {key:'templates', label:'Шаблоны КП', hint:'Оформление документа КП: графический редактор, настройки шаблона, новый шаблон для другой компании.', open:m=>stTemplates(m)},
-      {key:'db-kp', label:'КП в базе', hint:'Все сохранённые КП: найти, открыть для правки, удалить в корзину. Файлы готовых КП в папке не удаляются.', open:m=>stDelete(m, 'kp')}]},
-    {title:'Каталог', tabs:[
+      {key:'db-kp', label:'Сохранённые КП', hint:'Все сохранённые КП: найти, открыть для правки, удалить в корзину. Файлы готовых КП в папке не удаляются.', open:m=>stDelete(m, 'kp')},
+      {key:'mail', label:'Почта для отправки КП', hint:'Почтовый сервер (SMTP) и текст письма по умолчанию — для кнопки «Отправить КП клиенту».', open:m=>stMail(m)}]},
+    {title:'Каталог оборудования', desc:'Товары, их категории и загрузка данных от поставщиков.', tabs:[
       {key:'db-catalog', label:'Товары', hint:'Карточки каталога: найти, изменить в редакторе, удалить в корзину.', open:m=>stDelete(m, 'catalog')},
-      {key:'types', label:'Категории оборудования', hint:'Параметры, фильтры и группы характеристик каждой категории.', open:m=>stTypes(m)},
-      {key:'feeds', label:'Фиды поставщиков', hint:'Загрузка прайсов, остатков и описаний поставщиков в каталог, РРЦ, наличие, сетка скидок.', open:m=>stFeeds(m)},
+      {key:'types', label:'Категории и характеристики', hint:'Параметры, фильтры и группы характеристик каждой категории оборудования.', open:m=>stTypes(m)},
+      {key:'feeds', label:'Фиды поставщиков', hint:'Загрузка прайсов, остатков и описаний поставщиков в каталог: РРЦ, наличие, сетка скидок.', open:m=>stFeeds(m)},
       {key:'moderation', label:'Модерация правок', hint:'Правки товаров сотрудниками — сразу в каталог или после вашего подтверждения.', open:m=>stModeration(m)}]},
-    {title:'Справочники', tabs:[
+    {title:'Клиенты и поставщики', desc:'Справочники, из которых подставляются реквизиты и адреса.', tabs:[
       {key:'db-client', label:'Клиенты', hint:'Реквизиты, контакты и объекты клиентов; загрузка списком ИНН.', open:m=>stDelete(m, 'client')},
-      {key:'db-supplier', label:'Поставщики', hint:'Условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщиков.', open:m=>stDelete(m, 'supplier')},
-      {key:'db-manager', label:'Менеджеры — контакты', hint:'Контакты менеджеров, которые попадают в КП. Логины и права — «Доступ → Вход и права менеджеров».', open:m=>stDelete(m, 'manager')},
-      {key:'logistics', label:'Тарифы доставки', hint:'Тарифы перевозки по России для «Экономики сделки»: транспорт, расстояния, разгрузка; загрузка файлом.', open:m=>FreightSettings.open(m)}]},
-    {title:'Программа', tabs:[
-      {key:'features', label:'Функции программы', hint:'Какие дополнительные возможности включены и кому доступны: всем, администратору или выбранным менеджерам.', open:m=>new FeaturesPanel(m).open()},
-      {key:'defaults', label:'Значения программы', hint:'Все числа и значения программы по разделам: новое КП, экономика сделки, логистика, станции, каталог, сервер — с пояснениями и поиском.', open:m=>stDefaults(m)},
-      {key:'rules', label:'Инженерные правила станций', hint:'Коэффициенты и нормы расчёта компрессорных и дизель-генераторных станций: значение, источник, статус; документ «Инженерные правила и источники», своя версия файла.', open:m=>new RulesPanel(m).open()},
-      {key:'lists', label:'Списки и выборы', hint:'Варианты в выпадающих списках: условия, причины проигрыша, единицы и т. п.', open:m=>stLists(m)},
-      {key:'texts', label:'Тексты интерфейса', hint:'Свои надписи и подсказки вместо стандартных.', open:m=>stTexts(m)},
-      {key:'changed', label:'Изменённые настройки', hint:'Всё, что отличается от встроенного в программу, одним списком: открыть или вернуть встроенное.', open:m=>new ChangedPanel(m).open()},
-      {key:'history', label:'История изменений', hint:'Кто, когда и что поменял в настройках; «Вернуть как было» — отменить любую правку.', open:m=>new SettingsHistoryPanel(m).open()}]},
-    {title:'Подключения', tabs:[
-      {key:'connections', label:'Проверка подключений', hint:'Все внешние сервисы одной кнопкой: почта, нейросеть, ЦБ, контрагенты, перевозчики, GitHub, фиды, PDF.', open:m=>new ConnectionsPanel(m).open()},
-      {key:'mail', label:'Почта', hint:'Почтовый сервер (SMTP) и письмо по умолчанию для отправки КП клиентам.', open:m=>stMail(m)},
-      {key:'ai', label:'Нейросеть', hint:'Нейросеть прямо в программе для «Заполнить с ИИ»: ключ, модель, расход.', open:m=>stAi(m)},
-      {key:'keys', label:'Ключи API', hint:'Контрагенты (Checko, резерв OFData, DaData), перевозчики, PDF; резервная копия ключей.', open:m=>stKeys(m)}]},
-    {title:'Доступ', tabs:[
-      {key:'access', label:'Вход и права менеджеров', hint:'Вход в конструктор по логину и паролю, права менеджеров. Контакты менеджеров — «Справочники → Менеджеры — контакты».', open:m=>stAccess(m)},
-      {key:'users', label:'Администраторы', hint:'Кто входит в «Настройки».', open:m=>stUsers(m)},
+      {key:'db-supplier', label:'Поставщики и склады', hint:'Условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщиков.', open:m=>stDelete(m, 'supplier')}]},
+    {title:'Расчёты и нормы', desc:'Числа, с которыми программа считает: экономику сделки, доставку, станции.', tabs:[
+      {key:'defaults', label:'Значения программы', hint:'Все числа и умолчания по разделам: новое КП, экономика сделки, логистика, каталог, сервер — с пояснениями, границами и поиском.', open:m=>stDefaults(m)},
+      {key:'logistics', label:'Тарифы доставки', hint:'Ставки перевозки по России: машины, расстояния, разгрузка, страхование, агент; загрузка файлом.', open:m=>FreightSettings.open(m)},
+      {key:'rules', label:'Нормы станций (инженерные правила)', hint:'Отступы, проходы, ворота, вентиляция, отопление, ресиверы и все расчёты станций в контейнере: значение, источник, пределы.', open:m=>new RulesPanel(m).open()}]},
+    {title:'Вид и возможности', desc:'Что видят менеджеры: включённые функции, списки выбора, надписи.', tabs:[
+      {key:'features', label:'Функции программы', hint:'Какие возможности включены и кому доступны: всем, администратору или выбранным менеджерам.', open:m=>new FeaturesPanel(m).open()},
+      {key:'lists', label:'Списки выбора', hint:'Варианты в выпадающих списках: условия, причины проигрыша, единицы и т. п. — добавить, убрать, переименовать.', open:m=>stLists(m)},
+      {key:'texts', label:'Тексты интерфейса', hint:'Свои надписи и подсказки вместо стандартных.', open:m=>stTexts(m)}]},
+    {title:'Сотрудники и вход', desc:'Кто работает в программе и что ему можно.', tabs:[
+      {key:'db-manager', label:'Менеджеры: контакты', hint:'Имя, должность, телефон, почта менеджера — то, что попадает в КП.', open:m=>stDelete(m, 'manager')},
+      {key:'access', label:'Менеджеры: вход и права', hint:'Вход в конструктор по логину и паролю; права: оборудование, чужие КП, экономика сделки.', open:m=>stAccess(m)},
+      {key:'users', label:'Администраторы', hint:'Кто входит в «Настройки»: добавить, изменить, сменить пароль.', open:m=>stUsers(m)},
       {key:'security', label:'Мой пароль', hint:'Смена своего пароля и правила входа.', open:m=>stSecurity(m)}]},
-    {title:'Обслуживание', tabs:[
-      {key:'updates', label:'Обновления', hint:'Новая версия программы: проверить на GitHub и установить одной кнопкой или из файла; откат; история установок.', open:m=>AdminSystem.updates(m)},
-      {key:'system', label:'Система', hint:'Версия, режим работы, адрес, папки, место на диске; перезапуск программы.', open:m=>AdminSystem.system(m)},
-      {key:'backup', label:'Копии и база', hint:'Автоматические копии и вторая папка для них, сжатие и проверка базы, выгрузка и загрузка, обновления базы.', open:m=>stBackup(m)},
-      {key:'trash', label:'Корзина', get hint(){ return `Удалённое хранится ${DEFN('srv.trashDays', 30)} дн. — здесь его можно восстановить.`; }, open:m=>stTrash(m)}]}];
+    {title:'Внешние сервисы', desc:'Подключения к интернет-сервисам и их ключи.', tabs:[
+      {key:'connections', label:'Проверка подключений', hint:'Все внешние сервисы одной кнопкой: почта, нейросеть, ЦБ, контрагенты, перевозчики, GitHub, фиды, PDF.', open:m=>new ConnectionsPanel(m).open()},
+      {key:'ai', label:'Нейросеть', hint:'Нейросеть прямо в программе для «Заполнить с ИИ» и описания станции: ключ, модель, расход.', open:m=>stAi(m)},
+      {key:'keys', label:'Ключи API', hint:'Проверка контрагентов (Checko, OFData, DaData), перевозчики, PDF; резервная копия ключей.', open:m=>stKeys(m)}]},
+    {title:'Обслуживание', desc:'Обновления, копии базы, корзина и состояние компьютера-сервера.', tabs:[
+      {key:'updates', label:'Обновления программы', hint:'Новая версия: проверить на GitHub и установить одной кнопкой или из файла; откат; история установок.', open:m=>AdminSystem.updates(m)},
+      {key:'backup', label:'Копии и база', hint:'Автоматические копии и вторая папка для них, сжатие и проверка базы, выгрузка и загрузка.', open:m=>stBackup(m)},
+      {key:'trash', label:'Корзина', get hint(){ return `Удалённое хранится ${DEFN('srv.trashDays', 30)} дн. — здесь его можно восстановить.`; }, open:m=>stTrash(m)},
+      {key:'system', label:'Система', hint:'Версия, режим работы, адрес, папки, место на диске; перезапуск программы.', open:m=>AdminSystem.system(m)}]}];
   // прежние ключи вкладок (ссылки из других окон, сохранённый выбор)
   static ALIAS = {delete:'db-kp'};
+  static START = 'home';   // вкладка при первом открытии — карта «Настроек»
 
   static tabs(){ return this.GROUPS.flatMap(g=>g.tabs); }
-  static key(k){ k=this.ALIAS[k]||k; return this.tabs().some(t=>t.key===k) ? k : 'stats'; }
+  static key(k){ k=this.ALIAS[k]||k; return this.tabs().some(t=>t.key===k) ? k : this.START; }
   static tab(k){ return this.tabs().find(t=>t.key===this.key(k)); }
+  /** «Раздел → Вкладка» — где вкладка в «Настройках» (для поиска и подсказок) */
+  static path(k){ const t=this.tab(k), g=this.GROUPS.find(x=>x.tabs.includes(t)); return g ? g.title+' → '+t.label : t.label; }
   static html(cur){ return `<nav class="st-nav">${SettingsSearch.html()}${this.GROUPS.map(g=>`<span class="st-ng">${esc(g.title)}</span>${g.tabs.map(t=>`<button type="button" class="${t.key===cur?'on':''}" data-sttab="${t.key}" title="${esc(t.hint)}">${esc(t.label)}</button>`).join('')}`).join('')}</nav>`; }
+  /** «Что где»: все разделы плитками — название, для чего, вкладки с пояснениями (щелчок открывает вкладку) */
+  static home(m){
+    m.innerHTML=`<div class="st-home">${this.GROUPS.filter(g=>g.tabs.some(t=>t.key!=='home')).map(g=>`<section class="st-card st-hg"><p class="sub">${esc(g.title)}</p><p class="muted">${esc(g.desc||'')}</p>
+      <ul>${g.tabs.filter(t=>t.key!=='home').map(t=>`<li><button type="button" class="lnk" data-sttab="${t.key}">${esc(t.label)}</button><small class="muted">${esc(t.hint)}</small></li>`).join('')}</ul></section>`).join('')}</div>`;
+  }
   /** вкладка: заголовок и пояснение, под ними — содержимое (обработчику отдаётся его блок) */
   static async open(main, k){
     const t=this.tab(k), g=this.GROUPS.find(x=>x.tabs.includes(t)), hist=SettingsHistoryPanel.TABS[t.key];
@@ -267,7 +278,7 @@ async function stPendView(id){
 async function stDelete(m, type){
   const D=ST.del; if (type && type!==D.type){ D.type=type; D.sel.clear(); D.q=''; ST.ed=null; }
   const r=await aapi(`list/${D.type}?q=${encodeURIComponent(D.q)}`), ed=ST.ed&&ST.ed.type===D.type?ST.ed:null;
-  const link=({manager:['access','Вход и права менеджеров →'], catalog:['moderation','Модерация правок →'], supplier:['feeds','Фиды поставщиков →']})[D.type];
+  const link=({manager:['access','Менеджеры: вход и права →'], catalog:['moderation','Модерация правок →'], supplier:['feeds','Фиды поставщиков →']})[D.type];
   const catTools=D.type==='catalog'?`<div class="row st-quick"><button class="btn" type="button" data-cat="xls">Импорт из Excel…</button><button class="btn" type="button" data-cat="imp">Загрузить файл каталога (.json)…</button><button class="btn" type="button" data-cat="exp">Выгрузить каталог в файл</button><button class="btn ghost" type="button" data-cat="open">Открыть каталог</button></div>`:'';
   m.innerHTML=`${catTools}<div class="row st-dbar"><input type="search" id="dQ" placeholder="Поиск" value="${esc(D.q)}" autocomplete="off"><span class="muted">${r.total>r.items.length?`показано ${r.items.length} из ${r.total} — уточните поиск`:`найдено: ${r.total}`}</span>
       <span class="sp"></span>${D.type==='client'?'<button class="btn" type="button" data-dimp title="Список ИНН — реквизиты подтянутся сами">Загрузить списком ИНН…</button>':''}${ST_NEW[D.type]?`<button class="btn primary" type="button" data-dnew>+ ${esc(ST_NEW[D.type])}</button>`:''}<button class="btn danger" type="button" data-del ${D.sel.size?'':'disabled'}>Удалить${D.sel.size?' ('+D.sel.size+')':''}</button>${link?`<button class="btn ghost" type="button" data-sttab="${link[0]}">${link[1]}</button>`:''}</div>
