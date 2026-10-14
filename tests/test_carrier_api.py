@@ -120,5 +120,49 @@ class ReleaseWebFallback(unittest.TestCase):
                 tok.latest()
 
 
+class ChinaFreightTest(unittest.TestCase):
+    """Доставка из Китая (app/china_freight.py): ставки экспедиторов — проверка ввода, пересчёт в рубли по курсу ЦБ,
+    ставки за кг / м³; без ключа ATI.SU — понятная ошибка источника, а не сбой."""
+    def setUp(self):
+        from storage import Store
+        self.tmp = tempfile.mkdtemp(prefix='kp-cn-')
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.store = Store(os.path.join(self.tmp, 'kp.sqlite3'))
+
+    def test_rates_and_quote(self):
+        from china_freight import ChinaFreight
+        cf = ChinaFreight(self.store)
+        cf.save_rates([{'from': 'Шанхай', 'to': 'Забайкальск', 'kind': 'ftl', 'price': '4 500', 'cur': 'USD', 'unit': 'trip', 'days': '14', 'who': 'Экспедитор А'},
+                       {'from': 'Шанхай', 'to': 'Забайкальск', 'kind': 'ltl', 'price': '0,5', 'cur': 'CNY', 'unit': 'kg', 'who': 'Экспедитор Б'}], 'admin')
+        fx = {'USD': 90.0, 'CNY': 12.5, 'EUR': 100.0, 'date': '2026-10-14'}
+        r = cf.quote({'from': 'шанхай', 'to': 'Забайкальск', 'kind': 'ftl'}, fx)
+        self.assertEqual([o['rub'] for o in r['offers']], [405000])
+        self.assertEqual(r['offers'][0]['days'], 14)
+        self.assertTrue(any(e['src'] == 'ATI.SU' and 'ключ' in e['msg'] for e in r['errors']))      # без ключа ATI.SU
+        r = cf.quote({'from': 'Шанхай', 'to': 'Забайкальск', 'kind': 'ltl', 'kg': '1200'}, fx)
+        self.assertEqual(r['offers'][0]['rub'], 7500)                                              # 0,5 CNY × 1200 кг × 12,5
+        r = cf.quote({'from': 'Шанхай', 'to': 'Забайкальск', 'kind': 'ltl'}, fx)                   # нет веса — подсказка
+        self.assertFalse(r['offers'])
+        self.assertIn('вес', r['errors'][0]['msg'])
+        r = cf.quote({'from': 'Пекин', 'to': 'Забайкальск', 'kind': 'docker'}, fx)
+        self.assertFalse(r['offers'])
+        with self.assertRaises(ValueError):
+            cf.quote({'from': '', 'to': 'Забайкальск', 'kind': 'ftl'}, fx)
+
+    def test_bad_rates(self):
+        from china_freight import ChinaFreight
+        cf = ChinaFreight(self.store)
+        base = {'from': 'Шанхай', 'to': 'Забайкальск', 'kind': 'ftl', 'price': '100', 'cur': 'USD', 'unit': 'trip'}
+        for bad in (dict(base, price='0'), dict(base, price='abc'), dict(base, kind='ship'), dict(base, cur='GBP'), dict(base, unit='km'),
+                    dict(base, **{'from': ''}), dict(base, days='999'), dict(base, note='x' * 300)):
+            with self.assertRaises(ValueError, msg=str(bad)[:80]):
+                cf.save_rates([bad])
+        with self.assertRaises(ValueError):
+            cf.save_rates('x')
+        with self.assertRaises(ValueError):
+            cf.save_rates([base] * 301)
+        self.assertEqual(cf.rates(), {'rows': []})
+
+
 if __name__ == '__main__':
     unittest.main()
