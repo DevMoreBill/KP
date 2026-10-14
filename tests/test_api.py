@@ -65,6 +65,23 @@ class ApiTest(unittest.TestCase):
         mg = self.ok_json('GET', '/api/managers')
         self.assertEqual(sorted(x['id'] for x in mg), sorted(m[0] for m in SampleData.MANAGERS))
 
+    def test_01b_static_versions(self):
+        """Файлы интерфейса — с меткой версии в адресе: хранятся в браузере год, отдаются сжатыми; без метки — проверка ETag."""
+        import gzip
+        import re
+        st, html, hd = self.J('GET', '/', who='')
+        self.assertEqual(hd.get('Cache-Control'), 'no-cache')
+        refs = re.findall(r'(?:src|href)="(/web/[^"]+)"', html)
+        self.assertTrue(refs and all(re.search(r'\?v=[0-9a-f]{8}$', u) for u in refs), refs[:5])
+        u = next(x for x in refs if '/main.js' in x)
+        st, gz, hd = self.J('GET', u, who='', raw=True, extra={'Accept-Encoding': 'gzip'})
+        self.assertEqual((st, hd.get('Cache-Control'), hd.get('Content-Encoding')), (200, 'public, max-age=31536000, immutable', 'gzip'))
+        st, plain, hd2 = self.J('GET', u.split('?')[0], who='', raw=True)
+        self.assertEqual((hd2.get('Cache-Control'), hd2.get('Content-Encoding')), ('no-cache', None))
+        self.assertEqual(gzip.decompress(gz), plain, 'сжатый файл — тот же')
+        st, _, _ = self.J('GET', u.split('?')[0], who='', extra={'If-None-Match': hd2['ETag']})
+        self.assertEqual(st, 304)
+
     # ---------------------------------------------------------------- 2. каталог
     def test_02_catalog_sync(self):
         st, b, hd = self.J('GET', '/api/catalog', raw=True)

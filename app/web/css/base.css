@@ -17,7 +17,6 @@ button,input,textarea,select{font:inherit;color:inherit}
 .chip.sm{padding:3px 10px;font-size:12.5px}
 .ok-t{color:var(--ok)}
 :where(a:not(.btn)){color:var(--navy)}     /* ссылки — цветом темы (в тёмной теме синяя ссылка браузера не видна) */
-.chip.on{border-color:var(--ok);color:var(--ok)}
 .cost{display:grid;grid-template-columns:230px 110px 1fr;gap:10px;align-items:end;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--soft)}
 .bad-t{color:var(--danger)}
 @media (max-width:1000px){.cost{grid-template-columns:1fr 1fr}}
@@ -129,7 +128,6 @@ dialog.uit-dlg .uit-acts .sp{flex:1}
 .kp-kind .kk-head .sub{margin:0}
 .kp-kind .kk-grid{grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px;margin-top:12px}
 .kp-kind .kk-note{margin:8px 0 0;font-size:13px}
-.kp-kind .kk-tpl{margin:6px 0 0;font-size:13px}
 .kp-kind.on{border-left:3px solid #f59e0b;padding-left:12px}
 @media (max-width:700px){ .kp-kind .kk-grid{grid-template-columns:1fr} }
 @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) .jr-t{color:#fbbf24} }

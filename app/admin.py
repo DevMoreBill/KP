@@ -362,21 +362,6 @@ def kp_in(h, store, kid, field, text):
     return json.dumps(n, ensure_ascii=False)
 
 
-def history_out(h, text):
-    try:
-        rows = json.loads(text)
-    except ValueError:
-        return '[]'          # без разбора нельзя убрать чужую экономику — лучше пусто, чем лишнее
-    if login_on(h) and not perm(h, 'kpOthers'):
-        rows = [r for r in rows if isinstance(r, dict) and own_kp(h, r)]
-    for r in rows:
-        if isinstance(r, dict) and not deal_allowed(h, r):
-            for k in DEAL_KEYS_META:
-                r.pop(k, None)
-            r['locked'] = True
-    return json.dumps(rows, ensure_ascii=False)
-
-
 def _jround(x):
     return int(math.floor(x + 0.5))
 
@@ -403,37 +388,63 @@ def econ_rub(r):
     return sum_rub, None
 
 
-def history_page(h, store, q):
-    """Журнал КП постранично: поиск и автор — в базе; итоги (сумма, прибыль) — по всему отбору."""
-    try:
-        limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, min(int(q.get('offset') or 0), 10 ** 9))
-    except ValueError:
-        limit, offset = 50, 0
-    metas = store.kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', ''))
-    rows = _loads(history_out(h, '[' + ','.join(m for m in metas if _loads(m) is not None) + ']')) or []
-    rows = [r for r in rows if isinstance(r, dict)]
-    # воронка — по всему отбору без фильтра статуса: сколько КП и на какую сумму в каждом статусе
-    def stt_of(r):
-        return ((r.get('track') or {}).get('status') if isinstance(r.get('track'), dict) else None) or 'new'
-    funnel = {}
-    for r in rows:
-        f = funnel.setdefault(stt_of(r), {'n': 0, 'sum': 0})
-        f['n'] += 1
-        f['sum'] += econ_rub(r)[0] or 0
-    want = q.get('status', '')
-    if want == 'open':
-        rows = [r for r in rows if stt_of(r) not in ('won', 'lost')]
-    elif want:
-        rows = [r for r in rows if stt_of(r) == want]
-    s_sum, s_profit, n_profit = 0, 0, 0
-    for r in rows:
-        a, p = econ_rub(r)
-        s_sum += a or 0
-        if p is not None:
-            s_profit += p
-            n_profit += 1
-    return {'total': len(rows), 'items': rows[offset:offset + limit], 'authors': store.kp_authors(),
-            'agg': {'sum': s_sum, 'profit': s_profit, 'profitN': n_profit}, 'funnel': funnel}
+class KpJournal:
+    """Журнал КП с правами: чужие КП — только с правом «КП других менеджеров», экономика чужого КП убирается (locked);
+    постраничный вывод с итогами и воронкой по статусам."""
+
+    @staticmethod
+    def rows(h, rows):
+        """Разобранные описания КП с правами журнала (список меняется на месте)."""
+        if login_on(h) and not perm(h, 'kpOthers'):
+            rows = [r for r in rows if isinstance(r, dict) and own_kp(h, r)]
+        for r in rows:
+            if isinstance(r, dict) and not deal_allowed(h, r):
+                for k in DEAL_KEYS_META:
+                    r.pop(k, None)
+                r['locked'] = True
+        return rows
+
+    @classmethod
+    def out(cls, h, text):
+        """Журнал строкой JSON (как его отдаёт база) → строка JSON с правами."""
+        try:
+            rows = json.loads(text)
+        except ValueError:
+            return '[]'          # без разбора нельзя убрать чужую экономику — лучше пусто, чем лишнее
+        return json.dumps(cls.rows(h, rows), ensure_ascii=False)
+
+    @classmethod
+    def page(cls, h, store, q):
+        """Журнал КП постранично: поиск и автор — в базе; итоги (сумма, прибыль) — по всему отбору."""
+        try:
+            limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, min(int(q.get('offset') or 0), 10 ** 9))
+        except ValueError:
+            limit, offset = 50, 0
+        metas = store.kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', ''))
+        # каждое описание разбирается один раз (раньше — разбор, склейка, разбор всего журнала и ещё раз после прав)
+        rows = cls.rows(h, [d for d in map(_loads, metas) if isinstance(d, dict)])
+        # воронка — по всему отбору без фильтра статуса: сколько КП и на какую сумму в каждом статусе
+        def stt_of(r):
+            return ((r.get('track') or {}).get('status') if isinstance(r.get('track'), dict) else None) or 'new'
+        funnel = {}
+        for r in rows:
+            f = funnel.setdefault(stt_of(r), {'n': 0, 'sum': 0})
+            f['n'] += 1
+            f['sum'] += econ_rub(r)[0] or 0
+        want = q.get('status', '')
+        if want == 'open':
+            rows = [r for r in rows if stt_of(r) not in ('won', 'lost')]
+        elif want:
+            rows = [r for r in rows if stt_of(r) == want]
+        s_sum, s_profit, n_profit = 0, 0, 0
+        for r in rows:
+            a, p = econ_rub(r)
+            s_sum += a or 0
+            if p is not None:
+                s_profit += p
+                n_profit += 1
+        return {'total': len(rows), 'items': rows[offset:offset + limit], 'authors': store.kp_authors(),
+                'agg': {'sum': s_sum, 'profit': s_profit, 'profitN': n_profit}, 'funnel': funnel}
 
 
 def log(h, store, action, etype=None, eid=None, before=None, after=None, result='success', admin=None):
@@ -501,28 +512,26 @@ def _put_product(h, store, cid, admin):
     text = json.dumps(after, ensure_ascii=False)
     before_text = store.catalog_get(cid)
     before = _loads(before_text)
+    b, a = diff(before, after)          # что изменилось (одним сравнением на всё сохранение)
+    auto = before is not None and set(a) <= AUTO_KEYS     # сохранение КП обновило только цены и историю
     if not admin and login_on(h):
-        only_prices = before is not None and set(diff(before, after)[1]) <= AUTO_KEYS
-        if not only_prices and not perm(h, 'catEdit' if before is not None else 'catAdd'):
+        if not auto and not perm(h, 'catEdit' if before is not None else 'catAdd'):
             log(h, store, 'edit_product' if before else 'create_product', 'product', cid, result='failed')
             return h.send(403, 'text/plain; charset=utf-8', 'Нет права %s оборудование в каталоге — обратитесь к администратору'
                           % ('редактировать' if before is not None else 'добавлять'))
     mod = moderation(store).get('enabled') and not admin
     if mod and before is not None and h.headers.get('X-KP-Edit') == 'auto':
-        b, a = diff(before, after)
-        mod = not set(a) <= AUTO_KEYS    # сохранение КП обновило только цены и историю — без модерации
+        mod = not auto                   # сохранение КП обновило только цены и историю — без модерации
     if mod:
         uid, name, _ = actor(h, False)
         pid = store.pending_add(cid, 'update' if before else 'create', before_text, text, uid, name)
-        b, a = diff(before, after, AUTO_KEYS)
-        log(h, store, 'submit_edit', 'product', cid, b, a, admin=False)
+        pb, pa = diff(before, after, AUTO_KEYS)
+        log(h, store, 'submit_edit', 'product', cid, pb, pa, admin=False)
         return h.send_json({'ok': True, 'pending': True, 'pendingId': pid})
     try:
         rev = store.catalog_put(cid, text, actor(h, admin)[1], h.base_rev())
     except Conflict as e:
         return h.conflict(e)
-    auto = before is not None and set(diff(before, after)[1]) <= AUTO_KEYS
-    b, a = diff(before, after)
     log(h, store, 'price_sync' if auto else ('edit_product' if before else 'create_product'), 'product', cid,
         b if before else None, a, admin=admin)
     return h.send_json({'ok': True, 'rev': rev})
@@ -786,7 +795,7 @@ class AdminApi:
         except ValueError as e:
             return self.err(400, str(e))
 
-    def feeds(self, m, sub, me):
+    def feeds(self, m, sub, q, me):
         import feeds
         from equipment_types import load_types
         st = self.st
@@ -824,7 +833,6 @@ class AdminApi:
         if act == 'upload':         # файл фида из файлов: ?kind=pages|price&name=имя, тело — сам файл
             if feeds.busy(fid):
                 return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
-            q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(self.h.path).query, keep_blank_values=True, encoding='utf-8'))
             meta = feeds.feed_file_put(st, fid, q.get('kind', ''), self.h.body(), q.get('name', ''), q.get('slot') or None)
             self.log('edit_settings', 'settings', 'feed:' + fid, None, {'file': q.get('kind'), 'name': meta['name'], 'rows': meta.get('rows')})
             return self.ok(meta)
@@ -1053,7 +1061,7 @@ class AdminApi:
                 return self.ok(res)
             return self.ok({'items': ml.list()})
         if sub == 'feeds' or sub.startswith('feeds/'):          # товарные фиды поставщиков (feeds.py)
-            return self.feeds(m, sub, me)
+            return self.feeds(m, sub, q, me)
         r = re.match(r'^list/(kp|catalog|manager|client|supplier)$', sub)
         if r:
             return self.ok(self.listing(r.group(1), q.get('q') or ''))
@@ -1070,7 +1078,7 @@ class AdminApi:
             if m == 'POST':
                 return self.toggle(self.data())
             return self.ok({'settings': moderation(st), 'pending': self.pending_list('pending'),
-                            'history': self.pending_list('approved')[:30] + self.pending_list('rejected')[:30],
+                            'history': self.pending_list('approved', 30) + self.pending_list('rejected', 30),
                             'archived': self.pending_list('archived')})
         r = re.match(r'^pending/(\d{1,9})$', sub)
         if r:
@@ -1345,7 +1353,11 @@ class AdminApi:
         rows = {r['id']: r['title'] for r in self.listing(etype, '')['items']} if etype not in ('catalog', 'client') else {}
         if etype == 'client':
             rows = {eid: (self.st.client_get(str(eid)) or {}).get('name') for eid in ids}
-        titles = {eid: rows.get(eid) or next((r['title'] for r in self.listing(etype, str(eid))['items'] if r['id'] == eid), str(eid)) for eid in ids}
+        if etype == 'catalog':       # название позиции — запросом по id, а не разбором всего каталога на каждую позицию
+            found = {eid: self.st.one('SELECT name FROM catalog WHERE id=?', (eid,)) for eid in ids if isinstance(eid, str)}
+            titles = {eid: found[eid][0] if found.get(eid) else str(eid) for eid in ids}
+        else:
+            titles = {eid: rows.get(eid) or next((r['title'] for r in self.listing(etype, str(eid))['items'] if r['id'] == eid), str(eid)) for eid in ids}
         n = 0
         for eid in ids:
             data = self.st.trash_put(etype, str(eid), titles.get(eid, str(eid)), 'admin')
@@ -1359,14 +1371,15 @@ class AdminApi:
         b, a = diff(_loads(p['before']), _loads(p['after']), AUTO_KEYS)
         return [{'field': k, 'label': LABELS.get(k, k), 'before': b[k], 'after': a[k]} for k in a]
 
-    def pending_list(self, status):
+    def pending_list(self, status, limit=None):
+        """Правки со статусом status, новые первыми (limit — сколько первых): название, изменённые поля, устарела ли."""
         out = []
-        for p in self.st.pending_list(status, with_docs=True):
+        for p in self.st.pending_list(status, with_docs=True)[:limit]:
             after = _loads(p['after']) or {}
-            cur = self.st.catalog_get(p['productId'])
             p['name'] = after.get('name', p['productId'])
             p['fields'] = [x['label'] for x in self.pending_diff(p)]
-            p['stale'] = status == 'pending' and (cur or None) != (p['before'] or None)
+            # позиция изменилась после отправки правки — только у ожидающих (рассмотренным текущая позиция не нужна)
+            p['stale'] = status == 'pending' and (self.st.catalog_get(p['productId']) or None) != (p['before'] or None)
             p.pop('before'), p.pop('after')
             out.append(p)
         return out
@@ -1523,6 +1536,7 @@ class AdminApi:
         sec = d['sections']
         want = [s for s in (sections or 'catalog,kp,managers,clients,suppliers,settings').split(',') if s in sec and s != 'audit' and s in SECTIONS]
         st, rep, errors = self.st, {}, []
+        by = actor(self.h, True)[1]
         backup = self.import_backup() if apply else None
         exist = {'catalog': {x['id']: x for x in json.loads(st.catalog_light())},
                  'kp': {r[0]: r for r in st.all('SELECT id, meta FROM kp')},
@@ -1542,7 +1556,8 @@ class AdminApi:
             bad = [i for i, x in enumerate(rows) if not isinstance(x, dict) or any(not x.get(k) for k in req[s])
                    or not re.match(r'^[A-Za-z0-9_-]{1,64}$', str(x.get('id')))]
             errors += ['%s: запись %d без обязательных полей %s' % (s, i + 1, ', '.join(req[s])) for i in bad[:5]]
-            ok = [x for i, x in enumerate(rows) if i not in set(bad)]
+            skip = set(bad)
+            ok = [x for i, x in enumerate(rows) if i not in skip]
             rep[s] = {'new': sum(1 for x in ok if x['id'] not in exist[s]), 'updated': sum(1 for x in ok if x['id'] in exist[s]),
                       'invalid': len(bad)}
             if apply:
@@ -1557,11 +1572,11 @@ class AdminApi:
                         st.manager_put(x['id'], json.dumps(x, ensure_ascii=False))
                 elif s == 'suppliers':
                     for x in ok:
-                        st.supplier_put(x['id'], x, actor(self.h, True)[1])
+                        st.supplier_put(x['id'], x, by)
                     customs = sec[s].get('customs') if isinstance(sec[s].get('customs'), dict) else {}
                     for key, c in customs.items():
                         if isinstance(c, dict) and re.match(r'^(cat|item):[\w.-]{1,80}$', str(key)):
-                            st.customs_put(key, c.get('code'), c.get('duty'), c.get('note'), actor(self.h, True)[1], c.get('name') or '')
+                            st.customs_put(key, c.get('code'), c.get('duty'), c.get('note'), by, c.get('name') or '')
                 else:
                     for x in ok:
                         st.client_put(x['id'], x)
@@ -1651,7 +1666,8 @@ def stats(st):
     users = {r[0] for r in st.all('SELECT DISTINCT user_name FROM audit WHERE ts >= ? AND user_name IS NOT NULL', (month_ago,))}
     users |= {x.get('manager') for d, x in days if d and (today - d).days < 30 and x.get('manager')}
     users.discard('Не выбран')
-    size = sum(os.path.getsize(st.path + s) for s in ('', '-wal') if os.path.isfile(st.path + s))
+    from maintenance import db_size
+    size = db_size(st)
     return {
         'kp': {'total': len(metas), 'today': count(1), 'week': count(7), 'month': count(30),
                'sumMonth': sum((rub(x) or 0) for d, x in days if d and (today - d).days < 30)},

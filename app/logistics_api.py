@@ -112,9 +112,24 @@ def _err(e):
     return str(e)[:300] or e.__class__.__name__
 
 
-def _ins_of(items, name_key='name', price_key='price'):
+def _ins_of(items):
     """Сумма строк страхования (по названию «страхов…») в детализации перевозчика."""
-    return sum(_num(x.get(price_key)) or 0 for x in (items or []) if isinstance(x, dict) and re.search(r'страхов', str(x.get(name_key) or ''), re.I))
+    return sum(_num(x.get('price')) or 0 for x in (items or []) if isinstance(x, dict) and re.search(r'страхов', str(x.get('name') or ''), re.I))
+
+
+class Carrier:
+    """Общее у расчётов перевозчиков: места груза по одному и подпись города, взятого вместо заданного."""
+
+    @staticmethod
+    def units(places):
+        """[{l, w, h, m, qty}] → по месту на каждую штуку."""
+        return [p for p in places for _ in range(int(p['qty']))]
+
+    @staticmethod
+    def via(fa, tb, frm, to):
+        """« (Тверь → Казань)» — если в справочнике перевозчика нашёлся не первый из городов (ближайший крупный)."""
+        first = lambda v: v[0] if isinstance(v, (list, tuple)) else v
+        return '' if (fa, tb) == (first(frm), first(to)) else ' (%s → %s)' % (fa, tb)
 
 
 def _num(v):
@@ -169,12 +184,20 @@ def ati_directions(store):
     return _dict_cache(store, 'ati', load)
 
 
-def ati_direction(store, frm, to):
-    a, b = cnorm(frm), cnorm(to)
-    for d in ati_directions(store):
-        if cnorm(d['from']) == a and cnorm(d['to']) == b:
-            return d
-    return None
+class AtiDirections:
+    """Поиск направления «Средних ставок» ATI.SU по городам: справочник читается один раз на расчёт (а не на каждую пару
+    городов), поиск — по словарю; при одинаковых названиях — первое направление справочника."""
+
+    def __init__(self, store):
+        self.store, self._idx = store, None
+
+    def find(self, frm, to):
+        if self._idx is None:
+            idx = {}
+            for d in ati_directions(self.store):
+                idx.setdefault((cnorm(d['from']), cnorm(d['to'])), d)
+            self._idx = idx
+        return self._idx.get((cnorm(frm), cnorm(to)))
 
 
 def ati_price(store, d, car, tonnage, days=30):
@@ -231,7 +254,7 @@ def pec_quote(store, frm, to, places, declared=0):
     q = [('take[town]', a), ('deliver[town]', b)]
     if declared:
         q.append(('strah', int(round(declared))))   # объявленная стоимость — ПЭК считает своё страхование
-    units = [p for p in places for _ in range(int(p['qty']))]
+    units = Carrier.units(places)
     for k, p in enumerate(units):   # место: ширина, длина, высота (м), объём (м³), вес (кг), негабарит, жёсткая упаковка
         q += [('places[%d][]' % k, v) for v in (p['w'], p['l'], p['h'], round(p['l'] * p['w'] * p['h'], 3), round(p['m'] * 1000),
                                                  1 if max(p['l'], p['w'], p['h']) > 3 or p['m'] > 0.5 else 0, 0)]
@@ -262,7 +285,7 @@ def pec_quote(store, frm, to, places, declared=0):
     if per:
         m = re.findall(r'\d+', str(per.get('periods_days') or per.get('periods')))
         days = int(m[-1]) if m else None
-    via = '' if (fa, tb) == (frm[0] if isinstance(frm, list) else frm, to[0] if isinstance(to, list) else to) else ' (%s → %s)' % (fa, tb)
+    via = Carrier.via(fa, tb, frm, to)
     return {'price': round(total), 'ins': round(ins), 'days': days, 'door': door == 2,
             'note': ('сборный груз, дверь в дверь (забор и доставка ПЭК)' if door == 2 else 'сборный груз, межтерминальная перевозка ПЭК') + via}
 
@@ -270,7 +293,7 @@ def pec_quote(store, frm, to, places, declared=0):
 # ---------------------------------------------------------------- Деловые Линии
 def dellin_quote(store, frm_addr, to_addr, places, declared=0):
     tw = {'worktimeStart': '09:00', 'worktimeEnd': '18:00'}
-    units = [p for p in places for _ in range(int(p['qty']))]
+    units = Carrier.units(places)
     over = [u for u in units if max(u['l'], u['w'], u['h']) > 3 or u['m'] > 0.1]
     body = {'appkey': keys(store).get('dellinKey', ''),
             'delivery': {'deliveryType': {'type': 'auto'},
@@ -396,7 +419,7 @@ def kit_quote(store, frm, to, places, declared):
     (a, fa), (b, tb) = kit_city(store, frm), kit_city(store, to)
     if not a or not b:
         raise ValueError('город не найден в справочнике КИТ: %s' % (fa if not a else tb))
-    units = [p for p in places for _ in range(int(p['qty']))]
+    units = Carrier.units(places)
     price = max(1, int(round(declared or 0)))
     body = {'city_pickup_code': a, 'city_delivery_code': b, 'declared_price': price, 'type': '01',
             'pick_up': 1, 'delivery': 1, 'currency_code': ['RUB'],
@@ -420,8 +443,7 @@ def kit_quote(store, frm, to, places, declared):
     t = found[code]
     ins = _ins_of(t.get('detail'))
     days = re.findall(r'\d+', str(t.get('time') or ''))
-    first = lambda v: v[0] if isinstance(v, (list, tuple)) else v
-    via = '' if (fa, tb) == (first(frm), first(to)) else ' (%s → %s)' % (fa, tb)
+    via = Carrier.via(fa, tb, frm, to)
     return {'price': round(_num(t['cost'])), 'ins': round(ins), 'days': int(days[-1]) if days else None, 'door': True,
             'note': 'дверь в дверь (забор и доставка КИТ), тариф «%s»%s' % (t.get('name') or KIT_TYPES.get(code, code), via)}
 
@@ -469,7 +491,7 @@ def cdek_quote(store, frm, to, places, frm_addr='', to_addr='', declared=0):
     if not a or not b:
         raise ValueError('город не найден в справочнике СДЭК: %s' % (fa if not a else tb))
     pk = [{'weight': int(round(p['m'] * 1000)), 'length': int(round(p['l'] * 100)), 'width': int(round(p['w'] * 100)),
-           'height': int(round(p['h'] * 100))} for p in places for _ in range(int(p['qty']))]
+           'height': int(round(p['h'] * 100))} for p in Carrier.units(places)]
     loc = lambda code, addr: dict({'code': code}, **({'address': addr} if addr else {}))
     j = _http(CDEK_BASE + '/calculator/tarifflist', data={'type': 2, 'currency': 1, 'lang': 'rus', 'from_location': loc(a, frm_addr),
                                                           'to_location': loc(b, to_addr), 'packages': pk}, headers=h, method='POST')
@@ -492,7 +514,7 @@ def cdek_quote(store, frm, to, places, frm_addr='', to_addr='', declared=0):
                 ins = max(0, _num(t['total_sum']) - _num(t['delivery_sum']))
         except Exception:
             ins = 0         # не посчиталось — страхование будет своё, единое
-    via = '' if (fa, tb) == (frm[0] if isinstance(frm, list) else frm, to[0] if isinstance(to, list) else to) else ' (%s → %s)' % (fa, tb)
+    via = Carrier.via(fa, tb, frm, to)
     return {'price': round(price + ins), 'ins': round(ins), 'days': r.get('period_max') or r.get('period_min'), 'door': True,
             'note': 'дверь в дверь, тариф «%s»%s' % (r.get('tariff_name') or r.get('tariff_code'), via)}
 
@@ -503,7 +525,7 @@ def _has_street(addr):
 
 
 def vozovoz_quote(store, frm, to, frm_addr, to_addr, places, declared=0):
-    units = [p for p in places for _ in range(int(p['qty']))]
+    units = Carrier.units(places)
     point = lambda city, addr: dict({'location': city}, **({'address': addr} if _has_street(addr) else {'terminal': 'default'}))
     body = {'object': 'price', 'action': 'get', 'params': {
         'cargo': {'dimension': {'quantity': len(units), 'volume': round(sum(u['l'] * u['w'] * u['h'] for u in units), 3),
@@ -565,7 +587,7 @@ def nrg_quote(store, frm, to, places, declared):
     (a, fa), (b, tb) = _pick(c, frm), _pick(c, to)
     if not a or not b:
         raise ValueError('город не найден в справочнике Энергии: %s' % (fa if not a else tb))
-    items = [{'weight': round(p['m'] * 1000, 1), 'width': p['w'], 'height': p['h'], 'length': p['l']} for p in places for _ in range(int(p['qty']))]
+    items = [{'weight': round(p['m'] * 1000, 1), 'width': p['w'], 'height': p['h'], 'length': p['l']} for p in Carrier.units(places)]
     j = _nrg('/price', {'idCityFrom': a, 'idCityTo': b, 'cover': 0, 'idCurrency': 0, 'items': items,
                         'declaredCargoPrice': int(round(declared or 0)), 'idClient': 0})
     if isinstance(j, dict) and (j.get('message') or j.get('error')) and not j.get('transfer'):
@@ -594,7 +616,7 @@ def nrg_quote(store, frm, to, places, declared):
 
 # ---------------------------------------------------------------- сводка предложений
 def ltl_ok(places):
-    units = [p for p in places for _ in range(int(p['qty']))]
+    units = Carrier.units(places)
     if not units:
         return False, 'нет груза'
     big = [u for u in units if u['m'] > LTL_MAX['m'] or sorted([u['l'], u['w']])[1] > LTL_MAX['l'] or min(u['l'], u['w']) > LTL_MAX['w'] or u['h'] > LTL_MAX['h']]
@@ -624,10 +646,10 @@ def quote(store, req):
     if pv['ati'] and req.get('vehicles'):
         try:
             # направления в «Средних ставках» — между крупными городами: нет точного — ближайший крупный город (alt)
-            d, via = None, ''
+            d, via, ati = None, '', AtiDirections(store)
             for fa in [frm.get('name')] + list(frm.get('alt') or []):
                 for tb in [to.get('name')] + list(to.get('alt') or []):
-                    d = ati_direction(store, fa, tb)
+                    d = ati.find(fa, tb)
                     if d:
                         if fa != frm.get('name') or tb != to.get('name'):
                             via = ' по направлению %s → %s (ближайшие крупные города)' % (d['from'], d['to'])
@@ -658,17 +680,17 @@ def quote(store, req):
         errors.append({'src': 'Сборный груз (ПЭК, Деловые Линии, КИТ, СДЭК, Возовоз, Энергия)', 'msg': why, 'skip': True})
     if places and ok:
         decl = _num(req.get('declared')) or 0     # объявленная стоимость груза — для страхования перевозчика
-        jobs = [('ПЭК', 'https://pecom.ru/services-are/shipping-request/', lambda: pec_quote(store, [frm.get('name')] + list(frm.get('alt') or []), [to.get('name')] + list(to.get('alt') or []), places, decl))]
+        fl, tl = [frm.get('name')] + list(frm.get('alt') or []), [to.get('name')] + list(to.get('alt') or [])   # город и ближайшие крупные
+        jobs = [('ПЭК', 'https://pecom.ru/services-are/shipping-request/', lambda: pec_quote(store, fl, tl, places, decl))]
         if pv['dellin']:
             jobs.append(('Деловые Линии', 'https://www.dellin.ru/requests/', lambda: dellin_quote(store, frm.get('addr') or frm.get('name'), to.get('addr') or to.get('name'), places, decl)))
-        fl, tl = [frm.get('name')] + list(frm.get('alt') or []), [to.get('name')] + list(to.get('alt') or [])
         jobs.append(('Энергия', 'https://nrg-tk.ru/client/calculator/', lambda: nrg_quote(store, fl, tl, places, decl)))
         if pv['cdek']:
             jobs.append(('СДЭК', 'https://www.cdek.ru/ru/calculate', lambda: cdek_quote(store, fl, tl, places, frm.get('addr'), to.get('addr'), decl)))
         if pv['vozovoz']:
             jobs.append(('Возовоз', 'https://vozovoz.ru/calculate/', lambda: vozovoz_quote(store, frm.get('name'), to.get('name'), frm.get('addr'), to.get('addr'), places, decl)))
         if pv['kit']:
-            jobs.append(('КИТ', 'https://tk-kit.ru/calculate', lambda: kit_quote(store, [frm.get('name')] + list(frm.get('alt') or []), [to.get('name')] + list(to.get('alt') or []), places, decl)))
+            jobs.append(('КИТ', 'https://tk-kit.ru/calculate', lambda: kit_quote(store, fl, tl, places, decl)))
         res = {}
 
         def run(name, fn):
@@ -758,7 +780,7 @@ def auto_refresh(store, force=False, log=print):
     if not _lock.acquire(blocking=False):
         return None
     try:
-        out, errors = {}, []
+        out, errors, ati = {}, [], AtiDirections(store)
         for cid, (car, ton) in ATI_CLASS.items():
             best, rows = None, []
             for r in cfg['routes']:
@@ -766,7 +788,7 @@ def auto_refresh(store, force=False, log=print):
                 if not b:
                     a, _, b = str(r).partition('-')
                 try:
-                    d = ati_direction(store, a.strip(), b.strip())
+                    d = ati.find(a.strip(), b.strip())
                     if not d:
                         raise ValueError('направления нет в «Средних ставках»')
                     p = ati_price(store, d, car, ton, cfg['period'])

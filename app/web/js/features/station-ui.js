@@ -16,7 +16,6 @@ class StationUi {
     return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, lenFix:c.lenFix||null, ins:c.ins, ral:c.ral, sys:c.sys||null, climate:c.climate||'', roof:c.roof||'', floor:StationGeo.floor(c) } : null, parts:kitParts(x), air:this.opts(x).air,
       recv:R ? R.recv(x) : 'after', recvOut:R ? R.recvOut(x) : false, req:R ? R.plan(x) : null };
   }
-  /** расстановка — пересчитывается, только когда изменился состав, контейнер или класс чистоты воздуха (на картинки не влияет) */
   /** значок на вкладке «Компоновка»: число замечаний (красный — не помещается), иначе '' */
   static badge(x){
     if (!this.on(x) || !kitContainer(x)) return '';
@@ -24,11 +23,18 @@ class StationUi {
     const n=(plan.issues||[]).filter(t=>t.level==='error' || t.level==='warn').length;
     return n ? ` <span class="ed-n ${plan.level==='error' ? 'err' : 'warn'}" title="Замечаний по компоновке: ${n}">${plan.level==='error' ? '✕' : '⚠'} ${n}</span>` : '';
   }
+  /** расстановка — пересчитывается, только когда изменился состав, контейнер или класс чистоты воздуха (на картинки не влияет) */
   static plan(x){
     const inp=this.input(x), h=StationLayout.hash(inp), k=h+'|'+inp.air, c=this.cache.get(x.id);
     if (c && c.k===k) return c.plan;
     const plan=StationLayout.solve(inp); plan.hash=h; this.cache.set(x.id, { k, plan });
     return plan;
+  }
+  /** расстановка, посчитанная подбором размера (StationSize.apply) по тем же исходным с пустым размером (k0 — их отпечаток
+   *  и класс воздуха), — в кэш: размер «по оборудованию» на расстановку не влияет (только на отпечаток) */
+  static keep(x, plan, k0){
+    const inp=this.input(x); if (!inp.cont || !inp.cont.sizeAuto || StationLayout.hash({ ...inp, cont:{ ...inp.cont, size:'', sizeAuto:true } })+'|'+inp.air!==k0) return;
+    const h=StationLayout.hash(inp); plan.hash=h; this.cache.set(x.id, { k:h+'|'+inp.air, plan });
   }
   /** оборудование не помещается — КП не сохраняется (пункт в «Чтобы сохранить, заполните»); по условным габаритам —
    *  только предупреждение: программа не уверена */
@@ -196,7 +202,7 @@ class StationUi {
     const it=S.items[i], c=it && kitContainer(it); if (!c) return false;
     if (a==='stlFix'){
       contApply(c, { ctype:b.dataset.ct, size:b.dataset.size||'', sizeAuto:!!StationGeo.FLEX[b.dataset.ct] });
-      stationFill(it); stationAutoName(it); StationSize.apply(it);
+      StationSize.apply(it); stationFill(it); stationAutoName(it);
       toast('Контейнер заменён: '+ctypeOf(c.ctype).name+'. Проверьте закупку контейнера в составе станции.');
       return true;
     }
@@ -246,14 +252,18 @@ class StationSize {
     if (!StationUi.on(x)) return false;
     const c=kitContainer(x); if (!c || !StationGeo.FLEX[c.ctype]) return false;
     if (String(c.size||'').trim() && !c.sizeAuto) return false;
-    const inp={ cont:{ ...StationUi.input(x).cont, size:'', sizeAuto:true }, parts:kitParts(x) }, h=StationLayout.hash(inp), L=this.last.get(x.id);
+    // исходные — те же, что у расстановки (StationUi.input: где ресивер, ресиверы снаружи, ворота): иначе размер в составе и
+    // в КП расходился с чертежом (раньше: ресиверы снаружи — размер считался с ними внутри)
+    const full=StationUi.input(x), inp={ ...full, cont:{ ...full.cont, size:'', sizeAuto:true } }, h=StationLayout.hash(inp), L=this.last.get(x.id);
     if (!force && L && L.h===h && L.size===String(c.size||'')) return false;
     const plan=StationLayout.solve(inp), txt=plan.level!=='error' && plan.level!=='none' && plan.geo && plan.geo.ext ? plan.geo.ext.join(' × ') : '';
     this.last.set(x.id, { h, size:txt });
     this.notify(x, c, plan);
-    if (txt===String(c.size||'') && c.sizeAuto) return false;
-    contApply(c, { size:txt, sizeAuto:true }); stationFill(x);
-    return true;
+    const ch=!(txt===String(c.size||'') && c.sizeAuto);
+    if (ch) contApply(c, { size:txt, sizeAuto:true });
+    StationUi.keep(x, plan, h+'|'+full.air);   // та же расстановка — вкладке «Компоновка» и характеристикам второй раз не считать
+    if (ch) stationFill(x);
+    return ch;
   }
 }
 

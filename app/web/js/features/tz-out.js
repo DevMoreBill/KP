@@ -72,7 +72,7 @@ class TzOut {
       ['Наружный воздух', [req.tmin!=null ? 'от '+StationNorms.deg(req.tmin) : '', req.tmax!=null ? 'до '+StationNorms.deg(req.tmax) : ''].filter(Boolean).join(' ') || 'по месту установки'],
       ['Окраска', (String(c.ral||'').trim() || 'по согласованию')+'; крыша — в цвет каркаса'],
       ['Двери', this.doors(plan)+(plan.fuel ? `; отсек топливного бака — отдельная дверь ${n(plan.fuel.door.x1-plan.fuel.door.x0)} мм наружу, с замком и доводчиком (внутри), с решёткой внизу` : '')+'; над входами — съёмные козырьки и светодиодные прожекторы'],
-      ...CONT_SYSTEMS.filter(([id])=>KitView.sysOn(x, c, id)).map(([id, k, v])=>[k, this.sysText(id, v, plan, req, c)]),
+      ...CONT_SYSTEMS.filter(([id])=>KitView.sysOn(x, c, id)).map(([id, k, v])=>[k, this.sysText(id, v, plan)]),
     ]);
     const off=CONT_SYSTEMS.filter(([id])=>!KitView.sysOn(x, c, id)).map(([, k])=>k.toLowerCase());
     if (off.length) d.p(`Не требуются (не входят в поставку): ${off.join(', ')}.`, { after:6, run:{ color:'555555' } });
@@ -215,7 +215,7 @@ class TzOut {
   }
 
   /** система контейнера: текст требования (отопление и вентиляция — с оценкой мощности и расхода) */
-  static sysText(id, v, plan, req, c){
+  static sysText(id, v, plan){
     const n=this.N;
     const h=plan.heat, kw=StationHeat.kw;
     if (id==='heat' && h && h.n){

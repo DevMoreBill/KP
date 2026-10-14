@@ -485,13 +485,13 @@ class Counterparties:
             return {'inn': inn, 'ogrn': d.get('ОГРНИП', ''), 'kpp': '', 'short': 'ИП ' + fio, 'full': 'Индивидуальный предприниматель ' + fio,
                     'address': g(d, 'Регион', 'Наим', default=''), 'director': fio, 'directorPost': 'Индивидуальный предприниматель',
                     'status': g(d, 'Статус', 'Наим', default=''), 'active': not g(d, 'ДатаЛикв'), 'regDate': d.get('ДатаРег', ''),
-                    'okved': ' '.join(x for x in [g(d, 'ОКВЭД', 'Код', default=''), g(d, 'ОКВЭД', 'Наим', default='')] if x)}
+                    'okved': Counterparties._okved(d)}
         boss = (d.get('Руковод') or [{}])[0] if isinstance(d.get('Руковод'), list) else {}
         return {'inn': inn, 'kpp': d.get('КПП', ''), 'ogrn': d.get('ОГРН', ''), 'short': d.get('НаимСокр') or d.get('НаимПолн', ''),
                 'full': d.get('НаимПолн', ''), 'address': g(d, 'ЮрАдрес', 'АдресРФ', default=''),
                 'director': boss.get('ФИО', ''), 'directorPost': boss.get('НаимДолжн', ''),
                 'status': g(d, 'Статус', 'Наим', default=''), 'active': not d.get('ДатаЛикв'), 'regDate': d.get('ДатаРег', ''),
-                'okved': ' '.join(x for x in [g(d, 'ОКВЭД', 'Код', default=''), g(d, 'ОКВЭД', 'Наим', default='')] if x),
+                'okved': Counterparties._okved(d),
                 'phones': g(d, 'Контакты', 'Тел', default=[]) or [], 'emails': g(d, 'Контакты', 'Емэйл', default=[]) or [],
                 'site': g(d, 'Контакты', 'ВебСайт', default='') or ''}
 
@@ -539,6 +539,11 @@ class Counterparties:
                 'address': r.get('a') or '', 'director': fio.strip().title() if fio else '', 'directorPost': post.strip().capitalize() if fio else '',
                 'status': 'Ликвидирована' if r.get('e') else 'Действует', 'active': not r.get('e'),
                 'regDate': self._ru2iso(r.get('r')), 'okved': ''}
+
+    @staticmethod
+    def _okved(d):
+        """«28.13 Производство насосов» — код и название основного ОКВЭД из карточки Checko / OFData."""
+        return ' '.join(x for x in [g(d, 'ОКВЭД', 'Код', default=''), g(d, 'ОКВЭД', 'Наим', default='')] if x)
 
     @staticmethod
     def _ru2iso(s):
@@ -719,8 +724,7 @@ class Counterparties:
                 old = [f for f in (prev.get('flags') or []) if re.match(pat, f.get('text', '')) and f.get('text') not in have]
                 dt = '.'.join(reversed(prev['checkedAt'][:10].split('-')))
                 res['flags'] = res['flags'] + [dict(f, text=f['text'] + ' (на %s)' % dt) for f in old]
-                lv = [f['level'] for f in res['flags']]
-                res['score'] = 'bad' if 'red' in lv else ('warn' if 'yellow' in lv else 'ok')
+                res['score'] = self._score(res['flags'])
                 res['missing'] = []
                 what = ' и '.join({'courts': 'суды', 'fssp': 'ФССП'}[k] for k in missing)
                 res['note'] = 'Карточка обновлена сегодня; %s — из полной проверки от %s. ' % (what, dt) + \
@@ -742,6 +746,31 @@ class Counterparties:
                 return keep_full
         self.store.check_put(inn, res)
         return res
+
+    @staticmethod
+    def _score(flags, empty='ok'):
+        """Итог проверки по отметкам: красная — bad, жёлтая — warn, иначе empty."""
+        lv = [f['level'] for f in flags]
+        return 'bad' if 'red' in lv else ('warn' if 'yellow' in lv else empty)
+
+    @staticmethod
+    def _reg_age(reg, add):
+        """Возраст организации, лет, по дате регистрации (ГГГГ-ММ-ДД) с отметками «менее года» / «более N лет»;
+        дата не читается — None."""
+        try:
+            age = (date.today() - date.fromisoformat(str(reg or '')[:10])).days / 365.25
+        except Exception:
+            return None
+        if age < 1:
+            add('yellow', 'Зарегистрирована менее года назад')
+        elif age >= 3:
+            add('green', 'Работает более %d лет' % int(age))
+        return age
+
+    @staticmethod
+    def _money(v):
+        """12345.6 → «12 346»."""
+        return '{:,.0f}'.format(v).replace(',', ' ')
 
     @staticmethod
     def _fin_flags(fin, add):
@@ -768,28 +797,20 @@ class Counterparties:
         age = None
         if info:
             (add('green', 'Организация действует') if info.get('active') else add('red', 'Статус: ' + (info.get('status') or 'не действует')))
-            try:
-                age = (date.today() - date.fromisoformat((info.get('regDate') or '')[:10])).days / 365.25
-                if age < 1:
-                    add('yellow', 'Зарегистрирована менее года назад')
-                elif age >= 3:
-                    add('green', 'Работает более %d лет' % int(age))
-            except Exception:
-                pass
+            age = self._reg_age(info.get('regDate'), add)
             if info.get('invalid'):
                 add('red', 'Недостоверные сведения в ЕГРЮЛ (отметка ФНС)')
             if info.get('disq'):
                 add('red', 'Руководитель — дисквалифицированное лицо')
         finances = list((fin or {}).get('finances') or [])
         self._fin_flags(finances, add)
-        levels = [f['level'] for f in flags]
         missing = ['арбитражные суды', 'исполнительные производства', 'налоговая недоимка', 'банкротство', 'массовый адрес и руководитель']
         if not finances and len(inn) == 10:
             missing.insert(2, 'финансовая отчётность')
         return {'inn': inn, 'ogrn': (info or {}).get('ogrn', ''), 'name': (info or {}).get('short', ''), 'status': (info or {}).get('status', ''),
                 'active': (info or {}).get('active'), 'regDate': (info or {}).get('regDate', ''),
                 'ageYears': round(age, 1) if age is not None else None, 'okved': (info or {}).get('okved', ''),
-                'flags': flags, 'score': 'bad' if 'red' in levels else ('warn' if 'yellow' in levels else ('ok' if info else 'warn')),
+                'flags': flags, 'score': self._score(flags, 'ok' if info else 'warn'),
                 'source': (src or 'нет данных') + (' + ' + GirBo.NAME if finances and (fin or {}).get('src') == GirBo.NAME else ''),
                 'partial': True, 'free': True,
                 'missing': missing, 'note': note, 'errors': errs, 'links': manual_links(inn), 'url': CheckoApi.site(inn),
@@ -804,15 +825,7 @@ class Counterparties:
         active = not c.get('ДатаЛикв') and not re.search(r'ликвид|прекращ|банкрот|исключ', status, re.I)
         (add('green', 'Организация действует') if active else add('red', 'Статус: ' + status))
         reg = c.get('ДатаРег') or ''
-        age = None
-        try:
-            age = (date.today() - date.fromisoformat(reg[:10])).days / 365.25
-            if age < 1:
-                add('yellow', 'Зарегистрирована менее года назад')
-            elif age >= 3:
-                add('green', 'Работает более %d лет' % int(age))
-        except Exception:
-            pass
+        age = self._reg_age(reg, add)
         if c.get('НедобПост'):
             add('red', 'Состоит в реестре недобросовестных поставщиков')
         if c.get('ЕФРСБ'):
@@ -830,7 +843,7 @@ class Counterparties:
             add('red', 'Недостоверные сведения о руководителе')
         debt = _num(g(c, 'Налоги', 'СумНедоим'))
         if debt:
-            add('yellow', 'Налоговая недоимка: %s руб.' % '{:,.0f}'.format(debt).replace(',', ' '))
+            add('yellow', 'Налоговая недоимка: %s руб.' % self._money(debt))
         # бухотчётность: последние 3 года — из ответа сервиса (суммы в рублях) или из ГИР БО / прежней проверки
         fin, fin_src, fin_url = [], '', ''
         fdata = raw.get('finances') if isinstance(raw.get('finances'), dict) else {}
@@ -849,7 +862,7 @@ class Counterparties:
         if c_cnt:
             rev = fin[0]['revenue'] if fin and fin[0]['revenue'] else None
             add('red' if (rev and c_sum > rev * 0.1) else 'yellow',
-                'Арбитражные дела в роли ответчика: %d на %s руб.' % (c_cnt, '{:,.0f}'.format(c_sum).replace(',', ' ')))
+                'Арбитражные дела в роли ответчика: %d на %s руб.' % (c_cnt, self._money(c_sum)))
         fssp = raw.get('fssp')
         f_cnt = _num((fssp or {}).get('ЗапВсего')) or 0
         f_sum = _num((fssp or {}).get('ОбщСумДолг') or (fssp or {}).get('ОбщСум'))
@@ -858,14 +871,13 @@ class Counterparties:
             vals = [_num(r.get('ОстЗадолж') if r.get('ОстЗадолж') is not None else r.get('СумДолг')) for r in recs if isinstance(r, dict)]
             f_sum = sum(v for v in vals if v) if len(recs) >= f_cnt else 0
         if f_cnt:
-            add('yellow', 'Исполнительные производства: %d%s' % (f_cnt, (' на %s руб.' % '{:,.0f}'.format(f_sum).replace(',', ' ')) if f_sum else ''))
-        levels = [f['level'] for f in flags]
-        score = 'bad' if 'red' in levels else ('warn' if 'yellow' in levels else 'ok')
+            add('yellow', 'Исполнительные производства: %d%s' % (f_cnt, (' на %s руб.' % self._money(f_sum)) if f_sum else ''))
+        score = self._score(flags)
         ogrn = c.get('ОГРН') or c.get('ОГРНИП') or ''
         return {'inn': inn, 'ogrn': ogrn, 'name': c.get('НаимСокр') or c.get('НаимПолн') or c.get('ФИО') or '',
                 'status': status, 'active': active, 'regDate': reg, 'ageYears': round(age, 1) if age is not None else None,
                 'capital': _num(g(c, 'УстКап', 'Сумма')), 'employees': _num(c.get('СЧР')),
-                'okved': ' '.join(x for x in [g(c, 'ОКВЭД', 'Код', default=''), g(c, 'ОКВЭД', 'Наим', default='')] if x),
+                'okved': self._okved(c),
                 'msp': g(c, 'РМСП', 'Кат', default=''), 'taxDebt': debt, 'finances': fin, 'finSource': fin_src, 'finUrl': fin_url,
                 'courts': {'count': c_cnt, 'sum': c_sum} if courts is not None else {'count': None, 'sum': None},
                 'fssp': {'count': f_cnt, 'sum': f_sum or 0} if fssp is not None else {'count': None, 'sum': None},

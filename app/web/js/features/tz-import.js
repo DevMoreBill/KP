@@ -83,8 +83,8 @@ class TzImport {
       : k==='pump' ? ''
       : fld('load', 'Средняя нагрузка, %', '100')+fld('motor', 'Наибольший двигатель, кВт', '—')+sel('start', 'Пуск двигателя', StationReq.START)+fld('alt', 'Высота над уровнем моря, м', '0', 'numeric');
     const sys=q.sys||{}, F=c.r.fields||[], n=st=>F.filter(f=>f.status===st).length, Q=c.r.questions||[], L=c.r.later||[];
-    const sum=F.length ? `Из ТЗ взято ${n('found')} ${this.plural(n('found'), 'параметр', 'параметра', 'параметров')}${n('default')+n('missing') ? `; остальное — по умолчанию, с запасом в пользу заказчика` : ''}${n('conflict') ? `; разные значения в ТЗ (${n('conflict')}) — принято более требовательное` : ''}.`
-      : found.length ? `Из ТЗ взято ${found.length} ${this.plural(found.length, 'значение', 'значения', 'значений')}.` : 'В тексте не нашлось числовых требований — впишите главное сами.';
+    const sum=F.length ? `Из ТЗ взято ${n('found')} ${plural(n('found'), 'параметр', 'параметра', 'параметров')}${n('default')+n('missing') ? `; остальное — по умолчанию, с запасом в пользу заказчика` : ''}${n('conflict') ? `; разные значения в ТЗ (${n('conflict')}) — принято более требовательное` : ''}.`
+      : found.length ? `Из ТЗ взято ${found.length} ${plural(found.length, 'значение', 'значения', 'значений')}.` : 'В тексте не нашлось числовых требований — впишите главное сами.';
     return `<div class="dlg-h"><h3>ТЗ заказчика <small class="muted">· ${esc(c.name)}${c.r.doc ? ` · ${esc(this.kindName(c.r.doc.kind))}${c.r.doc.pages ? ', стр. '+c.r.doc.pages : ''}` : ''}</small></h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <div class="dlg-b">
         ${this.methods(c.r.doc)}
@@ -112,7 +112,6 @@ class TzImport {
           ${typeof AI_DIRECT!=='undefined' && AI_DIRECT.enabled ? '<button class="btn ghost" type="button" data-tzai>✨ Уточнить с ИИ</button>' : ''}
           <button class="btn" type="button" data-x>Отмена</button><button class="btn primary" type="button" data-tzok>${c.pick ? 'Подобрать станцию' : x ? 'Применить к станции' : 'Создать станцию'}</button></div></div>`;
   }
-  static plural(n, one, few, many){ const a=Math.abs(n)%100, b=a%10; return a>10 && a<20 ? many : b===1 ? one : b>=2 && b<=4 ? few : many; }
 
   /** значение параметра анкеты словами (ключи выбора — понятным текстом) */
   static VAL = { basis:{ fad:'FAD — условия всасывания', normal:'нормальные м³' }, mode:{ prime:'основной (PRP)', standby:'резервный (ESP)' },
@@ -232,7 +231,7 @@ class TzImport {
     if (c.pick) r.pick=(await TzPick.assemble(x, { ...q, flow:+num(q.flow), pressure:+num(q.pressure), q:+num(q.q), head:+num(q.head), kw:+num(q.kw), hours:+num(q.hours), pdp:q.pdp, recvVol:+num(q.recvVol), work:+q.work||0 })).slice(0, 900);
     else { delete r.pick; const added=StationReq.ensureParts(x); if (added.length) r.pick='Добавлено по ТЗ: '+added.join(', ');
       if (q.kind==='dgu' && +num(q.hours)>0) StationDefaults.retank(x, +num(q.hours));
-      kitSync(x); stationFill(x); stationAutoName(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); }
+      kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); stationFill(x); stationAutoName(x); }
     persist(); this.m.close(); renderForm(); openEditor(i, 'kit'); StationImages.soon(x);
     toast(c.pick ? 'Станция подобрана и скомпонована по ТЗ — итог в «Подборе станции»' : 'Требования из ТЗ записаны в станцию');
   }
@@ -433,7 +432,7 @@ class TzPick {
    *  характеристики станции, контейнер по оборудованию; ответ — итог подбора для менеджера */
   static async assemble(x, q){
     const added=StationReq.ensureParts(x), note=await this.run(x, q);
-    kitSync(x); stationFill(x); stationAutoName(x); StationUi.cache.delete(x.id); StationSize.apply(x, true);
+    kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); stationFill(x); stationAutoName(x);
     return [note, added.length ? 'Добавлено по ТЗ: '+added.join(', ') : ''].filter(Boolean).join('. ');
   }
 

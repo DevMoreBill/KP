@@ -296,7 +296,7 @@ class StationMass {
    *  frame}} */
   static calc(plan){
     const g=plan.geo; if (!g || !g.ext || !plan.int) return null;
-    const [Le, We, He]=g.ext, [Li, Wi]=plan.int, ox=(Le-Li)/2, oy=(We-Wi)/2, zf=StationGeo.zFloor(g.type, g.t), m=v=>v/1000;
+    const [Le, We, He]=g.ext, [Li, Wi]=plan.int, ox=(Le-Li)/2, oy=(We-Wi)/2, zf=StationGeo.zFloor(g.type), m=v=>v/1000;
     let cont;
     if (g.sea) cont=(this.TARE[g.type] || 2250*Le/6058)+(g.t>0 ? this.LINING*2*(m(Li)*m(Wi)+m(Li)*m(He)+m(Wi)*m(He)) : 0);
     else cont=this.FRAME*m(Le)+(this.PANEL[g.type]||this.PANEL.block)*(2*m(Le)*m(He)+2*m(We)*m(He)+m(Le)*m(We))+this.FLOOR*m(Le)*m(We);
@@ -572,7 +572,6 @@ class StationVent {
   static HOOD = 420;                                        // колпак выброса на крыше: высота над крышей, мм
   static PIECE = 600;                                       // добавочные жалюзи (остаток сечения) — не уже, мм
   static FAN_MIN = 500;                                     // проём вытяжного вентилятора — не ниже, мм (осевой вентилятор от Ø 400 мм)
-  static get FACE(){ return StationRules.raw('heat.face'); }
   static get FREE(){ return StationRules.raw('vent.free'); }
   /** одинаковые жалюзи на площадь по рамке area, м²: {n, w, h} — площадь не меньше нужной, форма ближе к 3 : 2, меньше штук */
   static size(area, o){
@@ -607,7 +606,7 @@ class StationVent {
   static hoodAt(H, a, q){ const r=a*Math.PI/180, d=Math.round(H.l*Math.sin(r)); return { w:H.w, l:H.l, a, d, drop:Math.round(H.l*Math.cos(r)), v:Math.round(q/3600/(H.w/1000*d/1000)*100)/100 }; }
   /** проекция центра тяжести на стену w (как знак № 12 на 3D-виде): {u, z} мм или null */
   static cog(plan, w){
-    const M=plan.mass, g=plan.geo; if (!M || !g || !g.ext) return null; const c=M.cg, [Le, We]=g.ext, [Li, Wi]=plan.int, zf=StationGeo.zFloor(g.type, g.t);
+    const M=plan.mass, g=plan.geo; if (!M || !g || !g.ext) return null; const c=M.cg, [Le, We]=g.ext, [Li, Wi]=plan.int, zf=StationGeo.zFloor(g.type);
     return { u:w==='left' || w==='right' ? c.y-(We-Wi)/2 : c.x-(Le-Li)/2, z:c.z-zf };
   }
   /** расчёт и места. Приток и выброс горячего воздуха — никогда на одной стене: выброс — радиатор ДГУ в дальнем торце или

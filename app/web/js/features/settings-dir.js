@@ -49,7 +49,7 @@ function stEdHtml(){
     const cts=d.contacts.map((c,i)=>`<div class="st-ed-item"><div class="st-ed-g c4">${ST_CT.map(f=>stEdField(d,f,`contacts.${i}.`)).join('')}<button class="btn ghost sm st-ed-x" type="button" data-edx="del" data-l="contacts" data-i="${i}" aria-label="Удалить контакт">✕</button></div></div>`).join('');
     const mk=[...new Set(catCache.map(x=>attrsOf(x).maker).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
     const byMk=catCache.filter(x=>d.makers.some(m=>dlNormSt(m)===dlNormSt(attrsOf(x).maker)));
-    const its=d.items.map(id=>catCache.find(x=>x.id===id)||{id, name:id+' (нет в каталоге)'});
+    const its=d.items.map(id=>CatFind.id(id)||{id, name:id+' (нет в каталоге)'});
     extra=`<div class="st-ed-sec"><div class="sub">Склады — адрес отгрузки${tip('Склады подставляются в «Экономике сделки» → «Логистика» → «Откуда — склад поставщика». Выберите адрес из подсказок (DaData или OpenStreetMap) или вставьте координаты / ссылку на точку из Google или Яндекс Карт — расстояние посчитается по дорогам.')}</div>
         ${whs||'<p class="muted">Складов нет.</p>'}<button class="btn ghost" type="button" data-edx="add" data-l="warehouses">+ Склад</button></div>
       <div class="st-ed-sec"><p class="sub">Контактные лица</p>${cts||'<p class="muted">Контактов нет.</p>'}<button class="btn ghost" type="button" data-edx="add" data-l="contacts">+ Контакт</button></div>

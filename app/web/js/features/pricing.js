@@ -13,7 +13,7 @@ function priceHint(x){
 
 // цены позиции в прошлых КП (функция priceHist): каталог помнит цену модели в каждом сохранённом КП (последние 50)
 class PriceHist {
-  static doc(x){ if (typeof catCache==='undefined') return null; return catCache.find(z=>z.id===x.catId) || (x.name ? catCache.find(z=>norm(z.name)===norm(x.name)) : null); }
+  static doc(x){ if (typeof CatFind==='undefined') return null; return CatFind.id(x.catId) || (x.name ? CatFind.name(x.name) : null); }
   static rows(c){ return (c&&c.prices||[]).filter(p=>p && p.price>0 && (!S.number || p.number!==S.number)); }
   static fmt(p){ return `${money(p.price)} ${curSh(p.cur||'RUB')}`; }
   static hint(x){
@@ -40,7 +40,7 @@ class PriceHist {
 
 // контроль РРЦ: цена для заказчика против рекомендованной розничной цены поставщика (позиции из товарного фида)
 function rrcHint(x, unit){
-  const c=x.catId && typeof catCache!=='undefined' ? catCache.find(z=>z.id===x.catId) : null, r=c&&c.rrc;
+  const c=x.catId && typeof CatFind!=='undefined' ? CatFind.id(x.catId) : null, r=c&&c.rrc;
   if (!r || !(r.price>0)) return '';
   const kr=rateOf(kpCur()), rr=rateOf(r.cur||'RUB');
   const st=c.stock&&typeof feedStockTxt==='function' ? ` · ${esc(feedStockTxt(c.stock))}` : '';

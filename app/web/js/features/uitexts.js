@@ -113,7 +113,8 @@ document.addEventListener('click', e=>{
 }, true);
 
 new MutationObserver(ms=>{
-  for (const m of ms){
+  // замен нет (обычный случай) — записи об изменениях страницы не перебираются: каждая перерисовка даёт их сотни
+  if (Object.keys(UIT.map).length) for (const m of ms){
     if (m.type === 'characterData') uitApply(m.target);
     else if (m.type === 'attributes') uitApply(m.target);
     else for (const n of m.addedNodes) if (!(n.nodeType===1 && (n.classList.contains('uit-pen')||n.classList.contains('uit-bar')))) uitApply(n);

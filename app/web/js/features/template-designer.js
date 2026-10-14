@@ -554,7 +554,7 @@ function tdNudge(dx, dy){
   const x = tdItem(sel);
   if (x){
     if (!x.float){ const el = tdPrimary(); if (!el) return; const r = el.getBoundingClientRect(), a = tdAnchorFor(r.left, r.top); if (!a) return;
-      return tdChange(w=>{ const q = tdItem(sel); Object.assign(q, { float:true, place:a.place, x:tdR(a.x+dx,100), y:tdR(a.y+dy,100) }); if (sel.kind==='label' && !q.widthCm){ q.widthCm = tdR(r.width/tdPxPerCm(),100); q.heightCm = tdR(r.height/tdPxPerCm(),100); } }, {merge:'nudge'}); }
+      return tdChange(()=>{ const q = tdItem(sel); Object.assign(q, { float:true, place:a.place, x:tdR(a.x+dx,100), y:tdR(a.y+dy,100) }); if (sel.kind==='label' && !q.widthCm){ q.widthCm = tdR(r.width/tdPxPerCm(),100); q.heightCm = tdR(r.height/tdPxPerCm(),100); } }, {merge:'nudge'}); }
     return tdChange(()=>{ const q = tdItem(sel); q.x = tdR((+q.x||0)+dx, 100); q.y = tdR((+q.y||0)+dy, 100); }, {merge:'nudge', panels:false});
   }
   const pk = tdParaKey(sel); if (!pk) return;

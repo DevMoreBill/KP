@@ -15,6 +15,11 @@ MAX_TEXT = 60000
 MAX_STREAM = 64 * 1024 * 1024        # распакованный поток — не больше
 
 _OBJ_RX = re.compile(rb'(\d+)\s+(\d+)\s+obj\b')
+_NUM_RX = re.compile(rb'[+-]?(\d+\.?\d*|\.\d+)')        # число (токены разбираются в цикле — выражения собраны заранее)
+_INT_RX = re.compile(rb'\d+')
+_REF_RX = re.compile(rb'\s+(\d+)\s+R(?=[\s/<>\[\]()%]|$)')
+_NOT_HEX = re.compile(rb'[^0-9A-Fa-f]')
+_ESC = {0x6E: 10, 0x72: 13, 0x74: 9, 0x62: 8, 0x66: 12}    # \n \r \t \b \f в строке PDF
 _WS = b' \t\r\n\x0c\x00'
 _DELIM = b'()<>[]{}/%'
 
@@ -66,7 +71,7 @@ class _Lexer:
                 return self._dict()
             e = d.find(b'>', self.p)
             e = n if e < 0 else e
-            h = re.sub(rb'[^0-9A-Fa-f]', b'', d[self.p + 1:e])
+            h = _NOT_HEX.sub(b'', d[self.p + 1:e])
             self.p = e + 1
             if len(h) % 2:
                 h += b'0'
@@ -103,10 +108,10 @@ class _Lexer:
             self.p += 1
             return Op(chr(c))
         w = d[s:self.p]
-        if re.fullmatch(rb'[+-]?(\d+\.?\d*|\.\d+)', w):
+        if _NUM_RX.fullmatch(w):
             # «12 0 R» — ссылка
-            if re.fullmatch(rb'\d+', w):
-                m = re.match(rb'\s+(\d+)\s+R(?=[\s/<>\[\]()%]|$)', d[self.p:self.p + 24])
+            if _INT_RX.fullmatch(w):
+                m = _REF_RX.match(d[self.p:self.p + 24])
                 if m:
                     self.p += m.end()
                     return Ref(int(w))
@@ -128,9 +133,8 @@ class _Lexer:
                     break
                 e = d[self.p]
                 self.p += 1
-                esc = {0x6E: 10, 0x72: 13, 0x74: 9, 0x62: 8, 0x66: 12}
-                if e in esc:
-                    out.append(esc[e])
+                if e in _ESC:
+                    out.append(_ESC[e])
                 elif 0x30 <= e <= 0x37:
                     o = chr(e)
                     for _ in range(2):
@@ -186,7 +190,7 @@ def _decode_stream(dic, raw):
             except zlib.error:
                 return None
         elif x in ('ASCIIHexDecode', 'AHx'):
-            h = re.sub(rb'[^0-9A-Fa-f]', b'', data.split(b'>')[0])
+            h = _NOT_HEX.sub(b'', data.split(b'>')[0])
             data = bytes.fromhex((h + b'0' * (len(h) % 2)).decode('ascii'))
         elif x in ('ASCII85Decode', 'A85'):
             s = data.strip()
@@ -237,7 +241,8 @@ class Doc:
         for n, v in list(self.objs.items()):         # потоки объектов (PDF 1.5+)
             if isinstance(v, tuple) and str(v[1].get('Type')) == 'ObjStm':
                 self._objstm(v)
-        if any(isinstance(v, dict) and 'Encrypt' in v for v in self._trailers()):
+        self.trailers = self._trailers()
+        if any(isinstance(v, dict) and 'Encrypt' in v for v in self.trailers):
             raise ValueError('PDF защищён паролем — снимите защиту или скопируйте текст вручную')
 
     def _trailers(self):
@@ -286,7 +291,7 @@ class Doc:
 
     def pages(self):
         root = None
-        for t in self._trailers():
+        for t in self.trailers:
             if isinstance(t.get('Root'), Ref):
                 root = self.get(t['Root'])
         out = []
@@ -468,8 +473,6 @@ def _run(doc, data, res, out, fonts, depth=0):
             pos['run'] = 0
         elif op == 'T*':
             nl()
-        elif op == 'ET':
-            pass
         elif op == 'Do' and stack and depth < 4 and isinstance(xobj, dict):
             xo = doc.get(xobj.get(str(stack[-1])))
             if isinstance(xo, tuple) and str(xo[1].get('Subtype')) == 'Form':
@@ -485,7 +488,7 @@ def text(data, need_text=True):
     if len(data) > MAX_BYTES:
         raise ValueError('файл больше 40 МБ')
     doc = Doc(data)
-    pages, fonts, parts, per = doc.pages(), {}, [], []
+    pages, fonts, parts, per, size = doc.pages(), {}, [], [], 0
     for pg, res in pages:
         c = pg.get('Contents')
         cs = doc.get(c)
@@ -501,7 +504,8 @@ def text(data, need_text=True):
         per.append(t)
         if t:
             parts.append(t)
-        if sum(len(x) for x in parts) > MAX_TEXT:
+            size += len(t)
+        if size > MAX_TEXT:
             break
     out = '\n\n'.join(parts)
     if need_text and len(re.sub(r'\W', '', out)) < 20:

@@ -83,7 +83,7 @@ class Attention:
 
     def _backup(self):
         import maintenance
-        b = maintenance.summary(self.store, self.cfg.DATA_DIR).get('backup') or {}
+        b = maintenance.state(self.store).get('backup') or {}       # запись о последней копии (без обхода папок копий)
         if not b.get('at'):
             return [{'level': 'warn', 'text': 'Автоматической копии базы ещё не было', 'tab': 'backup'}]
         if not b.get('ok'):

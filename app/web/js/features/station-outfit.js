@@ -117,8 +117,6 @@ class StOutfit {
       sl.box(x0-0.005, y0+0.03, z, x0+0.005, y1-0.03, z+0.02); sl.box(x1-0.005, y0+0.03, z, x1+0.005, y1-0.03, z+0.02); }
     g.box(x0-0.09, y0-0.09, zr+h, x1+0.09, y1+0.09, zr+h+0.03, 0.006);   // крышка с выносом
   }
-  /** наружная сторона стены обращена к зрителю (вид снаружи) */
-  faces(w){ const az=this.s.az*Math.PI/180, d=[-Math.sin(az), -Math.cos(az)]; return ({ left:-d[0], right:d[0], back:d[1], front:-d[1] })[w]>0; }
   /** проём вентиляции в стене помещения: снаружи — жалюзи с козырьком (с маркизой — маркиза вместо козырька), изнутри —
    *  решётка и клапан с электроприводом */
   vent(w, u0, u1, z0, z1, intake, mk){
@@ -446,7 +444,7 @@ class StOutfit {
   static SLING = [180, 300];   // знак № 9 на стене, мм
   static COG = 300;            // знак № 12 на стене, мм
   /** проекция центра тяжести на стену w: {u, z} — мм, как у StWalls (вдоль стены помещения, от пола); нет массы — null */
-  cogOn(w){ const M=this.p.mass, S=this.s; if (!M) return null; const c=M.cg, zf=StationGeo.zFloor(S.g.type, S.g.t);
+  cogOn(w){ const M=this.p.mass, S=this.s; if (!M) return null; const c=M.cg, zf=StationGeo.zFloor(S.g.type);
     return { u:w==='left' || w==='right' ? c.y-S.oy*1000 : c.x-S.ox*1000, z:c.z-zf }; }
   /** проём u0…u0+wd на высоте z0…z1 (с жалюзи и козырьком) закрыл бы место знака «Центр тяжести» на стене w */
   cogHit(w, u0, wd, z0, z1){ const c=this.cogOn(w), h=StOutfit.COG/2+120; return !!c && c.z+h>z0 && c.z-h<z1+220 && u0<c.u+h && u0+wd>c.u-h; }
@@ -459,7 +457,7 @@ class StOutfit {
   }
   lift(){
     const S=this.s, M=this.p.mass; if (!M) return;
-    const rgb=RalColor.rgb(S.wall), light=(0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2])/255<0.45, zf=StationGeo.zFloor(S.g.type, S.g.t);
+    const rgb=RalColor.rgb(S.wall), light=(0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2])/255<0.45, zf=StationGeo.zFloor(S.g.type);
     const ox=S.ox*1000, oy=S.oy*1000, Le=S.Le*1000, We=S.We*1000, [sw, sh]=StOutfit.SLING, cs=StOutfit.COG;
     // точка на наружной поверхности стены: u — вдоль стены помещения, z — от пола, мм
     const leaf=u=>S.closed && S.openF.some(c=>u>c.x0 && u<c.x1);   // на закрытой двери — на её полотне

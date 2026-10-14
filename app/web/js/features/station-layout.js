@@ -126,7 +126,7 @@ class StationGeo {
       door: sea ? sea.door : null, roof:this.roof(c), floor:this.floor(c) };
   }
   /** высота пола внутри над низом контейнера, мм (морской: штатный пол + утеплённый, блок-контейнер — основание) */
-  static zFloor(type, t){ const sea=this.SEA[type]; return sea ? (sea.ext[2]-sea.int[2]-40)+this.SEA_FLOOR : this.flex(type).floor; }
+  static zFloor(type){ const sea=this.SEA[type]; return sea ? (sea.ext[2]-sea.int[2]-40)+this.SEA_FLOOR : this.flex(type).floor; }
 }
 
 // ---------------------------------------------------------------- отступы
@@ -219,18 +219,25 @@ class StationMatrix {
     const o={}; for (const k of Object.keys(D)) o[k]=v[k] && typeof v[k]==='object' ? { ...D[k], ...v[k] } : D[k];
     this._v=v; this._m=o; return o; }
   /** числа раздела g по умолчанию программы, заменённые значениями правил (каждое — в пределах LayoutParams) */
-  static grp(g){ const D=this.DEF[g], v=this.M[g], o={};
-    for (const k of Object.keys(D)){ const f=LayoutParams.field(g, k), x=this.num(v[k], D[k]); o[k]=f ? Math.max(f.lo, Math.min(f.hi, x)) : x; }
+  static grp(g){ const C=this.memo().g; let o=C.get(g);
+    if (!o){ const D=this.DEF[g], v=this.M[g]; o={};
+      for (const k of Object.keys(D)){ const f=LayoutParams.field(g, k), x=this.num(v[k], D[k]); o[k]=f ? Math.max(f.lo, Math.min(f.hi, x)) : x; }
+      C.set(g, Object.freeze(o)); }
     return o; }
+  /** разобранное из матрицы — один раз на матрицу (расстановка спрашивает одно и то же тысячи раз; только для чтения):
+   *  g — разделы, s — обслуживаемые стороны вида, p — строки пар соседей */
+  static memo(){ const M=this.M; if (this._mm!==M){ this._mm=M; this._mc={ g:new Map(), s:new Map(), p:new Map() }; } return this._mc; }
   static num(v, d){ const n=+v; return Number.isFinite(n) ? n : d; }
   static gap(){ return Math.max(0, Math.min(150, this.num(this.M.gap.v, 50))); }
   /** размер «of» для пары: 'receiver.w' — ширина (диаметр) ресивера из пары (больший), '' — нет */
   static dim(of, a, b){ const [k, f]=String(of||'').split('.'); if (!k) return 0;
-    return Math.max(0, ...[a, b].filter(e=>e && e.kind===k).map(e=>+(f==='l' ? e.l : f==='h' ? e.h : e.pairD || e.w)||0)); }
+    const v=e=>e && e.kind===k ? +(f==='l' ? e.l : f==='h' ? e.h : e.pairD || e.w)||0 : 0; return Math.max(0, v(a), v(b)); }
   /** между соседями a и b по длине: [рекомендуется, не менее, крайний случай (вплотную — только где допускается)] или
    *  null — правила для этой пары нет */
   static pair(a, b){
-    const r=(this.M.pair.rows||[]).find(q=>(q.a===a.kind && q.b===b.kind) || (q.a===b.kind && q.b===a.kind)); if (!r) return null;
+    const C=this.memo().p, ck=a.kind+'|'+b.kind; let r=C.get(ck);
+    if (r===undefined){ r=(this.M.pair.rows||[]).find(q=>(q.a===a.kind && q.b===b.kind) || (q.a===b.kind && q.b===a.kind)) || null; C.set(ck, r); }
+    if (!r) return null;
     const rec=Math.round(Math.max(this.num(r.base, 0), this.num(r.k, 0)*this.dim(r.of, a, b))), mn=Math.min(rec, Math.max(0, this.num(r.min, rec)));
     return [rec, mn, r.close ? 0 : mn];
   }
@@ -239,8 +246,10 @@ class StationMatrix {
     if (!r) return null; const rec=Math.round(Math.max(this.num(r.base, 0), this.num(r.k, 0)*(+e.w||0))); return [rec, Math.min(rec, Math.max(0, this.num(r.tight, rec)))]; }
   static access(){ const a=this.M.access; return { back:this.num(a.back, 500), side:this.num(a.side, 600) }; }
   /** обслуживаемые стороны вида: {F, B, L, R} (фронт, зад, бока по длине) */
-  static sides(kind){ const r=(this.M.sides.rows||[]).find(q=>q.kind===kind) || (this.M.sides.rows||[]).find(q=>q.kind==='other'), s=String((r && r.s) || 'Ф').toUpperCase();
-    return { F:/Ф/.test(s), B:/З/.test(s), L:/Л/.test(s), R:/П/.test(s) }; }
+  static sides(kind){ const C=this.memo().s; let o=C.get(kind);
+    if (!o){ const r=(this.M.sides.rows||[]).find(q=>q.kind===kind) || (this.M.sides.rows||[]).find(q=>q.kind==='other'), s=String((r && r.s) || 'Ф').toUpperCase();
+      o=Object.freeze({ F:/Ф/.test(s), B:/З/.test(s), L:/Л/.test(s), R:/П/.test(s) }); C.set(kind, o); }
+    return o; }
   static rot(kind){ const r=(this.M.rotate.rows||[]).find(q=>q.kind===kind); return r ? r.on!==false : !/^(dgu|cabinet)$/.test(kind); }
   static gate(){ return this.grp('gate'); }
   static service(){ return this.grp('service'); }
@@ -909,7 +918,7 @@ class AirChain {
         // ресиверы есть, но меньше расчёта (например, после ввода циклограммы) — добрать по 900 л
         const U=ReceiverPlan.UNIT, more=(L, x, k, role, what)=>{ const v=L.reduce((t, e)=>t+(e.air.vol||0)*e.qty, 0), n=x ? Math.ceil((x.total-v)/U-1e-9) : 0;
           if (L.length && x && x.size===U && L.every(e=>e.air.vol===U) && n>0) add(k, { size:U, n, total:n*U }, role, `Ещё ${n} × ${N(U)} л (${what})`, `в составе ${N(v)} л, по расчёту — ${N(x.total)} л`, x.total-v); };
-        more(dryR.filter(e=>!(RP.mode==='before')), RP.main, 'receiver-more', RP.mode==='before' ? 'wet' : 'dry', 'основной ресивер');
+        more(RP.mode==='before' ? [] : dryR, RP.main, 'receiver-more', RP.mode==='before' ? 'wet' : 'dry', 'основной ресивер');
         if (RP.wet) more(wetR, RP.wet, 'receiver-wet-more', 'wet', 'мокрый ресивер');
         if (RP.local && !eq.some(e=>e.local)) add('receiver-local', RP.local, 'local', `Локальный ресивер ${N(RP.local.size)} л у потребителя`, `пик точки больше 50 % производительности компрессора; ${RP.local.why}`); }
     }
@@ -1330,7 +1339,6 @@ class StationLayout {
   static gaps(geo){ const d=StationMatrix.door(), e=geo && geo.ext, i=geo && geo.int, tL=e && i ? (e[0]-i[0])/2 : 0, tW=e && i ? (e[1]-i[1])/2 : 0;
     return { gap:d.gap, eL:Math.max(this.DOOR.pad, Math.ceil(d.edge-tL)), eW:Math.max(this.DOOR.pad, Math.ceil(d.edge-tW)) }; }
   static get PASS(){ return StationMatrix.move().pass; }   // вынос агрегата через проём и по проходу (на роликах): зазор с каждой стороны, мм
-  static get REAR_H(){ return StationMatrix.service().minH; }
   /** сервисные ворота по размеру агрегата: ширина = сторона + service.addW (+ 2·T стенки), с округлением service.step, от
    *  service.min до service.max; высота = высота + service.addH (+ T), не ниже service.minH (не у стоящего плотно к стене — не
    *  ниже двери оператора) и под потолком на 100 мм */
@@ -2425,7 +2433,7 @@ class StationLayout {
    *  Координаты — как у оборудования внутри (от внутренних стен и пола): x за торцом, z — от площадки на земле */
   outside(plan, chassis){
     const E=this.eq.filter(e=>e.outside); if (!E.length) return [];
-    const [L, W]=plan.int, ext=plan.geo.ext, ox=(ext[0]-L)/2, oy=(ext[1]-W)/2, zf=StationGeo.zFloor(plan.geo.type, plan.geo.t), C=StationLayout;
+    const [L, W]=plan.int, ext=plan.geo.ext, ox=(ext[0]-L)/2, oy=(ext[1]-W)/2, zf=StationGeo.zFloor(plan.geo.type), C=StationLayout;
     const air=(plan.piping||[]).flatMap(p=>p.lines||[]).filter(l=>l.medium==='air' && !l.header && l.x1>=L-1), yc=air.length ? air[0].y : W-C.AIR_Y;
     const lo=-oy, hi=W+oy, first=ly=>Math.round(Math.min(hi-ly, Math.max(lo, yc-ly/2))), out=[];
     let x=L+ox+C.OUT_GAP, top=null, col=0;
@@ -2515,6 +2523,9 @@ class StationLayout {
     for (const [lw, ll, st] of lv) tiers.push([lw, ll, false, {}, st]);
     for (const m of this.modes().slice(1).filter(m=>!m.ends)) tiers.push([1, 1, false, m, '']);
     if (F.wide) for (const [lw, ll, st] of lv) tiers.push([lw, ll, true, {}, st]);
+    // расстановка в размере ext и режиме m — одна на весь подбор: уровни (tiers) и соседние варианты длины проверяют одни и те
+    // же размеры (принятый вариант дописывается в done — после этого поиск заканчивается)
+    const tried=new Map(), fitAt=(g, m)=>{ const k=g.ext.join('×')+JSON.stringify(m); let r=tried.get(k); if (!r){ r=this.fit(units, g, [m]); tried.set(k, r); } return r; };
     let tall=null;
     for (const [lw, ll, wide, m, st] of tiers){ const got=this.withMode(m, ()=>{
         const Hx=Math.max(B.minH, G.up(needH(lw)+hOf)); if (Hx>B.maxH){ tall=tall||Hx; return null; }
@@ -2547,11 +2558,11 @@ class StationLayout {
         for (const c of cand){ if (alt && c.a>alt.a*1.2) break; const key=c.Lx+'×'+c.Wx+(c.m.ends ? 'E' : ''); if (seen.has(key)) continue; seen.add(key);
           for (let Lx=fixL || c.Lx; Lx<=(fixL || Math.min(StationLayout.MAX_L, c.Lx+1500)); Lx+=G.STEP){   // шкафам и фильтрам может понадобиться место в ряду
             let g2=Object.assign({}, geo, { auto:false, road:true, ext:[Lx, c.Wx, Hx] }); g2.int=G.inner(geo.type, g2.ext, t);
-            let r=this.fit(units, g2, [c.m]); if (r.level==='error') continue;
+            let r=fitAt(g2, c.m); if (r.level==='error') continue;
             // сервисные ворота за агрегатом: над ними — трубопровод и выброс горячего воздуха коробом (решение ПНЕВМОТЕХ) —
             // контейнер выше, если места над воротами мало
             const up=this.overGate(r); if (up>g2.int[2]){ const H2=G.up(up+hOf);
-              if (H2<=B.maxH){ const g3=Object.assign({}, g2, { ext:[Lx, c.Wx, H2] }); g3.int=G.inner(geo.type, g3.ext, t); const r3=this.fit(units, g3, [c.m]); if (r3.level!=='error'){ r=r3; g2=g3; } } }
+              if (H2<=B.maxH){ const g3=Object.assign({}, g2, { ext:[Lx, c.Wx, H2] }); g3.int=G.inner(geo.type, g3.ext, t); const r3=fitAt(g3, c.m); if (r3.level!=='error'){ r=r3; g2=g3; } } }
             if (c.two && r.rows===1) break;                                          // вышел один ряд — его место среди однорядных
             const w=r.issues.filter(i=>i.level==='warn').map(i=>i.text);
             if (st==='rec' && (w.some(x=>/^Проход|стоит в/.test(x)) || r.items.some(i=>i.tight))) break;   // рекомендуемые проход и отступ сзади не вышли — другая ширина
@@ -2656,6 +2667,5 @@ class StationLayout {
   }
 
   /** 12345 → «12 345» */
-  static n(v){ return String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
-  static plural(n, a, b, c){ const m=n%10, h=n%100; return m===1 && h!==11 ? a : m>=2 && m<=4 && (h<12 || h>14) ? b : c; }
+  static n(v){ const s=String(Math.round(v)); return s.length<4 ? s : s.replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 }
