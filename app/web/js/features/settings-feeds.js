@@ -9,6 +9,37 @@ const FD_REMEZA = { name:'Remeza', url:'https://www.remeza.org/bitrix/catalog_ex
 const FD_FILES = { kind:'files', name:'', maker:'', priceKind:'cost', cur:'EUR', priceOnly:false, pageDesc:false, auto:false };
 const FD_CURS = [['', 'как в прайсе'], ['RUB', 'Рубли'], ['EUR', 'Евро'], ['USD', 'Доллары США'], ['CNY', 'Юани']];
 
+// удаление позиций, загруженных фидом (только «Настройки» с паролем): все или одной категории фида — в корзину;
+// «не загружать снова» — фид запоминает удалённые предложения (сервер: feeds.FeedPurge)
+class FeedPurgeUi {
+  static row(f){
+    return `<div class="row fd-acts fd-purge"><button class="btn ghost danger" type="button" data-fd="purge"${f.linked?'':' disabled title="В каталоге нет позиций этого фида"'}>Удалить позиции фида…</button>
+      ${f.excluded?`<span class="muted">Удалено и не загружается снова: ${Fmt.num(f.excluded)}</span><button class="btn ghost" type="button" data-fd="unblock">Вернуть в загрузку</button>`:''}</div>`;
+  }
+  static async open(fid, m){
+    const p0=await ajson(`feeds/${fid}/purge`, {preview:true});
+    if (!p0.total) return toast('В каталоге нет позиций этого фида');
+    const md=new Modal(`<div class="dlg-h"><h3>Удалить позиции фида</h3><button class="icon" type="button" data-fp="x" aria-label="Закрыть">✕</button></div>
+      <label class="f"><span>Что удалить</span><select data-fp="cat"><option value="">Все позиции фида — ${Fmt.num(p0.total)}</option>${p0.cats.map(c=>`<option value="${esc(c.cat)}">${esc(c.title)} — ${Fmt.num(c.n)}</option>`).join('')}</select></label>
+      <p class="muted" data-fp="info"></p>
+      <p><label class="chk-chip"><input type="checkbox" data-fp="block" checked> Не загружать их снова при следующей загрузке фида</label></p>
+      <p class="muted">Позиции уйдут в корзину («Обслуживание → Корзина»), восстановить можно ${DEFN('srv.trashDays', 30)} дн. КП, в которых они уже есть, не меняются.</p>
+      <div class="row"><button class="btn danger-bg" type="button" data-fp="go">Удалить в корзину</button><button class="btn ghost" type="button" data-fp="x">Отмена</button></div>`, 'fp-dlg');
+    let cur=p0;
+    const info=()=>{ md.$('[data-fp=info]').innerHTML=`Будет удалено: <b>${Fmt.num(cur.picked)}</b>${cur.sample.length?' — '+cur.sample.slice(0, 6).map(esc).join(' · ')+(cur.picked>6?' …':''):''}`; };
+    info();
+    md.$('[data-fp=cat]').onchange=async e=>{ cur=await ajson(`feeds/${fid}/purge`, {preview:true, cat:e.target.value}); info(); };
+    md.d.addEventListener('click', async e=>{
+      const a=e.target.closest('[data-fp]')?.dataset.fp; if (a==='x') return md.close(); if (a!=='go') return;
+      const cat=md.$('[data-fp=cat]').value, block=md.$('[data-fp=block]').checked;
+      if (!await stConfirm(`Удалить ${Fmt.num(cur.picked)} поз.?`, `Позиции фида уйдут в корзину${block?' и больше не будут загружаться из фида (вернуть — «Вернуть в загрузку»)':''}.`, 'Удалить')) return;
+      e.target.disabled=true;
+      try{ const r=await ajson(`feeds/${fid}/purge`, {cat, block}); md.close(); toast(`Удалено в корзину: ${Fmt.num(r.deleted)}`); refreshCat(); stFeeds(m); }
+      catch(err){ e.target.disabled=false; toast(err.message||String(err)); }
+    });
+  }
+}
+
 const fdRub = kop => kop==null ? '—' : money(kop)+' ₽';
 const fdMoney = (kop, cur) => kop==null ? '—' : money(kop)+' '+curSh(cur||'RUB');
 const fdDate = iso => iso ? Fmt.dateTime(iso) : '—';
@@ -29,7 +60,7 @@ async function stFeeds(m){
         ${x.job&&x.job.state==='run'?`<span class="ok-t">${x.job.kind==='import'?'Загружаю':'Проверяю'}… ${x.job.done}/${x.job.total||'?'}</span>`:''}</div>
         <div class="acts"><button class="btn" type="button" data-fd="open" data-id="${esc(x.id)}">${x.id===FD.sel?'Свернуть':'Открыть'}</button></div></div>`).join('')}</div>`:'<p class="muted">Фидов пока нет.</p>'}</div>
     ${FD.edit?fdForm(FD.edit, true):''}
-    ${f?`<div class="st-card fd-panel" id="fdPanel">${fdForm(f)}${fdIsFiles(f)?fdFiles(f):fdExtra(f)}<div id="fdDisc">${fdDisc(f)}</div>${fdActions(f)}<div id="fdJob">${fdJob(f.job)}</div><div id="fdPrev">${FD.prev&&FD.prev.id===f.id?fdPreview(FD.prev, f):''}</div><div id="fdLog"></div></div>`:''}
+    ${f?`<div class="st-card fd-panel" id="fdPanel">${fdForm(f)}${fdIsFiles(f)?fdFiles(f):fdExtra(f)}<div id="fdDisc">${fdDisc(f)}</div>${fdActions(f)}${FeedPurgeUi.row(f)}<div id="fdJob">${fdJob(f.job)}</div><div id="fdPrev">${FD.prev&&FD.prev.id===f.id?fdPreview(FD.prev, f):''}</div><div id="fdLog"></div></div>`:''}
     ${MakerLogoPanel.html()}`;
   MakerLogoPanel.bind(m);
   m.onclick=e=>fdClick(e, m);
@@ -348,6 +379,9 @@ async function fdClick(e, m){
       await ajson('feeds', {...f, cats:{...FD.cats}});
       await ajson(`feeds/${FD.sel}/import`); toast('Загрузка началась — можно продолжать работу'); return stFeeds(m); }
     if (a==='check'){ await ajson(`feeds/${FD.sel}/check`); toast('Обновление началось'); return stFeeds(m); }
+    if (a==='purge') return FeedPurgeUi.open(FD.sel, m);
+    if (a==='unblock'){ if (!await stConfirm('Вернуть удалённые позиции в загрузку?', 'При следующей загрузке фида удалённые позиции снова появятся в каталоге (если они есть в фиде).', 'Вернуть')) return;
+      await ajson(`feeds/${FD.sel}/unblock`); toast('Удалённые позиции снова будут загружаться'); return stFeeds(m); }
     if (a==='plan'){ b.disabled=true; b.textContent='Считаю…'; const p=await ajson(`feeds/${FD.sel}/plan`);
       const el=m.querySelector('#fdPrev'); if (el) el.innerHTML=fdBuildPlan(p); b.disabled=false; b.textContent=p.built?'Что нового в парсе':'План сборки'; return; }
     if (a==='build'){ const tm=!!m.querySelector('#fdTrashMissing')?.checked;
