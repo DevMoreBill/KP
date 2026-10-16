@@ -22,7 +22,7 @@ class SettingsSearch {
     ai:'нейросеть ии deepseek openrouter модель токены заполнить', keys:'ключи api checko чекко ofdata офдата резерв rusprofile руспрофайл гир бо бухотчётность dadata ati деловые линии кит сдэк возовоз convertapi pdf',
     connections:'проверка подключений связь сервисы работает не работает', access:'вход логин пароль права менеджеров блокировать',
     users:'администраторы учётные записи', security:'мой пароль сменить', updates:'обновление версия github установить откат токен',
-    system:'система папки порт адрес перезапуск диск место сервер', backup:'копии резервная копия база экспорт импорт выгрузка json zip sqlite вторая папка флешка сетевой диск облако восстановить',
+    system:'система папки порт адрес перезапуск диск место сервер', backup:'копии резервная копия база экспорт импорт выгрузка каталог поставщика excel правка json zip sqlite вторая папка флешка сетевой диск облако восстановить',
     trash:'корзина восстановить удалённое', changed:'изменённые отличается встроенное вернуть сбросить', history:'история изменений откат вернуть как было кто изменил'};
 
   static norm(s){ return String(s||'').toLowerCase().replace(/ё/g,'е'); }
@@ -34,6 +34,7 @@ class SettingsSearch {
       add({label:t.label, where:g.title, text:t.hint+' '+(this.WORDS[t.key]||''), tab:t.key, kind:'Вкладка'});
     const gt=Object.fromEntries(DEF_GROUPS);
     for (const [key, g, label, , builtin, o={}] of DEF_SCHEMA) add({label, where:AdminNav.path('defaults')+' → '+(gt[g]||g), before:()=>{ DefaultsTab.sec=DefRegistry.section(g); DefaultsTab.q=''; DefaultsTab.only=false; }, text:(o.hint||'')+' '+(builtin??''), tab:'defaults', focus:`[data-dk="${CSS.escape(key)}"]`, kind:'Умолчание'});
+    add({label:'Каталог поставщика: копия или Excel для правки', where:AdminNav.path('backup'), text:'выгрузка поставщик фид без цен excel правка zip', tab:'backup', focus:'#seBox', kind:'Выгрузка'});
     for (const d of FEAT.defs) add({label:d.label, where:AdminNav.path('features'), text:d.hint, tab:'features', focus:`[data-ft="${CSS.escape(d.key)}"]`, kind:'Функция'});
     for (const d of LISTS.defs.values()) add({label:d.label, where:AdminNav.path('lists'), text:d.hint||'', tab:'lists', before:()=>{ ListsPanel.last=d.key; }, kind:'Список'});
     for (const [g, , fs] of ApiKeys.GROUPS) for (const f of fs) if (f.t) add({label:f.t, where:AdminNav.path('keys')+' → '+g, text:(f.h||'')+' '+(f.ph||''), tab:'keys', focus:`[data-key="${CSS.escape(f.id)}"]`, kind:'Ключ'});
@@ -80,6 +81,7 @@ class SettingsSearch {
 
 // ---------------------------------------------------------------- переход по вкладкам и подсветка найденного
 class StNav {
+  static sup = '';     // поставщик для «Копии и база → Каталог поставщика» (переход из «Фидов поставщиков»)
   static select(key){ ST.tab=AdminNav.key(key); const d=$('#setdlg'); if (d) d.querySelectorAll('.st-nav [data-sttab]').forEach(b=>b.classList.toggle('on', b.dataset.sttab===ST.tab)); d?.querySelector('.st-nav .on')?.scrollIntoView({block:'nearest'}); }
   /** найти элемент на открытой вкладке (селектор или текст) и показать его */
   static highlight(sel, text){
@@ -87,7 +89,7 @@ class StNav {
     let el=sel ? body.querySelector(sel) : null;
     if (el) el=el.closest('.df-row,.ft-r,.key-f,.st-row,tr,label,.st-card')||el;
     if (!el && text){ const n=SettingsSearch.norm(text);
-      el=[...body.querySelectorAll('td,b,h4,p.sub,.ls-it,label span')].find(x=>SettingsSearch.norm(x.textContent).includes(n)); el=el&&(el.closest('tr,.st-row,.ls-it,label')||el); }
+      el=[...body.querySelectorAll('td,b,h4,.sub,.ls-it,label span')].find(x=>SettingsSearch.norm(x.textContent).includes(n)); el=el&&(el.closest('tr,.st-row,.ls-it,label')||el); }
     if (!el) return;
     el.scrollIntoView({block:'center'}); el.classList.add('st-hit'); setTimeout(()=>el.classList.remove('st-hit'), 2600);
     el.querySelector?.('input:not([type=checkbox]),select,textarea')?.focus({preventScroll:true});
@@ -98,7 +100,7 @@ class StNav {
 class StDirty {
   static on = false;
   // поля, которые не настройки: поиск, фильтры журнала, выбор строк, параметры выгрузки, файлы
-  static SKIP = '[type=search],[type=file],[data-nodirty],[data-nodirty] *,[data-af],[data-did],#dtExp *,.st-find *,[name=dtScope]';
+  static SKIP = '[type=search],[type=file],[data-nodirty],[data-nodirty] *,[data-af],[data-did],#dtExp *,#seBox *,.st-find *,[name=dtScope]';
 
   static watch(d){
     if (d._dirtyWatch) return; d._dirtyWatch=true;

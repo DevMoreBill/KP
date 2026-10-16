@@ -1265,11 +1265,14 @@ class AdminApi:
         if sub == 'export' and m == 'GET':
             cats = [c for c in (q.get('cats') or '').split(',') if re.match(r'^[A-Za-z0-9_-]{1,64}$', c)] or None
             return self.export([s for s in (q.get('sections') or ','.join(SECTIONS)).split(',') if s in SECTIONS],
-                               cats=cats, images=q.get('images') == '1')
+                               cats=cats, images=q.get('images') == '1', sup=(q.get('sup') or '').strip() or None)
         if sub == 'export/cats' and m == 'GET':
             return self.ok(self.export_cats())
+        if sub == 'export/suppliers' and m == 'GET':
+            from supplier_scope import SupplierScope
+            return self.ok(SupplierScope(st).groups())
         if sub in ('import/file/preview', 'import/file') and m == 'POST':
-            return self.ok(self.import_file(self.h.body(), apply=(sub == 'import/file'), sections=q.get('sections')))
+            return self.ok(self.import_file(self.h.body(), apply=(sub == 'import/file'), sections=q.get('sections'), name=q.get('name') or ''))
         if sub == 'export/sqlite' and m == 'GET':
             return self.export_sqlite()
         if sub in ('import/preview', 'import') and m == 'POST':
@@ -1631,10 +1634,17 @@ class AdminApi:
         """Категории каталога для выборочной выгрузки: [{cat, count}] (названия и группы — у клиента в справочнике типов)."""
         return [{'cat': c or '', 'count': n} for c, n in self.st.all('SELECT cat, COUNT(*) FROM catalog GROUP BY cat ORDER BY cat')]
 
-    def export(self, sections, cats=None, images=False):
-        """Выбранные разделы JSON; cats — только эти категории каталога; images — архив .zip с изображениями из ссылок."""
-        st, out, items, catalog = self.st, {}, 0, '[]'
-        if 'catalog' in sections:
+    def export(self, sections, cats=None, images=False, sup=None):
+        """Выбранные разделы JSON; cats — только эти категории каталога; images — архив .zip с изображениями из ссылок;
+        sup — только позиции этого поставщика (SupplierScope), без цен и остатков: только каталог."""
+        st, out, items, catalog, keep = self.st, {}, 0, '[]', None
+        if sup:
+            from supplier_scope import SupplierScope
+            docs = SupplierScope(st).docs(sup)
+            sections, cats, items, keep = ['catalog'], None, len(docs), list(SupplierScope.PRICE_KEYS)
+            catalog = json.dumps(docs, ensure_ascii=False)
+            out['catalog'] = None
+        elif 'catalog' in sections:
             # каталог — готовыми строками из базы, без разбора и повторной сборки: 25 000 позиций занимали 1,3 ГБ памяти сервера
             where, args = ('WHERE cat IN (%s)' % ','.join('?' * len(cats)), tuple(cats)) if cats else ('', ())
             out['catalog'] = None
@@ -1656,11 +1666,16 @@ class AdminApi:
             from data_bundle import ProgramSettings
             out['settings'] = ProgramSettings(st).export()
         secs = ','.join('%s:%s' % (json.dumps(k), catalog if k == 'catalog' else json.dumps(v, ensure_ascii=False)) for k, v in out.items())
-        body = '{"format":"kp-backup","version":1,"createdAt":%s,"sections":{%s}%s}' % (
-            json.dumps(_now()), secs, ',"cats":%s' % json.dumps(cats, ensure_ascii=False) if cats else '')
+        extra = (',"cats":%s' % json.dumps(cats, ensure_ascii=False) if cats else '') + (
+            ',"supplier":%s,"keep":%s' % (json.dumps(sup, ensure_ascii=False), json.dumps(keep)) if sup else '')
+        body = '{"format":"kp-backup","version":1,"createdAt":%s,"sections":{%s}%s}' % (json.dumps(_now()), secs, extra)
         what = ('+'.join(SECTION_FILE[x] for x in sections) if len(sections) < len(SECTIONS) else 'полная') + ('_категорий-%d' % len(cats) if cats else '')
+        if sup:
+            what = 'каталог_' + (re.sub(r'[^\w.-]+', '_', sup).strip('_')[:60] or 'поставщик')
         stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
         info = {'sections': sections, 'cats': cats, 'items': items}
+        if sup:
+            info['supplier'] = sup[:120]
         if images:
             data, n, missing = self.bundle().pack(body)
             self.log('export_db', 'db', ','.join(sections), None, dict(info, bytes=len(data), images=n, missing=missing))
@@ -1723,6 +1738,8 @@ class AdminApi:
         sec = d['sections']
         want = [s for s in (sections or 'catalog,kp,managers,clients,suppliers,settings').split(',') if s in sec and s != 'audit' and s in SECTIONS]
         st, rep, errors = self.st, {}, []
+        from supplier_scope import SupplierScope
+        keep = SupplierScope.keep_of(d)      # выгрузка по поставщику: цен и остатков в файле нет — у имеющихся позиций остаются
         by = actor(self.h, True)[1]
         backup = self.import_backup() if apply else None
         exist = {'catalog': {x['id']: x for x in json.loads(st.catalog_light())},
@@ -1764,7 +1781,10 @@ class AdminApi:
             if apply:
                 if s == 'catalog':
                     for x in ok:
-                        st.catalog_put(x['id'], json.dumps({k: v for k, v in x.items() if k not in ('_light', 'st', 'pricesCount')}, ensure_ascii=False))
+                        y = {k: v for k, v in x.items() if k not in ('_light', 'st', 'pricesCount')}
+                        if keep and x['id'] in exist[s]:
+                            y = SupplierScope.merge(y, _loads(st.catalog_get(x['id'])) or {}, keep)
+                        st.catalog_put(x['id'], json.dumps(y, ensure_ascii=False))
                 elif s == 'kp':
                     for x in ok:
                         st.kp_import(x)
@@ -1785,13 +1805,18 @@ class AdminApi:
             ProgramSettings(st).apply(sec['settings'])
         if apply:
             self.log('import_db', 'db', ','.join(want), None, {'report': rep, 'createdAt': d.get('createdAt'), 'backup': backup})
-        return {'report': rep, 'errors': errors, 'createdAt': d.get('createdAt'), 'applied': apply}
+        return {'report': rep, 'errors': errors, 'createdAt': d.get('createdAt'), 'applied': apply, 'keep': bool(keep),
+                'supplier': str(d.get('supplier') or '')[:120]}
 
-    def import_file(self, data, apply, sections=None):
-        """Резервная копия файлом: .json или .zip с изображениями — предпросмотр или загрузка (изображения — только недостающие)."""
+    def import_file(self, data, apply, sections=None, name=''):
+        """Резервная копия файлом: .json или .zip с изображениями — предпросмотр или загрузка (изображения — только недостающие);
+        книга Excel для правки (CatalogSheet) — как файл правок каталога."""
+        from catalog_patch import CatalogPatch, CatalogSheet
+        if CatalogSheet.is_book(data):
+            d, z, imgs = CatalogSheet(self.st).patch(data, str(name)[:120]), None, []
+        else:
+            d, z, imgs = self.bundle().read(data)
         b = self.bundle()
-        d, z, imgs = b.read(data)
-        from catalog_patch import CatalogPatch
         if CatalogPatch.is_patch(d):        # правки каталога: только перечисленные поля позиций, цены и остатки не трогаются
             if z:
                 z.close()

@@ -540,3 +540,27 @@ tr.re-on{background:var(--soft)}
 .cf-t th,.cf-t td{ padding:4px 6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
 .cf-t input,.cf-t select{ width:100%; min-width:70px; }
 .cf-r{ margin-top:10px; }
+
+/* фиды 3.98: строка фида открывает его; раскрываемые разделы панели (скидки, настройки, позиции, журнал) */
+.fd-row{cursor:pointer}
+.fd-row:hover{background:var(--soft,rgba(11,69,160,.05))}
+.fd-row.on{background:var(--soft,rgba(11,69,160,.08))}
+.fd-row:focus-visible{outline:2px solid var(--navy);outline-offset:-2px}
+.fd-chev{font-size:16px;color:var(--muted);padding:0 6px}
+.fd-ph{display:flex;flex-direction:column;gap:2px;margin-bottom:2px}
+.fd-ph b{font-size:16px}
+.fd-ph .muted{overflow-wrap:anywhere}
+.fd-ph+.fd-acts{border-top:0;padding-top:4px}
+.fd-secb .fd-acts{border-top:0;padding-top:0;align-items:center}
+.fd-sec{border-top:1px solid var(--line);margin-top:10px;padding-top:2px}
+.fd-sec>summary{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;cursor:pointer;padding:8px 0;list-style:none}
+.fd-sec>summary::-webkit-details-marker{display:none}
+.fd-sec>summary::before{content:'▸';color:var(--muted);width:12px}
+.fd-sec[open]>summary::before{content:'▾'}
+.fd-sec>summary .muted{font-size:13px}
+.fd-secb{padding:2px 0 6px}
+.fd-secb .fd-form{margin-top:0}
+.se-row{gap:8px;flex-wrap:wrap;align-items:center}
+.se-row select{min-width:0;flex:1 1 260px;max-width:420px}
+.st-more>summary{cursor:pointer}
+.st-more>.st-card{margin-top:10px}

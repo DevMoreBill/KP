@@ -61,7 +61,7 @@ function stEdHtml(){
         <div class="row st-ed-add"><input type="text" id="stEdIt" list="stEdItL" placeholder="Позиция каталога (если покупаете не всё у производителя)" autocomplete="off"><datalist id="stEdItL">${catCache.map(x=>`<option value="${esc(x.name)}">`).join('')}</datalist><button class="btn ghost" type="button" data-edx="it">Добавить позицию</button></div></div>`;
   }
   return `<div class="st-ed-h"><b>${E.id?esc(({manager:'Менеджер',client:'Клиент',supplier:'Поставщик'})[t]+': '+(d.name||'')):ST_NEW[t]}</b><span class="sp"></span>
-      <button class="btn" type="button" data-edx="cancel">Отмена</button><button class="btn primary" type="button" data-edx="save">Сохранить</button></div>
+      ${t==='supplier'&&E.id&&d.name?`<button class="btn ghost" type="button" data-edx="export" title="Позиции этого поставщика без цен: копия с фото или Excel для правки">Выгрузить каталог…</button>`:''}<button class="btn" type="button" data-edx="cancel">Отмена</button><button class="btn primary" type="button" data-edx="save">Сохранить</button></div>
     ${E.msg?`<p class="msg err">${esc(E.msg)}</p>`:''}${secs}${extra}
     <div class="st-ed-f"><span class="sp"></span><button class="btn" type="button" data-edx="cancel">Отмена</button><button class="btn primary" type="button" data-edx="save">Сохранить</button></div>`;
 }
@@ -80,6 +80,7 @@ function stEdBind(m, after){
   m.addEventListener('keydown', e=>{ if (e.key!=='Enter' || !ST.ed) return; if (e.target.id==='stEdMk'){ e.preventDefault(); box().querySelector('[data-edx=mk]').click(); } if (e.target.id==='stEdIt'){ e.preventDefault(); box().querySelector('[data-edx=it]').click(); } });
   m.addEventListener('click', async e=>{ const b=e.target.closest('[data-edx]'); if (!b || !ST.ed) return; e.preventDefault(); const E=ST.ed, d=E.doc, a=b.dataset.edx;
     if (a==='cancel'){ ST.ed=null; return after(); }
+    if (a==='export'){ if (!await StDirty.leave()) return; StNav.sup=d.name; ST.ed=null; StNav.select('backup'); return stTab(); }
     if (a==='add'){ d[b.dataset.l].push(b.dataset.l==='warehouses'?{name:d.warehouses.length?'':'Основной склад'}:{}); stEdDraw(box());
       const last=[...box().querySelectorAll(`[data-ef^="${b.dataset.l}.${d[b.dataset.l].length-1}."]`)][b.dataset.l==='warehouses'?1:0]; last?.focus(); return; }
     if (a==='del'){ d[b.dataset.l].splice(+b.dataset.i,1); return stEdDraw(box()); }

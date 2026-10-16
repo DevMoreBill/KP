@@ -40,6 +40,40 @@ class FeedPurgeUi {
   }
 }
 
+// открытый фид: сверху — что сделать сейчас (кнопки шага, ход загрузки, предпросмотр) и файлы поставщика;
+// редкое — под раскрытием (запоминается): скидки, настройки фида, выгрузка и удаление позиций, журнал
+class FeedPanel {
+  static supName(f){ const s=(FD.sups||[]).find(x=>x.id===f.supplier); return s ? s.name : ''; }
+  static row(x){
+    const sup=FeedPanel.supName(x), run=x.job&&x.job.state==='run', on=x.id===FD.sel;
+    const when=[x.last&&x.last.check?`${fdIsFiles(x)?'цены':'проверка'} ${fdDate(x.last.check.at)}`:'', x.last&&x.last.import?`загрузка ${fdDate(x.last.import.at)}`:''].filter(Boolean).join(' · ');
+    return `<div class="st-row fd-row${on?' on':''}" data-fd="open" data-id="${esc(x.id)}" role="button" tabindex="0"><div><b>${esc(x.name)}</b>
+        <span class="muted">${sup?'поставщик: '+esc(sup)+' · ':''}в каталоге: ${Fmt.num(x.linked)} ${plural(x.linked,'позиция','позиции','позиций')}${when?' · '+esc(when):''}${x.auto?' · автопроверка раз в день':''}</span>
+        ${run?`<span class="ok-t">${x.job.kind==='import'?'Загружаю':'Проверяю'}… ${x.job.done}/${x.job.total||'?'}</span>`:''}</div>
+      <div class="acts"><span class="fd-chev" aria-hidden="true">${on?'▾':'▸'}</span></div></div>`;
+  }
+  static discSum(f){ const n=(f.discounts||[]).length, o=f.discount;
+    return n||o ? `${n?`${n} ${plural(n,'правило','правила','правил')}`:'без правил'}${o?`, остальное — ${String(o).replace('.',',')} %`:''}` : 'не задана — закупка без скидки'; }
+  static sec(key, title, sum, body, open=false){
+    return `<details class="fd-sec"${Spoiler.attr('fd.'+key, open)}><summary><b>${title}</b><span class="muted">${sum}</span></summary><div class="fd-secb">${body}</div></details>`;
+  }
+  static html(f){
+    const files=fdIsFiles(f), sup=FeedPanel.supName(f) || f.name;
+    const src=files ? esc(fdFilesShort(f)) : `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.url)}</a>`;
+    return `<div class="st-card fd-panel" id="fdPanel">
+      <div class="fd-ph"><b>${esc(f.name)}</b><span class="muted">${src}</span></div>
+      ${fdActions(f)}<div id="fdJob">${fdJob(f.job)}</div><div id="fdPrev">${FD.prev&&FD.prev.id===f.id?fdPreview(FD.prev, f):''}</div>
+      ${files?fdFiles(f):fdExtra(f)}
+      ${FeedPanel.sec('disc', 'Скидки поставщика', FeedPanel.discSum(f), `<div id="fdDisc">${fdDisc(f)}</div>`)}
+      ${FeedPanel.sec('set', 'Настройки фида', esc([files?'файлы':'YML', f.maker?'производитель '+f.maker:'', FeedPanel.supName(f)?'поставщик '+FeedPanel.supName(f):'поставщик не указан'].filter(Boolean).join(' · ')), fdForm(f))}
+      ${FeedPanel.sec('data', 'Позиции фида: выгрузить, удалить', `в каталоге ${Fmt.num(f.linked)}${f.excluded?`, не загружаются снова ${Fmt.num(f.excluded)}`:''}`,
+        `<div class="row fd-acts"><button class="btn" type="button" data-fd="export" data-sup="${esc(sup)}"${f.linked?'':' disabled'} title="Копия с фото или Excel для правки — без цен и остатков">Выгрузить каталог поставщика…</button></div>
+        ${FeedPurgeUi.row(f)}${files&&f.built?`<div class="row fd-acts"><button class="btn ghost danger" type="button" data-fd="rebuild">Сформировать каталог заново…</button><span class="muted">перестроит позиции по парсу; обычно не нужно</span></div>`:''}<div class="row fd-acts"><button class="btn ghost danger" type="button" data-fd="del">Удалить фид…</button><span class="muted">позиции в каталоге останутся</span></div>`)}
+      ${FeedPanel.sec('log', 'Журнал загрузок и проверок', f.last&&(f.last.import||f.last.check)?'последняя запись — '+esc(fdDate(((f.last.import||{}).at||'')>((f.last.check||{}).at||'')?f.last.import.at:f.last.check.at)):'записей нет', '<div id="fdLog"><p class="muted">Загружаю…</p></div>')}
+    </div>`;
+  }
+}
+
 const fdRub = kop => kop==null ? '—' : money(kop)+' ₽';
 const fdMoney = (kop, cur) => kop==null ? '—' : money(kop)+' '+curSh(cur||'RUB');
 const fdDate = iso => iso ? Fmt.dateTime(iso) : '—';
@@ -49,21 +83,20 @@ const fdCostKind = f => fdIsFiles(f) && f.priceKind!=='rrc';
 const fdUpdLbl = f => (fdCostKind(f)?'Обновить цены':'Обновить РРЦ')+(f.files&&f.files.stock?' и остатки':' из прайса');
 
 async function stFeeds(m){
-  const r=await aapi('feeds'); FD.types=r.types||[]; const items=r.items||[];
+  const [r, sups]=await Promise.all([aapi('feeds'), FD.sups ? Promise.resolve(FD.sups) : api('/api/suppliers').catch(()=>[])]);
+  FD.types=r.types||[]; FD.sups=sups||[]; const items=r.items||[];
   if (FD.sel && !items.some(f=>f.id===FD.sel)) FD.sel=null;
   if (!items.length && !FD.edit) FD.edit={...FD_REMEZA};
   const f=items.find(x=>x.id===FD.sel);
   m.innerHTML=`<div class="st-card"><div class="row fd-head"><div class="sub" style="margin:0">Подключённые фиды${tip('<p>Товарный фид (YML, «Яндекс.Маркет») — выгрузка каталога с сайта поставщика: характеристики, фото, цены, наличие. Раз в день программа сверяет РРЦ и наличие.</p><p>Фид из файлов — для поставщика без YML: файл парса сайта (CSV: категория, название, ссылка, картинки, описание, характеристики) и прайс (XLSX). Позиции каталога создаются из парса, цена и артикул берутся из строки прайса с тем же названием. Новый прайс загружается в любой момент — «Обновить цены из прайса» пересчитает закупку.</p><p>«Проверить фид» покажет, что в нём есть, и предложит категории. «Загрузить в каталог» создаст позиции (повторная загрузка обновит их, ручные правки сохранятся).</p>')}</div>
-      <span class="sp"></span><button class="btn" type="button" data-fd="new">+ Фид YML</button><button class="btn" type="button" data-fd="newfiles">+ Фид из файлов</button></div>
-    ${items.length?`<div class="st-list">${items.map(x=>`<div class="st-row${x.id===FD.sel?' on':''}"><div><b>${esc(x.name)}</b><span class="muted">${fdIsFiles(x)?esc(fdFilesShort(x)):esc(x.url)}</span>
-        <span class="muted">в каталоге: ${x.linked} ${plural(x.linked,'позиция','позиции','позиций')}${x.last&&x.last.check?` · ${fdIsFiles(x)?'цены':'проверка'} ${esc(fdDate(x.last.check.at))}`:''}${x.last&&x.last.import?` · загрузка ${esc(fdDate(x.last.import.at))}`:''}${x.auto?' · автопроверка раз в день':''}</span>
-        ${x.job&&x.job.state==='run'?`<span class="ok-t">${x.job.kind==='import'?'Загружаю':'Проверяю'}… ${x.job.done}/${x.job.total||'?'}</span>`:''}</div>
-        <div class="acts"><button class="btn" type="button" data-fd="open" data-id="${esc(x.id)}">${x.id===FD.sel?'Свернуть':'Открыть'}</button></div></div>`).join('')}</div>`:'<p class="muted">Фидов пока нет.</p>'}</div>
+      <span class="sp"></span><button class="btn" type="button" data-fd="new">+ Новый фид</button></div>
+    ${items.length?`<div class="st-list">${items.map(x=>FeedPanel.row(x)).join('')}</div>`:'<p class="muted">Фидов пока нет.</p>'}</div>
     ${FD.edit?fdForm(FD.edit, true):''}
-    ${f?`<div class="st-card fd-panel" id="fdPanel">${fdForm(f)}${fdIsFiles(f)?fdFiles(f):fdExtra(f)}<div id="fdDisc">${fdDisc(f)}</div>${fdActions(f)}${FeedPurgeUi.row(f)}<div id="fdJob">${fdJob(f.job)}</div><div id="fdPrev">${FD.prev&&FD.prev.id===f.id?fdPreview(FD.prev, f):''}</div><div id="fdLog"></div></div>`:''}
+    ${f?FeedPanel.html(f):''}
     ${MakerLogoPanel.html()}`;
   MakerLogoPanel.bind(m);
   m.onclick=e=>fdClick(e, m);
+  m.onkeydown=e=>{ const r=e.target.closest?.('.fd-row'); if (r && (e.key==='Enter'||e.key===' ')){ e.preventDefault(); r.click(); } };
   m.oninput=e=>{ const t=e.target; if (t.dataset.fdd==='kwMax'){ const l=t.parentNode.querySelector('.fd-dku'); if (l) l.hidden=!t.value.trim(); } };
   m.onchange=e=>{ const t=e.target;
     if (t.dataset.fdc!=null){ fdDiscRead(m); const s=t.closest('details'); if (s) s.querySelector('summary').textContent=fdCatsTxt(FD.disc.discounts[+s.dataset.fdr].cats); return; }
@@ -82,7 +115,8 @@ function fdForm(f, isNew){
   const files=fdIsFiles(f);
   const kindSel=`<label class="f"><span>Источник</span><select data-fdf="kind"${isNew?'':' disabled'}><option value="yml"${files?'':' selected'}>Адрес фида (YML)</option><option value="files"${files?' selected':''}>Файлы: парс сайта + прайс</option></select></label>`;
   const common=`<label class="f"><span>Название</span><input type="text" data-fdf="name" value="${esc(f.name||'')}" placeholder="${files?'Dalgakiran':'Remeza'}"></label>
-      <label class="f"><span>Производитель по умолчанию</span><input type="text" data-fdf="maker" value="${esc(f.maker||'')}" placeholder="${files?'Dalgakiran':'если в фиде нет поля vendor'}"></label>`;
+      <label class="f"><span>Производитель по умолчанию</span><input type="text" data-fdf="maker" value="${esc(f.maker||'')}" placeholder="${files?'Dalgakiran':'если в фиде нет поля vendor'}"></label>
+      <label class="f"><span>Поставщик в справочнике${tip('Чей это фид: поставщик из «Клиенты и поставщики → Поставщики и склады». По нему работают фильтр «Поставщик» в каталоге и выгрузка «Каталог поставщика». Не указан — поставщиком считается название фида.')}</span><select data-fdf="supplier"><option value="">— не указан (= название фида) —</option>${(FD.sups||[]).map(x=>`<option value="${esc(x.id)}"${x.id===f.supplier?' selected':''}>${esc(x.name)}</option>`).join('')}</select></label>`;
   const body = files
     ? `${kindSel}${common}
       <label class="f"><span>Цена в прайсе — это${tip('<p><b>Наша закупка</b> — дилерский прайс: цена идёт в закупку позиции (валюта — как в прайсе), цена продажи остаётся за менеджером и «Экономикой сделки».</p><p><b>РРЦ</b> — розничный прайс: цена идёт в РРЦ и цену КП, закупка — РРЦ минус скидка.</p>')}</span><select data-fdf="priceKind"><option value="cost"${f.priceKind!=='rrc'?' selected':''}>наша закупка (дилерская цена)</option><option value="rrc"${f.priceKind==='rrc'?' selected':''}>РРЦ (розничная цена)</option></select></label>
@@ -97,7 +131,7 @@ function fdForm(f, isNew){
       <label class="fd-auto"><input type="checkbox" data-fdf="pageDesc"${f.pageDesc!==false?' checked':''}> Описание, фото и применимость — со страницы товара${tip('При загрузке в каталог программа открывает страницу каждого товара (ссылка из фида): описание из блока описания (itemprop="description") — если оно длиннее описания в фиде; до 8 фото товара (без блоков «похожие товары»); характеристики, которых нет в фиде; у запчастей — применимость («Применяемость», «Подходит для…»). Страницы запоминаются на 30 дней; первая загрузка большого фида — дольше на несколько минут. Описание, исправленное вручную, не затирается.')}</label>`;
   return `<div class="${isNew?'st-card ':''}fd-form" data-fdform="${isNew?'new':esc(f.id)}">${isNew?`<p class="sub">${files?'Новый фид из файлов':'Новый фид'}</p>`:''}
     <div class="st-ed-g">${body}</div>
-    <div class="row fd-fb"><button class="btn primary" type="button" data-fd="save">${isNew?'Добавить фид':'Сохранить'}</button>${isNew?'<button class="btn ghost" type="button" data-fd="cancel">Отмена</button>':'<button class="btn ghost danger" type="button" data-fd="del">Удалить фид</button>'}</div></div>`;
+    <div class="row fd-fb"><button class="btn primary" type="button" data-fd="save">${isNew?'Добавить фид':'Сохранить'}</button>${isNew?'<button class="btn ghost" type="button" data-fd="cancel">Отмена</button>':''}</div></div>`;
 }
 
 // файлы фида из файлов: что загружено и кнопки загрузки
@@ -190,7 +224,7 @@ function fdDisc(f){
         <label class="fd-dku"${r.kwMax?'':' hidden'}><input type="checkbox" data-fdd="kwUnknown"${r.kwUnknown?' checked':''}> не указана — тоже</label></td>
       <td data-l="Скидка, %"><input type="text" inputmode="decimal" data-fdd="pct" value="${esc(num(r.pct))}" placeholder="%" aria-label="Скидка, %"></td>
       <td class="num"><button class="btn ghost" type="button" data-fd="discdel" data-i="${i}" title="Удалить правило" aria-label="Удалить правило">✕</button></td></tr>`;
-  return `<div class="fd-disc"><div class="row fd-dh"><p class="sub" style="margin:0">Сетка скидок поставщика${tip(`<p>Закупка позиции = ${base} минус скидка. Правила проверяются сверху вниз: первое подходящее даёт скидку; не подошло ни одно — «Остальное оборудование».</p><p>Категория — категория программы у позиции каталога. Привод определяется по признаку частотника (VSD, инвертор), по сериям из полей ниже (в названии позиции или на листе прайса) и по строке «Привод» в характеристиках. Мощность — поле «Мощность» позиции; «до 75» — включительно. Если мощность у позиции не указана, правило с ограничением мощности её пропускает — или применяется, когда отмечено «не указана — тоже».</p><p>Цены обновляются у всех позиций производителя: и у загруженных из фида, и у заведённых вручную — для них строка прайса подбирается по серии, типоразмеру и исполнению (ресивер, осушитель, водяное охлаждение, частотник).</p><p>Закупка и цена, исправленные вручную в карточке, не меняются. Применённая скидка видна в карточке позиции.</p>`)}</p>
+  return `<div class="fd-disc"><div class="row fd-dh"><div class="sub" style="margin:0">Сетка скидок поставщика${tip(`<p>Закупка позиции = ${base} минус скидка. Правила проверяются сверху вниз: первое подходящее даёт скидку; не подошло ни одно — «Остальное оборудование».</p><p>Категория — категория программы у позиции каталога. Привод определяется по признаку частотника (VSD, инвертор), по сериям из полей ниже (в названии позиции или на листе прайса) и по строке «Привод» в характеристиках. Мощность — поле «Мощность» позиции; «до 75» — включительно. Если мощность у позиции не указана, правило с ограничением мощности её пропускает — или применяется, когда отмечено «не указана — тоже».</p><p>Цены обновляются у всех позиций производителя: и у загруженных из фида, и у заведённых вручную — для них строка прайса подбирается по серии, типоразмеру и исполнению (ресивер, осушитель, водяное охлаждение, частотник).</p><p>Закупка и цена, исправленные вручную в карточке, не меняются. Применённая скидка видна в карточке позиции.</p>`)}</div>
       </div>
     <div class="fd-tw"><table class="fd-t fd-dt"><thead><tr><th>Правило</th><th>Категории</th><th>Привод</th><th>Мощность до, кВт</th><th>Скидка, %</th><th></th></tr></thead>
       <tbody>${d.discounts.map(row).join('')}
@@ -261,8 +295,7 @@ function fdFilesActions(f, ready){
       <p class="muted">Парс больше не меняет позиции каталога — только добавляет новые, если они появятся. Описания, фото и характеристики правятся вручную в карточке. Цены${f.files&&f.files.stock?' и остатки':''}: загрузите новый прайс${f.files&&f.files.stock?' или файл остатков':''} и нажмите «${fdUpdLbl(f)}».</p></div>
     <div class="row fd-acts"><button class="btn" type="button" data-fd="plan"${noFile}>Что нового в парсе</button>
       <button class="btn" type="button" data-fd="addnew"${noFile}>Добавить новые из парса</button>
-      <button class="btn primary" type="button" data-fd="check"${f.linked?'':' disabled'}>${fdUpdLbl(f)}</button>
-      <span class="sp"></span><button class="btn ghost danger" type="button" data-fd="rebuild">Сформировать заново…</button></div>`;
+      <button class="btn primary" type="button" data-fd="check"${f.linked?'':' disabled'}>${fdUpdLbl(f)}</button></div>`;
 }
 
 function fdBuildPlan(p){
@@ -314,7 +347,7 @@ function fdCount(m){ const p=FD.prev; if (!p) return; const el=m.querySelector('
 
 async function fdLoadLog(fid){
   try{ const r=await aapi(`feeds/${fid}/log`); const el=$('#fdLog'); if (!el) return;
-    el.innerHTML=(r.items||[]).length?`<p class="sub">Журнал загрузок и проверок</p>${r.items.map(x=>fdLogItem(x)).join('')}`:'<p class="muted">Загрузок и проверок ещё не было.</p>'; }
+    el.innerHTML=(r.items||[]).length?r.items.map(x=>fdLogItem(x)).join(''):'<p class="muted">Загрузок и проверок ещё не было.</p>'; }
   catch(e){ const el=$('#fdLog'); if (el) el.innerHTML=`<p class="muted">Журнал не загрузился: ${esc(e.message||e)}</p>`; }
 }
 
@@ -359,8 +392,8 @@ function fdVals(box){ const v={}; box.querySelectorAll('[data-fdf]').forEach(i=>
 async function fdClick(e, m){
   const b=e.target.closest('[data-fd]'); if (!b) return; const a=b.dataset.fd;
   try{
-    if (a==='new'){ FD.edit={name:'', url:'', maker:'', auto:true, pageDesc:true, kind:'yml'}; return stFeeds(m); }
-    if (a==='newfiles'){ FD.edit={...FD_FILES}; return stFeeds(m); }
+    if (a==='new'){ FD.edit={name:'', url:'', maker:'', auto:true, pageDesc:true, kind:'yml'}; FD.sel=null; return stFeeds(m); }
+    if (a==='export'){ StNav.sup=b.dataset.sup||''; StNav.select('backup'); return stTab(); }
     if (a==='cancel'){ FD.edit=null; return stFeeds(m); }
     if (a==='open'){ FD.sel = FD.sel===b.dataset.id ? null : b.dataset.id; FD.prev=null; FD.cats={}; FD.disc=null; FD.plan=null; return stFeeds(m); }
     if (a.startsWith('disc')) return fdDiscClick(a, b, m);

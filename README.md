@@ -526,6 +526,20 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.98.0 — выгрузка по поставщику, проще фиды и «Копии и база»:**
+- `supplier_scope.SupplierScope` — поставщик позиции, как `CatalogWindow.supplierOf`: фид → поставщик справочника (`f.supplier`)
+  или название фида; не из фида — поставщик, у которого название или `makers` совпадает с производителем. `groups()` —
+  `GET /api/admin/export/suppliers`; `GET /api/admin/export?sup=<название>` — только каталог поставщика без `PRICE_KEYS`
+  (цены, закупка, наценка, остатки), в файле `supplier` и `keep`; при загрузке копии (`admin.import_`) у имеющихся позиций
+  поля `keep` берутся из базы (`SupplierScope.merge`).
+- `catalog_patch.CatalogSheet` — книга Excel «…_для_правки.xlsx» (строка 2 — ключи `id`, `name`, `spec`, `a:<поле>`,
+  скрытый лист `_было`) → файл правок `kp-catalog-patch`; `import/file` распознаёт .xlsx. Числа — по полю категории
+  (`num`) с округлением до 12 знаков (Excel пишет 7,3 как 7.2999…), да/нет — у логических полей.
+- Клиент: `SupplierExport` (settings-data.js; книга — `makeXlsx`, скрытые листы `hidden:true`), `FeedPanel`
+  (settings-feeds.js: строка фида открывает его, разделы `<details data-sp>`), «Поставщик в справочнике» в форме фида
+  (`feeds.FeedSupplier.id`, поле можно очистить), «Выгрузить каталог…» в карточке поставщика. Заголовки с «?» — `div.sub`
+  (`<details>` внутри `<p>` разрывал абзац). Тест: `tests/test_supplier_export.py`.
+
 **3.97.0 — удаление позиций фида:**
 - `feeds.FeedPurge` (`preview` по категориям фида `doc.feed.cat`, `run` → корзина одной транзакцией `Store.trash_put_many`,
   `block` — `f.excluded` (id предложений, до 50 000), `unblock`); `import_feed` и `check_feed` пропускают `excluded`;

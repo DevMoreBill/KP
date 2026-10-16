@@ -468,7 +468,7 @@ class FreightFacts {
   }
 
   static html(T){
-    return `<div class="lg-facts"><p class="sub" style="margin-top:14px">Сверка со счетами перевозчиков ${tip(FreightFacts.TIP)}</p>
+    return `<div class="lg-facts"><div class="sub" style="margin-top:14px">Сверка со счетами перевозчиков ${tip(FreightFacts.TIP)}</div>
       <div class="lg-tw"><table class="lg-st lg-fa" id="lgFa"><thead><tr><th>Дата</th><th>Маршрут</th><th>Км</th><th>Машина</th><th>По счёту, ₽ с НДС</th><th>По тарифу</th><th>Отклонение</th><th></th></tr></thead>
         <tbody>${FreightFacts.facts().map(f=>FreightFacts.row(f, T)).join('')}</tbody></table></div>
       <button class="btn ghost" type="button" data-lgfa="add">+ Счёт</button>
