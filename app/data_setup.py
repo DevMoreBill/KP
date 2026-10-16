@@ -16,8 +16,8 @@ def sync_counter_with_files():
     """Номер КП не должен повторить уже существующий файл (например, если базу восстановили из старой копии)."""
     year = datetime.now().year
     top = 0
-    for dp, dn, fn in os.walk(DOCS_DIR):
-        for name in fn:
+    for _, _, files in os.walk(DOCS_DIR):
+        for name in files:
             m = re.match(r'^(\d{4})-(\d{3,})_', name)
             if m and int(m.group(1)) == year:
                 top = max(top, int(m.group(2)))

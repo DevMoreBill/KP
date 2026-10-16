@@ -85,5 +85,4 @@ def year(store, y):
     _FAILED[y] = time.time()
     if cached:
         return cached
-    return {'year': y, 'days': approx(y), 'src': APPROX_SRC,
-            'approx': True, 'error': '; '.join(errs)[:300]}
+    return {'year': y, 'days': approx(y), 'src': APPROX_SRC, 'approx': True, 'error': '; '.join(errs)[:300]}

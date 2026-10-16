@@ -113,7 +113,7 @@ async function stEdSave(E){
     const inn=String(d.inn||'').replace(/\D/g,''), id=E.id || (inn?'inn'+inn:'c'+Date.now().toString(36));
     if (!E.id && inn && await clientById('inn'+inn).catch(()=>null)) throw new Error('клиент с ИНН '+inn+' уже есть в справочнике — найдите его поиском');
     d.contacts=(d.contacts||[]).filter(c=>c && Object.values(c).some(v=>String(v||'').trim())); delete d._rev; d.id=id; d.source=d.source||'Настройки';
-    const saved=await api('/api/clients/'+encodeURIComponent(id),{method:'PUT',headers:J,body:JSON.stringify(d)}); if (typeof clientsKeep==='function' && saved) clientsKeep([saved]); return; }
+    const saved=await api('/api/clients/'+encodeURIComponent(id),{method:'PUT',headers:J,body:JSON.stringify(d)}); if (saved) clientsKeep([saved]); return; }
   // поставщик: склад по умолчанию — первый, с координатами — в «Откуда» логистики
   const id=E.id||('sup_'+uid()+uid()).slice(0,24);
   d.warehouses=(d.warehouses||[]).filter(w=>Object.values(w).some(v=>String(v??'').trim())).map(w=>{ const o={...w}; delete o.geoFor; return o; });
@@ -122,5 +122,5 @@ async function stEdSave(E){
   if (w0){ d.wh=w0.addr; d.whGeo=w0.lat!=null?{value:w0.addr, lat:w0.lat, lon:w0.lon, city:w0.city||'', exact:true, src:'справочник поставщиков'}:null; }
   delete d.id; delete d.updatedAt;
   await api('/api/suppliers/'+encodeURIComponent(id),{method:'PUT',headers:{...J,...(rev!=null?{'X-KP-Rev':String(rev)}:{})},body:JSON.stringify(d)});
-  if (typeof DL!=='undefined') DL.sups=null;
+  DL.sups=null;
 }

@@ -29,7 +29,7 @@ function itemCard(x,i){
   const chk=(tab,label,ok,need)=>`<button type="button" class="rd ${ok?'ok':(need?'warn':'')}" data-a="${tab==='price'?'toPrice':'edit'}" data-i="${i}" data-tab="${tab}" title="${ok?'Заполнено':'Не заполнено — нажмите, чтобы добавить'}">${ok?'✓':(need?'!':'+')} ${label}</button>`;
   const opts=(x.options||[]).filter(o=>o.name);
   // показываем только то, чего не хватает: заполненное не отвлекает
-  const miss=[chk('desc','Фото',!!x.photo,x.page),chk('desc','Описание',nf>0,x.page),chk('spec','Характеристики',nr>0,x.page),chk('price','Цена',x.price>0,true)].filter((h,k)=>!h.includes('class="rd ok"'));
+  const miss=[chk('desc','Фото',!!x.photo,x.page),chk('desc','Описание',nf>0,x.page),chk('spec','Характеристики',nr>0,x.page),chk('price','Цена',x.price>0,true)].filter(h=>!h.includes('class="rd ok"'));
   return `<div class="item" id="item-${x.id}">
    <div class="icard">
      <button type="button" class="ithumb" data-a="edit" data-i="${i}" data-tab="desc" data-thumb="${i}" title="Нажмите — фото и описание. Главное фото можно перетащить сюда или вставить (Ctrl+V), наведя курсор">${x.photo?`<img src="${esc(x.photo.src)}" alt="">`:'<span>+ фото</span>'}</button>

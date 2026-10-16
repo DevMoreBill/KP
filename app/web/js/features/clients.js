@@ -37,7 +37,7 @@ function clientIdOf(){ const inn=String(S.clientInn||'').replace(/\D/g,''); if (
 function curClient(){ const id=S.clientId||(S.clientInn?'inn'+String(S.clientInn).replace(/\D/g,''):''); if (!id) return null;
   const c=CLIENTS.find(x=>x.id===id); if (c) return c;
   // нет среди загруженных — подгружаем с сервера один раз и перерисовываем форму
-  if (!CL_FETCH.has(id)){ CL_FETCH.add(id); clientById(id).then(x=>{ if (x && typeof renderForm==='function') renderForm(); }); }
+  if (!CL_FETCH.has(id)){ CL_FETCH.add(id); clientById(id).then(x=>{ if (x) renderForm(); }); }
   return null; }
 
 async function saveClient(usedInKp){
@@ -202,7 +202,7 @@ class CarrierApis {
     return out; }
   static async save(m, quiet){
     try{ await api('/api/logistics/carriers',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(CarrierApis._body(m))});
-      if (typeof LG!=='undefined') LG.status=null; if (!quiet) toast('Перевозчики сохранены'); return true; }
+      LG.status=null; if (!quiet) toast('Перевозчики сохранены'); return true; }
     catch(e){ toast('Не сохранено: '+(e.message||e)); return false; }
   }
   /** клик внутри вкладки ключей; true — обработано */
@@ -264,7 +264,7 @@ class ApiKeys {
           <button class="btn" type="button" data-kexp>Скачать копию ключей</button><button class="btn ghost" type="button" data-kimp>Загрузить из копии…</button><input type="file" id="kFile" accept=".json,application/json" hidden></div>
         <div id="kImp">${KB.file?keysImpHtml(k):''}</div></div>`
       +`<div class="st-card key-bar"><span class="muted key-note">Ключи хранятся только на компьютере, где работает программа (в папке данных).</span><span class="sp"></span><button class="btn primary" type="button" data-ksave>Сохранить ключи</button></div>`;
-    const put=async body=>{ try{ await api('/api/integrations',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(body)}); toast('Сохранено'); if (typeof LG!=='undefined') LG.status=null; PartyCheck.quota=null; ApiKeys.form(m); }catch(e){ toast('Не сохранилось: '+(e.message||e)); } };
+    const put=async body=>{ try{ await api('/api/integrations',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(body)}); toast('Сохранено'); LG.status=null; PartyCheck.quota=null; ApiKeys.form(m); }catch(e){ toast('Не сохранилось: '+(e.message||e)); } };
     m.querySelector('#kFile').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if (!f) return;
       try{ const j=JSON.parse(await f.text()); if (!j || j.kind!=='kp-keys' || !(j.keys||j.enc)) throw new Error('это не копия ключей программы');
         KB.file={name:f.name, at:j.at, keys:j.keys||null, enc:j.enc||null, err:''}; }catch(err){ return toast('Файл не подходит: '+(err.message||err)); }

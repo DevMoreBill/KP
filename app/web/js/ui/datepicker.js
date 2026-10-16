@@ -1,7 +1,7 @@
 // Календарь для всех полей дат программы: выходные, праздники, переносы и сокращённые дни — по производственному
 // календарю РФ (/api/calendar: isdayoff.ru / xmlcalendar.ru, обновляется сервером раз в 30 дней).
 // Встроенный календарь браузера не умеет отмечать праздники, поэтому по щелчку по полю даты открывается свой.
-// С клавиатуры дату можно, как и раньше, ввести в само поле; Alt+↓ или F4 — открыть календарь.
+// С клавиатуры дату можно ввести в само поле; Alt+↓ или F4 — открыть календарь.
 'use strict';
 
 const WCAL = { y:{}, loading:{} };
@@ -16,7 +16,6 @@ function wcalYear(y){
   WCAL.loading[y]=api('/api/calendar?year='+y).then(r=>{ if (r && r.days) WCAL.y[y]=r; }).catch(()=>{}).finally(()=>{ delete WCAL.loading[y]; if (DP.el) dpDraw(); });
   return null;
 }
-const dpIso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const dpDoy = d => Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 1)) / 864e5);
 
 // вид дня: off — нерабочий, hol — праздник, wkd — выходной, move — перенесённый выходной, work — рабочая суббота/воскресенье, short — сокращённый
@@ -50,7 +49,7 @@ function dpClose(){ if (DP.box) DP.box.remove(); DP.box=null; DP.el=null; }
 
 function dpPlace(){
   const b=DP.box, el=DP.el; if (!b || !el) return;
-  if (typeof isMob==='function' && isMob()){ b.classList.add('sheet'); return; }
+  if (isMob()){ b.classList.add('sheet'); return; }
   const r=el.getBoundingClientRect(), w=b.offsetWidth, h=b.offsetHeight;
   let x=Math.min(Math.max(8, r.left), innerWidth-w-8), y=r.bottom+4;
   if (y+h>innerHeight-8) y=Math.max(8, r.top-h-4);
@@ -61,12 +60,12 @@ function dpDraw(){
   const b=DP.box, el=DP.el; if (!b || !el) return;
   const y=DP.y, m=DP.m; wcalYear(y);
   const first=new Date(y, m, 1), shift=(first.getDay()+6)%7, n=new Date(y, m+1, 0).getDate();
-  const sel=el.value, today=dpIso(new Date()), min=el.min||'', max=el.max||'';
+  const sel=el.value, today=isoDay(new Date()), min=el.min||'', max=el.max||'';
   let cells='';
   for (let i=0;i<shift;i++) cells+='<span></span>';
   let offN=0;
   for (let d=1; d<=n; d++){
-    const dt=new Date(y, m, d), iso=dpIso(dt), k=wcalDay(dt); if (k.off) offN++;
+    const dt=new Date(y, m, d), iso=isoDay(dt), k=wcalDay(dt); if (k.off) offN++;
     const dis=(min&&iso<min)||(max&&iso>max);
     cells+=`<button type="button" class="dp-d${k.off?' off':''}${k.cls?' '+k.cls:''}${iso===sel?' sel':''}${iso===today?' today':''}" data-dpd="${iso}"${dis?' disabled':''} title="${esc([dt.toLocaleDateString('ru-RU',{weekday:'long', day:'numeric', month:'long'}), k.t].filter(Boolean).join(' — '))}">${d}</button>`;
   }
@@ -91,7 +90,7 @@ function dpClick(e){
   const nv=e.target.closest('[data-dpm]'); if (nv){ DP.m+=+nv.dataset.dpm; if (DP.m<0){ DP.m=11; DP.y--; } if (DP.m>11){ DP.m=0; DP.y++; } dpDraw(); return; }
   const x=e.target.closest('[data-dpx]'); if (!x) return;
   if (x.dataset.dpx==='clear') return dpSet('');
-  if (x.dataset.dpx==='today') return dpSet(dpIso(new Date()));
+  if (x.dataset.dpx==='today') return dpSet(isoDay(new Date()));
 }
 
 // щелчок по полю даты — свой календарь вместо встроенного (во всех формах программы)

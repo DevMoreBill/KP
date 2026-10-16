@@ -64,7 +64,7 @@ class SecurityTest(unittest.TestCase):
                   '/api/suppliers', '/api/customs', '/api/defaults', '/api/lists', '/api/types', '/api/templates', '/api/catalog/x', '/img/logos/x.png',
                   '/api/kp/%s/docx' % k2, '/api/logistics', '/api/uitexts', '/api/calendar', '/api/catalog/sync?since=0', '/api/catalog/search?q=x',
                   '/api/me/prefs', '/api/kp/%s/versions' % k2, '/api/clientcard?inn=1', '/api/presets', '/api/drafts', '/api/features', '/api/reminders',
-                  '/api/report', '/api/mail/status']:
+                  '/api/report']:
             with self.subTest(p):
                 self.assertEqual(self.req('GET', p)[0], 401)
         self.assertIn(self.req('GET', '/api/cbr')[0], (401, 403))

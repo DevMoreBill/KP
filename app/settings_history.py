@@ -2,8 +2,7 @@
 """История изменений настроек с откатом.
 
 Каждая запись настроек (kv: общие настройки, категории, тексты интерфейса, тарифы доставки, почта, фиды, инженерные
-правила станций — своя версия файла), сделанная
-по запросу человека, сохраняет снимок «было — стало» и кто изменил. Фоновые записи (проверка фидов по расписанию,
+правила станций — своя версия файла), сделанная по запросу человека, сохраняет снимок «было — стало» и кто изменил. Фоновые записи (проверка фидов по расписанию,
 обслуживание) и служебные поля (время проверки, итоги) в историю не попадают. Пароли и ключи — никогда:
 ключи API хранятся отдельно (integrations), пароль почты из снимка убирается.
 
@@ -27,7 +26,7 @@ class SettingsHistory:
     SECRET = ('password', 'token', 'key', 'secret')
     # служебные поля: меняются сами (проверки, отметки времени) — не изменение настроек
     VOLATILE = ('last', 'checked', 'stats', 'report', 'log', 'result', 'run', '_saved')
-    KEEP = 500          # записей истории: встроенное, действует srv.settingsHistory («Значения программы»)
+    KEEP = 500          # предел смещения при просмотре; сколько хранить — srv.settingsHistory («Значения программы»)
     _ctx = threading.local()
 
     def __init__(self, store):
@@ -141,16 +140,16 @@ class SettingsHistory:
     # ---------- откат ----------
     @classmethod
     def _put(cls, v, path, x, delete):
-        parts = path
+        """Записать x в словарь v по пути path (недостающие уровни создаются); delete — убрать поле."""
         cur = v
-        for part in parts[:-1]:
+        for part in path[:-1]:
             if not isinstance(cur.get(part), dict):
                 cur[part] = {}
             cur = cur[part]
         if delete:
-            cur.pop(parts[-1], None)
+            cur.pop(path[-1], None)
         else:
-            cur[parts[-1]] = x
+            cur[path[-1]] = x
 
     def rollback(self, hid, by):
         """Вернуть поля этой записи к значениям «было». Секреты (•••) не трогаются. → запись, как в get()."""
@@ -167,8 +166,7 @@ class SettingsHistory:
                 old = self._at(before, p)
                 if old == '•••':
                     continue
-                missing = self._missing(before, p)
-                self._put(new, p, old, missing)
+                self._put(new, p, old, delete=self._missing(before, p))
         self.actor(by)
         self.store.kv_set(key, new)
         self.store.write('UPDATE settings_history SET rolled = ? WHERE id = ?', (datetime.now().isoformat(timespec='seconds'), int(hid)))

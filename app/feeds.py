@@ -62,7 +62,7 @@ def _now():
     return datetime.now().isoformat(timespec='seconds')
 
 
-def _num(v):
+def parse_number(v):
     try:
         return float(re.sub(r'[\s\xa0]', '', str(v)).replace(',', '.'))
     except (TypeError, ValueError):
@@ -112,13 +112,13 @@ def feed_save(store, f):
     old = next((x for x in items if x.get('id') == fid), None) or {}
     if not f.get('id') and any(x.get('id') == fid for x in items):
         fid = '%s-%d' % (fid, len(items) + 1)
-    disc = _num(f.get('discount'))
+    disc = parse_number(f.get('discount'))
     rec = dict(old, id=fid, kind=kind, name=str(f.get('name') or old.get('name') or fid).strip()[:80], url=url,
                maker=str(f.get('maker') or '').strip()[:120], discount=disc if disc and 0 < disc < 100 else None,
                auto=f.get('auto', kind == 'yml') is True, pageDesc=f.get('pageDesc', old.get('pageDesc', kind == 'yml')) is True,
                cats=_cats_ok(f.get('cats')) if isinstance(f.get('cats'), dict) else old.get('cats') or {},
                supplier=str(f.get('supplier') or old.get('supplier') or '')[:64], updatedAt=_now())
-    rec['discounts'] = _disc_rules(f['discounts']) if isinstance(f.get('discounts'), list) else old.get('discounts') or []
+    rec['discounts'] = discount_rules(f['discounts']) if isinstance(f.get('discounts'), list) else old.get('discounts') or []
     hints = f.get('driveHints') if isinstance(f.get('driveHints'), dict) else old.get('driveHints') or {}
     rec['driveHints'] = {k: re.sub(r'\s+', ' ', str(hints.get(k) or '')).strip()[:400] for k in ('belt', 'direct')}
     if kind == 'files':
@@ -805,7 +805,7 @@ def parse(data):
             pv = re.sub(r'\s+', ' ', p.text or '').strip()
             if not pn or not pv or JUNK_PARAM.match(pv) or JUNK_PNAME.search(pn) or (pn.lower() == 'спецификация' and pv.isdigit()):
                 continue
-            n = _num(pv)
+            n = parse_number(pv)
             if STOCK_PARAM.match(pn) and n is not None:
                 qty = n
                 continue
@@ -830,11 +830,11 @@ def parse(data):
         if wh and qty is None:
             qty = sum(wh.values())
         for tag in STOCK_TAGS:
-            v = _num(_txt(el, tag))
+            v = parse_number(_txt(el, tag))
             if v is not None:
                 qty = v
                 break
-        outs = [_num(o.get('instock')) for o in el.iter('outlet') if o.get('instock') is not None]
+        outs = [parse_number(o.get('instock')) for o in el.iter('outlet') if o.get('instock') is not None]
         if outs and any(x is not None for x in outs):
             qty = sum(x for x in outs if x is not None)
         avail_attr = (el.get('available') or '').strip().lower()
@@ -844,12 +844,12 @@ def parse(data):
         cur = (_txt(el, 'currencyId') or 'RUB').upper()
         cat = _txt(el, 'categoryId')
         offers.append({'oid': oid, 'name': name[:300], 'cat': cat, 'path': (cats.get(cat) or {}).get('path', ''), 'url': _clean_url(_txt(el, 'url')),
-                       'price': _num(_txt(el, 'price')), 'oldprice': _num(_txt(el, 'oldprice')), 'cur': 'RUB' if cur in ('RUR', 'RUB') else cur,
+                       'price': parse_number(_txt(el, 'price')), 'oldprice': parse_number(_txt(el, 'oldprice')), 'cur': 'RUB' if cur in ('RUR', 'RUB') else cur,
                        'vendor': vendor, 'model': model, 'sku': sku, 'barcode': _txt(el, 'barcode'),
                        'pictures': [re.sub(r'\s+', '', p.text) for p in el.findall('picture') if p.text and p.text.strip()][:12],
                        'desc': desc, 'params': params, 'available': available, 'qty': qty,
                        'stockInfo': {'wh': sorted(([w, n] for w, n in wh.items()), key=lambda t: -t[1])} if wh else None,
-                       'weight': _num(_txt(el, 'weight')), 'dims': _txt(el, 'dimensions'), 'notes': _txt(el, 'sales_notes')})
+                       'weight': parse_number(_txt(el, 'weight')), 'dims': _txt(el, 'dimensions'), 'notes': _txt(el, 'sales_notes')})
     if not offers:
         raise ValueError('В фиде нет товаров (<offer>)')
     if any(o['stockInfo'] for o in offers):         # остатки по складам: позиции без складов в фиде — не на складе (под заказ)
@@ -955,12 +955,12 @@ def _sum_txt(k, v, u):
     n = r'(\d+(?:[.,]\d+)?)'
     m = re.match(r'^' + n + r'(?:\s*\+\s*' + n + r')+', v)
     if m and '+' in m.group(0):
-        tot = sum(_num(x) for x in re.findall(n, m.group(0)))
+        tot = sum(parse_number(x) for x in re.findall(n, m.group(0)))
     else:
         m = re.match(r'^' + n + r'\s*[хx×*]\s*(\d)\b', v)
         if not m:
             return None
-        tot = _num(m.group(1)) * int(m.group(2))
+        tot = parse_number(m.group(1)) * int(m.group(2))
     return '%s %s (%s)' % (_fmt(round(tot, 3)), u, re.sub(r'\s*\(.*$', '', v).replace('х', ' × ').replace('x', ' × '))
 
 
@@ -1038,25 +1038,19 @@ def _pressures(d):
                     n = float(x.replace(',', '.'))
                     if 2 <= n <= 60:
                         out.add(7.5 if n == 7 else n)
-    p = _num((d.get('attrs') or {}).get('pressure'))
+    p = parse_number((d.get('attrs') or {}).get('pressure'))
     if not out and p:
         out.add(7.5 if p == 7 else p)
     return out
 
 
 def _doc_cfg(d):
+    """Исполнение позиции каталога: по модели, а если в ней нет латинской серии — по названию; плюс поля карточки."""
     a = d.get('attrs') or {}
     c = feed_files.model_cfg(a.get('model') or d.get('name'), d.get('name'))
-    if not feed_files._lat(c):
+    if not feed_files.lat_series(c):
         c = feed_files.model_cfg(d.get('name'), d.get('name'))
-    if str(a.get('vsd') or '').lower() == 'да':
-        c['vsd'] = True
-    if str(a.get('dryer') or '').lower() == 'да':
-        c['dry'] = True
-    rec = _num(a.get('receiver'))
-    if rec and c['rec'] in (None, -1):
-        c['rec'] = int(rec)
-    return c
+    return feed_files.card_attrs(c, a)
 
 
 def _offer_cfg(o):
@@ -1101,12 +1095,12 @@ def build_plan(store, f, offs, feed_docs=None):
     for i, o in enumerate(offs):
         if o.get('url'):
             by_url[o['url'].rstrip('/').lower()] = i
-        by_name.setdefault(feed_files._key(o['name']), i)
+        by_name.setdefault(feed_files.name_key(o['name']), i)
         ocfg.append(_offer_cfg(o))
     by_lat, by_code = {}, {}
     for i, c in enumerate(ocfg):
-        if feed_files._lat(c) and c['size'] is not None:
-            by_lat.setdefault((feed_files._lat(c), c['size']), []).append(i)
+        if feed_files.lat_series(c) and c['size'] is not None:
+            by_lat.setdefault((feed_files.lat_series(c), c['size']), []).append(i)
         k = feed_files.code_cfg(offs[i]['name'])
         if k:
             by_code.setdefault(k['ser'], []).append((i, k))
@@ -1115,12 +1109,12 @@ def build_plan(store, f, offs, feed_docs=None):
         fd = d.get('feed') or {}
         if fd.get('url') and fd['url'].rstrip('/').lower() in by_url:
             pairs.append((0, 0, by_url[fd['url'].rstrip('/').lower()], d['id']))
-        i = by_name.get(feed_files._key(d.get('name')))
+        i = by_name.get(feed_files.name_key(d.get('name')))
         if i is not None:
             pairs.append((1, 0, i, d['id']))
         c = _doc_cfg(d)
         ps = _pressures(d)
-        lat, lat_hit = feed_files._lat(c), False
+        lat, lat_hit = feed_files.lat_series(c), False
         for i in by_lat.get((lat, c['size']), []) if lat and c['size'] is not None else []:
             oc = ocfg[i]
             if oc['vsd'] != c['vsd'] or oc['w'] != c['w'] or oc['dry'] != c['dry']:
@@ -1130,7 +1124,7 @@ def build_plan(store, f, offs, feed_docs=None):
             op = 7.5 if oc['p'] == 7 else oc['p']
             if ps and op and op not in ps:
                 continue
-            own = _num((d.get('attrs') or {}).get('pressure'))
+            own = parse_number((d.get('attrs') or {}).get('pressure'))
             rank = 0 if own and op == (7.5 if own == 7 else own) else (1 + (op or 0) / 100)
             pairs.append((2, rank, i, d['id']))
             lat_hit = True
@@ -1200,17 +1194,17 @@ DRIVES = ('any', 'belt', 'direct')
 VSD_RX = re.compile(r'\bVSD\b|\bVFD\b|инвертор|частотн|преобразовател\S*\s+частоты|\bINVERS', re.I)
 
 
-def _disc_rules(raw):
+def discount_rules(raw):
     """Сетка скидок из настроек: не больше 30 правил, у каждого — скидка 0…99 %, категории — id типов программы."""
     out = []
     for r in raw[:30]:
         if not isinstance(r, dict):
             continue
-        pct = _num(r.get('pct'))
+        pct = parse_number(r.get('pct'))
         if pct is None or not 0 < pct < 100:
             continue
         cats = [str(c)[:40] for c in (r.get('cats') or []) if re.match(r'^[a-z0-9_-]{1,40}$', str(c))][:40]
-        lim = {k: _num(r.get(k)) for k in ('kwMin', 'kwMax')}
+        lim = {k: parse_number(r.get(k)) for k in ('kwMin', 'kwMax')}
         out.append({'label': re.sub(r'\s+', ' ', str(r.get('label') or '')).strip()[:80], 'cats': cats, 'kwUnknown': r.get('kwUnknown') is True,
                     'drive': r.get('drive') if r.get('drive') in DRIVES else 'any', 'pct': round(pct, 2),
                     'kwMin': lim['kwMin'] if lim['kwMin'] and lim['kwMin'] > 0 else None, 'kwMax': lim['kwMax'] if lim['kwMax'] and lim['kwMax'] > 0 else None})
@@ -1264,7 +1258,7 @@ def drive_of(doc, f):
 
 
 def _kw_of(doc):
-    kw = _num((doc.get('attrs') or {}).get('kw'))
+    kw = parse_number((doc.get('attrs') or {}).get('kw'))
     if kw:
         return kw
     for g in doc.get('groups') or []:
@@ -1272,7 +1266,7 @@ def _kw_of(doc):
             if re.search(r'мощност', str(r.get('k') or ''), re.I) and not re.search(r'потребля|охлажд|вентил', str(r.get('k') or ''), re.I):
                 m = re.search(r'(\d+(?:[.,]\d+)?)\s*(квт|kw)', str(r.get('v') or '') + ' ' + str(r.get('k') or ''), re.I)
                 if m:
-                    return _num(m.group(1))
+                    return parse_number(m.group(1))
     return None
 
 
@@ -1549,8 +1543,14 @@ def desc_attrs(t, text, a):
         m = re.search(rx, text or '', re.I)
         if k == 'drive' and m and sum(1 for k2, rx2, _ in DESC_ATTRS if k2 == 'drive' and re.search(rx2, text or '', re.I)) > 1:
             continue                        # «прямой привод надёжнее ременной передачи» — не угадывать
-        if k in fields and not a.get(k) and m:
-            a[k] = v(m) if callable(v) else (int(m.group(v)) if k == 'receiver' else m.group(v)) if isinstance(v, int) else v
+        if k not in fields or a.get(k) or not m:
+            continue
+        if callable(v):
+            a[k] = v(m)
+        elif isinstance(v, int):            # номер группы выражения
+            a[k] = int(m.group(v)) if k == 'receiver' else m.group(v)
+        else:
+            a[k] = v
 
 
 def crumb_attrs(t, text, a):
@@ -1644,17 +1644,18 @@ def build(o, f, types, old=None, put_image=None):
         groups.pop(gi)          # характеристик из фида и со страницы больше нет, вручную таблицу не меняли
     elif rows and (gi is None or _hash(groups[gi].get('rows') or []) == orig.get('rows')):
         g = {'name': 'Данные поставщика' if handmade else 'Характеристики', 'rows': rows, 'feed': True}
-        if gi is None:
-            groups.append(g) if handmade else groups.insert(0, g)
-        else:
+        if gi is not None:
             groups[gi] = g
+        elif handmade:          # у позиции, заведённой вручную, данные поставщика — после её таблиц
+            groups.append(g)
+        else:
+            groups.insert(0, g)
     doc['groups'] = groups
     a = doc.get('attrs') or {}
     # категория: новая позиция — по правилам; загруженная раньше — тоже, если её не меняли вручную
     prev_auto = (doc.get('feed') or {}).get('catAuto')
     if not a.get('cat') or (old and a.get('cat') == (prev_auto or a.get('cat'))):
         a['cat'] = auto
-    a.setdefault('maker', maker)
     if not a.get('maker'):
         a['maker'] = maker
     if not a.get('model'):
@@ -2012,7 +2013,7 @@ def price_cards(store, f, prices, today, by='', stock=None):
     """Ручные карточки производителя ↔ строки прайса (feed_files.match_card: серия, типоразмер, исполнение): РРЦ, цена КП
     и закупка по сетке скидок — как у позиций фида; связь — doc.priceLink {feed, sku, name, at}. → (изменения цен, сводка)."""
     changes, sumr = [], {'cards': 0, 'priced': 0, 'updated': 0, 'noPrice': [], 'missing': [], 'unclear': []}
-    sidx = feed_files._stock_index(stock) if stock else None
+    sidx = feed_files.stock_index(stock) if stock else None
     for d in _maker_cards(store, f):
         a = d.get('attrs') or {}
         sumr['cards'] += 1
@@ -2189,7 +2190,7 @@ def _safe(fn, *a, **k):
     try:
         fn(*a, **k)
     except Exception:
-        pass
+        pass            # загрузка и проверка фида сами пишут ошибку в задачу и журнал фида
 
 
 def auto_check(store, log=print):
@@ -2204,10 +2205,7 @@ def auto_check(store, log=print):
             continue
         if not _feed_docs(store, f['id']):
             continue
-        try:
-            check_feed(store, f, 'автопроверка', log)
-        except Exception:
-            pass
+        _safe(check_feed, store, f, 'автопроверка', log)
 
 
 def status(store):

@@ -25,19 +25,19 @@
 .stepnav{display:flex;justify-content:space-between;gap:12px;margin:4px 0 28px}
 .stepnav .btn{padding:12px 18px;font-size:15px}
 #side.pulse .total{box-shadow:0 0 0 4px color-mix(in srgb,var(--sky) 60%,transparent)}
-@media (max-width:1250px){.wrap{grid-template-columns:minmax(0,1fr) 320px}#nav{grid-column:1/-1}
+@media (max-width:1250px){#nav{grid-column:1/-1}
   .stepper{flex-direction:row;overflow-x:auto;position:static}.stp{flex:0 0 auto}}
 .jr .n{white-space:nowrap;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
 .saved{font-size:13px;color:var(--muted)}
 .wrap{display:grid;grid-template-columns:230px minmax(0,1fr) 340px;gap:28px;max-width:1480px;margin:0 auto;padding:28px}
-.step{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px 24px 26px;margin-bottom:20px}
-.step>h2{display:flex;align-items:baseline;gap:12px;margin:0 0 4px;font-size:20px;font-weight:650;letter-spacing:-.01em}
+.step{background:var(--card);border:1px solid var(--line);margin-bottom:14px;padding:16px 18px 18px;border-radius:14px}
+.step>h2{display:flex;align-items:baseline;gap:12px;margin:0 0 10px;font-size:20px;font-weight:650;letter-spacing:-.01em}
 .step>h2 .n{color:var(--sky);font-weight:700;font-variant-numeric:tabular-nums}
 .step>.hint{color:var(--muted);margin:0 0 18px;font-size:14px;max-width:62ch}
 .mbar{display:none}
 /* подбор в каталоге */
 dialog.wide{max-width:min(1160px,96vw)}
-.total{background:var(--panel);color:var(--panel-ink);border-radius:18px;position:relative;overflow:hidden}
+.total{background:var(--panel);color:var(--panel-ink);border-radius:18px;position:relative;overflow:hidden;padding:18px 20px 16px}
 .total::before{content:"";position:absolute;left:22px;top:0;width:56px;height:4px;background:var(--sky);border-radius:0 0 4px 4px}
 .total .lab{font-size:13px;opacity:.75;margin-top:6px}
 .total .big{font-size:34px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.15;margin:4px 0 2px;overflow-wrap:anywhere}
@@ -50,7 +50,7 @@ dialog.wide{max-width:min(1160px,96vw)}
 .mrg dl{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:0}
 .mrg dt{color:var(--muted)}
 .mrg dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
-.total .words{opacity:.85;line-height:1.45}
+.total .words{opacity:.85;line-height:1.45;margin-top:8px;font-size:12.5px}
 .checks{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-top:14px}
 .checks h3{margin:0 0 8px;font-size:14px}
 .checks ul{margin:0;padding:0;list-style:none;display:grid;gap:6px;font-size:13.5px}
@@ -60,9 +60,7 @@ dialog.wide{max-width:min(1160px,96vw)}
 .checks li button{border:0;background:none;padding:0;color:inherit;text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
 /* правая панель (SidePanel): «Сохранить КП» и «Предпросмотр» — сразу под суммой, под ними — что осталось заполнить;
    на компьютере панель не выше окна — если не помещается, прокручивается сама, кнопки всегда на виду */
-.total{padding:18px 20px 16px}
 .total .tot-n{font-size:13px;opacity:.75;margin-top:8px}
-.total .words{margin-top:8px;font-size:12.5px}
 .side-act>.dl:first-child{margin-top:0}
 .side-act>.dl.pv{margin-top:8px}
 .side-act h3{margin:14px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
@@ -74,9 +72,9 @@ dialog.wide{max-width:min(1160px,96vw)}
 }
 dialog{border:0;border-radius:18px;padding:0;max-width:min(760px,94vw);width:100%;background:var(--card);color:var(--ink);box-shadow:0 30px 80px rgba(8,25,60,.35)}
 dialog::backdrop{background:rgba(10,20,40,.45)}
-.dlg-h{display:flex;align-items:center;gap:12px;padding:18px 20px;border-bottom:1px solid var(--line)}
-.dlg-h h3{margin:0;font-size:18px;flex:1}
-.dlg-b{padding:16px 20px;max-height:65vh;overflow:auto}
+.dlg-h{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.dlg-h h3{margin:0;font-size:17px;flex:1}
+.dlg-b{padding:12px 16px;max-height:65vh;overflow:auto}
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:10px;font-size:14px;z-index:50;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.on{opacity:1}
 /* меню «⋯» в шапке */

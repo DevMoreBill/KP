@@ -130,7 +130,8 @@ $json = ConvertTo-Json -InputObject @{ pages = @($pages); total = $total; lang =
                 if 'NOENGINE' in err:
                     raise ValueError('в Windows не установлен язык распознавания текста: «Параметры» → «Время и язык» → «Язык» → '
                                      'Русский → «Параметры» → «Распознавание текста», затем повторите')
-                raise ValueError('встроенное распознавание Windows не сработало' + (': ' + cls._clean(err) if cls._clean(err) else ''))
+                why = cls._clean(err)
+                raise ValueError('встроенное распознавание Windows не сработало' + (': ' + why if why else ''))
             with open(out, encoding='utf-8-sig') as f:
                 d = json.load(f)
             pages = d.get('pages')

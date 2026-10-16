@@ -13,7 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from counterparty import _http
+from counterparty import http_json
 
 DADATA = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs'
 NOMINATIM = 'https://nominatim.openstreetmap.org'
@@ -36,7 +36,7 @@ def _nom(path, params):
         _nom_last[0] = time.time()
     params = dict(params, format='jsonv2', addressdetails=1)
     params.setdefault('accept-language', 'ru')
-    return _http(NOMINATIM + path + '?' + urllib.parse.urlencode(params), headers={'User-Agent': 'KP-Pnevmotekh/3 (konstruktor KP)'})
+    return http_json(NOMINATIM + path + '?' + urllib.parse.urlencode(params), headers={'User-Agent': 'KP-Pnevmotekh/3 (konstruktor KP)'})
 
 
 def _f(v):
@@ -68,8 +68,8 @@ def suggest(store, q):
         return {'items': [], 'src': ''}
     k = _key(store)
     if k:
-        j = _http(DADATA + '/suggest/address', data={'query': q, 'count': 8, 'locations': [{'country_iso_code': 'RU'}]},
-                  headers={'Content-Type': 'application/json', 'Authorization': 'Token ' + k})
+        j = http_json(DADATA + '/suggest/address', data={'query': q, 'count': 8, 'locations': [{'country_iso_code': 'RU'}]},
+                      headers={'Content-Type': 'application/json', 'Authorization': 'Token ' + k})
         return {'items': [_dd_item(s) for s in j.get('suggestions') or []], 'src': 'DaData'}
     j = _nom('/search', {'q': q, 'countrycodes': 'ru', 'limit': 8})
     return {'items': [_nom_item(r) for r in j if isinstance(r, dict)] if isinstance(j, list) else [], 'src': 'OpenStreetMap'}
@@ -93,13 +93,13 @@ def reverse(store, lat, lon):
     k = _key(store)
     if k:
         try:
-            j = _http(DADATA + '/geolocate/address', data={'lat': lat, 'lon': lon, 'count': 1, 'radius_meters': 200},
-                      headers={'Content-Type': 'application/json', 'Authorization': 'Token ' + k})
+            j = http_json(DADATA + '/geolocate/address', data={'lat': lat, 'lon': lon, 'count': 1, 'radius_meters': 200},
+                          headers={'Content-Type': 'application/json', 'Authorization': 'Token ' + k})
             s = (j.get('suggestions') or [None])[0]
             if s:
                 return dict(_dd_item(s), lat=lat, lon=lon, exact=True)
         except Exception:
-            pass
+            pass                # DaData не ответила — адрес найдёт OpenStreetMap
     j = _nom('/reverse', {'lat': lat, 'lon': lon, 'zoom': 18})
     if isinstance(j, dict) and j.get('address'):
         return dict(_nom_item(j), lat=lat, lon=lon, exact=True)
@@ -124,7 +124,7 @@ class RoadRoute:
         if key in cache:
             return dict(cache[key], cached=True)
         try:
-            j = _http(cls.URL + '%s,%s;%s,%s?overview=false' % (a[1], a[0], b[1], b[0]))
+            j = http_json(cls.URL + '%s,%s;%s,%s?overview=false' % (a[1], a[0], b[1], b[0]))
         except (urllib.error.URLError, OSError, ValueError):
             raise ValueError('сервис маршрутов OSRM не ответил — расстояние по прямой с поправкой на дороги')
         r = (j.get('routes') or [None])[0] if isinstance(j, dict) else None

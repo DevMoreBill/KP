@@ -21,7 +21,7 @@ const condOpts = label => (COND.find(x=>x[0]===label)||[])[1] || [];
 
 // что предлагает экономика сделки (если её заполняли)
 function condFromDeal(){
-  if (!S.deal || !S.deal.touched || typeof dealCalc!=='function') return {};
+  if (!S.deal || !S.deal.touched) return {};
   try{ return dealCondSuggest(dealCalc(dealKpInputs(), S.deal)); }catch(e){ return {}; }
 }
 

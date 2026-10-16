@@ -92,5 +92,5 @@ class DefRegistry {
 function DEFN(key, fb){ const v=DEF(key); const n=v==null?NaN:parseFloat(String(v).replace(',','.')); return Number.isFinite(n) && !DefRegistry.check(key, v) ? n : fb; }
 
 async function defaultsLoad(){
-  try{ const r=await api('/api/defaults'); DEFS_SRV=r&&typeof r==='object'?r:{}; try{ localStorage.setItem('kp.defaults', JSON.stringify(DEFS_SRV)); }catch(_){} }catch(e){}
+  try{ const r=await api('/api/defaults'); DEFS_SRV=r && typeof r==='object' ? r : {}; try{ localStorage.setItem('kp.defaults', JSON.stringify(DEFS_SRV)); }catch(_){ /* без хранилища браузера */ } }catch(e){ /* сервер недоступен — значения из браузера */ }
 }

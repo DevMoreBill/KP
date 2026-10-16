@@ -526,6 +526,17 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.94.0 — ревью кода:**
+- Сервер: `Router` — 409 в одном месте, `Controller.user_input()` (ValueError → 400) вместо копий try/except, удалён неиспользуемый
+  `/api/mail/status`; `admin._refuse`, `KpJournal.status`; `kp_server.GzipCache`, отказ до разбора тела — тело дочитывается (без RST);
+  `backup_mirror._sync`, `ServerLog.of`; перевозчики — классы `Carrier` (`Ati`, `Pec`, `Dellin`, `Kit`, `Cdek`, `Vozovoz`, `Nrg`, `Jde`),
+  `Http`, `DeliveryQuote` (вместо функции `quote`), `LtlLimits.fits`; `feeds.discount_rules`, `feeds.parse_number`, `ai_llm.api_key`,
+  `counterparty.http_json`, `feed_files.card_attrs`.
+- Клиент: `Fmt` (числа, рубли, размер, дата), `Modal` в core/util.js (`Modal.ask`, `Modal.host`), `getPath`/`setPath`, `isoDay`,
+  `Theme`, `TemplateDraft`, `ADMIN.set` (событие `kp:admin`); станции — общие `StationEquip.sizes`, `StationLayout.pairUnit`/`turn`/
+  `seaDoors`, `StWalls.mark/reset`, `VentCalc.fanPower`, `StationRules.fnv`, `DocxTypes`; исправлено «NaN мм» (`ROAD_H`).
+- CSS: дубли правил и мёртвые объявления убраны, compact.css почти растворён в правилах компонентов; вычисленные стили до/после совпадают.
+
 **3.93.0 — справочные документы к КП, новое окно входа:**
 - `app/kp_files.py`, класс `KpFiles`: файлы в `data/kp_files/<id КП>/<uuid>.<расш.>`, описания — таблица `kp_files` (миграция
   `2027-08-kp-files`); тип проверяется по расширению и содержимому (pdf, doc/xls, docx/xlsx, jpg, png, dwg, dxf, zip без исполняемого,

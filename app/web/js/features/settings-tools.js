@@ -32,12 +32,12 @@ class SettingsSearch {
     const out=[], add=(o)=>out.push({...o, n:this.norm(o.label), t:this.norm(o.label+' '+(o.text||'')+' '+(o.where||''))});
     for (const g of AdminNav.GROUPS) for (const t of g.tabs)
       add({label:t.label, where:g.title, text:t.hint+' '+(this.WORDS[t.key]||''), tab:t.key, kind:'Вкладка'});
-    if (typeof DEF_SCHEMA!=='undefined'){ const gt=Object.fromEntries(DEF_GROUPS);
-      for (const [key, g, label, , builtin, o={}] of DEF_SCHEMA) add({label, where:AdminNav.path('defaults')+' → '+(gt[g]||g), before:()=>{ DefaultsTab.sec=DefRegistry.section(g); DefaultsTab.q=''; DefaultsTab.only=false; }, text:(o.hint||'')+' '+(builtin??''), tab:'defaults', focus:`[data-dk="${CSS.escape(key)}"]`, kind:'Умолчание'}); }
-    if (typeof FEAT!=='undefined') for (const d of FEAT.defs) add({label:d.label, where:AdminNav.path('features'), text:d.hint, tab:'features', focus:`[data-ft="${CSS.escape(d.key)}"]`, kind:'Функция'});
-    if (typeof LISTS!=='undefined') for (const d of LISTS.defs.values()) add({label:d.label, where:AdminNav.path('lists'), text:d.hint||'', tab:'lists', before:()=>{ ListsPanel.last=d.key; }, kind:'Список'});
-    if (typeof ApiKeys!=='undefined') for (const [g, , fs] of ApiKeys.GROUPS) for (const f of fs) if (f.t) add({label:f.t, where:AdminNav.path('keys')+' → '+g, text:(f.h||'')+' '+(f.ph||''), tab:'keys', focus:`[data-key="${CSS.escape(f.id)}"]`, kind:'Ключ'});
-    if (typeof TYPES!=='undefined') for (const t of TYPES) add({label:t.name, where:AdminNav.path('types'), text:(t.group||'')+' '+t.fields.map(f=>f.label).join(' '), tab:'types', kind:'Категория', find:t.name});
+    const gt=Object.fromEntries(DEF_GROUPS);
+    for (const [key, g, label, , builtin, o={}] of DEF_SCHEMA) add({label, where:AdminNav.path('defaults')+' → '+(gt[g]||g), before:()=>{ DefaultsTab.sec=DefRegistry.section(g); DefaultsTab.q=''; DefaultsTab.only=false; }, text:(o.hint||'')+' '+(builtin??''), tab:'defaults', focus:`[data-dk="${CSS.escape(key)}"]`, kind:'Умолчание'});
+    for (const d of FEAT.defs) add({label:d.label, where:AdminNav.path('features'), text:d.hint, tab:'features', focus:`[data-ft="${CSS.escape(d.key)}"]`, kind:'Функция'});
+    for (const d of LISTS.defs.values()) add({label:d.label, where:AdminNav.path('lists'), text:d.hint||'', tab:'lists', before:()=>{ ListsPanel.last=d.key; }, kind:'Список'});
+    for (const [g, , fs] of ApiKeys.GROUPS) for (const f of fs) if (f.t) add({label:f.t, where:AdminNav.path('keys')+' → '+g, text:(f.h||'')+' '+(f.ph||''), tab:'keys', focus:`[data-key="${CSS.escape(f.id)}"]`, kind:'Ключ'});
+    for (const t of TYPES) add({label:t.name, where:AdminNav.path('types'), text:(t.group||'')+' '+t.fields.map(f=>f.label).join(' '), tab:'types', kind:'Категория', find:t.name});
     return out;
   }
 
@@ -133,11 +133,8 @@ class StDirty {
 // ---------------------------------------------------------------- после отката: настройки в этом браузере — заново с сервера
 class StRefresh {
   static async all(){
-    const jobs=[];
-    if (typeof defaultsLoad==='function') jobs.push(defaultsLoad());
-    if (typeof FEAT!=='undefined' && FEAT.refresh) jobs.push(FEAT.refresh());
-    if (typeof LISTS!=='undefined') jobs.push(aapi('lists').then(r=>{ LISTS.use(r.values||{}); LISTS.cache(); }));
-    await Promise.all(jobs.map(p=>Promise.resolve(p).catch(()=>{})));
+    const jobs=[defaultsLoad(), FEAT.refresh(), aapi('lists').then(r=>{ LISTS.use(r.values||{}); LISTS.cache(); })];
+    await Promise.all(jobs.map(p=>p.catch(()=>{})));
   }
 }
 
@@ -164,9 +161,9 @@ class StVal {
     const [a, b]=p, name=x=>this.PART[x]||x;
     if (!b) return name(a)||'всё значение';
     let second=b;
-    if (a==='defaults' && typeof DEF_BY!=='undefined' && DEF_BY[b]) second=DEF_BY[b][2];
-    else if (a==='features' && typeof FEAT!=='undefined' && FEAT.get(b)) second=FEAT.get(b).label;
-    else if (a==='lists' && typeof LISTS!=='undefined' && LISTS.get(b)) second=LISTS.get(b).label;
+    if (a==='defaults' && DEF_BY[b]) second=DEF_BY[b][2];
+    else if (a==='features' && FEAT.get(b)) second=FEAT.get(b).label;
+    else if (a==='lists' && LISTS.get(b)) second=LISTS.get(b).label;
     else second=this.PART[b]||b;
     return name(a)+' → '+second;
   }
@@ -190,18 +187,18 @@ class SettingsHistoryPanel {
         <span class="sp"></span><span class="muted">Записей: ${L.length}</span></div>
       <p class="muted">Каждое сохранение настроек: что было и что стало, кто изменил. «Вернуть как было» отменяет только эту правку — более поздние изменения других полей остаются. Пароли и ключи API в историю не попадают.</p></div>
       <div class="st-card">${L.length?L.map(x=>`<div class="st-row sh-r" data-shid="${x.id}"><div><b>${esc(x.title)}</b>
-          <span class="muted">${esc(stTime(x.ts))} · ${esc(x.by||'')} · ${x.count} ${plural(x.count,'поле','поля','полей')}${x.rolled?` · <b class="ok-t">возвращено ${esc(stTime(x.rolled))}</b>`:''}</span>
+          <span class="muted">${esc(Fmt.dateTime(x.ts))} · ${esc(x.by||'')} · ${x.count} ${plural(x.count,'поле','поля','полей')}${x.rolled?` · <b class="ok-t">возвращено ${esc(Fmt.dateTime(x.rolled))}</b>`:''}</span>
           <span class="muted sh-p">${esc(x.paths.slice(0,4).map(p=>StVal.path(p)).join('; '))}${x.paths.length>4?'…':''}</span></div>
           <div class="acts"><button class="btn" type="button" data-shopen="${x.id}">Подробнее</button></div></div>`).join('')
         :'<p class="empty">Изменений пока нет. История ведётся с версии 3.47.0.</p>'}</div>`; }
   async details(id){
     const d=await aapi('history/'+id), later=d.diff.some(x=>x.later);
-    const html=`<h3>${esc(d.title)}</h3><p class="muted">${esc(stTime(d.ts))} · ${esc(d.by||'')}${d.rolled?' · уже возвращалось '+esc(stTime(d.rolled)):''}</p>
+    const html=`<h3>${esc(d.title)}</h3><p class="muted">${esc(Fmt.dateTime(d.ts))} · ${esc(d.by||'')}${d.rolled?' · уже возвращалось '+esc(Fmt.dateTime(d.rolled)):''}</p>
       <div class="sh-tw"><table class="pv-t sh-t"><thead><tr><th>Поле</th><th>Было</th><th>Стало</th><th>Сейчас</th></tr></thead><tbody>
       ${d.diff.map(x=>`<tr${x.later?' class="sh-later"':''}><td>${esc(StVal.path(x.path))}</td><td data-l="Было" title="${esc(StVal.full(x.before))}">${esc(StVal.text(x.before))}</td><td data-l="Стало" title="${esc(StVal.full(x.after))}">${esc(StVal.text(x.after))}</td><td data-l="Сейчас" title="${esc(StVal.full(x.now))}">${esc(StVal.text(x.now))}</td></tr>`).join('')}</tbody></table></div>
       ${later?'<p class="msg warn" style="text-align:left">Отмеченные поля после этого меняли ещё раз — откат вернёт им значение «Было».</p>':''}
       <div class="row"><button class="btn" type="button" data-v="0">Закрыть</button><button class="btn ghost" type="button" data-v="go">Открыть вкладку</button><button class="btn primary" type="button" data-v="back">Вернуть как было</button></div>`;
-    const v=await stModal(html);
+    const v=await Modal.ask(html);
     if (v==='go'){ StNav.select(d.tab); return stTab(); }
     if (v==='back'){
       try{ await aapi('history/'+id+'/rollback', {method:'POST'}); toast('Возвращено как было: '+d.title); await StRefresh.all(); }
@@ -224,7 +221,7 @@ class ConnectionsPanel {
       return `<tr><td class="cn-s ${cls}" title="${lab}"><b aria-hidden="true">${ic}</b> ${lab}</td><td><b>${esc(x.name)}</b><small class="muted">${esc(x.group)}${x.ms>=1000?' · '+(x.ms/1000).toFixed(1).replace('.',',')+' с':''}</small></td>
         <td>${esc(x.msg||'')}</td><td>${x.status==='ok'?'':`<button class="btn ghost sm" type="button" data-sttab="${esc(x.tab)}">Настроить</button>`}</td></tr>`; };
     this.m.innerHTML=`<div class="st-card"><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-cnrun${busy?' disabled':''}>${busy?'Проверяю… до 45 секунд':'Проверить всё'}</button>
-        <span class="muted">${r.at?'Проверено '+esc(stTime(r.at)):'Ещё не проверялось'}</span><span class="sp"></span>
+        <span class="muted">${r.at?'Проверено '+esc(Fmt.dateTime(r.at)):'Ещё не проверялось'}</span><span class="sp"></span>
         ${L.length?`<span class="muted">работает: <b class="ok-t">${cnt('ok')}</b> · замечания: <b class="warn-t">${cnt('warn')}</b> · не работает: <b class="bad-t">${cnt('fail')}</b> · не настроено: ${cnt('off')}</span>`:''}</div>
       <p class="muted">Почта — только вход на сервер, письмо не отправляется. Нейросеть — короткий запрос (несколько токенов). Checko — показывается остаток лимита, запросы не тратятся. Перевозчики — пробный расчёт 300 кг Москва → Санкт-Петербург. Фиды — доступность адреса прайса.</p></div>
       ${L.length?`<div class="st-card"><div class="ac-tw"><table class="pv-t cn-t"><tbody>${L.map(row).join('')}</tbody></table></div></div>`:''}`; }
@@ -238,19 +235,19 @@ class ChangedPanel {
   constructor(m){ this.m=m; }
   async open(){
     const [d, f, l, mb]=await Promise.all([aapi('defaults'), aapi('features'), aapi('lists'), aapi('maint/mirror').catch(()=>null)]);
-    if (typeof uitLoad==='function') await uitLoad();
+    await uitLoad();
     this.vals=d.values||{}; this.feat=f.config||{}; this.lists=l.values||{}; this.mirror=mb;
     this.render(); this.bind();
   }
-  defRows(){ return (typeof DEF_SCHEMA!=='undefined'?DEF_SCHEMA:[]).filter(([k])=>this.vals[k]!=null).map(([k, , label, type, builtin])=>{
+  defRows(){ return DEF_SCHEMA.filter(([k])=>this.vals[k]!=null).map(([k, , label, type, builtin])=>{
     const x=this.vals[k]; const now=type==='bool'?((x.on??builtin)?'да':'нет'):(x.on===false?'выключено':String(x.v??''));
     return {label, now, was:type==='bool'?(builtin?'да':'нет'):String(builtin??'—'), reset:{defaults:k}, tab:'defaults', focus:`[data-dk="${CSS.escape(k)}"]`}; }).filter(x=>x.now!==x.was); }
-  featRows(){ return (typeof FEAT!=='undefined'?FEAT.defs:[]).filter(d=>{ const c=this.feat[d.key]; return c && (c.on===false || (c.who&&c.who!=='all')); }).map(d=>{ const c=this.feat[d.key];
+  featRows(){ return FEAT.defs.filter(d=>{ const c=this.feat[d.key]; return c && (c.on===false || (c.who&&c.who!=='all')); }).map(d=>{ const c=this.feat[d.key];
     return {label:d.label, now:c.on===false?'выключено':'доступ: '+({admin:'только администратору',users:'выбранным менеджерам'}[c.who]||c.who), was:'включено для всех', reset:{features:d.key}, tab:'features', focus:`[data-ft="${CSS.escape(d.key)}"]`}; }); }
-  listRows(){ return (typeof LISTS!=='undefined'?[...LISTS.defs.values()]:[]).filter(d=>this.lists[d.key]!=null).map(d=>({label:d.label, now:StVal.text(this.lists[d.key]), was:StVal.text(d.builtin), reset:{lists:d.key}, tab:'lists', before:()=>{ ListsPanel.last=d.key; }})); }
-  otherRows(){ const out=[]; const n=typeof UIT!=='undefined'?Object.keys(UIT.map||{}).length:0;
+  listRows(){ return [...LISTS.defs.values()].filter(d=>this.lists[d.key]!=null).map(d=>({label:d.label, now:StVal.text(this.lists[d.key]), was:StVal.text(d.builtin), reset:{lists:d.key}, tab:'lists', before:()=>{ ListsPanel.last=d.key; }})); }
+  otherRows(){ const out=[]; const n=Object.keys(UIT.map||{}).length;
     if (n) out.push({label:'Тексты интерфейса', now:'заменено: '+n, was:'исходные надписи', tab:'texts'});
-    const ut=typeof userTypesList==='function'?userTypesList():[]; if (ut.length) out.push({label:'Категории оборудования', now:'своих и изменённых: '+ut.length, was:'встроенные', tab:'types'});
+    const ut=userTypesList(); if (ut.length) out.push({label:'Категории оборудования', now:'своих и изменённых: '+ut.length, was:'встроенные', tab:'types'});
     if (this.mirror && this.mirror.on) out.push({label:'Вторая папка для копий базы', now:this.mirror.path, was:'не задана', tab:'backup'});
     return out; }
   render(){
@@ -287,7 +284,7 @@ class AlertsCard {
       ${s.mailOn?'':'<p class="msg warn">Сначала настройте почтовый сервер выше — письма уходят через него.</p>'}
       ${note?`<p class="msg ${note.err?'err':'ok'}" style="text-align:left">${esc(note.t)}</p>`:''}
       <label class="f"><span>Кому (до 5 адресов через запятую)</span><input type="text" id="alTo" value="${esc(s.to)}" placeholder="admin@company.ru" autocomplete="off"></label>
-      <p class="muted" style="margin:6px 0">${L?`Последнее письмо: ${esc(stTime(L.at))}${L.test?' (пробное)':''} — ${L.ok?'<span class="ok-t">отправлено</span>':`<span class="bad-t">не отправлено: ${esc(L.error||'')}</span>`}`:'Писем ещё не было.'}</p>
+      <p class="muted" style="margin:6px 0">${L?`Последнее письмо: ${esc(Fmt.dateTime(L.at))}${L.test?' (пробное)':''} — ${L.ok?'<span class="ok-t">отправлено</span>':`<span class="bad-t">не отправлено: ${esc(L.error||'')}</span>`}`:'Писем ещё не было.'}</p>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-al="save">Сохранить</button>
         <button class="btn" type="button" data-al="test"${s.mailOn&&s.to?'':' disabled'}>Отправить пробное письмо</button></div>`;
     this.bind();
@@ -310,8 +307,8 @@ class MirrorCard {
   constructor(box){ this.box=box; this.t=0; }
   async open(){ try{ this.s=await aapi('maint/mirror'); }catch(e){ this.box.innerHTML=`<p class="muted">${esc(e.message||e)}</p>`; return; } this.render(); this.bind(); this.poll(); }
   render(note){ const s=this.s, L=s.last||{};
-    const last=L.at?(L.ok?`<b class="ok-t">✓ ${esc(stTime(L.at))}</b>${L.bytes?' · '+stSize(L.bytes):''}${L.images?` · изображений: ${stNum(L.images.total)}, новых скопировано: ${stNum(L.images.copied)}`:''}`
-      :`<b class="bad-t">✕ ${esc(stTime(L.at))}: ${esc(L.error||'ошибка')}</b>`):'<span class="muted">копий ещё не было</span>';
+    const last=L.at?(L.ok?`<b class="ok-t">✓ ${esc(Fmt.dateTime(L.at))}</b>${L.bytes?' · '+Fmt.size(L.bytes):''}${L.images?` · изображений: ${Fmt.num(L.images.total)}, новых скопировано: ${Fmt.num(L.images.copied)}`:''}`
+      :`<b class="bad-t">✕ ${esc(Fmt.dateTime(L.at))}: ${esc(L.error||'ошибка')}</b>`):'<span class="muted">копий ещё не было</span>';
     this.box.innerHTML=`<div class="row"><p class="sub" style="margin:0">Вторая папка для копий базы</p><span class="sp"></span>
         <label class="sw"><input type="checkbox" id="mbOn"${s.on?' checked':''} data-nodirty><span>${s.on?'включена':'выключена'}</span></label></div>
       <p class="muted">Копии в data\\backup лежат на том же диске, что и база: откажет диск — пропадёт всё. Укажите вторую папку на другом устройстве: сетевой диск (\\\\сервер\\копии), флешку или папку Яндекс Диска / OneDrive. Каждый день после обычной копии архив базы (ZIP) копируется туда и проверяется.</p>
@@ -319,7 +316,7 @@ class MirrorCard {
       <div class="grid g2"><label class="f"><span>Папка</span><input type="text" id="mbPath" value="${esc(s.path||'')}" placeholder="D:\\Копии КП или \\\\сервер\\копии" autocomplete="off"></label>
         <label class="f"><span>Хранить копий (последних дней)</span><input type="number" id="mbKeep" min="1" max="365" value="${esc(s.keep||14)}"></label></div>
       <label class="ck"><input type="checkbox" id="mbImg"${s.images?' checked':''}> Копировать туда и изображения каталога (только новые и изменённые)</label>
-      <p>Последняя копия: ${s.running?'<b>идёт копирование…</b>':last}${s.copies?` · в папке копий: ${s.copies} (${stSize(s.copiesBytes)})`:''}</p>
+      <p>Последняя копия: ${s.running?'<b>идёт копирование…</b>':last}${s.copies?` · в папке копий: ${s.copies} (${Fmt.size(s.copiesBytes)})`:''}</p>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-mb="save">Сохранить</button><button class="btn" type="button" data-mb="check">Проверить папку</button>
         <button class="btn" type="button" data-mb="run"${s.on&&!s.running?'':' disabled'}>Копировать сейчас</button></div>`; }
   body(){ return {on:$('#mbOn').checked, path:$('#mbPath').value.trim(), keep:+$('#mbKeep').value||14, images:$('#mbImg').checked}; }
@@ -332,7 +329,7 @@ class MirrorCard {
     this.box.onclick=async e=>{ const b=e.target.closest('[data-mb]'); if (!b) return; const a=b.dataset.mb;
       try{
         if (a==='save'){ this.s=await ajson('maint/mirror', {...this.body(), on:true}); this.render({t:'Сохранено. Копия будет делаться каждый день.'}); }
-        if (a==='check'){ const r=await ajson('maint/mirror/check', {path:$('#mbPath').value.trim()}); this.render({t:`Папка доступна для записи${r.free!=null?', свободно '+stSize(r.free):''}.`}); }
+        if (a==='check'){ const r=await ajson('maint/mirror/check', {path:$('#mbPath').value.trim()}); this.render({t:`Папка доступна для записи${r.free!=null?', свободно '+Fmt.size(r.free):''}.`}); }
         if (a==='run'){ this.s=await ajson('maint/mirror/run', {}); this.render(); this.poll(); }
       }catch(err){ this.render({t:err.message||String(err), err:true}); } };
   }

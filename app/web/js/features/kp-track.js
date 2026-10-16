@@ -1,6 +1,6 @@
 // Ход сделки по КП (сервер: app/kp_track.py): статус (подготовлено → отправлено → в работе → выиграно / проиграно),
 // напоминание «перезвонить», срок действия КП, письмо клиенту с файлом КП. Хранится отдельно от КП — пересохранение не стирает.
-// KpTrackDlg — окно статуса; Reminders — колокольчик в шапке; MailDlg — письмо клиенту.
+// KpTrack — окно статуса; Reminders — колокольчик в шапке; MailDlg — письмо клиенту.
 'use strict';
 
 const KP_STATUS = { new:'Подготовлено', sent:'Отправлено', work:'В работе', won:'Выиграно', lost:'Проиграно' };
@@ -36,14 +36,6 @@ class KpDate {
   }
 }
 
-/** окно поверх всего: html, обработчик щелчков; close() — закрыть */
-class Modal {
-  constructor(html, cls=''){ const d=this.d=document.createElement('dialog'); d.className='st-confirm '+cls; d.innerHTML=html;
-    document.body.appendChild(d); d.showModal(); d.addEventListener('cancel', ()=>this.close()); d.addEventListener('close', ()=>d.remove()); }
-  close(){ if (this.d.open) this.d.close(); }
-  $(s){ return this.d.querySelector(s); }
-}
-
 // ---------- статус КП
 class KpTrack {
   static status(tr){ return (tr && tr.status) || 'new'; }
@@ -51,11 +43,18 @@ class KpTrack {
     return `<button type="button" class="jst st-${st}" data-jst="${esc(r.id)}" title="Ход сделки: статус, напоминание">${esc(KP_STATUS[st])}${st==='lost'&&tr.reason?` · ${esc(tr.reason)}`:''}</button>`
       + (fu?`<span class="jfu${fu.date<=today()?' due':''}" title="${esc(fu.note||'Напоминание')}">⏰ ${esc(KpDate.ddmm(fu.date))}</span>`:'')
       + (tr.sent&&tr.sent.length?`<span class="jsent" title="Отправлено: ${esc(tr.sent.map(s=>KpDate.ddmm(s.at)+' → '+(s.to||[]).join(', ')).join('; '))}">✉ ${esc(KpDate.ddmm(tr.sent[tr.sent.length-1].at))}</span>`:''); }
+  /** запись истории о напоминании: объект {date, note}, прежний формат — текстом; null — напоминание снято */
+  static followText(fu){
+    if (fu===null) return ' напоминание снято';
+    if (!fu) return '';
+    if (typeof fu!=='object') return ' напоминание: '+esc(fu);
+    return ` напоминание на ${esc(KpDate.ddmm(fu.date))}${fu.note ? ': '+esc(fu.note) : ''}`;
+  }
   /** окно статуса; onSave(track) — после сохранения */
   static open(r, onSave){
     const tr=r.track||{}, st=KpTrack.status(tr), fu=tr.followUp&&!tr.followUp.done?tr.followUp:null;
     const reasons=[...new Set([...KP_LOST, ...(tr.reason&&!KP_LOST.includes(tr.reason)?[tr.reason]:[])])];
-    const hist=(tr.history||[]).slice().reverse().slice(0,8).map(h=>`<li><span class="muted">${esc(jTime(h.at))} · ${esc(h.by||'')}</span> ${h.status?esc(KP_STATUS[h.status]||h.status):''}${h.reason?' — '+esc(h.reason):''}${h.note?' — '+esc(h.note):''}${h.followUp?(typeof h.followUp==='object'?` напоминание на ${esc(KpDate.ddmm(h.followUp.date))}${h.followUp.note?': '+esc(h.followUp.note):''}`:' напоминание: '+esc(h.followUp)):h.followUp===null?' напоминание снято':''}</li>`).join('');
+    const hist=(tr.history||[]).slice().reverse().slice(0,8).map(h=>`<li><span class="muted">${esc(Fmt.dateTime(h.at))} · ${esc(h.by||'')}</span> ${h.status?esc(KP_STATUS[h.status]||h.status):''}${h.reason?' — '+esc(h.reason):''}${h.note?' — '+esc(h.note):''}${KpTrack.followText(h.followUp)}</li>`).join('');
     const m=new Modal(`<div class="dlg-h"><h3>Ход сделки · КП № ${esc(r.number)}</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <p class="muted" style="margin:0 0 10px">${esc(r.client||'')}</p>
       <div class="kt-seg" role="radiogroup" aria-label="Статус КП">${Object.entries(KP_STATUS).map(([k,l])=>`<button type="button" class="st-${k}${k===st?' on':''}" data-ks="${k}" role="radio" aria-checked="${k===st}">${l}</button>`).join('')}</div>

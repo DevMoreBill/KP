@@ -98,7 +98,7 @@ class LayoutEditor {
       <div class="lp-v">${ctl}</div><div class="lp-d">${def!=null ? `по умолчанию ${esc(f ? LayoutParams.show(f, def) : String(def))}` : ''}${lim ? `<small>${esc(lim)}</small>` : ''}${def!=null ? ` <button class="icon" type="button" data-lpdef="${esc(path)}" title="Вернуть значение по умолчанию" aria-label="Вернуть значение по умолчанию"${chg ? '' : ' hidden'}>↺</button>` : ''}</div></div>`;
   }
   /** строка после правки — на месте: подсветка «изменено» и «↺» (без перерисовки формы: иначе ввод в следующее поле,
-   *  куда уже перешёл пользователь, пропадает — ошибка до 3.86.11) */
+   *  куда уже перешёл пользователь, пропадал бы) */
   static mark(r){
     const el=r.querySelector('[data-mx]'); if (!el || r.dataset.lpd==null) return;
     const v=el.type==='checkbox' ? String(el.checked) : el.value.trim().replace(/\s+/g, '').replace(',', '.'), chg=String(+v===+v && v!=='' ? +v : v)!==r.dataset.lpd;
@@ -133,7 +133,7 @@ class LayoutEditor {
         `<div class="tzi-tw mx-tw"><table class="tzi-t mx-t"><thead><tr><th>Вид</th><th>Рекомендуется не меньше, мм</th><th>и не меньше доли</th><th>Плотно, мм</th></tr></thead><tbody>${wall}</tbody></table></div>`, on),
       this.sec('clear', 'Отступы по видам: рекомендуется / допустимо', 'Сзади, сбоку и сверху до стены, потолка и соседнего оборудования, мм. Паспорт конкретной модели важнее.',
         `<div class="tzi-tw mx-tw"><table class="tzi-t mx-t"><thead><tr><th>Вид</th>${E.CLEAR.map(([, t])=>`<th>${t}</th>`).join('')}</tr></thead><tbody>${clear}</tbody></table></div>`, on),
-      this.sec('sides', 'Стороны обслуживания, поворот, сервисные ворота, вынос', 'Отмечены стороны, к которым нужен доступ. «Сервисные ворота» снято — монтаж и демонтаж только через ворота в торце (решение ПНЕВМОТЕХ 13.10: осушители и ресиверы).',
+      this.sec('sides', 'Стороны обслуживания, поворот, сервисные ворота, вынос', 'Отмечены стороны, к которым нужен доступ. «Сервисные ворота» снято — монтаж и демонтаж только через ворота в торце (решение ПНЕВМОТЕХ: осушители и ресиверы).',
         `<div class="tzi-tw mx-tw"><table class="tzi-t mx-t"><thead><tr><th>Вид</th>${E.SIDES.map(([, t])=>`<th>${t}</th>`).join('')}<th>Можно повернуть</th><th>Сервисные ворота</th><th>Наклонить при выносе</th></tr></thead><tbody>${sides}</tbody></table></div>`, on)];
     return `<div class="lp-top"><label class="f lp-q"><span>Найти параметр</span><input type="search" data-lpq data-nodirty value="${esc(this.q)}" placeholder="например: ворота, ресивер, габарит" autocomplete="off"></label>
         <span class="muted">Изменённые значения подсвечены; «↺» — вернуть значение по умолчанию. Сохранение — новая версия правил, прежняя остаётся для отката.</span></div>
@@ -189,7 +189,7 @@ class LayoutEditor {
   build(){
     const w=this.w;
     if (w.a[1]>w.a[0]) throw new Error('Проход оператора: «допустимо» больше «рекомендуется»');
-    if (w.t<600) throw new Error('Проход в крайнем случае — не меньше 600 мм (решение ПНЕВМОТЕХ 12.10)');
+    if (w.t<600) throw new Error('Проход в крайнем случае — не меньше 600 мм (решение ПНЕВМОТЕХ)');
     if (w.m.service.min>w.m.service.max) throw new Error('Сервисные ворота: «ширина не меньше» больше «не больше»');
     for (const r of w.m.pair.rows) if (r.min>Math.max(r.base, 0) && !r.k) throw new Error(`Пара ${LayoutEditor.label(r.a)} ↔ ${LayoutEditor.label(r.b)}: «плотно» больше «рекомендуется»`);
     return RuleEdit.version(this.p.data, d=>{
@@ -304,7 +304,7 @@ class RulesPanel {
       if (dl){ try{ this.mx.del(box, +dl.dataset.mxdel); this.render(); } catch(er){ toast(er.message); } return; }
       if (df){ try{ this.mx.read(box); this.mx.def(df.dataset.lpdef); this.render(false); } catch(er){ toast(er.message); } return; }
       const pre=e.target.closest('[data-lppre]');
-      // набор — сразу в действие (новая версия правил; прежняя — для отката); видно, какой действует (3.86.11)
+      // набор — сразу в действие (новая версия правил; прежняя — для отката); видно, какой действует
       if (pre){ const P=LayoutParams.PRESETS.find(p=>p.id===pre.dataset.lppre)||{}; let d;
         try{ this.mx.read(box); this.mx.usePreset(P.id); d=this.mx.build(); } catch(er){ return toast(er.message); }
         return this.post({ method:'POST', headers:{ 'Content-Type':'application/json; charset=utf-8' }, body:JSON.stringify(d) }, '', 'Набор «'+P.title+'» действует'); }
@@ -313,8 +313,8 @@ class RulesPanel {
       if (ra || rd){ try{ ra ? this.re.add(rb, ra.dataset.readd) : this.re.del(rb, rd.dataset.redel); this.render(); } catch(er){ toast(er.message); } return; }
       const b=e.target.closest('[data-rl]'); if (!b) return; const a=b.dataset.rl;
       if (a==='mxadd'){ try{ this.mx.add(box); this.render(); } catch(er){ toast(er.message); } return; }
-      // все значения — как в файле поставки, и сразу новой версией правил (ошибка до 3.86.11: значения возвращались только в
-      // форму, а перерисовка тут же затирала их прежними из полей — «не сбрасывается»)
+      // все значения — как в файле поставки, и сразу новой версией правил (не только в форму: перерисовка затёрла бы их
+      // прежними значениями полей)
       if (a==='mxdef'){ if (!await stConfirm('Все правила компоновки — по умолчанию?', 'Матрица расстановки, проходы и отступы станут как в файле поставки программы и сразу сохранятся новой версией правил; прежняя версия останется для отката.', 'Вернуть по умолчанию')) return;
         const old=this.mx.w; let d; try{ this.mx.reset(); d=this.mx.build(); } catch(er){ this.mx.w=old; return toast(er.message); }
         return this.post({ method:'POST', headers:{ 'Content-Type':'application/json; charset=utf-8' }, body:JSON.stringify(d) }, '', 'Правила компоновки — по умолчанию'); }

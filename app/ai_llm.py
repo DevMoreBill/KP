@@ -43,7 +43,7 @@ def settings(store):
             'updatedAt': a.get('updatedAt') or '', 'updatedBy': a.get('updatedBy') or ''}
 
 
-def _key(store):
+def api_key(store):
     return str(((store.kv_get('integrations') or {}).get('deepseekKey')) or '').strip()
 
 
@@ -51,11 +51,11 @@ def status(store):
     """Для менеджеров: можно ли заполнять напрямую (включено и есть ключ) — без ключа и адреса."""
     s = settings(store)
     prov = 'DeepSeek' if 'deepseek' in s['base'] else 'OpenRouter' if 'openrouter' in s['base'] else 'нейросеть'
-    return {'enabled': s['enabled'] and bool(_key(store)), 'provider': prov, 'model': s['model']}
+    return {'enabled': s['enabled'] and bool(api_key(store)), 'provider': prov, 'model': s['model']}
 
 
 def admin_view(store):
-    s, k = settings(store), _key(store)
+    s, k = settings(store), api_key(store)
     use = store.kv_get('aiUsage') or {}
     month = datetime.now().strftime('%Y-%m')
     return dict(s, hasKey=bool(k), keyMask=(k[:4] + '…' + k[-4:]) if len(k) > 10 else ('задан' if k else ''),
@@ -68,7 +68,7 @@ def save(store, d, by):
     st = store.kv_get('settings') or {}
     a = dict(st.get('ai') or {})
     if 'enabled' in d:
-        if d['enabled'] and not (_key(store) or d.get('key')):
+        if d['enabled'] and not (api_key(store) or d.get('key')):
             raise ValueError('Сначала укажите ключ API DeepSeek')
         a['enabled'] = bool(d['enabled'])
     if d.get('model'):
@@ -107,7 +107,7 @@ def _count(store, usage):
 
 def ask(store, prompt, force=False):
     """Запрос к нейросети: {'text': ответ (JSON строкой), 'usage': {...}, 'model': ...}. RuntimeError — текст для пользователя."""
-    s, key = settings(store), _key(store)
+    s, key = settings(store), api_key(store)
     if not force and not s['enabled']:
         raise RuntimeError('Нейросеть в программе выключена администратором — заполните через любой ИИ-чат (кнопки ниже)')
     if not key:

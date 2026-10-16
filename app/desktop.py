@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Открытие файлов и папок на компьютере, где работает программа (Word, проводник)."""
+import functools
 import os
 import subprocess
 import sys
@@ -10,12 +11,13 @@ class DesktopError(RuntimeError):
 
 
 def _safe(fn):
+    """Ошибка ОС при открытии — DesktopError с понятным текстом (ответ 422)."""
+    @functools.wraps(fn)
     def run(path):
         try:
             return fn(path)
         except OSError as e:
             raise DesktopError('Не удалось открыть на этом компьютере: %s' % (e.strerror or 'нет программы для такого файла'))
-    run.__name__, run.__doc__ = fn.__name__, fn.__doc__
     return run
 
 

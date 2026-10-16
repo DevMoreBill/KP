@@ -93,8 +93,8 @@ var CATED = null;
 
 function persist(){
   if (CATED) return;
-  if (typeof kitSync==='function') S.items.forEach(x=>{ kitSync(x); stationFill(x); stationAutoName(x); });     // закупка сборки — по текущим курсам; параметры станции — по составу
-  if (typeof coverSync==='function') coverSync();
+  S.items.forEach(x=>{ kitSync(x); stationFill(x); stationAutoName(x); });     // закупка сборки — по текущим курсам; параметры станции — по составу
+  coverSync();
   clearTimeout(saveT);
   saveT = setTimeout(()=>{
     if (CATED) return;
@@ -107,10 +107,6 @@ function persist(){
     try { localStorage.setItem('kp.manager', JSON.stringify(S.manager)); } catch(e){}
   }, 400);
 }
-
-function getP(path){ return path.split('.').reduce((o,k)=>o==null?o:o[k], S); }
-
-function setP(path, v){ const ks=path.split('.'); let o=S; for(let i=0;i<ks.length-1;i++) o=o[ks[i]]; o[ks.at(-1)]=v; }
 
 // сумма позиции с учётом скидки для заказчика (KPGen.netPrice) и опций
 function itemSum(x){ return (+x.qty||0)*KPGen.netPrice(x) + (x.options||[]).reduce((s,o)=>s+(+o.qty||0)*(o.price||0),0); }

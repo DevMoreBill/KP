@@ -64,9 +64,12 @@ class ServerTask:
         cmd = ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
                '[Console]::OutputEncoding = New-Object Text.UTF8Encoding $false; $ErrorActionPreference = "Stop"; ' + script]
         r = subprocess.run(cmd, capture_output=True, timeout=self.TIMEOUT, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-        def text(b):
-            return (b or b'').decode('utf-8', 'replace').replace('﻿', '').strip()
-        return r.returncode, text(r.stdout), text(r.stderr)
+        return r.returncode, self._text(r.stdout), self._text(r.stderr)
+
+    @staticmethod
+    def _text(b):
+        """Вывод PowerShell (UTF-8, бывает с BOM) → текст."""
+        return (b or b'').decode('utf-8', 'replace').replace('\ufeff', '').strip()
 
     def read(self):
         """Настройки задачи: {exists, limit, noBattery, stopBattery, priority, restart}."""

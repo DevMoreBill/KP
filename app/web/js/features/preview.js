@@ -1,5 +1,5 @@
 // Предпросмотр КП без скачивания: документ собирается так же, как при сохранении, и показывается в окне
-// (vendor/docx-preview). Титул — живое превью в разделе «Титульный лист». PDF — на компьютере-сервере
+// (vendor/docx-preview). Титул — живое превью в разделе «Оформление КП». PDF — на компьютере-сервере
 // (Word или LibreOffice, см. app/pdf_convert.py); если их нет — печать из предпросмотра «Сохранить как PDF».
 'use strict';
 
@@ -48,7 +48,7 @@ function kpFloatsFix(body, floats){
     if (f.behind) d.classList.add('kp-behind'); });
 }
 
-// ---------- превью титула в разделе «Титульный лист»
+// ---------- превью титула в разделе «Оформление КП»
 const CVP = { key:'', node:null, t:null, busy:false };
 
 function coverKey(){ try{ return JSON.stringify([S.template, S.cover, S.client, S.date, S.items.map(x=>[x.id, x.photo&&x.photo.src&&x.photo.src.length, x.photo&&x.photo.src&&x.photo.src.slice(-40), x.name, x.qty, x.price, x.attrs, x.hint]), S.manager.name]); }catch(e){ return String(Math.random()); } }
@@ -86,10 +86,8 @@ function fitCoverThumb(){ const box=$('#cvThumb'), sec=box&&box.querySelector('s
 addEventListener('resize', ()=>{ if (STEP==='cover') fitCoverThumb(); });
 
 // ---------- окно предпросмотра всего КП
-function pvDlg(){ let d=$('#pvdlg'); if (!d){ d=document.createElement('dialog'); d.id='pvdlg'; d.className='kpprev'; document.body.appendChild(d); } return d; }
-
 async function openKpPreview(){
-  const d=pvDlg();
+  const d=Modal.host('pvdlg', 'kpprev', 'Предпросмотр КП');
   d.innerHTML=`<div class="pv-hd"><h3>Предпросмотр КП${S.number?' № '+esc(S.number):''}</h3><span class="muted pv-note">${S.kpId?'':'Номер присвоится при сохранении'}</span><span class="sp"></span>
       <div class="pv-zoom"><button class="icon" type="button" data-pz="-1" aria-label="Мельче">−</button><span id="pvZ">100%</span><button class="icon" type="button" data-pz="1" aria-label="Крупнее">+</button></div>
       <button class="btn" type="button" data-pva="pdf"><span class="pv-l">Скачать </span>PDF</button><button class="btn" type="button" data-pva="print" title="Печать или «Сохранить как PDF» средствами браузера">Печать</button>

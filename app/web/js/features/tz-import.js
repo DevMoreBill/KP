@@ -348,12 +348,11 @@ class TzPick {
   /** насос для стационарной насосной станции в контейнере: электрический, не погружной, не скважинный, не дренажный, не
    *  мотопомпа (вид и привод — из карточки; не указаны — допускается) */
   static pumpOk(c){ const a=attrsOf(c); return !/мотопомп|погружн|скважин|дренаж|фекал/i.test(String(a.kind||'')+' '+c.name) && !/дизел|бензин/i.test(String(a.drive||'')); }
-  /** ДГУ для станции 0,4 кВ: трёхфазная 400 В (не однофазная 220/230 В и не высоковольтная 6,3 / 10,5 кВ); «400 / 230 В» —
-   *  трёхфазная с нейтралью (до 3.86 по ошибке считалась однофазной); исполнение — открытое или под контейнер (передвижные
-   *  отсеяны в stationPool) */
-  /** в контейнер — ДГУ открытого исполнения: в кожухе она шире и выше, контейнер выходит за габарит перевозки (решение 3.86:
-   *  кожух — только если открытой нужной мощности нет); штраф к оценке подбора */
+  /** в контейнер — ДГУ открытого исполнения: в кожухе она шире и выше, контейнер выходит за габарит перевозки (кожух —
+   *  только если открытой нужной мощности нет); штраф к оценке подбора */
   static dguPen(c){ return /кожух|капот|шумозащит/i.test(String(attrsOf(c).execution||'')+' '+c.name) ? 0.15 : 0; }
+  /** ДГУ для станции 0,4 кВ: трёхфазная 400 В (не однофазная 220/230 В и не высоковольтная 6,3 / 10,5 кВ); «400 / 230 В» —
+   *  трёхфазная с нейтралью; исполнение — открытое или под контейнер (передвижные отсеяны в stationPool) */
   static dguOk(c){
     const a=attrsOf(c), v=String(a.voltage||''), t=v+' '+String(a.phases||'')+' '+c.name;
     if (/\d{4,}\s*В(?![а-яё])|\d+(?:[.,]\d+)?\s*кВ(?![а-яёА-ЯЁ])/i.test(t.replace(/(\d)\s+(?=\d{3}\b)/g, '$1'))) return false;   // 6 300 / 10 500 В, 10,5 кВ
@@ -382,7 +381,7 @@ class TzPick {
     for (const [only, max] of [[true, P.recvFree], [false, P.recvAny]]) for (let n=1; n<=max; n++){ const o=this.best(L.filter(z=>z.v*n>=V-1e-9 && (!only || free(z))), 'v'); if (o) return { o, n, free:free(o) }; }
     return null;
   }
-  /** ресивер типоразмера size, л (900 или 500 — методика ПНЕВМОТЕХ 13.10): давление — с запасом над компрессором (правило
+  /** ресивер типоразмера size, л (900 или 500 — методика ПНЕВМОТЕХ): давление — с запасом над компрессором (правило
    *  receiver.method.margin), нет такого — не ниже компрессорного (тогда ошибка в расчёте); высота с арматурой (+300 мм) — не выше
    *  Hmax (0 — без ограничения); производитель в приоритете (АСО), в наличии, наименьшее достаточное давление, дешевле, ниже.
    *  {o} | {o:null, tall — на это давление есть, но выше Hmax} | null */
@@ -417,7 +416,7 @@ class TzPick {
     return Wi-2*StationMatrix.gap();
   }
   /** помещается в плане с проходом (W, мм; 0 — без ограничения): меньшая сторона + отступ от стены «плотно» + проход
-   *  «не менее» не больше W. Не помещается один — несколько меньших параллельно (решение ПНЕВМОТЕХ 13.10) */
+   *  «не менее» не больше W. Не помещается один — несколько меньших параллельно (решение ПНЕВМОТЕХ) */
   static fitsW(c, kind, W){
     if (!(W>0)) return true; const d=StationEquip.dims({ name:c.name, attrs:attrsOf(c), rows:c.rows||[] }, kind); if (!d.known) return true;
     const s=Math.min(d.l, d.w), wr=StationMatrix.wall({ kind, w:s }); return s+(wr ? wr[1] : 100)+StationClear.aisle()[1]<=W;
@@ -439,6 +438,7 @@ class TzPick {
     return [note, added.length ? 'Добавлено по ТЗ: '+added.join(', ') : ''].filter(Boolean).join('. ');
   }
 
+  /** элемент состава из позиции каталога c: полная карточка с сервера, нет связи — облегчённая из кэша каталога */
   static async part(c, qty, role){
     let doc=c; try{ doc=await api('/api/catalog/'+encodeURIComponent(c.id)); }catch(_){}
     const p=KitPart.fromCat(doc); p.qty=qty; if (role) p.role=role; return p;
@@ -450,7 +450,7 @@ class TzPick {
     const drop=this.DROP[q.kind]||/^$/, before=kitParts(x).filter(p=>p.role!=='container' && drop.test(StationEquip.kindOf(p)||''));
     let note=await this.fit(x, q); const kept=[];
     // фильтры и ресиверы — только если цепочка воздуха их по-прежнему просит (осушитель со встроенными фильтрами — фильтры
-    // не нужны: прежние на меньший расход не оставлять — ошибка до 3.86.11)
+    // не нужны: прежние на меньший расход не оставлять)
     let air=null; const need=k=>{ if (k!=='filter' && k!=='receiver') return true;
       if (!air) air=StationLayout.solve(StationUi.input(x)).air || KitNeed.air(x) || { recs:[] }; return (air.recs||[]).some(r=>r.cat===k && !r.replace); };
     for (const k of [...new Set(before.map(p=>StationEquip.kindOf(p)))]){
@@ -462,7 +462,7 @@ class TzPick {
     return note;
   }
   static DROP = { comp:/^(compressor|dryer|filter|receiver)$/, pump:/^pump$/, dgu:/^dgu$/ };
-  /** подбор, при котором станция помещается в контейнер (решение ПНЕВМОТЕХ 13.10, уточнено 14.10 — «ресиверы — внутри,
+  /** подбор, при котором станция помещается в контейнер (решение ПНЕВМОТЕХ — «ресиверы — внутри,
    *  применив все приёмы компоновки»): один большой агрегат не встаёт — несколько одинаковых меньших (2, 3 … до MAX; меньшим
    *  агрегатам — и меньше ресиверов). Порядок: всё внутри в габарите перевозки — для каждого числа агрегатов сначала ресиверы
    *  900 л, затем по 500 л без учёта в Ростехнадзоре («нехватка места», методика ПНЕВМОТЕХ; меньше по диаметру — встают парами
@@ -475,7 +475,7 @@ class TzPick {
       if (rq.recvOutAuto){ delete rq.recvOut; delete rq.recvOutAuto; q={ ...q, recvOut:false }; }
       if (rq.recvSizeAuto){ delete rq.recvSize; delete rq.recvWhy; delete rq.recvSizeAuto; } }
     const note=await this.pick(x, q);
-    if (q.work || q.kind!=='comp' || !(q.flow>0)) return note;   // компрессорные (решение ПНЕВМОТЕХ 13.10); ДГУ и насосы параллельно — решение проектировщика
+    if (q.work || q.kind!=='comp' || !(q.flow>0)) return note;   // компрессорные (решение ПНЕВМОТЕХ); ДГУ и насосы параллельно — решение проектировщика
     const res=Math.max(0, Math.round(+q.reserve||0)), main=()=>kitParts(x).find(p=>p.role==='main'), req=StationReq.ensure(x), out0=!!req.recvOut, sz0=!!req.recvSize;
     // нет контейнера — проверять нечего; close — помещается только с ресиверами вплотную (крайний случай: сначала другие варианты внутри)
     const state=()=>{ if (!main()) return 'bad'; const p=StationLayout.solve(StationUi.input(x)), I=p.issues||[]; return p.level==='error' ? 'bad' : I.some(i=>i.wide) ? 'wide' : I.some(i=>i.close) ? 'close' : 'ok'; };
@@ -492,7 +492,7 @@ class TzPick {
     let hadR=true, t5=false;   // в предыдущем варианте были ресиверы (нет — вариант «по 500 л» не нужен); по 500 л — проверено
     for (const [n, out, s5] of tries){
       if (s5 && !hadR) continue;
-      if (out && close) break;   // внутри помещается с ресиверами вплотную — лучше, чем снаружи (решение ПНЕВМОТЕХ 14.10)
+      if (out && close) break;   // внутри помещается с ресиверами вплотную — лучше, чем снаружи (решение ПНЕВМОТЕХ)
       set(out, s5);
       const nt=await this.pick(x, { ...q, work:n, compact:true, recvOut:out }), st=state(), v=keep(nt, n, out, s5);
       const dryR=kitParts(x).some(p=>StationEquip.kindOf(p)==='receiver' && p.recvRole!=='local' && p.recvRole!=='wet');

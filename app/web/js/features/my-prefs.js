@@ -18,10 +18,7 @@ class MyPrefs {
   static def(key){ const v=(this.p.defaults||{})[key]; return v!=null && String(v).trim()!=='' ? String(v) : null; }
 
   static apply(){
-    const t=this.p.theme, r=document.documentElement;
-    if (t==='light' || t==='dark'){ r.dataset.theme=t; r.style.colorScheme=t; try{ localStorage.setItem('kp.theme', t); }catch(e){} }
-    else if (t==='auto'){ delete r.dataset.theme; r.style.colorScheme=''; try{ localStorage.removeItem('kp.theme'); }catch(e){} }
-    if (typeof paintThemeBtn==='function') paintThemeBtn();
+    if (Theme.NAMES.includes(this.p.theme)) Theme.set(this.p.theme);
     if (this.p.template){ try{ localStorage.setItem('kp.template', this.p.template); }catch(e){} }
   }
 
@@ -29,7 +26,7 @@ class MyPrefs {
   static start(){
     const s=this.p.start||'auto';
     if (s==='none') return true;
-    if (s==='myday' && typeof MyDay!=='undefined' && MyDay.on()){ MyDay.open(); return true; }
+    if (s==='myday' && MyDay.on()){ MyDay.open(); return true; }
     if (s==='journal' && typeof openJournal==='function'){ openJournal(); return true; }
     if (s==='catalog'){ if (catCache.length) openCatalog({}); return true; }
     return false;          // как в программе
@@ -54,7 +51,7 @@ class MyPrefs {
     const opt=(list, v)=>list.map(([k,l])=>`<option value="${esc(k)}"${(v||'auto')===k?' selected':''}>${esc(l)}</option>`).join('');
     const company=k=>{ const sc=DEF_BY[k]; if (!sc) return ''; const x=DEFS_SRV[k]; return x&&x.v!=null&&String(x.v)!=='' ? String(x.v) : String(sc[4]??''); };
     const conds=DEF_SCHEMA.filter(x=>x[1]==='cond');
-    const tpls=(typeof TEMPLATES!=='undefined'?TEMPLATES:[]).filter(t=>!t.error);
+    const tpls=TEMPLATES.filter(t=>!t.error);
     const m=new Modal(`<div class="dlg-h"><h3>Мои настройки<small>${esc(me?me.name:'')}</small></h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <p class="muted" style="margin-top:0">Только для вас и на любом компьютере, где вы работаете. Общие правила отдела задаёт администратор («Настройки → Умолчания»); пустое поле — как у отдела.</p>
       <div class="grid g2"><label class="f"><span>Тема</span><select id="mpTheme">${opt(this.THEME, p.theme)}</select></label>

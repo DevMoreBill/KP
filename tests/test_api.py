@@ -53,7 +53,7 @@ class ApiTest(unittest.TestCase):
     def test_01_references(self):
         for p in ['/', '/api/version', '/api/types', '/api/lists', '/api/defaults', '/api/features', '/api/managers', '/api/suppliers',
                   '/api/customs', '/api/uitexts', '/api/logos', '/api/catalog/sources', '/api/catalog/pending', '/api/templates',
-                  '/api/ai/status', '/api/mail/status', '/api/logistics', '/api/logistics/status', '/api/pdf', '/api/me/prefs', '/api/drafts',
+                  '/api/ai/status', '/api/logistics', '/api/logistics/status', '/api/pdf', '/api/me/prefs', '/api/drafts',
                   '/api/presets', '/api/reminders', '/api/history?limit=20', '/api/clients?q=%D0%BE%D0%BE%D0%BE&limit=20', '/api/check/quota',
                   '/api/auth/status']:
             with self.subTest(p):

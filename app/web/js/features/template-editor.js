@@ -7,8 +7,6 @@ const TE = { id:'', pack:null, form:null, work:null, dirty:false, tab:'', err:''
 const FONTS = ['Arial','Calibri','Cambria','Segoe UI','Tahoma','Times New Roman','Verdana','Georgia','PT Sans','PT Serif','Roboto','Open Sans'];
 const KIND_NAMES = { template:'Настройки (template.json)', base:'Основа Word (base.docx)', skeleton:'Скелет (skeleton.js)', editor:'Форма редактора (editor.json)' };
 
-const getPath = (o, k) => String(k).split('.').reduce((a, p) => a == null ? a : a[p], o);
-function setPath(o, k, v){ const ps=String(k).split('.'); let a=o; ps.slice(0,-1).forEach(p=>{ if (a[p]==null || typeof a[p]!=='object') a[p]={}; a=a[p]; }); a[ps[ps.length-1]]=v; }
 const hex = v => '#'+String(v||'000000').replace(/^#/,'').padStart(6,'0').slice(0,6);
 const colorOf = k => /^[0-9A-Fa-f]{6}$/.test(String(k||'')) ? k : ((TE.work&&TE.work.colors||{})[k] || '000000');
 
@@ -17,17 +15,25 @@ async function openTemplateEditor(id, keepNote){
   const d=$('#dlg'); d.className='tpled'; d.innerHTML='<div class="dlg-b"><p class="muted">Загружаю шаблон…</p></div>';
   if (!d.open) d.showModal();
   Object.assign(TE, { id, pack:null, form:null, work:null, dirty:false, err:'', note: keepNote ? TE.note : '' });
-  dropTemplateCache(id);
-  try{
-    TE.pack = await templatePack(id);
-    const r = await fetch(`/tpl/${encodeURIComponent(id)}/editor.json`, {cache:'no-store'});
-    TE.form = r.ok ? await r.json() : {tabs:[]};
-    TE.work = KPGen.deepMerge(TE.pack.skel.defaults, TE.pack.json);
-    TE.work.sections = normSections(TE.work.sections, TE.pack.skel.defaults.sections);
-  }catch(e){ TE.err = e.message || String(e); TE.form = {tabs:[{id:'files', title:'Файлы шаблона', fields:[{type:'files'}]}]}; }
+  try{ Object.assign(TE, await TemplateDraft.load(id)); }
+  catch(e){ TE.err = e.message || String(e); TE.form = {tabs:[{id:'files', title:'Файлы шаблона', fields:[{type:'files'}]}]}; }
   if (!TE.form.tabs || !TE.form.tabs.length) TE.form.tabs=[{id:'files', title:'Файлы шаблона', fields:[{type:'files'}]}];
   if (!TE.form.tabs.some(t=>t.id===TE.tab)) TE.tab = TE.err ? 'files' : TE.form.tabs[0].id;
   renderTE();
+}
+
+// шаблон для правки (форма «Настроить» и графический редактор): файлы шаблона заново с сервера, форма editor.json
+// и рабочая копия настроек — умолчания скелета, поверх них template.json
+class TemplateDraft {
+  static async load(id){
+    dropTemplateCache(id);
+    const pack = await templatePack(id);
+    const r = await fetch(`/tpl/${encodeURIComponent(id)}/editor.json`, {cache:'no-store'});
+    const form = r.ok ? await r.json() : {tabs:[]};
+    const work = KPGen.deepMerge(pack.skel.defaults, pack.json);
+    work.sections = normSections(work.sections, pack.skel.defaults.sections);
+    return { pack, form, work };
+  }
 }
 
 function normSections(list, defs){

@@ -8,7 +8,6 @@ class ChinaFreightTab {
   static q = { from:'', to:'Забайкальск', kind:'ftl', kg:'', m3:'' };
 
   static opts(map, cur){ return Object.entries(map).map(([k, t])=>`<option value="${esc(k)}"${k===cur?' selected':''}>${esc(t)}</option>`).join(''); }
-  static rub(n){ return Math.round(n).toLocaleString('ru-RU')+' ₽'; }
 
   static async render(m){
     try{ this.st=await api('/api/logistics/china'); }catch(e){ m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; return; }
@@ -49,7 +48,7 @@ class ChinaFreightTab {
   static result(r){
     const fx=r.fx||{}, f=n=>n?String(Math.round(n*100)/100).replace('.',','):'—';
     return `${r.offers.length?`<table class="cf-t cf-r"><thead><tr><th>Источник</th><th>Стоимость</th><th>Срок</th><th>Как посчитано</th></tr></thead><tbody>${r.offers.map(o=>`<tr><td><b>${esc(o.src)}</b></td>
-        <td><b>${this.rub(o.rub)}</b>${o.cur&&o.cur!=='RUB'?`<br><small class="muted">${esc(o.amount.toLocaleString('ru-RU'))} ${esc(o.cur)}</small>`:''}${o.avgRub?`<br><small class="muted">в среднем ${this.rub(o.avgRub)}</small>`:''}</td>
+        <td><b>${Fmt.rub(o.rub)}</b>${o.cur&&o.cur!=='RUB'?`<br><small class="muted">${esc(o.amount.toLocaleString('ru-RU'))} ${esc(o.cur)}</small>`:''}${o.avgRub?`<br><small class="muted">в среднем ${Fmt.rub(o.avgRub)}</small>`:''}</td>
         <td>${o.days?esc(o.days)+' дн.':'—'}</td><td class="muted">${esc(o.note||'')}</td></tr>`).join('')}</tbody></table>`:''}
       ${r.errors.map(e=>`<p class="warn-t">${esc(e.src)}: ${esc(e.msg)}</p>`).join('')}
       <p class="muted">Курс ЦБ${fx.date?' на '+esc(fx.date):''}: USD ${f(fx.USD)} ₽, CNY ${f(fx.CNY)} ₽, EUR ${f(fx.EUR)} ₽. До границы РФ — без растаможки, пошлин и доставки по России.</p>`;

@@ -3,10 +3,11 @@
 
 Каждый раздел — класс-наследник Controller, обработчики помечены декоратором @route(шаблон пути, методы).
 Router проходит маршруты в порядке объявления: первый подходящий по пути и методу обрабатывает запрос;
-обработчик может вернуть PASS — «не мой случай», тогда поиск продолжается (как раньше цепочка if в kp_server.route).
+обработчик может вернуть PASS — «не мой случай», тогда поиск продолжается.
 Ничего не подошло — 404. Права, модерация и журнал действий проверяются до маршрутизации (admin.guard),
 транспорт (ответы, файлы, кэш, защита от чужих сайтов) — в kp_server.Handler.
 """
+import contextlib
 import hashlib
 import json
 import os
@@ -156,6 +157,15 @@ class Controller(metaclass=ControllerMeta):
         return self.send(code, 'text/plain; charset=utf-8', msg)
 
     @staticmethod
+    @contextlib.contextmanager
+    def user_input():
+        """Ошибка проверки ввода (ValueError с текстом для пользователя) — ответ 400 с этим текстом."""
+        try:
+            yield
+        except ValueError as e:
+            raise BadRequest(str(e)) from None
+
+    @staticmethod
     def kp_docx(kid):
         """Файл Word сохранённого КП (путь в папке КП) или None — КП ещё не сохранялось в Word или файл убран."""
         rel = store().kp_get(kid, 'docx')
@@ -182,14 +192,13 @@ class Router:
             if not mt:
                 continue
             c = ctrl.get(cls) or ctrl.setdefault(cls, cls(h, m, path, q))
+            # неверный ввод (BadRequest, испорченное тело) — 400 отвечает kp_server.Handler
             try:
                 res = getattr(c, attr)(*mt.groups())
-            except BadRequest as e:
-                return h.send(400, 'text/plain; charset=utf-8', str(e))
+            except Conflict as e:              # запись успели изменить другие (X-KP-Rev) — 409
+                return h.conflict(e)
             except DesktopError as e:
                 return h.send(422, 'text/plain; charset=utf-8', str(e))
-            except (UnicodeDecodeError, json.JSONDecodeError):      # тело запроса — не текст UTF-8 или не JSON
-                return h.send(400, 'text/plain; charset=utf-8', 'Неверный запрос: нужен JSON в кодировке UTF-8')
             if res is not PASS:
                 return res
         return h.not_found()
@@ -253,10 +262,8 @@ class TypesController(Controller):
             return self.send_json(read_text(types_builtin_path()))
         if self.m == 'PUT':
             self.json_body()
-            try:
+            with self.user_input():
                 save_user_types(self.body())
-            except ValueError as e:
-                raise BadRequest(str(e))
             return self.send_json(load_types())
         text = json.dumps(load_types(), ensure_ascii=False)
         return self.send_cached('types-' + hashlib.md5(text.encode('utf-8')).hexdigest()[:16], lambda: text)
@@ -309,10 +316,9 @@ class PartiesController(Controller):
     def keys(self):
         if self.m == 'PUT':
             self.json_body()
-            try:
-                return self.send_json(cp().save_keys(self.body()))
-            except ValueError as e:
-                raise BadRequest(str(e))
+            with self.user_input():
+                saved = cp().save_keys(self.body())
+            return self.send_json(saved)
         return self.send_json(cp().keys_public())
 
     @route(r'/api/clients', 'GET')
@@ -334,10 +340,7 @@ class PartiesController(Controller):
             c = store().client_get(cid, rev=True)
             return self.send_json(c) if c else self.text(404, 'Клиент не найден')
         self.json_body()            # не объект JSON — 400
-        try:
-            return self.send_json(cp().save_client(cid, self.body(), admin.actor(self.h)[1], self.base_rev()))
-        except Conflict as e:
-            return self.conflict(e)
+        return self.send_json(cp().save_client(cid, self.body(), admin.actor(self.h)[1], self.base_rev()))
 
 
 # ---------------------------------------------------------------- шаблоны КП (папка templates): список, файлы, редактор шаблона
@@ -492,8 +495,6 @@ class ManagersController(Controller):
                 d[k] = '' if d[k] is None else str(d[k])
         try:
             return self.send_json(store().manager_put(mid, json.dumps(d, ensure_ascii=False), admin.actor(self.h)[1], self.base_rev()))
-        except Conflict as e:
-            return self.conflict(e)
         except ValueError as e:         # дубль другого менеджера (ФИО, e-mail, мобильный, добавочный)
             return self.text(422, str(e))
 
@@ -539,11 +540,8 @@ class KpController(Controller):
                     raise ValueError
             except ValueError:   # испорченная запись ломала бы журнал КП у всех
                 return self.text(400, 'Неверный формат КП')
-            try:
-                rev = store().kp_set(kid, field, admin.kp_in(self.h, store(), kid, field, text), admin.actor(self.h)[1],
-                                     self.base_rev() if field == 'state' else None)
-            except Conflict as e:
-                return self.conflict(e)
+            rev = store().kp_set(kid, field, admin.kp_in(self.h, store(), kid, field, text), admin.actor(self.h)[1],
+                                 self.base_rev() if field == 'state' else None)
             return self.send_json({'ok': True, 'rev': rev})
         v = store().kp_get(kid, field)
         if v and field == 'state':
@@ -697,10 +695,8 @@ class KpFilesController(Controller):
             return self.send_json({'items': kf.list(kid), 'limits': kf.limits()})
         if store().kp_get(kid, 'meta') is None:
             return self.text(400, 'Сначала сохраните КП, затем прикрепите документы')
-        try:
+        with self.user_input():
             rec = kf.add(kid, self.q.get('name', ''), self.body(), self.q.get('note', ''), admin.actor(self.h)[1])
-        except ValueError as e:
-            return self.text(400, str(e))
         admin.log(self.h, store(), 'add_kp_file', 'kp', kid, None, {'name': rec['name'], 'size': rec['size']})
         return self.send_json(rec)
 
@@ -783,11 +779,18 @@ class ToolsController(Controller):
         except Exception as e:
             return self.text(422, 'Страница не прочитана: %s' % str(e)[:200])
 
+    def _too_big(self, what):
+        """Документ для разбора больше допустимого («Значения программы»): ответить 413 и вернуть True."""
+        mb = defaults.SrvVal.get(store(), 'cat.docMaxMB')
+        if self.body_size() <= mb * 1024 * 1024:
+            return False
+        self.text(413, '%s больше %d МБ' % (what, mb))
+        return True
+
     @route(r'/api/pdftext', 'POST')        # текст из PDF (паспорт, каталог, ТЗ) — для автозаполнения карточки
     def pdftext(self):
-        mb = defaults.SrvVal.get(store(), 'cat.docMaxMB')
-        if self.body_size() > mb * 1024 * 1024:
-            return self.text(413, 'PDF больше %d МБ' % mb)
+        if self._too_big('PDF'):
+            return
         try:
             r = pdf_text.text(self.body())
             r.pop('per', None)                 # текст по страницам — только для разбора ТЗ
@@ -799,9 +802,8 @@ class ToolsController(Controller):
     def tz_parse(self):
         from doc_text import DocText
         from tz_parse import TzParse
-        mb = defaults.SrvVal.get(store(), 'cat.docMaxMB')
-        if self.body_size() > mb * 1024 * 1024:
-            return self.text(413, 'Файл больше %d МБ' % mb)
+        if self._too_big('Файл'):
+            return
         try:
             doc = DocText.extract(str(self.q.get('name') or '')[:200], self.body())
         except Exception as e:
@@ -838,6 +840,7 @@ class ToolsController(Controller):
 
 # ---------------------------------------------------------------- настройки отдела: списки, умолчания, тексты, логистика
 class SettingsController(Controller):
+    MAX_UITEXTS = 3000          # изменённых текстов интерфейса
     @route(r'/api/lists', 'GET')           # списки и выборы от администратора (для всех; правка — /api/admin/lists)
     def lists(self):
         from lists import ListStore
@@ -851,7 +854,7 @@ class SettingsController(Controller):
     def quote(self):
         req = self.json_body()
         try:
-            return self.send_json(logistics_api.quote(store(), req))
+            return self.send_json(logistics_api.DeliveryQuote(store(), req).run())
         except (ValueError, TypeError, KeyError) as e:
             return self.text(400, 'Неверный запрос: %s' % e)
 
@@ -871,45 +874,47 @@ class SettingsController(Controller):
     @route(r'/api/logistics/carriers', ('GET', 'PUT'))   # перевозчики: включение и адреса API (изменяет администратор)
     def logistics_carriers(self):
         if self.m == 'PUT':
-            try:
-                return self.send_json(logistics_api.CarrierApi.save(store(), self.json_body(), admin.actor(self.h)[1]))
-            except ValueError as e:
-                return self.text(400, str(e))
+            d = self.json_body()
+            with self.user_input():
+                saved = logistics_api.CarrierApi.save(store(), d, admin.actor(self.h)[1])
+            return self.send_json(saved)
         return self.send_json(logistics_api.CarrierApi.public(store()))
 
     @route(r'/api/logistics/carriers/test', 'POST')      # пробный расчёт одного перевозчика (администратор)
     def logistics_carrier_test(self):
-        try:
-            return self.send_json(logistics_api.CarrierApi.test(store(), str((self.json_body() or {}).get('id') or '')))
-        except ValueError as e:
-            return self.text(400, str(e))
+        carrier = str(self.json_body().get('id') or '')
+        with self.user_input():
+            res = logistics_api.CarrierApi.test(store(), carrier)
+        return self.send_json(res)
 
     @route(r'/api/logistics/china', ('GET', 'PUT'))      # доставка из Китая (только администратор): ставки экспедиторов, направления ATI.SU
     def china(self):
         from china_freight import ChinaFreight
         cf = ChinaFreight(store())
         if self.m == 'PUT':
-            try:
-                return self.send_json(cf.save_rates((self.json_body() or {}).get('rows'), admin.actor(self.h)[1]))
-            except ValueError as e:
-                return self.text(400, str(e))
+            rows = self.json_body().get('rows')
+            with self.user_input():
+                saved = cf.save_rates(rows, admin.actor(self.h)[1])
+            return self.send_json(saved)
         return self.send_json(cf.status())
 
     @route(r'/api/logistics/china/quote', 'POST')        # расчёт Китай → граница РФ (в экономику сделки не идёт)
     def china_quote(self):
         from china_freight import ChinaFreight
-        try:
-            return self.send_json(ChinaFreight(store()).quote(self.json_body() or {}, cbr_saved('cbr_last', cbr_rates)))
-        except ValueError as e:
-            return self.text(400, str(e))
+        req = self.json_body()
+        with self.user_input():
+            res = ChinaFreight(store()).quote(req, cbr_saved('cbr_last', cbr_rates))
+        return self.send_json(res)
 
     @route(r'/api/logistics')              # тарифы доставки по России (общие для отдела; изменяет администратор)
     def logistics(self):
         if self.m == 'PUT':
             try:
-                d = logistics_api.TariffInput.check(self.json_body())
-            except ValueError as e:
-                return self.text(400, str(e) if not isinstance(e, BadRequest) else 'Неверный формат тарифов')
+                body = self.json_body()
+            except BadRequest:
+                raise BadRequest('Неверный формат тарифов') from None
+            with self.user_input():
+                d = logistics_api.TariffInput.check(body)
             d['updatedAt'] = datetime.now().isoformat(timespec='seconds')
             d['updatedBy'] = admin.actor(self.h)[1]
             store().kv_set('logistics', d)
@@ -924,10 +929,10 @@ class SettingsController(Controller):
     def uitexts_put(self):
         try:
             d = self.json_body()
-        except ValueError:
-            return self.text(400, 'Неверный формат')
-        if not isinstance(d, dict) or len(d) > 3000:
-            return self.text(400, 'Неверный формат')
+        except BadRequest:
+            raise BadRequest('Неверный формат') from None
+        if len(d) > self.MAX_UITEXTS:
+            raise BadRequest('Неверный формат')
         out = {str(k)[:2000]: str(v)[:4000] for k, v in d.items() if str(k).strip() and isinstance(v, str)}
         store().kv_set('uitexts', out)
         return self.send_json({'ok': True, 'count': len(out)})
@@ -940,10 +945,9 @@ class SettingsController(Controller):
     @route(r'/api/calendar', 'GET')        # производственный календарь РФ (рабочие / банковские дни)
     def calendar(self):
         import workcal
-        try:
-            return self.send_json(workcal.year(store(), int(self.q.get('year') or 0)))
-        except ValueError as e:
-            return self.text(400, str(e))
+        with self.user_input():
+            cal = workcal.year(store(), int(self.q.get('year') or 0))
+        return self.send_json(cal)
 
 
 # ---------------------------------------------------------------- «Экономика сделки»: поставщики и коды ТН ВЭД / пошлины (общие для отдела)
@@ -954,43 +958,38 @@ class DealController(Controller):
 
     @route(r'/api/suppliers/([A-Za-z0-9_-]{1,64})', 'PUT')
     def supplier(self, sid):
-        try:
-            return self.send_json(store().supplier_put(sid, self.json_body(), admin.actor(self.h)[1], self.base_rev()))
-        except Conflict as e:
-            return self.conflict(e)
-        except ValueError as e:
-            return self.text(400, str(e))
+        d = self.json_body()
+        with self.user_input():
+            saved = store().supplier_put(sid, d, admin.actor(self.h)[1], self.base_rev())
+        return self.send_json(saved)
 
     @route(r'/api/customs', ('GET', 'PUT'))
     def customs(self):
         if self.m == 'GET':
             return self.send_json(store().customs_all())
         d = self.json_body()
-        try:
+        with self.user_input():
             store().customs_put(d.get('key'), d.get('code'), d.get('duty'), d.get('note'), admin.actor(self.h)[1], d.get('name'))
-        except ValueError as e:
-            return self.text(400, str(e))
         return self.send_json({'ok': True})
 
 
 # ---------------------------------------------------------------- ход сделки: статус, напоминания, письмо клиенту, отчёт
-def _obj(text):
-    try:
-        d = json.loads(text) if text else {}
-    except (TypeError, ValueError):
-        return {}
-    return d if isinstance(d, dict) else {}
-
-
 class TrackController(Controller):
+    @staticmethod
+    def _obj(text):
+        """Объект JSON из базы; пусто или испорчено — {}."""
+        try:
+            d = json.loads(text) if text else {}
+        except (TypeError, ValueError):
+            return {}
+        return d if isinstance(d, dict) else {}
+
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/track', 'PUT')   # статус, причина, заметка, напоминание (права — admin.guard по /api/kp/<id>/)
     def track(self, kid):
         if not store().kp_get(kid, 'meta'):
             return self.not_found('Сначала сохраните КП')
-        try:
+        with self.user_input():
             tr, changed = DealTrack(store()).update(kid, self.json_body(), admin.actor(self.h)[1])
-        except ValueError as e:
-            raise BadRequest(str(e))
         if changed:
             admin.log(self.h, store(), 'kp_status', 'kp', kid, None, changed)
         return self.send_json({'ok': True, 'track': tr})
@@ -1010,13 +1009,13 @@ class TrackController(Controller):
             return bool(name) and str(m.get('manager') or '').strip().lower() == str(name).strip().lower()
         rows = []
         for kid, meta, track in store().kp_tracked((date.today() - timedelta(days=defaults.SrvVal.get(store(), 'kp.remindDays'))).isoformat()):
-            m = _obj(meta)
+            m = self._obj(meta)
             if admin.login_on(h) and not admin.own_kp(h, m) and not admin.perm(h, 'kpOthers'):
                 continue
             if not mine(m):
                 continue
             # состояние КП (бывает в мегабайтах) — только своим КП и только если срок действия не записан в описании
-            rows.append((kid, m, _obj(track), {} if m.get('validUntil') else _obj(store().kp_get(kid, 'state'))))
+            rows.append((kid, m, self._obj(track), {} if m.get('validUntil') else self._obj(store().kp_get(kid, 'state'))))
         items = ReminderList(store=store()).collect(rows, mine)
         return self.send_json({'items': items, 'count': len(items)})
 
@@ -1028,32 +1027,29 @@ class TrackController(Controller):
         """Функции программы, доступные тому, кто прислал запрос."""
         return FeatureAccess(store()).for_user(admin.session(self.h, touch=False) is not None, admin.actor(self.h, admin=False)[0] or '')
 
-    @route(r'/api/mail/status', 'GET')
-    def mail_status(self):
-        return self.send_json({'on': Mailer(store()).on()})
-
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/mailform', 'GET')   # письмо клиенту: адреса и текст по умолчанию
     def mailform(self, kid):
-        st, mt = _obj(store().kp_get(kid, 'state')), _obj(store().kp_get(kid, 'meta'))
+        st, mt = self._obj(store().kp_get(kid, 'state')), self._obj(store().kp_get(kid, 'meta'))
         mp = Mailer(store()).public()
         tpl = MailTemplate(st, mt, mp.get('fromName') or '')
-        f = self.kp_docx(kid)
+        word = self.kp_docx(kid)
+        pdf = pdf_of(word) if word and os.path.isfile(pdf_of(word)) else None
         ct = st.get('contact') if isinstance(st.get('contact'), dict) else {}
+        files = []
+        if self._features().get('kpFiles'):
+            files = [{k: x[k] for k in ('id', 'name', 'size', 'note')} for x in KpFiles.of(store()).list(kid)]
         return self.send_json({'on': mp['on'], 'to': str(ct.get('email') or '').strip(), 'cc': tpl.vars['e-mail'],
                                'subject': tpl.fill(mp['subject']), 'body': tpl.fill(mp['body']),
-                               'word': os.path.basename(f) if f else '', 'pdf': os.path.basename(pdf_of(f)) if f and os.path.isfile(pdf_of(f)) else '',
-                               'wordSize': os.path.getsize(f) if f else 0, 'pdfSize': os.path.getsize(pdf_of(f)) if f and os.path.isfile(pdf_of(f)) else 0,
-                               'files': [{k: x[k] for k in ('id', 'name', 'size', 'note')} for x in KpFiles.of(store()).list(kid)]
-                               if self._features().get('kpFiles') else [], 'mailMB': defaults.SrvVal.get(store(), 'kp.mailMB'),
+                               'word': os.path.basename(word) if word else '', 'pdf': os.path.basename(pdf) if pdf else '',
+                               'wordSize': os.path.getsize(word) if word else 0, 'pdfSize': os.path.getsize(pdf) if pdf else 0,
+                               'files': files, 'mailMB': defaults.SrvVal.get(store(), 'kp.mailMB'),
                                'sent': (store().kp_track_get(kid).get('sent') or [])[-5:]})
 
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/send', 'POST')      # отправить КП клиенту по почте
     def send_kp(self, kid):
         d = self.json_body()
-        try:
+        with self.user_input():
             to, cc = Mailer.addresses(d.get('to')), Mailer.addresses(d.get('cc'))
-        except ValueError as e:
-            raise BadRequest(str(e))
         if not to:
             raise BadRequest('Укажите адрес получателя')
         f = self.kp_docx(kid)
@@ -1077,11 +1073,9 @@ class TrackController(Controller):
         if d.get('files') and self._features().get('kpFiles'):       # отмеченные справочные документы КП
             if not isinstance(d['files'], list):
                 raise BadRequest('Неверный список документов')
-            try:
+            with self.user_input():
                 files += KpFiles.of(store()).for_mail(kid, d['files'], sum(len(x[1]) for x in files))
-            except ValueError as e:
-                return self.text(400, str(e))
-        st = _obj(store().kp_get(kid, 'state'))
+        st = self._obj(store().kp_get(kid, 'state'))
         reply = str((st.get('manager') or {}).get('email') or '') if isinstance(st.get('manager'), dict) else ''
         try:
             Mailer(store()).send(to, cc, str(d.get('subject') or '')[:300], str(d.get('body') or '')[:20000], files, reply)
@@ -1096,7 +1090,7 @@ class TrackController(Controller):
     def report(self):
         q = self.q
         d1, d2 = str(q.get('from') or '')[:10], str(q.get('to') or '')[:10] or '9999-12-31'
-        docs = [d for d in map(_obj, store().kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', '')))
+        docs = [d for d in map(self._obj, store().kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', '')))
                 if d and d1 <= str(d.get('date') or '')[:10] <= d2]
         rows = admin.KpJournal.rows(self.h, docs)
         deal_on = self._features()['deal']   # экономика недоступна — без прибыли
@@ -1108,14 +1102,14 @@ class TrackController(Controller):
                     r.pop(k, None)
             if r.get('locked') or not deal_on:
                 continue
-            st = _obj(store().kp_get(r.get('id') or '', 'state'))
+            st = self._obj(store().kp_get(r.get('id') or '', 'state'))
             r['calc'] = {'vat': st.get('vat'), 'pricing': {k: (st.get('pricing') or {}).get(k) for k in ('cur', 'rates', 'costNoVat')},
                          'items': [{k: x.get(k) for k in ('name', 'qty', 'price', 'disc', 'options', 'cost', 'costCur', 'attrs', 'kit')}
                                    for x in (st.get('items') or []) if isinstance(x, dict)]}
         return self.send_json({'items': rows})
 
 
-# ---------------------------------------------------------------- обслуживание: копия базы, выключение
+# ---------------------------------------------------------------- черновики и заготовки КП
 class DraftsController(Controller):
     """Черновики КП на сервере (у каждого менеджера свои, автосохранение) и заготовки КП (общие для всех).
     Тело записи: {state — состояние КП, rev — ревизия КП, если это правки сохранённого КП, sum, cur, title}."""
@@ -1189,6 +1183,7 @@ class DraftsController(Controller):
         return self.send_json({'ok': True})
 
 
+# ---------------------------------------------------------------- карточка клиента
 class ClientCardController(Controller):
     """Карточка клиента: реквизиты и контакты из справочника, все КП клиента (с правами журнала), итоги по статусам, заметки."""
     MAX_NOTES = 200
@@ -1216,12 +1211,12 @@ class ClientCardController(Controller):
         rows.sort(key=lambda r: (r.get('date') or '', r.get('number') or ''), reverse=True)
         by, total, people = {}, 0, {}
         for r in rows:
-            st = ((r.get('track') or {}).get('status') if isinstance(r.get('track'), dict) else None) or 'new'
-            a = admin.econ_rub(r)[0] or 0
-            b = by.setdefault(st, {'n': 0, 'sum': 0})
-            b['n'] += 1
-            b['sum'] += a
-            total += a
+            st = admin.KpJournal.status(r)
+            rub = admin.econ_rub(r)[0] or 0
+            group = by.setdefault(st, {'n': 0, 'sum': 0})
+            group['n'] += 1
+            group['sum'] += rub
+            total += rub
             if r.get('manager'):
                 people[r['manager']] = people.get(r['manager'], 0) + 1
         return self.send_json({'client': c, 'inn': inn, 'name': name, 'kps': rows, 'by': by, 'total': total,
@@ -1266,13 +1261,12 @@ class MeController(Controller):
     def prefs_put(self):
         from user_prefs import UserPrefs
         uid, name, _ = admin.actor(self.h, admin=False)
-        try:
+        with self.user_input():
             p = UserPrefs(store()).save(uid, self.json_body(), name)
-        except ValueError as e:
-            raise BadRequest(str(e))
         return self.send_json({'id': uid, 'prefs': p})
 
 
+# ---------------------------------------------------------------- обслуживание: копия базы, выключение
 class ServiceController(Controller):
     @route(r'/api/backup', 'POST')
     def backup(self):

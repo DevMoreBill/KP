@@ -7,7 +7,10 @@ const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 
 const uid = () => Math.random().toString(36).slice(2,9);
 
-const today = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+// дата по местному времени в виде ГГГГ-ММ-ДД (toISOString дал бы дату по Гринвичу — ночью это вчерашний день)
+const isoDay = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+
+const today = () => isoDay(new Date());
 
 const { money, totals, plural, CURS } = KPGen;
 
@@ -38,6 +41,21 @@ const fmtPrice = k => k ? money(k) : '';
 
 function fmtRub(v){ return v==null?'—':(Math.round(v)).toLocaleString('ru-RU')+' руб.'; }
 
+// числа, деньги, размер файла и время для показа на экране (русская запись: «1 234 567 ₽», «16.10.2026, 14:05»)
+class Fmt {
+  static DATE_TIME = {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'};
+  static num(v){ return Number(v||0).toLocaleString('ru-RU'); }
+  /** рубли без копеек; не посчитано (нет данных) — прочерк */
+  static rub(v){ return Number.isFinite(v) ? Math.round(v).toLocaleString('ru-RU')+' ₽' : '—'; }
+  static size(bytes){ const b=+bytes||0, MB=1048576;
+    return b<MB ? Math.max(1, Math.round(b/1024))+' КБ' : (b/MB).toFixed(b<10*MB ? 1 : 0).replace('.', ',')+' МБ'; }
+  static dateTime(iso){ const d=iso ? new Date(iso) : null; return d && !isNaN(d) ? d.toLocaleString('ru-RU', Fmt.DATE_TIME) : ''; }
+}
+
+// значение по пути «a.b.c» в объекте; запись создаёт недостающие вложенные объекты
+const getPath = (o, k) => String(k).split('.').reduce((a, p) => a == null ? a : a[p], o);
+function setPath(o, k, v){ const ps=String(k).split('.'); let a=o; ps.slice(0,-1).forEach(p=>{ if (a[p]==null || typeof a[p]!=='object') a[p]={}; a=a[p]; }); a[ps[ps.length-1]]=v; }
+
 const fsafe=s=>String(s||'').replace(/[«»"'\\/:*?<>|]/g,'').replace(/\s+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
 
 const b64 = u => u.split(',')[1];
@@ -55,6 +73,45 @@ async function saveFile(name, blob){
 }
 
 function saveFileA(name, blob){ const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=name; (document.querySelector('dialog[open]')||document.body).appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),4000); }
+
+/** окно поверх всего: new Modal(html, класс); m.$(селектор), m.close(); закрытое окно удаляется со страницы */
+class Modal {
+  constructor(html, cls=''){ const d=this.d=document.createElement('dialog'); d.className='st-confirm '+cls; d.innerHTML=html;
+    document.body.appendChild(d); d.showModal(); d.addEventListener('cancel', ()=>this.close()); d.addEventListener('close', ()=>d.remove()); }
+  close(){ if (this.d.open) this.d.close(); }
+  $(s){ return this.d.querySelector(s); }
+
+  /** выбор кнопкой data-v: обещание со значением нажатой кнопки; data-v="0" и Esc — null */
+  static ask(html){
+    return new Promise(res=>{ const m=new Modal(html); let v=null;
+      m.d.addEventListener('click', e=>{ const b=e.target.closest('[data-v]'); if (b){ v=b.dataset.v==='0' ? null : b.dataset.v; m.close(); } });
+      m.d.addEventListener('close', ()=>res(v)); });
+  }
+
+  /** постоянное окно раздела (каталог, «Настройки», руководство…): создаётся при первом открытии и остаётся на странице;
+   *  init(d) — один раз, при создании (обработчики окна) */
+  static host(id, cls, label, init){
+    let d=document.getElementById(id);
+    if (!d){ d=document.createElement('dialog'); d.id=id; d.className=cls; d.setAttribute('aria-label', label); document.body.appendChild(d); if (init) init(d); }
+    return d;
+  }
+}
+
+// Копирование в буфер обмена. По сети (http://сервер:порт) браузер не даёт странице navigator.clipboard —
+// тогда текст кладётся через событие copy; поле для выделения создаётся внутри открытого окна,
+// потому что всё вне модального окна браузер делает неактивным. true — только если текст точно скопирован.
+async function copyToClipboard(txt){
+  if (navigator.clipboard && window.isSecureContext){ try{ await navigator.clipboard.writeText(txt); return true; }catch(e){} }
+  let done=false;
+  const onCopy=e=>{ try{ e.clipboardData.setData('text/plain', txt); e.preventDefault(); done=true; }catch(_){} };
+  document.addEventListener('copy', onCopy, true);
+  const host=[...document.querySelectorAll('dialog[open]')].pop()||document.body;
+  const ta=document.createElement('textarea'); ta.value=txt; ta.setAttribute('readonly',''); ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
+  host.appendChild(ta); ta.focus(); ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  document.removeEventListener('copy', onCopy, true); ta.remove();
+  return done;
+}
 
 function blobToURL(b){ return new Promise(r=>{ const f=new FileReader(); f.onload=()=>r(f.result); f.readAsDataURL(b); }); }
 

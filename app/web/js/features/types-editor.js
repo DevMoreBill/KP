@@ -104,7 +104,7 @@ function tyMark(){ TY.dirty=true; const s=$('#tyState'); if (s){ s.textContent='
 async function tySaveList(list, note){
   await api('/api/types',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({version:1,types:list})});
   await loadTypes(); catCache.forEach(x=>delete x._a); renderForm(); TY.dirty=false;
-  if (typeof cwRedraw==='function' && $('#catdlg')?.open) cwRedraw();      // открыт каталог — категории и фильтры обновляются сразу
+  if ($('#catdlg')?.open) cwRedraw();      // открыт каталог — категории и фильтры обновляются сразу
   toast(note||'Справочник категорий сохранён');
 }
 

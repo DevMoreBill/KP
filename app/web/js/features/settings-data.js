@@ -34,10 +34,10 @@ class DataTransfer {
     rows.forEach(r=>{ const t=r.cat ? typeById(r.cat) : null, g=t&&t.id===r.cat ? t.group||'Прочее' : 'Без категории';
       if (!groups.has(g)) groups.set(g, []); groups.get(g).push({cat:r.cat, name:t&&t.id===r.cat ? t.name : (r.cat||'Без категории'), count:r.count}); });
     const total=rows.reduce((s,r)=>s+r.count,0);
-    box.innerHTML=`<div class="chips" role="radiogroup"><label class="chk-chip"><input type="radio" name="dtScope" value="all" checked> Весь каталог · ${stNum(total)}</label>
+    box.innerHTML=`<div class="chips" role="radiogroup"><label class="chk-chip"><input type="radio" name="dtScope" value="all" checked> Весь каталог · ${Fmt.num(total)}</label>
         <label class="chk-chip"><input type="radio" name="dtScope" value="some"> Выбранные группы и категории</label></div>
-      <div id="dtCats" hidden style="margin-top:8px">${[...groups].map(([g,L],i)=>`<div class="dt-g"><label class="chk-chip dt-gh"><input type="checkbox" data-dg="${i}"> <b>${esc(g)}</b> · ${stNum(L.reduce((s,x)=>s+x.count,0))}</label>
-        <div class="chips">${L.map(x=>`<label class="chk-chip"><input type="checkbox" data-dc="${esc(x.cat)}" data-dgi="${i}"> ${esc(x.name)} · ${stNum(x.count)}</label>`).join('')}</div></div>`).join('')}
+      <div id="dtCats" hidden style="margin-top:8px">${[...groups].map(([g,L],i)=>`<div class="dt-g"><label class="chk-chip dt-gh"><input type="checkbox" data-dg="${i}"> <b>${esc(g)}</b> · ${Fmt.num(L.reduce((s,x)=>s+x.count,0))}</label>
+        <div class="chips">${L.map(x=>`<label class="chk-chip"><input type="checkbox" data-dc="${esc(x.cat)}" data-dgi="${i}"> ${esc(x.name)} · ${Fmt.num(x.count)}</label>`).join('')}</div></div>`).join('')}
         <p class="muted" id="dtSel">Ничего не выбрано</p></div>`;
   }
 
@@ -75,7 +75,7 @@ class DataTransfer {
     st.textContent='Готовлю файл…';
     try{ const r=await fetch('/api/admin/'+url,{headers:{'X-CSRF-Token':ADMIN.csrf}}); if (!r.ok) throw new Error(await r.text());
       const fn=decodeURIComponent((r.headers.get('Content-Disposition')||'').split("''")[1]||'backup'), blob=await r.blob();
-      saveFileA(fn, blob); st.textContent=`Скачано: ${fn} (${stSize(blob.size)})`; if (done) setTimeout(done, 1500); }
+      saveFileA(fn, blob); st.textContent=`Скачано: ${fn} (${Fmt.size(blob.size)})`; if (done) setTimeout(done, 1500); }
     catch(err){ st.textContent=''; toast('Не выгружено: '+(err.message||err)); }
   }
 
@@ -91,7 +91,7 @@ class DataTransfer {
       if (!await stConfirm('Загрузить данные из «'+DataTransfer.file.name+'»?', patch ? 'Перед загрузкой программа сохранит копию текущей базы. В позициях каталога изменятся только перечисленные в файле поля; цены, закупка, остатки и фото не меняются. Поля, изменённые после выгрузки копии, пропускаются.' : 'Перед загрузкой программа сохранит копию текущей базы. Записи с теми же id будут заменены, новые — добавлены, ничего не удаляется. Изображения добавляются только недостающие.','Загрузить')) return;
       b.disabled=true;
       try{ const r=await DataTransfer._send('import/file?sections='+b.dataset.imp, DataTransfer.file);
-        DataTransfer.file=null; toast(r.patch ? `Правки внесены: позиций ${stNum(r.patch.written)}, полей ${stNum(r.patch.fields)}${r.patch.conflictCount ? `, пропущено ${stNum(r.patch.conflictCount)}` : ''}` : 'Загружено'+(r.images?`, изображений добавлено: ${stNum(r.images.written)}`:''));
+        DataTransfer.file=null; toast(r.patch ? `Правки внесены: позиций ${Fmt.num(r.patch.written)}, полей ${Fmt.num(r.patch.fields)}${r.patch.conflictCount ? `, пропущено ${Fmt.num(r.patch.conflictCount)}` : ''}` : 'Загружено'+(r.images?`, изображений добавлено: ${Fmt.num(r.images.written)}`:''));
         refreshCat(); loadManagers(); loadClients(); if (done) done(); }
       catch(err){ b.disabled=false; toast('Не загружено: '+err.message); } });
   }
@@ -99,12 +99,12 @@ class DataTransfer {
   static _send(path, f){ return aapi(path, {method:'POST', headers:{'Content-Type':f.name.toLowerCase().endsWith('.zip')?'application/zip':'application/json; charset=utf-8'}, body:f}); }
 
   static async _preview(m, f){
-    const box=m.querySelector('#impP'); box.innerHTML=`<p class="muted">Проверяю «${esc(f.name)}» (${stSize(f.size)})…</p>`;
+    const box=m.querySelector('#impP'); box.innerHTML=`<p class="muted">Проверяю «${esc(f.name)}» (${Fmt.size(f.size)})…</p>`;
     try{ const r=await DataTransfer._send('import/file/preview', f); DataTransfer.file=f;
       if (r.patch){ box.innerHTML=DataTransfer._patchHtml(r); return; }
       const im=r.images;
-      box.innerHTML=`<p class="muted">Копия от ${esc(stTime(r.createdAt))}. Будет:</p><table class="pv-t">${Object.entries(r.report).map(([k,v])=>`<tr><td>${DataTransfer.NAMES[k]||esc(k)}</td><td>новых ${v.new}, заменится ${v.updated}${v.invalid?`, <span class="bad-t">с ошибками ${v.invalid}</span>`:''}</td></tr>`).join('')}
-          ${im?`<tr><td>Изображения</td><td>добавится ${stNum(im.new)}, уже есть ${stNum(im.exist)}${im.invalid?`, <span class="bad-t">пропущено ${im.invalid}</span>`:''}</td></tr>`:''}</table>
+      box.innerHTML=`<p class="muted">Копия от ${esc(Fmt.dateTime(r.createdAt))}. Будет:</p><table class="pv-t">${Object.entries(r.report).map(([k,v])=>`<tr><td>${DataTransfer.NAMES[k]||esc(k)}</td><td>новых ${v.new}, заменится ${v.updated}${v.invalid?`, <span class="bad-t">с ошибками ${v.invalid}</span>`:''}</td></tr>`).join('')}
+          ${im?`<tr><td>Изображения</td><td>добавится ${Fmt.num(im.new)}, уже есть ${Fmt.num(im.exist)}${im.invalid?`, <span class="bad-t">пропущено ${im.invalid}</span>`:''}</td></tr>`:''}</table>
         ${r.errors.length?`<p class="msg err" style="text-align:left">${r.errors.map(esc).join('<br>')}</p>`:''}
         <button class="btn primary" type="button" data-imp="${esc(Object.keys(r.report).join(','))}" style="margin-top:10px">Загрузить</button>`; }
     catch(err){ DataTransfer.file=null; box.innerHTML=`<p class="msg err" style="text-align:left">${esc(err.message)}</p>`; }
@@ -113,9 +113,9 @@ class DataTransfer {
   /** предпросмотр файла правок каталога (CatalogPatch на сервере): сколько позиций и полей изменится, что пропущено */
   static _patchHtml(r){
     const p=r.patch;
-    return `<p class="muted">${esc(p.title||'Правки каталога')} — от ${esc(stTime(r.createdAt))}. Будет:</p><table class="pv-t">
-        <tr><td>Каталог</td><td>изменится позиций ${stNum(p.items)}, полей ${stNum(p.fields)}${p.same ? `; уже как в файле — ${stNum(p.same)}` : ''}${p.missing ? `; нет в базе — ${stNum(p.missing)}` : ''}</td></tr>
-        ${p.conflictCount ? `<tr><td>Пропущено</td><td><span class="bad-t">${stNum(p.conflictCount)}</span> — изменены после выгрузки копии</td></tr>` : ''}</table>
+    return `<p class="muted">${esc(p.title||'Правки каталога')} — от ${esc(Fmt.dateTime(r.createdAt))}. Будет:</p><table class="pv-t">
+        <tr><td>Каталог</td><td>изменится позиций ${Fmt.num(p.items)}, полей ${Fmt.num(p.fields)}${p.same ? `; уже как в файле — ${Fmt.num(p.same)}` : ''}${p.missing ? `; нет в базе — ${Fmt.num(p.missing)}` : ''}</td></tr>
+        ${p.conflictCount ? `<tr><td>Пропущено</td><td><span class="bad-t">${Fmt.num(p.conflictCount)}</span> — изменены после выгрузки копии</td></tr>` : ''}</table>
       ${p.conflicts.length ? `<details style="margin-top:6px"><summary class="muted">Что пропущено</summary><p class="muted" style="text-align:left">${p.conflicts.map(esc).join('<br>')}${p.conflictCount>p.conflicts.length ? '<br>…' : ''}</p></details>` : ''}
       ${r.errors.length ? `<p class="msg err" style="text-align:left">${r.errors.map(esc).join('<br>')}</p>` : ''}
       ${p.items ? `<button class="btn primary" type="button" data-imp="catalog" data-patch="1" style="margin-top:10px">Внести правки</button>` : '<p class="muted">Изменять нечего.</p>'}`;

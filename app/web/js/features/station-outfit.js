@@ -77,7 +77,7 @@ class StOutfit {
     for (const L of V.louvers){ if (L.kind==='rad' && L.door) this.endDoor(P.dguDoor); else if (L.leaf) this.leafVent(L); else { this.vent(L.wall, L.u0, L.u1, L.z0, L.z1, L.kind==='in', L.hood); if (L.fan) this.fan(L); } }
     for (const R of V.roof||[]) this.roofHood(R);
     if (dgu) this.duct(dgu);
-    // подписей (сносок) на 3D-виде нет — размеры жалюзи на чертеже и в тексте (решение ПНЕВМОТЕХ 12.10)
+    // подписей (сносок) на 3D-виде нет — размеры жалюзи на чертеже и в тексте (решение ПНЕВМОТЕХ)
   }
   /** вентилятор в проёме (вытяжной — система «Вытяжные вентиляторы», приточный — если жалюзи притока не встали): изнутри —
    *  монтажная плита с осевыми вентиляторами (обечайка, ступица с двигателем) и датчик температуры рядом; снаружи — те же
@@ -446,15 +446,6 @@ class StOutfit {
   /** проекция центра тяжести на стену w: {u, z} — мм, как у StWalls (вдоль стены помещения, от пола); нет массы — null */
   cogOn(w){ const M=this.p.mass, S=this.s; if (!M) return null; const c=M.cg, zf=StationGeo.zFloor(S.g.type);
     return { u:w==='left' || w==='right' ? c.y-S.oy*1000 : c.x-S.ox*1000, z:c.z-zf }; }
-  /** проём u0…u0+wd на высоте z0…z1 (с жалюзи и козырьком) закрыл бы место знака «Центр тяжести» на стене w */
-  cogHit(w, u0, wd, z0, z1){ const c=this.cogOn(w), h=StOutfit.COG/2+120; return !!c && c.z+h>z0 && c.z-h<z1+220 && u0<c.u+h && u0+wd>c.u-h; }
-  /** начало проёма шириной wd (по умолчанию u0) на стене w на высоте z0…z1 — мимо места знака «Центр тяжести» */
-  clear(w, u0, wd, z0, z1){
-    if (!this.cogHit(w, u0, wd, z0, z1)) return u0;
-    const c=this.cogOn(w), h=StOutfit.COG/2+120, hi=(w==='left' || w==='right' ? this.p.int[1] : this.p.int[0])-150;
-    for (const u of [Math.round(c.u+h), Math.round(c.u-h-wd)]) if (u>=150 && u+wd<=hi) return u;
-    return u0;
-  }
   lift(){
     const S=this.s, M=this.p.mass; if (!M) return;
     const rgb=RalColor.rgb(S.wall), light=(0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2])/255<0.45, zf=StationGeo.zFloor(S.g.type);

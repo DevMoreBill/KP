@@ -54,10 +54,10 @@ class CarrierApiTest(unittest.TestCase):
         self.assertFalse(pv['nrg'])
         self.assertFalse(pv['pec'])
         import logistics_api
-        with mock.patch.object(logistics_api, 'nrg_quote', side_effect=AssertionError('выключенная Энергия считала')), \
-                mock.patch.object(logistics_api, 'pec_quote', side_effect=AssertionError('выключенный ПЭК считал')):
-            r = logistics_api.quote(self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Тверь'},
-                                                 'places': [{'l': 1, 'w': 1, 'h': 1, 'm': 0.2}]})
+        with mock.patch.object(logistics_api.Nrg, 'quote', side_effect=AssertionError('выключенная Энергия считала')), \
+                mock.patch.object(logistics_api.Pec, 'quote', side_effect=AssertionError('выключенный ПЭК считал')):
+            r = logistics_api.DeliveryQuote(self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Тверь'},
+                                                         'places': [{'l': 1, 'w': 1, 'h': 1, 'm': 0.2}]}).run()
         self.assertFalse([e for e in r['errors'] if not e.get('skip')])
 
     def test_redirect_307_and_hidden_token(self):
@@ -71,15 +71,15 @@ class CarrierApiTest(unittest.TestCase):
                 h['Location'] = 'https://api2.nrg-tk.pro/v2/price'
                 raise urllib.error.HTTPError(url, 307, 'Temporary Redirect', h, io.BytesIO(b''))
             return {'ok': 1}
-        with mock.patch.object(logistics_api, '_http', side_effect=fake):
-            self.assertEqual(logistics_api._call('https://api2.nrg-tk.ru/v2/price', data={'a': 1}, method='POST'), {'ok': 1})
+        with mock.patch.object(logistics_api, 'http_json', side_effect=fake):
+            self.assertEqual(logistics_api.Http.call('https://api2.nrg-tk.ru/v2/price', data={'a': 1}, method='POST'), {'ok': 1})
         self.assertEqual(calls[-1], ('https://api2.nrg-tk.pro/v2/price', 'POST'))
         e = urllib.error.HTTPError('https://vozovoz.ru/api/?token=SECRET123', 404, 'Not Found', Message(),
                                    io.BytesIO('Page not found: /api/?token=SECRET123abc&x=1'.encode()))
-        msg = logistics_api._err(e)
+        msg = logistics_api.Http.error(e)
         self.assertNotIn('SECRET', msg)
         self.assertIn('token=***', msg)
-        self.assertNotIn('SECRET', logistics_api._err(ValueError('Возовоз: /api/?token=SECRET&appkey=SECRET2')))
+        self.assertNotIn('SECRET', logistics_api.Http.error(ValueError('Возовоз: /api/?token=SECRET&appkey=SECRET2')))
 
     def test_test_without_key(self):
         from logistics_api import CarrierApi
@@ -188,10 +188,10 @@ class JdeTest(unittest.TestCase):
     def test_big_cargo(self):
         import logistics_api as lg
         self.urls = []
-        with mock.patch.object(lg, '_call', side_effect=self.fake), \
-                mock.patch.object(lg, 'pec_quote', side_effect=AssertionError('ПЭК не берёт крупногабарит')), \
-                mock.patch.object(lg, 'nrg_quote', side_effect=AssertionError('Энергия не берёт крупногабарит')):
-            r = lg.quote(self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Казань'}, 'places': [{'l': 9.2, 'w': 2.4, 'h': 2.5, 'm': 8}], 'declared': 5000000})
+        with mock.patch.object(lg.Http, 'call', side_effect=self.fake), \
+                mock.patch.object(lg.Pec, 'quote', side_effect=AssertionError('ПЭК не берёт крупногабарит')), \
+                mock.patch.object(lg.Nrg, 'quote', side_effect=AssertionError('Энергия не берёт крупногабарит')):
+            r = lg.DeliveryQuote(self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Казань'}, 'places': [{'l': 9.2, 'w': 2.4, 'h': 2.5, 'm': 8}], 'declared': 5000000}).run()
         o = next(x for x in r['offers'] if x['src'] == 'ЖелДорЭкспедиция')
         self.assertEqual(o['price'], 412657)                       # 400 000 + страхование 12 500 + документы 150 + маркировка 7
         self.assertEqual(o['ins'], 12500)
@@ -208,8 +208,8 @@ class JdeTest(unittest.TestCase):
     def test_heavier_than_20t(self):
         import logistics_api as lg
         self.urls = []
-        with mock.patch.object(lg, '_call', side_effect=self.fake):
-            r = lg.quote(self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Казань'}, 'places': [{'l': 6, 'w': 2.4, 'h': 2.5, 'm': 11, 'qty': 2}]})
+        with mock.patch.object(lg.Http, 'call', side_effect=self.fake):
+            r = lg.DeliveryQuote(self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Казань'}, 'places': [{'l': 6, 'w': 2.4, 'h': 2.5, 'm': 11, 'qty': 2}]}).run()
         self.assertFalse([o for o in r['offers'] if o['src'] == 'ЖелДорЭкспедиция'])
         self.assertFalse(self.urls)                                # тяжелее 20 т — ЖДЭ не спрашивают
 

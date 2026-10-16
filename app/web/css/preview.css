@@ -1,6 +1,5 @@
 /* Предпросмотр КП, превью титула, справочник менеджеров, печать КП в PDF. */
 .mgrbar{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px 14px;align-items:end;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:16px;background:var(--soft)}
-.btn.danger{color:var(--danger)}
 .cvtop{display:grid;grid-template-columns:260px minmax(0,1fr);gap:20px;align-items:start;margin-bottom:8px}
 .cvinfo{display:grid;gap:10px;align-content:start}
 .cvinfo .sub{margin:0}

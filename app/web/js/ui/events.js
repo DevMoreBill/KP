@@ -5,7 +5,7 @@ document.addEventListener('input', e=>{
   const t=e.target;
   if (t.dataset.p){
     let v=t.value; if (t.dataset.p.endsWith('.qty')) { v=v.replace(/\D/g,''); t.value=v; v = v===''?'':+v; t.classList.toggle('bad', !(v>=1)); }
-    setP(t.dataset.p, v);
+    setPath(S, t.dataset.p, v);
     if (t.dataset.p==='cover.title'||t.dataset.p.startsWith('cover.')) S.cover.touched=true;
     if (t.dataset.p.startsWith('tender.')){
       if (t.dataset.p==='tender.url' && !String(S.tender.number||'').trim()){ const n=tenderNoFromUrl(v); if (n){ S.tender.number=n; const ni=document.querySelector('[data-p="tender.number"]'); if (ni) ni.value=n; } }

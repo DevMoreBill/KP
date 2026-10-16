@@ -16,13 +16,17 @@ class StationRules {
   }
   static ok(){ return !!this.data; }
   static version(){ return this.data ? String(this.data.version||'') : ''; }
-  /** отпечаток значений правил (FNV-1a): правка любого значения в «Настройках» меняет его — станции и их картинки
-   *  пересобираются; номер версии файла при такой правке прежний (ошибка до 3.86.10: правки не доходили до станций) */
+  /** отпечаток значений правил: правка любого значения в «Настройках» меняет его — станции и их картинки пересобираются
+   *  (номер версии файла при такой правке прежний) */
   static stamp(){
     if (!this.data) return '';
-    if (this._stamp==null){ const s=JSON.stringify([this.data.rules.map(r=>[r.id, r.value]), this.data.series||[]]);
-      let h=0x811c9dc5; for (let i=0; i<s.length; i++){ h^=s.charCodeAt(i); h=Math.imul(h, 0x01000193)>>>0; } this._stamp=h.toString(16).padStart(8, '0'); }
+    if (this._stamp==null) this._stamp=this.fnv(JSON.stringify([this.data.rules.map(r=>[r.id, r.value]), this.data.series||[]]));
     return this._stamp;
+  }
+  /** FNV-1a строки — 8 шестнадцатеричных знаков (отпечатки станций и картинок) */
+  static fnv(s){
+    let h=0x811c9dc5; for (let i=0; i<s.length; i++){ h^=s.charCodeAt(i); h=Math.imul(h, 0x01000193)>>>0; }
+    return h.toString(16).padStart(8, '0');
   }
   /** правило целиком; нет — ошибка (правила обязательны: без них расчёт не выполняется) */
   static rule(id){
@@ -37,8 +41,6 @@ class StationRules {
   /** значение без копии — для частых обращений из расчёта (только чтение) */
   static raw(id){ return this.rule(id).value; }
   static status(id){ return this.rule(id).status; }
-  /** «требует подтверждения» */
-  static weak(id){ return this.rule(id).status==='unconfirmed'; }
   /** ссылка на источник: «документ, пункт» */
   static src(id){ const s=this.rule(id).source||{}; return [s.doc, s.item].filter(Boolean).join(', '); }
   /** коротко для окна расчёта: название документа без пояснений в скобках и после двоеточия; статус — если не подтверждено */

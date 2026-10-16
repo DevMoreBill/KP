@@ -205,7 +205,7 @@ class CatalogWindow {
     this.panes = null;
   }
 
-  dlg(){ let d=$('#catdlg'); if(!d){ d=document.createElement('dialog'); d.id='catdlg'; d.className='catwin'; d.setAttribute('aria-label','Каталог'); document.body.appendChild(d); }
+  dlg(){ const d=Modal.host('catdlg', 'catwin', 'Каталог');
     if (!this.panes || this.panes.d!==d) this.panes=new CatalogPanes(d); return d; }
 
   // ---------- данные

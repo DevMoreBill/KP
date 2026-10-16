@@ -13,7 +13,7 @@ function priceHint(x){
 
 // цены позиции в прошлых КП (функция priceHist): каталог помнит цену модели в каждом сохранённом КП (последние 50)
 class PriceHist {
-  static doc(x){ if (typeof CatFind==='undefined') return null; return CatFind.id(x.catId) || (x.name ? CatFind.name(x.name) : null); }
+  static doc(x){ return CatFind.id(x.catId) || (x.name ? CatFind.name(x.name) : null); }
   static rows(c){ return (c&&c.prices||[]).filter(p=>p && p.price>0 && (!S.number || p.number!==S.number)); }
   static fmt(p){ return `${money(p.price)} ${curSh(p.cur||'RUB')}`; }
   static hint(x){
@@ -40,10 +40,10 @@ class PriceHist {
 
 // контроль РРЦ: цена для заказчика против рекомендованной розничной цены поставщика (позиции из товарного фида)
 function rrcHint(x, unit){
-  const c=x.catId && typeof CatFind!=='undefined' ? CatFind.id(x.catId) : null, r=c&&c.rrc;
+  const c=x.catId ? CatFind.id(x.catId) : null, r=c&&c.rrc;
   if (!r || !(r.price>0)) return '';
   const kr=rateOf(kpCur()), rr=rateOf(r.cur||'RUB');
-  const st=c.stock&&typeof feedStockTxt==='function' ? ` · ${esc(feedStockTxt(c.stock))}` : '';
+  const st=c.stock ? ` · ${esc(feedStockTxt(c.stock))}` : '';
   if (!(kr>0) || !(rr>0) || !(unit>0)) return `<span class="rrc-h">РРЦ ${money(r.price)} ${curSh(r.cur||'RUB')}${st}</span>`;
   const mine=unit*kr, rrc=r.price*rr, diff=(mine-rrc)/rrc*100;
   const rrcTxt=`РРЦ ${money(r.price)} ${curSh(r.cur||'RUB')}`;
@@ -83,7 +83,7 @@ function kpSetCur(cur){
     S.items.forEach(x=>{ if (x.price) x.price=cv(x.price); delete x._priceText; (x.options||[]).forEach(o=>{ if(o.price){ o.price=cv(o.price); delete o._priceText; } }); });
     toast(`Цены переведены в ${cur} по курсу`);
   } else toast('Укажите курс, чтобы перевести цены: сейчас цены не пересчитаны');
-  renderForm(); persist(); if (typeof dealRender==='function') dealRender();
+  renderForm(); persist(); dealRender();
   if (cur!=='RUB' && !(rateOf(cur)>0)) loadCBR();
 }
 
@@ -136,7 +136,7 @@ async function loadCBR(){
   if (btn){ btn.disabled=false; btn.textContent='Обновить с cbr.ru'; }
   if (!r || !r.USD){ const m=$('#cbrMsg'); if(m){ m.textContent='Курс с cbr.ru не получен'+(why?` (${why})`:'')+' — введите вручную ниже.'; m.classList.add('bad-t'); } document.querySelector('details.psettings')?.setAttribute('open',''); document.querySelector('[data-rate]')?.focus(); toast('Курс ЦБ не загружен — введите вручную'); return; }
   const got=[]; for (const c of ['USD','EUR','CNY']) if (r[c]) { S.pricing.rates[c]=(+r[c]).toFixed(4).replace('.',','); got.push(c); }
-  S.pricing.rateDate=r.date||today(); S.pricing.rateSrc=src; renderForm(); persist(); if (typeof dealRender==='function') dealRender();
+  S.pricing.rateDate=r.date||today(); S.pricing.rateSrc=src; renderForm(); persist(); dealRender();
   got.forEach(c=>{ const el=document.querySelector(`[data-rate="${c}"]`); if(el){ el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1800); } });
   toast(`Курс ЦБ РФ на ${KPGen.ruDate(S.pricing.rateDate)}: USD ${S.pricing.rates.USD}, EUR ${S.pricing.rates.EUR}, CNY ${S.pricing.rates.CNY}`);
 }

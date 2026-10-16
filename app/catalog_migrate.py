@@ -10,9 +10,10 @@
    а сами свои категории убираются. Позиции без категории получают её по названию.
 2. Параметры. Пустые параметры категории заполняются из таблицы характеристик (поле find в equipment_types.json)
    и из названия (объём ресивера, исполнение спирального компрессора…). Заполненные вручную значения не меняются.
-3. Фото. Ссылки на изображения галереи, файлов которых нет, убираются. Позиция без фото (или с потерянным файлом фото) получает фото похожей модели той же категории и того же
-   производителя (та же серия и исполнение, ближайшая мощность/производительность); позиция без логотипа — логотип
-   своего производителя. Фото другого производителя не подставляется.
+3. Фото. Ссылки на изображения галереи, файлов которых нет, убираются. Позиция без фото (или с потерянным файлом фото)
+   получает фото похожей модели той же категории и того же производителя (та же серия и исполнение, ближайшая
+   мощность/производительность); позиция без логотипа — логотип своего производителя. Фото другого производителя
+   не подставляется.
 """
 import json
 import math
@@ -244,19 +245,27 @@ def pick_donor(doc, t, pool):
     return best
 
 
-def mark_done(store):
+def _done(store):
+    """(отметки выполненных обновлений из kv «migrations», выполнено ли это)"""
     done = store.kv_get('migrations') or []
-    if not any(isinstance(m, dict) and m.get('id') == MIGRATION_ID for m in done):
+    return done, any(isinstance(m, dict) and m.get('id') == MIGRATION_ID for m in done)
+
+
+def mark_done(store):
+    """Отметить обновление выполненным без изменений (новая база — каталог ещё пуст)."""
+    done, ok = _done(store)
+    if not ok:
         store.kv_set('migrations', done + [{'id': MIGRATION_ID, 'at': datetime.now().isoformat(timespec='seconds'), 'report': {'empty': True}}])
 
 
 def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
-    done = store.kv_get('migrations') or []
-    if any(isinstance(m, dict) and m.get('id') == MIGRATION_ID for m in done):
+    """Обновление каталога (один раз); → отчёт или None — уже выполнено или каталог пуст."""
+    done, ok = _done(store)
+    if ok:
         return None
     docs = json.loads(store.catalog_full() or '[]')
     if not docs:
-        store.kv_set('migrations', done + [{'id': MIGRATION_ID, 'at': datetime.now().isoformat(timespec='seconds'), 'report': {'empty': True}}])
+        mark_done(store)
         return None
 
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -272,7 +281,7 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
             user_map[t['id']] = target if not (target == 'dryer_refrig' and re.search('адсорбц', nm, re.I)) else 'dryer_ads'
         else:
             keep_user.append(t)
-    types = [t for t in types_builtin] + [t for t in keep_user if not any(b.get('id') == t.get('id') for b in types_builtin)]
+    types = list(types_builtin) + [t for t in keep_user if not any(b.get('id') == t.get('id') for b in types_builtin)]
     tmap = {t['id']: t for t in types}
     names = {t.get('id'): t for t in (types_user or [])}
     titles = {}
@@ -301,7 +310,10 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
                 new = det
         if new != old:
             a['cat'] = new
-            key = '%s → %s' % ((tmap.get(old) or {}).get('name') or (names[old].get('name', old) + ' (своя категория)' if old in names else old) or 'без категории', tmap[new]['name'])
+            old_name = (tmap.get(old) or {}).get('name')
+            if not old_name:
+                old_name = names[old].get('name', old) + ' (своя категория)' if old in names else old
+            key = '%s → %s' % (old_name or 'без категории', tmap[new]['name'])
             moved[key] = moved.get(key, 0) + 1
         t = tmap.get(new)
         # заголовок титула от другой категории («Винтовые компрессоры» у ДГУ) — по категории позиции

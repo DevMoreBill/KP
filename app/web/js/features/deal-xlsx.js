@@ -93,7 +93,7 @@ async function dealXlsx(){
   row(['Резерв на гарантию', {v:c.warrP, s:'inp'}, '% выручки без НДС'], 'WARR');
   row(['Бонусы и комиссии с продажи', {v:c.bonusP, s:'inp'}, '% выручки без НДС'], 'BON');
   if (c.BG>0) row(['Банковская гарантия — комиссия банка', {v:c.BG, s:'inpMoney'}, '₽', {f:self(), v:c.BG, s:'money'},
-    note(c.bgs.filter(g=>g.fee>0).map(g=>`${DEAL_BG_TYPES[g.type]}: ${dlRub0(g.amount)} × ${dlIn(g.rate)} % × ${g.days} дн. / 365${g.fee>g.amount*g.rate/100*g.days/365+0.005?` (минимальная ${dlRub0(g.min)})`:''}`).join('; '))], 'BG');
+    note(c.bgs.filter(g=>g.fee>0).map(g=>`${DEAL_BG_TYPES[g.type]}: ${Fmt.rub(g.amount)} × ${dlIn(g.rate)} % × ${g.days} дн. / 365${g.fee>g.amount*g.rate/100*g.days/365+0.005?` (минимальная ${Fmt.rub(g.min)})`:''}`).join('; '))], 'BG');
   // прочие расходы наличными (только если заданы): способ расчёта — как в программе, значение и стоимость наличных можно менять
   const xOn=b.K>0, xm=c.xc.mode;
   if (xOn){
@@ -191,19 +191,19 @@ async function dealXlsx(){
     r1=put([V[0],kv('',V[0].s),V[1],kv('',V[1].s),V[2],kv('',V[2].s),V[3],kv('',V[3].s)], unk?30:22); ['A:B','C:D','E:F','G:H'].forEach(x=>mg(r1,...x.split(':'))); };
   sec('Ключевые показатели');
   tiles(['Цена КП с НДС','Выручка без НДС','Себестоимость с финансированием', unk?'Прибыль (диапазон)':xOn?'Прибыль до налога, за вычетом наличных':'Прибыль до налога'],
-    [kv(c.S,'kpiV'), kv(c.R,'kpiV'), kv(b.Ctot,'kpiV'), unk?kv(`${dlRub0(c.lo.P)} … ${dlRub0(c.hi.P)}`,'kpiT'):kv(P, P<0?'kpiVr':'kpiVg')]);
+    [kv(c.S,'kpiV'), kv(c.R,'kpiV'), kv(b.Ctot,'kpiV'), unk?kv(`${Fmt.rub(c.lo.P)} … ${Fmt.rub(c.hi.P)}`,'kpiT'):kv(P, P<0?'kpiVr':'kpiVg')]);
   tiles(['Маржинальность — прибыль / выручка','Наценка к себестоимости','Чистая прибыль после налога', gapRow&&gap>0?`Пик вложений, день ${gapRow.day}`:'Пик вложений своих денег'],
     [unk?kv(`${dlPct(c.lo.margin)} … ${dlPct(c.hi.margin)}`,'kpiT'):kv(b.margin==null?'—':b.margin/100,'kpiP'), unk?kv(`${dlPct(c.lo.markup)} … ${dlPct(c.hi.markup)}`,'kpiT'):kv(b.markup==null?'—':b.markup/100,'kpiP'),
      unk?kv('—','kpiT'):kv(b.net, b.net<0?'kpiVr':'kpiV'), kv(gap,'kpiV')]);
   const tg=d.target||{}, tv=dNum(tg.v), TGN={margin:'маржинальность',markup:'наценка',profit:'прибыль до налога',net:'чистая прибыль'};
   const verdict = !c.ok || c.warn.some(w=>w.bad) ? ['bad','Расчёт содержит ошибки — см. «На что обратить внимание».']
-    : unk ? ['warn',`Не указан ввозной НДС к вычету — прибыль от ${dlRub0(c.lo.P)} до ${dlRub0(c.hi.P)}.`]
-    : P<0 ? ['bad',`Сделка убыточна: убыток ${dlRub0(-P)} при цене ${dlRub0(c.S)}.`]
-    : ['ok',`Сделка прибыльна: прибыль ${dlRub0(P)}, маржинальность ${dlPct(b.margin)}.`];
+    : unk ? ['warn',`Не указан ввозной НДС к вычету — прибыль от ${Fmt.rub(c.lo.P)} до ${Fmt.rub(c.hi.P)}.`]
+    : P<0 ? ['bad',`Сделка убыточна: убыток ${Fmt.rub(-P)} при цене ${Fmt.rub(c.S)}.`]
+    : ['ok',`Сделка прибыльна: прибыль ${Fmt.rub(P)}, маржинальность ${dlPct(b.margin)}.`];
   const be=DL.ex?null:dealSolve(kp, d, 'profit', 0);
-  let vt=verdict[1]+(be!=null?` Безубыточная цена с НДС — ${dlRub0(be)}.`:'');
+  let vt=verdict[1]+(be!=null?` Безубыточная цена с НДС — ${Fmt.rub(be)}.`:'');
   if (!DL.ex && tv!=null && !Number.isNaN(tv)){ const need=dealSolve(kp, d, tg.type, tv), u=tg.type==='profit'||tg.type==='net'?' ₽':' %';
-    vt+=need!=null ? ` Цель — ${TGN[tg.type]} ${dlIn(tv)}${u}: цена с НДС ${dlRub0(need)}${Math.abs(need-c.S)<1?' (совпадает с КП)':need<=c.S?' — цена КП выше, цель достигнута':` — на ${dlRub0(need-c.S)} выше цены КП`}.` : ` Цель — ${TGN[tg.type]} ${dlIn(tv)}${u}: недостижима при этих расходах.`; }
+    vt+=need!=null ? ` Цель — ${TGN[tg.type]} ${dlIn(tv)}${u}: цена с НДС ${Fmt.rub(need)}${Math.abs(need-c.S)<1?' (совпадает с КП)':need<=c.S?' — цена КП выше, цель достигнута':` — на ${Fmt.rub(need-c.S)} выше цены КП`}.` : ` Цель — ${TGN[tg.type]} ${dlIn(tv)}${u}: недостижима при этих расходах.`; }
   r=put([{v:vt, s:verdict[0]}], 15*Math.ceil(vt.length/92)+4); mg(r,'A','H');
   blank();
   // позиции

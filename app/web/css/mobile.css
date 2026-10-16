@@ -29,7 +29,7 @@ html.mob:has(dialog[open]){overflow:hidden}      /* под открытым ок
   input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),textarea,select{-webkit-appearance:none;appearance:none}
   select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none' stroke='%238893AA' stroke-width='2'%3E%3Cpath d='m1 1 5 5 5-5'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 12px center;padding-right:34px!important;text-overflow:ellipsis;white-space:nowrap}
-  input[type=date]{display:block;min-height:46px;min-width:0;line-height:1.3;text-align:left}
+  input[type=date]{display:block;min-width:0;line-height:1.3;text-align:left}
   input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
   .btn,.seg button,.cw-cat,.st-nav button,.stp,.menu-l button,.pickm>summary,.topmenu>summary,.chk-chip{min-height:44px}
   .icon{min-width:44px;min-height:44px}
@@ -88,8 +88,7 @@ span.mb-back{border:0}
 .mob .toast{left:16px;right:16px;transform:none;text-align:center;bottom:calc(var(--mbh) + 14px + env(safe-area-inset-bottom,0px))}
 
 /* шапка: логотип, номер КП и одна заметная кнопка «Меню» */
-.mob .top{position:sticky;top:0;gap:10px;flex-wrap:nowrap;min-height:56px;
-  padding:calc(6px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right)) 6px max(16px,env(safe-area-inset-left))}
+.mob .top{position:sticky;top:0;gap:10px;flex-wrap:nowrap;min-height:56px;padding:calc(6px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right)) 6px max(16px,env(safe-area-inset-left));transition:transform .2s ease;z-index:30}
 .mob .brand{font-size:16px;flex:0 0 auto}
 .mob .brand small{display:none}
 .mob #kpno{font-size:12.5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -109,13 +108,13 @@ span.mb-back{border:0}
 
 /* содержимое раздела — во всю ширину, без рамок-«матрёшек» по краям */
 .mob .step{border:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:0;margin:0;
-  padding:16px max(16px,env(safe-area-inset-right)) 22px max(16px,env(safe-area-inset-left))}
+  padding:12px 14px 14px}
 .mob .step>h2{font-size:20px;margin:0 0 12px;align-items:center}
 .mob .step>h2 .n{display:none}
 .mob .step>.hint{font-size:14px}
 .mob .grid{gap:12px}
 .mob .g2,.mob .g3,.mob .g4,.mob .attrs,.mob .kprow,.mob .cprice,.mob .inn-row,.mob .facts,.mob .media2,.mob .fblock,.mob .cost,.mob .mgrbar{grid-template-columns:minmax(0,1fr)!important}
-.mob label.f,.mob div.f{font-size:14px}
+.mob label.f,.mob div.f{font-size:14px;gap:3px}
 .mob textarea{min-height:88px}
 .mob .csec{padding:14px;border-radius:14px}
 .mob .cl-card{padding:14px}
@@ -231,7 +230,7 @@ span.mb-back{border:0}
 .mob .ed-tabs::-webkit-scrollbar{display:none}
 .mob .ed-tab{flex:0 0 auto;min-height:48px;padding:12px 12px 10px;font-size:15px}
 .mob .ed-b{padding:16px max(16px,env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left))}
-.mob .srow{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px 44px}
+.mob .srow{grid-template-columns:minmax(0,1fr) 40px 40px;gap:6px;padding-bottom:8px;border-bottom:1px dashed var(--line)}
 .mob .fhead .icon{min-width:40px;min-height:40px}
 .mob .opt{grid-template-columns:72px minmax(0,1fr) 44px;gap:8px}
 .mob .opt>:first-child{grid-column:1/-1}
@@ -323,12 +322,11 @@ span.mb-back{border:0}
 .mob dialog.tpled .te-pick{flex:1 1 140px;min-width:0;max-width:none}
 /* iPhone: поля даты — ровные, текст слева, у пустого — подсказка (без неё поле выглядит пустым прямоугольником) */
 @supports (-webkit-touch-callout:none){
-  input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-height:40px;line-height:1.25;text-align:left;background-color:var(--field)}
+  input[type=date]{-webkit-appearance:none;appearance:none;display:block;line-height:1.25;text-align:left;background-color:var(--field)}
   input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0;min-height:1.25em}
   input[type=date].dt-empty::before{content:'дд.мм.гггг';color:var(--muted);opacity:.8}
   input[type=date].dt-empty:focus::before{content:''}
 }
-.mob .top{transition:transform .2s ease;z-index:30}
 .mob body.top-hide .top{transform:translateY(-100%)}
 /* предпросмотр КП: «Предпросмотр · ✕» — первой строкой, масштаб и действия — второй, ровно по ширине */
 .mob .kpprev .pv-hd{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,.8fr) minmax(0,1.2fr);gap:8px 6px;align-items:center}
@@ -352,5 +350,4 @@ span.mb-back{border:0}
 .mob .at-t{grid-area:t}
 .mob .at-r>.btn{grid-area:b}
 /* характеристики: название параметра — во всю ширину, значение, ★ и ✕ — под ним */
-.mob .srow{grid-template-columns:minmax(0,1fr) 40px 40px;gap:6px;padding-bottom:8px;border-bottom:1px dashed var(--line)}
 .mob .srow>input:first-child{grid-column:1/-1}

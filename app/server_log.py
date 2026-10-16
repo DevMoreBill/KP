@@ -103,6 +103,11 @@ class ServerLog:
 
     # ---------- подключение
     @classmethod
+    def of(cls, data_dir):
+        """Журнал для чтения: этого процесса, а если он не подключён — файлы в data/logs."""
+        return cls.current or cls(os.path.join(data_dir, 'logs'))
+
+    @classmethod
     def install(cls, data_dir):
         """Журнал процесса: вывод программы и ошибки потоков — в data/logs/kp.log. → журнал или None (папку не создать)."""
         log = cls(os.path.join(data_dir, 'logs'))

@@ -34,10 +34,10 @@ class AdminSystem {
   static async updates(m, note){
     const s=await aapi('update'), last=s.last||{};
     const ver=v=>`<b>${esc(v)}</b>`;
-    const hist=(s.history||[]).map(h=>`<tr><td>${esc(stTime(h.at))}</td><td>${esc(h.from||'')} → ${esc(h.version||'')}</td><td>${esc(h.source||'')}${h.reason?`<br><small class="muted">${esc(h.reason)}</small>`:''}</td><td>${esc(h.by||'')}</td></tr>`).join('');
+    const hist=(s.history||[]).map(h=>`<tr><td>${esc(Fmt.dateTime(h.at))}</td><td>${esc(h.from||'')} → ${esc(h.version||'')}</td><td>${esc(h.source||'')}${h.reason?`<br><small class="muted">${esc(h.reason)}</small>`:''}</td><td>${esc(h.by||'')}</td></tr>`).join('');
     const f=s.failed, again=f&&last.version===f.version;
     m.innerHTML=`${note?`<p class="msg ok" style="text-align:left">${esc(note)}</p>`:''}
-    ${f?`<div class="st-card up-fail"><p><b class="bad-t">Обновление ${esc(f.version)} не запустилось</b>${f.at?` (${esc(stTime(f.at))})`:''} — программа сама вернулась к версии ${ver(s.current)}. Данные не пострадали: перед установкой была сделана копия базы («Копии и база»).</p>
+    ${f?`<div class="st-card up-fail"><p><b class="bad-t">Обновление ${esc(f.version)} не запустилось</b>${f.at?` (${esc(Fmt.dateTime(f.at))})`:''} — программа сама вернулась к версии ${ver(s.current)}. Данные не пострадали: перед установкой была сделана копия базы («Копии и база»).</p>
       <p>Причина: <code>${esc(f.reason||'неизвестна')}</code></p>
       ${f.trace?`<details class="up-notes"><summary>Подробности для разработчика</summary><pre>${esc(f.trace)}</pre></details>`:''}
       <p class="muted">Установить эту версию снова можно, когда причина устранена (обычно — в выпуске с исправлением): «Скачать и установить» или «Выбрать архив обновления…».</p></div>`:''}
@@ -47,11 +47,11 @@ class AdminSystem {
       ${!s.frozen?'<p class="msg warn" style="text-align:left">Программа запущена из исходников (не из EXE): обновление установится в папку update, но подключится только у программы, запущенной из «Конструктор КП.exe».</p>':''}
       ${!s.writable?`<p class="msg err" style="text-align:left">Нет прав записи в папку программы ${esc(s.root)}. Обновление из «Настроек» не установится — запустите «Установить обновление.cmd» из архива от имени администратора компьютера.</p>`:''}</div>
     <div class="st-card"><div class="row"><p class="sub" style="margin:0">Новая версия</p><span class="sp"></span><button class="btn" type="button" data-up="check"${s.hasToken||!/^DevMoreBill\/KP$/.test(s.repo)?'':' title="Репозиторий приватный — нужен токен GitHub (ниже)"'}>Проверить обновления</button></div>
-      ${last.at?`<p class="muted" style="margin:6px 0">Проверено ${esc(stTime(last.at))}${last.error?` — <span class="bad-t">${esc(last.error)}</span>`:''}</p>`:'<p class="muted" style="margin:6px 0">Ещё не проверялось.</p>'}
+      ${last.at?`<p class="muted" style="margin:6px 0">Проверено ${esc(Fmt.dateTime(last.at))}${last.error?` — <span class="bad-t">${esc(last.error)}</span>`:''}</p>`:'<p class="muted" style="margin:6px 0">Ещё не проверялось.</p>'}
       ${last.version&&!last.error?(s.available?`<div class="up-new"><p>Доступна версия ${ver(last.version)}${last.published?` от ${esc(KPGen.ruDate(last.published.slice(0,10)))}`:''}.${last.url?` <a href="${esc(last.url)}" target="_blank" rel="noopener noreferrer">Выпуск на GitHub ↗</a>`:''}</p>
           ${last.notes?`<details class="up-notes" open><summary>Что нового</summary><pre>${esc(last.notes)}</pre></details>`:''}
           ${again?'<p class="bad-t">Эта версия уже не запустилась на этом компьютере — подробности выше.</p>':''}
-          ${last.asset?`<button class="btn${again?'':' primary'}" type="button" data-up="download">Скачать и установить ${esc(last.version)}</button> <span class="muted">${esc(last.asset.name)}${last.asset.size?` · ${stSize(last.asset.size)}`:""} · перед установкой — копия базы, после — перезапуск</span>`:'<p class="muted">В выпуске нет архива обновления — скачайте полный комплект с GitHub.</p>'}</div>`
+          ${last.asset?`<button class="btn${again?'':' primary'}" type="button" data-up="download">Скачать и установить ${esc(last.version)}</button> <span class="muted">${esc(last.asset.name)}${last.asset.size?` · ${Fmt.size(last.asset.size)}`:""} · перед установкой — копия базы, после — перезапуск</span>`:'<p class="muted">В выпуске нет архива обновления — скачайте полный комплект с GitHub.</p>'}</div>`
         :`<p class="ok-t" style="margin:0">Установлена последняя версия (${esc(last.version)}).</p>`):''}</div>
     <div class="st-card"><p class="sub">Установить из файла</p>
       <p class="muted" style="margin:0 0 8px">Архив обновления «KP-Obnovlenie-….zip» из выпуска — без интернета на компьютере-сервере. Перед установкой — копия базы, после — перезапуск.</p>
@@ -73,7 +73,7 @@ class AdminSystem {
         <label class="f"><span>Время</span><select id="upHour">${Array.from({length:24},(_,h)=>`<option value="${h}"${s.nightHour===h?' selected':''}>с ${h}:00 до ${(h+2)%24}:00</option>`).join('')}</select></label></div>
       <p class="muted">В это время программа сама проверит новую версию на GitHub, скачает, поставит её и перезапустится (сотрудникам — пара секунд ожидания). Не ставит, если последние 15 минут кто-то сохранял данные (попробует через полчаса), и не повторяет версию, которая уже не запустилась. Если новая версия не запустится, программа сама вернётся к прежней. Об установке придёт письмо, если включены «Письма о проблемах» (вкладка «Почта»).</p>
       ${s.nightSupported?'':'<p class="msg warn">Программа запущена не из EXE 3.51 и новее — ночные обновления не сработают (установите полный комплект).</p>'}
-      ${s.nightLast?`<p class="muted" style="margin:0 0 8px">Последняя попытка: ${esc(stTime(s.nightLast.at))} — <span class="${s.nightLast.error?'bad-t':''}">${esc(s.nightLast.result||'')}</span></p>`:''}
+      ${s.nightLast?`<p class="muted" style="margin:0 0 8px">Последняя попытка: ${esc(Fmt.dateTime(s.nightLast.at))} — <span class="${s.nightLast.error?'bad-t':''}">${esc(s.nightLast.result||'')}</span></p>`:''}
       <button class="btn primary" type="button" data-up="night">Сохранить</button></div>
     ${hist?`<div class="st-card"><p class="sub">История установок</p><table class="pv-t st-tt"><tr><th>Когда</th><th>Версия</th><th>Откуда</th><th>Кто</th></tr>${hist}</table></div>`:''}`;
     const installed=async res=>{ if (await stConfirm(`Установлена версия ${res.version}`, `Файлов: ${res.files}. Копия базы сохранена. Чтобы новая версия заработала, программу нужно перезапустить — у всех сотрудников страница обновится сама.`, 'Перезапустить сейчас')) return this.restart('Устанавливается версия '+res.version);
@@ -109,7 +109,7 @@ class AdminSystem {
       :`<span class="muted">задачи Планировщика нет — после перезагрузки сервер сам не запустится; автозапуск включает ${bat}</span>`;
     if ((t.problems||[]).length) return `<span class="bad-t">✕ задача Планировщика ${esc(t.problems.join(', '))}</span>${t.error?` <small class="muted">(исправить не удалось: ${esc(t.error)})</small>`:''}<br><small class="muted">Запустите ${bat} от имени администратора.</small>`;
     const fx=t.fixed||t.fixedBefore;
-    return `<span class="ok-t">✓ задача Планировщика: без ограничения времени работы, от батареи и ИБП, обычный приоритет</span>${fx?` <small class="muted">· исправлена программой ${esc(stTime(fx))}</small>`:''}`;
+    return `<span class="ok-t">✓ задача Планировщика: без ограничения времени работы, от батареи и ИБП, обычный приоритет</span>${fx?` <small class="muted">· исправлена программой ${esc(Fmt.dateTime(fx))}</small>`:''}`;
   }
   // журнал сервера (app/server_log.py, data/logs/kp.log): последние ошибки, скачать целиком
   static async logCard(box){
@@ -117,8 +117,8 @@ class AdminSystem {
     const L=r.errors||[];
     box.innerHTML=`<div class="row"><p class="sub" style="margin:0">Журнал сервера</p><span class="sp"></span>
         <a class="btn" href="/api/admin/log/download" download>Скачать журнал</a>${r.local?'<button class="btn ghost" type="button" data-fold="logs">Открыть папку</button>':''}</div>
-      <p class="muted" style="margin:6px 0">${r.day?`<span class="bad-t">Ошибок за сутки: ${r.day}</span>`:'<span class="ok-t">За сутки ошибок нет</span>'} · ${stSize(r.bytes||0)} · <code>${esc(r.dir||'')}</code></p>
-      ${L.length?`<div class="lg-list">${L.map(x=>`<details class="lg-e"><summary><span class="muted">${esc(stTime(x.at))}</span> ${esc(x.text)}</summary>${x.detail?`<pre>${esc(x.detail)}</pre>`:''}</details>`).join('')}</div>`
+      <p class="muted" style="margin:6px 0">${r.day?`<span class="bad-t">Ошибок за сутки: ${r.day}</span>`:'<span class="ok-t">За сутки ошибок нет</span>'} · ${Fmt.size(r.bytes||0)} · <code>${esc(r.dir||'')}</code></p>
+      ${L.length?`<div class="lg-list">${L.map(x=>`<details class="lg-e"><summary><span class="muted">${esc(Fmt.dateTime(x.at))}</span> ${esc(x.text)}</summary>${x.detail?`<pre>${esc(x.detail)}</pre>`:''}</details>`).join('')}</div>`
         :'<p class="muted" style="margin:0">Ошибок в журнале нет.</p>'}`;
   }
   static uptime(s){ const d=Math.floor(s/86400), h=Math.floor(s%86400/3600), mi=Math.floor(s%3600/60); return (d?`${d} дн. `:'')+(h?`${h} ч `:'')+`${mi} мин`; }
@@ -128,14 +128,14 @@ class AdminSystem {
     m.innerHTML=`<div class="st-card"><div class="row"><p class="sub" style="margin:0">Программа</p><span class="sp"></span><button class="btn" type="button" data-sys="restart">Перезапустить программу</button></div>
       <table class="pv-t">${row('Версия', `<b>${esc(s.version)}</b>${s.patched?` (обновление поверх ${esc(s.base||'EXE')})`:''} <button class="lnk" type="button" data-sttab="updates">Обновления →</button>`)}
         ${row('Режим', s.mode==='server'?`сервер отдела — сотрудники открывают <code>http://${esc(s.host)}:${s.port}/</code>`:`программа на этом компьютере — <code>http://localhost:${s.port}/</code>`)}
-        ${row('Работает', `${this.uptime(s.uptime)} (с ${esc(stTime(s.started))})`)}
+        ${row('Работает', `${this.uptime(s.uptime)} (с ${esc(Fmt.dateTime(s.started))})`)}
         ${s.task?row('Автозапуск', this.task(s.task)):''}
         ${row('Компьютер', `${esc(s.host)} · ${esc(s.os)} · Python ${esc(s.python)}`)}
         ${s.allowedHosts.length?row('Разрешённые имена', esc(s.allowedHosts.join(', '))):''}</table></div>
     <div class="st-card"><p class="sub">Папки и место на диске</p>
       <table class="pv-t">${row('Программа', path(s.root, 'root'))}${row('Данные (база, изображения)', path(s.dataDir, 'data'))}
         ${row('Готовые КП', path(s.docsDir, 'docs')+(s.docsShare?`<br><small class="muted">сотрудникам: ${esc(s.docsShare)}</small>`:''))}${row('Копии базы', path(s.dataDir+(s.dataDir.includes('\\')?'\\':'/')+'backup', 'backup'))}
-        ${row('База данных', stSize(s.dbBytes))}${s.disk?row('Свободно на диске', `${stSize(s.disk.free)} из ${stSize(s.disk.total)}`):''}
+        ${row('База данных', Fmt.size(s.dbBytes))}${s.disk?row('Свободно на диске', `${Fmt.size(s.disk.free)} из ${Fmt.size(s.disk.total)}`):''}
         ${row('Файл настроек', `<code>${esc(s.settingsFile)}</code><br><small class="muted">режим, порт, папка данных — меняются в нём; затем «Перезапустить программу»</small>`)}</table>
       ${s.local?'':'<p class="muted">Кнопки «Открыть» — только на самом компьютере-сервере.</p>'}</div>
     <div class="st-card" id="sysLog"><p class="sub">Журнал сервера</p><p class="muted">Загружаю…</p></div>`;

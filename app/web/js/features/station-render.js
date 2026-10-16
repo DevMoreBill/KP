@@ -1051,7 +1051,7 @@ class StationRender {
   }
   static key(plan, view, az){ return (plan.hash||'')+this.brandKey()+(view==='out' ? '|o'+(az!=null ? az : '') : ''); }
   /** фирменный стиль шаблона (надпись логотипа и цвета) — в отпечатке картинки: сменили — 3D перерисуется */
-  static brandKey(){ try{ return typeof StDecal!=='undefined' ? '.b'+StationLayout.fnv(JSON.stringify(StDecal.brandParts())) : ''; } catch(e){ return ''; } }
+  static brandKey(){ try{ return typeof StDecal!=='undefined' ? '.b'+StationRules.fnv(JSON.stringify(StDecal.brandParts())) : ''; } catch(e){ return ''; } }
   static FAILS = 3;          // сбоев WebGL подряд — после стольких до перезапуска только упрощённый вид
   static fails = 0;
   static cached(plan, view, az){ return this.cache.get(this.key(plan, view, az))||null; }
