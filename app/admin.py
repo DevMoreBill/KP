@@ -384,10 +384,38 @@ def kp_out(h, field, text):
     return json.dumps(doc, ensure_ascii=False)
 
 
+class KpManagerLock:
+    """Вход по паролю: менеджер в КП — только вошедший (код, ФИО, должность и контакты — из его карточки справочника);
+    подставить другого менеджера нельзя ни из интерфейса, ни запросом. Администратор («Настройки») — без ограничения."""
+    CONTACTS = ('name', 'position', 'phone', 'ext', 'mobile', 'email')
+
+    @classmethod
+    def apply(cls, h, store, field, text):
+        u = getattr(h, '_kp_user', None)
+        if not (login_on(h) and u) or session(h, touch=False) is not None:
+            return text
+        try:
+            d = json.loads(text)
+        except ValueError:
+            return text
+        if not isinstance(d, dict):
+            return text
+        card = next((x for x in (_loads(store.managers_list()) or []) if x.get('id') == u['id']), None) or {'name': u.get('name') or ''}
+        d['managerId'] = u['id']
+        if field == 'meta':
+            d['manager'], d['managerPost'] = card.get('name') or '', card.get('position') or ''
+        else:
+            mg = d.get('manager') if isinstance(d.get('manager'), dict) else {}
+            d['manager'] = dict(mg, **{k: str(card.get(k) or '') for k in cls.CONTACTS})
+        return json.dumps(d, ensure_ascii=False)
+
+
 def kp_in(h, store, kid, field, text):
-    """Сохранение КП не автором: расчёт экономики и автор остаются прежними (их не видно — значит, и не затереть)."""
+    """Сохранение КП не автором: расчёт экономики и автор остаются прежними (их не видно — значит, и не затереть).
+    При входе по паролю менеджер в КП — вошедший (KpManagerLock)."""
     if field not in ('state', 'meta'):
         return text
+    text = KpManagerLock.apply(h, store, field, text)
     old = store.kp_get(kid, field)
     if not old:
         u = getattr(h, '_kp_user', None)

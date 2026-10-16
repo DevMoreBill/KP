@@ -29,16 +29,38 @@ async function loadManagers(){
   if (!m && !String(S.manager?.name||'').trim()){ let id=''; try{ id=localStorage.getItem('kp.managerId')||''; }catch(e){} m = MGRS.find(x=>x.id===id) || MGRS.find(x=>x.id===meId()) || (MGRS.length===1 ? MGRS[0] : null); }   // нет запомненных контактов — «кто я» на этом компьютере
   if (!m && AUTH.enabled && AUTH.user && !S.kpId) m = MGRS.find(x=>x.id===AUTH.user.id);      // вошёл по паролю — менеджер нового КП он сам
   if (m){ S.managerId=m.id; S.manager={...S.manager, ...mgrFields(m)}; mgrRemember(m.id); }
+  MgrLock.apply();
   try{ if (!localStorage.getItem('kp.me') && m && !S.kpId) setMe(m.id); }catch(e){}
 }
 
+// вход по паролю: менеджер в КП — только тот, кто вошёл (другого не выбрать и не завести); свои контакты он правит.
+// Администратор («Настройки») и вход без пароля — выбор из справочника, как раньше. То же проверяет сервер (admin.kp_in).
+class MgrLock {
+  static on(){ return !!(AUTH.enabled && AUTH.user && !AUTH.admin && !ADMIN.on); }
+
+  /** КП открыто, создано, взято из черновика или заготовки — менеджером в нём становится вошедший */
+  static apply(){
+    if (!this.on() || S.managerId===AUTH.user.id) return;
+    const m=MGRS.find(x=>x.id===AUTH.user.id); if (!m) return;
+    S.managerId=m.id; S.manager={...S.manager, ...mgrFields(m)}; mgrRemember(m.id);
+  }
+
+  static html(){
+    const m=MGRS.find(x=>x.id===AUTH.user.id);
+    return `<p id="mgrStat" style="grid-column:1/-1;margin:0">Менеджер в КП — <b>${esc(m ? m.name : AUTH.user.name||'')}</b> (вы вошли по паролю).
+      <span class="muted">Правки полей ниже сохраняются в вашей карточке сами.</span></p>`;
+  }
+}
+
 function selectManager(id){
+  if (MgrLock.on()) return;
   const m=MGRS.find(x=>x.id===id); if (!m) return;
   S.managerId=m.id; S.manager={...S.manager, ...mgrFields(m)}; mgrRemember(m.id); setMe(m.id);
   renderForm(); persist(); toast('Менеджер: '+m.name);
 }
 
 function newManager(){
+  if (MgrLock.on()) return;
   S.managerId=''; S.manager={...defManager(), name:'', position:'', ext:'', mobile:'', email:'', folder:''}; mgrRemember('');
   renderForm(); persist(); setTimeout(()=>$('[data-p="manager.name"]')?.focus(), 30);
 }
@@ -82,6 +104,7 @@ class MgrBar {
   static html(){ return `<div class="mgrbar">${this.inner()}</div>`; }
 
   static inner(){
+    if (MgrLock.on()) return MgrLock.html();
     const cur=MGRS.find(x=>x.id===S.managerId), typed=!!String(S.manager.name||'').trim();
     // КП прежней версии: менеджер записан под старым кодом, а в справочнике есть с тем же ФИО — предложить взять оттуда
     const same=!cur && typed ? MGRS.find(x=>norm(x.name)===norm(S.manager.name)) : null;

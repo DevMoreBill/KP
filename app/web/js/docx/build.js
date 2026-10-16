@@ -235,6 +235,8 @@ async function download(){
   try{
     await StationImages.syncAll();          // 3D-вид и чертёж станций — по текущему составу
     if (!StationImages.confirmSave()) throw Object.assign(new Error('изображения станции не готовы'), { code:'declined' });   // «Сохранение отменено.»
+    MgrLock.apply();                          // вход по паролю: в КП — контакты вошедшего менеджера
+    if (MgrLock.on()){ clearTimeout(mgrT); await saveManager(true); }   // свежие правки своих контактов — в карточку до записи КП
     const St = docState(), isNew = !S.kpId;
     if (!S.template) throw new Error('не выбран шаблон КП (папка templates рядом с программой пуста)');
     let pack;
