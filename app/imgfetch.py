@@ -6,6 +6,7 @@
 • fetch_image(url) — картинка, перетащенная со страницы сайта (браузер отдаёт только ссылку): скачивает сервер
   программы. Только http/https, только изображения до 15 МБ, адреса локальной сети и самого компьютера запрещены.
 """
+import http.client
 import ipaddress
 import socket
 import time
@@ -94,6 +95,46 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+class SafeWeb:
+    """Запросы на чужие сайты (фото, страницы, фиды) — только в интернет. Имя проверяется до запроса (_check_url), но DNS
+    может ответить иначе при соединении (подмена DNS) — поэтому после соединения проверяется и адрес, с которым оно
+    установлено. Через прокси-сервер адрес проверить нельзя — его разрешает прокси."""
+
+    @staticmethod
+    def _peer(sock):
+        ip = ipaddress.ip_address(sock.getpeername()[0].split('%')[0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            sock.close()
+            raise ValueError('Ссылки на адреса локальной сети не загружаются')
+
+    class HTTPConn(http.client.HTTPConnection):
+        def connect(self):
+            super().connect()
+            SafeWeb._peer(self.sock)
+
+    class HTTPSConn(http.client.HTTPSConnection):
+        def connect(self):
+            super().connect()
+            SafeWeb._peer(self.sock)
+
+    @staticmethod
+    def _proxied(req):
+        return req.has_proxy() or bool(getattr(req, '_tunnel_host', None))
+
+    class HTTP(urllib.request.HTTPHandler):
+        def http_open(self, req):
+            return self.do_open(http.client.HTTPConnection if SafeWeb._proxied(req) else SafeWeb.HTTPConn, req)
+
+    class HTTPS(urllib.request.HTTPSHandler):
+        def https_open(self, req):
+            return self.do_open(http.client.HTTPSConnection if SafeWeb._proxied(req) else SafeWeb.HTTPSConn, req, context=self._context)
+
+    @classmethod
+    def opener(cls, *extra):
+        """Открыватель ссылок: переадресация проверяется (_SafeRedirect), соединение — только с адресом в интернете."""
+        return urllib.request.build_opener(_SafeRedirect, cls.HTTP, cls.HTTPS, *extra)
+
+
 def retry(fn, tries=3, pause=1.5):
     """Повтор при временном отказе сайта: 403/429/5xx (защита от частых запросов), обрыв, тайм-аут."""
     for k in range(tries):
@@ -117,7 +158,7 @@ def fetch_image(url, referer=None, tries=1):
     mb = SrvVal.now('cat.imgMaxMB')
 
     def get():
-        with urllib.request.build_opener(_SafeRedirect).open(urllib.request.Request(url, headers=hd), timeout=20) as r:
+        with SafeWeb.opener().open(urllib.request.Request(url, headers=hd), timeout=20) as r:
             ctype = (r.headers.get('Content-Type') or '').split(';')[0].strip().lower()
             if ctype not in TYPES:
                 raise ValueError('По ссылке не картинка (нужен PNG, JPEG, GIF, WebP или BMP)')

@@ -124,7 +124,7 @@ class SrvVal:
         # напоминания менеджеру
         'kp.staleDays': (7, 1, 90), 'kp.expireAhead': (3, 0, 30), 'kp.expiredShow': (3, 0, 60), 'kp.remindDays': (200, 30, 1000),
         # справочные документы к КП (app/kp_files.py)
-        'kp.fileMB': (25, 1, 100), 'kp.filesMax': (20, 1, 100), 'kp.filesMB': (100, 10, 1000), 'kp.mailMB': (18, 5, 50), 'kp.fileUndoMin': (10, 0, 120),
+        'kp.fileMB': (25, 1, 100), 'kp.filesMax': (20, 1, 100), 'kp.filesMB': (100, 10, 1000), 'kp.mailMB': (18, 5, 50), 'kp.fileUndoMin': (10, 0, 120), 'kp.imgMB': (25, 5, 100),
     }
     TTL = 5                  # с — кэш значений: сервер читает их на каждом запросе (сессии)
     _cache = (None, 0.0, {})
@@ -189,10 +189,7 @@ def img_opts(store):
             out[name] = bool(x.get('on', True)) if isinstance(x, dict) else b
             continue
         v = _value_of(x, b)
-        try:
-            out[name] = max(0, int(float(str(v).replace(',', '.')))) if v is not None else 0
-        except ValueError:
-            out[name] = b
+        out[name] = max(0, int(_num_of(v, b))) if v is not None else 0
     if not out['maxCount']:
         out['maxCount'] = 30
     return out

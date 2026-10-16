@@ -48,7 +48,11 @@ class KpFiles:
     }
     # внутри архива — без программ, скриптов и страниц (их нельзя запускать с компьютеров отдела)
     ZIP_BAD = ('.exe', '.com', '.bat', '.cmd', '.scr', '.msi', '.msp', '.dll', '.cpl', '.lnk', '.pif', '.js', '.jse', '.vbs',
-               '.vbe', '.wsf', '.wsh', '.ps1', '.psm1', '.hta', '.jar', '.reg', '.html', '.htm', '.xhtml', '.svg', '.mht', '.url')
+               '.vbe', '.wsf', '.wsh', '.ps1', '.psm1', '.hta', '.jar', '.reg', '.html', '.htm', '.xhtml', '.svg', '.mht', '.url',
+               '.docm', '.xlsm', '.pptm', '.dotm', '.xltm', '.iso', '.img', '.vhd', '.vhdx', '.chm', '.appx', '.msix', '.sys', '.ocx',
+               '.application', '.gadget', '.inf', '.scf', '.settingcontent-ms')
+    ARCHIVES = ('.zip', '.7z', '.rar', '.cab', '.tar', '.gz', '.tgz', '.bz2', '.xz')
+    ZIP_INNER = 32 * 1024 * 1024        # вложенный архив проверяется, если не больше этого (распакованный размер)
     TEXT_BAD = (b'<!doctype', b'<html', b'<script', b'<svg', b'<?xml', b'<head', b'<body', b'<iframe')
 
     def __init__(self, store, data_dir):
@@ -126,9 +130,30 @@ class KpFiles:
         return True
 
     @classmethod
-    def _zip_safe(cls, name, data):
+    def _ext(cls, n):
+        """Расширение имени из архива так, как его увидит Windows: точки и пробелы в конце она отбрасывает («a.exe.» → .exe)."""
+        return os.path.splitext(n.rstrip('/').rstrip(' .'))[1].lower()
+
+    @classmethod
+    def _zip_bad(cls, data, depth=0):
+        """Запрещённые имена в архиве; вложенный ZIP — на один уровень глубже; прочие архивы внутри (7z, rar…) не проверить —
+        запрещены."""
+        bad = []
         with zipfile.ZipFile(io.BytesIO(data)) as z:
-            bad = [n for n in z.namelist() if os.path.splitext(n.rstrip('/'))[1].lower() in cls.ZIP_BAD]
+            for info in z.infolist():
+                ext = cls._ext(info.filename)
+                if ext in cls.ZIP_BAD or (ext in cls.ARCHIVES and (ext != '.zip' or depth or info.file_size > cls.ZIP_INNER)):
+                    bad.append(info.filename)
+                elif ext == '.zip':
+                    try:
+                        bad += cls._zip_bad(z.read(info), depth + 1)
+                    except (zipfile.BadZipFile, RuntimeError, ValueError):
+                        bad.append(info.filename)
+        return bad
+
+    @classmethod
+    def _zip_safe(cls, name, data):
+        bad = cls._zip_bad(data)
         if bad:
             raise ValueError('В архиве «%s» есть программы, скрипты или страницы (%s) — такие файлы не прикрепляются. '
                              'Уберите их из архива или прикрепите документы по одному' % (name, os.path.basename(bad[0].rstrip('/'))[:60]))

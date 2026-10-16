@@ -96,7 +96,8 @@ if SETTINGS.get('port'):
     except (TypeError, ValueError):
         pass
 # allowedHosts (сервер отдела, необязательно): имена, по которым сотрудники открывают программу, — запросы с другим
-# именем в адресе отклоняются (защита от подмены DNS). Пусто — любое имя. Локальная программа — только localhost.
+# именем в адресе отклоняются (защита от подмены DNS). Пусто — IP-адрес, имя компьютера и внутренние имена (.local, .lan…);
+# имя в публичной зоне (kp.example.ru) — только если вписано сюда. Локальная программа — только localhost.
 _hosts = SETTINGS.get('allowedHosts')
 ALLOWED_HOSTS = [str(x).strip().lower() for x in _hosts if str(x).strip()] if isinstance(_hosts, list) else []
 DOCS_SHARE = str(SETTINGS.get('docsShare') or '').strip()   # сетевой путь к папке КП для сотрудников, напр. \\\\SERVER\\КП

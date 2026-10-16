@@ -329,7 +329,7 @@ class ApiTest(unittest.TestCase):
         kid = self.sample.kp_ids[self.M2[0]][1]
         rec = Http.js(self.up(kid, 'Сертификат.pdf', pdf(), who='m2')[1])
         self.assertEqual(self.R('POST', '/api/admin/delete', {'type': 'kp', 'ids': [kid]}, who='adm')[0], 200)
-        self.assertEqual(self.R('GET', '/api/kp/%s/files' % kid, who='m2')[0], 404, 'КП в корзине — менеджеру документов не видно')
+        self.assertIn(self.R('GET', '/api/kp/%s/files' % kid, who='m2')[0], (403, 404), 'КП в корзине — менеджеру документов не видно')
         self.assertEqual(self.up(kid, 'ещё.pdf', pdf(), who='m2')[0], 400)
         self.assertEqual(len(Http.js(self.R('GET', '/api/kp/%s/files' % kid, who='adm')[1])['items']), 1, 'администратору видно')
         tid = next(x['id'] for x in Http.js(self.R('GET', '/api/admin/trash', who='adm')[1])['items'] if x['entityId'] == kid)

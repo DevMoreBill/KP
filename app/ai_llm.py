@@ -140,6 +140,8 @@ def ask(store, prompt, force=False):
         raise RuntimeError('Нейросеть: ' + known.get(e.code, 'ошибка %s%s' % (e.code, (' — ' + msg[:200]) if msg else '')))
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise RuntimeError('Нейросеть недоступна: %s. Проверьте интернет на компьютере-сервере или заполните через ИИ-чат' % str(getattr(e, 'reason', e))[:160])
+    except ValueError:      # вместо JSON — страница (прокси, заглушка провайдера): это ответ сервиса, а не ошибка запроса
+        raise RuntimeError('Нейросеть ответила не данными, а страницей — сервис или адрес API недоступен, повторите позже')
     try:
         text = j['choices'][0]['message']['content'] or ''
     except (KeyError, IndexError, TypeError):

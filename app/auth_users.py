@@ -57,6 +57,45 @@ def access(store):
     return a if isinstance(a, dict) else {}
 
 
+class AccessRecord:
+    """Запись одного менеджера в kv «mgrAccess»: прочитать — изменить — записать под блокировкой базы. Иначе вход
+    другого менеджера в ту же секунду (touch_login пишет весь kv) отменял бы сброс или смену пароля, запрет входа."""
+
+    @staticmethod
+    def update(store, mid, fn):
+        """fn(запись, все записи) → новая запись (исключение — ничего не пишется)."""
+        with store.lock:
+            a = access(store)
+            a[mid] = fn(dict(a.get(mid) or {}), a)
+            store.kv_set('mgrAccess', a)
+            return a[mid]
+
+    @staticmethod
+    def edit(rec, a, mid, d, pw, drop):
+        """Правка администратора («Логин и пароль», права, запрет входа, сброс): drop — пометка «закрыть входы»."""
+        if 'login' in d:
+            login = norm_login(d.get('login'))
+            if login and (len(login) > 40 or not all(ch.isalnum() or ch in '._-@' for ch in login)):
+                raise ValueError('Логин — буквы, цифры, точка, дефис, «_» или «@», до 40 символов')
+            if login and any(norm_login(r.get('login')) == login for k, r in a.items() if k != mid):
+                raise ValueError('Такой логин уже есть у другого менеджера')
+            rec['login'] = login
+        if pw:
+            rec['pw'] = pw
+            rec.pop('temp', None)       # пароль от администратора — постоянный
+            drop.append(True)
+        if isinstance(d.get('perms'), dict):
+            rec['perms'] = {k: bool(d['perms'].get(k, perms_of(rec)[k])) for k in PERM_KEYS}
+        if 'blocked' in d:
+            rec['blocked'] = bool(d['blocked'])
+            if rec['blocked']:
+                drop.append(True)
+        if d.get('clear'):
+            rec = {'perms': perms_of(rec)}
+            drop.append(True)
+        return rec
+
+
 def perms_of(rec):
     p = (rec or {}).get('perms') or {}
     return {k: bool(p.get(k, d)) for k, _, d in PERMS}
@@ -90,32 +129,15 @@ def norm_login(s):
 
 def set_access(store, mid, d, hash_password):
     """Логин, пароль (если передан), права и блокировка менеджера. ValueError — с понятным текстом."""
-    a = access(store)
-    rec = dict(a.get(mid) or {})
-    if 'login' in d:
-        login = norm_login(d.get('login'))
-        if login and (len(login) > 40 or not all(ch.isalnum() or ch in '._-@' for ch in login)):
-            raise ValueError('Логин — буквы, цифры, точка, дефис, «_» или «@», до 40 символов')
-        if login and any(norm_login(r.get('login')) == login for k, r in a.items() if k != mid):
-            raise ValueError('Такой логин уже есть у другого менеджера')
-        rec['login'] = login
     if d.get('password'):
         check_password(d['password'])
-        rec['pw'] = hash_password(d['password'])
-        rec.pop('temp', None)       # пароль от администратора — постоянный
+    pw = hash_password(d['password']) if d.get('password') else None      # медленный хеш — до блокировки базы
+    drop = []
+    rec = AccessRecord.update(store, mid, lambda rec, a: AccessRecord.edit(rec, a, mid, d, pw, drop))
+    if drop:
         drop_sessions(store, mid)
-    if isinstance(d.get('perms'), dict):
-        rec['perms'] = {k: bool(d['perms'].get(k, perms_of(rec)[k])) for k in PERM_KEYS}
-    if 'blocked' in d:
-        rec['blocked'] = bool(d['blocked'])
-        if rec['blocked']:
-            drop_sessions(store, mid)
-    if d.get('clear'):
-        rec = {'perms': perms_of(rec)}
-        drop_sessions(store, mid)
-    a[mid] = rec
-    store.kv_set('mgrAccess', a)
     return rec
+
 
 
 # ---------------------------------------------------------------- сессии
@@ -218,18 +240,14 @@ class TempPassword:
     def issue(cls, store, mid, hash_password, by):
         """Новый временный пароль менеджеру: (пароль, часов, до какого времени); все его входы закрываются.
         Пароль возвращается только здесь — ни в базу, ни в журнал он не попадает."""
-        a = access(store)
-        rec = dict(a.get(mid) or {})
-        if not rec.get('login'):
+        if not (access(store).get(mid) or {}).get('login'):
             raise ValueError('Сначала задайте менеджеру логин («Логин и пароль»)')
         n = max(cls.LEN, SrvVal.get(store, 'srv.userPwMin'))
         pw = ''.join(secrets.choice(cls.ABC) for _ in range(n))
         hours = SrvVal.get(store, 'srv.tempPwHours')
         exp = time.time() + hours * 3600
-        rec['pw'] = hash_password(pw)
-        rec['temp'] = {'exp': exp, 'at': _now(), 'by': by}
-        a[mid] = rec
-        store.kv_set('mgrAccess', a)
+        temp = {'pw': hash_password(pw), 'temp': {'exp': exp, 'at': _now(), 'by': by}}
+        AccessRecord.update(store, mid, lambda rec, _a: dict(rec, **temp))
         UserSession.drop_all(store, mid)
         return pw, hours, datetime.fromtimestamp(exp).isoformat(timespec='minutes')
 
@@ -243,8 +261,7 @@ class UserPassword:
     def change(cls, store, mid, d, keep, verify, hash_password):
         """verify(pw, hash) — проверка пароля (с защитой от подбора — у вызывающего). Возвращает (было ли это сменой
         временного пароля, закрыто входов). PermissionError — текущий пароль неверный."""
-        a = access(store)
-        rec = dict(a.get(mid) or {})
+        rec = dict(access(store).get(mid) or {})
         temp = TempPassword.of(rec) is not None
         new, new2 = d.get('new'), d.get('new2')
         if not isinstance(new, str) or not isinstance(new2, str) or not new:
@@ -258,10 +275,8 @@ class UserPassword:
             raise ValueError('Новый пароль и повтор не совпадают')
         if verify(new, rec.get('pw')):
             raise ValueError('Новый пароль совпадает с прежним — придумайте другой')
-        rec['pw'] = hash_password(new)
-        rec.pop('temp', None)
-        a[mid] = rec
-        store.kv_set('mgrAccess', a)
+        pw = hash_password(new)
+        AccessRecord.update(store, mid, lambda r, _a: {k: v for k, v in dict(r, pw=pw).items() if k != 'temp'})
         return temp, UserSession.drop_all(store, mid, keep)
 
 
@@ -309,7 +324,5 @@ def find_by_login(store, login):
 
 
 def touch_login(store, mid):
-    a = access(store)
-    if mid in a:
-        a[mid]['lastLogin'] = _now()
-        store.kv_set('mgrAccess', a)
+    if mid in access(store):
+        AccessRecord.update(store, mid, lambda rec, _a: dict(rec, lastLogin=_now()))

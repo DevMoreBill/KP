@@ -10,10 +10,12 @@ Router проходит маршруты в порядке объявления:
 import contextlib
 import hashlib
 import json
+import math
 import os
 import re
 import socket
 import threading
+import time
 import urllib.parse
 import zlib
 from datetime import date, datetime, timedelta
@@ -84,25 +86,36 @@ def pdf_of(docx):
     return os.path.splitext(docx)[0] + '.pdf'
 
 
-def cbr_saved(key, fetch):
+class CbrCache:
     """Курсы / ключевая ставка ЦБ: удачный ответ сохраняется в базе; если ЦБ недоступен — последний сохранённый
-    (с пометкой stale и временем загрузки), чтобы расчёты работали и без интернета."""
-    try:
-        res = fetch()
-    except Exception as e:
-        res = {'error': str(e)}
-    if res and not res.get('error'):
-        res = dict(res, fetched=datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
-        try:
-            store().kv_set(key, res)
-        except Exception:
-            pass
+    (с пометкой stale и временем загрузки), чтобы расчёты работали и без интернета. После отказа ЦБ не спрашивается
+    RETRY секунд — иначе без связи каждое открытие экономики ждало бы два тайм-аута по 15 с."""
+    RETRY = 600
+    _failed = {}
+
+    @classmethod
+    def get(cls, key, fetch):
+        res = None
+        if time.time() - cls._failed.get(key, 0) >= cls.RETRY:
+            try:
+                res = fetch()
+            except Exception as e:
+                res = {'error': str(e)}
+            if res and not res.get('error'):
+                cls._failed.pop(key, None)
+                res = dict(res, fetched=datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
+                try:
+                    store().kv_set(key, res)
+                except Exception:
+                    pass
+                return res
+            cls._failed[key] = time.time()
+        res = res or {'error': 'ЦБ недавно не ответил — повтор позже'}
+        last = store().kv_get(key)
+        if isinstance(last, dict) and not last.get('error'):
+            return dict(last, stale=True, src=(last.get('src') or 'ЦБ РФ') + ' — сохранённое значение, ЦБ сейчас недоступен',
+                        fetchError=res.get('error', ''))
         return res
-    last = store().kv_get(key)
-    if isinstance(last, dict) and not last.get('error'):
-        return dict(last, stale=True, src=(last.get('src') or 'ЦБ РФ') + ' — сохранённое значение, ЦБ сейчас недоступен',
-                    fetchError=res.get('error', ''))
-    return res
 
 
 # ---------------------------------------------------------------- маршрутизация
@@ -319,7 +332,10 @@ class PartiesController(Controller):
             with self.user_input():
                 saved = cp().save_keys(self.body())
             return self.send_json(saved)
-        return self.send_json(cp().keys_public())
+        pub = cp().keys_public()
+        if admin.session(self.h, touch=False) is None:      # менеджеру — «задан / не задан» и лимиты, без маски ключа
+            pub = {k: v for k, v in pub.items() if not k.endswith('Mask')}
+        return self.send_json(pub)
 
     @route(r'/api/clients', 'GET')
     def clients(self):
@@ -457,6 +473,9 @@ class CatalogController(Controller):
     @route(r'/api/img', 'POST')
     def img_put(self):
         data, q = self.body(), self.q
+        mb = defaults.SrvVal.get(store(), 'kp.imgMB')
+        if len(data) > mb * 1024 * 1024:
+            return self.text(413, 'Картинка больше %d МБ — уменьшите её (предел — «Значения программы»)' % mb)
         if data[:8] == b'\x89PNG\r\n\x1a\n':
             ext = '.png'
         elif data[:3] == b'\xff\xd8\xff':
@@ -741,11 +760,11 @@ class KpFilesController(Controller):
 class ToolsController(Controller):
     @route(r'/api/cbr')
     def cbr(self):
-        return self.send_json(cbr_saved('cbr_last', cbr_rates))
+        return self.send_json(CbrCache.get('cbr_last', cbr_rates))
 
     @route(r'/api/cbr/keyrate')
     def keyrate(self):
-        return self.send_json(cbr_saved('keyrate_last', cbr_key_rate))
+        return self.send_json(CbrCache.get('keyrate_last', cbr_key_rate))
 
     # картинки карточек: логотипы производителей из каталога; картинка, перетащенная со страницы сайта
     @route(r'/api/logos', 'GET')
@@ -917,7 +936,7 @@ class SettingsController(Controller):
         from china_freight import ChinaFreight
         req = self.json_body()
         with self.user_input():
-            res = ChinaFreight(store()).quote(req, cbr_saved('cbr_last', cbr_rates))
+            res = ChinaFreight(store()).quote(req, CbrCache.get('cbr_last', cbr_rates))
         return self.send_json(res)
 
     @route(r'/api/logistics')              # тарифы доставки по России (общие для отдела; изменяет администратор)
@@ -1129,6 +1148,9 @@ class DraftsController(Controller):
     Тело записи: {state — состояние КП, rev — ревизия КП, если это правки сохранённого КП, sum, cur, title}."""
     KINDS = {'drafts': 'draft', 'presets': 'preset'}
     MAX_STATE = 25 * 1024 * 1024
+    PRESET_DROP = ('kpId', 'number', 'createdAt', 'authorId', 'managerId', 'manager', 'date', 'client', 'clientId', 'clientInn', 'clientKpp',
+                   'clientOgrn', 'clientFull', 'clientAddr', 'clientDir', 'clientDirPost', 'clientStatus', 'contact', 'object', 'check',
+                   'tender', 'deal')
 
     def _who(self):
         uid, name, _ = admin.actor(self.h, admin=False)
@@ -1170,12 +1192,16 @@ class DraftsController(Controller):
             total = float(d.get('sum') or 0)
         except (TypeError, ValueError):
             total = 0.0
+        if not math.isfinite(total):
+            total = 0.0
         row = {'id': did, 'kind': k, 'owner': old['owner'] if old else uid, 'owner_name': old['owner_name'] if old else name,
                'title': str(d.get('title') or '')[:120], 'client': str(st.get('client') or '')[:200],
                'kp': str(st.get('number') or '')[:40] if st.get('kpId') and k == 'draft' else '', 'positions': len(items),
                'sum': total, 'cur': str(d.get('cur') or 'RUB')[:3], 'updated': datetime.now().isoformat(timespec='seconds')}
         if k == 'preset' and not row['title']:
             raise BadRequest('Укажите название заготовки')
+        if k == 'preset':       # заготовка — общая для отдела: без клиента, номера, автора и экономики (как Presets.DROP в клиенте)
+            st = {x: v for x, v in st.items() if x not in self.PRESET_DROP}
         keep = {'state': st}
         if k == 'draft' and isinstance(d.get('rev'), int):
             keep['rev'] = d['rev']
