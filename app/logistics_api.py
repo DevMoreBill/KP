@@ -844,6 +844,10 @@ class Nrg(Carrier):
     def token(store):
         return (keys(store).get('nrgToken') or '').strip()
 
+    @staticmethod
+    def rub(v):
+        return '{:,.0f} ₽'.format(v or 0).replace(',', ' ')
+
     @classmethod
     def _call(cls, store, path, data=None):
         """v4 с токеном — один адрес; v2 — основной и резервный. При 5xx / обрыве связи — повтор через паузу."""
@@ -909,14 +913,18 @@ class Nrg(Carrier):
         t = next((x for x in tr if str(x.get('typeId')) == '1' or re.search(r'авто', str(x.get('type') or ''), re.I)), None) \
             or min(tr, key=lambda x: number(x['price']))
         price, door = number(t['price']), 0
+        parts = ['перевозка ' + Nrg.rub(price)]          # раскладка цены — в строку предложения (сверить с сайтом Энергии)
         over = t.get('oversize') if isinstance(t.get('oversize'), dict) else {}
-        price += number(over.get('price')) or 0          # надбавка за негабарит (v4)
-        for k in ('request', 'delivery'):            # забор у отправителя и доставка получателю
+        if number(over.get('price')):                    # надбавка за негабарит (v4)
+            price += number(over.get('price'))
+            parts.append('негабарит ' + Nrg.rub(number(over.get('price'))))
+        for k, name in (('request', 'забор'), ('delivery', 'доставка')):     # забор у отправителя и доставка получателю
             v = (j or {}).get(k)
             n = number(v.get('price')) if isinstance(v, dict) else None
             if n:
                 price += n
                 door += 1
+                parts.append(name + ' ' + Nrg.rub(n))
         ins = 0
         for k, v in (j or {}).items() if isinstance(j, dict) else []:   # страхование Энергии по объявленной стоимости
             if re.search(r'insur', str(k), re.I):
@@ -927,8 +935,8 @@ class Nrg(Carrier):
             dd = re.findall(r'\d+', str(t.get('interval') or ''))
             days = int(dd[-1]) if dd else None
         return {'price': round(price), 'ins': round(ins), 'days': int(days) if days else None, 'door': door == 2,
-                'note': ('дверь в дверь (забор и доставка Энергии)' if door == 2 else 'от терминала до терминала') + ', '
-                        + str(t.get('type') or 'авто').lower() + (', с надбавкой за негабарит' if number(over.get('price')) else '')}
+                'note': ('дверь в дверь' if door == 2 else 'от терминала до терминала') + ', ' + str(t.get('type') or 'авто').lower()
+                        + ': ' + ' + '.join(parts)}
 
 
 # ---------------------------------------------------------------- ЖелДорЭкспедиция (открытый расчёт без ключа, в т. ч. негабарит)

@@ -134,4 +134,13 @@ check('значения логистики: умолчания и реестр',
   assert.strictEqual(new Set(DEF_SCHEMA.map(r=>r[0])).size, DEF_SCHEMA.length, 'ключи не повторяются');
 });
 
+check('выброс цены перевозчика не становится максимумом', ()=>{
+  const offs=()=>[81034, 74345, 93730, 403840, 222873, 105720, 90773, 108095].map((t, i)=>({src:'п'+i, total:t}));
+  const a=LgOutlier.mark(offs()), out=a.filter(o=>o.outlier).map(o=>o.total);
+  assert.deepStrictEqual(out, [403840, 222873], 'выбросы при пороге 2 (медиана остальных ≈ 93 тыс.)');
+  DEFS_SRV={'log.outlierK':{on:true, v:'0'}}; assert.ok(!LgOutlier.mark(offs()).some(o=>o.outlier), '0 — без защиты');
+  DEFS_SRV={}; assert.ok(!LgOutlier.mark(offs().slice(0, 2).concat([{src:'x', total:900000}])).slice(0, 2).some(o=>o.outlier));
+  assert.ok(!LgOutlier.mark([{total:100}, {total:500}]).some(o=>o.outlier), 'меньше трёх предложений — не размечается');
+});
+
 if (!process.exitCode) console.log('OK: '+n+' проверок');
