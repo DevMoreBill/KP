@@ -290,13 +290,13 @@ class Updater:
             return None
 
     def writable(self):
+        """Можно ли писать рядом с программой: пробный файл — отдельный, папку update.new не трогаем (в неё в это время может
+        распаковываться обновление: «Обзор» и ежечасная проверка писем спрашивают статус, удаление папки обрывало установку)."""
+        probe = os.path.join(os.path.dirname(self.new), '.kp-write-probe-%d' % os.getpid())
         try:
-            os.makedirs(self.new, exist_ok=True)
-            probe = os.path.join(self.new, '.probe')
             with open(probe, 'w') as f:
                 f.write('1')
             os.remove(probe)
-            shutil.rmtree(self.new, ignore_errors=True)
             return True
         except OSError:
             return False

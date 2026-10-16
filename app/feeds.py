@@ -43,6 +43,7 @@ import feed_files
 import images
 import imgfetch
 from maker_logos import MakerLogos
+from storage import Conflict
 from config import DATA_DIR
 from defaults import SrvVal
 
@@ -1872,6 +1873,7 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
         skip = {k for k, v in (f.get('cats') or {}).items() if v == 'skip'}
         offs = [o for o in feed['offers'] if o['cat'] not in skip and (not only or o['oid'] in only)]
         fdocs = _feed_docs(store, f['id'])
+        revs = store.catalog_revs()     # номера правок на начало загрузки: правку менеджера за время загрузки не затираем
         existing = {(d.get('feed') or {}).get('oid'): d for d in fdocs}
         links, lstat, mode, plan = {}, {}, 'import', None
         if f.get('kind') == 'files':
@@ -1905,8 +1907,11 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
             old = existing.get(o['oid']) or links.get(o['oid'])
             if not old:
                 cid = _cid(f['id'], o['oid'])
+                base = store.rev_of('catalog', cid)['rev']
                 prev = store.catalog_get(cid)
                 old = json.loads(prev) if prev else None
+                if old:
+                    revs[cid] = base
             old0 = old      # для сравнения «изменилось ли»: old ниже может быть очищен от лишних фото
             o = dict(o, pictures=[u for u in o['pictures'] if u not in ph])
             if old and ph:              # заглушка «нет фото», загруженная раньше, — заменить фото со страницы
@@ -1949,11 +1954,14 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
                     if old and norm(old) == norm(doc):
                         same += 1
                     else:
-                        store.catalog_put(cid, json.dumps(doc, ensure_ascii=False), by or ('Фид «%s»' % f['name']))
+                        store.catalog_put(cid, json.dumps(doc, ensure_ascii=False), by or ('Фид «%s»' % f['name']), revs.get(cid) if old else None)
                         added += 0 if old else 1
                         updated += 1 if old else 0
                     for c in ch:
                         (stock_ch if c[0] == 'stock' else price_ch).append(_change(cid, doc, c))
+                except Conflict as e:
+                    errors.append('%s: позицию изменили во время загрузки (%s) — оставлена как есть, обновится при следующей загрузке'
+                                  % (o['name'][:60], e.by or 'кто-то'))
                 except Exception as e:
                     errors.append('%s: %s' % (o['name'][:60], e))
                 j['done'] += 1
