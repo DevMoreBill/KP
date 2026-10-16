@@ -663,6 +663,28 @@ class Store:
             c.commit()
         return data
 
+    def trash_put_many(self, etype, rows, by):
+        """Много записей в корзину одной транзакцией (позиции фида — тысячи): rows — [(id, название)]. → сколько перенесено."""
+        table, n = TRASH_TABLES[etype], 0
+        with self.lock:
+            c = self.conn()
+            for eid, title in rows:
+                cur = c.execute('SELECT * FROM %s WHERE id=?' % table, (eid,))
+                row = cur.fetchone()
+                if not row:
+                    continue
+                data = dict(zip([x[0] for x in cur.description], row))
+                c.execute('INSERT INTO trash (entity_type, entity_id, title, data, deleted_at, deleted_by) VALUES (?,?,?,?,?,?)',
+                          (etype, eid, title, json.dumps(data, ensure_ascii=False), _now(), by))
+                c.execute('DELETE FROM %s WHERE id=?' % table, (eid,))
+                if table == 'catalog':
+                    c.execute('INSERT OR REPLACE INTO catalog_gone (id, seq) VALUES (?,?)', (eid, self._cat_seq(c)))
+                n += 1
+            if n and table in ('managers', 'suppliers'):
+                self._bump_data(c, table)
+            c.commit()
+        return n
+
     def trash_list(self):
         return [dict(zip(('id', 'entityType', 'entityId', 'title', 'deletedAt', 'deletedBy'), r))
                 for r in self.all('SELECT id, entity_type, entity_id, title, deleted_at, deleted_by FROM trash ORDER BY id DESC')]

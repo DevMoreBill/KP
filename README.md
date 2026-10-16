@@ -526,6 +526,12 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.97.0 — удаление позиций фида:**
+- `feeds.FeedPurge` (`preview` по категориям фида `doc.feed.cat`, `run` → корзина одной транзакцией `Store.trash_put_many`,
+  `block` — `f.excluded` (id предложений, до 50 000), `unblock`); `import_feed` и `check_feed` пропускают `excluded`;
+  в списке фидов — только число (`status`). Маршруты администратора `POST /api/admin/feeds/<id>/purge|unblock` (сессия + CSRF),
+  журнал — `delete_catalog`. Клиент — `FeedPurgeUi` (settings-feeds.js). Тест: `tests/test_feed_purge.py`.
+
 **3.96.3 — защита максимума от выбросов:**
 - `LgOutlier.mark` (logistics.js): предложение дороже медианы остальных в `log.outlierK` раз (2; 0 — выкл.; от трёх
   предложений) — `o.outlier`, метка «выброс», в `lgFinal` максимум — среди остальных. Энергия: раскладка цены в `note`.

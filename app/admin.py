@@ -971,7 +971,7 @@ class AdminApi:
             f = feeds.feed_save(st, self.data())
             self.log('edit_settings', 'settings', 'feed:' + f['id'], None, {'url': f['url'] or f.get('kind'), 'name': f['name']})
             return self.ok(f)
-        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|file|discounts|plan|rebuild)$', sub)
+        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|file|discounts|plan|rebuild|purge|unblock)$', sub)
         if not r:
             return self.err(404, 'Нет такого запроса')
         fid, act = r.group(1), r.group(2)
@@ -1015,6 +1015,18 @@ class AdminApi:
             return self.ok()
         if feeds.busy(fid):
             return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
+        if act == 'purge':          # удалить позиции фида в корзину: {cat, preview, block}
+            d = self.data()
+            cat = str(d.get('cat') or '')[:80]
+            if d.get('preview') is True:
+                return self.ok(feeds.FeedPurge.preview(st, f, cat))
+            r = feeds.FeedPurge.run(st, f, cat, d.get('block') is not False, actor(self.h, True)[1])
+            self.log('delete_catalog', 'catalog', 'feed:' + fid, None, dict(r, feed=f.get('name'), cat=cat or 'все'))
+            return self.ok(r)
+        if act == 'unblock':        # вернуть удалённые позиции фида в загрузку
+            n = feeds.FeedPurge.unblock(st, fid)
+            self.log('edit_settings', 'settings', 'feed:' + fid, {'excluded': n}, {'excluded': 0})
+            return self.ok({'unblocked': n})
         if act == 'plan':           # фид из файлов: что сделает сборка каталога (без записи)
             try:
                 return self.ok(feeds.plan_summary(st, f))

@@ -1079,6 +1079,64 @@ def plan_summary(store, f):
             'keep': [{'id': d['id'], 'name': d.get('name')} for d in plan['keep']][:300]}
 
 
+class FeedPurge:
+    """Удаление позиций каталога, загруженных фидом (только администратор): все или одной категории фида — в корзину
+    (восстановить — «Обслуживание → Корзина» в течение срока хранения корзины). block — предложения фида запоминаются
+    в настройке фида (f['excluded']: id предложений) — загрузка и проверка фида их больше не создают и не предлагают;
+    «Вернуть в загрузку» (unblock) снимает запрет."""
+    MAX_EXCLUDED = 50000
+
+    @staticmethod
+    def _cat(d):
+        fd = d.get('feed') or {}
+        return str(fd.get('cat') or ''), str(fd.get('path') or fd.get('crumbs') or '')
+
+    @classmethod
+    def _pick(cls, docs, cat):
+        return [d for d in docs if not cat or cls._cat(d)[0] == cat]
+
+    @classmethod
+    def preview(cls, store, f, cat=''):
+        """{total, cats: [{cat, title, n}], picked, sample: [названия], excluded}"""
+        docs = _feed_docs(store, f['id'])
+        cats = {}
+        for d in docs:
+            c, title = cls._cat(d)
+            x = cats.setdefault(c, {'cat': c, 'title': title or c or 'без категории', 'n': 0})
+            x['n'] += 1
+        pick = cls._pick(docs, cat)
+        return {'total': len(docs), 'cats': sorted(cats.values(), key=lambda x: (-x['n'], x['title'])), 'picked': len(pick),
+                'sample': [d.get('name') or d['id'] for d in pick[:15]], 'excluded': len(f.get('excluded') or [])}
+
+    @classmethod
+    def run(cls, store, f, cat='', block=True, by=''):
+        """→ {deleted, blocked}"""
+        pick = cls._pick(_feed_docs(store, f['id']), cat)
+        n = store.trash_put_many('catalog', [(d['id'], d.get('name') or d['id']) for d in pick], by or 'администратор')
+        blocked = 0
+        if block:
+            oids = [(d.get('feed') or {}).get('oid') for d in pick]
+            items = feeds(store)
+            for x in items:
+                if x.get('id') == f['id']:
+                    ex = list(dict.fromkeys((x.get('excluded') or []) + [str(o) for o in oids if o]))[-cls.MAX_EXCLUDED:]
+                    blocked = len(ex) - len(x.get('excluded') or [])
+                    x['excluded'] = ex
+            store.kv_set(KV, {'items': items})
+            with _LOCK:
+                _CACHE.pop(f['id'], None)
+        return {'deleted': n, 'blocked': blocked}
+
+    @staticmethod
+    def unblock(store, fid):
+        items, n = feeds(store), 0
+        for x in items:
+            if x.get('id') == fid:
+                n = len(x.pop('excluded', None) or [])
+        store.kv_set(KV, {'items': items})
+        return n
+
+
 def feed_unbuild(store, fid):
     items = feeds(store)
     for x in items:
@@ -1871,7 +1929,8 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
     try:
         feed = load(store, f)
         skip = {k for k, v in (f.get('cats') or {}).items() if v == 'skip'}
-        offs = [o for o in feed['offers'] if o['cat'] not in skip and (not only or o['oid'] in only)]
+        gone = set(f.get('excluded') or [])        # удалённые администратором позиции фида (FeedPurge) — не создавать снова
+        offs = [o for o in feed['offers'] if o['cat'] not in skip and o['oid'] not in gone and (not only or o['oid'] in only)]
         fdocs = _feed_docs(store, f['id'])
         revs = store.catalog_revs()     # номера правок на начало загрузки: правку менеджера за время загрузки не затираем
         existing = {(d.get('feed') or {}).get('oid'): d for d in fdocs}
@@ -2134,7 +2193,7 @@ def check_feed(store, f, by='', log=print, types=None):
             upd += cards['updated']
         linked = {d['feed'].get('oid') for d in docs}
         skip = {k for k, v in (f.get('cats') or {}).items() if v == 'skip'}
-        var = set(f.get('variants') or [])
+        var = set(f.get('variants') or []) | set(f.get('excluded') or [])
         new = [o for o in feed['offers'] if o['oid'] not in linked and o['cat'] not in skip and o['oid'] not in var]
         res = {'at': _now(), 'kind': 'check', 'by': by, 'checked': len(docs), 'updated': upd, 'price': price_ch[:300], 'stock': stock_ch[:300],
                'gone': gone[:300], 'new': len(new), 'newSample': [o['name'] for o in new[:10]], 'cards': cards}
@@ -2233,5 +2292,5 @@ def status(store):
     for f in feeds(store):
         j = JOBS.get(f['id'])
         n = counts.get(f['id'], 0) if counts is not None else len(_feed_docs(store, f['id']))
-        out.append(dict(f, job=j, linked=n))
+        out.append(dict(f, job=j, linked=n, excluded=len(f.get('excluded') or [])))      # список id удалённых — только число
     return out

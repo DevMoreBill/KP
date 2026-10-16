@@ -224,6 +224,7 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.91.0** (14.10) — доставка из Китая до границы РФ, только админка (`china_freight.ChinaFreight`, kv `chinaRates`, `/api/logistics/china`, клиент `ChinaFreightTab`): ATI.SU по направлениям из Китая + ставки экспедиторов в валюте по курсу ЦБ.
 - **3.92.0** (16.10) — ЖелДорЭкспедиция (`logistics_api.Jde`): открытый расчёт без ключа, сборный и крупногабаритный груз (до 20 т, надбавка за негабарит по размерам места), забор и доставка; крупногабарит — только ЖДЭ из сборных.
 - **3.93.0** (16.10) — справочные документы к КП (`kp_files.KpFiles`, таблица `kp_files`, `data/kp_files`, клиент `KpFilesPanel`, вложения письма) и окно входа (`LoginGuard`, `UserSession`, `LoginInfo`, `LoginForm`, `AuthScreen`, `AdminLogin`).
+- **3.97.0** (16.10) — удаление позиций фида в корзину с запретом повторной загрузки (`feeds.FeedPurge`, `FeedPurgeUi`, `Store.trash_put_many`).
 - **3.96.3** (16.10) — логистика: «выброс» не идёт в максимум (`LgOutlier`, `log.outlierK`), раскладка цены Энергии.
 - **3.96.2** (16.10) — Энергия по API v4 с токеном разработчика (`Nrg`, `nrgToken`, адрес `v4`).
 - **3.96.1** (16.10) — скорость (`ItemAttrs`, `CatalogCache` в `syncCatalog`, `feeds._feed_counts`, `GzipCache.building`), черновик без автора, `Modal.once`, системная тёмная тема, правки телефона.
