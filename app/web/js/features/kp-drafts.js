@@ -44,12 +44,14 @@ class Drafts {
   static async save(quiet=true){
     if (!this.on() || this.busy) return false;
     const p=this.pending(); if (!p) return false;
-    this.busy=true; const id=S._draft || this.newId(), t=totalsS(), mine=S;     // КП, которое сохраняем
+    this.busy=true; let id=S._draft || this.newId(); const t=totalsS(), mine=S;     // КП, которое сохраняем
     let done;
     this.running=new Promise(r=>{ done=r; });
     try{
-      await api('/api/drafts/'+id, {method:'PUT', headers:{'Content-Type':'application/json; charset=utf-8'},
+      const put=()=>api('/api/drafts/'+id, {method:'PUT', headers:{'Content-Type':'application/json; charset=utf-8'},
         body:JSON.stringify({state:p.st, rev:S._rev, sum:t.sum, cur:(S.pricing&&S.pricing.cur)||'RUB'})});
+      // черновик записан под другим менеджером (сменили «кто работает» на устройстве) — дальше новый черновик под текущим
+      try{ await put(); }catch(e){ if (e.status!==403 || !S._draft) throw e; id=this.newId(); await put(); }
       mine._draft=id;
       if (S!==mine) return true;          // пока шёл ответ, открыли другое КП — его черновиком этот id не становится
       this.base=p.sg; persist();
@@ -154,7 +156,8 @@ class Presets {
 
 // «Новое КП»: пустое, из заготовки или продолжить черновик; текущее — в черновики
 class NewKp {
-  static async open(){
+  static open(){ return Modal.once('newkp', ()=>this._open()); }
+  static async _open(){
     const mean=Drafts.meaningful(S), useD=Drafts.on(), useP=Presets.on();
     if (!useD && !useP){
       if (!confirm(S.kpId?'Начать новое КП? Сохранённое КП № '+S.number+' останется в журнале.':'Начать новое КП? Текущий черновик будет очищен (контакты менеджера сохранятся).')) return;

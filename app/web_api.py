@@ -1157,7 +1157,9 @@ class DraftsController(Controller):
         return uid or '', name or ''
 
     def _mine(self, row):
-        return row['owner'] == self._who()[0] or admin.session(self.h, touch=False) is not None
+        # черновик без автора (сохранён до выбора менеджера на устройстве) — того, кто с ним работает
+        return row['owner'] == self._who()[0] or (row['kind'] == 'draft' and not row['owner']) \
+            or admin.session(self.h, touch=False) is not None
 
     @route(r'/api/(drafts|presets)', 'GET')
     def list(self, kind):
@@ -1194,7 +1196,8 @@ class DraftsController(Controller):
             total = 0.0
         if not math.isfinite(total):
             total = 0.0
-        row = {'id': did, 'kind': k, 'owner': old['owner'] if old else uid, 'owner_name': old['owner_name'] if old else name,
+        keep = old and old['owner']             # черновик без автора получает автора при сохранении
+        row = {'id': did, 'kind': k, 'owner': old['owner'] if keep else uid, 'owner_name': old['owner_name'] if keep else name,
                'title': str(d.get('title') or '')[:120], 'client': str(st.get('client') or '')[:200],
                'kp': str(st.get('number') or '')[:40] if st.get('kpId') and k == 'draft' else '', 'positions': len(items),
                'sum': total, 'cur': str(d.get('cur') or 'RUB')[:3], 'updated': datetime.now().isoformat(timespec='seconds')}
@@ -1202,10 +1205,10 @@ class DraftsController(Controller):
             raise BadRequest('Укажите название заготовки')
         if k == 'preset':       # заготовка — общая для отдела: без клиента, номера, автора и экономики (как Presets.DROP в клиенте)
             st = {x: v for x, v in st.items() if x not in self.PRESET_DROP}
-        keep = {'state': st}
+        data = {'state': st}
         if k == 'draft' and isinstance(d.get('rev'), int):
-            keep['rev'] = d['rev']
-        store().draft_put(row, json.dumps(keep, ensure_ascii=False))
+            data['rev'] = d['rev']
+        store().draft_put(row, json.dumps(data, ensure_ascii=False))
         if k == 'preset' and not old:
             admin.log(self.h, store(), 'preset_add', 'preset', did, None, {'title': row['title']})
         return self.send_json({'ok': True, 'row': row})

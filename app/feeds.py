@@ -2219,9 +2219,19 @@ def auto_check(store, log=print):
         _safe(check_feed, store, f, 'автопроверка', log)
 
 
+def _feed_counts(store):
+    """{код фида: число связанных позиций} одним запросом (без разбора карточек в Python)."""
+    try:
+        return {fid: n for fid, n in store.all("SELECT json_extract(doc, '$.feed.id'), COUNT(*) FROM catalog "
+                                                "WHERE doc LIKE ? GROUP BY 1", ('%"feed": {%',)) if fid}
+    except Exception:               # SQLite без JSON — по-старому
+        return None
+
+
 def status(store):
-    out = []
+    out, counts = [], _feed_counts(store)
     for f in feeds(store):
         j = JOBS.get(f['id'])
-        out.append(dict(f, job=j, linked=len(_feed_docs(store, f['id']))))
+        n = counts.get(f['id'], 0) if counts is not None else len(_feed_docs(store, f['id']))
+        out.append(dict(f, job=j, linked=n))
     return out

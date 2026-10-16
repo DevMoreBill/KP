@@ -43,6 +43,16 @@ class GzipCache:
         self.max_n, self.level = max_n, level
         self.cache = {}
         self.lock = threading.Lock()
+        self.locks = {}         # метка → замок сборки: одновременные запросы новой версии ждут одну сборку, а не строят каждый свою
+
+    def building(self, tag):
+        with self.lock:
+            lk = self.locks.get(tag)
+            if lk is None:
+                lk = self.locks[tag] = threading.Lock()
+                while len(self.locks) > self.max_n:
+                    self.locks.pop(next(iter(self.locks)))
+            return lk
 
     def get(self, tag):
         with self.lock:
@@ -177,15 +187,22 @@ class Handler(BaseHTTPRequestHandler):
         if etag in (self.headers.get('If-None-Match') or ''):
             return self.send(304, 'application/json; charset=utf-8', b'', extra)
         gz_ok = 'gzip' in (self.headers.get('Accept-Encoding') or '')
-        hit = JSON_GZIP.get(etag) if gz_ok else None
+        if not gz_ok:
+            return self.send(200, 'application/json; charset=utf-8', self._json_bytes(make()), extra)
+        hit = JSON_GZIP.get(etag)
         if hit is None:
-            obj = make()
-            text = obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False)
-            data = text.encode('utf-8')
-            if not gz_ok or len(data) < JSON_GZIP_MIN:
-                return self.send(200, 'application/json; charset=utf-8', data, extra)
-            hit = JSON_GZIP.put(etag, data)
+            with JSON_GZIP.building(etag):
+                hit = JSON_GZIP.get(etag)         # пока ждали — собрал другой запрос
+                if hit is None:
+                    data = self._json_bytes(make())
+                    if len(data) < JSON_GZIP_MIN:
+                        return self.send(200, 'application/json; charset=utf-8', data, extra)
+                    hit = JSON_GZIP.put(etag, data)
         return self.send(200, 'application/json; charset=utf-8', hit, dict(extra, **{'Content-Encoding': 'gzip'}), compressed=True)
+
+    @staticmethod
+    def _json_bytes(obj):
+        return (obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False)).encode('utf-8')
 
     def base_rev(self):
         """С какой правки записи начинали редактирование (заголовок X-KP-Rev); нет — сохранить без проверки."""

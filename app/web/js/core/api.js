@@ -24,7 +24,7 @@ async function api(path, opts={}){
       err.code='conflict'; err.info=info; throw err; } }
   if (r.status===403 && r.headers.get('X-KP-Auth')==='change-password') AuthScreen.change();     // вошёл с временным паролем
   if (r.status===401 && AUTH.enabled && !/^\/api\/(admin|auth)\//.test(path)) AuthScreen.show('Сессия закончилась — войдите снова.');
-  if (!r.ok) throw new Error((await r.text()) || ('HTTP '+r.status));
+  if (!r.ok){ const err=new Error((await r.text()) || ('HTTP '+r.status)); err.status=r.status; throw err; }
   // сохранение в «Настройках» прошло — отметка «несохранённые изменения» снимается (проверки и предпросмотр — не сохранение)
   if ((opts.method||'GET')!=='GET' && !/\/(preview|test|check)\b|\/connections\b/.test(path)) StDirty.saved();
   const ct = r.headers.get('content-type')||''; return ct.includes('json') ? r.json() : r.text();

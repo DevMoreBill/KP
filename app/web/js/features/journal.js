@@ -89,8 +89,8 @@ async function openJournal(){
     if (!$('#jA').dataset.ok){ $('#jA').dataset.ok='1'; $('#jA').innerHTML+=(r.authors||[]).map(a=>`<option>${esc(a)}</option>`).join(''); }
     draw();
     // КП, сохранённые прежней версией: экономика считается по сохранённому состоянию КП
-    for (const x of (r.items||[]).filter(x=>!x.econ && !x.locked)){ if (!d.open || seq!==J.seq) break;
-      try{ x.econ=kpEconomics(await api(`/api/kp/${x.id}/state`)); }catch(e){ x.econ={cur:'RUB',sum:x.sum||0,withCost:0,positions:x.positions||0}; } }
+    await Promise.all((r.items||[]).filter(x=>!x.econ && !x.locked).map(async x=>{          // параллельно (не по очереди)
+      try{ const st=await api(`/api/kp/${x.id}/state`); if (seq===J.seq) x.econ=kpEconomics(st); }catch(e){ x.econ={cur:'RUB',sum:x.sum||0,withCost:0,positions:x.positions||0}; } }));
     if (d.open && seq===J.seq) draw(); };
   let qT=0; $('#jQ').oninput=()=>{ clearTimeout(qT); qT=setTimeout(()=>load(false), DEFN('ui.jDelay', 220)); }; $('#jA').onchange=$('#jK').onchange=$('#jS').onchange=()=>load(false);
   $('#jFun').onclick=e=>{ const b=e.target.closest('[data-jf]'); if (!b) return; const s=$('#jS'); s.value = s.value===b.dataset.jf ? '' : b.dataset.jf; load(false); };

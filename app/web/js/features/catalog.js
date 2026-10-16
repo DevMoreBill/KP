@@ -83,7 +83,8 @@ function fillFromCat(it, x){
 }
 
 async function syncCatalog(number){
-  let list=[]; try{ list = await store().list(); }catch(e){}
+  // каталог уже в браузере (IndexedDB + изменения с сервера); не вышло — целиком с сервера
+  let list=[]; try{ list = await CatalogCache.load(); }catch(e){ try{ list = await store().list(); }catch(_){} }
   for (const it of S.items){
     if (!it.name.trim() || !it.price) continue;
     const nk=norm(it.name), doc = await fullDoc(list.find(d=>d.id===it.catId) || list.find(d=>norm(d.name)===nk));

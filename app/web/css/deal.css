@@ -231,7 +231,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .mob .dl-q>div{position:fixed;left:16px;right:16px;top:auto;bottom:calc(24px + env(safe-area-inset-bottom,0px));width:auto}
 
 @media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]) .dl-badge.warn,:root:not([data-theme="light"]) .dl-chip.warn,:root:not([data-theme="light"]) .dl-warn li,:root:not([data-theme="light"]) .dl-ex{background:#3a2f12;color:var(--warn-line);border-color:#5a4718}
+  :root:not([data-theme="light"]) .dl-badge.warn,:root:not([data-theme="light"]) .dl-chip.warn,:root:not([data-theme="light"]) .dl-warn li,:root:not([data-theme="light"]) .dl-ex{background:#3a2f12;color:#f3d27a;border-color:#5a4718}
   :root:not([data-theme="light"]) .dl-warn li.bad,:root:not([data-theme="light"]) .dl-ex.warn{background:#3d1c17;color:#ffb3a6;border-color:#5e2a22}
   :root:not([data-theme="light"]) .dl-n,:root:not([data-theme="light"]) .dl-cta i,:root:not([data-theme="light"]) .dl-seg button.on{background:#3b6fd1;color:#fff}
 }

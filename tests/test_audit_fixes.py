@@ -75,6 +75,16 @@ class ServerTest(unittest.TestCase):
         self.assertNotIn('deal', state)
         self.assertNotIn('client', state)
 
+    def test_05b_draft_without_owner(self):
+        def put(uid):
+            h = {'Content-Type': 'application/json', 'X-KP-User-Id': uid, 'X-KP-User': uid}
+            return self.http.req('PUT', '/api/drafts/dnoowner1', json.dumps({'state': {'items': [], 'client': 'ООО'}}), headers=h)
+        self.assertEqual(put('')[0], 200)
+        st, b, _ = put(self.M1[0])
+        self.assertEqual(st, 200, 'черновик без автора — того, кто его сохраняет')
+        self.assertEqual(Http.js(b)['row']['owner'], self.M1[0])
+        self.assertEqual(put(self.M2[0])[0], 403, 'а дальше — только автора')
+
     def test_06_migration_down_only_last(self):
         st, b, _ = self.req('GET', '/api/admin/migrations', admin=True)
         mg = Http.js(b)
@@ -136,6 +146,32 @@ class UnitTest(unittest.TestCase):
         self.assertIsNone(feeds.parse_number('nan'))
         self.assertIsNone(feeds.parse_number('inf'))
         self.assertEqual(feeds.parse_number('1 234,5'), 1234.5)
+
+    def test_gzip_build_once(self):
+        import threading
+        from kp_server import GzipCache
+        c, built = GzipCache(3, 1), []
+
+        def get():
+            with c.building('t'):
+                if c.get('t') is None:
+                    built.append(1)
+                    c.put('t', b'x' * 5000)
+        th = [threading.Thread(target=get) for _ in range(8)]
+        [t.start() for t in th]
+        [t.join() for t in th]
+        self.assertEqual(len(built), 1, 'новая версия собирается один раз')
+        for i in range(10):
+            c.building('k%d' % i)
+        self.assertLessEqual(len(c.locks), 3)
+
+    def test_feed_counts(self):
+        import feeds
+        ts = TempStore(self)
+        for i, fid in enumerate(('remeza', 'remeza', 'dali')):
+            ts.store.catalog_put('f%d' % i, json.dumps({'id': 'f%d' % i, 'name': 'x', 'feed': {'id': fid}}))
+        ts.store.catalog_put('n', json.dumps({'id': 'n', 'name': 'без фида'}))
+        self.assertEqual(feeds._feed_counts(ts.store), {'remeza': 2, 'dali': 1})
 
     def test_non_finite_body(self):
         from kp_server import Handler
