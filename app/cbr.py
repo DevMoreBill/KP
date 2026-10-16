@@ -47,6 +47,8 @@ def cbr_rates():
 
 # ---------- ключевая ставка ЦБ РФ (для стоимости денег в «Экономике сделки») ----------
 _KEY_CACHE = {}
+KEY_TTL = 6 * 3600          # с — ключевая ставка меняется редко: ЦБ не спрашивается чаще
+KEY_HISTORY_DAYS = 400      # за сколько дней запрашивается история ставки (последнее решение ЦБ — внутри)
 
 
 def parse_key_rate_xml(data):
@@ -75,12 +77,12 @@ def parse_key_rate_html(html):
 def cbr_key_rate():
     """Ключевая ставка ЦБ РФ: {'rate': 16.5, 'date': 'ГГГГ-ММ-ДД', 'src': …} или {'error': …}; кэш — 6 часов."""
     c = _KEY_CACHE.get('v')
-    if c and time.time() - c[0] < 6 * 3600:
+    if c and time.time() - c[0] < KEY_TTL:
         return c[1]
     err = []
     today = datetime.now()
-    frm = (today - timedelta(days=400)).strftime('%Y-%m-%d')
-    to = today.strftime('%Y-%m-%d')
+    since = today - timedelta(days=KEY_HISTORY_DAYS)
+    frm, to = since.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d')
     # 1) веб-сервис ЦБ (SOAP)
     try:
         body = ('<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
@@ -100,7 +102,7 @@ def cbr_key_rate():
     # 2) страница ключевой ставки на сайте ЦБ
     try:
         url = ('https://www.cbr.ru/hd_base/KeyRate/?UniDbQuery.Posted=True&UniDbQuery.From=%s&UniDbQuery.To=%s'
-               % (datetime.strptime(frm, '%Y-%m-%d').strftime('%d.%m.%Y'), today.strftime('%d.%m.%Y')))
+               % (since.strftime('%d.%m.%Y'), today.strftime('%d.%m.%Y')))
         got = parse_key_rate_html(http_get(url).decode('utf-8', 'replace'))
         if got:
             res = {'date': got[0], 'rate': got[1], 'src': 'ЦБ РФ (cbr.ru/hd_base)'}

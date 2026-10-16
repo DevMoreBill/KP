@@ -5,33 +5,33 @@ dialog.dealwin.max{width:100vw!important;height:100vh!important;max-height:100vh
 @supports (height:100dvh){ dialog.dealwin{height:calc(100dvh - 40px)} }
 dialog.dealwin[open]{display:flex}
 .dealwin .dlg-h h3 small{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:2px}
-.dl-b{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 400px;grid-template-rows:minmax(0,1fr)}
+.dl-b{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 400px;grid-template-rows:auto minmax(0,1fr)}
 .dl-form{overflow:auto;min-height:0;padding:18px 22px 28px;display:grid;align-content:start;background:var(--paper);overscroll-behavior:contain}
 .dl-side{overflow:auto;min-height:0;align-self:stretch;position:static;top:auto;max-height:none;border-left:1px solid var(--line);padding:18px 18px 28px;background:var(--card);overscroll-behavior:contain}
 
 /* шаги 1…7 — каждый отдельной карточкой */
-.dl-step{display:grid;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px rgba(15,30,60,.05)}
-.dl-step>.dl-sh{border-bottom:1px solid var(--line);background:var(--soft);border-radius:16px 16px 0 0}
+.dl-step{display:grid;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px rgba(15,30,60,.05);padding:10px 14px 12px;gap:8px}
+.dl-step>.dl-sh{border-bottom:1px solid var(--line);background:var(--soft);border-radius:16px 16px 0 0;margin:-10px -14px 0;padding:8px 14px}
 details.dl-step:not([open])>.dl-sh{border-bottom:0;border-radius:16px;margin-bottom:-18px}
 .dl-step .dl-card{background:var(--paper);box-shadow:none}
 .dl-sh{display:flex;gap:12px;align-items:flex-start}
-.dl-sh h4{margin:2px 0 0;font-weight:700;color:var(--ink)}
+.dl-sh h4{font-weight:700;color:var(--ink);font-size:16px;margin:0}
 .dl-sh p{margin:2px 0 0;font-size:13px;color:var(--muted);line-height:1.4}
-.dl-n{flex:0 0 30px;border-radius:50%;background:var(--navy);color:var(--on-navy);display:grid;place-items:center;font-weight:700}
+.dl-n{flex:0 0 30px;border-radius:50%;background:var(--navy);color:var(--on-navy);display:grid;place-items:center;font-weight:700;flex-basis:26px;height:26px;font-size:13px}
 details.dl-step>summary{cursor:pointer;list-style:none}
 details.dl-step>summary::-webkit-details-marker{display:none}
 details.dl-step>summary h4::after{content:" ▾";color:var(--muted);font-weight:400}
 details.dl-step:not([open])>summary h4::after{content:" ▸"}
-.dl-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
+.dl-card{background:var(--card);border:1px solid var(--line);border-radius:14px;min-width:0;padding:10px 12px}
 .dl-ch{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;min-height:32px}
 .dl-ch b{font-size:15px;flex:1 1 auto}
-.dl-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));margin-top:12px}
+.dl-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));margin-top:8px;align-items:end;gap:8px 10px}
 .dl-g:first-child{margin-top:0}
 .dl-g.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .dl-g.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
 
 /* поле */
-.dl-f>span:first-child{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;min-height:20px}
+.dl-f>span:first-child{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;min-height:20px;line-height:1.3}
 .dl-f>span i{font-style:normal;color:var(--muted);font-weight:400}
 .dl-in{display:flex;gap:6px;min-width:0;align-items:center}
 .dl-in input{flex:1 1 auto;min-width:0;text-align:right;font-variant-numeric:tabular-nums}
@@ -40,7 +40,6 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-in>i{font-style:normal;color:var(--muted);font-size:13px}
 .dl-f.bad input{border-color:var(--danger)}
 .dl-err{color:var(--danger);font-size:12.5px}
-.dl-f small.muted{font-size:12px}
 .dl-badge{font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;border:1px solid var(--line);color:var(--muted);background:var(--card);line-height:1.5;white-space:nowrap}
 .dl-badge.kp{color:var(--navy);background:var(--soft);border-color:var(--soft)}
 .dl-badge.own{cursor:pointer;color:var(--navy)}
@@ -56,10 +55,9 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 
 /* шаг 1 — поставщик */
 .dl-sup{display:grid;gap:12px}
-.dl-suph{grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:12px}
+.dl-suph{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
 .dl-suph .dl-del{align-self:end;margin-bottom:2px}
 .dl-dirn{margin:-4px 0 0;font-size:12.5px;color:var(--muted);line-height:1.45}
-.ok-t{color:var(--ok);font-weight:600}
 .dl-noitems{margin:0;font-size:13px}
 .dl-it{width:100%;border-collapse:collapse;font-size:14px}
 .dl-it th{font-size:11.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
@@ -88,7 +86,6 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-seg button.on{background:var(--navy);color:var(--on-navy)}
 .dl-foot-n{margin:0;font-size:12.5px;color:var(--muted);line-height:1.5}
 .dl-foot-n a{color:var(--navy)}
-.lnk{border:0;background:none;padding:0;color:var(--navy);text-decoration:underline;cursor:pointer;font:inherit}
 .dl-hsdir input{width:100%}
 
 /* раскрывающиеся «Ещё» */
@@ -101,17 +98,16 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 /* шаг «Оплата заказчика» */
 .dl-tr select{width:100%}
 .dl-tr.bad input{border-color:var(--danger)}
-.dl-trf{display:flex;align-items:center;flex-wrap:wrap;font-size:12.5px;margin-top:4px}
+.dl-trf{display:flex;align-items:center;flex-wrap:wrap;font-size:12.5px;margin-top:4px;gap:10px}
 
 /* график платежей */
 .dl-sched>.btn{justify-self:start}
 .dl-tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .dl-t{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
-.dl-t th{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
-.dl-t td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.dl-t th{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-align:left;border-bottom:1px solid var(--line);position:relative;padding:4px 8px}
+.dl-t td{border-bottom:1px solid var(--line);vertical-align:middle;padding:4px 8px}
 .dl-t .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .dl-t td small{display:block;font-size:11.5px;color:var(--muted)}
-.dl-t tr.in td{background:color-mix(in srgb,var(--ok) 7%,transparent)}
 .dl-t tr.man .dl-day{border-color:var(--sky)}
 .dl-t td.neg{color:var(--danger)}
 .dl-t tfoot td{border-bottom:0;padding-top:10px}
@@ -123,10 +119,10 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-ex.warn{background:#fdecea;color:#8a2a1a;border-color:#f3c3ba}
 
 /* правая колонка: подбор цены и итог */
-.dl-res{display:grid;gap:16px}
+.dl-res{display:grid;gap:10px}
 .dl-res h4{margin:0;font-size:15px;font-weight:700}
 .dl-res h4 .muted{font-weight:500;font-size:13px}
-.dl-price{border:2px solid var(--navy);border-radius:14px;display:grid;background:var(--paper)}
+.dl-price{border:2px solid var(--navy);border-radius:14px;display:grid;background:var(--paper);padding:10px 12px;gap:6px;border-width:1.5px}
 .dl-pr{display:grid;grid-template-columns:minmax(0,1fr) 140px;gap:8px}
 .dl-need{margin:0;display:grid;gap:2px;padding:10px 12px;border-radius:10px;background:var(--soft)}
 .dl-need small{font-size:12px;color:var(--muted)}
@@ -137,7 +133,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-plan td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}
 .dl-plan .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .dl-plan small{display:block;font-size:11.5px;color:var(--muted)}
-.dl-apply{width:100%;justify-content:center;min-height:44px;font-size:15px}
+.dl-apply{width:100%;justify-content:center;min-height:44px}
 .dl-price .dl-note{margin:0}
 .dl-be{margin:0;font-size:13.5px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .dl-now{display:grid;gap:12px}
@@ -145,16 +141,16 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-chip.warn{color:var(--warn-ink);background:var(--warn-bg)}
 .dl-chip.bad{color:var(--danger);background:color-mix(in srgb,var(--danger) 12%,transparent)}
 .dl-big small{display:block;font-size:12.5px;color:var(--muted)}
-.dl-big>b{display:block;font-size:28px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.2;margin-top:2px;color:var(--ok)}
+.dl-big>b{display:block;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.2;margin-top:2px;color:var(--ok)}
 .dl-big.neg>b{color:var(--danger)}
 .dl-big.rng>b{font-size:21px;color:var(--navy)}
 .dl-note{margin:6px 0 0;font-size:12.5px;color:var(--muted);line-height:1.45}
 .dl-note b{color:var(--ink)}
 .dl-kpi{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.dl-kpi>div{background:var(--soft);border-radius:12px;padding:10px 12px;min-width:0}
+.dl-kpi>div{background:var(--soft);border-radius:12px;padding:6px 10px;min-width:0}
 .dl-kpi small{display:flex;gap:4px;align-items:center;font-size:12px;color:var(--muted)}
 .dl-kpi b{display:block;font-size:18px;font-variant-numeric:tabular-nums;color:var(--ink)}
-.dl-dl{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:0;font-size:14px}
+.dl-dl{display:grid;grid-template-columns:1fr auto;gap:2px 10px;margin:0;font-size:13px}
 .dl-dl dt{color:var(--muted)}
 .dl-dl dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
 .dl-dl dd small{display:block;font-size:11.5px;color:var(--muted)}
@@ -165,7 +161,6 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 /* вход: правая панель и раздел «Цены» */
 .mrg .dl-open{width:100%;justify-content:center;margin-top:10px}
 .mrg-n{margin:6px 0 0;font-size:12px}
-.warn-t{color:var(--warn-ink)}
 .dl-cta{display:flex;align-items:center;gap:14px;width:100%;margin:4px 0 16px;padding:14px 18px;border:2px solid var(--navy);border-radius:14px;background:var(--soft);color:var(--navy);cursor:pointer;text-align:left;font:inherit}
 .dl-cta:hover{background:color-mix(in srgb,var(--navy) 10%,var(--soft))}
 .dl-cta i{font-style:normal;flex:0 0 40px;height:40px;border-radius:50%;background:var(--navy);color:var(--on-navy);display:grid;place-items:center;font-size:20px;font-weight:700}
@@ -179,7 +174,6 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 @media (max-width:1000px){
   .dl-b{display:block;overflow:auto;overscroll-behavior:contain}
   .dl-form,.dl-side{overflow:visible}
-  .dl-b{grid-template-rows:none}
   .dl-side{border-left:0;border-top:1px solid var(--line)}
   .dl-mini{display:flex;gap:12px;align-items:flex-end;justify-content:space-between;padding:8px 16px 10px;border-bottom:1px solid var(--line);background:var(--card);font-size:13px;color:var(--muted)}
   .dl-mini>span{display:flex;flex-direction:column;min-width:0}
@@ -192,8 +186,6 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 @media (max-width:640px){
   .dl-g,.dl-g.g3,.dl-g.g4{grid-template-columns:minmax(0,1fr)}
   .dl-form{padding:12px}
-  .dl-suph{grid-template-columns:minmax(0,1fr) auto}
-  .dl-suph>.dl-f:first-child{grid-column:1/-1}
   /* таблицы позиций — карточками */
   .dl-it,.dl-it tbody{display:block}
   .dl-it thead{display:none}
@@ -215,16 +207,15 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
   .dl-pr{grid-template-columns:1fr}
   /* график — карточками */
   .dl-t{min-width:0;display:block} .dl-t thead{display:none} .dl-t tbody,.dl-t tfoot{display:block}
-  .dl-t tr{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:2px 12px;padding:10px 6px;border-bottom:1px solid var(--line);align-items:center}
-  .dl-t td{border:0;padding:0}
-  .dl-t .c-day{align-self:start}
+  .dl-t tr{display:grid;grid-template-columns:140px minmax(0,1fr) auto;gap:2px 12px;padding:10px 6px;border-bottom:1px solid var(--line);align-items:center}
+  .dl-t td{border:0}
+  .dl-t .c-day{align-self:start;grid-row:1/5}
   .dl-t .c-ev{grid-column:2/4;font-weight:600}
-  .dl-t .c-pay{grid-column:2;text-align:left}
-  .dl-t .c-fin{grid-column:3}
+  .dl-t .c-pay{grid-column:2;text-align:left;grid-row:3}
+  .dl-t .c-fin{grid-column:3;grid-row:3}
   .dl-t .c-fin small{display:inline;margin-left:4px}
-  .dl-t .c-bal{grid-column:2/4;text-align:left;font-size:13px;color:var(--muted)}
+  .dl-t .c-bal{grid-column:2/4;text-align:left;font-size:13px;color:var(--muted);grid-row:4}
   .dl-t tr.in{background:color-mix(in srgb,var(--ok) 7%,transparent);border-radius:10px}
-  .dl-t tr.in td{background:none}
   .dl-t .c-bal::before{content:"остаток денег: "}
   .dl-t .c-bal.neg{color:var(--danger)}
   .dl-t tfoot tr{grid-template-columns:minmax(0,1fr) auto}
@@ -270,23 +261,19 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-cbl small{grid-column:1/-1;font-size:12px;color:var(--muted)}
 .dl-cbl li.none{padding:10px;font-size:13px;color:var(--muted)}
 /* этапы оплаты заказчика */
-.dl-tr{display:grid;grid-template-columns:26px minmax(0,1fr) 200px 140px 34px;gap:8px 10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
-.dl-trn{grid-area:n;align-self:start;margin-top:8px}
-.dl-trname{grid-area:nm}
+.dl-tr{display:grid;gap:6px 8px;align-items:center;padding:7px 0;border-top:1px solid var(--line);grid-template-columns:22px 26px minmax(0,1fr) 200px 140px 34px;grid-template-areas:"mv n nm am r x" "mv n w w r x"}
+.dl-trn{grid-area:n;align-self:start;margin-top:8px;width:24px;height:24px;border-radius:50%;background:var(--soft);color:var(--navy);display:grid;place-items:center;font-size:12px;font-weight:700}
+.dl-trname{grid-area:nm;width:100%}
 .dl-tram,.dl-trp{grid-area:am}
-.dl-trw{grid-area:w}
-.dl-trr{grid-area:r}
+.dl-trw{grid-area:w;display:flex;gap:6px;min-width:0;align-items:center;flex-wrap:nowrap}
+.dl-trr{grid-area:r;display:flex;flex-direction:column;align-items:flex-end;font-variant-numeric:tabular-nums}
 .dl-tr>button,.dl-tr>span:last-child:empty{grid-area:x}
 .dl-trw>em{font-style:normal;font-size:13px;color:var(--muted);flex:0 0 auto;align-self:center}
-.dl-trn{width:24px;height:24px;border-radius:50%;background:var(--soft);color:var(--navy);display:grid;place-items:center;font-size:12px;font-weight:700}
-.dl-trname{width:100%}
 .dl-tram .mtog{flex:0 0 auto}
-.dl-trw{display:flex;gap:6px;min-width:0}
-.dl-trw select{min-width:0}
+.dl-trw select{min-width:0;flex:1 1 150px;max-width:210px}
 .dl-troff{flex:0 0 120px}
 .dl-trp{display:flex;flex-direction:column;font-size:12px;color:var(--muted);padding-left:6px}
 .dl-trp b{font-size:15px;color:var(--navy)}
-.dl-trr{display:flex;flex-direction:column;align-items:flex-end;font-variant-numeric:tabular-nums}
 .dl-trr small{font-size:12px;color:var(--muted)}
 /* цена КП */
 .dl-rates{gap:6px}
@@ -297,7 +284,7 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-kpt tfoot td{border-bottom:0;padding-top:10px}
 .dl-kpt tfoot small{display:block;font-size:12px;color:var(--muted);font-weight:400}
 .dl-g.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
-@media (max-width:640px){ .dl-step{padding:12px 12px 14px} .dl-step>.dl-sh{margin:-12px -12px 2px;padding:12px} .dl-tr{grid-template-columns:24px minmax(0,1fr) 34px} .dl-trr{flex-direction:row;gap:10px;justify-content:flex-end;align-items:baseline} .dl-g.g2{grid-template-columns:minmax(0,1fr)} .dl-trw{flex-wrap:wrap} .dl-troff{flex-basis:120px} .dl-kpt .c-cost{width:auto} }
+@media (max-width:640px){ .dl-trr{flex-direction:row;gap:10px;justify-content:flex-end;align-items:baseline} .dl-g.g2{grid-template-columns:minmax(0,1fr)} .dl-troff{flex-basis:120px} .dl-kpt .c-cost{width:auto} }
 /* итог шага — в правом нижнем углу карточки */
 .dl-stot{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;margin:0 -18px -18px;padding:7px 18px;border-top:1px solid var(--line);background:var(--soft);border-radius:0 0 16px 16px;flex-wrap:wrap}
 .dl-stot>span small{font-size:12px;color:var(--muted);line-height:1.35}
@@ -336,21 +323,15 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-d0 .muted{font-size:12.5px;padding-bottom:10px}
 .dl-t .dl-dt{color:var(--muted);white-space:nowrap}
 @media (max-width:640px){
-  .dl-t .c-day{grid-row:1/5}
-  .dl-t .c-pay{grid-row:3} .dl-t .c-fin{grid-row:3}
-  .dl-t .c-bal{grid-row:4}
   .dl-d0 input[type=date]{width:100%}
 }
 .mrg-deal .mrg-p{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:2px 0 8px}
 .mrg-deal .mrg-p small{font-size:12.5px;color:var(--muted)}
 .mrg-deal .mrg-p b{font-size:20px;color:var(--ok);font-variant-numeric:tabular-nums;white-space:nowrap}
 .mrg-deal .mrg-p.neg b{color:var(--danger)}
-/* выравнивание полей в строке: подписи разной высоты — поля ввода на одной линии */
-.dl-g{align-items:end}
-.dl-f>span:first-child{line-height:1.3}
 /* график платежей: сводка, кто платит, день недели */
-.dl-sxs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.dl-sx{border:1px solid var(--line);border-radius:12px;padding:8px 12px;display:flex;flex-direction:column;gap:1px;min-width:0;background:var(--paper)}
+.dl-sxs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.dl-sx{border:1px solid var(--line);border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:1px;min-width:0;background:var(--paper)}
 .dl-sx small{font-size:12px;color:var(--muted)}
 .dl-sx b{font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .dl-sx em{font-style:normal;font-size:11.5px;color:var(--muted)}
@@ -366,13 +347,13 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-t tr.in td{background:color-mix(in srgb,var(--ok) 6%,transparent)}
 @media (max-width:1000px){ .dl-sxs{grid-template-columns:1fr 1fr} }
 @media (max-width:640px){ .dl-t .c-who{display:none} .dl-sxs{grid-template-columns:minmax(0,1fr)} }
-:root[data-theme="dark"] .dl-pty.sup{background:#3a2a14;color:#f3c37a} :root[data-theme="dark"] .dl-pty.log{background:#2b2442;color:#c6b5f5} :root[data-theme="dark"] .dl-pty.cust{background:#173523;color:#7fdc9c}
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-pty.sup{background:#3a2a14;color:#f3c37a} :root:not([data-theme="light"]) .dl-pty.log{background:#2b2442;color:#c6b5f5} :root:not([data-theme="light"]) .dl-pty.cust{background:#173523;color:#7fdc9c} }
+:root[data-theme="dark"] .dl-pty.sup{background:var(--warn-bg);color:var(--warn-ink)} :root[data-theme="dark"] .dl-pty.log{background:#2b2442;color:#c6b5f5} :root[data-theme="dark"] .dl-pty.cust{background:#173523;color:#7fdc9c}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-pty.sup{background:var(--warn-bg);color:var(--warn-ink)} :root:not([data-theme="light"]) .dl-pty.log{background:#2b2442;color:#c6b5f5} :root:not([data-theme="light"]) .dl-pty.cust{background:#173523;color:#7fdc9c} }
 .dl-t td.c-when{white-space:nowrap;width:150px}
 .dl-t td.c-when .dl-date{width:140px}
 .dl-t th:first-child{white-space:nowrap}
 .dl-t td.c-ev{min-width:180px}
-@media (max-width:640px){ .dl-t td.c-when{width:auto} .dl-t td.c-when .dl-date{width:132px} .dl-t tr{grid-template-columns:140px minmax(0,1fr) auto} }
+@media (max-width:640px){ .dl-t td.c-when{width:auto} .dl-t td.c-when .dl-date{width:132px} }
 /* прочие расходы наличными */
 .dl-cash-r{margin:6px 0 4px;font-size:13.5px}
 .dl-cash>p.muted{font-size:12.5px;margin:4px 0 2px}
@@ -394,35 +375,33 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-stc.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
 .dl-stc.need{background:#fdecd6;color:#9a5410}
 .dl-stc.opt{background:var(--soft);color:var(--muted);border:1px solid var(--line)}
-.dl-next{padding-top:2px}
 /* срок: дни или дата */
-.dl-ddr{display:flex;align-items:center}
+.dl-ddr{display:flex;align-items:center;flex-wrap:nowrap;gap:6px}
 .dl-ddt{display:inline-flex;align-items:center;gap:6px;min-width:0}
-.dl-ddt>em{font-style:normal;color:var(--muted);white-space:nowrap}
+.dl-ddt>em{font-style:normal;color:var(--muted);white-space:nowrap;font-size:12px}
 .dl-ddt input[type=date]{min-width:0;font-size:13.5px}
-.dl-trw{align-items:center}
 .dl-trw .dl-ddt em{display:none}
 @media (max-width:640px){
   .dl-step>button.dl-sh{width:calc(100% + 24px)}
   .dl-stc{margin-left:6px}
 }
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-stc.need{background:#4a3215;color:#f3c37a} :root:not([data-theme="light"]) .dl-n.need{background:#b86b1d} }
-:root[data-theme="dark"] .dl-stc.need{background:#4a3215;color:#f3c37a}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-stc.need{background:#4a3215;color:var(--warn-ink)} :root:not([data-theme="light"]) .dl-n.need{background:#b86b1d} }
+:root[data-theme="dark"] .dl-stc.need{background:#4a3215;color:var(--warn-ink)}
 :root[data-theme="dark"] .dl-n.need{background:#b86b1d}
 .dl-trw .dl-ddt input[type=date]{max-width:150px}
 
 /* ---- вкладки шагов */
-.dl-tabs{position:sticky;top:0;z-index:5;scrollbar-width:thin}
+.dl-tabs{position:sticky;top:0;z-index:5;scrollbar-width:thin;display:flex;align-items:stretch;gap:0;padding:0;border-radius:12px;overflow-x:auto;overflow-y:hidden;background:var(--card);border:1px solid var(--line);box-shadow:none}
 .dl-tab:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
 .dl-tab.ok .dl-tn{background:var(--ok);border-color:var(--ok);color:var(--on-navy)}
 .dl-tab.need .dl-tn{background:var(--warn);border-color:var(--warn);color:var(--on-navy)}
 /* навигация внизу шага — отдельной строкой под карточкой */
-.dl-next{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 2px 4px;margin-top:-4px}
+.dl-next{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 2px 4px;margin-top:8px}
 .dl-next .btn{min-height:42px}
 /* мини-блоки на вкладке «Расходы» */
-.dl-mb{display:grid;border:1px solid var(--line);border-radius:12px}
-.dl-mbh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.dl-mbh h5{margin:0;text-transform:none;letter-spacing:0}
+.dl-mb{display:grid;border:1px solid var(--line);border-radius:12px;gap:10px}
+.dl-mbh{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dl-mbh h5{margin:0;text-transform:none;letter-spacing:0;display:flex;align-items:center;gap:6px}
 .dl-mbh .dl-stc{margin-left:0}
 .dl-mbs{margin-left:auto;font-size:15px}
 .dl-mb .dl-more{margin-top:0}
@@ -432,12 +411,9 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-where .dl-seg{display:flex}
 .dl-where .dl-seg button{flex:1 1 0;min-height:44px}
 @media (max-width:640px){
-  .dl-tab{flex:0 0 auto;padding:7px 10px}
   .dl-next{flex-wrap:wrap}
   .dl-next .btn{flex:1 1 auto}
-  .dl-mb{padding:12px}
 }
-.dl-suph{display:flex;flex-wrap:wrap;align-items:flex-end}
 .dl-suph>.dl-f{flex:1 1 200px;min-width:0}
 .dl-suph>.dl-f:first-child{flex-grow:2}
 .dl-suph>.dl-del{flex:0 0 auto}
@@ -452,57 +428,41 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dealwin .dl-form .btn{min-height:36px;padding:6px 14px}
 .dealwin .dl-next .btn{min-height:40px}
 .dl-form{gap:16px;padding-top:14px}
-.dl-step{gap:10px;padding:12px 16px 14px}
-.dl-step>.dl-sh{margin:-12px -16px 0;padding:10px 16px}
-.dl-sh h4{font-size:16px}
-.dl-n{flex-basis:26px;height:26px;font-size:13px}
-.dl-g{gap:10px 12px}
-.dl-f{gap:4px}
-.dl-f small{font-size:12px}
-.dl-mb{gap:10px;padding:12px 14px}
-.dl-ddr{flex-wrap:nowrap;gap:6px}
+.dl-f{gap:3px}
 .dl-ddr>.dl-in{flex:0 0 auto;min-width:0}
-.dl-ddt>em{font-size:12px}
 /* дата договора — в шапке окна, всегда видна */
 .dl-hd{display:flex;align-items:center;gap:8px;margin-left:auto;padding:5px 6px 5px 12px;border-radius:12px;background:color-mix(in srgb,var(--sky) 16%,var(--card));border:1.5px solid var(--navy)}
-.dl-hd>span{font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap;min-width:0}
+.dl-hd>span{font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap;min-width:0;display:flex;align-items:center;gap:6px}
 .dl-hd input[type=date]{height:34px;min-height:34px;padding:4px 8px;font-size:14px;font-weight:600;border-radius:8px;width:auto}
 .dl-hd.empty{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))}
 .dl-hd.empty>span{color:#9a5410}
 .dealwin .dlg-h{flex-wrap:wrap;row-gap:8px}
 /* вкладки — над формой, не прокручиваются вместе с ней */
-.dl-b{grid-template-rows:auto minmax(0,1fr)}
-.dl-tabw{grid-column:1;grid-row:1;background:var(--paper)}
+.dl-tabw{grid-column:1;grid-row:1;background:var(--paper);padding:12px 22px 0}
 .dl-b>.dl-form{grid-column:1;grid-row:2}
 .dl-b>.dl-side{grid-column:2;grid-row:1 / span 2}
 .dl-tabw .dl-tabs{position:static}
 @media (max-width:1000px){
-  .dl-tabw{position:sticky;top:0;z-index:6;border-bottom:1px solid var(--line)}
-  .dl-hd{margin-left:0;flex:1 1 100%;justify-content:space-between}
+  .dl-tabw{position:sticky;top:0;z-index:6;border-bottom:1px solid var(--line);padding:8px 12px}
+  .dl-hd{margin-left:0;flex:1 1 100%;justify-content:space-between;order:100}
 }
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-hd.empty>span{color:#f3c37a} }
-:root[data-theme="dark"] .dl-hd.empty>span{color:#f3c37a}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-hd.empty>span{color:var(--warn-ink)} }
+:root[data-theme="dark"] .dl-hd.empty>span{color:var(--warn-ink)}
 .dl-ddt input[type=date],.dealwin .dl-form .dl-ddt input[type=date]{flex:0 0 auto;width:138px;max-width:none;padding:5px 6px}
-.dl-trw{flex-wrap:nowrap}
-.dl-trw select{flex:1 1 150px;max-width:210px}
 .dealwin .dl-t .dl-date{width:130px;padding:4px 6px}
 @media (max-width:1180px){ .dl-trw{flex-wrap:wrap} }
 .dealwin .dl-t td.c-when .dl-date{width:130px}
-.dl-t th,.dl-t td{padding-left:6px;padding-right:6px}
 .dl-g:has(> .dl-f.dd){display:flex;flex-wrap:wrap;gap:10px 28px;align-items:flex-start}
 .dl-g > .dl-f.dd{flex:0 0 auto;min-width:0}
-@media (max-width:1000px){ .dl-hd{order:100} }
 .dl-g:has(> .dl-f.dd) > .dl-f:not(.dd){flex:1 1 180px}
 
 /* ---- вкладки: ровные, одинаковой высоты, понятное состояние */
-.dl-tabw{padding:12px 22px 0}
-.dl-tabs{display:flex;align-items:stretch;gap:0;padding:0;border-radius:12px;overflow-x:auto;overflow-y:hidden;background:var(--card);border:1px solid var(--line);box-shadow:none}
-.dl-tab{flex:1 1 0;min-width:max-content;display:flex;align-items:center;justify-content:center;height:44px;margin:0;border:0;border-right:1px solid var(--line);border-radius:0;background:none;font:inherit;font-weight:600;line-height:1;color:var(--muted);cursor:pointer;white-space:nowrap;position:relative}
+.dl-tab{flex:1 1 0;min-width:max-content;display:flex;align-items:center;justify-content:center;height:44px;margin:0;border:0;border-right:1px solid var(--line);border-radius:0;background:none;font:inherit;font-weight:600;line-height:1;color:var(--muted);cursor:pointer;white-space:nowrap;position:relative;padding:0 8px;gap:6px;font-size:13px}
 .dl-tab:last-child{border-right:0}
 .dl-tab:hover{background:var(--soft);color:var(--ink)}
 .dl-tab.on{background:var(--navy);color:var(--on-navy)}
 .dl-tab.on::after{content:none}
-.dl-tn{flex:0 0 22px;border-radius:50%;display:grid;place-items:center;font-weight:700;line-height:1;background:var(--soft);color:var(--muted);border:1px solid var(--line);margin:0}
+.dl-tn{flex:0 0 22px;border-radius:50%;display:grid;place-items:center;font-weight:700;line-height:1;background:var(--soft);color:var(--muted);border:1px solid var(--line);margin:0;flex-basis:20px;width:20px;height:20px;font-size:11px}
 .dl-tab.st-ok .dl-tn{background:var(--ok);border-color:var(--ok);color:var(--on-navy)}
 .dl-tab.st-need .dl-tn{background:var(--warn);border-color:var(--warn);color:var(--on-navy)}
 .dl-tab.st-need .dl-tt{color:#9a5410}
@@ -510,23 +470,19 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-tab.on .dl-tn{background:var(--on-navy);border-color:var(--on-navy);color:var(--navy)}
 .dl-tab.on.st-ok .dl-tn{color:var(--ok)}
 .dl-tab.on.st-need .dl-tn{color:var(--warn)}
-@media (max-width:1000px){ .dl-tab{flex:0 0 auto;padding:0 12px} .dl-tabw{padding:8px 12px} }
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-tab.st-need .dl-tt{color:#f3c37a} }
-:root[data-theme="dark"] .dl-tab.st-need .dl-tt{color:#f3c37a}
+@media (max-width:1000px){ .dl-tab{flex:0 0 auto} }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-tab.st-need .dl-tt{color:var(--warn-ink)} }
+:root[data-theme="dark"] .dl-tab.st-need .dl-tt{color:var(--warn-ink)}
 :root[data-theme="dark"] .dl-tab.on.st-need .dl-tt{color:var(--on-navy)}
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dl-tab.on.st-need .dl-tt{color:var(--on-navy)} }
 /* подсказка у даты договора в шапке */
 .dl-hd .dl-q{font-weight:400}
-.dl-hd>span{display:flex;align-items:center;gap:6px}
-.dl-tab{padding:0 8px;gap:6px;font-size:13px}
-.dl-tn{flex-basis:20px;width:20px;height:20px;font-size:11px}
 /* микро-меню «кал. дн. / раб. дн.» */
 .dealwin .dl-form select.dl-dk{flex:0 0 auto;width:auto;min-width:0;height:30px;min-height:30px;padding:2px 22px 2px 6px;font-size:12px;border-radius:8px;background-position:right 5px center;color:var(--muted)}
 .dl-ddr>.dl-in input{width:56px}
 .dl-trw .dl-troff{flex:0 0 auto}
 .dl-troff input{width:48px}
 /* перестановка этапов: ручка ⠿ и стрелки */
-.dl-tr{grid-template-columns:22px 26px minmax(0,1fr) 200px 140px 34px;grid-template-areas:"mv n nm am r x" "mv n w w r x"}
 .dl-mv{grid-area:mv;display:flex;flex-direction:column;align-items:center;gap:2px;align-self:stretch;justify-content:center}
 .dl-hdl{cursor:grab;color:var(--muted);font-size:16px;line-height:1;padding:4px 2px;border-radius:6px;user-select:none}
 .dl-hdl:hover{background:var(--soft);color:var(--ink)}
@@ -565,10 +521,9 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .mob dialog.dealwin .dl-mini small{font-size:11px;line-height:1.1}
 .mob dialog.dealwin .dl-mini b{font-size:16px}
 .mob dialog.dealwin .dl-mini>span:not(.r){text-align:right;align-items:flex-end;display:flex;flex-direction:column}
-.mob dialog.dealwin .dl-mini .dl-hd{display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin:0;padding:0;border:0;background:none;box-shadow:none}
-.mob dialog.dealwin .dl-mini .dl-hd>span{font-size:11px;color:var(--muted);font-weight:600}
+.mob dialog.dealwin .dl-mini .dl-hd{display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin:0;padding:0;border:0;background:none;box-shadow:none;order:0;grid-column:1}
+.mob dialog.dealwin .dl-mini .dl-hd>span{font-size:11px;color:var(--muted);font-weight:600;white-space:normal;flex-wrap:wrap}
 /* длинная подпись (своя в «Текстах интерфейса») переносится, поле даты — на всю строку над итогами */
-.mob dialog.dealwin .dl-mini .dl-hd>span{white-space:normal;flex-wrap:wrap}
 .mob dialog.dealwin .dl-mini .dl-hdw{white-space:normal}
 .mob dialog.dealwin .dl-mini .dl-hd .dl-q{display:none}
 .mob dialog.dealwin .dl-mini .dl-hd input{min-height:34px;padding:4px 8px;font-size:15px}
@@ -589,7 +544,7 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .mob dialog.dealwin input:not([type=checkbox]):not([type=radio]),.mob dialog.dealwin select{min-height:40px;font-size:16px;padding:6px 10px}
 .mob dialog.dealwin .dl-in i,.mob dialog.dealwin .dl-in em{font-size:13px}
 /* «дни · кал./раб. · дата» — ровная сетка в одну строку */
-.mob dialog.dealwin .dl-ddr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:6px;align-items:center;width:100%}
+.mob dialog.dealwin .dl-ddr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:6px;align-items:center;width:100%;max-width:100%}
 .mob dialog.dealwin .dl-ddr>.dl-in{display:grid;grid-template-columns:64px minmax(0,1fr);gap:6px;min-width:0}
 .mob dialog.dealwin .dl-ddr>.dl-in input{width:100%}
 .mob dialog.dealwin .dl-ddr>.dl-in select{width:100%;min-width:0}
@@ -605,20 +560,17 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .mob dialog.dealwin .dl-tr>.icon{grid-area:x}
 .mob dialog.dealwin .dl-tram,.mob dialog.dealwin .dl-trp{width:100%}
 .mob dialog.dealwin .dl-trp{flex-direction:row;align-items:baseline;gap:8px;padding:0}
-.mob dialog.dealwin .dl-trw{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;align-items:center}
+.mob dialog.dealwin .dl-trw{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:6px;align-items:center}
 .mob dialog.dealwin .dl-trw>em{display:none}
 .mob dialog.dealwin .dl-trw>select{grid-column:1/-1;max-width:none;width:100%}
-.mob dialog.dealwin .dl-trw .dl-troff{display:grid;grid-template-columns:14px 52px minmax(0,1fr);gap:4px;align-items:center;flex:none;min-width:0}
+.mob dialog.dealwin .dl-trw .dl-troff{display:grid;grid-template-columns:12px 46px minmax(0,1fr);gap:4px;align-items:center;flex:none;min-width:0}
 .mob dialog.dealwin .dl-trw .dl-troff input{width:100%}
 .mob dialog.dealwin .dl-trw .dl-troff select{width:100%;min-width:0}
 .mob dialog.dealwin .dl-trw .dl-ddt input[type=date]{max-width:none;width:100%}
 .mob dialog.dealwin .dl-trr{flex-direction:row;justify-content:space-between;align-items:baseline;width:100%}
 /* быстрые варианты — лента в одну строку с прокруткой */
 .mob dialog.dealwin .dl-next{position:sticky;bottom:0;z-index:4;background:var(--paper);padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px));margin-top:8px}
-.mob dialog.dealwin .dl-mini .dl-hd{order:0;grid-column:1}
 .mob dialog.dealwin .dl-mini .dl-hd input{width:152px}
-.mob dialog.dealwin .dl-trw{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
-.mob dialog.dealwin .dl-trw .dl-troff{grid-template-columns:12px 46px minmax(0,1fr)}
 .mob dialog.dealwin .dl-tr>input.tx,.mob dialog.dealwin .dl-tr .dl-trname{width:100%;grid-area:nm}
 .mob dialog.dealwin .dl-sxs{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .mob dialog.dealwin .dl-sx{padding:8px 10px;min-width:0}
@@ -632,7 +584,6 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
   .dl-t.dl-tfix .c-ev{white-space:normal;overflow-wrap:anywhere}
   .dl-t.dl-tfix .c-day small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
-.dl-t th{position:relative}
 .dl-cr{position:absolute;top:0;bottom:0;right:-5px;width:10px;cursor:col-resize;z-index:2;touch-action:none}
 .dl-cr::after{content:'';position:absolute;top:20%;bottom:20%;left:4px;width:2px;border-radius:2px;background:var(--line)}
 .dl-cr:hover::after{background:var(--sky)}
@@ -648,7 +599,6 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dl-cdr .dl-date{flex:1 1 auto;min-width:0;max-width:150px;width:auto;box-sizing:border-box}
 .dl-cdr .dl-day{flex:0 0 auto}
 /* «Цена продажи» — компактно: способ и значение в одну строку, безубыточная цена — одной строкой */
-.dl-price{padding:10px 12px;gap:6px;border-width:1.5px}
 .dl-price h4{margin:0;font-size:14px;display:flex;align-items:center;gap:6px}
 .dl-price .dl-pr,.mob .dl-price .dl-pr{display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:6px;align-items:center}
 .dl-price .dl-pr select,.dl-price .dl-pr input{min-height:36px;padding:5px 9px}
@@ -662,8 +612,8 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .mob dialog.dealwin .dl-price .dl-pr select,.mob dialog.dealwin .dl-price .dl-pr input{min-height:38px}
 
 /* расчёт доставки по России */
-.lg-route{display:grid;gap:10px}
-.lg-where{font-size:13px}
+.lg-route{display:grid;gap:10px;grid-template-columns:1fr 1fr 110px}
+.lg-where{font-size:13px;margin:4px 0 0}
 .lg-tw{overflow-x:auto}
 .lg-t{width:100%;border-collapse:collapse;font-size:13px}
 .lg-t th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:4px 6px;border-bottom:1px solid var(--line)}
@@ -674,7 +624,7 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .lg-nm b{display:block;font-weight:600}
 .lg-nm small{display:block;color:var(--muted);font-size:11.5px;max-width:420px}
 .lg-un{max-width:420px;margin-top:10px}
-.lg-veh{border:1px solid var(--line);border-radius:10px}
+.lg-veh{border:1px solid var(--line);border-radius:10px;padding:6px 10px}
 .lg-vh{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-bottom:4px;font-size:13.5px}
 .lg-vh .muted{font-size:12.5px}
 .lg-tag{font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--warn-bg);color:var(--warn-ink)}
@@ -682,7 +632,7 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .lg-p{width:100%;border-collapse:collapse;font-size:13px}
 .lg-p td{padding:3px 0}
 .lg-p td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;padding-left:12px}
-.lg-tot{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;border-radius:12px;background:var(--soft)}
+.lg-tot{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;border-radius:12px;background:var(--soft);padding:8px 12px}
 .lg-tot small{display:block;color:var(--muted);font-size:12px}
 .lg-tot b{display:block}
 .lg-tot .muted{font-size:12.5px}
@@ -720,7 +670,7 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .lg-st td input[readonly]{background:var(--soft);color:var(--muted)}
 
 /* вкладка «Логистика» */
-.lg-card{display:flex;flex-direction:column}
+.lg-card{display:flex;flex-direction:column;gap:10px}
 .lg-ch{display:flex;align-items:baseline;gap:10px;font-size:15px;padding-bottom:6px;border-bottom:1px solid var(--line)}
 .lg-ch .muted{font-size:12.5px}
 .lg-sec h5{display:flex;align-items:center;gap:8px}
@@ -767,7 +717,6 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dl-vatsec h5{margin:0 0 6px;display:flex;align-items:center;gap:6px}
 
 /* обзор «Кратко»: итог, чего не хватает, поставщики и сроки на одной ленте */
-.dlo{display:grid;gap:14px}
 .dlo-v{display:grid;gap:10px;padding:16px 18px;border:1px solid var(--line);border-left:6px solid var(--line);border-radius:14px;background:var(--card)}
 .dlo-v.st-ok{border-left-color:var(--ok)}
 .dlo-v.st-bad{border-left-color:var(--danger)}
@@ -793,19 +742,19 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dlo-th .muted{font-size:12px}
 .dlo-lg{margin-left:auto;display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
 .dlo-lg i{display:inline-block;width:14px;height:8px;border-radius:3px}
-.dlo-r{display:grid;grid-template-columns:minmax(150px,240px) minmax(0,1fr) 28px;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line)}
+.dlo-r{display:grid;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line);grid-template-columns:minmax(140px,210px) minmax(0,1fr) 28px}
 .dlo-r.ax{border-top:0;padding-top:0}
 .dlo-rl{display:grid;gap:1px;min-width:0}
 .dlo-rl b{overflow-wrap:anywhere}
 .dlo-rl small{font-size:12px;overflow-wrap:anywhere}
 .dlo-bar{position:relative;height:26px;border-radius:6px;background:repeating-linear-gradient(90deg,transparent 0 calc(10% - 1px),var(--line) calc(10% - 1px) 10%)}
 .dlo-r.ax .dlo-bar,.dlo-r.cust .dlo-bar{background:none}
-.dlo-bar i{position:absolute}
+.dlo-bar i{position:absolute;top:4px;height:20px;border-radius:5px;overflow:hidden;display:flex;align-items:center;justify-content:center}
 .dlo-bar i.pr,.dlo-lg i.pr{background:var(--sky)}
 .dlo-bar i.tr,.dlo-lg i.tr{background:var(--navy)}
 .dlo-bar i.pnr,.dlo-lg i.pnr{background:var(--ok)}
-.dlo-bar em{position:absolute;font-style:normal;white-space:nowrap}
-.dlo-crit{right:0;bottom:-12px;color:var(--danger);font-size:10px;font-weight:700}
+.dlo-bar em{position:absolute;font-style:normal;white-space:nowrap;top:27px;transform:translateX(-100%);font-size:11.5px;font-weight:600;color:var(--ink);background:var(--paper);padding:0 2px;border-radius:3px}
+.dlo-crit{right:0;bottom:-12px;color:var(--danger);font-size:10px;font-weight:700;position:static}
 .dlo-pay{position:absolute;top:2px;transform:translateX(-50%);padding:2px 6px;border-radius:999px;background:var(--ok);color:var(--on-navy);font-size:11px;font-weight:700;white-space:nowrap}
 .dlo-tk{position:absolute;top:0;transform:translateX(-50%);color:var(--muted);font-size:11px;white-space:nowrap}
 .dlo-tk:first-child{transform:none}
@@ -818,7 +767,6 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dlo-m span{color:var(--muted);font-size:11px}
 @media (max-width:760px){
   .dlo-tiles,.dlo-m{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .dlo-r{grid-template-columns:minmax(0,1fr) 28px}
   .dlo-r .dlo-bar{grid-column:1/-1;grid-row:2}
   .dlo-r.ax{display:none}
 }
@@ -840,39 +788,28 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 /* оплата поставщику: этап — одной строкой (на узком окне — в две) */
 .dl-sph{display:none}
 @media (min-width:1100px){
-  .dl-tr.sp{display:grid;grid-template-columns:22px 24px minmax(120px,1fr) 92px minmax(300px,1.8fr) 128px 30px;grid-template-areas:"mv n nm am w r x";gap:8px;align-items:center}
-  .dl-tr.sp{padding:6px 0}
+  .dl-tr.sp{display:grid;grid-template-columns:22px 24px minmax(120px,1fr) 92px minmax(300px,1.8fr) 128px 30px;grid-template-areas:"mv n nm am w r x";gap:8px;align-items:center;padding:6px 0}
   .dl-tr.sp .dl-trw{flex-wrap:nowrap;gap:6px}
   .dl-tr.sp .dl-trw select{min-width:0;flex:1 1 auto}
   .dl-tr.sp .dl-troff{flex:0 0 150px}
   .dl-tr.sp .dl-ddt{display:none}
-  .dl-tr.sp .dl-trp{white-space:nowrap}
-  .dl-tr.sp .dl-trp{flex-direction:row;align-items:baseline;gap:4px}
+  .dl-tr.sp .dl-trp{white-space:nowrap;flex-direction:row;align-items:baseline;gap:4px}
   .dl-tr.sp .dl-trp b{font-size:14px}
   .dl-tr.sp .dl-trr small{font-size:11.5px}
 }
 .dl-tr.sp .dl-trn{align-self:center;margin-top:0}
 
 /* лента «Поставщики и сроки»: толще, срок внутри отрезка, дата и метка — под лентой, без наложения */
-.dlo-r{grid-template-columns:minmax(140px,210px) minmax(0,1fr) 28px}
 .dlo-r:not(.ax):not(.cust) .dlo-bar{height:46px}
-.dlo-bar i{top:4px;height:20px;border-radius:5px;overflow:hidden;display:flex;align-items:center;justify-content:center}
 .dlo-bar i span{font-size:10.5px;font-weight:700;color:var(--on-navy);white-space:nowrap;overflow:hidden;text-overflow:clip;padding:0 4px;font-style:normal}
 .dlo-bar i.wt span{color:var(--muted)}
 .dlo-bar i.pr span,.dlo-bar i.asm span{color:#0B1A33}     /* голубая и оранжевая полосы светлые в обеих темах — тёмная подпись */
-.dlo-bar em{top:27px;transform:translateX(-100%);font-size:11.5px;font-weight:600;color:var(--ink);background:var(--paper);padding:0 2px;border-radius:3px}
 .dlo-bar em.l{transform:none}
 .dlo-bar em .dlo-crit{position:static;font-size:10.5px;color:var(--danger);font-weight:700;margin-left:4px}
-.dlo-crit{position:static}
 
 /* «Логистика» плотнее: меньше отступов; на широком окне маршрут и транспорт — рядом */
-.lg-card{gap:10px}
 .lg-sec h5{margin:0 0 6px}
-.lg-where{margin:4px 0 0}
-.lg-veh{padding:6px 10px}
-.lg-tot{padding:8px 12px}
 .lg-tot b{font-size:20px}
-.lg-route{grid-template-columns:1fr 1fr 110px}
 .lg-t td{padding:3px 6px}
 @media (min-width:1250px){
   .lg-card{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-auto-flow:row dense;gap:10px 18px;align-items:start}
@@ -882,7 +819,6 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 }
 
 /* «Деньги и налог» — в общем стиле: компактные поля в карточке, НДС — карточкой на всю ширину */
-.dl-money{grid-template-columns:repeat(auto-fill,minmax(230px,320px))}
 .dl-card.dl-vatsec{margin-top:0}
 .dl-card.dl-vatsec .dl-vat.wide{max-width:none}
 
@@ -890,8 +826,8 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dl-asmh h5,.dl-vatsec h5,.dlo-th h5,.dl-mbh h5{font-size:14.5px;font-weight:700;color:var(--ink)}
 .lg-sec h5{font-size:14px}
 
-/* 3.23: этапы оплаты поставщику и заказчику — одинаковые, в одну строку (при ширине блока от 860 px), без обрезанных подписей */
-.dl-pays{display:grid;gap:0;container-type:inline-size}
+/* этапы оплаты поставщику и заказчику — одинаковые, в одну строку (при ширине блока от 860 px), без обрезанных подписей */
+.dl-pays{display:grid;gap:0;container-type:inline-size;min-width:0;max-width:100%}
 .dl-pays>.dl-sph{display:none}
 .dl-tr.pay .dl-trw{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
 .dl-tr.pay .dl-trw>select{flex:1 1 150px;min-width:130px;max-width:220px}
@@ -916,14 +852,12 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
   .dl-tr.pay .dl-trw{flex-wrap:nowrap}
   .dl-tr.pay .dl-trw>select{flex:0 0 178px;min-width:0}
 }
-.dl-trf{gap:10px}
 .dl-pre{display:inline-flex;align-items:center;gap:8px;margin-left:auto;min-width:0;font-size:13px;color:var(--muted)}
 .dealwin .dl-form .dl-pre select{width:300px;min-width:0;max-width:100%;height:36px;min-height:36px;padding:4px 30px 4px 10px;font-size:13.5px;color:var(--navy);font-weight:600;border-color:var(--navy);text-overflow:ellipsis}
 @media (max-width:640px){ .dl-pre{margin-left:0;flex:1 1 100%;width:100%} .dl-pre>span{flex:none} .dealwin .dl-form .dl-pre select{flex:1 1 0;width:0} }
 .mob .dl-pre{margin-left:0;flex:1 1 100%;width:100%}
 .mob .dl-pre>span{flex:none}
 .mob dialog.dealwin .dl-form .dl-pre select{flex:1 1 0;width:0}
-.dl-pays{min-width:0;max-width:100%}
 
 /* низ карточки поставщика: компактнее, без лишних разделителей */
 .dl-sup .dl-sub{padding-top:10px;gap:8px}
@@ -944,26 +878,24 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dl-hdw{font-style:normal;font-size:11.5px;font-weight:700;color:var(--warn-ink,#9a5410);background:var(--card);border:1px solid var(--warn);border-radius:999px;padding:1px 8px;white-space:nowrap}
 
 /* «Деньги и налог»: поля по верху, подсказки не сдвигают поля */
-.dl-money{grid-template-columns:minmax(300px,1.5fr) minmax(170px,1fr) minmax(170px,1fr);align-items:start}
-@media (max-width:900px){ .dl-money{grid-template-columns:1fr} }
+.dl-money{align-items:start;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+
 .dl-big .dl-note{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 8px}
 .dl-big .dl-note b{white-space:nowrap}
 /* телефон: срок «дни + дата» не шире поля */
-.mob dialog.dealwin .dl-ddr{max-width:100%}
 .mob dialog.dealwin .dl-g>.dl-f{min-width:0;max-width:100%}
 .mob dialog.dealwin .dl-ddr>.dl-ddt{display:flex;min-width:0;width:100%}
 .mob dialog.dealwin .dl-form .dl-ddr>.dl-ddt input[type=date]{flex:1 1 auto;width:100%;min-width:0}
-/* 3.24: таблица тарифов в «Настройках» помещается: поля уже, источник ставки — с переносом */
+/* таблица тарифов в «Настройках» помещается: поля уже, источник ставки — с переносом */
 .lg-st td input[type=text]{width:54px}
 .lg-st td.lg-srcc{max-width:150px;white-space:normal;font-size:11.5px;line-height:1.3;overflow-wrap:anywhere}
-/* 3.24: средние экраны (1000–1200 px) — итог справа уже, форме больше места; ничего не уходит за край */
+/* средние экраны (1000–1200 px) — итог справа уже, форме больше места; ничего не уходит за край */
 @media (min-width:1001px) and (max-width:1200px){ .dl-b{grid-template-columns:minmax(0,1fr) 330px} }
 .dl-suph>.dl-where{flex:1 1 250px;min-width:230px}
-.dl-money{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
 .dl-money .dl-f>span:first-child{white-space:normal;min-height:36px;align-items:flex-end}
 .dl-tw.dl-hsw{margin:0 -2px}
 .dl-hs .dl-hspick{max-width:170px}
-/* 3.50: сверка тарифов со счетами перевозчиков (после правил 3.24 для .lg-st — шире поля маршрута и суммы) */
+/* сверка тарифов со счетами перевозчиков (после общих правил .lg-st: шире поля маршрута и суммы) */
 .lg-st.lg-fa td input[data-fa=route]{width:190px}
 .lg-st.lg-fa td input[data-fa=sum]{width:96px}
 .lg-st.lg-fa td input[type=date]{min-height:30px;padding:3px 6px;font-size:13px}
@@ -972,7 +904,12 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .lg-fares{margin-top:8px}
 .lg-fares .lg-p td{vertical-align:top}
 .lg-st tr.lg-upd td{background:var(--ok-bg, rgba(46,125,50,.08))}
-/* 3.50.1: таблица тарифов — суммы из 5–6 знаков и названия машин видны целиком */
+/* таблица тарифов — суммы из 5–6 знаков и названия машин видны целиком */
 #lgCl{min-width:1340px}
 .lg-st td[data-k=base] input,.lg-st td[data-k=min] input{width:74px}
 .lg-st td[data-k=name] input{width:226px}
+.dl-sht{display:flex;align-items:center;gap:6px;min-width:0}
+.dl-f small,.dl-f small.muted{font-size:11.5px;line-height:1.3}
+.dl-qrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0 0;font-size:12.5px;color:var(--muted)}
+.dl-qrow span+span,.dl-qrow .dl-q+span{margin-left:12px}
+.dl-big b{font-size:26px}

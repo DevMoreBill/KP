@@ -1,6 +1,6 @@
 // Черновики КП на сервере и заготовки КП («как в прошлый раз»). Сервер — DraftsController (app/web_api.py), таблица drafts.
 // • Черновик — незаконченное КП или несохранённые правки сохранённого КП; у каждого менеджера свои, видны с любого компьютера.
-//   Автосохранение (функция autosave) раз в минуту и при уходе со страницы записывает изменения в черновик; «Новое КП»
+//   Автосохранение (Drafts.tick) раз в минуту и при уходе со страницы записывает изменения в черновик; «Новое КП»
 //   и открытие другого КП откладывают текущее в черновики. После сохранения КП в журнал его черновик удаляется.
 // • Заготовка — КП без клиента (позиции, условия, цены), общая для всех: новое КП из заготовки за один щелчок.
 'use strict';
@@ -33,7 +33,7 @@ class Drafts {
 
   /** изменения с последнего сохранения: {st, sg} или null */
   static pending(){
-    if (typeof CATED!=='undefined' && CATED) return null;
+    if (CATED) return null;
     const st=this.clean(), sg=this.sig(st), kp=S.kpId||'';
     if (this.kp!==kp){ this.kp=kp; this.base = kp && !S._draft ? sg : null; if (this.base) return null; }   // открыли другое КП — отсчёт с него
     if (sg===this.base || !this.meaningful(st)) return null;
@@ -86,7 +86,7 @@ class Drafts {
     catch(e){ toast('Не удалено: '+(e.message||e)); return false; } }
 
   static rowHtml(r){
-    return `<div class="st-row"><div><b>${esc(r.client||'Клиент не указан')}</b><span class="muted">${esc(this.title(r))} · ${r.positions||0} поз.${r.sum?` · ${money(r.sum)} ${esc(curSh(r.cur||'RUB'))}`:''} · ${esc(jTime(r.updated))}${S._draft===r.id?' · <b>открыт сейчас</b>':''}</span></div>
+    return `<div class="st-row"><div><b>${esc(r.client||'Клиент не указан')}</b><span class="muted">${esc(this.title(r))} · ${r.positions||0} поз.${r.sum?` · ${money(r.sum)} ${esc(curSh(r.cur||'RUB'))}`:''} · ${esc(Fmt.dateTime(r.updated))}${S._draft===r.id?' · <b>открыт сейчас</b>':''}</span></div>
       <div class="acts"><button class="btn" type="button" data-dro="${esc(r.id)}">Продолжить</button><button class="btn ghost" type="button" data-drd="${esc(r.id)}" title="Удалить черновик">Удалить</button></div></div>`;
   }
   /** окно «Черновики» */
@@ -141,7 +141,7 @@ class Presets {
     catch(e){ toast('Не удалено: '+(e.message||e)); return false; } }
   static rowHtml(r){
     const mine=r.owner===this.me || ADMIN.on;
-    return `<div class="st-row"><div><b>${esc(r.title)}</b><span class="muted">${r.positions||0} поз.${r.sum?` · ${money(r.sum)} ${esc(curSh(r.cur||'RUB'))}`:''}${r.owner_name?' · '+esc(jShort(r.owner_name)):''} · ${esc(jTime(r.updated))}</span></div>
+    return `<div class="st-row"><div><b>${esc(r.title)}</b><span class="muted">${r.positions||0} поз.${r.sum?` · ${money(r.sum)} ${esc(curSh(r.cur||'RUB'))}`:''}${r.owner_name?' · '+esc(jShort(r.owner_name)):''} · ${esc(Fmt.dateTime(r.updated))}</span></div>
       <div class="acts"><button class="btn primary" type="button" data-pru="${esc(r.id)}">Создать КП</button>${mine?`<button class="btn ghost" type="button" data-prd="${esc(r.id)}" data-prt="${esc(r.title)}">Удалить</button>`:''}</div></div>`;
   }
 }

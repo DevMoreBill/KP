@@ -123,4 +123,4 @@ new MutationObserver(ms=>{
 }).observe(document.documentElement, {childList:true, subtree:true, characterData:true, attributes:true, attributeFilter:UIT_ATTRS});
 
 // пункт меню «✎ Тексты интерфейса» — только у администратора
-setInterval(()=>{ document.querySelectorAll('[data-a="uitexts"]').forEach(b=>{ b.hidden = !ADMIN.on; }); if (UIT.edit && !ADMIN.on) uitToggle(false); }, 1500);
+document.addEventListener('kp:admin', ()=>{ document.querySelectorAll('[data-a="uitexts"]').forEach(b=>{ b.hidden = !ADMIN.on; }); if (UIT.edit && !ADMIN.on) uitToggle(false); });

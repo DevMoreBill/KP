@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Доставка оборудования из Китая до границы РФ — только для администратора («Настройки → Расчёты и нормы → Доставка
-из Китая»); в «Экономику сделки» не попадает (решение владельца 14.10). Открытого бесплатного API расчёта Китай → РФ
+из Китая»); в «Экономику сделки» не попадает. Открытого бесплатного API расчёта Китай → РФ
 у перевозчиков нет, поэтому два источника:
   1) ATI.SU «Средние ставки» (тот же ключ, что для доставки по России): направления, у которых город отправления
      в справочнике ATI.SU — «…, Китай»; кузов: тент 20 т, контейнеровоз (docker), трал (негабарит);
@@ -72,7 +72,7 @@ class ChinaFreight:
 
     def directions(self):
         """[{from, to, fromId, toId}] — направления «Средних ставок» с отправлением из Китая."""
-        return [d for d in lg.ati_directions(self.store) if self.CN.search(d.get('from') or '')]
+        return [d for d in lg.Ati.directions(self.store) if self.CN.search(d.get('from') or '')]
 
     def status(self):
         out = {'kinds': self.KINDS, 'units': self.UNITS, 'curs': list(self.CURS), 'borders': list(self.BORDERS), 'ati': bool(self.ati_on()),
@@ -81,7 +81,7 @@ class ChinaFreight:
             try:
                 out['directions'] = [{'from': d['from'], 'to': d['to']} for d in self.directions()]
             except Exception as e:
-                out['atiError'] = lg._err(e)
+                out['atiError'] = lg.Http.error(e)
         return out
 
     # ---------- расчёт
@@ -90,7 +90,7 @@ class ChinaFreight:
         frm, to, kind = lg.cnorm(req.get('from')), lg.cnorm(req.get('to')), req.get('kind')
         if not frm or not to or kind not in self.KINDS:
             raise ValueError('Укажите, откуда и куда, и вид перевозки')
-        qty = {'kg': lg._num(req.get('kg')) or 0, 'm3': lg._num(req.get('m3')) or 0}
+        qty = {'kg': lg.number(req.get('kg')) or 0, 'm3': lg.number(req.get('m3')) or 0}
         offers, errors = [], []
         if kind in self.ATI_CAR:
             if not self.ati_on():
@@ -101,12 +101,12 @@ class ChinaFreight:
                     if not ds:
                         raise ValueError('направления %s → %s нет в «Средних ставках» ATI.SU — выберите город из подсказки' % (req.get('from'), req.get('to')))
                     car, ton = self.ATI_CAR[kind]
-                    p = lg.ati_price(self.store, ds[0], car, ton)
+                    p = lg.Ati.price(self.store, ds[0], car, ton)
                     offers.append({'src': 'ATI.SU «Средние ставки»', 'rub': round(p['upperRub'] or 0), 'avgRub': round(p['avgRub'] or 0) if p['avgRub'] else None,
                                    'note': 'верхняя граница средних ставок за %d дн., %s %s т, с НДС%s' % (lg.LtlLimits.ati_days(self.store), self.KINDS[kind].split(' (')[0].lower(), ton,
                                                                                                         ', %s ₽/км' % '{:,.0f}'.format(p['upperKm']).replace(',', ' ') if p['upperKm'] else '')})
                 except Exception as e:
-                    errors.append({'src': 'ATI.SU', 'msg': lg._err(e)})
+                    errors.append({'src': 'ATI.SU', 'msg': lg.Http.error(e)})
         for r in self.rates().get('rows') or []:
             if r.get('kind') != kind or lg.cnorm(r.get('from')) != frm or lg.cnorm(r.get('to')) != to:
                 continue
@@ -114,7 +114,7 @@ class ChinaFreight:
             if not mul:
                 errors.append({'src': r.get('who') or 'Ставка экспедитора', 'msg': 'ставка %s — укажите %s' % (self.UNITS[r['unit']], 'вес, кг' if r['unit'] == 'kg' else 'объём, м³')})
                 continue
-            rate = 1.0 if r['cur'] == 'RUB' else lg._num((fx or {}).get(r['cur']))
+            rate = 1.0 if r['cur'] == 'RUB' else lg.number((fx or {}).get(r['cur']))
             if not rate:
                 errors.append({'src': r.get('who') or 'Ставка экспедитора', 'msg': 'нет курса ЦБ для %s — повторите позже' % r['cur']})
                 continue

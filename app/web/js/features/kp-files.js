@@ -17,7 +17,6 @@ class KpFilesPanel {
   static items(kid){ return (this.data.get(kid)||{}).items||[]; }
   static count(kid){ return this.items(kid).length; }
   static maxMB(kid){ return ((this.data.get(kid)||{}).limits||{}).fileMB || DEFN('kp.fileMB', 25); }
-  static size(b){ b=+b||0; return b<1024*1024 ? Math.max(1, Math.round(b/1024))+' КБ' : (b/1048576).toFixed(b<10*1048576?1:0).replace('.', ',')+' МБ'; }
 
   static async load(kid){
     if (!this.data.get(kid)) this.data.set(kid, null);
@@ -28,7 +27,7 @@ class KpFilesPanel {
 
   /** перерисовать места, где показаны документы этого КП */
   static refresh(kid){
-    if (typeof S!=='undefined' && S.kpId===kid && STEP==='conds') renderForm();
+    if (S.kpId===kid && STEP==='conds') renderForm();
     for (const w of this.wins) if (w.kid===kid) w.draw();
   }
 
@@ -59,7 +58,7 @@ class KpFilesPanel {
     const href=this.url(kid, x.id), ext=String(x.ext||'').replace(/[^a-z]/g, '');
     return `<div class="kf-r" data-id="kf-${esc(String(x.id))}"><span class="kf-ext kf-${ext}" aria-hidden="true">${esc(ext.toUpperCase()||'?')}</span>
       <div class="kf-m"><a class="kf-n" href="${href}" download title="Скачать «${esc(x.name)}»">${esc(x.name)}</a>
-        <span class="muted">${this.size(x.size)} · ${esc(KpDate.ddmm(x.added))}${x.by?' · '+esc(jShort(x.by)):''}</span>
+        <span class="muted">${Fmt.size(x.size)} · ${esc(KpDate.ddmm(x.added))}${x.by?' · '+esc(jShort(x.by)):''}</span>
         <input type="text" class="kf-note" data-kfnote="${esc(String(x.id))}" data-kid="${esc(kid)}" value="${esc(x.note||'')}" maxlength="300" placeholder="Примечание: что это за документ" aria-label="Примечание к файлу ${esc(x.name)}" autocomplete="off"></div>
       <div class="acts"><a class="btn sm kf-dl" href="${href}" download aria-label="Скачать «${esc(x.name)}»"><span aria-hidden="true">⬇</span><span class="kf-dlt"> Скачать</span></a>${o.admin?`<button class="btn sm danger" type="button" data-kfdel="${esc(String(x.id))}" data-kid="${esc(kid)}">Удалить</button>`:''}</div></div>`;
   }
@@ -98,7 +97,7 @@ class KpFilesPanel {
     for (const [i, f] of files.entries()){
       const name=this.nameOf(f), ext=(name.match(/\.([^.]+)$/)||[])[1]?.toLowerCase();
       if (!this.EXTS.includes(ext)){ bad.push(`«${name}» — такой файл не прикрепить (можно PDF, Word, Excel, JPG, PNG, DWG, DXF, ZIP, TXT)`); continue; }
-      if (f.size>max*1048576){ bad.push(`«${name}» — ${this.size(f.size)}, можно до ${max} МБ`); continue; }
+      if (f.size>max*1048576){ bad.push(`«${name}» — ${Fmt.size(f.size)}, можно до ${max} МБ`); continue; }
       if (!f.size){ bad.push(`«${name}» — пустой файл`); continue; }
       toast(files.length>1 ? `Прикрепляю ${i+1} из ${files.length}: ${name}` : `Прикрепляю «${name}»…`);
       try{ await api(this.url(kid)+'?name='+encodeURIComponent(name), {method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:f}); ok++; }

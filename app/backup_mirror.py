@@ -184,32 +184,26 @@ class MirrorBackup:
             raise RuntimeError('копия не прошла проверку: ' + res)
 
     def _images(self, dst_root):
-        """Изображения каталога: только новые и изменённые (по размеру) файлы."""
-        src_root = os.path.join(self.data_dir, 'img')
-        copied = total = 0
-        for dp, dn, fn in os.walk(src_root):
-            if os.path.relpath(dp, src_root).split(os.sep)[0] == 'unused':
-                continue
-            for name in fn:
-                if not name.lower().endswith(maintenance.IMG_EXTS):
-                    continue
-                total += 1
-                s = os.path.join(dp, name)
-                d = os.path.join(dst_root, os.path.relpath(s, src_root))
-                if os.path.isfile(d) and os.path.getsize(d) == os.path.getsize(s):
-                    continue
-                os.makedirs(os.path.dirname(d), exist_ok=True)
-                shutil.copyfile(s, d)
-                copied += 1
-        return {'total': total, 'copied': copied}
+        """Изображения каталога (без папки unused): только новые и изменённые (по размеру) файлы."""
+        return self._sync(os.path.join(self.data_dir, 'img'), dst_root, lambda name: name.lower().endswith(maintenance.IMG_EXTS),
+                          skip_top='unused')
 
     def _kp_files(self, dst_root):
-        """Справочные документы КП (data/kp_files): только новые — имена на диске случайные, файл не меняется."""
-        src_root = os.path.join(self.data_dir, KpFiles.FOLDER)
+        """Справочные документы КП (data/kp_files): имена на диске случайные, файл не меняется — копируются только новые;
+        недописанные .part и посторонние файлы — не копируются."""
+        return self._sync(os.path.join(self.data_dir, KpFiles.FOLDER), dst_root, KpFiles.DISK.match, atomic=True)
+
+    @staticmethod
+    def _sync(src_root, dst_root, accept, skip_top=None, atomic=False):
+        """Досылка файлов папки: копируются нет во второй папке или другого размера. accept(имя) — какие файлы берутся;
+        skip_top — папка верхнего уровня, которая не копируется; atomic — через .part (недописанный файл не останется под
+        своим именем). → {total, copied}."""
         copied = total = 0
-        for dp, dn, fn in os.walk(src_root):
-            for name in fn:
-                if not KpFiles.DISK.match(name):          # недописанные .part и посторонние файлы — не копируются
+        for dp, _, files in os.walk(src_root):
+            if skip_top and os.path.relpath(dp, src_root).split(os.sep)[0] == skip_top:
+                continue
+            for name in files:
+                if not accept(name):
                     continue
                 total += 1
                 s = os.path.join(dp, name)
@@ -217,8 +211,11 @@ class MirrorBackup:
                 if os.path.isfile(d) and os.path.getsize(d) == os.path.getsize(s):
                     continue
                 os.makedirs(os.path.dirname(d), exist_ok=True)
-                shutil.copyfile(s, d + '.part')
-                os.replace(d + '.part', d)
+                if atomic:
+                    shutil.copyfile(s, d + '.part')
+                    os.replace(d + '.part', d)
+                else:
+                    shutil.copyfile(s, d)
                 copied += 1
         return {'total': total, 'copied': copied}
 

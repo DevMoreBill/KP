@@ -69,8 +69,7 @@ function nwUnit(t){
     </div>`;
 }
 
-// станция: «Что нужно заказчику» → «Подобрать станцию» (решение ПНЕВМОТЕХ 13.10: прежний экран — 8 карточек контейнеров и
-// список всего каталога — «избыточен, перегружен, неинформативен»). Главные требования — те же поля, что в «Подборе станции»
+// станция: «Что нужно заказчику» → «Подобрать станцию». Главные требования — те же поля, что в «Подборе станции»
 // (StationQuick.KEYS); контейнер — строкой (блок-контейнер по оборудованию в габарите перевозки, утепление и климат — из
 // «Умолчаний»), другой — по ссылке; подбор — тот же, что у кнопки «Подобрать оборудование» (TzPick); выбрать основное
 // оборудование вручную — окно каталога с фильтрами по требованиям и «★ Рекомендуем» первым (KitNeed.mainPreset)
@@ -110,7 +109,7 @@ class NewStation {
     else if (el.id==='nsIns') S.ins=el.value; else if (el.id==='nsCl') S.climate=el.value;
     nwDraw(); this.later(); }
 
-  // ---- предпросмотр: размер контейнера и 3D-вид сразу, до карточки (решение ПНЕВМОТЕХ 13.10, 3.86) — тот же подбор, что у
+  // ---- предпросмотр: размер контейнера и 3D-вид сразу, до карточки — тот же подбор, что у
   // «Подобрать оборудование», на станции, которая ещё не в КП; «Взять в КП» добавляет её как есть
   static key(){ const S=this.S; return JSON.stringify([NW.cat, S.req, S.ctype, S.ins, S.climate]); }
   static ready(){ return !!(this.pv && this.pv.x && !this.pv.busy && this.pv.key===this.key()); }
@@ -176,7 +175,7 @@ function nwFinish(it, tab, after){
   if (NW.where==='catalog'){
     const src=it._src, props=it._srcProps, url=it._srcUrl, imgs=it._srcImgs;
     const doc=itemToDoc(it, { id:uid()+uid(), prices:[] });
-    openCatEditor(doc, typeof cwAfterSave==='function'?cwAfterSave:null, true);
+    openCatEditor(doc, cwAfterSave, true);
     const x=S.items[0]; Object.assign(x, {_src:src, _srcProps:props, _srcUrl:url, _srcImgs:imgs, _aiStep:it._aiStep, _aiMsg:it._aiMsg});
     EDIT.tab=tab; renderEditor(); if (after) after(0); return;
   }

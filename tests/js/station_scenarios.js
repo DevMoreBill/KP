@@ -61,7 +61,7 @@ class Scenario {
     StationReq.ensureParts(x);
     const note=await TzPick.run(x, { ...q, flow:+this.num(q.flow), pressure:+this.num(q.pressure), q:+this.num(q.q), head:+this.num(q.head), kw:+this.num(q.kw), hours:+this.num(q.hours), pdp:q.pdp, recvVol:+this.num(q.recvVol), work:+q.work||0 });
     if (sc.edit) for (const [k, v] of Object.entries(sc.edit)) r[k]=v;   // правка менеджера после подбора
-    // ТКП (решение ПНЕВМОТЕХ 14.10): расчётная записка в КП — только галочкой менеджера, по умолчанию её нет
+    // ТКП (решение ПНЕВМОТЕХ): расчётная записка в КП — только галочкой менеджера, по умолчанию её нет
     const off=StationCalc.docGroups(x).length; x.stLayout={ ...(x.stLayout||{}), calc:true };
     const R=StationCalc.run(x), G=StationCalc.docGroups(x);
     const steps=R.sections.flatMap(s=>s.steps.map(o=>({ sec:s.id, what:o.what, result:o.result||'', ok:o.ok, margin:o.margin, data:(o.data||[]).map(([k, v])=>k+': '+v) })));

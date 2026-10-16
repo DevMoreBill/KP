@@ -3,15 +3,17 @@
 
 const SRV = { on:false, info:null };
 
-// сессия «Настроек» (администратор): CSRF-токен для изменяющих запросов (cookie сессии ставит сервер)
-const ADMIN = { on:false, csrf:'' };
+// сессия «Настроек» (администратор): CSRF-токен для изменяющих запросов (cookie сессии ставит сервер).
+// Вход и выход — через set: о смене узнают те, кто показывает пункты только администратору (событие kp:admin)
+const ADMIN = { on:false, csrf:'',
+  set(on, csrf){ const was=this.on; this.on=!!on; this.csrf=this.on ? csrf||'' : ''; if (was!==this.on) document.dispatchEvent(new Event('kp:admin')); } };
 
 // каждый запрос подписывается выбранным менеджером — для журнала действий (это не вход по паролю)
 async function api(path, opts={}){
   // подпись запроса — кто работает на этом устройстве (meId), а не менеджер открытого КП
-  const me=typeof meId==='function' ? meId() : '', meNm=me&&typeof meName==='function' ? meName() : '';
-  const headers = { ...(opts.headers||{}), 'X-KP-User-Id': encodeURIComponent(me||(typeof S!=='undefined'&&S.managerId)||''),
-    'X-KP-User': encodeURIComponent(meNm||(typeof S!=='undefined'&&S.manager&&S.manager.name)||'') };
+  const me=meId(), meNm=me ? meName() : '';
+  const headers = { ...(opts.headers||{}), 'X-KP-User-Id': encodeURIComponent(me||S.managerId||''),
+    'X-KP-User': encodeURIComponent(meNm||(S.manager&&S.manager.name)||'') };
   if (ADMIN.csrf) headers['X-CSRF-Token'] = ADMIN.csrf;
   const r = await fetch(path, {...opts, headers});
   if (r.status===409){   // запись успели изменить, пока она была открыта: спросить, перезаписать ли
@@ -20,10 +22,10 @@ async function api(path, opts={}){
       if (!opts.retried && conflictAsk(info, path)) return api(path, {...opts, retried:true, headers:{...(opts.headers||{}), 'X-KP-Rev':String(info.rev)}});
       const err=new Error('не сохранено — запись уже изменил(а) '+(info.by||'другой пользователь')+'. Откройте её заново, чтобы увидеть изменения');
       err.code='conflict'; err.info=info; throw err; } }
-  if (r.status===401 && typeof AUTH!=='undefined' && AUTH.enabled && !/^\/api\/(admin|auth)\//.test(path)) AuthScreen.show('Сессия закончилась — войдите снова.');
+  if (r.status===401 && AUTH.enabled && !/^\/api\/(admin|auth)\//.test(path)) AuthScreen.show('Сессия закончилась — войдите снова.');
   if (!r.ok) throw new Error((await r.text()) || ('HTTP '+r.status));
   // сохранение в «Настройках» прошло — отметка «несохранённые изменения» снимается (проверки и предпросмотр — не сохранение)
-  if ((opts.method||'GET')!=='GET' && typeof StDirty!=='undefined' && !/\/(preview|test|check)\b|\/connections\b/.test(path)) StDirty.saved();
+  if ((opts.method||'GET')!=='GET' && !/\/(preview|test|check)\b|\/connections\b/.test(path)) StDirty.saved();
   const ct = r.headers.get('content-type')||''; return ct.includes('json') ? r.json() : r.text();
 }
 

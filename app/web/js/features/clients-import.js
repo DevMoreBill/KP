@@ -74,7 +74,7 @@ async function ciRun(list){
     if (!CI.stop && list.indexOf(r)<list.length-1) await new Promise(ok=>setTimeout(ok, CI_PAUSE));
   }
   list.forEach(r=>{ if (r.st==='work'||r.st==='wait'){ r.st='err'; r.err='остановлено'; } });
-  CI.run=false; await loadClients(); ciTable(); ciCount(); if (typeof renderForm==='function') renderForm();
+  CI.run=false; await loadClients(); ciTable(); ciCount(); renderForm();
 }
 
 // список для Excel: CSV с разделителем «;» в UTF-8 с BOM — открывается двойным щелчком

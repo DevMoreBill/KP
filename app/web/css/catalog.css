@@ -18,15 +18,13 @@
 .tag.tt{background:var(--soft);color:var(--navy)}
 .tpick{display:flex;flex-wrap:wrap;gap:8px}
 .kw{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.cw-mn .tags{display:flex;gap:4px}
+.cw-mn .tags{display:flex;gap:4px;margin-top:5px;flex-wrap:nowrap;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
 .tag{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--ink)}
 .tag.kwt{background:var(--navy);color:var(--on-navy)}
 @media (max-width:1000px){
-  .attrs{grid-template-columns:1fr 1fr}
-  .opt{grid-template-columns:1fr 64px 1fr 32px}.opt .s{display:none}
-  .wrap{grid-template-columns:minmax(0,1fr);padding:16px}
+  .opt .s{display:none}
+  .wrap{grid-template-columns:1fr;padding:16px}
   aside{position:static}
-  .item-no{display:none}
   .brand small{display:none}
   body{padding-bottom:calc(var(--mbh) + env(safe-area-inset-bottom,0px))}
   .toast{bottom:calc(var(--mbh) + 12px + env(safe-area-inset-bottom,0px))}
@@ -39,7 +37,7 @@ dialog.catwin[open]{display:flex}
 dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;border-radius:0;resize:none;margin:0;inset:0}
 .cw-h{display:flex;align-items:center;gap:8px;padding:12px 14px 12px 18px;border-bottom:1px solid var(--line);flex:0 0 auto}
 .cw-h h3{margin:0 6px 0 0;font-size:18px;white-space:nowrap}
-.cw-q{flex:1 1 300px;min-width:0;margin-right:auto;max-width:620px}
+.cw-q{flex:1 1 300px;min-width:0;margin-right:auto;max-width:620px;position:relative}
 .cw-q input{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 12px 9px 36px;font-size:14.5px;background:var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238893AA' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 4 4'/%3E%3C/svg%3E") no-repeat 12px 50%;outline:none;color:var(--ink)}
 .cw-q input:focus{border-color:var(--sky);box-shadow:0 0 0 3px color-mix(in srgb,var(--sky) 25%,transparent)}
 .cw-h .sp,.cw-f .sp,.cw-tb .sp,.pv-acts .sp{flex:1}
@@ -83,7 +81,7 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .cw-tb{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 14px;border-bottom:1px solid var(--line);flex:0 0 auto}
 .cw-tb select{width:auto;padding:6px 10px;font-size:13.5px}
 .cw-list{flex:1 1 auto;min-height:0;overflow:auto;padding:4px 8px 12px}
-.cw-row{display:grid;grid-template-columns:28px 64px minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:8px 8px 8px 6px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:8px}
+.cw-row{display:grid;grid-template-columns:28px 64px minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:6px 8px 6px 6px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:8px}
 .cw-row:hover{background:color-mix(in srgb,var(--soft) 55%,transparent)}
 .cw-row.sel{background:color-mix(in srgb,var(--sky) 13%,transparent)}
 .cw-row.act{background:var(--soft);box-shadow:inset 3px 0 0 var(--navy)}
@@ -91,15 +89,12 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .cw-row .ph{background:var(--soft)}
 .ck{display:grid;place-items:center;cursor:pointer;width:28px;height:28px;flex:0 0 28px}
 .ck input{width:17px;height:17px;margin:0;cursor:pointer;accent-color:var(--navy)}
-.cw-mn b{display:block;font-weight:600;font-size:14.5px;line-height:1.3}
-.cw-mn .tags{margin-top:5px;flex-wrap:nowrap;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
+.cw-mn b{display:-webkit-box;font-weight:600;font-size:14.5px;line-height:1.3;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .cw-mn .tag{white-space:nowrap;flex:0 0 auto}
-.cw-mn b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .cw-pr{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:14px;white-space:nowrap}
 .cw-pr small{display:block;font-weight:400;color:var(--muted);font-size:12px}
-.btn.sm{padding:6px 12px;font-size:13px;white-space:nowrap}
+.btn.sm{padding:4px 10px;font-size:12.5px;white-space:nowrap}
 .btn.sm.in{background:var(--soft);border-color:var(--soft);color:var(--navy)}
-.btn.danger{color:var(--danger)}
 .cw-more{text-align:center;margin:12px 0}
 .cw-pv{position:static;top:auto;align-self:stretch;border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;background:var(--card)}
 .cw-pv0{padding:26px 22px;color:var(--muted);font-size:13.5px;line-height:1.5}
@@ -108,8 +103,7 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .pv-photo{position:relative;height:230px;border-radius:12px;background:#fff;border:1px solid var(--line);margin-bottom:12px;overflow:hidden;padding:10px}
 /* фото целиком: вписывается в рамку с сохранением пропорций, ничего не обрезается */
 .pv-photo>img:first-child{display:block;width:100%;height:100%;object-fit:contain;cursor:zoom-in}
-.pv-photo span{position:absolute;inset:0;display:grid;place-items:center}
-.pv-photo span{color:#9AA3B5;font-size:13px}
+.pv-photo span{position:absolute;inset:0;display:grid;place-items:center;color:#9AA3B5;font-size:13px}
 .pv-ttl{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
 .pv-logo{flex:0 0 auto;max-height:28px;max-width:96px;object-fit:contain;margin-top:2px}
 .cw-pv h4{margin:0 0 4px;font-size:16px;line-height:1.3}
@@ -236,8 +230,7 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 /* поиск в каталоге: отступ под значок лупы не перебивается общими стилями полей; кнопка сброса — рядом с поиском */
 .cw-q input#cwQ{padding-left:38px;background-position:13px 50%}
 
-/* 3.35: панель отбора над списком — категория, производитель, поставщик, «С ценой», «В наличии» видны всегда */
-.cw-q{position:relative}
+/* панель отбора над списком — категория, производитель, поставщик, «С ценой», «В наличии» видны всегда */
 .cw-q kbd{position:absolute;right:10px;top:50%;transform:translateY(-50%);font:600 11px/1 inherit;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:3px 6px;background:var(--card);pointer-events:none}
 .cw-q input:focus+kbd,.cw-q input:not(:placeholder-shown)+kbd{display:none}
 .cw-fb{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 10px;padding:8px 14px 10px 18px;border-bottom:1px solid var(--line);background:var(--paper);flex:0 0 auto}
@@ -277,7 +270,7 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .catwin.tiny .cw-sel.cw-selcat{flex-basis:100%}
 .catwin.tiny .cw-q kbd{display:none}
 
-/* 3.35.1: сортировка — поле и направление */
+/* сортировка — поле и направление */
 .cw-sortl{font-size:12.5px;color:var(--muted);white-space:nowrap}
 .cw-dir{white-space:nowrap;min-width:0}
 .cw-dir[hidden]{display:none}
@@ -311,8 +304,7 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .ns-pv{margin-top:12px}
 .ns-pv-b{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px;align-items:start;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;background:var(--soft)}
 .ns-pv-t{display:grid;gap:3px;font-size:13.5px;min-width:0}
-.ns-pv-t .msg{margin:4px 0 0}
+.ns-pv-t .msg{margin:4px 0 0;text-align:left}
 .ns-pv-b img{width:100%;height:auto;border-radius:8px;background:var(--card)}
 .ns-pv-w{margin:8px 0 0}
 @media (max-width:700px){ .ns-pv-b{grid-template-columns:1fr} }
-.ns-pv-t .msg{text-align:left}

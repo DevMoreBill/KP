@@ -15,7 +15,7 @@ class MyDay {
   static atStart(){ try{ return localStorage.getItem(this.KEY)!=='1'; }catch(e){ return true; } }
   static setAtStart(v){ try{ v ? localStorage.removeItem(this.KEY) : localStorage.setItem(this.KEY, '1'); }catch(e){} }
   static badge(){ document.querySelectorAll('[data-a=myDay]').forEach(b=>{ b.hidden=!this.on(); }); }
-  static myName(){ return (typeof AUTH!=='undefined'&&AUTH.user&&AUTH.user.name)||meName()||''; }
+  static myName(){ return (AUTH.user&&AUTH.user.name)||meName()||''; }
   static hello(){ const h=new Date().getHours(); return h<5?'Доброй ночи':h<12?'Доброе утро':h<18?'Добрый день':'Добрый вечер'; }
 
   /** мои КП: незакрытые (если ведётся ход сделки) или последние */
@@ -42,7 +42,7 @@ class MyDay {
         <button class="btn" type="button" data-mdq="journal">Журнал КП</button><button class="btn" type="button" data-mdq="catalog">Каталог</button>${Drafts.meaningful(S)?`<button class="btn ghost" type="button" data-x title="Вернуться к открытому КП">Продолжить ${S.kpId?'КП № '+esc(S.number):'текущее КП'}</button>`:''}</div>
       <div class="md-g"><div class="md-col">
         ${FEAT.on('reminders')?this.section(`Напоминания${R.length?` <b class="md-c">${R.length}</b>`:''}`, rem, R.length>nR?'<button class="lnk" type="button" data-mdall>Все</button>':''):''}
-        ${Drafts.on()?this.section(`Черновики${D.length?` <b class="md-c">${D.length}</b>`:''}`, D.length?D.slice(0, nD).map(r=>`<div class="md-r"><div><b>${esc(r.client||'Клиент не указан')}</b><span class="muted">${esc(Drafts.title(r))} · ${r.positions||0} поз. · ${esc(jTime(r.updated))}</span></div><button class="btn sm" type="button" data-dro="${esc(r.id)}">Продолжить</button></div>`).join(''):'<p class="empty">Незаконченных КП нет.</p>', D.length>nD?'<button class="lnk" type="button" data-mddr>Все</button>':''):''}</div>
+        ${Drafts.on()?this.section(`Черновики${D.length?` <b class="md-c">${D.length}</b>`:''}`, D.length?D.slice(0, nD).map(r=>`<div class="md-r"><div><b>${esc(r.client||'Клиент не указан')}</b><span class="muted">${esc(Drafts.title(r))} · ${r.positions||0} поз. · ${esc(Fmt.dateTime(r.updated))}</span></div><button class="btn sm" type="button" data-dro="${esc(r.id)}">Продолжить</button></div>`).join(''):'<p class="empty">Незаконченных КП нет.</p>', D.length>nD?'<button class="lnk" type="button" data-mddr>Все</button>':''):''}</div>
         ${this.section(FEAT.on('track')?'Мои КП в работе':'Мои последние КП', kp, '<button class="lnk" type="button" data-mdq="journal">Журнал</button>')}
       </div>
       <label class="md-start"><input type="checkbox" id="mdStart"${this.atStart()?' checked':''}> Показывать при запуске программы</label>`, 'myday-dlg');

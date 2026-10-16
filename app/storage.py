@@ -10,8 +10,7 @@
   counters — счётчики номеров КП по годам;
   clients  — контрагенты; checks — проверки Checko (кэш);
   kv       — прочие настройки (ключи API, свои типы оборудования);
-  managers — менеджеры: контакты для КП (добавлена 01.10.2026; в прежних базах создаётся при запуске,
-             остальные таблицы и данные не меняются);
+  managers — менеджеры: контакты для КП;
   audit, trash, pending_edits — журнал действий, корзина удалённого, правки на модерации
              (миграция «2026-10-admin», обратимая: Store.migration_down);
   kp_files — справочные документы к КП (описания; сами файлы — в data/kp_files, app/kp_files.py).
@@ -81,7 +80,7 @@ MIGRATIONS = [
      INSERT INTO customs_prev SELECT key, code, duty, note, updated, updated_by FROM customs;
      DROP TABLE customs; ALTER TABLE customs_prev RENAME TO customs;
      """),
-    # история версий КП: прежнее состояние сохраняется при каждом пересохранении КП (последние KP_VERSIONS)
+    # история версий КП: прежнее состояние сохраняется при каждом пересохранении КП (последние srv.kpVersions)
     ('2026-12-kp-versions',
      """
      CREATE TABLE IF NOT EXISTS kp_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, kp_id TEXT NOT NULL, created TEXT NOT NULL,
@@ -91,7 +90,7 @@ MIGRATIONS = [
      """
      DROP TABLE IF EXISTS kp_versions;
      """),
-    # 3.9.0: номер правки (rev) и кто правил — защита от затирания при совместной работе;
+    # номер правки (rev) и кто правил — защита от затирания при совместной работе;
     # поля для поиска и сортировки на сервере (контрагенты и журнал КП не грузятся целиком).
     # Новые столбцы заполняются из уже сохранённых документов (_fill_columns), данные не меняются.
     ('2027-01-db',
@@ -118,7 +117,7 @@ MIGRATIONS = [
      ALTER TABLE managers DROP COLUMN rev; ALTER TABLE managers DROP COLUMN updated_by;
      ALTER TABLE suppliers DROP COLUMN rev; ALTER TABLE suppliers DROP COLUMN updated_by;
      """),
-    # 3.35.0: в облегчённой карточке каталога — фид-источник и артикул (фильтр «Поставщик», поиск по артикулу)
+    # в облегчённой карточке каталога — фид-источник и артикул (фильтр «Поставщик», поиск по артикулу)
     ('2027-02-light',
      """
      CREATE INDEX IF NOT EXISTS catalog_maker ON catalog(maker);
@@ -126,7 +125,7 @@ MIGRATIONS = [
      """
      DROP INDEX IF EXISTS catalog_maker;
      """),
-    # 3.40.0: ход сделки по КП — статус (отправлено, в работе, выиграно, проиграно), напоминание, отправки по почте.
+    # ход сделки по КП — статус (отправлено, в работе, выиграно, проиграно), напоминание, отправки по почте.
     # Отдельно от описания КП (meta): пересохранение КП их не затирает. status и follow — для фильтров и напоминаний.
     ('2027-03-track',
      """
@@ -137,7 +136,7 @@ MIGRATIONS = [
      DROP INDEX IF EXISTS kp_status; DROP INDEX IF EXISTS kp_follow;
      ALTER TABLE kp DROP COLUMN track; ALTER TABLE kp DROP COLUMN status; ALTER TABLE kp DROP COLUMN follow;
      """),
-    # 3.42.0: черновики КП на сервере (свои у каждого менеджера, автосохранение) и заготовки КП («как в прошлый раз»).
+    # черновики КП на сервере (свои у каждого менеджера, автосохранение) и заготовки КП («как в прошлый раз»).
     # kind: draft | preset; owner — id менеджера (или «admin:логин»); kp — номер КП, если это несохранённые правки КП.
     ('2027-04-drafts',
      """
@@ -148,7 +147,7 @@ MIGRATIONS = [
      """
      DROP TABLE IF EXISTS drafts;
      """),
-    # 3.47.0: история изменений настроек с откатом (app/settings_history.py): снимок «было — стало» без секретов.
+    # история изменений настроек с откатом (app/settings_history.py): снимок «было — стало» без секретов.
     ('2027-05-settings-history',
      """
      CREATE TABLE IF NOT EXISTS settings_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, key TEXT NOT NULL,
@@ -158,7 +157,7 @@ MIGRATIONS = [
      """
      DROP TABLE IF EXISTS settings_history;
      """),
-    # 3.47.0: облегчённые карточки каталога легче вдвое (каталог 6–10 тыс. позиций грузится в браузер быстрее и занимает меньше
+    # облегчённые карточки каталога легче вдвое (каталог 6–10 тыс. позиций грузится в браузер быстрее и занимает меньше
     # памяти): без подсказки титула (hint — нужна только в КП, а туда позиция берётся целиком) и строка поиска без повторов слов.
     ('2027-06-light-slim',
      """
@@ -167,7 +166,7 @@ MIGRATIONS = [
      """
      SELECT 1;
      """),
-    # 3.48.0: каталог 20 000+ позиций. seq — номер изменения позиции (браузер хранит каталог у себя и докачивает только
+    # каталог 20 000+ позиций. seq — номер изменения позиции (браузер хранит каталог у себя и докачивает только
     # изменённое: /api/catalog/sync), catalog_gone — удалённые позиции; search — строка поиска по характеристикам на сервере
     # (/api/catalog/search) вместо длинной строки в каждой карточке браузера.
     ('2027-07-catalog-sync',
@@ -194,7 +193,6 @@ MIGRATIONS = [
      DROP INDEX IF EXISTS kp_files_kp; DROP TABLE IF EXISTS kp_files;
      """),
 ]
-KP_VERSIONS = 30          # встроенное; действует srv.kpVersions из «Значений программы» (defaults.SrvVal)
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
 TRASH_TABLES = {'kp': 'kp', 'catalog': 'catalog', 'manager': 'managers', 'client': 'clients', 'supplier': 'suppliers'}
@@ -240,7 +238,7 @@ def with_rev(text, rev):
 
 class DbZip:
     """Копия базы в архиве ZIP: внутри один файл kp.sqlite3. Описания серий повторяются у тысяч моделей, поэтому база
-    сжимается в 15–20 раз (271 МБ → ~17 МБ за 2–3 с). Восстановить — «Настройки → Копии и обслуживание базы →
+    сжимается в 15–20 раз (271 МБ → ~17 МБ за 2–3 с). Восстановить — «Настройки → Обслуживание → Копии и база →
     Файл базы целиком» (принимает и .zip, и .sqlite3) или распаковать kp.sqlite3 из архива."""
     MEMBER = 'kp.sqlite3'
     LEVEL = 6
@@ -881,7 +879,6 @@ class Store:
         Возвращает номер правки КП."""
         if field not in ('state', 'meta', 'docx'):
             raise ValueError(field)
-        keep = SrvVal.get(self, 'srv.kpVersions') if field == 'state' else KP_VERSIONS
         with self.lock:
             c = self.conn()
             old = c.execute('SELECT state, meta, rev FROM kp WHERE id=?', (kid,)).fetchone()
@@ -901,7 +898,7 @@ class Store:
                     # прежнее состояние — в историю версий (лишнее сверх srv.kpVersions удаляется)
                     c.execute('INSERT INTO kp_versions (kp_id, created, user_name, state, meta) VALUES (?,?,?,?,?)', (kid, _now(), by, old[0], old[1]))
                     c.execute('DELETE FROM kp_versions WHERE kp_id=? AND id NOT IN (SELECT id FROM kp_versions WHERE kp_id=? ORDER BY id DESC LIMIT ?)',
-                              (kid, kid, keep))
+                              (kid, kid, SrvVal.get(self, 'srv.kpVersions')))
                 c.execute('UPDATE kp SET state=?, updated=?, rev=?, updated_by=? WHERE id=?', (value, _now(), rev, str(by or '')[:120], kid))
             elif field == 'meta':
                 try:

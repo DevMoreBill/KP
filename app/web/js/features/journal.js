@@ -9,9 +9,6 @@ DefRegistry.add([['journal', 'Журнал и отчёт по КП', 'ui', 'Сп
     hint:'Сколько программа ждёт после последней нажатой клавиши в строке поиска журнала, прежде чем спросить сервер. 1000 мс = 1 секунда. Меньше — результат быстрее, но больше запросов при наборе; при медленной сети лучше 300–500.'}],
 ]);
 
-const jTime = iso => { if (!iso) return ''; const d=new Date(iso); if (isNaN(d)) return '';
-  return d.toLocaleDateString('ru-RU')+', '+d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}); };
-
 const jShort = n => { const p=String(n||'').trim().split(/\s+/); return p.length>1 ? p[0]+' '+p.slice(1).map(x=>x[0]+'.').join(' ') : (p[0]||''); };
 
 // экономика КП из журнала: сумма в рублях (для итогов), прибыль и маржа — по позициям с закупкой
@@ -40,7 +37,7 @@ class JournalRow {
     return `<span class="jr-t" title="КП для тендера${u?': '+esc(u):''}">Тендер № ${esc(t.number)}${u?` <a href="${esc(u)}" target="_blank" rel="noopener noreferrer" aria-label="Открыть закупку на площадке">↗</a>`:''}</span>`; }
 
   static html(r, e){
-    return `<div class="jr${r.tender&&r.tender.number?' tnd':''}"><div class="jr-n"><span class="n">№ ${esc(r.number)}</span><span class="muted">от ${esc(KPGen.ruDate(r.date))}</span>${this.tender(r)}${r.files&&FEAT.on('kpFiles')?`<button type="button" class="jr-f" data-jkf="${esc(r.id)}" data-jn="${esc(r.number)}" title="Справочные документы: ${esc(String(r.files))}" aria-label="Справочные документы КП № ${esc(r.number)}: ${esc(String(r.files))}">📎 ${esc(String(r.files))}</button>`:''}${r.savedAt?`<span class="muted" title="Последнее сохранение">сохр. ${esc(jTime(r.savedAt))}</span>`:''}</div>
+    return `<div class="jr${r.tender&&r.tender.number?' tnd':''}"><div class="jr-n"><span class="n">№ ${esc(r.number)}</span><span class="muted">от ${esc(KPGen.ruDate(r.date))}</span>${this.tender(r)}${r.files&&FEAT.on('kpFiles')?`<button type="button" class="jr-f" data-jkf="${esc(r.id)}" data-jn="${esc(r.number)}" title="Справочные документы: ${esc(String(r.files))}" aria-label="Справочные документы КП № ${esc(r.number)}: ${esc(String(r.files))}">📎 ${esc(String(r.files))}</button>`:''}${r.savedAt?`<span class="muted" title="Последнее сохранение">сохр. ${esc(Fmt.dateTime(r.savedAt))}</span>`:''}</div>
       <div class="jr-m"><b>${ClientCard.link({inn:String(r.clientInn||'').replace(/\D/g,''), name:r.client}, r.client)}</b><span class="muted">${(r.items&&r.items[0])?esc(r.items[0])+(r.positions>1?` и ещё ${r.positions-1}`:''):''}</span>${r.manager?`<span class="jr-a" title="${esc([r.manager,r.managerPost].filter(Boolean).join(', '))}">Автор: ${esc(jShort(r.manager))}</span>`:''}</div>
       <div class="jr-e"><b>${e.sum}</b><span>${e.line}</span><span class="jr-st">${KpTrack.chip(r)}</span></div>
       <div class="acts"><button class="btn" type="button" data-jo="${esc(r.id)}" title="Открыть КП для просмотра и правки">Открыть</button><button class="btn" type="button" data-jc="${esc(r.id)}" title="Новое КП на основе этого: позиции, цены и условия — те же, получатель — новый">Копия</button>${this.menu(r)}</div></div>`;
@@ -99,7 +96,7 @@ async function openJournal(){
   $('#jFun').onclick=e=>{ const b=e.target.closest('[data-jf]'); if (!b) return; const s=$('#jS'); s.value = s.value===b.dataset.jf ? '' : b.dataset.jf; load(false); };
   $('#jDr').onclick=()=>Drafts.dialog();
   $('#jRep').onclick=()=>KpReport.open({author:$('#jA').value, kind:$('#jK').value});
-  $('#jMe').onclick=()=>{ const me=(typeof AUTH!=='undefined'&&AUTH.user&&AUTH.user.name)||meName(), a=$('#jA');
+  $('#jMe').onclick=()=>{ const me=(AUTH.user&&AUTH.user.name)||meName(), a=$('#jA');
     if (!me) return toast('Выберите себя в разделе «Менеджер» — тогда журнал покажет ваши КП');
     if (![...a.options].some(o=>o.value===me)) return toast('У вас ещё нет сохранённых КП');
     a.value = a.value===me ? '' : me; $('#jMe').classList.toggle('on', a.value===me); load(false); };
@@ -129,16 +126,12 @@ async function openJournal(){
 // история версий КП: при каждом пересохранении прежний вариант остаётся в базе (последние 30)
 async function openKpVersions(id, number, closeJournal){
   let list=[]; try{ list=await api(`/api/kp/${encodeURIComponent(id)}/versions`); }catch(e){ toast('История версий недоступна'); return; }
-  const d=document.createElement('dialog'); d.className='st-confirm kpver';
-  const fmtT=t=>t?new Date(t).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-  d.innerHTML=`<div class="dlg-h"><h3>Версии КП № ${esc(number||id)}</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
+  const m=new Modal(`<div class="dlg-h"><h3>Версии КП № ${esc(number||id)}</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
     <p class="muted">Текущая версия — в журнале. Здесь — прежние варианты: сохраняются автоматически при каждом пересохранении КП (последние 30).</p>
-    <div class="kpver-l">${list.length?list.map((v,k)=>`<div class="st-row"><div><b>Версия ${list.length-k}</b><span class="muted">до сохранения ${esc(fmtT(v.created))}${v.by?' ('+esc(v.by)+')':''}${v.sum!=null?` · ${money(v.sum)} ${esc(curSh(v.cur||'RUB'))}`:''}${v.client?' · '+esc(v.client):''}</span></div>
-      <div class="acts"><button class="btn" type="button" data-vc="${v.id}" title="Что изменилось с тех пор">Сравнить с текущей</button><button class="btn" type="button" data-vo="${v.id}">Открыть</button></div></div>`).join(''):'<p class="empty">Прежних версий нет — КП сохранялось один раз.</p>'}</div>`;
-  document.body.appendChild(d); d.showModal();
-  const done=()=>{ d.close(); d.remove(); };
-  d.addEventListener('cancel', done);
-  d.onclick=async e=>{ if (e.target.closest('[data-x]')) return done();
+    <div class="kpver-l">${list.length?list.map((v,k)=>`<div class="st-row"><div><b>Версия ${list.length-k}</b><span class="muted">до сохранения ${esc(Fmt.dateTime(v.created))}${v.by?' ('+esc(v.by)+')':''}${v.sum!=null?` · ${money(v.sum)} ${esc(curSh(v.cur||'RUB'))}`:''}${v.client?' · '+esc(v.client):''}</span></div>
+      <div class="acts"><button class="btn" type="button" data-vc="${v.id}" title="Что изменилось с тех пор">Сравнить с текущей</button><button class="btn" type="button" data-vo="${v.id}">Открыть</button></div></div>`).join(''):'<p class="empty">Прежних версий нет — КП сохранялось один раз.</p>'}</div>`, 'kpver');
+  const done=()=>m.close();
+  m.d.onclick=async e=>{ if (e.target.closest('[data-x]')) return done();
     const vc=e.target.closest('[data-vc]'); if (vc) return KpDiff.open(id, vc.dataset.vc, number);
     const b=e.target.closest('[data-vo]'); if (!b) return;
     try{ await Drafts.stash(); const st=await api(`/api/kp/${encodeURIComponent(id)}/versions/${b.dataset.vo}`);

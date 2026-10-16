@@ -95,7 +95,7 @@ class StationReq {
   static of(x){ return (x && x.req && typeof x.req==='object') ? x.req : {}; }
   static ensure(x){ if (!x.req || typeof x.req!=='object') x.req={}; return x.req; }
   static num(v){ return ReqNum.num(v); }
-  /** ресиверы: по методике — основной после осушителя, мокрый до него — только при риске проскока влаги (решение 13.10);
+  /** ресиверы: по методике — основной после осушителя, мокрый до него — только при риске проскока влаги;
    *  или основной + мокрый всегда, только после, только до */
   static RECV = [['', 'по методике (мокрый — при пиках)'], ['both', 'основной + мокрый'], ['after', 'только после осушителя'], ['before', 'только до осушителя']];
   static recv(x){ const v=this.of(x).recv; return v==='before' || v==='after' || v==='both' ? v : ''; }
@@ -137,7 +137,7 @@ class StationReq {
     return { kind:this.kind(x), fire:this.fire(x), fireAuto:!this.FIRE.includes(r.fire), noise:this.noise(x), tmin:t(r.tmin), tmax:t(r.tmax), res:Math.max(0, Math.round(this.num(r.reserve)||0)), vent:this.vent(x),
       gate:{ off:ReqNum.check('gateOff', r.gateOff) ? null : t(r.gateOff), why:String(r.gateWhy||'').trim().slice(0, 300) }, recvIn:this.kind(x)==='comp' ? this.recvIn(x) : null };
   }
-  // режим «эксперт» вентиляции (решение 12.10): [ключ требований, ключ расчёта, подпись, подсказка]; пусто — по правилам
+  // режим «эксперт» вентиляции: [ключ требований, ключ расчёта, подпись, подсказка]; пусто — по правилам
   static VENT = [['ventK', 'k', 'k — доля мощности в тепло', '0,9'], ['ventTin', 'tIn', 't_вн летом, °C', '40'], ['ventDt', 'dt', 'Δt помещения летом, °C', 't_вн − t_нар'],
     ['ventDtc', 'dtc', 'Нагрев воздуха в компрессоре, °C', '15'], ['ventVin', 'vIn', 'Скорость притока (по рамке), м/с', '3'], ['ventVout', 'vOut', 'Скорость выброса (по рамке), м/с', '4'], ['ventRes', 'res', 'Запас притока', '1,1'],
     ['ventU', 'U', 'U стенки, Вт/(м²·°C)', 'по утеплителю'], ['ventFan', 'fan', 'Вытяжной вентилятор, м³/ч', 'нет'],
@@ -229,7 +229,7 @@ class StationReq {
     const own=[...(k==='comp' ? ['recv'] : []), 'vent', ...(k==='comp' || k==='pump' ? ['gate'] : [])];
     const head=`${ck.length ? `<div class="kr-ck">${ck.map(c=>`<span class="chip sm ${c.ok ? 'on' : 'warn'}">${c.ok ? '✓' : '⚠'} ${esc(c.text)}</span>`).join('')}</div>` : ''}
       ${r.pick ? `<p class="kr-pick"><span>${esc(r.pick)}</span><button class="icon sm" type="button" data-a="reqPickX" data-i="${i}" title="Скрыть" aria-label="Скрыть итог подбора">✕</button></p>` : ''}`;
-    // режим «эксперт» вентиляции — внутри «Условий для расчёта станции» (решение ПНЕВМОТЕХ 12.10)
+    // режим «эксперт» вентиляции — внутри «Условий для расчёта станции»
     const vx=`<details class="kr-calc"${Spoiler.attr('vent:'+x.id, ExpertFix.has(x, ['vent']))}><summary>Вентиляция и отопление — режим «эксперт»</summary>
         ${ExpertFix.html(x, i, ['vent'], { all:true })}<div class="kr-g">${this.VENT.filter(([rk])=>k==='comp' || !/^vent(K|Dtc)$/.test(rk)).map(([rk, , label, ph])=>fld(rk, label, ph, 'text', ExpertLog.mark(x, i, rk))).join('')}${sel('hrvType', 'Тип рекуператора', this.HRV, r.hrvType||'')}</div>
         ${ExpertLog.foot(x, i, ExpertLog.VENT())}
@@ -273,7 +273,7 @@ class StationReq {
     const fk=k || String(t.dataset.p||'').split('.').pop();
     if (ReceiverSync.KEYS.includes(fk)){ const m=ReceiverSync.apply(x); if (m){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); toast('Ресиверы по расчёту: '+m); } }
     // главное требование (расход, давление; мощность ДГУ; подача и напор насосов) изменилось у подобранной станции —
-    // комплектующие подбираются заново сами, с уведомлением, что заменено (решение ПНЕВМОТЕХ 13.10, 3.86.11)
+    // комплектующие подбираются заново сами, с уведомлением, что заменено
     if (StationQuick.AUTO.includes(fk) && t.dataset.p && kitMainPart(x)){ r[fk]=t.value; persist(); StationQuick.auto(i, fk); return; }
     if ((k==='ats' || k==='scada') && t.checked){ const a=this.ensureParts(x); if (a.length){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); toast('Добавлено в состав: '+a.join(', ')); } }
     persist(); renderForm();
@@ -427,7 +427,7 @@ class KitNeed {
       return old.length ? { ...r, replace:old, swap:true } : r; });
   }
   /** осушитель состава не проходит по высоте или в плане с проходом (габариты известны) — заменить на подходящий: меньший
-   *  или два одинаковых параллельно на ту же производительность (решение ПНЕВМОТЕХ 13.10); подбор — TzPick.dryer */
+   *  или два одинаковых параллельно на ту же производительность (решение ПНЕВМОТЕХ); подбор — TzPick.dryer */
   static dryerFit(x, A){
     const H=TzPick.hmax(x), W=TzPick.wmax(x), out=[], q=A.q||0;
     for (const t of ['ads', 'refrig']){ const cat=t==='ads' ? 'dryer_ads' : 'dryer_refrig';
@@ -569,7 +569,7 @@ class KitNeed {
     if (a==='kitSwap'){ const p=kitParts(x)[+b.dataset.j]; if (p) this.swap(i, p); return 'async'; }
     return false;
   }
-  /** виды, которые можно заменить из каталога прямо из строки состава (решение ПНЕВМОТЕХ 13.10) */
+  /** виды, которые можно заменить из каталога прямо из строки состава */
   static SWAP = /^(compressor|dryer|filter|receiver|dgu|pump|tank)$/;
   static canSwap(p){ return !!(p && (p.role==='main' || this.SWAP.test(StationEquip.kindOf(p)) || (p.attrs && p.attrs.cat))); }
   /** «⇄ Заменить» в строке: окно каталога с фильтрами по требованиям станции (основное — как «Подобрать оборудование»,

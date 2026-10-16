@@ -94,6 +94,22 @@ class DocxSettings {
   }
 }
 
+// типы частей пакета Word ([Content_Types].xml): свои колонтитулы КП и картинки png/jpg
+class DocxTypes {
+  static FILE = '[Content_Types].xml';
+  /** часть word/<name>.xml вида kind ('header' | 'footer') — объявить, если ещё не объявлена */
+  static async part(zip, name, kind){
+    const ct=await zip.file(this.FILE).async('string'); if (ct.includes(`/word/${name}.xml`)) return;
+    zip.file(this.FILE, ct.replace('</Types>', `<Override PartName="/word/${name}.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.${kind}+xml"/></Types>`));
+  }
+  /** картинки png и jpg — объявить по расширению, если их нет */
+  static async images(zip){
+    const ct=await zip.file(this.FILE).async('string'), png=/Extension="png"/i.test(ct), jpg=/Extension="jpg"/i.test(ct); if (png && jpg) return;
+    const head='<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">';
+    zip.file(this.FILE, ct.replace(head, head+(png ? '' : '<Default Extension="png" ContentType="image/png"/>')+(jpg ? '' : '<Default Extension="jpg" ContentType="image/jpeg"/>')));
+  }
+}
+
 // данные КП для документа (без служебных полей и изображений)
 function docState(){
   S.items.forEach(x=>(x.features||[]).forEach(featId));
@@ -120,11 +136,9 @@ async function renderDocx(St, pack, settings){
   const zip = await JSZip.loadAsync(pack.base);
   const img = settings.clientsImage ? await templateImage(pack, settings.clientsImage) : null;
   const clients = img ? {rid:'rIdTplClients', file:'tpl_clients.'+img.ext, w:img.w, h:img.h} : false;
-  { if (clients) zip.file('word/media/'+clients.file, img.buf);
-    if (pack.addFooter){ const ct=await zip.file('[Content_Types].xml').async('string');
-      if (!ct.includes('/word/footer_kp.xml')) zip.file('[Content_Types].xml', ct.replace('</Types>','<Override PartName="/word/footer_kp.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>')); }
-    const ct=await zip.file('[Content_Types].xml').async('string');
-    if (!/Extension="png"/i.test(ct) || !/Extension="jpg"/i.test(ct)) zip.file('[Content_Types].xml', ct.replace('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+(/Extension="png"/i.test(ct)?'':'<Default Extension="png" ContentType="image/png"/>')+(/Extension="jpg"/i.test(ct)?'':'<Default Extension="jpg" ContentType="image/jpeg"/>'))); }
+  if (clients) zip.file('word/media/'+clients.file, img.buf);
+  if (pack.addFooter) await DocxTypes.part(zip, 'footer_kp', 'footer');
+  await DocxTypes.images(zip);
   const Min={cover:null,items:{}};
   const STS=KpModels.list();
   if (STS.length>=2){
@@ -172,8 +186,7 @@ async function renderDocx(St, pack, settings){
     // своя шапка: прежние ссылки на шапки убираются, первая страница — с той же шапкой
     sect=sect.replace(/<w:headerReference[^>]*\/>/g,'').replace(/<w:titlePg\/>/g,'').replace(/(<w:sectPr[^>]*>)/,'$1<w:headerReference w:type="default" r:id="rIdKpHeader"/>');
     rels+='<Relationship Id="rIdKpHeader" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header_kp.xml"/>';
-    const ct=await zip.file('[Content_Types].xml').async('string');
-    if (!ct.includes('/word/header_kp.xml')) zip.file('[Content_Types].xml', ct.replace('</Types>','<Override PartName="/word/header_kp.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>'));
+    await DocxTypes.part(zip, 'header_kp', 'header');
   }
   // скелет, умеющий показывать сборки (feature 'kit'), получает состав как есть: it.kit.parts — таблица состава и карточки элементов;
   // остальным — состав, разложенный в блоки описания и таблицы (kitDocItem)

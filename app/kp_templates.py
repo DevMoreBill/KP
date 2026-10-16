@@ -33,7 +33,6 @@ TPL_FILES = re.compile(r'^(template\.json|base\.docx|skeleton\.js|editor\.json|%
 # файлы, которых может не быть в старых или скопированных вручную шаблонах — берутся из заводского
 SHARED_FILES = ('skeleton.js', 'editor.json')
 HISTORY = '_history'
-HISTORY_KEEP = 40          # прежних версий шаблона: встроенное, действует srv.tplHistory («Значения программы»)
 HIST_RE = re.compile(r'^(template|base|skeleton|editor)-\d{8}-\d{6}(-\d+)?\.(json|docx|js)$')
 
 

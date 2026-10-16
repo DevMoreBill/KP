@@ -165,14 +165,15 @@ class KpFiles:
     # ---------------------------------------------------------------- список и запись
     COLS = ('id', 'name', 'file', 'size', 'mime', 'note', 'added', 'added_by')
 
-    def _row(self, r):
-        d = dict(zip(self.COLS, r))
+    @staticmethod
+    def _row(d):
+        """Описание для ответа из строки таблицы {столбец: значение}."""
         return {'id': d['id'], 'name': d['name'], 'size': d['size'] or 0, 'mime': d['mime'] or '', 'note': d['note'] or '',
                 'added': d['added'] or '', 'by': d['added_by'] or '', 'ext': os.path.splitext(d['name'])[1].lower().lstrip('.')}
 
     def list(self, kid):
         rows = self.store.all('SELECT %s FROM kp_files WHERE kp_id=? ORDER BY id' % ', '.join(self.COLS), (self._kp(kid),))
-        return [self._row(r) for r in rows]
+        return [self._row(dict(zip(self.COLS, r))) for r in rows]
 
     def counts(self, ids):
         """Сколько документов у каждого КП из списка: {номер КП: число} (без документов — нет в ответе)."""
@@ -191,7 +192,7 @@ class KpFiles:
 
     def get(self, kid, fid):
         d = self._get(kid, fid)
-        return self._row(tuple(d[k] for k in self.COLS)) if d else None
+        return self._row(d) if d else None
 
     def read(self, kid, fid):
         """(описание, содержимое) или None — нет такой записи или файл пропал с диска."""
@@ -203,7 +204,7 @@ class KpFiles:
             return None
         with open(f, 'rb') as fh:
             data = fh.read()
-        return self._row(tuple(d[k] for k in self.COLS)), data
+        return self._row(d), data
 
     @classmethod
     def clean_note(cls, note):
@@ -264,7 +265,7 @@ class KpFiles:
             return None
         self.store.write('DELETE FROM kp_files WHERE kp_id=? AND id=?', (self._kp(kid), int(fid)))
         self._remove(kid, d['file'])
-        return self._row(tuple(d[k] for k in self.COLS))
+        return self._row(d)
 
     def _remove(self, kid, disk):
         try:

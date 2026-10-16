@@ -1,5 +1,5 @@
 // Вход менеджеров в конструктор по логину и паролю (включает администратор: «Настройки → Менеджеры и доступ»).
-// Выключен — всё как раньше: менеджер выбирается на устройстве. Включён — без входа программа не открывается,
+// Выключен — менеджер выбирается на устройстве. Включён — без входа программа не открывается,
 // «кто работает» — вошедший менеджер, права (каталог, чужие КП, экономика) проверяет сервер; здесь — только скрываем лишнее.
 'use strict';
 
@@ -10,7 +10,7 @@ async function authLoad(){
 }
 
 // право менеджера: при выключенном входе и у администратора — всё можно
-function can(p){ if (!AUTH.enabled || AUTH.admin || (typeof ADMIN!=='undefined' && ADMIN.on)) return true; return !!(AUTH.user && AUTH.user.perms && AUTH.user.perms[p]); }
+function can(p){ if (!AUTH.enabled || AUTH.admin || ADMIN.on) return true; return !!(AUTH.user && AUTH.user.perms && AUTH.user.perms[p]); }
 const CAN_TXT = { catAdd:'добавлять оборудование', catEdit:'редактировать оборудование', kpOthers:'открывать КП других менеджеров', dealView:'смотреть экономику сделки' };
 function cannot(p){ toast('Нет права '+(CAN_TXT[p]||p)+' — обратитесь к администратору'); }
 
@@ -112,7 +112,7 @@ class AuthScreen {
     f.querySelector('#authLogin').addEventListener('input', ()=>{ $('#authErr').hidden=true; });
     $('#authAdm').onclick=()=>AuthScreen._admin();
     $('#authForgot').onclick=e=>{ const h=$('#authHelp'), open=h.hidden; h.hidden=!open; e.currentTarget.setAttribute('aria-expanded', String(open)); };
-    if (typeof loadAppVersion==='function') loadAppVersion().then(()=>{ const v=$('#authVer'); if (v && typeof APP_VERSION!=='undefined' && APP_VERSION) v.textContent='версия '+APP_VERSION; });
+    loadAppVersion().then(()=>{ const v=$('#authVer'); if (v && APP_VERSION) v.textContent='версия '+APP_VERSION; });
     setTimeout(()=>{ const l=$('#authLogin'); (l && l.value ? $('#authPw') : l)?.focus(); }, 30);
   }
 

@@ -52,7 +52,7 @@ class FuzzTest(unittest.TestCase):
                 '/api/admin/mail/test', '/api/admin/features', '/api/admin/history?limit=%s&offset=%s&key=%s', '/api/admin/history/%s',
                 '/api/admin/history/%s/rollback', '/api/admin/update', '/api/admin/system', '/api/admin/attention', '/api/admin/log',
                 '/api/admin/log/download', '/api/admin/alerts', '/api/admin/alerts/test', '/api/reminders', '/api/report?from=%s&to=%s',
-                '/api/mail/status', '/api/drafts', '/api/drafts/dfz1', '/api/drafts/dfz1/delete', '/api/presets', '/api/presets/pfz1',
+                '/api/drafts', '/api/drafts/dfz1', '/api/drafts/dfz1/delete', '/api/presets', '/api/presets/pfz1',
                 '/api/presets/pfz1/delete', '/api/clientcard', '/api/clientcard?inn=%s', '/api/clientcard?id=%s&name=%s', '/api/clientcard/note',
                 '/api/features', '/api/catalog/sync?since=%s&epoch=%s', '/api/catalog/search?q=%s', '/api/me/prefs',
                 '/api/ai/profile?cat=%s&maker=%s&model=%s']

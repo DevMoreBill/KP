@@ -1,6 +1,6 @@
 // «Настройки» — админ-панель под паролем администратора (сервер: app/admin.py). Разделы и вкладки — AdminNav:
 // обзор, КП и документы, каталог, клиенты и поставщики, расчёты и нормы, вид и возможности, сотрудники и вход,
-// внешние сервисы, обслуживание (3.89: по задачам администратора; первая вкладка — карта «Что где»). Сессия — 15 минут бездействия.
+// внешние сервисы, обслуживание (первая вкладка — карта «Что где»). Сессия — 15 минут бездействия.
 'use strict';
 
 const ST = { tab:'home', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f:{}}, imp:null, chart:'day' };
@@ -86,12 +86,11 @@ const ENT = { supplier:'Поставщик', customs:'ТН ВЭД', product:'Т�
   types:'Категории', admin:'Администратор', db:'База', trash:'Корзина', system:'Программа' };
 const DEL_TYPES = [['kp','КП из журнала'],['catalog','Товары каталога'],['manager','Контакты менеджеров'],['client','Клиенты'],['supplier','Поставщики']];
 
-function setDlg(){ let d=$('#setdlg'); if(!d){ d=document.createElement('dialog'); d.id='setdlg'; d.className='setwin'; d.setAttribute('aria-label','Настройки'); document.body.appendChild(d); stWinSize(d);
-    // размер окна запоминается (тянуть за правый нижний угол); «⤢» — во весь экран
-    d.addEventListener('click', e=>{ if (e.target.closest('[data-st="max"]')){ d.classList.toggle('max'); stWinSize(d, true); } });
-    let t=null; if (window.ResizeObserver) new ResizeObserver(()=>{ if (!d.open || (typeof isMob==='function'&&isMob()) || d.classList.contains('max') || d.classList.contains('login')) return; clearTimeout(t);
-      t=setTimeout(()=>{ const r=d.getBoundingClientRect(); if (r.width>300){ d.style.width=Math.round(r.width)+'px'; d.style.height=Math.round(r.height)+'px'; stWinSize(d, true); } }, 600); }).observe(d); }
-  return d; }
+// размер окна запоминается (тянуть за правый нижний угол); «⤢» — во весь экран
+function setDlg(){ return Modal.host('setdlg', 'setwin', 'Настройки', d=>{ stWinSize(d);
+  d.addEventListener('click', e=>{ if (e.target.closest('[data-st="max"]')){ d.classList.toggle('max'); stWinSize(d, true); } });
+  let t=null; new ResizeObserver(()=>{ if (!d.open || isMob() || d.classList.contains('max') || d.classList.contains('login')) return; clearTimeout(t);
+    t=setTimeout(()=>{ const r=d.getBoundingClientRect(); if (r.width>300){ d.style.width=Math.round(r.width)+'px'; d.style.height=Math.round(r.height)+'px'; stWinSize(d, true); } }, 600); }).observe(d); }); }
 function stWinSize(d, save){ try{
   if (save){ localStorage.setItem('kp.setwin', JSON.stringify({max:d.classList.contains('max'), w:d.style.width||'', h:d.style.height||''})); return; }
   const o=JSON.parse(localStorage.getItem('kp.setwin')||'{}')||{}; d.classList.toggle('max', !!o.max); if (o.w) d.style.width=o.w; if (o.h) d.style.height=o.h; }catch(e){} }
@@ -99,7 +98,7 @@ function stWinSize(d, save){ try{
 // запрос «Настроек»: сессия истекла — снова форма входа
 async function aapi(path, opts){
   try{ return await api('/api/admin/'+path, opts); }
-  catch(e){ if (/сессия|Войдите/.test(e.message)){ ADMIN.on=false; ADMIN.csrf=''; stRender(); } throw e; }
+  catch(e){ if (/сессия|Войдите/.test(e.message)){ ADMIN.set(false); stRender(); } throw e; }
 }
 const ajson = (path, body) => aapi(path, {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:JSON.stringify(body||{})});
 
@@ -107,7 +106,7 @@ async function openSettings(tab){
   if (tab) ST.tab=tab;
   const d=setDlg(); if (!ADMIN.on) d.classList.add('login'); if (!d.open) d.showModal();
   d.innerHTML='<p class="empty">Загружаю…</p>';
-  try{ const s=await api('/api/admin/status'); ADMIN.on=s.admin; ADMIN.csrf=s.csrf||''; ST.status=s; }catch(e){ ST.status={}; }
+  try{ const s=await api('/api/admin/status'); ADMIN.set(s.admin, s.csrf); ST.status=s; }catch(e){ ST.status={}; }
   stRender();
 }
 
@@ -138,7 +137,7 @@ class AdminLogin {
     if (setup && pw!==$('#stPw2').value) throw new Error('Пароли не совпадают');
     const r=await LoginForm.post('/api/admin/'+(setup?'setup':'login'), setup?{login:lg, name:$('#stNm').value.trim(), password:pw}:{login:lg, password:pw});
     try{ localStorage.setItem('kp.adminLogin', lg); }catch(_){}
-    ADMIN.on=true; ADMIN.csrf=r.csrf; const st2=await api('/api/admin/status').catch(()=>({})); ST.status={...s, ...st2, hasPassword:true}; stRender(); FEAT.refresh();
+    ADMIN.set(true, r.csrf); const st2=await api('/api/admin/status').catch(()=>({})); ST.status={...s, ...st2, hasPassword:true}; stRender(); FEAT.refresh();
   }
 }
 
@@ -161,10 +160,6 @@ async function stTab(){
   catch(e){ if (ADMIN.on) m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; }
 }
 
-const stNum = v => Number(v||0).toLocaleString('ru-RU');
-const stSize = b => b>1048576 ? (b/1048576).toFixed(1).replace('.',',')+' МБ' : Math.round(b/1024)+' КБ';
-const stTime = iso => iso ? new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-
 // ---------- статистика
 function stBars(series){ // один ряд — столбцы с подсказкой при наведении/касании; подписи осей приглушённые
   const max=Math.max(1,...series.map(x=>x.count)), W=640, H=180, n=series.length, bw=W/n;
@@ -184,20 +179,20 @@ async function stStats(m){
   const ser=s.series[ST.chart];
   m.innerHTML=`<div id="stAttn"></div>
     <div class="row st-quick"><button class="btn" type="button" data-q="report">Отчёт по КП…</button><button class="btn" type="button" data-q="journal">Журнал КП…</button><button class="btn" type="button" data-sttab="audit">Журнал действий</button><button class="btn" type="button" data-sttab="connections">Проверить подключения</button><button class="btn" type="button" data-sttab="changed">Изменённые настройки</button><button class="btn" type="button" data-sttab="updates">Обновления</button></div>
-    <div class="st-tiles">${tile(stNum(k.total),'КП всего')}${tile(stNum(k.today),'за сегодня')}${tile(stNum(k.week),'за неделю')}${tile(stNum(k.month),'за месяц')}
-      ${tile(stNum(Math.round((k.sumMonth||0)/100)),'сумма КП за месяц, руб.')}${tile(stNum(s.activeUsers),`активных за ${s.activeDays||DEFN('srv.statActiveDays', 30)} дн.`)}
-      ${tile(stNum(mo.pending),'правок на модерации')}${tile(mo.conversion==null?'—':String(mo.conversion).replace('.',',')+' %','правок одобрено')}
-      ${tile(stNum(s.deletions.month),'удалений за месяц')}${tile(stSize(s.db.bytes),'размер базы')}</div>
+    <div class="st-tiles">${tile(Fmt.num(k.total),'КП всего')}${tile(Fmt.num(k.today),'за сегодня')}${tile(Fmt.num(k.week),'за неделю')}${tile(Fmt.num(k.month),'за месяц')}
+      ${tile(Fmt.num(Math.round((k.sumMonth||0)/100)),'сумма КП за месяц, руб.')}${tile(Fmt.num(s.activeUsers),`активных за ${s.activeDays||DEFN('srv.statActiveDays', 30)} дн.`)}
+      ${tile(Fmt.num(mo.pending),'правок на модерации')}${tile(mo.conversion==null?'—':String(mo.conversion).replace('.',',')+' %','правок одобрено')}
+      ${tile(Fmt.num(s.deletions.month),'удалений за месяц')}${tile(Fmt.size(s.db.bytes),'размер базы')}</div>
     <div class="st-card"><div class="row st-ch-h"><p class="sub" style="margin:0">КП по ${ST.chart==='day'?'дням (30 дней)':ST.chart==='week'?'неделям (12 недель)':'месяцам (12 месяцев)'}</p><span class="sp"></span>
       <div class="seg">${[['day','Дни'],['week','Недели'],['month','Месяцы']].map(([v,l])=>`<button type="button" class="${ST.chart===v?'on':''}" data-chart="${v}">${l}</button>`).join('')}</div></div>
       ${stBars(ser)}
       <details><summary class="muted">Таблицей</summary><table class="pv-t">${ser.map(x=>`<tr><td>${esc(x.label)}</td><td>${x.count}</td></tr>`).join('')}</table></details></div>
-    <div class="st-cols"><div class="st-card"><p class="sub">Менеджеры — больше всего КП</p><table class="pv-t">${s.managers.map(x=>`<tr><td>${esc(x.name)}</td><td>${x.count} КП</td><td>${stNum(Math.round(x.sum/100))} руб.</td></tr>`).join('')||'<tr><td>Нет данных</td></tr>'}</table></div>
+    <div class="st-cols"><div class="st-card"><p class="sub">Менеджеры — больше всего КП</p><table class="pv-t">${s.managers.map(x=>`<tr><td>${esc(x.name)}</td><td>${x.count} КП</td><td>${Fmt.num(Math.round(x.sum/100))} руб.</td></tr>`).join('')||'<tr><td>Нет данных</td></tr>'}</table></div>
       <div class="st-card"><p class="sub">Товары — чаще всего в КП</p><table class="pv-t">${s.products.map(x=>`<tr><td>${esc(x.name)}</td><td>${x.count}</td></tr>`).join('')||'<tr><td>Нет данных</td></tr>'}</table></div></div>
     <div class="st-cols"><div class="st-card"><p class="sub">Модерация правок</p><table class="pv-t"><tr><td>Режим</td><td>${mo.enabled?'включена':'выключена'}</td></tr>
       <tr><td>На модерации</td><td>${mo.pending}</td></tr><tr><td>Одобрено / отклонено</td><td>${mo.approved} / ${mo.rejected}</td></tr>
       <tr><td>Конверсия черновик → подтверждено</td><td>${mo.conversion==null?'—':String(mo.conversion).replace('.',',')+' %'}</td></tr></table></div>
-      <div class="st-card"><p class="sub">База данных · ${stSize(s.db.bytes)}</p><table class="pv-t">${Object.entries(s.db.tables).map(([t,n])=>`<tr><td>${esc(t)}</td><td>${stNum(n)}</td></tr>`).join('')}
+      <div class="st-card"><p class="sub">База данных · ${Fmt.size(s.db.bytes)}</p><table class="pv-t">${Object.entries(s.db.tables).map(([t,n])=>`<tr><td>${esc(t)}</td><td>${Fmt.num(n)}</td></tr>`).join('')}
       <tr><td>Удалений всего / в корзине</td><td>${s.deletions.total} / ${s.deletions.trash}</td></tr></table></div></div>`;
   AdminSystem.attention(m.querySelector('#stAttn'));
   m.onclick=e=>{ const c=e.target.closest('[data-chart]'); if (c){ ST.chart=c.dataset.chart; stStats(m); return; }
@@ -209,8 +204,8 @@ class DbMaint {
   // строка о последней копии: время, проверка, размер архива рядом с размером базы
   static last(b){
     if (!b.at) return '<span class="bad-t">копий ещё не было</span>';
-    if (!b.ok) return `<span class="bad-t">${esc(stTime(b.at))} — ошибка: ${esc(b.error||'')}</span>`;
-    return `<span class="ok-t">${esc(stTime(b.at))} — исправна</span>${b.bytes?` · ${b.zip?'архив ZIP ':''}${stSize(b.bytes)}${b.zip&&b.db?` (база ${stSize(b.db)})`:''}`:''}`;
+    if (!b.ok) return `<span class="bad-t">${esc(Fmt.dateTime(b.at))} — ошибка: ${esc(b.error||'')}</span>`;
+    return `<span class="ok-t">${esc(Fmt.dateTime(b.at))} — исправна</span>${b.bytes?` · ${b.zip?'архив ZIP ':''}${Fmt.size(b.bytes)}${b.zip&&b.db?` (база ${Fmt.size(b.db)})`:''}`:''}`;
   }
 
   static async render(box, r){
@@ -220,11 +215,11 @@ class DbMaint {
     box.innerHTML=`<div class="sub st-mh">Автоматические копии и обслуживание базы ${tip('<p>Каждый день при первом запуске (и раз в сутки, пока работает сервер отдела) программа делает копию базы, проверяет её встроенной проверкой SQLite и сжимает в архив ZIP (в 15–20 раз меньше файла базы; файл kp.sqlite3 — внутри). Восстановить — «Файл базы целиком» ниже: он принимает и архив. Хранятся копии за 7 последних дней, по одной на 4 последние недели и на 12 последних месяцев.</p><p>Раз в месяц база сжимается и проверяется. Журнал действий старше заданного срока переносится в архив (папка backup/audit-archive рядом с базой).</p>')}</div>
       <table class="pv-t">
         <tr><td>Последняя копия</td><td>${DbMaint.last(r.backup||{})}</td></tr>
-        <tr><td>Копий в папке</td><td>${r.copies}${r.copies?` · ${stSize(r.copiesBytes)} · с ${esc(KPGen.ruDate(r.oldest))}`:''}<br><small class="muted">${esc(r.dir)}</small></td></tr>
-        <tr><td>Копии перед изменениями</td><td>${oth.count?`${oth.count} · ${stSize(oth.bytes)}`:'нет'} <small class="muted">— перед обновлением программы, загрузкой базы, сборкой каталога</small>${cz?`<br><small class="ok-t">прежние копии без сжатия перепакованы в ZIP: ${cz.files} · освобождено ${stSize(cz.saved)}</small>`:''}</td></tr>
-        <tr><td>Сжатие и проверка</td><td>${v?`${esc(stTime(v.at))} · ${stSize(v.before)} → ${stSize(v.after)} · ${v.check==='ok'?'<span class="ok-t">без ошибок</span>':'<span class="bad-t">'+esc(v.check)+'</span>'}`:'ещё не выполнялись'}</td></tr>
-        <tr><td>Журнал действий</td><td>${stNum(r.auditRows)} записей${r.auditOldest?' с '+esc(KPGen.ruDate(r.auditOldest)):''} · хранить <select id="mAudY" class="st-inl" aria-label="Срок хранения журнала">${[1,2,3,5,10].map(y=>`<option value="${y}"${y===r.auditYears?' selected':''}>${y} ${y===1?'год':y<5?'года':'лет'}</option>`).join('')}</select>${au&&au.archived?` · в архиве ${stNum(au.archived)}`:''}</td></tr>
-        <tr><td>Изображения без ссылок</td><td id="mImg">${img?`удалено ${img.deleted} (${stSize(img.bytes)}) — ${esc(stTime(img.at))} · `:''}<button class="btn ghost" type="button" data-mt="imgscan">Найти</button></td></tr>
+        <tr><td>Копий в папке</td><td>${r.copies}${r.copies?` · ${Fmt.size(r.copiesBytes)} · с ${esc(KPGen.ruDate(r.oldest))}`:''}<br><small class="muted">${esc(r.dir)}</small></td></tr>
+        <tr><td>Копии перед изменениями</td><td>${oth.count?`${oth.count} · ${Fmt.size(oth.bytes)}`:'нет'} <small class="muted">— перед обновлением программы, загрузкой базы, сборкой каталога</small>${cz?`<br><small class="ok-t">прежние копии без сжатия перепакованы в ZIP: ${cz.files} · освобождено ${Fmt.size(cz.saved)}</small>`:''}</td></tr>
+        <tr><td>Сжатие и проверка</td><td>${v?`${esc(Fmt.dateTime(v.at))} · ${Fmt.size(v.before)} → ${Fmt.size(v.after)} · ${v.check==='ok'?'<span class="ok-t">без ошибок</span>':'<span class="bad-t">'+esc(v.check)+'</span>'}`:'ещё не выполнялись'}</td></tr>
+        <tr><td>Журнал действий</td><td>${Fmt.num(r.auditRows)} записей${r.auditOldest?' с '+esc(KPGen.ruDate(r.auditOldest)):''} · хранить <select id="mAudY" class="st-inl" aria-label="Срок хранения журнала">${[1,2,3,5,10].map(y=>`<option value="${y}"${y===r.auditYears?' selected':''}>${y} ${y===1?'год':y<5?'года':'лет'}</option>`).join('')}</select>${au&&au.archived?` · в архиве ${Fmt.num(au.archived)}`:''}</td></tr>
+        <tr><td>Изображения без ссылок</td><td id="mImg">${img?`удалено ${img.deleted} (${Fmt.size(img.bytes)}) — ${esc(Fmt.dateTime(img.at))} · `:''}<button class="btn ghost" type="button" data-mt="imgscan">Найти</button></td></tr>
       </table>
       <div class="row" style="margin-top:8px"><button class="btn" type="button" data-mt="backup">Создать копию сейчас</button><button class="btn" type="button" data-mt="run">Сжать и проверить базу</button></div>`;
     const busy=(btn,t)=>{ if (btn){ btn.disabled=true; btn.textContent=t; } };
@@ -233,9 +228,9 @@ class DbMaint {
         if (a==='backup'){ busy(t,'Копирую…'); const x=await ajson('maint/backup'); toast(x.backup&&x.backup.ok?'Копия создана и проверена':'Копия не создана'); return DbMaint.render(box, x); }
         if (a==='run'){ busy(t,'Сжимаю…'); const x=await ajson('maint/run'); toast('База сжата и проверена'); return DbMaint.render(box, x); }
         if (a==='imgscan'){ busy(t,'Ищу…'); const x=await aapi('maint/images');
-          $('#mImg').innerHTML = x.count ? `${x.count} файлов · ${stSize(x.bytes)} <button class="btn ghost" type="button" data-mt="imgdel" data-n="${x.count}">Удалить</button>${tip('<p>Файлы в папке img, на которые нет ссылок ни в каталоге, ни в КП, ни в истории версий и корзине (и которым больше месяца), а также всё из папки img/unused.</p><p>'+x.sample.map(esc).join('<br>')+(x.count>x.sample.length?'<br>…':'')+'</p>')}` : 'лишних нет'; return; }
+          $('#mImg').innerHTML = x.count ? `${x.count} файлов · ${Fmt.size(x.bytes)} <button class="btn ghost" type="button" data-mt="imgdel" data-n="${x.count}">Удалить</button>${tip('<p>Файлы в папке img, на которые нет ссылок ни в каталоге, ни в КП, ни в истории версий и корзине (и которым больше месяца), а также всё из папки img/unused.</p><p>'+x.sample.map(esc).join('<br>')+(x.count>x.sample.length?'<br>…':'')+'</p>')}` : 'лишних нет'; return; }
         if (a==='imgdel'){ if (!confirm(`Удалить ${t.dataset.n} изображений без ссылок? Восстановить их можно только из резервной копии папки img.`)) return; busy(t,'Удаляю…');
-          const x=await ajson('maint/images'); toast(`Удалено: ${x.deleted} (${stSize(x.bytes)})`); return DbMaint.render(box); }
+          const x=await ajson('maint/images'); toast(`Удалено: ${x.deleted} (${Fmt.size(x.bytes)})`); return DbMaint.render(box); }
       }catch(err){ toast('Не выполнено: '+(err.message||err)); DbMaint.render(box); } };
     const sel=$('#mAudY'); if (sel) sel.onchange=async()=>{ const y=+sel.value;
       if (y<r.auditYears && !confirm(`Записи журнала действий старше ${sel.selectedOptions[0].textContent} будут перенесены в архив (папка backup/audit-archive) и пропадут из поиска в «Журнале действий». Продолжить?`)){ sel.value=r.auditYears; return; }
@@ -248,13 +243,13 @@ async function stModeration(m){
   const r=await aapi('moderation'), on=!!r.settings.enabled, P=r.pending;
   m.innerHTML=`<div class="st-card"><div class="row"><button class="sw" type="button" role="switch" aria-checked="${on}" data-mod="toggle"><i></i>Требовать подтверждение правок товаров</button></div>
       <p class="muted" style="margin:8px 0 0">${on?'Включено: правки сотрудников сохраняются черновиком и ждут вашего решения; у товара бейдж «На модерации».':'Выключено: правки сохраняются в каталог сразу и записываются в журнал действий (там же — откат правки).'}
-      ${r.settings.updatedAt?` Изменено: ${esc(stTime(r.settings.updatedAt))}.`:''}</p></div>
+      ${r.settings.updatedAt?` Изменено: ${esc(Fmt.dateTime(r.settings.updatedAt))}.`:''}</p></div>
     <div class="row" style="margin:14px 0 8px"><p class="sub" style="margin:0">На модерации <span class="muted">${P.length}</span></p><span class="sp"></span>${P.length>1?'<button class="btn" type="button" data-mod="all">Одобрить все</button>':''}</div>
-    ${P.length?P.map(p=>`<div class="st-row"><div><b>${esc(p.name)}</b><span class="muted">${p.kind==='create'?'новый товар':'изменено: '+esc(p.fields.join(', ')||'—')} · ${esc(p.userName||'—')} · ${esc(stTime(p.created))}</span>
+    ${P.length?P.map(p=>`<div class="st-row"><div><b>${esc(p.name)}</b><span class="muted">${p.kind==='create'?'новый товар':'изменено: '+esc(p.fields.join(', ')||'—')} · ${esc(p.userName||'—')} · ${esc(Fmt.dateTime(p.created))}</span>
         ${p.stale?'<span class="bad-t" style="font-size:12.5px">Товар изменён после отправки правки — проверьте перед одобрением</span>':''}</div>
         <div class="acts"><button class="btn" type="button" data-pend="${p.id}">Посмотреть</button></div></div>`).join(''):`<p class="muted">${on?'Правок, ожидающих решения, нет.':'Модерация выключена — очередь не пополняется.'}</p>`}
-    ${r.history.length?`<details class="more"><summary>Рассмотренные правки (${r.history.length})</summary>${r.history.sort((a,b)=>b.id-a.id).map(p=>`<div class="st-row"><div><b>${esc(p.name)}</b><span class="muted">${p.status==='approved'?'<span class="ok-t">Одобрено</span>':'<span class="bad-t">Отклонено</span>'+(p.reason?' — '+esc(p.reason):'')} · ${esc(p.userName||'—')} · ${esc(stTime(p.reviewedAt))}</span></div></div>`).join('')}</details>`:''}
-    ${r.archived.length?`<details class="more"><summary>Архив модерации (${r.archived.length})</summary>${r.archived.map(p=>`<div class="st-row"><div><b>${esc(p.name)}</b><span class="muted">${esc(p.userName||'—')} · ${esc(stTime(p.created))}</span></div></div>`).join('')}</details>`:''}`;
+    ${r.history.length?`<details class="more"><summary>Рассмотренные правки (${r.history.length})</summary>${r.history.sort((a,b)=>b.id-a.id).map(p=>`<div class="st-row"><div><b>${esc(p.name)}</b><span class="muted">${p.status==='approved'?'<span class="ok-t">Одобрено</span>':'<span class="bad-t">Отклонено</span>'+(p.reason?' — '+esc(p.reason):'')} · ${esc(p.userName||'—')} · ${esc(Fmt.dateTime(p.reviewedAt))}</span></div></div>`).join('')}</details>`:''}
+    ${r.archived.length?`<details class="more"><summary>Архив модерации (${r.archived.length})</summary>${r.archived.map(p=>`<div class="st-row"><div><b>${esc(p.name)}</b><span class="muted">${esc(p.userName||'—')} · ${esc(Fmt.dateTime(p.created))}</span></div></div>`).join('')}</details>`:''}`;
   m.onclick=async e=>{
     const b=e.target.closest('[data-mod],[data-pend]'); if (!b) return;
     if (b.dataset.pend) return stPendView(+b.dataset.pend);
@@ -275,7 +270,7 @@ const stVal = v => v==='__absent__' ? '<i class="muted">нет</i>' : v&&typeof 
 async function stPendView(id){
   const p=await aapi('pending/'+id), d=$('#dlg'); d.classList.add('wide');
   d.innerHTML=`<div class="dlg-h"><h3>Правка товара: ${esc(p.productId)}</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-   <div class="dlg-b"><p class="muted" style="margin-top:0">${p.kind==='create'?'Новый товар':'Изменение'} · ${esc(p.userName||'—')} · ${esc(stTime(p.created))}${p.current?'':' · товара сейчас нет в каталоге'}</p>
+   <div class="dlg-b"><p class="muted" style="margin-top:0">${p.kind==='create'?'Новый товар':'Изменение'} · ${esc(p.userName||'—')} · ${esc(Fmt.dateTime(p.created))}${p.current?'':' · товара сейчас нет в каталоге'}</p>
    <table class="st-diff"><tr><th>Поле</th><th>Было</th><th>Стало</th></tr>${p.diff.map(x=>`<tr><td>${esc(x.label)}</td><td>${stVal(x.before)}</td><td>${stVal(x.after)}</td></tr>`).join('')||'<tr><td colspan="3">Отличий нет</td></tr>'}</table>
    ${p.status==='pending'?`<label class="f" style="margin-top:12px"><span>Причина отклонения</span><input type="text" id="pReason" placeholder="Например: неверные характеристики"></label>
    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn danger" type="button" data-pa="reject">Отклонить</button><button class="btn primary" type="button" data-pa="approve">Одобрить</button></div>`:''}</div>`;
@@ -336,7 +331,7 @@ async function stEdit(type, id, after){
 async function stTrash(m){
   const r=await aapi('trash');
   m.innerHTML=`<p class="muted" style="margin-top:0">Удалённое хранится ${r.days} дней, затем удаляется окончательно.</p>
-    ${r.items.map(x=>`<div class="st-row"><div><b>${esc(x.title||x.entityId)}</b><span class="muted">${esc(ENT[x.entityType]||x.entityType)} · удалено ${esc(stTime(x.deletedAt))}</span></div>
+    ${r.items.map(x=>`<div class="st-row"><div><b>${esc(x.title||x.entityId)}</b><span class="muted">${esc(ENT[x.entityType]||x.entityType)} · удалено ${esc(Fmt.dateTime(x.deletedAt))}</span></div>
       <div class="acts"><button class="btn" type="button" data-rest="${x.id}">Восстановить</button></div></div>`).join('')||'<p class="muted">Корзина пуста.</p>'}`;
   m.onclick=async e=>{ const b=e.target.closest('[data-rest]'); if(!b) return;
     try{ await ajson(`trash/${b.dataset.rest}/restore`); toast('Восстановлено'); refreshCat(); loadManagers(); }catch(err){ toast(err.message); } stTrash(m); };
@@ -351,8 +346,8 @@ async function stAudit(m){
   m.innerHTML=`<div class="st-filters">${sel('user',fl.users,'Все пользователи')}${sel('action',fl.actions,'Все действия',ACT)}${sel('entity',fl.entities,'Все объекты',ENT)}
       <input type="date" data-af="from" value="${esc(F.from||'')}" aria-label="С даты"><input type="date" data-af="to" value="${esc(F.to||'')}" aria-label="По дату">
       <input type="search" data-af="q" value="${esc(F.q||'')}" placeholder="Поиск: id, имя, значение" autocomplete="off"></div>
-    <p class="muted">Записей: ${stNum(r.total)}</p>
-    <div class="st-list">${r.items.map(x=>`<details class="st-log ${x.result==='failed'?'fail':''}"><summary><span class="t">${esc(stTime(x.timestamp))}</span><b>${esc(ACT[x.action]||x.action)}</b>
+    <p class="muted">Записей: ${Fmt.num(r.total)}</p>
+    <div class="st-list">${r.items.map(x=>`<details class="st-log ${x.result==='failed'?'fail':''}"><summary><span class="t">${esc(Fmt.dateTime(x.timestamp))}</span><b>${esc(ACT[x.action]||x.action)}</b>
         <span class="muted">${esc(ENT[x.entityType]||x.entityType||'')} ${esc(x.entityId||'')}</span><span class="u">${esc(x.userName||'')}${x.userRole==='admin'?' · админ':''}</span>${x.result==='failed'?'<span class="bad-t">отклонено</span>':''}</summary>
         <div class="st-logb">${x.before||x.after?`<table class="st-diff"><tr><th>Поле</th><th>Было</th><th>Стало</th></tr>${[...new Set([...Object.keys(x.before||{}),...Object.keys(x.after||{})])].map(k=>`<tr><td>${esc(k)}</td><td>${x.before&&k in x.before?stVal(x.before[k]):''}</td><td>${x.after&&k in x.after?stVal(x.after[k]):''}</td></tr>`).join('')}</table>`:''}
         <p class="muted">IP ${esc(x.ip||'—')} · ${esc(x.userAgent||'')}</p>
@@ -378,15 +373,14 @@ async function stBackup(m){
       <p class="sub" style="margin-top:14px">Файл базы целиком (.sqlite3 или .zip с ним)${tip('<p>Заменяет всю базу содержимым файла — каталог, КП, клиентов, менеджеров, настройки. Перед заменой программа сохраняет копию текущей базы в data\\backup (архив kp-…-before-restore.zip).</p><p>Так и нужно подменять базу: вручную копировать kp.sqlite3 в папку data нельзя — рядом лежат файлы kp.sqlite3-wal и -shm от прежней базы, и она повредится («database disk image is malformed»).</p>')}</p>
       <input type="file" id="impDb" accept=".sqlite3,.sqlite,.db,.zip" class="sr-file"><label for="impDb" class="btn">Выбрать файл базы…</label><p class="muted" id="impDbSt"></p></div>
     <div class="st-card" id="stMigr"></div>
-    <div class="st-card"><p class="sub">История</p>${ops.map(x=>`<div class="st-row"><div><b>${esc(ACT[x.action])}</b><span class="muted">${esc(stTime(x.timestamp))} · ${esc(x.entityId||'')}${x.after&&x.after.bytes?' · '+stSize(x.after.bytes):''}</span></div></div>`).join('')||'<p class="muted">Операций ещё не было.</p>'}</div>`;
+    <div class="st-card"><p class="sub">История</p>${ops.map(x=>`<div class="st-row"><div><b>${esc(ACT[x.action])}</b><span class="muted">${esc(Fmt.dateTime(x.timestamp))} · ${esc(x.entityId||'')}${x.after&&x.after.bytes?' · '+Fmt.size(x.after.bytes):''}</span></div></div>`).join('')||'<p class="muted">Операций ещё не было.</p>'}</div>`;
   DbMaint.render($('#stMaint')); stMigr($('#stMigr')); new MirrorCard($('#stMirror')).open();
   m.onclick=null; DataTransfer.mount(m, ()=>stBackup(m)); DataTransfer.bindImport(m, ()=>stBackup(m));
   $('#impDb').onchange=async e=>{ const f=e.target.files[0]; if (!f) return; e.target.value='';
     if (!await stConfirm('Заменить всю базу файлом «'+f.name+'»?','Текущие данные будут заменены содержимым файла. Перед этим программа сохранит копию текущей базы в data\\backup.','Заменить базу')) return;
-    const st=$('#impDbSt'); st.textContent=`Загружаю «${f.name}» (${stSize(f.size)})…`;
-    try{ const r=await fetch('/api/admin/import/sqlite?name='+encodeURIComponent(f.name),{method:'POST',headers:{'X-CSRF-Token':ADMIN.csrf,'Content-Type':'application/octet-stream'},body:f});
-      if (!r.ok) throw new Error(await r.text()); const j=await r.json();
-      st.textContent=''; toast(`База заменена: позиций ${stNum(j.catalog)}, КП ${stNum(j.kp)}. Прежняя сохранена: ${j.backup.split(/[\\/]/).pop()}`);
+    const st=$('#impDbSt'); st.textContent=`Загружаю «${f.name}» (${Fmt.size(f.size)})…`;
+    try{ const j=await aapi('import/sqlite?name='+encodeURIComponent(f.name), {method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:f});
+      st.textContent=''; toast(`База заменена: позиций ${Fmt.num(j.catalog)}, КП ${Fmt.num(j.kp)}. Прежняя сохранена: ${j.backup.split(/[\\/]/).pop()}`);
       setTimeout(()=>location.reload(), 1500); }
     catch(err){ st.textContent=''; toast('Не загружено: '+(err.message||err)); } };
 }
@@ -404,9 +398,9 @@ async function stTemplates(m){
 
 // ---------- категории оборудования (редактор — types-editor.js): сколько товаров в каждой, открыть редактор
 async function stTypes(m){
-  const n={}; for (const x of (typeof catCache!=='undefined'?catCache:[])){ const c=attrsOf(x).cat||''; n[c]=(n[c]||0)+1; }
+  const n={}; for (const x of catCache){ const c=attrsOf(x).cat||''; n[c]=(n[c]||0)+1; }
   const L=TYPES.filter(t=>!t.station), S2=TYPES.filter(t=>t.station);
-  const row=t=>`<tr><td>${esc(t.name)}</td><td class="muted">${t.fields.length} ${plural(t.fields.length,'параметр','параметра','параметров')}</td><td>${stNum(n[t.id]||0)}</td></tr>`;
+  const row=t=>`<tr><td>${esc(t.name)}</td><td class="muted">${t.fields.length} ${plural(t.fields.length,'параметр','параметра','параметров')}</td><td>${Fmt.num(n[t.id]||0)}</td></tr>`;
   m.innerHTML=`<div class="st-card"><div class="row"><p class="sub" style="margin:0">Категории · ${L.length}${S2.length?` и станций · ${S2.length}`:''}</p><span class="sp"></span><button class="btn primary" type="button" data-types>Открыть редактор категорий</button></div>
       <p class="muted">Параметры, фильтры, группы характеристик и шаблон таблицы. Удалить свою категорию или вернуть стандартные можно только отсюда (при входе в «Настройки»).</p>
       <table class="pv-t st-tt"><tr><th>Категория</th><th>Параметры</th><th>Товаров</th></tr>${[...L, ...S2].map(row).join('')}</table></div>`;
@@ -473,7 +467,7 @@ async function stAi(m, note){
     <p>За ${esc(r.usageMonth)}: запросов <b>${tok(u.requests)}</b>, токенов в запросах <b>${tok(u.tokensIn)}</b>, в ответах <b>${tok(u.tokensOut)}</b>.</p>
     ${(r.usageAll||[]).length>1?`<p class="muted">${r.usageAll.slice(1).map(x=>`${esc(x.month)}: ${tok(x.requests)} запр., ${tok((x.tokensIn||0)+(x.tokensOut||0))} ток.`).join(' · ')}</p>`:''}
     <p class="muted">Одна карточка — обычно 3–15 тыс. токенов (больше, если вставлен длинный паспорт или ТЗ).</p></div>`;
-  const save=async(body, msg)=>{ try{ await ajson('ai', body); if (typeof aiStatusLoad==='function') await aiStatusLoad(); stAi(m, {t:msg}); }catch(e){ stAi(m, {t:String(e.message||e), err:true}); } };
+  const save=async(body, msg)=>{ try{ await ajson('ai', body); await aiStatusLoad(); stAi(m, {t:msg}); }catch(e){ stAi(m, {t:String(e.message||e), err:true}); } };
   $('#aiOn').onchange=e=>save({enabled:e.target.checked}, e.target.checked?'Нейросеть включена — у менеджеров появилась кнопка «✨ Заполнить автоматически»':'Нейросеть выключена — менеджеры заполняют через ИИ-чат');
   $('#aiSave').onclick=()=>{ const b={model:$('#aiModel').value, base:$('#aiBase').value}; const k=$('#aiKey').value.trim(); if (k) b.key=k; save(b, 'Сохранено'); };
   if ($('#aiDel')) $('#aiDel').onclick=async()=>{ if (!await stConfirm('Удалить ключ DeepSeek?','Нейросеть в программе выключится, менеджеры будут заполнять через ИИ-чат.','Удалить')) return; save({key:''}, 'Ключ удалён, нейросеть выключена'); };
@@ -509,7 +503,7 @@ async function stMigr(box){
 async function stUsers(m){
   const r=await aapi('users');
   m.innerHTML=`<div class="st-card"><p class="sub">Учётные записи · ${r.items.length}</p>
-    ${r.items.map(u=>`<div class="st-row" data-ulogin="${esc(u.login)}"><div><b>${esc(u.name||u.login)}</b><span class="muted">логин <b>${esc(u.login)}</b>${u.login===r.me?' · это вы':''} · создан ${esc(stTime(u.created))}${u.by?' ('+esc(u.by)+')':''}${u.lastLogin?' · последний вход '+esc(stTime(u.lastLogin)):''}</span></div>
+    ${r.items.map(u=>`<div class="st-row" data-ulogin="${esc(u.login)}"><div><b>${esc(u.name||u.login)}</b><span class="muted">логин <b>${esc(u.login)}</b>${u.login===r.me?' · это вы':''} · создан ${esc(Fmt.dateTime(u.created))}${u.by?' ('+esc(u.by)+')':''}${u.lastLogin?' · последний вход '+esc(Fmt.dateTime(u.lastLogin)):''}</span></div>
       <div class="acts"><button class="btn" type="button" data-uact="edit">Изменить</button><button class="btn" type="button" data-uact="password">Пароль</button>${r.items.length>1&&u.login!==r.me?'<button class="btn danger" type="button" data-uact="delete">Удалить</button>':''}</div></div>`).join('')}</div>
     <div class="st-card"><form id="uAdd" autocomplete="off"><p class="sub">Добавить администратора</p>
       <div class="grid g3"><label class="f"><span>Логин</span><input type="text" id="uL" required placeholder="ivanov" autocomplete="off"></label>
@@ -535,7 +529,7 @@ async function stUsers(m){
 // ---------- вход менеджеров в конструктор по паролю и права
 async function stAccess(m){
   const r=await aapi('access'), P=r.perms;
-  const row=x=>`<tr data-mid="${esc(x.id)}"${x.blocked?' class="off"':''}><td><b>${esc(x.name||'Без имени')}</b><small class="muted">${esc(x.position||'')}${x.lastLogin?(x.position?' · ':'')+'вход '+esc(stTime(x.lastLogin)):''}</small></td>
+  const row=x=>`<tr data-mid="${esc(x.id)}"${x.blocked?' class="off"':''}><td><b>${esc(x.name||'Без имени')}</b><small class="muted">${esc(x.position||'')}${x.lastLogin?(x.position?' · ':'')+'вход '+esc(Fmt.dateTime(x.lastLogin)):''}</small></td>
     <td>${x.login?`<b>${esc(x.login)}</b>${x.hasPassword?'':' <small class="bad-t">нет пароля</small>'}${x.blocked?' <small class="bad-t">вход запрещён</small>':''}`:'<span class="muted">не задан</span>'}</td>
     ${P.map(p=>`<td class="c"><input type="checkbox" data-perm="${p.key}"${x.perms[p.key]?' checked':''} aria-label="${esc(p.label)}"></td>`).join('')}
     <td class="acts"><button class="btn" type="button" data-ac="login">${x.login?'Логин и пароль':'Задать вход'}</button>${x.login?`<button class="btn ghost" type="button" data-ac="block">${x.blocked?'Разрешить вход':'Запретить вход'}</button>`:''}</td></tr>`;
@@ -568,24 +562,19 @@ async function stAccess(m){
 
 // форма из нескольких полей поверх «Настроек»: fields [[ключ, подпись, значение, тип]] → {ключ: значение} или null
 function stForm(title, fields){
-  return new Promise(res=>{ const d=document.createElement('dialog'); d.className='st-confirm st-form';
-    d.innerHTML=`<form method="dialog"><h3>${esc(title)}</h3>${fields.map(([k,l,v,t])=>`<label class="f"><span>${esc(l)}</span>${t==='textarea'?`<textarea data-k="${k}" rows="3">${esc(v??'')}</textarea>`:`<input type="${t||'text'}" data-k="${k}" value="${esc(v??'')}" autocomplete="off">`}</label>`).join('')}
-      <div class="row"><button class="btn" type="button" data-v="0">Отмена</button><button class="btn primary" type="submit">Сохранить</button></div></form>`;
-    document.body.appendChild(d); d.showModal(); d.querySelector('[data-k]')?.focus();
-    const done=v=>{ d.close(); d.remove(); res(v); };
-    d.addEventListener('cancel',e=>{ e.preventDefault(); done(null); });
-    d.querySelector('[data-v="0"]').onclick=()=>done(null);
-    d.querySelector('form').onsubmit=e=>{ e.preventDefault(); const o={}; d.querySelectorAll('[data-k]').forEach(i=>{ o[i.dataset.k]=i.value.trim(); }); done(o); }; });
+  return new Promise(res=>{ let v=null;
+    const m=new Modal(`<form method="dialog"><h3>${esc(title)}</h3>${fields.map(([k,l,v,t])=>`<label class="f"><span>${esc(l)}</span>${t==='textarea'?`<textarea data-k="${k}" rows="3">${esc(v??'')}</textarea>`:`<input type="${t||'text'}" data-k="${k}" value="${esc(v??'')}" autocomplete="off">`}</label>`).join('')}
+      <div class="row"><button class="btn" type="button" data-v="0">Отмена</button><button class="btn primary" type="submit">Сохранить</button></div></form>`, 'st-form');
+    m.$('[data-k]')?.focus();
+    m.$('[data-v="0"]').onclick=()=>m.close();
+    m.$('form').onsubmit=e=>{ e.preventDefault(); v={}; m.d.querySelectorAll('[data-k]').forEach(i=>{ v[i.dataset.k]=i.value.trim(); }); m.close(); };
+    m.d.addEventListener('close', ()=>res(v)); });
 }
 
 // ---------- окно подтверждения и выбора (поверх «Настроек»)
-function stModal(html){ return new Promise(res=>{ const d=document.createElement('dialog'); d.className='st-confirm'; d.innerHTML=html; document.body.appendChild(d); d.showModal();
-  const done=v=>{ d.close(); d.remove(); res(v); }; d.addEventListener('cancel',e=>{ e.preventDefault(); done(null); });
-  d.onclick=e=>{ const b=e.target.closest('[data-v]'); if (b) done(b.dataset.v==='0'?null:b.dataset.v); }; }); }
+const stConfirm = (title, text, ok) => Modal.ask(`<h3>${esc(title)}</h3><p>${esc(text)}</p><div class="row"><button class="btn" type="button" data-v="0">Отмена</button><button class="btn primary${/Удал|Откат/.test(ok)?' danger-bg':''}" type="button" data-v="1">${esc(ok)}</button></div>`);
 
-const stConfirm = (title, text, ok) => stModal(`<h3>${esc(title)}</h3><p>${esc(text)}</p><div class="row"><button class="btn" type="button" data-v="0">Отмена</button><button class="btn primary${/Удал|Откат/.test(ok)?' danger-bg':''}" type="button" data-v="1">${esc(ok)}</button></div>`);
-
-const stChoose = (title, opts) => stModal(`<h3>${esc(title)}</h3><div class="st-choose">${opts.map(([v,l])=>`<button class="btn" type="button" data-v="${v}">${esc(l)}</button>`).join('')}<button class="btn ghost" type="button" data-v="0">Отмена</button></div>`);
+const stChoose = (title, opts) => Modal.ask(`<h3>${esc(title)}</h3><div class="st-choose">${opts.map(([v,l])=>`<button class="btn" type="button" data-v="${v}">${esc(l)}</button>`).join('')}<button class="btn ghost" type="button" data-v="0">Отмена</button></div>`);
 
 document.addEventListener('click', async e=>{
   const d=e.target.closest('#setdlg'); if (!d) return;
@@ -593,5 +582,5 @@ document.addEventListener('click', async e=>{
   const t=e.target.closest('[data-sttab]'); if (t){ if (!await StDirty.leave()) return; const f=$('#stFind'); if (f) f.value=''; StNav.select(t.dataset.sttab); return stTab(); }
   const a=e.target.closest('[data-st]'); if (!a) return;
   if (a.dataset.st==='close'){ if (await StDirty.leave()) d.close(); return; }
-  if (a.dataset.st==='logout'){ if (!await StDirty.leave()) return; ajson('logout').catch(()=>{}).then(()=>{ ADMIN.on=false; ADMIN.csrf=''; stRender(); FEAT.refresh(); toast('Вы вышли из «Настроек»'); }); }
+  if (a.dataset.st==='logout'){ if (!await StDirty.leave()) return; ajson('logout').catch(()=>{}).then(()=>{ ADMIN.set(false); stRender(); FEAT.refresh(); toast('Вы вышли из «Настроек»'); }); }
 });

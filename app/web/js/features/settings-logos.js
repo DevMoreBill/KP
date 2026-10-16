@@ -43,13 +43,13 @@ class MakerLogoPanel {
     if (!await stConfirm(`Логотип «${maker}»?`, 'Встанет на всё оборудование этого производителя в каталоге и закрепится за ним: фиды его не поменяют, новые позиции получат его.', 'Поставить')) return;
     try{ const r=await ajson('logos', { maker, image:await this._read(file) });
       toast(`Логотип «${r.maker}» закреплён${r.items ? ` — обновлено ${r.items} ${plural(r.items, 'позиция', 'позиции', 'позиций')}` : ''}`);
-      if (typeof loadLogos==='function') loadLogos(true);
+      loadLogos(true);
       this.items=null; await this.load(m); }
     catch(err){ toast(err.message||String(err)); }
   }
   static async unpin(m, maker){
     if (!await stConfirm(`Открепить логотип «${maker}»?`, 'На оборудовании он останется; фиды снова смогут ставить свой логотип.', 'Открепить')) return;
-    try{ await ajson('logos', { maker, unpin:true }); toast('Логотип откреплён'); if (typeof loadLogos==='function') loadLogos(true); this.items=null; await this.load(m); }
+    try{ await ajson('logos', { maker, unpin:true }); toast('Логотип откреплён'); loadLogos(true); this.items=null; await this.load(m); }
     catch(err){ toast(err.message||String(err)); }
   }
 }

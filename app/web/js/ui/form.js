@@ -5,7 +5,7 @@
 function tip(html){ return `<details class="tip"><summary title="Подсказка" aria-label="Подсказка">?</summary><div class="tip-b">${html}</div></details>`; }
 
 function field(label, path, o={}){
-  const v = getP(path) ?? '';
+  const v = getPath(S, path) ?? '';
   const req = o.req ? ' class="req"' : '';
   const input = o.area ? `<textarea data-p="${path}" rows="${o.rows||3}" placeholder="${esc(o.ph||'')}">${esc(v)}</textarea>`
     : `<input type="${o.type||'text'}" data-p="${path}" value="${esc(v)}" placeholder="${esc(o.ph||'')}" ${o.list?`list="${o.list}"`:''} ${o.cls?`class="${o.cls}"`:''} autocomplete="off">`;

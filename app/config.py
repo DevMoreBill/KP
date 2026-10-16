@@ -11,9 +11,10 @@ import json
 import os
 import re
 import sys
+import time
 
 APP_TITLE = 'Конструктор КП ПНЕВМОТЕХ'
-STARTED = __import__('time').time()        # когда запущена программа («Настройки → Система»)
+STARTED = time.time()        # когда запущена программа («Настройки → Система»)
 BASE_PORT = 17845
 FROZEN = getattr(sys, 'frozen', False)
 
@@ -96,7 +97,8 @@ if SETTINGS.get('port'):
         pass
 # allowedHosts (сервер отдела, необязательно): имена, по которым сотрудники открывают программу, — запросы с другим
 # именем в адресе отклоняются (защита от подмены DNS). Пусто — любое имя. Локальная программа — только localhost.
-ALLOWED_HOSTS = [str(x).strip().lower() for x in (SETTINGS.get('allowedHosts') or []) if str(x).strip()] if isinstance(SETTINGS.get('allowedHosts'), list) else []
+_hosts = SETTINGS.get('allowedHosts')
+ALLOWED_HOSTS = [str(x).strip().lower() for x in _hosts if str(x).strip()] if isinstance(_hosts, list) else []
 DOCS_SHARE = str(SETTINGS.get('docsShare') or '').strip()   # сетевой путь к папке КП для сотрудников, напр. \\\\SERVER\\КП
 STORE = None
 
@@ -107,9 +109,9 @@ def store():
         from storage import Store
         STORE = Store(os.path.join(DATA_DIR, 'kp.sqlite3'))
     return STORE
+
+
 IMG_DIR = os.path.join(DATA_DIR, 'img')
-
-
 
 
 class BadRequest(ValueError):
@@ -134,7 +136,7 @@ def safe_dir(s):
 
 
 def docs_path(rel):
-    """Путь к файлу КП по относительному имени из docx.txt (с подпапкой менеджера или без)."""
+    """Путь к файлу КП по относительному имени, записанному в базе (с подпапкой менеджера или без)."""
     parts = [safe_file(x) for x in re.split(r'[\\/]', rel or '') if x]
     f = os.path.join(DOCS_DIR, *parts) if parts else os.path.join(DOCS_DIR, 'КП.docx')
     root = os.path.normcase(os.path.abspath(DOCS_DIR)) + os.sep

@@ -1,18 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Конструктор КП ПНЕВМОТЕХ — точка входа и HTTP-сервер.
-
-Отдаёт интерфейс (app/web) и API. Модули сервера:
-  config.py          — настройки и пути, база данных (store), общие помощники
-  data_setup.py      — подготовка данных при запуске
-  storage.py         — база SQLite
-  counterparty.py    — контрагенты: ИНН, Checko
-  equipment_types.py — справочник типов оборудования
-  kp_templates.py    — шаблоны КП
-  cbr.py             — курсы ЦБ РФ
-  desktop.py         — открыть файл / папку на этом компьютере
-  web_api.py         — маршруты API: контроллеры разделов и маршрутизатор (Router)
+"""Конструктор КП ПНЕВМОТЕХ — HTTP-сервер: обработчик запросов (ответы, файлы, кэш, защита от чужих сайтов), запуск
+программы и фоновые задачи. Маршруты API — web_api.py, права и «Настройки» — admin.py; EXE запускается через launcher.py.
 Только стандартная библиотека Python; собирается PyInstaller в один EXE.
 """
+import gzip
 import json
 import os
 import re
@@ -41,17 +32,36 @@ from app_update import NightUpdate, StartCheck
 from server_log import ServerLog
 
 PAID_GET = ('/api/geo/', '/api/party', '/api/check', '/api/imgfetch', '/api/cbr')
-GZ_CACHE = {}       # сжатые большие справочники: {ETag: байты gzip} (send_cached)
-GZ_LOCK = threading.Lock()
+
+
+class GzipCache:
+    """Сжатые ответы по метке версии (ETag): сжимается один раз на версию и дальше отдаётся из памяти;
+    сверх max_n — вытесняются самые старые."""
+
+    def __init__(self, max_n, level):
+        self.max_n, self.level = max_n, level
+        self.cache = {}
+        self.lock = threading.Lock()
+
+    def get(self, tag):
+        with self.lock:
+            return self.cache.get(tag)
+
+    def put(self, tag, data):
+        """Сжать data, запомнить под меткой tag и вернуть сжатое."""
+        hit = gzip.compress(data, self.level)
+        with self.lock:
+            self.cache[tag] = hit
+            while len(self.cache) > self.max_n:
+                self.cache.pop(next(iter(self.cache)))
+        return hit
 
 
 class FileGzip:
-    """Сжатые файлы интерфейса: {ETag: байты gzip}. Файл сжимается один раз на версию (а не при каждой загрузке
-    страницы); всего ~1,5 МБ сжатого — держится в памяти, устаревшие версии вытесняются."""
+    """Сжатые файлы интерфейса: всего ~1,5 МБ сжатого — держится в памяти (сжатие — один раз на версию файла,
+    а не при каждой загрузке страницы)."""
     MIN = 1024              # меньше — сжатие не окупается
-    MAX_N = 400             # файлов в памяти (интерфейс — ~110)
-    cache = {}
-    lock = threading.Lock()
+    cache = GzipCache(400, 9)   # файлов в памяти (интерфейс — ~110)
 
     @classmethod
     def get(cls, tag, data, ctype):
@@ -59,16 +69,12 @@ class FileGzip:
         if len(data) < cls.MIN or not (ctype.startswith('text/') or 'javascript' in ctype or ctype.startswith('application/json')
                                        or 'svg' in ctype):
             return None
-        with cls.lock:
-            hit = cls.cache.get(tag)
-        if hit is None:
-            import gzip
-            hit = gzip.compress(data, 9)
-            with cls.lock:
-                cls.cache[tag] = hit
-                while len(cls.cache) > cls.MAX_N:
-                    cls.cache.pop(next(iter(cls.cache)))
-        return hit
+        return cls.cache.get(tag) or cls.cache.put(tag, data)
+
+
+# большие справочники (каталог — 12 МБ) для send_cached: сжатые один раз на версию, готовые для всех сотрудников
+JSON_GZIP = GzipCache(8, 6)
+JSON_GZIP_MIN = 200000      # меньше — отдаётся без сжатия
 MAX_BODY = 300 * 1024 * 1024    # самый большой запрос — загрузка резервной копии базы
 # программа запустилась и отвечает (после самопроверки обновления): сбой после этого launcher.py не считает сбоем
 # запуска обновления и прежнюю версию не возвращает
@@ -87,6 +93,7 @@ class Handler(BaseHTTPRequestHandler):
     # на Windows так же: WinError 64 «сетевое имя больше недоступно», 1236 «соединение прервано»
     GONE = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError)
     GONE_WIN = (64, 1236)
+    LOCAL_NAMES = ('localhost', '127.0.0.1', '::1')
 
     @classmethod
     def gone(cls, e):
@@ -136,7 +143,6 @@ class Handler(BaseHTTPRequestHandler):
         gz = not compressed and len(data) > 20000 and 'gzip' in (self.headers.get('Accept-Encoding') or '') and \
             (ctype.startswith('application/json') or ctype.startswith('text/'))
         if gz:
-            import gzip
             data = gzip.compress(data, 5)
         self.send_response(code)
         self.send_header('Content-Type', ctype)
@@ -162,25 +168,20 @@ class Handler(BaseHTTPRequestHandler):
     def send_cached(self, tag, make):
         """Справочник с версией: браузер хранит копию и спрашивает «изменилось ли?» (If-None-Match).
         Не изменилось — короткий ответ 304 без данных; иначе — данные (make()) с новой меткой.
-        Большой ответ (каталог — 12 МБ) сжимается один раз на версию и отдаётся всем сотрудникам готовым (GZ_CACHE)."""
+        Большой ответ сжимается один раз на версию (JSON_GZIP)."""
         etag = 'W/"%s-%s"' % (tag, APP_VERSION)
         extra = {'ETag': etag, 'Cache-Control': 'no-cache'}
         if etag in (self.headers.get('If-None-Match') or ''):
             return self.send(304, 'application/json; charset=utf-8', b'', extra)
         gz_ok = 'gzip' in (self.headers.get('Accept-Encoding') or '')
-        hit = GZ_CACHE.get(etag) if gz_ok else None
+        hit = JSON_GZIP.get(etag) if gz_ok else None
         if hit is None:
             obj = make()
             text = obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False)
             data = text.encode('utf-8')
-            if not gz_ok or len(data) < 200000:
+            if not gz_ok or len(data) < JSON_GZIP_MIN:
                 return self.send(200, 'application/json; charset=utf-8', data, extra)
-            import gzip
-            hit = gzip.compress(data, 6)
-            with GZ_LOCK:
-                GZ_CACHE[etag] = hit
-                while len(GZ_CACHE) > 8:          # старые версии — прочь
-                    GZ_CACHE.pop(next(iter(GZ_CACHE)))
+            hit = JSON_GZIP.put(etag, data)
         return self.send(200, 'application/json; charset=utf-8', hit, dict(extra, **{'Content-Encoding': 'gzip'}), compressed=True)
 
     def base_rev(self):
@@ -218,16 +219,11 @@ class Handler(BaseHTTPRequestHandler):
         host = (self.headers.get('Host') or '').strip().lower()
         name = host.rsplit(':', 1)[0] if not host.endswith(']') else host
         name = name.strip('[]')
-        if not SERVER_MODE:
-            if name not in ('localhost', '127.0.0.1', '::1'):
-                return False
-        elif ALLOWED_HOSTS and name not in ALLOWED_HOSTS and name not in ('localhost', '127.0.0.1', '::1'):
+        if name not in self.LOCAL_NAMES and not (SERVER_MODE and (not ALLOWED_HOSTS or name in ALLOWED_HOSTS)):
             return False
         if self.command not in ('GET', 'HEAD'):
             origin = (self.headers.get('Origin') or '').strip().lower()
-            if origin and origin != 'null' and urllib.parse.urlsplit(origin).netloc != host:
-                return False
-            if origin == 'null':
+            if origin == 'null' or (origin and urllib.parse.urlsplit(origin).netloc != host):
                 return False
         return True
 
@@ -236,21 +232,6 @@ class Handler(BaseHTTPRequestHandler):
         super().send_response(code, message)
 
     # --- маршрутизация ---
-    def do_GET(self):
-        self.dispatch()
-
-    def do_HEAD(self):
-        self.dispatch()
-
-    def do_POST(self):
-        self.dispatch()
-
-    def do_PUT(self):
-        self.dispatch()
-
-    def do_DELETE(self):
-        self.dispatch()
-
     # данные одного запроса: при HTTP/1.1 обработчик обслуживает несколько запросов соединения подряд — перед каждым
     # они сбрасываются (тело, вошедший менеджер, код ответа), иначе следующий запрос увидел бы данные предыдущего
     PER_REQUEST = ('_body', '_kp_user', '_kp_login', '_code')
@@ -261,9 +242,15 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self._dispatch()
         finally:
-            # тело запроса не прочитано (отказ до разбора) — его остаток нельзя принять за следующий запрос
+            # отказ до разбора: непрочитанное тело нельзя принять за следующий запрос, а закрыть сокет с непрочитанными
+            # данными — значит оборвать соединение (RST), и клиент может не получить уже отправленный ответ
             if not hasattr(self, '_body') and self.body_size() > 0:
-                self.close_connection = True
+                if self.body_size() <= MAX_BODY:
+                    self.rfile.read(self.body_size())
+                else:
+                    self.close_connection = True
+
+    do_GET = do_HEAD = do_POST = do_PUT = do_DELETE = dispatch
 
     def _dispatch(self):
         try:
@@ -324,6 +311,7 @@ class Server(ThreadingHTTPServer):
     # очередь входящих соединений: по умолчанию 5 — утром 20 браузеров по 6 соединений переполняли её, и часть запросов
     # ждала повтора соединения 1–3 с; 128 — как у обычных веб-серверов
     request_queue_size = 128
+
     def handle_error(self, request, client_address):
         """Ошибка вне обработчика запроса — в журнал сервера (по умолчанию socketserver печатал её в stderr, которого у EXE нет);
         браузер закрыл соединение — не ошибка (Handler.gone)."""
@@ -386,12 +374,12 @@ def main():
         maintenance.Background.daily(store(), DATA_DIR)
         # отложенные проверки контрагентов: когда лимит Checko обновится (после 00:00 по Москве) — выполнить очередь
         maintenance.Background.every(lambda: SrvVal.get(store(), 'cp.queueEveryMin') * 60, lambda: cp().run_queue(), 'очередь проверок контрагентов')
-        # ставки доставки по ATI.SU — раз в сутки (период и направления — «Настройки» → «Логистика»)
+        # ставки доставки по ATI.SU: проверка раз в 3 часа, обновление — когда прошёл период из настроек тарифов доставки
         maintenance.Background.every(3 * 3600, lambda: logistics_api.auto_refresh(store()), 'ставки доставки')
         import feeds
         feeds.IMAGE_STORE = IMAGES
-        maintenance.Background.every(3600, lambda: feeds.auto_check(store()), 'фиды поставщиков')     # фиды поставщиков: РРЦ и наличие раз в день
-        maintenance.Background.every(6 * 3600, lambda: Updater(store(), ROOT, DATA_DIR).auto_check(), 'проверка новой версии')   # новая версия на GitHub — раз в сутки
+        maintenance.Background.every(3600, lambda: feeds.auto_check(store()), 'фиды поставщиков')     # РРЦ и наличие: когда пора обновлять — решает feeds.auto_check
+        maintenance.Background.every(6 * 3600, lambda: Updater(store(), ROOT, DATA_DIR).auto_check(), 'проверка новой версии')   # раз в сутки (Updater.auto_check)
         from admin_alerts import AdminAlerts
         import config
         maintenance.Background.every(lambda: SrvVal.get(store(), 'srv.alertsEveryMin') * 60, lambda: AdminAlerts(store(), config).check(),
@@ -412,7 +400,7 @@ def main():
                         'Что сделать: остановить программу, удалить kp.sqlite3-wal и kp.sqlite3-shm, затем положить на место kp.sqlite3 '
                         'копию из папки data\\backup (архивы ZIP: kp-ДАТА.zip в backup\\auto — автоматические копии, kp-…-before-….zip — '
                         'перед изменениями; файл kp.sqlite3 — внутри архива). '
-                        'Загружать файл базы впредь лучше через «Настройки → Копии и обслуживание базы → Файл базы целиком».'
+                        'Загружать файл базы впредь лучше через «Настройки → Обслуживание → Копии и база → Файл базы целиком».'
                         % (os.path.join(DATA_DIR, 'kp.sqlite3'), e))
             return 1
         message_box('Не удалось подготовить папки данных:\n%s\n\n%s' % (DATA_DIR, e))

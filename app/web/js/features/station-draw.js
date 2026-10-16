@@ -7,24 +7,14 @@
 
 // ---------------------------------------------------------------- SVG: примитивы
 class StSvg {
-  static esc(s){ return EskdSheet.esc(s); }
   static f(v){ return Math.round(v*10)/10; }
   static pts(P){ return P.map(p=>this.f(p[0])+','+this.f(p[1])).join(' '); }
   static poly(P, fill, stroke, sw=1, extra=''){ return `<polygon points="${this.pts(P)}" fill="${fill}"${stroke ? ` stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"` : ''}${extra}/>`; }
   static line(x1, y1, x2, y2, stroke, sw=1, extra=''){ return `<line x1="${this.f(x1)}" y1="${this.f(y1)}" x2="${this.f(x2)}" y2="${this.f(y2)}" stroke="${stroke}" stroke-width="${sw}"${extra}/>`; }
   static rect(x, y, w, h, fill, stroke, sw=1, extra=''){
     return `<rect x="${this.f(x)}" y="${this.f(y)}" width="${this.f(Math.max(0, w))}" height="${this.f(Math.max(0, h))}" fill="${fill}"${stroke ? ` stroke="${stroke}" stroke-width="${sw}"` : ''}${extra}/>`; }
-  static circle(x, y, r, fill, stroke, sw=1, extra=''){ return `<circle cx="${this.f(x)}" cy="${this.f(y)}" r="${this.f(r)}" fill="${fill}"${stroke ? ` stroke="${stroke}" stroke-width="${sw}"` : ''}${extra}/>`; }
-  static text(x, y, s, o={}){
-    return `<text x="${this.f(x)}" y="${this.f(y)}" font-size="${o.size||18}"${o.weight ? ` font-weight="${o.weight}"` : ''} fill="${o.fill||'#1d2733'}" text-anchor="${o.anchor||'middle'}"${o.rot ? ` transform="rotate(${o.rot} ${this.f(x)} ${this.f(y)})"` : ''}${o.extra||''}>${this.esc(s)}</text>`; }
-  /** примерная ширина строки, px (Arial, кириллица) */
-  static tw(s, size){ return String(s).length*size*0.56; }
-  /** перенос по обычным пробелам (неразрывный пробел держит «РВ 500/11» в одной строке) */
-  static wrap(s, max){ const out=[]; let cur=''; for (const w of String(s).trim().split(/[ \t\n]+/)){ if (cur && (cur+' '+w).length>max){ out.push(cur); cur=w; } else cur=(cur ? cur+' ' : '')+w; } if (cur) out.push(cur); return out; }
   static doc(W, H, body, defs=''){
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Arial, Helvetica, sans-serif"><defs>${defs}</defs>${body}</svg>`; }
-  /** 12345 → «12 345» */
-  static n(v){ return String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 }
 
 // ---------------------------------------------------------------- габаритный чертёж (ЕСКД)
@@ -220,7 +210,7 @@ class StationDrawing {
   head(){ return 8+(this.hidden.length ? 4 : 0); }
 
   /** поле изображений: книжный лист — 25…200 × 22…274 мм; повёрнутый на 90° — 252 × 175 мм вдоль длинной стороны листа
-   *  (решение ПНЕВМОТЕХ 13.10: большие станции — крупнее; читать, повернув лист против часовой стрелки — основная надпись справа) */
+   *  (решение ПНЕВМОТЕХ: большие станции — крупнее; читать, повернув лист против часовой стрелки — основная надпись справа) */
   static FLD = { L0:25, L1:200, TOP:22, BOT:274 };
   static ROT = { L0:0, L1:252, TOP:0, BOT:175, rot:true };
   /** лист: книжный или с изображением, повёрнутым на 90° (рамка и основная надпись — как обычно); fn(sh) рисует в поле F */
@@ -232,7 +222,7 @@ class StationDrawing {
   /** из книжного и повёрнутого — где масштаб крупнее (pick(F) → {N, …}) */
   best(pick){ const a=pick(StationDrawing.FLD), b=pick(StationDrawing.ROT); return b.N<a.N ? Object.assign(b, { F:StationDrawing.ROT }) : Object.assign(a, { F:StationDrawing.FLD }); }
 
-  /** листы чертежа (SVG), число не ограничено (решение ПНЕВМОТЕХ 13.10): 1 — текстовая часть и разрез А–А (если там он не
+  /** листы чертежа (SVG), число не ограничено (решение ПНЕВМОТЕХ): 1 — текстовая часть и разрез А–А (если там он не
    *  мельче, чем отдельным листом, и не мельче 1:100), иначе разрез А–А — своим листом (книжным или повёрнутым — где крупнее);
    *  план (разрез Б–Б) — с видами с торцов на одном листе, если план там не мельче, чем один, иначе план своим листом
    *  (книжным или повёрнутым) и виды с торцов — своим; схема строповки — своим листом (книжным или повёрнутым) */

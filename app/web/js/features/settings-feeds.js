@@ -18,8 +18,8 @@ const FD_FILES = { kind:'files', name:'', maker:'', priceKind:'cost', cur:'EUR',
 const FD_CURS = [['', 'как в прайсе'], ['RUB', 'Рубли'], ['EUR', 'Евро'], ['USD', 'Доллары США'], ['CNY', 'Юани']];
 
 const fdRub = kop => kop==null ? '—' : money(kop)+' ₽';
-const fdMoney = (kop, cur) => kop==null ? '—' : money(kop)+' '+(typeof curSh==='function' ? curSh(cur||'RUB') : (cur||'₽'));
-const fdDate = iso => iso ? stTime(iso) : '—';
+const fdMoney = (kop, cur) => kop==null ? '—' : money(kop)+' '+curSh(cur||'RUB');
+const fdDate = iso => iso ? Fmt.dateTime(iso) : '—';
 const fdIsFiles = f => !!f && f.kind==='files';
 const fdCostKind = f => fdIsFiles(f) && f.priceKind!=='rrc';
 // кнопка обновления фида из файлов: с остатками на складе — «цены и остатки»
@@ -84,7 +84,7 @@ function fdFiles(f){
       <div class="fd-fbtn"><label class="btn fd-up"><input type="file" accept="${accept}" data-fdfile="${kind}" hidden>${meta?'Заменить файл':'Загрузить файл'}</label>${del?`<button class="btn ghost" type="button" data-fd="fdrop" data-kind="${del}" title="Убрать файл">✕</button>`:''}</div></div>`;
   const pg=fl.pages, sk=fl.stock, prs=fdPrices(f);
   return `<div class="fd-files">
-    ${row('pages', 'Парс сайта (JSON или CSV)', '.json,application/json,.csv,text/csv', '<p><b>JSON</b> (надёжнее): {"items": [{"category", "name", "model", "url", "images": [адреса, первое — главное], "description": [{"title": "Назначение", "text": "…"}, {"title": "Общие характеристики", "items": ["…"]}], "specs": [{"name": "Давление", "value": "8,5 бар"}]}]}.</p><p><b>CSV</b>: столбцы — категория, название, ссылка на страницу товара, картинки (через « | »), описание, технические характеристики («Ключ: значение | Ключ: значение»). Первая строка — заголовки.</p><p>Из него создаются позиции каталога: название, раздел, описание, характеристики, фото (скачиваются по ссылкам).</p>', pg, pg?`${stNum(pg.rows)} ${plural(pg.rows,'позиция','позиции','позиций')}, разделов: ${pg.cats}`:'')}
+    ${row('pages', 'Парс сайта (JSON или CSV)', '.json,application/json,.csv,text/csv', '<p><b>JSON</b> (надёжнее): {"items": [{"category", "name", "model", "url", "images": [адреса, первое — главное], "description": [{"title": "Назначение", "text": "…"}, {"title": "Общие характеристики", "items": ["…"]}], "specs": [{"name": "Давление", "value": "8,5 бар"}]}]}.</p><p><b>CSV</b>: столбцы — категория, название, ссылка на страницу товара, картинки (через « | »), описание, технические характеристики («Ключ: значение | Ключ: значение»). Первая строка — заголовки.</p><p>Из него создаются позиции каталога: название, раздел, описание, характеристики, фото (скачиваются по ссылкам).</p>', pg, pg?`${Fmt.num(pg.rows)} ${plural(pg.rows,'позиция','позиции','позиций')}, разделов: ${pg.cats}`:'')}
     ${fdPriceRows(prs)}
     ${row('stock', 'Остатки на складе (XLSX)', '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '<p>Необязательно. Выгрузка склада поставщика в одном из видов:</p><p><b>сводка</b> — «Артикул», «Номенклатура» и количество (столбец с числами можно не подписывать);</p><p><b>по единицам</b> — строка на каждую машину: «Бренд», «Модель», «Статус» (на складе / в пути / в производстве), «Склад», «Скидки и акции». Программа считает, сколько штук в наличии и на каком складе, сколько в пути и в производстве (с датой, если она в статусе).</p><p>Позиция находится по артикулу из прайса, иначе — по коду модели в названии. Нет в файле — «нет в наличии». Чтобы обновить остатки, загрузите новый файл и нажмите «Обновить цены и остатки».</p>', sk, sk?fdStockInfo(sk):'', sk?'stock':'')}
     <p class="muted fd-note" id="fdUpSt"></p></div>`;
@@ -94,7 +94,7 @@ function fdFiles(f){
 function fdExtra(f){
   const ex=(f.files||{}).extra;
   const hint='<p>Необязательно. Если в фиде у части позиций нет описания или вместо него рекламный текст сайта, загрузите файл описаний (JSON):</p><p><b>series</b> — описание серии: раздел фида (cats — id, names — название), при необходимости шаблон названия (match); mode «empty» — только позициям без описания, «replace» — вместо описания фида;</p><p><b>items</b> — описание отдельной позиции (oid — id предложения или url — ссылка на товар);</p><p><b>logos</b> — логотипы марок (картинка data:image/…), если в каталоге логотипа марки ещё нет.</p><p>Описание из файла важнее описания со страницы товара. Цены и наличие по-прежнему берутся из фида.</p>';
-  const info=ex?`${stNum(ex.series)} ${plural(ex.series,'серия','серии','серий')}, ${stNum(ex.rows)} ${plural(ex.rows,'позиция','позиции','позиций')}${ex.logos?`, логотипов: ${stNum(ex.logos)}`:''}`:'';
+  const info=ex?`${Fmt.num(ex.series)} ${plural(ex.series,'серия','серии','серий')}, ${Fmt.num(ex.rows)} ${plural(ex.rows,'позиция','позиции','позиций')}${ex.logos?`, логотипов: ${Fmt.num(ex.logos)}`:''}`:'';
   return `<div class="fd-files"><div class="fd-file"><div><b>Описания к фиду (JSON)</b>${tip(hint)}<br>${ex?`<span class="muted">${esc(ex.name)} · ${esc(fdDate(ex.at))} · ${info}</span>`:'<span class="muted">не загружен — описания только из фида</span>'}</div>
       <div class="fd-fbtn"><label class="btn fd-up"><input type="file" accept=".json,application/json" data-fdfile="extra" hidden>${ex?'Заменить файл':'Загрузить файл'}</label>${ex?'<button class="btn ghost" type="button" data-fd="fdrop" data-kind="extra" title="Убрать файл">✕</button>':''}</div></div>
     <p class="muted fd-note" id="fdUpSt"></p></div>`;
@@ -106,8 +106,8 @@ const fdCurName = c => (FD_CURS.find(x=>x[0]===c)||[c,c])[1];
 function fdPrices(f){ const fl=f.files||{}; const out=(fl.prices||[]).slice();
   if (fl.price && !out.some(x=>x.slot==='price')) out.unshift({...fl.price, slot:'price'}); return out; }
 function fdStockInfo(sk){
-  const u=sk.units!=null&&sk.units!==sk.inStock?`, всего ${stNum(sk.units)} шт.`:'';
-  return `${stNum(sk.rows)} ${plural(sk.rows,'модель','модели','моделей')}, в наличии: ${stNum(sk.inStock)}${u}${(sk.whs||[]).length?' · склады: '+sk.whs.map(esc).join(', '):''}`; }
+  const u=sk.units!=null&&sk.units!==sk.inStock?`, всего ${Fmt.num(sk.units)} шт.`:'';
+  return `${Fmt.num(sk.rows)} ${plural(sk.rows,'модель','модели','моделей')}, в наличии: ${Fmt.num(sk.inStock)}${u}${(sk.whs||[]).length?' · склады: '+sk.whs.map(esc).join(', '):''}`; }
 function fdPriceRows(prs){
   const hint='<p>Книги Excel с листами по сериям: шапка «Модель» (полное название), характеристики, «Цена»/«РРЦ» (и столбцы опций). Объединённые ячейки учитываются. Можно загрузить несколько прайсов — по одному на марку или раздел; строки всех прайсов сопоставляются с парсом вместе.</p><p>Валюта берётся из шапки («Цена, €», «РРЦ, USD»). Если в файле её нет — выберите валюту у прайса (или у отдельного листа). «Дилерская цена» и «Дилер скидка, %» идут в закупку.</p><p>Новый прайс той же марки (с тем же именем файла без даты) заменяет прежний. Чтобы обновить цены, загрузите прайсы и нажмите «Обновить цены…».</p>';
   const one=m=>{
@@ -117,8 +117,8 @@ function fdPriceRows(prs){
     const cur=(curs.length?curs:m.cur?[m.cur]:[]).map(fdCurName).join(', ');
     const warn=miss.length&&!m.curSet?`<span class="bad-t"> · валюта не указана на ${miss.length} ${plural(miss.length,'листе','листах','листах')} — выберите</span>`:'';
     const all=(m.sheetCurs||[]).filter(x=>x.rows);
-    const sheets=all.length>1||miss.length?`<details class="fd-shc"${(miss.length&&!m.curSet)||Object.keys(m.curSheets||{}).length?' open':''}><summary>Валюта по листам${miss.length?` (не указана: ${miss.length})`:''}</summary><div class="fd-shl">${all.map(x=>`<label><span>${esc(x.name)} <i class="muted">· ${stNum(x.rows)} · ${x.cur?'в файле: '+esc(x.cur):'<b class="bad-t">не указана</b>'}</i></span>${sel((m.curSheets||{})[x.name]||'', `data-fdcur="${esc(m.slot)}" data-sheet="${esc(x.name)}" aria-label="Валюта листа ${esc(x.name)}"`, 'как у прайса')}</label>`).join('')}</div></details>`:'';
-    return `<div class="fd-file fd-pr"><div><b>Прайс</b> <span class="muted">${esc(m.name)} · ${esc(fdDate(m.at))} · ${stNum(m.rows)} ${plural(m.rows,'строка','строки','строк')} на ${m.sheets} ${plural(m.sheets,'листе','листах','листах')}, с ценой: ${stNum(m.withPrice)}${cur?', '+esc(cur):''}</span>${warn}
+    const sheets=all.length>1||miss.length?`<details class="fd-shc"${(miss.length&&!m.curSet)||Object.keys(m.curSheets||{}).length?' open':''}><summary>Валюта по листам${miss.length?` (не указана: ${miss.length})`:''}</summary><div class="fd-shl">${all.map(x=>`<label><span>${esc(x.name)} <i class="muted">· ${Fmt.num(x.rows)} · ${x.cur?'в файле: '+esc(x.cur):'<b class="bad-t">не указана</b>'}</i></span>${sel((m.curSheets||{})[x.name]||'', `data-fdcur="${esc(m.slot)}" data-sheet="${esc(x.name)}" aria-label="Валюта листа ${esc(x.name)}"`, 'как у прайса')}</label>`).join('')}</div></details>`:'';
+    return `<div class="fd-file fd-pr"><div><b>Прайс</b> <span class="muted">${esc(m.name)} · ${esc(fdDate(m.at))} · ${Fmt.num(m.rows)} ${plural(m.rows,'строка','строки','строк')} на ${m.sheets} ${plural(m.sheets,'листе','листах','листах')}, с ценой: ${Fmt.num(m.withPrice)}${cur?', '+esc(cur):''}</span>${warn}
         <label class="fd-cur"><span>Валюта, где в файле не указана:</span> ${sel(m.curSet||'', `data-fdcur="${esc(m.slot)}" aria-label="Валюта прайса"`, 'как у фида')}</label>${sheets}</div>
       <div class="fd-fbtn"><label class="btn fd-up"><input type="file" accept="${XLSX_ACC}" data-fdfile="price" data-slot="${esc(m.slot)}" hidden>Заменить</label><button class="btn ghost" type="button" data-fd="fdrop" data-kind="price" data-slot="${esc(m.slot)}" title="Убрать прайс">✕</button></div></div>`; };
   return `<div class="fd-prs"><div class="fd-file"><div><b>Прайсы поставщика (XLSX)</b>${tip(hint)}<br>${prs.length?`<span class="muted">${prs.length} ${plural(prs.length,'файл','файла','файлов')}</span>`:'<span class="bad-t">прайс ещё не загружен</span>'}</div>
@@ -135,14 +135,14 @@ async function fdUpload(input, m){
   const done=[];
   try{
     for (const file of files){
-      if (st) st.textContent=`Загружаю «${file.name}» (${Math.round(file.size/1024)} КБ)…`;
-      const r=await fetch(`/api/admin/feeds/${encodeURIComponent(FD.sel)}/upload?kind=${kind}&name=${encodeURIComponent(file.name)}${slot?'&slot='+encodeURIComponent(slot):''}`, {method:'POST', headers:{'X-CSRF-Token':ADMIN.csrf, 'Content-Type':'application/octet-stream'}, body:file});
-      if (!r.ok) throw new Error(`«${file.name}»: `+await r.text());
-      const meta=await r.json(); done.push(meta);
-      toast(kind==='pages' ? `Парс сайта загружен: ${stNum(meta.rows)} ${plural(meta.rows,'позиция','позиции','позиций')}`
-        : kind==='extra' ? `Описания загружены: ${stNum(meta.series)} ${plural(meta.series,'серия','серии','серий')}, ${stNum(meta.rows)} ${plural(meta.rows,'позиция','позиции','позиций')}. Нажмите «Загрузить в каталог», чтобы обновить описания`
-        : kind==='stock' ? `Остатки загружены: ${stNum(meta.rows)} ${plural(meta.rows,'модель','модели','моделей')}, в наличии ${stNum(meta.inStock)}. Нажмите «… и остатки», чтобы перенести их в каталог`
-        : `Прайс «${file.name}» загружен: ${stNum(meta.rows)} ${plural(meta.rows,'строка','строки','строк')}, с ценой ${stNum(meta.withPrice)}${(meta.sheetCurs||[]).some(x=>x.rows&&!x.cur)?' — у части листов не указана валюта, выберите её':''}`);
+      if (st) st.textContent=`Загружаю «${file.name}» (${Fmt.size(file.size)})…`;
+      const meta=await aapi(`feeds/${encodeURIComponent(FD.sel)}/upload?kind=${kind}&name=${encodeURIComponent(file.name)}${slot?'&slot='+encodeURIComponent(slot):''}`,
+        {method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:file}).catch(e=>{ throw new Error(`«${file.name}»: `+e.message); });
+      done.push(meta);
+      toast(kind==='pages' ? `Парс сайта загружен: ${Fmt.num(meta.rows)} ${plural(meta.rows,'позиция','позиции','позиций')}`
+        : kind==='extra' ? `Описания загружены: ${Fmt.num(meta.series)} ${plural(meta.series,'серия','серии','серий')}, ${Fmt.num(meta.rows)} ${plural(meta.rows,'позиция','позиции','позиций')}. Нажмите «Загрузить в каталог», чтобы обновить описания`
+        : kind==='stock' ? `Остатки загружены: ${Fmt.num(meta.rows)} ${plural(meta.rows,'модель','модели','моделей')}, в наличии ${Fmt.num(meta.inStock)}. Нажмите «… и остатки», чтобы перенести их в каталог`
+        : `Прайс «${file.name}» загружен: ${Fmt.num(meta.rows)} ${plural(meta.rows,'строка','строки','строк')}, с ценой ${Fmt.num(meta.withPrice)}${(meta.sheetCurs||[]).some(x=>x.rows&&!x.cur)?' — у части листов не указана валюта, выберите её':''}`);
     }
     FD.prev=null; stFeeds(m);
   }catch(err){ input.disabled=false; if (st) st.textContent=''; toast('Файл не принят: '+(err.message||err)); if (done.length) stFeeds(m); }
@@ -199,10 +199,10 @@ function fdDiscBody(d){ return { discounts:d.discounts.filter(r=>r.pct), discoun
 function fdPlan(p){
   const pct=v=>v==null||v===''?'нет':String(v).replace('.',',')+' %';
   return `<div class="fd-tw"><table class="fd-t"><thead><tr><th>Правило</th><th class="num">Скидка</th><th class="num">Позиций</th><th>Например</th></tr></thead>
-    <tbody>${p.groups.map(g=>`<tr><td>${esc(g.label)}</td><td class="num">${pct(g.pct)}</td><td class="num">${stNum(g.count)}</td><td class="muted">${esc(g.sample.slice(0,3).join(' · '))}${g.count>3?' …':''}</td></tr>`).join('')}</tbody></table></div>
-    ${p.unknownCount?`<details class="more"><summary class="bad-t">Не распознано: ${stNum(p.unknownCount)} — получат скидку «остальное»</summary><p class="muted">${p.unknown.map(u=>`${esc(u.name)} <small>(${esc(u.why)})</small>`).join(' · ')}</p><p class="muted">Добавьте серию в поле «Серии с ременным / прямым приводом» или укажите привод и мощность в карточке позиции.</p></details>`:''}
-    ${p.manual?`<p class="muted">Закупка исправлена вручную у ${stNum(p.manual)} ${plural(p.manual,'позиции','позиций','позиций')} — её сетка не меняет.</p>`:''}
-    ${p.noprice?`<p class="muted">Пока без цены: ${stNum(p.noprice)} ${plural(p.noprice,'позиция','позиции','позиций')} — закупка появится после «Сохранить и обновить цены», если в прайсе есть цена.</p>`:''}`;
+    <tbody>${p.groups.map(g=>`<tr><td>${esc(g.label)}</td><td class="num">${pct(g.pct)}</td><td class="num">${Fmt.num(g.count)}</td><td class="muted">${esc(g.sample.slice(0,3).join(' · '))}${g.count>3?' …':''}</td></tr>`).join('')}</tbody></table></div>
+    ${p.unknownCount?`<details class="more"><summary class="bad-t">Не распознано: ${Fmt.num(p.unknownCount)} — получат скидку «остальное»</summary><p class="muted">${p.unknown.map(u=>`${esc(u.name)} <small>(${esc(u.why)})</small>`).join(' · ')}</p><p class="muted">Добавьте серию в поле «Серии с ременным / прямым приводом» или укажите привод и мощность в карточке позиции.</p></details>`:''}
+    ${p.manual?`<p class="muted">Закупка исправлена вручную у ${Fmt.num(p.manual)} ${plural(p.manual,'позиции','позиций','позиций')} — её сетка не меняет.</p>`:''}
+    ${p.noprice?`<p class="muted">Пока без цены: ${Fmt.num(p.noprice)} ${plural(p.noprice,'позиция','позиции','позиций')} — закупка появится после «Сохранить и обновить цены», если в прайсе есть цена.</p>`:''}`;
 }
 
 async function fdDiscClick(a, b, m){
@@ -237,7 +237,7 @@ function fdFilesActions(f, ready){
     <div class="row fd-acts"><button class="btn" type="button" data-fd="preview"${noFile}>Проверить фид</button>
       <button class="btn" type="button" data-fd="plan"${noFile}>План сборки</button>
       <button class="btn primary" type="button" data-fd="build"${noFile}>Сформировать каталог</button></div>`;
-  return `<div class="fd-build"><p class="ok-t">Каталог сформирован ${esc(fdDate(b.at))}${b.by?' · '+esc(b.by):''}: позиций ${stNum(b.items||0)}, сопоставлено с имевшимися ${stNum(b.linked||0)}, в корзину ${stNum(b.trashed||0)}.</p>
+  return `<div class="fd-build"><p class="ok-t">Каталог сформирован ${esc(fdDate(b.at))}${b.by?' · '+esc(b.by):''}: позиций ${Fmt.num(b.items||0)}, сопоставлено с имевшимися ${Fmt.num(b.linked||0)}, в корзину ${Fmt.num(b.trashed||0)}.</p>
       <p class="muted">Парс больше не меняет позиции каталога — только добавляет новые, если они появятся. Описания, фото и характеристики правятся вручную в карточке. Цены${f.files&&f.files.stock?' и остатки':''}: загрузите новый прайс${f.files&&f.files.stock?' или файл остатков':''} и нажмите «${fdUpdLbl(f)}».</p></div>
     <div class="row fd-acts"><button class="btn" type="button" data-fd="plan"${noFile}>Что нового в парсе</button>
       <button class="btn" type="button" data-fd="addnew"${noFile}>Добавить новые из парса</button>
@@ -247,9 +247,9 @@ function fdFilesActions(f, ready){
 
 function fdBuildPlan(p){
   const list=(arr, f)=>arr.length?`<p class="muted">${arr.slice(0,300).map(f).join(' · ')}${arr.length>300?' …':''}</p>`:'';
-  if (p.built) return `<div class="fd-plan"><p><b>Новых позиций в парсе: ${stNum(p.addCount)}</b>${p.addCount?' — «Добавить новые из парса» создаст их; имеющиеся не изменятся.':' — каталог совпадает с парсом.'}</p>${list(p.add, esc)}</div>`;
-  return `<div class="fd-plan"><div class="fd-sum"><span><b>${stNum(p.offers)}</b> позиций в парсе</span><span><b>${stNum(p.withPrice)}</b> с ценой из прайса</span>
-      <span><b>${stNum(p.links)}</b> сопоставлено с имеющимися</span><span><b>${stNum(p.new)}</b> новых</span><span><b>${stNum(p.dups.length)}</b> дублей — в корзину</span><span><b>${stNum(p.keep.length)}</b> нет в парсе</span></div>
+  if (p.built) return `<div class="fd-plan"><p><b>Новых позиций в парсе: ${Fmt.num(p.addCount)}</b>${p.addCount?' — «Добавить новые из парса» создаст их; имеющиеся не изменятся.':' — каталог совпадает с парсом.'}</p>${list(p.add, esc)}</div>`;
+  return `<div class="fd-plan"><div class="fd-sum"><span><b>${Fmt.num(p.offers)}</b> позиций в парсе</span><span><b>${Fmt.num(p.withPrice)}</b> с ценой из прайса</span>
+      <span><b>${Fmt.num(p.links)}</b> сопоставлено с имеющимися</span><span><b>${Fmt.num(p.new)}</b> новых</span><span><b>${Fmt.num(p.dups.length)}</b> дублей — в корзину</span><span><b>${Fmt.num(p.keep.length)}</b> нет в парсе</span></div>
     ${p.dups.length?`<details class="more" open><summary>Дубли — уйдут в корзину (${p.dups.length})</summary>${list(p.dups, x=>esc(x.name))}</details>`:''}
     ${p.keep.length?`<details class="more"><summary>Позиции производителя, которых нет в парсе (${p.keep.length})</summary>${list(p.keep, x=>esc(x.name))}
       <label class="fd-auto"><input type="checkbox" id="fdTrashMissing"> Убрать и их в корзину (по умолчанию остаются в каталоге как есть)</label></details>`:''}
@@ -274,9 +274,9 @@ function fdPreview(p, f){
   const sum = files
     ? [['позиций', p.total], ['с ценой из прайса', p.withPrice], ['с фото', p.withPhoto], ['уже в каталоге', p.inCatalog]]
     : [['товаров', p.total], ['в наличии', p.available], ['с ценой', p.withPrice], ['с остатком', p.withQty], ['с фото', p.withPhoto], ['с описанием', p.withDesc], ['уже в каталоге', p.inCatalog]].filter(([,v])=>v!=null);
-  return `<div class="fd-sum">${sum.map(([t,v])=>`<span><b>${stNum(v)}</b> ${t}</span>`).join('')}${p.shop&&!files?`<span class="muted">${esc(p.shop)}${p.date?' · '+esc(p.date):''}</span>`:''}</div>
-    ${files&&p.match?`<p class="muted fd-match">Сопоставление с прайсом: строка прайса нашлась у ${stNum(mt.matched)} ${plural(mt.matched,'позиции','позиций','позиций')} парса${mt.how?` (по названию ${mt.how.name||0}, без знаков ${mt.how.key||0}, по модели ${(mt.how.model||0)+(mt.how.short||0)+(mt.how.set||0)})`:''}; строк прайса без страницы на сайте — ${stNum(mt.priceOnly)}${f&&f.priceOnly?' (загружаются как отдельные позиции, разделы «Прайс / …»)':' (не загружаются — есть настройка «Добавлять и позиции, которых нет в парсе»)'}. Позиции без строки прайса или с пустой ценой («по запросу») загружаются без цены.</p>`:''}
-    ${!files&&p.extra?`<p class="muted fd-match">Файл описаний: описание из файла получили ${stNum(p.extra.applied)} ${plural(p.extra.applied,'позиция','позиции','позиций')} фида (серий в файле — ${stNum(p.extra.series)}, позиций — ${stNum(p.extra.items)}).</p>`:''}
+  return `<div class="fd-sum">${sum.map(([t,v])=>`<span><b>${Fmt.num(v)}</b> ${t}</span>`).join('')}${p.shop&&!files?`<span class="muted">${esc(p.shop)}${p.date?' · '+esc(p.date):''}</span>`:''}</div>
+    ${files&&p.match?`<p class="muted fd-match">Сопоставление с прайсом: строка прайса нашлась у ${Fmt.num(mt.matched)} ${plural(mt.matched,'позиции','позиций','позиций')} парса${mt.how?` (по названию ${mt.how.name||0}, без знаков ${mt.how.key||0}, по модели ${(mt.how.model||0)+(mt.how.short||0)+(mt.how.set||0)})`:''}; строк прайса без страницы на сайте — ${Fmt.num(mt.priceOnly)}${f&&f.priceOnly?' (загружаются как отдельные позиции, разделы «Прайс / …»)':' (не загружаются — есть настройка «Добавлять и позиции, которых нет в парсе»)'}. Позиции без строки прайса или с пустой ценой («по запросу») загружаются без цены.</p>`:''}
+    ${!files&&p.extra?`<p class="muted fd-match">Файл описаний: описание из файла получили ${Fmt.num(p.extra.applied)} ${plural(p.extra.applied,'позиция','позиции','позиций')} фида (серий в файле — ${Fmt.num(p.extra.series)}, позиций — ${Fmt.num(p.extra.items)}).</p>`:''}
     <div class="sub">Категории ${files?'парса':'фида'} → категории программы ${tip('По умолчанию категория определяется по названию каждой позиции: разделы фида часто — подборки («200 л/мин», «С ресивером»), где вперемешку винтовые и поршневые. Выберите категорию, только если весь раздел — одно и то же, или «не загружать».')}</div>
     <div class="fd-tw"><table class="fd-t"><thead><tr><th>Категория ${files?'в парсе':'в фиде'}</th><th class="num">Товаров</th><th class="num">В каталоге</th><th>По названию</th><th>Категория программы</th></tr></thead>
       <tbody>${p.cats.map(c=>`<tr><td>${esc(c.path)}</td><td class="num">${c.count}</td><td class="num">${c.inCatalog||''}</td><td class="muted">${fdKinds(c.kinds)}</td><td>${tsel(c.id, FD.cats[c.id]??c.map)}</td></tr>`).join('')}</tbody></table></div>
@@ -312,7 +312,7 @@ function fdLogItem(x){
       ${gone.length?`<p class="sub">Пропали из фида</p>${tbl(gone, c=>`<tr><td>${esc(c.name)}</td></tr>`)}`:''}
       ${x.newSample&&x.newSample.length?`<p class="sub">Новые товары в фиде (ещё не в каталоге)</p><p class="muted">${x.newSample.map(esc).join(' · ')}${x.new>x.newSample.length?' …':''} — «Проверить фид» → «Загрузить в каталог».</p>`:''}
       ${x.cards?fdCardsLog(x.cards):''}
-      ${x.mode==='build'?`<p class="sub">Сборка</p><p class="muted">Сопоставлено с имевшимися позициями: ${stNum(x.linked||0)}, в корзину: ${stNum(x.trashed||0)}.</p>${(x.dups||[]).length?`<details class="more"><summary>Дубли в корзине (${x.dups.length})</summary><p class="muted">${x.dups.map(esc).join(' · ')}</p></details>`:''}${(x.keep||[]).length?`<details class="more"><summary>Позиции производителя, которых нет в парсе (${x.keep.length})</summary><p class="muted">${x.keep.map(esc).join(' · ')}</p></details>`:''}`:''}
+      ${x.mode==='build'?`<p class="sub">Сборка</p><p class="muted">Сопоставлено с имевшимися позициями: ${Fmt.num(x.linked||0)}, в корзину: ${Fmt.num(x.trashed||0)}.</p>${(x.dups||[]).length?`<details class="more"><summary>Дубли в корзине (${x.dups.length})</summary><p class="muted">${x.dups.map(esc).join(' · ')}</p></details>`:''}${(x.keep||[]).length?`<details class="more"><summary>Позиции производителя, которых нет в парсе (${x.keep.length})</summary><p class="muted">${x.keep.map(esc).join(' · ')}</p></details>`:''}`:''}
       ${(x.errors||[]).length?`<p class="sub">Ошибки</p><p class="bad-t">${x.errors.map(esc).join('<br>')}</p>`:''}
       ${!pc.length&&!sc.length&&!gone.length&&!(x.errors||[]).length&&!x.new?'<p class="muted">Изменений нет.</p>':''}</div></details>`;
 }
@@ -320,7 +320,7 @@ function fdLogItem(x){
 // карточки производителя, заведённые вручную: сколько получили цену из прайса и какие — нет (почему)
 function fdCardsLog(c){
   const list=(arr, t)=>arr.length?`<details class="more"><summary>${t}: ${arr.length}</summary><p class="muted">${arr.map(x=>esc(x.name)+(x.rows&&x.rows.length?` <small>(${esc(x.rows[0])})</small>`:'')).join(' · ')}</p></details>`:'';
-  return `<p class="sub">Карточки, заведённые вручную</p><p class="muted">Всего ${stNum(c.cards)}, цена из прайса — у ${stNum(c.priced)}, изменились — ${stNum(c.updated)}.</p>
+  return `<p class="sub">Карточки, заведённые вручную</p><p class="muted">Всего ${Fmt.num(c.cards)}, цена из прайса — у ${Fmt.num(c.priced)}, изменились — ${Fmt.num(c.updated)}.</p>
     ${list(c.noPrice||[], 'В прайсе без цены («по запросу»)')}${list(c.missing||[], 'Такого исполнения нет в прайсе')}${list(c.unclear||[], 'Не понятна модель')}`;
 }
 
@@ -330,7 +330,7 @@ function fdPoll(fid, m){
     let j=null; try{ j=(await aapi(`feeds/${fid}/status`)).job; }catch(e){ return; }
     const el=$('#fdJob'); if (el) el.innerHTML=fdJob(j);
     if (j && j.state==='run') return fdPoll(fid, m);
-    if (j && j.state==='done' && typeof refreshCat==='function') refreshCat();
+    if (j && j.state==='done') refreshCat();
     FD.prev=null; stFeeds(m); }, 1500);
 }
 

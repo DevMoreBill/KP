@@ -221,7 +221,10 @@ class MailTemplate:
         ct = st.get('contact') if isinstance(st.get('contact'), dict) else {}
         cv = st.get('cover') if isinstance(st.get('cover'), dict) else {}
         d = Val.day(st.get('date') or mt.get('date'))
-        phone = ', '.join(x for x in [str(mg.get('phone') or '') + ((' доб. ' + str(mg['ext'])) if mg.get('ext') else ''), str(mg.get('mobile') or '')] if x.strip())
+        phone = str(mg.get('phone') or '')
+        if mg.get('ext'):
+            phone += ' доб. ' + str(mg['ext'])
+        phone = ', '.join(x for x in (phone, str(mg.get('mobile') or '')) if x.strip())
         eq = ' '.join(x for x in [str(cv.get('title') or '').strip(), str(cv.get('model') or '').strip()] if x).strip()
         return {'номер': mt.get('number') or st.get('number') or '', 'дата': d.strftime('%d.%m.%Y') if d else '', 'клиент': mt.get('client') or st.get('client') or '',
                 'поставщик': supplier, 'менеджер': mg.get('name') or mt.get('manager') or '', 'должность': mg.get('position') or '',

@@ -19,9 +19,9 @@ import hashlib
 import html as html_mod
 import io
 import json
-import urllib.parse
 import os
 import re
+import urllib.parse
 import zipfile
 from datetime import datetime
 
@@ -1200,7 +1200,6 @@ def _spec_rows(k, v):
     return [_spec_fix(k, v)]
 
 
-
 _SPEC_SEEN = {}         # подпись характеристики → класс: одни и те же подписи у тысяч позиций разбираются один раз
 
 
@@ -1315,14 +1314,15 @@ def _norm(s):
     return re.sub(r'\s+', ' ', s).strip()
 
 
-def _key(s):
+def name_key(s):
+    """Название для сравнения: только буквы и цифры («DVK 30 (O)» → «dvk30»)."""
     return re.sub(r'[^a-z0-9а-я]', '', _norm(s))
 
 
 def _model_key(s):
     """Код модели из названия: слова с цифрами и латиница заглавными («Осушитель DryAir DA 440» → «dryairda440»)."""
     words = [w for w in re.split(r'\s+', str(s or '')) if re.search(r'\d', w) or (len(w) > 1 and re.fullmatch(r'[A-Za-z][A-Za-z-]*', w) and w.upper() == w)]
-    return _key(' '.join(words))
+    return name_key(' '.join(words))
 
 
 def _model_set(s):
@@ -1360,20 +1360,21 @@ def page_cfg(pg):
     return cfg
 
 
-def _lat(c):
+def lat_series(c):
+    """Латинские серии исполнения (Dalgakiran: «DVK», «TIDY») — по ним сопоставляются позиции парса, прайса и каталога."""
     return tuple(sorted(s for s in c['ser'] if re.match(r'^[A-Z]', s) and s != 'R'))     # R — резьба «R1 1/2"», не серия
 
 
 def _cfg_key(c):
     p = 7.5 if c['p'] == 7 else c['p']          # в прайсе «7» и «7,5» — одно исполнение (на сайте — 7,5)
-    return (_lat(c), c['size'], p, c['rec'], c['dry'], c['vsd'], c['w'])
+    return (lat_series(c), c['size'], p, c['rec'], c['dry'], c['vsd'], c['w'])
 
 
 def cfg_compatible(a, b):
     """Не противоречат ли исполнения: серия (латинские слова), типоразмер, частотник, водяное охлаждение. Без серии — не судим."""
-    if not _lat(a) or not _lat(b) or a['size'] is None or b['size'] is None:
+    if not lat_series(a) or not lat_series(b) or a['size'] is None or b['size'] is None:
         return True
-    if _lat(a) != _lat(b) or a['size'] != b['size'] or a['vsd'] != b['vsd'] or a['w'] != b['w']:
+    if lat_series(a) != lat_series(b) or a['size'] != b['size'] or a['vsd'] != b['vsd'] or a['w'] != b['w']:
         return False
     ka, kb = _cfg_key(a), _cfg_key(b)
     if a['p'] and b['p'] and ka[2] != kb[2]:        # давление известно с обеих сторон — должно совпасть
@@ -1427,16 +1428,16 @@ def match_prices(pages, prices):
         if len(p['name']) > 90 or len(p['name'].split()) > 9:      # примечания и сноски в столбце названий — не товары
             continue
         by_norm.setdefault(_norm(p['name']), p)
-        by_key.setdefault(_key(p['name']), p)
+        by_key.setdefault(name_key(p['name']), p)
         c = model_cfg(p['name'])
         p['_cfg'] = c
-        if _lat(c) and c['size'] is not None:
+        if lat_series(c) and c['size'] is not None:
             by_cfg.setdefault(_cfg_key(c), []).append(p)
         mk = _model_key(p['name'])
         if mk:
             by_model.setdefault(mk, []).append(p)
         if p['short']:
-            by_short.setdefault(_key(p['short']), []).append(p)
+            by_short.setdefault(name_key(p['short']), []).append(p)
         ms = _model_set(p['name'])
         if ms:
             by_set.setdefault(ms, []).append(p)
@@ -1461,16 +1462,16 @@ def match_prices(pages, prices):
     hit, how = {}, {'cfg': 0, 'name': 0, 'key': 0, 'model': 0, 'short': 0, 'set': 0}
     for pg in pages:
         c = page_cfg(pg)
-        p = one(by_cfg.get(_cfg_key(c))) if _lat(c) and c['size'] is not None and c['p'] else None
+        p = one(by_cfg.get(_cfg_key(c))) if lat_series(c) and c['size'] is not None and c['p'] else None
         if p:
             how['cfg'] += 1
             hit[pg['url']] = p
             continue
-        mk = _model_key(pg['name']) or _key(pg.get('model'))
+        mk = _model_key(pg['name']) or name_key(pg.get('model'))
         ms = _model_set(pg['name'])
-        steps = (('name', lambda: by_norm.get(_norm(pg['name']))), ('key', lambda: by_key.get(_key(pg['name']))),
+        steps = (('name', lambda: by_norm.get(_norm(pg['name']))), ('key', lambda: by_key.get(name_key(pg['name']))),
                  ('model', lambda: one(by_model.get(mk)) if mk else None),
-                 ('short', lambda: one(by_short.get(_key(pg['model']))) if pg.get('model') else None),
+                 ('short', lambda: one(by_short.get(name_key(pg['model']))) if pg.get('model') else None),
                  ('set', lambda: one(by_set.get(ms)) if ms else None), ('code', lambda: _by_code(pg['name'], by_code)))
         p = None
         for step, find in steps:      # по очереди — до первого найденного
@@ -1693,7 +1694,8 @@ def _merge_stock(rows):
     return x
 
 
-def _stock_index(stock):
+def stock_index(stock):
+    """Указатели по строкам остатков: (артикул → строка, код изделия → [кандидаты для _by_code], подпись модели → [(признаки, строка)])."""
     by_sku, by_code = {}, {}
     for r in stock:
         if r['sku']:
@@ -1703,9 +1705,11 @@ def _stock_index(stock):
     # строки с одним кодом и одинаковыми словами (исполнения «на шасси» / «без шасси») — одна строка
     code_rows = {}
     for t, rows in by_code.items():
-        code_rows[t] = [{'name': r['name'], 'short': r['sku'], 'price': 0, 'r': _merge_stock(rows)}] if len(rows) > 1 and \
-            len({re.sub(r'\([^)]*\)', '', r['name']).strip().lower() for r in rows}) == 1 else \
-            [{'name': r['name'], 'short': r['sku'], 'price': r['qty'], 'r': r} for r in rows]
+        same_words = len({re.sub(r'\([^)]*\)', '', r['name']).strip().lower() for r in rows}) == 1
+        if len(rows) > 1 and same_words:
+            code_rows[t] = [{'name': rows[0]['name'], 'short': rows[0]['sku'], 'price': 0, 'r': _merge_stock(rows)}]
+        else:           # price — для _by_code: строки с разным количеством при равном счёте не угадываются
+            code_rows[t] = [{'name': r['name'], 'short': r['sku'], 'price': r['qty'], 'r': r} for r in rows]
     by_sig = {}             # «EXDM 7,5/10 IP 54» ↔ «Винтовой компрессор EXELUTE EXDM 7.5/10 IP54»
     for r in stock:
         core, opt = _sig(r['name'])
@@ -1717,7 +1721,7 @@ def _stock_index(stock):
 def stock_row(stock, sku, name, idx=None):
     """Строка остатков для одной позиции: по артикулу, по подписи модели (степень защиты и частотник строки остатков
     должны быть в названии позиции), иначе по коду изделия в названии; None — нет в остатках."""
-    by_sku, by_code, by_sig = idx or _stock_index(stock)
+    by_sku, by_code, by_sig = idx or stock_index(stock)
     r = by_sku.get(_sku_key(sku)) if sku else None
     if r is None:
         core, opt = _sig(name)
@@ -1748,7 +1752,7 @@ def stock_info(r):
 def apply_stock(offers, stock):
     """Остатки → предложения фида: строка остатков по артикулу из прайса, иначе по коду изделия в названии
     («Поршневой компрессор К14» — «УСТАНОВКА КОМПРЕССОРНАЯ К14»). Позиции нет в остатках — на складе 0. → число найденных."""
-    idx = _stock_index(stock)
+    idx = stock_index(stock)
     found = 0
     for o in offers:
         r = stock_row(stock, o.get('sku'), o['name'], idx)
@@ -1909,18 +1913,24 @@ def model_cfg(model, text=''):
     return cfg
 
 
-def match_card(name, model, attrs, prices):
-    """Ручная карточка → строки прайса того же исполнения; → (строки, причина-если-нет). Давление учитывается,
-    только если у найденных строк разные цены (тогда — по давлению карточки)."""
-    cfg = model_cfg(model or name, name)
+def card_attrs(cfg, attrs):
+    """Исполнение карточки каталога (model_cfg) дополняется её полями: частотник, осушитель, объём ресивера; → cfg."""
     a = attrs or {}
     if str(a.get('vsd') or '').lower() == 'да':
         cfg['vsd'] = True
     if str(a.get('dryer') or '').lower() == 'да':
         cfg['dry'] = True
-    rec = _num_attr(a.get('receiver'))
+    rec = _num_attr(re.sub(r'[\s\xa0]', '', str(a.get('receiver'))))       # «1 000» л
     if rec and cfg['rec'] in (None, -1):
         cfg['rec'] = int(rec)
+    return cfg
+
+
+def match_card(name, model, attrs, prices):
+    """Ручная карточка → строки прайса того же исполнения; → (строки, причина-если-нет). Давление учитывается,
+    только если у найденных строк разные цены (тогда — по давлению карточки)."""
+    cfg = card_attrs(model_cfg(model or name, name), attrs)
+    a = attrs or {}
     if not cfg['ser'] or cfg['size'] is None:
         return [], 'не понятна модель'
     cand = []

@@ -14,7 +14,7 @@ class FeatureRegistry {
   use(v){ this.vals = v && typeof v==='object' && !Array.isArray(v) ? v : {}; try{ localStorage.setItem('kp.features', JSON.stringify(this.vals)); }catch(e){} }
   async load(){ try{ this.use(await api('/api/features')); }catch(e){} }
   /** права изменились (вход администратора, другой менеджер на устройстве) — перечитать и перерисовать */
-  async refresh(){ await this.load(); if (typeof renderForm==='function') renderForm(); if (typeof Reminders!=='undefined') Reminders.load(); if (typeof MyDay!=='undefined') MyDay.badge(); }
+  async refresh(){ await this.load(); renderForm(); Reminders.load(); MyDay.badge(); }
 }
 
 const FEAT = new FeatureRegistry()

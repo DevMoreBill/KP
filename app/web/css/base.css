@@ -1,5 +1,5 @@
-/* --on-navy — текст на заливке navy, ok, danger, warn: белый в светлой теме, тёмный в тёмной (там заливки светлые) */
 /* Основа: цвета, шрифты, поля ввода, кнопки, сетки. */
+/* --on-navy — текст на заливке navy, ok, danger, warn: белый в светлой теме, тёмный в тёмной (там заливки светлые) */
 :root{
   --navy:#0B45A0; --sky:#3DA0EE; --ink:#1F2B4D; --muted:#5E6984; --paper:#F3F6FB; --card:#FFFFFF;
   --line:#D9E6F3; --soft:#EAF4FD; --danger:#C23B22; --ok:#18794C; --field:#FFFFFF; --panel:#0B2F6E; --panel-ink:#FFFFFF;
@@ -15,14 +15,14 @@ html{scroll-padding-top:env(safe-area-inset-top,0px)}
 body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 "Onest",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;-webkit-font-smoothing:antialiased}
 button,input,textarea,select{font:inherit;color:inherit}
 .chip.sm{padding:3px 10px;font-size:12.5px}
-.ok-t{color:var(--ok)}
+.ok-t{color:var(--ok);font-weight:600}
 :where(a:not(.btn)){color:var(--navy)}     /* ссылки — цветом темы (в тёмной теме синяя ссылка браузера не видна) */
 .cost{display:grid;grid-template-columns:230px 110px 1fr;gap:10px;align-items:end;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--soft)}
 .bad-t{color:var(--danger)}
 @media (max-width:1000px){.cost{grid-template-columns:1fr 1fr}}
 #srvBtns{display:inline-flex;gap:8px}
 #srvBtns[hidden],#btnExit[hidden]{display:none}
-.jr{display:grid;grid-template-columns:150px minmax(0,1fr) 300px auto;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.jr{display:grid;grid-template-columns:150px minmax(0,1fr) 300px auto;gap:14px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
 .jr>div{display:flex;flex-direction:column;gap:2px;min-width:0}
 .jr .muted{font-size:12.5px}
 .jr-a{font-size:12.5px;color:var(--navy)}
@@ -44,15 +44,15 @@ button,input,textarea,select{font:inherit;color:inherit}
 .jr-more.up .menu-l{top:auto;bottom:calc(100% + 6px)}
 .jr-more.lft .menu-l{right:auto;left:0}
 @media (max-width:1000px){#srvBtns .btn{padding:7px 9px;font-size:13px}.jr{grid-template-columns:1fr}.jr-e{text-align:left}.jbar{grid-template-columns:1fr;grid-auto-flow:row}.jr .acts{justify-content:flex-start}}
-.grid{display:grid;gap:14px}
+.grid{display:grid;gap:10px}
 .g2{grid-template-columns:1fr 1fr}
 .g3{grid-template-columns:2fr 1fr 1fr}
 .g4{grid-template-columns:repeat(4,1fr)}
-label.f,div.f{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted);font-weight:500}
+label.f,div.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);font-weight:500}
 label.f>span.req::after{content:" *";color:var(--danger)}
 input[type=text],input[type=search],input[type=password],input[type=date],input[type=number],input[type=email],input[type=url],input[type=tel],textarea,select{
-  width:100%;border:1px solid var(--line);background:var(--field);border-radius:10px;padding:10px 12px;font-size:15px;color:var(--ink);outline:none;transition:border-color .15s, box-shadow .15s}
-textarea{resize:vertical;min-height:72px;line-height:1.45}
+  width:100%;border:1px solid var(--line);background:var(--field);color:var(--ink);outline:none;transition:border-color .15s, box-shadow .15s}
+textarea{resize:vertical;min-height:58px;line-height:1.45;padding:7px 10px;font-size:14.5px;border-radius:9px}
 input:focus,textarea:focus,select:focus{border-color:var(--sky);box-shadow:0 0 0 3px color-mix(in srgb,var(--sky) 25%,transparent)}
 input.bad{border-color:var(--danger)}
 .f-err{display:block;color:var(--danger);font-size:12px;line-height:1.3;margin-top:2px}
@@ -63,16 +63,16 @@ input.bad{border-color:var(--danger)}
 .kr-log ul{margin:4px 0 0;padding-left:18px;font-size:12.5px;max-height:180px;overflow:auto}
 ::placeholder{color:var(--muted);opacity:.55}
 .num{text-align:right;font-variant-numeric:tabular-nums}
-.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:9px 14px;cursor:pointer;font-weight:550;font-size:14px}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);cursor:pointer;font-weight:550;padding:7px 12px;font-size:13.5px;border-radius:9px}
 a.btn{color:inherit;text-decoration:none}
 .btn:hover{border-color:var(--sky)}
 .btn.primary{background:var(--navy);border-color:var(--navy);color:var(--on-navy)}
 .btn.ghost{border-color:transparent;background:transparent;color:var(--navy);padding-left:6px;padding-right:6px}
 .btn[disabled]{opacity:.5;cursor:not-allowed}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.icon{border:0;background:transparent;cursor:pointer;color:var(--muted);width:32px;height:32px;border-radius:8px;display:inline-grid;place-items:center;font-size:16px}
+.icon{border:0;background:transparent;cursor:pointer;color:var(--muted);width:30px;height:30px;border-radius:8px;display:inline-grid;place-items:center;font-size:16px}
 .icon:hover{background:var(--soft);color:var(--ink)}
-.sub{font-weight:650;font-size:14px;margin:0 0 8px;display:flex;align-items:center;gap:10px}
+.sub{font-weight:650;font-size:13.5px;margin:0 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;row-gap:4px}
 .sub .muted{font-weight:400}
 .muted{color:var(--muted);font-size:13px}
 .star{font-size:17px}
@@ -83,7 +83,7 @@ a.btn{color:inherit;text-decoration:none}
 .chip.on{background:var(--navy);border-color:var(--navy);color:var(--on-navy)}
 /* итог */
 aside{position:sticky;top:84px;align-self:start}
-.dl{width:100%;justify-content:center;margin-top:14px;padding:13px 16px;font-size:15px}
+.dl{width:100%;justify-content:center;margin-top:14px}
 .fname{font-size:12px;color:var(--muted);margin-top:8px;overflow-wrap:anywhere;text-align:center}
 .msg{font-size:13px;margin-top:8px;text-align:center}
 .msg.err{color:var(--danger)}
@@ -155,7 +155,7 @@ dialog.uit-dlg .uit-acts .sp{flex:1}
 }
 .auth-me{display:grid;gap:2px;padding:6px 12px 2px}
 
-/* 3.36: тендерное КП — в журнале и в разделе «Клиент» */
+/* тендерное КП — в журнале и в разделе «Клиент» */
 .jr-t{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;font-size:12px;font-weight:600;color:#8a4b00;background:color-mix(in srgb,#f59e0b 16%,var(--card));border:1px solid color-mix(in srgb,#f59e0b 45%,transparent);border-radius:999px;padding:1px 8px;white-space:nowrap}
 .jr-t a{color:inherit;text-decoration:none;font-weight:700}
 .jr-t a:hover{text-decoration:underline}

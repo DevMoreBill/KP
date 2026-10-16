@@ -1,4 +1,4 @@
-// Карточка клиента (функция clientCard): реквизиты, контакты и объекты из справочника, все КП клиента с итогами
+// Карточка клиента (ClientCard): реквизиты, контакты и объекты из справочника, все КП клиента с итогами
 // по статусам, заметки отдела о клиенте. Сервер — ClientCardController (app/web_api.py). Открывается из раздела
 // «Клиент» и из журнала (название клиента).
 'use strict';
@@ -12,7 +12,7 @@ class ClientCard {
   static sum(x){ return ((x.econ&&x.econ.sum!=null)?x.econ.sum:x.sum)||0; }
   static tile(label, val, sub=''){ return `<div class="cc-t"><span>${label}</span><b>${val}</b>${sub?`<small>${sub}</small>`:''}</div>`; }
   static notesHtml(L, me){
-    return L.length ? L.map(n=>`<div class="cc-n"><div><span class="muted">${esc(jTime(n.at))} · ${esc(n.by||'')}</span><p>${esc(n.text)}</p></div>${n.uid===me||ADMIN.on?`<button class="icon" type="button" data-ccnd="${esc(n.at)}" aria-label="Удалить заметку" title="Удалить заметку">✕</button>`:''}</div>`).join('')
+    return L.length ? L.map(n=>`<div class="cc-n"><div><span class="muted">${esc(Fmt.dateTime(n.at))} · ${esc(n.by||'')}</span><p>${esc(n.text)}</p></div>${n.uid===me||ADMIN.on?`<button class="icon" type="button" data-ccnd="${esc(n.at)}" aria-label="Удалить заметку" title="Удалить заметку">✕</button>`:''}</div>`).join('')
       : '<p class="empty">Заметок нет. Запишите то, что важно знать коллегам: кто принимает решение, бюджет, особенности объекта.</p>';
   }
 

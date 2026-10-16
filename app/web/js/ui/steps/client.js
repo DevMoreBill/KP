@@ -45,7 +45,7 @@ function stepClient(){
   ${TenderBlock.html()}
   <div class="csec"><p class="sub">Кому</p>${has ? summary : finder}${(has&&edit)||S._clManual ? form : ''}${has?PartyCheck.line():''}${has?clientPrevHtml():''}</div>
   <div class="csec"><p class="sub">Контактное лицо <span class="muted">необязательно</span></p>
-   ${cons.length?`<div class="chips" style="margin-bottom:8px"><span class="muted" style="font-size:13px">Ранее:</span>${cons.slice(0,4).map((c,k)=>`<button class="chip sm" type="button" data-a="pickContact" data-k="${(cl.contacts||[]).indexOf(c)}">${esc(c.name)}${c.post?' — '+esc(c.post):''}</button>`).join('')}</div>`:''}
+   ${cons.length?`<div class="chips" style="margin-bottom:8px"><span class="muted" style="font-size:13px">Ранее:</span>${cons.slice(0,4).map(c=>`<button class="chip sm" type="button" data-a="pickContact" data-k="${(cl.contacts||[]).indexOf(c)}">${esc(c.name)}${c.post?' — '+esc(c.post):''}</button>`).join('')}</div>`:''}
    <div class="grid g2">${field('ФИО','contact.name',{ph:'Иванов Иван Иванович'})}${field('Должность','contact.post',{ph:'Главный энергетик'})}</div>
    <details class="more-lite"${S.contact.phone||S.contact.email?' open':''}><summary>Телефон и e-mail</summary><div class="grid g2" style="margin-top:8px">${field('Телефон','contact.phone',{ph:'+7 …'})}${field('E-mail','contact.email')}</div></details></div>
   <div class="csec"><p class="sub">Объект <span class="muted">необязательно</span></p>

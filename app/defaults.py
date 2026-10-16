@@ -180,14 +180,14 @@ class SrvVal:
 
 def img_opts(store):
     """Фильтр фото со страницы: {minKB, minPx, skipBlank, maxCount} (выключенное ограничение — 0 / False)."""
-    out = {}
+    out, own = {}, get(store)
     for k, b in IMG_BUILTIN.items():
-        x = get(store).get(k)
+        x = own.get(k)
         name = k.split('.', 1)[1]
         if isinstance(b, bool):
             out[name] = bool(x.get('on', True)) if isinstance(x, dict) else b
             continue
-        v = value(store, k, b)
+        v = _value_of(x, b)
         try:
             out[name] = max(0, int(float(str(v).replace(',', '.')))) if v is not None else 0
         except ValueError:

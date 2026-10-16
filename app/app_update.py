@@ -130,6 +130,10 @@ class ReleaseSource:
                 r.unredirected_hdrs.pop('Authorization', None)
             return r
 
+    @staticmethod
+    def _offline(e):
+        return UpdateError('Нет связи с GitHub: %s. Скачайте архив обновления вручную и загрузите его файлом' % str(getattr(e, 'reason', e))[:120])
+
     def _open(self, url, accept):
         req = urllib.request.Request(url, headers=self._headers(accept))
         try:
@@ -142,7 +146,7 @@ class ReleaseSource:
                                   if not self.token else 'Выпуск или репозиторий %s не найден' % self.repo)
             raise UpdateError('GitHub ответил ошибкой %s' % e.code)
         except (urllib.error.URLError, OSError) as e:
-            raise UpdateError('Нет связи с GitHub: %s. Скачайте архив обновления вручную и загрузите его файлом' % str(getattr(e, 'reason', e))[:120])
+            raise self._offline(e)
 
     def latest(self):
         """{version, tag, name, notes, published, asset: {id, name, size, url?} | None, url}. API GitHub не ответил
@@ -170,7 +174,7 @@ class ReleaseSource:
             raise UpdateError('Выпуск не найден: репозиторий %s приватный или не существует (GitHub ответил %s) — укажите токен GitHub'
                               % (self.repo, e.code))
         except (urllib.error.URLError, OSError) as e:
-            raise UpdateError('Нет связи с GitHub: %s. Скачайте архив обновления вручную и загрузите его файлом' % str(getattr(e, 'reason', e))[:120])
+            raise self._offline(e)
         m = re.search(r'/releases/tag/([^/?#]+)$', final or '')
         if not m:
             raise UpdateError('Выпусков в репозитории %s ещё нет' % self.repo)
@@ -187,18 +191,18 @@ class ReleaseSource:
         if a.get('url') and not a.get('id'):
             if not str(a['url']).startswith('https://github.com/%s/releases/download/' % self.repo):
                 raise UpdateError('Неверная ссылка на файл выпуска')
-            url, accept = a['url'], 'application/octet-stream'
+            url = a['url']
         else:
-            url, accept = '%s/repos/%s/releases/assets/%d' % (self.API, self.repo, int(a['id'])), 'application/octet-stream'
-        with self._open(url, accept) as r:
-            data = r.read(UpdatePackage.MAX_BYTES + 1)
-        return data
+            url = '%s/repos/%s/releases/assets/%d' % (self.API, self.repo, int(a['id']))
+        with self._open(url, 'application/octet-stream') as r:
+            return r.read(UpdatePackage.MAX_BYTES + 1)
 
 
 class Updater:
     """Установка обновления рядом с программой, откат, история."""
     KV = 'update'
     HISTORY = 30
+    REPO = 'DevMoreBill/KP'              # репозиторий выпусков по умолчанию
     FAILED_LOG = 'update-failed.json'     # пишет launcher.py, когда обновление не запустилось и вернулась прежняя версия
 
     def __init__(self, store, root, data_dir):
@@ -238,7 +242,7 @@ class Updater:
         return {'current': self.current(), 'base': os.environ.get('KP_BASE_VERSION') or '', 'patched': bool(os.environ.get('KP_UPDATE_DIR')),
                 'installed': installed, 'pending': bool(installed) and version.as_tuple(installed) > version.as_tuple(self.current()),
                 'prev': prev, 'frozen': self.frozen(), 'writable': self.writable(), 'root': self.root,
-                'repo': s.get('repo') or 'DevMoreBill/KP', 'auto': s.get('auto', True), 'hasToken': bool(self.token()),
+                'repo': s.get('repo') or self.REPO, 'auto': s.get('auto', True), 'hasToken': bool(self.token()),
                 'last': last, 'available': bool(last.get('version')) and version.as_tuple(last['version']) > version.as_tuple(self.current()),
                 'failed': self.failed(s), 'history': (s.get('history') or [])[-self.HISTORY:][::-1],
                 'nightly': s.get('nightly') or 'off', 'nightHour': int(s.get('nightHour', NightUpdate.HOUR)), 'nightLast': s.get('nightLast'),
@@ -330,7 +334,7 @@ class Updater:
 
     # ---------- проверка и скачивание
     def source(self):
-        return ReleaseSource(self.settings().get('repo') or 'DevMoreBill/KP', self.token())
+        return ReleaseSource(self.settings().get('repo') or self.REPO, self.token())
 
     def check(self):
         s = self.settings()

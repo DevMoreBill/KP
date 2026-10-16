@@ -130,7 +130,7 @@ class Attention:
 
     def _errors(self):
         from server_log import ServerLog
-        lg = ServerLog.current or ServerLog(os.path.join(self.cfg.DATA_DIR, 'logs'))
+        lg = ServerLog.of(self.cfg.DATA_DIR)
         n = lg.count_since(24)
         return [{'level': 'warn', 'text': 'Ошибки сервера за сутки: %d — подробности в «Системе» (журнал сервера)' % n, 'tab': 'system',
                  'key': 'errors', 'alert': True}] if n else []

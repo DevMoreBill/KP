@@ -362,7 +362,7 @@ function kitDocItem(x){
   if (!isKit(x)) return x;
   const parts=kitParts(x).filter(p=>String(p.name||'').trim()), st=!!typeById(attrsOf(x).cat).station;
   const q=p=>(+p.qty||1)>1?` × ${p.qty}`:'';
-  // станция (ТКП, решение ПНЕВМОТЕХ 14.10): описание и характеристики — только основных агрегатов, ключевые строки;
+  // станция (ТКП): описание и характеристики — только основных агрегатов, ключевые строки;
   // фильтры, обвязка, шкафы и контейнер — в перечне состава, устройство контейнера — блоком «Устройство станции»
   const cardP=st ? parts.filter(p=>StationDoc.card(p)) : parts, rowsOf=p=>st ? StationDoc.rows(p) : (p.rows||[]).filter(r=>r.k&&r.v);
   const list={id:'kit_all', label:'Состав изделия', text:parts.map(p=>`${p.name.trim()}${q(p)}`).join('; ')+'.'};
@@ -546,7 +546,7 @@ document.addEventListener('change', e=>{ const t=e.target;
   if (t.dataset.kitct!=null){ const [i,j]=t.dataset.kitct.split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
     const o={[t.dataset.fld]:t.value}; if (t.dataset.fld==='ctype'){ const c=ctypeOf(t.value); if (c.ins) o.ins=c.ins; if (c.climate) o.climate=c.climate; if (p.sizeAuto) o.size=''; }
     if (t.dataset.fld==='size'){ o.sizeAuto=!String(t.value).trim(); o.lenFix=null;     // вписан свой размер — подбор по оборудованию отключается
-      // вписана только длина (блок-контейнер): длина — заданная, ширина, высота и плотность компоновки — по оборудованию (3.86.11)
+      // вписана только длина (блок-контейнер): длина — заданная, ширина, высота и плотность компоновки — по оборудованию
       const L=StationGeo.FLEX[p.ctype] ? StationGeo.len(t.value) : null; if (L){ o.lenFix=L; o.size=''; o.sizeAuto=true; } }
     contApply(p, o); StationSize.apply(it); stationFill(it); stationAutoName(it); renderForm(); persist(); return; }
   if (t.dataset.kitcur!=null){ const [i,j]=t.dataset.kitcur.split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;

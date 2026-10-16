@@ -8,7 +8,7 @@
 .oitem{display:inline-flex;gap:6px;align-items:center;background:var(--soft);border-radius:8px;padding:3px 4px 3px 10px;font-size:12.5px}
 .oitem button{border:0;background:none;cursor:pointer;color:var(--muted);font-size:12px;padding:0 4px}
 .icard{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 16px;align-items:start}
-.iside{grid-column:2;display:grid!important;grid-template-columns:170px 200px 1fr;align-items:end}
+.iside{grid-column:2;display:grid!important;grid-template-columns:170px 200px 1fr;align-items:end;gap:8px}
 textarea.iname{min-height:0;height:auto;resize:none;font-weight:600;font-size:15.5px;line-height:1.35;padding:8px 12px;width:100%}
 .ithumb{width:110px;height:84px;border:1.5px dashed var(--line);border-radius:12px;background:var(--soft);display:grid;place-items:center;cursor:pointer;padding:4px;color:var(--muted);font-size:13px;overflow:hidden;box-sizing:border-box;flex:0 0 auto}
 .ithumb img{display:block;width:100%;height:100%;min-width:0;min-height:0;object-fit:contain}
@@ -21,7 +21,6 @@ input.iname{font-weight:600;font-size:15.5px}
 .st b{font-weight:650}
 .st.zero{color:var(--muted)}
 .st:hover{border-color:var(--sky)}
-.iside{display:grid;gap:8px}
 .iside .pricebox{padding:9px 12px;min-height:0}
 .isum{text-align:right;font-size:13px;color:var(--muted)}
 .isum b{color:var(--ink);font-size:15px}
@@ -32,17 +31,17 @@ dialog.editor[open]{display:flex}
 .ed-tab{border:0;background:none;padding:10px 14px;border-bottom:3px solid transparent;cursor:pointer;font-weight:600;color:var(--muted);font-size:14.5px}
 .ed-tab.on{color:var(--navy);border-bottom-color:var(--navy)}
 .ed-b{padding:18px 20px 24px;overflow:auto;flex:1}
-.ed-sec{margin-bottom:22px}
+.ed-sec{margin-bottom:14px}
 .media2{display:grid;grid-template-columns:1fr 280px;gap:16px}
-.fblock{display:grid;grid-template-columns:190px minmax(0,1fr);gap:14px;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.fblock{display:grid;grid-template-columns:190px minmax(0,1fr);gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px}
 .fimg{display:grid;gap:6px}
 .ibox{height:130px;border:1.5px dashed var(--line);border-radius:10px;background:var(--soft);display:grid;place-items:center;text-align:center;cursor:pointer;color:var(--muted);font-size:13px;padding:6px}
 .ibox img{max-width:100%;max-height:118px;object-fit:contain}
 .ftext{display:grid;gap:8px;align-content:start}
-.fhead{grid-template-columns:1fr 32px 32px}
+.fhead{display:flex;align-items:center;gap:4px}
 @media (max-width:1000px){.icard{grid-template-columns:90px 1fr}.iside{grid-column:1/-1;grid-template-columns:1fr 1fr 1fr;align-items:end}.media2,.fblock{grid-template-columns:1fr}}
 .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;border:1.5px dashed var(--line);border-radius:12px;padding:12px;min-height:70px;background:var(--soft)}
-.gcard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.gcard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:4px}
 .gcard img{width:100%;height:140px;object-fit:contain;background:#fff;border-radius:6px}
 .mainpick{margin:8px 0 4px;display:flex;flex-direction:column;gap:6px}
 .mainpick-l{display:flex;flex-wrap:wrap;gap:6px}
@@ -68,7 +67,7 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .qty{display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;background:var(--field)}
 .qty input{border:0;text-align:center;padding:10px 0;box-shadow:none!important;background:transparent}
 .qty button{border:0;background:transparent;width:28px;height:40px;cursor:pointer;color:var(--muted);font-size:17px}
-.sw{display:inline-flex;align-items:center;gap:10px;cursor:pointer;border:0;background:none;padding:0;font-weight:550;color:var(--ink)}
+.sw{display:inline-flex;align-items:center;gap:8px;cursor:pointer;border:0;background:none;padding:0;font-weight:600;color:var(--ink)}
 .sw i{flex:0 0 38px;width:38px;height:22px;border-radius:22px;background:var(--line);position:relative;transition:background .2s}
 .sw i::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s}
 .sw[aria-checked=true] i{background:var(--navy)}
@@ -79,7 +78,7 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .grp{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
 .grp-h{display:flex;gap:8px;margin-bottom:8px}
 .grp-h input{font-weight:600}
-.srow{display:grid;grid-template-columns:1fr 1fr 32px 32px;gap:6px;margin-bottom:6px}
+.srow{display:grid;grid-template-columns:1fr 1fr 32px 32px;gap:6px;margin-bottom:4px}
 .ai{background:var(--soft);border-radius:12px;padding:14px;display:grid;gap:10px}
 .ai p{margin:0}
 /* доп. оборудование */
@@ -89,7 +88,7 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .opt input{padding:8px 10px;font-size:14px;background:var(--field)}
 .opts .chips{margin:4px 0 10px}
 .attrs{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-@media (max-width:620px){ .g2{grid-template-columns:1fr} .top{padding:12px 16px} .step{padding:18px} .srow{grid-template-columns:1fr 1fr 28px 28px} }
+@media (max-width:620px){ .g2{grid-template-columns:1fr} .top{padding:12px 16px} .srow{grid-template-columns:1fr 1fr 28px 28px} }
 .agrp{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
 /* панель под местом для картинки: выбрать файл / вставить из буфера */
 .imgbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:6px 0 10px;font-size:13px}
@@ -100,7 +99,6 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 /* порядок блоков описания и изображений: «⠿» — перетащить, ↑↓ — сдвинуть */
 .ed-hdl{cursor:grab;color:var(--muted);font-size:17px;line-height:1;padding:4px 3px;border-radius:6px;user-select:none;align-self:center}
 .ed-hdl:hover{background:var(--soft);color:var(--ink)}
-.fhead{display:flex;align-items:center;gap:4px}
 .fhead input{flex:1}
 .gmv{display:flex;align-items:center;gap:2px}
 .gmv .icon{width:26px;height:26px;font-size:13px}
@@ -115,10 +113,10 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .kit-cost{display:flex;gap:6px}
 .kit-cost input{flex:1;min-width:0}
 .kit-cost select{width:auto;flex:none}
-.kit-ph{place-items:center;margin-top:20px}
-.kit-phb{font-weight:600}
+.kit-ph{place-items:center;position:relative;display:flex;align-items:center;justify-content:center;width:168px;height:140px;margin:0;overflow:hidden;border:1px dashed var(--line);border-radius:10px;background:#fff}
+.kit-phb{font-weight:600;display:grid;gap:2px;justify-items:center;align-content:center;width:100%;height:100%;border:0;background:var(--field);color:var(--navy);cursor:pointer}
 .kit-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:6px;margin-top:6px}
-.kit-add .chips{display:flex;flex-wrap:wrap;gap:6px}
+.kit-add .chips{display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%}
 .kit-sum{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--soft)}
 .kit-sum b{font-size:16px}
 .kit-sum small{flex-basis:100%}
@@ -127,9 +125,6 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .kit-pick:hover{border-color:var(--sky)}
 .kit-pick img,.kit-noimg{flex:none;width:56px;height:44px;object-fit:contain}
 .kit-pick small{display:block}
-@media (max-width:700px){
-  .kit-ph{margin-top:0}
-}
 
 /* станция в контейнере: что ещё выбрать, контейнер, роль элемента */
 .kit-todo{display:grid;gap:8px;padding:14px;border:1.5px dashed var(--navy);border-radius:12px;margin-bottom:12px;background:var(--soft)}
@@ -141,7 +136,6 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .kit-ctb.on{box-shadow:inset 0 0 0 1px var(--navy)}
 .kit-role{flex:none;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-radius:999px;background:var(--soft);color:var(--navy)}
 .kit-role.main{background:var(--navy);color:var(--on-navy)}
-.btn.sm{padding:4px 10px;font-size:12.5px}
 
 /* автозаполнение с ИИ: три шага */
 .ai3 .ai-steps{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:12px;counter-reset:ai}
@@ -184,16 +178,13 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .kit-none{display:grid;justify-items:start;gap:8px;padding:14px;border:1.5px dashed var(--line);border-radius:12px}
 .kit-none p{margin:0;font-weight:600}
 
-/* 3.23: фото элемента состава станции и «добавить элемент» */
-.kit-ph{position:relative;display:flex;align-items:center;justify-content:center;width:168px;height:140px;margin:0;overflow:hidden;border:1px dashed var(--line);border-radius:10px;background:#fff}
+/* фото элемента состава станции и «добавить элемент» */
 .kit-ph.has{border-style:solid}
 .kit-ph img{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;padding:6px;box-sizing:border-box}
 .kit-ph .x{position:absolute;top:4px;right:4px;background:var(--card)}
-.kit-phb{display:grid;gap:2px;justify-items:center;align-content:center;width:100%;height:100%;border:0;background:var(--field);color:var(--navy);cursor:pointer}
 .kit-phb small{color:var(--muted);font-weight:400}
 .kit-add{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:12px;padding:12px;border:1.5px dashed var(--navy);border-radius:12px;background:var(--soft)}
 .kit-add>b{font-size:14.5px}
-.kit-add .chips{flex-basis:100%}
 .kit-add .chip{border-color:var(--navy);color:var(--navy);background:var(--card);font-weight:600}
 /* главное фото станции: пояснение и выбор из фото элементов */
 .st-ph{display:grid;gap:8px;margin-bottom:10px;padding:10px 12px;border-radius:10px;background:var(--soft)}
@@ -286,7 +277,7 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .kit-pp{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 12px;margin:6px 0 4px}
 @media (max-width:900px){ .stl-views{grid-template-columns:1fr} }
 
-/* 3.23: окно автозаполнения — шапка, источники карточками, понятные шаги */
+/* окно автозаполнения — шапка, источники карточками, понятные шаги */
 .ed-sec.ai3{display:grid;gap:12px}
 .ai-hero{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-radius:14px;background:linear-gradient(135deg,color-mix(in srgb,var(--sky) 22%,var(--card)),var(--card));border:1px solid color-mix(in srgb,var(--sky) 45%,var(--line))}
 .ai-ic{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:20px;background:var(--navy);color:var(--on-navy)}
@@ -318,7 +309,7 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .ai-txt[open]>summary{margin-bottom:6px}
 .ai-how{margin:0;font-size:13px;color:var(--muted)}
 .ai-how kbd{font:inherit;font-size:12px;padding:0 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;background:var(--card);color:var(--ink)}
-.ai-go{min-height:42px;padding:0 18px;font-size:15px}
+.ai-go{min-height:42px}
 .ai-spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:aispin .8s linear infinite;vertical-align:-2px}
 @keyframes aispin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){ .ai-spin{animation:none} }
@@ -340,8 +331,7 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .pim-f{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px 14px}
 .pim-keep{color:var(--muted)}
 #dlg .pim{border:0;padding:0;background:none}
-/* 3.24: телефон — шапка автозаполнения и заголовки с кнопками переносятся, слова не ломаются */
-.sub{flex-wrap:wrap;row-gap:4px}
+/* телефон — шапка автозаполнения и заголовки с кнопками переносятся, слова не ломаются */
 .sub>.btn{white-space:nowrap}
 @media (max-width:700px){ .ai-hero>div{flex:1 1 200px} .ai-mode{margin-left:52px} }
 .mob .ai-hero{flex-wrap:wrap}
@@ -364,7 +354,7 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .kr-g>label.f>span{overflow-wrap:anywhere}
 .kr-g input[type=text],.kr-g select{padding:6px 9px;min-height:34px;font-size:13.5px}
 .kr-calc>.kr-g+.kr-hint,.kr-calc .muted{font-size:12px}
-.kit-req .chk{display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:0;border:0;border-radius:0;background:none}   /* не карточка проверки контрагента */
+.kit-req .chk{display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:0;border:0;border-radius:0;background:none}   /* .chk здесь — простая галочка, без рамки и фона плашки проверки контрагента */
 .kit-req .chk input{margin-top:3px;width:auto;flex:0 0 auto}
 .kr-opts{display:flex;flex-wrap:wrap;gap:6px 18px}
 .kr-n textarea{width:100%}
@@ -439,7 +429,7 @@ dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
 .tzi-f ul{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:5px;max-height:240px;overflow:auto}
 .tzi-f li{font-size:13px;line-height:1.35}
 .tzi-f li small{display:block;font-size:11.5px}
-/* 3.65: расчёт станции на вкладке «Компоновка» — шаги с формулами, данными, результатом и источником */
+/* расчёт станции на вкладке «Компоновка» — шаги с формулами, данными, результатом и источником */
 .calc>summary{cursor:pointer;list-style-position:inside}
 .calc[open]>summary{margin-bottom:6px}
 .calc-opts{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px}
@@ -459,7 +449,7 @@ dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
 .kr-hint{margin:4px 0 0;font-size:12px}
 .kr-rp{margin:4px 0 8px;font-size:13px;line-height:1.4}
 .kr-sub{margin:8px 0 2px;font-size:12.5px;font-weight:600;color:var(--muted)}
-/* 3.65: окно ТЗ — как прочитан документ, анкета со статусами, сравнение с ИИ, вопросы заказчику */
+/* окно ТЗ — как прочитан документ, анкета со статусами, сравнение с ИИ, вопросы заказчику */
 .tzi-m{margin:4px 0 8px;font-size:13px}
 .tzi-m ul{margin:0;padding-left:18px}
 .tzi-m li.on{color:var(--ok)}
@@ -477,7 +467,7 @@ dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
 .tzi-ai ul li{font-size:13px}
 @media (max-width:700px){ .tzi-t td:first-child{white-space:normal} }
 
-/* 3.66: «Подбор станции» — простой экран менеджера: главные поля, одна кнопка, итог одной строкой, состав коротко,
+/* «Подбор станции» — простой экран менеджера: главные поля, одна кнопка, итог одной строкой, состав коротко,
    проверки значками и 3D-вид; подробности — под раскрытием (details[data-sp] помнит, открыт ли) */
 .sq{display:grid;gap:10px;margin:0 0 12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
 .sq-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}

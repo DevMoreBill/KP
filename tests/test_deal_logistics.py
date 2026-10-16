@@ -32,20 +32,20 @@ class LtlLimitsServer(unittest.TestCase):
 
     def test_builtin_and_admin_value(self):
         import defaults
-        from logistics_api import LtlLimits, ltl_ok
+        from logistics_api import LtlLimits
         place = [{'l': 2.0, 'w': 1.2, 'h': 1.8, 'm': 4.0, 'qty': 1}]          # место 4 000 кг
-        ok, why = ltl_ok(place, self.store)
+        ok, why = LtlLimits.fits(place, self.store)
         self.assertFalse(ok)
         self.assertIn('3 000 кг', why)
         self.assertIn('6 000 × 2 400 × 2 500 мм', why)
         defaults.save(self.store, {'log.ltlKg': {'on': True, 'v': '5000'}}, by='проверка')
         self.assertEqual(LtlLimits.get(self.store)['m'], 5.0)
-        self.assertEqual(ltl_ok(place, self.store), (True, ''))
+        self.assertEqual(LtlLimits.fits(place, self.store), (True, ''))
         # общая масса: 5 мест по 4 т = 20 т — на пределе; предел 15 000 кг — отдельная машина
         five = [dict(place[0], qty=5)]
-        self.assertTrue(ltl_ok(five, self.store)[0])
+        self.assertTrue(LtlLimits.fits(five, self.store)[0])
         defaults.save(self.store, {'log.ltlTotal': {'on': True, 'v': '15 000'}})
-        ok, why = ltl_ok(five, self.store)
+        ok, why = LtlLimits.fits(five, self.store)
         self.assertFalse(ok)
         self.assertIn('15 000 кг', why)
         # вне допустимого — встроенное; без базы — встроенные

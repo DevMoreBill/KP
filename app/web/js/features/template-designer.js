@@ -22,11 +22,9 @@ const tdQ = s => document.querySelector('#tdPages '+s), tdQA = s => [...document
 const tdUid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 
 function tdDlg(){
-  let d = $('#tddlg');
-  if (!d){ d = document.createElement('dialog'); d.id = 'tddlg'; d.className = 'tdwin'; d.setAttribute('aria-label', 'Графический редактор шаблона'); document.body.appendChild(d);
-    // Esc: сначала снимает выделение, потом закрывает окно
-    d.addEventListener('cancel', e=>{ e.preventDefault(); if (TD.sel) tdSelect(null); else tdClose(); }); }
-  return d;
+  // Esc: сначала снимает выделение, потом закрывает окно
+  return Modal.host('tddlg', 'tdwin', 'Графический редактор шаблона',
+    d => d.addEventListener('cancel', e=>{ e.preventDefault(); if (TD.sel) tdSelect(null); else tdClose(); }));
 }
 
 async function openTemplateDesigner(id){
@@ -34,13 +32,8 @@ async function openTemplateDesigner(id){
   id = id || S.template;
   const d = tdDlg(); d.innerHTML = '<p class="muted td-load">Загружаю шаблон…</p>'; if (!d.open) d.showModal();
   Object.assign(TD, { id, pack:null, form:null, work:null, undo:[], redo:[], sel:null, err:'', note:'' });
-  dropTemplateCache(id);
   try{
-    TD.pack = await templatePack(id);
-    const r = await fetch(`/tpl/${encodeURIComponent(id)}/editor.json`, {cache:'no-store'});
-    TD.form = r.ok ? await r.json() : {tabs:[]};
-    TD.work = KPGen.deepMerge(TD.pack.skel.defaults, TD.pack.json);
-    TD.work.sections = normSections(TD.work.sections, TD.pack.skel.defaults.sections);
+    Object.assign(TD, await TemplateDraft.load(id));
     for (const k of ['page','imgSize','para']) if (!TD.work[k] || typeof TD.work[k]!=='object' || Array.isArray(TD.work[k])) TD.work[k] = {};
     for (const k of ['images','labels']) if (!Array.isArray(TD.work[k])) TD.work[k] = [];
   }catch(e){ TD.err = e.message || String(e); }

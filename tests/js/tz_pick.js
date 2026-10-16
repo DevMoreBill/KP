@@ -93,7 +93,7 @@ class Check {
     assert.strictEqual(kitParts(x).find(p=>StationEquip.kindOf(p)==='compressor').name, 'Компрессор винтовой К-130', '10 м³/мин + продувка 15 % — один на 13 м³/мин');
     assert.ok(K.some(k=>k[0]==='dryer' && k[2]==='dryer_ads'), 'класс воды 2 (−40 °C) — адсорбционный осушитель');
     assert.ok(K.filter(k=>k[0]==='filter').length>=2, 'фильтры до и после адсорбционного осушителя: '+JSON.stringify(K));
-    // методика ПНЕВМОТЕХ (13.10, уточнено 13.10): 13 м³/мин — цикл 13 / (8 · 1) = 1 625 л; наименьшее допустимое — не меньше
+    // методика ПНЕВМОТЕХ: 13 м³/мин — цикл 13 / (8 · 1) = 1 625 л; наименьшее допустимое — не меньше
     // 15 % минутной (1 950 л) → 3 × 900 л (основной, после осушителя); мокрый — только при пиках; 2000 л — не из ряда 900/500
     const RV=p=>kitParts(p).filter(z=>StationEquip.kindOf(z)==='receiver').map(z=>[z.name, z.qty, z.recvRole]);
     assert.deepStrictEqual(RV(x), [['Ресивер РВ-900/11', 3, 'dry']], JSON.stringify(RV(x)));
@@ -319,7 +319,7 @@ class Check {
     assert.strictEqual(KitNeed.mainPreset(Cat.station('st_comp', [], {})), null, 'требований нет — обычный каталог');
   });
 
-  // ресиверы компрессорной по умолчанию — по 900 л, АСО первым (receiver.base, решение ПНЕВМОТЕХ 12.10)
+  // ресиверы компрессорной по умолчанию — по 900 л, АСО первым (receiver.base, решение ПНЕВМОТЕХ)
   await Check.run('ресиверы: по 900 л, приоритет АСО', async ()=>{
     global.catCache=[
       Cat.item('Компрессор винтовой К-130', { cat:'comp_screw', flow:13, pressure:10, kw:75 }),
@@ -331,7 +331,7 @@ class Check {
       Cat.item('Ресивер РВ-2000/11', { cat:'receiver', volume:2000, pressure:11 }),
       Cat.item('Ресивер РВ-500/16', { cat:'receiver', volume:500, pressure:16 }),
     ];
-    // ряд 900/500 (методика ПНЕВМОТЕХ 13.10): АСО — первым; давление — с запасом 1 бар над компрессором (10 → от 11 бар)
+    // ряд 900/500 (методика ПНЕВМОТЕХ): АСО — первым; давление — с запасом 1 бар над компрессором (10 → от 11 бар)
     let R=TzPick.recvPick(900, 10, 2890);
     assert.strictEqual(R.o.c.name, 'Воздушный ресивер АСО РВ 900/11', JSON.stringify(R && R.o && R.o.c.name));
     R=TzPick.recvPick(900, 8, 2890); assert.strictEqual(R.o.c.name, 'Воздушный ресивер АСО РВ 900/10', '8 бар — АСО на наименьшее достаточное давление (10 ≥ 8 + 1)');
@@ -490,7 +490,7 @@ class Check {
     assert.deepStrictEqual(KitPart.dimsOf({ size:'1 × 1 × 1', mass:5 }, [{ k:'Габариты', v:'9 × 9 × 9' }, { k:'Масса', v:'9' }]), { size:'1 × 1 × 1', mass:5 }, 'заполненное в каталоге не меняется');
   });
 
-  // большая производительность (решение ПНЕВМОТЕХ 13.10): один агрегат не встаёт в контейнер — несколько одинаковых
+  // большая производительность (решение ПНЕВМОТЕХ): один агрегат не встаёт в контейнер — несколько одинаковых
   // компактных, всё в габарите перевозки; запас производительности не больше 30 %; давление — с запасом
   await Check.run('большая производительность: несколько одинаковых компрессоров, станция в габарите перевозки', async ()=>{
     global.catCache=[
@@ -557,7 +557,7 @@ class Check {
     assert.deepStrictEqual(AttrChoices.list(f, ''), ['1', '2']);
   });
 
-  // решение ПНЕВМОТЕХ 14.10: ресиверы выносятся наружу только если внутри действительно не встают — сначала 900 л, затем по
+  // решение ПНЕВМОТЕХ: ресиверы выносятся наружу только если внутри действительно не встают — сначала 900 л, затем по
   // 500 л без учёта в Ростехнадзоре, затем вплотную; снаружи вертикальные ресиверы стоят (не лежат на боку)
   await Check.run('ресиверы — внутри: 900 л → по 500 л → вплотную → снаружи (стоят)', async ()=>{
     const R0=StationRules.data, rules=(fn)=>{ const d=JSON.parse(JSON.stringify(R0)), m=d.rules.find(r=>r.id==='layout.matrix').value; fn(m); StationRules.use(d); };
@@ -582,7 +582,7 @@ class Check {
       assert.ok(/900/.test(r.R.name) && r.R.qty===7 && !(r.p.outside||[]).length && r.p.issues.some(i=>i.close && /исключение/.test(i.text)), 'вплотную внутри: '+JSON.stringify([r.p.level, r.p.geo && r.p.geo.ext, (r.p.outside||[]).length]));
       assert.ok(/вплотную/.test(r.note) && !r.x.req.recvOut, r.note);
       assert.ok(r.p.items.filter(i=>i.kind==='receiver').every(i=>i.shape==='vcyl' && i.lx===1000 && i.ly===1000 && i.h===2200), 'РВ 900.16 «2200 × 1000 × 1000» стоит');
-      // вплотную запрещено правилами — только тогда снаружи; снаружи стоят (решение ПНЕВМОТЕХ 14.10: «лежат на боку» — ошибка)
+      // вплотную запрещено правилами — только тогда снаружи; снаружи стоят (решение ПНЕВМОТЕХ: «лежат на боку» — ошибка)
       rules(m=>{ m.modes=Object.assign({}, m.modes, { ends:0, tight:0, cross:0 }); m.recv=Object.assign({}, m.recv, { close:0 }); });
       r=await go(false);
       assert.ok(r.x.req.recvOut && r.x.req.recvOutAuto && r.p.outside.length===7 && !r.p.items.some(i=>i.kind==='receiver'), 'снаружи: '+JSON.stringify(r.x.req));
@@ -594,7 +594,7 @@ class Check {
     } finally { StationRules.use(R0); }
   });
 
-  // решение ПНЕВМОТЕХ 14.10: быстрая правка двух станций подряд — картинки пересобираются у обеих (было: один таймер на всех)
+  // решение ПНЕВМОТЕХ: быстрая правка двух станций подряд — картинки пересобираются у обеих (было: один таймер на всех)
   await Check.run('картинки станций: своя пауза у каждой станции, пересборка по очереди', async ()=>{
     const a={ id:'sa' }, b={ id:'sb' }, done=[], W=StationImages.WAIT, sync=StationImages.sync;
     global.S={ items:[a, b] }; global.persist=()=>{}; global.renderForm=()=>{}; global.EDIT=null;

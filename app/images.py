@@ -87,8 +87,8 @@ class ImageStore:
 
     def _scan(self):
         idx = {}
-        for dp, dn, fn in os.walk(self.root):
-            for name in fn:
+        for dp, _, files in os.walk(self.root):
+            for name in files:
                 if os.path.splitext(name)[1].lower() in EXTS:
                     d = digest_of_name(name)
                     if d:
@@ -164,8 +164,8 @@ def organize_existing(store, types, img_dir, backup_dir, backup=None, log=print)
     if any(isinstance(m, dict) and m.get('id') == ORGANIZE_ID for m in done):
         return None
     files = []
-    for dp, dn, fn in os.walk(img_dir):
-        for name in fn:
+    for dp, _, names in os.walk(img_dir):
+        for name in names:
             if os.path.splitext(name)[1].lower() in EXTS:
                 files.append(os.path.relpath(os.path.join(dp, name), img_dir).replace(os.sep, '/'))
     if not any(not _conforms(r) for r in files):
@@ -198,7 +198,10 @@ def organize_existing(store, types, img_dir, backup_dir, backup=None, log=print)
         if _conforms(rel):
             target[rel] = rel          # уже по правилам — не трогаем
             continue
-        digest = digest_of_name(rel) or hashlib.md5(open(os.path.join(img_dir, *rel.split('/')), 'rb').read()).hexdigest()
+        digest = digest_of_name(rel)
+        if not digest:
+            with open(os.path.join(img_dir, *rel.split('/')), 'rb') as f:
+                digest = hashlib.md5(f.read()).hexdigest()
         target[rel] = '%s/%s__%s%s' % (folder, title, digest[:10], os.path.splitext(rel)[1].lower())
     for rel in files:              # без ссылок и не по правилам — в unused
         if rel not in target and not _conforms(rel):
@@ -234,7 +237,7 @@ def organize_existing(store, types, img_dir, backup_dir, backup=None, log=print)
                 os.remove(os.path.join(img_dir, *rel.split('/')))
             except OSError:
                 pass
-    for dp, dn, fn in sorted(os.walk(img_dir), key=lambda x: -len(x[0])):   # опустевшие папки
+    for dp, _, _ in sorted(os.walk(img_dir), key=lambda x: -len(x[0])):   # опустевшие папки
         if dp != img_dir and not os.listdir(dp):
             try:
                 os.rmdir(dp)

@@ -9,14 +9,13 @@ function isMob(){ return document.documentElement.classList.contains('mob'); }
 
 (function(){
   const mq=matchMedia(MOB_Q);
-  const apply=()=>{ const was=isMob(); document.documentElement.classList.toggle('mob', mq.matches); if (was!==mq.matches && typeof renderForm==='function') renderForm(); };
+  const apply=()=>{ const was=isMob(); document.documentElement.classList.toggle('mob', mq.matches); if (was!==mq.matches) renderForm(); };
   mq.addEventListener('change', apply); apply();
 })();
 
 // меню телефона: только то, что нужно для работы с КП; настольные функции (папки на сервере, импорт, типы) — на компьютере
 function openMobileMenu(){
-  let d=$('#mmenu'); if (!d){ d=document.createElement('dialog'); d.id='mmenu'; d.className='sheet'; d.setAttribute('aria-label','Меню'); document.body.appendChild(d); }
-  const dark=document.documentElement.dataset.theme==='dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+  const d=Modal.host('mmenu', 'sheet', 'Меню'), dark=Theme.current()==='dark';
   const it=(k,ic,t,s)=>`<button type="button" class="mm-i" data-mm="${k}"><i aria-hidden="true">${ic}</i><span><b>${t}</b>${s?`<small>${s}</small>`:''}</span></button>`;
   d.innerHTML=`<div class="dlg-h"><h3>Меню</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
     <div class="mm-l">${MyDay.on()?it('myday','☀','Мой день','Напоминания, черновики, КП в работе'):''}${it('new','＋','Новое КП',Presets.on()?'Пустое или по заготовке':'Начать с чистого листа')}

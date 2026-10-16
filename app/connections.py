@@ -100,7 +100,7 @@ class ConnectionCheck:
     def _ai(self):
         import ai_llm
         s = ai_llm.status(self.store)
-        if not ai_llm._key(self.store):
+        if not ai_llm.api_key(self.store):
             return 'off', 'ключ не задан — «Внешние сервисы → Нейросеть»'
         r = ai_llm.ask(self.store, 'Ответь одним словом: да', force=True)
         return ('ok' if s.get('enabled') else 'warn'), 'модель %s отвечает%s' % (r.get('model') or '', '' if s.get('enabled') else '; у менеджеров выключена')
@@ -156,7 +156,7 @@ class ConnectionCheck:
 
     def _carriers(self):
         import logistics_api
-        r = logistics_api.quote(self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Санкт-Петербург'}, 'places': [SAMPLE_PLACE]})
+        r = logistics_api.DeliveryQuote(self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Санкт-Петербург'}, 'places': [SAMPLE_PLACE]}).run()
         ok = ['%s %s ₽' % (o['src'], '{:,.0f}'.format(o['price']).replace(',', ' ')) for o in r['offers'] if o.get('kind') == 'ltl']
         bad = ['%s: %s' % (e['src'], e['msg']) for e in r['errors'] if not e.get('skip')]
         if not ok:
@@ -164,10 +164,10 @@ class ConnectionCheck:
         return ('warn' if bad else 'ok'), ('отвечают: ' + ', '.join(ok) + ('. Ошибки: ' + '; '.join(bad) if bad else ''))[:600]
 
     def _github(self):
+        import version
         from app_update import Updater
         up = Updater(self.store, self.root, self.data_dir)
         rel = up.source().latest()
-        import version
         v = rel.get('version') if isinstance(rel, dict) else None
         if not v:
             return 'warn', 'выпусков не найдено'

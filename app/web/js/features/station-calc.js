@@ -283,7 +283,7 @@ class ReceiverSizing {
 }
 
 // ---------------------------------------------------------------- вентиляция: лето, зима, рекуперация (VentCalc), жалюзи (StationVent)
-// Решение ПНЕВМОТЕХ 12.10: каждый шаг — формула, исходные числа, результат; коэффициенты — из правил vent.*, air.cp.
+// Решение ПНЕВМОТЕХ: каждый шаг — формула, исходные числа, результат; коэффициенты — из правил vent.*, air.cp.
 class VentSizing {
   static run(N, plan){
     const V=plan && plan.vent, H=plan && plan.heat && plan.heat.vent; if (!V) return;
@@ -569,7 +569,7 @@ class StationCalc {
   static docGroups(x){
     if (!StationUi.on(x) || !isKit(x)) return [];
     const R=this.run(x), f=CalcNote.f; if (!R.sections.length) return [];
-    // ТКП (решение ПНЕВМОТЕХ 14.10): расчётная записка — только галочкой; согласованные отклонения — в КП всегда
+    // ТКП (решение ПНЕВМОТЕХ): расчётная записка — только галочкой; согласованные отклонения — в КП всегда
     const dev=R.accept && R.errors.length ? [{ name:'Отклонения, согласованные с заказчиком', rows:R.errors.map((e, i)=>({ k:String(i+1), v:e.text })) }] : [];
     if (StationUi.opts(x).calc===false) return dev;
     const ok=v=>v===true ? ' — выполняется' : v===false ? ' — НЕ выполняется' : '';

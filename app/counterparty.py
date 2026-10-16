@@ -65,7 +65,8 @@ class LimitError(Exception):
     """Лимит запросов сервиса проверки на сегодня исчерпан."""
 
 
-def _http(url, data=None, headers=None, method=None):
+def http_json(url, data=None, headers=None, method=None):
+    """Запрос к API → разобранный JSON. data: dict/list — JSON (если Content-Type: application/json) или форма; bytes — как есть."""
     h = {'User-Agent': 'Mozilla/5.0 (KP-Pnevmotekh)', 'Accept': 'application/json'}
     h.update(headers or {})
     body = None
@@ -114,7 +115,7 @@ def g(d, *path, default=None):
 def _num(v):
     try:
         return float(str(v).replace(' ', '').replace(',', '.'))
-    except Exception:
+    except (TypeError, ValueError):
         return None
 
 
@@ -175,7 +176,7 @@ class CheckoApi:
             raise LimitError('Лимит запросов %s на сегодня исчерпан' % self.NAME)
         url = self.BASE + ep + '?' + urllib.parse.urlencode(dict({'key': self.key(), 'inn': inn}, **extra))
         try:
-            j = _http(url)
+            j = http_json(url)
         except urllib.error.HTTPError as e:
             self.spend(1, exhausted=e.code in (402, 429))
             if e.code in (402, 429):
@@ -285,9 +286,9 @@ class GirBo:
 
     @classmethod
     def _get(cls, host, path, params=None):
-        return _http(host + path + ('?' + urllib.parse.urlencode(params) if params else ''),
-                     headers={'User-Agent': cls.UA, 'Accept': 'application/json, text/plain, */*',
-                              'Accept-Language': 'ru-RU,ru;q=0.9', 'Referer': host + '/'})
+        return http_json(host + path + ('?' + urllib.parse.urlencode(params) if params else ''),
+                         headers={'User-Agent': cls.UA, 'Accept': 'application/json, text/plain, */*',
+                                  'Accept-Language': 'ru-RU,ru;q=0.9', 'Referer': host + '/'})
 
     @staticmethod
     def _plain(v):
@@ -498,8 +499,8 @@ class Counterparties:
                 'site': g(d, 'Контакты', 'ВебСайт', default='') or ''}
 
     def _lookup_dadata(self, inn, keys):
-        j = _http('https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party', data={'query': inn, 'count': 1},
-                  headers={'Content-Type': 'application/json', 'Authorization': 'Token ' + keys['dadataKey']})
+        j = http_json('https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party', data={'query': inn, 'count': 1},
+                      headers={'Content-Type': 'application/json', 'Authorization': 'Token ' + keys['dadataKey']})
         s = (j.get('suggestions') or [None])[0]
         if not s:
             return None
@@ -517,14 +518,14 @@ class Counterparties:
                 'disq': bool(g(d, 'management', 'disqualified')), 'liqDate': g(d, 'state', 'liquidation_date')}
 
     def _lookup_egrul(self, inn, keys):
-        t = _http('https://egrul.nalog.ru/', data={'query': inn, 'nameEq': 'on', 'region': '', 'PreventChromeAutocomplete': ''},
-                  headers={'X-Requested-With': 'XMLHttpRequest', 'Referer': 'https://egrul.nalog.ru/index.html'}).get('t')
+        t = http_json('https://egrul.nalog.ru/', data={'query': inn, 'nameEq': 'on', 'region': '', 'PreventChromeAutocomplete': ''},
+                      headers={'X-Requested-With': 'XMLHttpRequest', 'Referer': 'https://egrul.nalog.ru/index.html'}).get('t')
         if not t:
             return None
         rows = None
         for _ in range(8):
-            res = _http('https://egrul.nalog.ru/search-result/%s?r=%d' % (t, int(time.time() * 1000)),
-                        headers={'X-Requested-With': 'XMLHttpRequest', 'Referer': 'https://egrul.nalog.ru/index.html'})
+            res = http_json('https://egrul.nalog.ru/search-result/%s?r=%d' % (t, int(time.time() * 1000)),
+                            headers={'X-Requested-With': 'XMLHttpRequest', 'Referer': 'https://egrul.nalog.ru/index.html'})
             if res.get('status') == 'wait':
                 time.sleep(0.8)
                 continue
@@ -797,7 +798,10 @@ class Counterparties:
         add = lambda lvl, text: flags.append({'level': lvl, 'text': text})
         age = None
         if info:
-            (add('green', 'Организация действует') if info.get('active') else add('red', 'Статус: ' + (info.get('status') or 'не действует')))
+            if info.get('active'):
+                add('green', 'Организация действует')
+            else:
+                add('red', 'Статус: ' + (info.get('status') or 'не действует'))
             age = self._reg_age(info.get('regDate'), add)
             if info.get('invalid'):
                 add('red', 'Недостоверные сведения в ЕГРЮЛ (отметка ФНС)')
@@ -824,7 +828,10 @@ class Counterparties:
         add = lambda lvl, text: flags.append({'level': lvl, 'text': text})
         status = g(c, 'Статус', 'Наим', default='') or ('Ликвидирована' if c.get('ДатаЛикв') else 'Действует')
         active = not c.get('ДатаЛикв') and not re.search(r'ликвид|прекращ|банкрот|исключ', status, re.I)
-        (add('green', 'Организация действует') if active else add('red', 'Статус: ' + status))
+        if active:
+            add('green', 'Организация действует')
+        else:
+            add('red', 'Статус: ' + status)
         reg = c.get('ДатаРег') or ''
         age = self._reg_age(reg, add)
         if c.get('НедобПост'):

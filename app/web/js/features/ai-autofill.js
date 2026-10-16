@@ -36,28 +36,12 @@ function parseSpecs(txt){
   txt.split(/\r?\n/).forEach(l=>{
     if(!l.trim()) return;
     let cells = l.includes('\t') ? l.split('\t') : (l.includes(':') ? [l.slice(0,l.indexOf(':')), l.slice(l.indexOf(':')+1)] : [l]);
-    cells=cells.map(s=>s.trim()).filter((s,ix,a)=>ix<2||s);
+    cells=cells.map(s=>s.trim()).filter((s,ix)=>ix<2||s);
     if (cells.filter(Boolean).length===1){ g={name:cells.find(Boolean),rows:[]}; groups.push(g); return; }
     if(!g){ g={name:'',rows:[]}; groups.push(g); }
     g.rows.push({k:cells[0],v:cells.slice(1).filter(Boolean).join(' ')});
   });
   return groups.filter(x=>x.rows.length);
-}
-
-// Копирование в буфер обмена. По сети (http://сервер:порт) браузер не даёт странице navigator.clipboard —
-// тогда текст кладётся через событие copy; поле для выделения создаётся внутри открытого окна,
-// потому что всё вне модального окна браузер делает неактивным. true — только если текст точно скопирован.
-async function copyToClipboard(txt){
-  if (navigator.clipboard && window.isSecureContext){ try{ await navigator.clipboard.writeText(txt); return true; }catch(e){} }
-  let done=false;
-  const onCopy=e=>{ try{ e.clipboardData.setData('text/plain', txt); e.preventDefault(); done=true; }catch(_){} };
-  document.addEventListener('copy', onCopy, true);
-  const host=[...document.querySelectorAll('dialog[open]')].pop()||document.body;
-  const ta=document.createElement('textarea'); ta.value=txt; ta.setAttribute('readonly',''); ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
-  host.appendChild(ta); ta.focus(); ta.select();
-  try{ document.execCommand('copy'); }catch(e){}
-  document.removeEventListener('copy', onCopy, true); ta.remove();
-  return done;
 }
 
 // нейросеть прямо в программе (включает администратор: «Настройки → Нейросеть»)

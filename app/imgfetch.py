@@ -8,13 +8,13 @@
 """
 import ipaddress
 import socket
-import urllib.parse
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
-import images
 from defaults import SrvVal
+from maker_logos import MakerLogos
 
 # сайты поставщиков (Bitrix и др.) на запрос «робота» отвечают 403 или страницей-проверкой — представляемся браузером
 BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
@@ -31,7 +31,7 @@ def logos(store):
     rows = store.all("SELECT maker, src, w, h, COUNT(*) FROM (SELECT maker, %s AS src, %s AS w, %s AS h FROM catalog "
                      "WHERE maker IS NOT NULL AND maker <> '') GROUP BY maker, src" % (one % 'src', one % 'w', one % 'h'))
     for maker, src, w, h, n in rows:
-        g = images.slug(maker, 60).replace('-', '')
+        g = MakerLogos.key(maker)
         names.setdefault(g, set()).add(maker.strip())
         if not src or not isinstance(src, str):
             continue
@@ -43,8 +43,7 @@ def logos(store):
         n, maker, lg = max(variants.values(), key=lambda v: (str(v[2]['src']).startswith('/img/logos/'), v[0]))
         for m in names.get(g, {maker}):
             out[m.lower()] = {'maker': m, 'src': lg['src'], 'w': lg.get('w'), 'h': lg.get('h')}
-    # закреплённый администратором логотип марки — главнее найденного в каталоге (maker_logos.MakerLogos)
-    from maker_logos import MakerLogos
+    # закреплённый администратором логотип марки — главнее найденного в каталоге
     for g, lg in MakerLogos(store).pins().items():
         for m in names.get(g, set()) | {str(lg.get('maker') or '').strip()}:
             if m:
@@ -115,7 +114,6 @@ def fetch_image(url, referer=None, tries=1):
     hd = {'User-Agent': BROWSER_UA, 'Accept': 'image/avif,image/webp,image/png,image/jpeg,image/*,*/*;q=0.8'}
     if referer:
         hd['Referer'] = referer        # защита от «горячих ссылок»: картинку отдают только со своей страницы
-
     mb = SrvVal.now('cat.imgMaxMB')
 
     def get():
