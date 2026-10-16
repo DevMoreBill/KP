@@ -16,6 +16,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
+import imgfetch
+
 SAMPLE_INN = '7707083893'          # ПАО Сбербанк — для проверки сервисов реквизитов
 SAMPLE_BO_INN = '7713140469'       # АО «Лаборатория Касперского» — для ГИР БО (банков там нет: они отчитываются в ЦБ)
 SAMPLE_PLACE = {'l': 1.2, 'w': 1.0, 'h': 1.0, 'm': 0.3, 'qty': 1}
@@ -180,8 +182,10 @@ class ConnectionCheck:
         return ('ok', 'чем сохраняется: ' + ', '.join(ways)) if ways else ('warn', 'нет Word, LibreOffice и ключа ConvertAPI — PDF не сохранится')
 
     def _feed(self, f):
-        req = urllib.request.Request(f['url'], headers={'User-Agent': 'Mozilla/5.0 KP-Konstruktor', 'Range': 'bytes=0-1023'})
-        with urllib.request.urlopen(req, timeout=self.FEED_TIMEOUT) as r:
+        url = imgfetch.web_url(f['url'])
+        imgfetch._check_url(url)             # фид — только в интернете, как при загрузке (feeds.download)
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 KP-Konstruktor', 'Range': 'bytes=0-1023'})
+        with imgfetch.SafeWeb.opener().open(req, timeout=self.FEED_TIMEOUT) as r:
             r.read(1024)
             code = r.status
         last = ((f.get('last') or {}).get('check') or (f.get('last') or {}).get('import') or {}).get('at') or ''

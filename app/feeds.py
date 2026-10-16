@@ -26,6 +26,7 @@ import hashlib
 import html as html_mod
 import http.cookiejar
 import json
+import math
 import os
 import re
 import struct
@@ -63,10 +64,12 @@ def _now():
 
 
 def parse_number(v):
+    """Число из фида; «nan», «inf» и прочее не число — None (иначе в карточку попало бы Infinity, а NaN ронял проверку фида)."""
     try:
-        return float(re.sub(r'[\s\xa0]', '', str(v)).replace(',', '.'))
+        n = float(re.sub(r'[\s\xa0]', '', str(v)).replace(',', '.'))
     except (TypeError, ValueError):
         return None
+    return n if math.isfinite(n) else None
 
 
 def _txt(el, tag):
@@ -269,7 +272,7 @@ def fetch(url):
     url = imgfetch.web_url(url)
     imgfetch._check_url(url)        # только http(s) и не адреса локальной сети
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (KP-Pnevmotekh feed)', 'Accept': 'application/xml,text/xml,*/*'})
-    with urllib.request.build_opener(imgfetch._SafeRedirect).open(req, timeout=120) as r:
+    with imgfetch.SafeWeb.opener().open(req, timeout=120) as r:
         mb = SrvVal.now('cat.feedMaxMB')
         data = r.read(mb * 1024 * 1024 + 1)
     if len(data) > mb * 1024 * 1024:
@@ -303,7 +306,7 @@ def page_html(url, strict=True):
     u = urllib.parse.urlsplit(url)
     hd = {'User-Agent': imgfetch.BROWSER_UA, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.5', 'Accept-Encoding': 'gzip, deflate', 'Referer': '%s://%s/' % (u.scheme, u.netloc)}
-    opener = urllib.request.build_opener(imgfetch._SafeRedirect, urllib.request.HTTPCookieProcessor(_PAGE_JAR))
+    opener = imgfetch.SafeWeb.opener(urllib.request.HTTPCookieProcessor(_PAGE_JAR))
 
     def get():
         with opener.open(urllib.request.Request(url, headers=hd), timeout=25) as r:

@@ -23,7 +23,10 @@ class SettingsHistory:
              'userLogin': ('Вход менеджеров', 'access'), 'productEditModeration': ('Модерация правок', 'moderation'),
              'ai': ('Нейросеть', 'ai'), 'auditYears': ('Срок хранения журнала', 'backup'), 'backup2': ('Вторая папка копий', 'backup')}
     TAB = {'types': 'types', 'uitexts': 'texts', 'logistics': 'logistics', 'mail': 'mail', 'feeds': 'feeds', 'stationRules': 'rules'}
-    SECRET = ('password', 'token', 'key', 'secret')
+    SECRET = ('password', 'token', 'secret', 'apikey')
+    # «key» — секрет только у нейросети (settings → ai → key); в категориях и списках «key» — код поля, его маскировать нельзя:
+    # откат вернул бы «•••» вместо кодов полей
+    SECRET_AT = (('ai', 'key'),)
     # служебные поля: меняются сами (проверки, отметки времени) — не изменение настроек
     VOLATILE = ('last', 'checked', 'stats', 'report', 'log', 'result', 'run', '_saved')
     KEEP = 500          # предел смещения при просмотре; сколько хранить — srv.settingsHistory («Значения программы»)
@@ -50,13 +53,18 @@ class SettingsHistory:
         return k in cls.VOLATILE or k in ('updatedAt', 'updatedBy') or (depth == 0 and k.endswith(('At', 'By')))
 
     @classmethod
-    def _clean(cls, v):
-        """Снимок без секретов (пароли, токены, ключи)."""
+    def _clean(cls, v, parent=''):
+        """Снимок без секретов (пароли, токены, ключ нейросети)."""
         if isinstance(v, dict):
-            return {k: ('•••' if str(k).lower() in cls.SECRET and x else cls._clean(x)) for k, x in v.items()}
+            return {k: ('•••' if x and cls._secret(parent, k) else cls._clean(x, str(k))) for k, x in v.items()}
         if isinstance(v, list):
-            return [cls._clean(x) for x in v]
+            return [cls._clean(x, parent) for x in v]
         return v
+
+    @classmethod
+    def _secret(cls, parent, k):
+        k = str(k).lower()
+        return k in cls.SECRET or (parent, k) in cls.SECRET_AT
 
     DEPTH = 2           # «Умолчания → срок КП», «Почта → сервер»: глубже — значение целиком
 

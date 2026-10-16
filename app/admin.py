@@ -258,6 +258,13 @@ class LoginGuard:
             return list(cls.FAILS.get(ip, []))
 
     @classmethod
+    def ok(cls, ip):
+        """Верный вход или смена пароля: прежние ошибки с этого адреса забываются (иначе одна опечатка позже закрывала
+        бы вход сразу на всю паузу)."""
+        with LOCK:
+            cls.FAILS.pop(ip, None)
+
+    @classmethod
     def left(cls, ip):
         """Сколько секунд вход с адреса ещё закрыт; 0 — открыт."""
         window, limit = cls._limits()
@@ -348,10 +355,15 @@ def own_kp(h, doc):
 
 
 def kp_access(h, store, kid):
-    """Открыть / сохранить КП: своё — всегда, чужое — с правом «КП других менеджеров»; нового КП ещё нет — можно."""
+    """Открыть / сохранить КП: своё — всегда, чужое — с правом «КП других менеджеров»; нового КП ещё нет — можно.
+    КП в корзине — только администратору: его версии и документы ждут восстановления, а запись под тем же номером
+    сделала бы восстановление невозможным. Описания нет, а версии есть — права по описанию последней версии."""
+    meta = _loads(store.kp_get(kid, 'meta')) or _loads(store.kp_get(kid, 'state'))
+    if not meta and store.kp_trashed(kid):
+        return session(h, touch=False) is not None
     if not login_on(h):
         return True
-    meta = _loads(store.kp_get(kid, 'meta')) or _loads(store.kp_get(kid, 'state'))
+    meta = meta or _loads(store.kp_last_version_meta(kid))
     return not meta or own_kp(h, meta) or perm(h, 'kpOthers')
 
 
@@ -432,7 +444,13 @@ def kp_in(h, store, kid, field, text):
         o, n = json.loads(old), json.loads(text)
     except ValueError:
         return text
-    if deal_allowed(h, o) or not isinstance(n, dict):
+    if not isinstance(n, dict) or not isinstance(o, dict):
+        return text
+    u = getattr(h, '_kp_user', None)
+    if login_on(h) and u and session(h, touch=False) is None and o.get('authorId'):
+        n['authorId'] = o['authorId']           # автор КП не меняется запросом менеджера («передать» КП коллеге нельзя)
+        text = json.dumps(n, ensure_ascii=False)
+    if deal_allowed(h, o):
         return text
     for k in (DEAL_KEYS_STATE if field == 'state' else ('deal',)) + ('authorId',):
         if k in o:
@@ -737,12 +755,13 @@ def guard(h, store, m, path):
         return (lambda: log(h, store, 'edit_supplier' if old else 'create_supplier', 'supplier', r.group(1), b if old else None, a)) if a else None
     if path == '/api/customs' and m == 'PUT':
         new = _body_obj(h)
-        old = store.customs_all().get(new.get('key') or '')
+        old = store.customs_all().get(str(new.get('key') or ''))
         return lambda: log(h, store, 'edit_customs', 'customs', new.get('key'), old and {k: old.get(k) for k in ('code', 'duty')},
                            {k: new.get(k) for k in ('code', 'duty')})
     if path == '/api/types' and m == 'PUT':
         stored = {t.get('id'): t for t in (store.kv_get('types') or {}).get('types', []) if isinstance(t, dict)}
-        new = {t.get('id') for t in (_body_obj(h).get('types') or []) if isinstance(t, dict)}
+        sent = _body_obj(h).get('types')
+        new = {str(t.get('id')) for t in (sent if isinstance(sent, list) else []) if isinstance(t, dict)}
         try:
             from equipment_types import load_types_builtin
             builtin = {t.get('id'): t for t in load_types_builtin() if isinstance(t, dict)}
@@ -753,7 +772,7 @@ def guard(h, store, m, path):
         if removed and not is_admin(h):    # удалить свою категорию или вернуть стандартные — только администратор
             return _refuse(h, store, 'delete_attempt', 'types', ','.join(sorted(removed)))
         return lambda: log(h, store, 'edit_types', 'types', 'user_types', None,
-                           {'types': [t.get('name') for t in (_body_obj(h).get('types') or []) if isinstance(t, dict)]})
+                           {'types': [t.get('name') for t in (sent if isinstance(sent, list) else []) if isinstance(t, dict)]})
     return None
 
 
@@ -783,6 +802,7 @@ def auth_api(h, store, m, sub):
                 return h.send(403, 'text/plain; charset=utf-8', 'Срок временного пароля истёк — попросите администратора сбросить пароль ещё раз')
             return LoginGuard.wrong(h, ip)
         remember = d.get('remember', True) is not False
+        LoginGuard.ok(ip)
         tok = auth_users.UserSession.start(store, mid, remember)
         auth_users.touch_login(store, mid)
         store.audit_add({'userId': mid, 'userName': rec.get('login'), 'userRole': 'user', 'action': 'login', 'entityType': 'user', 'entityId': mid,
@@ -833,6 +853,7 @@ class UserAuthApi:
             return LoginGuard.wrong(h, ip, str(e))
         except ValueError as e:
             return self.text(400, str(e))
+        LoginGuard.ok(ip)
         log(h, st, 'set_password', 'user', mid, None, {'by': 'сам', 'temp': temp, 'closedSessions': closed}, admin=False)
         return h.send_json({'ok': True, 'closed': closed})
 
@@ -893,13 +914,13 @@ class AdminApi:
             if not h.is_local():
                 return self.err(403, 'Первая учётная запись создаётся на компьютере, где работает программа')
             d = self.data()
-            login, pw = (d.get('login') or 'admin').strip(), d.get('password') or ''
+            login, pw = str(d.get('login') or 'admin').strip(), str(d.get('password') or '')
             try:
                 check_login(login)
                 check_new_password(pw)
             except ValueError as e:
                 return self.err(400, str(e))
-            u = {'login': login, 'name': (d.get('name') or '').strip()[:80] or login, 'pw': hash_password(pw), 'created': _now(), 'by': 'первый вход', 'lastLogin': _now()}
+            u = {'login': login, 'name': str(d.get('name') or '').strip()[:80] or login, 'pw': hash_password(pw), 'created': _now(), 'by': 'первый вход', 'lastLogin': _now()}
             save_accounts(st, [u])
             tok = self._login_ok(u)
             log(h, st, 'create_admin', 'admin', login, None, {'login': login, 'name': u['name']}, admin=True)
@@ -913,10 +934,12 @@ class AdminApi:
                 log(h, st, 'login', 'admin', None, result='failed', admin=False)
                 return LoginGuard.refuse(h, sec)
             d = self.data()
-            u = find_account(users, d.get('login')) if (d.get('login') or '').strip() else (users[0] if len(users) == 1 else None)
+            login = str(d.get('login') or '').strip()
+            u = find_account(users, login) if login else (users[0] if len(users) == 1 else None)
             if not LoginGuard.verify(d.get('password'), (u or {}).get('pw')):
-                log(h, st, 'login', 'admin', (d.get('login') or '')[:40] or None, result='failed', admin=False)
+                log(h, st, 'login', 'admin', login[:40] or None, result='failed', admin=False)
                 return LoginGuard.wrong(h, ip)
+            LoginGuard.ok(ip)
             u['lastLogin'] = _now()
             save_accounts(st, users)
             resp = self._login_ok(u)
@@ -1245,9 +1268,11 @@ class AdminApi:
             return self.maint(m, sub, q)
         if sub == 'migrations':
             from storage import MIGRATIONS
-            return self.ok({'applied': st.migrations_applied(), 'all': [x[0] for x in MIGRATIONS]})
+            return self.ok({'applied': st.migrations_applied(), 'all': [x[0] for x in MIGRATIONS], 'last': st.migration_last()})
         r = re.match(r'^migrations/([A-Za-z0-9_.-]+)/down$', sub)
         if r and m == 'POST':
+            if r.group(1) != st.migration_last():
+                return self.err(400, 'Откатить можно только последнюю миграцию (%s): поздние миграции меняют таблицы ранних' % st.migration_last())
             st.backup(os.path.join(os.path.dirname(st.path), 'backup', 'kp-%s-before-migration-down.zip' % datetime.now().strftime('%Y%m%d-%H%M%S')))
             st.migration_down(r.group(1))
             return self.ok()
@@ -1705,6 +1730,20 @@ class AdminApi:
             bad = [i for i, x in enumerate(rows) if not isinstance(x, dict) or any(not x.get(k) for k in req[s])
                    or not re.match(r'^[A-Za-z0-9_-]{1,64}$', str(x.get('id')))]
             errors += ['%s: запись %d без обязательных полей %s' % (s, i + 1, ', '.join(req[s])) for i in bad[:5]]
+            # то, на чём запись споткнулась бы посередине загрузки, — видно уже в предпросмотре и пропускается
+            more = []
+            for i, x in enumerate(rows):
+                if i in bad:
+                    continue
+                if s == 'kp' and not st.kp_import_ok(x):
+                    more.append(i)
+                    errors.append('КП %s: испорченная запись — пропущено' % (x.get('number') or x.get('id')))
+                elif s == 'managers':
+                    dup = st.manager_dup(x['id'], x)
+                    if dup:
+                        more.append(i)
+                        errors.append('Менеджер «%s»: такой уже есть — %s (совпадает %s), пропущено' % (x.get('name'), dup[0].get('name') or 'без имени', dup[1]))
+            bad += more
             skip = set(bad)
             ok = [x for i, x in enumerate(rows) if i not in skip]
             rep[s] = {'new': sum(1 for x in ok if x['id'] not in exist[s]), 'updated': sum(1 for x in ok if x['id'] in exist[s]),

@@ -492,10 +492,10 @@ async function stSecurity(m){
 async function stMigr(box){
   if (!box) return; let mg; try{ mg=await aapi('migrations'); }catch(e){ box.innerHTML=''; return; }
   box.innerHTML=`<details class="more"><summary>Миграции базы (для обслуживания)</summary>${mg.applied.map(id=>`<div class="st-row"><div><b>${esc(id)}</b><span class="muted">применена</span></div>
-      <div class="acts"><button class="btn danger" type="button" data-mdown="${esc(id)}">Откатить</button></div></div>`).join('')||'<p class="muted">Нет применённых миграций.</p>'}
-      <p class="muted">Откат удаляет таблицы журнала действий, корзины и модерации (перед этим — копия базы в data\\backup). При следующем запуске программы миграция применится снова.</p></details>`;
+      <div class="acts">${id===mg.last?`<button class="btn danger" type="button" data-mdown="${esc(id)}">Откатить</button>`:''}</div></div>`).join('')||'<p class="muted">Нет применённых миграций.</p>'}
+      <p class="muted">Откатить можно только последнюю миграцию: её таблицы и столбцы удаляются вместе с данными (перед этим — копия базы в data\\backup). При следующем запуске программы миграция применится снова.</p></details>`;
   box.onclick=async e=>{ const b=e.target.closest('[data-mdown]'); if (!b) return;
-    if (!await stConfirm('Откатить миграцию?','Журнал действий, корзина и правки на модерации будут удалены. Перед этим сохраняется копия базы.','Откатить')) return;
+    if (!await stConfirm('Откатить миграцию?','Таблицы и столбцы этой миграции будут удалены вместе с данными. Перед этим сохраняется копия базы.','Откатить')) return;
     await ajson(`migrations/${b.dataset.mdown}/down`); toast('Миграция откачена'); stMigr(box); };
 }
 

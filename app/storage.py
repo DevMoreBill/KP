@@ -569,11 +569,19 @@ class Store:
             done = done + [mid]
             self._atomic_script(up, MIGRATION_FILL.get(mid), done)
 
+    def migration_last(self):
+        """Последняя применённая миграция (по порядку MIGRATIONS) — откатить можно только её: поздние миграции меняют таблицы
+        ранних, и откат из середины оставил бы схему, которую следующие миграции уже не исправят."""
+        done = self.migrations_applied()
+        return next((i for i, _u, _d in reversed(MIGRATIONS) if i in done), None)
+
     def migration_down(self, mid):
-        """Откат миграции: её таблицы и столбцы удаляются (данные в них теряются), остальная база не меняется."""
+        """Откат последней миграции: её таблицы и столбцы удаляются (данные в них теряются), остальная база не меняется."""
         down = next((d for i, _u, d in MIGRATIONS if i == mid), None)
         if down is None or mid not in self.migrations_applied():
             raise ValueError('Миграция не применена: %s' % mid)
+        if mid != self.migration_last():
+            raise ValueError('Откатить можно только последнюю миграцию (%s): поздние миграции меняют таблицы ранних' % self.migration_last())
         self._atomic_script(down, None, [x for x in self.migrations_applied() if x != mid])
 
     # ---------- журнал действий ----------
@@ -734,7 +742,17 @@ class Store:
         return out
 
     def kp_all_meta(self):
-        return [json.loads(r[0]) for r in self.all('SELECT meta FROM kp WHERE meta IS NOT NULL')]
+        """Описания всех КП; испорченное (старая копия, ручная правка) пропускается, как в kp_list, — иначе ломались бы
+        статистика и «Удаление → КП»."""
+        out = []
+        for (m,) in self.all('SELECT meta FROM kp WHERE meta IS NOT NULL'):
+            try:
+                d = json.loads(m)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(d, dict):
+                out.append(d)
+        return out
 
     # ---------- «Экономика сделки»: поставщики и коды ТН ВЭД ----------
     def suppliers_list(self):
@@ -771,7 +789,7 @@ class Store:
     def customs_put(self, key, code, duty, note, by, name=''):
         """Код ТН ВЭД и ставка пошлины по ключу cat:<категория> или item:<модель>; своя категория (cat:x_…) —
         с названием; пустые код, ставка и название у своей категории — удалить её."""
-        if not re.match(r'^(cat|item):[\w.-]{1,80}$', key or ''):
+        if not isinstance(key, str) or not re.match(r'^(cat|item):[\w.-]{1,80}$', key):
             raise ValueError('Неверный ключ')
         if key.startswith('cat:x_') and not str(name or '').strip():
             if str(code or '').strip() or str(duty or '').strip():
@@ -821,10 +839,19 @@ class Store:
                     return other, what[f]
         return None
 
+    # карточка менеджера: только поля, которые знает программа (справочник уходит в каждый браузер — без мусора и
+    # мегабайтных строк), длина — до 300 знаков, адрес и часы работы — до 1 000
+    MANAGER_FIELDS = {'name': 300, 'position': 300, 'phone': 300, 'ext': 300, 'mobile': 300, 'email': 300, 'site': 300,
+                      'address': 1000, 'hours': 1000, 'folder': 300}
+
     def manager_put(self, mid, text, by='', base_rev=None):
         doc = json.loads(text)
         if not isinstance(doc, dict):
             raise ValueError('Ожидались данные менеджера')
+        for k, n in self.MANAGER_FIELDS.items():
+            if len(str(doc.get(k) or '')) > n:
+                raise ValueError('Карточка менеджера: поле «%s» — не длиннее %d знаков' % (k, n))
+        doc = {k: str(doc[k]) for k in self.MANAGER_FIELDS if doc.get(k) is not None}
         dup = self.manager_dup(mid, doc)
         if dup:
             raise ValueError('Такой менеджер уже есть: %s (совпадает %s)' % (dup[0].get('name') or 'без имени', dup[1]))
@@ -850,7 +877,9 @@ class Store:
             while True:
                 n += 1
                 num = '%d-%03d' % (year, n)
-                if not c.execute('SELECT 1 FROM kp WHERE id=?', (num,)).fetchone():
+                # номер КП из корзины не выдаётся заново: его версии и документы ждут восстановления
+                if not c.execute("SELECT 1 FROM kp WHERE id=? UNION SELECT 1 FROM trash WHERE entity_type = 'kp' AND entity_id = ?",
+                                 (num, num)).fetchone():
                     break
             c.execute('INSERT OR REPLACE INTO counters (year, n) VALUES (?,?)', (year, n))
             c.execute('INSERT INTO kp (id, number, updated) VALUES (?,?,?)', (num, num, _now()))
@@ -919,6 +948,19 @@ class Store:
                 c.execute('UPDATE kp SET docx=?, updated=? WHERE id=?', (value, _now(), kid))
             c.commit()
         return rev
+
+    @staticmethod
+    def kp_import_ok(x):
+        """КП из резервной копии годится к записи: состояние и описание — объекты JSON (или их нет)."""
+        for f in ('state', 'meta'):
+            if x.get(f) is None:
+                continue
+            try:
+                if not isinstance(json.loads(x[f]), dict):
+                    return False
+            except (TypeError, ValueError):
+                return False
+        return True
 
     def kp_import(self, x):
         """Запись КП из резервной копии целиком (с полями журнала для поиска)."""
@@ -1001,6 +1043,13 @@ class Store:
     def kp_authors(self):
         return [r[0] for r in self.all("SELECT DISTINCT manager FROM kp WHERE meta IS NOT NULL AND manager IS NOT NULL AND manager <> '' "
                                        "ORDER BY manager COLLATE NOCASE")]
+
+    def kp_trashed(self, kid):
+        return self.one("SELECT 1 FROM trash WHERE entity_type = 'kp' AND entity_id = ?", (kid,)) is not None
+
+    def kp_last_version_meta(self, kid):
+        r = self.one('SELECT meta FROM kp_versions WHERE kp_id = ? ORDER BY id DESC LIMIT 1', (kid,))
+        return r[0] if r else None
 
     def kp_versions(self, kid):
         out = []

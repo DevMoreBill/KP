@@ -19,6 +19,7 @@
 Ответы сервисов разбираются терпимо к мелким отличиям формата; ошибка сервиса показывается как есть и не мешает остальным.
 """
 import json
+import math
 import re
 import socket
 import threading
@@ -204,7 +205,7 @@ def number(v):
     """Число из ответа сервиса («1 234,5», 1234.5) или None."""
     try:
         x = float(str(v).replace(' ', '').replace('\xa0', '').replace(',', '.'))
-        return x if x == x else None
+        return x if math.isfinite(x) else None
     except (TypeError, ValueError):
         return None
 
@@ -716,8 +717,9 @@ class Cdek(Carrier):
         h = cls._headers(store)
         frm_hit, to_hit = cls.city(store, cls.candidates(frm), h), cls.city(store, cls.candidates(to), h)
         a, b = cls._both(frm_hit, to_hit)
+        # места: масса — в граммах, габариты — в сантиметрах (API СДЭК v2, calculator/tarifflist); у нас — тонны и метры
         route = {'from_location': cls._location(a, frm.get('addr')), 'to_location': cls._location(b, to.get('addr')),
-                 'packages': [{'weight': int(round(p['m'] * 1000)), 'length': int(round(p['l'] * 100)), 'width': int(round(p['w'] * 100)),
+                 'packages': [{'weight': int(round(p['m'] * 1000000)), 'length': int(round(p['l'] * 100)), 'width': int(round(p['w'] * 100)),
                                'height': int(round(p['h'] * 100))} for p in cls.units(places)]}
         j = Http.call(cls._url(store, 'base') + '/calculator/tarifflist', data=dict({'type': 2, 'currency': 1, 'lang': 'rus'}, **route),
                       headers=h, method='POST')
@@ -939,11 +941,37 @@ class DeliveryQuote:
     def __init__(self, store, req):
         self.store, self.req = store, req
         self.frm, self.to = req.get('from') or {}, req.get('to') or {}
-        self.places = [{'l': float(p['l']), 'w': float(p['w']), 'h': float(p['h']), 'm': float(p['m']), 'qty': int(p.get('qty') or 1)}
-                       for p in (req.get('places') or []) if all(number(p.get(k)) for k in ('l', 'w', 'h', 'm'))]
+        self.places = self.cargo(req.get('places'))
         self.unload = number(req.get('unload')) or 0
         self.providers = providers(store)
         self.offers, self.errors, self.at = [], [], _now()
+
+    # пределы груза в запросе (в запросе размеры места — м, масса — т): больше — ошибка ввода (400), а не расчёт на миллионы мест
+    MAX_ROWS, MAX_UNITS, MAX_M, MAX_T = 100, 1000, 30, 100
+
+    @classmethod
+    def cargo(cls, places):
+        """Места груза [{l, w, h, m, qty}] из запроса: неполные пропускаются, неверные — ValueError с понятным текстом."""
+        if places is None:
+            return []
+        if not isinstance(places, list) or len(places) > cls.MAX_ROWS:
+            raise ValueError('Груз: нужен список до %d строк' % cls.MAX_ROWS)
+        out = []
+        for p in places:
+            if not isinstance(p, dict):
+                raise ValueError('Груз: неверная строка')
+            v = {k: number(p.get(k)) for k in ('l', 'w', 'h', 'm')}
+            if not all(v.values()):
+                continue
+            qty = number(p.get('qty') or 1)
+            if not all(0 < x <= (cls.MAX_T if k == 'm' else cls.MAX_M) for k, x in v.items()):
+                raise ValueError('Груз: размеры места — до %d м, масса — до %d т' % (cls.MAX_M, cls.MAX_T))
+            if qty is None or qty != int(qty) or not 1 <= qty <= cls.MAX_UNITS:
+                raise ValueError('Груз: количество мест — целое число от 1 до %d' % cls.MAX_UNITS)
+            out.append(dict(v, qty=int(qty)))
+        if sum(p['qty'] for p in out) > cls.MAX_UNITS:
+            raise ValueError('Груз: всего не больше %d мест' % cls.MAX_UNITS)
+        return out
 
     def run(self):
         model = number(self.req.get('model'))
@@ -1068,8 +1096,10 @@ class TariffInput:
 # ---------------------------------------------------------------- автообновление ставок по ATI.SU
 def auto_settings(store):
     t = store.kv_get('logistics') or {}
-    a = t.get('auto') or {}
-    return {'on': a.get('on', True), 'days': int(a.get('days') or 1), 'routes': a.get('routes') or REF_ROUTES, 'period': int(a.get('period') or 30)}
+    a = t.get('auto') if isinstance(t.get('auto'), dict) else {}
+    whole = lambda v, d, hi: min(hi, max(1, int(number(v) or d)))         # «x», 0, NaN — значение по умолчанию
+    routes = a.get('routes') if isinstance(a.get('routes'), list) and a.get('routes') else REF_ROUTES
+    return {'on': a.get('on', True), 'days': whole(a.get('days'), 1, 365), 'routes': routes, 'period': whole(a.get('period'), 30, 365)}
 
 
 def auto_refresh(store, force=False, log=print):

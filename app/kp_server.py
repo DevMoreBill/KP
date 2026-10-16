@@ -4,6 +4,7 @@
 Только стандартная библиотека Python; собирается PyInstaller в один EXE.
 """
 import gzip
+import ipaddress
 import json
 import os
 import re
@@ -200,12 +201,32 @@ class Handler(BaseHTTPRequestHandler):
     def not_found(self, text='not found'):
         self.send(404, 'text/plain; charset=utf-8', text)
 
+    NON_FINITE = re.compile(rb'(?<![A-Za-z0-9_"])-?(?:NaN|Infinity)(?![A-Za-z0-9_"])')
+
     def body(self):
         # тело читается один раз и запоминается: его смотрят и проверка прав / модерация (admin.py), и сам маршрут
         if not hasattr(self, '_body'):
             n = self.body_size()
             self._body = self.rfile.read(n) if n > 0 else b''
+        if self.non_finite(self._body):
+            raise BadRequest('Неверный запрос: в числах недопустимы NaN и Infinity')
         return self._body
+
+    @classmethod
+    def non_finite(cls, raw):
+        """JSON с NaN / Infinity: Python их принимает и потом так же записывает, а JSON.parse в браузере на них падает —
+        один такой запрос испортил бы каталог или черновики у всех. Не JSON (файлы) — не проверяется."""
+        if not raw or not cls.NON_FINITE.search(raw):
+            return False
+        def refuse(_c):
+            raise OverflowError
+        try:
+            json.loads(raw.decode('utf-8'), parse_constant=refuse)
+        except OverflowError:
+            return True
+        except ValueError:
+            pass
+        return False
 
     def body_size(self):
         try:
@@ -213,13 +234,32 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return 0
 
+    _own = None
+    LAN_SUFFIX = ('.local', '.lan', '.internal', '.intranet', '.corp', '.home', '.home.arpa', '.localdomain')
+
+    @classmethod
+    def lan_name(cls, name):
+        """Имя сервера отдела, когда allowedHosts не задан: IP-адрес, имя компьютера (одно слово, как \\\\SERVER) или имя
+        во внутренней зоне (.local, .lan, …) и имя этого компьютера. Имя в публичной зоне (kp.example.ru) чужой сайт может
+        направить на сервер отдела (подмена DNS) — такое имя вписывается в allowedHosts (settings.json)."""
+        try:
+            ipaddress.ip_address(name)
+            return True
+        except ValueError:
+            pass
+        if not name or '.' not in name or name.endswith(cls.LAN_SUFFIX):
+            return bool(name)
+        if cls._own is None:            # имя компьютера узнаётся один раз (getfqdn может ждать DNS)
+            cls._own = (socket.gethostname().lower(), socket.getfqdn().lower())
+        return name in cls._own
+
     def request_allowed(self):
         """Защита от чужих сайтов, открытых в браузере сотрудника: имя в адресе (подмена DNS) и источник изменяющего
         запроса (подделка запроса). Программа и её скрипты запрос не подписывают Origin чужого сайта; curl/PowerShell — без Origin."""
         host = (self.headers.get('Host') or '').strip().lower()
         name = host.rsplit(':', 1)[0] if not host.endswith(']') else host
         name = name.strip('[]')
-        if name not in self.LOCAL_NAMES and not (SERVER_MODE and (not ALLOWED_HOSTS or name in ALLOWED_HOSTS)):
+        if name not in self.LOCAL_NAMES and not (SERVER_MODE and (name in ALLOWED_HOSTS or (not ALLOWED_HOSTS and self.lan_name(name)))):
             return False
         if self.command not in ('GET', 'HEAD'):
             origin = (self.headers.get('Origin') or '').strip().lower()

@@ -331,14 +331,15 @@ class Mailer:
 
     @staticmethod
     def _message(m, to, cc, subject, body, files, reply_to):
+        line = lambda v: ' '.join(str(v or '').split())          # заголовок письма — одна строка (перевод строки — ошибка письма)
         msg = EmailMessage()
-        msg['From'] = formataddr((m.get('fromName') or '', m['fromEmail']))
+        msg['From'] = formataddr((line(m.get('fromName')), m['fromEmail']))
         msg['To'] = ', '.join(to)
         if cc:
             msg['Cc'] = ', '.join(cc)
         if reply_to and Val.email(reply_to):
             msg['Reply-To'] = reply_to
-        msg['Subject'] = subject or 'Коммерческое предложение'
+        msg['Subject'] = line(subject) or 'Коммерческое предложение'
         msg['Message-ID'] = make_msgid(domain=m['fromEmail'].split('@')[-1])
         msg.set_content(body or '')
         for name, data, mime in files:
