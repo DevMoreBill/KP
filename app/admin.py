@@ -285,16 +285,18 @@ class LoginGuard:
                       % cls.wait_text(sec), {'Retry-After': str(sec)})
 
     @classmethod
-    def wrong(cls, h, ip):
-        """Неверный логин или пароль: попытка засчитана; последняя — сразу 429, предпоследние — сколько осталось."""
+    def wrong(cls, h, ip, text=None):
+        """Неверный логин или пароль (text — свой текст, например «Текущий пароль указан неверно» при смене пароля):
+        попытка засчитана; последняя — сразу 429, предпоследние — сколько осталось."""
+        text = text or cls.WRONG
         with LOCK:
             cls.FAILS.setdefault(ip, []).append(time.time())
         sec = cls.left(ip)
         if sec:
-            return h.send(429, 'text/plain; charset=utf-8', '%s. Вход с этого компьютера закрыт на %s' % (cls.WRONG, cls.wait_text(sec)),
+            return h.send(429, 'text/plain; charset=utf-8', '%s. Вход с этого компьютера закрыт на %s' % (text, cls.wait_text(sec)),
                           {'Retry-After': str(sec)})
         rest = cls._limits()[1] - len(cls._tries(ip))
-        return h.send(403, 'text/plain; charset=utf-8', cls.WRONG + ('. Осталось попыток: %d' % rest if rest <= 2 else ''))
+        return h.send(403, 'text/plain; charset=utf-8', text + ('. Осталось попыток: %d' % rest if rest <= 2 else ''))
 
 
 # ---------------------------------------------------------------- журнал действий
@@ -616,6 +618,11 @@ def guard(h, store, m, path):
     if h._kp_login and not h._kp_user and session(h, touch=False) is None and path not in ('/api/version', '/api/ping'):
         h.send(401, 'text/plain; charset=utf-8', 'Нужно войти в программу: логин и пароль менеджера')
         return True
+    # вошёл с временным паролем от администратора — сначала задать свой (клиент по заголовку показывает форму смены)
+    if h._kp_user and h._kp_user.get('mustChange') and session(h, touch=False) is None and path not in ('/api/version', '/api/ping'):
+        h.send(403, 'text/plain; charset=utf-8', 'Сначала задайте свой пароль — временный пароль от администратора годится только для входа',
+               {'X-KP-Auth': 'change-password'})
+        return True
     # выключенная администратором функция («Настройки → Функции программы») — её адреса закрыты
     from features import FeatureAccess
     off = FeatureAccess(store).blocked(m, path, lambda: (session(h, touch=False) is not None, actor(h, admin=False)[0] or ''))
@@ -737,24 +744,76 @@ def auth_api(h, store, m, sub):
         d = _body_obj(h)
         mid, rec = auth_users.find_by_login(store, d.get('login'))
         ok = LoginGuard.verify(d.get('password'), (rec or {}).get('pw'))
-        if not ok or rec.get('blocked'):
+        expired = ok and auth_users.TempPassword.expired(rec)
+        if not ok or rec.get('blocked') or expired:
             store.audit_add({'userId': mid, 'userName': str(d.get('login') or '')[:40], 'userRole': 'user', 'action': 'login', 'entityType': 'user',
-                             'entityId': mid, 'ip': ip, 'userAgent': h.headers.get('User-Agent') or '', 'result': 'failed'})
-            if ok:      # пароль верный, но вход запрещён — говорим только тому, кто знает пароль
+                             'entityId': mid, 'after': {'reason': 'временный пароль истёк'} if expired and not rec.get('blocked') else None,
+                             'ip': ip, 'userAgent': h.headers.get('User-Agent') or '', 'result': 'failed'})
+            if ok and rec.get('blocked'):      # пароль верный, но вход запрещён — говорим только тому, кто знает пароль
                 return h.send(403, 'text/plain; charset=utf-8', 'Вход запрещён администратором — обратитесь к нему')
+            if expired:
+                return h.send(403, 'text/plain; charset=utf-8', 'Срок временного пароля истёк — попросите администратора сбросить пароль ещё раз')
             return LoginGuard.wrong(h, ip)
         remember = d.get('remember', True) is not False
         tok = auth_users.UserSession.start(store, mid, remember)
         auth_users.touch_login(store, mid)
         store.audit_add({'userId': mid, 'userName': rec.get('login'), 'userRole': 'user', 'action': 'login', 'entityType': 'user', 'entityId': mid,
                          'ip': ip, 'userAgent': h.headers.get('User-Agent') or '', 'result': 'success'})
-        return send(200, {'ok': True}, {'Set-Cookie': auth_users.UserSession.cookie(tok, remember)})
+        return send(200, {'ok': True, 'mustChange': auth_users.TempPassword.of(rec) is not None},
+                    {'Set-Cookie': auth_users.UserSession.cookie(tok, remember)})
+    h._kp_user = auth_users.current(h, store) if auth_users.enabled(store) else None
     if sub == 'logout' and m == 'POST':
         tok = auth_users.cookie_token(h)
         if tok:
             auth_users.drop_sessions(store, tok=tok)
+        if h._kp_user:
+            log(h, store, 'user_logout', 'user', h._kp_user['id'], admin=False)
         return send(200, {'ok': True}, {'Set-Cookie': auth_users.UserSession.cookie('')})
+    if sub in ('password', 'logout-all') and m == 'POST':
+        return UserAuthApi(h, store).route(sub)
     return h.send(404, 'text/plain; charset=utf-8', 'Нет такого запроса')
+
+
+class UserAuthApi:
+    """Вошедший менеджер о себе: сменить пароль (в том числе временный — сразу после входа), выйти на всех устройствах.
+    Только по своей сессии (cookie kp_user, SameSite=Strict; чужие сайты отсекает проверка Origin сервера). Пароли — ни
+    в журнал, ни в ответ."""
+
+    def __init__(self, h, store):
+        self.h, self.st = h, store
+        self.u = h._kp_user
+
+    def text(self, code, text, extra=None):
+        return self.h.send(code, 'text/plain; charset=utf-8', text, extra)
+
+    def route(self, sub):
+        if not self.u:
+            return self.text(401, 'Нужно войти в программу: логин и пароль менеджера')
+        return self.password() if sub == 'password' else self.logout_all()
+
+    def password(self):
+        h, st, mid = self.h, self.st, self.u['id']
+        ip = _ip(h)
+        sec = LoginGuard.left(ip)
+        if sec:
+            return LoginGuard.refuse(h, sec)
+        tok = auth_users.cookie_token(h)
+        try:
+            temp, closed = auth_users.UserPassword.change(st, mid, _body_obj(h), tok, LoginGuard.verify, hash_password)
+        except PermissionError as e:
+            log(h, st, 'set_password', 'user', mid, result='failed', admin=False)
+            return LoginGuard.wrong(h, ip, str(e))
+        except ValueError as e:
+            return self.text(400, str(e))
+        log(h, st, 'set_password', 'user', mid, None, {'by': 'сам', 'temp': temp, 'closedSessions': closed}, admin=False)
+        return h.send_json({'ok': True, 'closed': closed})
+
+    def logout_all(self):
+        h, st, mid = self.h, self.st, self.u['id']
+        closed = auth_users.UserSession.drop_all(st, mid)
+        log(h, st, 'logout_all', 'user', mid, None, {'by': 'сам', 'closedSessions': closed}, admin=False)
+        return h.send(200, 'application/json; charset=utf-8', json.dumps({'ok': True, 'closed': closed}),
+                      {'Set-Cookie': auth_users.UserSession.cookie('')})
 
 
 # ---------------------------------------------------------------- API «Настроек»
@@ -976,6 +1035,9 @@ class AdminApi:
             mgrs = _loads(st.managers_list()) or []
             return self.ok({'enabled': auth_users.enabled(st), 'perms': [{'key': k, 'label': lb, 'def': dv} for k, lb, dv in auth_users.PERMS],
                             'managers': auth_users.public(st, mgrs), 'help': auth_users.LoginInfo.help(st)})
+        r = re.match(r'^access/([A-Za-z0-9_-]{1,64})/(reset|logout)$', sub)
+        if r and m == 'POST':
+            return self.access_act(r.group(1), r.group(2), me)
         r = re.match(r'^access/([A-Za-z0-9_-]{1,64})$', sub)
         if r and m == 'POST':
             mid = r.group(1)
@@ -1317,6 +1379,20 @@ class AdminApi:
         return self.err(404, 'not found')
 
     # ---------- учётные записи администраторов ----------
+    def access_act(self, mid, act, me):
+        """Менеджер: «Сбросить пароль» — временный пароль (в ответе один раз; в журнал — только факт и срок), все его входы
+        закрываются; «Выйти на всех устройствах» — закрыть все его входы."""
+        st = self.st
+        if not any(x.get('id') == mid for x in (_loads(st.managers_list()) or [])):
+            return self.err(404, 'Менеджер не найден')
+        if act == 'reset':
+            pw, hours, until = auth_users.TempPassword.issue(st, mid, hash_password, me or 'admin')
+            self.log('reset_password', 'manager', mid, None, {'temp': True, 'hours': hours, 'until': until})
+            return self.ok({'password': pw, 'hours': hours, 'until': until})
+        closed = auth_users.UserSession.drop_all(st, mid)
+        self.log('logout_all', 'manager', mid, None, {'closedSessions': closed})
+        return self.ok({'closed': closed})
+
     def users(self, d, me):
         st, users, act = self.st, accounts(self.st), d.get('action')
         login = (d.get('login') or '').strip()

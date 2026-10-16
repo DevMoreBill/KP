@@ -369,7 +369,7 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .kit-t{display:grid;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
 .kt-r{display:grid;grid-template-columns:28px minmax(0,3fr) 64px minmax(150px,1.3fr) minmax(0,1.4fr) auto;gap:6px 8px;align-items:center;padding:6px 8px;border-top:1px solid var(--line)}
 .kt-r:first-child{border-top:0}
-.kt-h{padding-top:7px;padding-bottom:7px;background:var(--soft);font-size:12px;color:var(--muted);font-weight:600}
+.kt-head{margin-top:10px;padding-top:7px;padding-bottom:7px;background:var(--soft);font-size:12px;color:var(--muted);font-weight:600}
 .kt-r.open{background:color-mix(in srgb,var(--soft) 55%,var(--card))}
 .kt-r input,.kt-r select{min-height:34px}
 .kt-n{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--soft);color:var(--navy);font-size:12px;font-weight:700}
@@ -406,7 +406,7 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .kit-sum .chip{margin-left:4px}
 @media (max-width:900px){
   .kc-g{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .kt-h{display:none}
+  .kt-head{display:none}
   .kt-r{grid-template-columns:24px minmax(0,1fr) 64px;grid-template-areas:"n nm nm" ". c q" ". s s" ". a a"}
   .kt-n{grid-area:n}.kt-nm{grid-area:nm}.kt-q{grid-area:q}.kt-r>.kit-cost{grid-area:c}.kt-s{grid-area:s}.kt-a{grid-area:a;justify-content:flex-start}
   .kt-r.kt-need{grid-template-columns:24px minmax(0,1fr);grid-template-areas:"n w" ". go"}

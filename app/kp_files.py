@@ -17,7 +17,7 @@ import os
 import re
 import uuid
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from defaults import SrvVal
 
@@ -163,7 +163,7 @@ class KpFiles:
         return f
 
     # ---------------------------------------------------------------- список и запись
-    COLS = ('id', 'name', 'file', 'size', 'mime', 'note', 'added', 'added_by')
+    COLS = ('id', 'name', 'file', 'size', 'mime', 'note', 'added', 'added_by', 'added_by_id')
 
     @staticmethod
     def _row(d):
@@ -171,9 +171,40 @@ class KpFiles:
         return {'id': d['id'], 'name': d['name'], 'size': d['size'] or 0, 'mime': d['mime'] or '', 'note': d['note'] or '',
                 'added': d['added'] or '', 'by': d['added_by'] or '', 'ext': os.path.splitext(d['name'])[1].lower().lstrip('.')}
 
-    def list(self, kid):
+    def list(self, kid, uid=None):
+        """Документы КП; у своих свежих файлов (uid — кто спрашивает) — undoUntil: до какого времени автор может удалить."""
         rows = self.store.all('SELECT %s FROM kp_files WHERE kp_id=? ORDER BY id' % ', '.join(self.COLS), (self._kp(kid),))
-        return [self._row(dict(zip(self.COLS, r))) for r in rows]
+        out = []
+        for r in rows:
+            d = dict(zip(self.COLS, r))
+            rec = self._row(d)
+            until = self.undo_until(d, uid)
+            if until:
+                rec['undoUntil'] = until.isoformat(timespec='seconds')
+            out.append(rec)
+        return out
+
+    def undo_until(self, d, uid):
+        """До какого времени автор uid может удалить свой документ d (строка таблицы) — или None, если не может."""
+        minutes = SrvVal.get(self.store, 'kp.fileUndoMin')
+        if not uid or not minutes or d.get('added_by_id') != uid:
+            return None
+        try:
+            until = datetime.fromisoformat(d['added']) + timedelta(minutes=minutes)
+        except (TypeError, ValueError):
+            return None
+        return until if datetime.now() < until else None
+
+    def delete_own(self, kid, fid, uid):
+        """Автор удаляет свой документ в первые kp.fileUndoMin минут → прежнее описание. LookupError — нет документа,
+        PermissionError — чужой или время вышло."""
+        d = self._get(kid, fid)
+        if not d:
+            raise LookupError('Документ не найден')
+        if not self.undo_until(d, uid):
+            raise PermissionError('Удалить документ может его автор в первые %d мин после загрузки, позже — администратор'
+                                  % SrvVal.get(self.store, 'kp.fileUndoMin'))
+        return self.delete(kid, fid)
 
     def counts(self, ids):
         """Сколько документов у каждого КП из списка: {номер КП: число} (без документов — нет в ответе)."""
@@ -210,7 +241,7 @@ class KpFiles:
     def clean_note(cls, note):
         return re.sub(r'\s+', ' ', cls.BAD_CHARS.sub(' ', str(note or ''))).strip()[:cls.NOTE_MAX]
 
-    def add(self, kid, name, data, note='', by=''):
+    def add(self, kid, name, data, note='', by='', by_id=''):
         """Прикрепить файл к КП → описание. ValueError — понятным текстом (тип, размер, пределы КП)."""
         kid = self._kp(kid)
         name, ext = self.clean_name(name)
@@ -238,9 +269,10 @@ class KpFiles:
                     fh.write(data)
                 os.replace(tmp, f)
                 c = self.store.conn()
-                cur = c.execute('INSERT INTO kp_files (kp_id, name, file, size, mime, note, added, added_by) VALUES (?,?,?,?,?,?,?,?)',
+                cur = c.execute('INSERT INTO kp_files (kp_id, name, file, size, mime, note, added, added_by, added_by_id) '
+                                'VALUES (?,?,?,?,?,?,?,?,?)',
                                 (kid, name, disk, len(data), self.TYPES[ext][0], self.clean_note(note),
-                                 datetime.now().isoformat(timespec='seconds'), str(by or '')[:120]))
+                                 datetime.now().isoformat(timespec='seconds'), str(by or '')[:120], str(by_id or '')[:64] or None))
                 c.commit()
             except Exception:
                 for x in (tmp, f):
@@ -259,7 +291,7 @@ class KpFiles:
         return self.get(kid, fid)
 
     def delete(self, kid, fid):
-        """Удалить документ (только администратор — проверяет маршрут) → прежнее описание или None."""
+        """Удалить документ (администратор или автор через delete_own — проверяет маршрут) → прежнее описание или None."""
         d = self._get(kid, fid)
         if not d:
             return None

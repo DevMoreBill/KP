@@ -154,6 +154,21 @@ dialog.uit-dlg .uit-acts .sp{flex:1}
   .btn.auth-go{min-height:50px;font-size:16px}
 }
 .auth-me{display:grid;gap:2px;padding:6px 12px 2px}
+/* «⋯ → Сменить пароль» и «Задайте свой пароль» */
+dialog.st-confirm.auth-pwd{width:min(420px,calc(100vw - 32px))}
+.auth-pwf{display:grid;gap:12px}
+.auth-pwf .dlg-h{margin-bottom:0}
+.auth-pwf .dlg-h h3 small{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:2px}
+.auth-pwf .f input:is([type=text],[type=password]){min-height:44px;padding:10px 12px;font-size:15px;border-radius:10px}
+.auth-pwf .auth-note{margin:0;font-size:13px;line-height:1.45}
+.auth-pwf .auth-err{margin:0;color:var(--danger);font-size:13.5px}
+.auth-pwf .row{margin-top:2px}
+.auth-small{font-size:12.5px}
+dialog.st-confirm .row.auth-row{flex-wrap:wrap}
+.auth-row .sp{flex:1}
+.mob dialog.st-confirm .row.auth-row{flex-direction:column-reverse;align-items:stretch}
+.mob .auth-row .sp{display:none}
+.mob dialog.st-confirm .row.auth-row .btn{flex:0 0 auto}
 
 /* тендерное КП — в журнале и в разделе «Клиент» */
 .jr-t{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;font-size:12px;font-weight:600;color:#8a4b00;background:color-mix(in srgb,#f59e0b 16%,var(--card));border:1px solid color-mix(in srgb,#f59e0b 45%,transparent);border-radius:999px;padding:1px 8px;white-space:nowrap}

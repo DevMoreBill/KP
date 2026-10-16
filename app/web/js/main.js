@@ -8,13 +8,14 @@
   $('#srvBtns').hidden=false; $('#btnExit').hidden=remote; document.title='Конструктор КП — ПНЕВМОТЕХ';
   if (remote){ const ml=document.querySelector('.topmenu .menu-l'); if (ml) ml.insertAdjacentHTML('afterbegin', `<div class="menu-info" title="Общая база отдела">Сервер отдела: <b>${esc(SRV.info.host||location.hostname)}</b></div><hr>`); }
   await authLoad();
+  if (AUTH.enabled && AUTH.user && AUTH.user.mustChange && !AUTH.admin){ AuthScreen.change(); return; }   // вошёл с временным паролем — сначала свой
   aiStatusLoad();               // нейросеть в программе — включена ли администратором
   defaultsLoad();               // значения по умолчанию от администратора («Настройки → Умолчания»)
   if (AUTH.enabled && !AUTH.user && !AUTH.admin){ AuthScreen.show(); return; }       // вход менеджеров по паролю включён
   try{ const st=await api('/api/admin/status'); ADMIN.set(st.admin, st.csrf); }catch(e){}   // вход администратора действует и после обновления страницы
   // справочники — параллельно (каталогу нужны только категории); списки и выборы администратора — до первой отрисовки
   await loadTypes(); await Promise.all([loadClients(), loadManagers(), loadTemplates(), refreshCat(), LISTS.load(), FEAT.load(), MyPrefs.load()]);
-  loadLogos(); loadAppVersion(); uitLoad(); renderForm(); authMenu();
+  loadLogos(); loadAppVersion(); uitLoad(); renderForm(); AuthMenu.mount();
   (window.requestIdleCallback||setTimeout)(()=>CW.prewarm());     // поиск в каталоге — готов заранее
   Drafts.start();               // черновики на сервере: автосохранение раз в минуту
   Reminders.load(); Reminders.poll();   // колокольчик: перезвонить, срок действия КП

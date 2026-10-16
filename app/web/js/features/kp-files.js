@@ -1,7 +1,7 @@
 // Справочные документы к КП (сервер: app/kp_files.py): паспорта, сертификаты, схемы, опросные листы — хранятся на сервере
 // вместе с КП и в документ КП не входят. Где: раздел «Условия» (блок внизу), окно «КП сохранено», журнал → «📎» и «⋯»,
 // письмо клиенту (галочки вложений). Добавить — кнопкой, перетаскиванием или вставкой из буфера (Ctrl+V); скачать,
-// примечание. Удаляет только администратор: «Настройки → Сохранённые КП» → «📎».
+// примечание. Удаляет администратор («Настройки → Сохранённые КП» → «📎»), свой файл в первые минуты после загрузки — автор.
 'use strict';
 
 class KpFilesPanel {
@@ -60,7 +60,15 @@ class KpFilesPanel {
       <div class="kf-m"><a class="kf-n" href="${href}" download title="Скачать «${esc(x.name)}»">${esc(x.name)}</a>
         <span class="muted">${Fmt.size(x.size)} · ${esc(KpDate.ddmm(x.added))}${x.by?' · '+esc(jShort(x.by)):''}</span>
         <input type="text" class="kf-note" data-kfnote="${esc(String(x.id))}" data-kid="${esc(kid)}" value="${esc(x.note||'')}" maxlength="300" placeholder="Примечание: что это за документ" aria-label="Примечание к файлу ${esc(x.name)}" autocomplete="off"></div>
-      <div class="acts"><a class="btn sm kf-dl" href="${href}" download aria-label="Скачать «${esc(x.name)}»"><span aria-hidden="true">⬇</span><span class="kf-dlt"> Скачать</span></a>${o.admin?`<button class="btn sm danger" type="button" data-kfdel="${esc(String(x.id))}" data-kid="${esc(kid)}">Удалить</button>`:''}</div></div>`;
+      <div class="acts"><a class="btn sm kf-dl" href="${href}" download aria-label="Скачать «${esc(x.name)}»"><span aria-hidden="true">⬇</span><span class="kf-dlt"> Скачать</span></a>${o.admin||this.ownLeft(x)?this.delButton(kid, x, o):''}</div></div>`;
+  }
+
+  /** сколько минут автор ещё может удалить свой документ (сервер присылает undoUntil только автору), 0 — нельзя */
+  static ownLeft(x){ return x.undoUntil ? Math.max(0, Math.ceil((Date.parse(x.undoUntil)-Date.now())/60000)) : 0; }
+  static delButton(kid, x, o){
+    const own=!o.admin, left=own ? this.ownLeft(x) : 0;
+    return `<button class="btn sm danger" type="button" data-kfdel="${esc(String(x.id))}" data-kid="${esc(kid)}"${own?' data-kfown="1"':''}
+      title="${own?`Свой файл, прикреплённый по ошибке, можно удалить ещё ${left} мин`:'Удалить документ'}">Удалить</button>`;
   }
 
   /** окно документов КП (журнал, «КП сохранено», «Настройки»); o: {admin, onClose(число документов)} */
@@ -129,11 +137,12 @@ class KpFilesPanel {
     catch(e){ toast('Примечание не сохранено: '+e.message); }
   }
 
-  /** удаление — только администратор («Настройки»), с подтверждением */
-  static async remove(kid, fid){
+  /** удаление с подтверждением: администратор («Настройки») или автор своего свежего файла (own) */
+  static async remove(kid, fid, own){
     const x=this.items(kid).find(z=>z.id===fid); if (!x) return;
     if (!await stConfirm('Удалить документ?', `«${x.name}» удалится с сервера безвозвратно — у КП № ${kid} его больше не будет.`, 'Удалить')) return;
-    try{ await api(`/api/admin/kpfiles/${encodeURIComponent(kid)}/${encodeURIComponent(fid)}/delete`, {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:'{}'});
+    const url = own ? `${this.url(kid, fid)}/remove` : `/api/admin/kpfiles/${encodeURIComponent(kid)}/${encodeURIComponent(fid)}/delete`;
+    try{ await api(url, {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:'{}'});
       toast('Документ удалён'); }
     catch(e){ toast('Не удалено: '+e.message); }
     this.load(kid);
@@ -145,7 +154,7 @@ class KpFilesPanel {
     document.addEventListener('click', e=>{
       const a=e.target.closest('[data-kfadd]'); if (a) return this.pick(a.dataset.kfadd);
       const c=e.target.closest('[data-kfclip]'); if (c) return this.clip(c.dataset.kfclip);
-      const d=e.target.closest('[data-kfdel]'); if (d) return this.remove(d.dataset.kid, +d.dataset.kfdel);
+      const d=e.target.closest('[data-kfdel]'); if (d) return this.remove(d.dataset.kid, +d.dataset.kfdel, !!d.dataset.kfown);
     });
     document.addEventListener('change', e=>{ const n=e.target.closest && e.target.closest('[data-kfnote]'); if (n) this.note(n); });
     document.addEventListener('keydown', e=>{ const n=e.target.closest && e.target.closest('[data-kfnote]'); if (n && e.key==='Enter'){ e.preventDefault(); n.blur(); } });

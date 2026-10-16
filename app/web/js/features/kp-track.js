@@ -65,7 +65,7 @@ class KpTrack {
           ${KpTrack.quick().map(n=>`<button type="button" class="btn sm" data-kd="${n}">${n===1?'Завтра':n===7?'Через неделю':`Через ${n} ${plural(n,'день','дня','дней')}`}</button>`).join('')}
           ${fu?'<button type="button" class="btn sm ghost" data-kdone>Выполнено</button>':''}</div>
         <input type="text" id="ktFN" value="${esc(fu?fu.note:'')}" maxlength="300" placeholder="Что сделать: позвонить главному инженеру, уточнить решение…" aria-label="Что сделать"></fieldset>
-      ${hist?`<details class="kt-h"><summary>История</summary><ul>${hist}</ul></details>`:''}
+      ${hist?`<details class="kt-hist"><summary>История</summary><ul>${hist}</ul></details>`:''}
       <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px"><button class="btn" type="button" data-x>Отмена</button><button class="btn primary" type="button" data-ksave>Сохранить</button></div>`, 'kt-dlg');
     let cur=st;
     m.d.onclick=async e=>{ const t=e.target;

@@ -38,7 +38,7 @@ class AdminNav {
       {key:'texts', label:'Тексты интерфейса', hint:'Свои надписи и подсказки вместо стандартных.', open:m=>stTexts(m)}]},
     {title:'Сотрудники и вход', desc:'Кто работает в программе и что ему можно.', tabs:[
       {key:'db-manager', label:'Менеджеры: контакты', hint:'Имя, должность, телефон, почта менеджера — то, что попадает в КП.', open:m=>stDelete(m, 'manager')},
-      {key:'access', label:'Менеджеры: вход и права', hint:'Вход в конструктор по логину и паролю; права: оборудование, чужие КП, экономика сделки.', open:m=>stAccess(m)},
+      {key:'access', label:'Менеджеры: вход и права', hint:'Вход в конструктор по логину и паролю; права: оборудование, чужие КП, экономика сделки.', open:m=>AccessPanel.open(m)},
       {key:'users', label:'Администраторы', hint:'Кто входит в «Настройки»: добавить, изменить, сменить пароль.', open:m=>stUsers(m)},
       {key:'security', label:'Мой пароль', hint:'Смена своего пароля и правила входа.', open:m=>stSecurity(m)}]},
     {title:'Внешние сервисы', desc:'Подключения к интернет-сервисам и их ключи.', tabs:[
@@ -74,7 +74,7 @@ class AdminNav {
   }
 }
 
-const ACT = { login:'Вход в «Настройки»', backup_db:'Копия базы', maintain_db:'Сжатие и проверка базы', purge_images:'Удаление лишних изображений', create_admin:'Новый администратор', edit_admin:'Изменение администратора', delete_admin:'Удаление администратора', logout:'Выход из «Настроек»', set_password:'Пароль администратора', delete_attempt:'Попытка удаления',
+const ACT = { login:'Вход в «Настройки»', backup_db:'Копия базы', maintain_db:'Сжатие и проверка базы', purge_images:'Удаление лишних изображений', create_admin:'Новый администратор', edit_admin:'Изменение администратора', delete_admin:'Удаление администратора', logout:'Выход из «Настроек»', set_password:'Смена пароля', reset_password:'Сброс пароля (временный)', logout_all:'Выход на всех устройствах', user_logout:'Выход менеджера', delete_attempt:'Попытка удаления',
   admin_request:'Запрос без входа', kp_status:'Ход сделки по КП', send_kp:'Отправка КП по почте', edit_settings:'Изменение настроек', edit_template:'Изменение шаблона', create_kp:'Создание КП', edit_kp:'Изменение КП',
   create_manager:'Новый менеджер', create_supplier:'Новый поставщик', edit_supplier:'Изменение поставщика', delete_supplier:'Удаление поставщика', edit_customs:'Код ТН ВЭД и пошлина', edit_manager:'Изменение менеджера', create_client:'Новый клиент', edit_client:'Изменение клиента',
   edit_types:'Категории оборудования', submit_edit:'Правка на модерацию', edit_product:'Правка товара', create_product:'Новый товар',
@@ -83,7 +83,7 @@ const ACT = { login:'Вход в «Настройки»', backup_db:'Копия 
   delete_client:'Удаление клиента', restore:'Восстановление из корзины', purge_trash:'Очистка корзины', export_db:'Экспорт базы', import_db:'Импорт базы', export_keys:'Копия ключей API', import_feed:'Загрузка фида в каталог', check_feed:'Проверка РРЦ и наличия по фиду',
   add_kp_file:'Документ к КП прикреплён', edit_kp_file:'Примечание к документу КП', delete_kp_file:'Документ КП удалён' };
 const ENT = { supplier:'Поставщик', customs:'ТН ВЭД', product:'Товар', catalog:'Товар', kp:'КП', manager:'Менеджер', client:'Клиент', settings:'Настройки', template:'Шаблон',
-  types:'Категории', admin:'Администратор', db:'База', trash:'Корзина', system:'Программа' };
+  types:'Категории', admin:'Администратор', user:'Вход менеджера', db:'База', trash:'Корзина', system:'Программа' };
 const DEL_TYPES = [['kp','КП из журнала'],['catalog','Товары каталога'],['manager','Контакты менеджеров'],['client','Клиенты'],['supplier','Поставщики']];
 
 // размер окна запоминается (тянуть за правый нижний угол); «⤢» — во весь экран
@@ -526,38 +526,74 @@ async function stUsers(m){
     }catch(err){ toast(err.message||String(err)); } };
 }
 
-// ---------- вход менеджеров в конструктор по паролю и права
-async function stAccess(m){
-  const r=await aapi('access'), P=r.perms;
-  const row=x=>`<tr data-mid="${esc(x.id)}"${x.blocked?' class="off"':''}><td><b>${esc(x.name||'Без имени')}</b><small class="muted">${esc(x.position||'')}${x.lastLogin?(x.position?' · ':'')+'вход '+esc(Fmt.dateTime(x.lastLogin)):''}</small></td>
-    <td>${x.login?`<b>${esc(x.login)}</b>${x.hasPassword?'':' <small class="bad-t">нет пароля</small>'}${x.blocked?' <small class="bad-t">вход запрещён</small>':''}`:'<span class="muted">не задан</span>'}</td>
-    ${P.map(p=>`<td class="c"><input type="checkbox" data-perm="${p.key}"${x.perms[p.key]?' checked':''} aria-label="${esc(p.label)}"></td>`).join('')}
-    <td class="acts"><button class="btn" type="button" data-ac="login">${x.login?'Логин и пароль':'Задать вход'}</button>${x.login?`<button class="btn ghost" type="button" data-ac="block">${x.blocked?'Разрешить вход':'Запретить вход'}</button>`:''}</td></tr>`;
-  m.innerHTML=`<div class="st-card"><div class="row"><p class="sub" style="margin:0">Вход в конструктор по логину и паролю</p><span class="sp"></span>
-      <label class="sw"><input type="checkbox" id="acOn"${r.enabled?' checked':''}><span>${r.enabled?'включён':'выключен'}</span></label></div>
-    <p class="muted">${r.enabled?'Без входа программа не открывается. Кто работает, программа знает по входу; права ниже проверяются на сервере.'
-      :'Сейчас менеджер выбирается на устройстве, пароль не нужен, права не проверяются. Чтобы включить вход, задайте логин и пароль хотя бы одному менеджеру.'}
-      Администратор входит в «Настройки» своим паролем и может всё.</p>
-    <div class="ac-help"><label class="f"><span>«Забыли пароль?» на экране входа — к кому обращаться ${tip('Менеджер видит этот текст до входа, под ссылкой «Забыли пароль?». Укажите, кто сбрасывает пароль и как с ним связаться. Пусто — только общая подсказка «обратитесь к администратору».')}</span>
-      <input type="text" id="acHelp" maxlength="200" value="${esc(r.help||'')}" placeholder="Например: пароль сбросит Иванов Иван, доб. 123"></label><button class="btn" type="button" id="acHelpSave">Сохранить</button></div></div>
-    <div class="st-card"><div class="row"><p class="sub" style="margin:0">Менеджеры и права · ${r.managers.length}</p><span class="sp"></span><button class="btn ghost" type="button" data-sttab="db-manager">Контакты менеджеров →</button></div>
-    ${r.managers.length?`<div class="ac-tw"><table class="pv-t ac-t"><thead><tr><th>Менеджер</th><th>Логин</th>${P.map(p=>`<th class="c" title="${esc(p.label)}">${esc(p.label)}</th>`).join('')}<th></th></tr></thead><tbody>${r.managers.map(row).join('')}</tbody></table></div>`
-      :'<p class="muted">Менеджеров ещё нет — их добавляют в шаге «Менеджер» конструктора.</p>'}
-    <p class="muted">Права действуют, когда вход по паролю включён. «КП других менеджеров» — видеть их в журнале, открывать и сохранять; без него менеджер видит только свои КП. «Экономика сделки» — своих КП (чужих — вместе с правом на КП других).</p></div>`;
-  const post=(mid, body)=>ajson('access/'+encodeURIComponent(mid), body);
-  $('#acHelpSave').onclick=async()=>{ try{ const x=await ajson('access',{help:$('#acHelp').value}); $('#acHelp').value=x.help||''; toast('Подсказка сохранена'); }catch(err){ toast(err.message||String(err)); } };
-  $('#acOn').onchange=async e=>{ try{ await ajson('access',{enabled:e.target.checked}); toast(e.target.checked?'Вход по паролю включён':'Вход по паролю выключен'); }catch(err){ toast(err.message||String(err)); } stAccess(m); };
-  m.onchange=async e=>{ const c=e.target.closest('[data-perm]'); if (!c) return; const mid=c.closest('[data-mid]').dataset.mid;
-    const perms={}; c.closest('tr').querySelectorAll('[data-perm]').forEach(x=>perms[x.dataset.perm]=x.checked);
-    try{ await post(mid,{perms}); toast('Права сохранены'); }catch(err){ toast(err.message||String(err)); stAccess(m); } };
-  m.onclick=async e=>{ const b=e.target.closest('[data-ac]'); if (!b) return; const mid=b.closest('[data-mid]').dataset.mid, x=r.managers.find(z=>z.id===mid);
-    try{
-      if (b.dataset.ac==='login'){ const v=await stForm(`Вход: ${x.name}`, [['login','Логин (латиница или кириллица, без пробелов)',x.login||''],['password',x.hasPassword?`Новый пароль (пусто — не менять), не короче ${DEFN('srv.userPwMin', 4)} символов`:`Пароль, не короче ${DEFN('srv.userPwMin', 4)} символов`,'','password']]); if (!v) return;
-        if (!x.hasPassword && !v.password) return toast('Задайте пароль');
-        await post(mid,{login:v.login, ...(v.password?{password:v.password}:{})}); toast('Сохранено'); }
-      if (b.dataset.ac==='block'){ await post(mid,{blocked:!x.blocked}); toast(x.blocked?'Вход разрешён':'Вход запрещён, сессии закрыты'); }
-      stAccess(m);
-    }catch(err){ toast(err.message||String(err)); } };
+// ---------- вход менеджеров в конструктор по паролю и права; сброс пароля (временный), «выйти на всех устройствах»
+class AccessPanel {
+  static async open(m){
+    const r=await aapi('access'), P=r.perms;
+    const row=x=>`<tr data-mid="${esc(x.id)}"${x.blocked?' class="off"':''}><td><b>${esc(x.name||'Без имени')}</b><small class="muted">${esc(x.position||'')}${x.lastLogin?(x.position?' · ':'')+'вход '+esc(Fmt.dateTime(x.lastLogin)):''}</small></td>
+      <td>${x.login?`<b>${esc(x.login)}</b>${AccessPanel._state(x)}`:'<span class="muted">не задан</span>'}</td>
+      ${P.map(p=>`<td class="c"><input type="checkbox" data-perm="${p.key}"${x.perms[p.key]?' checked':''} aria-label="${esc(p.label)}"></td>`).join('')}
+      <td class="acts"><div class="ac-acts"><button class="btn sm" type="button" data-ac="login">${x.login?'Логин и пароль':'Задать вход'}</button>${x.login?`<button class="btn sm" type="button" data-ac="reset">Сбросить пароль</button>
+        <button class="btn sm ghost" type="button" data-ac="block">${x.blocked?'Разрешить вход':'Запретить вход'}</button>`:''}${x.sessions?`<button class="btn sm ghost" type="button" data-ac="out" title="Закрыть все входы менеджера: компьютеры и телефоны">Выйти везде (${x.sessions})</button>`:''}</div></td></tr>`;
+    m.innerHTML=`<div class="st-card"><div class="row"><p class="sub" style="margin:0">Вход в конструктор по логину и паролю</p><span class="sp"></span>
+        <label class="sw"><input type="checkbox" id="acOn"${r.enabled?' checked':''}><span>${r.enabled?'включён':'выключен'}</span></label></div>
+      <p class="muted">${r.enabled?'Без входа программа не открывается. Кто работает, программа знает по входу; права ниже проверяются на сервере.'
+        :'Сейчас менеджер выбирается на устройстве, пароль не нужен, права не проверяются. Чтобы включить вход, задайте логин и пароль хотя бы одному менеджеру.'}
+        Администратор входит в «Настройки» своим паролем и может всё.</p>
+      <div class="ac-help"><label class="f"><span>«Забыли пароль?» на экране входа — к кому обращаться ${tip('Менеджер видит этот текст до входа, под ссылкой «Забыли пароль?». Укажите, кто сбрасывает пароль и как с ним связаться. Пусто — только общая подсказка «обратитесь к администратору».')}</span>
+        <input type="text" id="acHelp" maxlength="200" value="${esc(r.help||'')}" placeholder="Например: пароль сбросит Иванов Иван, доб. 123"></label><button class="btn" type="button" id="acHelpSave">Сохранить</button></div></div>
+      <div class="st-card"><div class="row"><p class="sub" style="margin:0">Менеджеры и права · ${r.managers.length} ${tip(AccessPanel.HELP)}</p><span class="sp"></span><button class="btn ghost" type="button" data-sttab="db-manager">Контакты менеджеров →</button></div>
+      ${r.managers.length?`<div class="ac-tw"><table class="pv-t ac-t"><thead><tr><th>Менеджер</th><th>Логин</th>${P.map(p=>`<th class="c" title="${esc(p.label)}">${esc(p.label)}</th>`).join('')}<th></th></tr></thead><tbody>${r.managers.map(row).join('')}</tbody></table></div>`
+        :'<p class="muted">Менеджеров ещё нет — их добавляют в шаге «Менеджер» конструктора.</p>'}
+      <p class="muted">Права действуют, когда вход по паролю включён. «КП других менеджеров» — видеть их в журнале, открывать и сохранять; без него менеджер видит только свои КП. «Экономика сделки» — своих КП (чужих — вместе с правом на КП других).</p></div>`;
+    const post=(mid, body)=>ajson('access/'+encodeURIComponent(mid), body);
+    $('#acHelpSave').onclick=async()=>{ try{ const x=await ajson('access',{help:$('#acHelp').value}); $('#acHelp').value=x.help||''; toast('Подсказка сохранена'); }catch(err){ toast(err.message||String(err)); } };
+    $('#acOn').onchange=async e=>{ try{ await ajson('access',{enabled:e.target.checked}); toast(e.target.checked?'Вход по паролю включён':'Вход по паролю выключен'); }catch(err){ toast(err.message||String(err)); } AccessPanel.open(m); };
+    m.onchange=async e=>{ const c=e.target.closest('[data-perm]'); if (!c) return; const mid=c.closest('[data-mid]').dataset.mid;
+      const perms={}; c.closest('tr').querySelectorAll('[data-perm]').forEach(x=>perms[x.dataset.perm]=x.checked);
+      try{ await post(mid,{perms}); toast('Права сохранены'); }catch(err){ toast(err.message||String(err)); AccessPanel.open(m); } };
+    m.onclick=async e=>{ const b=e.target.closest('[data-ac]'); if (!b) return; const mid=b.closest('[data-mid]').dataset.mid, x=r.managers.find(z=>z.id===mid);
+      try{
+        if (b.dataset.ac==='login'){ const v=await stForm(`Вход: ${x.name}`, [['login','Логин (латиница или кириллица, без пробелов)',x.login||''],['password',x.hasPassword?`Новый пароль (пусто — не менять), не короче ${DEFN('srv.userPwMin', 4)} символов`:`Пароль, не короче ${DEFN('srv.userPwMin', 4)} символов`,'','password']]); if (!v) return;
+          if (!x.hasPassword && !v.password) return toast('Задайте пароль');
+          await post(mid,{login:v.login, ...(v.password?{password:v.password}:{})}); toast('Сохранено'); }
+        if (b.dataset.ac==='block'){ await post(mid,{blocked:!x.blocked}); toast(x.blocked?'Вход разрешён':'Вход запрещён, сессии закрыты'); }
+        if (b.dataset.ac==='reset' && !await AccessPanel.reset(x)) return;
+        if (b.dataset.ac==='out'){ if (!await stConfirm('Выйти на всех устройствах?', `${x.name||x.login}: закроются все входы (${x.sessions}) — на компьютерах и телефонах. Пароль не меняется: менеджер войдёт снова своим.`, 'Закрыть входы')) return;
+          const o=await ajson('access/'+encodeURIComponent(mid)+'/logout'); toast(o.closed?`Входы закрыты: ${o.closed}`:'Открытых входов не было'); }
+        AccessPanel.open(m);
+      }catch(err){ toast(err.message||String(err)); } };
+  }
+
+  static HELP = '<p><b>Сбросить пароль</b> — менеджер забыл пароль: программа выдаст временный пароль (покажет один раз — передайте менеджеру). Прежний пароль перестаёт действовать, открытые входы менеджера закрываются. Войдя с временным паролем, менеджер сразу задаёт свой; срок временного пароля — «Значения программы» → «Временный пароль… действует».</p>'
+    +'<p><b>Выйти везде</b> — закрыть все входы менеджера (например, потерял телефон); пароль не меняется. Менеджер может сделать это и сам: «⋯ → Выйти на всех устройствах», а пароль сменить — «⋯ → Сменить пароль».</p>';
+
+  // отметки у логина: нет пароля, вход запрещён, временный пароль (до какого времени), открытые входы
+  static _state(x){
+    const t=x.temp, out=[];
+    if (!x.hasPassword) out.push('<small class="bad-t">нет пароля</small>');
+    if (x.blocked) out.push('<small class="bad-t">вход запрещён</small>');
+    if (t) out.push(t.expired ? '<small class="bad-t">временный пароль истёк</small>' : `<small class="warn-t">временный пароль до ${esc(Fmt.dateTime(t.until))}</small>`);
+    if (x.sessions) out.push(`<small class="muted">входов открыто: ${x.sessions}</small>`);
+    return out.join('');
+  }
+
+  // «Сбросить пароль»: подтверждение → временный пароль на экран один раз (с «Копировать»)
+  static async reset(x){
+    if (!await stConfirm('Сбросить пароль?', `${x.name||x.login} получит временный пароль. Прежний пароль перестанет действовать, открытые входы менеджера закроются.`, 'Сбросить пароль')) return false;
+    const r=await ajson('access/'+encodeURIComponent(x.id)+'/reset');
+    await new Promise(res=>{
+      const m=new Modal(`<h3>Временный пароль</h3><p>Передайте менеджеру <b>${esc(x.name||'')}</b> — пароль показывается только сейчас.</p>
+        <div class="ac-tmp"><span class="ac-tmp-l">Логин <b>${esc(x.login)}</b></span><code id="acTmp">${esc(r.password)}</code><button class="btn" type="button" id="acCopy">Копировать</button></div>
+        <p class="muted">Действует до ${esc(Fmt.dateTime(r.until))} (${r.hours} ч). При входе менеджер сразу задаст свой пароль.</p>
+        <div class="row"><button class="btn primary" type="button" data-x>Готово</button></div>`, 'ac-tmp-dlg');
+      m.$('#acCopy').onclick=async()=>{ const ok=await copyToClipboard(r.password); toast(ok?'Пароль скопирован':'Не скопировалось — выделите пароль и скопируйте вручную');
+        if (!ok){ const sel=getSelection(), rg=document.createRange(); rg.selectNodeContents(m.$('#acTmp')); sel.removeAllRanges(); sel.addRange(rg); } };
+      m.$('[data-x]').onclick=()=>m.close();
+      m.d.addEventListener('close', ()=>res());
+    });
+    return true;
+  }
 }
 
 // форма из нескольких полей поверх «Настроек»: fields [[ключ, подпись, значение, тип]] → {ключ: значение} или null

@@ -12,6 +12,7 @@ import shutil
 import unittest
 import urllib.parse
 import zipfile
+from datetime import datetime, timedelta
 
 from kit import Http, SampleData, SmtpSink, Stand, TempStore
 from kp_files import KpFiles
@@ -124,7 +125,8 @@ class StorageTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, True)
         path = os.path.join(d, 'kp.sqlite3')
         st = storage.Store(path)
-        st.migration_down('2027-08-kp-files')                  # база прежней версии: таблицы ещё нет
+        st.migration_down('2027-09-kp-files-author')           # база прежней версии: таблицы ещё нет
+        st.migration_down('2027-08-kp-files')
         self.kp(st, '26-0005')
         st.conn().close()
         c = sqlite3.connect(path)
@@ -132,6 +134,7 @@ class StorageTest(unittest.TestCase):
         c.close()
         st2 = storage.Store(path)                              # запуск новой версии — миграция с копией базы
         self.assertIn('2027-08-kp-files', st2.migrations_applied())
+        self.assertIn('2027-09-kp-files-author', st2.migrations_applied())
         self.assertIsNotNone(st2.one("SELECT name FROM sqlite_master WHERE name='kp_files'"))
         self.assertTrue(st2.one('SELECT meta FROM kp WHERE id=?', ('26-0005',))[0], 'данные КП на месте')
         self.assertTrue(any('before-2027-08-kp-files' in f for f in os.listdir(os.path.join(d, 'backup'))), 'копия базы перед миграцией')
@@ -282,6 +285,45 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.R('POST', dp, {}, who='adm')[0], 404)
         log = Http.js(self.R('GET', '/api/admin/audit?action=delete_kp_file', who='adm')[1])['items']
         self.assertTrue(log and log[0]['entityId'] == self.K1 and log[0]['before']['name'] == 'Паспорт компрессора «ВК».pdf', log[:1])
+
+    def test_06b_author_removes_own_in_time(self):
+        """Автор удаляет свой файл в первые kp.fileUndoMin минут; чужой — нет; срок вышел или 0 — только администратор."""
+        def upload(name):
+            st, b, _ = self.up(self.K1, name, pdf(1500))
+            self.assertEqual(st, 200, b)
+            return Http.js(b)['id']
+
+        def mine(fid, who):
+            items = Http.js(self.R('GET', '/api/kp/%s/files' % self.K1, who=who)[1])['items']
+            return next(x for x in items if x['id'] == fid)
+
+        fid = upload('Не тот файл.pdf')
+        self.assertIn('undoUntil', mine(fid, 'm1'), 'автору — до какого времени можно удалить')
+        self.assertNotIn('undoUntil', mine(fid, 'm2'), 'другому менеджеру — нет')
+        rm = '/api/kp/%s/files/%d/remove' % (self.K1, fid)
+        self.assertEqual(self.R('POST', rm, {}, who='m2')[0], 403, 'чужой файл не удаляется')
+        st, b, _ = self.R('POST', rm, {})
+        self.assertEqual(st, 200, b)
+        self.assertEqual(self.R('POST', rm, {})[0], 404)
+        log = Http.js(self.R('GET', '/api/admin/audit?action=delete_kp_file', who='adm')[1])['items']
+        self.assertTrue(log[0]['before'].get('author') and log[0]['before']['name'] == 'Не тот файл.pdf', log[:1])
+
+        late = upload('Поздно.pdf')                                  # срок вышел — только администратор
+        con = sqlite3.connect(self.stand.db)
+        con.execute('UPDATE kp_files SET added=? WHERE id=?', ((datetime.now() - timedelta(minutes=11)).isoformat(timespec='seconds'), late))
+        con.commit()
+        con.close()
+        st, b, _ = self.R('POST', '/api/kp/%s/files/%d/remove' % (self.K1, late), {})
+        self.assertEqual(st, 403, b)
+        self.assertIn('администратор', b)
+
+        self.defaults({'kp.fileUndoMin': {'on': True, 'v': '0'}})    # 0 — удаляет только администратор
+        try:
+            off = upload('Без отмены.pdf')
+            self.assertNotIn('undoUntil', mine(off, 'm1'))
+            self.assertEqual(self.R('POST', '/api/kp/%s/files/%d/remove' % (self.K1, off), {})[0], 403)
+        finally:
+            self.defaults({'kp.fileUndoMin': None})
 
     def test_07_kp_in_trash(self):
         kid = self.sample.kp_ids[self.M2[0]][1]

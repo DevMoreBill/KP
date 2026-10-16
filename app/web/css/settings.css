@@ -267,6 +267,14 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .ac-t th:first-child,.ac-t td:first-child{text-align:left;min-width:150px}   /* на телефоне имя и должность не рвутся по буквам */
 .ac-t td:nth-child(2){white-space:nowrap;min-width:110px}
 .ac-t td:nth-child(2) small{display:block;white-space:normal}
+.ac-acts{display:grid;grid-template-columns:repeat(2,max-content);gap:6px;justify-content:end}
+.ac-acts .btn{padding:5px 10px;font-size:13px;min-height:30px;justify-content:center}
+.ac-acts .btn.ghost{border:1px solid var(--line)}
+/* временный пароль после «Сбросить пароль» — показывается один раз */
+dialog.st-confirm.ac-tmp-dlg{width:min(460px,calc(100vw - 32px))}
+.ac-tmp{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;margin:0 0 12px;padding:12px 14px;border:1px dashed var(--line);border-radius:12px;background:var(--soft)}
+.ac-tmp-l{flex-basis:100%;font-size:13px;color:var(--muted)}.ac-tmp-l b{color:var(--ink)}
+.ac-tmp code{flex:1;min-width:0;font:600 22px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.08em;color:var(--navy);user-select:all;overflow-wrap:anywhere}
 
 /* навигация «Настроек» по группам */
 .st-ng{display:block;padding:10px 12px 2px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
