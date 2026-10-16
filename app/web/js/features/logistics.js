@@ -153,13 +153,26 @@ function lgOffers(r, Q){
   return out;
 }
 
-// итог: выбранное предложение (s.lg.pick) или максимальное; сноска — из чего цена, откуда данные и с чем сравнивали
+// цена перевозчика, которая во много раз выше остальных (ошибка расчёта перевозчика, негабарит по его правилам), не должна
+// становиться «максимальным предложением» сделки: помечается o.outlier = во сколько раз дороже медианы остальных
+class LgOutlier {
+  static median(a){ const s=[...a].sort((x,y)=>x-y), n=s.length; return n ? (n%2 ? s[(n-1)/2] : (s[n/2-1]+s[n/2])/2) : 0; }
+  static mark(offs){
+    const k=LgValues.outlierK(); if (!k || offs.length<3) return offs;
+    for (const o of offs){ const m=this.median(offs.filter(x=>x!==o && x.total>0).map(x=>x.total));
+      if (m>0 && o.total>k*m) o.outlier=Math.round(o.total/m*10)/10; }
+    return offs;
+  }
+}
+
+// итог: выбранное предложение (s.lg.pick) или максимальное (без «выбросов»); сноска — из чего цена, откуда данные и с чем сравнивали
 function lgFinal(r, Q, pick){
-  const T=LG.tar, offs=lgOffers(r, Q), max=offs.reduce((a,o)=>o.total>a.total?o:a, offs[0]);
+  const T=LG.tar, offs=LgOutlier.mark(lgOffers(r, Q)), ok=offs.filter(o=>!o.outlier), pool=ok.length?ok:offs,
+    max=pool.reduce((a,o)=>o.total>a.total?o:a, pool[0]);
   const ch=(pick && pick!=='max' && offs.find(o=>o.id===pick)) || max, manualPick=ch!==max || (pick && pick!=='max');
   const parts=[`перевозка ${Fmt.rub(ch.base)}`, ch.local?`забор и доставка по городу ${Fmt.rub(ch.local)}`:'', ch.agent?`агент ${String(T.agentPct).replace('.',',')} % ${Fmt.rub(ch.agent)}`:'',
     ch.insTk?`страхование ${ch.src} ${Fmt.rub(ch.ins)}`:`страхование ${String(T.insPct).replace('.',',')} %${r.insBase?` от ${Fmt.rub(r.insBase)}`:''} ${Fmt.rub(ch.ins)}`, ch.unload?`разгрузка ${Fmt.rub(ch.unload)}`:''].filter(Boolean);
-  const others=offs.filter(o=>o!==ch).map(o=>`${o.src} — ${Fmt.rub(o.total)}`);
+  const others=offs.filter(o=>o!==ch).map(o=>`${o.src} — ${Fmt.rub(o.total)}${o.outlier?` (выброс: в ${String(o.outlier).replace('.',',')} раза дороже остальных, в максимум не взят)`:''}`);
   const when=Q&&Q.res?`, данные на ${Fmt.dateTime(Q.res.at)}`:' (цены перевозчиков ещё не получены)';
   return { price:ch.total, name:ch.src, src:ch.kind, chosen:ch, max, offers:offs, picked:manualPick,
     foot:`Цена — ${manualPick?'выбрано':'максимальное предложение'}: ${ch.src}${ch.note?' ('+ch.note+')':''}${when}. Дверь в дверь: ${parts.join(' + ')}.${others.length?' Для сравнения: '+others.join(', ')+'.':''}` };
@@ -259,7 +272,7 @@ function dlLogistics(c){
         <tr class="${pick==='max'?'on':''}"><td><label class="lg-pk"><input type="radio" name="${nmR}" data-lgpick="max" data-k="${k}"${pick==='max'?' checked':''}${ex?' disabled':''}><b>Максимальное предложение</b></label><small>рекомендуется: запас на рост ставок — сейчас ${esc(fin.max.src)}</small></td><td></td><td></td><td class="num">${Fmt.rub(fin.max.total)}</td></tr>
         ${fin.offers.map(o=>`<tr class="${pick===o.id?'on':''}${o===fin.max?' best':''}"><td><label class="lg-pk"><input type="radio" name="${nmR}" data-lgpick="${esc(o.id)}" data-k="${k}"${pick===o.id?' checked':''}${ex?' disabled':''}><b>${esc(o.src)}</b></label>
             <small>${esc(o.note||'')}${o.local?` · + забор и доставка по городу ${Fmt.rub(o.local)}`:''} ${o.agent?' · агент '+Fmt.rub(o.agent):''} · страхование ${o.insTk?'перевозчика ':''}${Fmt.rub(o.ins)}${o.unload?' · разгрузка '+Fmt.rub(o.unload):''}</small></td>
-          <td>${esc(kindT[o.kind]||'')}</td><td class="num">${o.days?esc(o.days)+' дн.':''}</td><td class="num">${Fmt.rub(o.total)}${o===fin.max?' <span class="lg-tag">макс.</span>':''}</td></tr>`).join('')}
+          <td>${esc(kindT[o.kind]||'')}</td><td class="num">${o.days?esc(o.days)+' дн.':''}</td><td class="num">${Fmt.rub(o.total)}${o===fin.max?' <span class="lg-tag">макс.</span>':''}${o.outlier?` <span class="lg-tag bad" title="Дороже середины остальных предложений в ${esc(String(o.outlier).replace('.',','))} раза — в максимум не берётся (порог — «Настройки → Значения программы → Логистика»). Проверьте цену на сайте перевозчика; выбрать можно вручную.">выброс</span>`:''}</td></tr>`).join('')}
       </tbody></table></div>
       ${Q&&Q.res.errors.length?`<ul class="lg-errs">${Q.res.errors.map(e=>`<li class="${e.skip?'muted':''}"><b>${esc(e.src)}:</b> ${esc(e.msg)}${e.url&&!e.skip?` <a href="${esc(e.url)}" target="_blank" rel="noopener">посчитать на сайте ↗</a>`:''}</li>`).join('')}</ul>`:''}
       <p class="muted lg-note">${Q?'Цены перевозчиков запрошены '+esc(Fmt.dateTime(Q.res.at)):LG.busy[s.id]?'Запрашиваю цены перевозчиков…':'Цены перевозчиков ещё не запрошены — пока только расчёт по тарифам.'}</p></div>`;
