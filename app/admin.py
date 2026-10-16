@@ -1426,7 +1426,8 @@ class AdminApi:
             lst = mt.unused_images(st, img_dir)
             return self.ok({'count': len(lst), 'bytes': sum(x['bytes'] for x in lst), 'sample': [x['rel'] for x in lst[:20]]})
         if sub == 'maint/images' and m == 'POST':
-            res = mt.purge_images(st, img_dir)
+            import feeds           # хранилище изображений: его индекс одинаковых картинок после очистки строится заново
+            res = mt.purge_images(st, img_dir, feeds.IMAGE_STORE)
             self.log('purge_images', 'images', 'unused', None, res)
             return self.ok(res)
         return self.err(404, 'not found')
@@ -1534,7 +1535,7 @@ class AdminApi:
             titles = {eid: rows.get(eid) or str(eid) for eid in ids}
         n = 0
         for eid in ids:
-            data = self.st.trash_put(etype, str(eid), titles.get(eid, str(eid)), 'admin')
+            data = self.st.trash_put(etype, str(eid), titles.get(eid, str(eid)), actor(self.h, True)[1])
             self.log('delete_' + etype, etype, eid, {'title': titles.get(eid, '')} if data else None, None,
                      result='success' if data else 'failed')
             n += bool(data)
@@ -1565,10 +1566,10 @@ class AdminApi:
         b, a = diff(_loads(p['before']), _loads(p['after']), AUTO_KEYS)
         if act == 'approve':
             self.st.catalog_put(p['productId'], p['after'])
-            self.st.pending_set(eid, 'approved', 'admin')
+            self.st.pending_set(eid, 'approved', actor(self.h, True)[1])
             self.log('approve_edit', 'product', p['productId'], b, a)
         else:
-            self.st.pending_set(eid, 'rejected', 'admin', reason)
+            self.st.pending_set(eid, 'rejected', actor(self.h, True)[1], reason)
             self.log('reject_edit', 'product', p['productId'], b, dict(a, __reason__=reason))
         return {'ok': True}
 
@@ -1582,10 +1583,10 @@ class AdminApi:
                 return self.err(409, 'Есть правки на модерации (%d): выберите, что с ними сделать' % len(pend))
             for p in pend:
                 if how == 'archive':
-                    self.st.pending_set(p['id'], 'archived', 'admin', 'Модерация отключена')
+                    self.st.pending_set(p['id'], 'archived', actor(self.h, True)[1], 'Модерация отключена')
                 else:
                     self.review(p['id'], 'approve' if how == 'apply' else 'reject', 'Модерация отключена')
-        _set_moderation(self.st, on, 'admin')
+        _set_moderation(self.st, on, actor(self.h, True)[1])
         self.log('toggle_moderation', 'settings', 'productEditModeration', before, moderation(self.st))
         return self.ok({'settings': moderation(self.st)})
 

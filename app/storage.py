@@ -449,6 +449,10 @@ class Store:
             raise Conflict(cur, r[1], r[2])
         return cur + 1
 
+    def catalog_revs(self):
+        """{id позиции каталога: номер правки} — снимок перед долгой записью (загрузка фида)."""
+        return {i: r or 0 for i, r in self.all('SELECT id, rev FROM catalog')}
+
     def rev_of(self, table, key):
         if table not in ('kp', 'catalog', 'clients', 'managers', 'suppliers'):
             raise ValueError(table)
