@@ -183,6 +183,19 @@ class CatAttrs {
   static keep(d, a){ if (d && this.cards.has(d)) d._a=a; return a; }
 }
 
-function attrsOf(d){ const m=CatAttrs.of(d); if (m) return m; const a=extractAttrs(d); const o=d.attrs||{}; for(const k in o){ if(o[k]!==''&&o[k]!=null) a[k]=o[k]; } a.cat=detectCat(d);
+// память разбора позиций КП на один проход отрисовки (окно «Экономика сделки» читает характеристики позиций сотни раз за
+// перерисовку); вне ItemAttrs.during разбор — каждый раз, как раньше (позиция могла измениться)
+class ItemAttrs {
+  static gen=0; static on=false; static memo=new WeakMap();
+  static during(fn){ this.gen++; this.on=true; try{ return fn(); } finally{ this.on=false; } }
+  static of(d){
+    if (!this.on || !d || typeof d!=='object') return attrsParse(d);
+    const z=this.memo.get(d); if (z && z.g===this.gen) return z.a;
+    const a=attrsParse(d); this.memo.set(d, {g:this.gen, a}); return a;
+  }
+}
+
+function attrsOf(d){ const m=CatAttrs.of(d); return m || ItemAttrs.of(d); }
+function attrsParse(d){ const a=extractAttrs(d); const o=d.attrs||{}; for(const k in o){ if(o[k]!==''&&o[k]!=null) a[k]=o[k]; } a.cat=detectCat(d);
   const t=typeById(a.cat); if ((d.groups||[]).length){ const s=attrsFromSpec(d,t); for (const k in s) if (o[k]===''||o[k]==null) a[k]=s[k]; }
   a.type=t.name; return CatAttrs.keep(d, a); }

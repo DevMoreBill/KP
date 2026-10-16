@@ -27,7 +27,7 @@ function openMobileMenu(){
       ${it('help','?','Руководство','Как пользоваться, история версий')}
       <hr>${it('prefs','☺','Мои настройки','Тема, стартовый экран, мои условия, подпись в письмах')}${it('theme',dark?'☀':'☾',dark?'Светлая тема':'Тёмная тема','')}
       ${AuthMenu.mobileItems(it)}${it('settings','⚙','Настройки','Для администратора')}${ADMIN.on?it('uitexts','✎','Тексты интерфейса','Правка надписей и подсказок'):''}</div>`;
-  d.onclick=e=>{ const b=e.target.closest('[data-mm],[data-close]'); if (!b){ if (e.target===d) d.close(); return; }
+  d.onclick=e=>{ const b=e.target.closest('[data-mm],[data-close]'); if (!b){ if (e.target===d && Date.now()-(d._at||0)>350) d.close(); return; }   // второе касание двойного «☰» не закрывает только что открытое меню
     d.close(); const k=b.dataset.mm;
     if (k==='new') $('#btnNew').click();
     else if (k==='uitexts') uitToggle();
@@ -42,7 +42,7 @@ function openMobileMenu(){
     else if (k==='prefs') MyPrefs.open();
     else if (k.startsWith('auth')) AuthMenu.mobile(k);
     else if (k==='settings') openSettings(); };
-  d.showModal();
+  d.showModal(); d._at=Date.now();
 }
 
 document.addEventListener('click', e=>{ if (e.target.closest('#btnMenu')) openMobileMenu(); });

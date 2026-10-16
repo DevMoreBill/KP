@@ -16,7 +16,8 @@ class ClientCard {
       : '<p class="empty">Заметок нет. Запишите то, что важно знать коллегам: кто принимает решение, бюджет, особенности объекта.</p>';
   }
 
-  static async open(o){
+  static open(o){ return Modal.once('clientcard', ()=>this._open(o)); }
+  static async _open(o){
     if (!this.on()) return;
     let r; try{ r=await api(`/api/clientcard?id=${encodeURIComponent(o.id||'')}&inn=${encodeURIComponent(o.inn||'')}&name=${encodeURIComponent(o.name||'')}`); }
     catch(e){ return toast('Карточка клиента недоступна: '+(e.message||e)); }

@@ -884,7 +884,7 @@ function dlVat(c, r, wide){
 
 function dealRender(force){
   const dlg=$('#dealdlg'); if (!dlg || !dlg.isConnected || !dlg.open && !force) return;
-  try{ dealRenderIn(dlg); }
+  try{ ItemAttrs.during(()=>dealRenderIn(dlg)); }
   catch(e){ console.error(e); morph(dlg, `<div class="dlg-h"><h3>Экономика сделки</h3><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div>
     <p class="msg err" style="margin:20px">Не удалось показать расчёт: ${esc(e.message||e)}. Сообщите разработчику; данные КП не изменены.</p>`); }
 }

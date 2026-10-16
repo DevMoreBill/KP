@@ -24,7 +24,8 @@ class PriceHist {
     return `<span class="ph-h">В прошлых КП: <b>${this.fmt(p)}</b> — ${p.number?'№ '+esc(p.number)+', ':''}${esc(p.client||'')}${p.date?', '+esc(KpDate.ddmm(p.date)):''}${same.length>1&&lo!==hi?` · от ${money(lo)} до ${money(hi)}`:''}
       ${i>=0?`<button class="lnk" type="button" data-a="priceHist" data-i="${i}">${n>1?'все '+n:'подробнее'}</button>`:''}</span>`;
   }
-  static async open(i){
+  static open(i){ return Modal.once('pricehist', ()=>this._open(i)); }
+  static async _open(i){
     const x=S.items[i]; if (!x) return; const lite=this.doc(x); if (!lite) return;
     const c=await fullDoc(lite), L=this.rows(c), cs=curSh(kpCur());
     const m=new Modal(`<div class="dlg-h"><h3>Цены в прошлых КП</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>

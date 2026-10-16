@@ -87,6 +87,15 @@ class Modal {
       m.d.addEventListener('close', ()=>res(v)); });
   }
 
+  /** окно, которое открывается после запроса к серверу: повторный вызов, пока первый ещё идёт (двойной щелчок), — пропускается,
+   *  иначе открывались два одинаковых окна (фон окна появляется только после ответа) */
+  static busy=new Set();
+  static async once(key, open){
+    if (this.busy.has(key)) return;
+    this.busy.add(key);
+    try{ return await open(); } finally{ this.busy.delete(key); }
+  }
+
   /** постоянное окно раздела (каталог, «Настройки», руководство…): создаётся при первом открытии и остаётся на странице;
    *  init(d) — один раз, при создании (обработчики окна) */
   static host(id, cls, label, init){

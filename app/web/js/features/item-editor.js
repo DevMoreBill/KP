@@ -87,7 +87,9 @@ function renderEditor(){
     <div class="ed-tabs">${edTabs(x).map(([k,l])=>`<button type="button" class="ed-tab${EDIT.tab===k?' on':''}" data-edtab="${k}">${l}${k==='layout' ? StationUi.badge(x) : ''}</button>`).join('')}</div>
     <div class="ed-b">${body}</div>`);
   const b=d.querySelector('.ed-b'); b.scrollTop=tabSw?0:sc;
-  const tb=d.querySelector('.ed-tabs'), on=tb.querySelector('.ed-tab.on'); if (on && tb.scrollWidth>tb.clientWidth) tb.scrollLeft=on.offsetLeft-(tb.clientWidth-on.offsetWidth)/2;
+  // активная вкладка — в середину полосы; окно могло быть ещё не показано (ширины 0) — после отрисовки
+  const tb=d.querySelector('.ed-tabs'), on=tb.querySelector('.ed-tab.on'), mid=()=>{ if (on.isConnected && tb.scrollWidth>tb.clientWidth) tb.scrollLeft=on.offsetLeft-(tb.clientWidth-on.offsetWidth)/2; };
+  if (on){ mid(); requestAnimationFrame(mid); }
   if (focusP && !act.isConnected){ const el=d.querySelector(`[data-p="${CSS.escape(focusP)}"]`); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n);}catch(e){} } }
 }
 

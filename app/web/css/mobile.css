@@ -351,3 +351,8 @@ span.mb-back{border:0}
 .mob .at-r>.btn{grid-area:b}
 /* характеристики: название параметра — во всю ширину, значение, ★ и ✕ — под ним */
 .mob .srow>input:first-child{grid-column:1/-1}
+/* график платежей: дата целиком (с годом), стрелки ↑/↓ — ниже, если не помещаются рядом */
+.mob .dl-cdr{flex-wrap:wrap}
+.mob .dl-cdr .dl-date{flex:1 0 118px;max-width:none}
+/* каталог: «↓ по убыванию» не сжимается уже своей надписи */
+.mob .cw-dir{flex:0 0 auto}
