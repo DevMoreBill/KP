@@ -93,7 +93,7 @@ class CarrierApi:
         ('dellin', 'Деловые Линии', 'https://dev.dellin.ru/api/', (('calc', 'Расчёт стоимости', 'https://api.dellin.ru/v2/calculator.json'),)),
         ('nrg', 'Энергия', 'https://api2.nrg-tk.ru/', (('base', 'Адрес API', 'https://api2.nrg-tk.pro/v2'),
                                                         ('reserve', 'Резервный адрес', 'https://api2.nrg-tk.ru/v2'),
-                                                        ('reserve2', 'Второй резервный (API v3)', 'https://mainapi.nrg-tk.ru/v3'))),
+                                                        ('v4', 'API v4 (с токеном разработчика)', 'https://mainapi.nrg-tk.pro/api/v4'))),
         ('cdek', 'СДЭК', 'https://api-docs.cdek.ru/', (('base', 'Адрес API', 'https://api.cdek.ru/v2'),)),
         ('vozovoz', 'Возовоз', 'https://github.com/vozovoz/apiv2', (('url', 'Адрес API', 'https://vozovoz.ru/api/'),)),
         ('kit', 'КИТ', 'https://tk-kit.ru/developers', (('base', 'Адрес API', 'https://capi.tk-kit.com'),)),
@@ -832,22 +832,38 @@ class Vozovoz(Carrier):
 
 # ---------------------------------------------------------------- Энергия (открытый расчёт без ключа)
 class Nrg(Carrier):
-    """Автоперевозка (иначе самая дешёвая); забор и доставка, страхование — отдельными строками ответа."""
+    """Автоперевозка (иначе самая дешёвая); забор и доставка, страхование — отдельными строками ответа.
+    С токеном разработчика (nrgToken, заголовок NrgApi-DevToken) — API v4 по документации Энергии: GET /cities,
+    POST /prices (PostPriceRequestDto: idCurrency 1 — рубли, места в кг и м, isStandardSize); без токена — прежний
+    открытый API v2 (api2.nrg-tk.pro), который Энергия сворачивает."""
     ID, NAME, SITE, WHOSE = 'nrg', 'Энергия', 'https://nrg-tk.ru/client/calculator/', 'Энергии'
     RETRY_PAUSE = 1.5       # с — их API временами отвечает 502
+    RUB = 1                 # idCurrency v4: 1 — рубли (/currencies)
+
+    @staticmethod
+    def token(store):
+        return (keys(store).get('nrgToken') or '').strip()
 
     @classmethod
     def _call(cls, store, path, data=None):
-        """Основной и резервный адреса API; при 5xx / обрыве связи — повтор через паузу."""
+        """v4 с токеном — один адрес; v2 — основной и резервный. При 5xx / обрыве связи — повтор через паузу."""
         err = None
         h = {'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': BROWSER_UA}
-        bases = list(dict.fromkeys(cls._url(store, f) for f in ('base', 'reserve', 'reserve2')))
+        tok = cls.token(store)
+        if tok:
+            h['NrgApi-DevToken'] = tok
+            bases = [cls._url(store, 'v4')]
+        else:
+            bases = list(dict.fromkeys(cls._url(store, f) for f in ('base', 'reserve')))
         for _attempt in range(2):
             for base in bases:
                 try:
                     return Http.call(base + path, data=data, headers=h, method='POST' if data is not None else None)
                 except urllib.error.HTTPError as e:
                     err = e
+                    if tok and e.code in (401, 403):
+                        raise ValueError('Энергия: токен не принят (HTTP %s) — проверьте «Энергия — токен разработчика» в «Ключах API»'
+                                         % e.code)
                     if e.code < 500 and e.code not in (403, 404):     # 403/404 у одного адреса — пробуется другой
                         raise
                 except Exception as e:
@@ -857,6 +873,8 @@ class Nrg(Carrier):
 
     @classmethod
     def cities(cls, store):
+        v4 = bool(cls.token(store))
+
         def load():
             j = cls._call(store, '/cities?lang=ru')
             rows = j if isinstance(j, list) else (_find(j, lambda o: isinstance(o, list) and o and isinstance(o[0], dict) and 'id' in o[0] and 'name' in o[0]) or [])
@@ -866,22 +884,33 @@ class Nrg(Carrier):
                 if n and n not in out:
                     out[n] = r.get('id')
             return out
-        return cls._cached(store, 'nrg', load)
+        return cls._cached(store, 'nrg4' if v4 else 'nrg', load)
 
     @classmethod
     def quote(cls, store, frm, to, places, declared=0):
+        v4 = bool(cls.token(store))
         cities = cls.cities(store)
         a, b = cls._both(cls.pick(cities, cls.candidates(frm)), cls.pick(cities, cls.candidates(to)))
         items = [{'weight': round(p['m'] * 1000, 1), 'width': p['w'], 'height': p['h'], 'length': p['l']} for p in cls.units(places)]
-        j = cls._call(store, '/price', {'idCityFrom': a, 'idCityTo': b, 'cover': 0, 'idCurrency': 0, 'items': items,
-                                        'declaredCargoPrice': int(round(declared or 0)), 'idClient': 0})
+        if v4:
+            for it in items:
+                it['isStandardSize'] = False
+            body = {'idCityFrom': a, 'idCityTo': b, 'cover': False, 'idCurrency': cls.RUB, 'items': items,
+                    'declaredCargoPrice': round(float(declared or 0), 2)}
+        else:
+            body = {'idCityFrom': a, 'idCityTo': b, 'cover': 0, 'idCurrency': 0, 'items': items,
+                    'declaredCargoPrice': int(round(declared or 0)), 'idClient': 0}
+        j = cls._call(store, '/prices' if v4 else '/price', body)
         if isinstance(j, dict) and (j.get('message') or j.get('error')) and not j.get('transfer'):
             raise ValueError('Энергия: ' + str(j.get('message') or j.get('error'))[:300])
         tr = [t for t in ((j or {}).get('transfer') or []) if isinstance(t, dict) and number(t.get('price'))]
         if not tr:
             raise ValueError('Энергия: в ответе нет стоимости перевозки')
-        t = next((x for x in tr if re.search(r'авто', str(x.get('type') or ''), re.I)), None) or min(tr, key=lambda x: number(x['price']))
+        t = next((x for x in tr if str(x.get('typeId')) == '1' or re.search(r'авто', str(x.get('type') or ''), re.I)), None) \
+            or min(tr, key=lambda x: number(x['price']))
         price, door = number(t['price']), 0
+        over = t.get('oversize') if isinstance(t.get('oversize'), dict) else {}
+        price += number(over.get('price')) or 0          # надбавка за негабарит (v4)
         for k in ('request', 'delivery'):            # забор у отправителя и доставка получателю
             v = (j or {}).get(k)
             n = number(v.get('price')) if isinstance(v, dict) else None
@@ -893,9 +922,13 @@ class Nrg(Carrier):
             if re.search(r'insur', str(k), re.I):
                 ins += (number(v.get('price')) if isinstance(v, dict) else number(v)) or 0
         price += ins
-        days = re.findall(r'\d+', str(t.get('interval') or ''))
-        return {'price': round(price), 'ins': round(ins), 'days': int(days[-1]) if days else None, 'door': door == 2,
-                'note': ('дверь в дверь (забор и доставка Энергии)' if door == 2 else 'от терминала до терминала') + ', ' + str(t.get('type') or 'авто').lower()}
+        days = number(t.get('maxTransferTimeDays'))
+        if not days:
+            dd = re.findall(r'\d+', str(t.get('interval') or ''))
+            days = int(dd[-1]) if dd else None
+        return {'price': round(price), 'ins': round(ins), 'days': int(days) if days else None, 'door': door == 2,
+                'note': ('дверь в дверь (забор и доставка Энергии)' if door == 2 else 'от терминала до терминала') + ', '
+                        + str(t.get('type') or 'авто').lower() + (', с надбавкой за негабарит' if number(over.get('price')) else '')}
 
 
 # ---------------------------------------------------------------- ЖелДорЭкспедиция (открытый расчёт без ключа, в т. ч. негабарит)

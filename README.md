@@ -526,6 +526,14 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.96.2 — Энергия по API v4:**
+- `logistics_api.Nrg`: с токеном `nrgToken` («Ключи API», `Counterparties.KEY_FIELDS`) — `https://mainapi.nrg-tk.pro/api/v4`
+  (поле адреса `v4` в «Перевозчики: включение и адреса API»), заголовок `NrgApi-DevToken`, `GET /cities`, `POST /prices`
+  (`PostPriceRequestDto`: `idCurrency` 1 — рубли, `cover` false, места кг/м + `isStandardSize`); цена — перевозка (авто,
+  `typeId` 1) + `oversize.price` + забор + доставка + `priceInsurance`, срок — `maxTransferTimeDays`; 401/403 — «токен не принят».
+  Без токена — прежний v2. Справочник городов v4 — свой кэш (`lgdict:nrg4`). Предположительный адрес v3 из 3.96.0 убран.
+- Тест: `test_carrier_api.test_nrg_v4_with_token` (подставной ответ; живой API с зарубежного стенда закрыт — 403 по стране).
+
 **3.96.1 — находки аудита скорости и интерфейса:**
 - Скорость: `ItemAttrs.during` (память разбора позиций на один проход отрисовки «Экономики сделки», HTML окна совпадает
   побайтно на 12 КП копии базы); `syncCatalog` — из `CatalogCache`; `feeds._feed_counts` (один SQL вместо разбора карточек);
@@ -538,7 +546,7 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
 **3.96.0 — аудит; Деловые Линии и Энергия:**
 - Деловые Линии (`logistics_api.Dellin`): `produceDate` — ближайший рабочий день по `workcal` (было «завтра», в пятницу —
   суббота → «Выбранная дата недоступна для выбранного адреса»); при ошибке о дате — следующий рабочий, до `DATE_TRIES` (7);
-  дата забора — в `note`. Энергия (`Nrg`): третий адрес `reserve2` = `https://mainapi.nrg-tk.ru/v3` (при 5xx / 403 / 404).
+  дата забора — в `note`. Энергия (`Nrg`): адрес v3 (снят в 3.96.2, заменён API v4 с токеном).
 - Аудит сервера и безопасности: NaN/Infinity → 400 (`Handler.non_finite`), имя сервера без `allowedHosts` (`Handler.lan_name`),
   `SafeWeb`, откат только последней миграции, `AccessRecord`, `KpManagerLock`, `CbrCache`, `MANAGER_FIELDS`, корзина КП,
   пределы груза доставки, `kp.imgMB`, архивы во вложениях, фид не затирает правку карточки (`catalog_revs`).
