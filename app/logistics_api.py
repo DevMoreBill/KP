@@ -29,6 +29,7 @@ import urllib.parse
 from datetime import date, datetime, timedelta
 
 import defaults
+import workcal
 from counterparty import http_json
 
 # защита сайтов СДЭК и Энергии отклоняет (403) запросы с «неизвестным» браузером — представляемся обычным
@@ -91,7 +92,8 @@ class CarrierApi:
                                                                   ('towns', 'Справочник городов', 'https://pecom.ru/ru/calc/towns.php'))),
         ('dellin', 'Деловые Линии', 'https://dev.dellin.ru/api/', (('calc', 'Расчёт стоимости', 'https://api.dellin.ru/v2/calculator.json'),)),
         ('nrg', 'Энергия', 'https://api2.nrg-tk.ru/', (('base', 'Адрес API', 'https://api2.nrg-tk.pro/v2'),
-                                                        ('reserve', 'Резервный адрес', 'https://api2.nrg-tk.ru/v2'))),
+                                                        ('reserve', 'Резервный адрес', 'https://api2.nrg-tk.ru/v2'),
+                                                        ('reserve2', 'Второй резервный (API v3)', 'https://mainapi.nrg-tk.ru/v3'))),
         ('cdek', 'СДЭК', 'https://api-docs.cdek.ru/', (('base', 'Адрес API', 'https://api.cdek.ru/v2'),)),
         ('vozovoz', 'Возовоз', 'https://github.com/vozovoz/apiv2', (('url', 'Адрес API', 'https://vozovoz.ru/api/'),)),
         ('kit', 'КИТ', 'https://tk-kit.ru/developers', (('base', 'Адрес API', 'https://capi.tk-kit.com'),)),
@@ -511,7 +513,7 @@ class Dellin(Carrier):
         over = [u for u in units if max(u['l'], u['w'], u['h']) > 3 or u['m'] > 0.1]
         body = {'appkey': keys(store).get('dellinKey', ''),
                 'delivery': {'deliveryType': {'type': 'auto'},
-                             'derival': {'produceDate': (date.today() + timedelta(days=1)).isoformat(), 'variant': 'address',
+                             'derival': {'produceDate': '', 'variant': 'address',
                                          'address': {'search': frm.get('addr') or frm.get('name')}, 'time': cls.WORK_TIME},
                              'arrival': {'variant': 'address', 'address': {'search': to.get('addr') or to.get('name')}, 'time': cls.WORK_TIME}},
                 'cargo': {'quantity': len(units), 'length': max(u['l'] for u in units), 'width': max(u['w'] for u in units),
@@ -521,16 +523,17 @@ class Dellin(Carrier):
                           'hazardClass': 0}}
         if declared:                                 # страхование груза Деловыми Линиями по объявленной стоимости
             body['cargo']['insurance'] = {'statedValue': int(round(declared)), 'term': True}
-        try:
-            j = Http.call(cls._url(store, 'calc'), data=body, headers={'Content-Type': 'application/json'}, method='POST')
-        except urllib.error.HTTPError as e:        # ошибка проверки полей приходит телом ответа с кодом 4xx
-            try:
-                j = json.loads(e.read().decode('utf-8', 'replace'))
-            except Exception:
-                raise ValueError(Http.error(e))
-        errs = j.get('errors') if isinstance(j, dict) else None
-        if errs:
-            msg = '; '.join(str((x or {}).get('detail') or (x or {}).get('title') or x) for x in (errs if isinstance(errs, list) else [errs]))[:300]
+        # дата забора: ближайший рабочий день; если с этого адреса в эту дату не забирают («Выбранная дата недоступна
+        # для выбранного адреса») — следующий рабочий, до DATE_TRIES дней
+        for day in cls.pickup_days(store):
+            body['delivery']['derival']['produceDate'] = day.isoformat()
+            j, msg = cls._calc(store, body)
+            if not msg or not cls.DATE_ERR.search(msg):
+                break
+        if msg and cls.DATE_ERR.search(msg):
+            raise ValueError('Деловые Линии: с адреса отправки не забирают груз в ближайшие %d рабочих дней — проверьте адрес '
+                             '(%s)' % (cls.DATE_TRIES, msg))
+        if msg:
             raise ValueError('Деловые Линии: ' + msg)
         d = (j or {}).get('data') or {}
         price = number(d.get('price'))
@@ -542,7 +545,41 @@ class Dellin(Carrier):
         iv = d.get('insurance')
         ins = number(iv.get('price') if isinstance(iv, dict) else iv) or 0
         return {'price': round(price), 'ins': round(ins), 'days': cls._days(d.get('orderDates') or {}), 'door': True,
-                'note': 'сборный груз, от адреса до адреса'}
+                'note': 'сборный груз, от адреса до адреса, забор ' + day.strftime('%d.%m')}
+
+    DATE_TRIES = 7
+    DATE_ERR = re.compile(r'дат[аы]\b.*недоступн|недоступн.*дат|produceDate', re.I)
+
+    @classmethod
+    def pickup_days(cls, store=None):
+        """Ближайшие рабочие дни начиная с завтрашнего: по производственному календарю (праздники, переносы), без него — пн–пт."""
+        d, out, cal = date.today(), [], {}
+        while len(out) < cls.DATE_TRIES:
+            d += timedelta(days=1)
+            if d.year not in cal:
+                try:
+                    cal[d.year] = workcal.year(store, d.year)['days'] if store is not None else ''
+                except Exception:
+                    cal[d.year] = ''
+            days, i = cal[d.year], d.timetuple().tm_yday - 1
+            if (days[i] == '0') if i < len(days) else d.weekday() < 5:
+                out.append(d)
+        return out
+
+    @classmethod
+    def _calc(cls, store, body):
+        """Запрос калькулятора: (ответ, текст ошибки или '')."""
+        try:
+            j = Http.call(cls._url(store, 'calc'), data=body, headers={'Content-Type': 'application/json'}, method='POST')
+        except urllib.error.HTTPError as e:        # ошибка проверки полей приходит телом ответа с кодом 4xx
+            try:
+                j = json.loads(e.read().decode('utf-8', 'replace'))
+            except Exception:
+                raise ValueError(Http.error(e))
+        errs = j.get('errors') if isinstance(j, dict) else None
+        if not errs:
+            return j, ''
+        return j, '; '.join(str((x or {}).get('detail') or (x or {}).get('title') or x) for x in (errs if isinstance(errs, list) else [errs]))[:300]
 
     @staticmethod
     def _days(dates):
@@ -804,7 +841,7 @@ class Nrg(Carrier):
         """Основной и резервный адреса API; при 5xx / обрыве связи — повтор через паузу."""
         err = None
         h = {'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': BROWSER_UA}
-        bases = list(dict.fromkeys(cls._url(store, f) for f in ('base', 'reserve')))
+        bases = list(dict.fromkeys(cls._url(store, f) for f in ('base', 'reserve', 'reserve2')))
         for _attempt in range(2):
             for base in bases:
                 try:

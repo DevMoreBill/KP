@@ -59,7 +59,7 @@ function warmCat(){ let k=0; const L=catCache; const step=()=>{ const end=perfor
 // подсказки названий опций и услуг (поле опции позиции): опции категорий и аксессуары из каталога
 function renderDatalist(){
   let o=$('#optNames'); if(!o){ o=document.createElement('datalist'); o.id='optNames'; document.body.appendChild(o); }
-  const names=new Set(TYPES.flatMap(t=>(t.options||[]).map(o=>Array.isArray(o)?o[0]:o.name))); catCache.forEach(x=>{ if(typeById(attrsOf(x).cat).role==='accessory') names.add(x.name); });
+  const names=new Set(TYPES.flatMap(t=>(t.options||[]).map(o=>Array.isArray(o)?o[0]:o.name))); catCache.forEach(x=>{ if(typeById(detectCat(x)).role==='accessory') names.add(x.name); });   // detectCat ≡ attrsOf(x).cat, без разбора характеристик
   o.innerHTML=[...names].map(n=>`<option value="${esc(n)}">`).join(''); }
 
 function fillFromCat(it, x){
