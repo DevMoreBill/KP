@@ -49,7 +49,7 @@ class CarrierApiTest(unittest.TestCase):
     def test_off_carrier_not_used(self):
         from logistics_api import CarrierApi, providers
         self.assertTrue(providers(self.store)['nrg'])
-        CarrierApi.save(self.store, {'nrg': {'on': False}, 'pec': {'on': False}})
+        CarrierApi.save(self.store, {'nrg': {'on': False}, 'pec': {'on': False}, 'jde': {'on': False}})
         pv = providers(self.store)
         self.assertFalse(pv['nrg'])
         self.assertFalse(pv['pec'])
@@ -162,6 +162,56 @@ class ChinaFreightTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             cf.save_rates([base] * 301)
         self.assertEqual(cf.rates(), {'rows': []})
+
+
+class JdeTest(unittest.TestCase):
+    """ЖелДорЭкспедиция: справочник филиалов, длина места с запятой (иначе сервер ЖДЭ отвечает ошибкой), страхование и
+    оформление — сверх price; крупногабаритный груз (больше пределов сборного) считает только ЖДЭ, остальные — нет."""
+    def setUp(self):
+        from storage import Store
+        self.tmp = tempfile.mkdtemp(prefix='kp-jde-')
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.store = Store(os.path.join(self.tmp, 'kp.sqlite3'))
+
+    def fake(self, url, data=None, headers=None, method=None):
+        import urllib.parse as up
+        self.urls.append(url)
+        if '/geo/search' in url:
+            return [{'code': '11', 'city': 'Москва', 'mst_pr_aex': '1', 'max_l_gm': '12'}, {'code': '12', 'city': 'Москва', 'mst_pr_aex': '0', 'max_l_gm': '0'},
+                    {'code': '21', 'city': 'Казань', 'mst_pr_aex': '1', 'max_l_gm': '15'}]
+        q = dict(up.parse_qsl(up.urlsplit(url).query))
+        if '.' in q.get('max_length_gab', ''):
+            return {'error': "'9.2' is not a valid floating point value for Double type"}
+        return {'type': '1', 'result': '1', 'price': '400000', 'price_cargins': '12500', 'price_doc': '150', 'price_mark': '7', 'mindays': '2', 'maxdays': '4',
+                'services': [{'item': 'pickup', 'price': '1'}, {'item': 'terminal', 'price': '1'}, {'item': 'delivery', 'price': '1'}]}
+
+    def test_big_cargo(self):
+        import logistics_api as lg
+        self.urls = []
+        with mock.patch.object(lg, '_call', side_effect=self.fake), \
+                mock.patch.object(lg, 'pec_quote', side_effect=AssertionError('ПЭК не берёт крупногабарит')), \
+                mock.patch.object(lg, 'nrg_quote', side_effect=AssertionError('Энергия не берёт крупногабарит')):
+            r = lg.quote(self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Казань'}, 'places': [{'l': 9.2, 'w': 2.4, 'h': 2.5, 'm': 8}], 'declared': 5000000})
+        o = next(x for x in r['offers'] if x['src'] == 'ЖелДорЭкспедиция')
+        self.assertEqual(o['price'], 412657)                       # 400 000 + страхование 12 500 + документы 150 + маркировка 7
+        self.assertEqual(o['ins'], 12500)
+        self.assertTrue(o['door'])
+        self.assertEqual(o['days'], 4)
+        self.assertIn('крупногабарит', o['note'])
+        calc = next(u for u in self.urls if '/calculator/price' in u)
+        self.assertIn('from=11', calc)                             # филиал с забором груза
+        self.assertIn('max_length_gab=9%2C2', calc)
+        self.assertIn('insValue=5000000', calc)
+        skip = next(e for e in r['errors'] if e.get('skip'))
+        self.assertIn('ЖелДорЭкспедиция', skip['msg'])
+
+    def test_heavier_than_20t(self):
+        import logistics_api as lg
+        self.urls = []
+        with mock.patch.object(lg, '_call', side_effect=self.fake):
+            r = lg.quote(self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Казань'}, 'places': [{'l': 6, 'w': 2.4, 'h': 2.5, 'm': 11, 'qty': 2}]})
+        self.assertFalse([o for o in r['offers'] if o['src'] == 'ЖелДорЭкспедиция'])
+        self.assertFalse(self.urls)                                # тяжелее 20 т — ЖДЭ не спрашивают
 
 
 if __name__ == '__main__':

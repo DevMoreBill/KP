@@ -79,6 +79,7 @@ class CarrierApi:
         ('cdek', 'СДЭК', 'https://api-docs.cdek.ru/', (('base', 'Адрес API', 'https://api.cdek.ru/v2'),)),
         ('vozovoz', 'Возовоз', 'https://github.com/vozovoz/apiv2', (('url', 'Адрес API', 'https://vozovoz.ru/api/'),)),
         ('kit', 'КИТ', 'https://tk-kit.ru/developers', (('base', 'Адрес API', 'https://capi.tk-kit.com'),)),
+        ('jde', 'ЖелДорЭкспедиция', 'https://api.jde.ru/dev/', (('base', 'Адрес API', 'https://api.jde.ru/vD'),)),
     )
     # только https и имя сайта (не IP и не localhost): адрес уходит в запрос сервера
     URL = re.compile(r'^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(:\d{2,5})?(/[^\s<>"\'\\]*)?$')
@@ -158,7 +159,8 @@ class CarrierApi:
         P, fl, tl = cls.SAMPLE, ['Москва'], ['Санкт-Петербург']
         run = {'pec': lambda: pec_quote(store, fl, tl, P, 0), 'nrg': lambda: nrg_quote(store, fl, tl, P, 0),
                'dellin': lambda: dellin_quote(store, 'Москва', 'Санкт-Петербург', P, 0), 'kit': lambda: kit_quote(store, fl, tl, P, 0),
-               'cdek': lambda: cdek_quote(store, fl, tl, P), 'vozovoz': lambda: vozovoz_quote(store, 'Москва', 'Санкт-Петербург', '', '', P)}
+               'cdek': lambda: cdek_quote(store, fl, tl, P), 'vozovoz': lambda: vozovoz_quote(store, 'Москва', 'Санкт-Петербург', '', '', P),
+               'jde': lambda: Jde.quote(store, fl, tl, P, 0)}
         try:
             if cid == 'ati':
                 d = AtiDirections(store).find('Москва', 'Санкт-Петербург')
@@ -191,7 +193,7 @@ def providers(store):
     """Перевозчик считает, если он включён в «Настройках» и задан его ключ (ПЭК и Энергия — без ключа)."""
     k = keys(store)
     has = {'ati': bool(k.get('atiToken')), 'pec': True, 'dellin': bool(k.get('dellinKey')), 'kit': bool(k.get('kitToken')),
-           'cdek': bool(k.get('cdekId') and k.get('cdekSecret')), 'vozovoz': bool(k.get('vozovozToken')), 'nrg': True}
+           'cdek': bool(k.get('cdekId') and k.get('cdekSecret')), 'vozovoz': bool(k.get('vozovozToken')), 'nrg': True, 'jde': True}
     return {c: v and CarrierApi.on(store, c) for c, v in has.items()}
 
 
@@ -762,6 +764,66 @@ def nrg_quote(store, frm, to, places, declared):
             'note': ('дверь в дверь (забор и доставка Энергии)' if door == 2 else 'от терминала до терминала') + ', ' + str(t.get('type') or 'авто').lower()}
 
 
+# ---------------------------------------------------------------- ЖелДорЭкспедиция (открытый расчёт без ключа, в т. ч. негабарит)
+class Jde:
+    """ЖелДорЭкспедиция: публичный расчёт GET /calculator/price (ключ не нужен) и справочник филиалов /geo/search (mode=1 —
+    приём груза, 2 — выдача). Крупногабаритный груз и длинномеры (место до 12 м по справочнику филиалов) ЖДЭ принимает
+    сборным грузом и сама добавляет надбавку за негабарит по размерам места — флаг «негабарит» не передаётся (иначе надбавка
+    и на обычный груз). Забор и доставка — по городу (pickup / delivery); страхование — по объявленной стоимости."""
+    MAX_T = 20.0          # весь груз, т: больше — только отдельной машиной (ATI.SU и тарифы)
+
+    @staticmethod
+    def branches(store, mode):
+        """{город: код филиала}: в городе — филиал с забором / доставкой и самым длинным допустимым местом."""
+        def load():
+            j = _call(CarrierApi.url(store, 'jde', 'base') + '/geo/search?mode=%d' % mode)
+            best = {}
+            for r in j if isinstance(j, list) else []:
+                n = cnorm((r or {}).get('city'))
+                if not n or not r.get('code'):
+                    continue
+                ln = _num(str(r.get('max_l_gm') or '0').replace(',', '.')) or 99     # 0 — ограничений нет
+                score = (1 if str(r.get('mst_pr_aex')) == '1' else 0, ln)
+                if n not in best or score > best[n][0]:
+                    best[n] = (score, str(r['code']))
+            return {n: v[1] for n, v in best.items()}
+        return _dict_cache(store, 'jde%d' % mode, load)
+
+    @classmethod
+    def quote(cls, store, frm, to, places, declared=0):
+        units = Carrier.units(places)
+        if sum(u['m'] for u in units) > cls.MAX_T + 1e-9:
+            raise ValueError('ЖелДорЭкспедиция: груз тяжелее 20 000 кг — только отдельной машиной')
+        (a, fa), (b, tb) = _pick(cls.branches(store, 1), frm), _pick(cls.branches(store, 2), to)
+        if not a or not b:
+            raise ValueError('город не найден в справочнике ЖелДорЭкспедиции: %s' % (fa if not a else tb))
+        big = max(units, key=lambda u: u['l'] * u['w'] * u['h'])
+        q = {'from': a, 'to': b, 'type': 1, 'weight': round(sum(u['m'] for u in units) * 1000, 1),
+             'volume': round(sum(u['l'] * u['w'] * u['h'] for u in units), 3), 'length': big['l'], 'width': big['w'], 'height': big['h'],
+             'quantity': len(units), 'pickup': 1, 'delivery': 1,
+             # max_length_gab сервер ЖДЭ читает только с запятой («9,2»), остальные числа — с точкой
+             'max_length_gab': ('%g' % max(max(u['l'], u['w'], u['h']) for u in units)).replace('.', ','),
+             'pr_ins': 1 if declared else 0}
+        if declared:
+            q['insValue'] = int(round(declared))
+        j = _call(CarrierApi.url(store, 'jde', 'base') + '/calculator/price?' + urllib.parse.urlencode(q))
+        if not isinstance(j, dict) or str(j.get('result')) != '1':
+            err = '; '.join(str(x.get('error')) for x in ((j or {}).get('services') or []) if isinstance(x, dict) and x.get('error')) or str((j or {}).get('error') or '')
+            raise ValueError('ЖелДорЭкспедиция: ' + (err or 'расчёт не выполнен')[:300])
+        price = _num(j.get('price'))
+        if not price:
+            raise ValueError('ЖелДорЭкспедиция: в ответе нет стоимости')
+        ins = _num(j.get('price_cargins')) or 0                       # страхование, оформление и маркировка — сверх price
+        extra = sum(_num(j.get(k)) or 0 for k in ('price_doc', 'price_mark'))
+        items = {x.get('item') for x in (j.get('services') or []) if isinstance(x, dict)}
+        door = {'pickup', 'delivery'} <= items
+        ok, _w = ltl_ok(places, store)
+        days = _num(j.get('maxdays')) or _num(j.get('mindays'))
+        return {'price': round(price + ins + extra), 'ins': round(ins), 'days': int(days) if days else None, 'door': door,
+                'note': ('сборный груз' if ok else 'крупногабаритный груз сборной отправкой (негабарит по размерам места)')
+                + (', дверь в дверь (забор и доставка ЖДЭ)' if door else ', от терминала до терминала') + Carrier.via(fa, tb, frm, to)}
+
+
 # ---------------------------------------------------------------- сводка предложений
 def ltl_ok(places, store=None):
     units = Carrier.units(places)
@@ -825,23 +887,30 @@ def quote(store, req):
             errors.append({'src': 'ATI.SU', 'msg': _err(e)})
     # сборный груз — если место и общий вес позволяют
     ok, why = ltl_ok(places, store)
+    big_ok = pv['jde'] and sum(u['m'] for u in Carrier.units(places)) <= Jde.MAX_T + 1e-9   # ЖДЭ берёт и крупногабарит
     if places and not ok:
-        errors.append({'src': 'Сборный груз (ПЭК, Деловые Линии, КИТ, СДЭК, Возовоз, Энергия)', 'msg': why, 'skip': True})
-    if places and ok:
+        errors.append({'src': 'Сборный груз (ПЭК, Деловые Линии, КИТ, СДЭК, Возовоз, Энергия)', 'skip': True,
+                       'msg': why + ('; крупногабаритный груз считает ЖелДорЭкспедиция' if big_ok else '')})
+    if places and (ok or big_ok):
         decl = _num(req.get('declared')) or 0     # объявленная стоимость груза — для страхования перевозчика
         fl, tl = [frm.get('name')] + list(frm.get('alt') or []), [to.get('name')] + list(to.get('alt') or [])   # город и ближайшие крупные
         jobs = []
-        if pv['pec']:
+        if pv['jde']:
+            jobs.append(('ЖелДорЭкспедиция', 'https://www.jde.ru/', lambda: Jde.quote(store, fl, tl, places, decl)))
+        use = pv
+        if not ok:
+            use = dict(pv, pec=False, dellin=False, nrg=False, cdek=False, vozovoz=False, kit=False)   # сборным — только ЖДЭ
+        if use['pec']:
             jobs.append(('ПЭК', 'https://pecom.ru/services-are/shipping-request/', lambda: pec_quote(store, fl, tl, places, decl)))
-        if pv['dellin']:
+        if use['dellin']:
             jobs.append(('Деловые Линии', 'https://www.dellin.ru/requests/', lambda: dellin_quote(store, frm.get('addr') or frm.get('name'), to.get('addr') or to.get('name'), places, decl)))
-        if pv['nrg']:
+        if use['nrg']:
             jobs.append(('Энергия', 'https://nrg-tk.ru/client/calculator/', lambda: nrg_quote(store, fl, tl, places, decl)))
-        if pv['cdek']:
+        if use['cdek']:
             jobs.append(('СДЭК', 'https://www.cdek.ru/ru/calculate', lambda: cdek_quote(store, fl, tl, places, frm.get('addr'), to.get('addr'), decl)))
-        if pv['vozovoz']:
+        if use['vozovoz']:
             jobs.append(('Возовоз', 'https://vozovoz.ru/calculate/', lambda: vozovoz_quote(store, frm.get('name'), to.get('name'), frm.get('addr'), to.get('addr'), places, decl)))
-        if pv['kit']:
+        if use['kit']:
             jobs.append(('КИТ', 'https://tk-kit.ru/calculate', lambda: kit_quote(store, fl, tl, places, decl)))
         res = {}
 
