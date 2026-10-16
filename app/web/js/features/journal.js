@@ -40,7 +40,7 @@ class JournalRow {
     return `<span class="jr-t" title="КП для тендера${u?': '+esc(u):''}">Тендер № ${esc(t.number)}${u?` <a href="${esc(u)}" target="_blank" rel="noopener noreferrer" aria-label="Открыть закупку на площадке">↗</a>`:''}</span>`; }
 
   static html(r, e){
-    return `<div class="jr${r.tender&&r.tender.number?' tnd':''}"><div class="jr-n"><span class="n">№ ${esc(r.number)}</span><span class="muted">от ${esc(KPGen.ruDate(r.date))}</span>${this.tender(r)}${r.savedAt?`<span class="muted" title="Последнее сохранение">сохр. ${esc(jTime(r.savedAt))}</span>`:''}</div>
+    return `<div class="jr${r.tender&&r.tender.number?' tnd':''}"><div class="jr-n"><span class="n">№ ${esc(r.number)}</span><span class="muted">от ${esc(KPGen.ruDate(r.date))}</span>${this.tender(r)}${r.files&&FEAT.on('kpFiles')?`<button type="button" class="jr-f" data-jkf="${esc(r.id)}" data-jn="${esc(r.number)}" title="Справочные документы: ${esc(String(r.files))}" aria-label="Справочные документы КП № ${esc(r.number)}: ${esc(String(r.files))}">📎 ${esc(String(r.files))}</button>`:''}${r.savedAt?`<span class="muted" title="Последнее сохранение">сохр. ${esc(jTime(r.savedAt))}</span>`:''}</div>
       <div class="jr-m"><b>${ClientCard.link({inn:String(r.clientInn||'').replace(/\D/g,''), name:r.client}, r.client)}</b><span class="muted">${(r.items&&r.items[0])?esc(r.items[0])+(r.positions>1?` и ещё ${r.positions-1}`:''):''}</span>${r.manager?`<span class="jr-a" title="${esc([r.manager,r.managerPost].filter(Boolean).join(', '))}">Автор: ${esc(jShort(r.manager))}</span>`:''}</div>
       <div class="jr-e"><b>${e.sum}</b><span>${e.line}</span><span class="jr-st">${KpTrack.chip(r)}</span></div>
       <div class="acts"><button class="btn" type="button" data-jo="${esc(r.id)}" title="Открыть КП для просмотра и правки">Открыть</button><button class="btn" type="button" data-jc="${esc(r.id)}" title="Новое КП на основе этого: позиции, цены и условия — те же, получатель — новый">Копия</button>${this.menu(r)}</div></div>`;
@@ -51,6 +51,7 @@ class JournalRow {
     return `<details class="jr-more" data-id="${id}"><summary class="btn" title="Другие действия с КП" aria-label="Другие действия с КП № ${esc(r.number)}">⋯</summary><div class="menu-l">${[
       SRV.info&&SRV.info.local===false ? it(`data-a="openDoc" data-id="${id}"`, 'Скачать файл КП (Word)') : it(`data-a="openDoc" data-id="${id}"`, 'Открыть файл КП в Word'),
       r.file&&FEAT.on('mail') ? it(`data-jm="${id}"`, 'Отправить клиенту…', 'Письмо клиенту с файлом КП') : '',
+      FEAT.on('kpFiles') ? it(`data-jkf="${id}" data-jn="${esc(r.number)}"`, 'Справочные документы…', 'Паспорта, сертификаты, схемы к КП — в документ КП не входят') : '',
       r.locked||!FEAT.on('deal') ? '' : it(`data-je="${id}"`, 'Экономика сделки'),
       FEAT.on('versions') ? it(`data-jv="${id}" data-jn="${esc(r.number)}"`, 'Прежние версии КП') : ''].join('')}</div></details>`;
   }
@@ -109,6 +110,7 @@ async function openJournal(){
     if (e.target.closest('[data-jmore]')) return load(true);
     const js=e.target.closest('[data-jst]'); if (js){ const r=J.rows.find(x=>x.id===js.dataset.jst); if (r) KpTrack.open(r, tr=>{ r.track=tr; draw(); load(false); }); return; }
     const jm=e.target.closest('[data-jm]'); if (jm){ const r=J.rows.find(x=>x.id===jm.dataset.jm); if (r) MailDlg.open(r.id, r.number, tr=>{ r.track=tr; draw(); }); return; }
+    const jkf=e.target.closest('[data-jkf]'); if (jkf){ const r=J.rows.find(x=>x.id===jkf.dataset.jkf); return KpFilesPanel.open(jkf.dataset.jkf, jkf.dataset.jn, {onClose:n=>{ if (r && (r.files||0)!==n){ r.files=n; draw(); } }}); }
     const jv=e.target.closest('[data-jv]'); if (jv) return openKpVersions(jv.dataset.jv, jv.dataset.jn, ()=>{ d.close(); d.classList.remove('wide'); });
     const o=e.target.closest('[data-jo]'), c=e.target.closest('[data-jc]'), ec=e.target.closest('[data-je]'); if(!o&&!c&&!ec) return;
     try{

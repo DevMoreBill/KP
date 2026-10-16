@@ -13,7 +13,8 @@
   managers — менеджеры: контакты для КП (добавлена 01.10.2026; в прежних базах создаётся при запуске,
              остальные таблицы и данные не меняются);
   audit, trash, pending_edits — журнал действий, корзина удалённого, правки на модерации
-             (миграция «2026-10-admin», обратимая: Store.migration_down).
+             (миграция «2026-10-admin», обратимая: Store.migration_down);
+  kp_files — справочные документы к КП (описания; сами файлы — в data/kp_files, app/kp_files.py).
 
 Запись сериализуется одной блокировкой, база в режиме WAL: одновременное чтение многими пользователями
 не мешает записи. При первом запуске данные из прежних JSON-файлов переносятся автоматически.
@@ -180,6 +181,17 @@ MIGRATIONS = [
      """
      DROP INDEX IF EXISTS catalog_gone_seq; DROP TABLE IF EXISTS catalog_gone; DROP INDEX IF EXISTS catalog_seq;
      ALTER TABLE catalog DROP COLUMN search; ALTER TABLE catalog DROP COLUMN seq;
+     """),
+    # справочные документы к КП (app/kp_files.py): файлы — в data/kp_files/<номер КП>/, здесь — исходное имя, имя на диске,
+    # размер, тип, примечание, кто и когда добавил. Строки остаются, пока КП в корзине; удалённое навсегда чистит KpFiles.purge.
+    ('2027-08-kp-files',
+     """
+     CREATE TABLE IF NOT EXISTS kp_files (id INTEGER PRIMARY KEY AUTOINCREMENT, kp_id TEXT NOT NULL, name TEXT NOT NULL, file TEXT NOT NULL,
+       size INTEGER NOT NULL DEFAULT 0, mime TEXT, note TEXT, added TEXT NOT NULL, added_by TEXT);
+     CREATE INDEX IF NOT EXISTS kp_files_kp ON kp_files(kp_id, id);
+     """,
+     """
+     DROP INDEX IF EXISTS kp_files_kp; DROP TABLE IF EXISTS kp_files;
      """),
 ]
 KP_VERSIONS = 30          # встроенное; действует srv.kpVersions из «Значений программы» (defaults.SrvVal)

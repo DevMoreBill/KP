@@ -3,10 +3,10 @@
 // «кто работает» — вошедший менеджер, права (каталог, чужие КП, экономика) проверяет сервер; здесь — только скрываем лишнее.
 'use strict';
 
-const AUTH = { enabled:false, user:null, admin:false, perms:[], shown:false };
+const AUTH = { enabled:false, user:null, admin:false, perms:[], shown:false, help:'', sessionDays:0, shortHours:0 };
 
 async function authLoad(){
-  try{ const r=await api('/api/auth/status'); Object.assign(AUTH, {enabled:!!r.enabled, user:r.user||null, admin:!!r.admin, perms:r.perms||[]}); }catch(e){}
+  try{ const r=await api('/api/auth/status'); Object.assign(AUTH, {enabled:!!r.enabled, user:r.user||null, admin:!!r.admin, perms:r.perms||[], help:r.help||'', sessionDays:r.sessionDays||0, shortHours:r.shortHours||0}); }catch(e){}
 }
 
 // право менеджера: при выключенном входе и у администратора — всё можно
@@ -14,22 +14,125 @@ function can(p){ if (!AUTH.enabled || AUTH.admin || (typeof ADMIN!=='undefined' 
 const CAN_TXT = { catAdd:'добавлять оборудование', catEdit:'редактировать оборудование', kpOthers:'открывать КП других менеджеров', dealView:'смотреть экономику сделки' };
 function cannot(p){ toast('Нет права '+(CAN_TXT[p]||p)+' — обратитесь к администратору'); }
 
-function authScreen(msg){
-  if (AUTH.shown) return; AUTH.shown=true;
-  document.body.insertAdjacentHTML('beforeend', `<div class="auth-wrap" id="authWrap"><form class="auth-card" id="authForm" autocomplete="on">
-    <div class="auth-logo">ПНЕВМО<span>ТЕХ</span></div><h2>Конструктор КП</h2>
-    <p class="muted">${esc(msg||'Войдите под своим логином. Логин и пароль выдаёт администратор.')}</p>
-    <label class="f"><span>Логин</span><input id="authLogin" name="username" autocomplete="username" required autofocus></label>
-    <label class="f"><span>Пароль</span><input id="authPw" name="password" type="password" autocomplete="current-password" required></label>
-    <p class="msg err" id="authErr" hidden></p>
-    <button class="btn primary" type="submit">Войти</button>
-    <p class="muted auth-adm">Администратор: <a href="#" id="authAdm">войти в «Настройки»</a></p></form></div>`);
-  $('#authForm').onsubmit=async e=>{ e.preventDefault(); const er=$('#authErr'); er.hidden=true;
-    try{ await api('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:$('#authLogin').value, password:$('#authPw').value})});
-      location.reload(); }
-    catch(x){ er.textContent=String(x.message||x); er.hidden=false; $('#authPw').select(); } };
-  $('#authAdm').onclick=e=>{ e.preventDefault(); $('#authWrap').remove(); AUTH.shown=false; openSettings(); };
-  setTimeout(()=>$('#authLogin')?.focus(), 30);
+// Поля и отправка форм входа — у менеджера (экран входа) и у администратора («Настройки»): показать пароль, Caps Lock,
+// кнопка занята на время запроса, понятная ошибка, пауза после неверных паролей — с обратным отсчётом (Retry-After),
+// на телефоне кнопка не прячется под экранную клавиатуру (visualViewport).
+class LoginForm {
+  static EYE = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="pw-x" d="M4 4l16 16"/></svg>';
+
+  // поле пароля: кнопка «показать», предупреждение Caps Lock
+  static pw(id, label, ac, attrs=''){
+    return `<div class="f"><label for="${id}">${label}</label><span class="pw-box"><input type="password" id="${id}" autocomplete="${ac}" autocapitalize="none" autocorrect="off" spellcheck="false" required ${attrs}>`
+      +`<button type="button" class="pw-eye" data-eye="${id}" aria-label="Показать пароль" aria-pressed="false" title="Показать пароль">${LoginForm.EYE}</button></span>`
+      +`<small class="pw-caps" hidden>Включён Caps Lock — пароль вводится заглавными</small></div>`;
+  }
+  static login(id, label, value='', attrs=''){
+    return `<label class="f"><span>${label}</span><input type="text" id="${id}" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required value="${esc(value)}" ${attrs}></label>`;
+  }
+
+  // f — форма, send() — запрос (бросает Error; err.wait — сколько секунд вход закрыт), err — элемент для ошибки
+  static bind(f, send, err){
+    f.addEventListener('click', e=>{ const b=e.target.closest('[data-eye]'); if (!b) return; const i=f.querySelector('#'+b.dataset.eye), show=i.type==='password';
+      i.type=show?'text':'password'; b.setAttribute('aria-pressed', String(show)); b.title=show?'Скрыть пароль':'Показать пароль'; b.setAttribute('aria-label', b.title);
+      b.classList.toggle('on', show); i.focus({preventScroll:true}); });
+    const caps=e=>{ if (!e.getModifierState) return; const on=e.getModifierState('CapsLock');
+      f.querySelectorAll('.pw-caps').forEach(c=>{ c.hidden=!(on && c.closest('.f').contains(document.activeElement)); }); };
+    f.addEventListener('keydown', caps); f.addEventListener('keyup', caps);
+    f.addEventListener('focusout', ()=>setTimeout(()=>f.querySelectorAll('.pw-caps').forEach(c=>{ if (!c.closest('.f').contains(document.activeElement)) c.hidden=true; }), 0));
+    const btn=f.querySelector('button[type=submit]'), label=btn.textContent;
+    f.onsubmit=async e=>{ e.preventDefault(); if (btn.disabled) return;
+      err.hidden=true; err.textContent=''; btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.textContent='Вход…';
+      let wait=0;
+      try{ await send(); }
+      catch(x){ wait=x.wait||0; LoginForm.error(err, x.message||String(x)); const pw=f.querySelector('input[autocomplete=current-password]'); if (pw && !wait){ pw.focus(); pw.select(); } }
+      finally{ btn.removeAttribute('aria-busy'); btn.textContent=label; btn.disabled=false; }
+      if (wait) LoginForm._countdown(btn, err, wait, label); };
+    LoginForm.keepVisible(f, btn);
+  }
+  static error(err, text){ err.textContent=text; err.hidden=false; }
+
+  // вход закрыт после неверных паролей: кнопка недоступна, в ошибке — сколько ждать
+  static _countdown(btn, err, sec, label){
+    const end=Date.now()+sec*1000, base=err.textContent.replace(/(—|\.)\s*(вход с этого компьютера )?(снова через|закрыт на).*$/i, '').trim();
+    btn.disabled=true;
+    const tick=()=>{ const s=Math.max(0, Math.ceil((end-Date.now())/1000));
+      if (!s || !btn.isConnected){ btn.disabled=false; btn.textContent=label; err.hidden=true; return; }
+      btn.textContent=`Вход через ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+      err.textContent=(base||'Слишком много неверных попыток')+'. Вход с этого компьютера временно закрыт — защита от подбора пароля.';
+      setTimeout(tick, 1000); };
+    tick();
+  }
+
+  // запрос входа: ошибка — текстом сервера; 429 — с числом секунд паузы (err.wait)
+  static async post(url, body){
+    let r;
+    try{ r=await fetch(url, {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:JSON.stringify(body)}); }
+    catch(e){ throw new Error('Нет связи с программой — проверьте, что компьютер-сервер включён, и повторите'); }
+    if (r.ok) return r.json();
+    const e=new Error((await r.text().catch(()=>'')) || ('Ошибка входа ('+r.status+')'));
+    if (r.status===429) e.wait=Math.max(1, parseInt(r.headers.get('Retry-After'), 10) || 60);
+    throw e;
+  }
+
+  // телефон: экранная клавиатура уменьшает видимую область — прокрутить так, чтобы кнопка была над клавиатурой
+  static keepVisible(f, btn){
+    const vv=window.visualViewport; if (!vv) return;
+    const box=f.closest('.auth-wrap,.st-login'); if (!box) return;
+    const fit=()=>{ if (!f.isConnected){ vv.removeEventListener('resize', fit); return; }
+      const kb=Math.max(0, innerHeight-vv.height-vv.offsetTop), typing=kb>80 && f.contains(document.activeElement);
+      box.style.paddingBottom=typing ? kb+'px' : '';
+      if (!typing) return;
+      const over=btn.getBoundingClientRect().bottom+12-(vv.offsetTop+vv.height);
+      if (over>0) box.scrollTop+=over; };
+    vv.addEventListener('resize', fit);
+    f.addEventListener('focusin', ()=>setTimeout(fit, 350));
+  }
+}
+
+// экран входа менеджера (вход по паролю включён, сессии нет)
+class AuthScreen {
+  static show(msg){
+    if (AUTH.shown) return; AUTH.shown=true;
+    const days=AUTH.sessionDays||30, hours=AUTH.shortHours||12;
+    const help=AUTH.help ? `<p><b>${esc(AUTH.help)}</b></p>` : '';
+    document.body.insertAdjacentHTML('beforeend', `<div class="auth-wrap" id="authWrap"><form class="auth-card" id="authForm" autocomplete="on" novalidate>
+      <div class="auth-brand"><div class="auth-logo">ПНЕВМО<span>ТЕХ</span></div><div class="auth-app">Конструктор КП<small id="authVer"></small></div></div>
+      ${msg?`<p class="msg warn auth-note">${esc(msg)}</p>`:'<p class="muted auth-note">Войдите под своим логином — его и пароль выдаёт администратор.</p>'}
+      ${LoginForm.login('authLogin', 'Логин', AuthScreen._last())}
+      ${LoginForm.pw('authPw', 'Пароль', 'current-password', 'name="password"')}
+      <div class="auth-rem"><label><input type="checkbox" id="authRem"${AuthScreen._remember()?' checked':''}> Запомнить меня на этом устройстве</label>
+        ${tip(`<p>С галочкой вход действует ${days} дн. — пароль не нужно вводить каждый день.</p><p>На чужом или общем компьютере снимите её: вход закроется, когда закроете браузер (и не позже чем через ${hours} ч).</p>`)}</div>
+      <p class="auth-err" id="authErr" role="alert" aria-live="assertive" hidden></p>
+      <button class="btn primary auth-go" type="submit">Войти</button>
+      <div class="auth-foot"><button type="button" class="auth-lnk" id="authForgot" aria-expanded="false" aria-controls="authHelp">Забыли пароль?</button>
+        <button type="button" class="auth-lnk" id="authAdm">Вход администратора</button></div>
+      <div class="auth-help" id="authHelp" hidden>${help}<p>Пароль не восстанавливается автоматически: новый задаёт администратор программы в «Настройках» (раздел «Сотрудники и вход»). Обратитесь к нему — после смены пароля войдите с новым.</p></div></form></div>`);
+    const f=$('#authForm');
+    LoginForm.bind(f, AuthScreen._send, $('#authErr'));
+    f.querySelector('#authLogin').addEventListener('input', ()=>{ $('#authErr').hidden=true; });
+    $('#authAdm').onclick=()=>AuthScreen._admin();
+    $('#authForgot').onclick=e=>{ const h=$('#authHelp'), open=h.hidden; h.hidden=!open; e.currentTarget.setAttribute('aria-expanded', String(open)); };
+    if (typeof loadAppVersion==='function') loadAppVersion().then(()=>{ const v=$('#authVer'); if (v && typeof APP_VERSION!=='undefined' && APP_VERSION) v.textContent='версия '+APP_VERSION; });
+    setTimeout(()=>{ const l=$('#authLogin'); (l && l.value ? $('#authPw') : l)?.focus(); }, 30);
+  }
+
+  static async _send(){
+    const login=$('#authLogin').value.trim(), password=$('#authPw').value;
+    if (!login || !password) throw new Error(!login ? 'Введите логин' : 'Введите пароль');
+    const remember=$('#authRem').checked;
+    await LoginForm.post('/api/auth/login', {login, password, remember});
+    try{ localStorage.setItem('kp.userLogin', remember ? login : ''); localStorage.setItem('kp.userRemember', remember ? '1' : '0'); }catch(e){}
+    location.reload();
+  }
+  static _last(){ try{ return localStorage.getItem('kp.userLogin')||''; }catch(e){ return ''; } }
+  static _remember(){ try{ return localStorage.getItem('kp.userRemember')!=='0'; }catch(e){ return true; } }
+
+  // «Вход администратора»: «Настройки» поверх экрана входа; закрыли — вошёл администратор: программа открывается
+  static _admin(){
+    openSettings();
+    const d=$('#setdlg'); if (!d) return;
+    d.addEventListener('close', ()=>{ if (ADMIN.on) location.reload(); else $('#authLogin')?.focus(); }, {once:true});
+  }
 }
 
 async function authLogout(){

@@ -9,7 +9,7 @@
   await authLoad();
   aiStatusLoad();               // нейросеть в программе — включена ли администратором
   defaultsLoad();               // значения по умолчанию от администратора («Настройки → Умолчания»)
-  if (AUTH.enabled && !AUTH.user && !AUTH.admin){ authScreen(); return; }       // вход менеджеров по паролю включён
+  if (AUTH.enabled && !AUTH.user && !AUTH.admin){ AuthScreen.show(); return; }       // вход менеджеров по паролю включён
   try{ const st=await api('/api/admin/status'); ADMIN.on=!!st.admin; ADMIN.csrf=st.csrf||''; }catch(e){}   // вход администратора действует и после обновления страницы
   // справочники — параллельно (каталогу нужны только категории); списки и выборы администратора — до первой отрисовки
   await loadTypes(); await Promise.all([loadClients(), loadManagers(), loadTemplates(), refreshCat(), LISTS.load(), FEAT.load(), MyPrefs.load()]);

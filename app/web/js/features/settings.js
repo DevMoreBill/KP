@@ -80,7 +80,8 @@ const ACT = { login:'Вход в «Настройки»', backup_db:'Копия 
   edit_types:'Категории оборудования', submit_edit:'Правка на модерацию', edit_product:'Правка товара', create_product:'Новый товар',
   price_sync:'Цены из КП', approve_edit:'Правка одобрена', reject_edit:'Правка отклонена', rollback_edit:'Откат правки',
   toggle_moderation:'Режим модерации', update_install:'Установка обновления', rollback_settings:'Откат изменения настроек', update_rollback:'Откат обновления', update_remove:'Обновление убрано', restart:'Перезапуск программы', toggle_user_login:'Вход менеджеров по паролю', edit_ai:'Нейросеть в программе', edit_access:'Доступ менеджера', delete_kp:'Удаление КП', delete_catalog:'Удаление товара', delete_manager:'Удаление менеджера',
-  delete_client:'Удаление клиента', restore:'Восстановление из корзины', purge_trash:'Очистка корзины', export_db:'Экспорт базы', import_db:'Импорт базы', export_keys:'Копия ключей API', import_feed:'Загрузка фида в каталог', check_feed:'Проверка РРЦ и наличия по фиду' };
+  delete_client:'Удаление клиента', restore:'Восстановление из корзины', purge_trash:'Очистка корзины', export_db:'Экспорт базы', import_db:'Импорт базы', export_keys:'Копия ключей API', import_feed:'Загрузка фида в каталог', check_feed:'Проверка РРЦ и наличия по фиду',
+  add_kp_file:'Документ к КП прикреплён', edit_kp_file:'Примечание к документу КП', delete_kp_file:'Документ КП удалён' };
 const ENT = { supplier:'Поставщик', customs:'ТН ВЭД', product:'Товар', catalog:'Товар', kp:'КП', manager:'Менеджер', client:'Клиент', settings:'Настройки', template:'Шаблон',
   types:'Категории', admin:'Администратор', db:'База', trash:'Корзина', system:'Программа' };
 const DEL_TYPES = [['kp','КП из журнала'],['catalog','Товары каталога'],['manager','Контакты менеджеров'],['client','Клиенты'],['supplier','Поставщики']];
@@ -88,7 +89,7 @@ const DEL_TYPES = [['kp','КП из журнала'],['catalog','Товары к
 function setDlg(){ let d=$('#setdlg'); if(!d){ d=document.createElement('dialog'); d.id='setdlg'; d.className='setwin'; d.setAttribute('aria-label','Настройки'); document.body.appendChild(d); stWinSize(d);
     // размер окна запоминается (тянуть за правый нижний угол); «⤢» — во весь экран
     d.addEventListener('click', e=>{ if (e.target.closest('[data-st="max"]')){ d.classList.toggle('max'); stWinSize(d, true); } });
-    let t=null; if (window.ResizeObserver) new ResizeObserver(()=>{ if (!d.open || (typeof isMob==='function'&&isMob()) || d.classList.contains('max')) return; clearTimeout(t);
+    let t=null; if (window.ResizeObserver) new ResizeObserver(()=>{ if (!d.open || (typeof isMob==='function'&&isMob()) || d.classList.contains('max') || d.classList.contains('login')) return; clearTimeout(t);
       t=setTimeout(()=>{ const r=d.getBoundingClientRect(); if (r.width>300){ d.style.width=Math.round(r.width)+'px'; d.style.height=Math.round(r.height)+'px'; stWinSize(d, true); } }, 600); }).observe(d); }
   return d; }
 function stWinSize(d, save){ try{
@@ -104,37 +105,48 @@ const ajson = (path, body) => aapi(path, {method:'POST', headers:{'Content-Type'
 
 async function openSettings(tab){
   if (tab) ST.tab=tab;
-  const d=setDlg(); if (!d.open) d.showModal();
+  const d=setDlg(); if (!ADMIN.on) d.classList.add('login'); if (!d.open) d.showModal();
   d.innerHTML='<p class="empty">Загружаю…</p>';
   try{ const s=await api('/api/admin/status'); ADMIN.on=s.admin; ADMIN.csrf=s.csrf||''; ST.status=s; }catch(e){ ST.status={}; }
   stRender();
 }
 
+// вход администратора в «Настройки» (и создание первой учётной записи на компьютере-сервере): компактное окно
+class AdminLogin {
+  static render(d, head, s){
+    const setup=!s.hasPassword, min=DEFN('srv.adminPwMin', 8);
+    const last=(()=>{ try{ return localStorage.getItem('kp.adminLogin')||''; }catch(e){ return ''; } })();
+    const body = setup&&!s.canSetup
+      ? '<p class="msg warn">Администратор ещё не создан. Создайте учётную запись на компьютере, где работает программа (сервер отдела): откройте программу там и нажмите «Настройки».</p>'
+      : `${LoginForm.login('stLg', 'Логин', setup?'admin':last, 'placeholder="admin"')}
+        ${setup?'<label class="f"><span>Имя (для журнала действий)</span><input type="text" id="stNm" autocomplete="name" placeholder="Например, Петров А. В."></label>':''}
+        ${LoginForm.pw('stPw', setup?`Пароль — не короче ${min} символов, буквы и цифры`:'Пароль', setup?'new-password':'current-password')}
+        ${setup?LoginForm.pw('stPw2', 'Повторите пароль', 'new-password'):''}
+        <p class="auth-err" id="stErr" role="alert" aria-live="assertive" hidden></p>
+        <button class="btn primary auth-go" type="submit">${setup?'Создать и войти':'Войти'}</button>
+        <div class="muted st-login-note">Через ${s.idleMinutes||15} мин бездействия вход закрывается.${tip('Только в «Настройках»: удаление и правка данных, модерация, резервные копии, шаблоны, ключи API, вход менеджеров и администраторы. Забыли пароль — его меняет другой администратор («Сотрудники и вход → Администраторы»).')}</div>`;
+    d.innerHTML=head+`<div class="st-login"><form id="stLogin" autocomplete="on" novalidate>
+      <p class="st-login-h">${setup?'Создайте учётную запись администратора':'Вход администратора'}</p>${body}</form></div>`;
+    const f=$('#stLogin'), err=$('#stErr');
+    if (err) LoginForm.bind(f, ()=>AdminLogin._send(setup, s), err);
+    setTimeout(()=>{ const l=$('#stLg'); (l && l.value ? $('#stPw') : l)?.focus(); }, 30);
+  }
+
+  static async _send(setup, s){
+    const lg=$('#stLg').value.trim(), pw=$('#stPw').value;
+    if (!lg || !pw) throw new Error(!lg ? 'Введите логин' : 'Введите пароль');
+    if (setup && pw!==$('#stPw2').value) throw new Error('Пароли не совпадают');
+    const r=await LoginForm.post('/api/admin/'+(setup?'setup':'login'), setup?{login:lg, name:$('#stNm').value.trim(), password:pw}:{login:lg, password:pw});
+    try{ localStorage.setItem('kp.adminLogin', lg); }catch(_){}
+    ADMIN.on=true; ADMIN.csrf=r.csrf; const st2=await api('/api/admin/status').catch(()=>({})); ST.status={...s, ...st2, hasPassword:true}; stRender(); FEAT.refresh();
+  }
+}
+
 function stRender(){
   const d=setDlg(), s=ST.status||{};
   const head=`<div class="dlg-h"><h3>Настройки${ADMIN.on&&s.name?`<small>${esc(s.name)} · ${esc(s.login||'')}</small>`:''}</h3>${ADMIN.on?'<button class="btn ghost" type="button" data-st="logout">Выйти</button>':''}<button class="icon st-maxb" type="button" data-st="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна меняется, если потянуть за правый нижний угол">⤢</button><button class="icon" type="button" data-st="close" aria-label="Закрыть">✕</button></div>`;
-  if (!ADMIN.on){
-    const setup=!s.hasPassword;
-    d.innerHTML=head+`<div class="st-login"><form id="stLogin" autocomplete="off">
-      <p class="sub">${setup?'Создайте учётную запись администратора':'Вход для администратора'}</p>
-      ${setup&&!s.canSetup?'<p class="msg err" style="text-align:left">Администратор ещё не создан. Создайте учётную запись на компьютере, где работает программа (сервер отдела).</p>':`
-      <label class="f"><span>Логин</span><input type="text" id="stLg" autocomplete="username" required value="${setup?'admin':esc(localStorage.getItem('kp.adminLogin')||'')}" placeholder="admin"></label>
-      ${setup?'<label class="f"><span>Имя (для журнала действий)</span><input type="text" id="stNm" autocomplete="name" placeholder="Например, Петров А. В."></label>':''}
-      <label class="f"><span>${setup?`Пароль (не короче ${DEFN('srv.adminPwMin', 8)} символов, буквы и цифры)`:'Пароль'}</span><input type="password" id="stPw" autocomplete="${setup?'new-password':'current-password'}" required></label>
-      ${setup?'<label class="f"><span>Повторите пароль</span><input type="password" id="stPw2" autocomplete="new-password" required></label>':''}
-      <p class="msg err" id="stErr" style="text-align:left"></p>
-      <button class="btn primary" type="submit">${setup?'Создать и войти':'Войти'}</button>
-      <p class="muted">Удаление и правка данных, модерация, резервные копии, шаблоны, ключи API и администраторы — только здесь. Через ${s.idleMinutes||15} минут бездействия вход закрывается.</p>`}
-      </form></div>`;
-    const f=$('#stLogin'); if (f) f.onsubmit=async e=>{ e.preventDefault(); const pw=$('#stPw').value, lg=$('#stLg').value.trim();
-      if (setup && pw!==$('#stPw2').value) return $('#stErr').textContent='Пароли не совпадают';
-      try{ const r=await ajson(setup?'setup':'login', setup?{login:lg, name:$('#stNm').value.trim(), password:pw}:{login:lg, password:pw});
-        try{ localStorage.setItem('kp.adminLogin', lg); }catch(_){}
-        ADMIN.on=true; ADMIN.csrf=r.csrf; const st2=await api('/api/admin/status').catch(()=>({})); ST.status={...s, ...st2, hasPassword:true}; stRender(); FEAT.refresh(); }
-      catch(err){ $('#stErr').textContent=err.message; } };
-    setTimeout(()=>($('#stLg')&&!$('#stLg').value?$('#stLg'):$('#stPw'))?.focus(),30);
-    return;
-  }
+  d.classList.toggle('login', !ADMIN.on);
+  if (!ADMIN.on) return AdminLogin.render(d, head, s);
   ST.tab=AdminNav.key(ST.tab);
   d.innerHTML=head+`<div class="st-b">${AdminNav.html(ST.tab)}
     <section class="st-main" id="stMain"><p class="empty">Загружаю…</p></section></div>`;
@@ -284,8 +296,8 @@ async function stDelete(m, type){
   m.innerHTML=`${catTools}<div class="row st-dbar"><input type="search" id="dQ" placeholder="Поиск" value="${esc(D.q)}" autocomplete="off"><span class="muted">${r.total>r.items.length?`показано ${r.items.length} из ${r.total} — уточните поиск`:`найдено: ${r.total}`}</span>
       <span class="sp"></span>${D.type==='client'?'<button class="btn" type="button" data-dimp title="Список ИНН — реквизиты подтянутся сами">Загрузить списком ИНН…</button>':''}${ST_NEW[D.type]?`<button class="btn primary" type="button" data-dnew>+ ${esc(ST_NEW[D.type])}</button>`:''}<button class="btn danger" type="button" data-del ${D.sel.size?'':'disabled'}>Удалить${D.sel.size?' ('+D.sel.size+')':''}</button>${link?`<button class="btn ghost" type="button" data-sttab="${link[0]}">${link[1]}</button>`:''}</div>
     ${ed&&!ed.id?'<div class="st-ed"></div>':''}
-    <div class="st-list">${r.items.map(x=>`<label class="st-row ck-row${ed&&ed.id===x.id?' on':''}"><input type="checkbox" data-did="${esc(x.id)}" ${D.sel.has(x.id)?'checked':''}><div><b>${esc(x.title)}</b><span class="muted">${esc(x.sub)}</span></div><div class="acts"><button class="btn" type="button" data-dedit="${esc(x.id)}">${D.type==='kp'?'Открыть':'Изменить'}</button></div></label>${ed&&ed.id===x.id?'<div class="st-ed"></div>':''}`).join('')||'<p class="muted">Ничего не найдено.</p>'}</div>
-    <p class="muted">«${D.type==='kp'?'Открыть':'Изменить'}» — ${({kp:'КП откроется в конструкторе для правки', catalog:'карточка товара в редакторе каталога', manager:'контакты менеджера — прямо в списке', client:'реквизиты и контакт клиента — прямо в списке', supplier:'условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщика — прямо в списке'})[D.type]}. Удалённое попадает в корзину и хранится ${30} дней — его можно восстановить. Файлы готовых КП (.docx, .pdf) в папке КП не удаляются.</p>`;
+    <div class="st-list">${r.items.map(x=>`<label class="st-row ck-row${ed&&ed.id===x.id?' on':''}"><input type="checkbox" data-did="${esc(x.id)}" ${D.sel.has(x.id)?'checked':''}><div><b>${esc(x.title)}</b><span class="muted">${esc(x.sub)}</span></div><div class="acts">${D.type==='kp'&&x.files?`<button class="btn" type="button" data-dfiles="${esc(x.id)}" data-dt="${esc(x.title)}" title="Справочные документы КП: посмотреть, удалить">📎 ${esc(String(x.files))}</button>`:''}<button class="btn" type="button" data-dedit="${esc(x.id)}">${D.type==='kp'?'Открыть':'Изменить'}</button></div></label>${ed&&ed.id===x.id?'<div class="st-ed"></div>':''}`).join('')||'<p class="muted">Ничего не найдено.</p>'}</div>
+    <p class="muted">«${D.type==='kp'?'Открыть':'Изменить'}» — ${({kp:'КП откроется в конструкторе для правки', catalog:'карточка товара в редакторе каталога', manager:'контакты менеджера — прямо в списке', client:'реквизиты и контакт клиента — прямо в списке', supplier:'условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщика — прямо в списке'})[D.type]}. Удалённое попадает в корзину и хранится ${30} дней — его можно восстановить. Файлы готовых КП (.docx, .pdf) в папке КП не удаляются.${D.type==='kp'?' «📎» — справочные документы КП: скачать или удалить ошибочный файл; у КП в корзине документы сохраняются.':''}</p>`;
   const eb=m.querySelector('.st-ed'); if (eb){ stEdDraw(eb); stEdBind(eb, ()=>stDelete(m)); eb.scrollIntoView({block:'nearest'}); eb.querySelector('[data-ef]')?.focus({preventScroll:true}); }
   let qT; $('#dQ').oninput=e=>{ D.q=e.target.value; clearTimeout(qT); qT=setTimeout(()=>stDelete(m).then(()=>{ const i=$('#dQ'); i.focus(); i.setSelectionRange(i.value.length,i.value.length); }),250); };
   m.onchange=e=>{ const c=e.target.closest('[data-did]'); if(!c) return; c.checked?D.sel.add(c.dataset.did):D.sel.delete(c.dataset.did);
@@ -293,6 +305,7 @@ async function stDelete(m, type){
   m.onclick=async e=>{ if (e.target.closest('.st-ed')) return;
     if (e.target.closest('[data-dimp]')) return openClientsImport();
     const ct=e.target.closest('[data-cat]'); if (ct) return stCatalogTool(ct.dataset.cat);
+    const df=e.target.closest('[data-dfiles]'); if (df){ e.preventDefault(); return KpFilesPanel.open(df.dataset.dfiles, df.dataset.dt.replace(/^№\s*/, ''), {admin:true, onClose:()=>stDelete(m)}); }
     if (e.target.closest('[data-dnew]')){ try{ await stEdOpen(D.type, null); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
     const ed=e.target.closest('[data-dedit]'); if (ed){ e.preventDefault();
       if (ST_NEW[D.type]){ if (ST.ed&&ST.ed.id===ed.dataset.dedit){ ST.ed=null; return stDelete(m); } try{ await stEdOpen(D.type, ed.dataset.dedit); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
@@ -530,12 +543,15 @@ async function stAccess(m){
       <label class="sw"><input type="checkbox" id="acOn"${r.enabled?' checked':''}><span>${r.enabled?'включён':'выключен'}</span></label></div>
     <p class="muted">${r.enabled?'Без входа программа не открывается. Кто работает, программа знает по входу; права ниже проверяются на сервере.'
       :'Сейчас менеджер выбирается на устройстве, пароль не нужен, права не проверяются. Чтобы включить вход, задайте логин и пароль хотя бы одному менеджеру.'}
-      Администратор входит в «Настройки» своим паролем и может всё.</p></div>
+      Администратор входит в «Настройки» своим паролем и может всё.</p>
+    <div class="ac-help"><label class="f"><span>«Забыли пароль?» на экране входа — к кому обращаться ${tip('Менеджер видит этот текст до входа, под ссылкой «Забыли пароль?». Укажите, кто сбрасывает пароль и как с ним связаться. Пусто — только общая подсказка «обратитесь к администратору».')}</span>
+      <input type="text" id="acHelp" maxlength="200" value="${esc(r.help||'')}" placeholder="Например: пароль сбросит Иванов Иван, доб. 123"></label><button class="btn" type="button" id="acHelpSave">Сохранить</button></div></div>
     <div class="st-card"><div class="row"><p class="sub" style="margin:0">Менеджеры и права · ${r.managers.length}</p><span class="sp"></span><button class="btn ghost" type="button" data-sttab="db-manager">Контакты менеджеров →</button></div>
     ${r.managers.length?`<div class="ac-tw"><table class="pv-t ac-t"><thead><tr><th>Менеджер</th><th>Логин</th>${P.map(p=>`<th class="c" title="${esc(p.label)}">${esc(p.label)}</th>`).join('')}<th></th></tr></thead><tbody>${r.managers.map(row).join('')}</tbody></table></div>`
       :'<p class="muted">Менеджеров ещё нет — их добавляют в шаге «Менеджер» конструктора.</p>'}
     <p class="muted">Права действуют, когда вход по паролю включён. «КП других менеджеров» — видеть их в журнале, открывать и сохранять; без него менеджер видит только свои КП. «Экономика сделки» — своих КП (чужих — вместе с правом на КП других).</p></div>`;
   const post=(mid, body)=>ajson('access/'+encodeURIComponent(mid), body);
+  $('#acHelpSave').onclick=async()=>{ try{ const x=await ajson('access',{help:$('#acHelp').value}); $('#acHelp').value=x.help||''; toast('Подсказка сохранена'); }catch(err){ toast(err.message||String(err)); } };
   $('#acOn').onchange=async e=>{ try{ await ajson('access',{enabled:e.target.checked}); toast(e.target.checked?'Вход по паролю включён':'Вход по паролю выключен'); }catch(err){ toast(err.message||String(err)); } stAccess(m); };
   m.onchange=async e=>{ const c=e.target.closest('[data-perm]'); if (!c) return; const mid=c.closest('[data-mid]').dataset.mid;
     const perms={}; c.closest('tr').querySelectorAll('[data-perm]').forEach(x=>perms[x.dataset.perm]=x.checked);

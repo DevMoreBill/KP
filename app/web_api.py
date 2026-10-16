@@ -32,6 +32,7 @@ from ai_profile import CategoryProfile, ModelFacts
 import pdf_text
 import defaults
 from kp_track import DealTrack, Mailer, MailTemplate, ReminderList
+from kp_files import KpFiles
 from features import FeatureAccess
 from images import ImageStore
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, list_history, list_templates,
@@ -514,8 +515,13 @@ class KpController(Controller):
 
     @route(r'/api/history')
     def history(self):
-        if 'limit' in self.q:     # постранично, с поиском и итогами по всему отбору
-            return self.send_json(admin.KpJournal.page(self.h, store(), self.q))
+        if 'limit' in self.q:     # постранично, с поиском и итогами по всему отбору; files — число справочных документов КП
+            res = admin.KpJournal.page(self.h, store(), self.q)
+            n = KpFiles.of(store()).counts([r.get('id') for r in res['items'] if isinstance(r, dict)])
+            for r in res['items']:
+                if isinstance(r, dict) and n.get(r.get('id')):
+                    r['files'] = n[r['id']]
+            return self.send_json(res)
         return self.send_json(admin.KpJournal.out(self.h, store().kp_list()))
 
     @route(r'/api/kp/new', 'POST')
@@ -671,6 +677,54 @@ class KpController(Controller):
             return self.send_json({'remote': True, 'share': (DOCS_SHARE.rstrip('\\/') + ('\\' + sub if sub else '')) if DOCS_SHARE else ''})
         open_folder(target)
         return self.send_json({'ok': True})
+
+
+# ---------------------------------------------------------------- справочные документы к КП (app/kp_files.py)
+class KpFilesController(Controller):
+    """Паспорта, сертификаты, схемы к КП — в документ КП не входят. Права — как у КП (admin.guard → kp_access по /api/kp/<id>/),
+    функция «Справочные документы к КП» (features.py). Удаление — только администратор: /api/admin/kpfiles/<id>/<n>/delete."""
+
+    def _kp_ok(self, kid):
+        """КП есть в журнале; КП в корзине — только администратору (его документы ждут восстановления)."""
+        return store().kp_get(kid, 'meta') is not None or admin.session(self.h, touch=False) is not None
+
+    @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/files', ('GET', 'POST'))
+    def files(self, kid):
+        kf = KpFiles.of(store())
+        if self.m == 'GET':
+            if not self._kp_ok(kid):
+                return self.not_found('КП не найдено')
+            return self.send_json({'items': kf.list(kid), 'limits': kf.limits()})
+        if store().kp_get(kid, 'meta') is None:
+            return self.text(400, 'Сначала сохраните КП, затем прикрепите документы')
+        try:
+            rec = kf.add(kid, self.q.get('name', ''), self.body(), self.q.get('note', ''), admin.actor(self.h)[1])
+        except ValueError as e:
+            return self.text(400, str(e))
+        admin.log(self.h, store(), 'add_kp_file', 'kp', kid, None, {'name': rec['name'], 'size': rec['size']})
+        return self.send_json(rec)
+
+    @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/files/(\d{1,9})', ('GET', 'PUT'))
+    def file(self, kid, fid):
+        kf = KpFiles.of(store())
+        if not self._kp_ok(kid):
+            return self.not_found('КП не найдено')
+        if self.m == 'PUT':
+            note = self.json_body().get('note')
+            if note is not None and not isinstance(note, str):
+                raise BadRequest('Примечание — строка')
+            old = kf.get(kid, fid)
+            try:
+                rec = kf.set_note(kid, fid, note or '')
+            except LookupError as e:
+                return self.not_found(str(e))
+            admin.log(self.h, store(), 'edit_kp_file', 'kp', kid, {'name': old['name'], 'note': old['note']}, {'note': rec['note']})
+            return self.send_json(rec)
+        got = kf.read(kid, fid)
+        if not got:
+            return self.not_found('Документ не найден')
+        rec, data = got
+        return self.send(200, rec['mime'] or 'application/octet-stream', data, self.attachment(rec['name'], 'document.' + (rec['ext'] or 'bin')))
 
 
 # ---------------------------------------------------------------- внешние данные и помощники карточки
@@ -988,6 +1042,9 @@ class TrackController(Controller):
         return self.send_json({'on': mp['on'], 'to': str(ct.get('email') or '').strip(), 'cc': tpl.vars['e-mail'],
                                'subject': tpl.fill(mp['subject']), 'body': tpl.fill(mp['body']),
                                'word': os.path.basename(f) if f else '', 'pdf': os.path.basename(pdf_of(f)) if f and os.path.isfile(pdf_of(f)) else '',
+                               'wordSize': os.path.getsize(f) if f else 0, 'pdfSize': os.path.getsize(pdf_of(f)) if f and os.path.isfile(pdf_of(f)) else 0,
+                               'files': [{k: x[k] for k in ('id', 'name', 'size', 'note')} for x in KpFiles.of(store()).list(kid)]
+                               if self._features().get('kpFiles') else [], 'mailMB': defaults.SrvVal.get(store(), 'kp.mailMB'),
                                'sent': (store().kp_track_get(kid).get('sent') or [])[-5:]})
 
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/send', 'POST')      # отправить КП клиенту по почте
@@ -1017,6 +1074,13 @@ class TrackController(Controller):
                 files.append((os.path.basename(pdf), fh.read(), 'application/pdf'))
         if not files:
             raise BadRequest('Выберите файл: Word или PDF')
+        if d.get('files') and self._features().get('kpFiles'):       # отмеченные справочные документы КП
+            if not isinstance(d['files'], list):
+                raise BadRequest('Неверный список документов')
+            try:
+                files += KpFiles.of(store()).for_mail(kid, d['files'], sum(len(x[1]) for x in files))
+            except ValueError as e:
+                return self.text(400, str(e))
         st = _obj(store().kp_get(kid, 'state'))
         reply = str((st.get('manager') or {}).get('email') or '') if isinstance(st.get('manager'), dict) else ''
         try:

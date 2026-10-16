@@ -526,6 +526,18 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.93.0 — справочные документы к КП, новое окно входа:**
+- `app/kp_files.py`, класс `KpFiles`: файлы в `data/kp_files/<id КП>/<uuid>.<расш.>`, описания — таблица `kp_files` (миграция
+  `2027-08-kp-files`); тип проверяется по расширению и содержимому (pdf, doc/xls, docx/xlsx, jpg, png, dwg, dxf, zip без исполняемого,
+  txt), пределы — «Значения программы» `kp.fileMB`, `kp.filesMax`, `kp.filesMB`, `kp.mailMB`; отдача — `attachment` (RFC 5987), `nosniff`.
+  Маршруты `/api/kp/<id>/files…` (контроллер `KpFilesController`, доступ — `kp_access`, функция `kpFiles`), удаление — только
+  администратор (`kpfiles/<id>/<n>/delete`, журнал `delete_kp_file`); КП в корзине — файлы сохраняются, окончательное удаление — чистка
+  обслуживанием; вторая папка копий получает и документы. Клиент: `KpFilesPanel` (`kp-files.js`), «Условия», журнал, «КП сохранено»,
+  письмо (`MailDlg` — галочки вложений). Тест: `tests/test_kp_files.py`.
+- Вход: `admin.LoginGuard` (пауза сразу после последней попытки, `Retry-After`, «Осталось попыток», одинаковое время ответа),
+  `auth_users.UserSession` («Запомнить меня»; коротко — `srv.userShortHours`, 12 ч), `auth_users.LoginInfo` (текст «Забыли пароль?»);
+  клиент — `LoginForm`, `AuthScreen` (auth.js), `AdminLogin` (settings.js). Тесты — `test_security.test_13_login_screen`.
+
 **3.92.0 — ЖелДорЭкспедиция: сборный и крупногабаритный груз по России:**
 - `logistics_api.Jde`: открытый расчёт ЖДЭ `GET /vD/calculator/price` (без ключа), справочник филиалов `/geo/search` (mode 1 / 2,
   в городе — филиал с забором и самым длинным допустимым местом, кэш `lgdict:jde1/2`), забор и доставка, страхование `pr_ins` /

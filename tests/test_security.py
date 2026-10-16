@@ -269,11 +269,49 @@ class SecurityTest(unittest.TestCase):
         self.assertEqual(self.req('POST', '/api/auth/login', {'login': 'm2', 'password': self.PW['m2']})[0], 403)
         self.admin_req('POST', '/api/admin/access/' + self.M2[0], {'blocked': False})
 
+    def test_13_login_screen(self):
+        """Экран входа: «Запомнить меня», подсказка «Забыли пароль?» от администратора, ответы не выдают, есть ли логин."""
+        # без «Запомнить меня» — cookie до закрытия браузера (без Max-Age), вход работает; по умолчанию — на срок входа
+        st, _, hd = self.req('POST', '/api/auth/login', {'login': 'm1', 'password': self.PW['m1'], 'remember': False})
+        self.assertEqual(st, 200)
+        self.assertNotIn('Max-Age', hd.get('Set-Cookie', ''))
+        self.assertEqual(self.req('GET', '/api/history', cookie=Http.cookie(hd))[0], 200)
+        self.assertIn('Max-Age=%d' % (30 * 86400), self.login_headers.get('Set-Cookie', ''))
+        # неверный пароль: неизвестный логин и известный — один и тот же ответ (адрес «компьютера-сервера»: попытки — его)
+        a = self.req('POST', '/api/auth/login', {'login': 'net-takogo', 'password': 'x1'}, local=True)
+        b = self.req('POST', '/api/auth/login', {'login': 'm2', 'password': 'x1'}, local=True)
+        self.assertEqual((a[0], b[0]), (403, 403))
+        self.assertEqual(a[1].split('. ')[0], 'Неверный логин или пароль')
+        self.assertEqual(b[1].split('. ')[0], 'Неверный логин или пароль')
+        # заблокирован: с неверным паролем — как всем, «вход запрещён» — только с верным
+        self.admin_req('POST', '/api/admin/access/' + self.M2[0], {'blocked': True})
+        try:
+            self.assertTrue(self.req('POST', '/api/auth/login', {'login': 'm2', 'password': 'x2'}, local=True)[1].startswith('Неверный логин'))
+            st, b, _ = self.req('POST', '/api/auth/login', {'login': 'm2', 'password': self.PW['m2']}, local=True)
+            self.assertEqual(st, 403)
+            self.assertIn('запрещён', b)
+        finally:
+            self.admin_req('POST', '/api/admin/access/' + self.M2[0], {'blocked': False})
+        self.U2 = self.__class__.U2 = Http.cookie(self.net.req('POST', '/api/auth/login', {'login': 'm2', 'password': self.PW['m2']})[2])
+        # подсказка «Забыли пароль?»: пишет администратор, видна до входа; менеджер её не меняет; длинная — 400
+        st, b, _ = self.admin_req('POST', '/api/admin/access', {'help': '  Пароль сбросит Иванов И.,\n доб. 123 '})
+        self.assertEqual((st, json.loads(b)['help']), (200, 'Пароль сбросит Иванов И., доб. 123'))
+        s = json.loads(self.req('GET', '/api/auth/status')[1])
+        self.assertEqual((s['help'], s['sessionDays'], s['shortHours']), ('Пароль сбросит Иванов И., доб. 123', 30, 12))
+        self.assertNotIn('managers', s)
+        self.assertEqual(self.admin_req('POST', '/api/admin/access', {'help': 'x' * 201})[0], 400)
+        self.assertEqual(self.req('POST', '/api/admin/access', {'help': 'взлом'}, cookie=self.U1)[0], 401)
+        st, b, _ = self.admin_req('POST', '/api/admin/access', {'enabled': True})
+        self.assertTrue(json.loads(b)['enabled'] and json.loads(b)['help'], 'включение входа не стирает подсказку')
+
     def test_90_password_guessing(self):
         """Последней: адрес, с которого перебирали пароли, заблокирован на 10 минут."""
         codes = [self.loc.req('POST', '/api/auth/login', {'login': 'm2', 'password': 'wrong%d' % i})[0] for i in range(12)]
         self.assertIn(429, codes)
-        self.assertEqual(self.loc.req('POST', '/api/auth/login', {'login': 'm2', 'password': self.PW['m2']})[0], 429)
+        st, b, hd = self.loc.req('POST', '/api/auth/login', {'login': 'm2', 'password': self.PW['m2']})
+        self.assertEqual(st, 429)
+        self.assertIn('снова через', b)
+        self.assertTrue(0 < int(hd.get('Retry-After', 0)) <= 600, hd)
         codes = [self.loc.req('POST', '/api/admin/login', {'login': 'admin', 'password': 'w%d' % i})[0] for i in range(3)]
         self.assertIn(429, codes)
         self.assertEqual(self.net.req('GET', '/api/history', cookie=self.U1)[0], 200, 'другой адрес работает')

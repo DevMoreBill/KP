@@ -46,7 +46,8 @@ class CondsStep {
     <div class="grid g2">${rows}</div>
     <div class="f" style="margin-top:14px"><span>Дополнительные условия и оговорки</span><div class="cpick ta">
       <textarea data-p="condExtra" rows="3" placeholder="Например: цена действительна при заказе комплекта целиком">${esc(S.condExtra||'')}</textarea>
-      ${condPicker('data-cxadd', 0, COND_EXTRA, [])}</div></div></section>`;
+      ${condPicker('data-cxadd', 0, COND_EXTRA, [])}</div></div>
+    ${KpFilesPanel.stepHtml()}</section>`;
   }
 
   static async click(e){

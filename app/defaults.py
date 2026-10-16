@@ -105,7 +105,7 @@ class SrvVal:
         'srv.settingsHistory': (500, 50, 5000), 'srv.checksDays': (365, 30, 3650), 'srv.imgUnusedDays': (30, 7, 365),
         'srv.vacuumDays': (30, 7, 365),
         # вход и сессии (защита — только в безопасных пределах)
-        'srv.adminIdleMin': (15, 5, 240), 'srv.userSessionDays': (30, 1, 365), 'srv.loginFails': (5, 3, 20),
+        'srv.adminIdleMin': (15, 5, 240), 'srv.userSessionDays': (30, 1, 365), 'srv.userShortHours': (12, 1, 72), 'srv.loginFails': (5, 3, 20),
         'srv.loginLockMin': (10, 1, 120), 'srv.adminPwMin': (8, 8, 64), 'srv.userPwMin': (4, 4, 64),
         # письма администратору и «Требует внимания»
         'srv.alertRemindH': (24, 1, 168), 'srv.lowDiskGB': (2.0, 0.5, 1000), 'srv.alertsEveryMin': (60, 15, 1440),
@@ -122,6 +122,8 @@ class SrvVal:
         'ai.rateMin': (30, 5, 300), 'ai.temperature': (0.2, 0, 1.5), 'ai.maxTokens': (8000, 1000, 8192),
         # напоминания менеджеру
         'kp.staleDays': (7, 1, 90), 'kp.expireAhead': (3, 0, 30), 'kp.expiredShow': (3, 0, 60), 'kp.remindDays': (200, 30, 1000),
+        # справочные документы к КП (app/kp_files.py)
+        'kp.fileMB': (25, 1, 100), 'kp.filesMax': (20, 1, 100), 'kp.filesMB': (100, 10, 1000), 'kp.mailMB': (18, 5, 50),
     }
     TTL = 5                  # с — кэш значений: сервер читает их на каждом запросе (сессии)
     _cache = (None, 0.0, {})

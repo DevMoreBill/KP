@@ -310,16 +310,18 @@ class Background:
     @classmethod
     def run(cls, store, data_dir):
         """Плановое обслуживание: копия за сегодня, вторая папка, прежние копии — в ZIP, архив журнала действий, кэш проверок,
-        сжатие базы раз в месяц."""
+        справочные документы КП, удалённых из корзины навсегда, сжатие базы раз в месяц."""
         if not cls.LOCK.acquire(blocking=False):
             return
         try:
             from backup_mirror import MirrorBackup
+            from kp_files import KpFiles
             for name, fn in (('копия базы', lambda: DbCopy.daily(store, data_dir)),
                              ('копия во вторую папку', lambda: MirrorBackup(store, data_dir).run()),
                              ('сжатие прежних копий', lambda: DbCopy.compress_old(store, data_dir, ServerLog.failure)),
                              ('архив журнала действий', lambda: archive_audit(store, data_dir)),
                              ('кэш проверок', lambda: purge_checks(store)),
+                             ('документы КП, удалённых навсегда', lambda: KpFiles(store, data_dir).purge()),
                              ('обслуживание базы', lambda: db_maintenance(store))):
                 try:
                     fn()
