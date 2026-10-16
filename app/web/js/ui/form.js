@@ -66,7 +66,7 @@ function stepNavHtml(){
 
 function renderForm(){
   if (CATED){ if (EDIT && $('#edlg').open) renderEditor(); return; }
-  pickTemplate();
+  pickTemplate(); MgrLock.apply();
   const f = $('#form'); const act = document.activeElement, focusP = act?.dataset?.p;
   const cur = STEPS.find(s=>s.id===STEP)||STEPS[0];
   morph($('#nav'), stepperHtml());
