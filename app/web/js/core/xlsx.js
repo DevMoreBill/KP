@@ -1,6 +1,6 @@
 // Файл Excel (.xlsx) без сторонних библиотек: JSZip (уже есть в программе) + разметка SpreadsheetML.
 // Ячейка: строка, число или { v, f, s } — значение, формула Excel (без «=»), стиль из XLSX_STYLES. Формулы пересчитываются при открытии.
-// Лист: { name, cols:[ширины], rows:[[ячейки]], merges:['A1:F1'], heights:{номерСтроки:высота}, freeze:строк, grid:false,
+// Лист: { name, hidden:true — скрытый лист, cols:[ширины], rows:[[ячейки]], merges:['A1:F1'], heights:{номерСтроки:высота}, freeze:строк, grid:false,
 //         landscape:true, titles:'4:4' (строки, повторяемые при печати), onePage:true — печать на одном листе }.
 'use strict';
 
@@ -97,7 +97,7 @@ ${sheets.map((s,k)=>`<Override PartName="/xl/worksheets/sheet${k+1}.xml" Content
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xlsxEsc(title||'')}</dc:title><dc:creator>Конструктор КП ПНЕВМОТЕХ</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString().replace(/\.\d+Z$/,'Z')}</dcterms:created></cp:coreProperties>`);
   const names=sheets.map((s,k)=>s.titles?`<definedName name="_xlnm.Print_Titles" localSheetId="${k}">'${xlsxEsc(s.name)}'!$${s.titles.replace(':',':$')}</definedName>`:'').join('');
   z.file('xl/workbook.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets>${sheets.map((s,k)=>`<sheet name="${xlsxEsc(s.name)}" sheetId="${k+1}" r:id="rId${k+1}"/>`).join('')}</sheets>${names?`<definedNames>${names}</definedNames>`:''}<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`);
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets>${sheets.map((s,k)=>`<sheet name="${xlsxEsc(s.name)}" sheetId="${k+1}"${s.hidden?' state="hidden"':''} r:id="rId${k+1}"/>`).join('')}</sheets>${names?`<definedNames>${names}</definedNames>`:''}<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`);
   z.file('xl/_rels/workbook.xml.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((s,k)=>`<Relationship Id="rId${k+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${k+1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
   z.file('xl/styles.xml', st.xml);

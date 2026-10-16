@@ -366,16 +366,19 @@ async function stAudit(m){
 async function stBackup(m){
   const hist=await aapi('audit?'+new URLSearchParams({action:'export_db'})), hi=await aapi('audit?'+new URLSearchParams({action:'import_db'}));
   const ops=[...hist.items, ...hi.items].sort((a,b)=>b.id-a.id).slice(0,15);
-  m.innerHTML=`<div class="st-card" id="stMaint"><p class="sub">Автоматические копии и обслуживание базы</p><p class="muted">Загружаю…</p></div>
-    <div class="st-card" id="stMirror"></div>
+  // чаще всего нужное — сверху: выгрузка и загрузка; автокопии — ниже; служебное — под раскрытием
+  m.innerHTML=`${SupplierExport.html()}
     ${DataTransfer.html()}
     <div class="st-card"><p class="sub">Загрузка</p>${DataTransfer.importHtml()}
-      <p class="sub" style="margin-top:14px">Файл базы целиком (.sqlite3 или .zip с ним)${tip('<p>Заменяет всю базу содержимым файла — каталог, КП, клиентов, менеджеров, настройки. Перед заменой программа сохраняет копию текущей базы в data\\backup (архив kp-…-before-restore.zip).</p><p>Так и нужно подменять базу: вручную копировать kp.sqlite3 в папку data нельзя — рядом лежат файлы kp.sqlite3-wal и -shm от прежней базы, и она повредится («database disk image is malformed»).</p>')}</p>
+      <div class="sub" style="margin-top:14px">Файл базы целиком (.sqlite3 или .zip с ним)${tip('<p>Заменяет всю базу содержимым файла — каталог, КП, клиентов, менеджеров, настройки. Перед заменой программа сохраняет копию текущей базы в data\\backup (архив kp-…-before-restore.zip).</p><p>Так и нужно подменять базу: вручную копировать kp.sqlite3 в папку data нельзя — рядом лежат файлы kp.sqlite3-wal и -shm от прежней базы, и она повредится («database disk image is malformed»).</p>')}</div>
       <input type="file" id="impDb" accept=".sqlite3,.sqlite,.db,.zip" class="sr-file"><label for="impDb" class="btn">Выбрать файл базы…</label><p class="muted" id="impDbSt"></p></div>
-    <div class="st-card" id="stMigr"></div>
-    <div class="st-card"><p class="sub">История</p>${ops.map(x=>`<div class="st-row"><div><b>${esc(ACT[x.action])}</b><span class="muted">${esc(Fmt.dateTime(x.timestamp))} · ${esc(x.entityId||'')}${x.after&&x.after.bytes?' · '+Fmt.size(x.after.bytes):''}</span></div></div>`).join('')||'<p class="muted">Операций ещё не было.</p>'}</div>`;
+    <div class="st-card" id="stMaint"><p class="sub">Автоматические копии и обслуживание базы</p><p class="muted">Загружаю…</p></div>
+    <div class="st-card" id="stMirror"></div>
+    <details class="st-card st-more"><summary class="sub">История выгрузок и загрузок · изменения структуры базы</summary>
+      <div class="st-card" id="stMigr"></div>
+      <div class="st-card"><p class="sub">История</p>${ops.map(x=>`<div class="st-row"><div><b>${esc(ACT[x.action])}</b><span class="muted">${esc(Fmt.dateTime(x.timestamp))} · ${esc(x.entityId||'')}${x.after&&x.after.supplier?' · '+esc(x.after.supplier):''}${x.after&&x.after.bytes?' · '+Fmt.size(x.after.bytes):''}</span></div></div>`).join('')||'<p class="muted">Операций ещё не было.</p>'}</div></details>`;
   DbMaint.render($('#stMaint')); stMigr($('#stMigr')); new MirrorCard($('#stMirror')).open();
-  m.onclick=null; DataTransfer.mount(m, ()=>stBackup(m)); DataTransfer.bindImport(m, ()=>stBackup(m));
+  m.onclick=null; SupplierExport.mount(m, StNav.sup||''); StNav.sup=''; DataTransfer.mount(m, ()=>stBackup(m)); DataTransfer.bindImport(m, ()=>stBackup(m));
   $('#impDb').onchange=async e=>{ const f=e.target.files[0]; if (!f) return; e.target.value='';
     if (!await stConfirm('Заменить всю базу файлом «'+f.name+'»?','Текущие данные будут заменены содержимым файла. Перед этим программа сохранит копию текущей базы в data\\backup.','Заменить базу')) return;
     const st=$('#impDbSt'); st.textContent=`Загружаю «${f.name}» (${Fmt.size(f.size)})…`;
@@ -542,7 +545,7 @@ class AccessPanel {
         Администратор входит в «Настройки» своим паролем и может всё.</p>
       <div class="ac-help"><label class="f"><span>«Забыли пароль?» на экране входа — к кому обращаться ${tip('Менеджер видит этот текст до входа, под ссылкой «Забыли пароль?». Укажите, кто сбрасывает пароль и как с ним связаться. Пусто — только общая подсказка «обратитесь к администратору».')}</span>
         <input type="text" id="acHelp" maxlength="200" value="${esc(r.help||'')}" placeholder="Например: пароль сбросит Иванов Иван, доб. 123"></label><button class="btn" type="button" id="acHelpSave">Сохранить</button></div></div>
-      <div class="st-card"><div class="row"><p class="sub" style="margin:0">Менеджеры и права · ${r.managers.length} ${tip(AccessPanel.HELP)}</p><span class="sp"></span><button class="btn ghost" type="button" data-sttab="db-manager">Контакты менеджеров →</button></div>
+      <div class="st-card"><div class="row"><div class="sub" style="margin:0">Менеджеры и права · ${r.managers.length} ${tip(AccessPanel.HELP)}</div><span class="sp"></span><button class="btn ghost" type="button" data-sttab="db-manager">Контакты менеджеров →</button></div>
       ${r.managers.length?`<div class="ac-tw"><table class="pv-t ac-t"><thead><tr><th>Менеджер</th><th>Логин</th>${P.map(p=>`<th class="c" title="${esc(p.label)}">${esc(p.label)}</th>`).join('')}<th></th></tr></thead><tbody>${r.managers.map(row).join('')}</tbody></table></div>`
         :'<p class="muted">Менеджеров ещё нет — их добавляют в шаге «Менеджер» конструктора.</p>'}
       <p class="muted">Права действуют, когда вход по паролю включён. «КП других менеджеров» — видеть их в журнале, открывать и сохранять; без него менеджер видит только свои КП. «Экономика сделки» — своих КП (чужих — вместе с правом на КП других).</p></div>`;

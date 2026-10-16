@@ -168,3 +168,115 @@ class CatalogPatch:
                 'errors': p['errors'][:20], 'createdAt': d.get('createdAt'), 'applied': bool(apply), 'images': None,
                 'patch': {'title': str(d.get('title') or '')[:200], 'items': len(p['items']), 'fields': fields, 'same': p['same'],
                           'missing': p['missing'], 'conflicts': p['conflicts'][:30], 'conflictCount': len(p['conflicts']), 'written': written}}
+
+
+class CatalogSheet:
+    """Книга Excel «Каталог поставщика для правки» → файл правок каталога (kp-catalog-patch).
+
+    Лист категории: строка 1 — названия столбцов, строка 2 — служебные ключи (A2 = «id»; «name», «spec», «a:<поле>»),
+    дальше — позиции. Скрытый лист «_было» — значения на момент выгрузки (id, ключ, JSON): по нему правка поля,
+    изменённого в базе после выгрузки, пропускается, как в файле правок (пустые поля в «_было» не пишутся, у позиции есть
+    строка «id» без ключа). Без «_было» сравнивается с текущим значением.
+    """
+    ORIG = '_было'
+    MAX_ROWS = 50000
+
+    def __init__(self, store):
+        self.st = store
+
+    @staticmethod
+    def is_book(data):
+        import io
+        import zipfile
+        if not data or data[:2] != b'PK':
+            return False
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                return 'xl/workbook.xml' in z.namelist()
+        except zipfile.BadZipFile:
+            return False
+
+    def _nums(self):
+        """{категория: {поле с числом}} — из справочника категорий."""
+        t = self.st.kv_get('types') or {}
+        t = t.get('types') if isinstance(t, dict) else t
+        return {x.get('id'): {f.get('key') for f in x.get('fields') or [] if f.get('num')} for x in t or [] if isinstance(x, dict)}
+
+    @staticmethod
+    def _value(s, like, num):
+        """Текст ячейки → значение поля: число, если поле числовое (или было числом), да/нет — если было да/нет."""
+        s = str(s if s is not None else '').strip()
+        if s == '':
+            return None
+        if isinstance(like, bool):
+            low = s.lower()
+            if low in ('да', 'true', '1', 'yes'):
+                return True
+            if low in ('нет', 'false', '0', 'no'):
+                return False
+        if num or (isinstance(like, (int, float)) and not isinstance(like, bool)):
+            t = s.replace('\xa0', '').replace(' ', '').replace(',', '.')
+            if re.match(r'^-?\d+(\.\d+)?$', t):
+                v = float('%.12g' % float(t))     # Excel пишет 7,3 как 7.2999999999999998
+                return int(v) if v.is_integer() and abs(v) < 1e15 else v
+        return s[:CatalogPatch.MAX_TEXT]
+
+    def patch(self, data, title=''):
+        from feed_files import read_xlsx
+        book = read_xlsx(data)
+        orig, known = {}, set()          # known — позиции, у которых есть «было»: пустое поле в «было» не пишется
+        for name, rows in book:
+            if name == self.ORIG:
+                for r in rows[1:]:
+                    if r.get(0):
+                        known.add(r[0])
+                    if r.get(0) and r.get(1):
+                        try:
+                            orig[(r[0], r[1])] = json.loads(r.get(2) or 'null')
+                        except ValueError:
+                            pass
+        nums, items, seen = self._nums(), [], 0
+        for name, rows in book:
+            if name == self.ORIG or len(rows) < 2 or str(rows[1].get(0, '')).strip() != 'id':
+                continue
+            keys = {c: str(k).strip() for c, k in rows[1].items() if c > 0}
+            for r in rows[2:]:
+                cid = str(r.get(0, '')).strip()
+                if not cid:
+                    continue
+                seen += 1
+                if seen > self.MAX_ROWS:
+                    raise ValueError('В книге слишком много строк')
+                text = self.st.catalog_get(cid) if CatalogPatch.ID.match(cid) else None
+                if not text:
+                    items.append({'id': cid})          # нет в базе — в отчёте «нет в базе»
+                    continue
+                doc = json.loads(text)
+                a = doc.get('attrs') or {}
+                num = nums.get(a.get('cat'), set())
+                x = {'id': cid, 'name': doc.get('name') or ''}
+                for c, k in keys.items():
+                    if k in CatalogPatch.SET:
+                        cur, field = doc.get(k), None
+                    elif k.startswith('a:') and CatalogPatch.KEY.match(k[2:]) and k[2:] != 'cat':
+                        field = k[2:]
+                        cur = a.get(field)
+                    else:
+                        continue
+                    old = orig.get((cid, k)) if cid in known else cur
+                    new = self._value(r.get(c), old if old is not None else cur, field in num if field else False)
+                    if k == 'name' and new is None:
+                        continue                        # название не стирается
+                    if CatalogPatch.norm(new) == CatalogPatch.norm(old):
+                        continue
+                    if field:
+                        x.setdefault('attrs', {})[field] = [old, new]
+                    else:
+                        x.setdefault('set', {})[k] = [old, '' if new is None else str(new)]
+                if 'attrs' in x or 'set' in x:
+                    items.append(x)
+        if not seen:
+            raise ValueError('Это не книга правок каталога: нужен файл «…_для_правки.xlsx», выгруженный из «Копий и базы»')
+        from datetime import datetime
+        return {'format': CatalogPatch.FORMAT, 'version': 1, 'createdAt': datetime.now().isoformat(timespec='seconds'),
+                'title': ('Правки из Excel «%s»' % title[:120]) if title else 'Правки из Excel', 'items': items}

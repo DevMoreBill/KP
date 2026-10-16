@@ -60,6 +60,14 @@ JUNK_PARAM = re.compile(r'^(array|object|null|undefined)$', re.I)     # «Кар
 JUNK_PNAME = re.compile(r'\(для авито\)|^(цена|стоимость)\b|^(картинки галереи|полезные документы|видео)$', re.I)  # поля для площадок, цена
 
 
+
+class FeedSupplier:
+    @staticmethod
+    def id(v):
+        """Поставщик из справочника, к которому привязан фид (id); пусто — поставщик = название фида."""
+        v = str(v or '').strip()
+        return v if re.match(r'^[A-Za-z0-9_-]{1,64}$', v) else ''
+
 def _now():
     return datetime.now().isoformat(timespec='seconds')
 
@@ -121,7 +129,7 @@ def feed_save(store, f):
                maker=str(f.get('maker') or '').strip()[:120], discount=disc if disc and 0 < disc < 100 else None,
                auto=f.get('auto', kind == 'yml') is True, pageDesc=f.get('pageDesc', old.get('pageDesc', kind == 'yml')) is True,
                cats=_cats_ok(f.get('cats')) if isinstance(f.get('cats'), dict) else old.get('cats') or {},
-               supplier=str(f.get('supplier') or old.get('supplier') or '')[:64], updatedAt=_now())
+               supplier=FeedSupplier.id(f['supplier'] if 'supplier' in f else old.get('supplier')), updatedAt=_now())
     rec['discounts'] = discount_rules(f['discounts']) if isinstance(f.get('discounts'), list) else old.get('discounts') or []
     hints = f.get('driveHints') if isinstance(f.get('driveHints'), dict) else old.get('driveHints') or {}
     rec['driveHints'] = {k: re.sub(r'\s+', ' ', str(hints.get(k) or '')).strip()[:400] for k in ('belt', 'direct')}
