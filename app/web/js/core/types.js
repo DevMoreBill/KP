@@ -168,7 +168,7 @@ function extractAttrs(d){
   const t=norm(text);
   a.execution = /контейнер/.test(t)&&/шасси|прицеп/.test(t) ? 'Контейнер на шасси' : /кожух/.test(t)&&/шасси|прицеп/.test(t) ? 'Кожух на шасси' : /контейнер/.test(t) ? 'Блок-контейнер' : /шасси|прицеп/.test(t) ? 'На шасси' : /кожух/.test(t) ? 'В кожухе' : /открыт|на раме/.test(t) ? 'Открытое' : '';
   const v=find(/напряжен/); a.voltage = v?v.v:'';
-  if (a.type!=='ДГУ'){ const amp=(d.name||'').match(/(\d+)\s*А\b/); if(amp) a.amps=+amp[1]; }
+  const amp=(d.name||'').match(/(\d+)\s*А\b/); if (amp) a.amps=+amp[1];
   return a;
 }
 

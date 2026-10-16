@@ -67,6 +67,8 @@ class DealValues {
         hint:'Отсрочка последнего платежа заказчика, если вариант «Оплата заказчика» не выбран. Пример: 30 — заказчик платит через 30 календарных дней после поставки, на эти дни программа считает стоимость денег.'}],
       ['deal.supAdv', 'dealPay', 'Аванс поставщику, если вариант оплаты поставщику не выбран', 'num', '20', {unit:'%', req:true, min:0, max:100,
         hint:'Доля цены оборудования, которую платим поставщику при заказе; остаток — перед отгрузкой. Действует, когда выключено значение «Оплата поставщику» в разделе «Экономика сделки». Пример: 20 % от 1 000 000 ₽ — 200 000 ₽ при заказе и 800 000 ₽ перед отгрузкой.'}],
+      ['deal.supVat', 'dealMoney', 'НДС поставщика в России', 'num', '22', {unit:'%', req:true, min:0, max:30,
+        hint:'Ставка НДС в счетах российских поставщиков, перевозчиков и сборщика (НК РФ, ст. 164: с 01.01.2026 — 22 %). Отдельно от НДС в КП: при КП без НДС, на экспорт или с НДС 5–7 % вычет и цена поставщика «без НДС» считаются по этой ставке. Пример: закупка 610 000 ₽ с НДС → НДС к вычету 110 000 ₽.'}],
       ['deal.monthDays', 'dealPay', 'Дней в месяце для стоимости денег', 'num', '30', {unit:'дн.', req:true, min:28, max:31,
         hint:'Финансирование = недостающие деньги × ставка % в месяц × дней / это число. По методике расчёта сделки месяц — 30 дней. Пример: 1 000 000 ₽ × 2 % × 45 дн. / 30 = 30 000 ₽.'}],
       ['deal.moneyFb', 'dealMoney', 'Стоимость денег, если ключевая ставка ЦБ не получена', 'num', '2', {unit:'% в месяц', req:true, min:0, max:20,
@@ -194,7 +196,9 @@ class DealCalculator {
   /** сумма в валюте → рубли */
   money(path, o, cur){ const a=this.num(path, o&&o.v, {def:0}); const c=cur||(o&&o.cur)||'RUB'; if (a) this.used.add(c);
     const r=this.rate(c); if (a && !(r>0)) { this.err[path]=this.err[path]||`Нет курса ${c}`; return 0; } return a*(r||0); }
-  inVat(x){ return x*this.v/(100+this.v); }
+  /** НДС в счёте российского поставщика, перевозчика, сборщика — по его ставке, а не по ставке НДС КП */
+  supVat(){ return DealValues.n('deal.supVat', 22); }
+  inSupVat(x){ const v=this.supVat(); return x*v/(100+v); }
 
   // ---------- цена, НДС
   price(){ const d=this.d, kp=this.kp;
@@ -204,7 +208,7 @@ class DealCalculator {
     this.vatK=1+this.v/100; }
 
   // ---------- поставщик: закупка, логистика, таможня, этапы оплаты, сроки
-  supplier(s, k, supOf){ const P=`sup.${k}`, kp=this.kp, vatK=this.vatK, num=(...a)=>this.num(...a), money=(...a)=>this.money(...a);
+  supplier(s, k, supOf){ const P=`sup.${k}`, kp=this.kp, vatK=1+this.supVat()/100, num=(...a)=>this.num(...a), money=(...a)=>this.money(...a);
     const items=(kp.items||[]).filter(x=>supOf(x.id)===s.id);
     const mode = ['calc','eaeu','none','sum'].includes(s.cusMode) ? s.cusMode : 'sum';
     // цены поставщика без НДС — к платежу добавляется НДС; только у поставщика в России: у ввозимого НДС считается при ввозе
@@ -214,7 +218,8 @@ class DealCalculator {
       const c=x.cur||'RUB'; this.used.add(c); byCur[c]=(byCur[c]||0)+x.cost*q;
       const r=this.rate(c); if (!(r>0)) { this.err[P+'.rate']=`Нет курса ${c}`; continue; }
       const a=x.cost*q*r*(noVat?vatK:1); equip+=a; if (c!=='RUB') equipFx+=a;
-      lines.push({id:x.id, name:x.name, qty:q, rub:a, duty:x.duty, code:x.code||''}); }
+      const sp=mode==='calc' && typeof TnVed!=='undefined' ? TnVed.special(x.code, s.country, this.kp.date||'') : null;   // 30 % на компрессоры из США
+      lines.push({id:x.id, name:x.name, qty:q, rub:a, duty: sp && !(x.duty>=sp.duty) ? sp.duty : x.duty, code:x.code||'', special:sp}); }
     const ex=num(P+'.extra', s.extra&&s.extra.v, {def:0}); if (ex){ const c=(s.extra.cur)||'RUB'; byCur[c]=(byCur[c]||0)+ex; }
     const exRub=money(P+'.extra', s.extra)*(noVat?vatK:1); equip+=exRub; if ((s.extra&&s.extra.cur||'RUB')!=='RUB') equipFx+=exRub;
     // прочая закупка (опции, ЗИП): своя ставка пошлины или средняя по стоимости позиций поставщика с известной ставкой
@@ -249,10 +254,10 @@ class DealCalculator {
       vi=num(P+'.vi', s.vi); if (vi==null && !T) vi=0;               // нет растаможки — нечего вычитать
       if (vi!=null && vi>T+0.005) this.err[P+'.vi']='Не больше суммы растаможки';
     }
-    const suggest = s.vatIn ? this.inVat(equip) : 0;
+    const suggest = s.vatIn ? this.inSupVat(equip) : 0;
     let vo = s.vatIn ? num(P+'.vo', s.vo) : 0; const voAuto = s.vatIn && vo==null; if (voAuto) vo=suggest;
     if (vo>equip+0.005) this.err[P+'.vo']='Не больше стоимости оборудования';
-    const ruSuggest=this.inVat(Lru+brk); let voRu=num(P+'.voRu', s.voRu); const voRuAuto=voRu==null; if (voRuAuto) voRu=ruSuggest;
+    const ruSuggest=this.inSupVat(Lru+brk); let voRu=num(P+'.voRu', s.voRu); const voRuAuto=voRu==null; if (voRuAuto) voRu=ruSuggest;
     if (voRu>Lru+brk+0.005) this.err[P+'.voRu']='Не больше суммы услуг в России';
     const cash=equip+fxE+fxL+ins+L+T+brk+Lru;
     const prodK=s.prodK==='work'?'work':'', shipK=s.shipK==='work'?'work':'', rdy=this.addD(0, prod, prodK), arr=this.addD(rdy, ship, shipK);
@@ -397,7 +402,7 @@ class DealCalculator {
     this.Ccash=sumOf(s=>s.cash)+this.M+this.E+this.Dc+this.W+this.Bn+this.BG+asmCost;
     const voSup=sumOf(s=>s.vo), voRuSum=sumOf(s=>s.voRu);
     const unknown=S_.filter(s=>s.vi==null);
-    const VATinKnown=this.viSum+voSup+voRuSum+this.Vo+this.inVat(asmCost);      // сборка — услуга в России с НДС
+    const VATinKnown=this.viSum+voSup+voRuSum+this.Vo+this.inSupVat(asmCost);      // сборка — услуга в России с НДС
     const viHi=VATinKnown+unknown.reduce((a,s)=>a+s.T,0);
     let lo=this.result(VATinKnown), hi=unknown.length?this.result(viHi):lo, xIt=0;
     // наличные в графике меняют финансирование, финансирование — прибыль и (от чистой прибыли) сумму наличных: до совпадения
@@ -414,7 +419,7 @@ class DealCalculator {
       ['Монтаж и ПНР', this.M], ['Разработка документации', this.Dc], ['Банковская гарантия', this.BG], ['Прочие расходы', this.E], ['Бонусы и комиссии с продажи', this.Bn], ['Резерв на гарантию', this.W], ['Финансирование', F],
       ['НДС к вычету (уменьшает затраты)', -(base||lo).VATin]].filter(x=>Math.abs(x[1])>0.004);
     return { asm:this.asmC, bgs:this.bgs, BG:this.BG, advSum:this.advSum, xc:{mode:this.xMode, when:this.xWhen, off:xOffSt, from:this.xFrom.map(r=>r.key), v:this.xV, cost:this.xCost, g:this.xG, on:this.xV>0},
-      S, v:this.v, vatFromKp:this.vatFromKp, rate:c=>this.rate(c), rateSrc:this.rateSrc, used:[...this.used].filter(c=>c!=='RUB'), sup:S_, M:this.M, E:this.E, Dc:this.Dc, Vo:this.Vo, W:this.W, Bn:this.Bn,
+      S, v:this.v, sv:this.supVat(), vatFromKp:this.vatFromKp, rate:c=>this.rate(c), rateSrc:this.rateSrc, used:[...this.used].filter(c=>c!=='RUB'), sup:S_, M:this.M, E:this.E, Dc:this.Dc, Vo:this.Vo, W:this.W, Bn:this.Bn,
       warrP:this.warrP, bonusP:this.bonusP, taxP:this.taxP, pnrDays:this.pnrDays, pnrK:this.pnrK, pnrEnd:this.pnrEnd, trs:this.trs, ev:this.ev, i:this.i, moneyAuto:this.moneyAuto,
       rows, F, D:this.D, Rdy:this.Rdy, Tend:this.Tend, R:this.R, VATs:this.VATs, Ccash:this.Ccash, equipSum, Lsum:this.Lsum, LruSum:this.LruSum, brkSum:this.brkSum, Tsum:this.Tsum, voSup, voRuSum, unknown, base, lo, hi, cashBefore:S-this.Ccash-F, parts,
       err:this.err, warn, ok:!Object.keys(this.err).length };

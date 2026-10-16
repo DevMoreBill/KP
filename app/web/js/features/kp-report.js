@@ -22,11 +22,12 @@ class KpReport {
         <span class="rp-q">${[['month','Этот месяц'],['prev','Прошлый месяц'],['quarter','Квартал'],['year','Год']].map(([k,l])=>`<button type="button" class="btn sm${k==='month'?' on':''}" data-rq="${k}">${l}</button>`).join('')}</span>
         <button class="btn" type="button" data-rx disabled>Excel</button></div>
       <div id="rpOut"><p class="empty">Считаю…</p></div>`, 'rp-dlg');
-    const R={rows:[], f};
-    const run=async()=>{ const out=m.$('#rpOut'); out.innerHTML='<p class="empty">Считаю…</p>'; m.$('[data-rx]').disabled=true;
+    const R={rows:[], f, n:0};       // n — номер запроса: ответ за прежний период (пришёл позже) не показывается
+    const run=async()=>{ const out=m.$('#rpOut'); out.innerHTML='<p class="empty">Считаю…</p>'; m.$('[data-rx]').disabled=true; const n=++R.n;
       try{ const r=await api(`/api/report?from=${m.$('#rpA').value}&to=${m.$('#rpB').value}&author=${encodeURIComponent(f.author||'')}&kind=${encodeURIComponent(f.kind||'')}`);
+        if (n!==R.n) return;
         R.rows=r.items||[]; R.data=KpReport.calc(R.rows); out.innerHTML=KpReport.html(R.data); m.$('[data-rx]').disabled=!R.rows.length; }
-      catch(e){ out.innerHTML=`<p class="empty">Отчёт недоступен: ${esc(e.message)}</p>`; } };
+      catch(e){ if (n===R.n) out.innerHTML=`<p class="empty">Отчёт недоступен: ${esc(e.message)}</p>`; } };
     m.d.onclick=async e=>{ const t=e.target; if (t.closest('[data-x]')) return m.close();
       const q=t.closest('[data-rq]'); if (q){ const [x,y]=KpReport.range(q.dataset.rq); m.$('#rpA').value=x; m.$('#rpB').value=y; m.d.querySelectorAll('[data-rq]').forEach(z=>z.classList.toggle('on', z===q)); return run(); }
       const o=t.closest('[data-ro]'); if (o){ m.close(); return KpLoader.byId(o.dataset.ro).catch(err=>toast('Не удалось открыть: '+err.message)); }

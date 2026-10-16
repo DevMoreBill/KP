@@ -273,7 +273,7 @@ const dlFilled = (...v) => v.some(x=>x!=null && String(x).trim()!=='' && String(
 // свёрнутый шаг — одна строка: что заполнено (DL.si[id].sum) и отметка «заполнено / нужно заполнить / необязательно»
 function dlStep(n, title, sub, body, cls='', tot=null, id=''){
   const nav=(DL.nav||{})[id], num=nav?nav.n:n;
-  if (id && DL.open!==id && !DL.all) return '';   // DL.all — все шаги сразу (для проверок)
+  if (id && DL.open!==id) return '';
   // пояснение шага — в «?» рядом с названием: шапка шага — одна строка
   const head=`<span class="dl-n">${num}</span><div class="dl-sht"><h4>${title}</h4>${sub?dlQ(sub):''}</div>`;
   const go=nav ? `<div class="dl-next">${nav.prev?`<button type="button" class="btn" data-dlx="step" data-id="${nav.prev}">← ${esc(nav.prevT)}</button>`:'<span></span>'}${nav.next?`<button type="button" class="btn primary" data-dlx="step" data-id="${nav.next}">Далее: ${esc(nav.nextT)} →</button>`:''}</div>` : '';
@@ -310,7 +310,7 @@ const dlTot=(lab, v, note)=>`<div class="dl-stot"><span>${note?`<small>${note}</
 // ---------- обзор «Кратко»: итог простыми словами, чего не хватает, поставщики и сроки на одной ленте, деньги в обороте
 const DL_STEP_T = { buy:'Закупка', log:'Логистика', cus:'Таможня', cust:'Оплата заказчика', mnt:'Расходы', price:'Цена КП', money:'Деньги и налог', sched:'График платежей' };
 function dlOverview(c){
-  if (DL.open!=='sum' && !DL.all) return '';
+  if (DL.open!=='sum') return '';
   const b=c.base||c.lo, si=DL.si||{}, d0=dlD0(), when=day=>d0?dlDayRu(day):`день ${day}`;
   const need=Object.entries(si).filter(([id,x])=>x.st==='need' && DL_STEP_T[id] && (DL.nav||{})[id]);
   const needTxt={ log:'укажите склад поставщика и адрес объекта (или свою сумму доставки)', cus:'проверьте коды ТН ВЭД, пошлину и ввозной НДС' };
@@ -500,7 +500,7 @@ function dlCustoms(c){
         return `<tr><td class="c-nm"><b>${esc(l.name)}</b><small>${l.of?`в составе «${esc(l.of)}» · `:''}${esc(x.role==='container'?'блок-контейнер':typeById(attrsOf(x).cat).name)}</small></td>
           <td><input type="text" class="hs" data-hs-i="${esc(x.id)}" data-f="code" value="${esc(h.code)}" placeholder="0000 00 000 0" aria-label="Код ТН ВЭД"></td>
           <td><span class="dl-in"><input type="text" inputmode="decimal" class="hs-d" data-hs-i="${esc(x.id)}" data-f="duty" value="${esc(h.duty)}" placeholder="?" aria-label="Ставка пошлины, %"><i>%</i></span></td>
-          <td class="c-src">${DealHs.badge(x, h)}
+          <td class="c-src">${DealHs.badge(x, h)}${ln&&ln.special?`<span class="dl-badge warn" title="${esc(ln.special.src)}: ставка ${ln.special.duty} % для товаров происхождения ${esc(ln.special.country)} по ${esc(ln.special.until.split('-').reverse().join('.'))}. Происхождение другое — впишите свою ставку">${ln.special.duty} % — ${esc(ln.special.country)}</span>`:''}
             <select class="dl-hspick" data-hspick="${esc(x.id)}" aria-label="Взять код и ставку из справочника"><option value="">из справочника…</option>${hsCats.map(o=>`<option value="${esc(o.key)}">${esc(o.name)} · ${esc(o.code||'—')} · ${esc(o.duty===''?'?':o.duty)} %</option>`).join('')}</select></td>
           <td class="num">${ln?Fmt.rub(ln.cv):'—'}</td><td class="num">${ln?Fmt.rub(ln.dutyA):'—'}</td></tr>`; }).join('');
       // прочая закупка у поставщика (опции, ЗИП): своя ставка или средняя по позициям поставщика

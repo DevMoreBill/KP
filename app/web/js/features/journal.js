@@ -114,7 +114,7 @@ async function openJournal(){
       await Drafts.stash();
       const st=await api(`/api/kp/${(o||c||ec).dataset[o?'jo':c?'jc':'je']}/state`);
       S=Object.assign(freshState(), st); if (!c){ const m=J.rows.find(x=>x.id===st.kpId); if (m && m.file) S._file=m.file; }
-      if (c){ delete S.kpId; delete S.number; delete S.createdAt; delete S._rev; S.date=today(); S.client=''; S.authorId=meId();
+      if (c){ delete S.kpId; delete S.number; delete S.createdAt; delete S._rev; S.date=today(); ClientFields.clear(S); S.authorId=meId();
         if (S.tender && S.tender.on) S.tender={on:true, number:'', url:''}; }     // копия тендерного КП — под другую закупку
       d.close(); d.classList.remove('wide'); renderForm(); persist(); window.scrollTo({top:0}); if (c) Drafts.loaded();
       if (ec) return openDeal();

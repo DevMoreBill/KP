@@ -4,14 +4,6 @@
 'use strict';
 
 const FD = { sel:null, prev:null, cats:{}, types:[], poll:0, edit:null, logs:{}, disc:null, plan:null };
-// сетка скидок Dalgakiran от РРЦ: ременные компрессоры и рефрижераторные осушители до 75 кВт включительно — 30 %, прямой привод
-// и/или частотник — 27 % при любой мощности, фильтры и сепараторы — 30 %, остальное — 25 %. Мощность осушителя часто не указана
-// (у всех рефрижераторных осушителей Dalgakiran она намного меньше 75 кВт) — такие осушители тоже получают 30 %.
-const FD_DISC_DALG = { discount:25, driveHints:{ belt:'TIDY, DVK, DS', direct:'DVK D, IMPETUS, EAGLE' }, discounts:[
-  { label:'Компрессоры с ременным приводом до 75 кВт', cats:['comp_screw','comp_piston','comp_scroll'], drive:'belt', kwMax:75, kwUnknown:false, pct:30 },
-  { label:'Рефрижераторные осушители до 75 кВт', cats:['dryer_refrig'], drive:'any', kwMax:75, kwUnknown:true, pct:30 },
-  { label:'Компрессоры с прямым приводом и/или частотником', cats:['comp_screw','comp_piston','comp_scroll'], drive:'direct', pct:27 },
-  { label:'Фильтры, сепараторы, маслоотделители', cats:['filter','oil_sep'], drive:'any', pct:30 } ] };
 const FD_DRIVES = [['any','любой'], ['belt','ременной'], ['direct','прямой и/или частотник']];
 const FD_REMEZA = { name:'Remeza', url:'https://www.remeza.org/bitrix/catalog_export/yandex_202475.php', maker:'Remeza', auto:true, pageDesc:true, kind:'yml' };
 const FD_FILES = { kind:'files', name:'', maker:'', priceKind:'cost', cur:'EUR', priceOnly:false, pageDesc:false, auto:false };
@@ -168,7 +160,7 @@ function fdDisc(f){
       <td data-l="Скидка, %"><input type="text" inputmode="decimal" data-fdd="pct" value="${esc(num(r.pct))}" placeholder="%" aria-label="Скидка, %"></td>
       <td class="num"><button class="btn ghost" type="button" data-fd="discdel" data-i="${i}" title="Удалить правило" aria-label="Удалить правило">✕</button></td></tr>`;
   return `<div class="fd-disc"><div class="row fd-dh"><p class="sub" style="margin:0">Сетка скидок поставщика${tip(`<p>Закупка позиции = ${base} минус скидка. Правила проверяются сверху вниз: первое подходящее даёт скидку; не подошло ни одно — «Остальное оборудование».</p><p>Категория — категория программы у позиции каталога. Привод определяется по признаку частотника (VSD, инвертор), по сериям из полей ниже (в названии позиции или на листе прайса) и по строке «Привод» в характеристиках. Мощность — поле «Мощность» позиции; «до 75» — включительно. Если мощность у позиции не указана, правило с ограничением мощности её пропускает — или применяется, когда отмечено «не указана — тоже».</p><p>Цены обновляются у всех позиций производителя: и у загруженных из фида, и у заведённых вручную — для них строка прайса подбирается по серии, типоразмеру и исполнению (ресивер, осушитель, водяное охлаждение, частотник).</p><p>Закупка и цена, исправленные вручную в карточке, не меняются. Применённая скидка видна в карточке позиции.</p>`)}</p>
-      <span class="sp"></span><button class="btn" type="button" data-fd="discpreset">Сетка Dalgakiran</button></div>
+      </div>
     <div class="fd-tw"><table class="fd-t fd-dt"><thead><tr><th>Правило</th><th>Категории</th><th>Привод</th><th>Мощность до, кВт</th><th>Скидка, %</th><th></th></tr></thead>
       <tbody>${d.discounts.map(row).join('')}
       <tr class="fd-dother"><td><b>Остальное оборудование</b></td><td class="muted" colspan="3">всё, что не подошло под правила выше</td><td data-l="Скидка, %"><input type="text" inputmode="decimal" data-fddo="discount" value="${esc(num(d.discount))}" placeholder="нет" aria-label="Скидка на остальное, %"></td><td></td></tr></tbody></table></div>
@@ -210,9 +202,6 @@ async function fdDiscClick(a, b, m){
   const d=fdDiscRead(m) || fdDiscOf(f), redraw=()=>{ const el=m.querySelector('#fdDisc'); if (el) el.innerHTML=fdDisc(f); };
   if (a==='discadd'){ d.discounts.push({ label:'', cats:[], drive:'any', kwMax:null, pct:null }); return redraw(); }
   if (a==='discdel'){ d.discounts.splice(+b.dataset.i, 1); return redraw(); }
-  if (a==='discpreset'){
-    if (d.discounts.length && !await stConfirm('Заменить сетку скидок?','Текущие правила заменятся сеткой Dalgakiran: ременные компрессоры и рефрижераторные осушители до 75 кВт включительно — 30 %, прямой привод и/или частотник — 27 % при любой мощности, фильтры, сепараторы и маслоотделители — 30 %, остальное — 25 %.','Заменить')) return;
-    Object.assign(d, JSON.parse(JSON.stringify(FD_DISC_DALG))); FD.plan=null; return redraw(); }
   if (d.discounts.some(r=>!r.pct)){ toast('У каждого правила укажите скидку, % (или удалите правило)'); return; }
   if (a==='discplan'){ b.disabled=true; b.textContent='Считаю…';
     FD.plan={...await ajson(`feeds/${FD.sel}/discounts`, fdDiscBody(d)), id:FD.sel}; return redraw(); }

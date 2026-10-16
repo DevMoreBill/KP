@@ -24,7 +24,6 @@ async function dataURLtoBlobAsync(u){ return (await fetch(u)).blob(); }
 
 const norm = s => String(s||'').toLowerCase().replace(/ё/g,'е').replace(/[«»"]/g,'').replace(/\s+/g,' ').trim();
 
-async function toDataURL(img){ if (!img) return null; if (String(img.src).startsWith('data:')) return img.src; return blobToURL(await (await fetch(img.src)).blob()); }
 
 // уведомление показывается поверх открытого окна: всё, что вне модального окна, браузер прячет под затемнением
 function toast(t, ms=2600){ let el=$('#toast'); if (!el){ el=document.createElement('div'); el.id='toast'; el.className='toast'; el.setAttribute('role','status'); }   // окно могло перерисоваться вместе с уведомлением
