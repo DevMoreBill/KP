@@ -81,6 +81,55 @@ class CarrierApiTest(unittest.TestCase):
         self.assertIn('token=***', msg)
         self.assertNotIn('SECRET', logistics_api.Http.error(ValueError('Возовоз: /api/?token=SECRET&appkey=SECRET2')))
 
+    def test_dellin_next_workday(self):
+        import logistics_api as lg
+        from datetime import date
+        sent = []
+
+        def fake(url, data=None, headers=None, method=None):
+            sent.append(data['delivery']['derival']['produceDate'])
+            if len(sent) < 3:
+                raise urllib.error.HTTPError(url, 400, 'Bad', Message(), io.BytesIO(
+                    '{"errors":[{"detail":"Выбранная дата недоступна для выбранного адреса"}]}'.encode()))
+            return {'data': {'price': 5000, 'orderDates': {}}}
+        places = [{'l': 1, 'w': 1, 'h': 1, 'm': 0.2, 'qty': 1}]
+        cal = mock.patch.object(lg.workcal, 'year', side_effect=lambda st, y: {'days': lg.workcal.approx(y)})   # без сети
+        cal.start()
+        self.addCleanup(cal.stop)
+        with mock.patch.object(lg.Http, 'call', side_effect=fake):
+            r = lg.Dellin.quote(self.store, {'addr': 'Москва'}, {'addr': 'Тверь'}, places)
+        self.assertEqual(r['price'], 5000)
+        days = [date.fromisoformat(x) for x in sent]
+        self.assertEqual(len(days), 3)
+        self.assertTrue(all(d.weekday() < 5 and d > date.today() for d in days), 'забор только в рабочие дни после сегодня')
+        self.assertEqual(sorted(set(days)), days)
+        sent.clear()
+
+        def never(url, data=None, headers=None, method=None):        # ни одна дата не подходит
+            sent.append(data['delivery']['derival']['produceDate'])
+            raise urllib.error.HTTPError(url, 400, 'Bad', Message(), io.BytesIO(
+                '{"errors":[{"detail":"Выбранная дата недоступна для выбранного адреса"}]}'.encode()))
+        with mock.patch.object(lg.Http, 'call', side_effect=never):
+            with self.assertRaises(ValueError) as cm:
+                lg.Dellin.quote(self.store, {'addr': 'Москва'}, {'addr': 'Тверь'}, places)
+        self.assertIn('проверьте адрес', str(cm.exception))
+        self.assertEqual(len(sent), lg.Dellin.DATE_TRIES)
+
+    def test_nrg_v3_reserve_on_502(self):
+        import logistics_api as lg
+        lg.Nrg.RETRY_PAUSE, pause = 0, lg.Nrg.RETRY_PAUSE
+        self.addCleanup(setattr, lg.Nrg, 'RETRY_PAUSE', pause)
+        urls = []
+
+        def fake(url, data=None, headers=None, method=None):
+            urls.append(url)
+            if '/v3/' not in url:
+                raise urllib.error.HTTPError(url, 502, 'Bad Gateway', Message(), io.BytesIO(b''))
+            return {'ok': 1}
+        with mock.patch.object(lg.Http, 'call', side_effect=fake):
+            self.assertEqual(lg.Nrg._call(self.store, '/price', {'a': 1}), {'ok': 1})
+        self.assertEqual(urls[-1], 'https://mainapi.nrg-tk.ru/v3/price')
+
     def test_test_without_key(self):
         from logistics_api import CarrierApi
         r = CarrierApi.test(self.store, 'vozovoz')
