@@ -7,7 +7,7 @@ function problems(){
   if (!S.date) p.push(['Укажите дату','st-client']);
   if (S.clientInn && !validInn(S.clientInn)) p.push(['ИНН получателя указан с ошибкой','st-client']);
   if (tenderOn() && !tenderNo()) p.push(['Тендер: укажите № закупки','st-tender']);
-  if (tenderOn() && String(S.tender.url||'').trim() && !tenderUrl()) p.push(['Тендер: ссылка должна начинаться с https://','st-tender']);
+  if (tenderOn() && String(S.tender.url||'').trim() && !tenderUrl()) p.push(['Тендер: ссылка должна начинаться с http:// или https://','st-tender']);
   if (!S.items.length) p.push(['Добавьте хотя бы одну позицию','st-items']);
   S.items.forEach((x,i)=>{
     if (!x.name.trim()) p.push([`Позиция ${i+1}: нет наименования`,'item-'+x.id]);

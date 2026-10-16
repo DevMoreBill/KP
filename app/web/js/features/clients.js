@@ -91,6 +91,15 @@ function shortName(s){
   return s;
 }
 
+// получатель КП: «Сменить клиента» и копия КП из журнала — реквизиты, проверка, контакт и объект прежнего клиента
+// не должны перейти в новое КП (иначе в документе остаются чужие ИНН и «Вниманию»)
+class ClientFields {
+  static clear(st){
+    Object.assign(st,{client:'',clientId:'',clientInn:'',clientKpp:'',clientOgrn:'',clientFull:'',clientAddr:'',clientDir:'',clientDirPost:'',clientStatus:'',clientSrc:'',check:null,_clEdit:false,_clManual:false,_lastInn:''});
+    st.contact={name:'',post:'',phone:'',email:''}; st.object={purpose:'',address:''};
+  }
+}
+
 // Проверка контрагента: Checko — основной сервис, OFData — резерв (тот же формат данных), бухотчётность — бесплатно из
 // ГИР БО ФНС, Rusprofile — кнопкой (открытого API у него нет). Лимиты — на весь отдел, по московскому дню.
 class PartyCheck {

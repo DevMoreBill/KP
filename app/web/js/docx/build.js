@@ -229,9 +229,10 @@ async function previewDocx(id, settings){
 
 async function download(){
   const msg=$('#dlmsg'); const btn=document.querySelector('[data-a="download"]');
-  if (problems().length) return;
+  if (problems().length || download.busy) return;      // второе нажатие (кнопка панели телефона) — не второе КП
   if (!window.JSZip){ msg.className='msg err'; msg.textContent='Не загрузился модуль сборки файла. Обновите страницу.'; return; }
-  btn.disabled=true; btn.textContent='Собираю файл…'; msg.textContent='';
+  const all=[...document.querySelectorAll('[data-a="download"]')];
+  download.busy=true; all.forEach(b=>{ b.disabled=true; }); btn.textContent='Собираю файл…'; msg.textContent='';
   try{
     await StationImages.syncAll();          // 3D-вид и чертёж станций — по текущему составу
     if (!StationImages.confirmSave()) throw Object.assign(new Error('изображения станции не готовы'), { code:'declined' });   // «Сохранение отменено.»
@@ -279,5 +280,5 @@ async function download(){
     msg.className='msg err';
     msg.textContent = e&&e.code==='declined' ? 'Сохранение отменено.' : e&&e.code==='rate_limited' ? 'Окно сохранения уже открыто.' : 'Не удалось собрать файл: '+(e&&e.message||e);
   }
-  btn.disabled=false; btn.textContent=S.kpId?'Сохранить изменения КП № '+S.number:'Сохранить КП';
+  download.busy=false; all.forEach(b=>{ b.disabled=false; }); btn.textContent=S.kpId?'Сохранить изменения КП № '+S.number:'Сохранить КП';
 }

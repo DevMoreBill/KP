@@ -96,7 +96,7 @@ const modeOf = x => x.mmode==='markup' ? 'markup' : 'margin';
 function costKP(x){  // себестоимость единицы в валюте КП, копейки (с НДС)
   if (!x.cost) return null;
   const r1=rateOf(x.costCur||'RUB'), r2=rateOf(kpCur()); if (!(r1>0&&r2>0)) return NaN;
-  let v=x.cost*r1/r2; if (S.pricing.costNoVat) v*=1+(+S.vat||0)/100; return v;
+  let v=x.cost*r1/r2; if (S.pricing.costNoVat) v*=1+DEFN('deal.supVat', 22)/100; return v;    // цена поставщика без НДС → с НДС по ставке поставщика
 }
 
 // экономика сделки по состоянию КП (текущего S или сохранённого в журнале): итог, закупка, прибыль, маржа.
@@ -106,7 +106,7 @@ function kpEconomics(st=S){
   const rate=c=>{ if (!c||c==='RUB') return 1; const v=parseFloat(String((P.rates||{})[c]||'').replace(/\s/g,'').replace(',','.')); return v>0?v:NaN; };
   const items=st.items||[];
   const t=totals(items.map(x=>({qty:+x.qty||0, price:x.price||0, disc:x.disc, options:(x.options||[]).filter(o=>o.name).map(o=>({qty:+o.qty||0, price:o.price||0}))})), vat);
-  const unitCost=x=>{ if (!x.cost) return null; const v=x.cost*rate(x.costCur||'RUB')/rate(cur); return P.costNoVat ? v*(1+vat/100) : v; };
+  const unitCost=x=>{ if (!x.cost) return null; const v=x.cost*rate(x.costCur||'RUB')/rate(cur); return P.costNoVat ? v*(1+DEFN('deal.supVat', 22)/100) : v; };
   const withCost=items.filter(x=>unitCost(x)>0);
   const cost=withCost.reduce((s,x)=>s+unitCost(x)*(+x.qty||0),0), sale=withCost.reduce((s,x)=>s+KPGen.netPrice(x)*(+x.qty||0),0);
   const r=cur!=='RUB' && rate(cur)>0 ? rate(cur) : null;
@@ -131,9 +131,9 @@ function autoRates(){ const need=[kpCur(),...S.items.filter(x=>x.cost).map(x=>x.
 async function loadCBR(){
   const msgEl=$('#cbrMsg'); if(msgEl) msgEl.textContent='Загружаю курс ЦБ РФ…';
   let r=null, src='', why='';
-  const btn=document.querySelector('[data-a="cbr"]'); if(btn){ btn.disabled=true; btn.textContent='Запрашиваю курс…'; }
+  const btn=document.querySelector('[data-a="cbr"]'), label=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='Запрашиваю курс…'; }
   try{ r=await api('/api/cbr'); src=r.src||'ЦБ РФ (cbr.ru)'; if(!r.USD){ why=r.error||''; r=null; } }catch(e){ why=String(e.message||e).slice(0,160); }
-  if (btn){ btn.disabled=false; btn.textContent='Обновить с cbr.ru'; }
+  if (btn){ btn.disabled=false; btn.textContent=label; }
   if (!r || !r.USD){ const m=$('#cbrMsg'); if(m){ m.textContent='Курс с cbr.ru не получен'+(why?` (${why})`:'')+' — введите вручную ниже.'; m.classList.add('bad-t'); } document.querySelector('details.psettings')?.setAttribute('open',''); document.querySelector('[data-rate]')?.focus(); toast('Курс ЦБ не загружен — введите вручную'); return; }
   const got=[]; for (const c of ['USD','EUR','CNY']) if (r[c]) { S.pricing.rates[c]=(+r[c]).toFixed(4).replace('.',','); got.push(c); }
   S.pricing.rateDate=r.date||today(); S.pricing.rateSrc=src; renderForm(); persist(); dealRender();

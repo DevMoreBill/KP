@@ -1,6 +1,20 @@
 // Импорт позиций каталога из Excel/CSV по шаблону типа оборудования.
 'use strict';
 
+// код позиции из строки прайса: прежняя схема (её коды уже в каталоге — повторная загрузка обновляет те же позиции),
+// но у длинных русских названий значимы лишь первые ~17 букв — «…10 бар 15 кВт» и «…8 бар 22 кВт» совпадали и вторая
+// строка затирала первую. Совпал с другой строкой этого файла или с позицией каталога под другим названием — к коду
+// добавляется отпечаток полной строки.
+class XlsId {
+  static base(cat, key){ return (cat+'_'+norm(key).replace(/[^a-z0-9а-я]+/g,'')).slice(0,60).replace(/[^A-Za-z0-9_-]/g,c=>'x'+c.charCodeAt(0).toString(36)).slice(0,64); }
+  static hash(s){ let h=0x811c9dc5; for (let i=0; i<s.length; i++){ h^=s.charCodeAt(i); h=Math.imul(h, 16777619); } return (h>>>0).toString(36); }
+  static of(cat, key, name, seen){
+    let id=this.base(cat, key); const ex=CatFind.id(id);
+    if (seen.has(id) || (ex && norm(ex.name)!==norm(name))) id=id.slice(0, 56)+'_'+this.hash(norm(key));
+    seen.add(id); return id;
+  }
+}
+
 function xlsColumns(t){
   const cols=[['name','Наименование'],['maker','Производитель'],['series','Серия'],['model','Модель'],['spec','Краткие характеристики']];
   for (const f of t.fields) cols.push([f.key, f.label+(f.unit?', '+f.unit:'')]);
@@ -49,14 +63,14 @@ function openXlsImport(cat){
     const nk=s=>norm(String(s).replace(/,.*$/,'').replace(/\(.*\)/,''));
     const map=rows[0].map(h=>{ const c=cols.find(c=>nk(c[1])===nk(h)) || t.fields.map(f=>[f.key,f.label]).find(c=>nk(c[1])===nk(h)); return c?c[0]:null; });
     if (!map.includes('name') && !map.includes('model')) return toast('Не найден столбец «Наименование» или «Модель» — используйте шаблон');
-    let n=0; const skipped=[];
+    let n=0; const skipped=[], seen=new Set();
     for (const r of rows.slice(1)){
       const v={}; map.forEach((k,ix)=>{ if(k && String(r[ix]??'').trim()!=='') v[k]=String(r[ix]).trim(); });
       if (!v.name && !v.model){ skipped.push(r.join(' ').slice(0,40)); continue; }
       const attrs={cat:t.id}; for (const k of ['maker','series','model']) if (v[k]) attrs[k]=v[k];
       for (const f of t.fields) if (v[f.key]!=null){ attrs[f.key]= f.num ? (numOf(v[f.key])??v[f.key]) : v[f.key]; }
       const name=v.name || [t.item, v.maker, v.model].filter(Boolean).join(' ');
-      const x={ id:(t.id+'_'+norm((v.maker||'')+' '+(v.model||name)).replace(/[^a-z0-9а-я]+/g,'')).slice(0,60).replace(/[^A-Za-z0-9_-]/g,c=>'x'+c.charCodeAt(0).toString(36)).slice(0,64),
+      const x={ id:XlsId.of(t.id, (v.maker||'')+' '+(v.model||name), name, seen),
         name, spec:v.spec||'', attrs, price:parsePrice(v.price||'')||0, priceCur:'RUB', cost:parsePrice(v.cost||'')||0, costCur:(v.costCur||'RUB').toUpperCase().slice(0,3),
         margin:v.margin?numOf(v.margin):undefined, features:[], groups:[], photo:null, logo:null, prices:[], updatedAt:new Date().toISOString(), pageTitle:name, photoCaption:'' };
       if (!CUR_LIST.includes(x.costCur)) x.costCur='RUB';

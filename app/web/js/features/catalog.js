@@ -119,7 +119,10 @@ async function saveCatalog(i){
   const it=S.items[i]; if(!it.name.trim()) return toast('Сначала укажите наименование');
   const need=CatFind.id(it.catId) ? 'catEdit' : 'catAdd'; if (!can(need)) return cannot(need);
   const id = it.catId || uid()+uid();
-  const doc={ id, name:it.name, spec:it.spec, price:it.price, pageTitle:it.pageTitle, photoCaption:it.photoCaption,
+  // карточка каталога — целиком (категория и параметры, закупка, история цен, галерея), поверх — поля редактора позиции
+  const cur = it.catId && CatFind.id(it.catId) ? await fullDoc(CatFind.id(it.catId)) : null;
+  if (cur && cur._light) return toast('Карточка каталога не загрузилась — повторите, когда будет связь с сервером');
+  const doc={ ...(cur ? JSON.parse(JSON.stringify(cur)) : {}), id, name:it.name, spec:it.spec, price:it.price, pageTitle:it.pageTitle, photoCaption:it.photoCaption,
     features:it.features, groups:it.groups, hint:it.hint||null, photo:it.photo||null, logo:it.logo||null, updatedAt:new Date().toISOString(),
     ...(isKit(it)?{kit:{parts:kitParts(it).map(({_costText,...p})=>p)}, cost:it.cost, costCur:'RUB', attrs:it.attrs}:{}) };
   try{ const sv=await store().put(doc); if(sv&&sv.photo) it.photo=sv.photo; if(sv&&sv.logo) it.logo=sv.logo; it.catId=id; await refreshCat(); toast(sv._pending?'Отправлено на модерацию — изменения появятся после одобрения администратором':'Позиция сохранена в каталог'); }

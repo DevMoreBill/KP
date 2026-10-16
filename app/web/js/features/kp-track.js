@@ -138,7 +138,7 @@ class MailDlg {
     const b=(m.$('#mlW').checked?f.wordSize||0:0)+(m.$('#mlP').checked?f.pdfSize||0:0)+(f.files||[]).filter(x=>ids.has(+x.id)).reduce((s,x)=>s+(x.size||0),0);
     const lim=(f.mailMB||18)*1048576, over=b>lim;
     el.className='ml-sum '+(over?'bad-t':'muted');
-    el.textContent=`Вложения: ≈ ${KpFilesPanel.size(b)} из ${f.mailMB||18} МБ${over?' — снимите галочки с части документов (их можно отправить вторым письмом)':''}`;
+    el.textContent=`Вложения: ≈ ${Fmt.size(b)} из ${f.mailMB||18} МБ${over?' — снимите галочки с части документов (их можно отправить вторым письмом)':''}`;
   }
 
   static async open(id, number, onSent){
@@ -153,7 +153,7 @@ class MailDlg {
       <label class="f"><span>Текст письма</span><textarea id="mlB" rows="9">${esc(f.body)}</textarea></label>
       <div class="ml-files"><span class="muted">Вложения:</span><label><input type="checkbox" id="mlW" checked><span>Word — ${esc(f.word)}</span></label>
         <label><input type="checkbox" id="mlP"${f.pdf?' checked':''}><span>PDF${f.pdf?' — '+esc(f.pdf):' (будет создан)'}</span></label>
-        ${(f.files||[]).map(x=>`<label><input type="checkbox" data-mlf="${esc(String(x.id))}" checked><span>📎 ${esc(x.name)} <span class="muted">· ${KpFilesPanel.size(x.size)}${x.note?' · '+esc(x.note):''}</span></span></label>`).join('')}
+        ${(f.files||[]).map(x=>`<label><input type="checkbox" data-mlf="${esc(String(x.id))}" checked><span>📎 ${esc(x.name)} <span class="muted">· ${Fmt.size(x.size)}${x.note?' · '+esc(x.note):''}</span></span></label>`).join('')}
         ${(f.files||[]).length?'<span class="muted ml-sum" id="mlSum"></span>':''}</div>
       ${f.sent&&f.sent.length?`<p class="muted" style="margin:8px 0 0">Уже отправляли: ${f.sent.map(s=>esc(KpDate.ddmm(s.at))+' → '+esc((s.to||[]).join(', '))).join('; ')}</p>`:''}
       <p class="msg" id="mlMsg" hidden></p>

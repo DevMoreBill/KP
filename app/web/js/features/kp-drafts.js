@@ -21,6 +21,7 @@ class Drafts {
   static kp = null;        // КП, для которого запомнено состояние base (номер или '' — новое КП)
   static base = null;      // отпечаток состояния КП на момент последнего сохранения (в журнал или в черновик)
   static busy = false;
+  static running = null;   // идущее сохранение (Promise) — stash ждёт его
 
   static on(){ return FEAT.on('drafts'); }
   static newId(p='d'){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2, 8); }
@@ -43,19 +44,24 @@ class Drafts {
   static async save(quiet=true){
     if (!this.on() || this.busy) return false;
     const p=this.pending(); if (!p) return false;
-    this.busy=true; const id=S._draft || this.newId(), t=totalsS();
+    this.busy=true; const id=S._draft || this.newId(), t=totalsS(), mine=S;     // КП, которое сохраняем
+    let done;
+    this.running=new Promise(r=>{ done=r; });
     try{
       await api('/api/drafts/'+id, {method:'PUT', headers:{'Content-Type':'application/json; charset=utf-8'},
         body:JSON.stringify({state:p.st, rev:S._rev, sum:t.sum, cur:(S.pricing&&S.pricing.cur)||'RUB'})});
-      S._draft=id; this.base=p.sg; persist();
+      mine._draft=id;
+      if (S!==mine) return true;          // пока шёл ответ, открыли другое КП — его черновиком этот id не становится
+      this.base=p.sg; persist();
       const el=$('#saved'); if (el) setTimeout(()=>{ el.textContent='Сохранено на сервере в '+new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'}); }, 500);
       return true;
     }catch(e){ if (!quiet) toast('Черновик не сохранён: '+(e.message||e)); return false; }
-    finally{ this.busy=false; }
+    finally{ this.busy=false; done(); }
   }
   /** перед заменой КП (новое, другое из журнала, черновик, заготовка): текущие изменения — в черновики */
   static async stash(){
     if (!this.on()) return;
+    if (this.busy) await this.running;      // идёт автосохранение — дождаться, иначе изменения не отложатся
     if (await this.save(false)) toast('Прежнее КП отложено в черновики (журнал → «Черновики»)');
   }
   /** КП сохранено в журнал: его черновик больше не нужен */

@@ -132,8 +132,7 @@ document.addEventListener('click', async e=>{
     case 'partyFind': return partyFind();
     case 'clientEdit': S._clEdit=!S._clEdit; break;
     case 'clientManual': S._clManual=true; break;
-    case 'clientChange': Object.assign(S,{client:'',clientId:'',clientInn:'',clientKpp:'',clientOgrn:'',clientFull:'',clientAddr:'',clientDir:'',clientDirPost:'',clientStatus:'',clientSrc:'',check:null,_clEdit:false,_clManual:false,_lastInn:''});
-      S.contact={name:'',post:'',phone:'',email:''}; S.object={purpose:'',address:''}; renderForm(); persist(); setTimeout(()=>$('#clFind')?.focus(),30); return;
+    case 'clientChange': ClientFields.clear(S); renderForm(); persist(); setTimeout(()=>$('#clFind')?.focus(),30); return;
     case 'checkRun': return PartyCheck.run(b.dataset.force==='1');
     case 'integrations': return openSettings('keys');
     case 'settings': return openSettings();

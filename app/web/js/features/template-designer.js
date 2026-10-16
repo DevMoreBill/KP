@@ -381,7 +381,11 @@ async function tdState(){
   const D = tdDemoState();
   let list = []; try{ list = await store().list(); }catch(e){}
   const pick = list.filter(x=>x.price && x.photo).slice(0,1).concat(list.filter(x=>x.price && !x.photo)).slice(0,2);
-  for (const x of pick){ const it = newItem(); const prev = S; S = D; try{ fillFromCat(it, await fullDoc(x)); }catch(e){} finally{ S = prev; } it.qty = 1; D.items.push(it); }
+  for (const x of pick){
+    const it = newItem(); let doc = null; try{ doc = await fullDoc(x); }catch(e){}
+    const prev = S; S = D;            // пример подставляется без ожидания: пока S — пример, автосохранение черновика не успеет его записать
+    try{ if (doc) fillFromCat(it, doc); }catch(e){} finally{ S = prev; }
+    it.qty = 1; D.items.push(it); }
   if (!D.items.length){ const it = newItem(); Object.assign(it, {name:'Компрессор винтовой ПРИМЕР-37', spec:'37 кВт, 6,2 м³/мин', price:1250000, page:true,
     groups:[{name:'Основные', rows:[{k:'Производительность',v:'6,2 м³/мин'},{k:'Мощность',v:'37 кВт'},{k:'Давление',v:'8 бар'}]}], features:[{id:uid(), label:'Назначение', text:'Пример описания оборудования для показа оформления шаблона.'}]}); D.items.push(it); }
   return D;
