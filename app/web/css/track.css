@@ -157,3 +157,40 @@ dialog.st-confirm.cc-dlg{width:min(1040px,calc(100vw - 32px));max-width:none}
 .cc-n .muted{font-size:12px}
 #ccNotes{max-height:260px;overflow:auto}
 @media (max-width:760px){.cc-g{grid-template-columns:minmax(0,1fr)}}
+
+/* справочные документы к КП (js/features/kp-files.js): блок в «Условиях», окно документов, скрепка в журнале, письмо */
+.kf-step{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.kf-h{display:flex;align-items:center;gap:6px;font-size:15px;margin:0 0 8px}
+.kf-wait{margin:0;font-size:13.5px}
+.kf-box{border:1.5px dashed var(--line);border-radius:12px;padding:8px 12px;display:grid;gap:8px;background:var(--card);min-width:0}
+.kf-box:focus-visible,.kf-box.over{border-color:var(--sky);outline:none;background:var(--soft)}
+.kf-l{display:grid}
+.kf-load{margin:0;font-size:13px}
+.kf-r{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
+.kf-ext{display:grid;place-items:center;height:30px;border-radius:7px;font-size:10px;font-weight:700;line-height:1;letter-spacing:0;background:var(--soft);color:var(--navy)}
+.kf-pdf{background:#fdecec;color:#b42318}
+.kf-doc,.kf-docx{background:#e8f1ff;color:#0b45a0}
+.kf-xls,.kf-xlsx{background:#e6f6ec;color:#16703a}
+.kf-dwg,.kf-dxf,.kf-zip{background:var(--warn-bg);color:var(--warn-ink)}
+.kf-m{display:grid;gap:2px;min-width:0}
+.kf-n{font-weight:600;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
+.kf-n:hover{color:var(--navy);text-decoration:underline}
+.kf-m .muted{font-size:12.5px}
+input.kf-note{font-size:13px;padding:4px 8px;min-height:30px;margin-top:2px}
+.kf-r .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.kf-add{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.kf-hint{font-size:12.5px}
+dialog.st-confirm.kf-dlg{width:min(760px,calc(100vw - 32px));max-width:none}
+.kf-about{margin:0 0 10px;font-size:13.5px}
+.kf-dlg .kf-host{max-height:min(60dvh,560px);overflow:auto;overscroll-behavior:contain}
+.jr-f{width:fit-content;justify-self:start;align-self:flex-start;display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);background:var(--soft);color:var(--navy);font-size:12px;font-weight:600;line-height:1.6;cursor:pointer;white-space:nowrap}
+.ml-sum{font-size:12.5px}
+@media (max-width:600px){
+  .kf-r{grid-template-columns:34px minmax(0,1fr) auto;gap:8px}
+  .kf-r .acts{flex-direction:column}
+  .kf-dlt{display:none}
+  .kf-dl{min-width:44px;min-height:44px;display:inline-grid;place-items:center;font-size:17px}
+  input.kf-note{font-size:16px}
+  .kf-hint{flex-basis:100%}
+  .kf-drag{display:none}
+}

@@ -147,8 +147,11 @@ class StandTest(unittest.TestCase):
         st, b = self.save({'srv.loginFails': {'on': True, 'v': '3'}, 'srv.loginLockMin': {'on': True, 'v': '1'}})
         self.assertEqual(st, 200, b)
         lg, pw = Stand.ADMIN
-        codes = [self.stand.http.req('POST', '/api/admin/login', {'login': lg, 'password': 'wrong-1'})[0] for _ in range(3)]
-        self.assertEqual(codes, [403, 403, 403])
+        res = [self.stand.http.req('POST', '/api/admin/login', {'login': lg, 'password': 'wrong-1'}) for _ in range(3)]
+        self.assertEqual([r[0] for r in res], [403, 403, 429], 'третья ошибка — сразу пауза')
+        self.assertIn('Осталось попыток: 1', res[1][1])
+        self.assertIn('закрыт на 1 мин', res[2][1])
+        self.assertTrue(1 <= int(res[2][2].get('Retry-After')) <= 60, res[2][2])
         st, b, _ = self.stand.http.req('POST', '/api/admin/login', {'login': lg, 'password': pw})
         self.assertEqual(st, 429)
         self.assertIn('1 мин', b)

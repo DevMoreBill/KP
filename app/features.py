@@ -38,6 +38,7 @@ FEATURES = {
     'saveDlg': (True, 'Окно «КП сохранено»'),
     'mgrLine': (True, '«Менеджер» строкой'),
     'clientCard': (True, 'Карточка клиента'),
+    'kpFiles': (True, 'Справочные документы к КП'),
 }
 
 # адреса сервера, которые принадлежат функции: (метод или None — любой, шаблон пути, ключ)
@@ -53,6 +54,7 @@ ROUTES = [
     (None, re.compile(r'^/api/drafts(/.*)?$'), 'drafts'),
     (None, re.compile(r'^/api/presets(/.*)?$'), 'presets'),
     (None, re.compile(r'^/api/clientcard(/.*)?$'), 'clientCard'),
+    (None, re.compile(r'^/api/kp/[A-Za-z0-9_-]+/files(/.*)?$'), 'kpFiles'),
 ]
 
 

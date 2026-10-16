@@ -5,7 +5,7 @@
 Каждый день после обычной копии (maintenance.DbCopy.daily) архив kp-ГГГГ-ММ-ДД.zip копируется во вторую папку
 и проверяется (контрольные суммы архива; прежние копии без сжатия .sqlite3 — встроенной проверкой SQLite); там хранится
 столько последних копий, сколько задано. По желанию туда же досылаются изображения каталога (только новые и изменённые
-файлы). Настройка — kv settings.backup2, состояние — kv maint.backup2.
+файлы); справочные документы КП (data/kp_files) — всегда, только новые. Настройка — kv settings.backup2, состояние — kv maint.backup2.
 """
 import os
 import shutil
@@ -15,6 +15,7 @@ from datetime import date, datetime
 
 import maintenance
 from defaults import SrvVal
+from kp_files import KpFiles
 from storage import DbZip
 
 
@@ -154,6 +155,8 @@ class MirrorBackup:
                         pass
             if c['images']:
                 rec['images'] = self._images(os.path.join(c['path'], 'img'))
+            # справочные документы КП (паспорта, сертификаты) — всегда: заново их не получить, а места занимают немного
+            rec['kpFiles'] = self._kp_files(os.path.join(c['path'], KpFiles.FOLDER))
         except Exception as e:
             rec.update(ok=False, error=str(e)[:300])
         maintenance._save(self.store, backup2=rec)
@@ -197,6 +200,25 @@ class MirrorBackup:
                     continue
                 os.makedirs(os.path.dirname(d), exist_ok=True)
                 shutil.copyfile(s, d)
+                copied += 1
+        return {'total': total, 'copied': copied}
+
+    def _kp_files(self, dst_root):
+        """Справочные документы КП (data/kp_files): только новые — имена на диске случайные, файл не меняется."""
+        src_root = os.path.join(self.data_dir, KpFiles.FOLDER)
+        copied = total = 0
+        for dp, dn, fn in os.walk(src_root):
+            for name in fn:
+                if not KpFiles.DISK.match(name):          # недописанные .part и посторонние файлы — не копируются
+                    continue
+                total += 1
+                s = os.path.join(dp, name)
+                d = os.path.join(dst_root, os.path.relpath(s, src_root))
+                if os.path.isfile(d) and os.path.getsize(d) == os.path.getsize(s):
+                    continue
+                os.makedirs(os.path.dirname(d), exist_ok=True)
+                shutil.copyfile(s, d + '.part')
+                os.replace(d + '.part', d)
                 copied += 1
         return {'total': total, 'copied': copied}
 

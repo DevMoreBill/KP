@@ -111,7 +111,6 @@ def check_new_password(pw):
 
 
 # ---------------------------------------------------------------- сессии и попытки входа
-FAILS = {}
 LOCK = threading.RLock()
 
 
@@ -235,18 +234,67 @@ def is_admin(h, need_csrf=True):
     return not need_csrf or hmac.compare_digest(h.headers.get('X-CSRF-Token') or '', s['csrf'])
 
 
-def _locked(ip):
-    now = time.time()
-    window, limit = SrvVal.now('srv.loginLockMin') * 60, SrvVal.now('srv.loginFails')
-    with LOCK:
-        for k in [k for k, v in FAILS.items() if not v or now - v[-1] >= window]:     # старые попытки не копятся
-            del FAILS[k]
-        return len(FAILS.get(ip, [])) >= limit
+class LoginGuard:
+    """Защита входа от подбора паролей (менеджеры и администраторы): неверные попытки считаются по адресу компьютера.
+    srv.loginFails ошибок подряд (без перерыва дольше srv.loginLockMin мин) — вход с этого адреса закрыт на srv.loginLockMin
+    минут после последней ошибки. Ответ говорит, сколько ждать (заголовок Retry-After) и сколько попыток осталось, но не
+    говорит, есть ли такой логин: неизвестный логин проверяется по «пустому» хешу — время ответа то же."""
+    FAILS = {}
+    WRONG = 'Неверный логин или пароль'
+    _dummy = None
 
+    @classmethod
+    def _limits(cls):
+        return SrvVal.now('srv.loginLockMin') * 60, SrvVal.now('srv.loginFails')
 
-def _fail(ip):
-    with LOCK:
-        FAILS.setdefault(ip, []).append(time.time())
+    @classmethod
+    def _tries(cls, ip):
+        """Неверные попытки с адреса (старые — забываются)."""
+        now = time.time()
+        window = cls._limits()[0]
+        with LOCK:
+            for k in [k for k, v in cls.FAILS.items() if not v or now - v[-1] >= window]:
+                del cls.FAILS[k]
+            return list(cls.FAILS.get(ip, []))
+
+    @classmethod
+    def left(cls, ip):
+        """Сколько секунд вход с адреса ещё закрыт; 0 — открыт."""
+        window, limit = cls._limits()
+        v = cls._tries(ip)
+        return max(1, math.ceil(v[-1] + window - time.time())) if len(v) >= limit else 0
+
+    @classmethod
+    def verify(cls, pw, rec):
+        """Пароль подходит к хешу; нет хеша (нет такого логина) — та же работа впустую и False."""
+        if not rec:
+            if cls._dummy is None:
+                cls._dummy = hash_password(secrets.token_hex(8))
+            verify_password(str(pw or ''), cls._dummy)
+            return False
+        return verify_password(str(pw or ''), rec)
+
+    @staticmethod
+    def wait_text(sec):
+        return '%d мин' % math.ceil(sec / 60) if sec > 30 else '%d с' % sec
+
+    @classmethod
+    def refuse(cls, h, sec):
+        """429: вход закрыт — сколько ждать."""
+        return h.send(429, 'text/plain; charset=utf-8', 'Слишком много неверных попыток — вход с этого компьютера снова через %s'
+                      % cls.wait_text(sec), {'Retry-After': str(sec)})
+
+    @classmethod
+    def wrong(cls, h, ip):
+        """Неверный логин или пароль: попытка засчитана; последняя — сразу 429, предпоследние — сколько осталось."""
+        with LOCK:
+            cls.FAILS.setdefault(ip, []).append(time.time())
+        sec = cls.left(ip)
+        if sec:
+            return h.send(429, 'text/plain; charset=utf-8', '%s. Вход с этого компьютера закрыт на %s' % (cls.WRONG, cls.wait_text(sec)),
+                          {'Retry-After': str(sec)})
+        rest = cls._limits()[1] - len(cls._tries(ip))
+        return h.send(403, 'text/plain; charset=utf-8', cls.WRONG + ('. Осталось попыток: %d' % rest if rest <= 2 else ''))
 
 
 # ---------------------------------------------------------------- журнал действий
@@ -689,28 +737,32 @@ def auth_api(h, store, m, sub):
     if sub == 'status':
         u = auth_users.current(h, store) if auth_users.enabled(store) else None
         return send(200, {'enabled': auth_users.enabled(store), 'user': u, 'admin': session(h, touch=False) is not None,
-                          'perms': [{'key': k, 'label': lb} for k, lb, _ in auth_users.PERMS]})
+                          'perms': [{'key': k, 'label': lb} for k, lb, _ in auth_users.PERMS], **auth_users.LoginInfo.public(store)})
     if sub == 'login' and m == 'POST':
         ip = _ip(h)
-        if _locked(ip):
-            return h.send(429, 'text/plain; charset=utf-8', 'Слишком много неверных попыток — подождите %d мин' % SrvVal.now('srv.loginLockMin'))
+        sec = LoginGuard.left(ip)
+        if sec:
+            return LoginGuard.refuse(h, sec)
         d = _body_obj(h)
         mid, rec = auth_users.find_by_login(store, d.get('login'))
-        if not mid or rec.get('blocked') or not rec.get('pw') or not verify_password(d.get('password') or '', rec['pw']):
-            _fail(ip)
+        ok = LoginGuard.verify(d.get('password'), (rec or {}).get('pw'))
+        if not ok or rec.get('blocked'):
             store.audit_add({'userId': mid, 'userName': str(d.get('login') or '')[:40], 'userRole': 'user', 'action': 'login', 'entityType': 'user',
                              'entityId': mid, 'ip': ip, 'userAgent': h.headers.get('User-Agent') or '', 'result': 'failed'})
-            return h.send(403, 'text/plain; charset=utf-8', 'Неверный логин или пароль' if not (rec or {}).get('blocked') else 'Вход запрещён администратором')
-        tok = auth_users.start(store, mid)
+            if ok:      # пароль верный, но вход запрещён — говорим только тому, кто знает пароль
+                return h.send(403, 'text/plain; charset=utf-8', 'Вход запрещён администратором — обратитесь к нему')
+            return LoginGuard.wrong(h, ip)
+        remember = d.get('remember', True) is not False
+        tok = auth_users.UserSession.start(store, mid, remember)
         auth_users.touch_login(store, mid)
         store.audit_add({'userId': mid, 'userName': rec.get('login'), 'userRole': 'user', 'action': 'login', 'entityType': 'user', 'entityId': mid,
                          'ip': ip, 'userAgent': h.headers.get('User-Agent') or '', 'result': 'success'})
-        return send(200, {'ok': True}, {'Set-Cookie': auth_users.cookie(tok)})
+        return send(200, {'ok': True}, {'Set-Cookie': auth_users.UserSession.cookie(tok, remember)})
     if sub == 'logout' and m == 'POST':
         tok = auth_users.cookie_token(h)
         if tok:
             auth_users.drop_sessions(store, tok=tok)
-        return send(200, {'ok': True}, {'Set-Cookie': auth_users.cookie('', clear=True)})
+        return send(200, {'ok': True}, {'Set-Cookie': auth_users.UserSession.cookie('')})
     return h.send(404, 'text/plain; charset=utf-8', 'Нет такого запроса')
 
 
@@ -778,15 +830,15 @@ class AdminApi:
             ip = _ip(h)
             if not users:
                 return self.err(409, 'Администратор ещё не создан')
-            if _locked(ip):
+            sec = LoginGuard.left(ip)
+            if sec:
                 log(h, st, 'login', 'admin', None, result='failed', admin=False)
-                return self.err(429, 'Слишком много неверных попыток — подождите %d мин' % SrvVal.get(st, 'srv.loginLockMin'))
+                return LoginGuard.refuse(h, sec)
             d = self.data()
             u = find_account(users, d.get('login')) if (d.get('login') or '').strip() else (users[0] if len(users) == 1 else None)
-            if not u or not verify_password(d.get('password') or '', u.get('pw') or {}):
-                _fail(ip)
+            if not LoginGuard.verify(d.get('password'), (u or {}).get('pw')):
                 log(h, st, 'login', 'admin', (d.get('login') or '')[:40] or None, result='failed', admin=False)
-                return self.err(403, 'Неверный логин или пароль')
+                return LoginGuard.wrong(h, ip)
             u['lastLogin'] = _now()
             save_accounts(st, users)
             resp = self._login_ok(u)
@@ -925,9 +977,14 @@ class AdminApi:
                     before = auth_users.enabled(st)
                     auth_users.set_enabled(st, on, me or 'admin')
                     self.log('toggle_user_login', 'settings', 'userLogin', {'enabled': before}, {'enabled': on})
+                if 'help' in d:      # «Забыли пароль?» на экране входа: к кому обращаться
+                    before = auth_users.LoginInfo.help(st)
+                    after = auth_users.LoginInfo.set_help(st, d['help'], me or 'admin')
+                    if after != before:
+                        self.log('edit_settings', 'settings', 'userLogin.help', {'help': before}, {'help': after})
             mgrs = _loads(st.managers_list()) or []
             return self.ok({'enabled': auth_users.enabled(st), 'perms': [{'key': k, 'label': lb, 'def': dv} for k, lb, dv in auth_users.PERMS],
-                            'managers': auth_users.public(st, mgrs)})
+                            'managers': auth_users.public(st, mgrs), 'help': auth_users.LoginInfo.help(st)})
         r = re.match(r'^access/([A-Za-z0-9_-]{1,64})$', sub)
         if r and m == 'POST':
             mid = r.group(1)
@@ -1079,6 +1136,14 @@ class AdminApi:
             return self.ok(self.listing(r.group(1), q.get('q') or ''))
         if sub == 'delete' and m == 'POST':
             return self.delete(self.data())
+        r = re.match(r'^kpfiles/([A-Za-z0-9_-]{1,64})/(\d{1,9})/delete$', sub)
+        if r and m == 'POST':        # справочный документ КП — удаляет только администратор (у менеджеров кнопки нет)
+            from kp_files import KpFiles
+            rec = KpFiles.of(st).delete(r.group(1), int(r.group(2)))
+            if not rec:
+                return self.err(404, 'Документ не найден')
+            self.log('delete_kp_file', 'kp', r.group(1), {'name': rec['name'], 'size': rec['size']}, None)
+            return self.ok({'ok': True})
         if sub == 'trash':
             return self.ok({'items': st.trash_list(), 'days': SrvVal.get(st, 'srv.trashDays')})
         r = re.match(r'^trash/(\d{1,9})/restore$', sub)
@@ -1338,8 +1403,11 @@ class AdminApi:
     def listing(self, etype, qs):
         st, ql = self.st, qs.lower()
         if etype == 'kp':
-            rows = [{'id': x.get('id'), 'title': '№ %s — %s' % (x.get('number', ''), x.get('client', '')),
-                     'sub': '%s · %s · %s' % (x.get('date', ''), x.get('manager') or '—', (x.get('items') or [''])[0])} for x in st.kp_all_meta()]
+            from kp_files import KpFiles
+            metas = st.kp_all_meta()
+            nf = KpFiles.of(st).counts([x.get('id') for x in metas])       # справочные документы — «📎» у КП (удаляет администратор)
+            rows = [{'id': x.get('id'), 'title': '№ %s — %s' % (x.get('number', ''), x.get('client', '')), 'files': nf.get(x.get('id'), 0),
+                     'sub': '%s · %s · %s' % (x.get('date', ''), x.get('manager') or '—', (x.get('items') or [''])[0])} for x in metas]
             rows.sort(key=lambda r: r['title'], reverse=True)
         elif etype == 'catalog':
             rows = [{'id': x['id'], 'title': x.get('name', ''), 'sub': ' · '.join(str(v) for v in ((x.get('attrs') or {}).get('maker'), x.get('spec')) if v)}

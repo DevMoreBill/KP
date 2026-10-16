@@ -8,6 +8,8 @@
   менеджеров: справочник уходит в каждый браузер, а хеши паролей и права — нет.
 • Сессия — cookie kp_user (HttpOnly, SameSite=Strict, 30 дней — srv.userSessionDays в «Значениях программы»); в базе — только хеш токена (kv «userSessions»),
   поэтому вход переживает перезапуск программы. Выход, смена пароля или права «вход запрещён» закрывают сессии.
+  Без «Запомнить меня» — cookie до закрытия браузера и не дольше srv.userShortHours часов (UserSession).
+• Экран входа — подсказка «Забыли пароль?» от администратора (settings.userLogin.help, LoginInfo).
 • Пароль — минимум 4 символа (требования минимальные, по заданию); хранится только хешем, как у администраторов.
 """
 import hashlib
@@ -40,7 +42,7 @@ def enabled(store):
 
 def set_enabled(store, on, by):
     st = store.kv_get('settings') or {}
-    st['userLogin'] = {'enabled': bool(on), 'updatedAt': _now(), 'updatedBy': by}
+    st['userLogin'] = {**(st.get('userLogin') or {}), 'enabled': bool(on), 'updatedAt': _now(), 'updatedBy': by}
     store.kv_set('settings', st)
     if not on:
         store.kv_set('userSessions', {})
@@ -117,13 +119,54 @@ def _sessions(store):
     return {k: v for k, v in s.items() if isinstance(v, dict) and v.get('exp', 0) > now}
 
 
-def start(store, mid):
-    tok = secrets.token_urlsafe(32)
-    with LOCK:
-        s = _sessions(store)
-        s[_h(tok)] = {'mid': mid, 'exp': time.time() + SrvVal.get(store, 'srv.userSessionDays') * 86400}
-        store.kv_set('userSessions', s)
-    return tok
+class UserSession:
+    """Сессия менеджера после входа. remember — «Запомнить меня на этом устройстве»: cookie на srv.userSessionDays дней;
+    без неё — cookie до закрытия браузера (без Max-Age), а сервер держит сессию не дольше srv.userShortHours часов."""
+
+    @staticmethod
+    def start(store, mid, remember=True):
+        tok = secrets.token_urlsafe(32)
+        ttl = SrvVal.get(store, 'srv.userSessionDays') * 86400 if remember else SrvVal.get(store, 'srv.userShortHours') * 3600
+        with LOCK:
+            s = _sessions(store)
+            s[_h(tok)] = {'mid': mid, 'exp': time.time() + ttl}
+            store.kv_set('userSessions', s)
+        return tok
+
+    @staticmethod
+    def cookie(tok, remember=True):
+        """Set-Cookie: пустой tok — удалить cookie (выход)."""
+        if not tok:
+            return '%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict' % COOKIE
+        age = '; Max-Age=%d' % (SrvVal.now('srv.userSessionDays') * 86400) if remember else ''
+        return '%s=%s; Path=/%s; HttpOnly; SameSite=Strict' % (COOKIE, tok, age)
+
+
+class LoginInfo:
+    """Что экран входа знает до входа: подсказка «Забыли пароль?» (её пишет администратор — к кому обращаться),
+    срок «Запомнить меня». Только то, что администратор сам решил показать, — без логинов и данных менеджеров."""
+    HELP_MAX = 200
+
+    @staticmethod
+    def help(store):
+        return str(((store.kv_get('settings') or {}).get('userLogin') or {}).get('help') or '')
+
+    @classmethod
+    def set_help(cls, store, text, by):
+        if not isinstance(text, str):
+            raise ValueError('Подсказка «Забыли пароль?» — текст')
+        text = ' '.join(text.split())
+        if len(text) > cls.HELP_MAX:
+            raise ValueError('Подсказка «Забыли пароль?» — не длиннее %d символов' % cls.HELP_MAX)
+        st = store.kv_get('settings') or {}
+        st['userLogin'] = {**(st.get('userLogin') or {}), 'help': text, 'helpAt': _now(), 'helpBy': by}
+        store.kv_set('settings', st)
+        return text
+
+    @classmethod
+    def public(cls, store):
+        return {'help': cls.help(store), 'sessionDays': SrvVal.get(store, 'srv.userSessionDays'),
+                'shortHours': SrvVal.get(store, 'srv.userShortHours')}
 
 
 def drop_sessions(store, mid=None, tok=None):
@@ -165,12 +208,6 @@ def find_by_login(store, login):
         if login and norm_login(r.get('login')) == login:
             return mid, r
     return None, None
-
-
-def cookie(tok, clear=False):
-    if clear:
-        return '%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict' % COOKIE
-    return '%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict' % (COOKIE, tok, SrvVal.now('srv.userSessionDays') * 86400)
 
 
 def touch_login(store, mid):

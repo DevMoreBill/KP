@@ -132,6 +132,16 @@ class KpLoader {
 
 // ---------- письмо клиенту с файлом КП (сервер отправляет через почту из «Настройки → Почта»)
 class MailDlg {
+  /** справочные документы КП в письме: сколько всего вложений и не больше ли предела письма («Значения программы» kp.mailMB) */
+  static sum(m, f){
+    const el=m.$('#mlSum'); if (!el) return;
+    const ids=new Set([...m.d.querySelectorAll('[data-mlf]:checked')].map(x=>+x.dataset.mlf));
+    const b=(m.$('#mlW').checked?f.wordSize||0:0)+(m.$('#mlP').checked?f.pdfSize||0:0)+(f.files||[]).filter(x=>ids.has(+x.id)).reduce((s,x)=>s+(x.size||0),0);
+    const lim=(f.mailMB||18)*1048576, over=b>lim;
+    el.className='ml-sum '+(over?'bad-t':'muted');
+    el.textContent=`Вложения: ≈ ${KpFilesPanel.size(b)} из ${f.mailMB||18} МБ${over?' — снимите галочки с части документов (их можно отправить вторым письмом)':''}`;
+  }
+
   static async open(id, number, onSent){
     let f; try{ f=await api(`/api/kp/${encodeURIComponent(id)}/mailform`); }catch(e){ return toast('Не удалось подготовить письмо: '+e.message); }
     if (!f.on) return toast('Почта не настроена — администратор: «Настройки → Почта»');
@@ -143,15 +153,19 @@ class MailDlg {
       <label class="f"><span>Тема</span><input type="text" id="mlS" value="${esc(f.subject)}"></label>
       <label class="f"><span>Текст письма</span><textarea id="mlB" rows="9">${esc(f.body)}</textarea></label>
       <div class="ml-files"><span class="muted">Вложения:</span><label><input type="checkbox" id="mlW" checked><span>Word — ${esc(f.word)}</span></label>
-        <label><input type="checkbox" id="mlP"${f.pdf?' checked':''}><span>PDF${f.pdf?' — '+esc(f.pdf):' (будет создан)'}</span></label></div>
+        <label><input type="checkbox" id="mlP"${f.pdf?' checked':''}><span>PDF${f.pdf?' — '+esc(f.pdf):' (будет создан)'}</span></label>
+        ${(f.files||[]).map(x=>`<label><input type="checkbox" data-mlf="${esc(String(x.id))}" checked><span>📎 ${esc(x.name)} <span class="muted">· ${KpFilesPanel.size(x.size)}${x.note?' · '+esc(x.note):''}</span></span></label>`).join('')}
+        ${(f.files||[]).length?'<span class="muted ml-sum" id="mlSum"></span>':''}</div>
       ${f.sent&&f.sent.length?`<p class="muted" style="margin:8px 0 0">Уже отправляли: ${f.sent.map(s=>esc(KpDate.ddmm(s.at))+' → '+esc((s.to||[]).join(', '))).join('; ')}</p>`:''}
       <p class="msg" id="mlMsg" hidden></p>
       <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px"><button class="btn" type="button" data-x>Отмена</button><button class="btn primary" type="button" data-send>Отправить</button></div>`, 'ml-dlg');
+    MailDlg.sum(m, f); m.d.onchange=()=>MailDlg.sum(m, f);
     m.d.onclick=async e=>{ if (e.target.closest('[data-x]')) return m.close();
       const b=e.target.closest('[data-send]'); if (!b) return;
       const msg=m.$('#mlMsg'); b.disabled=true; b.textContent='Отправляю…'; msg.hidden=true;
       try{ const r=await api(`/api/kp/${encodeURIComponent(id)}/send`, {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'},
-          body:JSON.stringify({to:m.$('#mlTo').value, cc:m.$('#mlCc').value, subject:m.$('#mlS').value, body:m.$('#mlB').value, word:m.$('#mlW').checked, pdf:m.$('#mlP').checked})});
+          body:JSON.stringify({to:m.$('#mlTo').value, cc:m.$('#mlCc').value, subject:m.$('#mlS').value, body:m.$('#mlB').value, word:m.$('#mlW').checked, pdf:m.$('#mlP').checked,
+            files:[...m.d.querySelectorAll('[data-mlf]:checked')].map(x=>+x.dataset.mlf)})});
         toast('КП № '+number+' отправлено: '+m.$('#mlTo').value); onSent&&onSent(r.track); m.close(); Reminders.load(); }
       catch(err){ msg.hidden=false; msg.className='msg err'; msg.textContent=err.message; b.disabled=false; b.textContent='Отправить'; } };
   }

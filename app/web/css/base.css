@@ -108,15 +108,51 @@ dialog.uit-dlg textarea{width:100%;font:inherit}
 dialog.uit-dlg .uit-acts{display:flex;gap:8px;align-items:center}
 dialog.uit-dlg .uit-acts .sp{flex:1}
 
-/* вход менеджеров по логину и паролю */
-.auth-wrap{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:16px;background:var(--paper)}
-.auth-card{width:min(380px,100%);display:grid;gap:12px;padding:28px 26px;border:1px solid var(--line);border-radius:16px;background:var(--card);box-shadow:0 18px 50px rgba(11,69,160,.12)}
-.auth-card h2{margin:0;font-size:20px}
-.auth-card .muted{margin:0}
-.auth-card .btn.primary{justify-content:center;height:44px;font-size:15px}
-.auth-logo{font-weight:800;font-size:22px;letter-spacing:.02em;color:var(--navy)}
+/* вход менеджеров по логину и паролю (экран входа) и вход администратора в «Настройки» — общие поля LoginForm */
+.auth-wrap{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  background:radial-gradient(1200px 600px at 50% -10%,color-mix(in srgb,var(--sky) 14%,transparent),transparent 70%),var(--paper)}
+.auth-card{width:min(400px,100%);display:grid;gap:14px;padding:28px 28px 22px;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 18px 50px rgba(11,69,160,.12)}
+.auth-brand{display:grid;gap:2px;margin-bottom:2px}
+.auth-logo{font-weight:800;font-size:24px;line-height:1.1;letter-spacing:.02em;color:var(--navy)}
 .auth-logo span{color:var(--sky)}
-.auth-adm{font-size:12px;text-align:center}
+.auth-app{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:18px;font-weight:650;color:var(--ink)}
+.auth-app small{font-size:12.5px;font-weight:500;color:var(--muted)}
+.auth-card .auth-note{margin:0;font-size:13.5px;line-height:1.45;text-align:left}
+.auth-card .msg.warn{margin:0}
+:is(.auth-card,.st-login form) .f input:is([type=text],[type=password]){min-height:44px;padding:10px 12px;font-size:15px;border-radius:10px}
+.pw-box{position:relative;display:block}
+.pw-box input{padding-right:46px!important}
+.pw-eye{position:absolute;top:0;right:0;bottom:0;width:44px;display:grid;place-items:center;border:0;background:transparent;color:var(--muted);cursor:pointer;border-radius:0 10px 10px 0;touch-action:manipulation}
+.pw-eye:hover,.pw-eye.on{color:var(--navy)}
+.pw-eye:focus-visible{outline:2px solid var(--sky);outline-offset:-4px}
+.pw-eye .pw-x{display:none}
+.pw-eye.on .pw-x{display:inline}
+.pw-caps{color:var(--warn-ink);font-size:12.5px;font-weight:500}
+.auth-rem{display:flex;align-items:center;gap:4px;font-size:14px;color:var(--ink)}
+.auth-rem>label{display:inline-flex;align-items:center;gap:8px;cursor:pointer;min-height:32px}
+.auth-rem input{margin:0;width:18px;height:18px;accent-color:var(--navy)}
+.auth-rem .tip{margin-left:2px}
+.auth-err{margin:0;padding:9px 12px;border-radius:10px;font-size:13.5px;line-height:1.4;color:var(--danger);background:color-mix(in srgb,var(--danger) 9%,var(--card));border:1px solid color-mix(in srgb,var(--danger) 35%,transparent)}
+.auth-err[hidden]{display:none}
+.btn.auth-go{width:100%;justify-content:center;min-height:46px;font-size:15.5px;font-weight:650;touch-action:manipulation}
+.btn.auth-go[aria-busy="true"]{cursor:progress}
+.auth-foot{display:flex;justify-content:space-between;align-items:center;gap:8px 16px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:10px}
+.auth-lnk{display:inline-flex;align-items:center;min-height:32px;padding:0;border:0;background:none;color:var(--navy);font-size:13.5px;font-weight:550;cursor:pointer;touch-action:manipulation}
+.auth-lnk:hover{text-decoration:underline}
+.auth-lnk[aria-expanded="true"]{text-decoration:underline}
+.auth-help{margin-top:-4px;padding:10px 12px;border-radius:10px;background:var(--soft);color:var(--ink);font-size:13px;line-height:1.45}
+.auth-help[hidden]{display:none}
+.auth-help p{margin:0 0 6px}.auth-help p:last-child{margin:0}
+@media (max-width:520px){
+  .auth-wrap{place-items:start center;padding-top:max(28px,env(safe-area-inset-top))}
+  .auth-card{padding:22px 18px 16px;border-radius:16px}
+}
+@media (pointer:coarse){
+  .auth-rem>label{min-height:44px}
+  .auth-lnk{min-height:44px;font-size:15px}
+  .btn.auth-go{min-height:50px;font-size:16px}
+}
 .auth-me{display:grid;gap:2px;padding:6px 12px 2px}
 
 /* 3.36: тендерное КП — в журнале и в разделе «Клиент» */
