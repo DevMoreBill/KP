@@ -3,10 +3,10 @@
 // «кто работает» — вошедший менеджер, права (каталог, чужие КП, экономика) проверяет сервер; здесь — только скрываем лишнее.
 'use strict';
 
-const AUTH = { enabled:false, user:null, admin:false, perms:[], shown:false, help:'', sessionDays:0, shortHours:0 };
+const AUTH = { enabled:false, user:null, admin:false, perms:[], shown:false, help:'', sessionDays:0, shortHours:0, pwMin:4 };
 
 async function authLoad(){
-  try{ const r=await api('/api/auth/status'); Object.assign(AUTH, {enabled:!!r.enabled, user:r.user||null, admin:!!r.admin, perms:r.perms||[], help:r.help||'', sessionDays:r.sessionDays||0, shortHours:r.shortHours||0}); }catch(e){}
+  try{ const r=await api('/api/auth/status'); Object.assign(AUTH, {enabled:!!r.enabled, user:r.user||null, admin:!!r.admin, perms:r.perms||[], help:r.help||'', sessionDays:r.sessionDays||0, shortHours:r.shortHours||0, pwMin:r.pwMin||4}); }catch(e){}
 }
 
 // право менеджера: при выключенном входе и у администратора — всё можно
@@ -30,8 +30,8 @@ class LoginForm {
     return `<label class="f"><span>${label}</span><input type="text" id="${id}" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required value="${esc(value)}" ${attrs}></label>`;
   }
 
-  // f — форма, send() — запрос (бросает Error; err.wait — сколько секунд вход закрыт), err — элемент для ошибки
-  static bind(f, send, err){
+  // f — форма, send() — запрос (бросает Error; err.wait — сколько секунд вход закрыт), err — элемент для ошибки, busy — надпись кнопки на время запроса
+  static bind(f, send, err, busy='Вход…'){
     f.addEventListener('click', e=>{ const b=e.target.closest('[data-eye]'); if (!b) return; const i=f.querySelector('#'+b.dataset.eye), show=i.type==='password';
       i.type=show?'text':'password'; b.setAttribute('aria-pressed', String(show)); b.title=show?'Скрыть пароль':'Показать пароль'; b.setAttribute('aria-label', b.title);
       b.classList.toggle('on', show); i.focus({preventScroll:true}); });
@@ -41,15 +41,24 @@ class LoginForm {
     f.addEventListener('focusout', ()=>setTimeout(()=>f.querySelectorAll('.pw-caps').forEach(c=>{ if (!c.closest('.f').contains(document.activeElement)) c.hidden=true; }), 0));
     const btn=f.querySelector('button[type=submit]'), label=btn.textContent;
     f.onsubmit=async e=>{ e.preventDefault(); if (btn.disabled) return;
-      err.hidden=true; err.textContent=''; btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.textContent='Вход…';
+      err.hidden=true; err.textContent=''; btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.textContent=busy;
       let wait=0;
       try{ await send(); }
-      catch(x){ wait=x.wait||0; LoginForm.error(err, x.message||String(x)); const pw=f.querySelector('input[autocomplete=current-password]'); if (pw && !wait){ pw.focus(); pw.select(); } }
+      catch(x){ wait=x.wait||0; LoginForm.error(err, x.message||String(x)); const pw=f.querySelector('input[autocomplete=current-password]')||f.querySelector('input[type=password]'); if (pw && !wait){ pw.focus(); pw.select(); } }
       finally{ btn.removeAttribute('aria-busy'); btn.textContent=label; btn.disabled=false; }
       if (wait) LoginForm._countdown(btn, err, wait, label); };
     LoginForm.keepVisible(f, btn);
   }
   static error(err, text){ err.textContent=text; err.hidden=false; }
+
+  // новый пароль два раза: проверка до запроса (то же проверяет сервер) → [новый, повтор]
+  static newPw(f, a, b){
+    const n=f.querySelector('#'+a).value, n2=f.querySelector('#'+b).value, min=AUTH.pwMin||4;
+    if (!n) throw new Error('Введите новый пароль');
+    if (n.length<min) throw new Error(`Пароль — не короче ${min} символов`);
+    if (n!==n2) throw new Error(n2 ? 'Новый пароль и повтор не совпадают' : 'Повторите новый пароль');
+    return [n, n2];
+  }
 
   // вход закрыт после неверных паролей: кнопка недоступна, в ошибке — сколько ждать
   static _countdown(btn, err, sec, label){
@@ -124,6 +133,27 @@ class AuthScreen {
     try{ localStorage.setItem('kp.userLogin', remember ? login : ''); localStorage.setItem('kp.userRemember', remember ? '1' : '0'); }catch(e){}
     location.reload();
   }
+  // вошёл с временным паролем от администратора: сначала свой пароль (сервер до смены ничего другого не выполняет)
+  static change(){
+    if (AUTH.changing) return; AUTH.changing=AUTH.shown=true;
+    $('#authWrap')?.remove();
+    const u=AUTH.user||{}, min=AUTH.pwMin||4;
+    document.body.insertAdjacentHTML('beforeend', `<div class="auth-wrap" id="authWrap"><form class="auth-card" id="authNew" autocomplete="on" novalidate>
+      <div class="auth-brand"><div class="auth-logo">ПНЕВМО<span>ТЕХ</span></div><div class="auth-app">Задайте свой пароль</div></div>
+      <p class="muted auth-note">${u.name?`<b>${esc(u.name)}</b>, в`:'В'}ы вошли с временным паролем от администратора. Придумайте свой — не короче ${min} символов; его будете знать только вы.</p>
+      <input type="text" name="username" autocomplete="username" value="${esc(u.login||'')}" hidden>
+      ${LoginForm.pw('authNew1', 'Новый пароль', 'new-password', `name="new-password" minlength="${min}"`)}
+      ${LoginForm.pw('authNew2', 'Новый пароль ещё раз', 'new-password')}
+      <p class="auth-err" id="authErr" role="alert" aria-live="assertive" hidden></p>
+      <button class="btn primary auth-go" type="submit">Сохранить и продолжить</button>
+      <div class="auth-foot"><span class="muted auth-small">После сохранения временный пароль не подойдёт</span><button type="button" class="auth-lnk" id="authOut">Выйти</button></div></form></div>`);
+    const f=$('#authNew');
+    LoginForm.bind(f, async()=>{ const [n, n2]=LoginForm.newPw(f, 'authNew1', 'authNew2');
+      await LoginForm.post('/api/auth/password', {new:n, new2:n2}); location.reload(); }, $('#authErr'), 'Сохраняю…');
+    $('#authOut').onclick=()=>AuthMenu.leave();
+    setTimeout(()=>$('#authNew1')?.focus(), 30);
+  }
+
   static _last(){ try{ return localStorage.getItem('kp.userLogin')||''; }catch(e){ return ''; } }
   static _remember(){ try{ return localStorage.getItem('kp.userRemember')!=='0'; }catch(e){ return true; } }
 
@@ -135,16 +165,64 @@ class AuthScreen {
   }
 }
 
-async function authLogout(){
-  if (!confirm('Выйти из программы? Черновик КП останется в этом браузере.')) return;
-  try{ await api('/api/auth/logout',{method:'POST'}); }catch(e){}
-  location.reload();
-}
+// «⋯»: «Вы вошли как …», «Сменить пароль», «Выйти на всех устройствах», «Выйти» (на телефоне — в меню «☰», mobile.js)
+class AuthMenu {
+  static on(){ return !!(AUTH.enabled && AUTH.user); }
 
-// строка «вы вошли как …» и «Выйти» в меню «⋯»
-function authMenu(){
-  if (!AUTH.enabled || !AUTH.user) return;
-  const m=document.querySelector('.topmenu .menu-l'); if (!m || $('#btnLogout')) return;
-  m.insertAdjacentHTML('afterbegin', `<div class="auth-me"><small class="muted">Вы вошли как</small><b>${esc(AUTH.user.name)}</b></div><button type="button" id="btnLogout">Выйти из учётной записи</button><hr>`);
-  $('#btnLogout').onclick=authLogout;
+  static mount(){
+    if (!AuthMenu.on()) return;
+    const m=document.querySelector('.topmenu .menu-l'); if (!m || $('#btnLogout')) return;
+    m.insertAdjacentHTML('afterbegin', `<div class="auth-me"><small class="muted">Вы вошли как</small><b>${esc(AUTH.user.name)}</b></div>
+      <button type="button" id="btnPw">Сменить пароль</button><button type="button" id="btnLogoutAll">Выйти на всех устройствах</button>
+      <button type="button" id="btnLogout">Выйти из учётной записи</button><hr>`);
+    const go=f=>()=>{ m.closest('details')?.removeAttribute('open'); f(); };
+    $('#btnPw').onclick=go(()=>AuthMenu.password());
+    $('#btnLogoutAll').onclick=go(()=>AuthMenu.logoutAll());
+    $('#btnLogout').onclick=go(()=>AuthMenu.logout());
+  }
+
+  // пункты меню телефона: it(ключ, значок, название, пояснение) — как в openMobileMenu
+  static mobileItems(it){
+    return AuthMenu.on() ? it('authPw','⚿','Сменить пароль',esc(AUTH.user.name))+it('authOut','⎋','Выйти','Здесь или на всех устройствах') : '';
+  }
+  static mobile(k){ if (k==='authPw') AuthMenu.password(); else if (k==='authOut') AuthMenu.logout(); }
+
+  // выйти здесь — или сразу на всех устройствах
+  static async logout(){
+    const v=await Modal.ask(`<h3>Выйти из программы?</h3><p>Черновик КП останется в этом браузере.</p>
+      <div class="row auth-row"><button class="btn" type="button" data-v="0">Отмена</button><span class="sp"></span><button class="btn" type="button" data-v="all">Выйти на всех устройствах</button><button class="btn primary" type="button" data-v="here">Выйти</button></div>`);
+    if (v==='all') return AuthMenu._all();
+    if (v==='here') return AuthMenu.leave();
+  }
+  static async leave(){ try{ await api('/api/auth/logout',{method:'POST'}); }catch(e){} location.reload(); }
+
+  static async logoutAll(){
+    const v=await Modal.ask(`<h3>Выйти на всех устройствах?</h3><p>Вход закроется везде, где вы входили: на этом и других компьютерах и телефонах. Дальше — снова логин и пароль. Пригодится, если входили на чужом компьютере или потеряли телефон.</p>
+      <div class="row"><button class="btn" type="button" data-v="0">Отмена</button><button class="btn primary" type="button" data-v="1">Выйти везде</button></div>`);
+    if (v) AuthMenu._all();
+  }
+  static async _all(){
+    try{ await api('/api/auth/logout-all',{method:'POST'}); }catch(e){ return toast(e.message||String(e)); }
+    location.reload();
+  }
+
+  // «Сменить пароль»: текущий + новый дважды; другие входы закрываются, этот остаётся
+  static password(){
+    const min=AUTH.pwMin||4;
+    const m=new Modal(`<form class="auth-pwf" novalidate><div class="dlg-h"><h3>Сменить пароль<small>${esc(AUTH.user.name)}</small></h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
+      <input type="text" name="username" autocomplete="username" value="${esc(AUTH.user.login||'')}" hidden>
+      ${LoginForm.pw('pwOld', 'Текущий пароль', 'current-password')}
+      ${LoginForm.pw('pwNew1', `Новый пароль — не короче ${min} символов`, 'new-password', `minlength="${min}"`)}
+      ${LoginForm.pw('pwNew2', 'Новый пароль ещё раз', 'new-password')}
+      <p class="muted auth-note">На других компьютерах и телефонах вход закроется — там войдите с новым паролем. Здесь вы останетесь в программе.</p>
+      <p class="auth-err" id="pwErr" role="alert" aria-live="assertive" hidden></p>
+      <div class="row"><button class="btn" type="button" data-x>Отмена</button><button class="btn primary" type="submit">Сменить пароль</button></div></form>`, 'auth-pwd');
+    m.d.addEventListener('click', e=>{ if (e.target.closest('[data-x]')) m.close(); });
+    const f=m.$('form');
+    LoginForm.bind(f, async()=>{ const old=f.querySelector('#pwOld').value; if (!old) throw new Error('Введите текущий пароль');
+      const [n, n2]=LoginForm.newPw(f, 'pwNew1', 'pwNew2');
+      const r=await LoginForm.post('/api/auth/password', {old, new:n, new2:n2});
+      m.close(); toast('Пароль изменён'+(r.closed?' — на других устройствах вход закрыт':'')); }, m.$('#pwErr'), 'Сохраняю…');
+    setTimeout(()=>m.$('#pwOld')?.focus(), 30);
+  }
 }

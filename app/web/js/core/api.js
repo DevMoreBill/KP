@@ -22,6 +22,7 @@ async function api(path, opts={}){
       if (!opts.retried && conflictAsk(info, path)) return api(path, {...opts, retried:true, headers:{...(opts.headers||{}), 'X-KP-Rev':String(info.rev)}});
       const err=new Error('не сохранено — запись уже изменил(а) '+(info.by||'другой пользователь')+'. Откройте её заново, чтобы увидеть изменения');
       err.code='conflict'; err.info=info; throw err; } }
+  if (r.status===403 && r.headers.get('X-KP-Auth')==='change-password') AuthScreen.change();     // вошёл с временным паролем
   if (r.status===401 && AUTH.enabled && !/^\/api\/(admin|auth)\//.test(path)) AuthScreen.show('Сессия закончилась — войдите снова.');
   if (!r.ok) throw new Error((await r.text()) || ('HTTP '+r.status));
   // сохранение в «Настройках» прошло — отметка «несохранённые изменения» снимается (проверки и предпросмотр — не сохранение)

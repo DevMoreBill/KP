@@ -21,8 +21,9 @@ span.jst{cursor:default}
 .kt-fu{border:1px solid var(--line);border-radius:12px;padding:8px 12px 12px;margin:10px 0 0;display:grid;gap:8px}
 .kt-fu legend{font-size:13px;color:var(--muted);padding:0 4px}
 .kt-fu input[type=date]{width:auto}
-.kt-h ul{margin:6px 0 0;padding-left:18px;font-size:13px;display:grid;gap:3px}
-.kt-h{margin-top:10px}
+.kt-hist{margin-top:10px;padding-top:7px;padding-bottom:7px;background:var(--soft);font-size:12px;color:var(--muted);font-weight:600}
+.kt-hist ul{margin:6px 0 0;padding-left:18px;font-size:13px;display:grid;gap:3px}
+@media (max-width:900px){.kt-hist{display:none}}
 .rem-btn{position:relative}
 .rem-btn[hidden]{display:none}
 .rem-btn.due{border-color:var(--danger);color:var(--danger)}

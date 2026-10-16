@@ -666,7 +666,7 @@ class KitView {
     const lead=by==='our' ? 'привозим на сборку сами' : 'шкафы, трубопровод, обвязка, системы безопасности — по ТЗ на сборку';
     return `<section class="kit-grp ${by}"><h4>${KitScope.LABEL[by]} <small class="muted">— ${lead}</small></h4>
       ${idx.length || need ? `<div class="kit-t" role="table">
-        ${idx.length ? `<div class="kt-r kt-h" role="row"><span title="Номер позиции на габаритном чертеже">Поз.</span><span>Наименование</span><span>Кол.</span><span>Закупка за ед.</span><span>Поставщик</span><span></span></div>` : ''}
+        ${idx.length ? `<div class="kt-r kt-head" role="row"><span title="Номер позиции на габаритном чертеже">Поз.</span><span>Наименование</span><span>Кол.</span><span>Закупка за ед.</span><span>Поставщик</span><span></span></div>` : ''}
         ${idx.map(([p, j])=>this.row(x, i, p, j, by)).join('')}${need}</div>${by==='our' ? KitNeed.allBtn(x, i) : ''}` : `<p class="muted kit-empty">${by==='our' ? 'Нет оборудования — выберите ниже.' : 'Пока ничего — по умолчанию сборщик делает контейнер и его системы.'}</p>`}
       <div class="kit-add">${mine.map(([n, c])=>`<button class="chip sm" type="button" data-a="kitPreset" data-i="${i}" data-n="${esc(n)}" data-cat="${esc(c)}" data-by="${by}" title="${c ? 'Подобрать в каталоге: '+esc(typeById(c).name) : 'Найти в каталоге или добавить новым элементом'}">+ ${esc(n)}</button>`).join('')}
         <button class="chip sm ghost" type="button" data-a="kitCat" data-i="${i}" data-by="${by}">+ Из каталога</button><button class="chip sm ghost" type="button" data-a="kitAdd" data-i="${i}" data-by="${by}">+ Своё</button></div></section>`;

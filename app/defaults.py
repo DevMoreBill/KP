@@ -107,6 +107,7 @@ class SrvVal:
         # вход и сессии (защита — только в безопасных пределах)
         'srv.adminIdleMin': (15, 5, 240), 'srv.userSessionDays': (30, 1, 365), 'srv.userShortHours': (12, 1, 72), 'srv.loginFails': (5, 3, 20),
         'srv.loginLockMin': (10, 1, 120), 'srv.adminPwMin': (8, 8, 64), 'srv.userPwMin': (4, 4, 64),
+        'srv.tempPwHours': (24, 1, 168),
         # письма администратору и «Требует внимания»
         'srv.alertRemindH': (24, 1, 168), 'srv.lowDiskGB': (2.0, 0.5, 1000), 'srv.alertsEveryMin': (60, 15, 1440),
         # ночное обновление
@@ -123,7 +124,7 @@ class SrvVal:
         # напоминания менеджеру
         'kp.staleDays': (7, 1, 90), 'kp.expireAhead': (3, 0, 30), 'kp.expiredShow': (3, 0, 60), 'kp.remindDays': (200, 30, 1000),
         # справочные документы к КП (app/kp_files.py)
-        'kp.fileMB': (25, 1, 100), 'kp.filesMax': (20, 1, 100), 'kp.filesMB': (100, 10, 1000), 'kp.mailMB': (18, 5, 50),
+        'kp.fileMB': (25, 1, 100), 'kp.filesMax': (20, 1, 100), 'kp.filesMB': (100, 10, 1000), 'kp.mailMB': (18, 5, 50), 'kp.fileUndoMin': (10, 0, 120),
     }
     TTL = 5                  # с — кэш значений: сервер читает их на каждом запросе (сессии)
     _cache = (None, 0.0, {})

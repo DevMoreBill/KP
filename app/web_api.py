@@ -680,7 +680,8 @@ class KpController(Controller):
 # ---------------------------------------------------------------- справочные документы к КП (app/kp_files.py)
 class KpFilesController(Controller):
     """Паспорта, сертификаты, схемы к КП — в документ КП не входят. Права — как у КП (admin.guard → kp_access по /api/kp/<id>/),
-    функция «Справочные документы к КП» (features.py). Удаление — только администратор: /api/admin/kpfiles/<id>/<n>/delete."""
+    функция «Справочные документы к КП» (features.py). Удаление — администратор (/api/admin/kpfiles/<id>/<n>/delete) или автор
+    своего файла в первые kp.fileUndoMin минут (/api/kp/<id>/files/<n>/remove)."""
 
     def _kp_ok(self, kid):
         """КП есть в журнале; КП в корзине — только администратору (его документы ждут восстановления)."""
@@ -692,11 +693,12 @@ class KpFilesController(Controller):
         if self.m == 'GET':
             if not self._kp_ok(kid):
                 return self.not_found('КП не найдено')
-            return self.send_json({'items': kf.list(kid), 'limits': kf.limits()})
+            return self.send_json({'items': kf.list(kid, admin.actor(self.h)[0]), 'limits': kf.limits()})
         if store().kp_get(kid, 'meta') is None:
             return self.text(400, 'Сначала сохраните КП, затем прикрепите документы')
+        uid, name, _role = admin.actor(self.h)
         with self.user_input():
-            rec = kf.add(kid, self.q.get('name', ''), self.body(), self.q.get('note', ''), admin.actor(self.h)[1])
+            rec = kf.add(kid, self.q.get('name', ''), self.body(), self.q.get('note', ''), name, uid)
         admin.log(self.h, store(), 'add_kp_file', 'kp', kid, None, {'name': rec['name'], 'size': rec['size']})
         return self.send_json(rec)
 
@@ -721,6 +723,18 @@ class KpFilesController(Controller):
             return self.not_found('Документ не найден')
         rec, data = got
         return self.send(200, rec['mime'] or 'application/octet-stream', data, self.attachment(rec['name'], 'document.' + (rec['ext'] or 'bin')))
+
+    @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/files/(\d{1,9})/remove', 'POST')
+    def remove_own(self, kid, fid):
+        """Автор удаляет свой файл, прикреплённый по ошибке, — только в первые kp.fileUndoMin минут после загрузки."""
+        try:
+            rec = KpFiles.of(store()).delete_own(kid, fid, admin.actor(self.h)[0])
+        except LookupError as e:
+            return self.not_found(str(e))
+        except PermissionError as e:
+            return self.text(403, str(e))
+        admin.log(self.h, store(), 'delete_kp_file', 'kp', kid, {'name': rec['name'], 'size': rec['size'], 'author': True}, None)
+        return self.send_json({'ok': True})
 
 
 # ---------------------------------------------------------------- внешние данные и помощники карточки

@@ -526,6 +526,16 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.95.0 — пароли и справочные документы:**
+- Сброс пароля администратором (`AdminApi.access_act`, `POST /api/admin/access/<id>/reset|logout`): временный пароль из 10
+  знаков (только хеш, срок `srv.tempPwHours` = 24 ч), до смены своего — 403 с `X-KP-Auth: change-password`; все входы закрываются.
+- Менеджер: `UserAuthApi` — `POST /api/auth/password` (смена, другие входы закрываются; неверный текущий — как неверный вход,
+  с паузой), `POST /api/auth/logout-all`; клиент — `AuthMenu`, `AuthScreen.change()`; вкладка доступа — класс `AccessPanel`.
+- Справочные документы: автор удаляет свой файл в первые `kp.fileUndoMin` (10) мин — `KpFiles.delete_own`,
+  `POST /api/kp/<id>/files/<n>/remove`; миграция `2027-09-kp-files-author` (`kp_files.added_by_id`).
+- Вёрстка: `.kt-h` разделён на `.kt-head` (состав) и `.kt-hist` (история напоминаний) — вычисленные стили не изменились.
+- Тесты: `tests/test_user_passwords.py`, `test_kp_files.test_06b_author_removes_own_in_time`.
+
 **3.94.0 — ревью кода:**
 - Сервер: `Router` — 409 в одном месте, `Controller.user_input()` (ValueError → 400) вместо копий try/except, удалён неиспользуемый
   `/api/mail/status`; `admin._refuse`, `KpJournal.status`; `kp_server.GzipCache`, отказ до разбора тела — тело дочитывается (без RST);

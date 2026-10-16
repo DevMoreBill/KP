@@ -192,6 +192,14 @@ MIGRATIONS = [
      """
      DROP INDEX IF EXISTS kp_files_kp; DROP TABLE IF EXISTS kp_files;
      """),
+    # кто прикрепил документ (код менеджера): автор может удалить свой файл в первые минуты после загрузки (kp.fileUndoMin)
+    ('2027-09-kp-files-author',
+     """
+     ALTER TABLE kp_files ADD COLUMN added_by_id TEXT;
+     """,
+     """
+     ALTER TABLE kp_files DROP COLUMN added_by_id;
+     """),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
