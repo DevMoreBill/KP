@@ -354,7 +354,7 @@ class Rusprofile:
 
 class Counterparties:
     KEY_FIELDS = ('checkoKey', 'ofdataKey', 'dadataKey', 'convertapiKey', 'atiToken', 'dellinKey', 'kitToken', 'cdekId',
-                  'cdekSecret', 'vozovozToken', 'deepseekKey')
+                  'cdekSecret', 'vozovozToken', 'nrgToken', 'deepseekKey')
     DAILY_FIELDS = ('checkoDaily', 'ofdataDaily')      # лимит запросов в день (по тарифу сервиса)
     KEY_RX = re.compile(r'^[\x21-\x7e]{4,300}$')       # ключи и токены — латиница, цифры и знаки, без пробелов
 
@@ -383,7 +383,7 @@ class Counterparties:
                 'dellinMask': mask(k.get('dellinKey', '')), 'kit': bool(k.get('kitToken')), 'kitMask': mask(k.get('kitToken', '')),
                 'cdek': bool(k.get('cdekId') and k.get('cdekSecret')), 'cdekIdMask': mask(k.get('cdekId', '')),
                 'cdekSecretMask': mask(k.get('cdekSecret', '')), 'vozovoz': bool(k.get('vozovozToken')),
-                'vozovozMask': mask(k.get('vozovozToken', '')), 'deepseek': bool(k.get('deepseekKey')), 'deepseekMask': mask(k.get('deepseekKey', ''))}
+                'vozovozMask': mask(k.get('vozovozToken', '')), 'nrg': bool(k.get('nrgToken')), 'nrgMask': mask(k.get('nrgToken', '')), 'deepseek': bool(k.get('deepseekKey')), 'deepseekMask': mask(k.get('deepseekKey', ''))}
 
     def save_keys(self, body):
         """Ключи и лимиты из «Настройки → Ключи API»: только известные поля; пустое значение — удалить ключ.

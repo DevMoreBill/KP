@@ -115,7 +115,7 @@ class CarrierApiTest(unittest.TestCase):
         self.assertIn('проверьте адрес', str(cm.exception))
         self.assertEqual(len(sent), lg.Dellin.DATE_TRIES)
 
-    def test_nrg_v3_reserve_on_502(self):
+    def test_nrg_v2_retry_on_502(self):
         import logistics_api as lg
         lg.Nrg.RETRY_PAUSE, pause = 0, lg.Nrg.RETRY_PAUSE
         self.addCleanup(setattr, lg.Nrg, 'RETRY_PAUSE', pause)
@@ -123,12 +123,46 @@ class CarrierApiTest(unittest.TestCase):
 
         def fake(url, data=None, headers=None, method=None):
             urls.append(url)
-            if '/v3/' not in url:
+            if len(urls) < 3:
                 raise urllib.error.HTTPError(url, 502, 'Bad Gateway', Message(), io.BytesIO(b''))
             return {'ok': 1}
         with mock.patch.object(lg.Http, 'call', side_effect=fake):
             self.assertEqual(lg.Nrg._call(self.store, '/price', {'a': 1}), {'ok': 1})
-        self.assertEqual(urls[-1], 'https://mainapi.nrg-tk.ru/v3/price')
+        self.assertEqual(urls[:2], ['https://api2.nrg-tk.pro/v2/price', 'https://api2.nrg-tk.ru/v2/price'])
+
+    def test_nrg_v4_with_token(self):
+        """Токен разработчика — API v4 (документация Энергии): заголовок NrgApi-DevToken, POST /prices в рублях,
+        места с isStandardSize; цена = перевозка + негабарит + забор + доставка + страхование."""
+        import logistics_api as lg
+        self.store.kv_set('integrations', {'nrgToken': 'TESTTOKEN123'})
+        sent = []
+
+        def fake(url, data=None, headers=None, method=None):
+            sent.append((url, data, dict(headers or {})))
+            if url.endswith('/cities?lang=ru'):
+                return {'cityList': [{'id': 1, 'name': 'Москва'}, {'id': 2, 'name': 'Санкт-Петербург'}]}
+            return {'places': 1, 'transfer': [{'typeId': 1, 'type': 'Авто', 'price': 10000, 'maxTransferTimeDays': 4,
+                                               'oversize': {'price': 1500, 'priceExpress': 0}},
+                                              {'typeId': 2, 'type': 'Авиа', 'price': 30000}],
+                    'request': {'price': 800}, 'delivery': {'price': 700}, 'priceInsurance': 250}
+        places = [{'l': 1.2, 'w': 0.8, 'h': 1, 'm': 0.3, 'qty': 1}]
+        with mock.patch.object(lg.Http, 'call', side_effect=fake):
+            r = lg.Nrg.quote(self.store, {'name': 'Москва'}, {'name': 'Санкт-Петербург'}, places, 100000)
+        url, body, h = sent[-1]
+        self.assertEqual(url, 'https://mainapi.nrg-tk.pro/api/v4/prices')
+        self.assertEqual(h.get('NrgApi-DevToken'), 'TESTTOKEN123')
+        self.assertEqual((body['idCityFrom'], body['idCityTo'], body['idCurrency'], body['cover']), (1, 2, 1, False))
+        self.assertEqual(body['items'][0], {'weight': 300.0, 'width': 0.8, 'height': 1, 'length': 1.2, 'isStandardSize': False})
+        self.assertEqual(r['price'], 10000 + 1500 + 800 + 700 + 250)
+        self.assertEqual((r['ins'], r['days'], r['door']), (250, 4, True))
+
+        def denied(url, data=None, headers=None, method=None):
+            raise urllib.error.HTTPError(url, 401, 'Unauthorized', Message(), io.BytesIO(b'{"message":"Bad credentials"}'))
+        with mock.patch.object(lg.Http, 'call', side_effect=denied):
+            with self.assertRaises(ValueError) as cm:
+                lg.Nrg._call(self.store, '/prices', {})
+        self.assertIn('токен не принят', str(cm.exception))
+        self.assertNotIn('TESTTOKEN', str(cm.exception))
 
     def test_test_without_key(self):
         from logistics_api import CarrierApi
