@@ -23,7 +23,7 @@ class CabDeals {
       <b class="dc-t">${esc(d.title||d.client||'Сделка № '+d.number)}</b>${d.client&&d.client!==d.title?`<span class="dc-c">${esc(d.client)}</span>`:''}
       <div class="dc-r"><b>${CrmFmt.short(d.sum)}</b>${d.expected?`<span class="${late?'bad-t':'muted'}" title="Ожидаемая дата">${late?'срок прошёл · ':'до '}${esc(CrmFmt.day(d.expected))}</span>`:''}</div>
       ${CrmData.closed(d)?(d.stage==='lost'&&d.lostReason?`<span class="dc-n muted">${esc(d.lostReason)}</span>`:''):n?`<span class="dc-n${nOver?' bad-t':''}">${CrmData.icon(n.kind)} ${esc(n.title)} · ${esc(CrmFmt.rel(n.due))}</span>`:'<span class="dc-n warn-t">Нет следующего дела</span>'}
-      <span class="dc-f muted">${k?`КП ${k}`:'без КП'}${CrmData.all()?' · '+esc(CrmData.mgrShort(d)):''}</span></article>`;
+      <span class="dc-f muted">${d.bxNew?'<b class="dc-new">Новая из Битрикс24</b> · ':''}${k?`КП ${k}`:'без КП'}${CrmData.all()?' · '+esc(CrmData.mgrShort(d)):''}${d.bxUrl?`<a class="dc-bx" href="${esc(d.bxUrl)}" target="_blank" rel="noopener" title="Открыть в Битрикс24">Б24 ↗</a>`:''}</span></article>`;
   }
   static bind(b){
     if (!this.drag || !b) return;

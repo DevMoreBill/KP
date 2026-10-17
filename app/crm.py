@@ -409,6 +409,21 @@ class DealBook:
                 self._save(c, did, d, 'переход на сделки', when=stamp)
         return len(rows)
 
+    def flag(self, did, **kw):
+        """Служебные отметки сделки (например, «новая из Битрикс24, ещё не открыта») — без новой правки и без истории;
+        None — снять отметку."""
+        with self.store.lock:
+            r = self.store.one('SELECT doc FROM deals WHERE id=?', (did,))
+            if not r:
+                return
+            d = _obj(r[0])
+            for k, v in kw.items():
+                if v is None:
+                    d.pop(k, None)
+                else:
+                    d[k] = v
+            self.store.write('UPDATE deals SET doc=? WHERE id=?', (json.dumps(d, ensure_ascii=False), did))
+
     def get_c(self, c, did):
         r = c.execute('SELECT %s FROM deals WHERE id=?' % self.COLS, (did,)).fetchone()
         return self._out(r) if r else None

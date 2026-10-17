@@ -132,6 +132,8 @@ class Cabinet {
     if (FEAT.on('reminders') && CrmData.mine()) await Reminders.load();
     if (Drafts.on() && CrmData.mine()) this.drafts=await Drafts.list(); else this.drafts=[];
     this.render();
+    const nb=CabToday.bxNew().length;
+    if (nb && CrmData.mine() && this._bxSeen!==nb){ this._bxSeen=nb; toast(`Из Битрикс24 пришли новые сделки: ${nb} — вкладка «Сегодня»`); }
   }
   static hello(){ const h=new Date().getHours(); return h<5?'Доброй ночи':h<12?'Доброе утро':h<18?'Добрый день':'Добрый вечер'; }
   static head(){
@@ -158,6 +160,7 @@ class Cabinet {
   static init(d){
     d.addEventListener('click', async e=>{ const t=e.target;
       if (t.closest('[data-x]')) return d.close();
+      if (t.closest('a.dc-bx')) return;          // ссылка на сделку в Битрикс24 — открывается в новой вкладке, без карточки
       const tb=t.closest('[data-ctab]'); if (tb){ this.tab=tb.dataset.ctab; try{ localStorage.setItem(this.KEY, this.tab); }catch(_){} return this.render(); }
       const q=t.closest('[data-cq]'); if (q){ const k=q.dataset.cq;
         if (k==='deal') return DealCard.create();
@@ -187,6 +190,8 @@ class Cabinet {
 
 /** «Сегодня»: показатели, дела, напоминания по КП, сделки без следующего дела, черновики */
 class CabToday {
+  /** новые сделки из Битрикс24, которые ответственный ещё не открывал */
+  static bxNew(){ return CrmData.openDeals().filter(d=>d.bxNew && (!CrmData.B.me || d.managerId===CrmData.B.me || CrmData.all())); }
   static tile(label, val, sub='', cls=''){ return `<div class="cab-k${cls?' '+cls:''}"><span>${label}</span><b>${val}</b>${sub?`<small>${sub}</small>`:''}</div>`; }
   static html(){
     const T=CrmData.openTasks(), td=today(), over=T.filter(t=>t.due<td), now=T.filter(t=>t.due===td), tom=T.filter(t=>t.due===KpDate.addDays(td,1)),
@@ -204,11 +209,13 @@ class CabToday {
       ${doneToday.length?`<details class="tk-done"><summary>Сделано сегодня (${doneToday.length})</summary>${doneToday.map(x=>CrmTask.row(x)).join('')}</details>`:''}</div></section>`;
     const R=FEAT.on('reminders')&&CrmData.mine() ? Reminders.items : [], nR=Math.round(DEFN('ui.mdRem', 5)), nD=Math.round(DEFN('ui.mdDrafts', 4)), Dr=Cabinet.drafts||[];
     const rem=FEAT.on('reminders')&&CrmData.mine() ? MyDay.section(`Напоминания по КП${R.length?` <b class="md-c">${R.length}</b>`:''}`, R.length ? R.slice(0, nR).map((x, i)=>`<div class="md-r${x.overdue?' over':''}"><span aria-hidden="true">${Reminders.icon(x.kind)}</span><div><b>${esc(x.text)}</b><span class="muted">КП № ${esc(x.number)} · ${esc(x.client)}${x.overdue?' · <span class="bad-t">просрочено</span>':''}</span></div><button class="btn sm" type="button" data-mdr="${i}">Открыть КП</button></div>`).join('') : '<p class="empty">Напоминаний нет.</p>', R.length>nR?'<button class="lnk" type="button" data-mdall>Все</button>':'') : '';
+    const BX=this.bxNew();
+    const bxs=BX.length ? MyDay.section(`Новые сделки из Битрикс24 <b class="md-c">${BX.length}</b>`, BX.slice(0, 6).map(d=>`<div class="md-r"><span class="cab-dot t-${CrmData.tone(d.stage)}" aria-hidden="true"></span><div><b>${esc(d.title||d.client)}</b><span class="muted">${esc(d.client&&d.client!==d.title?d.client+' · ':'')}${CrmFmt.short(d.sum)}${d.expected?' · до '+esc(CrmFmt.day(d.expected)):''}</span></div><button class="btn sm primary" type="button" data-deal="${esc(d.id)}">Открыть</button></div>`).join('')) : '';
     const free=MyDay.section(`Сделки без следующего дела${noTask.length?` <b class="md-c">${noTask.length}</b>`:''}`, noTask.length ? noTask.slice(0, 6).map(d=>`<div class="md-r"><span class="cab-dot t-${CrmData.tone(d.stage)}" aria-hidden="true"></span><div><b>${esc(d.title||d.client)}</b><span class="muted">${esc(d.client&&d.client!==d.title?d.client+' · ':'')}${esc(CrmData.stage(d.stage).label)} · ${CrmFmt.short(d.sum)}</span></div><button class="btn sm" type="button" data-deal="${esc(d.id)}">Открыть</button></div>`).join('')+(noTask.length>6?`<p class="muted" style="margin:6px 0 0">и ещё ${noTask.length-6} — на вкладке «Сделки»</p>`:'') : '<p class="empty">У каждой сделки запланировано следующее дело.</p>');
     const drafts=Drafts.on()&&CrmData.mine() ? MyDay.section(`Черновики${Dr.length?` <b class="md-c">${Dr.length}</b>`:''}`, Dr.length?Dr.slice(0, nD).map(r=>`<div class="md-r"><div><b>${esc(r.client||'Клиент не указан')}</b><span class="muted">${esc(Drafts.title(r))} · ${r.positions||0} поз. · ${esc(Fmt.dateTime(r.updated))}</span></div><button class="btn sm" type="button" data-dro="${esc(r.id)}">Продолжить</button></div>`).join(''):'<p class="empty">Незаконченных КП нет.</p>', Dr.length>nD?'<button class="lnk" type="button" data-mddr>Все</button>':'') : '';
     const quick=`<div class="md-q cab-more"><button class="btn" type="button" data-cq="journal">Журнал КП</button><button class="btn" type="button" data-cq="catalog">Каталог</button>${Drafts.meaningful(S)?`<button class="btn ghost" type="button" data-cq="back" title="Вернуться к открытому КП">Продолжить ${S.kpId?'КП № '+esc(S.number):'текущее КП'}</button>`:''}</div>`;
     const who=!CrmData.B.me && !CrmData.all() ? '<p class="msg warn">Выберите себя в разделе «Менеджер» — тогда здесь будут ваши сделки и дела.</p>' : '';
-    return `${who}${kpi}<div class="md-g cab-g">${tasks}<div class="md-col">${rem}${free}${drafts}</div></div>${quick}
+    return `${who}${kpi}<div class="md-g cab-g">${tasks}<div class="md-col">${bxs}${rem}${free}${drafts}</div></div>${quick}
       <label class="md-start"><input type="checkbox" id="mdStart"${MyDay.atStart()?' checked':''}> Показывать кабинет при запуске программы</label>`;
   }
 }

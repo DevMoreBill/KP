@@ -208,6 +208,12 @@ class ApiTest(unittest.TestCase):
         self.assertTrue(any(f.endswith('.docx') for f in files), files)
         self.assertIn(self.M1[2], msg.get('Reply-To') or '', 'ответ клиента — на адрес менеджера')
         self.assertTrue(self.ok_json('GET', '/api/kp/%s/mailform' % kid).get('sent'), 'отправка отмечена в ходе сделки')
+        board = self.ok_json('GET', '/api/crm/board?manager=all')
+        did = next(d['id'] for d in board['deals'] if any(k['id'] == kid for k in d['kps']))
+        mail = [t for t in self.ok_json('GET', '/api/crm/deal/' + did)['tasks'] if t['kind'] == 'mail']
+        self.assertEqual(len(mail), 1, 'письмо с КП — сделанное дело «Письмо» в сделке')
+        self.assertEqual(mail[0]['state'], 'done')
+        self.assertIn('client@example.com', mail[0]['title'])
         self.ok_json('POST', '/api/admin/mail', {'port': Net.free_port()}, who='adm')
         st, b, _ = self.J('POST', '/api/kp/%s/send' % kid, {'to': 'client@example.com', 'subject': 'КП', 'body': 'текст', 'word': True})
         self.assertEqual(st, 422, 'почтовый сервер недоступен — понятный отказ')

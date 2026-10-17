@@ -899,6 +899,7 @@ class BitrixSync:
         finally:
             BitrixQueue._quiet.on = False
         self.links.put('deal', d['id'], b['ID'], self._theirs(b))
+        DealBook(self.store).flag(d['id'], bxNew=True)      # в кабинете — «Новые сделки из Битрикс24», пока ответственный не откроет
         if cl.get('company') and cl.get('inn'):
             self.links.put('company', cl['inn'], cl['company'])
         self.log.add('Новая сделка из Битрикс24 «%s» → кабинет%s' % (body['title'], ' (%s)' % m['name'] if m else ' (ответственный не сопоставлен)'))

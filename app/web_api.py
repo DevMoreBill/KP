@@ -1138,6 +1138,7 @@ class TrackController(Controller):
             return self.text(422, str(e))
         tr = DealTrack(store()).mark_sent(kid, to + cc, [x[0] for x in files], admin.actor(self.h)[1])
         CrmController.safe(lambda: CrmController.bx(DealBook(store()).refresh(kid, admin.actor(self.h)[1])))
+        CrmController.safe(lambda: CrmController.mailed(kid, to + cc, admin.actor(self.h)[1]))
         admin.log(self.h, store(), 'send_kp', 'kp', kid, None, {'to': to, 'cc': cc, 'files': [x[0] for x in files]})
         return self.send_json({'ok': True, 'track': tr})
 
@@ -1337,6 +1338,21 @@ class CrmController(Controller):
         return did
 
     @classmethod
+    def mailed(cls, kid, to, by):
+        """Письмо с КП ушло клиенту — сделанное дело «Письмо» в сделке (и в Битрикс24, если связь включена)."""
+        book = DealBook(store())
+        did = book.deal_of(kid)
+        d = book.get(did) if did else None
+        if not d:
+            return None
+        meta = TrackController._obj(store().kp_get(kid, 'meta'))
+        tb = TaskBook(store())
+        t = tb.add({'kind': 'mail', 'due': date.today().isoformat(), 'time': datetime.now().strftime('%H:%M'),
+                    'title': 'Отправлено КП № %s: %s' % (meta.get('number') or kid, ', '.join(to))[:200]}, d.get('managerId') or '', by, did)
+        tb.update(t['id'], {'state': 'done'})
+        return cls.bx(t['id'], 'task')
+
+    @classmethod
     def on_kp(cls, h, kid):
         """КП сохранено — в сделку: выбранную в КП (своя или с правом на чужие), прежнюю или новую."""
         meta = TrackController._obj(store().kp_get(kid, 'meta'))
@@ -1393,6 +1409,12 @@ class CrmController(Controller):
         except PermissionError as e:
             return self.text(403, str(e))
         res = CrmBoard(store()).build(scope)
+        if BitrixConf(store()).on():          # ссылки «Открыть в Битрикс24» на карточках доски
+            portal = BitrixConf(store()).get().get('portal') or ''
+            bx = dict(store().all("SELECT local_id, bx_id FROM bx_link WHERE kind='deal'"))
+            for d in res['deals']:
+                if d['id'] in bx and portal:
+                    d['bxUrl'] = '%s/crm/deal/details/%s/' % (portal, bx[d['id']])
         uid, name, everyone = self.who(self.h)
         res.update(me=uid, meName=name, canAll=everyone, managers=CrmBoard(store()).managers() if everyone else [])
         return self.send_json(res)
@@ -1429,6 +1451,9 @@ class CrmController(Controller):
         if d is None:
             return None
         book = DealBook(store())
+        if d.get('bxNew') and d.get('managerId') == self.who(self.h)[0]:     # ответственный открыл — сделка больше не «новая»
+            book.flag(did, bxNew=None)
+            d.pop('bxNew', None)
         if self.m == 'PUT':
             body = self.json_body()
             mgr = None

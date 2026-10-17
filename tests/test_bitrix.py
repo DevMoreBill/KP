@@ -121,6 +121,7 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(res['created'], 1, res)
         mine = [x for x in DealBook(self.st).deals(['m2']) if x['title'] == 'Компрессор для цеха']
         self.assertEqual(len(mine), 1)
+        self.assertTrue(mine[0].get('bxNew'), 'новая из Битрикса — отмечена для кабинета')
         self.assertEqual((mine[0]['client'], mine[0]['clientInn'], mine[0]['sum'], mine[0]['stage']), ('ООО «Бета»', '7800000002', 25000000, 'lead'))
         self.assertEqual(self.st.client_get('inn7800000002')['contacts'][0]['phone'], '+7 911 000-00-00', 'телефон компании — в справочник')
         # повторный опрос не создаёт дублей и не отправляет пришедшее обратно
@@ -247,6 +248,7 @@ class DeskTest(unittest.TestCase):
         did = bd['deals'][0]['id']
         card = Http.js(self.h.req('GET', '/api/crm/deal/' + did, headers=Stand.as_manager(SampleData.MANAGERS[0]))[1])
         self.assertIn('/crm/deal/details/', card['bx']['url'])
+        self.assertTrue(all('/crm/deal/details/' in d.get('bxUrl', '') for d in bd['deals']), 'ссылки «Открыть в Битрикс24» на доске')
         # файл настроек: без ключей — без адреса вебхука
         st, b, hd = self.h.req('GET', '/api/admin/settings-file', cookie=adm, headers=dict(A), raw=True)
         self.assertEqual(st, 200)
