@@ -1,0 +1,24 @@
+{
+ "format": "kp-china-rates-ref",
+ "date": "2026-10-17",
+ "title": "Ориентиры ставок Китай → РФ по открытым данным (не ставки экспедитора по договору)",
+ "note": "Публичные цены экспедиторов и индексы — одной суммой до города в РФ (сквозные), без разделения до границы и после; только ориентир для проверки и бюджета. Для таможенной стоимости — ставка экспедитора по договору с выделенным участком до места прибытия.",
+ "rows": [
+  {"from": "Маньчжурия", "to": "Забайкальск", "kind": "ftl", "scope": "border", "unit": "trip", "price": 150000, "cur": "RUB", "days": null,
+   "who": "Ориентир: manzhuria-logistics.ru", "note": "переход Маньчжурия → Забайкальск, фура до 22 т, «от 150 000 ₽», середина 2026 г.", "src": "https://manzhuria-logistics.ru/"},
+  {"from": "Маньчжурия", "to": "Москва", "kind": "ftl", "scope": "through", "unit": "trip", "price": 830000, "cur": "RUB", "days": null,
+   "who": "Ориентир: АКФА (Kyiv Post)", "note": "фура Маньчжурия → Москва 760–830 тыс. ₽ (июль 2026, после роста из-за топлива); взят верх диапазона", "src": "https://www.kyivpost.com/post/79202"},
+  {"from": "Гуанчжоу", "to": "Москва", "kind": "ftl", "scope": "through", "unit": "trip", "price": 6500, "cur": "USD", "days": null,
+   "who": "Ориентир: SLG", "note": "полная фура Гуанчжоу → Москва 6 500 $; дата на странице не указана (≈ февраль 2026)", "src": "https://slgcompany.ru/inter-cargo/avtodostavka-gruzov-iz-kitaya.html"},
+  {"from": "Гуанчжоу", "to": "Москва", "kind": "ltl", "scope": "through", "unit": "kg", "price": 3.8, "cur": "USD", "days": null,
+   "who": "Ориентир: SLG", "note": "сборный груз 3,8 $/кг или 380 $/м³ (большее); дата не указана", "src": "https://slgcompany.ru/inter-cargo/avtodostavka-gruzov-iz-kitaya.html"},
+  {"from": "Гуанчжоу", "to": "Москва", "kind": "ltl", "scope": "through", "unit": "m3", "price": 380, "cur": "USD", "days": null,
+   "who": "Ориентир: SLG", "note": "сборный груз 380 $/м³", "src": "https://slgcompany.ru/inter-cargo/avtodostavka-gruzov-iz-kitaya.html"},
+  {"from": "Иу", "to": "Москва", "kind": "ltl", "scope": "through", "unit": "kg", "price": 1.22, "cur": "USD", "min": 365, "days": 12,
+   "who": "Ориентир: Free Lines", "note": "авто сборный: 1,22 $/кг до 450 кг (до 0,98 $/кг от 2 700 кг), 365 $/м³ до 1,5 м³, минимум 365 $; дата не указана", "src": "https://free-lines.ru/delivery/dostavka-gruzov-iz-azii/kitaja/avtodostavka-iz-kitaya/"},
+  {"from": "Иу", "to": "Москва", "kind": "ltl", "scope": "through", "unit": "m3", "price": 365, "cur": "USD", "min": 365, "days": 12,
+   "who": "Ориентир: Free Lines", "note": "365 $/м³ (до 1,5 м³; 295 $/м³ при 9–12 м³)", "src": "https://free-lines.ru/delivery/dostavka-gruzov-iz-azii/kitaja/avtodostavka-iz-kitaya/"},
+  {"from": "Шанхай", "to": "Москва", "kind": "docker", "scope": "through", "unit": "trip", "price": 9531, "cur": "USD", "days": null,
+   "who": "Ориентир: индекс 40' Шанхай — Москва", "note": "спотовая ставка 40-футового контейнера Шанхай → Москва, июль 2026 (+6 % к июню); в августе–сентябре ставки росли", "src": "https://icustoms.ru/blog/dostavka_konteynera_iz_kitaya_podorojala_na_6_stavka_9_531_i_chto_eto_znachit_dlya"}
+ ]
+}

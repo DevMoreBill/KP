@@ -14,11 +14,14 @@
 ATI.SU «Средние ставки» — контроль «не выбивается ли из рынка» (отклонение больше `log.cnDev` — предупреждение),
 в таможенную стоимость не идёт. Валюта — в рубли по курсу ЦБ на дату расчёта (для декларации — курс на день
 регистрации ДТ)."""
+import json
+import os
 import re
 from datetime import date, datetime
 
 import defaults
 import logistics_api as lg
+from config import APP_DIR
 
 
 class ChinaFreight:
@@ -41,6 +44,8 @@ class ChinaFreight:
     DEV = ('log.cnDev', 30, 0, 200)          # «Значения программы → Логистика»: отклонение ставки от рынка, %
     CN = re.compile(r'китай|кнр', re.I)
     MAX_ROWS = 300
+    # ориентиры по открытым данным (с источником и датой) — кнопка «Добавить ориентиры» на вкладке; не ставки по договору
+    REF = os.path.join(APP_DIR, 'web', 'rules', 'china_rates_ref.json')
 
     def __init__(self, store):
         self.store = store
@@ -80,6 +85,16 @@ class ChinaFreight:
         except ValueError:
             raise ValueError('Строка %d: «Действует до» — дата (ГГГГ-ММ-ДД)' % i)
 
+    @classmethod
+    def ref(cls):
+        """{date, title, note, rows} из файла поставки; нет файла — пусто."""
+        try:
+            with open(cls.REF, encoding='utf-8') as f:
+                d = json.load(f)
+            return {k: d.get(k) for k in ('date', 'title', 'note', 'rows')} if d.get('format') == 'kp-china-rates-ref' else {'rows': []}
+        except (OSError, ValueError):
+            return {'rows': []}
+
     def save_rates(self, rows, by=''):
         if not isinstance(rows, list) or len(rows) > self.MAX_ROWS:
             raise ValueError('Ставки экспедиторов: нужен список до %d строк' % self.MAX_ROWS)
@@ -99,7 +114,10 @@ class ChinaFreight:
             days = str(r.get('days') or '').strip()
             if days and not (days.isdigit() and int(days) <= 365):
                 raise ValueError('Строка %d: срок — целое число дней до 365' % i)
-            out.append({'from': self._text(r.get('from'), 'Откуда', 80), 'to': self._text(r.get('to'), 'Куда', 80), 'kind': kind, 'scope': scope,
+            src = self._text(r.get('src'), 'Источник', 300, need=False)
+            if src and not re.match(r'^https?://\S+$', src):
+                raise ValueError('Строка %d: источник — ссылка http(s)://…' % i)
+            out.append({'ref': bool(r.get('ref')) and r.get('ref') not in ('0', 'false', ''), 'src': src, 'from': self._text(r.get('from'), 'Откуда', 80), 'to': self._text(r.get('to'), 'Куда', 80), 'kind': kind, 'scope': scope,
                         'unit': unit, 'price': price, 'min': mn, 'cur': cur, 'days': int(days) if days else None, 'until': self._date(r.get('until'), i),
                         'who': self._text(r.get('who'), 'Экспедитор', 80, need=False), 'note': self._text(r.get('note'), 'Примечание', 200, need=False)})
         d = {'rows': out, 'at': datetime.now().isoformat(timespec='seconds'), 'by': str(by or '')[:80]}
@@ -116,7 +134,7 @@ class ChinaFreight:
 
     def status(self):
         out = {'kinds': self.KINDS, 'units': self.UNITS, 'curs': list(self.CURS), 'scopes': self.SCOPES, 'borders': list(self.BORDERS),
-               'terms': {k: v[0] for k, v in self.TERMS.items()}, 'dev': self.dev(), 'ati': bool(self.ati_on()), 'rates': self.rates(), 'directions': []}
+               'terms': {k: v[0] for k, v in self.TERMS.items()}, 'dev': self.dev(), 'ref': self.ref(), 'ati': bool(self.ati_on()), 'rates': self.rates(), 'directions': []}
         if out['ati']:
             try:
                 out['directions'] = [{'from': d['from'], 'to': d['to']} for d in self.directions()]
@@ -201,7 +219,8 @@ class ChinaFreight:
             amount = r['price'] * mul
             how = '%s %s %s' % (self.fmt(r['price']), r['cur'], self.UNITS[r['unit']]) + ('' if r['unit'] == 'trip' else ' × %s' % self.fmt(mul))
             g = groups.setdefault((who, scope, self._key(r.get('to'))), {'src': who, 'scope': scope, 'amount': 0, 'cur': r['cur'], 'rate': rate, 'how': [],
-                                                                       'days': r.get('days'), 'until': r.get('until') or '', 'note': r.get('note') or '', 'min': 0})
+                                                                       'days': r.get('days'), 'until': r.get('until') or '', 'note': r.get('note') or '', 'min': 0,
+                                                                       'ref': bool(r.get('ref')), 'url': r.get('src') or ''})
             if g['cur'] != r['cur']:
                 errors.append({'src': who, 'msg': 'ставки одного экспедитора на один участок — в разных валютах; оставьте одну валюту'})
                 continue
@@ -217,12 +236,14 @@ class ChinaFreight:
             amount = max(g['amount'], g['min'])
             rub = round(amount * g['rate'])
             warn = []
+            if g['ref']:
+                warn.append('ориентир по открытым данным, а не ставка экспедитора по договору — для таможенной стоимости запросите ставку с выделенным участком до места прибытия')
             if g['until'] and g['until'] < today:
                 warn.append('ставка просрочена (действовала до %s) — запросите у экспедитора новую' % '.'.join(reversed(g['until'].split('-'))))
             if g['min'] and g['min'] >= g['amount']:
                 g['how'].append('минимальная сумма %s %s' % (self.fmt(g['min']), g['cur']))
             o = {'src': g['src'], 'scope': g['scope'], 'rub': rub, 'amount': round(amount, 2), 'cur': g['cur'], 'days': g['days'], 'until': g['until'],
-                 'note': '; '.join(g['how'] + ([g['note']] if g['note'] else [])), 'warn': warn}
+                 'note': '; '.join(g['how'] + ([g['note']] if g['note'] else [])), 'warn': warn, 'ref': g['ref'], 'srcUrl': g['url']}
             if g['scope'] == 'after':
                 o['warn'].append('в таможенную стоимость не входит, только если эта сумма выделена в договоре и подтверждена счётом (ТК ЕАЭС ст. 40 п. 2)')
                 after.append(o)

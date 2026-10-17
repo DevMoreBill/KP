@@ -42,7 +42,7 @@ class ChinaFreightTab {
           Просроченная ставка помечается. ${S.rates.at?`Сохранено ${esc(String(S.rates.at).slice(0,16).replace('T',' '))}${S.rates.by?' · '+esc(S.rates.by):''}.`:''}</p>
         <div class="cf-tw"><table class="cf-t"><thead><tr><th>Откуда</th><th>Куда</th><th>Участок</th><th>Вид</th><th>Ставка</th><th>Валюта</th><th>За</th><th>Мин. сумма</th><th>Срок, дн.</th><th>Действует до</th><th>Экспедитор</th><th>Примечание</th><th></th></tr></thead>
           <tbody id="cfRows">${rows.map(r=>this.row(r)).join('')}</tbody></table></div>
-        <div class="row"><button class="btn ghost" type="button" data-cfadd>+ Строка</button><span class="sp"></span><button class="btn primary" type="button" data-cfsave>Сохранить ставки</button></div></div>`;
+        <div class="row"><button class="btn ghost" type="button" data-cfadd>+ Строка</button>${(S.ref.rows||[]).length?`<button class="btn ghost" type="button" data-cfref title="${esc((S.ref.note||'')+' Подборка от '+this.day(S.ref.date))}">+ Ориентиры из открытых данных (${S.ref.rows.length})</button>`:''}<span class="sp"></span><button class="btn primary" type="button" data-cfsave>Сохранить ставки</button></div></div>`;
     this.bind(m);
   }
 
@@ -53,7 +53,7 @@ class ChinaFreightTab {
       <td><select data-c="cur" aria-label="Валюта">${this.curs(r.cur||'CNY')}</select></td>
       <td><select data-c="unit" aria-label="За">${this.opts(S.units, r.unit||'trip')}</select></td><td><input type="text" data-c="min" inputmode="decimal" value="${esc(r.min||'')}" aria-label="Минимальная сумма"></td>
       <td><input type="text" data-c="days" inputmode="numeric" value="${esc(r.days??'')}" aria-label="Срок"></td><td><input type="date" data-c="until" value="${esc(r.until||'')}" aria-label="Действует до"></td>
-      <td><input type="text" data-c="who" value="${esc(r.who||'')}" aria-label="Экспедитор"></td><td><input type="text" data-c="note" value="${esc(r.note||'')}" aria-label="Примечание"></td>
+      <td><input type="text" data-c="who" value="${esc(r.who||'')}" aria-label="Экспедитор">${r.ref?`<input type="hidden" data-c="ref" value="1"><small class="muted">ориентир${r.src?` · <a href="${esc(r.src)}" target="_blank" rel="noopener">источник</a>`:''}</small>`:''}<input type="hidden" data-c="src" value="${esc(r.src||'')}"></td><td><input type="text" data-c="note" value="${esc(r.note||'')}" aria-label="Примечание"></td>
       <td><button class="icon" type="button" data-cfdel title="Удалить строку" aria-label="Удалить строку">✕</button></td></tr>`; }
 
   static day(s){ const m=/^(\d{4})-(\d\d)-(\d\d)/.exec(s||''); return m ? `${m[3]}.${m[2]}.${m[1]}` : ''; }
@@ -63,7 +63,7 @@ class ChinaFreightTab {
   static result(r){
     const fx=r.fx||{}, f=n=>n?String(Math.round(n*10000)/10000).replace('.',','):'—', S=this.st;
     const off=r.offers.length ? `<table class="cf-t cf-r"><thead><tr><th>Экспедитор</th><th>Участок</th><th>Перевозка</th><th>В таможенную стоимость</th><th>Срок</th><th>Как посчитано</th></tr></thead><tbody>${r.offers.map(o=>`<tr>
-        <td><b>${esc(o.src)}</b>${o.until?`<br><small class="muted">до ${esc(this.day(o.until))}</small>`:''}</td><td>${esc(S.scopes[o.scope]||'')}</td><td>${this.money(o)}</td>
+        <td><b>${esc(o.src)}</b>${o.srcUrl?` <a href="${esc(o.srcUrl)}" target="_blank" rel="noopener" title="Источник">↗</a>`:''}${o.until?`<br><small class="muted">до ${esc(this.day(o.until))}</small>`:''}</td><td>${esc(S.scopes[o.scope]||'')}</td><td>${this.money(o)}</td>
         <td><b>${Fmt.rub(o.cv)}</b>${o.cvParts.length>1?`<br><small class="muted">${esc(o.cvParts.map(p=>p[0]+' '+Fmt.rub(p[1])).join(' + '))}</small>`:''}</td>
         <td>${o.days?esc(o.days)+' дн.':'—'}</td><td class="muted">${esc(o.note||'')}${this.warns(o)}</td></tr>`).join('')}</tbody></table>` : '';
     const aft=r.after.length ? `<p class="sub">По РФ от места прибытия — в таможенную стоимость не входит</p><table class="cf-t"><tbody>${r.after.map(o=>`<tr><td><b>${esc(o.src)}</b></td><td>${this.money(o)}</td>
@@ -76,9 +76,21 @@ class ChinaFreightTab {
         На несколько позиций сумма делится пропорционально весу брутто (Решение Коллегии ЕЭК № 83). Без пошлин, НДС и таможенного сбора.</p>`;
   }
 
+  /** ориентиры из открытых данных (файл поставки, с источником и датой) — в таблицу, без повторов; действуют 30 дней от
+   *  сегодня: потом просрочены, и расчёт напомнит запросить ставку экспедитора. Сохраняет администратор кнопкой */
+  static addRef(m){
+    const have=new Set([...m.querySelectorAll('#cfRows tr')].map(tr=>['who', 'from', 'to', 'unit'].map(k=>(tr.querySelector(`[data-c="${k}"]`)||{}).value||'').join('|')));
+    const until=new Date(Date.now()+30*864e5).toISOString().slice(0, 10);
+    const add=(this.st.ref.rows||[]).filter(r=>!have.has([r.who, r.from, r.to, r.unit].join('|')));
+    m.querySelector('#cfRows').insertAdjacentHTML('beforeend', add.map(r=>this.row({ ...r, ref:true, until })).join(''));
+    if (add.length) StDirty.set(true);
+    toast(add.length ? `Добавлено ориентиров: ${add.length}. Проверьте и нажмите «Сохранить ставки»` : 'Ориентиры уже в таблице');
+  }
+
   static bind(m){
     m.onclick=async e=>{
       if (e.target.closest('[data-cfadd]')){ m.querySelector('#cfRows').insertAdjacentHTML('beforeend', this.row()); return; }
+      if (e.target.closest('[data-cfref]')){ this.addRef(m); return; }
       const del=e.target.closest('[data-cfdel]'); if (del){ del.closest('tr').remove(); StDirty.set(true); return; }
       if (e.target.closest('[data-cfsave]')){
         const rows=[...m.querySelectorAll('#cfRows tr')].map(tr=>Object.fromEntries([...tr.querySelectorAll('[data-c]')].map(i=>[i.dataset.c, i.value.trim()])))

@@ -286,6 +286,25 @@ class ChinaFreightTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             cf.save_rates([{'from': 'Шанхай', 'to': 'Забайкальск', 'kind': 'ftl', 'price': '1', 'until': '31.12'}])
 
+    def test_reference_rates(self):
+        """Ориентиры из открытых данных (файл поставки): у каждой строки источник-ссылка; сохраняются с пометкой «ориентир»,
+        в расчёте — предупреждение «не ставка по договору»."""
+        from china_freight import ChinaFreight
+        ref = ChinaFreight.ref()
+        self.assertGreaterEqual(len(ref['rows']), 5)
+        for r in ref['rows']:
+            self.assertTrue(r['src'].startswith('https://') and r['who'].startswith('Ориентир'), r)
+        cf = ChinaFreight(self.store)
+        cf.save_rates([dict(r, ref='1', until='2026-11-16') for r in ref['rows']], 'admin')
+        self.assertTrue(all(r['ref'] for r in cf.rates()['rows']))
+        fx = {'USD': 90.0, 'CNY': 12.5, 'EUR': 100.0, 'date': '2026-10-17'}
+        r = cf.quote({'from': 'Иу', 'to': 'Забайкальск', 'dest': 'Москва', 'kind': 'ltl', 'kg': '300', 'm3': '2'}, fx, today='2026-10-17')
+        o = r['offers'][0]
+        self.assertEqual(o['amount'], 730, 'Free Lines: max(1,22 × 300, 365 × 2, мин. 365) = 730 $')
+        self.assertTrue(any('ориентир' in w for w in o['warn']) and o['srcUrl'].startswith('https://'))
+        with self.assertRaises(ValueError):
+            cf.save_rates([dict(ref['rows'][0], src='javascript:alert(1)')])
+
     def test_bad_rates(self):
         from china_freight import ChinaFreight
         cf = ChinaFreight(self.store)
