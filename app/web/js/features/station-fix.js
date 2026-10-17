@@ -124,6 +124,7 @@ class ExpertFix {
     const r=StationReq.ensure(x), P=kitParts(x), old=P.filter(z=>StationEquip.kindOf(z)==='receiver' && z.recvRole!=='wet' && z.recvRole!=='local' && AirChain.volume(z)>ReceiverPlan.SMALL);
     if (!old.length) return '';
     const keep={ size:r.recvSize, why:r.recvWhy }; r.recvSize='500'; r.recvWhy='space';
+    StationSup.use(x);
     const R=StationReq.recvPlan(x), o=R && R.main ? TzPick.recvPick(ReceiverPlan.SMALL, KitNeed.bar(x), TzPick.hmax(x)) : null;
     if (!o || !o.o){ if (keep.size) r.recvSize=keep.size; else delete r.recvSize; if (keep.why) r.recvWhy=keep.why; else delete r.recvWhy; return ''; }
     const p=await TzPick.part(o.o.c, R.main.n); p.recvRole='dry';

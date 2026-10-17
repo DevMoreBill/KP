@@ -265,6 +265,26 @@ class TzQuestions {
 // и фильтрах (лишнее давление — штраф: каждый бар сверх нужного — около 7 % энергии), насос — без большого избытка напора.
 // Компрессорная: осушитель — по классу воды (точка росы ниже −20 °C — адсорбционный) с запасом на давление и лето;
 // фильтры и ресивер — по рекомендациям расчёта цепочки (AirChain).
+/** один поставщик в станции (решение владельца 17.10): при равных условиях — оборудование того же поставщика, что и основные
+ *  агрегаты. Поставщик позиции — как в фильтре «Поставщик» каталога (фид или справочник; CatalogWindow.supplierOf).
+ *  «Равные условия» — подходит без недобора, столько же штук, оценка хуже лучшей не больше допуска `pick.oneSup` (%, 0 — выкл.) */
+class StationSup {
+  static ctx = '';   // поставщик основного оборудования станции, под которую идёт подбор
+  static key(s){ return norm(s||''); }
+  static of(c){ return c && typeof CW!=='undefined' ? this.key(CW.supplierOf(c)) : ''; }
+  static get TOL(){ return Math.max(0, +StationMatrix.grp('pick').oneSup||0)/100; }
+  /** поставщик основного оборудования станции x (компрессоры, ДГУ, насосы — роль main) */
+  static use(x){ const p=kitParts(x).find(z=>z.role==='main'), c=p && catCache.find(z=>z.id===p.catId); this.ctx=this.of(c); return this.ctx; }
+  static same(c){ return !!this.ctx && this.TOL>0 && this.of(c)===this.ctx ? 1 : 0; }
+  /** сколько видов подготовки воздуха (осушитель cat, фильтры) есть у поставщика позиции c — компрессор от того, кто закроет больше состава */
+  static cover(c, cats){ const s=this.of(c); if (!s || !(this.TOL>0)) return 0;
+    return cats.filter(k=>catCache.some(z=>attrsOf(z).cat===k && this.of(z)===s)).length; }
+  /** выбор из кандидатов [{…, score}] при «равных условиях»: в пределах допуска от лучшего — с наибольшим rank, затем лучший */
+  static pick(L, rank, tol){ if (!L.length) return null; const b=L.reduce((m, o)=>o.score<m.score ? o : m, L[0]);
+    if (!(this.TOL>0)) return b; const near=L.filter(o=>o.score<=b.score+tol+1e-9);
+    return near.reduce((m, o)=>rank(o)>rank(m) || (rank(o)===rank(m) && o.score<m.score) ? o : m, b); }
+}
+
 class TzPick {
   static get LOSS(){ return StationRules.raw('loss.pick'); }   // запас давления компрессора к требуемому, бар (файл правил)
   // какие ступени годятся под рекомендацию (по порядку предпочтения): предварительный — и сухой фильтр частиц, и тонкий
@@ -280,16 +300,18 @@ class TzPick {
   static get MAX(){ return StationMatrix.grp('pick').max; }   // добор производительности количеством: до четырёх одинаковых рабочих агрегатов или аппаратов параллельно
   /** рабочие агрегаты из pool [{c, v}] на нагрузку need: {o, n}; n0 — число рабочих из ТЗ, pen(o) — штраф позиции;
    *  подбор — без недобора (в пользу заказчика): сумма рабочих не меньше нужного; одного не хватает — несколько (до MAX) */
-  static units(pool, need, n0, pen=()=>0){
-    let pick=null;
+  static units(pool, need, n0, pen=()=>0, rank=null){
+    const L=[];
     for (let n=n0||1; n<=(n0||this.MAX); n++) for (const o of pool){ if (o.v*n<need-1e-9) continue;
-      const score=(o.v*n-need)/need+0.08*(n-1)+pen(o); if (!pick || score<pick.score) pick={ o, n, score }; }
-    return pick;
+      L.push({ o, n, score:(o.v*n-need)/need+0.08*(n-1)+pen(o) }); }
+    const b=StationSup.pick(L, ()=>0, 0); if (!b || !rank) return b;
+    return StationSup.pick(L.filter(z=>z.n===b.n), z=>rank(z.o), StationSup.TOL);   // один поставщик — при том же числе агрегатов
   }
   /** одинаковые аппараты параллельно на нагрузку need (осушители, фильтры): один, иначе несколько (до MAX) — наименьшее
    *  число, затем наименьший запас; list — [{c, cap}]: {o, n} | null */
   static many(list, need, max=this.MAX){
-    for (let n=1; n<=max; n++){ const o=this.best(list.filter(z=>z.cap*n>=need-1e-9).map(z=>Object.assign({}, z, { over:z.cap*n-need })), 'over'); if (o) return { o, n }; }
+    for (let n=1; n<=max; n++){ const L=list.filter(z=>z.cap*n>=need-1e-9).map(z=>Object.assign({}, z, { over:z.cap*n-need, score:need>0 ? (z.cap*n-need)/need : z.cap*n }));
+      const o=StationSup.pick(L, z=>StationSup.same(z.c), StationSup.TOL); if (o) return { o, n }; }
     return null;
   }
   /** компрессоры из pool на Q, м³/мин, и B, бар, у потребителя: класс 0 по маслу — только безмасляные; частотное регулирование
@@ -297,7 +319,8 @@ class TzPick {
   static comps(pool, Q, B, q){
     const comp=c=>({ name:c.name, attrs:attrsOf(c), rows:[] }), vsd=c=>AirChain.info(comp(c), 'compressor').vsd;
     return this.units(pool.filter(c=>!q.oilFree || this.oilFree(c)).map(c=>({ c, v:this.flow(c), p:this.num(attrsOf(c).pressure), vsd:vsd(c), f:!q.vsd || vsd(c), of:!q.oilFree && this.oilFree(c) }))
-      .filter(o=>o.v>0 && (!(B>0) || !(o.p>0) || o.p>=B-0.05) && !(q.compact && (o.of || this.barPen(o.p, B, o.vsd)>=0.5 || (q.work && o.v*q.work>Q*this.OVER)))), Q, q.work, o=>this.barPen(o.p, B, o.vsd)+(o.f ? 0 : 0.3)+(o.of ? 0.5 : 0)+(q.compact ? this.area(o.c) : 0));
+      .filter(o=>o.v>0 && (!(B>0) || !(o.p>0) || o.p>=B-0.05) && !(q.compact && (o.of || this.barPen(o.p, B, o.vsd)>=0.5 || (q.work && o.v*q.work>Q*this.OVER)))), Q, q.work, o=>this.barPen(o.p, B, o.vsd)+(o.f ? 0 : 0.3)+(o.of ? 0.5 : 0)+(q.compact ? this.area(o.c) : 0),
+      o=>StationSup.same(o.c)*10+StationSup.cover(o.c, [q.ads ? 'dryer_ads' : 'dryer_refrig', 'filter']));
   }
   static get OVER(){ return 1+StationMatrix.grp('pick').over/100; }   // подбор «чтобы поместилось»: запас производительности — не больше 30 % (не центробежный на 60 м³/мин), безмасляный — только по требованию, давление — с запасом на потери
   /** штраф за площадь агрегата (подбор «чтобы станция поместилась»): 0,3 на м² пола; габарит неизвестен — как 3,5 м² */
@@ -327,7 +350,7 @@ class TzPick {
     for (const g of this.GRADE[rec.key]||[rec.key]){   // сначала — своей ступени, нет такой — следующей подходящей
       const L=catCache.filter(c=>ok(c, g));
       if (Qf>0){ const m=this.many(L.map(c=>({ c, cap:this.flow(c)*kf(c, attrsOf(c)) })), Qf); if (m) return m; continue; }
-      const b=this.best(L.map(c=>({ c, v:this.num(attrsOf(c).flow)||0 })), 'v'); if (b) return { o:b, n:1 }; }
+      const b=StationSup.pick(L.map(c=>({ c, v:this.num(attrsOf(c).flow)||0, score:this.num(attrsOf(c).flow)||0 })), z=>StationSup.same(z.c), 0); if (b) return { o:b, n:1 }; }
     return null;
   }
   /** давление компрессора, бар, нужное для B у потребителя: потери в подготовке воздуха (loss.pick) и — без частотного
@@ -374,11 +397,11 @@ class TzPick {
     // приоритете (АСО) — первым, затем в наличии, наименьшее достаточное давление, дешевле, ниже; нет таких — прежний подбор
     const B0=AirChain.BASE, bs=B0 ? AirChain.base(V>0 ? V : B0.volume, B) : null;
     if (bs && bs.n<=6){ const mk=String(B0.maker||'').trim().toLowerCase(), pri=o=>mk && String(attrsOf(o.c).maker||'').trim().toLowerCase()===mk ? 0 : 1;
-      const C=L.filter(o=>Math.abs(o.v-bs.v)<0.5 && free(o)).sort((a, b)=>pri(a)-pri(b) || this.stock(b.c)-this.stock(a.c) || (a.p||99)-(b.p||99) || this.cheaper(a.c, b.c) || a.h-b.h);
+      const C=L.filter(o=>Math.abs(o.v-bs.v)<0.5 && free(o)).sort((a, b)=>pri(a)-pri(b) || StationSup.same(b.c)-StationSup.same(a.c) || this.stock(b.c)-this.stock(a.c) || (a.p||99)-(b.p||99) || this.cheaper(a.c, b.c) || a.h-b.h);
       if (C.length) return { o:C[0], n:bs.n, free:true, base:true }; }
     if (!(V>0)) return L.length ? { o:this.best(L, 'v'), n:1, free:true } : null;
     const P=StationMatrix.grp('pick');
-    for (const [only, max] of [[true, P.recvFree], [false, P.recvAny]]) for (let n=1; n<=max; n++){ const o=this.best(L.filter(z=>z.v*n>=V-1e-9 && (!only || free(z))), 'v'); if (o) return { o, n, free:free(o) }; }
+    for (const [only, max] of [[true, P.recvFree], [false, P.recvAny]]) for (let n=1; n<=max; n++){ const o=StationSup.pick(L.filter(z=>z.v*n>=V-1e-9 && (!only || free(z))).map(z=>({ ...z, score:z.v })), z=>StationSup.same(z.c), 0); if (o) return { o, n, free:free(o) }; }
     return null;
   }
   /** ресивер типоразмера size, л (900 или 500 — методика ПНЕВМОТЕХ): давление — с запасом над компрессором (правило
@@ -389,7 +412,7 @@ class TzPick {
     const all=catCache.filter(c=>attrsOf(c).cat==='receiver').map(c=>{ const a=attrsOf(c); return { c, v:this.num(a.volume)||0, p:this.num(a.pressure), h:StationEquip.dims({ name:c.name, attrs:a, rows:[] }, 'receiver').h }; })
       .filter(o=>Math.abs(o.v-size)<0.5 && (!(B>0) || !(o.p>0) || o.p>=B-0.05)), fit=all.filter(o=>!(Hmax>0) || o.h+this.RECV_TOP<=Hmax);
     const B0=AirChain.BASE, mk=String((B0 && B0.maker)||'').trim().toLowerCase(), pri=o=>mk && String(attrsOf(o.c).maker||'').trim().toLowerCase()===mk ? 0 : 1, m=ReceiverPlan.M.margin;
-    const sort=L=>L.sort((a, b)=>pri(a)-pri(b) || this.stock(b.c)-this.stock(a.c) || (a.p||99)-(b.p||99) || this.cheaper(a.c, b.c) || a.h-b.h)[0];
+    const sort=L=>L.sort((a, b)=>pri(a)-pri(b) || StationSup.same(b.c)-StationSup.same(a.c) || this.stock(b.c)-this.stock(a.c) || (a.p||99)-(b.p||99) || this.cheaper(a.c, b.c) || a.h-b.h)[0];
     for (const ok of [o=>!(B>0) || !(o.p>0) || o.p>=B+m-0.05, o=>!(B>0) || !(o.p>0) || o.p>=B-0.05]){ const o=sort(fit.filter(ok)); if (o) return { o }; }
     return all.length ? { o:null, tall:true } : null;
   }
@@ -522,6 +545,7 @@ class TzPick {
     const keep=kitParts(x).filter(p=>p.role==='container' || !drop.test(StationEquip.kindOf(p)||'')), add=[];
     const cats=(typeById({ comp:'st_comp', pump:'st_pump', dgu:'st_dgu' }[kind]).station||{}).main||[];
     const pool=this.stationPool(cats), H=this.hmax(x);
+    StationSup.ctx='';   // поставщик — по подобранным основным агрегатам
     if (kind==='comp'){
       const B=q.pressure, wc=+(String(q.air||'').split('.')[1]||0), ads=(wc && wc<=3) || (q.pdp!=null && +q.pdp<=-20);
       let Bc=B, picked=null;   // давление аппаратов (осушитель, фильтры, ресиверы) — не ниже наибольшего давления компрессора
@@ -530,7 +554,8 @@ class TzPick {
       const nd=q.flow>0 ? StationReq.need(q, q.flow) : { v:0, why:'' }, Q=ads && nd.v>0 ? nd.v/(1-AirChain.PURGE) : nd.v;
       // по высоте — помещаются в контейнер (габариты известны); электрические — первыми, дизельные — если их нет
       const cp=pool.filter(c=>this.fitsH(c, 'compressor', H));
-      if (Q>0){ const u=this.comps(this.electric(cp), Q, B, q) || (q.compact && this.electric(cp).length ? null : this.comps(cp, Q, B, q));   // «чтобы поместилось» — не дизельный вместо электрического
+      if (Q>0){ const cq={ ...q, ads }, u=this.comps(this.electric(cp), Q, B, cq) || (q.compact && this.electric(cp).length ? null : this.comps(cp, Q, B, cq));
+        if (u) StationSup.ctx=StationSup.of(u.o.c);   // «чтобы поместилось» — не дизельный вместо электрического
         if (u){ Bc=u.o.p||B; picked=u; }
         if (u){ add.push(await this.part(u.o.c, u.n+res, 'main')); got.push(`компрессоры ${u.n}${res ? ' + '+res+' резервн.' : ''} × ${u.o.c.name}${nd.why ? ` (потребность: ${nd.why})` : ''}${ads ? ` (с запасом ${Math.round(AirChain.PURGE*100)} % на продувку адсорбционного осушителя)` : ''}`);
           if (B>0 && u.o.p>0 && u.o.p<this.barNeed(B, u.o.vsd)-0.05) got.push(`давление компрессора ${AirChain.m3(u.o.p)} бар — без запаса на потери в осушителе и фильтрах${u.o.vsd ? '' : ' и диапазон регулирования'} (нужно около ${AirChain.m3(this.barNeed(B, u.o.vsd))})`); }

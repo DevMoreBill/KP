@@ -608,5 +608,42 @@ class Check {
     } finally { StationImages.WAIT=W; StationImages.sync=sync; }
   });
 
+  // решение владельца 17.10: при равных условиях — оборудование одного поставщика; ресиверы — по-прежнему сначала АСО
+  await Check.run('один поставщик при равных условиях', ()=>{
+    const cw=global.CW, nm=global.norm; global.norm=nm || (v=>String(v||'').toLowerCase().trim());
+    global.CW={ supplierOf:c=>(c.attrs||{}).sup||'' };
+    try{
+      const S=(name, sup, a)=>Cat.item(name, Object.assign({ sup }, a));
+      global.catCache=[
+        S('Компрессор Альфа К-10', 'Альфа', { cat:'comp_screw', flow:10, pressure:10 }),
+        S('Компрессор Бета К-10', 'Бета', { cat:'comp_screw', flow:10.2, pressure:10 }),
+        S('Осушитель Бета ОР-11', 'Бета', { cat:'dryer_refrig', flow:11 }),
+        S('Осушитель Альфа ОР-10,5', 'Альфа', { cat:'dryer_refrig', flow:10.5 }),
+        S('Фильтр Бета ФТ-12', 'Бета', { cat:'filter', flow:12, grade:'fine' }),
+        S('Ресивер АСО 900', 'Гамма', { cat:'receiver', volume:900, pressure:11, maker:'АСО' }),
+        S('Ресивер Бета 900', 'Бета', { cat:'receiver', volume:900, pressure:11, maker:'Бета' }),
+      ];
+      StationSup.ctx='';
+      let u=TzPick.comps(global.catCache, 9.5, 8, {});
+      assert.strictEqual(u.o.c.name, 'Компрессор Бета К-10', 'компрессор — у кого есть и осушитель, и фильтр (запас +2 % — в допуске)');
+      StationSup.ctx=StationSup.of(u.o.c);
+      const L=global.catCache.filter(c=>c.attrs.cat==='dryer_refrig').map(c=>({ c, cap:c.attrs.flow }));
+      assert.strictEqual(TzPick.many(L, 10).o.c.name, 'Осушитель Бета ОР-11', 'осушитель того же поставщика: запас 10 % против 5 % — в допуске');
+      assert.strictEqual(TzPick.many(L, 9).o.c.name, 'Осушитель Бета ОР-11');
+      StationSup.ctx='альфа';
+      assert.strictEqual(TzPick.many(L, 10).o.c.name, 'Осушитель Альфа ОР-10,5', 'свой поставщик и так лучший');
+      StationSup.ctx='бета';
+      const L2=[{ c:global.catCache[3], cap:10.5 }, { c:global.catCache[2], cap:14 }];
+      assert.strictEqual(TzPick.many(L2, 10).o.c.name, 'Осушитель Альфа ОР-10,5', 'запас больше допуска — лучший из всех');
+      assert.strictEqual(TzPick.many([{ c:global.catCache[2], cap:6 }, { c:global.catCache[3], cap:10.5 }], 10).n, 1, 'меньше штук важнее поставщика');
+      const r=TzPick.recvPick(900, 8, 0);
+      assert.strictEqual(r.o.c.name, 'Ресивер АСО 900', 'ресиверы — сначала АСО (решение владельца 17.10)');
+      const R0=StationRules.data, d=JSON.parse(JSON.stringify(R0)), m=d.rules.find(z=>z.id==='layout.matrix').value;
+      m.pick=Object.assign({}, m.pick, { oneSup:0 }); StationSup.ctx=''; StationRules.use(d);
+      try{ u=TzPick.comps(global.catCache, 9.5, 8, {}); assert.strictEqual(u.o.c.name, 'Компрессор Альфа К-10', '0 % — без приоритета поставщика'); }
+      finally { StationRules.use(R0); }
+    } finally { global.CW=cw; global.norm=nm; StationSup.ctx=''; }
+  });
+
   console.log(process.exitCode ? 'есть ошибки' : `подбор по ТЗ: проверок пройдено — ${Check.n}`);
 })();

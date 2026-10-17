@@ -444,6 +444,7 @@ class KitNeed {
   }
   /** рекомендуемая позиция каталога по рекомендации r: {c, n — штук параллельно, role — роль ресивера (основной, мокрый, у потребителя)} | null */
   static best(x, r){
+    StationSup.use(x);   // при равных условиях — поставщик компрессоров станции (решение 17.10)
     const A=this.air(x), q=A ? A.q : 0, req=StationReq.of(x), B=this.n(req.pressure)||0, Bc=this.bar(x); let o=null;
     if (/^dryer-/.test(r.key)){ const ads=r.cat==='dryer_ads', pdp=ads && r.f && r.f.dewPoint ? this.n(r.f.dewPoint) : null;
       o=q>0 ? TzPick.dryer(ads, q, B, Bc, this.n(req.tmax), pdp, TzPick.hmax(x), TzPick.wmax(x)) : null; }
@@ -483,7 +484,8 @@ class KitNeed {
     const out=(u, n, test, need, extra={})=>({ test, qty:n+res, best:u ? { id:u.o.c.id, n:u.n+res, label:u.n+res>1 ? `${u.n} рабоч.${res ? ` + ${res} резерв.` : ''} = ${u.n+res} шт.` : '' } : null, need, ...extra });
     if (k==='comp'){ const q0=this.n(r.flow), B=this.n(r.pressure)||0; if (!(q0>0)) return null;
       const cls=String(StationUi.opts(x).air||''), wc=+(cls.split('.')[1]||0), ads=wc>0 && wc<=3, nd=StationReq.need(r, q0), Q=ads ? nd.v/(1-AirChain.PURGE) : nd.v;
-      const H=TzPick.hmax(x), cp=pool.filter(c=>TzPick.fitsH(c, 'compressor', H)), cq={ oilFree:StationReq.oilFree(x), vsd:!!r.vsd, work };
+      const H=TzPick.hmax(x), cp=pool.filter(c=>TzPick.fitsH(c, 'compressor', H)), cq={ oilFree:StationReq.oilFree(x), vsd:!!r.vsd, work, ads };
+      StationSup.use(x);
       const of=cq.oilFree, u=TzPick.comps(TzPick.electric(cp), Q, B, cq) || TzPick.comps(cp, Q, B, cq), n=u ? u.n : work||1, per=Q/n;
       return out(u, n, c=>TzPick.flow(c)>=per-1e-9 && (!of || TzPick.oilFree(c)),
         `Нужно ${m3(Q)} м³/мин${B ? ` при ${m3(B)} бар у потребителя` : ''}${nd.why || ads ? ` (${[nd.why, ads ? 'с запасом на продувку адсорбционного осушителя' : ''].filter(Boolean).join(', ')})` : ''}${tail(n)}. Показаны компрессоры от ${m3(per)} м³/мин${B ? `, давление от ${m3(B)} бар` : ''}${of ? `, безмасляные (${StationReq.oilWhy(x)})` : ''}.`,
