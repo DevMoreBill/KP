@@ -143,4 +143,15 @@ check('выброс цены перевозчика не становится м
   assert.ok(!LgOutlier.mark([{total:100}, {total:500}]).some(o=>o.outlier), 'меньше трёх предложений — не размечается');
 });
 
+check('агент-экспедитор — и на разгрузку (решение 17.10), страхование без агентских; выключается в «Значениях программы»', ()=>{
+  const T=Freight.tariffs(), inp={from:{addr:'Москва'}, to:{addr:'Казань'}, km:'800', items:[{name:'Компрессор', qty:1, l:2.4, w:1.2, h:1.85, m:2.5}], value:1000000, unload:'auto'};
+  DEFS_SRV={};
+  const a=Freight.calc(inp, T); assert.ok(a.unload && a.unload.cost>0, 'разгрузка подобрана');
+  assert.strictEqual(a.agent, Math.round((a.transport+a.unload.cost)*T.agentPct/100), 'агент на рейс и разгрузку');
+  DEFS_SRV={'log.agentUnload':{on:false}};
+  const b=Freight.calc(inp, T); assert.strictEqual(b.agent, Math.round(b.transport*T.agentPct/100), 'выключено — только на рейс');
+  assert.ok(a.total-b.total===a.agent-b.agent, 'разница — только агентские');
+  DEFS_SRV={};
+});
+
 if (!process.exitCode) console.log('OK: '+n+' проверок');

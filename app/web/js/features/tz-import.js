@@ -114,7 +114,7 @@ class TzImport {
   }
 
   /** значение параметра анкеты словами (ключи выбора — понятным текстом) */
-  static VAL = { basis:{ fad:'FAD — условия всасывания', normal:'нормальные м³' }, mode:{ prime:'основной (PRP)', standby:'резервный (ESP)' },
+  static VAL = { basis:{ fad:'FAD — на выходе компрессора', normal:'нормальные м³ (0 °C)', std:'стандартные м³ (20 °C)' }, mode:{ prime:'основной (PRP)', standby:'резервный (ESP)' },
     start:{ direct:'прямой', stardelta:'звезда — треугольник', soft:'плавный пуск', vsd:'частотный преобразователь' }, reserve:{ 0:'без резерва', 1:'N + 1', 2:'N + 2' }, rel:{ 1:'I', 2:'II', 3:'III' },
     industry:{ food:'пищевая — компрессоры безмасляные', med:'медицинская, фармацевтическая — компрессоры безмасляные' } };
   static val(key, v){ if (v===true) return 'да'; if (v==null || v==='') return '—'; const m=this.VAL[key]; return m && m[v]!=null ? m[v] : String(v).replace('.', ',').replace(/^-(?=\d)/, '−'); }
@@ -177,7 +177,7 @@ class TzImport {
   static async ai(){
     const q=this.read(), text=String(this.cur.r.text||'').slice(0, 12000);
     const prompt=`Из технического задания ниже выпиши требования к станции в контейнере. Ответ — только JSON без пояснений:
-{"kind":"comp|pump|dgu","flow":м³/мин,"basis":"fad|normal" (normal — если производительность в нормальных м³, нм³),"pressure":бар у потребителя,"air":"класс ISO 8573-1 вида 1.4.1",
+{"kind":"comp|pump|dgu","flow":м³/мин,"basis":"fad|normal|std" (normal — нормальные м³, нм³, 0 °C; std — стандартные м³, ст. м³, 20 °C по ГОСТ 2939; иначе fad),"pressure":бар у потребителя,"air":"класс ISO 8573-1 вида 1.4.1",
 "margin":запас производительности %,"q":м³/ч,"head":м,"kw":кВт,"mode":"prime|standby" (ДЭС — основной или резервный источник),"load":средняя нагрузка %,"motor":кВт наибольшего двигателя нагрузки,
 "start":"direct|stardelta|soft|vsd","hours":работа от бака ч,"work":рабочих агрегатов 1…4,"reserve":0|1|2,"tmin":°C,"tmax":°C,"alt":высота над уровнем моря м,"rh":влажность %,
 "climate":"У1|УХЛ1|ХЛ1","fire":"А|Б|В1|В2|В3|В4|Г|Д","noise":дБА,"recvOut":true|false,"cont":"block|sea20|sea40|sea20hc|sea40hc|north",

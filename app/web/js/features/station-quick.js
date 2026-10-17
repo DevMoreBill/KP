@@ -25,6 +25,8 @@ class StationQuick {
   };
   /** без чего подбор невозможен */
   static NEED = { comp:['flow', 'производительность'], dgu:['kw', 'мощность нагрузки'], pump:['q', 'подачу'] };
+  /** в каких кубометрах производительность в ТЗ — коротко для «Подбора станции» (полные подписи — StationReq.BASIS) */
+  static BASIS = [['fad', 'м³/мин на выходе (FAD, как в каталогах)'], ['normal', 'нормальные н. м³/мин (0 °C)'], ['std', 'стандартные ст. м³/мин (20 °C)']];
   static SEC = { air:'Производительность', press:'Давление', dryer:'Осушитель', filter:'Фильтры', recv:'Ресиверы', dgu:'ДГУ', pump:'Насосы', el:'Электропитание', vent:'Вентиляция' };
 
   /** блок «Подбор станции»: главные требования, кнопки, итог; всё остальное — в раскрывающемся блоке */
@@ -33,7 +35,7 @@ class StationQuick {
     const hint=this.hint(x), ask=this.ask(x) ? (this.NEED[k]||[])[0] : '';   // главное поле не заполнено — подсветить
     const fld=([key, label, ph, mode='decimal'])=>{ const m=ReqNum.mark(x, key); return `<label class="f"><span>${label}</span><input type="text" inputmode="${mode}" data-p="${P}.${key}" data-req="${i}" value="${esc(r[key]??'')}" placeholder="${esc(hint[key]||ph)}" autocomplete="off"${m.cls ? ' class="bad"' : key===ask ? ' class="need"' : ''}>${m.msg}</label>`; };
     const sel=(key, label, list, cur)=>`<label class="f"><span>${label}</span><select data-req="${i}" data-rk="${key}">${list.map(([v, l])=>`<option value="${esc(v)}"${String(cur)===String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
-    const air=k==='comp' ? `<label class="f"><span>Качество воздуха</span><select data-stl="air" data-i="${i}"><option value="">обычное — осушитель и фильтры по умолчанию</option>${AirChain.options(cls).map(([v, t])=>`<option value="${esc(v)}"${cls===v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`
+    const air=k==='comp' ? sel('basis', 'Производительность — это', this.BASIS, r.basis||'fad')+`<label class="f"><span>Качество воздуха</span><select data-stl="air" data-i="${i}"><option value="">обычное — осушитель и фильтры по умолчанию</option>${AirChain.options(cls).map(([v, t])=>`<option value="${esc(v)}"${cls===v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`
       : k==='dgu' ? sel('mode', 'Назначение', StationReq.MODE, r.mode||'prime') : '';
     const busy=this.busy.has(x.id);
     return `<div class="sq">
@@ -110,12 +112,14 @@ class StationQuick {
 
   static busy = new Set();
   static AUTO = ['flow', 'pressure', 'kw', 'q', 'head'];
+  /** отпечаток главных требований подбора (и в каких кубометрах производительность) — изменился, подбор заново */
+  static sig(q){ return JSON.stringify([...this.AUTO.map(f=>q[f]||0), q.basis||'fad']); }
   /** главное требование изменено у подобранной станции: подбор заново без вопроса (контейнер, шкафы и обвязка остаются)
    *  и уведомление — что заменено; значение с ошибкой или пустое — без подбора (ошибка — под полем) */
   static async auto(i, key){
     const x=S.items[i]; if (!x || this.busy.has(x.id)) return; const k=StationReq.kind(x), r=StationReq.ensure(x), need=this.NEED[k];
     if (ReqNum.errors(x).length || (need && !(StationReq.num(r[need[0]])>0))){ renderForm(); return; }
-    const q=this.query(x), sig=JSON.stringify(this.AUTO.map(f=>q[f]||0)); if (r.pickSig===sig){ renderForm(); return; }
+    const q=this.query(x), sig=this.sig(q); if (r.pickSig===sig){ renderForm(); return; }
     const before=this.parts(x);
     this.busy.add(x.id); renderEditor();
     try{ const note=await TzPick.assemble(x, q); r.pick=note.slice(0, 900); r.pickSig=sig; persist(); }
@@ -145,7 +149,7 @@ class StationQuick {
     if (need && !(StationReq.num(r[need[0]])>0)) return toast('Укажите '+need[1]+' — без неё станцию не подобрать');
     if (kitMainPart(x) && !confirm(`Подобрать оборудование заново? ${k==='comp' ? 'Компрессоры, осушители, фильтры и ресиверы' : k==='dgu' ? 'ДГУ и бак' : 'Насосы'} заменятся подобранными из каталога; контейнер, шкафы и обвязка останутся.`)) return;
     this.busy.add(x.id); renderEditor();
-    try{ const q=this.query(x), note=await TzPick.assemble(x, q); r.pick=note.slice(0, 900); r.pickSig=JSON.stringify(this.AUTO.map(f=>q[f]||0)); persist(); }
+    try{ const q=this.query(x), note=await TzPick.assemble(x, q); r.pick=note.slice(0, 900); r.pickSig=this.sig(q); persist(); }
     catch(e){ toast('Не получилось подобрать: '+(e && e.message || e)); }
     finally{ this.busy.delete(x.id); }
     renderEditor(); renderForm(); StationImages.soon(x);

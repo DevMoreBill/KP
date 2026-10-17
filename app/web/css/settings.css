@@ -564,3 +564,4 @@ tr.re-on{background:var(--soft)}
 .se-row select{min-width:0;flex:1 1 260px;max-width:420px}
 .st-more>summary{cursor:pointer}
 .st-more>.st-card{margin-top:10px}
+.ac-ck{display:flex;justify-content:center;align-items:center;min-height:36px;cursor:pointer}   /* вся ячейка права нажимается (телефон — 44 px, mobile.css) */

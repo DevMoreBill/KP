@@ -50,7 +50,7 @@ class CalcInput {
     const units=P.map(p=>{ const kind=StationEquip.kindOf(p), info=/^(compressor|dryer|filter|receiver)$/.test(kind) ? AirChain.info(p, kind) : {};
       return { p, kind, qty:Math.max(1, Math.min(20, Math.round(+p.qty||1))), info, name:String(p.name||'').trim(), attrs:p.attrs||{}, rows:p.rows||[] }; });
     return { kind:StationReq.kind(x), cls:StationUi.opts(x).air || '', units, parts:P, recvIn:StationReq.recvIn(x), recvOut:StationReq.recvOut(x),
-      req:{ flow:g('flow'), pressure:g('pressure'), basis:r.basis==='normal' ? 'normal' : 'fad', alt:g('alt'), rh:g('rh'), margin:g('margin'),
+      req:{ flow:g('flow'), pressure:g('pressure'), basis:AirDemand.REF[r.basis] ? r.basis : 'fad', alt:g('alt'), rh:g('rh'), margin:g('margin'),
         reserve:r.reserve!=null && r.reserve!=='' ? Math.max(0, Math.round(n(r.reserve)||0)) : null, work:n(r.work), tmin:g('tmin'), tmax:g('tmax'), tin:g('tin'),
         kw:g('kw'), load:g('load'), hours:g('hours'), motor:g('motor'), start:r.start||'', recvVol:g('recvVol'), mode:r.mode||'',
         q:g('q'), head:g('head'), hsuct:g('hsuct'), tliq:g('tliq'), liquid:r.liquid||'' } };
@@ -72,8 +72,13 @@ class AirDemand {
   static baro(H){ const a=StationRules.raw('flow.isa'); return a.p0*Math.pow(1-a.a*Math.max(0, H||0), a.n); }
   /** давление насыщенного пара над водой при t, кПа */
   static psat(t){ const m=StationRules.raw('flow.psat'); return m.c*Math.exp(m.b*t/(m.l+t)); }
-  /** н. м³/мин → FAD при условиях всасывания */
-  static fad(Qn, H, t, rh){ const nc=StationRules.raw('flow.normal'), pb=this.baro(H), pv=(rh||0)/100*this.psat(t);
+  /** к каким условиям приведена потребность: normal — н. м³ (0 °C, DIN 1343), std — ст. м³ (20 °C, ГОСТ 2939-63); fad — без пересчёта */
+  static REF = { normal:'flow.normal', std:'flow.standard' };
+  static unit(b){ return b==='std' ? 'ст. м³' : 'н. м³'; }
+  /** условия приведения: правило файла; ст. м³ — в своей версии файла (до 3.99) правила может не быть — 20 °C, 101,325 кПа */
+  static ref(b){ return b==='std' ? (StationRules.opt('flow.standard') || { t:20, p:101.325 }) : StationRules.raw('flow.normal'); }
+  /** н. м³/мин (или ст. м³/мин) → FAD при условиях всасывания */
+  static fad(Qn, H, t, rh, b='normal'){ const nc=this.ref(b), pb=this.baro(H), pv=(rh||0)/100*this.psat(t);
     return Qn*nc.p/(pb-pv)*(t+273.15)/(nc.t+273.15); }
   static units(q){ return q.units.filter(u=>u.kind==='compressor').flatMap(u=>Array.from({ length:u.qty }, ()=>u)); }
 
@@ -84,13 +89,14 @@ class AirDemand {
     if (r.alt==null){ N.assume('Высота над уровнем моря в ТЗ не указана — принято 0 м.'); N.ask('Высота площадки над уровнем моря, м.', true); }
     if (r.tmax==null){ N.missing('t.max', 'Наружная температура летом не задана — для расчёта принята '+f(tAir, 0)+' °C', 'Максимальная температура наружного воздуха на площадке (летом), °C.'); }
     let Q=r.flow;
-    if (r.basis==='normal'){
-      const rh=r.rh!=null ? r.rh : 100; if (r.rh==null) N.assume('Влажность воздуха не указана — для перевода н. м³ в FAD принято 100 % (с запасом).');
-      N.rule('flow.normal'); N.rule('flow.isa'); N.rule('flow.psat');
-      const pb=this.baro(H), ps=this.psat(tAir); Q=this.fad(r.flow, H, tAir, rh);
-      N.step({ what:'Потребность в нормальных м³ → FAD (условия всасывания)', formula:'Qfad = Qн · 101,325 / (pб − φ·pн.п) · (273,15 + t) / 273,15',
-        data:[['Qн', f(r.flow)+' н. м³/мин'], ['высота', f(H, 0)+' м → pб = '+f(pb, 3)+' кПа'], ['t всасывания', f(tAir, 0)+' °C'], ['φ', f(rh, 0)+' % → pн.п = '+f(ps, 3)+' кПа']],
-        rules:['flow.normal', 'flow.isa', 'flow.psat'], result:'Qfad = '+f(Q)+' м³/мин' });
+    if (this.REF[r.basis]){
+      const b=r.basis, u=this.unit(b), rid=b==='std' && StationRules.opt('flow.standard') ? 'flow.standard' : 'flow.normal', T0=this.ref(b).t;
+      const rh=r.rh!=null ? r.rh : 100; if (r.rh==null) N.assume('Влажность воздуха не указана — для перевода '+u+' в FAD принято 100 % (с запасом).');
+      N.rule(rid); N.rule('flow.isa'); N.rule('flow.psat');
+      const pb=this.baro(H), ps=this.psat(tAir); Q=this.fad(r.flow, H, tAir, rh, b);
+      N.step({ what:'Потребность в '+(b==='std' ? 'стандартных' : 'нормальных')+' м³ → FAD (условия всасывания)', formula:'Qfad = Q'+(b==='std' ? 'ст' : 'н')+' · 101,325 / (pб − φ·pн.п) · (273,15 + t) / '+f(273.15+T0, 2),
+        data:[['Q'+(b==='std' ? 'ст' : 'н'), f(r.flow)+' '+u+'/мин'], ['высота', f(H, 0)+' м → pб = '+f(pb, 3)+' кПа'], ['t всасывания', f(tAir, 0)+' °C'], ['φ', f(rh, 0)+' % → pн.п = '+f(ps, 3)+' кПа']],
+        rules:[rid, 'flow.isa', 'flow.psat'], result:'Qfad = '+f(Q)+' м³/мин' });
     } else N.step({ what:'Потребность — FAD (приведена к условиям всасывания, ISO 1217)', data:[['Q', f(Q)+' м³/мин']], rules:['flow.fad_ref'], result:'Qfad = '+f(Q)+' м³/мин' });
     N.rule('flow.fad_ref');
     // запас: по ТЗ; нормами РФ не установлен

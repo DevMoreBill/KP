@@ -231,7 +231,7 @@ span.mb-back{border:0}
 .mob .ed-tab{flex:0 0 auto;min-height:48px;padding:12px 12px 10px;font-size:15px}
 .mob .ed-b{padding:16px max(16px,env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left))}
 .mob .srow{grid-template-columns:minmax(0,1fr) 40px 40px;gap:6px;padding-bottom:8px;border-bottom:1px dashed var(--line)}
-.mob .fhead .icon{min-width:40px;min-height:40px}
+.mob .fhead .icon{min-width:44px;min-height:44px}
 .mob .opt{grid-template-columns:72px minmax(0,1fr) 44px;gap:8px}
 .mob .opt>:first-child{grid-column:1/-1}
 .mob .opt .s{display:none}
@@ -254,7 +254,7 @@ span.mb-back{border:0}
 .mob .catwin .cw-b{grid-template-columns:minmax(0,1fr)}
 .mob .catwin .cw-tb{padding:6px max(16px,env(safe-area-inset-right)) 6px max(16px,env(safe-area-inset-left));gap:10px}
 .mob .catwin .cw-tb .ck{display:none}
-.mob .catwin .cw-tb select{max-width:60%;min-height:40px;padding-top:6px;padding-bottom:6px}
+.mob .catwin .cw-tb select{max-width:60%;min-height:44px;padding-top:6px;padding-bottom:6px}
 .mob .catwin .cw-list{padding:0 0 12px}
 .mob .catwin .cw-row{grid-template-columns:64px minmax(0,1fr) auto;grid-template-areas:"img mn add" "img pr add";gap:2px 12px;padding:10px max(16px,env(safe-area-inset-right)) 10px max(16px,env(safe-area-inset-left));border-radius:0}
 .mob .catwin .cw-row .ck{display:none}
@@ -356,3 +356,15 @@ span.mb-back{border:0}
 .mob .dl-cdr .dl-date{flex:1 0 118px;max-width:none}
 /* каталог: «↓ по убыванию» не сжимается уже своей надписи */
 .mob .cw-dir{flex:0 0 auto}
+
+/* 3.99: цели нажатия на телефоне — не меньше 44 × 44 px (решение владельца 17.10, правило 02.10).
+   «?» остаётся кружком 30 px, но нажимается область 44 px вокруг; ссылки-кнопки и раскрывашки — по высоте строки 44 px */
+.mob .tip>summary{position:relative}
+.mob .tip>summary::after{content:'';position:absolute;inset:-7px}
+.mob button.lnk{min-height:44px;display:inline-flex;align-items:center}
+.mob details:not(.tip)>summary{min-height:44px}
+.mob .cw-tog,.mob label:has(>input[type=checkbox]),.mob label:has(>input[type=radio]){min-height:44px}
+.mob .st-inl{min-height:44px}
+
+/* 3.99: каталог на телефоне — в открытой карточке позиции фильтры скрыты (место карточке), «‹ К списку» их возвращает */
+.mob .catwin.pvon .cw-fb{display:none}

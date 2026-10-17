@@ -195,11 +195,11 @@ class StationReq {
    *  высоте и при влажности, AirDemand) с запасом из ТЗ; {v, why} */
   static need(r, q){
     const t=v=>this.num(String(v??'').replace(/[−–]/g, '-').replace(/^\+/, '')), why=[]; let v=q;
-    if (r.basis==='normal' && typeof AirDemand!=='undefined'){ const tm=t(r.tmax), rh=t(r.rh); v=AirDemand.fad(q, t(r.alt)||0, tm!=null ? tm : StationRules.raw('flow.fad_ref').t, rh!=null ? rh : 100); why.push('н. м³ → FAD'); }
+    if (typeof AirDemand!=='undefined' && AirDemand.REF[r.basis]){ const tm=t(r.tmax), rh=t(r.rh); v=AirDemand.fad(q, t(r.alt)||0, tm!=null ? tm : StationRules.raw('flow.fad_ref').t, rh!=null ? rh : 100, r.basis); why.push(AirDemand.unit(r.basis)+' → FAD'); }
     const m=t(r.margin); if (m>0){ v*=1+m/100; why.push('запас '+String(m).replace('.', ',')+' %'); }
     return { v, why:why.join(', ') };
   }
-  static BASIS = [['fad', 'к условиям всасывания (FAD, ISO 1217)'], ['normal', 'к нормальным условиям (н. м³: 0 °C, 101,3 кПа)']];
+  static BASIS = [['fad', 'на выходе компрессора (FAD, как в каталогах — ISO 1217)'], ['normal', 'нормальные н. м³ (0 °C, 101,3 кПа)'], ['std', 'стандартные ст. м³ (20 °C, 101,3 кПа, ГОСТ 2939)']];
   static LIQUID = [['', 'вода (по умолчанию)'], ['other', 'другая — по паспорту насоса и данным заказчика']];
   static MODE = [['prime', 'основной источник (PRP)'], ['standby', 'резервный — до 200 ч в год (ESP)']];
   static START = [['', 'не указан'], ['direct', 'прямой'], ['stardelta', 'звезда — треугольник'], ['soft', 'плавный пуск'], ['vsd', 'частотный преобразователь']];
@@ -210,7 +210,7 @@ class StationReq {
   /** короткая строка требований для заголовка блока */
   static line(x){
     const r=this.of(x), k=this.kind(x), v=key=>ReqNum.check(key, r[key]) ? null : this.num(r[key]), u=(key, s)=>v(key)!=null && v(key)!==0 ? `${ReqNum.f(v(key))} ${s}` : '', cls=StationUi.opts(x).air;
-    const main=k==='comp' ? [u('flow', r.basis==='normal' ? 'н. м³/мин' : 'м³/мин'), u('pressure', 'бар'), cls ? 'класс '+cls : '', v('margin')>0 ? 'запас '+u('margin', '%') : '']
+    const main=k==='comp' ? [u('flow', r.basis==='std' ? 'ст. м³/мин' : r.basis==='normal' ? 'н. м³/мин' : 'м³/мин'), u('pressure', 'бар'), cls ? 'класс '+cls : '', v('margin')>0 ? 'запас '+u('margin', '%') : '']
       : k==='dgu' ? [u('kw', 'кВт'), r.mode==='standby' ? 'резервный (ESP)' : '', v('load')>0 ? 'средняя нагрузка '+u('load', '%') : ''] : k==='pump' ? [u('q', 'м³/ч'), u('head', 'м')] : [];
     const deg=key=>{ const n=v(key); return n==null ? '' : (n>0 ? '+' : '')+ReqNum.f(n).replace('-', '−')+' °C'; }, t=[deg('tmin') ? 'от '+deg('tmin') : '', deg('tmax') ? 'до '+deg('tmax') : ''].filter(Boolean).join(' ');
     const w=this.num(r.work), rs=this.num(r.reserve);
@@ -244,7 +244,7 @@ class StationReq {
         ? sel('liquid', 'Перекачиваемая жидкость', this.LIQUID, r.liquid||'')+fld('tliq', 'Температура жидкости, °C', '20', 'text')
           +fld('hsuct', 'Высота всасывания, м (подпор — с минусом)', 'по ТЗ', 'text')+fld('alt', 'Высота над уровнем моря, м', '0', 'text')
         : k==='comp'
-        ? sel('basis', 'Производительность приведена', this.BASIS, r.basis||'fad')+fld('margin', 'Запас производительности, %', '0 — по ТЗ')+fld('alt', 'Высота над уровнем моря, м', '0', 'text')
+        ? fld('margin', 'Запас производительности, %', '0 — по ТЗ')+fld('alt', 'Высота над уровнем моря, м', '0', 'text')
           +fld('rh', 'Влажность воздуха, % (для н. м³)', '100 — с запасом', 'numeric')+fld('tin', 'Воздух на входе в осушитель, °C', 'по расчёту', 'text')
         : fld('load', 'Средняя нагрузка за сутки, %', '100')+fld('motor', 'Наибольший двигатель нагрузки, кВт', '—')
           +sel('start', 'Пуск этого двигателя', this.START, r.start||'')+fld('alt', 'Высота над уровнем моря, м', '0', 'text')}</div>
@@ -274,6 +274,7 @@ class StationReq {
     if (ReceiverSync.KEYS.includes(fk)){ const m=ReceiverSync.apply(x); if (m){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); toast('Ресиверы по расчёту: '+m); } }
     // главное требование (расход, давление; мощность ДГУ; подача и напор насосов) изменилось у подобранной станции —
     // комплектующие подбираются заново сами, с уведомлением, что заменено
+    if (k==='basis' && kitMainPart(x)){ persist(); StationQuick.auto(i, 'flow'); return; }   // другие кубометры — другая потребность
     if (StationQuick.AUTO.includes(fk) && t.dataset.p && kitMainPart(x)){ r[fk]=t.value; persist(); StationQuick.auto(i, fk); return; }
     if ((k==='ats' || k==='scada') && t.checked){ const a=this.ensureParts(x); if (a.length){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); toast('Добавлено в состав: '+a.join(', ')); } }
     persist(); renderForm();
