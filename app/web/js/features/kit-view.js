@@ -696,7 +696,7 @@ class KitView {
   /** строка под названием: вид (если его нет в названии) и главные характеристики из каталога («12,6 м³/мин · 8 бар · 75 кВт») */
   static sub(p, kind){
     const nm=String(p.name||'').toLowerCase(), lab=kind && StationEquip.LABEL[kind] && !nm.includes(StationEquip.LABEL[kind].toLowerCase().slice(0, 5)) ? StationEquip.LABEL[kind] : '';
-    const t=[lab, p.attrs && p.attrs.cat ? mainLine(p, 3) : ''].filter(Boolean).join(' · ');
+    const sup=typeof StationSup!=='undefined' ? StationSup.label(p) : '', t=[lab, p.attrs && p.attrs.cat ? mainLine(p, 3) : '', sup ? 'поставщик: '+sup : ''].filter(Boolean).join(' · ');
     return t ? `<small class="muted kt-sub">${esc(t)}</small>` : '';
   }
 

@@ -11,7 +11,9 @@ async function dealXlsx(){
   const note=t=>({v:t, s:'note'});
   const today=new Date().toLocaleDateString('ru-RU');
   const who=S.manager&&S.manager.name || '';
-  const kpTitle=`${S.number?'КП № '+S.number:'КП без номера'}${S.date?' от '+KPGen.ruDate(S.date):''}`;
+  // тендерное КП — номер закупки в заголовках листов, колонтитуле и имени файла (решение владельца 17.10)
+  const tnd=!DL.ex && typeof tenderNo==='function' ? tenderNo() : '';
+  const kpTitle=`${S.number?'КП № '+S.number:'КП без номера'}${S.date?' от '+KPGen.ruDate(S.date):''}${tnd?' · закупка (тендер) № '+tnd:''}`;
   const footer=`${kpTitle} · расчёт от ${today}`;
 
   // ---------- лист «Расчёт»
@@ -276,6 +278,6 @@ async function dealXlsx(){
     {name:SH1, cols:[46,18,14,18,52], rows:R, freeze:4, titles:'4:4', footer},
     {name:SH2, cols:[8,12,48,17,17,13,17], rows:G, merges:GM, heights:GH, freeze:4, titles:'4:4', footer, landscape:true}], 'Экономика сделки');
   const safe=s=>String(s||'').replace(/[\\/:*?"<>|«»]+/g,'').replace(/\s+/g,'_').slice(0,60);
-  saveFileA(DL.ex ? 'Экономика_сделки_пример.xlsx' : `Экономика_КП_${safe(S.number||'черновик')}${S.client?'_'+safe(S.client):''}.xlsx`, blob);
+  saveFileA(DL.ex ? 'Экономика_сделки_пример.xlsx' : `${tnd?safe(tnd)+'_':''}Экономика_КП_${safe(S.number||'черновик')}${S.client?'_'+safe(S.client):''}.xlsx`, blob);
   toast('Расчёт выгружен в Excel');
 }
