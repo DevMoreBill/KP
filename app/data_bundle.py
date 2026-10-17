@@ -176,7 +176,9 @@ class SettingsFile:
              ('feeds', 'Фиды поставщиков: адреса, категории, скидки'), ('mail', 'Почта для отправки КП (без пароля)'),
              ('alerts', 'Письма администратору о проблемах'), ('makerLogos', 'Логотипы производителей'),
              ('update', 'Обновления программы: репозиторий, ночная установка'), ('userPrefs', 'Личные настройки менеджеров'),
-             ('access', 'Права менеджеров (без логинов и паролей)'), ('integrations', 'Ключи API (только «с ключами API»)'))
+             ('access', 'Права менеджеров (без логинов и паролей)'),
+             ('bitrix', 'Битрикс24: воронка, этапы, менеджеры (адрес вебхука — только «с ключами API»)'),
+             ('integrations', 'Ключи API (только «с ключами API»)'))
     UPDATE_KEYS = ('repo', 'auto', 'nightly', 'nightHour')
 
     def __init__(self, store, by=''):
@@ -199,6 +201,8 @@ class SettingsFile:
             return None
         if k == 'mail' and isinstance(v, dict):
             v = {a: b for a, b in v.items() if a != 'password'}
+        if k == 'bitrix' and isinstance(v, dict):         # служебное (время опроса, поля созданы) — не настройка
+            v = {a: b for a, b in v.items() if a in ('url', 'on', 'category', 'stages', 'users', 'pollSec', 'portal') and (keys or a != 'url')}
         if k == 'settings' and isinstance(v, dict) and isinstance(v.get('ai'), dict) and not keys:
             v = dict(v, ai={a: b for a, b in v['ai'].items() if a != 'key'})
         if k == 'update' and isinstance(v, dict):
@@ -283,6 +287,10 @@ class SettingsFile:
             v = dict(cur if isinstance(cur, dict) else {}, **{a: v[a] for a in self.UPDATE_KEYS if isinstance(v, dict) and a in v})
         if k == 'integrations' and isinstance(v, dict) and isinstance(cur, dict):
             v = dict(cur, **v)
+        if k == 'bitrix' and isinstance(v, dict):         # адреса вебхука в файле нет — остаётся свой; служебное — своё
+            v = dict(cur if isinstance(cur, dict) else {}, **{a: b for a, b in v.items() if a in ('url', 'on', 'category', 'stages', 'users', 'pollSec', 'portal')})
+            if v.get('on') and not v.get('url'):
+                v['on'] = False
         if not isinstance(v, (dict, list)):
             raise ValueError('неверный формат')
         st.kv_set(k, v)

@@ -125,6 +125,7 @@ class StorageTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, True)
         path = os.path.join(d, 'kp.sqlite3')
         st = storage.Store(path)
+        st.migration_down('2027-11-bitrix')
         st.migration_down('2027-10-crm')                       # база прежней версии: таблиц ещё нет
         st.migration_down('2027-09-kp-files-author')
         st.migration_down('2027-08-kp-files')

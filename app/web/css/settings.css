@@ -712,3 +712,12 @@ dialog.st-confirm.mv>*{flex-shrink:0}
 .bk-a select{max-width:100%}
 @media (max-width:760px){.bk-a select{width:100%;min-width:0}}
 .fr-t{min-width:680px}
+
+/* Битрикс24 (settings-bitrix.js) */
+.bx-st{margin:6px 0 10px;font-size:13.5px}
+.bx-map{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:10px;align-items:center;padding:4px 0}
+.bx-map label{font-size:14px}
+.bx-map select{max-width:420px}
+.bx-poll{margin-left:auto;max-width:230px}
+.bx-log{max-height:320px;overflow:auto;font-size:13px;display:grid;gap:3px}
+@media (max-width:760px){.bx-map{grid-template-columns:minmax(0,1fr);gap:4px;padding:6px 0}.bx-map select{max-width:none}.bx-poll{margin-left:0;max-width:none;flex:1 1 100%}}

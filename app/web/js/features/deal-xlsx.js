@@ -4,7 +4,7 @@
 // Сводка — значения на момент выгрузки; «что если» считается на листе «Расчёт».
 'use strict';
 
-async function dealXlsx(){
+async function dealXlsx(o={}){
   const d=dlDeal(), kp=dlKp(), c=dealCalc(kp,d), b=c.base||c.lo, unk=c.unknown.length>0;
   const SH0='Сводка', SH1='Расчёт', SH2='График платежей', q=n=>`'${n}'!`;
   const num=v=>Number.isFinite(v)?v:0;
@@ -278,6 +278,7 @@ async function dealXlsx(){
     {name:SH1, cols:[46,18,14,18,52], rows:R, freeze:4, titles:'4:4', footer},
     {name:SH2, cols:[8,12,48,17,17,13,17], rows:G, merges:GM, heights:GH, freeze:4, titles:'4:4', footer, landscape:true}], 'Экономика сделки');
   const safe=s=>String(s||'').replace(/[\\/:*?"<>|«»]+/g,'').replace(/\s+/g,'_').slice(0,60);
+  if (o.blob) return blob;          // для сделки в Битрикс24 — файл, без скачивания
   saveFileA(DL.ex ? 'Экономика_сделки_пример.xlsx' : `${tnd?safe(tnd)+'_':''}Экономика_КП_${safe(S.number||'черновик')}${S.client?'_'+safe(S.client):''}.xlsx`, blob);
   toast('Расчёт выгружен в Excel');
 }

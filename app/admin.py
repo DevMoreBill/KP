@@ -1190,6 +1190,9 @@ class AdminApi:
                 self.log('edit_defaults', 'settings', 'defaults', {k: before.get(k) for k in ch}, ch)
                 return self.ok({'values': res})
             return self.ok({'values': defaults.get(st)})
+        if sub == 'bitrix' or sub.startswith('bitrix/'):     # связь с Битрикс24 (bitrix.py)
+            from bitrix import BitrixDesk
+            return BitrixDesk(self.h, self.st, self.log).route(m, sub, me or 'admin')
         if sub == 'ai':          # нейросеть в программе: включить / выключить, ключ, модель, адрес API, расход
             import ai_llm
             if m == 'POST':

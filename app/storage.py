@@ -14,7 +14,8 @@
   audit, trash, pending_edits — журнал действий, корзина удалённого, правки на модерации
              (миграция «2026-10-admin», обратимая: Store.migration_down);
   kp_files — справочные документы к КП (описания; сами файлы — в data/kp_files, app/kp_files.py);
-  deals, deal_kp, crm_tasks — сделки, КП в сделках, дела менеджеров (кабинет менеджера, app/crm.py).
+  deals, deal_kp, crm_tasks — сделки, КП в сделках, дела менеджеров (кабинет менеджера, app/crm.py);
+  bx_link, bx_queue, bx_log — связь с Битрикс24 (app/bitrix.py).
 
 Запись сериализуется одной блокировкой, база в режиме WAL: одновременное чтение многими пользователями
 не мешает записи. При первом запуске данные из прежних JSON-файлов переносятся автоматически.
@@ -219,6 +220,19 @@ MIGRATIONS = [
      DROP INDEX IF EXISTS crm_tasks_deal; DROP INDEX IF EXISTS crm_tasks_mgr; DROP TABLE IF EXISTS crm_tasks;
      DROP INDEX IF EXISTS deal_kp_deal; DROP TABLE IF EXISTS deal_kp; DROP INDEX IF EXISTS deals_mgr; DROP TABLE IF EXISTS deals;
      DELETE FROM kv WHERE key = 'crm.seq';
+     """),
+    # связь с Битрикс24 (app/bitrix.py): соответствие записей и согласованные значения, очередь отправки, журнал обмена
+    ('2027-11-bitrix',
+     """
+     CREATE TABLE IF NOT EXISTS bx_link (kind TEXT NOT NULL, local_id TEXT NOT NULL, bx_id TEXT NOT NULL, sent TEXT, at TEXT,
+       PRIMARY KEY (kind, local_id));
+     CREATE INDEX IF NOT EXISTS bx_link_bx ON bx_link(kind, bx_id);
+     CREATE TABLE IF NOT EXISTS bx_queue (kind TEXT NOT NULL, local_id TEXT NOT NULL, added TEXT, tries INTEGER NOT NULL DEFAULT 0,
+       error TEXT, next_at TEXT, PRIMARY KEY (kind, local_id));
+     CREATE TABLE IF NOT EXISTS bx_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, level TEXT, text TEXT);
+     """,
+     """
+     DROP TABLE IF EXISTS bx_log; DROP TABLE IF EXISTS bx_queue; DROP INDEX IF EXISTS bx_link_bx; DROP TABLE IF EXISTS bx_link;
      """),
 ]
 

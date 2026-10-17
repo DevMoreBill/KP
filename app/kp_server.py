@@ -439,6 +439,8 @@ def main():
         feeds.IMAGE_STORE = IMAGES
         maintenance.Background.every(3600, lambda: feeds.auto_check(store()), 'фиды поставщиков')     # РРЦ и наличие: когда пора обновлять — решает feeds.auto_check
         maintenance.Background.every(6 * 3600, lambda: Updater(store(), ROOT, DATA_DIR).auto_check(), 'проверка новой версии')   # раз в сутки (Updater.auto_check)
+        from bitrix import BitrixConf, BitrixSync           # связь с Битрикс24: очередь отправки и опрос изменений
+        maintenance.Background.every(lambda: BitrixConf(store()).poll(), lambda: BitrixSync(store()).run(), 'Битрикс24')
         from admin_alerts import AdminAlerts
         import config
         maintenance.Background.every(lambda: SrvVal.get(store(), 'srv.alertsEveryMin') * 60, lambda: AdminAlerts(store(), config).check(),

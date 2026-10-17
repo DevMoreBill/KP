@@ -37,6 +37,7 @@ import defaults
 from kp_track import DealTrack, Mailer, MailTemplate, ReminderList
 from kp_files import KpFiles
 from crm import CrmBoard, DealBook, Stages, TaskBook
+from bitrix import BitrixConf, BitrixQueue, BitrixSync, EconXlsx
 from server_log import ServerLog
 from features import FeatureAccess
 from images import ImageStore
@@ -564,7 +565,7 @@ class KpController(Controller):
             rev = store().kp_set(kid, field, admin.kp_in(self.h, store(), kid, field, text), admin.actor(self.h)[1],
                                  self.base_rev() if field == 'state' else None)
             if field == 'meta':
-                return self.send_json({'ok': True, 'rev': rev, 'deal': CrmController.on_kp(self.h, kid)})
+                return self.send_json({'ok': True, 'rev': rev, 'deal': CrmController.on_kp(self.h, kid), 'bx': BitrixConf(store()).on()})
             return self.send_json({'ok': True, 'rev': rev})
         v = store().kp_get(kid, field)
         if v and field == 'state':
@@ -723,6 +724,7 @@ class KpFilesController(Controller):
         with self.user_input():
             rec = kf.add(kid, self.q.get('name', ''), self.body(), self.q.get('note', ''), name, uid)
         admin.log(self.h, store(), 'add_kp_file', 'kp', kid, None, {'name': rec['name'], 'size': rec['size']})
+        CrmController.bx(DealBook(store()).deal_of(kid))
         return self.send_json(rec)
 
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/files/(\d{1,9})', ('GET', 'PUT'))
@@ -1029,8 +1031,22 @@ class TrackController(Controller):
             tr, changed = DealTrack(store()).update(kid, self.json_body(), admin.actor(self.h)[1])
         if changed:
             admin.log(self.h, store(), 'kp_status', 'kp', kid, None, changed)
-            CrmController.safe(lambda: DealBook(store()).refresh(kid, admin.actor(self.h)[1]))
+            CrmController.safe(lambda: CrmController.bx(DealBook(store()).refresh(kid, admin.actor(self.h)[1])))
         return self.send_json({'ok': True, 'track': tr})
+
+    @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/econ', 'PUT')    # Excel экономики сделки (собран в браузере автора) — для Битрикс24
+    def econ(self, kid):
+        meta = self._obj(store().kp_get(kid, 'meta'))
+        if not meta:
+            return self.not_found('Сначала сохраните КП')
+        if not admin.deal_allowed(self.h, meta):
+            return self.text(403, 'Экономика сделки — только автору КП и администратору')
+        if not BitrixConf(store()).on():
+            return self.send_json({'ok': False})
+        with self.user_input():
+            EconXlsx(store()).save(kid, self.body())
+        CrmController.bx(DealBook(store()).deal_of(kid))
+        return self.send_json({'ok': True})
 
     @route(r'/api/reminders', 'GET')       # напоминания менеджера: перезвонить, срок действия КП, нет ответа
     def reminders(self):
@@ -1121,7 +1137,7 @@ class TrackController(Controller):
             admin.log(self.h, store(), 'send_kp', 'kp', kid, None, {'to': to, 'error': str(e)[:200]}, result='failed')
             return self.text(422, str(e))
         tr = DealTrack(store()).mark_sent(kid, to + cc, [x[0] for x in files], admin.actor(self.h)[1])
-        CrmController.safe(lambda: DealBook(store()).refresh(kid, admin.actor(self.h)[1]))
+        CrmController.safe(lambda: CrmController.bx(DealBook(store()).refresh(kid, admin.actor(self.h)[1])))
         admin.log(self.h, store(), 'send_kp', 'kp', kid, None, {'to': to, 'cc': cc, 'files': [x[0] for x in files]})
         return self.send_json({'ok': True, 'track': tr})
 
@@ -1313,6 +1329,13 @@ class CrmController(Controller):
             ServerLog.failure('сделки', e)
             return None
 
+    @staticmethod
+    def bx(did, kind='deal'):
+        """Изменение — в очередь отправки в Битрикс24 (если связь включена). → did"""
+        if did:
+            BitrixQueue.touch(store(), kind, did)
+        return did
+
     @classmethod
     def on_kp(cls, h, kid):
         """КП сохранено — в сделку: выбранную в КП (своя или с правом на чужие), прежнюю или новую."""
@@ -1322,7 +1345,7 @@ class CrmController(Controller):
             d = DealBook(store()).get(want)
             uid, _n, everyone = cls.who(h)
             want = want if d and (everyone or d.get('managerId') == uid) else None
-        return cls.safe(lambda: DealBook(store()).on_kp(kid, meta, admin.actor(h)[1], want or None))
+        return cls.safe(lambda: cls.bx(DealBook(store()).on_kp(kid, meta, admin.actor(h)[1], want or None)))
 
     @staticmethod
     def who(h):
@@ -1397,6 +1420,7 @@ class CrmController(Controller):
         with self.user_input():
             deal = DealBook(store()).create(d, mid, mname, admin.actor(self.h)[1])
         admin.log(self.h, store(), 'create_deal', 'deal', deal['id'], None, {k: deal.get(k) for k in ('title', 'client', 'stage')})
+        self.bx(deal['id'])
         return self.send_json(deal)
 
     @route(r'/api/crm/deal/(d\d{1,9})', ('GET', 'PUT'))
@@ -1422,9 +1446,12 @@ class CrmController(Controller):
             ch = {k: new.get(k) for k in ('stage', 'lostReason', 'manager') if new.get(k) != d.get(k)}
             if ch:
                 admin.log(self.h, store(), 'edit_deal', 'deal', did, {k: d.get(k) for k in ch}, ch)
+            self.bx(did)
             d = new
         d['kps'] = book.kps([did])[did]
         d['tasks'] = TaskBook(store()).list(deal=did)
+        if BitrixConf(store()).on():
+            d['bx'] = self.safe(lambda: BitrixSync(store()).card(did))
         return self.send_json(dict(d, stages=Stages.all(store())))
 
     @route(r'/api/crm/deal/(d\d{1,9})/kp', 'POST')
@@ -1438,6 +1465,8 @@ class CrmController(Controller):
             return self.text(403, 'Это КП другого менеджера — нет доступа')
         old = DealBook(store()).link(did, kid, admin.actor(self.h)[1])
         admin.log(self.h, store(), 'link_deal', 'deal', did, {'deal': old} if old else None, {'kp': kid})
+        self.bx(did)
+        self.bx(old)
         return self.send_json({'ok': True, 'from': old})
 
     @route(r'/api/crm/task', 'POST')
@@ -1455,6 +1484,7 @@ class CrmController(Controller):
             mid = self._manager(str(d['managerId']))[0]
         with self.user_input():
             t = TaskBook(store()).add(d, mid, admin.actor(self.h)[1], did or None)
+        self.bx(t['id'], 'task')
         return self.send_json(t)
 
     @route(r'/api/crm/task/(\d{1,9})', 'PUT')
@@ -1468,6 +1498,7 @@ class CrmController(Controller):
             return self.text(403, 'Это дело другого менеджера — нет доступа')
         with self.user_input():
             t = tb.update(tid, self.json_body())
+        self.bx(t['id'], 'task')
         return self.send_json(t)
 
 

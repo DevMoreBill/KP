@@ -34,14 +34,14 @@ class AdminNav {
       {key:'managers', label:'Менеджеры', hint:'Вход по паролю, права (в том числе особые: удалять товары, правки без модерации, выгрузка) и контакты для КП.', parts:[['', m=>AccessPanel.open(m)], ['Контакты менеджеров — в КП', m=>stDelete(m, 'manager')]]},
       {key:'users', label:'Администраторы', hint:'Кто входит в «Настройки»: добавить, изменить; смена своего пароля.', parts:[['', m=>stUsers(m)], ['Мой пароль', m=>stSecurity(m)]]},
       {key:'audit', label:'Журнал действий', hint:'Кто, что и когда сделал: КП, каталог, справочники, настройки. Фильтры по сотруднику, действию и дате.', open:m=>stAudit(m)},
-      {key:'services', label:'Подключения и ключи', hint:'Проверка всех внешних сервисов одной кнопкой, ключи API (контрагенты, перевозчики, PDF), нейросеть.', parts:[['', m=>new ConnectionsPanel(m).open()], ['Ключи API', m=>stKeys(m)], ['Нейросеть', m=>stAi(m)]]},
+      {key:'services', label:'Подключения и ключи', hint:'Проверка всех внешних сервисов одной кнопкой, ключи API (контрагенты, перевозчики, PDF), нейросеть, связь с Битрикс24.', parts:[['', m=>new ConnectionsPanel(m).open()], ['Ключи API', m=>stKeys(m)], ['Битрикс24', m=>BitrixPanel.open(m)], ['Нейросеть', m=>stAi(m)]]},
       {key:'updates', label:'Обновления', hint:'Новая версия: проверить на GitHub и установить одной кнопкой или из файла; откат; история установок.', open:m=>AdminSystem.updates(m)},
       {key:'backup', label:'База и копии', hint:'Выгрузка и загрузка данных, автоматические копии, вторая папка, обслуживание базы.', open:m=>stBackup(m)},
       {key:'trash', label:'Корзина', get hint(){ return `Удалённое хранится ${DEFN('srv.trashDays', 30)} дн.: восстановить, удалить навсегда, очистить.`; }, open:m=>TrashTab.render(m)},
       {key:'system', label:'Система', hint:'Версия, режим работы, адрес, папки, место на диске; перезапуск программы.', open:m=>AdminSystem.system(m)}]}];
   // прежние ключи вкладок (ссылки из других окон и подсказок, сохранённый выбор, история настроек)
   static ALIAS = {delete:'db-kp', 'db-catalog':'goods', stats:'home', changed:'changes', history:'changes', access:'managers', 'db-manager':'managers',
-    security:'users', connections:'services', keys:'services', ai:'services', texts:'lists'};
+    security:'users', connections:'services', keys:'services', ai:'services', bitrix:'services', texts:'lists'};
   static START = 'home';   // вкладка при первом открытии — обзор
 
   static tabs(){ return [this.HOME, ...this.GROUPS.flatMap(g=>g.tabs)]; }

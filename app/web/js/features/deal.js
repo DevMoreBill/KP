@@ -1218,10 +1218,27 @@ class DealPlan {
   }
 }
 
+// позиции КП для товаров сделки в Битрикс24 (описание КП, поле lines): цена за единицу со скидкой и НДС, копейки в валюте КП,
+// rate — курс к рублю; опции — отдельными строками
+class KpLines {
+  static of(st=S){
+    const P=st.pricing||{}, cur=P.cur||'RUB', rate=cur==='RUB' ? 1 : parseFloat(String((P.rates||{})[cur]||'').replace(/\s/g,'').replace(',','.'));
+    if (!(rate>0)) return undefined;
+    const rows=[];
+    for (const x of st.items||[]){ rows.push({n:String(x.name||'').slice(0,250), q:+x.qty||0, p:KPGen.netPrice(x), u:x.unit||'шт'});
+      for (const o of (x.options||[]).filter(o=>o.name)) rows.push({n:String(o.name).slice(0,250), q:+o.qty||0, p:o.price||0, u:o.unit||'шт'}); }
+    return { cur, rate, vat:+st.vat||0, rows:rows.slice(0, 200) };
+  }
+}
+
 // краткий итог для правой панели и журнала (только если расчёт заполнен)
 function dealSummary(st=S){
   if (!st.deal || !st.deal.touched) return null;
   const c=dealCalc(dealKpInputs(st), st.deal), b=c.base;
-  return b ? { confirmed:true, profit:Math.round(b.P*100)/100, net:Math.round(b.net*100)/100, margin:b.margin, markup:b.markup }
-    : { confirmed:false, lo:Math.round(c.lo.P), hi:Math.round(c.hi.P), marginLo:c.lo.margin, marginHi:c.hi.margin };
+  const r2=v=>Number.isFinite(v)?Math.round(v*100)/100:null, d0=/^\d{4}-\d{2}-\d{2}$/.test(st.deal.start||'')?st.deal.start:'';
+  // экономика полностью — для сделки в Битрикс24 (только автору КП и администратору, как и весь расчёт)
+  const full={ price:r2(c.S), revenue:r2(c.R), cost:r2((b||c.lo).Ctot), fin:r2(c.F), parts:(c.parts||[]).map(([n,v])=>[n, r2(v)]),
+    pays:(c.rows||[]).filter(x=>Number.isFinite(x.day) && x.amount).slice(0, 60).map(x=>({day:x.day, d:d0?KpDate.addDays(d0, x.day):'', t:String(x.label||'').slice(0,120), a:r2(x.amount)})) };
+  return b ? { confirmed:true, profit:Math.round(b.P*100)/100, net:Math.round(b.net*100)/100, margin:b.margin, markup:b.markup, full }
+    : { confirmed:false, lo:Math.round(c.lo.P), hi:Math.round(c.hi.P), marginLo:c.lo.margin, marginHi:c.hi.margin, full };
 }

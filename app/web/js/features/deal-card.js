@@ -42,7 +42,9 @@ class DealCard {
       <div class="row dk-kb"><button class="btn primary" type="button" data-dknew>＋ Новое КП для сделки</button><button class="btn ghost" type="button" data-dklink>Добавить КП клиента</button></div></section>`;
     const H=(d.history||[]).slice().reverse();
     const hist=H.length?`<details class="dk-h"><summary>История (${H.length})</summary>${H.map(h=>`<div class="dk-hr"><span class="muted">${esc(Fmt.dateTime(h.at))} · ${esc(h.by||'')}</span> ${esc(this.hist(h))}</div>`).join('')}</details>`:'';
-    return `<div class="dlg-h"><div class="dk-hd"><span class="muted">Сделка № ${esc(d.number)}${d.manager?' · '+esc(d.manager):''} · создана ${esc(KpDate.ddmm(String(d.created||'').slice(0,10)))}</span>
+    const bx=d.bx ? (d.bx.id ? `<span class="dk-bx">Битрикс24: ${d.bx.url?`<a href="${esc(d.bx.url)}" target="_blank" rel="noopener">сделка ${esc(d.bx.id)}</a>`:'сделка '+esc(d.bx.id)} · синхронизировано ${esc(Fmt.dateTime(d.bx.at))}</span>`
+      : `<span class="dk-bx${d.bx.error?' bad-t':''}">Битрикс24: ${d.bx.error?'не отправлено — '+esc(d.bx.error):'ждёт отправки'}</span>`) : '';
+    return `<div class="dlg-h"><div class="dk-hd"><span class="muted">Сделка № ${esc(d.number)}${d.manager?' · '+esc(d.manager):''} · создана ${esc(KpDate.ddmm(String(d.created||'').slice(0,10)))}</span>${bx}
         <input type="text" class="dk-title" data-dkf="title" value="${esc(d.title||'')}" maxlength="200" aria-label="Название сделки" placeholder="Название: объект или задача клиента"></div>
         ${ClientCard.on()&&(d.client||d.clientInn)?`<button class="btn sm ghost" type="button" data-cc="${esc(JSON.stringify({id:d.clientId||'', inn:d.clientInn||'', name:d.client||''}))}">Карточка клиента</button>`:''}<button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       ${step}${fields}<div class="dk-g">${tasks}${kps}</div>${hist}`;

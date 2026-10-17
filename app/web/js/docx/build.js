@@ -266,9 +266,12 @@ async function download(){
     const meta={ id:S.kpId, number:S.number, date:S.date, client:S.client, clientInn:S.clientInn||'', sum:t.sum, units:t.units, positions:S.items.length,
       items:S.items.map(x=>x.name).slice(0,3), file:fnSaved, manager:S.manager.name, tender: tenderNo() ? {number:tenderNo(), url:tenderUrl()} : undefined, managerPost:S.manager.position||'',
       createdAt:S.createdAt, savedAt:new Date().toISOString(), econ:kpEconomics(), authorId:S.authorId||'', managerId:S.managerId||'', deal:dealSummary(), validUntil:KpDate.validUntil()||undefined,
-      plan:DealPlan.of(), dealId:S.dealId||undefined };
+      plan:DealPlan.of(), dealId:S.dealId||undefined, lines:KpLines.of() };
     const mr=await api(`/api/kp/${S.kpId}/meta`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(meta)});
     if (mr && mr.deal) S.dealId=mr.deal;      // КП в сделке (кабинет менеджера): следующее сохранение — в ту же сделку
+    // связь с Битрикс24: Excel экономики сделки собирается здесь (в браузере автора) и уходит в ленту сделки
+    if (mr && mr.bx && S.deal && S.deal.touched && dealAllowed()){ const kid=S.kpId;
+      dealXlsx({blob:true}).then(b=>b && api(`/api/kp/${kid}/econ`, {method:'PUT', body:b})).catch(e=>console.warn('Экономика для Битрикс24 не отправлена:', e)); }
     Drafts.saved();      // КП в журнале — черновик не нужен
     // PDF рядом с .docx — по галочке «Также сохранить в PDF»
     let pdfOk=false, pdfErr='';

@@ -43,7 +43,8 @@ class ConnectionCheck:
                 ('girbo', 'Контрагенты', 'ГИР БО ФНС — бухотчётность без ключа', 'keys', self._girbo),
                 ('carriers', 'Доставка', 'Перевозчики — пробный расчёт Москва → Санкт-Петербург', 'keys', self._carriers),
                 ('github', 'Обновления', 'GitHub — новая версия программы', 'updates', self._github),
-                ('pdf', 'Документы', 'Сохранение КП в PDF', 'keys', self._pdf)]
+                ('pdf', 'Документы', 'Сохранение КП в PDF', 'keys', self._pdf),
+                ('bitrix', 'CRM', 'Битрикс24 — сделки и дела', 'services', self._bitrix)]
         jobs += [('feed:' + f['id'], 'Фиды поставщиков', f['name'], 'feeds', (lambda f=f: self._feed(f)))
                  for f in (self.store.kv_get('feeds') or {}).get('items', []) if f.get('id') and f.get('url')]
         res = {}
@@ -98,6 +99,17 @@ class ConnectionCheck:
                 except smtplib.SMTPAuthenticationError:
                     return 'fail', 'сервер %s не принял логин или пароль' % host
         return 'ok', 'вход на %s:%d выполнен (письмо не отправлялось)' % (host, port)
+
+    def _bitrix(self):
+        from bitrix import BitrixConf, BitrixQueue
+        c = BitrixConf(self.store)
+        if not c.get().get('url'):
+            return 'off', 'не настроен — «Подключения и ключи → Битрикс24»'
+        p = c.api().call('profile') or {}
+        q = BitrixQueue(self.store).stats()
+        if not c.on():
+            return 'warn', 'связь есть (%s), обмен выключен' % (p.get('NAME') or 'вебхук')
+        return ('warn' if q['failed'] else 'ok'), 'связь есть; в очереди %d%s' % (q['queued'], ', с ошибкой %d' % q['failed'] if q['failed'] else '')
 
     def _ai(self):
         import ai_llm
