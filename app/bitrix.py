@@ -309,6 +309,27 @@ class BitrixQueue:
     def retry_all(self):
         self.store.write('UPDATE bx_queue SET tries=0, next_at=NULL, error=NULL')
 
+    def retry(self, kind, local):
+        """Одну запись — отправить при следующем обмене. → была ли такая запись."""
+        if not self.store.one('SELECT 1 FROM bx_queue WHERE kind=? AND local_id=?', (kind, str(local))):
+            return False
+        self.store.write('UPDATE bx_queue SET tries=0, next_at=NULL, error=NULL WHERE kind=? AND local_id=?', (kind, str(local)))
+        return True
+
+    def failed(self, limit=50):
+        """Не отправленное с ошибкой: [{kind, id, title, error, tries, added}] — для «Повторить» в «Настройках»."""
+        out = []
+        for kind, local, tries, err, added in self.store.all('SELECT kind, local_id, tries, error, added FROM bx_queue WHERE error IS NOT NULL '
+                                                              'ORDER BY added DESC LIMIT ?', (limit,)):
+            if kind == 'deal':
+                d = DealBook(self.store).get(local) or {}
+                title = 'Сделка № %s «%s»' % (d.get('number') or local, d.get('title') or d.get('client') or '')
+            else:
+                t = TaskBook(self.store).get(int(local)) if str(local).isdigit() else None
+                title = 'Дело «%s»' % ((t or {}).get('title') or local)
+            out.append({'kind': kind, 'id': local, 'title': title, 'error': err or '', 'tries': tries or 0, 'added': added or ''})
+        return out
+
     def stats(self):
         n, bad = self.store.one('SELECT COUNT(*), SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END) FROM bx_queue')
         last = self.store.one('SELECT error FROM bx_queue WHERE error IS NOT NULL ORDER BY added DESC LIMIT 1')
@@ -455,7 +476,8 @@ class BitrixSync:
                     res['sent'] += 1
                 except BitrixError as e:
                     self.queue.fail(kind, local, tries, e)
-                    self.log.add('%s %s не отправлено: %s' % ('Сделка' if kind == 'deal' else 'Дело', local, e), 'error')
+                    what = ('Сделка № %s' % ((DealBook(self.store).get(local) or {}).get('number') or local)) if kind == 'deal' else 'Дело %s' % local
+                    self.log.add('%s не отправлена: %s' % (what, e) if kind == 'deal' else '%s не отправлено: %s' % (what, e), 'error')
                     res['failed'] += 1
                     if e.code == 'NET':
                         res['error'] = str(e)
@@ -1046,7 +1068,7 @@ class BitrixDesk:
 
     def view(self):
         st = self.store
-        return dict(BitrixConf(st).view(), queue=BitrixQueue(st).stats(), log=BitrixLog(st).tail(),
+        return dict(BitrixConf(st).view(), queue=BitrixQueue(st).stats(), log=BitrixLog(st).tail(100), failed=BitrixQueue(st).failed(),
                     linked={'deals': BitrixLinks(st).count('deal'), 'companies': BitrixLinks(st).count('company'), 'tasks': BitrixLinks(st).count('task')},
                     stagesOur=Stages.all(st))
 
@@ -1086,7 +1108,12 @@ class BitrixDesk:
             res = BitrixSync(st, self.opener).run()
             return self.send(dict(self.view(), result=res))
         if sub == 'bitrix/resend' and m == 'POST':
-            what = self.body().get('what')
+            body = self.body()
+            what = body.get('what')
+            if body.get('kind') in ('deal', 'task') and body.get('id'):        # «Повторить» у одной записи
+                if not BitrixQueue(st).retry(body['kind'], str(body['id'])[:64]):
+                    return self.text(404, 'Записи уже нет в очереди — она отправлена')
+                return self.send(dict(self.view(), result=BitrixSync(st, self.opener).run(pull=False)))
             BitrixQueue(st).retry_all()
             n = 0
             if what == 'all':

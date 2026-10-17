@@ -721,3 +721,8 @@ dialog.st-confirm.mv>*{flex-shrink:0}
 .bx-poll{margin-left:auto;max-width:230px}
 .bx-log{max-height:320px;overflow:auto;font-size:13px;display:grid;gap:3px}
 @media (max-width:760px){.bx-map{grid-template-columns:minmax(0,1fr);gap:4px;padding:6px 0}.bx-map select{max-width:none}.bx-poll{margin-left:0;max-width:none;flex:1 1 100%}}
+.bx-fail{display:grid;gap:6px}
+.bx-f{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line)}
+.bx-f:first-child{border-top:0}
+.bx-f>div{display:grid;gap:1px;flex:1;min-width:0;font-size:13.5px}
+.bx-f .btn{flex:none}

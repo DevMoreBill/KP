@@ -245,3 +245,5 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
 .dc-bx{margin-left:auto;font-size:12px;font-weight:600;color:var(--navy);text-decoration:none;padding:2px 6px;border:1px solid var(--line);border-radius:6px}
 .dc-bx:hover{background:var(--soft)}
 @media (max-width:760px){.dc-bx{padding:12px 12px;margin:-8px 0}}
+.cab-sort{width:auto;max-width:220px}
+@media (max-width:760px){.cab-sort{flex:1 1 100%;max-width:none}}

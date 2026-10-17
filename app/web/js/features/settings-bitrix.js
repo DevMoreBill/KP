@@ -7,6 +7,7 @@ class BitrixPanel {
   static v=null;        // настройка и состояние (/api/admin/bitrix)
   static c=null;        // ответ проверки: воронки, стадии, пользователи, подсказка по e-mail
   static m=null;
+  static errOnly=false;   // журнал: только ошибки и предупреждения
   static async open(m, note){
     this.m=m;
     try{ this.v=await aapi('bitrix'); }catch(e){ m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; return; }
@@ -44,7 +45,8 @@ class BitrixPanel {
       <p class="sub" style="margin-top:12px">Менеджеры → пользователи Битрикса</p>
       ${c.managers.map(m=>`<div class="bx-map"><label>${esc(m.name)}${c.auto[m.id]&&!(v.users||{})[m.id]?' <em class="muted">по e-mail</em>':''}</label><select data-bxu="${esc(m.id)}">${uOpts(users[m.id]||'')}</select></div>`).join('')}
       <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSave">Сохранить соответствия</button></div></div>`:''}
-    <div class="st-card"><p class="sub">Журнал обмена</p>${(v.log||[]).length?`<div class="bx-log">${v.log.map(x=>`<div class="${x.level==='error'?'bad-t':x.level==='warn'?'warn-t':''}"><span class="muted">${esc(Fmt.dateTime(x.at))}</span> ${esc(x.text)}</div>`).join('')}</div>`:'<p class="empty">Обменов ещё не было.</p>'}</div>`;
+    ${(v.failed||[]).length?`<div class="st-card"><p class="sub">Не отправлено <b class="bad-t">${v.failed.length}</b></p><div class="bx-fail">${v.failed.map(f=>`<div class="bx-f"><div><b>${esc(f.title)}</b><span class="bad-t">${esc(f.error)}</span><span class="muted">попыток ${f.tries} · с ${esc(Fmt.dateTime(f.added))}</span></div><button class="btn sm" type="button" data-bxre="${esc(f.kind)}|${esc(f.id)}">Повторить</button></div>`).join('')}</div></div>`:''}
+    <div class="st-card"><div class="row"><p class="sub" style="margin:0">Журнал обмена</p><span class="sp"></span><label class="cab-ck"><input type="checkbox" id="bxErr" data-nodirty${this.errOnly?' checked':''}> Только ошибки</label></div>${(v.log||[]).filter(x=>!this.errOnly||x.level!=='info').length?`<div class="bx-log">${v.log.filter(x=>!this.errOnly||x.level!=='info').map(x=>`<div class="${x.level==='error'?'bad-t':x.level==='warn'?'warn-t':''}"><span class="muted">${esc(Fmt.dateTime(x.at))}</span> ${esc(x.text)}</div>`).join('')}</div>`:`<p class="empty">${this.errOnly?'Ошибок нет.':'Обменов ещё не было.'}</p>`}</div>`;
     this.bind();
   }
   static async run(fn, ok){ try{ const r=await fn(); if (r && r.on!==undefined) this.v=r; this.render(ok?{t:typeof ok==='function'?ok(r):ok}:null); }catch(e){ this.render({t:String(e.message||e), err:true}); } }
@@ -66,6 +68,9 @@ class BitrixPanel {
       this.run(()=>ajson('bitrix', {category:$m('#bxCat').value, stages, users, pollSec:+$m('#bxPoll').value||90}), 'Соответствия сохранены'); };
     if ($m('#bxRun')) $m('#bxRun').onclick=e=>{ e.target.disabled=true; e.target.textContent='Обмениваюсь…';
       this.run(()=>ajson('bitrix/run', {}), r=>{ const x=r.result||{}; return x.error ? 'Ошибка: '+x.error : `Готово: отправлено ${x.sent||0}, получено изменений ${x.pulled||0}, новых сделок ${x.created||0}, дел ${x.tasks||0}`; }); };
+    $m('#bxErr').onchange=e=>{ this.errOnly=e.target.checked; this.render(); };
+    this.m.querySelectorAll('[data-bxre]').forEach(b=>{ b.onclick=()=>{ const [kind, id]=b.dataset.bxre.split('|'); b.disabled=true; b.textContent='Отправляю…';
+      this.run(()=>ajson('bitrix/resend', {kind, id}), r=>{ const x=r.result||{}; return x.error ? 'Не отправлено: '+x.error : x.failed ? 'Снова ошибка — см. «Не отправлено»' : 'Отправлено'; }); }; });
     if ($m('#bxRetry')) $m('#bxRetry').onclick=()=>this.run(()=>ajson('bitrix/resend', {}), 'Записи с ошибкой будут отправлены при следующем обмене');
     if ($m('#bxAll')) $m('#bxAll').onclick=async()=>{ if (!await stConfirm('Выгрузить все сделки?', 'Все сделки программы, включая выигранные и проигранные, будут отправлены в Битрикс24 (уже связанные — обновятся).', 'Выгрузить')) return;
       this.run(()=>ajson('bitrix/resend', {what:'all'}), r=>`В очередь поставлено сделок: ${r.queued||0}`); };

@@ -47,8 +47,10 @@ jobs:
       - name: Проверки программы (tests/run_all.py)
         run: python tests/run_all.py --no-static --strict
 
+  # EXE собирается только по команде владельца (17.10): запуск вручную (workflow_dispatch) или метка v*; при отправке — только проверки
   build:
     needs: tests
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     strategy:
       fail-fast: false

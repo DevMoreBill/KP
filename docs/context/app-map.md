@@ -24,7 +24,7 @@
   → ротация (7 дней, по одной на 4 недели и 12 месяцев); раз в месяц VACUUM; состояние — kv `maint`. Вторая папка (сетевой диск, облако) —
   `backup_mirror.MirrorBackup` (kv `settings.backup2`). Вручную — «Настройки → Обслуживание → Копии и база» или `server-setup/5. Резервная копия базы.bat`.
 - **Сборка:** `.github/workflows/build-exe.yml` на каждую отправку. Job `tests` (ubuntu): `repo_guard.py`, pyflakes 4.0.0, ESLint 10.1.0
-  (`eslint.config.mjs`, правило необъявленных имён по всем файлам), `tests/run_all.py --no-static --strict`. Job `build` (windows-latest,
+  (`eslint.config.mjs`, правило необъявленных имён по всем файлам), `tests/run_all.py --no-static --strict`. Job `build` (только запуск вручную или метка `v*` — по команде владельца, 17.10; windows-latest,
   Python 3.12 x64, PyInstaller из `requirements-build.txt`, `kp.spec`): проверки EXE (SQLite внутри, запуск, DOCX/PDF через LibreOffice,
   папка update, установка обновления из «Настроек» и откат на сломанных 99.0.x, остановка/запуск сервера, задача Планировщика).
   Артефакты: EXE, комплект `Конструктор КП.zip` (EXE + server-setup + install + Инструкция.txt), патч `Обновление КП.zip`.
@@ -225,6 +225,7 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.91.0** (14.10) — доставка из Китая до границы РФ, только админка (`china_freight.ChinaFreight`, kv `chinaRates`, `/api/logistics/china`, клиент `ChinaFreightTab`): ATI.SU по направлениям из Китая + ставки экспедиторов в валюте по курсу ЦБ.
 - **3.92.0** (16.10) — ЖелДорЭкспедиция (`logistics_api.Jde`): открытый расчёт без ключа, сборный и крупногабаритный груз (до 20 т, надбавка за негабарит по размерам места), забор и доставка; крупногабарит — только ЖДЭ из сборных.
 - **3.93.0** (16.10) — справочные документы к КП (`kp_files.KpFiles`, таблица `kp_files`, `data/kp_files`, клиент `KpFilesPanel`, вложения письма) и окно входа (`LoginGuard`, `UserSession`, `LoginInfo`, `LoginForm`, `AuthScreen`, `AdminLogin`).
+- **3.101.3** (17.10) — доска: «Новые из Битрикс24», порядок карточек; «Не отправлено» + «Повторить»; EXE только по команде (`build` — `workflow_dispatch`).
 - **3.101.2** (17.10) — габариты в три окошка: `DimInput` (core/util.js), `DimRow` (item-editor.js), контейнер станции.
 - **3.101.1** (17.10) — «Б24 ↗» на доске (`bxUrl`), `bxNew` + `DealBook.flag`, `CrmController.mailed` (дело «Письмо»).
 - **3.101.0** (17.10) — связь с Битрикс24: `bitrix.py` (`BitrixSync`, очередь, опрос, `BitrixDesk`), миграция `2027-11-bitrix`, `settings-bitrix.js`, `KpLines`, `dealSummary().full`, `EconXlsx`.

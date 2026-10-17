@@ -5,14 +5,26 @@
 /** доска сделок по этапам */
 class CabDeals {
   static closed=false;            // показать «Выиграно» и «Проиграно» (за последние 4 месяца)
+  static bxOnly=false;            // только новые из Битрикс24
+  static SORTS={exp:'по ожидаемой дате', free:'сначала без дела', sum:'по сумме', fresh:'сначала новые'};
+  static sort='exp';
+  static order(a, b){
+    const exp=String(a.expected||'9').localeCompare(String(b.expected||'9'));
+    if (this.sort==='free') return (!!a.next - !!b.next) || exp;
+    if (this.sort==='sum') return (b.sum||0)-(a.sum||0) || exp;
+    if (this.sort==='fresh') return (!!b.bxNew - !!a.bxNew) || String(b.created||'').localeCompare(String(a.created||''));
+    return exp;
+  }
   static drag=matchMedia('(pointer:fine)').matches;
   static html(){
-    const D=(CrmData.B.deals||[]).filter(d=>Cabinet.match(d)), st=CrmData.stages().filter(s=>this.closed||!s.closed);
+    const nNew=CrmData.openDeals().filter(d=>d.bxNew).length; if (!nNew) this.bxOnly=false;
+    const D=(CrmData.B.deals||[]).filter(d=>Cabinet.match(d) && (!this.bxOnly || d.bxNew)), st=CrmData.stages().filter(s=>this.closed||!s.closed);
     const open=D.filter(d=>!CrmData.closed(d));
-    const cols=st.map(s=>{ const L=D.filter(d=>d.stage===s.key).sort((a,b)=>String(a.expected||'9').localeCompare(String(b.expected||'9'))), sum=L.reduce((a,d)=>a+(d.sum||0),0);
+    const cols=st.map(s=>{ const L=D.filter(d=>d.stage===s.key).sort((a,b)=>this.order(a, b)), sum=L.reduce((a,d)=>a+(d.sum||0),0);
       return `<section class="kb-c" data-kbs="${esc(s.key)}" aria-label="${esc(s.label)}"><header class="kb-h"><span class="cab-dot t-${CrmData.tone(s.key)}" aria-hidden="true"></span><b>${esc(s.label)}</b><span class="muted">${L.length}${sum?' · '+CrmFmt.short(sum):''}</span></header>
         <div class="kb-l">${L.map(d=>this.card(d)).join('')||`<p class="kb-e">${this.drag?'Перетащите сюда сделку':'Пусто'}</p>`}</div></section>`; }).join('');
-    return `<div class="cab-bar">${Cabinet.search('Сделка, клиент, ИНН или № КП')}<label class="cab-ck"><input type="checkbox" id="cabClosed"${this.closed?' checked':''}> Закрытые</label>
+    return `<div class="cab-bar">${Cabinet.search('Сделка, клиент, ИНН или № КП')}<label class="cab-ck"><input type="checkbox" id="cabClosed"${this.closed?' checked':''}> Закрытые</label>${nNew?`<label class="cab-ck"><input type="checkbox" id="cabBxNew"${this.bxOnly?' checked':''}> Новые из Битрикс24 (${nNew})</label>`:''}
+      <select id="cabSort" class="cab-sort" aria-label="Порядок карточек">${Object.entries(this.SORTS).map(([k,l])=>`<option value="${k}"${this.sort===k?' selected':''}>${l}</option>`).join('')}</select>
       <span class="muted cab-tot">В работе ${open.length} · ${CrmFmt.short(open.reduce((a,d)=>a+(d.sum||0),0))}</span></div>
       ${D.length||Cabinet.q?'':'<p class="msg">Сделки появляются сами, когда вы сохраняете КП, — или нажмите «＋ Сделка».</p>'}
       <div class="kb">${cols}</div>`;

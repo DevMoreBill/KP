@@ -254,6 +254,17 @@ class DeskTest(unittest.TestCase):
         self.assertEqual(st, 200)
         self.assertNotIn(FakeBitrix.KEY.encode(), b)
         self.assertIn('"bitrix"'.encode(), b)
+        # Битрикс недоступен — запись «Не отправлено», «Повторить» у одной записи
+        self.fake.down = True
+        self.h.req('PUT', '/api/crm/deal/' + did, {'note': 'новая заметка'}, headers=Stand.as_manager(SampleData.MANAGERS[0]))
+        v = Http.js(self.h.req('POST', '/api/admin/bitrix/run', {}, cookie=adm, headers=dict(A))[1])
+        self.assertEqual([f['id'] for f in v['failed']], [did], v.get('result'))
+        self.assertIn('Сделка №', v['failed'][0]['title'])
+        self.fake.down = False
+        st, b, _ = self.h.req('POST', '/api/admin/bitrix/resend', {'kind': 'deal', 'id': did}, cookie=adm, headers=dict(A))
+        self.assertEqual(st, 200, b)
+        self.assertEqual(Http.js(b)['failed'], [])
+        self.assertEqual(self.h.req('POST', '/api/admin/bitrix/resend', {'kind': 'deal', 'id': did}, cookie=adm, headers=dict(A))[0], 404)
         self.assertEqual(self.stand.request_errors(), [])
 
 
