@@ -1350,10 +1350,17 @@ class StationHeat {
   static get UNITS(){ return StationRules.raw('heat.conv_units'); }   // типоразмеры конвекторов: [кВт, длина, мм] — правило файла
   static get CONV(){ return { h:400, d:90, ...StationMatrix.conv() }; }
 
+  /** наружная температура для отопления: из требований; нет — heat.t_default (−40 °C, решение 17.10), но не холоднее
+   *  нижней температуры исполнения контейнера (ГОСТ 15150) */
+  static tOut(r, climate){
+    if (Number.isFinite(r.tmin)) return r.tmin;
+    const d=StationRules.opt('heat.t_default'), def=Number.isFinite(d) ? d : -40, cold=StationNorms.COLD[climate];
+    return cold!=null ? Math.max(cold, def) : def;
+  }
   /** расчёт по расстановке: теплопотери, режим работы, конвекторы (heaters — места), вентиляция летом */
   static calc(plan){
     const g=plan.geo, [Le, We, He]=g.ext, [Li, Wi, Hi]=plan.int, sys=plan.sys||{}, r=plan.req||{}, m=v=>v/1000, I=plan.items||[], fuel=plan.fuel;
-    const rec=sys.rec!==false, cold=StationNorms.COLD[plan.climate], tout=Number.isFinite(r.tmin) ? r.tmin : cold!=null ? cold : -40;
+    const rec=sys.rec!==false, tout=this.tOut(r, plan.climate);
     const tin=StationNorms.INSIDE, dT=Math.max(0, tin-tout), Lt=fuel ? fuel.x1+fuel.part : 0;
     const kind=g.sea ? 'sea' : this.BRIDGE[g.type] ? g.type : 'block', U=this.BRIDGE[kind]/(this.R_SURF+m(g.t)/this.LAMBDA);
     // ограждения отапливаемой части; перегородка к холодному отсеку бака — с половиной перепада
@@ -1458,6 +1465,7 @@ class StationHeat {
     if (h.on){
       const run=h.base ? (h.qRun<=0 ? ` При работе ${nm[h.base.kind]||'агрегат'} поз. ${h.base.pos} даёт ${k(h.base.q)} кВт тепла${h.rec && h.base.kind!=='pump' ? ' (рециркуляция тёплого воздуха — рекуперация)' : ''} — потери покрыты, конвекторы отключаются терморегуляторами.`
         : ` При работе поз. ${h.base.pos}: ${k(h.base.q)} кВт тепла, подогрев забираемого воздуха ${k(h.base.a*this.AIR*h.dT)} кВт — конвекторы нужны и при работе (${k(h.qRun)} кВт).`) : '';
+      if (!Number.isFinite((plan.req||{}).tmin)) iss.push({ level:'info', text:`Отопление посчитано до ${t} снаружи: зимней температуры в требованиях нет — уточните у заказчика и впишите в требованиях станции «Наружный воздух от, °C».` });
       iss.push({ level:'info', text:`Отопление: теплопотери при ${t} снаружи — ${k(h.qStop)} кВт (ограждения ${k(h.qEnv)}, воздух ${k(h.qInf)}; внутри +${h.tin} °C).${run} Конвекторы: ${h.n} × ${this.kw(h.kw)} кВт = ${this.kw(h.total)} кВт (запас 10 %) — у стен, места на чертеже и 3D-виде.` });
       if (h.short) iss.push({ level:'warn', text:`Отопление: нужно ${this.kw(h.need)} кВт, а свободных мест на стенах — для ${this.kw(h.total)} кВт: добавьте мощность иначе (тепловентилятор, обогрев пола) или освободите стену.` });
       if (!h.rec && h.qRun>h.qStop) iss.push({ level:'info', text:`Без рециркуляции тёплого воздуха при работе отопление больше: подогрев воздуха на сжатие или горение. С рекуперацией (заслонка с термостатом на выбросе тёплого воздуха) — тепло оборудования остаётся в помещении.` });

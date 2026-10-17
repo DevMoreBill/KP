@@ -1714,4 +1714,15 @@ Check.run('прочие числа станции — из правил: кон�
   assert.strictEqual(StationGeo.FLEX.block.wall, 20, 'вернулось');
 });
 
+Check.run('отопление без зимней температуры в требованиях: до −40 °C, не холоднее исполнения; замечание «уточните» (решение 17.10)', ()=>{
+  const at=(o, req)=>StationLayout.solve({ cont:C('block', Object.assign({ sizeAuto:true, sys:{ light:true, heat:true, vent:true } }, o)), parts:[comp, dryer, rec, cab], req }).heat;
+  assert.strictEqual(StationRules.raw('heat.t_default'), -40);
+  assert.strictEqual(at({ climate:'ХЛ1' }, {}).tout, -40, 'ХЛ1 (−60 °C) без ТЗ — до −40');
+  assert.strictEqual(at({}, {}).tout, -40, 'без исполнения — −40');
+  assert.strictEqual(at({ climate:'ХЛ1' }, { tmin:-55 }).tout, -55, 'температура из требований важнее');
+  assert.strictEqual(StationHeat.tOut({}, 'У1'), -40, 'У1 (−45) — −40');
+  const p=StationLayout.solve({ cont:C('block', { sizeAuto:true, sys:{ light:true, heat:true, vent:true } }), parts:[comp, dryer, rec, cab], req:{} });
+  assert.ok(p.issues.some(i=>/уточните у заказчика/.test(i.text)), 'замечание «уточните у заказчика»');
+});
+
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);

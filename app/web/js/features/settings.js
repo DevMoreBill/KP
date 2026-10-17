@@ -301,9 +301,10 @@ async function stDelete(m, type){
     if (e.target.closest('[data-dimp]')) return openClientsImport();
     const ct=e.target.closest('[data-cat]'); if (ct) return stCatalogTool(ct.dataset.cat);
     const df=e.target.closest('[data-dfiles]'); if (df){ e.preventDefault(); return KpFilesPanel.open(df.dataset.dfiles, df.dataset.dt.replace(/^№\s*/, ''), {admin:true, onClose:()=>stDelete(m)}); }
-    if (e.target.closest('[data-dnew]')){ try{ await stEdOpen(D.type, null); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
+    if (e.target.closest('[data-dnew]')){ if (ST.ed && !await StDirty.leave()) return; try{ await stEdOpen(D.type, null); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
     const ed=e.target.closest('[data-dedit]'); if (ed){ e.preventDefault();
-      if (ST_NEW[D.type]){ if (ST.ed&&ST.ed.id===ed.dataset.dedit){ ST.ed=null; return stDelete(m); } try{ await stEdOpen(D.type, ed.dataset.dedit); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
+      if (ST_NEW[D.type]){ if (ST.ed && !await StDirty.leave()) return;   // открытая карточка с правками — сначала спросить
+        if (ST.ed&&ST.ed.id===ed.dataset.dedit){ ST.ed=null; return stDelete(m); } try{ await stEdOpen(D.type, ed.dataset.dedit); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
       try{ await stEdit(D.type, ed.dataset.dedit, ()=>stDelete(m)); }catch(err){ toast(err.message||String(err)); } return; }
     if (!e.target.closest('[data-del]')) return;
     const n=D.sel.size, label=(DEL_TYPES.find(x=>x[0]===D.type)||[])[1];
@@ -535,7 +536,7 @@ class AccessPanel {
     const r=await aapi('access'), P=r.perms;
     const row=x=>`<tr data-mid="${esc(x.id)}"${x.blocked?' class="off"':''}><td><b>${esc(x.name||'Без имени')}</b><small class="muted">${esc(x.position||'')}${x.lastLogin?(x.position?' · ':'')+'вход '+esc(Fmt.dateTime(x.lastLogin)):''}</small></td>
       <td>${x.login?`<b>${esc(x.login)}</b>${AccessPanel._state(x)}`:'<span class="muted">не задан</span>'}</td>
-      ${P.map(p=>`<td class="c"><input type="checkbox" data-perm="${p.key}"${x.perms[p.key]?' checked':''} aria-label="${esc(p.label)}"></td>`).join('')}
+      ${P.map(p=>`<td class="c"><label class="ac-ck"><input type="checkbox" data-perm="${p.key}"${x.perms[p.key]?' checked':''} aria-label="${esc(p.label)}"></label></td>`).join('')}
       <td class="acts"><div class="ac-acts"><button class="btn sm" type="button" data-ac="login">${x.login?'Логин и пароль':'Задать вход'}</button>${x.login?`<button class="btn sm" type="button" data-ac="reset">Сбросить пароль</button>
         <button class="btn sm ghost" type="button" data-ac="block">${x.blocked?'Разрешить вход':'Запретить вход'}</button>`:''}${x.sessions?`<button class="btn sm ghost" type="button" data-ac="out" title="Закрыть все входы менеджера: компьютеры и телефоны">Выйти везде (${x.sessions})</button>`:''}</div></td></tr>`;
     m.innerHTML=`<div class="st-card"><div class="row"><p class="sub" style="margin:0">Вход в конструктор по логину и паролю</p><span class="sp"></span>

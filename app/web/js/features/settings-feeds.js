@@ -187,6 +187,7 @@ async function fdFileSet(m, body){
 
 async function fdUpload(input, m){
   const files=[...(input.files||[])]; if (!files.length) return;
+  if (!await StDirty.leave()){ input.value=''; return; }      // после загрузки панель перерисуется — несохранённые поля пропали бы молча
   const st=$('#fdUpSt'); const kind=input.dataset.fdfile, slot=input.dataset.slot||'';
   input.disabled=true;
   const done=[];
@@ -392,10 +393,10 @@ function fdVals(box){ const v={}; box.querySelectorAll('[data-fdf]').forEach(i=>
 async function fdClick(e, m){
   const b=e.target.closest('[data-fd]'); if (!b) return; const a=b.dataset.fd;
   try{
-    if (a==='new'){ FD.edit={name:'', url:'', maker:'', auto:true, pageDesc:true, kind:'yml'}; FD.sel=null; return stFeeds(m); }
+    if (a==='new'){ if (!await StDirty.leave()) return; FD.edit={name:'', url:'', maker:'', auto:true, pageDesc:true, kind:'yml'}; FD.sel=null; return stFeeds(m); }
     if (a==='export'){ StNav.sup=b.dataset.sup||''; StNav.select('backup'); return stTab(); }
-    if (a==='cancel'){ FD.edit=null; return stFeeds(m); }
-    if (a==='open'){ FD.sel = FD.sel===b.dataset.id ? null : b.dataset.id; FD.prev=null; FD.cats={}; FD.disc=null; FD.plan=null; return stFeeds(m); }
+    if (a==='cancel'){ if (!await StDirty.leave()) return; FD.edit=null; return stFeeds(m); }
+    if (a==='open'){ if (!await StDirty.leave()) return; FD.sel = FD.sel===b.dataset.id ? null : b.dataset.id; FD.prev=null; FD.cats={}; FD.disc=null; FD.plan=null; return stFeeds(m); }
     if (a.startsWith('disc')) return fdDiscClick(a, b, m);
     if (a==='fdrop'){ const pr=b.dataset.kind==='price', ex=b.dataset.kind==='extra';
       if (!await stConfirm(pr?'Убрать прайс?':ex?'Убрать файл описаний?':'Убрать файл остатков?', pr?'Цены из этого файла перестанут обновляться; уже записанные в каталог останутся.':ex?'Описания, уже записанные в каталог, останутся; при следующей загрузке позиции получат описание из фида.':'Наличие в каталоге обновится при следующем «Обновить цены…» — у всех позиций станет «нет данных».', 'Убрать')) return;

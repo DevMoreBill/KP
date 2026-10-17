@@ -79,7 +79,7 @@ function stEdBind(m, after){
     if (w){ Object.assign(ST.ed.doc.warehouses[+w[1]], {lat:g.lat, lon:g.lon, city:g.city, geoFor:g.value}); stEdDraw(box()); } });
   m.addEventListener('keydown', e=>{ if (e.key!=='Enter' || !ST.ed) return; if (e.target.id==='stEdMk'){ e.preventDefault(); box().querySelector('[data-edx=mk]').click(); } if (e.target.id==='stEdIt'){ e.preventDefault(); box().querySelector('[data-edx=it]').click(); } });
   m.addEventListener('click', async e=>{ const b=e.target.closest('[data-edx]'); if (!b || !ST.ed) return; e.preventDefault(); const E=ST.ed, d=E.doc, a=b.dataset.edx;
-    if (a==='cancel'){ ST.ed=null; return after(); }
+    if (a==='cancel'){ if (!await StDirty.leave()) return; ST.ed=null; return after(); }
     if (a==='export'){ if (!await StDirty.leave()) return; StNav.sup=d.name; ST.ed=null; StNav.select('backup'); return stTab(); }
     if (a==='add'){ d[b.dataset.l].push(b.dataset.l==='warehouses'?{name:d.warehouses.length?'':'Основной склад'}:{}); stEdDraw(box());
       const last=[...box().querySelectorAll(`[data-ef^="${b.dataset.l}.${d[b.dataset.l].length-1}."]`)][b.dataset.l==='warehouses'?1:0]; last?.focus(); return; }

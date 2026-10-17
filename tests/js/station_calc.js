@@ -427,3 +427,14 @@ Check.run('«на чертеже»: что подсветить по текст�
 });
 
 process.on('beforeExit', ()=>{ if (!process.exitCode) console.log('расчёт станции: проверок пройдено — '+Check.n); });
+
+Check.run('ст. м³ (ГОСТ 2939, 20 °C) → FAD: меньше, чем из н. м³, в 293,15 / 273,15 раза (решение 17.10)', ()=>{
+  const n=AirDemand.fad(12, 900, 35, 80, 'normal'), s=AirDemand.fad(12, 900, 35, 80, 'std');
+  assert.ok(Math.abs(n/s-293.15/273.15)<1e-9, n+' / '+s);
+  assert.ok(Math.abs(n-15.861)<0.01, 'н. м³ — как раньше: '+n);
+  assert.strictEqual(StationRules.raw('flow.standard').t, 20);
+  const x=station('st_comp', { flow:'12', pressure:'7', basis:'std', alt:'900', rh:'80', tmax:'35', margin:'0', reserve:'0' },
+    [part('Компрессор винтовой К-200', { cat:'comp_screw', maker:'Пример', flow:20, pressure:10, kw:110 })]);
+  const R=StationCalc.run(x), t=JSON.stringify(R);
+  assert.ok(/стандартных м³ → FAD/.test(t) && /ст\. м³\/мин/.test(t), t.slice(0, 400));
+});

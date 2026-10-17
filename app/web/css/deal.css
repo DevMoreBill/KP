@@ -514,7 +514,7 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .mob dialog.dealwin .dlg-h h3{font-size:15.5px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
 .mob dialog.dealwin .dlg-h h3 small{display:none}
 .mob dialog.dealwin .dlg-h .btn{padding:6px 12px;min-height:36px;font-size:14px}
-.mob dialog.dealwin .dlg-h .icon{width:40px;height:40px;min-width:40px;min-height:40px}
+.mob dialog.dealwin .dlg-h .icon{width:44px;height:44px;min-width:44px;min-height:44px}
 .mob .dl-xl-l{display:none}
 .mob .dl-xl-s{display:inline}
 .mob dialog.dealwin .dl-mini{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:6px 14px;font-size:12px}
@@ -529,7 +529,7 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .mob dialog.dealwin .dl-mini .dl-hd input{min-height:34px;padding:4px 8px;font-size:15px}
 .mob dialog.dealwin .dl-mini .dl-hd.empty input{border-color:var(--warn);background:var(--warn-bg)}
 .mob dialog.dealwin .dl-tabw{padding:6px 10px}
-.mob dialog.dealwin .dl-tabs{min-height:40px;padding:3px;border-radius:12px}
+.mob dialog.dealwin .dl-tabs{min-height:44px;padding:3px;border-radius:12px}
 .mob dialog.dealwin .dl-tab{padding:6px 10px;font-size:13px;min-height:34px}
 .mob dialog.dealwin .dl-tn{width:20px;height:20px;font-size:11px}
 /* итог по сделке — на вкладке «Цена КП»; на остальных прибыль видна в строке сверху */
@@ -541,7 +541,7 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .mob dialog.dealwin .dl-sh h4{font-size:16px;margin:0}
 .mob dialog.dealwin .dl-sh p{font-size:12.5px;line-height:1.35;margin:2px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .mob dialog.dealwin .dl-card{padding:10px;border-radius:12px}
-.mob dialog.dealwin input:not([type=checkbox]):not([type=radio]),.mob dialog.dealwin select{min-height:40px;font-size:16px;padding:6px 10px}
+.mob dialog.dealwin input:not([type=checkbox]):not([type=radio]),.mob dialog.dealwin select{min-height:44px;font-size:16px;padding:6px 10px}
 .mob dialog.dealwin .dl-in i,.mob dialog.dealwin .dl-in em{font-size:13px}
 /* «дни · кал./раб. · дата» — ровная сетка в одну строку */
 .mob dialog.dealwin .dl-ddr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:6px;align-items:center;width:100%;max-width:100%}
