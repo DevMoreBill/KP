@@ -24,10 +24,20 @@ class AttrChoices {
   static list(f, val){ const v=String(val??''), L=(f.values||[]).map(String); return v && !L.includes(v) ? [...L, v] : L; }
 }
 
+// габариты в параметрах и строках характеристик — три окошка (DimInput): параметр size и строки «Габариты…», «Размеры…»
+class DimRow {
+  static RX = /габарит|^размер(ы)?\b|д\s*[×xх]\s*ш\s*[×xх]\s*в/i;
+  static is(key, label){ return key==='size' || this.RX.test(String(label||'')); }
+  /** строка характеристик: единица — как вписана, иначе «мм» (если в названии строки её нет) */
+  static html(attrs, rw){ const u=DimInput.parse(rw.v).unit || (/мм|\bм\b|см/.test(String(rw.k)) ? '' : 'мм');
+    return DimInput.html(attrs, rw.v, {label:rw.k, unit:u}); }
+}
+
 function attrsBlock(x,i){
   const P=`items.${i}.attrs`, a=x.attrs||{}, auto=attrsOf(x), cat=auto.cat, t=typeById(cat);
   const inp=(f)=>{ const val=a[f.key]??''; const ph=auto[f.key]!=null&&auto[f.key]!==''?String(auto[f.key]):'';
     if (f.values&&f.values.length) return `<label class="f"><span>${esc(f.label)}${f.unit?', '+esc(f.unit):''}</span><select data-p="${P}.${f.key}"><option value="">${ph?esc(ph)+' (авто)':'—'}</option>${AttrChoices.list(f,val).map(v=>`<option${String(val)===String(v)?' selected':''}>${esc(v)}</option>`).join('')}</select></label>`;
+    if (DimRow.is(f.key, f.label)) return `<label class="f"><span>${esc(f.label)}${f.unit?', '+esc(f.unit):''}</span>${DimInput.html(`data-p="${P}.${f.key}"`, val, {ph, label:f.label})}</label>`;
     return `<label class="f"><span>${esc(f.label)}${f.unit?', '+esc(f.unit):''}</span><input type="text" ${f.num?'inputmode="decimal"':''} data-p="${P}.${f.key}" value="${esc(val)}" placeholder="${esc(ph)}" autocomplete="off"></label>`; };
   // параметры — по группам категории (основные, двигатель, комплектация, применимость…)
   const grp=new Map(); for (const f of t.fields){ const g=f.group||'Основные'; if(!grp.has(g)) grp.set(g,[]); grp.get(g).push(f); }
@@ -173,7 +183,7 @@ function edDesc(x,i){
 function edSpec(x,i){
   const P=`items.${i}`;
   const groups=(x.groups||[]).map((g,j)=>`<div class="grp"><div class="grp-h"><input type="text" data-p="${P}.groups.${j}.name" value="${esc(g.name)}" placeholder="Группа (Двигатель, Альтернатор…)"><button class="icon" type="button" data-a="delGrp" data-i="${i}" data-j="${j}" aria-label="Удалить группу">✕</button></div>
-      ${g.rows.map((rw,k)=>`<div class="srow"><input type="text" data-p="${P}.groups.${j}.rows.${k}.k" value="${esc(rw.k)}" placeholder="Параметр"><input type="text" data-p="${P}.groups.${j}.rows.${k}.v" value="${esc(rw.v)}" placeholder="Значение"><button class="icon star" type="button" aria-pressed="${!!rw.hl}" data-a="star" data-i="${i}" data-j="${j}" data-k="${k}" aria-label="Ключевой параметр" title="Выделить синим">★</button><button class="icon" type="button" data-a="delRow" data-i="${i}" data-j="${j}" data-k="${k}" aria-label="Удалить строку">✕</button></div>`).join('')}
+      ${g.rows.map((rw,k)=>`<div class="srow"><input type="text" data-p="${P}.groups.${j}.rows.${k}.k" value="${esc(rw.k)}" placeholder="Параметр">${DimRow.is('', rw.k) ? DimRow.html(`data-p="${P}.groups.${j}.rows.${k}.v"`, rw) : `<input type="text" data-p="${P}.groups.${j}.rows.${k}.v" value="${esc(rw.v)}" placeholder="Значение">`}<button class="icon star" type="button" aria-pressed="${!!rw.hl}" data-a="star" data-i="${i}" data-j="${j}" data-k="${k}" aria-label="Ключевой параметр" title="Выделить синим">★</button><button class="icon" type="button" data-a="delRow" data-i="${i}" data-j="${j}" data-k="${k}" aria-label="Удалить строку">✕</button></div>`).join('')}
       <button class="btn ghost" type="button" data-a="addRow" data-i="${i}" data-j="${j}">+ строка</button></div>`).join('');
   const tn=typeById(attrsOf(x).cat).name;
   return `<div class="ed-sec"><div class="row" style="margin-bottom:10px"><button class="btn" type="button" data-a="specTpl" data-i="${i}" title="Группы и строки характеристик, принятые для категории «${esc(tn)}»; заполненное не меняется">Шаблон категории «${esc(tn)}»</button><button class="btn" type="button" data-a="paste" data-i="${i}">Вставить таблицу из Excel</button><button class="btn" type="button" data-a="attrsToGroups" data-i="${i}">Сформировать из параметров</button><span class="muted">★ — выделить параметр синим в КП</span></div>

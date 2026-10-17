@@ -171,3 +171,46 @@ function morphEl(o, n){
 const IMG_MISS='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120" viewBox="0 0 160 120"><rect width="160" height="120" rx="10" fill="#eef3f9"/><path d="M52 78l20-24 14 16 10-11 18 19z" fill="#c3d2e4"/><circle cx="98" cy="44" r="8" fill="#c3d2e4"/><text x="80" y="104" font-family="sans-serif" font-size="13" text-anchor="middle" fill="#8aa0b8">нет фото</text></svg>');
 document.addEventListener('error', e=>{ const t=e.target;
   if (t && t.tagName==='IMG' && t.src!==IMG_MISS){ t.dataset.miss='1'; t.alt=t.alt||'нет фото'; t.src=IMG_MISS; } }, true);
+
+// Габариты «Д × Ш × В» — три окошка вместо одного (решение владельца 17.10). Видимые поля длина, ширина, высота собирают
+// строку «1200 × 800 × 600» в скрытое поле с прежними атрибутами (data-p, data-kitct…): данные и обработчики — прежние.
+// Ввод — событие input скрытого поля, когда заполнены все три (или только длина, если можно); уход из группы — change.
+class DimInput {
+  static NAMES = ['длина', 'ширина', 'высота'];
+  /** строка → {v:[Д, Ш, В], unit, raw}: «1200×800×600 мм», «1,2 x 0,8 x 1,5 м», «10000» (только длина) */
+  static parse(text){
+    const s=String(text??'').trim(), unit=/\bмм\s*$/i.test(s) ? 'мм' : /\d\s*м\s*$/i.test(s) ? 'м' : /\bсм\s*$/i.test(s) ? 'см' : '';
+    const body=s.replace(/\s*(мм|см|м)\.?\s*$/i, '').replace(/(\d)\s+(?=\d{3}\b)/g, '$1');
+    const parts=body.split(/\s*[×xхX*Х]\s*/).map(x=>x.trim()).filter(x=>x!=='');
+    if (parts.length && parts.length<=3 && parts.every(x=>/^\d+(?:[.,]\d+)?$/.test(x))) return { v:[parts[0]||'', parts[1]||'', parts[2]||''], unit, raw:'' };
+    return { v:['', '', ''], unit, raw:s };
+  }
+  /** три поля + скрытое с attrs (строка атрибутов: data-p="…" и др.); o: {ph: подсказка-строка, label, lenOnly — можно только длину,
+   *  unit — единица, которую дописать к строке (по умолчанию — как в исходном значении)} */
+  static html(attrs, value, o={}){
+    const p=this.parse(value), unit=o.unit!=null ? o.unit : p.unit;
+    const m=String(o.ph||'').match(/(\d[\d\s]*(?:[.,]\d+)?)\s*[×xх*]\s*(\d[\d\s]*(?:[.,]\d+)?)\s*[×xх*]\s*(\d[\d\s]*(?:[.,]\d+)?)/i);
+    const ph=m ? [m[1], m[2], m[3]].map(x=>x.replace(/\s+/g, '')) : this.parse(o.ph||'').v;     // подсказка — из примера в тексте
+    const box=(k)=>`<input type="text" inputmode="decimal" data-dimk="${k}" value="${esc(p.v[k])}" placeholder="${esc(ph[k]||['Д', 'Ш', 'В'][k])}" aria-label="${esc((o.label||'Габариты')+': '+this.NAMES[k])}" autocomplete="off">`;
+    return `<span class="dim3${p.raw?' raw':''}" data-dim data-unit="${esc(unit)}"${o.lenOnly?' data-len':''}${p.raw?` title="Было: ${esc(p.raw)} — впишите три числа"`:''}>${box(0)}<i aria-hidden="true">×</i>${box(1)}<i aria-hidden="true">×</i>${box(2)}${unit?`<i class="dim-u">${esc(unit)}</i>`:''}<input type="hidden" ${attrs} value="${esc(value??'')}"></span>`;
+  }
+  /** значение группы: три числа — «Д × Ш × В[ ед.]», только длина (если можно) — «Д», пусто — '', иначе null (не дописано) */
+  static join(g){
+    const v=[...g.querySelectorAll('[data-dimk]')].map(x=>x.value.trim().replace(/\s+/g, '')), n=v.filter(Boolean).length, u=g.dataset.unit;
+    if (!n) return '';
+    if (v.some(x=>x && !/^\d+(?:[.,]\d+)?$/.test(x))) return null;
+    if (n===3) return v.join(' × ')+(u?' '+u:'');
+    if (n===1 && v[0] && g.hasAttribute('data-len')) return v[0];
+    return null;
+  }
+  static fire(g, type){
+    const h=g.querySelector('input[type=hidden]'), s=this.join(g);
+    g.classList.toggle('bad', s===null);
+    if (s===null || h.value===s) return;
+    h.value=s; h.dispatchEvent(new Event(type, {bubbles:true}));
+  }
+}
+document.addEventListener('input', e=>{ const g=e.target.closest && e.target.closest('[data-dim]'); if (g && e.target.dataset.dimk!=null) DimInput.fire(g, 'input'); });
+document.addEventListener('focusout', e=>{ const g=e.target.closest && e.target.closest('[data-dim]'); if (!g || e.target.dataset.dimk==null || g.contains(e.relatedTarget)) return;
+  const h=g.querySelector('input[type=hidden]'), s=DimInput.join(g); if (s===null) return;
+  h.value=s; h.dispatchEvent(new Event('change', {bubbles:true})); });
