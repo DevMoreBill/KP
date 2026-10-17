@@ -60,6 +60,14 @@ class CarrierApiTest(unittest.TestCase):
                                                          'places': [{'l': 1, 'w': 1, 'h': 1, 'm': 0.2}]}).run()
         self.assertFalse([e for e in r['errors'] if not e.get('skip')])
 
+    def test_station_no_ltl(self):
+        """Станция в сборе (ltl: false) — перевозчики сборного груза не спрашиваются (решение владельца 17.10)."""
+        import logistics_api
+        with mock.patch.object(logistics_api.DeliveryQuote, '_ltl', side_effect=AssertionError('спросили сборный груз')):
+            r = logistics_api.DeliveryQuote(self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Тверь'}, 'ltl': False,
+                                                         'places': [{'l': 6.06, 'w': 2.44, 'h': 2.59, 'm': 4.5}]}).run()
+        self.assertTrue([e for e in r['errors'] if e.get('skip') and e['src'] == 'Сборный груз'])
+
     def test_redirect_307_and_hidden_token(self):
         import logistics_api
         calls = []

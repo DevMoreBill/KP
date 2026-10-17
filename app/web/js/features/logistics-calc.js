@@ -338,6 +338,7 @@ class Freight {
     let mass=0, overW=0, overH=0;
     const lay=[], legalW=(T.legal&&T.legal.w)||2.55;
     for (const u of units){
+      if (u.open && !C.open) return { ok:false, why:'станцию в сборе возят только открытой машиной: контейнеровоз, площадка или трал' };
       if (C.iso && !Freight.isIso(u)) return { ok:false, why:'контейнеровоз возит только морские контейнеры 20 и 40 футов' };
       mass+=u.m;
       let l=u.l, w=u.w;
@@ -413,7 +414,7 @@ class Freight {
   }
 
   // расчёт целиком. inp: { from:{city|addr|geo}, to:{…}, km (своё расстояние или ''), route:{key, km, src} (по дорогам),
-  // items:[{name, qty, l,w,h (м), m (т)}], unload:'auto'|'none'|id, value (стоимость груза для страхования) }
+  // items:[{name, qty, l,w,h (м), m (т), open — станция в сборе: только открытая машина, без сборного груза}], unload:'auto'|'none'|id, value (стоимость груза для страхования) }
   static calc(inp, T){
     T=T||Freight.tariffs();
     const warn=[], missing=[];
@@ -430,10 +431,10 @@ class Freight {
       const l=+it.l, w=+it.w, h=+it.h, m=+it.m;
       if (!(l>0&&w>0&&h>0) || !(m>0)){ missing.push(it.name||'позиция'); continue; }
       const mp = m<T.packMax ? m*(1+T.pack/100) : m;
-      for (let i=0;i<Math.min(q,300);i++) units.push({name:it.name, l:Math.max(l,w), w:Math.min(l,w), h, m:mp});
+      for (let i=0;i<Math.min(q,300);i++) units.push({name:it.name, l:Math.max(l,w), w:Math.min(l,w), h, m:mp, open:!!it.open});
       if (q>300) warn.push(`${it.name}: больше 300 мест — посчитаны первые 300`);
     }
-    const res={ from:A, to:B, km, kmSrc, routeKey:rk, units:units.length, mass:units.reduce((s,u)=>s+u.m,0), missing, warn, vehicles:[], unplaced:[], unload:null, total:0, lo:0, hi:0, days:0, ok:false };
+    const res={ from:A, to:B, km, kmSrc, routeKey:rk, units:units.length, openOnly:units.some(u=>u.open), mass:units.reduce((s,u)=>s+u.m,0), missing, warn, vehicles:[], unplaced:[], unload:null, total:0, lo:0, hi:0, days:0, ok:false };
     if (!(km>0)){ res.need='Укажите, откуда и куда везём (город в адресе) или расстояние в км'; return res; }
     if (!units.length){ res.need=missing.length?'Укажите массу и габариты позиций':'В КП нет позиций этого поставщика'; return res; }
     const plan=Freight.plan(units, km, T);

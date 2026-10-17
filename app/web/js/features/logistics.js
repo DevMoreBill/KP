@@ -96,7 +96,7 @@ function lgInput(s){
   const gf=s.whGeo&&String(s.whGeo.value||'').trim()===from ? s.whGeo : null;
   const gt=lg.toGeo&&String(lg.toGeo.value||'').trim()===to ? lg.toGeo : toA && asm.A.whGeo && String(asm.A.whGeo.value||'').trim()===to ? asm.A.whGeo : null;
   return { from:{addr:from, geo:gf}, to:{addr:to, geo:gt}, km:lg.km||'', route:lg.route||null, unload:lg.unload||LgValues.unload(), value,
-    items:lgItems(s).map(x=>({name:x.name, qty:x.qty, l:x.l.v, w:x.w.v, h:x.h.v, m:x.m.v})), imp };
+    items:lgItems(s).map(x=>({name:x.name, qty:x.qty, l:x.l.v, w:x.w.v, h:x.h.v, m:x.m.v, open:String(x.id).startsWith('st:')})), imp };
 }
 
 // ---------- расчёт перед каждой отрисовкой «Экономики сделки»: итог доставки по России — в сделку (если не своя сумма)
@@ -147,7 +147,8 @@ function lgOffers(r, Q){
     const insTk=o.kind==='ltl' && o.insTk>0, ins=insTk ? o.insTk : r.ins;
     out.push({...o, local, agent, ins, insTk, unload:un, total:Math.round(o.base+local+agent+ins+un)}); };
   add({id:'model', src:'Тарифы «Настроек»', kind:'model', base:r.transport, note:[r.vehicles.map(v=>v.C.name).join(' + '), lgRateSrc(r)].filter(Boolean).join('; '), days:r.days});
-  for (const o of (Q&&Q.res&&Q.res.offers)||[]){ if (o.kind==='model' || !o.complete) continue;
+  // станция в сборе (решение владельца 17.10) — только отдельной открытой машиной: сборный груз ТК не предлагается
+  for (const o of (Q&&Q.res&&Q.res.offers)||[]){ if (o.kind==='model' || !o.complete || (r.openOnly && o.kind==='ltl')) continue;
     const base = o.base!=null ? o.base : o.price-(o.unload||0)-(o.ins||0);
     add({id:o.src, src:o.src, kind:o.kind, base, insTk:+o.ins||0, local:o.door===false ? 2*(r.localLeg||0) : 0, note:o.note||'', days:o.days, url:o.url}); }
   return out;
@@ -191,7 +192,7 @@ async function lgQuote(k){
   const body={ from:{name:r.from&&r.from.name, addr:String(s.wh||'').trim()||(r.from&&r.from.name), alt:lgNearBig(r.from)}, to:{name:r.to&&r.to.name, addr:inp.to.addr, alt:lgNearBig(r.to)}, km:r.km,
     places:inp.items.filter(x=>x.l&&x.w&&x.h&&x.m&&x.qty).map(x=>({l:x.l, w:x.w, h:x.h, m:x.m, qty:x.qty})),
     vehicles:r.vehicles.map(v=>({id:v.C.id, name:v.C.name, extras:Math.round(v.parts.slice(1).reduce((a,p)=>a+p[1],0))})),
-    unload:r.unload?r.unload.cost:0, model:Math.round(r.total), modelNote:[r.vehicles.map(v=>v.C.name).join(' + '), lgRateSrc(r)].filter(Boolean).join('; '), declared };
+    ltl:!r.openOnly, unload:r.unload?r.unload.cost:0, model:Math.round(r.total), modelNote:[r.vehicles.map(v=>v.C.name).join(' + '), lgRateSrc(r)].filter(Boolean).join('; '), declared };
   LG.busy[s.id]=true; LG.err[s.id]=''; LG.tried[key]=true; dealRender();
   try{ const res=await api('/api/logistics/quote',{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(body)});
     s.lg.quote={key, res}; persist(); }

@@ -1013,7 +1013,8 @@ def providers(store):
 class DeliveryQuote:
     """Доставка по России: тарифы «Настроек» (цена посчитана в браузере), отдельная машина по ATI.SU и сборный груз
     у перевозчиков (параллельно). Ответ — все предложения, ошибки по источникам и выбранное — максимальное полное.
-    req: from{name, addr, alt}, to{…}, km, places[{l,w,h,m,qty}], vehicles[{id, name, extras}], unload, model, modelNote, declared."""
+    req: from{name, addr, alt}, to{…}, km, places[{l,w,h,m,qty}], vehicles[{id, name, extras}], unload, model, modelNote, declared,
+    ltl (false — сборный груз не запрашивать)."""
     WAIT = 40           # с — ожидание ответа перевозчика сборного груза
 
     def __init__(self, store, req):
@@ -1061,7 +1062,9 @@ class DeliveryQuote:
                 self.offers.append(self._ftl(self.req['vehicles']))
             except Exception as e:
                 self.errors.append({'src': 'ATI.SU', 'msg': Http.error(e)})
-        if self.places:
+        if self.places and self.req.get('ltl') is False:      # станция в сборе — только отдельной открытой машиной
+            self.errors.append({'src': 'Сборный груз', 'skip': True, 'msg': 'станция в сборе — только отдельной открытой машиной'})
+        elif self.places:
             self._ltl()
         full = [o for o in self.offers if o.get('complete')]
         best = max(full, key=lambda o: o['price']) if full else None

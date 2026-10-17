@@ -154,4 +154,17 @@ check('агент-экспедитор — и на разгрузку (реше�
   DEFS_SRV={};
 });
 
+check('станция в сборе (решение 17.10) — только открытой машиной, сборный груз ТК не предлагается', ()=>{
+  const T=Freight.tariffs(), it={name:'Станция', qty:1, l:6.06, w:2.44, h:2.59, m:4.5};
+  const a=Freight.calc({from:{addr:'Москва'}, to:{addr:'Краснодар'}, km:'1478', items:[it], unload:'none'}, T);
+  assert.ok(!a.openOnly && a.vehicles.length && !a.vehicles[0].C.open, 'обычный груз — закрытая машина дешевле');
+  const b=Freight.calc({from:{addr:'Москва'}, to:{addr:'Краснодар'}, km:'1478', items:[{...it, open:true}], unload:'none'}, T);
+  assert.ok(b.openOnly && b.vehicles.length && b.vehicles.every(v=>v.C.open), 'станция — контейнеровоз, площадка или трал');
+  const keep=LG.tar; LG.tar=T;
+  const Q={res:{offers:[{src:'ПЭК', kind:'ltl', complete:true, price:90000, base:90000}, {src:'ATI.SU', kind:'ftl', complete:true, price:150000, base:150000}]}};
+  assert.deepStrictEqual(lgOffers(b, Q).map(o=>o.id), ['model', 'ATI.SU'], 'без сборного груза');
+  assert.strictEqual(lgOffers(a, Q).length, 3, 'обычный груз — со сборным');
+  LG.tar=keep;
+});
+
 if (!process.exitCode) console.log('OK: '+n+' проверок');
