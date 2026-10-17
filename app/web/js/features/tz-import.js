@@ -280,6 +280,18 @@ class StationSup {
   static cover(c, cats){ const s=this.of(c); if (!s || !(this.TOL>0)) return 0;
     return cats.filter(k=>catCache.some(z=>attrsOf(z).cat===k && this.of(z)===s)).length; }
   /** выбор из кандидатов [{…, score}] при «равных условиях»: в пределах допуска от лучшего — с наибольшим rank, затем лучший */
+  /** поставщик элемента состава p (позиция каталога), как в каталоге: «ООО Альфа» | '' */
+  static label(p){ const c=p && p.catId ? catCache.find(z=>z.id===p.catId) : null; return c && typeof CW!=='undefined' ? String(CW.supplierOf(c)||'').trim() : ''; }
+  /** поставщики оборудования станции (наше: агрегаты, подготовка воздуха, ресиверы, баки): «Всё у одного поставщика: …» /
+   *  «Поставщиков: 2 — Альфа (компрессоры, осушитель); Бета (ресиверы)» | '' — оборудования из каталога нет */
+  static summary(x){
+    const KIND={ compressor:'компрессоры', dgu:'ДГУ', pump:'насосы', dryer:'осушители', filter:'фильтры', receiver:'ресиверы', tank:'бак' }, by=new Map();
+    for (const p of kitParts(x)){ const k=StationEquip.kindOf(p); if (!KIND[k]) continue;
+      const s=this.label(p)||'без поставщика в каталоге', e=by.get(s)||new Set(); e.add(KIND[k]); by.set(s, e); }
+    if (!by.size) return '';
+    if (by.size===1) return 'Всё у одного поставщика: '+[...by.keys()][0];
+    return `Поставщиков: ${by.size} — `+[...by].map(([s, e])=>`${s} (${[...e].join(', ')})`).join('; ');
+  }
   static pick(L, rank, tol){ if (!L.length) return null; const b=L.reduce((m, o)=>o.score<m.score ? o : m, L[0]);
     if (!(this.TOL>0)) return b; const near=L.filter(o=>o.score<=b.score+tol+1e-9);
     return near.reduce((m, o)=>rank(o)>rank(m) || (rank(o)===rank(m) && o.score<m.score) ? o : m, b); }

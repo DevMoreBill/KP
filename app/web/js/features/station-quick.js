@@ -83,7 +83,7 @@ class StationQuick {
     return `<div class="sq-r">
       <div class="sq-st ${st[0]}"><b>${esc(st[1])}</b>${fit && plan.suggest ? StationUi.fix(plan.suggest, i) : ExpertFix.hint(x, i, st[1].replace(/^[✕⚠ⓘ✓] /, '')) || (!fit && miss ? '<span class="muted">Добавьте позицию в каталог или выберите аналог в составе ниже; затем — «Подобрать заново».</span>' : errs.length && !fit ? '<span class="muted">Замените оборудование в составе ниже или нажмите «Подобрать заново»; подробно — на вкладке «Компоновка».</span>' : '')}</div>
       ${fx}
-      <div class="sq-b"><div class="sq-l">${this.lines(x).map(t=>`<div>${esc(t)}</div>`).join('')}${ct ? `<div class="muted">${esc(ct)}</div>` : ''}
+      <div class="sq-b"><div class="sq-l">${this.lines(x).map(t=>`<div>${esc(t)}</div>`).join('')}${ct ? `<div class="muted">${esc(ct)}</div>` : ''}${(s=>s ? `<div class="muted sq-sup">${esc(s)}</div>` : '')(StationSup.summary(x))}
         ${chips ? `<div class="sq-ck">${chips}</div>` : ''}</div>${this.pic(x, plan)}</div></div>`;
   }
 

@@ -638,6 +638,13 @@ class Check {
       assert.strictEqual(TzPick.many([{ c:global.catCache[2], cap:6 }, { c:global.catCache[3], cap:10.5 }], 10).n, 1, 'меньше штук важнее поставщика');
       const r=TzPick.recvPick(900, 8, 0);
       assert.strictEqual(r.o.c.name, 'Ресивер АСО 900', 'ресиверы — сначала АСО (решение владельца 17.10)');
+      // состав: поставщик под названием и итог «Подбора»
+      const part=(c, qty)=>Object.assign(KitPart.fromCat(c), { qty }), st=Cat.station('st_comp', [part(global.catCache[1], 1), part(global.catCache[2], 1)]);
+      assert.strictEqual(StationSup.summary(st), 'Всё у одного поставщика: Бета');
+      const p0=kitParts(st).find(z=>z.catId===global.catCache[1].id);
+      assert.ok(/поставщик: Бета/.test(KitView.sub(p0, 'compressor')), KitView.sub(p0, 'compressor'));
+      st.kit.parts.push(part(global.catCache[5], 2));
+      assert.strictEqual(StationSup.summary(st), 'Поставщиков: 2 — Бета (компрессоры, осушители); Гамма (ресиверы)');
       const R0=StationRules.data, d=JSON.parse(JSON.stringify(R0)), m=d.rules.find(z=>z.id==='layout.matrix').value;
       m.pick=Object.assign({}, m.pick, { oneSup:0 }); StationSup.ctx=''; StationRules.use(d);
       try{ u=TzPick.comps(global.catCache, 9.5, 8, {}); assert.strictEqual(u.o.c.name, 'Компрессор Альфа К-10', '0 % — без приоритета поставщика'); }
