@@ -565,3 +565,7 @@ tr.re-on{background:var(--soft)}
 .st-more>summary{cursor:pointer}
 .st-more>.st-card{margin-top:10px}
 .ac-ck{display:flex;justify-content:center;align-items:center;min-height:36px;cursor:pointer}   /* вся ячейка права нажимается (телефон — 44 px, mobile.css) */
+.cf-m{ display:flex; gap:6px; }
+.cf-m input{ flex:1; min-width:0; }
+.cf-m select{ width:auto; flex:none; }
+.cf-r .warn-t, .cf-t .warn-t{ margin-top:4px; font-size:13px; }

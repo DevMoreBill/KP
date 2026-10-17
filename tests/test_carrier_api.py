@@ -240,6 +240,52 @@ class ChinaFreightTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             cf.quote({'from': '', 'to': 'Забайкальск', 'kind': 'ftl'}, fx)
 
+    def test_customs_value(self):
+        """Таможенная стоимость (ТК ЕАЭС ст. 40, решение владельца 17.10): участки, условия поставки, сборный груз,
+        срок действия, сравнение с рынком."""
+        from unittest import mock
+        from china_freight import ChinaFreight
+        cf = ChinaFreight(self.store)
+        cf.save_rates([
+            {'from': 'Шанхай', 'to': 'Забайкальск', 'kind': 'ftl', 'scope': 'border', 'price': '20000', 'cur': 'CNY', 'unit': 'trip', 'who': 'А', 'until': '2026-12-31'},
+            {'from': 'Шанхай', 'to': 'Москва', 'kind': 'ftl', 'scope': 'through', 'price': '40000', 'cur': 'CNY', 'unit': 'trip', 'who': 'Б'},
+            {'from': 'Забайкальск', 'to': 'Москва', 'kind': 'ftl', 'scope': 'after', 'price': '150000', 'cur': 'RUB', 'unit': 'trip', 'who': 'А'},
+            {'from': 'Иу', 'to': 'Достык (Казахстан)', 'kind': 'ltl', 'price': '2', 'cur': 'CNY', 'unit': 'kg', 'min': '3000', 'who': 'В', 'until': '2026-01-01'},
+            {'from': 'Иу', 'to': 'Достык (Казахстан)', 'kind': 'ltl', 'price': '500', 'cur': 'CNY', 'unit': 'm3', 'who': 'В'}], 'admin')
+        fx = {'USD': 90.0, 'CNY': 12.5, 'EUR': 100.0, 'date': '2026-10-17'}
+        q = {'from': 'Шанхай', 'to': 'Забайкальск', 'dest': 'Москва', 'kind': 'ftl', 'terms': 'EXW',
+             'extra': {'v': '2000', 'cur': 'CNY'}, 'ins': {'v': '1000', 'cur': 'CNY'}}
+        r = cf.quote(q, fx, today='2026-10-17')
+        by = {o['src']: o for o in r['offers']}
+        self.assertEqual(by['А']['cv'], 250000 + 25000 + 12500, 'EXW: перевозка + расходы в Китае + страхование')
+        self.assertEqual(by['Б']['cv'], 500000 + 37500)
+        self.assertTrue(any('вся сумма войдёт' in w for w in by['Б']['warn']), 'сквозная ставка — предупреждение')
+        self.assertEqual([o['rub'] for o in r['after']], [150000], 'по РФ — отдельно, не в таможенную стоимость')
+        r = cf.quote(dict(q, terms='CPT'), fx, today='2026-10-17')
+        self.assertEqual({o['src']: o['cv'] for o in r['offers']}['А'], 12500, 'CPT: перевозка уже в цене, только страхование')
+        r = cf.quote(dict(q, terms='CIP'), fx, today='2026-10-17')
+        self.assertEqual({o['src']: o['cv'] for o in r['offers']}['А'], 0)
+        # сборный груз: большее из «за кг» и «за м³», не меньше минимальной; просроченная ставка; Достык = «Достык (Казахстан)»
+        r = cf.quote({'from': 'Иу', 'to': 'Достык', 'kind': 'ltl', 'kg': '1000', 'm3': '5'}, fx, today='2026-10-17')
+        o = r['offers'][0]
+        self.assertEqual(o['amount'], 3000, 'max(2000 кг, 2500 м³, мин. 3000)')
+        self.assertTrue(any('просрочена' in w for w in o['warn']))
+        r = cf.quote({'from': 'Иу', 'to': 'Достык (Казахстан)', 'kind': 'ltl', 'kg': '2000', 'm3': '5'}, fx, today='2026-10-17')
+        self.assertEqual(r['offers'][0]['amount'], 4000)
+        self.assertTrue(r['kz'])
+        # рынок: отличие больше 30 % — предупреждение
+        with mock.patch.object(ChinaFreight, '_ati', return_value=({'rub': 150000, 'avgRub': None, 'note': ''}, None)):
+            r = cf.quote(q, fx, today='2026-10-17')
+        self.assertTrue(any('рынка на 67' in w for w in {o['src']: o for o in r['offers']}['А']['warn']))
+        js = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'app', 'web', 'js', 'features', 'logistics-calc.js'), encoding='utf-8').read()
+        key, b0, lo, hi = ChinaFreight.DEV
+        self.assertIn("['%s', 'logAti'" % key, js)
+        self.assertIn("'num', '%d', {unit:'%%', req:true, min:%d, max:%d" % (b0, lo, hi), js, 'встроенное и пределы — как в «Значениях программы»')
+        with self.assertRaises(ValueError):
+            cf.quote(dict(q, terms='XXX'), fx)
+        with self.assertRaises(ValueError):
+            cf.save_rates([{'from': 'Шанхай', 'to': 'Забайкальск', 'kind': 'ftl', 'price': '1', 'until': '31.12'}])
+
     def test_bad_rates(self):
         from china_freight import ChinaFreight
         cf = ChinaFreight(self.store)
