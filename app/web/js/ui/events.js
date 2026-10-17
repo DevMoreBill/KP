@@ -154,6 +154,7 @@ document.addEventListener('click', async e=>{
     case 'cbr': return loadCBR();
     case 'journal': return openJournal();
     case 'myDay': return MyDay.open();
+    case 'dealOpen': return DealCard.open(b.dataset.id);
     case 'myPrefs': return MyPrefs.open();
     case 'clientsExport': return ClientsExportDlg.open();
     case 'deal': return openDeal();

@@ -30,7 +30,7 @@ FEATURES = {
     'feedInfo': (True, 'РРЦ и остатки поставщиков'),
     'catImport': (True, 'Импорт каталога'),
     'hotkeys': (True, 'Горячие клавиши'),
-    'myDay': (True, '«Мой день»'),
+    'myDay': (True, 'Кабинет менеджера'),
     'drafts': (True, 'Черновики на сервере'),
     'autosave': (True, 'Автосохранение'),
     'presets': (True, 'Заготовки КП'),
@@ -55,6 +55,7 @@ ROUTES = [
     (None, re.compile(r'^/api/presets(/.*)?$'), 'presets'),
     (None, re.compile(r'^/api/clientcard(/.*)?$'), 'clientCard'),
     (None, re.compile(r'^/api/kp/[A-Za-z0-9_-]+/files(/.*)?$'), 'kpFiles'),
+    (None, re.compile(r'^/api/crm(/.*)?$'), 'myDay'),
 ]
 
 

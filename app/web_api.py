@@ -36,6 +36,8 @@ import pdf_text
 import defaults
 from kp_track import DealTrack, Mailer, MailTemplate, ReminderList
 from kp_files import KpFiles
+from crm import CrmBoard, DealBook, Stages, TaskBook
+from server_log import ServerLog
 from features import FeatureAccess
 from images import ImageStore
 from kp_templates import (TEMPLATES_DIR, TemplateError, copy_template, delete_template, list_history, list_templates,
@@ -561,6 +563,8 @@ class KpController(Controller):
                 return self.text(400, 'Неверный формат КП')
             rev = store().kp_set(kid, field, admin.kp_in(self.h, store(), kid, field, text), admin.actor(self.h)[1],
                                  self.base_rev() if field == 'state' else None)
+            if field == 'meta':
+                return self.send_json({'ok': True, 'rev': rev, 'deal': CrmController.on_kp(self.h, kid)})
             return self.send_json({'ok': True, 'rev': rev})
         v = store().kp_get(kid, field)
         if v and field == 'state':
@@ -1025,6 +1029,7 @@ class TrackController(Controller):
             tr, changed = DealTrack(store()).update(kid, self.json_body(), admin.actor(self.h)[1])
         if changed:
             admin.log(self.h, store(), 'kp_status', 'kp', kid, None, changed)
+            CrmController.safe(lambda: DealBook(store()).refresh(kid, admin.actor(self.h)[1]))
         return self.send_json({'ok': True, 'track': tr})
 
     @route(r'/api/reminders', 'GET')       # напоминания менеджера: перезвонить, срок действия КП, нет ответа
@@ -1116,6 +1121,7 @@ class TrackController(Controller):
             admin.log(self.h, store(), 'send_kp', 'kp', kid, None, {'to': to, 'error': str(e)[:200]}, result='failed')
             return self.text(422, str(e))
         tr = DealTrack(store()).mark_sent(kid, to + cc, [x[0] for x in files], admin.actor(self.h)[1])
+        CrmController.safe(lambda: DealBook(store()).refresh(kid, admin.actor(self.h)[1]))
         admin.log(self.h, store(), 'send_kp', 'kp', kid, None, {'to': to, 'cc': cc, 'files': [x[0] for x in files]})
         return self.send_json({'ok': True, 'track': tr})
 
@@ -1290,6 +1296,179 @@ class ClientCardController(Controller):
         doc['notes'] = notes
         store().client_put(cid, doc, name)
         return self.send_json({'ok': True, 'notes': notes})
+
+
+# ---------------------------------------------------------------- кабинет менеджера: сделки и дела (crm.py)
+class CrmController(Controller):
+    """Свои сделки и дела — каждому; кабинет коллеги и весь отдел — администратору и менеджеру с правом «КП других
+    менеджеров» (без входа по паролю — как журнал КП: всем). Сделки и дела не удаляются: закрываются и отменяются."""
+    MID = re.compile(r'^[A-Za-z0-9_:-]{0,64}$')
+
+    @staticmethod
+    def safe(fn):
+        """Сделки — дополнение к КП: сбой в них не мешает сохранить КП (подробности — в журнал сервера)."""
+        try:
+            return fn()
+        except Exception as e:
+            ServerLog.failure('сделки', e)
+            return None
+
+    @classmethod
+    def on_kp(cls, h, kid):
+        """КП сохранено — в сделку: выбранную в КП (своя или с правом на чужие), прежнюю или новую."""
+        meta = TrackController._obj(store().kp_get(kid, 'meta'))
+        want = str(meta.get('dealId') or '')[:40]
+        if want and want != 'new':
+            d = DealBook(store()).get(want)
+            uid, _n, everyone = cls.who(h)
+            want = want if d and (everyone or d.get('managerId') == uid) else None
+        return cls.safe(lambda: DealBook(store()).on_kp(kid, meta, admin.actor(h)[1], want or None))
+
+    @staticmethod
+    def who(h):
+        uid, name, _ = admin.actor(h, admin=False)
+        everyone = admin.session(h, touch=False) is not None or admin.perm(h, 'kpOthers')
+        return uid or '', name or '', everyone
+
+    def _scope(self, q):
+        """Чьи сделки: '' — свои, 'all' — весь отдел, id — менеджера. Чужие — только с правом."""
+        uid, _n, everyone = self.who(self.h)
+        q = str(q or '')
+        if q in ('', 'me') or q == uid:
+            return [uid]
+        if not everyone:
+            raise PermissionError('Кабинет коллеги и отдел — у администратора и менеджеров с правом «КП других менеджеров»')
+        if q == 'all':
+            return None
+        if not self.MID.match(q):
+            raise BadRequest('Неверный менеджер')
+        return [q]
+
+    def _deal(self, did):
+        """Сделка, если она своя или есть право на чужие; иначе — ответ отправлен, None."""
+        d = DealBook(store()).get(did)
+        uid, _n, everyone = self.who(self.h)
+        if not d:
+            self.not_found('Сделка не найдена')
+            return None
+        if not everyone and d.get('managerId') != uid:
+            self.text(403, 'Это сделка другого менеджера — нет доступа')
+            return None
+        return d
+
+    def _manager(self, mid):
+        """(id, имя) менеджера из справочника для смены ответственного."""
+        m = next((x for x in CrmBoard(store()).managers() if x['id'] == mid), None)
+        if not m:
+            raise BadRequest('Менеджер не найден')
+        return m['id'], m['name']
+
+    @route(r'/api/crm/board', 'GET')
+    def board(self):
+        try:
+            scope = self._scope(self.q.get('manager'))
+        except PermissionError as e:
+            return self.text(403, str(e))
+        res = CrmBoard(store()).build(scope)
+        uid, name, everyone = self.who(self.h)
+        res.update(me=uid, meName=name, canAll=everyone, managers=CrmBoard(store()).managers() if everyone else [])
+        return self.send_json(res)
+
+    @route(r'/api/crm/pick', 'GET')
+    def pick(self):
+        uid, _n, everyone = self.who(self.h)
+        inn = re.sub(r'\D', '', self.q.get('inn') or '')[:12]
+        name = (self.q.get('name') or '').strip()[:300]
+        kid = safe_id(self.q.get('kp')) if self.q.get('kp') else ''
+        cur = DealBook(store()).deal_of(kid) if kid and admin.kp_access(self.h, store(), kid) else None
+        mine = [uid] if not everyone else None
+        items = CrmBoard(store()).pick(mine, inn, name) if inn or name else []
+        if cur and cur not in [x['id'] for x in items]:
+            d = DealBook(store()).get(cur)
+            if d:
+                items.insert(0, {k: d.get(k) for k in ('id', 'number', 'title', 'client', 'stage', 'sum', 'expected', 'updated', 'manager')})
+        return self.send_json({'items': items, 'current': cur or '', 'stages': Stages.all(store())})
+
+    @route(r'/api/crm/deal', 'POST')
+    def create(self):
+        d = self.json_body()
+        uid, name, everyone = self.who(self.h)
+        mid, mname = (self._manager(str(d.get('managerId'))) if everyone and d.get('managerId') and d.get('managerId') != uid else (uid, name))
+        with self.user_input():
+            deal = DealBook(store()).create(d, mid, mname, admin.actor(self.h)[1])
+        admin.log(self.h, store(), 'create_deal', 'deal', deal['id'], None, {k: deal.get(k) for k in ('title', 'client', 'stage')})
+        return self.send_json(deal)
+
+    @route(r'/api/crm/deal/(d\d{1,9})', ('GET', 'PUT'))
+    def deal(self, did):
+        d = self._deal(did)
+        if d is None:
+            return None
+        book = DealBook(store())
+        if self.m == 'PUT':
+            body = self.json_body()
+            mgr = None
+            if body.get('managerId') and body['managerId'] != d.get('managerId'):
+                if not self.who(self.h)[2]:
+                    return self.text(403, 'Передать сделку коллеге может администратор или менеджер с правом «КП других менеджеров»')
+                mgr = self._manager(str(body['managerId']))
+            with self.user_input():
+                try:
+                    new = book.update(did, body, admin.actor(self.h)[1], self.base_rev(), mgr)
+                except LookupError as e:
+                    return self.not_found(str(e))
+            if mgr:
+                TaskBook(store()).move_deal(did, mgr[0])
+            ch = {k: new.get(k) for k in ('stage', 'lostReason', 'manager') if new.get(k) != d.get(k)}
+            if ch:
+                admin.log(self.h, store(), 'edit_deal', 'deal', did, {k: d.get(k) for k in ch}, ch)
+            d = new
+        d['kps'] = book.kps([did])[did]
+        d['tasks'] = TaskBook(store()).list(deal=did)
+        return self.send_json(dict(d, stages=Stages.all(store())))
+
+    @route(r'/api/crm/deal/(d\d{1,9})/kp', 'POST')
+    def link(self, did):
+        if self._deal(did) is None:
+            return None
+        kid = safe_id(str(self.json_body().get('kp') or ''))
+        if not store().kp_get(kid, 'meta'):
+            return self.not_found('КП не найдено')
+        if not admin.kp_access(self.h, store(), kid):
+            return self.text(403, 'Это КП другого менеджера — нет доступа')
+        old = DealBook(store()).link(did, kid, admin.actor(self.h)[1])
+        admin.log(self.h, store(), 'link_deal', 'deal', did, {'deal': old} if old else None, {'kp': kid})
+        return self.send_json({'ok': True, 'from': old})
+
+    @route(r'/api/crm/task', 'POST')
+    def task_add(self):
+        d = self.json_body()
+        uid, _n, everyone = self.who(self.h)
+        did = str(d.get('deal') or '')
+        mid = uid
+        if did:
+            deal = self._deal(did)
+            if deal is None:
+                return None
+            mid = deal.get('managerId') or uid
+        elif everyone and d.get('managerId'):
+            mid = self._manager(str(d['managerId']))[0]
+        with self.user_input():
+            t = TaskBook(store()).add(d, mid, admin.actor(self.h)[1], did or None)
+        return self.send_json(t)
+
+    @route(r'/api/crm/task/(\d{1,9})', 'PUT')
+    def task(self, tid):
+        tb = TaskBook(store())
+        t = tb.get(tid)
+        if not t:
+            return self.not_found('Дело не найдено')
+        uid, _n, everyone = self.who(self.h)
+        if not everyone and t['managerId'] != uid:
+            return self.text(403, 'Это дело другого менеджера — нет доступа')
+        with self.user_input():
+            t = tb.update(tid, self.json_body())
+        return self.send_json(t)
 
 
 # ---------------------------------------------------------------- личные настройки менеджера (user_prefs.py)

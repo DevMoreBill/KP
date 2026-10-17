@@ -6,7 +6,7 @@
 class MyPrefs {
   static p = {};
   static uid = '';
-  static START = [['auto','Как в программе («Мой день» или каталог)'],['myday','«Мой день»'],['catalog','Каталог'],['journal','Журнал КП'],['none','Ничего — сразу текущее КП']];
+  static START = [['auto','Как в программе (кабинет или каталог)'],['myday','Кабинет менеджера'],['catalog','Каталог'],['journal','Журнал КП'],['none','Ничего — сразу текущее КП']];
   static THEME = [['auto','Как в системе'],['light','Светлая'],['dark','Тёмная']];
 
   static async load(){

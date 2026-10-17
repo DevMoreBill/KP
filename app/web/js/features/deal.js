@@ -1204,6 +1204,20 @@ class DealSide {
   }
 }
 
+// сроки сделки для графика кабинета менеджера (описание КП, поле plan): день договора и смещения в днях от него —
+// готовность, поставка, конец расчётов, оплаты заказчика (доля и подпись, без сумм закупки). Только если расчёт заполнен.
+class DealPlan {
+  static of(st=S){
+    if (!st.deal || !st.deal.touched) return undefined;
+    let c; try{ c=dealCalc(dealKpInputs(st), st.deal); }catch(e){ return undefined; }
+    if (!c || !Number.isFinite(c.D)) return undefined;
+    const r=x=>Number.isFinite(x) ? Math.round(x) : null;
+    return { start:/^\d{4}-\d{2}-\d{2}$/.test(st.deal.start||'') ? st.deal.start : '', ready:r(c.Rdy), delivery:r(c.D), end:r(c.Tend),
+      pays:(c.rows||[]).filter(x=>x.inflow && x.amount>0 && Number.isFinite(x.day)).slice(0, 8)
+        .map(x=>({d:Math.round(x.day), p:Math.round((x.pct||0)*10)/10, t:String(x.label||'').slice(0, 80)})) };
+  }
+}
+
 // краткий итог для правой панели и журнала (только если расчёт заполнен)
 function dealSummary(st=S){
   if (!st.deal || !st.deal.touched) return null;

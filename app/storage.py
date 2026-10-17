@@ -13,7 +13,8 @@
   managers — менеджеры: контакты для КП;
   audit, trash, pending_edits — журнал действий, корзина удалённого, правки на модерации
              (миграция «2026-10-admin», обратимая: Store.migration_down);
-  kp_files — справочные документы к КП (описания; сами файлы — в data/kp_files, app/kp_files.py).
+  kp_files — справочные документы к КП (описания; сами файлы — в data/kp_files, app/kp_files.py);
+  deals, deal_kp, crm_tasks — сделки, КП в сделках, дела менеджеров (кабинет менеджера, app/crm.py).
 
 Запись сериализуется одной блокировкой, база в режиме WAL: одновременное чтение многими пользователями
 не мешает записи. При первом запуске данные из прежних JSON-файлов переносятся автоматически.
@@ -199,6 +200,25 @@ MIGRATIONS = [
      """,
      """
      ALTER TABLE kp_files DROP COLUMN added_by_id;
+     """),
+    # кабинет менеджера (app/crm.py): сделки (описание — JSON), какие КП в какой сделке, дела менеджеров;
+    # КП журнала сразу раскладываются по сделкам (DealBook.adopt)
+    ('2027-10-crm',
+     """
+     CREATE TABLE IF NOT EXISTS deals (id TEXT PRIMARY KEY, doc TEXT NOT NULL, manager_id TEXT, stage TEXT, client TEXT, inn TEXT,
+       updated TEXT, rev INTEGER NOT NULL DEFAULT 0, updated_by TEXT);
+     CREATE INDEX IF NOT EXISTS deals_mgr ON deals(manager_id, stage);
+     CREATE TABLE IF NOT EXISTS deal_kp (kp_id TEXT PRIMARY KEY, deal_id TEXT NOT NULL, added TEXT);
+     CREATE INDEX IF NOT EXISTS deal_kp_deal ON deal_kp(deal_id);
+     CREATE TABLE IF NOT EXISTS crm_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, deal_id TEXT, manager_id TEXT, kind TEXT NOT NULL,
+       due TEXT NOT NULL, time TEXT, title TEXT, note TEXT, state TEXT NOT NULL DEFAULT 'open', done_at TEXT, created TEXT, created_by TEXT);
+     CREATE INDEX IF NOT EXISTS crm_tasks_mgr ON crm_tasks(manager_id, state, due);
+     CREATE INDEX IF NOT EXISTS crm_tasks_deal ON crm_tasks(deal_id);
+     """,
+     """
+     DROP INDEX IF EXISTS crm_tasks_deal; DROP INDEX IF EXISTS crm_tasks_mgr; DROP TABLE IF EXISTS crm_tasks;
+     DROP INDEX IF EXISTS deal_kp_deal; DROP TABLE IF EXISTS deal_kp; DROP INDEX IF EXISTS deals_mgr; DROP TABLE IF EXISTS deals;
+     DELETE FROM kv WHERE key = 'crm.seq';
      """),
 ]
 
@@ -401,7 +421,14 @@ def _fill_light(st, c):
     c.execute("INSERT INTO kv (key, value) VALUES ('datarev:catalog', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1")
 
 
-MIGRATION_FILL = {'2027-01-db': _fill_columns, '2027-02-light': _fill_light, '2027-06-light-slim': _fill_light, '2027-07-catalog-sync': _fill_sync}
+def _fill_crm(st, c):
+    """Миграция 2027-10-crm: КП журнала — по сделкам (одного клиента у одного менеджера с промежутком до 30 дней — одна сделка)."""
+    from crm import DealBook
+    DealBook(st)._adopt(c)
+
+
+MIGRATION_FILL = {'2027-01-db': _fill_columns, '2027-02-light': _fill_light, '2027-06-light-slim': _fill_light, '2027-07-catalog-sync': _fill_sync,
+                  '2027-10-crm': _fill_crm}
 
 
 def light_of(doc):
@@ -454,7 +481,7 @@ class Store:
         return {i: r or 0 for i, r in self.all('SELECT id, rev FROM catalog')}
 
     def rev_of(self, table, key):
-        if table not in ('kp', 'catalog', 'clients', 'managers', 'suppliers'):
+        if table not in ('kp', 'catalog', 'clients', 'managers', 'suppliers', 'deals'):
             raise ValueError(table)
         r = self.one('SELECT rev, updated_by, updated FROM %s WHERE id=?' % table, (key,))
         return {'rev': (r[0] or 0) if r else 0, 'by': (r[1] or '') if r else '', 'at': (r[2] or '') if r else ''}
