@@ -12,32 +12,33 @@
 class SettingsSearch {
   // слова, по которым вкладку находят, хотя их нет в названии
   static WORDS = {
-    stats:'статистика сводка обзор внимание', audit:'журнал кто изменил действия аудит', templates:'шаблон оформление логотип docx документ word титул',
-    'db-kp':'кп журнал удалить номер', 'db-catalog':'товары каталог позиции карточки оборудование', types:'категории характеристики параметры фильтры группы',
-    feeds:'фид прайс остатки ррц скидка поставщик yml excel наличие', moderation:'модерация правки подтверждение черновик',
-    'db-client':'клиенты инн реквизиты контрагенты', 'db-supplier':'поставщики склады условия оплата отгрузка', 'db-manager':'менеджеры контакты телефон должность подпись',
+    home:'статистика сводка обзор внимание что где карта', audit:'журнал кто изменил действия аудит', templates:'шаблон оформление логотип docx документ word титул',
+    'db-kp':'кп журнал удалить номер', goods:'товары каталог позиции карточки оборудование удалить корзина выгрузка excel json xml yml сортировка',
+    types:'категории характеристики параметры фильтры группы', feeds:'фид прайс остатки ррц скидка поставщик yml excel наличие что загружать бренды фильтр план логотип',
+    moderation:'модерация правки подтверждение черновик было стало принять отклонить', 'db-client':'клиенты инн реквизиты контрагенты',
+    'db-supplier':'поставщики склады условия оплата отгрузка', managers:'менеджеры контакты телефон должность подпись вход логин пароль права блокировать удалять выгрузка модерация',
     logistics:'тарифы доставка перевозка машина разгрузка трал фура логистика', features:'функции включить выключить доступ кнопки',
-    defaults:'умолчания значения подставляет ндс валюта город срок гарантия условия', lists:'списки выбор варианты выпадающие причины проигрыша единицы',
-    texts:'тексты надписи подписи подсказки переименовать', mail:'почта smtp письмо отправка яндекс mail.ru пароль приложения',
-    ai:'нейросеть ии deepseek openrouter модель токены заполнить', keys:'ключи api checko чекко ofdata офдата резерв rusprofile руспрофайл гир бо бухотчётность dadata ati деловые линии кит сдэк возовоз convertapi pdf',
-    connections:'проверка подключений связь сервисы работает не работает', access:'вход логин пароль права менеджеров блокировать',
-    users:'администраторы учётные записи', security:'мой пароль сменить', updates:'обновление версия github установить откат токен',
+    defaults:'умолчания значения подставляет ндс валюта город срок гарантия условия числа', lists:'списки выбор варианты выпадающие причины проигрыша единицы тексты надписи подписи подсказки переименовать',
+    mail:'почта smtp письмо отправка яндекс mail.ru пароль приложения письма администратору', china:'китай таможенная стоимость экспедитор ставки',
+    services:'проверка подключений связь сервисы ключи api checko чекко ofdata офдата rusprofile dadata ati деловые линии кит сдэк возовоз convertapi pdf нейросеть ии deepseek openrouter модель токены',
+    users:'администраторы учётные записи мой пароль сменить', updates:'обновление версия github установить откат токен', rules:'нормы станций инженерные правила компоновка',
     system:'система папки порт адрес перезапуск диск место сервер', backup:'копии резервная копия база экспорт импорт выгрузка каталог поставщика excel правка json zip sqlite вторая папка флешка сетевой диск облако восстановить',
-    trash:'корзина восстановить удалённое', changed:'изменённые отличается встроенное вернуть сбросить', history:'история изменений откат вернуть как было кто изменил'};
+    trash:'корзина восстановить удалённое удалить навсегда очистить', changes:'изменённые отличается встроенное вернуть сбросить история откат кто изменил файл настроек сохранить загрузить перенести'};
 
   static norm(s){ return String(s||'').toLowerCase().replace(/ё/g,'е'); }
 
   /** [{label, where, text, tab, focus?, before?}] — всё, что можно найти */
   static index(){
     const out=[], add=(o)=>out.push({...o, n:this.norm(o.label), t:this.norm(o.label+' '+(o.text||'')+' '+(o.where||''))});
-    for (const g of AdminNav.GROUPS) for (const t of g.tabs)
-      add({label:t.label, where:g.title, text:t.hint+' '+(this.WORDS[t.key]||''), tab:t.key, kind:'Вкладка'});
+    for (const t of AdminNav.tabs()){ const g=AdminNav.GROUPS.find(x=>x.tabs.includes(t));
+      add({label:t.label, where:g?g.title:'', text:t.hint+' '+(this.WORDS[t.key]||''), tab:t.key, kind:'Вкладка'}); }
+    add({label:'Сохранить все настройки в файл', where:AdminNav.path('changes'), text:'файл настроек перенести на другой компьютер загрузить ключи', tab:'changes', kind:'Файл'});
     const gt=Object.fromEntries(DEF_GROUPS);
     for (const [key, g, label, , builtin, o={}] of DEF_SCHEMA) add({label, where:AdminNav.path('defaults')+' → '+(gt[g]||g), before:()=>{ DefaultsTab.sec=DefRegistry.section(g); DefaultsTab.q=''; DefaultsTab.only=false; }, text:(o.hint||'')+' '+(builtin??''), tab:'defaults', focus:`[data-dk="${CSS.escape(key)}"]`, kind:'Умолчание'});
     add({label:'Каталог поставщика: копия или Excel для правки', where:AdminNav.path('backup'), text:'выгрузка поставщик фид без цен excel правка zip', tab:'backup', focus:'#seBox', kind:'Выгрузка'});
     for (const d of FEAT.defs) add({label:d.label, where:AdminNav.path('features'), text:d.hint, tab:'features', focus:`[data-ft="${CSS.escape(d.key)}"]`, kind:'Функция'});
     for (const d of LISTS.defs.values()) add({label:d.label, where:AdminNav.path('lists'), text:d.hint||'', tab:'lists', before:()=>{ ListsPanel.last=d.key; }, kind:'Список'});
-    for (const [g, , fs] of ApiKeys.GROUPS) for (const f of fs) if (f.t) add({label:f.t, where:AdminNav.path('keys')+' → '+g, text:(f.h||'')+' '+(f.ph||''), tab:'keys', focus:`[data-key="${CSS.escape(f.id)}"]`, kind:'Ключ'});
+    for (const [g, , fs] of ApiKeys.GROUPS) for (const f of fs) if (f.t) add({label:f.t, where:AdminNav.path('services')+' → '+g, text:(f.h||'')+' '+(f.ph||''), tab:'services', focus:`[data-key="${CSS.escape(f.id)}"]`, kind:'Ключ'});
     for (const t of TYPES) add({label:t.name, where:AdminNav.path('types'), text:(t.group||'')+' '+t.fields.map(f=>f.label).join(' '), tab:'types', kind:'Категория', find:t.name});
     return out;
   }
@@ -174,16 +175,18 @@ class StVal {
 // ---------------------------------------------------------------- история изменений
 class SettingsHistoryPanel {
   static filter = '';      // вкладка, по которой отфильтрована история (кнопка «История» в заголовке вкладки)
-  static TABS = {defaults:'Значения программы', lists:'Списки и выборы', features:'Функции программы', texts:'Тексты интерфейса', types:'Категории оборудования',
-    logistics:'Тарифы доставки', mail:'Почта', feeds:'Фиды поставщиков', access:'Вход менеджеров', moderation:'Модерация правок', ai:'Нейросеть', backup:'Копии и база'};
+  // вкладки, у которых есть история (ключи — как в AdminNav; прежние ключи записей истории сводятся через AdminNav.key)
+  static TABS = {defaults:'Значения программы', features:'Функции программы', lists:'Списки и тексты', types:'Категории оборудования',
+    logistics:'Тарифы доставки', rules:'Нормы станций', mail:'Почта', feeds:'Фиды поставщиков', managers:'Вход менеджеров', moderation:'Модерация правок',
+    services:'Нейросеть', backup:'База и копии'};
 
   constructor(m){ this.m=m; }
   async open(){
     const r=await aapi('history?limit=500'); this.items=r.items||[];
     this.render(); this.bind();
   }
-  list(){ const f=SettingsHistoryPanel.filter; return f ? this.items.filter(x=>x.tab===f) : this.items; }
-  render(){ const f=SettingsHistoryPanel.filter, L=this.list();
+  list(){ const f=SettingsHistoryPanel.filter && AdminNav.key(SettingsHistoryPanel.filter); return f ? this.items.filter(x=>AdminNav.key(x.tab)===f) : this.items; }
+  render(){ const f=SettingsHistoryPanel.filter && AdminNav.key(SettingsHistoryPanel.filter), L=this.list();
     this.m.innerHTML=`<div class="st-card"><div class="row" style="gap:8px;flex-wrap:wrap"><label class="f" style="margin:0"><span>Раздел</span><select id="shF" data-nodirty>
         <option value="">Все разделы</option>${Object.entries(SettingsHistoryPanel.TABS).map(([k,l])=>`<option value="${k}"${f===k?' selected':''}>${esc(l)}</option>`).join('')}</select></label>
         <span class="sp"></span><span class="muted">Записей: ${L.length}</span></div>
@@ -241,9 +244,11 @@ class ChangedPanel {
     this.vals=d.values||{}; this.feat=f.config||{}; this.lists=l.values||{}; this.mirror=mb;
     this.render(); this.bind();
   }
-  defRows(){ return DEF_SCHEMA.filter(([k])=>this.vals[k]!=null).map(([k, , label, type, builtin])=>{
-    const x=this.vals[k]; const now=type==='bool'?((x.on??builtin)?'да':'нет'):(x.on===false?'выключено':String(x.v??''));
-    return {label, now, was:type==='bool'?(builtin?'да':'нет'):String(builtin??'—'), reset:{defaults:k}, tab:'defaults', focus:`[data-dk="${CSS.escape(k)}"]`}; }).filter(x=>x.now!==x.was); }
+  defRows(){ return DEF_SCHEMA.filter(([k])=>this.vals[k]!=null).map(([k, , label, type, builtin, o={}])=>{
+    // выбор из списка — подписью варианта, а не его кодом
+    const txt=v=>type==='select' ? String((DefaultsTab.optsOf(o).find(([a])=>String(a)===String(v))||[, v])[1]??'') : String(v??'');
+    const x=this.vals[k]; const now=type==='bool'?((x.on??builtin)?'да':'нет'):(x.on===false?'выключено':txt(x.v));
+    return {label, now, was:type==='bool'?(builtin?'да':'нет'):(builtin==null?'—':txt(builtin)), reset:{defaults:k}, tab:'defaults', focus:`[data-dk="${CSS.escape(k)}"]`}; }).filter(x=>x.now!==x.was); }
   featRows(){ return FEAT.defs.filter(d=>{ const c=this.feat[d.key]; return c && (c.on===false || (c.who&&c.who!=='all')); }).map(d=>{ const c=this.feat[d.key];
     return {label:d.label, now:c.on===false?'выключено':'доступ: '+({admin:'только администратору',users:'выбранным менеджерам'}[c.who]||c.who), was:'включено для всех', reset:{features:d.key}, tab:'features', focus:`[data-ft="${CSS.escape(d.key)}"]`}; }); }
   listRows(){ return [...LISTS.defs.values()].filter(d=>this.lists[d.key]!=null).map(d=>({label:d.label, now:StVal.text(this.lists[d.key]), was:StVal.text(d.builtin), reset:{lists:d.key}, tab:'lists', before:()=>{ ListsPanel.last=d.key; }})); }

@@ -9,9 +9,18 @@ async function authLoad(){
   try{ const r=await api('/api/auth/status'); Object.assign(AUTH, {enabled:!!r.enabled, user:r.user||null, admin:!!r.admin, perms:r.perms||[], help:r.help||'', sessionDays:r.sessionDays||0, shortHours:r.shortHours||0, pwMin:r.pwMin||4}); }catch(e){}
 }
 
-// право менеджера: при выключенном входе и у администратора — всё можно
-function can(p){ if (!AUTH.enabled || AUTH.admin || ADMIN.on) return true; return !!(AUTH.user && AUTH.user.perms && AUTH.user.perms[p]); }
-const CAN_TXT = { catAdd:'добавлять оборудование', catEdit:'редактировать оборудование', kpOthers:'открывать КП других менеджеров', dealView:'смотреть экономику сделки' };
+// право менеджера: при выключенном входе и у администратора — всё можно; особые права (Powers.STRICT) — только
+// администратору и менеджеру, вошедшему по паролю, которому их выдали
+function can(p){ if (AUTH.admin || ADMIN.on) return true; if (Powers.STRICT.includes(p)) return Powers.has(p); if (!AUTH.enabled) return true; return !!(AUTH.user && AUTH.user.perms && AUTH.user.perms[p]); }
+const CAN_TXT = { catAdd:'добавлять оборудование', catEdit:'редактировать оборудование', kpOthers:'открывать КП других менеджеров', dealView:'смотреть экономику сделки',
+  catDelete:'удалять товары', catSelfMod:'принимать правки других', export:'выгружать каталог и клиентов' };
+
+// особые права менеджеров («Настройки → Менеджеры»): удалять товары (в корзину), правки без модерации, выгрузка каталога и
+// клиентов. Сервер проверяет их сам (catalog_admin.py); здесь — показать или скрыть кнопки
+class Powers {
+  static STRICT = ['catDelete', 'catSelfMod', 'export'];
+  static has(p){ return AUTH.admin || ADMIN.on || !!(AUTH.enabled && AUTH.user && AUTH.user.perms && AUTH.user.perms[p]); }
+}
 function cannot(p){ toast('Нет права '+(CAN_TXT[p]||p)+' — обратитесь к администратору'); }
 
 // Поля и отправка форм входа — у менеджера (экран входа) и у администратора («Настройки»): показать пароль, Caps Lock,

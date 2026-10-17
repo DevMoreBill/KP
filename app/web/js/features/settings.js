@@ -5,72 +5,71 @@
 
 const ST = { tab:'home', del:{type:'kp', q:'', sel:new Set()}, audit:{page:0, f:{}}, imp:null, chart:'day' };
 
-// Разделы «Настроек» по предметной области: что смотрим → с чем работает отдел (КП, каталог, справочники) → как ведёт себя
-// программа → внешние сервисы → кто входит → обслуживание. У вкладки: ключ, название, пояснение (под заголовком) и обработчик.
+// Разделы «Настроек» — четыре, по тому, с чем работает администратор: каталог → документы и справочники → настройки программы →
+// сотрудники и система (решение владельца 17.10: «ещё меньше — 4 раздела»). Обзор — отдельной кнопкой над разделами.
+// У вкладки: ключ, название, пояснение (под заголовком) и обработчик; parts — несколько панелей на одной вкладке (AdminNav.stack).
 class AdminNav {
+  static HOME = {key:'home', label:'Обзор', hint:'Что происходит в программе и где что настраивается: сводка, «требует внимания», карта разделов.', open:m=>AdminNav.home(m)};
   static GROUPS = [
-    {title:'Обзор', desc:'Что происходит в программе: сводка, кто что делал, что изменено в настройках.', tabs:[
-      {key:'home', label:'Что где', hint:'Карта «Настроек»: все разделы с пояснениями — с чего начать и где что меняется.', open:m=>AdminNav.home(m)},
-      {key:'stats', label:'Сводка и статистика', hint:'КП по периодам, активные менеджеры, популярные товары, «требует внимания», размер базы.', open:m=>stStats(m)},
-      {key:'audit', label:'Журнал действий', hint:'Кто, что и когда сделал: КП, каталог, справочники, настройки. Фильтры по сотруднику, действию и дате.', open:m=>stAudit(m)},
-      {key:'changed', label:'Что изменено в настройках', hint:'Всё, что отличается от программы по умолчанию, одним списком: открыть или вернуть как было.', open:m=>new ChangedPanel(m).open()},
-      {key:'history', label:'История изменений настроек', hint:'Кто, когда и что поменял в настройках; «Вернуть как было» отменяет любую правку.', open:m=>new SettingsHistoryPanel(m).open()}]},
-    {title:'КП и документы', desc:'Как выглядит КП и что с ним происходит после сохранения.', tabs:[
+    {title:'Каталог', desc:'Товары, их категории, загрузка от поставщиков и правки сотрудников.', tabs:[
+      {key:'goods', label:'Товары', hint:'Как в каталоге: поиск, фильтры, сортировка, карточка, правка; отметить галочками — в корзину, выгрузить, перенести.', open:(m, click)=>GoodsTab.render(m, click)},
+      {key:'moderation', label:'Модерация правок', hint:'Правки товаров сотрудниками: «было → стало» с выделением изменённого, принять целиком или по полям, отклонить.', open:m=>ModerationTab.render(m)},
+      {key:'types', label:'Категории и характеристики', hint:'Параметры, фильтры и группы характеристик каждой категории оборудования.', open:m=>stTypes(m)},
+      {key:'feeds', label:'Фиды поставщиков', hint:'Загрузка прайсов, остатков и описаний поставщиков: что и куда загружать, план перед загрузкой, скидки, логотипы.', open:m=>stFeeds(m)}]},
+    {title:'Документы и справочники', desc:'КП и всё, из чего они собираются: шаблоны, клиенты, поставщики, почта.', tabs:[
       {key:'templates', label:'Шаблоны КП', hint:'Оформление документа КП: графический редактор, настройки шаблона, новый шаблон для другой компании.', open:m=>stTemplates(m)},
       {key:'db-kp', label:'Сохранённые КП', hint:'Все сохранённые КП: найти, открыть для правки, удалить в корзину. Файлы готовых КП в папке не удаляются.', open:m=>stDelete(m, 'kp')},
-      {key:'mail', label:'Почта для отправки КП', hint:'Почтовый сервер (SMTP) и текст письма по умолчанию — для кнопки «Отправить КП клиенту».', open:m=>stMail(m)}]},
-    {title:'Каталог оборудования', desc:'Товары, их категории и загрузка данных от поставщиков.', tabs:[
-      {key:'db-catalog', label:'Товары', hint:'Карточки каталога: найти, изменить в редакторе, удалить в корзину.', open:m=>stDelete(m, 'catalog')},
-      {key:'types', label:'Категории и характеристики', hint:'Параметры, фильтры и группы характеристик каждой категории оборудования.', open:m=>stTypes(m)},
-      {key:'feeds', label:'Фиды поставщиков', hint:'Загрузка прайсов, остатков и описаний поставщиков в каталог: РРЦ, наличие, сетка скидок.', open:m=>stFeeds(m)},
-      {key:'moderation', label:'Модерация правок', hint:'Правки товаров сотрудниками — сразу в каталог или после вашего подтверждения.', open:m=>stModeration(m)}]},
-    {title:'Клиенты и поставщики', desc:'Справочники, из которых подставляются реквизиты и адреса.', tabs:[
       {key:'db-client', label:'Клиенты', hint:'Реквизиты, контакты и объекты клиентов; загрузка списком ИНН.', open:m=>stDelete(m, 'client')},
-      {key:'db-supplier', label:'Поставщики и склады', hint:'Условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщиков.', open:m=>stDelete(m, 'supplier')}]},
-    {title:'Расчёты и нормы', desc:'Числа, с которыми программа считает: экономику сделки, доставку, станции.', tabs:[
+      {key:'db-supplier', label:'Поставщики и склады', hint:'Условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщиков.', open:m=>stDelete(m, 'supplier')},
+      {key:'mail', label:'Почта для отправки КП', hint:'Почтовый сервер (SMTP), текст письма по умолчанию, письма администратору о проблемах.', open:m=>stMail(m)}]},
+    {title:'Настройки программы', desc:'Все числа, умолчания, списки и тексты — с пояснениями; сохранение всего в файл.', tabs:[
       {key:'defaults', label:'Значения программы', hint:'Все числа и умолчания по разделам: новое КП, экономика сделки, логистика, каталог, сервер — с пояснениями, границами и поиском.', open:m=>stDefaults(m)},
-      {key:'logistics', label:'Тарифы доставки', hint:'Ставки перевозки по России: машины, расстояния, разгрузка, страхование, агент; загрузка файлом.', open:m=>FreightSettings.open(m)},
-      {key:'china', label:'Доставка из Китая', hint:'Только для администратора: перевозка из Китая до места прибытия в ЕАЭС для таможенной стоимости (ТК ЕАЭС ст. 40) — по ставкам экспедиторов с участками и сроком действия, с учётом условий поставки; ATI.SU — сравнение с рынком.', open:m=>ChinaFreightTab.render(m)},
-      {key:'rules', label:'Нормы станций (инженерные правила)', hint:'Отступы, проходы, ворота, вентиляция, отопление, ресиверы и все расчёты станций в контейнере: значение, источник, пределы.', open:m=>new RulesPanel(m).open()}]},
-    {title:'Вид и возможности', desc:'Что видят менеджеры: включённые функции, списки выбора, надписи.', tabs:[
       {key:'features', label:'Функции программы', hint:'Какие возможности включены и кому доступны: всем, администратору или выбранным менеджерам.', open:m=>new FeaturesPanel(m).open()},
-      {key:'lists', label:'Списки выбора', hint:'Варианты в выпадающих списках: условия, причины проигрыша, единицы и т. п. — добавить, убрать, переименовать.', open:m=>stLists(m)},
-      {key:'texts', label:'Тексты интерфейса', hint:'Свои надписи и подсказки вместо стандартных.', open:m=>stTexts(m)}]},
-    {title:'Сотрудники и вход', desc:'Кто работает в программе и что ему можно.', tabs:[
-      {key:'db-manager', label:'Менеджеры: контакты', hint:'Имя, должность, телефон, почта менеджера — то, что попадает в КП.', open:m=>stDelete(m, 'manager')},
-      {key:'access', label:'Менеджеры: вход и права', hint:'Вход в конструктор по логину и паролю; права: оборудование, чужие КП, экономика сделки.', open:m=>AccessPanel.open(m)},
-      {key:'users', label:'Администраторы', hint:'Кто входит в «Настройки»: добавить, изменить, сменить пароль.', open:m=>stUsers(m)},
-      {key:'security', label:'Мой пароль', hint:'Смена своего пароля и правила входа.', open:m=>stSecurity(m)}]},
-    {title:'Внешние сервисы', desc:'Подключения к интернет-сервисам и их ключи.', tabs:[
-      {key:'connections', label:'Проверка подключений', hint:'Все внешние сервисы одной кнопкой: почта, нейросеть, ЦБ, контрагенты, перевозчики, GitHub, фиды, PDF.', open:m=>new ConnectionsPanel(m).open()},
-      {key:'ai', label:'Нейросеть', hint:'Нейросеть прямо в программе для «Заполнить с ИИ» и описания станции: ключ, модель, расход.', open:m=>stAi(m)},
-      {key:'keys', label:'Ключи API', hint:'Проверка контрагентов (Checko, OFData, DaData), перевозчики, PDF; резервная копия ключей.', open:m=>stKeys(m)}]},
-    {title:'Обслуживание', desc:'Обновления, копии базы, корзина и состояние компьютера-сервера.', tabs:[
-      {key:'updates', label:'Обновления программы', hint:'Новая версия: проверить на GitHub и установить одной кнопкой или из файла; откат; история установок.', open:m=>AdminSystem.updates(m)},
-      {key:'backup', label:'Копии и база', hint:'Автоматические копии и вторая папка для них, сжатие и проверка базы, выгрузка и загрузка.', open:m=>stBackup(m)},
-      {key:'trash', label:'Корзина', get hint(){ return `Удалённое хранится ${DEFN('srv.trashDays', 30)} дн. — здесь его можно восстановить.`; }, open:m=>stTrash(m)},
+      {key:'lists', label:'Списки и тексты', hint:'Варианты в выпадающих списках и свои надписи и подсказки вместо стандартных.', parts:[['Списки выбора', m=>stLists(m)], ['Тексты интерфейса', m=>stTexts(m)]]},
+      {key:'logistics', label:'Тарифы доставки', hint:'Ставки перевозки по России: машины, расстояния, разгрузка, страхование, агент; загрузка файлом.', open:m=>FreightSettings.open(m)},
+      {key:'china', label:'Доставка из Китая', hint:'Перевозка из Китая до места прибытия в ЕАЭС для таможенной стоимости (ТК ЕАЭС ст. 40) — ставки экспедиторов, условия поставки, сравнение с рынком.', open:m=>ChinaFreightTab.render(m)},
+      {key:'rules', label:'Нормы станций', hint:'Отступы, проходы, ворота, вентиляция, отопление, ресиверы и все расчёты станций в контейнере: значение, источник, пределы.', open:m=>new RulesPanel(m).open()},
+      {key:'changes', label:'Файл, изменения, откат', hint:'Сохранить все настройки в файл и загрузить из файла; что отличается от встроенного; история изменений с откатом.', parts:[['', m=>SettingsFileCard.render(m)], ['Что изменено', m=>new ChangedPanel(m).open()], ['История изменений', m=>new SettingsHistoryPanel(m).open()]]}]},
+    {title:'Сотрудники и система', desc:'Кто работает и что ему можно, журнал действий, подключения, обновления, база и корзина.', tabs:[
+      {key:'managers', label:'Менеджеры', hint:'Вход по паролю, права (в том числе особые: удалять товары, правки без модерации, выгрузка) и контакты для КП.', parts:[['', m=>AccessPanel.open(m)], ['Контакты менеджеров — в КП', m=>stDelete(m, 'manager')]]},
+      {key:'users', label:'Администраторы', hint:'Кто входит в «Настройки»: добавить, изменить; смена своего пароля.', parts:[['', m=>stUsers(m)], ['Мой пароль', m=>stSecurity(m)]]},
+      {key:'audit', label:'Журнал действий', hint:'Кто, что и когда сделал: КП, каталог, справочники, настройки. Фильтры по сотруднику, действию и дате.', open:m=>stAudit(m)},
+      {key:'services', label:'Подключения и ключи', hint:'Проверка всех внешних сервисов одной кнопкой, ключи API (контрагенты, перевозчики, PDF), нейросеть.', parts:[['', m=>new ConnectionsPanel(m).open()], ['Ключи API', m=>stKeys(m)], ['Нейросеть', m=>stAi(m)]]},
+      {key:'updates', label:'Обновления', hint:'Новая версия: проверить на GitHub и установить одной кнопкой или из файла; откат; история установок.', open:m=>AdminSystem.updates(m)},
+      {key:'backup', label:'База и копии', hint:'Выгрузка и загрузка данных, автоматические копии, вторая папка, обслуживание базы.', open:m=>stBackup(m)},
+      {key:'trash', label:'Корзина', get hint(){ return `Удалённое хранится ${DEFN('srv.trashDays', 30)} дн.: восстановить, удалить навсегда, очистить.`; }, open:m=>TrashTab.render(m)},
       {key:'system', label:'Система', hint:'Версия, режим работы, адрес, папки, место на диске; перезапуск программы.', open:m=>AdminSystem.system(m)}]}];
-  // прежние ключи вкладок (ссылки из других окон, сохранённый выбор)
-  static ALIAS = {delete:'db-kp'};
-  static START = 'home';   // вкладка при первом открытии — карта «Настроек»
+  // прежние ключи вкладок (ссылки из других окон и подсказок, сохранённый выбор, история настроек)
+  static ALIAS = {delete:'db-kp', 'db-catalog':'goods', stats:'home', changed:'changes', history:'changes', access:'managers', 'db-manager':'managers',
+    security:'users', connections:'services', keys:'services', ai:'services', texts:'lists'};
+  static START = 'home';   // вкладка при первом открытии — обзор
 
-  static tabs(){ return this.GROUPS.flatMap(g=>g.tabs); }
+  static tabs(){ return [this.HOME, ...this.GROUPS.flatMap(g=>g.tabs)]; }
   static key(k){ k=this.ALIAS[k]||k; return this.tabs().some(t=>t.key===k) ? k : this.START; }
   static tab(k){ return this.tabs().find(t=>t.key===this.key(k)); }
   /** «Раздел → Вкладка» — где вкладка в «Настройках» (для поиска и подсказок) */
   static path(k){ const t=this.tab(k), g=this.GROUPS.find(x=>x.tabs.includes(t)); return g ? g.title+' → '+t.label : t.label; }
-  static html(cur){ return `<nav class="st-nav">${SettingsSearch.html()}${this.GROUPS.map(g=>`<span class="st-ng">${esc(g.title)}</span>${g.tabs.map(t=>`<button type="button" class="${t.key===cur?'on':''}" data-sttab="${t.key}" title="${esc(t.hint)}">${esc(t.label)}</button>`).join('')}`).join('')}</nav>`; }
-  /** «Что где»: все разделы плитками — название, для чего, вкладки с пояснениями (щелчок открывает вкладку) */
-  static home(m){
-    m.innerHTML=`<div class="st-home">${this.GROUPS.filter(g=>g.tabs.some(t=>t.key!=='home')).map(g=>`<section class="st-card st-hg"><p class="sub">${esc(g.title)}</p><p class="muted">${esc(g.desc||'')}</p>
-      <ul>${g.tabs.filter(t=>t.key!=='home').map(t=>`<li><button type="button" class="lnk" data-sttab="${t.key}">${esc(t.label)}</button><small class="muted">${esc(t.hint)}</small></li>`).join('')}</ul></section>`).join('')}</div>`;
+  static btn(t, cur){ return `<button type="button" class="${t.key===cur?'on':''}" data-sttab="${t.key}" title="${esc(t.hint)}">${esc(t.label)}</button>`; }
+  static html(cur){ return `<nav class="st-nav">${SettingsSearch.html()}${this.btn(this.HOME, cur)}${this.GROUPS.map(g=>`<span class="st-ng">${esc(g.title)}</span>${g.tabs.map(t=>this.btn(t, cur)).join('')}`).join('')}</nav>`; }
+  /** обзор: сводка (КП, «требует внимания», база) и карта разделов — щелчок по вкладке открывает её */
+  static async home(m){
+    m.innerHTML=`<div id="stHomeStats"><p class="empty">Загружаю…</p></div><p class="sub st-hm">Где что настраивается</p><div class="st-home">${this.GROUPS.map(g=>`<section class="st-card st-hg"><p class="sub">${esc(g.title)}</p><p class="muted">${esc(g.desc||'')}</p>
+      <ul>${g.tabs.map(t=>`<li><button type="button" class="lnk" data-sttab="${t.key}">${esc(t.label)}</button><small class="muted">${esc(t.hint)}</small></li>`).join('')}</ul></section>`).join('')}</div>`;
+    try{ await stStats(m.querySelector('#stHomeStats')); }catch(e){ m.querySelector('#stHomeStats').innerHTML=''; }
+  }
+  /** несколько панелей одной вкладки — друг под другом, у каждой свой блок (ошибка одной не мешает остальным) */
+  static async stack(m, parts){
+    m.innerHTML=parts.map(([title], i)=>`<section class="st-part">${title?`<p class="st-pt">${esc(title)}</p>`:''}<div data-stp="${i}"><p class="empty">Загружаю…</p></div></section>`).join('');
+    for (const [i, [, open]] of parts.entries()){ const box=m.querySelector(`[data-stp="${i}"]`);
+      try{ await open(box); }catch(e){ box.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; } }
   }
   /** вкладка: заголовок и пояснение, под ними — содержимое (обработчику отдаётся его блок) */
-  static async open(main, k){
+  static async open(main, k, click){
     const t=this.tab(k), g=this.GROUPS.find(x=>x.tabs.includes(t)), hist=SettingsHistoryPanel.TABS[t.key];
     StDirty.set(false);
-    main.innerHTML=`<header class="st-th"><span class="muted">${esc(g.title)}</span><div class="st-th-r"><h4>${esc(t.label)}</h4>${hist?`<button class="btn ghost sm" type="button" data-sthist="${t.key}" title="Что и когда меняли на этой вкладке, вернуть как было">История</button>`:''}</div><p class="muted">${esc(t.hint)}</p></header><div class="st-body"><p class="empty">Загружаю…</p></div>`;
-    await t.open(main.querySelector('.st-body'));
+    main.innerHTML=`<header class="st-th"><span class="muted">${esc(g?g.title:'Настройки')}</span><div class="st-th-r"><h4>${esc(t.label)}</h4>${hist?`<button class="btn ghost sm" type="button" data-sthist="${t.key}" title="Что и когда меняли на этой вкладке, вернуть как было">История</button>`:''}</div><p class="muted">${esc(t.hint)}</p></header><div class="st-body"><p class="empty">Загружаю…</p></div>`;
+    const body=main.querySelector('.st-body');
+    await (t.parts ? this.stack(body, t.parts) : t.open(body, click));
   }
 }
 
@@ -154,9 +153,9 @@ function stRender(){
   stTab();
 }
 
-async function stTab(){
+async function stTab(click){
   const m=$('#stMain'); if (!m) return;
-  try{ await AdminNav.open(m, ST.tab); }
+  try{ await AdminNav.open(m, ST.tab, click); }
   catch(e){ if (ADMIN.on) m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; }
 }
 
@@ -238,47 +237,34 @@ class DbMaint {
   }
 }
 
-// ---------- модерация
-async function stModeration(m){
-  const r=await aapi('moderation'), on=!!r.settings.enabled, P=r.pending;
-  m.innerHTML=`<div class="st-card"><div class="row"><button class="sw" type="button" role="switch" aria-checked="${on}" data-mod="toggle"><i></i>Требовать подтверждение правок товаров</button></div>
-      <p class="muted" style="margin:8px 0 0">${on?'Включено: правки сотрудников сохраняются черновиком и ждут вашего решения; у товара бейдж «На модерации».':'Выключено: правки сохраняются в каталог сразу и записываются в журнал действий (там же — откат правки).'}
-      ${r.settings.updatedAt?` Изменено: ${esc(Fmt.dateTime(r.settings.updatedAt))}.`:''}</p></div>
-    <div class="row" style="margin:14px 0 8px"><p class="sub" style="margin:0">На модерации <span class="muted">${P.length}</span></p><span class="sp"></span>${P.length>1?'<button class="btn" type="button" data-mod="all">Одобрить все</button>':''}</div>
-    ${P.length?P.map(p=>`<div class="st-row"><div><b>${esc(p.name)}</b><span class="muted">${p.kind==='create'?'новый товар':'изменено: '+esc(p.fields.join(', ')||'—')} · ${esc(p.userName||'—')} · ${esc(Fmt.dateTime(p.created))}</span>
-        ${p.stale?'<span class="bad-t" style="font-size:12.5px">Товар изменён после отправки правки — проверьте перед одобрением</span>':''}</div>
-        <div class="acts"><button class="btn" type="button" data-pend="${p.id}">Посмотреть</button></div></div>`).join(''):`<p class="muted">${on?'Правок, ожидающих решения, нет.':'Модерация выключена — очередь не пополняется.'}</p>`}
-    ${r.history.length?`<details class="more"><summary>Рассмотренные правки (${r.history.length})</summary>${r.history.sort((a,b)=>b.id-a.id).map(p=>`<div class="st-row"><div><b>${esc(p.name)}</b><span class="muted">${p.status==='approved'?'<span class="ok-t">Одобрено</span>':'<span class="bad-t">Отклонено</span>'+(p.reason?' — '+esc(p.reason):'')} · ${esc(p.userName||'—')} · ${esc(Fmt.dateTime(p.reviewedAt))}</span></div></div>`).join('')}</details>`:''}
-    ${r.archived.length?`<details class="more"><summary>Архив модерации (${r.archived.length})</summary>${r.archived.map(p=>`<div class="st-row"><div><b>${esc(p.name)}</b><span class="muted">${esc(p.userName||'—')} · ${esc(Fmt.dateTime(p.created))}</span></div></div>`).join('')}</details>`:''}`;
-  m.onclick=async e=>{
-    const b=e.target.closest('[data-mod],[data-pend]'); if (!b) return;
-    if (b.dataset.pend) return stPendView(+b.dataset.pend);
-    if (b.dataset.mod==='all'){ if (!await stConfirm(`Одобрить все правки (${P.length})?`,'Изменения сразу попадут в каталог.','Одобрить все')) return;
-      await ajson('pending/approve-all'); toast('Правки одобрены'); return stModeration(m); }
-    // переключение режима: при выключении с накопленными правками — что с ними сделать
-    let body={enabled:!on};
-    if (on && P.length){ const how=await stChoose(`Выключить модерацию? На модерации ${P.length} ${plural(P.length,'правка','правки','правок')}.`,
-        [['apply','Применить все'],['reject','Отклонить все'],['archive','Оставить в архиве']]); if (!how) return; body.pending=how; }
-    else if (!await stConfirm(on?'Выключить модерацию?':'Включить модерацию?', on?'Правки товаров будут сохраняться сразу (и записываться в журнал).':'Новые правки товаров будут ждать вашего одобрения. Существующие товары не меняются.', on?'Выключить':'Включить')) return;
-    await ajson('moderation', body); toast(body.enabled?'Модерация включена':'Модерация выключена'); stModeration(m);
-  };
-}
-
+// ---------- модерация: переключатель, очередь, рассмотренные (окно правки — ModerationView, catalog-admin.js)
 const stVal = v => v==='__absent__' ? '<i class="muted">нет</i>' : v&&typeof v==='object'&&'__truncated__' in v ? `<i class="muted">большое значение (${v.__truncated__} знаков)</i>`
   : `<pre>${esc(typeof v==='string'?v:JSON.stringify(v,null,1))}</pre>`;
 
-async function stPendView(id){
-  const p=await aapi('pending/'+id), d=$('#dlg'); d.classList.add('wide');
-  d.innerHTML=`<div class="dlg-h"><h3>Правка товара: ${esc(p.productId)}</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-   <div class="dlg-b"><p class="muted" style="margin-top:0">${p.kind==='create'?'Новый товар':'Изменение'} · ${esc(p.userName||'—')} · ${esc(Fmt.dateTime(p.created))}${p.current?'':' · товара сейчас нет в каталоге'}</p>
-   <table class="st-diff"><tr><th>Поле</th><th>Было</th><th>Стало</th></tr>${p.diff.map(x=>`<tr><td>${esc(x.label)}</td><td>${stVal(x.before)}</td><td>${stVal(x.after)}</td></tr>`).join('')||'<tr><td colspan="3">Отличий нет</td></tr>'}</table>
-   ${p.status==='pending'?`<label class="f" style="margin-top:12px"><span>Причина отклонения</span><input type="text" id="pReason" placeholder="Например: неверные характеристики"></label>
-   <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn danger" type="button" data-pa="reject">Отклонить</button><button class="btn primary" type="button" data-pa="approve">Одобрить</button></div>`:''}</div>`;
-  d.showModal(); d.querySelector('[data-close]').onclick=()=>{ d.close(); d.classList.remove('wide'); };
-  d.querySelector('.dlg-b').onclick=async e=>{ const b=e.target.closest('[data-pa]'); if(!b) return;
-    const reason=$('#pReason').value.trim(); if (b.dataset.pa==='reject' && !reason) return toast('Укажите причину отклонения');
-    await ajson(`pending/${id}/${b.dataset.pa}`,{reason}); d.close(); d.classList.remove('wide');
-    toast(b.dataset.pa==='approve'?'Одобрено — изменения в каталоге':'Отклонено'); refreshCat(); stTab(); };
+class ModerationTab {
+  static async render(m){
+    const r=await aapi('moderation'), on=!!r.settings.enabled, P=r.pending;
+    const done=r.history.sort((a,b)=>b.id-a.id);
+    m.innerHTML=`<div class="st-card"><div class="row"><button class="sw" type="button" role="switch" aria-checked="${on}" data-mod="toggle"><i></i>Требовать подтверждение правок товаров</button></div>
+        <p class="muted" style="margin:8px 0 0">${on?'Включено: правки сотрудников сохраняются черновиком и ждут решения; у товара бейдж «На модерации».':'Выключено: правки сохраняются в каталог сразу и записываются в журнал действий (там же — откат правки).'}
+        Принимать и отклонять правки могут и менеджеры с правом «Правки без модерации» («Сотрудники и система → Менеджеры»), их собственные правки идут сразу в каталог.${r.settings.updatedAt?` Изменено: ${esc(Fmt.dateTime(r.settings.updatedAt))}.`:''}</p></div>
+      <div class="st-card"><div class="row mv-qh"><p class="sub">На модерации · ${P.length}</p><span class="sp"></span>${P.length>1?'<button class="btn" type="button" data-mod="all">Принять все</button>':''}</div>
+        ${ModerationList.html(P, on?'Правок, ожидающих решения, нет.':'Модерация выключена — очередь не пополняется.')}</div>
+      ${done.length?`<details class="st-card mx"><summary class="sub">Рассмотренные правки · ${done.length}</summary>${done.map(p=>`<div class="st-row"><div><b>${esc(p.name)}</b><span class="muted">${p.status==='approved'?'<span class="ok-t">Принято</span>':'<span class="bad-t">Отклонено</span>'}${p.reason?' — '+esc(p.reason):''} · ${esc(p.userName||'—')} · ${esc(p.reviewedBy||'')} ${esc(Fmt.dateTime(p.reviewedAt))}</span></div><div class="acts"><button class="btn ghost" type="button" data-pend="${p.id}">Посмотреть</button></div></div>`).join('')}</details>`:''}
+      ${r.archived.length?`<details class="st-card mx"><summary class="sub">Архив модерации · ${r.archived.length}</summary>${r.archived.map(p=>`<div class="st-row"><div><b>${esc(p.name)}</b><span class="muted">${esc(p.userName||'—')} · ${esc(Fmt.dateTime(p.created))}</span></div><div class="acts"><button class="btn ghost" type="button" data-pend="${p.id}">Посмотреть</button></div></div>`).join('')}</details>`:''}`;
+    m.onclick=async e=>{
+      const pv=e.target.closest('[data-pend]'); if (pv) return ModerationView.open(+pv.dataset.pend, ()=>this.render(m));
+      const b=e.target.closest('[data-mod]'); if (!b) return;
+      if (b.dataset.mod==='all'){ if (!await stConfirm(`Принять все правки (${P.length})?`,'Изменения сразу попадут в каталог.','Принять все')) return;
+        await ajson('pending/approve-all'); toast('Правки приняты'); refreshCat(); return this.render(m); }
+      // переключение режима: при выключении с накопленными правками — что с ними сделать
+      let body={enabled:!on};
+      if (on && P.length){ const how=await stChoose(`Выключить модерацию? На модерации ${P.length} ${plural(P.length,'правка','правки','правок')}.`,
+          [['apply','Принять все'],['reject','Отклонить все'],['archive','Оставить в архиве']]); if (!how) return; body.pending=how; }
+      else if (!await stConfirm(on?'Выключить модерацию?':'Включить модерацию?', on?'Правки товаров будут сохраняться сразу (и записываться в журнал).':'Новые правки товаров будут ждать вашего решения. Существующие товары не меняются.', on?'Выключить':'Включить')) return;
+      await ajson('moderation', body); toast(body.enabled?'Модерация включена':'Модерация выключена'); this.render(m);
+    };
+  }
 }
 
 // ---------- записи базы: КП, товары, клиенты, поставщики, контакты менеджеров — поиск, правка, удаление в корзину
@@ -286,20 +272,18 @@ async function stPendView(id){
 async function stDelete(m, type){
   const D=ST.del; if (type && type!==D.type){ D.type=type; D.sel.clear(); D.q=''; ST.ed=null; }
   const r=await aapi(`list/${D.type}?q=${encodeURIComponent(D.q)}`), ed=ST.ed&&ST.ed.type===D.type?ST.ed:null;
-  const link=({manager:['access','Менеджеры: вход и права →'], catalog:['moderation','Модерация правок →'], supplier:['feeds','Фиды поставщиков →']})[D.type];
-  const catTools=D.type==='catalog'?`<div class="row st-quick"><button class="btn" type="button" data-cat="xls">Импорт из Excel…</button><button class="btn" type="button" data-cat="imp">Загрузить файл каталога (.json)…</button><button class="btn" type="button" data-cat="exp">Выгрузить каталог в файл</button><button class="btn ghost" type="button" data-cat="open">Открыть каталог</button></div>`:'';
-  m.innerHTML=`${catTools}<div class="row st-dbar"><input type="search" id="dQ" placeholder="Поиск" value="${esc(D.q)}" autocomplete="off"><span class="muted">${r.total>r.items.length?`показано ${r.items.length} из ${r.total} — уточните поиск`:`найдено: ${r.total}`}</span>
+  const link=({supplier:['feeds','Фиды поставщиков →']})[D.type];
+  m.innerHTML=`<div class="row st-dbar"><input type="search" id="dQ" placeholder="Поиск" value="${esc(D.q)}" autocomplete="off"><span class="muted">${r.total>r.items.length?`показано ${r.items.length} из ${r.total} — уточните поиск`:`найдено: ${r.total}`}</span>
       <span class="sp"></span>${D.type==='client'?'<button class="btn" type="button" data-dimp title="Список ИНН — реквизиты подтянутся сами">Загрузить списком ИНН…</button>':''}${ST_NEW[D.type]?`<button class="btn primary" type="button" data-dnew>+ ${esc(ST_NEW[D.type])}</button>`:''}<button class="btn danger" type="button" data-del ${D.sel.size?'':'disabled'}>Удалить${D.sel.size?' ('+D.sel.size+')':''}</button>${link?`<button class="btn ghost" type="button" data-sttab="${link[0]}">${link[1]}</button>`:''}</div>
     ${ed&&!ed.id?'<div class="st-ed"></div>':''}
     <div class="st-list">${r.items.map(x=>`<label class="st-row ck-row${ed&&ed.id===x.id?' on':''}"><input type="checkbox" data-did="${esc(x.id)}" ${D.sel.has(x.id)?'checked':''}><div><b>${esc(x.title)}</b><span class="muted">${esc(x.sub)}</span></div><div class="acts">${D.type==='kp'&&x.files?`<button class="btn" type="button" data-dfiles="${esc(x.id)}" data-dt="${esc(x.title)}" title="Справочные документы КП: посмотреть, удалить">📎 ${esc(String(x.files))}</button>`:''}<button class="btn" type="button" data-dedit="${esc(x.id)}">${D.type==='kp'?'Открыть':'Изменить'}</button></div></label>${ed&&ed.id===x.id?'<div class="st-ed"></div>':''}`).join('')||'<p class="muted">Ничего не найдено.</p>'}</div>
-    <p class="muted">«${D.type==='kp'?'Открыть':'Изменить'}» — ${({kp:'КП откроется в конструкторе для правки', catalog:'карточка товара в редакторе каталога', manager:'контакты менеджера — прямо в списке', client:'реквизиты и контакт клиента — прямо в списке', supplier:'условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщика — прямо в списке'})[D.type]}. Удалённое попадает в корзину и хранится ${30} дней — его можно восстановить. Файлы готовых КП (.docx, .pdf) в папке КП не удаляются.${D.type==='kp'?' «📎» — справочные документы КП: скачать или удалить ошибочный файл; у КП в корзине документы сохраняются.':''}</p>`;
+    <p class="muted">«${D.type==='kp'?'Открыть':'Изменить'}» — ${({kp:'КП откроется в конструкторе для правки', catalog:'карточка товара в редакторе каталога', manager:'контакты менеджера — прямо в списке', client:'реквизиты и контакт клиента — прямо в списке', supplier:'условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщика — прямо в списке'})[D.type]}. Удалённое попадает в корзину и хранится ${DEFN('srv.trashDays', 30)} дн. — его можно восстановить. Файлы готовых КП (.docx, .pdf) в папке КП не удаляются.${D.type==='kp'?' «📎» — справочные документы КП: скачать или удалить ошибочный файл; у КП в корзине документы сохраняются.':''}</p>`;
   const eb=m.querySelector('.st-ed'); if (eb){ stEdDraw(eb); stEdBind(eb, ()=>stDelete(m)); eb.scrollIntoView({block:'nearest'}); eb.querySelector('[data-ef]')?.focus({preventScroll:true}); }
   let qT; $('#dQ').oninput=e=>{ D.q=e.target.value; clearTimeout(qT); qT=setTimeout(()=>stDelete(m).then(()=>{ const i=$('#dQ'); i.focus(); i.setSelectionRange(i.value.length,i.value.length); }),250); };
   m.onchange=e=>{ const c=e.target.closest('[data-did]'); if(!c) return; c.checked?D.sel.add(c.dataset.did):D.sel.delete(c.dataset.did);
     const b=m.querySelector('[data-del]'); b.disabled=!D.sel.size; b.textContent='Удалить'+(D.sel.size?' ('+D.sel.size+')':''); };
   m.onclick=async e=>{ if (e.target.closest('.st-ed')) return;
     if (e.target.closest('[data-dimp]')) return openClientsImport();
-    const ct=e.target.closest('[data-cat]'); if (ct) return stCatalogTool(ct.dataset.cat);
     const df=e.target.closest('[data-dfiles]'); if (df){ e.preventDefault(); return KpFilesPanel.open(df.dataset.dfiles, df.dataset.dt.replace(/^№\s*/, ''), {admin:true, onClose:()=>stDelete(m)}); }
     if (e.target.closest('[data-dnew]')){ if (ST.ed && !await StDirty.leave()) return; try{ await stEdOpen(D.type, null); }catch(err){ return toast(err.message||String(err)); } return stDelete(m); }
     const ed=e.target.closest('[data-dedit]'); if (ed){ e.preventDefault();
@@ -329,15 +313,6 @@ async function stEdit(type, id, after){
   if (type==='catalog'){ const doc=await api('/api/catalog/'+encodeURIComponent(id)); openCatEditor(doc, ()=>{ refreshCat(); after(); }); }
 }
 
-async function stTrash(m){
-  const r=await aapi('trash');
-  m.innerHTML=`<p class="muted" style="margin-top:0">Удалённое хранится ${r.days} дней, затем удаляется окончательно.</p>
-    ${r.items.map(x=>`<div class="st-row"><div><b>${esc(x.title||x.entityId)}</b><span class="muted">${esc(ENT[x.entityType]||x.entityType)} · удалено ${esc(Fmt.dateTime(x.deletedAt))}</span></div>
-      <div class="acts"><button class="btn" type="button" data-rest="${x.id}">Восстановить</button></div></div>`).join('')||'<p class="muted">Корзина пуста.</p>'}`;
-  m.onclick=async e=>{ const b=e.target.closest('[data-rest]'); if(!b) return;
-    try{ await ajson(`trash/${b.dataset.rest}/restore`); toast('Восстановлено'); refreshCat(); loadManagers(); }catch(err){ toast(err.message); } stTrash(m); };
-}
-
 // ---------- журнал действий
 async function stAudit(m){
   const A=ST.audit, F=A.f;
@@ -363,31 +338,8 @@ async function stAudit(m){
     try{ await ajson(`audit/${rb.dataset.rb}/rollback`); toast('Правка откачена'); refreshCat(); A.fl=null; stAudit(m); }catch(err){ toast(err.message); } };
 }
 
-// ---------- резервные копии
-async function stBackup(m){
-  const hist=await aapi('audit?'+new URLSearchParams({action:'export_db'})), hi=await aapi('audit?'+new URLSearchParams({action:'import_db'}));
-  const ops=[...hist.items, ...hi.items].sort((a,b)=>b.id-a.id).slice(0,15);
-  // чаще всего нужное — сверху: выгрузка и загрузка; автокопии — ниже; служебное — под раскрытием
-  m.innerHTML=`${SupplierExport.html()}
-    ${DataTransfer.html()}
-    <div class="st-card"><p class="sub">Загрузка</p>${DataTransfer.importHtml()}
-      <div class="sub" style="margin-top:14px">Файл базы целиком (.sqlite3 или .zip с ним)${tip('<p>Заменяет всю базу содержимым файла — каталог, КП, клиентов, менеджеров, настройки. Перед заменой программа сохраняет копию текущей базы в data\\backup (архив kp-…-before-restore.zip).</p><p>Так и нужно подменять базу: вручную копировать kp.sqlite3 в папку data нельзя — рядом лежат файлы kp.sqlite3-wal и -shm от прежней базы, и она повредится («database disk image is malformed»).</p>')}</div>
-      <input type="file" id="impDb" accept=".sqlite3,.sqlite,.db,.zip" class="sr-file"><label for="impDb" class="btn">Выбрать файл базы…</label><p class="muted" id="impDbSt"></p></div>
-    <div class="st-card" id="stMaint"><p class="sub">Автоматические копии и обслуживание базы</p><p class="muted">Загружаю…</p></div>
-    <div class="st-card" id="stMirror"></div>
-    <details class="st-card st-more"><summary class="sub">История выгрузок и загрузок · изменения структуры базы</summary>
-      <div class="st-card" id="stMigr"></div>
-      <div class="st-card"><p class="sub">История</p>${ops.map(x=>`<div class="st-row"><div><b>${esc(ACT[x.action])}</b><span class="muted">${esc(Fmt.dateTime(x.timestamp))} · ${esc(x.entityId||'')}${x.after&&x.after.supplier?' · '+esc(x.after.supplier):''}${x.after&&x.after.bytes?' · '+Fmt.size(x.after.bytes):''}</span></div></div>`).join('')||'<p class="muted">Операций ещё не было.</p>'}</div></details>`;
-  DbMaint.render($('#stMaint')); stMigr($('#stMigr')); new MirrorCard($('#stMirror')).open();
-  m.onclick=null; SupplierExport.mount(m, StNav.sup||''); StNav.sup=''; DataTransfer.mount(m, ()=>stBackup(m)); DataTransfer.bindImport(m, ()=>stBackup(m));
-  $('#impDb').onchange=async e=>{ const f=e.target.files[0]; if (!f) return; e.target.value='';
-    if (!await stConfirm('Заменить всю базу файлом «'+f.name+'»?','Текущие данные будут заменены содержимым файла. Перед этим программа сохранит копию текущей базы в data\\backup.','Заменить базу')) return;
-    const st=$('#impDbSt'); st.textContent=`Загружаю «${f.name}» (${Fmt.size(f.size)})…`;
-    try{ const j=await aapi('import/sqlite?name='+encodeURIComponent(f.name), {method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:f});
-      st.textContent=''; toast(`База заменена: позиций ${Fmt.num(j.catalog)}, КП ${Fmt.num(j.kp)}. Прежняя сохранена: ${j.backup.split(/[\\/]/).pop()}`);
-      setTimeout(()=>location.reload(), 1500); }
-    catch(err){ st.textContent=''; toast('Не загружено: '+(err.message||err)); } };
-}
+// ---------- база и копии (BackupTab — settings-data.js)
+async function stBackup(m){ return BackupTab.render(m); }
 
 // ---------- шаблоны, категории, ключи, пароль
 async function stTemplates(m){
@@ -536,7 +488,7 @@ class AccessPanel {
     const r=await aapi('access'), P=r.perms;
     const row=x=>`<tr data-mid="${esc(x.id)}"${x.blocked?' class="off"':''}><td><b>${esc(x.name||'Без имени')}</b><small class="muted">${esc(x.position||'')}${x.lastLogin?(x.position?' · ':'')+'вход '+esc(Fmt.dateTime(x.lastLogin)):''}</small></td>
       <td>${x.login?`<b>${esc(x.login)}</b>${AccessPanel._state(x)}`:'<span class="muted">не задан</span>'}</td>
-      ${P.map(p=>`<td class="c"><label class="ac-ck"><input type="checkbox" data-perm="${p.key}"${x.perms[p.key]?' checked':''} aria-label="${esc(p.label)}"></label></td>`).join('')}
+      ${P.map(p=>`<td class="c${Powers.STRICT.includes(p.key)?' ac-sp':''}"><label class="ac-ck" title="${esc(p.label)}"><input type="checkbox" data-perm="${p.key}"${x.perms[p.key]?' checked':''} aria-label="${esc(p.label)}"></label></td>`).join('')}
       <td class="acts"><div class="ac-acts"><button class="btn sm" type="button" data-ac="login">${x.login?'Логин и пароль':'Задать вход'}</button>${x.login?`<button class="btn sm" type="button" data-ac="reset">Сбросить пароль</button>
         <button class="btn sm ghost" type="button" data-ac="block">${x.blocked?'Разрешить вход':'Запретить вход'}</button>`:''}${x.sessions?`<button class="btn sm ghost" type="button" data-ac="out" title="Закрыть все входы менеджера: компьютеры и телефоны">Выйти везде (${x.sessions})</button>`:''}</div></td></tr>`;
     m.innerHTML=`<div class="st-card"><div class="row"><p class="sub" style="margin:0">Вход в конструктор по логину и паролю</p><span class="sp"></span>
@@ -546,10 +498,11 @@ class AccessPanel {
         Администратор входит в «Настройки» своим паролем и может всё.</p>
       <div class="ac-help"><label class="f"><span>«Забыли пароль?» на экране входа — к кому обращаться ${tip('Менеджер видит этот текст до входа, под ссылкой «Забыли пароль?». Укажите, кто сбрасывает пароль и как с ним связаться. Пусто — только общая подсказка «обратитесь к администратору».')}</span>
         <input type="text" id="acHelp" maxlength="200" value="${esc(r.help||'')}" placeholder="Например: пароль сбросит Иванов Иван, доб. 123"></label><button class="btn" type="button" id="acHelpSave">Сохранить</button></div></div>
-      <div class="st-card"><div class="row"><div class="sub" style="margin:0">Менеджеры и права · ${r.managers.length} ${tip(AccessPanel.HELP)}</div><span class="sp"></span><button class="btn ghost" type="button" data-sttab="db-manager">Контакты менеджеров →</button></div>
-      ${r.managers.length?`<div class="ac-tw"><table class="pv-t ac-t"><thead><tr><th>Менеджер</th><th>Логин</th>${P.map(p=>`<th class="c" title="${esc(p.label)}">${esc(p.label)}</th>`).join('')}<th></th></tr></thead><tbody>${r.managers.map(row).join('')}</tbody></table></div>`
-        :'<p class="muted">Менеджеров ещё нет — их добавляют в шаге «Менеджер» конструктора.</p>'}
-      <p class="muted">Права действуют, когда вход по паролю включён. «КП других менеджеров» — видеть их в журнале, открывать и сохранять; без него менеджер видит только свои КП. «Экономика сделки» — своих КП (чужих — вместе с правом на КП других).</p></div>`;
+      <div class="st-card"><div class="row"><div class="sub" style="margin:0">Менеджеры и права · ${r.managers.length} ${tip(AccessPanel.HELP)}</div></div>
+      ${r.managers.length?`<div class="ac-tw"><table class="pv-t ac-t"><thead><tr><th>Менеджер</th><th>Логин</th>${P.map(p=>`<th class="c${Powers.STRICT.includes(p.key)?' ac-sp':''}" title="${esc(p.label)}">${esc(AccessPanel.SHORT[p.key]||p.label)}</th>`).join('')}<th></th></tr></thead><tbody>${r.managers.map(row).join('')}</tbody></table></div>`
+        :'<p class="muted">Менеджеров ещё нет — их добавляют в шаге «Менеджер» конструктора или ниже, в «Контактах».</p>'}
+      <p class="muted">Права действуют, когда вход по паролю включён. «Чужие КП» — видеть их в журнале, открывать и сохранять; без него менеджер видит только свои КП. «Экономика» — своих КП (чужих — вместе с правом на чужие КП).
+        <b>Особые права</b> (выделены, по умолчанию выключены): «Удалять» — товары в корзину (восстанавливает и чистит корзину администратор); «Без модерации» — свои правки товаров сразу в каталог, принимать и отклонять правки других; «Выгрузка» — каталог и клиентов в файл (без закупки).</p></div>`;
     const post=(mid, body)=>ajson('access/'+encodeURIComponent(mid), body);
     $('#acHelpSave').onclick=async()=>{ try{ const x=await ajson('access',{help:$('#acHelp').value}); $('#acHelp').value=x.help||''; toast('Подсказка сохранена'); }catch(err){ toast(err.message||String(err)); } };
     $('#acOn').onchange=async e=>{ try{ await ajson('access',{enabled:e.target.checked}); toast(e.target.checked?'Вход по паролю включён':'Вход по паролю выключен'); }catch(err){ toast(err.message||String(err)); } AccessPanel.open(m); };
@@ -568,6 +521,9 @@ class AccessPanel {
         AccessPanel.open(m);
       }catch(err){ toast(err.message||String(err)); } };
   }
+
+  // короткие подписи столбцов прав (полная — в подсказке)
+  static SHORT = {catAdd:'Добавлять', catEdit:'Править', kpOthers:'Чужие КП', dealView:'Экономика', catDelete:'Удалять', catSelfMod:'Без модерации', export:'Выгрузка'};
 
   static HELP = '<p><b>Сбросить пароль</b> — менеджер забыл пароль: программа выдаст временный пароль (покажет один раз — передайте менеджеру). Прежний пароль перестаёт действовать, открытые входы менеджера закрываются. Войдя с временным паролем, менеджер сразу задаёт свой; срок временного пароля — «Значения программы» → «Временный пароль… действует».</p>'
     +'<p><b>Выйти везде</b> — закрыть все входы менеджера (например, потерял телефон); пароль не меняется. Менеджер может сделать это и сам: «⋯ → Выйти на всех устройствах», а пароль сменить — «⋯ → Сменить пароль».</p>';
@@ -619,7 +575,7 @@ const stChoose = (title, opts) => Modal.ask(`<h3>${esc(title)}</h3><div class="s
 document.addEventListener('click', async e=>{
   const d=e.target.closest('#setdlg'); if (!d) return;
   const h=e.target.closest('[data-sthist]'); if (h){ if (!await StDirty.leave()) return; SettingsHistoryPanel.filter=h.dataset.sthist; StNav.select('history'); return stTab(); }
-  const t=e.target.closest('[data-sttab]'); if (t){ if (!await StDirty.leave()) return; const f=$('#stFind'); if (f) f.value=''; StNav.select(t.dataset.sttab); return stTab(); }
+  const t=e.target.closest('[data-sttab]'); if (t){ if (!await StDirty.leave()) return; const f=$('#stFind'); if (f) f.value=''; StNav.select(t.dataset.sttab); return stTab(true); }
   const a=e.target.closest('[data-st]'); if (!a) return;
   if (a.dataset.st==='close'){ if (await StDirty.leave()) d.close(); return; }
   if (a.dataset.st==='logout'){ if (!await StDirty.leave()) return; ajson('logout').catch(()=>{}).then(()=>{ ADMIN.set(false); stRender(); FEAT.refresh(); toast('Вы вышли из «Настроек»'); }); }

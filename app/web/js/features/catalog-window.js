@@ -199,7 +199,7 @@ class CatalogWindow {
   static get PAGE(){ return Math.round(DEFN('cat.page', 60)); }
   constructor(){
     // режим (позиции КП или опции позиции), отметки, открытая карточка, последний перенос (для отмены)
-    Object.assign(this, { pend:new Set(), mod:false, optFor:null, F:FI, sel:new Set(), active:null, limit:CatalogWindow.PAGE, docs:[], view:[], lastCk:null, undo:null, note:'', busy:'', drag:null,
+    Object.assign(this, { pend:new Set(), mod:false, admin:false, optFor:null, F:FI, sel:new Set(), active:null, limit:CatalogWindow.PAGE, docs:[], view:[], lastCk:null, undo:null, note:'', busy:'', drag:null,
       src:{}, sups:[], tab:'' });      // src — фиды-источники (id → поставщик), sups — справочник поставщиков, tab — вкладка слева (flt / cats)
     this.sorter = new CatalogSorter(this);
     this.panes = null;
@@ -224,7 +224,8 @@ class CatalogWindow {
     const step=dl=>{ if (docs!==this.docs) return; while (i<docs.length && dl.timeRemaining()>2) CatalogIndex.hay(docs[i++]); if (i<docs.length) idle(step); };
     idle(step); }
   /** режим модерации и товары, правки которых ждут решения администратора */
-  async loadPending(){ try{ const r=await api('/api/catalog/pending'); this.mod=!!r.moderation; this.pend=new Set(r.ids||[]); }catch(e){} }
+  async loadPending(){ try{ const r=await api('/api/catalog/pending'); this.mod=!!r.moderation; this.pend=new Set(r.ids||[]); }catch(e){}
+    const b=$('#catdlg .cw-modq'); if (b){ b.hidden=!(this.pend.size && can('catSelfMod') && this.optFor==null); b.textContent=`На модерации · ${this.pend.size}`; } }
   /** поставщики позиций: фиды-источники и справочник поставщиков (для фильтра «Поставщик» и поиска по нему) */
   async loadSources(){
     const [src, sups] = await Promise.all([api('/api/catalog/sources').catch(()=>({})), api('/api/suppliers').catch(()=>[])]);
@@ -364,12 +365,14 @@ class CatalogWindow {
     if (n){ f.className='cw-f bulk'; f.innerHTML=`<b>Отмечено: ${n}</b>
         <button class="btn primary" type="button" data-bulk="add">${this.optFor!=null?'Добавить опциями':'Добавить в КП'}</button>
         ${this.optFor==null?'<button class="btn" type="button" data-bulk="move">Перенести в категорию…</button>':''}
+        ${this.optFor==null&&can('export')?'<button class="btn" type="button" data-bulk="export">Выгрузить…</button>':''}
+        ${this.optFor==null&&can('catDelete')?'<button class="btn danger" type="button" data-bulk="trash">В корзину</button>':''}
 <span class="sp"></span>
         <button class="btn ghost" type="button" data-bulk="clear">Снять отметки</button>`; return; }
     const k = this.optFor!=null ? (S.items[this.optFor]?.options||[]).filter(o=>o.name).length : S.items.filter(x=>x.name).length;
     f.className='cw-f'; f.innerHTML=`<span class="muted cw-note">${esc(this.note||'Отметьте галочками несколько позиций — появятся пакетные действия.'+(matchMedia('(pointer:coarse)').matches?'':' Позиции можно перетащить мышью на категорию слева.'))}</span>
       ${this.undo?'<button class="btn ghost" type="button" data-cw="undo">Отменить перенос</button>':''}<span class="sp"></span>
-      <span class="muted">${this.optFor!=null?'Опций у позиции':'Позиций в КП'}: <b>${k}</b></span><button class="btn primary" type="button" data-cw="done">${this.optFor!=null?'Готово':'Готово — к КП'}</button>`; }
+      ${this.admin?'<button class="btn primary" type="button" data-cw="close">Закрыть</button>':`<span class="muted">${this.optFor!=null?'Опций у позиции':'Позиций в КП'}: <b>${k}</b></span><button class="btn primary" type="button" data-cw="done">${this.optFor!=null?'Готово':'Готово — к КП'}</button>`}`; }
   say(t){ this.note=t||''; this.foot(); }
   setBusy(t){ this.busy=t||''; this.foot(); }
   redraw(){ if (!$('#cwList')) return; this.nav(); this.list(); this.foot(); this.preview(); }
@@ -400,7 +403,7 @@ class CatalogWindow {
       ${!loading&&!feats.length&&!groups.length?'<p class="muted pv-empty">Описания и характеристик пока нет — нажмите «Редактировать».</p>':''}
     </div>
     <div class="pv-acts"><div class="pv-main"><button class="btn primary" type="button" data-pv="add">${this.addLabel(x.id,true)}</button><button class="btn" type="button" data-pv="edit">Редактировать</button></div>
-      <div class="pv-sub">${this.optFor==null?'<button class="btn ghost" type="button" data-pv="dup" title="Создать копию позиции и открыть её на редактирование">Создать копию</button>':''}<span class="sp"></span><button class="btn ghost pv-w" type="button" data-pv="wide" title="Карточка крупно, на месте списка (двойной щелчок по позиции). Esc — назад к списку">${this.dlg().classList.contains('pvwide')?'Свернуть карточку':'⤢ Крупно'}</button><button class="btn ghost pv-x" type="button" data-pv="close">Закрыть карточку</button></div></div>`;
+      <div class="pv-sub">${this.optFor==null?'<button class="btn ghost" type="button" data-pv="dup" title="Создать копию позиции и открыть её на редактирование">Создать копию</button>':''}${this.optFor==null&&can('catDelete')?'<button class="btn ghost danger-t" type="button" data-pv="trash" title="Удалить позицию в корзину (восстанавливает администратор)">В корзину</button>':''}<span class="sp"></span><button class="btn ghost pv-w" type="button" data-pv="wide" title="Карточка крупно, на месте списка (двойной щелчок по позиции). Esc — назад к списку">${this.dlg().classList.contains('pvwide')?'Свернуть карточку':'⤢ Крупно'}</button><button class="btn ghost pv-x" type="button" data-pv="close">Закрыть карточку</button></div></div>`;
   }
   async preview(){
     const pv=$('#cwPv'), d=this.dlg(); if(!pv) return; const id=this.active;
@@ -507,6 +510,11 @@ class CatalogWindow {
   async edit(id){ if (!can('catEdit')) return cannot('catEdit'); const x=await fullDoc(this.doc(id)); if (!x) return; openCatEditor(x, cwAfterSave); }
   async dup(id){ if (!can('catAdd')) return cannot('catAdd'); const x=await fullDoc(this.doc(id)); if (!x || x._light) return this.say('Не удалось загрузить позицию');
     const c=JSON.parse(JSON.stringify(x)); c.id=uid()+uid(); c.name=x.name+' (копия)'; c.prices=[]; delete c.pricesCount; openCatEditor(c, cwAfterSave, true); }
+  /** в корзину (администратор или право «Удалять товары»): позиции уходят из списка, карточка закрывается */
+  async trash(ids){ const names=ids.map(id=>(this.doc(id)||{}).name||'');
+    if (!await CatalogBin.put(ids, names)) return;
+    ids.forEach(id=>this.sel.delete(id)); if (ids.includes(this.active)){ this.active=null; this.dlg().classList.remove('pvwide'); }
+    this.docs=catCache; this.note=`В корзине: ${ids.length} ${plural(ids.length,'позиция','позиции','позиций')}`; this.redraw(); }
   async importFile(f){
     try{ const j=JSON.parse(await f.text()); const items=Array.isArray(j)?j:j.items; if(!Array.isArray(items)) throw 0;
       // новые категории из файла (types): добавляются к своим типам; категории с уже существующим id не меняются
@@ -533,15 +541,16 @@ class CatalogWindow {
   // ---------- окно
   async open(mode={}){
     const optFor = Number.isInteger(mode.opt) ? mode.opt : null;
-    Object.assign(this, { optFor, F: optFor!=null ? FO : FI, active:null, limit:CatalogWindow.PAGE, lastCk:null, note:'', busy:'', tab:'' }); this.sel.clear();
+    Object.assign(this, { optFor, admin:!!mode.admin && optFor==null, F: optFor!=null ? FO : FI, active:null, limit:CatalogWindow.PAGE, lastCk:null, note:'', busy:'', tab:'' }); this.sel.clear();
     const F=this.F; if (mode.cat!=null){ F.cat=mode.cat; F.f={}; F.rng={}; }
     const d=this.dlg(); d.classList.remove('navon','pvon','pvwide'); this.panes.loadSize(); this.panes.load();
     d.innerHTML=`<div class="cw-h"><button class="btn cw-navbtn" type="button" data-cw="nav" aria-label="Категории и фильтры" title="Категории и фильтры"><span aria-hidden="true">☰</span><span class="cw-lbl2"> Фильтры</span></button>
-       <h3>${optFor!=null?'Опции для позиции '+(optFor+1):'Каталог'}</h3>
+       <h3>${optFor!=null?'Опции для позиции '+(optFor+1):this.admin?'Товары':'Каталог'}</h3>
        <div class="cw-q"><input type="search" id="cwQ" placeholder="Модель, артикул, производитель, поставщик или характеристика" autocomplete="off" value="${esc(F.q)}" aria-label="Поиск по каталогу" title="Можно без пробелов и дефисов: «DVK3013» найдёт DVK D 30-13; «/» — перейти к поиску"><kbd aria-hidden="true">/</kbd></div>
        ${optFor==null?'<button class="btn" type="button" data-cw="new" title="Новая позиция каталога">+<span class="cw-lbl"> Позиция</span></button>':''}
+       <button class="btn cw-modq" type="button" data-cw="modq" hidden title="Правки товаров, ожидающие решения: посмотреть «было → стало», принять или отклонить"></button>
        <details class="cw-menu"><summary class="btn" title="Импорт, выгрузка, категории оборудования">Ещё<span class="cw-lbl"> ▾</span></summary><div>
-         ${FEAT.on('catImport')?'<button type="button" data-cw="xls">Импорт из Excel…</button><button type="button" data-cw="imp">Загрузить файл каталога (.json)…</button>':''}<button type="button" data-cw="exp">Выгрузить каталог в файл</button>
+         ${FEAT.on('catImport')?'<button type="button" data-cw="xls">Импорт из Excel…</button><button type="button" data-cw="imp">Загрузить файл каталога (.json)…</button>':''}${can('export')?'<button type="button" data-cw="xport">Выгрузить найденное… (Excel, JSON, XML, YML)</button>':''}${ADMIN.on||AUTH.admin?'<button type="button" data-cw="exp">Файл каталога для загрузки (.json)</button>':''}
          <hr><button type="button" data-cw="types">Категории оборудования…</button></div></details>
        <button class="icon" type="button" data-cw="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна можно менять, потянув за правый нижний угол">⤢</button>
        <button class="icon" type="button" data-cw="close" aria-label="Закрыть">✕</button></div>
@@ -637,9 +646,12 @@ class CatalogWindow {
       F.rng[k]= same?{min:'',max:''}:{min:rc.dataset.lo,max:rc.dataset.hi}; this.refresh(); return; }
     const bk=t.closest('[data-bulk]'); if (bk){ const ids=[...this.sel];
       if (bk.dataset.bulk==='add') return this.add(ids); if (bk.dataset.bulk==='move') return this.moveDlg(ids);
+      if (bk.dataset.bulk==='trash') return this.trash(ids);
+      if (bk.dataset.bulk==='export') return CatalogExportDlg.open(ids, ids.map(id=>this.doc(id)).filter(Boolean));
       if (bk.dataset.bulk==='clear'){ this.sel.clear(); this.list(); this.foot(); } return; }
     const pv=t.closest('[data-pv]'); if (pv && this.active){ const a=pv.dataset.pv, id=this.active;
       if (a==='add') return this.add([id]); if (a==='edit') return this.edit(id); if (a==='dup') return this.dup(id);
+      if (a==='trash') return this.trash([id]);
       if (a==='wide') return this.wide(!d.classList.contains('pvwide'));
       if (a==='close'){ if (d.classList.contains('pvwide')) return this.wide(false); this.active=null; this.activate(null); } return; }
     const zi=t.closest('.pv-photo>img:first-child, .pv-gal img'); if (zi){ this.zoom(zi.src, zi.title||''); return; }
@@ -659,6 +671,8 @@ class CatalogWindow {
       case 'xls': return openXlsImport(F.cat);
       case 'types': return openTypesEditor(F.cat || undefined);
       case 'exp': return this.exportFile();
+      case 'xport': { const L=this.sel.size ? this.view.filter(x=>this.sel.has(x.id)) : this.view; return CatalogExportDlg.open(L.map(x=>x.id), L); }
+      case 'modq': return ModerationList.open();
       case 'imp': { const f=document.createElement('input'); f.type='file'; f.accept='.json,application/json'; f.hidden=true;
         f.onchange=()=>{ const file=f.files[0]; f.remove(); if (file) this.importFile(file); }; d.appendChild(f); f.click(); return; }
     }

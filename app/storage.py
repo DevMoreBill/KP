@@ -722,6 +722,22 @@ class Store:
             c.commit()
         return etype, eid
 
+    def trash_drop(self, tid):
+        """Удалить навсегда одну запись корзины → {entityType, entityId, title} или None."""
+        r = self.one('SELECT entity_type, entity_id, title FROM trash WHERE id=?', (tid,))
+        if not r:
+            return None
+        self.write('DELETE FROM trash WHERE id=?', (tid,))
+        return {'entityType': r[0], 'entityId': r[1], 'title': r[2]}
+
+    def trash_clear(self, etype=None):
+        """«Очистить корзину»: всё или записи одного вида → сколько удалено навсегда."""
+        where, args = ('WHERE entity_type=?', (etype,)) if etype else ('', ())
+        n = self.one('SELECT COUNT(*) FROM trash ' + where, args)[0]
+        if n:
+            self.write('DELETE FROM trash ' + where, args)
+        return n
+
     def trash_purge(self, days):
         """Окончательно удалить то, что лежит в корзине дольше days дней."""
         from datetime import timedelta

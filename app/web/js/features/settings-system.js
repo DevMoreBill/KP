@@ -37,7 +37,7 @@ class AdminSystem {
     const hist=(s.history||[]).map(h=>`<tr><td>${esc(Fmt.dateTime(h.at))}</td><td>${esc(h.from||'')} → ${esc(h.version||'')}</td><td>${esc(h.source||'')}${h.reason?`<br><small class="muted">${esc(h.reason)}</small>`:''}</td><td>${esc(h.by||'')}</td></tr>`).join('');
     const f=s.failed, again=f&&last.version===f.version;
     m.innerHTML=`${note?`<p class="msg ok" style="text-align:left">${esc(note)}</p>`:''}
-    ${f?`<div class="st-card up-fail"><p><b class="bad-t">Обновление ${esc(f.version)} не запустилось</b>${f.at?` (${esc(Fmt.dateTime(f.at))})`:''} — программа сама вернулась к версии ${ver(s.current)}. Данные не пострадали: перед установкой была сделана копия базы («Копии и база»).</p>
+    ${f?`<div class="st-card up-fail"><p><b class="bad-t">Обновление ${esc(f.version)} не запустилось</b>${f.at?` (${esc(Fmt.dateTime(f.at))})`:''} — программа сама вернулась к версии ${ver(s.current)}. Данные не пострадали: перед установкой была сделана копия базы («База и копии»).</p>
       <p>Причина: <code>${esc(f.reason||'неизвестна')}</code></p>
       ${f.trace?`<details class="up-notes"><summary>Подробности для разработчика</summary><pre>${esc(f.trace)}</pre></details>`:''}
       <p class="muted">Установить эту версию снова можно, когда причина устранена (обычно — в выпуске с исправлением): «Скачать и установить» или «Выбрать архив обновления…».</p></div>`:''}
@@ -61,7 +61,7 @@ class AdminSystem {
     <div class="st-card"><p class="sub">Откат</p><div class="row">
       <button class="btn" type="button" data-up="rollback"${s.prev?'':' disabled'}>${s.prev?`Вернуть предыдущее обновление (${esc(s.prev)})`:'Предыдущего обновления нет'}</button>
       <button class="btn ghost" type="button" data-up="remove"${s.installed?'':' disabled'}>Убрать обновление — работать на версии EXE</button></div>
-      <p class="muted" style="margin:8px 0 0">База данных при откате не меняется. Копии базы перед каждой установкой — в «Копии и база».</p></div>
+      <p class="muted" style="margin:8px 0 0">База данных при откате не меняется. Копии базы перед каждой установкой — в «База и копии».</p></div>
     <div class="st-card"><p class="sub">Источник обновлений</p><div class="grid g2">
       <label class="f"><span>Репозиторий GitHub</span><input type="text" id="upRepo" value="${esc(s.repo)}" placeholder="владелец/имя"></label>
       <label class="f"><span>Токен GitHub ${s.hasToken?'<b class="ok-t">задан</b>':''}</span><input type="password" id="upTok" autocomplete="off" placeholder="${s.hasToken?'Новый токен — заменит текущий':'github_pat_… (только чтение: Contents)'}"></label></div>

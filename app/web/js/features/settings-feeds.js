@@ -3,7 +3,7 @@
 // Фид из файлов (парс сайта CSV + прайс XLSX, app/feed_files.py) — для поставщиков без YML: цены обновляются загрузкой нового прайса.
 'use strict';
 
-const FD = { sel:null, prev:null, cats:{}, types:[], poll:0, edit:null, logs:{}, disc:null, plan:null };
+const FD = { sel:null, prev:null, cats:{}, types:[], poll:0, edit:null, logs:{}, disc:null, plan:null, rplan:null, rpf:'' };
 const FD_DRIVES = [['any','любой'], ['belt','ременной'], ['direct','прямой и/или частотник']];
 const FD_REMEZA = { name:'Remeza', url:'https://www.remeza.org/bitrix/catalog_export/yandex_202475.php', maker:'Remeza', auto:true, pageDesc:true, kind:'yml' };
 const FD_FILES = { kind:'files', name:'', maker:'', priceKind:'cost', cur:'EUR', priceOnly:false, pageDesc:false, auto:false };
@@ -23,7 +23,7 @@ class FeedPurgeUi {
       <label class="f"><span>Что удалить</span><select data-fp="cat"><option value="">Все позиции фида — ${Fmt.num(p0.total)}</option>${p0.cats.map(c=>`<option value="${esc(c.cat)}">${esc(c.title)} — ${Fmt.num(c.n)}</option>`).join('')}</select></label>
       <p class="muted" data-fp="info"></p>
       <p><label class="chk-chip"><input type="checkbox" data-fp="block" checked> Не загружать их снова при следующей загрузке фида</label></p>
-      <p class="muted">Позиции уйдут в корзину («Обслуживание → Корзина»), восстановить можно ${DEFN('srv.trashDays', 30)} дн. КП, в которых они уже есть, не меняются.</p>
+      <p class="muted">Позиции уйдут в корзину («Сотрудники и система → Корзина»), восстановить можно ${DEFN('srv.trashDays', 30)} дн. КП, в которых они уже есть, не меняются.</p>
       <div class="row"><button class="btn danger-bg" type="button" data-fp="go">Удалить в корзину</button><button class="btn ghost" type="button" data-fp="x">Отмена</button></div>`, 'fp-dlg');
     let cur=p0;
     const info=()=>{ md.$('[data-fp=info]').innerHTML=`Будет удалено: <b>${Fmt.num(cur.picked)}</b>${cur.sample.length?' — '+cur.sample.slice(0, 6).map(esc).join(' · ')+(cur.picked>6?' …':''):''}`; };
@@ -38,6 +38,67 @@ class FeedPurgeUi {
       catch(err){ e.target.disabled=false; toast(err.message||String(err)); }
     });
   }
+}
+
+// «Что загружать» (сервер — feeds.FeedRules): отбор предложений фида (марки, слова в названии, цена, наличие, создавать ли новые)
+// и поля, которые фид обновляет у позиций, уже загруженных в каталог. «Что загрузится…» — план без записи: каждая позиция
+// «добавится / изменится (что именно) / без изменений / пропущена (почему)»; в каталог — только отмеченное, кнопкой.
+class FeedRulesUi {
+  static FIELDS = [['name','Название'],['desc','Описание'],['photo','Фото'],['params','Характеристики'],['cat','Категория'],['price','Цены (РРЦ, закупка)'],['stock','Наличие']];
+  static ST = {add:'Добавится', update:'Изменится', same:'Без изменений', skip:'Пропущено'};
+
+  static rules(f){ const r=f.filter||{}, fl=f.fields||{}; return {r, fl:Object.fromEntries(this.FIELDS.map(([k])=>[k, fl[k]!==false]))}; }
+  static sum(f){ const {r, fl}=this.rules(f), off=this.FIELDS.filter(([k])=>!fl[k]).map(([,l])=>l.toLowerCase());
+    const sel=[r.brands&&r.brands.length?`марки: ${r.brands.length}`:'', r.words?'слова':'', r.stop?'стоп-слова':'', r.priceMin!=null||r.priceMax!=null?'цена':'', r.avail?'в наличии':'', r.priced?'с ценой':'', r.add===false?'новые не создаются':''].filter(Boolean);
+    return (sel.length?'отбор: '+sel.join(', '):'загружается всё')+(off.length?' · не обновлять: '+off.join(', '):''); }
+
+  static html(f){
+    const {r, fl}=this.rules(f), P=FD.rplan&&FD.rplan.id===f.id ? FD.rplan : null;
+    const brands=P ? P.brands : (r.brands||[]).map(b=>[b, null]), on=new Set((r.brands||[]).map(b=>norm(b)));
+    const ck=(attr, label, v, hint='')=>`<label class="cx-ck"${hint?` title="${esc(hint)}"`:''}><input type="checkbox" ${attr}${v?' checked':''}> ${esc(label)}</label>`;
+    return `<div class="fr" data-frform>
+      <div class="fr-g"><span class="fr-l">Марки</span><div>${brands.length?`<div class="fr-brands">${brands.map(([b,n])=>ck(`data-frb="${esc(b)}"`, b+(n!=null?` · ${n}`:''), on.has(norm(b)))).join('')}</div>`:''}
+        <p class="muted" style="margin:4px 0 0">${on.size?'Загружаются только отмеченные марки.':'Не отмечено ничего — загружаются все марки.'}${P?'':' Список марок фида — после «Что загрузится…».'}</p></div></div>
+      <div class="fr-g"><span class="fr-l">Название</span><div class="fr-row"><input type="text" data-frf="words" value="${esc(r.words||'')}" placeholder="загружать, если есть слово: компрессор, осушитель" aria-label="Слова в названии">
+        <input type="text" data-frf="stop" value="${esc(r.stop||'')}" placeholder="не загружать, если есть: б/у, уценка" aria-label="Стоп-слова"></div></div>
+      <div class="fr-g"><span class="fr-l">Цена и наличие</span><div class="fr-row"><input class="fr-n" type="text" inputmode="decimal" data-frf="priceMin" value="${esc(r.priceMin??'')}" placeholder="цена от" aria-label="Цена от"><input class="fr-n" type="text" inputmode="decimal" data-frf="priceMax" value="${esc(r.priceMax??'')}" placeholder="до" aria-label="Цена до">
+        ${ck('data-frc="priced"', 'Только с ценой', r.priced)}${ck('data-frc="avail"', 'Только в наличии', r.avail)}${ck('data-frc="add"', 'Создавать новые позиции', r.add!==false, 'Выключено — фид только обновляет уже загруженные позиции')}</div></div>
+      <div class="fr-g"><span class="fr-l">Обновлять у загруженных</span><div class="fr-row">${this.FIELDS.map(([k,l])=>ck(`data-frx="${k}"`, l, fl[k])).join('')}</div></div>
+      <p class="muted">Категории фида («не загружать» или своя категория) — после «Проверить фид». Новые позиции создаются целиком; выключенные поля у загруженных остаются как в каталоге — и при ежедневной проверке цен и наличия. Ручные правки фид не затирает в любом случае.</p>
+      <div class="row fd-fb"><button class="btn" type="button" data-fd="rsave">Сохранить</button><button class="btn primary" type="button" data-fd="rplan">Что загрузится…</button></div>
+      <div id="frPlan">${P?this.plan(P):''}</div></div>`;
+  }
+
+  static read(box){
+    const v=k=>(box.querySelector(`[data-frf="${k}"]`)||{}).value||'', c=k=>!!box.querySelector(`[data-frc="${k}"]`)?.checked;
+    const brands=[...box.querySelectorAll('[data-frb]')].filter(i=>i.checked).map(i=>i.dataset.frb);
+    return { filter:{brands, words:v('words'), stop:v('stop'), priceMin:v('priceMin'), priceMax:v('priceMax'), priced:c('priced'), avail:c('avail'), add:c('add')},
+      fields:Object.fromEntries(this.FIELDS.map(([k])=>[k, !!box.querySelector(`[data-frx="${k}"]`)?.checked])) };
+  }
+
+  static plan(p){
+    const C=p.counts, f=FD.rpf, rows=f ? p.rows.filter(r=>r.status===f) : p.rows, pick=r=>r.status==='add'||r.status==='update';
+    const chip=(k, n)=>`<button type="button" class="chip ${k}${f===k?' on':''}" data-rpf="${k}">${this.ST[k]} <b>${Fmt.num(n)}</b></button>`;
+    return `<div class="fr-sum">${chip('add', C.add)}${chip('update', C.update)}${chip('same', C.same)}${chip('skip', C.skip)}${f?'<button type="button" class="lnk" data-rpf="">все</button>':''}</div>
+      ${p.cut?`<p class="muted">Показаны первые ${Fmt.num(p.rows.length)} из ${Fmt.num(p.total)}.</p>`:''}
+      <div class="fr-tw"><table class="pv-t fr-t"><thead><tr><th class="c"><input type="checkbox" data-rpall checked aria-label="Отметить все"></th><th>Позиция фида</th><th>Марка</th><th>Категория</th><th class="num">Цена</th><th>Что будет</th></tr></thead>
+        <tbody>${rows.slice(0, 1500).map(r=>`<tr class="${r.status}"><td class="c">${pick(r)?`<input type="checkbox" data-rpo="${esc(r.oid)}" checked aria-label="Загрузить">`:''}</td><td>${esc(r.name)}${r.feedCat?`<br><small class="muted">${esc(r.feedCat)}</small>`:''}</td><td>${esc(r.maker||'')}</td><td>${esc(r.cat||'')}</td>
+          <td class="num">${r.price!=null?Fmt.num(Math.round(r.price))+' '+esc(curSh(r.cur||'RUB')):'—'}</td><td><span class="fr-st ${r.status}">${this.ST[r.status]}</span>${r.changes&&r.changes.length?`<br><small class="muted">${esc(r.changes.join(', '))}</small>`:''}${r.why?`<br><small class="muted">${esc(r.why)}</small>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">Нет позиций.</td></tr>'}</tbody></table></div>
+      ${rows.length>1500?'<p class="muted">В таблице — первые 1 500 строк этого вида; загрузятся все отмеченные выше и все остальные этого вида.</p>':''}
+      <div class="fr-go"><button class="btn primary" type="button" id="frGo" data-fd="rimport"${C.add+C.update?'':' disabled'}>Загрузить отмеченное (${Fmt.num(C.add+C.update)})</button><span class="muted">Фото и описания со страниц товаров скачиваются при загрузке. Пропущенное и «без изменений» не трогается.</span></div>`;
+  }
+
+  /** отмеченные строки плана: все «добавится» и «изменится», кроме снятых галочек */
+  static only(m){
+    const p=FD.rplan; if (!p) return null;
+    const off=new Set([...m.querySelectorAll('[data-rpo]')].filter(i=>!i.checked).map(i=>i.dataset.rpo));
+    const all=p.rows.filter(r=>(r.status==='add'||r.status==='update')).map(r=>r.oid);
+    if (!off.size && !p.cut) return null;           // всё по правилам — без списка
+    return all.filter(o=>!off.has(o));
+  }
+  static count(m){ const p=FD.rplan, el=m.querySelector('#frGo'); if (!p || !el) return;
+    const off=[...m.querySelectorAll('[data-rpo]')].filter(i=>!i.checked).length, n=p.counts.add+p.counts.update-off;
+    el.textContent=`Загрузить отмеченное (${Fmt.num(n)})`; el.disabled=!n; }
 }
 
 // открытый фид: сверху — что сделать сейчас (кнопки шага, ход загрузки, предпросмотр) и файлы поставщика;
@@ -64,6 +125,7 @@ class FeedPanel {
       <div class="fd-ph"><b>${esc(f.name)}</b><span class="muted">${src}</span></div>
       ${fdActions(f)}<div id="fdJob">${fdJob(f.job)}</div><div id="fdPrev">${FD.prev&&FD.prev.id===f.id?fdPreview(FD.prev, f):''}</div>
       ${files?fdFiles(f):fdExtra(f)}
+      ${FeedPanel.sec('rules', 'Что загружать', esc(FeedRulesUi.sum(f)), FeedRulesUi.html(f), true)}
       ${FeedPanel.sec('disc', 'Скидки поставщика', FeedPanel.discSum(f), `<div id="fdDisc">${fdDisc(f)}</div>`)}
       ${FeedPanel.sec('set', 'Настройки фида', esc([files?'файлы':'YML', f.maker?'производитель '+f.maker:'', FeedPanel.supName(f)?'поставщик '+FeedPanel.supName(f):'поставщик не указан'].filter(Boolean).join(' · ')), fdForm(f))}
       ${FeedPanel.sec('data', 'Позиции фида: выгрузить, удалить', `в каталоге ${Fmt.num(f.linked)}${f.excluded?`, не загружаются снова ${Fmt.num(f.excluded)}`:''}`,
@@ -88,17 +150,19 @@ async function stFeeds(m){
   if (FD.sel && !items.some(f=>f.id===FD.sel)) FD.sel=null;
   if (!items.length && !FD.edit) FD.edit={...FD_REMEZA};
   const f=items.find(x=>x.id===FD.sel);
-  m.innerHTML=`<div class="st-card"><div class="row fd-head"><div class="sub" style="margin:0">Подключённые фиды${tip('<p>Товарный фид (YML, «Яндекс.Маркет») — выгрузка каталога с сайта поставщика: характеристики, фото, цены, наличие. Раз в день программа сверяет РРЦ и наличие.</p><p>Фид из файлов — для поставщика без YML: файл парса сайта (CSV: категория, название, ссылка, картинки, описание, характеристики) и прайс (XLSX). Позиции каталога создаются из парса, цена и артикул берутся из строки прайса с тем же названием. Новый прайс загружается в любой момент — «Обновить цены из прайса» пересчитает закупку.</p><p>«Проверить фид» покажет, что в нём есть, и предложит категории. «Загрузить в каталог» создаст позиции (повторная загрузка обновит их, ручные правки сохранятся).</p>')}</div>
+  m.innerHTML=`<div class="st-card"><div class="row fd-head"><div class="sub" style="margin:0">Подключённые фиды${tip('<p>Товарный фид (YML, «Яндекс.Маркет») — выгрузка каталога с сайта поставщика: характеристики, фото, цены, наличие. Раз в день программа сверяет РРЦ и наличие.</p><p>Фид из файлов — для поставщика без YML: файл парса сайта (CSV: категория, название, ссылка, картинки, описание, характеристики) и прайс (XLSX). Позиции каталога создаются из парса, цена и артикул берутся из строки прайса с тем же названием. Новый прайс загружается в любой момент — «Обновить цены из прайса» пересчитает закупку.</p><p>«Проверить фид» покажет, что в нём есть, и предложит категории. «Что загружать» — какие марки, слова, цены, наличие и какие поля обновлять. «Что загрузится…» — план без записи: что добавится, что изменится, что пропущено; в каталог попадает только отмеченное — кнопкой «Загрузить отмеченное» (ручные правки сохраняются).</p>')}</div>
       <span class="sp"></span><button class="btn" type="button" data-fd="new">+ Новый фид</button></div>
     ${items.length?`<div class="st-list">${items.map(x=>FeedPanel.row(x)).join('')}</div>`:'<p class="muted">Фидов пока нет.</p>'}</div>
     ${FD.edit?fdForm(FD.edit, true):''}
     ${f?FeedPanel.html(f):''}
     ${MakerLogoPanel.html()}`;
   MakerLogoPanel.bind(m);
-  m.onclick=e=>fdClick(e, m);
+  m.onclick=e=>{ const c=e.target.closest('[data-rpf]'); if (c && FD.rplan){ FD.rpf=c.dataset.rpf; const el=m.querySelector('#frPlan'); if (el) el.innerHTML=FeedRulesUi.plan(FD.rplan); return; } fdClick(e, m); };
   m.onkeydown=e=>{ const r=e.target.closest?.('.fd-row'); if (r && (e.key==='Enter'||e.key===' ')){ e.preventDefault(); r.click(); } };
   m.oninput=e=>{ const t=e.target; if (t.dataset.fdd==='kwMax'){ const l=t.parentNode.querySelector('.fd-dku'); if (l) l.hidden=!t.value.trim(); } };
   m.onchange=e=>{ const t=e.target;
+    if (t.dataset.rpall!=null){ m.querySelectorAll('[data-rpo]').forEach(i=>{ i.checked=t.checked; }); FeedRulesUi.count(m); return; }
+    if (t.dataset.rpo!=null){ FeedRulesUi.count(m); return; }
     if (t.dataset.fdc!=null){ fdDiscRead(m); const s=t.closest('details'); if (s) s.querySelector('summary').textContent=fdCatsTxt(FD.disc.discounts[+s.dataset.fdr].cats); return; }
     if (t.dataset.fdcat!=null){ FD.cats[t.dataset.fdcat]=t.value; fdCount(m); return; }
     if (t.dataset.fdfile!=null){ fdUpload(t, m); return; }
@@ -280,7 +344,7 @@ function fdActions(f){
   const files=fdIsFiles(f), ready=!files || (f.files&&f.files.pages);
   if (files) return fdFilesActions(f, ready);
   return `<div class="row fd-acts"><button class="btn" type="button" data-fd="preview"${ready?'':' disabled title="Сначала загрузите файл парса сайта"'}>Проверить фид</button>
-    <button class="btn primary" type="button" data-fd="import"${FD.prev&&FD.prev.id===f.id?'':' disabled title="Сначала «Проверить фид»"'}>Загрузить в каталог</button>
+    <button class="btn primary" type="button" data-fd="rplan">Что загрузится…</button>
     <button class="btn" type="button" data-fd="check"${f.linked?'':' disabled title="Сначала загрузите позиции в каталог"'}>${files?fdUpdLbl(f):'Проверить цены и наличие сейчас'}</button></div>`;
 }
 
@@ -396,7 +460,7 @@ async function fdClick(e, m){
     if (a==='new'){ if (!await StDirty.leave()) return; FD.edit={name:'', url:'', maker:'', auto:true, pageDesc:true, kind:'yml'}; FD.sel=null; return stFeeds(m); }
     if (a==='export'){ StNav.sup=b.dataset.sup||''; StNav.select('backup'); return stTab(); }
     if (a==='cancel'){ if (!await StDirty.leave()) return; FD.edit=null; return stFeeds(m); }
-    if (a==='open'){ if (!await StDirty.leave()) return; FD.sel = FD.sel===b.dataset.id ? null : b.dataset.id; FD.prev=null; FD.cats={}; FD.disc=null; FD.plan=null; return stFeeds(m); }
+    if (a==='open'){ if (!await StDirty.leave()) return; FD.sel = FD.sel===b.dataset.id ? null : b.dataset.id; FD.prev=null; FD.cats={}; FD.disc=null; FD.plan=null; FD.rplan=null; return stFeeds(m); }
     if (a.startsWith('disc')) return fdDiscClick(a, b, m);
     if (a==='fdrop'){ const pr=b.dataset.kind==='price', ex=b.dataset.kind==='extra';
       if (!await stConfirm(pr?'Убрать прайс?':ex?'Убрать файл описаний?':'Убрать файл остатков?', pr?'Цены из этого файла перестанут обновляться; уже записанные в каталог останутся.':ex?'Описания, уже записанные в каталог, останутся; при следующей загрузке позиции получат описание из фида.':'Наличие в каталоге обновится при следующем «Обновить цены…» — у всех позиций станет «нет данных».', 'Убрать')) return;
@@ -409,10 +473,19 @@ async function fdClick(e, m){
       await ajson(`feeds/${FD.sel}/delete`); FD.sel=null; FD.prev=null; toast('Фид удалён'); return stFeeds(m); }
     if (a==='preview'){ b.disabled=true; b.textContent='Читаю…'; const p=await ajson(`feeds/${FD.sel}/preview`);
       FD.prev={...p, id:FD.sel}; FD.cats={}; p.cats.forEach(c=>{ FD.cats[c.id]=c.map; }); await stFeeds(m); fdCount(m); return; }
-    if (a==='import'){ const f=(await aapi('feeds')).items.find(x=>x.id===FD.sel); if (!f) return;
-      await ajson('feeds', {...f, cats:{...FD.cats}});
-      await ajson(`feeds/${FD.sel}/import`); toast('Загрузка началась — можно продолжать работу'); return stFeeds(m); }
     if (a==='check'){ await ajson(`feeds/${FD.sel}/check`); toast('Обновление началось'); return stFeeds(m); }
+    if (a==='rsave' || a==='rplan'){ const box=m.querySelector('[data-frform]'), f=(await aapi('feeds')).items.find(x=>x.id===FD.sel); if (!f) return;
+      const rv=box ? FeedRulesUi.read(box) : {filter:f.filter, fields:f.fields};
+      if (a==='rsave'){ await ajson('feeds', {...f, ...rv, cats:FD.prev&&FD.prev.id===FD.sel?{...FD.cats}:f.cats}); toast('Сохранено: что загружать'); return stFeeds(m); }
+      b.disabled=true; b.textContent='Считаю…';
+      const p=await ajson(`feeds/${FD.sel}/loadplan`, {...rv, cats:FD.prev&&FD.prev.id===FD.sel?{...FD.cats}:undefined});
+      FD.rplan={...p, id:FD.sel}; FD.rpf='';
+      if (box) await ajson('feeds', {...f, ...rv, cats:FD.prev&&FD.prev.id===FD.sel?{...FD.cats}:f.cats});    // план — по сохранённым правилам
+      await stFeeds(m); m.querySelector('#frPlan')?.scrollIntoView({block:'nearest'}); return; }
+    if (a==='rimport'){ const only=FeedRulesUi.only(m), n=only?only.length:FD.rplan.counts.add+FD.rplan.counts.update;
+      if (!n) return toast('Ничего не отмечено');
+      if (!await stConfirm(`Загрузить в каталог: ${Fmt.num(n)}?`, `Добавится ${Fmt.num(FD.rplan.counts.add)}, изменится до ${Fmt.num(FD.rplan.counts.update)} (только поля из «Обновлять у загруженных»). Пропущенное не загружается.`, 'Загрузить')) return;
+      await ajson(`feeds/${FD.sel}/import`, only?{only}:{}); FD.rplan=null; toast('Загрузка началась — можно продолжать работу'); return stFeeds(m); }
     if (a==='purge') return FeedPurgeUi.open(FD.sel, m);
     if (a==='unblock'){ if (!await stConfirm('Вернуть удалённые позиции в загрузку?', 'При следующей загрузке фида удалённые позиции снова появятся в каталоге (если они есть в фиде).', 'Вернуть')) return;
       await ajson(`feeds/${FD.sel}/unblock`); toast('Удалённые позиции снова будут загружаться'); return stFeeds(m); }

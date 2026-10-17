@@ -131,6 +131,8 @@ def feed_save(store, f):
                cats=_cats_ok(f.get('cats')) if isinstance(f.get('cats'), dict) else old.get('cats') or {},
                supplier=FeedSupplier.id(f['supplier'] if 'supplier' in f else old.get('supplier')), updatedAt=_now())
     rec['discounts'] = discount_rules(f['discounts']) if isinstance(f.get('discounts'), list) else old.get('discounts') or []
+    rec['filter'] = FeedRules.clean_filter(f['filter']) if isinstance(f.get('filter'), dict) else old.get('filter') or FeedRules.clean_filter({})
+    rec['fields'] = FeedRules.clean_fields(f['fields']) if isinstance(f.get('fields'), dict) else old.get('fields') or FeedRules.clean_fields({})
     hints = f.get('driveHints') if isinstance(f.get('driveHints'), dict) else old.get('driveHints') or {}
     rec['driveHints'] = {k: re.sub(r'\s+', ' ', str(hints.get(k) or '')).strip()[:400] for k in ('belt', 'direct')}
     if kind == 'files':
@@ -1145,6 +1147,172 @@ class FeedPurge:
         return n
 
 
+class FeedRules:
+    """Что и куда загружает фид — настройки фида «Что загружать» (администратор задаёт до загрузки, видит план):
+    • отбор предложений (filter): brands — только эти марки (пусто — все); words — в названии есть хотя бы одно из слов;
+      stop — нет ни одного из слов; priceMin / priceMax — цена фида (в его валюте); avail — только в наличии; priced — только
+      с ценой; add — создавать новые позиции (нет — обновляются только уже загруженные). Категории — «cats» фида (skip).
+    • поля (fields), которые фид обновляет у позиций, уже загруженных в каталог: название, описание, фото, характеристики,
+      категория, цены, наличие (по умолчанию — все; новые позиции создаются целиком). Ежедневная проверка цен и наличия
+      тоже не трогает выключенное.
+    • plan — предпросмотр без записи: каждая позиция фида «добавится / изменится (что именно) / без изменений / пропущена
+      (почему)»; в каталог — только после «Загрузить» (выбранные строки)."""
+    FIELDS = (('name', 'Название'), ('desc', 'Описание'), ('photo', 'Фото'), ('params', 'Характеристики'), ('cat', 'Категория'),
+              ('price', 'Цены (РРЦ, закупка)'), ('stock', 'Наличие'))
+    KEYS = {'name': ('name', 'spec'), 'desc': ('features',), 'photo': ('photo', 'photoSource', 'gallery'), 'params': ('groups',),
+            'price': ('price', 'priceCur', 'priceSrc', 'rrc', 'cost', 'costCur', 'costSrc', 'costDisc', 'costAt', 'margin', 'mmode'),
+            'stock': ('stock',)}
+    PLAN_ROWS = 3000        # строк плана в ответе (счётчики — по всем)
+
+    @staticmethod
+    def _words(v):
+        return [w for w in (re.sub(r'\s+', ' ', x).strip().lower() for x in re.split(r'[,;\n]', str(v or ''))) if w][:50]
+
+    @classmethod
+    def clean_filter(cls, d):
+        d = d if isinstance(d, dict) else {}
+        num = lambda v: (lambda x: x if x is not None and x >= 0 else None)(parse_number(v))
+        return {'brands': [str(b).strip()[:80] for b in (d.get('brands') or []) if str(b).strip()][:200] if isinstance(d.get('brands'), list) else [],
+                'words': ', '.join(cls._words(d.get('words')))[:400], 'stop': ', '.join(cls._words(d.get('stop')))[:400],
+                'priceMin': num(d.get('priceMin')), 'priceMax': num(d.get('priceMax')),
+                'avail': d.get('avail') is True, 'priced': d.get('priced') is True, 'add': d.get('add', True) is not False}
+
+    @classmethod
+    def clean_fields(cls, d):
+        d = d if isinstance(d, dict) else {}
+        return {k: d.get(k, True) is not False for k, _ in cls.FIELDS}
+
+    @classmethod
+    def fields(cls, f):
+        return cls.clean_fields(f.get('fields'))
+
+    @classmethod
+    def reason(cls, o, f):
+        """Почему предложение не загружается (пусто — загружается): категория, отбор, удалено ранее."""
+        if (f.get('cats') or {}).get(o['cat']) == 'skip':
+            return 'категория фида пропускается'
+        if o['oid'] in set(f.get('excluded') or []):
+            return 'удалено из каталога («не загружать снова»)'
+        r = f.get('filter') if isinstance(f.get('filter'), dict) else {}
+        if not r:
+            return ''
+        name = (o.get('name') or '').lower()
+        if r.get('brands') and _brand_key(maker_of(o, f)) not in {_brand_key(b) for b in r['brands']}:
+            return 'марка не выбрана'
+        words = cls._words(r.get('words'))
+        if words and not any(w in name for w in words):
+            return 'в названии нет нужных слов'
+        stop = [w for w in cls._words(r.get('stop')) if w in name]
+        if stop:
+            return 'в названии «%s»' % stop[0]
+        p = o.get('price') or 0
+        if r.get('priced') and not p:
+            return 'без цены'
+        if r.get('priceMin') is not None and p and p < r['priceMin']:
+            return 'цена ниже %s' % _fmt(r['priceMin'])
+        if r.get('priceMax') is not None and p and p > r['priceMax']:
+            return 'цена выше %s' % _fmt(r['priceMax'])
+        if r.get('avail') and not o.get('available'):
+            return 'нет в наличии'
+        return ''
+
+    @classmethod
+    def adds(cls, f):
+        r = f.get('filter') if isinstance(f.get('filter'), dict) else {}
+        return r.get('add', True) is not False
+
+    @classmethod
+    def keep(cls, doc, old, f):
+        """Позиция после загрузки: выключенные поля — как были в каталоге (old)."""
+        if not old:
+            return doc
+        fl = cls.fields(f)
+        for k, keys in cls.KEYS.items():
+            if fl.get(k, True):
+                continue
+            for x in keys:
+                if x in old:
+                    doc[x] = json.loads(json.dumps(old[x]))
+                else:
+                    doc.pop(x, None)
+        a, oa = dict(doc.get('attrs') or {}), dict(old.get('attrs') or {})
+        if not fl['params']:            # параметры категории — как были (категория — по своей галочке)
+            a = dict(oa, cat=a.get('cat', oa.get('cat')))
+        if not fl['cat'] and oa.get('cat'):
+            a['cat'] = oa['cat']
+        doc['attrs'] = a
+        return doc
+
+    @classmethod
+    def changes(cls, ch, f):
+        """Изменения цен и наличия для журнала фида — без выключенных полей."""
+        fl = cls.fields(f)
+        return [c for c in ch if (fl['stock'] if c[0] == 'stock' else fl['price'])]
+
+    @classmethod
+    def diff(cls, old, doc):
+        """Подписи изменившихся полей позиции."""
+        out = []
+        eq = lambda a, b: json.dumps(a, sort_keys=True, ensure_ascii=False) == json.dumps(b, sort_keys=True, ensure_ascii=False)
+        for k, label in cls.FIELDS:
+            if k == 'cat':
+                same = (old.get('attrs') or {}).get('cat') == (doc.get('attrs') or {}).get('cat')
+            elif k == 'params':
+                drop = lambda a: {x: y for x, y in (a or {}).items() if x != 'cat'}
+                same = eq(old.get('groups'), doc.get('groups')) and eq(drop(old.get('attrs')), drop(doc.get('attrs')))
+            elif k == 'price':
+                same = all(eq(old.get(x), doc.get(x)) for x in cls.KEYS['price'] if x != 'costAt')
+            elif k == 'stock':
+                strip = lambda s: {x: y for x, y in (s or {}).items() if x != 'at'}
+                same = eq(strip(old.get('stock')), strip(doc.get('stock')))
+            else:
+                same = all(eq(old.get(x), doc.get(x)) for x in cls.KEYS[k])
+            if not same:
+                out.append(label)
+        return out
+
+    @classmethod
+    def plan(cls, store, f, types):
+        """Предпросмотр загрузки без записи (фото и страницы товаров не скачиваются)."""
+        feed = load(store, f, fresh=True)
+        existing = {(d.get('feed') or {}).get('oid'): d for d in _feed_docs(store, f['id'])}
+        files, built = f.get('kind') == 'files', bool(f.get('built'))
+        tnames = {t.get('id'): t.get('name') for t in types}
+        rows, cnt, brands, prices = [], {'add': 0, 'update': 0, 'same': 0, 'skip': 0}, {}, []
+        for o in feed['offers']:
+            mk = maker_of(o, f)
+            if mk:
+                brands[mk] = brands.get(mk, 0) + 1
+            if o.get('price'):
+                prices.append(o['price'])
+            why, ch, old = cls.reason(o, f), [], existing.get(o['oid'])
+            if why:
+                st = 'skip'
+            elif old:
+                if files and built:
+                    st, ch = 'same', ['каталог собран — меняются только цены и наличие']
+                else:
+                    doc, _ = build(dict(o, pictures=[]), f, types, old, None)
+                    doc = cls.keep(doc, old, f)
+                    ch = cls.diff(old, doc)
+                    st = 'update' if ch else 'same'
+            elif not cls.adds(f):
+                st, why = 'skip', 'новые позиции не создаются'
+            else:
+                st = 'add'
+            cnt[st] += 1
+            if len(rows) < cls.PLAN_ROWS:
+                cat = (f.get('cats') or {}).get(o['cat']) or item_cat(o, types) or 'other'
+                rows.append({'oid': o['oid'], 'name': o['name'], 'maker': mk, 'price': o.get('price') or None, 'cur': o.get('cur') or '',
+                             'available': bool(o.get('available')), 'feedCat': (feed['cats'].get(o['cat']) or {}).get('path') or '',
+                             'cat': tnames.get((old.get('attrs') or {}).get('cat') if old else cat) or cat,
+                             'status': st, 'why': why, 'changes': ch, 'id': old.get('id') if old else ''})
+        return {'counts': cnt, 'total': len(feed['offers']), 'rows': rows, 'cut': max(0, len(feed['offers']) - len(rows)),
+                'brands': sorted(brands.items(), key=lambda x: (-x[1], x[0]))[:200],
+                'price': [min(prices), max(prices)] if prices else None, 'cur': next((o.get('cur') for o in feed['offers'] if o.get('cur')), ''),
+                'fields': cls.fields(f), 'filter': cls.clean_filter(f.get('filter')), 'labels': dict(cls.FIELDS)}
+
+
 def feed_unbuild(store, fid):
     items = feeds(store)
     for x in items:
@@ -1936,12 +2104,13 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
     j = _job(f['id'], 'import')
     try:
         feed = load(store, f)
-        skip = {k for k, v in (f.get('cats') or {}).items() if v == 'skip'}
-        gone = set(f.get('excluded') or [])        # удалённые администратором позиции фида (FeedPurge) — не создавать снова
-        offs = [o for o in feed['offers'] if o['cat'] not in skip and o['oid'] not in gone and (not only or o['oid'] in only)]
+        # пропускаемые категории, удалённые администратором позиции (FeedPurge) и отбор «Что загружать» (FeedRules)
+        offs = [o for o in feed['offers'] if not FeedRules.reason(o, f) and (not only or o['oid'] in only)]
         fdocs = _feed_docs(store, f['id'])
         revs = store.catalog_revs()     # номера правок на начало загрузки: правку менеджера за время загрузки не затираем
         existing = {(d.get('feed') or {}).get('oid'): d for d in fdocs}
+        if not FeedRules.adds(f):       # «новые позиции не создавать» — только уже загруженные
+            offs = [o for o in offs if o['oid'] in existing]
         links, lstat, mode, plan = {}, {}, 'import', None
         if f.get('kind') == 'files':
             plan = build_plan(store, f, offs, fdocs)
@@ -2008,6 +2177,8 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
                             old = dict(old, photo=None, photoSource=None)
                 o['props'], o['apply'], o['crumbs'] = pi.get('props') or [], pi.get('apply') or '', pi.get('crumbs') or ''
             doc, ch = build(o, f, types, old, put)
+            if old0 and mode != 'build':      # выключенные в «Что загружать» поля — как были в каталоге
+                doc, ch = FeedRules.keep(doc, old0, f), FeedRules.changes(ch, f)
             logo_fill(doc)
             return o, old0, doc, ch
 
@@ -2169,7 +2340,7 @@ def check_feed(store, f, by='', log=print, types=None):
                 if o.get('sheet'):
                     d['feed']['sheet'] = o['sheet']
                 d['feed']['files'] = f.get('kind') == 'files'
-                if types and not f.get('built'):     # категория по правилам изменилась (вручную не меняли) — до расчёта скидки
+                if types and not f.get('built') and FeedRules.fields(f)['cat']:     # категория по правилам изменилась (вручную не меняли) — до расчёта скидки
                     a = d.get('attrs') or {}
                     auto = (f.get('cats') or {}).get(o['cat']) or item_cat(o, types) or 'other'
                     prev = d['feed'].get('catAuto')
@@ -2178,7 +2349,9 @@ def check_feed(store, f, by='', log=print, types=None):
                         d['feed']['catAuto'] = auto
                         d['attrs'] = a
                         before = before + '*'
-                ch = _price_part(d, o, f, today)
+                was = json.loads(json.dumps(d))
+                ch = FeedRules.changes(_price_part(d, o, f, today), f)
+                d = FeedRules.keep(d, was, f) if not all(FeedRules.fields(f)[k] for k in ('price', 'stock')) else d
                 for c in ch:
                     (stock_ch if c[0] == 'stock' else price_ch).append(_change(d['id'], d, c))
             else:
@@ -2200,9 +2373,8 @@ def check_feed(store, f, by='', log=print, types=None):
                 (stock_ch if c['kind'] == 'stock' else price_ch).append(c)
             upd += cards['updated']
         linked = {d['feed'].get('oid') for d in docs}
-        skip = {k for k, v in (f.get('cats') or {}).items() if v == 'skip'}
-        var = set(f.get('variants') or []) | set(f.get('excluded') or [])
-        new = [o for o in feed['offers'] if o['oid'] not in linked and o['cat'] not in skip and o['oid'] not in var]
+        var = set(f.get('variants') or [])
+        new = [o for o in feed['offers'] if o['oid'] not in linked and o['oid'] not in var and not FeedRules.reason(o, f)] if FeedRules.adds(f) else []
         res = {'at': _now(), 'kind': 'check', 'by': by, 'checked': len(docs), 'updated': upd, 'price': price_ch[:300], 'stock': stock_ch[:300],
                'gone': gone[:300], 'new': len(new), 'newSample': [o['name'] for o in new[:10]], 'cards': cards}
         _log_add(store, f['id'], res)

@@ -13,6 +13,7 @@ import json
 import os
 import re
 import zipfile
+from datetime import datetime
 
 from images import EXTS, ImageStore
 
@@ -158,3 +159,130 @@ class ProgramSettings:
             n += 1
         self.store.touch_data('types', 'settings')
         return n
+
+
+class SettingsFile:
+    """«Все настройки в файл» и обратно (Настройки → Файл, изменения, откат): все настройки программы одним файлом
+    kp-settings (.json). Ключи API (integrations, ключ нейросети) — только по галочке «с ключами API»; пароли — никогда
+    (пароль почты, учётные записи администраторов, пароли менеджеров). Права менеджеров — без логинов и паролей.
+    Загрузка — с предпросмотром по разделам; выбранные разделы заменяются, секреты текущей базы сохраняются (если в
+    файле нет ключей — остаются свои); правила станций проходят ту же проверку, что и при загрузке во вкладке."""
+    FORMAT = 'kp-settings'
+    # ключ раздела → подпись
+    PARTS = (('settings', 'Общие настройки: значения программы, списки, функции, вход менеджеров, модерация, нейросеть'),
+             ('types', 'Категории оборудования и их характеристики'), ('uitexts', 'Тексты интерфейса'),
+             ('logistics', 'Тарифы доставки по России'), ('carrierApi', 'Перевозчики: включение и адреса API'),
+             ('chinaRates', 'Доставка из Китая: ставки экспедиторов'), ('stationRules', 'Инженерные правила станций (своя версия)'),
+             ('feeds', 'Фиды поставщиков: адреса, категории, скидки'), ('mail', 'Почта для отправки КП (без пароля)'),
+             ('alerts', 'Письма администратору о проблемах'), ('makerLogos', 'Логотипы производителей'),
+             ('update', 'Обновления программы: репозиторий, ночная установка'), ('userPrefs', 'Личные настройки менеджеров'),
+             ('access', 'Права менеджеров (без логинов и паролей)'), ('integrations', 'Ключи API (только «с ключами API»)'))
+    UPDATE_KEYS = ('repo', 'auto', 'nightly', 'nightHour')
+
+    def __init__(self, store, by=''):
+        self.store, self.by = store, by
+
+    @classmethod
+    def label(cls, k):
+        return dict(cls.PARTS).get(k, k)
+
+    def _get(self, k, keys):
+        st = self.store
+        if k == 'access':
+            from auth_users import access, perms_of
+            return {mid: {'perms': perms_of(r), 'blocked': bool(r.get('blocked'))} for mid, r in access(st).items() if isinstance(r, dict)} or None
+        if k == 'integrations':
+            v = st.kv_get('integrations')
+            return v if keys and v else None
+        v = st.kv_get(k)
+        if v is None:
+            return None
+        if k == 'mail' and isinstance(v, dict):
+            v = {a: b for a, b in v.items() if a != 'password'}
+        if k == 'settings' and isinstance(v, dict) and isinstance(v.get('ai'), dict) and not keys:
+            v = dict(v, ai={a: b for a, b in v['ai'].items() if a != 'key'})
+        if k == 'update' and isinstance(v, dict):
+            v = {a: v[a] for a in self.UPDATE_KEYS if a in v} or None
+        return v
+
+    def export(self, keys=False):
+        """→ (имя файла, байты JSON)."""
+        from version import VERSION
+        sec = {}
+        for k, _ in self.PARTS:
+            v = self._get(k, keys)
+            if v not in (None, {}, []):
+                sec[k] = v
+        body = {'format': self.FORMAT, 'version': 1, 'app': VERSION, 'createdAt': datetime.now().isoformat(timespec='seconds'),
+                'keys': bool(keys), 'sections': sec}
+        name = 'КП_настройки%s_%s.json' % ('_с_ключами' if keys else '', datetime.now().strftime('%Y-%m-%d_%H%M'))
+        return name, json.dumps(body, ensure_ascii=False, indent=1).encode('utf-8')
+
+    def read(self, data):
+        try:
+            d = json.loads((data or b'').decode('utf-8-sig'))
+        except (ValueError, UnicodeDecodeError):
+            d = None
+        if not isinstance(d, dict) or d.get('format') != self.FORMAT or not isinstance(d.get('sections'), dict):
+            raise ValueError('Это не файл настроек программы: нужен «КП_настройки_….json», сохранённый кнопкой «Сохранить все настройки в файл»')
+        return d
+
+    def preview(self, data):
+        """Разделы файла: что в нём есть и отличается ли от текущего."""
+        d = self.read(data)
+        out = []
+        for k, label in self.PARTS:
+            if k not in d['sections']:
+                continue
+            same = json.dumps(d['sections'][k], sort_keys=True, ensure_ascii=False) == json.dumps(self._get(k, True), sort_keys=True, ensure_ascii=False)
+            out.append({'key': k, 'label': label, 'same': same})
+        return {'app': d.get('app') or '', 'createdAt': d.get('createdAt') or '', 'keys': bool(d.get('keys')), 'sections': out}
+
+    def apply(self, data, picked=None):
+        """Записать выбранные разделы (picked — список ключей; None — все). → {applied: [...], errors: [...]}"""
+        d = self.read(data)
+        st, applied, errors = self.store, [], []
+        for k, label in self.PARTS:
+            v = d['sections'].get(k)
+            if v is None or (picked is not None and k not in picked):
+                continue
+            try:
+                self._put(k, v)
+                applied.append(label)
+            except (ValueError, TypeError) as e:
+                errors.append('%s: %s' % (label, e))
+        st.touch_data('types', 'settings')
+        from defaults import SrvVal
+        SrvVal.forget()
+        return {'applied': applied, 'errors': errors}
+
+    def _put(self, k, v):
+        st = self.store
+        if k == 'stationRules':
+            from station_rules import StationRules
+            StationRules(st).save(json.dumps(v, ensure_ascii=False).encode('utf-8'), self.by or 'файл настроек')
+            return
+        if k == 'access':
+            from auth_users import PERM_KEYS, AccessRecord, access
+            if not isinstance(v, dict):
+                raise ValueError('неверный формат')
+            have = access(st)
+            for mid, rec in v.items():         # только менеджеры этой базы: чужие записи не создаются
+                if mid in have and isinstance(rec, dict) and isinstance(rec.get('perms'), dict):
+                    AccessRecord.update(st, mid, lambda r, _a, rec=rec: dict(r, perms={p: bool(rec['perms'].get(p)) for p in PERM_KEYS},
+                                                                           **({'blocked': bool(rec['blocked'])} if 'blocked' in rec else {})))
+            return
+        cur = st.kv_get(k)
+        if k == 'mail' and isinstance(v, dict) and isinstance(cur, dict) and 'password' in cur:
+            v = dict(v, password=cur['password'])
+        if k == 'settings' and isinstance(v, dict) and isinstance(cur, dict):
+            ai_cur = cur.get('ai') if isinstance(cur.get('ai'), dict) else {}
+            if isinstance(v.get('ai'), dict) and 'key' not in v['ai'] and ai_cur.get('key'):
+                v = dict(v, ai=dict(v['ai'], key=ai_cur['key']))
+        if k == 'update':
+            v = dict(cur if isinstance(cur, dict) else {}, **{a: v[a] for a in self.UPDATE_KEYS if isinstance(v, dict) and a in v})
+        if k == 'integrations' and isinstance(v, dict) and isinstance(cur, dict):
+            v = dict(cur, **v)
+        if not isinstance(v, (dict, list)):
+            raise ValueError('неверный формат')
+        st.kv_set(k, v)

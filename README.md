@@ -526,6 +526,20 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.99.7 — админка в четырёх разделах, товары как каталог, корзина, модерация «было → стало», выгрузка по фильтру, «Что загружать» у фида, настройки в файл, особые права менеджеров (решения владельца 17.10):**
+- `AdminNav` (settings.js): `HOME` + 4 группы (Каталог · Документы и справочники · Настройки программы · Сотрудники и система), `parts` —
+  несколько панелей одной вкладки (`AdminNav.stack`), `ALIAS` — прежние ключи вкладок; «Товары» — `GoodsTab` (окно каталога `CW.open({admin:true})`,
+  щелчок по вкладке открывает его), `TrashTab`, `ModerationTab`, `BackupTab` (строки `bk-row`), `SettingsFileCard`.
+- Сервер `app/catalog_admin.py`: `ModerationDesk` (поля «было / стало», параметры категории по одному `attrs.<ключ>`, приём по полям поверх текущей
+  карточки), `TrashBin` (`Store.trash_drop`, `trash_clear`), `CatalogExport` (xlsx — `XlsxBook`, json, xml, yml; картинки ссылками или файлами в .zip;
+  закупка — только администратор), `ClientsExport`, `CatalogDesk` — `/api/catalog/{trash,export,moderation…}`, `/api/clients/export`; `power()` —
+  администратор или вошедший менеджер с правом. Маршруты админки: `trash?type=`, `trash/<id>/purge`, `trash/clear`, `pending/<id>/approve {fields}`.
+- Права (`auth_users.PERMS`): `catDelete`, `catSelfMod`, `export` (по умолчанию нет; `STRICT` — без входа по паролю только администратор); клиент — `Powers`.
+- Фиды (`feeds.FeedRules`): `filter` (brands, words, stop, priceMin/Max, avail, priced, add) и `fields` (name, desc, photo, params, cat, price, stock) в
+  настройках фида; `plan` — без записи; `import_feed` и `check_feed` соблюдают правила; маршрут `feeds/<id>/loadplan`; клиент `FeedRulesUi`.
+- Настройки в файл (`data_bundle.SettingsFile`, `settings-file` в админке): формат `kp-settings`, ключи API — `?keys=1`, пароли — никогда.
+- Проверки: `tests/test_catalog_powers.py`, `tests/test_settings_file.py`, `tests/test_feed_rules.py`.
+
 **3.99.6 — ставки экспедиторов файлом и запрос экспедитору:**
 - `ChinaRateBook` (settings-china.js): `template` — книга (`makeXlsx`): «Ставки» (первым — его же читает загрузка), «Как заполнить»,
   «Запрос экспедитору»; `lines` — .xlsx (`lgReadXlsx`) / .csv (`;` или `,`); `parse` — заголовок со «Откуда» и «Ставка», столбцы по

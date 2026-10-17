@@ -620,7 +620,8 @@ def _put_product(h, store, cid, admin):
             log(h, store, 'edit_product' if before else 'create_product', 'product', cid, result='failed')
             return h.send(403, 'text/plain; charset=utf-8', 'Нет права %s оборудование в каталоге — обратитесь к администратору'
                           % ('редактировать' if before is not None else 'добавлять'))
-    mod = moderation(store).get('enabled') and not admin
+    # модерация не касается администратора и менеджера с правом «Правки без модерации»
+    mod = moderation(store).get('enabled') and not admin and not (login_on(h) and perm(h, 'catSelfMod'))
     if mod and before is not None and h.headers.get('X-KP-Edit') == 'auto':
         mod = not auto                   # сохранение КП обновило только цены и историю — без модерации
     if mod:
@@ -679,8 +680,11 @@ def guard(h, store, m, path):
         return _refuse(h, text='Это КП другого менеджера — нет доступа. Права выдаёт администратор')
     if path == '/api/types' and m == 'PUT' and not perm(h, 'catEdit'):
         return _refuse(h, text='Нет права менять категории оборудования — обратитесь к администратору')
+    from catalog_admin import CatalogDesk
+    if CatalogDesk.handles(path):     # особые права менеджеров: в корзину, модерация, выгрузка (и администратор)
+        return CatalogDesk(h, store).route(m, path)
     r = re.match(r'^/api/catalog/([A-Za-z0-9_-]{1,64})$', path)
-    if r and m == 'PUT' and r.group(1) in ('sources', 'pending'):      # служебные адреса каталога — не карточки
+    if r and m == 'PUT' and r.group(1) in ('sources', 'pending', 'trash', 'export', 'moderation', 'search', 'sync'):      # служебные адреса — не карточки
         h.send(400, 'text/plain; charset=utf-8', 'Недопустимый идентификатор')
         return True
     if r and m == 'PUT':
@@ -971,7 +975,7 @@ class AdminApi:
             f = feeds.feed_save(st, self.data())
             self.log('edit_settings', 'settings', 'feed:' + f['id'], None, {'url': f['url'] or f.get('kind'), 'name': f['name']})
             return self.ok(f)
-        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|file|discounts|plan|rebuild|purge|unblock)$', sub)
+        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|file|discounts|plan|loadplan|rebuild|purge|unblock)$', sub)
         if not r:
             return self.err(404, 'Нет такого запроса')
         fid, act = r.group(1), r.group(2)
@@ -995,6 +999,19 @@ class AdminApi:
             return self.ok(feeds.discount_plan(st, g))
         if m != 'POST':
             return self.err(405, 'Нужен POST')
+        if act == 'loadplan':       # «Что загружать»: план «добавится / изменится / пропущено»; в теле — ещё не сохранённые настройки
+            d = self.data()
+            g = dict(f)
+            if isinstance(d.get('filter'), dict):
+                g['filter'] = feeds.FeedRules.clean_filter(d['filter'])
+            if isinstance(d.get('fields'), dict):
+                g['fields'] = feeds.FeedRules.clean_fields(d['fields'])
+            if isinstance(d.get('cats'), dict):
+                g['cats'] = feeds._cats_ok(d['cats'])
+            try:
+                return self.ok(feeds.FeedRules.plan(st, g, types))
+            except Exception as e:
+                return self.err(422, 'Фид не загрузился: %s' % e)
         if act == 'upload':         # файл фида из файлов: ?kind=pages|price&name=имя, тело — сам файл
             if feeds.busy(fid):
                 return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
@@ -1234,38 +1251,45 @@ class AdminApi:
                 return self.err(404, 'Документ не найден')
             self.log('delete_kp_file', 'kp', r.group(1), {'name': rec['name'], 'size': rec['size']}, None)
             return self.ok({'ok': True})
-        if sub == 'trash':
-            return self.ok({'items': st.trash_list(), 'days': SrvVal.get(st, 'srv.trashDays')})
-        r = re.match(r'^trash/(\d{1,9})/restore$', sub)
-        if r and m == 'POST':
-            etype, eid = st.trash_restore(int(r.group(1)))
-            self.log('restore', etype, eid)
-            return self.ok()
+        if sub == 'trash' or sub.startswith('trash/'):
+            return self.trash(m, sub, q)
         if sub == 'moderation':
             if m == 'POST':
                 return self.toggle(self.data())
-            return self.ok({'settings': moderation(st), 'pending': self.pending_list('pending'),
-                            'history': self.pending_list('approved', 30) + self.pending_list('rejected', 30),
-                            'archived': self.pending_list('archived')})
+            desk = self.desk()
+            return self.ok({'settings': moderation(st), 'pending': desk.items('pending'),
+                            'history': desk.items('approved', 30) + desk.items('rejected', 30),
+                            'archived': desk.items('archived')})
         r = re.match(r'^pending/(\d{1,9})$', sub)
         if r:
-            p = st.pending_get(int(r.group(1)))
-            if not p:
-                raise ValueError('Правка не найдена')
-            p['diff'] = self.pending_diff(p)
-            p['current'] = st.catalog_get(p['productId']) is not None
-            p.pop('before'), p.pop('after')
-            return self.ok(p)
+            return self.ok(self.desk().view(int(r.group(1))))
         r = re.match(r'^pending/(\d{1,9})/(approve|reject)$', sub)
-        if r and m == 'POST':
-            return self.ok(self.review(int(r.group(1)), r.group(2), self.data().get('reason') or ''))
+        if r and m == 'POST':     # fields — принять только эти поля (остальные изменения правки отбрасываются)
+            d = self.data()
+            return self.ok(self.desk().review(int(r.group(1)), r.group(2), d.get('reason') or '',
+                                              d.get('fields') if isinstance(d.get('fields'), list) else None))
         if sub == 'pending/approve-all' and m == 'POST':
-            n = sum(1 for p in st.pending_list('pending') if self.review(p['id'], 'approve', '')['ok'])
+            n = sum(1 for p in st.pending_list('pending') if self.desk().review(p['id'], 'approve', '')['ok'])
             return self.ok({'approved': n})
         if sub == 'export' and m == 'GET':
             cats = [c for c in (q.get('cats') or '').split(',') if re.match(r'^[A-Za-z0-9_-]{1,64}$', c)] or None
             return self.export([s for s in (q.get('sections') or ','.join(SECTIONS)).split(',') if s in SECTIONS],
                                cats=cats, images=q.get('images') == '1', sup=(q.get('sup') or '').strip() or None)
+        if sub.startswith('settings-file'):     # все настройки программы одним файлом (ключи API — по галочке, пароли — никогда)
+            from data_bundle import SettingsFile
+            sf = SettingsFile(st, me or 'admin')
+            if sub == 'settings-file' and m == 'GET':
+                name, data = sf.export(q.get('keys') == '1')
+                self.log('export_settings', 'settings', 'file', None, {'keys': q.get('keys') == '1', 'bytes': len(data)})
+                return self.h.send(200, 'application/json; charset=utf-8', data, self.h.attachment(name))
+            if sub == 'settings-file/preview' and m == 'POST':
+                return self.ok(sf.preview(self.h.body()))
+            if sub == 'settings-file' and m == 'POST':
+                picked = [x for x in (q.get('sections') or '').split(',') if x] if 'sections' in q else None
+                res = sf.apply(self.h.body(), picked)
+                self.log('import_settings', 'settings', 'file', None, res)
+                return self.ok(res)
+            return self.err(404, 'Нет такого запроса')
         if sub == 'export/cats' and m == 'GET':
             return self.ok(self.export_cats())
         if sub == 'export/suppliers' and m == 'GET':
@@ -1556,37 +1580,30 @@ class AdminApi:
             n += bool(data)
         return self.ok({'deleted': n})
 
-    # ---------- модерация ----------
-    def pending_diff(self, p):
-        b, a = diff(_loads(p['before']), _loads(p['after']), AUTO_KEYS)
-        return [{'field': k, 'label': LABELS.get(k, k), 'before': b[k], 'after': a[k]} for k in a]
-
-    def pending_list(self, status, limit=None):
-        """Правки со статусом status, новые первыми (limit — сколько первых): название, изменённые поля, устарела ли."""
-        out = []
-        for p in self.st.pending_list(status, with_docs=True)[:limit]:
-            after = _loads(p['after']) or {}
-            p['name'] = after.get('name', p['productId'])
-            p['fields'] = [x['label'] for x in self.pending_diff(p)]
-            # позиция изменилась после отправки правки — только у ожидающих (рассмотренным текущая позиция не нужна)
-            p['stale'] = status == 'pending' and (self.st.catalog_get(p['productId']) or None) != (p['before'] or None)
-            p.pop('before'), p.pop('after')
-            out.append(p)
-        return out
+    # ---------- модерация и корзина (catalog_admin.py) ----------
+    def desk(self):
+        from catalog_admin import ModerationDesk
+        return ModerationDesk(self.st, actor(self.h, True)[1], self.log)
 
     def review(self, eid, act, reason):
-        p = self.st.pending_get(eid)
-        if not p or p['status'] != 'pending':
-            return {'ok': False, 'message': 'Правка уже рассмотрена'}
-        b, a = diff(_loads(p['before']), _loads(p['after']), AUTO_KEYS)
-        if act == 'approve':
-            self.st.catalog_put(p['productId'], p['after'])
-            self.st.pending_set(eid, 'approved', actor(self.h, True)[1])
-            self.log('approve_edit', 'product', p['productId'], b, a)
-        else:
-            self.st.pending_set(eid, 'rejected', actor(self.h, True)[1], reason)
-            self.log('reject_edit', 'product', p['productId'], b, dict(a, __reason__=reason))
-        return {'ok': True}
+        return self.desk().review(eid, act, reason)
+
+    def trash(self, m, sub, q):
+        """Корзина: список (?type=вид), восстановить, удалить навсегда одну запись, очистить (всё или один вид)."""
+        from catalog_admin import TrashBin
+        tb = TrashBin(self.st, self.log)
+        if sub == 'trash':
+            etype = q.get('type') or ''
+            return self.ok(dict(tb.items(etype if etype in TrashBin.TYPES else ''), days=SrvVal.get(self.st, 'srv.trashDays')))
+        if m != 'POST':
+            return self.err(405, 'Нужен POST')
+        if sub == 'trash/clear':
+            return self.ok({'deleted': tb.clear(str(self.data().get('type') or ''))})
+        r = re.match(r'^trash/(\d{1,9})/(restore|purge)$', sub)
+        if not r:
+            return self.err(404, 'Нет такого запроса')
+        tb.restore(int(r.group(1))) if r.group(2) == 'restore' else tb.drop(int(r.group(1)))
+        return self.ok()
 
     def toggle(self, d):
         before = moderation(self.st)

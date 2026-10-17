@@ -1,6 +1,55 @@
 'use strict';
-// «Обслуживание → Копии и база»: выгрузка разделов базы в JSON — каталог целиком или выбранные группы и категории
-// оборудования, с изображениями (тогда архив .zip: kp-backup.json + img/…), и загрузка такого файла обратно.
+// «Сотрудники и система → База и копии» (BackupTab): ровные строки «что — пояснение — кнопки»: скачать (вся база, разделы,
+// каталог поставщика, каталог по фильтру, настройки), загрузить (копия или правки, файл базы целиком), автокопии, вторая папка.
+// DataTransfer — выгрузка разделов базы в JSON (каталог целиком или выбранные группы и категории, с изображениями — архив
+// .zip: kp-backup.json + img/…) и загрузка такого файла обратно. SettingsFileCard — все настройки в файл и из файла.
+
+class BackupTab {
+  static row(title, note, acts, id=''){
+    return `<div class="bk-row"${id?` id="${id}"`:''}><div class="bk-t"><b>${title}</b><small class="muted">${note}</small></div><div class="bk-a">${acts}</div></div>`;
+  }
+
+  static async render(m){
+    const R=BackupTab.row;
+    m.innerHTML=`<div class="st-card bk"><p class="sub">Скачать</p>
+        ${R('Вся база одним файлом', 'Каталог, КП, клиенты, менеджеры, настройки — архив .zip (kp.sqlite3 внутри, без изображений). Загружается обратно как есть.', '<button class="btn primary" type="button" data-bk="db">Скачать базу (.zip)</button>')}
+        ${R('Разделы базы', 'Каталог целиком или выбранные категории, клиенты, поставщики, КП, настройки — .json или .zip с фото.', '<button class="btn" type="button" data-bk="parts">Выбрать разделы…</button>')}
+        ${R('Каталог поставщика '+tip(SupplierExport.TIP), 'Без цен, закупки и остатков: копия с фото или книга Excel для правки.', `<select id="seSup" aria-label="Поставщик"><option value="">Загружаю…</option></select><button class="btn" type="button" data-se="zip">Копия с фото (.zip)</button><button class="btn" type="button" data-se="xlsx">Excel для правки</button>`, 'seBox')}
+        ${R('Каталог по любому фильтру', 'Excel, JSON, XML или YML — с ценами, РРЦ, остатками, картинками, нужными параметрами: отберите позиции в окне товаров.', '<button class="btn" type="button" data-bk="goods">Открыть товары</button>')}
+        ${R('Все настройки программы', 'Одним файлом — перенести на другой компьютер или сохранить перед большими правками.', '<button class="btn" type="button" data-sttab="changes">Файл настроек…</button>')}
+        <p class="muted bk-st" id="seSt"></p></div>
+      <div class="st-card bk"><p class="sub">Загрузить</p>
+        ${R('Копия или правки', '.zip, .json или книга Excel для правки — сначала программа покажет, что изменится.', '<input type="file" id="impF" accept=".json,.zip,.xlsx,application/json,application/zip" class="sr-file"><label for="impF" class="btn">Выбрать файл…</label>')}
+        <div id="impP"></div>
+        ${R('Файл базы целиком', `.sqlite3 или .zip с ним — заменяет всю базу; текущая сохраняется в копию (data\\backup). ${tip('<p>Так и нужно подменять базу: вручную копировать kp.sqlite3 в папку data нельзя — рядом лежат файлы kp.sqlite3-wal и -shm от прежней базы, и она повредится («database disk image is malformed»).</p>')}`, '<input type="file" id="impDb" accept=".sqlite3,.sqlite,.db,.zip" class="sr-file"><label for="impDb" class="btn">Выбрать файл базы…</label>')}
+        <p class="muted bk-st" id="impDbSt"></p></div>
+      <div class="st-card" id="stMaint"><p class="sub">Автоматические копии и обслуживание базы</p><p class="muted">Загружаю…</p></div>
+      <div class="st-card" id="stMirror"></div>
+      <details class="st-card mx"><summary class="sub">История выгрузок и загрузок · структура базы</summary><div id="stMigr"></div><div id="bkHist"><p class="muted">Загружаю…</p></div></details>`;
+    DbMaint.render(m.querySelector('#stMaint')); stMigr(m.querySelector('#stMigr')); new MirrorCard(m.querySelector('#stMirror')).open();
+    SupplierExport.mount(m, StNav.sup||''); StNav.sup='';
+    DataTransfer.bindImport(m, ()=>BackupTab.render(m));
+    BackupTab.history(m.querySelector('#bkHist'));
+    m.onclick=e=>{ const b=e.target.closest('[data-bk]'); if (!b) return;
+      if (b.dataset.bk==='db') return DataTransfer.download('export/sqlite', m.querySelector('#seSt'));
+      if (b.dataset.bk==='parts') return DataTransfer.dialog(()=>BackupTab.render(m));
+      if (b.dataset.bk==='goods') return GoodsTab.open(); };
+    m.querySelector('#impDb').onchange=async e=>{ const f=e.target.files[0]; if (!f) return; e.target.value='';
+      if (!await stConfirm('Заменить всю базу файлом «'+f.name+'»?','Текущие данные будут заменены содержимым файла. Перед этим программа сохранит копию текущей базы в data\\backup.','Заменить базу')) return;
+      const st=m.querySelector('#impDbSt'); st.textContent=`Загружаю «${f.name}» (${Fmt.size(f.size)})…`;
+      try{ const j=await aapi('import/sqlite?name='+encodeURIComponent(f.name), {method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:f});
+        st.textContent=''; toast(`База заменена: позиций ${Fmt.num(j.catalog)}, КП ${Fmt.num(j.kp)}. Прежняя сохранена: ${j.backup.split(/[\\/]/).pop()}`);
+        setTimeout(()=>location.reload(), 1500); }
+      catch(err){ st.textContent=''; toast('Не загружено: '+(err.message||err)); } };
+  }
+
+  static async history(box){
+    try{ const [a, b]=await Promise.all([aapi('audit?'+new URLSearchParams({action:'export_db'})), aapi('audit?'+new URLSearchParams({action:'import_db'}))]);
+      const ops=[...a.items, ...b.items].sort((x,y)=>y.id-x.id).slice(0,15);
+      box.innerHTML=ops.map(x=>`<div class="st-row"><div><b>${esc(ACT[x.action])}</b><span class="muted">${esc(Fmt.dateTime(x.timestamp))} · ${esc(x.entityId||'')}${x.after&&x.after.supplier?' · '+esc(x.after.supplier):''}${x.after&&x.after.bytes?' · '+Fmt.size(x.after.bytes):''}</span></div></div>`).join('')||'<p class="muted">Операций ещё не было.</p>'; }
+    catch(e){ box.innerHTML=''; }
+  }
+}
 
 class DataTransfer {
   static SECTIONS = [['catalog','Каталог'],['clients','Клиенты'],['settings','Настройки программы'],['suppliers','Поставщики и ТН ВЭД'],['managers','Менеджеры'],['kp','КП (журнал)'],['audit','Журнал действий']];
@@ -10,14 +59,30 @@ class DataTransfer {
   static file = null;
 
   static html(){
-    return `<div class="st-card" id="dtExp"><div class="sub">Выгрузка разделов базы${tip('<p><b>.json</b> — выбранные разделы базы. <b>С изображениями</b> — архив .zip: тот же JSON и все фото, галереи и логотипы, на которые в нём есть ссылки (папка img).</p><p>Каталог можно выгрузить целиком или только выбранные группы и категории оборудования. Файл загружается обратно здесь же, в «Загрузке»: записи с теми же id заменяются, новые добавляются, изображения — только недостающие.</p>')}</div>
+    return `<div id="dtExp"><div class="sub">Что выгрузить${tip('<p><b>.json</b> — выбранные разделы базы. <b>С изображениями</b> — архив .zip: тот же JSON и все фото, галереи и логотипы, на которые в нём есть ссылки (папка img).</p><p>Каталог можно выгрузить целиком или только выбранные группы и категории оборудования. Файл загружается обратно здесь же, в «Загрузке»: записи с теми же id заменяются, новые добавляются, изображения — только недостающие.</p>')}</div>
       <div class="row" style="flex-wrap:wrap;gap:6px">${DataTransfer.PRESETS.map(([k,l])=>`<button class="btn ghost" type="button" data-dp="${k}">${l}</button>`).join('')}</div>
       <div class="chips" style="margin-top:8px">${DataTransfer.SECTIONS.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" data-xs="${v}" checked> ${l}</label>`).join('')}</div>
       <p class="muted">«Настройки программы» — категории, умолчания, списки, функции, тексты интерфейса, тарифы доставки, фиды, почта; пароли, ключи API и учётные записи не выгружаются.</p>
       <div id="dtCatBox" style="margin-top:10px"></div>
       <label class="chk-chip" style="margin-top:10px"><input type="checkbox" id="dtImg" checked> С изображениями (.zip)</label>
-      <div class="row" style="margin-top:10px"><button class="btn primary" type="button" data-dx="json">Скачать</button><button class="btn" type="button" data-dx="sqlite">Полная копия базы (.zip)</button></div>
-      <p class="muted" id="dtExpSt">.zip — файл базы целиком в архиве (kp.sqlite3 внутри, без изображений), загружается ниже как есть: «Файл базы целиком».</p></div>`;
+      <div class="row" style="margin-top:10px"><button class="btn primary" type="button" data-dx="json">Скачать</button></div>
+      <p class="muted" id="dtExpSt"></p></div>`;
+  }
+
+  /** окно «Разделы базы»: что выгрузить, каталог целиком или категории, с фото */
+  static dialog(done){
+    const m=new Modal(`<div class="mv-h"><h3>Выгрузка разделов базы</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>${DataTransfer.html()}`, 'dt-dlg');
+    m.$('[data-x]').onclick=()=>m.close();
+    DataTransfer.mount(m.d, done);
+  }
+
+  /** скачать файл выгрузки администратора (GET /api/admin/…); st — строка состояния */
+  static async download(url, st){
+    if (st) st.textContent='Готовлю файл…';
+    try{ const r=await fetch('/api/admin/'+url,{headers:{'X-CSRF-Token':ADMIN.csrf}}); if (!r.ok) throw new Error(await r.text());
+      const fn=decodeURIComponent((r.headers.get('Content-Disposition')||'').split("''")[1]||'backup'), blob=await r.blob();
+      saveFileA(fn, blob); if (st) st.textContent=`Скачано: ${fn} (${Fmt.size(blob.size)})`; return true; }
+    catch(err){ if (st) st.textContent=''; toast('Не выгружено: '+(err.message||err)); return false; }
   }
 
   static async mount(m, done){
@@ -72,18 +137,10 @@ class DataTransfer {
       if (some && cats.includes('')) return toast('Позиции без категории выгружаются только со всем каталогом');
       url='export?'+new URLSearchParams({sections:secs.join(','), cats:cats.join(','), images:m.querySelector('#dtImg').checked?'1':'0'});
     }
-    st.textContent='Готовлю файл…';
-    try{ const r=await fetch('/api/admin/'+url,{headers:{'X-CSRF-Token':ADMIN.csrf}}); if (!r.ok) throw new Error(await r.text());
-      const fn=decodeURIComponent((r.headers.get('Content-Disposition')||'').split("''")[1]||'backup'), blob=await r.blob();
-      saveFileA(fn, blob); st.textContent=`Скачано: ${fn} (${Fmt.size(blob.size)})`; if (done) setTimeout(done, 1500); }
-    catch(err){ st.textContent=''; toast('Не выгружено: '+(err.message||err)); }
+    if (await DataTransfer.download(url, st) && done) setTimeout(done, 1500);
   }
 
   // ---------- загрузка .json / .zip ----------
-  static importHtml(){
-    return `<input type="file" id="impF" accept=".json,.zip,.xlsx,application/json,application/zip" class="sr-file"><label for="impF" class="btn">Выбрать файл (.zip, .json или Excel для правки)…</label><div id="impP"></div>`;
-  }
-
   static bindImport(m, done){
     m.querySelector('#impF').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if (f) DataTransfer._preview(m, f); };
     m.querySelector('#impP').addEventListener('click', async e=>{ const b=e.target.closest('[data-imp]'); if (!b || !DataTransfer.file) return;
@@ -132,19 +189,14 @@ class SupplierExport {
   static NONE = 'Без поставщика';
   static EDIT = [['name','Название'],['spec','Кратко (строка под названием)'],['a:maker','Производитель'],['a:model','Модель']];
 
-  static html(sel=''){
-    return `<div class="st-card" id="seBox"><div class="sub">Каталог поставщика${tip('<p>Все позиции одного поставщика из справочника «Поставщики и склады» (позиции фида — поставщик, к которому привязан фид, иначе — название фида; позиции не из фида — по производителю). <b>Без цен, закупки и остатков</b>.</p><p><b>Копия с фото (.zip)</b> — резервная копия: загружается ниже, в «Загрузке»; позиции восстанавливаются как были, а цены, закупка и остатки остаются как сейчас в базе.</p><p><b>Excel для правки</b> — лист на каждую категорию: название, производитель, модель и все поля категории. Исправьте ячейки и загрузите книгу в «Загрузке» — изменятся только исправленные поля; поле, которое после выгрузки уже изменили в программе, пропускается. Описание и таблицы характеристик правятся в карточке позиции.</p>')}</div>
-      <div class="row se-row"><select id="seSup" aria-label="Поставщик"><option value="">Загружаю…</option></select>
-        <button class="btn" type="button" data-se="zip">Копия с фото (.zip)</button><button class="btn" type="button" data-se="xlsx">Excel для правки</button></div>
-      <p class="muted" id="seSt">Без цен, закупки и остатков. Загрузить обратно — ниже, в «Загрузке».</p></div>`;
-  }
+  static TIP = '<p>Все позиции одного поставщика из справочника «Поставщики и склады» (позиции фида — поставщик, к которому привязан фид, иначе — название фида; позиции не из фида — по производителю). <b>Без цен, закупки и остатков</b>.</p><p><b>Копия с фото (.zip)</b> — резервная копия: загружается ниже, в «Загрузке»; позиции восстанавливаются как были, а цены, закупка и остатки остаются как сейчас в базе.</p><p><b>Excel для правки</b> — лист на каждую категорию: название, производитель, модель и все поля категории. Исправьте ячейки и загрузите книгу в «Загрузке» — изменятся только исправленные поля; поле, которое после выгрузки уже изменили в программе, пропускается. Описание и таблицы характеристик правятся в карточке позиции.</p>';
 
   static async mount(m, sel=''){
-    const box=m.querySelector('#seBox'); if (!box) return;
-    try{ SupplierExport.groups=await aapi('export/suppliers'); }catch(err){ box.querySelector('#seSt').textContent=err.message; return; }
+    const box=m.querySelector('#seBox'), st=m.querySelector('#seSt'); if (!box) return;
+    try{ SupplierExport.groups=await aapi('export/suppliers'); }catch(err){ if (st) st.textContent=err.message; return; }
     const s=box.querySelector('#seSup');
     s.innerHTML=SupplierExport.groups.map(g=>`<option value="${esc(g.name)}"${norm(g.name)===norm(sel)?' selected':''}>${esc(g.name)} · ${Fmt.num(g.count)}${g.dir||g.name===SupplierExport.NONE?'':' (фид, не привязан к справочнику)'}</option>`).join('')||'<option value="">Каталог пуст</option>';
-    box.addEventListener('click', e=>{ const b=e.target.closest('[data-se]'); if (b && s.value) SupplierExport.run(b, s.value, box.querySelector('#seSt')); });
+    box.addEventListener('click', e=>{ const b=e.target.closest('[data-se]'); if (b && s.value) SupplierExport.run(b, s.value, st); });
   }
 
   static async _get(name, images){
@@ -186,9 +238,51 @@ class SupplierExport {
     const help=[[{v:'Каталог поставщика «'+name+'» — для правки', s:'title'}], [{v:`Выгружено ${Fmt.dateTime(new Date().toISOString())}, позиций ${items.length}. Цен, закупки и остатков в книге нет.`, s:'sub'}], [],
       ...['1. На листах категорий исправьте нужные ячейки: название, производитель, модель, поля категории. Пустая ячейка — поле очищается (название не стирается).',
         '2. Не меняйте столбец «Код позиции» и вторую (серую) строку с ключами; строки и листы не добавляйте — новые позиции из книги не создаются.',
-        '3. «Настройки → Обслуживание → Копии и база → Загрузка» → выберите эту книгу: программа покажет, сколько позиций и полей изменится, и попросит подтвердить.',
+        '3. «Настройки → Сотрудники и система → База и копии → Загрузить → Копия или правки» → выберите эту книгу: программа покажет, сколько позиций и полей изменится, и попросит подтвердить.',
         '4. Если поле после выгрузки уже изменили в программе (вручную или фидом), правка этого поля пропускается и попадает в отчёт.',
         'Описание и таблицы характеристик правятся в карточке позиции; цены — в карточке или фидом.'].map(t=>[{v:t, s:'text'}])];
     return [{name:'Как править', cols:[120], rows:help}, ...sheets, {name:'_было', hidden:true, cols:[22, 20, 40], rows:orig}];
+  }
+}
+
+// Все настройки программы в файл и обратно (сервер — data_bundle.SettingsFile): значения, списки, тексты, функции, тарифы,
+// нормы станций, фиды, почта (без пароля), права менеджеров (без паролей), личные настройки. Ключи API — только по галочке
+// (с предупреждением); пароли — никогда. Загрузка — предпросмотр по разделам и выбор, что заменить.
+class SettingsFileCard {
+  static file = null;
+
+  static render(m){
+    m.innerHTML=`<div class="st-card sf"><p class="sub">Все настройки — в файл и из файла</p>
+      <p class="muted">Значения программы, списки, тексты, функции, категории, тарифы доставки, ставки из Китая, нормы станций, фиды, почта (без пароля), права менеджеров, личные настройки — одним файлом: перенести на другой компьютер или сохранить перед большими правками. Пароли в файл не попадают никогда.</p>
+      ${BackupTab.row('Сохранить', 'Файл КП_настройки_….json. С ключами API — только если отметить: такой файл храните как пароль.', '<label class="cx-ck"><input type="checkbox" id="sfKeys"> с ключами API</label><button class="btn primary" type="button" data-sf="save">Сохранить все настройки в файл</button>')}
+      ${BackupTab.row('Загрузить', 'Сначала покажем разделы файла — отметьте, какие заменить. Свои ключи и пароль почты остаются, если в файле их нет.', '<input type="file" id="sfFile" accept=".json,application/json" class="sr-file"><label for="sfFile" class="btn">Загрузить настройки из файла…</label>')}
+      <div id="sfPrev"></div></div>`;
+    m.querySelector('#sfKeys').onchange=async e=>{ if (!e.target.checked) return;
+      if (!await stConfirm('Сохранить вместе с ключами API?', 'В файл попадут ключи сервисов (проверка контрагентов, перевозчики, PDF, нейросеть, GitHub). Храните его как пароль и не пересылайте по почте и в мессенджерах. Пароли в файл не попадают.', 'Да, с ключами')) e.target.checked=false; };
+    m.onclick=async e=>{
+      if (e.target.closest('[data-sf="save"]')){ const keys=m.querySelector('#sfKeys').checked;
+        await DataTransfer.download('settings-file'+(keys?'?keys=1':''), null); return; }
+      const ap=e.target.closest('[data-sfapply]'); if (ap) return SettingsFileCard.apply(m, ap); };
+    m.querySelector('#sfFile').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if (f) SettingsFileCard.preview(m, f); };
+  }
+
+  static async preview(m, f){
+    const box=m.querySelector('#sfPrev'); box.innerHTML=`<p class="muted">Проверяю «${esc(f.name)}»…</p>`;
+    try{ const r=await aapi('settings-file/preview', {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:f}); SettingsFileCard.file=f;
+      box.innerHTML=`<p class="muted">Файл от ${esc(Fmt.dateTime(r.createdAt))}${r.app?', версия программы '+esc(r.app):''}${r.keys?' · <b class="warn-t">с ключами API</b>':''}. Отметьте, что заменить:</p>
+        <div class="sf-list">${r.sections.map(x=>`<label class="sf-r"><input type="checkbox" data-sfk="${esc(x.key)}"${x.same?'':' checked'}><span>${esc(x.label)}</span><small class="${x.same?'muted':'warn-t'}">${x.same?'как сейчас':'отличается'}</small></label>`).join('')}</div>
+        <div class="row"><button class="btn primary" type="button" data-sfapply>Загрузить отмеченное</button><span class="muted">Каждое изменение попадёт в «Историю» — его можно вернуть.</span></div>`; }
+    catch(err){ SettingsFileCard.file=null; box.innerHTML=`<p class="msg err" style="text-align:left">${esc(err.message||err)}</p>`; }
+  }
+
+  static async apply(m, b){
+    const f=SettingsFileCard.file, keys=[...m.querySelectorAll('[data-sfk]:checked')].map(i=>i.dataset.sfk);
+    if (!f) return; if (!keys.length) return toast('Отметьте разделы');
+    if (!await stConfirm(`Заменить настройки (${keys.length})?`, 'Отмеченные разделы станут как в файле. Прежние значения — в «Истории изменений», их можно вернуть.', 'Заменить')) return;
+    b.disabled=true;
+    try{ const r=await aapi('settings-file?sections='+encodeURIComponent(keys.join(',')), {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:f});
+      SettingsFileCard.file=null; toast(`Загружено разделов: ${r.applied.length}`+(r.errors.length?`; не загружено: ${r.errors.join('; ')}`:''));
+      await StRefresh.all(); await loadTypes(); stTab(); }
+    catch(err){ b.disabled=false; toast('Не загружено: '+(err.message||err)); }
   }
 }

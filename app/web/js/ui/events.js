@@ -155,6 +155,7 @@ document.addEventListener('click', async e=>{
     case 'journal': return openJournal();
     case 'myDay': return MyDay.open();
     case 'myPrefs': return MyPrefs.open();
+    case 'clientsExport': return ClientsExportDlg.open();
     case 'deal': return openDeal();
     case 'docsFolder': return api('/api/folder?dir='+encodeURIComponent(managerFolder()),{method:'POST'}).then(remoteResult).catch(()=>{}); 
     case 'mailKp': return MailDlg.open(b.dataset.id, S.number);
