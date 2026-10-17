@@ -569,3 +569,4 @@ tr.re-on{background:var(--soft)}
 .cf-m input{ flex:1; min-width:0; }
 .cf-m select{ width:auto; flex:none; }
 .cf-r .warn-t, .cf-t .warn-t{ margin-top:4px; font-size:13px; }
+.cf-req{ width:100%; font:inherit; font-size:14px; }

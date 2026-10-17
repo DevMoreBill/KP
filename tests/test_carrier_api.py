@@ -286,6 +286,17 @@ class ChinaFreightTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             cf.save_rates([{'from': 'Шанхай', 'to': 'Забайкальск', 'kind': 'ftl', 'price': '1', 'until': '31.12'}])
 
+    def test_rate_file_js(self):
+        """Ставки файлом и запрос экспедитору (ChinaRateBook в settings-china.js): node tests/js/china_rates.js."""
+        import subprocess
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('нет Node.js')
+        repo = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+        r = subprocess.run([node, os.path.join(repo, 'tests', 'js', 'china_rates.js')], cwd=repo, capture_output=True, text=True,
+                           encoding='utf-8', errors='replace', timeout=120)
+        self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-4000:])
+
     def test_reference_rates(self):
         """Ориентиры из открытых данных (файл поставки): у каждой строки источник-ссылка; сохраняются с пометкой «ориентир»,
         в расчёте — предупреждение «не ставка по договору»."""

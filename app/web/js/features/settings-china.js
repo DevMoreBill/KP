@@ -32,7 +32,7 @@ class ChinaFreightTab {
           <label class="f"><span>Условия поставки</span><select id="cfTerms" data-nodirty>${this.opts(S.terms, q.terms)}</select></label>
           <label class="f"><span>Расходы в Китае (погрузка, экспорт)</span><span class="cf-m"><input type="text" id="cfExV" data-nodirty inputmode="decimal" value="${esc(q.extraV)}" placeholder="0"><select id="cfExC" data-nodirty aria-label="Валюта">${this.curs(q.extraCur)}</select></span></label>
           <label class="f"><span>Страхование груза, если оплачено</span><span class="cf-m"><input type="text" id="cfInV" data-nodirty inputmode="decimal" value="${esc(q.insV)}" placeholder="0"><select id="cfInC" data-nodirty aria-label="Валюта">${this.curs(q.insCur)}</select></span></label>
-          <button class="btn primary" type="button" data-cfgo>Рассчитать</button></div>
+          <button class="btn primary" type="button" data-cfgo>Рассчитать</button><button class="btn ghost" type="button" data-cfreq title="Текст запроса по полям выше: участки до места прибытия и по РФ — раздельно, валюта, срок действия, что не входит">Запрос экспедитору</button></div>
         <datalist id="cfFromL">${froms.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
         <datalist id="cfToL">${tos.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
         <div id="cfRes"></div></div>
@@ -42,7 +42,7 @@ class ChinaFreightTab {
           Просроченная ставка помечается. ${S.rates.at?`Сохранено ${esc(String(S.rates.at).slice(0,16).replace('T',' '))}${S.rates.by?' · '+esc(S.rates.by):''}.`:''}</p>
         <div class="cf-tw"><table class="cf-t"><thead><tr><th>Откуда</th><th>Куда</th><th>Участок</th><th>Вид</th><th>Ставка</th><th>Валюта</th><th>За</th><th>Мин. сумма</th><th>Срок, дн.</th><th>Действует до</th><th>Экспедитор</th><th>Примечание</th><th></th></tr></thead>
           <tbody id="cfRows">${rows.map(r=>this.row(r)).join('')}</tbody></table></div>
-        <div class="row"><button class="btn ghost" type="button" data-cfadd>+ Строка</button>${(S.ref.rows||[]).length?`<button class="btn ghost" type="button" data-cfref title="${esc((S.ref.note||'')+' Подборка от '+this.day(S.ref.date))}">+ Ориентиры из открытых данных (${S.ref.rows.length})</button>`:''}<span class="sp"></span><button class="btn primary" type="button" data-cfsave>Сохранить ставки</button></div></div>`;
+        <div class="row"><button class="btn ghost" type="button" data-cfadd>+ Строка</button><button class="btn ghost" type="button" data-cftpl title="Лист «Ставки» — текущая таблица (или пример), «Как заполнить», «Запрос экспедитору». Этот же файл экспедитор может заполнить и прислать">Шаблон Excel</button><button class="btn ghost" type="button" data-cfload title="Файл .xlsx или .csv: строки добавятся в таблицу, затем — «Сохранить ставки»">Загрузить из файла</button><input type="file" id="cfFile" accept=".xlsx,.csv" hidden>${(S.ref.rows||[]).length?`<button class="btn ghost" type="button" data-cfref title="${esc((S.ref.note||'')+' Подборка от '+this.day(S.ref.date))}">+ Ориентиры из открытых данных (${S.ref.rows.length})</button>`:''}<span class="sp"></span><button class="btn primary" type="button" data-cfsave>Сохранить ставки</button></div></div>`;
     this.bind(m);
   }
 
@@ -87,10 +87,31 @@ class ChinaFreightTab {
     toast(add.length ? `Добавлено ориентиров: ${add.length}. Проверьте и нажмите «Сохранить ставки»` : 'Ориентиры уже в таблице');
   }
 
+  /** строки таблицы на экране (в том числе ещё не сохранённые) */
+  static tableRows(m){ return [...m.querySelectorAll('#cfRows tr')].map(tr=>Object.fromEntries([...tr.querySelectorAll('[data-c]')].map(i=>[i.dataset.c, i.value.trim()]))).filter(r=>r.from||r.to||r.price); }
+  /** поля расчёта на экране */
+  static form(m){ const v=id=>(m.querySelector(id)||{}).value||''; return { ...this.q, from:v('#cfFrom').trim(), to:v('#cfTo').trim(), dest:v('#cfDest').trim(), kind:v('#cfKind'), kg:v('#cfKg').trim(), m3:v('#cfM3').trim(), terms:v('#cfTerms') }; }
+  /** загрузка файла ставок: строки — в таблицу (сохраняет администратор), пропущенные — с причиной */
+  static async load(m, file){
+    try{ const r=ChinaRateBook.parse(await ChinaRateBook.lines(file));
+      m.querySelector('#cfRows').insertAdjacentHTML('beforeend', r.rows.map(x=>this.row(x)).join(''));
+      if (r.rows.length) StDirty.set(true);
+      m.querySelector('#cfRes').innerHTML=`<p class="${r.bad.length?'warn-t':'muted'}">Из «${esc(file.name)}» добавлено строк: ${r.rows.length}${r.bad.length?`, пропущено: ${r.bad.length} — ${esc(r.bad.slice(0, 8).join('; '))}${r.bad.length>8?'…':''}`:''}. Проверьте таблицу и нажмите «Сохранить ставки».</p>`;
+      toast(`Добавлено строк: ${r.rows.length}`); }
+    catch(err){ toast('Файл не прочитан: '+(err.message||err)); }
+  }
+
   static bind(m){
+    m.querySelector('#cfFile').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if (f) this.load(m, f); };
     m.onclick=async e=>{
       if (e.target.closest('[data-cfadd]')){ m.querySelector('#cfRows').insertAdjacentHTML('beforeend', this.row()); return; }
       if (e.target.closest('[data-cfref]')){ this.addRef(m); return; }
+      if (e.target.closest('[data-cftpl]')){ try{ saveFileA('Ставки_экспедиторов_Китай.xlsx', await ChinaRateBook.template(this.tableRows(m), this.form(m), this.st)); }catch(err){ toast('Шаблон не создан: '+(err.message||err)); } return; }
+      if (e.target.closest('[data-cfload]')){ m.querySelector('#cfFile').click(); return; }
+      if (e.target.closest('[data-cfreq]')){ const t=ChinaRateBook.request(this.form(m), this.st);
+        try{ await navigator.clipboard.writeText(t); toast('Запрос скопирован — вставьте в письмо экспедитору'); }
+        catch(_){ m.querySelector('#cfRes').innerHTML=`<p class="muted">Скопируйте запрос:</p><textarea class="cf-req" rows="12" readonly>${esc(t)}</textarea>`; }
+        return; }
       const del=e.target.closest('[data-cfdel]'); if (del){ del.closest('tr').remove(); StDirty.set(true); return; }
       if (e.target.closest('[data-cfsave]')){
         const rows=[...m.querySelectorAll('#cfRows tr')].map(tr=>Object.fromEntries([...tr.querySelectorAll('[data-c]')].map(i=>[i.dataset.c, i.value.trim()])))
@@ -111,5 +132,97 @@ class ChinaFreightTab {
       catch(err){ out.innerHTML=`<p class="warn-t">${esc(err.message||err)}</p>`; }
       go.disabled=false;
     };
+  }
+}
+
+/** Ставки экспедиторов файлом: шаблон Excel (лист «Ставки» — его же экспедитор заполняет и присылает; «Как заполнить»;
+ *  «Запрос экспедитору»), загрузка .xlsx / .csv (столбцы узнаются по заголовкам, значения — по словам: «фура», «сборный»,
+ *  «до места прибытия», «за кг», «юань»…) и текст запроса экспедитору с обязательным разделением участков (ТК ЕАЭС ст. 40).
+ *  Загруженное — в таблицу на вкладке; сохраняет администратор кнопкой «Сохранить ставки» (сервер проверяет всё ещё раз). */
+class ChinaRateBook {
+  // поле → заголовок столбца шаблона, как узнать заголовок в чужом файле
+  static COLS = [['from', 'Откуда (город в Китае или место прибытия)', /^откуда|отправлен|^from/],
+    ['to', 'Куда (место прибытия в ЕАЭС или город в РФ)', /^куда|назначен|^to$/], ['scope', 'Участок', /участок|scope/],
+    ['kind', 'Вид перевозки', /^вид|перевозк|транспорт|kind/], ['price', 'Ставка', /^ставка|^цена|^стоимост|price|rate/],
+    ['cur', 'Валюта', /валют|cur/], ['unit', 'За (рейс / кг / м³)', /^за($|[\s(])|единиц|unit/], ['min', 'Минимальная сумма', /^мин|миним|min/],
+    ['days', 'Срок в пути, дн.', /срок|дн|days/], ['until', 'Действует до', /действ|до\s*даты|valid|until/],
+    ['who', 'Экспедитор', /экспедит|перевозчик|компан|who/], ['note', 'Примечание', /примеч|коммент|note/]];
+  static MAX = 300;
+
+  static norm(s){ return String(s??'').toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim(); }
+  /** значение из файла → код таблицы ('' — не узнано) */
+  static scope(s){ s=this.norm(s); return /по рф|по росси|после|от места|after/.test(s) ? 'after' : /сквозн|through/.test(s) ? 'through' : !s || /до (места|границ|пункта пропуска)|прибыт|border/.test(s) ? 'border' : ''; }
+  static kind(s){ s=this.norm(s); return /сборн|ltl|lcl/.test(s) ? 'ltl' : /негабарит|трал|tral/.test(s) ? 'tral' : /фура|тент|ftl/.test(s) ? 'ftl' : /контейнер|docker|fcl/.test(s) ? 'docker' : /машин|авто|truck/.test(s) ? 'ftl' : ''; }
+  static unit(s){ s=this.norm(s); return !s || /рейс|контейнер|машин|фур|trip/.test(s) ? 'trip' : /кг|kg|килограм/.test(s) ? 'kg' : /м3|м³|куб|cbm|m3/.test(s) ? 'm3' : ''; }
+  static cur(s){ s=this.norm(s); return /cny|rmb|юан|¥/.test(s) ? 'CNY' : /usd|\$|доллар/.test(s) ? 'USD' : /eur|€|евро/.test(s) ? 'EUR' : /rub|руб|₽|^р$/.test(s) ? 'RUB' : ''; }
+  static num(s){ if (typeof s==='number') return s; const t=String(s??'').replace(/[\s ]/g, '').replace(',', '.').replace(/[^\d.\-]/g, ''); return t ? +t : NaN; }
+  /** дата: число Excel, ДД.ММ.ГГГГ или ГГГГ-ММ-ДД → ГГГГ-ММ-ДД ('' — пусто, null — не дата) */
+  static date(s){
+    if (s==null || String(s).trim()==='') return '';
+    if (/^\d{5}(\.\d+)?$/.test(String(s).trim())){ const d=new Date(Date.UTC(1899, 11, 30)+Math.floor(+s)*864e5); return d.toISOString().slice(0, 10); }
+    let m=/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})$/.exec(String(s).trim()); if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(s).trim()); return m ? m[0] : null;
+  }
+
+  /** строки файла ([[ячейки]]) → {rows, bad:[«строка N: причина»]}; заголовок — первая строка, где есть «Откуда» и «Ставка» */
+  static parse(lines){
+    const hi=lines.findIndex(r=>r.some(c=>/^откуда|^from/.test(this.norm(c))) && r.some(c=>/^ставка|^цена|^стоимост|price|rate/.test(this.norm(c))));
+    if (hi<0) throw new Error('не найдена строка заголовков со столбцами «Откуда» и «Ставка» — возьмите шаблон кнопкой «Шаблон Excel»');
+    const head=lines[hi].map(c=>this.norm(c)), at={};
+    for (const [k, , re] of this.COLS){ const i=head.findIndex((h, j)=>re.test(h) && !Object.values(at).includes(j)); if (i>=0) at[k]=i; }
+    const rows=[], bad=[];
+    for (let n=hi+1; n<lines.length && rows.length<this.MAX; n++){
+      const r=lines[n], v=k=>at[k]==null ? '' : String(r[at[k]]??'').trim();
+      if (!v('from') && !v('to') && !v('price')) continue;
+      const o={ from:v('from'), to:v('to'), scope:this.scope(v('scope')), kind:this.kind(v('kind')), price:this.num(v('price')), cur:this.cur(v('cur')),
+        unit:this.unit(v('unit')), min:v('min') ? this.num(v('min')) : '', days:v('days') ? Math.round(this.num(v('days'))) : '', until:this.date(v('until')), who:v('who'), note:v('note') };
+      const why=[!o.from && '«Откуда»', !o.to && '«Куда»', !(o.price>0) && 'ставка', !o.kind && 'вид перевозки', !o.scope && 'участок', !o.unit && '«За»', !o.cur && 'валюта',
+        o.min!=='' && !(o.min>=0) && 'минимальная сумма', o.days!=='' && !(o.days>=0 && o.days<=365) && 'срок', o.until===null && 'дата «Действует до»'].filter(Boolean);
+      if (why.length) bad.push(`строка ${n+1}: ${why.join(', ')}`); else rows.push(o);
+    }
+    return { rows, bad };
+  }
+
+  /** файл .xlsx / .csv → строки ячеек */
+  static async lines(file){
+    if (/\.xlsx$/i.test(file.name)) return lgReadXlsx(await file.arrayBuffer());
+    const t=(await file.text()).replace(/^﻿/, ''), sep=(t.split('\n')[0].match(/;/g)||[]).length>=(t.split('\n')[0].match(/,/g)||[]).length ? ';' : ',';
+    return t.split(/\r?\n/).map(l=>{ const out=[]; let cur='', q=false;
+      for (let i=0; i<l.length; i++){ const ch=l[i]; if (q){ if (ch==='"' && l[i+1]==='"'){ cur+='"'; i++; } else if (ch==='"') q=false; else cur+=ch; }
+        else if (ch==='"') q=true; else if (ch===sep){ out.push(cur); cur=''; } else cur+=ch; }
+      out.push(cur); return out; }).filter(r=>r.some(c=>c.trim()));
+  }
+
+  /** текст запроса экспедитору по полям расчёта (маршрут, груз, условия) — участки раздельно, срок действия, что включено */
+  static request(q, S){
+    const kind=(S.kinds[q.kind]||'').toLowerCase(), terms=(S.terms[q.terms]||q.terms||'').split(' — ')[0];
+    return ['Здравствуйте! Просим рассчитать перевозку из Китая.',
+      `Маршрут: ${q.from||'(город в Китае)'} → ${q.to||'(пункт пропуска)'}${q.dest?' → '+q.dest:''}.`,
+      `Груз: ${kind}${q.kg?`, вес брутто ${q.kg} кг`:''}${q.m3?`, объём ${q.m3} м³`:''}. Условия поставки: ${terms}.`,
+      'Прошу в ответе:',
+      `1) отдельной суммой — стоимость до места прибытия на территорию ЕАЭС (${q.to||'пункт пропуска'}), включая погрузку, перевалку и оформление на границе;`,
+      `2) отдельной суммой — стоимость по территории ${/казахстан|достык|хоргос/i.test(q.to||'') ? 'ЕАЭС (Казахстан и РФ)' : 'РФ'} от места прибытия${q.dest?' до пункта назначения: '+q.dest:''};`,
+      '3) эти суммы так же раздельно указать в договоре и счёте (ТК ЕАЭС ст. 40 п. 2 — для таможенной стоимости);',
+      '4) валюту, за что ставка (рейс / кг / м³), минимальную сумму, срок в пути и до какой даты действует ставка;',
+      '5) что не входит в ставку (экспортное оформление в Китае, страхование, хранение, простой).',
+      'Удобнее всего — в приложенном файле Excel (лист «Ставки»).'].join('\n');
+  }
+
+  /** шаблон: «Ставки» (текущие строки таблицы или пример), «Как заполнить», «Запрос экспедитору» */
+  static async template(rows, q, S){
+    const H=this.COLS.map(c=>({ v:c[1], s:'head' })), lab=(map, k)=>map[k]||k;
+    const data=(rows.length ? rows : [{ from:'Шанхай', to:'Забайкальск', scope:'border', kind:'ftl', price:21000, cur:'CNY', unit:'trip', days:12, until:'', who:'Экспедитор', note:'пример — замените' }])
+      .map(r=>[r.from, r.to, lab(S.scopes, r.scope||'border'), lab(S.kinds, r.kind), { v:+r.price, s:'tdMoney2' }, r.cur, lab(S.units, r.unit||'trip'),
+        r.min ? { v:+r.min, s:'tdMoney2' } : '', r.days ?? '', r.until ? { v:xlsxDate(r.until), s:'tdDate' } : '', r.who||'', r.note||''].map(c=>typeof c==='object' ? c : { v:c, s:'td' }));
+    const how=[[{ v:'Как заполнить лист «Ставки»', s:'title' }], [],
+      ...[['Откуда / Куда', 'Город в Китае и место прибытия (Забайкальск, Пограничный, Достык, Хоргос…). Для участка «по РФ»: откуда — место прибытия, куда — город в РФ.'],
+        ['Участок', `${Object.values(S.scopes).join(' / ')}. Для таможенной стоимости нужна ставка «до места прибытия» — отдельно от участка по РФ (ТК ЕАЭС ст. 40 п. 2).`],
+        ['Вид перевозки', Object.values(S.kinds).join(' / ')], ['Ставка, Валюта', `Число и валюта: ${S.curs.join(', ')}.`],
+        ['За', `${Object.values(S.units).join(' / ')}. Сборный груз: две строки — «за кг» и «за м³», программа берёт большее.`],
+        ['Минимальная сумма', 'Если есть — в той же валюте.'], ['Действует до', 'Дата ДД.ММ.ГГГГ: после неё ставка в расчёте помечается просроченной.']]
+        .map(([a, b])=>[{ v:a, s:'bold' }, { v:b, s:'text' }])];
+    const req=[[{ v:'Запрос экспедитору', s:'title' }], [], ...this.request(q, S).split('\n').map(l=>[{ v:l, s:'text' }])];
+    return makeXlsx([{ name:'Ставки', cols:[22, 22, 24, 22, 12, 8, 18, 12, 10, 13, 22, 30], rows:[H, ...data], freeze:1 },
+      { name:'Как заполнить', cols:[22, 100], rows:how }, { name:'Запрос экспедитору', cols:[120], rows:req }], 'Ставки экспедиторов Китай');
   }
 }
