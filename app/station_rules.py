@@ -281,6 +281,7 @@ class LayoutValues:
         'pick.dryerFit': (0, 1000),
         'pick.recvFree': (1, 20),
         'pick.recvAny': (1, 20),
+        'pick.oneSup': (0, 50),
         'shell.ins': (0, 300),
         'shell.blockWall': (0, 200),
         'shell.blockFloor': (50, 500),
