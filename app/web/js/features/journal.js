@@ -46,6 +46,7 @@ class JournalRow {
   static menu(r){
     const id=esc(r.id), it=(attrs, text, title)=>`<button type="button" ${attrs}${title?` title="${title}"`:''}>${text}</button>`;
     return `<details class="jr-more" data-id="${id}"><summary class="btn" title="Другие действия с КП" aria-label="Другие действия с КП № ${esc(r.number)}">⋯</summary><div class="menu-l">${[
+      it(`data-jr="${id}"`, 'Повторить КП', 'Новое КП тому же клиенту: позиции те же, дата — сегодня, цены — как сейчас в каталоге'),
       SRV.info&&SRV.info.local===false ? it(`data-a="openDoc" data-id="${id}"`, 'Скачать файл КП (Word)') : it(`data-a="openDoc" data-id="${id}"`, 'Открыть файл КП в Word'),
       r.file&&FEAT.on('mail') ? it(`data-jm="${id}"`, 'Отправить клиенту…', 'Письмо клиенту с файлом КП') : '',
       FEAT.on('kpFiles') ? it(`data-jkf="${id}" data-jn="${esc(r.number)}"`, 'Справочные документы…', 'Паспорта, сертификаты, схемы к КП — в документ КП не входят') : '',
@@ -108,6 +109,7 @@ async function openJournal(){
     const js=e.target.closest('[data-jst]'); if (js){ const r=J.rows.find(x=>x.id===js.dataset.jst); if (r) KpTrack.open(r, tr=>{ r.track=tr; draw(); load(false); }); return; }
     const jm=e.target.closest('[data-jm]'); if (jm){ const r=J.rows.find(x=>x.id===jm.dataset.jm); if (r) MailDlg.open(r.id, r.number, tr=>{ r.track=tr; draw(); }); return; }
     const jkf=e.target.closest('[data-jkf]'); if (jkf){ const r=J.rows.find(x=>x.id===jkf.dataset.jkf); return KpFilesPanel.open(jkf.dataset.jkf, jkf.dataset.jn, {onClose:n=>{ if (r && (r.files||0)!==n){ r.files=n; draw(); } }}); }
+    const jr=e.target.closest('[data-jr]'); if (jr){ d.close(); d.classList.remove('wide'); return KpRepeat.run(jr.dataset.jr); }
     const jv=e.target.closest('[data-jv]'); if (jv) return openKpVersions(jv.dataset.jv, jv.dataset.jn, ()=>{ d.close(); d.classList.remove('wide'); });
     const o=e.target.closest('[data-jo]'), c=e.target.closest('[data-jc]'), ec=e.target.closest('[data-je]'); if(!o&&!c&&!ec) return;
     try{

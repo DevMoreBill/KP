@@ -166,6 +166,20 @@ function morphEl(o, n){
   if (tag==='SELECT'){ const v=n.querySelector('option[selected]')?.value ?? n.querySelector('option')?.value; if (v!=null && o.value!==v) o.value=v; }
 }
 
+// модули, нужные только по кнопке (выгрузка ТЗ, «Нормы станций»), — загружаются при первом открытии, а не со всей программой;
+// адрес с меткой версии — из <template id="lazyJs"> в index.html
+class LazyJs {
+  static P = {};
+  static load(name){
+    if (this.P[name]) return this.P[name];
+    const tpl=document.getElementById('lazyJs'), el=tpl && [...tpl.content.querySelectorAll('script')].find(s=>s.getAttribute('src').split('?')[0].endsWith('/'+name));
+    const src=el ? el.getAttribute('src') : '/web/js/features/'+name;
+    return (this.P[name]=new Promise((res, rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=()=>res();
+      s.onerror=()=>{ delete this.P[name]; s.remove(); rej(new Error('модуль программы не загрузился — проверьте связь с сервером')); };
+      document.head.appendChild(s); }));
+  }
+}
+
 // картинка на странице, файл которой пропал (перемещён, удалён, не скопирован на этот компьютер), —
 // спокойная заглушка «нет фото» вместо значка сломанной картинки
 const IMG_MISS='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120" viewBox="0 0 160 120"><rect width="160" height="120" rx="10" fill="#eef3f9"/><path d="M52 78l20-24 14 16 10-11 18 19z" fill="#c3d2e4"/><circle cx="98" cy="44" r="8" fill="#c3d2e4"/><text x="80" y="104" font-family="sans-serif" font-size="13" text-anchor="middle" fill="#8aa0b8">нет фото</text></svg>');

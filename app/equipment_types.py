@@ -43,6 +43,14 @@ def load_types():
 
 def save_user_types(body):
     data = json.loads(body.decode('utf-8'))
+    if not isinstance(data, dict):
+        raise ValueError('Ожидается {"types": [...]}')
+    if isinstance(data.get('add'), list):
+        # добавить категории к нынешним (новая категория из окна каталога): список целиком не пересылается — категория,
+        # созданная коллегой минутой раньше, не теряется
+        cur = (store().kv_get('types') or {}).get('types') or []
+        add = {str(t.get('id')): t for t in data['add'] if isinstance(t, dict)}
+        data = {'types': [t for t in cur if not (isinstance(t, dict) and str(t.get('id')) in add)] + list(add.values())}
     types = data.get('types')
     if not isinstance(types, list):
         raise ValueError('Ожидается {"types": [...]}')

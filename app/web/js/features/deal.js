@@ -1094,7 +1094,7 @@ function dealBind(dlg){
       if (!(n>=0)){ toast(`Дата раньше события, от которого считается срок (${dlDayRu(+t.dataset.base||0)}) — выберите дату позже`); return dealRender(); }
       setPath(d, t.dataset.dldd, String(n)); const m=/^sup\.(\d+)\./.exec(t.dataset.dldd); if (m) dlSaveSupplier(d.sup[+m[1]]); touch(); return dealRender(); }
     if (t.dataset.xcst!=null){ const d=dlDeal(); d.xc=d.xc||{}; const off={...(d.xc.off||{})}; if (t.checked) delete off[t.dataset.xcst]; else off[t.dataset.xcst]=false; d.xc.off=off; touch(); return dealRender(); }
-    if (t.dataset.costcurI!=null){ S.items[+t.dataset.costcurI].costCur=t.value; if (t.value!=='RUB' && !(rateOf(t.value)>0)) loadCBR(); touchLive(); return dealRender(); }
+    if (t.dataset.costcurI!=null){ S.items[+t.dataset.costcurI].costCur=t.value; if (t.value!=='RUB' && !(rateOf(t.value)>0)) loadCBR(true); touchLive(); return dealRender(); }
     if (t.dataset.kpvat!=null || t.dataset.kprate!=null){ renderForm(); return; }
     if (t.dataset.dl && t.tagName==='SELECT'){ setPath(dlDeal(), t.dataset.dl, t.value); if (!DL.ex) dealRememberDefault(t.dataset.dl, t.value);
       const m=/^sup\.(\d+)\./.exec(t.dataset.dl); if (m && !DL.ex) dlSaveSupplier(dlDeal().sup[+m[1]]); touch(); dealRender(); }

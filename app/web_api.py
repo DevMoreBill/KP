@@ -1158,9 +1158,10 @@ class TrackController(Controller):
     def report(self):
         q = self.q
         d1, d2 = str(q.get('from') or '')[:10], str(q.get('to') or '')[:10] or '9999-12-31'
-        docs = [d for d in map(self._obj, store().kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', '')))
+        docs = [d for d in map(self._obj, store().kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', ''), '', d1, str(q.get('to') or '')[:10]))
                 if d and d1 <= str(d.get('date') or '')[:10] <= d2]
         rows = admin.KpJournal.rows(self.h, docs)
+        states = store().kp_states([r.get('id') for r in rows if isinstance(r, dict) and r.get('id') and not r.get('locked')])
         deal_on = self._features()['deal']   # экономика недоступна — без прибыли
         for r in rows:
             sr, pr = admin.econ_rub(r)
@@ -1170,7 +1171,7 @@ class TrackController(Controller):
                     r.pop(k, None)
             if r.get('locked') or not deal_on:
                 continue
-            st = self._obj(store().kp_get(r.get('id') or '', 'state'))
+            st = self._obj(states.get(r.get('id') or ''))
             r['calc'] = {'vat': st.get('vat'), 'pricing': {k: (st.get('pricing') or {}).get(k) for k in ('cur', 'rates', 'costNoVat')},
                          'items': [{k: x.get(k) for k in ('name', 'qty', 'price', 'disc', 'options', 'cost', 'costCur', 'attrs', 'kit')}
                                    for x in (st.get('items') or []) if isinstance(x, dict)]}
@@ -1445,6 +1446,11 @@ class CrmController(Controller):
             if d:
                 items.insert(0, {k: d.get(k) for k in ('id', 'number', 'title', 'client', 'stage', 'sum', 'expected', 'updated', 'manager')})
         return self.send_json({'items': items, 'current': cur or '', 'stages': Stages.all(store())})
+
+    @route(r'/api/crm/find', 'GET')            # единый поиск программы: сделки по словам (свои; руководитель — все)
+    def find(self):
+        uid, _n, everyone = self.who(self.h)
+        return self.send_json({'items': CrmBoard(store()).find(None if everyone else [uid], str(self.q.get('q') or '')[:200])})
 
     @route(r'/api/crm/deal', 'POST')
     def create(self):

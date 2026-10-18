@@ -52,3 +52,7 @@ dialog.st-confirm.ph-dlg{width:min(760px,calc(100vw - 32px));max-width:none}
 .ph-t th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:6px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card)}
 .ph-t td{padding:7px 8px;border-bottom:1px solid var(--line)}
 .ph-t .num{text-align:right;white-space:nowrap}
+/* цена позиции и каталог (CatPrice): в каталоге сейчас другая цена; повтор КП — что изменилось (KpRepeat) */
+.cp-h{display:inline-block;font-size:12.5px;color:var(--warn-ink,#8A5F00);margin-top:2px}
+.cp-h b{color:var(--ink)}
+.kr-t td.up{color:var(--danger)} .kr-t td.down{color:var(--ok)}

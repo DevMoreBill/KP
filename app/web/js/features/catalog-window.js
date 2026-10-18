@@ -515,7 +515,7 @@ class CatalogWindow {
       const b=JSON.parse(JSON.stringify(typeById($('#ntBase').value)));
       const t={...b, id:'u'+Date.now().toString(36), name, group, item:b.item||name, coverTitle:name, match:''}; delete t.hidden;
       $('#ntSave').disabled=true;
-      try{ await api('/api/types',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({version:1,types:[...userTypesList(), t]})});
+      try{ await api('/api/types',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({version:1,add:[t]})});
         await loadTypes(); catCache.forEach(CatalogIndex.forget); }
       catch(e){ $('#ntSave').disabled=false; return err('Не удалось сохранить категорию: '+(e.message||e)); }
       d.close(); renderForm(); this.redraw(); this.say(`Создана категория «${name}»`); if (then) then(t.id); };
@@ -539,7 +539,7 @@ class CatalogWindow {
       if (Array.isArray(j.types)){
         const add=j.types.filter(t=>t && /^[a-z][a-z0-9_]{1,30}$/.test(t.id||'') && t.name && Array.isArray(t.fields) && t.fields.every(fl=>fl&&fl.key&&fl.label) && !TYPES.some(x=>x.id===t.id));
         if (add.length){ this.setBusy('Добавляю категории: '+add.map(t=>t.name).join(', '));
-          await api('/api/types',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({version:1,types:[...userTypesList(), ...add]})});
+          await api('/api/types',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({version:1,add})});
           await loadTypes(); catCache.forEach(CatalogIndex.forget); nt=add.length; }
       }
       const ex=new Map((await store().list()).map(z=>[z.id,z])); let n=0, pend=0;
@@ -560,6 +560,7 @@ class CatalogWindow {
     const optFor = Number.isInteger(mode.opt) ? mode.opt : null;
     Object.assign(this, { optFor, admin:!!mode.admin && optFor==null, F: optFor!=null ? FO : FI, active:null, limit:CatalogWindow.PAGE, lastCk:null, note:'', busy:'', tab:'' }); this.sel.clear();
     const F=this.F; if (mode.cat!=null){ F.cat=mode.cat; F.f={}; F.rng={}; F.grp=''; }
+    if (mode.q!=null){ F.q=String(mode.q); F.dropQuery(); }
     if (mode.grp!=null){ F.grp=mode.grp; F.cat=''; F.f={}; F.rng={}; F.series=''; }
     const d=this.dlg(); d.classList.remove('navon','pvon','pvwide'); this.panes.loadSize(); this.panes.load();
     d.innerHTML=`<div class="cw-h"><button class="btn cw-navbtn" type="button" data-cw="nav" aria-label="Категории и фильтры" title="Категории и фильтры"><span aria-hidden="true">☰</span><span class="cw-lbl2"> Фильтры</span></button>

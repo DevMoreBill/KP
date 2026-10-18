@@ -8,7 +8,7 @@ function priceHint(x){
   const cs=curSh(kpCur()), d=KPGen.unitDisc(x);
   const disc = d ? `Скидка ${money(d)} ${cs} за ед. · цена для заказчика <b>${money((x.price||0)-d)} ${cs}</b>` : '';
   const rrc = rrcHint(x, (x.price||0)-d);
-  return [disc, rrc, PriceHist.hint(x)].filter(Boolean).join('<br>');
+  return [disc, rrc, CatPrice.hint(x), PriceHist.hint(x)].filter(Boolean).join('<br>');
 }
 
 // цены позиции в прошлых КП (функция priceHist): каталог помнит цену модели в каждом сохранённом КП (последние 50)
@@ -87,7 +87,7 @@ function kpSetCur(cur){
     toast(`Цены переведены в ${cur} по курсу`);
   } else toast('Укажите курс, чтобы перевести цены: сейчас цены не пересчитаны');
   renderForm(); persist(); dealRender();
-  if (cur!=='RUB' && !(rateOf(cur)>0)) loadCBR();
+  if (cur!=='RUB' && !(rateOf(cur)>0)) loadCBR(true);
 }
 
 function roundTo(kop){ const st=Math.round(parseFloat(S.pricing.round||'0.01')*100)||1; return Math.round(kop/st)*st; }
@@ -129,19 +129,22 @@ function applyCalc(x){ if (x.priceManual || !x.cost || marginOf(x)==null) return
 
 let _autoRates=false;
 
-function autoRates(){ const need=[kpCur(),...S.items.filter(x=>x.cost).map(x=>x.costCur||'RUB'),...S.items.flatMap(x=>kitParts(x).filter(p=>p.cost).map(p=>p.costCur||'RUB'))].filter(c=>c!=='RUB'&&!(rateOf(c)>0)); if(need.length && !_autoRates){ _autoRates=true; loadCBR().finally(()=>{_autoRates=false;}); } }
+function autoRates(){ const need=[kpCur(),...S.items.filter(x=>x.cost).map(x=>x.costCur||'RUB'),...S.items.flatMap(x=>kitParts(x).filter(p=>p.cost).map(p=>p.costCur||'RUB'))].filter(c=>c!=='RUB'&&!(rateOf(c)>0)); if(need.length && !_autoRates){ _autoRates=true; loadCBR(true).finally(()=>{_autoRates=false;}); } }
 
-async function loadCBR(){
+/** курс ЦБ: кнопка «Курс ЦБ» — все валюты; onlyEmpty (сама программа: нет курса нужной валюты) — только пустые,
+ *  договорной курс, введённый вручную, не заменяется */
+async function loadCBR(onlyEmpty=false){
   const msgEl=$('#cbrMsg'); if(msgEl) msgEl.textContent='Загружаю курс ЦБ РФ…';
   let r=null, src='', why='';
   const btn=document.querySelector('[data-a="cbr"]'), label=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='Запрашиваю курс…'; }
   try{ r=await api('/api/cbr'); src=r.src||'ЦБ РФ (cbr.ru)'; if(!r.USD){ why=r.error||''; r=null; } }catch(e){ why=String(e.message||e).slice(0,160); }
   if (btn){ btn.disabled=false; btn.textContent=label; }
   if (!r || !r.USD){ const m=$('#cbrMsg'); if(m){ m.textContent='Курс с cbr.ru не получен'+(why?` (${why})`:'')+' — введите вручную ниже.'; m.classList.add('bad-t'); } document.querySelector('details.psettings')?.setAttribute('open',''); document.querySelector('[data-rate]')?.focus(); toast('Курс ЦБ не загружен — введите вручную'); return; }
-  const got=[]; for (const c of ['USD','EUR','CNY']) if (r[c]) { S.pricing.rates[c]=(+r[c]).toFixed(4).replace('.',','); got.push(c); }
+  const got=[]; for (const c of ['USD','EUR','CNY']) if (r[c] && !(onlyEmpty && rateOf(c)>0)) { S.pricing.rates[c]=(+r[c]).toFixed(4).replace('.',','); got.push(c); }
+  if (!got.length) return;
   S.pricing.rateDate=r.date||today(); S.pricing.rateSrc=src; renderForm(); persist(); dealRender();
   got.forEach(c=>{ const el=document.querySelector(`[data-rate="${c}"]`); if(el){ el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1800); } });
-  toast(`Курс ЦБ РФ на ${KPGen.ruDate(S.pricing.rateDate)}: USD ${S.pricing.rates.USD}, EUR ${S.pricing.rates.EUR}, CNY ${S.pricing.rates.CNY}`);
+  toast(`Курс ЦБ РФ на ${KPGen.ruDate(S.pricing.rateDate)}: ${got.map(c=>c+' '+S.pricing.rates[c]).join(', ')}${onlyEmpty&&got.length<3?' (остальные курсы — как были)':''}`);
 }
 
 function pricingBlock(){

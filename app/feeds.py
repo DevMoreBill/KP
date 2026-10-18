@@ -43,7 +43,7 @@ import feed_files
 import images
 import imgfetch
 from maker_logos import MakerLogos
-from storage import Conflict
+from storage import Conflict, WriteBatch
 from config import DATA_DIR
 from defaults import SrvVal
 
@@ -2191,6 +2191,27 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
         def norm(x):        # позиция без служебных полей — сравнить, изменилась ли
             return json.dumps({k: v for k, v in (x or {}).items() if k not in ('updatedAt', '_rev', 'id')}, sort_keys=True, ensure_ascii=False)
 
+        pend = []
+
+        def flush():
+            """Накопленные позиции — одной транзакцией (WriteBatch): потоки скачивания в это время не ждут базу."""
+            nonlocal added, updated
+            with WriteBatch(store, 10 ** 9):
+                for o, old, cid, doc, ch in pend:
+                    try:
+                        store.catalog_put(cid, json.dumps(doc, ensure_ascii=False), by or ('Фид «%s»' % f['name']),
+                                          revs.get(cid) if old else None, commit=False)
+                        added += 0 if old else 1
+                        updated += 1 if old else 0
+                        for c in ch:
+                            (stock_ch if c[0] == 'stock' else price_ch).append(_change(cid, doc, c))
+                    except Conflict as e:
+                        errors.append('%s: позицию изменили во время загрузки (%s) — оставлена как есть, обновится при следующей загрузке'
+                                      % (o['name'][:60], e.by or 'кто-то'))
+                    except Exception as e:
+                        errors.append('%s: %s' % (o['name'][:60], e))
+            pend.clear()
+
         with ThreadPoolExecutor(6) as ex:
             for o, old, doc, ch in ex.map(one, offs):
                 if isinstance(doc, Exception):
@@ -2201,18 +2222,16 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
                     cid = (old or {}).get('id') or _cid(f['id'], o['oid'])
                     if old and norm(old) == norm(doc):
                         same += 1
+                        for c in ch:
+                            (stock_ch if c[0] == 'stock' else price_ch).append(_change(cid, doc, c))
                     else:
-                        store.catalog_put(cid, json.dumps(doc, ensure_ascii=False), by or ('Фид «%s»' % f['name']), revs.get(cid) if old else None)
-                        added += 0 if old else 1
-                        updated += 1 if old else 0
-                    for c in ch:
-                        (stock_ch if c[0] == 'stock' else price_ch).append(_change(cid, doc, c))
-                except Conflict as e:
-                    errors.append('%s: позицию изменили во время загрузки (%s) — оставлена как есть, обновится при следующей загрузке'
-                                  % (o['name'][:60], e.by or 'кто-то'))
+                        pend.append((o, old, cid, doc, ch))
+                        if len(pend) >= WriteBatch.SIZE:
+                            flush()
                 except Exception as e:
                     errors.append('%s: %s' % (o['name'][:60], e))
                 j['done'] += 1
+        flush()
         save()
         logo_save()
         dsave()

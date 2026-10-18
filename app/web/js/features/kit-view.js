@@ -724,7 +724,7 @@ class KitView {
     const lay=plan && plan.level!=='none' ? (plan.level==='error' ? ['bad', plan.assumed ? '✕ Компоновка: проверьте габариты' : '✕ Не помещается в контейнер'] : plan.level==='warn' ? ['warn', '⚠ Компоновка — есть замечания'] : ['on', '✓ Помещается']) : null;
     return `<div class="kit-sum"><span>Закупка изделия${parts.some(p=>p.costCur && p.costCur!=='RUB') ? ' (по курсам КП)' : ''}</span><b>${Number.isFinite(cost) ? money(cost)+' ₽' : 'нет курса валюты — укажите в шаге «Цены»'}</b>
       ${lay ? `<button type="button" class="chip sm ${lay[0]}" data-edtab="layout">${lay[1]} → компоновка</button>` : ''}
-      ${typeof TzOut!=='undefined' ? `<button class="btn ghost sm" type="button" data-a="tzOut" data-i="${i}">Скачать ТЗ на сборку</button>` : ''}
+      <button class="btn ghost sm" type="button" data-a="tzOut" data-i="${i}">Скачать ТЗ на сборку</button>
       ${miss.length ? `<small class="warn-t">не указана закупка: ${miss.map(p=>esc(p.name||'без названия')).join(', ')}</small>` : ''}</div>`;
   }
 

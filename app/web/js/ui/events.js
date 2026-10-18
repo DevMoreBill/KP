@@ -82,7 +82,7 @@ document.addEventListener('click', async e=>{
     case 'kitAdd': case 'kitCat': case 'kitMain': case 'kitCont': case 'kitSys': case 'kitPreset': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (kitAction(a, i, b)==='async') return; break; }
     case 'kitOpen': case 'kitBy': case 'reqPickX': case 'reqReset': case 'kitNeed': case 'kitNeedAll': case 'kitSwap': { const r=KitView.act(a, i, b); if (r==='async' || !r) return; break; }
     case 'drawPick': return DrawPic.pick(i, j, b.dataset.v);
-    case 'tzOut': return TzOut.download(i);
+    case 'tzOut': return LazyJs.load('tz-out.js').then(()=>TzOut.download(i)).catch(e=>toast(e.message));
     case 'stSpot': return IssueSpot.open(i, j);
     case 'xFix': case 'xFixAll': return ExpertFix.act(a, i, b);
     case 'tzLoad': return TzImport.pick(i);
@@ -128,6 +128,7 @@ document.addEventListener('click', async e=>{
     case 'openCatalog': return openCatalog({});
     case 'toPrice': return goStep('price');
     case 'priceHist': return PriceHist.open(i);
+    case 'catPrice': return CatPrice.apply(i);
     case 'saveCat': return saveCatalog(i);
     case 'download': { const r=await download(); if (isMob()) $('#dlmsg')?.scrollIntoView({block:'center'}); return r; }
     case 'partyFind': return partyFind();
@@ -154,6 +155,7 @@ document.addEventListener('click', async e=>{
       const sd=$('#side'); sd.scrollIntoView({behavior:isMob()?'auto':'smooth'}); sd.classList.add('pulse'); setTimeout(()=>sd.classList.remove('pulse'),1600); return; }
     case 'cbr': return loadCBR();
     case 'journal': return openJournal();
+    case 'find': return QuickSearch.open();
     case 'myDay': return MyDay.open();
     case 'dealOpen': return DealCard.open(b.dataset.id);
     case 'myPrefs': return MyPrefs.open();

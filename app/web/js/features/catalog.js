@@ -63,6 +63,7 @@ function renderDatalist(){
   o.innerHTML=[...names].map(n=>`<option value="${esc(n)}">`).join(''); }
 
 function fillFromCat(it, x){
+  RecentModels.add(x);          // «Недавно добавленные модели» в едином поиске
   it.gallery = JSON.parse(JSON.stringify(x.gallery||[])).map(g=>({...g,id:g.id||uid()}));
   if (!x.hint) x={...x, hint:CoverHint.of(x)};
   if (!(x.groups||[]).length) x={...x, groups:groupsFromAttrs(x)};

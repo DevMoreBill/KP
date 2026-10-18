@@ -33,6 +33,7 @@
   <div class="sp"></div>
   <span class="saved" id="saved" aria-live="polite"></span>
   <button class="btn rem-btn" id="btnRem" type="button" hidden aria-label="Напоминания"><span aria-hidden="true">🔔</span> <b id="remN"></b></button>
+  <button class="btn find-btn" type="button" data-a="find" title="Найти КП, клиента, сделку или модель (Ctrl+K)" aria-label="Найти"><span aria-hidden="true">⌕</span><span class="find-l"> Найти</span></button>
   <span id="srvBtns" hidden><button class="btn" type="button" data-a="journal">Журнал КП</button> <button class="btn" type="button" data-a="openCatalog">Каталог</button></span>
   <button class="btn" id="btnNew" type="button">Новое КП</button>
   <button class="btn icon-btn help-btn" type="button" data-a="help" aria-label="Руководство пользователя" title="Руководство пользователя">?</button>
@@ -105,8 +106,6 @@
 <script src="/web/js/features/station-fix.js"></script>
 <script src="/web/js/features/station-doc.js"></script>
 <script src="/web/js/features/docx-writer.js"></script>
-<script src="/web/js/features/tz-out.js"></script>
-<script src="/web/js/features/station-rules-doc.js"></script>
 <script src="/web/js/features/tz-import.js"></script>
 <script src="/web/js/features/ai-autofill.js"></script>
 <script src="/web/js/features/equip-wizard.js"></script>
@@ -115,6 +114,8 @@
 <script src="/web/js/features/template-designer.js"></script>
 <script src="/web/js/features/types-editor.js"></script>
 <script src="/web/js/features/journal.js"></script>
+<script src="/web/js/features/kp-repeat.js"></script>
+<script src="/web/js/features/quick-search.js"></script>
 <script src="/web/js/features/kp-track.js"></script>
 <script src="/web/js/features/kp-drafts.js"></script>
 <script src="/web/js/features/my-day.js"></script>
@@ -161,5 +162,7 @@
 <script src="/web/js/ui/mobile.js"></script>
 <script src="/web/js/ui/datepicker.js"></script>
 <script src="/web/js/main.js"></script>
+<!-- модули по требованию (LazyJs): загружаются, когда их открывают; адреса здесь — чтобы сервер поставил метку версии -->
+<template id="lazyJs"><script src="/web/js/features/tz-out.js"></script><script src="/web/js/features/station-rules-doc.js"></script></template>
 </body>
 </html>

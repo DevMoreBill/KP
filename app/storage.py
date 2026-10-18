@@ -255,6 +255,19 @@ MIGRATIONS = [
      DROP INDEX IF EXISTS catalog_maker_nc; DROP INDEX IF EXISTS catalog_name; DROP INDEX IF EXISTS catalog_feed;
      ALTER TABLE catalog DROP COLUMN feed_id;
      """),
+    # номер версии журнала КП: любая запись в таблицу kp (сохранение, ход сделки, корзина, загрузка) его увеличивает —
+    # журнал держит разобранные описания в памяти и разбирает заново, только когда КП изменились (KpJournal.page)
+    ('2027-13-kp-rev',
+     """
+     INSERT OR IGNORE INTO kv (key, value) VALUES ('datarev:kpj', '1');
+     CREATE TRIGGER IF NOT EXISTS kp_rev_ins AFTER INSERT ON kp BEGIN UPDATE kv SET value = CAST(value AS INTEGER) + 1 WHERE key = 'datarev:kpj'; END;
+     CREATE TRIGGER IF NOT EXISTS kp_rev_upd AFTER UPDATE ON kp BEGIN UPDATE kv SET value = CAST(value AS INTEGER) + 1 WHERE key = 'datarev:kpj'; END;
+     CREATE TRIGGER IF NOT EXISTS kp_rev_del AFTER DELETE ON kp BEGIN UPDATE kv SET value = CAST(value AS INTEGER) + 1 WHERE key = 'datarev:kpj'; END;
+     """,
+     """
+     DROP TRIGGER IF EXISTS kp_rev_del; DROP TRIGGER IF EXISTS kp_rev_upd; DROP TRIGGER IF EXISTS kp_rev_ins;
+     DELETE FROM kv WHERE key = 'datarev:kpj';
+     """),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
@@ -572,6 +585,38 @@ class TxLock:
         return False
 
 
+class WriteBatch:
+    """Много записей пачками: запись в одной транзакции по SIZE штук (загрузка фида — тысячи позиций: отдельная транзакция на
+    каждую втрое медленнее). Между пачками блокировка отпускается — сохранение КП ждёт не дольше одной пачки.
+    with WriteBatch(store) as b: store.catalog_put(..., commit=False); b.step()"""
+    SIZE = 500
+
+    def __init__(self, store, size=None):
+        self.store, self.size, self.n = store, size or self.SIZE, 0
+
+    def __enter__(self):
+        self.store.lock.acquire()
+        return self
+
+    def step(self):
+        self.n += 1
+        if self.n % self.size == 0:
+            self.store.conn().commit()
+            self.store.lock.release()
+            self.store.lock.acquire()
+
+    def __exit__(self, et, ev, tb):
+        try:
+            c = self.store.conn()
+            if et is None:
+                c.commit()
+            elif c.in_transaction:
+                c.rollback()
+        finally:
+            self.store.lock.release()
+        return False
+
+
 class Store:
     def __init__(self, path):
         self.path = path
@@ -645,7 +690,7 @@ class Store:
         r = self.one('SELECT doc, rev FROM catalog WHERE id=?', (cid,))
         return (with_rev(r[0], r[1]) if rev else r[0]) if r else None
 
-    def catalog_put(self, cid, text, by='', base_rev=None):
+    def catalog_put(self, cid, text, by='', base_rev=None, commit=True):
         doc = json.loads(text)
         doc['id'] = cid
         doc.pop('_rev', None)
@@ -659,7 +704,8 @@ class Store:
                       (cid, json.dumps(doc, ensure_ascii=False), json.dumps(light_of(doc), ensure_ascii=False),
                        doc.get('name', ''), a.get('cat', ''), a.get('maker', ''), _now(), rev, str(by or '')[:120], seq, cat_search(doc), feed_of(doc)))
             c.execute('DELETE FROM catalog_gone WHERE id=?', (cid,))
-            c.commit()
+            if commit:
+                c.commit()
         return rev
 
     def _cat_seq(self, c):
@@ -1207,7 +1253,7 @@ class Store:
                       + (tr, (td.get('status') if isinstance(td, dict) else None) or None, (fu.get('date') if not fu.get('done') else None) or None))
             c.commit()
 
-    def kp_page(self, q='', author='', limit=50, offset=0, kind='', status=''):
+    def kp_page(self, q='', author='', limit=50, offset=0, kind='', status='', d1='', d2=''):
         """Журнал КП постранично: поиск по номеру, получателю, ИНН, автору, позициям и номеру закупки; фильтр по автору,
         виду КП (kind: tender — для тендера, std — обычные) и ходу сделки (status: new, sent, work, won, lost; open — не закрытые).
         Ход сделки (track) приходит в описании КП полем track."""
@@ -1228,15 +1274,26 @@ class Store:
         if author:
             where.append('manager = ?')
             args.append(author)
+        if d1 or d2:                          # дата КП — в столбце kdate (ГГГГ-ММ-ДД)
+            where.append('substr(kdate, 1, 10) BETWEEN ? AND ?')
+            args += [str(d1 or '')[:10], str(d2 or '9999-12-31')[:10]]
         w = ' WHERE ' + ' AND '.join(where)
         total = self.one('SELECT COUNT(*) FROM kp' + w, args)[0]
         rows = self.all('SELECT meta, track FROM kp' + w + ' ORDER BY ' + KP_ORDER + ' LIMIT ? OFFSET ?', args + [int(limit), int(offset)])
         return total, [with_track(m, t) for m, t in rows]
 
-    def kp_metas_where(self, q='', author='', kind='', status=''):
-        """Все описания КП под фильтром — для итогов журнала (сумма, прибыль)."""
-        total, rows = self.kp_page(q, author, 10 ** 9, 0, kind, status)
+    def kp_metas_where(self, q='', author='', kind='', status='', d1='', d2=''):
+        """Все описания КП под фильтром — для итогов журнала (сумма, прибыль) и отчёта за период."""
+        total, rows = self.kp_page(q, author, 10 ** 9, 0, kind, status, d1, d2)
         return rows
+
+    def kp_states(self, ids):
+        """{id КП: состояние строкой} — одним запросом на 500 КП (отчёт по позициям), а не запросом на каждое."""
+        out = {}
+        for i in range(0, len(ids), 500):
+            part = ids[i:i + 500]
+            out.update(self.all('SELECT id, state FROM kp WHERE id IN (%s)' % ','.join('?' * len(part)), tuple(part)))
+        return out
 
     # ---------- ход сделки по КП (kp_track.py)
     def kp_track_get(self, kid):

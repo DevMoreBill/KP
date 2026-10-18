@@ -530,6 +530,26 @@ class KpJournal:
             return '[]'          # без разбора нельзя убрать чужую экономику — лучше пусто, чем лишнее
         return json.dumps(cls.rows(h, rows), ensure_ascii=False)
 
+    _cache = {}          # (версия журнала, поиск, автор, вид) → разобранные описания КП; последние 8 отборов
+    _lock = threading.Lock()
+
+    @classmethod
+    def parsed(cls, store, q, author, kind):
+        """Описания КП под отбором, разобранные один раз на версию журнала (datarev:kpj растёт при любой записи в kp):
+        прокрутка журнала и повторные открытия не разбирают тысячи описаний заново."""
+        key = (store.data_rev('kpj'), str(q), str(author), str(kind))
+        with cls._lock:
+            hit = cls._cache.get(key)
+        if hit is not None:
+            return hit
+        rows = [d for d in map(_loads, store.kp_metas_where(q, author, kind)) if isinstance(d, dict)]
+        with cls._lock:
+            cls._cache = {k: v for k, v in cls._cache.items() if k[0] == key[0]}
+            while len(cls._cache) >= 8:
+                cls._cache.pop(next(iter(cls._cache)))
+            cls._cache[key] = rows
+        return rows
+
     @classmethod
     def page(cls, h, store, q):
         """Журнал КП постранично: поиск и автор — в базе; итоги (сумма, прибыль) — по всему отбору."""
@@ -537,8 +557,7 @@ class KpJournal:
             limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, min(int(q.get('offset') or 0), 10 ** 9))
         except ValueError:
             limit, offset = 50, 0
-        metas = store.kp_metas_where(q.get('q', ''), q.get('author', ''), q.get('kind', ''))
-        rows = cls.rows(h, [d for d in map(_loads, metas) if isinstance(d, dict)])     # каждое описание разбирается один раз
+        rows = cls.rows(h, [dict(d) for d in cls.parsed(store, q.get('q', ''), q.get('author', ''), q.get('kind', ''))])
         # воронка — по всему отбору без фильтра статуса: сколько КП и на какую сумму в каждом статусе
         funnel = {}
         for r in rows:
@@ -777,7 +796,11 @@ def guard(h, store, m, path):
                            {k: new.get(k) for k in ('code', 'duty')})
     if path == '/api/types' and m == 'PUT':
         stored = {t.get('id'): t for t in (store.kv_get('types') or {}).get('types', []) if isinstance(t, dict)}
-        sent = _body_obj(h).get('types')
+        body = _body_obj(h)
+        if isinstance(body.get('add'), list):          # только добавление категорий — ничего не удаляется
+            return lambda: log(h, store, 'edit_types', 'types', 'user_types', None,
+                               {'added': [t.get('name') for t in body['add'] if isinstance(t, dict)]})
+        sent = body.get('types')
         new = {str(t.get('id')) for t in (sent if isinstance(sent, list) else []) if isinstance(t, dict)}
         try:
             from equipment_types import load_types_builtin
@@ -1479,6 +1502,15 @@ class AdminApi:
         img_dir = os.path.join(data_dir, 'img')
         if sub == 'maint' and m == 'GET':
             return self.ok(mt.summary(st, data_dir))
+        if sub == 'maint/health':                  # проверка «здоровья» базы: последняя (GET) или сейчас (POST)
+            import config
+            from db_health import DbHealth
+            hc = DbHealth(st, config.DATA_DIR, config.DOCS_DIR)
+            if m == 'POST':
+                res = hc.run()
+                self.log('db_health', 'db', 'health', None, {k: (v.get('n') if isinstance(v, dict) else v) for k, v in res.items()})
+                return self.ok(res)
+            return self.ok(hc.last())
         if sub == 'maint/overview' and m == 'GET':      # сводка над вкладкой «База и копии»
             from admin_overview import DbOverview
             return self.ok(DbOverview(st, data_dir).get())
@@ -1633,6 +1665,9 @@ class AdminApi:
         n = 0
         for eid in ids:
             data = self.st.trash_put(etype, str(eid), titles.get(eid, str(eid)), actor(self.h, True)[1])
+            if data and etype == 'kp':
+                from crm import DealBook
+                DealBook.kp_moved(self.st, str(eid), actor(self.h, True)[1])      # сумма сделки — без удалённого КП
             self.log('delete_' + etype, etype, eid, {'title': titles.get(eid, '')} if data else None, None,
                      result='success' if data else 'failed')
             n += bool(data)
@@ -1915,6 +1950,26 @@ class AdminApi:
         self.log('import_db', 'db', 'sqlite', None, {'bytes': len(data), 'file': rep['file'], 'backup': bak, 'catalog': rep['catalog'], 'kp': rep['kp']})
         return rep
 
+    @staticmethod
+    def _limits_ok(x):
+        from storage import DocLimits
+        try:
+            DocLimits.check(x, 'Карточка')
+            return True
+        except ValueError:
+            return False
+
+    def _dup_in_file(self, x, seen, add=False):
+        """Повтор менеджера внутри одного файла (те же ключи, что manager_dup для базы). → что совпало или ''."""
+        what = {'name': 'фамилия и имя', 'email': 'e-mail', 'mobile': 'мобильный телефон', 'ext': 'добавочный номер'}
+        keys = self.st.manager_keys(x)
+        if add:
+            for f in what:
+                if keys.get(f):
+                    seen.setdefault((f, keys[f]), x.get('id'))
+            return ''
+        return next((what[f] for f in what if keys.get(f) and seen.get((f, keys[f])) not in (None, x.get('id'))), '')
+
     def import_(self, d, apply, sections=None, mode='all', fmt='json'):
         """Проверка схемы и предпросмотр (что добавится / обновится); apply — запись после копии базы.
         Ничего не удаляется. Журнал действий не импортируется. mode «edits» (только изменённое в файле): запись, которую в
@@ -1979,9 +2034,22 @@ class AdminApi:
                    or not re.match(r'^[A-Za-z0-9_-]{1,64}$', str(x.get('id')))]
             errors += ['%s: запись %d без обязательных полей %s' % (s, i + 1, ', '.join(req[s])) for i in bad[:5]]
             # то, на чём запись споткнулась бы посередине загрузки, — видно уже в предпросмотре и пропускается
-            more = []
+            more, seen = [], {}
             for i, x in enumerate(rows):
                 if i in bad:
+                    continue
+                if s == 'catalog' and 'attrs' in x and not isinstance(x['attrs'], (dict, type(None))):
+                    more.append(i)
+                    errors.append('Позиция «%s»: параметры не в том виде — пропущено' % str(x.get('name'))[:80])
+                elif s == 'suppliers' and not self._limits_ok(x):
+                    more.append(i)
+                    errors.append('Поставщик «%s»: карточка не в том виде — пропущено' % str(x.get('name'))[:80])
+                elif s == 'managers' and self._dup_in_file(x, seen):
+                    more.append(i)
+                    errors.append('Менеджер «%s»: повторяется в файле (%s) — пропущено' % (x.get('name'), self._dup_in_file(x, seen)))
+                if s == 'managers':
+                    self._dup_in_file(x, seen, add=True)
+                if i in more:
                     continue
                 if s == 'kp' and not st.kp_import_ok(x):
                     more.append(i)
@@ -2015,22 +2083,31 @@ class AdminApi:
                       'invalid': len(bad)}
             if edits:
                 rep[s].update(same=same, conflict=conf)
+            def put(fn, x):
+                """Запись одной строки: ошибка — в отчёт, остальные записываются (загрузка не обрывается посередине)."""
+                try:
+                    fn(x)
+                except (ValueError, TypeError) as e:
+                    errors.append('%s «%s»: не записано — %s' % (s, str(x.get('name') or x.get('number') or x.get('id'))[:80], str(e)[:160]))
+
             if apply:
                 if s == 'catalog':
-                    for x in ok:
+                    def cat_put(x):
                         y = {k: v for k, v in x.items() if k not in ('_light', 'st', 'pricesCount')}
-                        if keep and x['id'] in exist[s]:
+                        if keep and x['id'] in exist['catalog']:
                             y = SupplierScope.merge(y, _loads(st.catalog_get(x['id'])) or {}, keep)
                         st.catalog_put(x['id'], json.dumps(y, ensure_ascii=False))
+                    for x in ok:
+                        put(cat_put, x)
                 elif s == 'kp':
                     for x in ok:
-                        st.kp_import(x)
+                        put(st.kp_import, x)
                 elif s == 'managers':
                     for x in ok:
-                        st.manager_put(x['id'], json.dumps(x, ensure_ascii=False))
+                        put(lambda x: st.manager_put(x['id'], json.dumps(x, ensure_ascii=False)), x)
                 elif s == 'suppliers':
                     for x in ok:
-                        st.supplier_put(x['id'], x, by)
+                        put(lambda x: st.supplier_put(x['id'], x, by), x)
                     customs = sec[s].get('customs') if isinstance(sec[s].get('customs'), dict) else {}
                     now = st.customs_all() if edits else {}
                     for key, c in customs.items():
@@ -2040,7 +2117,7 @@ class AdminApi:
                             st.customs_put(key, c.get('code'), c.get('duty'), c.get('note'), by, c.get('name') or '')
                 else:
                     for x in ok:
-                        st.client_put(x['id'], x)
+                        put(lambda x: st.client_put(x['id'], x), x)
         if apply and 'settings' in want and isinstance(sec['settings'], dict):
             ProgramSettings(st).apply(sec['settings'])
         if apply:

@@ -18,7 +18,9 @@ class DealCard {
     CrmTask.bind(m.d, ()=>this.reload());
   }
   static async reload(){ try{ this.d=await api('/api/crm/deal/'+this.d.id); }catch(e){ return toast('Не обновилось: '+e.message); } this.changed=true; this.render(); }
-  static render(){ if (!this.m) return; const sc=this.m.d.scrollTop; this.m.d.innerHTML=this.html(); this.m.d.scrollTop=sc; }
+  /** перерисовка на месте (morph): поле, в котором сейчас печатают, сохраняет набранное (ответ сервера пришёл позже) */
+  static render(){ if (!this.m) return; const a=document.activeElement, f=a && this.m.d.contains(a) && (a.matches('input,textarea')) ? a : null, v=f ? f.value : null;
+    morph(this.m.d, this.html()); if (f && f.isConnected && f.value!==v) f.value=v; }
   static stages(){ return this.d.stages||CrmData.stages(); }
   static html(){
     const d=this.d, S_=this.stages(), open=S_.filter(s=>!s.closed), i=open.findIndex(s=>s.key===d.stage), closed=d.stage==='won'||d.stage==='lost';
@@ -59,7 +61,11 @@ class DealCard {
     if (h.what==='edit') return 'изменено: '+(h.fields||[]).map(f=>({title:'название', client:'клиент', expected:'ожидаемая дата', sum:'сумма', note:'заметка'})[f]||f).join(', ');
     return '';
   }
-  static async save(body){
+  static q=Promise.resolve();      // сохранения — по очереди: каждое со свежим номером правки (иначе поле и кнопка этапа
+                                   // подряд конфликтовали бы сами с собой)
+  static save(body){ const r=this.q.then(()=>this._save(body)); this.q=r.catch(()=>{}); return r; }
+  static async _save(body){
+    if (!this.d) return false;
     try{ this.d=await api('/api/crm/deal/'+this.d.id, {method:'PUT', headers:{'Content-Type':'application/json; charset=utf-8', 'X-KP-Rev':String(this.d.rev)}, body:JSON.stringify(body)});
       this.changed=true; return true; }
     catch(e){ toast('Не сохранено: '+e.message); try{ this.d=await api('/api/crm/deal/'+this.d.id); }catch(_){} return false; }
@@ -160,7 +166,7 @@ class DealPick {
     if (!L.length) return '';
     const st=k=>(C.stages||[]).find(s=>s.key===k)?.label||k;
     const opt=x=>`<option value="${esc(x.id)}"${x.id===sel?' selected':''}>№ ${esc(x.number)} · ${esc(x.title||x.client)} — ${esc(st(x.stage))}${x.id===cur?' (сейчас)':''}</option>`;
-    return `<div class="csec dp"><p class="sub">Сделка${tip('<p>Все КП по одной задаче клиента (объект, закупка) собираются в одну сделку — в «Кабинете» видно сумму, этап и дела по ней.</p><p>Выберите сделку, к которой относится это КП, или оставьте новую.</p>')}</p>
+    return `<div class="csec deal-pick"><p class="sub">Сделка${tip('<p>Все КП по одной задаче клиента (объект, закупка) собираются в одну сделку — в «Кабинете» видно сумму, этап и дела по ней.</p><p>Выберите сделку, к которой относится это КП, или оставьте новую.</p>')}</p>
       <div class="row dp-r"><select data-p="dealId" aria-label="Сделка для этого КП">${cur?'':`<option value=""${sel?'':' selected'}>Новая сделка</option>`}${L.map(opt).join('')}${cur?`<option value="new"${sel==='new'?' selected':''}>Отдельная новая сделка</option>`:''}</select>
       ${sel&&sel!=='new'?`<button class="btn ghost" type="button" data-a="dealOpen" data-id="${esc(sel)}">Открыть сделку</button>`:''}</div></div>`;
   }

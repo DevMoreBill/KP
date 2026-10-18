@@ -67,7 +67,7 @@ class Attention:
 
     def items(self):
         out = []
-        for check in (self._catalog, self._backup, self._mirror, self._update, self._task, self._errors, self._moderation, self._mail, self._ai, self._disk, self._login, self._trash):
+        for check in (self._catalog, self._backup, self._mirror, self._update, self._task, self._errors, self._moderation, self._mail, self._ai, self._disk, self._login, self._trash, self._health):
             try:
                 out.extend(check())
             except Exception:        # одна проверка не должна ломать обзор
@@ -169,6 +169,10 @@ class Attention:
                      'text': 'Сервер отдела работает без входа по паролю: любой компьютер в сети видит экономику и черновики всех '
                              'менеджеров и закупку в каталоге. Задайте менеджерам пароли и включите вход'}]
         return []
+
+    def _health(self):
+        from db_health import DbHealth
+        return DbHealth(self.store).attention()
 
     def _trash(self):
         n = len(self.store.trash_list())

@@ -249,20 +249,27 @@ async function download(){
     else if (!S.authorId && dealAllowed()) S.authorId=meId()||S.managerId||'';   // КП прежней версии: автор — тот, кто его ведёт
     const blob = await renderDocx(St, pack, pack.settings);
     btn.textContent='Сохраняю в журнал…';
-    await syncCatalog(S.number); await saveClient(true);
+    Drafts.paused=true;                       // автосохранение черновика не вмешивается в сохранение КП
     for (const it of S.items){ it.photo=await ImgUpload.put(it.photo, imgPlace(it,'photo')); it.logo=await ImgUpload.put(it.logo, imgPlace(it,'logo')); if (it.gallery) for (const g of it.gallery){ const u=await ImgUpload.put(g, imgPlace(it,'gallery',g)); if(u) g.src=u.src; }
       for (const p of kitParts(it)){ if (p.photo) p.photo=await ImgUpload.put(p.photo, imgPlace(it,'gallery',{caption:p.name})); if (p.draw) p.draw=await DrawPic.upload(p.draw, it, p.name); }
       if (it.draw) it.draw=await DrawPic.upload(it.draw, it); }
     if (!S.managerId && String(S.manager.name||'').trim()) await saveManager(true);   // новый менеджер попадает в справочник
     if (!S.authorId) S.authorId=meId()||S.managerId||'';
     const t=totalsS(), fn=fileName();
+    if (!S.createdAt) S.createdAt=new Date().toISOString();   // когда КП создано (для журнала)
+    // сначала — состояние КП в журнал (с номером правки): если КП успел пересохранить коллега и менеджер выбрал «Отмена»,
+    // ни файл Word, ни цены каталога ещё не тронуты. Файл и каталог — только после того, как журнал принял КП
+    const putState=async()=>{ const clean=Drafts.clean();
+      const sr=await api(`/api/kp/${S.kpId}/state`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8',...(S._rev!=null?{'X-KP-Rev':String(S._rev)}:{})},body:JSON.stringify(clean)});
+      if (sr && sr.rev!=null) S._rev=sr.rev;
+      return Drafts.sig(clean); };
+    let sig=await putState();
+    const ids=JSON.stringify(S.items.map(x=>[x.catId, (x.options||[]).map(o=>o.catId)]));
+    await syncCatalog(S.number); await saveClient(true);
+    if (JSON.stringify(S.items.map(x=>[x.catId, (x.options||[]).map(o=>o.catId)]))!==ids) sig=await putState();   // новые позиции каталога — их коды в КП
     // имя файла может получить «(2)», если такое уже занято другим КП (два КП по одному тендеру)
     const dr=await api(`/api/kp/${S.kpId}/docx?name=${encodeURIComponent(fn)}&dir=${encodeURIComponent(managerFolder())}`,{method:'PUT',body:blob});
     const fnSaved=(dr && dr.rel ? String(dr.rel).split('/').pop() : '') || fn; S._file=fnSaved;
-    if (!S.createdAt) S.createdAt=new Date().toISOString();   // когда КП создано (для журнала)
-    const clean=JSON.parse(JSON.stringify(S,(k,v)=>k.startsWith('_')?undefined:v));
-    const sr=await api(`/api/kp/${S.kpId}/state`,{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8',...(S._rev!=null?{'X-KP-Rev':String(S._rev)}:{})},body:JSON.stringify(clean)});
-    if (sr && sr.rev!=null) S._rev=sr.rev;
     const meta={ id:S.kpId, number:S.number, date:S.date, client:S.client, clientInn:S.clientInn||'', sum:t.sum, units:t.units, positions:S.items.length,
       items:S.items.map(x=>x.name).slice(0,3), file:fnSaved, manager:S.manager.name, tender: tenderNo() ? {number:tenderNo(), url:tenderUrl()} : undefined, managerPost:S.manager.position||'',
       createdAt:S.createdAt, savedAt:new Date().toISOString(), econ:kpEconomics(), authorId:S.authorId||'', managerId:S.managerId||'', deal:dealSummary(), validUntil:KpDate.validUntil()||undefined,
@@ -272,7 +279,8 @@ async function download(){
     // связь с Битрикс24: Excel экономики сделки собирается здесь (в браузере автора) и уходит в ленту сделки
     if (mr && mr.bx && S.deal && S.deal.touched && dealAllowed()){ const kid=S.kpId;
       dealXlsx({blob:true}).then(b=>b && api(`/api/kp/${kid}/econ`, {method:'PUT', body:b})).catch(e=>console.warn('Экономика для Битрикс24 не отправлена:', e)); }
-    Drafts.saved();      // КП в журнале — черновик не нужен
+    await Drafts.saved(sig);      // КП в журнале — черновик не нужен; правки, сделанные во время сохранения, остаются несохранёнными
+    if (Drafts.sig(Drafts.clean())!==sig) toast('Изменения, сделанные во время сохранения, в КП не вошли — сохраните КП ещё раз');
     // PDF рядом с .docx — по галочке «Также сохранить в PDF»
     let pdfOk=false, pdfErr='';
     if (pdfWanted()){ btn.textContent='Создаю PDF…'; try{ await saveKpPdf(); pdfOk=true; }catch(e){ pdfErr=e.message||String(e); } }
@@ -285,5 +293,6 @@ async function download(){
     msg.className='msg err';
     msg.textContent = e&&e.code==='declined' ? 'Сохранение отменено.' : e&&e.code==='rate_limited' ? 'Окно сохранения уже открыто.' : 'Не удалось собрать файл: '+(e&&e.message||e);
   }
+  Drafts.paused=false;
   download.busy=false; all.forEach(b=>{ b.disabled=false; }); btn.textContent=S.kpId?'Сохранить изменения КП № '+S.number:'Сохранить КП';
 }

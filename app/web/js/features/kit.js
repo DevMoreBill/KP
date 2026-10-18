@@ -550,5 +550,5 @@ document.addEventListener('change', e=>{ const t=e.target;
       const L=StationGeo.FLEX[p.ctype] ? StationGeo.len(t.value) : null; if (L){ o.lenFix=L; o.size=''; o.sizeAuto=true; } }
     contApply(p, o); StationSize.apply(it); stationFill(it); stationAutoName(it); renderForm(); persist(); return; }
   if (t.dataset.kitcur!=null){ const [i,j]=t.dataset.kitcur.split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
-    p.costCur=t.value; if (t.value!=='RUB' && !(rateOf(t.value)>0)) loadCBR(); kitSync(it); renderForm(); persist(); if (typeof dealRender==='function') dealRender(); return; }
+    p.costCur=t.value; if (t.value!=='RUB' && !(rateOf(t.value)>0)) loadCBR(true); kitSync(it); renderForm(); persist(); if (typeof dealRender==='function') dealRender(); return; }
   if (/^items\.\d+\.kit\.parts\.\d+\.qty$/.test(t.dataset.p||'')){ const it=S.items[+t.dataset.p.split('.')[1]]; kitSync(it); renderForm(); persist(); } });

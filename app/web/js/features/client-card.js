@@ -32,7 +32,7 @@ class ClientCard {
         ${this.tile('Последнее КП', K[0]?esc(KpDate.ddmm(K[0].date)):'—', K[0]?esc(jShort(K[0].manager||'')):'')}</div>
       <div class="cc-g">
         <section class="cc-kps"><p class="sub">КП клиента${r.managers&&r.managers.length?` <span class="muted">· ведут: ${r.managers.slice(0,3).map(x=>esc(jShort(x))).join(', ')}</span>`:''}</p>
-          <div class="cc-kl">${K.length?K.map(x=>`<div class="md-r"><span class="md-n">№ ${esc(x.number)}</span><div><b>${esc(KpDate.ddmm(x.date))} · ${money(ClientCard.sum(x))} ${esc(curSh((x.econ&&x.econ.cur)||'RUB'))}</b><span class="muted">${esc((x.items||[])[0]||'')}${x.positions>1?` и ещё ${x.positions-1}`:''} · ${esc(jShort(x.manager||''))}</span>${tr?`<span class="md-st">${KpTrack.chip(x)}</span>`:''}</div><button class="btn sm" type="button" data-cco="${esc(x.id)}">Открыть</button></div>`).join(''):'<p class="empty">КП этому клиенту ещё не было.</p>'}</div></section>
+          <div class="cc-kl">${K.length?K.map(x=>`<div class="md-r"><span class="md-n">№ ${esc(x.number)}</span><div><b>${esc(KpDate.ddmm(x.date))} · ${money(ClientCard.sum(x))} ${esc(curSh((x.econ&&x.econ.cur)||'RUB'))}</b><span class="muted">${esc((x.items||[])[0]||'')}${x.positions>1?` и ещё ${x.positions-1}`:''} · ${esc(jShort(x.manager||''))}</span>${tr?`<span class="md-st">${KpTrack.chip(x)}</span>`:''}</div><button class="btn sm ghost" type="button" data-ccr="${esc(x.id)}" title="Новое КП этому клиенту: позиции те же, дата — сегодня, цены — как сейчас в каталоге">Повторить</button><button class="btn sm" type="button" data-cco="${esc(x.id)}">Открыть</button></div>`).join(''):'<p class="empty">КП этому клиенту ещё не было.</p>'}</div></section>
         <div class="cc-side">
           <section><p class="sub">Контакты</p>${cons.length?cons.slice(0,8).map(x=>`<div class="cc-c"><b>${esc(x.name)}</b><span class="muted">${esc([x.post, x.phone, x.email].filter(Boolean).join(' · '))}</span></div>`).join(''):'<p class="empty">Контакты появятся после сохранения КП с контактным лицом.</p>'}</section>
           ${objs.length?`<section><p class="sub">Объекты</p>${objs.slice(0,6).map(x=>`<div class="cc-c"><b>${esc(x.purpose||'Объект')}</b><span class="muted">${esc(x.address||'')}</span></div>`).join('')}</section>`:''}
@@ -45,6 +45,7 @@ class ClientCard {
       m.$('#ccNotes').innerHTML=this.notesHtml(x.notes||[], me); return true; }catch(e){ toast('Не сохранено: '+(e.message||e)); return false; } };
     m.d.onclick=async e=>{ const t=e.target;
       if (t.closest('[data-x]')) return m.close();
+      const kr=t.closest('[data-ccr]'); if (kr){ m.close(); return KpRepeat.run(kr.dataset.ccr); }
       const ko=t.closest('[data-cco]'); if (ko){ m.close(); return KpLoader.byId(ko.dataset.cco).catch(err=>toast('Не открылось: '+err.message)); }
       const st=t.closest('[data-jst]'); if (st){ const row=K.find(x=>x.id===st.dataset.jst); if (row){ m.close(); KpTrack.open(row); } return; }
       if (t.closest('[data-ccna]')){ const v=m.$('#ccN').value.trim(); if (!v) return m.$('#ccN').focus(); if (await note({text:v})) m.$('#ccN').value=''; return; }

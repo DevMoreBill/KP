@@ -302,6 +302,15 @@ def purge_images(store, img_dir, images=None):
     return {'deleted': n, 'bytes': size}
 
 
+class DbHealthRun:
+    """Еженедельная проверка «здоровья» базы (db_health.DbHealth) — папка готовых КП из настроек программы."""
+    @staticmethod
+    def weekly(store):
+        import config
+        from db_health import DbHealth
+        return DbHealth(store, config.DATA_DIR, config.DOCS_DIR).weekly()
+
+
 # ---------------------------------------------------------------- запуск
 class Background:
     """Фоновые задачи сервера: плановое обслуживание базы (при запуске и раз в сутки) и задачи по расписанию.
@@ -323,7 +332,8 @@ class Background:
                              ('архив журнала действий', lambda: archive_audit(store, data_dir)),
                              ('кэш проверок', lambda: purge_checks(store)),
                              ('документы КП, удалённых навсегда', lambda: KpFiles(store, data_dir).purge()),
-                             ('обслуживание базы', lambda: db_maintenance(store))):
+                             ('обслуживание базы', lambda: db_maintenance(store)),
+                             ('проверка базы', lambda: DbHealthRun.weekly(store))):
                 try:
                     fn()
                 except Exception as e:

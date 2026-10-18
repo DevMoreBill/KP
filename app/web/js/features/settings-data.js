@@ -201,8 +201,9 @@ class BackupTab {
     const c=(BackupTab.ov||{}).counts||{}, N=[['catalog','Позиций каталога'],['kp','КП'],['clients','Клиентов'],['managers','Менеджеров'],['deals','Сделок']].filter(([k])=>c[k]!=null);
     p.innerHTML=`<div class="st-card" id="stMaint"><p class="muted">Загружаю…</p></div>
       ${N.length?`<div class="st-card"><p class="sub">Записей в базе</p><div class="bk-nums">${N.map(([k,l])=>`<div><b>${Fmt.num(c[k])}</b><small>${l}</small></div>`).join('')}</div></div>`:''}
-      <div id="stMigr"></div>`;
+      <div class="st-card" id="stHealth"></div><div id="stMigr"></div>`;
     DbMaint.render(p.querySelector('#stMaint'), BackupTab.ov, 'service');
+    DbHealthCard.open(p.querySelector('#stHealth'));
     stMigr(p.querySelector('#stMigr'));
   }
 
@@ -222,6 +223,28 @@ class BackupTab {
       const ENT={auto:'автокопия', mirror:'во вторую папку', vacuum:'', sqlite:'вся база'}, ids=v=>String(v||'').split(',').map(k=>DataTransfer.NAMES[k]||k).join(', '), what=x=>[x.entityId in ENT ? ENT[x.entityId] : ids(x.entityId), A(x).supplier||'', A(x).file||'', A(x).path||''].filter(Boolean).map(esc).join(' · ');
       box.innerHTML=ops.length ? `<table class="pv-t bk-hist"><thead><tr><th>Когда</th><th>Операция</th><th>Что</th><th>Кто</th></tr></thead><tbody>${ops.map(x=>`<tr><td>${esc(Fmt.dateTime(x.timestamp))}</td><td><b class="${x.result==='failed'?'bad-t':''}">${esc(ACT[x.action]||x.action)}</b></td><td>${what(x)}${A(x).bytes?' · '+Fmt.size(A(x).bytes):''}</td><td>${esc(x.userName||x.userId||'')}</td></tr>`).join('')}</tbody></table>` : '<p class="empty">Операций ещё не было.</p>'; }
     catch(e){ box.innerHTML=`<p class="muted">${esc(e.message||e)}</p>`; }
+  }
+}
+
+// «Проверка базы» (db_health.DbHealth): раз в неделю ночью сама и по кнопке — целостность, позиции без категории, одинаковые
+// названия оборудования, КП без файла Word; примеры — под раскрытием
+class DbHealthCard {
+  static async open(box, run=false){
+    if (!box) return;
+    box.innerHTML=`<p class="sub">Проверка базы</p><p class="muted">${run?'Проверяю…':'Загружаю…'}</p>`;
+    let r; try{ r=run ? await ajson('maint/health', {}) : await aapi('maint/health'); }catch(e){ box.innerHTML=`<p class="sub">Проверка базы</p><p class="muted">${esc(e.message||e)}</p>`; return; }
+    const S_=(t, n, rows)=>`<tr><td>${t}</td><td class="num"><b class="${n?'bad-t':''}">${n?Fmt.num(n):'нет'}</b></td><td>${rows||''}</td></tr>`;
+    const more=(L, f)=>L&&L.length?`<details><summary>примеры</summary>${L.map(f).join('<br>')}</details>`:'';
+    box.innerHTML=`<div class="row"><p class="sub" style="margin:0">Проверка базы ${tip('Раз в неделю ночью программа сама проверяет базу; итог — в «Обзоре». Ничего не исправляется само: позиции без категории переносят в окне каталога, повторы — сливают или удаляют в «Товарах», КП без файла — пересохраняют.')}</p><span class="sp"></span>
+        <button class="btn sm" type="button" data-hrun>Проверить сейчас</button></div>
+      ${r && r.at ? `<p class="muted">Последняя проверка: ${esc(Fmt.dateTime(r.at))}${r.seconds!=null?` · ${String(r.seconds).replace('.', ',')} с`:''}</p>
+      <table class="pv-t bk-kv"><tbody>
+        <tr><td>Файл базы</td><td class="num"><b class="${r.integrity==='ok'?'':'bad-t'}">${r.integrity==='ok'?'в порядке':esc(String(r.integrity))}</b></td><td></td></tr>
+        ${S_('Позиции без категории', (r.noCat||{}).n, more((r.noCat||{}).samples, x=>esc(x.name)))}
+        ${S_('Одинаковые названия оборудования (групп)', (r.dups||{}).groups, more((r.dups||{}).samples, g=>g.map(x=>esc(x.name)).join(' · ')))}
+        ${S_('КП без файла Word', (r.noFile||{}).n, more((r.noFile||{}).samples, x=>'№ '+esc(x.number)+' — '+esc(x.why)))}
+      </tbody></table>` : '<p class="muted">Проверки ещё не было.</p>'}`;
+    box.querySelector('[data-hrun]').onclick=()=>DbHealthCard.open(box, true);
   }
 }
 

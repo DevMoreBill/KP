@@ -69,14 +69,18 @@ class Drafts {
     if (await this.save(false)){ toast('Прежнее КП отложено в черновики (журнал → «Черновики»)'); return true; }
     return confirm('Текущее КП не удалось отложить в черновики (нет связи с сервером?). Заменить его — несохранённые изменения пропадут?');
   }
-  /** КП сохранено в журнал: его черновик больше не нужен */
-  static saved(){
+  /** КП сохранено в журнал: его черновик больше не нужен. sig — отпечаток сохранённого состояния (правки, сделанные
+   *  во время сохранения, остаются «несохранёнными»). Идущее автосохранение дожидается — иначе оно воскресило бы черновик */
+  static async saved(sig){
+    if (this.busy) await this.running;
     const id=S._draft; delete S._draft; this.loaded();
+    if (sig) this.base=sig;
     if (id) api(`/api/drafts/${id}/delete`, {method:'POST'}).catch(()=>{});
   }
   /** КП заменено копией или заготовкой: пока его не правили, откладывать нечего */
   static loaded(){ this.kp=S.kpId||''; this.base=this.sig(this.clean()); }
-  static tick(){ if (FEAT.on('autosave')) this.save(true); }
+  static paused = false;      // идёт сохранение КП в журнал
+  static tick(){ if (FEAT.on('autosave') && !this.paused) this.save(true); }
   static start(){
     this.pending();                       // отсчёт — с КП, открытого при запуске
     const next=()=>setTimeout(()=>{ this.tick(); next(); }, this.autoMs()); next();

@@ -322,3 +322,16 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .ns-pv-b img{width:100%;height:auto;border-radius:8px;background:var(--card)}
 .ns-pv-w{margin:8px 0 0}
 @media (max-width:700px){ .ns-pv-b{grid-template-columns:1fr} }
+/* единый поиск (QuickSearch) */
+.qs-dlg{width:min(680px,96vw)}
+.qs-q{width:100%;font-size:16px;padding:10px 12px;margin:4px 0 8px}
+.qs-r{max-height:min(60vh,560px);overflow:auto}
+.qs-h{margin:10px 0 4px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.qs-i{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line)}
+.qs-b{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;border:0;background:transparent;color:var(--ink);padding:8px 6px;border-radius:8px;cursor:pointer;font:inherit}
+.qs-b:hover,.qs-b:focus{background:var(--soft);outline:none}
+.qs-b b{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.qs-b small{color:var(--muted);font-size:12px}
+.qs-all b{color:var(--navy)}
+.qs-k{margin:8px 0 0;font-size:12px}
+.find-btn span[aria-hidden]{font-size:17px;line-height:1}

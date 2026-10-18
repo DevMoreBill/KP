@@ -242,7 +242,7 @@ class TzQuestions {
   /** cur — окно разбора (TzImport.cur): вопросы, анкета, имя файла ТЗ */
   static async download(cur){
     const Q=(cur.r.questions||[]), L=cur.r.later||[], F=cur.r.fields||[]; if (!Q.length && !L.length) return toast('Вопросов нет — всё нужное найдено в ТЗ');
-    try{ const b=await this.make(cur, Q, F, L); saveFileA(`Вопросы по ТЗ — ${TzOut.NAME(cur.name) || 'заказчик'}.docx`, b); }
+    try{ await LazyJs.load('tz-out.js'); const b=await this.make(cur, Q, F, L); saveFileA(`Вопросы по ТЗ — ${TzOut.NAME(cur.name) || 'заказчик'}.docx`, b); }
     catch(e){ toast('Не удалось подготовить документ: '+(e && e.message || e)); }
   }
   static async make(cur, Q, F, L=[]){

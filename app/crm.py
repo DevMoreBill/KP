@@ -297,6 +297,21 @@ class DealBook:
         c.execute('INSERT OR REPLACE INTO deal_kp (kp_id, deal_id, added) VALUES (?,?,?)', (kid, did, when or Val.now()))
         return did
 
+    @classmethod
+    def kp_moved(cls, store, kid, by):
+        """КП ушло в корзину или вернулось из неё — сумма и этап его сделки заново (и в очередь Битрикс24). Сбой — не мешает
+        удалению или восстановлению, только в журнал сервера."""
+        try:
+            did = cls(store).refresh(kid, by)
+            if did:
+                from bitrix import BitrixQueue
+                BitrixQueue.touch(store, 'deal', did)
+            return did
+        except Exception as e:
+            from server_log import ServerLog
+            ServerLog.failure('сделка КП %s после корзины' % kid, e)
+            return None
+
     def refresh(self, kid, by):
         """Ход сделки КП изменился — этап и сумма его сделки."""
         did = self.deal_of(kid)
@@ -549,6 +564,24 @@ class CrmBoard:
             d.pop('history', None)
         return {'stages': Stages.all(self.store), 'deals': deals, 'tasks': T, 'kinds': [{'key': k, 'label': lb} for k, lb in TaskBook.KINDS],
                 'today': date.today().isoformat(), 'now': datetime.now().isoformat(timespec='minutes')}
+
+    def find(self, managers, q, limit=8):
+        """Сделки по словам (название, клиент, ИНН, номер) — единый поиск программы; сначала незакрытые и свежие."""
+        words = [w for w in re.sub(r'\s+', ' ', str(q or '').lower().replace('ё', 'е')).strip().split(' ') if w][:6]
+        if not words:
+            return []
+        sql, args = 'SELECT %s FROM deals' % DealBook.COLS, []
+        if managers is not None:
+            sql += ' WHERE manager_id IN (%s)' % ','.join('?' * len(managers)) if managers else ' WHERE 0'
+            args += list(managers)
+        out = []
+        for d in (DealBook._out(r) for r in self.store.all(sql + " ORDER BY stage IN ('won', 'lost'), updated DESC", tuple(args))):
+            hay = ' '.join(str(d.get(k) or '') for k in ('title', 'client', 'inn', 'number')).lower().replace('ё', 'е')
+            if all(w in hay for w in words):
+                out.append({k: d.get(k) for k in ('id', 'number', 'title', 'client', 'stage', 'sum', 'expected', 'updated', 'manager')})
+                if len(out) >= limit:
+                    break
+        return out
 
     def pick(self, managers, inn, name):
         """Незакрытые сделки клиента (по ИНН или названию) — выбор сделки при сохранении КП."""

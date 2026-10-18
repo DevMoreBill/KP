@@ -92,7 +92,7 @@ span.mb-back{border:0}
 .mob .brand{font-size:16px;flex:0 0 auto}
 .mob .brand small{display:none}
 .mob #kpno{font-size:12.5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mob #saved,.mob #srvBtns,.mob #btnNew,.mob .topmenu{display:none!important}
+.mob #saved,.mob #srvBtns,.mob #btnNew,.mob .topmenu,.mob .find-btn{display:none!important}
 .mob .mmenu-btn{display:inline-flex;flex:0 0 auto;gap:8px;font-size:15px;padding:8px 14px;border-color:var(--line)}
 .mob .mmenu-btn span{font-size:18px;line-height:1}
 

@@ -155,6 +155,9 @@ class TrashBin:
 
     def restore(self, tid):
         etype, eid = self.st.trash_restore(tid)
+        if etype == 'kp':
+            from crm import DealBook
+            DealBook.kp_moved(self.st, eid, 'Корзина')
         self.log('restore', etype, eid, None, None)
 
     def drop(self, tid):

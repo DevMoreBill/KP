@@ -12,6 +12,7 @@ import json
 import re
 import statistics
 import threading
+import time
 from collections import Counter, defaultdict
 
 
@@ -37,25 +38,36 @@ class CategoryProfile:
     def __init__(self, store):
         self.store = store
 
+    FRESH = 600            # с — образец категории пересчитывается не чаще (каталог меняется при каждом сохранении КП —
+                           # ценами, а объём описаний и характеристик за минуты не меняется)
+
     def get(self, cat):
-        """Образец категории или None (мало карточек)."""
-        return self._all().get(cat)
-
-    def _all(self):
-        rev = self.store.data_rev('catalog')
+        """Образец категории или None (мало карточек). Считается только по этой категории (индекс catalog_cat), а не по
+        всему каталогу: 20 000 карточек разбирались около 4 с на каждый запрос после сохранения КП."""
+        cat = str(cat or '')
+        rev, now = self.store.data_rev('catalog'), time.time()
         with self._lock:
-            if self._cache.get('rev') != rev:
-                self._cache.clear()
-                self._cache.update(rev=rev, data=self._build())
-            return self._cache['data']
+            hit = self._cache.get(cat)
+            if hit and (hit[0] == rev or now - hit[1] < self.FRESH):
+                return hit[2]
+            if hit and cat not in self._busy:          # устарел — прежний образец сейчас, новый считается в фоне
+                self._busy.add(cat)
+                threading.Thread(target=self._rebuild, args=(cat, rev), daemon=True, name='ai-profile').start()
+                return hit[2]
+        return self._rebuild(cat, rev)
 
-    def _build(self):
-        cards = defaultdict(list)
-        for cat, doc in self.store.all('SELECT cat, doc FROM catalog'):
-            c = self._card(doc)
-            if c:
-                cards[cat or ''].append(c)
-        return {cat: self._profile(cat, L) for cat, L in cards.items() if len(L) >= self.MIN_CARDS}
+    _busy = set()
+
+    def _rebuild(self, cat, rev):
+        try:
+            cards = [c for c in (self._card(doc) for (doc,) in self.store.all('SELECT doc FROM catalog WHERE cat = ?', (cat,))) if c]
+            prof = self._profile(cat, cards) if len(cards) >= self.MIN_CARDS else None
+            with self._lock:
+                self._cache[cat] = (rev, time.time(), prof)
+            return prof
+        finally:
+            with self._lock:
+                self._busy.discard(cat)
 
     @staticmethod
     def _card(text):
@@ -116,9 +128,17 @@ class ModelFacts:
         key = self.words(name)
         if len(key) < 2:
             return []
-        sql, args = 'SELECT id, doc FROM catalog', ()
+        # сначала — по столбцу названия (самое длинное слово или число наименования), карточки разбираются только у совпавших
+        # (латиница и цифры: LIKE в SQLite без учёта регистра только для латиницы); такого слова нет — перебор, как раньше
+        lat = [x for x in key if re.match(r'^[a-z0-9]{2,}$', x)]
+        where, args = [], ()
+        if lat:
+            where.append('name LIKE ?')
+            args += ('%' + max(lat, key=len) + '%',)
         if maker:
-            sql, args = sql + ' WHERE maker = ? COLLATE NOCASE', (str(maker).strip(),)
+            where.append('maker = ? COLLATE NOCASE')
+            args += (str(maker).strip(),)
+        sql = 'SELECT id, doc FROM catalog' + (' WHERE ' + ' AND '.join(where) if where else '')
         out = []
         for cid, text in self.store.all(sql, args):
             if cid == exclude:
