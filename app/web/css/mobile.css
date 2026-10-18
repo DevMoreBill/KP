@@ -317,11 +317,11 @@ span.mb-back{border:0}
 @media (prefers-color-scheme: dark){
 :root:not([data-theme="light"]) .btn.primary,:root:not([data-theme="light"]) .stp.cur,:root:not([data-theme="light"]) .cw-cat.on,:root:not([data-theme="light"]) .mtog button.on,:root:not([data-theme="light"]) .chip.on,:root:not([data-theme="light"]) .tag.kwt{color:#0B1A33}
 :root:not([data-theme="light"]) .stp.cur .num{background:#0B1A33;color:#fff}
-:root:not([data-theme="light"]) .cw-cat.on i,:root:not([data-theme="light"]) .stp.cur small{color:rgba(11,26,51,.75)}
+:root:not([data-theme="light"]) .cw-cat.on i,:root:not([data-theme="light"]) .stp.cur small{color:rgba(11,26,51,.88)}
 }
 :root[data-theme="dark"] .btn.primary,:root[data-theme="dark"] .stp.cur,:root[data-theme="dark"] .cw-cat.on,:root[data-theme="dark"] .mtog button.on,:root[data-theme="dark"] .chip.on,:root[data-theme="dark"] .tag.kwt{color:#0B1A33}
 :root[data-theme="dark"] .stp.cur .num{background:#0B1A33;color:#fff}
-:root[data-theme="dark"] .cw-cat.on i,:root[data-theme="dark"] .stp.cur small{color:rgba(11,26,51,.75)}
+:root[data-theme="dark"] .cw-cat.on i,:root[data-theme="dark"] .stp.cur small{color:rgba(11,26,51,.88)}
 /* редактор шаблона на телефоне: заголовок — отдельной строкой, выбор шаблона растягивается */
 .mob dialog.tpled .dlg-h{flex-wrap:wrap}
 .mob dialog.tpled .dlg-h h3{flex:1 1 100%;order:-1}
@@ -374,3 +374,5 @@ span.mb-back{border:0}
 
 /* 3.99: каталог на телефоне — в открытой карточке позиции фильтры скрыты (место карточке), «‹ К списку» их возвращает */
 .mob .catwin.pvon .cw-fb{display:none}
+/* карточка клиента на телефоне: «Повторить» и «Открыть» — второй строкой, дата и сумма КП видны целиком */
+.mob .cc-kl .md-r{flex-wrap:wrap;row-gap:4px} .mob .cc-kl .md-r>div{flex:1 1 calc(100% - 110px)} .mob .cc-kl .md-r [data-ccr]{margin-left:auto}
