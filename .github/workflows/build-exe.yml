@@ -325,6 +325,11 @@ jobs:
           Remove-Item -Recurse -Force -LiteralPath $dir -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'kp-smoke\kp.exe') -Destination $dir
+          # временный ключ подписи проверок: программа доверяет ему через update-keys.txt в своей папке (ключ выпусков не нужен)
+          $tk = Join-Path $env:RUNNER_TEMP 'kp-testkey'
+          python .github/scripts/sign_update.py gen $tk
+          if ($LASTEXITCODE -ne 0) { throw 'Временный ключ подписи не создан' }
+          Copy-Item -LiteralPath (Join-Path $tk 'public.txt') -Destination (Join-Path $dir 'update-keys.txt')
           # при сбое — причина в аннотации сборки (видна и без скачивания логов)
           $phase = 'запуск'
           trap {
@@ -354,6 +359,12 @@ jobs:
           [IO.File]::WriteAllText((Join-Path $upd 'version.json'), '{"version": "99.0.1"}')
           $zip = Join-Path $env:RUNNER_TEMP 'KP-Obnovlenie-99.0.1.zip'
           Compress-Archive -Path (Join-Path $env:RUNNER_TEMP 'kp-upd\*') -DestinationPath $zip -Force
+          # без подписи архив не устанавливается
+          $bad = $null
+          try { Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/admin/update/upload?name=ci.zip' -InFile $zip -ContentType 'application/zip' -Headers $H -WebSession $s | Out-Null } catch { $bad = $_ }
+          if (-not $bad) { throw 'Установился архив обновления без подписи' }
+          python .github/scripts/sign_update.py sign $zip (Join-Path $tk 'key.txt')
+          if ($LASTEXITCODE -ne 0) { throw 'Архив обновления не подписан' }
           $res = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/admin/update/upload?name=ci.zip' -InFile $zip -ContentType 'application/zip' -Headers $H -WebSession $s
           Write-Host "Установлено: $($res.version), файлов: $($res.files)"
           if ($res.version -ne '99.0.1') { throw 'Обновление не установилось' }
@@ -385,6 +396,8 @@ jobs:
             [IO.File]::WriteAllText($f, $t.Replace($from, $to))
             $z = Join-Path $env:RUNNER_TEMP "KP-Obnovlenie-$ver.zip"
             Compress-Archive -Path (Join-Path $base '*') -DestinationPath $z -Force
+            python .github/scripts/sign_update.py sign $z (Join-Path $tk 'key.txt') | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw "Архив $ver не подписан" }
             return $z
           }
           function Login {
@@ -541,6 +554,8 @@ jobs:
       - name: Патч обновления (без EXE, для обеих сборок)
         if: matrix.arch == 'x64'
         shell: pwsh
+        env:
+          KP_UPDATE_KEY: ${{ secrets.KP_UPDATE_KEY }}
         run: |
           $ver = [regex]::Match((Get-Content -Raw 'app\version.py'), "VERSION = '([^']+)'").Groups[1].Value
           $pt = Join-Path $PWD "patch\Обновление КП $ver"
@@ -555,6 +570,12 @@ jobs:
           Get-ChildItem -LiteralPath 'server-setup' | Where-Object { -not $_.PSIsContainer -and $_.Name -notlike '1.*' } | Copy-Item -Destination "$pt\server-setup"
           Copy-Item -LiteralPath 'install\kp-common.ps1' -Destination "$pt\server-setup"
           Compress-Archive -Path "$pt\*" -DestinationPath 'dist\Обновление КП.zip' -Force
+          # подпись выпуска (app/update_sign.py): программа устанавливает только подписанный архив. Без секрета (сборка
+          # проверки) архив не подписан — выпуск в релиз тогда не делается (шаг «Файлы релиза»)
+          if ($env:KP_UPDATE_KEY) {
+            python .github/scripts/sign_update.py sign 'dist\Обновление КП.zip'
+            if ($LASTEXITCODE -ne 0) { throw 'Архив обновления не подписан' }
+          } else { Write-Host '::warning::Нет секрета KP_UPDATE_KEY — архив обновления без подписи (выпуск не получится)' }
           Write-Host ("Патч $ver" + ': ' + [math]::Round((Get-Item 'dist\Обновление КП.zip').Length / 1KB) + ' КБ')
 
       # артефакты — для удобства; при исчерпанной квоте хранилища сборка не падает, выпуск всё равно уходит в релиз
@@ -594,6 +615,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ver = '${{ steps.ver.outputs.v }}'
+          # выпуск — только с подписанным архивом обновления (иначе установленные программы его не примут)
+          python .github/scripts/sign_update.py check 'dist\Обновление КП.zip'
+          if ($LASTEXITCODE -ne 0) { throw 'Архив обновления не подписан: добавьте секрет KP_UPDATE_KEY (Settings → Secrets and variables → Actions)' }
           $tag = if ('${{ github.ref }}'.StartsWith('refs/tags/')) { '${{ github.ref_name }}' } else { "v$ver" }
           New-Item -ItemType Directory -Force -Path rel | Out-Null
           Copy-Item -LiteralPath "dist\$env:KP_EXE_NAME.exe" -Destination "rel\KP-Konstruktor-$ver-win64.exe"

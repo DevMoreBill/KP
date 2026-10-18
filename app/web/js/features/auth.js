@@ -13,7 +13,7 @@ async function authLoad(){
 // администратору и менеджеру, вошедшему по паролю, которому их выдали
 function can(p){ if (AUTH.admin || ADMIN.on) return true; if (Powers.STRICT.includes(p)) return Powers.has(p); if (!AUTH.enabled) return true; return !!(AUTH.user && AUTH.user.perms && AUTH.user.perms[p]); }
 const CAN_TXT = { catAdd:'добавлять оборудование', catEdit:'редактировать оборудование', kpOthers:'открывать КП других менеджеров', dealView:'смотреть экономику сделки',
-  catDelete:'удалять товары', catSelfMod:'принимать правки других', export:'выгружать каталог и клиентов' };
+  catDelete:'удалять товары', catSelfMod:'принимать правки других и править справочник поставщиков', export:'выгружать каталог и клиентов' };
 
 // особые права менеджеров («Настройки → Менеджеры»): удалять товары (в корзину), правки без модерации, выгрузка каталога и
 // клиентов. Сервер проверяет их сам (catalog_admin.py); здесь — показать или скрыть кнопки

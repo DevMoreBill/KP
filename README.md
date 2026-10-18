@@ -526,6 +526,27 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.103.0 — пункты аудита 1, 3, 4, 5, 6, 7, 9 (решение владельца 18.10):**
+- Вход: `admin_overview.Attention._login` — «Внимание» с кнопкой «Включить вход» (`act`), сервер отдела без входа по паролю.
+- Поставщики: `PUT /api/suppliers/<id>` — `catalog_admin.power(…, 'catSelfMod')` (администратор и право «Без модерации»), поля —
+  `storage.DocLimits` (латиница, глубина 6, строки 10 000, списки 2 000, 512 КБ); `dlSaveSupplier` без права — только в КП.
+- Подпись обновления: `ed25519.Ed25519` (RFC 8032, без зависимостей), `update_sign.UpdateSign` — `kp-sign.json` (SHA-256 файлов +
+  подпись), ключ выпусков в `PUBLIC_KEYS`, для проверок — `update-keys.txt` в папке программы; `UpdatePackage(data, keys)`,
+  распакованное ≤ 600 МБ. Сборка: `.github/scripts/sign_update.py` (секрет `KP_UPDATE_KEY`; без него выпуск не делается),
+  проверки сборки — временным ключом.
+- Скорость: `CatalogWindow.more()` дописывает строки из `view`; «Рекомендуемые» — ключ позиции один раз; транслит поиска — только
+  название, марка, модель, артикул; `CatalogCache` — IndexedDB v2 (карточка — запись, пишется изменённое); `syncCatalog` — словари
+  и полные карточки заранее параллельно; `QuickFind` — 100 мс; выгрузка xlsx/xml/yml из разобранных данных, лист Excel пишется в
+  архив построчно (20 000 позиций: 1,28 ГБ → 0,5 ГБ, 12,5 → 9,7 с); `Store.backup` — отдельное соединение без блокировки
+  записи; сжатие базы само — только ночью.
+- Индексы (`2027-12-indexes`): `catalog.feed_id` (фид позиции, `_feed_docs`/`_feed_counts`), `catalog(name)`,
+  `catalog(maker COLLATE NOCASE)`, `trash(entity_type, entity_id)`, `kp(docx)`, `audit(user_name)`, `audit(entity_type, entity_id)`.
+- Восстановление базы: `restore_sqlite` — временная копия, миграции и размер страницы на ней, потом в рабочую; миграции
+  `ADD/DROP COLUMN` — по наличию столбца (`Store._idempotent`); во время загрузки фида — отказ.
+- `kp_track.MailRate` — писем в час на сотрудника (`kp.mailPerHour`, 30); смена пароля администратора — `LoginGuard` и
+  `drop_login`; `/api/ping`, `PUT …/docx`, PDF — без путей по сети (`Controller.no_paths`).
+- Проверки: `tests/test_update_sign.py`, `tests/test_audit_1018.py`.
+
 **3.102.1 — аудит (проверки ECC: безопасность, Python, база, интерфейс, скорость), исправлено подтверждённое серьёзное:**
 - Маршруты — `\A…\Z` (`web_api.route`), `SAFE_ID` — `\Z`, управляющие символы в пути — 400 (`kp_server._dispatch`): «%0A» обходил
   проверку администратора по точному адресу (`/api/integrations/export`, `/api/logistics`, `/api/uitexts`, `/api/types`).

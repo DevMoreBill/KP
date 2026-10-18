@@ -24,7 +24,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sqlite3
+import tempfile
 import threading
 import zipfile
 from datetime import datetime
@@ -234,6 +236,25 @@ MIGRATIONS = [
      """
      DROP TABLE IF EXISTS bx_log; DROP TABLE IF EXISTS bx_queue; DROP INDEX IF EXISTS bx_link_bx; DROP TABLE IF EXISTS bx_link;
      """),
+    # скорость при 20 000 позиций и тысячах КП (аудит 18.10): фид позиции — столбцом с индексом (загрузка и проверка фида
+    # не перебирают все карточки), сортировка по названию, производитель без учёта регистра, корзина по записи, файл КП,
+    # журнал действий по пользователю и записи
+    ('2027-12-indexes',
+     """
+     ALTER TABLE catalog ADD COLUMN feed_id TEXT;
+     CREATE INDEX IF NOT EXISTS catalog_feed ON catalog(feed_id);
+     CREATE INDEX IF NOT EXISTS catalog_name ON catalog(name);
+     CREATE INDEX IF NOT EXISTS catalog_maker_nc ON catalog(maker COLLATE NOCASE);
+     CREATE INDEX IF NOT EXISTS trash_entity ON trash(entity_type, entity_id);
+     CREATE INDEX IF NOT EXISTS kp_docx ON kp(docx);
+     CREATE INDEX IF NOT EXISTS audit_user ON audit(user_name);
+     CREATE INDEX IF NOT EXISTS audit_entity ON audit(entity_type, entity_id);
+     """,
+     """
+     DROP INDEX IF EXISTS audit_entity; DROP INDEX IF EXISTS audit_user; DROP INDEX IF EXISTS kp_docx; DROP INDEX IF EXISTS trash_entity;
+     DROP INDEX IF EXISTS catalog_maker_nc; DROP INDEX IF EXISTS catalog_name; DROP INDEX IF EXISTS catalog_feed;
+     ALTER TABLE catalog DROP COLUMN feed_id;
+     """),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
@@ -441,8 +462,27 @@ def _fill_crm(st, c):
     DealBook(st)._adopt(c)
 
 
+def feed_of(doc):
+    """Фид-источник позиции каталога (столбец feed_id) или None."""
+    fd = doc.get('feed') if isinstance(doc, dict) and isinstance(doc.get('feed'), dict) else {}
+    return str(fd['id'])[:80] if fd.get('id') else None
+
+
+def _fill_feed(st, c):
+    """Миграция 2027-12: фид-источник позиций — в столбец feed_id."""
+    rows = []
+    for cid, doc in c.execute("SELECT id, doc FROM catalog WHERE doc LIKE '%\"feed\"%'").fetchall():
+        try:
+            f = feed_of(json.loads(doc))
+        except ValueError:
+            continue
+        if f:
+            rows.append((f, cid))
+    c.executemany('UPDATE catalog SET feed_id=? WHERE id=?', rows)
+
+
 MIGRATION_FILL = {'2027-01-db': _fill_columns, '2027-02-light': _fill_light, '2027-06-light-slim': _fill_light, '2027-07-catalog-sync': _fill_sync,
-                  '2027-10-crm': _fill_crm}
+                  '2027-10-crm': _fill_crm, '2027-12-indexes': _fill_feed}
 
 
 def light_of(doc):
@@ -459,6 +499,38 @@ def light_of(doc):
         d['art'] = str(art)[:60]
     d['_light'] = True
     return d
+
+
+class DocLimits:
+    """Границы документа справочника из запроса (поставщик): имена полей — латиница, не глубже 6 уровней, строки до 10 000
+    знаков, списки до 2 000, всего до 512 КБ — иначе ValueError с понятным текстом."""
+    KEY = re.compile(r'^[A-Za-z_][A-Za-z0-9_]{0,59}\Z')
+    MAX_BYTES, MAX_STR, MAX_LIST, MAX_KEYS, MAX_DEPTH = 512 * 1024, 10000, 2000, 200, 6
+
+    @classmethod
+    def check(cls, doc, what):
+        if len(json.dumps(doc, ensure_ascii=False)) > cls.MAX_BYTES:
+            raise ValueError('%s слишком большая' % what)
+        cls._walk(doc, what, 0)
+
+    @classmethod
+    def _walk(cls, v, what, depth):
+        if depth > cls.MAX_DEPTH:
+            raise ValueError('%s: слишком глубокая вложенность' % what)
+        if isinstance(v, dict):
+            if len(v) > cls.MAX_KEYS:
+                raise ValueError('%s: слишком много полей' % what)
+            for k, x in v.items():
+                if not cls.KEY.match(str(k)):
+                    raise ValueError('%s: недопустимое имя поля' % what)
+                cls._walk(x, what, depth + 1)
+        elif isinstance(v, list):
+            if len(v) > cls.MAX_LIST:
+                raise ValueError('%s: слишком длинный список' % what)
+            for x in v:
+                cls._walk(x, what, depth + 1)
+        elif isinstance(v, str) and len(v) > cls.MAX_STR:
+            raise ValueError('%s: слишком длинное значение' % what)
 
 
 # журнал КП — новые сверху: номер «год-NNN» по числу (строкой «2026-1000» < «2026-999»)
@@ -582,9 +654,10 @@ class Store:
             c = self.conn()
             rev = self._next_rev(c, 'catalog', cid, base_rev)
             seq = self._cat_seq(c)
-            c.execute('INSERT OR REPLACE INTO catalog (id, doc, light, name, cat, maker, updated, rev, updated_by, seq, search) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+            c.execute('INSERT OR REPLACE INTO catalog (id, doc, light, name, cat, maker, updated, rev, updated_by, seq, search, feed_id) '
+                      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
                       (cid, json.dumps(doc, ensure_ascii=False), json.dumps(light_of(doc), ensure_ascii=False),
-                       doc.get('name', ''), a.get('cat', ''), a.get('maker', ''), _now(), rev, str(by or '')[:120], seq, cat_search(doc)))
+                       doc.get('name', ''), a.get('cat', ''), a.get('maker', ''), _now(), rev, str(by or '')[:120], seq, cat_search(doc), feed_of(doc)))
             c.execute('DELETE FROM catalog_gone WHERE id=?', (cid,))
             c.commit()
         return rev
@@ -626,6 +699,16 @@ class Store:
     def migrations_applied(self):
         return self.kv_get('schema') or []
 
+    @staticmethod
+    def _idempotent(c, script):
+        """«ALTER TABLE t ADD COLUMN x» — только если столбца ещё нет (база без отметки «schema» — например, из внешнего
+        инструмента или копии — иначе не запустилась бы: «duplicate column name»); DROP COLUMN — только если он есть."""
+        def keep(m):
+            have = {r[1] for r in c.execute('PRAGMA table_info(%s)' % m.group('t'))}
+            exists = m.group('col') in have
+            return m.group(0) if (m.group('op').upper() == 'ADD') != exists else ''
+        return re.sub(r'ALTER TABLE (?P<t>\w+) (?P<op>ADD|DROP) COLUMN (?P<col>\w+)[^;]*;', keep, script, flags=re.I)
+
     def _atomic_script(self, script, then=None, mark=None):
         """Изменение схемы, заполнение данных и отметка в kv «schema» — одной транзакцией: при сбое посередине
         база остаётся как была, и при следующем запуске миграция просто выполняется заново."""
@@ -633,7 +716,7 @@ class Store:
             c = self.conn()
             c.commit()
             try:
-                c.executescript('BEGIN IMMEDIATE;\n' + script)
+                c.executescript('BEGIN IMMEDIATE;\n' + self._idempotent(c, script))
                 if then:
                     then(self, c)
                 if mark is not None:
@@ -796,7 +879,8 @@ class Store:
                     d = json.loads(data.get('doc') or '{}')
                 except ValueError:
                     d = {}
-                c.execute('UPDATE catalog SET seq=?, search=?, light=? WHERE id=?', (self._cat_seq(c), cat_search(d), json.dumps(light_of(d), ensure_ascii=False), eid))
+                c.execute('UPDATE catalog SET seq=?, search=?, light=?, feed_id=? WHERE id=?',
+                          (self._cat_seq(c), cat_search(d), json.dumps(light_of(d), ensure_ascii=False), feed_of(d), eid))
                 c.execute('DELETE FROM catalog_gone WHERE id=?', (eid,))
             elif table in ('managers', 'suppliers'):
                 self._bump_data(c, table)
@@ -905,6 +989,7 @@ class Store:
     def supplier_put(self, sid, doc, by='', base_rev=None):
         if not isinstance(doc, dict) or not str(doc.get('name') or '').strip():
             raise ValueError('Укажите название поставщика')
+        DocLimits.check(doc, 'Карточка поставщика')
         if base_rev is None and doc.get('_rev') is not None:
             base_rev = doc.get('_rev')
         doc = {k: v for k, v in doc.items() if k != '_rev'}
@@ -1324,12 +1409,14 @@ class Store:
                 for ext in ('', '-wal', '-shm', '-journal'):
                     if os.path.exists(tmp + ext):
                         os.remove(tmp + ext)
-        with self.lock:
-            out = sqlite3.connect(dst)
-            try:
-                self.conn().backup(out)
-            finally:
-                out.close()
+        # отдельное соединение и без общей блокировки записи: в режиме WAL копия читает согласованный снимок, а сохранения
+        # КП в это время не ждут (копия большой базы — секунды)
+        src, out = sqlite3.connect(self.path, timeout=30), sqlite3.connect(dst)
+        try:
+            src.backup(out)
+        finally:
+            out.close()
+            src.close()
         return dst
 
     def restore_sqlite(self, src, log=lambda s: None):
@@ -1345,16 +1432,39 @@ class Store:
             need = {'catalog', 'kp', 'kv', 'managers', 'clients'}
             if not need <= tables:
                 raise ValueError('Это не база программы: нет таблиц ' + ', '.join(sorted(need - tables)))
-            bak = os.path.join(os.path.dirname(self.path), 'backup', 'kp-%s-before-restore.zip' % datetime.now().strftime('%Y%m%d-%H%M%S'))
-            with self.lock:
-                self.backup(bak)
-                c = self.conn()
-                c.commit()
-                chk.backup(c)
-                c.commit()
+            # сначала — временная копия: миграции и размер страницы на ней; рабочая база меняется, только когда копия готова
+            # (копия от прежней версии или с другим размером страницы не оставит программу с базой, которая не запускается)
+            tmpdir = tempfile.mkdtemp(prefix='restore-', dir=os.path.dirname(self.path))
+            tmp = os.path.join(tmpdir, 'restore.sqlite3')
+            t = sqlite3.connect(tmp)
+            chk.backup(t)
+            t.close()
         finally:
             chk.close()
-        self.migrations_up()          # копия может быть от прежней версии программы
+        try:
+            try:
+                Store(tmp).conn().close()          # схема и миграции до текущей версии программы
+            except Exception as e:
+                raise ValueError('Файл базы от несовместимой версии программы — база не заменена (%s)' % str(e)[:200])
+            page = self.one('PRAGMA page_size')[0]
+            t = sqlite3.connect(tmp)
+            try:
+                t.execute('PRAGMA journal_mode=DELETE')
+                if t.execute('PRAGMA page_size').fetchone()[0] != page:
+                    t.execute('PRAGMA page_size=%d' % int(page))
+                    t.execute('VACUUM')
+                bak = os.path.join(os.path.dirname(self.path), 'backup', 'kp-%s-before-restore.zip' % datetime.now().strftime('%Y%m%d-%H%M%S'))
+                with self.lock:
+                    self.backup(bak)
+                    c = self.conn()
+                    c.commit()
+                    t.backup(c)
+                    c.commit()
+            finally:
+                t.close()
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        self.migrations_up()          # на всякий случай: схема уже текущая, миграций не останется
         with self.lock:
             c = self.conn()
             for name in ('catalog', 'managers', 'clients', 'suppliers', 'kp', 'types', 'settings'):

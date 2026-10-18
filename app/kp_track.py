@@ -13,6 +13,8 @@
 import re
 import smtplib
 import ssl
+import threading
+import time
 from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
@@ -240,6 +242,24 @@ class MailTemplate:
         for k, x in v.items():
             s = s.replace('{%s}' % k, str(x or ''))
         return re.sub(r'\n{3,}', '\n\n', re.sub(r'[ \t]+\n', '\n', s)).strip()
+
+
+class MailRate:
+    """Писем клиентам от одного сотрудника в час — не больше srv-значения kp.mailPerHour (письма уходят с адреса компании)."""
+    SENT = {}
+    LOCK = threading.Lock()
+
+    @classmethod
+    def take(cls, store, who):
+        """Учесть письмо; ValueError — предел исчерпан (с временем ожидания)."""
+        now, limit = time.time(), SrvVal.get(store, 'kp.mailPerHour')
+        with cls.LOCK:
+            v = [t for t in cls.SENT.get(who, []) if now - t < 3600]
+            if len(v) >= limit:
+                wait = int(v[0] + 3600 - now) // 60 + 1
+                raise ValueError('Отправлено %d писем за час — следующее можно через %d мин' % (len(v), wait))
+            v.append(now)
+            cls.SENT[who] = v
 
 
 class Mailer:

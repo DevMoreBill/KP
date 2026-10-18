@@ -33,6 +33,7 @@ from datetime import datetime, timedelta
 import version
 from defaults import SrvVal
 from server_log import ServerLog
+from update_sign import UpdateSign
 
 
 class UpdateError(Exception):
@@ -43,9 +44,11 @@ class UpdatePackage:
     """Архив обновления: проверка и распаковка."""
     MAX_BYTES = 150 * 1024 * 1024
     MAX_FILES = 5000
+    MAX_UNPACKED = 600 * 1024 * 1024        # распакованное целиком (защита от «zip-бомбы»)
     REQUIRED = ('update/version.json', 'update/app/kp_server.py', 'update/app/web/index.html')
 
-    def __init__(self, data):
+    def __init__(self, data, keys=None):
+        """keys — доверенные ключи подписи (UpdateSign.keys); None — без проверки подписи (только разбор архива)."""
         if len(data) > self.MAX_BYTES:
             raise UpdateError('Файл слишком большой для обновления (больше 150 МБ)')
         try:
@@ -57,6 +60,8 @@ class UpdatePackage:
             raise UpdateError('В архиве слишком много файлов')
         if any(self._unsafe(n) for n in self.names):
             raise UpdateError('В архиве есть недопустимые пути — файл повреждён или это не обновление программы')
+        if sum(i.file_size for i in self.names.values()) > self.MAX_UNPACKED:
+            raise UpdateError('Архив обновления распаковывается в слишком большой объём — файл повреждён')
         self.prefix = self._prefix()
         missing = [r for r in self.REQUIRED if self.prefix + r not in self.names]
         if missing:
@@ -67,13 +72,13 @@ class UpdatePackage:
             raise UpdateError('В архиве испорчен version.json')
         if not re.match(r'^\d+\.\d+(\.\d+){0,2}$', self.version):
             raise UpdateError('В архиве неверная версия: %s' % self.version[:40])
+        if keys is not None:
+            try:
+                UpdateSign.check(self.zip, self.names, self.prefix, self.version, keys)
+            except (ValueError, zipfile.BadZipFile, OSError, NotImplementedError) as e:
+                raise UpdateError('Обновление не установлено: %s' % e)
 
-    @staticmethod
-    def _norm(n):
-        n = n.replace('\\', '/')
-        while n.startswith('./'):
-            n = n[2:]
-        return n
+    _norm = staticmethod(UpdateSign.norm)
 
     @staticmethod
     def _unsafe(n):
@@ -373,7 +378,7 @@ class Updater:
 
     # ---------- установка, откат
     def install(self, data, by, source='файл', force=False):
-        pkg = UpdatePackage(data)
+        pkg = UpdatePackage(data, UpdateSign.keys(self.root))
         cur = self.current()
         if not force and version.as_tuple(pkg.version) <= version.as_tuple(cur):
             raise UpdateError('Версия обновления %s не новее работающей %s — устанавливать нечего' % (pkg.version, cur))

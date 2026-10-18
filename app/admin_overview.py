@@ -165,7 +165,9 @@ class Attention:
     def _login(self):
         import auth_users
         if not auth_users.enabled(self.store) and self.cfg.SERVER_MODE:
-            return [{'level': 'info', 'text': 'Сервер отдела работает без входа менеджеров по паролю', 'tab': 'access'}]
+            return [{'level': 'warn', 'tab': 'access', 'act': 'Включить вход',
+                     'text': 'Сервер отдела работает без входа по паролю: любой компьютер в сети видит экономику и черновики всех '
+                             'менеджеров и закупку в каталоге. Задайте менеджерам пароли и включите вход'}]
         return []
 
     def _trash(self):

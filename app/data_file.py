@@ -166,18 +166,24 @@ class XlsxData:
             s = self.LONG % (len(self.long) - 1)
         return '<c r="%s" t="inlineStr"%s><is><t xml:space="preserve">%s</t></is></c>' % (ref, st, escape(s))
 
-    def _sheet(self, rows, freeze=2, widths=None):
-        """rows — [[значение | None]]; строка 1 — жирная, строка 2 — серая (служебные ключи)."""
-        out = []
-        for n, r in enumerate(rows, 1):
-            style = 1 if n == 1 else 2 if n == 2 and freeze == 2 else 0
-            out.append('<row r="%d">%s</row>' % (n, ''.join(self._cell('%s%d' % (self.col(i), n), v, style) for i, v in enumerate(r)
-                                                         if v is not None and v != '')))
+    def _sheet(self, rows, freeze=2, widths=None, file_no=None):
+        """Лист в архив книги — построчно, без строки XML всего листа (20 000 позиций занимали сотни МБ памяти).
+        rows — [[значение | None]] или генератор; строка 1 — жирная, строка 2 — серая (служебные ключи). → номер файла листа."""
+        if file_no is None:
+            self.files += 1
+            file_no = self.files
         cols = ''.join('<col min="%d" max="%d" width="%d" customWidth="1"/>' % (i + 1, i + 1, w) for i, w in enumerate(widths or []))
         pane = ('<sheetViews><sheetView workbookViewId="0"><pane ySplit="%d" topLeftCell="A%d" activePane="bottomLeft" state="frozen"/>'
                 '</sheetView></sheetViews>' % (freeze, freeze + 1)) if freeze else ''
-        return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-                '%s%s<sheetData>%s</sheetData></worksheet>') % (pane, '<cols>%s</cols>' % cols if cols else '', ''.join(out))
+        with self.z.open('xl/worksheets/sheet%d.xml' % file_no, 'w', force_zip64=True) as f:
+            f.write(('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                     '%s%s<sheetData>' % (pane, '<cols>%s</cols>' % cols if cols else '')).encode('utf-8'))
+            for n, r in enumerate(rows, 1):
+                style = 1 if n == 1 else 2 if n == 2 and freeze == 2 else 0
+                f.write(('<row r="%d">%s</row>' % (n, ''.join(self._cell('%s%d' % (self.col(i), n), v, style) for i, v in enumerate(r)
+                                                              if v is not None and v != ''))).encode('utf-8'))
+            f.write(b'</sheetData></worksheet>')
+        return file_no
 
     def _name(self, title):
         n = re.sub(r'[\[\]:*?/\\]', ' ', str(title)).strip()[:31] or 'Лист'
@@ -194,23 +200,26 @@ class XlsxData:
             raise ValueError('Раздел «%s»: %d записей — больше, чем помещается в Excel; выберите JSON или архив .zip' % (title, len(recs)))
         head = [self.labels.get(k, k.replace(':json', '')) for k, _, _ in cols]
         keys = [k for k, _, _ in cols]
-        body = []
-        for r in recs:
-            row = []
-            for _, p, js in cols:
-                if p == ('_more',):
-                    more = {k: v for k, v in r.items() if not self.KEY.match(str(k))}
-                    row.append(json.dumps(more, ensure_ascii=False) if more else None)
-                    continue
-                if p[0] not in r or (len(p) == 2 and (not isinstance(r[p[0]], dict) or p[1] not in r[p[0]])):
-                    row.append(None)                  # поля нет — пустая ячейка
-                    continue
-                v = r[p[0]] if len(p) == 1 else r[p[0]][p[1]]
-                row.append(json.dumps(v, ensure_ascii=False) if js else v)
-            body.append(row)
+
+        def rows():
+            yield head
+            yield keys
+            for r in recs:
+                row = []
+                for _, p, js in cols:
+                    if p == ('_more',):
+                        more = {k: v for k, v in r.items() if not self.KEY.match(str(k))}
+                        row.append(json.dumps(more, ensure_ascii=False) if more else None)
+                        continue
+                    if p[0] not in r or (len(p) == 2 and (not isinstance(r[p[0]], dict) or p[1] not in r[p[0]])):
+                        row.append(None)                  # поля нет — пустая ячейка
+                        continue
+                    v = r[p[0]] if len(p) == 1 else r[p[0]][p[1]]
+                    row.append(json.dumps(v, ensure_ascii=False) if js else v)
+                yield row
         widths = [min(50, max(10, len(str(h)) + 2)) for h in head]
         name = self._name(title)
-        self.sheets.append((name, self._sheet([head, keys] + body, 2, widths), False))
+        self.sheets.append((name, self._sheet(rows(), 2, widths), False))
         self.map.append(['table', name, path])
 
     def _kv(self, title, path, d):
@@ -226,6 +235,13 @@ class XlsxData:
     def dump(self, doc):
         """Документ → байты .xlsx."""
         self.sheets, self.map, self.long, self.used = [], [], [], {self.INFO.lower(), self.META.lower(), self.LONG_SHEET.lower()}
+        buf = io.BytesIO()
+        self.z, self.files = zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED), 1      # лист 1 — «Сведения» (пишется последним)
+        with self.z:
+            self._dump(doc)
+        return buf.getvalue()
+
+    def _dump(self, doc):
         sec = doc.get('sections') if isinstance(doc.get('sections'), dict) else {}
         loose = {}
         for s, v in sec.items():
@@ -248,11 +264,10 @@ class XlsxData:
         meta = {k: v for k, v in doc.items() if k != 'sections'}
         kp = [['что', 'лист', 'путь'], ['meta', '', json.dumps(meta, ensure_ascii=False)]] + [
             [m[0], m[1], json.dumps(m[2], ensure_ascii=False)] for m in self.map]
-        kp_xml = self._sheet(kp, 0)
-        info = self._sheet(self._info(doc), 0, [28, 90])
-        long_xml = self._sheet([[i, n, s[j:j + self.CELL]] for i, s in enumerate(self.long) for n, j in enumerate(range(0, len(s), self.CELL))], 0)
-        sheets = [(self.INFO, info, False)] + self.sheets + [(self.META, kp_xml, True), (self.LONG_SHEET, long_xml, True)]
-        return self._book(sheets)
+        kp_no = self._sheet(kp, 0)
+        info = self._sheet(self._info(doc), 0, [28, 90], file_no=1)
+        long_no = self._sheet(([i, n, s[j:j + self.CELL]] for i, s in enumerate(self.long) for n, j in enumerate(range(0, len(s), self.CELL))), 0)
+        self._book([(self.INFO, info, False)] + self.sheets + [(self.META, kp_no, True), (self.LONG_SHEET, long_no, True)])
 
     def _info(self, doc):
         what = {'kp-backup': 'Данные программы «Конструктор КП»', 'kp-settings': 'Настройки программы «Конструктор КП»'}.get(doc.get('format'), doc.get('format'))
@@ -277,12 +292,13 @@ class XlsxData:
         return len(v) if isinstance(v, list) else 0
 
     def _book(self, sheets):
+        """Служебные части книги; sheets — [(имя, номер файла листа, скрыт)] в порядке листов."""
         n = len(sheets)
         ct = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
               '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
               '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
               '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
-              + ''.join('<Override PartName="/xl/worksheets/sheet%d.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' % (i + 1) for i in range(n))
+              + ''.join('<Override PartName="/xl/worksheets/sheet%d.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' % no for _, no, _ in sheets)
               + '</Types>')
         rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
                 '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')
@@ -291,7 +307,7 @@ class XlsxData:
               + ''.join('<sheet name="%s" sheetId="%d"%s r:id="rId%d"/>' % (escape(nm, {'"': '&quot;'}), i + 1, ' state="hidden"' if hid else '', i + 1)
                         for i, (nm, _, hid) in enumerate(sheets)) + '</sheets></workbook>')
         wrels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-                 + ''.join('<Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet%d.xml"/>' % (i + 1, i + 1) for i in range(n))
+                 + ''.join('<Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet%d.xml"/>' % (i + 1, no) for i, (_, no, _) in enumerate(sheets))
                  + '<Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' % (n + 1))
         styles = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
                   '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font>'
@@ -299,16 +315,12 @@ class XlsxData:
                   '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
                   '<borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs>'
                   '<cellXfs count="3"><xf/><xf fontId="1" applyFont="1"/><xf fontId="2" applyFont="1"/></cellXfs></styleSheet>')
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
-            z.writestr('[Content_Types].xml', ct)
-            z.writestr('_rels/.rels', rels)
-            z.writestr('xl/workbook.xml', wb)
-            z.writestr('xl/_rels/workbook.xml.rels', wrels)
-            z.writestr('xl/styles.xml', styles)
-            for i, (_, x, _) in enumerate(sheets):
-                z.writestr('xl/worksheets/sheet%d.xml' % (i + 1), x)
-        return buf.getvalue()
+        z = self.z
+        z.writestr('[Content_Types].xml', ct)
+        z.writestr('_rels/.rels', rels)
+        z.writestr('xl/workbook.xml', wb)
+        z.writestr('xl/_rels/workbook.xml.rels', wrels)
+        z.writestr('xl/styles.xml', styles)
 
     # ---------- чтение
     @staticmethod
@@ -574,16 +586,20 @@ class DataFile:
     def fmt(cls, v, default='json'):
         return v if v in cls.TYPES else default
 
-    def dump(self, body, fmt):
-        """body — текст JSON документа → (байты, расширение, тип содержимого, сведения для журнала)."""
+    def dump(self, body, fmt, doc=None):
+        """body — текст JSON документа (или уже разобранный doc — для xlsx, xml, yml) → (байты, расширение, тип содержимого,
+        сведения для журнала)."""
         ext, ctype = self.TYPES[fmt]
+        if doc is not None and fmt in ('json', 'zip'):
+            body, doc = json.dumps(doc, ensure_ascii=False), None
         if fmt == 'json':
             return body.encode('utf-8'), ext, ctype, {}
         if fmt == 'zip':
             from data_bundle import DataBundle
             data, n, missing = DataBundle(self.img_dir or '.').pack(body)
             return data, ext, ctype, {'images': n, 'missing': missing}
-        doc = json.loads(body)
+        if doc is None:
+            doc = json.loads(body)
         if fmt == 'xlsx':
             return XlsxData(self.labels).dump(doc), ext, ctype, {}
         if fmt == 'xml':

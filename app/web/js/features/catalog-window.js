@@ -30,9 +30,12 @@ class CatalogIndex {
   /** поисковая строка позиции (один раз): текст, свёрнутый текст, транслит, модель без пробелов и знаков */
   static hay(x){ if (x._hay) return x._hay; const a=CatalogIndex.attrs(x), fold=CatalogIndex.fold;
     const plain=norm([x.name, x.spec, x.st||'', CatalogIndex.art(x), CW.supplierOf(x), ...Object.values(a), ...(x.groups||[]).flatMap(g=>(g.rows||[]).map(r=>r.k+' '+r.v))].join(' '));
+    // транслит («далгакиран» → «dalgakiran») — только название, марка, модель, артикул: на 20 000 позиций транслит всего текста
+    // занимал около трети памяти поиска; характеристики и описание ищет и сервер (CatalogSearch)
+    const short=norm([x.name, a.maker, a.model, a.series, CatalogIndex.art(x), CW.supplierOf(x)].filter(Boolean).join(' '));
     // модель без одиночных букв-исполнений: «DVK D 30-13» → «dvk3013», чтобы «DVK30-13» находил её
     const m=norm([a.model, x.name, CatalogIndex.art(x)].filter(Boolean).join(' ')), model=fold(m), model2=fold(m.replace(/(^|\s)[a-zа-яё](?=\s)/g,' '));
-    return (x._hay={ plain, fold:fold(plain), tr:CatalogIndex.tr(plain), model, model2, m0:fold(norm(a.model||'')), name:norm(x.name) }); }
+    return (x._hay={ plain, fold:fold(plain), tr:CatalogIndex.tr(short), model, model2, m0:fold(norm(a.model||'')), name:norm(x.name) }); }
   /** слово запроса с готовыми «свёрнутой» формой и транслитом — считаются один раз на запрос, а не для каждой позиции */
   static word(w){ return {w, f:CatalogIndex.fold(w), t:CatalogIndex.tr(w)}; }
   static wordHit(h, q){ if (h.plain.includes(q.w)) return true; if (q.f.length>=2 && (h.fold.includes(q.f) || h.model2.includes(q.f))) return true;
@@ -114,9 +117,12 @@ class CatalogSorter {
     if (s==='upd') return by(x=>Date.parse(x.updatedAt||'')||null);
     if (s.startsWith('f:')){ const k=s.slice(2); return by(x=>numOf(A(x)[k])); }
     // рекомендуемые: точные совпадения → в наличии с ценой → с ценой → остальные; внутри — по категориям (порядок разделов) и основному параметру
-    const q=String(F.q||'').trim(), rel=num(x=>q?F.rel(x)+1:null), main=num(x=>{ const a=A(x), t=typeById(a.cat); return numOf(a[t.main||'kw']); });
-    const tier=x=>(x.price||x.cost ? 0 : 2) + (CatalogIndex.inStock(x) ? 0 : 1), cm=cmp(main);
-    return (p,q2)=> (q ? (rel(p)-rel(q2)) : 0) || tier(p)-tier(q2) || (ord.get(A(p).cat)??999)-(ord.get(A(q2).cat)??999) || cm(p,q2) || byName(p,q2); }
+    // ключ позиции считается один раз (сравнений — сотни тысяч на 20 000 позиций)
+    const q=String(F.q||'').trim(), K=new Map(), key=x=>{ let k=K.get(x.id); if (k) return k; const a=A(x), t=typeById(a.cat), m=numOf(a[t.main||'kw']);
+      k={ r:q?F.rel(x):0, t:(x.price||x.cost ? 0 : 2) + (CatalogIndex.inStock(x) ? 0 : 1), o:ord.get(a.cat)??999, m:m==null||!isFinite(m)||m===0?null:m };
+      K.set(x.id, k); return k; };
+    return (p,q2)=>{ const a=key(p), b=key(q2);
+      return a.r-b.r || a.t-b.t || a.o-b.o || (a.m==null ? (b.m==null?0:1) : b.m==null ? -1 : (a.m-b.m)*d) || byName(p,q2); }; }
   /** список сортировок (плюс числовые параметры выбранной категории) и кнопка направления */
   renderBox(){ const F=this.win.F, sel=$('#cwSort'), dir=$('#cwDir'), SORTS=CatalogSorter.SORTS; if (!sel) return;
     const fl=this.fields(); if (!SORTS.some(x=>x[0]===F.sort) && !(F.sort.startsWith('f:') && fl.some(f=>'f:'+f.key===F.sort))){ F.sort='best'; F.dir=1; }
@@ -349,8 +355,13 @@ class CatalogWindow {
         + (list.length>this.limit?`<div class="cw-more"><button class="btn" type="button" data-more>Показать ещё (${list.length-this.limit})</button></div>`:'')
       : `<p class="empty">${this.docs.length?'Ничего не найдено — ослабьте фильтры или выберите «Все позиции».':'Каталог пуст. Добавьте позицию, загрузите файл каталога или импортируйте таблицу из Excel (меню «Ещё»).'}</p>`);    this.autoMore();
   }
-  /** следующая порция строк списка */
-  more(){ this.limit+=CatalogWindow.PAGE*2; this.list(); }
+  /** следующая порция строк: дописывается к уже готовому списку (без нового отбора, сортировки и счётчиков) */
+  more(){ const box=$('#cwList'), m=box?.querySelector('.cw-more'), L=this.view||[], from=this.limit;
+    this.limit+=CatalogWindow.PAGE*2;
+    if (!m || !L.length) return this.list();
+    m.insertAdjacentHTML('beforebegin', L.slice(from, this.limit).map(x=>this.row(x)).join(''));
+    if (L.length>this.limit){ const b=m.querySelector('[data-more]'); if (b) b.textContent=`Показать ещё (${L.length-this.limit})`; this.autoMore(); }
+    else m.remove(); }
   /** строки дорисовываются сами, когда прокрутка подходит к концу списка («Показать ещё» — на случай без прокрутки) */
   autoMore(){ this.io?.disconnect(); const box=$('#cwList'), m=box?.querySelector('.cw-more'); if (!m || !window.IntersectionObserver) return;
     this.io=new IntersectionObserver(es=>{ if (es.some(e=>e.isIntersecting)){ this.io.disconnect(); this.more(); } }, {root:box, rootMargin:'0px 0px 600px 0px'});

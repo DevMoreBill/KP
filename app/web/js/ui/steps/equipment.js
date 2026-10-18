@@ -64,6 +64,11 @@ function itemCard(x,i){
 // сбрасывается при смене категорий): без запоминания каждое нажатие клавиши нормализовало текст 7000+ карточек
 class QuickFind {
   static HAY = new WeakMap();
+  static t = 0;
+  /** подсказки «Быстро добавить» под полем inp */
+  static show(inp){ if (!inp.isConnected) return; const L=$('#qaList'); if (!L) return; const res=quickMatches(inp.value);
+  L.hidden=!inp.value.trim(); L.innerHTML = res.length ? res.map((x,k)=>`<button type="button" data-qa="${esc(x.id)}" class="${k===0?'first':''}">${x.photo?`<img src="${esc(x.photo.src)}" alt="">`:'<i></i>'}<span><b>${esc(x.name)}</b><small>${esc(mainLine(x,3)||x.spec||'')}${x.price?' · '+money(x.price)+' '+curSh(x.priceCur||'RUB'):''}</small></span><em>Добавить</em></button>`).join('')
+    : `<p class="muted" style="margin:10px 14px">Ничего не найдено. <button class="btn ghost" type="button" data-a="openCatalog">Открыть каталог с фильтрами</button></p>`; }
   static hay(x, a){ const c=this.HAY.get(x); if (c && c.a===a) return c.h;
     const h=norm([x.name,x.spec,a.maker,a.model,a.series,a.engine,a.alternator].join(' ')); this.HAY.set(x, {a, h}); return h; }
 }
@@ -86,9 +91,10 @@ async function addFromCatalog(x){
   setTimeout(()=>document.getElementById('item-'+it.id)?.scrollIntoView({behavior:'smooth',block:'center'}),60);
 }
 
-document.addEventListener('input', e=>{ if (e.target.id!=='quickAdd') return; const L=$('#qaList'); const res=quickMatches(e.target.value);
-  L.hidden=!e.target.value.trim(); L.innerHTML = res.length ? res.map((x,k)=>`<button type="button" data-qa="${esc(x.id)}" class="${k===0?'first':''}">${x.photo?`<img src="${esc(x.photo.src)}" alt="">`:'<i></i>'}<span><b>${esc(x.name)}</b><small>${esc(mainLine(x,3)||x.spec||'')}${x.price?' · '+money(x.price)+' '+curSh(x.priceCur||'RUB'):''}</small></span><em>Добавить</em></button>`).join('')
-    : `<p class="muted" style="margin:10px 14px">Ничего не найдено. <button class="btn ghost" type="button" data-a="openCatalog">Открыть каталог с фильтрами</button></p>`; });
+// подсказки — через 100 мс после последней клавиши (на 20 000 позиций разбор на каждую клавишу подтормаживал набор)
+document.addEventListener('input', e=>{ if (e.target.id!=='quickAdd') return; clearTimeout(QuickFind.t); const inp=e.target;
+  QuickFind.t=setTimeout(()=>QuickFind.show(inp), 100); });
+
 
 document.addEventListener('keydown', e=>{ if (e.target.id!=='quickAdd') return;
   if (e.key==='Enter'){ const x=quickMatches(e.target.value)[0]; if (x){ e.preventDefault(); e.target.value=''; addFromCatalog(x); setTimeout(()=>$('#quickAdd')?.focus(),80); } }

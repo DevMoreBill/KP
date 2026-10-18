@@ -1418,7 +1418,7 @@ def _code_pairs(d, offs, ocfg, by_code):
 
 def _feed_docs(store, fid):
     out = []
-    for (doc,) in store.all("SELECT doc FROM catalog WHERE doc LIKE ?", ('%"feed": {%' + json.dumps(fid) + '%',)):
+    for (doc,) in store.all("SELECT doc FROM catalog WHERE feed_id = ?", (str(fid)[:80],)):
         try:
             d = json.loads(doc)
         except ValueError:
@@ -2479,8 +2479,7 @@ def auto_check(store, log=print):
 def _feed_counts(store):
     """{код фида: число связанных позиций} одним запросом (без разбора карточек в Python)."""
     try:
-        return {fid: n for fid, n in store.all("SELECT json_extract(doc, '$.feed.id'), COUNT(*) FROM catalog "
-                                                "WHERE doc LIKE ? GROUP BY 1", ('%"feed": {%',)) if fid}
+        return {fid: n for fid, n in store.all('SELECT feed_id, COUNT(*) FROM catalog WHERE feed_id IS NOT NULL GROUP BY 1') if fid}
     except Exception:               # SQLite без JSON — по-старому
         return None
 

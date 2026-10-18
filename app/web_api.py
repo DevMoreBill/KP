@@ -26,6 +26,7 @@ from config import (APP_DIR, BadRequest, UPDATE_DIR, DATA_DIR, DOCS_DIR, DOCS_SH
 from desktop import DesktopError, open_file, open_folder, show_in_folder
 from equipment_types import load_types, save_user_types, types_builtin_path
 import admin
+import catalog_admin
 from storage import Conflict, with_rev
 import pdf_convert
 import images
@@ -34,7 +35,7 @@ import ai_llm
 from ai_profile import CategoryProfile, ModelFacts
 import pdf_text
 import defaults
-from kp_track import DealTrack, Mailer, MailTemplate, ReminderList
+from kp_track import DealTrack, Mailer, MailRate, MailTemplate, ReminderList
 from kp_files import KpFiles
 from crm import CrmBoard, DealBook, Stages, TaskBook
 from bitrix import BitrixConf, BitrixQueue, BitrixSync, EconXlsx
@@ -168,6 +169,11 @@ class Controller(metaclass=ControllerMeta):
         if not isinstance(d, dict):
             raise BadRequest('Неверный запрос: нужен объект JSON')
         return d
+
+    @staticmethod
+    def no_paths(e):
+        """Текст ошибки для ответа — без путей на диске сервера (C:\\…, /tmp/…)."""
+        return re.sub(r'(?:[A-Za-z]:\\|\\\\|/(?:tmp|home|root|var|usr|Users)/)[^\s"\'«»;,)]*', '…', str(e))
 
     def text(self, code, msg):
         return self.send(code, 'text/plain; charset=utf-8', msg)
@@ -425,7 +431,8 @@ class SystemController(Controller):
         base = {'ok': True, 'local': self.is_local(), 'mode': 'server' if SERVER_MODE else 'local', 'host': socket.gethostname()}
         if getattr(self.h, '_kp_login', False) and not self.h._kp_user and admin.session(self.h, touch=False) is None:
             return self.send_json(base)        # до входа — без папок, путей и состава базы
-        return self.send_json({'ok': True, 'dataDir': DATA_DIR, 'docsDir': DOCS_DIR, 'local': self.is_local(),
+        far = not self.is_local() and admin.session(self.h, touch=False) is None     # по сети — без путей сервера
+        return self.send_json({'ok': True, 'dataDir': '' if far else DATA_DIR, 'docsDir': '' if far else DOCS_DIR, 'local': self.is_local(),
                                'mode': 'server' if SERVER_MODE else 'local', 'docsShare': DOCS_SHARE,
                                'host': socket.gethostname(), 'port': self.server.server_address[1], 'items': store().catalog_count(),
                                'migrations': (store().kv_get('migrations') or [])[-2:]})
@@ -533,7 +540,7 @@ class KpController(Controller):
         try:
             data = pdf_convert.convert_bytes(self.body(), cp().keys().get('convertapiKey'))
         except Exception as e:
-            return self.text(422, 'PDF не создан: %s' % e)
+            return self.text(422, 'PDF не создан: %s' % Controller.no_paths(e))
         return self.send(200, 'application/pdf', data, self.attachment(safe_file(self.q.get('name')) or 'КП.pdf'))
 
     @route(r'/api/history')
@@ -627,7 +634,7 @@ class KpController(Controller):
             except OSError:
                 pass
         store().kp_set(kid, 'docx', rel)
-        return self.send_json({'ok': True, 'path': f, 'rel': rel})
+        return self.send_json({'ok': True, 'path': f if self.is_local() else '', 'rel': rel})
 
     @route(r'/api/kp/([^/]+)/docx', 'GET')
     def docx_get(self, kid):
@@ -651,8 +658,8 @@ class KpController(Controller):
             try:
                 pdf_convert.convert_file(f, pdf, cp().keys().get('convertapiKey'))
             except Exception as e:
-                return self.text(422, 'PDF не создан: %s' % e)
-            return self.send_json({'ok': True, 'path': pdf, 'local': self.is_local()})
+                return self.text(422, 'PDF не создан: %s' % Controller.no_paths(e))
+            return self.send_json({'ok': True, 'path': pdf if self.is_local() else '', 'local': self.is_local()})
         if self.m == 'GET':
             if not os.path.isfile(pdf):
                 return self.not_found('PDF этого КП ещё не создан')
@@ -997,6 +1004,8 @@ class DealController(Controller):
 
     @route(r'/api/suppliers/([A-Za-z0-9_-]{1,64})', 'PUT')
     def supplier(self, sid):
+        if not catalog_admin.power(self.h, 'catSelfMod', 'PUT'):     # справочник поставщиков — администратор и право «Без модерации»
+            return self.text(403, 'Справочник поставщиков меняет администратор или менеджер с правом «Без модерации»')
         d = self.json_body()
         with self.user_input():
             saved = store().supplier_put(sid, d, admin.actor(self.h)[1], self.base_rev())
@@ -1131,6 +1140,9 @@ class TrackController(Controller):
                 files += KpFiles.of(store()).for_mail(kid, d['files'], sum(len(x[1]) for x in files))
         st = self._obj(store().kp_get(kid, 'state'))
         reply = str((st.get('manager') or {}).get('email') or '') if isinstance(st.get('manager'), dict) else ''
+        with self.user_input():
+            u = getattr(self.h, '_kp_user', None)        # без входа по паролю «кто» — заголовок запроса: считаем по компьютеру
+            MailRate.take(store(), 'u:%s' % u['id'] if u else 'ip:%s' % self.h.client_address[0])
         try:
             Mailer(store()).send(to, cc, str(d.get('subject') or '')[:300], str(d.get('body') or '')[:20000], files, reply)
         except RuntimeError as e:

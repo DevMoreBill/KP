@@ -124,7 +124,7 @@ class SrvVal:
         # напоминания менеджеру
         'kp.staleDays': (7, 1, 90), 'kp.expireAhead': (3, 0, 30), 'kp.expiredShow': (3, 0, 60), 'kp.remindDays': (200, 30, 1000),
         # справочные документы к КП (app/kp_files.py)
-        'kp.fileMB': (25, 1, 100), 'kp.filesMax': (20, 1, 100), 'kp.filesMB': (100, 10, 1000), 'kp.mailMB': (18, 5, 50), 'kp.fileUndoMin': (10, 0, 120), 'kp.imgMB': (25, 5, 100),
+        'kp.fileMB': (25, 1, 100), 'kp.filesMax': (20, 1, 100), 'kp.filesMB': (100, 10, 1000), 'kp.mailMB': (18, 5, 50), 'kp.mailPerHour': (30, 1, 500), 'kp.fileUndoMin': (10, 0, 120), 'kp.imgMB': (25, 5, 100),
     }
     TTL = 5                  # с — кэш значений: сервер читает их на каждом запросе (сессии)
     _cache = (None, 0.0, {})

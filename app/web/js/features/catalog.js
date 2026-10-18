@@ -85,9 +85,17 @@ function fillFromCat(it, x){
 async function syncCatalog(number){
   // каталог уже в браузере (IndexedDB + изменения с сервера); не вышло — целиком с сервера
   let list=[]; try{ list = await CatalogCache.load(); }catch(e){ try{ list = await store().list(); }catch(_){} }
+  // поиск позиции — по словарям (перебор 20 000 карточек на каждую строку КП занимал десятки мс), полные карточки позиций
+  // КП — заранее и параллельно, а не по одной перед каждой записью
+  const byId=new Map(list.map(d=>[d.id, d])), byName=new Map();
+  for (const d of list){ const k=norm(d.name); if (!byName.has(k)) byName.set(k, d); }
+  const find=(id, name)=>byId.get(id) || byName.get(norm(name));
+  const full=new Map(), want=new Map();
+  for (const it of S.items) if (it.name.trim() && it.price){ const d=find(it.catId, it.name); if (d) want.set(d.id, d); }
+  await Promise.all([...want.values()].map(async d=>{ try{ full.set(d.id, await fullDoc(d)); }catch(e){ /* возьмётся ниже по одной */ } }));
   for (const it of S.items){
     if (!it.name.trim() || !it.price) continue;
-    const nk=norm(it.name), doc = await fullDoc(list.find(d=>d.id===it.catId) || list.find(d=>norm(d.name)===nk));
+    const light=find(it.catId, it.name), doc = light ? (full.get(light.id) || await fullDoc(light)) : await fullDoc(undefined);
     const base = doc ? JSON.parse(JSON.stringify(doc)) : { id: uid()+uid(), prices: [] };
     Object.assign(base, { name:it.name, spec:it.spec||base.spec||'', price:it.price, priceCur:kpCur(), cost:it.cost||base.cost||0, costCur:it.cost?(it.costCur||'RUB'):(base.costCur||'RUB'), margin:it.margin ?? base.margin, mmode:it.mmode||base.mmode, pageTitle:it.pageTitle||base.pageTitle||'',
       photoCaption:it.photoCaption||base.photoCaption||'',
@@ -104,11 +112,11 @@ async function syncCatalog(number){
     if (saved){ if (saved.photo) it.photo = saved.photo; if (saved.logo) it.logo = saved.logo; if (saved.gallery && it.gallery && saved.gallery.length===it.gallery.length) it.gallery=it.gallery.map((g,k)=>({...g, src:saved.gallery[k].src})); }
     for (const o of (it.options||[])){
       if (!o.name.trim() || !o.price) continue;
-      const ok=norm(o.name), od = await fullDoc(list.find(d=>d.id===o.catId) || list.find(d=>norm(d.name)===ok));   // полная позиция, а не карточка списка
+      const od = await fullDoc(find(o.catId, o.name));   // полная позиция, а не карточка списка
       const ob = od ? JSON.parse(JSON.stringify(od)) : { id: uid()+uid(), kind:'option', prices: [], features:[], groups:[] };   // новая — всегда опция
       Object.assign(ob,{ name:o.name, price:o.price, spec:ob.spec||'', updatedAt:new Date().toISOString(), short:o.short||ob.short||'', unit:o.unit||'шт.' });
       ob.prices=(ob.prices||[]).filter(p=>!number||p.number!==number); ob.prices.unshift({date:S.date,client:S.client,price:o.price,qty:+o.qty,number:number||''}); ob.prices=ob.prices.slice(0, Math.round(DEFN('cat.priceKeep', 50)));
-      await store().put(ob, true); o.catId=ob.id; list.push(ob);
+      await store().put(ob, true); o.catId=ob.id; byId.set(ob.id, ob); if (!byName.has(norm(ob.name))) byName.set(norm(ob.name), ob);
     }
   }
   await refreshCat();

@@ -6,17 +6,22 @@
 
 class CatalogCache {
   static DB = 'kp-catalog';
-  static STORE = 'snap';
+  static VER = 2;              // 2 — карточка отдельной записью: после правки пишутся только изменённые, а не весь каталог
+  static META = 'meta';
+  static ITEMS = 'items';
   static KEY = 'cat';
   static snap = null;          // {epoch, seq, items}
   static _t = 0;
+  static _dirty = null;        // что записать: {full} или {put: Map id → карточка, del: Set id}
 
   static _db(){
     if (this._dbp) return this._dbp;
     this._dbp = new Promise((res, rej)=>{
       if (!window.indexedDB) return rej(new Error('нет IndexedDB'));
-      const r = indexedDB.open(this.DB, 1);
-      r.onupgradeneeded = ()=>{ r.result.createObjectStore(this.STORE); };
+      const r = indexedDB.open(this.DB, this.VER);
+      r.onupgradeneeded = ()=>{ const db=r.result;
+        for (const n of [...db.objectStoreNames]) db.deleteObjectStore(n);       // прежний снимок одной записью — загрузится заново
+        db.createObjectStore(this.META); db.createObjectStore(this.ITEMS, {keyPath:'id'}); };
       r.onsuccess = ()=>res(r.result); r.onerror = ()=>rej(r.error); r.onblocked = ()=>rej(new Error('IndexedDB занята'));
     }).catch(e=>{ this._dbp=null; throw e; });
     return this._dbp;
@@ -24,16 +29,34 @@ class CatalogCache {
 
   static async _read(){
     try{ const db=await this._db();
-      return await new Promise(res=>{ const q=db.transaction(this.STORE).objectStore(this.STORE).get(this.KEY); q.onsuccess=()=>res(q.result||null); q.onerror=()=>res(null); }); }
+      return await new Promise(res=>{ const tx=db.transaction([this.META, this.ITEMS]); let meta=null, items=null;
+        const done=()=>{ if (meta!==null && items!==null) res(meta && meta.seq ? {...meta, items:items.sort((a,b)=>CatalogCache.COLL.compare(String(a.name||''), String(b.name||'')))} : null); };
+        const m=tx.objectStore(this.META).get(this.KEY); m.onsuccess=()=>{ meta=m.result||false; done(); }; m.onerror=()=>res(null);
+        const q=tx.objectStore(this.ITEMS).getAll(); q.onsuccess=()=>{ items=q.result||[]; done(); }; q.onerror=()=>res(null); }); }
     catch(e){ return null; }
   }
 
-  /** сохранить в IndexedDB — с задержкой и в свободное время (запись 20 000 карточек — заметная работа) */
+  /** отметить, что записать: full — весь каталог заново, иначе — изменённые и удалённые карточки */
+  static _mark(full, items=[], gone=[]){
+    const d=this._dirty;
+    if (full || (d && d.full)){ this._dirty={full:true}; return; }
+    const x=d || {put:new Map(), del:new Set()};
+    for (const it of items){ x.put.set(it.id, it); x.del.delete(it.id); }
+    for (const id of gone){ x.del.add(id); x.put.delete(id); }
+    this._dirty=x;
+  }
+
+  /** сохранить в IndexedDB — с задержкой и в свободное время */
   static _save(){
     clearTimeout(this._t);
     this._t = setTimeout(()=>(window.requestIdleCallback||setTimeout)(async()=>{
-      const s=this.snap; if (!s) return;
-      try{ const db=await this._db(); const tx=db.transaction(this.STORE, 'readwrite'); tx.objectStore(this.STORE).put({epoch:s.epoch, seq:s.seq, items:s.items.map(this.clean)}, this.KEY); }
+      const s=this.snap, d=this._dirty; if (!s || !d) return;
+      this._dirty=null;
+      try{ const db=await this._db(), tx=db.transaction([this.META, this.ITEMS], 'readwrite'), st=tx.objectStore(this.ITEMS);
+        if (d.full){ st.clear(); for (const x of s.items) st.put(this.clean(x)); }
+        else { for (const x of d.put.values()) st.put(this.clean(x)); for (const id of d.del) st.delete(id); }
+        tx.objectStore(this.META).put({epoch:s.epoch, seq:s.seq}, this.KEY);
+        tx.onerror=()=>{ this._mark(true); }; }      // не записалось — в следующий раз весь каталог
       catch(e){ /* нет места или приватный режим — каталог просто загрузится с сервера в следующий раз */ }
     }), 1500);
   }
@@ -59,6 +82,7 @@ class CatalogCache {
     const q = s && s.seq ? `?since=${s.seq}&epoch=${encodeURIComponent(s.epoch||'')}` : '?since=0';
     const r = await api('/api/catalog/sync'+q);
     const changed = r.full || r.items.length || r.gone.length || !s || s.seq!==r.seq;
+    if (changed) this._mark(r.full || !s, r.items, r.gone);
     s = r.full ? {epoch:r.epoch, seq:r.seq, items:r.items} : this.apply(s, r);
     this.snap = s;
     if (changed) this._save();
@@ -66,7 +90,9 @@ class CatalogCache {
   }
 
   /** забыть сохранённое (например, после замены базы) */
-  static async forget(){ this.snap=null; try{ const db=await this._db(); db.transaction(this.STORE,'readwrite').objectStore(this.STORE).delete(this.KEY); }catch(e){ /* нет IndexedDB */ } }
+  static async forget(){ this.snap=null; this._dirty=null;
+    try{ const db=await this._db(), tx=db.transaction([this.META, this.ITEMS],'readwrite'); tx.objectStore(this.META).delete(this.KEY); tx.objectStore(this.ITEMS).clear(); }
+    catch(e){ /* нет IndexedDB */ } }
 }
 
 // поиск по характеристикам — на сервере: id позиций, где есть все слова запроса (браузер ищет сам по названию, модели, артикулу)

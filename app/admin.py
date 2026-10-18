@@ -1100,14 +1100,20 @@ class AdminApi:
             cc = ConnectionCheck(st, os.path.dirname(st.path), ROOT)
             return self.ok(cc.run() if m == 'POST' else cc.last())
         if sub == 'password' and m == 'POST':
+            ip = _ip(self.h)
+            sec = LoginGuard.left(ip)         # подбор текущего пароля — как подбор при входе
+            if sec:
+                return LoginGuard.refuse(self.h, sec)
             d, users = self.data(), accounts(st)
             u = find_account(users, me) or (users[0] if len(users) == 1 else None)
-            if not u or not verify_password(d.get('old') or '', u.get('pw') or {}):
+            if not u or not LoginGuard.verify(d.get('old') or '', (u or {}).get('pw')):
                 self.log('set_password', 'admin', me, result='failed')
-                return self.err(403, 'Текущий пароль указан неверно')
+                return LoginGuard.wrong(self.h, ip, 'Текущий пароль указан неверно')
             check_new_password(d.get('new') or '')
+            LoginGuard.ok(ip)
             u['pw'] = hash_password(d['new'])
             save_accounts(st, users)
+            AdminSessions.drop_login(u['login'], keep=_cookie_token(self.h))     # другие входы с прежним паролем закрываются
             self.log('set_password', 'admin', u['login'])
             return self.ok()
         if sub == 'access':      # вход менеджеров в конструктор: режим, логины, пароли, права
@@ -1755,16 +1761,32 @@ class AdminApi:
         for k in ('kp', 'managers', 'clients', 'audit', 'suppliers', 'settings'):
             if k in cur:
                 out[k] = cur[k]
-        digests = self.digests(out, ('catalog' in out) and (docs if docs is not None and src is None else self._rows(src) if src else json.loads(catalog)))
-        secs = ','.join('%s:%s' % (json.dumps(k), catalog if k == 'catalog' else json.dumps(v, ensure_ascii=False)) for k, v in out.items())
-        extra = (',"cats":%s' % json.dumps(cats, ensure_ascii=False) if cats else '') + (
-            ',"pick":%s' % json.dumps({k: sorted(v) for k, v in pick.items()}, ensure_ascii=False) if pick and 'catalog' in sections else '') + (
-            ',"supplier":%s' % json.dumps(sup, ensure_ascii=False) if sup else '') + (
-            ',"keep":%s' % json.dumps(keep) if keep else '') + (
-            ',"filter":%s' % json.dumps(flt, ensure_ascii=False, default=sorted) if flt is not None else '') + (
-            ',"digests":%s' % json.dumps(digests, separators=(',', ':')))
         from version import VERSION
-        body = '{"format":"kp-backup","version":1,"app":%s,"createdAt":%s,"sections":{%s}%s}' % (json.dumps(VERSION), json.dumps(_now()), secs, extra)
+        extra = [('cats', cats if cats else None), ('pick', {k: sorted(v) for k, v in pick.items()} if pick and 'catalog' in sections else None),
+                 ('supplier', sup or None), ('keep', keep or None),
+                 ('filter', json.loads(json.dumps(flt, ensure_ascii=False, default=sorted)) if flt is not None else None)]
+        if fmt in ('xlsx', 'xml', 'yml'):
+            # таблица и XML строятся из разобранных данных: каталог разбирается один раз (отпечатки — из него же), строка JSON
+            # всей выгрузки не собирается — 25 000 позиций в Excel занимали больше гигабайта памяти сервера
+            cat_docs = None
+            if 'catalog' in out:
+                cat_docs, catalog = (docs if docs is not None else json.loads(catalog)), None
+            digests = self.digests(out, cat_docs if cat_docs is not None else False)
+            doc = {'format': 'kp-backup', 'version': 1, 'app': VERSION, 'createdAt': _now(),
+                   'sections': {k: cat_docs if k == 'catalog' else v for k, v in out.items()}}
+            doc.update((k, v) for k, v in extra if v is not None)
+            doc['digests'] = digests
+            body = None
+        else:
+            digests = self.digests(out, ('catalog' in out) and (docs if docs is not None and src is None else self._rows(src) if src else json.loads(catalog)))
+            secs = ','.join('%s:%s' % (json.dumps(k), catalog if k == 'catalog' else json.dumps(v, ensure_ascii=False)) for k, v in out.items())
+            del catalog
+            body = '{"format":"kp-backup","version":1,"app":%s,"createdAt":%s,"sections":{%s}%s,"digests":%s}' % (
+                json.dumps(VERSION), json.dumps(_now()), secs,
+                ''.join(',%s:%s' % (json.dumps(k), json.dumps(v, ensure_ascii=False)) for k, v in extra if v is not None),
+                json.dumps(digests, separators=(',', ':')))
+            del secs
+            doc = None
         what = ('+'.join(SECTION_FILE[x] for x in sections) if len(sections) < len(SECTIONS) else 'вся_база') + ('_категорий-%d' % len(cats) if cats else '') + (
             '_выборка-%d' % items if (pick or flt is not None) and 'catalog' in sections else '')
         if sup:
@@ -1778,8 +1800,8 @@ class AdminApi:
             info['keep'] = keep or []
         if sup:
             info['supplier'] = sup[:120]
-        data, ext, ctype, more = self.data_file().dump(body, fmt)
-        del body
+        data, ext, ctype, more = self.data_file().dump(body, fmt, doc)
+        del body, doc
         self.log('export_db', 'db', ','.join(sections), None, dict(info, bytes=len(data), **more))
         return self.h.send(200, ctype, data, self.h.attachment('КП_выгрузка_%s_%s%s' % (what, stamp, ext)))
 
@@ -1878,6 +1900,9 @@ class AdminApi:
             with open(tmp, 'rb') as f:
                 if f.read(16) != b'SQLite format 3\x00':
                     raise ValueError('Это не файл базы SQLite (.sqlite3) и не архив с ним')
+            import feeds
+            if any(feeds.busy(fid) for fid in list(feeds.JOBS)):      # фоновая загрузка писала бы старые карточки в новую базу
+                raise ValueError('Идёт загрузка или проверка фида — дождитесь её окончания и загрузите файл базы снова')
             bak = self.st.restore_sqlite(tmp)
         finally:
             for ext in ('', '-wal', '-shm', '-journal'):

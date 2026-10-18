@@ -101,6 +101,7 @@ class UnitTest(unittest.TestCase):
     def test_migration_fills_and_rolls_back(self):
         from crm import DealBook
         self.put('20', meta('20', 'ООО «Д»', '7700000005', 'm1', 'Иванова', date.today().isoformat(), 5000), 'sent')
+        self.st.migration_down('2027-12-indexes')
         self.st.migration_down('2027-11-bitrix')
         self.assertEqual(self.st.migration_last(), '2027-10-crm')
         self.st.migration_down('2027-10-crm')

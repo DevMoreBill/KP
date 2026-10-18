@@ -87,6 +87,9 @@ function dlApplyCountry(s){ const p=dealCountryPreset(s.country); if (!p) return
 // сохранить поставщика в справочник (по названию; общий для отдела)
 function dlSaveSupplier(s){
   if (DL.ex || !String(s.name||'').trim()) return;
+  if (!can('catSelfMod')){            // справочник поставщиков правят администратор и менеджеры с правом «Без модерации»
+    if (!DL.supNote){ DL.supNote=true; toast('Поставщик сохранится в этом КП. В общий справочник его вносит администратор'); }
+    return; }
   clearTimeout(DL.saveT[s.id]);
   DL.saveT[s.id]=setTimeout(async()=>{ const id=s.dirId || ('sup_'+uid()+uid()).slice(0,24);
     const kp=dealKpInputs(), makers=[...new Set(kp.items.filter(x=>dlSupOf(x.id)===s.id).map(x=>x.maker).filter(Boolean))];

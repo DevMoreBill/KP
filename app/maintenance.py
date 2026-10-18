@@ -230,8 +230,9 @@ def db_maintenance(store, vacuum=None):
     """Сброс журнала WAL в базу, обновление статистики запросов; раз в месяц (или по кнопке) — сжатие и проверка."""
     st = state(store)
     last = (st.get('vacuum') or {}).get('at') or ''
-    if vacuum is None:
-        vacuum = not last or last < (datetime.now() - timedelta(days=SrvVal.get(store, 'srv.vacuumDays'))).isoformat(timespec='seconds')
+    if vacuum is None:          # само — только ночью: сжатие держит запись в базу (десятки секунд на большой базе)
+        night = datetime.now().hour < 6 or datetime.now().hour >= 22
+        vacuum = night and (not last or last < (datetime.now() - timedelta(days=SrvVal.get(store, 'srv.vacuumDays'))).isoformat(timespec='seconds'))
     size0 = db_size(store)
     rec = {}
     with store.lock:

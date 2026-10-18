@@ -9,7 +9,7 @@ class AdminSystem {
   static async attention(box){
     let r; try{ r=await aapi('attention'); }catch(e){ box.innerHTML=''; return; }
     const L=r.items||[];
-    box.innerHTML = L.length ? `<div class="st-card at-card"><p class="sub">Требует внимания · ${L.length}</p>${L.map(x=>`<div class="at-r at-${esc(x.level)}"><span class="at-l">${esc(this.LEVEL[x.level]||'')}</span><span class="at-t">${esc(x.text)}</span>${x.tab?`<button class="btn sm" type="button" data-sttab="${esc(x.tab)}">Открыть</button>`:''}</div>`).join('')}</div>`
+    box.innerHTML = L.length ? `<div class="st-card at-card"><p class="sub">Требует внимания · ${L.length}</p>${L.map(x=>`<div class="at-r at-${esc(x.level)}"><span class="at-l">${esc(this.LEVEL[x.level]||'')}</span><span class="at-t">${esc(x.text)}</span>${x.tab?`<button class="btn sm" type="button" data-sttab="${esc(x.tab)}">${esc(x.act||'Открыть')}</button>`:''}</div>`).join('')}</div>`
       : '<div class="st-card at-card at-ok"><p class="sub" style="margin:0">✓ Всё в порядке — ничего не требует внимания</p></div>';
   }
 

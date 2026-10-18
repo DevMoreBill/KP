@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """Исправления аудита 18.10 (проверки ECC): «%0A» в адресе мимо проверки прав, откат незавершённой транзакции,
 модерация поверх текущей карточки и без двойного принятия, NaN из файлов, суммы КП не числом, порядок КП с № 1000,
-фильтр «Тендер», контакты клиента, документ для Word, пакет обновления с «D:» в пути, CSRF не ASCII."""
+фильтр «Тендер», контакты клиента, документ для Word, пакет обновления с «D:» в пути, CSRF не ASCII; 3.103: справочник
+поставщиков (администратор и право «Без модерации», границы полей), фид позиции столбцом, восстановление базы без отметки
+миграций и с другим размером страницы, предел писем в час."""
 import io
 import json
 import threading
@@ -46,7 +48,62 @@ class ServerTest(unittest.TestCase):
         self.assertIn('Word', b if isinstance(b, str) else b.decode('utf-8'))
 
 
+    def test_04_suppliers_admin_only(self):
+        st, b, _ = self.req('PUT', '/api/suppliers/s-test', {'name': 'Поставщик'})
+        self.assertEqual(st, 403, 'справочник поставщиков без права «Без модерации» не меняется')
+        h = dict({'Content-Type': 'application/json'}, **self.A)
+        st, b, _ = self.http.req('PUT', '/api/suppliers/s-test', json.dumps({'name': 'Поставщик', 'note': 'x'}), cookie=self.adm, headers=h)
+        self.assertEqual(st, 200, b[:200])
+        st, b, _ = self.http.req('PUT', '/api/suppliers/s-test', json.dumps({'name': 'П', 'bad key': 1}), cookie=self.adm, headers=h)
+        self.assertEqual(st, 400)
+
+
 class StoreTest(unittest.TestCase):
+    def test_feed_id_and_limits(self):
+        import feeds
+        from storage import DocLimits
+        st = self.st
+        st.catalog_put('f1', json.dumps({'name': 'A', 'feed': {'id': 'feed_1', 'oid': '1'}}))
+        st.catalog_put('f2', json.dumps({'name': 'B', 'feed': {'id': 'feed%1', 'oid': '2'}}))
+        self.assertEqual([d['id'] for d in feeds._feed_docs(st, 'feed_1')], ['f1'], '«_» и «%» в коде фида — не шаблон')
+        self.assertEqual(feeds._feed_counts(st), {'feed_1': 1, 'feed%1': 1})
+        DocLimits.check({'name': 'x', 'warehouses': [{'addr': 'a'}]}, 'Карточка')
+        for bad in ({'a b': 1}, {'x': 'я' * 10001}, {'x': [0] * 2001}, {'x': {'y': {'z': {'a': {'b': {'c': {'d': 1}}}}}}}):
+            with self.assertRaises(ValueError):
+                DocLimits.check(bad, 'Карточка')
+
+    def test_restore_old_base(self):
+        import os
+        import sqlite3
+        from kit import TempStore as T
+        st = self.st
+        other = T(self).store
+        other.catalog_put('b', json.dumps({'name': 'Из копии', 'feed': {'id': 'fx'}}))
+        src = os.path.join(os.path.dirname(st.path), 'src.sqlite3')
+        s = sqlite3.connect(src)
+        other.conn().backup(s)
+        s.execute("DELETE FROM kv WHERE key='schema'")          # база без отметки миграций (внешний инструмент)
+        s.commit()
+        s.execute('PRAGMA journal_mode=DELETE')
+        s.execute('PRAGMA page_size=1024')                      # другой размер страницы
+        s.execute('VACUUM')
+        s.close()
+        st.restore_sqlite(src)
+        self.assertEqual(st.all('SELECT id, feed_id FROM catalog'), [('b', 'fx')])
+        self.assertFalse([x for x in os.listdir(os.path.dirname(st.path)) if x.startswith('restore-')], 'временная копия убрана')
+
+    def test_mail_rate(self):
+        from kp_track import MailRate
+        MailRate.SENT.clear()
+        import defaults
+        lim = defaults.SrvVal.get(self.st, 'kp.mailPerHour')
+        for _ in range(lim):
+            MailRate.take(self.st, 'u:t')
+        with self.assertRaisesRegex(ValueError, 'за час'):
+            MailRate.take(self.st, 'u:t')
+        MailRate.take(self.st, 'u:other')
+        MailRate.SENT.clear()
+
     def setUp(self):
         self.st = TempStore(self).store
 
