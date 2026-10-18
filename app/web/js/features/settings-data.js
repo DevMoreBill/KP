@@ -86,7 +86,7 @@ class BackupTab {
 
   static paneOut(p){
     p.innerHTML=BackupTab.two('bkOut', BackupTab.OUT, BackupTab.out);
-    p.addEventListener('change', e=>{ if (e.target.name==='bkOut') BackupTab._pick(p, 'bkOut', 'out', BackupTab.sideOut); });
+    p.onchange=e=>{ if (e.target.name==='bkOut') BackupTab._pick(p, 'bkOut', 'out', BackupTab.sideOut); };
     BackupTab.sideOut(p.querySelector('#bkSide'));
   }
 
@@ -94,7 +94,7 @@ class BackupTab {
   static kv(rows){ return `<table class="pv-t bk-kv">${rows.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>`; }
 
   // общий список форматов у всех вариантов выгрузки (решение владельца 18.10); у «Вся база» ещё точная копия .sqlite
-  static FMT = [['xlsx','Excel (.xlsx) — таблица, можно править'],['json','JSON — данные как есть'],['xml','XML'],['yml','YML — для сайтов и маркетплейсов'],['zip','Архив .zip — данные и все фото']];
+  static FMT = [['xlsx','Excel (.xlsx) — таблица, можно править'],['json','JSON — данные как есть'],['xml','XML'],['yml','YML — для сайтов (только каталог, без закупки)'],['zip','Архив .zip — данные и все фото']];
   static SQLITE = ['sqlite','Точная копия базы (.sqlite в архиве .zip)'];
   static FMT_TIP = '<p>У всех вариантов выгрузки — одни и те же форматы, и любой файл загружается обратно: «Загрузить → Копия или правки» (настройки — «Файл настроек»).</p><p><b>Excel</b> — лист на раздел: строка 2 — служебные ключи, столбец «Код» не меняйте; при загрузке можно взять только изменённые строки. <b>JSON</b> и <b>XML</b> — данные как есть. <b>YML</b> — каталог в формате Яндекса для сайтов и маркетплейсов (и данные для загрузки обратно). <b>Архив .zip</b> — JSON и все фото, на которые он ссылается.</p>';
   static ALL = 'catalog,kp,managers,clients,suppliers,audit,settings';
@@ -143,7 +143,7 @@ class BackupTab {
   // ---------- «Загрузить»: файл — кнопкой или перетаскиванием, сначала предпросмотр
   static paneIn(p){
     p.innerHTML=BackupTab.two('bkIn', BackupTab.IN, BackupTab.inn);
-    p.addEventListener('change', e=>{ if (e.target.name==='bkIn') BackupTab._pick(p, 'bkIn', 'inn', BackupTab.sideIn); });
+    p.onchange=e=>{ if (e.target.name==='bkIn') BackupTab._pick(p, 'bkIn', 'inn', BackupTab.sideIn); };
     p.ondragover=e=>{ if (e.target.closest('.bk-drop')){ e.preventDefault(); e.target.closest('.bk-drop').classList.add('over'); } };
     p.ondragleave=e=>{ const z=e.target.closest('.bk-drop'); if (z) z.classList.remove('over'); };
     p.ondrop=e=>{ const z=e.target.closest('.bk-drop'); if (!z) return; e.preventDefault(); z.classList.remove('over');
@@ -194,7 +194,7 @@ class BackupTab {
     p.innerHTML='<div class="st-card" id="stMaint"><p class="muted">Загружаю…</p></div><div class="st-card" id="stMirror"></div>';
     DbMaint.render(p.querySelector('#stMaint'), BackupTab.ov, 'copies');
     new MirrorCard(p.querySelector('#stMirror')).open();
-    p.addEventListener('click', e=>{ if (e.target.closest('[data-mt],[data-mb]')) setTimeout(()=>BackupTab.summary(), 1500); });
+    p.onclick=e=>{ if (e.target.closest('[data-mt],[data-mb]')) setTimeout(()=>BackupTab.summary(), 1500); };
   }
 
   static paneMaint(p){
@@ -372,10 +372,9 @@ class DataTransfer {
   /** предпросмотр: что добавится и заменится; mode — по умолчанию у Excel «только изменённое», у остальных — «всё» */
   static async _preview(m, f, mode){
     const box=m.querySelector('#impP'); box.innerHTML=`<p class="muted">Проверяю «${esc(f.name)}» (${Fmt.size(f.size)})…</p>`;
-    DataTransfer.mode=mode||'all';
-    try{ const r=await DataTransfer._send('import/file/preview?mode='+DataTransfer.mode, f); DataTransfer.file=f;
+    try{ const r=await DataTransfer._send('import/file/preview?mode='+(mode||'auto'), f); DataTransfer.file=f;   // auto: у Excel — «только изменённое»
       if (r.kind) return BackupTab.redirect(r.kind, f);
-      if (!mode && r.fmt==='xlsx' && r.digests) return DataTransfer._preview(m, f, 'edits');     // Excel — по умолчанию «только изменённое»
+      DataTransfer.mode=r.mode||'all';
       if (r.patch){ box.innerHTML=DataTransfer._patchHtml(r); return; }
       const im=r.images, ed=r.mode==='edits', N=DataTransfer.NAMES;
       const line=(k, v)=>`<tr><td>${N[k]||esc(k)}</td><td>${[v.new?`новых ${Fmt.num(v.new)}`:'', v.updated?`заменится ${Fmt.num(v.updated)}`:'', v.same?`<span class="muted">не менялось ${Fmt.num(v.same)}</span>`:'',
@@ -437,6 +436,8 @@ class CatFilterPane {
   static S = null;       // сочетания категория / производитель / поставщик (/api/admin/export/scope)
   static PRICES = [['price','Цена КП',true],['rrc','РРЦ',true],['cost','Закупка',false],['stock','Остатки',true]];
   static t = 0;
+  static seq = 0;        // номер запроса счётчика: ответ на устаревший запрос не показывается
+  static NO_CAT = '__none__';
 
   static async mount(s){
     const f=BackupTab.flt||(BackupTab.flt={cat:'', maker:'', sup:'', q:'', priced:false, instock:false, prices:CatFilterPane.PRICES.filter(x=>x[2]).map(x=>x[0])});
@@ -464,7 +465,7 @@ class CatFilterPane {
     const total=rows.reduce((a,r)=>a+r.n, 0), opt=(key, v, l, n)=>`<option value="${esc(v)}"${v===f[key]?' selected':''}>${esc(l)} · ${Fmt.num(n)}</option>`;
     const groups=new Map();
     for (const [cat, n] of sum('cat')){ const t=cat?typeById(cat):null, ok=t&&t.id===cat, g=ok?t.group||'Прочее':'Без категории';
-      if (!groups.has(g)) groups.set(g, []); groups.get(g).push([cat, ok?t.name:(cat||'Без категории'), n]); }
+      if (!groups.has(g)) groups.set(g, []); groups.get(g).push([cat||CatFilterPane.NO_CAT, ok?t.name:(cat||'Без категории'), n]); }
     s.querySelector('[data-cf=cat]').innerHTML=`<option value="">Все категории · ${Fmt.num(total)}</option>`+[...groups].map(([g, L])=>`<optgroup label="${esc(g)}">${L.map(([v,l,n])=>opt('cat', v, l, n)).join('')}</optgroup>`).join('');
     s.querySelector('[data-cf=maker]').innerHTML=`<option value="">Все производители</option>`+sum('maker').map(([v,n])=>opt('maker', v, v, n)).join('');
     s.querySelector('[data-cf=sup]').innerHTML=`<option value="">Все поставщики</option>`+sum('sup').map(([v,n])=>opt('sup', v, v, n)).join('');
@@ -475,9 +476,11 @@ class CatFilterPane {
   static count(s, wait){
     clearTimeout(CatFilterPane.t);
     CatFilterPane.t=setTimeout(async()=>{ const n=s.querySelector('#cfN'), b=s.querySelector('[data-bkx=filter]'); if (!n) return;
+      const my=++CatFilterPane.seq;
       try{ const r=await aapi('export/filter?'+new URLSearchParams({flt:JSON.stringify(CatFilterPane.query())}));
+        if (my!==CatFilterPane.seq) return;
         n.innerHTML=r.n ? `Попадёт позиций: <b>${Fmt.num(r.n)}</b>` : '<span class="warn-t">Под условия не подходит ни одна позиция</span>'; b.disabled=!r.n; }
-      catch(err){ n.textContent=err.message||String(err); } }, wait);
+      catch(err){ if (my===CatFilterPane.seq) n.textContent=err.message||String(err); } }, wait);
   }
 }
 

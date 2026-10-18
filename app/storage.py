@@ -454,19 +454,58 @@ def light_of(doc):
     fd = doc.get('feed') if isinstance(doc.get('feed'), dict) else {}
     if fd.get('id'):                # фид-источник — фильтр «Поставщик» в каталоге
         d['src'] = str(fd['id'])[:40]
-    art = fd.get('sku') or (doc.get('attrs') or {}).get('article')
+    art = fd.get('sku') or (doc.get('attrs') if isinstance(doc.get('attrs'), dict) else {}).get('article')
     if art:                         # артикул поставщика — поиск по артикулу
         d['art'] = str(art)[:60]
     d['_light'] = True
     return d
 
 
+# журнал КП — новые сверху: номер «год-NNN» по числу (строкой «2026-1000» < «2026-999»)
+KP_ORDER = "substr(id, 1, 5) DESC, length(id) DESC, id DESC"
+
+
+class TxLock:
+    """Блокировка записи в базу (повторно входимая). Ошибка внутри самого внешнего «with store.lock:» откатывает
+    незавершённую транзакцию этого потока: иначе она держала бы блокировку записи у всего отдела, пока жив поток
+    (соединение браузера keep-alive), а следующая запись этого потока зафиксировала бы недописанное."""
+
+    def __init__(self, store):
+        self.store = store
+        self.rl = threading.RLock()
+        self.depth = threading.local()
+
+    def acquire(self, *a, **k):
+        ok = self.rl.acquire(*a, **k)
+        if ok:
+            self.depth.n = getattr(self.depth, 'n', 0) + 1
+        return ok
+
+    def release(self):
+        self.depth.n -= 1
+        self.rl.release()
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, et, ev, tb):
+        try:
+            if et is not None and self.depth.n == 1:
+                c = getattr(self.store.local, 'c', None)
+                if c is not None and c.in_transaction:
+                    c.rollback()
+        finally:
+            self.release()
+        return False
+
+
 class Store:
     def __init__(self, path):
         self.path = path
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        self.lock = threading.RLock()
         self.local = threading.local()
+        self.lock = TxLock(self)
         c = self.conn()
         c.executescript(SCHEMA)
         c.commit()
@@ -538,7 +577,7 @@ class Store:
         doc = json.loads(text)
         doc['id'] = cid
         doc.pop('_rev', None)
-        a = doc.get('attrs') or {}
+        a = doc.get('attrs') if isinstance(doc.get('attrs'), dict) else {}
         with self.lock:
             c = self.conn()
             rev = self._next_rev(c, 'catalog', cid, base_rev)
@@ -736,11 +775,12 @@ class Store:
             raise ValueError('Нет такой записи в корзине')
         etype, eid, data = r[0], r[1], json.loads(r[2])
         table = TRASH_TABLES[etype]
-        if self.one('SELECT 1 FROM %s WHERE id=?' % table, (eid,)):
-            raise ValueError('Запись с таким id уже есть — восстановление заменило бы её')
-        cols = list(data)
         with self.lock:
             c = self.conn()
+            if c.execute('SELECT 1 FROM %s WHERE id=?' % table, (eid,)).fetchone():
+                raise ValueError('Запись с таким id уже есть — восстановление заменило бы её')
+            have = {x[1] for x in c.execute('PRAGMA table_info(%s)' % table)}
+            cols = [k for k in data if k in have]           # поля записи корзины — только столбцы таблицы (запись могла прийти из файла)
             c.execute('INSERT INTO %s (%s) VALUES (%s)' % (table, ','.join(cols), ','.join('?' * len(cols))), [data[k] for k in cols])
             c.execute('DELETE FROM trash WHERE id=?', (tid,))
             # удалённое прежней версией — без полей для поиска: заполняем их по документу
@@ -769,6 +809,7 @@ class Store:
         if not r:
             return None
         self.write('DELETE FROM trash WHERE id=?', (tid,))
+        self._kp_orphans()
         return {'entityType': r[0], 'entityId': r[1], 'title': r[2]}
 
     def trash_clear(self, etype=None):
@@ -777,6 +818,7 @@ class Store:
         n = self.one('SELECT COUNT(*) FROM trash ' + where, args)[0]
         if n:
             self.write('DELETE FROM trash ' + where, args)
+            self._kp_orphans()
         return n
 
     def trash_purge(self, days):
@@ -786,7 +828,13 @@ class Store:
         n = self.one('SELECT COUNT(*) FROM trash WHERE deleted_at < ?', (edge,))[0]
         if n:
             self.write('DELETE FROM trash WHERE deleted_at < ?', (edge,))
+            self._kp_orphans()
         return n
+
+    def _kp_orphans(self):
+        """Версии КП, удалённых навсегда (нет ни в журнале, ни в корзине), — тоже удалить: в них клиент и цены."""
+        self.write("DELETE FROM kp_versions WHERE kp_id NOT IN (SELECT id FROM kp) "
+                   "AND kp_id NOT IN (SELECT entity_id FROM trash WHERE entity_type='kp')")
 
     # ---------- правки товаров на модерации ----------
     PENDING_COLS = ('id', 'productId', 'kind', 'before', 'after', 'userId', 'userName', 'created', 'status',
@@ -813,6 +861,14 @@ class Store:
 
     def pending_set(self, eid, status, by, reason=''):
         self.write('UPDATE pending_edits SET status=?, reviewed_by=?, reviewed_at=?, reason=? WHERE id=?', (status, by, _now(), reason, eid))
+
+    def pending_claim(self, eid):
+        """Занять правку для принятия: True — только у первого из одновременных «Принять»."""
+        with self.lock:
+            c = self.conn()
+            n = c.execute("UPDATE pending_edits SET status='approving' WHERE id=? AND status='pending'", (eid,)).rowcount
+            c.commit()
+            return n == 1
 
     def pending_ids(self):
         return [r[0] for r in self.all("SELECT DISTINCT product_id FROM pending_edits WHERE status='pending'")]
@@ -978,7 +1034,7 @@ class Store:
                 c.commit()
 
     def kp_list(self):
-        rows = self.all("SELECT meta, track FROM kp WHERE meta IS NOT NULL ORDER BY id DESC")
+        rows = self.all("SELECT meta, track FROM kp WHERE meta IS NOT NULL ORDER BY " + KP_ORDER)
         out = []
         for r in rows:      # испорченная запись (старая версия, ручная правка) не ломает весь журнал
             try:
@@ -1079,7 +1135,7 @@ class Store:
             where.append('status = ?')
             args.append(status)
         if kind in ('tender', 'std'):        # тендерное КП — в описании есть tender.number (клиент пишет его первым полем)
-            where.append(('' if kind == 'tender' else 'NOT ') + "(meta LIKE '%\"tender\":{\"number\":%')")
+            where.append(('' if kind == 'tender' else 'NOT ') + "COALESCE(CASE WHEN json_valid(meta) THEN json_type(meta, '$.tender.number') END, '') <> ''")
         qn = norm(q)
         if qn:
             where.append("search LIKE ? ESCAPE '\\'")
@@ -1089,7 +1145,7 @@ class Store:
             args.append(author)
         w = ' WHERE ' + ' AND '.join(where)
         total = self.one('SELECT COUNT(*) FROM kp' + w, args)[0]
-        rows = self.all('SELECT meta, track FROM kp' + w + ' ORDER BY id DESC LIMIT ? OFFSET ?', args + [int(limit), int(offset)])
+        rows = self.all('SELECT meta, track FROM kp' + w + ' ORDER BY ' + KP_ORDER + ' LIMIT ? OFFSET ?', args + [int(limit), int(offset)])
         return total, [with_track(m, t) for m, t in rows]
 
     def kp_metas_where(self, q='', author='', kind='', status=''):

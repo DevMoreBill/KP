@@ -29,7 +29,8 @@ class CrmData {
   static B=null;
   static who='';                    // '' — свой, 'all' — весь отдел, id — менеджер
   static KINDS={call:'☎', meet:'👥', mail:'✉', task:'✓'};
-  static async load(){ this.B=await api('/api/crm/board?manager='+encodeURIComponent(this.who)); return this.B; }
+  static seq=0;          // ответ на устаревший запрос (успели сменить «Чей кабинет») не применяется
+  static async load(){ const my=++this.seq, b=await api('/api/crm/board?manager='+encodeURIComponent(this.who)); if (my===this.seq) this.B=b; return this.B; }
   static stages(open=false){ return ((this.B&&this.B.stages)||[]).filter(s=>!open||!s.closed); }
   static stage(k){ return this.stages().find(s=>s.key===k)||{key:k, label:k}; }
   static closed(d){ return d.stage==='won' || d.stage==='lost'; }
@@ -81,9 +82,11 @@ class CrmTask {
       const body={kind, title, due, time:E.time.value, deal:f.dataset.tq||(E.deal?E.deal.value:'')};
       if (CrmData.all() && !body.deal && CrmData.B) body.managerId=CrmData.B.me;
       else if (CrmData.who && CrmData.who!=='all') body.managerId=CrmData.who;
+      if (f.dataset.busy) return; f.dataset.busy='1';          // двойное нажатие / Enter — одно дело
       try{ const r=await api('/api/crm/task', {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:JSON.stringify(body)});
         E.title.value=''; E.time.value=''; toast('Дело добавлено: '+r.title+', '+CrmFmt.rel(r.due)); if (after) after(r); }
-      catch(err){ toast('Дело не добавлено: '+err.message); } });
+      catch(err){ toast('Дело не добавлено: '+err.message); }
+      finally{ delete f.dataset.busy; } });
   }
   static async put(id, body, after){
     try{ const r=await api('/api/crm/task/'+id, {method:'PUT', headers:{'Content-Type':'application/json; charset=utf-8'}, body:JSON.stringify(body)});

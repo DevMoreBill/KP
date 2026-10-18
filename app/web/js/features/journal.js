@@ -111,7 +111,7 @@ async function openJournal(){
     const jv=e.target.closest('[data-jv]'); if (jv) return openKpVersions(jv.dataset.jv, jv.dataset.jn, ()=>{ d.close(); d.classList.remove('wide'); });
     const o=e.target.closest('[data-jo]'), c=e.target.closest('[data-jc]'), ec=e.target.closest('[data-je]'); if(!o&&!c&&!ec) return;
     try{
-      await Drafts.stash();
+      if (!await Drafts.stash()) return;
       const st=await api(`/api/kp/${(o||c||ec).dataset[o?'jo':c?'jc':'je']}/state`);
       S=Object.assign(freshState(), st); if (!c){ const m=J.rows.find(x=>x.id===st.kpId); if (m && m.file) S._file=m.file; }
       if (c){ delete S.kpId; delete S.number; delete S.createdAt; delete S._rev; S.date=today(); ClientFields.clear(S); S.authorId=meId();
@@ -134,7 +134,7 @@ async function openKpVersions(id, number, closeJournal){
   m.d.onclick=async e=>{ if (e.target.closest('[data-x]')) return done();
     const vc=e.target.closest('[data-vc]'); if (vc) return KpDiff.open(id, vc.dataset.vc, number);
     const b=e.target.closest('[data-vo]'); if (!b) return;
-    try{ await Drafts.stash(); const st=await api(`/api/kp/${encodeURIComponent(id)}/versions/${b.dataset.vo}`);
+    try{ if (!await Drafts.stash()) return; const st=await api(`/api/kp/${encodeURIComponent(id)}/versions/${b.dataset.vo}`);
       S=Object.assign(freshState(), st);
       try{ S._rev=(await api(`/api/kp/${encodeURIComponent(id)}/rev`)).rev; }catch(e2){ delete S._rev; }   // прежняя версия заменит текущую правку КП
       done(); closeJournal&&closeJournal(); renderForm(); persist(); window.scrollTo({top:0});

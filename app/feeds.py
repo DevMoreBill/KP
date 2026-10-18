@@ -784,7 +784,7 @@ def _clean_url(u):
 def parse(data):
     """YML → {shop, date, cats:{id:{name, parent, path}}, offers:[…]}."""
     data = data.lstrip(b'\xef\xbb\xbf \t\r\n')
-    if b'<!ENTITY' in data[:4096].upper():
+    if re.search(rb'<!ENTITY', data, re.I):         # во всём файле, не только в начале
         raise ValueError('В фиде объявлены сущности XML — такой файл не загружается')
     try:
         root = ET.fromstring(data)
@@ -2140,6 +2140,12 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
         added, updated, same, price_ch, stock_ch, errors = 0, 0, 0, [], [], []
 
         def one(o):
+            try:
+                return _one(o)
+            except Exception as e:      # одна позиция с ошибкой не обрывает всю загрузку
+                return o, None, e, None
+
+        def _one(o):
             old = existing.get(o['oid']) or links.get(o['oid'])
             if not old:
                 cid = _cid(f['id'], o['oid'])
@@ -2187,6 +2193,10 @@ def import_feed(store, f, types, image_store, by='', only=None, log=print, trash
 
         with ThreadPoolExecutor(6) as ex:
             for o, old, doc, ch in ex.map(one, offs):
+                if isinstance(doc, Exception):
+                    errors.append('%s: %s' % (str(o.get('name') or '')[:60], doc))
+                    j['done'] += 1
+                    continue
                 try:
                     cid = (old or {}).get('id') or _cid(f['id'], o['oid'])
                     if old and norm(old) == norm(doc):
@@ -2263,6 +2273,7 @@ def price_cards(store, f, prices, today, by='', stock=None):
     и закупка по сетке скидок — как у позиций фида; связь — doc.priceLink {feed, sku, name, at}. → (изменения цен, сводка)."""
     changes, sumr = [], {'cards': 0, 'priced': 0, 'updated': 0, 'noPrice': [], 'missing': [], 'unclear': []}
     sidx = feed_files.stock_index(stock) if stock else None
+    revs = store.catalog_revs()      # правку менеджера за время проверки не затираем
     for d in _maker_cards(store, f):
         a = d.get('attrs') or {}
         sumr['cards'] += 1
@@ -2285,7 +2296,10 @@ def price_cards(store, f, prices, today, by='', stock=None):
         sumr['priced'] += 1
         if json.dumps([d.get('rrc'), d.get('price'), d.get('cost'), d.get('costDisc'), d.get('priceLink'), d.get('stock')], sort_keys=True, ensure_ascii=False) != before:
             d['updatedAt'] = _now()
-            store.catalog_put(d['id'], json.dumps(d, ensure_ascii=False), by or ('Фид «%s»' % f['name']))
+            try:
+                store.catalog_put(d['id'], json.dumps(d, ensure_ascii=False), by or ('Фид «%s»' % f['name']), revs.get(d['id']))
+            except Conflict:
+                continue            # позицию изменили во время проверки — обновится при следующей
             sumr['updated'] += 1
     for k in ('noPrice', 'missing', 'unclear'):
         sumr[k] = sumr[k][:300]
@@ -2326,6 +2340,7 @@ def check_feed(store, f, by='', log=print, types=None):
     try:
         feed = load(store, f, fresh=True)
         by_oid = {o['oid']: o for o in feed['offers']}
+        revs = store.catalog_revs()      # номера правок до чтения позиций: правку менеджера за время проверки не затираем
         docs = _feed_docs(store, f['id'])
         j['total'] = len(docs)
         today = date.today().isoformat()
@@ -2362,8 +2377,11 @@ def check_feed(store, f, by='', log=print, types=None):
                     d['stock'] = dict(s, available=False, gone=True, at=today)
             if json.dumps([d.get('rrc'), d.get('stock'), d.get('price'), d.get('cost'), d.get('costDisc')], sort_keys=True) != before:
                 d['updatedAt'] = _now()
-                store.catalog_put(d['id'], json.dumps(d, ensure_ascii=False), by or ('Фид «%s»' % f['name']))
-                upd += 1
+                try:
+                    store.catalog_put(d['id'], json.dumps(d, ensure_ascii=False), by or ('Фид «%s»' % f['name']), revs.get(d['id']))
+                    upd += 1
+                except Conflict as e:
+                    log('Фид «%s»: %s — изменили во время проверки (%s), обновится при следующей' % (f['name'], d.get('name'), e.by or 'кто-то'))
             j['done'] += 1
         logo_save()
         cards = None

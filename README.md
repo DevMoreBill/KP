@@ -526,6 +526,23 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.102.1 — аудит (проверки ECC: безопасность, Python, база, интерфейс, скорость), исправлено подтверждённое серьёзное:**
+- Маршруты — `\A…\Z` (`web_api.route`), `SAFE_ID` — `\Z`, управляющие символы в пути — 400 (`kp_server._dispatch`): «%0A» обходил
+  проверку администратора по точному адресу (`/api/integrations/export`, `/api/logistics`, `/api/uitexts`, `/api/types`).
+- `storage.TxLock`: ошибка в самом внешнем `with store.lock` откатывает незавершённую транзакцию потока (иначе блокировка записи
+  держалась, пока жив поток keep-alive). `KP_ORDER` — № года по числу; фильтр «Тендер» — `json_type(meta,'$.tender.number')`.
+  `trash_restore` — проверка внутри блокировки, столбцы — из `PRAGMA table_info`; версии КП, удалённых навсегда, — удаляются.
+- Модерация (`catalog_admin.ModerationDesk.review`): целиком — изменённые поля поверх текущей карточки; `pending_claim` — одно принятие.
+- Фиды: `check_feed`/`price_cards` пишут с `catalog_revs()` (Conflict — пропуск); ошибка одной позиции в загрузке — в отчёт.
+- Битрикс24: любая ошибка записи очереди — `queue.fail`, очередь не стоит. `counterparty.save_client`: тот же контакт обновляется,
+  `_replace` из справочника «Настроек» (с `X-KP-Rev`). `econ_rub` — не число → 0. CSRF — сравнение байтов.
+- `pdf_convert.DocxCheck`: в Word — только .docx без макросов, ActiveX и внешних шаблонов/объектов, `AutomationSecurity = 3`.
+- Загрузка файлов: NaN/Infinity — отказ (`data_bundle.StrictJson`, `DataFile.no_const`); пакет обновления — «D:» в пути и выход
+  из папки — отказ. YML фида — `<!ENTITY` во всём файле.
+- Интерфейс: `Drafts.stash()` → true/false (спрашивает, если не отложилось или черновики выключены); `kpSetCur` переводит скидку
+  суммой; `PartyCheck.run` — только к тому же КП и ИНН; `CrmData.seq`; защита от двойной отправки (сделка, дело).
+- Проверки: `tests/test_audit_1018.py`, `tests/test_data_file.py` (YML без закупки, пустые значения Excel, auto, «Без категории»).
+
 **3.102.0 — одинаковые форматы у всех вариантов выгрузки, любой файл загружается обратно (решение владельца 18.10):**
 - `app/data_file.py`: `DataFile` (FORMATS xlsx · json · xml · yml · zip, `dump`, `sniff`, `load`, `digest`), `XlsxData` (лист на
   раздел: строка 2 — ключи, «attrs.x» — поле вложенного объекта, «…:json» — JSON; скрытые «_kp» и «_long»), `XmlTree`

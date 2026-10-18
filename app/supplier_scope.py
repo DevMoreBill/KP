@@ -18,6 +18,10 @@ class SupplierScope:
     PRICE_KEYS = ('price', 'prices', 'priceCur', 'priceSrc', 'priceLink', 'rrc', 'cost', 'costCur', 'costSrc', 'costDisc',
                   'costAt', 'margin', 'mmode', 'stock')
     MAX_NAME = 120
+    COST_KEYS = ('cost', 'costCur', 'costSrc', 'costDisc', 'costAt', 'margin', 'mmode')
+    # меняется фидом каждый день (цены, остатки, служебная отметка фида, время изменения) — в сравнение «изменено ли в файле
+    # и в программе после выгрузки» не входит, иначе правка из Excel у позиций фида всегда считалась бы конфликтом
+    VOLATILE = PRICE_KEYS + ('updatedAt', 'feed', 'priceAt', 'photoSource')
 
     def __init__(self, store):
         self.st = store
@@ -168,6 +172,7 @@ class CatalogFilter:
     поставщик (как в ExportScope), слова поиска (все — в названии, кратком описании, артикуле или характеристиках),
     «С ценой», «В наличии» (как в окне каталога: остаток больше нуля; без остатка — отметка фида; снятое с фида — нет).
     Какие цены войдут в файл — группами; не вошедшие при загрузке остаются как в базе."""
+    NO_CAT = '__none__'           # «Без категории» в списке (пустое значение — «Все категории»)
     GROUPS = {'price': ('price', 'prices', 'priceCur', 'priceSrc', 'priceLink', 'margin', 'mmode'), 'rrc': ('rrc',),
               'cost': ('cost', 'costCur', 'costSrc', 'costDisc', 'costAt'), 'stock': ('stock',)}
 
@@ -203,31 +208,32 @@ class CatalogFilter:
         return st['qty'] > 0 if isinstance(st.get('qty'), (int, float)) else bool(st.get('available'))
 
     def ids(self, f):
-        from storage import norm
+        from storage import like_arg, norm
         f = self.clean(f)
         sc = ExportScope(self.st)
         mk, sp = SupplierScope.key(f.get('maker', '')), SupplierScope.key(f.get('sup', ''))
+        cat_want = '' if f.get('cat') == self.NO_CAT else f.get('cat')
         ok = [cid for cid, cat, maker, sup, _feed in sc._rows()
-              if ('cat' not in f or cat == f['cat']) and (not mk or SupplierScope.key(maker) == mk) and (not sp or SupplierScope.key(sup) == sp)]
+              if ('cat' not in f or cat == cat_want) and (not mk or SupplierScope.key(maker) == mk) and (not sp or SupplierScope.key(sup) == sp)]
         if not ok or not ({'q', 'priced', 'instock'} & set(f)):
             return ok
-        words = norm(f.get('q', '')).split()
+        words = norm(f.get('q', '')).split()[:8]
         want, out = set(ok), []
-        for cid, light in self.st.all('SELECT id, light FROM catalog ORDER BY name'):
+        sql, args = 'SELECT id, light FROM catalog', ()
+        if words:
+            sql += ' WHERE ' + ' AND '.join("search LIKE ? ESCAPE '\\'" for _ in words)
+            args = tuple(like_arg(w) for w in words)
+        for cid, light in self.st.all(sql + ' ORDER BY name', args):
             if cid not in want:
                 continue
-            try:
-                d = json.loads(light)
-            except ValueError:
-                continue
-            if f.get('priced') and not d.get('price'):
-                continue
-            if f.get('instock') and not self.in_stock(d.get('stock')):
-                continue
-            if words:
-                a = d.get('attrs') if isinstance(d.get('attrs'), dict) else {}
-                hay = norm(' '.join([str(d.get('name') or ''), str(d.get('spec') or ''), str(d.get('art') or '')] + [str(v) for v in a.values()]))
-                if not all(w in hay for w in words):
+            if f.get('priced') or f.get('instock'):
+                try:
+                    d = json.loads(light)
+                except ValueError:
+                    continue
+                if f.get('priced') and not d.get('price'):
+                    continue
+                if f.get('instock') and not self.in_stock(d.get('stock')):
                     continue
             out.append(cid)
         return out

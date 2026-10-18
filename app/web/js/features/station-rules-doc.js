@@ -213,7 +213,7 @@ class RuleEdit {
     const d=JSON.parse(JSON.stringify(data)); fn(d);
     const v=String(d.version||'1'), m=/-н(\d+)$/.exec(v);
     d.version=(m ? v.slice(0, m.index) : v).slice(0, 34)+'-н'+(m ? +m[1]+1 : 1);
-    d.date=new Date().toISOString().slice(0, 10); delete d._saved;
+    d.date=today(); delete d._saved;
     return d;
   }
   constructor(panel){ this.p=panel; this.id=''; }

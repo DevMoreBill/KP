@@ -18,6 +18,18 @@ from datetime import datetime
 from images import EXTS, ImageStore
 
 
+class StrictJson:
+    """JSON из загруженного файла: NaN и Infinity — отказ (в базе они сломали бы JSON.parse каталога у всех браузеров)."""
+
+    @staticmethod
+    def _bad(name):
+        raise ValueError('В файле недопустимое число: %s' % name)
+
+    @classmethod
+    def loads(cls, text):
+        return json.loads(text, parse_constant=cls._bad)
+
+
 class DataBundle:
     JSON_NAME = 'kp-backup.json'
     IMG_PREFIX = 'img/'
@@ -65,7 +77,7 @@ class DataBundle:
             raise ValueError('Файл пустой')
         if not self.is_zip(data):
             try:
-                return json.loads(data.decode('utf-8-sig')), None, []
+                return StrictJson.loads(data.decode('utf-8-sig')), None, []
             except (ValueError, UnicodeDecodeError):
                 raise ValueError('Это не резервная копия программы: нужен файл «КП_резервная_копия_….json» или «КП_выгрузка_….zip»')
         try:
@@ -77,7 +89,7 @@ class DataBundle:
         if not doc:
             raise ValueError('В архиве нет резервной копии (kp-backup.json)')
         try:
-            d = json.loads(z.read(doc).decode('utf-8-sig'))
+            d = StrictJson.loads(z.read(doc).decode('utf-8-sig'))
         except (ValueError, UnicodeDecodeError):
             raise ValueError('Резервная копия в архиве повреждена')
         imgs = [i for i in z.infolist() if i.filename.startswith(self.IMG_PREFIX) and not i.is_dir()][:self.MAX_IMAGES]
@@ -228,7 +240,7 @@ class SettingsFile:
             d = data
         else:
             try:
-                d = json.loads((data or b'').decode('utf-8-sig'))
+                d = StrictJson.loads((data or b'').decode('utf-8-sig'))
             except (ValueError, UnicodeDecodeError):
                 d = None
         if not isinstance(d, dict) or d.get('format') != self.FORMAT or not isinstance(d.get('sections'), dict):

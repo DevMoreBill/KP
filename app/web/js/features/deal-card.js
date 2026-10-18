@@ -100,7 +100,7 @@ class DealCard {
   }
   /** новое КП для сделки: клиент из сделки, КП сохранится в эту сделку */
   static async newKp(d){
-    if (Drafts.meaningful(S)){ if (Drafts.on()) await Drafts.stash(); else if (!confirm(S.kpId?'Начать новое КП? Сохранённое КП № '+S.number+' останется в журнале.':'Начать новое КП? Текущий черновик будет очищен.')) return; }
+    if (Drafts.meaningful(S)){ if (Drafts.on()){ if (!await Drafts.stash()) return; } else if (!confirm(S.kpId?'Начать новое КП? Сохранённое КП № '+S.number+' останется в журнале.':'Начать новое КП? Текущий черновик будет очищен.')) return; }
     if (this.m) this.m.close(); Cabinet.dlg().close();
     S=freshState(); NewKp.myContacts(); S.dealId=d.id;
     const c=(d.clientId||d.clientInn) ? await clientById(d.clientId||('inn'+d.clientInn)).catch(()=>null) : null;
@@ -140,9 +140,11 @@ class DealCard {
       if (!v && !E.title.value.trim()) return toast('Укажите клиента');
       const body={client:c?c.name:v, clientInn:c?c.inn||'':'', clientId:c?c.id:'', title:E.title.value.trim()||(c?c.name:v), expected:E.expected.value};
       if (CrmData.who && CrmData.who!=='all') body.managerId=CrmData.who;
+      if (f.dataset.busy) return; f.dataset.busy='1';          // двойное нажатие / Enter — одна сделка
       try{ const d=await api('/api/crm/deal', {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:JSON.stringify(body)});
         m.close(); if (Cabinet.dlg().open) await Cabinet.reload(); this.open(d.id); }
-      catch(err){ toast('Сделка не создана: '+err.message); } };
+      catch(err){ toast('Сделка не создана: '+err.message); }
+      finally{ delete f.dataset.busy; } };
     setTimeout(()=>E.client.focus(), 50);
   }
 }

@@ -53,7 +53,10 @@ class XmlTree:
         if t == 'b':
             return (e.text or '').strip() == 'true'
         if t in ('n', 'e'):
-            return json.loads(e.text or 'null')
+            v = json.loads(e.text or 'null', parse_constant=lambda x: None)      # NaN, Infinity — не числа
+            if isinstance(v, float) and not math.isfinite(v):
+                return None
+            return v
         if t == 'o':
             return {c.get('n') or '': cls.value(c) for c in e}
         if t == 'a':
@@ -112,10 +115,11 @@ class XlsxData:
         return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and abs(v) < 1e15
 
     def _plain(self, v):
-        """Значение можно положить в ячейку как есть (число, да/нет, текст без служебных знаков)."""
+        """Значение можно положить в ячейку как есть (число, да/нет, непустой текст без служебных знаков); пустая строка и
+        null — только значением JSON, иначе пустая ячейка при загрузке стала бы «поля нет»."""
         if isinstance(v, bool) or self._num_ok(v):
             return True
-        return isinstance(v, str) and not XmlTree.RAW.search(v)
+        return isinstance(v, str) and v != '' and not XmlTree.RAW.search(v)
 
     def _columns(self, rows):
         """Столбцы таблицы: [(ключ строки 2, путь (k,) или (k, sub), json?)]; вложенные объекты — раскрыты одним уровнем."""
@@ -129,24 +133,25 @@ class XlsxData:
         order.sort(key=lambda k: (k != 'id', k != 'name'))
         out = []
         for k in order:
-            vs = [v for v in vals[k] if v is not None]
-            subs = []
-            flat = (self.KEY.match(str(k)) and vs and all(isinstance(v, dict) and v for v in vs)
-                    and all(self.KEY.match(str(s)) for v in vs for s in v))
+            if not self.KEY.match(str(k)):
+                continue                          # ключ с «.» или «:» — в общем столбце «_more:json»
+            vs = vals[k]
+            subs = {}
+            flat = all(isinstance(v, dict) and v for v in vs) and all(self.KEY.match(str(s)) for v in vs for s in v)
             if flat:
                 for v in vs:
                     for s in v:
-                        if s not in subs:
-                            subs.append(s)
+                        subs.setdefault(s, None)
                 flat = len(subs) <= 300
             if flat:
                 for s in subs:
-                    sv = [v[s] for v in vs if s in v and v[s] is not None]
-                    js = not all(self._plain(x) for x in sv)
+                    js = not all(self._plain(v[s]) for v in vs if s in v)
                     out.append(('%s.%s%s' % (k, s, ':json' if js else ''), (k, s), js))
             else:
-                js = not self.KEY.match(str(k)) or not all(self._plain(x) for x in vs)
+                js = not all(self._plain(x) for x in vs)
                 out.append(('%s%s' % (k, ':json' if js else ''), (k,), js))
+        if any(not self.KEY.match(str(k)) for k in order):
+            out.append(('_more:json', ('_more',), True))
         return out
 
     def _cell(self, ref, v, style=0):
@@ -193,10 +198,15 @@ class XlsxData:
         for r in recs:
             row = []
             for _, p, js in cols:
-                v = r.get(p[0])
-                if len(p) == 2:
-                    v = v.get(p[1]) if isinstance(v, dict) else None
-                row.append(None if v is None else json.dumps(v, ensure_ascii=False) if js else v)
+                if p == ('_more',):
+                    more = {k: v for k, v in r.items() if not self.KEY.match(str(k))}
+                    row.append(json.dumps(more, ensure_ascii=False) if more else None)
+                    continue
+                if p[0] not in r or (len(p) == 2 and (not isinstance(r[p[0]], dict) or p[1] not in r[p[0]])):
+                    row.append(None)                  # поля нет — пустая ячейка
+                    continue
+                v = r[p[0]] if len(p) == 1 else r[p[0]][p[1]]
+                row.append(json.dumps(v, ensure_ascii=False) if js else v)
             body.append(row)
         widths = [min(50, max(10, len(str(h)) + 2)) for h in head]
         name = self._name(title)
@@ -278,7 +288,7 @@ class XlsxData:
                 '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')
         wb = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
               'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
-              + ''.join('<sheet name=%s sheetId="%d"%s r:id="rId%d"/>' % (quoteattr(nm), i + 1, ' state="hidden"' if hid else '', i + 1)
+              + ''.join('<sheet name="%s" sheetId="%d"%s r:id="rId%d"/>' % (escape(nm, {'"': '&quot;'}), i + 1, ' state="hidden"' if hid else '', i + 1)
                         for i, (nm, _, hid) in enumerate(sheets)) + '</sheets></workbook>')
         wrels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
                  + ''.join('<Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet%d.xml"/>' % (i + 1, i + 1) for i in range(n))
@@ -381,7 +391,8 @@ class XlsxData:
             f = float(s)
         except ValueError:
             return s
-        f = float('%.15g' % f)            # Excel пишет 7,3 как 7.2999999999999998
+        if not math.isfinite(f):         # «nan», «inf» в ячейке — текст, а не число
+            return s
         return int(f) if f.is_integer() and abs(f) < 1e15 and not re.search(r'[.eE]', s) else f
 
     def load(self, data):
@@ -411,9 +422,9 @@ class XlsxData:
         for _, c in sorted(book[self.META].items()):
             kind = c.get(0)
             if kind == 'meta':
-                meta = json.loads(full(c.get(2)) or '{}')
+                meta = json.loads(full(c.get(2)) or '{}', parse_constant=DataFile.no_const)
             elif kind in ('table', 'kv'):
-                maps.append((kind, full(c.get(1)), json.loads(full(c.get(2)) or '[]')))
+                maps.append((kind, full(c.get(1)), json.loads(full(c.get(2)) or '[]', parse_constant=DataFile.no_const)))
         if not isinstance(meta, dict):
             raise ValueError('Служебный лист «_kp» повреждён')
         doc = dict(meta, sections={})
@@ -433,9 +444,12 @@ class XlsxData:
                     k = k[:-5] if js else k
                     if js and isinstance(v, str):
                         try:
-                            v = json.loads(v)
+                            v = json.loads(v, parse_constant=DataFile.no_const)
                         except ValueError:
                             raise ValueError('Лист «%s», ячейка %s%d: значение не в формате JSON' % (name, self.col(c), rn))
+                    if k == '_more' and isinstance(v, dict):
+                        rec.update(v)
+                        continue
                     if '.' in k and kind == 'table':
                         a, b = k.split('.', 1)
                         if not isinstance(rec.get(a), dict):
@@ -443,8 +457,7 @@ class XlsxData:
                         rec[a][b] = v
                     else:
                         rec[k] = v
-                if rec:
-                    recs.append(rec)
+                recs.append(rec)
             if kind == 'table':
                 self._put(doc['sections'], path, recs)
             else:
@@ -521,7 +534,8 @@ class YmlData:
             a = x.get('attrs') if isinstance(x.get('attrs'), dict) else {}
             fields = {f.get('key'): f for f in (self.types.get(a.get('cat')) or {}).get('fields') or [] if isinstance(f, dict)}
             st = x.get('stock') if isinstance(x.get('stock'), dict) else None
-            avail = '' if st is None else ' available="%s"' % ('true' if (st.get('qty') or 0) > 0 or (st.get('qty') is None and st.get('available')) else 'false')
+            q = st.get('qty') if st and isinstance(st.get('qty'), (int, float)) and not isinstance(st.get('qty'), bool) else None
+            avail = '' if st is None else ' available="%s"' % ('true' if (q or 0) > 0 or (q is None and st.get('available')) else 'false')
             pics = [p for p in [self._pic((x.get('photo') or {}).get('src') if isinstance(x.get('photo'), dict) else '')]
                     + [self._pic(g.get('src')) for g in (x.get('gallery') or []) if isinstance(g, dict)] if p]
             params = ''.join(t('param', v, ' name=%s%s' % (quoteattr((fields.get(k) or {}).get('label') or k),
@@ -543,6 +557,11 @@ class YmlData:
 
 class DataFile:
     """Форматы выгрузки и загрузки документа программы (общий список для всех вариантов выгрузки)."""
+    @staticmethod
+    def no_const(name):
+        """json.loads(parse_constant=...): NaN и Infinity в загружаемом файле — отказ."""
+        raise ValueError('В файле недопустимое число: %s' % name)
+
     FORMATS = (('xlsx', 'Excel (.xlsx)'), ('json', 'JSON'), ('xml', 'XML'), ('yml', 'YML'), ('zip', 'Архив .zip (данные и фото)'))
     TYPES = {'xlsx': ('.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'), 'json': ('.json', 'application/json; charset=utf-8'),
              'xml': ('.xml', 'application/xml; charset=utf-8'), 'yml': ('.yml', 'application/xml; charset=utf-8'), 'zip': ('.zip', 'application/zip')}

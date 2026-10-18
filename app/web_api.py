@@ -134,7 +134,7 @@ def route(pattern, methods=None):
     ms = None if methods is None else ((methods,) if isinstance(methods, str) else tuple(methods))
 
     def mark(fn):
-        fn._route = (re.compile('^(?:%s)$' % pattern), ms)
+        fn._route = (re.compile(r'\A(?:%s)\Z' % pattern), ms)     # \Z: «$» пропустил бы «…\n» в конце пути
         return fn
     return mark
 

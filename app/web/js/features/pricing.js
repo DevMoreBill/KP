@@ -81,7 +81,9 @@ function kpSetCur(cur){
   const prev=kpCur(); if (prev===cur) return;
   const r1=rateOf(prev), r2=rateOf(cur); S.pricing.cur=cur;
   if (r1>0 && r2>0){ const cv=v=>Math.round(v*r1/r2);
-    S.items.forEach(x=>{ if (x.price) x.price=cv(x.price); delete x._priceText; (x.options||[]).forEach(o=>{ if(o.price){ o.price=cv(o.price); delete o._priceText; } }); });
+    S.items.forEach(x=>{ if (x.price) x.price=cv(x.price); delete x._priceText;
+      if (x.disc && x.disc.type==='sum' && +x.disc.v) x.disc={...x.disc, v:cv(+x.disc.v)};      // скидка суммой — в той же валюте, что цена
+      (x.options||[]).forEach(o=>{ if(o.price){ o.price=cv(o.price); delete o._priceText; } }); });
     toast(`Цены переведены в ${cur} по курсу`);
   } else toast('Укажите курс, чтобы перевести цены: сейчас цены не пересчитаны');
   renderForm(); persist(); dealRender();

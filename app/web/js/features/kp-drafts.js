@@ -60,11 +60,14 @@ class Drafts {
     }catch(e){ if (!quiet) toast('Черновик не сохранён: '+(e.message||e)); return false; }
     finally{ this.busy=false; done(); }
   }
-  /** перед заменой КП (новое, другое из журнала, черновик, заготовка): текущие изменения — в черновики */
+  /** перед заменой КП (новое, другое из журнала, черновик, заготовка): текущие изменения — в черновики.
+   *  → true — можно заменять; false — не отложилось (нет связи, черновики выключены) и менеджер выбрал «Отмена» */
   static async stash(){
-    if (!this.on()) return;
     if (this.busy) await this.running;      // идёт автосохранение — дождаться, иначе изменения не отложатся
-    if (await this.save(false)) toast('Прежнее КП отложено в черновики (журнал → «Черновики»)');
+    if (!this.pending()) return true;        // несохранённого нет
+    if (!this.on()) return confirm('Несохранённые изменения текущего КП пропадут. Продолжить?');
+    if (await this.save(false)){ toast('Прежнее КП отложено в черновики (журнал → «Черновики»)'); return true; }
+    return confirm('Текущее КП не удалось отложить в черновики (нет связи с сервером?). Заменить его — несохранённые изменения пропадут?');
   }
   /** КП сохранено в журнал: его черновик больше не нужен */
   static saved(){
@@ -83,7 +86,7 @@ class Drafts {
 
   /** продолжить черновик */
   static async open(id){
-    if (S._draft!==id) await this.stash();
+    if (S._draft!==id && !await this.stash()) return;
     let r; try{ r=await api('/api/drafts/'+encodeURIComponent(id)); }catch(e){ return toast('Черновик не открылся: '+(e.message||e)); }
     S=Object.assign(freshState(), r.data.state||{}); if (r.data.rev!=null) S._rev=r.data.rev; S._draft=id;
     document.querySelectorAll('dialog[open]').forEach(d=>d.close());
@@ -136,7 +139,7 @@ class Presets {
   }
   /** новое КП из заготовки: менеджер и его контакты — текущие */
   static async use(id){
-    await Drafts.stash();
+    if (!await Drafts.stash()) return;
     let r; try{ r=await api('/api/presets/'+encodeURIComponent(id)); }catch(e){ return toast('Заготовка не открылась: '+(e.message||e)); }
     const keep={manager:S.manager, managerId:S.managerId};
     S=Object.assign(freshState(), r.data.state||{}, keep); S.authorId=meId()||S.managerId||''; S.date=today();
@@ -174,7 +177,7 @@ class NewKp {
     const q=m.$('#nkQ'); if (q) q.oninput=()=>{ const s=q.value.trim().toLowerCase(); m.$('#nkP').innerHTML=P.filter(r=>!s||r.title.toLowerCase().includes(s)).map(r=>Presets.rowHtml(r)).join('')||'<p class="empty">Не найдено.</p>'; };
     m.d.onclick=async e=>{ const t=e.target;
       if (t.closest('[data-x]')) return m.close();
-      if (t.closest('[data-nk]')){ m.close(); await Drafts.stash(); return NewKp.blank(); }
+      if (t.closest('[data-nk]')){ m.close(); if (!await Drafts.stash()) return; return NewKp.blank(); }
       if (t.closest('[data-nps]')){ m.close(); return Presets.ask(); }
       if (t.closest('[data-nall]')){ m.close(); return Drafts.dialog(); }
       const u=t.closest('[data-pru]'); if (u){ m.close(); return Presets.use(u.dataset.pru); }

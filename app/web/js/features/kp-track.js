@@ -122,7 +122,7 @@ class Reminders {
 // открыть сохранённое КП по номеру (из напоминаний, отчёта, «Моего дня», карточки клиента); текущее — в черновики
 class KpLoader {
   static async byId(id){
-    await Drafts.stash();
+    if (!await Drafts.stash()) return;
     const st=await api(`/api/kp/${encodeURIComponent(id)}/state`);
     S=Object.assign(freshState(), st); document.querySelectorAll('dialog[open]').forEach(d=>d.close()); renderForm(); persist(); window.scrollTo({top:0});
     toast('КП № '+(S.number||id)+' открыто');

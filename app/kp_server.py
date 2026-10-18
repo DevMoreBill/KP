@@ -315,6 +315,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
             m = 'GET' if self.command == 'HEAD' else self.command
+            if re.search(r'[\x00-\x1f\x7f]', path):      # «%0A» и др. в пути — мимо проверок прав по точному адресу
+                self.close_connection = True
+                return self.send(400, 'text/plain; charset=utf-8', 'Недопустимый адрес')
             if not self.request_allowed():
                 self.close_connection = True
                 return self.send(403, 'text/plain; charset=utf-8', 'Запрос отклонён: откройте программу по её адресу')

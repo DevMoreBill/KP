@@ -78,7 +78,7 @@ class UpdatePackage:
     @staticmethod
     def _unsafe(n):
         parts = n.split('/')
-        return n.startswith('/') or ':' in parts[0] or '..' in parts or any(p.startswith('~') for p in parts)
+        return n.startswith('/') or '..' in parts or any(p.startswith('~') or ':' in p or '\\' in p for p in parts)
 
     def _prefix(self):
         """Архив может содержать update сразу или внутри папки «Обновление КП X/»."""
@@ -94,8 +94,11 @@ class UpdatePackage:
 
     def extract(self, folder, dst):
         n = 0
+        root = os.path.abspath(dst)
         for rel, info in self.files(folder):
-            out = os.path.join(dst, *rel.split('/'))
+            out = os.path.abspath(os.path.join(dst, *rel.split('/')))
+            if os.path.commonpath([root, out]) != root:       # «D:» внутри пути на Windows сбросил бы папку
+                raise UpdateError('Пакет обновления повреждён: файл вне папки обновления')
             os.makedirs(os.path.dirname(out), exist_ok=True)
             with self.zip.open(info) as src, open(out, 'wb') as f:
                 shutil.copyfileobj(src, f)

@@ -108,15 +108,26 @@ class ModerationDesk:
             return {'ok': False, 'message': 'Правка уже рассмотрена'}
         reason = str(reason or '').strip()[:500]
         if act == 'approve':
-            if keys is None:
+            if keys is None and (p['kind'] == 'create' or not self.st.catalog_get(p['productId'])):
                 text, part = p['after'], None
+            elif keys is None:      # целиком — изменённые в правке поля поверх текущей карточки (цены, остатки и фото
+                ks = [f['key'] for f in self.fields(_loads(p['before']), _loads(p['after']))]     # с тех пор — не откатываются)
+                new, part = self._merge(p, ks) if ks else (dict(_loads(self.st.catalog_get(p['productId'])) or {}), [])
+                new.pop('_rev', None)
+                text, part = json.dumps(new, ensure_ascii=False), None
             else:
                 if p['kind'] == 'create':
                     raise ValueError('Новый товар принимается только целиком')
                 new, part = self._merge(p, [str(k) for k in keys if isinstance(k, str)])
                 text = json.dumps(new, ensure_ascii=False)
             b, a = diff(_loads(self.st.catalog_get(p['productId'])) or _loads(p['before']), _loads(text), AUTO_KEYS)
-            self.st.catalog_put(p['productId'], text)
+            if not self.st.pending_claim(eid):        # двойное «Принять» — второе нажатие ничего не пишет
+                return {'ok': False, 'message': 'Правка уже рассмотрена'}
+            try:
+                self.st.catalog_put(p['productId'], text)
+            except Exception:
+                self.st.pending_set(eid, 'pending', '', '')        # не записалось — правка снова ждёт решения
+                raise
             note = ''
             if part is not None and len(part) < len(self.fields(_loads(p['before']), _loads(p['after']))):
                 note = 'принято частично: ' + ', '.join(part)

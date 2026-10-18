@@ -160,9 +160,11 @@ class PartyCheck {
   static async run(force){
     const inn=String(S.clientInn||'').replace(/\D/g,''); if(!validInn(inn)) return toast('Укажите корректный ИНН');
     const b=document.querySelector('[data-a="checkRun"]'); if(b){ b.disabled=true; b.textContent='Проверяю…'; }
-    try{ S.check=await api('/api/check?inn='+inn+(force?'&force=1':'')); }catch(e){ S.check={error:'net',message:'Ошибка запроса: '+e.message,url:'https://checko.ru/search?query='+inn,rusprofile:PartyCheck.rusprofile(inn)}; }
-    if (S.check && S.check.quotaNow) PartyCheck.quota=S.check.quotaNow;
-    renderForm(); persist(); if (!S.check.error && S.client) saveClient(false);
+    const st=S; let r;
+    try{ r=await api('/api/check?inn='+inn+(force?'&force=1':'')); }catch(e){ r={error:'net',message:'Ошибка запроса: '+e.message,url:'https://checko.ru/search?query='+inn,rusprofile:PartyCheck.rusprofile(inn)}; }
+    if (r && r.quotaNow) PartyCheck.quota=r.quotaNow;
+    if (S!==st || String(S.clientInn||'').replace(/\D/g,'')!==inn){ toast('Проверка ИНН '+inn+' готова, но клиент уже другой — запустите проверку снова'); return renderForm(); }
+    S.check=r; renderForm(); persist(); if (!S.check.error && S.client) saveClient(false);
   }
 }
 

@@ -49,7 +49,7 @@ class ClientCard {
       const st=t.closest('[data-jst]'); if (st){ const row=K.find(x=>x.id===st.dataset.jst); if (row){ m.close(); KpTrack.open(row); } return; }
       if (t.closest('[data-ccna]')){ const v=m.$('#ccN').value.trim(); if (!v) return m.$('#ccN').focus(); if (await note({text:v})) m.$('#ccN').value=''; return; }
       const nd=t.closest('[data-ccnd]'); if (nd){ if (confirm('Удалить заметку?')) note({del:nd.dataset.ccnd}); return; }
-      if (t.closest('[data-ccnew]')){ m.close(); await Drafts.stash(); S=freshState(); if (c.id) applyClient(c); else { S.client=r.name||''; S.clientInn=r.inn||''; renderForm(); persist(); }
+      if (t.closest('[data-ccnew]')){ m.close(); if (!await Drafts.stash()) return; S=freshState(); if (c.id) applyClient(c); else { S.client=r.name||''; S.clientInn=r.inn||''; renderForm(); persist(); }
         Drafts.loaded(); goStep('equip'); toast('Новое КП для '+(c.name||r.name||'клиента')); } };
   }
 }

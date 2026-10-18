@@ -102,7 +102,7 @@ class ApiTest(unittest.TestCase):
     def test_all_formats_load_back(self):
         q = 'sections=catalog,clients,managers,kp,suppliers,settings'
         counts = None
-        for fmt in ('json', 'xlsx', 'xml', 'yml', 'zip'):
+        for fmt in ('json', 'xlsx', 'xml', 'zip'):
             data, hd = self.get('export?%s&fmt=%s' % (q, fmt))
             self.assertIn('КП_выгрузка_', urllib.parse.unquote(str(hd)), fmt)
             st, r = self.post('import/file/preview?name=x.' + fmt, data)
@@ -115,6 +115,47 @@ class ApiTest(unittest.TestCase):
         st, r = self.post('import/file?name=x.xlsx', self.get('export?%s&fmt=xlsx' % q)[0])
         self.assertEqual(st, 200, r)
         self.assertEqual(self.stand.request_errors(), [])
+
+    def test_yml_catalog_only(self):
+        from data_file import DataFile
+        data, _ = self.get('export?sections=catalog,clients,settings&fmt=yml&prices=cost,price')
+        d, z, _ = DataFile().load(data)
+        self.assertEqual(list(d['sections']), ['catalog'], 'YML — для сайтов: только каталог')
+        self.assertFalse(any(k in x for x in d['sections']['catalog'] for k in ('cost', 'margin', 'costDisc')), 'без закупки')
+        self.assertNotIn(b'<purchase', data)
+
+    def test_excel_values_and_auto(self):
+        from data_file import XlsxData
+        s = self.store()
+        cid = s.all('SELECT id FROM catalog ORDER BY id LIMIT 1')[0][0]
+        x = json.loads(s.catalog_get(cid))
+        x.update({'note': '', 'emptyNone': None, 'flo': 0.1 + 0.2, 'feed': 'f1', 'updatedAt': '2026-10-01T00:00:00'})
+        s.catalog_put(cid, json.dumps(x, ensure_ascii=False))
+        data, _ = self.get('export?sections=catalog&fmt=xlsx')
+        doc = XlsxData().load(data)
+        y = {r['id']: r for r in doc['sections']['catalog']}[cid]
+        self.assertEqual((y['note'], y['emptyNone'], y['flo']), ('', None, 0.1 + 0.2), 'пустые значения и точность — как в базе')
+        x.update({'feed': 'f2', 'updatedAt': '2026-10-02T00:00:00'})      # фид обновил запись после выгрузки — не конфликт
+        s.catalog_put(cid, json.dumps(x, ensure_ascii=False))
+        y['name'] = 'Правка'
+        st, r = self.post('import/file/preview?mode=auto', XlsxData().dump(doc))     # auto — у Excel «только изменённое»
+        self.assertEqual(st, 200, r)
+        self.assertEqual(r['mode'], 'edits')
+        c = r['report']['catalog']
+        self.assertEqual((c['updated'], c['conflict']), (1, 0), r)
+        st, r = self.post('import/file/preview?mode=auto', self.get('export?sections=catalog&fmt=json')[0])
+        self.assertEqual(r['mode'], 'all', 'не Excel — «всё как в файле»')
+
+    def test_no_category_filter(self):
+        s = self.store()
+        cid = s.all('SELECT id FROM catalog ORDER BY id LIMIT 1')[0][0]
+        x = json.loads(s.catalog_get(cid))
+        x.setdefault('attrs', {})['cat'] = ''
+        s.catalog_put(cid, json.dumps(x, ensure_ascii=False))
+        r = json.loads(self.get('export/filter?flt=' + urllib.parse.quote(json.dumps({'cat': '__none__'})))[0])
+        self.assertGreaterEqual(r['n'], 1, '«Без категории» — позиции без категории')
+        r2 = json.loads(self.get('export/filter?flt=' + urllib.parse.quote(json.dumps({'cat': ''})))[0])
+        self.assertGreater(r2['n'], r['n'], 'пустое — все категории')
 
     def test_edits_only(self):
         s = self.store()

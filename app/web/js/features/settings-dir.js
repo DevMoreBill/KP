@@ -113,8 +113,8 @@ async function stEdSave(E){
   if (E.type==='client'){
     const inn=String(d.inn||'').replace(/\D/g,''), id=E.id || (inn?'inn'+inn:'c'+Date.now().toString(36));
     if (!E.id && inn && await clientById('inn'+inn).catch(()=>null)) throw new Error('клиент с ИНН '+inn+' уже есть в справочнике — найдите его поиском');
-    d.contacts=(d.contacts||[]).filter(c=>c && Object.values(c).some(v=>String(v||'').trim())); delete d._rev; d.id=id; d.source=d.source||'Настройки';
-    const saved=await api('/api/clients/'+encodeURIComponent(id),{method:'PUT',headers:J,body:JSON.stringify(d)}); if (saved) clientsKeep([saved]); return; }
+    d.contacts=(d.contacts||[]).filter(c=>c && Object.values(c).some(v=>String(v||'').trim())); delete d._rev; d.id=id; d.source=d.source||'Настройки'; d._replace=true;   // удалённый здесь контакт удаляется
+    const saved=await api('/api/clients/'+encodeURIComponent(id),{method:'PUT',headers:{...J,...(rev!=null?{'X-KP-Rev':String(rev)}:{})},body:JSON.stringify(d)}); if (saved) clientsKeep([saved]); return; }
   // поставщик: склад по умолчанию — первый, с координатами — в «Откуда» логистики
   const id=E.id||('sup_'+uid()+uid()).slice(0,24);
   d.warehouses=(d.warehouses||[]).filter(w=>Object.values(w).some(v=>String(v??'').trim())).map(w=>{ const o={...w}; delete o.geoFor; return o; });

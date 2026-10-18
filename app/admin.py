@@ -231,7 +231,7 @@ def is_admin(h, need_csrf=True):
     s = session(h)
     if not s:
         return False
-    return not need_csrf or hmac.compare_digest(h.headers.get('X-CSRF-Token') or '', s['csrf'])
+    return not need_csrf or hmac.compare_digest((h.headers.get('X-CSRF-Token') or '').encode('utf-8'), str(s['csrf']).encode('utf-8'))
 
 
 class LoginGuard:
@@ -466,7 +466,20 @@ def _jround(x):
 
 
 def econ_rub(r):
-    """Сумма КП в рублях и прибыль в рублях (копейки) для итогов журнала — как jEcon() в интерфейсе."""
+    """Сумма КП в рублях и прибыль в рублях (копейки) для итогов журнала — как jEcon() в интерфейсе.
+    Не число (КП из старой копии или файла: «1 000», NaN) — 0 / нет: одно такое КП не ломает журнал и статистику."""
+    def num(v):
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            try:
+                v = float(str(v).replace(' ', '').replace('\xa0', '').replace(',', '.'))
+            except (TypeError, ValueError):
+                return 0
+        return v if v == v and abs(v) != float('inf') else 0
+    a, b = _econ_rub(r)
+    return (None if a is None else num(a)), (None if b is None else num(b))
+
+
+def _econ_rub(r):
     e = r.get('econ') if isinstance(r.get('econ'), dict) else None
     cur = (e or {}).get('cur') or 'RUB'
     base = ((e or {}).get('sum') if e else r.get('sum')) or 0
@@ -1332,7 +1345,7 @@ class AdminApi:
             return self.ok(SupplierScope(st).groups())
         if sub in ('import/file/preview', 'import/file') and m == 'POST':
             return self.ok(self.import_file(self.h.body(), apply=(sub == 'import/file'), sections=q.get('sections'), name=q.get('name') or '',
-                                            mode='edits' if q.get('mode') == 'edits' else 'all'))
+                                            mode=q.get('mode') if q.get('mode') in ('edits', 'auto') else 'all'))
         if sub == 'export/sqlite' and m == 'GET':
             return self.export_sqlite()
         if sub in ('import/preview', 'import') and m == 'POST':
@@ -1698,8 +1711,13 @@ class AdminApi:
         остаются в базе при загрузке (keep). В файле — отпечатки записей (digests): при загрузке «только изменённое»."""
         from data_file import DataFile
         from supplier_scope import SupplierScope
-        st, out, items, catalog, keep, ids = self.st, {}, 0, '[]', None, None
+        st, out, items, catalog, keep, ids, docs, src = self.st, {}, 0, '[]', None, None, None, None
         fmt = DataFile.fmt(fmt, 'zip' if images else 'json')
+        if fmt == 'yml':
+            # YML — каталог для сайтов и маркетплейсов: только каталог и без закупки (она при загрузке остаётся в базе)
+            if 'catalog' not in sections and not sup:
+                raise ValueError('YML — формат каталога: отметьте раздел «Каталог» или выберите другой формат')
+            sections = ['catalog']
         if sup:
             docs = SupplierScope(st).docs(sup)
             sections, cats, items, keep = ['catalog'], None, len(docs), list(SupplierScope.PRICE_KEYS)
@@ -1720,17 +1738,24 @@ class AdminApi:
             if keep:
                 docs = [SupplierScope.strip(d, keep) for d in json.loads(catalog)]
                 catalog = json.dumps(docs, ensure_ascii=False)
+            elif fmt != 'yml':
+                src = ('WHERE id IN (%s)', ids)
         elif 'catalog' in sections:
             # каталог — готовыми строками из базы, без разбора и повторной сборки: 25 000 позиций занимали 1,3 ГБ памяти сервера
             where, args = ('WHERE cat IN (%s)' % ','.join('?' * len(cats)), tuple(cats)) if cats else ('', ())
             out['catalog'] = None
             items = st.one('SELECT COUNT(*) FROM catalog ' + where, args)[0]
             catalog = '[' + st.joined('SELECT doc AS x FROM catalog %s ORDER BY name' % where, args) + ']'
+            src = (where, args)
+        if fmt == 'yml' and 'catalog' in out:
+            cost = list(SupplierScope.COST_KEYS)
+            docs = [SupplierScope.strip(d, cost) for d in (docs if docs is not None else json.loads(catalog))]
+            catalog, keep, src = json.dumps(docs, ensure_ascii=False), sorted(set(keep or []) | set(cost)), None
         cur = self.current(sections)
         for k in ('kp', 'managers', 'clients', 'audit', 'suppliers', 'settings'):
             if k in cur:
                 out[k] = cur[k]
-        digests = self.digests(out, catalog if 'catalog' in out else None, keep)
+        digests = self.digests(out, ('catalog' in out) and (docs if docs is not None and src is None else self._rows(src) if src else json.loads(catalog)))
         secs = ','.join('%s:%s' % (json.dumps(k), catalog if k == 'catalog' else json.dumps(v, ensure_ascii=False)) for k, v in out.items())
         extra = (',"cats":%s' % json.dumps(cats, ensure_ascii=False) if cats else '') + (
             ',"pick":%s' % json.dumps({k: sorted(v) for k, v in pick.items()}, ensure_ascii=False) if pick and 'catalog' in sections else '') + (
@@ -1791,15 +1816,26 @@ class AdminApi:
             out['settings'] = ProgramSettings(st).export()
         return out
 
-    def digests(self, out, catalog, keep):
+    def _rows(self, src):
+        """Позиции каталога по одной (для отпечатков): условие WHERE … или список id."""
+        where, args = src
+        if '%s' in where:
+            for i in range(0, len(args), 500):
+                part = tuple(args[i:i + 500])
+                for (d,) in self.st.all('SELECT doc FROM catalog ' + where % ','.join('?' * len(part)), part):
+                    yield _loads(d) or {}
+            return
+        for (d,) in self.st.all('SELECT doc FROM catalog ' + where, args):
+            yield _loads(d) or {}
+
+    def digests(self, out, catalog):
         """Отпечатки записей на момент выгрузки: {раздел: {id: отпечаток}}; у настроек — {"_": отпечаток}. Каталог —
         без цен и остатков (их при загрузке «только изменённого» программа не меняет)."""
         from data_file import DataFile
         from supplier_scope import SupplierScope
         res = {}
-        if catalog is not None:
-            skip = SupplierScope.PRICE_KEYS
-            res['catalog'] = {x['id']: DataFile.digest(x, skip) for x in json.loads(catalog) if isinstance(x, dict) and x.get('id')}
+        if catalog:
+            res['catalog'] = {x['id']: DataFile.digest(x, SupplierScope.VOLATILE) for x in catalog if isinstance(x, dict) and x.get('id')}
         for k in ('kp', 'managers', 'clients'):
             if isinstance(out.get(k), list):
                 res[k] = {str(x.get('id')): DataFile.digest(x) for x in out[k] if isinstance(x, dict) and x.get('id')}
@@ -1911,6 +1947,9 @@ class AdminApi:
                 rows = (sec[s].get('suppliers') if isinstance(sec[s], dict) else None) or []
             else:
                 rows = sec[s] if isinstance(sec[s], list) else []
+            for x in rows:
+                if isinstance(x, dict) and isinstance(x.get('id'), (int, float)) and not isinstance(x.get('id'), bool):
+                    x['id'] = str(int(x['id'])) if float(x['id']).is_integer() else str(x['id'])
             bad = [i for i, x in enumerate(rows) if not isinstance(x, dict) or any(not x.get(k) for k in req[s])
                    or not re.match(r'^[A-Za-z0-9_-]{1,64}$', str(x.get('id')))]
             errors += ['%s: запись %d без обязательных полей %s' % (s, i + 1, ', '.join(req[s])) for i in bad[:5]]
@@ -1932,7 +1971,7 @@ class AdminApi:
             ok = [x for i, x in enumerate(rows) if i not in skip]
             same = conf = 0
             if edits:
-                dg, sk, left = digs.get(s) or {}, SupplierScope.PRICE_KEYS if s == 'catalog' else (), []
+                dg, sk, left = digs.get(s) or {}, SupplierScope.VOLATILE if s == 'catalog' else (), []
                 for x in ok:
                     o = dg.get(str(x['id']))
                     if o and DataFile.digest(x, sk) == o:
@@ -2017,6 +2056,8 @@ class AdminApi:
                 self.log('import_db', 'db', 'catalog-patch', None, {'title': res['patch']['title'], 'items': res['patch']['written'],
                                                                      'fields': res['patch']['fields'], 'skipped': res['patch']['conflictCount']})
             return res
+        if mode == 'auto':          # Excel — по умолчанию «только изменённое в файле», остальное — «всё как в файле»
+            mode = 'edits' if kind == 'xlsx' else 'all'
         try:
             res = self.import_(d, apply, sections, mode, kind)
             res['images'] = b.plan(imgs) if imgs else None
@@ -2080,8 +2121,8 @@ def stats(st):
         return sum(1 for d, _ in days if d and (today - d).days < n)
 
     def rub(x):
-        e = x.get('econ') or {}
-        return e.get('sumRub') if e.get('cur') not in (None, 'RUB') else (e.get('sum') or x.get('sum') or 0)
+        e = x.get('econ') if isinstance(x.get('econ'), dict) else {}
+        return econ_rub({'econ': {'cur': 'RUB', 'sum': e.get('sumRub') if e.get('cur') not in (None, 'RUB') else (e.get('sum') or x.get('sum') or 0)}})[0]
     mgr = {}
     for _, x in days:
         k = x.get('manager') or '—'

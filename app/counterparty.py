@@ -427,20 +427,34 @@ class Counterparties:
         rev_in = c.pop('_rev', None)
         if base_rev is None:
             base_rev = rev_in
+        if not isinstance(c, dict):
+            raise ValueError('Ожидался объект клиента')
         old = self.store.client_get(cid) or {}
-        # объекты и контакты накапливаются, повторы не дублируются
+        replace = bool(c.pop('_replace', False))      # из справочника «Настроек»: списки — как в карточке (удалённое удаляется)
+
+        def dicts(v):
+            return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
+
+        # из КП объекты и контакты накапливаются: повторы не дублируются, у того же контакта — новые телефон, e-mail
         def merge(a, b, key):
-            res = list(a or [])
-            seen = set(key(x) for x in res)
-            for x in (b or []):
+            res = [dict(x) for x in dicts(a)]
+            at = {key(x): x for x in res}
+            for x in dicts(b):
                 k = key(x)
-                if k and k not in seen:
+                if not k:
+                    continue
+                if k in at:
+                    at[k].update({f: v for f, v in x.items() if str(v if v is not None else '').strip()})
+                else:
                     res.insert(0, x)
-                    seen.add(k)
+                    at[k] = x
             return res[:30]
         norm = lambda s: re.sub(r'\s+', ' ', str(s or '')).strip().lower()
-        c['objects'] = merge(old.get('objects'), c.get('objects'), lambda o: norm(o.get('purpose')) + '|' + norm(o.get('address')))
-        c['contacts'] = merge(old.get('contacts'), c.get('contacts'), lambda o: norm(o.get('name')))
+        if replace:
+            c['objects'], c['contacts'] = dicts(c.get('objects'))[:30], dicts(c.get('contacts'))[:30]
+        else:
+            c['objects'] = merge(old.get('objects'), c.get('objects'), lambda o: norm(o.get('purpose')) + '|' + norm(o.get('address')))
+            c['contacts'] = merge(old.get('contacts'), c.get('contacts'), lambda o: norm(o.get('name')))
         c['kpCount'] = int(old.get('kpCount', 0)) + (1 if c.pop('_usedInKp', False) else 0)
         c['id'] = cid
         c['createdAt'] = old.get('createdAt') or datetime.now().isoformat(timespec='seconds')

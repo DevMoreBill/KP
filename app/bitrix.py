@@ -482,10 +482,14 @@ class BitrixSync:
                     if e.code == 'NET':
                         res['error'] = str(e)
                         return res
+                except Exception as e:       # ошибка не связи (этап убрали из списка и т. п.) — запись не держит очередь
+                    self.queue.fail(kind, local, tries, e)
+                    self.log.add('%s %s не отправлено: %s' % ('Сделка' if kind == 'deal' else 'Дело', local, e), 'error')
+                    res['failed'] += 1
             if pull:
                 try:
                     res.update(self.pull())
-                except BitrixError as e:
+                except Exception as e:
                     self.log.add('Изменения из Битрикс24 не получены: %s' % e, 'error')
                     res['error'] = str(e)
             return res

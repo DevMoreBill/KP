@@ -8,12 +8,15 @@
 Преобразования выполняются по одному: Word и LibreOffice не любят параллельные запуски.
 """
 import glob
+import io
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import tempfile
 import threading
+import zipfile
 
 LOCK = threading.Lock()
 WORD_TIMEOUT = 150
@@ -33,6 +36,7 @@ $w = New-Object -ComObject Word.Application
 try {
   $w.Visible = $false
   $w.DisplayAlerts = 0
+  $w.AutomationSecurity = 3
   $doc = $w.Documents.Open($env:KP_PDF_IN, $false, $true, $false)
   try { $doc.ExportAsFixedFormat($env:KP_PDF_OUT, 17) } finally { $doc.Close(0) }
 } finally {
@@ -168,7 +172,36 @@ def convert_file(src, dst, cloud_key=None):
     raise RuntimeError('; '.join(tried))
 
 
+class DocxCheck:
+    """В Word сервера — только документ .docx без макросов и внешних шаблонов/объектов (присланное открывает Word
+    на компьютере-сервере: макрос или удалённый шаблон выполнились бы там)."""
+    MAX = 60 * 1024 * 1024
+    BAD_REL = re.compile(r'/(attachedTemplate|oleObject|frame|subDocument|package|control)$')
+
+    @classmethod
+    def check(cls, data):
+        if len(data or b'') > cls.MAX:
+            raise ValueError('документ больше %d МБ' % (cls.MAX // 1024 // 1024))
+        try:
+            z = zipfile.ZipFile(io.BytesIO(data))
+            names = set(z.namelist())
+            ct = z.read('[Content_Types].xml').decode('utf-8', 'replace') if '[Content_Types].xml' in names else ''
+        except (zipfile.BadZipFile, KeyError, OSError, NotImplementedError):
+            raise ValueError('это не документ Word (.docx)')
+        if 'word/document.xml' not in names or 'wordprocessingml.document.main+xml' not in ct:
+            raise ValueError('это не документ Word (.docx)')
+        if 'macroEnabled' in ct or any(n.lower().endswith('vbaproject.bin') or n.lower().startswith('word/activex') for n in names):
+            raise ValueError('документ с макросами не преобразуется')
+        for n in names:
+            if n.endswith('.rels') and z.getinfo(n).file_size < 2 * 1024 * 1024:
+                for m in re.finditer(r'<Relationship\b[^>]*>', z.read(n).decode('utf-8', 'replace')):
+                    t = re.search(r'\bType="([^"]*)"', m.group(0))
+                    if 'External' in m.group(0) and t and cls.BAD_REL.search(t.group(1)):
+                        raise ValueError('документ ссылается на внешний шаблон или объект — не преобразуется')
+
+
 def convert_bytes(data, cloud_key=None):
+    DocxCheck.check(data)
     d = tempfile.mkdtemp(prefix='kp_pdfb_')
     try:
         src, dst = os.path.join(d, 'kp.docx'), os.path.join(d, 'kp.pdf')
