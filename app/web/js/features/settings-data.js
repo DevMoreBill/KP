@@ -87,23 +87,40 @@ class DataTransfer {
 
   static async mount(m, done){
     const box=m.querySelector('#dtCatBox');
-    try{ DataTransfer._cats(box, await aapi('export/cats')); }catch(err){ box.innerHTML=`<p class="muted">${esc(err.message)}</p>`; }
+    try{ DataTransfer._cats(box, await aapi('export/scope')); }catch(err){ box.innerHTML=`<p class="muted">${esc(err.message)}</p>`; }
     m.querySelector('#dtExp').addEventListener('click', e=>{ const b=e.target.closest('[data-dx]'); if (b) return DataTransfer._export(m, b.dataset.dx, done);
       const p=e.target.closest('[data-dp]'); if (p) DataTransfer._preset(m, p.dataset.dp); });
     m.querySelector('#dtExp').addEventListener('change', e=>DataTransfer._toggle(m, e.target));
+    m.querySelector('#dtExp').addEventListener('input', e=>{ const q=e.target.closest('[data-dtq]'); if (!q) return; const w=norm(q.value);
+      q.closest('[data-dtk]').querySelectorAll('[data-dtn]').forEach(c=>{ c.hidden=!!w && !c.dataset.dtn.includes(w); }); });
   }
 
-  // группы и категории каталога: «Весь каталог» или выбор (группа отмечает все свои категории)
-  static _cats(box, rows){
+  // каталог: «Весь каталог» или выбор — категории, производители, поставщики, фиды (несколько в каждом списке; решение
+  // владельца 18.10): внутри списка — любое из отмеченного, между списками — всё сразу. Счётчик — по сочетаниям с сервера.
+  static S=null;          // {rows:[{cat, maker, sup, feed, n}], feeds:{id: название}}
+  static _cats(box, scope){
+    DataTransfer.S=scope;
+    const rows=scope.rows||[], total=rows.reduce((s,r)=>s+r.n,0), sum=(key)=>{ const o=new Map(); rows.forEach(r=>o.set(r[key], (o.get(r[key])||0)+r.n)); return o; };
     const groups=new Map();
-    rows.forEach(r=>{ const t=r.cat ? typeById(r.cat) : null, g=t&&t.id===r.cat ? t.group||'Прочее' : 'Без категории';
-      if (!groups.has(g)) groups.set(g, []); groups.get(g).push({cat:r.cat, name:t&&t.id===r.cat ? t.name : (r.cat||'Без категории'), count:r.count}); });
-    const total=rows.reduce((s,r)=>s+r.count,0);
+    for (const [cat, n] of sum('cat')){ const t=cat ? typeById(cat) : null, ok=t&&t.id===cat, g=ok ? t.group||'Прочее' : 'Без категории';
+      if (!groups.has(g)) groups.set(g, []); groups.get(g).push({cat, name:ok ? t.name : (cat||'Без категории'), n}); }
+    const chip=(attr, v, label, n)=>`<label class="chk-chip" data-dtn="${esc(norm(label))}"><input type="checkbox" ${attr}="${esc(v)}"> ${esc(label)} · ${Fmt.num(n)}</label>`;
+    const byN=(m)=>[...m].sort((x,y)=>y[1]-x[1] || String(x[0]).localeCompare(String(y[0]), 'ru'));
+    const block=(k, title, body, n, find)=>`<details class="dt-k" data-dtk="${k}"${k==='cats'?' open':''}><summary>${title} <span class="muted">· ${n}</span> <b class="md-c" data-dtc="${k}" hidden></b></summary>
+      ${find?`<input type="search" class="dt-find" data-dtq="${k}" placeholder="${esc(find)}" autocomplete="off" data-nodirty>`:''}<div class="chips dt-l">${body}</div></details>`;
+    const cats=[...groups].map(([g,L],i)=>L.length===1 && L[0].name===g
+      ? `<div class="dt-g">${chip('data-dc', L[0].cat, g, L[0].n)}</div>`
+      : `<div class="dt-g"><label class="chk-chip dt-gh"><input type="checkbox" data-dg="${i}"> <b>${esc(g)}</b> · ${Fmt.num(L.reduce((s,x)=>s+x.n,0))}</label>
+        <div class="chips">${L.map(x=>`<label class="chk-chip"><input type="checkbox" data-dc="${esc(x.cat)}" data-dgi="${i}"> ${esc(x.name)} · ${Fmt.num(x.n)}</label>`).join('')}</div></div>`).join('');
+    const mk=byN(sum('maker')), sp=byN(sum('sup')), fd=byN(sum('feed'));
     box.innerHTML=`<div class="chips" role="radiogroup"><label class="chk-chip"><input type="radio" name="dtScope" value="all" checked> Весь каталог · ${Fmt.num(total)}</label>
-        <label class="chk-chip"><input type="radio" name="dtScope" value="some"> Выбранные группы и категории</label></div>
-      <div id="dtCats" hidden style="margin-top:8px">${[...groups].map(([g,L],i)=>`<div class="dt-g"><label class="chk-chip dt-gh"><input type="checkbox" data-dg="${i}"> <b>${esc(g)}</b> · ${Fmt.num(L.reduce((s,x)=>s+x.count,0))}</label>
-        <div class="chips">${L.map(x=>`<label class="chk-chip"><input type="checkbox" data-dc="${esc(x.cat)}" data-dgi="${i}"> ${esc(x.name)} · ${Fmt.num(x.count)}</label>`).join('')}</div></div>`).join('')}
-        <p class="muted" id="dtSel">Ничего не выбрано</p></div>`;
+        <label class="chk-chip"><input type="radio" name="dtScope" value="some"> Выбрать: категории, производители, поставщики, фиды</label></div>
+      <div id="dtCats" hidden style="margin-top:8px"><p class="muted dt-how">В каждом списке можно отметить несколько. Внутри списка — любое из отмеченного, между списками — всё сразу (например, производитель Atlas Copco <b>и</b> поставщик «Абсолют»).</p>
+        ${block('cats', 'Категории', cats, groups.size+' гр.')}
+        ${block('makers', 'Производители', mk.map(([v,n])=>chip('data-dm', v, v, n)).join(''), mk.length, mk.length>12?'Найти производителя':'')}
+        ${block('sups', 'Поставщики', sp.map(([v,n])=>chip('data-ds', v, v, n)).join(''), sp.length, sp.length>12?'Найти поставщика':'')}
+        ${block('feeds', 'Фиды', fd.map(([v,n])=>chip('data-df', v, (scope.feeds||{})[v]||v||'Не из фида', n)).join(''), fd.length, fd.length>12?'Найти фид':'')}
+        <p class="dt-sum" id="dtSel">Ничего не выбрано</p></div>`;
   }
 
   static _preset(m, key){
@@ -122,20 +139,35 @@ class DataTransfer {
     if (el.dataset.dg!=null) m.querySelectorAll(`[data-dgi="${el.dataset.dg}"]`).forEach(c=>{ c.checked=el.checked; });
     if (el.dataset.dgi!=null){ const all=[...m.querySelectorAll(`[data-dgi="${el.dataset.dgi}"]`)], g=m.querySelector(`[data-dg="${el.dataset.dgi}"]`);
       g.checked=all.every(c=>c.checked); g.indeterminate=!g.checked && all.some(c=>c.checked); }
-    const sel=m.querySelector('#dtSel'); if (sel){ const n=DataTransfer._picked(m).length; sel.textContent=n ? 'Выбрано категорий: '+n : 'Ничего не выбрано'; }
+    DataTransfer._count(m);
   }
 
-  static _picked(m){ return [...m.querySelectorAll('[data-dc]:checked')].map(c=>c.dataset.dc); }
+  /** выбор: {cats, makers, sups, feeds} — только непустые списки */
+  static _picked(m){
+    const v=a=>[...m.querySelectorAll(`[${a}]:checked`)].map(c=>c.getAttribute(a)), out={};
+    for (const [k, a] of [['cats','data-dc'], ['makers','data-dm'], ['sups','data-ds'], ['feeds','data-df']]){ const L=v(a); if (L.length) out[k]=L; }
+    return out;
+  }
+
+  /** сколько позиций попадёт в выгрузку и сколько отмечено в каждом списке */
+  static _count(m){
+    const sel=m.querySelector('#dtSel'); if (!sel || !DataTransfer.S) return;
+    const p=DataTransfer._picked(m), key=s=>norm(s), set=(k, f)=>p[k] ? new Set(p[k].map(f)) : null;
+    const C=set('cats', x=>x), M=set('makers', key), Sp=set('sups', key), F=set('feeds', x=>x);
+    m.querySelectorAll('[data-dtc]').forEach(b=>{ const n=(p[b.dataset.dtc]||[]).length; b.hidden=!n; b.textContent=n; });
+    if (!Object.keys(p).length){ sel.textContent='Ничего не выбрано'; return; }
+    const n=DataTransfer.S.rows.reduce((s,r)=>s+((!C||C.has(r.cat)) && (!M||M.has(key(r.maker))) && (!Sp||Sp.has(key(r.sup))) && (!F||F.has(r.feed)) ? r.n : 0), 0);
+    sel.innerHTML=n ? `Будет выгружено позиций: <b>${Fmt.num(n)}</b>` : '<span class="warn-t">Ни одна позиция не подходит под все условия сразу</span>';
+  }
 
   static async _export(m, kind, done){
     const st=m.querySelector('#dtExpSt');
     let url='export/sqlite';
     if (kind==='json'){
       const secs=[...m.querySelectorAll('[data-xs]:checked')].map(c=>c.dataset.xs); if (!secs.length) return toast('Отметьте разделы');
-      const some=(m.querySelector('[name="dtScope"]:checked')||{}).value==='some', cats=some ? DataTransfer._picked(m) : [];
-      if (some && secs.includes('catalog') && !cats.length) return toast('Отметьте группы или категории каталога');
-      if (some && cats.includes('')) return toast('Позиции без категории выгружаются только со всем каталогом');
-      url='export?'+new URLSearchParams({sections:secs.join(','), cats:cats.join(','), images:m.querySelector('#dtImg').checked?'1':'0'});
+      const some=(m.querySelector('[name="dtScope"]:checked')||{}).value==='some', pick=some ? DataTransfer._picked(m) : {};
+      if (some && secs.includes('catalog') && !Object.keys(pick).length) return toast('Отметьте категории, производителей, поставщиков или фиды');
+      url='export?'+new URLSearchParams({sections:secs.join(','), images:m.querySelector('#dtImg').checked?'1':'0', ...(some && secs.includes('catalog') ? {pick:JSON.stringify(pick)} : {})});
     }
     if (await DataTransfer.download(url, st) && done) setTimeout(done, 1500);
   }

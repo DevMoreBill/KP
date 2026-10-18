@@ -1276,8 +1276,15 @@ class AdminApi:
             return self.ok({'approved': n})
         if sub == 'export' and m == 'GET':
             cats = [c for c in (q.get('cats') or '').split(',') if re.match(r'^[A-Za-z0-9_-]{1,64}$', c)] or None
+            pick = None
+            if q.get('pick'):          # категории, производители, поставщики, фиды — несколько в каждом
+                from supplier_scope import ExportScope
+                try:
+                    pick = ExportScope.clean(json.loads(q['pick'])) or None
+                except ValueError as e:
+                    return self.err(400, str(e) if 'выбор' in str(e) else 'Неверный выбор позиций каталога')
             return self.export([s for s in (q.get('sections') or ','.join(SECTIONS)).split(',') if s in SECTIONS],
-                               cats=cats, images=q.get('images') == '1', sup=(q.get('sup') or '').strip() or None)
+                               cats=cats, images=q.get('images') == '1', sup=(q.get('sup') or '').strip() or None, pick=pick)
         if sub.startswith('settings-file'):     # все настройки программы одним файлом (ключи API — по галочке, пароли — никогда)
             from data_bundle import SettingsFile
             sf = SettingsFile(st, me or 'admin')
@@ -1295,6 +1302,9 @@ class AdminApi:
             return self.err(404, 'Нет такого запроса')
         if sub == 'export/cats' and m == 'GET':
             return self.ok(self.export_cats())
+        if sub == 'export/scope' and m == 'GET':     # сочетания категория / производитель / поставщик / фид для выбора
+            from supplier_scope import ExportScope
+            return self.ok(ExportScope(st).summary())
         if sub == 'export/suppliers' and m == 'GET':
             from supplier_scope import SupplierScope
             return self.ok(SupplierScope(st).groups())
@@ -1654,9 +1664,10 @@ class AdminApi:
         """Категории каталога для выборочной выгрузки: [{cat, count}] (названия и группы — у клиента в справочнике типов)."""
         return [{'cat': c or '', 'count': n} for c, n in self.st.all('SELECT cat, COUNT(*) FROM catalog GROUP BY cat ORDER BY cat')]
 
-    def export(self, sections, cats=None, images=False, sup=None):
+    def export(self, sections, cats=None, images=False, sup=None, pick=None):
         """Выбранные разделы JSON; cats — только эти категории каталога; images — архив .zip с изображениями из ссылок;
-        sup — только позиции этого поставщика (SupplierScope), без цен и остатков: только каталог."""
+        sup — только позиции этого поставщика (SupplierScope), без цен и остатков: только каталог; pick — выбор категорий,
+        производителей, поставщиков, фидов (ExportScope, позиции целиком)."""
         st, out, items, catalog, keep = self.st, {}, 0, '[]', None
         if sup:
             from supplier_scope import SupplierScope
@@ -1664,6 +1675,14 @@ class AdminApi:
             sections, cats, items, keep = ['catalog'], None, len(docs), list(SupplierScope.PRICE_KEYS)
             catalog = json.dumps(docs, ensure_ascii=False)
             out['catalog'] = None
+        elif 'catalog' in sections and pick:
+            from supplier_scope import ExportScope
+            ids = ExportScope(st).ids(pick)
+            out['catalog'] = None
+            items = len(ids)
+            parts = [st.joined('SELECT doc AS x FROM catalog WHERE id IN (%s) ORDER BY name' % ','.join('?' * len(ids[i:i + 500])), tuple(ids[i:i + 500]))
+                     for i in range(0, len(ids), 500)]
+            catalog = '[' + ','.join(x for x in parts if x) + ']'
         elif 'catalog' in sections:
             # каталог — готовыми строками из базы, без разбора и повторной сборки: 25 000 позиций занимали 1,3 ГБ памяти сервера
             where, args = ('WHERE cat IN (%s)' % ','.join('?' * len(cats)), tuple(cats)) if cats else ('', ())
@@ -1687,13 +1706,17 @@ class AdminApi:
             out['settings'] = ProgramSettings(st).export()
         secs = ','.join('%s:%s' % (json.dumps(k), catalog if k == 'catalog' else json.dumps(v, ensure_ascii=False)) for k, v in out.items())
         extra = (',"cats":%s' % json.dumps(cats, ensure_ascii=False) if cats else '') + (
+            ',"pick":%s' % json.dumps({k: sorted(v) for k, v in pick.items()}, ensure_ascii=False) if pick and 'catalog' in sections else '') + (
             ',"supplier":%s,"keep":%s' % (json.dumps(sup, ensure_ascii=False), json.dumps(keep)) if sup else '')
         body = '{"format":"kp-backup","version":1,"createdAt":%s,"sections":{%s}%s}' % (json.dumps(_now()), secs, extra)
-        what = ('+'.join(SECTION_FILE[x] for x in sections) if len(sections) < len(SECTIONS) else 'полная') + ('_категорий-%d' % len(cats) if cats else '')
+        what = ('+'.join(SECTION_FILE[x] for x in sections) if len(sections) < len(SECTIONS) else 'полная') + ('_категорий-%d' % len(cats) if cats else '') + (
+            '_выборка-%d' % items if pick and 'catalog' in sections else '')
         if sup:
             what = 'каталог_' + (re.sub(r'[^\w.-]+', '_', sup).strip('_')[:60] or 'поставщик')
         stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
         info = {'sections': sections, 'cats': cats, 'items': items}
+        if pick:
+            info['pick'] = {k: len(v) for k, v in pick.items()}
         if sup:
             info['supplier'] = sup[:120]
         if images:

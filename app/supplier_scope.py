@@ -93,3 +93,64 @@ class SupplierScope:
             else:
                 new.pop(k, None)
         return new
+
+
+class ExportScope:
+    """Выборочная выгрузка каталога («Выгрузка разделов базы»): категории, производители, поставщики, фиды — несколько
+    в каждом; внутри одного вида — «или», между видами — «и» (решение владельца 18.10). Пустой вид — без ограничения.
+    Поставщик — как в SupplierScope (фид → поставщик справочника), фид — источник позиции; не из фида — «Не из фида»."""
+    KINDS = ('cats', 'makers', 'sups', 'feeds')
+    NO_FEED = 'Не из фида'
+    NO_MAKER = 'Без производителя'
+    MAX = 1000
+
+    def __init__(self, store):
+        self.st = store
+        self.sc = SupplierScope(store)
+        self.feed_names = {f['id']: (f.get('name') or f['id']) for f in (store.kv_get('feeds') or {}).get('items', []) if f.get('id')}
+
+    def _rows(self):
+        """[(id, категория, производитель, поставщик, фид)]"""
+        out = []
+        for cid, cat, maker, feed in self.st.all("SELECT id, cat, maker, COALESCE(json_extract(doc, '$.src'), json_extract(doc, '$.feed.id')) FROM catalog"):
+            sup = self.sc.name_of(feed, maker) or SupplierScope.NONE
+            out.append((cid, cat or '', str(maker or '').strip() or self.NO_MAKER, sup, feed or ''))
+        return out
+
+    def summary(self):
+        """Сочетания для окна выгрузки: {rows: [{cat, maker, sup, feed, n}], feeds: {id: название}} — счётчики считает окно."""
+        cnt = {}
+        for _cid, cat, maker, sup, feed in self._rows():
+            k = (cat, maker, sup, feed)
+            cnt[k] = cnt.get(k, 0) + 1
+        return {'rows': [{'cat': c, 'maker': m, 'sup': s, 'feed': f, 'n': n} for (c, m, s, f), n in cnt.items()],
+                'feeds': dict(self.feed_names, **{'': self.NO_FEED})}
+
+    @classmethod
+    def clean(cls, pick):
+        """Выбор из запроса → {вид: множество}; ValueError — понятным текстом."""
+        if not isinstance(pick, dict):
+            raise ValueError('Неверный выбор позиций каталога')
+        out = {}
+        for k in cls.KINDS:
+            v = pick.get(k) or []
+            if not isinstance(v, list) or len(v) > cls.MAX or any(not isinstance(x, str) or len(x) > 200 for x in v):
+                raise ValueError('Неверный выбор позиций каталога')
+            if v:
+                out[k] = set(v) if k != 'makers' and k != 'sups' else {SupplierScope.key(x) for x in v}
+        return out
+
+    def ids(self, pick):
+        """id позиций, подходящих под выбор (pick — после clean)."""
+        out = []
+        for cid, cat, maker, sup, feed in self._rows():
+            if 'cats' in pick and cat not in pick['cats']:
+                continue
+            if 'makers' in pick and SupplierScope.key(maker) not in pick['makers']:
+                continue
+            if 'sups' in pick and SupplierScope.key(sup) not in pick['sups']:
+                continue
+            if 'feeds' in pick and feed not in pick['feeds']:
+                continue
+            out.append(cid)
+        return out

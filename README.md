@@ -526,6 +526,10 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.101.4 — выгрузка каталога по производителям, поставщикам и фидам (несколько в каждом; решение владельца 18.10):**
+- `supplier_scope.ExportScope` (summary / clean / ids), `/api/admin/export/scope`, `/api/admin/export?pick=…`; окно —
+  `DataTransfer._cats/_picked/_count` (settings-data.js). Проверки — `tests/test_export_pick.py`.
+
 **3.101.3 — Битрикс24: фильтр и порядок на доске, «ждёт больше суток», «Не отправлено» с «Повторить»; сборка EXE — по команде:**
 - `CabDeals.bxOnly/sort`, `CabToday.late`; `BitrixQueue.failed/retry`, `BitrixDesk` — `resend {kind, id}`; `BitrixPanel` — «Не
   отправлено», «Только ошибки». `build-exe.yml`: job `build` — только `workflow_dispatch` или метка `v*` (решение владельца 17.10).
