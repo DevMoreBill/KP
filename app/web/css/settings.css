@@ -677,7 +677,6 @@ dialog.st-confirm.cx{width:min(720px,calc(100vw - 32px));max-width:none;max-heig
 dialog.cx .row{justify-content:flex-end;margin-top:12px}
 @media (max-width:640px){.cx-g{grid-template-columns:1fr}.cx-plist{grid-template-columns:1fr}}
 /* окно «Разделы базы» */
-dialog.st-confirm.dt-dlg{width:min(860px,calc(100vw - 32px));max-width:none;max-height:calc(100dvh - 32px);overflow:auto}
 /* «Что загружать» у фида */
 .fr-g{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px 12px;align-items:start;padding:8px 0;border-top:1px solid var(--line)}
 .fr-g:first-child{border-top:0}
@@ -735,3 +734,74 @@ dialog.st-confirm.mv>*{flex-shrink:0}
 .dt-sum{margin:8px 0 0}
 .dt-k label[hidden]{display:none}
 .dt-k [data-dtc][hidden]{display:none}
+
+/* «База и копии» (BackupTab): сводка, подвкладки, «что» слева — «как» справа */
+.bk-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 12px}
+.bk-tile{display:grid;gap:3px;align-content:start;text-align:left;min-width:0;padding:10px 12px 10px 14px;border:1px solid var(--line);border-left:4px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);cursor:pointer;font-family:inherit;touch-action:manipulation}
+.bk-tile:hover{border-color:var(--navy)}
+.bk-tile.ok{border-left-color:var(--ok)}.bk-tile.warn{border-left-color:var(--warn)}.bk-tile.bad{border-left-color:var(--danger)}
+.bk-tile small{font-size:12px;color:var(--muted);font-weight:500}
+.bk-tile b{font-size:17px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-tile span{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-tile.bad span{color:var(--danger)}.bk-tile.warn span{color:var(--warn-ink)}
+.bk-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:0 0 12px;background:var(--card)}
+.bk-tabs button{border:0;border-left:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;font-size:14px;font-weight:500;min-height:40px;padding:6px 8px;cursor:pointer;white-space:nowrap;touch-action:manipulation}
+.bk-tabs button:first-child{border-left:0}
+.bk-tabs button.on{background:var(--navy);color:var(--on-navy)}
+.bk-two{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:12px;align-items:start}
+.bk-pick{display:grid;gap:6px}
+.bk-opt{display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);cursor:pointer;min-height:44px}
+.bk-opt input{width:18px;height:18px;margin:0;accent-color:var(--navy)}
+.bk-opt span{display:grid;gap:1px;min-width:0}
+.bk-opt b{font-size:14px}.bk-opt small{font-size:12.5px;color:var(--muted);line-height:1.35}
+.bk-opt.on{border-color:var(--navy);box-shadow:inset 3px 0 0 var(--navy)}
+.bk-side{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:12px 14px;min-width:0}
+.bk-side>.sub:first-child,.bk-side .bk-form>.sub:first-child{margin-top:0}
+.bk-form{display:grid;gap:10px}
+.bk-form [hidden]{display:none!important}
+.bk-form label.f select{max-width:100%}
+.bk-kv{margin:4px 0 10px}
+.bk-kv td{vertical-align:middle}
+.bk-kv td:first-child{width:190px;color:var(--muted);white-space:nowrap}
+.bk-cks{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:0 12px;color:var(--ink);font-size:14px}
+.st-body .bk-cks label.ck{margin:4px 0;min-height:32px}
+.bk-ck{color:var(--ink)}
+.bk-foot{display:flex;align-items:center;gap:10px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:10px;margin-top:4px}
+.bk-note{flex:1 1 200px;color:var(--muted);font-size:13px;min-width:0}
+.bk-drop{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:2px dashed var(--line);border-radius:10px;padding:14px;margin:0 0 8px}
+.bk-drop.over{border-color:var(--navy);background:var(--soft)}
+.bk-prev:empty{display:none}
+.bk-btns{margin-top:10px;gap:10px;flex-wrap:wrap}
+.bk-btns .muted{font-size:13px}
+.bk-nums{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.bk-nums>div{display:grid;gap:2px;padding:8px 10px;border:1px solid var(--line);border-radius:10px}
+.bk-nums b{font-size:17px}.bk-nums small{color:var(--muted);font-size:12.5px}
+.bk-hh{gap:10px;margin-bottom:8px;flex-wrap:wrap}.bk-hh select{width:auto;min-width:220px}
+.bk-hist th{text-align:left}
+.bk-hist th,.bk-hist td{padding-right:14px}
+.bk-pane>#stMigr{margin-top:12px}
+.bk-hist td:first-child,.bk-hist td:nth-child(2),.bk-hist th:first-child{white-space:nowrap;width:1%}
+.bk-hist td:nth-child(4){width:18%}
+.bk-pane>.st-card+.st-card{margin-top:12px}
+@media (max-width:900px){ .bk-sum{grid-template-columns:repeat(2,minmax(0,1fr))} .bk-two{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:640px){
+  .bk-tabs{display:flex;flex-wrap:wrap}
+  .bk-tabs button{flex:1 1 30%;min-height:44px;padding:6px 8px;border-top:1px solid var(--line);margin-top:-1px}
+  .bk-pick{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .bk-opt{padding:8px 10px;gap:8px}
+  .bk-opt small{display:none}
+  .bk-opt b{font-size:14px;line-height:1.25}
+  .bk-kv tr{display:grid;border-bottom:1px solid var(--line);padding:4px 0}
+  .bk-kv td{border:0;padding:0}
+  .bk-kv td:first-child{width:auto;font-size:12.5px;overflow-wrap:normal}
+  .bk-drop{padding:10px}.bk-drop .muted{display:none}
+  .bk-foot .btn{flex:1 1 100%}
+  .bk-hh select{min-width:0;width:100%}
+  .bk-hist{display:block;overflow-x:auto}
+}
+.bk-side .sub.st-mh{margin:0 0 6px}
+/* списки выбора каталога — ровными столбцами */
+.bk-form .dt-l,.bk-form .dt-g .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px}
+.bk-form .dt-l .chk-chip,.bk-form .dt-g .chips .chk-chip{border-radius:8px;min-width:0}
+.bk-form .dt-g{margin:6px 0 10px}.bk-form .dt-g .chips{margin:6px 0 0 24px}
+.bk-form .dt-gh{border:0;padding-left:0;min-height:32px}

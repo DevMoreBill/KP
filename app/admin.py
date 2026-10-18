@@ -1437,6 +1437,9 @@ class AdminApi:
         img_dir = os.path.join(data_dir, 'img')
         if sub == 'maint' and m == 'GET':
             return self.ok(mt.summary(st, data_dir))
+        if sub == 'maint/overview' and m == 'GET':      # сводка над вкладкой «База и копии»
+            from admin_overview import DbOverview
+            return self.ok(DbOverview(st, data_dir).get())
         if sub == 'maint/backup' and m == 'POST':
             rec = mt.DbCopy.daily(st, data_dir, force=True)
             self.log('backup_db', 'db', 'auto', None, {'ok': rec.get('ok'), 'file': os.path.basename(rec.get('file') or '')}, result='success' if rec.get('ok') else 'failed')

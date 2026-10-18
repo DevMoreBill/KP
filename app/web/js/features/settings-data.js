@@ -1,53 +1,207 @@
 'use strict';
-// «Сотрудники и система → База и копии» (BackupTab): ровные строки «что — пояснение — кнопки»: скачать (вся база, разделы,
-// каталог поставщика, каталог по фильтру, настройки), загрузить (копия или правки, файл базы целиком), автокопии, вторая папка.
-// DataTransfer — выгрузка разделов базы в JSON (каталог целиком или выбранные группы и категории, с изображениями — архив
-// .zip: kp-backup.json + img/…) и загрузка такого файла обратно. SettingsFileCard — все настройки в файл и из файла.
+// «Сотрудники и система → База и копии» (BackupTab): сверху сводка (база, последняя копия, вторая папка, место на диске),
+// ниже подвкладки Выгрузить · Загрузить · Автокопии · Обслуживание · История (решение владельца 18.10). В «Выгрузить» и
+// «Загрузить» слева — что (вся база, разделы, каталог поставщика, каталог по фильтру, настройки), справа — как и кнопка.
+// DataTransfer — выгрузка разделов базы в JSON (каталог целиком или выбранные категории, производители, поставщики, фиды;
+// с изображениями — архив .zip: kp-backup.json + img/…) и загрузка такого файла обратно. SettingsFileCard — все настройки в файл и из файла.
 
 class BackupTab {
+  static SUBS = [['out','Выгрузить'],['in','Загрузить'],['copies','Автокопии'],['maint','Обслуживание'],['hist','История']];
+  // что выгрузить / загрузить: [ключ, название, пояснение в списке]
+  static OUT = [['db','Вся база','Один файл .zip — всё как есть'],['parts','Разделы базы','Каталог, клиенты, КП, настройки — на выбор'],
+    ['sup','Каталог поставщика','Без цен: копия с фото или Excel для правки'],['goods','Каталог по фильтру','Excel, JSON, XML, YML — с ценами и остатками'],
+    ['settings','Настройки программы','Один файл — на другой компьютер']];
+  static IN = [['file','Копия или правки','.zip, .json или Excel для правки'],['settings','Файл настроек','КП_настройки_….json'],['db','Файл базы целиком','.sqlite3 или архив копии — заменяет всё']];
+  static HIST = [['','Все операции',['export_db','import_db','backup_db','maintain_db']],['out','Выгрузки',['export_db']],['in','Загрузки',['import_db']],['copies','Копии и обслуживание',['backup_db','maintain_db']]];
+  static sub = 'out';     // открытая подвкладка
+  static out = 'db';      // выбранное в «Выгрузить»
+  static inn = 'file';    // выбранное в «Загрузить»
+  static hist = '';       // фильтр «Истории»
+  static m = null;
+  static ov = null;       // сводка /api/admin/maint/overview
+
+  /** строка «что — пояснение — кнопки» (и в «Файле настроек» на вкладке «Файл, изменения, откат») */
   static row(title, note, acts, id=''){
     return `<div class="bk-row"${id?` id="${id}"`:''}><div class="bk-t"><b>${title}</b><small class="muted">${note}</small></div><div class="bk-a">${acts}</div></div>`;
   }
 
   static async render(m){
-    const R=BackupTab.row;
-    m.innerHTML=`<div class="st-card bk"><p class="sub">Скачать</p>
-        ${R('Вся база одним файлом', 'Каталог, КП, клиенты, менеджеры, настройки — архив .zip (kp.sqlite3 внутри, без изображений). Загружается обратно как есть.', '<button class="btn primary" type="button" data-bk="db">Скачать базу (.zip)</button>')}
-        ${R('Разделы базы', 'Каталог целиком или выбранные категории, клиенты, поставщики, КП, настройки — .json или .zip с фото.', '<button class="btn" type="button" data-bk="parts">Выбрать разделы…</button>')}
-        ${R('Каталог поставщика '+tip(SupplierExport.TIP), 'Без цен, закупки и остатков: копия с фото или книга Excel для правки.', `<select id="seSup" aria-label="Поставщик"><option value="">Загружаю…</option></select><button class="btn" type="button" data-se="zip">Копия с фото (.zip)</button><button class="btn" type="button" data-se="xlsx">Excel для правки</button>`, 'seBox')}
-        ${R('Каталог по любому фильтру', 'Excel, JSON, XML или YML — с ценами, РРЦ, остатками, картинками, нужными параметрами: отберите позиции в окне товаров.', '<button class="btn" type="button" data-bk="goods">Открыть товары</button>')}
-        ${R('Все настройки программы', 'Одним файлом — перенести на другой компьютер или сохранить перед большими правками.', '<button class="btn" type="button" data-sttab="changes">Файл настроек…</button>')}
-        <p class="muted bk-st" id="seSt"></p></div>
-      <div class="st-card bk"><p class="sub">Загрузить</p>
-        ${R('Копия или правки', '.zip, .json или книга Excel для правки — сначала программа покажет, что изменится.', '<input type="file" id="impF" accept=".json,.zip,.xlsx,application/json,application/zip" class="sr-file"><label for="impF" class="btn">Выбрать файл…</label>')}
-        <div id="impP"></div>
-        ${R('Файл базы целиком', `.sqlite3 или .zip с ним — заменяет всю базу; текущая сохраняется в копию (data\\backup). ${tip('<p>Так и нужно подменять базу: вручную копировать kp.sqlite3 в папку data нельзя — рядом лежат файлы kp.sqlite3-wal и -shm от прежней базы, и она повредится («database disk image is malformed»).</p>')}`, '<input type="file" id="impDb" accept=".sqlite3,.sqlite,.db,.zip" class="sr-file"><label for="impDb" class="btn">Выбрать файл базы…</label>')}
-        <p class="muted bk-st" id="impDbSt"></p></div>
-      <div class="st-card" id="stMaint"><p class="sub">Автоматические копии и обслуживание базы</p><p class="muted">Загружаю…</p></div>
-      <div class="st-card" id="stMirror"></div>
-      <details class="st-card mx"><summary class="sub">История выгрузок и загрузок · структура базы</summary><div id="stMigr"></div><div id="bkHist"><p class="muted">Загружаю…</p></div></details>`;
-    DbMaint.render(m.querySelector('#stMaint')); stMigr(m.querySelector('#stMigr')); new MirrorCard(m.querySelector('#stMirror')).open();
-    SupplierExport.mount(m, StNav.sup||''); StNav.sup='';
-    DataTransfer.bindImport(m, ()=>BackupTab.render(m));
-    BackupTab.history(m.querySelector('#bkHist'));
-    m.onclick=e=>{ const b=e.target.closest('[data-bk]'); if (!b) return;
-      if (b.dataset.bk==='db') return DataTransfer.download('export/sqlite', m.querySelector('#seSt'));
-      if (b.dataset.bk==='parts') return DataTransfer.dialog(()=>BackupTab.render(m));
-      if (b.dataset.bk==='goods') return GoodsTab.open(); };
-    m.querySelector('#impDb').onchange=async e=>{ const f=e.target.files[0]; if (!f) return; e.target.value='';
-      if (!await stConfirm('Заменить всю базу файлом «'+f.name+'»?','Текущие данные будут заменены содержимым файла. Перед этим программа сохранит копию текущей базы в data\\backup.','Заменить базу')) return;
-      const st=m.querySelector('#impDbSt'); st.textContent=`Загружаю «${f.name}» (${Fmt.size(f.size)})…`;
-      try{ const j=await aapi('import/sqlite?name='+encodeURIComponent(f.name), {method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:f});
-        st.textContent=''; toast(`База заменена: позиций ${Fmt.num(j.catalog)}, КП ${Fmt.num(j.kp)}. Прежняя сохранена: ${j.backup.split(/[\\/]/).pop()}`);
-        setTimeout(()=>location.reload(), 1500); }
-      catch(err){ st.textContent=''; toast('Не загружено: '+(err.message||err)); } };
+    BackupTab.m=m;
+    if (StNav.sup){ BackupTab.sub='out'; BackupTab.out='sup'; }
+    m.innerHTML=`<div class="bk-sum" id="bkSum">${BackupTab.tiles(null)}</div>
+      <div class="bk-tabs" role="tablist" aria-label="База и копии">${BackupTab.SUBS.map(([k,l])=>`<button type="button" role="tab" data-bks="${k}" aria-selected="${k===BackupTab.sub}"${k===BackupTab.sub?' class="on"':''}>${l}</button>`).join('')}</div>
+      <div id="bkPane" class="bk-pane"></div>`;
+    m.onclick=e=>{ const t=e.target.closest('[data-bks]'); if (t){ BackupTab.go(t.dataset.bks); return; } };
+    BackupTab.pane();
+    BackupTab.summary();
+  }
+
+  /** открыть подвкладку (и выбор слева) — из поиска по настройкам; вкладку затем рисует stTab */
+  static at(sub, pick){ BackupTab.sub=sub; if (pick && sub==='out') BackupTab.out=pick; if (pick && sub==='in') BackupTab.inn=pick; }
+
+  static go(sub){
+    BackupTab.sub=sub;
+    BackupTab.m.querySelectorAll('[data-bks]').forEach(b=>{ const on=b.dataset.bks===sub; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+    BackupTab.pane();
+  }
+
+  // ---------- сводка: база, последняя копия, вторая папка, место на диске (плитка открывает свою подвкладку)
+  static async summary(){
+    try{ BackupTab.ov=await aapi('maint/overview'); }catch(e){ BackupTab.ov=null; }
+    const box=BackupTab.m && BackupTab.m.querySelector('#bkSum'); if (!box || !BackupTab.ov) return;
+    box.innerHTML=BackupTab.tiles(BackupTab.ov);
+    const sz=BackupTab.m.querySelector('#bkDbSz'); if (sz) sz.textContent=Fmt.size(BackupTab.ov.dbBytes);
+  }
+
+  static tiles(o){
+    const T=(sub, label, val, note, cls='')=>`<button type="button" class="bk-tile${cls?' '+cls:''}" data-bks="${sub}"><small>${label}</small><b>${val}</b><span>${note}</span></button>`;
+    if (!o) return T('maint', 'База данных', '…', 'загружаю')+T('copies', 'Последняя копия', '…', '')+T('copies', 'Вторая папка', '…', '')+T('maint', 'Свободно на диске', '…', '');
+    const c=o.counts||{}, b=o.backup||{}, mr=o.mirror||{}, L=mr.last||{}, d=o.disk;
+    const n=(k, w)=>c[k]!=null ? `${w} ${Fmt.num(c[k])}` : '';
+    const copy=!b.at ? ['нет', 'копий ещё не было', 'bad'] : !b.ok ? [Fmt.dateTime(b.at), 'с ошибкой', 'bad'] : [Fmt.dateTime(b.at), `${o.stale?'давно · ':'исправна · '}копий ${o.copies}`, o.stale?'warn':'ok'];
+    const low=d && d.free < DEFN('srv.lowDiskGB', 2)*1024**3;
+    return T('maint', 'База данных', Fmt.size(o.dbBytes), [n('catalog','позиций'), n('kp','КП'), n('clients','клиентов')].filter(Boolean).join(' · '))
+      + T('copies', 'Последняя копия', esc(copy[0]), esc(copy[1]), copy[2])
+      + T('copies', 'Вторая папка', mr.on ? (L.at ? esc(Fmt.dateTime(L.at)) : 'включена') : 'выключена', mr.on ? (mr.running ? 'идёт копирование' : L.at && !L.ok ? 'последняя — с ошибкой' : mr.stale ? 'копия давно не обновлялась' : 'копии на другом диске') : 'копии только на этом диске', !mr.on ? 'warn' : (mr.stale || (L.at && !L.ok)) ? 'bad' : 'ok')
+      + T('maint', 'Свободно на диске', d ? Fmt.size(d.free) : '—', d ? `из ${Fmt.size(d.total)}` : 'не удалось узнать', low ? 'bad' : '');
+  }
+
+  // ---------- подвкладки
+  static pane(){
+    const p=BackupTab.m.querySelector('#bkPane'); p.onclick=null; p.onchange=null; p.oninput=null;
+    p.ondragover=null; p.ondrop=null;
+    ({out:BackupTab.paneOut, in:BackupTab.paneIn, copies:BackupTab.paneCopies, maint:BackupTab.paneMaint, hist:BackupTab.paneHist})[BackupTab.sub](p);
+  }
+
+  /** левый список «что» (радиокнопки) + правая панель с настройками и кнопкой */
+  static two(name, list, cur){
+    return `<div class="bk-two"><div class="bk-pick" role="radiogroup" aria-label="${name==='bkOut'?'Что выгрузить':'Что загрузить'}">${list.map(([k,l,n])=>`<label class="bk-opt${k===cur?' on':''}"><input type="radio" name="${name}" value="${k}"${k===cur?' checked':''} data-nodirty><span><b>${l}</b><small>${n}</small></span></label>`).join('')}</div>
+      <div class="bk-side" id="bkSide"></div></div>`;
+  }
+
+  static _pick(p, name, key, draw){
+    p.querySelectorAll('.bk-opt').forEach(x=>x.classList.toggle('on', x.querySelector('input').checked));
+    BackupTab[key]=p.querySelector(`[name="${name}"]:checked`).value; draw(p.querySelector('#bkSide'));
+  }
+
+  static paneOut(p){
+    p.innerHTML=BackupTab.two('bkOut', BackupTab.OUT, BackupTab.out);
+    p.addEventListener('change', e=>{ if (e.target.name==='bkOut') BackupTab._pick(p, 'bkOut', 'out', BackupTab.sideOut); });
+    BackupTab.sideOut(p.querySelector('#bkSide'));
+  }
+
+  static foot(btn, note=''){ return `<div class="bk-foot"><span class="bk-note" id="bkSt">${note}</span>${btn}</div>`; }
+  static kv(rows){ return `<table class="pv-t bk-kv">${rows.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>`; }
+
+  static sideOut(s){
+    const k=BackupTab.out, o=BackupTab.ov||{}, H=(t, h='')=>`<div class="sub st-mh">${t}${h?' '+tip(h):''}</div>`;
+    s.onclick=null; s.onchange=null; s.oninput=null;
+    if (k==='db'){
+      s.innerHTML=H('Вся база одним файлом', '<p>Архив .zip с файлом kp.sqlite3 внутри — точная копия базы на эту минуту. Изображения (папка img) в него не входят: их копирует «Вторая папка».</p><p>Вернуть — «Загрузить → Файл базы целиком».</p>')
+        + BackupTab.kv([['Внутри', 'каталог, КП, клиенты, менеджеры, сделки, настройки, журнал'], ['Формат', '.zip (kp.sqlite3 внутри), без изображений'], ['Размер базы', `<span id="bkDbSz">${o.dbBytes?Fmt.size(o.dbBytes):'…'}</span> — в архиве в 5–20 раз меньше`], ['Обратно', 'заменяет всю базу целиком']])
+        + BackupTab.foot('<button class="btn primary" type="button" data-bkx="db">Скачать базу (.zip)</button>');
+      s.onclick=e=>{ const b=e.target.closest('[data-bkx]'); if (b) BackupTab._dl(b, 'export/sqlite'); };
+    }
+    if (k==='parts'){ s.innerHTML=DataTransfer.html(); DataTransfer.mount(s, ()=>BackupTab.summary()); }
+    if (k==='sup'){
+      s.innerHTML=H('Каталог поставщика', SupplierExport.TIP)
+        + `<div class="bk-form" id="seBox"><label class="f"><span>Поставщик</span><select id="seSup" data-nodirty><option value="">Загружаю…</option></select></label>
+          <label class="f"><span>Что скачать</span><select id="seFmt" data-nodirty><option value="zip">Копия с фото (.zip) — загрузить обратно или на другой сервер</option><option value="xlsx">Книга Excel для правки (.xlsx) — исправить и загрузить</option></select></label>
+          ${BackupTab.foot('<button class="btn primary" type="button" data-se="go">Скачать</button>', 'Цены, закупка и остатки не выгружаются.')}<p class="muted bk-st" id="seSt"></p></div>`;
+      SupplierExport.mount(s, StNav.sup||''); StNav.sup='';
+    }
+    if (k==='goods'){
+      s.innerHTML=H('Каталог по любому фильтру')
+        + BackupTab.kv([['Отбор', 'категория, производитель, поставщик, поиск, «С ценой», «В наличии» — как в каталоге; или галочками'], ['Форматы', 'Excel, JSON, XML, YML (для сайтов и маркетплейсов)'], ['Состав', 'цена, РРЦ, закупка (по галочке), остатки, картинки, нужные параметры']])
+        + BackupTab.foot('<button class="btn primary" type="button" data-bkx="goods">Открыть товары…</button>', 'Отберите позиции и нажмите «Выгрузить…» над списком.');
+      s.onclick=e=>{ if (e.target.closest('[data-bkx]')) GoodsTab.open(); };
+    }
+    if (k==='settings'){
+      s.innerHTML=H('Все настройки программы', '<p>Значения программы, списки, тексты, функции, категории, тарифы доставки, ставки из Китая, нормы станций, фиды, почта (без пароля), права менеджеров (без паролей), личные настройки.</p><p>Загрузить — «Загрузить → Файл настроек»: сначала покажем разделы файла, отметите, какие заменить.</p>')
+        + BackupTab.kv([['Внутри', 'значения, списки, тексты, функции, тарифы, нормы станций, фиды, почта, права менеджеров'], ['Не попадают', 'пароли — никогда; ключи API — только по галочке ниже']])
+        + `<label class="ck bk-ck"><input type="checkbox" id="sfKeys" data-nodirty> С ключами API ${tip('<p>Ключи сервисов: проверка контрагентов, перевозчики, PDF, нейросеть, GitHub. Такой файл храните как пароль.</p>')}</label>`
+        + BackupTab.foot('<button class="btn primary" type="button" data-bkx="settings">Скачать файл настроек</button>');
+      s.querySelector('#sfKeys').onchange=async e=>{ if (e.target.checked && !await stConfirm('Сохранить вместе с ключами API?', 'В файл попадут ключи сервисов (проверка контрагентов, перевозчики, PDF, нейросеть, GitHub). Храните его как пароль и не пересылайте.', 'С ключами')) e.target.checked=false; };
+      s.onclick=e=>{ const b=e.target.closest('[data-bkx]'); if (b) BackupTab._dl(b, 'settings-file'+(s.querySelector('#sfKeys').checked?'?keys=1':'')); };
+    }
+  }
+
+  static async _dl(b, url){ b.disabled=true; try{ if (await DataTransfer.download(url, BackupTab.m.querySelector('#bkSt'))) BackupTab.summary(); } finally{ b.disabled=false; } }
+
+  // ---------- «Загрузить»: файл — кнопкой или перетаскиванием, сначала предпросмотр
+  static paneIn(p){
+    p.innerHTML=BackupTab.two('bkIn', BackupTab.IN, BackupTab.inn);
+    p.addEventListener('change', e=>{ if (e.target.name==='bkIn') BackupTab._pick(p, 'bkIn', 'inn', BackupTab.sideIn); });
+    p.ondragover=e=>{ if (e.target.closest('.bk-drop')){ e.preventDefault(); e.target.closest('.bk-drop').classList.add('over'); } };
+    p.ondragleave=e=>{ const z=e.target.closest('.bk-drop'); if (z) z.classList.remove('over'); };
+    p.ondrop=e=>{ const z=e.target.closest('.bk-drop'); if (!z) return; e.preventDefault(); z.classList.remove('over');
+      const f=e.dataTransfer.files[0]; if (f) BackupTab._file(p.querySelector('#bkSide'), f); };
+    BackupTab.sideIn(p.querySelector('#bkSide'));
+  }
+
+  static sideIn(s){
+    const k=BackupTab.inn, drop=(id, acc, what)=>`<div class="bk-drop"><input type="file" id="${id}" accept="${acc}" class="sr-file"><label for="${id}" class="btn">Выбрать файл…</label><span class="muted">или перетащите ${what} сюда</span></div>`;
+    s.onclick=null; s.onchange=null;
+    const H=(t, h)=>`<div class="sub st-mh">${t} ${tip(h)}</div>`;
+    if (k==='file') s.innerHTML=H('Копия или правки', '<p><b>.json</b> или <b>.zip</b> — выгрузка «Разделы базы» или «Каталог поставщика»: записи с теми же id заменяются, новые добавляются, ничего не удаляется; изображения — только недостающие.</p><p><b>Книга Excel для правки</b> — меняются только исправленные ячейки; поля, изменённые после выгрузки, пропускаются.</p>')
+      + BackupTab.kv([['Подходит', 'выгрузка «Разделы базы» (.json, .zip), «Каталог поставщика» (.zip, .xlsx)'], ['Сначала', 'покажем, сколько записей добавится и заменится'], ['Перед загрузкой', 'программа сама сохранит копию базы']]) + drop('impF', '.json,.zip,.xlsx,application/json,application/zip', 'файл') + '<div id="impP" class="bk-prev"></div>';
+    if (k==='settings') s.innerHTML=H('Файл настроек', '<p>Файл «КП_настройки_….json» из «Выгрузить → Настройки программы». Свои ключи API и пароль почты остаются, если в файле их нет. Каждое изменение попадёт в «Историю изменений настроек» — его можно вернуть.</p>')
+      + BackupTab.kv([['Подходит', 'КП_настройки_….json'], ['Сначала', 'покажем разделы файла — отметите, какие заменить']]) + drop('sfFile', '.json,application/json', 'файл') + '<div id="sfPrev" class="bk-prev"></div>';
+    if (k==='db') s.innerHTML=H('Файл базы целиком', '<p>Так и нужно подменять базу: вручную копировать kp.sqlite3 в папку data нельзя — рядом лежат файлы kp.sqlite3-wal и -shm от прежней базы, и она повредится («database disk image is malformed»).</p>')
+      + BackupTab.kv([['Подходит', '.sqlite3 или .zip с ним (выгрузка «Вся база», автокопия из data\\backup)'], ['Что будет', '<b class="warn-t">вся база заменится</b>; текущая сохранится в копию (data\\backup)'], ['После', 'страница обновится сама']]) + drop('impDb', '.sqlite3,.sqlite,.db,.zip', 'файл базы') + '<p class="muted bk-st" id="impDbSt"></p>';
+    s.onchange=e=>{ const i=e.target.closest('input[type=file]'); if (!i) return; const f=i.files[0]; i.value=''; if (f) BackupTab._file(s, f); };
+    if (k==='file') DataTransfer.bindImport(s, ()=>BackupTab.summary(), true);
+    if (k==='settings') s.onclick=e=>{ const ap=e.target.closest('[data-sfapply]'); if (ap) SettingsFileCard.apply(s, ap); };
+  }
+
+  static _file(s, f){
+    if (BackupTab.inn==='file') return DataTransfer._preview(s, f);
+    if (BackupTab.inn==='settings') return SettingsFileCard.preview(s, f);
+    return BackupTab._db(s, f);
+  }
+
+  static async _db(s, f){
+    if (!await stConfirm('Заменить всю базу файлом «'+f.name+'»?','Текущие данные будут заменены содержимым файла. Перед этим программа сохранит копию текущей базы в data\\backup.','Заменить базу')) return;
+    const st=s.querySelector('#impDbSt'); st.textContent=`Загружаю «${f.name}» (${Fmt.size(f.size)})…`;
+    try{ const j=await aapi('import/sqlite?name='+encodeURIComponent(f.name), {method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:f});
+      st.textContent=''; toast(`База заменена: позиций ${Fmt.num(j.catalog)}, КП ${Fmt.num(j.kp)}. Прежняя сохранена: ${j.backup.split(/[\\/]/).pop()}`);
+      setTimeout(()=>location.reload(), 1500); }
+    catch(err){ st.textContent=''; toast('Не загружено: '+(err.message||err)); }
+  }
+
+  // ---------- «Автокопии», «Обслуживание»
+  static paneCopies(p){
+    p.innerHTML='<div class="st-card" id="stMaint"><p class="muted">Загружаю…</p></div><div class="st-card" id="stMirror"></div>';
+    DbMaint.render(p.querySelector('#stMaint'), BackupTab.ov, 'copies');
+    new MirrorCard(p.querySelector('#stMirror')).open();
+    p.addEventListener('click', e=>{ if (e.target.closest('[data-mt],[data-mb]')) setTimeout(()=>BackupTab.summary(), 1500); });
+  }
+
+  static paneMaint(p){
+    const c=(BackupTab.ov||{}).counts||{}, N=[['catalog','Позиций каталога'],['kp','КП'],['clients','Клиентов'],['managers','Менеджеров'],['deals','Сделок']].filter(([k])=>c[k]!=null);
+    p.innerHTML=`<div class="st-card" id="stMaint"><p class="muted">Загружаю…</p></div>
+      ${N.length?`<div class="st-card"><p class="sub">Записей в базе</p><div class="bk-nums">${N.map(([k,l])=>`<div><b>${Fmt.num(c[k])}</b><small>${l}</small></div>`).join('')}</div></div>`:''}
+      <div id="stMigr"></div>`;
+    DbMaint.render(p.querySelector('#stMaint'), BackupTab.ov, 'service');
+    stMigr(p.querySelector('#stMigr'));
+  }
+
+  // ---------- «История»: выгрузки, загрузки, копии и обслуживание
+  static paneHist(p){
+    p.innerHTML=`<div class="st-card"><div class="row bk-hh"><p class="sub" style="margin:0">История операций с базой</p><span class="sp"></span>
+        <select id="bkHf" aria-label="Какие операции" data-nodirty>${BackupTab.HIST.map(([k,l])=>`<option value="${k}"${k===BackupTab.hist?' selected':''}>${l}</option>`).join('')}</select></div>
+      <div id="bkHist"><p class="muted">Загружаю…</p></div><p class="muted">Последние 30 операций; все — в «Журнале действий».</p></div>`;
+    p.onchange=e=>{ if (e.target.id==='bkHf'){ BackupTab.hist=e.target.value; BackupTab.history(p.querySelector('#bkHist')); } };
+    BackupTab.history(p.querySelector('#bkHist'));
   }
 
   static async history(box){
-    try{ const [a, b]=await Promise.all([aapi('audit?'+new URLSearchParams({action:'export_db'})), aapi('audit?'+new URLSearchParams({action:'import_db'}))]);
-      const ops=[...a.items, ...b.items].sort((x,y)=>y.id-x.id).slice(0,15);
-      box.innerHTML=ops.map(x=>`<div class="st-row"><div><b>${esc(ACT[x.action])}</b><span class="muted">${esc(Fmt.dateTime(x.timestamp))} · ${esc(x.entityId||'')}${x.after&&x.after.supplier?' · '+esc(x.after.supplier):''}${x.after&&x.after.bytes?' · '+Fmt.size(x.after.bytes):''}</span></div></div>`).join('')||'<p class="muted">Операций ещё не было.</p>'; }
-    catch(e){ box.innerHTML=''; }
+    const acts=(BackupTab.HIST.find(x=>x[0]===BackupTab.hist)||BackupTab.HIST[0])[2];
+    try{ const rs=await Promise.all(acts.map(a=>aapi('audit?'+new URLSearchParams({action:a}))));
+      const ops=rs.flatMap(r=>r.items).sort((x,y)=>y.id-x.id).slice(0,30), A=x=>x.after||{};
+      const ENT={auto:'автокопия', mirror:'во вторую папку', vacuum:'', sqlite:'вся база'}, ids=v=>String(v||'').split(',').map(k=>DataTransfer.NAMES[k]||k).join(', '), what=x=>[x.entityId in ENT ? ENT[x.entityId] : ids(x.entityId), A(x).supplier||'', A(x).file||'', A(x).path||''].filter(Boolean).map(esc).join(' · ');
+      box.innerHTML=ops.length ? `<table class="pv-t bk-hist"><thead><tr><th>Когда</th><th>Операция</th><th>Что</th><th>Кто</th></tr></thead><tbody>${ops.map(x=>`<tr><td>${esc(Fmt.dateTime(x.timestamp))}</td><td><b class="${x.result==='failed'?'bad-t':''}">${esc(ACT[x.action]||x.action)}</b></td><td>${what(x)}${A(x).bytes?' · '+Fmt.size(A(x).bytes):''}</td><td>${esc(x.userName||x.userId||'')}</td></tr>`).join('')}</tbody></table>` : '<p class="empty">Операций ещё не было.</p>'; }
+    catch(e){ box.innerHTML=`<p class="muted">${esc(e.message||e)}</p>`; }
   }
 }
 
@@ -58,22 +212,14 @@ class DataTransfer {
   static PRESETS = [['all','Всё',null],['catalog','Только каталог',['catalog','settings']],['clients','Только клиенты',['clients']],['settings','Только настройки',['settings']]];
   static file = null;
 
+  /** «Выгрузить → Разделы базы» (правая панель вкладки): быстрый выбор, разделы, каталог, формат, «Скачать» */
   static html(){
-    return `<div id="dtExp"><div class="sub">Что выгрузить${tip('<p><b>.json</b> — выбранные разделы базы. <b>С изображениями</b> — архив .zip: тот же JSON и все фото, галереи и логотипы, на которые в нём есть ссылки (папка img).</p><p>Каталог можно выгрузить целиком или только выбранные группы и категории оборудования. Файл загружается обратно здесь же, в «Загрузке»: записи с теми же id заменяются, новые добавляются, изображения — только недостающие.</p>')}</div>
-      <div class="row" style="flex-wrap:wrap;gap:6px">${DataTransfer.PRESETS.map(([k,l])=>`<button class="btn ghost" type="button" data-dp="${k}">${l}</button>`).join('')}</div>
-      <div class="chips" style="margin-top:8px">${DataTransfer.SECTIONS.map(([v,l])=>`<label class="chk-chip"><input type="checkbox" data-xs="${v}" checked> ${l}</label>`).join('')}</div>
-      <p class="muted">«Настройки программы» — категории, умолчания, списки, функции, тексты интерфейса, тарифы доставки, фиды, почта; пароли, ключи API и учётные записи не выгружаются.</p>
-      <div id="dtCatBox" style="margin-top:10px"></div>
-      <label class="chk-chip" style="margin-top:10px"><input type="checkbox" id="dtImg" checked> С изображениями (.zip)</label>
-      <div class="row" style="margin-top:10px"><button class="btn primary" type="button" data-dx="json">Скачать</button></div>
-      <p class="muted" id="dtExpSt"></p></div>`;
-  }
-
-  /** окно «Разделы базы»: что выгрузить, каталог целиком или категории, с фото */
-  static dialog(done){
-    const m=new Modal(`<div class="mv-h"><h3>Выгрузка разделов базы</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>${DataTransfer.html()}`, 'dt-dlg');
-    m.$('[data-x]').onclick=()=>m.close();
-    DataTransfer.mount(m.d, done);
+    return `<div id="dtExp" class="bk-form"><div class="sub st-mh">Разделы базы ${tip('<p><b>.json</b> — выбранные разделы базы. <b>.zip</b> — тот же JSON и все фото, галереи и логотипы, на которые в нём есть ссылки (папка img).</p><p>Каталог можно выгрузить целиком или выбрать категории, производителей, поставщиков, фиды. Файл загружается обратно в «Загрузить → Копия или правки»: записи с теми же id заменяются, новые добавляются, изображения — только недостающие.</p><p>«Настройки программы» — категории, умолчания, списки, функции, тексты интерфейса, тарифы доставки, фиды, почта; пароли, ключи API и учётные записи не выгружаются.</p>')}</div>
+      <label class="f"><span>Быстрый выбор</span><select id="dtPre" data-nodirty>${DataTransfer.PRESETS.map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}<option value="">Свой выбор</option></select></label>
+      <div class="f"><span>Разделы</span><div class="bk-cks">${DataTransfer.SECTIONS.map(([v,l])=>`<label class="ck"><input type="checkbox" data-xs="${v}" data-nodirty${v==='audit'?'':' checked'}> ${l}</label>`).join('')}</div></div>
+      <div class="f" id="dtCatBox"><span>Каталог</span><div></div></div>
+      <label class="f"><span>Формат</span><select id="dtFmt" data-nodirty><option value="zip">.zip — данные и изображения</option><option value="json">.json — только данные</option></select></label>
+      ${BackupTab.foot('<button class="btn primary" type="button" data-dx="json">Скачать</button>').replace('id="bkSt"', 'id="dtExpSt"')}</div>`;
   }
 
   /** скачать файл выгрузки администратора (GET /api/admin/…); st — строка состояния */
@@ -86,11 +232,14 @@ class DataTransfer {
   }
 
   static async mount(m, done){
-    const box=m.querySelector('#dtCatBox');
+    const box=m.querySelector('#dtCatBox>div');
     try{ DataTransfer._cats(box, await aapi('export/scope')); }catch(err){ box.innerHTML=`<p class="muted">${esc(err.message)}</p>`; }
     m.querySelector('#dtExp').addEventListener('click', e=>{ const b=e.target.closest('[data-dx]'); if (b) return DataTransfer._export(m, b.dataset.dx, done);
-      const p=e.target.closest('[data-dp]'); if (p) DataTransfer._preset(m, p.dataset.dp); });
-    m.querySelector('#dtExp').addEventListener('change', e=>DataTransfer._toggle(m, e.target));
+    });
+    m.querySelector('#dtExp').addEventListener('change', e=>{ if (e.target.id==='dtPre') return DataTransfer._preset(m, e.target.value);
+      if (e.target.dataset.xs) m.querySelector('#dtPre').value=DataTransfer._which(m);
+      DataTransfer._toggle(m, e.target); });
+    DataTransfer._preset(m, 'all');
     m.querySelector('#dtExp').addEventListener('input', e=>{ const q=e.target.closest('[data-dtq]'); if (!q) return; const w=norm(q.value);
       q.closest('[data-dtk]').querySelectorAll('[data-dtn]').forEach(c=>{ c.hidden=!!w && !c.dataset.dtn.includes(w); }); });
   }
@@ -124,10 +273,19 @@ class DataTransfer {
   }
 
   static _preset(m, key){
+    if (!key) return;
     const on=(DataTransfer.PRESETS.find(x=>x[0]===key)||[])[2];
     m.querySelectorAll('[data-xs]').forEach(c=>{ c.checked = on ? on.includes(c.dataset.xs) : c.dataset.xs!=='audit'; });
-    const img=m.querySelector('#dtImg'); if (img) img.checked = !on || on.includes('catalog');
+    m.querySelector('#dtFmt').value = !on || on.includes('catalog') ? 'zip' : 'json';
     DataTransfer._scope(m);
+  }
+
+  /** какой быстрый выбор совпадает с отмеченными разделами ('' — свой) */
+  static _which(m){
+    const on=new Set([...m.querySelectorAll('[data-xs]:checked')].map(c=>c.dataset.xs));
+    const same=L=>L.length===on.size && L.every(x=>on.has(x));
+    const p=DataTransfer.PRESETS.find(([, , L])=>same(L||DataTransfer.SECTIONS.map(x=>x[0]).filter(x=>x!=='audit')));
+    return p ? p[0] : '';
   }
 
   // выбор групп и категорий — только когда выгружается каталог
@@ -167,14 +325,14 @@ class DataTransfer {
       const secs=[...m.querySelectorAll('[data-xs]:checked')].map(c=>c.dataset.xs); if (!secs.length) return toast('Отметьте разделы');
       const some=(m.querySelector('[name="dtScope"]:checked')||{}).value==='some', pick=some ? DataTransfer._picked(m) : {};
       if (some && secs.includes('catalog') && !Object.keys(pick).length) return toast('Отметьте категории, производителей, поставщиков или фиды');
-      url='export?'+new URLSearchParams({sections:secs.join(','), images:m.querySelector('#dtImg').checked?'1':'0', ...(some && secs.includes('catalog') ? {pick:JSON.stringify(pick)} : {})});
+      url='export?'+new URLSearchParams({sections:secs.join(','), images:m.querySelector('#dtFmt').value==='zip'?'1':'0', ...(some && secs.includes('catalog') ? {pick:JSON.stringify(pick)} : {})});
     }
     if (await DataTransfer.download(url, st) && done) setTimeout(done, 1500);
   }
 
   // ---------- загрузка .json / .zip ----------
-  static bindImport(m, done){
-    m.querySelector('#impF').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if (f) DataTransfer._preview(m, f); };
+  static bindImport(m, done, own){
+    if (!own) m.querySelector('#impF').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if (f) DataTransfer._preview(m, f); };
     m.querySelector('#impP').addEventListener('click', async e=>{ const b=e.target.closest('[data-imp]'); if (!b || !DataTransfer.file) return;
       const patch=b.dataset.patch==='1';
       if (!await stConfirm('Загрузить данные из «'+DataTransfer.file.name+'»?', patch ? 'Перед загрузкой программа сохранит копию текущей базы. В позициях каталога изменятся только перечисленные в файле поля; цены, закупка, остатки и фото не меняются. Поля, изменённые после выгрузки копии, пропускаются.' : 'Перед загрузкой программа сохранит копию текущей базы. Записи с теми же id будут заменены, новые — добавлены, ничего не удаляется. Изображения добавляются только недостающие.'+(b.dataset.keep==='1'?' Цены, закупка и остатки имеющихся позиций не меняются.':''),'Загрузить')) return;
@@ -228,7 +386,7 @@ class SupplierExport {
     try{ SupplierExport.groups=await aapi('export/suppliers'); }catch(err){ if (st) st.textContent=err.message; return; }
     const s=box.querySelector('#seSup');
     s.innerHTML=SupplierExport.groups.map(g=>`<option value="${esc(g.name)}"${norm(g.name)===norm(sel)?' selected':''}>${esc(g.name)} · ${Fmt.num(g.count)}${g.dir||g.name===SupplierExport.NONE?'':' (фид, не привязан к справочнику)'}</option>`).join('')||'<option value="">Каталог пуст</option>';
-    box.addEventListener('click', e=>{ const b=e.target.closest('[data-se]'); if (b && s.value) SupplierExport.run(b, s.value, st); });
+    box.addEventListener('click', e=>{ const b=e.target.closest('[data-se]'); if (b && s.value) SupplierExport.run(b, s.value, st, b.dataset.se==='go' ? box.querySelector('#seFmt').value : b.dataset.se); });
   }
 
   static async _get(name, images){
@@ -237,10 +395,10 @@ class SupplierExport {
     return r;
   }
 
-  static async run(b, name, st){
+  static async run(b, name, st, kind){
     b.disabled=true; st.textContent='Готовлю файл…';
     try{
-      if (b.dataset.se==='zip'){ const r=await SupplierExport._get(name, true), fn=decodeURIComponent((r.headers.get('Content-Disposition')||'').split("''")[1]||'catalog.zip'), blob=await r.blob();
+      if (kind==='zip'){ const r=await SupplierExport._get(name, true), fn=decodeURIComponent((r.headers.get('Content-Disposition')||'').split("''")[1]||'catalog.zip'), blob=await r.blob();
         saveFileA(fn, blob); st.textContent=`Скачано: ${fn} (${Fmt.size(blob.size)})`; }
       else { const d=await (await SupplierExport._get(name, false)).json(), items=(d.sections||{}).catalog||[];
         const fn=`Каталог_${name.replace(/[^\wа-яё.-]+/gi,'_').slice(0,60)}_${today()}_для_правки.xlsx`;

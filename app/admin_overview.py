@@ -171,3 +171,34 @@ class Attention:
     def _trash(self):
         n = len(self.store.trash_list())
         return [{'level': 'info', 'text': 'В корзине записей: %d (хранятся %d дн.)' % (n, SrvVal.get(self.store, 'srv.trashDays')), 'tab': 'trash'}] if n else []
+
+
+class DbOverview:
+    """Сводка над вкладкой «База и копии»: размер базы и место на диске, записей в основных разделах, последняя
+    автокопия (с отметкой «давно»), вторая папка. Одним запросом — те же данные, что и у «Обслуживания» (maintenance.summary)."""
+    COUNTS = ('catalog', 'kp', 'clients', 'managers', 'deals')
+
+    def __init__(self, store, data_dir):
+        self.store, self.data_dir = store, data_dir
+
+    def _count(self, table):
+        try:
+            return self.store.one('SELECT COUNT(*) FROM "%s"' % table)[0]      # имя — из COUNTS, не из запроса
+        except Exception:          # таблицы ещё нет (миграция откачена)
+            return None
+
+    def _old(self, b):
+        try:
+            return datetime.fromisoformat(b['at'][:19]) < datetime.now() - timedelta(days=SrvVal.get(self.store, 'srv.backupStaleDays'))
+        except (KeyError, TypeError, ValueError):
+            return True
+
+    def get(self):
+        import maintenance
+        from backup_mirror import MirrorBackup
+        out = maintenance.summary(self.store, self.data_dir)
+        mb = MirrorBackup(self.store, self.data_dir).status()
+        out.update(disk=SystemInfo._free(self.data_dir), counts={t: self._count(t) for t in self.COUNTS},
+                   stale=self._old(out.get('backup') or {}),
+                   mirror={k: mb.get(k) for k in ('on', 'path', 'last', 'stale', 'running')})
+        return out

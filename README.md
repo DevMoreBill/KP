@@ -526,6 +526,14 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.101.5 — «База и копии»: сводка и подвкладки (решение владельца 18.10):**
+- `BackupTab` (settings-data.js): сводка `tiles` из `/api/admin/maint/overview` (`admin_overview.DbOverview` — размер базы,
+  диск, записи `COUNTS`, автокопия с `stale`, вторая папка); подвкладки `SUBS` Выгрузить · Загрузить · Автокопии ·
+  Обслуживание · История; в «Выгрузить»/«Загрузить» — список `OUT`/`IN` слева и панель справа (`sideOut`/`sideIn`), выгрузка
+  разделов (`DataTransfer.html`) — во вкладке, окна больше нет; перетаскивание файла (`bk-drop`); `DbMaint.render(box, r, part)`
+  — «copies» / «service»; поиск по настройкам открывает подвкладку (`BackupTab.at`). `Fmt.size` — ГБ от 1 ГБ.
+  Проверки — `tests/test_db_overview.py`.
+
 **3.101.4 — выгрузка каталога по производителям, поставщикам и фидам (несколько в каждом; решение владельца 18.10):**
 - `supplier_scope.ExportScope` (summary / clean / ids), `/api/admin/export/scope`, `/api/admin/export?pick=…`; окно —
   `DataTransfer._cats/_picked/_count` (settings-data.js). Проверки — `tests/test_export_pick.py`.
