@@ -79,6 +79,13 @@ class SupplierScope:
         return sorted(out, key=lambda d: str(d.get('name') or '').lower())
 
     @classmethod
+    def strip(cls, d, keys):
+        """Позиция без этих полей (цен и остатков, которые не выгружаются)."""
+        for k in keys:
+            d.pop(k, None)
+        return d
+
+    @classmethod
     def keep_of(cls, d):
         """Поля, которых нет в файле выгрузки и которые при загрузке остаются как в базе (только известные)."""
         k = d.get('keep') if isinstance(d, dict) else None
@@ -152,5 +159,75 @@ class ExportScope:
                 continue
             if 'feeds' in pick and feed not in pick['feeds']:
                 continue
+            out.append(cid)
+        return out
+
+
+class CatalogFilter:
+    """«Выгрузить → Каталог по фильтру» (решение владельца 18.10 — отбор прямо во вкладке): категория, производитель,
+    поставщик (как в ExportScope), слова поиска (все — в названии, кратком описании, артикуле или характеристиках),
+    «С ценой», «В наличии» (как в окне каталога: остаток больше нуля; без остатка — отметка фида; снятое с фида — нет).
+    Какие цены войдут в файл — группами; не вошедшие при загрузке остаются как в базе."""
+    GROUPS = {'price': ('price', 'prices', 'priceCur', 'priceSrc', 'priceLink', 'margin', 'mmode'), 'rrc': ('rrc',),
+              'cost': ('cost', 'costCur', 'costSrc', 'costDisc', 'costAt'), 'stock': ('stock',)}
+
+    def __init__(self, store):
+        self.st = store
+
+    @staticmethod
+    def clean(f):
+        if not isinstance(f, dict):
+            raise ValueError('Неверный фильтр каталога')
+        out = {}
+        for k in ('cat', 'maker', 'sup', 'q'):
+            v = f.get(k) or ''
+            if not isinstance(v, str) or len(v) > 200:
+                raise ValueError('Неверный фильтр каталога')
+            if v.strip():
+                out[k] = v.strip()
+        for k in ('priced', 'instock'):
+            if f.get(k) is True:
+                out[k] = True
+        return out
+
+    @classmethod
+    def keep(cls, prices):
+        """Поля цен и остатков, которые не выгружаются (группы не отмечены)."""
+        want = set(prices or [])
+        return [k for g, keys in cls.GROUPS.items() if g not in want for k in keys]
+
+    @staticmethod
+    def in_stock(st):
+        if not isinstance(st, dict) or st.get('gone'):
+            return False
+        return st['qty'] > 0 if isinstance(st.get('qty'), (int, float)) else bool(st.get('available'))
+
+    def ids(self, f):
+        from storage import norm
+        f = self.clean(f)
+        sc = ExportScope(self.st)
+        mk, sp = SupplierScope.key(f.get('maker', '')), SupplierScope.key(f.get('sup', ''))
+        ok = [cid for cid, cat, maker, sup, _feed in sc._rows()
+              if ('cat' not in f or cat == f['cat']) and (not mk or SupplierScope.key(maker) == mk) and (not sp or SupplierScope.key(sup) == sp)]
+        if not ok or not ({'q', 'priced', 'instock'} & set(f)):
+            return ok
+        words = norm(f.get('q', '')).split()
+        want, out = set(ok), []
+        for cid, light in self.st.all('SELECT id, light FROM catalog ORDER BY name'):
+            if cid not in want:
+                continue
+            try:
+                d = json.loads(light)
+            except ValueError:
+                continue
+            if f.get('priced') and not d.get('price'):
+                continue
+            if f.get('instock') and not self.in_stock(d.get('stock')):
+                continue
+            if words:
+                a = d.get('attrs') if isinstance(d.get('attrs'), dict) else {}
+                hay = norm(' '.join([str(d.get('name') or ''), str(d.get('spec') or ''), str(d.get('art') or '')] + [str(v) for v in a.values()]))
+                if not all(w in hay for w in words):
+                    continue
             out.append(cid)
         return out

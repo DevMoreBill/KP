@@ -526,6 +526,15 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.102.0 — одинаковые форматы у всех вариантов выгрузки, любой файл загружается обратно (решение владельца 18.10):**
+- `app/data_file.py`: `DataFile` (FORMATS xlsx · json · xml · yml · zip, `dump`, `sniff`, `load`, `digest`), `XlsxData` (лист на
+  раздел: строка 2 — ключи, «attrs.x» — поле вложенного объекта, «…:json» — JSON; скрытые «_kp» и «_long»), `XmlTree`
+  (типизированный `<kp_data>`), `YmlData` (yml_catalog + `<kp_data>`); `admin.export(fmt, flt, prices)` — `digests` (отпечатки
+  записей), `import_(mode='edits')` — только изменённое в файле, конфликт — если запись изменили и в программе;
+  `supplier_scope.CatalogFilter`, `/api/admin/export/filter`; файл настроек — тоже в любом формате.
+- Интерфейс: `BackupTab.FMT/fmtSel`, `CatFilterPane`, `DataTransfer._preview` (выбор «Что загрузить»), `BackupTab.redirect`.
+  Проверки — `tests/test_data_file.py`.
+
 **3.101.5 — «База и копии»: сводка и подвкладки (решение владельца 18.10):**
 - `BackupTab` (settings-data.js): сводка `tiles` из `/api/admin/maint/overview` (`admin_overview.DbOverview` — размер базы,
   диск, записи `COUNTS`, автокопия с `stale`, вторая папка); подвкладки `SUBS` Выгрузить · Загрузить · Автокопии ·

@@ -1283,20 +1283,42 @@ class AdminApi:
                     pick = ExportScope.clean(json.loads(q['pick'])) or None
                 except ValueError as e:
                     return self.err(400, str(e) if 'выбор' in str(e) else 'Неверный выбор позиций каталога')
+            flt = None
+            if q.get('flt'):           # «Каталог по фильтру»: категория, производитель, поставщик, поиск, с ценой, в наличии
+                from supplier_scope import CatalogFilter
+                try:
+                    flt = CatalogFilter.clean(json.loads(q['flt']))
+                except ValueError:
+                    return self.err(400, 'Неверный фильтр каталога')
+            prices = [x for x in (q.get('prices') or '').split(',') if x in ('price', 'rrc', 'cost', 'stock')]
             return self.export([s for s in (q.get('sections') or ','.join(SECTIONS)).split(',') if s in SECTIONS],
-                               cats=cats, images=q.get('images') == '1', sup=(q.get('sup') or '').strip() or None, pick=pick)
+                               cats=cats, images=q.get('images') == '1', sup=(q.get('sup') or '').strip() or None, pick=pick,
+                               fmt=q.get('fmt'), flt=flt, prices=prices)
+        if sub == 'export/filter' and m == 'GET':      # сколько позиций попадёт в «Каталог по фильтру»
+            from supplier_scope import CatalogFilter
+            try:
+                f = CatalogFilter.clean(json.loads(q.get('flt') or '{}'))
+            except ValueError:
+                return self.err(400, 'Неверный фильтр каталога')
+            return self.ok({'n': len(CatalogFilter(st).ids(f))})
         if sub.startswith('settings-file'):     # все настройки программы одним файлом (ключи API — по галочке, пароли — никогда)
             from data_bundle import SettingsFile
             sf = SettingsFile(st, me or 'admin')
-            if sub == 'settings-file' and m == 'GET':
-                name, data = sf.export(q.get('keys') == '1')
-                self.log('export_settings', 'settings', 'file', None, {'keys': q.get('keys') == '1', 'bytes': len(data)})
-                return self.h.send(200, 'application/json; charset=utf-8', data, self.h.attachment(name))
+            df = self.data_file()
+            if sub == 'settings-file' and m == 'GET':      # любой формат выгрузки (DataFile), как у остальных вариантов
+                from data_file import DataFile
+                fmt = DataFile.fmt(q.get('fmt'))
+                name, body = sf.export(q.get('keys') == '1')
+                data, ext, ctype, more = df.dump(body.decode('utf-8'), fmt)
+                self.log('export_settings', 'settings', 'file', None, dict(more, keys=q.get('keys') == '1', bytes=len(data), fmt=fmt))
+                return self.h.send(200, ctype, data, self.h.attachment(name[:-5] + ext))
             if sub == 'settings-file/preview' and m == 'POST':
-                return self.ok(sf.preview(self.h.body()))
+                return self.ok(sf.preview(self.settings_doc(df, self.h.body())))
             if sub == 'settings-file' and m == 'POST':
                 picked = [x for x in (q.get('sections') or '').split(',') if x] if 'sections' in q else None
-                res = sf.apply(self.h.body(), picked)
+                body = self.h.body()
+                res = sf.apply(self.settings_doc(df, body), picked)
+                res['images'] = self.settings_images(df, body)
                 self.log('import_settings', 'settings', 'file', None, res)
                 return self.ok(res)
             return self.err(404, 'Нет такого запроса')
@@ -1309,7 +1331,8 @@ class AdminApi:
             from supplier_scope import SupplierScope
             return self.ok(SupplierScope(st).groups())
         if sub in ('import/file/preview', 'import/file') and m == 'POST':
-            return self.ok(self.import_file(self.h.body(), apply=(sub == 'import/file'), sections=q.get('sections'), name=q.get('name') or ''))
+            return self.ok(self.import_file(self.h.body(), apply=(sub == 'import/file'), sections=q.get('sections'), name=q.get('name') or '',
+                                            mode='edits' if q.get('mode') == 'edits' else 'all'))
         if sub == 'export/sqlite' and m == 'GET':
             return self.export_sqlite()
         if sub in ('import/preview', 'import') and m == 'POST':
@@ -1667,31 +1690,90 @@ class AdminApi:
         """Категории каталога для выборочной выгрузки: [{cat, count}] (названия и группы — у клиента в справочнике типов)."""
         return [{'cat': c or '', 'count': n} for c, n in self.st.all('SELECT cat, COUNT(*) FROM catalog GROUP BY cat ORDER BY cat')]
 
-    def export(self, sections, cats=None, images=False, sup=None, pick=None):
-        """Выбранные разделы JSON; cats — только эти категории каталога; images — архив .zip с изображениями из ссылок;
-        sup — только позиции этого поставщика (SupplierScope), без цен и остатков: только каталог; pick — выбор категорий,
-        производителей, поставщиков, фидов (ExportScope, позиции целиком)."""
-        st, out, items, catalog, keep = self.st, {}, 0, '[]', None
+    def export(self, sections, cats=None, images=False, sup=None, pick=None, fmt=None, flt=None, prices=None):
+        """Выбранные разделы базы файлом в любом формате (DataFile: xlsx, json, xml, yml, zip — решение владельца 18.10).
+        cats — только эти категории каталога; images — прежний вызов: архив .zip с изображениями; sup — только позиции этого
+        поставщика (SupplierScope), без цен и остатков; pick — категории, производители, поставщики, фиды (ExportScope);
+        flt — «Каталог по фильтру» (CatalogFilter): prices — какие группы цен войдут (price, rrc, cost, stock), остальные
+        остаются в базе при загрузке (keep). В файле — отпечатки записей (digests): при загрузке «только изменённое»."""
+        from data_file import DataFile
+        from supplier_scope import SupplierScope
+        st, out, items, catalog, keep, ids = self.st, {}, 0, '[]', None, None
+        fmt = DataFile.fmt(fmt, 'zip' if images else 'json')
         if sup:
-            from supplier_scope import SupplierScope
             docs = SupplierScope(st).docs(sup)
             sections, cats, items, keep = ['catalog'], None, len(docs), list(SupplierScope.PRICE_KEYS)
             catalog = json.dumps(docs, ensure_ascii=False)
             out['catalog'] = None
-        elif 'catalog' in sections and pick:
-            from supplier_scope import ExportScope
-            ids = ExportScope(st).ids(pick)
+        elif 'catalog' in sections and (pick or flt is not None):
+            from supplier_scope import CatalogFilter, ExportScope
+            if flt is not None:
+                ids, keep = CatalogFilter(st).ids(flt), CatalogFilter.keep(prices)
+                sections = ['catalog']
+            else:
+                ids = ExportScope(st).ids(pick)
             out['catalog'] = None
             items = len(ids)
             parts = [st.joined('SELECT doc AS x FROM catalog WHERE id IN (%s) ORDER BY name' % ','.join('?' * len(ids[i:i + 500])), tuple(ids[i:i + 500]))
                      for i in range(0, len(ids), 500)]
             catalog = '[' + ','.join(x for x in parts if x) + ']'
+            if keep:
+                docs = [SupplierScope.strip(d, keep) for d in json.loads(catalog)]
+                catalog = json.dumps(docs, ensure_ascii=False)
         elif 'catalog' in sections:
             # каталог — готовыми строками из базы, без разбора и повторной сборки: 25 000 позиций занимали 1,3 ГБ памяти сервера
             where, args = ('WHERE cat IN (%s)' % ','.join('?' * len(cats)), tuple(cats)) if cats else ('', ())
             out['catalog'] = None
             items = st.one('SELECT COUNT(*) FROM catalog ' + where, args)[0]
             catalog = '[' + st.joined('SELECT doc AS x FROM catalog %s ORDER BY name' % where, args) + ']'
+        cur = self.current(sections)
+        for k in ('kp', 'managers', 'clients', 'audit', 'suppliers', 'settings'):
+            if k in cur:
+                out[k] = cur[k]
+        digests = self.digests(out, catalog if 'catalog' in out else None, keep)
+        secs = ','.join('%s:%s' % (json.dumps(k), catalog if k == 'catalog' else json.dumps(v, ensure_ascii=False)) for k, v in out.items())
+        extra = (',"cats":%s' % json.dumps(cats, ensure_ascii=False) if cats else '') + (
+            ',"pick":%s' % json.dumps({k: sorted(v) for k, v in pick.items()}, ensure_ascii=False) if pick and 'catalog' in sections else '') + (
+            ',"supplier":%s' % json.dumps(sup, ensure_ascii=False) if sup else '') + (
+            ',"keep":%s' % json.dumps(keep) if keep else '') + (
+            ',"filter":%s' % json.dumps(flt, ensure_ascii=False, default=sorted) if flt is not None else '') + (
+            ',"digests":%s' % json.dumps(digests, separators=(',', ':')))
+        from version import VERSION
+        body = '{"format":"kp-backup","version":1,"app":%s,"createdAt":%s,"sections":{%s}%s}' % (json.dumps(VERSION), json.dumps(_now()), secs, extra)
+        what = ('+'.join(SECTION_FILE[x] for x in sections) if len(sections) < len(SECTIONS) else 'вся_база') + ('_категорий-%d' % len(cats) if cats else '') + (
+            '_выборка-%d' % items if (pick or flt is not None) and 'catalog' in sections else '')
+        if sup:
+            what = 'каталог_' + (re.sub(r'[^\w.-]+', '_', sup).strip('_')[:60] or 'поставщик')
+        stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
+        info = {'sections': sections, 'cats': cats, 'items': items, 'fmt': fmt}
+        if pick:
+            info['pick'] = {k: len(v) for k, v in pick.items()}
+        if flt is not None:
+            info['filter'] = True
+            info['keep'] = keep or []
+        if sup:
+            info['supplier'] = sup[:120]
+        data, ext, ctype, more = self.data_file().dump(body, fmt)
+        del body
+        self.log('export_db', 'db', ','.join(sections), None, dict(info, bytes=len(data), **more))
+        return self.h.send(200, ctype, data, self.h.attachment('КП_выгрузка_%s_%s%s' % (what, stamp, ext)))
+
+    def data_file(self):
+        """Форматы выгрузки: подписи столбцов Excel — из справочника категорий, ссылки на фото в YML — адрес программы."""
+        from data_file import DataFile
+        from equipment_types import load_types
+        types = {t.get('id'): t for t in load_types()['types'] if isinstance(t, dict)}
+        labels = {}
+        for t in types.values():
+            for f in t.get('fields') or []:
+                if isinstance(f, dict) and f.get('key') and f.get('label'):
+                    labels.setdefault('attrs.%s' % f['key'], f['label'] + (', ' + f['unit'] if f.get('unit') else ''))
+        host = re.sub(r'[^A-Za-z0-9.:\-\[\]]', '', self.h.headers.get('Host') or '')
+        return DataFile(os.path.join(os.path.dirname(self.st.path), 'img'), 'http://' + host if host else '', labels, types)
+
+    def current(self, sections):
+        """Разделы базы, кроме каталога, — как в файле выгрузки."""
+        st, out = self.st, {}
         if 'kp' in sections:
             out['kp'] = [dict(zip(('id', 'number', 'state', 'meta', 'docx', 'updated', 'track'), r))
                          for r in st.all('SELECT id, number, state, meta, docx, updated, track FROM kp')]
@@ -1707,29 +1789,25 @@ class AdminApi:
         if 'settings' in sections:
             from data_bundle import ProgramSettings
             out['settings'] = ProgramSettings(st).export()
-        secs = ','.join('%s:%s' % (json.dumps(k), catalog if k == 'catalog' else json.dumps(v, ensure_ascii=False)) for k, v in out.items())
-        extra = (',"cats":%s' % json.dumps(cats, ensure_ascii=False) if cats else '') + (
-            ',"pick":%s' % json.dumps({k: sorted(v) for k, v in pick.items()}, ensure_ascii=False) if pick and 'catalog' in sections else '') + (
-            ',"supplier":%s,"keep":%s' % (json.dumps(sup, ensure_ascii=False), json.dumps(keep)) if sup else '')
-        body = '{"format":"kp-backup","version":1,"createdAt":%s,"sections":{%s}%s}' % (json.dumps(_now()), secs, extra)
-        what = ('+'.join(SECTION_FILE[x] for x in sections) if len(sections) < len(SECTIONS) else 'полная') + ('_категорий-%d' % len(cats) if cats else '') + (
-            '_выборка-%d' % items if pick and 'catalog' in sections else '')
-        if sup:
-            what = 'каталог_' + (re.sub(r'[^\w.-]+', '_', sup).strip('_')[:60] or 'поставщик')
-        stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
-        info = {'sections': sections, 'cats': cats, 'items': items}
-        if pick:
-            info['pick'] = {k: len(v) for k, v in pick.items()}
-        if sup:
-            info['supplier'] = sup[:120]
-        if images:
-            data, n, missing = self.bundle().pack(body)
-            self.log('export_db', 'db', ','.join(sections), None, dict(info, bytes=len(data), images=n, missing=missing))
-            return self.h.send(200, 'application/zip', data, self.h.attachment('КП_выгрузка_%s_%s.zip' % (what, stamp)))
-        data = body.encode('utf-8')        # один раз: выгрузка всей базы — сотни мегабайт
-        del body
-        self.log('export_db', 'db', ','.join(sections), None, dict(info, bytes=len(data)))
-        return self.h.send(200, 'application/json; charset=utf-8', data, self.h.attachment('КП_резервная_копия_%s_%s.json' % (what, stamp)))
+        return out
+
+    def digests(self, out, catalog, keep):
+        """Отпечатки записей на момент выгрузки: {раздел: {id: отпечаток}}; у настроек — {"_": отпечаток}. Каталог —
+        без цен и остатков (их при загрузке «только изменённого» программа не меняет)."""
+        from data_file import DataFile
+        from supplier_scope import SupplierScope
+        res = {}
+        if catalog is not None:
+            skip = SupplierScope.PRICE_KEYS
+            res['catalog'] = {x['id']: DataFile.digest(x, skip) for x in json.loads(catalog) if isinstance(x, dict) and x.get('id')}
+        for k in ('kp', 'managers', 'clients'):
+            if isinstance(out.get(k), list):
+                res[k] = {str(x.get('id')): DataFile.digest(x) for x in out[k] if isinstance(x, dict) and x.get('id')}
+        if isinstance(out.get('suppliers'), dict):
+            res['suppliers'] = {str(x.get('id')): DataFile.digest(x) for x in out['suppliers'].get('suppliers') or [] if x.get('id')}
+        if 'settings' in out:
+            res['settings'] = {'_': DataFile.digest(out['settings'])}
+        return res
 
     def export_sqlite(self):
         """Файл базы целиком — архивом ZIP (kp.sqlite3 внутри): в 15–20 раз меньше, загружается обратно как есть."""
@@ -1776,16 +1854,23 @@ class AdminApi:
         self.log('import_db', 'db', 'sqlite', None, {'bytes': len(data), 'file': rep['file'], 'backup': bak, 'catalog': rep['catalog'], 'kp': rep['kp']})
         return rep
 
-    def import_(self, d, apply, sections=None):
+    def import_(self, d, apply, sections=None, mode='all', fmt='json'):
         """Проверка схемы и предпросмотр (что добавится / обновится); apply — запись после копии базы.
-        Ничего не удаляется. Журнал действий не импортируется."""
+        Ничего не удаляется. Журнал действий не импортируется. mode «edits» (только изменённое в файле): запись, которую в
+        файле не меняли, пропускается; изменённую в файле, но уже изменённую и в программе после выгрузки, — тоже (в отчёт);
+        у позиций каталога цены и остатки остаются как в базе."""
         if not isinstance(d, dict) or d.get('format') != 'kp-backup' or d.get('version') != 1 or not isinstance(d.get('sections'), dict):
-            raise ValueError('Это не резервная копия программы (нужен файл «КП_резервная_копия_….json»)')
+            raise ValueError('Это не выгрузка данных программы: нужен файл «КП_выгрузка_…», выгруженный в «База и копии → Выгрузить»')
+        from data_file import DataFile
         sec = d['sections']
         want = [s for s in (sections or 'catalog,kp,managers,clients,suppliers,settings').split(',') if s in sec and s != 'audit' and s in SECTIONS]
-        st, rep, errors = self.st, {}, []
+        st, rep, errors, conflicts = self.st, {}, [], []
         from supplier_scope import SupplierScope
-        keep = SupplierScope.keep_of(d)      # выгрузка по поставщику: цен и остатков в файле нет — у имеющихся позиций остаются
+        keep = SupplierScope.keep_of(d)      # выгрузка без цен и остатков: у имеющихся позиций они остаются как в базе
+        digs = d.get('digests') if isinstance(d.get('digests'), dict) else {}
+        edits = mode == 'edits' and bool(digs)
+        if edits:
+            keep = list(SupplierScope.PRICE_KEYS)
         by = actor(self.h, True)[1]
         backup = self.import_backup() if apply else None
         exist = {'catalog': {x['id']: x for x in json.loads(st.catalog_light())},
@@ -1795,9 +1880,32 @@ class AdminApi:
                  'suppliers': {x['id']: x for x in st.suppliers_list()}}
         req = {'catalog': ('id', 'name'), 'kp': ('id', 'number'), 'managers': ('id', 'name'), 'clients': ('id',), 'suppliers': ('id', 'name')}
         from data_bundle import ProgramSettings
+
+        def now_of(s, cid):
+            """Запись базы сейчас — в том же виде, что в файле выгрузки (для сравнения отпечатков)."""
+            if s == 'catalog':
+                return _loads(st.catalog_get(cid)) or {}
+            if s == 'kp':
+                r = st.one('SELECT id, number, state, meta, docx, updated, track FROM kp WHERE id=?', (cid,))
+                return dict(zip(('id', 'number', 'state', 'meta', 'docx', 'updated', 'track'), r)) if r else {}
+            x = exist[s].get(cid) or {}
+            return {k: v for k, v in x.items() if k != '_rev'}
+
         for s in want:
             if s == 'settings':
-                rep[s] = {'new': 0, 'updated': ProgramSettings(st).count(sec[s]), 'invalid': 0}
+                n = ProgramSettings(st).count(sec[s])
+                if edits and (digs.get('settings') or {}).get('_'):
+                    o = digs['settings']['_']
+                    if DataFile.digest(sec[s]) == o:
+                        rep[s] = {'new': 0, 'updated': 0, 'invalid': 0, 'same': n}
+                        want = [x for x in want if x != 'settings']
+                        continue
+                    if DataFile.digest(ProgramSettings(st).export()) != o:
+                        rep[s] = {'new': 0, 'updated': 0, 'invalid': 0, 'conflict': n}
+                        conflicts.append('Настройки программы — изменены и в программе после выгрузки')
+                        want = [x for x in want if x != 'settings']
+                        continue
+                rep[s] = {'new': 0, 'updated': n, 'invalid': 0}
                 continue
             if s == 'suppliers':     # {suppliers: [...], customs: {ключ: {code, duty, note, name}}}
                 rows = (sec[s].get('suppliers') if isinstance(sec[s], dict) else None) or []
@@ -1822,8 +1930,27 @@ class AdminApi:
             bad += more
             skip = set(bad)
             ok = [x for i, x in enumerate(rows) if i not in skip]
+            same = conf = 0
+            if edits:
+                dg, sk, left = digs.get(s) or {}, SupplierScope.PRICE_KEYS if s == 'catalog' else (), []
+                for x in ok:
+                    o = dg.get(str(x['id']))
+                    if o and DataFile.digest(x, sk) == o:
+                        same += 1
+                        continue
+                    if o and x['id'] in exist[s] and DataFile.digest(now_of(s, x['id']), sk) != o:
+                        conf += 1
+                        if len(conflicts) < 30:
+                            conflicts.append('%s «%s» — изменено и в программе после выгрузки' % (
+                                {'catalog': 'Позиция', 'kp': 'КП', 'managers': 'Менеджер', 'clients': 'Клиент', 'suppliers': 'Поставщик'}[s],
+                                x.get('name') or x.get('number') or x['id']))
+                        continue
+                    left.append(x)
+                ok = left
             rep[s] = {'new': sum(1 for x in ok if x['id'] not in exist[s]), 'updated': sum(1 for x in ok if x['id'] in exist[s]),
                       'invalid': len(bad)}
+            if edits:
+                rep[s].update(same=same, conflict=conf)
             if apply:
                 if s == 'catalog':
                     for x in ok:
@@ -1841,8 +1968,11 @@ class AdminApi:
                     for x in ok:
                         st.supplier_put(x['id'], x, by)
                     customs = sec[s].get('customs') if isinstance(sec[s].get('customs'), dict) else {}
+                    now = st.customs_all() if edits else {}
                     for key, c in customs.items():
                         if isinstance(c, dict) and re.match(r'^(cat|item):[\w.-]{1,80}$', str(key)):
+                            if edits and all(str(c.get(f) or '') == str((now.get(key) or {}).get(f) or '') for f in ('code', 'duty', 'note', 'name')):
+                                continue      # «только изменённое»: такие же коды ТН ВЭД не переписываются
                             st.customs_put(key, c.get('code'), c.get('duty'), c.get('note'), by, c.get('name') or '')
                 else:
                     for x in ok:
@@ -1850,18 +1980,34 @@ class AdminApi:
         if apply and 'settings' in want and isinstance(sec['settings'], dict):
             ProgramSettings(st).apply(sec['settings'])
         if apply:
-            self.log('import_db', 'db', ','.join(want), None, {'report': rep, 'createdAt': d.get('createdAt'), 'backup': backup})
-        return {'report': rep, 'errors': errors, 'createdAt': d.get('createdAt'), 'applied': apply, 'keep': bool(keep),
-                'supplier': str(d.get('supplier') or '')[:120]}
+            self.log('import_db', 'db', ','.join(want), None, {'report': rep, 'createdAt': d.get('createdAt'), 'backup': backup,
+                                                                'fmt': fmt, 'mode': 'edits' if edits else 'all'})
+        return {'report': rep, 'errors': errors, 'createdAt': d.get('createdAt'), 'applied': apply, 'keep': bool(keep) and not edits,
+                'supplier': str(d.get('supplier') or '')[:120], 'digests': bool(digs), 'mode': 'edits' if edits else 'all',
+                'conflicts': conflicts}
 
-    def import_file(self, data, apply, sections=None, name=''):
-        """Резервная копия файлом: .json или .zip с изображениями — предпросмотр или загрузка (изображения — только недостающие);
-        книга Excel для правки (CatalogSheet) — как файл правок каталога."""
+    def import_file(self, data, apply, sections=None, name='', mode='all'):
+        """Файл любого формата выгрузки (DataFile: .xlsx, .json, .xml, .yml, .zip с изображениями) — предпросмотр или загрузка
+        (изображения — только недостающие); книга Excel «для правки» (3.98, CatalogSheet) — как файл правок каталога.
+        Файл базы целиком и файл настроек здесь не загружаются — ответ kind подсказывает, куда их загрузить.
+        mode «edits» — только записи, изменённые в файле после выгрузки (по отпечаткам digests)."""
         from catalog_patch import CatalogPatch, CatalogSheet
-        if CatalogSheet.is_book(data):
+        from data_file import DataFile
+        kind = DataFile.sniff(data)
+        if kind in ('sqlite', 'sqlite-zip'):
+            if apply:
+                raise ValueError('Это файл базы целиком — загрузите его в «Загрузить → Файл базы целиком»')
+            return {'kind': 'sqlite'}
+        if kind == 'xlsx-patch':
             d, z, imgs = CatalogSheet(self.st).patch(data, str(name)[:120]), None, []
         else:
-            d, z, imgs = self.bundle().read(data)
+            d, z, imgs = self.data_file().load(data)
+        if isinstance(d, dict) and d.get('format') == 'kp-settings':
+            if z:
+                z.close()
+            if apply:
+                raise ValueError('Это файл настроек — загрузите его в «Загрузить → Файл настроек»')
+            return {'kind': 'settings'}
         b = self.bundle()
         if CatalogPatch.is_patch(d):        # правки каталога: только перечисленные поля позиций, цены и остатки не трогаются
             if z:
@@ -1872,8 +2018,9 @@ class AdminApi:
                                                                      'fields': res['patch']['fields'], 'skipped': res['patch']['conflictCount']})
             return res
         try:
-            res = self.import_(d, apply, sections)
+            res = self.import_(d, apply, sections, mode, kind)
             res['images'] = b.plan(imgs) if imgs else None
+            res['fmt'] = kind
             if apply and imgs:
                 res['images']['written'] = b.write(z, imgs)
                 try:
@@ -1885,6 +2032,30 @@ class AdminApi:
         finally:
             if z:
                 z.close()
+
+    def settings_doc(self, df, data):
+        """Файл настроек любого формата → документ kp-settings (проверку делает SettingsFile.read)."""
+        from data_file import DataFile
+        kind = DataFile.sniff(data)
+        if kind not in ('json', 'zip', 'xlsx', 'xml'):
+            raise ValueError('Это не файл настроек программы')
+        if kind == 'json':
+            return data
+        d, z, _ = df.load(data)
+        if z:
+            z.close()
+        return d
+
+    def settings_images(self, df, data):
+        """Архив .zip настроек: недостающие изображения (логотипы производителей) — в папку img."""
+        from data_file import DataFile
+        if DataFile.sniff(data) != 'zip':
+            return None
+        _, z, imgs = df.load(data)
+        try:
+            return self.bundle().write(z, imgs) if imgs else 0
+        finally:
+            z.close()
 
     def import_backup(self):
         return self.st.backup(os.path.join(os.path.dirname(self.st.path), 'backup', 'kp-%s-before-import.zip' % datetime.now().strftime('%Y%m%d-%H%M%S')))

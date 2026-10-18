@@ -223,12 +223,16 @@ class SettingsFile:
         return name, json.dumps(body, ensure_ascii=False, indent=1).encode('utf-8')
 
     def read(self, data):
-        try:
-            d = json.loads((data or b'').decode('utf-8-sig'))
-        except (ValueError, UnicodeDecodeError):
-            d = None
+        """Файл настроек: байты JSON или уже разобранный документ (другие форматы — admin.settings_doc через DataFile)."""
+        if isinstance(data, dict):
+            d = data
+        else:
+            try:
+                d = json.loads((data or b'').decode('utf-8-sig'))
+            except (ValueError, UnicodeDecodeError):
+                d = None
         if not isinstance(d, dict) or d.get('format') != self.FORMAT or not isinstance(d.get('sections'), dict):
-            raise ValueError('Это не файл настроек программы: нужен «КП_настройки_….json», сохранённый кнопкой «Сохранить все настройки в файл»')
+            raise ValueError('Это не файл настроек программы: нужен файл «КП_настройки_…», выгруженный в «База и копии → Выгрузить → Настройки программы»')
         return d
 
     def preview(self, data):

@@ -8,10 +8,10 @@
 class BackupTab {
   static SUBS = [['out','Выгрузить'],['in','Загрузить'],['copies','Автокопии'],['maint','Обслуживание'],['hist','История']];
   // что выгрузить / загрузить: [ключ, название, пояснение в списке]
-  static OUT = [['db','Вся база','Один файл .zip — всё как есть'],['parts','Разделы базы','Каталог, клиенты, КП, настройки — на выбор'],
-    ['sup','Каталог поставщика','Без цен: копия с фото или Excel для правки'],['goods','Каталог по фильтру','Excel, JSON, XML, YML — с ценами и остатками'],
-    ['settings','Настройки программы','Один файл — на другой компьютер']];
-  static IN = [['file','Копия или правки','.zip, .json или Excel для правки'],['settings','Файл настроек','КП_настройки_….json'],['db','Файл базы целиком','.sqlite3 или архив копии — заменяет всё']];
+  static OUT = [['db','Вся база','Все разделы одним файлом'],['parts','Разделы базы','Каталог, клиенты, КП, настройки — на выбор'],
+    ['sup','Каталог поставщика','Позиции поставщика, без цен'],['filter','Каталог по фильтру','Категория, марка, поиск — с ценами на выбор'],
+    ['settings','Настройки программы','Перенести на другой компьютер']];
+  static IN = [['file','Копия или правки','Любой выгруженный файл: Excel, JSON, XML, YML, .zip'],['settings','Файл настроек','КП_настройки_… любого формата'],['db','Файл базы целиком','.sqlite3 или архив копии — заменяет всё']];
   static HIST = [['','Все операции',['export_db','import_db','backup_db','maintain_db']],['out','Выгрузки',['export_db']],['in','Загрузки',['import_db']],['copies','Копии и обслуживание',['backup_db','maintain_db']]];
   static sub = 'out';     // открытая подвкладка
   static out = 'db';      // выбранное в «Выгрузить»
@@ -93,36 +93,48 @@ class BackupTab {
   static foot(btn, note=''){ return `<div class="bk-foot"><span class="bk-note" id="bkSt">${note}</span>${btn}</div>`; }
   static kv(rows){ return `<table class="pv-t bk-kv">${rows.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>`; }
 
+  // общий список форматов у всех вариантов выгрузки (решение владельца 18.10); у «Вся база» ещё точная копия .sqlite
+  static FMT = [['xlsx','Excel (.xlsx) — таблица, можно править'],['json','JSON — данные как есть'],['xml','XML'],['yml','YML — для сайтов и маркетплейсов'],['zip','Архив .zip — данные и все фото']];
+  static SQLITE = ['sqlite','Точная копия базы (.sqlite в архиве .zip)'];
+  static FMT_TIP = '<p>У всех вариантов выгрузки — одни и те же форматы, и любой файл загружается обратно: «Загрузить → Копия или правки» (настройки — «Файл настроек»).</p><p><b>Excel</b> — лист на раздел: строка 2 — служебные ключи, столбец «Код» не меняйте; при загрузке можно взять только изменённые строки. <b>JSON</b> и <b>XML</b> — данные как есть. <b>YML</b> — каталог в формате Яндекса для сайтов и маркетплейсов (и данные для загрузки обратно). <b>Архив .zip</b> — JSON и все фото, на которые он ссылается.</p>';
+  static ALL = 'catalog,kp,managers,clients,suppliers,audit,settings';
+  static flt = null;     // «Каталог по фильтру»: выбранное (переживает переключение вариантов)
+
+  static fmt(){ try{ return localStorage.getItem('kp.bk.fmt')||'xlsx'; }catch(e){ return 'xlsx'; } }
+  static fmtOpts(sqlite=false){
+    const cur=BackupTab.fmt(), L=[...(sqlite?[BackupTab.SQLITE]:[]), ...BackupTab.FMT];
+    return L.map(([k,l])=>`<option value="${k}"${k===cur?' selected':''}>${l}</option>`).join('');
+  }
+  static fmtSel(sqlite=false){
+    return `<label class="f"><span class="st-mh">Формат ${tip(BackupTab.FMT_TIP)}</span><select id="bkFmt" data-nodirty>${BackupTab.fmtOpts(sqlite)}</select></label>`;
+  }
+  /** выбранный формат (запоминается для всех вариантов, кроме точной копии базы) */
+  static fmtOf(s){ const v=s.querySelector('#bkFmt').value; if (v!=='sqlite') try{ localStorage.setItem('kp.bk.fmt', v); }catch(e){ /* без запоминания */ } return v; }
+
   static sideOut(s){
     const k=BackupTab.out, o=BackupTab.ov||{}, H=(t, h='')=>`<div class="sub st-mh">${t}${h?' '+tip(h):''}</div>`;
     s.onclick=null; s.onchange=null; s.oninput=null;
     if (k==='db'){
-      s.innerHTML=H('Вся база одним файлом', '<p>Архив .zip с файлом kp.sqlite3 внутри — точная копия базы на эту минуту. Изображения (папка img) в него не входят: их копирует «Вторая папка».</p><p>Вернуть — «Загрузить → Файл базы целиком».</p>')
-        + BackupTab.kv([['Внутри', 'каталог, КП, клиенты, менеджеры, сделки, настройки, журнал'], ['Формат', '.zip (kp.sqlite3 внутри), без изображений'], ['Размер базы', `<span id="bkDbSz">${o.dbBytes?Fmt.size(o.dbBytes):'…'}</span> — в архиве в 5–20 раз меньше`], ['Обратно', 'заменяет всю базу целиком']])
-        + BackupTab.foot('<button class="btn primary" type="button" data-bkx="db">Скачать базу (.zip)</button>');
-      s.onclick=e=>{ const b=e.target.closest('[data-bkx]'); if (b) BackupTab._dl(b, 'export/sqlite'); };
+      s.innerHTML=`<div class="bk-form">${H('Вся база одним файлом', '<p>Все разделы: каталог, КП, клиенты, менеджеры, поставщики, настройки, журнал действий. Любой формат загружается обратно в «Загрузить → Копия или правки» (записи с теми же кодами заменяются, новые добавляются).</p><p><b>Точная копия базы</b> — файл kp.sqlite3 в архиве: заменяет всю базу целиком («Загрузить → Файл базы целиком»). Изображения (папка img) в неё не входят — их копирует «Вторая папка».</p>')}`
+        + BackupTab.kv([['Внутри', 'каталог, КП, клиенты, менеджеры, поставщики, настройки, журнал'], ['Размер базы', `<span id="bkDbSz">${o.dbBytes?Fmt.size(o.dbBytes):'…'}</span>`]])
+        + BackupTab.fmtSel(true) + BackupTab.foot('<button class="btn primary" type="button" data-bkx="db">Скачать</button>') + '</div>';
+      s.onclick=e=>{ const b=e.target.closest('[data-bkx]'); if (!b) return; const f=BackupTab.fmtOf(s);
+        BackupTab._dl(b, f==='sqlite' ? 'export/sqlite' : 'export?'+new URLSearchParams({sections:BackupTab.ALL, fmt:f})); };
     }
     if (k==='parts'){ s.innerHTML=DataTransfer.html(); DataTransfer.mount(s, ()=>BackupTab.summary()); }
     if (k==='sup'){
-      s.innerHTML=H('Каталог поставщика', SupplierExport.TIP)
-        + `<div class="bk-form" id="seBox"><label class="f"><span>Поставщик</span><select id="seSup" data-nodirty><option value="">Загружаю…</option></select></label>
-          <label class="f"><span>Что скачать</span><select id="seFmt" data-nodirty><option value="zip">Копия с фото (.zip) — загрузить обратно или на другой сервер</option><option value="xlsx">Книга Excel для правки (.xlsx) — исправить и загрузить</option></select></label>
-          ${BackupTab.foot('<button class="btn primary" type="button" data-se="go">Скачать</button>', 'Цены, закупка и остатки не выгружаются.')}<p class="muted bk-st" id="seSt"></p></div>`;
+      s.innerHTML=`<div class="bk-form" id="seBox">${H('Каталог поставщика', SupplierExport.TIP)}<label class="f"><span>Поставщик</span><select id="seSup" data-nodirty><option value="">Загружаю…</option></select></label>
+          ${BackupTab.fmtSel()}${BackupTab.foot('<button class="btn primary" type="button" data-se="go">Скачать</button>', 'Без цен, закупки и остатков — при загрузке они остаются как в программе.')}<p class="muted bk-st" id="seSt"></p></div>`;
       SupplierExport.mount(s, StNav.sup||''); StNav.sup='';
     }
-    if (k==='goods'){
-      s.innerHTML=H('Каталог по любому фильтру')
-        + BackupTab.kv([['Отбор', 'категория, производитель, поставщик, поиск, «С ценой», «В наличии» — как в каталоге; или галочками'], ['Форматы', 'Excel, JSON, XML, YML (для сайтов и маркетплейсов)'], ['Состав', 'цена, РРЦ, закупка (по галочке), остатки, картинки, нужные параметры']])
-        + BackupTab.foot('<button class="btn primary" type="button" data-bkx="goods">Открыть товары…</button>', 'Отберите позиции и нажмите «Выгрузить…» над списком.');
-      s.onclick=e=>{ if (e.target.closest('[data-bkx]')) GoodsTab.open(); };
-    }
+    if (k==='filter') CatFilterPane.mount(s);
     if (k==='settings'){
-      s.innerHTML=H('Все настройки программы', '<p>Значения программы, списки, тексты, функции, категории, тарифы доставки, ставки из Китая, нормы станций, фиды, почта (без пароля), права менеджеров (без паролей), личные настройки.</p><p>Загрузить — «Загрузить → Файл настроек»: сначала покажем разделы файла, отметите, какие заменить.</p>')
+      s.innerHTML=`<div class="bk-form">${H('Все настройки программы', '<p>Значения программы, списки, тексты, функции, категории, тарифы доставки, ставки из Китая, нормы станций, фиды, почта (без пароля), права менеджеров (без паролей), личные настройки.</p><p>Загрузить — «Загрузить → Файл настроек»: сначала покажем разделы файла, отметите, какие заменить.</p>')}`
         + BackupTab.kv([['Внутри', 'значения, списки, тексты, функции, тарифы, нормы станций, фиды, почта, права менеджеров'], ['Не попадают', 'пароли — никогда; ключи API — только по галочке ниже']])
         + `<label class="ck bk-ck"><input type="checkbox" id="sfKeys" data-nodirty> С ключами API ${tip('<p>Ключи сервисов: проверка контрагентов, перевозчики, PDF, нейросеть, GitHub. Такой файл храните как пароль.</p>')}</label>`
-        + BackupTab.foot('<button class="btn primary" type="button" data-bkx="settings">Скачать файл настроек</button>');
+        + BackupTab.fmtSel() + BackupTab.foot('<button class="btn primary" type="button" data-bkx="settings">Скачать</button>') + '</div>';
       s.querySelector('#sfKeys').onchange=async e=>{ if (e.target.checked && !await stConfirm('Сохранить вместе с ключами API?', 'В файл попадут ключи сервисов (проверка контрагентов, перевозчики, PDF, нейросеть, GitHub). Храните его как пароль и не пересылайте.', 'С ключами')) e.target.checked=false; };
-      s.onclick=e=>{ const b=e.target.closest('[data-bkx]'); if (b) BackupTab._dl(b, 'settings-file'+(s.querySelector('#sfKeys').checked?'?keys=1':'')); };
+      s.onclick=e=>{ const b=e.target.closest('[data-bkx]'); if (b) BackupTab._dl(b, 'settings-file?'+new URLSearchParams({fmt:BackupTab.fmtOf(s), ...(s.querySelector('#sfKeys').checked?{keys:'1'}:{})})); };
     }
   }
 
@@ -143,15 +155,23 @@ class BackupTab {
     const k=BackupTab.inn, drop=(id, acc, what)=>`<div class="bk-drop"><input type="file" id="${id}" accept="${acc}" class="sr-file"><label for="${id}" class="btn">Выбрать файл…</label><span class="muted">или перетащите ${what} сюда</span></div>`;
     s.onclick=null; s.onchange=null;
     const H=(t, h)=>`<div class="sub st-mh">${t} ${tip(h)}</div>`;
-    if (k==='file') s.innerHTML=H('Копия или правки', '<p><b>.json</b> или <b>.zip</b> — выгрузка «Разделы базы» или «Каталог поставщика»: записи с теми же id заменяются, новые добавляются, ничего не удаляется; изображения — только недостающие.</p><p><b>Книга Excel для правки</b> — меняются только исправленные ячейки; поля, изменённые после выгрузки, пропускаются.</p>')
-      + BackupTab.kv([['Подходит', 'выгрузка «Разделы базы» (.json, .zip), «Каталог поставщика» (.zip, .xlsx)'], ['Сначала', 'покажем, сколько записей добавится и заменится'], ['Перед загрузкой', 'программа сама сохранит копию базы']]) + drop('impF', '.json,.zip,.xlsx,application/json,application/zip', 'файл') + '<div id="impP" class="bk-prev"></div>';
-    if (k==='settings') s.innerHTML=H('Файл настроек', '<p>Файл «КП_настройки_….json» из «Выгрузить → Настройки программы». Свои ключи API и пароль почты остаются, если в файле их нет. Каждое изменение попадёт в «Историю изменений настроек» — его можно вернуть.</p>')
-      + BackupTab.kv([['Подходит', 'КП_настройки_….json'], ['Сначала', 'покажем разделы файла — отметите, какие заменить']]) + drop('sfFile', '.json,application/json', 'файл') + '<div id="sfPrev" class="bk-prev"></div>';
+    if (k==='file') s.innerHTML=H('Копия или правки', '<p>Любой файл из «Выгрузить» — Excel, JSON, XML, YML или архив .zip: вся база, разделы, каталог поставщика, каталог по фильтру. Записи с теми же кодами заменяются, новые добавляются, ничего не удаляется; изображения из архива — только недостающие.</p><p><b>Только изменённое в файле</b> (по умолчанию для Excel) — загрузятся записи, которые правили в файле; если ту же запись успели изменить и в программе — она пропускается с отчётом.</p><p>Подходит и книга «…_для_правки.xlsx» прежних версий.</p>')
+      + BackupTab.kv([['Подходит', 'любой выгруженный файл: .xlsx, .json, .xml, .yml, .zip'], ['Сначала', 'покажем, сколько записей добавится и заменится'], ['Перед загрузкой', 'программа сама сохранит копию базы']]) + drop('impF', '.xlsx,.json,.xml,.yml,.zip', 'файл') + '<div id="impP" class="bk-prev"></div>';
+    if (k==='settings') s.innerHTML=H('Файл настроек', '<p>Файл «КП_настройки_…» любого формата из «Выгрузить → Настройки программы». Свои ключи API и пароль почты остаются, если в файле их нет. Каждое изменение попадёт в «Историю изменений настроек» — его можно вернуть.</p>')
+      + BackupTab.kv([['Подходит', 'КП_настройки_… (.xlsx, .json, .xml, .yml, .zip)'], ['Сначала', 'покажем разделы файла — отметите, какие заменить']]) + drop('sfFile', '.xlsx,.json,.xml,.yml,.zip', 'файл') + '<div id="sfPrev" class="bk-prev"></div>';
     if (k==='db') s.innerHTML=H('Файл базы целиком', '<p>Так и нужно подменять базу: вручную копировать kp.sqlite3 в папку data нельзя — рядом лежат файлы kp.sqlite3-wal и -shm от прежней базы, и она повредится («database disk image is malformed»).</p>')
       + BackupTab.kv([['Подходит', '.sqlite3 или .zip с ним (выгрузка «Вся база», автокопия из data\\backup)'], ['Что будет', '<b class="warn-t">вся база заменится</b>; текущая сохранится в копию (data\\backup)'], ['После', 'страница обновится сама']]) + drop('impDb', '.sqlite3,.sqlite,.db,.zip', 'файл базы') + '<p class="muted bk-st" id="impDbSt"></p>';
     s.onchange=e=>{ const i=e.target.closest('input[type=file]'); if (!i) return; const f=i.files[0]; i.value=''; if (f) BackupTab._file(s, f); };
     if (k==='file') DataTransfer.bindImport(s, ()=>BackupTab.summary(), true);
     if (k==='settings') s.onclick=e=>{ const ap=e.target.closest('[data-sfapply]'); if (ap) SettingsFileCard.apply(s, ap); };
+  }
+
+  /** файл настроек или базы целиком, выбранный в «Копия или правки», — открыть свой пункт и продолжить там */
+  static redirect(kind, f){
+    BackupTab.inn = kind==='settings' ? 'settings' : 'db';
+    const p=BackupTab.m.querySelector('#bkPane'); BackupTab.pane();
+    toast(kind==='settings' ? 'Это файл настроек — открыт пункт «Файл настроек»' : 'Это файл базы целиком — открыт пункт «Файл базы целиком»');
+    return BackupTab._file(p.querySelector('#bkSide'), f);
   }
 
   static _file(s, f){
@@ -214,11 +234,11 @@ class DataTransfer {
 
   /** «Выгрузить → Разделы базы» (правая панель вкладки): быстрый выбор, разделы, каталог, формат, «Скачать» */
   static html(){
-    return `<div id="dtExp" class="bk-form"><div class="sub st-mh">Разделы базы ${tip('<p><b>.json</b> — выбранные разделы базы. <b>.zip</b> — тот же JSON и все фото, галереи и логотипы, на которые в нём есть ссылки (папка img).</p><p>Каталог можно выгрузить целиком или выбрать категории, производителей, поставщиков, фиды. Файл загружается обратно в «Загрузить → Копия или правки»: записи с теми же id заменяются, новые добавляются, изображения — только недостающие.</p><p>«Настройки программы» — категории, умолчания, списки, функции, тексты интерфейса, тарифы доставки, фиды, почта; пароли, ключи API и учётные записи не выгружаются.</p>')}</div>
+    return `<div id="dtExp" class="bk-form"><div class="sub st-mh">Разделы базы ${tip('<p>Каталог можно выгрузить целиком или выбрать категории, производителей, поставщиков, фиды. Файл любого формата загружается обратно в «Загрузить → Копия или правки»: записи с теми же кодами заменяются, новые добавляются, изображения (из архива .zip) — только недостающие.</p><p>«Настройки программы» — категории, умолчания, списки, функции, тексты интерфейса, тарифы доставки, фиды, почта; пароли, ключи API и учётные записи не выгружаются.</p>')}</div>
       <label class="f"><span>Быстрый выбор</span><select id="dtPre" data-nodirty>${DataTransfer.PRESETS.map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}<option value="">Свой выбор</option></select></label>
       <div class="f"><span>Разделы</span><div class="bk-cks">${DataTransfer.SECTIONS.map(([v,l])=>`<label class="ck"><input type="checkbox" data-xs="${v}" data-nodirty${v==='audit'?'':' checked'}> ${l}</label>`).join('')}</div></div>
       <div class="f" id="dtCatBox"><span>Каталог</span><div></div></div>
-      <label class="f"><span>Формат</span><select id="dtFmt" data-nodirty><option value="zip">.zip — данные и изображения</option><option value="json">.json — только данные</option></select></label>
+      ${BackupTab.fmtSel()}
       ${BackupTab.foot('<button class="btn primary" type="button" data-dx="json">Скачать</button>').replace('id="bkSt"', 'id="dtExpSt"')}</div>`;
   }
 
@@ -276,7 +296,6 @@ class DataTransfer {
     if (!key) return;
     const on=(DataTransfer.PRESETS.find(x=>x[0]===key)||[])[2];
     m.querySelectorAll('[data-xs]').forEach(c=>{ c.checked = on ? on.includes(c.dataset.xs) : c.dataset.xs!=='audit'; });
-    m.querySelector('#dtFmt').value = !on || on.includes('catalog') ? 'zip' : 'json';
     DataTransfer._scope(m);
   }
 
@@ -325,7 +344,7 @@ class DataTransfer {
       const secs=[...m.querySelectorAll('[data-xs]:checked')].map(c=>c.dataset.xs); if (!secs.length) return toast('Отметьте разделы');
       const some=(m.querySelector('[name="dtScope"]:checked')||{}).value==='some', pick=some ? DataTransfer._picked(m) : {};
       if (some && secs.includes('catalog') && !Object.keys(pick).length) return toast('Отметьте категории, производителей, поставщиков или фиды');
-      url='export?'+new URLSearchParams({sections:secs.join(','), images:m.querySelector('#dtFmt').value==='zip'?'1':'0', ...(some && secs.includes('catalog') ? {pick:JSON.stringify(pick)} : {})});
+      url='export?'+new URLSearchParams({sections:secs.join(','), fmt:BackupTab.fmtOf(m), ...(some && secs.includes('catalog') ? {pick:JSON.stringify(pick)} : {})});
     }
     if (await DataTransfer.download(url, st) && done) setTimeout(done, 1500);
   }
@@ -335,27 +354,44 @@ class DataTransfer {
     if (!own) m.querySelector('#impF').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if (f) DataTransfer._preview(m, f); };
     m.querySelector('#impP').addEventListener('click', async e=>{ const b=e.target.closest('[data-imp]'); if (!b || !DataTransfer.file) return;
       const patch=b.dataset.patch==='1';
-      if (!await stConfirm('Загрузить данные из «'+DataTransfer.file.name+'»?', patch ? 'Перед загрузкой программа сохранит копию текущей базы. В позициях каталога изменятся только перечисленные в файле поля; цены, закупка, остатки и фото не меняются. Поля, изменённые после выгрузки копии, пропускаются.' : 'Перед загрузкой программа сохранит копию текущей базы. Записи с теми же id будут заменены, новые — добавлены, ничего не удаляется. Изображения добавляются только недостающие.'+(b.dataset.keep==='1'?' Цены, закупка и остатки имеющихся позиций не меняются.':''),'Загрузить')) return;
+      if (!await stConfirm('Загрузить данные из «'+DataTransfer.file.name+'»?', patch ? 'Перед загрузкой программа сохранит копию текущей базы. В позициях каталога изменятся только перечисленные в файле поля; цены, закупка, остатки и фото не меняются. Поля, изменённые после выгрузки копии, пропускаются.' : 'Перед загрузкой программа сохранит копию текущей базы. '+(DataTransfer.mode==='edits' ? 'Загрузятся только записи, изменённые в файле после выгрузки; цены и остатки позиций не меняются.' : 'Записи с теми же кодами будут заменены, новые — добавлены, ничего не удаляется. Изображения добавляются только недостающие.'+(b.dataset.keep==='1'?' Цены, закупка и остатки имеющихся позиций не меняются.':'')),'Загрузить')) return;
       b.disabled=true;
-      try{ const r=await DataTransfer._send('import/file?sections='+b.dataset.imp, DataTransfer.file);
-        DataTransfer.file=null; toast(r.patch ? `Правки внесены: позиций ${Fmt.num(r.patch.written)}, полей ${Fmt.num(r.patch.fields)}${r.patch.conflictCount ? `, пропущено ${Fmt.num(r.patch.conflictCount)}` : ''}` : 'Загружено'+(r.images?`, изображений добавлено: ${Fmt.num(r.images.written)}`:''));
+      try{ const r=await DataTransfer._send('import/file?'+new URLSearchParams({sections:b.dataset.imp, mode:patch?'all':DataTransfer.mode}), DataTransfer.file);
+        const msg=r.patch ? `Правки внесены: позиций ${Fmt.num(r.patch.written)}, полей ${Fmt.num(r.patch.fields)}${r.patch.conflictCount ? `, пропущено ${Fmt.num(r.patch.conflictCount)}` : ''}`
+          : 'Загружено: '+Object.entries(r.report||{}).map(([k,v])=>`${DataTransfer.NAMES[k]||k} — ${Fmt.num((v.new||0)+(v.updated||0))}`).join(', ')+(r.images?`; изображений добавлено ${Fmt.num(r.images.written)}`:'');
+        DataTransfer.file=null; toast(msg); m.querySelector('#impP').innerHTML=`<p class="ok-t">✓ ${esc(msg)}</p>`;
         refreshCat(); loadManagers(); loadClients(); if (done) done(); }
       catch(err){ b.disabled=false; toast('Не загружено: '+err.message); } });
   }
 
-  static _send(path, f){ const n=f.name.toLowerCase(), zip=n.endsWith('.zip')||n.endsWith('.xlsx');
-    return aapi(path+(path.includes('?')?'&':'?')+'name='+encodeURIComponent(f.name), {method:'POST', headers:{'Content-Type':zip?'application/zip':'application/json; charset=utf-8'}, body:f}); }
+  static mode = 'all';     // загрузка: «all» — всё как в файле, «edits» — только изменённое в файле после выгрузки
 
-  static async _preview(m, f){
+  static _send(path, f){ const json=f.name.toLowerCase().endsWith('.json');
+    return aapi(path+(path.includes('?')?'&':'?')+'name='+encodeURIComponent(f.name), {method:'POST', headers:{'Content-Type':json?'application/json; charset=utf-8':'application/octet-stream'}, body:f}); }
+
+  /** предпросмотр: что добавится и заменится; mode — по умолчанию у Excel «только изменённое», у остальных — «всё» */
+  static async _preview(m, f, mode){
     const box=m.querySelector('#impP'); box.innerHTML=`<p class="muted">Проверяю «${esc(f.name)}» (${Fmt.size(f.size)})…</p>`;
-    try{ const r=await DataTransfer._send('import/file/preview', f); DataTransfer.file=f;
+    DataTransfer.mode=mode||'all';
+    try{ const r=await DataTransfer._send('import/file/preview?mode='+DataTransfer.mode, f); DataTransfer.file=f;
+      if (r.kind) return BackupTab.redirect(r.kind, f);
+      if (!mode && r.fmt==='xlsx' && r.digests) return DataTransfer._preview(m, f, 'edits');     // Excel — по умолчанию «только изменённое»
       if (r.patch){ box.innerHTML=DataTransfer._patchHtml(r); return; }
-      const im=r.images;
-      box.innerHTML=`<p class="muted">${r.supplier?`Каталог поставщика «${esc(r.supplier)}» — копия`:'Копия'} от ${esc(Fmt.dateTime(r.createdAt))}. Будет:</p><table class="pv-t">${Object.entries(r.report).map(([k,v])=>`<tr><td>${DataTransfer.NAMES[k]||esc(k)}</td><td>новых ${v.new}, заменится ${v.updated}${v.invalid?`, <span class="bad-t">с ошибками ${v.invalid}</span>`:''}</td></tr>`).join('')}
+      const im=r.images, ed=r.mode==='edits', N=DataTransfer.NAMES;
+      const line=(k, v)=>`<tr><td>${N[k]||esc(k)}</td><td>${[v.new?`новых ${Fmt.num(v.new)}`:'', v.updated?`заменится ${Fmt.num(v.updated)}`:'', v.same?`<span class="muted">не менялось ${Fmt.num(v.same)}</span>`:'',
+        v.conflict?`<span class="warn-t">пропущено ${Fmt.num(v.conflict)} — изменено и в программе</span>`:'', v.invalid?`<span class="bad-t">с ошибками ${v.invalid}</span>`:''].filter(Boolean).join(', ')||'<span class="muted">ничего</span>'}</td></tr>`;
+      const FMTN={xlsx:'Excel', json:'JSON', xml:'XML', zip:'архив .zip', 'xlsx-patch':'Excel'};
+      box.innerHTML=`<p class="muted">${r.supplier?`Каталог поставщика «${esc(r.supplier)}»`:'Выгрузка'} от ${esc(Fmt.dateTime(r.createdAt))}${r.fmt?` · ${esc(FMTN[r.fmt]||r.fmt)}`:''}.</p>
+        ${r.digests?`<label class="f bk-mode"><span class="st-mh">Что загрузить ${tip('<p><b>Только изменённое в файле</b> — записи, которые правили в файле после выгрузки. Если ту же запись после выгрузки изменили и в программе (вручную или фидом), она пропускается и попадает в список ниже. Цены и остатки позиций каталога при этом не меняются.</p><p><b>Всё как в файле</b> — записи с теми же кодами заменяются, как в файле (восстановить копию).</p>')}</span>
+          <select id="impMode" data-nodirty><option value="edits"${ed?' selected':''}>Только изменённое в файле</option><option value="all"${ed?'':' selected'}>Всё как в файле (восстановить)</option></select></label>`:''}
+        <table class="pv-t bk-kv">${Object.entries(r.report).map(([k,v])=>line(k, v)).join('')}
           ${im?`<tr><td>Изображения</td><td>добавится ${Fmt.num(im.new)}, уже есть ${Fmt.num(im.exist)}${im.invalid?`, <span class="bad-t">пропущено ${im.invalid}</span>`:''}</td></tr>`:''}</table>
+        ${(r.conflicts||[]).length?`<details class="more"><summary>Что пропущено (${r.conflicts.length})</summary><p class="muted" style="text-align:left">${r.conflicts.map(esc).join('<br>')}</p></details>`:''}
         ${r.errors.length?`<p class="msg err" style="text-align:left">${r.errors.map(esc).join('<br>')}</p>`:''}
         ${r.keep?'<p class="muted">Цен, закупки и остатков в файле нет — у имеющихся позиций они останутся как сейчас.</p>':''}
-        <button class="btn primary" type="button" data-imp="${esc(Object.keys(r.report).join(','))}" data-keep="${r.keep?1:0}" style="margin-top:10px">Загрузить</button>`; }
+        ${ed?'<p class="muted">Цены и остатки позиций каталога не меняются.</p>':''}
+        <div class="bk-foot"><span class="bk-note">Перед загрузкой программа сохранит копию базы.</span><button class="btn primary" type="button" data-imp="${esc(Object.keys(r.report).join(','))}" data-keep="${r.keep?1:0}">Загрузить</button></div>`;
+      const sel=box.querySelector('#impMode'); if (sel) sel.onchange=()=>DataTransfer._preview(m, f, sel.value); }
     catch(err){ DataTransfer.file=null; box.innerHTML=`<p class="msg err" style="text-align:left">${esc(err.message)}</p>`; }
   }
 
@@ -372,66 +408,76 @@ class DataTransfer {
 }
 
 // Каталог одного поставщика (поставщик — как в фильтре «Поставщик» окна каталога; сервер: supplier_scope.py) — без цен,
-// закупки и остатков: копия с фото (.zip, загружается обратно, цены и остатки при этом не меняются) или книга Excel
-// для правки (лист на категорию; загрузка — как файл правок: меняются только исправленные ячейки).
+// закупки и остатков, в любом формате общего списка (сервер: data_file.DataFile); при загрузке цены и остатки не меняются.
 class SupplierExport {
   static groups = [];
   static NONE = 'Без поставщика';
-  static EDIT = [['name','Название'],['spec','Кратко (строка под названием)'],['a:maker','Производитель'],['a:model','Модель']];
 
-  static TIP = '<p>Все позиции одного поставщика из справочника «Поставщики и склады» (позиции фида — поставщик, к которому привязан фид, иначе — название фида; позиции не из фида — по производителю). <b>Без цен, закупки и остатков</b>.</p><p><b>Копия с фото (.zip)</b> — резервная копия: загружается ниже, в «Загрузке»; позиции восстанавливаются как были, а цены, закупка и остатки остаются как сейчас в базе.</p><p><b>Excel для правки</b> — лист на каждую категорию: название, производитель, модель и все поля категории. Исправьте ячейки и загрузите книгу в «Загрузке» — изменятся только исправленные поля; поле, которое после выгрузки уже изменили в программе, пропускается. Описание и таблицы характеристик правятся в карточке позиции.</p>';
+  static TIP = '<p>Все позиции одного поставщика из справочника «Поставщики и склады» (позиции фида — поставщик, к которому привязан фид, иначе — название фида; не из фида — по производителю из карточки поставщика).</p><p>Цены, закупка и остатки в файл не попадают: при загрузке файла обратно они остаются как в программе. Формат — любой из общего списка; Excel можно править и загрузить только изменённые строки.</p>';
 
   static async mount(m, sel=''){
     const box=m.querySelector('#seBox'), st=m.querySelector('#seSt'); if (!box) return;
     try{ SupplierExport.groups=await aapi('export/suppliers'); }catch(err){ if (st) st.textContent=err.message; return; }
     const s=box.querySelector('#seSup');
-    s.innerHTML=SupplierExport.groups.map(g=>`<option value="${esc(g.name)}"${norm(g.name)===norm(sel)?' selected':''}>${esc(g.name)} · ${Fmt.num(g.count)}${g.dir||g.name===SupplierExport.NONE?'':' (фид, не привязан к справочнику)'}</option>`).join('')||'<option value="">Каталог пуст</option>';
-    box.addEventListener('click', e=>{ const b=e.target.closest('[data-se]'); if (b && s.value) SupplierExport.run(b, s.value, st, b.dataset.se==='go' ? box.querySelector('#seFmt').value : b.dataset.se); });
+    s.innerHTML=SupplierExport.groups.map(g=>`<option value="${esc(g.name)}"${norm(g.name)===norm(sel)?' selected':''}>${esc(g.name)} · ${Fmt.num(g.count)}${g.dir||g.name===SupplierExport.NONE?'':' (фид, не привязан к справочнику)'}</option>`).join('');
+    box.addEventListener('click', e=>{ const b=e.target.closest('[data-se]'); if (b && s.value) SupplierExport.run(b, s.value, BackupTab.fmtOf(box)); });
   }
 
-  static async _get(name, images){
-    const r=await fetch('/api/admin/export?'+new URLSearchParams({sup:name, images:images?'1':'0'}), {headers:{'X-CSRF-Token':ADMIN.csrf}});
-    if (!r.ok){ const t=await r.text(); let msg=t; try{ msg=JSON.parse(t).error||t; }catch(e){ /* не JSON — текст как есть */ } throw new Error(msg||'ошибка '+r.status); }
-    return r;
-  }
-
-  static async run(b, name, st, kind){
-    b.disabled=true; st.textContent='Готовлю файл…';
-    try{
-      if (kind==='zip'){ const r=await SupplierExport._get(name, true), fn=decodeURIComponent((r.headers.get('Content-Disposition')||'').split("''")[1]||'catalog.zip'), blob=await r.blob();
-        saveFileA(fn, blob); st.textContent=`Скачано: ${fn} (${Fmt.size(blob.size)})`; }
-      else { const d=await (await SupplierExport._get(name, false)).json(), items=(d.sections||{}).catalog||[];
-        const fn=`Каталог_${name.replace(/[^\wа-яё.-]+/gi,'_').slice(0,60)}_${today()}_для_правки.xlsx`;
-        saveFileA(fn, await makeXlsx(SupplierExport.book(items, name), 'Каталог '+name)); st.textContent=`Скачано: ${fn} — позиций ${Fmt.num(items.length)}`; }
-    }catch(err){ st.textContent=''; toast('Не выгружено: '+(err.message||err)); }
+  static async run(b, name, fmt){
+    b.disabled=true;
+    try{ if (await DataTransfer.download('export?'+new URLSearchParams({sup:name, fmt}), BackupTab.m.querySelector('#bkSt'))) BackupTab.summary(); }
     finally{ b.disabled=false; }
   }
+}
 
-  /** книга: «Как править», лист на категорию (строка 1 — названия, строка 2 — служебные ключи), скрытый «_было» */
-  static book(items, name){
-    const byCat=new Map(); items.forEach(x=>{ const c=(x.attrs||{}).cat||''; if (!byCat.has(c)) byCat.set(c, []); byCat.get(c).push(x); });
-    const used=new Set(), sheetName=t=>{ let n=String(t||'Без категории').replace(/[[\]:*?/\\]/g,' ').slice(0,28).trim()||'Лист', k=n, i=2; while (used.has(k.toLowerCase())) k=n.slice(0,25)+' '+(i++); used.add(k.toLowerCase()); return k; };
-    used.add('как править'); used.add('_было');
-    const cell=v=>typeof v==='number' ? {v, s:'td'} : typeof v==='boolean' ? {v:v?'да':'нет', s:'td'} : {v:v==null?'':String(v), s:'td'};
-    const val=(x,k)=>k.startsWith('a:') ? (x.attrs||{})[k.slice(2)] : x[k];
-    const orig=[['id','ключ','значение']], sheets=[];
-    [...byCat].sort((a,b)=>b[1].length-a[1].length).forEach(([cat, L])=>{
-      const t=typeById(cat), own=t.id===cat ? t.fields||[] : [];
-      const cols=[...SupplierExport.EDIT, ...own.filter(f=>!['maker','model','cat'].includes(f.key)).map(f=>['a:'+f.key, f.label+(f.unit?', '+f.unit:'')])];
-      const extra=new Set(); L.forEach(x=>Object.keys(x.attrs||{}).forEach(k=>{ if (k!=='cat' && !cols.some(c=>c[0]==='a:'+k)) extra.add(k); }));
-      extra.forEach(k=>cols.push(['a:'+k, k]));
-      const rows=[[{v:'Код позиции (не менять)', s:'head'}, ...cols.map(c=>({v:c[1], s:'head'}))], [{v:'id', s:'note'}, ...cols.map(c=>({v:c[0], s:'note'}))]];
-      L.forEach(x=>{ rows.push([{v:x.id, s:'td'}, ...cols.map(c=>cell(val(x, c[0])))]); orig.push([x.id]);
-        cols.forEach(c=>{ const v=val(x, c[0]); if (v!=null && v!=='') orig.push([x.id, c[0], JSON.stringify(v)]); }); });
-      sheets.push({name:sheetName(t.id===cat ? t.name : cat), cols:[22, 44, 40, 18, 22, ...cols.slice(4).map(()=>16)], rows, freeze:2});
-    });
-    const help=[[{v:'Каталог поставщика «'+name+'» — для правки', s:'title'}], [{v:`Выгружено ${Fmt.dateTime(new Date().toISOString())}, позиций ${items.length}. Цен, закупки и остатков в книге нет.`, s:'sub'}], [],
-      ...['1. На листах категорий исправьте нужные ячейки: название, производитель, модель, поля категории. Пустая ячейка — поле очищается (название не стирается).',
-        '2. Не меняйте столбец «Код позиции» и вторую (серую) строку с ключами; строки и листы не добавляйте — новые позиции из книги не создаются.',
-        '3. «Настройки → Сотрудники и система → База и копии → Загрузить → Копия или правки» → выберите эту книгу: программа покажет, сколько позиций и полей изменится, и попросит подтвердить.',
-        '4. Если поле после выгрузки уже изменили в программе (вручную или фидом), правка этого поля пропускается и попадает в отчёт.',
-        'Описание и таблицы характеристик правятся в карточке позиции; цены — в карточке или фидом.'].map(t=>[{v:t, s:'text'}])];
-    return [{name:'Как править', cols:[120], rows:help}, ...sheets, {name:'_было', hidden:true, cols:[22, 20, 40], rows:orig}];
+// «Выгрузить → Каталог по фильтру» прямо во вкладке (решение владельца 18.10): категория, производитель, поставщик —
+// выпадающими списками, поиск по словам, «С ценой», «В наличии»; какие цены и остатки войдут в файл — галочками
+// (невыбранные при загрузке остаются как в программе); сколько позиций попадёт — сразу (сервер: supplier_scope.CatalogFilter).
+class CatFilterPane {
+  static S = null;       // сочетания категория / производитель / поставщик (/api/admin/export/scope)
+  static PRICES = [['price','Цена КП',true],['rrc','РРЦ',true],['cost','Закупка',false],['stock','Остатки',true]];
+  static t = 0;
+
+  static async mount(s){
+    const f=BackupTab.flt||(BackupTab.flt={cat:'', maker:'', sup:'', q:'', priced:false, instock:false, prices:CatFilterPane.PRICES.filter(x=>x[2]).map(x=>x[0])});
+    s.innerHTML=`<div class="bk-form" id="cfBox"><div class="sub st-mh">Каталог по фильтру ${tip('<p>Отбор — как в окне каталога: категория, производитель, поставщик, слова поиска (все — в названии, кратком описании, артикуле или характеристиках), «С ценой», «В наличии».</p><p>Цены и остатки — галочками: что не отмечено, в файл не попадёт, а при загрузке файла обратно останется как в программе. Закупку видит только администратор.</p>')}</div>
+      <div class="bk-grid"><label class="f"><span>Категория</span><select data-cf="cat" data-nodirty><option value="">Загружаю…</option></select></label>
+        <label class="f"><span>Производитель</span><select data-cf="maker" data-nodirty></select></label>
+        <label class="f"><span>Поставщик</span><select data-cf="sup" data-nodirty></select></label>
+        <label class="f"><span>Поиск</span><input type="search" data-cf="q" value="${esc(f.q)}" placeholder="модель, артикул, слово" autocomplete="off" data-nodirty></label></div>
+      <div class="bk-cks"><label class="ck"><input type="checkbox" data-cf="priced" data-nodirty${f.priced?' checked':''}> С ценой</label><label class="ck"><input type="checkbox" data-cf="instock" data-nodirty${f.instock?' checked':''}> В наличии</label></div>
+      <div class="f"><span>В файл — цены и остатки</span><div class="bk-cks">${CatFilterPane.PRICES.map(([k,l])=>`<label class="ck"><input type="checkbox" data-cfp="${k}" data-nodirty${f.prices.includes(k)?' checked':''}> ${l}</label>`).join('')}</div></div>
+      ${BackupTab.fmtSel()}${BackupTab.foot('<button class="btn primary" type="button" data-bkx="filter">Скачать</button>', '<span id="cfN">Считаю…</span>')}</div>`;
+    s.oninput=e=>{ if (e.target.dataset.cf==='q'){ f.q=e.target.value; CatFilterPane.count(s, 400); } };
+    s.onchange=e=>{ const c=e.target.dataset.cf, p=e.target.dataset.cfp;
+      if (c && c!=='q'){ f[c]=e.target.type==='checkbox' ? e.target.checked : e.target.value; CatFilterPane.count(s, 0); }
+      if (p) f.prices=[...s.querySelectorAll('[data-cfp]:checked')].map(x=>x.dataset.cfp); };
+    s.onclick=e=>{ const b=e.target.closest('[data-bkx]'); if (!b) return;
+      BackupTab._dl(b, 'export?'+new URLSearchParams({sections:'catalog', fmt:BackupTab.fmtOf(s), flt:JSON.stringify(CatFilterPane.query()), prices:f.prices.join(',')})); };
+    try{ CatFilterPane.S=CatFilterPane.S||await aapi('export/scope'); }catch(err){ s.querySelector('#cfN').textContent=err.message||String(err); return; }
+    CatFilterPane.options(s); CatFilterPane.count(s, 0);
+  }
+
+  /** выпадающие списки: категории по группам, производители и поставщики — по числу позиций */
+  static options(s){
+    const f=BackupTab.flt, rows=CatFilterPane.S.rows||[], sum=k=>{ const m=new Map(); rows.forEach(r=>m.set(r[k], (m.get(r[k])||0)+r.n)); return [...m].sort((a,b)=>b[1]-a[1] || String(a[0]).localeCompare(String(b[0]), 'ru')); };
+    const total=rows.reduce((a,r)=>a+r.n, 0), opt=(key, v, l, n)=>`<option value="${esc(v)}"${v===f[key]?' selected':''}>${esc(l)} · ${Fmt.num(n)}</option>`;
+    const groups=new Map();
+    for (const [cat, n] of sum('cat')){ const t=cat?typeById(cat):null, ok=t&&t.id===cat, g=ok?t.group||'Прочее':'Без категории';
+      if (!groups.has(g)) groups.set(g, []); groups.get(g).push([cat, ok?t.name:(cat||'Без категории'), n]); }
+    s.querySelector('[data-cf=cat]').innerHTML=`<option value="">Все категории · ${Fmt.num(total)}</option>`+[...groups].map(([g, L])=>`<optgroup label="${esc(g)}">${L.map(([v,l,n])=>opt('cat', v, l, n)).join('')}</optgroup>`).join('');
+    s.querySelector('[data-cf=maker]').innerHTML=`<option value="">Все производители</option>`+sum('maker').map(([v,n])=>opt('maker', v, v, n)).join('');
+    s.querySelector('[data-cf=sup]').innerHTML=`<option value="">Все поставщики</option>`+sum('sup').map(([v,n])=>opt('sup', v, v, n)).join('');
+  }
+
+  static query(){ const f=BackupTab.flt; return {cat:f.cat, maker:f.maker, sup:f.sup, q:f.q, priced:f.priced, instock:f.instock}; }
+
+  static count(s, wait){
+    clearTimeout(CatFilterPane.t);
+    CatFilterPane.t=setTimeout(async()=>{ const n=s.querySelector('#cfN'), b=s.querySelector('[data-bkx=filter]'); if (!n) return;
+      try{ const r=await aapi('export/filter?'+new URLSearchParams({flt:JSON.stringify(CatFilterPane.query())}));
+        n.innerHTML=r.n ? `Попадёт позиций: <b>${Fmt.num(r.n)}</b>` : '<span class="warn-t">Под условия не подходит ни одна позиция</span>'; b.disabled=!r.n; }
+      catch(err){ n.textContent=err.message||String(err); } }, wait);
   }
 }
 
@@ -444,21 +490,21 @@ class SettingsFileCard {
   static render(m){
     m.innerHTML=`<div class="st-card sf"><p class="sub">Все настройки — в файл и из файла</p>
       <p class="muted">Значения программы, списки, тексты, функции, категории, тарифы доставки, ставки из Китая, нормы станций, фиды, почта (без пароля), права менеджеров, личные настройки — одним файлом: перенести на другой компьютер или сохранить перед большими правками. Пароли в файл не попадают никогда.</p>
-      ${BackupTab.row('Сохранить', 'Файл КП_настройки_….json. С ключами API — только если отметить: такой файл храните как пароль.', '<label class="cx-ck"><input type="checkbox" id="sfKeys"> с ключами API</label><button class="btn primary" type="button" data-sf="save">Сохранить все настройки в файл</button>')}
-      ${BackupTab.row('Загрузить', 'Сначала покажем разделы файла — отметьте, какие заменить. Свои ключи и пароль почты остаются, если в файле их нет.', '<input type="file" id="sfFile" accept=".json,application/json" class="sr-file"><label for="sfFile" class="btn">Загрузить настройки из файла…</label>')}
+      ${BackupTab.row('Сохранить', 'Файл КП_настройки_… в любом формате общего списка (как в «База и копии → Выгрузить»). С ключами API — только если отметить: такой файл храните как пароль.', `<label class="cx-ck"><input type="checkbox" id="sfKeys"> с ключами API</label><select id="bkFmt" aria-label="Формат" data-nodirty>${BackupTab.fmtOpts()}</select><button class="btn primary" type="button" data-sf="save">Сохранить все настройки в файл</button>`)}
+      ${BackupTab.row('Загрузить', 'Сначала покажем разделы файла — отметьте, какие заменить. Свои ключи и пароль почты остаются, если в файле их нет.', '<input type="file" id="sfFile" accept=".xlsx,.json,.xml,.yml,.zip" class="sr-file"><label for="sfFile" class="btn">Загрузить настройки из файла…</label>')}
       <div id="sfPrev"></div></div>`;
     m.querySelector('#sfKeys').onchange=async e=>{ if (!e.target.checked) return;
       if (!await stConfirm('Сохранить вместе с ключами API?', 'В файл попадут ключи сервисов (проверка контрагентов, перевозчики, PDF, нейросеть, GitHub). Храните его как пароль и не пересылайте по почте и в мессенджерах. Пароли в файл не попадают.', 'Да, с ключами')) e.target.checked=false; };
     m.onclick=async e=>{
       if (e.target.closest('[data-sf="save"]')){ const keys=m.querySelector('#sfKeys').checked;
-        await DataTransfer.download('settings-file'+(keys?'?keys=1':''), null); return; }
+        await DataTransfer.download('settings-file?'+new URLSearchParams({fmt:BackupTab.fmtOf(m), ...(keys?{keys:'1'}:{})}), null); return; }
       const ap=e.target.closest('[data-sfapply]'); if (ap) return SettingsFileCard.apply(m, ap); };
     m.querySelector('#sfFile').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if (f) SettingsFileCard.preview(m, f); };
   }
 
   static async preview(m, f){
     const box=m.querySelector('#sfPrev'); box.innerHTML=`<p class="muted">Проверяю «${esc(f.name)}»…</p>`;
-    try{ const r=await aapi('settings-file/preview', {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:f}); SettingsFileCard.file=f;
+    try{ const r=await aapi('settings-file/preview', {method:'POST', headers:{'Content-Type':/\.json$/i.test(f.name)?'application/json; charset=utf-8':'application/octet-stream'}, body:f}); SettingsFileCard.file=f;
       box.innerHTML=`<p class="muted">Файл от ${esc(Fmt.dateTime(r.createdAt))}${r.app?', версия программы '+esc(r.app):''}${r.keys?' · <b class="warn-t">с ключами API</b>':''}. Отметьте, что заменить:</p>
         <div class="sf-list">${r.sections.map(x=>`<label class="sf-r"><input type="checkbox" data-sfk="${esc(x.key)}"${x.same?'':' checked'}><span>${esc(x.label)}</span><small class="${x.same?'muted':'warn-t'}">${x.same?'как сейчас':'отличается'}</small></label>`).join('')}</div>
         <div class="row"><button class="btn primary" type="button" data-sfapply>Загрузить отмеченное</button><span class="muted">Каждое изменение попадёт в «Историю» — его можно вернуть.</span></div>`; }
@@ -470,7 +516,7 @@ class SettingsFileCard {
     if (!f) return; if (!keys.length) return toast('Отметьте разделы');
     if (!await stConfirm(`Заменить настройки (${keys.length})?`, 'Отмеченные разделы станут как в файле. Прежние значения — в «Истории изменений», их можно вернуть.', 'Заменить')) return;
     b.disabled=true;
-    try{ const r=await aapi('settings-file?sections='+encodeURIComponent(keys.join(',')), {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:f});
+    try{ const r=await aapi('settings-file?sections='+encodeURIComponent(keys.join(',')), {method:'POST', headers:{'Content-Type':/\.json$/i.test(f.name)?'application/json; charset=utf-8':'application/octet-stream'}, body:f});
       SettingsFileCard.file=null; toast(`Загружено разделов: ${r.applied.length}`+(r.errors.length?`; не загружено: ${r.errors.join('; ')}`:''));
       await StRefresh.all(); await loadTypes(); stTab(); }
     catch(err){ b.disabled=false; toast('Не загружено: '+(err.message||err)); }
