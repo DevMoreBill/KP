@@ -93,6 +93,7 @@ document.addEventListener('click', async e=>{
     case 'galMain': { if (!(it.gallery||[])[j]) return; const was3d=StationImages.chosen(it); if (!edSetMain(it, j)) return;
       toast(was3d ? 'Главное фото заменено — 3D-вид вернуть можно на вкладке «Компоновка»' : 'Главное фото заменено — прежнее перенесено в изображения'); break; }
     case 'edit': return openEditor(i, b.dataset.tab);
+    case 'secOf': return CatSections.open(b.dataset.sec);
     case 'catOf': { const c=b.dataset.cat; if (typeById(c).station || !catCache.some(x=>attrsOf(x).cat===c)) return newEquip('kp', c); return openCatalog({cat:c}); }
     case 'dupItem': { const cp=JSON.parse(JSON.stringify(it)); cp.id=uid(); (cp.features||[]).forEach(f=>{ const old=f.id; f.id=uid(); (cp.gallery||[]).forEach(g=>{ if(g.at==='feat:'+old) g.at='feat:'+f.id; }); });
       (cp.options||[]).forEach(o=>o.id=uid()); S.items.splice(i+1,0,cp); toast('Позиция скопирована'); break; }

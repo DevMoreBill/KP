@@ -145,6 +145,12 @@ span.mb-back{border:0}
 .mob .tiles{grid-template-columns:1fr 1fr;gap:8px}
 .mob .tile{padding:12px;min-height:76px;border-radius:12px}
 .mob .tile b{font-size:14.5px;line-height:1.25}
+.mob .tiles.secs{grid-template-columns:1fr 1fr}
+.mob .tile.sec{min-height:108px} .mob .tile.sec b{max-width:calc(100% - 34px)} .mob .tile.sec em{font-size:20px} .mob .tile.sec span{max-width:100%;font-size:11.5px}
+.mob .tile .sec-i{width:38px;height:38px;right:8px;top:10px;bottom:auto;opacity:.45}
+.mob .tile.st .sec-i{width:34px;height:34px;top:50%;margin-top:-17px}
+.mob .tiles.sts{grid-template-columns:1fr;gap:6px} .mob .tile.st{min-height:0;padding:9px 56px 9px 12px;flex-direction:row;align-items:baseline;gap:8px} .mob .tile.st b{flex:none;max-width:none} .mob .tile.st span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mob .cw-subs{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px} .mob .cw-subs .chip{white-space:nowrap;flex:none}
 .mob .item{padding:12px;border-radius:14px;margin-bottom:12px}
 .mob .icard{grid-template-columns:76px minmax(0,1fr);gap:10px 12px;align-items:center}
 .mob .ithumb{width:76px;height:62px;grid-column:1;grid-row:1;padding:3px;border-radius:10px}

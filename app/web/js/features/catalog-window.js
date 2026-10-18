@@ -46,12 +46,13 @@ class CatalogIndex {
 class CatalogFilter {
   static NOSUP = 'Не указан';
   static rngOn(r){ return !!r && ((r.min??'')!=='' || (r.max??'')!==''); }
-  constructor(){ Object.assign(this, { q:'', cat:'', maker:'', series:'', sup:'', f:{}, rng:{}, priced:false, stock:false, sort:'best', dir:1 }); }
+  constructor(){ Object.assign(this, { q:'', grp:'', cat:'', maker:'', series:'', sup:'', f:{}, rng:{}, priced:false, stock:false, sort:'best', dir:1 }); }
   dropQuery(){ this._qs=null; }
   /** выбрана категория: её параметры (фильтры, диапазоны, серия) — заново */
-  setCategory(cat){ this.cat=cat; this.f={}; this.rng={}; this.series=''; }
+  setCategory(cat, keepGrp=false){ this.cat=cat; this.f={}; this.rng={}; this.series='';
+    if (!keepGrp && (!cat || CatSections.keyOf(cat)!==this.grp)) this.grp=''; }      // раздел (CatSections) — пока категория из него
   resetParams(){ Object.assign(this, {series:'', f:{}, rng:{}}); }
-  resetAll(){ Object.assign(this, {maker:'', series:'', sup:'', f:{}, rng:{}, priced:false, stock:false, q:''}); }
+  resetAll(){ Object.assign(this, {grp:'', maker:'', series:'', sup:'', f:{}, rng:{}, priced:false, stock:false, q:''}); }
   /** включены фильтры по параметрам категории (кнопка «сбросить» над фильтрами) */
   isFiltered(){ return !!(this.series||Object.values(this.f).some(Boolean)||Object.values(this.rng).some(CatalogFilter.rngOn)); }
   /** сколько условий отбора включено (фильтры и строка поиска; категория — нет) */
@@ -61,6 +62,7 @@ class CatalogFilter {
   pass(x, skip, win){ const a=CatalogIndex.attrs(x), nv=CatalogIndex.nv;
     if (win.optFor!=null && !this.cat && !win.kindOk(x)) return false;
     if (skip!=='cat' && this.cat && a.cat!==this.cat) return false;
+    if (skip!=='cat' && this.grp && !this.cat && CatSections.keyOf(a.cat)!==this.grp) return false;
     for (const k of ['maker','series']) if (k!==skip && this[k] && nv(x,k)!==norm(this[k])) return false;
     for (const k in this.f) if (k!==skip && this.f[k] && nv(x,k)!==norm(this.f[k])) return false;
     for (const k in this.rng){ if (k===skip) continue; const r=this.rng[k]; if(!r) continue; const v=numOf(a[k]);
@@ -277,13 +279,17 @@ class CatalogWindow {
   chips(){ const F=this.F, t=F.cat?typeById(F.cat):null, out=[];
     const chip=(key,txt)=>out.push(`<button type="button" class="cw-chip" data-chip="${esc(key)}" title="Убрать условие">${esc(txt)}<i aria-hidden="true">✕</i></button>`);
     if (String(F.q||'').trim()) chip('q', '«'+F.q.trim()+'»');
+    if (F.grp) chip('grp', 'Раздел: '+F.grp);
     if (t) chip('cat', t.name);
     if (F.maker) chip('maker', F.maker); if (F.sup) chip('sup', 'Поставщик: '+F.sup); if (F.series) chip('series', 'Серия '+F.series);
     for (const k in F.f) if (F.f[k]){ const f=t?.fields.find(z=>z.key===k); chip('f:'+k, (f?f.label+': ':'')+F.f[k]); }
     for (const k in F.rng){ const r=F.rng[k]; if (!CatalogFilter.rngOn(r)) continue; const f=t?.fields.find(z=>z.key===k)||{label:k};
       chip('r:'+k, `${f.label}: ${(r.min??'')!==''?'от '+fnum(+r.min):''}${(r.min??'')!==''&&(r.max??'')!==''?' ':''}${(r.max??'')!==''?'до '+fnum(+r.max):''}${f.unit?' '+f.unit:''}`); }
     if (F.priced) chip('priced', 'С ценой'); if (F.stock) chip('stock', 'В наличии');
-    return out.length ? out.join('') + `<button type="button" class="lnk cw-clr" data-cw="resetall">Сбросить всё</button>` : ''; }
+    // раздел: его категории — кнопками над списком (число позиций — во всём каталоге)
+    const sec=F.grp ? CatSections.get(F.grp) : null, subs=sec ? `<div class="cw-subs" role="group" aria-label="Категории раздела">${[{id:'', name:'Все', n:sec.n}, ...sec.types.filter(z=>z.n)]
+      .map(z=>`<button type="button" class="chip${(F.cat||'')===z.id?' on':''}" data-gcat="${esc(z.id)}">${esc(z.name)} · ${Fmt.num(z.n)}</button>`).join('')}</div>` : '';
+    return subs + (out.length ? out.join('') + `<button type="button" class="lnk cw-clr" data-cw="resetall">Сбросить всё</button>` : ''); }
 
   // ---------- отрисовка: слева вкладки «Фильтры» (параметры категории — сразу сверху) и «Категории» (дерево, перенос перетаскиванием)
   nav(){
@@ -553,7 +559,8 @@ class CatalogWindow {
   async open(mode={}){
     const optFor = Number.isInteger(mode.opt) ? mode.opt : null;
     Object.assign(this, { optFor, admin:!!mode.admin && optFor==null, F: optFor!=null ? FO : FI, active:null, limit:CatalogWindow.PAGE, lastCk:null, note:'', busy:'', tab:'' }); this.sel.clear();
-    const F=this.F; if (mode.cat!=null){ F.cat=mode.cat; F.f={}; F.rng={}; }
+    const F=this.F; if (mode.cat!=null){ F.cat=mode.cat; F.f={}; F.rng={}; F.grp=''; }
+    if (mode.grp!=null){ F.grp=mode.grp; F.cat=''; F.f={}; F.rng={}; F.series=''; }
     const d=this.dlg(); d.classList.remove('navon','pvon','pvwide'); this.panes.loadSize(); this.panes.load();
     d.innerHTML=`<div class="cw-h"><button class="btn cw-navbtn" type="button" data-cw="nav" aria-label="Категории и фильтры" title="Категории и фильтры"><span aria-hidden="true">☰</span><span class="cw-lbl2"> Фильтры</span></button>
        <h3>${optFor!=null?'Опции для позиции '+(optFor+1):this.admin?'Товары':'Каталог'}</h3>
@@ -643,12 +650,15 @@ class CatalogWindow {
     const tab=t.closest('[data-tab]'); if (tab){ this.tab=tab.dataset.tab; this.nav(); return; }
     const chip=t.closest('[data-chip]'); if (chip){ const k=chip.dataset.chip; this.limit=CatalogWindow.PAGE;
       if (k==='q'){ F.q=''; const q=$('#cwQ'); if (q) q.value=''; }
-      else if (k==='cat'){ F.setCategory(''); this.tab=''; }
+      else if (k==='cat'){ F.setCategory('', true); this.tab=''; }
+      else if (k==='grp'){ F.grp=''; }
       else if (k==='priced'||k==='stock') F[k]=false;
       else if (k.startsWith('f:')) F.f[k.slice(2)]='';
       else if (k.startsWith('r:')) F.rng[k.slice(2)]={min:'',max:''};
       else F[k]='';
       this.refresh(); return; }
+    const gc=t.closest('[data-gcat]'); if (gc){ F.setCategory(gc.dataset.gcat, true); this.limit=CatalogWindow.PAGE; this.tab=F.cat?'flt':'';
+      this.refresh(); $('#cwList').scrollTop=0; return; }
     const cat=t.closest('[data-cat]'); if (cat){ F.setCategory(cat.dataset.cat); this.limit=CatalogWindow.PAGE; this.tab=F.cat?'flt':'cats';
       if (!F.cat) d.classList.remove('navon'); this.refresh(); $('#cwList').scrollTop=0; return; }
     if (t.closest('[data-more]')){ this.more(); return; }

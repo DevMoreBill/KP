@@ -225,6 +225,7 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.91.0** (14.10) — доставка из Китая до границы РФ, только админка (`china_freight.ChinaFreight`, kv `chinaRates`, `/api/logistics/china`, клиент `ChinaFreightTab`): ATI.SU по направлениям из Китая + ставки экспедиторов в валюте по курсу ЦБ.
 - **3.92.0** (16.10) — ЖелДорЭкспедиция (`logistics_api.Jde`): открытый расчёт без ключа, сборный и крупногабаритный груз (до 20 т, надбавка за негабарит по размерам места), забор и доставка; крупногабарит — только ЖДЭ из сборных.
 - **3.93.0** (16.10) — справочные документы к КП (`kp_files.KpFiles`, таблица `kp_files`, `data/kp_files`, клиент `KpFilesPanel`, вложения письма) и окно входа (`LoginGuard`, `UserSession`, `LoginInfo`, `LoginForm`, `AuthScreen`, `AdminLogin`).
+- **3.103.1** (18.10) — разделы каталога плитками (`CatSections`, `CatalogFilter.grp`).
 - **3.103.0** (18.10) — пункты аудита 1/3/4/5/6/7/9: подпись обновлений (`update_sign`, `ed25519`), `DocLimits`, `feed_id` и индексы, восстановление через временную копию, `MailRate`, скорость каталога.
 - **3.102.1** (18.10) — аудит ECC: `TxLock` (откат транзакции), маршруты `\Z`, модерация по полям, `DocxCheck`, `Drafts.stash()` → bool.
 - **3.102.0** (18.10) — единые форматы выгрузки (`data_file.DataFile`: xlsx/json/xml/yml/zip), загрузка любого, «только изменённое» (`digests`), `CatalogFilter`.

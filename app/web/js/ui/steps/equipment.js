@@ -5,15 +5,13 @@ function stepItems(){
   const n=S.items.length, units=S.items.reduce((s,x)=>s+(+x.qty||0),0);
   const quick=`<div class="qadd"><input type="text" id="quickAdd" placeholder="Быстрый поиск по каталогу: модель, производитель, мощность…  (Enter — добавить первую)" autocomplete="off" aria-label="Быстрый поиск по каталогу"><div id="qaList" class="qa-list" hidden></div></div>`;
   if (!n){
-    const cnt=new Map(); catCache.forEach(x=>{ const c=attrsOf(x).cat; cnt.set(c,(cnt.get(c)||0)+1); });
-    const stTiles=TYPES.filter(t=>t.station).map(t=>`<button type="button" class="tile st" data-a="addStation" data-cat="${esc(t.id)}"><b>${esc(t.item)}</b><span>в контейнере — собрать</span></button>`).join('');
-    const tiles=TYPES.filter(t=>t.role!=='accessory' && !t.station).map(t=>{ const k=cnt.get(t.id)||0;
-      return `<button type="button" class="tile${k?'':' zero'}" data-a="catOf" data-cat="${esc(t.id)}"><b>${esc(t.name)}</b><span>${k?`в каталоге: ${k}`:'каталог пуст — добавить вручную'}</span></button>`; }).join('');
+    const stTiles=TYPES.filter(t=>t.station).map(t=>`<button type="button" class="tile st" data-a="addStation" data-cat="${esc(t.id)}">${CatSections.svg('box')}<b>${esc(t.item)}</b><span>собрать →</span></button>`).join('');
+    const tiles=CatSections.tiles();       // разделы каталога (решение владельца 18.10), не плитка на каждую категорию
     return `<section class="step" id="st-items"><h2><span class="n">2</span>Оборудование${tip('Найдите модель в строке поиска или выберите вид оборудования — фото, характеристики и титул подставятся из каталога. Станцию в контейнере (насосную, компрессорную, ДГУ) собирают из контейнера, основного оборудования и систем. Чего нет в каталоге — «+ Новое оборудование»: по ссылке на сайт, с помощью любого ИИ, таблицей или вручную.')}</h2>
     ${quick}
-    <p class="sub tiles-h">Станции в контейнере</p><div class="tiles">${stTiles}</div>
+    <p class="sub tiles-h">Станции в контейнере</p><div class="tiles sts">${stTiles}</div>
     <p class="sub tiles-h">Оборудование из каталога</p>
-    <div class="tiles">${tiles}<button type="button" class="tile add" data-a="addItem"><b>+ Новое оборудование</b><span>нет в каталоге — заполнить по ссылке, с ИИ или вручную</span></button></div></section>`;
+    <div class="tiles secs">${tiles}<button type="button" class="tile add" data-a="addItem"><b>+ Новое оборудование</b><span>нет в каталоге — заполнить по ссылке, с ИИ или вручную</span></button></div></section>`;
   }
   return `<section class="step" id="st-items"><h2><span class="n">2</span>Оборудование${tip('<p>«Изменить» — описание, фото, характеристики и опции позиции.</p><p>«Страница оборудования» — отдельный лист в КП с фото и характеристиками.</p><p>Цены, закупка и скидка — в разделе «Цены и валюта».</p>')}</h2>
   <div class="eq-bar"><button class="btn primary" type="button" data-a="openCatalog">+ Из каталога</button><button class="btn" type="button" data-a="addItem" title="Нет в каталоге: по ссылке на сайт, с помощью ИИ, таблицей или вручную">+ Новое оборудование</button>${FEAT.on('stations')?'<button class="btn" type="button" data-a="addStation">+ Станция в контейнере</button>':''}
