@@ -224,7 +224,13 @@ jobs:
           if (-not $kept.deal -or $kept.authorId -ne 'ci_a') { throw 'Сохранение КП не автором затёрло экономику сделки' }
           Write-Host 'Экономика сделки: доступ только автору — в порядке'
           # общие подсказки «Экономики сделки» и ключевая ставка ЦБ (сайт ЦБ может быть недоступен — нужен ответ, не ошибка сервера)
-          Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:17845/api/suppliers/ci_sup' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('{"name":"CI Поставщик","country":"Китай","adv":"30"}')) | Out-Null
+          # справочник поставщиков меняет администратор (или менеджер с правом «Без модерации», 3.103): без входа — 403
+          $supBody = [Text.Encoding]::UTF8.GetBytes('{"name":"CI Поставщик","country":"Китай","adv":"30"}')
+          $code = 0; try { Invoke-WebRequest -Method Put -Uri 'http://127.0.0.1:17845/api/suppliers/ci_sup' -ContentType 'application/json; charset=utf-8' -Body $supBody -UseBasicParsing | Out-Null } catch { $code = [int]$_.Exception.Response.StatusCode }
+          if ($code -ne 403) { throw "Поставщик без прав: ожидался код 403, получен $code" }
+          $ls = Invoke-WebRequest -Method Post -Uri 'http://127.0.0.1:17845/api/admin/login' -ContentType 'application/json' -Body '{"login":"ci_second","password":"CiPassw0rd2"}' -SessionVariable sup -UseBasicParsing
+          $supH = @{ 'X-CSRF-Token' = ($ls.Content | ConvertFrom-Json).csrf }
+          Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:17845/api/suppliers/ci_sup' -ContentType 'application/json; charset=utf-8' -Body $supBody -Headers $supH -WebSession $sup | Out-Null
           $sl = @(Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/suppliers' | ForEach-Object { $_ })
           if (-not ($sl | Where-Object { $_.id -eq 'ci_sup' -and $_.country -eq 'Китай' -and $_.adv -eq '30' })) { throw 'Справочник поставщиков не сохраняется' }
           Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:17845/api/customs' -ContentType 'application/json; charset=utf-8' -Body '{"key":"cat:comp_screw","code":"8414 80","duty":"0"}' | Out-Null
