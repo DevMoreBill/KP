@@ -825,18 +825,34 @@ class StationVent {
     const allLeaves=()=>{ for (const Q of [G, plan.gates2]) if (left>1 && Q && !exW.has(Q.wall)) leaves(Q, Q.wall, Q.y0+(Q.sea ? 150 : 0), Q.y1-(Q.sea ? 150 : 0), Q.leaves||2, Q.wicket ? 0 : -1);   // у морского — в его дверях
       for (const d of (plan.doors||[]).filter(d=>d.kind!=='entry' && !exW.has(d.wall))) if (left>1) leaves(d, d.wall, d.x0, d.x1, d.leaves||1, -1); };
     // или: створки ворот и сервисных дверей (проём уже есть), остаток — так же; из двух — где жалюзи меньше (поровну — на стенах)
-    const l0=left, nL=out.louvers.length, m0=W.mark(), sz0=out.size.in;
-    const undo=()=>{ W.reset(m0); out.louvers.length=nL; left=l0; out.size.in=sz0; };
-    const onWalls=()=>{ if (!whole('in', IN, allW, left/1e6, bands)) return false; left=0; return true; };
-    const withLeaves=()=>{ allLeaves(); if (left<=1) return true; if (left>=l0 || !whole('in', IN, allW, left/1e6, bands)) return false; left=0; return true; };
-    const nA=onWalls() ? out.louvers.length-nL : 0;
-    if (nA!==1){ undo(); const nB=withLeaves() ? out.louvers.length-nL : 0;
-      if (!nB || (nA && nB>=nA)){ undo();
-        if (nA) onWalls();
-        else { left=place('in', lo, firstW, { gross:left/1e6 }); allLeaves();   // одинаковыми не встало — под свободные участки
-          if (left>1) left=place('in', lo, rest.filter(([w])=>w!==first), { gross:left/1e6 }); } } }
-    // на этой высоте места нет (конвекторы, знаки) — на другой, на тех же стенах
-    if (left>1 && hi.h[1]>=hi.h[0]) left=place('in', hi, allW, { gross:left/1e6 });
+    // ДГУ: приточные жалюзи — у каждой ДГУ напротив неё (стена прохода, иначе задняя — не стена радиаторов), одинаковые у
+    // всех: расход поровну (решение владельца 19.10); не встали у всех — как у остальных станций
+    if (dgu && left>1){ const DG=I.filter(i=>i.kind==='dgu' && !i.tank && i.mount==='floor'), per=left/DG.length/1e6, ws=['front', 'back'].filter(w=>!exW.has(w));
+      for (const o of [lo, hi]){ if (left<=1) break; const hmax=Math.floor(Math.min(o.h[1], H-OB.top-90-o.z0)/S)*S; if (hmax<o.h[0]) continue;
+        // у каждой — одним проёмом, иначе наименьшим числом одинаковых (до MAXN), все — в пределах ДГУ по длине (±1,5 м)
+        for (let n=1; n<=this.MAXN && left>1; n++) for (const sz of this.sizesN(per, { ...o, w:[o.w[0], Math.max(o.w[1], this.WHOLE)], h:[o.h[0], hmax] }, n)){
+          const m=W.mark(), nL0=out.louvers.length, z0=o.z0;
+          const at=g=>{ const c=Math.round(g.x+g.lx/2), reach=Math.max(g.lx/2, 1500);
+            for (const w of ws){ const mk=W.mark(), k0=out.louvers.length; let got=0;
+              while (got<n){ const u=W.find(w, sz.w+360, z0-90, z0+sz.h+90, c, a=>Math.abs(a+100+sz.w/2-c)<=reach && !cogHit(w, a+100, a+100+sz.w, z0, z0+sz.h)); if (u==null) break; putAt('in', w, sz.w, u, z0, sz.h); got++; }
+              if (got===n) return true; W.reset(mk); out.louvers.length=k0; }
+            return false; };
+          if (DG.every(g=>at(g))){ out.size.in={ ...sz, n:n*DG.length }; out.inEach=true; left=0; break; }
+          W.reset(m); out.louvers.length=nL0; } } }
+    if (left>1){
+      const l0=left, nL=out.louvers.length, m0=W.mark(), sz0=out.size.in;
+      const undo=()=>{ W.reset(m0); out.louvers.length=nL; left=l0; out.size.in=sz0; };
+      const onWalls=()=>{ if (!whole('in', IN, allW, left/1e6, bands)) return false; left=0; return true; };
+      const withLeaves=()=>{ allLeaves(); if (left<=1) return true; if (left>=l0 || !whole('in', IN, allW, left/1e6, bands)) return false; left=0; return true; };
+      const nA=onWalls() ? out.louvers.length-nL : 0;
+      if (nA!==1){ undo(); const nB=withLeaves() ? out.louvers.length-nL : 0;
+        if (!nB || (nA && nB>=nA)){ undo();
+          if (nA) onWalls();
+          else { left=place('in', lo, firstW, { gross:left/1e6 }); allLeaves();   // одинаковыми не встало — под свободные участки
+            if (left>1) left=place('in', lo, rest.filter(([w])=>w!==first), { gross:left/1e6 }); } } }
+      // на этой высоте места нет (конвекторы, знаки) — на другой, на тех же стенах
+      if (left>1 && hi.h[1]>=hi.h[0]) left=place('in', hi, allW, { gross:left/1e6 });
+    }
     if (!out.size.in) out.size.in=this.size(out.need.in.gross, IN);
     // жалюзи притока не встали — приточные вентиляторы на остаток (решение ПНЕВМОТЕХ, «при необходимости»): проём
     // меньше (скорость vFanIn по рамке), включаются по датчику температуры; не встали и они — нехватка притока

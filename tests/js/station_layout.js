@@ -1783,14 +1783,22 @@ Check.run('ДГУ в контейнере: радиатор к жалюзи, д�
     assert.ok(StationView3D.svg(p, {}).length>1000, label+': вид');
     return G; };
   // одна — вдоль, радиатором к дальнему торцу
+  // посередине ширины, если так встаёт в габарите перевозки (малая ДГУ)
+  { const pm=solve(blk, [sm(1), ats]), g=chk(pm, 'малая ДГУ')[0]; assert.ok(Math.abs(g.y-(pm.int[1]-g.y-g.ly))<=2, `ДГУ посередине ширины: ${g.y} / ${pm.int[1]-g.y-g.ly}`); }
   const p1=solve(blk, [big(1), ats, muf(1)]), g1=chk(p1, 'одна ДГУ'); assert.ok(g1.length===1 && g1[0].rad==='right' && p1.dguDoors[0].wall==='right', 'одна ДГУ — к дальнему торцу');
   assert.ok(p1.exhausts[0].how==='roof', 'одна ДГУ с глушителем — выхлоп через крышу');
   // две без бака — у торцов радиаторами наружу, вход посередине; глушитель один — у второй вывод через стену
   const p2=solve(blk, [big(2), ats, muf(1)]), g2=chk(p2, 'две ДГУ');
   assert.deepStrictEqual(g2.map(g=>g.rad).sort(), ['left', 'right'], 'две ДГУ — радиаторами к обоим торцам');
   assert.ok(p2.entry && p2.entry.wall==='front' && p2.entry.x0>Math.min(...g2.map(g=>g.x+g.lx)) && p2.entry.x1<Math.max(...g2.map(g=>g.x)), 'две ДГУ: дверь оператора между ними');
-  assert.deepStrictEqual(p2.exhausts.map(e=>e.how).sort(), ['roof', 'wall'], 'выхлоп: один глушитель на крыше, второй — через стену');
-  assert.ok(p2.issues.some(i=>/через заднюю стену/.test(i.text) && /глушитель встроен/.test(i.text)), 'замечание о выводе выхлопа через стену');
+  // хоть у одной глушитель на крыше — на крыше у всех (уточнено 19.10), в составе не хватает — предупреждение
+  assert.ok(p2.exhausts.every(e=>e.how==='roof') && p2.roof.length===2, 'выхлоп: глушители на крыше у обеих');
+  assert.ok(p2.issues.some(i=>i.level==='warn' && /в составе 1 шт\., нужно 2/.test(i.text)), 'не хватает глушителей — предупреждение');
+  const pw=solve(blk, [big(2), ats]); assert.ok(pw.exhausts.every(e=>e.how==='wall') && pw.issues.some(i=>/через заднюю стену/.test(i.text) && /глушитель встроен/.test(i.text)), 'без глушителей — выхлоп через стену у всех');
+  // приточные жалюзи — у каждой ДГУ напротив, одинаковые
+  for (const [p, l] of [[p2, 'две'], [solve(blk, [sm(3), ats])]].filter(q=>q[0])){ const I=p.vent.louvers.filter(q=>q.kind==='in'), G=p.items.filter(i=>i.kind==='dgu');
+    assert.ok(p.vent.inEach && new Set(I.map(q=>q.w+'×'+q.h)).size===1 && I.length%G.length===0, (l||'три')+': приток у каждой ДГУ, одинаковый');
+    for (const g of G){ const c=g.x+g.lx/2; assert.ok(I.some(q=>Math.abs((q.u0+q.u1)/2-c)<=Math.max(g.lx/2, 1500)), (l||'три')+': жалюзи напротив ДГУ'); } }
   assert.ok(p2.roof[0].dir==='x-' || p2.roof[0].dir==='x+', 'глушитель — над своей ДГУ');
   // три — поперёк, радиаторами к задней стене, у каждой дверь-жалюзи в задней стене
   const p3=solve(blk, [sm(3), ats, muf(3)]), g3=chk(p3, 'три ДГУ');
@@ -1799,10 +1807,11 @@ Check.run('ДГУ в контейнере: радиатор к жалюзи, д�
   const D=[...p3.dguDoors].sort((a, b)=>a.x0-b.x0); for (let k=1; k<D.length; k++) assert.ok(D[k].x0-D[k-1].x1>=StationMatrix.door().gap-1, 'двери-жалюзи не ближе door.gap');
   // бак 2000 л: прямоугольный по объёму, ворота в торце, горловина в нише, топливопровод по полу
   const tk=P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'2000 л' }] }), pt=solve(blk, [big(1), ats, tk, muf(1)]); chk(pt, 'ДГУ с баком');
-  const T=pt.items.find(i=>i.tank), d=TankSize.of(2000), M=StationMatrix.tank();
-  assert.deepStrictEqual([Math.max(T.lx, T.ly), Math.min(T.lx, T.ly), T.h], [d.l, d.w, d.h], 'бак — по объёму');
-  assert.ok((d.l-2*M.wall)*(d.w-2*M.wall)*(d.h-2*M.wall)/1e6>=2000 && (d.l-M.step-2*M.wall)*(d.w-2*M.wall)*(d.h-2*M.wall)/1e6<2000, 'бак: объём внутри — не меньше расчётного, длина — с шагом');
-  assert.deepStrictEqual([TankSize.of(2001).h, TankSize.of(2001).w], [M.h2, M.w2], 'больше «большого» объёма — высота и ширина больше');
+  const T=pt.items.find(i=>i.tank), M=StationMatrix.tank(), vin=(l, w, h)=>(l-2*M.wall)*(w-2*M.wall)*(h-2*M.wall)/1e6, [Lt, Wt]=[Math.max(T.lx, T.ly), Math.min(T.lx, T.ly)];
+  assert.ok(vin(Lt, Wt, T.h)>=2000 && Lt<=Wt+M.step, `бак — по объёму и не вытянут в длину: ${Lt} × ${Wt} × ${T.h}`);
+  assert.ok(T.h<=pt.int[2]-M.top && T.h>M.h1, 'бак — выше, почти под потолок');
+  for (const v of [500, 1000, 2000, 4500]){ const d=TankSize.of(v); assert.ok(vin(d.l, d.w, d.h)>=v && (d.l<=d.w+M.step || d.w>=M.wMax && d.h>=TankSize.H-M.top-M.step), `бак ${v} л: ${TankSize.text(d)}`); }
+  assert.deepStrictEqual([TankSize.of(500).h, TankSize.of(500).w], [M.h1, M.w1], 'малый бак — начальные размеры');
   assert.ok(pt.fuel.gate && !pt.fuel.door && pt.fuel.fill.niche, 'отсек: ворота в торце, горловина в нише');
   assert.ok(pt.issues.some(i=>/Габариты бака — по расчётному объёму/.test(i.text) && /требует подтверждения/.test(i.text)), 'габариты бака — с пометкой');
   assert.ok(pt.lines.filter(l=>l.medium==='fuel').every(l=>l.z<=StationLayout.FUEL_Z), 'топливопровод по полу');

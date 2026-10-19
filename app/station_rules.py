@@ -266,6 +266,8 @@ class LayoutValues:
         'tank.door': (600, 1500),
         'tank.fill': (300, 2000),
         'tank.gates': (0, 1),
+        'tank.top': (100, 1500),
+        'tank.wMax': (500, 3000),
         'tank.h1': (500, 2500),
         'tank.h2': (500, 2500),
         'tank.big': (200, 20000),
