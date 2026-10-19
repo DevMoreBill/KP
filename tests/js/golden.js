@@ -26,7 +26,8 @@ class Golden {
         depth++;
         try{
           const out=fn.apply(this, args);
-          if (depth===1) Golden.rows.push([Golden.label, `${cls.name}.${name}`, Golden.hash(out)]);
+          if (depth===1){ Golden.rows.push([Golden.label, `${cls.name}.${name}`, Golden.hash(out)]);
+            if (process.env.KP_GOLDEN_DUMP==String(Golden.rows.length-1)) fs.writeFileSync(process.env.KP_GOLDEN+'.dump', JSON.stringify(Golden.canon(out), null, 1)); }
           return out;
         } finally{ depth--; }
       };

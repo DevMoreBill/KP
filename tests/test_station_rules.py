@@ -113,14 +113,13 @@ class RulesFileTest(unittest.TestCase):
         self.assertIs(StationRules.complete(self.d), self.d, 'полный файл — без копии')
 
     def test_layout_params_match(self):
-        """пределы чисел компоновки в форме «Настроек» (LayoutParams, station-layout.js) и на сервере (LayoutValues.SCALAR)
+        """пределы чисел компоновки в форме «Настроек» (LayoutParams, features/layout/layout-params.js) и на сервере (LayoutValues.SCALAR)
         совпадают; у каждого числа матрицы по умолчанию есть поле формы, значение файла поставки — в пределах"""
         node = shutil.which('node')
         if not node:
             self.skipTest('нет Node.js')
-        js = os.path.join(APP, 'web', 'js', 'features', 'station-layout.js')
-        code = ("const vm=require('vm'),fs=require('fs');global.StationRules={ok:()=>false};"
-                "vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));const o={},d=[];"
+        js = os.path.join(APP, 'web', 'js', 'features', 'layout', 'index.js')
+        code = ("global.StationRules={ok:()=>false};require(process.argv[1]);const o={},d=[];"
                 "for(const [k,f] of LayoutParams.all())o[k]=[f.lo,f.hi];"
                 "const D=StationMatrix.DEF;for(const g of Object.keys(D))for(const k of Object.keys(D[g]))"
                 "if(typeof D[g][k]==='number'&&!LayoutParams.field(g,k))d.push(g+'.'+k);"

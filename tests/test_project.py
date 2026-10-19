@@ -48,9 +48,20 @@ class ProjectRules(unittest.TestCase):
         self.assertEqual(first and first.group(1), v, 'первая запись журнала изменений (APP_VERSIONS) — текущая версия')
 
     def test_interface_files_linked(self):
-        """Каждый файл app/web/js и app/web/css подключён в index.html, и каждый подключённый файл существует."""
+        """Каждый файл app/web/js и app/web/css подключён в index.html (или импортирован подключённым ES-модулем), и каждый подключённый файл существует."""
         html = self.read('app', 'web', 'index.html')
         linked = {x.split('?')[0] for x in re.findall(r'(?:src|href)="/web/([^"]+\.(?:js|css)[^"]*)"', html)}
+        todo = [x for x in linked if x.endswith('.js')]
+        while todo:     # ES-модули: файлы, которые они импортируют, — тоже подключены
+            f = os.path.join(APP, 'web', todo.pop())
+            if not os.path.isfile(f):
+                continue
+            with open(f, encoding='utf-8') as fh:
+                for dep in re.findall(r"^import [^;]*? from '(\./[^']+)';", fh.read(), re.M):
+                    rel = os.path.relpath(os.path.normpath(os.path.join(os.path.dirname(f), dep)), os.path.join(APP, 'web')).replace(os.sep, '/')
+                    if rel not in linked:
+                        linked.add(rel)
+                        todo.append(rel)
         files = set()
         for sub in ('js', 'css'):
             for d, _, names in os.walk(os.path.join(APP, 'web', sub)):

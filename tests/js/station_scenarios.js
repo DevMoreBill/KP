@@ -6,7 +6,7 @@
 // Запуск: node tests/js/station_scenarios.js сценарии.json → JSON с результатами в stdout.
 'use strict';
 const vm=require('vm'), fs=require('fs'), path=require('path');
-const ROOT=path.resolve(__dirname, '..', '..');
+const ROOT=path.resolve(__dirname, '..', '..'), WebScripts=require('./web.js');
 
 global.document={ addEventListener(){} };
 global.uid=(()=>{ let n=0; return ()=>'p'+(++n); })();
@@ -16,8 +16,8 @@ global.typeById=id=>TYPES[id]||{};
 global.DEF=()=>null; global.FEAT={ on:()=>true };
 global.esc=s=>String(s??'');
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js']){
-  const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
+for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js']){
+  WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));
 global.isKit=x=>!!(x && x.kit);
 

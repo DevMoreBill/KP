@@ -5,7 +5,7 @@
 // Запуск из корня репозитория: node tests/js/tz_pick.js — код выхода 0, если всё прошло (tests/test_tz_parse.py).
 'use strict';
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
-const ROOT=path.resolve(__dirname, '..', '..');
+const ROOT=path.resolve(__dirname, '..', '..'), WebScripts=require('./web.js');
 
 // окружение страницы — только то, что нужно подбору и проверкам
 global.document={ addEventListener(){} };
@@ -22,8 +22,8 @@ global.mainLine=()=>''; global.groupsFromAttrs=()=>[];   // характерис
 global.esc=v=>String(v??'').replace(/[&<>"']/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 global.api=async u=>{ const c=global.catCache.find(z=>u.endsWith('/'+encodeURIComponent(z.id))); if (!c) throw new Error('нет '+u); return c; };
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js', 'station-quick.js', 'station-fix.js', 'station-doc.js']){
-  const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
+for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js', 'station-quick.js', 'station-fix.js', 'station-doc.js']){
+  WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
 
 class Cat {

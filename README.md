@@ -526,6 +526,16 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.112.0 — что сделано:** переписывание кода, часть 1 — классы компоновки станций из `station-layout.js` перенесены в
+ES-модули `app/web/js/features/layout/` (по классу на файл, строгий ESLint, Prettier, без цепочек `if/else` и вложенных `?:`):
+`RalColor`, `StationPaint`, `StationGeo`, `StationTidy`, `StationMods`, `StationClear`, `StationMatrix`, `LayoutParams`,
+`LayoutDigest`, `PipeMaterial`, `TankSize`, `StationEquip`, `AirChain` и `AirCheck` (проверка цепочки воздуха — отдельный класс),
+`ReceiverPlan`, `PressureVessel`, `StationNorms`, `StationHeat`, новые `LayoutPipes` (трубопровод, выход из станции),
+`LayoutItem` (места оборудования), `Mm` (числа в тексте); `index.js` кладёт классы в `globalThis` для старых файлов.
+`index.html` — `type="module"`, `main.js` — `defer`; проверки грузят модули через `tests/js/web.js`; `test_project` проверяет
+и файлы, импортированные модулями. Слепок станций (1 217 результатов) — совпал; прогон интерфейса — станция, чертежи и 3D
+без ошибок страницы.
+
 **3.111.0 — что сделано:** основа переписывания кода (решение владельца 19.10, правила — `.claude/rules/00-project.md`,
 «Оформление кода»):
 - слепок станций `tests/js/station_golden.js` (`station_golden.json`): каждый расчёт компоновки, чертёж, схема, 3D-вид и
