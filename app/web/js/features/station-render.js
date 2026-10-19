@@ -230,7 +230,24 @@ class StScene {
   // ---- контейнер
   container(){
     if (this.g.sea) this.sea(); else if (this.g.type==='welded') this.welded(); else this.block();
+    this.joints();
     this.inside();
+  }
+  /** станция из модулей: на стыках — сдвоенные стойки каркаса снаружи, нащельники по стенам и кровле, внутри — стойки на
+   *  пересечениях стыков (StationMods.posts) */
+  joints(){
+    const md=this.g.mods; if (!md || !md.Lm) return;
+    const L=this.Le, W=this.We, z0=this.dz, zt=z0+this.He, t=0.1, mm=this.mm, f=this.M(StMat.paint(this.frame, 0.45)), cv=this.M(StMat.paint(RalColor.shade(this.wall, 0.86), 0.5));
+    for (let i=1; i<md.a; i++){ const x=mm(i*md.Lm);
+      for (const y of [0, W-t]) f.box(x-t, y, z0, x+t, y+t, zt, 0.006);                                  // стойки обоих модулей
+      cv.box(x-0.06, W, z0+0.16, x+0.06, W+0.006, zt-t); if (!this.cut) cv.box(x-0.06, -0.006, z0+0.16, x+0.06, 0, zt-t);   // нащельники
+      if (!this.rise) cv.box(x-0.07, 0, this.top, x+0.07, W, this.top+0.012); }                        // по кровле (плоской)
+    for (let j=1; j<md.b; j++){ const y=mm(j*md.Wm);
+      for (const x of [0, L-t]) f.box(x, y-t, z0, x+t, y+t, zt, 0.006);
+      cv.box(L, y-0.06, z0+0.16, L+0.006, y+0.06, zt-t); cv.box(-0.006, y-0.06, z0+0.16, 0, y+0.06, zt-t);
+      const zr=this.roofZ(y); cv.box(0, y-0.07, zr, L, y+0.07, zr+0.012); }
+    if (this.view==='in') for (const p of StationMods.posts(this.g)){ const s=mm(StationMods.M.post)/2, c=this.P(p.x, p.y, 0);
+      f.box(c[0]-s, c[1]-s, this.base, c[0]+s, c[1]+s, this.ceil, 0.006); }
   }
   /** морской контейнер: рама, угловые фитинги, гофрированные стены, крыша, торцевые двери */
   sea(){

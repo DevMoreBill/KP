@@ -132,6 +132,7 @@ class StationDrawing {
       ...[['both', 'с обеих сторон компрессора (без продольного прохода) — для обслуживания спереди и сзади, монтажа и демонтажа'], [true, 'в стене за оборудованием (стоит плотно к стене) — для обслуживания, монтажа и демонтажа'], [false, 'в боковой стене — для монтажа и демонтажа (к торцу не провезти)']].map(([rear, t])=>{
         const D=(p.doors||[]).filter(d=>d.kind!=='entry' && (rear==='both' ? d.both : !d.both && !!d.rear===rear)); if (!D.length) return '';
         return `Сервисные распашные ${D.some(d=>d.leaves>1) ? 'ворота' : 'двери'} ${t}: ${D.map(d=>`${n(d.w)} × ${n(d.h)} мм — поз. ${d.pos.join(', ')}`).join('; ')}; утеплённые, с запорными штангами.`; }),
+      ...StationDrawing.modsText(this.p),
       ...StationDrawing.dguDoorsText(this.dgs),
       this.up ? `Глушитель ${list([...new Set(this.rf.map(m=>m.pos))])} — на крыше над ДГУ, выхлоп — горизонтально в сторону; съёмный (при перевозке снимается).` : '',
       this.exW.length ? `Выхлоп ${this.exW.length>1 ? 'ДГУ' : 'ДГУ'} ${list([...new Set(this.exW.map(e=>e.pos))])} — через заднюю стену (глушитель встроен в ДГУ): гильза с негорючей теплоизоляцией, снаружи — отвод вниз под 45° с колпаком.` : '',
@@ -233,11 +234,11 @@ class StationDrawing {
     const C=StationDrawing; this.F=C.FLD;
     const on1=this.pickMain(this.lay1().room), sepA=this.best(F=>this.pickA(F)), sep=this.sepA=on1.N>C.MIN_N || on1.N>sepA.N;
     const both=this.pick2(), alone=this.best(F=>this.pickPlan(F)), split=both.N>alone.N;
-    const sling=this.ms ? this.best(F=>this.pickSling(F)) : null, jobs=[];
+    const sling=this.ms ? this.mod(()=>this.best(F=>this.pickSling(F))) : null, jobs=[];
     if (sep) jobs.push((i, n)=>this.sheetA(i, n, sepA));
     if (split){ jobs.push((i, n)=>this.sheetPlan(i, n, alone)); jobs.push((i, n)=>this.sheetEnds(i, n)); }
     else jobs.push((i, n)=>this.sheet2(i, n, both));
-    if (sling) jobs.push((i, n)=>this.sheet3(i, n, sling));
+    if (sling) jobs.push((i, n)=>this.mod(()=>this.sheet3(i, n, sling)));
     const total=1+jobs.length; this.slingNo=sling ? total : null; const rest=jobs.map((f, j)=>f(j+2, total));   // листы с разрезом — раньше первого: масштаб для основной надписи
     this.F=C.FLD; return [this.sheet1(total, sep), ...rest];
   }
@@ -352,6 +353,14 @@ class StationDrawing {
     sh.frame(this.tb(i, total)); return sh.svg();
   }
   /** схема строповки в поле F: вид сбоку и с торца рядом или друг под другом */
+  /** станция из модулей: схема строповки — самого тяжёлого модуля (поднимают по одному): на время fn — его габариты, масса,
+   *  центр тяжести и строповка, без глушителей на крыше (на перевозку снимают) */
+  mod(fn){
+    const M=this.ms, md=M && M.mods && this.p.geo.mods; if (!md) return fn();
+    const keep=[this.Le, this.We, this.ms, this.rf], k=M.mods.indexOf(M.top)+1;
+    this.Le=md.Lm; this.We=md.Wm; this.ms={ ...M, mass:M.top.mass, cg:M.top.cg, sling:M.top.sling, modK:k }; this.rf=[];
+    try{ return fn(); } finally{ [this.Le, this.We, this.ms, this.rf]=keep; }
+  }
   pickSling(F){
     const C=StationDrawing, W=F.L1-F.L0, room=F.BOT-F.TOP-8-this.legendH(new EskdSheet('A4'));
     return C.scaleFor((k, last)=>{ for (const stack of [false, true]){ const B=this.slingBox(k, stack); if ((B.w<=W && B.h<=room) || (last && stack)) return { B, stack, room }; } return null; });
@@ -364,7 +373,8 @@ class StationDrawing {
       // друг под другом — вид с торца в своём масштабе, крупнее, если помещается (не крупнее 1:20)
       const pe=stack ? C.scaleFor((ke, last)=>{ const E=this.slingBox(ke, true); return (1/ke>=20 && ke>=k && E.we<=W && B.hv+6+E.hv<=room) || last ? { E } : null; }) : null;
       const E=pe && pe.k>k ? pe.E : B, Ne=pe && pe.k>k ? pe.N : pick.N, two=Ne!==pick.N;
-      sh.text(mid, y0-6, two ? 'Схема строповки' : this.label('Схема строповки', pick.N), 5, { a:'middle' });
+      const ttl=this.ms.modK ? `Схема строповки модуля М${this.ms.modK}` : 'Схема строповки';
+      sh.text(mid, y0-6, two ? ttl : this.label(ttl, pick.N), 5, { a:'middle' });
       const xs=stack ? mid-B.ws/2+19 : mid-B.w/2+19, side='вид со стороны входа', end='вид с торца у входа';
       this.k=k; this.slingSide(sh, xs, y0, B.hv, two ? `${side} (${EskdSheet.scale(pick.N)})` : side);
       const xe=stack ? mid-E.we/2+4 : xs-19+B.ws+10+4, ye=stack ? y0+B.hv+6 : y0;
@@ -457,7 +467,7 @@ class StationDrawing {
   _legend(M, n, c){
     return ['№ 9 «Место строповки» — у каждой точки строповки, с двух сторон (ГОСТ 14192-96, п. 5.5.1).',
       '№ 12 «Центр тяжести» — на боковой и торцовой стенах в проекции центра тяжести (ГОСТ 14192-96, п. 5.5.2).',
-      `Масса станции — около ${n(M.mass)} кг; центр тяжести (ЦТ): X = ${n(c.x)}, Y = ${n(c.y)}, Z = ${n(c.z)} мм — от торца у входа, от лицевой стены, от низа${M.missing.length ? `; без поз. ${M.missing.join(', ')} (масса не указана) — уточняется` : ''}.`]; }
+      `Масса ${M.modK ? `модуля М${M.modK} (самого тяжёлого; модули поднимают по одному)` : 'станции'} — около ${n(M.mass)} кг; центр тяжести (ЦТ): X = ${n(c.x)}, Y = ${n(c.y)}, Z = ${n(c.z)} мм — от торца у входа, от лицевой стены, от низа${M.missing.length ? `; без поз. ${M.missing.join(', ')} (масса не указана) — уточняется` : ''}.`]; }
   /** высота подписей под схемой, мм: строка знака — не ниже самого знака */
   legendH(sh){ return this.legendItems().reduce((h, t, i)=>h+Math.max(i<2 ? 10 : 0, sh.paras(0, 0, 160, [t], 2.5, false)+1.5), 0); }
   /** под схемой: знаки № 9 и № 12 с пояснениями, масса и центр тяжести */
@@ -483,6 +493,7 @@ class StationDrawing {
     sh.section(X(ox), Z(zf), Li*k, zf*k); sh.section(X(ox), Z(He), Li*k, roof*k);
     sh.rect(xL, Z(He), Le*k, He*k, 'main');
     if (this.rise) sh.rect(xL, Z(He+this.rise), Le*k, this.rise*k, 'main');   // скатная крыша: конёк (верх ската) — за секущей плоскостью
+    { const md=this.p.geo.mods; if (md && md.Lm) for (let i=1; i<md.a; i++) sh.line(X(i*md.Lm), Z(He)-2, X(i*md.Lm), Z(0)+2, 'phantom'); }   // стыки модулей
     if (!this.g.sea){ const lw=Math.max(0.8, 160*k), lh=Math.max(0.6, 120*k);   // строповочные петли в верхних углах
       for (const x of [xL+30*k, xL+(Le-190)*k]){ sh.rect(x, Z(He)-lh, lw, lh, 'main', '#fff'); sh.circle(x+lw/2, Z(He)-lh*0.45, Math.max(0.2, lh*0.25), 'thin', '#fff'); } }
     const fu=this.fuel, tamb=this.g.x0-(fu ? fu.x1+fu.part : 0);
@@ -594,6 +605,7 @@ class StationDrawing {
       sh.rect(yc-b/2, zc-b/2, b, b, 'main', '#fff'); sh.line(yc-b/2, zc-b/2+0.5, yc+b/2, zc-b/2+0.5, 'thin'); }
     const cw=Math.max(0.6, 160*k), chh=Math.max(0.6, 120*k);   // угловые фитинги / стойки
     for (const [x, y] of [[XL(We), Z(He)], [XL(0)-cw, Z(He)], [XL(We), Z(0)-chh], [XL(0)-cw, Z(0)-chh]]) sh.rect(x, y, cw, chh, 'thin');
+    { const md=this.p.geo.mods; if (md && md.Lm) for (let j=1; j<md.b; j++) sh.line(XL(j*md.Wm), Z(He)-2, XL(j*md.Wm), Z(0)+2, 'phantom'); }   // стыки модулей
     if (g.sea){   // штатные двери морского контейнера: две створки, запорные штанги
       const xm=(XL(We)+XL(0))/2, y1=Z(He)+chh, y2=Z(0)-chh; sh.line(xm, y1, xm, y2, 'main');
       for (const f of [0.18, 0.36, 0.64, 0.82]){ const x=XL(We)+We*k*f; sh.line(x, y1+0.6, x, y2-0.6, 'thin'); }
@@ -618,6 +630,19 @@ class StationDrawing {
     sh.rect(Math.min(e, xo), zm-w/2, Math.abs(xo-e), w, 'thin', '#fff'); sh.line(xo, zm-w*0.9, xo, zm+w*0.9, 'main');
     EquipIcon.muffler(sh, lo, zt, hi, zb);
   }
+  /** станция из модулей на плане: стыки — штрихпунктирной с двумя точками, номера модулей М1…Мn в углу модуля, стойки
+   *  каркаса на пересечениях стыков — зачернённым квадратом (размер модуля — в ТТ) */
+  modsPlan(sh, YP){
+    const md=this.p.geo.mods; if (!md || !md.Lm) return;
+    const k=this.k, X=v=>this.X(v), { Le, We }=this, ps=StationMods.M.post;
+    for (let i=1; i<md.a; i++){ const x=X(i*md.Lm); sh.line(x, YP(We)-2, x, YP(0)+2, 'phantom'); }
+    for (let j=1; j<md.b; j++){ const y=YP(j*md.Wm); sh.line(X(0)-2, y, X(Le)+2, y, 'phantom'); }
+    md.cells.forEach(([i, j], q)=>sh.text(X(i*md.Lm)+2, YP((j+1)*md.Wm)+4.2, `М${q+1}`, 3.5));
+    for (const p of StationMods.posts(this.p.geo)){ const s=Math.max(0.8, ps*k); sh.rect(X(this.ox+p.x)-s/2, YP(this.oy+p.y)-s/2, s, s, 'thin', '#000'); }
+  }
+  /** станция из модулей: пункт ТТ */
+  static modsText(p){ const g=p.geo, md=g && g.mods; if (!md || !md.Lm) return []; const n=StationLayout.n;
+    return [`Станция из модулей (М1…М${md.n} на плане): ${StationMods.shape(md)}, модуль ${n(md.Lm)} × ${n(md.Wm)} × ${n(g.ext[2])} мм — в габарите перевозки, каждый везётся отдельно; на объекте модули стыкуются в одно помещение: стыковые стены не устанавливаются (на перевозку — временные щиты), стыки — уплотнение, нащельники на стенах и кровле, пол без порога; оборудование — целиком в модулях, собрано и проверено на производстве, на перевозку расстыковываются только трубопровод, кабели и коммуникации на стыках.`]; }
   /** двери-жалюзи ДГУ словами: одинаковые — одной строкой */
   static dguDoorsText(D){
     if (!D.length) return []; const n=StationLayout.n, wh={ right:'в дальнем торце', left:'в торце у входа', back:'в задней стене' };
@@ -687,6 +712,7 @@ class StationDrawing {
     else if (rz) sh.poly([[XR(0), Z(He)], [XR(0), Z(He+rz)], [XR(We), Z(He)]], 'main', '#fff');   // односкатная — выше у лицевой стены
     const cw=Math.max(0.6, 160*k), chh=Math.max(0.6, 120*k);
     for (const [x, y] of [[XR(0), Z(He)], [XR(We)-cw, Z(He)], [XR(0), Z(0)-chh], [XR(We)-cw, Z(0)-chh]]) sh.rect(x, y, cw, chh, 'thin');
+    { const md=this.p.geo.mods; if (md && md.Lm) for (let j=1; j<md.b; j++) sh.line(XR(j*md.Wm), Z(He)-2, XR(j*md.Wm), Z(0)+2, 'phantom'); }   // стыки модулей
     const d=this.dg;
     if (d) this.dguDoorView(sh, XR(oy+d.y0), XR(oy+d.y1), Z(zf+d.h), Z(zf));   // дверь-жалюзи ДГУ
     for (const v of this.vents('right')) this.louverEnd(sh, XR(oy+v.u0), XR(oy+v.u1), Z(zf+v.z1), Z(zf+v.z0), v.fan);
@@ -760,6 +786,7 @@ class StationDrawing {
     else for (const o of this.outs){ const y=YP(oy+o.y); sh.line(xR, y, xR+5, y, 'pipe'); sh.arrow(xR+7.6, y, 1, 0); }
     // глушитель на крыше — над секущей плоскостью: штриховой
     for (const m of this.rf) sh.rect(X(ox+m.x), YP(oy+m.y+m.ly), m.lx*k, m.ly*k, 'dash', 'none', m.ly*k/2);
+    this.modsPlan(sh, YP);
     // угловые фитинги морского контейнера
     if (this.fit){ const [fl, fw]=this.fit, ex=(Le-fl)/2, ey=(We-fw)/2, s=Math.max(0.8, 170*k);
       for (const [x, y] of [[ex, ey], [Le-ex, ey], [ex, We-ey], [Le-ex, We-ey]]) sh.rect(X(x)-s/2, YP(y)-s/2, s, s, 'thin'); }

@@ -114,6 +114,7 @@ document.addEventListener('click', async e=>{
     case 'star': it.groups[j].rows[k].hl=!it.groups[j].rows[k].hl; break;
     case 'rmImg': if (b.dataset.k==='photo' && it.photo && it.photo.gen==='st3d') StationImages.forget(it, 'photo'); it[b.dataset.k]=null; break;
     case 'stlFix': case 'stlAuto': case 'stlRec': if (!StationUi.act(a, i, b)) return; break;
+    case 'stlMods': return StationModsUi.open(i);
     case 'pickImg': return pickImage(b.dataset.k, i);
     case 'clients': S.showClients=!S.showClients; break;
     case 'coverFrom': S.cover.touched=false; S.cover._src=''; coverSync(); toast('Заголовок и параметры — по оборудованию КП'); break;

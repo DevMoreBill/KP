@@ -13,7 +13,7 @@ class StationUi {
   static input(x){
     const c=kitContainer(x);
     const R=typeof StationReq!=='undefined' ? StationReq : null;   // где ресивер и снаружи ли — из требований станции
-    return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, lenFix:c.lenFix||null, ins:c.ins, ral:c.ral, paint:c.paint||null, paintBook:!!c.paintBook, art:c.art||null, sys:c.sys||null, climate:c.climate||'', roof:c.roof||'', floor:StationGeo.floor(c) } : null, parts:kitParts(x), air:this.opts(x).air,
+    return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, lenFix:c.lenFix||null, mods:c.mods||null, ins:c.ins, ral:c.ral, paint:c.paint||null, paintBook:!!c.paintBook, art:c.art||null, sys:c.sys||null, climate:c.climate||'', roof:c.roof||'', floor:StationGeo.floor(c) } : null, parts:kitParts(x), air:this.opts(x).air,
       recv:R ? R.recv(x) : 'after', recvOut:R ? R.recvOut(x) : false, req:R ? R.plan(x) : null };
   }
   /** значок на вкладке «Компоновка»: число замечаний (красный — не помещается), иначе '' */
@@ -99,7 +99,7 @@ class StationUi {
     const cutCab=plan.items.some(t=>t.mount==='wall' && t.wall==='front');   // стена прохода срезана
     const sch=this.scheme(plan);
     return `<div class="ed-sec stl">
-      <div class="stl-st ${head[0]}"><b>${head[1]}</b><span>${dims}${this.sizeNote(c, i)}</span>${plan.suggest ? this.fix(plan.suggest, i) : ''}</div>
+      <div class="stl-st ${head[0]}"><b>${head[1]}</b><span>${dims}${this.sizeNote(c, i)}</span>${plan.suggest ? this.fix(plan.suggest, i) : ''}${StationModsUi.btn(x, i, plan)}</div>
       ${top.length || info.length ? `<details class="stl-air stl-sp stl-isb ${top.some(t=>t.level==='error') ? 'err' : top.length ? 'warn' : 'ok'}"${Spoiler.attr('iss:'+x.id, top.length>0)}><summary class="stl-air-h"><b>Замечания по компоновке</b>${top.length ? `<span class="stl-cnt">⚠ ${top.length}</span>` : '<span class="ok-t">✓ нет</span>'}</summary>
         ${top.length ? `<ul class="stl-iss">${top.map(li).join('')}</ul>` : ''}
         ${info.length ? `<details class="stl-inf"${Spoiler.attr('inf:'+x.id, !top.length && plan.level==='error')}><summary>Сведения о компоновке: ${info.length} — ворота, двери, ресиверы, отопление, вентиляция</summary><ul class="stl-iss">${info.map(li).join('')}</ul></details>` : ''}</details>` : ''}
@@ -225,6 +225,133 @@ class StationUi {
   }
 }
 
+// ---------------------------------------------------------------- станция из нескольких модулей: окно раскладки
+// Решение владельца 19.10: всегда кнопкой «Модули…» в «Компоновке» и всегда с вопросом «сделать так?»; раскладка — на сетке
+// (модули перетаскиваются; на телефоне — нажать модуль, затем клетку), варианты a × b — с расчётом, что получится; в составе —
+// контейнер × N и строка «Стыковка модулей на объекте» (стыков — по раскладке, цена — «Настройки → Умолчания»).
+class StationModsUi {
+  static JOIN = 'Стыковка модулей на объекте';
+  static JOIN_DESC = 'Стыковка модулей станции на объекте: станция собрана, обвязана, запущена и проверена на производстве, модули везут с оборудованием внутри; на объекте — установка модулей по разметке, соединение каркасов, уплотнение стыков, нащельники на стенах и кровле, пол без порога, подключение трубопровода, кабелей и коммуникаций через стык (разъёмные соединения).';
+  /** только у блок-контейнеров «по проекту» */
+  static can(c){ return !!c && !!StationGeo.FLEX[c.ctype]; }
+  /** кнопка в строке состояния «Компоновки»: раскладка есть — её название; не помещается — подсказка; иначе — просто «Модули…» */
+  static btn(x, i, plan){
+    const c=kitContainer(x); if (!this.can(c)) return '';
+    const m=StationMods.of(c), bad=plan.level==='error' && !m;
+    return `<button class="btn ${bad ? 'primary' : 'ghost'} sm stl-mods" type="button" data-a="stlMods" data-i="${i}" title="Станция из нескольких модулей: раскладка, расчёт и подтверждение">${m ? `Модули: ${esc(StationMods.shape(m))} — изменить` : bad ? 'Не помещается — собрать из модулей?' : 'Модули…'}</button>`;
+  }
+  /** расстановка этой станции с раскладкой cells (null — один модуль), размер — по оборудованию */
+  static solve(x, cells){ const inp=StationUi.input(x); return StationLayout.solve({ ...inp, cont:{ ...inp.cont, mods:cells ? { cells } : null, size:'', sizeAuto:true } }); }
+  /** «✓ 12 000 × 5 100 мм» — итог расчёта кратко */
+  static sum(p){
+    const n=StationLayout.n, g=p.geo, m=g && g.mods;
+    if (p.level==='error' || !g || !g.ext) return { cls:'bad', t:'✕ не помещается', k:1e15 };
+    return { cls:p.level==='ok' ? 'ok' : 'warn', t:`${p.level==='ok' ? '✓' : '⚠'} ${n(g.ext[0])} × ${n(g.ext[1])} мм${m && m.Lm ? ` · модуль ${n(m.Lm)} × ${n(m.Wm)}` : ''}`, k:g.ext[0]*g.ext[1]+(p.level==='ok' ? 0 : 1e9) };
+  }
+  static open(i){
+    const x=S.items[i], c=x && kitContainer(x); if (!this.can(c)) return;
+    const cur=StationMods.of(c), st={ x, i, c, n:cur ? cur.n : 2, cells:cur ? cur.cells : StationMods.cells(1, 2), pick:null, res:new Map(), t:null };
+    const m=new Modal(`<div class="dlg-h"><h3>Станция из модулей<small>оборудование — целиком в модулях; на объекте — быстрая стыковка в одно помещение</small></h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
+      <div class="md-body"></div>`, 'md-dlg');
+    st.m=m; this.draw(st);
+    m.d.addEventListener('click', e=>this.click(st, e));
+    m.d.addEventListener('pointerdown', e=>this.drag(st, e));
+  }
+  /** перерисовать окно: число модулей, варианты с расчётом, сетка, итог и кнопки */
+  static draw(st){
+    const MAX=StationMods.MAX, R=StationMods.rect(st.cells), sh=StationMods.shapes(st.n).filter(([a, b])=>a<=MAX && b<=MAX), cur=StationMods.of(st.c);
+    const key=c=>JSON.stringify(StationMods.rect(c).cells), vk=([a, b])=>JSON.stringify(StationMods.cells(a, b));
+    const v=sh.map(([a, b])=>{ const r=st.res.get(vk([a, b])); return { a, b, r, on:R && R.ok && R.a===a && R.b===b }; });
+    const best=v.filter(q=>q.r && q.r.cls!=='bad').sort((p, q)=>p.r.k-q.r.k)[0];
+    // сетка — по раскладке и ещё клетка вокруг (куда перетащить), не больше MAX
+    const A=Math.min(MAX, (R ? R.a : 1)+1), B=Math.min(MAX, (R ? R.b : 1)+1), on=new Set((R ? R.cells : []).map(q=>q.join(',')));
+    const cell=(cx, cy)=>{ const k=cx+','+cy, f=on.has(k), idx=f ? R.cells.findIndex(q=>q.join(',')===k) : -1;
+      return `<div class="md-cell${f ? ' on' : ''}${st.pick===k ? ' pick' : ''}" data-cell="${k}" role="button" tabindex="0" aria-label="${f ? `Модуль ${idx+1}` : 'Пустая клетка'}">${f ? `<span class="md-mod" data-mod="${k}">М${idx+1}</span>` : ''}</div>`; };
+    let grid=''; for (let cy=0; cy<B; cy++) for (let cx=0; cx<A; cx++) grid+=cell(cx, cy);
+    const res=R && R.ok ? st.res.get(key(st.cells)) : null, n=StationLayout.n;
+    st.m.$('.md-body').innerHTML=`
+      <div class="md-n"><span>Модулей</span><button class="btn ghost sm" type="button" data-mn="-1"${st.n<=2 ? ' disabled' : ''} aria-label="Меньше">−</button><b>${st.n}</b><button class="btn ghost sm" type="button" data-mn="1"${st.n>=MAX ? ' disabled' : ''} aria-label="Больше">+</button>
+        <small class="muted">до ${MAX}${st.n>=MAX ? ' — больше по запросу' : ''}</small></div>
+      <div class="md-vars">${v.map(q=>`<button type="button" class="md-var${q.on ? ' on' : ''}" data-va="${q.a}" data-vb="${q.b}"><b>${q.b===1 ? 'Торец к торцу' : q.a===1 ? 'Бок о бок' : `${q.a} × ${q.b}`}${best===q ? ' <span class="md-best">лучше</span>' : ''}</b>
+        <small class="${q.r ? 'md-'+q.r.cls : 'muted'}">${q.r ? esc(q.r.t) : 'считаю…'}</small></button>`).join('')}</div>
+      <p class="muted md-hint">Перетащите модули на сетке (на телефоне — нажмите модуль, затем клетку): по длине — торец к торцу, по ширине — бок о бок. Раскладка — прямоугольник, внутри — одно помещение; оборудование на стыки не ставится.</p>
+      <div class="md-grid" style="grid-template-columns:repeat(${A}, minmax(44px, 1fr))">${grid}</div>
+      <div class="md-st ${R && R.ok ? (res ? 'md-'+res.cls : '') : 'md-bad'}">${!R || !R.ok ? `Раскладка не прямоугольник — модули должны складываться в ${StationMods.shapes(st.n).map(([a, b])=>`${a} × ${b}`).join(' или ')}.`
+        : `<b>${esc(StationMods.shape(R))}</b><br>${res ? esc(res.t) : 'считаю…'}${res && res.p && res.p.issues.some(t=>t.level==='error') ? `<br><small>${esc(res.p.issues.find(t=>t.level==='error').text)}</small>` : ''}`}</div>
+      <div class="row md-act"><button class="btn primary" type="button" data-md="apply"${R && R.ok && res && res.cls!=='bad' ? '' : ' disabled'}>Сделать из ${st.n} модулей…</button>
+        ${cur ? '<button class="btn ghost" type="button" data-md="one">Один модуль…</button>' : ''}<button class="btn ghost" type="button" data-x>Отмена</button></div>
+      <p class="muted md-cost">В составе станции: контейнер × N (цена — за модуль) и строка «${esc(this.JOIN)}» по числу стыков${DEF('st.joinCost') ? ` (${n(+DEF('st.joinCost'))} ₽ за стык)` : ' — цену укажите в составе'}.</p>`;
+    this.calc(st);
+  }
+  /** расчёт вариантов и текущей раскладки — по одному, без зависания окна */
+  static calc(st){
+    clearTimeout(st.t);
+    const todo=[...StationMods.shapes(st.n).filter(([a, b])=>a<=StationMods.MAX && b<=StationMods.MAX).map(([a, b])=>StationMods.cells(a, b)), st.cells]
+      .map(c=>[JSON.stringify(StationMods.rect(c) && StationMods.rect(c).cells), c]).filter(([k, c])=>k && StationMods.rect(c).ok && !st.res.has(k));
+    if (!todo.length) return;
+    st.t=setTimeout(()=>{ if (!st.m.d.open) return; const [k, c]=todo[0]; const p=this.solve(st.x, c); st.res.set(k, { ...this.sum(p), p }); this.draw(st); }, 30);
+  }
+  static click(st, e){
+    const t=e.target;
+    if (t.closest('[data-x]')) return st.m.close();
+    const mn=t.closest('[data-mn]'); if (mn){ const n=Math.max(2, Math.min(StationMods.MAX, st.n+ +mn.dataset.mn)); if (n===st.n) return;
+      const R=StationMods.rect(st.cells), side=R && R.b>R.a;   // прежняя раскладка: бок о бок — так и дальше, иначе — торец к торцу
+      st.n=n; st.cells=side ? StationMods.cells(1, n) : StationMods.cells(n, 1); st.pick=null; return this.draw(st); }
+    const va=t.closest('[data-va]'); if (va){ st.cells=StationMods.cells(+va.dataset.va, +va.dataset.vb); st.pick=null; return this.draw(st); }
+    const md=t.closest('[data-md]'); if (md) return md.dataset.md==='apply' ? this.apply(st) : this.one(st);
+    // нажать модуль, затем пустую клетку — перенос (телефон и клавиатура)
+    if (this.moved){ this.moved=false; return; }
+    const cl=t.closest('[data-cell]'); if (!cl) return;
+    const k=cl.dataset.cell, filled=cl.classList.contains('on');
+    if (filled){ st.pick=st.pick===k ? null : k; return this.draw(st); }
+    if (st.pick){ this.move(st, st.pick, k); st.pick=null; this.draw(st); }
+  }
+  /** модуль из клетки from — в пустую клетку to (сетка сдвигается к началу) */
+  static move(st, from, to){
+    const [fx, fy]=from.split(',').map(Number), [tx, ty]=to.split(',').map(Number);
+    const C=st.cells.map(q=>q[0]===fx && q[1]===fy ? [tx, ty] : q), R=StationMods.rect(C); st.cells=R ? R.cells : C;
+  }
+  /** перетаскивание модуля мышью или пальцем: копия модуля под указателем, отпустили над пустой клеткой — перенос */
+  static drag(st, e){
+    const mod=e.target.closest('[data-mod]'); if (!mod || e.button>0) return;
+    const from=mod.dataset.mod, r=mod.getBoundingClientRect(), gh=mod.cloneNode(true); let moved=false;
+    gh.classList.add('md-ghost'); gh.style.width=r.width+'px'; gh.style.height=r.height+'px'; const x0=e.clientX, y0=e.clientY;
+    const mv=ev=>{ if (!moved && Math.hypot(ev.clientX-x0, ev.clientY-y0)<6) return; if (!moved){ moved=true; st.m.d.appendChild(gh); }
+      gh.style.left=(ev.clientX-r.width/2)+'px'; gh.style.top=(ev.clientY-r.height/2)+'px'; ev.preventDefault(); };
+    const up=ev=>{ document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); gh.remove(); if (!moved) return;
+      this.moved=true; const el=document.elementFromPoint(ev.clientX, ev.clientY), cl=el && el.closest && el.closest('[data-cell]');
+      if (cl && !cl.classList.contains('on')){ this.move(st, from, cl.dataset.cell); st.pick=null; this.draw(st); } };
+    document.addEventListener('pointermove', mv, { passive:false }); document.addEventListener('pointerup', up);
+  }
+  /** «Сделать из модулей» — всегда с вопросом; в составе — контейнер × N и стыковка */
+  static async apply(st){
+    const R=StationMods.rect(st.cells); if (!R || !R.ok) return;
+    const J=StationMods.joints(R), res=st.res.get(JSON.stringify(R.cells));
+    const v=await Modal.ask(`<div class="dlg-h"><h3>Сделать станцию из ${R.n} модулей?</h3></div><p>${esc(StationMods.shape(R))}${res ? ' — '+esc(res.t) : ''}.</p>
+      <p class="muted">В составе: контейнер × ${R.n} (цена — за модуль), «${esc(this.JOIN)}» × ${J}. Каждый агрегат — целиком в своём модуле (на стыках оборудования нет): станцию собирают и проверяют на производстве, на перевозку расстыковывают трубопровод, кабели и коммуникации, модули везут с оборудованием внутри; на объекте — быстрая стыковка в одно помещение. Размер модуля — по оборудованию.</p>
+      <div class="row"><button class="btn primary" type="button" data-v="1">Да, из модулей</button><button class="btn ghost" type="button" data-v="0">Нет</button></div>`);
+    if (!v) return;
+    const c=st.c; c.mods={ cells:R.cells }; c.qty=R.n; c.sizeAuto=true; this.joint(st.x, J);
+    st.m.close(); this.done(st.x, `Станция из модулей: ${StationMods.shape(R)}. Проверьте цену модуля и стыковки в составе станции.`);
+  }
+  /** «Один модуль» — тоже с вопросом */
+  static async one(st){
+    const v=await Modal.ask(`<div class="dlg-h"><h3>Вернуть один модуль?</h3></div><p class="muted">Контейнер — 1 шт., строка «${esc(this.JOIN)}» убирается; размер — по оборудованию.</p>
+      <div class="row"><button class="btn primary" type="button" data-v="1">Да, один модуль</button><button class="btn ghost" type="button" data-v="0">Нет</button></div>`);
+    if (!v) return;
+    const c=st.c; delete c.mods; c.qty=1; c.sizeAuto=true; this.joint(st.x, 0);
+    st.m.close(); this.done(st.x, 'Станция — в одном модуле.');
+  }
+  /** строка «Стыковка модулей на объекте»: J стыков (0 — убрать); цена за стык — по умолчанию из «Настроек», своя не меняется */
+  static joint(x, J){
+    const P=x.kit.parts, k=P.findIndex(p=>p.modJoin);
+    if (!J){ if (k>=0) P.splice(k, 1); return; }
+    const p=k>=0 ? P[k] : kitNewPart({ name:this.JOIN, desc:this.JOIN_DESC, modJoin:true, cost:Math.round((+DEF('st.joinCost')||0)*100), costCur:'RUB' });
+    p.qty=J; if (k<0) P.push(p);
+  }
+  static done(x, msg){ const c=kitContainer(x); if (c) contApply(c); StationSize.apply(x, true); stationFill(x); persist(); renderEditor(); renderForm(); toast(msg, 6000); }
+}
+
 // ---------------------------------------------------------------- размер блок-контейнера по оборудованию
 class StationSize {
   static last = new Map();
@@ -256,7 +383,8 @@ class StationSize {
     // в КП расходился с чертежом (раньше: ресиверы снаружи — размер считался с ними внутри)
     const full=StationUi.input(x), inp={ ...full, cont:{ ...full.cont, size:'', sizeAuto:true } }, h=StationLayout.hash(inp), L=this.last.get(x.id);
     if (!force && L && L.h===h && L.size===String(c.size||'')) return false;
-    const plan=StationLayout.solve(inp), txt=plan.level!=='error' && plan.level!=='none' && plan.geo && plan.geo.ext ? plan.geo.ext.join(' × ') : '';
+    // из модулей — размер одного модуля (в составе контейнер × N)
+    const plan=StationLayout.solve(inp), G=plan.geo, md=G && G.mods && G.mods.Lm, txt=plan.level!=='error' && plan.level!=='none' && G && G.ext ? (md ? [G.mods.Lm, G.mods.Wm, G.ext[2]] : G.ext).join(' × ') : '';
     this.last.set(x.id, { h, size:txt });
     this.notify(x, c, plan);
     const ch=!(txt===String(c.size||'') && c.sizeAuto);

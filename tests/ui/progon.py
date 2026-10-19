@@ -395,6 +395,7 @@ class Scenario(UiRun):
         self._paint(tabs)
         if 'layout' in tabs:
             self._layout_views()
+            self._mods()
         self.closeall()
 
     def _paint(self, tabs):
@@ -441,6 +442,61 @@ class Scenario(UiRun):
                     f.write(base64.b64decode(src.split(',', 1)[1]))
             elif src != 'skip':
                 self.errs.append(('station', 'paint-3d', src[:150]))
+
+    def _mods(self):
+        """Станция из модулей (19.10): окно «Модули…» — варианты с расчётом, перенос модуля на сетке (мышью, на телефоне —
+        нажать модуль, затем клетку), подтверждение; в составе — контейнер × N и «Стыковка модулей»; затем — обратно в один."""
+        pg = self.pg
+        pg.click('#edlg [data-edtab=layout]')
+        self.wait(800)
+        if not pg.locator('#edlg [data-a=stlMods]').count():
+            self.errs.append(('station', 'SCRIPT-mods', 'нет кнопки «Модули…»'))
+            return
+        pg.click('#edlg [data-a=stlMods]')
+        pg.wait_for_selector('dialog.md-dlg[open] .md-grid', timeout=20000)
+        pg.wait_for_function("!document.querySelector('dialog.md-dlg[open]').innerText.includes('считаю')", timeout=120000)
+        self.snap('47_st_mods', 'dialog.md-dlg[open]', wait=300)
+        # перенос модуля М2 в свободную клетку
+        if self.phone:
+            pg.click('dialog.md-dlg .md-cell.on >> nth=1')
+            pg.click('dialog.md-dlg .md-cell:not(.on) >> nth=0')
+        else:
+            src = pg.locator('dialog.md-dlg .md-mod').nth(1).bounding_box()
+            dst = pg.locator('dialog.md-dlg .md-cell:not(.on)').first.bounding_box()
+            pg.mouse.move(src['x'] + src['width'] / 2, src['y'] + src['height'] / 2)
+            pg.mouse.down()
+            pg.mouse.move(dst['x'] + 5, dst['y'] + 5, steps=8)
+            pg.mouse.move(dst['x'] + dst['width'] / 2, dst['y'] + dst['height'] / 2, steps=4)
+            pg.mouse.up()
+        self.wait(300)
+        self.snap('47b_st_mods_moved', 'dialog.md-dlg[open]', wait=300)
+        pg.click('dialog.md-dlg [data-va="1"][data-vb="2"]')   # бок о бок
+        pg.wait_for_function("!document.querySelector('dialog.md-dlg[open]').innerText.includes('считаю')", timeout=120000)
+        if pg.locator('dialog.md-dlg [data-md=apply][disabled]').count():
+            self.errs.append(('station', 'mods', 'бок о бок — не помещается: ' + pg.locator('dialog.md-dlg .md-st').inner_text()[:150]))
+            pg.click('dialog.md-dlg [data-x]')
+            return
+        pg.click('dialog.md-dlg [data-md=apply]')
+        yes = 'dialog[open] button[data-v="1"]:has-text("Да, из модулей")'   # кнопка вопроса, не кнопка вида в окне станции
+        pg.wait_for_selector(yes)
+        self.snap('47c_st_mods_ask', 'dialog[open]:has(%s)' % 'button:has-text("Да, из модулей")', wait=200)
+        pg.click(yes)
+        self.wait(2500)
+        st = self.ev("(()=>{ const x=S.items[S.items.length-1], c=kitContainer(x), j=kitParts(x).find(p=>p.modJoin); return { q:c.qty, n:c.mods&&c.mods.cells.length, j:j?j.qty:0, size:c.size }; })()")
+        if st.get('q') != 2 or st.get('n') != 2 or st.get('j') != 1:
+            self.errs.append(('station', 'mods', 'состав после «Сделать из модулей»: %s' % st))
+        self.snap('47d_st_mods_layout', '#edlg', wait=6000)
+        # обратно — один модуль
+        pg.click('#edlg [data-a=stlMods]')
+        pg.wait_for_selector('dialog.md-dlg[open] [data-md=one]', timeout=20000)
+        pg.click('dialog.md-dlg [data-md=one]')
+        yes = 'dialog[open] button[data-v="1"]:has-text("Да, один модуль")'
+        pg.wait_for_selector(yes)
+        pg.click(yes)
+        self.wait(1500)
+        st = self.ev("(()=>{ const x=S.items[S.items.length-1], c=kitContainer(x); return { q:c.qty, m:!!c.mods, j:kitParts(x).some(p=>p.modJoin) }; })()")
+        if st.get('q') != 1 or st.get('m') or st.get('j'):
+            self.errs.append(('station', 'mods', 'после «Один модуль»: %s' % st))
 
     def _layout_views(self):
         """Переключатели вида компоновки станции (3D, чертёж, схема)."""

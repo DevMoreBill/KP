@@ -25,7 +25,10 @@ class DealLogistics {
     return S.items.filter(isKit).map(x=>{ const c=kitContainer(x), rows=[...((c&&c.rows)||[])];
       const ms=kitParts(x).map(p=>{ const m=lgCargoOf([{rows:p.rows||[]}]).mass; return m>0 ? m*(+p.qty||1) : null; });
       if (ms.length && ms.every(m=>m>0)) rows.push({k:'Масса станции в сборе', v:String(Math.round(ms.reduce((a,b)=>a+b,0)*1000))+' кг'});
-      return {id:'st:'+x.id, name:'Станция в сборе: '+(x.name||'без названия'), qty:+x.qty||1, groups:[{name:'', rows}]}; });
+      // из модулей — каждый модуль отдельным местом: габариты модуля, масса — поровну
+      const md=c && typeof StationMods!=='undefined' ? StationMods.of(c) : null;
+      if (md){ const mr=rows.find(r=>r.k==='Масса станции в сборе'); if (mr) mr.v=String(Math.round(parseInt(mr.v)/md.n))+' кг'; }
+      return {id:'st:'+x.id, name:(md ? `Модуль станции (${md.n} шт.): ` : 'Станция в сборе: ')+(x.name||'без названия'), qty:(+x.qty||1)*(md ? md.n : 1), groups:[{name:'', rows}]}; });
   }
   // позиции поставщика: масса и габариты — из характеристик, свои правки — в s.lg.items
   static items(s){

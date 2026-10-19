@@ -68,21 +68,30 @@ const kitMainPart = x => kitParts(x).find(p=>p.role==='main');
 // элемент «контейнер»: тип, утепление, климат → название, описание и строки характеристик (свои правки строк не теряются)
 function contApply(p, o={}){
   Object.assign(p, o); const c=ctypeOf(p.ctype); p.role='container';
+  const md=typeof StationMods!=='undefined' ? StationMods.of(p) : null; if (md) p.qty=md.n;   // из модулей — контейнер × N
   const prevAuto=p._autoDesc; p.name=(!p.name || CONTAINER_TYPES.some(z=>z.name===p.name)) ? c.name : p.name;
   if (!p.desc || p.desc===prevAuto) p.desc=c.desc; p._autoDesc=c.desc;
   const cl=CLIMATES.find(z=>z[0]===p.climate);
   const rf=StationGeo.roof(p), roof=rf!=='flat' ? StationGeo.ROOFS[rf] : null, fl=StationGeo.floor(p); p.floor=fl;
   const set={ 'Тип': c.name, 'Габариты (Д × Ш × В)': String(p.size||'').trim() ? String(p.size).trim()+(/мм|м\b/.test(p.size)?'':' мм') : c.size,
     'Утепление': p.ins?'минеральная вата '+p.ins:'', 'Климатическое исполнение': cl?`${cl[0]} (${cl[1]})`:'', 'Крыша': roof ? (roof.deg ? `${roof.name}, уклон ${roof.deg}°` : roof.name) : '',
-    'Пол': StationGeo.FLOORS[fl].name[0].toUpperCase()+StationGeo.FLOORS[fl].name.slice(1), 'Окраска': StationPaint.kp(p) };
+    'Пол': StationGeo.FLOORS[fl].name[0].toUpperCase()+StationGeo.FLOORS[fl].name.slice(1), 'Окраска': StationPaint.kp(p), 'Модули': StationModsText.kp(p) };
   p.rows=p.rows||[]; if (!p.sys) p.sys={...CONT_SYS_DEF};
   const was=p.rows.find(z=>z.k==='Цвет'); if (was && !p.rows.some(z=>z.k==='Окраска')) was.k='Окраска';   // прежняя строка «Цвет» — теперь «Окраска» (19.10)
-  for (const [k,v] of Object.entries(set)){ const r=p.rows.find(z=>z.k===k); if (r){ if (v) r.v=v; else if (k==='Окраска' || k==='Крыша') p.rows.splice(p.rows.indexOf(r),1); } else if (v) p.rows.push({k, v}); }
+  for (const [k,v] of Object.entries(set)){ const r=p.rows.find(z=>z.k===k); if (r){ if (v) r.v=v; else if (k==='Окраска' || k==='Крыша' || k==='Модули') p.rows.splice(p.rows.indexOf(r),1); } else if (v) p.rows.push({k, v}); }
   for (const [id, k, v] of CONT_SYSTEMS){ for (const r of p.rows) if ((CONT_SYS_RENAMED[id]||[]).includes(r.k)) r.k=k;
     const ix=p.rows.findIndex(z=>z.k===k);
     if (p.sys[id] && ix<0) p.rows.push({k, v}); else if (!p.sys[id] && ix>=0) p.rows.splice(ix,1);
     else if (ix>=0 && (CONT_SYS_OLD[id]||[]).includes(p.rows[ix].v)) p.rows[ix].v=v; }
   return p;
+}
+// станция из модулей: строка характеристик контейнера «Модули» (габариты в строке выше — одного модуля)
+class StationModsText {
+  static kp(p){
+    const m=typeof StationMods!=='undefined' ? StationMods.of(p) : null; if (!m) return '';
+    const d=StationGeo.mm(p.size), n=StationLayout.n;
+    return `${StationMods.shape(m)}${d ? `, вместе ${n(d[0]*m.a)} × ${n(d[1]*m.b)} × ${n(d[2])} мм` : ''}; на объекте стыкуются в одно помещение, каждый модуль — в габарите перевозки`;
+  }
 }
 // название станции подставляется, пока менеджер его не менял сам
 function stationAutoName(x){ if (!stationOf(x)) return; if (!String(x.name||'').trim() || x.name===x._autoNameV){ x.name=stationName(x); x._autoNameV=x.name; } }
@@ -98,7 +107,9 @@ function stationAuto(x){
   const P=kitParts(x), c=kitContainer(x), m=kitMainPart(x), cl=c&&CLIMATES.find(z=>z[0]===c.climate), out={};
   const pa=p=>p.attrs||{}, q=p=>+p.qty||1;
   if (c){ out.container=ctypeOf(c.ctype).name; if (c.climate) out.climate=c.climate; if (cl) out.tmin=cl[2];
-    const dm=String((c.rows||[]).find(r=>/^Габариты/.test(r.k))?.v||''); if (/\d{3,}\s*[×xх*]\s*\d{3,}/.test(dm)) out.size=dm.replace(/\s*мм\s*$/,''); }
+    const dm=String((c.rows||[]).find(r=>/^Габариты/.test(r.k))?.v||''); if (/\d{3,}\s*[×xх*]\s*\d{3,}/.test(dm)) out.size=dm.replace(/\s*мм\s*$/,'');
+    // из модулей — габариты станции целиком (в строке контейнера — одного модуля)
+    const md=typeof StationMods!=='undefined' ? StationMods.of(c) : null, d=md && StationGeo.mm(c.size); if (d) out.size=`${d[0]*md.a} × ${d[1]*md.b} × ${d[2]}`; }
   const ms=P.map(p=>{ const v=numOf(pa(p).mass) ?? (typeof lgCargoOf==='function' ? (lgCargoOf([{rows:p.rows||[]}]).mass||0)*1000 : 0); return v>0 ? v*q(p) : null; });
   if (P.length && ms.every(v=>v>0)) out.mass=Math.round(ms.reduce((a,b)=>a+b,0));
   for (const f of t.fields){ if (['container','climate','tmin','size','mass'].includes(f.key)) continue;

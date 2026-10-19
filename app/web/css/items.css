@@ -550,3 +550,28 @@ dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
 .srow .dim3,.kit-row .dim3{flex:1 1 0}
 .dim-u{font-style:normal;color:var(--muted);font-size:13px;flex:none}
 @media (max-width:760px){.kc-g>.f:has(.dim3),.attrs>.f:has(.dim3){grid-column:1/-1}.dim3 input[data-dimk]{padding-left:2px;padding-right:2px}}
+/* станция из модулей: окно раскладки (сетка с перетаскиванием) */
+dialog.st-confirm.md-dlg{width:min(640px,calc(100vw - 32px))}
+.md-dlg .dlg-h h3 small{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:2px}
+.md-body{display:grid;gap:10px}
+.md-n{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.md-n b{min-width:24px;text-align:center;font-size:16px}
+.md-n button[data-mn]{min-width:40px;min-height:40px;padding:0;font-size:20px;line-height:1;border:1px solid var(--line);border-radius:8px}
+@media (max-width:760px){.md-n button[data-mn]{min-width:44px;min-height:44px}}
+.md-vars{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px}
+.md-var{display:grid;gap:2px;text-align:left;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);cursor:pointer;min-height:44px;touch-action:manipulation}
+.md-var.on{border-color:var(--navy);box-shadow:0 0 0 1px var(--navy) inset}
+.md-var small{font-size:12.5px}
+.md-best{font-size:11px;font-weight:600;color:var(--ok);border:1px solid var(--ok);border-radius:6px;padding:0 4px;margin-left:4px}
+.md-ok{color:var(--ok)}.md-warn{color:var(--warn-ink)}.md-bad{color:var(--danger)}
+.md-hint{margin:0;font-size:13px}
+.md-grid{display:grid;gap:4px;padding:6px;border:1px dashed var(--line);border-radius:10px;background:var(--soft);overflow-x:auto}
+.md-cell{aspect-ratio:3/1;min-height:44px;border:1px dashed var(--line);border-radius:6px;display:grid;place-items:center;touch-action:none}
+.md-cell.on{border-style:solid;border-color:var(--navy)}
+.md-cell.pick .md-mod{outline:2px solid var(--ok)}
+.md-mod{width:100%;height:100%;display:grid;place-items:center;border-radius:5px;background:var(--navy);color:var(--on-navy);font-weight:600;cursor:grab;user-select:none;touch-action:none}
+.md-ghost{position:fixed;z-index:10;pointer-events:none;opacity:.85;display:grid;place-items:center;border-radius:5px;background:var(--navy);color:var(--on-navy);font-weight:600}
+.md-st{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px}
+.md-act{flex-wrap:wrap;gap:8px}
+.md-cost{margin:0;font-size:12.5px}
+.stl-st .stl-mods{margin-top:4px}

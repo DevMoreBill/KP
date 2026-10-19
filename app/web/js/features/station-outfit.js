@@ -21,7 +21,13 @@ class StOutfit {
 
   constructor(scene){ this.s=scene; this.p=scene.plan; this.sys=this.p.sys||{}; this.walls=new StWalls(this.p); this.inside=scene.view==='in'; this.log=[];   // log — что где поставлено (проверки)
     this.O={ left:[], right:[], back:[], front:[] }; }   // снаружи на стенах занято: [u0, u1, z0, z1] — как у StWalls, мм
-  build(){ this.lights(); this.tray(); this.heaters(); this.vents(); this.exhausts(); this.fire(); this.sockets(); this.fuel(); this.doors(); this.arts(); this.lift(); this.brand(); return this; }
+  build(){ this.joints(); this.lights(); this.tray(); this.heaters(); this.vents(); this.exhausts(); this.fire(); this.sockets(); this.fuel(); this.doors(); this.arts(); this.lift(); this.brand(); return this; }
+  /** станция из модулей: стыки на стенах снаружи и изнутри заняты (стойки, нащельники) — знаки, логотип, жалюзи их обходят */
+  joints(){
+    const g=this.p.geo, J=StationMods.lines(g), [, , H]=this.p.int;
+    for (const x of J.x) for (const w of ['front', 'back']) this.outer(w, x-200, x+200, -500, H+500);   // изнутри — StWalls
+    for (const y of J.y) for (const w of ['left', 'right']) this.outer(w, y-200, y+200, -500, H+500);
+  }
   /** снаружи на стене w занят участок u0…u1, z0…z1 (мм: вдоль стены помещения и от пола — как у StWalls) */
   outer(w, u0, u1, z0, z1){ this.O[w].push([u0, u1, z0, z1]); }
   /** снаружи на стене участок свободен */

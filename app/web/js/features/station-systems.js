@@ -308,21 +308,30 @@ class StationMass {
     const g=plan.geo; if (!g || !g.ext || !plan.int) return null;
     const [Le, We, He]=g.ext, [Li, Wi]=plan.int, ox=(Le-Li)/2, oy=(We-Wi)/2, zf=StationGeo.zFloor(g.type), m=v=>v/1000;
     let cont;
+    const shell=(l, w)=>this.FRAME*m(l)+(this.PANEL[g.type]||this.PANEL.block)*(2*m(l)*m(He)+2*m(w)*m(He)+m(l)*m(w))+this.FLOOR*m(l)*m(w);
+    const MD=g.mods && g.mods.Lm ? g.mods : null;   // из модулей: каждый модуль — со своими стенами (на перевозку — щиты)
     if (g.sea) cont=(this.TARE[g.type] || 2250*Le/6058)+(g.t>0 ? this.LINING*2*(m(Li)*m(Wi)+m(Li)*m(He)+m(Wi)*m(He)) : 0);
-    else cont=this.FRAME*m(Le)+(this.PANEL[g.type]||this.PANEL.block)*(2*m(Le)*m(He)+2*m(We)*m(He)+m(Le)*m(We))+this.FLOOR*m(Le)*m(We);
-    const P=[{ m:cont, x:Le/2, y:We/2, z:He*0.42 }], missing=[];
+    else cont=MD ? shell(MD.Lm, MD.Wm)*MD.n : shell(Le, We);
+    const P=MD ? MD.cells.map(([i, j])=>({ m:cont/MD.n, x:(i+0.5)*MD.Lm, y:(j+0.5)*MD.Wm, z:He*0.42, shell:true })) : [{ m:cont, x:Le/2, y:We/2, z:He*0.42 }], missing=[];
     let eq=0;
     for (const it of plan.items||[]){ if (!(it.mass>0)){ if (!missing.includes(it.pos)) missing.push(it.pos); continue; }
       const low=it.mount==='floor' || it.mount==='frame'; eq+=it.mass;
       P.push({ m:it.mass, x:ox+it.x+it.lx/2, y:oy+it.y+it.ly/2, z:zf+it.z+it.h*(low ? 0.4 : 0.5) }); }
     for (const r of plan.roof||[]){ if (!(r.mass>0)){ if (!missing.includes(r.pos)) missing.push(r.pos); continue; }
       eq+=r.mass; P.push({ m:r.mass, x:ox+r.x+r.lx/2, y:oy+r.y+r.ly/2, z:He+r.gap+r.d/2 }); }
-    const other=eq*this.OTHER[0]+this.OTHER[1]; P.push({ m:other, x:Le/2, y:We/2, z:He*0.3 });
+    const other=eq*this.OTHER[0]+this.OTHER[1]; P.push({ m:other, x:Le/2, y:We/2, z:He*0.3, other:true });
     const M=P.reduce((s, q)=>s+q.m, 0), c=k=>P.reduce((s, q)=>s+q.m*q[k], 0)/M;
     const cg={ x:Math.round(c('x')), y:Math.round(c('y')), z:Math.round(c('z')) };
-    const mass=Math.round(M/10)*10, sling=this.sling(Le, We, cg, g.sea);
-    return { mass, cont:Math.round(cont/10)*10, eq:Math.round(eq), other:Math.round(other), cg, missing:missing.sort((a, b)=>a-b), sling:{ ...sling, wll:this.wll(mass, sling) },
-      max:g.sea ? this.max(g.type) : null };
+    const mass=Math.round(M/10)*10;
+    // из модулей: масса и строповка каждого модуля (точки — по модулю, где их центр; прочее — поровну); строповка станции —
+    // самого тяжёлого модуля (поднимают по одному)
+    const mods=MD ? MD.cells.map(([i, j])=>{ const x0=i*MD.Lm, y0=j*MD.Wm, Q=P.filter(q=>!q.other && q.x>=x0 && q.x<x0+MD.Lm && q.y>=y0 && q.y<y0+MD.Wm);
+      const Mm=Q.reduce((s, q)=>s+q.m, 0)+other/MD.n, cm=k=>Q.reduce((s, q)=>s+q.m*(q[k]-(k==='x' ? x0 : k==='y' ? y0 : 0)), 0)/Math.max(1, Mm-other/MD.n);
+      const c0={ x:Math.round(cm('x')), y:Math.round(cm('y')), z:Math.round(cm('z')) }, mk=Math.round(Mm/10)*10, sl=this.sling(MD.Lm, MD.Wm, c0, false);
+      return { i, j, mass:mk, cg:c0, sling:{ ...sl, wll:this.wll(mk, sl) } }; }) : null;
+    const top=mods ? mods.reduce((a, b)=>b.mass>a.mass ? b : a) : null, sling=top ? top.sling : this.sling(Le, We, cg, g.sea);
+    return { mass, cont:Math.round(cont/10)*10, eq:Math.round(eq), other:Math.round(other), cg, missing:missing.sort((a, b)=>a-b), sling:top ? sling : { ...sling, wll:this.wll(mass, sling) },
+      max:g.sea ? this.max(g.type) : null, mods, top };
   }
   /** наибольшая масса брутто морского контейнера по типу (ISO 668; правило mass.iso_max — требует подтверждения), кг */
   static max(type){ const v=StationRules.v('mass.iso_max')||{}; return v[type] || (/^sea40/.test(type) ? v.sea40 : /^sea10/.test(type) ? v.sea10 : v.sea20) || null; }
@@ -355,7 +364,7 @@ class StationMass {
     return { hook, beam:null, frame:null, legs:pts.map(([x, y], i)=>({ x, y, len:r(Math.hypot(d[i], hook)), deg:deg(d[i], hook) })) };
   }
   /** строка технической характеристики: масса станции */
-  static text(Ms){ return Ms ? `Масса станции — около ${StationLayout.n(Ms.mass)} кг${Ms.missing.length ? ` (без поз. ${Ms.missing.join(', ')} — масса не указана)` : ''}` : ''; }
+  static text(Ms){ return Ms ? `Масса станции — около ${StationLayout.n(Ms.mass)} кг${Ms.mods ? ` (модуль — до ${StationLayout.n(Ms.top.mass)} кг)` : ''}${Ms.missing.length ? ` (без поз. ${Ms.missing.join(', ')} — масса не указана)` : ''}` : ''; }
 }
 
 // ---------------------------------------------------------------- места на стенах помещения оборудования (3D-вид, жалюзи)
@@ -375,6 +384,9 @@ class StWalls {
       if (W-i.y-i.ly<N) this.busy('back', i.x, i.x+i.lx, 0, top);
       if (i.x-x0<N) this.busy('left', i.y, i.y+i.ly, 0, top);
       if (L-i.x-i.lx<N) this.busy('right', i.y, i.y+i.ly, 0, top); }
+    { const J=StationMods.lines(plan.geo), H=plan.int[2];   // станция из модулей: стыки на стенах (стойки, нащельники) — заняты
+      for (const x of J.x) for (const w of ['front', 'back']) this.busy(w, x-150, x+150, 0, H);
+      for (const y of J.y) for (const w of ['left', 'right']) this.busy(w, y-150, y+150, 0, H); }
     for (const h of (plan.heat && plan.heat.heaters)||[]) this.busy(h.wall, ...(h.wall==='front' || h.wall==='back' ? [h.x, h.x+h.lx] : [h.y, h.y+h.ly]), 0, h.z+h.h+100);
     const en=plan.entry, G=plan.gates;   // дверь оператора, ворота в торце (у морского — его двери): изнутри на них ничего не вешать
     if (en) this.busy(en.wall, ...(en.wall==='front' ? [en.x0-100, en.x1+100] : [en.y0-100, en.y1+100]), 0, en.h+150);

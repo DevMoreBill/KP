@@ -1825,4 +1825,35 @@ Check.run('ДГУ в контейнере: радиатор к жалюзи, д�
   assert.ok(sp.length>=sp0.length-1, `конвекторы у ДГУ — мест не меньше (${sp.length} против ${sp0.length})`);
 });
 
+// станция из нескольких модулей (решение владельца 19.10): раскладка a × b на сетке, одно помещение, модуль — в габарите
+// перевозки, стойки на пересечениях стыков оборудование обходит, масса и строповка — по модулям
+Check.run('Станция из модулей: раскладка, подбор размера модуля, стыки, стойки, масса по модулям, чертёж и 3D', ()=>{
+  const R=StationMods.rect([[3, 5], [4, 5], [3, 6], [4, 6]]); assert.deepStrictEqual([R.ok, R.a, R.b, R.cells[0]], [true, 2, 2, [0, 0]], 'раскладка сдвигается к началу');
+  assert.ok(!StationMods.rect([[0, 0], [1, 0], [0, 1]]).ok && !StationMods.rect([[0, 0], [0, 0]]).ok, 'не прямоугольник и повторы — нельзя');
+  assert.ok(!StationMods.rect(StationMods.cells(StationMods.MAX+1, 1)).ok, `больше ${StationMods.MAX} — по запросу`);
+  assert.deepStrictEqual(StationMods.shapes(6), [[6, 1], [3, 2], [2, 3], [1, 6]], 'раскладки из 6');
+  assert.deepStrictEqual([StationMods.joints({ a:2, b:2 }), StationMods.joints({ a:3, b:1 })], [4, 2], 'стыков');
+  const big=Object.assign({}, dgu, { id:'pm', qty:3 }), cM=cells=>C('block', { sizeAuto:true, mods:{ cells } });
+  const one=solve(C('block', { sizeAuto:true }), [big, ats]); assert.strictEqual(one.level, 'error', 'три крупные ДГУ в один модуль не встают');
+  const two=solve(cM(StationMods.cells(3, 1)), [big, ats]); Check.plan(two, 'торец к торцу'); assert.notStrictEqual(two.level, 'error', 'торец к торцу — встают: '+two.issues.map(i=>i.text).join(' | '));
+  // решение владельца 19.10: модуль везут с оборудованием внутри — на стыках оборудования нет (и шкафов на стене)
+  assert.deepStrictEqual(StationMods.cross(two.items, two.geo).map(i=>i.pos), [], 'на стыке модулей нет оборудования');
+  const side=solve(cM(StationMods.cells(1, 2)), [Object.assign({}, dgu, { id:'pm2', qty:2 }), ats]); Check.plan(side, 'бок о бок');
+  assert.ok(side.level!=='error' && !StationMods.cross(side.items, side.geo).length, 'две ДГУ бок о бок — каждая в своём модуле');
+  const g=two.geo, md=g.mods; assert.ok(md.Lm<=StationLayout.MAX_L && md.Wm<=StationGeo.ROAD_W && g.ext[0]===md.Lm*md.a && g.ext[1]===md.Wm*md.b, `модуль ${md.Lm} × ${md.Wm} — в габарите перевозки`);
+  assert.ok(two.issues.some(i=>i.mods && /одно помещение/.test(i.text)) && !two.issues.some(i=>i.wide), 'сведения о модулях, без негабарита');
+  const M=two.mass; assert.ok(M.mods.length===3 && Math.abs(M.mods.reduce((s, q)=>s+q.mass, 0)-M.mass)<=40 && M.sling===M.top.sling, 'масса — по модулям, строповка — самого тяжёлого: '+JSON.stringify([M.mass, M.mods.map(q=>q.mass), M.sling===M.top.sling]));
+  const sv=StationDrawing.sheets(two, meta(two)); sv.forEach((x, k)=>Check.sheet(x, 'модули: лист '+(k+1)));
+  assert.ok(sv.some(x=>/Схема строповки модуля М\d/.test(x)) && sv.some(x=>/Станция из модулей/.test(x)) && sv.some(x=>/>М2</.test(x)), 'чертёж: строповка модуля, ТТ, номера модулей');
+  for (const v of ['in', 'out']){ const sc=new StScene(two, { view:v }).build(); for (const { mesh } of sc.groups.values()) assert.ok(mesh.p.every(Number.isFinite), 'NaN в 3D модулей ('+v+')'); }
+  // 2 × 2: стойка на пересечении стыков — не под оборудованием
+  const comp3=P('Компрессор 250', { cat:'comp_screw', kw:250, size:'3800 × 2000 × 2200', mass:5000 }, { role:'main', qty:3 });
+  const q=solve(cM(StationMods.cells(2, 2)), [comp3, ats]); Check.plan(q, '2 × 2');
+  assert.notStrictEqual(q.level, 'error', '2 × 2 — встают'); assert.ok(!StationMods.cross(q.items, q.geo).length && StationMods.posts(q.geo).length===1, '2 × 2: на стыках и стойке — нет оборудования');
+  // модуль задан вручную — помещение из модулей этого размера
+  const fx=solve(C('block', { size:'12000 × 2500 × 2900', mods:{ cells:StationMods.cells(2, 1) } }), [big, ats]);
+  assert.deepStrictEqual(fx.geo.ext, [24000, 2500, 2900], 'размер модуля задан — станция из двух таких');
+  assert.ok(StationLayout.hash({ cont:cM(StationMods.cells(1, 2)), parts:[big] })!==StationLayout.hash({ cont:cM(StationMods.cells(2, 1)), parts:[big] }), 'отпечаток — по раскладке');
+});
+
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);
