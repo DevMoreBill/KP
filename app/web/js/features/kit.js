@@ -307,6 +307,10 @@ class StationDefaults {
   static FUEL = /топливн\S* бак|дополнительн\S* бак|бак топлив/i;   // топливный бак ДГУ (не бак для воды)
   static get LPH(){ return StationRules.ok() ? StationRules.raw('dgu.lph') : 0.25; }       // расход топлива, л на кВт·ч (файл правил)
   static get LOAD(){ return StationRules.ok() ? StationRules.raw('dgu.fuel_load') : 0.75; }  // нагрузка по умолчанию (файл правил)
+  static get MARGIN(){ return StationRules.ok() ? StationRules.raw('dgu.fuel_margin') : 1.1; } // запас топлива (недоступный остаток)
+  /** сколько часов работы даёт объём v, л, при расходе perHour, л/ч: с тем же запасом, что при подборе бака, и с округлением
+   *  вниз — в КП заказчику не обещаем больше, чем бак даст на деле (решение владельца 19.10, проверка расчётов) */
+  static hours(v, perHour){ return perHour>0 ? Math.floor(v/this.MARGIN/perHour) : 0; }
   static TEXT = [
     [/глушител/i, 'Глушитель выхлопа на крыше контейнера, на опорах: сильфонный компенсатор, термоизоляция выхлопной трубы, дождевой колпак. На время перевозки снимается.', [['Установка', 'на крыше контейнера']]],
     [StationDefaults.FUEL, 'Дополнительный топливный бак для увеличения времени автономной работы ДГУ: датчик уровня, заливная горловина, дыхательный клапан, поддон, подключение к топливной системе ДГУ.', []],
@@ -330,7 +334,7 @@ class StationDefaults {
     if (!String(p.desc||'').trim()) p.desc=t[1];
     p.rows=p.rows||[]; for (const [k, v] of t[2]) if (!p.rows.some(r=>r.k===k)) p.rows.push({ k, v });
     if (this.FUEL.test(p.name) && !p.rows.some(r=>/объ[её]м/i.test(r.k))){ const kw=this.kw(it), v=this.tank(kw);
-      p.rows.push({ k:'Объём', v:v+' л' }); if (kw) p.rows.push({ k:`Время работы ДГУ от бака при нагрузке ${Math.round(this.LOAD*100)} %`, v:'около '+Math.round(v/(kw*this.LOAD*this.LPH))+' ч' }); }
+      p.rows.push({ k:'Объём', v:v+' л' }); if (kw) p.rows.push({ k:`Время работы ДГУ от бака при нагрузке ${Math.round(this.LOAD*100)} %`, v:'около '+this.hours(v, kw*this.LOAD*this.LPH)+' ч' }); }
     return p;
   }
   static kw(it){ const d=kitParts(it).find(p=>StationEquip.kindOf(p)==='dgu'); return d ? StationEquip.num((d.attrs||{}).kw) : null; }
@@ -351,9 +355,9 @@ class StationDefaults {
     if (!(kw>0) || !(hours>0)) return null;
     const fp=typeof GensetSizing!=='undefined' && StationRules.ok() ? GensetSizing.plan(it) : null;
     if (fp){ const L=Math.max(0, fp.need-fp.built), v=L>0 ? this.TANKS.find(t=>t>=L) || Math.ceil(L/500)*500 : this.TANKS[0];
-      return { v, rows:[{ k:'Объём', v:v+' л' }, { k:`Время работы ДГУ от баков (с баком ДГУ) при нагрузке ${Math.round(fp.x*100)} %`, v:'около '+Math.floor((v+fp.built)/fp.c)+' ч' }] }; }
+      return { v, rows:[{ k:'Объём', v:v+' л' }, { k:`Время работы ДГУ от баков (с баком ДГУ) при нагрузке ${Math.round(fp.x*100)} %`, v:'около '+this.hours(v+fp.built, fp.c)+' ч' }] }; }
     const v=this.tank(kw, hours);
-    return { v, rows:[{ k:'Объём', v:v+' л' }, { k:`Время работы ДГУ от бака при нагрузке ${Math.round(this.LOAD*100)} %`, v:'около '+Math.round(v/(kw*this.LOAD*this.LPH))+' ч' }] };
+    return { v, rows:[{ k:'Объём', v:v+' л' }, { k:`Время работы ДГУ от бака при нагрузке ${Math.round(this.LOAD*100)} %`, v:'около '+this.hours(v, kw*this.LOAD*this.LPH)+' ч' }] };
   }
 }
 

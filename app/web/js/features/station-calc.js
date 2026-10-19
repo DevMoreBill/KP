@@ -374,8 +374,8 @@ class ElectricLoad {
     const f=CalcNote.f, W=plan && plan.power; N.section('el', 'Электропитание');
     for (const nm of new Set(q.units.filter(u=>/^(compressor|pump)$/.test(u.kind) && !(CalcInput.num(u.attrs.kw)>0)).map(u=>u.name)))
       N.issue('warn', `У «${nm}» в карточке не указана мощность двигателя — в электрическую нагрузку станции не вошёл; заполните карточку.`);
-    if (W) N.step({ what:'Мощность и ток станции', formula:'I = P / (√3 · U · cos φ)', rules:['el.u', 'el.cos', 'el.breaker_k'],
-      data:[['установленная', f(W.inst, 1)+' кВт'], ['расчётная', f(W.kw, 1)+' кВт ('+(W.mode==='run' ? 'работа' : 'простой зимой')+')'], ['U', N.rule('el.u')+' В'], ['cos φ', f(N.rule('el.cos'))]],
+    if (W) N.step({ what:'Мощность и ток станции', formula:'P = Σ P_двиг / η + Σ P_прочих; I = P / (√3 · U · cos φ)', rules:['el.u', 'el.cos', 'el.eta', 'el.breaker_k'],
+      data:[['установленная', f(W.inst, 1)+' кВт'], ['расчётная (из сети)', f(W.kw, 1)+' кВт ('+(W.mode==='run' ? 'работа' : 'простой зимой')+')'], ['η двигателей', f(N.rule('el.eta'), 2)], ['U', N.rule('el.u')+' В'], ['cos φ', f(N.rule('el.cos'))]],
       result:'I = '+f(W.amp, 1)+' А; вводной автомат '+(W.breaker ? W.breaker+' А' : 'по проекту'), ok:null });
     N.rule('el.breaker_k');
     const M=q.units.filter(u=>(u.kind==='compressor' || u.kind==='pump') && CalcInput.num(u.attrs.kw)>0); if (!M.length) return null;

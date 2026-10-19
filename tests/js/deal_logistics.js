@@ -167,4 +167,41 @@ check('станция в сборе (решение 17.10) — только от
   LG.tar=keep;
 });
 
+// ---------------------------------------------------------------- проверка расчётов 19.10 (решение владельца «выполняй все»)
+const clsOf=(file, name)=>{ const src=fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'features', file), 'utf8'), m=src.match(new RegExp('\\nclass '+name+' \\{[\\s\\S]*?\\n\\}\\n'));
+  assert.ok(m, name+' в '+file); vm.runInThisContext(m[0]+'\nglobal.'+name+'='+name+';'); };
+
+check('автомобили прикрытия: Требования Минтранса № 343, п. 14 и 32', ()=>{
+  const T=Freight.tariffs();
+  assert.deepStrictEqual([[3.4, 0], [3.6, 0], [4.5, 0], [4.6, 0], [5.2, 0], [2.5, 4.6], [2.5, 4.4]].map(([w, h])=>Freight.escortCars(w, h, T)), [0, 2, 2, 3, 3, 1, 0]);
+  // ширина 3,8 м, 500 км × 50 ₽/км × 2 машины = 50 000 ₽ (было одна — 25 000 ₽)
+  const C=T.classes.find(c=>c.id==='lowbed') || T.classes.find(c=>c.open), fit={ overW:3.8, overH:0, mass:5 };
+  const v=Freight.vehicleCost(C, fit, 500, T), p=v.parts.find(x=>/прикрытия/.test(x[0]));
+  assert.ok(p && p[1]===2*T.escortKm*500 && v.escortCars===2, JSON.stringify(v.parts));
+});
+
+check('НДС к вычету по доставке — без страховой премии (НК РФ, ст. 149, п. 3, пп. 7)', ()=>{
+  // доставка по расчёту 120 000 ₽, в ней страхование 7 500 ₽: вычет (120 000 − 7 500) × 22 / 122 = 20 286,89 ₽ (было 21 639,34)
+  const d=deal(); d.sup[0].logRu={v:'120000', src:'module', ins:'7500'};
+  const s=dealCalc(KP, d).sup[0]; near(s.voRu, 112500*22/122, 'вычет', 0.01); assert.strictEqual(s.LruIns, 7500);
+  const m=deal(); m.sup[0].logRu={v:'120000'};
+  near(dealCalc(KP, m).sup[0].voRu, 120000*22/122, 'своя сумма менеджера — как раньше', 0.01);
+});
+
+check('стоимость денег в месяц: годовая × 30 / 365 (месяц — 30 дней, как в финансировании)', ()=>{
+  clsOf('deal.js', 'DealMoneyRate');
+  near(DealMoneyRate.month(19.5), 19.5*30/365, 'месяц', 1e-9);       // 1,6027 % (было 19,5 / 12 = 1,625 %)
+  near(DealMoneyRate.month(19.5)*365/30, 19.5, 'годовая ставка сходится', 1e-9);
+});
+
+check('срок поставки в условиях КП при сборке станции — цепочкой', ()=>{
+  clsOf('deal.js', 'DealLeadTime');
+  // контейнер 20 + 10 раб. дн., элементы 20 + 10 раб. дн. до сборщика, сборка 15 раб. дн. → 30 + 15 + 10 = 55 рабочих дней (было 30)
+  const s1={ active:true, prod:20, ship:10, prodK:'work', shipK:'work' }, s2={ ...s1 };
+  const c={ D:77, sup:[s1, s2], asm:{ A:s1, toAsm:[s2], days:15, daysK:'work' } };
+  assert.deepStrictEqual(DealLeadTime.of(c), { n:55, kind:'work' });
+  assert.deepStrictEqual(DealLeadTime.of({ ...c, asm:{ ...c.asm, daysK:'' } }), { n:77, kind:'' }, 'сборка в календарных — итог расчёта');
+  assert.deepStrictEqual(DealLeadTime.of({ D:42, sup:[s1], asm:null }), { n:30, kind:'work' }, 'без сборки — как раньше');
+});
+
 if (!process.exitCode) console.log('OK: '+n+' проверок');

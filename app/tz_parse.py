@@ -152,7 +152,8 @@ class TzParse:
 
         def to_bar(m):
             v, unit = self.num(m.group(1)), m.group(2).lower()
-            return round(v * 10 if unit == 'мпа' else v * 0.981 if unit.startswith('кгс') else v * 1.013 if unit in ('атм', 'ати') else v, 1)
+            # ати — техническая атмосфера избыточная = 1 кгс/см² = 0,980665 бар; атм — физическая атмосфера = 1,01325 бар
+            return round(v * 10 if unit == 'мпа' else v * 0.980665 if unit.startswith('кгс') or unit == 'ати' else v * 1.01325 if unit == 'атм' else v, 1)
         m = self.first(P)
         if m:
             bar = to_bar(m)

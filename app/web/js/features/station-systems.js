@@ -201,12 +201,15 @@ class StationPower {
   /** потребители: [{name, n, kw — за единицу, kc, run — работает в режиме «работа», idle — в «простое»}] и итоги */
   static calc(plan){
     const I=plan.items||[], r=plan.req||{}, h=plan.heat, Lt=plan.light, K=plan.sockets, F=plan.fire, out=[], D=StationMatrix.grp('power');   // мощности по умолчанию — раздел power матрицы
-    const add=(name, n, kw, kc, run, idle)=>{ if (n>0 && kw>0) out.push({ name, n, kw:Math.round(kw*100)/100, kc, run, idle }); };
+    // двигатель (компрессор, насос): в паспорте — мощность на валу, из сети он берёт P / η (правило el.eta, как в расчётной записке)
+    const eta=StationRules.raw('el.eta')||1;
+    const add=(name, n, kw, kc, run, idle, motor)=>{ if (n>0 && kw>0) out.push({ name, n, kw:Math.round(kw*100)/100, kc, run, idle, el:motor ? 1/eta : 1 }); };
     const group=(kind, name, kwOf)=>{ const L=I.filter(i=>i.kind===kind && !i.tank); if (!L.length) return;
       const res=kind===(r.kind==='pump' ? 'pump' : 'compressor') ? Math.max(0, Math.min(L.length-1, Math.round(r.res||0))) : 0, kws=L.map(kwOf).sort((a, b)=>b-a);
       const work=kws.slice(0, L.length-res), spare=kws.slice(L.length-res), same=kws.every(v=>Math.abs(v-kws[0])<1e-6);
-      if (same) { add(name, work.length, kws[0], 1, true, false); add(name+' — резервный', spare.length, kws[0], 0, false, false); }
-      else { for (const v of work) add(name, 1, v, 1, true, false); for (const v of spare) add(name+' — резервный', 1, v, 0, false, false); } };
+      const motor=kind==='compressor' || kind==='pump';
+      if (same) { add(name, work.length, kws[0], 1, true, false, motor); add(name+' — резервный', spare.length, kws[0], 0, false, false, motor); }
+      else { for (const v of work) add(name, 1, v, 1, true, false, motor); for (const v of spare) add(name+' — резервный', 1, v, 0, false, false, motor); } };
     group('compressor', 'Компрессор', i=>i.kw>0 ? i.kw : 0);
     group('pump', 'Насосный агрегат', i=>i.kw>0 ? i.kw : 0);
     group('dryer', 'Осушитель', i=>this.dryer(i));
@@ -220,7 +223,7 @@ class StationPower {
     if ((plan.sys||{}).vent!==false) add('Клапаны вентиляции с электроприводами', 1, D.valves, 1, true, true);
     if (F && F.ops) add(`Щит ОПС${F.auto ? ' и пожаротушения' : ''}`, 1, D.ops, 1, true, true);
     if (I.some(i=>i.kind==='cabinet' && /АСУ|диспетч/i.test(i.name||''))) add('Шкаф АСУ ТП', 1, D.asu, 1, true, true);
-    const inst=out.reduce((s, q)=>s+q.n*q.kw, 0), mode=k=>out.reduce((s, q)=>s+(q[k] ? q.n*q.kw*q.kc+(q.extra||0) : 0), 0);
+    const inst=out.reduce((s, q)=>s+q.n*q.kw, 0), mode=k=>out.reduce((s, q)=>s+(q[k] ? q.n*q.kw*(q.el||1)*q.kc+(q.extra||0) : 0), 0);
     const run=mode('run'), idle=mode('idle'), P=Math.max(run, idle), A=P*1000/(Math.sqrt(3)*this.U*this.COS);
     return { list:out, inst:Math.round(inst*10)/10, run:Math.round(run*10)/10, idle:Math.round(idle*10)/10, kw:Math.round(P*10)/10, mode:run>=idle ? 'run' : 'idle',
       amp:Math.round(A*10)/10, breaker:this.BREAKERS.find(b=>b>=A*StationRules.raw('el.breaker_k')) || null, dgu:!!dgu };

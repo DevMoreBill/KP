@@ -27,7 +27,13 @@ function dealAllowed(st=S){
   return st.authorId ? st.authorId===me : st.managerId===me;
 }
 
-const dlMoneyAuto = () => DL.key && DL.key.rate>0 ? (DL.key.rate+dlSpread())/12 : DealValues.n('deal.moneyFb', 2);
+// стоимость денег в месяц из годовой: × дней в месяце / 365 — тот же месяц, что в расчёте финансирования (deal.monthDays, по
+// методике — 30 дней); было «/ 12» при месяце 30 дней — годовая ставка выходила выше на 365/360 (проверка расчётов 19.10)
+class DealMoneyRate {
+  static month(year){ return year*DealValues.n('deal.monthDays', 30)/365; }
+  static text(){ return `${DealValues.n('deal.monthDays', 30)} / 365`; }
+}
+const dlMoneyAuto = () => DL.key && DL.key.rate>0 ? DealMoneyRate.month(DL.key.rate+dlSpread()) : DealValues.n('deal.moneyFb', 2);
 
 // производственный календарь РФ (/api/calendar, данные isdayoff.ru / xmlcalendar.ru): '1' — нерабочий день
 function dlCalYears(iso){ const y=+String(iso||'').slice(0,4); return y ? [y, y+1, y+2] : []; }
@@ -598,11 +604,28 @@ function dlCondName(t, k, n){
   if (n===1) return '';
   return k===0 && t.ev==='sign' ? 'Аванс' : k===n-1 ? 'Окончательный расчёт' : '';
 }
+/** срок поставки для условий КП: в рабочих днях, если все отрезки заданы в рабочих днях, иначе — календарный итог расчёта (c.D).
+ *  Сборка станции — цепочкой: max(контейнер готов; элементы доехали до сборщика) + сборка + доставка станции (было: только
+ *  изготовление + доставка одного поставщика — срок в КП выходил меньше настоящего; проверка расчётов 19.10) */
+class DealLeadTime {
+  static work(s){ return s.prodK==='work' && s.shipK==='work'; }
+  static of(c){
+    const act=c.sup.filter(s=>s.active), a=c.asm;
+    if (!(c.D>0) || !act.length) return null;
+    if (a && a.A){
+      const toA=a.toAsm.filter(s=>s.active), rest=act.filter(s=>s!==a.A && !toA.includes(s));
+      if (this.work(a.A) && a.daysK==='work' && [...toA, ...rest].every(s=>this.work(s)))
+        return { n:Math.max(Math.max(a.A.prod, ...toA.map(s=>s.prod+s.ship))+a.days+a.A.ship, ...rest.map(s=>s.prod+s.ship)), kind:'work' };
+      return { n:c.D, kind:'' };
+    }
+    return act.every(s=>this.work(s)) ? { n:Math.max(...act.map(s=>s.prod+s.ship)), kind:'work' } : { n:c.D, kind:'' };
+  }
+}
+
 function dealCondSuggest(c){
-  const out={}, d=dlDeal(), act=c.sup.filter(s=>s.active), d0=dlD0();
-  if (c.D>0){ const allWork=act.length && act.every(s=>s.prodK==='work'&&s.shipK==='work');
-    const n=allWork ? Math.max(...act.map(s=>s.prod+s.ship)) : c.D;
-    out['Срок поставки']=`${dlDaysTxt(n, allWork?'work':'')} с даты подписания договора${d0&&!d.startAuto?` (ориентировочно до ${dlDayRu(c.D)})`:''}`; }
+  const out={}, d=dlDeal(), d0=dlD0(), lt=DealLeadTime.of(c);
+  if (lt){
+    out['Срок поставки']=`${dlDaysTxt(lt.n, lt.kind)} с даты подписания договора${d0&&!d.startAuto?` (ориентировочно до ${dlDayRu(c.D)})`:''}`; }
   const st=c.trs.filter(t=>t.p>0.004);
   if (st.length===1){ const t=st[0], nm=dlCondName(t, 0, 1);
     out['Условия оплаты'] = t.ev==='sign' && !(+t.off) ? '100 % предоплата при подписании договора'
@@ -940,7 +963,7 @@ function dealRenderIn(dlg){
     ${dlStep(0, 'Цена КП и валюта', DL.ex?'Значения примера.':'Здесь меняются цены КП, валюта и курс — так же, как в разделе «Цены и валюта».', dlKpPrice(c), '', ['Цена КП с НДС', c.S, `выручка без НДС ${Fmt.rub(c.R)}, НДС ${dlIn(c.v)} % — ${Fmt.rub(c.VATs)}`], 'price')}
     ${dlStep(0, 'Деньги и налог', 'Обычно менять не нужно: стоимость денег — по ключевой ставке ЦБ, НДС продажи — как в КП, налог на прибыль — 25 %.', `<div class="dl-card"><div class="dl-g dl-money">
       ${dlField('Стоимость денег', 'money', {calc:c, unit:'% в месяц', auto:kp.moneyAuto, autoLabel:keyT, autoTitle:DL.key?`Ключевая ставка ЦБ РФ ${dlIn(DL.key.rate)} % с ${DL.key.date} + ${dlSpread()} п.п. годовых, делённое на 12`:(DL.keyErr?'Ключевая ставка ЦБ недоступна: '+DL.keyErr:''),
-        hint:DL.key?`Ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${dlSpread()} п.п. = ${dlIn(DL.key.rate+dlSpread())} % годовых → ${dlIn((DL.key.rate+dlSpread())/12)} % в месяц`:'Процент в месяц на деньги, вложенные до оплаты заказчика',
+        hint:DL.key?`Ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${dlSpread()} п.п. = ${dlIn(DL.key.rate+dlSpread())} % годовых × ${DealMoneyRate.text()} → ${dlIn(DealMoneyRate.month(DL.key.rate+dlSpread()))} % в месяц`:'Процент в месяц на деньги, вложенные до оплаты заказчика',
         q:'Сколько стоят деньги, вложенные в сделку до оплаты заказчика: кредит или упущенный доход. По умолчанию — ключевая ставка ЦБ + '+dlIn(dlSpread())+' п.п. в год (нет ставки ЦБ — '+dlIn(DealValues.n('deal.moneyFb', 2))+' % в месяц).'})}
       ${DL.ex?dlField('НДС продажи', 'over.vat', {calc:c, unit:'%', kp:kp.vat}):`<label class="f dl-f"><span>НДС продажи <i>%</i>${dlQ('Ставка НДС в цене КП — та же, что в разделе «Условия». С 2026 года основная ставка — 22 %.')}</span><span class="dl-in"><input type="text" inputmode="numeric" data-kpvat value="${esc(S.vat)}" aria-label="НДС продажи, %"></span><small class="muted">Как в КП и разделе «Условия»</small></label>`}
       ${dlField('Налог на прибыль', 'tax', {calc:c, unit:'%', hint:'С 2025 года — 25 % (ст. 284 НК РФ)', q:'Считается с прибыли после всех расходов, включая финансирование. Проценты по кредиту уменьшают налог; если «стоимость денег» — упущенный доход на свои деньги, налоговая её не учитывает, и налог будет немного больше.'})}</div></div>

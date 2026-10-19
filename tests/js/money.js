@@ -31,6 +31,7 @@ check('коротко для кабинета', ()=>{
   assert.strictEqual(Money.short(350400), `350${NB}тыс.${NB}₽`);
   assert.strictEqual(Money.short(999), `999${NB}₽`);
   assert.strictEqual(Money.short(-2500000), `−2,5${NB}млн${NB}₽`);
+  assert.strictEqual(Money.short(999500), `1${NB}млн${NB}₽`, 'граница — по округлённому'); assert.strictEqual(Money.short(999.6), `1${NB}тыс.${NB}₽`);
 });
 check('прежние имена выводят то же', ()=>{
   const util=JS('core/util.js'), cab=JS('features/cabinet.js'), lg=JS('features/logistics-calc.js'), deal=JS('features/deal.js'), dc=JS('features/deal-calc.js');

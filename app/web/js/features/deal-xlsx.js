@@ -43,7 +43,7 @@ async function dealXlsx(o={}){
       R[r-1][3]={f:`${rub(key,cur)}*${ln.qty}${vf}`, v:ln.rub, s:'money'}; eqKeys.push(key); lineKey[ln.id]=key; if (cur!=='RUB') fxKeys.push(key); });
     const exO=ds.extra||{}, exA=dNum(exO.v)||0;
     if (exA || !eqKeys.length){ const cur=exO.cur||'RUB', key='ex'+k; const r=row(['Прочая закупка у поставщика', {v:exA, s:'inpMoney'}, cur, '', note('Опции, ЗИП — то, чего нет в позициях КП')], key);
-      R[r-1][3]={f:rub(key,cur)+vf, v:exA*num(c.rate(cur))*(nv?1+c.v/100:1), s:'money'}; eqKeys.push(key); lineKey.extra=key; if (cur!=='RUB') fxKeys.push(key); }
+      R[r-1][3]={f:rub(key,cur)+vf, v:exA*num(c.rate(cur))*(nv?1+c.sv/100:1), s:'money'}; eqKeys.push(key); lineKey.extra=key; if (cur!=='RUB') fxKeys.push(key); }
     row([{v:'Оборудование, итого', s:'bold'}, '', '', {f:eqKeys.map(x=>D(x)).join('+')||'0', v:s.equip, s:'moneyB'}, nv?note('Цены поставщика без НДС — добавлен НДС'):''], `EQ${k}`);
     const logCur=amt('Логистика до границы', 'L'+k, ds.log, null, 'Входит в таможенную стоимость');
     amt('Доставка по России', 'LRU'+k, ds.logRu, null, s.LruFx?'Своя сумма в валюте — в рубли по курсу (строка курса выше)':'');
@@ -82,7 +82,7 @@ async function dealXlsx(o={}){
     row(['Изготовление', {v:s.prod, s:'inpInt'}, 'дней'], 'prod'+k);
     row(['Доставка', {v:s.ship, s:'inpInt'}, 'дней'], 'ship'+k);
     if (ds.vatIn) row(['НДС поставщика к вычету', s.voAuto?{f:`${D('EQ'+k)}*${vK}`, v:s.vo, s:'inpMoney'}:{v:s.vo, s:'inpMoney'}, '₽', {f:self(), v:s.vo, s:'money'}, s.voAuto?note('НДС в стоимости оборудования'):''], 'vo'+k);
-    row(['НДС к вычету по услугам в России', s.voRuAuto?{f:`(${D('LRU'+k)}+${D('BRK'+k)})*${vK}`, v:s.voRu, s:'inpMoney'}:{v:s.voRu, s:'inpMoney'}, '₽', {f:self(), v:s.voRu, s:'money'}], 'voru'+k);
+    row(['НДС к вычету по услугам в России', s.voRuAuto?{f:`(${D('LRU'+k)}${s.LruIns>0?'-'+Math.round(s.LruIns):''}+${D('BRK'+k)})*${vK}`, v:s.voRu, s:'inpMoney'}:{v:s.voRu, s:'inpMoney'}, '₽', {f:self(), v:s.voRu, s:'money'}, ...(s.LruIns>0 ? [note(`Без страховой премии ${Money.int(s.LruIns)} ₽ в доставке: страхование НДС не облагается`)] : [])], 'voru'+k);
     const fxE=fxKeys.length?`(${fxKeys.map(x=>D(x)).join('+')})*${ref('FX'+k)}/100`:'0';
     row([{v:'Платежи поставщику, доставка и таможня', s:'bold'}, '', '', {f:`${D('EQ'+k)}+${D('FX'+k)}+${D('INS'+k)}+${D('L'+k)}+${D('T'+k)}+${D('BRK'+k)}+${D('LRU'+k)}`, v:s.cash, s:'moneyB'}], 'CASH'+k);
     custOut.push({k, fxE}); });
@@ -91,7 +91,7 @@ async function dealXlsx(o={}){
   row(['Прочие расходы', {v:c.E, s:'inpMoney'}, '₽', {f:self(), v:c.E, s:'money'}], 'E');
   row(['Разработка документации', {v:c.Dc, s:'inpMoney'}, '₽', {f:self(), v:c.Dc, s:'money'}, c.Dc?note(dealDocKinds(d)||'проектная, рабочая, исполнительная'):''], 'DOC');
   const asmOn=!!(c.asm && c.asm.cost>0);
-  if (asmOn) row([`Сборка станции у «${c.asm.A.name}» (с НДС)`, {v:c.asm.cost, s:'inpMoney'}, '₽', {f:self(), v:c.asm.cost, s:'money'}, note(`Сборка ${c.asm.days} дн.; НДС ${c.v} % — к вычету`)], 'ASM');
+  if (asmOn) row([`Сборка станции у «${c.asm.A.name}» (с НДС)`, {v:c.asm.cost, s:'inpMoney'}, '₽', {f:self(), v:c.asm.cost, s:'money'}, note(`Сборка ${c.asm.days} дн.; НДС ${c.sv} % — к вычету`)], 'ASM');
   row(['Прочий НДС к вычету', {v:c.Vo, s:'inpMoney'}, '₽', {f:self(), v:c.Vo, s:'money'}], 'Vo');
   row(['Резерв на гарантию', {v:c.warrP, s:'inp'}, '% выручки без НДС'], 'WARR');
   row(['Бонусы и комиссии с продажи', {v:c.bonusP, s:'inp'}, '% выручки без НДС'], 'BON');
@@ -111,7 +111,7 @@ async function dealXlsx(o={}){
     if (t.bySum){ const r=row([nm, {v:t.sum, s:'inpMoney'}, '₽', '', note('Сумма этапа; доля от цены — в колонке D')], key+'s');
       R[r-1][3]={f:`IF(${D('S')}=0,0,${ref(key+'s')}/${D('S')}*100)`, v:t.p, s:'money'}; at[key]=r; at[key+'col']='D'; }
     else row([nm, t.last?{f:`100-${trKeys.slice(0,-1).map(x=>trRef(x)).join('-')||'0'}`, v:t.p, s:'money'}:{v:t.p, s:'inp'}, '%', '', t.last?note('Остаток до 100 %'):''], key); });
-  row(['Стоимость денег', {v:c.i, s:'inp'}, '% в месяц', '', c.moneyAuto&&DL.key?note(`Ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${dlSpread()} п.п. / 12`):''], 'i');
+  row(['Стоимость денег', {v:c.i, s:'inp'}, '% в месяц', '', c.moneyAuto&&DL.key?note(`(ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${dlSpread()} п.п.) × ${DealMoneyRate.text()}`):''], 'i');
   row(['Налог на прибыль', {v:c.taxP, s:'inp'}, '%'], 'TAX');
   row(['Дата отсчёта — подписание договора (день 0)', {v:xlsxDate(d.start), s:'inpDate'}, 'дата', '', note('Даты платежей на листе «График платежей» = эта дата + день')], 'D0');
   // график (на листе «График платежей»)

@@ -26,9 +26,9 @@ class Money {
   static rub(v){ return this.ok(v) ? this.text(v)+this.NB+'₽' : '—'; }
   static rub2(v){ return this.ok(v) ? this.text(v, 2)+this.NB+'₽' : '—'; }
   static kop(kop){ return typeof KPGen!=='undefined' ? KPGen.money(kop) : this.text((+kop||0)/100, 2); }
-  static short(v){ const r=+v||0, a=Math.abs(r);
-    if (a>=1e6) return this.text(r/1e6, 1).replace(/,0$/, '')+this.NB+'млн'+this.NB+'₽';
-    if (a>=1e3) return this.text(r/1e3)+this.NB+'тыс.'+this.NB+'₽';
+  static short(v){ const r=+v||0;   // порог — по уже округлённому числу: 999 500 ₽ → «1 млн ₽», а не «1 000 тыс. ₽»
+    if (Math.abs(this.round(r/1e3))>=1000) return this.text(r/1e6, 1).replace(/,0$/, '')+this.NB+'млн'+this.NB+'₽';
+    if (Math.abs(this.round(r))>=1000) return this.text(r/1e3)+this.NB+'тыс.'+this.NB+'₽';
     return this.rub(r); }
 }
 

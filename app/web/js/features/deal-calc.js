@@ -72,7 +72,7 @@ class DealValues {
       ['deal.monthDays', 'dealPay', 'Дней в месяце для стоимости денег', 'num', '30', {unit:'дн.', req:true, min:28, max:31,
         hint:'Финансирование = недостающие деньги × ставка % в месяц × дней / это число. По методике расчёта сделки месяц — 30 дней. Пример: 1 000 000 ₽ × 2 % × 45 дн. / 30 = 30 000 ₽.'}],
       ['deal.moneyFb', 'dealMoney', 'Стоимость денег, если ключевая ставка ЦБ не получена', 'num', '2', {unit:'% в месяц', req:true, min:0, max:20,
-        hint:'Обычно стоимость денег = (ключевая ставка ЦБ + надбавка) / 12. Когда сайт ЦБ недоступен и сохранённой ставки нет — берётся это число. 2 % в месяц ≈ 24 % годовых.'}],
+        hint:'Обычно стоимость денег = (ключевая ставка ЦБ + надбавка) × дней в месяце / 365. Когда сайт ЦБ недоступен и сохранённой ставки нет — берётся это число. 2 % в месяц ≈ 24 % годовых.'}],
       ['deal.xcCost', 'dealMoney', 'Стоимость получения наличных', 'num', '0', {unit:'%', req:true, min:0, max:90,
         hint:'Для «Прочих расходов наличными»: сколько процентов от перечисленной суммы удерживают за выдачу наличных. Расход компании = сумма на руки / (1 − % / 100). Пример: на руки 100 000 ₽ при 10 % → расход 111 111 ₽. 0 — менеджер вписывает сам.'}],
       ['deal.bgAdvPct', 'dealMoney', 'Гарантия на возврат аванса — сумма, % от аванса', 'num', '100', {unit:'%', req:true, min:0, max:100,
@@ -257,12 +257,15 @@ class DealCalculator {
     const suggest = s.vatIn ? this.inSupVat(equip) : 0;
     let vo = s.vatIn ? num(P+'.vo', s.vo) : 0; const voAuto = s.vatIn && vo==null; if (voAuto) vo=suggest;
     if (vo>equip+0.005) this.err[P+'.vo']='Не больше стоимости оборудования';
-    const ruSuggest=this.inSupVat(Lru+brk); let voRu=num(P+'.voRu', s.voRu); const voRuAuto=voRu==null; if (voRuAuto) voRu=ruSuggest;
+    // НДС к вычету с услуг в России: без страховой премии (НК РФ, ст. 149, п. 3, пп. 7 — страхование без НДС); премию в
+    // сумме доставки по расчёту отдаёт модуль логистики (logRu.ins, рубли), в своей сумме менеджера её не выделить
+    const LruIns=s.logRu && s.logRu.src==='module' ? Math.min(Lru, num(P+'.logRu.ins', s.logRu.ins, {def:0})) : 0;
+    const ruSuggest=this.inSupVat(Lru-LruIns+brk); let voRu=num(P+'.voRu', s.voRu); const voRuAuto=voRu==null; if (voRuAuto) voRu=ruSuggest;
     if (voRu>Lru+brk+0.005) this.err[P+'.voRu']='Не больше суммы услуг в России';
     const cash=equip+fxE+fxL+ins+L+T+brk+Lru;
     const prodK=s.prodK==='work'?'work':'', shipK=s.shipK==='work'?'work':'', rdy=this.addD(0, prod, prodK), arr=this.addD(rdy, ship, shipK);
     return { id:s.id, name:(s.name||'').trim()||`Поставщик ${k+1}`, country:s.country||'', items, noCost, lines, byCur, noVat, equip, equipFx, L, Lru, LruFx, brk, T, adv, prod, ship, prodK, shipK, rdy, arr, ins, fxE, fxL, stages,
-      mode, calc:mode==='calc', cv, dutyA, fee, feeAuto, ivatA, ivP, noDuty, vi, vo, voAuto, suggest, voRu, voRuAuto, ruSuggest, cash, active: cash>0 }; }
+      mode, calc:mode==='calc', cv, dutyA, fee, feeAuto, ivatA, ivP, noDuty, vi, vo, voAuto, suggest, voRu, voRuAuto, ruSuggest, LruIns, cash, active: cash>0 }; }
   suppliers(){ const d=this.d;
     const sup=(d.sup&&d.sup.length?d.sup:[dealNewSupplier('s1')]);
     const supOf=id=>{ const s=d.map&&d.map[id]; return sup.some(x=>x.id===s) ? s : sup[0].id; };

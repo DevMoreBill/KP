@@ -1346,6 +1346,9 @@ class StationHeat {
   static get REC(){ return StationRules.raw('heat.rec'); }           // с рециркуляцией — доля мощности в тепло помещения
   static get LOSS(){ return StationRules.raw('heat.loss'); }         // насос — потери двигателя, осушитель — тепло конденсатора
   static get COMB(){ return StationRules.raw('heat.comb'); }         // ДГУ: воздух на горение, м³/ч на 1 кВт
+  /** объёмная теплоёмкость воздуха при температуре t, Вт·ч/(м³·°C): c · ρ(t) / 3,6 (air.cp) — зимой воздух плотнее, чем при +20 °C
+   *  (heat.air 0,335 — при +20 °C: инфильтрация и подогрев воздуха на сжатие при −40 °C выходили заниженными на четверть) */
+  static airAt(t){ const a=StationRules.raw('air.cp'); return a && a.c>0 && a.rhoK>0 ? a.c*a.rhoK/(273+t)/3.6 : this.AIR; }
   static get SUN(){ return StationRules.raw('heat.sun'); }           // солнце на крышу летом, кВт/м²
   // конвектор: [кВт, длина, мм]; высота 400, глубина 90, низ — 150 мм от пола
   static get UNITS(){ return StationRules.raw('heat.conv_units'); }   // типоразмеры конвекторов: [кВт, длина, мм] — правило файла
@@ -1370,15 +1373,15 @@ class StationHeat {
     if (g.sea && g.door) doors.push(m(g.door[0])*m(g.door[1])); else if (G) doors.push(m(G.w)*m(G.h));   // ворота в торце (у морского — его двери)
     for (const d of plan.doors||[]) doors.push(m(d.w)*m(d.h));
     if (plan.exit) doors.push(m(plan.exit.w)*m(plan.exit.h));   // вторая дверь оператора в торце
-    const dgu=I.find(i=>i.kind==='dgu'), Ad=doors.reduce((s, v)=>s+v, 0), Al=(sys.vent!==false ? 0.8 : 0)+(dgu ? m(dgu.ly)*m(dgu.h)*0.75 : 0);
+    const dgu=I.find(i=>i.kind==='dgu'), Ad=doors.reduce((s, v)=>s+v, 0), LL=StationRules.raw('heat.louver_leak'), Al=(sys.vent!==false ? LL.vent : 0)+(dgu ? m(dgu.ly)*m(dgu.h)*LL.dguK : 0);
     const qEnv=(U*Math.max(0, A-Ad-Al)+this.U_DOOR*Ad+this.U_LOUVER*Al)*dT+U*Apart*dT/2;
-    const qInf=this.ACH*m(Li-Lt)*m(Wi)*m(Hi)*this.AIR*dT, qStop=qEnv+qInf;
+    const cW=this.airAt(tout), qInf=this.ACH*m(Li-Lt)*m(Wi)*m(Hi)*cW*dT, qStop=qEnv+qInf;
     // работа: самый «холодный» режим — один агрегат (тепло в помещение минус подогрев забираемого им воздуха)
     const units=I.filter(i=>!i.tank && i.mount!=='wall' && /^(compressor|dgu|pump)$/.test(i.kind) && i.kw>0), ex=r.vent||{}, VW=[];
     // тепло в помещение при работе: компрессор с рециркуляцией — всё его тепло (паспорт или N·k, VentCalc), без неё — корпус
     const heat=i=>i.kind==='compressor' && rec ? (i.heat>0 ? i.heat : i.kw*VentCalc.k(i.ctype, ex, []))*1000 : i.kw*1000*(this.LOSS[i.kind] || (rec ? this.REC[i.kind] : 0) || this.CASE);
-    const air=i=>i.kind==='compressor' ? (i.air && i.air.flow>0 ? i.air.flow*60 : i.kw*0.16*60) : i.kind==='dgu' ? (i.comb>0 ? i.comb : i.kw*this.COMB) : 0;   // м³/ч, ДГУ — по паспорту
-    const run=units.map(i=>({ i, q:heat(i), a:air(i) })), net=o=>o.q-o.a*this.AIR*dT;
+    const air=i=>i.kind==='compressor' ? (i.air && i.air.flow>0 ? i.air.flow*60 : i.kw*StationRules.raw('heat.comp_air')*60) : i.kind==='dgu' ? (i.comb>0 ? i.comb : i.kw*this.COMB) : 0;   // м³/ч, ДГУ — по паспорту
+    const run=units.map(i=>({ i, q:heat(i), a:air(i) })), net=o=>o.q-o.a*cW*dT;
     const base=run.length ? run.reduce((a, b)=>net(a)<=net(b) ? a : b) : null, qRun=base ? qStop-net(base) : null;
     const need=Math.max(qStop, qRun||0)*this.RESERVE/1000, on=sys.heat!==false;
     const pick=on ? this.pick(plan, need) : { n:0, kw:0, len:0, heaters:[], short:false };
@@ -1388,7 +1391,7 @@ class StationHeat {
     // лето (VentCalc): охлаждение компрессоров — по паспорту, иначе Q = N·k при нагреве воздуха в компрессоре heat.cool_dt;
     // помещение — перепадом t_вн − t_нар, один поток с охлаждением; не меньше 3 объёмов в час; при остановке — вентилятор с
     // термостатом; радиатор ДГУ — по паспорту, иначе по мощности (нагрев на 10 °C)
-    const rad=Math.round(work.filter(i=>i.kind==='dgu').reduce((s, i)=>s+(i.cool>0 ? i.cool : i.kw*1000*0.5/(this.AIR*10)), 0));
+    const rad=Math.round(work.filter(i=>i.kind==='dgu').reduce((s, i)=>s+(i.cool>0 ? i.cool : i.kw*1000*StationRules.raw('heat.dgu_rad').share/(this.AIR*StationRules.raw('heat.dgu_rad').dt)), 0));
     const V=m(Li-Lt)*m(Wi)*m(Hi), comp=work.filter(i=>i.kind==='compressor');
     const vc={ units:comp.map(i=>({ key:StationLayout.key(i), pos:i.pos, type:i.ctype, kw:i.kw, heat:i.heat, cool:i.cool })), qRoom:qSum/1000, qSun:this.SUN*m(Le)*m(We), use:work.reduce((s, i)=>s+air(i), 0), V, tSum:tmax, tWin:tout, tInMin:tin, boost:!!sys.boost, exfan:!!sys.exfan, ex };
     const S=VentCalc.summer(vc, VW);

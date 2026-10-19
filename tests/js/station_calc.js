@@ -427,6 +427,24 @@ Check.run('«на чертеже»: что подсветить по текст�
   assert.strictEqual(IssueSpot.has('Масса станции около 7 т', plan), false, 'нечего показать — без кнопки');
 });
 
+// ---------------------------------------------------------------- проверка расчётов 19.10 (решение владельца «выполняй все»)
+Check.run('ток станции: двигатель берёт из сети P / η (как в расчётной записке)', ()=>{
+  // 75 кВт / 0,93 = 80,645 кВт; I = 80 645 / (√3 · 400 · 0,85) = 136,95 А; × 1,25 = 171,2 → автомат 200 А (без η было 127,4 → 160 А)
+  const W=StationPower.calc({ items:[{ kind:'compressor', kw:75, name:'К' }], req:{} });
+  near(W.amp, 137.0, 0.1, 'ток'); assert.strictEqual(W.breaker, 200);
+  near(W.kw, 80.65, 0.15, 'расчётная мощность из сети (+ клапаны вентиляции)'); assert.ok(W.inst>=75 && W.inst<75.5, 'установленная — по паспорту');
+});
+Check.run('время работы ДГУ от бака: с запасом dgu.fuel_margin и вниз', ()=>{
+  // 500 л / 1,1 / 18,75 л/ч = 24,24 → 24 ч (было «около 27 ч»: 500 / 18,75 = 26,7 с округлением вверх)
+  assert.strictEqual(StationDefaults.hours(500, 18.75), 24);
+  assert.strictEqual(StationDefaults.hours(1000, 0), 0);
+});
+Check.run('отопление: теплоёмкость воздуха при наружной температуре', ()=>{
+  // c · 353 / (273 + t) / 3,6: −40 °C → 1,005 · 1,5150 / 3,6 = 0,4229 Вт·ч/(м³·°C); +20 °C → 0,3363 (heat.air 0,335 — только для +20)
+  near(StationHeat.airAt(-40), 0.4229, 0.0005, '−40 °C'); near(StationHeat.airAt(20), 0.3363, 0.0005, '+20 °C');
+  for (const id of ['heat.comp_air', 'heat.dgu_rad', 'heat.louver_leak']){ const r=StationRules.rule ? StationRules.rule(id) : null; assert.ok(StationRules.raw(id)!=null, id); if (r) assert.strictEqual(r.status, 'unconfirmed', id); }
+});
+
 process.on('beforeExit', ()=>{ if (!process.exitCode) console.log('расчёт станции: проверок пройдено — '+Check.n); });
 
 Check.run('ст. м³ (ГОСТ 2939, 20 °C) → FAD: меньше, чем из н. м³, в 293,15 / 273,15 раза (решение 17.10)', ()=>{
