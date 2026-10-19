@@ -1,9 +1,22 @@
 import { AirChain } from './air-chain.js';
 import { AirCheck } from './air-check.js';
+import { LayoutAccess } from './layout-access.js';
+import { LayoutDgu } from './layout-dgu.js';
 import { LayoutDigest } from './layout-digest.js';
+import { LayoutExits } from './layout-exits.js';
+import { LayoutGates } from './layout-gates.js';
 import { LayoutItem } from './layout-item.js';
+import { LayoutJoints } from './layout-joints.js';
+import { LayoutMode } from './layout-mode.js';
+import { LayoutNotes } from './layout-notes.js';
+import { LayoutOpening } from './layout-opening.js';
 import { LayoutParams } from './layout-params.js';
 import { LayoutPipes } from './layout-pipes.js';
+import { LayoutRoof } from './layout-roof.js';
+import { LayoutRows } from './layout-rows.js';
+import { LayoutSize } from './layout-size.js';
+import { LayoutTank } from './layout-tank.js';
+import { LayoutWalls } from './layout-walls.js';
 import { Mm } from './mm.js';
 import { PipeMaterial } from './pipe-material.js';
 import { PressureVessel } from './pressure-vessel.js';
@@ -13,6 +26,7 @@ import { StationClear } from './station-clear.js';
 import { StationEquip } from './station-equip.js';
 import { StationGeo } from './station-geo.js';
 import { StationHeat } from './station-heat.js';
+import { StationLayout } from './station-layout.js';
 import { StationMatrix } from './station-matrix.js';
 import { StationMods } from './station-mods.js';
 import { StationNorms } from './station-norms.js';
@@ -23,10 +37,23 @@ import { TankSize } from './tank-size.js';
 export const LAYOUT = {
   AirChain,
   AirCheck,
+  LayoutAccess,
+  LayoutDgu,
   LayoutDigest,
+  LayoutExits,
+  LayoutGates,
   LayoutItem,
+  LayoutJoints,
+  LayoutMode,
+  LayoutNotes,
+  LayoutOpening,
   LayoutParams,
   LayoutPipes,
+  LayoutRoof,
+  LayoutRows,
+  LayoutSize,
+  LayoutTank,
+  LayoutWalls,
   Mm,
   PipeMaterial,
   PressureVessel,
@@ -36,6 +63,7 @@ export const LAYOUT = {
   StationEquip,
   StationGeo,
   StationHeat,
+  StationLayout,
   StationMatrix,
   StationMods,
   StationNorms,

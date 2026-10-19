@@ -1,3 +1,4 @@
+import { LayoutMode } from './layout-mode.js';
 import { Mm } from './mm.js';
 import { StationClear } from './station-clear.js';
 import { StationEquip } from './station-equip.js';
@@ -54,7 +55,7 @@ export class LayoutDigest {
       Cv: StationMatrix.grp('conv'),
       Pp: StationMatrix.grp('pipe'),
       Cb: StationMatrix.grp('cab'),
-      tight: StationLayout.TIGHT,
+      tight: LayoutMode.TIGHT,
       aRec,
       aMin,
     };

@@ -201,7 +201,7 @@ class LayoutValues:
     GROUPS = ('gap', 'pair', 'wall', 'access', 'sides', 'rotate', 'gate', 'service', 'door', 'aisle', 'exits', 'exhaust',
               'fit', 'modes', 'recv', 'cab', 'move', 'tank', 'conv', 'dgu', 'mods', 'look', 'muffler', 'shell', 'pick', 'pipe', 'pumps', 'grille', 'mass', 'light', 'fire', 'power')
     MAX_MM = 20000
-    # пределы чисел матрицы (те же — в форме «Настроек», LayoutParams в station-layout.js; тест сверяет)
+    # пределы чисел матрицы (те же — в форме «Настроек», LayoutParams в features/layout/layout-params.js; тест сверяет)
     SCALAR = {
         'fit.dense': (0, 1),
         'fit.roadW': (2000, 3500),

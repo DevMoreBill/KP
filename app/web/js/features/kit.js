@@ -263,7 +263,7 @@ class KitPart {
 }
 
 // трубопроводная обвязка станции: материал (сталь, нержавеющая сталь, полипропилен) и условный проход — поля в составе
-// и строки характеристик элемента (в КП); на компоновке — цвет трассы (PipeMaterial, station-layout.js)
+// и строки характеристик элемента (в КП); на компоновке — цвет трассы (PipeMaterial, features/layout/)
 class KitPipe {
   static is(p){ return !!p && p.role!=='container' && p.role!=='main' && StationEquip.PIPING.test(String(p.name||'')); }
   static fields(p, i, j){
@@ -287,7 +287,7 @@ class KitPipe {
 }
 
 // шкафы станции: на стене (чаще так — по умолчанию) или на полу — поле в составе и строка «Установка» характеристик
-// элемента; на компоновке настенный висит на стене прохода, напольный стоит в ряду (StationEquip.mount, station-layout.js)
+// элемента; на компоновке настенный висит на стене прохода, напольный стоит в ряду (StationEquip.mount, features/layout/)
 class KitCabinet {
   static ROW = 'Установка';
   static OPTS = [['wall', 'на стене', 'настенный'], ['floor', 'на полу', 'напольный']];

@@ -1,7 +1,7 @@
 # Вентиляция станции: расчёт притока и выброса горячего воздуха
 
 Расчёт — класс `VentCalc` (`app/web/js/features/station-systems.js`), вызывается из расчёта тепла станции
-(`StationHeat.calc`, `station-layout.js`); размеры и места жалюзи — `StationVent.calc`; расчётная записка — `VentSizing`
+(`StationHeat.calc`, `features/layout/station-heat.js`); размеры и места жалюзи — `StationVent.calc`; расчётная записка — `VentSizing`
 (`station-calc.js`). Все коэффициенты — в файле инженерных правил `app/web/rules/stations.json` (группа «Тепло и
 вентиляция», правила `vent.*` и `air.cp`) с источниками и статусом; их можно править в «Настройки → Инженерные правила
 станций» (новая версия правил, прежняя остаётся для отката). Единицы — СИ: кВт, м³/ч, м², м/с, °C, Па.

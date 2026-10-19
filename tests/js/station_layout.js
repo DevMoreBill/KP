@@ -1,4 +1,4 @@
-// Компоновка станций в контейнере (app/web/js/features/station-layout.js, station-eskd.js, station-draw.js): разбор габаритов
+// Компоновка станций в контейнере (app/web/js/features/layout/, station-eskd.js, station-draw.js): разбор габаритов
 // и цвета, расстановка с проходами обслуживания, подбор контейнера, отпечаток, габаритный чертёж и схема пневматическая
 // принципиальная на листе А4 по ЕСКД, 3D-вид.
 // Запуск из корня репозитория: node tests/js/station_layout.js — код выхода 0, если всё прошло (tests/test_station_layout.py).
@@ -6,7 +6,7 @@
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..'), WebScripts=require('./web.js');
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'station-layout.js', 'station-systems.js', 'station-eskd.js', 'station-draw.js', 'station-outfit.js', 'station-render.js', 'station-decal.js']){
+for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'station-systems.js', 'station-eskd.js', 'station-draw.js', 'station-outfit.js', 'station-render.js', 'station-decal.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
@@ -561,8 +561,8 @@ Check.run('двери: плотно к стене — сервисные вор�
   const T=StationDrawing.lift ? StationDrawing.svg(t, meta(t)) : ''; assert.ok(!T || /Сервисные распашные ворота в стене за оборудованием/.test(T), 'на чертеже — ворота сзади');
   draw(t, 'плотно к стене');
   // сзади не меньше доступа для обслуживания (матрица, access.back) — не плотно: подойти можно, ворот нет
-  assert.ok(!StationLayout.prototype.tight.call(null, Object.assign({}, cp, { back:StationMatrix.access().back })), 'сзади 500 мм — ворота не нужны');
-  assert.ok(StationLayout.prototype.tight.call(null, Object.assign({}, cp, { back:StationMatrix.access().back-10 })), 'сзади меньше 500 мм — ворота');
+  assert.ok(!LayoutGates.tight(Object.assign({}, cp, { back:StationMatrix.access().back })), 'сзади 500 мм — ворота не нужны');
+  assert.ok(LayoutGates.tight(Object.assign({}, cp, { back:StationMatrix.access().back-10 })), 'сзади меньше 500 мм — ворота');
   // короткий: одна дверь оператора
   assert.ok(!t.second && !t.doors.some(d=>d.kind==='entry') && !t.exit, 'короткий — одна дверь оператора');
   // один ряд, длинный: монтажные ворота в дальнем торце открываются наружу — это и второй выход (решение ПНЕВМОТЕХ), табло «Выход»
