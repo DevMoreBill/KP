@@ -268,6 +268,14 @@ MIGRATIONS = [
      DROP TRIGGER IF EXISTS kp_rev_del; DROP TRIGGER IF EXISTS kp_rev_upd; DROP TRIGGER IF EXISTS kp_rev_ins;
      DELETE FROM kv WHERE key = 'datarev:kpj';
      """),
+    # журнал обмена с Битрикс24 — менеджер записи (отбор журнала по менеджеру, тонкая настройка 19.10)
+    ('2027-14-bitrix-log-mid',
+     """
+     ALTER TABLE bx_log ADD COLUMN mid TEXT;
+     """,
+     """
+     ALTER TABLE bx_log DROP COLUMN mid;
+     """),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё

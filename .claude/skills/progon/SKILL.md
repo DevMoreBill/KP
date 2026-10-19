@@ -12,7 +12,7 @@ argument-hint: "[режимы pc,pcd,ph,phd] [этапы]"
 python3 tests/ui/progon.py --modes pc,pcd,ph,phd --out <папка во временной/рабочей папке сеанса>
 ```
 
-- `--stages client,cat,editor,station,price,deal,steps,preview,save,files,mail,journal,misc,settings,dbl` — только эти этапы
+- `--stages client,cat,editor,station,price,deal,steps,preview,save,files,mail,journal,misc,settings,bitrix,dbl` — только эти этапы
   (для проверки одного окна). Этапы зависят от предыдущих: «save» требует заполненного КП (client, cat, price, steps).
 - Данные — вымышленные (`tests/kit.py`, SampleData), рабочая база не используется. `--db <копия.sqlite3>` — КОПИЯ базы
   владельца для прогона на настоящем каталоге (копию не класть в репозиторий).

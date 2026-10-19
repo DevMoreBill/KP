@@ -17,7 +17,7 @@ def direct():
     return urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
-class SyncTest(unittest.TestCase):
+class SyncBase(unittest.TestCase):
     def setUp(self):
         self.fake = FakeBitrix()
         self.addCleanup(self.fake.stop)
@@ -48,6 +48,8 @@ class SyncTest(unittest.TestCase):
         self.st.kp_set(kid, 'meta', json.dumps(m, ensure_ascii=False), 'тест')
         return DealBook(self.st).on_kp(kid, m, 'Иванова Анна')
 
+
+class SyncTest(SyncBase):
     def test_push_deal_company_rows_fields_files(self):
         from bitrix import BitrixQueue, BitrixLog
         did = self.kp('26-0001')
@@ -210,6 +212,184 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(r['auto'], {'m1': '7', 'm2': '8'}, 'менеджеры — по e-mail без учёта регистра')
 
 
+class RulesTest(SyncBase):
+    """Тонкая настройка (19.10): направления, менеджеры, поля, воронки, товары и файлы, компании, дела, расписание, пробный прогон,
+    старые сделки с даты, журнал «было → стало» по менеджеру."""
+
+    def conf(self, **d):
+        from bitrix import BitrixConf
+        return BitrixConf(self.st).save(d, 'тест')
+
+    def push(self, did):
+        from bitrix import BitrixQueue
+        BitrixQueue.touch(self.st, 'deal', did)
+        return self.sync().run()
+
+    def test_only_from_bitrix(self):
+        from crm import DealBook
+        self.conf(mode='in')
+        did = self.kp('26-0101')
+        self.push(did)
+        self.assertEqual(self.fake.deals, {}, 'только из Битрикса — в Битрикс ничего не пишется')
+        self.assertFalse(any(m.endswith('.add') or m.endswith('.update') for m in self.fake.methods()), self.fake.methods())
+        nb = self.fake.new_deal(TITLE='Насосная станция', ASSIGNED_BY_ID='7')
+        self.assertEqual(self.sync().run()['created'], 1)
+        d = next(x for x in DealBook(self.st).deals(None) if x['title'] == 'Насосная станция')
+        DealBook(self.st).update(d['id'], {'stage': 'talks'}, 'Иванова')       # правка в программе остаётся в программе
+        self.sync().run()
+        self.assertEqual(self.fake.deals[nb]['STAGE_ID'], 'C3:NEW')
+        self.assertEqual(DealBook(self.st).get(d['id'])['stage'], 'talks')
+        time.sleep(1.1)
+        self.fake.edit_deal(nb, STAGE_ID='C3:FINAL_INVOICE')                # изменили в Битриксе — значение Битрикса
+        self.sync().run()
+        self.assertEqual(DealBook(self.st).get(d['id'])['stage'], 'contract')
+
+    def test_managers_and_fallback(self):
+        from crm import DealBook
+        self.conf(mgr={'m2': {'on': False}, 'm1': {'dir': 'both'}}, fallback='m1')
+        d2 = self.kp('26-0102', authorId='m2', manager='Петров Олег')
+        self.push(d2)
+        self.assertEqual(self.fake.deals, {}, 'менеджер не участвует — его сделки не уходят')
+        self.fake.new_deal(TITLE='Сделка Петрова', ASSIGNED_BY_ID='8')
+        self.fake.new_deal(TITLE='Сделка без пары', ASSIGNED_BY_ID='99')
+        res = self.sync().run()
+        self.assertEqual((res['created'], res['skipped']), (1, 1), res)
+        got = next(x for x in DealBook(self.st).deals(None) if x['title'] == 'Сделка без пары')
+        self.assertEqual(got['managerId'], 'm1', 'ответственный не сопоставлен — менеджеру по правилу')
+        self.conf(fallback='skip')
+        self.fake.new_deal(TITLE='Ещё без пары', ASSIGNED_BY_ID='99')
+        self.assertEqual(self.sync().run()['created'], 0)
+
+    def test_field_map(self):
+        self.conf(fields={'KP_PROFIT': {'dir': 'off'}, 'KP_COST': {'bx': 'UF_CRM_1700000001'}, 'dealNo': {'dir': 'out'},
+                          'title': {'dir': 'out'}, 'note': {'win': 'ours'}})
+        did = self.kp('26-0103')
+        self.push(did)
+        d = list(self.fake.deals.values())[0]
+        self.assertNotIn('UF_CRM_KP_PROFIT', d, 'поле выключено — не передаётся')
+        self.assertEqual(d['UF_CRM_1700000001'], 669671.6, 'себестоимость — в существующее поле портала')
+        self.assertNotIn('UF_CRM_KP_COST', d)
+        self.assertIn('UF_CRM_KP_DEALNO', [u['FIELD_NAME'] for u in self.fake.ufields], 'своё поле включили — создано')
+        self.assertNotIn('UF_CRM_KP_PROFIT', [u['FIELD_NAME'] for u in self.fake.ufields])
+        self.assertTrue(d['UF_CRM_KP_DEALNO'])
+        time.sleep(1.1)
+        self.fake.edit_deal(d['ID'], TITLE='Переименовали в Битриксе')
+        self.sync().run()
+        self.push(did)
+        self.assertNotEqual(self.fake.deals[d['ID']]['TITLE'], 'Переименовали в Битриксе', 'название — только из программы')
+        from bitrix import BitrixConf
+        with self.assertRaises(ValueError):
+            BitrixConf(self.st).save({'fields': {'KP_NET': {'dir': 'in'}}}, 'т')      # экономика — только в Битрикс
+        with self.assertRaises(ValueError):
+            BitrixConf(self.st).save({'fields': {'note': {'bx': 'uf crm; drop'}}}, 'т')
+
+    def test_funnels(self):
+        from crm import DealBook
+        self.conf(cats=['0'], stagesBy={'0': {'lead': 'NEW', 'won': 'WON'}}, mgr={'m2': {'cat': '0'}})
+        self.fake.new_deal(TITLE='Из общей воронки', CATEGORY_ID='0', STAGE_ID='NEW', ASSIGNED_BY_ID='7')
+        self.assertEqual(self.sync().run()['created'], 1)
+        got = next(x for x in DealBook(self.st).deals(None) if x['title'] == 'Из общей воронки')
+        self.assertEqual(got['stage'], 'lead')
+        d2 = self.kp('26-0104', authorId='m2', manager='Петров Олег')
+        self.push(d2)
+        mine = [x for x in self.fake.deals.values() if 'UF_CRM_KP_NUMBER' in x]
+        self.assertEqual((mine[0]['CATEGORY_ID'], mine[0]['STAGE_ID']), ('0', 'NEW'), 'сделка менеджера — в его воронку, этап — по её соответствию')
+        v = self.conf(category='0')               # смена основной воронки: этапы прежней остаются за ней, у новой — свои
+        self.assertEqual((v['stages'], v['stagesBy']['3']['lead']), ({'lead': 'NEW', 'won': 'WON'}, 'C3:NEW'))
+
+    def test_send_company_tasks(self):
+        from crm import TaskBook
+        self.conf(send={'rows': True, 'rowsHow': 'sum', 'files': {'word': False}}, company={'create': False},
+                  tasks={'kinds': {'call': 'off', 'meet': 'call'}, 'other': False})
+        did = self.kp('26-0105')
+        self.files['26-0105'] = [('КП.docx', b'PK-docx', 'КП (Word)'), ('КП.pdf', b'%PDF', 'КП (PDF)')]
+        tb = TaskBook(self.st)
+        tb.add({'kind': 'call', 'due': '2026-10-20', 'title': 'Позвонить'}, 'm1', 'И', did)
+        tb.add({'kind': 'meet', 'due': '2026-10-21', 'title': 'Встретиться'}, 'm1', 'И', did)
+        self.push(did)
+        d = list(self.fake.deals.values())[0]
+        self.assertEqual(self.fake.companies, {}, 'компании не создаются')
+        self.assertNotIn('COMPANY_ID', d)
+        self.assertEqual(len(self.fake.rows[d['ID']]), 1, 'товары — одной строкой итога')
+        self.assertEqual([c['FILES'][0][0] for c in self.fake.comments], ['КП.pdf'], 'Word выключен')
+        acts = list(self.fake.activities.values())
+        self.assertEqual([(a['SUBJECT'], a['TYPE_ID']) for a in acts], [('Встреча: Встретиться', '2')], 'звонки не передаются, встреча — делом-звонком')
+        time.sleep(1.1)
+        self.fake.add_activity(d['ID'], 'Своё дело Битрикса', '2026-10-25T10:00:00+03:00', TYPE_ID='6')
+        self.assertEqual(self.sync().run()['tasks'], 0, 'дела, заведённые не программой, — по правилу не загружаются')
+
+    def test_schedule_and_conf(self):
+        from bitrix_rules import BitrixRules
+        from datetime import datetime
+        r = BitrixRules({'sched': {'from': '08:00', 'to': '20:00'}})
+        self.assertTrue(r.in_hours(datetime(2026, 10, 19, 9, 0)))
+        self.assertFalse(r.in_hours(datetime(2026, 10, 19, 21, 0)))
+        self.assertTrue(BitrixRules({'sched': {'from': '22:00', 'to': '06:00'}}).in_hours(datetime(2026, 10, 19, 23, 30)), 'через полночь')
+        now = datetime.now()
+        h0, h1 = (now.hour + 2) % 24, (now.hour + 3) % 24
+        self.conf(sched={'from': '%02d:00' % h0, 'to': '%02d:00' % h1, 'batch': 50, 'tries': 5})
+        self.assertEqual(self.sync().run(), {'hours': True}, 'вне часов обмена — фоновый обмен ждёт')
+        self.assertNotIn('hours', self.sync().run(manual=True), 'кнопкой — всегда')
+        for bad in ({'sched': {'from': '8 утра'}}, {'sched': {'batch': 5}}, {'mode': 'всё'}, {'fallback': 'чужой'}, {'cats': ['x']}):
+            with self.assertRaises(ValueError, msg=bad):
+                self.conf(**bad)
+        v = self.conf(mgr={'m1': {'dir': 'in'}, 'нет-такого': {'on': False}})
+        self.assertEqual(list(v['mgr']), ['m1'], 'неизвестные менеджеры отбрасываются')
+
+    def test_dry_run_and_journal(self):
+        from bitrix import BitrixDry, BitrixLog
+        from crm import DealBook
+        did = self.kp('26-0106')
+        from bitrix import BitrixQueue
+        BitrixQueue.touch(self.st, 'deal', did)
+        self.fake.new_deal(TITLE='Новая для пробы', ASSIGNED_BY_ID='8')
+        n0 = len(DealBook(self.st).deals(None))
+        r = BitrixDry(self.st, direct()).run()
+        self.assertTrue(any(x.startswith('Создать сделку') for x in r['bitrix']), r)
+        self.assertTrue(any('Новая сделка из Битрикс24' in x for x in r['program']), r)
+        self.assertEqual(len(self.fake.deals), 1, 'в Битрикс ничего не записано')
+        self.assertEqual(len(DealBook(self.st).deals(None)), n0, 'в программе ничего не изменилось')
+        self.assertEqual(BitrixQueue(self.st).stats()['queued'], 1, 'очередь та же')
+        # настоящий обмен и журнал «было → стало» с менеджером
+        self.sync().run()
+        bid = next(k for k, x in self.fake.deals.items() if 'UF_CRM_KP_NUMBER' in x)
+        time.sleep(1.1)
+        self.fake.edit_deal(bid, STAGE_ID='C3:EXECUTING')
+        self.sync().run()
+        row = next(x for x in BitrixLog(self.st).tail() if '←' in x['text'] and 'этап' in x['text'])
+        self.assertIn('этап: Запрос → Переговоры', row['text'])
+        self.assertEqual(row['mid'], 'm1')
+
+    def test_old_deals_import(self):
+        from bitrix import BitrixImport
+        from crm import DealBook
+        did = self.kp('26-0107')                    # открытая сделка программы клиента с ИНН 7700000001 — ещё не в Битриксе
+        cid = self.fake.handle('crm.company.add', {'fields': {'TITLE': 'ООО «Альфа»'}})['result']
+        self.fake.handle('crm.requisite.add', {'fields': {'ENTITY_TYPE_ID': 4, 'ENTITY_ID': cid, 'RQ_INN': '7700000001'}})
+        a = self.fake.new_deal(TITLE='Старая Альфа', COMPANY_ID=str(cid), DATE_CREATE='2026-03-01T10:00:00+03:00')
+        b = self.fake.new_deal(TITLE='Старая без клиента', DATE_CREATE='2026-04-01T10:00:00+03:00', ASSIGNED_BY_ID='8')
+        self.fake.new_deal(TITLE='Слишком старая', DATE_CREATE='2025-01-01T10:00:00+03:00')
+        imp = BitrixImport(self.st, direct())
+        with self.assertRaises(ValueError):
+            imp.preview('01.03.2026')
+        pv = imp.preview('2026-02-01')
+        acts = {x['id']: (x['act'], x.get('deal')) for x in pv['items']}
+        self.assertEqual(acts, {a: ('link', did), b: ('new', None)}, pv)
+        res = imp.run('2026-02-01', None, [a, b])
+        self.assertEqual((res['created'], res['linked']), (1, 1), res)
+        got = next(x for x in DealBook(self.st).deals(None) if x['title'] == 'Старая без клиента')
+        self.assertEqual(got['managerId'], 'm2')
+        self.assertFalse(got.get('bxNew'), 'старые сделки не отмечаются «новыми из Битрикса»')
+        self.assertEqual(imp.preview('2026-02-01')['items'], [], 'повторно не предлагаются')
+
+    def test_log_migration(self):
+        from kit import Schema
+        Schema.down_to(self.st, '2027-14-bitrix-log-mid')
+        self.assertNotIn('mid', [r[1] for r in self.st.all('PRAGMA table_info(bx_log)')])
+        self.st.migrations_up()
+        self.assertIn('mid', [r[1] for r in self.st.all('PRAGMA table_info(bx_log)')])
+
+
 class DeskTest(unittest.TestCase):
     """«Настройки → Битрикс24» на стенде: только администратор, ключ не возвращается, файл настроек."""
 
@@ -265,6 +445,37 @@ class DeskTest(unittest.TestCase):
         self.assertEqual(st, 200, b)
         self.assertEqual(Http.js(b)['failed'], [])
         self.assertEqual(self.h.req('POST', '/api/admin/bitrix/resend', {'kind': 'deal', 'id': did}, cookie=adm, headers=dict(A))[0], 404)
+        self.assertEqual(self.stand.request_errors(), [])
+
+
+    def test_desk_rules(self):
+        """Тонкая настройка в «Настройках»: правила сохраняются с проверкой, кнопки обмена, пробный прогон, старые сделки."""
+        adm, A = self.stand.admin()
+        req = lambda p, body: self.h.req('POST', '/api/admin/bitrix' + p, body, cookie=adm, headers=dict(A))
+        st, b, _ = self.h.req('POST', '/api/admin/bitrix', {'url': self.fake.url, 'category': '3', 'on': True}, cookie=adm, headers=dict(A))
+        self.assertEqual(st, 200, b)
+        st, b, _ = req('', {'mode': 'both', 'fields': {'KP_PROFIT': {'dir': 'off'}}, 'sched': {'batch': 100}, 'send': {'fileMB': 10}})
+        self.assertEqual(st, 200, b)
+        v = Http.js(b)['rules']
+        self.assertEqual((v['fields']['KP_PROFIT']['dir'], v['sched']['batch'], v['send']['fileMB']), ('off', 100, 10))
+        self.assertEqual(req('', {'sched': {'from': '25:00'}})[0], 400)
+        self.assertEqual(req('', {'fields': {'KP_NET': {'dir': 'in'}}})[0], 400)
+        st, b, _ = self.h.req('POST', '/api/admin/bitrix', {'mode': 'in'}, headers=Stand.as_manager(SampleData.MANAGERS[0]))
+        self.assertIn(st, (401, 403), 'правила — только администратор')
+        self.assertEqual(req('/stages', {'category': '0'})[0], 200)
+        self.assertEqual(req('/pull', {})[0], 200)
+        self.assertEqual(req('/push', {'number': 'нет-такой'})[0], 404)
+        num = Http.js(self.h.req('GET', '/api/crm/board', headers=Stand.as_manager(SampleData.MANAGERS[0]))[1])['deals'][0]['number']
+        st, b, _ = req('/push', {'number': str(num)})
+        self.assertEqual(st, 200, b)
+        st, b, _ = req('/dry', {})
+        self.assertEqual(st, 200, b)
+        self.assertIn('bitrix', Http.js(b))
+        st, b, _ = req('/import/preview', {'from': '2026-01-01'})
+        self.assertEqual(st, 200, b)
+        self.assertEqual(req('/import/preview', {'from': 'вчера'})[0], 400)
+        st, b, _ = req('/test', {})
+        self.assertTrue(any(f['code'] == 'UF_CRM_1700000001' for f in Http.js(b)['fields']), 'поля портала — для карты полей')
         self.assertEqual(self.stand.request_errors(), [])
 
 

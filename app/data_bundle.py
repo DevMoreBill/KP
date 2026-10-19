@@ -192,6 +192,8 @@ class SettingsFile:
              ('bitrix', 'Битрикс24: воронка, этапы, менеджеры (адрес вебхука — только «с ключами API»)'),
              ('integrations', 'Ключи API (только «с ключами API»)'))
     UPDATE_KEYS = ('repo', 'auto', 'nightly', 'nightHour')
+    BITRIX_KEYS = ('url', 'on', 'category', 'stages', 'users', 'pollSec', 'portal', 'mode', 'flow', 'mgr', 'fallback', 'cats', 'stagesBy',
+                   'fields', 'send', 'company', 'tasks', 'sched')   # служебное (время опроса, созданные поля) — не настройка
 
     def __init__(self, store, by=''):
         self.store, self.by = store, by
@@ -214,7 +216,7 @@ class SettingsFile:
         if k == 'mail' and isinstance(v, dict):
             v = {a: b for a, b in v.items() if a != 'password'}
         if k == 'bitrix' and isinstance(v, dict):         # служебное (время опроса, поля созданы) — не настройка
-            v = {a: b for a, b in v.items() if a in ('url', 'on', 'category', 'stages', 'users', 'pollSec', 'portal') and (keys or a != 'url')}
+            v = {a: b for a, b in v.items() if a in self.BITRIX_KEYS and (keys or a != 'url')}
         if k == 'settings' and isinstance(v, dict) and isinstance(v.get('ai'), dict) and not keys:
             v = dict(v, ai={a: b for a, b in v['ai'].items() if a != 'key'})
         if k == 'update' and isinstance(v, dict):
@@ -304,7 +306,10 @@ class SettingsFile:
         if k == 'integrations' and isinstance(v, dict) and isinstance(cur, dict):
             v = dict(cur, **v)
         if k == 'bitrix' and isinstance(v, dict):         # адреса вебхука в файле нет — остаётся свой; служебное — своё
-            v = dict(cur if isinstance(cur, dict) else {}, **{a: b for a, b in v.items() if a in ('url', 'on', 'category', 'stages', 'users', 'pollSec', 'portal')})
+            v = dict(cur if isinstance(cur, dict) else {}, **{a: b for a, b in v.items() if a in self.BITRIX_KEYS})
+            from bitrix_rules import BitrixRules
+            from crm import Stages
+            BitrixRules.check(v, dict(v), {r[0] for r in st.all('SELECT id FROM managers')}, Stages.keys(st))   # правила — та же проверка, что в «Настройках»
             if v.get('on') and not v.get('url'):
                 v['on'] = False
         if not isinstance(v, (dict, list)):

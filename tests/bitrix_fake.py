@@ -94,7 +94,10 @@ class FakeBitrix:
     @staticmethod
     def match(row, flt):
         for k, v in (flt or {}).items():
-            if k.startswith('>'):
+            if isinstance(v, list):                      # список значений — «одно из»
+                if str(row.get(k) if row.get(k) is not None else '') not in {str(x) for x in v}:
+                    return False
+            elif k.startswith('>'):
                 if not str(row.get(k[1:]) or '') > str(v):
                     return False
             elif str(row.get(k) if row.get(k) is not None else '') != str(v):
@@ -114,6 +117,12 @@ class FakeBitrix:
                               for s, n, sem in self.stages.get(ent, [])], b)
         if m == 'user.get':
             return self.page(self.users, b)
+        if m == 'crm.deal.fields':
+            out = {'TITLE': {'type': 'string', 'title': 'Название'}, 'COMMENTS': {'type': 'string', 'title': 'Комментарий'},
+                   'ID': {'type': 'integer', 'isReadOnly': True, 'title': 'ID'}}
+            for u in self.ufields + [{'FIELD_NAME': 'UF_CRM_1700000001', 'USER_TYPE_ID': 'double', 'L': 'Маржа (отдел продаж)'}]:
+                out[u['FIELD_NAME']] = {'type': u['USER_TYPE_ID'], 'formLabel': u.get('L') or u['FIELD_NAME'], 'title': u['FIELD_NAME']}
+            return {'result': out}
         if m == 'crm.deal.userfield.list':
             return self.page(self.ufields, b)
         if m == 'crm.deal.userfield.add':
@@ -195,8 +204,8 @@ class FakeBitrix:
 
     def new_deal(self, **f):
         i = self._id()
-        self.deals[i] = dict({'TITLE': 'Сделка с сайта', 'CATEGORY_ID': '3', 'STAGE_ID': 'C3:NEW', 'ASSIGNED_BY_ID': '7', 'OPPORTUNITY': '0'}, **f,
-                             ID=i, DATE_CREATE=self.now(), DATE_MODIFY=self.now())
+        self.deals[i] = dict({'TITLE': 'Сделка с сайта', 'CATEGORY_ID': '3', 'STAGE_ID': 'C3:NEW', 'ASSIGNED_BY_ID': '7', 'OPPORTUNITY': '0',
+                              'DATE_CREATE': self.now()}, **f, ID=i, DATE_MODIFY=self.now())
         return i
 
     def add_activity(self, owner, subj, deadline, **f):

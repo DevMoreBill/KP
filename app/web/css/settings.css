@@ -714,12 +714,27 @@ dialog.st-confirm.mv>*{flex-shrink:0}
 
 /* Битрикс24 (settings-bitrix.js) */
 .bx-st{margin:6px 0 10px;font-size:13.5px}
+.bx-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:0 0 12px;background:var(--card)}
+.bx-tabs button{border:0;border-left:1px solid var(--line);border-top:1px solid var(--line);margin-top:-1px;background:transparent;color:var(--ink);font:inherit;font-size:14px;font-weight:500;min-height:40px;padding:6px 8px;cursor:pointer;white-space:nowrap;touch-action:manipulation}
+.bx-tabs button:nth-child(5n+1){border-left:0}
+.bx-tabs button.on{background:var(--navy);color:var(--on-navy)}
+.bx-why{margin:8px 0 0}
+.bx-map label small{display:block;font-size:12.5px;margin-top:1px}
+.bx-chips{display:flex;flex-wrap:wrap;gap:6px 16px;margin:4px 0 8px}
+.bx-hr{border:0;border-top:1px solid var(--line);margin:12px 0}
+.bx-mt td,.bx-ft td{vertical-align:middle}.bx-mt select,.bx-ft select{min-width:150px;max-width:320px}
+.bx-ft tr.off td:first-child{color:var(--muted)}
+.bx-btns{flex-wrap:wrap;gap:8px;margin-top:8px}.bx-num{max-width:260px}.bx-hours{display:inline-flex;align-items:center;gap:8px}.bx-hours input{width:auto}
+.bx-dry2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:8px;font-size:13.5px}
+.bx-dry{margin:4px 0 0;padding-left:18px;max-height:300px;overflow:auto}
+.bx-it td{font-size:13.5px}
+#bxLogMid{width:auto;max-width:260px}
+@media (max-width:760px){.bx-tabs{display:flex;flex-wrap:wrap}.bx-tabs button{flex:1 1 30%;min-height:44px;border-left:1px solid var(--line)}.bx-dry2{grid-template-columns:minmax(0,1fr)}.bx-num{max-width:none;flex:1 1 100%}}
 .bx-map{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:10px;align-items:center;padding:4px 0}
 .bx-map label{font-size:14px}
 .bx-map select{max-width:420px}
-.bx-poll{margin-left:auto;max-width:230px}
 .bx-log{max-height:320px;overflow:auto;font-size:13px;display:grid;gap:3px}
-@media (max-width:760px){.bx-map{grid-template-columns:minmax(0,1fr);gap:4px;padding:6px 0}.bx-map select{max-width:none}.bx-poll{margin-left:0;max-width:none;flex:1 1 100%}}
+@media (max-width:760px){.bx-map{grid-template-columns:minmax(0,1fr);gap:4px;padding:6px 0}.bx-map select{max-width:none}}
 .bx-fail{display:grid;gap:6px}
 .bx-f{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line)}
 .bx-f:first-child{border-top:0}

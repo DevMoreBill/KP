@@ -44,7 +44,7 @@ class Modes:
            'phd': dict(BASE, viewport={'width': 430, 'height': 932}, color_scheme='dark', is_mobile=True, has_touch=True,
                        device_scale_factor=3, user_agent=IPHONE)}
     STAGES = ('client', 'cat', 'editor', 'station', 'price', 'deal', 'steps', 'preview', 'save', 'files', 'mail',
-              'journal', 'misc', 'settings', 'dbl')
+              'journal', 'misc', 'settings', 'bitrix', 'dbl')
 
     @staticmethod
     def chromium():
@@ -83,11 +83,15 @@ class UiStand:
             c.close()
 
     def start(self):
+        from bitrix_fake import FakeBitrix
         self.st.start(timeout=240)
         self.st.admin()
-        return {'port': self.st.http.port, 'admin': list(self.st.ADMIN)}
+        self.bx = FakeBitrix()                  # подставной Битрикс24 — для этапа «bitrix» (вкладки связи в «Настройках»)
+        return {'port': self.st.http.port, 'admin': list(self.st.ADMIN), 'bitrix': self.bx.url}
 
     def close(self):
+        if getattr(self, 'bx', None):
+            self.bx.stop()
         self.st.close()
 
 
@@ -686,6 +690,43 @@ class Scenario(UiRun):
                     self.snap('c2_set_%s_sub%d' % (t, k), '#setdlg', wait=1000)
             except Exception as e:
                 self.errs.append(('settings', 'SCRIPT-sub', str(e)[:100]))
+
+    def s_bitrix(self):
+        """«Настройки → Подключения и ключи → Битрикс24» на подставном Битриксе: связь, все вкладки, пробный прогон, старые сделки."""
+        pg = self.pg
+        self.closeall()
+        self.ev("openSettings('services')")
+        self.wait(1500)
+        if pg.locator('#stPw').count():
+            if pg.locator('#stLg').count():
+                pg.fill('#stLg', self.cfg['admin'][0])
+            pg.fill('#stPw', self.cfg['admin'][1])
+            pg.keyboard.press('Enter')
+            self.wait(2000)
+        self.ev("try{ localStorage.setItem('kp.bxtab', 'link'); }catch(e){}")
+        pg.wait_for_selector('#setdlg #bxUrl', timeout=20000)        # «Битрикс24» — раздел на вкладке «Подключения и ключи»
+        pg.fill('#setdlg #bxUrl', self.cfg['bitrix'])
+        pg.click('#setdlg #bxTest')
+        pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Связь есть')", timeout=30000)
+        if not self.ev("document.querySelector('#setdlg #bxOn').checked"):   # режимы идут параллельно на одном стенде — включить один раз
+            pg.click('#setdlg #bxOn')
+        pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Последний обмен')", timeout=30000)
+        tabs = self.ev("BitrixPanel.TABS.map(t=>t[0])")
+        for t in tabs:
+            pg.click('#setdlg [data-bxtab="%s"]' % t)
+            self.wait(1500)
+            if t == 'log':
+                pg.click('#setdlg #bxDry')
+                pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Пробный прогон готов') || document.querySelector('#setdlg .msg.err')", timeout=60000)
+            if t == 'old':
+                pg.fill('#setdlg #bxFromD', '2026-01-01')
+                pg.click('#setdlg #bxImpPv')
+                pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Найдено') || document.querySelector('#setdlg .msg.err')", timeout=60000)
+            if pg.locator('#setdlg .msg.err').count():
+                self.errs.append(('bitrix', 'ERR', '%s: %s' % (t, pg.locator('#setdlg .msg.err').first.inner_text()[:200])))
+            self.ev("document.querySelector('#setdlg .bx-tabs').scrollIntoView()")
+            self.snap('d_bx_' + t, '#setdlg .st-part:has(.bx-tabs)', wait=300)
+        self.closeall()
 
     def s_dbl(self):
         """Двойной щелчок по кнопкам, открывающим окна: окно одно и не пустое."""
