@@ -1726,4 +1726,36 @@ Check.run('отопление без зимней температуры в тр
   assert.ok(p.issues.some(i=>/уточните у заказчика/.test(i.text)), 'замечание «уточните у заказчика»');
 });
 
+Check.run('окраска контейнера: на один цвет — одно окно, буклет, рисунки заказчика (19.10)', ()=>{
+  // прежнее «Цвет»: первый RAL — стены, второй — каркас; крыша — в цвет каркаса, двери — стен, пол — по материалу
+  const old=C('block', { sizeAuto:true }), o=StationPaint.of(old);
+  assert.deepStrictEqual([o.wall, o.frame, o.roof, o.door, o.floor], ['RAL 7035', 'RAL 5005', '', '', ''], 'прежнее поле «Цвет»');
+  let k=StationPaint.colors(old); assert.ok(k.wall==='#CBD0CC' && k.frame==='#154889' && k.roof===k.frame && k.door===k.wall && k.floor===null, 'по умолчанию: крыша — каркас, двери — стены');
+  assert.strictEqual(StationPaint.kp(old), 'каркас RAL 5005, стены RAL 7035, крыша RAL 5005, пол — сталь рифлёная, чёрная', 'строка «Окраска» в КП');
+  // отдельные окна: правка одного не трогает остальные, прежнее поле больше не читается
+  const c=C('block', { sizeAuto:true }); StationPaint.set(c, 'roof', 'RAL 9006'); StationPaint.set(c, 'door', 'RAL 3020'); StationPaint.set(c, 'floor', 'RAL 7016');
+  assert.ok(!('ral' in c) && c.paint.wall==='RAL 7035' && c.paint.frame==='RAL 5005' && c.paint.roof==='RAL 9006', 'окна раздельно');
+  k=StationPaint.colors(c); assert.ok(k.roof==='#A5A8A6' && k.door==='#C1121C' && k.floor==='#373F43', 'цвета частей');
+  assert.strictEqual(StationPaint.kp(c), 'каркас RAL 5005, стены RAL 7035, крыша RAL 9006, двери и ворота RAL 3020, пол RAL 7016');
+  assert.ok(/крыша — RAL 9006; двери и ворота — RAL 3020; пол — окраска RAL 7016/.test(StationPaint.tz(c)), 'ТЗ: каждая часть');
+  StationPaint.set(c, 'nope', 'x'); assert.ok(!('nope' in c.paint), 'чужое поле не пишется');
+  const sea=C('sea20', {}); assert.ok(!/крыша/.test(StationPaint.kp(sea)), 'у морского — крыша штатная, в КП не пишется');
+  assert.strictEqual(StationPaint.kp(C('block', { ral:'' })), '', 'ничего не задано — строки нет');
+  // буклет: в КП — только «по буклету», в ТЗ — ориентир цветами
+  const b=C('block', { sizeAuto:true, paintBook:true }); assert.strictEqual(StationPaint.kp(b), 'по буклету цветовых решений заказчика');
+  assert.ok(/^по буклету цветовых решений заказчика \(приложение к ТЗ\); для ориентира: каркас — RAL 5005/.test(StationPaint.tz(b)), 'ТЗ: буклет');
+  // 3D: крыша, двери, пол — своим цветом; рисунок заказчика — на стене снаружи, логотип и знаки — мимо
+  const pl=solve(Object.assign(C('block', { sizeAuto:true, paint:{ frame:'RAL 5005', wall:'RAL 7035', roof:'RAL 9006', floor:'', door:'RAL 3020' } }),
+    { art:[{ src:'/img/a.png', wall:'left', x:0.5, z:0.5, w:1200, ar:2 }, { src:'/img/b.png', wall:'back', x:0.3, z:0.75, w:99999, ar:1 }, { src:'', wall:'front' }, { src:'/img/c.png', wall:'roof' }] }), [comp, dryer, rec, cab]);
+  assert.ok(pl.roofColor==='#A5A8A6' && pl.doorColor==='#C1121C' && pl.floorColor===null && pl.arts.length===2, 'план: цвета и рисунки (без пустых и чужих стен)');
+  const sc=new StScene(pl, { view:'out' }).build(), D=[...sc.decals.values()], art=D.filter(d=>d.type==='art');
+  assert.ok(sc.roofC==='#A5A8A6' && sc.door==='#C1121C', '3D: крыша и двери своим цветом');
+  assert.ok(art.length===2 && art.some(d=>d.src==='/img/a.png' && Math.abs(d.ar-2)<1e-9), '3D: рисунки заказчика на стенах');
+  const lg=sc.outfit.log.filter(q=>q.kind==='art'); assert.ok(lg.length===2 && lg.find(q=>q.wall==='back').w<=sc.Le*1000-300, 'рисунок не шире стены');
+  assert.ok(lg.find(q=>q.wall==='left').free, 'рисунок — мимо дверей, ворот, жалюзи: '+JSON.stringify(lg));
+  assert.ok(sc.outfit.artL===true, 'на торце с рисунком — логотипа нет');
+  const h1=StationLayout.hash({ cont:C('block', {}), parts:[comp] }), h2=StationLayout.hash({ cont:C('block', { art:[{ src:'/img/a.png', wall:'left' }] }), parts:[comp] });
+  assert.ok(h1!==h2 && h1!==StationLayout.hash({ cont:C('block', { paintBook:true }), parts:[comp] }), 'отпечаток: рисунки и буклет — картинки пересобираются');
+});
+
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);

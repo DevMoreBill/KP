@@ -37,16 +37,22 @@ class StDecal {
   }
   /** загрузить картинки логотипов, нужные сцене (до отрисовки кадра) */
   static async prepare(scene){
-    for (const d of scene.decals.values()){ if (d.type!=='logo' || typeof logoFor!=='function') continue;
-      const lg=logoFor(d.maker); if (!lg || !lg.src || this.imgs.has(lg.src)) continue;
-      try{ this.imgs.set(lg.src, await readImg(lg.src)); } catch(e){ this.imgs.set(lg.src, null); } }
+    for (const d of scene.decals.values()){
+      const src=d.type==='art' ? d.src : d.type==='logo' && typeof logoFor==='function' ? (logoFor(d.maker)||{}).src : null;   // рисунок заказчика или логотип
+      if (!src || this.imgs.has(src)) continue;
+      try{ this.imgs.set(src, await readImg(src)); } catch(e){ this.imgs.set(src, null); } }
   }
   /** холст наклейки по описанию: ширина до 1024 точек, высота — по пропорции */
   static canvas(d){
     const ar=Math.max(0.2, Math.min(12, d.ar || this.AR[d.id] || 1)), W=ar>=1 ? 1024 : Math.round(1024*ar), H=Math.max(16, Math.round(W/ar));
     const c=document.createElement('canvas'); c.width=W; c.height=H; const g=c.getContext('2d');
-    if (d.type==='brand') this.brand(g, W, H, d); else if (d.type==='logo') this.logo(g, W, H, d); else this.sign(g, W, H, d.id, d);
+    if (d.type==='brand') this.brand(g, W, H, d); else if (d.type==='art') this.art(g, W, H, d); else if (d.type==='logo') this.logo(g, W, H, d); else this.sign(g, W, H, d.id, d);
     return c;
+  }
+  /** рисунок заказчика — картинка во весь холст (прозрачное — прозрачным); не загрузилась — пустая рамка */
+  static art(g, W, H, d){
+    const im=this.imgs.get(d.src); if (im){ g.drawImage(im, 0, 0, W, H); return; }
+    g.strokeStyle='rgba(0,0,0,.35)'; g.lineWidth=Math.max(4, W/120); g.setLineDash([W/40, W/60]); g.strokeRect(g.lineWidth, g.lineWidth, W-2*g.lineWidth, H-2*g.lineWidth);
   }
   static AR = { F04:1, W01:1.15, W08:1.15, P02:1, P06:1, EXIT:2.77, POW_OUT:2.77, POW_NO:2.77, AUTO_OFF:2.77, DT:1.85, CAT:1.5, OPS:2.68, SLING:0.6, COG:1, MASS:2.65, FLOW:3.2, FLOWV:0.3125 };
 

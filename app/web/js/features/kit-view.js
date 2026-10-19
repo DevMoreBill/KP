@@ -640,19 +640,19 @@ class KitView {
         ${sel('climate', CLIMATES.map(c=>[c[0], c[0]+' — до '+c[2]+' °C']), p.climate, 'Климатическое исполнение')}
         <label class="f"><span>Сборщик контейнера${tip('Кто изготавливает контейнер и собирает станцию. Элементы «Сборщика контейнера» без своего поставщика в «Экономике сделки» попадут к нему; наше оборудование едет к нему на сборку.')}</span><input type="text" list="kitSupL" data-p="${P}.sup" value="${esc(p.sup||'')}" placeholder="производитель контейнеров"></label>
         <label class="f"><span>Закупка контейнера</span><span class="kit-cost"><input type="text" inputmode="decimal" data-kitcost="${i}.${j}" value="${esc(ct)}" placeholder="цена из счёта"><select data-kitcur="${i}.${j}" aria-label="Валюта закупки">${DEAL_CURS.map(c=>`<option${(p.costCur||'RUB')===c ? ' selected' : ''}>${c}</option>`).join('')}</select></span></label></div>
-      <details class="kc-more"${Spoiler.attr('cont:'+x.id)}><summary>Крыша, пол, цвет${this.look(p)}</summary><div class="kc-g">
+      <details class="kc-more"${Spoiler.attr('cont:'+x.id)}><summary>Крыша, пол, окраска${this.look(p)}</summary><div class="kc-g">
         ${StationGeo.SEA[p.ctype] ? '' : sel('roof', Object.entries(StationGeo.ROOFS).map(([k, r])=>[k, r.deg ? `${r.name} (${r.deg}°)` : r.name]), StationGeo.roof(p), 'Крыша')}
         ${sel('floor', Object.entries(StationGeo.FLOORS).map(([k, f])=>[k, f.short]), StationGeo.floor(p), 'Пол')}
-        <label class="f"><span>Цвет</span><input type="text" data-kitct="${i}.${j}" data-fld="ral" value="${esc(p.ral||'')}" placeholder="RAL 7004 / RAL 5005"></label></div></details>
+</div>${PaintView.html(p, i, j)}</details>
       ${auto && p.lenFix ? StationSize.note(p, StationUi.plan(x), i) : ''}
       ${auto && !p.sizeAuto && sz ? `<p class="muted kit-szn">Размер задан вручную — <button type="button" class="lnk" data-a="stlAuto" data-i="${i}">подобрать по оборудованию</button></p>` : ''}
       <div class="kit-sys"><span class="muted">Системы:</span>${CONT_SYSTEMS.map(([id, k, v])=>{ const on=KitView.sysOn(x, p, id); return `<button type="button" class="chip sm${on ? ' on' : ''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!on}" title="${esc(v)}">${esc(k)}</button>`; }).join('')}</div></div>`;
   }
 
-  /** выбранное исполнение коротко — в заголовке свёрнутого блока: «: скатная · сталь чёрная · RAL 7004» */
+  /** выбранное исполнение коротко — в заголовке свёрнутого блока: «(крыша скатная · пол — сталь чёрная · RAL 7035 / RAL 5005)» */
   static look(p){
     const r=StationGeo.SEA[p.ctype] ? null : StationGeo.ROOFS[StationGeo.roof(p)], f=StationGeo.FLOORS[StationGeo.floor(p)];
-    const t=[r && 'крыша '+r.name, f && 'пол — '+f.short, String(p.ral||'').trim()].filter(Boolean).join(' · ');
+    const n=StationPaint.arts(p).length, t=[r && 'крыша '+r.name, f && 'пол — '+f.short, StationPaint.short(p), n && 'рисунков: '+n].filter(Boolean).join(' · ');
     return t ? ` <span class="muted">(${esc(t)})</span>` : '';
   }
 
@@ -789,3 +789,69 @@ class DrawPic {
 }
 
 document.addEventListener('change', e=>{ const t=e.target; if (t && t.dataset && t.dataset.req!=null) StationReq.change(t); });
+
+// ---- окраска контейнера в «Крыша, пол, окраска» (StationPaint): на один цвет — одно окно (каркас, стены, крыша, пол, двери и
+// ворота), «Окраска по буклету заказчика» с файлом, рисунки заказчика на стенах (картинка, стена, место, ширина). Файлы —
+// сразу на сервер отдела (data/img), в КП — ссылка.
+class PaintView {
+  static RAL = ['1015', '1018', '2004', '3000', '3020', '5002', '5005', '5010', '5015', '6005', '6018', '6029', '7004', '7016', '7024', '7035', '7040', '8017', '9003', '9005', '9006', '9010', '9016'];
+
+  static html(p, i, j){
+    const o=StationPaint.of(p), sea=StationGeo.SEA[p.ctype], id=`ralL${i}_${j}`, at=`data-i="${i}" data-j="${j}"`;
+    const field=([k, name, ph])=>{ if (k==='roof' && sea) return ''; const hx=StationPaint.hex(o[k]);
+      return `<label class="f"><span>${esc(name)}</span><span class="kc-ral"><i class="kc-sw${hx ? '' : ' none'}"${hx ? ` style="background:${esc(hx)}"` : ''}></i><input type="text" data-kitpaint="${i}.${j}" data-k="${k}" value="${esc(o[k])}" placeholder="${esc(ph)}" list="${id}" maxlength="60" aria-label="${esc(name)}"></span></label>`; };
+    const f=p.paintFile, book=StationPaint.book(p);
+    const arts=StationPaint.arts(p), opt=(L, v)=>L.map(([x, t])=>`<option value="${x}"${Math.abs(x-v)<0.01 ? ' selected' : ''}>${esc(t)}</option>`).join('');
+    const near=(L, v)=>L.reduce((b, q)=>Math.abs(q[0]-v)<Math.abs(b[0]-v) ? q : b)[0];
+    return `<div class="kc-g kc-paints">${StationPaint.PARTS.map(field).join('')}</div>
+      <datalist id="${id}">${this.RAL.map(c=>`<option value="RAL ${c}">`).join('')}</datalist>
+      <div class="kc-book"><label class="stl-chk"><input type="checkbox" data-kitbook="${i}.${j}"${book ? ' checked' : ''}> Окраска по буклету заказчика</label>${tip('В КП — строка «Окраска — по буклету цветовых решений заказчика». Файл буклета (PDF или картинка) уходит в ТЗ на сборку. Цвета выше — для 3D-вида и как ориентир сборщику.')}
+        ${book ? (f && f.src ? `<a href="${esc(f.src)}" target="_blank" rel="noopener">📎 ${esc(f.name||'буклет')}</a> <button type="button" class="lnk" data-a="paintFileDel" ${at}>убрать</button>`
+          : `<button type="button" class="btn sm" data-a="paintFile" ${at}>Файл буклета — PDF или картинка</button>`) : ''}</div>
+      <div class="kc-arts">${arts.map((a, k)=>`<div class="kc-art"><img src="${esc(a.src)}" alt="" loading="lazy">
+          <select data-kitart="${i}.${j}.${k}" data-k="wall" aria-label="Стена">${Object.entries(StationPaint.WALLS).map(([w, t])=>`<option value="${w}"${w===a.wall ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>
+          <select data-kitart="${i}.${j}.${k}" data-k="x" aria-label="Место по длине">${opt(StationPaint.ALONG, near(StationPaint.ALONG, a.x))}</select>
+          <select data-kitart="${i}.${j}.${k}" data-k="z" aria-label="Место по высоте">${opt(StationPaint.HIGH, near(StationPaint.HIGH, a.z))}</select>
+          <label class="kc-artw"><input type="text" inputmode="numeric" data-kitart="${i}.${j}.${k}" data-k="w" value="${a.w}" aria-label="Ширина рисунка, мм"> мм</label>
+          <button type="button" class="lnk" data-a="paintArtDel" ${at} data-k="${k}" title="Убрать рисунок" aria-label="Убрать рисунок">✕</button></div>`).join('')}
+        ${arts.length<StationPaint.ART_MAX ? `<span class="kc-book"><button type="button" class="btn sm ghost" data-a="paintArt" ${at}>+ Рисунок заказчика на стене</button>${tip('Картинка (PNG с прозрачностью, JPEG) — на выбранной стене снаружи: видна на 3D-виде и видах снаружи, в ТЗ на сборку — с местом и размером.')}</span>` : ''}</div>`;
+  }
+
+  /** окно окраски, место или размер рисунка изменены */
+  static change(t){
+    const [i, j, k]=String(t.dataset.kitpaint || t.dataset.kitbook || t.dataset.kitart).split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
+    if (t.dataset.kitpaint!=null) StationPaint.set(p, t.dataset.k, t.value);
+    else if (t.dataset.kitbook!=null) p.paintBook=t.checked;
+    else { const a=(p.art||[])[k]; if (!a) return; const f=t.dataset.k;
+      if (f==='wall' && StationPaint.WALLS[t.value]) a.wall=t.value;
+      else if (f==='x' || f==='z') a[f]=StationPaint.frac(+t.value, 0.5);
+      else if (f==='w'){ const n=Math.round(dNum(t.value)); if (n>=100 && n<=12000) a.w=n; else toast('Ширина рисунка — от 100 до 12 000 мм'); } }
+    contApply(p); StationUi.cache.delete(it.id); renderForm(); persist();
+  }
+
+  /** кнопки: файл буклета, рисунок заказчика — загрузить или убрать */
+  static act(a, i, b){
+    const it=S.items[i], p=kitParts(it)[+b.dataset.j]; if (!p) return false;
+    const done=()=>{ contApply(p); StationUi.cache.delete(it.id); renderForm(); persist(); };
+    if (a==='paintFileDel'){ delete p.paintFile; return true; }
+    if (a==='paintArtDel'){ (p.art||[]).splice(+b.dataset.k, 1); if (p.art && !p.art.length) delete p.art; StationUi.cache.delete(it.id); return true; }
+    const book=a==='paintFile', f=$('#filePick'); f.value=''; f.multiple=false; f.accept=book ? 'application/pdf,image/png,image/jpeg,image/webp' : 'image/png,image/jpeg,image/webp';
+    f.onchange=async ()=>{ const fl=f.files[0]; f.accept=''; if (!fl) return;
+      try{ toast('Загружаю «'+fl.name+'»…');
+        if (book){ const pdf=/pdf$/i.test(fl.type) || /\.pdf$/i.test(fl.name);
+          const src=pdf ? '/img/'+(await api('/api/img?'+this.q(it, 'booklet', fl.name), { method:'POST', body:fl })).name : (await this.upload(fl, it, 'буклет окраски')).src;
+          p.paintFile={ src, name:String(fl.name).slice(0, 120), pdf }; }
+        else { const im=await this.upload(fl, it, 'рисунок заказчика'); (p.art=p.art||[]).push({ src:im.src, name:String(fl.name).slice(0, 120), wall:'front', x:0.5, z:0.5, w:1500, ar:im.ar }); }
+        done(); }
+      catch(e){ toast('Не удалось загрузить файл: '+(e && e.message || e)); } };
+    f.click(); return 'async';
+  }
+  static q(it, kind, caption){ return Object.entries({ ...imgPlace(it, kind, { caption }), ext:'pdf' }).map(([k, v])=>k+'='+encodeURIComponent(v||'')).join('&'); }
+  /** картинка: не больше 2000 точек, прозрачность сохраняется (PNG) → на сервер; ar — ширина / высота */
+  static async upload(file, it, caption){
+    const url=await fileToURL(file), im=await readImg(url), sc=Math.min(1, 2000/Math.max(im.width, im.height)), w=Math.max(1, Math.round(im.width*sc)), h=Math.max(1, Math.round(im.height*sc));
+    const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(im, 0, 0, w, h);
+    const png=/png|webp/i.test(file.type), r=await ImgUpload.put({ src:c.toDataURL(png ? 'image/png' : 'image/jpeg', 0.9) }, imgPlace(it, 'gallery', { caption }));
+    return { src:r.src, ar:w/h };
+  }
+}

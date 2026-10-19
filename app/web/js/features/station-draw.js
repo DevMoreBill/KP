@@ -871,7 +871,7 @@ class StationView3D {
     const k=Math.min(this.W*0.9/(maxX-minX), H*0.84/(maxY-minY)), tx=(this.W-(maxX-minX)*k)/2-minX*k, ty=(H-(maxY-minY)*k)/2-minY*k+H*0.02;
     const P=(x, y, z)=>{ const p=P0(x, y, z); return [p[0]*k+tx, p[1]*k+ty]; };
     const V=new StView(P, k, se, S);
-    const wall=(plan.wallColor||'#CBD0CC'), frame=(plan.frameColor||RalColor.shade(wall, 0.7)), lining=RalColor.mix('#eef1f4', wall, 0.1);
+    const wall=(plan.wallColor||'#CBD0CC'), frame=(plan.frameColor||RalColor.shade(wall, 0.7)), roofC=plan.roofColor||frame, lining=RalColor.mix('#eef1f4', wall, 0.1);
     const band=Math.max(650, Math.min(900, He*0.3)), out=[];
     // земля и тень контейнера
     const sh=[P(-300, -250, 0), P(Le+500, -250, 0), P(Le+500, We+450, 0), P(-300, We+450, 0)];
@@ -880,8 +880,8 @@ class StationView3D {
     // задняя стена и дальний торец — изнутри; верх стен, стойки и балки сзади
     out.push(V.face([[ox, oy+Wi, base], [ox+Li, oy+Wi, base], [ox+Li, oy+Wi, top], [ox, oy+Wi, top]], lining, 1));
     out.push(V.face([[ox+Li, oy, base], [ox+Li, oy+Wi, base], [ox+Li, oy+Wi, top], [ox+Li, oy, top]], RalColor.shade(lining, 0.9), 1));
-    out.push(V.face([[0, oy+Wi, top], [Le, oy+Wi, top], [Le, We, top], [0, We, top]], RalColor.shade(frame, 1.08), 1));   // крыша в разрезе — в цвет каркаса
-    out.push(V.face([[ox+Li, 0, top], [Le, 0, top], [Le, We, top], [ox+Li, We, top]], RalColor.shade(frame, 1.08), 1));
+    out.push(V.face([[0, oy+Wi, top], [Le, oy+Wi, top], [Le, We, top], [0, We, top]], RalColor.shade(roofC, 1.08), 1));   // крыша в разрезе — своим цветом (по умолчанию каркаса)
+    out.push(V.face([[ox+Li, 0, top], [Le, 0, top], [Le, We, top], [ox+Li, We, top]], RalColor.shade(roofC, 1.08), 1));
     if (!g.sea) for (let x=ox+1150; x<ox+Li-100; x+=1150) out.push(V.line([x, oy+Wi-1, base], [x, oy+Wi-1, top], RalColor.shade(lining, 0.86), 1.2));
     if (g.sea) for (let x=ox+300; x<ox+Li-100; x+=560) out.push(V.face([[x, oy+Wi-1, base], [x+280, oy+Wi-1, base], [x+280, oy+Wi-1, top], [x, oy+Wi-1, top]], RalColor.shade(lining, 0.96), 0));
     out.push(...V.box(0, We-150, dz, 150, We, top, frame), ...V.box(Le-150, We-150, dz, Le, We, top, frame));

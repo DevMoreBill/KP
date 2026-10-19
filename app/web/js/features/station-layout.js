@@ -50,6 +50,86 @@ class RalColor {
   static light(hex){ const [r, g, b]=this.rgb(hex); return (0.299*r+0.587*g+0.114*b)/255; }
 }
 
+// ---------------------------------------------------------------- окраска контейнера (решение владельца 19.10: «на один цвет —
+// одно окно»): каркас, стены, крыша, пол, двери и ворота — каждое своим полем (RAL или словами); крыша пустая — в цвет каркаса,
+// двери и ворота — в цвет стен, пол — по материалу (сталь чёрная / алюминий без окраски). Прежнее поле «Цвет» (p.ral:
+// «RAL 7035 / RAL 5005» — стены / каркас) читается, пока менеджер не изменит окраску. «Окраска по буклету заказчика» —
+// галочка и файл (PDF или картинка, p.paintFile). Рисунки заказчика (p.art) — картинка, стена, место и ширина.
+class StationPaint {
+  static PARTS = [['frame', 'Цвет каркаса', 'RAL 5005'], ['wall', 'Цвет стен', 'RAL 7035'], ['roof', 'Цвет крыши', 'как каркас'], ['floor', 'Цвет пола', 'по материалу'], ['door', 'Цвет дверей и ворот', 'как стены']];
+  static WALLS = { front:'Передняя стена', back:'Задняя стена', left:'Левый торец', right:'Правый торец' };
+  static ALONG = [[0.15, 'у левого края'], [0.3, 'левее центра'], [0.5, 'по центру'], [0.7, 'правее центра'], [0.85, 'у правого края']];
+  static HIGH = [[0.75, 'вверху'], [0.5, 'посередине'], [0.3, 'внизу']];
+  static ART_MAX = 6;
+
+  /** окраска частей: {frame, wall, roof, floor, door} — строки, как вписал менеджер (пустая — по умолчанию) */
+  static of(c){
+    c=c||{}; const p=c.paint && typeof c.paint==='object' ? c.paint : null, o={};
+    if (p){ for (const [k] of this.PARTS) o[k]=String(p[k]||'').trim(); return o; }
+    const r=RalColor.codes(c.ral), txt=String(c.ral||'').trim();   // прежнее «Цвет»: первый RAL — стены, второй — каркас
+    for (const [k] of this.PARTS) o[k]='';
+    if (r.length){ o.wall=r[0].code; o.frame=r[1] ? r[1].code : ''; } else o.wall=txt;
+    return o;
+  }
+  /** поле окраски изменено менеджером: окраска — отдельными полями, прежнее «Цвет» больше не читается */
+  static set(c, key, value){
+    if (!this.PARTS.some(([k])=>k===key)) return;
+    c.paint={ ...this.of(c), [key]:String(value||'').trim().slice(0, 60) }; delete c.ral;
+  }
+  /** цвет части: RAL → hex; «синий», «серый» → условный; null — не задан */
+  static hex(text){ const r=RalColor.codes(text); return r[0] ? r[0].hex : RalColor.named(text); }
+  /** «RAL 7035» — как в документе: код RAL, иначе текст менеджера */
+  static code(text){ const r=RalColor.codes(text); return r[0] ? r[0].code : String(text||'').trim(); }
+  /** цвета для 3D и видов: стены, каркас (не заданы — RAL 7035 / RAL 5005 условно), крыша, двери, пол (null — по материалу) */
+  static colors(c){
+    const o=this.of(c), w=this.hex(o.wall), f=this.hex(o.frame);
+    const wall=w || '#CBD0CC', frame=f || (w ? RalColor.shade(wall, 0.72) : '#154889');
+    return { wall, frame, roof:this.hex(o.roof) || frame, door:this.hex(o.door) || wall, floor:this.hex(o.floor), known:!!(w || f) };
+  }
+  static book(c){ return !!(c && c.paintBook); }
+  /** строка «Окраска» в характеристиках КП: «каркас RAL 5005, стены RAL 7035, крыша RAL 5005, пол — сталь рифлёная, чёрная»;
+   *  по буклету — «по буклету цветовых решений заказчика»; ничего не задано — '' (строки нет) */
+  static kp(c){
+    if (this.book(c)) return 'по буклету цветовых решений заказчика';
+    const o=this.of(c); if (!Object.values(o).some(Boolean)) return '';
+    const fl=StationGeo.FLOORS[StationGeo.floor(c)], cd=t=>this.code(t), out=[];
+    if (o.frame) out.push('каркас '+cd(o.frame));
+    if (o.wall) out.push('стены '+cd(o.wall));
+    const roof=o.roof || o.frame; if (roof && !StationGeo.SEA[c.ctype]) out.push('крыша '+cd(roof));
+    if (o.door && cd(o.door)!==cd(o.wall)) out.push('двери и ворота '+cd(o.door));
+    out.push(o.floor ? 'пол '+cd(o.floor) : 'пол — '+fl.short);
+    return out.join(', ');
+  }
+  /** коротко — подпись на чертеже и в заголовке блока: «RAL 7035 / RAL 5005», по буклету — «по буклету заказчика» */
+  static short(c){
+    if (this.book(c)) return 'по буклету заказчика';
+    const o=this.of(c); return [o.wall, o.frame].filter(Boolean).map(t=>this.code(t)).join(' / ');
+  }
+  /** ТЗ на сборку: каждая часть отдельно и откуда цвет */
+  static tz(c){
+    const o=this.of(c), fl=StationGeo.FLOORS[StationGeo.floor(c)], cd=t=>this.code(t), sea=StationGeo.SEA[c.ctype];
+    const parts=[`каркас — ${o.frame ? cd(o.frame) : 'по согласованию'}`, `стены — ${o.wall ? cd(o.wall) : 'по согласованию'}`,
+      sea ? '' : `крыша — ${o.roof ? cd(o.roof) : (o.frame ? cd(o.frame)+', ' : '')+'в цвет каркаса'}`,
+      `двери и ворота — ${o.door ? cd(o.door) : (o.wall ? cd(o.wall)+', ' : '')+'в цвет стен'}`, `пол — ${o.floor ? 'окраска '+cd(o.floor) : fl.name}`].filter(Boolean);
+    return (this.book(c) ? 'по буклету цветовых решений заказчика (приложение к ТЗ); для ориентира: ' : '')+parts.join('; ');
+  }
+
+  /** рисунки заказчика: [{src, name, wall, x, z, w, ar}] — x, z — середина рисунка в долях стены (слева направо при взгляде
+   *  снаружи, снизу вверх), w — ширина, мм; ar — ширина / высота картинки */
+  static arts(c){
+    return ((c && Array.isArray(c.art)) ? c.art : []).filter(a=>a && a.src && this.WALLS[a.wall]).slice(0, this.ART_MAX)
+      .map(a=>({ src:String(a.src), name:String(a.name||''), wall:a.wall, x:this.frac(a.x, 0.5), z:this.frac(a.z, 0.5), w:Math.max(100, Math.min(12000, +a.w||1500)), ar:Math.max(0.1, Math.min(10, +a.ar||1)) }));
+  }
+  static frac(v, d){ v=+v; return v>=0 && v<=1 ? v : d; }
+  /** где рисунок — словами: «Передняя стена, по центру, посередине, ширина 1 500 мм» */
+  static where(a){
+    const near=(L, v)=>L.reduce((b, q)=>Math.abs(q[0]-v)<Math.abs(b[0]-v) ? q : b)[1];
+    return `${this.WALLS[a.wall]}, ${near(this.ALONG, a.x)}, ${near(this.HIGH, a.z)}, ширина ${StationLayout.n(a.w)} мм`;
+  }
+  /** отпечаток окраски — в отпечаток станции (картинки пересобираются при правке цвета, рисунка, буклета) */
+  static stamp(c){ return JSON.stringify([this.of(c), !!this.book(c), this.arts(c).map(a=>[a.src.length>200 ? a.src.length+a.src.slice(-40) : a.src, a.wall, a.x, a.z, a.w])]); }
+}
+
 // ---------------------------------------------------------------- контейнер: наружные и внутренние размеры, двери
 class StationGeo {
   // морские контейнеры ISO 668: наружные размеры; внутренние и проём дверей — типовые у производителей, мм
@@ -1532,7 +1612,7 @@ class StationLayout {
   static hash(input){
     const c=input.cont||{}, pick=a=>a ? {cat:a.cat, size:a.size, mass:a.mass, model:a.model, maker:a.maker, orient:a.orient, kw:a.kw, volume:a.volume, color:a.color, flow:a.flow, pressure:a.pressure, stage:a.stage, dryer:a.dryer, vsd:a.vsd, dewPoint:a.dewPoint, receiver:a.receiver} : null;
     // версия программы — в отпечатке: новая программа всегда пересобирает картинки, даже при своих сохранённых правилах
-    const s=JSON.stringify([this.VER, typeof APP_VERSION!=='undefined' ? APP_VERSION : '', typeof StationRules!=='undefined' && StationRules.ok() ? StationRules.version()+'.'+StationRules.stamp() : '', StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.lenFix||null, c.ins, c.ral, c.sys||null, c.climate||'', c.roof||'', StationGeo.floor(c)], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
+    const s=JSON.stringify([this.VER, typeof APP_VERSION!=='undefined' ? APP_VERSION : '', typeof StationRules!=='undefined' && StationRules.ok() ? StationRules.version()+'.'+StationRules.stamp() : '', StationClear.aisle(), [c.ctype, c.size, c.sizeAuto, c.lenFix||null, c.ins, StationPaint.stamp(c), c.sys||null, c.climate||'', c.roof||'', StationGeo.floor(c)], input.chassisH||null, input.recv||'', !!input.recvOut, input.req||null,
       (input.parts||[]).filter(p=>p && p.role!=='container').map(p=>[p.name, p.qty, p.role||'', p.pipeMat||'', p.dn||'', p.mount||'', pick(p.attrs), StationEquip.tint(p), StationEquip.tones(p), (p.rows||[]).filter(r=>r && /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы|воздух|теплов|охлажд/i.test(String(r.k||'')+' '+String(r.v||''))).map(r=>[r.k, r.v]), StationEquip.pic(p)])]);
     return StationRules.fnv(s);
   }
@@ -2807,11 +2887,12 @@ class StationLayout {
     }
   }
 
-  /** цвет контейнера из поля «Цвет» (первый RAL — стены, второй — рама); не указан — RAL 7035 / RAL 5005 условно */
+  /** окраска контейнера (StationPaint): стены, каркас, крыша, двери и ворота, пол (null — по материалу); не указана —
+   *  RAL 7035 / RAL 5005 условно; рисунки заказчика — на стенах снаружи */
   colors(){
-    const c=this.cont||{}, r=RalColor.codes(c.ral), nm=RalColor.named(c.ral);
-    const wall=r[0] ? r[0].hex : nm || '#CBD0CC', frame=r[1] ? r[1].hex : r[0] || nm ? RalColor.shade(wall, 0.72) : '#154889';
-    return { wallColor:wall, frameColor:frame, colorKnown:!!(r[0] || nm), colorText:r.length ? r.map(x=>x.code).join(' / ') : String(c.ral||'').trim(), sys:c.sys||null };
+    const c=this.cont||{}, k=StationPaint.colors(c);
+    return { wallColor:k.wall, frameColor:k.frame, roofColor:k.roof, doorColor:k.door, floorColor:k.floor, colorKnown:k.known, colorText:StationPaint.short(c),
+      arts:StationPaint.arts(c), sys:c.sys||null };
   }
 
   /** сведения: условные габариты, что не попало на чертёж */

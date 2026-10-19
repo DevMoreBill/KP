@@ -20,8 +20,8 @@ from storage import DbZip
 # Сколько хранить копий, раз в сколько дней сжимать базу, срок кэша проверок контрагентов и возраст «лишнего» изображения —
 # «Настройки → Значения программы» (SrvVal: srv.backupDaily / Weekly / Monthly, srv.vacuumDays, srv.checksDays, srv.imgUnusedDays).
 AUDIT_YEARS = 2            # журнал действий: сколько лет хранить в базе (меняется в «Обслуживании», kv settings.auditYears)
-IMG_RX = re.compile(r'/img/([^"\\?#\s<>]+?\.(?:jpg|jpeg|png|webp))', re.I)
-IMG_EXTS = ('.jpg', '.jpeg', '.png', '.webp')
+IMG_RX = re.compile(r'/img/([^"\\?#\s<>]+?\.(?:jpg|jpeg|png|webp|pdf))', re.I)
+IMG_EXTS = ('.jpg', '.jpeg', '.png', '.webp', '.pdf')   # .pdf — буклет окраски станции
 
 
 def _now():

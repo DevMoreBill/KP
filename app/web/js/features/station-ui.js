@@ -13,7 +13,7 @@ class StationUi {
   static input(x){
     const c=kitContainer(x);
     const R=typeof StationReq!=='undefined' ? StationReq : null;   // где ресивер и снаружи ли — из требований станции
-    return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, lenFix:c.lenFix||null, ins:c.ins, ral:c.ral, sys:c.sys||null, climate:c.climate||'', roof:c.roof||'', floor:StationGeo.floor(c) } : null, parts:kitParts(x), air:this.opts(x).air,
+    return { cont:c ? { ctype:c.ctype, size:c.size, sizeAuto:!!c.sizeAuto, lenFix:c.lenFix||null, ins:c.ins, ral:c.ral, paint:c.paint||null, paintBook:!!c.paintBook, art:c.art||null, sys:c.sys||null, climate:c.climate||'', roof:c.roof||'', floor:StationGeo.floor(c) } : null, parts:kitParts(x), air:this.opts(x).air,
       recv:R ? R.recv(x) : 'after', recvOut:R ? R.recvOut(x) : false, req:R ? R.plan(x) : null };
   }
   /** значок на вкладке «Компоновка»: число замечаний (красный — не помещается), иначе '' */

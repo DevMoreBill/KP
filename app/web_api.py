@@ -492,8 +492,10 @@ class CatalogController(Controller):
             ext = '.jpg'
         elif data[:4] == b'RIFF' and data[8:12] == b'WEBP':
             ext = '.webp'
+        elif data[:5] == b'%PDF-' and q.get('kind') == 'booklet':   # буклет цветовых решений заказчика — ещё и PDF
+            ext = '.pdf'
         else:
-            return self.text(400, 'Нужна картинка JPEG, PNG или WebP')
+            return self.text(400, 'Нужна картинка JPEG, PNG или WebP' + (' либо файл PDF' if q.get('kind') == 'booklet' else ''))
         tmap = {t.get('id'): t for t in load_types()['types']}
         folder, title = images.place(tmap.get(q.get('cat')), q.get('maker'), q.get('model'), q.get('name'), q.get('kind') or 'photo', q.get('caption'))
         rel = IMAGES.put(data, ext, folder, title)

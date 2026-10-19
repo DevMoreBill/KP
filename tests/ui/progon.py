@@ -58,6 +58,18 @@ class Modes:
 class UiStand:
     """Сервер программы для прогона: вымышленные данные или копия базы (--db)."""
 
+    @staticmethod
+    def png(path, w=160, h=80):
+        """Картинка PNG для загрузки (рисунок заказчика): синий прямоугольник с жёлтой полосой на прозрачном поле."""
+        import struct
+        import zlib
+        rows = b''.join(b'\x00' + b''.join((b'\xf0\xc0\x20\xff' if h // 3 <= y < 2 * h // 3 else b'\x1e\x4d\x8c\xff') if 8 <= x < w - 8 else b'\x00\x00\x00\x00'
+                                         for x in range(w)) for y in range(h))
+        ch = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+        with open(path, 'wb') as f:
+            f.write(b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) + ch(b'IDAT', zlib.compress(rows)) + ch(b'IEND', b''))
+        return path
+
     def __init__(self, db=None):
         from kit import SampleData, Stand
         self.st = Stand(mode='server', sample=None if db else SampleData())
@@ -96,7 +108,8 @@ class UiRun:
 
     def open(self, p):
         exe = Modes.chromium()
-        self.br = p.chromium.launch(executable_path=exe) if exe else p.chromium.launch()
+        gl = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']   # WebGL2 программно — 3D-вид станции, как у менеджера
+        self.br = p.chromium.launch(executable_path=exe, args=gl) if exe else p.chromium.launch(args=gl)
         self.ctx = self.br.new_context(accept_downloads=True, **Modes.ALL[self.mode])
         if self.mode == 'phd':
             self.ctx.add_init_script("try{ if(!localStorage.getItem('kp.theme')) localStorage.setItem('kp.theme','dark') }catch(e){}")
@@ -374,9 +387,56 @@ class Scenario(UiRun):
         pg.locator('#form button.btn[data-a=edit][data-i="%d"]' % n).first.click()
         pg.wait_for_selector('#edlg[open]')
         self.wait(1500)
-        if 'layout' in self._tabs('st_tabs', '45_st_', 2500):
+        tabs = self._tabs('st_tabs', '45_st_', 2500)
+        self._paint(tabs)
+        if 'layout' in tabs:
             self._layout_views()
         self.closeall()
+
+    def _paint(self, tabs):
+        """Окраска контейнера (19.10): окна частей, «по буклету заказчика», рисунок заказчика на стене."""
+        pg = self.pg
+        for t in tabs:
+            pg.click('#edlg [data-edtab=%s]' % t)
+            self.wait(400)
+            if pg.locator('#edlg details.kc-more').count():
+                break
+        else:
+            self.errs.append(('station', 'SCRIPT-paint', 'нет блока «Крыша, пол, окраска»'))
+            return
+        self.ev("document.querySelector('#edlg details.kc-more').open=true")
+        for k, v in (('roof', 'RAL 9006'), ('door', 'RAL 3020')):
+            pg.fill('#edlg [data-kitpaint][data-k=%s]' % k, v)
+            pg.press('#edlg [data-kitpaint][data-k=%s]' % k, 'Tab')
+            self.wait(400)
+        self.ev("document.querySelector('#edlg details.kc-more').open=true")
+        pg.click('#edlg [data-kitbook]')
+        self.wait(400)
+        self.ev("document.querySelector('#edlg details.kc-more').open=true")
+        with pg.expect_file_chooser() as fc:
+            pg.click('#edlg [data-a=paintArt]')
+        fc.value.set_files(UiStand.png(os.path.join(self.out, 'art.png')))
+        pg.wait_for_selector('#edlg .kc-art img', timeout=20000)
+        self.ev("document.querySelector('#edlg details.kc-more').open=true")
+        pg.select_option('#edlg .kc-art select[data-k=wall]', 'left')
+        self.wait(600)
+        self.ev("document.querySelector('#edlg details.kc-more').open=true")
+        row = self.ev("(kitContainer(S.items[S.items.length-1])||{}).rows.find(r=>r.k==='Окраска')?.v||''")
+        if 'RAL 9006' not in row and 'буклет' not in row:
+            self.errs.append(('station', 'paint', 'строка «Окраска»: ' + row))
+        self.snap('45p_st_paint', '#edlg .kc-more', wait=500)
+        if 'layout' in tabs:      # 3D и виды снаружи — с новыми цветами и рисунком (картинки пересобираются)
+            pg.click('#edlg [data-edtab=layout]')
+            self.snap('45q_st_paint_layout', '#edlg', wait=8000)
+            # вид слева снаружи (WebGL, программно — долго): рисунок заказчика на левом торце, крыша и двери своим цветом
+            src = pg.evaluate("async()=>{ const x=S.items[S.items.length-1], plan=StationUi.plan(x), meta=StationUi.meta(x, plan);"
+                              " if (!StationRender.ok()) return 'skip'; const im=await StationRender.image(plan, meta, 'out', 72); return im ? im.src : 'ERR '+(StationRender.lastErr||''); }")
+            if src.startswith('data:image/jpeg;base64,'):
+                import base64
+                with open(os.path.join(self.shots, '45r_st_paint_left.jpg'), 'wb') as f:
+                    f.write(base64.b64decode(src.split(',', 1)[1]))
+            elif src != 'skip':
+                self.errs.append(('station', 'paint-3d', src[:150]))
 
     def _layout_views(self):
         """Переключатели вида компоновки станции (3D, чертёж, схема)."""

@@ -14,7 +14,9 @@ class TzOut {
   static async download(i){
     const x=S.items[i]; if (!x || !stationOf(x) || !isKit(x)) return toast('ТЗ на сборку — для станции в контейнере с составом');
     toast('Готовлю ТЗ на сборку…');
-    try{ const b=await this.make(x); saveFileA(`ТЗ на сборку — ${this.NAME(x.name) || 'станция'}${S.number ? ' — КП '+this.NAME(S.number) : ''}.docx`, b); }
+    try{ const b=await this.make(x), nm=`${this.NAME(x.name) || 'станция'}${S.number ? ' — КП '+this.NAME(S.number) : ''}`; saveFileA(`ТЗ на сборку — ${nm}.docx`, b);
+      const c=kitContainer(x)||{}, f=StationPaint.book(c) && c.paintFile;   // буклет окраски в PDF — вторым файлом рядом с ТЗ
+      if (f && f.pdf) saveFileA(`Буклет окраски — ${nm}.pdf`, await (await fetch(f.src)).blob()); }
     catch(e){ toast('Не удалось подготовить ТЗ на сборку: '+(e && e.message || e)); }
   }
 
@@ -33,7 +35,21 @@ class TzOut {
       const gl=await StationRender.image(plan, meta), v3=gl || await StationImages.raster(StationView3D.svg(plan, meta), 'image/jpeg');
       add(v3, 'Разрез (3D-вид, стены со стороны зрителя срезаны)', 200, true);
       for (const [, az, cap] of StationImages.VIEWS) add(await StationRender.image(plan, meta, 'out', az), `${cap} снаружи: двери, ворота, жалюзи, светильники, знаки`, 200, true); }
+    // окраска заказчика: буклет (картинка — здесь, PDF — отдельным файлом) и макеты рисунков на стенах
+    const c=kitContainer(x)||{}, bk=StationPaint.book(c) && c.paintFile, arts=StationPaint.arts(c);
+    if (bk || arts.length){ if (!ok) d.h1('Приложения', true);
+      const put=(im, cap, page)=>{ if (im) d.image(im.src, im.w, im.h, d.width, `Приложение ${++n}. ${cap}`, 200, page); };
+      if (bk && !bk.pdf) put(await this.pic(bk.src), 'Буклет цветовых решений заказчика', true);
+      for (const [k, a] of arts.entries()) put(await this.pic(a.src), `Изображение заказчика ${k+1}: ${StationPaint.where(a)}`, k===0 || !!bk); }
     return d.pack('blob');
+  }
+
+  /** картинка по адресу → {src: data:image/png, w, h} для документа; не загрузилась — null */
+  static async pic(src){
+    try{ const im=await readImg(src), c=document.createElement('canvas'); c.width=im.naturalWidth||im.width; c.height=im.naturalHeight||im.height;
+      const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0);
+      return { src:c.toDataURL('image/png'), w:c.width, h:c.height }; }
+    catch(e){ return null; }
   }
 
   /** текст ТЗ: разделы по порядку */
@@ -70,7 +86,8 @@ class TzOut {
       ['Утепление', c.ins ? 'минеральная вата '+c.ins+', пароизоляция, внутренняя обшивка' : 'по типу контейнера'],
       ['Климатическое исполнение', cl ? `${cl[0]} по ГОСТ 15150-69 (${cl[1]})` : 'по ГОСТ 15150-69 — по месту установки'],
       ['Наружный воздух', [req.tmin!=null ? 'от '+StationNorms.deg(req.tmin) : '', req.tmax!=null ? 'до '+StationNorms.deg(req.tmax) : ''].filter(Boolean).join(' ') || 'по месту установки'],
-      ['Окраска', (String(c.ral||'').trim() || 'по согласованию')+'; крыша — в цвет каркаса'],
+      ['Окраска', StationPaint.tz(c)+(StationPaint.book(c) && c.paintFile ? ` — файл «${c.paintFile.name||'буклет'}»${c.paintFile.pdf ? ' (передаётся вместе с ТЗ)' : ''}` : '')],
+      ...StationPaint.arts(c).length ? [['Изображения заказчика', StationPaint.arts(c).map((a, k)=>`${k+1}) ${StationPaint.where(a)} — макет в приложении`).join('; ')+'. Нанесение — плёнкой или краской по макету, стойким к атмосферным воздействиям; цвета и размеры макета — согласовать с заказчиком до нанесения.']] : [],
       ['Двери', this.doors(plan)+(plan.fuel ? `; отсек топливного бака — отдельная дверь ${n(plan.fuel.door.x1-plan.fuel.door.x0)} мм наружу, с замком и доводчиком (внутри), с решёткой внизу` : '')+'; над входами — съёмные козырьки и светодиодные прожекторы'],
       ...CONT_SYSTEMS.filter(([id])=>KitView.sysOn(x, c, id)).map(([id, k, v])=>[k, this.sysText(id, v, plan)]),
     ]);

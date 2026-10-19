@@ -20,7 +20,7 @@ import shutil
 import threading
 from datetime import datetime
 
-EXTS = ('.jpg', '.jpeg', '.png', '.webp')
+EXTS = ('.jpg', '.jpeg', '.png', '.webp', '.pdf')   # .pdf — буклет цветовых решений заказчика (станция в контейнере)
 LOGOS = 'logos'
 OTHER = 'other'
 UNUSED = 'unused'
@@ -131,7 +131,7 @@ class ImageStore:
 
 # ---------------------------------------------------------------- раскладка имеющихся изображений
 ORGANIZE_ID = 'images-ascii-2026-10'
-REF_RX = re.compile(r'/img/([^"\\?#]+?\.(?:jpg|jpeg|png|webp))(?=")', re.I)
+REF_RX = re.compile(r'/img/([^"\\?#]+?\.(?:jpg|jpeg|png|webp|pdf))(?=")', re.I)
 
 
 def _wanted(item, tmap):

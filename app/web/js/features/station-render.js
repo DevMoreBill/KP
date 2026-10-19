@@ -131,6 +131,7 @@ class StScene {
     this.dz=plan.chassis ? mm(meta.deck||1150) : 0;
     this.base=this.dz+mm(StationGeo.zFloor(g.type)); this.ceil=this.base+this.Hi; this.top=this.dz+this.He; this.rise=g.sea ? 0 : mm(g.rise||0);
     this.wall=plan.wallColor||'#CBD0CC'; this.frame=plan.frameColor||RalColor.shade(this.wall, 0.72);
+    this.roofC=plan.roofColor||this.frame; this.door=plan.doorColor||this.wall;   // крыша — в цвет каркаса, двери и ворота — стен, если не заданы свои
     this.lining=g.sea ? '#e3e6e8' : '#eef0f1';
     // сервисные двери — только для монтажа и демонтажа (закрыты); входная дверь оператора и дверь отсека бака — отдельно
     const sd=plan.doors||[];
@@ -244,13 +245,13 @@ class StScene {
     w.corr(1, post, W-post, L-0.03, 1, z0+0.2, zt-0.12, 0.28, 0.045);
     if (!this.cut) this.frontWall(w, z0+rail, zt-0.11, StScene.SEA_P);
     // крыша: лист с неглубокими поперечными гофрами
-    const roof=this.M(StMat.paint(this.frame, 0.5)); roof.box(post, 0.06, zt-0.02, L-post, W-0.06, zt-0.004);   // крыша — в цвет каркаса
+    const roof=this.M(StMat.paint(this.roofC, 0.5)); roof.box(post, 0.06, zt-0.02, L-post, W-0.06, zt-0.004);   // крыша — своим цветом (по умолчанию каркаса)
     for (let x=post+0.25; x<L-post-0.1; x+=0.5) roof.box(x, 0.08, zt-0.004, x+0.2, W-0.08, zt+0.008, 0.004);
     this.cargoDoors();
   }
   /** торцевые двери морского контейнера (торец у двери, x = 0): две створки, четыре запорные штанги, ручки, петли */
   cargoDoors(){
-    const W=this.We, z0=this.dz+0.2, z1=this.dz+this.He-0.12, w=this.M(StMat.paint(this.wall, 0.5)), bar=this.M(StMat.metal(StScene.GALV, 0.4)), dk=this.M(StMat.paint('#202428', 0.6));
+    const W=this.We, z0=this.dz+0.2, z1=this.dz+this.He-0.12, w=this.M(StMat.paint(this.door, 0.5)), bar=this.M(StMat.metal(StScene.GALV, 0.4)), dk=this.M(StMat.paint('#202428', 0.6));
     w.corr(1, 0.15, W/2-0.01, 0.0, -1, z0, z1, 0.32, 0.03); w.corr(1, W/2+0.01, W-0.15, 0.0, -1, z0, z1, 0.32, 0.03);
     for (const y of [W/2-0.012, W/2+0.012]) dk.box(-0.035, y-0.006, z0, -0.02, y+0.006, z1);
     for (const f of [0.14, 0.36, 0.64, 0.86]){ const y=W*f;
@@ -273,7 +274,7 @@ class StScene {
     if (this.doorsB.length) this.backWall(w, z0+0.16, zt-t, null); else panel(0, t, L-t, W-0.02, 1);
     panel(1, t, W-t, L-0.02, 1); panel(1, t, W-t, 0.02, -1);
     if (!this.cut) this.frontWall(w, z0+0.16, zt-t, null);
-    this.roof(zt, this.frame);   // крыша — в цвет каркаса
+    this.roof(zt, this.roofC);   // крыша — своим цветом (по умолчанию каркаса)
     this.endDoors();
   }
   /** цельносварной: рама из гнутого швеллера и стойки, стены — профилированный лист (трапеция), приваренный к раме */
@@ -285,7 +286,7 @@ class StScene {
     if (this.doorsB.length) this.backWall(w, z0+b, zt-0.1, P); else w.corr(0, t, L-t, W-0.025, 1, z0+b, zt-0.1, ...P);
     w.corr(1, t, W-t, L-0.025, 1, z0+b, zt-0.1, ...P); w.corr(1, t, W-t, 0.025, -1, z0+b, zt-0.1, ...P);
     if (!this.cut) this.frontWall(w, z0+b, zt-0.1, P);
-    this.roof(zt, this.frame);   // крыша — в цвет каркаса
+    this.roof(zt, this.roofC);   // крыша — своим цветом (по умолчанию каркаса)
     this.endDoors();
   }
   /** высота крыши над поперечной координатой y (м): плоская — верх контейнера; скатная — по скату (без толщины кровли) */
@@ -348,7 +349,7 @@ class StScene {
     let x=0.16;
     for (const c of cuts){ sheet(x, c.a, z0, z1); sheet(c.a, c.b, c.h, z1); x=Math.max(x, c.b); }
     sheet(x, L-0.16, z0, z1);
-    const fr=this.M(StMat.paint(this.frame, 0.45)), leaf=this.M(StMat.paint(this.wall, 0.45)), inner=this.M(StMat.paint(this.lining, 0.55)), dk=this.M(StMat.paint('#24292e', 0.55)), t=0.045, depth=this.oy+0.01;
+    const fr=this.M(StMat.paint(this.frame, 0.45)), leaf=this.M(StMat.paint(this.door, 0.45)), inner=this.M(StMat.paint(this.lining, 0.55)), dk=this.M(StMat.paint('#24292e', 0.55)), t=0.045, depth=this.oy+0.01;
     const y0=out<0 ? 0 : yw-depth, y1=out<0 ? depth : yw;
     for (const c of cuts){
       fr.box(c.a-0.05, y0, this.base-0.02, c.a, y1, c.h+0.05, 0.004); fr.box(c.b, y0, this.base-0.02, c.b+0.05, y1, c.h+0.05, 0.004); fr.box(c.a-0.05, y0, c.h, c.b+0.05, y1, c.h+0.05, 0.004);
@@ -406,7 +407,7 @@ class StScene {
   /** створки в торце side ('left' — x = 0, 'right' — x = Le): проём d.y0…d.y1 (мм внутри), высота d.h от пола; n — створок */
   endLeaves(d, side, n){
     const s=side==='left' ? -1 : 1, xw=side==='left' ? 0 : this.Le, y0=this.oy+d.y0/1000, w=(d.y1-d.y0)/1000, lw=w/n, z0=this.base, z1=this.base+d.h/1000;
-    const lf=this.M(StMat.paint(RalColor.shade(this.wall, 0.95), 0.45)), dk=this.M(StMat.paint('#23272b', 0.6)), fr=this.M(StMat.paint(RalColor.shade(this.frame, 0.9), 0.45));
+    const lf=this.M(StMat.paint(RalColor.shade(this.door, 0.95), 0.45)), dk=this.M(StMat.paint('#23272b', 0.6)), fr=this.M(StMat.paint(RalColor.shade(this.frame, 0.9), 0.45));
     const X=(a, b)=>[Math.min(xw+s*a, xw+s*b), Math.max(xw+s*a, xw+s*b)];
     const [fa, fb]=X(0, 0.03); fr.box(fa, y0-0.05, z0, fb, y0, z1+0.05); fr.box(fa, y0+w, z0, fb, y0+w+0.05, z1+0.05); fr.box(fa, y0-0.05, z1, fb, y0+w+0.05, z1+0.05);   // коробка
     const [la, lb]=X(0, 0.025); for (let i=0; i<n; i++) lf.box(la, y0+lw*i+0.004, z0+0.01, lb, y0+lw*(i+1)-0.004, z1-0.004, 0.004);
@@ -434,7 +435,7 @@ class StScene {
     const sm=this.M(StMat.paint(RalColor.shade(this.lining, 0.86), 0.6)), step=sea ? 1.2 : 1.15;
     for (let x=ox+step; x<ox+Li-0.2; x+=step){ sm.box(x-0.004, oy+Wi-0.004, b, x+0.004, oy+Wi, c); sm.box(x-0.004, oy, c-0.004, x+0.004, oy+Wi, c); }
     // пол
-    const F=StationGeo.FLOORS[this.g.floor] || StationGeo.FLOORS.steel, fl=this.M({ c:F.color, r:F.r, m:F.m, k:1 });   // рифлёный лист: сталь чёрная или алюминий
+    const F=StationGeo.FLOORS[this.g.floor] || StationGeo.FLOORS.steel, fl=this.M(this.plan.floorColor ? { ...StMat.paint(this.plan.floorColor, 0.5), k:1 } : { c:F.color, r:F.r, m:F.m, k:1 });   // рифлёный лист: сталь чёрная или алюминий; задан RAL — окрашен
     fl.quad([ox, oy, b], [ox+Li, oy, b], [ox+Li, oy+Wi, b], [ox, oy+Wi, b], [0, 0, 1]);
     // разрез на месте срезанной стены: крыша, пол и торцевые стены в сечении — утеплитель между обшивками
     if (this.cut){ const ins=this.M(StMat.paint(StScene.INS, 0.9)), y=0.002, n=[0, -1, 0], x0=0.15, x1=this.Le-0.15, zr=this.g.roof==='mono' && this.rise>0 ? this.top+this.rise : this.top-(this.g.sea ? 0.11 : 0.1);
@@ -443,7 +444,7 @@ class StScene {
       for (const [a, z] of [[x0, ox], [this.Le-ox, x1]]) if (z>a) ins.quad([a, y, b], [z, y, b], [z, y, c], [a, y, c], n); }
     // тамбур «Север»: перегородка с дверью (после отсека бака, если он есть)
     const fu=this.plan.fuel, tamb=(this.g.x0||0)-(fu ? fu.x1+fu.part : 0);
-    if (tamb>0){ const x=ox+this.g.x0/1000, d=this.M(StMat.paint(this.lining, 0.55)), dw=this.M(StMat.paint(RalColor.shade(this.wall, 0.95), 0.45));
+    if (tamb>0){ const x=ox+this.g.x0/1000, d=this.M(StMat.paint(this.lining, 0.55)), dw=this.M(StMat.paint(RalColor.shade(this.door, 0.95), 0.45));
       d.box(x-0.06, oy, b, x, oy+Wi-1.0, c); d.box(x-0.06, oy+Wi-0.1, b, x, oy+Wi, c); d.box(x-0.06, oy+Wi-1.0, b+2.0, x, oy+Wi-0.1, c);
       dw.box(x-0.05, oy+Wi-0.98, b, x-0.01, oy+Wi-0.12, b+1.98, 0.004);
       const cl=this.M(StMat.metal('#9aa1a8', 0.35)), dk=this.M(StMat.paint('#24292e', 0.55)); cl.box(x-0.11, oy+Wi-0.92, b+1.84, x-0.05, oy+Wi-0.65, b+1.91, 0.01);   // доводчик

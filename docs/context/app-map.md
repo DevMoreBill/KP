@@ -225,6 +225,9 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.91.0** (14.10) — доставка из Китая до границы РФ, только админка (`china_freight.ChinaFreight`, kv `chinaRates`, `/api/logistics/china`, клиент `ChinaFreightTab`): ATI.SU по направлениям из Китая + ставки экспедиторов в валюте по курсу ЦБ.
 - **3.92.0** (16.10) — ЖелДорЭкспедиция (`logistics_api.Jde`): открытый расчёт без ключа, сборный и крупногабаритный груз (до 20 т, надбавка за негабарит по размерам места), забор и доставка; крупногабарит — только ЖДЭ из сборных.
 - **3.93.0** (16.10) — справочные документы к КП (`kp_files.KpFiles`, таблица `kp_files`, `data/kp_files`, клиент `KpFilesPanel`, вложения письма) и окно входа (`LoginGuard`, `UserSession`, `LoginInfo`, `LoginForm`, `AuthScreen`, `AdminLogin`).
+- **3.105.0** (19.10) — окраска станции: `StationPaint` (части `p.paint`, буклет `p.paintBook/paintFile`, рисунки `p.art`),
+  `PaintView` (окна в «Крыша, пол, окраска»), `StOutfit.arts`, наклейка `art` (`StDecal`), строка КП «Окраска», ТЗ — по частям и
+  приложения; `/api/img` — PDF только как буклет.
 - **3.104.3** (19.10) — расчёты по проверке помощником: `DealLeadTime`, `DealMoneyRate` (deal.js), `StationPower` с `el.eta`,
   `StationDefaults.hours`, `StationHeat.airAt`, `Freight.escortCars`, `logRu.ins`/`LruIns`; правила `heat.comp_air`, `heat.dgu_rad`,
   `heat.louver_leak`.

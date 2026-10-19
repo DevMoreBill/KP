@@ -21,7 +21,7 @@ class StOutfit {
 
   constructor(scene){ this.s=scene; this.p=scene.plan; this.sys=this.p.sys||{}; this.walls=new StWalls(this.p); this.inside=scene.view==='in'; this.log=[];   // log — что где поставлено (проверки)
     this.O={ left:[], right:[], back:[], front:[] }; }   // снаружи на стенах занято: [u0, u1, z0, z1] — как у StWalls, мм
-  build(){ this.lights(); this.tray(); this.heaters(); this.vents(); this.fire(); this.sockets(); this.fuel(); this.doors(); this.lift(); this.brand(); return this; }
+  build(){ this.lights(); this.tray(); this.heaters(); this.vents(); this.fire(); this.sockets(); this.fuel(); this.doors(); this.arts(); this.lift(); this.brand(); return this; }
   /** снаружи на стене w занят участок u0…u1, z0…z1 (мм: вдоль стены помещения и от пола — как у StWalls) */
   outer(w, u0, u1, z0, z1){ this.O[w].push([u0, u1, z0, z1]); }
   /** снаружи на стене участок свободен */
@@ -472,6 +472,31 @@ class StOutfit {
   }
   static N_OUT = { left:[-1, 0, 0], right:[1, 0, 0], back:[0, 1, 0], front:[0, -1, 0] };   // нормаль стены — наружу
 
+  // ---- рисунки заказчика (StationPaint.arts): снаружи на выбранной стене — как можно ближе к месту, заданному менеджером,
+  // мимо дверей, ворот, жалюзи и знаков у дверей (не помещается — меньше, до половины ширины); не шире и не выше стены;
+  // знаки строповки и логотип — мимо рисунков
+  arts(){
+    const S=this.s; this.artF=[]; this.artL=false;
+    for (const a of this.p.arts||[]){ if (a.wall==='front' && S.cut) continue;
+      const end=a.wall==='left' || a.wall==='right', len=(end ? S.We : S.Le)*1000, off=(end ? S.oy : S.ox)*1000;   // мм; координаты — как у StWalls (от угла помещения)
+      const zlo=(S.dz+0.15-S.base)*1000, zhi=(S.top-0.15-S.base)*1000, f=a.wall==='back' || a.wall==='left' ? 1-a.x : a.x;   // доля — слева направо при взгляде снаружи
+      let best=null, first=null;
+      for (const k of [1, 0.8, 0.65, 0.5]){
+        let w=Math.min(a.w*k, len-300), h=w/a.ar; if (h>zhi-zlo){ h=zhi-zlo; w=h*a.ar; }
+        const lo=150+w/2-off, hi=len-150-w/2-off, u0=Math.min(hi, Math.max(lo, f*len-off)), z0=Math.min(zhi-h/2, Math.max(zlo+h/2, (S.dz+S.He*a.z-S.base)*1000));
+        if (!first) first={ u:u0, z:z0, w, h };
+        for (let u=lo; u<=hi+1e-6; u+=50) for (let z=zlo+h/2; z<=zhi-h/2+1e-6; z+=50){
+          const cost=Math.abs(u-u0)+1.5*Math.abs(z-z0); if (best && cost>=best.cost) continue;
+          if (this.outFree(a.wall, u-w/2-40, u+w/2+40, z-h/2-40, z+h/2+40)) best={ u, z, w, h, cost }; }
+        if (best) break; }
+      const q=best || first, wm=q.w/1000, hm=q.h/1000, x=(q.u+off)/1000, zc=S.base+q.z/1000;
+      const c=a.wall==='front' ? [x, this.frontY(), zc] : a.wall==='back' ? [x, S.We-this.frontY(), zc] : [a.wall==='left' ? this.leftX() : this.rightX(), x, zc];
+      S.sticker({ type:'art', src:a.src, ar:wm/hm }, c, StOutfit.N_OUT[a.wall], wm, hm);
+      this.outer(a.wall, q.u-q.w/2-40, q.u+q.w/2+40, q.z-q.h/2-40, q.z+q.h/2+40);
+      this.log.push({ kind:'art', wall:a.wall, u:Math.round(q.u), z:Math.round(q.z), w:Math.round(q.w), free:!!best });
+      if (a.wall==='front') this.artF.push([x-wm/2-0.1, x+wm/2+0.1]); if (a.wall==='left') this.artL=true; }
+  }
+
   // ---- логотип организации: на торце у двери (виден и в разрезе); снаружи — ещё на длинной стене в самом широком простенке
   brand(){
     const S=this.s, m=S.meta.brand, parts=Array.isArray(m) && m.length ? m : StOutfit.BRAND, txt=parts.map(p=>p[0]).join('');
@@ -482,7 +507,7 @@ class StOutfit {
     for (const q of [this.p.entry, this.p.gates, this.p.gates2]) if (q && q.wall==='left' && !q.sea){ const a=S.oy+q.y0/1000-0.15, b=S.oy+q.y1/1000+0.15;   // мимо двери оператора и ворот в торце
       if (a-y0>=y1-b) y1=Math.min(y1, a); else y0=Math.max(y0, b); }
     const w=Math.min(1.9, (y1-y0)*0.92, 0.42*d.ar), h=w/d.ar;
-    if (w>=0.6) S.sticker(d, [this.leftX(), (y0+y1)/2, top-0.1-h/2], [-1, 0, 0], w, h);
+    if (w>=0.6 && !this.artL) S.sticker(d, [this.leftX(), (y0+y1)/2, top-0.1-h/2], [-1, 0, 0], w, h);   // на торце рисунок заказчика — логотипа там нет
     if (!S.closed) return;
     // мимо дверей; жалюзи под логотипом — логотип ниже ростом (над их козырьками), не выходит — мимо жалюзи; у углов — знаки строповки
     const L=((this.p.vent && this.p.vent.louvers)||[]).filter(q=>q.wall==='front').map(q=>({ a:S.ox+q.u0/1000-0.15, b:S.ox+q.u1/1000+0.15, t:S.base+q.z1/1000+0.3 }));
@@ -492,7 +517,7 @@ class StOutfit {
         const under=L.filter(q=>q.a<g[1] && q.b>g[0]), room=top-0.12-Math.max(0, ...under.map(q=>q.t));
         const w=Math.min(len*0.85, 3.2, 0.6*d.ar, (under.length ? room : 9)*d.ar); if (w>=0.6 && (!best || w>best.w)) best={ g, w }; }
       return best; };
-    const doors=S.openF.map(c=>[S.ox+c.x0/1000-0.3, S.ox+c.x1/1000+0.75]), A=fit(doors), B=fit([...doors, ...L.filter(q=>q.t>top-0.72).map(q=>[q.a, q.b])]);
+    const doors=[...S.openF.map(c=>[S.ox+c.x0/1000-0.3, S.ox+c.x1/1000+0.75]), ...(this.artF||[])], A=fit(doors), B=fit([...doors, ...L.filter(q=>q.t>top-0.72).map(q=>[q.a, q.b])]);
     const f=A && (!B || A.w>=B.w*0.8) ? A : B; if (!f) return;
     const w2=f.w, h2=w2/d.ar;
     S.sticker(d, [(f.g[0]+f.g[1])/2, this.frontY(), top-0.12-h2/2], [0, -1, 0], w2, h2);

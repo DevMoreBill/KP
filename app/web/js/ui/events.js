@@ -85,6 +85,7 @@ document.addEventListener('click', async e=>{
     case 'tzOut': return LazyJs.load('tz-out.js').then(()=>TzOut.download(i)).catch(e=>toast(e.message));
     case 'stSpot': return IssueSpot.open(i, j);
     case 'xFix': case 'xFixAll': return ExpertFix.act(a, i, b);
+    case 'paintFile': case 'paintFileDel': case 'paintArt': case 'paintArtDel': { const r=PaintView.act(a, i, b); if (r==='async' || !r) return; break; }
     case 'tzLoad': return TzImport.pick(i);
     case 'stParAdd': case 'stParDel': if (!StationParams.act(a, i, b)) return; break;
     case 'drawDel': DrawPic.del(i, j, b.dataset.v); break;

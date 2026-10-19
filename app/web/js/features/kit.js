@@ -74,9 +74,10 @@ function contApply(p, o={}){
   const rf=StationGeo.roof(p), roof=rf!=='flat' ? StationGeo.ROOFS[rf] : null, fl=StationGeo.floor(p); p.floor=fl;
   const set={ 'Тип': c.name, 'Габариты (Д × Ш × В)': String(p.size||'').trim() ? String(p.size).trim()+(/мм|м\b/.test(p.size)?'':' мм') : c.size,
     'Утепление': p.ins?'минеральная вата '+p.ins:'', 'Климатическое исполнение': cl?`${cl[0]} (${cl[1]})`:'', 'Крыша': roof ? (roof.deg ? `${roof.name}, уклон ${roof.deg}°` : roof.name) : '',
-    'Пол': StationGeo.FLOORS[fl].name[0].toUpperCase()+StationGeo.FLOORS[fl].name.slice(1), 'Цвет': String(p.ral||'').trim() };
+    'Пол': StationGeo.FLOORS[fl].name[0].toUpperCase()+StationGeo.FLOORS[fl].name.slice(1), 'Окраска': StationPaint.kp(p) };
   p.rows=p.rows||[]; if (!p.sys) p.sys={...CONT_SYS_DEF};
-  for (const [k,v] of Object.entries(set)){ const r=p.rows.find(z=>z.k===k); if (r){ if (v) r.v=v; else if (k==='Цвет' || k==='Крыша') p.rows.splice(p.rows.indexOf(r),1); } else if (v) p.rows.push({k, v}); }
+  const was=p.rows.find(z=>z.k==='Цвет'); if (was && !p.rows.some(z=>z.k==='Окраска')) was.k='Окраска';   // прежняя строка «Цвет» — теперь «Окраска» (19.10)
+  for (const [k,v] of Object.entries(set)){ const r=p.rows.find(z=>z.k===k); if (r){ if (v) r.v=v; else if (k==='Окраска' || k==='Крыша') p.rows.splice(p.rows.indexOf(r),1); } else if (v) p.rows.push({k, v}); }
   for (const [id, k, v] of CONT_SYSTEMS){ for (const r of p.rows) if ((CONT_SYS_RENAMED[id]||[]).includes(r.k)) r.k=k;
     const ix=p.rows.findIndex(z=>z.k===k);
     if (p.sys[id] && ix<0) p.rows.push({k, v}); else if (!p.sys[id] && ix>=0) p.rows.splice(ix,1);
@@ -547,6 +548,7 @@ document.addEventListener('focusout', e=>{ const t=e.target; if (t.dataset.kitco
 document.addEventListener('change', e=>{ const t=e.target;
   if (t.dataset.kitpp!=null){ KitPipe.change(t); return; }
   if (t.dataset.kitcab!=null){ KitCabinet.change(t); return; }
+  if (t.dataset.kitpaint!=null || t.dataset.kitbook!=null || t.dataset.kitart!=null){ PaintView.change(t); return; }
   if (t.dataset.kitct!=null){ const [i,j]=t.dataset.kitct.split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
     const o={[t.dataset.fld]:t.value}; if (t.dataset.fld==='ctype'){ const c=ctypeOf(t.value); if (c.ins) o.ins=c.ins; if (c.climate) o.climate=c.climate; if (p.sizeAuto) o.size=''; }
     if (t.dataset.fld==='size'){ o.sizeAuto=!String(t.value).trim(); o.lenFix=null;     // вписан свой размер — подбор по оборудованию отключается

@@ -412,6 +412,20 @@ class ApiTest(unittest.TestCase):
         d = self.ok_json('GET', '/api/admin/migrations', who='adm')
         self.assertEqual(set(d['all']) - set(d['applied']), set(), 'все миграции применены')
 
+    def test_16_paint_booklet_pdf(self):
+        """Буклет окраски станции (19.10): PDF принимается только как буклет, отдаётся как PDF; без «booklet» — только картинки."""
+        pdf = b'%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
+        st, b, _ = self.J('POST', '/api/img?kind=booklet&model=st&ext=pdf', pdf, raw=True)
+        self.assertEqual(st, 200, b[:200])
+        name = Http.js(b)['name']
+        self.assertTrue(name.endswith('.pdf'), name)
+        st, body, hd = self.J('GET', '/img/' + name, raw=True)
+        self.assertEqual((st, body), (200, pdf))
+        self.assertIn('application/pdf', str(hd))
+        st, b, _ = self.J('POST', '/api/img?kind=photo&model=st', pdf, raw=True)
+        self.assertEqual(st, 400, 'PDF вместо фото — нет')
+        self.assertIn('JPEG', b.decode('utf-8'))
+
     def test_99_no_request_errors(self):
         """Ни один запрос за прогон не закончился внутренней ошибкой сервера (запись в журнале сервера)."""
         self.assertEqual([r['text'] for r in self.stand.request_errors()], [])
