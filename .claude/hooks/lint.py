@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Хук Claude Code (PostToolUse): проверка файла сразу после правки — pyflakes для .py, ESLint для app/web/js/**/*.js
-(та же версия и настройки, что в tests/run_all.py и CI). Нашлись ошибки — код выхода 2: Claude видит их и исправляет
+(та же версия и настройки, что в tests/run_all.py и CI), для переписанного кода — Ruff и Prettier (tests/code_style.py). Нашлись ошибки — код выхода 2: Claude видит их и исправляет
 сразу, не дожидаясь полного прогона. Нет pyflakes или Node.js — проверка молча пропускается (её сделает run_all.py).
 """
 import importlib.util
@@ -44,19 +44,29 @@ class Lint:
             return [npx, '--yes', ver, '--max-warnings', '0', rel]
         return None
 
+    def style(self, rel):
+        """оформление переписанного кода (tests/code_style.py): Ruff для модулей из списка, Prettier для ES-модулей"""
+        sys.path.insert(0, os.path.join(self.root, 'tests'))
+        try:
+            from code_style import CodeStyle
+        except ImportError:
+            return []
+        return [cmd for _, cmd in CodeStyle([rel]).commands()]
+
     def run(self):
         rel = self.target()
-        cmd = self.command(rel) if rel else None
-        if not cmd:
+        if not rel:
             return 0
-        try:
-            r = subprocess.run(cmd, cwd=self.root, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=self.TIMEOUT)
-        except (OSError, subprocess.TimeoutExpired):
-            return 0
-        if r.returncode == 0:
-            return 0
-        sys.stderr.write('Проверка %s после правки — исправьте:\n%s\n' % (rel, (r.stdout + r.stderr).strip()[-4000:]))
-        return 2
+        cmds = [c for c in [self.command(rel)] if c] + self.style(rel)
+        for cmd in cmds:
+            try:
+                r = subprocess.run(cmd, cwd=self.root, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=self.TIMEOUT)
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if r.returncode:
+                sys.stderr.write('Проверка %s после правки — исправьте:\n%s\n' % (rel, (r.stdout + r.stderr).strip()[-4000:]))
+                return 2
+        return 0
 
 
 if __name__ == '__main__':

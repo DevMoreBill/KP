@@ -15,6 +15,18 @@ if ! python3 -c "import pyflakes, sys; sys.exit(0 if pyflakes.__version__ == '4.
   python3 -m pip install --quiet --disable-pip-version-check pyflakes==4.0.0
 fi
 
+# Ruff — оформление переписанного Python (tests/code_style.py), та же версия, что в CI
+RUFF=$(python3 -c "import re; print(re.search(r\"RUFF = '([^']+)'\", open('tests/code_style.py', encoding='utf-8').read()).group(1))")
+if ! command -v ruff >/dev/null 2>&1 || [ "ruff==$(ruff --version | cut -d' ' -f2)" != "$RUFF" ]; then
+  python3 -m pip install --quiet --disable-pip-version-check "$RUFF"
+fi
+
+# Prettier — оформление ES-модулей интерфейса, заранее в кэш npm
+PRETTIER=$(python3 -c "import re; print(re.search(r\"PRETTIER = '([^']+)'\", open('tests/code_style.py', encoding='utf-8').read()).group(1))")
+if command -v npx >/dev/null 2>&1; then
+  npx --yes "$PRETTIER" --version >/dev/null
+fi
+
 # ESLint — заранее в кэш npm (run_all.py вызывает «npx --yes eslint@…»)
 ESLINT=$(python3 -c "import re; print(re.search(r\"ESLINT = '([^']+)'\", open('tests/run_all.py', encoding='utf-8').read()).group(1))")
 if command -v npx >/dev/null 2>&1; then

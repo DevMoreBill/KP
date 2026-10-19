@@ -20,6 +20,8 @@ for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', '
   const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));
 global.isKit=x=>!!(x && x.kit);
+const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
+if (GOLDEN){ GOLDEN.wrap(StationCalc, ['run', 'docGroups']); process.on('exit', ()=>GOLDEN.save(process.env.KP_GOLDEN)); }
 
 const near=(a, b, tol, msg)=>assert.ok(Math.abs(a-b)<=tol, `${msg}: ${a} ≠ ${b} (±${tol})`);
 const part=(name, attrs, qty=1, rows=[])=>Object.assign(kitNewPart({ name }), { attrs, qty, rows });
@@ -29,7 +31,7 @@ const station=(cat, req, parts, air)=>({ id:'s'+(++sid), name:'', attrs:{ cat },
 class Check {
   static n=0;
   static fail(name, e){ console.error('ОШИБКА — '+name+':\n'+(e && e.stack || e)); process.exitCode=1; }
-  static run(name, fn){ try{ const r=fn(); if (r && r.then) return r.then(()=>{ Check.n++; }, e=>Check.fail(name, e)); Check.n++; } catch(e){ Check.fail(name, e); } }
+  static run(name, fn){ if (GOLDEN) GOLDEN.label=name; try{ const r=fn(); if (r && r.then) return r.then(()=>{ Check.n++; }, e=>Check.fail(name, e)); Check.n++; } catch(e){ Check.fail(name, e); } }
 }
 
 // ---------------------------------------------------------------- формулы

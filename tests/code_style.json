@@ -1,0 +1,5 @@
+{
+  "python": [
+    "tests/code_style.py"
+  ]
+}

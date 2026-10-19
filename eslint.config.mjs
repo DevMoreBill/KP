@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const JS_DIR = path.join(ROOT, 'app', 'web', 'js');
 const PARSE = { ecmaVersion: 2022, sourceType: 'script', range: false, loc: false };
+const ESM = /^(?:import|export)\s/m;   // ES-модуль (переписанный код) — строгие правила и Prettier
 
 // встроенное в браузер, что использует интерфейс (окно, документ, сеть, хранилища, события), подключённые библиотеки
 // (vendor: JSZip, docx), KPGen (docx/kpgen.js объявляет его через window.KPGen) и module (расчёты экспортируются и для
@@ -35,7 +36,8 @@ class SharedNames {
       SharedNames.names = new Set();
       for (const f of SharedNames.files(JS_DIR)) {
         let ast;
-        try { ast = parser.parse(fs.readFileSync(f, 'utf8'), PARSE); } catch { continue; }   // ошибку разбора покажет сам ESLint
+        const text = fs.readFileSync(f, 'utf8');
+        try { ast = parser.parse(text, { ...PARSE, sourceType: ESM.test(text) ? 'module' : 'script' }); } catch { continue; }   // ошибку разбора покажет сам ESLint
         for (const n of ast.body) SharedNames.declared(n).forEach(x => SharedNames.names.add(x));
       }
     }
@@ -48,6 +50,7 @@ class SharedNames {
   }
 
   static declared(n) {
+    if (n.type === 'ExportNamedDeclaration' && n.declaration) return SharedNames.declared(n.declaration);   // ES-модуль: мост в globalThis
     if ((n.type === 'FunctionDeclaration' || n.type === 'ClassDeclaration') && n.id) return [n.id.name];
     if (n.type === 'VariableDeclaration') return n.declarations.flatMap(d => SharedNames.pattern(d.id));
     return [];
@@ -80,6 +83,19 @@ const noUndef = {
   },
 };
 
+// строгие правила переписанного кода (ES-модули): без вложенных «?:» и длинных цепочек условий, короткие методы
+const MODULES = SharedNames.files(JS_DIR).filter(f => ESM.test(fs.readFileSync(f, 'utf8'))).map(f => path.relative(ROOT, f).split(path.sep).join('/'));
+const STRICT = {
+  'no-unused-vars': ['error', { args: 'after-used', caughtErrors: 'none' }],
+  'prefer-const': 'error', 'no-var': 'error', eqeqeq: ['error', 'always', { null: 'ignore' }],
+  'no-nested-ternary': 'error', 'no-else-return': ['error', { allowElseIf: false }], 'no-lonely-if': 'error',
+  'no-unneeded-ternary': 'error', 'object-shorthand': 'error', 'prefer-template': 'error', 'prefer-arrow-callback': 'error',
+  'arrow-body-style': ['error', 'as-needed'], 'no-useless-return': 'error', 'no-useless-concat': 'error', 'dot-notation': 'error',
+  'prefer-spread': 'error', 'prefer-rest-params': 'error', 'no-param-reassign': 'off', yoda: 'error', 'consistent-return': 'error',
+  complexity: ['error', 12], 'max-depth': ['error', 3], 'max-params': ['error', 5], 'max-nested-callbacks': ['error', 3],
+  'max-lines-per-function': ['error', { max: 50, skipBlankLines: true, skipComments: true }], 'max-lines': ['error', { max: 700, skipBlankLines: true, skipComments: true }],
+};
+
 export default [{
   files: ['app/web/js/**/*.js'],
   languageOptions: { ecmaVersion: 2022, sourceType: 'script', globals: Object.fromEntries(BROWSER.map(n => [n, 'readonly'])) },
@@ -91,4 +107,8 @@ export default [{
     'no-unreachable': 'error',
     'no-redeclare': 'error',
   },
-}];
+}, ...(MODULES.length ? [{
+  files: MODULES,
+  languageOptions: { sourceType: 'module' },
+  rules: STRICT,
+}] : [])];

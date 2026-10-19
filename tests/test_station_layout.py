@@ -22,6 +22,15 @@ class StationLayoutJs(unittest.TestCase):
                            text=True, encoding='utf-8', errors='replace', timeout=600)
         self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-6000:])
 
+    def test_golden(self):
+        """слепок станций: компоновка, чертежи, 3D и расчёт — как в tests/js/station_golden.json"""
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('нет Node.js')
+        r = subprocess.run([node, os.path.join(REPO, 'tests', 'js', 'station_golden.js')], cwd=REPO, capture_output=True,
+                           text=True, encoding='utf-8', errors='replace', timeout=900)
+        self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-6000:])
+
 
 class StationLayoutFeature(unittest.TestCase):
     def test_feature_switch(self):

@@ -2,7 +2,7 @@
 """Все проверки программы одной командой (из корня репозитория): python tests/run_all.py
 
 1. Статические: pyflakes (сервер, проверки, служебные сценарии), ESLint интерфейса — в том числе необъявленные имена
-   (eslint.config.mjs), разбор help.js. Нет pyflakes или Node.js — шаг пропускается с предупреждением; с ключом --strict
+   (eslint.config.mjs), оформление переписанного кода (tests/code_style.py: Ruff, Prettier), разбор help.js. Нет pyflakes или Node.js — шаг пропускается с предупреждением; с ключом --strict
    (так в CI) — ошибка.
 2. Наборы tests/test_*.py: правила проекта, журнал сервера, письма администратору, ночные обновления, задача
    Планировщика, копии базы, API на стенде с вымышленными данными, безопасность, фаззинг, сессии администратора,
@@ -104,6 +104,12 @@ class Runner:
         npx, node = shutil.which('npx'), shutil.which('node')
         if js and self.tool('ESLint', bool(npx), 'Node.js (npx)'):
             self.step('ESLint (%s)' % ('app/web/js' if js == ['app/web/js'] else '%d файл.' % len(js)), [npx, '--yes', self.ESLINT, '--max-warnings', '0'] + js)
+        from code_style import CodeStyle
+        style = CodeStyle(self.touched)
+        for what in style.missing():
+            self.tool('оформление кода', False, what)
+        for name, cmd in style.commands():
+            self.step(name, cmd)
         if self.tool('help.js', bool(node), 'Node.js'):
             self.step('help.js читается', [node, '-e', "new Function(require('fs').readFileSync('app/web/js/features/help.js','utf8'))"])
 

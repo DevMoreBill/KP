@@ -9,10 +9,12 @@ vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 
 for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', 'station-systems.js', 'station-eskd.js', 'station-draw.js', 'station-outfit.js', 'station-render.js', 'station-decal.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
+const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
+if (GOLDEN){ GOLDEN.wrap(StationLayout, ['solve']); GOLDEN.wrap(StationDrawing, ['svg']); GOLDEN.wrap(StationView3D, ['svg']); GOLDEN.wrap(StationScheme, ['svg']); }
 
 class Check {
   static n=0;
-  static run(name, fn){ try{ fn(); Check.n++; } catch(e){ console.error('ОШИБКА — '+name+':\n'+(e && e.stack || e)); process.exitCode=1; } }
+  static run(name, fn){ if (GOLDEN) GOLDEN.label=name; try{ fn(); Check.n++; } catch(e){ console.error('ОШИБКА — '+name+':\n'+(e && e.stack || e)); process.exitCode=1; } }
 
   /** расстановка без нарушений: всё внутри (и по высоте), ничего не пересекается, проход для оператора и обслуживания не
    *  меньше нормы — и перед настенным шкафом (шкаф его не сужает), фильтры — на трубопроводе, у аппаратов цепочки сжатого
@@ -1919,4 +1921,5 @@ Check.run('Аккуратная компоновка: лицевая линия,
   assert.ok(two.tidy.score>=90, 'простая станция — аккуратная: '+JSON.stringify(two.tidy));
 });
 
+if (GOLDEN) GOLDEN.save(process.env.KP_GOLDEN);
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);
