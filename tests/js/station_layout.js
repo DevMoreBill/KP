@@ -6,11 +6,11 @@
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..'), WebScripts=require('./web.js');
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'station-eskd.js', 'station-draw.js', 'station-outfit.js', 'station-render.js', 'station-decal.js']){
+for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'station-eskd.js', 'station-draw.js', 'station-render.js', 'view/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
-if (GOLDEN){ GOLDEN.wrap(StationLayout, ['solve']); GOLDEN.wrap(StationDrawing, ['svg']); GOLDEN.wrap(StationView3D, ['svg']); GOLDEN.wrap(StationScheme, ['svg']); }
+if (GOLDEN){ GOLDEN.wrap(StationLayout, ['solve']); GOLDEN.wrap(StationDrawing, ['svg']); GOLDEN.wrap(StationView3D, ['svg']); GOLDEN.wrap(StationScheme, ['svg']); GOLDEN.wrapScene(StScene); }
 
 class Check {
   static n=0;

@@ -34,6 +34,17 @@ class Golden {
     }
   }
 
+  /** 3D-сцена: геометрия по материалам, наклейки и что где поставлено оснащением — отпечаток после build() */
+  static wrapScene(cls){
+    const fn=cls.prototype.build;
+    cls.prototype.build=function(...args){
+      const out=fn.apply(this, args);
+      const g=[...this.groups].map(([k, e])=>[k, e.mesh.p, e.mesh.n, e.mesh.i, e.mesh.t]);
+      Golden.rows.push([Golden.label, `${cls.name}.build`, Golden.hash({ g, d:[...this.decals.keys()], log:this.outfit ? this.outfit.log : null })]);
+      return out;
+    };
+  }
+
   static save(file){ fs.writeFileSync(file, JSON.stringify(Golden.rows)); }
 }
 

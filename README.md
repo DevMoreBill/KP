@@ -526,6 +526,16 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.116.0 — что сделано:** переписывание кода, часть 5 — `features/station-decal.js` и `features/station-outfit.js`
+(файлы удалены) — ES-модули `features/view/` (`index.js` — мост): `StDecal` (наклейки: знаки — таблица рисовальщиков,
+`rr(g, [x, y, w, h], r)`, `text(g, s, {x, y, w, size, …})`), `PhotoTint` (+ `TintZones` — зоны окраски по фото),
+`StOutfit` = `OutfitBase` (места на стенах, `box(m, w, [u, z], [du, dz, d], r)`, `sign(d, w, [u, z], [sw, sh], [o, e])`,
+`snow(w, [a, b], …)`, видимость, маркизы) + помощники `OutfitInside` (свет, лоток, конвекторы, розетки),
+`OutfitAir` (жалюзи, вентиляторы, колпаки, двери-жалюзи ДГУ, выхлоп), `OutfitFire`, `OutfitFuel` (отсек бака),
+`OutfitDoors` (козырьки, прожекторы, таблички), `OutfitShell` (строповка, рисунки заказчика, логотип). Слепок станций
+дополнен отпечатком 3D-сцены `StScene.build` (геометрия, наклейки, журнал оснащения — 227 сцен), всего 1 444 результата —
+совпал; `run_all.py --strict` — всё прошло; прогон интерфейса (ПК, телефон) — станция без ошибок.
+
 **3.115.0 — что сделано:** переписывание кода, часть 4 — `features/station-calc.js` (файл удалён) — ES-модули
 `features/calc/` (`index.js` — мост в `globalThis`, подключается в `index.html` после `layout/index.js`): `CalcNote`,
 `CalcInput`, `AirDemand`, `PressureBudget`, `DryerSizing`, `FilterSizing`, `ReceiverSizing`, `VentSizing`, `ElectricLoad`,
