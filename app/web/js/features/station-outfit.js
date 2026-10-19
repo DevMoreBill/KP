@@ -8,7 +8,7 @@
 // заливная горловина снаружи в ящике, дыхательный клапан над крышей, жалюзи отсека), снаружи — козырьки и прожекторы над
 // дверями, таблички категории помещения, знаки и табло у входа, логотип организации, маркировка для подъёма (знаки № 9
 // «Место строповки» и № 12 «Центр тяжести» по ГОСТ 14192-96, надпись «Масса брутто»). Места на стенах — без наложений
-// (StWalls — внутри, station-systems.js; StOutfit.O — снаружи). Жалюзи — по расчёту StationVent (plan.vent): размеры и места.
+// (StWalls — внутри, layout/st-walls.js; StOutfit.O — снаружи). Жалюзи — по расчёту StationVent (plan.vent): размеры и места.
 // Сцена — без DOM: наклейки — описания, картинки рисует StDecal (station-decal.js) в браузере.
 'use strict';
 
@@ -279,7 +279,7 @@ class StOutfit {
     const [L, W]=this.p.int, x0=this.s.g.x0||0; let best=null;
     for (const soft of [true, false]){ if (best) break;     // места нет — без «мягких» запретов (тесный контейнер)
     for (const [wd, z0, z1, pen=0] of bands) for (const w of ws){ const [lo, hi]=this.walls.range(w), zv=z0+Math.min(z1-z0, 900)*0.35;
-      for (let u=lo+120; u+wd<=hi-120; u+=50){ if (!this.walls.free(w, u, u+wd, z0, z1, soft)) continue;
+      for (let u=lo+120; u+wd<=hi-120; u+=50){ if (!this.walls.free(w, [u, u+wd], [z0, z1], soft)) continue;
         const c=u+wd/2, x=w==='left' ? x0 : w==='right' ? L : c, y=w==='back' ? W : w==='front' ? 0 : c;
         const sc=Math.hypot(x-t[0], y-t[1])+pen+(this.seen(w, c, zv) ? 0 : hide); if (!best || sc<best.sc) best={ w, u:c, wd, z0, z1, sc }; } } }
     if (best) this.walls.busy(best.w, best.u-best.wd/2, best.u+best.wd/2, best.z0, best.z1);

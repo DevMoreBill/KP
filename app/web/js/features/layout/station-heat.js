@@ -2,6 +2,7 @@ import { StationMatrix } from './station-matrix.js';
 import { StationMods } from './station-mods.js';
 import { StationNorms } from './station-norms.js';
 import { StationTidy } from './station-tidy.js';
+import { VentCalc } from './vent-calc.js';
 
 const mm = v => v / 1000;
 const rule = name => StationRules.raw(name);
@@ -535,7 +536,6 @@ export class StationHeat {
     const h = plan.heat;
     if (!h) return;
     if (h.on) this.heatNotes(plan, h);
-    StationVent.notes(plan);
   }
 
   static heatNotes(plan, h) {

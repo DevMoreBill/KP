@@ -6,6 +6,7 @@ import { StationGeo } from './station-geo.js';
 import { StationHeat } from './station-heat.js';
 import { StationMatrix } from './station-matrix.js';
 import { StationMods } from './station-mods.js';
+import { StationVent } from './station-vent.js';
 
 const n = v => Mm.text(v);
 const uniq = list => [...new Set(list)];
@@ -132,6 +133,7 @@ export class LayoutNotes {
     this.outside(plan, iss);
     this.fuel(plan, iss);
     StationHeat.notes(plan);
+    if (plan.heat) StationVent.notes(plan);
     this.vessels(plan, iss);
     this.roof(plan, iss);
     this.exhausts(plan, iss);

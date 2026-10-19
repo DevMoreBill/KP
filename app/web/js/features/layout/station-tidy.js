@@ -243,7 +243,7 @@ export class StationTidy {
       if (!dz || q.z1 + dz > H - 100 || q.z0 + dz < 0) continue;
       const box = [q.u0 - 90 - gap, q.u1 + 260 + gap, q.z0 - 90, q.z1 + 90];
       const had = drop(box);
-      if (walls.free(w, q.u0 - 90, q.u1 + 90, q.z0 + dz - 90, q.z1 + dz + 90, false)) {
+      if (walls.free(w, [q.u0 - 90, q.u1 + 90], [q.z0 + dz - 90, q.z1 + dz + 90], false)) {
         q.z0 += dz;
         q.z1 += dz;
         B.push([box[0], box[1], box[2] + dz, box[3] + dz]);
