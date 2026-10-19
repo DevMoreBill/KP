@@ -187,6 +187,16 @@ class FakeConfig:
         return types.SimpleNamespace(**base)
 
 
+class Schema:
+    """Откат миграций в проверках: «база прежней версии» — без перечисления всех поздних миграций по именам (новая
+    миграция иначе ломала каждую такую проверку)."""
+    @staticmethod
+    def down_to(store, mid):
+        """Откатить миграции с последней по mid включительно: база — как до появления mid."""
+        while mid in store.migrations_applied():
+            store.migration_down(store.migration_last())
+
+
 class TempStore:
     """База программы во временной папке (миграции применяются при создании)."""
     def __init__(self, test=None):

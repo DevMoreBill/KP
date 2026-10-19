@@ -7,7 +7,7 @@ import urllib.parse
 import unittest
 from datetime import date, timedelta
 
-from kit import Http, SampleData, Stand, TempStore
+from kit import Http, SampleData, Schema, Stand, TempStore
 
 
 def meta(kid, client, inn, mid, name, day, total, **kw):
@@ -101,11 +101,8 @@ class UnitTest(unittest.TestCase):
     def test_migration_fills_and_rolls_back(self):
         from crm import DealBook
         self.put('20', meta('20', 'ООО «Д»', '7700000005', 'm1', 'Иванова', date.today().isoformat(), 5000), 'sent')
-        self.st.migration_down('2027-13-kp-rev')
-        self.st.migration_down('2027-12-indexes')
-        self.st.migration_down('2027-11-bitrix')
-        self.assertEqual(self.st.migration_last(), '2027-10-crm')
-        self.st.migration_down('2027-10-crm')
+        Schema.down_to(self.st, '2027-10-crm')
+        self.assertNotIn('2027-10-crm', self.st.migrations_applied())
         self.assertIsNone(self.st.one("SELECT name FROM sqlite_master WHERE name='deals'"))
         self.st.migrations_up()
         did = DealBook(self.st).deal_of('20')

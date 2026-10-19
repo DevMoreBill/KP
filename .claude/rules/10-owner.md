@@ -30,6 +30,12 @@ Windows 10 (один EXE, папка программы C:\KP), менеджер
 - (19.10) Среда Claude Code: ECC (affaan-m/ECC) — НЕ подключать («Забудь про есс»); подключён официальный плагин
   `claude-code-setup@claude-plugins-official` (`.claude/settings.json`: подбор хуков, навыков, MCP под проект — только предложения,
   внедрять по «делай»). Хук `.claude/hooks/session-start.sh` ставит в облаке pyflakes и ESLint для `tests/run_all.py`.
+- (19.10) По рекомендациям claude-code-setup — «Сделай все что ты перечислил» (10 пунктов) [реал. 3.104.1]: 1) хук `lint.py` —
+  pyflakes/ESLint по файлу сразу после правки; 2) хук `guard.py` — запрет записи баз, выгрузок, ключей и `app/data/`;
+  3) навык `/vypusk`; 4) навык `/progon` + `tests/ui/progon.py` в репозитории (вымышленные данные, `--db` — копия базы);
+  5) навык `/migraciya` (+ `kit.Schema.down_to`); 6) помощник `proverka-bezopasnosti`; 7) помощник `proverka-raschetov`;
+  8) Playwright MCP (`.mcp.json`); 9) рабочую ветку влить в основную (main); 10) `run_all.py --changed` для мелких правок,
+  перед выпуском — полный прогон.
 
 ## Выпуск (каждое изменение)
 - Версия: `app/version.py`, `APP_VERSION` и запись в `APP_VERSIONS` (`app/web/js/features/help.js`), раздел в README,

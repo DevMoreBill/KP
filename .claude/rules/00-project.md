@@ -38,4 +38,9 @@
 - `python3 tests/run_all.py` — pyflakes, ESLint для `app/web/js` (`eslint.config.mjs`, необъявленные имена), наборы `tests/` на стенде
   со сгенерированной базой; то же CI делает при каждой отправке, и EXE собирается только после этого. Новая функция сервера — проверка
   в `tests/` (на `kit.Stand`/`SampleData`, без данных пользователя). Сценарии Playwright — на копии базы (не на рабочей).
-- Версия: `app/version.py` + `APP_VERSION` и журнал в `app/web/js/features/help.js`, README.
+- Версия: `app/version.py` + `APP_VERSION` и журнал в `app/web/js/features/help.js`, README — навык `/vypusk`
+  (`.claude/skills/vypusk/vypusk.py` ставит номер и проверяет записи).
+- Мелкая правка — `python3 tests/run_all.py --changed` (только затронутое); перед выпуском — полный `--strict`. Интерфейс —
+  `/progon` (`tests/ui/progon.py`); схема базы — `/migraciya`; безопасность и расчёты — помощники `proverka-bezopasnosti`,
+  `proverka-raschetov` (`.claude/agents`). Хуки `.claude/hooks`: `guard.py` не даёт записать базы, выгрузки, ключи и `app/data/`,
+  `lint.py` проверяет файл сразу после правки.

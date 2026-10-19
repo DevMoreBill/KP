@@ -105,6 +105,21 @@ class Modal {
   }
 }
 
+/** Второй щелчок двойного щелчка, попавший в окно, которое открыл первый щелчок, — не нажатие: «Каталог» в шапке двойным
+ *  щелчком открывал ещё и «Новую позицию» (кнопка «+ Позиция» окна — на месте кнопки шапки). Окна, открытые до первого
+ *  щелчка, работают как прежде (двойной щелчок по строке каталога и т. п.); клавиатура не затрагивается. */
+class DblClickGuard {
+  static before=new Set();
+  static init(){
+    document.addEventListener('mousedown', e=>{ if (e.detail<=1) this.before=new Set(document.querySelectorAll('dialog[open]')); }, true);
+    const stop=e=>{ if (e.detail<2) return; const d=e.target.closest && e.target.closest('dialog');
+      if (d && !this.before.has(d)){ e.stopImmediatePropagation(); e.preventDefault(); } };
+    document.addEventListener('click', stop, true);
+    document.addEventListener('dblclick', stop, true);
+  }
+}
+DblClickGuard.init();
+
 // Копирование в буфер обмена. По сети (http://сервер:порт) браузер не даёт странице navigator.clipboard —
 // тогда текст кладётся через событие copy; поле для выделения создаётся внутри открытого окна,
 // потому что всё вне модального окна браузер делает неактивным. true — только если текст точно скопирован.

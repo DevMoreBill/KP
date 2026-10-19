@@ -14,7 +14,7 @@ import urllib.parse
 import zipfile
 from datetime import datetime, timedelta
 
-from kit import Http, SampleData, SmtpSink, Stand, TempStore
+from kit import Http, SampleData, Schema, SmtpSink, Stand, TempStore
 from kp_files import KpFiles
 import storage
 
@@ -125,12 +125,7 @@ class StorageTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, True)
         path = os.path.join(d, 'kp.sqlite3')
         st = storage.Store(path)
-        st.migration_down('2027-13-kp-rev')
-        st.migration_down('2027-12-indexes')
-        st.migration_down('2027-11-bitrix')
-        st.migration_down('2027-10-crm')                       # база прежней версии: таблиц ещё нет
-        st.migration_down('2027-09-kp-files-author')
-        st.migration_down('2027-08-kp-files')
+        Schema.down_to(st, '2027-08-kp-files')                 # база прежней версии: таблиц ещё нет
         self.kp(st, '26-0005')
         st.conn().close()
         c = sqlite3.connect(path)

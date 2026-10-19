@@ -14,3 +14,6 @@ backup/
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
+
+# рабочая папка Playwright MCP (снимки страниц сеанса Claude Code)
+.playwright-mcp/
