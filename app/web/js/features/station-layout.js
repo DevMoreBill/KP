@@ -215,6 +215,10 @@ class StationGeo {
 class StationMods {
   static get M(){ return StationMatrix.grp('mods'); }
   static get MAX(){ return Math.max(2, this.M.max||9); }
+  /** ширины модуля, мм (решение владельца 19.10: все модули одной ширины, от wMin до wMax, не шире габарита перевозки):
+   *  wMin, затем кратные 100 и wMax */
+  static widths(){ const a=Math.min(this.M.wMin||2448, StationGeo.ROAD_W), b=Math.max(a, Math.min(this.M.wMax||2550, StationGeo.ROAD_W)), out=[a];
+    for (let w=Math.ceil((a+1)/100)*100; w<b; w+=100) out.push(w); if (b>a) out.push(b); return out; }
   /** раскладка элемента «контейнер» или null: {n, a, b, cells:[[x, y]…]} — только прямоугольник из 2 и больше модулей */
   static of(c){ const r=c && c.mods && this.rect(c.mods.cells); return r && r.ok && r.n>1 ? r : null; }
   /** клетки сетки → {ok, n, a, b, cells} (сдвинуты к началу); ok — без повторов, прямоугольник целиком, не больше max */
@@ -245,6 +249,16 @@ class StationMods {
    *  должно): элементы, заходящие за линию стыка ближе полустойки каркаса; трубопровод не считается — его расстыковывают */
   static cross(items, geo){ const J=this.lines(geo), s=this.M.post/2; if (!J.x.length && !J.y.length) return [];
     return (items||[]).filter(i=>i.mount!=='pipe' && (J.x.some(x=>i.x<x+s && i.x+i.lx>x-s) || J.y.some(y=>i.y<y+s && i.y+i.ly>y-s))); }
+  /** что в каком модуле: Map 'i,j' → [{pos, name}] — оборудование на полу и шкафы на стене по центру (трубопровод и фильтры на
+   *  нём не считаются), по позиции один раз */
+  static content(plan){
+    const g=plan && plan.geo, m=g && g.mods, out=new Map(); if (!m || !m.Lm || !plan.items) return out;
+    const ox=(g.ext[0]-g.int[0])/2, oy=(g.ext[1]-g.int[1])/2;
+    for (const it of plan.items){ if (it.mount==='pipe') continue;
+      const i=Math.min(m.a-1, Math.max(0, Math.floor((ox+it.x+it.lx/2)/m.Lm))), j=Math.min(m.b-1, Math.max(0, Math.floor((oy+it.y+it.ly/2)/m.Wm))), k=i+','+j;
+      if (!out.has(k)) out.set(k, []); const L=out.get(k); if (!L.some(q=>q.pos===it.pos)) L.push({ pos:it.pos, name:it.short||it.name||'' }); }
+    for (const L of out.values()) L.sort((p, q)=>p.pos-q.pos);
+    return out; }
   /** линии стыков внутри помещения, мм: {x:[…] — поперёк, y:[…] — вдоль} */
   static lines(geo){ const m=geo && geo.mods; if (!m || !m.Lm) return { x:[], y:[] };
     const [L, W]=geo.int, ox=(geo.ext[0]-L)/2, oy=(geo.ext[1]-W)/2;
@@ -338,11 +352,11 @@ class StationMatrix {
     dgu:{ rad:50, rot:1, two:1, across:3, pass:400, convGap:50, convEdge:50, convFront:100 },
     muffler:{ gap:200, outlet:300 },
     // станция из модулей (решение владельца 19.10): не больше max модулей (больше — по запросу), стойка каркаса на стыке, мм
-    mods:{ max:9, post:200 },
+    mods:{ max:9, post:200, wMin:2448, wMax:2550 },
     // ниже — прочие числа станции: все значения и умолчания правятся в «Настройках» (решение ПНЕВМОТЕХ)
     shell:{ ins:100, seaLining:15, seaFloor:50, blockWall:20, blockFloor:150, blockRoof:60, weldWall:10, weldFloor:160, weldRoof:60, northWall:20, northFloor:200, northRoof:80, tambour:1200, gable:8, mono:5 },
     pick:{ max:4, over:30, recvFit:300, dryerFit:100, recvFree:6, recvAny:4, oneSup:10 },
-    pipe:{ airY:150, pad:60 },
+    pipe:{ airY:150, pad:60, outGap:150, outEdge:300, flange:150 },
     pumps:{ kw:22, len:1200, back:300, backMin:100, side:700, sideMin:250, top:300, topMin:100 },
     grille:{ step:50, gap:200, near:450, inZ:200, inHmin:300, inHmax:1200, inWmin:400, inWmax:1500, whole:2400, maxn:4, outTop:420, outHmin:300, outHmax:800, outWmin:400, outWmax:1500,
       piece:600, lift:750, fanMin:500, roofHood:420, hoodSide:80, hoodLap:50, hoodAng0:30, hoodAng1:75, hoodLow:100, hoodGap:300, radV:7.5 },
@@ -551,6 +565,9 @@ class LayoutParams {
     { id:'pipe', title:'Трубопровод и малые насосы', f:[
       { g:'pipe', k:'airY', t:'Линия сжатого воздуха: ось — от задней стены', u:'мм', lo:50, hi:600 },
       { g:'pipe', k:'pad', t:'Фильтр на трубопроводе: зазор вокруг', u:'мм', lo:0, hi:300 },
+      { g:'pipe', k:'outGap', t:'Выход трубопровода: от проёма (ворота, двери, шкаф) — не ближе', u:'мм', lo:0, hi:1000, h:'Решение владельца 19.10: выход в дальнем торце попадает в ворота или дверь — переносится на ближайшую свободную стену.' },
+      { g:'pipe', k:'outEdge', t:'Выход трубопровода на стене: от торца — не ближе', u:'мм', lo:100, hi:2000 },
+      { g:'pipe', k:'flange', t:'Патрубок с фланцем снаружи: выступ от стены', u:'мм', lo:50, hi:500 },
       { g:'pumps', k:'kw', t:'Малый насос (у стены, по два на раме): мощность — не больше', u:'кВт', lo:0, hi:200, h:'СП 31.13330.2021, п. 10.15: малые насосы (до 1000 В, нагнетательный патрубок до DN 100) — у стены и по два на общей раме без прохода, вокруг — 0,7 м.' },
       { g:'pumps', k:'len', t:'Малый насос: длина — не больше', u:'мм', lo:300, hi:3000 },
       { g:'pumps', k:'back', t:'Малый насос: сзади — рекомендуется', u:'мм', lo:0, hi:2000 },
@@ -655,7 +672,9 @@ class LayoutParams {
       { g:'fire', k:'ext', t:'Огнетушитель: верх — не выше от пола', u:'мм', lo:500, hi:2500, h:'Правила противопожарного режима в РФ: не выше 1,5 м.' }] },
     { id:'mods', title:'Станция из нескольких модулей', t:'Решение владельца (19.10): модули стыкуются на объекте бок о бок и торец к торцу в одно помещение; раскладку выбирает менеджер (кнопка «Модули…» в «Компоновке»).', f:[
       { g:'mods', k:'max', t:'Модулей в станции — не больше (больше — по запросу)', u:'шт.', lo:2, hi:30 },
-      { g:'mods', k:'post', t:'Стойка каркаса на пересечении стыков внутри помещения', u:'мм', lo:0, hi:600, h:'Только у раскладок в два и больше ряда по длине и ширине: оборудование её обходит.' }] },
+      { g:'mods', k:'post', t:'Стойка каркаса на пересечении стыков внутри помещения', u:'мм', lo:0, hi:600, h:'Только у раскладок в два и больше ряда по длине и ширине: оборудование её обходит.' },
+      { g:'mods', k:'wMin', t:'Ширина модуля — не меньше', u:'мм', lo:1500, hi:2550, h:'Решение владельца 19.10: модули одинаковой ширины от 2 448 до 2 550 мм (не шире габарита перевозки); длина модуля — до наибольшей длины перевозки.' },
+      { g:'mods', k:'wMax', t:'Ширина модуля — не больше', u:'мм', lo:1500, hi:2550 }] },
     { id:'muffler', title:'Глушитель ДГУ на крыше', t:'Над ДГУ; выхлоп — в сторону, не вверх; съёмный для перевозки.', f:[
       { g:'muffler', k:'gap', t:'Опоры: от крыши до глушителя', u:'мм', lo:0, hi:1000 },
       { g:'muffler', k:'outlet', t:'Вывод выхлопа вбок', u:'мм', lo:0, hi:1500 }] },
@@ -1781,7 +1800,7 @@ class StationLayout {
     let plan=geo.auto ? this.autoSize(units, geo) : this.in._mode ? this.fit(units, geo, [this.in._mode]) : this.fit(units, geo);   // удлинение (grow) — в том же режиме
     if (plan.level==='error' && !geo.auto) plan.suggest=this.suggest(units, geo);   // какой контейнер нужен (с проходом)
     else if (plan.level!=='error' && !geo.auto && !this.in._grow) this.excess(units, geo, plan);
-    if (plan.level!=='error' && plan.items && plan.items.length){ plan.roof=this.roof(plan); plan.exhausts=this.exhausts(plan); plan.piping=this.route(plan); plan.outside=this.outside(plan, extra.some(e=>e.kind==='chassis')); this.modsNotes(plan); }
+    if (plan.level!=='error' && plan.items && plan.items.length){ plan.roof=this.roof(plan); plan.exhausts=this.exhausts(plan); this.outlet(plan); plan.piping=this.route(plan); plan.outside=this.outside(plan, extra.some(e=>e.kind==='chassis')); this.modsNotes(plan); }
     // «не помещается» точно, если не помещается и без оборудования с условными габаритами; иначе — лишь оценка (assumed)
     if (plan.level==='error' && units.some(e=>!e.known)){ const k=units.filter(e=>e.known);
       plan.assumed=!k.length || (geo.auto ? this.autoSize(k, geo) : this.fit(k, geo)).level!=='error'; }
@@ -2250,7 +2269,8 @@ class StationLayout {
     const bad=[], moved=[];
     for (const it of r.items){ const d=it.d, e=it.o.e;
       if (!Y.some(y=>it.y<y+s && it.y+d>y-s)) continue;
-      const c=it.y+d/2, Z=zones.filter(([a, b])=>b-a>=d).sort((p, q)=>Math.abs((p[0]+p[1])/2-c)-Math.abs((q[0]+q[1])/2-c));
+      // у задней стены (лицом к проходу) — в полосе у этой стены, у передней — у передней; посередине (ДГУ) — в ближайшей
+      const c=it.y+d/2, mid=e.kind==='dgu' && !it.o.rot, Z=zones.filter(([a, b])=>b-a>=d).sort((p, q)=>!mid && it.face===-1 ? q[1]-p[1] : !mid && it.face===1 ? p[0]-q[0] : Math.abs((p[0]+p[1])/2-c)-Math.abs((q[0]+q[1])/2-c));
       const z=Z[0]; if (!z || it.o.e.cross || it.o.end){ bad.push(e); continue; }
       it.y=e.kind==='dgu' && !it.o.rot ? Math.round(z[0]+(z[1]-z[0]-d)/2) : Math.min(Math.max(it.y, z[0]), z[1]-d);
       if (it.face===1) it.back=it.y; else { it.back=W-it.y-d; it.aisle=it.y; }
@@ -2269,7 +2289,11 @@ class StationLayout {
         const xl=Math.round(x-s-it.lx), xr=Math.round(x+s), okL=xl-(pv ? pv.x+pv.lx : 0)>=Math.min(g0, 700), okR=(nx ? nx.x : Lu)-xr-it.lx>=Math.min(g1, 700);
         const opt=[okL && xl, okR && xr].filter(v=>v!==false).sort((p, q)=>Math.abs(p-it.x)-Math.abs(q-it.x));
         if (opt.length){ it.x=opt[0]; continue; }
-        const dx=Math.round(x+s-it.x); for (let m=k; m<row.length; m++) row[m].x+=dx; } }
+        // вместе с соседями: следующие — за стык (вправо), если не упираются в торец; иначе предыдущие — до стыка (влево) за счёт
+        // свободной длины у двери
+        const dx=Math.round(x+s-it.x), dl=Math.round(it.x+it.lx-(x-s)), last=row[row.length-1];
+        if (last.x+last.lx+dx>Lu && row[0].x-dl>=Math.min(row[0].x, 600)){ for (let m=0; m<=k; m++) row[m].x-=dl; continue; }
+        for (let m=k; m<row.length; m++) row[m].x+=dx; } }
     const end=Math.max(...r.items.map(i=>i.x+i.lx));
     if (end>Lu) return { ok:false, why:'length', needL:end+100, needL0:end+100 };
     r.aisleW=Math.min(...r.items.map(i=>i.aisle));
@@ -2328,8 +2352,12 @@ class StationLayout {
     let r=this.dguSt ? this.rowD(units, Lu, W) : this.mode.ends ? (geo.x0 ? { ok:false, why:'mode' } : this.rowE(units, Lu, W, geo.t||0, StationLayout.gaps(geo).eL)) : this.row1(units, Lu, W);
     if (!this.dguSt && !this.mode.ends && (!r.ok || r.iss.some(i=>i.level==='warn'))){ const r2=this.row2(units, Lu, W); if (r2.ok && (!r.ok || !r2.iss.some(i=>i.level==='warn'))) r=r2; }
     if (!r.ok && this.mode.cross && !this.dguSt){ const r3=this.rowX(units, Lu, W); if (r3.ok) r=r3; }   // исключение: агрегат поперёк, две двери
-    if (r.ok && this.jGeo && !this.dguSt){ const j=this.joints(r, geo, Lu, W);   // на стыке — другой вариант ряда (два ряда / один)
-      if (!j.ok && !this.mode.ends){ const alt=r.rows===2 ? this.row1(units, Lu, W) : this.row2(units, Lu, W), j2=alt.ok ? this.joints(alt, geo, Lu, W) : alt; r=j2.ok ? j2 : j; } else r=j; }
+    if (this.jGeo && !this.dguSt && !this.mode.ends){   // из модулей: бок о бок — сначала два ряда (ряд в своей полосе модулей), на стыке — другой вариант
+      const V=(geo.mods.b>1 ? ['row2', 'row1'] : ['row1', 'row2']).map(k=>k==='row2' ? this.row2(units, Lu, W) : this.row1(units, Lu, W)).filter(q=>q.ok);
+      let first=null; r=null;
+      for (const q of V){ const j=this.joints(q, geo, Lu, W); if (j.ok && (!r || (r.iss.some(i=>i.level==='warn') && !j.iss.some(i=>i.level==='warn')))) r=j; first=first||j; if (r && !r.iss.some(i=>i.level==='warn')) break; }
+      r=r || first || this.row1(units, Lu, W); }
+    else if (r.ok && this.jGeo && !this.dguSt) r=this.joints(r, geo, Lu, W);
     const res={ geo, ext:geo.ext, int:geo.int };
     if (!r.ok){
       const iss=[...hh.iss];
@@ -3010,6 +3038,9 @@ class StationLayout {
     const n=StationLayout.n, iss=plan.issues=plan.issues||[], [L, W, H]=plan.int, P=StationMods.posts(g), ps=StationMods.M.post/2;
     const fl=(plan.items||[]).filter(i=>i.mount!=='wall' && i.mount!=='pipe');
     iss.push({ level:'info', mods:true, text:`Станция из модулей: ${StationMods.shape(m)} — модуль ${n(m.Lm)} × ${n(m.Wm)} × ${n(g.ext[2])} мм (в габарите перевозки, каждый везётся отдельно), вместе ${n(g.ext[0])} × ${n(g.ext[1])} мм, внутри — одно помещение ${n(L)} × ${n(W)} × ${n(H)} мм. Каждый агрегат — целиком в своём модуле. На производстве станцию собирают и стыкуют, обвязывают, запускают и проверяют; на перевозку — расстыковка трубопровода, кабелей и коммуникаций на стыках (разъёмные соединения), стыковые проёмы — временными щитами; модули везут с оборудованием внутри. На объекте — быстрая стыковка: соединение каркасов, уплотнение, нащельники на стенах и кровле, пол без порога, подключение сетей через стык; стыков — ${StationMods.joints(m)}.` });
+    const ws=StationMods.widths(), wl=ws[0], wh=ws[ws.length-1];
+    if (m.Wm<wl || m.Wm>wh) iss.push({ level:'warn', mods:true, text:`Ширина модуля ${n(m.Wm)} мм — вне ${n(wl)}…${n(wh)} мм (модули — одной ширины, не шире габарита перевозки): уберите размер — он подберётся по оборудованию.` });
+    if (m.Lm>StationLayout.MAX_L) iss.push({ level:'warn', mods:true, text:`Длина модуля ${n(m.Lm)} мм — больше наибольшей длины перевозки ${n(StationLayout.MAX_L)} мм.` });
     const on=StationMods.cross(plan.items, g);
     if (on.length){ plan.level='error'; iss.push({ level:'error', mods:true, text:`Поз. ${[...new Set(on.map(i=>i.pos))].join(', ')} — на стыке модулей: модуль везут с оборудованием внутри, каждый агрегат должен быть целиком в своём модуле. Выберите другую раскладку или размер модуля по оборудованию («Модули…»).` }); }
     for (const p of P){ const hit=StationMods.hits(fl, g).filter(i=>i.x<p.x+ps && i.x+i.lx>p.x-ps && i.y<p.y+ps && i.y+i.ly>p.y-ps);
@@ -3029,6 +3060,50 @@ class StationLayout {
       return { ...o, how:'wall', wall:'back', u, z, gap:Math.max(0, W-g.y-g.ly) }; });
   }
 
+  /** выход трубопровода из станции (решение владельца 19.10): магистраль выходит через дальний торец; если там ворота, дверь
+   *  или дверь-жалюзи ДГУ (проём на высоте трубы с запасом pipe.outGap) — выход переносится на ближайшую свободную стену:
+   *  сначала стена, вдоль которой идёт линия (задняя — у компрессорной), ближе к торцу и не дальше последнего отвода; затем
+   *  противоположная; затем над проёмом в том же торце (если под потолком хватает места). На выходе снаружи — патрубок с
+   *  фланцем (l.out.flange, мм выступа). l.out — {wall:'right'|'back'|'front', x, y, z, moved, why}; x1 линии — до выхода */
+  outlet(plan){
+    const [L, W, H]=plan.int, P=StationMatrix.grp('pipe'), gap=P.outGap, edge=P.outEdge, n=StationLayout.n, iss=plan.issues=plan.issues||[];
+    const ext=!!this.eq.some(e=>e.outside), taken=[];
+    const endOpen=[...[plan.gates, plan.gates2].filter(g=>g && g.wall==='right').map(g=>({ y0:g.sea ? 0 : g.y0, y1:g.sea ? W : g.y1, h:g.sea ? H : g.h, t:g.sea ? 'штатные двери' : 'ворота' })),
+      ...(plan.exit && plan.exit.wall==='right' ? [{ y0:plan.exit.y0, y1:plan.exit.y1, h:plan.exit.h, t:'вторая дверь оператора' }] : []),
+      ...(plan.dguDoors||[]).filter(d=>d.wall==='right').map(d=>({ y0:d.y0, y1:d.y1, h:d.h, t:'дверь-жалюзи ДГУ' }))];
+    const wallOpen=w=>[...(plan.doors||[]).filter(d=>d.wall===w).map(d=>({ x0:d.x0, x1:d.x1, t:d.kind==='entry' ? 'дверь оператора' : 'сервисные ворота' })),
+      ...(plan.entry && plan.entry.wall===w ? [{ x0:plan.entry.x0, x1:plan.entry.x1, t:'дверь оператора' }] : []),
+      ...(plan.dguDoors||[]).filter(d=>d.wall===w).map(d=>({ x0:d.x0, x1:d.x1, t:'дверь-жалюзи ДГУ' })),
+      ...plan.items.filter(i=>i.mount==='wall' && i.wall===w).map(i=>({ x0:i.x, x1:i.x+i.lx, t:'шкаф' })),
+      ...StationMods.lines(plan.geo).x.map(x=>({ x0:x-StationMods.M.post/2, x1:x+StationMods.M.post/2, t:'стык модулей' }))];
+    for (const l of (plan.lines||[]).filter(q=>q.label && !q.header && q.x1>=L-1)){
+      const blk=endOpen.find(o=>l.y>o.y0-gap && l.y<o.y1+gap && l.z<o.h+gap);
+      if (!blk || ext){ l.out={ wall:'right', x:L, y:l.y, z:l.z, moved:false, flange:P.flange };
+        if (blk) iss.push({ level:'warn', text:`Выход трубопровода через торец — в проёме (${blk.t}): ресиверы снаружи стоят за торцом. Перенесите их или ворота в другой торец.` });
+        continue; }
+      const bx=Math.max(0, ...(l.branches||[]).map(b=>b.x), ...plan.items.filter(i=>i.mount==='pipe' && Math.abs(i.y+i.ly/2-l.y)<i.ly).map(i=>i.x+i.lx)), lo=bx+100, why=blk.t;   // после последнего отвода и фильтров на трубе
+      const side=w=>{ const wy=w==='back' ? W : 0, O=wallOpen(w).filter(o=>o.x1>lo-gap);
+        for (let x=Math.round(L-edge); x>=lo; x-=50){
+          if (O.some(o=>x>o.x0-gap && x<o.x1+gap) || taken.some(t=>t.wall===w && Math.abs(t.x-x)<300)) continue;
+          if (plan.items.some(i=>i.mount!=='pipe' && i.mount!=='wall' && x>i.x-60 && x<i.x+i.lx+60 && i.y<Math.max(l.y, wy)+60 && i.y+i.ly>Math.min(l.y, wy)-60 && i.h>l.z-120)) continue;   // отвод к стене — мимо оборудования
+          return { wall:w, x, y:wy, z:l.z, moved:true, why, flange:P.flange }; }
+        return null; };
+      const near=l.y>W/2 ? 'back' : 'front', far=near==='back' ? 'front' : 'back';
+      let o=side(near) || side(far);
+      if (!o){ const z=Math.max(...endOpen.filter(q=>l.y>q.y0-gap && l.y<q.y1+gap).map(q=>q.h))+Math.min(gap, 100);   // над проёмом в торце
+        if (z<=H-100) o={ wall:'right', x:L, y:l.y, z, rise:true, moved:true, why, flange:P.flange }; }
+      if (!o){ l.out={ wall:'right', x:L, y:l.y, z:l.z, moved:false, flange:P.flange };
+        iss.push({ level:'warn', text:`Выход трубопровода в дальнем торце — в проёме (${why}), а на стенах рядом места нет: перенесите ворота или укажите место выхода сборщику.` }); continue; }
+      if (o.wall!=='right') l.x1=o.x; else if (o.rise) l.x1=Math.round(L-150);   // над проёмом: подъём у торца
+      l.out=o; taken.push(o);
+      iss.push({ level:'info', text:`Выход трубопровода${l.medium==='air' ? ' сжатого воздуха' : ''} перенесён: в дальнем торце — ${why}. ${o.wall==='right' ? `Выход — над проёмом в торце, на высоте ${n(o.z)} мм от пола` : `Выход — через ${o.wall==='back' ? 'заднюю стену' : 'стену прохода'} в ${n(L-o.x)} мм от дальнего торца (внутри), на высоте ${n(o.z)} мм от пола`}; снаружи — патрубок с фланцем.` }); }
+  }
+  /** путь выхода от конца магистрали до внутренней поверхности стены: {pts:[[x, y, z]…] (внутри, мм), dir:[dx, dy] — наружу} */
+  static outPath(l, W){
+    const o=l.out; if (!o) return null;
+    if (o.wall==='back' || o.wall==='front'){ const wy=o.wall==='back' ? W : 0; return { pts:[[o.x, l.y, l.z], [o.x, wy, l.z]], dir:[0, o.wall==='back' ? 1 : -1] }; }
+    return o.rise ? { pts:[[l.x1, l.y, l.z], [l.x1, l.y, o.z], [o.x, l.y, o.z]], dir:[1, 0] } : { pts:[[o.x, l.y, l.z]], dir:[1, 0] };
+  }
   /** трубопровод в составе → линии с материалом и цветом; в составе нет, а фильтры висят на трубе — линия условно (без
    *  номера позиции) */
   route(plan){
@@ -3113,8 +3188,9 @@ class StationLayout {
       try{ got=this.withMode(m, ()=>{
         const Hx=Math.max(B.minH, G.up(needH(lw)+hOf)); if (Hx>B.maxH){ tall=tall||Hx; return null; }
         const cand=[];
-        const Ws=[]; for (let Wx=G.up(wide ? G.ROAD_W+1 : B.minW); Wx<=(wide ? B.maxW : G.ROAD_W); Wx+=G.STEP) Ws.push(Wx*kb);
-        if (!wide && Ws[Ws.length-1]<G.ROAD_W*kb) Ws.push(G.ROAD_W*kb);   // наибольшая ширина без спецразрешения — 2 550 мм (не кратна 100)
+        const Ws=[]; if (MD) for (const Wm of StationMods.widths()) Ws.push(Wm*kb);   // модули — одинаковой ширины mods.wMin…wMax (решение владельца 19.10)
+        else { for (let Wx=G.up(wide ? G.ROAD_W+1 : B.minW); Wx<=(wide ? B.maxW : G.ROAD_W); Wx+=G.STEP) Ws.push(Wx);
+          if (!wide && Ws[Ws.length-1]<G.ROAD_W) Ws.push(G.ROAD_W); }   // наибольшая ширина без спецразрешения — 2 550 мм (не кратна 100)
         const LX=L=>ka*Math.max(B.minL, G.up((L+g2+x0+wallX)/ka));   // длина станции: у модулей — модуль с шагом 100 мм × a
         for (const Wx of Ws){
           const Wi=G.inner(geo.type, [10000, Wx, Hx], t)[1];

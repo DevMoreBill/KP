@@ -265,10 +265,14 @@ class StationModsUi {
     const best=v.filter(q=>q.r && q.r.cls!=='bad').sort((p, q)=>p.r.k-q.r.k)[0];
     // сетка — по раскладке и ещё клетка вокруг (куда перетащить), не больше MAX
     const A=Math.min(MAX, (R ? R.a : 1)+1), B=Math.min(MAX, (R ? R.b : 1)+1), on=new Set((R ? R.cells : []).map(q=>q.join(',')));
-    const cell=(cx, cy)=>{ const k=cx+','+cy, f=on.has(k), idx=f ? R.cells.findIndex(q=>q.join(',')===k) : -1;
-      return `<div class="md-cell${f ? ' on' : ''}${st.pick===k ? ' pick' : ''}" data-cell="${k}" role="button" tabindex="0" aria-label="${f ? `Модуль ${idx+1}` : 'Пустая клетка'}">${f ? `<span class="md-mod" data-mod="${k}">М${idx+1}</span>` : ''}</div>`; };
-    let grid=''; for (let cy=0; cy<B; cy++) for (let cx=0; cx<A; cx++) grid+=cell(cx, cy);
     const res=R && R.ok ? st.res.get(key(st.cells)) : null, n=StationLayout.n;
+    // что в каком модуле — по расчёту этой раскладки (номера позиций на клетке, названия — списком под сеткой)
+    const C=res && res.p && res.cls!=='bad' ? StationMods.content(res.p) : new Map(), mn=k=>`М${R.cells.findIndex(q=>q.join(',')===k)+1}`;
+    const cell=(cx, cy)=>{ const k=cx+','+cy, f=on.has(k), L=C.get(k)||[];
+      return `<div class="md-cell${f ? ' on' : ''}${st.pick===k ? ' pick' : ''}" data-cell="${k}" role="button" tabindex="0" aria-label="${f ? `Модуль ${mn(k).slice(1)}` : 'Пустая клетка'}">${f ? `<span class="md-mod" data-mod="${k}"><b>${mn(k)}</b>${L.length ? `<small>поз. ${esc(L.map(q=>q.pos).join(', '))}</small>` : res && res.cls!=='bad' ? '<small>пусто</small>' : ''}</span>` : ''}</div>`; };
+    // сетка как план на чертеже: внизу — стена с дверью оператора (y = 0), вверху — задняя
+    let grid=''; for (let cy=B-1; cy>=0; cy--) for (let cx=0; cx<A; cx++) grid+=cell(cx, cy);
+    const legend=R && R.ok && C.size ? `<ul class="md-in">${R.cells.map(q=>q.join(',')).map(k=>`<li><b>${mn(k)}</b> ${(C.get(k)||[]).length ? esc((C.get(k)||[]).map(q=>`${q.pos} ${q.name}`).join(' · ')) : '<span class="muted">без оборудования (проход)</span>'}</li>`).join('')}</ul>` : '';
     st.m.$('.md-body').innerHTML=`
       <div class="md-n"><span>Модулей</span><button class="btn ghost sm" type="button" data-mn="-1"${st.n<=2 ? ' disabled' : ''} aria-label="Меньше">−</button><b>${st.n}</b><button class="btn ghost sm" type="button" data-mn="1"${st.n>=MAX ? ' disabled' : ''} aria-label="Больше">+</button>
         <small class="muted">до ${MAX}${st.n>=MAX ? ' — больше по запросу' : ''}</small></div>
@@ -276,8 +280,9 @@ class StationModsUi {
         <small class="${q.r ? 'md-'+q.r.cls : 'muted'}">${q.r ? esc(q.r.t) : 'считаю…'}</small></button>`).join('')}</div>
       <p class="muted md-hint">Перетащите модули на сетке (на телефоне — нажмите модуль, затем клетку): по длине — торец к торцу, по ширине — бок о бок. Раскладка — прямоугольник, внутри — одно помещение; оборудование на стыки не ставится.</p>
       <div class="md-grid" style="grid-template-columns:repeat(${A}, minmax(44px, 1fr))">${grid}</div>
+      <small class="muted md-ax">← торец у входа · внизу — стена с дверью оператора, как на плане чертежа</small>${legend}
       <div class="md-st ${R && R.ok ? (res ? 'md-'+res.cls : '') : 'md-bad'}">${!R || !R.ok ? `Раскладка не прямоугольник — модули должны складываться в ${StationMods.shapes(st.n).map(([a, b])=>`${a} × ${b}`).join(' или ')}.`
-        : `<b>${esc(StationMods.shape(R))}</b><br>${res ? esc(res.t) : 'считаю…'}${res && res.p && res.p.issues.some(t=>t.level==='error') ? `<br><small>${esc(res.p.issues.find(t=>t.level==='error').text)}</small>` : ''}`}</div>
+        : `<b>${esc(StationMods.shape(R))}</b> ${res ? esc(res.t) : 'считаю…'}${res && res.p && res.p.issues.some(t=>t.level==='error') ? `<br><small>${esc(res.p.issues.find(t=>t.level==='error').text)}</small>` : ''}`}</div>
       <div class="row md-act"><button class="btn primary" type="button" data-md="apply"${R && R.ok && res && res.cls!=='bad' ? '' : ' disabled'}>Сделать из ${st.n} модулей…</button>
         ${cur ? '<button class="btn ghost" type="button" data-md="one">Один модуль…</button>' : ''}<button class="btn ghost" type="button" data-x>Отмена</button></div>
       <p class="muted md-cost">В составе станции: контейнер × N (цена — за модуль) и строка «${esc(this.JOIN)}» по числу стыков${DEF('st.joinCost') ? ` (${n(+DEF('st.joinCost'))} ₽ за стык)` : ' — цену укажите в составе'}.</p>`;

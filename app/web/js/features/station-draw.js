@@ -69,7 +69,11 @@ class StationDrawing {
     this.hood=plan.vent && (plan.vent.roof||[]).length ? StationVent.HOOD : 0;   // колпаки выброса на крыше
     this.hTop=Math.max(this.up, this.hood, this.rise, ...this.ext.map(i=>this.zf+i.z+i.h-this.He));
     this.hidden=plan.items.filter(i=>i.mount==='wall' && i.wall==='front');           // на стене прохода — на разрезе А–А не видны
-    this.outs=this.lines.filter(l=>l.label && l.x1>=this.Li-1).map(l=>({ y:l.y, z:l.z })).sort((a, b)=>a.z-b.z);
+    // выходы трубопровода: через дальний торец (outs; над проёмом — с подъёмом) и через боковую стену (souts) — решение
+    // владельца 19.10: выход не в воротах и дверях, снаружи — патрубок с фланцем
+    this.outs=this.lines.filter(l=>l.label && (l.out ? l.out.wall==='right' : l.x1>=this.Li-1)).map(l=>({ y:l.y, z:l.out ? l.out.z : l.z, l })).sort((a, b)=>a.z-b.z);
+    this.souts=this.lines.filter(l=>l.out && (l.out.wall==='back' || l.out.wall==='front')).map(l=>({ x:l.out.x, y:l.y, z:l.z, wall:l.out.wall, l }));
+    this.flg=this.ext.length ? 0 : StationMatrix.grp('pipe').flange;
     this.fit=g.sea && StationDrawing.FIT[this.Le] ? [StationDrawing.FIT[this.Le], StationDrawing.FIT_W] : null;
     // номера позиций — на плане (виден весь состав, глушитель на крыше — штриховой), каждый номер один раз
     const first=new Map(); for (const it of [...plan.items, ...this.ext].sort((a, b)=>a.x-b.x)) if (!first.has(it.pos)) first.set(it.pos, it);
@@ -184,7 +188,7 @@ class StationDrawing {
   // ---- компоновка листов: на каждом — наибольший масштаб (ГОСТ 2.302), при котором его изображения с размерами помещаются
   /** разрез А–А с размерами справа: {w, h, left} при масштабе k (мм листа на мм) */
   mainBox(k){
-    const nOut=this.outs.length, nDim=nOut+1+(this.up || this.hood ? 1 : 0)+(this.rise ? 1 : 0)+(this.dz ? 1 : 0), dimsR=16+7*(nDim-1)+2, left=14;
+    const nOut=this.outs.length+this.souts.filter(o=>o.wall==='back').length, nDim=nOut+1+(this.up || this.hood ? 1 : 0)+(this.rise ? 1 : 0)+(this.dz ? 1 : 0), dimsR=16+7*(nDim-1)+2, left=14;
     return { w:left+(this.Le+this.outL)*k+dimsR, h:this.head()+this.dimPad(k)+(this.He+this.hTop+this.dz)*k+this.padBelow(k)+3, left, dimsR };
   }
   /** мелкий масштаб: подпись высоты (по середине размерной линии) длиннее изображения — место над ним, мм листа */
@@ -196,7 +200,7 @@ class StationDrawing {
   planBox(k, col){
     const nY=this.ext.length ? 0 : new Set(this.outs.map(o=>o.y)).size, left=19+(this.fit ? 7 : 0)+this.mkL*k, outR=Math.max((nY ? 16+7*(nY-1)+2 : 8)+(col ? 17 : 0)+this.mkR*k, this.swingR*k+12);
     const two=!col && this.nPos>1 && ((this.F||StationDrawing.FLD).L1-(this.F||StationDrawing.FLD).L0-10)/(this.nPos-1)<EskdSheet.shelfMin([{ n:this.nPos }]);   // номера — на двух полках
-    const top=this.chainTop(k), h=6+top+this.swingB*k+this.We*k+this.swing*k+(col ? 0 : 11+(two ? 7 : 0))+10+(this.fit ? 7 : 0);
+    const top=this.chainTop(k), h=6+top+this.swingB*k+this.We*k+this.swing*k+(col ? 0 : 11+(two ? 7 : 0))+10+(this.fit ? 7 : 0)+7*this.souts.length;
     return { w:left+(this.Le+this.outL)*k+outR, h, left, top };
   }
   /** виды с торцов В и Г рядом: размеры слева (высоты) и снизу (ширина) */
@@ -528,7 +532,10 @@ class StationDrawing {
       EquipIcon.muffler(sh, x1, zt, x2, zb); }
     // выход трубопровода через дальний торец (ресиверы снаружи — к ним); линия сечения Б–Б — под потолком, взгляд вниз
     const xE=this.xE, ro=this.ext.length ? this.outMain(sh) : null;
-    if (!ro) for (const o of this.outs){ sh.line(xR, Z(zf+o.z), xR+5, Z(zf+o.z), 'pipe'); sh.arrow(xR+7.6, Z(zf+o.z), 1, 0); }
+    if (!ro) for (const o of this.outs){ const z=Z(zf+o.z), xf=xR+Math.max(1.2, this.flg*k);
+      if (o.l && o.l.out && o.l.out.rise){ const xa=X(ox+o.l.x1); sh.line(xa, Z(zf+o.l.z), xa, z, 'pipe'); sh.line(xa, z, xR, z, 'pipe'); }   // над проёмом в торце
+      sh.line(xR, z, xf+5, z, 'pipe'); this.flangeMark(sh, xf, z, 'v'); sh.arrow(xf+7.6, z, 1, 0); }
+    for (const o of this.souts.filter(q=>q.wall==='back')) this.flangeFace(sh, X(ox+o.x), Z(zf+o.z));   // выход через заднюю стену — на виде к ней
     const zc=Z(zf+Hi-Math.min(120, Hi*0.05));
     this.cutMark(sh, xL-1.5, zc, -1, 'Б'); this.cutMark(sh, xE+1.5, zc, 1, 'Б');
     // размеры справа: присоединительные (высота выхода; с ресивером снаружи — его выхода), габаритная высота, с глушителем,
@@ -536,6 +543,7 @@ class StationDrawing {
     let xd=xE+16;   // правее штриха и буквы линии сечения Б–Б
     if (ro){ sh.dimV(ro.y, Z(-this.dz), xd, n(ro.z+this.dz), ro.x, xE); xd+=7; }
     else for (const o of this.outs){ sh.dimV(Z(zf+o.z), Z(0), xd, n(zf+o.z), xR+7.6, xR); xd+=7; }
+    for (const o of this.souts.filter(q=>q.wall==='back')){ sh.dimV(Z(zf+o.z), Z(0), xd, n(zf+o.z), X(ox+o.x), xR); xd+=7; }
     sh.dimV(Z(He), Z(0), xd, n(He), xR, xR); xd+=7;
     if (this.rise){ sh.dimV(Z(He+this.rise), Z(0), xd, n(He+this.rise), xR, xR); xd+=7; }
     if (this.up){ const m=this.rf[0]; sh.dimV(Z(He+this.up), Z(0), xd, n(He+this.up), X(ox+m.x+m.lx*0.86), xR); xd+=7; }
@@ -632,6 +640,15 @@ class StationDrawing {
   }
   /** станция из модулей на плане: стыки — штрихпунктирной с двумя точками, номера модулей М1…Мn в углу модуля, стойки
    *  каркаса на пересечениях стыков — зачернённым квадратом (размер модуля — в ТТ) */
+  /** фланец на виде сбоку (патрубок вдоль листа): две короткие черты поперёк трубы; dir 'v' — труба горизонтальна, 'h' — вертикальна */
+  flangeMark(sh, x, y, dir){ const h=2.2, t=0.6;
+    if (dir==='v'){ sh.line(x, y-h, x, y+h, 'main'); sh.line(x+t, y-h, x+t, y+h, 'main'); }
+    else { sh.line(x-h, y, x+h, y, 'main'); sh.line(x-h, y+t, x+h, y+t, 'main'); } }
+  /** выход с фланцем на виде к стене: труба, фланец, отверстия под болты, осевые линии */
+  flangeFace(sh, x, y){ const r=Math.max(0.9, 60*this.k), R=Math.max(r+1, r*2.2);
+    sh.circle(x, y, R, 'main', '#fff'); sh.circle(x, y, r, 'main', '#fff');
+    for (let q=0; q<4; q++){ const a=Math.PI/4+q*Math.PI/2; sh.circle(x+Math.cos(a)*(r+R)/2, y+Math.sin(a)*(r+R)/2, Math.max(0.25, (R-r)*0.18), 'thin'); }
+    EquipIcon.axes(sh, x, y, R*1.25); }
   modsPlan(sh, YP){
     const md=this.p.geo.mods; if (!md || !md.Lm) return;
     const k=this.k, X=v=>this.X(v), { Le, We }=this, ps=StationMods.M.post;
@@ -721,7 +738,7 @@ class StationDrawing {
     for (const v of this.vents('right', true)) this.louverEnd(sh, XR(oy+v.u0), XR(oy+v.u1), Z(zf+v.z1), Z(zf+v.z0), v.fan);   // приток в створках ворот
     for (const v of [...this.vents('right'), ...this.vents('right', true)].filter(v=>v.hood)) this.hoodEnd(sh, XR, v);   // маркизы
     for (const R of this.hoods()){ const hz=Math.max(1, StationVent.HOOD*k); sh.rect(XR(oy+R.y0), Z(He)-hz, (R.y1-R.y0)*k, hz, 'main', '#fff'); }
-    for (const o of this.outs){ const x=XR(oy+o.y), z=Z(zf+o.z), r=Math.max(0.9, 60*k); sh.circle(x, z, r, 'main', '#fff'); EquipIcon.axes(sh, x, z, r*1.6); }   // выходы трубопровода
+    for (const o of this.outs) this.flangeFace(sh, XR(oy+o.y), Z(zf+o.z));   // выходы трубопровода — фланец
     for (const m of this.rf){ if (m.dir==='y+'){ this.mufflerAcross(sh, XR, m); continue; } const xc=XR(oy+m.y+m.d/2), r=m.d/2*k;
       sh.line(xc, Z(He), xc, Z(He+m.gap), 'main'); sh.circle(xc, Z(He+m.gap+m.d/2), r, 'main', '#fff'); sh.circle(xc, Z(He+m.gap+m.d/2), Math.max(0.6, 60*k), 'main', '#fff'); }
     for (const it of [...this.ext].sort((a, c)=>c.x-a.x)) EquipIcon.front(sh, it, XR(oy+it.y), Z(zf+it.z+it.h), XR(oy+it.y+it.ly), Z(zf+it.z));   // ресиверы снаружи — перед торцом
@@ -783,7 +800,9 @@ class StationDrawing {
       for (const br of l.branches) sh.line(X(ox+br.x), YP(oy+br.y0), X(ox+br.x), YP(oy+br.y1), br.tee ? 'pipe' : 'main');
       for (const [a, c] of StationLayout.runs(l)){ sh.line(X(ox+a), y, X(ox+c), y, 'pipe'); if (l.medium==='air' && !l.header && (c-a)*k>9) PneuSymbol.flow(sh, X(ox+(a+c)/2), y, 1); } }
     if (this.ext.length) this.outPlan(sh, YP);
-    else for (const o of this.outs){ const y=YP(oy+o.y); sh.line(xR, y, xR+5, y, 'pipe'); sh.arrow(xR+7.6, y, 1, 0); }
+    else for (const o of this.outs){ const y=YP(oy+o.y), xf=xR+Math.max(1.2, this.flg*k); sh.line(xR, y, xf+5, y, 'pipe'); this.flangeMark(sh, xf, y, 'v'); sh.arrow(xf+7.6, y, 1, 0); }
+    for (const o of this.souts){ const x=X(ox+o.x), back=o.wall==='back', yw=back ? YP(We) : YP(0), s=back ? -1 : 1, yf=yw+s*Math.max(1.2, this.flg*k);   // через боковую стену
+      sh.line(x, YP(oy+o.y), x, yf+s*5, 'pipe'); this.flangeMark(sh, x, yf, 'h'); sh.arrow(x, yf+s*7.6, 0, s); }
     // глушитель на крыше — над секущей плоскостью: штриховой
     for (const m of this.rf) sh.rect(X(ox+m.x), YP(oy+m.y+m.ly), m.lx*k, m.ly*k, 'dash', 'none', m.ly*k/2);
     this.modsPlan(sh, YP);
@@ -801,6 +820,7 @@ class StationDrawing {
     if (this.ext.length){ const r=this.ext.reduce((a, c)=>c.x<a.x ? c : a), xr=X(ox+r.x);   // ресивер снаружи — от торца
       sh.dimH(xR, xr, yd, n(ox+r.x-Le), null, YP(oy+r.y)); }
     if (this.fit){ const [fl, fw]=this.fit, ex=(Le-fl)/2, ey=(We-fw)/2; yd+=7; sh.dimH(X(ex), X(Le-ex), yd, n(fl), YP(ey), YP(ey)); }
+    for (const o of this.souts){ yd+=7; sh.dimH(X(ox+o.x), xR, yd, n(Le-ox-o.x), o.wall==='back' ? YP(We) : YP(0), YP(0), { out:'l' }); }   // выход через боковую стену — от дальнего торца
     let xd=xL-14-this.mkL*k; sh.dimV(YP(We), YP(0), xd, n(We), xL, xL);
     if (this.fit){ const [fl, fw]=this.fit, ey=(We-fw)/2, ex=(Le-fl)/2; xd-=7; sh.dimV(YP(We-ey), YP(ey), xd, n(fw), X(ex), X(ex)); }
     if (ai) sh.dimV(YP(oy+ai.y1), YP(oy+ai.y0), X(ox+ai.xm), n(ai.w), null, null);
@@ -961,6 +981,8 @@ class StationView3D {
       for (const l of pp.lines){ const y=oy+l.y, z=base+l.z;
         const c=PipeMaterial.idColor(l.medium, pp.color);   // опознавательная окраска (ГОСТ 14202-69)
         for (const [a, b] of StationLayout.runs(l)) out.push(tube([ox+a, y, z], [ox+b, y, z], c, w));
+        const op=O.length ? null : StationLayout.outPath(l, Wi);   // выход к стене (через торец, заднюю стену или над проёмом)
+        if (op){ const Q=op.pts.map(([x, yy, zz])=>[ox+x, oy+yy, base+zz]); for (let q=1; q<Q.length; q++) out.push(tube(Q[q-1], Q[q], c, w)); }
         for (const b of l.branches){ const t=tube([ox+b.x, oy+b.y0, z], [ox+b.x, oy+b.y1, z], c, w*0.8), to=items.find(i=>i.id+'#'+i.unit===b.to);
           if (b.tee) out.push(tube([ox+b.x, oy+b.y0, z], [ox+b.x, oy+b.y1, z], c, w)+tube([ox+b.x, oy+b.y1, z], [ox+b.x, oy+b.y1, base+b.z1], c, w));   // подъём к коллектору входов
           else if (b.z1<l.z) over.set(b.to, (over.get(b.to)||'')+t+tube([ox+b.x, oy+b.y1, z], [ox+b.x, oy+b.y1, base+(to ? Math.min(b.z1, this.top(to)) : b.z1)], c, w*0.8));

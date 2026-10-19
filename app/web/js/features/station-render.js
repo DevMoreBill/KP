@@ -773,6 +773,20 @@ class StScene {
     this.panel(this.M(StMat.paint(RalColor.shade(c, 0.75), 0.5)), it, 0.08, 0.3, 0.7, 0.85, 0.006, 0.003);
   }
 
+  /** выход трубопровода (решение владельца 19.10): от конца магистрали — к стене (через торец, заднюю стену или над проёмом),
+   *  гильза в стене, снаружи — патрубок с фланцем (выступ pipe.flange) и фланцевой заглушкой на болтах */
+  outlet(l, op, m, dk, r){
+    const P=op.pts.map(q=>this.P(...q)), last=P[P.length-1], [dx, dy]=op.dir, wt=dx ? this.ox : this.oy, fl=(l.out.flange||150)/1000;
+    const at=d=>[last[0]+dx*d, last[1]+dy*d, last[2]];
+    for (let k=1; k<P.length; k++){ m.tube(P[k-1], P[k], r, 20); m.sphere(P[k], r*1.02, 12); }
+    if (P.length===1) m.sphere(P[0], r*1.02, 12);
+    m.tube(last, at(wt+fl), r, 20);   // сквозь стену и патрубок снаружи
+    dk.tube(at(wt*0.2), at(wt+0.03), r*1.45, 18);   // гильза с уплотнением
+    const F=this.M(StMat.metal('#8d949b', 0.35)), t=0.018, R=Math.max(r*2.3, r+0.045);
+    F.tube(at(wt+fl-t), at(wt+fl), R, 24); F.tube(at(wt+fl), at(wt+fl+t), R, 24);   // фланец и заглушка
+    for (let q=0; q<8; q++){ const a=q*Math.PI/4, rr=R*0.78, o=[Math.cos(a)*rr, Math.sin(a)*rr], c=dx ? [0, o[0], o[1]] : [o[0], 0, o[1]], b=at(wt+fl-t-0.006);
+      dk.tube([b[0]+c[0], b[1]+c[1], b[2]+c[2]], [b[0]+c[0]+dx*(2*t+0.012), b[1]+c[1]+dy*(2*t+0.012), b[2]+c[2]], 0.005, 6); }   // болты
+  }
   // ---- трубопровод: магистраль, отводы со спусками, шаровые краны, фланцы, опоры, выход через торец. Опознавательная
   // окраска по ГОСТ 14202-69 (PipeMaterial.ID) — сплошь, из любого материала (сжатый воздух — синий); на магистрали и
   // спусках — стрелки направления потока
@@ -782,10 +796,11 @@ class StScene {
       const id=PipeMaterial.idColor(l.medium, ''), c=id || pp.color;
       const m=this.M(!id && pp.mat==='inox' ? StMat.metal(StScene.INOX, 0.22) : pp.mat==='pp' ? StMat.paint(c, 0.32) : { c, r:0.38, m:0.35 });
       const r=Math.max(0.012, Math.min(0.08, (dn || (l.medium==='fuel' ? 25 : l.medium==='air' ? 50 : 80))/2000+0.006)), A=this.P(l.x0, l.y, l.z), B=this.P(l.x1, l.y, l.z);
-      const out=l.x1>=this.plan.int[0]-1, end=out ? [this.Le+0.12, B[1], B[2]] : B;
+      const op=(this.plan.outside||[]).length ? null : StationLayout.outPath(l, this.plan.int[1]), out=!op && l.x1>=this.plan.int[0]-1, end=out ? [this.Le+0.12, B[1], B[2]] : B;
       for (const [a, b] of StationLayout.runs(l)){ const p=this.P(a, l.y, l.z), q=b>=l.x1 ? end : this.P(b, l.y, l.z); m.tube(p, q, r, 20); m.sphere(p, r*1.02, 12); if (b<l.x1) m.sphere(q, r*1.02, 12); }
       if (id) this.marks(l, r);
       if (out){ m.tube([this.Le+0.04, B[1], B[2]], [this.Le+0.07, B[1], B[2]], r*1.7, 20); dk.tube([this.Le-0.03, B[1], B[2]], [this.Le+0.03, B[1], B[2]], r*1.4, 18); }
+      if (op) this.outlet(l, op, m, dk, r);
       // опоры у стены: кронштейн и хомут
       const yw=this.oy+this.Wi;
       if (yw-A[1]<0.6) for (let x=A[0]+0.4; x<Math.min(B[0], this.ox+this.Li)-0.2; x+=1.4){ dk.box(x-0.02, A[1]-0.03, A[2]-r-0.04, x+0.02, yw, A[2]-r-0.01); dk.tube([x-0.015, A[1], A[2]], [x+0.015, A[1], A[2]], r*1.3, 16, [false, false]); }

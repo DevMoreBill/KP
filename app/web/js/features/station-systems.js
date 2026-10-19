@@ -269,12 +269,73 @@ class StationPipe {
     const dn=lines[0].dn;
     return { medium, why, lines, dn, set, small:set>0 && set<dn };
   }
+  /** пункты ТЗ: выходы трубопровода из станции — где (стена, от дальнего торца, высота) и фланец (решение владельца 19.10:
+   *  выход не в воротах и дверях, снаружи — патрубок с фланцем); фланцы — ГОСТ 33259-2015, PN — ближайшее не ниже рабочего давления */
+  static outs(plan){
+    const n=StationLayout.n, [L]=plan.int||[0], bar=plan.air && plan.air.bar>0 ? plan.air.bar : 0, pn=bar ? [10, 16, 25, 40, 63].find(v=>v>=bar) || 63 : 0, dn=plan.pipe ? plan.pipe.set || plan.pipe.dn : 0;
+    const wall={ right:'дальний торец', back:'заднюю стену', front:'стену прохода' };
+    return (plan.lines||[]).filter(l=>l.out).map(l=>{ const o=l.out, what=l.medium==='air' ? 'Выход сжатого воздуха' : l.medium==='in' ? 'Вход (всасывание)' : 'Выход';
+      const where=o.wall==='right' ? `через дальний торец${o.rise ? ' над проёмом' : ''}, в ${n(Math.round(plan.int[1]-o.y))} мм от задней стены (внутри)` : `через ${wall[o.wall]} в ${n(Math.round(L-o.x))} мм от дальнего торца (внутри)`;
+      return `${what} — ${where}, на высоте ${n(Math.round(o.z))} мм от пола${o.moved ? ` (в торце — ${o.why}: выход перенесён на свободное место)` : ''}: патрубок${dn ? ' DN '+dn : ''} с выступом ${n(o.flange)} мм от стены и фланцем (ГОСТ 33259-2015${pn ? `, PN ${pn}` : ', PN — по рабочему давлению'}), на перевозку — фланцевая заглушка; проход стены — гильза с уплотнением.`; });
+  }
   /** пункт ТЗ и строка «Компоновки»: DN по расчёту */
   static text(Q){
     if (!Q) return '';
     const f=StationFire.f1;
     return `диаметр — по расчёту (${Q.why}): ${Q.lines.map(l=>`${l.name} — DN ${l.dn} (внутри не менее ${f(l.d)} мм при скорости не более ${f(l.v)} м/с)`).join(', ')}`+
       (Q.set ? (Q.small ? `; в составе указан DN ${Q.set} — меньше расчётного, принять DN ${Q.dn}` : `; в составе — DN ${Q.set}`) : '');
+  }
+}
+
+// ---------------------------------------------------------------- стыки модулей: разъёмные соединения
+// Решение владельца 19.10: станцию из модулей собирают, обвязывают, запускают и проверяют на производстве; на перевозку
+// расстыковывают трубопровод, кабели и коммуникации на стыках, на объекте — быстрая стыковка. Перечень для ТЗ на сборку:
+// на каждом стыке — что пересекает его (трубы по геометрии линий, кабели — от шкафа-источника к агрегатам и сетям в других
+// модулях путём «по длине, затем поперёк»), с маркировкой «С<стык>.<номер>» для расстыковки и обратной сборки.
+class StationJoints {
+  static MED = { air:'сжатого воздуха', fuel:'топливопровод', in:'всасывающий коллектор', out:'напорный коллектор', gen:'трубопровод' };
+  /** [{n, a, b — номера модулей, dir:'x'|'y', at — где линия стыка, мм внутри, list:[{mark, t}]}] или [] */
+  static calc(plan){
+    const g=plan && plan.geo, md=g && g.mods; if (!md || !md.Lm || !plan.int) return [];
+    const [L, W]=plan.int, ox=(g.ext[0]-L)/2, oy=(g.ext[1]-W)/2, J=StationMods.lines(g), n=StationLayout.n;
+    const num=(i, j)=>md.cells.findIndex(q=>q[0]===i && q[1]===j)+1, cell=(x, y)=>[Math.min(md.a-1, Math.max(0, Math.floor((ox+x)/md.Lm))), Math.min(md.b-1, Math.max(0, Math.floor((oy+y)/md.Wm)))];
+    const joints=new Map(), key=(d, i, j)=>`${d}:${i},${j}`;
+    for (let j=0; j<md.b; j++) for (let i=0; i<md.a-1; i++) joints.set(key('x', i, j), { dir:'x', a:num(i, j), b:num(i+1, j), at:J.x[i], list:[] });
+    for (let i=0; i<md.a; i++) for (let j=0; j<md.b-1; j++) joints.set(key('y', i, j), { dir:'y', a:num(i, j), b:num(i, j+1), at:J.y[j], list:[] });
+    const add=(k, t)=>{ const q=joints.get(k); if (q && !q.list.includes(t)) q.list.push(t); };
+    // трубы: участки вдоль (x) и поперёк (y)
+    const seg=(x0, y0, x1, y1, t)=>{ if (Math.abs(y1-y0)<1){ const [a, b]=[Math.min(x0, x1), Math.max(x0, x1)]; J.x.forEach((X, i)=>{ if (a<X && b>X) add(key('x', i, cell(X, y0)[1]), t); }); }
+      else if (Math.abs(x1-x0)<1){ const [a, b]=[Math.min(y0, y1), Math.max(y0, y1)]; J.y.forEach((Y, j)=>{ if (a<Y && b>Y) add(key('y', cell(x0, Y)[0], j), t); }); } };
+    const dn=plan.pipe && (plan.pipe.set || plan.pipe.dn);
+    for (const l of plan.lines||[]){ const what=l.medium==='air' ? (l.header ? 'коллектор компрессоров' : l.par ? 'коллектор входов параллельных аппаратов' : 'магистраль сжатого воздуха')+(dn && !l.header && !l.par ? ' DN '+dn : '') : this.MED[l.medium]||'трубопровод';
+      const t=`${what} — разъёмное фланцевое соединение (до DN 40 — разъёмная муфта)`;
+      for (const [a, b] of StationLayout.runs(l)) seg(a, l.y, b, l.y, t);
+      for (const br of l.branches||[]) seg(br.x, br.y0, br.x, br.y1, t);
+      const op=StationLayout.outPath(l, W); if (op) for (let k=1; k<op.pts.length; k++) seg(op.pts[k-1][0], op.pts[k-1][1], op.pts[k][0], op.pts[k][1], t); }
+    // кабели: от шкафа-источника (АВР / ввод; нет шкафа — у двери оператора) к агрегатам и сетям других модулей
+    const I=plan.items||[], cabs=I.filter(i=>i.kind==='cabinet'), src=cabs.find(i=>/АВР|ввод|ВРУ/i.test(i.name||'')) || cabs[0];
+    const en=plan.entry, s=src ? cell(src.x+src.lx/2, src.y+src.ly/2) : en && en.wall==='front' ? cell((en.x0+en.x1)/2, 0) : [0, 0];
+    const path=(c, t)=>{ let [i, j]=s; while (i!==c[0]){ const d=c[0]>i ? 1 : -1; add(key('x', Math.min(i, i+d), j), t); i+=d; } while (j!==c[1]){ const d=c[1]>j ? 1 : -1; add(key('y', i, Math.min(j, j+d)), t); j+=d; } };
+    const srcT=src ? `шкафа поз. ${src.pos}` : 'ввода';
+    const seen=new Set(), many=new Set(I.filter(i=>I.some(q=>q!==i && q.pos===i.pos && q.mount===i.mount)).map(i=>i.pos)), pn=it=>`поз. ${it.pos}${many.has(it.pos) ? ` (${(it.unit||0)+1})` : ''}`;
+    for (const it of I){ if (it===src || it.mount==='pipe' || seen.has(it.pos+'#'+it.unit)) continue;
+      const pw=it.kind==='compressor' || it.kind==='dryer' || it.kind==='pump' || it.kind==='dgu' || it.kind==='cabinet' || it.kw>0; if (!pw) continue; seen.add(it.pos+'#'+it.unit);
+      const c=cell(it.x+it.lx/2, it.y+it.ly/2);
+      path(c, it.kind==='dgu' ? `силовой кабель и кабели управления ДГУ ${pn(it)} — к ${srcT}` : it.kind==='cabinet' ? `кабели питания и связи шкафа ${pn(it)} «${it.short||it.name}»` : `кабель питания и управления ${pn(it)} «${it.short||it.name}»${it.kw ? ` (${n(it.kw)} кВт)` : ''} — от ${srcT}`); }
+    const sys=[plan.light && plan.light.on!==false ? 'освещение' : '', plan.sockets ? 'розетки' : '', plan.fire ? 'ОПС и пожаротушение' : ''].filter(Boolean), heat=(plan.heat && plan.heat.heaters)||[];
+    md.cells.forEach(([i, j], q)=>{ if (i===s[0] && j===s[1]) return;
+      const at=h=>h.wall==='front' || h.wall==='back' ? [h.x+h.lx/2, h.wall==='back' ? W-1 : 1] : [h.wall==='left' ? 1 : L-1, h.y+h.ly/2];
+      const hs=heat.filter(h=>{ const c=cell(...at(h)); return c[0]===i && c[1]===j; }).length, L2=[...sys, hs ? `отопление (${hs} шт.)` : ''].filter(Boolean);
+      if (L2.length) path([i, j], `групповые сети модуля М${q+1}: ${L2.join(', ')} — разъёмные клеммные коробки у стыка`); });
+    const out=[...joints.values()].map((q, k)=>({ ...q, n:k+1, list:[...q.list, 'перемычка заземления каркасов модулей — гибкий медный проводник на болтах (ПУЭ, гл. 1.7)'].map((t, m)=>({ mark:`С${k+1}.${m+1}`, t })) }));
+    return out;
+  }
+  /** раздел ТЗ на сборку: таблица по стыкам */
+  static tz(plan, d){
+    const J=this.calc(plan); if (!J.length) return;
+    d.h2('Стыки модулей — разъёмные соединения (маркировать при расстыковке)');
+    d.p('На производстве станцию собирают и стыкуют, обвязывают, запускают и проверяют; на перевозку расстыковывают только соединения ниже — каждое маркируют с обеих сторон (бирка «С<стык>.<номер>»), концы закрывают заглушками и колпачками, кабели сматывают и крепят внутри модуля. На объекте — стыковка по маркировке, затем проверка плотности трубопровода и сопротивления изоляции кабелей.');
+    d.table([20, 40, 110], ['Маркировка', 'Стык', 'Соединение'], J.flatMap(q=>q.list.map((r, k)=>[r.mark, k ? '' : `С${q.n}: М${q.a} — М${q.b} (${q.dir==='x' ? 'поперёк, торец к торцу' : 'вдоль, бок о бок'})`, r.t])));
   }
 }
 
@@ -394,6 +455,7 @@ class StWalls {
     if (plan.exit) this.busy(plan.exit.wall, plan.exit.y0-100, plan.exit.y1+100, 0, plan.exit.h+150);   // вторая дверь оператора в торце
     for (const d of plan.doors||[]) this.busy(d.wall==='back' ? 'back' : 'front', d.x0-100, d.x1+100, 0, d.h+150);
     if (o.equip!==false) for (const l of plan.lines||[]) if (W-l.y<500) for (const [a, b] of StationLayout.runs(l)) this.busy('back', a, b, l.z-100, l.z+100);   // жалюзи за трубой — можно
+    for (const l of plan.lines||[]) if (l.out){ const q=l.out, u=q.wall==='right' || q.wall==='left' ? q.y : q.x; this.busy(q.wall, u-250, u+250, q.z-250, q.z+250); }   // выход трубопровода с фланцем
     // кабельный лоток под потолком — у задней стены; там сервисные ворота с выбросом над ними — у стены прохода
     if ((plan.sys||{}).power!==false) this.busy((plan.doors||[]).some(d=>d.rear && d.wall==='back') ? 'front' : 'back', x0, L, H-320, H);
   }

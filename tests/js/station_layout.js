@@ -651,7 +651,7 @@ Check.run('трубопровод: материал, трасса, отпеча�
   const ns=solve(C('block'), [pumpS, cab, P('Трубопроводная обвязка и запорная арматура', {}, { pipeMat:'inox' })]);
   Check.plan(ns, 'НС трубы'); const L=ns.piping[0].lines;
   assert.strictEqual(L.length, 2, 'насосы: всас и напор'); assert.deepStrictEqual(L.map(l=>l.label), ['вход', 'выход']);
-  assert.ok(L.every(l=>l.x1===ns.int[0] && l.branches.length===2), 'выход через торец, отводы к обоим насосам');
+  assert.ok(L.every(l=>(l.x1===ns.int[0] || (l.out && l.out.moved)) && l.branches.length===2), 'выход через торец (в воротах — на свободной стене), отводы к обоим насосам');
   assert.strictEqual(ns.piping[0].matText, 'нержавеющая сталь');
   const ks=solve(C('sea20'), [comp, dryer, rec, flt, P('Трубопровод', {})]);
   Check.plan(ks, 'КС трубы'); assert.strictEqual(ks.piping[0].lines.length, 1);
@@ -1854,6 +1854,33 @@ Check.run('Станция из модулей: раскладка, подбор 
   const fx=solve(C('block', { size:'12000 × 2500 × 2900', mods:{ cells:StationMods.cells(2, 1) } }), [big, ats]);
   assert.deepStrictEqual(fx.geo.ext, [24000, 2500, 2900], 'размер модуля задан — станция из двух таких');
   assert.ok(StationLayout.hash({ cont:cM(StationMods.cells(1, 2)), parts:[big] })!==StationLayout.hash({ cont:cM(StationMods.cells(2, 1)), parts:[big] }), 'отпечаток — по раскладке');
+});
+
+// решения владельца 19.10 (вечер): модули одной ширины 2 448…2 550 мм; что в каком модуле; разъёмные соединения на стыках;
+// выход трубопровода не в воротах и дверях торца — на ближайшей свободной стене, снаружи патрубок с фланцем
+Check.run('Модули: ширина, состав модулей, стыки для ТЗ; выход трубопровода мимо ворот с фланцем', ()=>{
+  assert.deepStrictEqual(StationMods.widths(), [2448, 2500, 2550], 'ширины модуля');
+  const big=P('Компрессор 250', { cat:'comp_screw', kw:250, size:'3800 × 2000 × 2200', mass:5000 }, { role:'main', qty:3 });
+  const q=solve(C('block', { sizeAuto:true, mods:{ cells:StationMods.cells(2, 2) } }), [big, dryer, rec, P('Трубопровод', {}), P('Шкаф АВР', { cat:'ats' })]);
+  Check.plan(q, '2 × 2'); assert.notStrictEqual(q.level, 'error', q.issues.map(i=>i.text).join(' | '));
+  assert.ok(q.geo.mods.Wm>=2448 && q.geo.mods.Wm<=2550 && q.geo.mods.Lm<=StationLayout.MAX_L, 'модуль '+q.geo.mods.Lm+' × '+q.geo.mods.Wm);
+  const M=StationMods.content(q), all=[...M.values()].flat().map(x=>x.pos);
+  assert.ok(q.items.filter(i=>i.mount!=='pipe').every(i=>all.includes(i.pos)), 'каждая позиция — в своём модуле');
+  const J=StationJoints.calc(q), marks=J.flatMap(j=>j.list.map(r=>r.mark));
+  assert.strictEqual(J.length, StationMods.joints(q.geo.mods), 'стыков'); assert.strictEqual(new Set(marks).size, marks.length, 'маркировка без повторов');
+  assert.ok(J.every(j=>j.list.some(r=>/заземления/.test(r.t))) && J.some(j=>j.list.some(r=>/сжатого воздуха/.test(r.t))) && J.some(j=>j.list.some(r=>/кабель питания/.test(r.t))), 'трубы, кабели, заземление');
+  const fx=solve(C('block', { size:'12000 × 2600 × 2900', mods:{ cells:StationMods.cells(2, 1) } }), [comp, dryer, rec]);
+  assert.ok(fx.issues.some(i=>i.mods && /Ширина модуля 2 600/.test(i.text)), 'модуль шире 2 550 — замечание');
+  // выход: 2 компрессора, ворота в дальнем торце на высоте трубы — выход на задней стене, мимо сервисных ворот
+  const two=solve(C('block'), [Object.assign({}, comp, { id:'c2', qty:2 }), dryer, Object.assign({}, rec, { id:'r2', qty:2 }), P('Трубопровод', {})]);
+  const l=two.lines.find(x=>x.out), o=l.out, [L, W]=two.int;
+  const G=[two.gates, two.gates2].find(g=>g && g.wall==='right');
+  if (G && l.y>G.y0-150 && l.y<G.y1+150 && l.z<G.h+150){
+    assert.ok(o.moved && (o.wall==='back' || o.wall==='front' || o.rise), 'выход перенесён: '+JSON.stringify(o));
+    if (o.wall!=='right') assert.ok(!(two.doors||[]).some(d=>d.wall===o.wall && o.x>d.x0-150 && o.x<d.x1+150) && o.x<=L-300 && l.x1===o.x, 'не в сервисных воротах, от торца 300'); }
+  assert.ok(StationPipe.outs(two).every(t=>/фланцем \(ГОСТ 33259-2015/.test(t)), 'ТЗ: патрубок с фланцем');
+  const sv=StationDrawing.sheets(two, meta(two)); sv.forEach((x, k)=>Check.sheet(x, 'выход: лист '+(k+1)));
+  for (const v of ['in', 'out']){ const sc=new StScene(two, { view:v }).build(); for (const { mesh } of sc.groups.values()) assert.ok(mesh.p.every(Number.isFinite), 'NaN в 3D ('+v+')'); }
 });
 
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);
