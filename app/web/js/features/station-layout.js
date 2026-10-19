@@ -2070,7 +2070,7 @@ class StationLayout {
   /** две ДГУ — у торцов радиаторами наружу; между генераторами — проход обслуживания (сторона генератора — clear side) и дверь
    *  оператора в стене прохода (с промежутками door.gap); прочее на полу — между ними */
   dEnds(D, O, Lu, W){
-    const R=StationMatrix.grp('dgu').rad, [A, B]=D, n=StationLayout.n, dg=StationMatrix.door().gap, Ew=StationLayout.ENTRY[1]-StationLayout.ENTRY[0];
+    const R=StationMatrix.grp('dgu').rad, [A, B]=D, dg=StationMatrix.door().gap, Ew=StationLayout.ENTRY[1]-StationLayout.ENTRY[0];
     const need=e=>e.w+e.c.back[1]+this.front(e)[1], bad=D.filter(e=>need(e)>W);
     if (bad.length) return { ok:false, why:'width', bad, needW:Math.max(...bad.map(need)) };
     // прочее — сразу за ДГУ у входа; дверь оператора — в промежутке между прочим и второй ДГУ (не уже двери с промежутками)
