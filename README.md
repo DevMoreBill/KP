@@ -526,6 +526,13 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.115.0 — что сделано:** переписывание кода, часть 4 — `features/station-calc.js` (файл удалён) — ES-модули
+`features/calc/` (`index.js` — мост в `globalThis`, подключается в `index.html` после `layout/index.js`): `CalcNote`,
+`CalcInput`, `AirDemand`, `PressureBudget`, `DryerSizing`, `FilterSizing`, `ReceiverSizing`, `VentSizing`, `ElectricLoad`,
+`GensetSizing`, `PumpSizing`, `StationCalc` — каждый `run` разбит на шаги-методы (порядок правил и замечаний прежний).
+Слепок станций (1 217 результатов, в том числе `StationCalc.run` и `docGroups`) совпал; `run_all.py --strict` — всё прошло;
+прогон интерфейса (ПК, телефон) — станция и предпросмотр без ошибок.
+
 **3.114.0 — что сделано:** переписывание кода, часть 3 — `features/station-systems.js` (файл удалён) — ES-модули
 `features/layout/`: `StationFire`, `StationLight`, `StationSockets`, `StationPower`, `StationPipe`, `StationJoints`,
 `StationMass`, `StWalls`, `VentCalc`, `VentGrille` (размеры жалюзи и маркиз), `VentPlan` (места жалюзи по расчёту, прежний

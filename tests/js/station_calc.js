@@ -1,4 +1,4 @@
-// Расчёт станции (app/web/js/features/station-calc.js) по файлу инженерных правил: каждая формула — с примером,
+// Расчёт станции (app/web/js/features/calc/) по файлу инженерных правил: каждая формула — с примером,
 // посчитанным вручную (значения ниже — не из программы): стандартная атмосфера, давление насыщенного пара, перевод
 // нормальных м³ в FAD, ресивер, поправки осушителя и фильтра (таблицы Dalgakiran и типовые), продувка, электрика, топливо
 // ДГУ; затем расчёт целых станций: ошибки, предупреждения, «требует подтверждения», допущения, вопросы, приложение к КП.
@@ -16,7 +16,7 @@ global.typeById=id=>TYPES[id]||{};
 global.catCache=[]; global.DEF=()=>null; global.FEAT={ on:()=>true };
 global.esc=s=>String(s??'').replace(/[&<>"]/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js', 'station-doc.js']){
+for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'calc/index.js', 'kit.js', 'kit-view.js', 'station-ui.js', 'tz-import.js', 'station-doc.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));
 global.isKit=x=>!!(x && x.kit);
