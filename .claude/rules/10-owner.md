@@ -34,8 +34,9 @@ Windows 10 (один EXE, папка программы C:\KP), менеджер
   pyflakes/ESLint по файлу сразу после правки; 2) хук `guard.py` — запрет записи баз, выгрузок, ключей и `app/data/`;
   3) навык `/vypusk`; 4) навык `/progon` + `tests/ui/progon.py` в репозитории (вымышленные данные, `--db` — копия базы);
   5) навык `/migraciya` (+ `kit.Schema.down_to`); 6) помощник `proverka-bezopasnosti`; 7) помощник `proverka-raschetov`;
-  8) Playwright MCP (`.mcp.json`); 9) рабочую ветку влить в основную (main); 10) `run_all.py --changed` для мелких правок,
-  перед выпуском — полный прогон.
+  8) Playwright MCP (`.mcp.json`); 9) слить ветку в основную — не нужно: рабочая ветка `claude/python-project-executable-wfdp7g`
+  и есть основная (единственная) ветка репозитория, новые сеансы берут настройки из неё; 10) `run_all.py --changed` для мелких
+  правок, перед выпуском — полный прогон.
 
 ## Выпуск (каждое изменение)
 - Версия: `app/version.py`, `APP_VERSION` и запись в `APP_VERSIONS` (`app/web/js/features/help.js`), раздел в README,
