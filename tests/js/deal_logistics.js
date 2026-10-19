@@ -6,7 +6,7 @@
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..');
 global.GEO_EXTRA={};                                   // подсказки адресов (ui/geo-input.js) — в тесте не нужны
-for (const f of ['core/defaults.js', 'features/deal-calc.js', 'features/logistics-calc.js', 'features/logistics.js']){
+for (const f of ['core/money.js', 'core/defaults.js', 'features/deal-calc.js', 'features/logistics-calc.js', 'features/logistics.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 
 let n=0;
@@ -162,8 +162,8 @@ check('станция в сборе (решение 17.10) — только от
   assert.ok(b.openOnly && b.vehicles.length && b.vehicles.every(v=>v.C.open), 'станция — контейнеровоз, площадка или трал');
   const keep=LG.tar; LG.tar=T;
   const Q={res:{offers:[{src:'ПЭК', kind:'ltl', complete:true, price:90000, base:90000}, {src:'ATI.SU', kind:'ftl', complete:true, price:150000, base:150000}]}};
-  assert.deepStrictEqual(lgOffers(b, Q).map(o=>o.id), ['model', 'ATI.SU'], 'без сборного груза');
-  assert.strictEqual(lgOffers(a, Q).length, 3, 'обычный груз — со сборным');
+  assert.deepStrictEqual(DealLogistics.offers(b, Q).map(o=>o.id), ['model', 'ATI.SU'], 'без сборного груза');
+  assert.strictEqual(DealLogistics.offers(a, Q).length, 3, 'обычный груз — со сборным');
   LG.tar=keep;
 });
 

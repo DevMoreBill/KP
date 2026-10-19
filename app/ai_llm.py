@@ -17,6 +17,7 @@ import urllib.request
 from datetime import datetime
 
 from defaults import SrvVal
+from net import Net
 
 DEFAULT_BASE = 'https://api.deepseek.com'
 MODELS = [('deepseek-chat', 'DeepSeek-V3 (deepseek-chat) — быстро, рекомендуется'),
@@ -125,11 +126,10 @@ def ask(store, prompt, force=False):
             'messages': [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': prompt[:MAX_PROMPT]}]}
     if 'reasoner' not in s['model']:                 # у DeepSeek-R1 режима JSON нет — разбор ответа и так терпимый
         body['response_format'] = {'type': 'json_object'}
-    req = urllib.request.Request(s['base'] + '/chat/completions', data=json.dumps(body, ensure_ascii=False).encode('utf-8'), method='POST',
-                                 headers={'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer ' + key})
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            j = json.loads(r.read().decode('utf-8'))
+        j = json.loads(Net.request(s['base'] + '/chat/completions', data=json.dumps(body, ensure_ascii=False).encode('utf-8'), method='POST',
+                                   headers={'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer ' + key},
+                                   timeout=TIMEOUT, limit=Net.LIMIT).decode('utf-8'))
     except urllib.error.HTTPError as e:
         try:
             msg = (json.loads(e.read().decode('utf-8', 'replace')).get('error') or {}).get('message') or ''

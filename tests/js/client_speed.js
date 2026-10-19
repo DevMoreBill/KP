@@ -10,6 +10,7 @@ const cls=(f, name)=>{ const s=JS(f), m=s.match(new RegExp('\\nclass '+name+' \\
 let ok=0; const t=(name, fn)=>{ fn(); ok++; console.log('ok', name); };
 
 global.document={ addEventListener(){}, querySelector(){ return null; } }; global.window={ addEventListener(){} }; global.KPGen={ CURS:{} };
+vm.runInThisContext(JS('core/money.js'), { filename:'money.js' });
 vm.runInThisContext(JS('core/util.js'), { filename:'util.js' });
 vm.runInThisContext(JS('core/types.js'), { filename:'types.js' });
 vm.runInThisContext(`TYPES=[{ id:'comp_screw', name:'Винтовой компрессор', match:'винтов', main:'kw', fields:[] }, { id:'other', name:'Прочее', fields:[] }];`);

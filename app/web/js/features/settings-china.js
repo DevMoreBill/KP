@@ -185,7 +185,7 @@ class ChinaRateBook {
 
   /** файл .xlsx / .csv → строки ячеек */
   static async lines(file){
-    if (/\.xlsx$/i.test(file.name)) return lgReadXlsx(await file.arrayBuffer());
+    if (/\.xlsx$/i.test(file.name)) return LgTariffFile.readXlsx(await file.arrayBuffer());
     const t=(await file.text()).replace(/^﻿/, ''), sep=(t.split('\n')[0].match(/;/g)||[]).length>=(t.split('\n')[0].match(/,/g)||[]).length ? ';' : ',';
     return t.split(/\r?\n/).map(l=>{ const out=[]; let cur='', q=false;
       for (let i=0; i<l.length; i++){ const ch=l[i]; if (q){ if (ch==='"' && l[i+1]==='"'){ cur+='"'; i++; } else if (ch==='"') q=false; else cur+=ch; }

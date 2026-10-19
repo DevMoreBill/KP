@@ -22,6 +22,25 @@ class DealLogisticsJs(unittest.TestCase):
                            text=True, encoding='utf-8', errors='replace', timeout=300)
         self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-6000:])
 
+    def test_golden(self):
+        """Слепок экономики сделки (tests/js/deal_golden.js): 15 типовых сделок, подбор цены и шкала таможенного сбора —
+        расчёт не изменился ни на копейку (намеренное изменение — node tests/js/deal_golden.js --update)."""
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('нет Node.js')
+        r = subprocess.run([node, os.path.join(REPO, 'tests', 'js', 'deal_golden.js')], cwd=REPO, capture_output=True,
+                           text=True, encoding='utf-8', errors='replace', timeout=300)
+        self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-6000:])
+
+    def test_money(self):
+        """Показ денег — один класс Money (tests/js/money.js)."""
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('нет Node.js')
+        r = subprocess.run([node, os.path.join(REPO, 'tests', 'js', 'money.js')], cwd=REPO, capture_output=True,
+                           text=True, encoding='utf-8', errors='replace', timeout=120)
+        self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-6000:])
+
 
 class LtlLimitsServer(unittest.TestCase):
     def setUp(self):

@@ -605,8 +605,10 @@ class KpController(Controller):
             name = os.path.splitext(name)[0].rstrip('. ') + '.docx'
         if os.path.splitext(name)[0].split('.')[0].strip().upper() in WIN_RESERVED:
             name = '_' + name
-        if self.body()[:4] != b'PK\x03\x04':
-            return self.text(400, 'Файл КП должен быть документом Word (.docx)')
+        try:                                    # документ Word без макросов и внешних шаблонов — его потом открывает Word сервера (PDF)
+            pdf_convert.DocxCheck.check(self.body())
+        except ValueError as e:
+            return self.text(400, 'Файл КП должен быть документом Word (.docx): %s' % e)
         sub = safe_dir(q.get('dir'))            # папка менеджера (фамилия)
         rel = (sub + '/' + name) if sub else name
         # имя занято файлом другого КП (два КП по одной закупке: «4567892 КП») — «4567892 КП (2)», «(3)»…

@@ -15,6 +15,7 @@ const TYPES={ st_comp:{ station:{ main:['comp_screw', 'comp_piston'] } }, st_pum
 global.typeById=id=>TYPES[id]||{};
 global.DEF=()=>null; global.FEAT={ on:()=>true };
 global.esc=s=>String(s??'');
+vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
 for (const f of ['logistics-calc.js', 'station-rules.js', 'station-layout.js', 'station-systems.js', 'kit.js', 'kit-view.js', 'station-calc.js', 'station-ui.js', 'tz-import.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', 'features', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));

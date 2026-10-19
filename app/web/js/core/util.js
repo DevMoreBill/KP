@@ -38,14 +38,14 @@ function parsePrice(s){
 
 const fmtPrice = k => k ? money(k) : '';
 
-function fmtRub(v){ return v==null?'—':(Math.round(v)).toLocaleString('ru-RU')+' руб.'; }
+function fmtRub(v){ return Money.rub(v); }          // прежнее имя — Money.rub (core/money.js)
 
 // числа, деньги, размер файла и время для показа на экране (русская запись: «1 234 567 ₽», «16.10.2026, 14:05»)
 class Fmt {
   static DATE_TIME = {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'};
   static num(v){ return Number(v||0).toLocaleString('ru-RU'); }
-  /** рубли без копеек; не посчитано (нет данных) — прочерк */
-  static rub(v){ return Number.isFinite(v) ? Math.round(v).toLocaleString('ru-RU')+' ₽' : '—'; }
+  /** рубли без копеек; не посчитано (нет данных) — прочерк (Money.rub) */
+  static rub(v){ return Money.rub(v); }
   static size(bytes){ const b=+bytes||0, MB=1048576, GB=1024*MB;
     return b<MB ? Math.max(1, Math.round(b/1024))+' КБ' : b<GB ? (b/MB).toFixed(b<10*MB ? 1 : 0).replace('.', ',')+' МБ' : (b/GB).toFixed(b<100*GB ? 1 : 0).replace('.', ',')+' ГБ'; }
   static dateTime(iso){ const d=iso ? new Date(iso) : null; return d && !isNaN(d) ? d.toLocaleString('ru-RU', Fmt.DATE_TIME) : ''; }

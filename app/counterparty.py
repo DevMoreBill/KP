@@ -34,6 +34,7 @@ import urllib.request
 from datetime import datetime, date, timedelta, timezone
 
 from defaults import SrvVal
+from net import Net
 
 TIMEOUT = 15
 CHECKO_DAILY = 100       # бесплатный лимит Checko, запросов в календарный день (меняется в «Ключах API»)
@@ -78,9 +79,7 @@ def http_json(url, data=None, headers=None, method=None):
             h.setdefault('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8')
         else:
             body = data
-    req = urllib.request.Request(url, data=body, headers=h, method=method)
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-        raw = r.read()
+    raw = Net.request(url, data=body, headers=h, method=method, timeout=TIMEOUT)     # предел ответа и повтор GET — Net
     return json.loads(raw.decode('utf-8-sig'))
 
 

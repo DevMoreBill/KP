@@ -188,7 +188,7 @@ function lgRoadKm(a, b, T){
 // ---------------------------------------------------------------- форматирование и точки маршрута
 const lgM = v => (Math.round(v*100)/100).toString().replace('.',',');
 const lgT = v => (Math.round(v*10)/10).toString().replace('.',',');
-const lgRub = v => Number.isFinite(v) ? Math.round(v).toLocaleString('ru-RU')+' ₽' : '—';     // не посчитано (нет адресов, груза) — прочерк
+const lgRub = v => Money.rub(v);     // не посчитано (нет адресов, груза) — прочерк
 
 function lgUnloadPick(maxUnit, T, want){
   if (want==='none') return null;
@@ -373,7 +373,7 @@ class Freight {
 
   static vehicleCost(C, fit, km, T){
     const over=fit.overW>0 || fit.overH>0, heavy=fit.mass>Freight.legalT(C, T)+0.001, escort=fit.overW>T.escortW, gibdd=fit.overW>(T.gibddW||4);
-    const k=over ? (C.id==='lowbed' ? T.overKLowbed : T.overK) : 1, r=Freight.run(C, km, T, k), n=x=>Math.round(x).toLocaleString('ru-RU');
+    const k=over ? (C.id==='lowbed' ? T.overKLowbed : T.overK) : 1, r=Freight.run(C, km, T, k), n=x=>Money.int(x);
     const seg = r.rest>0 ? `${n(r.near)} км × ${lgRub(C.km*k)} + ${n(r.rest)} км × ${lgRub(r.kmFar*k)}` : `${n(km)} км × ${lgRub(C.km*k)}`;
     const parts=[[`${C.name}: подача ${lgRub(C.base||0)} + ${seg}${r.raw<(C.min||0)?` (минимальный заказ ${lgRub(C.min)})`:''}`, r.v]];
     if (over) parts.push([`Негабарит (${[fit.overW?`ширина ${lgM(fit.overW)} м`:'', fit.overH?`высота груза ${lgM(fit.overH)} м`:''].filter(Boolean).join(', ')}): спецразрешение${T.permitAgent?' и оформление':''}`, T.permit+T.permitAgent]);

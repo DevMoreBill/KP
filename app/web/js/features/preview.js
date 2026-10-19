@@ -120,9 +120,16 @@ function pvPrint(){ document.body.classList.add('printing-kp'); const done=()=>{
 
 // PDF по текущему КП (без записи в журнал): преобразует компьютер-сервер
 async function pdfFromBlob(blob){
-  const r=await fetch('/api/pdf?name='+encodeURIComponent(savedFileName().replace(/\.docx$/i,'.pdf')), {method:'POST', body:blob});
-  if (!r.ok) throw new Error((await r.text()).replace(/^PDF не создан:\s*/,'') || 'HTTP '+r.status);
+  const r=await PdfApi.call('/api/pdf?name='+encodeURIComponent(savedFileName().replace(/\.docx$/i,'.pdf')), {method:'POST', body:blob, raw:true});
   return r.blob();
+}
+
+/** запросы PDF — через api() (вход, совместная правка); «PDF не создан:» из ответа сервера не дублируется в сообщении */
+class PdfApi {
+  static async call(path, opts){
+    try{ return await api(path, opts); }
+    catch(e){ e.message=String(e.message||e).replace(/^PDF не создан:\s*/, ''); throw e; }
+  }
 }
 
 async function pvPdf(btn){
@@ -135,9 +142,7 @@ async function pvPdf(btn){
 
 // после сохранения КП: PDF рядом с .docx в папке КП
 async function saveKpPdf(){
-  const r=await fetch(`/api/kp/${S.kpId}/pdf`, {method:'POST'});
-  if (!r.ok) throw new Error((await r.text()).replace(/^PDF не создан:\s*/,'') || 'HTTP '+r.status);
-  return r.json();
+  return PdfApi.call(`/api/kp/${encodeURIComponent(S.kpId)}/pdf`, {method:'POST'});
 }
 
 function pdfWanted(){ try{ return localStorage.getItem('kp.pdf')==='1'; }catch(e){ return false; } }

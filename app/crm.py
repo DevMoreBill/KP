@@ -179,7 +179,7 @@ class DealBook:
             if v and not dt:
                 raise ValueError('Ожидаемая дата — в формате ГГГГ-ММ-ДД')
             out['expected'] = dt.isoformat() if dt else ''
-        if 'sum' in d:                        # рубли; пусто — по последнему КП сделки
+        if 'sum' in d:                        # ввод — в рублях, хранится в копейках; пусто — по последнему КП сделки
             v = d.get('sum')
             if v in (None, ''):
                 out.update(sumOwn=False)

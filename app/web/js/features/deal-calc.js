@@ -47,7 +47,7 @@ class DealValues {
     for (let i=1; i<out.length; i++) if (!(out[i][0]>out[i-1][0])) return B.map(x=>[...x]);
     return out; }
   static feeOwn(){ return this.feeScale().some((x, i)=>x[0]!==this.FEE[i][0] || x[1]!==this.FEE[i][1]); }
-  static rub(v){ return Math.round(v).toLocaleString('ru-RU'); }
+  static rub(v){ return Money.int(v); }
   /** шкала текстом для подсказки: «до 200 000 ₽ — 1 231 ₽, …, свыше 10 000 000 ₽ — 73 860 ₽» */
   static feeText(){ const sc=this.feeScale(); return sc.map(([lim, fee], i)=>`${lim===Infinity ? 'свыше '+this.rub(sc[i-1][0]) : 'до '+this.rub(lim)} ₽ — ${this.rub(fee)} ₽`).join(', '); }
   static register(){
@@ -93,7 +93,7 @@ const CUSTOMS_FEES = { title:DealValues.FEE_TITLE, get scale(){ return DealValue
 function customsFee(cv){ if (!(cv>0)) return 0; for (const [lim,fee] of CUSTOMS_FEES.scale) if (cv<=lim) return fee; return 0; }
 // интервал шкалы для подсказки: «таможенная стоимость 3 100 000 ₽ — интервал 2 700 000,01–4 200 000 ₽»
 function customsFeeBand(cv){ if (!(cv>0)) return ''; const sc=CUSTOMS_FEES.scale, i=sc.findIndex(x=>cv<=x[0]); if (i<0) return '';
-  const f=v=>Math.round(v).toLocaleString('ru-RU'), lo=i?f(sc[i-1][0])+',01':'0', hi=sc[i][0]===Infinity?'и выше':'– '+f(sc[i][0]);
+  const f=v=>Money.int(v), lo=i?f(sc[i-1][0])+',01':'0', hi=sc[i][0]===Infinity?'и выше':'– '+f(sc[i][0]);
   return `таможенная стоимость ${f(cv)} ₽ → интервал ${lo} ${hi} ₽ → сбор ${f(sc[i][1])} ₽`; }
 
 // Коды ТН ВЭД ЕАЭС и ставки пошлины по видам оборудования — класс TnVed (features/tnved.js).
@@ -410,7 +410,7 @@ class DealCalculator {
       Kg=K; this.setCash(Kg); this.F=this.finance(); lo=this.result(VATinKnown); hi=unknown.length?this.result(viHi):lo; }
     const base=unknown.length?null:lo, xr=lo, S=this.S, F=this.F;
     if (base && Math.abs(base.P-(base.cashAfter+base.excess))>0.01) warn.push({t:'Контрольное равенство не сошлось — сообщите разработчику', bad:true});
-    if (xr.K>0 && xr.net<0) warn.push({t:`Прочие расходы наличными (${Math.round(xr.K).toLocaleString('ru-RU')} ₽) больше чистой прибыли сделки — компания в убытке`, bad:true});
+    if (xr.K>0 && xr.net<0) warn.push({t:`Прочие расходы наличными (${Money.rub(xr.K)}) больше чистой прибыли сделки — компания в убытке`, bad:true});
     if (!(S>0)) warn.push({t:'Нет цены для заказчика: заполните цены в КП или укажите цену здесь', bad:true});
     if (!equipSum && !this.Lsum && !this.Tsum && !this.M && !this.E && !this.Dc) warn.push({t:'Расходы не указаны: укажите цены закупки в шаге «Закупка»', go:'price'});
     // структура затрат (для итога и Excel)

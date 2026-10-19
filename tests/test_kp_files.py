@@ -14,7 +14,7 @@ import urllib.parse
 import zipfile
 from datetime import datetime, timedelta
 
-from kit import Http, SampleData, Schema, SmtpSink, Stand, TempStore
+from kit import Docx, Http, SampleData, Schema, SmtpSink, Stand, TempStore
 from kp_files import KpFiles
 import storage
 
@@ -236,10 +236,8 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.R('PUT', '/api/kp/%s/files/999999' % self.K1, {'note': 'x'})[0], 404)
 
     def test_05_mail_with_documents(self):
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, 'w') as z:
-            z.writestr('word/document.xml', '<w:document/>')
-        st, b, _ = self.R('PUT', '/api/kp/%s/docx?name=%s' % (self.K1, urllib.parse.quote('%s КП.docx' % self.K1)), buf.getvalue(),
+        docx = Docx.minimal()
+        st, b, _ = self.R('PUT', '/api/kp/%s/docx?name=%s' % (self.K1, urllib.parse.quote('%s КП.docx' % self.K1)), docx,
                           extra={'Content-Type': 'application/octet-stream'})
         self.assertEqual(st, 200, b)
         f = Http.js(self.R('GET', '/api/kp/%s/mailform' % self.K1)[1])
@@ -256,7 +254,7 @@ class ApiTest(unittest.TestCase):
         self.defaults({'kp.mailMB': {'on': True, 'v': '5'}})
         try:
             ids = [Http.js(self.up(self.K2, 'big%d.pdf' % i, pdf(3 * 1024 * 1024), who='m2')[1])['id'] for i in range(2)]
-            st, b, _ = self.R('PUT', '/api/kp/%s/docx?name=%s' % (self.K2, urllib.parse.quote('%s КП.docx' % self.K2)), buf.getvalue(),
+            st, b, _ = self.R('PUT', '/api/kp/%s/docx?name=%s' % (self.K2, urllib.parse.quote('%s КП.docx' % self.K2)), docx,
                               who='m2', extra={'Content-Type': 'application/octet-stream'})
             self.assertEqual(st, 200, b)
             st, b, _ = self.R('POST', '/api/kp/%s/send' % self.K2, {'to': 'client@example.com', 'word': True, 'files': ids}, who='m2')

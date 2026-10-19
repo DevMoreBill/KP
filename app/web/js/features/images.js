@@ -177,7 +177,8 @@ async function imgSlotPut(z, files){
 async function imgFromUrl(url){
   url=String(url||'').trim(); if (!url) return null;
   try{
-    const r = url.startsWith('data:image/') ? await fetch(url) : await fetch('/api/imgfetch?url='+encodeURIComponent(url), {headers:{'X-KP-User-Id':''}});
+    // data: — в браузере; адрес сайта — сервер программы скачивает сам (через api(): истёкший вход, ошибки — как везде)
+    const r = url.startsWith('data:image/') ? await fetch(url) : await api('/api/imgfetch?url='+encodeURIComponent(url), {raw:true});
     if (!r.ok) throw new Error(await r.text());
     const b=await r.blob(); return new File([b], 'image', {type:b.type||'image/png'});
   }catch(e){ toast(String(e.message||e).slice(0,160)||'Картинку по ссылке загрузить не удалось — сохраните её в файл и перетащите файл'); return null; }

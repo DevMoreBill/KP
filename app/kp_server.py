@@ -86,7 +86,37 @@ class FileGzip:
 # большие справочники (каталог — 12 МБ) для send_cached: сжатые один раз на версию, готовые для всех сотрудников
 JSON_GZIP = GzipCache(8, 6)
 JSON_GZIP_MIN = 200000      # меньше — отдаётся без сжатия
-MAX_BODY = 300 * 1024 * 1024    # самый большой запрос — загрузка резервной копии базы
+MAX_BODY = 300 * 1024 * 1024    # самый большой запрос — загрузка резервной копии базы (только «Настройки»)
+
+
+class BodyLimit:
+    """Предел тела запроса по адресу: большие загрузки (копия базы, файлы фидов, пакет обновления) — только у «Настроек»
+    (/api/admin/…), остальным хватает USER (PDF 60 МБ, файл для ИИ 40 МБ, справочный документ 25 МБ): иначе любой в сети
+    отдела мог занять память сервера несколькими запросами по 300 МБ. Пределы файлов, которые администратор поднял в
+    «Значениях программы» (справочный документ, файл для ИИ, картинка), действуют: берётся наибольший из них."""
+    USER = 64 * 1024 * 1024
+    FILES = ('kp.fileMB', 'cat.docMaxMB', 'kp.imgMB', 'cat.imgMaxMB')
+    BIG = ('/api/admin/',)
+    CHUNK = 64 * 1024
+
+    @classmethod
+    def of(cls, path):
+        if path.startswith(cls.BIG):
+            return MAX_BODY
+        try:
+            mb = max(SrvVal.get(store(), k) for k in cls.FILES)
+        except Exception:
+            mb = 0
+        return min(MAX_BODY, max(cls.USER, int((mb + 2) * 1024 * 1024)))
+
+    @classmethod
+    def drain(cls, rfile, n):
+        """Дочитать отклонённое тело частями — без копии в памяти целиком."""
+        while n > 0:
+            got = rfile.read(min(cls.CHUNK, n))
+            if not got:
+                break
+            n -= len(got)
 # программа запустилась и отвечает (после самопроверки обновления): сбой после этого launcher.py не считает сбоем
 # запуска обновления и прежнюю версию не возвращает
 STARTED = False
@@ -304,8 +334,8 @@ class Handler(BaseHTTPRequestHandler):
             # отказ до разбора: непрочитанное тело нельзя принять за следующий запрос, а закрыть сокет с непрочитанными
             # данными — значит оборвать соединение (RST), и клиент может не получить уже отправленный ответ
             if not hasattr(self, '_body') and self.body_size() > 0:
-                if self.body_size() <= MAX_BODY:
-                    self.rfile.read(self.body_size())
+                if self.body_size() <= BodyLimit.of(urllib.parse.urlsplit(self.path).path):
+                    BodyLimit.drain(self.rfile, self.body_size())
                 else:
                     self.close_connection = True
 
@@ -325,7 +355,7 @@ class Handler(BaseHTTPRequestHandler):
             # программы: её запросы несут заголовок X-KP-User-Id, а чужой сайт в браузере сотрудника такой заголовок не поставит
             if m == 'GET' and path.startswith(PAID_GET) and 'X-KP-User-Id' not in self.headers:
                 return self.send(403, 'text/plain; charset=utf-8', 'Запрос отклонён: только из программы')
-            if self.body_size() > MAX_BODY:
+            if self.body_size() > BodyLimit.of(path):
                 self.close_connection = True
                 return self.send(413, 'text/plain; charset=utf-8', 'Слишком большой запрос')
             # права, модерация и журнал действий (admin.py), вход по паролю — и для шаблонов и картинок: True — ответ уже отправлен, функция — записать в журнал

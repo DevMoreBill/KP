@@ -139,6 +139,19 @@ class SecurityTest(unittest.TestCase):
             with self.subTest('без CSRF %s %s' % (method, p)):
                 self.assertEqual(self.admin_req(method, p, body, csrf=False, headers=octet if isinstance(body, bytes) else None)[0], 401)
 
+    def test_04b_body_limit(self):
+        """Тело запроса больше предела для этого адреса — отказ 413 сразу, без чтения в память (300 МБ — только «Настройкам»)."""
+        import socket
+        for path, big in (('/api/kp/zz/state', 200 * 1024 * 1024), ('/api/clients/zz', 100 * 1024 * 1024)):
+            s = socket.create_connection(('127.0.0.1', self.stand.port), timeout=20)
+            try:
+                s.sendall(('PUT %s HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n'
+                           % (path, self.stand.port, big)).encode())
+                head = s.recv(200).decode('latin-1')
+            finally:
+                s.close()
+            self.assertIn(' 413 ', head, (path, head))
+
     def test_05_dangerous_files(self):
         kn = 'zzsec%d' % int(time.time())
         self.req('PUT', '/api/kp/%s/meta' % kn, {'number': kn, 'authorId': self.M1[0]}, cookie=self.U1)

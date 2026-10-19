@@ -8,12 +8,10 @@ const CRM_STAGES = [{id:'lead', name:'Запрос'}, {id:'sent', name:'КП о�
   {id:'delivery', name:'Поставка'}, {id:'won', name:'Выиграно'}, {id:'lost', name:'Проиграно'}];
 
 class CrmFmt {
-  static rub(kop){ return Math.round((+kop||0)/100).toLocaleString('ru-RU')+' ₽'; }
+  /** суммы сделок хранятся в копейках */
+  static rub(kop){ return Money.rub((+kop||0)/100); }
   /** коротко для карточек: 1,2 млн ₽ · 350 тыс. ₽ */
-  static short(kop){ const r=(+kop||0)/100;
-    if (r>=1e6) return (Math.round(r/1e5)/10).toLocaleString('ru-RU')+' млн ₽';
-    if (r>=1e3) return Math.round(r/1e3).toLocaleString('ru-RU')+' тыс. ₽';
-    return Math.round(r).toLocaleString('ru-RU')+' ₽'; }
+  static short(kop){ return Money.short((+kop||0)/100); }
   static day(iso){ const m=String(iso||'').match(/^\d{4}-(\d{2})-(\d{2})/); return m ? `${m[2]}.${m[1]}` : ''; }
   static diff(iso){ return Math.round((CrmFmt.dn(iso)-CrmFmt.dn(today()))); }
   /** номер дня (для графика и сравнения) */

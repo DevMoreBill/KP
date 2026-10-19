@@ -26,7 +26,7 @@ async function api(path, opts={}){
   if (r.status===401 && AUTH.enabled && !/^\/api\/(admin|auth)\//.test(path)) AuthScreen.show('Сессия закончилась — войдите снова.');
   if (!r.ok){ const err=new Error((await r.text()) || ('HTTP '+r.status)); err.status=r.status; throw err; }
   // сохранение в «Настройках» прошло — отметка «несохранённые изменения» снимается (проверки и предпросмотр — не сохранение)
-  if ((opts.method||'GET')!=='GET' && !/\/(preview|test|check)\b|\/connections\b/.test(path)) StDirty.saved();
+  if ((opts.method||'GET')!=='GET' && !/\/(preview|test|check|pdf)\b|\/connections\b/.test(path)) StDirty.saved();
   if (opts.raw) return r;      // файл (выгрузка): ответ целиком — blob и имя из заголовка
   const ct = r.headers.get('content-type')||''; return ct.includes('json') ? r.json() : r.text();
 }

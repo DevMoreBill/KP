@@ -268,7 +268,7 @@ class DataTransfer {
   /** скачать файл выгрузки администратора (GET /api/admin/…); st — строка состояния */
   static async download(url, st){
     if (st) st.textContent='Готовлю файл…';
-    try{ const r=await fetch('/api/admin/'+url,{headers:{'X-CSRF-Token':ADMIN.csrf}}); if (!r.ok) throw new Error(await r.text());
+    try{ const r=await api('/api/admin/'+url, {raw:true});
       const fn=decodeURIComponent((r.headers.get('Content-Disposition')||'').split("''")[1]||'backup'), blob=await r.blob();
       saveFileA(fn, blob); if (st) st.textContent=`Скачано: ${fn} (${Fmt.size(blob.size)})`; return true; }
     catch(err){ if (st) st.textContent=''; toast('Не выгружено: '+(err.message||err)); return false; }

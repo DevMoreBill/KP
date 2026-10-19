@@ -150,7 +150,7 @@ function dlStartAuto(d){ if (DL.ex || !d || (!d.start && !DEF('deal.startToday')
 const dlKp = () => DL.ex ? DL.exKp : dealKpInputs();
 const dlDeal = () => DL.ex ? DL.exDeal : dealEnsure();
 
-const dlRub = n => n==null||!Number.isFinite(n) ? '—' : n.toLocaleString('ru-RU',{minimumFractionDigits:2, maximumFractionDigits:2})+' ₽';
+const dlRub = n => Money.rub2(n);
 
 const dlPct = n => n==null||!Number.isFinite(n) ? '—' : n.toLocaleString('ru-RU',{minimumFractionDigits:2, maximumFractionDigits:2})+' %';
 
@@ -198,7 +198,7 @@ async function openDeal(){
   const d=Modal.host('dealdlg', 'dealwin', 'Экономика сделки', dealBind);
   // окно открывается сразу, содержимое — после загрузки справочников (повторное открытие тоже рисуется заново)
   if (!d.open){ d.innerHTML='<div class="dlg-h"><h3>Экономика сделки</h3><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div><p class="empty">Загружаю…</p>'; d.showModal(); }
-  await Promise.all([dlLoadDirs(), lgLoadAll()]); dealEnsure();
+  await Promise.all([dlLoadDirs(), DealLogistics.loadAll()]); dealEnsure();
   d.innerHTML=''; dealRender(true);
 }
 
@@ -893,7 +893,7 @@ function dealRender(force){
 }
 
 function dealRenderIn(dlg){
-  const d=dlDeal(); lgSync(d);                 // доставка по России из вкладки «Логистика» — в расчёт
+  const d=dlDeal(); DealLogistics.sync(d);                 // доставка по России из вкладки «Логистика» — в расчёт
   const kp=dlKp(), c=dealCalc(kp,d);
   if (dealSyncConds(c)) persist();
     const keyT = DL.key ? `ключевая ${dlIn(DL.key.rate)} % + ${dlSpread()}` : 'по умолчанию';
@@ -925,7 +925,7 @@ function dealRenderIn(dlg){
   morph(dlg, `${head}${banner}<div class="dl-mini">${mob?hd:''}${mini}</div><div class="dl-b"><div class="dl-tabw">${tabs}</div><div class="dl-form">
     ${dlOverview(c)}
     ${dlPurchase(c)}
-    ${dlLogistics(c)}
+    ${DealLogistics.view(c)}
     ${cust}
     ${custStep}
     ${dlStep(0, 'Расходы', 'Всё необязательно: заполните то, что есть в сделке. Пустые поля не учитываются.', `<div class="dl-card dl-mb"><div class="dl-mbh"><h5>Монтаж, ПНР, документация и прочие расходы</h5><span class="dl-stc opt">необязательно</span>${c.M+c.E+c.Dc+c.W+c.Bn>0?`<b class="dl-mbs">${Fmt.rub(c.M+c.E+c.Dc+c.W+c.Bn)}</b>`:''}</div><div class="dl-g g3">
@@ -948,7 +948,7 @@ function dealRenderIn(dlg){
     ${dlSchedule(c, 0)}
     <div class="dl-foot"><span class="muted">Пересчёт — сразу при вводе. Закупка сохраняется в КП и каталоге.</span></div>
   </div><aside class="dl-side">${dlResult(c)}</aside></div>`);
-  lgAutoQuote();
+  DealLogistics.autoQuote();
 }
 
 // ---------- коды ТН ВЭД и пошлины: позиция сделки и справочник категорий
@@ -1044,7 +1044,7 @@ function dealBind(dlg){
   const touchLive=()=>{ if (!DL.ex) S.deal.touched=true; updateLive(); };
   const comboClose=()=>{ if (!DL.combo) return; DL.combo=null; DL.comboIx=-1; dealRender(); };
   dlWinSize(dlg);
-  lgBind(dlg, touch);
+  DealLogistics.bind(dlg, touch);
   let szT=null; if (window.ResizeObserver) new ResizeObserver(()=>{ if (!dlg.open || isMob() || dlg.classList.contains('max')) return; clearTimeout(szT);
     szT=setTimeout(()=>{ const r=dlg.getBoundingClientRect(); if (r.width>300){ dlg.style.width=Math.round(r.width)+'px'; dlg.style.height=Math.round(r.height)+'px'; dlWinSize(dlg,true); } }, 600); }).observe(dlg);
   dlg.addEventListener('input', e=>{ const t=e.target;

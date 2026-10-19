@@ -118,7 +118,7 @@ def _cloud(src, dst, key):
     import json
     import uuid
     import urllib.error
-    import urllib.request
+    from net import Net
     boundary = uuid.uuid4().hex
     with open(src, 'rb') as f:
         data = f.read()
@@ -127,12 +127,10 @@ def _cloud(src, dst, key):
         ('--%s\r\nContent-Disposition: form-data; name="File"; filename="kp.docx"\r\n'
          'Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n\r\n' % boundary).encode(),
         data, ('\r\n--%s--\r\n' % boundary).encode()])
-    req = urllib.request.Request(CLOUD_URL, data=body, method='POST', headers={
-        'Authorization': 'Bearer ' + key, 'Accept': 'application/json',
-        'Content-Type': 'multipart/form-data; boundary=' + boundary})
     try:
-        with urllib.request.urlopen(req, timeout=120) as r:
-            res = json.loads(r.read().decode('utf-8'))
+        res = json.loads(Net.request(CLOUD_URL, data=body, method='POST', timeout=120, limit=120 * 1024 * 1024, headers={
+            'Authorization': 'Bearer ' + key, 'Accept': 'application/json',
+            'Content-Type': 'multipart/form-data; boundary=' + boundary}).decode('utf-8'))
     except urllib.error.HTTPError as e:
         try:
             msg = json.loads(e.read().decode('utf-8')).get('Message')
@@ -151,7 +149,13 @@ def _cloud(src, dst, key):
 
 
 def convert_file(src, dst, cloud_key=None):
-    """DOCX-файл src → PDF-файл dst. Ошибка RuntimeError с понятным текстом, если преобразовать нечем или не вышло."""
+    """DOCX-файл src → PDF-файл dst. Ошибка RuntimeError с понятным текстом, если преобразовать нечем или не вышло.
+    Файл проверяется до Word (DocxCheck): в папке КП может оказаться документ, загруженный не программой."""
+    try:
+        with open(src, 'rb') as fh:
+            DocxCheck.check(fh.read(DocxCheck.MAX + 1))
+    except ValueError as e:
+        raise RuntimeError(str(e))
     tried = []
     with LOCK:
         for name, ok, fn in (('Word', word_available, _word), ('LibreOffice', lambda: bool(soffice_path()), _libreoffice),
@@ -176,6 +180,7 @@ class DocxCheck:
     """В Word сервера — только документ .docx без макросов и внешних шаблонов/объектов (присланное открывает Word
     на компьютере-сервере: макрос или удалённый шаблон выполнились бы там)."""
     MAX = 60 * 1024 * 1024
+    PART = 2 * 1024 * 1024           # служебные части (типы, связи) больше — не документ Word, а «бомба» или подмена
     BAD_REL = re.compile(r'/(attachedTemplate|oleObject|frame|subDocument|package|control)$')
 
     @classmethod
@@ -185,6 +190,8 @@ class DocxCheck:
         try:
             z = zipfile.ZipFile(io.BytesIO(data))
             names = set(z.namelist())
+            if any((n == '[Content_Types].xml' or n.endswith('.rels')) and z.getinfo(n).file_size > cls.PART for n in names):
+                raise ValueError('это не документ Word (.docx)')
             ct = z.read('[Content_Types].xml').decode('utf-8', 'replace') if '[Content_Types].xml' in names else ''
         except (zipfile.BadZipFile, KeyError, OSError, NotImplementedError):
             raise ValueError('это не документ Word (.docx)')
@@ -193,7 +200,7 @@ class DocxCheck:
         if 'macroEnabled' in ct or any(n.lower().endswith('vbaproject.bin') or n.lower().startswith('word/activex') for n in names):
             raise ValueError('документ с макросами не преобразуется')
         for n in names:
-            if n.endswith('.rels') and z.getinfo(n).file_size < 2 * 1024 * 1024:
+            if n.endswith('.rels'):
                 for m in re.finditer(r'<Relationship\b[^>]*>', z.read(n).decode('utf-8', 'replace')):
                     t = re.search(r'\bType="([^"]*)"', m.group(0))
                     if 'External' in m.group(0) and t and cls.BAD_REL.search(t.group(1)):

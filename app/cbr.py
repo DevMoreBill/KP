@@ -3,18 +3,17 @@
 import json
 import re
 import time
-import urllib.request
 from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
+
+from net import Net
 
 CURRENCIES = ('USD', 'EUR', 'CNY')
 
 
 def http_get(url, headers=None):
-    # urllib берёт системный прокси Windows, а SSL-сертификаты — из хранилища Windows
-    req = urllib.request.Request(url, headers=headers or {'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return r.read()
+    # urllib берёт системный прокси Windows, а SSL-сертификаты — из хранилища Windows; предел и повтор — Net
+    return Net.request(url, headers=headers or {'User-Agent': 'Mozilla/5.0'}, timeout=15, limit=Net.LIMIT)
 
 
 def cbr_rates():
@@ -88,10 +87,9 @@ def cbr_key_rate():
         body = ('<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
                 '<soap:Body><KeyRateXML xmlns="http://web.cbr.ru/"><fromDate>%s</fromDate><ToDate>%s</ToDate></KeyRateXML>'
                 '</soap:Body></soap:Envelope>' % (frm, to)).encode('utf-8')
-        req = urllib.request.Request('https://www.cbr.ru/DailyInfoWebServ/DailyInfo.asmx', data=body, headers={
+        raw = Net.request('https://www.cbr.ru/DailyInfoWebServ/DailyInfo.asmx', data=body, timeout=15, retries=1, headers={
             'Content-Type': 'text/xml; charset=utf-8', 'SOAPAction': '"http://web.cbr.ru/KeyRateXML"', 'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            got = parse_key_rate_xml(r.read().decode('utf-8', 'replace'))
+        got = parse_key_rate_xml(raw.decode('utf-8', 'replace'))
         if got:
             res = {'date': got[0], 'rate': got[1], 'src': 'ЦБ РФ (cbr.ru)'}
             _KEY_CACHE['v'] = (time.time(), res)

@@ -34,7 +34,7 @@ class DefaultsTab {
     return DEF_GROUPS.map(([g, t])=>[g, t, DEF_SCHEMA.filter(r=>r[1]===g && (q || DefRegistry.section(g)===this.sec) && this.match(r, q) && (!this.only || V[r[0]]))]).filter(x=>x[2].length);
   }
   static async render(m){
-    await lgLoad().catch(()=>null);   // техника разгрузки из «Тарифов доставки» — в выборе «Логистики»
+    await DealLogistics.load().catch(()=>null);   // техника разгрузки из «Тарифов доставки» — в выборе «Логистики»
     const r=await aapi('defaults'), V=r.values||{};
     const cnt=s=>DEF_SCHEMA.filter(x=>DefRegistry.section(x[1])===s).length, own=s=>DEF_SCHEMA.filter(x=>DefRegistry.section(x[1])===s && V[x[0]]).length;
     const secs=DefRegistry.SECTIONS.filter(([s])=>cnt(s));

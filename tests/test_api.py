@@ -15,7 +15,7 @@ import unittest
 import urllib.parse
 import zipfile
 
-from kit import Http, Net, SampleData, SmtpSink, Stand
+from kit import Docx, Http, Net, SampleData, SmtpSink, Stand
 import version
 
 
@@ -170,11 +170,7 @@ class ApiTest(unittest.TestCase):
 
     def test_05_kp_word_and_deal(self):
         kid = self.ctx['kid']
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, 'w') as z:
-            z.writestr('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
-            z.writestr('word/document.xml', '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body/></w:document>')
-        docx = buf.getvalue()
+        docx = Docx.minimal()
         q = lambda name: '/api/kp/%s/docx?name=%s&dir=%s' % (kid, urllib.parse.quote(name), urllib.parse.quote('Иванова'))
         st, b, _ = self.J('PUT', q('%s КП Тест.docx' % kid), docx, extra={'Content-Type': 'application/octet-stream'})
         self.assertTrue(st == 200 and (Http.js(b) or {}).get('rel', '').startswith('Иванова/'), (st, b[:200]))
@@ -184,6 +180,23 @@ class ApiTest(unittest.TestCase):
         folder = os.path.join(self.stand.app, 'Коммерческие предложения', 'Иванова')
         self.assertEqual(sorted(os.listdir(folder)), ['%s КП Тест новое имя.docx' % kid], 'старый файл убран при новом имени')
         self.assertIn(self.J('POST', '/api/kp/%s/pdf' % kid, {})[0], (200, 422), 'без Word и LibreOffice — понятный ответ')
+        # документ с внешним шаблоном (Word сервера обратился бы по адресу) и «бомба» в служебной части — не принимаются
+        evil = io.BytesIO()
+        with zipfile.ZipFile(evil, 'w') as z:
+            with zipfile.ZipFile(io.BytesIO(docx)) as src:
+                for n in src.namelist():
+                    z.writestr(n, src.read(n))
+            z.writestr('word/_rels/settings.xml.rels', '<Relationships><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+                       'relationships/attachedTemplate" Target="file://evil/share/x.dotm" TargetMode="External"/></Relationships>')
+        self.assertEqual(self.J('PUT', q('%s КП злой.docx' % kid), evil.getvalue(), extra={'Content-Type': 'application/octet-stream'})[0], 400)
+        bomb = io.BytesIO()
+        with zipfile.ZipFile(bomb, 'w', zipfile.ZIP_DEFLATED) as z:
+            with zipfile.ZipFile(io.BytesIO(docx)) as src:
+                for n in src.namelist():
+                    z.writestr(n, src.read(n))
+            z.writestr('word/_rels/document.xml.rels', ' ' * (3 * 1024 * 1024))
+        self.assertEqual(self.J('PUT', q('%s КП бомба.docx' % kid), bomb.getvalue(), extra={'Content-Type': 'application/octet-stream'})[0], 400)
+        self.assertEqual(self.J('PUT', q('%s КП мусор.docx' % kid), b'PK\x03\x04garbage', extra={'Content-Type': 'application/octet-stream'})[0], 400)
         tr = self.ok_json('PUT', '/api/kp/%s/track' % kid, {'status': 'work', 'followUp': {'date': time.strftime('%Y-%m-%d'), 'note': 'перезвонить'}})
         self.assertEqual(tr['track']['status'], 'work')
         self.assertEqual(self.J('PUT', '/api/kp/%s/track' % kid, {'status': 'nonsense'})[0], 400)

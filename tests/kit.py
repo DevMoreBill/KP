@@ -187,6 +187,21 @@ class FakeConfig:
         return types.SimpleNamespace(**base)
 
 
+class Docx:
+    """Самый маленький настоящий документ Word (.docx) — сервер принимает только такие (pdf_convert.DocxCheck)."""
+    @staticmethod
+    def minimal(text='КП'):
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w') as z:
+            z.writestr('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                       '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+            z.writestr('word/document.xml', '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>%s</w:t>'
+                       '</w:r></w:p></w:body></w:document>' % text)
+        return buf.getvalue()
+
+
 class Schema:
     """Откат миграций в проверках: «база прежней версии» — без перечисления всех поздних миграций по именам (новая
     миграция иначе ломала каждую такую проверку)."""
