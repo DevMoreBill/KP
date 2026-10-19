@@ -271,7 +271,8 @@ jobs:
           $n = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/kp/new'
           Write-Host "Новый номер КП: $($n.number)"
           $name = [uri]::EscapeDataString('Проверка КП.docx')
-          Invoke-RestMethod -Method Put -Uri "http://127.0.0.1:17845/api/kp/$($n.id)/docx?name=$name" -Body ([byte[]](80,75,3,4)) | Out-Null
+          # настоящий документ Word (сервер принимает только .docx без макросов и внешних шаблонов — DocxCheck, 3.104.2)
+          Invoke-RestMethod -Method Put -Uri "http://127.0.0.1:17845/api/kp/$($n.id)/docx?name=$name" -InFile (Join-Path $dir 'templates\pnevmotekh\base.docx') -ContentType 'application/octet-stream' | Out-Null
           if (-not (Test-Path -LiteralPath (Join-Path $dir 'Коммерческие предложения\Проверка КП.docx'))) { throw 'DOCX не сохранился' }
           Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/shutdown' | Out-Null
           if (-not $p.WaitForExit(15000)) { $p.Kill(); throw 'EXE не завершился по команде «Выход»' }
