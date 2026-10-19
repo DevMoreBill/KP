@@ -75,6 +75,8 @@ class StationDoc {
     // производительность компрессора и осушителя — из поля каталога, если строки нет (она главная в карточке)
     const f=/^(compressor|dryer)$/.test(kd) && !L.some(r=>this.PRIO[0].test(String(r.k))) ? AirChain.flow(p)/((p.attrs||{}).cat==='comp_piston' && StationEquip.num((p.attrs||{}).flow)>0 ? 1000 : 1) : null;   // поршневые — л/мин
     if (f>0) L.unshift({ k:kd==='dryer' ? 'Пропускная способность' : 'Производительность', v:`${String(Math.round(f*100)/100).replace('.', ',')} м³/мин` });
+    // бак без своих габаритов — по расчётному объёму (TankSize)
+    if (kd==='tank' && !StationEquip.dims(p, kd).known){ const v=TankSize.vol(p); if (v) L.push({ k:'Габариты Д × Ш × В', v:TankSize.text(TankSize.of(v)) }); }
     const rank=r=>{ const k=this.PRIO.findIndex(re=>re.test(String(r.k))); return k<0 ? 99 : k; };
     const seen=new Set();
     return L.map((r, i)=>[r, i]).sort((a, b)=>rank(a[0])-rank(b[0]) || a[1]-b[1]).map(([r])=>r)

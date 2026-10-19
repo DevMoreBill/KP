@@ -43,7 +43,10 @@ class Check {
     // бак ДГУ — в своём отсеке у торца: за перегородкой (оборудование — после неё), проход перед баком, дверь отсека в его пределах
     const tanks=I.filter(i=>i.tank);
     if (tanks.length){ const f=p.fuel; assert.ok(f && (p.geo.x0||0)>=f.x1+f.part-1, `${label}: оборудование — за перегородкой отсека бака`);
-      assert.ok(f.door.x0>=0 && f.door.x1<=f.x1 && f.door.x1-f.door.x0>=StationLayout.TANK.door, `${label}: дверь отсека бака`);
+      // вход в отсек: ворота в торце (tank.gates, решение владельца 19.10) или своя дверь в стене прохода (морской — его двери)
+      if (f.gate) assert.ok(f.gate.wall==='left' && f.gate.y0>=0 && f.gate.y1<=W && tanks.every(t=>f.gate.w>=t.ly && Math.min(f.gate.y1, t.y+t.ly)-Math.max(f.gate.y0, t.y)>=0.75*t.ly), `${label}: ворота отсека — напротив бака`);
+      else if (f.door) assert.ok(f.door.x0>=0 && f.door.x1<=f.x1 && f.door.x1-f.door.x0>=StationLayout.TANK.door, `${label}: дверь отсека бака`);
+      assert.ok(f.fill && f.fill.niche, `${label}: горловина — в нише заподлицо`);
       for (const t of tanks) assert.ok(t.y>=StationLayout.TANK.aisle-1, `${label}: проход перед баком ${t.y} мм`); }
     const floor=I.filter(i=>i.mount==='floor' && !i.tank);
     assert.ok(p.door==='side' || p.door==='end', `${label}: дверь оператора ${p.door} — станция только с проходом`);
@@ -57,7 +60,7 @@ class Check {
       for (const d of p.doors||[]) put(d.wall, d.x0, d.x1, d.kind);
       if (p.entry && !p.entry.sea) p.entry.wall==='front' ? put('front', p.entry.x0, p.entry.x1, 'вход') : put(p.entry.wall, p.entry.y0, p.entry.y1, 'вход');
       for (const g of [p.gates, p.gates2]) if (g && !g.sea) put(g.wall, g.y0, g.y1, 'ворота');
-      if (p.exit) put(p.exit.wall, p.exit.y0, p.exit.y1, 'выход'); if (p.dguDoor) put('right', p.dguDoor.y0, p.dguDoor.y1, 'ДГУ');
+      if (p.exit) put(p.exit.wall, p.exit.y0, p.exit.y1, 'выход'); for (const d of p.dguDoors||[]) d.wall==='back' ? put('back', d.x0, d.x1, 'ДГУ') : put(d.wall, d.y0, d.y1, 'ДГУ');
       if (p.fuel && p.fuel.door) put('front', p.fuel.door.x0, p.fuel.door.x1, 'бак');
       for (const [w, list] of Object.entries(O)){ const lim=w==='front' || w==='back' ? [Q.eL, L-Q.eL] : [Q.eW, W-Q.eW];
         list.sort((a, b)=>a[0]-b[0]);
@@ -976,15 +979,17 @@ Check.run('отопление: теплопотери, тепло оборудо
   const dg=StationLayout.solve({ cont:C('sea40'), parts:[dgu, ats], req:{ tmin:-40 } }).heat; assert.ok(dg.vent.rad>0, 'ДГУ: воздух радиатора');
 });
 
-Check.run('ДГУ: отсек топливного бака — перегородка, своя дверь, горловина снаружи', ()=>{
+Check.run('ДГУ: отсек топливного бака — перегородка, ворота в торце (или своя дверь), горловина в нише', ()=>{
   const fuel=P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'1000 л' }] });
   for (const ct of ['sea20', 'sea40', 'block', 'welded', 'north']){
     const p=solve(C(ct, { sizeAuto:ct==='block' || ct==='welded' || ct==='north' }), [dgu, ats, fuel]); const label='отсек бака '+ct; Check.plan(p, label);
     if (p.level==='error') continue;
     const f=p.fuel, t=p.items.find(i=>i.tank); assert.ok(f && t, label+': отсек есть');
     assert.ok(f.part>=StationLayout.TANK.part && f.x1>=t.x+t.lx, label+': бак за перегородкой');
-    assert.ok(f.fill && ['left', 'back'].includes(f.fill.wall) && f.fill.z>0 && f.fill.z<p.int[2], label+': горловина снаружи');
-    assert.ok(!(p.doors||[]).some(d=>d.x0<f.x1+f.part && d.x1>0 && d.wall==='front' && !(d.x0===f.door.x0 && d.x1===f.door.x1)), label+': в отсек — только своя дверь');
+    assert.ok(f.fill && ['left', 'back', 'front'].includes(f.fill.wall) && f.fill.z>0 && f.fill.z<p.int[2] && f.fill.niche, label+': горловина в нише');
+    assert.ok(ct.startsWith('sea') ? !f.gate : f.gate && !f.door, label+': вход в отсек — ворота в торце (у морского — его двери и своя дверь)');
+    assert.ok(!(p.doors||[]).some(d=>d.x0<f.x1+f.part && d.x1>0 && d.wall==='front' && !(f.door && d.x0===f.door.x0 && d.x1===f.door.x1)), label+': в отсек — только свой вход');
+    const fu=(p.lines||[]).filter(l=>l.medium==='fuel'); assert.ok(fu.length && fu.every(l=>l.z<=StationLayout.FUEL_Z), label+': топливопровод — по полу');
     const sv=StationDrawing.svg(p, meta(p)); Check.sheet(sv, label+': чертёж');
     assert.ok(/Бак поз\. \d+ — в отсеке за противопожарной перегородкой \(EI 45\)/.test(sv), label+': требование в ТТ');
     assert.ok(p.issues.some(i=>/отсек/i.test(i.text)), label+': сведения об отсеке');
@@ -1074,7 +1079,7 @@ Check.run('3D: оснащение — пожарная безопасность,
   // ДГУ с отсеком бака: снаружи — дверь отсека (решётка внизу, доводчик), «Пожароопасно», «Открытый огонь запрещён», «ДТ»
   const dgm=Object.assign({}, dgu, { attrs:{ ...dgu.attrs, maker:'AKSA' } }), dg=solve(C('block', { sizeAuto:true }), [dgm, ats, P('Глушитель на крыше', {}), P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'1000 л' }] })]);
   const so=new StScene(dg, { view:'out' }).build(), Do=[...so.decals.values()];
-  assert.ok(so.openF.some(o=>o.kind==='tank') && ['W01', 'P02', 'DT'].every(id=>Do.some(d=>d.id===id)), 'отсек бака снаружи: дверь и знаки');
+  assert.ok((so.openF.some(o=>o.kind==='tank') || dg.fuel.gate) && ['W01', 'P02', 'DT'].every(id=>Do.some(d=>d.id===id)), 'отсек бака снаружи: вход (ворота в торце или дверь) и знаки');
   assert.ok(Do.some(d=>d.id==='CAT' && d.cat==='В1' && d.zone==='П-I'), 'отсек бака: табличка «Категория В1, класс зоны П-I»');
   assert.ok(dg.fire.rooms.length===2 && dg.fire.ext===2 && !dg.fire.auto && dg.fire.mods===0, 'ДГУ с отсеком: огнетушители в двух помещениях, без пожаротушения — модулей нет');
   const si=new StScene(dg, {}).build(); assert.ok(dg.fire.ext===2 && si.outfit.log.filter(q=>q.kind==='ext').length===2, 'огнетушители: у входа и в отсеке бака');
@@ -1756,6 +1761,55 @@ Check.run('окраска контейнера: на один цвет — од�
   assert.ok(sc.outfit.artL===true, 'на торце с рисунком — логотипа нет');
   const h1=StationLayout.hash({ cont:C('block', {}), parts:[comp] }), h2=StationLayout.hash({ cont:C('block', { art:[{ src:'/img/a.png', wall:'left' }] }), parts:[comp] });
   assert.ok(h1!==h2 && h1!==StationLayout.hash({ cont:C('block', { paintBook:true }), parts:[comp] }), 'отпечаток: рисунки и буклет — картинки пересобираются');
+});
+
+// ДГУ в контейнере (решения владельца 19.10): радиатор — вплотную к своим жалюзи (dgu.rad), у каждой ДГУ — свой выброс горячего
+// воздуха и свой выхлоп; две без бака — по одной у торцов радиаторами наружу; от dgu.across — поперёк, жалюзи в задней стене;
+// бак — прямоугольный по объёму, вход в отсек — ворота в торце, горловина в нише, топливопровод по полу; конвекторы плотнее
+Check.run('ДГУ в контейнере: радиатор к жалюзи, две — к торцам, три — поперёк, свой выброс и выхлоп', ()=>{
+  const R=StationMatrix.grp('dgu').rad, blk=C('block', { sizeAuto:true }), muf=q=>P('Глушитель на крыше', {}, { qty:q });
+  const sm=q=>P('ДГУ ТСС АД-30', { cat:'dgu', model:'АД-30', kw:30 }, { role:'main', qty:q, rows:[{ k:'Габариты Д × Ш × В', v:'1900 × 850 × 1300 мм' }] });
+  const big=q=>Object.assign({}, dgu, { id:'pd'+q, qty:q });
+  const chk=(p, label)=>{ Check.plan(p, label); assert.notStrictEqual(p.level, 'error', label+': '+p.issues.map(i=>i.text).join(' | '));
+    const [L, W]=p.int, x0=p.geo.x0||0, G=p.items.filter(i=>i.kind==='dgu' && !i.tank);
+    for (const g of G){ const gap=g.rad==='back' ? W-g.y-g.ly : g.rad==='left' ? g.x-x0 : L-g.x-g.lx; assert.ok(Math.abs(gap-R)<=1, `${label}: от радиатора поз. ${g.pos} до жалюзи ${gap} мм (нужно ${R})`);
+      assert.ok((p.dguDoors||[]).some(d=>d.pos===g.pos && d.unit===g.unit && d.wall===(g.rad||'right')), `${label}: у ДГУ ${g.unit} — своя дверь-жалюзи`);
+      assert.ok((p.exhausts||[]).some(e=>e.pos===g.pos && e.unit===g.unit), `${label}: у ДГУ ${g.unit} — свой выхлоп`); }
+    const V=p.vent; assert.ok(V && V.rad && V.rad.n===G.length && V.louvers.filter(q=>q.kind==='rad').length===G.length, label+': у каждой ДГУ — свой выброс');
+    const radW=new Set(G.map(g=>g.rad||'right')); assert.ok(!V.louvers.some(q=>q.kind==='in' && radW.has(q.wall)), label+': приток не на стене радиаторов');
+    assert.ok(!p.issues.some(i=>/не подойти/.test(i.text)), label+': доступ к ДГУ');
+    Check.sheet(StationDrawing.svg(p, meta(p)), label+': чертёж');
+    for (const v of ['in', 'out']){ const sc=new StScene(p, { view:v }).build(); for (const { mesh } of sc.groups.values()) assert.ok(mesh.p.every(Number.isFinite), label+': NaN в 3D ('+v+')'); }
+    assert.ok(StationView3D.svg(p, {}).length>1000, label+': вид');
+    return G; };
+  // одна — вдоль, радиатором к дальнему торцу
+  const p1=solve(blk, [big(1), ats, muf(1)]), g1=chk(p1, 'одна ДГУ'); assert.ok(g1.length===1 && g1[0].rad==='right' && p1.dguDoors[0].wall==='right', 'одна ДГУ — к дальнему торцу');
+  assert.ok(p1.exhausts[0].how==='roof', 'одна ДГУ с глушителем — выхлоп через крышу');
+  // две без бака — у торцов радиаторами наружу, вход посередине; глушитель один — у второй вывод через стену
+  const p2=solve(blk, [big(2), ats, muf(1)]), g2=chk(p2, 'две ДГУ');
+  assert.deepStrictEqual(g2.map(g=>g.rad).sort(), ['left', 'right'], 'две ДГУ — радиаторами к обоим торцам');
+  assert.ok(p2.entry && p2.entry.wall==='front' && p2.entry.x0>Math.min(...g2.map(g=>g.x+g.lx)) && p2.entry.x1<Math.max(...g2.map(g=>g.x)), 'две ДГУ: дверь оператора между ними');
+  assert.deepStrictEqual(p2.exhausts.map(e=>e.how).sort(), ['roof', 'wall'], 'выхлоп: один глушитель на крыше, второй — через стену');
+  assert.ok(p2.issues.some(i=>/через заднюю стену/.test(i.text) && /глушитель встроен/.test(i.text)), 'замечание о выводе выхлопа через стену');
+  assert.ok(p2.roof[0].dir==='x-' || p2.roof[0].dir==='x+', 'глушитель — над своей ДГУ');
+  // три — поперёк, радиаторами к задней стене, у каждой дверь-жалюзи в задней стене
+  const p3=solve(blk, [sm(3), ats, muf(3)]), g3=chk(p3, 'три ДГУ');
+  assert.ok(g3.every(g=>g.rad==='back' && g.rot) && p3.dguDoors.every(d=>d.wall==='back'), 'три ДГУ — поперёк');
+  assert.ok(p3.roof.every(m=>m.dir==='y+') && p3.exhausts.every(e=>e.how==='roof'), 'три ДГУ: глушители поперёк, над каждой');
+  const D=[...p3.dguDoors].sort((a, b)=>a.x0-b.x0); for (let k=1; k<D.length; k++) assert.ok(D[k].x0-D[k-1].x1>=StationMatrix.door().gap-1, 'двери-жалюзи не ближе door.gap');
+  // бак 2000 л: прямоугольный по объёму, ворота в торце, горловина в нише, топливопровод по полу
+  const tk=P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'2000 л' }] }), pt=solve(blk, [big(1), ats, tk, muf(1)]); chk(pt, 'ДГУ с баком');
+  const T=pt.items.find(i=>i.tank), d=TankSize.of(2000), M=StationMatrix.tank();
+  assert.deepStrictEqual([Math.max(T.lx, T.ly), Math.min(T.lx, T.ly), T.h], [d.l, d.w, d.h], 'бак — по объёму');
+  assert.ok((d.l-2*M.wall)*(d.w-2*M.wall)*(d.h-2*M.wall)/1e6>=2000 && (d.l-M.step-2*M.wall)*(d.w-2*M.wall)*(d.h-2*M.wall)/1e6<2000, 'бак: объём внутри — не меньше расчётного, длина — с шагом');
+  assert.deepStrictEqual([TankSize.of(2001).h, TankSize.of(2001).w], [M.h2, M.w2], 'больше «большого» объёма — высота и ширина больше');
+  assert.ok(pt.fuel.gate && !pt.fuel.door && pt.fuel.fill.niche, 'отсек: ворота в торце, горловина в нише');
+  assert.ok(pt.issues.some(i=>/Габариты бака — по расчётному объёму/.test(i.text) && /требует подтверждения/.test(i.text)), 'габариты бака — с пометкой');
+  assert.ok(pt.lines.filter(l=>l.medium==='fuel').every(l=>l.z<=StationLayout.FUEL_Z), 'топливопровод по полу');
+  // конвекторы у ДГУ — с уменьшенными отступами (dgu.convGap, convEdge), не на стене радиатора и не на двери-жалюзи
+  const Hs=(p1.heat && p1.heat.heaters)||[], Dr=p1.dguDoors[0]; assert.ok(Hs.every(h=>!(h.wall==='right' && h.y<Dr.y1 && h.y+h.ly>Dr.y0)), 'конвекторы — не на двери-жалюзи');
+  const sp=StationHeat.spots(p1, 500), sp0=StationHeat.spots(Object.assign({}, p1, { items:p1.items.map(i=>i.kind==='dgu' ? { ...i, kind:'other' } : i), dguDoors:[] }), 500);
+  assert.ok(sp.length>=sp0.length-1, `конвекторы у ДГУ — мест не меньше (${sp.length} против ${sp0.length})`);
 });
 
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);

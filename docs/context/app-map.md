@@ -225,6 +225,8 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.91.0** (14.10) — доставка из Китая до границы РФ, только админка (`china_freight.ChinaFreight`, kv `chinaRates`, `/api/logistics/china`, клиент `ChinaFreightTab`): ATI.SU по направлениям из Китая + ставки экспедиторов в валюте по курсу ЦБ.
 - **3.92.0** (16.10) — ЖелДорЭкспедиция (`logistics_api.Jde`): открытый расчёт без ключа, сборный и крупногабаритный груз (до 20 т, надбавка за негабарит по размерам места), забор и доставка; крупногабарит — только ЖДЭ из сборных.
 - **3.93.0** (16.10) — справочные документы к КП (`kp_files.KpFiles`, таблица `kp_files`, `data/kp_files`, клиент `KpFilesPanel`, вложения письма) и окно входа (`LoginGuard`, `UserSession`, `LoginInfo`, `LoginForm`, `AuthScreen`, `AdminLogin`).
+- **3.107.0** (19.10) — станции ДГУ: `StationLayout.rowD/dLine/dEnds/dAcross`, `dguDoors`, `exhausts`, `TankSize`, `fuel.gate`,
+  `fuelLine`; `StationVent` — жалюзи радиатора у каждой ДГУ; `StScene.mapMesh`; правила `layout.matrix` `tank.*`, группа `dgu`.
 - **3.106.0** (19.10) — Битрикс24: `bitrix_rules.BitrixRules` (направления, менеджеры, воронки, карта полей, товары и файлы,
   компании, дела, расписание), `BitrixDry` (пробный прогон), `BitrixImport` (старые сделки), журнал с менеджером; «Настройки →
   Битрикс24» — 9 вкладок.

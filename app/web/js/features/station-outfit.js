@@ -21,7 +21,7 @@ class StOutfit {
 
   constructor(scene){ this.s=scene; this.p=scene.plan; this.sys=this.p.sys||{}; this.walls=new StWalls(this.p); this.inside=scene.view==='in'; this.log=[];   // log — что где поставлено (проверки)
     this.O={ left:[], right:[], back:[], front:[] }; }   // снаружи на стенах занято: [u0, u1, z0, z1] — как у StWalls, мм
-  build(){ this.lights(); this.tray(); this.heaters(); this.vents(); this.fire(); this.sockets(); this.fuel(); this.doors(); this.arts(); this.lift(); this.brand(); return this; }
+  build(){ this.lights(); this.tray(); this.heaters(); this.vents(); this.exhausts(); this.fire(); this.sockets(); this.fuel(); this.doors(); this.arts(); this.lift(); this.brand(); return this; }
   /** снаружи на стене w занят участок u0…u1, z0…z1 (мм: вдоль стены помещения и от пола — как у StWalls) */
   outer(w, u0, u1, z0, z1){ this.O[w].push([u0, u1, z0, z1]); }
   /** снаружи на стене участок свободен */
@@ -39,7 +39,7 @@ class StOutfit {
   shown(w){ return this.inside && !(w==='front' && this.s.cut); }
   /** наружная поверхность стены со стороны зрителя (y) и торца у двери (x): гофр и профлист выступают */
   frontY(){ const S=this.s; return S.g.sea ? -0.008 : S.g.type==='welded' ? 0.003 : 0.018; }
-  leftX(){ const S=this.s, G=[this.p.gates, this.p.gates2].some(q=>q && q.wall==='left'); return S.g.sea ? -0.034 : this.p.door==='end' || G ? -0.028 : S.g.type==='welded' ? 0.003 : 0.018; }
+  leftX(){ const S=this.s, G=[this.p.gates, this.p.gates2].some(q=>q && q.wall==='left') || !!(this.p.fuel && this.p.fuel.gate); return S.g.sea ? -0.034 : this.p.door==='end' || G ? -0.028 : S.g.type==='welded' ? 0.003 : 0.018; }
 
   // ---- свет (расчёт — StationLight, plan.light): светильники в ряд по оси помещения, у аварийных (каждый второй, первый — у
   // выхода) — зелёный индикатор блока аварийного питания; в отсеке бака и тамбуре — круглый
@@ -73,10 +73,10 @@ class StOutfit {
   // ---- вентиляция (размеры и места — расчёт StationVent, plan.vent): приток внизу, вытяжка вверху, у ДГУ — дверь-жалюзи
   // или жалюзи напротив радиатора и воздуховод к ним; у каждой группы жалюзи на стене — подпись размера на картинке
   vents(){
-    const P=this.p, V=P.vent, dgu=P.items.find(i=>i.kind==='dgu' && !i.tank); if (!V) return;
-    for (const L of V.louvers){ if (L.kind==='rad' && L.door) this.endDoor(P.dguDoor); else if (L.leaf) this.leafVent(L); else { this.vent(L.wall, L.u0, L.u1, L.z0, L.z1, L.kind==='in', L.hood); if (L.fan) this.fan(L); } }
+    const P=this.p, V=P.vent, dgu=P.items.filter(i=>i.kind==='dgu' && !i.tank && i.mount==='floor'); if (!V) return;
+    for (const L of V.louvers){ if (L.kind==='rad' && L.door){ const d=(P.dguDoors||[]).find(q=>q.pos===L.pos && q.unit===L.unit) || P.dguDoor; if (d) this.endDoor(d); } else if (L.leaf) this.leafVent(L); else { this.vent(L.wall, L.u0, L.u1, L.z0, L.z1, L.kind==='in', L.hood); if (L.fan) this.fan(L); } }
     for (const R of V.roof||[]) this.roofHood(R);
-    if (dgu) this.duct(dgu);
+    for (const g of dgu) this.duct(g);
     // подписей (сносок) на 3D-виде нет — размеры жалюзи на чертеже и в тексте (решение ПНЕВМОТЕХ)
   }
   /** вентилятор в проёме (вытяжной — система «Вытяжные вентиляторы», приточный — если жалюзи притока не встали): изнутри —
@@ -135,23 +135,57 @@ class StOutfit {
     for (let z=z0+40; z<z1-20; z+=55) this.box(sl, w, uc, z, du-10, 12, 18, 0);
     this.box(dk, w, u1+130, zc, 110, 150, 90, 0.008); this.box(fr, w, u1+50, zc, 50, 20, 40, 0);   // электропривод клапана
   }
-  /** ДГУ: в торце напротив радиатора — двустворчатая дверь-жалюзи (выброс горячего воздуха и проём для монтажа и демонтажа
-   *  ДГУ): коробка, створки с наклонными ламелями (внизу — глухая полоса), петли по краям, запорные штанги и ручка посередине,
-   *  козырёк сверху; изнутри — клапан с электроприводом */
+  /** ДГУ: напротив радиатора — двустворчатая дверь-жалюзи (выброс горячего воздуха и проём для монтажа и демонтажа ДГУ) в
+   *  торце (wall 'right' | 'left', d.y0…d.y1) или в задней стене (ДГУ поперёк, d.x0…d.x1): коробка, створки с наклонными
+   *  ламелями (внизу — глухая полоса), петли по краям, запорные штанги и ручка посередине, козырёк сверху; изнутри — клапан с
+   *  электроприводом */
   endDoor(d){
-    const S=this.s, a=d.y0/1000, b=d.y1/1000, Z0=S.base+0.01, Z1=S.base+d.h/1000, x=S.Le, m=(a+b)/2, Y=u=>S.oy+u;
-    this.walls.busy('right', d.y0-60, d.y1+260, 0, d.h+120); this.outer('right', d.y0-100, d.y1+100, 0, d.h+220);
+    const S=this.s, w=d.wall||'right', end=w!=='back', u0m=end ? d.y0 : d.x0, u1m=end ? d.y1 : d.x1, a=u0m/1000, b=u1m/1000, Z0=S.base+0.01, Z1=S.base+d.h/1000, m=(a+b)/2;
+    const o=end ? S.oy : S.ox, sg=w==='left' ? -1 : 1, pl=w==='left' ? 0 : w==='right' ? S.Le : S.We;
+    const P=(u, q, z)=>end ? [pl+sg*q, o+u, z] : [o+u, pl+sg*q, z], V=(du, dq, dz)=>end ? [sg*dq, du, dz] : [du, sg*dq, dz];
+    const bx=(mt, ua, ub, qa, qb, za, zb, r=0)=>{ const p=P(ua, qa, za), q=P(ub, qb, zb); mt.box(p[0], p[1], p[2], q[0], q[1], q[2], r); };
+    this.walls.busy(w, u0m-60, u1m+260, 0, d.h+120); this.outer(w, u0m-100, u1m+100, 0, d.h+220);
     const fr=S.M(StMat.paint(RalColor.shade(S.frame, 0.9), 0.45)), lf=S.M(StMat.paint(S.wall, 0.45)), sl=S.M(StMat.paint('#5d646b', 0.55)), dk=S.M(StMat.paint('#24292e', 0.55)), mt=S.M(StMat.metal('#c3c8cd', 0.3));
-    fr.box(x, Y(a)-0.05, Z0-0.01, x+0.03, Y(a), Z1+0.05); fr.box(x, Y(b), Z0-0.01, x+0.03, Y(b)+0.05, Z1+0.05); fr.box(x, Y(a)-0.05, Z1, x+0.03, Y(b)+0.05, Z1+0.05);   // коробка
+    bx(fr, a-0.05, a, 0, 0.03, Z0-0.01, Z1+0.05); bx(fr, b, b+0.05, 0, 0.03, Z0-0.01, Z1+0.05); bx(fr, a-0.05, b+0.05, 0, 0.03, Z1, Z1+0.05);   // коробка
     for (const [u0, u1, hinge] of [[a, m-0.003, a], [m+0.003, b, b]]){
-      lf.box(x, Y(u0), Z0, x+0.022, Y(u1), Z1-0.004, 0.004);                                                  // полотно-рама створки
-      for (let z=Z0+0.24; z<Z1-0.1; z+=0.07) sl.obox([x+0.022, Y(u0)+0.06, z], [0, u1-u0-0.12, 0], [0.03, 0, -0.022], [0, 0, 0.012]);   // ламели
-      for (const k of [0.15, 0.5, 0.85]){ const z=Z0+(Z1-Z0)*k, yh=Y(hinge)+(hinge===a ? 0.015 : -0.015); dk.tube([x+0.03, yh, z], [x+0.03, yh, z+0.12], 0.016, 10); } }   // петли
-    for (const u of [m-0.07, m+0.06]) mt.tube([x+0.06, Y(u), Z0+0.08], [x+0.06, Y(u), Z1-0.08], 0.012, 10);   // запорные штанги
-    dk.box(x+0.05, Y(m)+0.02, Z0+0.95, x+0.075, Y(m)+0.1, Z0+1.17, 0.005);                                     // ручка с замком
-    this.hood('right', a-0.08, b+0.08, Z1+0.08); this.log.push({ kind:'dgudoor', u:(d.y0+d.y1)/2, w:d.w, h:d.h });
-    if (!this.shown('right')) return;
-    const zc=d.h/2; this.box(dk, 'right', d.y1+150, zc, 110, 150, 90, 0.008); this.box(fr, 'right', d.y1+70, zc, 50, 20, 40, 0);   // электропривод клапана
+      bx(lf, u0, u1, 0, 0.022, Z0, Z1-0.004, 0.004);                                                          // полотно-рама створки
+      for (let z=Z0+0.24; z<Z1-0.1; z+=0.07) sl.obox(P(u0+0.06, 0.022, z), V(u1-u0-0.12, 0, 0), V(0, 0.03, -0.022), V(0, 0, 0.012));   // ламели
+      for (const k of [0.15, 0.5, 0.85]){ const z=Z0+(Z1-Z0)*k, uh=hinge+(hinge===a ? 0.015 : -0.015); dk.tube(P(uh, 0.03, z), P(uh, 0.03, z+0.12), 0.016, 10); } }   // петли
+    for (const u of [m-0.07, m+0.06]) mt.tube(P(u, 0.06, Z0+0.08), P(u, 0.06, Z1-0.08), 0.012, 10);           // запорные штанги
+    bx(dk, m+0.02, m+0.1, 0.05, 0.075, Z0+0.95, Z0+1.17, 0.005);                                               // ручка с замком
+    this.hood(w, a-0.08, b+0.08, Z1+0.08); this.log.push({ kind:'dgudoor', wall:w, u:(u0m+u1m)/2, w:d.w, h:d.h });
+    if (!this.shown(w)) return;
+    const zc=d.h/2; this.box(dk, w, u1m+150, zc, 110, 150, 90, 0.008); this.box(fr, w, u1m+70, zc, 50, 20, 40, 0);   // электропривод клапана
+  }
+  /** выхлоп ДГУ через стену (plan.exhausts, how 'wall' — глушитель встроен в ДГУ): от турбины вверх и к стене в теплоизоляции,
+   *  проходка-гильза, снаружи — отвод вниз под 45° с дождевым колпаком */
+  exhausts(){
+    const S=this.s, P=this.p, [, W]=P.int, E=(P.exhausts||[]).filter(e=>e.how==='wall'); if (!E.length) return;
+    const wrap=S.M(StMat.metal('#c4c9cd', 0.55)), st=S.M(StMat.metal('#a7adb3', 0.4)), dk=S.M(StMat.paint(StScene.DARK, 0.55)), r=55;
+    for (const e of E){ const g=P.items.find(i=>i.kind==='dgu' && i.pos===e.pos && i.unit===e.unit); if (!g) continue;
+      this.walls.busy('back', e.u-200, e.u+200, e.z-200, e.z+200); this.outer('back', e.u-250, e.u+250, e.z-500, e.z+250);
+      if (this.inside){ const a=S.P(e.u, g.y+g.ly*0.5, g.h), b=S.P(e.u, g.y+g.ly*0.5, e.z), c=S.P(e.u, W, e.z);
+        wrap.tube(a, b, r/1000*1.15, 18); wrap.sphere(b, r/1000*1.15, 14); wrap.tube(b, c, r/1000*1.15, 18); }
+      const o=S.P(e.u, W, e.z), y=S.We; o[1]=y; const p1=[o[0], y+0.25, o[2]], p2=[o[0], y+0.42, o[2]-0.17];
+      dk.tube([o[0], y-0.03, o[2]], [o[0], y+0.02, o[2]], r/1000*1.9, 20);                                   // гильза-проходка
+      st.tube([o[0], y, o[2]], p1, r/1000, 18); st.sphere(p1, r/1000, 14); st.tube(p1, p2, r/1000, 18);        // отвод вниз под 45°
+      dk.tube(p2, [p2[0], p2[1]+0.04, p2[2]-0.04], r/1000*1.5, 18);                                           // колпак
+      this.log.push({ kind:'exhaust', wall:'back', u:e.u, z:e.z }); }
+  }
+  /** заливная горловина в нише стены w (u — вдоль стены, z — от пола, мм): снаружи — лючок заподлицо (рамка в плоскости
+   *  обшивки, полотно, скрытые петли, замок под ключ), знаки; изнутри — короб ниши и горловина с крышкой */
+  niche(w, u, z){
+    const S=this.s, mm=S.mm, lk=S.M(StMat.paint(RalColor.shade(S.wall, 0.86), 0.45)), dk=S.M(StMat.paint('#24292e', 0.55)), mt=S.M(StMat.metal('#c3c8cd', 0.3)), zc=S.base+mm(z), a=0.2;
+    // наружная плоскость стены и нормаль наружу
+    const end=w==='left', X=end ? this.leftX() : null, Y=w==='back' ? S.We : this.frontY(), n=end ? [-1, 0, 0] : w==='back' ? [0, 1, 0] : [0, -1, 0];
+    const c=end ? [X, S.oy+mm(u), zc] : [S.ox+mm(u), Y, zc], at=(du, dz, o)=>end ? [c[0]+n[0]*o, c[1]+du, c[2]+dz] : [c[0]+du, c[1]+n[1]*o, c[2]+dz];
+    const bx=(m, d0, d1, z0, z1, o0, o1, r=0)=>{ const p=at(d0, z0, o0), q=at(d1, z1, o1); m.box(Math.min(p[0], q[0]), Math.min(p[1], q[1]), Math.min(p[2], q[2]), Math.max(p[0], q[0]), Math.max(p[1], q[1]), Math.max(p[2], q[2]), r); };
+    bx(dk, -a, a, -a, a, 0, 0.003); bx(lk, -a+0.012, a-0.012, -a+0.012, a-0.012, 0.002, 0.004, 0.003);   // рамка и лючок заподлицо
+    bx(mt, -0.02, 0.02, -0.12, -0.08, 0.003, 0.006, 0.004);                                                // замок под ключ
+    S.sticker({ type:'sign', id:'W01' }, at(-0.08, 0.06, 0.005), n, 0.12, 0.105); S.sticker({ type:'sign', id:'DT' }, at(0.1, 0.06, 0.005), n, 0.11, 0.06);
+    if (!this.inside) return;
+    const t=end ? S.ox : S.oy;   // ниша — в толще стены и внутрь помещения отсека
+    bx(lk, -a, a, -a, a, -(t+0.15), -t, 0.01); dk.tube(at(0, -0.02, -t-0.02), at(0, -0.02, -t-0.12), 0.04, 14);   // короб ниши, горловина
   }
   /** козырёк над жалюзи снаружи (от дождя и снега) */
   hood(w, a, b, zt){
@@ -177,9 +211,14 @@ class StOutfit {
   }
   /** воздуховод от радиатора ДГУ к жалюзи — гибкая вставка из ткани с рамками */
   duct(it){
-    const S=this.s, [L]=this.p.int, x1=it.x+it.lx; if (!this.inside || L-x1<30) return;
-    S.M(StMat.paint('#3b4046', 0.85)).box(...S.P(x1, it.y+60, it.h*0.1), ...S.P(L, it.y+it.ly-60, it.h*0.96), 0.02);
-    const f=S.M(StMat.metal('#8f969d', 0.45)); for (const x of [x1, L-40]) f.box(...S.P(x, it.y+50, it.h*0.09), ...S.P(x+40, it.y+it.ly-50, it.h*0.97), 0.006);
+    const S=this.s, [L, W]=this.p.int, x0=S.g.x0||0, rad=it.rad || 'right'; if (!this.inside) return;
+    const cl=S.M(StMat.paint('#3b4046', 0.85)), f=S.M(StMat.metal('#8f969d', 0.45)), za=it.h*0.1, zb=it.h*0.96;
+    if (rad==='back'){ const y1=it.y+it.ly; if (W-y1<30) return;   // поперёк: радиатор к задней стене
+      cl.box(...S.P(it.x+60, y1, za), ...S.P(it.x+it.lx-60, W, zb), 0.02);
+      for (const y of [y1, W-40]) f.box(...S.P(it.x+50, y, it.h*0.09), ...S.P(it.x+it.lx-50, y+40, it.h*0.97), 0.006); return; }
+    const [a, b]=rad==='left' ? [x0, it.x] : [it.x+it.lx, L]; if (b-a<30) return;
+    cl.box(...S.P(a, it.y+60, za), ...S.P(b, it.y+it.ly-60, zb), 0.02);
+    for (const x of rad==='left' ? [a, b-40] : [a, b-40]) f.box(...S.P(x, it.y+50, it.h*0.09), ...S.P(x+40, it.y+it.ly-50, it.h*0.97), 0.006);
   }
 
   // ---- пожарная безопасность (расчёт — StationFire, plan.fire): извещатели и модули «Буран-2,5» — на потолке; над входной
@@ -329,21 +368,16 @@ class StOutfit {
       if (this.inside) st.tube(p, [p[0], p[1], S.ceil], 0.02, 10);
       st.tube([p[0], p[1], zr-0.02], [p[0], p[1], zr+0.32], 0.02, 10); st.tube([p[0], p[1], zr+0.32], [p[0], p[1], zr+0.4], 0.042, 14);
       dk.tube([p[0], p[1], zr+0.42], [p[0], p[1], zr+0.435], 0.075, 18); st.tube([p[0], p[1], zr+0.4], [p[0], p[1], zr+0.42], 0.014, 8); }
-    // заливная горловина снаружи: запираемый ящик, знак «Пожароопасно», надпись «ДТ»
-    const box=S.M(StMat.paint(RalColor.shade(S.wall, 0.86), 0.45)), lock=S.M(StMat.metal('#c3c8cd', 0.3)), fu=fl.wall==='left' ? fl.y : fl.x;
-    this.outer(fl.wall==='left' || fl.wall==='back' ? fl.wall : 'front', fu-260, fu+260, fl.z-260, fl.z+260);
-    if (fl.wall==='left'){ const x=this.leftX(), y=S.oy+mm(fl.y), z=S.base+mm(fl.z);
-      box.box(x-0.15, y-0.2, z-0.2, x, y+0.2, z+0.2, 0.012); dk.box(x-0.156, y-0.19, z+0.11, x-0.148, y+0.19, z+0.118);
-      lock.box(x-0.18, y-0.025, z-0.12, x-0.15, y+0.025, z-0.06, 0.006);
-      S.sticker({ type:'sign', id:'W01' }, [x-0.15, y-0.07, z-0.02], [-1, 0, 0], 0.14, 0.123); S.sticker({ type:'sign', id:'DT' }, [x-0.15, y+0.1, z-0.02], [-1, 0, 0], 0.13, 0.07);
-    } else if (fl.wall==='back'){ const x=S.ox+mm(fl.x), y=S.We+0.006, z=S.base+mm(fl.z);
-      box.box(x-0.2, y, z-0.2, x+0.2, y+0.15, z+0.2, 0.012); dk.box(x-0.19, y+0.148, z+0.11, x+0.19, y+0.156, z+0.118);
-      lock.box(x-0.025, y+0.15, z-0.12, x+0.025, y+0.18, z-0.06, 0.006);
-      S.sticker({ type:'sign', id:'W01' }, [x+0.07, y+0.15, z-0.02], [0, 1, 0], 0.14, 0.123); S.sticker({ type:'sign', id:'DT' }, [x-0.1, y+0.15, z-0.02], [0, 1, 0], 0.13, 0.07);
-    } else if (!S.cut){ const x=S.ox+mm(fl.x), y=this.frontY(), z=S.base+mm(fl.z);
-      box.box(x-0.2, y-0.15, z-0.2, x+0.2, y, z+0.2, 0.012); dk.box(x-0.19, y-0.156, z+0.11, x+0.19, y-0.148, z+0.118);
-      lock.box(x-0.025, y-0.18, z-0.12, x+0.025, y-0.15, z-0.06, 0.006);
-      S.sticker({ type:'sign', id:'W01' }, [x-0.07, y-0.15, z-0.02], [0, -1, 0], 0.14, 0.123); S.sticker({ type:'sign', id:'DT' }, [x+0.1, y-0.15, z-0.02], [0, -1, 0], 0.13, 0.07); }
+    // заливная горловина утоплена в стену (решение владельца 19.10): ниша внутрь, снаружи — лючок заподлицо под замок, знак
+    // «Пожароопасно», надпись «ДТ»; ничего не выступает — габарит станции не меняется
+    const wl=fl.wall==='left' || fl.wall==='back' ? fl.wall : 'front', fu=wl==='left' ? fl.y : fl.x;
+    this.outer(wl, fu-260, fu+260, fl.z-260, fl.z+260);
+    if (wl!=='front' || !S.cut) this.niche(wl, fu, fl.z);
+    // ворота отсека в торце: жалюзи внизу и вверху створок (естественная вентиляция отсека)
+    if (f.gate){ const G=f.gate, lw=(G.y1-G.y0)/2, x=-0.027;
+      for (let k=0; k<2; k++){ const a=S.oy+mm(G.y0+k*lw+120), b=S.oy+mm(G.y0+(k+1)*lw-120); if (b-a<0.15) continue;
+        S.louver(1, x, a, b, S.base+0.15, S.base+0.45, -1); S.louver(1, x, a, b, S.base+mm(G.h)-0.45, S.base+mm(G.h)-0.2, -1); }
+      this.outer('left', G.y0-100, G.y1+100, 0, G.h+150); return; }
     // жалюзи отсека вверху в торце (внизу — решётка в двери отсека); у морского в торце — его двери
     if (!S.g.sea){ const y0=S.oy+mm(W-450), y1=S.oy+mm(W-150); S.louver(1, 0, y0, y1, S.top-0.65, S.top-0.4, -1); this.hood('left', y0-S.oy-0.06, y1-S.oy+0.06, S.top-0.34);
       this.outer('left', W-510, W-90, (S.top-0.7-S.base)*1000, (S.top-0.3-S.base)*1000); }
@@ -385,6 +419,10 @@ class StOutfit {
       S.sticker({ type:'sign', id:'W08' }, [x-0.004, yc-dy, en.sea ? zs+0.06 : zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P06' }, [x-0.004, en.sea ? yc-dy : yc+dy, en.sea ? zs-0.19 : zs], n, 0.2, 0.2);
       if (F.auto && !en.sea && zt+0.2<S.top-0.04){ const hb=S.M(StMat.paint('#eceeef', 0.4)), W=S.Wi*1000, right=en.y1+560<=W-100, a=S.oy+(right ? en.y1+140 : en.y0-530)/1000, b=a+0.39;
         if (right || en.y0-530>=100) for (const [id, z] of [['POW_NO', zt+0.06], ['AUTO_OFF', zt-0.14]]){ hb.box(x-0.04, a, z-0.08, x, b, z+0.08, 0.006); S.sticker({ type:'sign', id }, [x-0.04, (a+b)/2, z], n, 0.36, 0.13, 0.8); } } }
+    if (P.fuel && P.fuel.gate){ const G=P.fuel.gate, x=this.leftX(), n=[-1, 0, 0], zt=S.base+G.h/1000, lw=(G.y1-G.y0)/2000, ya=S.oy+G.y0/1000+lw/2, zs=S.base+1.38;   // ворота отсека бака: козырёк, таблички на левой створке
+      this.canopy([x, S.oy+(G.y0+G.y1)/2000, zt], n, (G.y1-G.y0)/1000+0.24); this.outer('left', G.y0-100, G.y1+100, 0, G.h+620);
+      const c=cat(tank); if (c) S.sticker(c, [x-0.03, ya, S.base+1.72], n, 0.3, 0.2);
+      S.sticker({ type:'sign', id:'W01' }, [x-0.03, ya-0.12, zs], n, 0.2, 0.175); S.sticker({ type:'sign', id:'P02' }, [x-0.03, ya+0.12, zs], n, 0.2, 0.2); }
     if (P.exit){ const ex=P.exit, x=this.rightX(), n=[1, 0, 0], yc=S.oy+(ex.y0+ex.y1)/2000, zt=S.base+ex.h/1000;   // вторая дверь оператора в дальнем торце
       this.outer('right', ex.y0-100, ex.y1+100, 0, ex.h+620); this.canopy([x, yc, zt], n, ex.w/1000+0.24); if (this.room(zt)) this.flood([x, yc, zt+0.17], n); }
     for (const d of S.doorsB) this.outer('back', d.x0-170, d.x1+170, 0, d.h+620);   // двери в задней стене — с фурнитурой

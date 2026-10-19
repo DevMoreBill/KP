@@ -360,7 +360,7 @@ class VentSizing {
       N.step({ what, formula:'вход (выход) под козырьком B × d, d = L · sin α — вылет; α — наименьший угол открытия 30…75° (шаг 5°), при котором Q / (3600 · B · d) ≤ v; у всех маркиз один — по самой нагруженной; L — высота жалюзи + 100 мм', rules:[rule],
         data:[['Q', n(Qi)+' м³/ч (жалюзи '+n(q0.w)+' × '+n(q0.h)+' мм)'], ['B × L', n(q0.hood.w)+' × '+n(q0.hood.l)+' мм'], ['v', f(vmax, 1)+' м/с']],
         result:StationVent.hoodText(V, kind), ok:!Hd.over }); }
-    if (V.rad) N.step({ what:'Выброс воздуха радиатора ДГУ', formula:'v = Q / (3600 · A)', rules:['vent.free'], data:[['Q', n(V.rad.q)+' м³/ч'], [V.rad.door ? 'дверь-жалюзи' : 'жалюзи', n(V.rad.w)+' × '+n(V.rad.h)+' мм'], ['A', f(V.rad.free)+' м²']],
+    if (V.rad) N.step({ what:V.rad.n>1 ? `Выброс воздуха радиатора ДГУ (у каждой своя ${V.rad.door ? 'дверь-жалюзи' : 'решётка'}; самая нагруженная из ${V.rad.n})` : 'Выброс воздуха радиатора ДГУ', formula:'v = Q / (3600 · A)', rules:['vent.free'], data:[['Q', n(V.rad.n>1 ? V.rad.qOne : V.rad.q)+' м³/ч'], [V.rad.door ? 'дверь-жалюзи' : 'жалюзи', n(V.rad.w)+' × '+n(V.rad.h)+' мм'], ['A', f(V.rad.free)+' м²']],
       result:'v = '+f(V.rad.v, 1)+' м/с', ok:V.rad.v<=StationVent.RAD_V, note:V.rad.v>StationVent.RAD_V ? 'Больше '+f(StationVent.RAD_V, 1)+' м/с — проверьте по паспорту ДГУ (расход воздуха радиатора, допустимое сопротивление).' : '' });
   }
 }

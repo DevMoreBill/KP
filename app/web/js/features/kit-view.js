@@ -700,6 +700,12 @@ class KitView {
     return t ? `<small class="muted kt-sub">${esc(t)}</small>` : '';
   }
 
+  /** бак без своих габаритов: габариты по расчётному объёму (TankSize) — строкой под характеристиками */
+  static tankSize(p, kind){
+    if (kind!=='tank' || StationEquip.dims(p, kind).known) return '';
+    const v=TankSize.vol(p), d=TankSize.of(v||1000);
+    return `<small class="muted kd-tank">Габариты по объёму${v ? ' '+StationLayout.n(v)+' л' : ''}: ${esc(TankSize.text(d))} — прямоугольный, стенка ${StationMatrix.tank().wall} мм (требует подтверждения изготовителем). Свои — строкой «Габариты».</small>`;
+  }
   /** подробности элемента: сторона поставки, описание, характеристики, фото, рисунок для чертежа, поля обвязки и шкафа */
   static details(x, i, p, j, by){
     const P=`items.${i}.kit.parts.${j}`, rows=p.rows||[], kind=StationEquip.kindOf(p), drawn=!/^(skip|piping|chassis|container|)$/.test(kind);
@@ -710,7 +716,7 @@ class KitView {
       <div class="kd-g">
         <div class="kd-ph"><span class="muted">Фото</span><div class="kit-ph${p.photo && p.photo.src ? ' has' : ''}">${p.photo && p.photo.src ? `<img src="${esc(p.photo.src)}" alt="${esc(p.name||'Фото элемента')}"><button class="icon x" type="button" data-a="kitPhotoDel" data-i="${i}" data-j="${j}" aria-label="Убрать фото">✕</button>` : `<button type="button" class="kit-phb" data-a="kitPhoto" data-i="${i}" data-j="${j}">+ фото</button>`}</div></div>
         <label class="f kit-desc"><span>Техническое описание${p.catId ? ' <small class="muted">из каталога</small>' : ''}</span><textarea rows="3" data-p="${P}.desc" placeholder="Назначение, конструкция, комплектация — попадёт в КП">${esc(p.desc||'')}</textarea></label></div>
-      <div class="kd-rows"><span class="muted">Характеристики — таблица в КП${rows.length ? '' : ' (габариты, масса и цвет нужны для компоновки)'}</span>
+      <div class="kd-rows"><span class="muted">Характеристики — таблица в КП${rows.length ? '' : ' (габариты, масса и цвет нужны для компоновки)'}</span>${KitView.tankSize(p, kind)}
         ${rows.map((r, k)=>`<div class="kit-row"><input type="text" data-p="${P}.rows.${k}.k" value="${esc(r.k)}" placeholder="Параметр">${DimRow.is('', r.k) ? DimRow.html(`data-p="${P}.rows.${k}.v"`, r) : `<input type="text" data-p="${P}.rows.${k}.v" value="${esc(r.v)}" placeholder="Значение">`}<button class="icon" type="button" data-a="kitRowDel" data-i="${i}" data-j="${j}" data-k="${k}" aria-label="Удалить строку">✕</button></div>`).join('')}
         <button class="btn ghost sm" type="button" data-a="kitRowAdd" data-i="${i}" data-j="${j}">+ строка</button></div>
       ${drawn ? DrawPic.fields(p, i, j) : ''}</div>`;

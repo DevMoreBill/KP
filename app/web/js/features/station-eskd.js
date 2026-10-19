@@ -341,7 +341,7 @@ class EquipIcon {
     if (k==='dryer') return StationLayout.twinDryer(it) ? this.twin(c) : this.refrig(c);
     if (k==='filter') return a.grade==='cond' ? this.separator(c) : this.box(c);
     if (k==='cabinet') return this.cabinet(c, it.mount==='floor' || it.mount==='frame');
-    if (k==='dgu') return this.dgu(c);
+    if (k==='dgu') return it.rad==='back' ? this.dguEnd(c) : it.rad==='left' ? this.mirror(sh, x0, x1, ()=>this.dgu(c)) : this.dgu(c);   // радиатор у входа — зеркально, поперёк — с торца
     if (k==='pump') return c.h>c.w*1.2 ? this.vpump(c) : this.pump(c);
     if (k==='tank') return this.tank(c);
     this.box(c);
@@ -353,7 +353,9 @@ class EquipIcon {
   static plan(sh, it, x0, y0, x1, y1){
     if (it.rot && it.mount!=='pipe' && it.shape==='box'){   // повёрнуто поперёк: рисунок вдоль длины изделия, повёрнутый на 90°
       const cx=(x0+x1)/2, cy=(y0+y1)/2, hw=(y1-y0)/2, hh=(x1-x0)/2, f=EskdSheet.f;
-      return sh.group(`rotate(90 ${f(cx)} ${f(cy)})`, ()=>this.plan(sh, Object.assign({}, it, { rot:false, lx:it.ly, ly:it.lx, face:-1 }), cx-hw, cy-hh, cx+hw, cy+hh)); }
+      // ДГУ поперёк — радиатором к задней стене (вверх листа)
+      return sh.group(`rotate(${it.kind==='dgu' && it.rad==='back' ? -90 : 90} ${f(cx)} ${f(cy)})`, ()=>this.plan(sh, Object.assign({}, it, { rot:false, rad:null, lx:it.ly, ly:it.lx, face:-1 }), cx-hw, cy-hh, cx+hw, cy+hh)); }
+    if (it.kind==='dgu' && it.rad==='left') return this.mirror(sh, x0, x1, ()=>this.plan(sh, Object.assign({}, it, { rad:null }), x0, y0, x1, y1));   // радиатор к торцу у входа
     const c=this.ctx(sh, it, x0, y0, x1, y1); if (!c) return;
     const k=it.kind, look=it.look||'', f=it.face;
     c.front=f===2 ? 'r' : f===-2 ? 'l' : f>0 ? 't' : 'b';
@@ -797,6 +799,16 @@ class EquipIcon {
     const { sh, x0, y0, x1, y1, w, h }=c, f=c.front; sh.rect(x0, y0, w, h, 'main', '#fff');
     if (f==='r') sh.line(x1-0.5, y0+0.4, x1-0.5, y1-0.4, 'thin'); else if (f==='l') sh.line(x0+0.5, y0+0.4, x0+0.5, y1-0.4, 'thin');
     else if (f==='t') sh.line(x0+0.4, y0+0.5, x1-0.4, y0+0.5, 'thin'); else sh.line(x0+0.4, y1-0.5, x1-0.4, y1-0.5, 'thin');
+  }
+  /** зеркально по горизонтали в пределах x0…x1 листа (рисунок fn) */
+  static mirror(sh, x0, x1, fn){ const f=EskdSheet.f; return sh.group(`translate(${f(x0+x1)} 0) scale(-1 1)`, fn); }
+  /** ДГУ с торца генератора (поперёк станции, вид от прохода): рама, генератор (окружность с окнами), пульт сверху */
+  static dguEnd(c){
+    const { sh, S, x0, w, h, cx }=c, hb=Math.min(h*0.12, S(240, 0.8)), yb=c.y1-hb;
+    sh.rect(x0, yb, w, hb, 'main', '#fff'); sh.rect(x0+w*0.04, c.y0+h*0.18, w*0.92, yb-c.y0-h*0.18, 'main', '#fff');
+    if (c.m<4) return;
+    const r=Math.min(w*0.36, (yb-c.y0)*0.3), gy=yb-r-Math.max(0.4, S(60)); sh.circle(cx, gy, r, 'main', '#fff'); sh.circle(cx, gy, r*0.35, 'thin', '#fff');   // генератор
+    sh.rect(x0+w*0.2, c.y0, w*0.6, h*0.16, 'main', '#fff'); sh.rect(x0+w*0.28, c.y0+h*0.03, w*0.3, h*0.06, 'thin', this.DARK);   // пульт
   }
   static dguTop(c){
     const { sh, S, x0, y0, x1, w, h, cy }=c; sh.rect(x0, y0, w, h, 'main', '#fff'); if (c.m<4) return;

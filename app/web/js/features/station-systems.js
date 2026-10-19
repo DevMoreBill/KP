@@ -213,8 +213,10 @@ class StationPower {
     group('compressor', 'Компрессор', i=>i.kw>0 ? i.kw : 0);
     group('pump', 'Насосный агрегат', i=>i.kw>0 ? i.kw : 0);
     group('dryer', 'Осушитель', i=>this.dryer(i));
-    const dgu=I.find(i=>i.kind==='dgu');
-    if (dgu){ add('Подогреватель двигателя ДГУ', 1, dgu.kw>D.dguHeatKw ? D.dguHeatBig : D.dguHeat, 1, false, true); add('Зарядное устройство АКБ ДГУ', 1, D.charger, 1, true, true);
+    // у каждой ДГУ — свой подогреватель двигателя и зарядное устройство АКБ
+    const DG=I.filter(i=>i.kind==='dgu' && !i.tank), dgu=DG[0];
+    if (dgu){ for (const big of [true, false]){ const q=DG.filter(g=>(g.kw>D.dguHeatKw)===big).length; if (q) add('Подогреватель двигателя ДГУ', q, big ? D.dguHeatBig : D.dguHeat, 1, false, true); }
+      add('Зарядное устройство АКБ ДГУ', DG.length, D.charger, 1, true, true);
       if (plan.fuel) add('Насос перекачки топлива', 1, D.fuelPumpKw, 1, true, true); }
     if (h && h.on && h.total>0) add(`Электроконвекторы ${h.n} × ${StationHeat.kw(h.kw)} кВт`, 1, h.total, 1, false, true);
     if (h && h.on && h.qRun>0) out.push({ name:'Подогрев воздуха при работе (часть конвекторов)', n:1, kw:0, kc:1, run:true, idle:false, extra:Math.round(h.qRun/10)/100 });
@@ -656,7 +658,7 @@ class StationVent {
     const rearBack=(plan.doors||[]).some(d=>d.rear && d.wall==='back');
     // стена выброса — сбоку: задняя (при сервисных воротах за компрессорами — над воротами, коробом-воздухоотводом); через
     // крышу — только остаток, который на стене не поместился
-    const E=dgu ? 'right' : 'back';
+    const radW=new Set(I.filter(i=>i.kind==='dgu' && !i.tank && i.mount==='floor').map(i=>i.rad || 'right')), E=dgu ? (radW.has('right') ? 'right' : [...radW][0]) : 'back';
     const out={ q:{ in:Math.round(qIn), out:Math.round(qOut), rad:Math.round(qRad) }, need:{ in:need(qIn, 'in'), out:qOut>0 ? need(qOut, 'out') : null }, size:{}, louvers:[], roof:[],
       exhaust:E, ducts:{}, short:{ in:0, out:0 }, face:F, vIn, vOut, res, free:k, rad:null, draft:null };
     const W=new StWalls(plan, { equip:false }), snow=!!sys.snow, snowOut=!!sys.snowout;
@@ -664,11 +666,17 @@ class StationVent {
     if (snow || snowOut){ const D=this.HOOD_GAP;
       for (const d of (plan.doors||[])) W.busy(d.wall==='back' ? 'back' : 'front', d.x0-D, d.x1+D, 0, d.h+150);
       for (const q of [plan.entry, plan.exit, plan.gates, plan.gates2].filter(Boolean)) if (q.wall==='front') W.busy('front', q.x0-D, q.x1+D, 0, q.h+150); else W.busy(q.wall, q.y0-D, q.y1+D, 0, q.h+150); }
-    // радиатор ДГУ: дверь-жалюзи в торце или жалюзи напротив радиатора
-    if (dgu){ const d=plan.dguDoor, Lr=d ? { kind:'rad', wall:'right', u0:d.y0, u1:d.y1, z0:0, z1:d.h, door:true }
-        : { kind:'rad', wall:'right', u0:Math.round(dgu.y+80), u1:Math.round(dgu.y+dgu.ly-80), z0:Math.round(dgu.h*0.12), z1:Math.round(dgu.h*0.95) };
-      Lr.w=Lr.u1-Lr.u0; Lr.h=Lr.z1-Lr.z0; out.louvers.push(Lr); W.busy('right', Lr.u0-90, Lr.u1+260, Lr.z0, Lr.z1+120);
-      const fr=Lr.w*Lr.h/1e6*k; out.rad={ q:Math.round(qRad), free:r(fr), w:Lr.w, h:Lr.h, door:!!Lr.door, v:fr>0 ? Math.round(qRad/3600/fr*10)/10 : null }; }
+    // радиатор ДГУ: у каждой — своя дверь-жалюзи (или жалюзи) напротив радиатора (дальний торец, торец у входа или задняя
+    // стена — поперёк); расход — её радиатора (паспорт или по мощности), общий qRad делится в той же доле
+    if (dgu){ const DG=I.filter(i=>i.kind==='dgu' && !i.tank && i.mount==='floor'), R=StationRules.raw('heat.dgu_rad'), A=StationHeat.AIR;
+      const own=i=>i.cool>0 ? i.cool : i.kw*1000*R.share/(A*R.dt), sum=DG.reduce((s, i)=>s+own(i), 0)||1, rads=[];
+      for (const g of DG){ const wall=g.rad || 'right', end=wall!=='back', d=(plan.dguDoors||[]).find(q=>q.pos===g.pos && q.unit===g.unit);
+        const Lr=d ? { kind:'rad', wall, u0:end ? d.y0 : d.x0, u1:end ? d.y1 : d.x1, z0:0, z1:d.h, door:true, pos:g.pos, unit:g.unit }
+          : { kind:'rad', wall, u0:Math.round((end ? g.y : g.x)+80), u1:Math.round((end ? g.y+g.ly : g.x+g.lx)-80), z0:Math.round(g.h*0.12), z1:Math.round(g.h*0.95), pos:g.pos, unit:g.unit };
+        Lr.w=Lr.u1-Lr.u0; Lr.h=Lr.z1-Lr.z0; Lr.q=Math.round(qRad*own(g)/sum); out.louvers.push(Lr); W.busy(wall, Lr.u0-90, Lr.u1+260, Lr.z0, Lr.z1+120);
+        const fr=Lr.w*Lr.h/1e6*k; rads.push({ q:Lr.q, free:r(fr), w:Lr.w, h:Lr.h, door:!!Lr.door, wall, v:fr>0 ? Math.round(Lr.q/3600/fr*10)/10 : null }); }
+      // сводка — самая нагруженная (наибольшая скорость), n — сколько; list — все
+      const top=rads.reduce((a, b)=>(b.v||0)>(a.v||0) ? b : a, rads[0]); if (top) out.rad={ ...top, qOne:top.q, q:Math.round(qRad), n:rads.length, list:rads }; }
     const cogHit=(w, u0, u1, z0, z1)=>{ const c=this.cog(plan, w), hh=150+120; return !!c && c.z+hh>z0 && c.z-hh<z1+220 && u0<c.u+hh && u1>c.u-hh; };
     const gross=q=>q/3600/vOut*1e6;   // выброс по рамке, мм² (S = L / (3600·v_выброс))
     // выброс через крышу: колпак над источником (компрессор — над ним), по площади; мимо глушителя и других колпаков
@@ -749,7 +757,7 @@ class StationVent {
     // через крышу — все компрессоры, колпаки одного размера (по наибольшему расходу)
     if (viaRoof){ W.reset(mC); out.louvers.length=nC; out.roof.length=nR0; qWall=qW0; out.ducts={};
       const qMax=Math.max(...comp.map(qc)); for (const c of comp){ const kk=key(c); out.ducts[kk]='roof'; hood(qMax, c.x+c.lx/2, c.y+c.ly/2, kk); } }
-    const exW=new Set([E, ...out.louvers.filter(q=>q.kind==='out').map(q=>q.wall)]);   // стены выброса: притока на них нет
+    const exW=new Set([E, ...out.louvers.filter(q=>q.kind==='out' || q.kind==='rad').map(q=>q.wall)]);   // стены выброса: притока на них нет
     // места на стене: жалюзи u0…u1 (слева 100 мм, справа 260 мм — электропривод клапана), мимо знака «Центр тяжести»
     const spotAt=(wall, from, w, lim, z0, z1)=>W.find(wall, w+360, z0-90, z1+90, from, a=>!cogHit(wall, a+100, a+100+w, z0, z1) && (!lim || a+100+w<=lim));
     const putAt=(kind, wall, w, u, z0, hh)=>{ const u0=u+100, Lv={ kind, wall, u0, u1:u0+w, z0, z1:z0+hh, w, h:hh }; out.louvers.push(Lv); W.busy(wall, u0-90-this.GAP, Lv.u1+260+this.GAP, z0-90, z0+hh+90); return w*hh; };
@@ -795,12 +803,16 @@ class StationVent {
     if (!out.size.out && out.need.out) out.size.out=this.size(out.need.out.gross, OB);
     // приток: стена напротив выброса → створки ворот и сервисных дверей (не на стене выброса) → остальные стены (не выброса)
     const opp={ back:'front', front:'back', left:'right', right:'left' }, IN=this.IN;
-    const first=E ? [opp[E], 'left', 'right'].find(w=>!exW.has(w)) : 'front', leftOk=x0===0 && !plan.geo.sea, G=plan.gates;
+    const first=(E ? [opp[E], 'left', 'right', 'front'].find(w=>!exW.has(w)) : null) || 'front', leftOk=x0===0 && !plan.geo.sea, G=plan.gates;
     let left=need(qIn, 'in').gross*1e6;
     const wallsOf=list=>list.filter(([w])=>!exW.has(w) && (w!=='left' || leftOk));
-    const lim=dgu ? Math.round(L-1500) : null;   // у ДГУ — не у радиатора
-    const rest=wallsOf(dgu ? [['left', 'lo'], ['back', 'lo', lim], ['front', 'lo', lim]] : [['left', 'lo'], ['right', 'lo'], ['back', 'lo'], ['front', 'hi']]);
-    const firstW=wallsOf([[first, first==='front' ? 'hi' : 'lo']]);
+    // у ДГУ — не у радиатора: радиатор в дальнем торце — приток от входа (не ближе 1,5 м к торцу); две ДГУ радиаторами к торцам —
+    // на длинных стенах от середины (к генераторам); поперёк (радиаторы к задней стене) — стена прохода и торцы
+    const lim=dgu && radW.size===1 && radW.has('right') ? Math.round(L-1500) : null, mid=Math.round((x0+L)/2);
+    const rest=wallsOf(!dgu ? [['left', 'lo'], ['right', 'lo'], ['back', 'lo'], ['front', 'hi']]
+      : radW.has('back') ? [['front', 'lo'], ['left', 'lo'], ['right', 'lo']]
+      : radW.has('left') ? [['back', mid], ['front', mid]] : [['left', 'lo'], ['back', 'lo', lim], ['front', 'lo', lim]]);
+    const firstW=wallsOf([[first, dgu && radW.has('left') && (first==='front' || first==='back') ? mid : first==='front' ? 'hi' : 'lo']]);
     // одним проёмом (наименьшим числом одинаковых): напротив выброса, затем на свободных стенах — внизу, затем над конвекторами
     // с маркизой — сначала выше (над конвекторами): вход под маркизой выше снегового покрова
     const lift={ ...IN, z0:this.LIFT, h:[IN.h[0], Math.min(IN.h[1], Math.floor((H-OB.top-90-this.LIFT)/S)*S)] }, lo=snow && lift.h[1]>=lift.h[0] ? lift : IN, hi=lo===IN ? lift : IN;
@@ -875,6 +887,13 @@ class StationVent {
   static roofList(V){ const g=new Map(); for (const q of V.roof||[]){ const k=q.w+'×'+q.l; g.set(k, (g.get(k)||0)+1); }
     return [...g].map(([k, c])=>{ const [w, l]=k.split('×').map(Number); return this.text({ n:c, w, h:l }); }).join(' + '); }
   static WALL = { back:'задней стене', front:'стене прохода', left:'торце у входа', right:'дальнем торце' };
+  /** где радиаторы ДГУ: «радиатор ДГУ — в дальнем торце», «радиаторы ДГУ — в торце у входа и в дальнем торце» */
+  static radAt(V){ const L=(V.rad && V.rad.list)||[V.rad], ws=[...new Set(L.map(q=>q.wall||'right'))].map(w=>this.WALL[w]);
+    return `${L.length>1 ? 'радиаторы ДГУ' : 'радиатор ДГУ'} — в ${ws.join(' и в ')}`; }
+  /** радиаторы ДГУ словами для замечания: расход, двери-жалюзи, живое сечение и скорость каждой */
+  static radText(V){ const n=StationLayout.n, f=v=>String(v).replace('.', ','), L=(V.rad.list)||[V.rad];
+    if (L.length===1){ const q=L[0]; return `радиатор ДГУ — ${n(V.rad.q)} м³/ч через ${q.door ? 'дверь-жалюзи' : 'жалюзи'} ${n(q.w)} × ${n(q.h)} мм в ${this.WALL[q.wall||'right']} (живое сечение ${f(q.free)} м², ${f(q.v)} м/с)`; }
+    return `радиаторы ДГУ — ${n(V.rad.q)} м³/ч, у каждой ДГУ своя ${L.every(q=>q.door) ? 'дверь-жалюзи' : 'решётка'} напротив радиатора: ${L.map(q=>`${n(q.q)} м³/ч через ${n(q.w)} × ${n(q.h)} мм в ${this.WALL[q.wall||'right']} (${f(q.v)} м/с)`).join('; ')}`; }
   /** где жалюзи выброса (без крыши): «над сервисными воротами, вверху в задней стене»;
    *  sizes — с размерами по местам: «над сервисными воротами 2 × 1 400 × 350 мм, вверху в задней стене 400 × 300 мм» */
   static outAt(V, sizes=false){
@@ -886,7 +905,7 @@ class StationVent {
   static where(V){
     const I=V.louvers.filter(q=>q.kind==='in'), ws=[...new Set(I.filter(q=>!q.leaf).map(q=>this.WALL[q.wall]))], lf=I.some(q=>q.leaf);
     const a=[...ws.map(w=>'в '+w), ...(lf ? ['в створках ворот и сервисных дверей'] : [])].join(', '), oa=this.outAt(V);
-    const b=[...(oa ? [oa] : []), ...((V.roof||[]).length ? ['через крышу'] : []), ...(V.rad ? ['радиатор ДГУ — в дальнем торце'] : [])].join(', ');
+    const b=[...(oa ? [oa] : []), ...((V.roof||[]).length ? ['через крышу'] : []), ...(V.rad ? [this.radAt(V)] : [])].join(', ');
     return { in:a, out:b };
   }
   /** маркизы словами (kind — 'in' на притоке, 'out' на выбросе): «2 × 1 660 × 1 300 мм, открыты на 45° — вылет 920 мм
@@ -908,7 +927,7 @@ class StationVent {
     const t=[`приток ${n(V.q.in)} м³/ч${cfm(V.q.in)} — проёмы по рамке не менее ${f(V.need.in.gross)} м² (${f(V.vIn)} м/с, запас ${Math.round((V.res-1)*100)} %), жалюзи ${this.list(V, 'in') || 'по месту'}${wh.in ? ' — '+wh.in : ''}`];
     if (V.need.out){ const w=V.louvers.some(q=>q.kind==='out') ? this.list(V, 'out') : '', rf=this.roofList(V);
       t.push(`выброс горячего воздуха ${n(V.q.out)} м³/ч${cfm(V.q.out)} — не менее ${f(V.need.out.gross)} м² (${f(V.vOut)} м/с): ${[w ? `жалюзи ${this.outAt(V, true)}` : '', rf ? `через крышу — колпаки ${rf}` : ''].filter(Boolean).join(', ')}`); }
-    if (V.rad) t.push(`радиатор ДГУ — ${n(V.rad.q)} м³/ч через ${V.rad.door ? 'дверь-жалюзи' : 'жалюзи'} ${n(V.rad.w)} × ${n(V.rad.h)} мм в дальнем торце (живое сечение ${f(V.rad.free)} м², ${f(V.rad.v)} м/с)`);
+    if (V.rad) t.push(this.radText(V));
     const dtx=Sm && Sm.units.length ? ` Тепло компрессоров ${f(Sm.Qc)} кВт (N·k или паспорт); воздух охлаждения ${n(Sm.Lcool)} м³/ч — вентилятором компрессора (нагрев в нём ${f(Sm.dtc)} °C, паспорт важнее), горячий — воздуховодом наружу; тот же поток продувает помещение — у входа компрессора около ${VentCalc.f(Sm.tComp)} °C (не выше ${f(Sm.tIn)} °C).`
       +(Sm.stand ? Sm.exfan ? ' При остановленных компрессорах помещение продувают те же вытяжные вентиляторы (по датчику температуры).' : ` При остановленных компрессорах — вытяжной вентилятор с термостатом ${n(Sm.stand.L)} м³/ч (около ${f(Sm.stand.P)} кВт) — прямо на канале общей вытяжки рядом с осушителем.` : '')
       +(Sm.exfan ? ` Вытяжные вентиляторы — вверху стены напротив притока (осевые, с гравитационными жалюзи, включаются автоматически по датчику температуры): ${n(Sm.exfan.L)} м³/ч (запас ${Math.round((Sm.exfan.reserve-1)*100)} %)${V.exfan ? ` в ${V.exfan.n} ${V.exfan.n===1 ? 'проёме' : 'проёмах'}` : ''}, напор не менее ${Sm.exfan.dp} Па, около ${f(Sm.exfan.P)} кВт; воздуховоды компрессоров подведены к ним.`
@@ -920,7 +939,7 @@ class StationVent {
     if (viaRoof && Sm && Sm.units.length) iss.push({ level:'info', text:`Выброс горячего воздуха ${viaRoof>1 ? 'всех '+viaRoof+' компрессоров' : 'компрессора'} — через крышу, каналы одного размера: над воротами места нет, а в торце выброс невозможен (компрессор не у торца или в торце ворота).` });
     // зима: баланс тепла при работе и открытие регулируемых жалюзи; рекуператор — по требованию заказчика
     const Wn=H && H.win, Rc=H && H.rec;
-    if (Wn && !Wn.warm) iss.push({ level:'info', text:`Вентиляция зимой (${StationNorms.deg(Wn.tWin)}): потери ограждений ${f(Wn.Qenv)} кВт + минимальный воздухообмен ${n(Wn.Lw)} м³/ч — ${f(Wn.Qvent)} кВт; тепло работающего компрессора ${f(Wn.Qrun)} кВт — ${Wn.bal>=0 ? `профицит ${f(Wn.bal)} кВт, достаточно частичной рециркуляции` : `дефицит ${f(-Wn.bal)} кВт — подогрев`}. Регулируемые жалюзи зимой открыты на ${Wn.open} % (нужно ${String(Wn.ratio).replace('.', ',')} % летнего расхода).` });
+    if (Wn && !Wn.warm) iss.push({ level:'info', text:`Вентиляция зимой (${StationNorms.deg(Wn.tWin)}): потери ограждений ${f(Wn.Qenv)} кВт + минимальный воздухообмен ${n(Wn.Lw)} м³/ч — ${f(Wn.Qvent)} кВт; тепло работающего ${(plan.items||[]).some(i=>i.kind==='dgu') ? 'агрегата (ДГУ)' : (plan.items||[]).some(i=>i.kind==='compressor') ? 'компрессора' : 'агрегата'} ${f(Wn.Qrun)} кВт — ${Wn.bal>=0 ? `профицит ${f(Wn.bal)} кВт, достаточно частичной рециркуляции` : `дефицит ${f(-Wn.bal)} кВт — подогрев`}. Регулируемые жалюзи зимой открыты на ${Wn.open} % (нужно ${String(Wn.ratio).replace('.', ',')} % летнего расхода).` });
     if (Rc && Rc.on) iss.push({ level:Rc.frost ? 'warn' : 'info', text:`Рекуператор (по требованию заказчика): ${VentCalc.TYPES[Rc.type]}, КПД ${f(Rc.eta)}; приток после него ${Rc.tAfter>0 ? '+' : ''}${VentCalc.f(Rc.tAfter)} °C; экономия ${f(Rc.Q)} кВт при расчётной зимней, за отопительный период около ${n(Rc.year)} кВт·ч${Rc.measures.length ? '; защита от обмерзания: '+Rc.measures.join(', ') : ''}.` });
     for (const w of (H && H.warn)||[]) if (!iss.some(i=>i.text===w.text)) iss.push(w);
     const ducts=Object.keys(V.ducts||{}).length;

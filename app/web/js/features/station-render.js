@@ -136,15 +136,17 @@ class StScene {
     // сервисные двери — только для монтажа и демонтажа (закрыты); входная дверь оператора и дверь отсека бака — отдельно
     const sd=plan.doors||[];
     this.doorsF=sd.filter(d=>d.wall!=='back'); this.doorsB=sd.filter(d=>d.wall==='back');
+    // двери-жалюзи ДГУ поперёк — проёмы задней стены (полотна с ламелями ставит StOutfit.endDoor)
+    for (const d of (plan.dguDoors||[]).filter(d=>d.wall==='back')) this.doorsB.push({ wall:'back', x0:d.x0, x1:d.x1, w:d.w, h:d.h, leaves:2, kind:'dgu' });
     this.view=meta.view==='out' ? 'out' : 'in'; this.closed=this.view==='out';
     this.cut=this.view==='in';   // стена со стороны зрителя срезана
     // ДГУ с дверью-жалюзи или ворота для демонтажа в дальнем торце: снаружи — вид спереди справа (на этот торец)
-    this.az=meta.az!=null ? meta.az : this.closed && (plan.dguDoor || [plan.gates, plan.gates2].some(q=>q && q.wall==='right' && !q.sea)) ? -StCam.AZ : StCam.AZ;
+    this.az=meta.az!=null ? meta.az : this.closed && ((plan.dguDoors||[]).some(d=>d.wall==='right') || [plan.gates, plan.gates2].some(q=>q && q.wall==='right' && !q.sea)) ? -StCam.AZ : StCam.AZ;
     // проёмы стены со стороны зрителя: сервисные двери; снаружи — ещё дверь оператора и дверь отсека топливного бака
     this.openF=this.cut ? [] : this.doorsF.map(d=>({ x0:d.x0, x1:d.x1, h:d.h, leaves:d.leaves, kind:d.kind||'service', open:false }));
     if (this.closed){ const D=StationLayout.DOOR.h, en=plan.entry;
       if (en && en.wall==='front') this.openF.push({ x0:en.x0, x1:en.x1, h:en.h, leaves:1, kind:'entry' });
-      if (plan.fuel) this.openF.push({ x0:plan.fuel.door.x0, x1:plan.fuel.door.x1, h:D, leaves:1, kind:'tank' });
+      if (plan.fuel && plan.fuel.door) this.openF.push({ x0:plan.fuel.door.x0, x1:plan.fuel.door.x1, h:D, leaves:1, kind:'tank' });
       this.openF.sort((a, b)=>a.x0-b.x0); }
   }
   /** наклейка: описание d (картинку рисует StDecal), центр c, нормаль n (наружу от поверхности), размер w × h, м;
@@ -352,6 +354,7 @@ class StScene {
     const fr=this.M(StMat.paint(this.frame, 0.45)), leaf=this.M(StMat.paint(this.door, 0.45)), inner=this.M(StMat.paint(this.lining, 0.55)), dk=this.M(StMat.paint('#24292e', 0.55)), t=0.045, depth=this.oy+0.01;
     const y0=out<0 ? 0 : yw-depth, y1=out<0 ? depth : yw;
     for (const c of cuts){
+      if (c.kind==='dgu') continue;   // дверь-жалюзи ДГУ — StOutfit.endDoor
       fr.box(c.a-0.05, y0, this.base-0.02, c.a, y1, c.h+0.05, 0.004); fr.box(c.b, y0, this.base-0.02, c.b+0.05, y1, c.h+0.05, 0.004); fr.box(c.a-0.05, y0, c.h, c.b+0.05, y1, c.h+0.05, 0.004);
       if (this.closed || !c.open){ this.shut(c, yw, out, leaf, dk); continue; }
       const lw=(c.b-c.a)/c.n, H=c.h-this.base-0.02;
@@ -402,6 +405,7 @@ class StScene {
     const P=this.plan, en=P.entry;
     for (const G of [P.gates, P.gates2]) if (G && !G.sea) this.endLeaves(G, G.wall, 2);
     if (en && en.wall==='left' && !en.sea) this.endLeaves(en, 'left', 1);
+    if (P.fuel && P.fuel.gate) this.endLeaves(P.fuel.gate, 'left', 2);   // ворота отсека топливного бака
     if (P.exit) this.endLeaves(P.exit, P.exit.wall, 1);
   }
   /** створки в торце side ('left' — x = 0, 'right' — x = Le): проём d.y0…d.y1 (мм внутри), высота d.h от пола; n — створок */
@@ -457,8 +461,9 @@ class StScene {
     const P=this.plan, out=[];
     for (const G of [P.gates, P.gates2]) if (G) out.push({ wall:G.wall, y0:G.y0, y1:G.y1, h:G.h, n:2, kind:'gate', wicket:G.wicket||null });
     if (P.entry && P.entry.wall==='left' && !P.entry.sea) out.push({ wall:'left', y0:P.entry.y0, y1:P.entry.y1, h:P.entry.h, n:1, kind:'entry' });
+    if (P.fuel && P.fuel.gate){ const G=P.fuel.gate; out.push({ wall:'left', y0:G.y0, y1:G.y1, h:G.h, n:2, kind:'gate' }); }   // ворота отсека бака
     if (P.exit) out.push({ wall:P.exit.wall, y0:P.exit.y0, y1:P.exit.y1, h:P.exit.h, n:1, kind:'entry' });
-    if (P.dguDoor) out.push({ wall:'right', y0:P.dguDoor.y0, y1:P.dguDoor.y1, h:P.dguDoor.h, n:2, kind:'dgu' });
+    for (const d of (P.dguDoors||[]).filter(d=>d.wall!=='back')) out.push({ wall:d.wall, y0:d.y0, y1:d.y1, h:d.h, n:2, kind:'dgu' });
     return out;
   }
   /** обшивка торца изнутри (x — плоскость, nx — нормаль внутрь) с проёмами cuts: участки до, между и над проёмами */
@@ -666,8 +671,21 @@ class StScene {
    *  клапанов, поддон, выпускной коллектор и турбина, воздушный фильтр), вентилятор и радиатор к жалюзи, пульт на стойке;
    *  глушитель на крыше — выхлоп от турбины через сильфон вверх */
   dgu(it){
-    const [x0, y0, z0, x1, y1, z1]=this.B(it), L=x1-x0, W=y1-y0, H=z1-z0, cy=(y0+y1)/2, s=this.side(it), c=it.color;
-    const body=this.M(StMat.paint(c, 0.4)), dk=this.M(StMat.paint(StScene.DARK, 0.6)), alt=this.M(StMat.paint('#4a5259', 0.42)), cap=this.M(StMat.paint(RalColor.shade(c, 0.62), 0.42)), st=this.M(StMat.metal('#8d949a', 0.45));
+    const rad=it.rad || 'right', B=this.B(it); if (rad==='right') return this.dgu0(it, B, m=>this.M(m), p=>p, true);
+    // радиатор у торца входа — зеркально по длине; поперёк (радиатор к задней стене) — оси x и y меняются местами
+    const [a0, b0, , a1, b1]=B, f=rad==='left' ? p=>[a0+a1-p[0], p[1], p[2]] : p=>[p[1], p[0], p[2]];
+    return this.dgu0(it, rad==='left' ? B : [b0, a0, B[2], b1, a1, B[5]], m=>StScene.mapMesh(this.M(m), f), f, false);
+  }
+  /** построитель, рисующий через преобразование точек f (поворот и зеркало по осям): box, tube, sphere, obox, quad, tri */
+  static mapMesh(m, f){ const o=f([0, 0, 0]), fv=v=>{ const b=f(v); return [b[0]-o[0], b[1]-o[1], b[2]-o[2]]; };
+    return { box:(x0, y0, z0, x1, y1, z1, r)=>{ const p=f([x0, y0, z0]), q=f([x1, y1, z1]); m.box(p[0], p[1], p[2], q[0], q[1], q[2], r); },
+      tube:(a, b, r, seg, caps, r2)=>m.tube(f(a), f(b), r, seg, caps, r2), sphere:(c, r, seg)=>m.sphere(f(c), r, seg),
+      obox:(p, u, v, w)=>m.obox(f(p), fv(u), fv(v), fv(w)), quad:(a, b, c, d, n)=>m.quad(f(a), f(b), f(c), f(d), n && fv(n)), tri:(a, b, c, n)=>m.tri(f(a), f(b), f(c), n && fv(n)) }; }
+  /** ДГУ в своей системе (радиатор к +x): B — короб, M — материал → построитель, f — в мир (f — сама в себя), own — прежняя
+   *  решётка радиатора (только без преобразования) */
+  dgu0(it, B, M, f, own){
+    const [x0, y0, z0, x1, y1, z1]=B, L=x1-x0, W=y1-y0, H=z1-z0, cy=(y0+y1)/2, s=own ? this.side(it) : -1, c=it.color;
+    const body=M(StMat.paint(c, 0.4)), dk=M(StMat.paint(StScene.DARK, 0.6)), alt=M(StMat.paint('#4a5259', 0.42)), cap=M(StMat.paint(RalColor.shade(c, 0.62), 0.42)), st=M(StMat.metal('#8d949a', 0.45));
     const fb=z0+H*0.13; dk.box(x0, y0, z0, x1, y1, fb, 0.006);                                   // рама-бак
     dk.tube([x0+L*0.08, y0+W*0.18, fb], [x0+L*0.08, y0+W*0.18, fb+0.04], 0.05, 16);              // горловина бака
     // генератор
@@ -683,21 +701,23 @@ class StScene {
     body.box(xb+0.05, cy-wb*0.38, zb, xr-0.08, cy+wb*0.38, zh, 0.015);                           // головка
     cap.box(xb+0.08, cy-wb*0.26, zh, xr-0.12, cy+wb*0.26, zv, 0.02);                             // крышка клапанов
     for (const x of [xb+0.1, xr-0.2]) dk.box(x, cy-W*0.4, fb, x+0.1, cy+W*0.4, fb+H*0.1, 0.004); // опоры
-    const ex=(this.plan.roof||[]).map(m=>m.exhaust).find(e=>e && e.x>=it.x && e.x<=it.x+it.lx), tx=ex ? this.ox+ex.x/1000 : xr-0.3;
+    const ex=(this.plan.roof||[]).map(m=>m.exhaust).find(e=>e && e.x>=it.x && e.x<=it.x+it.lx && (e.y==null || (e.y>=it.y && e.y<=it.y+it.ly)));
+    const tx=ex ? Math.max(xb+0.15, Math.min(xr-0.1, f([this.ox+ex.x/1000, this.oy+(ex.y!=null ? ex.y : it.y+it.ly/2)/1000, 0])[0])) : xr-0.3;   // f обратна сама себе — из мира в своё
     const yb=cy-s*wb*0.56, zx=zb+H*0.02, rt=Math.min(0.12, H*0.065);                             // выпуск — со стороны от прохода
     st.tube([xb+0.12, yb, zx], [tx, yb, zx], Math.min(0.055, H*0.03), 16); st.sphere([tx, yb, zx], rt*0.7, 14);
     st.tube([tx, yb, zx], [tx, cy, zv+rt], rt*0.45, 16); st.sphere([tx, cy, zv+rt], rt, 18);     // турбина
     if (ex){ const zt=zv+rt*1.6; for (let z=zt; z<z1-0.03; z+=0.03) st.tube([tx, cy, z], [tx, cy, z+0.018], rt*0.62, 18); }   // сильфон к глушителю
-    this.M(StMat.paint('#1f2328', 0.55)).tube([xb+L*0.08, cy+s*wb*0.18, zh], [xb+L*0.08, cy+s*wb*0.18, zv+H*0.14], Math.min(0.14, W*0.12), 24);   // воздушный фильтр
+    M(StMat.paint('#1f2328', 0.55)).tube([xb+L*0.08, cy+s*wb*0.18, zh], [xb+L*0.08, cy+s*wb*0.18, zv+H*0.14], Math.min(0.14, W*0.12), 24);   // воздушный фильтр
     // вентилятор и радиатор
     dk.tube([xr-0.06, cy, fb+(z1-fb)*0.5], [xr, cy, fb+(z1-fb)*0.5], Math.min(W*0.42, (z1-fb)*0.42), 32);   // кожух вентилятора
     body.box(xr, y0+W*0.04, fb, x1, y1-W*0.04, z1, 0.02);                                        // радиатор
-    this.grille({ ...it, x:it.x+it.lx*0.84, lx:it.lx*0.16 }, 0.08, 0.92, 0.12, 0.92, 12, 1);
+    if (own) this.grille({ ...it, x:it.x+it.lx*0.84, lx:it.lx*0.16 }, 0.08, 0.92, 0.12, 0.92, 12, 1);
+    else for (let k=0; k<12; k++){ const z=fb+(z1-fb)*(0.12+k*0.066); dk.box(x1, y0+W*0.1, z, x1+0.008, y1-W*0.1, z+0.012); }   // решётка радиатора
     dk.tube([x1-L*0.08, cy, z1], [x1-L*0.08, cy, z1+0.04], 0.04, 14);                            // пробка радиатора
     // пульт на стойке над генератором
     const py=s<0 ? y0+W*0.12 : y1-W*0.12;
     dk.box(xa+L*0.06, py-0.02, zc+R, xa+L*0.08, py+0.02, z0+H*0.78); dk.box(xa+L*0.02, Math.min(py, py+s*0.14), z0+H*0.78, xa+L*0.2, Math.max(py, py+s*0.14), z0+H*0.97, 0.01);
-    this.M(StMat.glow('#9fd4ff', 1.2)).box(xa+L*0.05, s<0 ? py-0.002+s*0.14 : py+0.14, z0+H*0.86, xa+L*0.13, s<0 ? py+s*0.14 : py+0.142, z0+H*0.93);
+    M(StMat.glow('#9fd4ff', 1.2)).box(xa+L*0.05, s<0 ? py-0.002+s*0.14 : py+0.14, z0+H*0.86, xa+L*0.13, s<0 ? py+s*0.14 : py+0.142, z0+H*0.93);
   }
   tank(it){
     const [x0, y0, z0, x1, y1, z1]=this.B(it), m=this.M(StMat.paint(it.color, 0.42)), dk=this.M(StMat.paint(StScene.DARK, 0.6));
@@ -783,17 +803,29 @@ class StScene {
 
   // ---- глушитель на крыше над ДГУ: опоры, корпус, выход с колпаком; выхлопная труба в изоляции — сквозь крышу
   muffler(m){
-    const mm=this.mm, x0=this.ox+mm(m.x), x1=x0+mm(m.lx), r=mm(m.d)/2, cy=this.oy+mm(m.y)+r, body=this.M(StMat.paint(m.color, 0.5)), dk=this.M(StMat.paint(StScene.DARK, 0.55));
-    const zr=this.rise>0 ? Math.max(this.roofZ(cy-r), this.roofZ(cy+r))+0.04 : this.top, cz=zr+mm(m.gap)+r, zb=this.rise>0 ? Math.min(this.roofZ(cy-r), this.roofZ(cy+r)) : this.top;   // скатная крыша — опоры от ската
+    const mm=this.mm, dir=m.dir || 'x+';
+    if (dir==='x+') return this.muffler0(m, this.ox+mm(m.x), this.oy+mm(m.y), mm(m.lx), [this.ox+mm(m.exhaust ? m.exhaust.x : 0), this.oy+mm(m.exhaust ? m.exhaust.y : 0)], k=>this.M(k), null);
+    // выхлоп к торцу у входа — зеркально по длине; глушитель поперёк (ДГУ поперёк) — оси x и y меняются местами
+    if (dir==='x-'){ const a=this.ox+mm(m.x), b=a+mm(m.lx), f=p=>[a+b-p[0], p[1], p[2]];
+      return this.muffler0(m, a, this.oy+mm(m.y), mm(m.lx), m.exhaust ? [a+b-(this.ox+mm(m.exhaust.x)), this.oy+mm(m.exhaust.y)] : null, k=>StScene.mapMesh(this.M(k), f), null); }
+    const f=p=>[p[1], p[0], p[2]], ys=[this.oy+mm(m.y), this.oy+mm(m.y+m.ly)];
+    const zr=this.rise>0 ? Math.max(...ys.map(y=>this.roofZ(y)), this.roofZ(this.We/2))+0.04 : null;
+    return this.muffler0(m, ys[0], this.ox+mm(m.x), mm(m.ly), m.exhaust ? [this.oy+mm(m.exhaust.y), this.ox+mm(m.exhaust.x)] : null, k=>StScene.mapMesh(this.M(k), f), zr);
+  }
+  /** глушитель в своей системе (вдоль +x, выхлоп к +x): x0 — начало, y0 — край по ширине, len — длина, м; ex — [x, y] входа
+   *  выхлопной трубы (в своей системе), M — материал → построитель, zr0 — верх крыши под ним (null — по скату у себя) */
+  muffler0(m, x0, y0, len, ex, M, zr0){
+    const mm=this.mm, x1=x0+len, r=mm(m.d)/2, cy=y0+r, body=M(StMat.paint(m.color, 0.5)), dk=M(StMat.paint(StScene.DARK, 0.55)), own=zr0==null && (m.dir||'x+')!=='y+';
+    const zr=zr0!=null ? zr0 : this.rise>0 ? Math.max(this.roofZ(cy-r), this.roofZ(cy+r))+0.04 : this.top, cz=zr+mm(m.gap)+r, zb=zr0!=null ? zr0-0.04 : this.rise>0 ? Math.min(this.roofZ(cy-r), this.roofZ(cy+r)) : this.top;   // скатная крыша — опоры от ската
     for (const f of [0.18, 0.82]){ const x=x0+(x1-x0)*f; dk.box(x-0.05, cy-r*0.75, zb, x+0.05, cy+r*0.75, cz-r*0.55, 0.004); dk.box(x-0.06, cy-r*0.8, zr-0.02, x+0.06, cy+r*0.8, zr); }
     body.tube([x0+r*0.25, cy, cz], [x1-r*0.25, cy, cz], r, 32, [false, false]);
     body.tube([x0, cy, cz], [x0+r*0.25, cy, cz], r*0.7, 32, [true, false], r); body.tube([x1-r*0.25, cy, cz], [x1, cy, cz], r, 32, [false, true], r*0.7);
-    const st=this.M(StMat.metal('#a7adb3', 0.4)), ro=Math.max(0.05, r*0.28), xe=x1+mm(m.outlet);   // выхлоп — горизонтально в сторону радиатора
+    const st=M(StMat.metal('#a7adb3', 0.4)), ro=Math.max(0.05, r*0.28), xe=x1+mm(m.outlet);   // выхлоп — горизонтально в сторону радиатора
     st.tube([x1-0.02, cy, cz], [xe, cy, cz], ro, 20); st.tube([xe-0.012, cy, cz], [xe, cy, cz], ro*1.2, 20, [false, false]);
     dk.tube([xe-0.002, cy, cz], [xe, cy, cz], ro*0.9, 20, [true, true]);
-    if (m.exhaust){ const ex=this.ox+mm(m.exhaust.x), ey=this.oy+mm(m.exhaust.y), wrap=this.M(StMat.metal('#c4c9cd', 0.55));
-      wrap.tube([ex, ey, this.base+mm(m.exhaust.z)], [ex, ey, cz-r*0.8], Math.max(0.06, ro*1.15), 22);
-      const zp=this.rise>0 ? this.roofZ(ey)+0.04 : this.top; dk.tube([ex, ey, zp-0.02], [ex, ey, zp+0.06], Math.max(0.06, ro*1.15)*1.6, 22); }   // проходка через крышу
+    if (m.exhaust && ex){ const [exx, ey]=ex, wrap=M(StMat.metal('#c4c9cd', 0.55));
+      wrap.tube([exx, ey, this.base+mm(m.exhaust.z)], [exx, ey, cz-r*0.8], Math.max(0.06, ro*1.15), 22);
+      const zp=own && this.rise>0 ? this.roofZ(ey)+0.04 : zr0!=null ? zr0 : this.top; dk.tube([exx, ey, zp-0.02], [exx, ey, zp+0.06], Math.max(0.06, ro*1.15)*1.6, 22); }   // проходка через крышу
   }
 }
 
