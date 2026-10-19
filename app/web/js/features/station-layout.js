@@ -283,12 +283,12 @@ class StationMatrix {
     recv:{ pairSide:300, outGap:1000, outStep:600, pad:100, upright:1, close:1 },
     cab:{ top:1900, low:300 },
     move:{ pass:25 },
-    tank:{ pad:300, gap:300, back:100, aisle:600, part:100, door:800, fill:1000, max:4500, gates:1, h1:1000, h2:1500, big:2000, w1:800, w2:1000, step:50, wall:4, top:300, wMax:1300 },
+    tank:{ pad:300, gap:300, back:100, aisle:600, part:100, door:800, fill:1000, max:4500, gates:1, h1:1000, h2:1500, big:2000, w1:800, w2:1000, step:50, wall:4, top:300, wMax:3000 },
     conv:{ z:150, gap:100, edge:100, front:150 },
     // ДГУ в контейнере (решение владельца 19.10): радиатор — вплотную к жалюзи; поворот на 90° — когда компоновка лучше; две ДГУ
     // без бака — по одной у каждого торца радиаторами наружу; от across штук (и две с баком) — поперёк, радиаторами к задней стене;
     // конвекторы у ДГУ — плотнее
-    dgu:{ rad:50, rot:1, two:1, across:3, convGap:50, convEdge:50, convFront:100 },
+    dgu:{ rad:50, rot:1, two:1, across:3, pass:400, convGap:50, convEdge:50, convFront:100 },
     muffler:{ gap:200, outlet:300 },
     // ниже — прочие числа станции: все значения и умолчания правятся в «Настройках» (решение ПНЕВМОТЕХ)
     shell:{ ins:100, seaLining:15, seaFloor:50, blockWall:20, blockFloor:150, blockRoof:60, weldWall:10, weldFloor:160, weldRoof:60, northWall:20, northFloor:200, northRoof:80, tambour:1200, gable:8, mono:5 },
@@ -459,13 +459,14 @@ class LayoutParams {
       { g:'tank', k:'step', t:'Бак по объёму: длина — с шагом', u:'мм', lo:10, hi:500 },
       { g:'tank', k:'wall', t:'Бак по объёму: толщина стенки', u:'мм', lo:1, hi:20 },
       { g:'tank', k:'top', t:'Бак по объёму: от верха бака до потолка — не меньше', u:'мм', lo:100, hi:1500, h:'Решение владельца (19.10): бак не вытягивать в длину — выше, почти под потолок (над баком — дыхательный клапан и заливная труба), затем глубже.' },
-      { g:'tank', k:'wMax', t:'Бак по объёму: глубина — не больше', u:'мм', lo:500, hi:3000, h:'И не больше, чем оставляет проход перед баком в отсеке.' },
+      { g:'tank', k:'wMax', t:'Бак по объёму: глубина — не больше', u:'мм', lo:500, hi:3500, h:'С воротами в торце — до всей ширины контейнера (от стен — «От задней стены»), с дверью в стене прохода — не больше, чем оставляет проход перед баком (решение владельца 19.10).' },
       { g:'tank', k:'max', t:'Дополнительный бак в отсеке — не больше (больше — предупреждение: два бака или ёмкость вне контейнера)', u:'л', lo:500, hi:20000, h:'4 500 л — бак 3 000 × 1 000 × 1 500 мм, больше в отсек блок-контейнера не встаёт.' }] },
     { id:'dgu', title:'ДГУ в контейнере', t:'Решения ПНЕВМОТЕХ (19.10): радиатор — вплотную к жалюзи в торце, у каждой ДГУ — свой выброс горячего воздуха и свой выхлоп.', f:[
       { g:'dgu', k:'rad', t:'От радиатора до жалюзи (дверь-жалюзи)', u:'мм', lo:0, hi:1000 },
       { g:'dgu', k:'rot', t:'Поворот ДГУ на 90° (радиатор — к задней стене)', opt:[[1, 'когда компоновка лучше'], [0, 'нет']] },
       { g:'dgu', k:'two', t:'Две ДГУ без бака', opt:[[1, 'по одной у каждого торца, радиаторами наружу'], [0, 'как остальные']] },
       { g:'dgu', k:'across', t:'Поперёк (радиаторами к задней стене) — от', u:'шт.', lo:2, hi:10, h:'Столько ДГУ и больше (и две с дополнительным баком) — поперёк контейнера, у каждой — жалюзи в задней стене.' },
+      { g:'dgu', k:'pass', t:'ДГУ вдоль — посередине ширины: проход с каждой стороны не меньше', u:'мм', lo:200, hi:1500, h:'Решение владельца (19.10): ДГУ — посередине, отступы уменьшены. ПУЭ, п. 4.1.23: проход у щитов — не менее 0,8 м (0,6 м — сужение конструкциями); у ДГУ — по решению ПНЕВМОТЕХ.' },
       { g:'dgu', k:'convGap', t:'Конвекторы у ДГУ: между ними', u:'мм', lo:0, hi:2000 },
       { g:'dgu', k:'convEdge', t:'Конвекторы у ДГУ: от угла стены', u:'мм', lo:0, hi:1000 },
       { g:'dgu', k:'convFront', t:'Конвекторы у ДГУ: свободно перед ними', u:'мм', lo:0, hi:2000 }] },
@@ -1719,7 +1720,9 @@ class StationLayout {
     if (!placed.length) return Object.assign(base, { level:'none', text:'Добавьте в состав оборудование — компрессор, насос, ДГУ и т. п.' });
     let units=this.units(placed);
     const g0=StationGeo.of(this.cont), in0=g0.int || StationGeo.inner(g0.type, [10000, StationGeo.ROAD_W, 2600], g0.t), Wi=in0[1];
-    this.tank=this.tankRoom(units, Wi, in0[2]);        // ДГУ с дополнительным баком — бак в отдельном отсеке у ближнего торца
+    // размер по оборудованию — бак по ширине обычного блок-контейнера (2 300 мм): станция шире ради бака не делается
+    const We=g0.int ? g0.ext[1] : Math.min(StationGeo.ROAD_W, 2300), Wt=g0.int ? Wi : StationGeo.inner(g0.type, [10000, We, 2600], g0.t)[1];
+    this.tank=this.tankRoom(units, Wt, in0[2], !!g0.sea, Wt-2*StationLayout.gaps({ ext:[0, We, 0], int:[0, Wt, 0] }).eW);        // ДГУ с дополнительным баком — бак в отдельном отсеке у ближнего торца
     if (this.tank) units=units.filter(e=>e.kind!=='tank');
     const geo=this.geoOf(this.cont); this.T=geo.t||0;
     let plan=geo.auto ? this.autoSize(units, geo) : this.in._mode ? this.fit(units, geo, [this.in._mode]) : this.fit(units, geo);   // удлинение (grow) — в том же режиме
@@ -1812,12 +1815,15 @@ class StationLayout {
   static get TANK(){ return StationMatrix.tank(); }
   /** отсек бака: {units — [{e, lx — вдоль контейнера, ly — поперёк}], room — длина отсека внутри, len — с перегородкой};
    *  бак — поперёк, если перед ним остаётся проход (отсек короче); нет ДГУ или бака — null. Wi — ширина внутри */
-  tankRoom(units, Wi, Hi){
+  tankRoom(units, Wi, Hi, sea, gMax=Wi){
     const T=units.filter(e=>e.kind==='tank'); if (!T.length || !units.some(e=>e.kind==='dgu')) return null;
-    const C=StationLayout.TANK;
-    // бак без своих габаритов — по объёму под этот отсек: выше — почти под потолок, глубже — не уже прохода перед ним
-    for (const e of T) if (!e.known){ const d=TankSize.of(e.vol||1000, { h:(Hi||TankSize.H)-C.top, w:Wi-C.back-C.aisle }); e.l=d.l; e.w=d.w; e.h=d.h; }
-    const U=T.map(e=>{ const a=Math.max(e.l, e.w), b=Math.min(e.l, e.w); return Wi-C.back-a>=C.aisle ? { e, lx:b, ly:a } : { e, lx:a, ly:b }; });
+    const C=StationLayout.TANK, open=C.gates && !sea;
+    // бак без своих габаритов — по объёму под этот отсек: выше — почти под потолок, глубже — с воротами в торце на всю ширину
+    // контейнера (решение владельца 19.10; проход перед баком не нужен — к нему через ворота), иначе — не уже прохода перед ним
+    // с воротами — не шире их наибольшего проёма (бак меняют через ворота: зазор move.pass с каждой стороны)
+    const deep=open ? Math.min(Wi-2*C.back, gMax-2*StationLayout.PASS) : Wi-C.back-C.aisle;
+    for (const e of T) if (!e.known){ const d=TankSize.of(e.vol||1000, { h:(Hi||TankSize.H)-C.top, w:deep }); e.l=d.l; e.w=d.w; e.h=d.h; }
+    const U=T.map(e=>{ const a=Math.max(e.l, e.w), b=Math.min(e.l, e.w); return a<=deep ? { e, lx:b, ly:a } : { e, lx:a, ly:b }; });
     const body=U.reduce((s, u)=>s+u.lx, 0)+C.gap*(U.length-1), room=Math.max(body+2*C.pad, C.door+2*C.pad);
     return { units:U, room, len:room+C.part };
   }
@@ -1839,7 +1845,7 @@ class StationLayout {
       const fy=y0-Q.gap-150; r.fuel.fill=fy-150>=Q.eW ? { wall:'left', y:Math.round(fy), z:C.fill } : { wall:'front', x:Math.round(t.room/2), z:C.fill }; }
     r.fuel.fill.niche=true;   // горловина утоплена в стену, лючок заподлицо — габарит не меняется
     const iss=r.issues=r.issues||[], aisle=Math.min(...T.map(i=>i.y));
-    if (aisle<C.aisle) iss.push({ level:'warn', text:`Отсек топливного бака: проход перед баком ${n(aisle)} мм — меньше ${n(C.aisle)} мм.` });
+    if (aisle<C.aisle && !r.fuel.gate) iss.push({ level:'warn', text:`Отсек топливного бака: проход перед баком ${n(aisle)} мм — меньше ${n(C.aisle)} мм.` });
     for (const i of T) if (i.h+200>H){ r.bad=true; iss.push({ level:'error', text:`Топливный бак поз. ${i.pos} не проходит по высоте отсека: ${n(i.h)} мм, внутри ${n(H)} мм.` }); }
   }
   /** в два ряда — в задний ряд: ДГУ; аппараты цепочки сжатого воздуха (если есть компрессоры) — подряд по ходу воздуха;
@@ -2050,12 +2056,15 @@ class StationLayout {
   dLine(units, Lu, W){
     const r=this.row1(units, Lu, W, true); if (!r.ok) return r;
     for (const it of r.items) if (it.o.e.kind==='dgu'){ it.o.rad='right'; Object.assign(it, this.dMid(it.o.e, it.d, W)); }
-    r.aisleW=Math.min(...r.items.map(i=>i.aisle));
+    r.aisleW=Math.min(...r.items.map(i=>i.aisle)); r.iss=(r.iss||[]).filter(i=>!/^Проход обслуживания/.test(i.text)); this.dPass(r.items, r.iss);
     r.used=Math.max(...r.items.map(i=>i.x+i.lx)); r.way='line'; return r;
   }
-  /** ДГУ вдоль — посередине ширины контейнера (решение владельца 19.10); проход спереди — не уже допустимого, сзади — не
-   *  меньше отступа «не менее»: не хватает — ближе к задней стене */
-  dMid(e, d, W){ const fm=this.front(e)[1], y=Math.round(Math.min(W-d-e.c.back[1], Math.max(fm, (W-d)/2))); return { back:W-d-y, aisle:y, y }; }
+  /** ДГУ вдоль — посередине ширины контейнера (решение владельца 19.10, отступы уменьшены: проход с каждой стороны — не
+   *  меньше dgu.pass, иначе замечание) */
+  dMid(e, d, W){ const y=Math.round((W-d)/2); return { back:W-d-y, aisle:y, y }; }
+  /** замечание: проход вдоль ДГУ посередине уже dgu.pass */
+  dPass(items, iss){ const P=StationMatrix.grp('dgu').pass, n=StationLayout.n, a=Math.min(...items.filter(i=>i.o.e.kind==='dgu').map(i=>i.aisle));
+    if (a<P) iss.push({ level:'warn', text:`ДГУ посередине ширины: проход с каждой стороны ${n(a)} мм — меньше ${n(P)} мм («Настройки → Правила компоновки → ДГУ в контейнере»); нужен контейнер шире.` }); }
   /** задний отступ и проход у агрегата глубиной d (один ряд): сзади — рекомендуемый, если проход остаётся не уже допустимого */
   dBack(e, d, W){ const b=e.c.back, budget=W-d, fm=this.front(e)[1]; const back=budget-b[0]>=fm ? b[0] : budget-fm>=b[1] ? budget-fm : b[1]; return { back, aisle:budget-back, y:W-back-d }; }
   /** две ДГУ — у торцов радиаторами наружу; между генераторами — проход обслуживания (сторона генератора — clear side) и дверь
@@ -2080,8 +2089,7 @@ class StationLayout {
     const occ=items.map(i=>[i.x, i.x+i.lx]).sort((a, b)=>a[0]-b[0]), gaps=[];
     for (let i=1; i<occ.length; i++) gaps.push([occ[i-1][1], occ[i][0]]);
     const g=gaps.filter(([a, b])=>a>=x1 && b<=x2).sort((p, q)=>(q[1]-q[0])-(p[1]-p[0]))[0] || [x1, x2], e0=Math.round((g[0]+g[1]-Ew)/2);
-    const aisleW=Math.min(...items.map(i=>i.aisle)), aRec=this.aisle[0];
-    if (aisleW<aRec) iss.push({ level:'warn', text:`Проход вдоль ДГУ ${n(aisleW)} мм — меньше рекомендуемых ${n(aRec)} мм (допустимо от ${n(this.aisle[1])} мм).` });
+    const aisleW=Math.min(...items.map(i=>i.aisle)); this.dPass(items, iss);
     return { ok:true, rows:1, aisleW, items, iss, entry:[e0, e0+Ew], used:Lu, way:'ends' };
   }
   /** ДГУ поперёк: повёрнуты на 90°, радиатор — к задней стене (dgu.rad), генератор — к проходу у передней стены (не уже
@@ -2321,7 +2329,7 @@ class StationLayout {
       // малые насосы (СП 31.13330.2021, п. 10.15) — можно по два на общей раме без прохода: сбоку достаточно их отступа
       const need=StationMatrix.sides(i.kind), D=dirs(i.face), s={}, miss=[], side=i.kind==='pump' && StationClear.of('pump', i)===StationClear.PUMP_SMALL ? StationClear.PUMP_SMALL.side[1] : A.side;
       for (const k of ['F', 'B', 'L', 'R']){
-        const d=D[k], [g, wall]=gap(i, d), min=k==='F' ? sv : k==='B' ? A.back : side, h=wall ? hole(i, d) : null;
+        const d=D[k], [g, wall]=gap(i, d), mid=i.kind==='dgu' && !i.rot && (k==='F' || k==='B'), min=mid ? Math.min(StationMatrix.grp('dgu').pass, k==='F' ? sv : A.back) : k==='F' ? sv : k==='B' ? A.back : side, h=wall ? hole(i, d) : null;
         if (!need[k]){ s[k]={ ok:true, t:'не требуется', g }; continue; }
         if (g>=min) s[k]={ ok:true, t:`${k==='F' ? 'проход' : 'зазор'} ${n(Math.round(g))} мм`, g };
         else if (h) s[k]={ ok:true, t:h, g };
@@ -2940,7 +2948,7 @@ class StationLayout {
     if (this.dguSt && arr!=='row1') return null;    // ДГУ-станция — свои варианты (rowD)
     // ДГУ вдоль — посередине ширины: подбор контейнера сначала ищет ширину, где проход с обеих сторон не уже допустимого
     if (this.dguSt && this.midNeed){ const D=units.filter(e=>e.kind==='dgu'), M=StationMatrix.grp('dgu');
-      if ((D.length===1 || (D.length===2 && M.two && !this.tank)) && D.some(e=>Wi<e.w+2*this.front(e)[1])) return null; }
+      if ((D.length===1 || (D.length===2 && M.two && !this.tank)) && D.some(e=>Wi<e.w+2*M.pass)) return null; }
     const r=this.dguSt ? this.rowD(units, 0, Wi) : arr==='row1' ? this.row1(units, 0, Wi, !lvl) : arr==='rowX' ? this.rowX(units, 0, Wi, !lvl) : arr==='rowE' ? this.rowE(units, 0, Wi, this.T) : this.row2(units, 0, Wi, !lvl);
     if (r.ok) return 0;
     if (!/^length/.test(r.why)) return null;
@@ -2985,7 +2993,7 @@ class StationLayout {
     const tried=new Map(), fitAt=(g, m)=>{ const k=g.ext.join('×')+JSON.stringify(m)+(this.closeAll ? 'c' : ''); let r=tried.get(k); if (!r){ r=this.fit(units, g, [m]); tried.set(k, r); } return r; };
     let tall=null;
     // ДГУ посередине ширины — только если так встаёт в габарите перевозки (иначе — ближе к задней стене, как выйдет)
-    const Wroad=G.inner(geo.type, [10000, G.ROAD_W, B.maxH], t)[1]-g2, midOk=units.filter(e=>e.kind==='dgu').every(e=>e.w+2*this.front(e)[1]<=Wroad);
+    const Wroad=G.inner(geo.type, [10000, G.ROAD_W, B.maxH], t)[1]-g2, midOk=units.filter(e=>e.kind==='dgu').every(e=>e.w+2*StationMatrix.grp('dgu').pass<=Wroad);
     for (const [lw, ll, wide, m, st, close] of tiers){ this.closeAll=!!close; this.closeOk=!!close; this.midNeed=!wide && !!st && midOk; let got=null;
       try{ got=this.withMode(m, ()=>{
         const Hx=Math.max(B.minH, G.up(needH(lw)+hOf)); if (Hx>B.maxH){ tall=tall||Hx; return null; }

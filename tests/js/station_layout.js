@@ -47,7 +47,7 @@ class Check {
       if (f.gate) assert.ok(f.gate.wall==='left' && f.gate.y0>=0 && f.gate.y1<=W && tanks.every(t=>f.gate.w>=t.ly && Math.min(f.gate.y1, t.y+t.ly)-Math.max(f.gate.y0, t.y)>=0.75*t.ly), `${label}: ворота отсека — напротив бака`);
       else if (f.door) assert.ok(f.door.x0>=0 && f.door.x1<=f.x1 && f.door.x1-f.door.x0>=StationLayout.TANK.door, `${label}: дверь отсека бака`);
       assert.ok(f.fill && f.fill.niche, `${label}: горловина — в нише заподлицо`);
-      for (const t of tanks) assert.ok(t.y>=StationLayout.TANK.aisle-1, `${label}: проход перед баком ${t.y} мм`); }
+      if (!f.gate) for (const t of tanks) assert.ok(t.y>=StationLayout.TANK.aisle-1, `${label}: проход перед баком ${t.y} мм`); }   // с воротами в торце проход не нужен
     const floor=I.filter(i=>i.mount==='floor' && !i.tank);
     assert.ok(p.door==='side' || p.door==='end', `${label}: дверь оператора ${p.door} — станция только с проходом`);
     // без сквозного прохода — вторая дверь оператора за агрегатом поперёк; проход не уже 500 мм (исключение)
@@ -77,7 +77,7 @@ class Check {
     if (p.rows===2){
       const A=floor.filter(i=>i.row===1), B=floor.filter(i=>i.row===0), gap=Math.min(...B.map(i=>i.y))-Math.max(...A.map(i=>i.y+i.ly));
       assert.ok(gap>=aMin-1, `${label}: проход между рядами ${gap} < ${aMin}`);
-    } else for (const it of floor){ const need=it.kind==='dgu' ? Math.min(aMin, 600) : aMin;
+    } else for (const it of floor){ const need=it.kind==='dgu' ? (it.rot ? Math.min(aMin, 600) : Math.min(aMin, 600, StationMatrix.grp('dgu').pass)) : aMin;   // ДГУ вдоль — посередине, проход не уже dgu.pass (решение владельца 19.10)
       if (it.cross) continue;   // поперёк станции (без сквозного прохода): спереди и сзади — части станции со своими дверями
       // без продольного прохода: компрессор у торца — сервисные ворота с обеих сторон, ворота в торце у него
       if (it.ends){ const D=(p.doors||[]).filter(d=>d.both && d.pos.includes(it.pos) && Math.min(d.x1, it.x+it.lx)-Math.max(d.x0, it.x)>=Math.min(it.lx, StationLayout.DOOR.max)-1);
@@ -1785,6 +1785,7 @@ Check.run('ДГУ в контейнере: радиатор к жалюзи, д�
   // одна — вдоль, радиатором к дальнему торцу
   // посередине ширины, если так встаёт в габарите перевозки (малая ДГУ)
   { const pm=solve(blk, [sm(1), ats]), g=chk(pm, 'малая ДГУ')[0]; assert.ok(Math.abs(g.y-(pm.int[1]-g.y-g.ly))<=2, `ДГУ посередине ширины: ${g.y} / ${pm.int[1]-g.y-g.ly}`); }
+  { const g=solve(blk, [big(1), ats]).items.find(i=>i.kind==='dgu'); assert.ok(Math.abs(g.y-(solve(blk, [big(1), ats]).int[1]-g.y-g.ly))<=2, 'крупная ДГУ — тоже посередине'); }
   const p1=solve(blk, [big(1), ats, muf(1)]), g1=chk(p1, 'одна ДГУ'); assert.ok(g1.length===1 && g1[0].rad==='right' && p1.dguDoors[0].wall==='right', 'одна ДГУ — к дальнему торцу');
   assert.ok(p1.exhausts[0].how==='roof', 'одна ДГУ с глушителем — выхлоп через крышу');
   // две без бака — у торцов радиаторами наружу, вход посередине; глушитель один — у второй вывод через стену
@@ -1812,6 +1813,9 @@ Check.run('ДГУ в контейнере: радиатор к жалюзи, д�
   assert.ok(T.h<=pt.int[2]-M.top && T.h>M.h1, 'бак — выше, почти под потолок');
   for (const v of [500, 1000, 2000, 4500]){ const d=TankSize.of(v); assert.ok(vin(d.l, d.w, d.h)>=v && (d.l<=d.w+M.step || d.w>=M.wMax && d.h>=TankSize.H-M.top-M.step), `бак ${v} л: ${TankSize.text(d)}`); }
   assert.deepStrictEqual([TankSize.of(500).h, TankSize.of(500).w], [M.h1, M.w1], 'малый бак — начальные размеры');
+  // с воротами в торце — глубиной на всю ширину контейнера (уточнено 19.10)
+  { const p8=solve(blk, [big(1), ats, P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'8000 л' }] }), muf(1)]); chk(p8, 'бак 8000 л'); const t=p8.items.find(i=>i.tank);
+    const G=p8.fuel.gate; assert.ok(G.w>=t.ly && t.ly>=Math.min(p8.int[1]-2*M.back, G.w-2*StationLayout.PASS)-M.step && vin(t.lx, t.ly, t.h)>=8000, `бак 8000 л — на всю ширину (не шире ворот): ${t.lx} × ${t.ly} × ${t.h}, ворота ${G.w}`); }
   assert.ok(pt.fuel.gate && !pt.fuel.door && pt.fuel.fill.niche, 'отсек: ворота в торце, горловина в нише');
   assert.ok(pt.issues.some(i=>/Габариты бака — по расчётному объёму/.test(i.text) && /требует подтверждения/.test(i.text)), 'габариты бака — с пометкой');
   assert.ok(pt.lines.filter(l=>l.medium==='fuel').every(l=>l.z<=StationLayout.FUEL_Z), 'топливопровод по полу');
