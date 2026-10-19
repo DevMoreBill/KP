@@ -1883,4 +1883,25 @@ Check.run('Модули: ширина, состав модулей, стыки �
   for (const v of ['in', 'out']){ const sc=new StScene(two, { view:v }).build(); for (const { mesh } of sc.groups.values()) assert.ok(mesh.p.every(Number.isFinite), 'NaN в 3D ('+v+')'); }
 });
 
+// аккуратная компоновка (решение владельца 19.10, «делай всё предложенное»): лицевая линия ряда, равный шаг, ворота одной
+// высоты, жалюзи по общим линиям, магистраль на одной высоте, оценка аккуратности
+Check.run('Аккуратная компоновка: лицевая линия, шаг, ворота и жалюзи по линиям, магистраль, оценка', ()=>{
+  const two=solve(C('block'), [Object.assign({}, comp, { id:'t2', qty:2 }), dryer, Object.assign({}, rec, { id:'t3', qty:2 }), P('Трубопровод', {})]);
+  Check.plan(two, 'аккуратно');
+  // на общую линию — всё, что встаёт без ущерба (ресиверы к проходу не выдвигаются, если проход станет уже рекомендуемого)
+  const fl=two.items.filter(i=>i.mount==='floor'), F=new Set(fl.filter(i=>i.kind!=='receiver').map(i=>i.y)), R=new Set(fl.filter(i=>i.kind==='receiver').map(i=>i.y));
+  assert.ok(F.size===1 && R.size===1, 'лицевые линии: агрегаты '+[...F]+', ресиверы '+[...R]);
+  const three=solve(C('block'), [Object.assign({}, comp, { id:'t4', qty:3 }), dryer, rec]), C3=three.items.filter(i=>i.kind==='compressor').sort((a, b)=>a.x-b.x);
+  const g=C3.slice(1).map((c, k)=>c.x-C3[k].x-C3[k].lx); assert.ok(Math.max(...g)-Math.min(...g)<=1, 'равный шаг одинаковых: '+g);
+  for (const p of [two, three]){
+    for (const w of ['front', 'back']){ const H=new Set((p.doors||[]).filter(d=>d.kind!=='entry' && d.wall===w).map(d=>d.h)); assert.ok(H.size<=1, 'сервисные ворота одной высоты'); }
+    for (const l of p.lines||[]) assert.ok(Number.isFinite(l.z), 'магистраль — одна высота');
+    const S=new Map(); for (const l of (p.lines||[]).filter(q=>q.medium==='air')) for (const b of l.branches||[]){ const it=p.items.find(i=>StationLayout.key(i)===b.to); if (!it || b.role!=='out') continue; const k=it.kind+it.lx+'×'+it.ly; if (!S.has(k)) S.set(k, new Set()); S.get(k).add(b.z1); }
+    for (const [k, z] of S) assert.ok(z.size===1, 'выходы одинаковых аппаратов — на одной высоте: '+k);
+    assert.ok(p.tidy && p.tidy.score>=0 && p.tidy.score<=100 && p.tidy.good.length, 'оценка аккуратности'); }
+  const L=(two.vent && two.vent.louvers||[]).filter(q=>q.wall==='back' && q.kind==='out' && !q.leaf && !q.door);
+  if (L.length>1) assert.strictEqual(new Set(L.map(q=>q.z1)).size, 1, 'верх жалюзи выброса — одна линия');
+  assert.ok(two.tidy.score>=90, 'простая станция — аккуратная: '+JSON.stringify(two.tidy));
+});
+
 console.log(process.exitCode ? 'Компоновка станций: есть ошибки' : `Компоновка станций: проверок пройдено ${Check.n}`);

@@ -199,7 +199,7 @@ class LayoutValues:
     IDS = ('layout.matrix', 'norm.aisle', 'norm.aisle_tight', 'clear.kind')
     KINDS = ('compressor', 'dryer', 'receiver', 'filter', 'pump', 'dgu', 'cabinet', 'tank', 'other')
     GROUPS = ('gap', 'pair', 'wall', 'access', 'sides', 'rotate', 'gate', 'service', 'door', 'aisle', 'exits', 'exhaust',
-              'fit', 'modes', 'recv', 'cab', 'move', 'tank', 'conv', 'dgu', 'mods', 'muffler', 'shell', 'pick', 'pipe', 'pumps', 'grille', 'mass', 'light', 'fire', 'power')
+              'fit', 'modes', 'recv', 'cab', 'move', 'tank', 'conv', 'dgu', 'mods', 'look', 'muffler', 'shell', 'pick', 'pipe', 'pumps', 'grille', 'mass', 'light', 'fire', 'power')
     MAX_MM = 20000
     # пределы чисел матрицы (те же — в форме «Настроек», LayoutParams в station-layout.js; тест сверяет)
     SCALAR = {
@@ -279,6 +279,11 @@ class LayoutValues:
         'mods.post': (0, 600),
         'mods.wMin': (1500, 2550),
         'mods.wMax': (1500, 2550),
+        'look.align': (0, 1500),
+        'look.even': (0, 1),
+        'look.lines': (0, 1),
+        'look.modStep': (0, 5),
+        'look.tidy': (0, 1),
         'dgu.rad': (0, 1000),
         'dgu.pass': (200, 1500),
         'dgu.rot': (0, 1),

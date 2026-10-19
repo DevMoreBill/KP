@@ -99,7 +99,7 @@ class StationUi {
     const cutCab=plan.items.some(t=>t.mount==='wall' && t.wall==='front');   // стена прохода срезана
     const sch=this.scheme(plan);
     return `<div class="ed-sec stl">
-      <div class="stl-st ${head[0]}"><b>${head[1]}</b><span>${dims}${this.sizeNote(c, i)}</span>${plan.suggest ? this.fix(plan.suggest, i) : ''}${StationModsUi.btn(x, i, plan)}</div>
+      <div class="stl-st ${head[0]}"><b>${head[1]}</b><span>${dims}${this.sizeNote(c, i)}${StationTidy.line(plan)}${plan.tidy && (plan.tidy.good.length || plan.tidy.bad.length) ? ' '+tip(`<b>Аккуратность компоновки</b><br>${[...plan.tidy.good.map(t=>'✓ '+esc(t)), ...plan.tidy.bad.map(t=>'• '+esc(t))].join('<br>')}<br><span class="muted">Из вариантов равной площади программа берёт аккуратнейший («Настройки → Правила компоновки → Аккуратность»).</span>`) : ''}</span>${plan.suggest ? this.fix(plan.suggest, i) : ''}${StationModsUi.btn(x, i, plan)}</div>
       ${top.length || info.length ? `<details class="stl-air stl-sp stl-isb ${top.some(t=>t.level==='error') ? 'err' : top.length ? 'warn' : 'ok'}"${Spoiler.attr('iss:'+x.id, top.length>0)}><summary class="stl-air-h"><b>Замечания по компоновке</b>${top.length ? `<span class="stl-cnt">⚠ ${top.length}</span>` : '<span class="ok-t">✓ нет</span>'}</summary>
         ${top.length ? `<ul class="stl-iss">${top.map(li).join('')}</ul>` : ''}
         ${info.length ? `<details class="stl-inf"${Spoiler.attr('inf:'+x.id, !top.length && plan.level==='error')}><summary>Сведения о компоновке: ${info.length} — ворота, двери, ресиверы, отопление, вентиляция</summary><ul class="stl-iss">${info.map(li).join('')}</ul></details>` : ''}</details>` : ''}

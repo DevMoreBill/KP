@@ -950,6 +950,7 @@ class StationVent {
       const H=I.map(q=>this.hood(Q(q), q.w, q.h, q.z1, vmax)), a=Math.max(...H.map(h=>h.a));
       I.forEach((q, i)=>{ q.hood=this.hoodAt(H[i], a, Q(q)); });
       return { n:I.length, v:vmax, a, d:Math.max(...I.map(q=>q.hood.d)), over:I.filter(q=>q.hood.v>vmax+0.005).length }; };
+    if (!dgu) StationTidy.louvers(out.louvers, W, H, this.GAP);   // проёмы по общим линиям (аккуратность); у ДГУ приток — напротив каждой, по своим правилам
     // естественная тяга общей вытяжки помещения — у станций без компрессоров (у компрессорной помещение продувает вентилятор
     // компрессора, при остановке — вентилятор стоянки): от середины притока до середины выброса
     const zc=L=>L.reduce((s, q)=>s+(q.z0+q.z1)/2*q.w*q.h, 0)/Math.max(1, L.reduce((s, q)=>s+q.w*q.h, 0));

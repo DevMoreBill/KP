@@ -640,6 +640,21 @@ class StationDrawing {
   }
   /** станция из модулей на плане: стыки — штрихпунктирной с двумя точками, номера модулей М1…Мn в углу модуля, стойки
    *  каркаса на пересечениях стыков — зачернённым квадратом (размер модуля — в ТТ) */
+  /** точка выноски номера позиции на плане (аккуратность, п. 8): центр, а если там трубопровод (магистраль, отводы, выход) —
+   *  ближайшая точка внутри позиции не ближе 1,5 мм листа от труб */
+  anchor(it, X, YP){
+    const { ox, oy }=this, S=[];
+    for (const l of this.lines){ for (const [a, c] of StationLayout.runs(l)) S.push([X(ox+a), YP(oy+l.y), X(ox+c), YP(oy+l.y)]);
+      for (const b of l.branches||[]) S.push([X(ox+b.x), YP(oy+b.y0), X(ox+b.x), YP(oy+b.y1)]);
+      const op=l.out && StationLayout.outPath(l, this.p.int[1]); if (op) for (let k=1; k<op.pts.length; k++) S.push([X(ox+op.pts[k-1][0]), YP(oy+op.pts[k-1][1]), X(ox+op.pts[k][0]), YP(oy+op.pts[k][1])]); }
+    const d=(x, y)=>Math.min(Infinity, ...S.map(([a, b, c, e])=>{ const dx=c-a, dy=e-b, L2=dx*dx+dy*dy, t=L2 ? Math.max(0, Math.min(1, ((x-a)*dx+(y-b)*dy)/L2)) : 0; return Math.hypot(x-a-t*dx, y-b-t*dy); }));
+    const x0=X(ox+it.x), x1=X(ox+it.x+it.lx), y0=YP(oy+it.y+it.ly), y1=YP(oy+it.y), c={ x:(x0+x1)/2, y:(y0+y1)/2 };
+    if (!S.length || d(c.x, c.y)>=1.5) return c;
+    let best=c, bd=d(c.x, c.y);
+    for (const fx of [0.5, 0.35, 0.65, 0.2, 0.8]) for (const fy of [0.5, 0.65, 0.35, 0.8, 0.2]){ const x=x0+(x1-x0)*fx, y=y0+(y1-y0)*fy, q=d(x, y);
+      if (q>=1.5) return { x, y }; if (q>bd){ bd=q; best={ x, y }; } }
+    return best;
+  }
   /** фланец на виде сбоку (патрубок вдоль листа): две короткие черты поперёк трубы; dir 'v' — труба горизонтальна, 'h' — вертикальна */
   flangeMark(sh, x, y, dir){ const h=2.2, t=0.6;
     if (dir==='v'){ sh.line(x, y-h, x, y+h, 'main'); sh.line(x+t, y-h, x+t, y+h, 'main'); }
@@ -827,7 +842,7 @@ class StationDrawing {
     const ys=this.ext.length ? [] : [...new Set(this.outs.map(o=>o.y))].sort((a, c)=>c-a); let xo=xE+16+this.mkR*k;   // правее буквы линии сечения А–А
     for (const y of ys){ sh.dimV(YP(We), YP(oy+y), xo, n(We-oy-y), xR, xR+7.6); xo+=7; }
     // номера позиций: строкой под планом или колонкой справа (выноски не пересекаются)
-    const A=this.posPlan.map(it=>({ x:X(ox+it.x+it.lx/2), y:YP(oy+it.y+it.ly/2), n:it.pos }))
+    const A=this.posPlan.map(it=>({ ...this.anchor(it, X, YP), n:it.pos }))
       .concat(this.posRoof.map(m=>({ x:X(ox+m.x+m.lx*0.25), y:YP(oy+m.y+m.ly/2), n:m.pos })));
     if (this.pipePos){ const l=this.lines.find(q=>!q.header) || this.lines[0], r=l ? [...StationLayout.runs(l)].sort((a, c)=>(c[1]-c[0])-(a[1]-a[0]))[0] : null;
       if (r) A.push({ x:X(ox+(r[0]+r[1])/2), y:YP(oy+l.y), n:this.pipePos.pos }); }

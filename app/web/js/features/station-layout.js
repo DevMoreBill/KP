@@ -207,6 +207,96 @@ class StationGeo {
 }
 
 // ---------------------------------------------------------------- станция из нескольких модулей
+// Аккуратная компоновка (решение владельца 19.10, «делай всё предложенное», 8 пунктов): ряды — по одной лицевой линии,
+// одинаковые агрегаты — с равным шагом, проёмы — по общим линиям, магистраль — на одной высоте, конвекторы — с равным шагом,
+// модули — по группам оборудования и ровнее по массе, из равных по площади вариантов — аккуратнейший; числа — правило
+// layout.matrix, раздел look («Настройки → Правила компоновки → Аккуратность»)
+class StationTidy {
+  static get M(){ return StationMatrix.grp('look'); }
+  /** п. 2: одинаковые соседи в ряду (вид, длина, глубина, поворот) — с равными промежутками (сумма не меняется, не меньше
+   *  самого малого); items — из place(): {o, ri, x, lx, d} */
+  static even(items){
+    if (!this.M.even) return;
+    const same=(a, b)=>a.ri===b.ri && a.o.e.kind===b.o.e.kind && a.lx===b.lx && a.d===b.d && !!a.o.rot===!!b.o.rot && !a.o.pair && !b.o.pair && !a.o.end && !b.o.end;
+    for (const ri of [...new Set(items.map(i=>i.ri))]){ const R=items.filter(i=>i.ri===ri).sort((p, q)=>p.x-q.x);
+      for (let a=0; a<R.length;){ let b=a; while (b+1<R.length && same(R[b], R[b+1])) b++;
+        if (b-a>=2){ const g=[]; for (let k=a; k<b; k++) g.push(R[k+1].x-R[k].x-R[k].lx); const avg=Math.floor(g.reduce((s, v)=>s+v, 0)/g.length);
+          for (let k=a+1; k<=b; k++) R[k].x=R[k-1].x+R[k-1].lx+avg; }
+        a=b+1; } }
+  }
+  /** п. 7: оценка аккуратности 0…100 и пояснения: {score, good:[…], bad:[…]}. r — расстановка (items, doors, rows) или
+   *  готовый план (с жалюзи и трубопроводом); geo — геометрия (модули) */
+  static score(r, geo){
+    const n=StationLayout.n, good=[], bad=[]; let pen=0;
+    const fl=(r.items||[]).filter(i=>i.mount==='floor' && !i.cross && !i.pair && !i.tank && i.kind!=='dgu');
+    // лицевые линии рядов
+    const rows=new Map(); for (const i of fl){ const k=i.row; if (!rows.has(k)) rows.set(k, new Set()); rows.get(k).add(Math.round((i.face===1 ? i.y+i.ly : i.y)/10)); }
+    const lines=[...rows.values()].reduce((s, S)=>s+S.size-1, 0);
+    if (fl.length>1){ if (lines) { pen+=Math.min(30, lines*8); bad.push(`лицевых линий в ряду — ${lines+rows.size} (агрегаты разной глубины у стены)`); } else good.push('ряды — по одной лицевой линии'); }
+    // шаг одинаковых
+    let uneven=0, runs=0; for (const k of rows.keys()){ const R=fl.filter(i=>i.row===k).sort((a, b)=>a.x-b.x);
+      for (let a=0; a<R.length;){ let b=a; while (b+1<R.length && R[b+1].kind===R[a].kind && R[b+1].lx===R[a].lx && R[b+1].ly===R[a].ly) b++;
+        if (b-a>=2){ runs++; const g=[]; for (let q=a; q<b; q++) g.push(R[q+1].x-R[q].x-R[q].lx); if (Math.max(...g)-Math.min(...g)>10) uneven++; }
+        a=b+1; } }
+    if (runs){ if (uneven){ pen+=uneven*6; bad.push('промежутки между одинаковыми агрегатами разные'); } else good.push('одинаковые агрегаты — с равным шагом'); }
+    // ворота одной высоты
+    for (const w of ['front', 'back']){ const H=new Set((r.doors||[]).filter(d=>d.kind!=='entry' && d.wall===w).map(d=>d.h)); if (H.size>1){ pen+=5*(H.size-1); bad.push('сервисные ворота на одной стене — разной высоты'); } }
+    // жалюзи по линиям (готовый план)
+    const L=(r.vent && r.vent.louvers)||[];
+    if (L.length){ let off=0; for (const w of ['front', 'back', 'left', 'right']) for (const [kind, key] of [['out', 'z1'], ['in', 'z0']]){ const S=new Set(L.filter(q=>q.wall===w && q.kind===kind && !q.leaf && !q.door).map(q=>q[key])); if (S.size>1) off+=S.size-1; }
+      if (off){ pen+=off*4; bad.push('жалюзи на стене — не по одной линии (мешают ворота, двери или шкафы)'); } else good.push('жалюзи — по общим линиям'); }
+    // магистраль на одной высоте
+    const air=(r.lines||[]).filter(l=>l.medium==='air' && !l.header && !l.par);
+    if (air.length) good.push(`магистраль — на одной высоте ${n(air[0].z)} мм`);
+    // модули: группы и масса
+    const md=geo && geo.mods; if (md && md.Lm){ const plan={ geo, items:r.items, int:geo.int||r.int }, C=StationMods.content(plan), kindOf=new Map((r.items||[]).map(i=>[i.pos, i.kind]));
+      const grp=k=>k==='compressor' || k==='dgu' || k==='pump' ? 'a' : k==='dryer' || k==='filter' || k==='receiver' ? 'b' : '';
+      const mixed=[...C.values()].filter(Lq=>new Set(Lq.map(q=>grp(kindOf.get(q.pos))).filter(Boolean)).size>1).length;
+      if (mixed){ pen+=mixed*5; bad.push(`модулей с агрегатами и подготовкой воздуха вместе — ${mixed}`); } else if (C.size>1) good.push('стыки — между группами оборудования');
+      const ox=(geo.ext[0]-geo.int[0])/2, oy=(geo.ext[1]-geo.int[1])/2, M=md.cells.map(([i, j])=>(r.items||[]).filter(q=>q.mass>0 && Math.floor((ox+q.x+q.lx/2)/md.Lm)===i && Math.floor((oy+q.y+q.ly/2)/md.Wm)===j).reduce((s, q)=>s+q.mass, 0));
+      const Mn=M.filter(v=>v>0), hi=Math.max(0, ...Mn), lo=Mn.length ? Math.min(...Mn) : 0; if (hi>0 && Mn.length>1){ const k=lo>0 ? hi/lo : 3; if (k>2){ pen+=Math.min(15, Math.round((k-2)*5)); bad.push(`масса модулей неравная (самый тяжёлый — в ${k>=3 ? 'три и более' : String(Math.round(k*10)/10).replace('.', ',')} раза тяжелее лёгкого)`); } } }
+    return { score:Math.max(0, 100-pen), good, bad };
+  }
+  /** п. 7: строка в «Компоновке»: «Аккуратность 92 из 100» и пояснение */
+  static line(plan){
+    const t=plan && plan.tidy; if (!t) return '';
+    return ` · аккуратность ${t.score} из 100`;
+  }
+  /** п. 3: сервисные ворота на одной стене — одной высоты (по самым высоким) */
+  static doors(D){
+    if (!this.M.lines || !D) return;
+    for (const w of ['front', 'back']){ const S=D.filter(d=>d.kind!=='entry' && d.wall===w); if (S.length<2) continue; const h=Math.max(...S.map(d=>d.h)); for (const d of S) d.h=h; }
+  }
+  /** п. 3: жалюзи на стене — по общим линиям: выброс — по верху самого высокого, приток — по низу самого низкого (если место
+   *  свободно); W — занятость стен (StWalls), L — жалюзи; поставленные в створки и двери-жалюзи — как есть */
+  static louvers(L, W, H, gap){
+    if (!this.M.lines) return;
+    const own=q=>[q.u0-90-gap, q.u1+260+gap, q.z0-90, q.z1+90], drop=(w, b)=>{ const B=W.B[w], i=B.findIndex(x=>x.every((v, k)=>v===b[k])); if (i>=0) B.splice(i, 1); return i>=0; };
+    for (const w of ['front', 'back', 'left', 'right']) for (const [kind, top] of [['out', true], ['in', false]]){
+      const S=L.filter(q=>q.wall===w && q.kind===kind && !q.leaf && !q.door); if (S.length<2) continue;   // с воздуховодом компрессора — опора линии, не двигаются
+      const t=top ? Math.max(...S.map(q=>q.z1)) : Math.min(...S.map(q=>q.z0));
+      for (const q of S.filter(q=>!q.duct)){ const dz=top ? t-q.z1 : t-q.z0; if (!dz || q.z1+dz>H-100 || q.z0+dz<0) continue;
+        const b=own(q), had=drop(w, b), n=[b[0], b[1], b[2]+dz, b[3]+dz];
+        if (W.free(w, q.u0-90, q.u1+90, q.z0+dz-90, q.z1+dz+90, false)){ q.z0+=dz; q.z1+=dz; W.B[w].push(n); } else if (had) W.B[w].push(b); } }
+  }
+  /** п. 1: лицевая линия ряда (сторона прохода) — общая, где это ничего не ухудшает: к стене агрегат отходит, пока сзади
+   *  остаётся рекомендуемый отступ; к проходу выдвигается, только если проход остаётся не уже рекомендуемого aRec (или на
+   *  ≤ 50 мм); сдвиг — не больше look.align. Линия — та из лицевых линий агрегатов, на которую встаёт больше всего */
+  static facade(items, W, rows, aRec){
+    const lim=this.M.align; if (!(lim>0)) return;
+    const eq=items.filter(i=>!i.o.e.slot && !i.o.e.cross && !i.o.end && !i.o.pair && i.o.e.kind!=='dgu');
+    for (const ri of [...new Set(eq.map(i=>i.ri))]){ const R=eq.filter(i=>i.ri===ri); if (R.length<2) continue;
+      const front=R[0].face===1, F=it=>front ? it.y+it.d : it.y;   // передний ряд (два ряда): лицом к проходу — y + глубина
+      // может ли агрегат встать лицом на линию t: к стене — до рекомендуемого отступа сзади, к проходу — проход не уже aRec
+      const can=(it, t)=>{ const dv=t-F(it), toWall=front ? dv<0 : dv>0; if (Math.abs(dv)>lim) return false; if (!dv) return true;
+        if (toWall) return (front ? t-it.d : W-t-it.d)>=it.o.e.c.back[0];
+        return Math.abs(dv)<=50 || rows===2 || (front ? true : t>=aRec); };
+      let best=null; for (const t of [...new Set(R.map(F))]){ const n=R.filter(it=>can(it, t)).length; if (!best || n>best.n) best={ t, n }; }
+      if (!best || best.n<2) continue;
+      for (const it of R) if (can(it, best.t)){ if (front){ it.y=best.t-it.d; it.back=it.y; } else { it.y=best.t; it.back=W-best.t-it.d; if (rows!==2) it.aisle=best.t; } } }
+  }
+}
+
 // Решение владельца 19.10: крупное оборудование — в станции из нескольких блок-модулей (до mods.max, больше — по запросу),
 // модули стыкуются на объекте бок о бок и торец к торцу в одно помещение (стыковые стены не ставятся — временные щиты на
 // перевозку); раскладка — на сетке, выбирает менеджер (кнопка «Модули…» в «Компоновке», всегда с подтверждением). Модули
@@ -353,6 +443,7 @@ class StationMatrix {
     muffler:{ gap:200, outlet:300 },
     // станция из модулей (решение владельца 19.10): не больше max модулей (больше — по запросу), стойка каркаса на стыке, мм
     mods:{ max:9, post:200, wMin:2448, wMax:2550 },
+    look:{ align:600, even:1, lines:1, modStep:2, tidy:1 },
     // ниже — прочие числа станции: все значения и умолчания правятся в «Настройках» (решение ПНЕВМОТЕХ)
     shell:{ ins:100, seaLining:15, seaFloor:50, blockWall:20, blockFloor:150, blockRoof:60, weldWall:10, weldFloor:160, weldRoof:60, northWall:20, northFloor:200, northRoof:80, tambour:1200, gable:8, mono:5 },
     pick:{ max:4, over:30, recvFit:300, dryerFit:100, recvFree:6, recvAny:4, oneSup:10 },
@@ -675,6 +766,12 @@ class LayoutParams {
       { g:'mods', k:'post', t:'Стойка каркаса на пересечении стыков внутри помещения', u:'мм', lo:0, hi:600, h:'Только у раскладок в два и больше ряда по длине и ширине: оборудование её обходит.' },
       { g:'mods', k:'wMin', t:'Ширина модуля — не меньше', u:'мм', lo:1500, hi:2550, h:'Решение владельца 19.10: модули одинаковой ширины от 2 448 до 2 550 мм (не шире габарита перевозки); длина модуля — до наибольшей длины перевозки.' },
       { g:'mods', k:'wMax', t:'Ширина модуля — не больше', u:'мм', lo:1500, hi:2550 }] },
+    { id:'look', title:'Аккуратность компоновки', t:'Решение владельца (19.10): ряды — по одной лицевой линии, одинаковые агрегаты — с равным шагом, проёмы — по общим линиям, из равных по площади вариантов — аккуратнейший.', f:[
+      { g:'look', k:'align', t:'Лицевая линия ряда: агрегат отступает от стены дальше — не больше', u:'мм', lo:0, hi:1500, h:'Агрегаты ряда встают лицом к проходу по одной линии, если для этого отступить от стены не больше этого числа (0 — не выравнивать).' },
+      { g:'look', k:'even', t:'Одинаковые агрегаты подряд', opt:[[1, 'с равными промежутками'], [0, 'как вышло']] },
+      { g:'look', k:'lines', t:'Проёмы на стене', opt:[[1, 'по общим линиям (верх выброса, низ притока, ворота одной высоты)'], [0, 'как вышло']] },
+      { g:'look', k:'modStep', t:'Станция из модулей: модуль длиннее ради стыка между группами оборудования — не больше', u:'шагов по 100 мм', lo:0, hi:5, h:'Стык — между компрессорами и подготовкой воздуха, массы модулей ближе; 0 — модуль наименьшей длины.' },
+      { g:'look', k:'tidy', t:'Из вариантов равной площади', opt:[[1, 'брать аккуратнейший'], [0, 'первый найденный']] }] },
     { id:'muffler', title:'Глушитель ДГУ на крыше', t:'Над ДГУ; выхлоп — в сторону, не вверх; съёмный для перевозки.', f:[
       { g:'muffler', k:'gap', t:'Опоры: от крыши до глушителя', u:'мм', lo:0, hi:1000 },
       { g:'muffler', k:'outlet', t:'Вывод выхлопа вбок', u:'мм', lo:0, hi:1500 }] },
@@ -1654,9 +1751,9 @@ class StationHeat {
       if (b0-C.edge>a) free.push([a, b0-C.edge]);
       for (const [p, q] of free){ const k=Math.floor((q-p+C.gap)/(len+C.gap)); if (k<1) continue;
         const step=(q-p-k*len)/(k+1);
-        for (let j=0; j<k; j++){ const u=Math.round(p+step*(j+1)+j*len);
-          out.push(w==='front' ? { wall:w, x:u, y:0, lx:len, ly:C.d } : w==='back' ? { wall:w, x:u, y:W-C.d, lx:len, ly:C.d }
-            : w==='left' ? { wall:w, x:x0, y:u, lx:C.d, ly:len } : { wall:w, x:L-C.d, y:u, lx:C.d, ly:len }); } } }
+        for (let j=0; j<k; j++){ const u=Math.round(p+step*(j+1)+j*len), seg={ seg:w+':'+p, p, q };
+          out.push(Object.assign(w==='front' ? { wall:w, x:u, y:0, lx:len, ly:C.d } : w==='back' ? { wall:w, x:u, y:W-C.d, lx:len, ly:C.d }
+            : w==='left' ? { wall:w, x:x0, y:u, lx:C.d, ly:len } : { wall:w, x:L-C.d, y:u, lx:C.d, ly:len }, seg)); } } }
     return out.map(o=>Object.assign(o, { z:C.z, h:C.h, cx:o.x+o.lx/2, cy:o.y+o.ly/2 }));
   }
   /** n мест из свободных: первое — ближе ко входу (холодный воздух), следующие — дальше всего от уже выбранных */
@@ -1670,7 +1767,14 @@ class StationHeat {
     while (got.length<n){ let best=null, bd=-1;
       for (const s of S){ if (got.includes(s)) continue; const q=Math.min(...got.map(t=>Math.hypot(s.cx-t.cx, s.cy-t.cy))); if (q>bd){ bd=q; best=s; } }
       if (!best) break; got.push(best); }
-    return got.map(s=>({ kind:'heater', wall:s.wall, x:s.x, y:s.y, z:s.z, lx:s.lx, ly:s.ly, h:s.h, kw }));
+    const H=got.map(s=>({ kind:'heater', wall:s.wall, x:s.x, y:s.y, z:s.z, lx:s.lx, ly:s.ly, h:s.h, kw, seg:s.seg, p:s.p, q:s.q }));
+    // аккуратность (п. 5): несколько конвекторов на одном свободном участке стены — с равным шагом по всему участку
+    if (StationTidy.M.lines && !(plan.items||[]).some(i=>i.kind==='dgu')) for (const g of new Set(H.map(h=>h.seg))){   // у ДГУ — места под приток напротив каждой
+ const G=H.filter(h=>h.seg===g); if (G.length<2 || !G[0].seg) continue;
+      const along=G[0].wall==='front' || G[0].wall==='back', len=along ? G[0].lx : G[0].ly, k=G.length, st=(G[0].q-G[0].p-k*len)/(k+1);
+      G.sort((a, b)=>(along ? a.x-b.x : a.y-b.y)).forEach((h, j)=>{ const u=Math.round(G[0].p+st*(j+1)+j*len); if (along) h.x=u; else h.y=u; }); }
+    for (const h of H){ delete h.seg; delete h.p; delete h.q; }
+    return H;
   }
   static kw(v){ return String(Math.round(v*10)/10).replace('.', ','); }
   /** сведения для окна «Компоновка» и требований */
@@ -1813,6 +1917,7 @@ class StationLayout {
     if (plan.level!=='error' && plan.geo && plan.geo.ext && plan.int){ plan.heat=StationHeat.calc(plan); plan.fire=StationFire.calc(plan);
       plan.light=StationLight.calc(plan); plan.sockets=StationSockets.calc(plan); plan.power=StationPower.calc(plan); plan.pipe=StationPipe.calc(plan); plan.mass=StationMass.calc(plan); plan.issues.push(...StationMass.issues(plan.mass));
       plan.vent=StationVent.calc(plan);   // жалюзи: размеры по расходу воздуха, места — мимо дверей, шкафов, конвекторов и знаков
+      plan.tidy=StationTidy.score(plan, plan.geo);   // аккуратность компоновки (оценка и пояснения)
       if (plan.fire.low) plan.issues.push({ level:'info', text:`Высота помещения ${StationLayout.n(plan.int[2])} мм — ниже паспортной высоты установки модулей «Буран-2,5» (2,5–3,5 м): зона тушения — по диаграмме распыла изготовителя при этой высоте (согласовать с проектировщиком пожаротушения).` });
       const pq=plan.pipe; if (pq && pq.small) plan.issues.push({ level:'warn', text:`Трубопровод DN ${pq.set} меньше расчётного DN ${pq.dn} (${pq.why}): скорость больше ${String(pq.lines[0].v).replace('.', ',')} м/с — потери давления и шум. Укажите DN ${pq.dn} в составе станции.` }); }
     if (plan.level!=='error') StationNorms.check(plan, this.eq);
@@ -2228,6 +2333,7 @@ class StationLayout {
         items.push({ o, ri, x, lx:lenX(o), d:depth(o) }); if (i>0) minGap=Math.min(minGap, gaps[i]);
         x+=lenX(o)+gaps[i+1]; });
     });
+    StationTidy.even(items);
     // поперёк: задний отступ и проход. Сначала задний отступ до рекомендуемого (иначе агрегат «плотно к стене» —
     // дорогие сервисные ворота), если проход при этом не уже допустимого; затем проход до рекомендуемого
     const back=it=>it.o.e.c.back;
@@ -2249,6 +2355,7 @@ class StationLayout {
       for (const it of B){ it.y=W-it.back-it.d; it.face=-1; it.aisle=free; }
       for (const it of A){ it.y=it.back; it.face=1; it.aisle=free; }
     }
+    StationTidy.facade(items, W, rows, aRec);
     const eq=items.filter(i=>!i.o.e.slot && !i.o.e.cross && !i.o.end), aisleW=eq.length ? Math.min(...eq.map(i=>i.aisle)) : W, dgu=eq.find(i=>i.o.e.kind==='dgu'), other=eq.filter(i=>i.o.e.kind!=='dgu');
     const aisleO=other.length ? Math.min(...other.map(i=>i.aisle)) : Infinity;
     if (aisleO<aRec) iss.push({ level:'warn', text:`Проход обслуживания ${n(aisleO)} мм — меньше рекомендуемых ${n(aRec)} мм (допустимо от ${n(this.aisle[1])} мм).` });
@@ -2821,7 +2928,7 @@ class StationLayout {
     far=far.filter(b=>!this.toGate(r, geo, b, sides));
     far=far.map(b=>{ const w=Math.max(0, ...sides.map(s=>this.pathTo(b.it, s, r, geo)).filter(Number.isFinite));
       return Object.assign({}, b, { why:b.why.replace(/, монтаж и демонтаж — через ворота в торце$/, '')+(sides.length ? `, по проходу к торцу не провезти (${w ? `проход ${n(w)} мм, ` : ''}агрегат — ${n(b.narrow)} мм)` : avoid.length ? ', торцы заняты шкафами на стене' : ', торцы заняты (отсек бака, дверь-жалюзи ДГУ, вход оператора)') }); });
-    r.side=[...rear, ...far]; r.doors=this.sideDoors(r.side, r, geo);
+    r.side=[...rear, ...far]; r.doors=this.sideDoors(r.side, r, geo); StationTidy.doors(r.doors);
     this.regate(r, geo);
     this.second(r, geo);
   }
@@ -3217,8 +3324,11 @@ class StationLayout {
           return r; };
         // шкафы заняли торцы, и демонтаж — через сервисные ворота в боковой стене (дорого): сначала — длиннее или шире (площадь —
         // до 1,2 от первого варианта), чтобы шкафы встали на стену прохода, а ворота — в торец; не вышло — первый вариант
-        let alt=null;
-        for (const c of cand){ if (alt && c.a>alt.a*1.2) break; const key=c.Lx+'×'+c.Wx+(c.m.ends ? 'E' : ''); if (seen.has(key)) continue; seen.add(key);
+        let alt=null, pick=null;   // pick — аккуратнейший из равных по площади (у модулей — и чуть длиннее, look.modStep)
+        const T=StationTidy.M, extra=MD ? T.modStep*G.STEP*ka : 0;
+        const take=(r, g2, Wx, Lx)=>{ const sc=StationTidy.score(r, g2).score, area=Lx*Wx;
+          if (!pick) pick={ r, g2, Wx, sc, area, Lx, lim:Lx+extra }; else if (sc>pick.sc+2 && area<=pick.area+extra*Wx) Object.assign(pick, { r, g2, Wx, sc, Lx }); };
+        for (const c of cand){ if (alt && c.a>alt.a*1.2) break; if (pick && (!T.tidy || c.Lx*c.Wx>pick.area+extra*c.Wx)) break; const key=c.Lx+'×'+c.Wx+(c.m.ends ? 'E' : ''); if (seen.has(key)) continue; seen.add(key);
           for (let Lx=fixL || c.Lx; Lx<=(fixL || Math.min(StationLayout.MAX_L*ka, c.Lx+(MD ? 1500*ka+3000 : 1500))); Lx+=G.STEP*ka){   // у модулей — дальше: стойку стыка обойти   // шкафам и фильтрам может понадобиться место в ряду
             let g2=Object.assign({}, geo, { auto:false, road:true, ext:[Lx, c.Wx, Hx], ...(MD ? { mods:{ ...MD, Lm:Lx/ka, Wm:c.Wx/kb } } : {}) }); g2.int=G.inner(geo.type, g2.ext, t);
             let r=fitAt(g2, c.m); if (r.level==='error') continue;
@@ -3237,8 +3347,11 @@ class StationLayout {
             if ((st==='gate' || st==='acc' || close) && w.some(x=>/не подойти/.test(x))) continue;   // вплотную — только если к ресиверам и фильтрам остаётся подход
             if (ll===0 && w.some(x=>/^Промежутки|^Отступы/.test(x))) continue;      // промежутки — длиннее (место шкафу или фильтру в ряду)
             if ((r.doors||[]).some(d=>(d.why||[]).some(x=>/торцы заняты шкафами/.test(x)))){ alt=alt || { r, g2, Wx:c.Wx, a:c.a }; continue; }
-            return done(r, g2, c.Wx);
+            if (!T.tidy && !extra) return done(r, g2, c.Wx);
+            take(r, g2, c.Wx, Lx);
+            if (!extra || Lx>=pick.lim) break;   // у модулей — ещё до look.modStep шагов длиннее: стык между группами, массы ровнее
           } }
+        if (pick) return done(pick.r, pick.g2, pick.Wx);
         return alt ? done(alt.r, alt.g2, alt.Wx) : null; }); }
       finally{ this.closeAll=false; this.midNeed=false; }
       if (got) return got; }
