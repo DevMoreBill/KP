@@ -42,6 +42,15 @@ class DealLogisticsJs(unittest.TestCase):
         self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-6000:])
 
 
+    def test_debounce(self):
+        """Задержка ввода — один класс Debounce (tests/js/debounce.js)."""
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('нет Node.js')
+        r = subprocess.run([node, os.path.join(REPO, 'tests', 'js', 'debounce.js')], cwd=REPO, capture_output=True,
+                           text=True, encoding='utf-8', errors='replace', timeout=120)
+        self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-6000:])
+
 class LtlLimitsServer(unittest.TestCase):
     def setUp(self):
         from storage import Store

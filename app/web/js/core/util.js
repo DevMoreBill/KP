@@ -108,6 +108,15 @@ class Modal {
 /** Второй щелчок двойного щелчка, попавший в окно, которое открыл первый щелчок, — не нажатие: «Каталог» в шапке двойным
  *  щелчком открывал ещё и «Новую позицию» (кнопка «+ Позиция» окна — на месте кнопки шапки). Окна, открытые до первого
  *  щелчка, работают как прежде (двойной щелчок по строке каталога и т. п.); клавиатура не затрагивается. */
+/** задержка ввода — одна на всю программу (решение 19.10, п. 7 «что ещё»): q=new Debounce(мс); q.run(fn) — fn через мс после
+ *  последнего вызова (повторный вызов откладывает); q.run(fn, мс) — своя задержка; q.cancel() — отменить; q.pending — ждёт */
+class Debounce {
+  constructor(ms=200){ this.ms=ms; this.t=null; }
+  run(fn, ms){ clearTimeout(this.t); this.t=setTimeout(()=>{ this.t=null; fn(); }, ms ?? this.ms); return this; }
+  cancel(){ clearTimeout(this.t); this.t=null; return this; }
+  get pending(){ return this.t!=null; }
+}
+
 class DblClickGuard {
   static before=new Set();
   static init(){

@@ -309,8 +309,8 @@ class ApiKeys {
 
 document.addEventListener('input', e=>{ const t=e.target; if (t.dataset && t.dataset.p==='clientInn'){ const v=t.value.replace(/\D/g,''); t.classList.toggle('bad', !!v && !validInn(v) && (v.length>=10)); if ((v.length===10||v.length===12) && validInn(v) && v!==S._lastInn){ S._lastInn=v; setTimeout(partyFind,50); } } });
 
-let clFindSeq=0, clFindT=0;
-document.addEventListener('input', e=>{ if (e.target.id!=='clFind') return; clearTimeout(clFindT); const inp=e.target; clFindT=setTimeout(()=>clFindRun(inp), 160); });
+let clFindSeq=0; const clFindT=new Debounce(160);
+document.addEventListener('input', e=>{ if (e.target.id!=='clFind') return; const inp=e.target; clFindT.run(()=>clFindRun(inp)); });
 async function clFindRun(inp){ const raw=inp.value.trim(), q=norm(raw), L=$('#clList'), seq=++clFindSeq;
   const res=q?await clientsFind(raw):[];
   if (seq!==clFindSeq || !L) return;      // пока ждали ответ, ввели ещё буквы

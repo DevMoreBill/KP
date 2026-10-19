@@ -183,7 +183,7 @@ class Cabinet {
       if (t.id==='cabClosed'){ CabDeals.closed=t.checked; return this.render(); }
       if (t.id==='cabBxNew'){ CabDeals.bxOnly=t.checked; return this.render(); }
       if (t.id==='cabSort'){ CabDeals.sort=t.value; try{ localStorage.setItem('kp.cab.sort', t.value); }catch(_){} return this.render(); } });
-    d.addEventListener('input', e=>{ const t=e.target; if (t.id==='cabQ'){ this.q=t.value; clearTimeout(this._qt); this._qt=setTimeout(()=>{ const pos=t.selectionStart; this.render(); const n=this.dlg().querySelector('#cabQ'); if (n){ n.focus(); try{ n.setSelectionRange(pos, pos); }catch(_){} } }, 250); } });
+    d.addEventListener('input', e=>{ const t=e.target; if (t.id==='cabQ'){ this.q=t.value; (this._qt=this._qt||new Debounce(250)).run(()=>{ const pos=t.selectionStart; this.render(); const n=this.dlg().querySelector('#cabQ'); if (n){ n.focus(); try{ n.setSelectionRange(pos, pos); }catch(_){} } }); } });
     CrmTask.bind(d, ()=>this.reload());
   }
   /** поиск: сделка подходит под строку (название, клиент, ИНН, номер, КП) */

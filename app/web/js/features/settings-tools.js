@@ -62,8 +62,8 @@ class SettingsSearch {
   static html(){ return `<div class="st-find"><input type="search" id="stFind" placeholder="Найти настройку…" autocomplete="off" aria-label="Поиск по настройкам" data-nodirty></div>`; }
 
   static bind(d){
-    const inp=d.querySelector('#stFind'); if (!inp) return; this._idx=null; let t=0;
-    inp.oninput=()=>{ clearTimeout(t); t=setTimeout(()=>this.show(inp.value), 120); };
+    const inp=d.querySelector('#stFind'); if (!inp) return; this._idx=null; const t=new Debounce(120);
+    inp.oninput=()=>t.run(()=>this.show(inp.value));
     inp.onkeydown=e=>{ if (e.key==='Escape' && inp.value){ e.preventDefault(); e.stopPropagation(); inp.value=''; this.show(''); }
       if (e.key==='Enter'){ e.preventDefault(); d.querySelector('#stFindRes [data-sfi]')?.click(); } };
   }

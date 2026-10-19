@@ -77,8 +77,8 @@ class TextsPanel {
     try{ await api('/api/uitexts', {method:'PUT', headers:{'Content-Type':'application/json; charset=utf-8'}, body:JSON.stringify(map)}); }
     catch(e){ UIT.map=old; return toast('Не сохранено: '+(e.message||e)); }
     uitIndex(); uitApply(document.body, back); uitApply(document.body); toast(msg); this.render(); }
-  bind(){ const m=this.m; let qT=0;
-    m.oninput=e=>{ if (e.target.id==='txQ'){ clearTimeout(qT); qT=setTimeout(()=>{ this.q=e.target.value; this.render(); const q=$('#txQ'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 200); return; }
+  bind(){ const m=this.m, qT=new Debounce(200);
+    m.oninput=e=>{ if (e.target.id==='txQ'){ const v=e.target.value; qT.run(()=>{ this.q=v; this.render(); const q=$('#txQ'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }); return; }
       const r=e.target.closest('.tx-r'); if (r) r.querySelector('[data-txsave]').disabled=false; };
     m.onclick=e=>{ const t=e.target;
       if (t.closest('[data-txon]')){ $('#setdlg')?.close(); return uitToggle(true); }

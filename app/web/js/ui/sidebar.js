@@ -36,7 +36,7 @@ class SidePanel {
     const t=totalsS(), pr=problems(), cs=curSh(kpCur());
     const kn=$('#kpno'); if (kn) kn.textContent = S.number ? 'КП № '+S.number : '';
     this.mbar(t, pr, cs);
-    morph($('#side'), `<h2 class="side-h">Итог и сохранение</h2>${this.total(t, cs)}${this.actions(pr)}${dealAllowed()?DealSide.html():''}`);
+    morph($('#side'), `<h2 class="side-h">Итог и сохранение</h2>${this.total(t, cs)}${this.actions(pr)}${DealDefaults.allowed()?DealSide.html():''}`);
   }
 
   static total(t, cs){

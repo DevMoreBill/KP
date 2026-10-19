@@ -225,6 +225,8 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.91.0** (14.10) — доставка из Китая до границы РФ, только админка (`china_freight.ChinaFreight`, kv `chinaRates`, `/api/logistics/china`, клиент `ChinaFreightTab`): ATI.SU по направлениям из Китая + ставки экспедиторов в валюте по курсу ЦБ.
 - **3.92.0** (16.10) — ЖелДорЭкспедиция (`logistics_api.Jde`): открытый расчёт без ключа, сборный и крупногабаритный груз (до 20 т, надбавка за негабарит по размерам места), забор и доставка; крупногабарит — только ЖДЭ из сборных.
 - **3.93.0** (16.10) — справочные документы к КП (`kp_files.KpFiles`, таблица `kp_files`, `data/kp_files`, клиент `KpFilesPanel`, вложения письма) и окно входа (`LoginGuard`, `UserSession`, `LoginInfo`, `LoginForm`, `AuthScreen`, `AdminLogin`).
+- **3.105.1** (19.10) — deal.js в классах (`DealDefaults`, `DealCal`, `DealState`, `DealSuppliers`, `DealFmt`, `DealView`,
+  `DealConds`, `DealRows`, `DealWin`); `Debounce` (core/util.js) — задержка ввода поиска; `el.eta` — источник ГОСТ IEC 60034-30-1.
 - **3.105.0** (19.10) — окраска станции: `StationPaint` (части `p.paint`, буклет `p.paintBook/paintFile`, рисунки `p.art`),
   `PaintView` (окна в «Крыша, пол, окраска»), `StOutfit.arts`, наклейка `art` (`StDecal`), строка КП «Окраска», ТЗ — по частям и
   приложения; `/api/img` — PDF только как буклет.
@@ -247,7 +249,7 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.101.3** (17.10) — доска: «Новые из Битрикс24», порядок карточек; «Не отправлено» + «Повторить»; EXE только по команде (`build` — `workflow_dispatch`).
 - **3.101.2** (17.10) — габариты в три окошка: `DimInput` (core/util.js), `DimRow` (item-editor.js), контейнер станции.
 - **3.101.1** (17.10) — «Б24 ↗» на доске (`bxUrl`), `bxNew` + `DealBook.flag`, `CrmController.mailed` (дело «Письмо»).
-- **3.101.0** (17.10) — связь с Битрикс24: `bitrix.py` (`BitrixSync`, очередь, опрос, `BitrixDesk`), миграция `2027-11-bitrix`, `settings-bitrix.js`, `KpLines`, `dealSummary().full`, `EconXlsx`.
+- **3.101.0** (17.10) — связь с Битрикс24: `bitrix.py` (`BitrixSync`, очередь, опрос, `BitrixDesk`), миграция `2027-11-bitrix`, `settings-bitrix.js`, `KpLines`, `DealState.summary().full`, `EconXlsx`.
 - **3.100.0** (17.10) — кабинет менеджера (CRM): сервер `crm.py` (`Stages`, `DealBook`, `TaskBook`, `CrmBoard`), миграция `2027-10-crm` (`deals`, `deal_kp`, `crm_tasks`), `CrmController`; клиент `cabinet.js`, `cabinet-board.js`, `deal-card.js`, `DealPlan` (deal.js), `cabinet.css`; «Мой день» → вкладка «Сегодня».
 - **3.99.7** (17.10) — «Настройки» в 4 разделах (`AdminNav.HOME`, `parts`, `ALIAS`), «Товары» = окно каталога (`GoodsTab`), `TrashTab`, `ModerationView` (поля «было → стало», приём по полям), `CatalogExportDlg`; сервер `catalog_admin.py` (`ModerationDesk`, `TrashBin`, `CatalogExport`, `ClientsExport`, `CatalogDesk`, `power`), права `catDelete`/`catSelfMod`/`export`; `feeds.FeedRules` (отбор, поля, план); `data_bundle.SettingsFile` (все настройки в файл).
 - **3.99.6** (17.10) — ставки экспедиторов Excel-файлом (шаблон и загрузка, `ChinaRateBook`) и «Запрос экспедитору».

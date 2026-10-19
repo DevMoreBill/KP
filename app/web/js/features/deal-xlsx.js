@@ -5,7 +5,7 @@
 'use strict';
 
 async function dealXlsx(o={}){
-  const d=dlDeal(), kp=dlKp(), c=dealCalc(kp,d), b=c.base||c.lo, unk=c.unknown.length>0;
+  const d=DealState.deal(), kp=DealState.kp(), c=dealCalc(kp,d), b=c.base||c.lo, unk=c.unknown.length>0;
   const SH0='Сводка', SH1='Расчёт', SH2='График платежей', q=n=>`'${n}'!`;
   const num=v=>Number.isFinite(v)?v:0;
   const note=t=>({v:t, s:'note'});
@@ -96,7 +96,7 @@ async function dealXlsx(o={}){
   row(['Резерв на гарантию', {v:c.warrP, s:'inp'}, '% выручки без НДС'], 'WARR');
   row(['Бонусы и комиссии с продажи', {v:c.bonusP, s:'inp'}, '% выручки без НДС'], 'BON');
   if (c.BG>0) row(['Банковская гарантия — комиссия банка', {v:c.BG, s:'inpMoney'}, '₽', {f:self(), v:c.BG, s:'money'},
-    note(c.bgs.filter(g=>g.fee>0).map(g=>`${DEAL_BG_TYPES[g.type]}: ${Fmt.rub(g.amount)} × ${dlIn(g.rate)} % × ${g.days} дн. / 365${g.fee>g.amount*g.rate/100*g.days/365+0.005?` (минимальная ${Fmt.rub(g.min)})`:''}`).join('; '))], 'BG');
+    note(c.bgs.filter(g=>g.fee>0).map(g=>`${DEAL_BG_TYPES[g.type]}: ${Fmt.rub(g.amount)} × ${DealFmt.inp(g.rate)} % × ${g.days} дн. / 365${g.fee>g.amount*g.rate/100*g.days/365+0.005?` (минимальная ${Fmt.rub(g.min)})`:''}`).join('; '))], 'BG');
   // прочие расходы наличными (только если заданы): способ расчёта — как в программе, значение и стоимость наличных можно менять
   const xOn=b.K>0, xm=c.xc.mode;
   if (xOn){
@@ -111,7 +111,7 @@ async function dealXlsx(o={}){
     if (t.bySum){ const r=row([nm, {v:t.sum, s:'inpMoney'}, '₽', '', note('Сумма этапа; доля от цены — в колонке D')], key+'s');
       R[r-1][3]={f:`IF(${D('S')}=0,0,${ref(key+'s')}/${D('S')}*100)`, v:t.p, s:'money'}; at[key]=r; at[key+'col']='D'; }
     else row([nm, t.last?{f:`100-${trKeys.slice(0,-1).map(x=>trRef(x)).join('-')||'0'}`, v:t.p, s:'money'}:{v:t.p, s:'inp'}, '%', '', t.last?note('Остаток до 100 %'):''], key); });
-  row(['Стоимость денег', {v:c.i, s:'inp'}, '% в месяц', '', c.moneyAuto&&DL.key?note(`(ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${dlSpread()} п.п.) × ${DealMoneyRate.text()}`):''], 'i');
+  row(['Стоимость денег', {v:c.i, s:'inp'}, '% в месяц', '', c.moneyAuto&&DL.key?note(`(ключевая ставка ЦБ ${DealFmt.inp(DL.key.rate)} % + ${DealDefaults.spread()} п.п.) × ${DealMoneyRate.text()}`):''], 'i');
   row(['Налог на прибыль', {v:c.taxP, s:'inp'}, '%'], 'TAX');
   row(['Дата отсчёта — подписание договора (день 0)', {v:xlsxDate(d.start), s:'inpDate'}, 'дата', '', note('Даты платежей на листе «График платежей» = эта дата + день')], 'D0');
   // график (на листе «График платежей»)
@@ -196,17 +196,17 @@ async function dealXlsx(o={}){
   tiles(['Цена КП с НДС','Выручка без НДС','Себестоимость с финансированием', unk?'Прибыль (диапазон)':xOn?'Прибыль до налога, за вычетом наличных':'Прибыль до налога'],
     [kv(c.S,'kpiV'), kv(c.R,'kpiV'), kv(b.Ctot,'kpiV'), unk?kv(`${Fmt.rub(c.lo.P)} … ${Fmt.rub(c.hi.P)}`,'kpiT'):kv(P, P<0?'kpiVr':'kpiVg')]);
   tiles(['Маржинальность — прибыль / выручка','Наценка к себестоимости','Чистая прибыль после налога', gapRow&&gap>0?`Пик вложений, день ${gapRow.day}`:'Пик вложений своих денег'],
-    [unk?kv(`${dlPct(c.lo.margin)} … ${dlPct(c.hi.margin)}`,'kpiT'):kv(b.margin==null?'—':b.margin/100,'kpiP'), unk?kv(`${dlPct(c.lo.markup)} … ${dlPct(c.hi.markup)}`,'kpiT'):kv(b.markup==null?'—':b.markup/100,'kpiP'),
+    [unk?kv(`${DealFmt.pct(c.lo.margin)} … ${DealFmt.pct(c.hi.margin)}`,'kpiT'):kv(b.margin==null?'—':b.margin/100,'kpiP'), unk?kv(`${DealFmt.pct(c.lo.markup)} … ${DealFmt.pct(c.hi.markup)}`,'kpiT'):kv(b.markup==null?'—':b.markup/100,'kpiP'),
      unk?kv('—','kpiT'):kv(b.net, b.net<0?'kpiVr':'kpiV'), kv(gap,'kpiV')]);
   const tg=d.target||{}, tv=dNum(tg.v), TGN={margin:'маржинальность',markup:'наценка',profit:'прибыль до налога',net:'чистая прибыль'};
   const verdict = !c.ok || c.warn.some(w=>w.bad) ? ['bad','Расчёт содержит ошибки — см. «На что обратить внимание».']
     : unk ? ['warn',`Не указан ввозной НДС к вычету — прибыль от ${Fmt.rub(c.lo.P)} до ${Fmt.rub(c.hi.P)}.`]
     : P<0 ? ['bad',`Сделка убыточна: убыток ${Fmt.rub(-P)} при цене ${Fmt.rub(c.S)}.`]
-    : ['ok',`Сделка прибыльна: прибыль ${Fmt.rub(P)}, маржинальность ${dlPct(b.margin)}.`];
+    : ['ok',`Сделка прибыльна: прибыль ${Fmt.rub(P)}, маржинальность ${DealFmt.pct(b.margin)}.`];
   const be=DL.ex?null:dealSolve(kp, d, 'profit', 0);
   let vt=verdict[1]+(be!=null?` Безубыточная цена с НДС — ${Fmt.rub(be)}.`:'');
   if (!DL.ex && tv!=null && !Number.isNaN(tv)){ const need=dealSolve(kp, d, tg.type, tv), u=tg.type==='profit'||tg.type==='net'?' ₽':' %';
-    vt+=need!=null ? ` Цель — ${TGN[tg.type]} ${dlIn(tv)}${u}: цена с НДС ${Fmt.rub(need)}${Math.abs(need-c.S)<1?' (совпадает с КП)':need<=c.S?' — цена КП выше, цель достигнута':` — на ${Fmt.rub(need-c.S)} выше цены КП`}.` : ` Цель — ${TGN[tg.type]} ${dlIn(tv)}${u}: недостижима при этих расходах.`; }
+    vt+=need!=null ? ` Цель — ${TGN[tg.type]} ${DealFmt.inp(tv)}${u}: цена с НДС ${Fmt.rub(need)}${Math.abs(need-c.S)<1?' (совпадает с КП)':need<=c.S?' — цена КП выше, цель достигнута':` — на ${Fmt.rub(need-c.S)} выше цены КП`}.` : ` Цель — ${TGN[tg.type]} ${DealFmt.inp(tv)}${u}: недостижима при этих расходах.`; }
   r=put([{v:vt, s:verdict[0]}], 15*Math.ceil(vt.length/92)+4); mg(r,'A','H');
   blank();
   // позиции
@@ -238,7 +238,7 @@ async function dealXlsx(o={}){
   sec('Поставщики и условия закупки');
   put([{v:'№',s:'head'},{v:'Поставщик',s:'head'},{v:'Страна',s:'head'},{v:'Закупка, ₽',s:'headR'},{v:'Таможня, ₽',s:'headR'},{v:'Логистика, ₽',s:'headR'},{v:'Оплата, %',s:'headR'},{v:'Срок, дн.',s:'headR'}], 30);
   const CUSN={calc:'расчёт по ТН ВЭД', eaeu:'ЕАЭС', sum:'по сумме', none:'нет'};
-  c.sup.forEach((s,k)=>put([{v:k+1,s:'tdInt'},{v:`${s.name}\nтаможня: ${CUSN[s.mode]||'—'}${s.noVat?'; цены без НДС':''}\nоплата: ${s.stages.filter(st=>st.p>0).map(st=>`${dlIn(st.p)} % ${DEAL_SUP_EVENTS[st.ev]}${st.off?' + '+st.off+' дн.':''}`).join('; ')}`,s:'td'},{v:s.country||'—',s:'td'},{v:s.equip,s:'tdMoney'},{v:s.T,s:'tdMoney'},{v:s.L+s.Lru+s.brk,s:'tdMoney'},{v:s.stages.filter(st=>st.p>0).map(st=>dlIn(st.p)).join(' / '),s:'tdC'},{v:`${s.prod} + ${s.ship}`,s:'tdC'}]));
+  c.sup.forEach((s,k)=>put([{v:k+1,s:'tdInt'},{v:`${s.name}\nтаможня: ${CUSN[s.mode]||'—'}${s.noVat?'; цены без НДС':''}\nоплата: ${s.stages.filter(st=>st.p>0).map(st=>`${DealFmt.inp(st.p)} % ${DEAL_SUP_EVENTS[st.ev]}${st.off?' + '+st.off+' дн.':''}`).join('; ')}`,s:'td'},{v:s.country||'—',s:'td'},{v:s.equip,s:'tdMoney'},{v:s.T,s:'tdMoney'},{v:s.L+s.Lru+s.brk,s:'tdMoney'},{v:s.stages.filter(st=>st.p>0).map(st=>DealFmt.inp(st.p)).join(' / '),s:'tdC'},{v:`${s.prod} + ${s.ship}`,s:'tdC'}]));
   r=put([note('Срок: изготовление + доставка. Логистика: до границы, по России, брокер и СВХ.')]); mg(r,'A','H');
   blank();
   // оплата заказчика
@@ -249,11 +249,11 @@ async function dealXlsx(o={}){
   blank();
   // деньги и налоги
   sec('Деньги и налоги');
-  const fin=[[`Стоимость денег, % в месяц${c.moneyAuto&&DL.key?` (ключевая ставка ЦБ ${dlIn(DL.key.rate)} % + ${dlSpread()} п.п.)`:''}`, c.i/100, 'tdPct'],
+  const fin=[[`Стоимость денег, % в месяц${c.moneyAuto&&DL.key?` (ключевая ставка ЦБ ${DealFmt.inp(DL.key.rate)} % + ${DealDefaults.spread()} п.п.)`:''}`, c.i/100, 'tdPct'],
     ['Финансирование (проценты на вложенные деньги)', c.F], ['Максимальное вложение своих денег', gap], ['НДС с продажи', c.VATs], ['НДС к вычету', b.VATin], ['НДС к уплате', b.payable],
-    [`Налог на прибыль ${dlIn(c.taxP)} %${xOn?' (с прибыли до прочих расходов)':''}`, b.tax],
+    [`Налог на прибыль ${DealFmt.inp(c.taxP)} %${xOn?' (с прибыли до прочих расходов)':''}`, b.tax],
     ...(c.BG>0?[['Банковская гарантия — комиссия банка', c.BG]]:[]),
-    ...(xOn?[['Прочие расходы (наличные) — расход компании', b.K], ...(b.K!==b.X?[[`  в т. ч. на руки (стоимость наличных ${dlIn(c.xc.cost)} %)`, b.X]]:[]), ['  налог на прибыль они не уменьшают', '', 'td']]:[]),
+    ...(xOn?[['Прочие расходы (наличные) — расход компании', b.K], ...(b.K!==b.X?[[`  в т. ч. на руки (стоимость наличных ${DealFmt.inp(c.xc.cost)} %)`, b.X]]:[]), ['  налог на прибыль они не уменьшают', '', 'td']]:[]),
     ['Деньги на счёте после сделки (после НДС, до налога на прибыль)', b.cashAfter]];
   fin.forEach(([n,v,s])=>{ r=put([{v:'',s:'td'},{v:n,s:'td'},{v:'',s:'td'},{v:'',s:'td'},{v:'',s:'td'},{v:v,s:s||'tdMoney'},{v:'',s:'td'},{v:'',s:'td'}]); mg(r,'B','E'); mg(r,'F','H'); });
   blank();

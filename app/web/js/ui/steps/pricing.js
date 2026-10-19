@@ -14,7 +14,7 @@ function stepPrice(){
       <div class="psum"><span class="pl">Сумма</span><b data-sum="${i}">${money(itemSum(x))}</b></div>
       <div class="pinfo" data-minfo="${i}">${priceHint(x)}</div>
     </div>`; }).join('');
-  const cta = S.items.length&&dealAllowed() ? `<button class="dl-cta" type="button" data-a="deal"><i aria-hidden="true">₽</i><span><b>Экономика сделки: логистика, растаможка, финансирование</b><small>Закупка у поставщиков, таможня по кодам ТН ВЭД — и цена продажи под нужную маржу. В КП не выводится.</small></span><em aria-hidden="true">→</em></button>` : '';
+  const cta = S.items.length&&DealDefaults.allowed() ? `<button class="dl-cta" type="button" data-a="deal"><i aria-hidden="true">₽</i><span><b>Экономика сделки: логистика, растаможка, финансирование</b><small>Закупка у поставщиков, таможня по кодам ТН ВЭД — и цена продажи под нужную маржу. В КП не выводится.</small></span><em aria-hidden="true">→</em></button>` : '';
   return `<section class="step" id="st-price"><h2><span class="n">3</span>Цены и валюта${tip('<p>Цена продажи за единицу с НДС — вручную. Скидка попадает в КП.</p><p>Закупку и расчёт цены под маржу ведите в «Экономике сделки» — оттуда цены переносятся сюда одной кнопкой.</p>')}</h2>
   ${pricingBlock()}
   ${cta}

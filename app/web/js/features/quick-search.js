@@ -23,7 +23,7 @@ class QuickSearch {
       <input type="search" id="qsQ" class="qs-q" placeholder="КП, клиент, ИНН, сделка, модель или артикул" autocomplete="off" aria-label="Что найти">
       <div class="qs-r" id="qsR" aria-live="polite"></div><p class="muted qs-k">↑ ↓ — выбрать, Enter — открыть, Esc — закрыть · Ctrl+K — этот поиск откуда угодно</p>`, 'qs-dlg');
     const q=m.$('#qsQ');
-    q.addEventListener('input', ()=>{ clearTimeout(this.t); this.t=setTimeout(()=>this.run(q.value), 180); });
+    q.addEventListener('input', ()=>{ (this.t=this.t||new Debounce(180)).run(()=>this.run(q.value)); });
     q.addEventListener('keydown', e=>this.keys(e));
     m.d.addEventListener('keydown', e=>{ if (e.target!==q) this.keys(e); });
     m.d.addEventListener('click', e=>this.click(e));

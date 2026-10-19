@@ -18,7 +18,7 @@ class DealLogistics {
     const d=S.deal; if (!d || !d.asm || d.asm.on===false) return null;
     const A=d.sup.find(z=>z.id===d.asm.sup); if (!A) return null;
     const parts=kitLines(S).filter(l=>l.part); if (!parts.length) return null;
-    return { A, toAsm:new Set(parts.map(l=>dlSupOf(l.id)).filter(id=>id!==A.id)) };
+    return { A, toAsm:new Set(parts.map(l=>DealSuppliers.of(l.id)).filter(id=>id!==A.id)) };
   }
   // груз сборщика: станция целиком — габариты контейнера, масса — сумма элементов (если у всех она есть)
   static stations(){
@@ -30,8 +30,8 @@ class DealLogistics {
   // позиции поставщика: масса и габариты — из характеристик, свои правки — в s.lg.items
   static items(s){
     const own=(s.lg&&s.lg.items)||{}, asm=DealLogistics.asm();
-    const list = asm && asm.A===s ? [...DealLogistics.stations(), ...kitCargo().filter(x=>!String(x.id).includes('~') && dlSupOf(x.id)===s.id)]
-      : kitCargo().filter(x=>dlSupOf(x.id)===s.id);
+    const list = asm && asm.A===s ? [...DealLogistics.stations(), ...kitCargo().filter(x=>!String(x.id).includes('~') && DealSuppliers.of(x.id)===s.id)]
+      : kitCargo().filter(x=>DealSuppliers.of(x.id)===s.id);
     return list.filter(x=>String(x.name||'').trim()).map(x=>{
       const cg=lgCargoOf(x.groups), o=own[x.id]||{}, d=cg.dims||{};
       const pick=(k,auto)=>{ const v=LgCargoIn.val(o, k); return v!=null ? {v, own:true, t:LgCargoIn.text(o, k, v)} : {v:auto??null, own:false, t:LgCargoIn.text({}, k, auto??null)}; };
@@ -45,7 +45,7 @@ class DealLogistics {
     const asm=DealLogistics.asm(), toA=asm && asm.toAsm.has(s.id);        // элементы станции едут на сборку — до склада сборщика
     const to=String(lg.to ?? (toA ? (asm.A.wh||'') : (S.object&&S.object.address || S.clientAddr || ''))).trim();
     // стоимость груза (для страхования): у сборщика — станция целиком (все элементы) и его прочие позиции
-    const its=kitCargo().filter(x=>String(x.name||'').trim() && (asm && asm.A===s ? String(x.id).includes('~') || dlSupOf(x.id)===s.id : dlSupOf(x.id)===s.id));
+    const its=kitCargo().filter(x=>String(x.name||'').trim() && (asm && asm.A===s ? String(x.id).includes('~') || DealSuppliers.of(x.id)===s.id : DealSuppliers.of(x.id)===s.id));
     const value=its.reduce((a,x)=>{ const q=+x.qty||0; if (x.cost) return a+x.cost/100*q*(rateOf(x.costCur||'RUB')||0);
       return a+(x.price||0)/100*q*(rateOf(kpCur())||0); },0);
     // точные адреса (с координатами) — пока текст поля совпадает с выбранной подсказкой
@@ -77,7 +77,7 @@ class DealLogistics {
   static route(s, r){
     const key=r.routeKey; if (!key || LG.rt[key]) return; LG.rt[key]='busy';
     api(`/api/geo/route?a=${r.from.lat},${r.from.lon}&b=${r.to.lat},${r.to.lon}`).then(j=>{
-      if (j && j.km>0){ LG.rt[key]='ok'; s.lg=s.lg||{}; s.lg.route={key, km:j.km, hours:j.hours, src:j.src}; persist(); dealRender(); }
+      if (j && j.km>0){ LG.rt[key]='ok'; s.lg=s.lg||{}; s.lg.route={key, km:j.km, hours:j.hours, src:j.src}; persist(); DealWin.render(); }
       else LG.rt[key]=j&&j.error||'нет маршрута';
     }).catch(e=>{ LG.rt[key]=e.message||'нет связи'; });
   }
@@ -117,32 +117,32 @@ class DealLogistics {
   static nearBig(c){ if (!c) return [];
     return LG_CITIES.slice(0,60).filter(x=>x[0]!==c.name).map(x=>({n:x[0], d:lgHav(c,{lat:x[1],lon:x[2]})})).filter(x=>x.d<=150).sort((a,b)=>a.d-b.d).slice(0,2).map(x=>x.n); }
   static async quote(k){
-    const d=dlDeal(), s=d.sup[k]; if (!s) return; const r=LG.res[s.id];
+    const d=DealState.deal(), s=d.sup[k]; if (!s) return; const r=LG.res[s.id];
     if (!r || r.need || LG.busy[s.id]) return;
     const inp=DealLogistics.input(s), key=DealLogistics.quoteKey(r);
-    const its=kitCargo().filter(x=>String(x.name||'').trim() && dlSupOf(x.id)===s.id);
+    const its=kitCargo().filter(x=>String(x.name||'').trim() && DealSuppliers.of(x.id)===s.id);
     const declared=its.reduce((a,x)=>a+(x.cost?x.cost/100*(+x.qty||0)*(rateOf(x.costCur||'RUB')||0):0),0);
     const body={ from:{name:r.from&&r.from.name, addr:String(s.wh||'').trim()||(r.from&&r.from.name), alt:DealLogistics.nearBig(r.from)}, to:{name:r.to&&r.to.name, addr:inp.to.addr, alt:DealLogistics.nearBig(r.to)}, km:r.km,
       places:inp.items.filter(x=>x.l&&x.w&&x.h&&x.m&&x.qty).map(x=>({l:x.l, w:x.w, h:x.h, m:x.m, qty:x.qty})),
       vehicles:r.vehicles.map(v=>({id:v.C.id, name:v.C.name, extras:Math.round(v.parts.slice(1).reduce((a,p)=>a+p[1],0))})),
       ltl:!r.openOnly, unload:r.unload?r.unload.cost:0, model:Math.round(r.total), modelNote:[r.vehicles.map(v=>v.C.name).join(' + '), DealLogistics.rateSrc(r)].filter(Boolean).join('; '), declared };
-    LG.busy[s.id]=true; LG.err[s.id]=''; LG.tried[key]=true; dealRender();
+    LG.busy[s.id]=true; LG.err[s.id]=''; LG.tried[key]=true; DealWin.render();
     try{ const res=await api('/api/logistics/quote',{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(body)});
       s.lg.quote={key, res}; persist(); }
     catch(e){ LG.err[s.id]='Не удалось запросить цены: '+(e.message||e); }
-    LG.busy[s.id]=false; dealRender(); SidePanel.render();
+    LG.busy[s.id]=false; DealWin.render(); SidePanel.render();
   }
   // цены перевозчиков — сами, когда открыта вкладка и груз посчитан (после паузы во вводе, один раз на набор данных)
   static autoQuote(){
     if (!FEAT.on('carriers') || DL.ex || DL.open!=='log' || !LG.tar) return;
-    dlDeal().sup.forEach((s,k)=>{ const r=LG.res[s.id]; if (!r || r.need) return; const key=DealLogistics.quoteKey(r);
+    DealState.deal().sup.forEach((s,k)=>{ const r=LG.res[s.id]; if (!r || r.need) return; const key=DealLogistics.quoteKey(r);
       if (DealLogistics.quoteFor(s, r) || LG.tried[key] || LG.busy[s.id]) return;
       clearTimeout(LG.qT[s.id]); LG.qT[s.id]=setTimeout(()=>{ const r2=LG.res[s.id]; if (r2 && DealLogistics.quoteKey(r2)===key && DL.open==='log') DealLogistics.quote(k); }, 1200); });
   }
   // ---------- вкладка «Логистика»
   static view(c){
-    const d=dlDeal(), ex=DL.ex, T=LG.tar;
-    if (!T) return dlStep(0, 'Логистика', '', '<p class="muted">Загружаю тарифы…</p>', '', null, 'log');
+    const d=DealState.deal(), ex=DL.ex, T=LG.tar;
+    if (!T) return DealFmt.step(0, 'Логистика', '', '<p class="muted">Загружаю тарифы…</p>', '', null, 'log');
     const asm=DealLogistics.asm();
     const cards=d.sup.map((s,k)=>{ const cs=c.sup[k], P=`sup.${k}`, ru=LgFmt.isRu(s), lg=s.lg||{}, r=LG.res[s.id]||Freight.calc(DealLogistics.input(s), T), fin=LG.fin[s.id]||DealLogistics.final(r,null,lg.pick);
       const toA=asm && asm.toAsm.has(s.id), isA=asm && asm.A===s, aName=asm?c.sup[d.sup.indexOf(asm.A)].name:'';
@@ -150,8 +150,8 @@ class DealLogistics {
       const cell=(x,f,ph,lab)=>`<input type="text" inputmode="decimal" data-lgi="${esc(x.id)}" data-k="${k}" data-f="${f}" value="${esc(x[f].t)}" placeholder="${ph}" class="${x[f].v==null?'need':''}${x[f].own?' own':''}" aria-label="${esc(x.name+': '+lab)}" autocomplete="off"${ex?' disabled':''}>`;
       const ownCargo=Object.values(lg.items||{}).some(o=>Object.keys(o).length);
       // 1. до границы и страхование — только импорт
-      const abroad = ru ? '' : `<div class="lg-sec lg-s-abr"><h5><span class="lg-sn">1</span>До границы РФ</h5><div class="dl-g">${dlField('Перевозка до границы РФ', P+'.log.v', {calc:c, cur:P+'.log.cur', src:s.log&&s.log.src, q:'Сколько стоит довезти груз от поставщика до границы ЕАЭС. Входит в таможенную стоимость.'})}
-        ${dlField('Страхование груза', P+'.ins', {calc:c, unit:'% от оборудования', ph:'0,3', q:'Процент от стоимости оборудования. Входит в таможенную стоимость.'})}</div></div>`;
+      const abroad = ru ? '' : `<div class="lg-sec lg-s-abr"><h5><span class="lg-sn">1</span>До границы РФ</h5><div class="dl-g">${DealFmt.field('Перевозка до границы РФ', P+'.log.v', {calc:c, cur:P+'.log.cur', src:s.log&&s.log.src, q:'Сколько стоит довезти груз от поставщика до границы ЕАЭС. Входит в таможенную стоимость.'})}
+        ${DealFmt.field('Страхование груза', P+'.ins', {calc:c, unit:'% от оборудования', ph:'0,3', q:'Процент от стоимости оборудования. Входит в таможенную стоимость.'})}</div></div>`;
       const n0=ru?0:1;
       // 2. маршрут
       const pt=(p,what)=>!p?`<span class="bad-t">${what} не найден — впишите адрес или город</span>`
@@ -163,15 +163,15 @@ class DealLogistics {
       const route=`<div class="lg-sec lg-s-route"><h5><span class="lg-sn">${n0+1}</span>${toA?`Маршрут на сборку к «${esc(aName)}»`:isA?'Станция в сборе — до заказчика':'Маршрут по России'}</h5>
         ${toA&&!String(asm.A.wh||'').trim()?`<p class="msg warn">Укажите склад «${esc(aName)}» (адрес производства контейнера) в его карточке ниже — туда едут элементы станции.</p>`:''}
         <div class="lg-route">
-          <label class="f"><span>Откуда — ${ru?'склад поставщика':'СВХ / терминал'}${dlQ((ru?'Точный адрес склада поставщика — выберите из подсказок (склады из справочника поставщиков, DaData или OpenStreetMap). Запоминается в справочнике поставщиков.':'Где груз выпускается с таможни и откуда едет по России. По умолчанию — из «Настроек» → «Логистика».')+' Можно вставить координаты или ссылку на точку из Google или Яндекс Карт — адрес определится сам. Достаточно и города — тогда расчёт от центра города.')}</span>
+          <label class="f"><span>Откуда — ${ru?'склад поставщика':'СВХ / терминал'}${DealFmt.q((ru?'Точный адрес склада поставщика — выберите из подсказок (склады из справочника поставщиков, DaData или OpenStreetMap). Запоминается в справочнике поставщиков.':'Где груз выпускается с таможни и откуда едет по России. По умолчанию — из «Настроек» → «Логистика».')+' Можно вставить координаты или ссылку на точку из Google или Яндекс Карт — адрес определится сам. Достаточно и города — тогда расчёт от центра города.')}</span>
             <input type="text" data-lgf="wh" data-geo="wh" data-k="${k}" value="${esc(s.wh||'')}" placeholder="${esc(ru?'адрес склада, город или координаты':T.hub)}" autocomplete="off"${ex?' disabled':''}></label>
-          <label class="f"><span>${toA?`Куда — склад «${esc(aName)}» (сборка)`:'Куда — адрес объекта'}${dlQ('Из раздела «Клиент» (объект или юридический адрес). Выберите точный адрес из подсказок (DaData или OpenStreetMap) или вставьте координаты / ссылку на точку из Google или Яндекс Карт. Можно просто город.')}</span>
+          <label class="f"><span>${toA?`Куда — склад «${esc(aName)}» (сборка)`:'Куда — адрес объекта'}${DealFmt.q('Из раздела «Клиент» (объект или юридический адрес). Выберите точный адрес из подсказок (DaData или OpenStreetMap) или вставьте координаты / ссылку на точку из Google или Яндекс Карт. Можно просто город.')}</span>
             <input type="text" data-lgf="to" data-geo="to" data-k="${k}" value="${esc(lg.to ?? inp.to.addr)}" placeholder="${toA?'адрес производства контейнера':'адрес объекта, город или координаты'}" autocomplete="off"${ex?' disabled':''}></label>
-          <label class="f lg-km"><span>Расстояние, км${dlQ('Расстояние по дорогам (OSRM, карты OpenStreetMap): между точными адресами, а если адрес не уточнён — от центра города. Пока маршрут не посчитан (нет связи) — по прямой с поправкой на дороги (точность ±5–10 %). Знаете точное — впишите.')}</span>
+          <label class="f lg-km"><span>Расстояние, км${DealFmt.q('Расстояние по дорогам (OSRM, карты OpenStreetMap): между точными адресами, а если адрес не уточнён — от центра города. Пока маршрут не посчитан (нет связи) — по прямой с поправкой на дороги (точность ±5–10 %). Знаете точное — впишите.')}</span>
             <input type="text" inputmode="numeric" data-lgf="km" data-k="${k}" value="${esc(lg.km||'')}" placeholder="${r.km?esc(r.km)+' — авто':'авто'}"${ex?' disabled':''}></label></div>
         <p class="lg-where">${where}</p></div>`;
       // 3. груз
-      const cargo=`<div class="lg-sec lg-s-cargo"><h5><span class="lg-sn">${n0+2}</span>Груз${dlQ('Масса и габариты — из характеристик позиций («Масса», «Габариты Д × Ш × В»). Габариты — в миллиметрах, масса одного места — в килограммах (например, 2400 × 1200 × 1800 и 1500). Пустые поля заполните; кнопка ниже сохранит их в каталог. К местам легче '+LgCargoIn.kg(T.packMax)+' добавляется упаковка +'+LgFmt.num(T.pack)+' %.')}</h5>
+      const cargo=`<div class="lg-sec lg-s-cargo"><h5><span class="lg-sn">${n0+2}</span>Груз${DealFmt.q('Масса и габариты — из характеристик позиций («Масса», «Габариты Д × Ш × В»). Габариты — в миллиметрах, масса одного места — в килограммах (например, 2400 × 1200 × 1800 и 1500). Пустые поля заполните; кнопка ниже сохранит их в каталог. К местам легче '+LgCargoIn.kg(T.packMax)+' добавляется упаковка +'+LgFmt.num(T.pack)+' %.')}</h5>
         ${its.length?`<div class="lg-tw"><table class="lg-t"><thead><tr><th>Позиция</th><th class="num">Мест</th><th>Длина, мм</th><th>Ширина, мм</th><th>Высота, мм</th><th>Масса 1 шт, кг</th></tr></thead><tbody>
           ${its.map(x=>`<tr><td class="lg-nm"><b>${esc(x.name)}</b><small>${esc([x.dimSrc, x.massSrc].filter(Boolean).join(' · ')||'нет габаритов и массы в характеристиках')}</small></td><td class="num">${esc(x.qty)}</td>
             <td>${cell(x,'l','Д, мм','длина, мм')}</td><td>${cell(x,'w','Ш, мм','ширина, мм')}</td><td>${cell(x,'h','В, мм','высота, мм')}</td><td>${cell(x,'m','кг','масса 1 шт, кг')}</td></tr>`).join('')}</tbody></table></div>
@@ -186,7 +186,7 @@ class DealLogistics {
           + (r.unload?`<div class="lg-veh"><table class="lg-p"><tr><td>Разгрузка: ${esc(r.unload.name)}</td><td class="num">${Fmt.rub(r.unload.cost)}</td></tr></table></div>`:'')
           + r.warn.map(w=>`<p class="msg warn">${esc(w)}</p>`).join('')
           + (r.missing.length?`<p class="msg warn">Не посчитаны (нет массы или габаритов): ${esc(r.missing.join(', '))}</p>`:'');
-      const trans=`<div class="lg-sec lg-s-trans"><h5><span class="lg-sn">${n0+3}</span>Транспорт и разгрузка${dlQ('Машина подбирается по массе и габаритам: самая дешёвая из тарифов, куда помещается груз. Рейс — подача + ставка за км до 1 000 км + «дальняя» ставка дальше (не меньше минимального заказа). Морской контейнер 20 или 40 футов едет на контейнеровозе. Негабарит (шире 2,55 м, выше 4 м от дороги), тяжеловес (тяжелее грузоподъёмности без разрешения) и прикрытие — по правилам РФ. Ставки — «Настройки» → «Тарифы доставки».')}</h5>
+      const trans=`<div class="lg-sec lg-s-trans"><h5><span class="lg-sn">${n0+3}</span>Транспорт и разгрузка${DealFmt.q('Машина подбирается по массе и габаритам: самая дешёвая из тарифов, куда помещается груз. Рейс — подача + ставка за км до 1 000 км + «дальняя» ставка дальше (не меньше минимального заказа). Морской контейнер 20 или 40 футов едет на контейнеровозе. Негабарит (шире 2,55 м, выше 4 м от дороги), тяжеловес (тяжелее грузоподъёмности без разрешения) и прикрытие — по правилам РФ. Ставки — «Настройки» → «Тарифы доставки».')}</h5>
         <label class="f lg-un"><span>Разгрузка на объекте</span><select data-lgf="unload" data-k="${k}"${ex?' disabled':''}>
           <option value="auto"${(lg.unload||LgValues.unload())==='auto'?' selected':''}>Подобрать по самому тяжёлому месту</option>
           <option value="none"${(lg.unload||LgValues.unload())==='none'?' selected':''}>Не нужна (разгружает заказчик)</option>
@@ -196,7 +196,7 @@ class DealLogistics {
       const pv=(LG.status&&LG.status.providers)||{}, noKey=[!pv.ati?'ATI.SU':'', !pv.dellin?'Деловые Линии':'', !pv.kit?'КИТ':'', !pv.cdek?'СДЭК':'', !pv.vozovoz?'Возовоз':''].filter(Boolean);
       const pick=lg.pick||'max', nmR=`lgpick${k}`;
       const kindT={model:'расчёт по тарифам',ftl:'отдельная машина',ltl:'сборный груз'};
-      const offers = r.need ? '' : `<div class="lg-sec lg-s-off"><h5><span class="lg-sn">${n0+4}</span>Перевозчик и цена${dlQ('Все цены — от двери до двери в одних условиях: перевозка (если перевозчик возит до терминала — плюс забор и доставка по городу по тарифам), обязательное страхование груза и разгрузка. Страхование — перевозчика, если он его считает (по объявленной стоимости груза), иначе своё: '+String(T.insPct).replace('.',',')+' %, не меньше '+Fmt.rub(T.insMin)+'. Агент-экспедитор ('+String(T.agentPct).replace('.',',')+' %) — только для отдельной машины и расчёта по тарифам, на перевозку, разрешения, прикрытие'+(LgValues.agentUnload()?' и разгрузку':'')+' (страхование — без агентских): у транспортной компании комиссии агента нет. Отдельная машина — ATI.SU «Средние ставки» (верхняя граница за 30 дней, с НДС); сборный груз — ПЭК, Энергия, Деловые Линии, КИТ, СДЭК, Возовоз, ЖелДорЭкспедиция; крупногабаритный и длинномерный груз (больше пределов сборного) — ЖелДорЭкспедиция с надбавкой за негабарит. По умолчанию в сделку идёт максимальное предложение; можно выбрать перевозчика.')}
+      const offers = r.need ? '' : `<div class="lg-sec lg-s-off"><h5><span class="lg-sn">${n0+4}</span>Перевозчик и цена${DealFmt.q('Все цены — от двери до двери в одних условиях: перевозка (если перевозчик возит до терминала — плюс забор и доставка по городу по тарифам), обязательное страхование груза и разгрузка. Страхование — перевозчика, если он его считает (по объявленной стоимости груза), иначе своё: '+String(T.insPct).replace('.',',')+' %, не меньше '+Fmt.rub(T.insMin)+'. Агент-экспедитор ('+String(T.agentPct).replace('.',',')+' %) — только для отдельной машины и расчёта по тарифам, на перевозку, разрешения, прикрытие'+(LgValues.agentUnload()?' и разгрузку':'')+' (страхование — без агентских): у транспортной компании комиссии агента нет. Отдельная машина — ATI.SU «Средние ставки» (верхняя граница за 30 дней, с НДС); сборный груз — ПЭК, Энергия, Деловые Линии, КИТ, СДЭК, Возовоз, ЖелДорЭкспедиция; крупногабаритный и длинномерный груз (больше пределов сборного) — ЖелДорЭкспедиция с надбавкой за негабарит. По умолчанию в сделку идёт максимальное предложение; можно выбрать перевозчика.')}
           ${ex?'':`<button class="btn ghost lg-qb" type="button" data-lgx="quote" data-k="${k}"${LG.busy[s.id]?' disabled':''}>${LG.busy[s.id]?'Запрашиваю…':Q?'Обновить цены':'Запросить цены'}</button>`}</h5>
         ${noKey.length&&!ex?`<p class="muted lg-note">Не подключены: ${esc(noKey.join(', '))} — ключи в «Настройки → Ключи API».</p>`:''}
         ${LG.err[s.id]?`<p class="msg err">${esc(LG.err[s.id])}</p>`:''}
@@ -222,14 +222,14 @@ class DealLogistics {
       return `<div class="dl-card lg-card">${d.sup.length>1?`<div class="lg-ch"><b>${esc(nm)}</b><span class="muted">${ru?'покупаем в России':'ввозим сами'}${toA?` · везём на сборку к «${esc(aName)}»`:isA?' · собирает станцию и везёт заказчику':''}</span></div>`:''}
         ${abroad}${route}${cargo}${trans}${offers}${total}</div>`; }).join('');
     const sum=c.sup.reduce((a,x)=>a+x.L+x.Lru+x.ins,0);
-    return dlStep(0, 'Логистика', asm?`Станция собирается у «${esc(c.sup[d.sup.indexOf(asm.A)].name)}»: поставщики элементов везут их туда, а собранная станция едет к заказчику одним грузом (габариты контейнера, масса — сумма элементов). Итог по каждому поставщику сразу идёт в расчёт сделки.`:'Перевозка от поставщика до объекта заказчика: маршрут, груз, транспорт, цены перевозчиков. Итог по каждому поставщику сразу идёт в расчёт сделки.',
+    return DealFmt.step(0, 'Логистика', asm?`Станция собирается у «${esc(c.sup[d.sup.indexOf(asm.A)].name)}»: поставщики элементов везут их туда, а собранная станция едет к заказчику одним грузом (габариты контейнера, масса — сумма элементов). Итог по каждому поставщику сразу идёт в расчёт сделки.`:'Перевозка от поставщика до объекта заказчика: маршрут, груз, транспорт, цены перевозчиков. Итог по каждому поставщику сразу идёт в расчёт сделки.',
       cards, '', ['Итого логистика', sum, 'до границы, страхование и доставка по России'], 'log');
   }
-  // ---------- ввод на вкладке (обработчики вешаются на окно «Экономики сделки» — dealBind → DealLogistics.bind)
+  // ---------- ввод на вкладке (обработчики вешаются на окно «Экономики сделки» — DealWin.bind → DealLogistics.bind)
   static bind(dlg, touch){
-    const upd=t=>{ const k=+t.dataset.k, d=dlDeal(), s=d.sup[k]; if (!s || DL.ex) return false; if (!s.lg) s.lg={};
+    const upd=t=>{ const k=+t.dataset.k, d=DealState.deal(), s=d.sup[k]; if (!s || DL.ex) return false; if (!s.lg) s.lg={};
       if (t.dataset.lgf){ const f=t.dataset.lgf;
-        if (f==='wh'){ s.wh=t.value; clearTimeout(LG.whT); LG.whT=setTimeout(()=>dlSaveSupplier(s), 800); }
+        if (f==='wh'){ s.wh=t.value; clearTimeout(LG.whT); LG.whT=setTimeout(()=>DealSuppliers.save(s), 800); }
         else if (f==='setDays') s.lg.setDays=t.checked;
         else s.lg[f]=t.value;
         return true; }
@@ -237,24 +237,24 @@ class DealLogistics {
         LgCargoIn.set(o, f, t.value); if (!Object.keys(o).length) delete s.lg.items[id]; return true; }
       return false; };
     dlg.addEventListener('input', e=>{ const t=e.target;
-      if (t.dataset.lgman!=null){ const s=dlDeal().sup[+t.dataset.lgman]; if (!s||DL.ex) return; s.logRu={v:t.value, cur:LgMoney.cur(s)}; touch(); return dealRender(); }
-      if ((t.dataset.lgf||t.dataset.lgi) && t.tagName==='INPUT' && t.type!=='checkbox' && upd(t)){ touch(); dealRender(); } });
+      if (t.dataset.lgman!=null){ const s=DealState.deal().sup[+t.dataset.lgman]; if (!s||DL.ex) return; s.logRu={v:t.value, cur:LgMoney.cur(s)}; touch(); return DealWin.render(); }
+      if ((t.dataset.lgf||t.dataset.lgi) && t.tagName==='INPUT' && t.type!=='checkbox' && upd(t)){ touch(); DealWin.render(); } });
     // выбран точный адрес из подсказок (или по координатам / ссылке карт)
-    dlg.addEventListener('geo:pick', e=>{ const t=e.target, k=+t.dataset.k, s=dlDeal().sup[k]; if (!s || DL.ex || !t.dataset.lgf) return; s.lg=s.lg||{};
+    dlg.addEventListener('geo:pick', e=>{ const t=e.target, k=+t.dataset.k, s=DealState.deal().sup[k]; if (!s || DL.ex || !t.dataset.lgf) return; s.lg=s.lg||{};
       const g={...e.detail}; delete g.note;
-      if (t.dataset.lgf==='wh'){ s.wh=g.value; s.whGeo=g; dlSaveSupplier(s); }
+      if (t.dataset.lgf==='wh'){ s.wh=g.value; s.whGeo=g; DealSuppliers.save(s); }
       else if (t.dataset.lgf==='to'){ s.lg.to=g.value; s.lg.toGeo=g; }
-      touch(); dealRender(); });
+      touch(); DealWin.render(); });
     dlg.addEventListener('change', e=>{ const t=e.target;
-      if (t.dataset.lgcur!=null){ const s=dlDeal().sup[+t.dataset.lgcur]; if (!s||DL.ex) return; LgMoney.setCur(s, t.value); touch(); return dealRender(); }
-      if (t.dataset.lgpick!=null){ const s=dlDeal().sup[+t.dataset.k]; if (!s||DL.ex) return; s.lg=s.lg||{}; s.lg.pick=t.dataset.lgpick; touch(); return dealRender(); }
-      if ((t.tagName==='SELECT'||t.type==='checkbox') && t.dataset.lgf && upd(t)){ touch(); dealRender(); } });
-    dlg.addEventListener('click', e=>{ const b=e.target.closest('[data-lgx]'); if (!b || DL.ex) return; const k=+b.dataset.k, s=dlDeal().sup[k]; if (!s) return;
+      if (t.dataset.lgcur!=null){ const s=DealState.deal().sup[+t.dataset.lgcur]; if (!s||DL.ex) return; LgMoney.setCur(s, t.value); touch(); return DealWin.render(); }
+      if (t.dataset.lgpick!=null){ const s=DealState.deal().sup[+t.dataset.k]; if (!s||DL.ex) return; s.lg=s.lg||{}; s.lg.pick=t.dataset.lgpick; touch(); return DealWin.render(); }
+      if ((t.tagName==='SELECT'||t.type==='checkbox') && t.dataset.lgf && upd(t)){ touch(); DealWin.render(); } });
+    dlg.addEventListener('click', e=>{ const b=e.target.closest('[data-lgx]'); if (!b || DL.ex) return; const k=+b.dataset.k, s=DealState.deal().sup[k]; if (!s) return;
       if (b.dataset.lgx==='quote'){ delete LG.tried[DealLogistics.quoteKey(LG.res[s.id]||{vehicles:[]})]; return DealLogistics.quote(k); }
-      if (b.dataset.lgx==='savecargo') return DealLogistics.saveCargo(s).then(()=>dealRender());
+      if (b.dataset.lgx==='savecargo') return DealLogistics.saveCargo(s).then(()=>DealWin.render());
       if (b.dataset.lgx==='mode'){ s.lg=s.lg||{}; s.lg.mode=b.dataset.v;
         if (s.lg.mode==='manual') LgMoney.toManual(s);
-        touch(); dealRender(); setTimeout(()=>{ if (s.lg.mode==='manual') dlg.querySelector(`[data-lgman="${k}"]`)?.focus(); }, 30); } });
+        touch(); DealWin.render(); setTimeout(()=>{ if (s.lg.mode==='manual') dlg.querySelector(`[data-lgman="${k}"]`)?.focus(); }, 30); } });
   }
   // вписанные в расчёт масса и габариты — в характеристики позиции КП и в карточку каталога
   // (иначе при сохранении КП каталог получил бы прежние характеристики позиции)
@@ -331,8 +331,8 @@ class LgMoney {
 
 
 // подсказки поля «Откуда»: склады поставщика из справочника (с адресом, режимом работы и контактами)
-GEO_EXTRA.wh = inp => { const s=S.deal?dlDeal().sup[+inp.dataset.k]:null; if (!s) return [];
-  const dir=(DL.sups||[]).find(x=>x.id===s.dirId) || (typeof dlDir==='function'?dlDir(s.name):null);
+GEO_EXTRA.wh = inp => { const s=S.deal?DealState.deal().sup[+inp.dataset.k]:null; if (!s) return [];
+  const dir=(DL.sups||[]).find(x=>x.id===s.dirId) || (typeof DealSuppliers!=='undefined'?DealSuppliers.dir(s.name):null);
   return ((dir&&dir.warehouses)||[]).filter(w=>w.addr).map(w=>({value:w.addr, lat:w.lat??null, lon:w.lon??null, city:w.city||'', exact:w.lat!=null, src:'справочник поставщиков',
     tag:'склад', sub:[w.name, w.hours, w.phone].filter(Boolean).join(' · ')})); };
 

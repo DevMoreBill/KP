@@ -93,7 +93,7 @@ async function openJournal(){
     await Promise.all((r.items||[]).filter(x=>!x.econ && !x.locked).map(async x=>{          // параллельно (не по очереди)
       try{ const st=await api(`/api/kp/${x.id}/state`); if (seq===J.seq) x.econ=kpEconomics(st); }catch(e){ x.econ={cur:'RUB',sum:x.sum||0,withCost:0,positions:x.positions||0}; } }));
     if (d.open && seq===J.seq) draw(); };
-  let qT=0; $('#jQ').oninput=()=>{ clearTimeout(qT); qT=setTimeout(()=>load(false), DEFN('ui.jDelay', 220)); }; $('#jA').onchange=$('#jK').onchange=$('#jS').onchange=()=>load(false);
+  const qT=new Debounce(); $('#jQ').oninput=()=>qT.run(()=>load(false), DEFN('ui.jDelay', 220)); $('#jA').onchange=$('#jK').onchange=$('#jS').onchange=()=>load(false);
   $('#jFun').onclick=e=>{ const b=e.target.closest('[data-jf]'); if (!b) return; const s=$('#jS'); s.value = s.value===b.dataset.jf ? '' : b.dataset.jf; load(false); };
   $('#jDr').onclick=()=>Drafts.dialog();
   $('#jRep').onclick=()=>KpReport.open({author:$('#jA').value, kind:$('#jK').value});
@@ -119,7 +119,7 @@ async function openJournal(){
       if (c){ delete S.kpId; delete S.number; delete S.createdAt; delete S._rev; S.date=today(); ClientFields.clear(S); S.authorId=meId();
         if (S.tender && S.tender.on) S.tender={on:true, number:'', url:''}; }     // копия тендерного КП — под другую закупку
       d.close(); d.classList.remove('wide'); renderForm(); persist(); window.scrollTo({top:0}); if (c) Drafts.loaded();
-      if (ec) return openDeal();
+      if (ec) return DealState.open();
       toast(c?(S.tender&&S.tender.on?'Создана копия — укажите получателя и № закупки':'Создана копия — укажите получателя'):'КП № '+S.number+' открыто для редактирования');
     }catch(err){ toast('Не удалось открыть КП'); }
   };

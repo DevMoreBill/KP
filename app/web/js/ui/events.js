@@ -161,7 +161,7 @@ document.addEventListener('click', async e=>{
     case 'dealOpen': return DealCard.open(b.dataset.id);
     case 'myPrefs': return MyPrefs.open();
     case 'clientsExport': return ClientsExportDlg.open();
-    case 'deal': return openDeal();
+    case 'deal': return DealState.open();
     case 'docsFolder': return api('/api/folder?dir='+encodeURIComponent(managerFolder()),{method:'POST'}).then(remoteResult).catch(()=>{}); 
     case 'mailKp': return MailDlg.open(b.dataset.id, S.number);
     case 'clPrev': return openJournal().then(()=>{ const q=$('#jQ'); if (q){ q.value=S.clientInn||S.client; q.dispatchEvent(new Event('input')); } });

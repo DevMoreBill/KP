@@ -86,7 +86,7 @@ function kpSetCur(cur){
       (x.options||[]).forEach(o=>{ if(o.price){ o.price=cv(o.price); delete o._priceText; } }); });
     toast(`Цены переведены в ${cur} по курсу`);
   } else toast('Укажите курс, чтобы перевести цены: сейчас цены не пересчитаны');
-  renderForm(); persist(); dealRender();
+  renderForm(); persist(); DealWin.render();
   if (cur!=='RUB' && !(rateOf(cur)>0)) loadCBR(true);
 }
 
@@ -142,7 +142,7 @@ async function loadCBR(onlyEmpty=false){
   if (!r || !r.USD){ const m=$('#cbrMsg'); if(m){ m.textContent='Курс с cbr.ru не получен'+(why?` (${why})`:'')+' — введите вручную ниже.'; m.classList.add('bad-t'); } document.querySelector('details.psettings')?.setAttribute('open',''); document.querySelector('[data-rate]')?.focus(); toast('Курс ЦБ не загружен — введите вручную'); return; }
   const got=[]; for (const c of ['USD','EUR','CNY']) if (r[c] && !(onlyEmpty && rateOf(c)>0)) { S.pricing.rates[c]=(+r[c]).toFixed(4).replace('.',','); got.push(c); }
   if (!got.length) return;
-  S.pricing.rateDate=r.date||today(); S.pricing.rateSrc=src; renderForm(); persist(); dealRender();
+  S.pricing.rateDate=r.date||today(); S.pricing.rateSrc=src; renderForm(); persist(); DealWin.render();
   got.forEach(c=>{ const el=document.querySelector(`[data-rate="${c}"]`); if(el){ el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1800); } });
   toast(`Курс ЦБ РФ на ${KPGen.ruDate(S.pricing.rateDate)}: ${got.map(c=>c+' '+S.pricing.rates[c]).join(', ')}${onlyEmpty&&got.length<3?' (остальные курсы — как были)':''}`);
 }

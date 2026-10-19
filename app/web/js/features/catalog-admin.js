@@ -231,8 +231,8 @@ class TrashTab {
         <button class="btn danger" type="button" data-trclear ${r.items.length?'':'disabled'}>${S.type?`Очистить: ${esc(label[S.type])}`:'Очистить корзину'}</button></div>
       <div class="tr-list">${L.slice(0, this.LIMIT).map(x=>`<div class="st-row tr-row"><div><b>${esc(x.title||x.entityId)}</b><span class="muted">${esc(ENT[x.entityType]||x.entityType)} · удалено ${esc(Fmt.dateTime(x.deletedAt))}${x.deletedBy?' · '+esc(x.deletedBy):''}</span></div>
         <div class="acts"><button class="btn" type="button" data-rest="${x.id}">Восстановить</button><button class="btn ghost danger-t" type="button" data-purge="${x.id}" title="Удалить навсегда — восстановить будет нельзя">Удалить навсегда</button></div></div>`).join('')||'<p class="muted">Корзина пуста.</p>'}</div>`;
-    let qT;
-    box.oninput=e=>{ const t=e.target.closest('[data-trq]'); if (!t) return; S.q=t.value; if (only) this.state.q=t.value; clearTimeout(qT); qT=setTimeout(()=>this.render(box, only).then(()=>{ const i=box.querySelector('[data-trq]'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }), 250); };
+    const qT=new Debounce(250);
+    box.oninput=e=>{ const t=e.target.closest('[data-trq]'); if (!t) return; S.q=t.value; if (only) this.state.q=t.value; qT.run(()=>this.render(box, only).then(()=>{ const i=box.querySelector('[data-trq]'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); })); };
     box.onclick=async e=>{
       const tt=e.target.closest('[data-trt]'); if (tt){ S.type=tt.dataset.trt; return this.render(box, only); }
       const rs=e.target.closest('[data-rest]'), pg=e.target.closest('[data-purge]'), cl=e.target.closest('[data-trclear]');

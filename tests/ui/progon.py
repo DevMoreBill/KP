@@ -479,7 +479,7 @@ class Scenario(UiRun):
 
     def _open_deal(self):
         b = self.pg.locator('#form [data-a=deal]').first
-        b.click() if b.count() else self.ev("openDeal()")
+        b.click() if b.count() else self.ev("DealState.open()")
 
     def s_deal(self):
         pg = self.pg

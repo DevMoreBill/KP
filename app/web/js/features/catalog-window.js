@@ -595,9 +595,9 @@ class CatalogWindow {
   bind(d){
     if (d._bound) return; d._bound=true; this.panes.bind();
     let szT=null; new ResizeObserver(()=>{ if(!d.open) return; this.panes.layout(); clearTimeout(szT); szT=setTimeout(()=>{ if (d.open && !d.classList.contains('max')) this.panes.saveSize(); },500); }).observe(d);
-    let qT=null;
+    const qT=new Debounce();
     d.addEventListener('input', e=>{ const t=e.target, F=this.F;
-      if (t.id==='cwQ'){ F.q=t.value; this.limit=CatalogWindow.PAGE; clearTimeout(qT); qT=setTimeout(()=>{ this.refresh(); const q=F.q;
+      if (t.id==='cwQ'){ F.q=t.value; this.limit=CatalogWindow.PAGE; qT.run(()=>{ this.refresh(); const q=F.q;
           // поиск по характеристикам — на сервере: ответ пришёл, запрос тот же → список с найденным по характеристикам
           if (!CatalogSearch.has(q)) CatalogSearch.ask(q).then(s=>{ if (s && s.size && F.q===q && $('#catdlg')?.open){ const n=F.addServer(q, s); if (n<0) F.dropQuery(); if (n) this.refresh(); } }); }, this.docs.length>2000 ? DEFN('cat.qDelay', 180) : Math.min(60, DEFN('cat.qDelay', 180))); return; }
       if (t.dataset.rk){ const r=F.rng[t.dataset.rk]||(F.rng[t.dataset.rk]={min:'',max:''}); r[t.dataset.rs]=t.value.replace(',','.').replace(/[^\d.]/g,''); this.list(); } });

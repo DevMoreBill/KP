@@ -542,9 +542,9 @@ function kitAction(a, i, b){
 document.addEventListener('input', e=>{ const t=e.target; if (t.dataset.kitcost==null) return;
   const [i,j]=t.dataset.kitcost.split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
   const n=dNum(t.value); p._costText=t.value; t.classList.toggle('bad', Number.isNaN(n)); if (!Number.isNaN(n)) p.cost=n==null?0:Math.round(n*100);
-  kitSync(it); updateLive(); persist(); if (typeof dealRender==='function') dealRender(); });
+  kitSync(it); updateLive(); persist(); if (typeof DealWin!=='undefined') DealWin.render(); });
 document.addEventListener('focusout', e=>{ const t=e.target; if (t.dataset.kitcost==null) return;
-  const [i,j]=t.dataset.kitcost.split('.').map(Number), p=kitParts(S.items[i])[j]; if (p && !Number.isNaN(dNum(p._costText))) delete p._costText; renderForm(); if (typeof dealRender==='function') dealRender(); });
+  const [i,j]=t.dataset.kitcost.split('.').map(Number), p=kitParts(S.items[i])[j]; if (p && !Number.isNaN(dNum(p._costText))) delete p._costText; renderForm(); if (typeof DealWin!=='undefined') DealWin.render(); });
 document.addEventListener('change', e=>{ const t=e.target;
   if (t.dataset.kitpp!=null){ KitPipe.change(t); return; }
   if (t.dataset.kitcab!=null){ KitCabinet.change(t); return; }
@@ -556,5 +556,5 @@ document.addEventListener('change', e=>{ const t=e.target;
       const L=StationGeo.FLEX[p.ctype] ? StationGeo.len(t.value) : null; if (L){ o.lenFix=L; o.size=''; o.sizeAuto=true; } }
     contApply(p, o); StationSize.apply(it); stationFill(it); stationAutoName(it); renderForm(); persist(); return; }
   if (t.dataset.kitcur!=null){ const [i,j]=t.dataset.kitcur.split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
-    p.costCur=t.value; if (t.value!=='RUB' && !(rateOf(t.value)>0)) loadCBR(true); kitSync(it); renderForm(); persist(); if (typeof dealRender==='function') dealRender(); return; }
+    p.costCur=t.value; if (t.value!=='RUB' && !(rateOf(t.value)>0)) loadCBR(true); kitSync(it); renderForm(); persist(); if (typeof DealWin!=='undefined') DealWin.render(); return; }
   if (/^items\.\d+\.kit\.parts\.\d+\.qty$/.test(t.dataset.p||'')){ const it=S.items[+t.dataset.p.split('.')[1]]; kitSync(it); renderForm(); persist(); } });

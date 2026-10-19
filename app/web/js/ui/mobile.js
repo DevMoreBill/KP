@@ -23,7 +23,7 @@ function openMobileMenu(){
       ${Reminders.items.length?it('reminders','🔔','Напоминания ('+Reminders.items.length+')','Перезвонить, срок действия КП'):''}
       ${it('catalog','▦','Каталог оборудования','Подбор и своё оборудование')}
       ${it('preview','▤','Предпросмотр КП','Документ целиком')}
-      ${dealAllowed()?it('deal','₽','Экономика сделки','Прибыль, финансирование, Excel'):''}
+      ${DealDefaults.allowed()?it('deal','₽','Экономика сделки','Прибыль, финансирование, Excel'):''}
       ${it('help','?','Руководство','Как пользоваться, история версий')}
       <hr>${it('prefs','☺','Мои настройки','Тема, стартовый экран, мои условия, подпись в письмах')}${it('theme',dark?'☀':'☾',dark?'Светлая тема':'Тёмная тема','')}
       ${AuthMenu.mobileItems(it)}${it('settings','⚙','Настройки','Для администратора')}${ADMIN.on?it('uitexts','✎','Тексты интерфейса','Правка надписей и подсказок'):''}</div>`;
@@ -37,7 +37,7 @@ function openMobileMenu(){
     else if (k==='reminders') Reminders.open();
     else if (k==='catalog') openCatalog({});
     else if (k==='preview') openKpPreview();
-    else if (k==='deal') openDeal();
+    else if (k==='deal') DealState.open();
     else if (k==='help') openHelp();
     else if (k==='theme') $('#btnTheme').click();
     else if (k==='prefs') MyPrefs.open();

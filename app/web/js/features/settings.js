@@ -285,7 +285,7 @@ async function stDelete(m, type){
     <div class="st-list">${r.items.map(x=>`<label class="st-row ck-row${ed&&ed.id===x.id?' on':''}"><input type="checkbox" data-did="${esc(x.id)}" ${D.sel.has(x.id)?'checked':''}><div><b>${esc(x.title)}</b><span class="muted">${esc(x.sub)}</span></div><div class="acts">${D.type==='kp'&&x.files?`<button class="btn" type="button" data-dfiles="${esc(x.id)}" data-dt="${esc(x.title)}" title="Справочные документы КП: посмотреть, удалить">📎 ${esc(String(x.files))}</button>`:''}<button class="btn" type="button" data-dedit="${esc(x.id)}">${D.type==='kp'?'Открыть':'Изменить'}</button></div></label>${ed&&ed.id===x.id?'<div class="st-ed"></div>':''}`).join('')||'<p class="muted">Ничего не найдено.</p>'}</div>
     <p class="muted">«${D.type==='kp'?'Открыть':'Изменить'}» — ${({kp:'КП откроется в конструкторе для правки', catalog:'карточка товара в редакторе каталога', manager:'контакты менеджера — прямо в списке', client:'реквизиты и контакт клиента — прямо в списке', supplier:'условия, реквизиты, склады (адрес отгрузки), режим работы, контакты и оборудование поставщика — прямо в списке'})[D.type]}. Удалённое попадает в корзину и хранится ${DEFN('srv.trashDays', 30)} дн. — его можно восстановить. Файлы готовых КП (.docx, .pdf) в папке КП не удаляются.${D.type==='kp'?' «📎» — справочные документы КП: скачать или удалить ошибочный файл; у КП в корзине документы сохраняются.':''}</p>`;
   const eb=m.querySelector('.st-ed'); if (eb){ stEdDraw(eb); stEdBind(eb, ()=>stDelete(m)); eb.scrollIntoView({block:'nearest'}); eb.querySelector('[data-ef]')?.focus({preventScroll:true}); }
-  let qT; $('#dQ').oninput=e=>{ D.q=e.target.value; clearTimeout(qT); qT=setTimeout(()=>stDelete(m).then(()=>{ const i=$('#dQ'); i.focus(); i.setSelectionRange(i.value.length,i.value.length); }),250); };
+  const qT=new Debounce(250); $('#dQ').oninput=e=>{ D.q=e.target.value; qT.run(()=>stDelete(m).then(()=>{ const i=$('#dQ'); i.focus(); i.setSelectionRange(i.value.length,i.value.length); })); };
   m.onchange=e=>{ const c=e.target.closest('[data-did]'); if(!c) return; c.checked?D.sel.add(c.dataset.did):D.sel.delete(c.dataset.did);
     const b=m.querySelector('[data-del]'); b.disabled=!D.sel.size; b.textContent='Удалить'+(D.sel.size?' ('+D.sel.size+')':''); };
   m.onclick=async e=>{ if (e.target.closest('.st-ed')) return;
@@ -335,9 +335,9 @@ async function stAudit(m){
         <p class="muted">IP ${esc(x.ip||'—')} · ${esc(x.userAgent||'')}</p>
         ${['edit_product','approve_edit'].includes(x.action)&&x.before?`<button class="btn" type="button" data-rb="${x.id}">Откатить эту правку</button>`:''}</div></details>`).join('')||'<p class="muted">Записей нет.</p>'}</div>
     ${pages>1?`<div class="row st-pg"><button class="btn" type="button" data-pg="-1" ${A.page?'':'disabled'}>← Новее</button><span class="muted">стр. ${A.page+1} из ${pages}</span><button class="btn" type="button" data-pg="1" ${A.page+1<pages?'':'disabled'}>Старее →</button></div>`:''}`;
-  let qT;
+  const qT=new Debounce(300);
   m.onchange=e=>{ const t=e.target.closest('[data-af]'); if (t && t.type!=='search'){ F[t.dataset.af]=t.value; A.page=0; stAudit(m); } };
-  m.oninput=e=>{ const t=e.target.closest('[data-af]'); if (t && t.type==='search'){ F.q=t.value; A.page=0; clearTimeout(qT); qT=setTimeout(()=>stAudit(m),300); } };
+  m.oninput=e=>{ const t=e.target.closest('[data-af]'); if (t && t.type==='search'){ F.q=t.value; A.page=0; qT.run(()=>stAudit(m)); } };
   m.onclick=async e=>{ const p=e.target.closest('[data-pg]'); if (p){ A.page+= +p.dataset.pg; return stAudit(m); }
     const rb=e.target.closest('[data-rb]'); if (!rb) return;
     if (!await stConfirm('Откатить правку?','Изменённые этой правкой поля товара вернутся к прежним значениям.','Откатить')) return;

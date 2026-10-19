@@ -22,7 +22,7 @@ const condOpts = label => (COND.find(x=>x[0]===label)||[])[1] || [];
 // что предлагает экономика сделки (если её заполняли)
 function condFromDeal(){
   if (!S.deal || !S.deal.touched) return {};
-  try{ return dealCondSuggest(dealCalc(dealKpInputs(), S.deal)); }catch(e){ return {}; }
+  try{ return DealConds.suggest(dealCalc(DealState.kpInputs(), S.deal)); }catch(e){ return {}; }
 }
 
 function condPicker(attr, idx, opts, recent){

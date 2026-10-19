@@ -59,8 +59,8 @@ class DefaultsTab {
   static bind(m, V){
     const dirty=()=>{ m.querySelector('[data-dsave]').disabled=false; $('#dfSt').textContent='Есть несохранённые изменения'; };
     const relist=()=>{ m.querySelector('#dfList').innerHTML=this.list(V); m.querySelectorAll('.df-nb').forEach(b=>b.classList.toggle('on', !this.q && b.dataset.dsec===this.sec)); };
-    const q=m.querySelector('#dfQ'); let t=0;
-    q.oninput=()=>{ clearTimeout(t); t=setTimeout(()=>{ if (this.changed(m) && !confirm('Несохранённые изменения пропадут. Продолжить?')){ q.value=this.q; return; } this.q=q.value; relist(); }, 200); };
+    const q=m.querySelector('#dfQ'), t=new Debounce(200);
+    q.oninput=()=>t.run(()=>{ if (this.changed(m) && !confirm('Несохранённые изменения пропадут. Продолжить?')){ q.value=this.q; return; } this.q=q.value; relist(); });
     m.querySelector('#dfOwn').onchange=e=>{ this.only=e.target.checked; relist(); };
     m.onchange=e=>{ const rw=e.target.closest('.df-row'); if (!rw) return;
       if (e.target.matches('[data-don]')){ rw.classList.toggle('off', !e.target.checked); const v=rw.querySelector('[data-dv]'); if (v) v.disabled=!e.target.checked; }
