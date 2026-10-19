@@ -1,3 +1,5 @@
+import { StMat } from './st-mat.js';
+import { StV } from './st-v.js';
 import { RalColor } from '../layout/ral-color.js';
 
 const POW = [
@@ -80,9 +82,9 @@ export class OutfitDoors {
     const at = sea
       ? { cat: [yc + 0.3, zs + 0.06], w08: zs + 0.06, p06: [yc - dy, zs - 0.19] }
       : { cat: [yc, S.base + 1.72], w08: zs, p06: [yc + dy, zs] };
-    if (c) S.sticker(c, [x - 0.004, ...at.cat], n, 0.3, 0.2);
-    S.sticker({ type: 'sign', id: 'W08' }, [x - 0.004, yc - dy, at.w08], n, 0.2, 0.175);
-    S.sticker({ type: 'sign', id: 'P06' }, [x - 0.004, ...at.p06], n, 0.2, 0.2);
+    if (c) S.sticker(c, [x - 0.004, ...at.cat], n, [0.3, 0.2]);
+    S.sticker({ type: 'sign', id: 'W08' }, [x - 0.004, yc - dy, at.w08], n, [0.2, 0.175]);
+    S.sticker({ type: 'sign', id: 'P06' }, [x - 0.004, ...at.p06], n, [0.2, 0.2]);
   }
 
   /** Табло у двери в торце: справа от неё, у края — слева. */
@@ -96,8 +98,8 @@ export class OutfitDoors {
     const b = a + 0.39;
     for (const [id, dz] of POW) {
       const z = zt + dz;
-      hb.box(x - 0.04, a, z - 0.08, x, b, z + 0.08, 0.006);
-      S.sticker({ type: 'sign', id }, [x - 0.04, (a + b) / 2, z], [-1, 0, 0], 0.36, 0.13, 0.8);
+      hb.box([x - 0.04, a, z - 0.08], [x, b, z + 0.08], 0.006);
+      S.sticker({ type: 'sign', id }, [x - 0.04, (a + b) / 2, z], [-1, 0, 0], [0.36, 0.13], 0.8);
     }
   }
 
@@ -112,9 +114,9 @@ export class OutfitDoors {
     this.canopy([x, S.oy + (G.y0 + G.y1) / 2000, S.base + G.h / 1000], n, (G.y1 - G.y0) / 1000 + 0.24);
     this.o.outer('left', G.y0 - 100, G.y1 + 100, 0, G.h + 620);
     const c = OutfitDoors.cat(tank);
-    if (c) S.sticker(c, [x - 0.03, ya, S.base + 1.72], n, 0.3, 0.2);
-    S.sticker({ type: 'sign', id: 'W01' }, [x - 0.03, ya - 0.12, zs], n, 0.2, 0.175);
-    S.sticker({ type: 'sign', id: 'P02' }, [x - 0.03, ya + 0.12, zs], n, 0.2, 0.2);
+    if (c) S.sticker(c, [x - 0.03, ya, S.base + 1.72], n, [0.3, 0.2]);
+    S.sticker({ type: 'sign', id: 'W01' }, [x - 0.03, ya - 0.12, zs], n, [0.2, 0.175]);
+    S.sticker({ type: 'sign', id: 'P02' }, [x - 0.03, ya + 0.12, zs], n, [0.2, 0.2]);
   }
 
   /** Вторая дверь оператора в дальнем торце. */
@@ -146,7 +148,7 @@ export class OutfitDoors {
     let pl = null;
     if (c.kind === 'tank') pl = OutfitDoors.cat(rooms.tank);
     else if (sign) pl = OutfitDoors.cat(rooms.main);
-    if (pl) S.sticker(pl, [xp, -0.052, S.base + 1.72], n, 0.3, 0.2);
+    if (pl) S.sticker(pl, [xp, -0.052, S.base + 1.72], n, [0.3, 0.2]);
     if (sign) this.entrySigns(xp, zt, { tb: right ? b + 0.14 : a - 0.53, fy }, F);
     if (c.kind === 'tank') this.tankSigns(xm);
   }
@@ -183,14 +185,14 @@ export class OutfitDoors {
     const S = this.o.s;
     const n = [0, -1, 0];
     const zs = S.base + 1.38;
-    S.sticker({ type: 'sign', id: 'W08' }, [xp - 0.12, -0.052, zs], n, 0.2, 0.175);
-    S.sticker({ type: 'sign', id: 'P06' }, [xp + 0.12, -0.052, zs], n, 0.2, 0.2);
+    S.sticker({ type: 'sign', id: 'W08' }, [xp - 0.12, -0.052, zs], n, [0.2, 0.175]);
+    S.sticker({ type: 'sign', id: 'P06' }, [xp + 0.12, -0.052, zs], n, [0.2, 0.2]);
     if (!F.auto || zt + 0.2 >= S.top - 0.04) return;
     const hb = S.M(StMat.paint('#eceeef', 0.4));
     for (const [id, dz] of POW) {
       const z = zt + dz;
-      hb.box(tb, fy - 0.04, z - 0.08, tb + 0.39, fy, z + 0.08, 0.006);
-      S.sticker({ type: 'sign', id }, [tb + 0.195, fy - 0.04, z], n, 0.36, 0.13, 0.8);
+      hb.box([tb, fy - 0.04, z - 0.08], [tb + 0.39, fy, z + 0.08], 0.006);
+      S.sticker({ type: 'sign', id }, [tb + 0.195, fy - 0.04, z], n, [0.36, 0.13], 0.8);
     }
   }
 
@@ -198,8 +200,8 @@ export class OutfitDoors {
     const S = this.o.s;
     const n = [0, -1, 0];
     const zs = S.base + 1.38;
-    S.sticker({ type: 'sign', id: 'W01' }, [xm - 0.12, -0.052, zs], n, 0.2, 0.175);
-    S.sticker({ type: 'sign', id: 'P02' }, [xm + 0.12, -0.052, zs], n, 0.2, 0.2);
+    S.sticker({ type: 'sign', id: 'W01' }, [xm - 0.12, -0.052, zs], n, [0.2, 0.175]);
+    S.sticker({ type: 'sign', id: 'P02' }, [xm + 0.12, -0.052, zs], n, [0.2, 0.2]);
   }
 
   /** Над дверью хватает места для прожектора под козырьком. */
@@ -254,7 +256,7 @@ export class OutfitDoors {
       const p = [0, 1, 2].map(i => c[i] + r[i] * k * (W / 2 + 0.008));
       const lo = [0, 1, 2].map(i => Math.min(p[i], p[i] + n[i] * 0.09) - (i === 2 ? 0.015 : 0));
       const hi = [0, 1, 2].map(i => Math.max(p[i], p[i] + n[i] * 0.09) + (i === 2 ? 0.015 : 0.004));
-      body.box(...lo, ...hi);
+      body.box(lo, hi);
     }
   }
 }

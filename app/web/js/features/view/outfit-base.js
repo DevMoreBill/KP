@@ -1,3 +1,6 @@
+import { StMat } from './st-mat.js';
+import { StV } from './st-v.js';
+import { StCam } from './st-cam.js';
 import { RalColor } from '../layout/ral-color.js';
 import { StWalls } from '../layout/st-walls.js';
 import { StationGeo } from '../layout/station-geo.js';
@@ -73,12 +76,12 @@ export class OutfitBase {
   box(m, w, [u, z], [du, dz, d], r = 0.004) {
     const a = this.at(w, u - du / 2, z - dz / 2, 0);
     const b = this.at(w, u + du / 2, z + dz / 2, d);
-    m.box(Math.min(a[0], b[0]), Math.min(a[1], b[1]), a[2], Math.max(a[0], b[0]), Math.max(a[1], b[1]), b[2], r);
+    m.box([Math.min(a[0], b[0]), Math.min(a[1], b[1]), a[2]], [Math.max(a[0], b[0]), Math.max(a[1], b[1]), b[2]], r);
   }
 
   /** Наклейка на стене: середина [u, z], размер [sw, sh], [от стены, свечение], мм. */
   sign(d, w, [u, z], [sw, sh], [o, e] = [0, 0]) {
-    this.s.sticker(d, this.at(w, u, z, o), OutfitBase.N[w], sw / 1000, sh / 1000, e);
+    this.s.sticker(d, this.at(w, u, z, o), OutfitBase.N[w], [sw / 1000, sh / 1000], e);
   }
 
   /** Стена видна: снаружи внутреннего не видно, стена со стороны зрителя в разрезе срезана. */

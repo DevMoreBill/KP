@@ -1,3 +1,5 @@
+import { StMat } from './st-mat.js';
+import { StScene } from './st-scene.js';
 import { RalColor } from '../layout/ral-color.js';
 import { OutfitBase } from './outfit-base.js';
 
@@ -34,7 +36,7 @@ export class OutfitFuel {
     const [, W, H] = this.o.p.int;
     const a = S.P(f.x1, 0, 0);
     const b = S.P(f.x1 + f.part, W, H);
-    S.M(StMat.paint(S.lining, 0.55)).box(...a, ...b);
+    S.M(StMat.paint(S.lining, 0.55)).box(a, b);
     if (S.cut) {
       const y = S.oy - 0.001;
       S.M(StMat.paint(StScene.INS, 0.9)).quad(
@@ -49,7 +51,7 @@ export class OutfitFuel {
     const t = T[0];
     if (t) this.fillPipe(f, t, M.st);
     this.o.safety.extinguisher(S.P(f.x1, 350, OutfitBase.EXT - 500), [-1, 0, 0]);
-    S.sticker({ type: 'sign', id: 'F04' }, S.P(f.x1, 350, 1720), [-1, 0, 0], 0.2, 0.2);
+    S.sticker({ type: 'sign', id: 'F04' }, S.P(f.x1, 350, 1720), [-1, 0, 0], [0.2, 0.2]);
     if (t) this.transfer(t, f, M);
   }
 
@@ -59,14 +61,14 @@ export class OutfitFuel {
     const p0 = S.P(q.x - 60, q.y - 60, 0);
     const p1 = S.P(q.x + q.lx + 60, Math.min(W - 20, q.y + q.ly + 60), 180);
     const w = 0.006;
-    dk.box(p0[0], p0[1], p0[2], p1[0], p1[1], p0[2] + 0.008);
+    dk.box([p0[0], p0[1], p0[2]], [p1[0], p1[1], p0[2] + 0.008]);
     for (const [x0, y0, x1, y1] of [
       [p0[0], p0[1], p1[0], p0[1] + w],
       [p0[0], p1[1] - w, p1[0], p1[1]],
       [p0[0], p0[1], p0[0] + w, p1[1]],
       [p1[0] - w, p0[1], p1[0], p1[1]],
     ]) {
-      dk.box(x0, y0, p0[2], x1, y1, p1[2]);
+      dk.box([x0, y0, p0[2]], [x1, y1, p1[2]]);
     }
   }
 
@@ -119,8 +121,8 @@ export class OutfitFuel {
       const a = S.oy + mm(G.y0 + k * lw + 120);
       const b = S.oy + mm(G.y0 + (k + 1) * lw - 120);
       if (b - a < 0.15) continue;
-      S.louver(1, x, a, b, S.base + 0.15, S.base + 0.45, -1);
-      S.louver(1, x, a, b, S.base + mm(G.h) - 0.45, S.base + mm(G.h) - 0.2, -1);
+      S.louver(1, x, [a, b], [S.base + 0.15, S.base + 0.45], -1);
+      S.louver(1, x, [a, b], [S.base + mm(G.h) - 0.45, S.base + mm(G.h) - 0.2], -1);
     }
     this.o.outer('left', G.y0 - 100, G.y1 + 100, 0, G.h + 150);
   }
@@ -131,7 +133,7 @@ export class OutfitFuel {
     const W = this.o.p.int[1];
     const y0 = S.oy + S.mm(W - 450);
     const y1 = S.oy + S.mm(W - 150);
-    S.louver(1, 0, y0, y1, S.top - 0.65, S.top - 0.4, -1);
+    S.louver(1, 0, [y0, y1], [S.top - 0.65, S.top - 0.4], -1);
     this.o.hood('left', y0 - S.oy - 0.06, y1 - S.oy + 0.06, S.top - 0.34);
     this.o.outer('left', W - 510, W - 90, (S.top - 0.7 - S.base) * 1000, (S.top - 0.3 - S.base) * 1000);
   }
@@ -147,11 +149,11 @@ export class OutfitFuel {
     const mo = S.M(StMat.paint('#4f5d6b', 0.45));
     if (x - 100 < t.x + t.lx + 40) return;
     this.o.log.push({ kind: 'fuelpump', x, y: y0 });
-    dk.box(...S.P(x - 100, y0, 0), ...S.P(x + 100, y1, 60), 0.006);
+    dk.box(S.P(x - 100, y0, 0), S.P(x + 100, y1, 60), 0.006);
     mo.tube(S.P(x, y0 + 20, zc), S.P(x, y0 + 170, zc), 0.07, 20);
     dk.tube(S.P(x, y0 + 15, zc), S.P(x, y0 + 22, zc), 0.072, 20);
     red.tube(S.P(x, y0 + 170, zc), S.P(x, y1 - 10, zc), 0.06, 20);
-    dk.box(...S.P(x - 60, y0 + 40, 60), ...S.P(x + 60, y0 + 150, zc - 60));
+    dk.box(S.P(x - 60, y0 + 40, 60), S.P(x + 60, y0 + 150, zc - 60));
     this.suction(t, { x, y1, zc }, { st, red });
     this.delivery({ x, y0, y1, zc }, st);
   }
@@ -169,7 +171,7 @@ export class OutfitFuel {
     st.sphere(c, 0.017, 8);
     st.tube(c, d, 0.016, 10);
     st.sphere(b, 0.026, 10);
-    red.box(b[0] - 0.01, b[1] - 0.01, b[2] + 0.03, b[0] + 0.09, b[1] + 0.01, b[2] + 0.045, 0.003);
+    red.box([b[0] - 0.01, b[1] - 0.01, b[2] + 0.03], [b[0] + 0.09, b[1] + 0.01, b[2] + 0.045], 0.003);
   }
 
   /** Нагнетание — к топливопроводу у задней стены. */
@@ -198,8 +200,8 @@ export class OutfitFuel {
     bx(dk, [-a, a], [-a, a], [0, 0.003]);
     bx(lk, [-a + 0.012, a - 0.012], [-a + 0.012, a - 0.012], [0.002, 0.004], 0.003);
     bx(mt, [-0.02, 0.02], [-0.12, -0.08], [0.003, 0.006], 0.004);
-    S.sticker({ type: 'sign', id: 'W01' }, at(-0.08, 0.06, 0.005), n, 0.12, 0.105);
-    S.sticker({ type: 'sign', id: 'DT' }, at(0.1, 0.06, 0.005), n, 0.11, 0.06);
+    S.sticker({ type: 'sign', id: 'W01' }, at(-0.08, 0.06, 0.005), n, [0.12, 0.105]);
+    S.sticker({ type: 'sign', id: 'DT' }, at(0.1, 0.06, 0.005), n, [0.11, 0.06]);
     if (!this.o.inside) return;
     const t = w === 'left' ? S.ox : S.oy;
     bx(lk, [-a, a], [-a, a], [-(t + 0.15), -t], 0.01);
@@ -217,15 +219,7 @@ export class OutfitFuel {
     const bx = (m, [d0, d1], [z0, z1], [o0, o1], r = 0) => {
       const p = at(d0, z0, o0);
       const q = at(d1, z1, o1);
-      m.box(
-        Math.min(p[0], q[0]),
-        Math.min(p[1], q[1]),
-        Math.min(p[2], q[2]),
-        Math.max(p[0], q[0]),
-        Math.max(p[1], q[1]),
-        Math.max(p[2], q[2]),
-        r,
-      );
+      m.box([p[0], p[1], p[2]], [q[0], q[1], q[2]], r);
     };
     return { at, n, bx };
   }

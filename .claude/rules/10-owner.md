@@ -52,7 +52,8 @@ Windows 10 (один EXE, папка программы C:\KP), менеджер
   без сборщика». Правила оформления — `00-project.md`, «Оформление кода». [реал.: 3.111.0 — основа и слепки; 3.112.0 — классы
   данных и норм станций — `features/layout/`; 3.113.0 — `StationLayout` и его помощники — `features/layout/`, старый
   `station-layout.js` удалён; 3.114.0 — системы станции (`station-systems.js` → `features/layout/`); 3.115.0 — расчётная записка
-  (`station-calc.js` → `features/calc/`); 3.116.0 — 3D-оснащение и наклейки (`features/view/`); дальше — остальные
+  (`station-calc.js` → `features/calc/`); 3.116.0 — 3D-оснащение и наклейки (`features/view/`); 3.117.0 — 3D-вид (`station-render.js` →
+  `features/view/`); дальше — остальные
   файлы станций, сервер, интерфейс]
 
 ## Выпуск (каждое изменение)

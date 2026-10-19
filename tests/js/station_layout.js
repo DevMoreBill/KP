@@ -6,7 +6,7 @@
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..'), WebScripts=require('./web.js');
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'station-eskd.js', 'station-draw.js', 'station-render.js', 'view/index.js']){
+for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'station-eskd.js', 'station-draw.js', 'view/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
@@ -593,6 +593,8 @@ Check.run('двери: плотно к стене — сервисные вор�
     for (let i=1; i<X.length; i++) assert.ok(X[i].x-X[i-1].x-X[i-1].lx>=StationMatrix.pair({ kind:'compressor', w:550 }, { kind:'compressor', w:550 })[1]-1, 'между компрессорами — для обслуживания'); }
   assert.strictEqual(solve(C('block', { size:'10000 × 3500 × 2700' }), [Object.assign({}, cw, { qty:12 })]).level, 'error', 'двенадцать — не помещаются');
   draw(wk, 'калитка');
+  const wg=structuredClone(wk); wg.gates.wicket={ w:800, h:2000 };   // калитка в створке — вид изнутри в разрезе
+  for (const { mesh } of new StScene(wg, {}).build().groups.values()) assert.ok(mesh.p.every(Number.isFinite), 'калитка: NaN в 3D');
 });
 
 Check.run('шкафы не сужают проход, торец; дверь оператора не уже 900 мм', ()=>{
@@ -930,7 +932,7 @@ Check.run('крыша: плоская, двускатная, односкатн�
   assert.strictEqual(StationGeo.rise('gable', 2440), Math.round(1220*Math.tan(8*Math.PI/180)));
   assert.strictEqual(StationGeo.rise('mono', 2440), Math.round(2440*Math.tan(5*Math.PI/180)));
   assert.strictEqual(StationGeo.rise('flat', 2440), 0);
-  for (const rf of ['flat', 'gable', 'mono']){
+  for (const rf of ['flat', 'gable', 'mono', 'arch']){
     const p=solve(C('block', { roof:rf, sizeAuto:true }), [comp, dryer, rec]); Check.plan(p, 'крыша '+rf);
     assert.strictEqual(p.geo.roof, rf); assert.strictEqual(p.geo.rise>0, rf!=='flat', rf+': подъём');
     const sv=StationDrawing.svg(p, meta(p)); Check.sheet(sv, 'крыша '+rf);

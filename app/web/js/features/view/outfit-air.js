@@ -1,3 +1,5 @@
+import { StMat } from './st-mat.js';
+import { StScene } from './st-scene.js';
 import { RalColor } from '../layout/ral-color.js';
 import { StationVent } from '../layout/station-vent.js';
 
@@ -34,10 +36,10 @@ export class OutfitAir {
   /** Жалюзи снаружи стены w (u a…b, высота Z0…Z1, м); off — поверх полотна створки. */
   outLouver(w, [a, b], [Z0, Z1], off = 0) {
     const S = this.o.s;
-    if (w === 'right') S.louver(1, S.Le + off, S.oy + a, S.oy + b, Z0, Z1, 1);
-    else if (w === 'left') S.louver(1, -off, S.oy + a, S.oy + b, Z0, Z1, -1);
-    else if (w === 'back') S.louver(0, S.We + off, S.ox + a, S.ox + b, Z0, Z1, 1);
-    else if (!S.cut) S.louver(0, -off, S.ox + a, S.ox + b, Z0, Z1, -1);
+    if (w === 'right') S.louver(1, S.Le + off, [S.oy + a, S.oy + b], [Z0, Z1], 1);
+    else if (w === 'left') S.louver(1, -off, [S.oy + a, S.oy + b], [Z0, Z1], -1);
+    else if (w === 'back') S.louver(0, S.We + off, [S.ox + a, S.ox + b], [Z0, Z1], 1);
+    else if (!S.cut) S.louver(0, -off, [S.ox + a, S.ox + b], [Z0, Z1], -1);
   }
 
   /** Вентилятор в проёме (вытяжной — система «Вытяжные вентиляторы», приточный — если жалюзи притока не встали): изнутри —
@@ -57,7 +59,7 @@ export class OutfitAir {
     this.o.box(pl, w, [(L.u0 + L.u1) / 2, zc], [L.u1 - L.u0 + 40, L.z1 - L.z0 + 40, 30]); // монтажная плита
     for (let i = 0; i < n; i++) {
       const u = L.u0 + du * (i + 0.5);
-      ring.tube(this.o.at(w, u, zc, 30), this.o.at(w, u, zc, 190), r / 1000, 28, [false, false]); // обечайка
+      ring.tube(this.o.at(w, u, zc, 30), this.o.at(w, u, zc, 190), r / 1000, 28, { caps: [false, false] }); // обечайка
       dk.tube(this.o.at(w, u, zc, 60), this.o.at(w, u, zc, 230), (r * 0.28) / 1000, 18); // ступица с двигателем
       for (let k = 0; k < 3; k++) {
         const a = (k * Math.PI * 2) / 3;
@@ -94,28 +96,24 @@ export class OutfitAir {
     const y0 = c[1];
     const x1 = d[0];
     const y1 = d[1];
-    g.box(x0 - 0.03, y0 - 0.03, Math.min(S.roofZ(c[1]), S.roofZ(d[1])), x1 + 0.03, y1 + 0.03, zr + 0.06, 0.004); // стакан
+    g.box([x0 - 0.03, y0 - 0.03, Math.min(S.roofZ(c[1]), S.roofZ(d[1]))], [x1 + 0.03, y1 + 0.03, zr + 0.06], 0.004); // стакан
     for (const [a, b] of [
       [0.02, 0.04],
       [h - 0.04, h - 0.02],
     ])
-      g.box(x0, y0, zr + a, x1, y1, zr + b);
+      g.box([x0, y0, zr + a], [x1, y1, zr + b]);
     for (const k of [0, 1, 2, 3])
       g.box(
-        k % 2 ? x1 - 0.03 : x0,
-        k < 2 ? y0 : y1 - 0.03,
-        zr + 0.04,
-        k % 2 ? x1 : x0 + 0.03,
-        k < 2 ? y0 + 0.03 : y1,
-        zr + h - 0.04,
+        [k % 2 ? x1 - 0.03 : x0, k < 2 ? y0 : y1 - 0.03, zr + 0.04],
+        [k % 2 ? x1 : x0 + 0.03, k < 2 ? y0 + 0.03 : y1, zr + h - 0.04],
       ); // стойки по углам
     for (let z = zr + 0.08; z < zr + h - 0.05; z += 0.055) {
-      sl.box(x0 + 0.03, y0 - 0.005, z, x1 - 0.03, y0 + 0.005, z + 0.02);
-      sl.box(x0 + 0.03, y1 - 0.005, z, x1 - 0.03, y1 + 0.005, z + 0.02);
-      sl.box(x0 - 0.005, y0 + 0.03, z, x0 + 0.005, y1 - 0.03, z + 0.02);
-      sl.box(x1 - 0.005, y0 + 0.03, z, x1 + 0.005, y1 - 0.03, z + 0.02);
+      sl.box([x0 + 0.03, y0 - 0.005, z], [x1 - 0.03, y0 + 0.005, z + 0.02]);
+      sl.box([x0 + 0.03, y1 - 0.005, z], [x1 - 0.03, y1 + 0.005, z + 0.02]);
+      sl.box([x0 - 0.005, y0 + 0.03, z], [x0 + 0.005, y1 - 0.03, z + 0.02]);
+      sl.box([x1 - 0.005, y0 + 0.03, z], [x1 + 0.005, y1 - 0.03, z + 0.02]);
     }
-    g.box(x0 - 0.09, y0 - 0.09, zr + h, x1 + 0.09, y1 + 0.09, zr + h + 0.03, 0.006); // крышка с выносом
+    g.box([x0 - 0.09, y0 - 0.09, zr + h], [x1 + 0.09, y1 + 0.09, zr + h + 0.03], 0.006); // крышка с выносом
   }
 
   /** Проём в стене: снаружи — жалюзи с козырьком (с маркизой — маркиза вместо него), изнутри — решётка и клапан с приводом. */
@@ -192,7 +190,7 @@ export class OutfitAir {
     const V = (du, dq, dz) => (end ? [sg * dq, du, dz] : [du, sg * dq, dz]);
     const bx = (mt, [ua, ub], [qa, qb], [za, zb], r = 0) => {
       const [p, q] = [P(ua, qa, za), P(ub, qb, zb)];
-      mt.box(p[0], p[1], p[2], q[0], q[1], q[2], r);
+      mt.box([p[0], p[1], p[2]], [q[0], q[1], q[2]], r);
     };
     return { P, V, bx };
   }

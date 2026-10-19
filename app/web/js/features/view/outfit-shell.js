@@ -60,7 +60,7 @@ export class OutfitShell {
   }
 
   put(d, w, [u, z], [a, b]) {
-    this.o.s.sticker(d, this.wallAt(w, u, z), OutfitBase.N_OUT[w], a / 1000, b / 1000);
+    this.o.s.sticker(d, this.wallAt(w, u, z), OutfitBase.N_OUT[w], [a / 1000, b / 1000]);
     this.o.outer(w, u - a / 2 - 40, u + a / 2 + 40, z - b / 2 - 40, z + b / 2 + 40);
     this.o.log.push({ kind: d.id, wall: w, u, z });
   }
@@ -199,7 +199,7 @@ export class OutfitShell {
     let c = [a.wall === 'left' ? this.o.leftX() : this.o.rightX(), x, zc];
     if (a.wall === 'front') c = [x, this.o.frontY(), zc];
     else if (a.wall === 'back') c = [x, S.We - this.o.frontY(), zc];
-    S.sticker({ type: 'art', src: a.src, ar: wm / hm }, c, OutfitBase.N_OUT[a.wall], wm, hm);
+    S.sticker({ type: 'art', src: a.src, ar: wm / hm }, c, OutfitBase.N_OUT[a.wall], [wm, hm]);
     this.o.outer(a.wall, q.u - q.w / 2 - 40, q.u + q.w / 2 + 40, q.z - q.h / 2 - 40, q.z + q.h / 2 + 40);
     this.o.log.push({ kind: 'art', wall: a.wall, u: Math.round(q.u), z: Math.round(q.z), w: Math.round(q.w), free });
     if (a.wall === 'front') this.o.artF.push([x - wm / 2 - 0.1, x + wm / 2 + 0.1]);
@@ -214,7 +214,7 @@ export class OutfitShell {
     const [y0, y1] = this.endSpan();
     const w = Math.min(1.9, (y1 - y0) * 0.92, 0.42 * d.ar);
     const h = w / d.ar;
-    if (w >= 0.6 && !this.o.artL) S.sticker(d, [this.o.leftX(), (y0 + y1) / 2, top - 0.1 - h / 2], [-1, 0, 0], w, h);
+    if (w >= 0.6 && !this.o.artL) S.sticker(d, [this.o.leftX(), (y0 + y1) / 2, top - 0.1 - h / 2], [-1, 0, 0], [w, h]);
     if (S.closed) this.frontBrand(d, top);
   }
 
@@ -264,7 +264,7 @@ export class OutfitShell {
     const f = A && (!B || A.w >= B.w * 0.8) ? A : B;
     if (!f) return;
     const h = f.w / d.ar;
-    S.sticker(d, [(f.g[0] + f.g[1]) / 2, this.o.frontY(), top - 0.12 - h / 2], [0, -1, 0], f.w, h);
+    S.sticker(d, [(f.g[0] + f.g[1]) / 2, this.o.frontY(), top - 0.12 - h / 2], [0, -1, 0], [f.w, h]);
   }
 
   /** Самый широкий логотип в простенках между вырезами cuts (над жалюзи — по высоте над их козырьками). */

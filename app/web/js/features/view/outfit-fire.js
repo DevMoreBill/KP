@@ -1,3 +1,5 @@
+import { StMat } from './st-mat.js';
+import { StV } from './st-v.js';
 import { OutfitBase } from './outfit-base.js';
 
 /** Пожарная безопасность: извещатели, модули «Буран-2,5», табло, щит ОПС, огнетушители. */
@@ -142,12 +144,12 @@ export class OutfitFire {
     const z0 = z1 - 0.11;
     const [x, y] = c;
     this.o.log.push({ kind: 'buran', at: c });
-    dk.box(x - 0.1, y - 0.022, c[2] - 0.008, x + 0.1, y + 0.022, c[2]);
+    dk.box([x - 0.1, y - 0.022, c[2] - 0.008], [x + 0.1, y + 0.022, c[2]]);
     dk.tube([x, y, c[2] - 0.008], [x, y, z1], 0.018, 10); // кронштейн
     red.tube([x, y, z0], [x, y, z1], r, 32);
-    lb.tube([x, y, z0 + 0.03], [x, y, z0 + 0.075], r * 1.006, 32, [false, false]);
-    gr.tube([x, y, z0 - 0.014], [x, y, z0], r * 0.9, 32, [true, false]);
-    dk.tube([x, y, z0 - 0.04], [x, y, z0 - 0.014], 0.022, 14, [true, false]);
+    lb.tube([x, y, z0 + 0.03], [x, y, z0 + 0.075], r * 1.006, 32, { caps: [false, false] });
+    gr.tube([x, y, z0 - 0.014], [x, y, z0], r * 0.9, 32, { caps: [true, false] });
+    dk.tube([x, y, z0 - 0.04], [x, y, z0 - 0.014], 0.022, 14, { caps: [true, false] });
   }
 
   /** Щит ОПС на стене (середина u, zc — середина по высоте): корпус, дисплей, индикаторы «Пожар», «Неисправность», «Питание»,
@@ -157,7 +159,7 @@ export class OutfitFire {
     this.o.log.push({ kind: 'ops', wall: w, u, seen: this.o.seen(w, u, zc) });
     this.o.box(S.M(StMat.paint('#e2e5e8', 0.4)), w, [u, zc], [300, 400, 120], 0.012);
     this.o.box(S.M(StMat.paint('#1d2226', 0.35)), w, [u, zc + 105], [200, 80, 123], 0.004);
-    S.M(StMat.glow('#9fe6b3', 1.2)).box(...this.o.at(w, u - 85, zc + 75, 124), ...this.o.at(w, u + 85, zc + 135, 125)); // экран
+    S.M(StMat.glow('#9fe6b3', 1.2)).box(this.o.at(w, u - 85, zc + 75, 124), this.o.at(w, u + 85, zc + 135, 125)); // экран
     for (const [k, c] of [
       [-1, '#ff3b30'],
       [0, '#ffc21a'],
@@ -181,13 +183,13 @@ export class OutfitFire {
     const a = this.o.at(w, u - sw / 2 - 15, z - sh / 2 - 15, o0);
     const c = this.o.at(w, u + sw / 2 + 15, z + sh / 2 + 15, o1);
     this.o.log.push({ kind: 'board', id, wall: w, u, z0: z - sh / 2 - 15 });
-    b.box(Math.min(a[0], c[0]), Math.min(a[1], c[1]), a[2], Math.max(a[0], c[0]), Math.max(a[1], c[1]), c[2], 0.006);
+    b.box([a[0], a[1], a[2]], [c[0], c[1], c[2]], 0.006);
     for (const k of [-1, 1]) {
       const p = this.o.at(w, u + k * (sw / 2 - 30), z + sh / 2 + 15, (o0 + o1) / 2);
       dk.tube(p, [p[0], p[1], S.base + H / 1000], 0.005, 6);
     }
-    S.sticker({ type: 'sign', id }, this.o.at(w, u, z, o1), n, sw / 1000, sh / 1000, 1.4);
-    S.sticker({ type: 'sign', id }, this.o.at(w, u, z, o0), m, sw / 1000, sh / 1000, 1.4);
+    S.sticker({ type: 'sign', id }, this.o.at(w, u, z, o1), n, [sw / 1000, sh / 1000], 1.4);
+    S.sticker({ type: 'sign', id }, this.o.at(w, u, z, o0), m, [sw / 1000, sh / 1000], 1.4);
   }
 
   /** Огнетушитель на стене: base — точка стены на высоте низа корпуса, n — от стены; корпус, головка с рычагом и манометром,
@@ -205,11 +207,11 @@ export class OutfitFire {
     const mt = S.M(StMat.metal('#b9bfc5', 0.3));
     const lb = S.M(StMat.paint('#f1efe8', 0.6));
     this.o.log.push({ kind: 'ext', top: Math.round((hz + 0.012 - S.base) * 1000), at: c });
-    red.tube([c[0], c[1], z0], [c[0], c[1], z1], r, 24, [true, false]);
-    red.dish(c[0], c[1], z1, r, 1, 24);
-    lb.tube([c[0], c[1], z0 + 0.1], [c[0], c[1], z0 + 0.22], r * 1.004, 24, [false, false]);
+    red.tube([c[0], c[1], z0], [c[0], c[1], z1], r, 24, { caps: [true, false] });
+    red.dish([c[0], c[1], z1], r, 1, 24);
+    lb.tube([c[0], c[1], z0 + 0.1], [c[0], c[1], z0 + 0.22], r * 1.004, 24, { caps: [false, false] });
     mt.tube([c[0], c[1], z1 + r * 0.45], [c[0], c[1], hz - 0.03], 0.018, 12);
-    dk.box(c[0] - 0.022, c[1] - 0.022, hz - 0.03, c[0] + 0.022, c[1] + 0.022, hz + 0.01, 0.004);
+    dk.box([c[0] - 0.022, c[1] - 0.022, hz - 0.03], [c[0] + 0.022, c[1] + 0.022, hz + 0.01], 0.004);
     dk.obox(StV.add([c[0], c[1], hz], StV.mul(t, -0.02)), StV.mul(t, 0.12), StV.mul(n, 0.022), [0, 0, 0.012]); // рычаг
     S.M(StMat.paint('#f4f4f2', 0.3)).tube(
       StV.add([c[0], c[1], hz - 0.012], StV.mul(n, 0.022)),
@@ -224,14 +226,10 @@ export class OutfitFire {
     dk.sphere(h1, 0.009, 8);
     dk.tube(h1, h2, 0.009, 8);
     dk.tube(h2, StV.add(h2, [0, 0, -0.05]), 0.014, 10); // шланг
-    dk.tube([c[0], c[1], z0 + 0.27], [c[0], c[1], z0 + 0.3], r * 1.06, 24, [false, false]);
+    dk.tube([c[0], c[1], z0 + 0.27], [c[0], c[1], z0 + 0.3], r * 1.06, 24, { caps: [false, false] });
     dk.box(
-      Math.min(base[0], c[0] - t[0] * 0.03),
-      Math.min(base[1], c[1] - t[1] * 0.03),
-      z0 + 0.26,
-      Math.max(base[0], c[0] + t[0] * 0.03),
-      Math.max(base[1], c[1] + t[1] * 0.03),
-      z0 + 0.31,
+      [Math.min(base[0], c[0] - t[0] * 0.03), Math.min(base[1], c[1] - t[1] * 0.03), z0 + 0.26],
+      [Math.max(base[0], c[0] + t[0] * 0.03), Math.max(base[1], c[1] + t[1] * 0.03), z0 + 0.31],
       0.003,
     ); // кронштейн
   }

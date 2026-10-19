@@ -1,3 +1,6 @@
+import { StMat } from './st-mat.js';
+import { StV } from './st-v.js';
+import { StScene } from './st-scene.js';
 import { StationHeat } from '../layout/station-heat.js';
 import { StationLight } from '../layout/station-light.js';
 
@@ -23,10 +26,9 @@ export class OutfitInside {
     const hl = StationLight.LAMP.len / 2;
     for (let i = 0; i < n; i++) {
       const x = x0 + ((L - x0) * (i + 0.5)) / n;
-      body.box(...S.P(x - hl, y - 90, H - 60), ...S.P(x + hl, y + 90, H), 0.01);
-      lamp.box(...S.P(x - hl + 30, y - 70, H - 62), ...S.P(x + hl - 30, y + 70, H - 55));
-      if (i % 2 === 0 && i / 2 < Lt.em)
-        led.box(...S.P(x + hl - 80, y - 104, H - 48), ...S.P(x + hl - 35, y - 92, H - 28));
+      body.box(S.P(x - hl, y - 90, H - 60), S.P(x + hl, y + 90, H), 0.01);
+      lamp.box(S.P(x - hl + 30, y - 70, H - 62), S.P(x + hl - 30, y + 70, H - 55));
+      if (i % 2 === 0 && i / 2 < Lt.em) led.box(S.P(x + hl - 80, y - 104, H - 48), S.P(x + hl - 35, y - 92, H - 28));
     }
     const fu = P.fuel;
     const rooms = [];
@@ -47,8 +49,8 @@ export class OutfitInside {
     const x0 = S.g.x0 || 0;
     if (this.o.sys.power === false || !this.o.inside) return;
     const tr = S.M(StMat.metal(StScene.GALV, 0.45));
-    tr.box(...S.P(x0 + 150, W - 220, H - 260), ...S.P(L - 150, W - 20, H - 210), 0.003);
-    for (let x = x0 + 600; x < L - 300; x += 1500) tr.box(...S.P(x, W - 240, H - 280), ...S.P(x + 30, W, H - 260));
+    tr.box(S.P(x0 + 150, W - 220, H - 260), S.P(L - 150, W - 20, H - 210), 0.003);
+    for (let x = x0 + 600; x < L - 300; x += 1500) tr.box(S.P(x, W - 240, H - 280), S.P(x + 30, W, H - 260));
   }
 
   /** Конвекторы на местах из расчёта: решётка сверху, терморегулятор, кронштейны. */
@@ -155,15 +157,15 @@ export class OutfitInside {
     if (rad === 'back') {
       const y1 = it.y + it.ly;
       if (W - y1 < 30) return; // поперёк: радиатор к задней стене
-      cl.box(...S.P(it.x + 60, y1, za), ...S.P(it.x + it.lx - 60, W, zb), 0.02);
+      cl.box(S.P(it.x + 60, y1, za), S.P(it.x + it.lx - 60, W, zb), 0.02);
       for (const y of [y1, W - 40])
-        f.box(...S.P(it.x + 50, y, it.h * 0.09), ...S.P(it.x + it.lx - 50, y + 40, it.h * 0.97), 0.006);
+        f.box(S.P(it.x + 50, y, it.h * 0.09), S.P(it.x + it.lx - 50, y + 40, it.h * 0.97), 0.006);
       return;
     }
     const [a, b] = rad === 'left' ? [x0, it.x] : [it.x + it.lx, L];
     if (b - a < 30) return;
-    cl.box(...S.P(a, it.y + 60, za), ...S.P(b, it.y + it.ly - 60, zb), 0.02);
+    cl.box(S.P(a, it.y + 60, za), S.P(b, it.y + it.ly - 60, zb), 0.02);
     for (const x of rad === 'left' ? [a, b - 40] : [a, b - 40])
-      f.box(...S.P(x, it.y + 50, it.h * 0.09), ...S.P(x + 40, it.y + it.ly - 50, it.h * 0.97), 0.006);
+      f.box(S.P(x, it.y + 50, it.h * 0.09), S.P(x + 40, it.y + it.ly - 50, it.h * 0.97), 0.006);
   }
 }
