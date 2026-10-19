@@ -86,8 +86,9 @@ class Check {
         assert.ok(p.ends && D.some(d=>d.wall==='front') && D.some(d=>d.wall==='back') && p.gates && p.gates.wall==='left' && (k ? it.x-CE[k-1].x-CE[k-1].lx>=nx-1 : it.x-(p.geo.x0||0)<=600), `${label}: поз. ${it.pos} без продольного прохода — нет ворот с обеих сторон или в торце, или к нему не подойти сбоку`);
         const nxt=floor.filter(i=>!i.ends && i.x>=it.x+it.lx).sort((a, b)=>a.x-b.x)[0]; if (k===CE.length-1 && nxt) assert.ok(nxt.x-it.x-it.lx>=nx-1, `${label}: за последним компрессором меньше ${nx} мм`);
         assert.ok(p.entry && p.entry.x0>=CE[CE.length-1].x+CE[CE.length-1].lx && D.filter(d=>d.wall==='front').every(d=>d.x1<=p.entry.x0-100), `${label}: дверь оператора — за компрессорами, мимо их ворот`); continue; }
-      // ресиверы в два ряда в конце ряда — поперёк во всю ширину: проход доходит до них сбоку, от стен — не меньше 300 мм
-      if (it.pairEnd){ const pw=p.ends ? 149 : 299; assert.ok(it.kind==='receiver' && it.y>=pw && W-it.y-it.ly>=pw && !floor.some(o=>!o.pairEnd && o.x+o.lx>it.x), `${label}: ресиверы в два ряда поз. ${it.pos} — не в конце ряда или ближе 300 мм к стене`); continue; }
+      // ресиверы в два ряда в конце ряда — поперёк во всю ширину: проход доходит до них сбоку, от стен — не меньше recv.pairWall
+      // (решение владельца 19.10: как в режиме без продольного прохода — 100 мм) и зазора на коммуникации
+      if (it.pairEnd){ const pw=Math.min(p.ends ? 149 : 299, Math.min(StationMatrix.recv().pairWall, StationClear.of('receiver', it).back[1])-1); assert.ok(it.kind==='receiver' && it.y>=pw && W-it.y-it.ly>=pw && !floor.some(o=>!o.pairEnd && o.x+o.lx>it.x), `${label}: ресиверы в два ряда поз. ${it.pos} — не в конце ряда или ближе ${pw+1} мм к стене (y ${it.y}, ly ${it.ly}, W ${W})`); continue; }
       assert.ok(it.y>=need-1, `${label}: проход перед поз. ${it.pos} ${it.y} < ${need}`);
       for (const c of I.filter(i=>i.mount==='wall' && i.wall==='front' && i.x<it.x+it.lx && i.x+i.lx>it.x))   // шкаф не сужает проход
         assert.ok(it.y-c.y-c.ly>=aMin-1, `${label}: перед шкафом поз. ${c.pos} проход ${it.y-c.y-c.ly} < ${aMin}`); }
@@ -1413,7 +1414,7 @@ Check.run('матрица расстановки: правила, доступ �
   assert.deepStrictEqual(M.pair({ kind:'filter', w:200 }, { kind:'filter', w:200 })[2], 0, 'фильтры — вплотную можно');
   assert.ok(M.pair(K(900), { kind:'dryer', w:700 })[2]>0, 'компрессор с осушителем — не вплотную');
   assert.deepStrictEqual(M.sides('compressor'), { F:true, B:true, L:true, R:true }); assert.deepStrictEqual(M.sides('receiver'), { F:true, B:false, L:false, R:false });
-  assert.ok(M.door().w>=900 && M.door().h>=2000 && M.exits().n===2 && M.exits().dist===5000 && M.gate().twoAt===8000, 'дверь, выходы, ворота');
+  assert.ok(M.door().w>=900 && M.door().h>=2000 && M.exits().far===7000 && M.exits().dist===5000 && M.gate().twoAt===8000, 'дверь, выходы, ворота');
   // компрессорная: доступ ко всем нужным сторонам, ворота в торце — выход, вторые ворота при цепочке длиннее 8 м
   const c2=P('Компрессор DVK 75', { cat:'comp_screw', model:'DVK 75', kw:75, size:'2000 × 1100 × 1800' }, { role:'main', qty:2 });
   const d2=P('Осушитель DK 110', { cat:'dryer_refrig', model:'DK 110', size:'900 × 700 × 1300' }), r2=P('Ресивер РВ 900', { cat:'receiver', model:'РВ 900/11', volume:900, size:'750 × 750 × 2200' }, { qty:2 });
@@ -1423,7 +1424,7 @@ Check.run('матрица расстановки: правила, доступ �
   assert.ok(p.access.every(q=>['узкое', 'широкое', 'сверхширокое'].includes(q.cls)) && p.access.filter(q=>q.kind==='compressor').every(q=>q.cls!=='сверхширокое'), 'класс по ширине: '+p.access.map(q=>q.cls));
   const X=p.items.filter(i=>i.mount==='floor').sort((a, b)=>a.x-b.x), cs=X.filter(i=>i.kind==='compressor');
   assert.ok(cs[1].x-cs[0].x-cs[0].lx>=700, 'между компрессорами — для обслуживания: '+(cs[1].x-cs[0].x-cs[0].lx));
-  const rs=X.filter(i=>i.kind==='receiver'); assert.ok(rs.length===2 && Math.abs(rs[0].y-rs[1].y)<2 && rs[1].x>rs[0].x, 'ресиверы — друг за другом');
+  const rs=X.filter(i=>i.kind==='receiver'); assert.ok(rs.length===2 && ((Math.abs(rs[0].y-rs[1].y)<2 && rs[1].x>rs[0].x) || rs.every(i=>i.pairEnd)), 'ресиверы — друг за другом (или парой поперёк, если станция короче хотя бы на 1 м — решение владельца 19.10)');
   const used=X[X.length-1].x+X[X.length-1].lx-X[0].x;
   assert.ok(p.gates && (used>M.gate().twoAt ? p.gates2 && p.gates2.wall!==p.gates.wall : true), 'ворота в обоих торцах при цепочке длиннее 8 м: '+used);
   for (const g of [p.gates, p.gates2].filter(Boolean)){ const hm=Math.max(...cs.map(i=>i.h));
@@ -1560,7 +1561,7 @@ Check.run('вытяжные вентиляторы в стене напроти�
   const c132=P('Винтовой компрессор 132', { cat:'comp_screw', kw:132, size:'2200 × 1300 × 1900', mass:1500 }, { role:'main' });
   // (стены заняты конвекторами с прежними отступами 300 / 150 / 400 мм — с уменьшенными 13.10 жалюзи притока здесь уже встают)
   const rb=JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')), rc=JSON.parse(JSON.stringify(rb));
-  Object.assign(rc.rules.find(r=>r.id==='layout.matrix').value.conv, { gap:300, edge:150, front:400 }); StationRules.use(rc);
+  Object.assign(rc.rules.find(r=>r.id==='layout.matrix').value.conv, { gap:300, edge:150, front:400 }); rc.rules.find(r=>r.id==='layout.matrix').value.exits.far=2000; StationRules.use(rc);   // вторая дверь оператора, как до 19.10, — стены заняты
   let pi; try{ pi=solve(C('sea20', { sys:{ snow:true } }), [c132, dryer, rec, cab]); } finally { StationRules.use(rb); }
   const F=pi.vent.louvers.filter(q=>q.kind==='in' && q.fan);
   assert.ok(pi.vent.infan && F.length===pi.vent.infan.n && pi.vent.short.in===0, 'приточные вентиляторы: '+JSON.stringify(pi.vent.infan));
@@ -1641,7 +1642,8 @@ Check.run('без продольного прохода: компрессор у
   assert.ok(p.gates.h===p.gates2.h && p.gates.h>=2040+StationMatrix.gate().addH, 'ворота в торцах — одной высоты по самому высокому: '+[p.gates.h, p.gates2.h]);
   // заданный контейнер той же ширины: с проходом не встаёт по длине — без продольного прохода
   const q=solve(C('block', { size:'8300 × 2550 × 3100' }), [k90, ads, r900, cab]); Check.plan(q, 'заданный 8,3 м');
-  assert.ok(q.level!=='error' && q.mode && q.mode.ends, 'заданный: '+JSON.stringify([q.level, q.mode]));
+  // (уточнено 19.10: ресиверы парами поперёк — от стен 100 мм, раньше «вплотную»: так встаёт и с проходом, без лишних ворот)
+  assert.ok(q.level!=='error' && ((q.mode && q.mode.ends) || q.items.filter(i=>i.kind==='receiver').every(i=>i.pairEnd)), 'заданный: '+JSON.stringify([q.level, q.mode]));
   // два компрессора — рядом в ряд от торца (уточнение ПНЕВМОТЕХ), между ними и за последним — не меньше 1 000 мм
   const two=P('Винтовой компрессор 90', { cat:'comp_screw', kw:90, size:'1900 × 1200 × 1800' }, { role:'main', qty:2 });
   const w=solve(C('block', { sizeAuto:true }), [two, ads, r900, cab]); Check.plan(w, 'два компрессора'); draw(w, 'два компрессора');
@@ -1860,6 +1862,19 @@ Check.run('Станция из модулей: раскладка, подбор 
 // выход трубопровода не в воротах и дверях торца — на ближайшей свободной стене, снаружи патрубок с фланцем
 Check.run('Модули: ширина, состав модулей, стыки для ТЗ; выход трубопровода мимо ворот с фланцем', ()=>{
   assert.deepStrictEqual(StationMods.widths(), [2448, 2500, 2550], 'ширины модуля');
+  // решение владельца 19.10: модуль — не короче 7 м («3 модуля по 4 100 мм — нежизнеспособно»)
+  for (const cells of [StationMods.cells(3, 1), StationMods.cells(2, 1), StationMods.cells(2, 2)]){ const z=solve(C('block', { sizeAuto:true, mods:{ cells } }), [Object.assign({}, dgu, { id:'dl', qty:3 }), ats]);
+    if (z.level!=='error') assert.ok(z.geo.mods.Lm>=7000, 'модуль не короче 7 000 мм: '+z.geo.mods.Lm); }
+  // решение владельца 19.10: две ДГУ у торцов — выходы через двери-жалюзи у обоих торцов, вторая дверь оператора лишняя
+  const d2=solve(C('block'), [P('ДГУ 30', { cat:'dgu', kw:30 }, { role:'main', qty:2, rows:[{ k:'Габариты Д × Ш × В', v:'1900 × 850 × 1300 мм' }] }), ats]);
+  assert.ok(!d2.second && !d2.exit && !(d2.doors||[]).some(d=>d.kind==='entry'), 'две ДГУ у торцов — без второй двери оператора');
+  // решение владельца 19.10: крупные компрессоры — модули в один ряд, без продольного прохода (сервисные ворота, двери оператора
+  // между компрессорами), а не два ряда модулей
+  const b3=P('Компрессор 250', { cat:'comp_screw', kw:250, size:'3800 × 2000 × 2200', mass:5000 }, { role:'main', qty:3 });
+  const row=solve(C('block', { sizeAuto:true, mods:{ cells:StationMods.cells(3, 1) } }), [b3, dryer, rec]);
+  assert.ok(row.level!=='error' && row.items.some(i=>i.ends) && (row.doors||[]).some(d=>d.kind==='entry') && !StationMods.cross(row.items, row.geo).length, 'один ряд модулей без продольного прохода');
+  const sh=solve(C('block', { size:'4100 × 2448 × 2600', mods:{ cells:StationMods.cells(3, 1) } }), [comp]);
+  assert.ok(sh.issues.some(i=>i.mods && /меньше 7 000 мм/.test(i.text)), 'короткий модуль вручную — замечание');
   const big=P('Компрессор 250', { cat:'comp_screw', kw:250, size:'3800 × 2000 × 2200', mass:5000 }, { role:'main', qty:3 });
   const q=solve(C('block', { sizeAuto:true, mods:{ cells:StationMods.cells(2, 2) } }), [big, dryer, rec, P('Трубопровод', {}), P('Шкаф АВР', { cat:'ats' })]);
   Check.plan(q, '2 × 2'); assert.notStrictEqual(q.level, 'error', q.issues.map(i=>i.text).join(' | '));
@@ -1889,8 +1904,8 @@ Check.run('Аккуратная компоновка: лицевая линия,
   const two=solve(C('block'), [Object.assign({}, comp, { id:'t2', qty:2 }), dryer, Object.assign({}, rec, { id:'t3', qty:2 }), P('Трубопровод', {})]);
   Check.plan(two, 'аккуратно');
   // на общую линию — всё, что встаёт без ущерба (ресиверы к проходу не выдвигаются, если проход станет уже рекомендуемого)
-  const fl=two.items.filter(i=>i.mount==='floor'), F=new Set(fl.filter(i=>i.kind!=='receiver').map(i=>i.y)), R=new Set(fl.filter(i=>i.kind==='receiver').map(i=>i.y));
-  assert.ok(F.size===1 && R.size===1, 'лицевые линии: агрегаты '+[...F]+', ресиверы '+[...R]);
+  const fl=two.items.filter(i=>i.mount==='floor' && !i.pairEnd), F=new Set(fl.filter(i=>i.kind!=='receiver').map(i=>i.y)), R=new Set(fl.filter(i=>i.kind==='receiver').map(i=>i.y));
+  assert.ok(F.size===1 && R.size<=1, 'лицевые линии: агрегаты '+[...F]+', ресиверы '+[...R]);
   const three=solve(C('block'), [Object.assign({}, comp, { id:'t4', qty:3 }), dryer, rec]), C3=three.items.filter(i=>i.kind==='compressor').sort((a, b)=>a.x-b.x);
   const g=C3.slice(1).map((c, k)=>c.x-C3[k].x-C3[k].lx); assert.ok(Math.max(...g)-Math.min(...g)<=1, 'равный шаг одинаковых: '+g);
   for (const p of [two, three]){

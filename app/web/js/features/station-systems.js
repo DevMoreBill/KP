@@ -711,12 +711,16 @@ class StationVent {
   static calc(plan){
     // второй ряд компрессоров — выброс в стену прохода над их сервисными воротами, если приток весь встаёт на торцах;
     // иначе — через крышу (крайний случай)
-    const a=this.calc0(plan, true);
-    if (!a || !(a.short.in>0) || !a.louvers.some(q=>q.kind==='out' && q.wall==='front' && q.duct)) return a;
-    const b=this.calc0(plan, false); return b.short.in<a.short.in ? b : a;
+    let a=this.calc0(plan, true);
+    if (a && a.short.in>0 && a.louvers.some(q=>q.kind==='out' && q.wall==='front' && q.duct)){ const b=this.calc0(plan, false); if (b.short.in<a.short.in) a=b; }
+    // притока не хватает, а выброс на стене (стена выброса занята под приток быть не может) — выброс компрессоров через крышу
+    // (исключение: так освобождается стена под приток), если притока так не хватает меньше
+    if (a && a.short.in>0 && Object.values(a.ducts||{}).includes('wall')){ const c=this.calc0(plan, true, true);
+      if (c && c.short.in<a.short.in){ c.roofWhy=`приточные жалюзи на стенах не помещались (не хватало ${String(Math.round(a.short.in*100)/100).replace('.', ',')} м²): выброс компрессоров — через крышу, стена выброса — под приток`; return c; } }
+    return a;
   }
   /** расчёт при выбросе второго ряда компрессоров в стену прохода (front) или через крышу */
-  static calc0(plan, front){
+  static calc0(plan, front, roof=false){
     const h=plan.heat, v=h && h.vent, sys=plan.sys||{}, I=plan.items||[], [L, Wd, H]=plan.int, dgu=I.find(i=>i.kind==='dgu' && !i.tank);
     if (!v || (!dgu && sys.vent===false)) return null;
     // проёмы — по рамке (решение ПНЕВМОТЕХ): S = L / (3600·v); приток — с запасом (vent.speed.inReserve); живое
@@ -811,7 +815,7 @@ class StationVent {
     // одного компрессора, например DL-55/8GA и DL-55/8GA-F)
     const groups=comp.length ? [comp.slice().sort((a, b)=>qc(b)-qc(a))] : [];
     const mC=W.mark(), nC=out.louvers.length, nR0=out.roof.length, qW0=qWall;
-    let viaRoof=comp.some(c=>!exWall(c));
+    let viaRoof=roof || comp.some(c=>!exWall(c));
     for (const Cs of viaRoof ? [] : groups){ const q=qc(Cs[0]), need0=gross(q), Sl=Cs.map(slot);
       const hTop=Math.min(...Sl.map(s=>s.hMax)), wTop=Math.min(...Sl.map(s=>s.wMax)); let got=null, part=null;
       // размер — по самому стеснённому месту группы: выше решётка — уже; полностью не хватает — наибольшая, что встаёт у всех
