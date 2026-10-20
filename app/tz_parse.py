@@ -22,55 +22,61 @@ class TzParse:
     @classmethod
     def parse(cls, text) -> dict:
         """{'kind', 'req': {…}, 'found': [{key, label, value, src, page}], 'conflicts', 'fields', 'questions', 'later'}"""
-        p = cls(text)
-        p.run()
-        rv = TzReview(p)
+        parser = cls(text)
+        parser.run()
+        review = TzReview(parser)
         return {
-            'kind': p.req.get('kind', ''),
-            'req': p.req,
-            'found': p.found,
-            'conflicts': p.conflicts,
-            'fields': rv.fields(),
-            'questions': rv.questions(),
-            'later': rv.later(),
+            'kind': parser.req.get('kind', ''),
+            'req': parser.req,
+            'found': parser.found,
+            'conflicts': parser.conflicts,
+            'fields': review.fields(),
+            'questions': review.questions(),
+            'later': review.later(),
         }
 
     # ---- помощники
     @staticmethod
-    def num(s) -> float:
-        return float(str(s).replace(',', '.').replace(' ', ''))
+    def num(text) -> float:
+        return float(str(text).replace(',', '.').replace(' ', ''))
 
-    def src(self, m) -> str:
-        a, b = max(0, m.start() - 60), min(len(self.text), m.end() + 60)
-        s = re.sub(r'\s+', ' ', self.text[a:b].replace('\f', ' ')).strip()
-        return ('…' if a else '') + s + ('…' if b < len(self.text) else '')
+    def src(self, match) -> str:
+        start, end = max(0, match.start() - 60), min(len(self.text), match.end() + 60)
+        text = re.sub(r'\s+', ' ', self.text[start:end].replace('\f', ' ')).strip()
+        return ('…' if start else '') + text + ('…' if end < len(self.text) else '')
 
-    def page(self, m) -> int | None:
+    def page(self, match) -> int | None:
         """номер страницы цитаты (PDF) или None"""
-        return self.text.count('\f', 0, m.start()) + 1 if m and self.paged else None
+        return self.text.count('\f', 0, match.start()) + 1 if match and self.paged else None
 
-    def put(self, key, value, m, label) -> None:
+    def put(self, key, value, match, label) -> None:
         if key in self.req or value in (None, ''):
             return
         self.req[key] = value
         self.found.append(
-            {'key': key, 'label': label, 'value': value, 'src': self.src(m) if m else '', 'page': self.page(m)}
+            {
+                'key': key,
+                'label': label,
+                'value': value,
+                'src': self.src(match) if match else '',
+                'page': self.page(match),
+            }
         )
 
     def conflict(self, key, label, hits) -> None:
         """разные значения одного параметра в ТЗ: hits — [(значение, совпадение)]; одинаковые (до 2 %) — не противоречие."""
         vals = []
-        for v, m in hits:
+        for v, match in hits:
             if v is None or any(abs(v - x[0]) <= 0.02 * max(abs(v), abs(x[0]), 1e-9) for x in vals):
                 continue
-            vals.append((v, m))
+            vals.append((v, match))
         if len(vals) > 1:
-            v, m = (min if key in self.LOW_WINS else max)(vals, key=lambda x: x[0])
+            v, match = (min if key in self.LOW_WINS else max)(vals, key=lambda x: x[0])
             if key in self.req:
                 self.req[key] = v
-                for f in self.found:
-                    if f['key'] == key:
-                        f.update(value=v, src=self.src(m), page=self.page(m))
+                for found in self.found:
+                    if found['key'] == key:
+                        found.update(value=v, src=self.src(match), page=self.page(match))
             self.conflicts.append(
                 {
                     'key': key,
@@ -80,20 +86,20 @@ class TzParse:
                 }
             )
 
-    def sentence(self, m) -> str:
+    def sentence(self, match) -> str:
         """предложение (пункт) с совпадением — от начала предложения до конца совпадения"""
-        a = max(
-            self.text.rfind('. ', 0, m.start()),
-            self.text.rfind('\n', 0, m.start()),
-            self.text.rfind('; ', 0, m.start()),
+        start = max(
+            self.text.rfind('. ', 0, match.start()),
+            self.text.rfind('\n', 0, match.start()),
+            self.text.rfind('; ', 0, match.start()),
         )
-        return self.text[a + 1 : m.end()]
+        return self.text[start + 1 : match.end()]
 
-    def all(self, rx, flags=re.I) -> list:
-        return list(re.finditer(rx, self.text, flags))
+    def all(self, regex, flags=re.I) -> list:
+        return list(re.finditer(regex, self.text, flags))
 
-    def first(self, rx, flags=re.I) -> re.Match | None:
-        return re.search(rx, self.text, flags)
+    def first(self, regex, flags=re.I) -> re.Match | None:
+        return re.search(regex, self.text, flags)
 
     @staticmethod
     def signed(sign, v) -> int:
@@ -140,30 +146,30 @@ class TzParse:
         best = max(score, key=score.get)
         if score[best]:
             names = {'comp': 'компрессорная', 'pump': 'насосная', 'dgu': 'дизель-генераторная'}
-            m = re.search(
+            match = re.search(
                 {'comp': r'компрессор|сжат\w* воздух', 'pump': r'насос', 'dgu': r'дизел\w*|ДГУ|ДЭС|электростанц'}[best],
                 self.text,
                 re.I,
             )
-            self.put('kind', best, m, 'Вид станции — ' + names[best])
+            self.put('kind', best, match, 'Вид станции — ' + names[best])
 
     def air(self) -> None:
         u = r'(н?м3/мин|н?м³/мин|н?м3/ч|н?м³/ч|л/мин|л/с|nm3/min|m3/min)'
-        m = self.first(
+        match = self.first(
             r'(?:производительн\w*|расход\w*(?:\s+сжат\w*)?\s+воздух\w*|потребност\w*\s+в\s+сжат\w*\s+воздух\w*|объ[её]м\w* сжат\w* воздух\w*)'
             r'[^\n]{0,80}?' + NUM + r'\s*' + u
         ) or self.first(NUM + r'\s*' + u)
 
-        def m3min(m) -> float:
-            v, unit = self.num(m.group(1)), m.group(2).lower()
+        def m3min(hit) -> float:
+            v, unit = self.num(hit.group(1)), hit.group(2).lower()
             return round(
                 v / 60 if '/ч' in unit else v / 1000 if 'л/мин' in unit else v * 0.06 if 'л/с' in unit else v, 2
             )
 
-        if m:
-            self.put('flow', m3min(m), m, 'Производительность, м³/мин')
-            if re.match(r'н|nm', m.group(2), re.I):
-                self.put('basis', 'normal', m, 'Производительность — в нормальных м³ (0 °C, 101,325 кПа)')
+        if match:
+            self.put('flow', m3min(match), match, 'Производительность, м³/мин')
+            if re.match(r'н|nm', match.group(2), re.I):
+                self.put('basis', 'normal', match, 'Производительность — в нормальных м³ (0 °C, 101,325 кПа)')
             self.conflict(
                 'flow',
                 'Производительность, м³/мин',
@@ -177,15 +183,15 @@ class TzParse:
                     )
                 ],
             )
-        P = (
+        PRESSURE = (
             r'(?:рабоч\w*\s+|избыточн\w*\s+|номинальн\w*\s+|выходн\w*\s+)?давлени\w*[^\n]{0,60}?'
             + NUM
             + r'\s*(бар|bar|мпа|кгс/см2|кгс/см²|атм|ати)'
             + END_LETTER
         )
 
-        def to_bar(m) -> float:
-            v, unit = self.num(m.group(1)), m.group(2).lower()
+        def to_bar(bar_hit) -> float:
+            v, unit = self.num(bar_hit.group(1)), bar_hit.group(2).lower()
             # ати — техническая атмосфера избыточная = 1 кгс/см² = 0,980665 бар; атм — физическая атмосфера = 1,01325 бар
             return round(
                 v * 10
@@ -198,18 +204,18 @@ class TzParse:
                 1,
             )
 
-        m = self.first(P)
-        if m:
-            bar = to_bar(m)
+        match = self.first(PRESSURE)
+        if match:
+            bar = to_bar(match)
             if 0.5 <= bar <= 400:
-                self.put('pressure', bar, m, 'Давление, бар')
+                self.put('pressure', bar, match, 'Давление, бар')
             # противоречие — только рабочее давление сжатого воздуха (не воды, масла, испытаний)
             self.conflict(
                 'pressure',
                 'Давление, бар',
                 [
                     (to_bar(x), x)
-                    for x in self.all(P)
+                    for x in self.all(PRESSURE)
                     if to_bar(x) >= 1
                     and not re.search(
                         r'вод|масл|охлажд|испыт|пробн|гидрав|топлив|газ|ресивер|сосуд|колебан|перепад|потер|отклонен|±|клапан|минимальн|расч[её]тн',
@@ -218,177 +224,188 @@ class TzParse:
                     )
                 ],
             )
-        m = self.first(
+        match = self.first(
             r'(?:ISO|ИСО)\s*8573[^\n]{0,80}?(?<![\d.])([1-6])\s*[.:]\s*([1-6])\s*[.:]\s*([1-4])(?!\d|\.\d)'
         ) or self.first(
             r'класс\w*\s+(?:чистоты\s+)?(?:сжат\w*\s+)?(?:воздух\w*\s+)?(?:по\s+[^\s\d]+\s+)?(?:[—–-]\s*)?(?<![\d.])([1-6])\s*[.:]\s*([1-6])\s*[.:]\s*([1-4])(?!\d|\.\d)'
         )
-        if m:
-            self.put('air', '{}.{}.{}'.format(*m.groups()), m, 'Класс воздуха ISO 8573-1')
-        m = self.first(r'точк\w*\s+росы[^\n]{0,40}?([' + MINUS_RX + r'+]|минус|плюс)?\s*(\d+)\s*°?\s*[сc]?')
-        if m:
-            sg = (m.group(1) or '').lower()
-            t = -int(m.group(2)) if sg == 'минус' or (sg and sg in MINUS) else int(m.group(2))
-            if -100 <= t <= 20:
-                self.put('pdp', t, m, 'Точка росы под давлением, °C')
+        if match:
+            self.put('air', '{}.{}.{}'.format(*match.groups()), match, 'Класс воздуха ISO 8573-1')
+        match = self.first(r'точк\w*\s+росы[^\n]{0,40}?([' + MINUS_RX + r'+]|минус|плюс)?\s*(\d+)\s*°?\s*[сc]?')
+        if match:
+            sign = (match.group(1) or '').lower()
+            temp = -int(match.group(2)) if sign == 'минус' or (sign and sign in MINUS) else int(match.group(2))
+            if -100 <= temp <= 20:
+                self.put('pdp', temp, match, 'Точка росы под давлением, °C')
         if 'pdp' in self.req:
-            self.water_class(m)
+            self.water_class(match)
 
     PDP = ((1, -70), (2, -40), (3, -20), (4, 3), (5, 7), (6, 10))  # класс воды ISO 8573-1 → точка росы не выше, °C
 
-    def water_class(self, m) -> None:
+    def water_class(self, match) -> None:
         """класс воды — по точке росы: строже из двух, если класс указан; нет класса — 2.x.2 (до −20 °C) или 3.x.3"""
-        t = self.req['pdp']
-        wc = max([c for c, lim in self.PDP if lim <= t] or [1])
-        a = self.req.get('air')
-        if not a:
-            o = 2 if wc <= 3 else 3
-            self.put('air', f'{o}.{wc}.{o}', m, 'Класс воздуха ISO 8573-1 — по точке росы (частицы и масло уточните)')
-        elif int(a.split('.')[1]) > wc:
-            p = a.split('.')
-            self.req['air'] = f'{p[0]}.{wc}.{p[2]}'
-            for f in self.found:
-                if f['key'] == 'air':
-                    f['value'], f['label'] = self.req['air'], f['label'] + ' (вода — по точке росы)'
+        temp = self.req['pdp']
+        water = max([cls_num for cls_num, lim in self.PDP if lim <= temp] or [1])
+        air = self.req.get('air')
+        if not air:
+            oil = 2 if water <= 3 else 3
+            self.put(
+                'air',
+                f'{oil}.{water}.{oil}',
+                match,
+                'Класс воздуха ISO 8573-1 — по точке росы (частицы и масло уточните)',
+            )
+        elif int(air.split('.')[1]) > water:
+            parts = air.split('.')
+            self.req['air'] = f'{parts[0]}.{water}.{parts[2]}'
+            for found in self.found:
+                if found['key'] == 'air':
+                    found['value'], found['label'] = self.req['air'], found['label'] + ' (вода — по точке росы)'
 
     def air_more(self) -> None:
         """к каким условиям приведена производительность, запас производительности"""
         if 'basis' not in self.req:
-            m = self.first(
+            match = self.first(
                 r'(?:н\.\s?м[3³]|нм[3³]|nm3|нормальн\w*\s+(?:кубическ\w*\s+)?метр|(?:при|к)\s+нормальн\w*\s+условия)'
             )
-            if m:
-                self.put('basis', 'normal', m, 'Производительность — в нормальных м³ (0 °C, 101,325 кПа)')
+            if match:
+                self.put('basis', 'normal', match, 'Производительность — в нормальных м³ (0 °C, 101,325 кПа)')
             else:
-                m = self.first(
+                match = self.first(
                     r'(?:'
                     + NOT_LETTER
                     + r'FAD'
                     + END_LETTER
                     + r'|ISO\s*1217|ИСО\s*1217|ГОСТ\s*(?:Р\s*)?(?:ИСО\s*)?1217|услови\w*\s+всасывани|на\s+всасывании|free\s+air\s+delivery)'
                 )
-                if m:
-                    self.put('basis', 'fad', m, 'Производительность — на условиях всасывания (FAD, ISO 1217)')
-        m = self.first(
+                if match:
+                    self.put('basis', 'fad', match, 'Производительность — на условиях всасывания (FAD, ISO 1217)')
+        match = self.first(
             r'запас\w*\s+(?:по\s+)?производительност\w*[^\n]{0,30}?(?:не\s+менее\s+)?(\d{1,3}(?:[.,]\d+)?)\s*%'
         ) or self.first(r'производительн\w*[^\n]{0,60}?с\s+запасом\s+(?:не\s+менее\s+)?(\d{1,3}(?:[.,]\d+)?)\s*%')
-        if m and 0 <= self.num(m.group(1)) <= 100:
-            self.put('margin', self.num(m.group(1)), m, 'Запас производительности, %')
+        if match and 0 <= self.num(match.group(1)) <= 100:
+            self.put('margin', self.num(match.group(1)), match, 'Запас производительности, %')
 
     def dgu_more(self) -> None:
         """режим ДЭС, средняя нагрузка, наибольший двигатель и его пуск, категория надёжности"""
-        m = self.first(
+        match = self.first(
             r'(?:резервн\w*|аварийн\w*)\s+(?:источник\w*|электроснабжени\w*|питани\w*)|'
             + NOT_LETTER
             + r'(?:standby|ESP)'
             + END_LETTER
             + r'\s*(?:режим|мощност)'
         )
-        m2 = self.first(
+        match2 = self.first(
             r'(?:основн\w*|постоянн\w*|автономн\w*)\s+(?:источник\w*|электроснабжени\w*|питани\w*|режим\w*\s+работ)|круглосуточн\w*\s+(?:работ|режим|электроснабж)'
         )
-        if m and (not m2 or m.start() < m2.start()):
-            self.put('mode', 'standby', m, 'Режим ДЭС — резервный источник (ESP, до 200 ч в год)')
-        elif m2:
-            self.put('mode', 'prime', m2, 'Режим ДЭС — основной источник (PRP)')
-        m = self.first(
+        if match and (not match2 or match.start() < match2.start()):
+            self.put('mode', 'standby', match, 'Режим ДЭС — резервный источник (ESP, до 200 ч в год)')
+        elif match2:
+            self.put('mode', 'prime', match2, 'Режим ДЭС — основной источник (PRP)')
+        match = self.first(
             r'(?:средн\w*\s+(?:суточн\w*\s+)?нагрузк\w*|коэффициент\w*\s+загрузк\w*|загрузк\w*\s+(?:ДГУ|ДЭС|генератор\w*))[^\n]{0,30}?(\d{1,3})\s*%'
         )
-        if m and 5 <= int(m.group(1)) <= 110:
-            self.put('load', int(m.group(1)), m, 'Средняя нагрузка, % от мощности')
-        m = self.first(
+        if match and 5 <= int(match.group(1)) <= 110:
+            self.put('load', int(match.group(1)), match, 'Средняя нагрузка, % от мощности')
+        match = self.first(
             r'(?:наибольш\w*|крупн\w*|пуск\w*|асинхронн\w*)[^\n]{0,40}?двигател\w*[^\n]{0,40}?'
             + NUM
             + r'\s*квт'
             + END_LETTER
         )
-        if m:
-            self.put('motor', self.num(m.group(1)), m, 'Наибольший двигатель нагрузки, кВт')
-        for key, rx, label in (
+        if match:
+            self.put('motor', self.num(match.group(1)), match, 'Наибольший двигатель нагрузки, кВт')
+        for key, regex, label in (
             ('stardelta', r'звезд\w*\s*[-–—]?\s*треугольн', 'звезда — треугольник'),
             ('soft', r'плавн\w*\s+пуск|устройств\w*\s+плавного\s+пуска', 'плавный пуск'),
             ('vsd', r'частотн\w*\s+(?:пуск|преобразовател)|преобразовател\w*\s+частот', 'частотный преобразователь'),
             ('direct', r'прям\w*\s+пуск|пуск\w*\s+прям', 'прямой'),
         ):
-            m = self.first(rx)
-            if m:
-                self.put('start', key, m, 'Пуск двигателя нагрузки — ' + label)
+            match = self.first(regex)
+            if match:
+                self.put('start', key, match, 'Пуск двигателя нагрузки — ' + label)
                 break
-        m = self.first(
+        match = self.first(
             r'(?<![IІ\w])(III|II|I|1|2|3|перв\w+|втор\w+|трет\w+)\s+категори\w*\s+(?:по\s+)?(?:надёжн|надежн|электроснабж)'
         )
-        if m:
-            g = m.group(1).lower()
-            c = (
+        if match:
+            group = match.group(1).lower()
+            count = (
                 '1'
-                if g in ('i', '1') or g.startswith('перв')
+                if group in ('i', '1') or group.startswith('перв')
                 else '2'
-                if g in ('ii', '2') or g.startswith('втор')
+                if group in ('ii', '2') or group.startswith('втор')
                 else '3'
             )
             self.put(
-                'rel', c, m, 'Категория надёжности электроснабжения — {}'.format({'1': 'I', '2': 'II', '3': 'III'}[c])
+                'rel',
+                count,
+                match,
+                'Категория надёжности электроснабжения — {}'.format({'1': 'I', '2': 'II', '3': 'III'}[count]),
             )
 
     def site(self) -> None:
         """условия площадки: высота над уровнем моря, относительная влажность"""
-        m = self.first(
+        match = self.first(
             r'(?:высот\w*\s+(?:над\s+уровнем\s+моря|площадки|установки|размещени\w*)|над\s+уровнем\s+моря)[^\n]{0,40}?(?:до\s+|не\s+более\s+)?(\d{1,4})\s*м'
             + END_LETTER
         )
-        if m and 0 <= int(m.group(1)) <= 5000:
-            self.put('alt', int(m.group(1)), m, 'Высота над уровнем моря, м')
-        m = self.first(
+        if match and 0 <= int(match.group(1)) <= 5000:
+            self.put('alt', int(match.group(1)), match, 'Высота над уровнем моря, м')
+        match = self.first(
             r'(?:относительн\w*\s+)?влажност\w*\s+(?:наружн\w*\s+|окружающ\w*\s+)?(?:воздух\w*\s+)?[^\n]{0,30}?(\d{1,3})\s*%'
         )
-        if m and 0 < int(m.group(1)) <= 100:
-            self.put('rh', int(m.group(1)), m, 'Относительная влажность воздуха, %')
+        if match and 0 < int(match.group(1)) <= 100:
+            self.put('rh', int(match.group(1)), match, 'Относительная влажность воздуха, %')
 
     def terms(self) -> None:
         """гарантия, срок поставки, допустимые и недопустимые производители"""
-        m = self.first(r'гаранти\w*[^\n]{0,50}?(\d{1,3})\s*(месяц\w*|мес\.?|год\w*|лет)')
-        if m:
-            n = int(m.group(1))
-            mon = n * 12 if m.group(2).lower().startswith(('год', 'лет')) else n
+        match = self.first(r'гаранти\w*[^\n]{0,50}?(\d{1,3})\s*(месяц\w*|мес\.?|год\w*|лет)')
+        if match:
+            num = int(match.group(1))
+            mon = num * 12 if match.group(2).lower().startswith(('год', 'лет')) else num
             if 1 <= mon <= 120:
-                self.put('warranty', mon, m, 'Гарантия, мес.')
-        m = self.first(
+                self.put('warranty', mon, match, 'Гарантия, мес.')
+        match = self.first(
             r'срок\w*\s+(?:поставки|изготовлени\w*|выполнени\w*)[^\n]{0,50}?(\d{1,3})\s*((?:рабоч\w*|календарн\w*)\s+)?(дн\w*|недел\w*|месяц\w*|мес\.?)'
         )
-        if m:
+        if match:
             self.put(
-                'deadline', ('{} {}{}'.format(m.group(1), m.group(2) or '', m.group(3))).strip(), m, 'Срок поставки'
+                'deadline',
+                ('{} {}{}'.format(match.group(1), match.group(2) or '', match.group(3))).strip(),
+                match,
+                'Срок поставки',
             )
-        m = self.first(
+        match = self.first(
             r'(?:производств\w*|производител\w*|марк\w*|бренд\w*)[^\n]{0,30}?(?:только|исключительно)\s+([^\n.;]{3,80})'
         )
-        if m:
-            self.put('brands', m.group(1).strip(' ,:—-'), m, 'Допустимые производители')
-        m = self.first(
+        if match:
+            self.put('brands', match.group(1).strip(' ,:—-'), match, 'Допустимые производители')
+        match = self.first(
             r'(?:не\s+допуска\w*|запрещ\w*|исключ\w*)[^\n]{0,30}?(?:оборудовани\w*\s+)?(?:производств\w*|производител\w*|марк\w*)\s+([^\n.;]{3,80})'
         )
-        if m:
-            self.put('noBrands', m.group(1).strip(' ,:—-'), m, 'Недопустимые производители')
-        m = self.first(r'аналог\w*\s+(?:не\s+допуска|не\s+принима)|без\s+(?:права\s+)?замен\w*')
-        if m:
-            self.put('noAnalogs', True, m, 'Аналоги не допускаются')
+        if match:
+            self.put('noBrands', match.group(1).strip(' ,:—-'), match, 'Недопустимые производители')
+        match = self.first(r'аналог\w*\s+(?:не\s+допуска|не\s+принима)|без\s+(?:права\s+)?замен\w*')
+        if match:
+            self.put('noAnalogs', True, match, 'Аналоги не допускаются')
 
     def pump(self) -> None:
-        m = self.first(
+        match = self.first(
             r'(?:подач\w*|производительн\w*|расход\w*)[^\n]{0,60}?'
             + NUM
             + r'\s*(м3/ч|м³/ч|м3/час|м³/час|л/с|л/мин|м3/сут|м³/сут)'
         )
-        if m:
-            v, unit = self.num(m.group(1)), m.group(2).lower()
-            q = v * 3.6 if unit == 'л/с' else v * 0.06 if unit == 'л/мин' else v / 24 if 'сут' in unit else v
-            self.put('q', round(q, 1), m, 'Подача, м³/ч')
-        m = self.first(
+        if match:
+            v, unit = self.num(match.group(1)), match.group(2).lower()
+            flow = v * 3.6 if unit == 'л/с' else v * 0.06 if unit == 'л/мин' else v / 24 if 'сут' in unit else v
+            self.put('q', round(flow, 1), match, 'Подача, м³/ч')
+        match = self.first(
             r'напор\w*[^\n]{0,50}?' + NUM + r'\s*(м\.?\s*вод\.?\s*ст\.?|мвс|м|бар|мпа|кгс/см2|кгс/см²|атм)' + END_LETTER
         )
-        if m:
-            v, unit = self.num(m.group(1)), m.group(2).lower()
-            h = (
+        if match:
+            v, unit = self.num(match.group(1)), match.group(2).lower()
+            head = (
                 v * 10.2
                 if unit == 'бар'
                 else v * 102
@@ -397,20 +414,20 @@ class TzParse:
                 if unit.startswith('кгс') or unit == 'атм'
                 else v
             )
-            self.put('head', round(h, 1), m, 'Напор, м')
+            self.put('head', round(head, 1), match, 'Напор, м')
 
     def dgu(self) -> None:
-        m = self.first(
+        match = self.first(
             r'(?:мощност\w*|номинал\w*|основн\w*|резервн\w*)[^\n]{0,60}?' + NUM + r'\s*(квт|ква|kw|kva)' + END_LETTER
         )
-        if not m:
-            m = self.first(NUM + r'\s*(квт|ква|kw|kva)' + END_LETTER)
-        if m:
-            v, unit = self.num(m.group(1)), m.group(2).lower()
+        if not match:
+            match = self.first(NUM + r'\s*(квт|ква|kw|kva)' + END_LETTER)
+        if match:
+            v, unit = self.num(match.group(1)), match.group(2).lower()
             self.put(
                 'kw',
                 round(v * 0.8 if unit in ('ква', 'kva') else v, 1),
-                m,
+                match,
                 'Мощность, кВт' + (' (из кВА × 0,8)' if unit in ('ква', 'kva') else ''),
             )
             self.conflict(
@@ -426,11 +443,11 @@ class TzParse:
                     )
                 ],
             )
-        m = self.first(
+        match = self.first(
             r'(?:работ\w*|автономн\w*)[^\n]{0,40}?(?:без дозаправки|от (?:встроенного )?бака)[^\n]{0,30}?(\d+)\s*ч'
         )
-        if m:
-            self.put('hours', int(m.group(1)), m, 'Работа от бака, ч')
+        if match:
+            self.put('hours', int(match.group(1)), match, 'Работа от бака, ч')
 
     COUNT = {
         'один': 1,
@@ -445,134 +462,139 @@ class TzParse:
         'четырех': 4,
     }
 
-    def count(self, s) -> int | None:
-        s = str(s or '').lower()
-        return int(s) if s.isdigit() else self.COUNT.get(s)
+    def count(self, text) -> int | None:
+        text = str(text or '').lower()
+        return int(text) if text.isdigit() else self.COUNT.get(text)
 
     def reserve(self) -> None:
         """резерв N+1 / N+2 и, если указано, число рабочих агрегатов: «2 рабочих + 1 резервный», «схема 2+1»"""
-        n = NOT_LETTER + r'(\d|один|одного|два|двух|три|тр[её]х|четыре|четыр[её]х)'
-        m = self.first(n + r'\s*рабоч\w*(?:\s+\w+)?\s*(?:\+|и|,|плюс)\s*' + n + r'\s*резервн') or self.first(
-            r'схем\w*\s+(?:резервировани\w*\s+)?(\d)\s*\+\s*(\d)' + END_LETTER
-        )
-        if m:
-            w, r = self.count(m.group(1)), self.count(m.group(2))
-            if w and 1 <= w <= 4:
-                self.put('work', str(w), m, 'Рабочих агрегатов')
-            if r is not None and 0 <= r <= 2:
-                self.put('reserve', str(r), m, f'Резерв N + {r}' if r else 'Без резерва')
+        num_rx = NOT_LETTER + r'(\d|один|одного|два|двух|три|тр[её]х|четыре|четыр[её]х)'
+        match = self.first(
+            num_rx + r'\s*рабоч\w*(?:\s+\w+)?\s*(?:\+|и|,|плюс)\s*' + num_rx + r'\s*резервн'
+        ) or self.first(r'схем\w*\s+(?:резервировани\w*\s+)?(\d)\s*\+\s*(\d)' + END_LETTER)
+        if match:
+            work, reserve = self.count(match.group(1)), self.count(match.group(2))
+            if work and 1 <= work <= 4:
+                self.put('work', str(work), match, 'Рабочих агрегатов')
+            if reserve is not None and 0 <= reserve <= 2:
+                self.put('reserve', str(reserve), match, f'Резерв N + {reserve}' if reserve else 'Без резерва')
             return
-        m = self.first(r'N\s*\+\s*([12])' + END_LETTER)
-        if m:
-            r = int(m.group(1))
-            self.put('reserve', str(r), m, f'Резерв N + {r}')
+        match = self.first(r'N\s*\+\s*([12])' + END_LETTER)
+        if match:
+            reserve = int(match.group(1))
+            self.put('reserve', str(reserve), match, f'Резерв N + {reserve}')
             return
-        m = self.first(n + r'\s+рабоч\w+\s+(?:компрессор|насос|агрегат|ДГУ|дизель|электроагрегат)')
-        if m and 1 <= (self.count(m.group(1)) or 0) <= 4:
-            self.put('work', str(self.count(m.group(1))), m, 'Рабочих агрегатов')
-        m = self.first(r'без\s+(?:горячего\s+)?резерв|резерв\w*(?:\s+\w+)?\s+не\s+(?:требу|нуж|предусм)')
-        if m:
-            self.put('reserve', '0', m, 'Без резерва')
+        match = self.first(num_rx + r'\s+рабоч\w+\s+(?:компрессор|насос|агрегат|ДГУ|дизель|электроагрегат)')
+        if match and 1 <= (self.count(match.group(1)) or 0) <= 4:
+            self.put('work', str(self.count(match.group(1))), match, 'Рабочих агрегатов')
+        match = self.first(r'без\s+(?:горячего\s+)?резерв|резерв\w*(?:\s+\w+)?\s+не\s+(?:требу|нуж|предусм)')
+        if match:
+            self.put('reserve', '0', match, 'Без резерва')
             return
-        m = self.first(r'(?:100\s*%\s*резерв|резервн\w+\s+(?:компрессор|насос|агрегат|ДГУ)|с\s+резерв\w*)')
-        if m:
-            self.put('reserve', '1', m, 'Резерв N + 1')
+        match = self.first(r'(?:100\s*%\s*резерв|резервн\w+\s+(?:компрессор|насос|агрегат|ДГУ)|с\s+резерв\w*)')
+        if match:
+            self.put('reserve', '1', match, 'Резерв N + 1')
 
     def climate(self) -> None:
-        t = r'([' + MINUS_RX + r'+]?)\s*(\d{1,2})'
-        R = (
+        temp_rx = r'([' + MINUS_RX + r'+]?)\s*(\d{1,2})'
+        regex_climate = (
             r'(?:температур\w*|наружн\w*\s+воздух\w*|окружающ\w*\s+сред\w*)[^\n]{0,90}?от\s*'
-            + t
+            + temp_rx
             + r'\s*(?:°\s*[сc])?\s*до\s*'
-            + t
+            + temp_rx
         )
-        m = self.first(R)
-        if m:
-            a, b = self.signed(m.group(1), m.group(2)), self.signed(m.group(3), m.group(4))
-            if -70 <= a < b <= 60:
-                self.put('tmin', a, m, 'Наружный воздух от, °C')
-                self.put('tmax', b, m, 'Наружный воздух до, °C')
+        match = self.first(regex_climate)
+        if match:
+            low, high = self.signed(match.group(1), match.group(2)), self.signed(match.group(3), match.group(4))
+            if -70 <= low < high <= 60:
+                self.put('tmin', low, match, 'Наружный воздух от, °C')
+                self.put('tmax', high, match, 'Наружный воздух до, °C')
             hits = [
                 x
-                for x in self.all(R)
+                for x in self.all(regex_climate)
                 if not re.search(r'хранени|транспортир|вод|масл|помещени|внутри|на входе|сжат', self.sentence(x), re.I)
             ]
             self.conflict('tmin', 'Наружный воздух от, °C', [(self.signed(x.group(1), x.group(2)), x) for x in hits])
             self.conflict('tmax', 'Наружный воздух до, °C', [(self.signed(x.group(3), x.group(4)), x) for x in hits])
         if 'tmin' not in self.req:
-            m = self.first(
+            match = self.first(
                 r'(?:минимальн\w*|наиболее холодн\w*|абсолютн\w*\s+минимум\w*|расч[её]тн\w*\s+(?:зимн\w*\s+)?температур\w*)[^\n]{0,60}?(['
                 + MINUS_RX
                 + r'])\s*(\d{1,2})'
             )
-            if m:
-                self.put('tmin', -int(m.group(2)), m, 'Наружный воздух от, °C')
-        m = self.first(NOT_LETTER + r'(УХЛ|ХЛ|У)\s?1(?:\.1)?' + r'(?![\d])', 0)
-        if m:
-            self.put('climate', m.group(1) + '1', m, 'Климатическое исполнение (ГОСТ 15150-69)')
+            if match:
+                self.put('tmin', -int(match.group(2)), match, 'Наружный воздух от, °C')
+        match = self.first(NOT_LETTER + r'(УХЛ|ХЛ|У)\s?1(?:\.1)?' + r'(?![\d])', 0)
+        if match:
+            self.put('climate', match.group(1) + '1', match, 'Климатическое исполнение (ГОСТ 15150-69)')
 
     def fire(self) -> None:
-        m = self.first(
+        match = self.first(
             r'(?i:категори\w*[^\n]{0,40}?(?:пожарн\w*|взрывопожарн\w*)[^\n]{0,40}?|(?:пожарн\w*|взрывопожарн\w*)\s+опасност\w*[^\n]{0,30}?)'
             + NOT_LETTER
             + r'(В[1-4]|А|Б|Г|Д)'
             + END_LETTER,
             0,
         )
-        if not m:
-            m = self.first(r'(?i:категори\w*\s+(?:помещени\w*\s+)?)' + NOT_LETTER + r'(В[1-4]|А|Б|Г|Д)' + END_LETTER, 0)
-        if m and m.group(1) in self.FIRE:
-            self.put('fire', m.group(1), m, 'Категория помещения (СП 12.13130)')
+        if not match:
+            match = self.first(
+                r'(?i:категори\w*\s+(?:помещени\w*\s+)?)' + NOT_LETTER + r'(В[1-4]|А|Б|Г|Д)' + END_LETTER, 0
+            )
+        if match and match.group(1) in self.FIRE:
+            self.put('fire', match.group(1), match, 'Категория помещения (СП 12.13130)')
 
     def noise(self) -> None:
-        m = self.first(r'(?:шум\w*|уров\w*\s+звук\w*)[^\n]{0,60}?(\d{2,3})\s*д[бb]')
-        if m and 40 <= int(m.group(1)) <= 120:
-            self.put('noise', int(m.group(1)), m, 'Шум на рабочем месте, дБА')
+        match = self.first(r'(?:шум\w*|уров\w*\s+звук\w*)[^\n]{0,60}?(\d{2,3})\s*д[бb]')
+        if match and 40 <= int(match.group(1)) <= 120:
+            self.put('noise', int(match.group(1)), match, 'Шум на рабочем месте, дБА')
 
     def receiver(self) -> None:
-        m = self.first(r'ресивер\w*[^\n]{0,50}?' + NUM + r'\s*(л|литр\w*|м3|м³)' + END_LETTER)
-        if m:
-            v = self.num(m.group(1))
+        match = self.first(r'ресивер\w*[^\n]{0,50}?' + NUM + r'\s*(л|литр\w*|м3|м³)' + END_LETTER)
+        if match:
+            v = self.num(match.group(1))
             self.put(
-                'recvVol', round(v * 1000 if m.group(2).lower() in ('м3', 'м³') and v < 100 else v), m, 'Ресивер, л'
+                'recvVol',
+                round(v * 1000 if match.group(2).lower() in ('м3', 'м³') and v < 100 else v),
+                match,
+                'Ресивер, л',
             )
-        m = self.first(
+        match = self.first(
             r'ресивер\w*[^\n]{0,90}?(?:снаружи|на улице|вне (?:контейнер|здани|помещени)\w*|на открыт\w+ площадк\w*|наружн\w* установк\w*)'
         )
-        if m:
-            self.put('recvOut', True, m, 'Ресивер — снаружи')
-        m = self.first(r'ресивер\w*[^\n]{0,60}?(после|до)\s+(?:блок\w*\s+)?(?:осушител|подготовк)')
-        if m:
+        if match:
+            self.put('recvOut', True, match, 'Ресивер — снаружи')
+        match = self.first(r'ресивер\w*[^\n]{0,60}?(после|до)\s+(?:блок\w*\s+)?(?:осушител|подготовк)')
+        if match:
             self.put(
                 'recv',
-                'after' if m.group(1).lower() == 'после' else 'before',
-                m,
-                'Ресивер — ' + m.group(1).lower() + ' осушителя',
+                'after' if match.group(1).lower() == 'после' else 'before',
+                match,
+                'Ресивер — ' + match.group(1).lower() + ' осушителя',
             )
 
     def container(self) -> None:
-        m = self.first(r'морск\w*\s+контейнер\w*[^\n]{0,30}?(20|40)\s*(?:футов|фут|ft|\')?([^\n]{0,20})')
-        if m:
-            hc = bool(re.search(r'hc|high\s*cube|увеличенн', m.group(2) or '', re.I))
+        match = self.first(r'морск\w*\s+контейнер\w*[^\n]{0,30}?(20|40)\s*(?:футов|фут|ft|\')?([^\n]{0,20})')
+        if match:
+            high_cube = bool(re.search(r'hc|high\s*cube|увеличенн', match.group(2) or '', re.I))
             self.put(
                 'cont',
-                'sea{}{}'.format(m.group(1), 'hc' if hc else ''),
-                m,
-                'Контейнер — морской {} футов{}'.format(m.group(1), ' HC' if hc else ''),
+                'sea{}{}'.format(match.group(1), 'hc' if high_cube else ''),
+                match,
+                'Контейнер — морской {} футов{}'.format(match.group(1), ' HC' if high_cube else ''),
             )
         else:
-            m = self.first(
+            match = self.first(
                 r'«?Север»?\s*(?:\(|$|[,.;])|арктическ\w+\s+исполнен|контейнер\w*\s+«Север»', 0
             ) or self.first(r'арктическ\w+\s+исполнен')
-            if m:
-                self.put('cont', 'north', m, 'Контейнер — «Север» (арктическое исполнение)')
+            if match:
+                self.put('cont', 'north', match, 'Контейнер — «Север» (арктическое исполнение)')
             else:
-                m = self.first(r'блок[- ]?контейнер|блочно[- ]модульн|модульн\w+\s+здани|БМЗ|БКЗ')
-                if m:
-                    self.put('cont', 'block', m, 'Контейнер — блок-контейнер')
-        m = self.first(r'(?:утепл\w*|теплоизоляц\w*)[^\n]{0,40}?(\d{2,3})\s*мм')
-        if m and 30 <= int(m.group(1)) <= 300:
-            self.put('ins', m.group(1) + ' мм', m, 'Утепление')
+                match = self.first(r'блок[- ]?контейнер|блочно[- ]модульн|модульн\w+\s+здани|БМЗ|БКЗ')
+                if match:
+                    self.put('cont', 'block', match, 'Контейнер — блок-контейнер')
+        match = self.first(r'(?:утепл\w*|теплоизоляц\w*)[^\n]{0,40}?(\d{2,3})\s*мм')
+        if match and 30 <= int(match.group(1)) <= 300:
+            self.put('ins', match.group(1) + ' мм', match, 'Утепление')
 
     def systems(self) -> None:
         rules = [
@@ -600,18 +622,18 @@ class TzParse:
             ('gate', r'ворот', 'Ворота'),
         ]
         sys = {}
-        for key, rx, label in rules:
-            m = re.search(rx, self.text, re.I)
-            if m:
+        for key, regex, label in rules:
+            match = re.search(regex, self.text, re.I)
+            if match:
                 sys[key] = True
                 self.found.append(
-                    {'key': 'sys.' + key, 'label': 'Система: ' + label, 'value': True, 'src': self.src(m)}
+                    {'key': 'sys.' + key, 'label': 'Система: ' + label, 'value': True, 'src': self.src(match)}
                 )
         if sys:
             self.req['sys'] = sys
-        m = self.first(r'паспорт\w*|сертификат\w*|деклараци\w*|ТР\s*ТС|исполнительн\w*\s+документац')
-        if m:
-            self.put('docs', True, m, 'Документы при поставке')
+        match = self.first(r'паспорт\w*|сертификат\w*|деклараци\w*|ТР\s*ТС|исполнительн\w*\s+документац')
+        if match:
+            self.put('docs', True, match, 'Документы при поставке')
 
     OPTIONS = (
         (
@@ -671,21 +693,21 @@ class TzParse:
     def options(self) -> None:
         """особые требования: безмасляный компрессор, частотное регулирование, АВР (два ввода), диспетчеризация; отрасль"""
         k = self.req.get('kind')
-        for key, kinds, rx, label in self.OPTIONS:
+        for key, kinds, regex, label in self.OPTIONS:
             if k in kinds:
-                m = next((x for x in re.finditer(rx, self.text, re.I) if not self.negated(x)), None)
-                if m:
-                    self.put(key, True, m, label)
+                match = next((x for x in re.finditer(regex, self.text, re.I) if not self.negated(x)), None)
+                if match:
+                    self.put(key, True, match, label)
         if k == 'comp':
-            for value, rx, label in self.INDUSTRY:
-                m = re.search(rx, self.text, re.I)
-                if m:
-                    self.put('industry', value, m, label)
+            for value, regex, label in self.INDUSTRY:
+                match = re.search(regex, self.text, re.I)
+                if match:
+                    self.put('industry', value, match, label)
                     break
 
-    def negated(self, m) -> bool:
+    def negated(self, match) -> bool:
         """«без АВР», «АВР не требуется», «кроме диспетчеризации» — требования нет"""
-        before, after = self.text[max(0, m.start() - 25) : m.start()], self.text[m.end() : m.end() + 40]
+        before, after = self.text[max(0, match.start() - 25) : match.start()], self.text[match.end() : match.end() + 40]
         return bool(
             re.search(r'(?:без|кроме)\s+(?:\w+\s+){0,2}$', before, re.I)
             or re.match(r'\W*(?:\w+\s+){0,3}не\s+(?:требу|нуж|предусм)', after, re.I)
@@ -695,13 +717,15 @@ class TzParse:
         """прочие требования: предложения с «должен», «необходимо», «требуется» — до 6, без повторов"""
         out = []
         for part in re.split(r'(?<=[.;!?])\s+|\n+', self.text):
-            s = part.strip(' •-–—\t')
+            text = part.strip(' •-–—\t')
             if (
-                25 <= len(s) <= 300
-                and re.search(r'долж[еаноы]\w*|необходим\w*|требуется|обязательн\w*|предусмотреть|обеспечить', s, re.I)
-                and s not in out
+                25 <= len(text) <= 300
+                and re.search(
+                    r'долж[еаноы]\w*|необходим\w*|требуется|обязательн\w*|предусмотреть|обеспечить', text, re.I
+                )
+                and text not in out
             ):
-                out.append(s)
+                out.append(text)
             if len(out) >= 6:
                 break
         if out:
@@ -857,51 +881,51 @@ class TzReview:
         ('deadline', 'Срок поставки', None, '', 'Требуемый срок поставки.'),
     ]
 
-    def __init__(self, p) -> None:
-        self.p = p
-        self.kind = p.req.get('kind') or 'comp'
-        self.byKey = {f['key']: f for f in p.found}
-        self.conf = {c['key']: c for c in p.conflicts}
+    def __init__(self, parser) -> None:
+        self.parser = parser
+        self.kind = parser.req.get('kind') or 'comp'
+        self.byKey = {found['key']: found for found in parser.found}
+        self.conf = {conflict['key']: conflict for conflict in parser.conflicts}
 
     def spec(self) -> list:
-        L = self.FIELDS.get(self.kind, self.FIELDS['comp']) + self.TERMS
-        if self.kind == 'comp' and self.p.req.get('basis') != 'normal':
-            L = [x for x in L if x[0] != 'rh']  # влажность нужна только для пересчёта нормальных м³
-        if self.kind == 'dgu' and not self.p.req.get('motor'):
-            L = [x for x in L if x[0] != 'start']
-        return L
+        spec = self.FIELDS.get(self.kind, self.FIELDS['comp']) + self.TERMS
+        if self.kind == 'comp' and self.parser.req.get('basis') != 'normal':
+            spec = [x for x in spec if x[0] != 'rh']  # влажность нужна только для пересчёта нормальных м³
+        if self.kind == 'dgu' and not self.parser.req.get('motor'):
+            spec = [x for x in spec if x[0] != 'start']
+        return spec
 
     def fields(self) -> list:
         out = []
         for key, label, dflt, why, _ in self.spec():
-            f, c = self.byKey.get(key), self.conf.get(key)
-            if c:
+            found, conflict = self.byKey.get(key), self.conf.get(key)
+            if conflict:
                 out.append(
                     {
                         'key': key,
                         'label': label,
                         'status': 'conflict',
-                        'value': f['value'] if f else c.get('value'),
-                        'values': c['values'],
+                        'value': found['value'] if found else conflict.get('value'),
+                        'values': conflict['values'],
                         'why': 'в ТЗ разные значения — принято {} {} (с запасом в пользу заказчика)'.format(
                             'меньшее' if key in TzParse.LOW_WINS else 'большее',
-                            self.fmt(f['value'] if f else c.get('value')),
+                            self.fmt(found['value'] if found else conflict.get('value')),
                         ),
                     }
                 )
-            elif f:
+            elif found:
                 out.append(
                     {
                         'key': key,
                         'label': label,
                         'status': 'found',
-                        'value': f['value'],
-                        'src': f['src'],
-                        'page': f.get('page'),
+                        'value': found['value'],
+                        'src': found['src'],
+                        'page': found.get('page'),
                     }
                 )
-            elif key == 'air' and 'pdp' in self.p.req:
-                out.append({'key': key, 'label': label, 'status': 'found', 'value': self.p.req.get('air')})
+            elif key == 'air' and 'pdp' in self.parser.req:
+                out.append({'key': key, 'label': label, 'status': 'found', 'value': self.parser.req.get('air')})
             elif dflt is not None:
                 out.append({'key': key, 'label': label, 'status': 'default', 'value': dflt, 'why': why})
             else:
@@ -917,24 +941,24 @@ class TzReview:
     def questions(self) -> list:
         """обязательные вопросы: без ответа станцию не подобрать"""
         need = self.NEED.get(self.kind, ())
-        missing = {f['key'] for f in self.fields() if f['status'] == 'missing'}
-        return [q for key, _, _, _, q in self.spec() if key in need and q and key in missing]
+        missing = {field['key'] for field in self.fields() if field['status'] == 'missing'}
+        return [spec_item for key, _, _, _, spec_item in self.spec() if key in need and spec_item and key in missing]
 
     def later(self) -> list:
         """Можно уточнить позже: умолчания, отсутствующие необязательные и противоречия."""
-        ask, need, out = {key: q for key, _, _, _, q in self.spec()}, self.NEED.get(self.kind, ()), []
-        for f in self.fields():
-            q = ask.get(f['key'])
-            if f['status'] == 'conflict':
+        ask, need, out = {key: spec_item for key, _, _, _, spec_item in self.spec()}, self.NEED.get(self.kind, ()), []
+        for field in self.fields():
+            spec_item = ask.get(field['key'])
+            if field['status'] == 'conflict':
                 vals = '; '.join(
                     '{}{}'.format(self.fmt(v['value']), ' (стр. {})'.format(v['page']) if v.get('page') else '')
-                    for v in f['values']
+                    for v in field['values']
                 )
                 out.append(
                     '{}: в ТЗ разные значения — {}; принято {}. Подтвердите.'.format(
-                        f['label'], vals, self.fmt(f['value'])
+                        field['label'], vals, self.fmt(field['value'])
                     )
                 )
-            elif f['status'] in ('missing', 'default') and q and f['key'] not in need:
-                out.append(q)
+            elif field['status'] in ('missing', 'default') and spec_item and field['key'] not in need:
+                out.append(spec_item)
         return out

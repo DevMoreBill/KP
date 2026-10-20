@@ -9,10 +9,10 @@ from kp_track import Val
 
 def _obj(text) -> dict:
     try:
-        d = json.loads(text) if text else {}
+        data = json.loads(text) if text else {}
     except (TypeError, ValueError):
         return {}
-    return d if isinstance(d, dict) else {}
+    return data if isinstance(data, dict) else {}
 
 
 class Stages:
@@ -29,7 +29,7 @@ class Stages:
     CLOSED = (('won', 'Выиграно'), ('lost', 'Проиграно'))
     # статус КП (ход сделки) → этап сделки, до которого она продвигается сама
     BY_TRACK = {'new': 'lead', 'sent': 'sent', 'work': 'talks', 'won': 'contract'}
-    ID = re.compile(r'^[a-z0-9_-]{1,30}$')
+    ID_RE = re.compile(r'^[a-z0-9_-]{1,30}$')
 
     @classmethod
     def all(cls, store) -> list[dict]:
@@ -37,21 +37,21 @@ class Stages:
 
         rows = ListStore(store).all().get(cls.LIST)
         names, order = {}, []
-        for r in rows if isinstance(rows, list) else []:
-            k = str(r.get('id') or '').strip().lower() if isinstance(r, dict) else ''
-            if cls.ID.match(k) and k not in names:
-                names[k] = str(r.get('name') or '').strip()[:60]
+        for row in rows if isinstance(rows, list) else []:
+            k = str(row.get('id') or '').strip().lower() if isinstance(row, dict) else ''
+            if cls.ID_RE.match(k) and k not in names:
+                names[k] = str(row.get('name') or '').strip()[:60]
                 order.append(k)
         closed = dict(cls.CLOSED)
         if not [k for k in order if k not in closed]:
             order = [k for k, _ in cls.BASE]
         base = dict(cls.BASE)
         out = [{'key': k, 'label': names.get(k) or base.get(k) or k} for k in order if k not in closed]
-        return out + [{'key': k, 'label': names.get(k) or lb, 'closed': True} for k, lb in cls.CLOSED]
+        return out + [{'key': k, 'label': names.get(k) or label, 'closed': True} for k, label in cls.CLOSED]
 
     @classmethod
     def keys(cls, store) -> list:
-        return [s['key'] for s in cls.all(store)]
+        return [stage['key'] for stage in cls.all(store)]
 
 
 class DealBook:
@@ -68,14 +68,14 @@ class DealBook:
         self.store = store
 
     @staticmethod
-    def _out(r) -> dict:
-        d = _obj(r[1])
-        d.update(id=r[0], managerId=r[2] or '', stage=r[3] or 'lead', updated=r[4] or '', rev=r[5] or 0)
-        return d
+    def _out(row) -> dict:
+        deal = _obj(row[1])
+        deal.update(id=row[0], managerId=row[2] or '', stage=row[3] or 'lead', updated=row[4] or '', rev=row[5] or 0)
+        return deal
 
     def get(self, did) -> dict | None:
-        r = self.store.one(f'SELECT {self.COLS} FROM deals WHERE id=?', (str(did or '')[:40],))
-        return self._out(r) if r else None
+        row = self.store.one(f'SELECT {self.COLS} FROM deals WHERE id=?', (str(did or '')[:40],))
+        return self._out(row) if row else None
 
     def deals(self, managers=None) -> list:
         """Сделки менеджеров (None — все): незакрытые и закрытые за последние 120 дней."""
@@ -85,7 +85,7 @@ class DealBook:
         if managers is not None:
             sql += ' AND manager_id IN ({})'.format(','.join('?' * len(managers))) if managers else ' AND 0'
             args += list(managers)
-        return [self._out(r) for r in self.store.all(sql + ' ORDER BY updated DESC', tuple(args))]
+        return [self._out(row) for row in self.store.all(sql + ' ORDER BY updated DESC', tuple(args))]
 
     def kps(self, ids) -> list[dict]:
         """{id сделки: [КП кратко]} — КП из журнала (КП в корзине не показываются)."""
@@ -101,114 +101,114 @@ class DealBook:
                 'WHERE k.meta IS NOT NULL AND l.deal_id IN ({})'.format(','.join('?' * len(part))),
                 tuple(part),
             ):
-                out[did].append(self._kp(kid, _obj(meta), _obj(track), econ_rub))
-        for L in out.values():
-            L.sort(key=lambda x: (x['savedAt'] or x['date'] or '', x['id']), reverse=True)
+                out[did].append(self._kp_card(kid, _obj(meta), _obj(track), econ_rub))
+        for items in out.values():
+            items.sort(key=lambda x: (x['savedAt'] or x['date'] or '', x['id']), reverse=True)
         return out
 
     @staticmethod
-    def _kp(kid: str, m, tr, econ_rub) -> dict:
-        rub = econ_rub(m)[0]
-        e = m.get('econ') if isinstance(m.get('econ'), dict) else {}
-        plan = m.get('plan') if isinstance(m.get('plan'), dict) else None
+    def _kp_card(kid: str, meta, track, econ_rub) -> dict:
+        rub = econ_rub(meta)[0]
+        econ = meta.get('econ') if isinstance(meta.get('econ'), dict) else {}
+        plan = meta.get('plan') if isinstance(meta.get('plan'), dict) else None
         return {
             'id': kid,
-            'number': m.get('number') or kid,
-            'date': str(m.get('date') or '')[:10],
-            'savedAt': str(m.get('savedAt') or '')[:40],
+            'number': meta.get('number') or kid,
+            'date': str(meta.get('date') or '')[:10],
+            'savedAt': str(meta.get('savedAt') or '')[:40],
             'sum': rub,
-            'sumCur': e.get('sum') if e.get('cur') not in (None, 'RUB') else None,
-            'cur': e.get('cur') or 'RUB',
-            'status': tr.get('status') or 'new',
-            'reason': tr.get('reason') or '',
-            'validUntil': str(m.get('validUntil') or '')[:10],
-            'items': (m.get('items') or [])[:2] if isinstance(m.get('items'), list) else [],
-            'positions': m.get('positions') or 0,
-            'client': m.get('client') or '',
+            'sumCur': econ.get('sum') if econ.get('cur') not in (None, 'RUB') else None,
+            'cur': econ.get('cur') or 'RUB',
+            'status': track.get('status') or 'new',
+            'reason': track.get('reason') or '',
+            'validUntil': str(meta.get('validUntil') or '')[:10],
+            'items': (meta.get('items') or [])[:2] if isinstance(meta.get('items'), list) else [],
+            'positions': meta.get('positions') or 0,
+            'client': meta.get('client') or '',
             'plan': plan,
-            'followUp': tr.get('followUp') if isinstance(tr.get('followUp'), dict) else None,
+            'followUp': track.get('followUp') if isinstance(track.get('followUp'), dict) else None,
         }
 
     @staticmethod
-    def _next_number(c) -> int:
-        c.execute(
+    def _next_number(conn) -> int:
+        conn.execute(
             "INSERT INTO kv (key, value) VALUES ('crm.seq', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1"
         )
-        return int(c.execute("SELECT value FROM kv WHERE key='crm.seq'").fetchone()[0])
+        return int(conn.execute("SELECT value FROM kv WHERE key='crm.seq'").fetchone()[0])
 
-    def _log(self, d, by: str, **what) -> None:
-        h = d.get('history') if isinstance(d.get('history'), list) else []
-        h.append(dict(what, at=Val.now(), by=by))
-        d['history'] = h[-self.HISTORY_MAX :]
+    def _log(self, deal, author: str, **what) -> None:
+        hist = deal.get('history') if isinstance(deal.get('history'), list) else []
+        hist.append(dict(what, at=Val.now(), by=author))
+        deal['history'] = hist[-self.HISTORY_MAX :]
 
-    def _save(self, c, did, d, by: str, base_rev=None, when=None) -> int:
+    def _save(self, conn, did, deal, author: str, base_rev=None, when=None) -> int:
         """Записать сделку (в открытой транзакции c). → номер правки."""
-        rev = self.store._next_rev(c, 'deals', did, base_rev)
+        rev = self.store._next_rev(conn, 'deals', did, base_rev)
         doc = {
             k: v
-            for k, v in d.items()
+            for k, v in deal.items()
             if k not in ('id', 'managerId', 'stage', 'updated', 'rev', 'kps', 'next', 'tasks')
         }
-        c.execute(
+        conn.execute(
             'INSERT OR REPLACE INTO deals (id, doc, manager_id, stage, client, inn, updated, rev, updated_by) VALUES (?,?,?,?,?,?,?,?,?)',
             (
                 did,
                 json.dumps(doc, ensure_ascii=False),
-                d.get('managerId') or '',
-                d.get('stage') or 'lead',
-                str(d.get('client') or '')[:300],
-                re.sub(r'\D', '', str(d.get('clientInn') or ''))[:12],
+                deal.get('managerId') or '',
+                deal.get('stage') or 'lead',
+                str(deal.get('client') or '')[:300],
+                re.sub(r'\D', '', str(deal.get('clientInn') or ''))[:12],
                 when or Val.now(),
                 rev,
-                str(by or '')[:120],
+                str(author or '')[:120],
             ),
         )
         return rev
 
-    def _new(self, c, d, by: str, when=None) -> str:
-        n = self._next_number(c)
-        did = f'd{n}'
-        d = dict(d, number=n, created=when or Val.now(), createdBy=by)
-        d.setdefault('stageAt', d['created'])
-        self._save(c, did, d, by, when=when)
+    def _new(self, conn, data, author: str, when=None) -> str:
+        num = self._next_number(conn)
+        did = f'd{num}'
+        data = dict(data, number=num, created=when or Val.now(), createdBy=author)
+        data.setdefault('stageAt', data['created'])
+        self._save(conn, did, data, author, when=when)
         return did
 
-    def create(self, d, manager_id, manager, by: str) -> dict | None:
+    def create(self, data, manager_id, manager, author: str) -> dict | None:
         """Новая сделка вручную (без КП). ValueError — с понятным текстом."""
-        x = self._clean(d, {}, Stages.keys(self.store))
+        x = self._clean(data, {}, Stages.keys(self.store))
         if not (x.get('title') or x.get('client')):
             raise ValueError('Укажите клиента или название сделки')
         x.setdefault('title', x.get('client'))
         x.update(managerId=manager_id or '', manager=manager or '', stage=x.get('stage') or 'lead')
         if not x.get('expected'):
             x['expected'] = (date.today() + timedelta(days=30)).isoformat()
-        self._log(x, by, what='create')
+        self._log(x, author, what='create')
         with self.store.lock:
-            c = self.store.conn()
-            did = self._new(c, x, by)
-            c.commit()
+            conn = self.store.conn()
+            did = self._new(conn, x, author)
+            conn.commit()
         return self.get(did)
 
-    def _clean(self, d, cur, keys) -> dict:
+    def _clean(self, data, cur, keys) -> dict:
         """Поля сделки из запроса → изменения. ValueError — с понятным текстом."""
-        if not isinstance(d, dict):
+        if not isinstance(data, dict):
             raise ValueError('Нет данных сделки')
         out = {}
-        for k, n in (('title', 200), ('client', 300), ('note', 3000)):
-            if k in d:
-                out[k] = Val.text(d.get(k), n)
-        if 'clientInn' in d:
-            out['clientInn'] = re.sub(r'\D', '', str(d.get('clientInn') or ''))[:12]
-        if 'clientId' in d:
-            out['clientId'] = re.sub(r'[^A-Za-z0-9_-]', '', str(d.get('clientId') or ''))[:64]
-        if 'expected' in d:
-            v = d.get('expected')
-            dt = Val.day(v) if v else None
-            if v and not dt:
+        for k, field in (('title', 200), ('client', 300), ('note', 3000)):
+            if k in data:
+                out[k] = Val.text(data.get(k), field)
+        if 'clientInn' in data:
+            out['clientInn'] = re.sub(r'\D', '', str(data.get('clientInn') or ''))[:12]
+        if 'clientId' in data:
+            out['clientId'] = re.sub(r'[^A-Za-z0-9_-]', '', str(data.get('clientId') or ''))[:64]
+        if 'expected' in data:
+            v = data.get('expected')
+            day = Val.day(v) if v else None
+            if v and not day:
                 raise ValueError('Ожидаемая дата — в формате ГГГГ-ММ-ДД')
-            out['expected'] = dt.isoformat() if dt else ''
-        if 'sum' in d:  # ввод — в рублях, хранится в копейках; пусто — по последнему КП сделки
-            v = d.get('sum')
+            out['expected'] = day.isoformat() if day else ''
+        if 'sum' in data:  # ввод — в рублях, хранится в копейках; пусто — по последнему КП сделки
+            v = data.get('sum')
             if v in (None, ''):
                 out.update(sumOwn=False)
             else:
@@ -219,203 +219,215 @@ class DealBook:
                 if not (0 <= rub < 1e12):
                     raise ValueError('Сумма сделки — от 0 до 999 млрд руб.')
                 out.update(sum=round(rub * 100), sumOwn=True)
-        if 'stage' in d:
-            st = str(d.get('stage') or '')
-            if st not in keys:
+        if 'stage' in data:
+            stage = str(data.get('stage') or '')
+            if stage not in keys:
                 raise ValueError('Неизвестный этап сделки')
-            out['stage'] = st
-            if st == 'lost':
-                reason = Val.text(d.get('lostReason') if 'lostReason' in d else cur.get('lostReason'), 200)
+            out['stage'] = stage
+            if stage == 'lost':
+                reason = Val.text(data.get('lostReason') if 'lostReason' in data else cur.get('lostReason'), 200)
                 if not reason:
                     raise ValueError('Укажите причину проигрыша')
                 out['lostReason'] = reason
         return out
 
-    def update(self, did, d, by: str, base_rev=None, manager=None) -> dict | None:
+    def update(self, did, data, author: str, base_rev=None, manager=None) -> dict | None:
         """Правка сделки (поля, этап, сумма, ответственный) → сделка; Conflict — сделку успели изменить."""
         with self.store.lock:
             cur = self.get(did)
             if not cur:
                 raise LookupError('Сделка не найдена')
-            x = self._clean(d, cur, Stages.keys(self.store))
-            c = self.store.conn()
+            x = self._clean(data, cur, Stages.keys(self.store))
+            conn = self.store.conn()
             new = dict(cur, **x)
             if x.get('stage') and x['stage'] != cur['stage']:
                 new.update(stageAt=Val.now(), lostAuto=False)
                 if x['stage'] != 'lost':
                     new.pop('lostReason', None)
-                self._log(new, by, what='stage', **{'from': cur['stage'], 'to': x['stage']})
+                self._log(new, author, what='stage', **{'from': cur['stage'], 'to': x['stage']})
             if manager and manager[0] != cur.get('managerId'):
                 new.update(managerId=manager[0], manager=manager[1])
-                self._log(new, by, what='manager', to=manager[1])
+                self._log(new, author, what='manager', to=manager[1])
             changed = [k for k in ('title', 'client', 'expected', 'sum', 'note') if k in x and x[k] != cur.get(k)]
             if changed:
-                self._log(new, by, what='edit', fields=changed)
-            self._sum(c, new)
-            self._save(c, did, new, by, base_rev)
-            c.commit()
+                self._log(new, author, what='edit', fields=changed)
+            self._sum(conn, new)
+            self._save(conn, did, new, author, base_rev)
+            conn.commit()
         return self.get(did)
 
     def deal_of(self, kid: str) -> str | None:
-        r = self.store.one('SELECT deal_id FROM deal_kp WHERE kp_id=?', (kid,))
-        return r[0] if r else None
+        row = self.store.one('SELECT deal_id FROM deal_kp WHERE kp_id=?', (kid,))
+        return row[0] if row else None
 
-    def link(self, did, kid: str, by: str) -> str | None:
+    def link(self, did, kid: str, author: str) -> str | None:
         """КП — в сделку (из прежней сделки КП уходит). → прежняя сделка или None."""
         with self.store.lock:
-            c = self.store.conn()
-            old = (c.execute('SELECT deal_id FROM deal_kp WHERE kp_id=?', (kid,)).fetchone() or [None])[0]
+            conn = self.store.conn()
+            old = (conn.execute('SELECT deal_id FROM deal_kp WHERE kp_id=?', (kid,)).fetchone() or [None])[0]
             if old == did:
                 return None
-            c.execute('INSERT OR REPLACE INTO deal_kp (kp_id, deal_id, added) VALUES (?,?,?)', (kid, did, Val.now()))
-            d = self.get(did)
-            self._log(d, by, what='kp', kp=kid)
-            self._sync(c, d, by)
+            conn.execute('INSERT OR REPLACE INTO deal_kp (kp_id, deal_id, added) VALUES (?,?,?)', (kid, did, Val.now()))
+            deal = self.get(did)
+            self._log(deal, author, what='kp', kp=kid)
+            self._sync(conn, deal, author)
             if old:
-                o = self.get(old)
-                if o:
-                    self._log(o, by, what='kpOut', kp=kid)
-                    self._sync(c, o, by)
-            c.commit()
+                old_deal = self.get(old)
+                if old_deal:
+                    self._log(old_deal, author, what='kpOut', kp=kid)
+                    self._sync(conn, old_deal, author)
+            conn.commit()
         return old
 
-    def on_kp(self, kid: str, meta, by: str, want=None) -> str | None:
+    def on_kp(self, kid: str, meta, author: str, want=None) -> str | None:
         """КП сохранено: в сделку want («new» — новую), прежнюю или новую по КП; пересчёт суммы и этапа → id."""
-        m = meta if isinstance(meta, dict) else _obj(meta)
+        meta_obj = meta if isinstance(meta, dict) else _obj(meta)
         with self.store.lock:
-            c = self.store.conn()
-            cur = (c.execute('SELECT deal_id FROM deal_kp WHERE kp_id=?', (kid,)).fetchone() or [None])[0]
+            conn = self.store.conn()
+            cur = (conn.execute('SELECT deal_id FROM deal_kp WHERE kp_id=?', (kid,)).fetchone() or [None])[0]
             if want == 'new' and cur:  # «Отдельная новая сделка» для КП, которое уже в сделке
                 old = self.get(cur)
                 did = self._from_kp(
-                    c, kid, m, _obj((c.execute('SELECT track FROM kp WHERE id=?', (kid,)).fetchone() or [''])[0]), by
+                    conn,
+                    kid,
+                    meta_obj,
+                    _obj((conn.execute('SELECT track FROM kp WHERE id=?', (kid,)).fetchone() or [''])[0]),
+                    author,
                 )
                 if old:
-                    self._log(old, by, what='kpOut', kp=kid)
-                    self._sync(c, old, by)
-                self._sync(c, self.get(did), by)
-                c.commit()
+                    self._log(old, author, what='kpOut', kp=kid)
+                    self._sync(conn, old, author)
+                self._sync(conn, self.get(did), author)
+                conn.commit()
                 return did
             if want and want not in ('new', cur) and self.get(want):
-                self.link(want, kid, by)
+                self.link(want, kid, author)
                 return want
             did = cur or self._from_kp(
-                c, kid, m, _obj((c.execute('SELECT track FROM kp WHERE id=?', (kid,)).fetchone() or [''])[0]), by
+                conn,
+                kid,
+                meta_obj,
+                _obj((conn.execute('SELECT track FROM kp WHERE id=?', (kid,)).fetchone() or [''])[0]),
+                author,
             )
-            d = self.get(did)
-            if d:
-                if not d.get('client') and m.get('client'):
-                    d.update(
-                        client=str(m['client'])[:300], clientInn=re.sub(r'\D', '', str(m.get('clientInn') or ''))[:12]
+            deal = self.get(did)
+            if deal:
+                if not deal.get('client') and meta_obj.get('client'):
+                    deal.update(
+                        client=str(meta_obj['client'])[:300],
+                        clientInn=re.sub(r'\D', '', str(meta_obj.get('clientInn') or ''))[:12],
                     )
-                self._sync(c, d, by)
-            c.commit()
+                self._sync(conn, deal, author)
+            conn.commit()
         return did
 
-    def _from_kp(self, c, kid: str, m, tr, by: str, when=None, manager=None) -> str:
-        items = m.get('items') if isinstance(m.get('items'), list) else []
-        tnd = m.get('tender') if isinstance(m.get('tender'), dict) else {}
+    def _from_kp(self, conn, kid: str, meta, track, author: str, when=None, manager=None) -> str:
+        items = meta.get('items') if isinstance(meta.get('items'), list) else []
+        tnd = meta.get('tender') if isinstance(meta.get('tender'), dict) else {}
         title = (
             ('Закупка № {}'.format(tnd['number']))
             if tnd.get('number')
-            else (str(items[0]) if items else f'КП № {m.get("number") or kid}')
+            else (str(items[0]) if items else f'КП № {meta.get("number") or kid}')
         )
-        mid, mname = manager or (str(m.get('authorId') or m.get('managerId') or ''), str(m.get('manager') or ''))
-        exp = Val.day(m.get('validUntil')) or ((Val.day(m.get('date')) or date.today()) + timedelta(days=30))
-        d = {
+        mid, mname = manager or (
+            str(meta.get('authorId') or meta.get('managerId') or ''),
+            str(meta.get('manager') or ''),
+        )
+        exp = Val.day(meta.get('validUntil')) or ((Val.day(meta.get('date')) or date.today()) + timedelta(days=30))
+        deal = {
             'title': title[:200],
-            'client': str(m.get('client') or '')[:300],
-            'clientInn': re.sub(r'\D', '', str(m.get('clientInn') or ''))[:12],
+            'client': str(meta.get('client') or '')[:300],
+            'clientInn': re.sub(r'\D', '', str(meta.get('clientInn') or ''))[:12],
             'managerId': mid[:64],
             'manager': mname[:120],
-            'stage': Stages.BY_TRACK.get(tr.get('status') or 'new', 'lead'),
+            'stage': Stages.BY_TRACK.get(track.get('status') or 'new', 'lead'),
             'expected': exp.isoformat(),
             'auto': True,
         }
-        if d['stage'] not in Stages.keys(self.store):
-            d['stage'] = Stages.keys(self.store)[0]
-        self._log(d, by, what='create', kp=kid)
-        did = self._new(c, d, by, when=when)
-        c.execute(
+        if deal['stage'] not in Stages.keys(self.store):
+            deal['stage'] = Stages.keys(self.store)[0]
+        self._log(deal, author, what='create', kp=kid)
+        did = self._new(conn, deal, author, when=when)
+        conn.execute(
             'INSERT OR REPLACE INTO deal_kp (kp_id, deal_id, added) VALUES (?,?,?)', (kid, did, when or Val.now())
         )
         return did
 
     @classmethod
-    def kp_moved(cls, store, kid: str, by: str) -> str | None:
+    def kp_moved(cls, store, kid: str, author: str) -> str | None:
         """КП ушло в корзину или вернулось из неё — сумма и этап его сделки заново (и в очередь Битрикс24)."""
         try:
-            did = cls(store).refresh(kid, by)
+            did = cls(store).refresh(kid, author)
             if did:
                 from bitrix import BitrixQueue
 
                 BitrixQueue.touch(store, 'deal', did)
             return did
-        except Exception as e:
+        except Exception as econ:
             from server_log import ServerLog
 
-            ServerLog.failure(f'сделка КП {kid} после корзины', e)
+            ServerLog.failure(f'сделка КП {kid} после корзины', econ)
             return None
 
-    def refresh(self, kid: str, by: str) -> str | None:
+    def refresh(self, kid: str, author: str) -> str | None:
         """Ход сделки КП изменился — этап и сумма его сделки."""
         did = self.deal_of(kid)
         if not did:
             return None
         with self.store.lock:
-            c = self.store.conn()
-            d = self.get(did)
-            if d:
-                self._sync(c, d, by)
-                c.commit()
+            conn = self.store.conn()
+            deal = self.get(did)
+            if deal:
+                self._sync(conn, deal, author)
+                conn.commit()
         return did
 
-    def _rows(self, c, did) -> list:
+    def _rows(self, conn, did) -> list:
         from admin import econ_rub
 
         return [
-            self._kp(k, _obj(m), _obj(t), econ_rub)
-            for k, m, t in c.execute(
+            self._kp_card(k, _obj(meta_raw), _obj(track_raw), econ_rub)
+            for k, meta_raw, track_raw in conn.execute(
                 'SELECT k.id, k.meta, k.track FROM deal_kp l JOIN kp k ON k.id = l.kp_id WHERE l.deal_id=? AND k.meta IS NOT NULL',
                 (did,),
             ).fetchall()
         ]
 
-    def _sum(self, c, d, rows=None) -> None:
+    def _sum(self, conn, deal, rows=None) -> None:
         """Сумма сделки — по последнему незакрытому проигрышем КП (своя сумма менеджера — как есть)."""
-        if d.get('sumOwn'):
+        if deal.get('sumOwn'):
             return
-        rows = self._rows(c, d['id']) if rows is None else rows
-        live = [r for r in rows if r['status'] != 'lost'] or rows
-        live.sort(key=lambda r: (r['savedAt'] or r['date'] or '', r['id']), reverse=True)
-        d['sum'] = (live[0]['sum'] or 0) if live else (d.get('sum') or 0)
+        rows = self._rows(conn, deal['id']) if rows is None else rows
+        live = [row for row in rows if row['status'] != 'lost'] or rows
+        live.sort(key=lambda rec: (rec['savedAt'] or rec['date'] or '', rec['id']), reverse=True)
+        deal['sum'] = (live[0]['sum'] or 0) if live else (deal.get('sum') or 0)
 
-    def _sync(self, c, d, by: str, when=None) -> None:
+    def _sync(self, conn, deal, author: str, when=None) -> None:
         """Сумма по КП и этап только вперёд по ходу КП; все КП проиграны — «Проиграно»."""
-        rows = self._rows(c, d['id'])
-        self._sum(c, d, rows)
+        rows = self._rows(conn, deal['id'])
+        self._sum(conn, deal, rows)
         keys = [k for k in Stages.keys(self.store) if k not in ('won', 'lost')]
-        st = d.get('stage') or 'lead'
+        stage = deal.get('stage') or 'lead'
         target = None
-        if rows and all(r['status'] == 'lost' for r in rows):
-            if st not in ('won', 'lost'):
-                last = max(rows, key=lambda r: r['savedAt'] or r['date'] or '')
-                target, d['lostReason'], d['lostAuto'] = 'lost', last['reason'] or 'КП проиграно', True
+        if rows and all(row['status'] == 'lost' for row in rows):
+            if stage not in ('won', 'lost'):
+                last = max(rows, key=lambda rec: rec['savedAt'] or rec['date'] or '')
+                target, deal['lostReason'], deal['lostAuto'] = 'lost', last['reason'] or 'КП проиграно', True
         else:
-            best = [Stages.BY_TRACK.get(r['status']) for r in rows if r['status'] != 'lost']
+            best = [Stages.BY_TRACK.get(row['status']) for row in rows if row['status'] != 'lost']
             best = [k for k in best if k in keys]
             top = max(best, key=keys.index) if best else None
-            if (top and st == 'lost' and d.get('lostAuto')) or (
-                top and st in keys and keys.index(top) > keys.index(st)
+            if (top and stage == 'lost' and deal.get('lostAuto')) or (
+                top and stage in keys and keys.index(top) > keys.index(stage)
             ):
                 target = top
-        if target and target != st:
-            d.update(stage=target, stageAt=when or Val.now())
+        if target and target != stage:
+            deal.update(stage=target, stageAt=when or Val.now())
             if target != 'lost':
-                d.pop('lostReason', None)
-                d['lostAuto'] = False
-            self._log(d, by, what='stage', auto=True, **{'from': st, 'to': target})
-        self._save(c, d['id'], d, by, when=when)
+                deal.pop('lostReason', None)
+                deal['lostAuto'] = False
+            self._log(deal, author, what='stage', auto=True, **{'from': stage, 'to': target})
+        self._save(conn, deal['id'], deal, author, when=when)
 
     def adopt(self) -> int:
         """КП журнала без сделки — в сделки (после перехода на сделки, восстановления и загрузки копии). → сколько КП."""
@@ -424,45 +436,58 @@ class DealBook:
         ):
             return 0
         with self.store.lock:
-            c = self.store.conn()
-            n = self._adopt(c)
-            c.commit()
-        return n
+            conn = self.store.conn()
+            count = self._adopt(conn)
+            conn.commit()
+        return count
 
-    def _adopt(self, c) -> int:
+    def _adopt(self, conn) -> int:
         names = {}
-        for mid, doc in c.execute('SELECT id, doc FROM managers').fetchall():
-            nm = str(_obj(doc).get('name') or '').strip().lower()
-            if nm:
-                names.setdefault(nm, mid)
+        for mid, doc in conn.execute('SELECT id, doc FROM managers').fetchall():
+            name = str(_obj(doc).get('name') or '').strip().lower()
+            if name:
+                names.setdefault(name, mid)
         rows = []
-        for kid, meta, track in c.execute(
+        for kid, meta, track in conn.execute(
             'SELECT k.id, k.meta, k.track FROM kp k WHERE k.meta IS NOT NULL AND '
             'NOT EXISTS (SELECT 1 FROM deal_kp l WHERE l.kp_id = k.id)'
         ).fetchall():
-            m, tr = _obj(meta), _obj(track)
-            day = Val.day(m.get('date')) or Val.day(m.get('savedAt')) or date.today()
+            meta_obj, track_obj = _obj(meta), _obj(track)
+            day = Val.day(meta_obj.get('date')) or Val.day(meta_obj.get('savedAt')) or date.today()
             mid = str(
-                m.get('authorId') or m.get('managerId') or names.get(str(m.get('manager') or '').strip().lower()) or ''
+                meta_obj.get('authorId')
+                or meta_obj.get('managerId')
+                or names.get(str(meta_obj.get('manager') or '').strip().lower())
+                or ''
             )
-            who = mid or str(m.get('manager') or '').strip().lower()
-            client = re.sub(r'\D', '', str(m.get('clientInn') or '')) or str(m.get('client') or '').strip().lower()
-            rows.append((who, client, day, kid, m, tr, mid))
-        rows.sort(key=lambda r: (r[0], r[1], r[2], r[3]))
+            who = mid or str(meta_obj.get('manager') or '').strip().lower()
+            client = (
+                re.sub(r'\D', '', str(meta_obj.get('clientInn') or ''))
+                or str(meta_obj.get('client') or '').strip().lower()
+            )
+            rows.append((who, client, day, kid, meta_obj, track_obj, mid))
+        rows.sort(key=lambda rec: (rec[0], rec[1], rec[2], rec[3]))
         groups, last = [], None
-        for r in rows:
-            g = groups[-1] if groups else None
-            if g and last and r[0] == last[0] and r[1] and r[1] == last[1] and (r[2] - last[2]).days <= self.GROUP_DAYS:
-                g.append(r)
+        for row in rows:
+            group = groups[-1] if groups else None
+            if (
+                group
+                and last
+                and row[0] == last[0]
+                and row[1]
+                and row[1] == last[1]
+                and (row[2] - last[2]).days <= self.GROUP_DAYS
+            ):
+                group.append(row)
             else:
-                groups.append([r])
-            last = r
+                groups.append([row])
+            last = row
         today = date.today()
-        for g in groups:
-            first, end = g[0], g[-1]
+        for group in groups:
+            first, end = group[0], group[-1]
             when = first[2].isoformat() + 'T09:00:00'
             did = self._from_kp(
-                c,
+                conn,
                 first[3],
                 first[4],
                 first[5],
@@ -470,39 +495,41 @@ class DealBook:
                 when=when,
                 manager=(first[6], str(first[4].get('manager') or '')),
             )
-            for r in g[1:]:
-                c.execute('INSERT OR REPLACE INTO deal_kp (kp_id, deal_id, added) VALUES (?,?,?)', (r[3], did, when))
-            d = self.get_c(c, did)
+            for row in group[1:]:
+                conn.execute(
+                    'INSERT OR REPLACE INTO deal_kp (kp_id, deal_id, added) VALUES (?,?,?)', (row[3], did, when)
+                )
+            deal = self.get_c(conn, did)
             stamp = end[2].isoformat() + 'T09:00:00'
-            self._sync(c, d, 'переход на сделки', when=stamp)
-            d = self.get_c(c, did)
+            self._sync(conn, deal, 'переход на сделки', when=stamp)
+            deal = self.get_c(conn, did)
             age = (today - end[2]).days
-            st = d['stage']
-            if st == 'contract' and age > self.WON_DAYS:
-                d.update(stage='won', stageAt=stamp)
-            elif st not in ('won', 'lost') and age > self.STALE_DAYS:
-                d.update(stage='lost', stageAt=stamp, lostReason=self.STALE_REASON, lostAuto=False)
-            if d['stage'] != st:
-                self._save(c, did, d, 'переход на сделки', when=stamp)
+            stage = deal['stage']
+            if stage == 'contract' and age > self.WON_DAYS:
+                deal.update(stage='won', stageAt=stamp)
+            elif stage not in ('won', 'lost') and age > self.STALE_DAYS:
+                deal.update(stage='lost', stageAt=stamp, lostReason=self.STALE_REASON, lostAuto=False)
+            if deal['stage'] != stage:
+                self._save(conn, did, deal, 'переход на сделки', when=stamp)
         return len(rows)
 
     def flag(self, did, **kw) -> None:
         """Служебная отметка сделки без правки и истории; None — снять."""
         with self.store.lock:
-            r = self.store.one('SELECT doc FROM deals WHERE id=?', (did,))
-            if not r:
+            row = self.store.one('SELECT doc FROM deals WHERE id=?', (did,))
+            if not row:
                 return
-            d = _obj(r[0])
+            deal = _obj(row[0])
             for k, v in kw.items():
                 if v is None:
-                    d.pop(k, None)
+                    deal.pop(k, None)
                 else:
-                    d[k] = v
-            self.store.write('UPDATE deals SET doc=? WHERE id=?', (json.dumps(d, ensure_ascii=False), did))
+                    deal[k] = v
+            self.store.write('UPDATE deals SET doc=? WHERE id=?', (json.dumps(deal, ensure_ascii=False), did))
 
-    def get_c(self, c, did) -> dict | None:
-        r = c.execute(f'SELECT {self.COLS} FROM deals WHERE id=?', (did,)).fetchone()
-        return self._out(r) if r else None
+    def get_c(self, conn, did) -> dict | None:
+        row = conn.execute(f'SELECT {self.COLS} FROM deals WHERE id=?', (did,)).fetchone()
+        return self._out(row) if row else None
 
 
 class TaskBook:
@@ -517,65 +544,65 @@ class TaskBook:
         self.store = store
 
     @classmethod
-    def _out(cls, r) -> dict:
+    def _out(cls, row) -> dict:
         return dict(
             zip(
                 ('id', 'deal', 'managerId', 'kind', 'due', 'time', 'title', 'note', 'state', 'doneAt', 'created', 'by'),
-                r,
+                row,
                 strict=False,
             )
         )
 
     def get(self, tid: str) -> dict | None:
-        r = self.store.one(f'SELECT {self.COLS} FROM crm_tasks WHERE id=?', (int(tid),))
-        return self._out(r) if r else None
+        row = self.store.one(f'SELECT {self.COLS} FROM crm_tasks WHERE id=?', (int(tid),))
+        return self._out(row) if row else None
 
     def list(self, managers=None, deal=None, days=14) -> list:
         """Незакрытые дела и закрытые за последние days дней: менеджеров (None — всех) или одной сделки (все её дела)."""
         if deal:
             rows = self.store.all(f'SELECT {self.COLS} FROM crm_tasks WHERE deal_id=? ORDER BY due, time, id', (deal,))
-            return [self._out(r) for r in rows]
+            return [self._out(row) for row in rows]
         since = (date.today() - timedelta(days=days)).isoformat()
         sql, args = f"SELECT {self.COLS} FROM crm_tasks WHERE (state = 'open' OR done_at >= ?)", [since]
         if managers is not None:
             sql += ' AND manager_id IN ({})'.format(','.join('?' * len(managers))) if managers else ' AND 0'
             args += list(managers)
-        return [self._out(r) for r in self.store.all(sql + ' ORDER BY due, time, id', tuple(args))]
+        return [self._out(row) for row in self.store.all(sql + ' ORDER BY due, time, id', tuple(args))]
 
-    def _clean(self, d, cur) -> dict:
-        if not isinstance(d, dict):
+    def _clean(self, data, cur) -> dict:
+        if not isinstance(data, dict):
             raise ValueError('Нет данных дела')
         x = {}
-        if 'kind' in d or not cur:
-            k = d.get('kind') or 'task'
+        if 'kind' in data or not cur:
+            k = data.get('kind') or 'task'
             if k not in dict(self.KINDS):
                 raise ValueError('Неизвестный вид дела')
             x['kind'] = k
-        if 'due' in d or not cur:
-            dt = Val.day(d.get('due'))
-            if not dt:
+        if 'due' in data or not cur:
+            day = Val.day(data.get('due'))
+            if not day:
                 raise ValueError('Укажите дату дела')
-            x['due'] = dt.isoformat()
-        if 'time' in d:
-            t = str(d.get('time') or '').strip()
-            if t and not self.TIME.match(t):
+            x['due'] = day.isoformat()
+        if 'time' in data:
+            time_text = str(data.get('time') or '').strip()
+            if time_text and not self.TIME.match(time_text):
                 raise ValueError('Время — в формате ЧЧ:ММ')
-            x['time'] = t
-        for k, n in (('title', 200), ('note', 1000)):
-            if k in d:
-                x[k] = Val.text(d.get(k), n)
-        if 'state' in d:
-            if d.get('state') not in self.STATES:
+            x['time'] = time_text
+        for k, field in (('title', 200), ('note', 1000)):
+            if k in data:
+                x[k] = Val.text(data.get(k), field)
+        if 'state' in data:
+            if data.get('state') not in self.STATES:
                 raise ValueError('Неизвестное состояние дела')
-            x['state'] = d['state']
+            x['state'] = data['state']
         return x
 
-    def add(self, d, manager_id, by: str, deal=None) -> dict | None:
-        x = self._clean(d, None)
+    def add(self, data, manager_id, author: str, deal=None) -> dict | None:
+        x = self._clean(data, None)
         title = x.get('title') or dict(self.KINDS)[x['kind']]
         with self.store.lock:
-            c = self.store.conn()
-            cur = c.execute(
+            conn = self.store.conn()
+            cur = conn.execute(
                 'INSERT INTO crm_tasks (deal_id, manager_id, kind, due, time, title, note, state, created, created_by) '
                 "VALUES (?,?,?,?,?,?,?,'open',?,?)",
                 (
@@ -587,18 +614,18 @@ class TaskBook:
                     title,
                     x.get('note') or '',
                     Val.now(),
-                    str(by or '')[:120],
+                    str(author or '')[:120],
                 ),
             )
-            c.commit()
+            conn.commit()
             tid = cur.lastrowid
         return self.get(tid)
 
-    def update(self, tid: str, d) -> dict | None:
+    def update(self, tid: str, data) -> dict | None:
         cur = self.get(tid)
         if not cur:
             raise LookupError('Дело не найдено')
-        x = self._clean(d, cur)
+        x = self._clean(data, cur)
         new = dict(cur, **x)
         if 'state' in x and x['state'] != cur['state']:
             new['doneAt'] = Val.now() if x['state'] != 'open' else None
@@ -633,37 +660,39 @@ class CrmBoard:
     def managers(self) -> list[dict]:
         out = []
         for mid, doc in self.store.all('SELECT id, doc FROM managers ORDER BY name COLLATE NOCASE'):
-            d = _obj(doc)
-            if d.get('name') and not d.get('hidden'):
-                out.append({'id': mid, 'name': str(d['name'])})
+            card = _obj(doc)
+            if card.get('name') and not card.get('hidden'):
+                out.append({'id': mid, 'name': str(card['name'])})
         return out
 
     def build(self, managers) -> dict:
         book, tasks = DealBook(self.store), TaskBook(self.store)
         book.adopt()
         deals = book.deals(managers)
-        kp = book.kps([d['id'] for d in deals])
-        T = tasks.list(managers)
+        kps = book.kps([deal['id'] for deal in deals])
+        task_list = tasks.list(managers)
         nxt = {}
-        for t in T:
-            if t['state'] == 'open' and t['deal'] and t['deal'] not in nxt:
-                nxt[t['deal']] = t
-        for d in deals:
-            d['kps'] = kp.get(d['id'], [])
-            d['next'] = nxt.get(d['id'])
-            d.pop('history', None)
+        for task in task_list:
+            if task['state'] == 'open' and task['deal'] and task['deal'] not in nxt:
+                nxt[task['deal']] = task
+        for deal in deals:
+            deal['kps'] = kps.get(deal['id'], [])
+            deal['next'] = nxt.get(deal['id'])
+            deal.pop('history', None)
         return {
             'stages': Stages.all(self.store),
             'deals': deals,
-            'tasks': T,
-            'kinds': [{'key': k, 'label': lb} for k, lb in TaskBook.KINDS],
+            'tasks': task_list,
+            'kinds': [{'key': k, 'label': label} for k, label in TaskBook.KINDS],
             'today': date.today().isoformat(),
             'now': datetime.now().isoformat(timespec='minutes'),
         }
 
-    def find(self, managers, q, limit: int = 8) -> list[dict]:
+    def find(self, managers, query, limit: int = 8) -> list[dict]:
         """Сделки по словам (название, клиент, ИНН, номер) — единый поиск программы; сначала незакрытые и свежие."""
-        words = [w for w in re.sub(r'\s+', ' ', str(q or '').lower().replace('ё', 'е')).strip().split(' ') if w][:6]
+        words = [
+            word for word in re.sub(r'\s+', ' ', str(query or '').lower().replace('ё', 'е')).strip().split(' ') if word
+        ][:6]
         if not words:
             return []
         sql, args = f'SELECT {DealBook.COLS} FROM deals', []
@@ -671,15 +700,17 @@ class CrmBoard:
             sql += ' WHERE manager_id IN ({})'.format(','.join('?' * len(managers))) if managers else ' WHERE 0'
             args += list(managers)
         out = []
-        for d in (
-            DealBook._out(r)
-            for r in self.store.all(sql + " ORDER BY stage IN ('won', 'lost'), updated DESC", tuple(args))
+        for deal in (
+            DealBook._out(row)
+            for row in self.store.all(sql + " ORDER BY stage IN ('won', 'lost'), updated DESC", tuple(args))
         ):
-            hay = ' '.join(str(d.get(k) or '') for k in ('title', 'client', 'inn', 'number')).lower().replace('ё', 'е')
-            if all(w in hay for w in words):
+            hay = (
+                ' '.join(str(deal.get(k) or '') for k in ('title', 'client', 'inn', 'number')).lower().replace('ё', 'е')
+            )
+            if all(word in hay for word in words):
                 out.append(
                     {
-                        k: d.get(k)
+                        k: deal.get(k)
                         for k in ('id', 'number', 'title', 'client', 'stage', 'sum', 'expected', 'updated', 'manager')
                     }
                 )
@@ -696,9 +727,12 @@ class CrmBoard:
             sql += ' AND manager_id IN ({})'.format(','.join('?' * len(managers))) if managers else ' AND 0'
             args += list(managers)
         key = name.strip().lower()  # lower() базы не знает русских букв — название сравнивается здесь
-        rows = [DealBook._out(r) for r in self.store.all(sql + ' ORDER BY updated DESC', tuple(args))]
-        rows = [d for d in rows if inn or str(d.get('client') or '').strip().lower() == key][:20]
+        rows = [DealBook._out(row) for row in self.store.all(sql + ' ORDER BY updated DESC', tuple(args))]
+        rows = [deal for deal in rows if inn or str(deal.get('client') or '').strip().lower() == key][:20]
         return [
-            {k: d.get(k) for k in ('id', 'number', 'title', 'client', 'stage', 'sum', 'expected', 'updated', 'manager')}
-            for d in rows
+            {
+                k: deal.get(k)
+                for k in ('id', 'number', 'title', 'client', 'stage', 'sum', 'expected', 'updated', 'manager')
+            }
+            for deal in rows
         ]
