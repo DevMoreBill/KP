@@ -2,7 +2,7 @@
 // чертёж, схема и 3D-вид, подбор контейнера), размер блок-контейнера по оборудованию, картинки для КП (3D-вид — главное
 // фото станции, габаритный чертёж и схема пневматическая — в изображениях после характеристик), проверка перед сохранением.
 // Расчёт — features/layout/ (StationLayout), лист ЕСКД и схема — station-eskd.js (EskdSheet, StationScheme), чертёж —
-// station-draw.js (StationDrawing), 3D-вид — station-render.js (StationRender, WebGL2); нет WebGL2 — SVG-вид (StationView3D).
+// draw/ (StationDrawing), 3D-вид — view/ (StationRender, WebGL2); нет WebGL2 — SVG-вид (StationView3D).
 'use strict';
 
 class StationUi {

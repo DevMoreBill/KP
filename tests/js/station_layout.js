@@ -1,4 +1,4 @@
-// Компоновка станций в контейнере (app/web/js/features/layout/, station-eskd.js, station-draw.js): разбор габаритов
+// Компоновка станций в контейнере (app/web/js/features/layout/, station-eskd.js, draw/): разбор габаритов
 // и цвета, расстановка с проходами обслуживания, подбор контейнера, отпечаток, габаритный чертёж и схема пневматическая
 // принципиальная на листе А4 по ЕСКД, 3D-вид.
 // Запуск из корня репозитория: node tests/js/station_layout.js — код выхода 0, если всё прошло (tests/test_station_layout.py).
@@ -6,7 +6,7 @@
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..'), WebScripts=require('./web.js');
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'station-eskd.js', 'station-draw.js', 'view/index.js']){
+for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'station-eskd.js', 'view/index.js', 'draw/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
@@ -510,7 +510,7 @@ Check.run('параллельно: одинаковые осушители и ф
   const one=solve(C('block', { sizeAuto:true }), [c, pre, dr, P('Фильтр тонкой очистки 0,01 мкм', { cat:'filter', flow:7.5, size:'180 × 180 × 650' }), rv]);
   assert.ok(one.issues.some(i=>/^Фильтр поз\. \d+ .* меньше производительности компрессоров/.test(i.text)), 'один фильтр 7,5 на 12 м³/мин — мал');
   // чертёж и схема
-  assert.ok(new StationDrawing(p, meta(p)).reqs().some(t=>/поз\. \d+ \(2 шт\. параллельно\) → \d+ → \d+ \(2 шт\. параллельно\) → \d+ \(2 шт\. параллельно\) → \d+ → к потребителю/.test(t)), 'на чертеже — параллельно в цепочке');
+  assert.ok(new StationDrawing(p, meta(p)).text.reqs().some(t=>/поз\. \d+ \(2 шт\. параллельно\) → \d+ → \d+ \(2 шт\. параллельно\) → \d+ \(2 шт\. параллельно\) → \d+ → к потребителю/.test(t)), 'на чертеже — параллельно в цепочке');
   assert.ok(StationScheme.svg(p, meta(p)).includes('параллельно'), 'на схеме — указание');
   // три одинаковых и больше трёх — на схеме три ветви и число
   const many=solve(C('block', { sizeAuto:true }), [c, Object.assign({}, dr, { id:'dr4', qty:4 }), rv]); Check.plan(many, 'четыре осушителя'); draw(many, 'четыре осушителя');
@@ -544,7 +544,7 @@ Check.run('двери: оператора — одностворчатая на�
   const dg=solve(C('block', { sizeAuto:true }), [dgu, ats]); Check.plan(dg, 'ДГУ');
   assert.ok(dg.dguDoor && (!dg.gates || dg.gates.wall==='left'), 'у ДГУ дальний торец — дверь-жалюзи');
   // чертёж, ТЗ: ворота и дверь оператора
-  const T=StationDrawing.lift ? StationDrawing.svg(ks, meta(ks)) : ''; assert.ok(/Распашные монтажные ворота/.test(T) && /Дверь оператора — одностворчатая/.test(T), 'на чертеже — ворота и дверь оператора');
+  const T=DrawText.lift ? StationDrawing.svg(ks, meta(ks)) : ''; assert.ok(/Распашные монтажные ворота/.test(T) && /Дверь оператора — одностворчатая/.test(T), 'на чертеже — ворота и дверь оператора');
 });
 
 Check.run('двери: плотно к стене — сервисные ворота сзади; проход длиннее 7 м — вторая дверь оператора', ()=>{
@@ -558,7 +558,7 @@ Check.run('двери: плотно к стене — сервисные вор�
   for (const l of t.lines) if (t.int[1]-l.y<600 && StationLayout.runs(l).some(([a, b])=>a<R.x1 && b>R.x0)) assert.ok(l.z>=R.h+100, 'трубопровод — над воротами');
   assert.ok(!t.issues.some(i=>i.level==='warn' && i.tight===cp.pos), 'с воротами сзади — не замечание');
   assert.ok(t.issues.some(i=>/^Сервисные распашные ворота .* в задней стене за оборудованием — для обслуживания, монтажа и демонтажа поз\. 1/.test(i.text)), 'сведения о воротах сзади');
-  const T=StationDrawing.lift ? StationDrawing.svg(t, meta(t)) : ''; assert.ok(!T || /Сервисные распашные ворота в стене за оборудованием/.test(T), 'на чертеже — ворота сзади');
+  const T=DrawText.lift ? StationDrawing.svg(t, meta(t)) : ''; assert.ok(!T || /Сервисные распашные ворота в стене за оборудованием/.test(T), 'на чертеже — ворота сзади');
   draw(t, 'плотно к стене');
   // сзади не меньше доступа для обслуживания (матрица, access.back) — не плотно: подойти можно, ворот нет
   assert.ok(!LayoutGates.tight(Object.assign({}, cp, { back:StationMatrix.access().back })), 'сзади 500 мм — ворота не нужны');
@@ -1161,7 +1161,7 @@ Check.run('масса и центр тяжести, строповка; знак
   // морской: только рамной траверсой — ветви к верхним фитингам вертикальны (ISO 3874: наклонными стропами груз не поднимают)
   const sp=solve(C('sea40'), [dgu, ats]), F=sp.mass.sling.frame;
   assert.ok(F && sp.mass.sling.legs.every(q=>q.deg===0) && F.deg<=StationMass.ANGLE && F.lugs[0]<sp.mass.cg.x && F.lugs[1]>sp.mass.cg.x, 'морской: рамная траверса над ЦТ, ветви вертикальны');
-  assert.ok(StationDrawing.lift(sp).some(t=>/рамной траверсой/.test(t) && /ISO 3874/.test(t)) && StationDrawing.lift(ks).some(t=>/не более 45°/.test(t)), 'ТТ: строповка по схеме');
+  assert.ok(DrawText.lift(sp).some(t=>/рамной траверсой/.test(t) && /ISO 3874/.test(t)) && DrawText.lift(ks).some(t=>/не более 45°/.test(t)), 'ТТ: строповка по схеме');
   const T3=Check.texts(StationDrawing.sheets(sp, meta(sp)).slice(-1)[0]).map(q=>q.t);
   assert.ok(T3.includes('рамная траверса') && T3.some(t=>/вертикально/.test(t)), 'лист 3: рамная траверса');
   // 3D снаружи: № 9 — у каждого из четырёх верхних углов (на длинной стене или на торце), № 12 — не меньше чем на двух стенах,
@@ -1339,7 +1339,7 @@ Check.run('жалюзи: размеры по расходу воздуха, ме
   // сноски на 3D-виде убраны (решение ПНЕВМОТЕХ): размеры жалюзи — на чертеже
   const sc=new StScene(p, {}).build(); assert.ok(!sc.tags, '3D-вид без сносок');
   assert.ok(sc.outfit.walls.B.back.length+sc.outfit.walls.B.left.length+sc.outfit.walls.B.right.length>0);
-  assert.ok(StationDrawing.heat(p).some(t=>/^Жалюзи \(размер по рамке\).*приточные .* мм/.test(t)), StationDrawing.heat(p).join(' | '));
+  assert.ok(DrawText.heat(p).some(t=>/^Жалюзи \(размер по рамке\).*приточные .* мм/.test(t)), DrawText.heat(p).join(' | '));
   assert.ok(!StationView3D.svg(p, meta(p)).includes('Приток:'), 'SVG-вид без сносок');
   // приток и выброс горячего воздуха — никогда на одной стене; приток — сначала напротив выброса, затем в створках ворот
   const same=V=>{ const w=k=>new Set(V.louvers.filter(q=>k.includes(q.kind)).map(q=>q.wall)), a=w(['in']), b=w(['out', 'rad']); return [...a].filter(x=>b.has(x)); };
@@ -1386,10 +1386,10 @@ Check.run('жалюзи: размеры по расходу воздуха, ме
   const so=solve(C('block', { size:'9000 × 2700 × 2700', sys:{ ...SYS, snowout:true } }), [comp, dryer, rec]), SO=so.vent, oo=SO.louvers.filter(L=>L.kind==='out');
   assert.ok(oo.length && oo.every(L=>L.hood && L.hood.v<=SO.face+0.005) && SO.hoodOut && so.issues.some(i=>/^Маркизы на жалюзи выброса горячего воздуха/.test(i.text)), 'маркизы на выбросе: '+JSON.stringify(oo));
   assert.ok(!sn.vent.louvers.some(L=>L.kind==='out' && L.hood) && !sn.vent.hoodOut, 'на выбросе — только по требованию');
-  assert.ok(StationDrawing.heat(so).some(t=>/на жалюзи выброса — маркизы/.test(t)), 'ТТ — маркизы на выбросе');
+  assert.ok(DrawText.heat(so).some(t=>/на жалюзи выброса — маркизы/.test(t)), 'ТТ — маркизы на выбросе');
   draw(so, 'маркизы на выбросе'); new StScene(so, { view:'out' }).build();
   for (const d of [...sn.doors, sn.entry].filter(Boolean)) for (const L of si.filter(L=>L.wall===(d.wall||'front'))) assert.ok(L.u1+StationVent.HOOD_SIDE<=d.x0-StationVent.HOOD_GAP || L.u0-StationVent.HOOD_SIDE>=d.x1+StationVent.HOOD_GAP, 'маркиза — не у двери');
-  assert.ok(StationDrawing.heat(sn).some(t=>/маркизы \(снегозащита\): откидные козырьки .*открыты на \d+°/.test(t)), 'ТТ на чертеже — маркизы');
+  assert.ok(DrawText.heat(sn).some(t=>/маркизы \(снегозащита\): откидные козырьки .*открыты на \d+°/.test(t)), 'ТТ на чертеже — маркизы');
   assert.ok(!solve(C('block', { size:'9000 × 2700 × 2700' }), [comp, dryer, rec]).vent.louvers.some(L=>L.hood), 'без опции — без маркиз');
   draw(sn, 'маркизы'); new StScene(sn, { view:'out' }).build();
   // компрессор плотно к стене, ворота за ним (20-футовый морской): над воротами места нет (до потолка меньше 300 мм), в
@@ -1401,7 +1401,7 @@ Check.run('жалюзи: размеры по расходу воздуха, ме
   const w2=cases[2][1], wc=w2.items.find(i=>i.kind==='compressor'), wl=w2.vent.louvers.find(L=>L.duct===StationLayout.key(wc));
   assert.ok(w2.vent.exhaust==='back' && wl && wl.wall==='back' && wl.u0<wc.x+wc.lx && wl.u1>wc.x && wl.z1<=w2.int[2]-StationVent.OUT.top, 'жалюзи выброса — над компрессором: '+JSON.stringify(wl));
   assert.ok(w2.vent.louvers.some(L=>L.kind==='in' && L.leaf && L.wall===w2.gates.wall), 'приток — в створках ворот');
-  const T2=StationDrawing.heat(w2).join(' '); assert.ok(/приток и выброс — на разных стенах/.test(T2) && /клапанами рециркуляции/.test(T2), 'ТТ на чертеже: '+T2);
+  const T2=DrawText.heat(w2).join(' '); assert.ok(/приток и выброс — на разных стенах/.test(T2) && /клапанами рециркуляции/.test(T2), 'ТТ на чертеже: '+T2);
   // ДГУ: радиатор — в дальнем торце; приток не там, у торца с радиатором — нет
   for (const q of [cases[3][1], cases[4][1]]) assert.ok(q.vent.louvers.filter(L=>L.kind==='in').every(L=>L.wall!=='right' && ((L.wall!=='back' && L.wall!=='front') || L.u1<=q.int[0]-1500)), 'ДГУ: приток — дальше от радиатора');
   // два ряда: компрессоры у стены прохода — выброс через крышу
@@ -1556,7 +1556,7 @@ Check.run('вытяжные вентиляторы в стене напроти�
   assert.ok(A(O)<A(O0) && A(I)<A(p0.vent.louvers.filter(q=>q.kind==='in')), 'проёмы меньше: '+[A(O0), A(O)].join(' → '));
   const T=p1.issues.map(i=>i.text).join(' | ');
   assert.ok(/Вытяжные вентиляторы — вверху стены напротив притока .*по датчику температуры/.test(T) && /те же вытяжные вентиляторы/.test(T), T);
-  assert.ok(StationDrawing.heat(p1).some(t=>/вытяжные вентиляторы/.test(t)), 'ТТ на чертеже');
+  assert.ok(DrawText.heat(p1).some(t=>/вытяжные вентиляторы/.test(t)), 'ТТ на чертеже');
   new StScene(p1, {}).build(); new StScene(p1, { view:'out', az:180 }).build(); draw(p1, 'вытяжные вентиляторы');
   // с вытяжными вентиляторами канальный не нужен
   const pb=solve(C('block', { sys:{ exfan:true, boost:true } }), [c75, dryer, rec, cab]);
@@ -1640,7 +1640,7 @@ Check.run('без продольного прохода: компрессор у
   assert.ok(L-Math.max(...R.map(i=>i.x+i.lx))<=600, 'ресиверы — у ворот дальнего торца');
   assert.ok(!(p.access||[]).some(a=>a.miss.length), 'доступ ко всем сторонам: '+JSON.stringify((p.access||[]).filter(a=>a.miss.length)));
   assert.ok(p.issues.some(i=>/^Без продольного прохода: поз\. 1 \(компрессор\)/.test(i.text)) && !p.second, 'замечание режима, второй двери не выдумано');
-  const tt=new StationDrawing(p, meta(p)).reqs().join(' '); assert.ok(/с обеих сторон компрессора/.test(tt) && /ресиверы в два ряда — не выход/.test(tt), 'ТТ: ворота с обеих сторон, дальние — не выход');
+  const tt=new StationDrawing(p, meta(p)).text.reqs().join(' '); assert.ok(/с обеих сторон компрессора/.test(tt) && /ресиверы в два ряда — не выход/.test(tt), 'ТТ: ворота с обеих сторон, дальние — не выход');
   assert.ok(!p.vent.louvers.some(q=>q.kind==='out' && q.leaf), 'выброс — не в створках');
   assert.ok(p.gates2.pos.includes(2) && !(p.doors||[]).some(d=>d.kind!=='entry' && d.pos.includes(2)), 'осушитель — через ворота в торце, без сервисных дверей');
   assert.ok(p.gates.h===p.gates2.h && p.gates.h>=2040+StationMatrix.gate().addH, 'ворота в торцах — одной высоты по самому высокому: '+[p.gates.h, p.gates2.h]);
