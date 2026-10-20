@@ -177,6 +177,12 @@ class UiRun:
         except Exception as e:
             r['shotErr'] = str(e)[:100]
         r['shot'] = fn
+        if os.environ.get('KP_PROGON_DOM'):   # разметка страницы рядом со снимком — сверка до и после переписывания кода
+            try:
+                with open(fn[:-4] + '.html', 'w', encoding='utf-8') as f:
+                    f.write(self.ev("document.body.outerHTML"))
+            except Exception:
+                pass
         self.res[name] = r
         self.log.append('snap ' + name)
         return r
