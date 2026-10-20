@@ -63,7 +63,10 @@ class Golden {
   /** документ Word без Word: записывает вызовы методов DocxWriter по порядку */
   static docx(){
     const calls=[];
-    return new Proxy({ width:170, calls }, { get:(t, k)=>(k in t ? t[k] : (...a)=>{ calls.push([k, ...a]); }) });
+    // вызовы записываются в прежнем виде (p, h1, h2, image с позиционными параметрами) — слепок не зависит от имён методов
+    const legacy={ para:a=>['p', ...a], subheading:a=>['h2', ...a], heading:([t, o])=>(o ? ['h1', t, o.page] : ['h1', t]),
+      image:([src, o])=>['image', src, o.px, o.py, o.width, o.caption, o.maxH, o.page] };
+    return new Proxy({ width:170, calls }, { get:(t, k)=>(k in t ? t[k] : (...a)=>{ calls.push(legacy[k] ? legacy[k](a) : [k, ...a]); }) });
   }
 
   /** текст по результату метода (ТЗ на сборку по расстановке): отпечаток text(результат), ошибка — её текст */

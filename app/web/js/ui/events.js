@@ -11,7 +11,7 @@ document.addEventListener('input', e=>{
       if (t.dataset.p==='tender.url' && !String(S.tender.number||'').trim()){ const n=tenderNoFromUrl(v); if (n){ S.tender.number=n; const ni=document.querySelector('[data-p="tender.number"]'); if (ni) ni.value=n; } }
       if (t.dataset.p==='tender.url') t.classList.toggle('bad', !!String(v).trim() && !tenderUrl());
       document.querySelector('[data-p="tender.number"]')?.classList.toggle('bad', !String(S.tender.number||'').trim());
-      const nt=$('#kkNote'); if (nt) nt.innerHTML=kkNote(); const fn=document.querySelector('#side .fname'); if (fn && S.kpId) fn.textContent=savedFileName(); }
+      const nt=$('#kkNote'); if (nt) nt.innerHTML=kkNote(); const fn=document.querySelector('#side .fname'); if (fn && S.kpId) fn.textContent=KpFile.saved(); }
     updateLive();
   } else if (t.dataset.oprice!=null){
     const [i,j]=t.dataset.oprice.split('.').map(Number), o=S.items[i].options[j], k=parsePrice(t.value);
@@ -132,7 +132,7 @@ document.addEventListener('click', async e=>{
     case 'priceHist': return PriceHist.open(i);
     case 'catPrice': return CatPrice.apply(i);
     case 'saveCat': return saveCatalog(i);
-    case 'download': { const r=await download(); if (isMob()) $('#dlmsg')?.scrollIntoView({block:'center'}); return r; }
+    case 'download': { const r=await KpSave.run(); if (isMob()) $('#dlmsg')?.scrollIntoView({block:'center'}); return r; }
     case 'partyFind': return partyFind();
     case 'clientEdit': S._clEdit=!S._clEdit; break;
     case 'clientManual': S._clManual=true; break;
@@ -145,9 +145,9 @@ document.addEventListener('click', async e=>{
     case 'versions': return openHelp('versions');
     case 'kpKind': { const on=b.dataset.v==='tender', was=tenderOn(); S.tender=Object.assign({on:false,number:'',url:''}, S.tender||{}, {on});
       // тендерное КП — в шаблоне «Тендерный»; обратно — прежний шаблон
-      const tt=TEMPLATES.find(t=>t.id==='tender' && !t.error);
+      const tt=Templates.list.find(t=>t.id==='tender' && !t.error);
       if (on && !was && tt && S.template!=='tender'){ S._tplPrev=S.template; S.template='tender'; toast('Шаблон КП: '+tt.name); }
-      else if (!on && was && S.template==='tender'){ const pv=TEMPLATES.find(t=>t.id===(S._tplPrev||'pnevmotekh') && !t.error); if (pv){ S.template=pv.id; toast('Шаблон КП: '+pv.name); } delete S._tplPrev; }
+      else if (!on && was && S.template==='tender'){ const pv=Templates.list.find(t=>t.id===(S._tplPrev||'pnevmotekh') && !t.error); if (pv){ S.template=pv.id; toast('Шаблон КП: '+pv.name); } delete S._tplPrev; }
       break; }
     case 'pickObject': { const o=(curClient()?.objects||[])[k]; if(o) S.object={...S.object,...o}; break; }
     case 'pickContact': { const o=(curClient()?.contacts||[])[k]; if(o) S.contact={...S.contact,...o}; break; }
@@ -163,7 +163,7 @@ document.addEventListener('click', async e=>{
     case 'myPrefs': return MyPrefs.open();
     case 'clientsExport': return ClientsExportDlg.open();
     case 'deal': return DealState.open();
-    case 'docsFolder': return api('/api/folder?dir='+encodeURIComponent(managerFolder()),{method:'POST'}).then(remoteResult).catch(()=>{}); 
+    case 'docsFolder': return api('/api/folder?dir='+encodeURIComponent(KpFile.folder()),{method:'POST'}).then(remoteResult).catch(()=>{}); 
     case 'mailKp': return MailDlg.open(b.dataset.id, S.number);
     case 'clPrev': return openJournal().then(()=>{ const q=$('#jQ'); if (q){ q.value=S.clientInn||S.client; q.dispatchEvent(new Event('input')); } });
     case 'openDoc': return api(`/api/kp/${b.dataset.id}/open`,{method:'POST'}).then(remoteResult).catch(()=>toast('Файл не найден'));

@@ -54,12 +54,12 @@ class SidePanel {
     return `<div class="checks side-act">
       <button class="btn primary dl" type="button" data-a="download" ${pr.length?'disabled':''}>${S.kpId?'Сохранить изменения КП № '+esc(S.number):'Сохранить КП'}</button>
       <button class="btn dl pv" type="button" data-a="kpPreview" ${S.items.length?'':'disabled'}>Предпросмотр КП</button>
-      <label class="pdftoo"><input type="checkbox" id="pdfToo" ${pdfWanted()?'checked':''}> Также сохранить в PDF</label>
-      <div class="fname">${!S.kpId?'Номер присвоится при сохранении':esc(savedFileName())}</div><div class="msg" id="dlmsg"></div>
+      <label class="pdftoo"><input type="checkbox" id="pdfToo" ${PdfExport.wanted()?'checked':''}> Также сохранить в PDF</label>
+      <div class="fname">${!S.kpId?'Номер присвоится при сохранении':esc(KpFile.saved())}</div><div class="msg" id="dlmsg"></div>
       <h3>${pr.length?'Чтобы сохранить, заполните':'Всё заполнено'}</h3>
       <ul>${pr.length?pr.map(x=>`<li><button type="button" data-go="${x[1]}">${esc(x[0])}</button></li>`).join(''):'<li class="ok">Проверки пройдены — можно сохранять.</li>'}</ul>
       ${StepList.mgrLine()&&STEP!=='mgr'?`<div class="tplside">Менеджер: <b>${esc(jShort(S.manager.name))}</b>, ${esc(S.manager.phone)} <button type="button" data-step="mgr">изменить</button></div>`:''}
-      ${TEMPLATES.length>1?`<div class="tplside">Шаблон: <b>${esc((curTemplate()||{}).name||'—')}</b> <button type="button" data-go="st-cover">сменить</button></div>`:''}</div>`;
+      ${Templates.list.length>1?`<div class="tplside">Шаблон: <b>${esc((Templates.current()||{}).name||'—')}</b> <button type="button" data-go="st-cover">сменить</button></div>`:''}</div>`;
   }
 
   /** нижняя панель телефона: назад, итог (переход к сохранению), далее; на последнем шаге — «Сохранить КП» */

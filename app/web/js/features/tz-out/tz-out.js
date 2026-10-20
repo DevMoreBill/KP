@@ -1,3 +1,4 @@
+import { DocxWriter } from '../doc/docx-writer.js';
 import { EskdFont } from '../eskd/eskd-font.js';
 import { PhotoTint } from '../view/photo-tint.js';
 import { StationDrawing } from '../draw/station-drawing.js';
@@ -64,13 +65,20 @@ export class TzOut {
   /** Приложение с картинкой и подписью «Приложение N. …». */
   static _add(app, image, cap, maxH, page) {
     if (image && image.src)
-      app.d.image(image.src, image.w, image.h, app.d.width, `Приложение ${++app.n}. ${cap}`, maxH, page);
+      app.d.image(image.src, {
+        px: image.w,
+        py: image.h,
+        width: app.d.width,
+        caption: `Приложение ${++app.n}. ${cap}`,
+        maxH,
+        page,
+      });
   }
 
   /** Приложения: габаритный чертёж, схема, 3D-разрез и виды снаружи. */
   static async _sheets(app, plan, meta) {
     const sch = StationUi.scheme(plan);
-    app.d.h1('Приложения', true);
+    app.d.heading('Приложения', { page: true });
     const sheets = StationDrawing.sheets(plan, meta);
     for (const [k, sheet] of sheets.entries())
       this._add(
@@ -100,10 +108,19 @@ export class TzOut {
     const booklet = StationPaint.book(container) && container.paintFile;
     const arts = StationPaint.arts(container);
     if (!booklet && !arts.length) return;
-    if (!ok) app.d.h1('Приложения', true);
+    if (!ok) app.d.heading('Приложения', { page: true });
     const put = async (src, cap, page) => {
       const image = await this.pic(src);
-      if (image) app.d.image(image.src, image.w, image.h, app.d.width, `Приложение ${++app.n}. ${cap}`, 200, page);
+      if (image) {
+        app.d.image(image.src, {
+          px: image.w,
+          py: image.h,
+          width: app.d.width,
+          caption: `Приложение ${++app.n}. ${cap}`,
+          maxH: 200,
+          page,
+        });
+      }
     };
     if (booklet && !booklet.pdf) await put(booklet.src, 'Буклет цветовых решений заказчика', true);
     for (const [k, art] of arts.entries())

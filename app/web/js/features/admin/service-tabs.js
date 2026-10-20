@@ -8,7 +8,7 @@ export class TemplatesTab {
    * @param {HTMLElement} main
    */
   static render(main) {
-    main.innerHTML = `<div class="st-card"><p class="sub">Шаблоны · ${TEMPLATES.length}</p>${TEMPLATES.map(row => this._row(row)).join('')}
+    main.innerHTML = `<div class="st-card"><p class="sub">Шаблоны · ${Templates.list.length}</p>${Templates.list.map(row => this._row(row)).join('')}
       <div class="row" style="margin-top:10px"><button class="btn" type="button" data-tnew>+ Новый шаблон для компании…</button><button class="btn ghost" type="button" data-tfold>Папка шаблонов</button></div></div>`;
     main.onclick = event => this._click(event);
   }
@@ -24,16 +24,16 @@ export class TemplatesTab {
   static _click(event) {
     const setup = event.target.closest('[data-tpl]');
     if (setup) {
-      openTemplateEditor(setup.dataset.tpl);
+      TemplateEditor.open(setup.dataset.tpl);
       return;
     }
     const design = event.target.closest('[data-tdes]');
     if (design) {
-      openTemplateDesigner(design.dataset.tdes);
+      TemplateDesigner.open(design.dataset.tdes);
       return;
     }
     if (event.target.closest('[data-tnew]')) {
-      tdNewCompany().catch(error => toast(`Не получилось: ${error.message || error}`));
+      TemplateDesigner.newCompany().catch(error => toast(`Не получилось: ${error.message || error}`));
       return;
     }
     if (event.target.closest('[data-tfold]')) this._folder();

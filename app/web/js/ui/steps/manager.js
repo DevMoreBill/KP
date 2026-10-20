@@ -10,6 +10,6 @@ function stepManager(){
   <details class="more"><summary>Сайт, адрес, часы работы и папка КП</summary>
     <div class="grid g2" style="padding:10px 0 14px">${field('Сайт',m+'site')}${field('Часы работы',m+'hours')}</div>
     <div class="grid">${field('Адрес',m+'address')}</div>
-    <div class="grid" style="padding:12px 0 14px">${field('Папка для КП менеджера',m+'folder',{ph:managerFolder()||'Фамилия'})}
-      <p class="muted" style="margin:0">КП сохраняются в «Коммерческие предложения / ${esc(managerFolder()||'Фамилия')}». По умолчанию — фамилия из ФИО.</p></div></details></section>`;
+    <div class="grid" style="padding:12px 0 14px">${field('Папка для КП менеджера',m+'folder',{ph:KpFile.folder()||'Фамилия'})}
+      <p class="muted" style="margin:0">КП сохраняются в «Коммерческие предложения / ${esc(KpFile.folder()||'Фамилия')}». По умолчанию — фамилия из ФИО.</p></div></details></section>`;
 }

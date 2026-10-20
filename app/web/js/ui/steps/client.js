@@ -79,5 +79,5 @@ class TenderBlock {
   }
 }
 function kkNote(){ const n=tenderNo(), u=String((S.tender||{}).url||'').trim();
-  return (n ? `Файлы: <b>${esc(savedFileName())}</b> и <b>${esc(savedFileName().replace(/\.docx$/i,'.pdf'))}</b>.` : 'Номер закупки — в КП и в названии файлов: «4567892 КП ПНЕВМОТЕХ Заказчик.docx».')
+  return (n ? `Файлы: <b>${esc(KpFile.saved())}</b> и <b>${esc(KpFile.saved().replace(/\.docx$/i,'.pdf'))}</b>.` : 'Номер закупки — в КП и в названии файлов: «4567892 КП ПНЕВМОТЕХ Заказчик.docx».')
     + (u && !tenderUrl() ? ' <span class="bad-t">Ссылка должна начинаться с http:// или https://</span>' : u ? ` Площадка: ${esc(tenderHost(u))}.` : ''); }

@@ -144,9 +144,9 @@ export class StationUi {
    * @returns {string}
    */
   static org() {
-    const pack = TPL_CACHE[S.template];
+    const pack = Templates.cache[S.template];
     const settings = (pack && pack.settings) || {};
-    const template = curTemplate() || {};
+    const template = Templates.current() || {};
     return String(
       settings.company || template.company || (settings.brandParts || []).map(part => part[0]).join('') || 'ПНЕВМОТЕХ',
     ).trim();

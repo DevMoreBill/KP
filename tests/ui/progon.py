@@ -620,13 +620,13 @@ class Scenario(UiRun):
     def s_preview(self):
         self.ev("renderForm()")
         if self.phone:
-            self.ev("openKpPreview()")
+            self.ev("KpPreview.open()")
         else:
             self.pg.locator('#side [data-a=kpPreview]').first.click()
         self.pg.wait_for_selector('#pvdlg[open]', timeout=20000)
         self.snap('80_preview', '#pvdlg', wait=6000)
         self.closeall()
-        self.ev("openKpPreview()")
+        self.ev("KpPreview.open()")
         self.snap('81_preview_reopen', '#pvdlg', wait=5000)
         self.closeall()
 
