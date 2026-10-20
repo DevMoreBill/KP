@@ -137,6 +137,19 @@ class UpdateFallbackTest(unittest.TestCase):
     def version(self):
         return json.loads(self.http.req('GET', '/api/version')[1])
 
+    def wait_version(self, want, sec=120):
+        """Версия после отката: старый процесс может ещё отвечать, новый — ещё не запущен; ждём нужную, а не фиксированную паузу."""
+        t, last = time.time(), {}
+        while time.time() - t < sec:
+            try:
+                last = self.version()
+            except (OSError, ValueError):
+                last = {}
+            if last.get('version') == want:
+                return last
+            time.sleep(0.5)
+        return last
+
     def output(self):
         try:
             with open(os.path.join(self.root, 'out.log'), encoding='utf-8', errors='replace') as f:
@@ -233,8 +246,7 @@ class UpdateFallbackTest(unittest.TestCase):
             "        import version\n\n        raise KeyError('ci: version route broken')\n        return self.send_json({'version': version.VERSION,"))
         self.start(browser=False)
         self.assertTrue(self.wait_up(), self.output())
-        time.sleep(2)
-        self.assertEqual(self.version()['version'], '99.0.1')
+        self.assertEqual(self.wait_version('99.0.1').get('version'), '99.0.1')
         f = self.kv_update().get('failed') or {}
         self.assertTrue(f.get('version') == '99.0.3' and 'Самопроверка' in f.get('reason', '') and '500' in f.get('reason', ''), f)
         pids = self.procs()
@@ -246,8 +258,7 @@ class UpdateFallbackTest(unittest.TestCase):
         self.patch('99.0.4', breaker=self.broken_startup("raise TypeError('ci: startup bug')"))
         self.start(browser=False)
         self.assertTrue(self.wait_up(), self.output())
-        time.sleep(2)
-        self.assertEqual(self.version()['version'], '99.0.1')
+        self.assertEqual(self.wait_version('99.0.1').get('version'), '99.0.1')
         f = self.kv_update().get('failed') or {}
         self.assertTrue(f.get('version') == '99.0.4' and 'ci: startup bug' in f.get('reason', ''), f)
         self.stop()
@@ -269,8 +280,7 @@ class UpdateFallbackTest(unittest.TestCase):
         self.patch('99.0.6', breaker=self.broken_import('ci: broken 6'))
         self.start(browser=False)
         self.assertTrue(self.wait_up(150), self.output())
-        time.sleep(2)
-        v = self.version()
+        v = self.wait_version(self.exe_ver, 150)
         self.assertEqual((v['version'], v['patched']), (self.exe_ver, False))
         u = self.kv_update()
         hist = [h['from'] for h in u.get('history', []) if h.get('source', '').startswith('не запустилось')]
