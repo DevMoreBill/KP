@@ -198,6 +198,7 @@ class LazyJs {
     if (this.P[name]) return this.P[name];
     const tpl=document.getElementById('lazyJs'), el=tpl && [...tpl.content.querySelectorAll('script')].find(s=>s.getAttribute('src').split('?')[0].endsWith('/'+name));
     const src=el ? el.getAttribute('src') : '/web/js/features/'+name;
+    if (el && el.type==='module') return (this.P[name]=import(src).catch(()=>{ delete this.P[name]; throw new Error('модуль программы не загрузился — проверьте связь с сервером'); }));
     return (this.P[name]=new Promise((res, rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=()=>res();
       s.onerror=()=>{ delete this.P[name]; s.remove(); rej(new Error('модуль программы не загрузился — проверьте связь с сервером')); };
       document.head.appendChild(s); }));

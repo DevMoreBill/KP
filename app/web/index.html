@@ -91,8 +91,8 @@
 <script src="/web/js/features/images.js"></script>
 <script src="/web/js/features/item-editor.js"></script>
 <script src="/web/js/features/kit.js"></script>
-<script src="/web/js/features/station-rules.js"></script>
-<script src="/api/rules/stations.js"></script>
+<script type="module" src="/web/js/features/rules/index.js"></script>
+<script type="module" src="/api/rules/stations.js"></script>
 <script type="module" src="/web/js/features/layout/index.js"></script>
 <script type="module" src="/web/js/features/calc/index.js"></script>
 <script type="module" src="/web/js/features/view/index.js"></script>
@@ -161,6 +161,6 @@
 <script src="/web/js/ui/datepicker.js"></script>
 <script src="/web/js/main.js" defer></script>
 <!-- модули по требованию (LazyJs): загружаются, когда их открывают; адреса здесь — чтобы сервер поставил метку версии -->
-<template id="lazyJs"><script src="/web/js/features/tz-out.js"></script><script src="/web/js/features/station-rules-doc.js"></script></template>
+<template id="lazyJs"><script src="/web/js/features/tz-out.js"></script><script type="module" src="/web/js/features/rules-doc/index.js"></script></template>
 </body>
 </html>
