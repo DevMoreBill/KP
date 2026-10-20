@@ -339,6 +339,8 @@ class TypesController(Controller):
 
 
 class GeoController(Controller):
+    PAIR = 2
+
     @route(r'/api/geo/(.*)', 'GET')
     def geo(self, act) -> Any:
         import geo
@@ -353,7 +355,7 @@ class GeoController(Controller):
                 return self.send_json(geo.reverse(store(), query.get('lat'), query.get('lon')))
             if act == 'route':
                 src, dst = (query.get('a') or '').split(','), (query.get('b') or '').split(',')
-                if len(src) != 2 or len(dst) != 2:
+                if len(src) != self.PAIR or len(dst) != self.PAIR:
                     raise ValueError('Нужны две точки')
                 return self.send_json(geo.RoadRoute.distance_km(store(), src, dst))
             if act == 'unshort':
@@ -660,6 +662,8 @@ class ManagersController(Controller):
 
 class KpController(Controller):
     # PDF: чем можно преобразовать; преобразование присланного DOCX (предпросмотр) без записи в журнал
+    NUM_DIGITS_MAX = 9
+
     @route(r'/api/pdf', 'GET')
     def pdf_tools(self) -> Any:
         return self.send_json(pdf_convert.available(counterparties().keys().get('convertapiKey')))
@@ -734,7 +738,7 @@ class KpController(Controller):
 
     @route(r'/api/kp/([^/]+)/versions/(\d+)', 'GET')
     def version(self, kid: str, num) -> Any:
-        if len(num) > 9:
+        if len(num) > self.NUM_DIGITS_MAX:
             return self.not_found()
         v = store().kp_version_state(safe_id(kid), num)
         return self.send_json(admin.kp_out(self.handler, 'state', v)) if v else self.not_found()

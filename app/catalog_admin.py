@@ -198,6 +198,8 @@ class TrashBin:
 class XlsxBook:
     """Книга Excel из таблиц (лист — заголовок и строки): шапка жирная и закреплена, ширина столбцов по содержимому."""
 
+    INT_EXACT = 1e15
+
     BAD = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f]')
 
     def __init__(self) -> None:
@@ -224,7 +226,7 @@ class XlsxBook:
         style_attr = f' s="{style}"' if style else ''
         if isinstance(v, bool):
             v = 'да' if v else 'нет'
-        if isinstance(v, (int, float)) and not math.isnan(v) and abs(v) < 1e15:
+        if isinstance(v, (int, float)) and not math.isnan(v) and abs(v) < self.INT_EXACT:
             return f'<c r="{ref}"{style_attr}><v>{repr(v) if isinstance(v, float) else v}</v></c>'
         text = self.BAD.sub('', str(v))[:32000]
         return f'<c r="{ref}" t="inlineStr"{style_attr}><is><t xml:space="preserve">{xml_escape(text)}</t></is></c>'
@@ -320,6 +322,8 @@ class XlsxBook:
 class CatalogExport:
     """Выгрузка отобранных позиций."""
 
+    ID_MAX = 64
+
     FORMATS = ('xlsx', 'json', 'xml', 'yml')
     # основные столбцы: ключ → подпись
     COLS = (
@@ -341,7 +345,7 @@ class CatalogExport:
         self.store, self.images, self.base = store, images, base_url.rstrip('/')  # images — ImageStore папки data/img
 
     def docs(self, ids) -> list:
-        ids = [str(i) for i in ids if isinstance(i, str) and 0 < len(i) <= 64][: self.MAX_ITEMS]
+        ids = [str(i) for i in ids if isinstance(i, str) and 0 < len(i) <= self.ID_MAX][: self.MAX_ITEMS]
         out = {}
         for k in range(0, len(ids), 500):
             part = ids[k : k + 500]
@@ -790,6 +794,8 @@ class ClientsExport:
 class CatalogDesk:
     """Адреса каталога для особых прав менеджеров (администратор — тоже): в корзину, модерация, выгрузка."""
 
+    ID_MAX = 64
+
     PATHS = re.compile(
         r'^/api/(?:catalog/(?:trash|export|moderation|moderation/\d{1,9}|moderation/\d{1,9}/(?:approve|reject))|clients/export)$'
     )
@@ -857,7 +863,9 @@ class CatalogDesk:
                 return handler.send(405, 'text/plain; charset=utf-8', 'Нужен POST') or True
             if not power(handler, 'catDelete', method):
                 return self._deny('удалять товары', 'delete_catalog')
-            ids = [str(i) for i in (self._body().get('ids') or []) if isinstance(i, str) and 0 < len(i) <= 64][:5000]
+            ids = [str(i) for i in (self._body().get('ids') or []) if isinstance(i, str) and 0 < len(i) <= self.ID_MAX][
+                :5000
+            ]
             if not ids:
                 raise ValueError('Не выбрано, что удалить')
             names = {}

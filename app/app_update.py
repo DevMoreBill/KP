@@ -120,6 +120,8 @@ class UpdatePackage:
 class ReleaseSource:
     """Выпуски на GitHub: последняя версия, описание изменений, архив обновления."""
 
+    HTTP_NOT_FOUND = 404
+
     WEB_API = 'https://api.github.com'
     API = os.environ.get('KP_UPDATE_API') or WEB_API
     ASSET = re.compile(r'^KP-Obnovlenie-[\d.]+\.zip$')
@@ -167,7 +169,7 @@ class ReleaseSource:
                 raise UpdateError(
                     'GitHub не принял токен — проверьте его (нужен доступ «Contents: read» к репозиторию)'
                 ) from exc
-            if exc.code == 404:
+            if exc.code == self.HTTP_NOT_FOUND:
                 raise UpdateError(
                     f'Выпуск не найден: репозиторий {self.repo} приватный — укажите токен GitHub, или выпусков ещё нет'
                     if not self.token
@@ -254,6 +256,8 @@ class ReleaseSource:
 
 class Updater:
     """Установка обновления рядом с программой, откат, история."""
+
+    LAST_HOUR = 23
 
     KV_KEY = 'update'
     HISTORY = 30
@@ -407,7 +411,7 @@ class Updater:
                 hour = int(data.get('nightHour'))
             except (TypeError, ValueError):
                 hour = -1
-            if not 0 <= hour <= 23:
+            if not 0 <= hour <= self.LAST_HOUR:
                 raise UpdateError('Час ночного обновления — от 0 до 23')
             conf['nightHour'] = hour
         if 'token' in data:

@@ -9,6 +9,10 @@ import images
 
 
 class MakerLogos:
+    PNG_HEAD = 24
+    JPEG_MARK = 0xFF
+    RST_FIRST = 0xD0
+    RST_LAST = 0xD7
     KV_KEY = 'makerLogos'
     MAX_BYTES = 2 * 1024 * 1024
     MAX_MAKER = 80
@@ -75,7 +79,7 @@ class MakerLogos:
             raise ValueError('Нет картинки логотипа')
         if len(data) > MakerLogos.MAX_BYTES:
             raise ValueError('Картинка больше 2 МБ — уменьшите её')
-        if data[:8] == b'\x89PNG\r\n\x1a\n' and len(data) >= 24:
+        if data[:8] == b'\x89PNG\r\n\x1a\n' and len(data) >= MakerLogos.PNG_HEAD:
             width, height = struct.unpack('>II', data[16:24])
             return data, '.png', width, height
         if data[:3] == b'\xff\xd8\xff':
@@ -90,11 +94,11 @@ class MakerLogos:
     def _jpeg_size(data: bytes) -> tuple:
         i = 2
         while i + 9 < len(data):
-            if data[i] != 0xFF:
+            if data[i] != MakerLogos.JPEG_MARK:
                 i += 1
                 continue
             marker = data[i + 1]
-            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+            if marker in (0xD8, 0x01) or MakerLogos.RST_FIRST <= marker <= MakerLogos.RST_LAST:
                 i += 2
                 continue
             length = struct.unpack('>H', data[i + 2 : i + 4])[0]

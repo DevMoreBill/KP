@@ -6,6 +6,10 @@ from datetime import date, timedelta
 
 from cbr import http_get
 
+WEEKDAYS = 5
+YEAR_MIN = 2000
+YEAR_MAX = 2100
+
 REFRESH = 30 * 86400
 RETRY = 3600
 _FAILED: dict[int, float] = {}
@@ -51,14 +55,14 @@ def approx(y: int) -> str:
     out = []
     for i in range(_days_in_year(y)):
         day = first + timedelta(i)
-        out.append('1' if day.weekday() >= 5 or (day.month, day.day) in HOLIDAYS else '0')
+        out.append('1' if day.weekday() >= WEEKDAYS or (day.month, day.day) in HOLIDAYS else '0')
     return ''.join(out)
 
 
 def year(store, y) -> dict:
     """{year, days — «1» нерабочий, short — «1» сокращённый, src, approx}."""
     y = int(y)
-    if not 2000 <= y <= 2100:
+    if not YEAR_MIN <= y <= YEAR_MAX:
         raise ValueError('Год вне диапазона')
     key = f'workcal:{y}'
     cached = store.kv_get(key)

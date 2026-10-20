@@ -10,6 +10,8 @@ from enum import Enum
 
 from defaults import SrvVal
 
+LOGIN_MAX = 40
+
 COOKIE = 'kp_user'
 PERMS = [  # ключ, подпись, по умолчанию
     ('catAdd', 'Добавлять оборудование в каталог', True),
@@ -82,7 +84,7 @@ class AccessRecord:
         """Правка администратора («Логин и пароль», права, запрет входа, сброс): drop — пометка «закрыть входы»."""
         if 'login' in data:
             login = norm_login(data.get('login'))
-            if login and (len(login) > 40 or not all(char.isalnum() or char in '._-@' for char in login)):
+            if login and (len(login) > LOGIN_MAX or not all(char.isalnum() or char in '._-@' for char in login)):
                 raise ValueError('Логин — буквы, цифры, точка, дефис, «_» или «@», до 40 символов')
             if login and any(norm_login(other.get('login')) == login for k, other in acc.items() if k != mid):
                 raise ValueError('Такой логин уже есть у другого менеджера')

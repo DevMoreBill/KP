@@ -7,6 +7,8 @@ import re
 from collections.abc import Iterator
 from datetime import datetime
 
+PREFIX_MIN = 4
+
 MIGRATION_ID = 'catalog-structure-2026-10'
 
 # свои категории отдела, которые теперь есть среди встроенных (по названию категории)
@@ -121,7 +123,7 @@ def parse_text(text, field) -> str:
     ):  # «R134a, 0,275 кг» → «R134A»; «Тип компрессора хладагента: поршневой» — не хладагент
         match = re.search(r'\bR-?\d{2,4}[A-Za-z]?\b', v)
         return match.group(0).replace('-', '').upper() if match else ''
-    if len(_canon(v)) >= 4:  # «Горячая» → «Горячая (с нагревом)»: единственное значение списка с таким началом
+    if len(_canon(v)) >= PREFIX_MIN:  # «Горячая» → «Горячая (с нагревом)»: единственное значение списка с таким началом
         pre = [x for x in vals if _canon(x).startswith(_canon(v))]
         if len(pre) == 1:
             return pre[0]

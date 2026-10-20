@@ -13,6 +13,8 @@ from typing import Any
 from config import BUNDLE, FROZEN, ROOT, SAFE_ID, UPDATE_DIR, read_text, write_bytes
 from defaults import SrvVal
 
+SHARED_DIRS = 2
+
 TEMPLATES_DIR = os.path.join(ROOT, 'templates') if FROZEN else os.path.join(BUNDLE, 'templates')
 BUNDLED_DIR = os.path.join(BUNDLE, 'templates')  # заводские — в EXE или в обновлении
 if UPDATE_DIR and os.path.isdir(os.path.join(UPDATE_DIR, 'templates')):
@@ -279,7 +281,7 @@ def copy_template(tid: str, new_id: str, name: str) -> str:
 
 def delete_template(tid: str) -> None:
     folder = tpl_dir(tid)
-    if len(template_dirs()) < 2:
+    if len(template_dirs()) < SHARED_DIRS:
         raise TemplateError('Нельзя удалить единственный шаблон')
     trash = os.path.join(TEMPLATES_DIR, '_deleted')
     os.makedirs(trash, exist_ok=True)

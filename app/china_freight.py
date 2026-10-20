@@ -11,6 +11,8 @@ from config import APP_DIR
 
 
 class ChinaFreight:
+    MONEY_MAX = 1e9
+    DAYS_MAX = 365
     KV_KEY = 'chinaRates'
     KINDS = {
         'ftl': 'Фура 20 т (тент)',
@@ -118,7 +120,7 @@ class ChinaFreight:
             if not isinstance(row, dict):
                 raise ValueError(f'Ставки экспедиторов: строка {i} — неверный формат')
             price = self._num(row.get('price'))
-            if price is None or not 0 < price <= 1e9:
+            if price is None or not 0 < price <= self.MONEY_MAX:
                 raise ValueError(f'Строка {i}: ставка — число больше нуля')
             kind, unit, cur, scope = (
                 row.get('kind'),
@@ -129,10 +131,10 @@ class ChinaFreight:
             if kind not in self.KINDS or unit not in self.UNITS or cur not in self.CURS or scope not in self.SCOPES:
                 raise ValueError(f'Строка {i}: выберите вид перевозки, участок, единицу и валюту из списка')
             minimum = self._num(row.get('min')) if str(row.get('min') or '').strip() else 0
-            if minimum is None or not 0 <= minimum <= 1e9:
+            if minimum is None or not 0 <= minimum <= self.MONEY_MAX:
                 raise ValueError(f'Строка {i}: минимальная сумма — число не меньше нуля')
             days = str(row.get('days') or '').strip()
-            if days and not (days.isdigit() and int(days) <= 365):
+            if days and not (days.isdigit() and int(days) <= self.DAYS_MAX):
                 raise ValueError(f'Строка {i}: срок — целое число дней до 365')
             src = self._optional(row.get('src'), 'Источник', 300)
             if src and not re.match(r'^https?://\S+$', src):

@@ -22,6 +22,8 @@ class KeyNorm:
 class CategoryProfile:
     """Медианный объём заполнения карточек категории; устаревший образец пересчитывается в фоне."""
 
+    LABEL_SHARE = 0.15
+
     MIN_CARDS = 3
     KEY_SHARE = 0.3
     TOP_KEYS = 30
@@ -126,13 +128,15 @@ class CategoryProfile:
                 for k, v in keys.most_common(self.TOP_KEYS)
                 if v / count >= self.KEY_SHARE
             ],
-            'labels': [label for label, v in labels.most_common(self.TOP_LABELS) if v / count >= 0.15],
-            'groupNames': [group for group, v in gnames.most_common(8) if v / count >= 0.15],
+            'labels': [label for label, v in labels.most_common(self.TOP_LABELS) if v / count >= self.LABEL_SHARE],
+            'groupNames': [group for group, v in gnames.most_common(8) if v / count >= self.LABEL_SHARE],
         }
 
 
 class ModelFacts:
     """Карточки каталога с тем же наименованием (слова и числа в любом порядке) — исходные данные для ИИ."""
+
+    KEY_MIN = 2
 
     LIMIT = 2
     MAX_ROWS = 80
@@ -150,7 +154,7 @@ class ModelFacts:
     def find(self, maker: str = '', model: str = '', name: str = '', exclude: str = '') -> list[dict]:
         """[{name, rows: [[k, v]], text}] — до LIMIT карточек, кроме exclude."""
         key = self.words(name)
-        if len(key) < 2:
+        if len(key) < self.KEY_MIN:
             return []
         # предотбор по самому длинному латинскому слову: LIKE в SQLite не различает регистр только у латиницы
         lat = [x for x in key if re.match(r'^[a-z0-9]{2,}$', x)]

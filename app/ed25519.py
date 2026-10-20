@@ -4,6 +4,8 @@ import hashlib
 
 
 class Ed25519:
+    KEY_BYTES = 32
+    SIG_BYTES = 64
     PRIME = 2**255 - 19
     ORDER = 2**252 + 27742317777372353535851937790883648493
     CURVE_D = -121665 * pow(121666, 2**255 - 21, 2**255 - 19) % (2**255 - 19)
@@ -74,7 +76,7 @@ class Ed25519:
 
     @classmethod
     def _decompress(cls, raw: bytes) -> tuple | None:
-        if len(raw) != 32:
+        if len(raw) != cls.KEY_BYTES:
             return None
         y = int.from_bytes(raw, 'little')
         sign = y >> 255
@@ -88,7 +90,7 @@ class Ed25519:
 
     @classmethod
     def _secret(cls, seed: bytes) -> tuple[int, bytes]:
-        if len(seed) != 32:
+        if len(seed) != cls.KEY_BYTES:
             raise ValueError('Ключ Ed25519 — 32 байта')
         digest = hashlib.sha512(seed).digest()
         secret = int.from_bytes(digest[:32], 'little')
@@ -112,7 +114,7 @@ class Ed25519:
 
     @classmethod
     def verify(cls, public: bytes, msg: bytes, sig: bytes) -> bool:
-        if len(public) != 32 or len(sig) != 64:
+        if len(public) != cls.KEY_BYTES or len(sig) != cls.SIG_BYTES:
             return False
         pub = cls._decompress(public)
         r_point = cls._decompress(sig[:32])

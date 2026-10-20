@@ -9,6 +9,10 @@ import urllib.request
 
 from counterparty import http_json
 
+QUERY_MIN = 3
+LAT_MAX = 90
+LON_MAX = 180
+
 DADATA = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs'
 NOMINATIM = 'https://nominatim.openstreetmap.org'
 OSRM = 'https://router.project-osrm.org/route/v1/driving/'
@@ -83,7 +87,7 @@ def _nom_item(rec: dict) -> dict:
 
 def suggest(store, query: str) -> dict:
     query = str(query or '').strip()[:200]
-    if len(query) < 3:
+    if len(query) < QUERY_MIN:
         return {'items': [], 'src': ''}
     k = _key(store)
     if k:
@@ -113,7 +117,7 @@ def locate(store, query: str) -> dict:
 
 def reverse(store, lat, lon) -> dict:
     lat, lon = _num(lat), _num(lon)
-    if lat is None or lon is None or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+    if lat is None or lon is None or not (-LAT_MAX <= lat <= LAT_MAX and -LON_MAX <= lon <= LON_MAX):
         raise ValueError('Неверные координаты')
     k = _key(store)
     if k:
@@ -137,6 +141,9 @@ def reverse(store, lat, lon) -> dict:
 class RoadRoute:
     """Расстояние по дорогам (OSRM) с кэшем в kv «georoute» по точкам, округлённым до ~100 м."""
 
+    LAT_MAX = 90
+    LON_MAX = 180
+
     URL = OSRM
     MAX = 2000
 
@@ -145,7 +152,9 @@ class RoadRoute:
         """src, dst — (lat, lon) → {km, hours, src}."""
         coords = [_num(src[0]), _num(src[1]), _num(dst[0]), _num(dst[1])]
         nums = [coord for coord in coords if coord is not None]
-        if len(nums) != len(coords) or not all(-90 <= nums[k] <= 90 and -180 <= nums[k + 1] <= 180 for k in (0, 2)):
+        if len(nums) != len(coords) or not all(
+            -cls.LAT_MAX <= nums[k] <= cls.LAT_MAX and -cls.LON_MAX <= nums[k + 1] <= cls.LON_MAX for k in (0, 2)
+        ):
             raise ValueError('Неверные координаты')
         src, dst = (nums[0], nums[1]), (nums[2], nums[3])
         key = '%.3f,%.3f|%.3f,%.3f' % (src + dst)

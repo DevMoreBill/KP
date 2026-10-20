@@ -12,6 +12,8 @@ from defaults import SrvVal
 
 
 class KpFiles:
+    ONE_DECIMAL_BELOW = 10
+    QUERY_IDS_MAX = 500
     FOLDER = 'kp_files'
     MEGABYTE = 1024 * 1024
     NAME_MAX = 150
@@ -109,7 +111,7 @@ class KpFiles:
     @classmethod
     def megabytes(cls, size) -> str:
         x = size / cls.MEGABYTE
-        return (f'{x:.1f}').replace('.', ',') if x < 10 else str(round(x))
+        return (f'{x:.1f}').replace('.', ',') if x < cls.ONE_DECIMAL_BELOW else str(round(x))
 
     @classmethod
     def clean_name(cls, name) -> tuple:
@@ -294,7 +296,7 @@ class KpFiles:
         want = {str(x) for x in ids if self.KP_ID.match(str(x or ''))}
         if not want:
             return {}
-        if len(want) <= 500:
+        if len(want) <= self.QUERY_IDS_MAX:
             rows = self.store.all(
                 'SELECT kp_id, COUNT(*) FROM kp_files WHERE kp_id IN ({}) GROUP BY kp_id'.format(
                     ','.join('?' * len(want))

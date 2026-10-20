@@ -42,6 +42,8 @@ from server_log import ServerLog
 from version import VERSION as APP_VERSION
 from web_api import IMAGES, ROUTER, counterparties
 
+HTTP_OK = 200
+
 PAID_GET = ('/api/geo/', '/api/party', '/api/check', '/api/imgfetch', '/api/cbr')
 
 
@@ -131,6 +133,7 @@ STARTED = False
 
 
 class Handler(BaseHTTPRequestHandler):
+    HTTP_BAD = 400
     server_version = 'KP/1.0'
     sys_version = ''  # в заголовке Server — без версии Python
     # HTTP/1.1 с ETag; ответы — только через send() / send_file() (с Content-Length)
@@ -372,7 +375,7 @@ class Handler(BaseHTTPRequestHandler):
             if hook is True:
                 return None
             self.route()
-            if callable(hook) and getattr(self, '_code', 500) < 400:
+            if callable(hook) and getattr(self, '_code', 500) < self.HTTP_BAD:
                 hook()
         except (
             BadRequest,
@@ -411,7 +414,7 @@ def already_running() -> bool:
         with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
             f'http://127.0.0.1:{BASE_PORT}/api/ping', timeout=2
         ) as resp:
-            return resp.status == 200
+            return resp.status == HTTP_OK
     except Exception:
         return False
 

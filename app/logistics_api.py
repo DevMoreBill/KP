@@ -15,6 +15,8 @@ import defaults
 import workcal
 from counterparty import http_json
 
+FIND_DEPTH = 6
+
 # защита сайтов СДЭК и Энергии отклоняет (403) запросы с «неизвестным» браузером — представляемся обычным
 BROWSER_UA = (
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
@@ -102,6 +104,8 @@ class LtlLimits:
 
 class CarrierApi:
     """Включение перевозчиков и адреса их API — правит администратор, без выпуска программы."""
+
+    URL_MAX = 300
 
     KV_KEY = 'carrierApi'
     # (код, название, сайт с документацией API, ((поле, подпись, адрес по умолчанию), …))
@@ -215,7 +219,7 @@ class CarrierApi:
                 if not u or u == cls._default(cid, field):
                     urls.pop(field, None)
                     continue
-                if len(u) > 300 or not cls.URL.match(u):
+                if len(u) > cls.URL_MAX or not cls.URL.match(u):
                     raise ValueError(
                         f'{ {code: title for code, title, _doc, _fields in cls.LIST}[cid] }: адрес должен начинаться с https:// и вести на сайт перевозчика (не IP-адрес), до 300 знаков'
                     )
@@ -288,7 +292,7 @@ def number(v) -> float | None:
 
 def _find(obj, pred, depth=0) -> Any:
     """Первый вложенный объект, для которого pred(obj) истинно (обход словарей и списков вглубь до 6 уровней)."""
-    if depth > 6:
+    if depth > FIND_DEPTH:
         return None
     if pred(obj):
         return obj
@@ -586,6 +590,10 @@ class AtiDirections:
 class Pec(Carrier):
     """Сборный груз терминал — терминал; забор и доставка — если калькулятор их посчитал."""
 
+    OVERSIZE_M = 3
+    OVERSIZE_T = 0.5
+    BOTH_ENDS = 2
+
     CODE, NAME, SITE, WHOSE = 'pec', 'ПЭК', 'https://pecom.ru/services-are/shipping-request/', 'ПЭК'
 
     @classmethod
@@ -614,7 +622,9 @@ class Pec(Carrier):
         for k, place in enumerate(
             cls.units(places)
         ):  # место: ширина, длина, высота (м), объём (м³), вес (кг), негабарит, жёсткая упаковка
-            oversize = 1 if max(place['l'], place['w'], place['h']) > 3 or place['m'] > 0.5 else 0
+            oversize = (
+                1 if max(place['l'], place['w'], place['h']) > cls.OVERSIZE_M or place['m'] > cls.OVERSIZE_T else 0
+            )
             query += [
                 (f'places[{k}][]', v)
                 for v in (
@@ -660,10 +670,10 @@ class Pec(Carrier):
             'price': round(total),
             'ins': round(ins),
             'days': days,
-            'door': door == 2,
+            'door': door == cls.BOTH_ENDS,
             'note': (
                 'сборный груз, дверь в дверь (забор и доставка ПЭК)'
-                if door == 2
+                if door == cls.BOTH_ENDS
                 else 'сборный груз, межтерминальная перевозка ПЭК'
             )
             + cls.via(frm_hit, to_hit, frm, dst),
@@ -673,13 +683,17 @@ class Pec(Carrier):
 class Dellin(Carrier):
     """Сборный груз от адреса до адреса (адрес ищет сам сервис)."""
 
+    OVERSIZE_M = 3
+    OVERSIZE_T = 0.1
+    WORKDAYS = 5
+
     CODE, NAME, SITE, KEYS = 'dellin', 'Деловые Линии', 'https://www.dellin.ru/requests/', ('dellinKey',)
     WORK_TIME = {'worktimeStart': '09:00', 'worktimeEnd': '18:00'}
 
     @classmethod
     def quote(cls, store, frm, dst, places, declared=0) -> dict:
         units = cls.units(places)
-        over = [u for u in units if max(u['l'], u['w'], u['h']) > 3 or u['m'] > 0.1]
+        over = [u for u in units if max(u['l'], u['w'], u['h']) > cls.OVERSIZE_M or u['m'] > cls.OVERSIZE_T]
         body = {
             'appkey': keys(store).get('dellinKey', ''),
             'delivery': {
@@ -759,7 +773,7 @@ class Dellin(Carrier):
                 except Exception:
                     cal[day.year] = ''
             days, i = cal[day.year], day.timetuple().tm_yday - 1
-            if (days[i] == '0') if i < len(days) else day.weekday() < 5:
+            if (days[i] == '0') if i < len(days) else day.weekday() < cls.WORKDAYS:
                 out.append(day)
         return out
 
@@ -799,6 +813,9 @@ class Dellin(Carrier):
 class Kit(Carrier):
     """КИТ: расчёт дверь — дверь (тариф «Стандарт»), справочник городов, страхование по объявленной стоимости."""
 
+    HTTP_UNAUTHORIZED = 401
+    HTTP_TOO_MANY = 429
+
     CODE, NAME, SITE, WHOSE, KEYS = 'kit', 'КИТ', 'https://tk-kit.ru/calculate', 'КИТ', ('kitToken',)
     TYPES = {'01': 'Стандарт', '03': 'Экспресс'}
     DOCS_FROM = 50000  # ₽: от этой объявленной стоимости КИТ требует признак документов, подтверждающих стоимость
@@ -814,11 +831,11 @@ class Kit(Carrier):
                 j = json.loads(exc.read().decode('utf-8', 'replace') or 'null')
             except Exception:
                 j = None
-            if exc.code == 401:
+            if exc.code == cls.HTTP_UNAUTHORIZED:
                 raise ValueError(
                     'КИТ: токен не принят — создайте новый в личном кабинете tk-kit.ru («Разработчикам» → «Получение ключа API»)'
                 ) from exc
-            if exc.code == 429:
+            if exc.code == cls.HTTP_TOO_MANY:
                 raise ValueError('КИТ: превышен лимит запросов по токену — повторите позже') from exc
             if isinstance(j, list):  # ошибки проверки полей: [{"field": …, "message": …}]
                 msg = '; '.join(str(x.get('message') or x) for x in j if isinstance(x, dict))
@@ -1146,6 +1163,9 @@ class Vozovoz(Carrier):
 class Nrg(Carrier):
     """Автоперевозка (иначе самая дешёвая); забор и доставка, страхование — отдельными строками ответа."""
 
+    HTTP_SERVER = 500
+    BOTH_ENDS = 2
+
     CODE, NAME, SITE, WHOSE = 'nrg', 'Энергия', 'https://nrg-tk.ru/client/calculator/', 'Энергии'
     RETRY_PAUSE = 1.5  # с — их API временами отвечает 502
     RUB = 1  # idCurrency v4: 1 — рубли (/currencies)
@@ -1181,7 +1201,10 @@ class Nrg(Carrier):
                         raise ValueError(
                             f'Энергия: токен не принят (HTTP {exc.code}) — проверьте «Энергия — токен разработчика» в «Ключах API»'
                         ) from exc
-                    if exc.code < 500 and exc.code not in (403, 404):  # 403/404 у одного адреса — пробуется другой
+                    if exc.code < cls.HTTP_SERVER and exc.code not in (
+                        403,
+                        404,
+                    ):  # 403/404 у одного адреса — пробуется другой
                         raise
                 except Exception as exc:
                     err = exc
@@ -1290,8 +1313,8 @@ class Nrg(Carrier):
             'price': round(price),
             'ins': round(ins),
             'days': int(days) if days else None,
-            'door': door == 2,
-            'note': ('дверь в дверь' if door == 2 else 'от терминала до терминала')
+            'door': door == cls.BOTH_ENDS,
+            'note': ('дверь в дверь' if door == cls.BOTH_ENDS else 'от терминала до терминала')
             + ', '
             + str(transfer.get('type') or 'авто').lower()
             + ': '
@@ -1391,6 +1414,8 @@ def providers(store) -> dict:
 
 class DeliveryQuote:
     """Доставка по России: тарифы «Настроек», машина по ATI.SU и сборный груз перевозчиков — параллельно."""
+
+    HTTP_FORBIDDEN = 403
 
     WAIT = 40  # с — ожидание ответа перевозчика сборного груза
 
@@ -1576,13 +1601,16 @@ class DeliveryQuote:
             )
             return
         msg = Http.error(res) if res else f'нет ответа за {self.WAIT} с'
-        if isinstance(res, urllib.error.HTTPError) and res.code == 403:
+        if isinstance(res, urllib.error.HTTPError) and res.code == self.HTTP_FORBIDDEN:
             msg += carrier.HINT_403
         self.errors.append({'src': carrier.NAME, 'msg': msg, 'url': carrier.SITE})
 
 
 class TariffInput:
     """Тарифы доставки из «Настроек»: JSON до 100 КБ, счета для сверки — только известные поля."""
+
+    KM_MAX = 20000
+    RUB_MAX = 1e9
 
     MAX_BYTES = 100000
     MAX_FACTS = 300
@@ -1601,7 +1629,7 @@ class TariffInput:
             if not isinstance(fact, dict):
                 raise ValueError('Неверный формат счёта для сверки тарифов')
             distance, total = number(fact.get('km')), number(fact.get('sum'))
-            if not (distance and 0 < distance <= 20000) or not (total and 0 < total <= 1e9):
+            if not (distance and 0 < distance <= cls.KM_MAX) or not (total and 0 < total <= cls.RUB_MAX):
                 raise ValueError('Счёт для сверки тарифов: расстояние от 1 до 20 000 км и сумма больше нуля')
             stamp = str(fact.get('at') or '')[:10]
             if stamp and not re.match(r'^\d{4}-\d{2}-\d{2}$', stamp):

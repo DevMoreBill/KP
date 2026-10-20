@@ -131,6 +131,8 @@ class DealTrack:
 class OfferTerm:
     """Срок действия КП по условию «Срок действия …»: дни, рабочие дни, недели, месяцы или дата."""
 
+    WORKDAYS = 5
+
     UNITS = (('раб', 'work'), ('дн', 1), ('ден', 1), ('сут', 1), ('недел', 7), ('мес', 30))
 
     @classmethod
@@ -173,7 +175,7 @@ class OfferTerm:
         day, k = base, 0
         while k < days:
             day += timedelta(days=1)
-            if day.weekday() < 5:
+            if day.weekday() < OfferTerm.WORKDAYS:
                 k += 1
         return day
 
@@ -288,6 +290,8 @@ class MailTemplate:
 class MailRate:
     """Писем клиентам от одного сотрудника в час — не больше srv-значения kp.mailPerHour (письма уходят с адреса компании)."""
 
+    HOUR_SEC = 3600
+
     SENT: dict = {}
     LOCK = threading.Lock()
 
@@ -296,7 +300,7 @@ class MailRate:
         """Учесть письмо; ValueError — предел исчерпан (с временем ожидания)."""
         now, limit = time.time(), SrvVal.get(store, 'kp.mailPerHour')
         with cls.LOCK:
-            v = [stamp for stamp in cls.SENT.get(who, []) if now - stamp < 3600]
+            v = [stamp for stamp in cls.SENT.get(who, []) if now - stamp < cls.HOUR_SEC]
             if len(v) >= limit:
                 wait = int(v[0] + 3600 - now) // 60 + 1
                 raise ValueError(f'Отправлено {len(v)} писем за час — следующее можно через {wait} мин')
@@ -306,6 +310,8 @@ class MailRate:
 
 class Mailer:
     """Почта программы: настройки SMTP (kv mail) и отправка письма."""
+
+    PORT_MAX = 65535
 
     KEYS = ('host', 'port', 'security', 'login', 'password', 'fromEmail', 'fromName', 'bccSelf', 'subject', 'body')
     MAX_TO = 10
@@ -369,7 +375,7 @@ class Mailer:
             port = int(v or 0)
         except (TypeError, ValueError):
             port = 0
-        if not 1 <= port <= 65535:
+        if not 1 <= port <= Mailer.PORT_MAX:
             raise ValueError('Порт — число от 1 до 65535 (обычно 465 или 587)')
         return port
 

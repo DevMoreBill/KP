@@ -10,6 +10,9 @@ from datetime import datetime
 from defaults import SrvVal
 from net import Net
 
+MASK_FROM = 10
+RATE_WINDOW_SEC = 60
+
 DEFAULT_BASE = 'https://api.deepseek.com'
 MODELS = [
     ('deepseek-chat', 'DeepSeek-V3 (deepseek-chat) — быстро, рекомендуется'),
@@ -60,7 +63,7 @@ def admin_view(store) -> dict:
     return dict(
         conf,
         hasKey=bool(k),
-        keyMask=(k[:4] + '…' + k[-4:]) if len(k) > 10 else ('задан' if k else ''),
+        keyMask=(k[:4] + '…' + k[-4:]) if len(k) > MASK_FROM else ('задан' if k else ''),
         models=[{'id': i, 'name': name} for i, name in MODELS],
         usage=use.get(month) or {},
         usageMonth=month,
@@ -133,7 +136,7 @@ class AiAsk:
             raise RuntimeError('Пустой запрос')
         now = time.time()
         with LOCK:
-            _RECENT[:] = [stamp for stamp in _RECENT if now - stamp < 60]
+            _RECENT[:] = [stamp for stamp in _RECENT if now - stamp < RATE_WINDOW_SEC]
             if len(_RECENT) >= SrvVal.get(store, 'ai.rateMin'):
                 raise RuntimeError('Слишком много запросов к нейросети за минуту — подождите немного и повторите')
             _RECENT.append(now)

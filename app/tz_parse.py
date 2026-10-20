@@ -10,6 +10,28 @@ END_LETTER = r'(?![А-Яа-яЁёA-Za-z0-9])'
 
 
 class TzParse:
+    BAR_MIN = 0.5
+    BAR_MAX = 400
+    PDP_MIN = -100
+    PDP_MAX = 20
+    WATER_STRICT = 3
+    PERCENT_MAX = 100
+    LOAD_MIN = 5
+    LOAD_MAX = 110
+    ALT_MAX = 5000
+    WARRANTY_MAX = 120
+    WORK_MAX = 4
+    RESERVE_MAX = 2
+    CLIMATE_MIN = -70
+    CLIMATE_MAX = 60
+    NOISE_MIN = 40
+    NOISE_MAX = 120
+    RECEIVER_M3_MAX = 100
+    INSULATION_MIN = 30
+    INSULATION_MAX = 300
+    NOTE_MIN = 25
+    NOTE_MAX = 300
+    NOTES_MAX = 6
     FIRE = ('А', 'Б', 'В1', 'В2', 'В3', 'В4', 'Г', 'Д')
     LOW_WINS = ('tmin',)  # противоречие: здесь требовательнее меньшее значение (холоднее), в остальных — большее
 
@@ -209,7 +231,7 @@ class TzParse:
         match = self.first(PRESSURE)
         if match:
             bar = to_bar(match)
-            if 0.5 <= bar <= 400:
+            if self.BAR_MIN <= bar <= self.BAR_MAX:
                 self.put('pressure', bar, match, 'Давление, бар')
             # противоречие — только рабочее давление сжатого воздуха (не воды, масла, испытаний)
             self.conflict(
@@ -237,7 +259,7 @@ class TzParse:
         if match:
             sign = (match.group(1) or '').lower()
             temp = -int(match.group(2)) if sign == 'минус' or (sign and sign in MINUS) else int(match.group(2))
-            if -100 <= temp <= 20:
+            if self.PDP_MIN <= temp <= self.PDP_MAX:
                 self.put('pdp', temp, match, 'Точка росы под давлением, °C')
         if 'pdp' in self.req:
             self.water_class(match)
@@ -250,7 +272,7 @@ class TzParse:
         water = max([cls_num for cls_num, lim in self.PDP if lim <= temp] or [1])
         air = self.req.get('air')
         if not air:
-            oil = 2 if water <= 3 else 3
+            oil = 2 if water <= self.WATER_STRICT else 3
             self.put(
                 'air',
                 f'{oil}.{water}.{oil}',
@@ -285,7 +307,7 @@ class TzParse:
         match = self.first(
             r'запас\w*\s+(?:по\s+)?производительност\w*[^\n]{0,30}?(?:не\s+менее\s+)?(\d{1,3}(?:[.,]\d+)?)\s*%'
         ) or self.first(r'производительн\w*[^\n]{0,60}?с\s+запасом\s+(?:не\s+менее\s+)?(\d{1,3}(?:[.,]\d+)?)\s*%')
-        if match and 0 <= self.num(match.group(1)) <= 100:
+        if match and 0 <= self.num(match.group(1)) <= self.PERCENT_MAX:
             self.put('margin', self.num(match.group(1)), match, 'Запас производительности, %')
 
     def dgu_more(self) -> None:
@@ -307,7 +329,7 @@ class TzParse:
         match = self.first(
             r'(?:средн\w*\s+(?:суточн\w*\s+)?нагрузк\w*|коэффициент\w*\s+загрузк\w*|загрузк\w*\s+(?:ДГУ|ДЭС|генератор\w*))[^\n]{0,30}?(\d{1,3})\s*%'
         )
-        if match and 5 <= int(match.group(1)) <= 110:
+        if match and self.LOAD_MIN <= int(match.group(1)) <= self.LOAD_MAX:
             self.put('load', int(match.group(1)), match, 'Средняя нагрузка, % от мощности')
         match = self.first(
             r'(?:наибольш\w*|крупн\w*|пуск\w*|асинхронн\w*)[^\n]{0,40}?двигател\w*[^\n]{0,40}?'
@@ -352,12 +374,12 @@ class TzParse:
             r'(?:высот\w*\s+(?:над\s+уровнем\s+моря|площадки|установки|размещени\w*)|над\s+уровнем\s+моря)[^\n]{0,40}?(?:до\s+|не\s+более\s+)?(\d{1,4})\s*м'
             + END_LETTER
         )
-        if match and 0 <= int(match.group(1)) <= 5000:
+        if match and 0 <= int(match.group(1)) <= self.ALT_MAX:
             self.put('alt', int(match.group(1)), match, 'Высота над уровнем моря, м')
         match = self.first(
             r'(?:относительн\w*\s+)?влажност\w*\s+(?:наружн\w*\s+|окружающ\w*\s+)?(?:воздух\w*\s+)?[^\n]{0,30}?(\d{1,3})\s*%'
         )
-        if match and 0 < int(match.group(1)) <= 100:
+        if match and 0 < int(match.group(1)) <= self.PERCENT_MAX:
             self.put('rh', int(match.group(1)), match, 'Относительная влажность воздуха, %')
 
     def terms(self) -> None:
@@ -366,7 +388,7 @@ class TzParse:
         if match:
             num = int(match.group(1))
             mon = num * 12 if match.group(2).lower().startswith(('год', 'лет')) else num
-            if 1 <= mon <= 120:
+            if 1 <= mon <= self.WARRANTY_MAX:
                 self.put('warranty', mon, match, 'Гарантия, мес.')
         match = self.first(
             r'срок\w*\s+(?:поставки|изготовлени\w*|выполнени\w*)[^\n]{0,50}?(\d{1,3})\s*((?:рабоч\w*|календарн\w*)\s+)?(дн\w*|недел\w*|месяц\w*|мес\.?)'
@@ -476,9 +498,9 @@ class TzParse:
         ) or self.first(r'схем\w*\s+(?:резервировани\w*\s+)?(\d)\s*\+\s*(\d)' + END_LETTER)
         if match:
             work, reserve = self.count(match.group(1)), self.count(match.group(2))
-            if work and 1 <= work <= 4:
+            if work and 1 <= work <= self.WORK_MAX:
                 self.put('work', str(work), match, 'Рабочих агрегатов')
-            if reserve is not None and 0 <= reserve <= 2:
+            if reserve is not None and 0 <= reserve <= self.RESERVE_MAX:
                 self.put('reserve', str(reserve), match, f'Резерв N + {reserve}' if reserve else 'Без резерва')
             return
         match = self.first(r'N\s*\+\s*([12])' + END_LETTER)
@@ -487,7 +509,7 @@ class TzParse:
             self.put('reserve', str(reserve), match, f'Резерв N + {reserve}')
             return
         match = self.first(num_rx + r'\s+рабоч\w+\s+(?:компрессор|насос|агрегат|ДГУ|дизель|электроагрегат)')
-        if match and 1 <= (self.count(match.group(1)) or 0) <= 4:
+        if match and 1 <= (self.count(match.group(1)) or 0) <= self.WORK_MAX:
             self.put('work', str(self.count(match.group(1))), match, 'Рабочих агрегатов')
         match = self.first(r'без\s+(?:горячего\s+)?резерв|резерв\w*(?:\s+\w+)?\s+не\s+(?:требу|нуж|предусм)')
         if match:
@@ -508,7 +530,7 @@ class TzParse:
         match = self.first(regex_climate)
         if match:
             low, high = self.signed(match.group(1), match.group(2)), self.signed(match.group(3), match.group(4))
-            if -70 <= low < high <= 60:
+            if self.CLIMATE_MIN <= low < high <= self.CLIMATE_MAX:
                 self.put('tmin', low, match, 'Наружный воздух от, °C')
                 self.put('tmax', high, match, 'Наружный воздух до, °C')
             hits = [
@@ -547,7 +569,7 @@ class TzParse:
 
     def noise(self) -> None:
         match = self.first(r'(?:шум\w*|уров\w*\s+звук\w*)[^\n]{0,60}?(\d{2,3})\s*д[бb]')
-        if match and 40 <= int(match.group(1)) <= 120:
+        if match and self.NOISE_MIN <= int(match.group(1)) <= self.NOISE_MAX:
             self.put('noise', int(match.group(1)), match, 'Шум на рабочем месте, дБА')
 
     def receiver(self) -> None:
@@ -556,7 +578,7 @@ class TzParse:
             v = self.num(match.group(1))
             self.put(
                 'recvVol',
-                round(v * 1000 if match.group(2).lower() in ('м3', 'м³') and v < 100 else v),
+                round(v * 1000 if match.group(2).lower() in ('м3', 'м³') and v < self.RECEIVER_M3_MAX else v),
                 match,
                 'Ресивер, л',
             )
@@ -595,7 +617,7 @@ class TzParse:
                 if match:
                     self.put('cont', 'block', match, 'Контейнер — блок-контейнер')
         match = self.first(r'(?:утепл\w*|теплоизоляц\w*)[^\n]{0,40}?(\d{2,3})\s*мм')
-        if match and 30 <= int(match.group(1)) <= 300:
+        if match and self.INSULATION_MIN <= int(match.group(1)) <= self.INSULATION_MAX:
             self.put('ins', match.group(1) + ' мм', match, 'Утепление')
 
     def systems(self) -> None:
@@ -721,14 +743,14 @@ class TzParse:
         for part in re.split(r'(?<=[.;!?])\s+|\n+', self.text):
             text = part.strip(' •-–—\t')
             if (
-                25 <= len(text) <= 300
+                self.NOTE_MIN <= len(text) <= self.NOTE_MAX
                 and re.search(
                     r'долж[еаноы]\w*|необходим\w*|требуется|обязательн\w*|предусмотреть|обеспечить', text, re.I
                 )
                 and text not in out
             ):
                 out.append(text)
-            if len(out) >= 6:
+            if len(out) >= self.NOTES_MAX:
                 break
         if out:
             self.req['notes'] = '\n'.join(out)

@@ -10,6 +10,8 @@ from config import APP_DIR
 
 
 class StationRules:
+    VERSION_MAX = 40
+    RULES_MAX = 2000
     PATH = os.path.join(APP_DIR, 'web', 'rules', 'stations.json')
     STATUSES = ('confirmed', 'practice', 'unconfirmed')
     FORMAT = 'kp-station-rules'
@@ -53,10 +55,14 @@ class StationRules:
         """структура файла правил; ValueError — понятным текстом"""
         if not isinstance(data, dict) or data.get('format') != cls.FORMAT:
             raise ValueError(f'Это не файл правил станций (нужен format «{cls.FORMAT}»)')
-        if not isinstance(data.get('version'), str) or not data['version'].strip() or len(data['version']) > 40:
+        if (
+            not isinstance(data.get('version'), str)
+            or not data['version'].strip()
+            or len(data['version']) > cls.VERSION_MAX
+        ):
             raise ValueError('Не указана версия правил')
         rules = data.get('rules')
-        if not isinstance(rules, list) or not rules or len(rules) > 2000:
+        if not isinstance(rules, list) or not rules or len(rules) > cls.RULES_MAX:
             raise ValueError('Нет списка правил')
         seen = set()
         for i, rule in enumerate(rules):
@@ -151,6 +157,10 @@ class StationRules:
 class RuleShape:
     """Значение правила при правке — той же формы, что в файле поставки (число, таблица, те же ключи)."""
 
+    PAIR = 2
+    TEXT_MAX = 500
+    TABLE_MAX = 200
+
     MAX = 1e9
 
     @classmethod
@@ -167,7 +177,7 @@ class RuleShape:
         return (
             isinstance(v, list)
             and len(v) > 0
-            and all(isinstance(x, list) and len(x) == 2 and all(cls.number(y) for y in x) for x in v)
+            and all(isinstance(x, list) and len(x) == cls.PAIR and all(cls.number(y) for y in x) for x in v)
         )
 
     @staticmethod
@@ -183,10 +193,10 @@ class RuleShape:
             if not cls.number(v) or math.isnan(v) or abs(v) > cls.MAX:
                 raise ValueError(where + ': нужно число')
         elif isinstance(other, str):
-            if not isinstance(v, str) or len(v) > 500:
+            if not isinstance(v, str) or len(v) > cls.TEXT_MAX:
                 raise ValueError(where + ': нужен текст до 500 знаков')
         elif cls.table(other):
-            if not cls.table(v) or len(v) > 200:
+            if not cls.table(v) or len(v) > cls.TABLE_MAX:
                 raise ValueError(where + ': нужна таблица из пар чисел (до 200 строк)')
         elif isinstance(other, list):
             if not isinstance(v, list) or len(v) != len(other):
@@ -202,6 +212,10 @@ class RuleShape:
 
 class LayoutValues:
     """Значения компоновки (layout.matrix, проходы, отступы): известные виды и ключи, числа в разумных пределах."""
+
+    PAIR = 2
+    ROWS_MAX = 100
+    TEXT_MAX = 500
 
     IDS = ('layout.matrix', 'norm.aisle', 'norm.aisle_tight', 'clear.kind')
     KINDS = ('compressor', 'dryer', 'receiver', 'filter', 'pump', 'dgu', 'cabinet', 'tank', 'other')
@@ -485,7 +499,7 @@ class LayoutValues:
     def check(cls, rid, v) -> bool:
         where = f'Правило {rid}'
         if rid == 'norm.aisle':
-            if not isinstance(v, list) or len(v) != 2:
+            if not isinstance(v, list) or len(v) != cls.PAIR:
                 raise ValueError(where + ': нужны два числа — рекомендуемый и допустимый проход')
             first, second = (cls.num(x, where, 600, 3000) for x in v)
             if second > first:
@@ -509,7 +523,7 @@ class LayoutValues:
             for val, y in x.items():
                 where_text = f'{where}, {k}, {str(val)[:20]}'
                 if isinstance(y, list):
-                    if len(y) != 2:
+                    if len(y) != cls.PAIR:
                         raise ValueError(where_text + ': нужны два числа — рекомендуемый и допустимый')
                     first, second = (cls.num(z, where_text, 0, 5000) for z in y)
                     if second > first:
@@ -523,7 +537,11 @@ class LayoutValues:
         if x is None:
             return []
         rows_raw = x.get('rows') if isinstance(x, dict) else None
-        if not isinstance(rows_raw, list) or len(rows_raw) > 100 or not all(isinstance(row, dict) for row in rows_raw):
+        if (
+            not isinstance(rows_raw, list)
+            or len(rows_raw) > cls.ROWS_MAX
+            or not all(isinstance(row, dict) for row in rows_raw)
+        ):
             raise ValueError(f'{where}, {group}: нужен список строк')
         return rows_raw
 
@@ -537,7 +555,7 @@ class LayoutValues:
             if not isinstance(x, dict):
                 raise ValueError(f'{where}, {group}: не объект')
             text = x.get('t', '')
-            if not isinstance(text, str) or len(text) > 500:
+            if not isinstance(text, str) or len(text) > cls.TEXT_MAX:
                 raise ValueError(f'{where}, {group}: пояснение — текст до 500 знаков')
             if group not in ('pair', 'wall', 'sides', 'rotate'):
                 for k, y in x.items():

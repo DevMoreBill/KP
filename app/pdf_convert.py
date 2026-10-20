@@ -11,6 +11,8 @@ import tempfile
 import threading
 import zipfile
 
+PDF_MIN_BYTES = 100
+
 LOCK = threading.Lock()
 WORD_TIMEOUT = 150
 LO_TIMEOUT = 240
@@ -74,7 +76,7 @@ def available(cloud_key: str | None = None) -> dict:
 
 
 def _ok(path: str) -> bool:
-    return os.path.isfile(path) and os.path.getsize(path) > 100
+    return os.path.isfile(path) and os.path.getsize(path) > PDF_MIN_BYTES
 
 
 def _word(src: str, dst: str) -> None:

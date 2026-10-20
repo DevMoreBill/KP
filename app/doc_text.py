@@ -14,6 +14,9 @@ from ocr_win import WinOcr
 class TextQuality:
     """Качество текста 0…1: доля «нормальных» символов и слов одного алфавита; ниже LOW — нужен другой способ."""
 
+    TEXT_MIN = 20
+    WORD_MIN = 3
+
     LOW = 0.6
     GOOD_CH = re.compile(r'[0-9A-Za-zА-Яа-яЁё.,:;!?()«»"\'%№°+\-–—/×*=<>\[\]|]')
     WORD = re.compile(r'\S+')
@@ -22,11 +25,11 @@ class TextQuality:
     def score(cls, text) -> float:
         text1 = str(text or '')
         chars = [char for char in text1 if not char.isspace()]
-        if len(chars) < 20:
+        if len(chars) < cls.TEXT_MIN:
             return 0.0
         good = sum(1 for char in chars if cls.GOOD_CH.match(char)) / len(chars)
         words = [word.strip('.,:;!?()«»"\'') for word in cls.WORD.findall(text1)]
-        words = [word for word in words if len(word) >= 3 and not re.search(r'\d', word)]
+        words = [word for word in words if len(word) >= cls.WORD_MIN and not re.search(r'\d', word)]
         clean = (
             sum(1 for word in words if re.fullmatch(r'[А-Яа-яЁё-]+|[A-Za-z-]+', word)) / len(words) if words else 0.0
         )
@@ -34,6 +37,8 @@ class TextQuality:
 
 
 class DocText:
+    TEXT_MIN = 20
+    PAGE_TEXT_MIN = 30
     MAX_TEXT = 60000
     MAX_PART = 30 * 1024 * 1024  # распакованная часть архива — не больше
     KINDS = 'PDF, DOCX, XLSX, ODT, ODS, RTF или TXT'
@@ -68,7 +73,7 @@ class DocText:
     def _done(cls, text, kind, pages=None, methods=None) -> dict:
         clean = re.sub(r'[ \t\xa0]+', ' ', text.replace('\r\n', '\n').replace('\r', '\n'))
         clean = re.sub(r'\n[ \t\xa0]*\n[ \t\xa0]*\n+', '\n\n', clean).strip()  # \f — граница страниц — остаётся
-        if len(re.sub(r'\W', '', clean)) < 20:
+        if len(re.sub(r'\W', '', clean)) < cls.TEXT_MIN:
             raise ValueError('в документе нет текста')
         quality = TextQuality.score(clean)
         methods = methods or [{'id': 'text', 'name': 'Текст документа', 'chars': len(clean), 'quality': quality}]
@@ -101,7 +106,7 @@ class DocText:
             }
         ]
         best, kind = per, 'pdf'
-        empty = sum(1 for page in per if len(page.strip()) < 30)
+        empty = sum(1 for page in per if len(page.strip()) < cls.PAGE_TEXT_MIN)
         if quality_layer < TextQuality.LOW or (
             per and empty * 2 >= len(per)
         ):  # скан или нечитаемые шрифты (половина страниц пустые)
@@ -132,7 +137,7 @@ class DocText:
                     }
                 )
         text = cls._pages(best)
-        if len(re.sub(r'\W', '', text)) < 20:
+        if len(re.sub(r'\W', '', text)) < cls.TEXT_MIN:
             err = str(next((method.get('error') for method in methods if method.get('error')), ''))
             raise ValueError(
                 'в PDF нет текста — похоже на скан'

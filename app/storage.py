@@ -712,6 +712,9 @@ class WriteBatch:
 
 
 class Store:
+    NAME_WORDS = 2
+    MOBILE_DIGITS = 10
+
     def __init__(self, path) -> None:
         self.path = path
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -1367,9 +1370,9 @@ class Store:
         words = re.sub(r'\s+', ' ', str(doc.get('name') or '').lower().replace('ё', 'е')).strip().split(' ')
         mob = re.sub(r'\D', '', str(doc.get('mobile') or ''))[-10:]
         return {
-            'name': ' '.join(words[:2]) if len(words) >= 2 else '',
+            'name': ' '.join(words[:2]) if len(words) >= Store.NAME_WORDS else '',
             'email': str(doc.get('email') or '').strip().lower(),
-            'mobile': mob if len(mob) == 10 else '',
+            'mobile': mob if len(mob) == Store.MOBILE_DIGITS else '',
             'ext': re.sub(r'\D', '', str(doc.get('ext') or '')),
         }
 

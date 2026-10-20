@@ -58,6 +58,8 @@ class Stages:
 class DealBook:
     """Сделки одного хранилища."""
 
+    RUB_MAX = 1e12
+
     HISTORY_MAX = 60
     GROUP_DAYS = 30  # КП одного клиента у одного менеджера с промежутком до 30 дней — одна сделка (adopt)
     WON_DAYS = 60  # выигранное КП старше — сделка «Выиграно» (adopt), моложе — «Договор и оплата»
@@ -223,7 +225,7 @@ class DealBook:
                     rub = float(str(v).replace(' ', '').replace(',', '.'))
                 except ValueError:
                     raise ValueError('Сумма сделки — число в рублях') from None
-                if not (0 <= rub < 1e12):
+                if not (0 <= rub < self.RUB_MAX):
                     raise ValueError('Сумма сделки — от 0 до 999 млрд руб.')
                 out.update(sum=round(rub * 100), sumOwn=True)
         if 'stage' in data:

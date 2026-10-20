@@ -15,6 +15,9 @@ from typing import Any
 from defaults import SrvVal
 from net import Net
 
+INN_COMPANY = 10
+INN_PERSON = 12
+
 TIMEOUT = 15
 CHECKO_DAILY = 100  # бесплатный лимит Checko, запросов в календарный день (меняется в «Ключах API»)
 CHECK_COST = 3  # полная проверка: карточка, суды (ответчик), ФССП; бухотчётность — из ГИР БО ФНС
@@ -75,9 +78,9 @@ def valid_inn(inn) -> bool:
     def ctl(digits, coefs) -> int:
         return sum(int(digit) * coef for digit, coef in zip(digits, coefs, strict=False)) % 11 % 10
 
-    if len(digits_text) == 10:
+    if len(digits_text) == INN_COMPANY:
         return ctl(digits_text, [2, 4, 10, 3, 5, 9, 4, 6, 8]) == int(digits_text[9])
-    if len(digits_text) == 12:
+    if len(digits_text) == INN_PERSON:
         return ctl(digits_text, [7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) == int(digits_text[10]) and ctl(
             digits_text, [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8]
         ) == int(digits_text[11])
@@ -210,7 +213,9 @@ class CheckoApi:
         raw, meta, errors, limited = {}, None, [], False
         for name in parts:
             endpoint, extra = (
-                (('entrepreneur' if len(inn) == 12 else 'company'), {}) if name == 'company' else self.ENDPOINTS[name]
+                (('entrepreneur' if len(inn) == INN_PERSON else 'company'), {})
+                if name == 'company'
+                else self.ENDPOINTS[name]
             )
             try:
                 j = self.get(endpoint, inn, **extra)
@@ -409,6 +414,8 @@ class CheckMode(Enum):
 
 
 class Counterparties:
+    MASK_FROM = 10
+    MATURE_YEARS = 3
     KEY_FIELDS = (
         'checkoKey',
         'ofdataKey',
@@ -442,7 +449,7 @@ class Counterparties:
         k = self.keys()
 
         def mask(v) -> str:
-            return (v[:4] + '…' + v[-4:]) if v and len(v) > 10 else ('задан' if v else '')
+            return (v[:4] + '…' + v[-4:]) if v and len(v) > self.MASK_FROM else ('задан' if v else '')
 
         return {
             'checko': bool(k.get('checkoKey')),
@@ -592,11 +599,11 @@ class Counterparties:
     @staticmethod
     def _lookup_api(api, inn) -> dict | None:
         """Реквизиты по карточке Checko / OFData (формат одинаковый)."""
-        j = api.get('entrepreneur' if len(inn) == 12 else 'company', inn)
+        j = api.get('entrepreneur' if len(inn) == INN_PERSON else 'company', inn)
         data = j.get('data') or {}
         if not data:
             return None
-        if len(inn) == 12:
+        if len(inn) == INN_PERSON:
             fio = data.get('ФИО') or ''
             return {
                 'inn': inn,
@@ -779,7 +786,7 @@ class Counterparties:
         inn = re.sub(r'\D', '', inn or '')
         if not valid_inn(inn):
             return {'error': 'ИНН указан с ошибкой'}
-        is_person = len(inn) == 12
+        is_person = len(inn) == INN_PERSON
         cached = self.store.check_get(inn)
         apis = self.apis()
         # краткую / бесплатную проверку заменяем полной, как только хватает запросов
@@ -983,7 +990,7 @@ class Counterparties:
                 if young == 1
                 else f'Зарегистрирована менее {young} {"года" if young in (2, 3, 4) else "лет"} назад',
             )
-        elif age >= 3:
+        elif age >= self.MATURE_YEARS:
             add('green', f'Работает более {int(age)} лет')
         return age
 
@@ -1038,7 +1045,7 @@ class Counterparties:
             'банкротство',
             'массовый адрес и руководитель',
         ]
-        if not finances and len(inn) == 10:
+        if not finances and len(inn) == INN_COMPANY:
             missing.insert(2, 'финансовая отчётность')
         return {
             'inn': inn,

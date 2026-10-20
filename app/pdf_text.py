@@ -7,6 +7,17 @@ from typing import Any
 
 from defaults import SrvVal
 
+PREDICTOR_PNG = 10
+PNG_UP = 2
+RANGE_MAX = 65535
+CODE_BYTES = 2
+STACK_MAX = 64
+TWO_ARGS = 2
+WORD_GAP = -180
+LINE_SHIFT = 0.5
+MATRIX_ARGS = 6
+XOBJECT_DEPTH = 4
+
 # наибольший файл — cat.docMaxMB («Значения программы», встроенное 40 МБ)
 MAX_TEXT = 60000
 MAX_STREAM = 64 * 1024 * 1024  # распакованный поток — не больше
@@ -37,6 +48,19 @@ class Operator(str):
 
 
 class _Lexer:
+    COMMENT = ord('%')
+    STR_OPEN = ord('(')
+    ANGLE = ord('<')
+    ARRAY_OPEN = ord('[')
+    ARRAY_CLOSE = ord(']')
+    NAME_MARK = ord('/')
+    BACKSLASH = ord('\\')
+    OCT_FIRST = ord('0')
+    OCT_LAST = ord('7')
+    CARRIAGE = ord('\r')
+    NEWLINE = ord('\n')
+    STR_CLOSE = ord(')')
+
     def __init__(self, data, pos=0) -> None:
         self.data, self.pos, self.size = data, pos, len(data)
 
@@ -46,7 +70,7 @@ class _Lexer:
             char = data[self.pos]
             if char in _WHITESPACE:
                 self.pos += 1
-            elif char == 0x25:  # % комментарий
+            elif char == self.COMMENT:  # % комментарий
                 while self.pos < size and data[self.pos] not in b'\r\n':
                     self.pos += 1
             else:
@@ -59,9 +83,9 @@ class _Lexer:
         if self.pos >= size:
             return None
         char = data[self.pos]
-        if char == 0x28:  # ( строка )
+        if char == self.STR_OPEN:  # ( строка )
             return self._lit()
-        if char == 0x3C:  # < hex > или << словарь >>
+        if char == self.ANGLE:  # < hex > или << словарь >>
             if data[self.pos + 1 : self.pos + 2] == b'<':
                 self.pos += 2
                 return self._dict()
@@ -72,21 +96,21 @@ class _Lexer:
             if len(hex_digits) % 2:
                 hex_digits += b'0'
             return bytes.fromhex(hex_digits.decode('ascii'))
-        if char == 0x5B:  # [ массив ]
+        if char == self.ARRAY_OPEN:  # [ массив ]
             self.pos += 1
             out: list = []
             while True:
                 self.skip()
                 if self.pos >= size:
                     return out
-                if data[self.pos] == 0x5D:
+                if data[self.pos] == self.ARRAY_CLOSE:
                     self.pos += 1
                     return out
                 tok = self.token()
                 if tok is None:
                     return out
                 out.append(tok)
-        if char == 0x2F:  # /Имя
+        if char == self.NAME_MARK:  # /Имя
             start = self.pos + 1
             self.pos = start
             while self.pos < size and data[self.pos] not in _WHITESPACE and data[self.pos] not in _DELIM:
@@ -124,29 +148,29 @@ class _Lexer:
         while self.pos < size:
             char = data[self.pos]
             self.pos += 1
-            if char == 0x5C:  # \ экранирование
+            if char == self.BACKSLASH:  # \ экранирование
                 if self.pos >= size:
                     break
                 esc = data[self.pos]
                 self.pos += 1
                 if esc in _ESC:
                     out.append(_ESC[esc])
-                elif 0x30 <= esc <= 0x37:
+                elif self.OCT_FIRST <= esc <= self.OCT_LAST:
                     esc_char = chr(esc)
                     for _ in range(2):
-                        if self.pos < size and 0x30 <= data[self.pos] <= 0x37:
+                        if self.pos < size and self.OCT_FIRST <= data[self.pos] <= self.OCT_LAST:
                             esc_char += chr(data[self.pos])
                             self.pos += 1
                     out.append(int(esc_char, 8) & 255)
                 elif esc in b'\r\n':
-                    if esc == 0x0D and self.pos < size and data[self.pos] == 0x0A:
+                    if esc == self.CARRIAGE and self.pos < size and data[self.pos] == self.NEWLINE:
                         self.pos += 1
                 else:
                     out.append(esc)
-            elif char == 0x28:
+            elif char == self.STR_OPEN:
                 depth += 1
                 out.append(char)
-            elif char == 0x29:
+            elif char == self.STR_CLOSE:
                 depth -= 1
                 if depth == 0:
                     break
@@ -195,7 +219,7 @@ def _decode_stream(dic, raw) -> bytes | None:
         else:
             return None  # картинки (DCT, JBIG2…) и прочее — не текст
     params = dic.get('DecodeParms')
-    if isinstance(params, dict) and (params.get('Predictor') or 1) >= 10:
+    if isinstance(params, dict) and (params.get('Predictor') or 1) >= PREDICTOR_PNG:
         data = _png_unpredict(data, int(params.get('Columns') or 1))
     return data
 
@@ -206,7 +230,7 @@ def _png_unpredict(data, cols) -> bytes:
     for i in range(0, len(data) - row + 1, row):
         filter_type, line = data[i], bytearray(data[i + 1 : i + row])
         for k in range(cols):
-            if filter_type == 2:
+            if filter_type == PNG_UP:
                 line[k] = (line[k] + prev[k]) & 255
         out += line
         prev = line
@@ -214,6 +238,9 @@ def _png_unpredict(data, cols) -> bytes:
 
 
 class Doc:
+    REF_DEPTH = 20
+    TREE_DEPTH = 30
+
     def __init__(self, data) -> None:
         if not data.startswith(b'%PDF') and b'%PDF' not in data[:1024]:
             raise ValueError('это не PDF')
@@ -276,7 +303,7 @@ class Doc:
                 pass
 
     def get(self, v, depth=0) -> Any:
-        while isinstance(v, Ref) and depth < 20:
+        while isinstance(v, Ref) and depth < self.REF_DEPTH:
             v = self.objs.get(v.num)
             depth += 1
         return v
@@ -307,7 +334,7 @@ class Doc:
         return out
 
     def _walk(self, node, inh, out, depth) -> None:
-        if not isinstance(node, dict) or depth > 30:
+        if not isinstance(node, dict) or depth > self.TREE_DEPTH:
             return
         res = node.get('Resources', inh.get('Resources'))
         if str(node.get('Type')) == 'Page' or 'Kids' not in node:
@@ -339,7 +366,7 @@ def _cmap(data) -> tuple:
         for code, pair, rng in re.findall(rb'<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(<[0-9A-Fa-f]*>|\[[^\]]*\])', blk):
             low, high, width = int(code, 16), int(pair, 16), len(code) // 2
             lens.add(width)
-            if high - low > 65535:
+            if high - low > RANGE_MAX:
                 continue
             if rng.startswith(b'['):
                 for k, hex_dst in enumerate(re.findall(rb'<([0-9A-Fa-f]*)>', rng)):
@@ -349,7 +376,7 @@ def _cmap(data) -> tuple:
                 for k in range(high - low + 1):
                     code_bytes = (
                         base[:-2] + (int.from_bytes(base[-2:], 'big') + k).to_bytes(2, 'big')
-                        if len(base) >= 2
+                        if len(base) >= CODE_BYTES
                         else bytes([base[-1] + k & 255])
                         if base
                         else b''
@@ -467,14 +494,14 @@ def _run(doc, data, res, out, fonts, depth=0) -> None:
             break
         if not isinstance(tok, Operator):
             stack.append(tok)
-            if len(stack) > 64:
+            if len(stack) > STACK_MAX:
                 del stack[:32]
             continue
         op_name = str(tok)
         if op_name == 'BI':  # встроенная картинка — пропустить до EI
             end_match = re.search(rb'\sEI[\s]', data[lexer.pos :])
             lexer.pos += end_match.end() if end_match else len(data)
-        elif op_name == 'Tf' and len(stack) >= 2:
+        elif op_name == 'Tf' and len(stack) >= TWO_ARGS:
             key = str(stack[-2])
             if key not in fonts.setdefault(id(fdict), {}):
                 fonts[id(fdict)][key] = Font(doc, fdict.get(key) if isinstance(fdict, dict) else None)
@@ -489,11 +516,11 @@ def _run(doc, data, res, out, fonts, depth=0) -> None:
             for x in stack[-1]:
                 if isinstance(x, bytes):
                     show(x)
-                elif isinstance(x, (int, float)) and x < -180 and line and not line[-1].endswith(' '):
+                elif isinstance(x, (int, float)) and x < WORD_GAP and line and not line[-1].endswith(' '):
                     line.append(' ')
-        elif op_name in ('Td', 'TD') and len(stack) >= 2:
+        elif op_name in ('Td', 'TD') and len(stack) >= TWO_ARGS:
             kind = stack[-1]
-            if isinstance(kind, (int, float)) and abs(kind) > 0.5:
+            if isinstance(kind, (int, float)) and abs(kind) > LINE_SHIFT:
                 newline()
             elif (
                 line
@@ -504,9 +531,9 @@ def _run(doc, data, res, out, fonts, depth=0) -> None:
             ):
                 line.append(' ')
             pos['run'] = 0
-        elif op_name == 'Tm' and len(stack) >= 6:
+        elif op_name == 'Tm' and len(stack) >= MATRIX_ARGS:
             y = stack[-1]
-            if last_y is not None and isinstance(y, (int, float)) and abs(y - last_y) > 0.5:
+            if last_y is not None and isinstance(y, (int, float)) and abs(y - last_y) > LINE_SHIFT:
                 newline()
             elif line and not line[-1].endswith(' '):
                 line.append(' ')
@@ -514,7 +541,7 @@ def _run(doc, data, res, out, fonts, depth=0) -> None:
             pos['run'] = 0
         elif op_name == 'T*':
             newline()
-        elif op_name == 'Do' and stack and depth < 4 and isinstance(xobj, dict):
+        elif op_name == 'Do' and stack and depth < XOBJECT_DEPTH and isinstance(xobj, dict):
             xobject = doc.get(xobj.get(str(stack[-1])))
             if isinstance(xobject, tuple) and str(xobject[1].get('Subtype')) == 'Form':
                 newline()

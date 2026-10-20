@@ -127,6 +127,8 @@ class SupplierScope:
 class ExportScope:
     """Выгрузка по разделам: внутри вида (категории, производители, поставщики, фиды) — «или», между видами — «и»."""
 
+    TEXT_MAX = 200
+
     KINDS = ('cats', 'makers', 'sups', 'feeds')
     NO_FEED = 'Не из фида'
     NO_MAKER = 'Без производителя'
@@ -173,7 +175,11 @@ class ExportScope:
         out = {}
         for k in cls.KINDS:
             v = pick.get(k) or []
-            if not isinstance(v, list) or len(v) > cls.MAX or any(not isinstance(x, str) or len(x) > 200 for x in v):
+            if (
+                not isinstance(v, list)
+                or len(v) > cls.MAX
+                or any(not isinstance(x, str) or len(x) > cls.TEXT_MAX for x in v)
+            ):
                 raise ValueError('Неверный выбор позиций каталога')
             if v:
                 out[k] = set(v) if k not in {'makers', 'sups'} else {SupplierScope.key(x) for x in v}
@@ -198,6 +204,8 @@ class ExportScope:
 class CatalogFilter:
     """«Выгрузить → Каталог по фильтру»."""
 
+    TEXT_MAX = 200
+
     NO_CAT = '__none__'  # «Без категории» в списке (пустое значение — «Все категории»)
     GROUPS = {
         'price': ('price', 'prices', 'priceCur', 'priceSrc', 'priceLink', 'margin', 'mmode'),
@@ -216,7 +224,7 @@ class CatalogFilter:
         out: dict[str, Any] = {}
         for k in ('cat', 'maker', 'sup', 'q'):
             v = filt.get(k) or ''
-            if not isinstance(v, str) or len(v) > 200:
+            if not isinstance(v, str) or len(v) > CatalogFilter.TEXT_MAX:
                 raise ValueError('Неверный фильтр каталога')
             if v.strip():
                 out[k] = v.strip()

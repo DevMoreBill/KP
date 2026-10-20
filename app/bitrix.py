@@ -499,6 +499,8 @@ class Sides(Enum):
 class BitrixSync:
     """Обмен с Битрикс24: очередь отправки и опрос изменений."""
 
+    TEXT_MAX = 40
+
     LOCK = threading.Lock()
     KIND = BitrixRules.TASK_KINDS
     SHARED = BitrixRules.SHARED  # правка с обеих сторон: кто главный — по правилу поля (по умолчанию последняя правка)
@@ -1126,7 +1128,7 @@ class BitrixSync:
             if k == 'manager':
                 return mgr_names.get(self._mid_of(v) or '', f'пользователь {v}')
             v = str(v)
-            return v if len(v) <= 40 else v[:38] + '…'
+            return v if len(v) <= self.TEXT_MAX else v[:38] + '…'
 
         return ', '.join(f'{names.get(k, k)}: {show(k, (base or {}).get(k))} → {show(k, v)}' for k, v in vals.items())
 

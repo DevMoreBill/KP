@@ -10,6 +10,7 @@ from typing import Any
 
 
 class ServerTask:
+    PRIORITY_MAX = 6
     NAME = 'Конструктор КП — сервер отдела'  # как в Restarter.TASK и установщиках
     KV_KEY = 'serverTask'
     DELAY = 10
@@ -52,7 +53,7 @@ class ServerTask:
             out.append(f'останавливает программу через {cls.duration(state["limit"]).strip()} работы')
         if state.get('noBattery') or state.get('stopBattery'):
             out.append('не работает от батареи и ИБП')
-        if int(state.get('priority') or 0) > 6:
+        if int(state.get('priority') or 0) > cls.PRIORITY_MAX:
             out.append('пониженный приоритет')
         return out
 

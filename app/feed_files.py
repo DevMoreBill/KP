@@ -17,7 +17,48 @@ from typing import Any
 import images
 from defaults import SrvVal
 
+SPEC_PIPES = 2
+ROWS_MIN = 2
+RANGE_TWO_DECIMALS = 4
+RANGE_ONE_DECIMAL = 3
+RANGE_WHOLE = 2
+PAIR = 2
+ASSETS_MAX = 4000
+DESC_MIN = 40
+CSV_CELLS = 6
+SPEC_KEY_MAX = 45
+PRESSURE_COLS_MIN = 2
+TITLE_MIN = 6
+HEAD_GAP = 3
+UNITS_ROW_MIN = 3
+TABLE_COLS_MIN = 4
+SECTION_VALS_MAX = 2
+NAME_MIN = 3
+PERCENT_MAX = 100
+EURO_PRICES_BELOW = 300000
+LIST_ITEMS_MIN = 3
+SENT_KEY_MIN = 8
+HEADING_MAX = 60
+CM_VALUES_BELOW = 1000
+SPEC_SEEN_MAX = 50000
+GLUED_WORDS = 2
+LPM_FROM = 60
+DIMS_COUNT = 3
+SIG_MIN = 2
+RECEIVER_MIN = 50
+PRICE_NAME_MAX = 90
+PRICE_NAME_WORDS = 9
+CODE_MIN = 3
+SHORT_UP_MAX = 5
+NUMS_WITH_RECEIVER = 3
+NUMS_WITH_PRESSURE = 2
+PRESSURE_CODE_MAX = 50
+RECEIVER_MAX = 3000
+STD_PRESSURE_MAX = 13
+SLUG_MAX = 40
+
 DIR_NAME = 'feeds'
+PRESSURE_ALIAS: dict[float, float] = {7: 7.5}  # «7 бар» в названиях и характеристиках — исполнение 7,5 бар
 UNITS = {
     'бар',
     'м³/мин',
@@ -228,7 +269,7 @@ def _split_line(line) -> list | None:
         for cand in _CHAR_START.finditer(rest)
         if re.match(r'^,\s*"*\s*[А-ЯЁA-Z][^:|.]{0,69}:', rest[cand.start() :])
     ]
-    cut = next((pos for pos in cands if rest[pos:].count(' | ') >= 2), cands[-1] if cands else -1)
+    cut = next((pos for pos in cands if rest[pos:].count(' | ') >= SPEC_PIPES), cands[-1] if cands else -1)
     if cut >= 0:
         desc, chars = rest[:cut], rest[cut + 1 :]
     elif re.search(r'^[^:|]{2,70}: .*\| ', rest):
@@ -262,7 +303,7 @@ def _pages_table(text) -> list | None:
         rows = list(csv.reader(io.StringIO(text)))
     except csv.Error:
         return None
-    if len(rows) < 2:
+    if len(rows) < ROWS_MIN:
         return None
     head = [re.sub(r'\s+', ' ', head_cell).strip().lower() for head_cell in rows[0]]
     col: dict[str, int | None] = {}
@@ -358,15 +399,15 @@ def _url_cat(url) -> str:
             atmo_match = re.fullmatch(r'(\d+)(?:_(\d+))?_atmosfer', seg)
             if match:  # «4_7_5» — 4–7,5; «11_18_5» — 11–18,5; «2_2_4_0» — 2,2–4,0; «18_5» — 18,5
                 nums = match.group(1).split('_')
-                if len(nums) == 4:
+                if len(nums) == RANGE_TWO_DECIMALS:
                     first, second = nums[0] + ',' + nums[1], nums[2] + ',' + nums[3]
-                elif len(nums) == 3:
+                elif len(nums) == RANGE_ONE_DECIMAL:
                     first, second = (
                         (nums[0], nums[1] + ',' + nums[2])
                         if int(nums[0]) < int(nums[1])
                         else (nums[0] + ',' + nums[1], nums[2])
                     )
-                elif len(nums) == 2 and int(nums[1]) > int(nums[0]):
+                elif len(nums) == RANGE_WHOLE and int(nums[1]) > int(nums[0]):
                     first, second = nums
                 else:
                     first, second = ','.join(nums), ''
@@ -446,7 +487,7 @@ def _json_specs(specs) -> list:
             if u and v and not v.lower().endswith(u.lower()):
                 v = f'{v} {u}'
             out.append((str(k), v))
-        elif isinstance(row, (list, tuple)) and len(row) >= 2:
+        elif isinstance(row, (list, tuple)) and len(row) >= PAIR:
             out.append((str(row[0]), str(row[1])))
     return out
 
@@ -481,7 +522,7 @@ def _json_assets(obj) -> dict:
     out: dict = {}
     if not isinstance(raw, dict):
         return out
-    if len(ASSETS) > 4000:
+    if len(ASSETS) > ASSETS_MAX:
         ASSETS.clear()
     for k, v in list(raw.items())[:3000]:
         ref = _put_asset(v)
@@ -617,7 +658,7 @@ def parse_extra(data) -> dict:
                 items[k] = desc
     logos = {}
     if isinstance(obj.get('logos'), dict):
-        if len(ASSETS) > 4000:
+        if len(ASSETS) > ASSETS_MAX:
             ASSETS.clear()
         for k, v in list(obj['logos'].items())[:50]:
             ref = _put_asset(v) if isinstance(v, str) and v.startswith('data:') else ''
@@ -639,7 +680,7 @@ def apply_extra(feed, extra) -> int:
                 if (offer['cat'] in x['cats'] or cname in x['names']) and (
                     not x['rx'] or x['rx'].search(offer['name'])
                 ):
-                    if x['mode'] == 'replace' or len(offer['desc'] or '') < 40:
+                    if x['mode'] == 'replace' or len(offer['desc'] or '') < DESC_MIN:
                         desc = x['desc']
                     break
         if desc:
@@ -680,11 +721,11 @@ def parse_pages(data) -> list:
                 cells = next(csv.reader(io.StringIO(line)))
                 # кавычка внутри описания («99%;"») сбивает CSV: поле характеристик тогда — хвост описания, а не «ключ: значение | …»
                 if (
-                    len(cells) == 6
+                    len(cells) == CSV_CELLS
                     and _PROD_URL.match(cells[2].strip())
                     and (
                         not cells[5].strip()
-                        or (re.match(r'^\s*"?[^:|.]{2,70}:', cells[5]) and cells[5].count(' | ') >= 2)
+                        or (re.match(r'^\s*"?[^:|.]{2,70}:', cells[5]) and cells[5].count(' | ') >= SPEC_PIPES)
                     )
                 ):
                     parts = [x.strip() for x in cells]
@@ -720,7 +761,11 @@ def parse_pages(data) -> list:
                 model = v[:80]
                 continue
             # хвосты описания, попавшие в характеристики («01 мг/м3). Технические особенности: …»), — не параметры
-            if re.match(r'^(примечание|все характеристики)', k, re.I) or len(k) > 45 or re.search(r'[.)]\s|^\d', k):
+            if (
+                re.match(r'^(примечание|все характеристики)', k, re.I)
+                or len(k) > SPEC_KEY_MAX
+                or re.search(r'[.)]\s|^\d', k)
+            ):
                 continue
             v = re.sub(r'""', '"', v)
             v = re.sub(r'(?<=\d)\s*[xх]\s*(?=\d)', ' × ', v) if re.match(r'^\d+\s*[xх]\s*\d+', v) else v
@@ -919,7 +964,7 @@ def _price_cols(head) -> dict:
             cols['prices'] = [(cols['price'], '')]
     elif cols['dealer'] is not None:  # только дилерская цена (Tewatt: «Цена для дилера DDP Москва»)
         cols['prices'] = [(None, '')]
-    if len(cols['pcols']) < 2:  # одна «… 8 бар» — обычная характеристика
+    if len(cols['pcols']) < PRESSURE_COLS_MIN:  # одна «… 8 бар» — обычная характеристика
         cols['specs'] += [(col, head[col]) for col, _ in cols['pcols']]
         cols['pcols'] = []
     return cols
@@ -948,10 +993,10 @@ def parse_price(data) -> tuple:
         title = ''
         for row in rows[:3]:
             v = str(row.get(0, '')).strip()
-            if len(v) > 6 and not JUNK.match(v):
+            if len(v) > TITLE_MIN and not JUNK.match(v):
                 title = re.sub(r'\s+', ' ', v)[:100]
                 break
-        tops = [i for k, i in enumerate(hrs) if k == 0 or i - hrs[k - 1] > 3]  # строки шапки подряд — одна шапка
+        tops = [i for k, i in enumerate(hrs) if k == 0 or i - hrs[k - 1] > HEAD_GAP]  # строки шапки подряд — одна шапка
         start_len, cur0, items, prev = len(out), '', [], None
         for k, head_row in enumerate(tops):
             end = tops[k + 1] if k + 1 < len(tops) else len(rows)
@@ -982,7 +1027,11 @@ NOTE_ROW = re.compile(r'^([-*rü]\s|\*)')  # сноски под таблице�
 def _price_block(rows, head_row, end, low, sname, title, prev=None) -> tuple:
     """Одна таблица листа: шапка в строке hr, данные до end. Шапка без столбца названия — столбцы прошлой таблицы (prev)."""
     unit_row = next(
-        (i for i in range(head_row, min(head_row + 5, end)) if sum(1 for v in rows[i].values() if _is_unit(v)) >= 3),
+        (
+            i
+            for i in range(head_row, min(head_row + 5, end))
+            if sum(1 for v in rows[i].values() if _is_unit(v)) >= UNITS_ROW_MIN
+        ),
         None,
     )
     high = unit_row if unit_row is not None else head_row + 1
@@ -1036,14 +1085,14 @@ def _price_block(rows, head_row, end, low, sname, title, prev=None) -> tuple:
     group = ''
     if head_row > 0:  # подзаголовок таблицы над шапкой
         subtitles = {str(x).strip() for x in rows[head_row - 1].values()} - {''}
-        if len(subtitles) == 1 and len(rows[head_row - 1]) >= 4:
+        if len(subtitles) == 1 and len(rows[head_row - 1]) >= TABLE_COLS_MIN:
             group = _group_name(subtitles.pop())
     items = []
     for i in range((unit_row if unit_row is not None else head_row) + 1, end):
         row = rows[i]
         vals = {str(v).strip() for v in row.values()} - {''}
         if (
-            len(vals) <= 2 and len(row) >= 4
+            len(vals) <= SECTION_VALS_MAX and len(row) >= TABLE_COLS_MIN
         ):  # строка-раздел на всю ширину («Воздушные вертикальные ресиверы…») или сноска
             v = sorted(vals)[0]
             if not NOTE_ROW.match(v) and not re.search(r'упаковк', v, re.I):
@@ -1052,7 +1101,7 @@ def _price_block(rows, head_row, end, low, sname, title, prev=None) -> tuple:
         name = re.sub(r'\s+', ' ', str(row.get(cols['name'], ''))).strip().rstrip('*').strip()
         if (
             not name
-            or len(name) < 3
+            or len(name) < NAME_MIN
             or name in HEAD_WORDS
             or JUNK.match(name)
             or NOTE_ROW.match(name)
@@ -1130,14 +1179,14 @@ def _price_block(rows, head_row, end, low, sname, title, prev=None) -> tuple:
                         'group': group,
                         'sale': bool(SALE_RX.search(sname + ' ' + group)),
                         'dealer': round(dealer, 2) if dealer else None,
-                        'disc': disc if disc and 0 < disc < 100 else None,
+                        'disc': disc if disc and 0 < disc < PERCENT_MAX else None,
                     }
                 )
     if (
         cur == 'RUB'
         and items
         and re.search(r'ррц', head.get(price_col, ''), re.I)
-        and all((x['price'] or 0) < 300000 for x in items)
+        and all((x['price'] or 0) < EURO_PRICES_BELOW for x in items)
     ):
         cur = 'EUR'  # «РРЦ Москва с НДС (руб)» у дизелей Liutech — цены 17 710…94 710: это евро, не рубли
         for x in items:
@@ -1230,7 +1279,7 @@ LIST_HEAD_RX = re.compile(
 def _list_items(match) -> str:
     """Склеенный перечень пунктов («Общие характеристики Блок … Система …») — списком."""
     items = [x.strip(' ,;') for x in re.split(r'\s+(?=[А-ЯЁ][а-яё])(?<![«/]\s)', match.group(2)) if x.strip(' ,;')]
-    if len(items) < 3:
+    if len(items) < LIST_ITEMS_MIN:
         return match.group(0)
     return '\n' + match.group(1) + ':\n' + '\n'.join('• ' + x for x in items) + '\n'
 
@@ -1297,7 +1346,7 @@ def clean_desc(text) -> str:
             body = sent[2:] if sent.startswith('• ') else sent
             body = body.strip(' ;"').rstrip('.;') + ('' if sent.endswith(':') else '.')
             key = re.sub(r'[^а-яa-z0-9]', '', body.lower())
-            if (len(key) < 8 and not sent.endswith(':')) or key in seen:
+            if (len(key) < SENT_KEY_MIN and not sent.endswith(':')) or key in seen:
                 continue
             if JUNK_SENT.search(body) and not sent.endswith(':'):
                 continue
@@ -1388,7 +1437,7 @@ def desc_blocks(text) -> list:
         line = raw_line.strip()
         if not line:
             continue
-        if line.endswith(':') and not line.startswith('• ') and len(line) <= 60:
+        if line.endswith(':') and not line.startswith('• ') and len(line) <= HEADING_MAX:
             if cur['prose'] or cur['bullets']:
                 sections.append(cur)
             key = line[:-1].strip().lower()
@@ -1575,7 +1624,7 @@ def _spec_rows(k, v) -> list:
         if re.search(r'см\s*$', v) or (unit == 'см' and nums):
             v = re.sub(r'\s*(см|мм)\s*$', '', v)
             vals = [float(x.replace(',', '.')) for x in nums]
-            if vals and max(vals) < 1000:  # «7515*2540*2495» с подписью «см» — это уже миллиметры
+            if vals and max(vals) < CM_VALUES_BELOW:  # «7515*2540*2495» с подписью «см» — это уже миллиметры
                 v = ' × '.join((f'{x * 10:g}').replace('.', ',') for x in vals)
             else:
                 v = re.sub(r'\s*[*×xхX]\s*', ' × ', v)
@@ -1599,7 +1648,7 @@ def spec_class(key) -> str:
     cached = next((cached for cached, regex in SPEC_CLASS if re.search(regex, k)), None) or 'k:' + re.sub(
         r'[^а-яa-z0-9]', '', k
     )
-    if len(_SPEC_SEEN) < 50000:
+    if len(_SPEC_SEEN) < SPEC_SEEN_MAX:
         _SPEC_SEEN[key] = cached
     return cached
 
@@ -1608,7 +1657,9 @@ def _tidy_label(k) -> str:
     k = re.sub(r'\s+', ' ', str(k or '')).strip(' *:')
     k = re.sub(r'\*+$', '', k).strip()
     words = k.split(' ')
-    if len(words) == 2 and words[0].lower() == words[1].lower():  # «Ширина ширина» — склейка объединённых ячеек
+    if (
+        len(words) == GLUED_WORDS and words[0].lower() == words[1].lower()
+    ):  # «Ширина ширина» — склейка объединённых ячеек
         k = words[0]
     k = re.sub(r'\s*\((Д[/хx×]Ш[/хx×]В)\)|\s+Д[/хx×]Ш[/хx×]В$', '', k)
     k = (
@@ -1672,7 +1723,7 @@ def _spec_fix(k, v) -> tuple:
         v = re.sub(r'\s*[×x]\s*', ' × ', v) + ' л'
     if cls_name == 'flow' and re.fullmatch(r'\d+(?:[.,]\d+)?', v) and not re.search(r'\(', k):
         num = float(v.replace(',', '.'))
-        v = (f'{v} л/мин') if num >= 60 else (f'{v} м³/мин')
+        v = (f'{v} л/мин') if num >= LPM_FROM else (f'{v} м³/мин')
     return k, v
 
 
@@ -1705,7 +1756,7 @@ def merge_specs(parse_rows, price_specs) -> list:
         else:
             idx[cls_name] = len(rows)
             rows.append([label, v])
-    if len(dims) == 3 and all(re.search(r'^[\d.,\s]+(мм)?$', str(dims[cls_name][1])) for cls_name in dims):
+    if len(dims) == DIMS_COUNT and all(re.search(r'^[\d.,\s]+(мм)?$', str(dims[cls_name][1])) for cls_name in dims):
         v = '{} × {} × {} мм'.format(
             *tuple(re.sub(r'\s*мм$', '', str(dims[cls_name][1])) for cls_name in ('length', 'width', 'height'))
         )
@@ -1764,7 +1815,7 @@ def _model_set(text) -> frozenset | None:
         ):
             continue
         words.extend(x.lower().replace(',', '.') for x in re.split(r'-(?=[A-Za-z\d])', word) if x)
-    return frozenset(words) if len(words) >= 2 else None
+    return frozenset(words) if len(words) >= SIG_MIN else None
 
 
 def _char(page, regex) -> str:
@@ -1784,7 +1835,7 @@ def page_cfg(page) -> dict:
     recv = _char(page, r'объ[её]м ресивера')
     match2 = re.match(r'^\s*(\d+)\s*[xх×]\s*(\d+)', recv, re.I)  # «2 × 270» — два ресивера
     rec = int(match2.group(1)) * int(match2.group(2)) if match2 else _num_attr(re.sub(r'[^\d,.]', '', recv) or None)
-    if rec and rec >= 50:
+    if rec and rec >= RECEIVER_MIN:
         cfg['rec'] = int(rec)
     if _char(page, r'модель осушителя') or re.search(r'\d+d$', (page.get('url') or '').rstrip('/'), re.I):
         cfg['dry'] = True
@@ -1799,7 +1850,7 @@ def lat_series(cfg) -> tuple:
 
 
 def _cfg_key(cfg) -> tuple:
-    pressure = 7.5 if cfg['p'] == 7 else cfg['p']  # в прайсе «7» и «7,5» — одно исполнение (на сайте — 7,5)
+    pressure = PRESSURE_ALIAS.get(cfg['p'], cfg['p'])  # в прайсе «7» и «7,5» — одно исполнение (на сайте — 7,5)
     return (lat_series(cfg), cfg['size'], pressure, cfg['rec'], cfg['dry'], cfg['vsd'], cfg['w'])
 
 
@@ -1871,7 +1922,7 @@ def match_prices(pages, prices) -> tuple:
     by_cfg: dict = {}
     for price in prices:
         if (
-            len(price['name']) > 90 or len(price['name'].split()) > 9
+            len(price['name']) > PRICE_NAME_MAX or len(price['name'].split()) > PRICE_NAME_WORDS
         ):  # примечания и сноски в столбце названий — не товары
             continue
         by_norm.setdefault(_norm(price['name']), price)
@@ -1898,7 +1949,7 @@ def match_prices(pages, prices) -> tuple:
             re.sub(r'\s+EKON$', '', v, flags=re.I) for k, v in price['specs'] if re.match(r'^модель\b', k, re.I)
         ]:  # «Модель Liutech»
             core, opt = _sig(name_match)
-            if len(core) >= 2 and any(re.search(r'\d', x) for x in core):
+            if len(core) >= SIG_MIN and any(re.search(r'\d', x) for x in core):
                 by_sig.setdefault(core, []).append((opt, price))
                 if price.get('pbar'):  # «LENTO 15 LK» без давления в названии — строки «… -6 / -8 / -10»
                     by_sig.setdefault((*core[:-1], '*'), []).append((opt, price))
@@ -1981,7 +2032,7 @@ def _code(text) -> str:
     """Код изделия из названия латиницей («РВ 500/10» → «PB500/10»)."""
     run = _code_run(text)
     code = re.sub(r'[\s.\-]', '', ''.join(run)).upper().replace(',', '.').translate(LAT_CYR)
-    return code if len(code) >= 3 else ''
+    return code if len(code) >= CODE_MIN else ''
 
 
 def _code_run(text) -> list:
@@ -1993,7 +2044,7 @@ def _code_run(text) -> list:
         return []
 
     def short_up(token) -> Any:
-        return re.fullmatch(r'[A-ZА-ЯЁ][A-ZА-ЯЁ-]*', token) and len(token.replace('-', '')) <= 5
+        return re.fullmatch(r'[A-ZА-ЯЁ][A-ZА-ЯЁ-]*', token) and len(token.replace('-', '')) <= SHORT_UP_MAX
 
     first, second = i, i + 1
     while first > 0 and short_up(words[first - 1]):
@@ -2040,7 +2091,7 @@ def code_cfg(name, model='') -> dict | None:
 def _by_sig(page, by_sig, one) -> dict | None:
     """Строка прайса с той же подписью модели (степень защиты и частотник — совпадают)."""
     core, opt = _sig(page['name'])
-    if len(core) < 2:
+    if len(core) < SIG_MIN:
         return None
     cands = [(opt_n, price) for opt_n, price in by_sig.get(core, []) if opt_n <= opt]
     if not cands:
@@ -2238,7 +2289,7 @@ def stock_index(stock) -> tuple:
     by_sig: dict = {}  # «EXDM 7,5/10 IP 54» ↔ «Винтовой компрессор EXELUTE EXDM 7.5/10 IP54»
     for row in stock:
         core, opt = _sig(row['name'])
-        if len(core) >= 2 and any(re.search(r'\d', x) for x in core):
+        if len(core) >= SIG_MIN and any(re.search(r'\d', x) for x in core):
             by_sig.setdefault(core, []).append((opt, row))
     return {k: _merge_stock(v) for k, v in by_sku.items()}, code_rows, by_sig
 
@@ -2256,7 +2307,7 @@ def stock_row(stock, sku, name, idx=None) -> dict | None:
                 for cand, x in by_sig.get(core, [])
                 if cand <= opt or (not drv and {y for y in cand if y.startswith('IP')} <= opt)
             ]
-            if len(core) >= 2
+            if len(core) >= SIG_MIN
             else []
         )
         if cands:
@@ -2311,7 +2362,7 @@ def _price_specs_ok(page, price) -> list:
     for k, v in price['specs']:
         if pressure and spec_class(k) == 'pressure':
             num = _num_attr(re.sub(r'[^\d,.]', '', str(v)).replace(',', '.') or None)
-            if num and (7.5 if num == 7 else num) != (7.5 if pressure == 7 else pressure):
+            if num and PRESSURE_ALIAS.get(num, num) != PRESSURE_ALIAS.get(pressure, pressure):
                 continue
         out.append((k, v))
     return out
@@ -2462,7 +2513,7 @@ def model_cfg(model, text='') -> dict:
                 suf = num_match.group(2)
                 if suf == 'W':
                     cfg['w'] = True
-                elif suf == 'D' and len(nums) >= 3:  # «-250D» — ресивер с осушителем
+                elif suf == 'D' and len(nums) >= NUMS_WITH_RECEIVER:  # «-250D» — ресивер с осушителем
                     cfg['dry'] = True
                 elif suf == 'D':  # «DVK 220D» — серия с прямым приводом
                     cfg['ser'].add('D')
@@ -2481,9 +2532,9 @@ def model_cfg(model, text='') -> dict:
         cfg['ser'] -= {'S', 'D', 'T', 'Q'}
     if nums:
         cfg['size'] = nums[0]
-    if len(nums) >= 2 and nums[1] <= 50:
+    if len(nums) >= NUMS_WITH_PRESSURE and nums[1] <= PRESSURE_CODE_MAX:
         cfg['p'] = nums[1]
-    if len(nums) >= 3 and 50 <= nums[2] <= 3000:
+    if len(nums) >= NUMS_WITH_RECEIVER and RECEIVER_MIN <= nums[2] <= RECEIVER_MAX:
         cfg['rec'] = int(nums[2])
     if re.search(r'частот|инвертор|\bvsd\b', low_text):
         cfg['vsd'] = True
@@ -2543,8 +2594,8 @@ def match_card(name, model, attrs, prices) -> tuple:
     if not cand:
         return [], 'нет в прайсе'
     pressure_val = cfg.get('p') or _num_attr(attr_map.get('pressure'))
-    std = [(price, price_col) for price, price_col in cand if not price_col['p'] or price_col['p'] <= 13]
-    if std and not (pressure_val and pressure_val > 13):
+    std = [(price, price_col) for price, price_col in cand if not price_col['p'] or price_col['p'] <= STD_PRESSURE_MAX]
+    if std and not (pressure_val and pressure_val > STD_PRESSURE_MAX):
         cand = std
     priced = [(price, price_col) for price, price_col in cand if price['price']]
     if not priced:
@@ -2567,7 +2618,7 @@ def _num_attr(v) -> float | None:
 def _oid(base, uniq, offers) -> str:
     """Идентификатор предложения ≤ 40 знаков (feeds._cid режет длиннее) и без повторов: длинные похожие ссылки — с хвостом-хэшем."""
     oid = images.slug(base, 40) or 'item'
-    if oid in offers or len(images.slug(base, 60)) > 40:
+    if oid in offers or len(images.slug(base, 60)) > SLUG_MAX:
         oid = (images.slug(base, 32) + '-' + hashlib.md5(uniq.encode('utf-8')).hexdigest()[:7]).strip('-')
     return oid
 

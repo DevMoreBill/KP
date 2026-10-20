@@ -16,11 +16,13 @@ from xml.sax.saxutils import escape, quoteattr
 class XmlTree:
     """Значение JSON ↔ элемент XML с типом: обратно получается ровно то же значение."""
 
+    INDENT_DEPTH = 3
+
     RAW = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f\r￾￿]')  # такое XML не хранит как есть — строкой JSON
 
     @classmethod
     def el(cls, tag, v, attrs='', depth=0) -> str:
-        newline = '\n' if depth < 3 else ''
+        newline = '\n' if depth < cls.INDENT_DEPTH else ''
         if v is None:
             return f'<{tag}{attrs} t="z"/>'
         if isinstance(v, bool):
@@ -76,6 +78,11 @@ class XmlTree:
 
 class XlsxData:
     """Документ ↔ книга Excel с типами ячеек (число, текст, да/нет); длинные значения — частями на скрытом листе."""
+
+    INT_EXACT = 1e15
+    FLAT_MAX = 300
+    HEAD_ROWS = 2
+    PATH_DEPTH = 2
 
     CELL = 32000  # Excel хранит в ячейке до 32 767 знаков
     MAX_ROWS = 1000000
@@ -148,7 +155,9 @@ class XlsxData:
 
     @staticmethod
     def _num_ok(v) -> bool:
-        return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and abs(v) < 1e15
+        return (
+            isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and abs(v) < XlsxData.INT_EXACT
+        )
 
     def _plain(self, v) -> bool:
         """Значение пишется в ячейку как есть; пустая строка и null — только JSON-значением."""
@@ -180,7 +189,7 @@ class XlsxData:
                 for v in values:
                     for key in v:
                         subs.setdefault(key, None)
-                flat = len(subs) <= 300
+                flat = len(subs) <= self.FLAT_MAX
             if flat:
                 for key in subs:
                     is_json = not all(self._plain(v[key]) for v in values if key in v)
@@ -231,7 +240,7 @@ class XlsxData:
                 ).encode('utf-8')
             )
             for row_no, row in enumerate(rows, 1):
-                style = 1 if row_no == 1 else 2 if row_no == 2 and freeze == 2 else 0
+                style = 1 if row_no == 1 else 2 if row_no == self.HEAD_ROWS and freeze == self.HEAD_ROWS else 0
                 handle.write(
                     (
                         f'<row r="{row_no}">'
@@ -275,7 +284,7 @@ class XlsxData:
                         row.append(json.dumps(more, ensure_ascii=False) if more else None)
                         continue
                     if col_path[0] not in rec or (
-                        len(col_path) == 2
+                        len(col_path) == self.PATH_DEPTH
                         and (not isinstance(rec[col_path[0]], dict) or col_path[1] not in rec[col_path[0]])
                     ):
                         row.append(None)  # поля нет — пустая ячейка
@@ -536,7 +545,7 @@ class XlsxData:
             return text
         if not math.isfinite(num):  # «nan», «inf» в ячейке — текст, а не число
             return text
-        return int(num) if num.is_integer() and abs(num) < 1e15 and not re.search(r'[.eE]', text) else num
+        return int(num) if num.is_integer() and abs(num) < XlsxData.INT_EXACT and not re.search(r'[.eE]', text) else num
 
     def load(self, data) -> dict:
         try:
@@ -581,7 +590,7 @@ class XlsxData:
                 raise ValueError(f'В книге нет листа «{name}» — не переименовывайте и не удаляйте листы')
             keys = {cell: str(k).strip() for cell, k in (rows.get(2) or {}).items() if str(k).strip()}
             recs = []
-            for row_num in sorted(long_row for long_row in rows if long_row > 2):
+            for row_num in sorted(long_row for long_row in rows if long_row > self.HEAD_ROWS):
                 rec: dict = {}
                 for cell, key in keys.items():
                     if cell not in rows[row_num]:
@@ -775,6 +784,8 @@ class Load(Enum):
 class DataFile:
     """Форматы выгрузки и загрузки документа программы (общий список для всех вариантов выгрузки)."""
 
+    INT_EXACT = 1e15
+
     @staticmethod
     def no_const(name) -> None:
         """json.loads(parse_constant=...): NaN и Infinity в загружаемом файле — отказ."""
@@ -876,7 +887,7 @@ class DataFile:
     def _norm(cls, v) -> Any:
         if isinstance(v, bool) or v is None:
             return v
-        if isinstance(v, float) and v.is_integer() and abs(v) < 1e15:
+        if isinstance(v, float) and v.is_integer() and abs(v) < cls.INT_EXACT:
             return int(v)
         if isinstance(v, dict):
             return {k: cls._norm(x) for k, x in v.items()}

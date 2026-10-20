@@ -20,6 +20,10 @@ from data_file import Load
 from defaults import SrvVal
 from storage import Conflict
 
+ENTITY_SLASHES = 2
+DATE_LEN = 10
+MONTH_DAYS = 30
+
 DENIED = 'Удаление и настройки — только в разделе «Настройки» (нужен пароль администратора)'
 # поля товара, которые меняет само сохранение КП (цены и история): такие правки не модерируются
 AUTO_KEYS = {'price', 'priceCur', 'cost', 'costCur', 'margin', 'mmode', 'prices', 'updatedAt', 'pricesCount'}
@@ -277,6 +281,9 @@ def is_admin(handler) -> bool:
 class LoginGuard:
     """Защита входа от подбора паролей (менеджеры и администраторы): неверные попытки считаются по адресу компьютера."""
 
+    SHOW_MINUTES_FROM = 30
+    REST_WARN = 2
+
     FAILS: dict = {}
     WRONG = 'Неверный логин или пароль'
     _dummy = None
@@ -320,7 +327,7 @@ class LoginGuard:
 
     @staticmethod
     def wait_text(sec) -> str:
-        return f'{math.ceil(sec / 60)} мин' if sec > 30 else f'{sec} с'
+        return f'{math.ceil(sec / 60)} мин' if sec > LoginGuard.SHOW_MINUTES_FROM else f'{sec} с'
 
     @classmethod
     def refuse(cls, handler, sec) -> None:
@@ -348,7 +355,7 @@ class LoginGuard:
             )
         rest = cls._limits()[1] - len(cls._tries(addr))
         return handler.send(
-            403, 'text/plain; charset=utf-8', text + (f'. Осталось попыток: {rest}' if rest <= 2 else '')
+            403, 'text/plain; charset=utf-8', text + (f'. Осталось попыток: {rest}' if rest <= cls.REST_WARN else '')
         )
 
 
@@ -549,6 +556,8 @@ def _econ_rub(rec) -> tuple:
 class KpJournal:
     """Журнал КП с правами: чужие — с правом «КП других менеджеров», экономика чужого КП убирается."""
 
+    CACHE_MAX = 8
+
     @staticmethod
     def status(rec) -> str:
         """Статус хода сделки строки журнала (нет хода сделки — new)."""
@@ -589,7 +598,7 @@ class KpJournal:
         rows = [meta for meta in map(_loads, store.kp_metas_where(query, author, kind)) if isinstance(meta, dict)]
         with cls._lock:
             cls._cache = {k: v for k, v in cls._cache.items() if k[0] == key[0]}
-            while len(cls._cache) >= 8:
+            while len(cls._cache) >= cls.CACHE_MAX:
                 cls._cache.pop(next(iter(cls._cache)))
             cls._cache[key] = rows
         return rows
@@ -843,7 +852,7 @@ def guard(handler, store, method, path) -> Any:
             handler,
             store,
             'delete_attempt',
-            path.split('/')[2] if path.count('/') > 2 else None,
+            path.split('/')[2] if path.count('/') > ENTITY_SLASHES else None,
             path.rsplit('/', 1)[-1],
         )
     # только администратор: тарифы доставки по России
@@ -1185,6 +1194,10 @@ SECTION_FILE = {
 
 
 class AdminApi:
+    PERCENT_MAX = 100
+    AUDIT_YEARS_MAX = 20
+    CONFLICTS_SHOWN = 30
+
     def __init__(self, handler, store) -> None:
         self.handler, self.store = handler, store
 
@@ -1346,7 +1359,7 @@ class AdminApi:
                 feed_copy['driveHints'] = {k: str(data['driveHints'].get(k) or '')[:400] for k in ('belt', 'direct')}
             if 'discount' in data:
                 x: Any = feeds.parse_number(data.get('discount'))
-                feed_copy['discount'] = x if x and 0 < x < 100 else None
+                feed_copy['discount'] = x if x and 0 < x < self.PERCENT_MAX else None
             return self.ok(feeds.discount_plan(store, feed_copy))
         if method != 'POST':
             return self.err(405, 'Нужен POST')
@@ -2118,7 +2131,7 @@ class AdminApi:
             return self.ok(maintenance.summary(store, data_dir))
         if sub == 'maint/audit' and method == 'POST':
             years = int(self.data().get('years') or 0)
-            if years < 1 or years > 20:
+            if years < 1 or years > self.AUDIT_YEARS_MAX:
                 raise ValueError('Срок хранения журнала — от 1 до 20 лет')
             cfg = store.kv_get('settings') or {}
             cfg['auditYears'] = years
@@ -2854,7 +2867,7 @@ class AdminApi:
                         and DataFile.digest(now_of(section, x['id']), skip_keys) != own
                     ):
                         conf += 1
-                        if len(conflicts) < 30:
+                        if len(conflicts) < self.CONFLICTS_SHOWN:
                             conflicts.append(
                                 '{} «{}» — изменено и в программе после выгрузки'.format(
                                     {
@@ -3061,7 +3074,9 @@ def stats(store) -> dict:
         v = x.get('createdAt') or x.get('savedAt') or x.get('date') or ''
         try:
             return (
-                datetime.fromisoformat(v[:19]).date() if len(v) > 10 else datetime.strptime(v[:10], '%Y-%m-%d').date()
+                datetime.fromisoformat(v[:19]).date()
+                if len(v) > DATE_LEN
+                else datetime.strptime(v[:10], '%Y-%m-%d').date()
             )
         except ValueError:
             return None
@@ -3148,7 +3163,7 @@ def stats(store) -> dict:
             'today': count(1),
             'week': count(7),
             'month': count(30),
-            'sumMonth': sum((rub(x) or 0) for day_date, x in days if day_date and (today - day_date).days < 30),
+            'sumMonth': sum((rub(x) or 0) for day_date, x in days if day_date and (today - day_date).days < MONTH_DAYS),
         },
         'managers': sorted(mgr.values(), key=lambda mgr_rec: -mgr_rec['count'])[:top],
         'products': [prod_item for prod_item in prods if prod_item['count']][:top],

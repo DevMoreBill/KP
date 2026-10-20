@@ -29,6 +29,25 @@ from defaults import SrvVal
 from maker_logos import MakerLogos
 from storage import Conflict, WriteBatch
 
+PERCENT_MAX = 100
+DESC_MIN = 40
+PROP_KEY_MAX = 80
+PROP_VAL_MAX = 300
+LINE_MIN = 2
+TAB_TITLE_MIN = 3
+PROBE_MAX = 80
+BLANK_AREA = 40000
+BLANK_DENSITY = 0.012
+DESC_SHORT = 200
+JPEG_MARK = 0xFF
+PRESSURE_MIN = 2
+PRESSURE_MAX = 60
+PRESSURE_NEAR = 0.6
+CUR_AT = 3
+NOIMG_SHOWN = 3
+SAMPLE_MAX = 8
+STUB_CATS = 4
+
 KV_KEY = 'feeds'
 CACHE_SEC = 1800  # скачанный фид YML годен полчаса
 IMAGE_STORE: Any = None  # хранилище изображений data/img (images.ImageStore) — задаёт kp_server при запуске
@@ -128,7 +147,7 @@ def feed_save(store, feed) -> dict:
         name=str(feed.get('name') or old.get('name') or fid).strip()[:80],
         url=url,
         maker=str(feed.get('maker') or '').strip()[:120],
-        discount=disc if disc and 0 < disc < 100 else None,
+        discount=disc if disc and 0 < disc < PERCENT_MAX else None,
         auto=feed.get('auto', kind == 'yml') is True,
         pageDesc=feed.get('pageDesc', old.get('pageDesc', kind == 'yml')) is True,
         cats=_cats_ok(feed.get('cats')) if isinstance(feed.get('cats'), dict) else old.get('cats') or {},
@@ -415,7 +434,7 @@ def page_desc(html) -> str:
             if match.group(1).lower() in ('meta', 'link'):
                 continue
             text = _no_sales(_html_text(_inner_html(html, match)))
-            if len(text) >= 40:
+            if len(text) >= DESC_MIN:
                 return text
     return ''
 
@@ -614,7 +633,12 @@ def _table_props(html, pats=PROP_PATS, extra=lambda html: [], limit: int = 60) -
     for key, val in found:
         k = re.sub(r'\s+', ' ', _html_text(key)).strip(' :')
         v = re.sub(r'\s*\n\s*', '; ', _html_text(val)).strip(' ;')
-        if 1 < len(k) <= 80 and 0 < len(v) <= 300 and k.lower() not in seen and not re.search(SALES_RX, k + ' ' + v):
+        if (
+            1 < len(k) <= PROP_KEY_MAX
+            and 0 < len(v) <= PROP_VAL_MAX
+            and k.lower() not in seen
+            and not re.search(SALES_RX, k + ' ' + v)
+        ):
             seen.add(k.lower())
             out.append([k, v])
     return out[:limit]
@@ -687,8 +711,8 @@ def _tab_texts(html) -> list:
         inner = _inner_html(html, match)
         inner = re.sub(r'(?i)</t[dh]\s*>', ' ', re.sub(r'(?i)</tr\s*>|<table\b[^>]*>', '\n<br>', inner))
         text = _no_sales(re.sub(r'[ \t]{2,}', ' ', _html_text(inner)))
-        lines = [x for x in text.split('\n') if len(x) > 2 and x not in seen]
-        if sum(len(x) for x in lines) >= 40:
+        lines = [x for x in text.split('\n') if len(x) > LINE_MIN and x not in seen]
+        if sum(len(x) for x in lines) >= DESC_MIN:
             seen.update(lines)
             out.append('\n'.join(lines))
     return out
@@ -705,7 +729,7 @@ def page_apply(html, props) -> str:
         cut = re.search(r'(?i)<h[1-6]\b|class\s*=\s*["\'][^"\']*\btab', chunk)
         text = _html_text(chunk[: cut.start()] if cut and cut.start() > 0 else chunk[:3000])
         text = re.sub(r'\s*\n\s*', '; ', text.replace('• ', '')).strip(' ;:')
-        if len(text) >= 3 and not re.match(r'(?i)^(описание|характеристики|документ|отзыв)', text):
+        if len(text) >= TAB_TITLE_MIN and not re.match(r'(?i)^(описание|характеристики|документ|отзыв)', text):
             best = text[:600]  # последнее подходящее — содержимое вкладки, первое бывает её заголовком
     return best
 
@@ -737,7 +761,7 @@ def probe_images(urls, opts) -> tuple:
             except Exception:
                 return False
             with _PROBE_LOCK:
-                if len(_PROBE) > 80:
+                if len(_PROBE) > PROBE_MAX:
                     for k in sorted(_PROBE, key=lambda k: _PROBE[k][0])[:40]:
                         _PROBE.pop(k, None)
                 _PROBE[u] = (datetime.now().timestamp(), hit[0], hit[1])
@@ -747,7 +771,9 @@ def probe_images(urls, opts) -> tuple:
             return False
         if width and height and min(width, height) < min_px:
             return False
-        return not (blank and width and height and width * height >= 40000 and len(data) / (width * height) < 0.012)
+        return not (
+            blank and width and height and width * height >= BLANK_AREA and len(data) / (width * height) < BLANK_DENSITY
+        )
 
     with ThreadPoolExecutor(max_workers=6) as executor:
         ok = list(executor.map(one, urls))
@@ -779,11 +805,11 @@ def page_text(url, opts=None) -> dict:
     have = set(desc.split('\n'))
     for tab_text in _tab_texts(clean):
         add = [x for x in tab_text.split('\n') if x not in have]
-        if sum(len(x) for x in add) >= 40:
+        if sum(len(x) for x in add) >= DESC_MIN:
             have.update(add)
             desc = (desc + '\n\n' + '\n'.join(add)).strip()
     desc = desc[:20000]
-    if len(desc) < 200:
+    if len(desc) < DESC_SHORT:
         body = re.sub(
             r'(?is)<(script|style|noscript|svg|nav|header|footer|form|select|button)\b.*?</\1\s*>', ' ', clean
         )
@@ -792,7 +818,7 @@ def page_text(url, opts=None) -> dict:
             r'(?is)<body\b[^>]*>(.*)</body>', body
         )
         text = _no_sales(_html_text(main_match.group(1) if main_match else body))
-        desc = '\n'.join(x for x in text.split('\n') if len(x) > 2)[:12000] if len(text) > len(desc) else desc
+        desc = '\n'.join(x for x in text.split('\n') if len(x) > LINE_MIN)[:12000] if len(text) > len(desc) else desc
     if not (title or desc or props):
         raise ValueError('на странице не нашлось текста')
     opts = opts or {}
@@ -1177,7 +1203,7 @@ def preview(store, feed_cfg, types) -> dict:
         'match': feed.get('match'),
         'extra': feed.get('extra'),
         'kind': feed_cfg.get('kind') or 'yml',
-        'withDesc': sum(1 for offer in feed['offers'] if len(offer.get('desc') or '') >= 40),
+        'withDesc': sum(1 for offer in feed['offers'] if len(offer.get('desc') or '') >= DESC_MIN),
         'available': sum(1 for offer in offs if offer['available']),
         'withPrice': sum(1 for offer in offs if offer['price']),
         'withQty': sum(1 for offer in offs if offer['qty'] is not None),
@@ -1211,7 +1237,7 @@ def _img_size(data) -> tuple:
         if data[:2] == b'\xff\xd8':
             i = 2
             while i < len(data) - 9:
-                if data[i] != 0xFF:
+                if data[i] != JPEG_MARK:
                     i += 1
                     continue
                 marker = data[i + 1]
@@ -1325,11 +1351,11 @@ def _pressures(doc) -> set:
             if re.search(r'давлен', k, re.I) and not re.search(r'мин|вход|разреж|вакуум|шин', k, re.I):
                 for x in re.findall(r'\d+(?:[.,]\d+)?', str(row.get('v') or '')):
                     num = float(x.replace(',', '.'))
-                    if 2 <= num <= 60:
-                        out.add(7.5 if num == 7 else num)
+                    if PRESSURE_MIN <= num <= PRESSURE_MAX:
+                        out.add(feed_files.PRESSURE_ALIAS.get(num, num))
     pressure = parse_number((doc.get('attrs') or {}).get('pressure'))
     if not out and pressure:
-        out.add(7.5 if pressure == 7 else pressure)
+        out.add(feed_files.PRESSURE_ALIAS.get(pressure, pressure))
     return out
 
 
@@ -1747,11 +1773,15 @@ def build_plan(store, feed, offs, feed_docs=None) -> dict:
                 cfg['rec'] not in (None, -1) and offer_cfg['rec'] != cfg['rec']
             ):
                 continue
-            offer_pressure = 7.5 if offer_cfg['p'] == 7 else offer_cfg['p']
+            offer_pressure = feed_files.PRESSURE_ALIAS.get(offer_cfg['p'], offer_cfg['p'])
             if pressures and offer_pressure and offer_pressure not in pressures:
                 continue
             own = parse_number((doc.get('attrs') or {}).get('pressure'))
-            rank = 0 if own and offer_pressure == (7.5 if own == 7 else own) else (1 + (offer_pressure or 0) / 100)
+            rank = (
+                0
+                if own and offer_pressure == feed_files.PRESSURE_ALIAS.get(own, own)
+                else (1 + (offer_pressure or 0) / 100)
+            )
             pairs.append((2, rank, offer_ix, doc['id']))
             lat_hit = True
         for offer_ix, rank in [] if lat_hit else _code_pairs(doc, offs, ocfg, by_code):
@@ -1807,7 +1837,7 @@ def _code_pairs(doc, offs, ocfg, by_code) -> list:
                 continue
         elif doc_code['p'] is not None:  # «К2/10» и «К2»: давление позиции парса — из характеристик
             offer_pressure = ocfg[i]['p']
-            rank += 0 if offer_pressure and abs(offer_pressure - doc_code['p']) < 0.6 else 0.5
+            rank += 0 if offer_pressure and abs(offer_pressure - doc_code['p']) < PRESSURE_NEAR else 0.5
         out.append((i, rank + (offer_cfg['size'] != doc_code['size']) * 0.2, offer_cfg['gen']))
     gens = {group_key for _, _, group_key in out}
     if not doc_code['gen'] and len(gens) > 1 and '' not in gens:
@@ -1838,7 +1868,7 @@ def discount_rules(raw) -> list:
         if not isinstance(rule, dict):
             continue
         pct = parse_number(rule.get('pct'))
-        if pct is None or not 0 < pct < 100:
+        if pct is None or not 0 < pct < PERCENT_MAX:
             continue
         cats = [str(cat)[:40] for cat in (rule.get('cats') or []) if re.match(r'^[a-z0-9_-]{1,40}$', str(cat))][:40]
         lim = {k: parse_number(rule.get(k)) for k in ('kwMin', 'kwMax')}
@@ -2051,7 +2081,7 @@ def _change(cid, doc, change) -> dict:
         'kind': change[0],
         'old': change[1],
         'new': change[2],
-        'cur': change[3] if len(change) > 3 else '',
+        'cur': change[3] if len(change) > CUR_AT else '',
     }
 
 
@@ -2918,7 +2948,7 @@ def import_feed(
             errors.append(f'Фото не скачались: {len(istat["fail"])} (первое: {istat["fail"][0]})')
         if pstat['noimg']:
             errors.append(
-                f'На странице товара не найдено фото, позиций: {len(pstat["noimg"])} ({"; ".join(pstat["noimg"][:3])}{" …" if len(pstat["noimg"]) > 3 else ""})'
+                f'На странице товара не найдено фото, позиций: {len(pstat["noimg"])} ({"; ".join(pstat["noimg"][:3])}{" …" if len(pstat["noimg"]) > NOIMG_SHOWN else ""})'
             )
         pics = [
             len(card.get('gallery') or []) + (1 if (card.get('photo') or {}).get('src') else 0)
@@ -3094,7 +3124,7 @@ def discount_plan(store, feed) -> dict:
         i = _disc_pick(feed, doc)[2]
         group = groups[i] if i is not None else other
         group['count'] += 1
-        if len(group['sample']) < 8:
+        if len(group['sample']) < SAMPLE_MAX:
             group['sample'].append(doc.get('name') or '')
         cat = (doc.get('attrs') or {}).get('cat')
         if group is other and cat in rule_cats:
@@ -3267,7 +3297,7 @@ def _placeholders(offers) -> set:
     for offer in offers:
         for u in offer['pictures'][:1]:
             cats.setdefault(u, set()).add(offer['cat'])
-    return {u for u, cat_offers in cats.items() if len(cat_offers) > 4}
+    return {u for u, cat_offers in cats.items() if len(cat_offers) > STUB_CATS}
 
 
 def upgrade(store, types, version, log=print) -> None:

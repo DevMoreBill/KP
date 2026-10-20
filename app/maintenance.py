@@ -14,6 +14,9 @@ from defaults import SrvVal
 from server_log import ServerLog
 from storage import DbZip
 
+NIGHT_END = 6
+NIGHT_START = 22
+
 AUDIT_YEARS = 2  # по умолчанию; своё — kv settings.auditYears
 IMG_RX = re.compile(r'/img/([^"\\?#\s<>]+?\.(?:jpg|jpeg|png|webp|pdf))', re.I)
 IMG_EXTS = ('.jpg', '.jpeg', '.png', '.webp', '.pdf')  # .pdf — буклет окраски станции
@@ -266,7 +269,7 @@ def db_maintenance(store, vacuum=None) -> dict:
     state_data = state(store)
     last = (state_data.get('vacuum') or {}).get('at') or ''
     if vacuum is None:  # само — только ночью: сжатие держит запись в базу (десятки секунд на большой базе)
-        night = datetime.now().hour < 6 or datetime.now().hour >= 22
+        night = datetime.now().hour < NIGHT_END or datetime.now().hour >= NIGHT_START
         vacuum = night and (
             not last
             or last

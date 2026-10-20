@@ -9,6 +9,11 @@ from data_file import Load
 
 
 class CatalogPatch:
+    LIST_MAX = 50
+    ROWS_MAX = 300
+    TEXT_MAX = 300
+    FEATURE_TEXT_MAX = 20000
+    PAIR = 2
     FORMAT = 'kp-catalog-patch'
     MAX_ITEMS = 50000
     MAX_TEXT = 4000
@@ -46,14 +51,14 @@ class CatalogPatch:
         return v is None or isinstance(v, (int, float, bool)) or (isinstance(v, str) and len(v) <= self.MAX_TEXT)
 
     def _groups(self, v):
-        if not isinstance(v, list) or len(v) > 50:
+        if not isinstance(v, list) or len(v) > self.LIST_MAX:
             return False
         for group in v:
             if (
                 not isinstance(group, dict)
                 or not isinstance(group.get('name', ''), str)
                 or not isinstance(group.get('rows'), list)
-                or len(group['rows']) > 300
+                or len(group['rows']) > self.ROWS_MAX
             ):
                 return False
             for row in group['rows']:
@@ -61,20 +66,20 @@ class CatalogPatch:
                     not isinstance(row, dict)
                     or not isinstance(row.get('k'), str)
                     or not self._scalar(row.get('v'))
-                    or len(row.get('k')) > 300
+                    or len(row.get('k')) > self.TEXT_MAX
                 ):
                     return False
         return True
 
     def _features(self, v):
-        if not isinstance(v, list) or len(v) > 50:
+        if not isinstance(v, list) or len(v) > self.LIST_MAX:
             return False
         return all(
             isinstance(feat, dict)
             and isinstance(feat.get('text', ''), str)
-            and len(feat.get('text', '')) <= 20000
+            and len(feat.get('text', '')) <= self.FEATURE_TEXT_MAX
             and isinstance(feat.get('label', ''), str)
-            and len(feat.get('label', '')) <= 300
+            and len(feat.get('label', '')) <= self.TEXT_MAX
             for feat in v
         )
 
@@ -84,13 +89,16 @@ class CatalogPatch:
             return 'нет id позиции'
         attrs = x.get('attrs', {})
         if not isinstance(attrs, dict) or any(
-            not self.KEY.match(str(k)) or not isinstance(v, list) or len(v) != 2 or not all(self._scalar(z) for z in v)
+            not self.KEY.match(str(k))
+            or not isinstance(v, list)
+            or len(v) != self.PAIR
+            or not all(self._scalar(z) for z in v)
             for k, v in attrs.items()
         ):
             return 'поля категории в неверном виде'
         sets = x.get('set', {})
         if not isinstance(sets, dict) or any(
-            k not in self.SET or not isinstance(v, list) or len(v) != 2 or not all(self._scalar(z) for z in v)
+            k not in self.SET or not isinstance(v, list) or len(v) != self.PAIR or not all(self._scalar(z) for z in v)
             for k, v in sets.items()
         ):
             return 'название или строка характеристик в неверном виде'
@@ -209,6 +217,9 @@ class CatalogPatch:
 class CatalogSheet:
     """Книга Excel «Каталог поставщика для правки»."""
 
+    INT_EXACT = 1e15
+    HEAD_ROWS = 2
+
     ORIG = '_было'
     MAX_ROWS = 50000
 
@@ -254,7 +265,7 @@ class CatalogSheet:
             num_text = text.replace('\xa0', '').replace(' ', '').replace(',', '.')
             if re.match(r'^-?\d+(\.\d+)?$', num_text):
                 v = float(f'{float(num_text):.12g}')  # Excel пишет 7,3 как 7.2999999999999998
-                return int(v) if v.is_integer() and abs(v) < 1e15 else v
+                return int(v) if v.is_integer() and abs(v) < CatalogSheet.INT_EXACT else v
         return text[: CatalogPatch.MAX_TEXT]
 
     def patch(self, data: bytes, title: str = '') -> dict:
@@ -274,7 +285,7 @@ class CatalogSheet:
                             pass
         nums, items, seen = self._nums(), [], 0
         for name, rows in book:
-            if name == self.ORIG or len(rows) < 2 or str(rows[1].get(0, '')).strip() != 'id':
+            if name == self.ORIG or len(rows) < self.HEAD_ROWS or str(rows[1].get(0, '')).strip() != 'id':
                 continue
             keys = {cell: str(k).strip() for cell, k in rows[1].items() if cell > 0}
             for row in rows[2:]:
