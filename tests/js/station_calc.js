@@ -16,12 +16,13 @@ global.typeById=id=>TYPES[id]||{};
 global.catCache=[]; global.DEF=()=>null; global.FEAT={ on:()=>true };
 global.esc=s=>String(s??'').replace(/[&<>"]/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit.js', 'kit-view.js', 'station-ui.js', 'tz/index.js', 'station-doc.js']){
+for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit.js', 'kit-view.js', 'tz/index.js', 'station/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));
 global.isKit=x=>!!(x && x.kit);
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
-if (GOLDEN){ global.Spoiler??={ attr:k=>` data-sp="${k}"` }; const run0=StationCalc.run; let inHtml=false;   // расчётная записка на экране — по каждому расчёту
+if (GOLDEN){ global.Spoiler={ attr:k=>` data-sp="${k}"` };   // заглушка, как при записи слепка (настоящий Spoiler — в station/index.js)
+  const run0=StationCalc.run; let inHtml=false;   // расчётная записка на экране — по каждому расчёту
   StationCalc.run=function(x, ...rest){ const out=run0.call(this, x, ...rest); if (!inHtml){ inHtml=true;
     try{ GOLDEN.put('StationCalc.html', StationCalc.html(x)); } catch(e){ GOLDEN.put('StationCalc.html', 'ошибка: '+e.message); } finally{ inHtml=false; } } return out; };
   GOLDEN.wrap(StationCalc, ['run', 'docGroups']); process.on('exit', ()=>GOLDEN.save(process.env.KP_GOLDEN)); }
@@ -282,7 +283,7 @@ Check.run('компрессорная: ошибки — мало произво�
 });
 
 Check.run('справка «Как расставляется оборудование» собирается (без удалённых констант)', ()=>{
-  const t=StationUi.how(); assert.ok(/Свод правил компоновки/.test(t) && /Проход оператора внутри — всегда/.test(t) && /габарите перевозки/.test(t) && /Вентиляция/.test(t) && !/undefined|NaN/.test(t), t.slice(0, 300));
+  const t=LayoutTab.how(); assert.ok(/Свод правил компоновки/.test(t) && /Проход оператора внутри — всегда/.test(t) && /габарите перевозки/.test(t) && /Вентиляция/.test(t) && !/undefined|NaN/.test(t), t.slice(0, 300));
 });
 
 Check.run('погрешность данных (calc.tolerance): недобор до 2 % — не ошибка, больше — ошибка', ()=>{

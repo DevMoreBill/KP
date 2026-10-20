@@ -59,7 +59,7 @@ let EDIT=null;
 
 const ED_TABS=[['main','Основное'],['kit','Состав станции'],['layout','Компоновка'],['ai','✨ Заполнить с ИИ'],['desc','Описание и фото'],['spec','Характеристики'],['opts','Опции и услуги']];
 // вкладки позиции: «Состав станции» — только у станций в контейнере (и у сборок, заведённых раньше), «Компоновка» — у станций
-const edTabs = x => { const st=!!stationOf(x), T=ED_TABS.filter(([k])=>(k!=='kit' || canKit(x)) && (k!=='layout' || StationUi.on(x)) && (k!=='ai' || (FEAT.on('ai') && !st)));
+const edTabs = x => { const st=!!stationOf(x), T=ED_TABS.filter(([k])=>(k!=='kit' || canKit(x)) && (k!=='layout' || StationUi.enabled(x)) && (k!=='ai' || (FEAT.on('ai') && !st)));
   return st ? [...T.filter(([k])=>k==='kit' || k==='layout'), ...T.filter(([k])=>k!=='kit' && k!=='layout')] : T; };   // станция: состав и компоновка — первыми
 
 function featId(f){ if(!f.id) f.id=uid(); return f.id; }
@@ -86,7 +86,7 @@ function closeEditor(){ const d=$('#edlg'); EDIT=null; if(d.open) d.close(); ren
 function renderEditor(){
   const d=$('#edlg'); if(!EDIT) return; const i=EDIT.i, x=S.items[i]; if(!x){ closeEditor(); return; }
   if (!edTabs(x).some(([k])=>k===EDIT.tab)) EDIT.tab='main';
-  if (!CATED && EDIT.tab!=='layout' && StationUi.on(x)) StationImages.soon(x);   // 3D-вид в разрезе и листы — сразу по составу, не только на «Компоновке»
+  if (!CATED && EDIT.tab!=='layout' && StationUi.enabled(x)) StationImages.soon(x);   // 3D-вид в разрезе и листы — сразу по составу, не только на «Компоновке»
   const focusP=document.activeElement?.dataset?.p; const sc=d.querySelector('.ed-b')?.scrollTop||0;
   const body = EDIT.tab==='main'?edMain(x,i): EDIT.tab==='kit'?KitView.render(x,i): EDIT.tab==='layout'?StationUi.tab(x,i): EDIT.tab==='desc'?edDesc(x,i): EDIT.tab==='spec'?edSpec(x,i): EDIT.tab==='opts'?edOpts(x,i): edAI(x,i);
   const head = CATED ? `<h3><span class="ed-cat">Каталог</span>${esc(x.name||'Новая позиция')}</h3><button class="btn" type="button" data-catcancel>Отмена</button>${CW.mod&&!ADMIN.on?'<span class="muted ed-modnote">Изменения будут отправлены на модерацию</span>':''}<button class="btn primary" type="button" data-catsave>${catSaveLabel()}</button>`
@@ -137,7 +137,7 @@ function edStationPhoto(x,i){
   const ps=kitParts(x).map((p,j)=>({p,j})).filter(o=>o.p.photo && o.p.photo.src), cur=x.photo && x.photo.src;
   const from=cur ? ps.find(o=>o.p.photo.src===cur) : null;
   return `<div class="st-ph"><p class="st-phn"><b>Это фото станции целиком</b> — оно стоит в строке КП и на титульном листе. Лучше всего — общий вид станции или контейнера.
-      ${from?`Сейчас — фото элемента «${esc(from.p.name||'без названия')}» из состава.`:x.photo&&x.photo.gen==='st3d'?'Сейчас — 3D-вид с вкладки «Компоновка»: он сам обновляется при изменении состава и контейнера.':cur?'Сейчас — своё фото.':StationUi.on(x)?'Фото пока нет — 3D-вид станции вставляется с вкладки «Компоновка».':'Фото пока нет.'}
+      ${from?`Сейчас — фото элемента «${esc(from.p.name||'без названия')}» из состава.`:x.photo&&x.photo.gen==='st3d'?'Сейчас — 3D-вид с вкладки «Компоновка»: он сам обновляется при изменении состава и контейнера.':cur?'Сейчас — своё фото.':StationUi.enabled(x)?'Фото пока нет — 3D-вид станции вставляется с вкладки «Компоновка».':'Фото пока нет.'}
       Фото компрессора, насоса, осушителя и других элементов — на вкладке «Состав станции»: в КП они стоят рядом с описанием элемента.</p>
     ${ps.length?`<div class="st-phl"><span class="muted">Взять фото элемента состава:</span>${ps.map(({p,j})=>`<button type="button" class="st-phi${p.photo.src===cur?' on':''}" data-a="stPhoto" data-i="${i}" data-j="${j}" title="${esc(p.name||'')}"><img src="${esc(p.photo.src)}" alt=""><small>${esc(p.role==='container'?'контейнер':p.name||'элемент')}</small></button>`).join('')}</div>`:''}</div>`;
 }

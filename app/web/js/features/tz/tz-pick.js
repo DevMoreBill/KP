@@ -486,7 +486,7 @@ export class TzPick {
     const note = await this.run(station, need);
     kitSync(station);
     StationUi.cache.delete(station.id);
-    StationSize.apply(station, true);
+    StationSize.refresh(station);
     stationFill(station);
     stationAutoName(station);
     return [note, added.length ? `Добавлено по ТЗ: ${added.join(', ')}` : ''].filter(Boolean).join('. ');

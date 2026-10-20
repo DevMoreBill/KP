@@ -131,7 +131,7 @@ class NewStation {
     const pv=this.pv; if (!pv || pv.key!==this.key()) return '';
     if (pv.busy) return '<p class="muted ns-pv-w">Подбираю станцию…</p>';
     if (pv.err || !pv.x) return `<p class="msg err">Не получилось подобрать: ${esc(pv.err||'')}</p>`;
-    const x=pv.x, plan=StationUi.on(x) ? StationUi.plan(x) : null, c=kitContainer(x), n=Mm.text;
+    const x=pv.x, plan=StationUi.enabled(x) ? StationUi.plan(x) : null, c=kitContainer(x), n=Mm.text;
     const size=plan && plan.geo && plan.geo.ext ? `${n(plan.geo.ext[0])} × ${n(plan.geo.ext[1])} × ${n(plan.geo.ext[2])} мм` : '';
     const miss=String(StationReq.of(x).pick||'').match(/В каталоге нет: ([^]*?)(?: — добавьте вручную|$)/);
     const bad=plan && plan.level==='error' ? (plan.issues.find(i=>i.level==='error')||{}).text : '', wide=plan && (plan.issues||[]).find(i=>i.wide);

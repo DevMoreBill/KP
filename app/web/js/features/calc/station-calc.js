@@ -84,7 +84,7 @@ export class StationCalc {
 
   /** Блокирующие ошибки: КП не сохраняется, пока их не исправят или не отметят «отклонения согласованы». */
   static errors(station) {
-    if (!StationUi.on(station) || !isKit(station)) return [];
+    if (!StationUi.enabled(station) || !isKit(station)) return [];
     const result = StationCalc.run(station);
     return result.accept ? result.errors.filter(err => /^Требования: «/.test(err.text)) : result.errors;
   }
@@ -168,7 +168,7 @@ export class StationCalc {
    * согласованные отклонения — всегда; заказчику — только расчёт и допущения (внутренние списки остаются в программе).
    */
   static docGroups(station) {
-    if (!StationUi.on(station) || !isKit(station)) return [];
+    if (!StationUi.enabled(station) || !isKit(station)) return [];
     const result = StationCalc.run(station);
     if (!result.sections.length) return [];
     const dev =

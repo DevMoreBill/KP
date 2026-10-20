@@ -268,15 +268,15 @@ class StationReq {
     const fk0=k || String(t.dataset.p||'').split('.').pop(); if (fk0==='recvSize' || fk0==='recvWhy') delete r.recvSizeAuto;   // и типоразмер ресивера (500 л «нехватка места» подбора)
     ExpertLog.note(x);
     if (t.dataset.stpar!=null) StationParams.changed(x);
-    if (k==='recv' || k==='recvOut'){ StationUi.cache.delete(x.id); StationSize.apply(x, true); }
+    if (k==='recv' || k==='recvOut'){ StationUi.cache.delete(x.id); StationSize.refresh(x); }
     // исходные данные ресиверов — число ресиверов в составе по расчёту
     const fk=k || String(t.dataset.p||'').split('.').pop();
-    if (ReceiverSync.KEYS.includes(fk)){ const m=ReceiverSync.apply(x); if (m){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); toast('Ресиверы по расчёту: '+m); } }
+    if (ReceiverSync.KEYS.includes(fk)){ const m=ReceiverSync.apply(x); if (m){ kitSync(x); StationUi.cache.delete(x.id); StationSize.refresh(x); toast('Ресиверы по расчёту: '+m); } }
     // главное требование (расход, давление; мощность ДГУ; подача и напор насосов) изменилось у подобранной станции —
     // комплектующие подбираются заново сами, с уведомлением, что заменено
     if (k==='basis' && kitMainPart(x)){ persist(); StationQuick.auto(i, 'flow'); return; }   // другие кубометры — другая потребность
     if (StationQuick.AUTO.includes(fk) && t.dataset.p && kitMainPart(x)){ r[fk]=t.value; persist(); StationQuick.auto(i, fk); return; }
-    if ((k==='ats' || k==='scada') && t.checked){ const a=this.ensureParts(x); if (a.length){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); toast('Добавлено в состав: '+a.join(', ')); } }
+    if ((k==='ats' || k==='scada') && t.checked){ const a=this.ensureParts(x); if (a.length){ kitSync(x); StationUi.cache.delete(x.id); StationSize.refresh(x); toast('Добавлено в состав: '+a.join(', ')); } }
     persist(); renderForm();
   }
 }
@@ -547,7 +547,7 @@ class KitNeed {
   }
   /** состав изменился: закупка, компоновка, характеристики и название станции, перерисовка (размер контейнера — до
    *  характеристик: они берут ту же расстановку, второй раз она не считается) */
-  static done(x){ kitSync(x); StationUi.cache.delete(x.id); StationSize.apply(x, true); stationFill(x); stationAutoName(x); x.page=true; persist(); renderEditor(); renderForm(); }
+  static done(x){ kitSync(x); StationUi.cache.delete(x.id); StationSize.refresh(x); stationFill(x); stationAutoName(x); x.page=true; persist(); renderEditor(); renderForm(); }
   /** одна кнопка: число агрегатов и бак — в составе, остальное — рекомендуемый из каталога (после осушителя могут
    *  понадобиться фильтры — до 4 проходов) */
   static async fillAll(i){
@@ -632,7 +632,7 @@ class KitView {
   static cont(x, i, p, j){
     const sel=(attr, list, cur, lab)=>`<label class="f"><span>${lab}</span><select data-kitct="${i}.${j}" data-fld="${attr}">${list.map(([v, l])=>`<option value="${esc(v)}"${v===cur ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
     const ct=p._costText ?? (p.cost ? String(p.cost/100).replace('.', ',') : ''), P=`items.${i}.kit.parts.${j}`;
-    const auto=StationUi.on(x) && StationGeo.FLEX[p.ctype], sz=String(p.size||'').trim();
+    const auto=StationUi.enabled(x) && StationGeo.FLEX[p.ctype], sz=String(p.size||'').trim();
     return `<div class="kit-cont">
       <div class="kc-g">${sel('ctype', CONTAINER_TYPES.map(c=>[c.id, c.name]), p.ctype, 'Контейнер')}
         <label class="f"><span>Размер Д × Ш × В, мм${auto && p.sizeAuto && sz ? ` <small class="muted">${p.lenFix ? 'длина задана' : 'по оборудованию'}</small>` : ''}${auto ? tip('Все три окошка пустые — размер по оборудованию. Только длина (например, 10000) — длина заданная, ширина, высота и плотность компоновки (просторно, плотно, максимально плотно) — по оборудованию. Все три — размер целиком вручную.') : ''}</span>${DimInput.html(`data-kitct="${i}.${j}" data-fld="size"`, p.size||'', {ph:ctypeOf(p.ctype).size, label:'Размер контейнера', lenOnly:auto, unit:''})}</label>
@@ -704,7 +704,7 @@ class KitView {
   static tankSize(x, p, kind){
     if (kind!=='tank' || StationEquip.dims(p, kind).known) return '';
     // как в компоновке (под высоту и проход отсека); компоновки нет — по «Настройкам»
-    const v=TankSize.vol(p), pl=StationUi.on(x) && kitContainer(x) ? StationUi.plan(x) : null, it=pl && (pl.items||[]).find(i=>i.tank && i.id===p.id);
+    const v=TankSize.vol(p), pl=StationUi.enabled(x) && kitContainer(x) ? StationUi.plan(x) : null, it=pl && (pl.items||[]).find(i=>i.tank && i.id===p.id);
     const d=it ? { l:Math.max(it.lx, it.ly), w:Math.min(it.lx, it.ly), h:it.h } : TankSize.of(v||1000);
     return `<small class="muted kd-tank">Габариты по объёму${v ? ' '+Mm.text(v)+' л' : ''}: ${esc(TankSize.text(d))} — прямоугольный, стенка ${StationMatrix.tank().wall} мм (требует подтверждения изготовителем). Свои — строкой «Габариты».</small>`;
   }
@@ -728,7 +728,7 @@ class KitView {
   static sum(x, i){
     const parts=kitParts(x); if (!parts.length) return '';
     const cost=kitCost(x), miss=parts.filter(p=>!p.cost && (p.role==='container' || KitScope.of(p)==='our'));
-    const plan=StationUi.on(x) && kitContainer(x) ? StationUi.plan(x) : null;
+    const plan=StationUi.enabled(x) && kitContainer(x) ? StationUi.plan(x) : null;
     const lay=plan && plan.level!=='none' ? (plan.level==='error' ? ['bad', plan.assumed ? '✕ Компоновка: проверьте габариты' : '✕ Не помещается в контейнер'] : plan.level==='warn' ? ['warn', '⚠ Компоновка — есть замечания'] : ['on', '✓ Помещается']) : null;
     return `<div class="kit-sum"><span>Закупка изделия${parts.some(p=>p.costCur && p.costCur!=='RUB') ? ' (по курсам КП)' : ''}</span><b>${Number.isFinite(cost) ? money(cost)+' ₽' : 'нет курса валюты — укажите в шаге «Цены»'}</b>
       ${lay ? `<button type="button" class="chip sm ${lay[0]}" data-edtab="layout">${lay[1]} → компоновка</button>` : ''}

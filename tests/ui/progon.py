@@ -479,7 +479,7 @@ class Scenario(UiRun):
         pg.click('dialog.md-dlg [data-md=apply]')
         yes = 'dialog[open] button[data-v="1"]:has-text("Да, из модулей")'   # кнопка вопроса, не кнопка вида в окне станции
         pg.wait_for_selector(yes)
-        self.snap('47c_st_mods_ask', 'dialog[open]:has(%s)' % 'button:has-text("Да, из модулей")', wait=200)
+        self.snap('47c_st_mods_ask', 'dialog.st-confirm[open]:not(.md-dlg):has(button[data-v="1"])', wait=200)
         pg.click(yes)
         self.wait(2500)
         st = self.ev("(()=>{ const x=S.items[S.items.length-1], c=kitContainer(x), j=kitParts(x).find(p=>p.modJoin); return { q:c.qty, n:c.mods&&c.mods.cells.length, j:j?j.qty:0, size:c.size }; })()")
@@ -612,7 +612,8 @@ class Scenario(UiRun):
         if self.phone:
             self.go(self.ev("StepList.visible().slice(-1)[0].id"))
             b = self.pg.locator('#mbar [data-a=download]').first
-        if b.is_disabled():   # не всё заполнено (частичный прогон) — что мешает, без 30 с ожидания
+        # не всё заполнено (частичный прогон) — что мешает, без 30 с ожидания; на телефоне тогда вместо «Сохранить» — «Проверить»
+        if not b.count() or b.is_disabled():
             self.errs.append(('save', 'NOTE', '«Сохранить КП» неактивна: ' + '; '.join(meta['problems_before_save'] or [])))
             return
         b.dblclick()

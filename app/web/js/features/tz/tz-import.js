@@ -710,7 +710,7 @@ export class TzImport {
     if (need.kind === 'dgu' && hours > 0) StationDefaults.retank(station, hours);
     kitSync(station);
     StationUi.cache.delete(station.id);
-    StationSize.apply(station, true);
+    StationSize.refresh(station);
     stationFill(station);
     stationAutoName(station);
   }
