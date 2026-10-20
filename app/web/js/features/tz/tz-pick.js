@@ -10,6 +10,7 @@ import { StationLayout } from '../layout/station-layout.js';
 import { StationMatrix } from '../layout/station-matrix.js';
 import { StationRules } from '../rules/station-rules.js';
 import { StationSup } from './station-sup.js';
+import { TzFit } from './tz-fit.js';
 
 /** Подбор оборудования станции из каталога по требованиям ТЗ — без недобора (в пользу заказчика). */
 export class TzPick {
@@ -19,6 +20,32 @@ export class TzPick {
   static TYPE = { comp: 'st_comp', pump: 'st_pump', dgu: 'st_dgu' };
   static PICK = { comp: '_pickComp', pump: '_pickPump', dgu: '_pickDgu' };
   static RECV_ROLE = { dry: 'основной ресивер', wet: 'мокрый ресивер (до осушителя)', local: 'ресивер у потребителя' };
+  /** Оценка подбора: штрафы к запасу производительности (меньше — лучше). */
+  static PENALTY = {
+    unit: 0.08, // каждый следующий одинаковый агрегат
+    barShort: 0.5, // давление без запаса на потери
+    barOver: 0.05, // за каждый лишний бар
+    noVsd: 0.3, // нет частотника, хотя он в ТЗ
+    oilFree: 0.5, // безмасляный без требования — дороже
+    area: 0.3, // за м² пола («чтобы поместилось»)
+    dguHood: 0.15, // ДГУ в кожухе шире — негабарит
+    head: 0.3, // лишний напор насоса, доля
+  };
+  static AREA_UNKNOWN = 3.5; // м², если габарит агрегата неизвестен
+  static EPS = 1e-9;
+  static BAR_TOL = 0.05; // давление «равно» с точностью 0,05 бар
+  static DEW_TOL = 0.5; // точка росы, °C
+  static VOL_TOL = 0.5; // объём ресивера, л
+  static BASE_MAX = 6; // базовых ресиверов не больше
+  static NO_BAR = 99; // давление не указано — в конец списка
+  static SUP_WEIGHT = 10; // тот же поставщик важнее, чем закрытые им виды
+  static LPM = 1000; // поршневые — производительность в л/мин
+  static WALL_DEFAULT = 100; // отступ от стены, если в матрице нет, мм
+  static ROAD_LEN = 10000; // длина условного блока для ширины и высоты помещения, мм
+  static ADS_CLASS = 3; // класс по влаге 1–3 — адсорбционный осушитель
+  static ADS_PDP = -20; // точка росы ниже — адсорбционный, °C
+  static LOAD_DEFAULT = 75; // нагрузка ДГУ без расчёта, %
+  static STEM = 5; // начало слова для «уже есть в названии»
 
   /** Запас давления компрессора к требуемому, бар. */
   static get LOSS() {
@@ -40,44 +67,50 @@ export class TzPick {
     return StationMatrix.grp('pick').recvFit;
   }
 
-  static num(v) {
-    return StationEquip.num(v);
+  /** Число из значения характеристики. */
+  static num(value) {
+    return StationEquip.num(value);
   }
 
   /** Производительность позиции каталога: компрессоры и осушители — м³/мин, насосы — м³/ч. */
-  static flow(c) {
-    const a = attrsOf(c);
-    const f = this.num(a.flow);
-    if (!(f > 0)) return 0;
-    return a.cat === 'comp_piston' ? f / 1000 : f;
+  static flow(item) {
+    const attrs = attrsOf(item);
+    const value = this.num(attrs.flow);
+    if (!(value > 0)) return 0;
+    return attrs.cat === 'comp_piston' ? value / this.LPM : value;
   }
 
   /** Из подходящих — с наименьшим key. */
   static best(list, key) {
-    return list.reduce((b, o) => (!b || o[key] < b[key] ? o : b), null);
+    return list.reduce((best, option) => (!best || option[key] < best[key] ? option : best), null);
   }
 
-  static _pressOk(p, B, add = 0) {
-    return !(B > 0) || !(p > 0) || p >= B + add - 0.05;
+  static _pressOk(pressure, bar, add = 0) {
+    return !(bar > 0) || !(pressure > 0) || pressure >= bar + add - this.BAR_TOL;
   }
 
-  static _res(q) {
-    return Math.max(0, Math.round(+q.reserve || 0));
+  static _res(need) {
+    return Math.max(0, Math.round(+need.reserve || 0));
   }
 
   /**
    * Рабочие агрегаты из pool [{c, v}] на нагрузку need: {o, n}; n0 — число рабочих из ТЗ, pen(o) — штраф позиции,
    * rank(o) — приоритет поставщика при том же числе агрегатов.
    */
-  static units(pool, need, n0, pen = () => 0, rank = null) {
-    const L = [];
-    for (let n = n0 || 1; n <= (n0 || this.MAX); n++)
-      for (const o of pool)
-        if (o.v * n >= need - 1e-9) L.push({ o, n, score: (o.v * n - need) / need + 0.08 * (n - 1) + pen(o) });
-    const b = StationSup.pick(L, () => 0, 0);
-    if (!b || !rank) return b;
+  static units(pool, need, fixed, pen = () => 0, rank = null) {
+    const options = [];
+    for (let count = fixed || 1; count <= (fixed || this.MAX); count++)
+      for (const option of pool)
+        if (option.v * count >= need - this.EPS)
+          options.push({
+            o: option,
+            n: count,
+            score: (option.v * count - need) / need + this.PENALTY.unit * (count - 1) + pen(option),
+          });
+    const best = StationSup.pick(options, () => 0, 0);
+    if (!best || !rank) return best;
     return StationSup.pick(
-      L.filter(z => z.n === b.n),
+      options.filter(z => z.n === best.n),
       z => rank(z.o),
       StationSup.TOL,
     );
@@ -85,247 +118,283 @@ export class TzPick {
 
   /** Одинаковые аппараты параллельно на need (list — [{c, cap}]): наименьшее число, затем наименьший запас; {o, n} | null. */
   static many(list, need, max = this.MAX) {
-    for (let n = 1; n <= max; n++) {
-      const L = list
-        .filter(z => z.cap * n >= need - 1e-9)
-        .map(z => ({ ...z, over: z.cap * n - need, score: need > 0 ? (z.cap * n - need) / need : z.cap * n }));
-      const o = StationSup.pick(L, z => StationSup.same(z.c), StationSup.TOL);
-      if (o) return { o, n };
+    for (let count = 1; count <= max; count++) {
+      const options = list
+        .filter(z => z.cap * count >= need - this.EPS)
+        .map(z => ({
+          ...z,
+          over: z.cap * count - need,
+          score: need > 0 ? (z.cap * count - need) / need : z.cap * count,
+        }));
+      const best = StationSup.pick(options, z => StationSup.same(z.c), StationSup.TOL);
+      if (best) return { o: best, n: count };
     }
     return null;
   }
 
   /** Компрессоры на Q, м³/мин, и B, бар, у потребителя; q — {oilFree, vsd, work, compact, ads}: {o, n} | null. */
-  static comps(pool, Q, B, q) {
-    const vsd = c => AirChain.info({ name: c.name, attrs: attrsOf(c), rows: [] }, 'compressor').vsd;
-    const L = pool
-      .filter(c => !q.oilFree || this.oilFree(c))
-      .map(c => ({
-        c,
-        v: this.flow(c),
-        p: this.num(attrsOf(c).pressure),
-        vsd: vsd(c),
-        f: !q.vsd || vsd(c),
-        of: !q.oilFree && this.oilFree(c),
+  static comps(pool, demand, bar, need) {
+    const vsd = item => AirChain.info({ name: item.name, attrs: attrsOf(item), rows: [] }, 'compressor').vsd;
+    const options = pool
+      .filter(item => !need.oilFree || this.oilFree(item))
+      .map(item => ({
+        c: item,
+        v: this.flow(item),
+        p: this.num(attrsOf(item).pressure),
+        vsd: vsd(item),
+        f: !need.vsd || vsd(item),
+        of: !need.oilFree && this.oilFree(item),
       }))
-      .filter(o => o.v > 0 && this._pressOk(o.p, B) && !(q.compact && this._bulky(o, Q, B, q)));
+      .filter(
+        option =>
+          option.v > 0 && this._pressOk(option.p, bar) && !(need.compact && this._bulky(option, demand, bar, need)),
+      );
     return this.units(
-      L,
-      Q,
-      q.work,
-      o => this.barPen(o.p, B, o.vsd) + (o.f ? 0 : 0.3) + (o.of ? 0.5 : 0) + (q.compact ? this.area(o.c) : 0),
-      o => StationSup.same(o.c) * 10 + StationSup.cover(o.c, [q.ads ? 'dryer_ads' : 'dryer_refrig', 'filter']),
+      options,
+      demand,
+      need.work,
+      option =>
+        this.barPen(option.p, bar, option.vsd) +
+        (option.f ? 0 : this.PENALTY.noVsd) +
+        (option.of ? this.PENALTY.oilFree : 0) +
+        (need.compact ? this.area(option.c) : 0),
+      option =>
+        StationSup.same(option.c) * this.SUP_WEIGHT +
+        StationSup.cover(option.c, [need.ads ? 'dryer_ads' : 'dryer_refrig', 'filter']),
     );
   }
 
   /** Подбор «чтобы поместилось» не берёт безмасляный без требования, без запаса давления и с лишней производительностью. */
-  static _bulky(o, Q, B, q) {
-    return o.of || this.barPen(o.p, B, o.vsd) >= 0.5 || (q.work && o.v * q.work > Q * this.OVER);
+  static _bulky(option, demand, bar, need) {
+    return (
+      option.of ||
+      this.barPen(option.p, bar, option.vsd) >= this.PENALTY.barShort ||
+      (need.work && option.v * need.work > demand * this.OVER)
+    );
   }
 
-  /** Штраф за площадь агрегата: 0,3 на м² пола; габарит неизвестен — как 3,5 м². */
-  static area(c) {
-    const d = StationEquip.dims({ name: c.name, attrs: attrsOf(c), rows: [] }, 'compressor');
-    return 0.3 * (d.known ? (d.l * d.w) / 1e6 : 3.5);
+  /** Штраф за площадь агрегата на полу; габарит неизвестен — как AREA_UNKNOWN. */
+  static area(item) {
+    const dims = StationEquip.dims({ name: item.name, attrs: attrsOf(item), rows: [] }, 'compressor');
+    return this.PENALTY.area * (dims.known ? (dims.l * dims.w) / 1e6 : this.AREA_UNKNOWN);
   }
 
   /**
    * Осушитель на Qd, м³/мин, с поправками производителя на давление B и температуру tmax; давление аппарата — не ниже Bc,
    * точка росы — не выше pdp, по высоте H и ширине W помещения: {o, n} | null.
    */
-  static dryer(ads, Qd, B, Bc, { tmax, pdp = null, H = 0, W = 0 } = {}) {
-    const t = DryerSizing.temps({ tmax, tin: null });
-    const pb = B > 0 ? B : StationRules.raw('dryer.ref').p;
-    const dc = ads ? 'dryer_ads' : 'dryer_refrig';
-    const dp = c => this.num(String(attrsOf(c).dewPoint ?? '').replace(/[−–]/g, '-'));
-    const fits = c =>
-      (pdp == null || dp(c) == null || dp(c) <= pdp + 0.5) && this.fitsH(c, 'dryer', H) && this.fitsW(c, 'dryer', W);
-    const L = catCache
-      .filter(c => attrsOf(c).cat === dc && fits(c))
-      .map(c => {
-        const F = DryerSizing.factor({ name: c.name, attrs: attrsOf(c), rows: [] }, pb, t, ads ? 'ads' : 'refrig').F;
-        return { c, v: this.flow(c), cap: this.flow(c) * F };
+  static dryer(ads, demand, bar, barMin, { tmax, pdp = null, H: height = 0, W: width = 0 } = {}) {
+    const temps = DryerSizing.temps({ tmax, tin: null });
+    const refBar = bar > 0 ? bar : StationRules.raw('dryer.ref').p;
+    const category = ads ? 'dryer_ads' : 'dryer_refrig';
+    const dewPoint = item => this.num(String(attrsOf(item).dewPoint ?? '').replace(/[−–]/g, '-'));
+    const fits = item =>
+      (pdp == null || dewPoint(item) == null || dewPoint(item) <= pdp + this.DEW_TOL) &&
+      this.fitsH(item, 'dryer', height) &&
+      this.fitsW(item, 'dryer', width);
+    const options = catCache
+      .filter(item => attrsOf(item).cat === category && fits(item))
+      .map(item => {
+        const factor = DryerSizing.factor(
+          { name: item.name, attrs: attrsOf(item), rows: [] },
+          refBar,
+          temps,
+          ads ? 'ads' : 'refrig',
+        ).F;
+        return { c: item, v: this.flow(item), cap: this.flow(item) * factor };
       })
-      .filter(o => o.v > 0 && this._pressOk(this.num(attrsOf(o.c).pressure), Bc));
-    return this.many(L, Qd);
+      .filter(option => option.v > 0 && this._pressOk(this.num(attrsOf(option.c).pressure), barMin));
+    return this.many(options, demand);
   }
 
   /**
    * Фильтр ступени rec.key на Qf, м³/мин, с поправкой производителя на давление; давление фильтра — не ниже Bc;
    * Qf неизвестна — самый маленький этой ступени: {o, n} | null.
    */
-  static filter(rec, Qf, B, Bc) {
-    const pf = B > 0 ? B + StationRules.raw('loss.pipe') : StationRules.raw('dryer.ref').p;
-    for (const g of this.GRADE[rec.key] || [rec.key]) {
-      const L = catCache.filter(c => this._filterOk(c, g, Qf, Bc));
-      const m =
-        Qf > 0
+  static filter(rec, demand, bar, barMin) {
+    const filterBar = bar > 0 ? bar + StationRules.raw('loss.pipe') : StationRules.raw('dryer.ref').p;
+    for (const grade of this.GRADE[rec.key] || [rec.key]) {
+      const options = catCache.filter(item => this._filterOk(item, grade, demand, barMin));
+      const found =
+        demand > 0
           ? this.many(
-              L.map(c => ({ c, cap: this.flow(c) * this._kf(c, pf) })),
-              Qf,
+              options.map(item => ({ c: item, cap: this.flow(item) * this._kf(item, filterBar) })),
+              demand,
             )
-          : this._smallest(L);
-      if (m) return m;
+          : this._smallest(options);
+      if (found) return found;
     }
     return null;
   }
 
-  static _kf(c, pf) {
-    const s = StationRules.series({ name: c.name, attrs: attrsOf(c), rows: [] }, 'filter');
-    return s ? StationRules.interp(s.f.p, pf) : AirChain.kf(pf);
+  static _kf(item, bar) {
+    const series = StationRules.series({ name: item.name, attrs: attrsOf(item), rows: [] }, 'filter');
+    return series ? StationRules.interp(series.f.p, bar) : AirChain.kf(bar);
   }
 
-  static _filterOk(c, g, Qf, Bc) {
-    const a = attrsOf(c);
-    const p = { name: c.name, attrs: a, rows: [] };
-    if (a.cat !== 'filter' || AirChain.grade(p, a.cat, AirChain.text(p)) !== g) return false;
-    if (Qf > 0 && !(this.flow(c) > 0)) return false;
-    return this._pressOk(this.num(a.pressure), Bc);
+  static _filterOk(item, grade, demand, barMin) {
+    const attrs = attrsOf(item);
+    const probe = { name: item.name, attrs, rows: [] };
+    if (attrs.cat !== 'filter' || AirChain.grade(probe, attrs.cat, AirChain.text(probe)) !== grade) return false;
+    if (demand > 0 && !(this.flow(item) > 0)) return false;
+    return this._pressOk(this.num(attrs.pressure), barMin);
   }
 
-  static _smallest(L) {
-    const flow = c => this.num(attrsOf(c).flow) || 0;
-    const b = StationSup.pick(
-      L.map(c => ({ c, v: flow(c), score: flow(c) })),
+  static _smallest(options) {
+    const flow = item => this.num(attrsOf(item).flow) || 0;
+    const best = StationSup.pick(
+      options.map(item => ({ c: item, v: flow(item), score: flow(item) })),
       z => StationSup.same(z.c),
       0,
     );
-    return b ? { o: b, n: 1 } : null;
+    return best ? { o: best, n: 1 } : null;
   }
 
   /** Давление компрессора, бар, для B у потребителя: потери в подготовке и — без частотника — диапазон регулирования. */
-  static barNeed(B, vsd) {
-    return B + this.LOSS + (vsd ? 0 : StationRules.raw('pressure.band'));
+  static barNeed(bar, vsd) {
+    return bar + this.LOSS + (vsd ? 0 : StationRules.raw('pressure.band'));
   }
 
-  /** Штраф по давлению: меньше нужного — 0,5, больше — по 0,05 за бар. */
-  static barPen(p, B, vsd) {
-    if (!(B > 0) || !(p > 0)) return 0;
-    const need = this.barNeed(B, vsd);
-    return p < need - 0.05 ? 0.5 : 0.05 * (p - need);
+  /** Штраф по давлению: меньше нужного — barShort, больше — barOver за каждый бар. */
+  static barPen(pressure, bar, vsd) {
+    if (!(bar > 0) || !(pressure > 0)) return 0;
+    const need = this.barNeed(bar, vsd);
+    return pressure < need - this.BAR_TOL ? this.PENALTY.barShort : this.PENALTY.barOver * (pressure - need);
   }
 
   /** Безмасляный: по полю «Безмасляный (класс 0)», не заполнено — по названию и характеристикам. */
-  static oilFree(c) {
-    const a = attrsOf(c);
-    const f = String(a.oilFree ?? '').trim();
-    if (/^(да|есть|true)/i.test(f) || /класс\w*\s*0(?![.,\d])/i.test(f)) return true;
-    if (/^(нет|false)/i.test(f)) return false; // поле важнее описания серии
+  static oilFree(item) {
+    const attrs = attrsOf(item);
+    const field = String(attrs.oilFree ?? '').trim();
+    if (/^(да|есть|true)/i.test(field) || /класс\w*\s*0(?![.,\d])/i.test(field)) return true;
+    if (/^(нет|false)/i.test(field)) return false; // поле важнее описания серии
     return /безмасл|oil[\s-]?free|класс\w*\s*0(?![.,\d])/i.test(
-      [c.name, a.model, a.series, a.lubrication, a.oil].filter(Boolean).join(' '),
+      [item.name, attrs.model, attrs.series, attrs.lubrication, attrs.oil].filter(Boolean).join(' '),
     );
   }
 
   /** Передвижной или бензиновый — не для станции в контейнере. */
-  static mobile(c) {
-    const a = attrsOf(c);
+  static mobile(item) {
+    const attrs = attrsOf(item);
     return (
-      /шасси|передвижн|мобильн|колёсн|колесн/i.test(`${String(a.execution || '')} ${c.name}`) || /бензин/i.test(c.name)
+      /шасси|передвижн|мобильн|колёсн|колесн/i.test(`${String(attrs.execution || '')} ${item.name}`) ||
+      /бензин/i.test(item.name)
     );
   }
 
   /** Насос для стационарной станции: электрический, не погружной, не скважинный, не дренажный, не мотопомпа. */
-  static pumpOk(c) {
-    const a = attrsOf(c);
+  static pumpOk(item) {
+    const attrs = attrsOf(item);
     return (
-      !/мотопомп|погружн|скважин|дренаж|фекал/i.test(`${String(a.kind || '')} ${c.name}`) &&
-      !/дизел|бензин/i.test(String(a.drive || ''))
+      !/мотопомп|погружн|скважин|дренаж|фекал/i.test(`${String(attrs.kind || '')} ${item.name}`) &&
+      !/дизел|бензин/i.test(String(attrs.drive || ''))
     );
   }
 
   /** ДГУ в кожухе шире — станция уходит в негабарит: штраф к оценке. */
-  static dguPen(c) {
-    return /кожух|капот|шумозащит/i.test(`${String(attrsOf(c).execution || '')} ${c.name}`) ? 0.15 : 0;
+  static dguPen(item) {
+    return /кожух|капот|шумозащит/i.test(`${String(attrsOf(item).execution || '')} ${item.name}`)
+      ? this.PENALTY.dguHood
+      : 0;
   }
 
   /** ДГУ для станции 0,4 кВ: трёхфазная 400 В, не однофазная и не высоковольтная; «400 / 230 В» — трёхфазная. */
-  static dguOk(c) {
-    const a = attrsOf(c);
-    const t = `${String(a.voltage || '')} ${String(a.phases || '')} ${c.name}`;
-    if (/\d{4,}\s*В(?![а-яё])|\d+(?:[.,]\d+)?\s*кВ(?![а-яёА-ЯЁ])/i.test(t.replace(/(\d)\s+(?=\d{3}\b)/g, '$1')))
+  static dguOk(item) {
+    const attrs = attrsOf(item);
+    const text = `${String(attrs.voltage || '')} ${String(attrs.phases || '')} ${item.name}`;
+    if (/\d{4,}\s*В(?![а-яё])|\d+(?:[.,]\d+)?\s*кВ(?![а-яёА-ЯЁ])/i.test(text.replace(/(\d)\s+(?=\d{3}\b)/g, '$1')))
       return false;
-    if (/3\s*фаз|тр[её]хфазн/i.test(t)) return true;
-    return !/однофазн|1\s*фаз|(?<![\d\/]\s*)(?<!\d)(?:220|230)\s*В(?![а-яё])(?!\s*\/)/i.test(t);
+    if (/3\s*фаз|тр[её]хфазн/i.test(text)) return true;
+    return !/однофазн|1\s*фаз|(?<![\d\/]\s*)(?<!\d)(?:220|230)\s*В(?![а-яё])(?!\s*\/)/i.test(text);
   }
 
+  /** Позиции каталога видов cats, годные для станции в контейнере. */
   static stationPool(cats) {
-    return catCache.filter(c => cats.includes(attrsOf(c).cat) && !this.mobile(c));
+    return catCache.filter(item => cats.includes(attrsOf(item).cat) && !this.mobile(item));
   }
 
+  /** Только с электроприводом. */
   static electric(pool) {
-    return pool.filter(c => attrsOf(c).cat !== 'comp_diesel');
+    return pool.filter(item => attrsOf(item).cat !== 'comp_diesel');
   }
 
   static _recvAll() {
     return catCache
-      .filter(c => attrsOf(c).cat === 'receiver')
-      .map(c => {
-        const a = attrsOf(c);
+      .filter(item => attrsOf(item).cat === 'receiver')
+      .map(item => {
+        const attrs = attrsOf(item);
         return {
-          c,
-          v: this.num(a.volume) || 0,
-          p: this.num(a.pressure),
-          h: StationEquip.dims({ name: c.name, attrs: a, rows: [] }, 'receiver').h,
+          c: item,
+          v: this.num(attrs.volume) || 0,
+          p: this.num(attrs.pressure),
+          h: StationEquip.dims({ name: item.name, attrs, rows: [] }, 'receiver').h,
         };
       });
   }
 
-  static _fitsTop(o, Hmax) {
-    return !(Hmax > 0) || o.h + this.RECV_TOP <= Hmax;
+  static _fitsTop(option, Hmax) {
+    return !(Hmax > 0) || option.h + this.RECV_TOP <= Hmax;
   }
 
   /** Порядок ресиверов: производитель в приоритете, тот же поставщик, в наличии, меньшее давление, дешевле, ниже. */
   static _recvOrder() {
-    const B0 = AirChain.BASE;
-    const mk = String(B0?.maker || '')
+    const base = AirChain.BASE;
+    const maker = String(base?.maker || '')
       .trim()
       .toLowerCase();
-    const pri = o =>
-      mk &&
-      String(attrsOf(o.c).maker || '')
+    const pri = option =>
+      maker &&
+      String(attrsOf(option.c).maker || '')
         .trim()
-        .toLowerCase() === mk
+        .toLowerCase() === maker
         ? 0
         : 1;
-    return (a, b) =>
-      pri(a) - pri(b) ||
-      StationSup.same(b.c) - StationSup.same(a.c) ||
-      this.stock(b.c) - this.stock(a.c) ||
-      (a.p || 99) - (b.p || 99) ||
-      this.cheaper(a.c, b.c) ||
-      a.h - b.h;
+    return (first, second) =>
+      pri(first) - pri(second) ||
+      StationSup.same(second.c) - StationSup.same(first.c) ||
+      this.stock(second.c) - this.stock(first.c) ||
+      (first.p || this.NO_BAR) - (second.p || this.NO_BAR) ||
+      this.cheaper(first.c, second.c) ||
+      first.h - second.h;
   }
 
   /**
    * Ресиверы на объём V, л: по умолчанию одинаковые базового типоразмера; иначе наименьшее число, сначала без учёта в
    * Ростехнадзоре; давление — не ниже B, высота с арматурой — не выше Hmax (0 — снаружи): {o, n, free} | null.
    */
-  static receivers(V, B, Hmax) {
-    const L = this._recvAll().filter(o => o.v > 0 && this._pressOk(o.p, B) && this._fitsTop(o, Hmax));
-    const free = o => !(B > 0) || ((B / 10) * o.v) / 1000 <= PressureVessel.LIMIT + 1e-9;
-    const base = this._recvBase(L, V, B, free);
+  static receivers(volume, bar, Hmax) {
+    const options = this._recvAll().filter(
+      option => option.v > 0 && this._pressOk(option.p, bar) && this._fitsTop(option, Hmax),
+    );
+    const free = option => !(bar > 0) || ((bar / 10) * option.v) / 1000 <= PressureVessel.LIMIT + this.EPS;
+    const base = this._recvBase(options, volume, bar, free);
     if (base) return base;
-    if (!(V > 0)) return L.length ? { o: this.best(L, 'v'), n: 1, free: true } : null;
-    const P = StationMatrix.grp('pick');
-    return this._recvN(L, V, free, true, P.recvFree) || this._recvN(L, V, free, false, P.recvAny);
+    if (!(volume > 0)) return options.length ? { o: this.best(options, 'v'), n: 1, free: true } : null;
+    const limits = StationMatrix.grp('pick');
+    return (
+      this._recvN(options, volume, free, true, limits.recvFree) ||
+      this._recvN(options, volume, free, false, limits.recvAny)
+    );
   }
 
-  static _recvBase(L, V, B, free) {
-    const B0 = AirChain.BASE;
-    const bs = B0 ? AirChain.base(V > 0 ? V : B0.volume, B) : null;
-    if (!(bs && bs.n <= 6)) return null;
-    const C = L.filter(o => Math.abs(o.v - bs.v) < 0.5 && free(o)).sort(this._recvOrder());
-    return C.length ? { o: C[0], n: bs.n, free: true, base: true } : null;
+  static _recvBase(options, volume, bar, free) {
+    const base = AirChain.BASE;
+    const baseSet = base ? AirChain.base(volume > 0 ? volume : base.volume, bar) : null;
+    if (!(baseSet && baseSet.n <= this.BASE_MAX)) return null;
+    const candidates = options
+      .filter(option => Math.abs(option.v - baseSet.v) < this.VOL_TOL && free(option))
+      .sort(this._recvOrder());
+    return candidates.length ? { o: candidates[0], n: baseSet.n, free: true, base: true } : null;
   }
 
-  static _recvN(L, V, free, only, max) {
-    for (let n = 1; n <= max; n++) {
-      const o = StationSup.pick(
-        L.filter(z => z.v * n >= V - 1e-9 && (!only || free(z))).map(z => ({ ...z, score: z.v })),
+  static _recvN(options, volume, free, only, max) {
+    for (let count = 1; count <= max; count++) {
+      const best = StationSup.pick(
+        options.filter(z => z.v * count >= volume - this.EPS && (!only || free(z))).map(z => ({ ...z, score: z.v })),
         z => StationSup.same(z.c),
         0,
       );
-      if (o) return { o, n, free: free(o) };
+      if (best) return { o: best, n: count, free: free(best) };
     }
     return null;
   }
@@ -334,509 +403,374 @@ export class TzPick {
    * Ресивер типоразмера size, л: давление — с запасом над компрессором, нет такого — не ниже; высота — не выше Hmax.
    * {o} | {o: null, tall — есть, но выше} | null.
    */
-  static recvPick(size, B, Hmax) {
-    const all = this._recvAll().filter(o => Math.abs(o.v - size) < 0.5 && this._pressOk(o.p, B));
-    const fit = all.filter(o => this._fitsTop(o, Hmax));
+  static recvPick(size, bar, Hmax) {
+    const all = this._recvAll().filter(
+      option => Math.abs(option.v - size) < this.VOL_TOL && this._pressOk(option.p, bar),
+    );
+    const fit = all.filter(option => this._fitsTop(option, Hmax));
     const order = this._recvOrder();
     for (const add of [ReceiverPlan.M.margin, 0]) {
-      const o = fit.filter(z => this._pressOk(z.p, B, add)).sort(order)[0];
-      if (o) return { o };
+      const best = fit.filter(z => this._pressOk(z.p, bar, add)).sort(order)[0];
+      if (best) return { o: best };
     }
     return all.length ? { o: null, tall: true } : null;
   }
 
   /** По закупке, иначе по цене (одна валюта; без цены — в конце): < 0 — a дешевле. */
-  static cheaper(a, b) {
-    const cost = (c, k) => (+c[k] > 0 ? +c[k] : Infinity);
+  static cheaper(first, second) {
+    const cost = (item, k) => (+item[k] > 0 ? +item[k] : Infinity);
     for (const [k, cur] of [
       ['cost', 'costCur'],
       ['price', 'priceCur'],
     ]) {
-      const va = cost(a, k);
-      const vb = cost(b, k);
-      if (va === Infinity && vb === Infinity) continue;
-      if (va !== Infinity && vb !== Infinity && (a[cur] || 'RUB') !== (b[cur] || 'RUB')) return 0;
-      return Math.sign(va - vb);
+      const costA = cost(first, k);
+      const costB = cost(second, k);
+      if (costA === Infinity && costB === Infinity) continue;
+      if (costA !== Infinity && costB !== Infinity && (first[cur] || 'RUB') !== (second[cur] || 'RUB')) return 0;
+      return Math.sign(costA - costB);
     }
     return 0;
   }
 
   /** В наличии на складе поставщика: 1 / 0. */
-  static stock(c) {
-    return typeof CatalogIndex !== 'undefined' && CatalogIndex.inStock(c) ? 1 : 0;
+  static stock(item) {
+    return typeof CatalogIndex !== 'undefined' && CatalogIndex.inStock(item) ? 1 : 0;
   }
 
-  static _roadInner(g) {
-    return StationGeo.inner(g.type, [10000, StationGeo.ROAD_W, StationGeo.BLOCK.maxH], g.t);
+  static _roadInner(grade) {
+    return StationGeo.inner(grade.type, [this.ROAD_LEN, StationGeo.ROAD_W, StationGeo.BLOCK.maxH], grade.t);
   }
 
   /** Высота внутри контейнера станции, мм; по оборудованию — наибольшая высота ряда. */
-  static hmax(x) {
-    const g = StationGeo.of(kitContainer(x) || { ctype: 'block' });
-    return g.int ? g.int[2] : this._roadInner(g)[2];
+  static hmax(station) {
+    const grade = StationGeo.of(kitContainer(station) || { ctype: 'block' });
+    return grade.int ? grade.int[2] : this._roadInner(grade)[2];
   }
 
   /** Полезная ширина помещения, мм; без размера — блок в ширину перевозки. */
-  static wmax(x) {
-    const g = StationGeo.of(kitContainer(x) || { ctype: 'block' });
-    const Wi = g.int && !g.auto ? g.int[1] : this._roadInner(g)[1];
-    return Wi - 2 * StationMatrix.gap();
+  static wmax(station) {
+    const grade = StationGeo.of(kitContainer(station) || { ctype: 'block' });
+    const innerWidth = grade.int && !grade.auto ? grade.int[1] : this._roadInner(grade)[1];
+    return innerWidth - 2 * StationMatrix.gap();
   }
 
   /** Помещается в плане с проходом (W, мм; 0 — без ограничения): меньшая сторона + отступ «плотно» + проход «не менее». */
-  static fitsW(c, kind, W) {
-    if (!(W > 0)) return true;
-    const d = StationEquip.dims({ name: c.name, attrs: attrsOf(c), rows: c.rows || [] }, kind);
-    if (!d.known) return true;
-    const s = Math.min(d.l, d.w);
-    const wr = StationMatrix.wall({ kind, w: s });
-    return s + (wr ? wr[1] : 100) + StationClear.aisle()[1] <= W;
+  static fitsW(item, kind, width) {
+    if (!(width > 0)) return true;
+    const dims = StationEquip.dims({ name: item.name, attrs: attrsOf(item), rows: item.rows || [] }, kind);
+    if (!dims.known) return true;
+    const side = Math.min(dims.l, dims.w);
+    const wall = StationMatrix.wall({ kind, w: side });
+    return side + (wall ? wall[1] : this.WALL_DEFAULT) + StationClear.aisle()[1] <= width;
   }
 
   /** Проходит по высоте H, мм (0 — без ограничения); над осушителем — место на подключение. */
-  static fitsH(c, kind, H) {
-    if (!(H > 0)) return true;
-    const d = StationEquip.dims({ name: c.name, attrs: attrsOf(c), rows: [] }, kind);
-    return !d.known || d.h + (kind === 'dryer' ? StationMatrix.grp('pick').dryerFit : 0) <= H;
+  static fitsH(item, kind, height) {
+    if (!(height > 0)) return true;
+    const dims = StationEquip.dims({ name: item.name, attrs: attrsOf(item), rows: [] }, kind);
+    return !dims.known || dims.h + (kind === 'dryer' ? StationMatrix.grp('pick').dryerFit : 0) <= height;
   }
 
   /** «осушитель …» — без повтора слова, если оно уже есть в названии. */
   static lbl(word, name) {
     return String(name || '')
       .toLowerCase()
-      .includes(word.slice(0, 5))
+      .includes(word.slice(0, this.STEM))
       ? name
       : `${word} ${name}`;
   }
 
   /** Подбор и сборка станции: шкафы по особым требованиям, оборудование, название, характеристики, контейнер. */
-  static async assemble(x, q) {
-    const added = StationReq.ensureParts(x);
-    const note = await this.run(x, q);
-    kitSync(x);
-    StationUi.cache.delete(x.id);
-    StationSize.apply(x, true);
-    stationFill(x);
-    stationAutoName(x);
+  static async assemble(station, need) {
+    const added = StationReq.ensureParts(station);
+    const note = await this.run(station, need);
+    kitSync(station);
+    StationUi.cache.delete(station.id);
+    StationSize.apply(station, true);
+    stationFill(station);
+    stationAutoName(station);
     return [note, added.length ? `Добавлено по ТЗ: ${added.join(', ')}` : ''].filter(Boolean).join('. ');
   }
 
   /** Элемент состава из позиции каталога: полная карточка с сервера, нет связи — из кэша каталога. */
-  static async part(c, qty, role) {
-    let doc = c;
+  static async part(item, qty, role) {
+    let doc = item;
     try {
-      doc = await api(`/api/catalog/${encodeURIComponent(c.id)}`);
+      doc = await api(`/api/catalog/${encodeURIComponent(item.id)}`);
     } catch {}
-    const p = KitPart.fromCat(doc);
-    p.qty = qty;
-    if (role) p.role = role;
-    return p;
+    const part = KitPart.fromCat(doc);
+    part.qty = qty;
+    if (role) part.role = role;
+    return part;
   }
 
   /** Подбор с защитой состава: чего в каталоге не нашлось — прежнее оборудование этого вида остаётся. */
-  static async run(x, q) {
-    const drop = this.DROP[q.kind] || /^$/;
-    const before = kitParts(x).filter(p => p.role !== 'container' && drop.test(StationEquip.kindOf(p) || ''));
-    const note = await this.fit(x, q);
-    const kept = this._restore(x, before);
+  static async run(station, need) {
+    const drop = this.DROP[need.kind] || /^$/;
+    const before = kitParts(station).filter(
+      part => part.role !== 'container' && drop.test(StationEquip.kindOf(part) || ''),
+    );
+    const note = await TzFit.fit(station, need);
+    const kept = this._restore(station, before);
     return kept.length ? `${note}. Оставлено прежнее: ${kept.join('; ')}` : note;
   }
 
-  static _restore(x, before) {
+  static _restore(station, before) {
     const kept = [];
     let air = null;
     // фильтры и ресиверы — только если цепочка воздуха их по-прежнему просит
     const need = k => {
       if (k !== 'filter' && k !== 'receiver') return true;
-      air ??= StationLayout.solve(StationUi.input(x)).air || KitNeed.air(x) || { recs: [] };
-      return (air.recs || []).some(r => r.cat === k && !r.replace);
+      air ??= StationLayout.solve(StationUi.input(station)).air || KitNeed.air(station) || { recs: [] };
+      return (air.recs || []).some(rec => rec.cat === k && !rec.replace);
     };
-    for (const k of new Set(before.map(p => StationEquip.kindOf(p)))) {
-      if (kitParts(x).some(p => StationEquip.kindOf(p) === k) || !need(k)) continue;
-      const old = before.filter(p => StationEquip.kindOf(p) === k);
-      const at = kitParts(x).findIndex(p => p.role === 'container');
-      x.kit.parts.splice(at < 0 ? x.kit.parts.length : at, 0, ...old);
-      kept.push(...old.map(p => p.name));
+    for (const k of new Set(before.map(part => StationEquip.kindOf(part)))) {
+      if (kitParts(station).some(part => StationEquip.kindOf(part) === k) || !need(k)) continue;
+      const old = before.filter(part => StationEquip.kindOf(part) === k);
+      const index = kitParts(station).findIndex(part => part.role === 'container');
+      station.kit.parts.splice(index < 0 ? station.kit.parts.length : index, 0, ...old);
+      kept.push(...old.map(part => part.name));
     }
     return kept;
   }
 
-  /**
-   * Подбор, при котором станция помещается в контейнер: для 1 … MAX одинаковых компрессоров — ресиверы 900 л внутри,
-   * по 500 л внутри, затем снаружи; иначе — ресиверы вплотную, негабарит или подсказка разделить станцию.
-   */
-  static async fit(x, q) {
-    q = this._fitReset(x, q);
-    const note = await this.pick(x, q);
-    if (q.work || q.kind !== 'comp' || !(q.flow > 0)) return note;
-    const req = StationReq.ensure(x);
-    const main = this._main(x);
-    const f = {
-      x,
-      q,
-      req,
-      out0: !!req.recvOut,
-      sz0: !!req.recvSize,
-      n0: main ? main.qty - this._res(q) : 1,
-      t5: false,
-      hadR: true,
-    };
-    const s0 = this._state(x);
-    if (s0 === 'ok') return note;
-    f.first = this._keep(x, note, f.n0, f.out0, false);
-    f.wide = s0 === 'wide' ? f.first : null;
-    f.close = s0 === 'close' ? f.first : null;
-    return (await this._fitTry(f)) || this._fitLast(f);
-  }
-
-  /** «Снаружи» и «по 500 л», выбранные программой, — каждый подбор заново. */
-  static _fitReset(x, q) {
-    const rq = StationReq.ensure(x);
-    if (rq.recvSizeAuto) this._clearSize(rq);
-    if (!rq.recvOutAuto) return q;
-    this._clearOut(rq);
-    return { ...q, recvOut: false };
-  }
-
-  static _clearOut(rq) {
-    delete rq.recvOut;
-    delete rq.recvOutAuto;
-  }
-
-  static _clearSize(rq) {
-    delete rq.recvSize;
-    delete rq.recvWhy;
-    delete rq.recvSizeAuto;
-  }
-
-  static _main(x) {
-    return kitParts(x).find(p => p.role === 'main');
-  }
-
-  /** Как встала станция: bad — ошибка или нет агрегата, wide — негабарит, close — ресиверы вплотную, ok. */
-  static _state(x) {
-    if (!this._main(x)) return 'bad';
-    const p = StationLayout.solve(StationUi.input(x));
-    if (p.level === 'error') return 'bad';
-    const I = p.issues || [];
-    return ['wide', 'close'].find(k => I.some(i => i[k])) || 'ok';
-  }
-
-  static _keep(x, note, n, out, s5) {
-    return { parts: JSON.parse(JSON.stringify(x.kit.parts)), note, n, out, s5 };
-  }
-
-  static _fitSet(f, out, s5) {
-    const { req } = f;
-    if (out) Object.assign(req, { recvOut: true, recvOutAuto: true });
-    else if (!f.out0) this._clearOut(req);
-    if (s5) Object.assign(req, { recvSize: '500', recvWhy: 'space', recvSizeAuto: true });
-    else if (req.recvSizeAuto) this._clearSize(req);
-  }
-
-  /** Варианты [агрегатов, снаружи, по 500 л] по порядку. */
-  static _fitTries(f) {
-    const tries = [];
-    if (!f.out0)
-      for (let n = f.n0; n <= this.MAX; n++) {
-        tries.push([n, false, false]);
-        if (!f.sz0) tries.push([n, false, true]);
-      }
-    for (let n = f.n0; n <= this.MAX; n++) tries.push([n, true, false]);
-    return tries;
-  }
-
-  static async _fitTry(f) {
-    for (const [n, out, s5] of this._fitTries(f)) {
-      if (s5 && !f.hadR) continue; // в предыдущем варианте не было ресиверов — «по 500 л» не нужен
-      if (out && f.close) break; // вплотную внутри лучше, чем снаружи
-      const r = await this._fitStep(f, n, out, s5);
-      if (!this._fitR(f, r, s5)) continue;
-      r.v.t5 = f.t5;
-      if (r.st === 'ok') return this._fitNote(r.v, f.n0, false);
-      if (r.st === 'close') f.close ??= r.v;
-      if (r.st === 'wide') f.wide ??= r.v;
-    }
-    return null;
-  }
-
-  /** Вариант «по 500 л» без ресиверов (их нет в каталоге) не годится. */
-  static _fitR(f, r, s5) {
-    if (!s5) {
-      f.hadR = r.dryR;
-      return true;
-    }
-    if (!r.dryR) return false;
-    f.t5 = true;
-    return true;
-  }
-
-  static async _fitStep(f, n, out, s5) {
-    this._fitSet(f, out, s5);
-    const nt = await this.pick(f.x, { ...f.q, work: n, compact: true, recvOut: out });
-    const st = this._state(f.x);
-    const v = this._keep(f.x, nt, n, out, s5);
-    const dryR = kitParts(f.x).some(
-      p => StationEquip.kindOf(p) === 'receiver' && p.recvRole !== 'local' && p.recvRole !== 'wet',
-    );
-    return { st, v, dryR };
-  }
-
-  static _fitLast(f) {
-    const v = f.close || f.wide || f.first;
-    f.x.kit.parts = v.parts;
-    this._fitSet(f, v.out && !f.out0, v.s5);
-    if (f.close) return this._fitNote(v, f.n0, false, true);
-    if (f.wide) return this._fitNote(v, f.n0, true);
-    return `${v.note}. Станция не помещается в один контейнер даже из ${this.MAX} одинаковых агрегатов${f.t5 ? ', с ресиверами по 500 л' : ''} и с ресиверами снаружи — разделите её на две станции (по половине производительности) или задайте контейнер вручную`;
-  }
-
-  /** Уведомление о том, как станция встала в контейнер. */
-  static _fitNote(v, n0, wide, close) {
-    const why = [];
-    if (v.n > n0) why.push(`подобрано ${v.n} одинаковых`);
-    if (close)
-      why.push('ресиверы и фильтры — вплотную друг к другу (исключение: иначе ресиверы пришлось бы выносить наружу)');
-    if (v.s5)
-      why.push(
-        'ресиверы — по 500 л (без учёта в Ростехнадзоре): с ресиверами 900 л станция не помещается в габарит перевозки',
-      );
-    if (v.out)
-      why.push(
-        `ресиверы — снаружи у стены станции (ФНП ОРПД, п. 65): внутри в габарите перевозки не помещаются${v.t5 ? ' — ни по 900 л, ни по 500 л' : ''}, хотя компоновка пробует два ряда, пары, поворот и плотные отступы`,
-      );
-    if (wide) why.push('ширина больше габарита перевозки — негабарит (исключение)');
-    return why.length
-      ? `${v.note}. Одним ${n0 > 1 ? 'набором' : 'агрегатом'} со всем оборудованием внутри станция не помещается в контейнер в габарите перевозки — ${why.join('; ')}`
-      : v.note;
-  }
-
   /** Подбор в станцию x по требованиям q (без защиты состава — run). */
-  static pick(x, q) {
-    const kind = q.kind;
+  static pick(station, need) {
+    const kind = need.kind;
     const drop = this.DROP[kind] || this.DROP.dgu;
     const cats = (typeById(this.TYPE[kind]).station || {}).main || [];
-    const s = {
-      x,
-      q,
-      res: this._res(q),
+    const job = {
+      x: station,
+      q: need,
+      res: this._res(need),
       got: [],
       miss: [],
       add: [],
-      keep: kitParts(x).filter(p => p.role === 'container' || !drop.test(StationEquip.kindOf(p) || '')),
+      keep: kitParts(station).filter(part => part.role === 'container' || !drop.test(StationEquip.kindOf(part) || '')),
       pool: this.stationPool(cats),
-      H: this.hmax(x),
+      H: this.hmax(station),
     };
     StationSup.ctx = ''; // поставщик — по подобранным основным агрегатам
-    const m = this.PICK[kind];
-    return m ? this[m](s) : Promise.resolve(this._done(s));
+    const method = this.PICK[kind];
+    return method ? this[method](job) : Promise.resolve(this._done(job));
   }
 
-  static _done(s) {
-    s.x.kit.parts = [...s.add, ...s.keep];
-    return this.note(s.got, s.miss);
+  static _done(job) {
+    job.x.kit.parts = [...job.add, ...job.keep];
+    return this.note(job.got, job.miss);
   }
 
-  static async _pickComp(s) {
-    const { x, q } = s;
-    s.B = q.pressure;
-    s.Bc = s.B; // давление аппаратов — не ниже наибольшего давления компрессора
-    s.picked = null;
-    this._recvWhere(x, q);
-    const nd = this._need(s);
-    if (s.Q > 0) {
-      await this._compMain(s, nd);
-      await this._compDryer(s);
+  static async _pickComp(job) {
+    const { x: station, q: need } = job;
+    job.B = need.pressure;
+    job.Bc = job.B; // давление аппаратов — не ниже наибольшего давления компрессора
+    job.picked = null;
+    this._recvWhere(station, need);
+    const demand = this._need(job);
+    if (job.Q > 0) {
+      await this._compMain(job, demand);
+      await this._compDryer(job);
     }
-    x.kit.parts = [...s.add, ...s.keep];
-    s.at = s.add.length;
-    await this._chain(s);
-    return this.note(s.got, s.miss);
+    station.kit.parts = [...job.add, ...job.keep];
+    job.at = job.add.length;
+    await this._chain(job);
+    return this.note(job.got, job.miss);
   }
 
   /** Потребность — FAD с запасом; адсорбционный осушитель — компрессоры с запасом на продувку. */
-  static _need(s) {
-    const { q } = s;
-    const wc = +(String(q.air || '').split('.')[1] || 0);
-    s.ads = (wc && wc <= 3) || (q.pdp != null && +q.pdp <= -20);
-    const nd = q.flow > 0 ? StationReq.need(q, q.flow) : { v: 0, why: '' };
-    s.Q = s.ads && nd.v > 0 ? nd.v / (1 - AirChain.PURGE) : nd.v;
-    return nd;
+  static _need(job) {
+    const { q: need } = job;
+    const moistClass = +(String(need.air || '').split('.')[1] || 0);
+    job.ads = (moistClass && moistClass <= this.ADS_CLASS) || (need.pdp != null && +need.pdp <= this.ADS_PDP);
+    const demand = need.flow > 0 ? StationReq.need(need, need.flow) : { v: 0, why: '' };
+    job.Q = job.ads && demand.v > 0 ? demand.v / (1 - AirChain.PURGE) : demand.v;
+    return demand;
   }
 
   /** Фильтры и ресиверы — по цепочке воздуха, и когда компоновка не сложилась. */
-  static async _chain(s) {
-    const air = StationLayout.solve(StationUi.input(s.x)).air || KitNeed.air(s.x);
-    for (const rec of (air?.recs || []).filter(r => (r.cat === 'filter' || r.cat === 'receiver') && !r.replace))
-      await (rec.cat === 'receiver' ? this._compRecv(s, rec) : this._compFilter(s, rec));
+  static async _chain(job) {
+    const air = StationLayout.solve(StationUi.input(job.x)).air || KitNeed.air(job.x);
+    for (const rec of (air?.recs || []).filter(
+      entry => (entry.cat === 'filter' || entry.cat === 'receiver') && !entry.replace,
+    ))
+      await (rec.cat === 'receiver' ? this._compRecv(job, rec) : this._compFilter(job, rec));
   }
 
-  static _recvWhere(x, q) {
-    const rq = StationReq.ensure(x);
-    if (q.recv === 'after' || q.recv === 'before') rq.recv = q.recv;
-    if (q.recvOut) rq.recvOut = true;
+  static _recvWhere(station, need) {
+    const req = StationReq.ensure(station);
+    if (need.recv === 'after' || need.recv === 'before') req.recv = need.recv;
+    if (need.recvOut) req.recvOut = true;
   }
 
-  static async _compMain(s, nd) {
-    const { q, B } = s;
-    const cp = s.pool.filter(c => this.fitsH(c, 'compressor', s.H));
-    const cq = { ...q, ads: s.ads };
+  static async _compMain(job, demand) {
+    const { q: need, B: bar } = job;
+    const compressors = job.pool.filter(item => this.fitsH(item, 'compressor', job.H));
+    const compNeed = { ...need, ads: job.ads };
     // электрические — первыми; «чтобы поместилось» — не дизельный вместо электрического
-    const u =
-      this.comps(this.electric(cp), s.Q, B, cq) ||
-      (q.compact && this.electric(cp).length ? null : this.comps(cp, s.Q, B, cq));
-    if (!u) {
-      s.miss.push(this._compMiss(s));
+    const chosen =
+      this.comps(this.electric(compressors), job.Q, bar, compNeed) ||
+      (need.compact && this.electric(compressors).length ? null : this.comps(compressors, job.Q, bar, compNeed));
+    if (!chosen) {
+      job.miss.push(this._compMiss(job));
       return;
     }
-    StationSup.ctx = StationSup.of(u.o.c);
-    s.Bc = u.o.p || B;
-    s.picked = u;
-    s.add.push(await this.part(u.o.c, u.n + s.res, 'main'));
-    this._compGot(s, u, nd);
+    StationSup.ctx = StationSup.of(chosen.o.c);
+    job.Bc = chosen.o.p || bar;
+    job.picked = chosen;
+    job.add.push(await this.part(chosen.o.c, chosen.n + job.res, 'main'));
+    this._compGot(job, chosen, demand);
   }
 
-  static _compMiss(s) {
-    const { q, B } = s;
-    return `${q.oilFree ? 'безмасляный ' : ''}${q.work > 1 ? `${q.work} компрессора` : 'компрессор'} на ${AirChain.m3(s.Q)} м³/мин${B ? ` и ${AirChain.m3(B)} бар` : ''}`;
+  static _compMiss(job) {
+    const { q: need, B: bar } = job;
+    return `${need.oilFree ? 'безмасляный ' : ''}${need.work > 1 ? `${need.work} компрессора` : 'компрессор'} на ${AirChain.m3(job.Q)} м³/мин${bar ? ` и ${AirChain.m3(bar)} бар` : ''}`;
   }
 
-  static _compGot(s, u, nd) {
-    const { q, B } = s;
-    s.got.push(
-      `компрессоры ${u.n}${s.res ? ` + ${s.res} резервн.` : ''} × ${u.o.c.name}${nd.why ? ` (потребность: ${nd.why})` : ''}${s.ads ? ` (с запасом ${Math.round(AirChain.PURGE * 100)} % на продувку адсорбционного осушителя)` : ''}`,
+  static _compGot(job, chosen, demand) {
+    const { q: need, B: bar } = job;
+    job.got.push(
+      `компрессоры ${chosen.n}${job.res ? ` + ${job.res} резервн.` : ''} × ${chosen.o.c.name}${demand.why ? ` (потребность: ${demand.why})` : ''}${job.ads ? ` (с запасом ${Math.round(AirChain.PURGE * 100)} % на продувку адсорбционного осушителя)` : ''}`,
     );
-    if (B > 0 && u.o.p > 0 && u.o.p < this.barNeed(B, u.o.vsd) - 0.05)
-      s.got.push(
-        `давление компрессора ${AirChain.m3(u.o.p)} бар — без запаса на потери в осушителе и фильтрах${u.o.vsd ? '' : ' и диапазон регулирования'} (нужно около ${AirChain.m3(this.barNeed(B, u.o.vsd))})`,
+    if (bar > 0 && chosen.o.p > 0 && chosen.o.p < this.barNeed(bar, chosen.o.vsd) - this.BAR_TOL)
+      job.got.push(
+        `давление компрессора ${AirChain.m3(chosen.o.p)} бар — без запаса на потери в осушителе и фильтрах${chosen.o.vsd ? '' : ' и диапазон регулирования'} (нужно около ${AirChain.m3(this.barNeed(bar, chosen.o.vsd))})`,
       );
-    if (q.vsd && !u.o.f) s.got.push('компрессора с частотным регулированием в каталоге нет — подобран без него');
+    if (need.vsd && !chosen.o.f)
+      job.got.push('компрессора с частотным регулированием в каталоге нет — подобран без него');
   }
 
   /** Осушитель — на всю производительность рабочих компрессоров с поправками производителя. */
-  static async _compDryer(s) {
-    const u = s.picked;
-    const Qd = u ? u.o.v * u.n : s.Q;
-    const tmax = StationReq.num(String(s.q.tmax ?? '').replace(/[−–]/g, '-'));
-    const dm = this.dryer(s.ads, Qd, s.B, s.Bc, { tmax, H: s.H, W: this.wmax(s.x) });
-    if (!dm?.o) {
-      s.miss.push(
-        `${s.ads ? 'адсорбционный' : 'рефрижераторный'} осушитель на ${AirChain.m3(Qd)} м³/мин с поправками на давление и температуру`,
+  static async _compDryer(job) {
+    const chosen = job.picked;
+    const demand = chosen ? chosen.o.v * chosen.n : job.Q;
+    const tmax = StationReq.num(String(job.q.tmax ?? '').replace(/[−–]/g, '-'));
+    const dryers = this.dryer(job.ads, demand, job.B, job.Bc, { tmax, H: job.H, W: this.wmax(job.x) });
+    if (!dryers?.o) {
+      job.miss.push(
+        `${job.ads ? 'адсорбционный' : 'рефрижераторный'} осушитель на ${AirChain.m3(demand)} м³/мин с поправками на давление и температуру`,
       );
       return;
     }
-    const d = dm.o;
-    const k = dm.n > 1;
-    s.add.push(await this.part(d.c, dm.n));
-    s.got.push(
-      `${k ? `осушители ${dm.n} × ${d.c.name} параллельно` : this.lbl('осушитель', d.c.name)} (с поправками ${k ? `${dm.n} × ` : ''}${AirChain.m3(d.cap)}${k ? ` = ${AirChain.m3(d.cap * dm.n)}` : ''} м³/мин)`,
+    const best = dryers.o;
+    const k = dryers.n > 1;
+    job.add.push(await this.part(best.c, dryers.n));
+    job.got.push(
+      `${k ? `осушители ${dryers.n} × ${best.c.name} параллельно` : this.lbl('осушитель', best.c.name)} (с поправками ${k ? `${dryers.n} × ` : ''}${AirChain.m3(best.cap)}${k ? ` = ${AirChain.m3(best.cap * dryers.n)}` : ''} м³/мин)`,
     );
   }
 
   /** Ресиверы — по методике ПНЕВМОТЕХ: типоразмер и число — из рекомендации цепочки. */
-  static async _compRecv(s, rec) {
+  static async _compRecv(job, rec) {
     const role = rec.role || 'dry';
     const size = this.num((rec.r.volume || [])[0]) || 0;
-    const { r, n } = this._recvSize(s, rec, size, this._recvH(s, role));
-    if (!r?.o) {
-      s.miss.push(rec.title.toLowerCase() + (r?.tall ? ' — по высоте не помещается' : ' — подходящих в каталоге нет'));
-      return;
-    }
-    const fp = await this.part(r.o.c, n);
-    fp.recvRole = role;
-    s.x.kit.parts.splice(s.at++, 0, fp);
-    s.got.push(`${this.RECV_ROLE[role] || this.RECV_ROLE.dry}: ${n > 1 ? `${n} × ` : ''}${r.o.c.name}`);
-  }
-
-  /** Ресивер снаружи или у потребителя — без ограничения по высоте. */
-  static _recvH(s, role) {
-    return (s.q.recvOut && role === 'dry') || role === 'local' ? 0 : this.hmax(s.x);
-  }
-
-  /** 900 л не помещается по высоте, а нужно не больше 500 л — 500 л с обоснованием «нехватка места». */
-  static _recvSize(s, rec, size, H) {
-    const r = size > 0 ? this.recvPick(size, s.Bc, H) : null;
-    const small = !r?.o && size === ReceiverPlan.UNIT && rec.need > 0 && rec.need <= ReceiverPlan.SMALL;
-    const r5 = small ? this.recvPick(ReceiverPlan.SMALL, s.Bc, H) : null;
-    if (!r5?.o) return { r, n: rec.qty || 1 };
-    StationReq.ensure(s.x).recvWhy = 'space';
-    return { r: r5, n: 1 };
-  }
-
-  static async _compFilter(s, rec) {
-    const u = s.picked;
-    const fm = this.filter(rec, u ? u.o.v * u.n : s.Q, s.B, s.Bc);
-    if (!fm?.o) {
-      s.miss.push(rec.title.toLowerCase());
-      return;
-    }
-    const c = fm.o;
-    const fp = await this.part(c.c, fm.n);
-    fp.airGrade = rec.key; // ступень, под которую подобран
-    s.x.kit.parts.splice(s.at++, 0, fp);
-    s.got.push(fm.n > 1 ? `фильтры ${fm.n} × ${c.c.name} параллельно` : this.lbl('фильтр', c.c.name));
-  }
-
-  static async _pickPump(s) {
-    if (s.q.q > 0) await this._pumps(s);
-    return this._done(s);
-  }
-
-  static _top(v) {
-    const t = StationEquip.top(v);
-    return t ? t.v : null;
-  }
-
-  static async _pumps(s) {
-    const { q } = s;
-    const L = s.pool
-      .filter(c => this.pumpOk(c))
-      .map(c => ({ c, v: this._top(attrsOf(c).flow) || 0, h: this._top(attrsOf(c).head) }))
-      .filter(o => o.v > 0 && (!(q.head > 0) || o.h >= q.head));
-    const u = this.units(L, q.q, q.work, o => (q.head > 0 && o.h > 0 ? (0.3 * (o.h - q.head)) / q.head : 0));
-    if (!u) {
-      s.miss.push(
-        `${q.work > 1 ? `${q.work} насоса` : 'насос'} на ${AirChain.m3(q.q)} м³/ч${q.head ? ` и ${AirChain.m3(q.head)} м` : ''}`,
+    const { r: found, n: count } = this._recvSize(job, rec, size, this._recvH(job, role));
+    if (!found?.o) {
+      job.miss.push(
+        rec.title.toLowerCase() + (found?.tall ? ' — по высоте не помещается' : ' — подходящих в каталоге нет'),
       );
       return;
     }
-    s.add.push(await this.part(u.o.c, u.n + s.res, 'main'));
-    s.got.push(`насосы ${u.n}${s.res ? ` + ${s.res} резервн.` : ''} × ${u.o.c.name}`);
+    const part = await this.part(found.o.c, count);
+    part.recvRole = role;
+    job.x.kit.parts.splice(job.at++, 0, part);
+    job.got.push(`${this.RECV_ROLE[role] || this.RECV_ROLE.dry}: ${count > 1 ? `${count} × ` : ''}${found.o.c.name}`);
   }
 
-  static async _pickDgu(s) {
-    if (s.q.kw > 0) await this._dgu(s);
-    return this._done(s);
+  /** Ресивер снаружи или у потребителя — без ограничения по высоте. */
+  static _recvH(job, role) {
+    return (job.q.recvOut && role === 'dry') || role === 'local' ? 0 : this.hmax(job.x);
+  }
+
+  /** 900 л не помещается по высоте, а нужно не больше 500 л — 500 л с обоснованием «нехватка места». */
+  static _recvSize(job, rec, size, height) {
+    const found = size > 0 ? this.recvPick(size, job.Bc, height) : null;
+    const small = !found?.o && size === ReceiverPlan.UNIT && rec.need > 0 && rec.need <= ReceiverPlan.SMALL;
+    const found500 = small ? this.recvPick(ReceiverPlan.SMALL, job.Bc, height) : null;
+    if (!found500?.o) return { r: found, n: rec.qty || 1 };
+    StationReq.ensure(job.x).recvWhy = 'space';
+    return { r: found500, n: 1 };
+  }
+
+  static async _compFilter(job, rec) {
+    const chosen = job.picked;
+    const filters = this.filter(rec, chosen ? chosen.o.v * chosen.n : job.Q, job.B, job.Bc);
+    if (!filters?.o) {
+      job.miss.push(rec.title.toLowerCase());
+      return;
+    }
+    const best = filters.o;
+    const part = await this.part(best.c, filters.n);
+    part.airGrade = rec.key; // ступень, под которую подобран
+    job.x.kit.parts.splice(job.at++, 0, part);
+    job.got.push(filters.n > 1 ? `фильтры ${filters.n} × ${best.c.name} параллельно` : this.lbl('фильтр', best.c.name));
+  }
+
+  static async _pickPump(job) {
+    if (job.q.q > 0) await this._pumps(job);
+    return this._done(job);
+  }
+
+  static _top(value) {
+    const top = StationEquip.top(value);
+    return top ? top.v : null;
+  }
+
+  static async _pumps(job) {
+    const { q: need } = job;
+    const options = job.pool
+      .filter(item => this.pumpOk(item))
+      .map(item => ({ c: item, v: this._top(attrsOf(item).flow) || 0, h: this._top(attrsOf(item).head) }))
+      .filter(option => option.v > 0 && (!(need.head > 0) || option.h >= need.head));
+    const chosen = this.units(options, need.q, need.work, option =>
+      need.head > 0 && option.h > 0 ? (this.PENALTY.head * (option.h - need.head)) / need.head : 0,
+    );
+    if (!chosen) {
+      job.miss.push(
+        `${need.work > 1 ? `${need.work} насоса` : 'насос'} на ${AirChain.m3(need.q)} м³/ч${need.head ? ` и ${AirChain.m3(need.head)} м` : ''}`,
+      );
+      return;
+    }
+    job.add.push(await this.part(chosen.o.c, chosen.n + job.res, 'main'));
+    job.got.push(`насосы ${chosen.n}${job.res ? ` + ${job.res} резервн.` : ''} × ${chosen.o.c.name}`);
+  }
+
+  static async _pickDgu(job) {
+    if (job.q.kw > 0) await this._dgu(job);
+    return this._done(job);
   }
 
   /** Мощность — по назначению (резервный — ESP, иначе PRP); одной не хватает — несколько одинаковых параллельно. */
-  static async _dgu(s) {
-    const { q } = s;
-    const L = s.pool
-      .filter(c => this.dguOk(c))
-      .map(c => ({ c, v: GensetSizing.cap(attrsOf(c), q.mode === 'standby') }))
-      .filter(o => o.v > 0);
-    const pen = o => this.dguPen(o.c);
-    const u = this.units(L, q.kw, q.work || 1, pen) || (q.work ? null : this.units(L, q.kw, 0, pen));
-    if (u) {
-      const n = u.n + s.res;
-      s.add.push(await this.part(u.o.c, n, 'main'));
-      s.got.push(`ДГУ ${n > 1 ? `${u.n}${s.res ? ` + ${s.res} резервн.` : ''} × ` : ''}${u.o.c.name}`);
-    } else s.miss.push(`ДГУ от ${AirChain.m3(q.kw)} кВт`);
-    s.x.kit.parts = [...s.add, ...s.keep];
-    this._tank(s);
+  static async _dgu(job) {
+    const { q: need } = job;
+    const options = job.pool
+      .filter(item => this.dguOk(item))
+      .map(item => ({ c: item, v: GensetSizing.cap(attrsOf(item), need.mode === 'standby') }))
+      .filter(option => option.v > 0);
+    const pen = option => this.dguPen(option.c);
+    const chosen =
+      this.units(options, need.kw, need.work || 1, pen) || (need.work ? null : this.units(options, need.kw, 0, pen));
+    if (chosen) {
+      const count = chosen.n + job.res;
+      job.add.push(await this.part(chosen.o.c, count, 'main'));
+      job.got.push(
+        `ДГУ ${count > 1 ? `${chosen.n}${job.res ? ` + ${job.res} резервн.` : ''} × ` : ''}${chosen.o.c.name}`,
+      );
+    } else job.miss.push(`ДГУ от ${AirChain.m3(need.kw)} кВт`);
+    job.x.kit.parts = [...job.add, ...job.keep];
+    this._tank(job);
   }
 
-  static _tank(s) {
-    const { x, q } = s;
-    const v = q.hours > 0 ? StationDefaults.retank(x, q.hours) : null;
-    if (!v) return;
-    const fp = StationRules.ok() ? GensetSizing.plan(x) : null;
-    s.got.push(
-      `топливный бак ${v} л — на ${q.hours} ч при нагрузке ${fp ? Math.round(fp.x * 100) : 75} %${fp ? ` с запасом ${Math.round((StationRules.raw('dgu.fuel_margin') - 1) * 100)} %` : ''}`,
+  static _tank(job) {
+    const { x: station, q: need } = job;
+    const volume = need.hours > 0 ? StationDefaults.retank(station, need.hours) : null;
+    if (!volume) return;
+    const fuel = StationRules.ok() ? GensetSizing.plan(station) : null;
+    job.got.push(
+      `топливный бак ${volume} л — на ${need.hours} ч при нагрузке ${fuel ? Math.round(fuel.x * 100) : this.LOAD_DEFAULT} %${fuel ? ` с запасом ${Math.round((StationRules.raw('dgu.fuel_margin') - 1) * 100)} %` : ''}`,
     );
   }
 
+  /** Итог подбора для менеджера. */
   static note(got, miss) {
     return (
       [

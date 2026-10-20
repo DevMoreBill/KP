@@ -83,6 +83,29 @@ const noUndef = {
   },
 };
 
+// у открытого метода класса (не «_метод») — JSDoc /** … */ перед ним
+const jsdoc = {
+  meta: { type: 'suggestion', schema: [], messages: { need: 'У открытого метода «{{name}}» нет описания /** … */' } },
+  create(context) {
+    const src = context.sourceCode;
+    const check = (node, name) => {
+      if (!name || name.startsWith('_') || name === 'constructor') return;
+      const before = src.getCommentsBefore(node).at(-1);
+      if (!before || before.type !== 'Block' || !before.value.startsWith('*')) context.report({ node, messageId: 'need', data: { name } });
+    };
+    return {
+      MethodDefinition(node) { check(node, node.key.name || node.key.value); },
+      PropertyDefinition(node) { if (node.value && /FunctionExpression$/.test(node.value.type)) check(node, node.key.name); },
+    };
+  },
+};
+
+const KP = { rules: { 'no-undef': noUndef, jsdoc } };
+
+// папки, где уже наведён «чистый код» (решение владельца 20.10): говорящие имена и JSDoc у открытых методов
+const CLEAN = ['tz', 'tz-out', 'calc'].map(d => `app/web/js/features/${d}/*.js`);
+const NAMES = { min: 3, properties: 'never', exceptions: ['i', 'j', 'k', 'x', 'y', 'z', 'x0', 'x1', 'y0', 'y1', 'z0', 'z1', 'dx', 'dy', 'dz', 'id', 'ok', 'kw', 'el', 'db', 'of', '_'] };
+
 // строгие правила переписанного кода (ES-модули): без вложенных «?:» и длинных цепочек условий, короткие методы
 const MODULES = SharedNames.files(JS_DIR).filter(f => ESM.test(fs.readFileSync(f, 'utf8'))).map(f => path.relative(ROOT, f).split(path.sep).join('/'));
 const STRICT = {
@@ -99,7 +122,7 @@ const STRICT = {
 export default [{
   files: ['app/web/js/**/*.js'],
   languageOptions: { ecmaVersion: 2022, sourceType: 'script', globals: Object.fromEntries(BROWSER.map(n => [n, 'readonly'])) },
-  plugins: { kp: { rules: { 'no-undef': noUndef } } },
+  plugins: { kp: KP },
   rules: {
     'kp/no-undef': 'error',
     'no-unused-vars': ['warn', { vars: 'local', args: 'none', caughtErrors: 'none' }],
@@ -111,4 +134,8 @@ export default [{
   files: MODULES,
   languageOptions: { sourceType: 'module' },
   rules: STRICT,
-}] : [])];
+}] : []), {
+  files: CLEAN,
+  plugins: { kp: KP },
+  rules: { 'id-length': ['error', NAMES], 'kp/jsdoc': 'error' },
+}];

@@ -1,94 +1,98 @@
 import { CalcInput } from './calc-input.js';
 import { CalcNote } from './calc-note.js';
 
-const f = CalcNote.f;
-
 /** Давление: у потребителя + потери на фильтрах, осушителях и трубах → давление компрессора; аппараты — не ниже. */
 export class PressureBudget {
-  static run(N, q) {
-    const r = q.req;
-    N.section('press', 'Давление');
-    const C = q.units.filter(u => u.kind === 'compressor');
-    if (!C.length) return null;
-    const pmax = Math.min(...C.map(u => u.info.bar || Infinity));
-    const vsd = C.every(u => u.info.vsd);
+  /** Давление: потери в подготовке воздуха и запас компрессора. */
+  static run(note, input) {
+    const req = input.req;
+    note.section('press', 'Давление');
+    const comps = input.units.filter(unit => unit.kind === 'compressor');
+    if (!comps.length) return null;
+    const pmax = Math.min(...comps.map(unit => unit.info.bar || Infinity));
+    const vsd = comps.every(unit => unit.info.vsd);
     if (!Number.isFinite(pmax)) {
-      N.missing('comp.bar', 'Нет рабочего давления компрессора');
+      note.missing('comp.bar', 'Нет рабочего давления компрессора');
       return null;
     }
-    const { loss, data, rules, lp } = PressureBudget.losses(N, q);
-    if (!(r.pressure > 0)) {
-      N.issue('info', 'Давление у потребителя не задано — проверка давления не выполнена.');
-      N.ask('Требуемое рабочее давление сжатого воздуха у потребителя (на выходе станции), бар.');
+    const { loss, data, rules, lp: losses } = PressureBudget.losses(note, input);
+    if (!(req.pressure > 0)) {
+      note.issue('info', 'Давление у потребителя не задано — проверка давления не выполнена.');
+      note.ask('Требуемое рабочее давление сжатого воздуха у потребителя (на выходе станции), бар.');
       return { pmax, loss, pOp: Math.max(1, pmax - (vsd ? 0 : StationRules.raw('pressure.band')) - loss) };
     }
-    const need = r.pressure + loss;
-    N.step({
+    const need = req.pressure + loss;
+    note.step({
       what: 'Требуемое давление компрессора',
       formula: 'pтр = pпотр + Σ Δp',
-      data: [['pпотр', `${f(r.pressure)} бар`], ...data],
+      data: [['pпотр', `${CalcNote.fmt(req.pressure)} бар`], ...data],
       rules,
-      result: `pтр = ${f(need)} бар`,
+      result: `pтр = ${CalcNote.fmt(need)} бар`,
     });
-    PressureBudget.compressor(N, { pmax, vsd, need, r, loss });
-    for (const u of q.units.filter(o => /^(receiver|dryer|filter)$/.test(o.kind))) {
-      const b = u.info.bar || CalcInput.num(u.attrs.pressure);
-      if (b > 0 && b < pmax - 1e-9)
-        N.issue(
+    PressureBudget.compressor(note, { pmax, vsd, need, r: req, loss });
+    for (const unit of input.units.filter(entry => /^(receiver|dryer|filter)$/.test(entry.kind))) {
+      const bar = unit.info.bar || CalcInput.num(unit.attrs.pressure);
+      if (bar > 0 && bar < pmax - 1e-9)
+        note.issue(
           'error',
-          `${u.name}: рассчитан на ${f(b)} бар — меньше наибольшего давления компрессора ${f(pmax)} бар.`,
+          `${unit.name}: рассчитан на ${CalcNote.fmt(bar)} бар — меньше наибольшего давления компрессора ${CalcNote.fmt(pmax)} бар.`,
         );
     }
-    return { pmax, loss, need, pOp: r.pressure + lp };
+    return { pmax, loss, need, pOp: req.pressure + losses };
   }
 
   /** Потери: по паспорту, иначе по правилу; трубопровод станции. */
-  static losses(N, q) {
+  static losses(note, input) {
     let loss = 0;
     const data = [];
     const rules = [];
-    const add = (u, d, rid, ruleV) => {
-      const v = d != null ? d : ruleV();
-      if (d == null) rules.push(rid);
-      loss += v;
-      data.push([u.name, `${f(v)} бар (${d != null ? 'паспорт' : 'правило'})`]);
+    const add = (unit, drop, rid, ruleV) => {
+      const value = drop != null ? drop : ruleV();
+      if (drop == null) rules.push(rid);
+      loss += value;
+      data.push([unit.name, `${CalcNote.fmt(value)} бар (${drop != null ? 'паспорт' : 'правило'})`]);
     };
-    for (const u of q.units.filter(o => o.kind === 'filter' && o.info.grade !== 'cond'))
-      add(u, CalcInput.dp(u), 'loss.filter', () => N.rule('loss.filter'));
-    for (const u of q.units.filter(o => o.kind === 'dryer'))
-      add(u, CalcInput.dp(u), 'loss.dryer', () => N.rule('loss.dryer')[u.info.type === 'ads' ? 'ads' : 'refrig']);
-    const lp = N.rule('loss.pipe');
-    loss += lp;
-    data.push(['трубопровод станции', `${f(lp)} бар`]);
+    for (const unit of input.units.filter(entry => entry.kind === 'filter' && entry.info.grade !== 'cond'))
+      add(unit, CalcInput.pressureDrop(unit), 'loss.filter', () => note.rule('loss.filter'));
+    for (const unit of input.units.filter(entry => entry.kind === 'dryer'))
+      add(
+        unit,
+        CalcInput.pressureDrop(unit),
+        'loss.dryer',
+        () => note.rule('loss.dryer')[unit.info.type === 'ads' ? 'ads' : 'refrig'],
+      );
+    const pipeLoss = note.rule('loss.pipe');
+    loss += pipeLoss;
+    data.push(['трубопровод станции', `${CalcNote.fmt(pipeLoss)} бар`]);
     rules.push('loss.pipe');
-    return { loss, data, rules, lp };
+    return { loss, data, rules, lp: pipeLoss };
   }
 
   /** Частотный — по наибольшему давлению; «нагрузка — холостой ход» — по давлению включения. */
-  static compressor(N, { pmax, vsd, need, r, loss }) {
-    const band = vsd ? 0 : N.rule('pressure.band');
+  static compressor(note, { pmax, vsd, need, r: req, loss }) {
+    const band = vsd ? 0 : note.rule('pressure.band');
     const low = pmax - band;
     const ok = low >= need - 1e-9;
-    N.step({
+    note.step({
       what: vsd
         ? 'Компрессоры с частотным регулированием: давление поддержания'
         : 'Компрессоры «нагрузка — холостой ход»: давление включения',
       formula: vsd ? 'pmax ≥ pтр' : 'pmax − Δpрег ≥ pтр',
-      data: [['pmax (паспорт)', `${f(pmax)} бар`], ...(vsd ? [] : [['Δpрег', `${f(band)} бар`]])],
+      data: [['pmax (паспорт)', `${CalcNote.fmt(pmax)} бар`], ...(vsd ? [] : [['Δpрег', `${CalcNote.fmt(band)} бар`]])],
       rules: vsd ? [] : ['pressure.band'],
-      result: `${vsd ? 'pmax = ' : 'pвкл = '}${f(low)} бар`,
+      result: `${vsd ? 'pmax = ' : 'pвкл = '}${CalcNote.fmt(low)} бар`,
       ok,
       margin: CalcNote.pct(low, need),
     });
-    if (!N.fits(pmax, need).ok) {
-      N.issue(
+    if (!note.fits(pmax, need).ok) {
+      note.issue(
         'error',
-        `Компрессор на ${f(pmax)} бар не обеспечит ${f(r.pressure)} бар у потребителя с потерями ${f(loss)} бар (нужно ${f(need)}).`,
+        `Компрессор на ${CalcNote.fmt(pmax)} бар не обеспечит ${CalcNote.fmt(req.pressure)} бар у потребителя с потерями ${CalcNote.fmt(loss)} бар (нужно ${CalcNote.fmt(need)}).`,
       );
     } else if (!ok) {
-      N.issue(
+      note.issue(
         'warn',
-        `В нижней точке регулирования (${f(low)} бар) давление ниже требуемого ${f(need)} бар — сузьте диапазон регулирования или выберите компрессор на большее давление.`,
+        `В нижней точке регулирования (${CalcNote.fmt(low)} бар) давление ниже требуемого ${CalcNote.fmt(need)} бар — сузьте диапазон регулирования или выберите компрессор на большее давление.`,
       );
     }
   }

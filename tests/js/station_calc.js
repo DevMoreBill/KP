@@ -21,7 +21,10 @@ for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));
 global.isKit=x=>!!(x && x.kit);
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
-if (GOLDEN){ GOLDEN.wrap(StationCalc, ['run', 'docGroups']); process.on('exit', ()=>GOLDEN.save(process.env.KP_GOLDEN)); }
+if (GOLDEN){ global.Spoiler??={ attr:k=>` data-sp="${k}"` }; const run0=StationCalc.run; let inHtml=false;   // расчётная записка на экране — по каждому расчёту
+  StationCalc.run=function(x, ...rest){ const out=run0.call(this, x, ...rest); if (!inHtml){ inHtml=true;
+    try{ GOLDEN.put('StationCalc.html', StationCalc.html(x)); } catch(e){ GOLDEN.put('StationCalc.html', 'ошибка: '+e.message); } finally{ inHtml=false; } } return out; };
+  GOLDEN.wrap(StationCalc, ['run', 'docGroups']); process.on('exit', ()=>GOLDEN.save(process.env.KP_GOLDEN)); }
 
 const near=(a, b, tol, msg)=>assert.ok(Math.abs(a-b)<=tol, `${msg}: ${a} ≠ ${b} (±${tol})`);
 const part=(name, attrs, qty=1, rows=[])=>Object.assign(kitNewPart({ name }), { attrs, qty, rows });

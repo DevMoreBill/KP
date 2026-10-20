@@ -1,237 +1,260 @@
 import { AirChain } from '../layout/air-chain.js';
 import { CalcNote } from './calc-note.js';
 
-const f = CalcNote.f;
-
 /**
  * Потребность → производительность компрессоров (ISO 1217, FAD). Н. м³ (DIN 1343) или ст. м³ (ГОСТ 2939-63) — в FAD по
  * давлению на высоте (ГОСТ 4401-81) и парциальному давлению пара (Магнус, WMO-No. 8); затем запас, продувка
  * адсорбционного осушителя и сравнение с рабочими компрессорами (резервные — самые крупные, не считаются).
  */
 export class AirDemand {
+  static KELVIN = 273.15;
+  static P_NORMAL = 101.325; // кПа, нормальное атмосферное давление
   static REF = { normal: 'flow.normal', std: 'flow.standard' };
 
   /** Давление на высоте H, кПа. */
-  static baro(H) {
-    const a = StationRules.raw('flow.isa');
-    return a.p0 * Math.pow(1 - a.a * Math.max(0, H || 0), a.n);
+  static baro(alt) {
+    const isa = StationRules.raw('flow.isa');
+    return isa.p0 * Math.pow(1 - isa.a * Math.max(0, alt || 0), isa.n);
   }
 
   /** Давление насыщенного пара над водой при t, кПа. */
-  static psat(t) {
-    const m = StationRules.raw('flow.psat');
-    return m.c * Math.exp((m.b * t) / (m.l + t));
+  static psat(temp) {
+    const coef = StationRules.raw('flow.psat');
+    return coef.c * Math.exp((coef.b * temp) / (coef.l + temp));
   }
 
-  static unit(b) {
-    return b === 'std' ? 'ст. м³' : 'н. м³';
+  /** Единица потребности для основы пересчёта (FAD, н. м³, ст. м³). */
+  static unit(basis) {
+    return basis === 'std' ? 'ст. м³' : 'н. м³';
   }
 
   /** Условия приведения; ст. м³ в своей версии правил до 3.99 может не быть — 20 °C, 101,325 кПа. */
-  static ref(b) {
-    return b === 'std' ? StationRules.opt('flow.standard') || { t: 20, p: 101.325 } : StationRules.raw('flow.normal');
+  static ref(basis) {
+    return basis === 'std'
+      ? StationRules.opt('flow.standard') || { t: 20, p: AirDemand.P_NORMAL }
+      : StationRules.raw('flow.normal');
   }
 
   /** Н. м³/мин (или ст. м³/мин) → FAD при условиях всасывания. */
-  static fad(Qn, H, t, rh, b = 'normal') {
-    const nc = AirDemand.ref(b);
-    const pv = ((rh || 0) / 100) * AirDemand.psat(t);
-    return (((Qn * nc.p) / (AirDemand.baro(H) - pv)) * (t + 273.15)) / (nc.t + 273.15);
+  static fad(normal, alt, temp, humidity, basis = 'normal') {
+    const refCond = AirDemand.ref(basis);
+    const vapor = ((humidity || 0) / 100) * AirDemand.psat(temp);
+    return (
+      (((normal * refCond.p) / (AirDemand.baro(alt) - vapor)) * (temp + AirDemand.KELVIN)) /
+      (refCond.t + AirDemand.KELVIN)
+    );
   }
 
-  static units(q) {
-    return q.units.filter(u => u.kind === 'compressor').flatMap(u => Array.from({ length: u.qty }, () => u));
+  static _units(input) {
+    return input.units
+      .filter(unit => unit.kind === 'compressor')
+      .flatMap(unit => Array.from({ length: unit.qty }, () => unit));
   }
 
-  static run(N, q) {
-    const r = q.req;
-    N.section('air', 'Производительность');
-    if (!(r.flow > 0)) {
-      N.issue('info', 'Производительность станции не задана — расчёт по потребности не выполнен.');
-      N.ask(
+  /** Потребность в воздухе: пересчёт в FAD, запас, сравнение с компрессорами; ответ — {sum, need}. */
+  static run(note, input) {
+    const req = input.req;
+    note.section('air', 'Производительность');
+    if (!(req.flow > 0)) {
+      note.issue('info', 'Производительность станции не задана — расчёт по потребности не выполнен.');
+      note.ask(
         'Требуемая производительность станции, м³/мин, и к каким условиям она приведена (FAD — условия всасывания или нормальные м³).',
       );
       return null;
     }
-    const H = r.alt != null ? r.alt : 0;
-    const tAir = r.tmax != null ? r.tmax : StationRules.raw('flow.fad_ref').t;
-    if (r.alt == null) {
-      N.assume('Высота над уровнем моря в ТЗ не указана — принято 0 м.');
-      N.ask('Высота площадки над уровнем моря, м.', true);
+    const alt = req.alt != null ? req.alt : 0;
+    const tAir = req.tmax != null ? req.tmax : StationRules.raw('flow.fad_ref').t;
+    if (req.alt == null) {
+      note.assume('Высота над уровнем моря в ТЗ не указана — принято 0 м.');
+      note.ask('Высота площадки над уровнем моря, м.', true);
     }
-    if (r.tmax == null)
-      N.missing(
+    if (req.tmax == null)
+      note.missing(
         't.max',
-        `Наружная температура летом не задана — для расчёта принята ${f(tAir, 0)} °C`,
+        `Наружная температура летом не задана — для расчёта принята ${CalcNote.fmt(tAir, 0)} °C`,
         'Максимальная температура наружного воздуха на площадке (летом), °C.',
       );
-    const Q = AirDemand.REF[r.basis] ? AirDemand.toFad(N, r, H, tAir) : AirDemand.asFad(N, r.flow);
-    N.rule('flow.fad_ref');
-    const need = AirDemand.need(N, q, Q);
-    const C = AirDemand.units(q)
-      .map(u => ({ u, v: u.info.flow || 0 }))
-      .sort((a, b) => b.v - a.v);
-    if (!C.length) {
-      N.issue('error', 'В составе нет компрессоров.');
-      return { need, Q };
+    const demand = AirDemand.REF[req.basis] ? AirDemand._toFad(note, req, alt, tAir) : AirDemand._asFad(note, req.flow);
+    note.rule('flow.fad_ref');
+    const need = AirDemand.need(note, input, demand);
+    const comps = AirDemand._units(input)
+      .map(unit => ({ u: unit, v: unit.info.flow || 0 }))
+      .sort((first, second) => second.v - first.v);
+    if (!comps.length) {
+      note.issue('error', 'В составе нет компрессоров.');
+      return { need, Q: demand };
     }
-    const out = AirDemand.compare(N, r, C, need);
-    if (!out) return { need, Q };
-    AirDemand.motor(N, r, H);
-    return { need, Q, ...out };
+    const out = AirDemand.compare(note, req, comps, need);
+    if (!out) return { need, Q: demand };
+    AirDemand.motor(note, req, alt);
+    return { need, Q: demand, ...out };
   }
 
-  static asFad(N, Q) {
-    N.step({
+  static _asFad(note, demand) {
+    note.step({
       what: 'Потребность — FAD (приведена к условиям всасывания, ISO 1217)',
-      data: [['Q', `${f(Q)} м³/мин`]],
+      data: [['Q', `${CalcNote.fmt(demand)} м³/мин`]],
       rules: ['flow.fad_ref'],
-      result: `Qfad = ${f(Q)} м³/мин`,
+      result: `Qfad = ${CalcNote.fmt(demand)} м³/мин`,
     });
-    return Q;
+    return demand;
   }
 
-  static toFad(N, r, H, tAir) {
-    const b = r.basis;
-    const u = AirDemand.unit(b);
-    const std = b === 'std';
+  static _toFad(note, req, alt, tAir) {
+    const basis = req.basis;
+    const basisUnit = AirDemand.unit(basis);
+    const std = basis === 'std';
     const rid = std && StationRules.opt('flow.standard') ? 'flow.standard' : 'flow.normal';
-    const T0 = AirDemand.ref(b).t;
-    const rh = r.rh != null ? r.rh : 100;
-    if (r.rh == null) N.assume(`Влажность воздуха не указана — для перевода ${u} в FAD принято 100 % (с запасом).`);
-    N.rule(rid);
-    N.rule('flow.isa');
-    N.rule('flow.psat');
-    const pb = AirDemand.baro(H);
-    const ps = AirDemand.psat(tAir);
-    const Q = AirDemand.fad(r.flow, H, tAir, rh, b);
+    const refTemp = AirDemand.ref(basis).t;
+    const humidity = req.rh != null ? req.rh : 100;
+    if (req.rh == null)
+      note.assume(`Влажность воздуха не указана — для перевода ${basisUnit} в FAD принято 100 % (с запасом).`);
+    note.rule(rid);
+    note.rule('flow.isa');
+    note.rule('flow.psat');
+    const baro = AirDemand.baro(alt);
+    const psat = AirDemand.psat(tAir);
+    const fad = AirDemand.fad(req.flow, alt, tAir, humidity, basis);
     const sym = std ? 'ст' : 'н';
-    N.step({
+    note.step({
       what: `Потребность в ${std ? 'стандартных' : 'нормальных'} м³ → FAD (условия всасывания)`,
-      formula: `Qfad = Q${sym} · 101,325 / (pб − φ·pн.п) · (273,15 + t) / ${f(273.15 + T0, 2)}`,
+      formula: `Qfad = Q${sym} · 101,325 / (pб − φ·pн.п) · (273,15 + t) / ${CalcNote.fmt(273.15 + refTemp, 2)}`,
       data: [
-        [`Q${sym}`, `${f(r.flow)} ${u}/мин`],
-        ['высота', `${f(H, 0)} м → pб = ${f(pb, 3)} кПа`],
-        ['t всасывания', `${f(tAir, 0)} °C`],
-        ['φ', `${f(rh, 0)} % → pн.п = ${f(ps, 3)} кПа`],
+        [`Q${sym}`, `${CalcNote.fmt(req.flow)} ${basisUnit}/мин`],
+        ['высота', `${CalcNote.fmt(alt, 0)} м → pб = ${CalcNote.fmt(baro, 3)} кПа`],
+        ['t всасывания', `${CalcNote.fmt(tAir, 0)} °C`],
+        ['φ', `${CalcNote.fmt(humidity, 0)} % → pн.п = ${CalcNote.fmt(psat, 3)} кПа`],
       ],
       rules: [rid, 'flow.isa', 'flow.psat'],
-      result: `Qfad = ${f(Q)} м³/мин`,
+      result: `Qfad = ${CalcNote.fmt(fad)} м³/мин`,
     });
-    return Q;
+    return fad;
   }
 
   /** Запас — по ТЗ (нормами РФ не установлен); продувка адсорбционного осушителя. */
-  static need(N, q, Q) {
-    const r = q.req;
-    const m0 = N.rule('flow.margin');
-    const m = r.margin != null ? r.margin : m0.default;
-    if (r.margin == null) {
-      N.missing(
+  static need(note, input, demand) {
+    const req = input.req;
+    const marginRule = note.rule('flow.margin');
+    const margin = req.margin != null ? req.margin : marginRule.default;
+    if (req.margin == null) {
+      note.missing(
         'flow.margin.tz',
-        `Запас производительности в ТЗ не задан — принят ${f(m, 0)} % (нормами РФ не установлен)`,
+        `Запас производительности в ТЗ не задан — принят ${CalcNote.fmt(margin, 0)} % (нормами РФ не установлен)`,
         'Нужен ли запас производительности сверх потребности (утечки, развитие производства), %?',
       );
     }
-    const ads = q.units.filter(u => u.kind === 'dryer' && u.info.type === 'ads');
+    const ads = input.units.filter(unit => unit.kind === 'dryer' && unit.info.type === 'ads');
     const regen = ads.length ? String(ads[0].attrs.regen || '') : '';
-    let s = 0;
+    let sum = 0;
     if (ads.length) {
-      N.rule('flow.purge');
-      s = AirChain.purge(regen);
+      note.rule('flow.purge');
+      sum = AirChain.purge(regen);
     }
-    const need = (Q * (1 + m / 100)) / (1 - s);
-    N.step({
+    const need = (demand * (1 + margin / 100)) / (1 - sum);
+    note.step({
       what: 'Требуемая производительность рабочих компрессоров',
       formula: 'Qтр = Qfad · (1 + запас) / (1 − продувка)',
       data: [
-        ['Qfad', `${f(Q)} м³/мин`],
-        ['запас', `${f(m, 1)} %${r.margin == null ? ' (не задан в ТЗ)' : ' (ТЗ)'}`],
+        ['Qfad', `${CalcNote.fmt(demand)} м³/мин`],
+        ['запас', `${CalcNote.fmt(margin, 1)} %${req.margin == null ? ' (не задан в ТЗ)' : ' (ТЗ)'}`],
         [
           'продувка осушителя',
-          ads.length ? `${f(s * 100, 0)} % (${regen || 'тип регенерации не указан'})` : 'нет адсорбционного осушителя',
+          ads.length
+            ? `${CalcNote.fmt(sum * 100, 0)} % (${regen || 'тип регенерации не указан'})`
+            : 'нет адсорбционного осушителя',
         ],
       ],
       rules: ['flow.margin', ads.length ? 'flow.purge' : ''],
-      result: `Qтр = ${f(need)} м³/мин`,
+      result: `Qтр = ${CalcNote.fmt(need)} м³/мин`,
     });
     return need;
   }
 
   /** Рабочие против требуемой; резервные — самые крупные; без производительности — предупреждение. */
-  static compare(N, r, C, need) {
-    const res = r.reserve != null ? Math.min(r.reserve, C.length - 1) : 0;
-    const work = C.slice(res);
-    const spare = C.slice(0, res);
-    const sum = work.reduce((a, o) => a + o.v, 0);
-    if (r.reserve == null) {
-      N.rule('flow.reserve');
-      N.missing(
+  static compare(note, req, comps, need) {
+    const res = req.reserve != null ? Math.min(req.reserve, comps.length - 1) : 0;
+    const work = comps.slice(res);
+    const spare = comps.slice(0, res);
+    const sum = work.reduce((first, entry) => first + entry.v, 0);
+    if (req.reserve == null) {
+      note.rule('flow.reserve');
+      note.missing(
         'flow.reserve.tz',
         'Резерв компрессоров в ТЗ не задан — расчёт без резерва',
         'Нужен ли резервный компрессор (N+1)?',
       );
     }
-    const unknown = [...new Set(C.filter(o => !(o.v > 0)).map(o => o.u.name))];
+    const unknown = [...new Set(comps.filter(entry => !(entry.v > 0)).map(entry => entry.u.name))];
     if (unknown.length) {
-      N.missing('comp.flow', `Нет производительности: ${unknown.join(', ')}`);
-      for (const nm of unknown)
-        N.issue(
+      note.missing('comp.flow', `Нет производительности: ${unknown.join(', ')}`);
+      for (const name of unknown)
+        note.issue(
           'warn',
-          `У «${nm}» в карточке не указана производительность — по нему проверка не выполнена; заполните карточку оборудования.`,
+          `У «${name}» в карточке не указана производительность — по нему проверка не выполнена; заполните карточку оборудования.`,
         );
     }
-    if (!work.some(o => o.v > 0)) return null;
-    const fit = N.fits(sum, need);
-    N.step({
+    if (!work.some(entry => entry.v > 0)) return null;
+    const fit = note.fits(sum, need);
+    note.step({
       what: 'Компрессоры: рабочие против требуемой',
       formula: 'Σ Qраб ≥ Qтр',
       data: [
         ['рабочих', `${work.length} шт.`],
         ['резервных', `${res} шт.${res ? ' (самые крупные — не учитываются)' : ''}`],
-        ...work.slice(0, 6).map((o, i) => [`№ ${i + 1}`, `${o.u.name} — ${f(o.v)} м³/мин`]),
+        ...work.slice(0, 6).map((entry, i) => [`№ ${i + 1}`, `${entry.u.name} — ${CalcNote.fmt(entry.v)} м³/мин`]),
       ],
-      result: `Σ Qраб = ${f(sum)} м³/мин`,
+      result: `Σ Qраб = ${CalcNote.fmt(sum)} м³/мин`,
       ok: fit.ok,
       margin: CalcNote.pct(sum, need),
       note: fit.note,
       rules: fit.edge ? ['calc.tolerance'] : [],
-      pick: [...new Set(C.map(o => o.u.name))].join('; '),
+      pick: [...new Set(comps.map(entry => entry.u.name))].join('; '),
     });
     if (!fit.ok)
-      N.issue('error', `Производительность рабочих компрессоров ${f(sum)} м³/мин меньше требуемой ${f(need)} м³/мин.`);
-    if (res) AirDemand.reserve(N, work, spare, res);
+      note.issue(
+        'error',
+        `Производительность рабочих компрессоров ${CalcNote.fmt(sum)} м³/мин меньше требуемой ${CalcNote.fmt(need)} м³/мин.`,
+      );
+    if (res) AirDemand._reserve(note, work, spare, res);
     return { sum, work, res };
   }
 
-  static reserve(N, work, spare, res) {
+  static _reserve(note, work, spare, res) {
     const big = work.length ? work[0].v : 0;
-    const low = spare.filter(o => o.v < big - 1e-9);
-    N.step({
+    const low = spare.filter(entry => entry.v < big - 1e-9);
+    note.step({
       what: 'Резерв',
       formula: 'резервный не меньше самого крупного рабочего',
       rules: ['flow.reserve'],
-      data: spare.map(o => ['резервный', `${o.u.name} — ${f(o.v)} м³/мин`]),
+      data: spare.map(entry => ['резервный', `${entry.u.name} — ${CalcNote.fmt(entry.v)} м³/мин`]),
       ok: !low.length,
       result: low.length ? 'резервный меньше рабочего' : `N + ${res}`,
     });
     if (low.length)
-      N.issue(
+      note.issue(
         'error',
         'Резервный компрессор меньше самого крупного рабочего — при его отказе станция не обеспечит потребность.',
       );
   }
 
   /** Электродвигатель на высоте и в жару — снижение мощности по данным изготовителя. */
-  static motor(N, r, H) {
-    const ma = N.rule('flow.motor_alt');
-    const hot = r.tmax != null && r.tmax > ma.t;
-    if (H <= ma.h && !hot) return;
-    const why = [H > ma.h ? `высота ${f(H, 0)} м` : '', hot ? `до +${f(r.tmax, 0)} °C` : ''].filter(Boolean).join(', ');
-    N.issue(
+  static motor(note, req, alt) {
+    const motorAlt = note.rule('flow.motor_alt');
+    const hot = req.tmax != null && req.tmax > motorAlt.t;
+    if (alt <= motorAlt.h && !hot) return;
+    const why = [
+      alt > motorAlt.h ? `высота ${CalcNote.fmt(alt, 0)} м` : '',
+      hot ? `до +${CalcNote.fmt(req.tmax, 0)} °C` : '',
+    ]
+      .filter(Boolean)
+      .join(', ');
+    note.issue(
       'warn',
-      `Условия выше номинальных для электродвигателя (до ${ma.h} м и +${ma.t} °C): ${why} — снижение мощности по данным изготовителя.`,
+      `Условия выше номинальных для электродвигателя (до ${motorAlt.h} м и +${motorAlt.t} °C): ${why} — снижение мощности по данным изготовителя.`,
     );
-    N.missing('motor.derate', 'Снижение мощности двигателей компрессоров на высоте / в жару — по данным изготовителя');
+    note.missing(
+      'motor.derate',
+      'Снижение мощности двигателей компрессоров на высоте / в жару — по данным изготовителя',
+    );
   }
 }

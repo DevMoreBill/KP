@@ -2,91 +2,91 @@ import { AirChain } from '../layout/air-chain.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { AirDemand } from './air-demand.js';
 
-const AIR_KINDS = /^(compressor|dryer|filter|receiver)$/;
-const RANGED = [
-  'flow',
-  'pressure',
-  'alt',
-  'rh',
-  'margin',
-  'tmin',
-  'tmax',
-  'tin',
-  'kw',
-  'load',
-  'hours',
-  'motor',
-  'recvVol',
-  'q',
-  'head',
-  'hsuct',
-  'tliq',
-];
-
 /** Исходные данные расчёта: требования (числа с проверкой диапазона), элементы состава по видам. */
 export class CalcInput {
+  static AIR_KINDS = /^(compressor|dryer|filter|receiver)$/;
+  static RANGED = [
+    'flow',
+    'pressure',
+    'alt',
+    'rh',
+    'margin',
+    'tmin',
+    'tmax',
+    'tin',
+    'kw',
+    'load',
+    'hours',
+    'motor',
+    'recvVol',
+    'q',
+    'head',
+    'hsuct',
+    'tliq',
+  ];
   /** Ошибочное и вне допустимого — не в расчёт (ошибка поля — StationCalc.run). */
-  static num(v) {
-    return ReqNum.num(v);
+  static num(value) {
+    return ReqNum.num(value);
   }
 
   /** {kind, cls, units, parts, recvIn, recvOut, req}. */
-  static of(x) {
-    const r = StationReq.of(x);
-    const P = kitParts(x).filter(p => p.role !== 'container');
-    const units = P.map(p => {
-      const kind = StationEquip.kindOf(p);
-      const info = AIR_KINDS.test(kind) ? AirChain.info(p, kind) : {};
+  static of(station) {
+    const req = StationReq.of(station);
+    const parts = kitParts(station).filter(part => part.role !== 'container');
+    const units = parts.map(part => {
+      const kind = StationEquip.kindOf(part);
+      const info = CalcInput.AIR_KINDS.test(kind) ? AirChain.info(part, kind) : {};
       return {
-        p,
+        p: part,
         kind,
-        qty: Math.max(1, Math.min(20, Math.round(+p.qty || 1))),
+        qty: Math.max(1, Math.min(20, Math.round(+part.qty || 1))),
         info,
-        name: String(p.name || '').trim(),
-        attrs: p.attrs || {},
-        rows: p.rows || [],
+        name: String(part.name || '').trim(),
+        attrs: part.attrs || {},
+        rows: part.rows || [],
       };
     });
     return {
-      kind: StationReq.kind(x),
-      cls: StationUi.opts(x).air || '',
+      kind: StationReq.kind(station),
+      cls: StationUi.opts(station).air || '',
       units,
-      parts: P,
-      recvIn: StationReq.recvIn(x),
-      recvOut: StationReq.recvOut(x),
-      req: CalcInput.req(r),
+      parts,
+      recvIn: StationReq.recvIn(station),
+      recvOut: StationReq.recvOut(station),
+      req: CalcInput._req(req),
     };
   }
 
-  static req(r) {
-    const g = k => (ReqNum.check(k, r[k]) ? null : CalcInput.num(r[k]));
-    const out = Object.fromEntries(RANGED.map(k => [k, g(k)]));
+  static _req(req) {
+    const checked = k => (ReqNum.check(k, req[k]) ? null : CalcInput.num(req[k]));
+    const out = Object.fromEntries(CalcInput.RANGED.map(k => [k, checked(k)]));
     return {
       ...out,
-      basis: AirDemand.REF[r.basis] ? r.basis : 'fad',
-      reserve: r.reserve != null && r.reserve !== '' ? Math.max(0, Math.round(CalcInput.num(r.reserve) || 0)) : null,
-      work: CalcInput.num(r.work),
-      start: r.start || '',
-      mode: r.mode || '',
-      liquid: r.liquid || '',
+      basis: AirDemand.REF[req.basis] ? req.basis : 'fad',
+      reserve:
+        req.reserve != null && req.reserve !== '' ? Math.max(0, Math.round(CalcInput.num(req.reserve) || 0)) : null,
+      work: CalcInput.num(req.work),
+      start: req.start || '',
+      mode: req.mode || '',
+      liquid: req.liquid || '',
     };
   }
 
   /** Строка характеристик по ключу → число в единицах строки; unitRx — единица должна совпасть. */
-  static row(u, keyRx, unitRx) {
-    for (const r of (u.rows || []).filter(q => q && keyRx.test(String(q.k || '')))) {
-      const t = `${String(r.k || '')} ${String(r.v || '')}`;
-      const v = !unitRx || unitRx.test(t) ? AirChain.first(r.v) : null;
-      if (v != null) return { v, t };
+  static row(unit, keyRx, unitRx) {
+    for (const row of (unit.rows || []).filter(entry => entry && keyRx.test(String(entry.k || '')))) {
+      const text = `${String(row.k || '')} ${String(row.v || '')}`;
+      const value = !unitRx || unitRx.test(text) ? AirChain.first(row.v) : null;
+      if (value != null) return { v: value, t: text };
     }
     return null;
   }
 
   /** Перепад давления элемента по паспорту, бар. */
-  static dp(u) {
-    const r = CalcInput.row(u, /перепад|потер[ия]\S* давлени/i);
-    if (!r) return null;
-    if (/мбар|mbar/i.test(r.t)) return r.v / 1000;
-    return /кпа/i.test(r.t) ? r.v / 100 : r.v;
+  static pressureDrop(unit) {
+    const row = CalcInput.row(unit, /перепад|потер[ия]\S* давлени/i);
+    if (!row) return null;
+    if (/мбар|mbar/i.test(row.t)) return row.v / 1000;
+    return /кпа/i.test(row.t) ? row.v / 100 : row.v;
   }
 }

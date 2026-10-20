@@ -3,40 +3,45 @@ import { StationMatrix } from '../layout/station-matrix.js';
 /** Один поставщик в станции: при равных условиях — оборудование того же поставщика, что и основные агрегаты. */
 export class StationSup {
   static ctx = ''; // поставщик основного оборудования станции, под которую идёт подбор
-  static key(s) {
-    return norm(s || '');
+  static EPS = 1e-9;
+  /** Ключ поставщика для сравнения. */
+  static key(supplier) {
+    return norm(supplier || '');
   }
-  static of(c) {
-    return c && typeof CW !== 'undefined' ? this.key(CW.supplierOf(c)) : '';
+  /** Поставщик позиции каталога. */
+  static of(item) {
+    return item && typeof CW !== 'undefined' ? this.key(CW.supplierOf(item)) : '';
   }
+  /** Допуск приоритета поставщика (доля запаса). */
   static get TOL() {
     return Math.max(0, +StationMatrix.grp('pick').oneSup || 0) / 100;
   }
   /** поставщик основного оборудования станции x (компрессоры, ДГУ, насосы — роль main) */
-  static use(x) {
-    const p = kitParts(x).find(z => z.role === 'main'),
-      c = p && catCache.find(z => z.id === p.catId);
-    this.ctx = this.of(c);
+  static use(station) {
+    const part = kitParts(station).find(z => z.role === 'main'),
+      item = part && catCache.find(z => z.id === part.catId);
+    this.ctx = this.of(item);
     return this.ctx;
   }
-  static same(c) {
-    return !!this.ctx && this.TOL > 0 && this.of(c) === this.ctx ? 1 : 0;
+  /** 1 — тот же поставщик, что у основного оборудования. */
+  static same(item) {
+    return !!this.ctx && this.TOL > 0 && this.of(item) === this.ctx ? 1 : 0;
   }
   /** сколько видов подготовки воздуха (осушитель cat, фильтры) есть у поставщика позиции c — компрессор от того, кто закроет больше состава */
-  static cover(c, cats) {
-    const s = this.of(c);
-    if (!s || !(this.TOL > 0)) return 0;
-    return cats.filter(k => catCache.some(z => attrsOf(z).cat === k && this.of(z) === s)).length;
+  static cover(item, cats) {
+    const supplier = this.of(item);
+    if (!supplier || !(this.TOL > 0)) return 0;
+    return cats.filter(k => catCache.some(z => attrsOf(z).cat === k && this.of(z) === supplier)).length;
   }
   /** выбор из кандидатов [{…, score}] при «равных условиях»: в пределах допуска от лучшего — с наибольшим rank, затем лучший */
   /** поставщик элемента состава p (позиция каталога), как в каталоге: «ООО Альфа» | '' */
-  static label(p) {
-    const c = p && p.catId ? catCache.find(z => z.id === p.catId) : null;
-    return c && typeof CW !== 'undefined' ? String(CW.supplierOf(c) || '').trim() : '';
+  static label(part) {
+    const item = part && part.catId ? catCache.find(z => z.id === part.catId) : null;
+    return item && typeof CW !== 'undefined' ? String(CW.supplierOf(item) || '').trim() : '';
   }
   /** поставщики оборудования станции (наше: агрегаты, подготовка воздуха, ресиверы, баки): «Всё у одного поставщика: …» /
    *  «Поставщиков: 2 — Альфа (компрессоры, осушитель); Бета (ресиверы)» | '' — оборудования из каталога нет */
-  static summary(x) {
+  static summary(station) {
     const KIND = {
         compressor: 'компрессоры',
         dgu: 'ДГУ',
@@ -46,24 +51,29 @@ export class StationSup {
         receiver: 'ресиверы',
         tank: 'бак',
       },
-      by = new Map();
-    for (const p of kitParts(x)) {
-      const k = StationEquip.kindOf(p);
+      bySupplier = new Map();
+    for (const part of kitParts(station)) {
+      const k = StationEquip.kindOf(part);
       if (!KIND[k]) continue;
-      const s = this.label(p) || 'без поставщика в каталоге',
-        e = by.get(s) || new Set();
-      e.add(KIND[k]);
-      by.set(s, e);
+      const supplier = this.label(part) || 'без поставщика в каталоге',
+        kinds = bySupplier.get(supplier) || new Set();
+      kinds.add(KIND[k]);
+      bySupplier.set(supplier, kinds);
     }
-    if (!by.size) return '';
-    if (by.size === 1) return `Всё у одного поставщика: ${[...by.keys()][0]}`;
-    return `Поставщиков: ${by.size} — ${[...by].map(([s, e]) => `${s} (${[...e].join(', ')})`).join('; ')}`;
+    if (!bySupplier.size) return '';
+    if (bySupplier.size === 1) return `Всё у одного поставщика: ${[...bySupplier.keys()][0]}`;
+    return `Поставщиков: ${bySupplier.size} — ${[...bySupplier].map(([supplier, kinds]) => `${supplier} (${[...kinds].join(', ')})`).join('; ')}`;
   }
-  static pick(L, rank, tol) {
-    if (!L.length) return null;
-    const b = L.reduce((m, o) => (o.score < m.score ? o : m), L[0]);
-    if (!(this.TOL > 0)) return b;
-    const near = L.filter(o => o.score <= b.score + tol + 1e-9);
-    return near.reduce((m, o) => (rank(o) > rank(m) || (rank(o) === rank(m) && o.score < m.score) ? o : m), b);
+  /** Лучший по оценке; в пределах допуска — того же поставщика. */
+  static pick(options, rank, tol) {
+    if (!options.length) return null;
+    const best = options.reduce((kept, option) => (option.score < kept.score ? option : kept), options[0]);
+    if (!(this.TOL > 0)) return best;
+    const near = options.filter(option => option.score <= best.score + tol + this.EPS);
+    return near.reduce(
+      (kept, option) =>
+        rank(option) > rank(kept) || (rank(option) === rank(kept) && option.score < kept.score) ? option : kept,
+      best,
+    );
   }
 }

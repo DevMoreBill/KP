@@ -8,8 +8,9 @@ import { TzText } from './tz-text.js';
 
 /** ТЗ на сборку станции для сборщика — документ Word с чертежом, схемой и 3D-видом в приложениях. */
 export class TzOut {
-  static NAME = s =>
-    String(s || '')
+  /** Имя файла без запрещённых знаков, до 80 символов. */
+  static NAME = text =>
+    String(text || '')
       .replace(/[\\/:*?"<>|]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
@@ -25,18 +26,18 @@ export class TzOut {
     toast('Готовлю ТЗ на сборку…');
     try {
       await this._save(x);
-    } catch (e) {
-      toast(`Не удалось подготовить ТЗ на сборку: ${e?.message || e}`);
+    } catch (err) {
+      toast(`Не удалось подготовить ТЗ на сборку: ${err?.message || err}`);
     }
   }
 
   static async _save(x) {
-    const b = await this.make(x);
-    const nm = `${this.NAME(x.name) || 'станция'}${S.number ? ` — КП ${this.NAME(S.number)}` : ''}`;
-    saveFileA(`ТЗ на сборку — ${nm}.docx`, b);
-    const c = kitContainer(x) || {};
-    const f = StationPaint.book(c) && c.paintFile; // буклет окраски в PDF — вторым файлом рядом с ТЗ
-    if (f && f.pdf) saveFileA(`Буклет окраски — ${nm}.pdf`, await (await fetch(f.src)).blob());
+    const blob = await this.make(x);
+    const name = `${this.NAME(x.name) || 'станция'}${S.number ? ` — КП ${this.NAME(S.number)}` : ''}`;
+    saveFileA(`ТЗ на сборку — ${name}.docx`, blob);
+    const container = kitContainer(x) || {};
+    const booklet = StationPaint.book(container) && container.paintFile; // буклет окраски в PDF — вторым файлом рядом с ТЗ
+    if (booklet && booklet.pdf) saveFileA(`Буклет окраски — ${name}.pdf`, await (await fetch(booklet.src)).blob());
   }
 
   /** Документ .docx (Blob). */
@@ -47,45 +48,46 @@ export class TzOut {
     const plan = StationUi.plan(x);
     const meta = StationUi.meta(x, plan);
     const org = StationUi.org();
-    const d = new DocxWriter({
+    const doc = new DocxWriter({
       title: `ТЗ на сборку: ${x.name || ''}`,
       author: org,
       footer: `ТЗ на сборку — ${x.name || 'станция'}`,
     });
-    TzText.write(d, x, plan, org);
-    const app = { d, n: 0 };
+    TzText.write(doc, x, plan, org);
+    const app = { d: doc, n: 0 };
     const ok = plan.level !== 'error' && plan.geo && plan.geo.ext;
     if (ok) await this._sheets(app, plan, meta);
     await this._paint(app, x, ok);
-    return d.pack('blob');
+    return doc.pack('blob');
   }
 
   /** Приложение с картинкой и подписью «Приложение N. …». */
-  static _add(app, im, cap, maxH, page) {
-    if (im && im.src) app.d.image(im.src, im.w, im.h, app.d.width, `Приложение ${++app.n}. ${cap}`, maxH, page);
+  static _add(app, image, cap, maxH, page) {
+    if (image && image.src)
+      app.d.image(image.src, image.w, image.h, app.d.width, `Приложение ${++app.n}. ${cap}`, maxH, page);
   }
 
   /** Приложения: габаритный чертёж, схема, 3D-разрез и виды снаружи. */
   static async _sheets(app, plan, meta) {
     const sch = StationUi.scheme(plan);
     app.d.h1('Приложения', true);
-    const L = StationDrawing.sheets(plan, meta);
-    for (const [k, sheet] of L.entries())
+    const sheets = StationDrawing.sheets(plan, meta);
+    for (const [k, sheet] of sheets.entries())
       this._add(
         app,
         await StationImages.raster(sheet, 'image/png'),
-        L.length > 1 ? `Габаритный чертёж, лист ${k + 1}` : 'Габаритный чертёж',
+        sheets.length > 1 ? `Габаритный чертёж, лист ${k + 1}` : 'Габаритный чертёж',
         225,
         k > 0,
       );
     if (sch) this._add(app, await StationImages.raster(sch.cls.svg(plan, meta), 'image/png'), sch.name, 240, true);
-    const gl = await StationRender.image(plan, meta);
-    const v3 = gl || (await StationImages.raster(StationView3D.svg(plan, meta), 'image/jpeg'));
-    this._add(app, v3, 'Разрез (3D-вид, стены со стороны зрителя срезаны)', 200, true);
-    for (const [, az, cap] of StationImages.VIEWS)
+    const webgl = await StationRender.image(plan, meta);
+    const view3d = webgl || (await StationImages.raster(StationView3D.svg(plan, meta), 'image/jpeg'));
+    this._add(app, view3d, 'Разрез (3D-вид, стены со стороны зрителя срезаны)', 200, true);
+    for (const [, azimuth, cap] of StationImages.VIEWS)
       this._add(
         app,
-        await StationRender.image(plan, meta, 'out', az),
+        await StationRender.image(plan, meta, 'out', azimuth),
         `${cap} снаружи: двери, ворота, жалюзи, светильники, знаки`,
         200,
         true,
@@ -94,32 +96,32 @@ export class TzOut {
 
   /** Окраска заказчика: буклет-картинка и макеты рисунков на стенах (PDF буклета — отдельным файлом). */
   static async _paint(app, x, ok) {
-    const c = kitContainer(x) || {};
-    const bk = StationPaint.book(c) && c.paintFile;
-    const arts = StationPaint.arts(c);
-    if (!bk && !arts.length) return;
+    const container = kitContainer(x) || {};
+    const booklet = StationPaint.book(container) && container.paintFile;
+    const arts = StationPaint.arts(container);
+    if (!booklet && !arts.length) return;
     if (!ok) app.d.h1('Приложения', true);
     const put = async (src, cap, page) => {
-      const im = await this.pic(src);
-      if (im) app.d.image(im.src, im.w, im.h, app.d.width, `Приложение ${++app.n}. ${cap}`, 200, page);
+      const image = await this.pic(src);
+      if (image) app.d.image(image.src, image.w, image.h, app.d.width, `Приложение ${++app.n}. ${cap}`, 200, page);
     };
-    if (bk && !bk.pdf) await put(bk.src, 'Буклет цветовых решений заказчика', true);
-    for (const [k, a] of arts.entries())
-      await put(a.src, `Изображение заказчика ${k + 1}: ${StationPaint.where(a)}`, k === 0 || !!bk);
+    if (booklet && !booklet.pdf) await put(booklet.src, 'Буклет цветовых решений заказчика', true);
+    for (const [k, art] of arts.entries())
+      await put(art.src, `Изображение заказчика ${k + 1}: ${StationPaint.where(art)}`, k === 0 || !!booklet);
   }
 
   /** Картинка по адресу → {src: data:image/png, w, h}; не загрузилась — null. */
   static async pic(src) {
     try {
-      const im = await readImg(src);
-      const c = document.createElement('canvas');
-      c.width = im.naturalWidth || im.width;
-      c.height = im.naturalHeight || im.height;
-      const g = c.getContext('2d');
-      g.fillStyle = '#fff';
-      g.fillRect(0, 0, c.width, c.height);
-      g.drawImage(im, 0, 0);
-      return { src: c.toDataURL('image/png'), w: c.width, h: c.height };
+      const image = await readImg(src);
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth || image.width;
+      canvas.height = image.naturalHeight || image.height;
+      const paint = canvas.getContext('2d');
+      paint.fillStyle = '#fff';
+      paint.fillRect(0, 0, canvas.width, canvas.height);
+      paint.drawImage(image, 0, 0);
+      return { src: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height };
     } catch {
       return null;
     }

@@ -23,18 +23,21 @@ export class CalcNote {
       : `${word} ${name}`;
   }
 
-  static f(v, d = 2) {
-    if (v == null || !Number.isFinite(+v)) return '—';
-    const k = Math.pow(10, d);
-    return String(Math.round(+v * k) / k)
+  /** Число с запятой и digits знаками; нет числа — «—». */
+  static fmt(value, digits = 2) {
+    if (value == null || !Number.isFinite(+value)) return '—';
+    const k = Math.pow(10, digits);
+    return String(Math.round(+value * k) / k)
       .replace('.', ',')
       .replace(/^-/, '−');
   }
 
-  static pct(a, b) {
-    return b > 0 ? Math.round((a / b - 1) * 1000) / 10 : null;
+  /** Доля part от whole в процентах. */
+  static pct(part, whole) {
+    return whole > 0 ? Math.round((part / whole - 1) * 1000) / 10 : null;
   }
 
+  /** Новый раздел записки; дальше шаги идут в него. */
   section(id, title) {
     this.cur = { id, title, steps: [] };
     this.sections.push(this.cur);
@@ -44,31 +47,32 @@ export class CalcNote {
   /** Значение правила; «требует подтверждения» — в список. */
   rule(id) {
     this.used.add(id);
-    const r = StationRules.rule(id);
-    if (r.status === 'unconfirmed' && !this.weak.has(id))
-      this.weak.set(id, { id, title: r.title, src: StationRules.src(id), note: r.note || '' });
-    return r.value;
+    const rule = StationRules.rule(id);
+    if (rule.status === 'unconfirmed' && !this.weak.has(id))
+      this.weak.set(id, { id, title: rule.title, src: StationRules.src(id), note: rule.note || '' });
+    return rule.value;
   }
 
   /** Шаг: {what, formula, data, rules, result, ok, margin, pick, note}. */
-  step(o) {
+  step(step) {
     if (!this.cur) this.section('misc', 'Прочее');
-    o.rules = (o.rules || []).filter(Boolean);
-    this.cur.steps.push(o);
-    return o;
+    step.rules = (step.rules || []).filter(Boolean);
+    this.cur.steps.push(step);
+    return step;
   }
 
+  /** Замечание: error — ошибка, warn — предупреждение. */
   issue(level, text) {
     this.issues.push({ level, text, sec: this.cur ? this.cur.id : '' });
   }
 
   /** Хватает ли с учётом погрешности данных (calc.tolerance): недобор в допуске — в пользу заказчика, не ошибка. */
   fits(have, need) {
-    const t = this.rule('calc.tolerance');
-    const ok = have >= need * (1 - t) - 1e-9;
+    const tol = this.rule('calc.tolerance');
+    const ok = have >= need * (1 - tol) - 1e-9;
     const edge = ok && have < need - 1e-9;
     const note = edge
-      ? `На пределе: недобор ${CalcNote.f((1 - have / need) * 100, 1)} % — в пределах погрешности данных каталога; при желании — следующий типоразмер.`
+      ? `На пределе: недобор ${CalcNote.fmt((1 - have / need) * 100, 1)} % — в пределах погрешности данных каталога; при желании — следующий типоразмер.`
       : '';
     return { ok, edge, note };
   }
@@ -79,20 +83,22 @@ export class CalcNote {
     if (ask) this.ask(ask, true);
   }
 
+  /** Допущение расчёта (без повторов). */
   assume(text) {
     if (!this.assumptions.includes(text)) this.assumptions.push(text);
   }
 
   /** Вопрос заказчику: обязательный — без ответа станцию не подобрать; later — уточнение, расчёт идёт по умолчанию. */
   ask(text, later) {
-    const L = later ? this.later : this.questions;
-    if (!L.includes(text)) L.push(text);
+    const list = later ? this.later : this.questions;
+    if (!list.includes(text)) list.push(text);
   }
 
+  /** Итог записки: разделы, ошибки, предупреждения, допущения, вопросы. */
   result() {
     const errors = this.issues.filter(i => i.level === 'error');
     return {
-      sections: this.sections.filter(s => s.steps.length),
+      sections: this.sections.filter(section => section.steps.length),
       issues: this.issues,
       errors,
       warnings: this.issues.filter(i => i.level === 'warn'),
