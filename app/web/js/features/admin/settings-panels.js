@@ -313,7 +313,7 @@ export class ChangedPanel {
     const texts = Object.keys(UIT.map || {}).length;
     if (texts)
       out.push({ label: 'Тексты интерфейса', now: `заменено: ${texts}`, was: 'исходные надписи', tab: 'texts' });
-    const types = userTypesList();
+    const types = EquipTypes.user();
     if (types.length)
       out.push({
         label: 'Категории оборудования',

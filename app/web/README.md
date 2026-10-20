@@ -30,11 +30,17 @@ vendor/
   onest-font.css           шрифт Onest (встроен, интернет не нужен)
 js/
   docx/kpgen.js            общие помощники: суммы, сумма прописью, даты, итоги; загрузка скелета шаблона
-  core/util.js             помощники: $, esc, norm, money, toast, parsePrice, файлы
-  core/api.js              запросы к серверу (api: подпись пользователя X-KP-User, X-CSRF-Token администратора), загрузка изображений, работа по сети
-  core/xlsx.js             файл Excel (.xlsx) с формулами без сторонних библиотек (JSZip)
-  core/types.js            типы оборудования: справочник, attrsOf(), параметры, титул по типу
-  core/state.js            состояние КП S, freshState(), черновик в браузере (persist), getP/setP
+  core/util.js             нужное при загрузке страницы (обычный скрипт): $, esc, uid, today
+  core/defaults.js         значения программы (обычный скрипт): DefRegistry, DEF(), DEFN(); defaults-srv.js, defaults-kp.js — их описания
+  core/state.js            состояние КП S (KpState: новое КП, persist, итоги), черновик в браузере, общие let (catCache, TYPES…)
+  core/lists.js            «Списки и выборы» (обычный скрипт: LISTS нужен модулям при загрузке)
+  core/index.js            ES-модули core/ — первым модулем, классы в globalThis; прежние имена (api, toast, morph…) — core/legacy.js
+  core/net.js              запросы к серверу (Api.request: подпись X-KP-User, X-CSRF-Token администратора), картинки, работа по сети
+  core/str.js, money.js    строки и числа (Str, ObjPath, Price, Fmt), показ денег (Money)
+  core/modal.js, morph.js  окна (Modal), перерисовка без пересоздания узлов (Morph); toast.js, files.js, debounce.js, dim-input.js
+  core/xlsx.js             файл Excel (.xlsx) с формулами без сторонних библиотек (XlsxBook, стили — xlsx-styles.js)
+  core/equip-types.js      типы оборудования (EquipTypes); разбор параметров — item-attrs.js, spec-values.js, item-spec.js
+  main.js                  запуск (App) и тема (Theme) — последним модулем
   features/catalog.js      каталог: хранилище, fillFromCat, syncCatalog
   features/managers.js     справочник менеджеров в базе: выбор, новый, автосохранение правок
   features/preview.js      предпросмотр КП (vendor/docx-preview), превью титула, PDF (сервер или печать)
@@ -72,9 +78,9 @@ js/
 
 - **Старые файлы — обычные скрипты**, подключаются по порядку из `index.html` и делят общее пространство имён: функции и
   константы одного файла видны в следующих. Порядок важен только для кода, который выполняется сразу при загрузке
-  (константы, `S`), поэтому: `core/*` → `features/*` → `docx/build.js` → `ui/*` → `main.js`.
+  (константы, `S`), поэтому: обычные `core/*` → `ui/*`; модули — `core/index.js` первым, `main.js` последним.
 - **Переписанные файлы — ES-модули** (`import` / `export`, `type="module"` в `index.html`): выполняются после разбора страницы,
-  до `main.js` (он с `defer`); пока не все файлы переведены, модуль-вход (`features/layout/index.js`) кладёт свои классы в
+  по порядку в `index.html`; пока не все файлы переведены, модуль-вход (`core/index.js`, `features/*/index.js`) кладёт свои классы в
   `globalThis`. Строгие правила ESLint и Prettier — только для модулей (`eslint.config.mjs`, `.prettierrc.json`).
 - **Состояние** — один объект `S` (`core/state.js`): клиент, позиции `S.items`, цены, титул, условия, менеджер.
   После изменения: `renderForm()` (перерисовать раздел и панель) и `persist()` (сохранить черновик).
@@ -82,11 +88,11 @@ js/
   обработчик в `ui/events.js` сам записывает значение через `setP()`. Поле рисует `field(label, path, опции)`.
 - **Кнопки** — атрибут `data-a="действие"` (+ `data-i`, `data-j`, `data-k`), обработка — в `switch` в `ui/events.js`.
 - **Разделы формы** — массив `STEPS` в `ui/form.js`; каждый раздел — функция `stepXxx()` в `ui/steps/`, возвращающая HTML.
-- **Сервер** — только через `api(путь, опции)` (`core/api.js`); список адресов — в корневом README.
+- **Сервер** — только через `api(путь, опции)` (`Api.request`, `core/net.js`); список адресов — в корневом README.
 - **Удаление** — только в «Настройках» (`features/settings.js`, сервер `app/admin.py`). Кнопок удаления в остальных
   окнах нет; сервер отклоняет DELETE без входа администратора. Сохранение товара — `CatSrv.put()`: при включённой
   модерации ответ `{pending:true}`.
-- **Перерисовка** — `morph(элемент, html)` (`core/util.js`) вместо `innerHTML`: совпадающие узлы остаются (фото, фокус, прокрутка);
+- **Перерисовка** — `morph(элемент, html)` (`Morph.apply`, `core/morph.js`) вместо `innerHTML`: совпадающие узлы остаются (фото, фокус, прокрутка);
   поля сопоставляются по `data-p`, `id`, `data-id`. Так рисуются форма, итог, карточка позиции и каталог.
 - **Телефоны** — правила в `css/mobile.css` под `.mob`; новые окна (`dialog`) на телефоне сами открываются на весь экран,
   кнопка с `aria-label="Закрыть"` становится круглой заметной кнопкой. Нижняя панель — `renderMbar()` в `ui/sidebar.js`.

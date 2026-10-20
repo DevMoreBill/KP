@@ -243,7 +243,7 @@ export class DealXlsxSummaryTables {
   customer() {
     const { sheet, calc } = this;
     const start = sheet.deal.start;
-    const date = xlsxDate(start);
+    const date = XlsxBook.date(start);
     sheet.section('Оплата заказчика');
     let row = sheet.put(
       DealXlsxSummaryTables._head([['№'], ['Этап'], ['Доля', 1], ['День', 1], ['Сумма, ₽', 1], [''], ['Дата'], ['']]),

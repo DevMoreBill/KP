@@ -49,7 +49,7 @@ export class DealXlsxGraph {
   head() {
     const calc = this.calc;
     const start = this.sheet.deal.start;
-    const date = xlsxDate(start);
+    const date = XlsxBook.date(start);
     const pays = calc.rows.map((row, k) => (row.inflow ? `A${this.first + k}` : null)).filter(Boolean);
     const startCell = this._calcRef('D0');
     this.rows.push([{ v: 'График платежей', s: 'title' }]);
@@ -98,7 +98,7 @@ export class DealXlsxGraph {
     const calc = this.calc;
     const line = this.first + k;
     const start = this._calcRef('D0');
-    const date = xlsxDate(this.sheet.deal.start);
+    const date = XlsxBook.date(this.sheet.deal.start);
     const formula = this.amount(row);
     const amount = formula == null ? { v: row.amount, s: 'tdMoney2' } : { f: formula, v: row.amount, s: 'tdMoney2' };
     const fin =

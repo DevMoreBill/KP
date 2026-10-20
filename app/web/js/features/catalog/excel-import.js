@@ -211,7 +211,7 @@ export class XlsImport {
     const head = XlsTable.columns(type)
       .map(col => `"${col[1].replace(/"/g, '""')}"`)
       .join(';');
-    saveFile(
+    FileSave.save(
       `Шаблон_${type.name.replace(/\s+/g, '_')}.csv`,
       new Blob([`﻿${head}\r\n`], { type: 'text/csv;charset=utf-8' }),
     );

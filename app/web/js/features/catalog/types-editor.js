@@ -111,7 +111,7 @@ export class TypesEditor {
   static _html(own) {
     const { cur, q } = this.state;
     const resetAll =
-      ADMIN.on && userTypesList().length
+      ADMIN.on && EquipTypes.user().length
         ? '<button class="btn ghost danger" type="button" data-tyx="resetall">Вернуть все стандартные</button>'
         : '';
     return `<div class="dlg-h"><h3>Категории оборудования</h3><span class="muted ty-sub">Параметры, фильтры каталога, ключевые параметры на титуле, быстрые опции</span><button class="icon" type="button" data-tyx="close" aria-label="Закрыть">✕</button></div>
@@ -127,7 +127,7 @@ export class TypesEditor {
   static render() {
     const dialog = $('#dlg');
     if (!dialog.classList.contains('typesed')) return;
-    const own = new Set(userTypesList().map(type => type.id));
+    const own = new Set(EquipTypes.user().map(type => type.id));
     const body = dialog.querySelector('.ty-form');
     const top = body ? body.scrollTop : 0;
     dialog.innerHTML = this._html(own);
@@ -468,7 +468,7 @@ class TypeSave {
     this._fill(type);
     if (!TypesEditor.TYPE_ID.test(type.id)) return toast('Код категории — латиница, цифры и «_»');
     if (!type.folder) type.folder = type.id.replace(/_/g, '-');
-    const list = userTypesList().filter(known => known.id !== type.id);
+    const list = EquipTypes.user().filter(known => known.id !== type.id);
     list.push(type);
     TypesEditor.state.id = type.id;
     await this._list(list, `Категория «${type.name}» сохранена`);
@@ -480,7 +480,7 @@ class TypeSave {
     const cur = TypesEditor.state.cur;
     if (!confirm(`Удалить категорию «${cur.name}»? Позиции этой категории останутся в каталоге как «Прочее».`)) return;
     await this._list(
-      userTypesList().filter(type => type.id !== cur.id),
+      EquipTypes.user().filter(type => type.id !== cur.id),
       'Категория удалена',
     );
     TypesEditor.state.id = '';
@@ -492,7 +492,7 @@ class TypeSave {
     const cur = TypesEditor.state.cur;
     if (!confirm('Вернуть стандартный вариант этой категории? Ваши правки категории пропадут.')) return;
     await this._list(
-      userTypesList().filter(type => type.id !== cur.id),
+      EquipTypes.user().filter(type => type.id !== cur.id),
       'Стандартная категория восстановлена',
     );
     TypesEditor.pick(cur.id);

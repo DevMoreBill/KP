@@ -15,7 +15,7 @@ global.mainLine=x=>{ const a=x.attrs||{}; return [a.flow!=null ? a.flow+' м³/�
 global.typeById=id=>TYPES[id]||{};
 global.catCache=[]; global.DEF=()=>null; global.FEAT={ on:()=>true };
 global.esc=s=>String(s??'').replace(/[&<>"]/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
-vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
+Object.assign(global, require(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js')));   // Money — показ сумм (ES-модуль)
 for (const f of ['deal/index.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit/index.js', 'req/index.js', 'tz/index.js', 'station/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));

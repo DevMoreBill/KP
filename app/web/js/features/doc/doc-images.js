@@ -29,7 +29,7 @@ export class DocImages {
       if (!response.ok || !/^image\//.test(response.headers.get('Content-Type') || '')) {
         throw new Error(String(response.status));
       }
-      return await blobToURL(await response.blob());
+      return await FileSave.dataUrl(await response.blob());
     } catch {
       this._miss(who);
       return null;

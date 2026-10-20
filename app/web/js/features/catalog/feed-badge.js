@@ -1,7 +1,7 @@
 /** РРЦ и наличие у поставщика (позиции из товарного фида, feeds.py): значки в списке и карточке каталога. */
 export class FeedBadge {
   static _qtyText(stock) {
-    const num = fnum;
+    const num = value => Str.comma(value);
     if (stock.qty > 0)
       return `в наличии ${num(stock.qty)} шт.${stock.transit ? ` + ${num(stock.transit)} в пути` : ''}`;
     if (stock.transit) return `в пути ${num(stock.transit)} шт.${stock.eta ? ` (${stock.eta})` : ''}`;
@@ -29,7 +29,7 @@ export class FeedBadge {
   static stockTip(stock) {
     if (!stock) return '';
     const out = [];
-    const num = fnum;
+    const num = value => Str.comma(value);
     (stock.wh || []).forEach(([store, qty]) => out.push(`${store}: ${num(qty)} шт.`));
     if (stock.transit) out.push(`в пути: ${num(stock.transit)} шт.${stock.eta ? ` — ожидается ${stock.eta}` : ''}`);
     if (stock.prod) {

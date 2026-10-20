@@ -1,12 +1,11 @@
-// Задержка ввода (app/web/js/core/util.js, Debounce): одна на всю программу — поиск в журнале, каталоге, кабинете, клиентах,
+// Задержка ввода (app/web/js/core/debounce.js, Debounce): одна на всю программу — поиск в журнале, каталоге, кабинете, клиентах,
 // настройках. Повторный вызов откладывает, срабатывает один раз последним; своя задержка; отмена. И что самодельных
 // таймеров поиска (clearTimeout + setTimeout на вводе) в этих окнах больше нет.
 // Запуск из корня репозитория: node tests/js/debounce.js — код выхода 0, если всё прошло (tests/test_deal_logistics.py).
 'use strict';
-const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
+const fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..'), JS=f=>fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', f), 'utf8');
-const src=JS('core/util.js').match(/class Debounce \{[\s\S]*?\n\}\n/); assert.ok(src, 'класс Debounce в core/util.js');
-vm.runInThisContext(src[0]+'\nglobalThis.Debounce=Debounce;', { filename:'util.js' });
+const { Debounce }=require(path.join(ROOT, 'app', 'web', 'js', 'core', 'debounce.js'));   // ES-модуль
 
 const wait=ms=>new Promise(r=>setTimeout(r, ms));
 (async ()=>{

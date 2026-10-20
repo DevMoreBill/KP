@@ -346,7 +346,7 @@ export class DealXlsxCalc {
     this.row(
       [
         'Дата отсчёта — подписание договора (день 0)',
-        { v: xlsxDate(deal.start), s: 'inpDate' },
+        { v: XlsxBook.date(deal.start), s: 'inpDate' },
         'дата',
         '',
         note('Даты платежей на листе «График платежей» = эта дата + день'),

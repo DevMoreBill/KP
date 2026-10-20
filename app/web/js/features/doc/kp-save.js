@@ -134,7 +134,7 @@ export class KpSave {
     if (S._rev != null) {
       const current = await api(`/api/kp/${S.kpId}/rev`);
       if (current.rev === S._rev) return;
-      if (!conflictAsk(current, '/api/kp/')) throw this._declined('declined');
+      if (!Api.ask(current, '/api/kp/')) throw this._declined('declined');
       S._rev = current.rev;
       return;
     }

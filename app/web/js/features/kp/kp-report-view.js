@@ -164,7 +164,7 @@ export class KpReportView {
       [],
     ]);
     if (!FEAT.on('deal')) this._dropDeal(sheets);
-    saveFileA(`Отчёт_КП_${from}_${till}.xlsx`, await makeXlsx(sheets, 'Отчёт по КП'));
+    saveFileA(`Отчёт_КП_${from}_${till}.xlsx`, await XlsxBook.make(sheets, 'Отчёт по КП'));
     toast('Отчёт выгружен в Excel');
   }
 

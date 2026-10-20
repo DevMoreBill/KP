@@ -28,11 +28,12 @@ export class KpFile {
    */
   static name(settings) {
     if (tenderNo()) return this.tender(settings);
-    const client = fsafe(String(S.client || 'клиент').replace(this.FORM, '')).slice(0, this.CLIENT_MAX) || 'клиент';
-    const models = fsafe(KpModels.short()).slice(0, this.MODELS_MAX);
+    const client =
+      Str.fileName(String(S.client || 'клиент').replace(this.FORM, '')).slice(0, this.CLIENT_MAX) || 'клиент';
+    const models = Str.fileName(KpModels.short()).slice(0, this.MODELS_MAX);
     const template = Templates.current() || {};
     const own = this._settings(settings);
-    const prefix = fsafe(own.filePrefix || template.filePrefix || 'КП');
+    const prefix = Str.fileName(own.filePrefix || template.filePrefix || 'КП');
     const pattern = own.fileName || template.fileName || this.PATTERN;
     const name = KPGen.fill(pattern, {
       номер: S.number || '',
@@ -87,6 +88,6 @@ export class KpFile {
     const surname = String(manager.name || '')
       .trim()
       .split(/\s+/)[0];
-    return fsafe(manager.folder || surname || '').slice(0, this.FOLDER_MAX);
+    return Str.fileName(manager.folder || surname || '').slice(0, this.FOLDER_MAX);
   }
 }

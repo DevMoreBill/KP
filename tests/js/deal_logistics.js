@@ -7,8 +7,8 @@ const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('
 const ROOT=path.resolve(__dirname, '..', '..');
 global.GEO_EXTRA={};                                   // подсказки адресов (ui/geo-input.js) — в тесте не нужны
 global.document={ addEventListener(){} };
-for (const f of ['core/money.js', 'core/defaults.js']){
-  const p=path.join(ROOT, 'app', 'web', 'js', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
+Object.assign(global, require(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js')));   // ES-модуль
+{ const p=path.join(ROOT, 'app', 'web', 'js', 'core', 'defaults.js'); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 require('./web.js').load(path.join(ROOT, 'app', 'web', 'js', 'features', 'deal', 'index.js'));
 
 let n=0;

@@ -72,7 +72,7 @@ export class AiChat {
    * @param {function(boolean): void} done
    */
   static send(text, url, done) {
-    const copied = copyToClipboard(text);
+    const copied = CopyText.copy(text);
     if (url) window.open(url, '_blank', 'noopener');
     copied.then(ok => {
       done(ok);

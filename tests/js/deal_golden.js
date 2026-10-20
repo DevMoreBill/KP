@@ -9,8 +9,8 @@ const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('
 const ROOT=path.resolve(__dirname, '..', '..'), SNAP=path.join(__dirname, 'deal_golden.json');
 const WebScripts=require('./web.js');
 global.document={ addEventListener(){} };
-for (const f of ['core/money.js', 'core/defaults.js']){
-  const p=path.join(ROOT, 'app', 'web', 'js', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
+Object.assign(global, require(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js')));   // ES-модуль
+{ const p=path.join(ROOT, 'app', 'web', 'js', 'core', 'defaults.js'); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', 'deal', 'index.js'));
 
 class Golden {

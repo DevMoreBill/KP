@@ -1,4 +1,4 @@
-// Быстродействие интерфейса: разбор характеристик карточки каталога — один раз на карточку (CatAttrs, core/types.js),
+// Быстродействие интерфейса: разбор характеристик карточки каталога — один раз на карточку (CatAttrs, core/item-attrs.js),
 // позиции КП — каждый раз; строка поиска окна подбора — один раз на карточку (PickFind, features/kit/kit-pick.js); черновик КП в
 // браузере — большие картинки отдельными записями, пишутся один раз (LocalDraft, core/state.js).
 // Запуск из корня репозитория: node tests/js/client_speed.js — код выхода 0, если всё прошло (tests/test_client_speed.py).
@@ -10,10 +10,11 @@ const cls=(f, name)=>{ const s=JS(f), m=s.match(new RegExp('\\nclass '+name+' \\
 let ok=0; const t=(name, fn)=>{ fn(); ok++; console.log('ok', name); };
 
 global.document={ addEventListener(){}, querySelector(){ return null; } }; global.window={ addEventListener(){} }; global.KPGen={ CURS:{} };
-vm.runInThisContext(JS('core/money.js'), { filename:'money.js' });
 vm.runInThisContext(JS('core/util.js'), { filename:'util.js' });
-vm.runInThisContext(JS('core/types.js'), { filename:'types.js' });
-vm.runInThisContext(`TYPES=[{ id:'comp_screw', name:'Винтовой компрессор', match:'винтов', main:'kw', fields:[] }, { id:'other', name:'Прочее', fields:[] }];`);
+const CORE=f=>require(path.join(ROOT, 'app', 'web', 'js', 'core', f));   // ES-модули: классы и прежние имена (attrsOf, norm…)
+Object.assign(global, CORE('item-attrs.js'), CORE('legacy.js'));
+global.TYPES=[{ id:'comp_screw', name:'Винтовой компрессор', match:'винтов', main:'kw', fields:[] }, { id:'other', name:'Прочее', fields:[] }];
+global.TYPES_BUILTIN=null;
 
 t('карточка каталога: разбор один раз, копия — для правки', ()=>{
   const card={ id:'c1', name:'Компрессор винтовой Пример 15 кВт', attrs:{ maker:'Пример' } }, L=[card];

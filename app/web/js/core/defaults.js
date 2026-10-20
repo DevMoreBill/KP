@@ -1,97 +1,334 @@
-// Значения по умолчанию программы. Администратор включает / выключает каждое и задаёт своё значение
-// («Настройки → Умолчания»; сервер: app/defaults.py, kv settings.defaults = {ключ: {on, v}}).
-// DEF(ключ) — действующее значение: выключено — null (поле остаётся пустым, решает менеджер), не задано — встроенное.
-// Последние значения с сервера хранятся в браузере, чтобы новое КП сразу получило их и до ответа сервера.
+// Значения по умолчанию программы («Настройки → Значения программы»; сервер: app/defaults.py, kv settings.defaults =
+// {ключ: {on, v}}). Обычный скрипт: разделы регистрируют свои значения при загрузке страницы, новое КП (core/state.js)
+// читает их до ES-модулей. Последние значения с сервера хранятся в браузере — новое КП получает их и до ответа сервера.
 'use strict';
 
-let DEFS_SRV = {};
-try{ DEFS_SRV = JSON.parse(localStorage.getItem('kp.defaults')||'{}')||{}; }catch(e){ DEFS_SRV = {}; }
+/**
+ * Реестр значений программы. Раздел добавляет свои значения из своего файла — DefRegistry.add(группы, значения);
+ * «Настройки → Значения программы» показывает их по разделам. Значение: [ключ, группа, подпись, тип (text, num, select,
+ * bool), встроенное значение, доп.]; доп.: unit, hint (что это и на что влияет), opts (для select — [[значение, подпись]]
+ * или функция), min / max (для num), req (всегда действует — переключателя нет), off (выключено, если не задано).
+ */
+class DefRegistry {
+  // разделы админки: [id, название, пояснение]
+  static SECTIONS = [
+    [
+      'kp',
+      'КП и документы',
+      'Что подставляется в новое КП: город, НДС, валюта, условия, контакты компании, оформление документа.',
+    ],
+    ['deal', 'Экономика сделки', 'Ставки, налоги, сроки и проценты, с которыми считается экономика сделки.'],
+    ['log', 'Логистика', 'Доставка: транспорт, ставки, страхование, агент, габариты и масса по умолчанию.'],
+    [
+      'st',
+      'Станции в контейнере',
+      'Контейнер, климат и прочие значения станций. Отступы, нормы и расчёты станций — «Инженерные правила станций».',
+    ],
+    [
+      'cat',
+      'Каталог, фото, фиды, ИИ',
+      'Поиск и подбор по каталогу, загрузка фото со страниц, фиды поставщиков, автозаполнение нейросетью.',
+    ],
+    ['srv', 'Сервер и обслуживание', 'Копии базы, журналы, сроки хранения, проверки и письма администратору.'],
+    ['ui', 'Интерфейс', 'Поведение экранов: сколько строк показывать, задержки поиска и т. п.'],
+  ];
+  // группа → раздел
+  static GSEC = { kp: 'kp', cond: 'kp', mgr: 'kp', deal: 'deal', st: 'st', img: 'cat', ai: 'cat' };
+  static STORE = 'kp.defaults';
 
-// [ключ, группа, подпись, тип, встроенное значение, доп.: {opts — [[значение, подпись]] или функция, unit, hint, req — всегда включено, off — выключено, если не задано}]
-// тип: text, num, select, bool (у bool значение — сам переключатель)
-const DEF_GROUPS = [['kp','Новое КП'],['cond','Условия КП'],['mgr','Контакты компании (новый менеджер)'],['deal','Экономика сделки'],['st','Станции в контейнере'],['img','Фото со страницы товара'],['ai','Автозаполнение']];
+  /**
+   * Добавить группы и значения (повторный ключ не добавляется).
+   * @param {Array[]} groups [[id, название, раздел, пояснение]]
+   * @param {Array[]} rows значения
+   */
+  static add(groups, rows) {
+    for (const [group, title, section, hint] of groups || []) {
+      if (!DEF_GROUPS.some(known => known[0] === group)) DEF_GROUPS.push([group, title]);
+      if (section) this.GSEC[group] = section;
+      if (hint) DEF_GROUP_HINTS[group] = hint;
+    }
+    for (const row of rows || []) {
+      if (DEF_BY[row[0]]) continue;
+      DEF_SCHEMA.push(row);
+      DEF_BY[row[0]] = row;
+    }
+  }
+
+  /**
+   * Раздел админки группы.
+   * @param {string} group
+   * @returns {string}
+   */
+  static section(group) {
+    return this.GSEC[group] || 'ui';
+  }
+
+  /**
+   * Проверка числа по min / max схемы: '' — верно, иначе текст ошибки.
+   * @param {string} key
+   * @param {*} value
+   * @returns {string}
+   */
+  static check(key, value) {
+    const schema = DEF_BY[key];
+    if (!schema || schema[3] !== 'num' || value == null || String(value).trim() === '') return '';
+    const num = parseFloat(String(value).replace(',', '.'));
+    const opts = schema[5] || {};
+    if (!Number.isFinite(num)) return 'нужно число';
+    if (opts.min != null && num < opts.min) return `не меньше ${opts.min}`;
+    if (opts.max != null && num > opts.max) return `не больше ${opts.max}`;
+    return '';
+  }
+
+  /**
+   * Действующее значение: личное менеджера («Мои настройки»), администратора или встроенное; выключено — null (поле
+   * остаётся пустым, решает менеджер); у bool — true / false.
+   * @param {string} key
+   * @returns {string | boolean | null}
+   */
+  static value(key) {
+    const schema = DEF_BY[key];
+    if (!schema) return null;
+    const mine = typeof MyPrefs !== 'undefined' ? MyPrefs.def(key) : null;
+    if (mine != null) return mine;
+    const [, , , type, builtin, opts = {}] = schema;
+    const srv = DEFS_SRV[key];
+    const enabled = srv && typeof srv === 'object' && 'on' in srv ? !!srv.on || !!opts.req : !opts.off;
+    if (type === 'bool') return srv && 'on' in srv ? !!srv.on : !!builtin;
+    if (!enabled) return null;
+    const value = srv && srv.v != null && String(srv.v).trim() !== '' ? srv.v : builtin;
+    return value == null ? null : String(value);
+  }
+
+  /**
+   * Число по умолчанию (или запасное, если выключено, не число или вне границ).
+   * @param {string} key
+   * @param {*} fallback
+   * @returns {*}
+   */
+  static num(key, fallback) {
+    const value = this.value(key);
+    const num = value == null ? NaN : parseFloat(String(value).replace(',', '.'));
+    return Number.isFinite(num) && !this.check(key, value) ? num : fallback;
+  }
+
+  /**
+   * Последние значения с сервера, сохранённые в браузере.
+   * @returns {object}
+   */
+  static stored() {
+    try {
+      return JSON.parse(localStorage.getItem(this.STORE) || '{}') || {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** Значения администратора с сервера (сервер недоступен — остаются значения из браузера). */
+  static async load() {
+    try {
+      const reply = await api('/api/defaults');
+      DEFS_SRV = reply && typeof reply === 'object' ? reply : {};
+      try {
+        localStorage.setItem(this.STORE, JSON.stringify(DEFS_SRV));
+      } catch {
+        // без хранилища браузера
+      }
+    } catch {
+      // сервер недоступен — значения из браузера
+    }
+  }
+}
+
+// значения администратора: {ключ: {on, v}} (переписывает и «Настройки → Значения программы»)
+let DEFS_SRV = DefRegistry.stored();
+
+const DEF_GROUPS = [
+  ['kp', 'Новое КП'],
+  ['cond', 'Условия КП'],
+  ['mgr', 'Контакты компании (новый менеджер)'],
+  ['deal', 'Экономика сделки'],
+  ['st', 'Станции в контейнере'],
+  ['img', 'Фото со страницы товара'],
+  ['ai', 'Автозаполнение'],
+];
 const DEF_SCHEMA = [
   ['kp.city', 'kp', 'Город в КП', 'text', 'Москва'],
-  ['kp.vat', 'kp', 'НДС в ценах КП', 'num', '22', {unit:'%', req:true, hint:'С 2026 года основная ставка — 22 %.'}],
-  ['kp.cur', 'kp', 'Валюта КП', 'select', 'RUB', {req:true, opts:[['RUB','Рубли'],['USD','Доллары США'],['EUR','Евро'],['CNY','Юани']]}],
-  ['kp.round', 'kp', 'Округление цен из экономики сделки', 'select', '1', {req:true, opts:[['0.01','до копеек'],['1','до рубля'],['100','до 100'],['1000','до 1 000']]}],
-  ...['Срок поставки','Условия оплаты','Гарантия','Доставка','Срок действия предложения','Монтаж, ШМР и ПНР'].map(l=>['cond.'+l, 'cond', l, 'text', '', {off:true, list:()=>typeof COND!=='undefined'?((COND.find(c=>c[0]===l)||[])[1]||[]):[]}]),
+  [
+    'kp.vat',
+    'kp',
+    'НДС в ценах КП',
+    'num',
+    '22',
+    { unit: '%', req: true, hint: 'С 2026 года основная ставка — 22 %.' },
+  ],
+  [
+    'kp.cur',
+    'kp',
+    'Валюта КП',
+    'select',
+    'RUB',
+    {
+      req: true,
+      opts: [
+        ['RUB', 'Рубли'],
+        ['USD', 'Доллары США'],
+        ['EUR', 'Евро'],
+        ['CNY', 'Юани'],
+      ],
+    },
+  ],
+  [
+    'kp.round',
+    'kp',
+    'Округление цен из экономики сделки',
+    'select',
+    '1',
+    {
+      req: true,
+      opts: [
+        ['0.01', 'до копеек'],
+        ['1', 'до рубля'],
+        ['100', 'до 100'],
+        ['1000', 'до 1 000'],
+      ],
+    },
+  ],
+  ...['Срок поставки', 'Условия оплаты', 'Гарантия', 'Доставка', 'Срок действия предложения', 'Монтаж, ШМР и ПНР'].map(
+    label => [
+      `cond.${label}`,
+      'cond',
+      label,
+      'text',
+      '',
+      {
+        off: true,
+        list: () => (typeof COND !== 'undefined' ? (COND.find(cond => cond[0] === label) || [])[1] || [] : []),
+      },
+    ],
+  ),
   ['mgr.phone', 'mgr', 'Телефон компании', 'text', '+7 (495) 690-91-96'],
   ['mgr.site', 'mgr', 'Сайт', 'text', 'www.kompr.ru'],
   ['mgr.address', 'mgr', 'Адрес офиса', 'text', 'Москва, ул. Малая Пироговская, д. 18с1'],
   ['mgr.hours', 'mgr', 'Режим работы', 'text', 'Пн–Пт, 9:00–18:00'],
-  ['deal.country', 'deal', 'Где покупаем — страна поставщика', 'text', 'Россия', {hint:'Россия — без таможни, НДС поставщика к вычету. Выключено — менеджер выбирает сам («В России» / «Ввозим сами»).'}],
+  [
+    'deal.country',
+    'deal',
+    'Где покупаем — страна поставщика',
+    'text',
+    'Россия',
+    {
+      hint: 'Россия — без таможни, НДС поставщика к вычету. Выключено — менеджер выбирает сам («В России» / «Ввозим сами»).',
+    },
+  ],
   ['deal.startToday', 'deal', 'Дата договора — сегодня (с напоминанием «уточните»)', 'bool', true],
-  ['deal.prod', 'deal', 'Срок изготовления у поставщика', 'num', '40', {unit:'дн.'}],
-  ['deal.ship', 'deal', 'Срок доставки до заказчика', 'num', '40', {unit:'дн.'}],
-  ['deal.supPay', 'deal', 'Оплата поставщику', 'select', 'a20', {opts:()=>typeof DealPresets!=='undefined'?DealPresets.options(DealPresets.SUP):[]}],
-  ['deal.custPay', 'deal', 'Оплата заказчика', 'select', 'post', {opts:()=>typeof DealPresets!=='undefined'?DealPresets.options(DealPresets.CUST):[]}],
-  ['deal.spread', 'deal', 'Стоимость денег: ключевая ставка ЦБ плюс', 'num', '3', {unit:'п.п. годовых', req:true}],
-  ['deal.tax', 'deal', 'Налог на прибыль', 'num', '25', {unit:'%', req:true}],
-  ['deal.bgRate', 'deal', 'Ставка банковской гарантии', 'num', '3', {unit:'% годовых', req:true}],
-  ['deal.ivat', 'deal', 'НДС при ввозе', 'select', '22', {req:true, opts:[['22','22 %'],['10','10 %'],['0','0 %']]}],
-  ['deal.target', 'deal', 'Нужная маржинальность для подбора цены', 'num', '20', {unit:'%', off:true, hint:'Включено — в «Цене продажи» сразу считается цена КП под эту маржинальность.'}],
-  ['st.ins', 'st', 'Утепление контейнера', 'select', '100 мм', {opts:()=>typeof ContainerKind!=='undefined'?ContainerKind.INSULATION.map(v=>[v,v]):[]}],
-  ['st.joinCost', 'st', 'Стыковка модулей станции на объекте: закупка за один стык', 'num', '', {unit:'₽', hint:'Станция из нескольких модулей (кнопка «Модули…» в «Компоновке»): строка «Стыковка модулей на объекте» × число стыков. Пусто — цену вписывает менеджер.'}],
-  ['st.climate', 'st', 'Климатическое исполнение', 'select', 'УХЛ1', {opts:()=>typeof ContainerKind!=='undefined'?ContainerKind.CLIMATES.map(c=>[c[0], c[0]+' — '+c[1]]):[]}],
+  ['deal.prod', 'deal', 'Срок изготовления у поставщика', 'num', '40', { unit: 'дн.' }],
+  ['deal.ship', 'deal', 'Срок доставки до заказчика', 'num', '40', { unit: 'дн.' }],
+  [
+    'deal.supPay',
+    'deal',
+    'Оплата поставщику',
+    'select',
+    'a20',
+    { opts: () => (typeof DealPresets !== 'undefined' ? DealPresets.options(DealPresets.SUP) : []) },
+  ],
+  [
+    'deal.custPay',
+    'deal',
+    'Оплата заказчика',
+    'select',
+    'post',
+    { opts: () => (typeof DealPresets !== 'undefined' ? DealPresets.options(DealPresets.CUST) : []) },
+  ],
+  ['deal.spread', 'deal', 'Стоимость денег: ключевая ставка ЦБ плюс', 'num', '3', { unit: 'п.п. годовых', req: true }],
+  ['deal.tax', 'deal', 'Налог на прибыль', 'num', '25', { unit: '%', req: true }],
+  ['deal.bgRate', 'deal', 'Ставка банковской гарантии', 'num', '3', { unit: '% годовых', req: true }],
+  [
+    'deal.ivat',
+    'deal',
+    'НДС при ввозе',
+    'select',
+    '22',
+    {
+      req: true,
+      opts: [
+        ['22', '22 %'],
+        ['10', '10 %'],
+        ['0', '0 %'],
+      ],
+    },
+  ],
+  [
+    'deal.target',
+    'deal',
+    'Нужная маржинальность для подбора цены',
+    'num',
+    '20',
+    { unit: '%', off: true, hint: 'Включено — в «Цене продажи» сразу считается цена КП под эту маржинальность.' },
+  ],
+  [
+    'st.ins',
+    'st',
+    'Утепление контейнера',
+    'select',
+    '100 мм',
+    {
+      opts: () => (typeof ContainerKind !== 'undefined' ? ContainerKind.INSULATION.map(value => [value, value]) : []),
+    },
+  ],
+  [
+    'st.joinCost',
+    'st',
+    'Стыковка модулей станции на объекте: закупка за один стык',
+    'num',
+    '',
+    {
+      unit: '₽',
+      hint: 'Станция из нескольких модулей (кнопка «Модули…» в «Компоновке»): строка «Стыковка модулей на объекте» × число стыков. Пусто — цену вписывает менеджер.',
+    },
+  ],
+  [
+    'st.climate',
+    'st',
+    'Климатическое исполнение',
+    'select',
+    'УХЛ1',
+    {
+      opts: () =>
+        typeof ContainerKind !== 'undefined'
+          ? ContainerKind.CLIMATES.map(climate => [climate[0], `${climate[0]} — ${climate[1]}`])
+          : [],
+    },
+  ],
   ['img.mainOnly', 'img', 'Отмечать только главное фото (остальные — по выбору)', 'bool', true],
-  ['img.minKB', 'img', 'Не показывать фото меньше', 'num', '15', {unit:'КБ', hint:'Мелкие файлы — иконки, заглушки, пустые картинки.'}],
-  ['img.minPx', 'img', 'Не показывать фото с меньшей стороной меньше', 'num', '200', {unit:'px'}],
+  [
+    'img.minKB',
+    'img',
+    'Не показывать фото меньше',
+    'num',
+    '15',
+    { unit: 'КБ', hint: 'Мелкие файлы — иконки, заглушки, пустые картинки.' },
+  ],
+  ['img.minPx', 'img', 'Не показывать фото с меньшей стороной меньше', 'num', '200', { unit: 'px' }],
   ['img.skipBlank', 'img', 'Пропускать пустые (белые, однотонные) картинки', 'bool', true],
-  ['img.maxCount', 'img', 'Сколько фото показывать', 'num', '12', {req:true, unit:'шт.'}],
-  ['ai.keep', 'ai', '«Не менять уже заполненное» — включено', 'bool', false, {hint:'Галочка в шаге «Проверьте и заполните»: ИИ дописывает только пустые поля.'}],
+  ['img.maxCount', 'img', 'Сколько фото показывать', 'num', '12', { req: true, unit: 'шт.' }],
+  [
+    'ai.keep',
+    'ai',
+    '«Не менять уже заполненное» — включено',
+    'bool',
+    false,
+    { hint: 'Галочка в шаге «Проверьте и заполните»: ИИ дописывает только пустые поля.' },
+  ],
 ];
-const DEF_GROUP_HINTS = { cond:'Текст условия в новом КП. Срок поставки, условия оплаты и монтаж подставляются и из «Экономики сделки», пока поле не правили вручную.',
-  mgr:'Подставляются в контакты нового менеджера (раздел «Менеджер»).', img:'Для «Загрузить со страницы» в автозаполнении и кнопки «Фото с сайта поставщика».' };
-const DEF_BY = Object.fromEntries(DEF_SCHEMA.map(x=>[x[0], x]));
+const DEF_GROUP_HINTS = {
+  cond: 'Текст условия в новом КП. Срок поставки, условия оплаты и монтаж подставляются и из «Экономики сделки», пока поле не правили вручную.',
+  mgr: 'Подставляются в контакты нового менеджера (раздел «Менеджер»).',
+  img: 'Для «Загрузить со страницы» в автозаполнении и кнопки «Фото с сайта поставщика».',
+};
+const DEF_BY = Object.fromEntries(DEF_SCHEMA.map(row => [row[0], row]));
 
-// значение по умолчанию: выключено — null; bool — true/false
-function DEF(key){
-  const sc=DEF_BY[key]; if (!sc) return null;
-  const mine=typeof MyPrefs!=='undefined' ? MyPrefs.def(key) : null; if (mine!=null) return mine;   // личное значение менеджера («Мои настройки»)
-  const [, , , type, builtin, o={}]=sc, x=DEFS_SRV[key];
-  const on = x && typeof x==='object' && 'on' in x ? !!x.on || !!o.req : !o.off;
-  if (type==='bool') return x && 'on' in x ? !!x.on : !!builtin;
-  if (!on) return null;
-  const v = x && x.v!=null && String(x.v).trim()!=='' ? x.v : builtin;
-  return v==null ? null : String(v);
-}
-// Реестр значений программы. Каждый раздел программы добавляет свои значения из своего файла — DefRegistry.add(группы,
-// значения); «Настройки → Значения программы» показывает их по разделам с поиском и подробными пояснениями.
-// Значение: [ключ, группа, подпись, тип, встроенное значение, доп.]; доп.: unit, hint (подробное пояснение «что это и на что
-// влияет»), opts (для select), min / max (для num — проверка ввода), req (всегда действует — переключателя нет), off.
-class DefRegistry {
-  // разделы админки: [id, название, пояснение]
-  static SECTIONS = [
-    ['kp', 'КП и документы', 'Что подставляется в новое КП: город, НДС, валюта, условия, контакты компании, оформление документа.'],
-    ['deal', 'Экономика сделки', 'Ставки, налоги, сроки и проценты, с которыми считается экономика сделки.'],
-    ['log', 'Логистика', 'Доставка: транспорт, ставки, страхование, агент, габариты и масса по умолчанию.'],
-    ['st', 'Станции в контейнере', 'Контейнер, климат и прочие значения станций. Отступы, нормы и расчёты станций — «Инженерные правила станций».'],
-    ['cat', 'Каталог, фото, фиды, ИИ', 'Поиск и подбор по каталогу, загрузка фото со страниц, фиды поставщиков, автозаполнение нейросетью.'],
-    ['srv', 'Сервер и обслуживание', 'Копии базы, журналы, сроки хранения, проверки и письма администратору.'],
-    ['ui', 'Интерфейс', 'Поведение экранов: сколько строк показывать, задержки поиска и т. п.'],
-  ];
-  static GSEC = { kp:'kp', cond:'kp', mgr:'kp', deal:'deal', st:'st', img:'cat', ai:'cat' };   // группа → раздел
-  /** groups: [[id, название, раздел, пояснение]]; rows: значения (повторный ключ не добавляется) */
-  static add(groups, rows){
-    for (const [g, t, sec, hint] of groups||[]){ if (!DEF_GROUPS.some(x=>x[0]===g)) DEF_GROUPS.push([g, t]); if (sec) this.GSEC[g]=sec; if (hint) DEF_GROUP_HINTS[g]=hint; }
-    for (const r of rows||[]) if (!DEF_BY[r[0]]){ DEF_SCHEMA.push(r); DEF_BY[r[0]]=r; }
-  }
-  static section(g){ return this.GSEC[g]||'ui'; }
-  /** проверка числа по min / max схемы: '' — верно, иначе текст ошибки */
-  static check(key, v){
-    const sc=DEF_BY[key]; if (!sc || sc[3]!=='num' || v==null || String(v).trim()==='') return '';
-    const n=parseFloat(String(v).replace(',', '.')), o=sc[5]||{};
-    if (!Number.isFinite(n)) return 'нужно число';
-    if (o.min!=null && n<o.min) return 'не меньше '+o.min;
-    if (o.max!=null && n>o.max) return 'не больше '+o.max;
-    return '';
-  }
-}
-
-// число по умолчанию (или запасное, если выключено / не число)
-function DEFN(key, fb){ const v=DEF(key); const n=v==null?NaN:parseFloat(String(v).replace(',','.')); return Number.isFinite(n) && !DefRegistry.check(key, v) ? n : fb; }
-
-async function defaultsLoad(){
-  try{ const r=await api('/api/defaults'); DEFS_SRV=r && typeof r==='object' ? r : {}; try{ localStorage.setItem('kp.defaults', JSON.stringify(DEFS_SRV)); }catch(_){ /* без хранилища браузера */ } }catch(e){ /* сервер недоступен — значения из браузера */ }
-}
+// прежние имена — их вызывают все разделы
+const DEF = key => DefRegistry.value(key);
+const DEFN = (key, fallback) => DefRegistry.num(key, fallback);
+const defaultsLoad = () => DefRegistry.load();

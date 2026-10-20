@@ -379,7 +379,7 @@ export class CatalogActions {
       win.say('Каталог пуст');
       return;
     }
-    saveFile(
+    FileSave.save(
       `Каталог_КП_Пневмотех_${today()}.json`,
       new Blob([JSON.stringify({ format: 'kp-catalog', version: 1, items: all })], { type: 'application/json' }),
     );

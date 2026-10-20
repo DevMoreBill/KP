@@ -305,7 +305,7 @@ export class ChinaRateBook {
       label(state.units, rate.unit || 'trip'),
       rate.min ? { v: +rate.min, s: 'tdMoney2' } : '',
       rate.days ?? '',
-      rate.until ? { v: xlsxDate(rate.until), s: 'tdDate' } : '',
+      rate.until ? { v: XlsxBook.date(rate.until), s: 'tdDate' } : '',
       rate.who || '',
       rate.note || '',
     ].map(cell => (typeof cell === 'object' ? cell : { v: cell, s: 'td' }));
@@ -356,7 +356,7 @@ export class ChinaRateBook {
         .split('\n')
         .map(line => [{ v: line, s: 'text' }]),
     ];
-    return makeXlsx(
+    return XlsxBook.make(
       [
         { name: 'Ставки', cols: this.WIDTHS, rows: [head, ...data], freeze: 1 },
         { name: 'Как заполнить', cols: this.HOW_WIDTHS, rows: this._how(state) },

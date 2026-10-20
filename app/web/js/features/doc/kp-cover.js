@@ -27,7 +27,7 @@ export class KpCover {
       if (!row.photo) continue;
       const url = await DocImages.url(row.photo, row.model);
       if (!url) continue;
-      zip.file(`word/media/${row.key}.jpg`, b64(url), { base64: true });
+      zip.file(`word/media/${row.key}.jpg`, FileSave.base64(url), { base64: true });
       media.thumbs[row.key] = { file: `${row.key}.jpg`, w: row.photo.w, h: row.photo.h };
     }
     if (S.cover.touched) return;

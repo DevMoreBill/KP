@@ -356,7 +356,7 @@ export class AccessPanel {
       'ac-tmp-dlg',
     );
     modal.$('#acCopy').onclick = async () => {
-      const ok = await copyToClipboard(reply.password);
+      const ok = await CopyText.copy(reply.password);
       toast(ok ? 'Пароль скопирован' : 'Не скопировалось — выделите пароль и скопируйте вручную');
       if (ok) return;
       const selection = getSelection();

@@ -61,8 +61,8 @@ export class CatalogNav {
   }
 
   static _chipText(low, high) {
-    if (high == null) return `от ${fnum(low)}`;
-    return low ? `${fnum(low)}–${fnum(high)}` : `до ${fnum(high)}`;
+    if (high == null) return `от ${Str.comma(low)}`;
+    return low ? `${Str.comma(low)}–${Str.comma(high)}` : `до ${Str.comma(high)}`;
   }
 
   static _rangeChips(field, range) {
@@ -180,7 +180,7 @@ export class CatalogNav {
   static _rangeText(field, range) {
     const min = (range.min ?? '') !== '';
     const max = (range.max ?? '') !== '';
-    return `${field.label}: ${min ? `от ${fnum(+range.min)}` : ''}${min && max ? ' ' : ''}${max ? `до ${fnum(+range.max)}` : ''}${field.unit ? ` ${field.unit}` : ''}`;
+    return `${field.label}: ${min ? `от ${Str.comma(+range.min)}` : ''}${min && max ? ' ' : ''}${max ? `до ${Str.comma(+range.max)}` : ''}${field.unit ? ` ${field.unit}` : ''}`;
   }
 
   static _topChips(filter, type, chip) {

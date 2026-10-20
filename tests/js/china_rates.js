@@ -8,7 +8,8 @@ const ROOT=path.resolve(__dirname, '..', '..');
 global.JSZip=require(path.join(ROOT, 'app', 'web', 'vendor', 'jszip.min.js'));
 global.DOMParser=class { parseFromString(){ throw new Error('нет DOM'); } };
 const WebScripts=require('./web.js');
-for (const f of ['core/xlsx.js', 'features/admin/china-rates.js']) WebScripts.load(path.join(ROOT, 'app', 'web', 'js', f));
+Object.assign(global, require(path.join(ROOT, 'app', 'web', 'js', 'core', 'xlsx.js')));   // XlsxBook — ES-модуль
+WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', 'admin', 'china-rates.js'));
 const { ChinaRateBook }=require(path.join(ROOT, 'app', 'web', 'js', 'features', 'admin', 'china-rates.js'));
 
 let n=0;

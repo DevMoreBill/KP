@@ -107,7 +107,7 @@ export class KpPreview {
     this._message('');
     try {
       const pdf = await PdfExport.fromBlob(this.blob);
-      await saveFile(PdfExport.fileName(), pdf);
+      await FileSave.save(PdfExport.fileName(), pdf);
       this._message('PDF готов.', 'ok');
     } catch (error) {
       this._message(

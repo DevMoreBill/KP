@@ -53,7 +53,7 @@ export class DealXlsx {
     summary.build();
     DealXlsx._clean([sheet.rows, graph.rows, summary.rows]);
     const footer = `${kpTitle} · расчёт от ${today}`;
-    const blob = await makeXlsx(DealXlsx._sheets({ summary, sheet, graph, footer }), 'Экономика сделки');
+    const blob = await XlsxBook.make(DealXlsx._sheets({ summary, sheet, graph, footer }), 'Экономика сделки');
     return { blob, tender };
   }
 

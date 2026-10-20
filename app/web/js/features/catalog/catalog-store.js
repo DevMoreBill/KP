@@ -256,7 +256,7 @@ export class Catalog {
       TYPES.flatMap(type => (type.options || []).map(option => (Array.isArray(option) ? option[0] : option.name))),
     );
     catCache.forEach(card => {
-      if (typeById(detectCat(card)).role === 'accessory') names.add(card.name); // detectCat ≡ attrsOf(x).cat, без разбора
+      if (typeById(EquipTypes.detect(card)).role === 'accessory') names.add(card.name); // EquipTypes.detect ≡ attrsOf(x).cat, без разбора
     });
     box.innerHTML = [...names].map(name => `<option value="${esc(name)}">`).join('');
   }

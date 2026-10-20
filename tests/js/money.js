@@ -1,11 +1,12 @@
 // Показ денег (app/web/js/core/money.js, Money): одно место для всей программы — целые рубли, копейки, коротко «млн/тыс.»;
 // округление половины от нуля одинаково для прибыли и убытка, «−0» не бывает, минус «−», нет данных — прочерк; прежние
-// имена (Fmt.rub, fmtRub, CrmFmt, LgFmt.rub, DealFmt.rub, DealValues.rub) выводят то же, что Money.
+// имена (Fmt.rub, CrmFmt, LgFmt.rub, DealFmt.rub, DealValues.rub) выводят то же, что Money.
 // Запуск из корня репозитория: node tests/js/money.js — код выхода 0, если всё прошло (tests/test_deal_logistics.py).
 'use strict';
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..'), JS=f=>fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', f), 'utf8');
-for (const f of ['docx/kpgen.js', 'core/money.js']) vm.runInThisContext(JS(f), { filename:f });
+vm.runInThisContext(JS('docx/kpgen.js'), { filename:'docx/kpgen.js' });
+const { Money }=require(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'));   // ES-модуль
 
 let n=0;
 const check=(name, fn)=>{ try{ fn(); n++; } catch(e){ console.error('ОШИБКА — '+name+':\n'+(e && e.stack || e)); process.exitCode=1; } };
@@ -34,12 +35,12 @@ check('коротко для кабинета', ()=>{
   assert.strictEqual(Money.short(999500), `1${NB}млн${NB}₽`, 'граница — по округлённому'); assert.strictEqual(Money.short(999.6), `1${NB}тыс.${NB}₽`);
 });
 check('прежние имена выводят то же', ()=>{
-  const util=JS('core/util.js'), cab=JS('features/crm/crm-fmt.js'), lg=JS('features/deal/lg-fmt.js'), deal=JS('features/deal/deal-fmt.js'), dc=JS('features/deal/deal-values.js');
-  assert.ok(/static rub\(v\)\{ return Money\.rub\(v\); \}/.test(util) && /function fmtRub\(v\)\{ return Money\.rub\(v\); \}/.test(util), 'Fmt.rub, fmtRub');
+  const fmt=JS('core/str.js'), legacy=JS('core/legacy.js'), cab=JS('features/crm/crm-fmt.js'), lg=JS('features/deal/lg-fmt.js'), deal=JS('features/deal/deal-fmt.js'), dc=JS('features/deal/deal-values.js');
+  assert.ok(/static rub\(value\) \{\s*return Money\.rub\(value\);/.test(fmt), 'Fmt.rub');
   assert.ok(/static rub\(kop\) \{\s*return Money\.rub\(\(\+kop \|\| 0\) \/ this\.KOPECKS\);/.test(cab) && /static KOPECKS = 100;/.test(cab) && /static short\(kop\) \{\s*return Money\.short/.test(cab), 'CrmFmt — копейки сделки');
   assert.ok(/static rub\(value\) \{\s*return Money\.rub\(value\);/.test(lg), 'LgFmt.rub'); assert.ok(/static rub\(value\) \{\s*return Money\.rub2\(value\);/.test(deal), 'DealFmt.rub');
   assert.ok(/static rub\(value\) \{\s*return Money\.int\(value\);/.test(dc), 'DealValues.rub');
-  const own=[util, cab, lg, deal, dc].join('\n').match(/Math\.round\([^)]*\)\.toLocaleString\('ru-RU'\)\+' ?(₽|руб\.)'/g);
+  const own=[fmt, legacy, cab, lg, deal, dc].join('\n').match(/Math\.round\([^)]*\)\.toLocaleString\('ru-RU'\)\+' ?(₽|руб\.)'/g);
   assert.ok(!own, 'свой показ рублей мимо Money: '+own);
 });
 

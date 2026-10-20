@@ -95,7 +95,7 @@ export class KpDocx {
       const url = await DocImages.url(item.photo, item.name);
       if (!url) continue;
       const file = `cover.${this._ext(url)}`;
-      zip.file(`word/media/${file}`, b64(url), { base64: true });
+      zip.file(`word/media/${file}`, FileSave.base64(url), { base64: true });
       media.cover = { file, w: item.photo.w, h: item.photo.h };
       break;
     }
@@ -106,14 +106,14 @@ export class KpDocx {
     if (item.photo) {
       const tile = await DocImages.tile(item.photo, item.name);
       if (tile) {
-        zip.file(`word/media/tile_${item.id}.png`, b64(tile.url), { base64: true });
+        zip.file(`word/media/tile_${item.id}.png`, FileSave.base64(tile.url), { base64: true });
         out.tile = { file: `tile_${item.id}.png`, w: tile.w, h: tile.h };
       }
     }
     if (item.logo) {
       const url = await DocImages.url(item.logo, `${item.name} (логотип)`);
       if (url) {
-        zip.file(`word/media/logo_${item.id}.png`, b64(url), { base64: true });
+        zip.file(`word/media/logo_${item.id}.png`, FileSave.base64(url), { base64: true });
         out.logo = { file: `logo_${item.id}.png`, w: item.logo.w, h: item.logo.h };
       }
     }
@@ -131,7 +131,7 @@ export class KpDocx {
       const url = await DocImages.url(image, item.name + (image.caption ? ` — ${image.caption}` : ''));
       if (!url) continue;
       const file = `gal_${item.id}_${++count}.${this._ext(url)}`;
-      zip.file(`word/media/${file}`, b64(url), { base64: true });
+      zip.file(`word/media/${file}`, FileSave.base64(url), { base64: true });
       const link = linkOf(item, image);
       if (link.kind === 'feat') out.featImgs[link.f.id] = { file, w: image.w, h: image.h };
       else {
@@ -202,7 +202,7 @@ export class KpDocx {
       const url = await DocImages.url(part.photo, `${item.name} — ${part.name || 'элемент'}`);
       if (!url) continue;
       const file = `kit_${item.id}_${String(part.id).replace(/[^A-Za-z0-9_-]/g, '')}.${this._ext(url)}`;
-      zip.file(`word/media/${file}`, b64(url), { base64: true });
+      zip.file(`word/media/${file}`, FileSave.base64(url), { base64: true });
       images[part.id] = { file, w: part.photo.w, h: part.photo.h };
     }
     return images;

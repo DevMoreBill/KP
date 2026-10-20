@@ -136,19 +136,19 @@ export class PartyCheck {
       ? KPGen.ruDate(check.regDate.slice(0, 10)) +
         (check.ageYears != null ? ` (${String(check.ageYears).replace('.', ',')} г.)` : '')
       : '';
-    let tax = check.taxDebt ? fmtRub(check.taxDebt) : 'нет';
+    let tax = check.taxDebt ? Money.rub(check.taxDebt) : 'нет';
     if (check.free) tax = this.NOT_CHECKED;
     return [
       ['Регистрация', registered],
-      ['Уставный капитал', check.capital != null ? fmtRub(check.capital) : ''],
+      ['Уставный капитал', check.capital != null ? Money.rub(check.capital) : ''],
       ['Сотрудников', check.employees != null ? String(check.employees) : ''],
       ['Категория МСП', check.msp],
       ['Основной ОКВЭД', check.okved],
       ['Налоговая недоимка', tax],
-      ['Арбитраж (ответчик)', this._count(check.courts, courts => `${courts.count} дел на ${fmtRub(courts.sum)}`)],
+      ['Арбитраж (ответчик)', this._count(check.courts, courts => `${courts.count} дел на ${Money.rub(courts.sum)}`)],
       [
         'Исполнительные производства',
-        this._count(check.fssp, fssp => `${fssp.count}${fssp.sum ? ` на ${fmtRub(fssp.sum)}` : ''}`),
+        this._count(check.fssp, fssp => `${fssp.count}${fssp.sum ? ` на ${Money.rub(fssp.sum)}` : ''}`),
       ],
     ].filter(fact => fact[1]);
   }
@@ -158,7 +158,7 @@ export class PartyCheck {
     const rows = check.finances
       .map(
         row =>
-          `<tr><td>${esc(row.year)}</td><td>${fmtRub(row.revenue)}</td><td class="${row.profit < 0 ? 'bad-t' : ''}">${fmtRub(row.profit)}</td></tr>`,
+          `<tr><td>${esc(row.year)}</td><td>${Money.rub(row.revenue)}</td><td class="${row.profit < 0 ? 'bad-t' : ''}">${Money.rub(row.profit)}</td></tr>`,
       )
       .join('');
     const source = check.finSource
