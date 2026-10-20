@@ -31,6 +31,7 @@
     "app/equipment_types.py",
     "app/features.py",
     "app/feed_files.py",
+    "app/feeds.py",
     "app/geo.py",
     "app/images.py",
     "app/imgfetch.py",
