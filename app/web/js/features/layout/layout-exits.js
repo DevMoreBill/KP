@@ -101,7 +101,7 @@ export class LayoutExits {
     return pos;
   }
 
-  entryDoor(from, width, why) {
+  _entryDoor(from, width, why) {
     return {
       wall: 'front',
       x0: Math.round(from),
@@ -136,7 +136,7 @@ export class LayoutExits {
     if (res.door === 'side') {
       const from = this.sideDoor(res, Math.min(len - Math.max(entry[0], edgeL) - width, lim - width), width, gap);
       if (from >= this.entrySpan(res, geo)[1] + Math.max(1000, gap)) {
-        res.doors.push(this.entryDoor(from, width, why));
+        res.doors.push(this._entryDoor(from, width, why));
         return;
       }
     }
@@ -201,7 +201,7 @@ export class LayoutExits {
     res.second = `сквозного прохода нет — поз. ${cross.pos} стоит поперёк станции: к нему сзади и к оборудованию за ним`;
     const from = this.sideDoor(res, len - Math.max(entry[0], edgeL) - width, width, gap);
     if (from >= cross.x1 + 100) {
-      res.doors.push(this.entryDoor(from, width, res.second));
+      res.doors.push(this._entryDoor(from, width, res.second));
       return;
     }
     const gate = res.gates2 && res.gates2.wall === 'right' ? res.gates2 : res.gates;
@@ -330,6 +330,7 @@ export class LayoutExits {
     delete res.segs;
   }
 
+  /** Уровень замечания о выходах: ошибка или предупреждение. */
   level(res) {
     if (res.bad) return 'error';
     return res.issues.some(i => i.level === 'warn') ? 'warn' : 'ok';
@@ -338,7 +339,7 @@ export class LayoutExits {
   /** Ворота в торце и сервисные ворота — сведениями; дверь оператора и вторая — одной строкой. */
   doorNotes(res, geo) {
     for (const gate of [res.gates, res.gates2].filter(cand => cand && (cand.pos.length || !cand.sea)))
-      res.issues.push({ level: 'info', text: this.gateText(gate, res) });
+      res.issues.push({ level: 'info', text: this._gateText(gate, res) });
     for (const { t: text, d: door, count } of this.serviceGroups(res)) {
       const via = door.rear && !door.both && !(res.gates && res.gates.pos.length) ? '; ворота в торце не нужны' : '';
       res.issues.push({
@@ -351,7 +352,7 @@ export class LayoutExits {
     res.issues.push({ level: 'info', text: this.entryText(res, geo) });
   }
 
-  gateText(gate, res) {
+  _gateText(gate, res) {
     if (gate.sea)
       return `Монтаж и демонтаж поз. ${gate.pos.join(', ')} — через штатные двери контейнера в торце (${Mm.text(gate.w)} × ${Mm.text(gate.h)} мм): ${gate.why.join('; ')}.`;
     const far = gate.wall === 'right';
@@ -368,7 +369,7 @@ export class LayoutExits {
   serviceGroups(res) {
     const groups = new Map();
     for (const door of res.doors.filter(cand => cand.kind !== 'entry')) {
-      const text = `${door.leaves > 1 ? 'Сервисные распашные ворота' : 'Сервисная распашная дверь'} ${Mm.text(door.w)} × ${Mm.text(door.h)} мм в ${door.wall === 'back' ? 'задней' : 'боковой'} стене${this.serviceWhere(door)}`;
+      const text = `${door.leaves > 1 ? 'Сервисные распашные ворота' : 'Сервисная распашная дверь'} ${Mm.text(door.w)} × ${Mm.text(door.h)} мм в ${door.wall === 'back' ? 'задней' : 'боковой'} стене${this._serviceWhere(door)}`;
       const key = `${text}|${door.pos.join(',')}`;
       if (!groups.has(key)) groups.set(key, { t: text, d: door, count: 0 });
       groups.get(key).count++;
@@ -376,7 +377,7 @@ export class LayoutExits {
     return [...groups.values()];
   }
 
-  serviceWhere(door) {
+  _serviceWhere(door) {
     if (door.both) return door.wall === 'back' ? ' за компрессором' : ' перед компрессором';
     return door.rear ? ' за оборудованием' : '';
   }
@@ -395,10 +396,10 @@ export class LayoutExits {
       (gate && gate.wicket) ||
       (res.gates2 && res.gates2.wicket) ||
       res.secondDgu;
-    return `Вход: дверь оператора — ${who}${two ? `; вторая дверь оператора — ${this.secondWhere(res)} (${res.second})` : ''}.`;
+    return `Вход: дверь оператора — ${who}${two ? `; вторая дверь оператора — ${this._secondWhere(res)} (${res.second})` : ''}.`;
   }
 
-  secondWhere(res) {
+  _secondWhere(res) {
     const gate = res.gates;
     if (res.exit) return 'в дальнем торце по оси прохода';
     if (gate && gate.wicket)

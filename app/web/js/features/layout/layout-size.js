@@ -63,7 +63,7 @@ export class LayoutSize {
     } finally {
       lay.forcePairs = false;
     }
-    if (!this.shorterWithPairs(pairs, res)) return res;
+    if (!this._shorterWithPairs(pairs, res)) return res;
     pairs.issues.push({
       level: 'info',
       text: `Ресиверы — частью в два ряда поперёк у торца: станция короче на ${Mm.text(res.geo.ext[0] - pairs.geo.ext[0])} мм (${Mm.text(pairs.geo.ext[0])} вместо ${Mm.text(res.geo.ext[0])} мм); отступы — допустимые («не менее»).`,
@@ -71,7 +71,7 @@ export class LayoutSize {
     return pairs;
   }
 
-  shorterWithPairs(pairs, res) {
+  _shorterWithPairs(pairs, res) {
     if (!pairs || pairs.level === 'error' || !pairs.geo || !pairs.items.some(i => i.pairEnd)) return false;
     return pairs.geo.ext[1] <= res.geo.ext[1] && pairs.geo.ext[0] <= res.geo.ext[0] - StationMatrix.fit().recv2;
   }
@@ -96,6 +96,7 @@ export class LayoutSize {
     return { levels, tiers: out };
   }
 
+  /** Подбор размера станции под оборудование. */
   pick(units, geo) {
     const lay = this.lay;
     lay.inMods = Boolean(geo.mods);
@@ -112,7 +113,7 @@ export class LayoutSize {
   failure(units, geo, search) {
     const fixL = geo.fixL || 0;
     const fail = text => ({ level: 'error', geo, ext: null, int: null, issues: [{ level: 'error', text }] });
-    if (fixL) return fail(this.fixedText(units, geo, fixL));
+    if (fixL) return fail(this._fixedText(units, geo, fixL));
     const block = StationGeo.BLOCK;
     const maxL = StationMatrix.fit().maxL;
     if (geo.mods) {
@@ -123,10 +124,10 @@ export class LayoutSize {
     const fit = StationMatrix.fit();
     const Wi = StationGeo.inner(geo.type, [10000, fit.wide ? block.maxW : StationGeo.ROAD_W, block.maxH], geo.t)[1];
     const wideOk = this.need(search.probe, Wi - 2 * this.lay.gap, 'row1', 1) != null;
-    return fail(this.failText({ F: fit, wideOk, tall: search.tall, B: block, maxL }));
+    return fail(this._failText({ F: fit, wideOk, tall: search.tall, B: block, maxL }));
   }
 
-  fixedText(units, geo, fixL) {
+  _fixedText(units, geo, fixL) {
     const auto0 = this.auto(units, { ...geo, fixL: null });
     const len0 = auto0.geo && auto0.geo.ext ? auto0.geo.ext[0] : null;
     if (len0)
@@ -134,7 +135,7 @@ export class LayoutSize {
     return `В заданную длину ${Mm.text(fixL)} мм оборудование не помещается. ${auto0.issues && auto0.issues[0] ? auto0.issues[0].text : ''}`;
   }
 
-  failText({ F: fit, wideOk, tall, B: block, maxL }) {
+  _failText({ F: fit, wideOk, tall, B: block, maxL }) {
     if (!fit.wide && !wideOk) {
       return `Оборудование с проходом для оператора и обслуживания не проходит по ширине перевозки ${Mm.text(StationGeo.ROAD_W)} мм, а негабарит отключён в правилах компоновки («Настройки → Инженерные правила станций») — соберите станцию из нескольких модулей (кнопка «Модули…» в «Компоновке») или уменьшите состав.`;
     }
@@ -152,7 +153,7 @@ export class LayoutSize {
   need(units, Wi, arr, lvl) {
     const lay = this.lay;
     if (!units.length) return 0;
-    if (lay.dguSt && (arr !== 'row1' || this.dguTooNarrow(units, Wi))) return null;
+    if (lay.dguSt && (arr !== 'row1' || this._dguTooNarrow(units, Wi))) return null;
     const res = this.row(units, Wi, arr, lvl);
     if (res.ok) return 0;
     if (!/^length/.test(res.why)) return null;
@@ -160,7 +161,7 @@ export class LayoutSize {
     return lay.closeOk && res.needLc != null ? res.needLc : res.needL;
   }
 
-  dguTooNarrow(units, Wi) {
+  _dguTooNarrow(units, Wi) {
     if (!this.lay.midNeed) return false;
     const dgus = units.filter(unit => unit.kind === 'dgu');
     const dguRule = StationMatrix.grp('dgu');
@@ -168,6 +169,7 @@ export class LayoutSize {
     return middle && dgus.some(unit => Wi < unit.w + 2 * dguRule.pass);
   }
 
+  /** Расстановка одного ряда в ширине. */
   row(units, Wi, arr, lvl) {
     const lay = this.lay;
     if (lay.dguSt) return lay.dgu.row(units, 0, Wi);
@@ -238,11 +240,11 @@ export class LayoutSize {
   excess(units, geo, plan) {
     const rank = { ok: 0, warn: 1 };
     const level = plan.issues.some(i => i.level === 'warn') ? 1 : 0;
-    if (geo.sea && !geo.own) this.smallerSea(units, geo, plan, { rank, lv: level });
-    else if (geo.own && StationGeo.FLEX[geo.type]) this.smallerBlock(units, geo, plan, { rank, lv: level });
+    if (geo.sea && !geo.own) this._smallerSea(units, geo, plan, { rank, lv: level });
+    else if (geo.own && StationGeo.FLEX[geo.type]) this._smallerBlock(units, geo, plan, { rank, lv: level });
   }
 
-  smallerSea(units, geo, plan, { rank, lv: level }) {
+  _smallerSea(units, geo, plan, { rank, lv: level }) {
     const lay = this.lay;
     const cur = StationGeo.SEA[geo.type];
     for (const type of StationGeo.SEA_ORDER) {
@@ -261,7 +263,7 @@ export class LayoutSize {
     }
   }
 
-  smallerBlock(units, geo, plan, { rank, lv: level }) {
+  _smallerBlock(units, geo, plan, { rank, lv: level }) {
     const res = this.auto(units, this.lay.geoOf({ ctype: geo.type, ins: `${geo.t} мм`, sizeAuto: true }));
     if (res.level === 'error' || !res.geo || !res.geo.ext || rank[res.level] > level) return;
     const ext = res.geo.ext;
@@ -318,6 +320,7 @@ class SizeSearch {
     return Math.max(this.block.hWalk, ...this.units.filter(unit => !unit.pipe).map(needOf));
   }
 
+  /** Компоновка в заданном размере и режиме (с памятью). */
   fitAt(geo2, mode) {
     const key = geo2.ext.join('×') + JSON.stringify(mode) + (this.lay.closeAll ? 'c' : '');
     if (!this.tried.has(key)) this.tried.set(key, this.lay.fit(this.units, geo2, [mode]));
@@ -368,7 +371,7 @@ class SizeSearch {
     );
   }
 
-  arrangements(mode, levelW, widX) {
+  _arrangements(mode, levelW, widX) {
     const { lay, mods: mods } = this;
     const ends =
       lay.comp &&
@@ -388,7 +391,7 @@ class SizeSearch {
     const cand = [];
     for (const widX of this.widths(this.wide)) {
       const Wi = StationGeo.inner(this.geo.type, [10000, widX, heightX], this.geo.t)[1] - this.gaps2;
-      for (const arr of this.arrangements(mode, levelW, widX)) {
+      for (const arr of this._arrangements(mode, levelW, widX)) {
         const len = this.size.need(this.probe, Wi, arr, levelL);
         if (len == null) continue;
         const lenX = this.lengthOf(len);
@@ -448,6 +451,7 @@ class SizeSearch {
     return state.alt ? this.done(state.alt, tier) : null;
   }
 
+  /** Пора ли прекратить перебор размеров. */
   stop(cand, { alt, pick, extra, tidy }) {
     if (alt && cand.a > alt.a * 1.2) return true;
     return Boolean(pick) && (!tidy || cand.Lx * cand.Wx > pick.area + extra * cand.Wx);
@@ -487,7 +491,7 @@ class SizeSearch {
       Object.assign(state.pick, { r: res, g2: geo2, Wx: widX, sc: score, Lx: lenX });
   }
 
-  geoAt(lenX, widX, heightX) {
+  _geoAt(lenX, widX, heightX) {
     const { mods: mods, modsA: modsA, modsB: modsB } = this;
     const geo2 = {
       ...this.geo,
@@ -505,7 +509,7 @@ class SizeSearch {
    * 'break'; эта длина не подходит — null.
    */
   tryLength(cand, lenX, heightX, { st: stage, ll: levelL, close }) {
-    let geo2 = this.geoAt(lenX, cand.Wx, heightX);
+    let geo2 = this._geoAt(lenX, cand.Wx, heightX);
     let res = this.fitAt(geo2, cand.m);
     if (res.level === 'error' || (this.mods && StationMods.cross(res.items, geo2).length)) return null;
     [res, geo2] = this.higher(res, geo2, cand);
@@ -637,6 +641,7 @@ class Grower {
     return this.plan;
   }
 
+  /** Принимает расстановку, если она лучше прежней. */
   accept(plan2, lenX, what) {
     const { plan } = this;
     plan2.geo.auto = true;

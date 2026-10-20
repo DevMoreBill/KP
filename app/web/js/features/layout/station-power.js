@@ -7,16 +7,18 @@ import { StationMatrix } from './station-matrix.js';
  * зимой»; двигатели берут из сети P / η. Ток — 3 × 400 В, cos φ; вводной автомат — ближайший номинал не меньше k · I.
  */
 export class StationPower {
-  static get VOLTAGE() {
+  static get _VOLTAGE() {
     return StationRules.raw('el.u');
   }
-  static get COS() {
+  static get _COS() {
     return StationRules.raw('el.cos');
   }
+  /** Ряд номиналов автоматов, А. */
   static get BREAKERS() {
     return StationRules.raw('el.breakers');
   }
 
+  /** Мощность для текста. */
   static fmt(v) {
     return String(Math.abs(v) < 1 ? Num.round(v, 100) : Num.round(v, 10)).replace('.', ',');
   }
@@ -50,7 +52,7 @@ export class StationPower {
     const run = mode('run');
     const idle = mode('idle');
     const peak = Math.max(run, idle);
-    const amps = (peak * 1000) / (Math.sqrt(3) * StationPower.VOLTAGE * StationPower.COS);
+    const amps = (peak * 1000) / (Math.sqrt(3) * StationPower._VOLTAGE * StationPower._COS);
     return {
       list: out,
       inst: Num.round(inst, 10),
@@ -118,10 +120,10 @@ export class StationPower {
         idle: false,
         extra: Math.round(heat.qRun / 10) / 100,
       });
-    StationPower.services(plan, add);
+    StationPower._services(plan, add);
   }
 
-  static services(plan, add) {
+  static _services(plan, add) {
     const rules = StationMatrix.grp('power');
     if (plan.light && plan.light.on) add('Освещение (основное, аварийное, прожекторы)', 1, plan.light.kw);
     if (plan.sockets) {
@@ -144,7 +146,7 @@ export class StationPower {
     const when = power.mode === 'run' ? 'при работе оборудования' : 'зимой при остановленном оборудовании (отопление)';
     return [
       `Установленная мощность (оборудование и системы контейнера) — ${fmt(power.inst)} кВт; расчётная (${own}) — ${fmt(power.kw)} кВт: ${when}; при работе — ${fmt(power.run)} кВт, в простое зимой — ${fmt(power.idle)} кВт.`,
-      `Ввод — 3 × 400 В, 50 Гц: расчётный ток ${fmt(power.amp)} А (cos φ ${String(StationPower.COS).replace('.', ',')}); вводной автомат — ${power.breaker ? `${power.breaker} А` : 'по проекту'}${power.dgu ? '' : `; выделяемая мощность — не менее ${fmt(power.kw)} кВт`}.`,
+      `Ввод — 3 × 400 В, 50 Гц: расчётный ток ${fmt(power.amp)} А (cos φ ${String(StationPower._COS).replace('.', ',')}); вводной автомат — ${power.breaker ? `${power.breaker} А` : 'по проекту'}${power.dgu ? '' : `; выделяемая мощность — не менее ${fmt(power.kw)} кВт`}.`,
     ];
   }
 }

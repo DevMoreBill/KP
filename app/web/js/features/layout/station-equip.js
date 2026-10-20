@@ -79,6 +79,7 @@ export class StationEquip {
   static DIM2 = /(\d+(?:[.,]\d+)?)\s*×\s*(\d+(?:[.,]\d+)?)(?:\s*×\s*(\d+(?:[.,]\d+)?))?/;
   static DIM3 = /(\d+(?:[.,]\d+)?)\s*×\s*(\d+(?:[.,]\d+)?)\s*×\s*(\d+(?:[.,]\d+)?)/;
 
+  /** Категория позиции каталога. */
   static cat(part) {
     return String((part.attrs && part.attrs.cat) || part.cat || '');
   }
@@ -98,6 +99,7 @@ export class StationEquip {
     return main ? 'other' : '';
   }
 
+  /** Число из текста («1 200,5 кг» → 1200.5). */
   static num(v) {
     const value = parseFloat(
       String(v ?? '')
@@ -120,11 +122,11 @@ export class StationEquip {
   /** Расход воздуха по паспорту, м³/ч: cool — на охлаждение, comb — на горение; heat — тепловыделение, кВт. */
   static airRows(part) {
     const out = { cool: null, comb: null, heat: null };
-    for (const row of part.rows || []) if (row) this.airRow(out, row);
+    for (const row of part.rows || []) if (row) this._airRow(out, row);
     return out;
   }
 
-  static airRow(out, row) {
+  static _airRow(out, row) {
     const k = String(row.k || '');
     if (/тепловыделен|теплоотдач|тепловой поток|тепловая мощность/i.test(k) && !/рекупер|возврат/i.test(k)) {
       this.heatRow(out, row);
@@ -178,11 +180,11 @@ export class StationEquip {
     const match = clean.match(pattern);
     if (!match) return null;
     const nums = [match[1], match[2], match[3]].filter(Boolean).map(v => parseFloat(v.replace(',', '.')));
-    const scale = this.sizeScale(nums, clean);
+    const scale = this._sizeScale(nums, clean);
     return nums.map(v => Math.round(v * scale));
   }
 
-  static sizeScale(nums, text) {
+  static _sizeScale(nums, text) {
     if (Math.max(...nums) < 40) return 1000;
     return /см/.test(text) ? 10 : 1;
   }
@@ -209,7 +211,7 @@ export class StationEquip {
   static sizeOf(part) {
     const own = this.nums((part.attrs || {}).size);
     let found = { n: own, src: own ? 'Габариты' : '' };
-    if (!own || own.length < 3) found = this.sizeRows(part, found);
+    if (!own || own.length < 3) found = this._sizeRows(part, found);
     if ((!found.n || found.n.length < 3) && typeof lgCargoOf === 'function') {
       const cargo = lgCargoOf([{ rows: part.rows || [] }]);
       if (cargo && cargo.dims)
@@ -221,7 +223,7 @@ export class StationEquip {
     return found;
   }
 
-  static sizeRows(part, found) {
+  static _sizeRows(part, found) {
     const key = row => String(row.k || '');
     const rows = (part.rows || []).filter(
       row =>
@@ -337,6 +339,7 @@ export class StationEquip {
     return StationEquip._step(this.GUESS.muffler, kw == null ? 200 : kw);
   }
 
+  /** Масса позиции, кг. */
   static mass(part) {
     const massKg = this.num((part.attrs || {}).mass);
     if (massKg > 0) return massKg;
@@ -347,11 +350,12 @@ export class StationEquip {
 
   /** Цвет: главный цвет фото, иначе из характеристик (RAL или словами), иначе условный по виду. */
   static color(part, kind) {
-    const color = this.colorRows(part, kind);
+    const color = this._colorRows(part, kind);
     const tint = this.tint(part);
     return tint ? { hex: tint, known: true, text: color.text, photo: true, tones: this.tones(part) } : color;
   }
 
+  /** Ссылка на фото позиции. */
   static photo(part) {
     const text = part && part.photo && part.photo.src;
     return text && typeof PhotoTint !== 'undefined' ? String(text) : '';
@@ -364,12 +368,13 @@ export class StationEquip {
     return z.length ? z : null;
   }
 
+  /** Цвет корпуса по фото позиции. */
   static tint(part) {
     const text = this.photo(part);
     return text ? PhotoTint.get(text) || '' : '';
   }
 
-  static colorRows(part, kind) {
+  static _colorRows(part, kind) {
     const attrs = part.attrs || {};
     const key = row => String(row.k || '').trim();
     const rows = (part.rows || []).filter(
@@ -391,12 +396,12 @@ export class StationEquip {
   /** Форма для 3D-вида: box — короб, vcyl — вертикальный цилиндр, hcyl — горизонтальный. */
   static shape(part, kind, dims) {
     if (kind === 'receiver')
-      return this.receiverShape(String((part.attrs && part.attrs.orient) || '').toLowerCase(), dims);
+      return this._receiverShape(String((part.attrs && part.attrs.orient) || '').toLowerCase(), dims);
     if (kind === 'filter' && dims.l <= 1.3 * dims.w && dims.h >= 1.2 * dims.l) return 'vcyl';
     return 'box';
   }
 
-  static receiverShape(orient, dims) {
+  static _receiverShape(orient, dims) {
     if (/гориз/.test(orient) || (!/верт/.test(orient) && dims.l >= 1.6 * Math.max(dims.w, dims.h))) return 'hcyl';
     if (/верт/.test(orient) || (dims.h >= 1.3 * dims.l && dims.l <= 1.25 * dims.w)) return 'vcyl';
     return 'box';
@@ -473,6 +478,7 @@ export class StationEquip {
     unit.air.out = true;
   }
 
+  /** Элемент станции из позиции каталога. */
   static entry(part, pos) {
     const kind = this.kindOf(part);
     const name = String(part.name || '').trim() || this.LABEL[kind] || 'Элемент';
@@ -497,6 +503,7 @@ export class StationEquip {
     return null;
   }
 
+  /** Элемент «трубопровод» из позиции. */
   static piping(part, base, pos) {
     const mat = PipeMaterial.of(part);
     return {
@@ -513,6 +520,7 @@ export class StationEquip {
     };
   }
 
+  /** Элемент «глушитель» из позиции. */
   static muffler(part, base, pos) {
     const dims = this.dims(part, base.kind);
     return {
@@ -568,7 +576,7 @@ export class StationEquip {
       look: this.look(part, k),
       place: true,
       pipe,
-      mount: this.mountOf(part, k, dims, pipe),
+      mount: this._mountOf(part, k, dims, pipe),
       air,
       noise: StationNorms.dba(part),
       pic: this.pic(part),
@@ -579,7 +587,7 @@ export class StationEquip {
     };
   }
 
-  static mountOf(part, kind, dims, pipe) {
+  static _mountOf(part, kind, dims, pipe) {
     if (kind === 'cabinet') return this.mount(part, dims);
     return pipe ? 'pipe' : 'floor';
   }

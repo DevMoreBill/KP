@@ -39,6 +39,7 @@ export class LayoutRoof {
     return all;
   }
 
+  /** Глушитель на крыше над своей ДГУ. */
   static muffler(muffler, u, dgu, ctx) {
     const spot = {
       pos: muffler.pos,
@@ -123,14 +124,14 @@ export class LayoutRoof {
         ...base,
         how: 'wall',
         wall: 'back',
-        u: this.exhaustAt(plan, gen),
+        u: this._exhaustAt(plan, gen),
         z,
         gap: Math.max(0, Wi - gen.y - gen.ly),
       };
     });
   }
 
-  static exhaustAt(plan, dgu) {
+  static _exhaustAt(plan, dgu) {
     const rad = dgu.rad || 'right';
     if (rad === 'back') {
       const door = (plan.dguDoors || []).find(spot => spot.pos === dgu.pos && spot.unit === dgu.unit);

@@ -68,6 +68,7 @@ export class LayoutRows {
     }
   }
 
+  /** Длина ряда с проходами между агрегатами. */
   length(slots, lvl) {
     return (
       this.chain(
@@ -137,13 +138,13 @@ export class LayoutRows {
     let k = slots.length;
     while (k > 0 && solo(slots[k - 1])) k--;
     for (let j = slots.length - 2; j >= k && !done(); j -= 2) {
-      const slot = this.endPair(slots[j].e, slots[j + 1].e, wide);
+      const slot = this._endPair(slots[j].e, slots[j + 1].e, wide);
       if (!slot) break;
       slots.splice(j, 2, slot);
     }
   }
 
-  endPair(first, second, wide) {
+  _endPair(first, second, wide) {
     const side = Math.max(first.c.side[1], second.c.side[1]);
     const gaps = this.lay.closeOk ? [side, 0] : [side];
     return (
@@ -349,7 +350,7 @@ export class LayoutRows {
       const [first, second] = [slots[j].e, slots[j + 1].e];
       const pair = StationMatrix.pair(first, second);
       const recWall = Math.min(Math.max(first.c.back[1], second.c.back[1]), compWall);
-      const low = this.pairLow(pair);
+      const low = this._pairLow(pair);
       const gap = Math.min(pair ? pair[0] : 300, wid - first.w - second.w - 2 * recWall);
       if (gap < low || wid - first.w - second.w - gap < 2 * tightW) break;
       slots.splice(j, 2, {
@@ -362,7 +363,7 @@ export class LayoutRows {
     }
   }
 
-  pairLow(pair) {
+  _pairLow(pair) {
     if (!pair) return 300;
     return pair[2] === 0 ? 0 : pair[1];
   }
@@ -537,6 +538,7 @@ class EndsRow {
     return gaps;
   }
 
+  /** Расстановка к торцам без продольного прохода. */
   build() {
     const { slots: slots, lenMax: lenMax, comps: comps } = this;
     const countC = comps.length;
@@ -569,6 +571,7 @@ class EndsRow {
     };
   }
 
+  /** Агрегаты ряда с координатами. */
   items(gaps) {
     const { wid: wid } = this;
     const out = [];
@@ -589,6 +592,7 @@ class EndsRow {
     return out;
   }
 
+  /** Замечания расстановки к торцам. */
   notes(equip, aisleW, share, gaps) {
     const iss = [];
     const [aRec, aMin] = this.lay.aisle;

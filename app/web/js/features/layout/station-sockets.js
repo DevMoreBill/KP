@@ -2,6 +2,7 @@ import { StationMatrix } from './station-matrix.js';
 
 /** Сервисные розетки: 230 В — по одной на каждые sockStep мм длины помещения (не меньше sockMin), 380 В, ЯТП-0,25 (ПУЭ, п. 6.1.16). */
 export class StationSockets {
+  /** Розетки станции. */
   static calc(plan) {
     if ((plan.sys || {}).power === false) return null;
     const [Li] = plan.int;
@@ -14,6 +15,7 @@ export class StationSockets {
     };
   }
 
+  /** Текст о розетках. */
   static text(sockets) {
     if (!sockets) return '';
     const z = (sockets.z / 1000).toFixed(1).replace('.', ',');

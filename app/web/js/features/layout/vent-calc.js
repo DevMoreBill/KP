@@ -13,6 +13,7 @@ export class VentCalc {
 
   static _round2 = v => Math.round(v * 100) / 100;
 
+  /** Округление до десятых. */
   static round1 = v => Math.round(v * 10) / 10;
 
   static _round3 = v => Math.round(v * 1000) / 1000;
@@ -37,6 +38,7 @@ export class VentCalc {
     return (flow * VentCalc._rule('air.cp').c * VentCalc.rho(temp) * deltaT) / 3600;
   }
 
+  /** Расход в CFM. */
   static cfm(flow) {
     return Math.round(flow / VentCalc.CFM);
   }
@@ -55,6 +57,7 @@ export class VentCalc {
     return +v;
   }
 
+  /** Тип компрессора для теплового расчёта. */
   static type(temp) {
     return /^(piston|centrifugal|scroll)$/.test(temp) ? temp : 'screw';
   }
@@ -192,11 +195,11 @@ export class VentCalc {
     const vIn = VentCalc.userValue(extra, 'vIn', [0.5, 8], warn, 'скорость притока, м/с') ?? pick('vIn');
     const vOut = VentCalc.userValue(extra, 'vOut', [0.5, 10], warn, 'скорость выброса, м/с') ?? pick('vOut');
     const res = VentCalc.userValue(extra, 'res', [1, 2], warn, 'запас притока') ?? speed.inReserve;
-    VentCalc.speedNotes(warn, { vIn, vOut, own: !boost && !exfan });
+    VentCalc._speedNotes(warn, { vIn, vOut, own: !boost && !exfan });
     return { exfan, boost, vIn, vOut, res };
   }
 
-  static speedNotes(warn, { vIn, vOut, own }) {
+  static _speedNotes(warn, { vIn, vOut, own }) {
     const speed = VentCalc._rule('vent.speed');
     const dec = VentCalc.dec;
     if (vIn > speed.max) {
@@ -224,6 +227,7 @@ export class VentCalc {
     }
   }
 
+  /** Сводка расчёта вентиляции. */
   static summary(inp, extra, warn, sum) {
     const speed = VentCalc._rule('vent.speed');
     const free = VentCalc._rule('vent.free');
@@ -403,7 +407,7 @@ export class VentCalc {
     if (!winter || winter.warm) return null;
     const extra = inp.ex || {};
     const recup = VentCalc._rule('vent.recup');
-    const why = VentCalc.recupWhy(wanted, winter, recup);
+    const why = VentCalc._recupWhy(wanted, winter, recup);
     const type = /^(plate|rotary|glycol)$/.test(extra.hrvType || '') ? extra.hrvType : 'glycol';
     const eta = VentCalc.userValue(extra, 'eta', recup.range[type], warn, 'КПД рекуператора') ?? recup.eta[type];
     const tExh =
@@ -442,6 +446,7 @@ export class VentCalc {
     };
   }
 
+  /** Меры защиты рекуператора от обмерзания. */
   static measures(recup, { frost, bypass, type }) {
     const out = [];
     if (frost || bypass) out.push(`предподогрев приточного воздуха до +${recup.frost.preheat} °C`);
@@ -450,6 +455,7 @@ export class VentCalc {
     return out;
   }
 
+  /** Сезонные значения расчёта. */
   static season(extra, warn) {
     const season = VentCalc._rule('vent.season');
     const days = VentCalc.userValue(extra, 'days', [0, 365], warn, 'отопительный период, сут') ?? season.days;
@@ -458,7 +464,7 @@ export class VentCalc {
     return { days, tavg };
   }
 
-  static recupWhy(wanted, winter, recup) {
+  static _recupWhy(wanted, winter, recup) {
     const why = [];
     if (winter.Qloss > recup.worth * winter.Qrun)
       why.push(
@@ -469,6 +475,7 @@ export class VentCalc {
     return why;
   }
 
+  /** Число с заданным числом знаков после запятой. */
   static dec(v, digits = 1) {
     const k = Math.pow(10, digits);
     return String(Math.round(v * k) / k)

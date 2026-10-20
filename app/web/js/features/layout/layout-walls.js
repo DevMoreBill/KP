@@ -41,10 +41,12 @@ class CabinetSpot {
     return this.out.every(one => beyond(one) || one.narrow + 2 * pass <= room);
   }
 
+  /** Габарит шкафа в точке на стене. */
   box(x, y, lenX, lenY) {
     return { x, y, z: this.z, lx: lenX, ly: lenY, h: this.unit.h };
   }
 
+  /** Свободно ли место под шкаф. */
   free(box) {
     return !this.res.items.some(i => LayoutItem.hit(box, i, 0));
   }
@@ -88,6 +90,7 @@ class CabinetSpot {
     return x == null ? null : this.place({ x, y: Wi - depth, z: this.z, mount: 'wall', wall: 'back', face: -1 });
   }
 
+  /** Первое подходящее место вдоль стены. */
   scan(ok) {
     for (let x = this.x0 + 150; x + this.width <= this.Li - 150; x += 50) if (ok(x)) return x;
     return null;
@@ -130,6 +133,7 @@ class CabinetSpot {
     return null;
   }
 
+  /** Шкаф как элемент компоновки. */
   place(opts) {
     return LayoutItem.unit(this.unit, opts);
   }
@@ -160,11 +164,11 @@ export class LayoutWalls {
       if (item) res.items.push(item);
       else left.push(unit);
     }
-    for (const [group, list] of this.bySegment(res, hang)) left.push(...this.hangGroup(group, list, res, geo));
+    for (const [group, list] of this._bySegment(res, hang)) left.push(...this.hangGroup(group, list, res, geo));
     return left;
   }
 
-  bySegment(res, hang) {
+  _bySegment(res, hang) {
     const groups = new Map();
     for (const unit of hang) {
       const group = LayoutPipes.segOf(res, unit);

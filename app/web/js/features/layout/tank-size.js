@@ -62,6 +62,7 @@ export class TankSize {
     );
   }
 
+  /** Первое число в тексте. */
   static firstNumber(v) {
     return String(v).match(/\d[\d\s]*(?:[.,]\d+)?/)?.[0];
   }

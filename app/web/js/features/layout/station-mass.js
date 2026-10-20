@@ -16,10 +16,11 @@ export class StationMass {
 
   static _ceilTenth = v => Math.ceil(v * 10 - 1e-9) / 10;
 
+  /** Правила раздела «Масса» матрицы. */
   static get RULES() {
     return StationMatrix.grp('mass');
   }
-  static get TARE() {
+  static get _TARE() {
     return StationMatrix.derive('tare', () => {
       const rules = StationMass.RULES;
       return {
@@ -31,35 +32,39 @@ export class StationMass {
       };
     });
   }
-  static get FRAME() {
+  static get _FRAME() {
     return StationMass.RULES.frame;
   }
-  static get PANEL() {
+  static get _PANEL() {
     return StationMatrix.derive('panel', () => {
       const rules = StationMass.RULES;
       return { block: rules.pBlock, north: rules.pNorth, welded: rules.pWelded };
     });
   }
+  /** Масса обшивки, кг/м². */
   static get LINING() {
     return StationMass.RULES.lining;
   }
-  static get FLOOR() {
+  static get _FLOOR() {
     return StationMass.RULES.floor;
   }
+  /** Прочее: доля от оборудования и постоянная часть, кг. */
   static get OTHER() {
     return [StationMass.RULES.otherK, StationMass.RULES.otherKg];
   }
+  /** Наибольший угол стропы, °. */
   static get ANGLE() {
     return StationMass.RULES.angle;
   }
+  /** Отступ проушин от торца и края, мм. */
   static get LUG() {
     return [StationMass.RULES.lugL, StationMass.RULES.lugW];
   }
-  static get BEAM() {
+  static get _BEAM() {
     const rules = StationMass.RULES;
     return { L: rules.beamL, z: rules.beamZ, top: rules.beamTop };
   }
-  static get SPREADER() {
+  static get _SPREADER() {
     const rules = StationMass.RULES;
     return { z: rules.sprZ, d: rules.sprD, top: rules.sprTop };
   }
@@ -87,7 +92,7 @@ export class StationMass {
     const center = k => points.reduce((acc, point) => acc + point.m * point[k], 0) / total;
     const cog = { x: Math.round(center('x')), y: Math.round(center('y')), z: Math.round(center('z')) };
     const mass = StationMass._round10(total);
-    const mods = modGrid ? StationMass.modules(modGrid, points, other) : null;
+    const mods = modGrid ? StationMass._modules(modGrid, points, other) : null;
     const top = mods ? mods.reduce((left, right) => (right.mass > left.mass ? right : left)) : null;
     const sling = top ? top.sling : StationMass.sling(Le, We, cog, geo.sea);
     return {
@@ -114,14 +119,14 @@ export class StationMass {
             2 *
             (Mm.meters(Li) * Mm.meters(Wi) + Mm.meters(Li) * Mm.meters(He) + Mm.meters(Wi) * Mm.meters(He))
           : 0;
-      return (StationMass.TARE[geo.type] || (2250 * Le) / 6058) + lining;
+      return (StationMass._TARE[geo.type] || (2250 * Le) / 6058) + lining;
     }
-    const panel = StationMass.PANEL[geo.type] || StationMass.PANEL.block;
+    const panel = StationMass._PANEL[geo.type] || StationMass._PANEL.block;
     const box = (len, wid) =>
-      StationMass.FRAME * Mm.meters(len) +
+      StationMass._FRAME * Mm.meters(len) +
       panel *
         (2 * Mm.meters(len) * Mm.meters(He) + 2 * Mm.meters(wid) * Mm.meters(He) + Mm.meters(len) * Mm.meters(wid)) +
-      StationMass.FLOOR * Mm.meters(len) * Mm.meters(wid);
+      StationMass._FLOOR * Mm.meters(len) * Mm.meters(wid);
     return mods ? box(mods.Lm, mods.Wm) * mods.n : box(Le, We);
   }
 
@@ -148,7 +153,7 @@ export class StationMass {
     return { eq: equipMass, missing };
   }
 
-  static modules(mods, points, other) {
+  static _modules(mods, points, other) {
     const share = other / mods.n;
     return mods.cells.map(([i, j]) => {
       const x0 = i * mods.Lm;
@@ -212,7 +217,7 @@ export class StationMass {
       [Le - lugX, We - lugY],
     ];
     if (sea) return StationMass.spreader(Le, We, cog, pts);
-    const beam = StationMass.BEAM;
+    const beam = StationMass._BEAM;
     if (Le > beam.L) {
       const legs = pts.map(([x, y]) => {
         const dist = Math.abs(y - cog.y);
@@ -238,7 +243,7 @@ export class StationMass {
   /** Морской контейнер — рамной траверсой: вертикальные ветви к фитингам, к крюку — от проушин над центром тяжести. */
   static spreader(Le, We, cog, pts) {
     const [lugX, lugY] = StationMass.LUG;
-    const spreader = StationMass.SPREADER;
+    const spreader = StationMass._SPREADER;
     const half = Math.min(spreader.d, Math.round(Le / 4));
     const lugs = [Math.max(lugX, cog.x - half), Math.min(Le - lugX, cog.x + half)];
     const arm = Math.max(...lugs.map(x => Math.abs(x - cog.x)));

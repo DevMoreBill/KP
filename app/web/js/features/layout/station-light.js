@@ -21,28 +21,32 @@ export class StationLight {
     [5, 0.76],
   ];
 
+  /** Нормируемая освещённость, лк. */
   static get LUX() {
     return StationRules.raw('norm.lux').lux;
   }
-  static get PLANE() {
+  static get _PLANE() {
     return StationMatrix.grp('light').plane;
   }
+  /** Коэффициент запаса освещения. */
   static get RESERVE_K() {
     return StationRules.raw('norm.lux').kz;
   }
+  /** Светильник из матрицы. */
   static get LAMP() {
     return StationMatrix.derive('lamp', () => {
       const lamp = StationMatrix.grp('light');
       return { w: lamp.lampW, lm: lamp.lampLm, len: lamp.lampLen };
     });
   }
+  /** Светильник для малого отсека. */
   static get SMALL() {
     return StationMatrix.grp('light').small;
   }
-  static get FLOOD() {
+  static get _FLOOD() {
     return StationMatrix.grp('light').flood;
   }
-  static get EXIT() {
+  static get _EXIT() {
     return StationMatrix.grp('light').exit;
   }
 
@@ -57,11 +61,12 @@ export class StationLight {
     return x + ((y - x) * (i - lower)) / (upper - lower);
   }
 
+  /** Расчёт освещения станции. */
   static calc(plan) {
     const [Li, Wi, Hi] = plan.int;
     const lenM = (Li - (plan.geo.x0 || 0)) / 1000;
     const widM = Wi / 1000;
-    const height = Math.max(0.8, (Hi - StationLight.PLANE) / 1000);
+    const height = Math.max(0.8, (Hi - StationLight._PLANE) / 1000);
     const area = lenM * widM;
     const i = area / (height * (lenM + widM));
     const eta = StationLight.eta(i);
@@ -74,7 +79,7 @@ export class StationLight {
     const { small, floods, exits } = StationLight.fixtures(plan);
     const active = (plan.sys || {}).light !== false;
     const kw = active
-      ? (count * lamp.w + small * StationLight.SMALL + floods * StationLight.FLOOD + exits * StationLight.EXIT) / 1000
+      ? (count * lamp.w + small * StationLight.SMALL + floods * StationLight._FLOOD + exits * StationLight._EXIT) / 1000
       : 0;
     return {
       on: active,
@@ -115,7 +120,7 @@ export class StationLight {
       ? `; отсек топливного бака${light.small > 1 ? ' и тамбур' : ''} — по светильнику ${StationLight.SMALL} Вт IP65`
       : '';
     const floods = light.floods
-      ? `; снаружи над дверями — светодиодные прожекторы ${StationLight.FLOOD} Вт IP65 с фотореле и блоком аварийного питания (перед выходом — не менее 5 лк), ${light.floods} шт.`
+      ? `; снаружи над дверями — светодиодные прожекторы ${StationLight._FLOOD} Вт IP65 с фотореле и блоком аварийного питания (перед выходом — не менее 5 лк), ${light.floods} шт.`
       : '';
     return (
       `основное — ${plural(light.n, ['светодиодный светильник', 'светодиодных светильника', 'светодиодных светильников'])} IP65 по ${lamp.w} Вт (${lamp.lm} лм) в ряд под потолком: около ${Math.round(light.E)} лк на рабочей плоскости 0,8 м при норме ${light.lux} лк ` +

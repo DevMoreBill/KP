@@ -11,6 +11,7 @@ export class StationFire {
   static TANK = { cat: 'В1', zone: 'П-I' };
   static ZONE = { dgu: 'П-I' };
 
+  /** Модуль пожаротушения из матрицы. */
   static get MOD() {
     return StationMatrix.derive('fireMod', () => {
       const rule = StationMatrix.grp('fire');
@@ -30,7 +31,7 @@ export class StationFire {
     });
   }
 
-  static get SHADE() {
+  static get _SHADE() {
     return StationMatrix.derive('fireShade', () => {
       const rule = StationMatrix.grp('fire');
       return { h: rule.shadeH, gap: rule.shadeGap };
@@ -61,6 +62,7 @@ export class StationFire {
     };
   }
 
+  /** Защищаемые помещения: основное и топливный отсек. */
   static rooms(plan, cat) {
     const items = plan.items || [];
     const dgu = items.some(i => i.kind === 'dgu');
@@ -91,6 +93,7 @@ export class StationFire {
     return rooms;
   }
 
+  /** Расчёт модулей пожаротушения помещения. */
   static room(room, { W: Wi, H: Hi, cls, on: active }) {
     const mod = StationFire.MOD;
     const k = mod.k1 * mod.k3 * mod.k4;
@@ -130,7 +133,7 @@ export class StationFire {
 
   /** Зоны за агрегатами у стены; агрегаты в пределах одного квадрата — под одним модулем. */
   static shade(room, Wi, side) {
-    const { h: minH, gap } = StationFire.SHADE;
+    const { h: minH, gap } = StationFire._SHADE;
     const spans = [];
     for (const i of room.I.filter(unit => unit.mount !== 'pipe' && unit.mount !== 'wall' && unit.h >= minH)) {
       const far = i.y + i.ly / 2 > Wi / 2;
@@ -190,6 +193,7 @@ export class StationFire {
     return gate ? { wall: gate.wall, u: (gate.y0 + gate.y1) / 2, w: gate.w, top: gate.h, gate: true } : null;
   }
 
+  /** Число с одним знаком после запятой: «1,5». */
   static dec1(v) {
     return String(Math.round(v * 10) / 10).replace('.', ',');
   }
@@ -224,14 +228,14 @@ export class StationFire {
     const fire = plan.fire;
     if (!fire) return [];
     return [
-      StationFire.extText(fire),
-      StationFire.opsText(plan, fire),
-      StationFire.signText(fire),
-      StationFire.plateText(fire),
+      StationFire._extText(fire),
+      StationFire._opsText(plan, fire),
+      StationFire._signText(fire),
+      StationFire._plateText(fire),
     ].filter(Boolean);
   }
 
-  static extText(fire) {
+  static _extText(fire) {
     const main = fire.rooms[0];
     const tank = fire.rooms.find(room => room.id === 'tank');
     const rank = tank && tank.rank !== main.rank ? ` (в отсеке бака — ${tank.rank})` : '';
@@ -240,13 +244,13 @@ export class StationFire {
     return `Огнетушители порошковые ${StationFire.EXT} с рангом тушения не ниже ${main.rank}${rank} (ППР в РФ, прил. 1) — ${fire.ext} шт.: в помещении оборудования — ${main.ext} у выхода${need}${inTank}; до огнетушителя — не более ${/^[ГД]$/.test(main.cat) ? 70 : 30} м (п. 406); на видных местах, не за оборудованием, верх — не выше 1,5 м от пола (п. 409), над каждым — знак F04 «Огнетушитель» (ГОСТ 12.4.026-2015).`;
   }
 
-  static opsText(plan, fire) {
+  static _opsText(plan, fire) {
     if (!fire.ops) return '';
     const dgu = plan.items.some(i => i.kind === 'dgu') ? ', у ДГУ — тепловые' : '';
     return `Охранно-пожарная сигнализация (СП 484.1311500.2020): щит ОПС — прибор приёмно-контрольный с резервным питанием${fire.auto ? ' и управлением пожаротушением' : ''}, внутри у входа, органы управления на высоте 0,8–1,5 м; извещатели на потолке — дымовые${dgu}; ручной пожарный извещатель и оповещатель — у выхода; датчик открытия двери; сигналы «Пожар», «Неисправность», «Тревога» — на пульт («сухие контакты»).`;
   }
 
-  static signText(fire) {
+  static _signText(fire) {
     const exit = fire.exit;
     let where = 'у выхода';
     if (exit) where = exit.wall === 'front' ? 'над входной дверью внутри' : 'над воротами внутри';
@@ -256,7 +260,7 @@ export class StationFire {
     return `Световые табло (с аккумулятором, по ГОСТ Р 53325-2012): «Выход» — ${where}${auto}; надписи — в две строки, высотой не менее 50 мм.`;
   }
 
-  static plateText(fire) {
+  static _plateText(fire) {
     const main = fire.rooms[0];
     const tank = fire.rooms.find(room => room.id === 'tank');
     const plate = room =>

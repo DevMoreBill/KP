@@ -280,6 +280,7 @@ export class LayoutParams {
     return Object.fromEntries(keys.map(k => [k, preset.v ? preset.v[k] : this.def(k)]));
   }
 
+  /** Значение параметра матрицы по умолчанию («группа.поле»). */
   static def(key) {
     const [group, field] = key.split('.');
     return StationMatrix.DEF[group][field];
@@ -307,6 +308,7 @@ export class LayoutParams {
     return this.#fields;
   }
 
+  /** Описание поля матрицы: пределы, единица, варианты. */
   static field(group, k) {
     return this.all().get(`${group}.${k}`) || null;
   }

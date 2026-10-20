@@ -30,6 +30,7 @@ export class StationPaint {
 
   static ART_MAX = 6;
 
+  /** Части станции для окраски. */
   static get KEYS() {
     return this.PARTS.map(([key]) => key);
   }
@@ -91,6 +92,7 @@ export class StationPaint {
     };
   }
 
+  /** Окраска по буклету заказчика. */
   static book(cont) {
     return Boolean(cont && cont.paintBook);
   }
@@ -161,6 +163,7 @@ export class StationPaint {
       }));
   }
 
+  /** Доля 0–1 или значение по умолчанию. */
   static frac(v, fallback) {
     const x = +v;
     return x >= 0 && x <= 1 ? x : fallback;

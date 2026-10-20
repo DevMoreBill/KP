@@ -32,6 +32,7 @@ export class LayoutAccess {
     this.lay = lay;
   }
 
+  /** Название стороны обслуживания по букве (Ф, З, Л, П). */
   side(k) {
     return LayoutAccess.SIDE[k][1];
   }
@@ -44,25 +45,25 @@ export class LayoutAccess {
     const alongY = other => LayoutAccess._overlap(other.y, other.y + other.ly, i.y, i.y + i.ly);
     const ways = {
       '-y': () =>
-        this.toward(
+        this._toward(
           others.filter(other => alongX(other) && other.y + other.ly <= i.y + 1),
           near => i.y - Math.max(...near.map(other => other.y + other.ly)),
           i.y,
         ),
       '+y': () =>
-        this.toward(
+        this._toward(
           others.filter(other => alongX(other) && other.y >= i.y + i.ly - 1),
           near => Math.min(...near.map(other => other.y)) - i.y - i.ly,
           Wi - i.y - i.ly,
         ),
       '-x': () =>
-        this.toward(
+        this._toward(
           others.filter(other => alongY(other) && other.x + other.lx <= i.x + 1),
           near => i.x - Math.max(...near.map(other => other.x + other.lx)),
           i.x - (geo.x0 || 0),
         ),
       '+x': () =>
-        this.toward(
+        this._toward(
           others.filter(other => alongY(other) && other.x >= i.x + i.lx - 1),
           near => Math.min(...near.map(other => other.x)) - i.x - i.lx,
           Li - i.x - i.lx,
@@ -71,7 +72,7 @@ export class LayoutAccess {
     return ways[dir]();
   }
 
-  toward(blocking, toNeighbour, toWall) {
+  _toward(blocking, toNeighbour, toWall) {
     return blocking.length ? [toNeighbour(blocking), false] : [toWall, true];
   }
 
@@ -144,6 +145,7 @@ export class LayoutAccess {
     return narrow + LayoutMode.TIGHT + wall[1] <= usableW ? 'широкое' : 'сверхширокое';
   }
 
+  /** Матрица доступа: свободное место с каждой стороны каждого агрегата на полу. */
   matrix(res, geo) {
     const Wi = geo.int[1];
     const floor = res.items.filter(i => i.mount === 'floor' && !i.tank && i.kind !== 'cabinet');

@@ -44,20 +44,24 @@ export class AirCheck {
     return this.result(cls);
   }
 
+  /** Фильтры заданной степени очистки. */
   grade(grade) {
     return this.filters.filter(unit => unit.air.grade === grade);
   }
 
+  /** Замечание проверки воздушной цепочки. */
   issue(level, text) {
     this.iss.push({ level, air: true, text });
   }
 
+  /** Рекомендация по ключу (одна на ключ). */
   rec(key, rec) {
     if (this.keys.has(key)) return;
     this.keys.add(key);
     this.recs.push({ key, ...rec });
   }
 
+  /** Строка рекомендации: чего не хватает агрегату и почему. */
   need(v, unit) {
     return {
       k: unit === 'л' ? 'Объём' : 'Производительность',
@@ -87,7 +91,7 @@ export class AirCheck {
 
   /** Ступени очистки по виду осушителя. */
   stages() {
-    if (this.ads.length) this.adsStages();
+    if (this.ads.length) this._adsStages();
     if (this.ads.length && this.flow > 0) {
       const purge = AirChain.PURGE;
       this.issue(
@@ -111,7 +115,7 @@ export class AirCheck {
     }
   }
 
-  adsStages() {
+  _adsStages() {
     const built = this.ads.every(unit => unit.air.filters);
     const before = this.filters.filter(
       unit => (unit.air.grade === 'micro' || unit.air.grade === 'fine') && unit.air.stage < 45,
@@ -135,20 +139,20 @@ export class AirCheck {
   /** Производительность осушителей и фильтров, ресиверы по методике. */
   capacity() {
     if (!(this.flow > 0)) return;
-    this.dryerCapacity();
+    this._dryerCapacity();
     this.filterCapacity();
     this.receivers();
   }
 
-  dryerNeed() {
+  _dryerNeed() {
     return (this.flow * AirChain.MARGIN) / AirChain.dryerK(this.bar);
   }
 
-  dryerRec(type, why, extra = {}) {
+  _dryerRec(type, why, extra = {}) {
     const ads = type === 'ads';
     const cat = ads ? 'dryer_ads' : 'dryer_refrig';
     const word = ads ? 'Адсорбционный' : 'Рефрижераторный';
-    const need = this.flow ? this.dryerNeed() : 0;
+    const need = this.flow ? this._dryerNeed() : 0;
     const flow = need ? ` не менее ${AirChain.flowText(need)} м³/мин` : '';
     this.rec(`dryer-${type}`, {
       title: extra.title || `${word} осушитель${flow}`,
@@ -162,7 +166,7 @@ export class AirCheck {
     });
   }
 
-  dryerCapacity() {
+  _dryerCapacity() {
     const { flow: flow, bar } = this;
     const dryerK = AirChain.dryerK(bar);
     for (const [type, list] of [
@@ -175,9 +179,9 @@ export class AirCheck {
       if (cap < flow * 0.98) {
         this.issue(
           'warn',
-          `Осушитель (${ids}): ${AirChain.flowText(cap)} м³/мин при ${AirChain.flowText(bar)} бар — меньше производительности компрессоров ${AirChain.flowText(flow)} м³/мин. Нужен не менее ${AirChain.flowText(this.dryerNeed())} м³/мин (номинал при 7 бар).`,
+          `Осушитель (${ids}): ${AirChain.flowText(cap)} м³/мин при ${AirChain.flowText(bar)} бар — меньше производительности компрессоров ${AirChain.flowText(flow)} м³/мин. Нужен не менее ${AirChain.flowText(this._dryerNeed())} м³/мин (номинал при 7 бар).`,
         );
-        this.dryerRec(type, 'производительность — с запасом на лето и давление');
+        this._dryerRec(type, 'производительность — с запасом на лето и давление');
       } else if (cap < flow * AirChain.MARGIN) {
         this.issue(
           'info',
@@ -209,7 +213,7 @@ export class AirCheck {
     }
   }
 
-  recvRec(key, x, { role, title, why, need }) {
+  _recvRec(key, x, { role, title, why, need }) {
     this.rec(key, {
       title,
       why,
@@ -232,20 +236,20 @@ export class AirCheck {
     if (!plan) return;
     const dry = this.recvUnits.filter(unit => unit.air.role !== 'wet');
     const wet = this.recvUnits.filter(unit => unit.air.role === 'wet');
-    if (plan.main && !dry.length && !this.comps.some(unit => unit.air.recv)) this.mainReceiver(plan);
-    if (plan.wet && !wet.length) this.wetReceiver(plan);
-    this.moreMain(plan, dry);
+    if (plan.main && !dry.length && !this.comps.some(unit => unit.air.recv)) this._mainReceiver(plan);
+    if (plan.wet && !wet.length) this._wetReceiver(plan);
+    this._moreMain(plan, dry);
     if (plan.wet) this.more(wet, plan.wet, 'receiver-wet-more', 'wet', 'мокрый ресивер');
-    if (plan.local && !this.equip.some(unit => unit.local)) this.localReceiver(plan);
+    if (plan.local && !this.equip.some(unit => unit.local)) this._localReceiver(plan);
   }
 
-  moreMain(plan, dry) {
+  _moreMain(plan, dry) {
     const before = plan.mode === 'before';
     this.more(before ? [] : dry, plan.main, 'receiver-more', before ? 'wet' : 'dry', 'основной ресивер');
   }
 
-  wetReceiver(plan) {
-    this.recvRec('receiver-wet', plan.wet, {
+  _wetReceiver(plan) {
+    this._recvRec('receiver-wet', plan.wet, {
       role: 'wet',
       title: `Мокрый ресивер ${Mm.text(plan.wet.size)} л (до осушителя)`,
       why: `30–50 % основного; ${plan.wet.why}`,
@@ -253,15 +257,15 @@ export class AirCheck {
     });
   }
 
-  localReceiver(plan) {
-    this.recvRec('receiver-local', plan.local, {
+  _localReceiver(plan) {
+    this._recvRec('receiver-local', plan.local, {
       role: 'local',
       title: `Локальный ресивер ${Mm.text(plan.local.size)} л у потребителя`,
       why: `пик точки больше 50 % производительности компрессора; ${plan.local.why}`,
     });
   }
 
-  mainReceiver(plan) {
+  _mainReceiver(plan) {
     const before = plan.mode === 'before';
     const count = plan.main.n > 1 ? `${plan.main.n} × ` : '';
     const after = this.dryers.length || this.builtDryer ? ' (после осушителя)' : '';
@@ -269,7 +273,7 @@ export class AirCheck {
       'info',
       `Ресивера в составе нет — по расчёту (приоритет ${plan.prio}) нужно ${Mm.text(plan.theor)} л: ${ReceiverPlan.text(plan)}. Ресивер сглаживает пульсации и пики потребления, собирает конденсат, компрессор реже включается.`,
     );
-    this.recvRec('receiver', plan.main, {
+    this._recvRec('receiver', plan.main, {
       role: before ? 'wet' : 'dry',
       title: `Воздушные ресиверы ${count}${Mm.text(plan.main.size)} л${before ? ' (до осушителя)' : after}`,
       why: `нужно ${Mm.text(plan.theor)} л (приоритет ${plan.prio}); ${plan.main.why}`,
@@ -283,7 +287,7 @@ export class AirCheck {
     const have = list.reduce((acc, unit) => acc + (unit.air.vol || 0) * unit.qty, 0);
     const add = x ? Math.ceil((x.total - have) / unitVol - 1e-9) : 0;
     if (!list.length || !x || x.size !== unitVol || !list.every(unit => unit.air.vol === unitVol) || add <= 0) return;
-    this.recvRec(
+    this._recvRec(
       key,
       { size: unitVol, n: add, total: add * unitVol },
       {
@@ -326,13 +330,13 @@ export class AirCheck {
   /** Осушителя нет и класс чистоты не задан — обычно рефрижераторный с байпасом. */
   noDryer() {
     if (this.dryers.length || this.builtDryer || String(this.cls || '').trim()) return;
-    const need = this.flow ? this.dryerNeed() : 0;
+    const need = this.flow ? this._dryerNeed() : 0;
     const flow = need ? ` не менее ${AirChain.flowText(need)} м³/мин` : '';
     this.issue(
       'info',
       `Осушителя в составе нет: влага остаётся в сжатом воздухе — конденсат в трубах и у потребителей, зимой замерзает. Обычно ставят рефрижераторный осушитель (точка росы +3 °C)${flow} с байпасом — подбор на вкладке «Компоновка».`,
     );
-    this.dryerRec('refrig', 'точка росы +3 °C: без конденсата в трубах; ставится с байпасом', {
+    this._dryerRec('refrig', 'точка росы +3 °C: без конденсата в трубах; ставится с байпасом', {
       rows: need ? [{ k: 'Производительность', v: `не менее ${AirChain.flowText(need)} м³/мин` }] : [],
     });
   }
@@ -354,8 +358,8 @@ export class AirCheck {
     if (!match) return null;
     const before = this.recs.length;
     const [partCls, waterCls, oilCls] = match.slice(1).map(Number);
-    this.purityDryer(waterCls);
-    this.purityFilters(partCls, oilCls);
+    this._purityDryer(waterCls);
+    this._purityFilters(partCls, oilCls);
     if (this.recs.length > before) {
       const missing = this.recs
         .slice(before)
@@ -371,24 +375,25 @@ export class AirCheck {
     return match;
   }
 
-  dewText(pdp) {
+  _dewText(pdp) {
     return `${pdp > 0 ? '+' : '−'}${Math.abs(pdp)} °C`;
   }
 
+  /** Точка росы для текста: −70 и ниже — «−70». */
   dewPoint(pdp) {
     if (pdp <= -70) return '−70';
     return pdp <= -40 ? '−40' : '−20';
   }
 
-  purityDryer(waterCls) {
+  _purityDryer(waterCls) {
     const { cls, flow: flow } = this;
     const pdp = AirChain.PDP[waterCls];
-    const dewText = this.dewText(pdp);
-    const need = flow ? this.dryerNeed() : 0;
+    const dewText = this._dewText(pdp);
+    const need = flow ? this._dryerNeed() : 0;
     if (waterCls <= 3 && !this.ads.some(unit => unit.air.pdp == null || unit.air.pdp <= pdp)) {
       const refrig = this.refrig.length || this.builtDryer ? ' (рефрижераторный даёт +3 °C)' : '';
       this.issue('warn', `Класс ${cls}: точка росы ${dewText} — нужен адсорбционный осушитель${refrig}.`);
-      this.dryerRec('ads', `класс воды ${waterCls} по ISO 8573-1`, {
+      this._dryerRec('ads', `класс воды ${waterCls} по ISO 8573-1`, {
         title: `Адсорбционный осушитель (точка росы ${dewText})${need ? `, не менее ${AirChain.flowText(need)} м³/мин` : ''}`,
         f: { dewPoint: this.dewPoint(pdp) },
         rows: [{ k: 'Точка росы', v: dewText }, ...(need ? [this.need(need, 'м³/мин')] : [])],
@@ -396,11 +401,11 @@ export class AirCheck {
       if (!this.grade('micro').length) this.filterRec('micro', 'перед адсорбционным осушителем — всегда');
     } else if (waterCls <= 6 && !(this.dryers.length || this.builtDryer)) {
       this.issue('warn', `Класс ${cls}: точка росы ${dewText} — нужен осушитель (рефрижераторный).`);
-      this.dryerRec('refrig', `класс воды ${waterCls} по ISO 8573-1 — точка росы до ${dewText}`);
+      this._dryerRec('refrig', `класс воды ${waterCls} по ISO 8573-1 — точка росы до ${dewText}`);
     }
   }
 
-  purityFilters(partCls, oilCls) {
+  _purityFilters(partCls, oilCls) {
     const { cls } = this;
     const want = (grades, why) => {
       const have = grades.some(x => this.grade(x).length);
@@ -416,18 +421,19 @@ export class AirCheck {
       this.filterRec('carbon', 'класс масла 1 — с парами масла (0,003 мг/м³)');
   }
 
+  /** Короткое описание агрегата в цепочке подготовки воздуха. */
   word(unit) {
     const air = unit.air;
     const words = {
       compressor: () => `компрессор${air.dryer ? ' со встроенным осушителем' : ''}`,
-      receiver: () => `${this.receiverWord(air)}${air.out ? ' снаружи' : ''}`,
+      receiver: () => `${this._receiverWord(air)}${air.out ? ' снаружи' : ''}`,
       dryer: () =>
         `${{ ads: 'адсорбционный осушитель', gen: 'генератор' }[air.type] || 'рефрижераторный осушитель'}${air.filters ? ' (встроенные фильтры)' : ''}`,
     }[unit.kind];
     return words ? words() : `фильтр ${AirChain.GRADES[air.grade].short}`;
   }
 
-  receiverWord(air) {
+  _receiverWord(air) {
     if (air.role === 'dry' && this.dryers.length) return '«сухой» ресивер';
     return air.role === 'dry' && this.filters.length ? 'ресивер после фильтров' : 'ресивер';
   }

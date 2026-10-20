@@ -65,6 +65,7 @@ export class StationLayout {
   /** Версия правил и рисунков: изменилась — картинки станций в КП пересобираются. */
   static VER = 25;
 
+  /** Компоновка станции по исходным данным. */
   static solve(input) {
     return new StationLayout(input).run();
   }
@@ -78,13 +79,13 @@ export class StationLayout {
     const app = typeof APP_VERSION !== 'undefined' ? APP_VERSION : '';
     const parts = (input.parts || [])
       .filter(part => part && part.role !== 'container')
-      .map(part => StationLayout.hashPart(part));
+      .map(part => StationLayout._hashPart(part));
     const text = JSON.stringify([
       StationLayout.VER,
       app,
       rules,
       StationClear.aisle(),
-      StationLayout.hashCont(input.cont || {}),
+      StationLayout._hashCont(input.cont || {}),
       input.chassisH || null,
       input.recv || '',
       !!input.recvOut,
@@ -94,7 +95,7 @@ export class StationLayout {
     return StationRules.fnv(text);
   }
 
-  static hashCont(cont) {
+  static _hashCont(cont) {
     const mods = cont.mods ? JSON.stringify(StationMods.rect(cont.mods.cells)) : null;
     return [
       cont.ctype,
@@ -111,7 +112,7 @@ export class StationLayout {
     ];
   }
 
-  static hashPart(part) {
+  static _hashPart(part) {
     const attrs = part.attrs ? Object.fromEntries(StationLayout.ATTRS.map(k => [k, part.attrs[k]])) : null;
     const rows = (part.rows || [])
       .filter(row => row && StationLayout.ROW_KEYS.test(`${String(row.k || '')} ${String(row.v || '')}`))
@@ -131,72 +132,94 @@ export class StationLayout {
     ];
   }
 
+  /** Наибольшая длина станции, мм. */
   static get MAX_L() {
     return StationMatrix.fit().maxL;
   }
-  static get PIPE_PAD() {
+  static get _PIPE_PAD() {
     return StationMatrix.grp('pipe').pad;
   }
+  /** Отступ воздушной магистрали от стены, мм. */
   static get AIR_Y() {
     return StationMatrix.grp('pipe').airY;
   }
+  /** Размеры двери обслуживания. */
   static get DOOR() {
     return LayoutOpening.DOOR;
   }
+  /** Размеры входной двери. */
   static get ENTRY() {
     return LayoutOpening.ENTRY;
   }
+  /** Наименьшая ширина двери, мм. */
   static get DOOR_MIN() {
     return StationMatrix.door().w;
   }
+  /** Проход для перемещения агрегатов, мм. */
   static get PASS() {
     return StationMatrix.move().pass;
   }
+  /** Верх шкафов от пола, мм. */
   static get CAB_TOP() {
     return StationMatrix.cab().top;
   }
+  /** Низ шкафов от пола, мм. */
   static get CAB_LOW() {
     return StationMatrix.cab().low;
   }
+  /** Отступ наружного ресивера от стены, мм. */
   static get OUT_GAP() {
     return StationMatrix.recv().outGap;
   }
+  /** Площадка под наружный ресивер, мм. */
   static get PAD() {
     return StationMatrix.recv().pad;
   }
+  /** Ресиверы в два ряда. */
   static get RECV2() {
     return StationMatrix.fit().recv2;
   }
+  /** Правила топливного бака. */
   static get TANK() {
     return LayoutTank.RULES;
   }
+  /** Стороны обслуживания. */
   static get SIDE() {
     return LayoutAccess.SIDE;
   }
+  /** Высота топливной трассы, мм. */
   static get FUEL_Z() {
     return LayoutPipes.FUEL_Z;
   }
+  /** Зазоры проёмов от стен. */
   static gaps(geo) {
     return LayoutOpening.gaps(geo);
   }
+  /** Ширина ворот обслуживания под агрегат. */
   static svcW(len, wallT = 0) {
     return LayoutOpening.svcW(len, wallT);
   }
+  /** Высота ворот обслуживания под агрегат. */
   static svcH(heightIn, wallT, rear, height) {
     return LayoutOpening.svcH(heightIn, wallT, rear, height);
   }
+  /** Ось ворот для текста. */
   static gateAxis(gate) {
     return LayoutMode.gateAxis(gate);
   }
+  /** Последовательность агрегатов в трассе. */
   static series(unit) {
     return LayoutPipes.series(unit);
   }
+  /** Участки трассы. */
   static runs(line) {
     return LayoutPipes.runs(line);
   }
+  /** Путь выхода трубы через стену. */
   static outPath(line, wid) {
     return LayoutPipes.outPath(line, wid);
   }
+  /** Ключ агрегата: код позиции и номер экземпляра. */
   static key(unit) {
     return `${unit.id}#${unit.unit}`;
   }
@@ -232,6 +255,7 @@ export class StationLayout {
       !this.equip.some(unit => unit.place && (unit.kind === 'compressor' || unit.kind === 'pump'));
   }
 
+  /** Режимы компоновки для этой станции. */
   modes() {
     return LayoutMode.list(this.comp);
   }
@@ -249,6 +273,7 @@ export class StationLayout {
     }
   }
 
+  /** Компоновка: размер, расстановка, системы, замечания. */
   run() {
     const placed = this.equip.filter(unit => unit.place);
     const extra = this.equip.filter(unit => !unit.place);
@@ -306,6 +331,7 @@ export class StationLayout {
     return plan;
   }
 
+  /** Оборудование на крыше и снаружи. */
   outside(plan, chassis) {
     plan.roof = LayoutRoof.roof(plan, this.equip);
     plan.exhausts = LayoutRoof.exhausts(plan);
@@ -333,6 +359,7 @@ export class StationLayout {
     if (plan.level !== 'error') StationNorms.check(plan, this.equip);
   }
 
+  /** Проверка воздушной цепочки. */
   air(plan) {
     const air = AirChain.check(this.equip, this.input.air, this.input.req && this.input.req.recvIn);
     if (air && plan.level !== 'error') {
@@ -341,6 +368,7 @@ export class StationLayout {
     }
   }
 
+  /** Системы станции: отопление, вентиляция, свет, электрика, пожаротушение. */
   systems(plan) {
     plan.heat = StationHeat.calc(plan);
     plan.fire = StationFire.calc(plan);
@@ -419,6 +447,7 @@ export class StationLayout {
     return [this.aisle[0], unit.c.front != null ? Math.min(this.aisle[1], unit.c.front) : this.aisle[1]];
   }
 
+  /** Агрегат ряда в координатах помещения. */
   item(item, geo) {
     return LayoutItem.floor(item, geo, this.gap);
   }
@@ -436,13 +465,13 @@ export class StationLayout {
           });
         }
       } else {
-        this.headroom(unit, height, iss);
+        this._headroom(unit, height, iss);
       }
     }
     return { bad: iss.some(i => i.level === 'error'), iss };
   }
 
-  headroom(unit, height, iss) {
+  _headroom(unit, height, iss) {
     const top = unit.c.top;
     const room = height - unit.h;
     if (room < top[1]) {
@@ -528,7 +557,7 @@ export class StationLayout {
     for (let slots = left; left.length; slots = [...slots, ...left]) {
       const ids = new Set(slots.map(StationLayout.key));
       const rest = unit => !ids.has(StationLayout.key(unit));
-      const res2 = this.slotRow(floor, slots, geo, units);
+      const res2 = this._slotRow(floor, slots, geo, units);
       if (res2.level === 'error') return res2;
       if (this.tank) LayoutTank.place(res2, geo, this.tank);
       this.gates.plan(res2, geo);
@@ -538,7 +567,7 @@ export class StationLayout {
     return res;
   }
 
-  slotRow(floor, slots, geo, units) {
+  _slotRow(floor, slots, geo, units) {
     const slotted = slots.map(unit => ({ ...unit, slot: true }));
     const res = this.fitRow([...floor, ...slotted], geo, units);
     let k = floor.length;
@@ -558,14 +587,14 @@ export class StationLayout {
     this.inMods = !!(geo.mods && geo.mods.Lm);
     this.jGeo = this.inMods ? geo : null;
     this.closeOk = !!this.closeAll || (!geo.auto && !geo.road);
-    const rowRes = this.rowsOf(units, geo, lenMax, wid);
+    const rowRes = this._rowsOf(units, geo, lenMax, wid);
     const res = { geo, ext: geo.ext, int: geo.int };
     if (!rowRes.ok) return Object.assign(res, this.rowError(rowRes, heights, { Lu: lenMax, Wi, g: gap }));
-    return Object.assign(res, this.rowPlan(rowRes, heights, geo));
+    return Object.assign(res, this._rowPlan(rowRes, heights, geo));
   }
 
-  rowsOf(units, geo, lenMax, wid) {
-    const res = this.altRows(units, lenMax, wid, this.firstRow(units, geo, lenMax, wid));
+  _rowsOf(units, geo, lenMax, wid) {
+    const res = this.altRows(units, lenMax, wid, this._firstRow(units, geo, lenMax, wid));
     if (this.dguSt) return res;
     if (this.jGeo && !this.mode.ends) return this.modRows(units, geo, lenMax, wid);
     return res.ok && this.jGeo ? this.joints.fit(res, geo, lenMax, wid) : res;
@@ -585,7 +614,7 @@ export class StationLayout {
     return res;
   }
 
-  firstRow(units, geo, lenMax, wid) {
+  _firstRow(units, geo, lenMax, wid) {
     if (this.dguSt) return this.dgu.row(units, lenMax, wid);
     if (!this.mode.ends) return this.rows.one(units, lenMax, wid);
     return geo.x0
@@ -610,6 +639,7 @@ export class StationLayout {
     return res || first || this.rows.one(units, lenMax, wid);
   }
 
+  /** Отказ расстановки ряда с причиной. */
   rowError(res, heights, { Lu: lenMax, Wi, g: gap }) {
     const iss = [...heights.iss];
     const list = () =>
@@ -631,7 +661,7 @@ export class StationLayout {
     return { level: 'error', issues: iss, need: { L: res.needL || null, W: res.needW || null } };
   }
 
-  rowPlan(res, heights, geo) {
+  _rowPlan(res, heights, geo) {
     const items = res.items.flatMap(item =>
       item.o.pair
         ? this.rows.unpair(item, geo)

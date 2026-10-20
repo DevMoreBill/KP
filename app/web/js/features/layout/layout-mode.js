@@ -11,6 +11,7 @@ export class LayoutMode {
     return Math.max(600, StationRules.opt('norm.aisle_tight') || 600);
   }
 
+  /** Режимы компоновки по порядку перебора. */
   static list(comp) {
     if (!comp) return [{}];
     const defaults = StationMatrix.modes();
@@ -24,6 +25,7 @@ export class LayoutMode {
     ];
   }
 
+  /** Проход в режиме: в плотном — не шире предела плотной компоновки. */
   static aisle(aisle0, mode) {
     return mode.tight ? [aisle0[0], Math.min(aisle0[1], LayoutMode.TIGHT)] : aisle0;
   }

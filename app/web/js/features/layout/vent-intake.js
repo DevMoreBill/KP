@@ -27,7 +27,7 @@ export class VentIntake {
     const lim = dgu && radW.size === 1 && radW.has('right') ? Math.round(len - 1500) : null;
     const mid = Math.round((x0 + len) / 2);
     const rest = wallsOf(this.restOrder(lim, mid));
-    const firstW = wallsOf([[first, this.firstFrom(first, mid)]]);
+    const firstW = wallsOf([[first, this._firstFrom(first, mid)]]);
     const { lo: low, hi: high } = this.heights();
     return {
       first,
@@ -60,7 +60,7 @@ export class VentIntake {
     return { lo: low, hi: low === grille ? lift : grille };
   }
 
-  firstFrom(first, mid) {
+  _firstFrom(first, mid) {
     if (this.ventPlan.dgu && this.ventPlan.radW.has('left') && (first === 'front' || first === 'back')) return mid;
     return first === 'front' ? 'hi' : 'lo';
   }
@@ -124,7 +124,7 @@ export class VentIntake {
     }
   }
 
-  allLeaves() {
+  _allLeaves() {
     const { plan, exW } = this.ventPlan;
     for (const gate of [plan.gates, plan.gates2].filter(opening => opening && !exW.has(opening.wall))) {
       const pad = gate.sea ? 150 : 0;
@@ -136,6 +136,7 @@ export class VentIntake {
     }
   }
 
+  /** Жалюзи притока: стены, створки, ДГУ, вентиляторы. */
   run() {
     const out = this.ventPlan.out;
     const ctx = this.inWalls();
@@ -164,7 +165,7 @@ export class VentIntake {
           { ...band, w: [band.w[0], Math.max(band.w[1], VentGrille.WHOLE)], h: [band.h[0], hmax] },
           count,
         );
-        const shape = shapes.find(opening => this.eachDgu(dgus, walls, opening, band.z0));
+        const shape = shapes.find(opening => this._eachDgu(dgus, walls, opening, band.z0));
         if (shape) {
           this.ventPlan.out.size.in = { ...shape, n: count * dgus.length };
           this.ventPlan.out.inEach = true;
@@ -174,7 +175,7 @@ export class VentIntake {
     }
   }
 
-  eachDgu(dgus, walls, shape, z0) {
+  _eachDgu(dgus, walls, shape, z0) {
     const mark0 = this.ventPlan.walls.mark();
     const nL0 = this.ventPlan.out.louvers.length;
     if (dgus.every(dgu => this.atDgu(dgu, walls, shape, z0))) return true;
@@ -226,7 +227,7 @@ export class VentIntake {
       return true;
     };
     const withLeaves = () => {
-      this.allLeaves();
+      this._allLeaves();
       return this.left <= 1 || (this.left < left0 && onWalls());
     };
     const onWall = onWalls() ? out.louvers.length - count0 : 0;
@@ -237,7 +238,7 @@ export class VentIntake {
         undo();
         if (onWall) onWalls();
         else
-          this.pieces(
+          this._pieces(
             low,
             firstW,
             rest.filter(([wall]) => wall !== first),
@@ -248,9 +249,9 @@ export class VentIntake {
       this.left = this.ventPlan.place('in', high, allW, { gross: this.left / 1e6 });
   }
 
-  pieces(low, firstW, others) {
+  _pieces(low, firstW, others) {
     this.left = this.ventPlan.place('in', low, firstW, { gross: this.left / 1e6 });
-    this.allLeaves();
+    this._allLeaves();
     if (this.left > 1) this.left = this.ventPlan.place('in', low, others, { gross: this.left / 1e6 });
   }
 

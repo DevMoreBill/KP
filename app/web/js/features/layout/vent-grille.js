@@ -2,68 +2,86 @@ import { StationMatrix } from './station-matrix.js';
 
 /** Жалюзи и маркизы: размеры и пределы — раздел grille матрицы («Настройки → … → Жалюзи притока и выброса, маркизы»). */
 export class VentGrille {
-  static get GRILLE() {
+  static get _GRILLE() {
     return StationMatrix.grp('grille');
   }
+  /** Шаг размеров жалюзи, мм. */
   static get STEP() {
-    return VentGrille.GRILLE.step;
+    return VentGrille._GRILLE.step;
   }
+  /** Зазор между жалюзи, мм. */
   static get GAP() {
-    return VentGrille.GRILLE.gap;
+    return VentGrille._GRILLE.gap;
   }
+  /** Пределы жалюзи притока. */
   static get INLET() {
     return StationMatrix.derive('ventIn', () => {
-      const grid = VentGrille.GRILLE;
+      const grid = VentGrille._GRILLE;
       return { z0: grid.inZ, h: [grid.inHmin, grid.inHmax], w: [grid.inWmin, grid.inWmax] };
     });
   }
+  /** Пределы жалюзи выброса. */
   static get OUTLET() {
     return StationMatrix.derive('ventOut', () => {
-      const grid = VentGrille.GRILLE;
+      const grid = VentGrille._GRILLE;
       return { top: grid.outTop, h: [grid.outHmin, grid.outHmax], w: [grid.outWmin, grid.outWmax] };
     });
   }
+  /** Наибольшая ширина цельной жалюзи, мм. */
   static get WHOLE() {
-    return VentGrille.GRILLE.whole;
+    return VentGrille._GRILLE.whole;
   }
+  /** Наибольшее число жалюзи. */
   static get MAXN() {
-    return VentGrille.GRILLE.maxn;
+    return VentGrille._GRILLE.maxn;
   }
+  /** Выступ маркизы за жалюзи сбоку, мм. */
   static get HOOD_SIDE() {
-    return VentGrille.GRILLE.hoodSide;
+    return VentGrille._GRILLE.hoodSide;
   }
+  /** Перекрытие маркизы сверху и снизу, мм. */
   static get HOOD_LAP() {
-    return VentGrille.GRILLE.hoodLap;
+    return VentGrille._GRILLE.hoodLap;
   }
+  /** Пределы угла маркизы, °. */
   static get HOOD_ANG() {
-    return [VentGrille.GRILLE.hoodAng0, VentGrille.GRILLE.hoodAng1];
+    return [VentGrille._GRILLE.hoodAng0, VentGrille._GRILLE.hoodAng1];
   }
+  /** Наименьшая высота маркизы, мм. */
   static get HOOD_LOW() {
-    return VentGrille.GRILLE.hoodLow;
+    return VentGrille._GRILLE.hoodLow;
   }
+  /** Зазор маркизы от стены, мм. */
   static get HOOD_GAP() {
-    return VentGrille.GRILLE.hoodGap;
+    return VentGrille._GRILLE.hoodGap;
   }
+  /** Скорость воздуха под маркизой, м/с. */
   static get HOOD_V() {
     return StationRules.raw('vent.hood_v');
   }
+  /** Подъём жалюзи притока над снегом. */
   static get LIFT() {
-    return VentGrille.GRILLE.lift;
+    return VentGrille._GRILLE.lift;
   }
+  /** Колпак на крыше. */
   static get HOOD() {
-    return VentGrille.GRILLE.roofHood;
+    return VentGrille._GRILLE.roofHood;
   }
+  /** Наибольшая часть жалюзи. */
   static get PIECE() {
-    return VentGrille.GRILLE.piece;
+    return VentGrille._GRILLE.piece;
   }
+  /** Наименьший вентилятор притока. */
   static get FAN_MIN() {
-    return VentGrille.GRILLE.fanMin;
+    return VentGrille._GRILLE.fanMin;
   }
+  /** Живое сечение жалюзи. */
   static get FREE() {
     return StationRules.raw('vent.free');
   }
+  /** Скорость воздуха через радиатор ДГУ, м/с. */
   static get RAD_V() {
-    return VentGrille.GRILLE.radV;
+    return VentGrille._GRILLE.radV;
   }
 
   /** Одинаковые жалюзи на площадь по рамке area, м²: {n, w, h} — площадь не меньше нужной, форма ближе к 3 : 2, меньше штук. */
@@ -86,6 +104,7 @@ export class VentGrille {
     return best ? { n: best.n, w: best.w, h: best.h } : null;
   }
 
+  /** Лучший размер count жалюзи на площадь. */
   static sizeN(area, range, count) {
     return VentGrille.sizesN(area, range, count)[0] || null;
   }

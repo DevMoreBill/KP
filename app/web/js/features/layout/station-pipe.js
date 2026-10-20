@@ -30,9 +30,10 @@ export class StationPipe {
     [300, 309],
   ];
 
-  static get MAX_SPEED() {
+  static get _MAX_SPEED() {
     return StationRules.raw('el.pipe_v');
   }
+  /** Топливный насос из матрицы. */
   static get FUEL() {
     return StationMatrix.grp('light').fuelPump;
   }
@@ -43,6 +44,7 @@ export class StationPipe {
     return row ? row[0] : StationPipe.BORES[StationPipe.BORES.length - 1][0];
   }
 
+  /** Внутренний диаметр трубы условного прохода, мм. */
   static inner(bore) {
     const row = StationPipe.BORES.find(([k]) => k === bore);
     return row ? row[1] : bore;
@@ -73,8 +75,9 @@ export class StationPipe {
     return { medium, why, lines, dn: bore, set, small: set > 0 && set < bore };
   }
 
+  /** Расход по трассам, м³/с. */
   static flow(plan, add) {
-    const maxSpeed = StationPipe.MAX_SPEED;
+    const maxSpeed = StationPipe._MAX_SPEED;
     const req = plan.req || {};
     const pumps = (plan.items || [])
       .filter(i => i.kind === 'pump' && i.flow > 0)
@@ -113,6 +116,7 @@ export class StationPipe {
       .map(line => StationPipe.outText(plan, line, { pn: pressure, dn: bore }));
   }
 
+  /** Текст о выходе трубы через стену. */
   static outText(plan, line, { pn: pressure, dn: bore }) {
     const out = line.out;
     const [Li] = plan.int || [0];

@@ -14,7 +14,7 @@ export class LayoutDigest {
   static sections() {
     const ctx = this.context();
     return [
-      this.goal(ctx),
+      this._goal(ctx),
       this.aisle(ctx),
       this.tidy(ctx),
       this.doors(ctx),
@@ -31,6 +31,7 @@ export class LayoutDigest {
     ];
   }
 
+  /** Значения матрицы, общие для всех разделов сводки. */
   static context() {
     const [aRec, aMin] = StationClear.aisle();
     return {
@@ -54,6 +55,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Название вида оборудования строчными буквами. */
   static label(kind) {
     return (StationEquip.LABEL[kind] || kind).toLowerCase();
   }
@@ -66,18 +68,19 @@ export class LayoutDigest {
     filter: 'ширина фильтра',
   };
 
-  static pairText(row) {
+  static _pairText(row) {
     const size = this.WIDTH_OF[String(row.of || '').split('.')[0]] || 'размер';
     const base = row.k ? `max(${Mm.text(row.base)}; ${Mm.dec(row.k)} × ${size})` : Mm.text(row.base);
     const close = row.close ? ', вплотную — последним приёмом (исключение)' : '';
     return `${this.label(row.a)} ↔ ${this.label(row.b)} — ${base}, плотно — ${Mm.text(row.min)} мм${close}`;
   }
 
-  static wallText(row) {
+  static _wallText(row) {
     const base = row.k ? `max(${Mm.text(row.base)}; ${Mm.dec(row.k)} × глубина)` : Mm.text(row.base);
     return `${this.label(row.kind)} — ${base}, плотно — ${Mm.text(row.tight)} мм`;
   }
 
+  /** Раздел сводки «Порядок подбора». */
   static order({ fit, modes, tight }) {
     const ends = modes.ends
       ? ` или без продольного прохода (если площадь меньше хотя бы на ${Mm.text(fit.ends)} %)`
@@ -93,7 +96,7 @@ export class LayoutDigest {
     ];
   }
 
-  static goal(ctx) {
+  static _goal(ctx) {
     const { fit, recv, look } = ctx;
     const dense = fit.dense
       ? 'плотно — по допустимым отступам и проходу, свободное место раздаётся до рекомендуемых'
@@ -116,9 +119,10 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «Проходы». */
   static aisle({ modes, access, aRec, aMin, tight }) {
-    const pairs = StationMatrix.rows('pair').map(row => this.pairText(row));
-    const walls = StationMatrix.rows('wall').map(row => this.wallText(row));
+    const pairs = StationMatrix.rows('pair').map(row => this._pairText(row));
+    const walls = StationMatrix.rows('wall').map(row => this._wallText(row));
     const tightText = modes.tight ? `, в крайнем случае ${Mm.text(tight)} мм` : '';
     return {
       h: '2. Проход и отступы',
@@ -132,6 +136,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «Аккуратная компоновка». */
   static tidy({ look }) {
     const even = look.even
       ? 'Одинаковые агрегаты подряд — с равными промежутками.'
@@ -149,6 +154,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «Двери и выходы». */
   static doors({ door, exits }) {
     return {
       h: '4. Двери и выходы',
@@ -160,6 +166,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «Ворота». */
   static gates({ gate }) {
     return {
       h: '5. Ворота в торце',
@@ -170,6 +177,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «Обслуживание». */
   static service({ access, service }) {
     const noDoor = StationMatrix.rows('sides')
       .filter(row => row.door === false)
@@ -185,6 +193,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «Без продольного прохода». */
   static ends({ fit, modes }) {
     return {
       h: '7. Без продольного прохода (компрессорная)',
@@ -195,6 +204,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «Ресиверы». */
   static receivers({ recv }) {
     return {
       h: '8. Ресиверы, осушители, фильтры',
@@ -209,6 +219,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «Трубы». */
   static pipe({ pipe }) {
     return {
       h: '9. Трубопровод',
@@ -219,6 +230,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «Вентиляция». */
   static vent() {
     return {
       h: '10. Вентиляция',
@@ -229,6 +241,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «Шкафы и конвекторы». */
   static cabinets({ cab, conv, dgu }) {
     return {
       h: '11. Шкафы и отопление',
@@ -239,6 +252,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «ДГУ и бак». */
   static dgu({ dgu, tank }) {
     const two = dgu.two
       ? 'две без бака — у торцов радиаторами наружу (выходы через двери-жалюзи, вторая дверь оператора не нужна)'
@@ -254,6 +268,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «Насосы». */
   static pumps() {
     return {
       h: '13. Насосная',
@@ -263,6 +278,7 @@ export class LayoutDigest {
     };
   }
 
+  /** Раздел сводки «Модули». */
   static mods({ fit }) {
     const rules = StationMods.RULES;
     const widths = StationMods.widths();

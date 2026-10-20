@@ -17,22 +17,27 @@ export class ReceiverPlan {
     ТЗ: 'объём по ТЗ заказчика',
   };
 
+  /** Методика подбора ресиверов (правило receiver.method). */
   static get METHOD() {
     return StationRules.raw('receiver.method');
   }
 
+  /** Основной типоразмер ресивера, л. */
   static get UNIT() {
     return this.METHOD.unit;
   }
 
+  /** Малый ресивер для тесного помещения, л. */
   static get SMALL() {
     return this.METHOD.small;
   }
 
+  /** Число с заданным числом знаков после запятой: «0,25». */
   static dec(v, digits = 2) {
     return String(Math.round(v * 10 ** digits) / 10 ** digits).replace('.', ',');
   }
 
+  /** Доля в процентах. */
   static pct(v) {
     return Math.round(v * 100);
   }
@@ -82,13 +87,13 @@ export class ReceiverPlan {
       size: small,
       n: count,
       total: count * small,
-      why: `${count > 1 ? `${count} × ` : ''}${Mm.text(small)} л — ${this.smallWhy(opts)}`,
+      why: `${count > 1 ? `${count} × ` : ''}${Mm.text(small)} л — ${this._smallWhy(opts)}`,
       forced: true,
       reason: opts.space ? 'space' : opts.reason || '',
     };
   }
 
-  static smallWhy(opts) {
+  static _smallWhy(opts) {
     if (opts.space) return 'ресивер 900 л не помещается по высоте';
     if (opts.auto) return 'нехватка места: с ресиверами 900 л станция не помещается в габарит перевозки';
     return (
@@ -188,8 +193,8 @@ export class ReceiverPlan {
     const dry = have.filter(tank => tank.role !== 'wet' && tank.role !== 'local');
     const wets = have.filter(tank => tank.role === 'wet');
     const sum = list => list.reduce((acc, tank) => acc + (tank.vol || 0) * (tank.qty || 1), 0);
-    const main = this.mainVolume(plan, dry, sum);
-    const all = main + this.wetVolume(plan, wets, sum);
+    const main = this._mainVolume(plan, dry, sum);
+    const all = main + this._wetVolume(plan, wets, sum);
     const ctx = { R: plan, o: opts, have, dry, wets, main, all };
     return [
       ...this.checkVolume(ctx),
@@ -200,12 +205,12 @@ export class ReceiverPlan {
     ];
   }
 
-  static mainVolume(plan, dry, sum) {
+  static _mainVolume(plan, dry, sum) {
     if (dry.length && dry.every(tank => tank.vol > 0)) return sum(dry);
     return plan.main ? plan.main.total : 0;
   }
 
-  static wetVolume(plan, wets, sum) {
+  static _wetVolume(plan, wets, sum) {
     if (wets.length) return sum(wets);
     return plan.wet ? plan.wet.total : 0;
   }
@@ -267,21 +272,22 @@ export class ReceiverPlan {
     ];
   }
 
-  static offRow(v) {
+  static _offRow(v) {
     return Math.abs(v / this.UNIT - Math.round(v / this.UNIT)) > 1e-6;
   }
 
   /** Ряд 900 / 500 л и обоснование 500 л. */
   static checkRow(ctx) {
-    return [this.rowError(ctx), this.smallWarn(ctx)].filter(Boolean);
+    return [this.rowError(ctx), this._smallWarn(ctx)].filter(Boolean);
   }
 
+  /** Замечание о ресиверах разного объёма в одном ряду. */
   static rowError({ have, dry, main }) {
     const bad = have.filter(
-      tank => tank.vol > 0 && tank.role !== 'local' && tank.vol !== this.SMALL && this.offRow(tank.vol),
+      tank => tank.vol > 0 && tank.role !== 'local' && tank.vol !== this.SMALL && this._offRow(tank.vol),
     );
     const all500 = dry.length && dry.every(tank => tank.vol === this.SMALL);
-    const mainOff = dry.length && main > 0 && main !== this.SMALL && !all500 && this.offRow(main);
+    const mainOff = dry.length && main > 0 && main !== this.SMALL && !all500 && this._offRow(main);
     if (!bad.length && !mainOff) return null;
     const list = [...new Set(bad.map(tank => `${Mm.text(tank.vol)} л`))].join(', ') || `${Mm.text(main)} л`;
     return {
@@ -290,7 +296,7 @@ export class ReceiverPlan {
     };
   }
 
-  static smallWarn({ R: plan, o: opts, dry }) {
+  static _smallWarn({ R: plan, o: opts, dry }) {
     const small = dry.length ? dry.some(tank => tank.vol === this.SMALL) : plan.main && plan.main.size === this.SMALL;
     const grounded =
       this.UNIT > this.METHOD.excess * plan.theor || opts.space || ['space', 'mass'].includes(opts.reason);
@@ -327,6 +333,7 @@ export class ReceiverPlan {
       .join('; ');
   }
 
+  /** Где стоит основной ресивер относительно осушителя. */
   static where(plan) {
     if (plan.mode === 'before') return ' (до осушителя)';
     return plan.wet || plan.dryer || plan.mode === 'after' ? ' (после осушителя)' : '';

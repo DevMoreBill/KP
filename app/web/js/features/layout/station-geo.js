@@ -25,11 +25,12 @@ export class StationGeo {
     alu: { name: 'рифлёный алюминиевый лист без окраски', short: 'алюминий рифлёный', color: '#c9cdd2', m: 1, r: 0.3 },
   };
 
+  /** Внутренняя обшивка морского контейнера, мм. */
   static get LINING() {
     return StationMatrix.grp('shell').seaLining;
   }
 
-  static get SEA_FLOOR() {
+  static get _SEA_FLOOR() {
     return StationMatrix.grp('shell').seaFloor;
   }
 
@@ -45,19 +46,23 @@ export class StationGeo {
     });
   }
 
+  /** Шаг подбора размеров, мм. */
   static get STEP() {
     return StationMatrix.fit().step;
   }
 
+  /** Пределы блок-контейнера. */
   static get BLOCK() {
     const { minL, minW, minH, hWalk, maxW, maxH } = StationMatrix.fit();
     return { minL, minW, minH, hWalk, maxW, maxH };
   }
 
+  /** Наибольшая ширина для перевозки без разрешения, мм. */
   static get ROAD_W() {
     return StationMatrix.fit().roadW;
   }
 
+  /** Виды кровли и их уклоны. */
   static get ROOFS() {
     return StationMatrix.derive('roofs', () => {
       const shell = StationMatrix.grp('shell');
@@ -100,6 +105,7 @@ export class StationGeo {
     return num > 0 && num < 400 ? num : StationMatrix.grp('shell').ins;
   }
 
+  /** Вид кровли станции. */
   static roof(cont) {
     const roofText = String((cont && cont.roof) || '');
     if (cont && this.SEA[cont.ctype]) return 'flat';
@@ -114,6 +120,7 @@ export class StationGeo {
     return Math.round(rise[roof] || 0);
   }
 
+  /** Вид пола станции. */
   static floor(cont) {
     const floorText = String((cont && cont.floor) || '');
     if (this.FLOORS[floorText]) return floorText;
@@ -121,6 +128,7 @@ export class StationGeo {
     return row && /алюмин/i.test(String(row.v || '')) ? 'alu' : 'steel';
   }
 
+  /** Правила корпуса типа контейнера. */
   static flex(type) {
     return this.FLEX[type] || (this.SEA[type] ? null : this.FLEX.block);
   }
@@ -131,7 +139,7 @@ export class StationGeo {
     if (sea) {
       const wall = sea.ext.map((v, i) => v - sea.int[i]);
       const k = ins + this.LINING;
-      return [ext[0] - wall[0] - 2 * k, ext[1] - wall[1] - 2 * k, ext[2] - wall[2] - k - this.SEA_FLOOR];
+      return [ext[0] - wall[0] - 2 * k, ext[1] - wall[1] - 2 * k, ext[2] - wall[2] - k - this._SEA_FLOOR];
     }
     const flex = this.flex(type);
     return [ext[0] - 2 * (ins + flex.wall), ext[1] - 2 * (ins + flex.wall), ext[2] - flex.floor - (ins + flex.roof)];
@@ -148,7 +156,7 @@ export class StationGeo {
     const own = cont.sizeAuto ? null : this.parseMm(cont.size);
     const mods = sea ? null : StationMods.of(cont);
     const mod = own && mods ? own : null;
-    const ext = this.extOf(mod, mods, own, sea);
+    const ext = this._extOf(mod, mods, own, sea);
     return {
       type,
       t: ins,
@@ -172,12 +180,13 @@ export class StationGeo {
     return len && mods ? len * mods.a : len;
   }
 
+  /** Длина тамбура типа контейнера. */
   static tambour(type) {
     const flex = this.flex(type);
     return (flex && flex.tambour) || 0;
   }
 
-  static extOf(mod, mods, own, sea) {
+  static _extOf(mod, mods, own, sea) {
     if (mod) return [mod[0] * mods.a, mod[1] * mods.b, mod[2]];
     return own || (sea ? sea.ext.slice() : null);
   }
@@ -185,6 +194,6 @@ export class StationGeo {
   /** Высота пола внутри над низом контейнера, мм. */
   static zFloor(type) {
     const sea = this.SEA[type];
-    return sea ? sea.ext[2] - sea.int[2] - 40 + this.SEA_FLOOR : this.flex(type).floor;
+    return sea ? sea.ext[2] - sea.int[2] - 40 + this._SEA_FLOOR : this.flex(type).floor;
   }
 }

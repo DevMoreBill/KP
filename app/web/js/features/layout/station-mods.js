@@ -3,10 +3,12 @@ import { StationMatrix } from './station-matrix.js';
 
 /** Станция из нескольких блок-модулей: раскладка a × b, стыки, стойки каркаса, что в каком модуле. */
 export class StationMods {
+  /** Правила раздела «Модули» матрицы. */
   static get RULES() {
     return StationMatrix.grp('mods');
   }
 
+  /** Наибольшее число модулей. */
   static get MAX() {
     return Math.max(2, this.RULES.max || 9);
   }
@@ -47,6 +49,7 @@ export class StationMods {
     return { ok: uniq && cols * rows === count && count <= this.MAX, n: count, a: cols, b: rows, cells: norm };
   }
 
+  /** Ячейки сетки модулей cols × rows. */
   static cells(cols, rows) {
     return Array.from({ length: cols * rows }, (_, k) => [k % cols, Math.floor(k / cols)]);
   }
@@ -58,10 +61,12 @@ export class StationMods {
     return out;
   }
 
+  /** Число стыков сетки модулей. */
   static joints(mods) {
     return mods ? (mods.a - 1) * mods.b + mods.a * (mods.b - 1) : 0;
   }
 
+  /** «модуль», «модуля» или «модулей» по числу. */
   static word(v) {
     const tail10 = v % 10;
     const tail100 = v % 100;
@@ -77,7 +82,7 @@ export class StationMods {
     return `${this.word(mods.n)}: ${mods.a} по длине × ${mods.b} по ширине`;
   }
 
-  static offsets(geo) {
+  static _offsets(geo) {
     return [(geo.ext[0] - geo.int[0]) / 2, (geo.ext[1] - geo.int[1]) / 2];
   }
 
@@ -85,7 +90,7 @@ export class StationMods {
   static posts(geo) {
     const mods = geo && geo.mods;
     if (!mods || !mods.Lm || mods.a < 2 || mods.b < 2) return [];
-    const [ox, oy] = this.offsets(geo);
+    const [ox, oy] = this._offsets(geo);
     const out = [];
     for (let i = 1; i < mods.a; i++)
       for (let j = 1; j < mods.b; j++) out.push({ x: i * mods.Lm - ox, y: j * mods.Wm - oy });
@@ -120,7 +125,7 @@ export class StationMods {
     const mods = geo && geo.mods;
     const out = new Map();
     if (!mods || !mods.Lm || !plan.items) return out;
-    const [ox, oy] = this.offsets(geo);
+    const [ox, oy] = this._offsets(geo);
     const clamp = (v, size) => Math.min(size - 1, Math.max(0, v));
     for (const item of plan.items.filter(i => i.mount !== 'pipe')) {
       const i = clamp(Math.floor((ox + item.x + item.lx / 2) / mods.Lm), mods.a);
@@ -139,7 +144,7 @@ export class StationMods {
   static lines(geo) {
     const mods = geo && geo.mods;
     if (!mods || !mods.Lm) return { x: [], y: [] };
-    const [ox, oy] = this.offsets(geo);
+    const [ox, oy] = this._offsets(geo);
     return {
       x: Array.from({ length: mods.a - 1 }, (_, i) => (i + 1) * mods.Lm - ox),
       y: Array.from({ length: mods.b - 1 }, (_, j) => (j + 1) * mods.Wm - oy),

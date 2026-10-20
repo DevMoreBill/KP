@@ -11,18 +11,21 @@ export class StationNorms {
 
   static PIPE = { air: 'сжатый воздух — синий', water: 'вода — зелёный', fuel: 'топливо — коричневый' };
 
-  static get NOISE() {
+  static get _NOISE() {
     return StationRules.raw('norm.noise');
   }
 
+  /** Нижние температуры исполнений. */
   static get COLD() {
     return StationRules.raw('norm.cold');
   }
 
+  /** Температура внутри станции. */
   static get INSIDE() {
     return StationRules.raw('heat.inside');
   }
 
+  /** Правила электрощита. */
   static get SHIELD() {
     return StationRules.raw('norm.shield');
   }
@@ -43,10 +46,12 @@ export class StationNorms {
     return levels.length ? 10 * Math.log10(levels.reduce((acc, v) => acc + 10 ** (v / 10), 0)) : 0;
   }
 
+  /** Требования заказчика. */
   static req(plan) {
     return plan.req || {};
   }
 
+  /** Температура со знаком: «+5», «−40». */
   static deg(temp) {
     const sign = temp > 0 ? '+' : (temp < 0 && '−') || '';
     return `${sign}${Math.abs(temp)} °C`;
@@ -64,7 +69,7 @@ export class StationNorms {
 
   /** Шум: паспортные уровни (на 1 м) складываются. */
   static noise({ eq: equip, r: req, sys, iss }) {
-    const lim = req.noise > 0 ? req.noise : this.NOISE;
+    const lim = req.noise > 0 ? req.noise : this._NOISE;
     const levels = equip
       .filter(unit => unit.place && unit.noise > 0)
       .flatMap(unit => Array.from({ length: unit.qty }, () => unit.noise));
@@ -93,7 +98,7 @@ export class StationNorms {
     if (has('dgu') && noHeat) {
       iss.push({ level: 'info', text: 'ДГУ при морозе: для пуска — отопление контейнера и подогреватель двигателя.' });
     }
-    this.heatVent({ has, sys, iss, tmax });
+    this._heatVent({ has, sys, iss, tmax });
   }
 
   /** Исполнение контейнера холоднее наружного воздуха — УХЛ1, ХЛ1 или особое. */
@@ -107,7 +112,7 @@ export class StationNorms {
     });
   }
 
-  static heatVent({ has, sys, iss, tmax }) {
+  static _heatVent({ has, sys, iss, tmax }) {
     if ((has('compressor') || has('dgu')) && sys.vent === false) {
       const who = has('dgu') ? 'ДГУ и компрессоры выделяют' : 'Компрессоры выделяют';
       iss.push({
@@ -159,6 +164,7 @@ export class StationNorms {
     ].filter(Boolean);
   }
 
+  /** Среда станции: воздух, вода или топливо. */
   static medium(plan, req) {
     if ((plan.piping || []).some(pipe => (pipe.lines || []).some(line => line.medium === 'fuel'))) return 'fuel';
     return { pump: 'water', comp: 'air' }[req.kind] || '';
@@ -176,7 +182,7 @@ export class StationNorms {
     const calc = req.fireAuto ? ', уточняется расчётом' : '';
     return [
       `Категория помещения по пожарной опасности${req.fire ? ` ${req.fire}` : ''} (СП 12.13130.2009${calc}) — табличка на двери снаружи; огнетушители${ext} — у выхода, верх не выше 1,5 м (ППР в РФ)${auto}; знаки безопасности — по ГОСТ 12.4.026-2015${tank}.`,
-      `Заземление и уравнивание потенциалов — по ПУЭ, гл. 1.7; трубопроводы — опознавательная окраска по ГОСТ Р 71918-2024 (ГОСТ 14202-69)${med ? ` (${this.PIPE[med]})` : ''} со стрелками направления потока; уровень звука на рабочем месте — не более ${req.noise > 0 ? req.noise : this.NOISE} дБА (СанПиН 1.2.3685-21).`,
+      `Заземление и уравнивание потенциалов — по ПУЭ, гл. 1.7; трубопроводы — опознавательная окраска по ГОСТ Р 71918-2024 (ГОСТ 14202-69)${med ? ` (${this.PIPE[med]})` : ''} со стрелками направления потока; уровень звука на рабочем месте — не более ${req.noise > 0 ? req.noise : this._NOISE} дБА (СанПиН 1.2.3685-21).`,
     ];
   }
 }

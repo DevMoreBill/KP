@@ -18,14 +18,17 @@ class PipeRun {
     this.out = [];
   }
 
+  /** Есть ли на полу агрегат вида. */
   has(kind) {
     return this.floor.some(i => i.kind === kind);
   }
 
+  /** Агрегаты вида на полу. */
   of(kind) {
     return this.floor.filter(i => i.kind === kind);
   }
 
+  /** Все трассы станции. */
   lines() {
     this.res.segs = [];
     if (!this.floor.length) return this.out;
@@ -40,12 +43,14 @@ class PipeRun {
     return this.out;
   }
 
+  /** Трассы насосов. */
   pumps() {
     const pumps = this.of('pump');
     this.line(pumps, { off: 110, part: 0.3, z: 450, label: 'вход', medium: 'in' });
     this.line(pumps, { off: 240, part: 0.7, z: Math.min(this.zTop, 1300), label: 'выход', medium: 'out' });
   }
 
+  /** Топливная трасса от бака к ДГУ. */
   fuel() {
     if (this.has('tank'))
       this.out.push(
@@ -56,6 +61,7 @@ class PipeRun {
       );
   }
 
+  /** Магистраль сжатого воздуха. */
   air() {
     const main = new AirMain(this, Math.max(StationMatrix.grp('pipe').airY, this.hang)).build();
     this.out.push(...main.lines);
@@ -85,6 +91,7 @@ class PipeRun {
    * Ось линии: полоса за оборудованием до стены (off — от стены, part — доля полосы, если она уже); нет места или ряды
    * напротив — над оборудованием; над сервисными воротами и над оборудованием на пути — выше.
    */
+  /** Линия трассы вдоль задней стены: отступ за агрегатами, высота, пределы по длине. */
   place(conn, { off, part, z, medium, x0, x1 }) {
     const { Wi: Wi, Hi: Hi } = this;
     const back = conn.filter(i => i.row !== 1);
@@ -129,6 +136,7 @@ class AirMain {
     this.head = null;
   }
 
+  /** Трасса магистрали: подключения, коллектор, отводы. */
   build() {
     const conn = [...this.src, ...this.ser];
     if (!conn.length) return { lines: [], segs: [] };
@@ -170,7 +178,7 @@ class AirMain {
     return { lines: [...(this.head ? [this.head] : []), this.main, ...this.heads], segs: this.segs };
   }
 
-  outOf(i, y, z) {
+  _outOf(i, y, z) {
     return {
       ...(LayoutPipes.branch(i, y, z) || { x: LayoutPipes._mid(i), y0: y, y1: y, z1: z, to: LayoutPipes._key(i) }),
       role: 'out',
@@ -179,7 +187,7 @@ class AirMain {
 
   /** Начало магистрали: компрессоры до первого аппарата — на ней; иначе — коллектор к первому аппарату. */
   start() {
-    const own = this.src.map(i => this.outOf(i, this.y, this.z));
+    const own = this.src.map(i => this._outOf(i, this.y, this.z));
     const firstIn = this.steps.length ? this.steps[0].P[0][0].x : this.Li;
     if (own.every(branch => branch.x < firstIn - 60)) {
       this.main.x0 = Math.min(...LayoutPipes._branchXs(own), firstIn);
@@ -194,7 +202,7 @@ class AirMain {
   /** Коллектор компрессоров к входу первого аппарата (группы); до него фильтр — на участке со всем воздухом. */
   header(step) {
     const { highY: highY, highZ: highZ } = this;
-    const heads = this.src.map(i => this.outOf(i, highY, highZ));
+    const heads = this.src.map(i => this._outOf(i, highY, highZ));
     const hin = step.G.map(i => LayoutPipes.ports(i, highY, highZ)[0]);
     const headXs = [...LayoutPipes._branchXs(heads), ...LayoutPipes._branchXs(hin)];
     const x = hin[0].x;
@@ -514,16 +522,18 @@ class PipeOutlet {
     ];
   }
 
+  /** Выходы трасс через торцевую стену. */
   place() {
     for (const line of (this.plan.lines || []).filter(cand => cand.label && !cand.header && cand.x1 >= this.Li - 1))
       this.one(line);
   }
 
+  /** Выход одной трассы: мимо ворот, дверей и жалюзи. */
   one(line) {
     const gap = this.rule.outGap;
     const blocked = this.ends.find(out => line.y > out.y0 - gap && line.y < out.y1 + gap && line.z < out.h + gap);
     if (!blocked || this.outside) {
-      line.out = this.straight(line);
+      line.out = this._straight(line);
       if (blocked) {
         this.iss.push({
           level: 'warn',
@@ -535,7 +545,7 @@ class PipeOutlet {
     const why = blocked.t;
     const out = this.moved(line, why);
     if (!out) {
-      line.out = this.straight(line);
+      line.out = this._straight(line);
       this.iss.push({
         level: 'warn',
         text: `Выход трубопровода в дальнем торце — в проёме (${why}), а на стенах рядом места нет: перенесите ворота или укажите место выхода сборщику.`,
@@ -546,10 +556,10 @@ class PipeOutlet {
     else if (out.rise) line.x1 = Math.round(this.Li - 150);
     line.out = out;
     this.taken.push(out);
-    this.iss.push({ level: 'info', text: this.movedText(line, out, why) });
+    this.iss.push({ level: 'info', text: this._movedText(line, out, why) });
   }
 
-  straight(line) {
+  _straight(line) {
     return { wall: 'right', x: this.Li, y: line.y, z: line.z, moved: false, flange: this.rule.flange };
   }
 
@@ -557,10 +567,10 @@ class PipeOutlet {
   moved(line, why) {
     const near = line.y > this.Wi / 2 ? 'back' : 'front';
     const far = near === 'back' ? 'front' : 'back';
-    return this.side(line, near, why) || this.side(line, far, why) || this.above(line, why);
+    return this.side(line, near, why) || this.side(line, far, why) || this._above(line, why);
   }
 
-  above(line, why) {
+  _above(line, why) {
     const gap = this.rule.outGap;
     const z =
       Math.max(...this.ends.filter(cand => line.y > cand.y0 - gap && line.y < cand.y1 + gap).map(cand => cand.h)) +
@@ -599,7 +609,7 @@ class PipeOutlet {
     return null;
   }
 
-  movedText(line, out, why) {
+  _movedText(line, out, why) {
     const num = v => Mm.text(v);
     const where =
       out.wall === 'right'

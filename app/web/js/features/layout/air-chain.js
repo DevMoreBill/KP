@@ -82,14 +82,16 @@ export class AirChain {
     },
   };
 
-  static get DRYER_K() {
+  static get _DRYER_K() {
     return StationRules.raw('dryer.kp');
   }
 
+  /** Запас производительности осушителя (правило dryer.margin). */
   static get MARGIN() {
     return StationRules.raw('dryer.margin');
   }
 
+  /** Доля воздуха на продувку адсорбционного осушителя. */
   static get PURGE() {
     return StationRules.raw('flow.purge').default;
   }
@@ -101,7 +103,7 @@ export class AirChain {
     return purge[k] != null ? purge[k] : purge.default;
   }
 
-  static get RECV_SIZES() {
+  static get _RECV_SIZES() {
     return StationRules.raw('receiver.sizes');
   }
 
@@ -111,18 +113,19 @@ export class AirChain {
     return base && base.volume > 0 ? base : null;
   }
 
-  static get CLASSES() {
+  static get _CLASSES() {
     return StationRules.raw('air.classes');
   }
 
+  /** Точка росы по классам влажности ISO 8573-1. */
   static get PDP() {
     return StationRules.raw('air.pdp');
   }
 
   /** Пункты выбора класса чистоты; класс из ТЗ не из списка — в конце. */
   static options(cur) {
-    const list = this.CLASSES.map(([v, title]) => [v, `${v} — ${title}`]);
-    return cur && !this.CLASSES.some(cls => cls[0] === cur) ? [...list, [cur, `${cur} — по ТЗ`]] : list;
+    const list = this._CLASSES.map(([v, title]) => [v, `${v} — ${title}`]);
+    return cur && !this._CLASSES.some(cls => cls[0] === cur) ? [...list, [cur, `${cur} — по ТЗ`]] : list;
   }
 
   /** Текст элемента для распознавания: название, модель, ступень, тонкость, характеристики. */
@@ -181,7 +184,7 @@ export class AirChain {
     const byStage = this.gradeByStage(part);
     if (byStage) return byStage;
     if (/угол|угольн|активированн|пар\S*\s+масл|запах|(?:^|[^a-z])(?:QD|ACS)\s?\d/i.test(text)) return 'carbon';
-    const byMicron = this.gradeByMicron(part, text);
+    const byMicron = this._gradeByMicron(part, text);
     if (byMicron) return byMicron;
     const byText = AirChain.TEXT_WORDS.find(([pattern]) => pattern.test(text));
     return byText ? byText[1] : '';
@@ -196,7 +199,7 @@ export class AirChain {
     return hit ? hit[1] : '';
   }
 
-  static gradeByMicron(part, text) {
+  static _gradeByMicron(part, text) {
     const micron = this.micron(part);
     const limits = StationRules.raw('air.grade.micron');
     if (micron >= limits.pre) return 'pre';
@@ -250,15 +253,15 @@ export class AirChain {
   static info(part, kind) {
     const info = { flow: this.flow(part), bar: this.bar(part) };
     const more = {
-      compressor: () => this.compressorInfo(part),
-      dryer: () => this.dryerInfo(part),
-      receiver: () => this.receiverInfo(part),
-      filter: () => this.filterInfo(part),
+      compressor: () => this._compressorInfo(part),
+      dryer: () => this._dryerInfo(part),
+      receiver: () => this._receiverInfo(part),
+      filter: () => this._filterInfo(part),
     }[kind];
     return more ? Object.assign(info, more()) : info;
   }
 
-  static compressorInfo(part) {
+  static _compressorInfo(part) {
     const attrs = part.attrs || {};
     const name = String(part.name || '');
     const text = this.text(part);
@@ -283,19 +286,19 @@ export class AirChain {
     };
   }
 
-  static dryerType(cat, name, text) {
+  static _dryerType(cat, name, text) {
     if (/^gen_/.test(cat) || /генератор/i.test(name)) return 'gen';
     return cat === 'dryer_ads' || /адсорбц|десикант|мембран/i.test(text) ? 'ads' : 'refrig';
   }
 
-  static dryerInfo(part) {
+  static _dryerInfo(part) {
     const attrs = part.attrs || {};
     const text = this.text(part);
     const built =
       /встроенн\S*\s+(?:\S+\s+){0,2}фильтр|фильтр\S*\s+(?:\S+\s+)?встроен|(?:^|\s)с\s+(?:\S+\s+)?фильтрам|интегрированн\S*\s+(?:\S+\s+)?фильтр/i;
     const pdp = this.first(String(attrs.dewPoint || '').replace('−', '-'));
     return {
-      type: this.dryerType(String(attrs.cat || part.cat || ''), String(part.name || ''), text),
+      type: this._dryerType(String(attrs.cat || part.cat || ''), String(part.name || ''), text),
       filters: AirChain._isSet(attrs.filters)
         ? AirChain._isYes(attrs.filters)
         : built.test(text) || this.kitFilters(part),
@@ -303,7 +306,7 @@ export class AirChain {
     };
   }
 
-  static receiverInfo(part) {
+  static _receiverInfo(part) {
     const name = String(part.name || '');
     const text = this.text(part);
     const own = part.recvRole === 'wet' || part.recvRole === 'dry' ? part.recvRole : '';
@@ -312,7 +315,7 @@ export class AirChain {
     return { role: own || guess || '', vol: this.volume(part) };
   }
 
-  static filterInfo(part) {
+  static _filterInfo(part) {
     const grade = String(part.airGrade || '');
     const cat = String((part.attrs || {}).cat || part.cat || '');
     return {
@@ -345,6 +348,7 @@ export class AirChain {
     }
   }
 
+  /** Какую ступень осушки ждать от станции: адсорбционную или рефрижераторную. */
   static want(dryers, ads) {
     if (ads) return AirChain.WANT.ads;
     if (!dryers.some(unit => unit.air.type === 'refrig')) return AirChain.WANT.none;
@@ -378,10 +382,10 @@ export class AirChain {
     }[unit.kind];
     if (fixed) return fixed();
     if (unit.kind !== 'filter' || gradeOf === 'cond') return null;
-    return this.filterStage(air, gradeOf, dryers, ads);
+    return this._filterStage(air, gradeOf, dryers, ads);
   }
 
-  static filterStage(air, gradeOf, dryers, ads) {
+  static _filterStage(air, gradeOf, dryers, ads) {
     const base = dryers.length
       ? { ...AirChain.FILTER_STAGE.dryer, micro: ads ? 43 : 51 }[gradeOf]
       : AirChain.FILTER_STAGE.bare[gradeOf];
@@ -417,6 +421,7 @@ export class AirChain {
     return out;
   }
 
+  /** Стоят ли два агрегата параллельно (одна ступень, одинаковый тип). */
   static parallel(first, unit) {
     return (
       (unit.kind === 'dryer' || unit.kind === 'filter') &&
@@ -435,19 +440,19 @@ export class AirChain {
     );
     if (!groups.length) return '';
     const what = group => {
-      const kind = group[0].kind === 'filter' ? 'фильтры' : this.dryerWord(group[0]);
+      const kind = group[0].kind === 'filter' ? 'фильтры' : this._dryerWord(group[0]);
       return `${kind} поз. ${[...new Set(group.map(u => u.pos))].join(', ')} (${qty(group)} шт.)`;
     };
     return `Одинаковые ${groups.map(what).join('; ')} включены параллельно: производительность складывается; на входе и выходе каждого — кран, аппарат отключают на обслуживание, не останавливая остальные.`;
   }
 
-  static dryerWord(u) {
+  static _dryerWord(u) {
     return (u.air || {}).type === 'gen' ? 'генераторы' : 'осушители';
   }
 
   /** Поправка осушителя на давление. */
   static dryerK(bar) {
-    return bar > 0 ? StationRules.interp(this.DRYER_K, bar) : 1;
+    return bar > 0 ? StationRules.interp(this._DRYER_K, bar) : 1;
   }
 
   /** Поправка фильтра на давление: пропорционально абсолютному давлению к номиналу. */
@@ -456,10 +461,12 @@ export class AirChain {
     return bar > 0 ? Math.min(rule.cap, (bar + 1) / (rule.ref + 1)) : 1;
   }
 
+  /** Число с одним знаком после запятой: 7.5 → «7,5». */
   static flowText(v) {
     return (Math.round(v * 10) / 10).toString().replace('.', ',');
   }
 
+  /** Произведение давления на вместимость, МПа·м³ — для отнесения сосуда к подконтрольным. */
   static pvProduct(bar, litres) {
     return ((bar / 10) * litres) / 1000;
   }
@@ -476,7 +483,7 @@ export class AirChain {
   /** Ресиверы без учёта в Ростехнадзоре на объём V: наименьшее число одинаковых из ряда; не нужно — null. */
   static split(vol, bar) {
     if (!(vol > 0) || !(bar > 0) || this.pvProduct(bar, vol) <= PressureVessel.LIMIT + 1e-9) return null;
-    const v = this.RECV_SIZES.filter(x => this.pvProduct(bar, x) <= PressureVessel.LIMIT + 1e-9).pop();
+    const v = this._RECV_SIZES.filter(x => this.pvProduct(bar, x) <= PressureVessel.LIMIT + 1e-9).pop();
     return v ? { n: Math.ceil(vol / v - 1e-9), v } : null;
   }
 

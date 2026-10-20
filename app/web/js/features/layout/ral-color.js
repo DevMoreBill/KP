@@ -76,6 +76,7 @@ export class RalColor {
     return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
   }
 
+  /** Цвет «#rrggbb» из каналов. */
   static hex(red, green, blue) {
     const byte = v =>
       Math.max(0, Math.min(255, Math.round(v)))
@@ -91,6 +92,7 @@ export class RalColor {
     return this.hex(...channels.map(v => v + (255 - v) * Math.min(1, k - 1)));
   }
 
+  /** Смесь двух цветов в доле. */
   static mix(from, till, part) {
     const y = this.rgb(till);
     return this.hex(...this.rgb(from).map((v, i) => v + (y[i] - v) * part));

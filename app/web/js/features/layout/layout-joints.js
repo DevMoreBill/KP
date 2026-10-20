@@ -11,6 +11,7 @@ export class LayoutJoints {
     this.lay = lay;
   }
 
+  /** Сдвигает агрегаты мимо стоек стыков модулей; не вышло — отказ. */
   fit(res, geo, lenUse, Wi) {
     const joints = StationMods.lines(geo);
     const half = StationMods.RULES.post / 2;
@@ -53,21 +54,21 @@ export class LayoutJoints {
     const bad = [];
     const moved = [];
     for (const item of res.items.filter(i => jointsY.some(y => i.y < y + half && i.y + i.d > y - half))) {
-      const z = this.zoneFor(item, zones);
+      const z = this._zoneFor(item, zones);
       if (!z || item.o.e.cross || item.o.end) {
         bad.push(item.o.e);
         continue;
       }
-      this.moveInto(item, z, Wi);
+      this._moveInto(item, z, Wi);
       if (item.back < this.backMin(item)) bad.push(item.o.e);
       moved.push(item);
     }
     if (moved.length && res.rows === 2) this.shareAisle(res, Wi);
-    for (const item of moved.filter(i => i.aisle < this.aisleMin(i))) bad.push(item.o.e);
+    for (const item of moved.filter(i => i.aisle < this._aisleMin(i))) bad.push(item.o.e);
     return bad;
   }
 
-  zoneFor(item, zones) {
+  _zoneFor(item, zones) {
     const depth = item.d;
     const center = item.y + depth / 2;
     const mid = this.midDgu(item);
@@ -81,7 +82,7 @@ export class LayoutJoints {
     return zones.filter(([from, till]) => till - from >= depth).sort(order)[0];
   }
 
-  moveInto(item, z, Wi) {
+  _moveInto(item, z, Wi) {
     const depth = item.d;
     item.y = this.midDgu(item)
       ? Math.round(z[0] + (z[1] - z[0] - depth) / 2)
@@ -93,11 +94,12 @@ export class LayoutJoints {
     }
   }
 
+  /** Наименьший зазор агрегата до задней стены. */
   backMin(item) {
     return this.midDgu(item) ? StationMatrix.grp('dgu').pass : Math.min(...item.o.e.c.back);
   }
 
-  aisleMin(item) {
+  _aisleMin(item) {
     return this.midDgu(item) ? StationMatrix.grp('dgu').pass : Math.min(this.lay.aisle[1], this.lay.front(item.o.e)[1]);
   }
 

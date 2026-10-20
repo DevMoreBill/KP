@@ -9,6 +9,7 @@ import { TankSize } from './tank-size.js';
  * (tank.gates) или своя дверь, горловина — в нише стены, бак — в поддоне вдоль задней стены.
  */
 export class LayoutTank {
+  /** Правила топливного бака из матрицы. */
   static get RULES() {
     return StationMatrix.tank();
   }
@@ -92,6 +93,7 @@ export class LayoutTank {
         : { wall: 'front', x: Math.round(tank.room / 2), z: rules.fill };
   }
 
+  /** Замечания по баку: высота, проход к горловине. */
   static check(res, tanks, Hi) {
     const rules = this.RULES;
     const fmt = v => Mm.text(v);

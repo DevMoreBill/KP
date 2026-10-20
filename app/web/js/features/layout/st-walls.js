@@ -11,7 +11,7 @@ export class StWalls {
 
   static _span = (wall, item) => (StWalls._isLong(wall) ? [item.x, item.x + item.lx] : [item.y, item.y + item.ly]);
 
-  static get NEAR() {
+  static get _NEAR() {
     return StationMatrix.grp('grille').near;
   }
 
@@ -38,7 +38,7 @@ export class StWalls {
   /** Шкафы на стене; оборудование ближе NEAR к стене занимает место перед ним до своей высоты + 150 мм. */
   equipment(plan, opts) {
     const { Li: Li, Wi: Wi, x0 } = this;
-    const near = StWalls.NEAR;
+    const near = StWalls._NEAR;
     for (const i of (plan.items || []).filter(item => !item.tank)) {
       if (i.mount === 'wall') {
         this.busy(i.wall, ...StWalls._span(i.wall, i), i.z, i.z + i.h);
@@ -91,6 +91,7 @@ export class StWalls {
     }
   }
 
+  /** Отмечает занятую полосу стены. */
   busy(wall, u0, u1, z0, z1) {
     if (this.hard[wall]) this.hard[wall].push([u0, u1, z0, z1]);
   }
@@ -100,6 +101,7 @@ export class StWalls {
     return Object.fromEntries(Object.entries(this.hard).map(([k, v]) => [k, v.length]));
   }
 
+  /** Возвращает занятость стен к отметке. */
   reset(marks) {
     for (const k in marks) this.hard[k].length = marks[k];
   }
@@ -125,6 +127,7 @@ export class StWalls {
     return (this.hard[wall] || []).every(ok) && (!soft || (this.soft[wall] || []).every(ok));
   }
 
+  /** Пределы стены вдоль. */
   range(wall) {
     return wall === 'left' || wall === 'right' ? [0, this.Wi] : [this.x0, this.Li];
   }
@@ -143,6 +146,7 @@ export class StWalls {
     return null;
   }
 
+  /** Ближайшее к u0 подходящее место в пределах. */
   near(good, [low, high], u0) {
     for (let step = 0; u0 - step >= low || u0 + step <= high; step += 50) {
       for (const u of step ? [u0 - step, u0 + step] : [u0]) if (u >= low && u <= high && good(u)) return u;

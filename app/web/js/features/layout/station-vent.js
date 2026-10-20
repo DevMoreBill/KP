@@ -16,6 +16,7 @@ export class StationVent extends VentGrille {
     'маркиза — откидной козырёк на петлях над жалюзи: открыт — с раскрывающимися боковыми створками-ограничителями (воздух проходит только снизу, снег и дождь не задуваются), закрыт — закрывает проём жалюзи как защитный щит (перевозка, простой, непогода)';
   static WALL = { back: 'задней стене', front: 'стене прохода', left: 'торце у входа', right: 'дальнем торце' };
 
+  /** Центр тяжести по стене. */
   static cog(plan, wall) {
     return VentPlan.cog(plan, wall);
   }
@@ -25,23 +26,23 @@ export class StationVent extends VentGrille {
    * хватает при выбросе на стене — выброс компрессоров через крышу (исключение), если так не хватает меньше.
    */
   static calc(plan) {
-    let first = StationVent.calc0(plan, true);
+    let first = StationVent._calc0(plan, true);
     if (
       first &&
       first.short.in > 0 &&
       first.louvers.some(louver => louver.kind === 'out' && louver.wall === 'front' && louver.duct)
     ) {
-      const second = StationVent.calc0(plan, false);
+      const second = StationVent._calc0(plan, false);
       if (second.short.in < first.short.in) first = second;
     }
     if (!first || !(first.short.in > 0) || !Object.values(first.ducts || {}).includes('wall')) return first;
-    const third = StationVent.calc0(plan, true, true);
+    const third = StationVent._calc0(plan, true, true);
     if (!third || third.short.in >= first.short.in) return first;
     third.roofWhy = `приточные жалюзи на стенах не помещались (не хватало ${Mm.dec(Math.round(first.short.in * 100) / 100)} м²): выброс компрессоров — через крышу, стена выброса — под приток`;
     return third;
   }
 
-  static calc0(plan, front, roof = false) {
+  static _calc0(plan, front, roof = false) {
     return new VentPlan(plan, front, roof).run();
   }
 
@@ -158,6 +159,7 @@ export class StationVent extends VentGrille {
     StationVent.shortages(vent, iss);
   }
 
+  /** Расход летней вентиляции. */
   static summer(vent, heatVent) {
     const summary = heatVent && heatVent.sum;
     const tmax = heatVent ? StationNorms.deg(heatVent.tmax) : '';
@@ -168,10 +170,11 @@ export class StationVent extends VentGrille {
     ];
     if (vent.need.out) lines.push(StationVent.outText(vent, cfm));
     if (vent.rad) lines.push(StationVent.radText(vent));
-    const comp = summary && summary.units.length ? StationVent.compText(summary, vent) : '';
+    const comp = summary && summary.units.length ? StationVent._compText(summary, vent) : '';
     return `Вентиляция летом${tmax ? ` (до ${tmax})` : ''}: ${lines.join('; ')}.${comp} Приток и выброс — на разных стенах; размеры — по рамке (в живом сечении решётки скорость выше), места жалюзи — на чертеже и 3D-виде.`;
   }
 
+  /** Текст о выбросе воздуха. */
   static outText(vent, cfm) {
     const wallText = vent.louvers.some(louver => louver.kind === 'out') ? StationVent.list(vent, 'out') : '';
     const roofText = StationVent.roofList(vent);
@@ -184,7 +187,7 @@ export class StationVent extends VentGrille {
     return `выброс горячего воздуха ${Mm.text(vent.q.out)} м³/ч${cfm(vent.q.out)} — не менее ${Mm.dec(vent.need.out.gross)} м² (${Mm.dec(vent.vOut)} м/с): ${where}`;
   }
 
-  static compText(summary, vent) {
+  static _compText(summary, vent) {
     const head = ` Тепло компрессоров ${Mm.dec(summary.Qc)} кВт (N·k или паспорт); воздух охлаждения ${Mm.text(summary.Lcool)} м³/ч — вентилятором компрессора (нагрев в нём ${Mm.dec(summary.dtc)} °C, паспорт важнее), горячий — воздуховодом наружу; тот же поток продувает помещение — у входа компрессора около ${VentCalc.dec(summary.tComp)} °C (не выше ${Mm.dec(summary.tIn)} °C).`;
     let stand = '';
     if (summary.stand) {
@@ -192,10 +195,10 @@ export class StationVent extends VentGrille {
         ? ' При остановленных компрессорах помещение продувают те же вытяжные вентиляторы (по датчику температуры).'
         : ` При остановленных компрессорах — вытяжной вентилятор с термостатом ${Mm.text(summary.stand.L)} м³/ч (около ${Mm.dec(summary.stand.P)} кВт) — прямо на канале общей вытяжки рядом с осушителем.`;
     }
-    return head + stand + StationVent.fanText(summary, vent);
+    return head + stand + StationVent._fanText(summary, vent);
   }
 
-  static fanText(summary, vent) {
+  static _fanText(summary, vent) {
     if (summary.exfan) {
       return ` Вытяжные вентиляторы — вверху стены напротив притока (осевые, с гравитационными жалюзи, включаются автоматически по датчику температуры): ${Mm.text(summary.exfan.L)} м³/ч (запас ${Math.round((summary.exfan.reserve - 1) * 100)} %)${vent.exfan ? ` в ${vent.exfan.n} ${vent.exfan.n === 1 ? 'проёме' : 'проёмах'}` : ''}, напор не менее ${summary.exfan.dp} Па, около ${Mm.dec(summary.exfan.P)} кВт; воздуховоды компрессоров подведены к ним.`;
     }
@@ -244,6 +247,7 @@ export class StationVent extends VentGrille {
     if (recup && recup.on) iss.push(StationVent.recup(recup));
   }
 
+  /** Текст о рекуператоре. */
   static recup(recup) {
     const protect = recup.measures.length ? `; защита от обмерзания: ${recup.measures.join(', ')}` : '';
     return {
@@ -252,6 +256,7 @@ export class StationVent extends VentGrille {
     };
   }
 
+  /** Замечание о рециркуляции. */
   static recirc(plan, vent, iss) {
     const ducts = Object.keys(vent.ducts || {}).length;
     if (!(ducts || vent.rad) || (plan.sys || {}).rec === false) return;

@@ -16,62 +16,68 @@ export class StationHeat {
 
   static UNIT_WORD = { compressor: 'компрессор', dgu: 'ДГУ', pump: 'насос' };
 
-  static get LAMBDA() {
+  static get _LAMBDA() {
     return StationHeat._rule('heat.lambda');
   }
 
-  static get R_SURF() {
+  static get _R_SURF() {
     return StationHeat._rule('heat.rsurf');
   }
 
-  static get BRIDGE() {
+  static get _BRIDGE() {
     return StationHeat._rule('heat.bridge');
   }
 
-  static get U_DOOR() {
+  static get _U_DOOR() {
     return StationHeat._rule('heat.u_door');
   }
 
-  static get U_LOUVER() {
+  static get _U_LOUVER() {
     return StationHeat._rule('heat.u_louver');
   }
 
-  static get ACH() {
+  static get _ACH() {
     return StationHeat._rule('heat.ach');
   }
 
+  /** Температура воздуха для расчёта отопления. */
   static get AIR() {
     return StationHeat._rule('heat.air');
   }
 
+  /** Запас мощности отопления. */
   static get RESERVE() {
     return StationHeat._rule('heat.reserve');
   }
 
-  static get CASE() {
+  static get _CASE() {
     return StationHeat._rule('heat.case');
   }
 
-  static get REC() {
+  static get _REC() {
     return StationHeat._rule('heat.rec');
   }
 
+  /** Теплопотери ограждений. */
   static get LOSS() {
     return StationHeat._rule('heat.loss');
   }
 
-  static get COMB() {
+  static get _COMB() {
     return StationHeat._rule('heat.comb');
   }
 
+  /** Теплопоступления от солнца. */
   static get SUN() {
     return StationHeat._rule('heat.sun');
   }
 
+  /** Мощности конвекторов. */
   static get UNITS() {
     return StationHeat._rule('heat.conv_units');
   }
 
+  /** Размеры конвектора. */
   static get CONV() {
     return { h: 400, d: 90, ...StationMatrix.conv() };
   }
@@ -91,6 +97,7 @@ export class StationHeat {
     return cold != null ? Math.max(cold, def) : def;
   }
 
+  /** Ключ агрегата: код позиции и номер экземпляра. */
   static key(i) {
     return `${i.id}#${i.unit}`;
   }
@@ -104,7 +111,7 @@ export class StationHeat {
     const deltaT = Math.max(0, tin - tout);
     const env = this.envelope(plan, sys, deltaT);
     const airCap = this.airAt(tout);
-    const qInf = this.ACH * env.lenHeated * env.wi * env.hi * airCap * deltaT;
+    const qInf = this._ACH * env.lenHeated * env.wi * env.hi * airCap * deltaT;
     const qStop = env.qEnv + qInf;
     const rec = sys.rec !== false;
     const units = (plan.items || []).filter(
@@ -149,8 +156,8 @@ export class StationHeat {
     const [Li, Wi, Hi] = plan.int;
     const fuel = plan.fuel;
     const tankLen = fuel ? fuel.x1 + fuel.part : 0;
-    const kind = this.bridgeKind(geo);
-    const uWall = this.BRIDGE[kind] / (this.R_SURF + Mm.meters(geo.t) / this.LAMBDA);
+    const kind = this._bridgeKind(geo);
+    const uWall = this._BRIDGE[kind] / (this._R_SURF + Mm.meters(geo.t) / this._LAMBDA);
     const len = Mm.meters(Le - tankLen);
     const wid = Mm.meters(We);
     const height = Mm.meters(He);
@@ -159,7 +166,7 @@ export class StationHeat {
     const doorArea = this.doorArea(plan).reduce((acc, v) => acc + v, 0);
     const louverArea = this.louverArea(plan, sys);
     const qEnv =
-      (uWall * Math.max(0, area - doorArea - louverArea) + this.U_DOOR * doorArea + this.U_LOUVER * louverArea) *
+      (uWall * Math.max(0, area - doorArea - louverArea) + this._U_DOOR * doorArea + this._U_LOUVER * louverArea) *
         deltaT +
       (uWall * Apart * deltaT) / 2;
     return {
@@ -175,9 +182,9 @@ export class StationHeat {
     };
   }
 
-  static bridgeKind(geo) {
+  static _bridgeKind(geo) {
     if (geo.sea) return 'sea';
-    return this.BRIDGE[geo.type] ? geo.type : 'block';
+    return this._BRIDGE[geo.type] ? geo.type : 'block';
   }
 
   /** Площади дверей и ворот, м². */
@@ -209,7 +216,7 @@ export class StationHeat {
   static heatOf(i, rec, exhaust) {
     if (i.kind === 'compressor' && rec)
       return (i.heat > 0 ? i.heat : i.kw * VentCalc.heatK(i.ctype, exhaust, [])) * 1000;
-    return i.kw * 1000 * (this.LOSS[i.kind] || (rec ? this.REC[i.kind] : 0) || this.CASE);
+    return i.kw * 1000 * (this.LOSS[i.kind] || (rec ? this._REC[i.kind] : 0) || this._CASE);
   }
 
   /** Воздух, забираемый агрегатом из помещения, м³/ч: на сжатие или на горение. */
@@ -217,7 +224,7 @@ export class StationHeat {
     if (i.kind === 'compressor') {
       return i.air && i.air.flow > 0 ? i.air.flow * 60 : i.kw * StationHeat._rule('heat.comp_air') * 60;
     }
-    if (i.kind === 'dgu') return i.comb > 0 ? i.comb : i.kw * this.COMB;
+    if (i.kind === 'dgu') return i.comb > 0 ? i.comb : i.kw * this._COMB;
     return 0;
   }
 
@@ -229,7 +236,7 @@ export class StationHeat {
     const sun = this.SUN * Mm.meters(env.Le) * Mm.meters(env.We);
     const dryers = items.filter(i => i.kind === 'dryer').reduce((acc, i) => acc + (i.kw || 0) * 1000, 0);
     const qSum =
-      work.reduce((acc, i) => acc + i.kw * 1000 * (this.LOSS[i.kind] || this.CASE), 0) +
+      work.reduce((acc, i) => acc + i.kw * 1000 * (this.LOSS[i.kind] || this._CASE), 0) +
       this.SUN * 1000 * Mm.meters(env.Le) * Mm.meters(env.We) +
       dryers;
     const warn = [];
@@ -303,7 +310,7 @@ export class StationHeat {
       return spots.get(len);
     };
     const nMin = Math.max(need > 1.2 ? 2 : 1, Math.ceil((plan.int[0] - (plan.geo.x0 || 0)) / 4500));
-    const best = this.fitting(spotsAt, need, nMin) || this.most(spotsAt, need);
+    const best = this._fitting(spotsAt, need, nMin) || this._most(spotsAt, need);
     return {
       n: best.n,
       kw: best.kw,
@@ -313,7 +320,7 @@ export class StationHeat {
     };
   }
 
-  static fitting(spotsAt, need, nMin) {
+  static _fitting(spotsAt, need, nMin) {
     let best = null;
     for (const [kw, len] of this.UNITS) {
       const spots = spotsAt(len);
@@ -325,7 +332,7 @@ export class StationHeat {
     return best;
   }
 
-  static most(spotsAt, need) {
+  static _most(spotsAt, need) {
     let best = null;
     for (const [kw, len] of this.UNITS) {
       const spots = spotsAt(len);
@@ -424,10 +431,12 @@ export class StationHeat {
     if (i.x + i.lx > len - reach) busy.right.push([i.y, i.y + i.ly]);
   }
 
+  /** Полоса агрегата вдоль стены. */
   static span(wall, x, lenX, y, lenY) {
     return wall === 'front' || wall === 'back' ? [x, x + lenX] : [y, y + lenY];
   }
 
+  /** Отмечает проёмы на стенах занятыми. */
   static openings(plan, busy) {
     const entry = plan.entry;
     if (entry) busy[entry.wall].push(entry.wall === 'front' ? [entry.x0, entry.x1] : [entry.y0, entry.y1]);
@@ -449,6 +458,7 @@ export class StationHeat {
       busy[door.wall].push(door.wall === 'back' ? [door.x0, door.x1] : [door.y0, door.y1]);
   }
 
+  /** Отмечает стыки модулей занятыми. */
   static joints(plan, busy) {
     const joints = StationMods.lines(plan.geo);
     for (const x of joints.x) {
@@ -482,7 +492,7 @@ export class StationHeat {
     const dist = spot => Math.hypot(spot.cx - entryX, spot.cy - entryY);
     const got = [pool.reduce((first, second) => (dist(first) <= dist(second) ? first : second))];
     while (got.length < count) {
-      const next = this.farthest(pool, got);
+      const next = this._farthest(pool, got);
       if (!next) break;
       got.push(next);
     }
@@ -509,7 +519,7 @@ export class StationHeat {
     return heaters;
   }
 
-  static farthest(pool, got) {
+  static _farthest(pool, got) {
     let best = null;
     let bestD = -1;
     for (const spot of pool.filter(x => !got.includes(x))) {
@@ -540,6 +550,7 @@ export class StationHeat {
     }
   }
 
+  /** Мощность для текста: «1,5». */
   static kw(v) {
     return String(Math.round(v * 10) / 10).replace('.', ',');
   }
@@ -548,10 +559,10 @@ export class StationHeat {
   static notes(plan) {
     const heat = plan.heat;
     if (!heat) return;
-    if (heat.on) this.heatNotes(plan, heat);
+    if (heat.on) this._heatNotes(plan, heat);
   }
 
-  static heatNotes(plan, heat) {
+  static _heatNotes(plan, heat) {
     const iss = plan.issues;
     const k = v => this.kw(v / 1000);
     const tempText = StationNorms.deg(heat.tout);

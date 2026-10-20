@@ -105,6 +105,7 @@ export class StationJoints {
     }
   }
 
+  /** Что проходит через стык: трубы, топливо, кабели. */
   static what(line, bore) {
     if (line.medium !== 'air') return StationJoints.MED[line.medium] || 'трубопровод';
     if (line.header) return 'коллектор компрессоров';
@@ -139,18 +140,19 @@ export class StationJoints {
       StationJoints.path(
         ctx,
         ctx.cell(item.x + item.lx / 2, item.y + item.ly / 2),
-        StationJoints.cable(item, posText(item), srcT),
+        StationJoints._cable(item, posText(item), srcT),
       );
     }
   }
 
+  /** Модуль, где начинается кабель. */
   static source(plan, src, cell) {
     if (src) return cell(src.x + src.lx / 2, src.y + src.ly / 2);
     const entry = plan.entry;
     return entry && entry.wall === 'front' ? cell((entry.x0 + entry.x1) / 2, 0) : [0, 0];
   }
 
-  static cable(item, pos, srcT) {
+  static _cable(item, pos, srcT) {
     const name = item.short || item.name;
     if (item.kind === 'dgu') return `силовой кабель и кабели управления ДГУ ${pos} — к ${srcT}`;
     if (item.kind === 'cabinet') return `кабели питания и связи шкафа ${pos} «${name}»`;

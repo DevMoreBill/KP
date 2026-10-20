@@ -5,6 +5,7 @@ import { StationMatrix } from './station-matrix.js';
  * (правило norm.aisle). Источники норм — в правилах программы («Настройки → Инженерные правила станций»).
  */
 export class StationClear {
+  /** Виды оборудования для зазоров обслуживания. */
   static get KIND() {
     return StationRules.raw('clear.kind');
   }
@@ -19,11 +20,11 @@ export class StationClear {
 
   /** Отступы оборудования по виду (у насосов — ещё по мощности и длине). */
   static of(kind, unit) {
-    if (kind === 'pump' && unit && this.smallPump(unit)) return this.PUMP_SMALL;
+    if (kind === 'pump' && unit && this._smallPump(unit)) return this.PUMP_SMALL;
     return this.KIND[kind] || this.KIND.other;
   }
 
-  static smallPump(unit) {
+  static _smallPump(unit) {
     const pumps = StationMatrix.grp('pumps');
     return !(unit.kw > pumps.kw) && Math.max(unit.l || 0, unit.w || 0) <= pumps.len;
   }

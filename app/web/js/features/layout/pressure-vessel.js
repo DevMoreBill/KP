@@ -3,6 +3,7 @@
  * vessel.pv (МПа·м³); давление — наибольшее рабочее на станции, без него — расчётное ресивера.
  */
 export class PressureVessel {
+  /** Предел произведения давления на вместимость для подконтрольного сосуда. */
   static get LIMIT() {
     return StationRules.raw('vessel.pv');
   }
@@ -28,6 +29,7 @@ export class PressureVessel {
       });
   }
 
+  /** Расчётное давление сосуда: станции или своё. */
   static pressure(station, own) {
     if (station > 0) return station;
     return own > 0 ? own : null;

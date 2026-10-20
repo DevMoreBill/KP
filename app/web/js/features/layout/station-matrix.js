@@ -137,6 +137,7 @@ export class StationMatrix {
     return this.#memo;
   }
 
+  /** Значение из памяти или вычисленное и запомненное. */
   static cached(map, key, make) {
     if (!map.has(key)) map.set(key, make());
     return map.get(key);
@@ -161,15 +162,18 @@ export class StationMatrix {
     return this.cached(this.memo().d, k, make);
   }
 
+  /** Число или значение по умолчанию. */
   static num(v, fallback) {
     const num = +v;
     return Number.isFinite(num) ? num : fallback;
   }
 
+  /** Строки таблицы группы матрицы. */
   static rows(group) {
     return this.MATRIX[group].rows || [];
   }
 
+  /** Зазор от стен, мм (0–150). */
   static gap() {
     return Math.max(0, Math.min(150, this.num(this.MATRIX.gap.v, 50)));
   }
@@ -215,19 +219,20 @@ export class StationMatrix {
     return [rec, Math.min(rec, Math.max(0, this.num(row.tight, rec)))];
   }
 
+  /** Правила доступа к агрегатам. */
   static access() {
     const access = this.MATRIX.access;
     return { back: this.num(access.back, 500), side: this.num(access.side, 600) };
   }
 
-  static sideRow(kind) {
+  static _sideRow(kind) {
     return this.rows('sides').find(line => line.kind === kind);
   }
 
   /** Обслуживаемые стороны вида: {F, B, L, R} — фронт, зад, бока. */
   static sides(kind) {
     return this.cached(this.memo().s, kind, () => {
-      const row = this.sideRow(kind) || this.sideRow('other');
+      const row = this._sideRow(kind) || this._sideRow('other');
       const sides = String((row && row.s) || 'Ф').toUpperCase();
       return Object.freeze({
         F: sides.includes('Ф'),
@@ -238,6 +243,7 @@ export class StationMatrix {
     });
   }
 
+  /** Можно ли поворачивать агрегат вида. */
   static rot(kind) {
     const row = this.rows('rotate').find(line => line.kind === kind);
     return row ? row.on !== false : !/^(dgu|cabinet)$/.test(kind);
@@ -245,68 +251,82 @@ export class StationMatrix {
 
   /** Без сервисных ворот: по отметке таблицы «Стороны», без отметки — осушители и ресиверы. */
   static noDoor(kind) {
-    const row = this.sideRow(kind);
+    const row = this._sideRow(kind);
     return row && typeof row.door === 'boolean' ? !row.door : this.NO_DOOR.test(kind);
   }
 
   /** При выносе можно наклонить. */
   static tilt(kind) {
-    const row = this.sideRow(kind);
+    const row = this._sideRow(kind);
     return row ? Boolean(row.tilt) : /^(receiver|filter|cabinet|tank)$/.test(kind);
   }
 
+  /** Группа «Ворота». */
   static gate() {
     return this.grp('gate');
   }
 
+  /** Группа «Обслуживание». */
   static service() {
     return this.grp('service');
   }
 
+  /** Группа «Двери». */
   static door() {
     return this.grp('door');
   }
 
+  /** Группа «Проходы». */
   static aisle() {
     return this.grp('aisle');
   }
 
+  /** Группа «Выходы». */
   static exits() {
     return this.grp('exits');
   }
 
+  /** Жалюзи выброса. */
   static louvre() {
     return this.grp('exhaust').louvre;
   }
 
+  /** Группа «Подбор размера». */
   static fit() {
     return this.grp('fit');
   }
 
+  /** Группа «Режимы». */
   static modes() {
     return this.grp('modes');
   }
 
+  /** Группа «Ресиверы». */
   static recv() {
     return this.grp('recv');
   }
 
+  /** Группа «Шкафы». */
   static cab() {
     return this.grp('cab');
   }
 
+  /** Группа «Перемещение». */
   static move() {
     return this.grp('move');
   }
 
+  /** Группа «Бак». */
   static tank() {
     return this.grp('tank');
   }
 
+  /** Группа «Конвекторы». */
   static conv() {
     return this.grp('conv');
   }
 
+  /** Группа «Глушители». */
   static muffler() {
     return this.grp('muffler');
   }

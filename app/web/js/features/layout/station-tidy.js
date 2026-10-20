@@ -7,6 +7,7 @@ import { StationMods } from './station-mods.js';
 export class StationTidy {
   static WALLS = ['front', 'back', 'left', 'right'];
 
+  /** Правила раздела «Аккуратность» матрицы. */
   static get RULES() {
     return StationMatrix.grp('look');
   }
@@ -28,7 +29,7 @@ export class StationTidy {
     return run.slice(1).map((item, k) => item.x - run[k].x - run[k].lx);
   }
 
-  static rowOf(items, rowIx) {
+  static _rowOf(items, rowIx) {
     return items.filter(i => i.ri === rowIx).sort((left, right) => left.x - right.x);
   }
 
@@ -45,10 +46,11 @@ export class StationTidy {
       plain(left.o) &&
       plain(right.o);
     for (const rowIx of Num.uniq(items.map(i => i.ri))) {
-      for (const run of this.runs(this.rowOf(items, rowIx), same).filter(seq => seq.length >= 3)) this.spread(run);
+      for (const run of this.runs(this._rowOf(items, rowIx), same).filter(seq => seq.length >= 3)) this.spread(run);
     }
   }
 
+  /** Ровный шаг между одинаковыми агрегатами. */
   static spread(run) {
     const gaps = this.gaps(run);
     const step = Math.floor(gaps.reduce((acc, v) => acc + v, 0) / gaps.length);
@@ -65,11 +67,11 @@ export class StationTidy {
       i => i.mount === 'floor' && !i.cross && !i.pair && !i.tank && i.kind !== 'dgu',
     );
     const rows = this.faces(floor);
-    this.scoreFacade(acc, floor, rows);
-    this.scoreStep(acc, floor, rows);
-    this.scoreGates(acc, res);
-    this.scoreLouvers(acc, res);
-    this.scoreMain(acc, res);
+    this._scoreFacade(acc, floor, rows);
+    this._scoreStep(acc, floor, rows);
+    this._scoreGates(acc, res);
+    this._scoreLouvers(acc, res);
+    this._scoreMain(acc, res);
     this.scoreMods(acc, res, geo);
     return { score: Math.max(0, 100 - acc.pen), good: acc.good, bad: acc.bad };
   }
@@ -84,7 +86,7 @@ export class StationTidy {
     return rows;
   }
 
-  static scoreFacade(acc, floor, rows) {
+  static _scoreFacade(acc, floor, rows) {
     if (floor.length <= 1) return;
     const extra = [...rows.values()].reduce((total, set) => total + set.size - 1, 0);
     if (!extra) {
@@ -95,7 +97,7 @@ export class StationTidy {
     acc.bad.push(`лицевых линий в ряду — ${extra + rows.size} (агрегаты разной глубины у стены)`);
   }
 
-  static scoreStep(acc, floor, rows) {
+  static _scoreStep(acc, floor, rows) {
     const same = (left, right) => right.kind === left.kind && right.lx === left.lx && right.ly === left.ly;
     const runs = [...rows.keys()].flatMap(k =>
       this.runs(
@@ -116,7 +118,7 @@ export class StationTidy {
     acc.bad.push('промежутки между одинаковыми агрегатами разные');
   }
 
-  static scoreGates(acc, res) {
+  static _scoreGates(acc, res) {
     for (const wall of ['front', 'back']) {
       const heights = new Set(
         (res.doors || []).filter(door => door.kind !== 'entry' && door.wall === wall).map(door => door.h),
@@ -127,7 +129,7 @@ export class StationTidy {
     }
   }
 
-  static scoreLouvers(acc, res) {
+  static _scoreLouvers(acc, res) {
     const louvers = (res.vent && res.vent.louvers) || [];
     if (!louvers.length) return;
     let off = 0;
@@ -136,7 +138,7 @@ export class StationTidy {
         ['out', 'z1'],
         ['in', 'z0'],
       ]) {
-        const lines = new Set(this.plainLouvers(louvers, wall, kind).map(item => item[key]));
+        const lines = new Set(this._plainLouvers(louvers, wall, kind).map(item => item[key]));
         if (lines.size > 1) off += lines.size - 1;
       }
     }
@@ -148,11 +150,11 @@ export class StationTidy {
     acc.bad.push('жалюзи на стене — не по одной линии (мешают ворота, двери или шкафы)');
   }
 
-  static plainLouvers(louvers, wall, kind) {
+  static _plainLouvers(louvers, wall, kind) {
     return louvers.filter(item => item.wall === wall && item.kind === kind && !item.leaf && !item.door);
   }
 
-  static scoreMain(acc, res) {
+  static _scoreMain(acc, res) {
     const air = (res.lines || []).filter(line => line.medium === 'air' && !line.header && !line.par);
     if (air.length) acc.good.push(`магистраль — на одной высоте ${Mm.text(air[0].z)} мм`);
   }
@@ -171,10 +173,10 @@ export class StationTidy {
       acc.pen += mixed * 5;
       acc.bad.push(`модулей с агрегатами и подготовкой воздуха вместе — ${mixed}`);
     } else if (content.size > 1) acc.good.push('стыки — между группами оборудования');
-    this.scoreMass(acc, res, geo, mods);
+    this._scoreMass(acc, res, geo, mods);
   }
 
-  static scoreMass(acc, res, geo, mods) {
+  static _scoreMass(acc, res, geo, mods) {
     const ox = (geo.ext[0] - geo.int[0]) / 2;
     const oy = (geo.ext[1] - geo.int[1]) / 2;
     const cellOf = item => [
@@ -229,13 +231,13 @@ export class StationTidy {
     if (!this.RULES.lines) return;
     for (const wall of StationTidy.WALLS) {
       for (const top of [true, false]) {
-        const same = this.plainLouvers(louvers, wall, top ? 'out' : 'in');
-        if (same.length >= 2) this.alignLouvers(same, { w: wall, top, walls, H: Hi, gap });
+        const same = this._plainLouvers(louvers, wall, top ? 'out' : 'in');
+        if (same.length >= 2) this._alignLouvers(same, { w: wall, top, walls, H: Hi, gap });
       }
     }
   }
 
-  static alignLouvers(same, { w: wall, top, walls, H: Hi, gap }) {
+  static _alignLouvers(same, { w: wall, top, walls, H: Hi, gap }) {
     const line = top ? Math.max(...same.map(item => item.z1)) : Math.min(...same.map(item => item.z0));
     const bounds = walls.hard[wall];
     const drop = box => {
@@ -266,11 +268,11 @@ export class StationTidy {
     const units = items.filter(i => !i.o.e.slot && !i.o.e.cross && !i.o.end && !i.o.pair && i.o.e.kind !== 'dgu');
     for (const rowIx of Num.uniq(units.map(i => i.ri))) {
       const row = units.filter(i => i.ri === rowIx);
-      if (row.length >= 2) this.alignRow(row, { W: Wi, rows, aRec, lim });
+      if (row.length >= 2) this._alignRow(row, { W: Wi, rows, aRec, lim });
     }
   }
 
-  static alignRow(row, { W: Wi, rows, aRec, lim }) {
+  static _alignRow(row, { W: Wi, rows, aRec, lim }) {
     const front = row[0].face === 1;
     const face = item => (front ? item.y + item.d : item.y);
     const can = (item, line) => {

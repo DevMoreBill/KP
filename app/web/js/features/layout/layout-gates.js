@@ -53,6 +53,7 @@ export class LayoutGates {
     ];
   }
 
+  /** Середина прохода по ширине — ось ворот. */
   static aisleMid(res, wid) {
     const [low, high] = this.aisleBand(res, wid);
     return (low + high) / 2;
@@ -108,7 +109,7 @@ export class LayoutGates {
       other => other !== item && LayoutGates._onFloor(other) && other.x < high && other.x + other.lx > low,
     );
     let aisle =
-      res.rows === 2 ? this.betweenRows(res, floor, wid) : Math.min(...floor.map(other => other.aisle), Infinity);
+      res.rows === 2 ? this._betweenRows(res, floor, wid) : Math.min(...floor.map(other => other.aisle), Infinity);
     for (const cabinet of res.items.filter(
       cab =>
         cab.mount === 'wall' && cab.wall === 'front' && cab.x < high && cab.x + cab.lx > low && cab.z < item.h + 50,
@@ -119,7 +120,7 @@ export class LayoutGates {
     return aisle;
   }
 
-  betweenRows(res, floor, wid) {
+  _betweenRows(res, floor, wid) {
     const mid = LayoutGates.aisleMid(res, wid);
     const rowA = floor.filter(other => other.y + other.ly <= mid);
     const rowB = floor.filter(other => other.y >= mid);
@@ -154,7 +155,7 @@ export class LayoutGates {
     let far = ctx.big.filter(big => !best || !best.ok.includes(big));
     far = this.secondGate(ctx, best, far);
     far = far.filter(big => !this.toGate(res, geo, big, ctx.sides)).map(big => this.sideWhy(big, ctx, avoid));
-    const rear = res.items.filter(i => i.tight).map(item => ({ it: item, rear: true, why: this.rearWhy(item) }));
+    const rear = res.items.filter(i => i.tight).map(item => ({ it: item, rear: true, why: this._rearWhy(item) }));
     res.side = [...rear, ...far];
     res.doors = this.sideDoors(res.side, res, geo);
     StationTidy.doors(res.doors);
@@ -162,11 +163,11 @@ export class LayoutGates {
     this.lay.exits.second(res, geo);
   }
 
-  rearWhy(item) {
+  _rearWhy(item) {
     return `поз. ${item.pos} стоит в ${Mm.text(item.back)} мм от стены (для обслуживания сзади нужно не меньше ${Mm.text(StationMatrix.access().back)} мм) — обслуживание сзади, монтаж и демонтаж через них`;
   }
 
-  gateFrom(ctx, side, list) {
+  _gateFrom(ctx, side, list) {
     const units = list.length
       ? list.map(big => big.it)
       : ctx.fl.filter(i => i.kind === 'compressor' || i.kind === 'pump');
@@ -183,7 +184,7 @@ export class LayoutGates {
     }
     if (!best && always && ctx.sides.length && !res.gates) best = { s: ctx.sides[0], ok: [] };
     if (!best) return null;
-    if (!res.gates) res.gates = this.gateFrom(ctx, best.s, best.ok);
+    if (!res.gates) res.gates = this._gateFrom(ctx, best.s, best.ok);
     for (const big of best.ok) this.addTo(res.gates, big.it.pos, big.why);
     return best;
   }
@@ -198,13 +199,13 @@ export class LayoutGates {
   /** До ворот не провезти — ворота и во втором торце; цепочка длиннее gate.twoAt — ворота с обоих торцов. */
   secondGate(ctx, best, far) {
     const { r: res } = ctx;
-    const other = this.otherSide(res);
+    const other = this._otherSide(res);
     if (!other || !ctx.free(other) || (res.gates.sea && other === 'left')) return far;
     const ok = far.filter(big => ctx.reach(big, other));
     const used = this.chainLength(ctx.fl);
     const twoAt = StationMatrix.gate().twoAt;
     if (!ok.length && used <= twoAt) return far;
-    res.gates2 = this.gateFrom(ctx, other, ok.length ? ok : (best && best.ok) || []);
+    res.gates2 = this._gateFrom(ctx, other, ok.length ? ok : (best && best.ok) || []);
     for (const big of ok) {
       res.gates2.pos.push(big.it.pos);
       res.gates2.why.push(big.why.replace(/ через ворота в торце$/, ' через ворота во втором торце'));
@@ -221,7 +222,7 @@ export class LayoutGates {
     return floor.length ? Math.max(...floor.map(i => i.x + i.lx)) - Math.min(...floor.map(i => i.x)) : 0;
   }
 
-  otherSide(res) {
+  _otherSide(res) {
     if (!res.gates) return null;
     return res.gates.wall === 'left' ? 'right' : 'left';
   }
@@ -475,20 +476,20 @@ export class LayoutGates {
       ex: res.door === 'side' ? this.lay.exits.entrySpan(res, geo) : null,
       keep: (res.doors || []).filter(door => door.kind === 'entry'),
     };
-    const out = list.map(cand => this.serviceDoor(cand, res, { ...ctx, T: wallT, H: height }));
+    const out = list.map(cand => this._serviceDoor(cand, res, { ...ctx, T: wallT, H: height }));
     return this.spaced(this.merged(out, ctx), ctx);
   }
 
-  wallFor({ it: item, rear, wall }, res) {
+  _wallFor({ it: item, rear, wall }, res) {
     if (wall) return wall;
     const two = res.rows === 2;
     if (rear) return two && item.row === 1 ? 'front' : 'back';
     return two && item.row !== 1 ? 'back' : 'front';
   }
 
-  serviceDoor(cand, res, { gap, lo: low, hi: high, ex: entry, keep, T: wallT, H: height }) {
+  _serviceDoor(cand, res, { gap, lo: low, hi: high, ex: entry, keep, T: wallT, H: height }) {
     const { it: item, why, rear, both } = cand;
-    const wall = this.wallFor(cand, res);
+    const wall = this._wallFor(cand, res);
     const width = LayoutOpening.svcW(item.lx, wallT);
     let from = Math.max(low, Math.min(high - width, item.x + item.lx / 2 - width / 2));
     if (wall === 'front' && entry && from < entry[1] + gap && from + width > entry[0] - gap) {
@@ -535,6 +536,7 @@ export class LayoutGates {
     return got;
   }
 
+  /** Объединяет соседние проёмы в один. */
   join(last, door) {
     last.x1 = Math.max(last.x1, door.x1);
     last.h = Math.max(last.h, door.h);

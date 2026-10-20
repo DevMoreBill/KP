@@ -26,7 +26,7 @@ export class LayoutNotes {
         ? `станция прошла по габариту перевозки без спецразрешения (ширина до ${Mm.text(StationGeo.ROAD_W)} мм)`
         : 'оборудование поместилось в заданный контейнер';
     if (modeInfo.tight) this.tight(res, why);
-    if (modeInfo.ends && res.ends) res.issues.push({ level: 'info', text: this.endsText(res.ends, why) });
+    if (modeInfo.ends && res.ends) res.issues.push({ level: 'info', text: this._endsText(res.ends, why) });
     if (modeInfo.cross && res.cross) {
       res.issues.push({
         level: 'warn',
@@ -36,6 +36,7 @@ export class LayoutNotes {
     res.mode = modeInfo;
   }
 
+  /** Замечание о суженном проходе. */
   tight(res, why) {
     const [rec, min] = this.lay.aisle0;
     const aisleW = res.aisle && res.aisle.w;
@@ -48,7 +49,7 @@ export class LayoutNotes {
     }
   }
 
-  endsText(ends, why) {
+  _endsText(ends, why) {
     const door = ends.next ? `поз. ${ends.next}` : 'остальным оборудованием';
     const recv = ends.recv.length
       ? `; ресиверы поз. ${ends.recv.join(', ')} — в два ряда у дальнего торца, доступ — через ворота там`
@@ -71,7 +72,7 @@ export class LayoutNotes {
       'info',
       `Станция из модулей: ${StationMods.shape(mods)} — модуль ${Mm.text(mods.Lm)} × ${Mm.text(mods.Wm)} × ${Mm.text(geo.ext[2])} мм (в габарите перевозки, каждый везётся отдельно), вместе ${Mm.text(geo.ext[0])} × ${Mm.text(geo.ext[1])} мм, внутри — одно помещение ${Mm.text(Li)} × ${Mm.text(Wi)} × ${Mm.text(Hi)} мм. Каждый агрегат — целиком в своём модуле. На производстве станцию собирают и стыкуют, обвязывают, запускают и проверяют; на перевозку — расстыковка трубопровода, кабелей и коммуникаций на стыках (разъёмные соединения), стыковые проёмы — временными щитами; модули везут с оборудованием внутри. На объекте — быстрая стыковка: соединение каркасов, уплотнение, нащельники на стенах и кровле, пол без порога, подключение сетей через стык; стыков — ${StationMods.joints(mods)}.`,
     );
-    this.modSize(mods, push);
+    this._modSize(mods, push);
     const cross = StationMods.cross(plan.items, geo);
     if (cross.length) {
       plan.level = 'error';
@@ -83,7 +84,7 @@ export class LayoutNotes {
     this.posts(plan, push);
   }
 
-  modSize(mod, push) {
+  _modSize(mod, push) {
     const widths = StationMods.widths();
     const [low, high] = [widths[0], widths[widths.length - 1]];
     const lMin = StationMods.RULES.lMin;
@@ -141,6 +142,7 @@ export class LayoutNotes {
     this.piping(plan, iss);
   }
 
+  /** Замечания о принятых и неизвестных габаритах. */
   sizes(iss) {
     const equip = this.lay.equip;
     const tanks = equip.filter(unit => unit.place && !unit.known && unit.kind === 'tank');
@@ -201,18 +203,19 @@ export class LayoutNotes {
       });
   }
 
-  fuelEntry(plan) {
+  _fuelEntry(plan) {
     const gate = plan.fuel.gate;
     if (gate) return `двустворчатые ворота в торце ${Mm.text(gate.w)} × ${Mm.text(gate.h)} мм (монтаж и замена бака)`;
     return plan.geo && plan.geo.sea ? 'штатные двери контейнера' : 'своя дверь снаружи';
   }
 
+  /** Замечания о топливном отсеке. */
   fuel(plan, iss) {
     if (!plan.fuel) return;
     const tankPos = Num.uniq((plan.items || []).filter(i => i.tank).map(i => i.pos)).join(', ');
     iss.push({
       level: 'info',
-      text: `Топливный бак поз. ${tankPos} — в отдельном отсеке у торца: противопожарная перегородка 1-го типа (EI 45) без проёмов, топливопровод — через гильзу с уплотнением; вход в отсек — ${this.fuelEntry(plan)}; заливная горловина — ${LayoutNotes.FILL_WALL[plan.fuel.fill.wall]}, утоплена в стену: ниша с лючком заподлицо под замок (ничего не выступает, габарит не меняется); дыхательный клапан с огнепреградителем — над крышей; бак — в поддоне на полный объём; в отсеке — естественная вентиляция.`,
+      text: `Топливный бак поз. ${tankPos} — в отдельном отсеке у торца: противопожарная перегородка 1-го типа (EI 45) без проёмов, топливопровод — через гильзу с уплотнением; вход в отсек — ${this._fuelEntry(plan)}; заливная горловина — ${LayoutNotes.FILL_WALL[plan.fuel.fill.wall]}, утоплена в стену: ниша с лючком заподлицо под замок (ничего не выступает, габарит не меняется); дыхательный клапан с огнепреградителем — над крышей; бак — в поддоне на полный объём; в отсеке — естественная вентиляция.`,
     });
   }
 
@@ -264,7 +267,7 @@ export class LayoutNotes {
     }
   }
 
-  exhaustWho(wall, all) {
+  _exhaustWho(wall, all) {
     if (wall.length === all) return all > 1 ? 'всех ДГУ' : 'ДГУ';
     return wall.length > 1 ? `${wall.length} ДГУ` : 'одной ДГУ';
   }
@@ -277,7 +280,7 @@ export class LayoutNotes {
     const heights = Num.uniq(wall.map(unit => Mm.text(unit.z))).join(' / ');
     iss.push({
       level: 'info',
-      text: `Выхлоп ${this.exhaustWho(wall, all.length)} — через заднюю стену (у каждой — свой вывод, над ДГУ на высоте ${heights} мм): глушителя на крыше для ${wall.length > 1 ? 'них' : 'неё'} в составе нет — глушитель встроен в ДГУ (у небольших ДГУ — штатно). Проходка — через гильзу с негорючей теплоизоляцией, снаружи — отвод вниз под 45° с дождевым колпаком; не напротив приточных жалюзи и дверей. Если встроенного глушителя нет — добавьте в состав «Глушитель на крыше» (по одному на ДГУ).`,
+      text: `Выхлоп ${this._exhaustWho(wall, all.length)} — через заднюю стену (у каждой — свой вывод, над ДГУ на высоте ${heights} мм): глушителя на крыше для ${wall.length > 1 ? 'них' : 'неё'} в составе нет — глушитель встроен в ДГУ (у небольших ДГУ — штатно). Проходка — через гильзу с негорючей теплоизоляцией, снаружи — отвод вниз под 45° с дождевым колпаком; не напротив приточных жалюзи и дверей. Если встроенного глушителя нет — добавьте в состав «Глушитель на крыше» (по одному на ДГУ).`,
     });
   }
 

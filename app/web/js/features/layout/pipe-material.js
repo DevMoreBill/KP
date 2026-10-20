@@ -27,6 +27,7 @@ export class PipeMaterial {
     return line.medium === 'in' ? -1 : 1;
   }
 
+  /** Материал трубы по коду. */
   static get(id) {
     return this.LIST.find(material => material.id === id) || null;
   }

@@ -22,6 +22,7 @@ export class LayoutDgu {
     this.lay = lay;
   }
 
+  /** Правила раздела «ДГУ» матрицы компоновки. */
   static get RULES() {
     return StationMatrix.grp('dgu');
   }
@@ -59,6 +60,7 @@ export class LayoutDgu {
     return best || fail;
   }
 
+  /** Ближе ли отказ к успеху, чем прежний: сначала ширина, затем меньшая нехватка. */
   closer(res, fail) {
     if (!fail) return true;
     if (fail.why === 'width' && res.why !== 'width') return true;
@@ -239,7 +241,7 @@ export class LayoutDgu {
     units.forEach((unit, i) => {
       items.push(
         unit.kind === 'dgu'
-          ? this.turned(unit, x, radGap, Wi)
+          ? this._turned(unit, x, radGap, Wi)
           : { o: { e: unit, rot: false }, ri: 0, x, lx: unit.l, d: unit.w, face: -1, ...this.back(unit, unit.w, Wi) },
       );
       x += lenX(unit) + gaps[i + 1];
@@ -264,7 +266,7 @@ export class LayoutDgu {
     };
   }
 
-  turned(unit, x, radGap, Wi) {
+  _turned(unit, x, radGap, Wi) {
     const depth = unit.l;
     const y = Wi - radGap - depth;
     return {
