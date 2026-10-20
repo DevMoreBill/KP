@@ -328,34 +328,34 @@ def _now() -> str:
     return datetime.now().isoformat(timespec='seconds')
 
 
-def norm(s) -> str:
+def norm(text) -> str:
     """Строка для поиска — как norm() в интерфейсе: нижний регистр, ё → е, без кавычек, одинарные пробелы."""
-    return re.sub(r'\s+', ' ', re.sub(r'[«»"]', '', str(s or '').lower().replace('ё', 'е'))).strip()
+    return re.sub(r'\s+', ' ', re.sub(r'[«»"]', '', str(text or '').lower().replace('ё', 'е'))).strip()
 
 
-def like_arg(q) -> str:
+def like_arg(query) -> str:
     """Подстрока для LIKE … ESCAPE '\\' (символы % и _ ищутся как есть)."""
-    return '%' + re.sub(r'([%_\\])', r'\\\1', q) + '%'
+    return '%' + re.sub(r'([%_\\])', r'\\\1', query) + '%'
 
 
 def with_track(meta, track) -> str:
     """Описание КП (строка JSON) с ходом сделки полем track."""
     if not track or not meta:
         return meta
-    t = meta.rstrip()
-    if not t.endswith('}'):
+    text = meta.rstrip()
+    if not text.endswith('}'):
         return meta
-    body = t[:-1].rstrip()
+    body = text[:-1].rstrip()
     sep = '' if body.endswith('{') else ','
     return f'{body}{sep}"track":{track}}}'
 
 
 def with_rev(text, rev) -> str:
     """Документ JSON (строка) с номером правки _rev — по нему сохранение узнаёт, что запись успели изменить."""
-    t = (text or '').lstrip()
-    if not t.startswith('{'):
+    stripped = (text or '').lstrip()
+    if not stripped.startswith('{'):
         return text
-    body = t[1:].lstrip()
+    body = stripped[1:].lstrip()
     sep = '' if body.startswith('}') else ','
     return f'{{"_rev":{int(rev or 0)}{sep}{body}'
 
@@ -393,15 +393,15 @@ class DbZip:
                 if not cls.member(z):
                     raise ValueError('в архиве нет файла базы')
                 bad = z.testzip()
-        except (zipfile.BadZipFile, OSError) as e:
-            raise ValueError(f'архив копии не читается: {e}') from e
+        except (zipfile.BadZipFile, OSError) as exc:
+            raise ValueError(f'архив копии не читается: {exc}') from exc
         if bad:
             raise ValueError(f'архив копии повреждён: {bad}')
 
     @staticmethod
     def member(z) -> str:
         """Имя файла базы внутри архива (kp.sqlite3, иначе первый .sqlite3 / .sqlite / .db) или ''."""
-        names = [n for n in z.namelist() if n.lower().endswith(('.sqlite3', '.sqlite', '.db'))]
+        names = [name for name in z.namelist() if name.lower().endswith(('.sqlite3', '.sqlite', '.db'))]
         return DbZip.MEMBER if DbZip.MEMBER in names else (names[0] if names else '')
 
     @classmethod
@@ -411,66 +411,68 @@ class DbZip:
             name = cls.member(z)
             if not name:
                 raise ValueError('В архиве нет файла базы (.sqlite3)')
-            with z.open(name) as fi, open(dst, 'wb') as fo:
+            with z.open(name) as src_file, open(dst, 'wb') as dst_file:
                 while True:
-                    b = fi.read(cls.CHUNK)
-                    if not b:
+                    chunk = src_file.read(cls.CHUNK)
+                    if not chunk:
                         break
-                    fo.write(b)
+                    dst_file.write(chunk)
         return dst
 
     @staticmethod
     def integrity(path, quick=False) -> str:
         """Проверка файла базы встроенной проверкой SQLite: 'ok' или текст ошибки."""
-        c = sqlite3.connect(path, timeout=30)
+        conn = sqlite3.connect(path, timeout=30)
         try:
-            r = c.execute('PRAGMA quick_check' if quick else 'PRAGMA integrity_check').fetchall()
-            return 'ok' if [x[0] for x in r] == ['ok'] else '; '.join(str(x[0]) for x in r[:5])
+            row = conn.execute('PRAGMA quick_check' if quick else 'PRAGMA integrity_check').fetchall()
+            return 'ok' if [x[0] for x in row] == ['ok'] else '; '.join(str(x[0]) for x in row[:5])
         finally:
-            c.close()
+            conn.close()
 
 
 class Conflict(Exception):
     """Запись изменили после того, как её открыли: rev — текущий номер правки, by и at — кто и когда."""
 
-    def __init__(self, rev, by: str, at) -> None:
+    def __init__(self, rev, author: str, stamp) -> None:
         Exception.__init__(self, 'Запись уже изменена')
-        self.rev, self.by, self.at = rev, by or '', at or ''
+        self.rev, self.author, self.stamp = rev, author or '', stamp or ''
 
     def info(self) -> dict:
-        return {'conflict': True, 'rev': self.rev, 'by': self.by, 'at': self.at}
+        return {'conflict': True, 'rev': self.rev, 'by': self.author, 'at': self.stamp}
 
 
 def client_cols(doc) -> tuple:
     """Столбцы контрагента для поиска и сортировки."""
-    d = doc if isinstance(doc, dict) else {}
+    data = doc if isinstance(doc, dict) else {}
     return (
-        str(d.get('name') or '')[:300],
-        re.sub(r'\D', '', str(d.get('inn') or ''))[:12],
-        str(d.get('usedAt') or d.get('updatedAt') or '')[:40],
-        norm(' '.join(str(d.get(k) or '') for k in ('name', 'full', 'inn', 'address')))[:1000],
+        str(data.get('name') or '')[:300],
+        re.sub(r'\D', '', str(data.get('inn') or ''))[:12],
+        str(data.get('usedAt') or data.get('updatedAt') or '')[:40],
+        norm(' '.join(str(data.get(k) or '') for k in ('name', 'full', 'inn', 'address')))[:1000],
     )
 
 
 def kp_cols(meta) -> tuple:
     """Столбцы журнала КП из описания (meta) для поиска и фильтров."""
-    d = meta if isinstance(meta, dict) else {}
-    items = d.get('items') if isinstance(d.get('items'), list) else []
-    td = d.get('tender') if isinstance(d.get('tender'), dict) else {}
-    tnd = ['тендер ' + str(td['number'])] if td.get('number') else []  # поиск по номеру закупки и слову «тендер»
+    data = meta if isinstance(meta, dict) else {}
+    items = data.get('items') if isinstance(data.get('items'), list) else []
+    tender = data.get('tender') if isinstance(data.get('tender'), dict) else {}
+    tnd = (
+        ['тендер ' + str(tender['number'])] if tender.get('number') else []
+    )  # поиск по номеру закупки и слову «тендер»
     return (
-        str(d.get('client') or '')[:300],
-        re.sub(r'\D', '', str(d.get('clientInn') or ''))[:12],
-        str(d.get('manager') or '')[:200],
-        str(d.get('date') or '')[:20],
-        str(d.get('savedAt') or '')[:40],
+        str(data.get('client') or '')[:300],
+        re.sub(r'\D', '', str(data.get('clientInn') or ''))[:12],
+        str(data.get('manager') or '')[:200],
+        str(data.get('date') or '')[:20],
+        str(data.get('savedAt') or '')[:40],
         norm(
             ' '.join(
                 [
-                    str(d.get('number') or ''),
-                    str(d.get('client') or ''),
-                    str(d.get('clientInn') or ''),
-                    str(d.get('manager') or ''),
+                    str(data.get('number') or ''),
+                    str(data.get('client') or ''),
+                    str(data.get('clientInn') or ''),
+                    str(data.get('manager') or ''),
                 ]
                 + tnd
                 + [str(x) for x in items]
@@ -479,96 +481,98 @@ def kp_cols(meta) -> tuple:
     )
 
 
-def _fill_columns(st, c) -> None:
+def _fill_columns(store, conn) -> None:
     """Миграция 2027-01-db: заполнить новые столбцы контрагентов и журнала КП из сохранённых документов."""
-    for cid, doc in c.execute('SELECT id, doc FROM clients').fetchall():
+    for cid, doc in conn.execute('SELECT id, doc FROM clients').fetchall():
         try:
-            d = json.loads(doc)
+            data = json.loads(doc)
         except ValueError:
-            d = {}
-        c.execute('UPDATE clients SET name=?, inn=?, used_at=?, search=? WHERE id=?', (*client_cols(d), cid))
-    for kid, meta in c.execute('SELECT id, meta FROM kp WHERE meta IS NOT NULL').fetchall():
+            data = {}
+        conn.execute('UPDATE clients SET name=?, inn=?, used_at=?, search=? WHERE id=?', (*client_cols(data), cid))
+    for kid, meta in conn.execute('SELECT id, meta FROM kp WHERE meta IS NOT NULL').fetchall():
         try:
-            d = json.loads(meta)
+            data = json.loads(meta)
         except ValueError:
-            d = {}
-        c.execute('UPDATE kp SET client=?, inn=?, manager=?, kdate=?, saved=?, search=? WHERE id=?', (*kp_cols(d), kid))
+            data = {}
+        conn.execute(
+            'UPDATE kp SET client=?, inn=?, manager=?, kdate=?, saved=?, search=? WHERE id=?', (*kp_cols(data), kid)
+        )
 
 
 def cat_search(doc) -> str:
     """Строка поиска позиции на сервере: название, описание строкой, параметры, характеристики, артикул (без повторов слов)."""
-    a = doc.get('attrs') if isinstance(doc.get('attrs'), dict) else {}
-    fd = doc.get('feed') if isinstance(doc.get('feed'), dict) else {}
-    parts = [doc.get('name'), doc.get('spec'), doc.get('short'), fd.get('sku')] + [
-        v for v in a.values() if isinstance(v, (str, int, float))
+    attrs = doc.get('attrs') if isinstance(doc.get('attrs'), dict) else {}
+    feed = doc.get('feed') if isinstance(doc.get('feed'), dict) else {}
+    parts = [doc.get('name'), doc.get('spec'), doc.get('short'), feed.get('sku')] + [
+        v for v in attrs.values() if isinstance(v, (str, int, float))
     ]
-    for g in doc.get('groups') or []:
-        for r in (g.get('rows') or []) if isinstance(g, dict) else []:
-            if isinstance(r, dict):
-                parts.append('{} {}'.format(r.get('k', ''), r.get('v', '')))
+    for group in doc.get('groups') or []:
+        for row in (group.get('rows') or []) if isinstance(group, dict) else []:
+            if isinstance(row, dict):
+                parts.append('{} {}'.format(row.get('k', ''), row.get('v', '')))
     seen, words = set(), []
-    for w in norm(' '.join(str(x) for x in parts if x not in (None, ''))).split():
-        if w not in seen:
-            seen.add(w)
-            words.append(w)
+    for word in norm(' '.join(str(x) for x in parts if x not in (None, ''))).split():
+        if word not in seen:
+            seen.add(word)
+            words.append(word)
     return ' '.join(words)[:6000]
 
 
-def _fill_sync(st, c) -> None:
+def _fill_sync(store, conn) -> None:
     """Миграция 2027-07: строка поиска и номер изменения у всех позиций; облегчённые карточки — без строки поиска."""
-    c.execute(
+    conn.execute(
         "INSERT INTO kv (key, value) VALUES ('datarev:catalog', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1"
     )
-    seq = int(c.execute("SELECT value FROM kv WHERE key='datarev:catalog'").fetchone()[0])
-    for cid, doc in c.execute('SELECT id, doc FROM catalog').fetchall():
+    seq = int(conn.execute("SELECT value FROM kv WHERE key='datarev:catalog'").fetchone()[0])
+    for cid, doc in conn.execute('SELECT id, doc FROM catalog').fetchall():
         try:
-            d = json.loads(doc)
+            data = json.loads(doc)
         except ValueError:
             continue
-        c.execute(
+        conn.execute(
             'UPDATE catalog SET light=?, search=?, seq=? WHERE id=?',
-            (json.dumps(light_of(d), ensure_ascii=False), cat_search(d), seq, cid),
+            (json.dumps(light_of(data), ensure_ascii=False), cat_search(data), seq, cid),
         )
-    c.execute('INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)', ('catepoch', json.dumps(os.urandom(6).hex())))
+    conn.execute('INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)', ('catepoch', json.dumps(os.urandom(6).hex())))
 
 
-def _fill_light(st, c) -> None:
+def _fill_light(store, conn) -> None:
     """Миграция 2027-02-light: облегчённые карточки каталога заново — с фидом-источником и артикулом (фильтр «Поставщик», поиск по артикулу)."""
-    for cid, doc in c.execute('SELECT id, doc FROM catalog').fetchall():
+    for cid, doc in conn.execute('SELECT id, doc FROM catalog').fetchall():
         try:
-            d = json.loads(doc)
+            data = json.loads(doc)
         except ValueError:
             continue
-        c.execute('UPDATE catalog SET light=? WHERE id=?', (json.dumps(light_of(d), ensure_ascii=False), cid))
-    c.execute(
+        conn.execute('UPDATE catalog SET light=? WHERE id=?', (json.dumps(light_of(data), ensure_ascii=False), cid))
+    conn.execute(
         "INSERT INTO kv (key, value) VALUES ('datarev:catalog', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1"
     )
 
 
-def _fill_crm(st, c) -> None:
+def _fill_crm(store, conn) -> None:
     """Миграция 2027-10-crm: КП журнала — по сделкам (одного клиента у одного менеджера с промежутком до 30 дней — одна сделка)."""
     from crm import DealBook
 
-    DealBook(st)._adopt(c)
+    DealBook(store)._adopt(conn)
 
 
 def feed_of(doc) -> str | None:
     """Фид-источник позиции каталога (столбец feed_id) или None."""
-    fd = doc.get('feed') if isinstance(doc, dict) and isinstance(doc.get('feed'), dict) else {}
-    return str(fd['id'])[:80] if fd.get('id') else None
+    feed = doc.get('feed') if isinstance(doc, dict) and isinstance(doc.get('feed'), dict) else {}
+    return str(feed['id'])[:80] if feed.get('id') else None
 
 
-def _fill_feed(st, c) -> None:
+def _fill_feed(store, conn) -> None:
     """Миграция 2027-12: фид-источник позиций — в столбец feed_id."""
     rows = []
-    for cid, doc in c.execute('SELECT id, doc FROM catalog WHERE doc LIKE \'%"feed"%\'').fetchall():
+    for cid, doc in conn.execute('SELECT id, doc FROM catalog WHERE doc LIKE \'%"feed"%\'').fetchall():
         try:
-            f = feed_of(json.loads(doc))
+            feed = feed_of(json.loads(doc))
         except ValueError:
             continue
-        if f:
-            rows.append((f, cid))
-    c.executemany('UPDATE catalog SET feed_id=? WHERE id=?', rows)
+        if feed:
+            rows.append((feed, cid))
+    conn.executemany('UPDATE catalog SET feed_id=? WHERE id=?', rows)
 
 
 MIGRATION_FILL = {
@@ -582,19 +586,19 @@ MIGRATION_FILL = {
 
 
 def light_of(doc) -> dict:
-    d = {k: doc[k] for k in LIGHT_KEYS if k in doc}
-    if isinstance(d.get('prices'), list):
-        d['prices'] = d['prices'][:5]
-        d['pricesCount'] = len(doc.get('prices') or [])
+    data = {k: doc[k] for k in LIGHT_KEYS if k in doc}
+    if isinstance(data.get('prices'), list):
+        data['prices'] = data['prices'][:5]
+        data['pricesCount'] = len(doc.get('prices') or [])
     # поиск по значениям характеристик — на сервере (столбец search, /api/catalog/search), в карточке браузера его нет
-    fd = doc.get('feed') if isinstance(doc.get('feed'), dict) else {}
-    if fd.get('id'):  # фид-источник — фильтр «Поставщик» в каталоге
-        d['src'] = str(fd['id'])[:40]
-    art = fd.get('sku') or (doc.get('attrs') if isinstance(doc.get('attrs'), dict) else {}).get('article')
+    feed = doc.get('feed') if isinstance(doc.get('feed'), dict) else {}
+    if feed.get('id'):  # фид-источник — фильтр «Поставщик» в каталоге
+        data['src'] = str(feed['id'])[:40]
+    art = feed.get('sku') or (doc.get('attrs') if isinstance(doc.get('attrs'), dict) else {}).get('article')
     if art:  # артикул поставщика — поиск по артикулу
-        d['art'] = str(art)[:60]
-    d['_light'] = True
-    return d
+        data['art'] = str(art)[:60]
+    data['_light'] = True
+    return data
 
 
 class DocLimits:
@@ -638,29 +642,29 @@ class TxLock:
 
     def __init__(self, store) -> None:
         self.store = store
-        self.rl = threading.RLock()
+        self.rlock = threading.RLock()
         self.depth = threading.local()
 
-    def acquire(self, *a, **k) -> bool:
-        ok = self.rl.acquire(*a, **k)
+    def acquire(self, *args, **k) -> bool:
+        ok = self.rlock.acquire(*args, **k)
         if ok:
             self.depth.n = getattr(self.depth, 'n', 0) + 1
         return ok
 
     def release(self) -> None:
         self.depth.n -= 1
-        self.rl.release()
+        self.rlock.release()
 
     def __enter__(self) -> 'TxLock':
         self.acquire()
         return self
 
-    def __exit__(self, et, ev, tb) -> bool:
+    def __exit__(self, exc_type, exc_val, trace) -> bool:
         try:
-            if et is not None and self.depth.n == 1:
-                c = getattr(self.store.local, 'c', None)
-                if c is not None and c.in_transaction:
-                    c.rollback()
+            if exc_type is not None and self.depth.n == 1:
+                conn = getattr(self.store.local, 'c', None)
+                if conn is not None and conn.in_transaction:
+                    conn.rollback()
         finally:
             self.release()
         return False
@@ -672,26 +676,26 @@ class WriteBatch:
     SIZE = 500
 
     def __init__(self, store, size=None) -> None:
-        self.store, self.size, self.n = store, size or self.SIZE, 0
+        self.store, self.size, self.count = store, size or self.SIZE, 0
 
     def __enter__(self) -> 'WriteBatch':
         self.store.lock.acquire()
         return self
 
     def step(self) -> None:
-        self.n += 1
-        if self.n % self.size == 0:
+        self.count += 1
+        if self.count % self.size == 0:
             self.store.conn().commit()
             self.store.lock.release()
             self.store.lock.acquire()
 
-    def __exit__(self, et, ev, tb) -> bool:
+    def __exit__(self, exc_type, exc_val, trace) -> bool:
         try:
-            c = self.store.conn()
-            if et is None:
-                c.commit()
-            elif c.in_transaction:
-                c.rollback()
+            conn = self.store.conn()
+            if exc_type is None:
+                conn.commit()
+            elif conn.in_transaction:
+                conn.rollback()
         finally:
             self.store.lock.release()
         return False
@@ -703,44 +707,48 @@ class Store:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         self.local = threading.local()
         self.lock = TxLock(self)
-        c = self.conn()
-        c.executescript(SCHEMA)
-        c.commit()
+        conn = self.conn()
+        conn.executescript(SCHEMA)
+        conn.commit()
         self.migrations_up()
 
     def conn(self) -> sqlite3.Connection:
-        c = getattr(self.local, 'c', None)
-        if c is None:
-            c = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
-            c.execute('PRAGMA journal_mode=WAL')
-            c.execute('PRAGMA synchronous=NORMAL')
-            c.execute('PRAGMA foreign_keys=ON')
-            self.local.c = c
-        return c
+        conn = getattr(self.local, 'c', None)
+        if conn is None:
+            conn = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
+            conn.execute('PRAGMA journal_mode=WAL')
+            conn.execute('PRAGMA synchronous=NORMAL')
+            conn.execute('PRAGMA foreign_keys=ON')
+            self.local.c = conn
+        return conn
 
-    def _next_rev(self, c, table, key, base_rev) -> int:
+    def _next_rev(self, conn, table, key, base_rev) -> int:
         """Номер следующей правки записи; base_rev (с какой правки начинали) не совпал — Conflict."""
-        r = c.execute(f'SELECT rev, updated_by, updated FROM {table} WHERE id=?', (key,)).fetchone()
-        cur = (r[0] or 0) if r else 0
-        if base_rev not in (None, '') and r and int(base_rev) != cur:
-            raise Conflict(cur, r[1], r[2])
+        row = conn.execute(f'SELECT rev, updated_by, updated FROM {table} WHERE id=?', (key,)).fetchone()
+        cur = (row[0] or 0) if row else 0
+        if base_rev not in (None, '') and row and int(base_rev) != cur:
+            raise Conflict(cur, row[1], row[2])
         return cur + 1
 
     def catalog_revs(self) -> dict:
         """{id позиции каталога: номер правки} — снимок перед долгой записью (загрузка фида)."""
-        return {i: r or 0 for i, r in self.all('SELECT id, rev FROM catalog')}
+        return {i: row or 0 for i, row in self.all('SELECT id, rev FROM catalog')}
 
     def rev_of(self, table, key) -> dict:
         if table not in ('kp', 'catalog', 'clients', 'managers', 'suppliers', 'deals'):
             raise ValueError(table)
-        r = self.one(f'SELECT rev, updated_by, updated FROM {table} WHERE id=?', (key,))
-        return {'rev': (r[0] or 0) if r else 0, 'by': (r[1] or '') if r else '', 'at': (r[2] or '') if r else ''}
+        row = self.one(f'SELECT rev, updated_by, updated FROM {table} WHERE id=?', (key,))
+        return {
+            'rev': (row[0] or 0) if row else 0,
+            'by': (row[1] or '') if row else '',
+            'at': (row[2] or '') if row else '',
+        }
 
     def write(self, sql, args=()) -> None:
         with self.lock:
-            c = self.conn()
-            c.execute(sql, args)
-            c.commit()
+            conn = self.conn()
+            conn.execute(sql, args)
+            conn.commit()
 
     def one(self, sql, args=()) -> tuple | None:
         return self.conn().execute(sql, args).fetchone()
@@ -751,14 +759,14 @@ class Store:
     def joined(self, sql, args=(), sep=',') -> str:
         """Первый столбец выборки одной строкой через sep — склеивает сама база."""
         try:
-            r = self.one(f'SELECT group_concat(x, ?) FROM ({sql})', (sep, *tuple(args)))
-        except (sqlite3.DataError, sqlite3.OperationalError) as e:
-            if 'too big' not in str(e):
+            res = self.one(f'SELECT group_concat(x, ?) FROM ({sql})', (sep, *tuple(args)))
+        except (sqlite3.DataError, sqlite3.OperationalError) as exc:
+            if 'too big' not in str(exc):
                 raise
             return sep.join(
                 row[0] for row in self.all(sql, args) if row[0] is not None
             )  # больше 1 ГБ одной строкой — по строкам
-        return (r[0] or '') if r else ''
+        return (res[0] or '') if res else ''
 
     def catalog_light(self) -> str:
         return '[' + self.joined('SELECT light AS x FROM catalog ORDER BY name') + ']'
@@ -767,19 +775,19 @@ class Store:
         return '[' + self.joined('SELECT doc AS x FROM catalog ORDER BY name') + ']'
 
     def catalog_get(self, cid, rev=False) -> str | None:
-        r = self.one('SELECT doc, rev FROM catalog WHERE id=?', (cid,))
-        return (with_rev(r[0], r[1]) if rev else r[0]) if r else None
+        row = self.one('SELECT doc, rev FROM catalog WHERE id=?', (cid,))
+        return (with_rev(row[0], row[1]) if rev else row[0]) if row else None
 
-    def catalog_put(self, cid, text, by: str = '', base_rev=None, commit=True) -> int:
+    def catalog_put(self, cid, text, author: str = '', base_rev=None, commit=True) -> int:
         doc = json.loads(text)
         doc['id'] = cid
         doc.pop('_rev', None)
-        a = doc.get('attrs') if isinstance(doc.get('attrs'), dict) else {}
+        attrs = doc.get('attrs') if isinstance(doc.get('attrs'), dict) else {}
         with self.lock:
-            c = self.conn()
-            rev = self._next_rev(c, 'catalog', cid, base_rev)
-            seq = self._cat_seq(c)
-            c.execute(
+            conn = self.conn()
+            rev = self._next_rev(conn, 'catalog', cid, base_rev)
+            seq = self._cat_seq(conn)
+            conn.execute(
                 'INSERT OR REPLACE INTO catalog (id, doc, light, name, cat, maker, updated, rev, updated_by, seq, search, feed_id) '
                 'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
                 (
@@ -787,36 +795,36 @@ class Store:
                     json.dumps(doc, ensure_ascii=False),
                     json.dumps(light_of(doc), ensure_ascii=False),
                     doc.get('name', ''),
-                    a.get('cat', ''),
-                    a.get('maker', ''),
+                    attrs.get('cat', ''),
+                    attrs.get('maker', ''),
                     _now(),
                     rev,
-                    str(by or '')[:120],
+                    str(author or '')[:120],
                     seq,
                     cat_search(doc),
                     feed_of(doc),
                 ),
             )
-            c.execute('DELETE FROM catalog_gone WHERE id=?', (cid,))
+            conn.execute('DELETE FROM catalog_gone WHERE id=?', (cid,))
             if commit:
-                c.commit()
+                conn.commit()
         return rev
 
-    def _cat_seq(self, c) -> int:
+    def _cat_seq(self, conn) -> int:
         """Новый номер изменения каталога (он же версия справочника «каталог»)."""
-        self._bump_data(c, 'catalog')
-        return int(c.execute("SELECT value FROM kv WHERE key='datarev:catalog'").fetchone()[0])
+        self._bump_data(conn, 'catalog')
+        return int(conn.execute("SELECT value FROM kv WHERE key='datarev:catalog'").fetchone()[0])
 
     def catalog_epoch(self) -> str:
         """Метка «поколения» каталога: меняется, когда база заменена целиком, — браузеры тогда загружают каталог заново."""
-        e = self.kv_get('catepoch')
-        if not e:
-            e = os.urandom(6).hex()
-            self.write('INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)', ('catepoch', json.dumps(e)))
-        return e
+        epoch = self.kv_get('catepoch')
+        if not epoch:
+            epoch = os.urandom(6).hex()
+            self.write('INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)', ('catepoch', json.dumps(epoch)))
+        return epoch
 
-    def _bump_data(self, c, name) -> None:
-        c.execute(
+    def _bump_data(self, conn, name) -> None:
+        conn.execute(
             "INSERT INTO kv (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1",
             ('datarev:' + name,),
         )
@@ -824,14 +832,14 @@ class Store:
     def touch_data(self, *names) -> None:
         """Справочники изменены не через свои методы (загрузка копии) — браузеры перекачают их."""
         with self.lock:
-            c = self.conn()
+            conn = self.conn()
             for name in names:
-                self._bump_data(c, name)
-            c.commit()
+                self._bump_data(conn, name)
+            conn.commit()
 
     def data_rev(self, name) -> str:
-        r = self.one('SELECT value FROM kv WHERE key=?', ('datarev:' + name,))
-        return str(r[0]) if r else '0'
+        row = self.one('SELECT value FROM kv WHERE key=?', ('datarev:' + name,))
+        return str(row[0]) if row else '0'
 
     def catalog_count(self) -> int:
         return self.one('SELECT COUNT(*) FROM catalog')[0]
@@ -840,33 +848,33 @@ class Store:
         return self.kv_get('schema') or []
 
     @staticmethod
-    def _idempotent(c, script) -> str:
+    def _idempotent(conn, script) -> str:
         """ADD COLUMN — только если столбца нет, DROP COLUMN — только если есть (база без отметки «schema»)."""
 
-        def keep(m) -> str:
-            have = {r[1] for r in c.execute('PRAGMA table_info({})'.format(m.group('t')))}
-            exists = m.group('col') in have
-            return m.group(0) if (m.group('op').upper() == 'ADD') != exists else ''
+        def keep(match) -> str:
+            have = {row[1] for row in conn.execute('PRAGMA table_info({})'.format(match.group('t')))}
+            exists = match.group('col') in have
+            return match.group(0) if (match.group('op').upper() == 'ADD') != exists else ''
 
         return re.sub(r'ALTER TABLE (?P<t>\w+) (?P<op>ADD|DROP) COLUMN (?P<col>\w+)[^;]*;', keep, script, flags=re.I)
 
     def _atomic_script(self, script, then=None, mark=None) -> None:
         """Схема, заполнение и отметка в kv «schema» — одной транзакцией: при сбое база остаётся как была."""
         with self.lock:
-            c = self.conn()
-            c.commit()
+            conn = self.conn()
+            conn.commit()
             try:
-                c.executescript('BEGIN IMMEDIATE;\n' + self._idempotent(c, script))
+                conn.executescript('BEGIN IMMEDIATE;\n' + self._idempotent(conn, script))
                 if then:
-                    then(self, c)
+                    then(self, conn)
                 if mark is not None:
-                    c.execute(
+                    conn.execute(
                         'INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)',
                         ('schema', json.dumps(mark, ensure_ascii=False)),
                     )
-                c.commit()
+                conn.commit()
             except Exception:
-                c.rollback()
+                conn.rollback()
                 raise
 
     def migrations_up(self) -> None:
@@ -880,18 +888,18 @@ class Store:
                     'kp-{}-before-{}.zip'.format(datetime.now().strftime('%Y%m%d-%H%M%S'), todo[0][0]),
                 )
             )
-        for mid, up, _down in todo:
+        for mid, step, _down in todo:
             done = [*done, mid]
-            self._atomic_script(up, MIGRATION_FILL.get(mid), done)
+            self._atomic_script(step, MIGRATION_FILL.get(mid), done)
 
     def migration_last(self) -> str | None:
         """Последняя применённая миграция — откатить можно только её."""
         done = self.migrations_applied()
-        return next((i for i, _u, _d in reversed(MIGRATIONS) if i in done), None)
+        return next((i for i, _u, _desc in reversed(MIGRATIONS) if i in done), None)
 
     def migration_down(self, mid: str) -> None:
         """Откат последней миграции: её таблицы и столбцы удаляются (данные в них теряются), остальная база не меняется."""
-        down = next((d for i, _u, d in MIGRATIONS if i == mid), None)
+        down = next((desc for i, _u, desc in MIGRATIONS if i == mid), None)
         if down is None or mid not in self.migrations_applied():
             raise ValueError(f'Миграция не применена: {mid}')
         if mid != self.migration_last():
@@ -936,145 +944,147 @@ class Store:
         'result',
     )
 
-    def _audit_row(self, r) -> dict:
-        d = dict(zip(self.AUDIT_COLS, r, strict=False))
+    def _audit_row(self, row) -> dict:
+        data = dict(zip(self.AUDIT_COLS, row, strict=False))
         for k in ('before', 'after'):
-            if d[k]:
+            if data[k]:
                 try:
-                    d[k] = json.loads(d[k])
+                    data[k] = json.loads(data[k])
                 except Exception:
                     pass
-        return d
+        return data
 
-    def audit_query(self, f, limit: int = 50, offset: int = 0) -> dict:
+    def audit_query(self, filt, limit: int = 50, offset: int = 0) -> dict:
         """Записи журнала действий по фильтрам: user, action, entity, q (поиск), from, to (даты ГГГГ-ММ-ДД)."""
         where, args = [], []
-        if f.get('user'):
+        if filt.get('user'):
             where.append('user_name = ?')
-            args.append(f['user'])
-        if f.get('action'):
+            args.append(filt['user'])
+        if filt.get('action'):
             where.append('action = ?')
-            args.append(f['action'])
-        if f.get('entity'):
+            args.append(filt['action'])
+        if filt.get('entity'):
             where.append('entity_type = ?')
-            args.append(f['entity'])
-        if f.get('from'):
+            args.append(filt['entity'])
+        if filt.get('from'):
             where.append('ts >= ?')
-            args.append(f['from'])
-        if f.get('to'):
+            args.append(filt['from'])
+        if filt.get('to'):
             where.append('ts < ?')
-            args.append(f['to'] + 'T99')
-        if f.get('q'):
+            args.append(filt['to'] + 'T99')
+        if filt.get('q'):
             where.append(
                 "(entity_id LIKE ? ESCAPE '\\' OR user_name LIKE ? ESCAPE '\\' OR after LIKE ? ESCAPE '\\' OR before LIKE ? ESCAPE '\\')"
             )
-            args += [like_arg(f['q'])] * 4
-        w = (' WHERE ' + ' AND '.join(where)) if where else ''
-        total = self.one('SELECT COUNT(*) FROM audit' + w, args)[0]
+            args += [like_arg(filt['q'])] * 4
+        where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
+        total = self.one('SELECT COUNT(*) FROM audit' + where_sql, args)[0]
         rows = self.all(
             'SELECT id, ts, user_id, user_name, role, action, entity_type, entity_id, before, after, ip, ua, result '
-            'FROM audit' + w + ' ORDER BY id DESC LIMIT ? OFFSET ?',
+            'FROM audit' + where_sql + ' ORDER BY id DESC LIMIT ? OFFSET ?',
             [*args, int(limit), int(offset)],
         )
-        return {'total': total, 'items': [self._audit_row(r) for r in rows]}
+        return {'total': total, 'items': [self._audit_row(row) for row in rows]}
 
     def audit_get(self, aid) -> dict | None:
-        r = self.one(
+        row = self.one(
             'SELECT id, ts, user_id, user_name, role, action, entity_type, entity_id, before, after, ip, ua, result '
             'FROM audit WHERE id=?',
             (aid,),
         )
-        return self._audit_row(r) if r else None
+        return self._audit_row(row) if row else None
 
     def audit_distinct(self, col) -> list:
         if col not in ('user_name', 'action', 'entity_type'):
             raise ValueError(col)
         return [
-            r[0]
-            for r in self.all(f'SELECT DISTINCT {col} FROM audit WHERE {col} IS NOT NULL AND {col} <> "" ORDER BY 1')
+            row[0]
+            for row in self.all(f'SELECT DISTINCT {col} FROM audit WHERE {col} IS NOT NULL AND {col} <> "" ORDER BY 1')
         ]
 
-    def trash_put(self, etype, eid, title, by: str) -> dict | None:
+    def trash_put(self, etype, eid, title, author: str) -> dict | None:
         table = TRASH_TABLES[etype]
         with self.lock:
-            c = self.conn()
-            cur = c.execute(f'SELECT * FROM {table} WHERE id=?', (eid,))
+            conn = self.conn()
+            cur = conn.execute(f'SELECT * FROM {table} WHERE id=?', (eid,))
             row = cur.fetchone()
             if not row:
                 return None
             data = dict(zip([x[0] for x in cur.description], row, strict=False))
-            c.execute(
+            conn.execute(
                 'INSERT INTO trash (entity_type, entity_id, title, data, deleted_at, deleted_by) VALUES (?,?,?,?,?,?)',
-                (etype, eid, title, json.dumps(data, ensure_ascii=False), _now(), by),
+                (etype, eid, title, json.dumps(data, ensure_ascii=False), _now(), author),
             )
-            c.execute(f'DELETE FROM {table} WHERE id=?', (eid,))
+            conn.execute(f'DELETE FROM {table} WHERE id=?', (eid,))
             if table == 'catalog':  # браузеры уберут позицию при следующей догрузке изменений
-                c.execute('INSERT OR REPLACE INTO catalog_gone (id, seq) VALUES (?,?)', (eid, self._cat_seq(c)))
+                conn.execute('INSERT OR REPLACE INTO catalog_gone (id, seq) VALUES (?,?)', (eid, self._cat_seq(conn)))
             elif table in ('managers', 'suppliers'):
-                self._bump_data(c, table)
-            c.commit()
+                self._bump_data(conn, table)
+            conn.commit()
         return data
 
-    def trash_put_many(self, etype, rows, by: str) -> int:
+    def trash_put_many(self, etype, rows, author: str) -> int:
         """Много записей в корзину одной транзакцией (позиции фида — тысячи): rows — [(id, название)]. → сколько перенесено."""
-        table, n = TRASH_TABLES[etype], 0
+        table, count = TRASH_TABLES[etype], 0
         with self.lock:
-            c = self.conn()
+            conn = self.conn()
             for eid, title in rows:
-                cur = c.execute(f'SELECT * FROM {table} WHERE id=?', (eid,))
+                cur = conn.execute(f'SELECT * FROM {table} WHERE id=?', (eid,))
                 row = cur.fetchone()
                 if not row:
                     continue
                 data = dict(zip([x[0] for x in cur.description], row, strict=False))
-                c.execute(
+                conn.execute(
                     'INSERT INTO trash (entity_type, entity_id, title, data, deleted_at, deleted_by) VALUES (?,?,?,?,?,?)',
-                    (etype, eid, title, json.dumps(data, ensure_ascii=False), _now(), by),
+                    (etype, eid, title, json.dumps(data, ensure_ascii=False), _now(), author),
                 )
-                c.execute(f'DELETE FROM {table} WHERE id=?', (eid,))
+                conn.execute(f'DELETE FROM {table} WHERE id=?', (eid,))
                 if table == 'catalog':
-                    c.execute('INSERT OR REPLACE INTO catalog_gone (id, seq) VALUES (?,?)', (eid, self._cat_seq(c)))
-                n += 1
-            if n and table in ('managers', 'suppliers'):
-                self._bump_data(c, table)
-            c.commit()
-        return n
+                    conn.execute(
+                        'INSERT OR REPLACE INTO catalog_gone (id, seq) VALUES (?,?)', (eid, self._cat_seq(conn))
+                    )
+                count += 1
+            if count and table in ('managers', 'suppliers'):
+                self._bump_data(conn, table)
+            conn.commit()
+        return count
 
     def trash_list(self) -> list:
         return [
-            dict(zip(('id', 'entityType', 'entityId', 'title', 'deletedAt', 'deletedBy'), r, strict=False))
-            for r in self.all(
+            dict(zip(('id', 'entityType', 'entityId', 'title', 'deletedAt', 'deletedBy'), row, strict=False))
+            for row in self.all(
                 'SELECT id, entity_type, entity_id, title, deleted_at, deleted_by FROM trash ORDER BY id DESC'
             )
         ]
 
     def trash_restore(self, tid: str) -> tuple:
-        r = self.one('SELECT entity_type, entity_id, data FROM trash WHERE id=?', (tid,))
-        if not r:
+        row = self.one('SELECT entity_type, entity_id, data FROM trash WHERE id=?', (tid,))
+        if not row:
             raise ValueError('Нет такой записи в корзине')
-        etype, eid, data = r[0], r[1], json.loads(r[2])
+        etype, eid, data = row[0], row[1], json.loads(row[2])
         table = TRASH_TABLES[etype]
         with self.lock:
-            c = self.conn()
-            if c.execute(f'SELECT 1 FROM {table} WHERE id=?', (eid,)).fetchone():
+            conn = self.conn()
+            if conn.execute(f'SELECT 1 FROM {table} WHERE id=?', (eid,)).fetchone():
                 raise ValueError('Запись с таким id уже есть — восстановление заменило бы её')
-            have = {x[1] for x in c.execute(f'PRAGMA table_info({table})')}
+            have = {x[1] for x in conn.execute(f'PRAGMA table_info({table})')}
             cols = [
                 k for k in data if k in have
             ]  # поля записи корзины — только столбцы таблицы (запись могла прийти из файла)
-            c.execute(
+            conn.execute(
                 'INSERT INTO {} ({}) VALUES ({})'.format(table, ','.join(cols), ','.join('?' * len(cols))),
                 [data[k] for k in cols],
             )
-            c.execute('DELETE FROM trash WHERE id=?', (tid,))
+            conn.execute('DELETE FROM trash WHERE id=?', (tid,))
             # удалённое прежней версией — без полей для поиска: заполняем их по документу
             if table == 'clients':
-                c.execute(
+                conn.execute(
                     'UPDATE clients SET name=?, inn=?, used_at=?, search=? WHERE id=?',
                     (*client_cols(json.loads(data.get('doc') or '{}')), eid),
                 )
             elif table == 'kp' and data.get('meta'):
                 try:
-                    c.execute(
+                    conn.execute(
                         'UPDATE kp SET client=?, inn=?, manager=?, kdate=?, saved=?, search=? WHERE id=?',
                         (*kp_cols(json.loads(data['meta'])), eid),
                     )
@@ -1082,47 +1092,53 @@ class Store:
                     pass
             if table == 'catalog':
                 try:
-                    d = json.loads(data.get('doc') or '{}')
+                    doc = json.loads(data.get('doc') or '{}')
                 except ValueError:
-                    d = {}
-                c.execute(
+                    doc = {}
+                conn.execute(
                     'UPDATE catalog SET seq=?, search=?, light=?, feed_id=? WHERE id=?',
-                    (self._cat_seq(c), cat_search(d), json.dumps(light_of(d), ensure_ascii=False), feed_of(d), eid),
+                    (
+                        self._cat_seq(conn),
+                        cat_search(doc),
+                        json.dumps(light_of(doc), ensure_ascii=False),
+                        feed_of(doc),
+                        eid,
+                    ),
                 )
-                c.execute('DELETE FROM catalog_gone WHERE id=?', (eid,))
+                conn.execute('DELETE FROM catalog_gone WHERE id=?', (eid,))
             elif table in ('managers', 'suppliers'):
-                self._bump_data(c, table)
-            c.commit()
+                self._bump_data(conn, table)
+            conn.commit()
         return etype, eid
 
     def trash_drop(self, tid: str) -> dict | None:
         """Удалить навсегда одну запись корзины → {entityType, entityId, title} или None."""
-        r = self.one('SELECT entity_type, entity_id, title FROM trash WHERE id=?', (tid,))
-        if not r:
+        row = self.one('SELECT entity_type, entity_id, title FROM trash WHERE id=?', (tid,))
+        if not row:
             return None
         self.write('DELETE FROM trash WHERE id=?', (tid,))
         self._kp_orphans()
-        return {'entityType': r[0], 'entityId': r[1], 'title': r[2]}
+        return {'entityType': row[0], 'entityId': row[1], 'title': row[2]}
 
     def trash_clear(self, etype=None) -> int:
         """«Очистить корзину»: всё или записи одного вида → сколько удалено навсегда."""
         where, args = ('WHERE entity_type=?', (etype,)) if etype else ('', ())
-        n = self.one('SELECT COUNT(*) FROM trash ' + where, args)[0]
-        if n:
+        count = self.one('SELECT COUNT(*) FROM trash ' + where, args)[0]
+        if count:
             self.write('DELETE FROM trash ' + where, args)
             self._kp_orphans()
-        return n
+        return count
 
     def trash_purge(self, days) -> int:
         """Окончательно удалить то, что лежит в корзине дольше days дней."""
         from datetime import timedelta
 
         edge = (datetime.now() - timedelta(days=days)).isoformat(timespec='seconds')
-        n = self.one('SELECT COUNT(*) FROM trash WHERE deleted_at < ?', (edge,))[0]
-        if n:
+        count = self.one('SELECT COUNT(*) FROM trash WHERE deleted_at < ?', (edge,))[0]
+        if count:
             self.write('DELETE FROM trash WHERE deleted_at < ?', (edge,))
             self._kp_orphans()
-        return n
+        return count
 
     def _kp_orphans(self) -> None:
         """Версии КП, удалённых навсегда (нет ни в журнале, ни в корзине), — тоже удалить: в них клиент и цены."""
@@ -1148,78 +1164,78 @@ class Store:
 
     def pending_add(self, pid, kind, before, after, uid: str, uname) -> int:
         with self.lock:
-            c = self.conn()
-            cur = c.execute(
+            conn = self.conn()
+            cur = conn.execute(
                 'INSERT INTO pending_edits (product_id, kind, before, after, user_id, user_name, created) VALUES (?,?,?,?,?,?,?)',
                 (pid, kind, before, after, uid, uname, _now()),
             )
-            c.commit()
+            conn.commit()
             return cur.lastrowid
 
     def pending_list(self, status='pending', with_docs=False) -> list:
         cols = f'id, product_id, kind, {"before, after" if with_docs else "NULL, NULL"}, user_id, user_name, created, status, reviewed_by, reviewed_at, reason'
         rows = self.all(f'SELECT {cols} FROM pending_edits WHERE status=? ORDER BY id DESC', (status,))
-        return [dict(zip(self.PENDING_COLS, r, strict=False)) for r in rows]
+        return [dict(zip(self.PENDING_COLS, row, strict=False)) for row in rows]
 
     def pending_get(self, eid) -> dict | None:
-        r = self.one(
+        row = self.one(
             'SELECT id, product_id, kind, before, after, user_id, user_name, created, status, reviewed_by, reviewed_at, reason '
             'FROM pending_edits WHERE id=?',
             (eid,),
         )
-        return dict(zip(self.PENDING_COLS, r, strict=False)) if r else None
+        return dict(zip(self.PENDING_COLS, row, strict=False)) if row else None
 
-    def pending_set(self, eid, status, by: str, reason='') -> None:
+    def pending_set(self, eid, status, author: str, reason='') -> None:
         self.write(
             'UPDATE pending_edits SET status=?, reviewed_by=?, reviewed_at=?, reason=? WHERE id=?',
-            (status, by, _now(), reason, eid),
+            (status, author, _now(), reason, eid),
         )
 
     def pending_claim(self, eid) -> bool:
         """Занять правку для принятия: True — только у первого из одновременных «Принять»."""
         with self.lock:
-            c = self.conn()
-            n = c.execute(
+            conn = self.conn()
+            count = conn.execute(
                 "UPDATE pending_edits SET status='approving' WHERE id=? AND status='pending'", (eid,)
             ).rowcount
-            c.commit()
-            return n == 1
+            conn.commit()
+            return count == 1
 
     def pending_ids(self) -> list:
-        return [r[0] for r in self.all("SELECT DISTINCT product_id FROM pending_edits WHERE status='pending'")]
+        return [row[0] for row in self.all("SELECT DISTINCT product_id FROM pending_edits WHERE status='pending'")]
 
     def table_counts(self) -> dict:
         out = {}
-        for (t,) in self.all(
+        for (table,) in self.all(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
         ):
-            out[t] = self.one(f'SELECT COUNT(*) FROM "{t}"')[0]
+            out[table] = self.one(f'SELECT COUNT(*) FROM "{table}"')[0]
         return out
 
     def kp_all_meta(self) -> list:
         """Описания всех КП; испорченное пропускается, как в kp_list."""
         out = []
-        for (m,) in self.all('SELECT meta FROM kp WHERE meta IS NOT NULL'):
+        for (meta,) in self.all('SELECT meta FROM kp WHERE meta IS NOT NULL'):
             try:
-                d = json.loads(m)
+                data = json.loads(meta)
             except (TypeError, ValueError):
                 continue
-            if isinstance(d, dict):
-                out.append(d)
+            if isinstance(data, dict):
+                out.append(data)
         return out
 
     def suppliers_list(self) -> list:
         self._deal_legacy()
         return [
-            dict(json.loads(r[0]), _rev=r[1] or 0)
-            for r in self.all('SELECT doc, rev FROM suppliers ORDER BY name COLLATE NOCASE')
+            dict(json.loads(row[0]), _rev=row[1] or 0)
+            for row in self.all('SELECT doc, rev FROM suppliers ORDER BY name COLLATE NOCASE')
         ]
 
     def supplier_get(self, sid) -> dict | None:
-        r = self.one('SELECT doc FROM suppliers WHERE id=?', (sid,))
-        return json.loads(r[0]) if r else None
+        row = self.one('SELECT doc FROM suppliers WHERE id=?', (sid,))
+        return json.loads(row[0]) if row else None
 
-    def supplier_put(self, sid, doc, by: str = '', base_rev=None) -> dict:
+    def supplier_put(self, sid, doc, author: str = '', base_rev=None) -> dict:
         if not isinstance(doc, dict) or not str(doc.get('name') or '').strip():
             raise ValueError('Укажите название поставщика')
         DocLimits.check(doc, 'Карточка поставщика')
@@ -1228,9 +1244,9 @@ class Store:
         doc = {k: v for k, v in doc.items() if k != '_rev'}
         doc = dict(doc, id=sid, name=str(doc['name']).strip()[:200], updatedAt=_now())
         with self.lock:
-            c = self.conn()
-            rev = self._next_rev(c, 'suppliers', sid, base_rev)
-            c.execute(
+            conn = self.conn()
+            rev = self._next_rev(conn, 'suppliers', sid, base_rev)
+            conn.execute(
                 'INSERT OR REPLACE INTO suppliers (id, name, country, doc, updated, rev, updated_by) VALUES (?,?,?,?,?,?,?)',
                 (
                     sid,
@@ -1239,17 +1255,17 @@ class Store:
                     json.dumps(doc, ensure_ascii=False),
                     _now(),
                     rev,
-                    str(by or '')[:120],
+                    str(author or '')[:120],
                 ),
             )
-            self._bump_data(c, 'suppliers')
-            c.commit()
+            self._bump_data(conn, 'suppliers')
+            conn.commit()
         return dict(doc, _rev=rev)
 
     def customs_all(self) -> dict:
         self._deal_legacy()
         out = {}
-        for key, code, duty, note, upd, by, name in self.all(
+        for key, code, duty, note, upd, author, name in self.all(
             'SELECT key, code, duty, note, updated, updated_by, name FROM customs'
         ):
             out[key] = {
@@ -1258,11 +1274,11 @@ class Store:
                 'note': note or '',
                 'name': name or '',
                 'updated': upd,
-                'by': by or '',
+                'by': author or '',
             }
         return out
 
-    def customs_put(self, key, code, duty, note, by: str, name='') -> None:
+    def customs_put(self, key, code, duty, note, author: str, name='') -> None:
         """Код ТН ВЭД и ставка по ключу cat:<категория> или item:<модель>; своя пустая категория удаляется."""
         if not isinstance(key, str) or not re.match(r'^(cat|item):[\w.-]{1,80}$', key):
             raise ValueError('Неверный ключ')
@@ -1279,7 +1295,7 @@ class Store:
                 str(duty or '')[:12],
                 str(note or '')[:300],
                 _now(),
-                str(by or '')[:120],
+                str(author or '')[:120],
                 str(name or '')[:120],
             ),
         )
@@ -1289,10 +1305,10 @@ class Store:
         old = self.kv_get('dealProfiles')
         if not old:
             return
-        for name, p in (old.get('sup') or {}).items():
+        for name, part in (old.get('sup') or {}).items():
             sid = 'sup_' + hashlib.md5(name.strip().lower().encode('utf-8')).hexdigest()[:10]
-            if isinstance(p, dict) and not self.one('SELECT 1 FROM suppliers WHERE name=? COLLATE NOCASE', (name,)):
-                self.supplier_put(sid, dict(p, name=name))
+            if isinstance(part, dict) and not self.one('SELECT 1 FROM suppliers WHERE name=? COLLATE NOCASE', (name,)):
+                self.supplier_put(sid, dict(part, name=name))
         for cat, duty in (old.get('duty') or {}).items():
             if not self.one('SELECT 1 FROM customs WHERE key=?', ('cat:' + cat,)):
                 self.customs_put('cat:' + cat, '', duty, '', 'перенос')
@@ -1300,7 +1316,7 @@ class Store:
 
     def managers_list(self, rev=False) -> str:
         rows = self.all('SELECT doc, rev FROM managers ORDER BY name COLLATE NOCASE')
-        return '[' + ','.join(with_rev(r[0], r[1]) if rev else r[0] for r in rows) + ']'
+        return '[' + ','.join(with_rev(row[0], row[1]) if rev else row[0] for row in rows) + ']'
 
     @staticmethod
     def manager_keys(doc) -> dict:
@@ -1322,9 +1338,9 @@ class Store:
             if other.get('id') == mid:
                 continue
             k = self.manager_keys(other)
-            for f in ('name', 'email', 'mobile', 'ext'):
-                if mine[f] and mine[f] == k[f]:
-                    return other, what[f]
+            for field in ('name', 'email', 'mobile', 'ext'):
+                if mine[field] and mine[field] == k[field]:
+                    return other, what[field]
         return None
 
     # карточка менеджера: только поля, которые знает программа (справочник уходит в каждый браузер — без мусора и
@@ -1342,13 +1358,13 @@ class Store:
         'folder': 300,
     }
 
-    def manager_put(self, mid: str, text, by: str = '', base_rev=None) -> dict:
+    def manager_put(self, mid: str, text, author: str = '', base_rev=None) -> dict:
         doc = json.loads(text)
         if not isinstance(doc, dict):
             raise ValueError('Ожидались данные менеджера')
-        for k, n in self.MANAGER_FIELDS.items():
-            if len(str(doc.get(k) or '')) > n:
-                raise ValueError(f'Карточка менеджера: поле «{k}» — не длиннее {n} знаков')
+        for k, field in self.MANAGER_FIELDS.items():
+            if len(str(doc.get(k) or '')) > field:
+                raise ValueError(f'Карточка менеджера: поле «{k}» — не длиннее {field} знаков')
         doc = {k: str(doc[k]) for k in self.MANAGER_FIELDS if doc.get(k) is not None}
         dup = self.manager_dup(mid, doc)
         if dup:
@@ -1359,9 +1375,9 @@ class Store:
         doc['id'] = mid
         doc['updatedAt'] = _now()
         with self.lock:
-            c = self.conn()
-            rev = self._next_rev(c, 'managers', mid, base_rev)
-            c.execute(
+            conn = self.conn()
+            rev = self._next_rev(conn, 'managers', mid, base_rev)
+            conn.execute(
                 'INSERT OR REPLACE INTO managers (id, name, doc, updated, rev, updated_by) VALUES (?,?,?,?,?,?)',
                 (
                     mid,
@@ -1369,48 +1385,48 @@ class Store:
                     json.dumps(doc, ensure_ascii=False),
                     _now(),
                     rev,
-                    str(by or '')[:120],
+                    str(author or '')[:120],
                 ),
             )
-            self._bump_data(c, 'managers')
-            c.commit()
+            self._bump_data(conn, 'managers')
+            conn.commit()
         return dict(doc, _rev=rev)
 
     def next_number(self) -> str:
         with self.lock:
-            c = self.conn()
+            conn = self.conn()
             year = datetime.now().year
-            r = c.execute('SELECT n FROM counters WHERE year=?', (year,)).fetchone()
-            n = r[0] if r else 0
+            row = conn.execute('SELECT n FROM counters WHERE year=?', (year,)).fetchone()
+            last = row[0] if row else 0
             while True:
-                n += 1
-                num = f'{year}-{n:03d}'
+                last += 1
+                num = f'{year}-{last:03d}'
                 # номер КП из корзины не выдаётся заново: его версии и документы ждут восстановления
-                if not c.execute(
+                if not conn.execute(
                     "SELECT 1 FROM kp WHERE id=? UNION SELECT 1 FROM trash WHERE entity_type = 'kp' AND entity_id = ?",
                     (num, num),
                 ).fetchone():
                     break
-            c.execute('INSERT OR REPLACE INTO counters (year, n) VALUES (?,?)', (year, n))
-            c.execute('INSERT INTO kp (id, number, updated) VALUES (?,?,?)', (num, num, _now()))
-            c.commit()
+            conn.execute('INSERT OR REPLACE INTO counters (year, n) VALUES (?,?)', (year, last))
+            conn.execute('INSERT INTO kp (id, number, updated) VALUES (?,?,?)', (num, num, _now()))
+            conn.commit()
             return num
 
-    def ensure_counter_at_least(self, year, n) -> None:
+    def ensure_counter_at_least(self, year, num) -> None:
         with self.lock:
-            c = self.conn()
-            r = c.execute('SELECT n FROM counters WHERE year=?', (year,)).fetchone()
-            if not r or r[0] < n:
-                c.execute('INSERT OR REPLACE INTO counters (year, n) VALUES (?,?)', (year, n))
-                c.commit()
+            conn = self.conn()
+            row = conn.execute('SELECT n FROM counters WHERE year=?', (year,)).fetchone()
+            if not row or row[0] < num:
+                conn.execute('INSERT OR REPLACE INTO counters (year, n) VALUES (?,?)', (year, num))
+                conn.commit()
 
     def kp_list(self) -> str:
         rows = self.all('SELECT meta, track FROM kp WHERE meta IS NOT NULL ORDER BY ' + KP_ORDER)
         out = []
-        for r in rows:  # испорченная запись (старая версия, ручная правка) не ломает весь журнал
+        for row in rows:  # испорченная запись (старая версия, ручная правка) не ломает весь журнал
             try:
-                if isinstance(json.loads(r[0]), dict):
-                    out.append(with_track(r[0], r[1]))
+                if isinstance(json.loads(row[0]), dict):
+                    out.append(with_track(row[0], row[1]))
             except (TypeError, ValueError):
                 pass
         return '[' + ','.join(out) + ']'
@@ -1418,64 +1434,64 @@ class Store:
     def kp_get(self, kid: str, field) -> str | None:
         if field not in ('state', 'meta', 'docx'):
             raise ValueError(field)
-        r = self.one(f'SELECT {field} FROM kp WHERE id=?', (kid,))
-        return r[0] if r else None
+        row = self.one(f'SELECT {field} FROM kp WHERE id=?', (kid,))
+        return row[0] if row else None
 
-    def kp_set(self, kid: str, field, value, by: str = '', base_rev=None) -> int:
+    def kp_set(self, kid: str, field, value, author: str = '', base_rev=None) -> int:
         """Сохранение поля КП."""
         if field not in ('state', 'meta', 'docx'):
             raise ValueError(field)
         with self.lock:
-            c = self.conn()
-            old = c.execute('SELECT state, meta, rev FROM kp WHERE id=?', (kid,)).fetchone()
+            conn = self.conn()
+            old = conn.execute('SELECT state, meta, rev FROM kp WHERE id=?', (kid,)).fetchone()
             if not old:
-                c.execute('INSERT INTO kp (id, number, updated) VALUES (?,?,?)', (kid, kid, _now()))
+                conn.execute('INSERT INTO kp (id, number, updated) VALUES (?,?,?)', (kid, kid, _now()))
             rev = (old[2] or 0) if old else 0
             if field == 'state':
                 if isinstance(value, str) and '"_rev"' in value[:400]:
                     try:
-                        d = json.loads(value)
-                        if isinstance(d, dict) and d.pop('_rev', None) is not None:
-                            value = json.dumps(d, ensure_ascii=False)
+                        data = json.loads(value)
+                        if isinstance(data, dict) and data.pop('_rev', None) is not None:
+                            value = json.dumps(data, ensure_ascii=False)
                     except ValueError:
                         pass
-                rev = self._next_rev(c, 'kp', kid, base_rev)
+                rev = self._next_rev(conn, 'kp', kid, base_rev)
                 if old and old[0] and old[0] != value:
                     # прежнее состояние — в историю версий (лишнее сверх srv.kpVersions удаляется)
-                    c.execute(
+                    conn.execute(
                         'INSERT INTO kp_versions (kp_id, created, user_name, state, meta) VALUES (?,?,?,?,?)',
-                        (kid, _now(), by, old[0], old[1]),
+                        (kid, _now(), author, old[0], old[1]),
                     )
-                    c.execute(
+                    conn.execute(
                         'DELETE FROM kp_versions WHERE kp_id=? AND id NOT IN (SELECT id FROM kp_versions WHERE kp_id=? ORDER BY id DESC LIMIT ?)',
                         (kid, kid, SrvVal.get(self, 'srv.kpVersions')),
                     )
-                c.execute(
+                conn.execute(
                     'UPDATE kp SET state=?, updated=?, rev=?, updated_by=? WHERE id=?',
-                    (value, _now(), rev, str(by or '')[:120], kid),
+                    (value, _now(), rev, str(author or '')[:120], kid),
                 )
             elif field == 'meta':
                 try:
                     cols = kp_cols(json.loads(value))
                 except (TypeError, ValueError):
                     cols = kp_cols({})
-                c.execute(
+                conn.execute(
                     'UPDATE kp SET meta=?, updated=?, client=?, inn=?, manager=?, kdate=?, saved=?, search=? WHERE id=?',
                     (value, _now(), *cols, kid),
                 )
             else:
-                c.execute('UPDATE kp SET docx=?, updated=? WHERE id=?', (value, _now(), kid))
-            c.commit()
+                conn.execute('UPDATE kp SET docx=?, updated=? WHERE id=?', (value, _now(), kid))
+            conn.commit()
         return rev
 
     @staticmethod
     def kp_import_ok(x) -> bool:
         """КП из резервной копии годится к записи: состояние и описание — объекты JSON (или их нет)."""
-        for f in ('state', 'meta'):
-            if x.get(f) is None:
+        for field in ('state', 'meta'):
+            if x.get(field) is None:
                 continue
             try:
-                if not isinstance(json.loads(x[f]), dict):
+                if not isinstance(json.loads(x[field]), dict):
                     return False
             except (TypeError, ValueError):
                 return False
@@ -1488,15 +1504,17 @@ class Store:
         except (TypeError, ValueError):
             cols = kp_cols({})
         with self.lock:
-            c = self.conn()
-            rev = self._next_rev(c, 'kp', x['id'], None)
-            tr = x.get('track') if isinstance(x.get('track'), str) else None
+            conn = self.conn()
+            rev = self._next_rev(conn, 'kp', x['id'], None)
+            track = x.get('track') if isinstance(x.get('track'), str) else None
             try:
-                td = json.loads(tr) if tr else {}
+                tender = json.loads(track) if track else {}
             except ValueError:
-                tr, td = None, {}
-            fu = td.get('followUp') if isinstance(td, dict) and isinstance(td.get('followUp'), dict) else {}
-            c.execute(
+                track, tender = None, {}
+            follow = (
+                tender.get('followUp') if isinstance(tender, dict) and isinstance(tender.get('followUp'), dict) else {}
+            )
+            conn.execute(
                 'INSERT OR REPLACE INTO kp (id, number, state, meta, docx, updated, client, inn, manager, kdate, saved, search, rev, '
                 'track, status, follow) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 (
@@ -1508,14 +1526,16 @@ class Store:
                     x.get('updated') or _now(),
                     *cols,
                     rev,
-                    tr,
-                    (td.get('status') if isinstance(td, dict) else None) or None,
-                    (fu.get('date') if not fu.get('done') else None) or None,
+                    track,
+                    (tender.get('status') if isinstance(tender, dict) else None) or None,
+                    (follow.get('date') if not follow.get('done') else None) or None,
                 ),
             )
-            c.commit()
+            conn.commit()
 
-    def kp_page(self, q='', author='', limit: int = 50, offset: int = 0, kind='', status='', d1='', d2='') -> tuple:
+    def kp_page(
+        self, query='', author='', limit: int = 50, offset: int = 0, kind='', status='', date_from='', date_to=''
+    ) -> tuple:
         """Журнал КП постранично с поиском, фильтрами (автор, вид КП, ход сделки) и итогами по отбору."""
         where, args = ['meta IS NOT NULL'], []
         if status == 'new':
@@ -1530,27 +1550,27 @@ class Store:
                 ('' if kind == 'tender' else 'NOT ')
                 + "COALESCE(CASE WHEN json_valid(meta) THEN json_type(meta, '$.tender.number') END, '') <> ''"
             )
-        qn = norm(q)
-        if qn:
+        query_norm = norm(query)
+        if query_norm:
             where.append("search LIKE ? ESCAPE '\\'")
-            args.append(like_arg(qn))
+            args.append(like_arg(query_norm))
         if author:
             where.append('manager = ?')
             args.append(author)
-        if d1 or d2:  # дата КП — в столбце kdate (ГГГГ-ММ-ДД)
+        if date_from or date_to:  # дата КП — в столбце kdate (ГГГГ-ММ-ДД)
             where.append('substr(kdate, 1, 10) BETWEEN ? AND ?')
-            args += [str(d1 or '')[:10], str(d2 or '9999-12-31')[:10]]
-        w = ' WHERE ' + ' AND '.join(where)
-        total = self.one('SELECT COUNT(*) FROM kp' + w, args)[0]
+            args += [str(date_from or '')[:10], str(date_to or '9999-12-31')[:10]]
+        where_sql = ' WHERE ' + ' AND '.join(where)
+        total = self.one('SELECT COUNT(*) FROM kp' + where_sql, args)[0]
         rows = self.all(
-            'SELECT meta, track FROM kp' + w + ' ORDER BY ' + KP_ORDER + ' LIMIT ? OFFSET ?',
+            'SELECT meta, track FROM kp' + where_sql + ' ORDER BY ' + KP_ORDER + ' LIMIT ? OFFSET ?',
             [*args, int(limit), int(offset)],
         )
-        return total, [with_track(m, t) for m, t in rows]
+        return total, [with_track(meta, track) for meta, track in rows]
 
-    def kp_metas_where(self, q='', author='', kind='', status='', d1='', d2='') -> list:
+    def kp_metas_where(self, query='', author='', kind='', status='', date_from='', date_to='') -> list:
         """Все описания КП под фильтром — для итогов журнала (сумма, прибыль) и отчёта за период."""
-        _total, rows = self.kp_page(q, author, 10**9, 0, kind, status, d1, d2)
+        _total, rows = self.kp_page(query, author, 10**9, 0, kind, status, date_from, date_to)
         return rows
 
     def kp_states(self, ids) -> dict:
@@ -1564,12 +1584,12 @@ class Store:
         return out
 
     def kp_track_get(self, kid: str) -> dict:
-        r = self.one('SELECT track FROM kp WHERE id=?', (kid,))
+        row = self.one('SELECT track FROM kp WHERE id=?', (kid,))
         try:
-            d = json.loads(r[0]) if r and r[0] else {}
+            data = json.loads(row[0]) if row and row[0] else {}
         except ValueError:
-            d = {}
-        return d if isinstance(d, dict) else {}
+            data = {}
+        return data if isinstance(data, dict) else {}
 
     def kp_track_set(self, kid: str, track) -> None:
         follow = (track.get('followUp') or {}) if isinstance(track.get('followUp'), dict) else {}
@@ -1593,13 +1613,13 @@ class Store:
 
     def kp_docx_owner(self, rel, kid: str) -> str | None:
         """Другое КП, чей файл лежит по этому пути (тендерные КП называются «<№ закупки> КП» и могут совпасть)."""
-        r = self.one('SELECT id FROM kp WHERE docx=? AND id<>?', (rel, kid))
-        return r[0] if r else None
+        row = self.one('SELECT id FROM kp WHERE docx=? AND id<>?', (rel, kid))
+        return row[0] if row else None
 
     def kp_authors(self) -> list:
         return [
-            r[0]
-            for r in self.all(
+            row[0]
+            for row in self.all(
                 "SELECT DISTINCT manager FROM kp WHERE meta IS NOT NULL AND manager IS NOT NULL AND manager <> '' "
                 'ORDER BY manager COLLATE NOCASE'
             )
@@ -1609,39 +1629,39 @@ class Store:
         return self.one("SELECT 1 FROM trash WHERE entity_type = 'kp' AND entity_id = ?", (kid,)) is not None
 
     def kp_last_version_meta(self, kid: str) -> str | None:
-        r = self.one('SELECT meta FROM kp_versions WHERE kp_id = ? ORDER BY id DESC LIMIT 1', (kid,))
-        return r[0] if r else None
+        row = self.one('SELECT meta FROM kp_versions WHERE kp_id = ? ORDER BY id DESC LIMIT 1', (kid,))
+        return row[0] if row else None
 
     def kp_versions(self, kid: str) -> list:
         out = []
-        for vid, created, by, meta, _upd in self.all(
+        for vid, created, author, meta, _upd in self.all(
             'SELECT id, created, user_name, meta, (SELECT updated FROM kp WHERE id=kp_id) FROM kp_versions '
             'WHERE kp_id=? ORDER BY id DESC',
             (kid,),
         ):
-            mt = {}
+            metas = {}
             try:
-                mt = json.loads(meta or '{}') or {}
+                metas = json.loads(meta or '{}') or {}
             except ValueError:
                 pass
             out.append(
                 {
                     'id': vid,
                     'created': created,
-                    'by': by or '',
-                    'sum': mt.get('sum'),
-                    'cur': mt.get('cur'),
-                    'client': mt.get('client'),
-                    'manager': mt.get('manager'),
-                    'savedAt': mt.get('savedAt') or mt.get('updatedAt'),
-                    'items': (mt.get('items') or [])[:3],
+                    'by': author or '',
+                    'sum': metas.get('sum'),
+                    'cur': metas.get('cur'),
+                    'client': metas.get('client'),
+                    'manager': metas.get('manager'),
+                    'savedAt': metas.get('savedAt') or metas.get('updatedAt'),
+                    'items': (metas.get('items') or [])[:3],
                 }
             )
         return out
 
     def kp_version_state(self, kid: str, vid) -> str | None:
-        r = self.one('SELECT state FROM kp_versions WHERE kp_id=? AND id=?', (kid, int(vid)))
-        return r[0] if r else None
+        row = self.one('SELECT state FROM kp_versions WHERE kp_id=? AND id=?', (kid, int(vid)))
+        return row[0] if row else None
 
     DRAFT_COLS = ('id', 'kind', 'owner', 'owner_name', 'title', 'client', 'kp', 'positions', 'sum', 'cur', 'updated')
 
@@ -1652,80 +1672,83 @@ class Store:
             sql += ' AND owner=?'
             args.append(owner)
         return [
-            dict(zip(self.DRAFT_COLS, r, strict=False))
-            for r in self.all(sql + ' ORDER BY updated DESC LIMIT 500', args)
+            dict(zip(self.DRAFT_COLS, row, strict=False))
+            for row in self.all(sql + ' ORDER BY updated DESC LIMIT 500', args)
         ]
 
     def draft_get(self, did) -> tuple:
         """(строка без состояния, состояние — текст JSON) или (None, None)."""
-        r = self.one('SELECT {}, state FROM drafts WHERE id=?'.format(', '.join(self.DRAFT_COLS)), (did,))
-        return (dict(zip(self.DRAFT_COLS, r[:-1], strict=False)), r[-1]) if r else (None, None)
+        row = self.one('SELECT {}, state FROM drafts WHERE id=?'.format(', '.join(self.DRAFT_COLS)), (did,))
+        return (dict(zip(self.DRAFT_COLS, row[:-1], strict=False)), row[-1]) if row else (None, None)
 
     def draft_put(self, row, state, keep=40) -> None:
         """Записать черновик или заготовку; у владельца остаются keep последних черновиков."""
         cols = (*self.DRAFT_COLS, 'state')
-        vals = [row.get(c) for c in self.DRAFT_COLS] + [state]
+        vals = [row.get(col) for col in self.DRAFT_COLS] + [state]
         with self.lock:
-            c = self.conn()
-            c.execute(
+            col = self.conn()
+            col.execute(
                 'INSERT OR REPLACE INTO drafts ({}) VALUES ({})'.format(', '.join(cols), ','.join('?' * len(cols))),
                 vals,
             )
             if row['kind'] == 'draft':
-                c.execute(
+                col.execute(
                     "DELETE FROM drafts WHERE kind='draft' AND owner=? AND id NOT IN "
                     "(SELECT id FROM drafts WHERE kind='draft' AND owner=? ORDER BY updated DESC LIMIT ?)",
                     (row['owner'], row['owner'], keep),
                 )
-            c.commit()
+            col.commit()
 
     def draft_del(self, did) -> None:
         self.write('DELETE FROM drafts WHERE id=?', (did,))
 
     def clients_all(self) -> list:
-        return [json.loads(r[0]) for r in self.all('SELECT doc FROM clients ORDER BY updated DESC')]
+        return [json.loads(row[0]) for row in self.all('SELECT doc FROM clients ORDER BY updated DESC')]
 
     def clients_count(self) -> int:
         return self.one('SELECT COUNT(*) FROM clients')[0]
 
-    def clients_search(self, q='', limit: int = 50, offset: int = 0) -> dict:
+    def clients_search(self, query='', limit: int = 50, offset: int = 0) -> dict:
         """Контрагенты: последние использованные или найденные по названию, ИНН, адресу (поиск — на сервере)."""
-        qn, args, w = norm(q), [], ''
-        if qn:
-            digits = re.sub(r'\D', '', qn)
-            if digits and digits == qn.replace(' ', ''):
-                w, args = " WHERE inn LIKE ? ESCAPE '\\' OR search LIKE ? ESCAPE '\\'", [digits + '%', like_arg(qn)]
+        query_norm, args, where_sql = norm(query), [], ''
+        if query_norm:
+            digits = re.sub(r'\D', '', query_norm)
+            if digits and digits == query_norm.replace(' ', ''):
+                where_sql, args = (
+                    " WHERE inn LIKE ? ESCAPE '\\' OR search LIKE ? ESCAPE '\\'",
+                    [digits + '%', like_arg(query_norm)],
+                )
             else:
-                w, args = " WHERE search LIKE ? ESCAPE '\\'", [like_arg(qn)]
-        total = self.one('SELECT COUNT(*) FROM clients' + w, args)[0]
+                where_sql, args = " WHERE search LIKE ? ESCAPE '\\'", [like_arg(query_norm)]
+        total = self.one('SELECT COUNT(*) FROM clients' + where_sql, args)[0]
         rows = self.all(
-            'SELECT doc, rev FROM clients' + w + ' ORDER BY used_at DESC, updated DESC LIMIT ? OFFSET ?',
+            'SELECT doc, rev FROM clients' + where_sql + ' ORDER BY used_at DESC, updated DESC LIMIT ? OFFSET ?',
             [*args, int(limit), int(offset)],
         )
-        return {'total': total, 'items': [dict(json.loads(r[0]), _rev=r[1] or 0) for r in rows]}
+        return {'total': total, 'items': [dict(json.loads(row[0]), _rev=row[1] or 0) for row in rows]}
 
     def client_get(self, cid, rev=False) -> dict | None:
-        r = self.one('SELECT doc, rev FROM clients WHERE id=?', (cid,))
-        if not r:
+        row = self.one('SELECT doc, rev FROM clients WHERE id=?', (cid,))
+        if not row:
             return None
-        d = json.loads(r[0])
-        return dict(d, _rev=r[1] or 0) if rev else d
+        data = json.loads(row[0])
+        return dict(data, _rev=row[1] or 0) if rev else data
 
-    def client_put(self, cid, doc, by: str = '', base_rev=None) -> int:
+    def client_put(self, cid, doc, author: str = '', base_rev=None) -> int:
         doc = {k: v for k, v in doc.items() if k != '_rev'} if isinstance(doc, dict) else doc
         with self.lock:
-            c = self.conn()
-            rev = self._next_rev(c, 'clients', cid, base_rev)
-            c.execute(
+            conn = self.conn()
+            rev = self._next_rev(conn, 'clients', cid, base_rev)
+            conn.execute(
                 'INSERT OR REPLACE INTO clients (id, doc, updated, name, inn, used_at, search, rev, updated_by) VALUES (?,?,?,?,?,?,?,?,?)',
-                (cid, json.dumps(doc, ensure_ascii=False), _now(), *client_cols(doc), rev, str(by or '')[:120]),
+                (cid, json.dumps(doc, ensure_ascii=False), _now(), *client_cols(doc), rev, str(author or '')[:120]),
             )
-            c.commit()
+            conn.commit()
         return rev
 
     def check_get(self, inn) -> dict | None:
-        r = self.one('SELECT doc FROM checks WHERE inn=?', (inn,))
-        return json.loads(r[0]) if r else None
+        row = self.one('SELECT doc FROM checks WHERE inn=?', (inn,))
+        return json.loads(row[0]) if row else None
 
     def check_put(self, inn, doc) -> None:
         self.write(
@@ -1734,11 +1757,11 @@ class Store:
         )
 
     def kv_get(self, key, default=None) -> object:
-        r = self.one('SELECT value FROM kv WHERE key=?', (key,))
-        if not r:
+        row = self.one('SELECT value FROM kv WHERE key=?', (key,))
+        if not row:
             return default
         try:
-            return json.loads(r[0])
+            return json.loads(row[0])
         except Exception:
             return default
 
@@ -1751,8 +1774,8 @@ class Store:
         if hook:
             try:
                 hook.record(key, before, value)
-            except Exception as e:  # история не должна мешать сохранению настроек
-                print('История настроек не записана:', e)
+            except Exception as exc:  # история не должна мешать сохранению настроек
+                print('История настроек не записана:', exc)
 
     def backup(self, dst, check=False) -> str:
         """Согласованная копия базы «на ходу» (встроенный механизм SQLite backup)."""
@@ -1783,14 +1806,14 @@ class Store:
             src.close()
         return dst
 
-    def restore_sqlite(self, src, log=lambda s: None) -> str:
+    def restore_sqlite(self, src, log=lambda text: None) -> str:
         """Заменить содержимое базы файлом SQLite «на ходу» встроенным backup (файл и WAL руками не подменяются)."""
         chk = sqlite3.connect(src, timeout=30)
         try:
-            res = [r[0] for r in chk.execute('PRAGMA integrity_check').fetchall()]
+            res = [row[0] for row in chk.execute('PRAGMA integrity_check').fetchall()]
             if res != ['ok']:
                 raise ValueError('Файл базы повреждён: ' + '; '.join(str(x) for x in res[:3]))
-            tables = {r[0] for r in chk.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            tables = {row[0] for row in chk.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             need = {'catalog', 'kp', 'kv', 'managers', 'clients'}
             if not need <= tables:
                 raise ValueError('Это не база программы: нет таблиц ' + ', '.join(sorted(need - tables)))
@@ -1798,25 +1821,25 @@ class Store:
             # (копия от прежней версии или с другим размером страницы не оставит программу с базой, которая не запускается)
             tmpdir = tempfile.mkdtemp(prefix='restore-', dir=os.path.dirname(self.path))
             tmp = os.path.join(tmpdir, 'restore.sqlite3')
-            t = sqlite3.connect(tmp)
-            chk.backup(t)
-            t.close()
+            tmp_conn = sqlite3.connect(tmp)
+            chk.backup(tmp_conn)
+            tmp_conn.close()
         finally:
             chk.close()
         try:
             try:
                 Store(tmp).conn().close()  # схема и миграции до текущей версии программы
-            except Exception as e:
+            except Exception as exc:
                 raise ValueError(
-                    f'Файл базы от несовместимой версии программы — база не заменена ({str(e)[:200]})'
-                ) from e
+                    f'Файл базы от несовместимой версии программы — база не заменена ({str(exc)[:200]})'
+                ) from exc
             page = self.one('PRAGMA page_size')[0]
-            t = sqlite3.connect(tmp)
+            tmp_conn = sqlite3.connect(tmp)
             try:
-                t.execute('PRAGMA journal_mode=DELETE')
-                if t.execute('PRAGMA page_size').fetchone()[0] != page:
-                    t.execute(f'PRAGMA page_size={int(page)}')
-                    t.execute('VACUUM')
+                tmp_conn.execute('PRAGMA journal_mode=DELETE')
+                if tmp_conn.execute('PRAGMA page_size').fetchone()[0] != page:
+                    tmp_conn.execute(f'PRAGMA page_size={int(page)}')
+                    tmp_conn.execute('VACUUM')
                 bak = os.path.join(
                     os.path.dirname(self.path),
                     'backup',
@@ -1824,92 +1847,94 @@ class Store:
                 )
                 with self.lock:
                     self.backup(bak)
-                    c = self.conn()
-                    c.commit()
-                    t.backup(c)
-                    c.commit()
+                    conn = self.conn()
+                    conn.commit()
+                    tmp_conn.backup(conn)
+                    conn.commit()
             finally:
-                t.close()
+                tmp_conn.close()
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
         self.migrations_up()  # на всякий случай: схема уже текущая, миграций не останется
         with self.lock:
-            c = self.conn()
+            conn = self.conn()
             for name in ('catalog', 'managers', 'clients', 'suppliers', 'kp', 'types', 'settings'):
-                self._bump_data(c, name)  # версии справочников — чтобы браузеры перекачали данные
-            c.execute(
+                self._bump_data(conn, name)  # версии справочников — чтобы браузеры перекачали данные
+            conn.execute(
                 'INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)', ('catepoch', json.dumps(os.urandom(6).hex()))
             )
-            c.commit()
+            conn.commit()
         log(f'База заменена из файла {src}, прежняя сохранена: {bak}')
         return bak
 
-    def migrate_json(self, data_dir: str, log=lambda s: None) -> int:
+    def migrate_json(self, data_dir: str, log=lambda text: None) -> int:
         """Однократно переносит каталог, журнал, контрагентов, проверки, ключи и типы из файлов в базу."""
         if self.kv_get('migrated_json'):
             return 0
-        n = 0
+        count = 0
 
-        def rd(p) -> str:
-            with open(p, encoding='utf-8-sig') as f:
-                return f.read()
+        def read_json(path) -> str:
+            with open(path, encoding='utf-8-sig') as handle:
+                return handle.read()
 
         cat = os.path.join(data_dir, 'catalog')
         if os.path.isdir(cat):
             for name in os.listdir(cat):
                 if name.endswith('.json'):
                     try:
-                        self.catalog_put(name[:-5], rd(os.path.join(cat, name)))
-                        n += 1
-                    except Exception as e:
-                        log(f'catalog {name}: {e}')
+                        self.catalog_put(name[:-5], read_json(os.path.join(cat, name)))
+                        count += 1
+                    except Exception as exc:
+                        log(f'catalog {name}: {exc}')
         kpd = os.path.join(data_dir, 'kp')
         if os.path.isdir(kpd):
             for kid in os.listdir(kpd):
-                d = os.path.join(kpd, kid)
-                if not os.path.isdir(d):
+                folder = os.path.join(kpd, kid)
+                if not os.path.isdir(folder):
                     continue
-                for field, fn in (('state', 'state.json'), ('meta', 'meta.json'), ('docx', 'docx.txt')):
-                    p = os.path.join(d, fn)
-                    if os.path.isfile(p):
+                for field, file_name in (('state', 'state.json'), ('meta', 'meta.json'), ('docx', 'docx.txt')):
+                    file_path = os.path.join(folder, file_name)
+                    if os.path.isfile(file_path):
                         try:
-                            self.kp_set(kid, field, rd(p).strip() if field == 'docx' else rd(p))
-                        except Exception as e:
-                            log(f'kp {kid}: {e}')
-                n += 1
-        for fn in os.listdir(data_dir) if os.path.isdir(data_dir) else []:
-            m = re.match(r'^counter-(\d{4})\.txt$', fn)
-            if m:
+                            self.kp_set(
+                                kid, field, read_json(file_path).strip() if field == 'docx' else read_json(file_path)
+                            )
+                        except Exception as exc:
+                            log(f'kp {kid}: {exc}')
+                count += 1
+        for file_name in os.listdir(data_dir) if os.path.isdir(data_dir) else []:
+            match = re.match(r'^counter-(\d{4})\.txt$', file_name)
+            if match:
                 try:
-                    v = int(rd(os.path.join(data_dir, fn)).strip() or 0)
-                    cur = self.one('SELECT n FROM counters WHERE year=?', (int(m.group(1)),))
+                    v = int(read_json(os.path.join(data_dir, file_name)).strip() or 0)
+                    cur = self.one('SELECT n FROM counters WHERE year=?', (int(match.group(1)),))
                     if not cur or cur[0] < v:
-                        self.write('INSERT OR REPLACE INTO counters (year, n) VALUES (?,?)', (int(m.group(1)), v))
+                        self.write('INSERT OR REPLACE INTO counters (year, n) VALUES (?,?)', (int(match.group(1)), v))
                 except Exception:
                     pass
-        cl = os.path.join(data_dir, 'clients')
-        if os.path.isdir(cl):
-            for name in os.listdir(cl):
+        clients_dir = os.path.join(data_dir, 'clients')
+        if os.path.isdir(clients_dir):
+            for name in os.listdir(clients_dir):
                 if name.endswith('.json'):
                     try:
-                        self.client_put(name[:-5], json.loads(rd(os.path.join(cl, name))))
-                        n += 1
+                        self.client_put(name[:-5], json.loads(read_json(os.path.join(clients_dir, name))))
+                        count += 1
                     except Exception:
                         pass
-        ch = os.path.join(data_dir, 'checks')
-        if os.path.isdir(ch):
-            for name in os.listdir(ch):
+        checks_dir = os.path.join(data_dir, 'checks')
+        if os.path.isdir(checks_dir):
+            for name in os.listdir(checks_dir):
                 if name.endswith('.json'):
                     try:
-                        self.check_put(name[:-5], json.loads(rd(os.path.join(ch, name))))
+                        self.check_put(name[:-5], json.loads(read_json(os.path.join(checks_dir, name))))
                     except Exception:
                         pass
-        for key, fn in (('integrations', 'integrations.json'), ('types', 'types.json')):
-            p = os.path.join(data_dir, fn)
-            if os.path.isfile(p):
+        for key, file_name in (('integrations', 'integrations.json'), ('types', 'types.json')):
+            file_path = os.path.join(data_dir, file_name)
+            if os.path.isfile(file_path):
                 try:
-                    self.kv_set(key, json.loads(rd(p)))
+                    self.kv_set(key, json.loads(read_json(file_path)))
                 except Exception:
                     pass
         self.kv_set('migrated_json', _now())
-        return n
+        return count

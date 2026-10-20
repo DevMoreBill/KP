@@ -67,18 +67,18 @@ from kp_track import DealTrack, Mailer, MailRate, MailTemplate, ReminderList
 from server_log import ServerLog
 from storage import Conflict, with_rev
 
-_CP = None
+_COUNTERPARTIES = None
 _LOGOS = {}  # логотипы производителей: {rev — версия каталога, text — готовый ответ}
 
 
-def cp() -> object:
+def counterparties() -> object:
     """Справочник контрагентов и проверки (создаётся после подготовки папок данных)."""
-    global _CP
-    if _CP is None:
+    global _COUNTERPARTIES
+    if _COUNTERPARTIES is None:
         from counterparty import Counterparties
 
-        _CP = Counterparties(store())
-    return _CP
+        _COUNTERPARTIES = Counterparties(store())
+    return _COUNTERPARTIES
 
 
 WEB_DIR = os.path.join(APP_DIR, 'web')  # интерфейс: index.html, css/, js/, vendor/
@@ -107,10 +107,10 @@ IMAGES = ImageStore(IMG_DIR)
 def web_file(rel) -> str | None:
     """Файл интерфейса по относительному пути внутри app/web (без выхода за пределы папки)."""
     parts = [x for x in rel.replace('\\', '/').split('/') if x and x not in ('.', '..')]
-    f = os.path.join(WEB_DIR, *parts)
-    if not os.path.normcase(os.path.abspath(f)).startswith(os.path.normcase(os.path.abspath(WEB_DIR))):
+    path = os.path.join(WEB_DIR, *parts)
+    if not os.path.normcase(os.path.abspath(path)).startswith(os.path.normcase(os.path.abspath(WEB_DIR))):
         return None
-    return f if os.path.isfile(f) and os.path.splitext(f)[1].lower() in WEB_TYPES else None
+    return path if os.path.isfile(path) and os.path.splitext(path)[1].lower() in WEB_TYPES else None
 
 
 WIN_RESERVED = {'CON', 'PRN', 'AUX', 'NUL'} | {f'COM{i}' for i in range(1, 10)} | {f'LPT{i}' for i in range(1, 10)}
@@ -133,8 +133,8 @@ class CbrCache:
         if time.time() - cls._failed.get(key, 0) >= cls.RETRY:
             try:
                 res = fetch()
-            except Exception as e:
-                res = {'error': str(e)}
+            except Exception as exc:
+                res = {'error': str(exc)}
             if res and not res.get('error'):
                 cls._failed.pop(key, None)
                 res = dict(res, fetched=datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
@@ -164,11 +164,11 @@ _ROUTES = []  # (регулярное выражение, методы или No
 
 def route(pattern: str, methods: str | tuple | None = None):
     """Обработчик маршрута: pattern — регулярное выражение всего пути, methods — метод, кортеж или None (любой)."""
-    ms = None if methods is None else ((methods,) if isinstance(methods, str) else tuple(methods))
+    allowed = None if methods is None else ((methods,) if isinstance(methods, str) else tuple(methods))
 
-    def mark(fn):
-        fn._route = (re.compile(rf'\A(?:{pattern})\Z'), ms)  # \Z: «$» пропустил бы «…\n» в конце пути
-        return fn
+    def mark(func):
+        func._route = (re.compile(rf'\A(?:{pattern})\Z'), allowed)  # \Z: «$» пропустил бы «…\n» в конце пути
+        return func
 
     return mark
 
@@ -176,39 +176,39 @@ def route(pattern: str, methods: str | tuple | None = None):
 class ControllerMeta(type):
     """Маршруты класса регистрируются при его объявлении — в порядке методов в теле класса."""
 
-    def __init__(cls, name, bases, ns) -> None:
-        super().__init__(name, bases, ns)
-        for attr, fn in ns.items():
-            if callable(fn) and hasattr(fn, '_route'):
-                rx, ms = fn._route
-                _ROUTES.append((rx, ms, cls, attr))
+    def __init__(cls, name, bases, namespace) -> None:
+        super().__init__(name, bases, namespace)
+        for attr, func in namespace.items():
+            if callable(func) and hasattr(func, '_route'):
+                regex, methods = func._route
+                _ROUTES.append((regex, methods, cls, attr))
 
 
 class Controller(metaclass=ControllerMeta):
     """Раздел API."""
 
-    def __init__(self, h, m, path, q) -> None:
-        self.h, self.m, self.p, self.q = h, m, path, q
+    def __init__(self, handler, method, path, query) -> None:
+        self.handler, self.method, self.url_path, self.query = handler, method, path, query
 
     def __getattr__(
         self, name
-    ) -> object:  # self.send_json(...) → h.send_json(...); self.server, self.path, self.headers
-        return getattr(self.h, name)
+    ) -> object:  # self.send_json(...) → handler.send_json(...); self.server, self.path, self.headers
+        return getattr(self.handler, name)
 
     def json_body(self) -> dict:
         """Тело запроса — объект JSON; иначе BadRequest (400)."""
         try:
-            d = json.loads(self.body().decode('utf-8') or '{}')
+            data = json.loads(self.body().decode('utf-8') or '{}')
         except (ValueError, UnicodeDecodeError):
             raise BadRequest('Неверный запрос: нужен JSON') from None
-        if not isinstance(d, dict):
+        if not isinstance(data, dict):
             raise BadRequest('Неверный запрос: нужен объект JSON')
-        return d
+        return data
 
     @staticmethod
-    def no_paths(e) -> str:
+    def no_paths(exc) -> str:
         """Текст ошибки для ответа — без путей на диске сервера (C:\\…, /tmp/…)."""
-        return re.sub(r'(?:[A-Za-z]:\\|\\\\|/(?:tmp|home|root|var|usr|Users)/)[^\s"\'«»;,)]*', '…', str(e))
+        return re.sub(r'(?:[A-Za-z]:\\|\\\\|/(?:tmp|home|root|var|usr|Users)/)[^\s"\'«»;,)]*', '…', str(exc))
 
     def text(self, code, msg) -> None:
         return self.send(code, 'text/plain; charset=utf-8', msg)
@@ -219,15 +219,15 @@ class Controller(metaclass=ControllerMeta):
         """Ошибка проверки ввода (ValueError с текстом для пользователя) — ответ 400 с этим текстом."""
         try:
             yield
-        except ValueError as e:
-            raise BadRequest(str(e)) from None
+        except ValueError as exc:
+            raise BadRequest(str(exc)) from None
 
     @staticmethod
     def kp_docx(kid: str) -> str | None:
         """Файл Word сохранённого КП (путь в папке КП) или None — КП ещё не сохранялось в Word или файл убран."""
         rel = store().kp_get(kid, 'docx')
-        f = docs_path(rel.strip()) if rel else None
-        return f if f and os.path.isfile(f) else None
+        path = docs_path(rel.strip()) if rel else None
+        return path if path and os.path.isfile(path) else None
 
 
 class Router:
@@ -236,29 +236,29 @@ class Router:
     def __init__(self, routes=None) -> None:
         self.routes = routes if routes is not None else _ROUTES
 
-    def dispatch(self, h) -> object:
-        m = 'GET' if h.command == 'HEAD' else h.command
-        u = urllib.parse.urlsplit(h.path)
+    def dispatch(self, handler) -> object:
+        method = 'GET' if handler.command == 'HEAD' else handler.command
+        u = urllib.parse.urlsplit(handler.path)
         path = urllib.parse.unquote(u.path)
-        q = dict(urllib.parse.parse_qsl(u.query, keep_blank_values=True, encoding='utf-8'))
+        query = dict(urllib.parse.parse_qsl(u.query, keep_blank_values=True, encoding='utf-8'))
         ctrl = {}
-        for rx, ms, cls, attr in self.routes:
-            if ms is not None and m not in ms:
+        for regex, methods, cls, attr in self.routes:
+            if methods is not None and method not in methods:
                 continue
-            mt = rx.match(path)
-            if not mt:
+            match = regex.match(path)
+            if not match:
                 continue
-            c = ctrl.get(cls) or ctrl.setdefault(cls, cls(h, m, path, q))
+            inst = ctrl.get(cls) or ctrl.setdefault(cls, cls(handler, method, path, query))
             # неверный ввод (BadRequest, испорченное тело) — 400 отвечает kp_server.Handler
             try:
-                res = getattr(c, attr)(*mt.groups())
-            except Conflict as e:  # запись успели изменить другие (X-KP-Rev) — 409
-                return h.conflict(e)
-            except DesktopError as e:
-                return h.send(422, 'text/plain; charset=utf-8', str(e))
+                res = getattr(inst, attr)(*match.groups())
+            except Conflict as exc:  # запись успели изменить другие (X-KP-Rev) — 409
+                return handler.conflict(exc)
+            except DesktopError as exc:
+                return handler.send(422, 'text/plain; charset=utf-8', str(exc))
             if res is not PASS:
                 return res
-        return h.not_found()
+        return handler.not_found()
 
 
 class WebIndex:
@@ -268,24 +268,29 @@ class WebIndex:
     cache = {}  # {(метка index.html, метки файлов): готовые байты}
 
     @staticmethod
-    def tag(f) -> str:
-        st = os.stat(f)
-        return f'{st.st_mtime_ns:x}-{st.st_size:x}'
+    def tag(path) -> str:
+        stat = os.stat(path)
+        return f'{stat.st_mtime_ns:x}-{stat.st_size:x}'
 
     @classmethod
-    def build(cls, f: str) -> str:
-        with open(f, 'rb') as fh:
-            html = fh.read().decode('utf-8')
-        refs = [(m.group(2), web_file(m.group(2)[len('/web/') :])) for m in cls.REF.finditer(html)]
-        key = (cls.tag(f), *tuple(cls.tag(x) if x else '' for _, x in refs))
+    def build(cls, path: str) -> str:
+        with open(path, 'rb') as handle:
+            html = handle.read().decode('utf-8')
+        refs = [(match.group(2), web_file(match.group(2)[len('/web/') :])) for match in cls.REF.finditer(html)]
+        key = (cls.tag(path), *tuple(cls.tag(x) if x else '' for _, x in refs))
         hit = cls.cache.get(key)
         if hit is None:
             tags = {
-                u: '%08x' % (zlib.crc32(t.encode()) & 0xFFFFFFFF) for (u, x), t in zip(refs, key[1:], strict=False) if t
+                u: '%08x' % (zlib.crc32(tag.encode()) & 0xFFFFFFFF)
+                for (u, x), tag in zip(refs, key[1:], strict=False)
+                if tag
             }
             hit = cls.REF.sub(
-                lambda m: (
-                    m.group(1) + m.group(2) + ('?v=' + tags[m.group(2)] if m.group(2) in tags else '') + m.group(3)
+                lambda ref: (
+                    ref.group(1)
+                    + ref.group(2)
+                    + ('?v=' + tags[ref.group(2)] if ref.group(2) in tags else '')
+                    + ref.group(3)
                 ),
                 html,
             ).encode('utf-8')
@@ -298,15 +303,15 @@ class StaticController(Controller):
 
     @route(r'/|/index\.html|/web/.*')
     def web(self) -> None:
-        idx = self.p in ('/', '/index.html')
-        f = web_file('index.html' if idx else self.p[len('/web/') :])
-        if not f:
+        idx = self.url_path in ('/', '/index.html')
+        path = web_file('index.html' if idx else self.url_path[len('/web/') :])
+        if not path:
             return self.not_found()
         if idx:
-            return self.send_file(f, WEB_TYPES['.html'], 'no-cache', CSP, data=WebIndex.build(f))
+            return self.send_file(path, WEB_TYPES['.html'], 'no-cache', CSP, data=WebIndex.build(path))
         # адрес с меткой версии (из index.html) не меняется, пока не изменится файл, — хранится в браузере год
         return self.send_file(
-            f, WEB_TYPES[os.path.splitext(f)[1].lower()], self.YEAR if self.q.get('v') else 'no-cache'
+            path, WEB_TYPES[os.path.splitext(path)[1].lower()], self.YEAR if self.query.get('v') else 'no-cache'
         )
 
     @route(r'/favicon\.ico')
@@ -314,16 +319,16 @@ class StaticController(Controller):
         icon = os.path.join(APP_DIR, 'icon.ico')
         if not os.path.isfile(icon):
             return self.not_found()
-        with open(icon, 'rb') as f:
-            return self.send(200, 'image/x-icon', f.read())
+        with open(icon, 'rb') as handle:
+            return self.send(200, 'image/x-icon', handle.read())
 
 
 class TypesController(Controller):
     @route(r'/api/types')
     def types(self) -> None:
-        if self.q.get('builtin') == '1':
+        if self.query.get('builtin') == '1':
             return self.send_json(read_text(types_builtin_path()))
-        if self.m == 'PUT':
+        if self.method == 'PUT':
             self.json_body()
             with self.user_input():
                 save_user_types(self.body())
@@ -337,81 +342,93 @@ class GeoController(Controller):
     def geo(self, act) -> None:
         import geo
 
-        q = self.q
+        query = self.query
         try:
             if act == 'suggest':
-                return self.send_json(geo.suggest(store(), q.get('q', '')))
+                return self.send_json(geo.suggest(store(), query.get('q', '')))
             if act == 'locate':
-                return self.send_json(geo.locate(store(), q.get('q', '')))
+                return self.send_json(geo.locate(store(), query.get('q', '')))
             if act == 'reverse':
-                return self.send_json(geo.reverse(store(), q.get('lat'), q.get('lon')))
+                return self.send_json(geo.reverse(store(), query.get('lat'), query.get('lon')))
             if act == 'route':
-                a, b = (q.get('a') or '').split(','), (q.get('b') or '').split(',')
-                if len(a) != 2 or len(b) != 2:
+                src, dst = (query.get('a') or '').split(','), (query.get('b') or '').split(',')
+                if len(src) != 2 or len(dst) != 2:
                     raise ValueError('Нужны две точки')
-                return self.send_json(geo.RoadRoute.distance_km(store(), a, b))
+                return self.send_json(geo.RoadRoute.distance_km(store(), src, dst))
             if act == 'unshort':
-                return self.send_json({'url': geo.unshort(q.get('u', ''))})
-        except Exception as e:
-            return self.send_json({'error': str(e)[:300] or e.__class__.__name__})
+                return self.send_json({'url': geo.unshort(query.get('u', ''))})
+        except Exception as exc:
+            return self.send_json({'error': str(exc)[:300] or exc.__class__.__name__})
         return self.text(404, 'Нет такого запроса')
 
 
 class PartiesController(Controller):
     @route(r'/api/party')
     def party(self) -> None:
-        return self.send_json(cp().lookup(self.q.get('inn', '')))
+        return self.send_json(counterparties().lookup(self.query.get('inn', '')))
 
     @route(
         r'/api/check/quota'
     )  # сколько проверок Checko (и резерва OFData) осталось сегодня на весь отдел, сколько в очереди
     def quota(self) -> None:
-        return self.send_json(cp().quota())
+        return self.send_json(counterparties().quota())
 
     @route(r'/api/check')
     def check(self) -> None:
         return self.send_json(
-            cp().check(self.q.get('inn', ''), force=self.q.get('force') == '1', author=admin.actor(self.h)[1])
+            counterparties().check(
+                self.query.get('inn', ''), force=self.query.get('force') == '1', author=admin.actor(self.handler)[1]
+            )
         )
 
     @route(r'/api/integrations/export', 'GET')  # резервная копия ключей (только администратор — см. admin.guard)
     def keys_export(self) -> None:
         return self.send_json(
-            {'kind': 'kp-keys', 'v': 1, 'at': datetime.now().isoformat(timespec='seconds'), 'keys': cp().keys()}
+            {
+                'kind': 'kp-keys',
+                'v': 1,
+                'at': datetime.now().isoformat(timespec='seconds'),
+                'keys': counterparties().keys(),
+            }
         )
 
     @route(r'/api/integrations')
     def keys(self) -> None:
-        if self.m == 'PUT':
+        if self.method == 'PUT':
             self.json_body()
             with self.user_input():
-                saved = cp().save_keys(self.body())
+                saved = counterparties().save_keys(self.body())
             return self.send_json(saved)
-        pub = cp().keys_public()
-        if admin.session(self.h, touch=False) is None:  # менеджеру — «задан / не задан» и лимиты, без маски ключа
+        pub = counterparties().keys_public()
+        if admin.session(self.handler, touch=False) is None:  # менеджеру — «задан / не задан» и лимиты, без маски ключа
             pub = {k: v for k, v in pub.items() if not k.endswith('Mask')}
         return self.send_json(pub)
 
     @route(r'/api/clients', 'GET')
     def clients(self) -> None:
         # справочник не грузится целиком: последние использованные или найденные по названию / ИНН / адресу
-        q = self.q
+        query = self.query
         try:
-            limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, min(int(q.get('offset') or 0), 10**9))
+            limit, offset = (
+                max(1, min(int(query.get('limit') or 50), 500)),
+                max(0, min(int(query.get('offset') or 0), 10**9)),
+            )
         except ValueError:
             limit, offset = 50, 0
-        res = store().clients_search(q.get('q', ''), limit, offset)
-        res['all'] = store().clients_count() if not q.get('q') else None
+        res = store().clients_search(query.get('q', ''), limit, offset)
+        res['all'] = store().clients_count() if not query.get('q') else None
         return self.send_json(res)
 
     @route(r'/api/clients/([^/]+)', ('GET', 'PUT'))
     def client(self, cid) -> None:
         cid = safe_id(cid)
-        if self.m == 'GET':
-            c = store().client_get(cid, rev=True)
-            return self.send_json(c) if c else self.text(404, 'Клиент не найден')
+        if self.method == 'GET':
+            client = store().client_get(cid, rev=True)
+            return self.send_json(client) if client else self.text(404, 'Клиент не найден')
         self.json_body()  # не объект JSON — 400
-        return self.send_json(cp().save_client(cid, self.body(), admin.actor(self.h)[1], self.base_rev()))
+        return self.send_json(
+            counterparties().save_client(cid, self.body(), admin.actor(self.handler)[1], self.base_rev())
+        )
 
 
 class TemplatesController(Controller):
@@ -430,50 +447,52 @@ class TemplatesController(Controller):
     @route(r'/api/templates/([A-Za-z0-9_-]+)/([a-z]+)')
     def action(self, tid: str, action) -> None:
         """Редактор шаблона: сохранение файлов, история версий, копия, заводской вариант, открыть в Word."""
-        m, q = self.m, self.q
+        method, query = self.method, self.query
         try:
-            if action == 'file' and m == 'PUT':
-                put_file(tid, q.get('name', ''), self.body())
+            if action == 'file' and method == 'PUT':
+                put_file(tid, query.get('name', ''), self.body())
                 return self.send_json({'ok': True})
-            if action == 'history' and m == 'GET':
+            if action == 'history' and method == 'GET':
                 return self.send_json(list_history(tid))
-            if action == 'restore' and m == 'POST':
-                return self.send_json({'ok': True, 'file': restore_history(tid, q.get('name', ''))})
-            if action == 'copy' and m == 'POST':
-                return self.send_json({'ok': True, 'id': copy_template(tid, q.get('to', ''), q.get('title', ''))})
-            if action == 'reset' and m == 'POST':
+            if action == 'restore' and method == 'POST':
+                return self.send_json({'ok': True, 'file': restore_history(tid, query.get('name', ''))})
+            if action == 'copy' and method == 'POST':
+                return self.send_json(
+                    {'ok': True, 'id': copy_template(tid, query.get('to', ''), query.get('title', ''))}
+                )
+            if action == 'reset' and method == 'POST':
                 reset_template(tid)
                 return self.send_json({'ok': True})
-            if action == 'delete' and m == 'POST':
+            if action == 'delete' and method == 'POST':
                 delete_template(tid)
                 return self.send_json({'ok': True})
-            if action == 'open' and m == 'POST':
+            if action == 'open' and method == 'POST':
                 if not self.is_local():
                     return self.send_json({'remote': True})
-                open_template_file(tid, q.get('name', ''))
+                open_template_file(tid, query.get('name', ''))
                 return self.send_json({'ok': True})
-        except TemplateError as e:
-            return self.text(400, str(e))
+        except TemplateError as exc:
+            return self.text(400, str(exc))
         return self.not_found()
 
     @route(r'/tpl/([A-Za-z0-9_-]+)/([^/]+)')
     def file(self, tid: str, name) -> None:
-        f = template_file(tid, urllib.parse.unquote(name))
-        if not f:
+        path = template_file(tid, urllib.parse.unquote(name))
+        if not path:
             return self.not_found('Файл шаблона не найден')
-        ext = os.path.splitext(f)[1].lower()
+        ext = os.path.splitext(path)[1].lower()
         ctype = {
             '.json': 'application/json; charset=utf-8',
             '.js': 'text/plain; charset=utf-8',
             '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         }.get(ext) or MIME.get(ext, 'application/octet-stream')
         extra = (
-            {'Content-Disposition': f'attachment; filename="{os.path.basename(f)}"'}
-            if self.q.get('download') == '1'
+            {'Content-Disposition': f'attachment; filename="{os.path.basename(path)}"'}
+            if self.query.get('download') == '1'
             else None
         )
-        with open(f, 'rb') as fh:
-            return self.send(200, ctype, fh.read(), extra)
+        with open(path, 'rb') as handle:
+            return self.send(200, ctype, handle.read(), extra)
 
 
 class SystemController(Controller):
@@ -485,9 +504,13 @@ class SystemController(Controller):
             'mode': 'server' if SERVER_MODE else 'local',
             'host': socket.gethostname(),
         }
-        if getattr(self.h, '_kp_login', False) and not self.h._kp_user and admin.session(self.h, touch=False) is None:
+        if (
+            getattr(self.handler, '_kp_login', False)
+            and not self.handler._kp_user
+            and admin.session(self.handler, touch=False) is None
+        ):
             return self.send_json(base)  # до входа — без папок, путей и состава базы
-        far = not self.is_local() and admin.session(self.h, touch=False) is None  # по сети — без путей сервера
+        far = not self.is_local() and admin.session(self.handler, touch=False) is None  # по сети — без путей сервера
         return self.send_json(
             {
                 'ok': True,
@@ -508,7 +531,7 @@ class CatalogController(Controller):
     @route(r'/api/catalog', 'GET')
     def catalog(self) -> None:
         # список — облегчённые карточки (без таблиц характеристик и галерей); полная позиция — по id
-        full = self.q.get('full') == '1'
+        full = self.query.get('full') == '1'
         return self.send_cached(
             'cat{}-{}'.format('f' if full else 'l', store().data_rev('catalog')),
             lambda: store().catalog_full() if full else store().catalog_light(),
@@ -519,21 +542,26 @@ class CatalogController(Controller):
     def sync(self) -> None:
         from catalog_sync import CatalogSync
 
-        cs = CatalogSync(store())
-        d = cs.delta(self.q.get('since'), self.q.get('epoch') or '')
-        if d is not None:
+        sync = CatalogSync(store())
+        delta = sync.delta(self.query.get('since'), self.query.get('epoch') or '')
+        if delta is not None:
             return self.send(
-                200, 'application/json; charset=utf-8', cs.delta_json(d).encode('utf-8'), {'Cache-Control': 'no-store'}
+                200,
+                'application/json; charset=utf-8',
+                sync.delta_json(delta).encode('utf-8'),
+                {'Cache-Control': 'no-store'},
             )
-        st = cs.state()
-        return self.send_cached('cats-{}-{}'.format(st['epoch'], st['seq']), cs.full_json)
+        state = sync.state()
+        return self.send_cached('cats-{}-{}'.format(state['epoch'], state['seq']), sync.full_json)
 
     # поиск по характеристикам (строка поиска позиции хранится на сервере, не в браузере)
     @route(r'/api/catalog/search', 'GET')
     def search(self) -> None:
         from catalog_sync import CatalogSync
 
-        return self.send_json({'q': self.q.get('q') or '', 'ids': CatalogSync(store()).search(self.q.get('q') or '')})
+        return self.send_json(
+            {'q': self.query.get('q') or '', 'ids': CatalogSync(store()).search(self.query.get('q') or '')}
+        )
 
     @route(
         r'/api/catalog/sources', 'GET'
@@ -542,12 +570,12 @@ class CatalogController(Controller):
         sups = {x.get('id'): x.get('name') for x in store().suppliers_list()}
         return self.send_json(
             {
-                f['id']: {
-                    'name': sups.get(f.get('supplier')) or f.get('name') or f['id'],
-                    'feed': f.get('name') or f['id'],
+                feed['id']: {
+                    'name': sups.get(feed.get('supplier')) or feed.get('name') or feed['id'],
+                    'feed': feed.get('name') or feed['id'],
                 }
-                for f in (store().kv_get('feeds') or {}).get('items', [])
-                if f.get('id')
+                for feed in (store().kv_get('feeds') or {}).get('items', [])
+                if feed.get('id')
             }
         )
 
@@ -565,40 +593,40 @@ class CatalogController(Controller):
     # изображения: папки «раздел/категория/производитель» латиницей (app/images.py); одинаковые хранятся один раз
     @route(r'/api/img', 'POST')
     def img_put(self) -> None:
-        data, q = self.body(), self.q
-        mb = defaults.SrvVal.get(store(), 'kp.imgMB')
-        if len(data) > mb * 1024 * 1024:
-            return self.text(413, f'Картинка больше {mb} МБ — уменьшите её (предел — «Значения программы»)')
+        data, query = self.body(), self.query
+        max_mb = defaults.SrvVal.get(store(), 'kp.imgMB')
+        if len(data) > max_mb * 1024 * 1024:
+            return self.text(413, f'Картинка больше {max_mb} МБ — уменьшите её (предел — «Значения программы»)')
         if data[:8] == b'\x89PNG\r\n\x1a\n':
             ext = '.png'
         elif data[:3] == b'\xff\xd8\xff':
             ext = '.jpg'
         elif data[:4] == b'RIFF' and data[8:12] == b'WEBP':
             ext = '.webp'
-        elif data[:5] == b'%PDF-' and q.get('kind') == 'booklet':  # буклет цветовых решений заказчика — ещё и PDF
+        elif data[:5] == b'%PDF-' and query.get('kind') == 'booklet':  # буклет цветовых решений заказчика — ещё и PDF
             ext = '.pdf'
         else:
             return self.text(
-                400, 'Нужна картинка JPEG, PNG или WebP' + (' либо файл PDF' if q.get('kind') == 'booklet' else '')
+                400, 'Нужна картинка JPEG, PNG или WebP' + (' либо файл PDF' if query.get('kind') == 'booklet' else '')
             )
-        tmap = {t.get('id'): t for t in load_types()['types']}
+        tmap = {tdef.get('id'): tdef for tdef in load_types()['types']}
         folder, title = images.place(
-            tmap.get(q.get('cat')),
-            q.get('maker'),
-            q.get('model'),
-            q.get('name'),
-            q.get('kind') or 'photo',
-            q.get('caption'),
+            tmap.get(query.get('cat')),
+            query.get('maker'),
+            query.get('model'),
+            query.get('name'),
+            query.get('kind') or 'photo',
+            query.get('caption'),
         )
         rel = IMAGES.put(data, ext, folder, title)
         return self.send_json({'name': rel})
 
     @route(r'/img/(.+)')
     def img(self, rel) -> None:
-        f = IMAGES.path(rel)
-        if not f:
+        path = IMAGES.path(rel)
+        if not path:
             return self.not_found()
-        return self.send_file(f, MIME[os.path.splitext(f)[1].lower()], 'private, max-age=604800')
+        return self.send_file(path, MIME[os.path.splitext(path)[1].lower()], 'private, max-age=604800')
 
 
 class ManagersController(Controller):
@@ -608,57 +636,59 @@ class ManagersController(Controller):
 
     @route(r'/api/managers/([^/]+)', 'PUT')
     def manager(self, mid: str) -> None:
-        mid, d = safe_id(mid), self.json_body()
+        mid, data = safe_id(mid), self.json_body()
         # при входе по паролю менеджер меняет только свою карточку (контакты в его КП); остальные — администратор
-        if admin.login_on(self.h) and (getattr(self.h, '_kp_user', None) or {}).get('id') != mid:
+        if admin.login_on(self.handler) and (getattr(self.handler, '_kp_user', None) or {}).get('id') != mid:
             return self.text(403, 'Карточку другого менеджера меняет администратор')
         for k in ('name', 'position', 'phone', 'ext', 'mobile', 'email'):
-            if k in d and not isinstance(d[k], str):
-                d[k] = '' if d[k] is None else str(d[k])
+            if k in data and not isinstance(data[k], str):
+                data[k] = '' if data[k] is None else str(data[k])
         try:
             return self.send_json(
-                store().manager_put(mid, json.dumps(d, ensure_ascii=False), admin.actor(self.h)[1], self.base_rev())
+                store().manager_put(
+                    mid, json.dumps(data, ensure_ascii=False), admin.actor(self.handler)[1], self.base_rev()
+                )
             )
-        except ValueError as e:  # дубль другого менеджера (ФИО, e-mail, мобильный, добавочный)
-            return self.text(422, str(e))
+        except ValueError as exc:  # дубль другого менеджера (ФИО, e-mail, мобильный, добавочный)
+            return self.text(422, str(exc))
 
 
 class KpController(Controller):
     # PDF: чем можно преобразовать; преобразование присланного DOCX (предпросмотр) без записи в журнал
     @route(r'/api/pdf', 'GET')
     def pdf_tools(self) -> None:
-        return self.send_json(pdf_convert.available(cp().keys().get('convertapiKey')))
+        return self.send_json(pdf_convert.available(counterparties().keys().get('convertapiKey')))
 
     @route(r'/api/pdf', 'POST')
     def pdf_convert(self) -> None:
         try:
-            data = pdf_convert.convert_bytes(self.body(), cp().keys().get('convertapiKey'))
-        except Exception as e:
-            return self.text(422, f'PDF не создан: {Controller.no_paths(e)}')
-        return self.send(200, 'application/pdf', data, self.attachment(safe_file(self.q.get('name')) or 'КП.pdf'))
+            data = pdf_convert.convert_bytes(self.body(), counterparties().keys().get('convertapiKey'))
+        except Exception as exc:
+            return self.text(422, f'PDF не создан: {Controller.no_paths(exc)}')
+        return self.send(200, 'application/pdf', data, self.attachment(safe_file(self.query.get('name')) or 'КП.pdf'))
 
     @route(r'/api/history')
     def history(self) -> None:
         if (
-            'limit' in self.q
+            'limit' in self.query
         ):  # постранично, с поиском и итогами по всему отбору; files — число справочных документов КП
-            res = admin.KpJournal.page(self.h, store(), self.q)
-            n = KpFiles.of(store()).counts([r.get('id') for r in res['items'] if isinstance(r, dict)])
-            for r in res['items']:
-                if isinstance(r, dict) and n.get(r.get('id')):
-                    r['files'] = n[r['id']]
+            res = admin.KpJournal.page(self.handler, store(), self.query)
+            count = KpFiles.of(store()).counts([rec.get('id') for rec in res['items'] if isinstance(rec, dict)])
+            for rec in res['items']:
+                if isinstance(rec, dict) and count.get(rec.get('id')):
+                    rec['files'] = count[rec['id']]
             return self.send_json(res)
-        return self.send_json(admin.KpJournal.out(self.h, store().kp_list()))
+        return self.send_json(admin.KpJournal.out(self.handler, store().kp_list()))
 
     @route(r'/api/kp/new', 'POST')
     def new(self) -> None:
-        n = store().next_number()
-        return self.send_json({'id': n, 'number': n})
+        num = store().next_number()
+        return self.send_json({'id': num, 'number': num})
 
     @route(r'/api/kp/([^/]+)/(state|meta)', ('GET', 'PUT'))
     def doc(self, kid: str, field) -> None:
         kid = safe_id(kid)
-        if self.m == 'PUT':
+        if self.method == 'PUT':
             text = self.body().decode('utf-8')
             try:
                 if not isinstance(json.loads(text), dict):
@@ -668,20 +698,25 @@ class KpController(Controller):
             rev = store().kp_set(
                 kid,
                 field,
-                admin.kp_in(self.h, store(), kid, field, text),
-                admin.actor(self.h)[1],
+                admin.kp_in(self.handler, store(), kid, field, text),
+                admin.actor(self.handler)[1],
                 self.base_rev() if field == 'state' else None,
             )
             if field == 'meta':
                 return self.send_json(
-                    {'ok': True, 'rev': rev, 'deal': CrmController.on_kp(self.h, kid), 'bx': BitrixConf(store()).on()}
+                    {
+                        'ok': True,
+                        'rev': rev,
+                        'deal': CrmController.on_kp(self.handler, kid),
+                        'bx': BitrixConf(store()).on(),
+                    }
                 )
             return self.send_json({'ok': True, 'rev': rev})
         v = store().kp_get(kid, field)
         if v and field == 'state':
-            v = with_rev(admin.kp_out(self.h, 'state', v), store().rev_of('kp', kid)['rev'])
+            v = with_rev(admin.kp_out(self.handler, 'state', v), store().rev_of('kp', kid)['rev'])
             return self.send_json(v)
-        return self.send_json(admin.kp_out(self.h, field, v)) if v else self.not_found()
+        return self.send_json(admin.kp_out(self.handler, field, v)) if v else self.not_found()
 
     @route(r'/api/kp/([^/]+)/rev', 'GET')  # кто и когда последним сохранил КП — проверка перед сохранением
     def rev(self, kid: str) -> None:
@@ -693,16 +728,16 @@ class KpController(Controller):
         return self.send_json(store().kp_versions(safe_id(kid)))
 
     @route(r'/api/kp/([^/]+)/versions/(\d+)', 'GET')
-    def version(self, kid: str, n) -> None:
-        if len(n) > 9:
+    def version(self, kid: str, num) -> None:
+        if len(num) > 9:
             return self.not_found()
-        v = store().kp_version_state(safe_id(kid), n)
-        return self.send_json(admin.kp_out(self.h, 'state', v)) if v else self.not_found()
+        v = store().kp_version_state(safe_id(kid), num)
+        return self.send_json(admin.kp_out(self.handler, 'state', v)) if v else self.not_found()
 
     @route(r'/api/kp/([^/]+)/docx', 'PUT')
     def docx_put(self, kid: str) -> None:
-        kid, q = safe_id(kid), self.q
-        name = safe_file(q.get('name'))
+        kid, query = safe_id(kid), self.query
+        name = safe_file(query.get('name'))
         # только документ Word: имя — с расширением .docx (не .exe, .bat, .lnk…), содержимое — архив docx (PK…)
         if not name.lower().endswith('.docx'):
             name = os.path.splitext(name)[0].rstrip('. ') + '.docx'
@@ -710,9 +745,9 @@ class KpController(Controller):
             name = '_' + name
         try:  # документ Word без макросов и внешних шаблонов — его потом открывает Word сервера (PDF)
             pdf_convert.DocxCheck.check(self.body())
-        except ValueError as e:
-            return self.text(400, f'Файл КП должен быть документом Word (.docx): {e}')
-        sub = safe_dir(q.get('dir'))  # папка менеджера (фамилия)
+        except ValueError as exc:
+            return self.text(400, f'Файл КП должен быть документом Word (.docx): {exc}')
+        sub = safe_dir(query.get('dir'))  # папка менеджера (фамилия)
         rel = (sub + '/' + name) if sub else name
         # имя занято файлом другого КП (два КП по одной закупке: «4567892 КП») — «4567892 КП (2)», «(3)»…
         stem, ext = os.path.splitext(name)
@@ -721,16 +756,16 @@ class KpController(Controller):
                 break
             name = f'{stem} ({k}){ext}'
             rel = (sub + '/' + name) if sub else name
-        f = docs_path(rel)
-        os.makedirs(os.path.dirname(f), exist_ok=True)
-        write_bytes(f, self.body())
+        path = docs_path(rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        write_bytes(path, self.body())
         # прежний PDF устарел: создаётся заново, если его попросили сохранить
-        stale = [pdf_of(f)]
+        stale = [pdf_of(path)]
         # при пересохранении КП под новым именем старый файл убираем, чтобы не копились дубли
         prev = store().kp_get(kid, 'docx')
         if prev:
             old = docs_path(prev.strip())
-            if os.path.isfile(old) and os.path.normcase(old) != os.path.normcase(f):
+            if os.path.isfile(old) and os.path.normcase(old) != os.path.normcase(path):
                 stale += [old, pdf_of(old)]
         for x in stale:
             try:
@@ -739,41 +774,41 @@ class KpController(Controller):
             except OSError:
                 pass
         store().kp_set(kid, 'docx', rel)
-        return self.send_json({'ok': True, 'path': f if self.is_local() else '', 'rel': rel})
+        return self.send_json({'ok': True, 'path': path if self.is_local() else '', 'rel': rel})
 
     @route(r'/api/kp/([^/]+)/docx', 'GET')
     def docx_get(self, kid: str) -> None:
         # скачивание готового КП — для сотрудников, открывших программу по сети
-        f = self.kp_docx(safe_id(kid))
-        if not f:
+        path = self.kp_docx(safe_id(kid))
+        if not path:
             return self.not_found('Файл КП не найден')
-        with open(f, 'rb') as fh:
-            data = fh.read()
+        with open(path, 'rb') as handle:
+            data = handle.read()
         return self.send(
             200,
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             data,
-            self.attachment(os.path.basename(f), 'KP.docx'),
+            self.attachment(os.path.basename(path), 'KP.docx'),
         )
 
     # PDF сохранённого КП: создаётся рядом с .docx (тем же именем), скачивается сотрудниками по сети
     @route(r'/api/kp/([^/]+)/pdf')
     def pdf(self, kid: str) -> object:
-        f = self.kp_docx(safe_id(kid))
-        if not f:
+        path = self.kp_docx(safe_id(kid))
+        if not path:
             return self.not_found('Файл КП не найден')
-        pdf = pdf_of(f)
-        if self.m == 'POST':
+        pdf = pdf_of(path)
+        if self.method == 'POST':
             try:
-                pdf_convert.convert_file(f, pdf, cp().keys().get('convertapiKey'))
-            except Exception as e:
-                return self.text(422, f'PDF не создан: {Controller.no_paths(e)}')
+                pdf_convert.convert_file(path, pdf, counterparties().keys().get('convertapiKey'))
+            except Exception as exc:
+                return self.text(422, f'PDF не создан: {Controller.no_paths(exc)}')
             return self.send_json({'ok': True, 'path': pdf if self.is_local() else '', 'local': self.is_local()})
-        if self.m == 'GET':
+        if self.method == 'GET':
             if not os.path.isfile(pdf):
                 return self.not_found('PDF этого КП ещё не создан')
-            with open(pdf, 'rb') as fh:
-                return self.send(200, 'application/pdf', fh.read(), self.attachment(os.path.basename(pdf)))
+            with open(pdf, 'rb') as handle:
+                return self.send(200, 'application/pdf', handle.read(), self.attachment(os.path.basename(pdf)))
         return PASS
 
     @route(r'/api/kp/([^/]+)/openpdf', 'POST')
@@ -800,20 +835,20 @@ class KpController(Controller):
                     'share': (DOCS_SHARE.rstrip('\\/') + '\\' + rel.replace('/', '\\')) if DOCS_SHARE else '',
                 }
             )
-        f = docs_path(rel.strip())
-        if not os.path.isfile(f):
+        path = docs_path(rel.strip())
+        if not os.path.isfile(path):
             return self.not_found('Файл КП был перемещён или удалён')
-        if os.path.splitext(f)[1].lower() not in ('.docx', '.pdf'):  # запускать на компьютере можно только документ
+        if os.path.splitext(path)[1].lower() not in ('.docx', '.pdf'):  # запускать на компьютере можно только документ
             return self.text(400, 'Это не документ Word — файл не открывается')
         if how == 'open':
-            open_file(f)
+            open_file(path)
         else:
-            show_in_folder(f)
+            show_in_folder(path)
         return self.send_json({'ok': True})
 
     @route(r'/api/folder', 'POST')
     def docs_folder(self) -> None:
-        sub = safe_dir(self.q.get('dir'))
+        sub = safe_dir(self.query.get('dir'))
         target = os.path.join(DOCS_DIR, sub) if sub else DOCS_DIR
         os.makedirs(target, exist_ok=True)
         if not self.is_local():
@@ -832,40 +867,40 @@ class KpFilesController(Controller):
 
     def _kp_ok(self, kid: str) -> bool:
         """КП есть в журнале; КП в корзине — только администратору (его документы ждут восстановления)."""
-        return store().kp_get(kid, 'meta') is not None or admin.session(self.h, touch=False) is not None
+        return store().kp_get(kid, 'meta') is not None or admin.session(self.handler, touch=False) is not None
 
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/files', ('GET', 'POST'))
     def files(self, kid: str) -> None:
-        kf = KpFiles.of(store())
-        if self.m == 'GET':
+        files = KpFiles.of(store())
+        if self.method == 'GET':
             if not self._kp_ok(kid):
                 return self.not_found('КП не найдено')
-            return self.send_json({'items': kf.list(kid, admin.actor(self.h)[0]), 'limits': kf.limits()})
+            return self.send_json({'items': files.list(kid, admin.actor(self.handler)[0]), 'limits': files.limits()})
         if store().kp_get(kid, 'meta') is None:
             return self.text(400, 'Сначала сохраните КП, затем прикрепите документы')
-        uid, name, _role = admin.actor(self.h)
+        uid, name, _role = admin.actor(self.handler)
         with self.user_input():
-            rec = kf.add(kid, self.q.get('name', ''), self.body(), self.q.get('note', ''), name, uid)
-        admin.log(self.h, store(), 'add_kp_file', 'kp', kid, None, {'name': rec['name'], 'size': rec['size']})
-        CrmController.bx(DealBook(store()).deal_of(kid))
+            rec = files.add(kid, self.query.get('name', ''), self.body(), self.query.get('note', ''), name, uid)
+        admin.log(self.handler, store(), 'add_kp_file', 'kp', kid, None, {'name': rec['name'], 'size': rec['size']})
+        CrmController.bitrix_on(DealBook(store()).deal_of(kid))
         return self.send_json(rec)
 
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/files/(\d{1,9})', ('GET', 'PUT'))
     def file(self, kid: str, fid: str) -> None:
-        kf = KpFiles.of(store())
+        files = KpFiles.of(store())
         if not self._kp_ok(kid):
             return self.not_found('КП не найдено')
-        if self.m == 'PUT':
+        if self.method == 'PUT':
             note = self.json_body().get('note')
             if note is not None and not isinstance(note, str):
                 raise BadRequest('Примечание — строка')
-            old = kf.get(kid, fid)
+            old = files.get(kid, fid)
             try:
-                rec = kf.set_note(kid, fid, note or '')
-            except LookupError as e:
-                return self.not_found(str(e))
+                rec = files.set_note(kid, fid, note or '')
+            except LookupError as exc:
+                return self.not_found(str(exc))
             admin.log(
-                self.h,
+                self.handler,
                 store(),
                 'edit_kp_file',
                 'kp',
@@ -874,7 +909,7 @@ class KpFilesController(Controller):
                 {'note': rec['note']},
             )
             return self.send_json(rec)
-        got = kf.read(kid, fid)
+        got = files.read(kid, fid)
         if not got:
             return self.not_found('Документ не найден')
         rec, data = got
@@ -889,13 +924,13 @@ class KpFilesController(Controller):
     def remove_own(self, kid: str, fid: str) -> None:
         """Автор удаляет свой файл, прикреплённый по ошибке, — только в первые kp.fileUndoMin минут после загрузки."""
         try:
-            rec = KpFiles.of(store()).delete_own(kid, fid, admin.actor(self.h)[0])
-        except LookupError as e:
-            return self.not_found(str(e))
-        except PermissionError as e:
-            return self.text(403, str(e))
+            rec = KpFiles.of(store()).delete_own(kid, fid, admin.actor(self.handler)[0])
+        except LookupError as exc:
+            return self.not_found(str(exc))
+        except PermissionError as exc:
+            return self.text(403, str(exc))
         admin.log(
-            self.h,
+            self.handler,
             store(),
             'delete_kp_file',
             'kp',
@@ -931,9 +966,9 @@ class ToolsController(Controller):
         import imgfetch
 
         try:
-            ctype, data = imgfetch.fetch_image(self.q.get('url') or '')
-        except Exception as e:
-            return self.text(422, f'Картинка не загружена: {e}')
+            ctype, data = imgfetch.fetch_image(self.query.get('url') or '')
+        except Exception as exc:
+            return self.text(422, f'Картинка не загружена: {exc}')
         return self.send(200, ctype, data)
 
     @route(r'/api/ai/status', 'GET')  # нейросеть в программе: включена ли (без ключа и адреса)
@@ -942,40 +977,43 @@ class ToolsController(Controller):
 
     @route(r'/api/ai/profile', 'GET')  # образец объёма категории и данные этой же модели из каталога — для запроса к ИИ
     def ai_profile(self) -> None:
-        q = self.q
+        query = self.query
         return self.send_json(
             {
-                'profile': CategoryProfile(store()).get(str(q.get('cat') or '')[:40]),
+                'profile': CategoryProfile(store()).get(str(query.get('cat') or '')[:40]),
                 'facts': ModelFacts(store()).find(
-                    q.get('maker', '')[:100], q.get('model', '')[:100], q.get('name', '')[:300], q.get('id', '')[:64]
+                    query.get('maker', '')[:100],
+                    query.get('model', '')[:100],
+                    query.get('name', '')[:300],
+                    query.get('id', '')[:64],
                 ),
             }
         )
 
     @route(r'/api/ai/fill', 'POST')  # автозаполнение: запрос из программы → ответ нейросети (JSON строкой)
     def ai_fill(self) -> None:
-        d = self.json_body()
+        data = self.json_body()
         try:
-            return self.send_json(ai_llm.ask(store(), d.get('prompt')))
-        except RuntimeError as e:
-            return self.text(422, str(e))
+            return self.send_json(ai_llm.ask(store(), data.get('prompt')))
+        except RuntimeError as exc:
+            return self.text(422, str(exc))
 
     @route(r'/api/pagetext', 'POST')  # текст и характеристики со страницы товара — для автозаполнения карточки
     def pagetext(self) -> None:
         import feeds
 
-        d = self.json_body()
+        data = self.json_body()
         try:
-            return self.send_json(feeds.page_text(str(d.get('url') or '').strip(), defaults.img_opts(store())))
-        except Exception as e:
-            return self.text(422, f'Страница не прочитана: {str(e)[:200]}')
+            return self.send_json(feeds.page_text(str(data.get('url') or '').strip(), defaults.img_opts(store())))
+        except Exception as exc:
+            return self.text(422, f'Страница не прочитана: {str(exc)[:200]}')
 
     def _too_big(self, what) -> bool:
         """Документ для разбора больше допустимого («Значения программы»): ответить 413 и вернуть True."""
-        mb = defaults.SrvVal.get(store(), 'cat.docMaxMB')
-        if self.body_size() <= mb * 1024 * 1024:
+        max_mb = defaults.SrvVal.get(store(), 'cat.docMaxMB')
+        if self.body_size() <= max_mb * 1024 * 1024:
             return False
-        self.text(413, f'{what} больше {mb} МБ')
+        self.text(413, f'{what} больше {max_mb} МБ')
         return True
 
     @route(r'/api/pdftext', 'POST')  # текст из PDF (паспорт, каталог, ТЗ) — для автозаполнения карточки
@@ -983,11 +1021,11 @@ class ToolsController(Controller):
         if self._too_big('PDF'):
             return None
         try:
-            r = pdf_text.text(self.body())
-            r.pop('per', None)  # текст по страницам — только для разбора ТЗ
-            return self.send_json(r)
-        except Exception as e:
-            return self.text(422, f'PDF не прочитан: {str(e)[:200]}')
+            res = pdf_text.text(self.body())
+            res.pop('per', None)  # текст по страницам — только для разбора ТЗ
+            return self.send_json(res)
+        except Exception as exc:
+            return self.text(422, f'PDF не прочитан: {str(exc)[:200]}')
 
     @route(r'/api/tz/parse', 'POST')  # ТЗ заказчика (PDF, DOCX, XLSX, ODT, RTF, TXT): текст и требования к станции
     def tz_parse(self) -> None:
@@ -997,11 +1035,11 @@ class ToolsController(Controller):
         if self._too_big('Файл'):
             return None
         try:
-            doc = DocText.extract(str(self.q.get('name') or '')[:200], self.body())
-        except Exception as e:
-            return self.text(422, f'ТЗ не прочитано: {str(e)[:200]}')
-        r = TzParse.parse(doc['text'])
-        r.update(
+            doc = DocText.extract(str(self.query.get('name') or '')[:200], self.body())
+        except Exception as exc:
+            return self.text(422, f'ТЗ не прочитано: {str(exc)[:200]}')
+        res = TzParse.parse(doc['text'])
+        res.update(
             text=doc['text'][:20000].replace('\f', '\n'),
             doc={
                 'kind': doc['kind'],
@@ -1012,7 +1050,7 @@ class ToolsController(Controller):
                 'methods': doc.get('methods') or [],
             },
         )
-        return self.send_json(r)
+        return self.send_json(res)
 
     @route(
         r'/api/rules/stations\.js', 'GET'
@@ -1033,30 +1071,30 @@ class ToolsController(Controller):
     def rules_stations(self) -> None:
         from station_rules import StationRules
 
-        sr = StationRules(store())
-        return self.send_json({'rules': sr.current(), 'info': sr.info()})
+        rules = StationRules(store())
+        return self.send_json({'rules': rules.current(), 'info': rules.info()})
 
     @route(r'/api/pagephotos', 'POST')  # фото со страницы товара на сайте поставщика — в изображения позиции
     def pagephotos(self) -> None:
         import feeds
 
-        d = self.json_body()
-        tmap = {t.get('id'): t for t in load_types()['types']}
+        data = self.json_body()
+        tmap = {tdef.get('id'): tdef for tdef in load_types()['types']}
         try:
             return self.send_json(
                 feeds.page_photos(
                     store(),
                     IMAGES,
-                    str(d.get('url') or '').strip(),
-                    tmap.get(d.get('cat')),
-                    d.get('maker') or '',
-                    d.get('model') or '',
-                    d.get('name') or '',
-                    d.get('urls') if isinstance(d.get('urls'), list) else None,
+                    str(data.get('url') or '').strip(),
+                    tmap.get(data.get('cat')),
+                    data.get('maker') or '',
+                    data.get('model') or '',
+                    data.get('name') or '',
+                    data.get('urls') if isinstance(data.get('urls'), list) else None,
                 )
             )
-        except Exception as e:
-            return self.text(422, f'Фото со страницы не загружены: {str(e)[:200]}')
+        except Exception as exc:
+            return self.text(422, f'Фото со страницы не загружены: {str(exc)[:200]}')
 
 
 class SettingsController(Controller):
@@ -1077,8 +1115,8 @@ class SettingsController(Controller):
         req = self.json_body()
         try:
             return self.send_json(logistics_api.DeliveryQuote(store(), req).run())
-        except (ValueError, TypeError, KeyError) as e:
-            return self.text(400, f'Неверный запрос: {e}')
+        except (ValueError, TypeError, KeyError) as exc:
+            return self.text(400, f'Неверный запрос: {exc}')
 
     @route(r'/api/logistics/status', 'GET')
     def logistics_status(self) -> None:
@@ -1094,16 +1132,16 @@ class SettingsController(Controller):
     def logistics_refresh(self) -> None:
         try:
             rec = logistics_api.auto_refresh(store(), force=True)
-        except Exception as e:
-            return self.text(502, f'ATI.SU: {e}')
+        except Exception as exc:
+            return self.text(502, f'ATI.SU: {exc}')
         return self.send_json(rec or {'error': 'Не задан ключ ATI.SU («Интеграции») или обновление уже идёт'})
 
     @route(r'/api/logistics/carriers', ('GET', 'PUT'))  # перевозчики: включение и адреса API (изменяет администратор)
     def logistics_carriers(self) -> None:
-        if self.m == 'PUT':
-            d = self.json_body()
+        if self.method == 'PUT':
+            data = self.json_body()
             with self.user_input():
-                saved = logistics_api.CarrierApi.save(store(), d, admin.actor(self.h)[1])
+                saved = logistics_api.CarrierApi.save(store(), data, admin.actor(self.handler)[1])
             return self.send_json(saved)
         return self.send_json(logistics_api.CarrierApi.public(store()))
 
@@ -1120,13 +1158,13 @@ class SettingsController(Controller):
     def china(self) -> None:
         from china_freight import ChinaFreight
 
-        cf = ChinaFreight(store())
-        if self.m == 'PUT':
+        china = ChinaFreight(store())
+        if self.method == 'PUT':
             rows = self.json_body().get('rows')
             with self.user_input():
-                saved = cf.save_rates(rows, admin.actor(self.h)[1])
+                saved = china.save_rates(rows, admin.actor(self.handler)[1])
             return self.send_json(saved)
-        return self.send_json(cf.status())
+        return self.send_json(china.status())
 
     @route(r'/api/logistics/china/quote', 'POST')  # расчёт Китай → граница РФ (в экономику сделки не идёт)
     def china_quote(self) -> None:
@@ -1139,16 +1177,16 @@ class SettingsController(Controller):
 
     @route(r'/api/logistics')  # тарифы доставки по России (общие для отдела; изменяет администратор)
     def logistics(self) -> None:
-        if self.m == 'PUT':
+        if self.method == 'PUT':
             try:
                 body = self.json_body()
             except BadRequest:
                 raise BadRequest('Неверный формат тарифов') from None
             with self.user_input():
-                d = logistics_api.TariffInput.check(body)
-            d['updatedAt'] = datetime.now().isoformat(timespec='seconds')
-            d['updatedBy'] = admin.actor(self.h)[1]
-            store().kv_set('logistics', d)
+                data = logistics_api.TariffInput.check(body)
+            data['updatedAt'] = datetime.now().isoformat(timespec='seconds')
+            data['updatedBy'] = admin.actor(self.handler)[1]
+            store().kv_set('logistics', data)
             return self.send_json({'ok': True})
         return self.send_json(dict(store().kv_get('logistics') or {}, _auto=store().kv_get('logisticsAuto')))
 
@@ -1159,12 +1197,12 @@ class SettingsController(Controller):
     @route(r'/api/uitexts', 'PUT')  # только администратор (admin.guard)
     def uitexts_put(self) -> None:
         try:
-            d = self.json_body()
+            data = self.json_body()
         except BadRequest:
             raise BadRequest('Неверный формат') from None
-        if len(d) > self.MAX_UITEXTS:
+        if len(data) > self.MAX_UITEXTS:
             raise BadRequest('Неверный формат')
-        out = {str(k)[:2000]: str(v)[:4000] for k, v in d.items() if str(k).strip() and isinstance(v, str)}
+        out = {str(k)[:2000]: str(v)[:4000] for k, v in data.items() if str(k).strip() and isinstance(v, str)}
         store().kv_set('uitexts', out)
         return self.send_json({'ok': True, 'count': len(out)})
 
@@ -1179,7 +1217,7 @@ class SettingsController(Controller):
         import workcal
 
         with self.user_input():
-            cal = workcal.year(store(), int(self.q.get('year') or 0))
+            cal = workcal.year(store(), int(self.query.get('year') or 0))
         return self.send_json(cal)
 
 
@@ -1191,22 +1229,27 @@ class DealController(Controller):
     @route(r'/api/suppliers/([A-Za-z0-9_-]{1,64})', 'PUT')
     def supplier(self, sid) -> None:
         if not catalog_admin.power(
-            self.h, 'catSelfMod', 'PUT'
+            self.handler, 'catSelfMod', 'PUT'
         ):  # справочник поставщиков — администратор и право «Без модерации»
             return self.text(403, 'Справочник поставщиков меняет администратор или менеджер с правом «Без модерации»')
-        d = self.json_body()
+        data = self.json_body()
         with self.user_input():
-            saved = store().supplier_put(sid, d, admin.actor(self.h)[1], self.base_rev())
+            saved = store().supplier_put(sid, data, admin.actor(self.handler)[1], self.base_rev())
         return self.send_json(saved)
 
     @route(r'/api/customs', ('GET', 'PUT'))
     def customs(self) -> None:
-        if self.m == 'GET':
+        if self.method == 'GET':
             return self.send_json(store().customs_all())
-        d = self.json_body()
+        data = self.json_body()
         with self.user_input():
             store().customs_put(
-                d.get('key'), d.get('code'), d.get('duty'), d.get('note'), admin.actor(self.h)[1], d.get('name')
+                data.get('key'),
+                data.get('code'),
+                data.get('duty'),
+                data.get('note'),
+                admin.actor(self.handler)[1],
+                data.get('name'),
             )
         return self.send_json({'ok': True})
 
@@ -1216,10 +1259,10 @@ class TrackController(Controller):
     def _obj(text) -> dict:
         """Объект JSON из базы; пусто или испорчено — {}."""
         try:
-            d = json.loads(text) if text else {}
+            data = json.loads(text) if text else {}
         except (TypeError, ValueError):
             return {}
-        return d if isinstance(d, dict) else {}
+        return data if isinstance(data, dict) else {}
 
     @route(
         r'/api/kp/([A-Za-z0-9_-]{1,64})/track', 'PUT'
@@ -1228,11 +1271,13 @@ class TrackController(Controller):
         if not store().kp_get(kid, 'meta'):
             return self.not_found('Сначала сохраните КП')
         with self.user_input():
-            tr, changed = DealTrack(store()).update(kid, self.json_body(), admin.actor(self.h)[1])
+            track, changed = DealTrack(store()).update(kid, self.json_body(), admin.actor(self.handler)[1])
         if changed:
-            admin.log(self.h, store(), 'kp_status', 'kp', kid, None, changed)
-            CrmController.safe(lambda: CrmController.bx(DealBook(store()).refresh(kid, admin.actor(self.h)[1])))
-        return self.send_json({'ok': True, 'track': tr})
+            admin.log(self.handler, store(), 'kp_status', 'kp', kid, None, changed)
+            CrmController.safe(
+                lambda: CrmController.bitrix_on(DealBook(store()).refresh(kid, admin.actor(self.handler)[1]))
+            )
+        return self.send_json({'ok': True, 'track': track})
 
     @route(
         r'/api/kp/([A-Za-z0-9_-]{1,64})/econ', 'PUT'
@@ -1241,41 +1286,46 @@ class TrackController(Controller):
         meta = self._obj(store().kp_get(kid, 'meta'))
         if not meta:
             return self.not_found('Сначала сохраните КП')
-        if not admin.deal_allowed(self.h, meta):
+        if not admin.deal_allowed(self.handler, meta):
             return self.text(403, 'Экономика сделки — только автору КП и администратору')
         if not BitrixConf(store()).on():
             return self.send_json({'ok': False})
         with self.user_input():
             EconXlsx(store()).save(kid, self.body())
-        CrmController.bx(DealBook(store()).deal_of(kid))
+        CrmController.bitrix_on(DealBook(store()).deal_of(kid))
         return self.send_json({'ok': True})
 
     @route(r'/api/reminders', 'GET')  # напоминания менеджера: перезвонить, срок действия КП, нет ответа
     def reminders(self) -> None:
-        h = self.h
-        uid, name, _ = admin.actor(h, admin=False)
-        everyone = admin.session(h, touch=False) is not None and not uid
+        handler = self.handler
+        uid, name, _ = admin.actor(handler, admin=False)
+        everyone = admin.session(handler, touch=False) is not None and not uid
 
-        def mine(m) -> bool:
+        def mine(meta_obj) -> bool:
             if everyone:
                 return True
-            author = m.get('authorId') or m.get('managerId')
+            author = meta_obj.get('authorId') or meta_obj.get('managerId')
             if author and uid:
                 return author == uid
-            return bool(name) and str(m.get('manager') or '').strip().lower() == str(name).strip().lower()
+            return bool(name) and str(meta_obj.get('manager') or '').strip().lower() == str(name).strip().lower()
 
         rows = []
         for kid, meta, track in store().kp_tracked(
             (date.today() - timedelta(days=defaults.SrvVal.get(store(), 'kp.remindDays'))).isoformat()
         ):
-            m = self._obj(meta)
-            if admin.login_on(h) and not admin.own_kp(h, m) and not admin.perm(h, 'kpOthers'):
+            meta_dict = self._obj(meta)
+            if admin.login_on(handler) and not admin.own_kp(handler, meta_dict) and not admin.perm(handler, 'kpOthers'):
                 continue
-            if not mine(m):
+            if not mine(meta_dict):
                 continue
             # состояние КП (бывает в мегабайтах) — только своим КП и только если срок действия не записан в описании
             rows.append(
-                (kid, m, self._obj(track), {} if m.get('validUntil') else self._obj(store().kp_get(kid, 'state')))
+                (
+                    kid,
+                    meta_dict,
+                    self._obj(track),
+                    {} if meta_dict.get('validUntil') else self._obj(store().kp_get(kid, 'state')),
+                )
             )
         items = ReminderList(store=store()).collect(rows, mine)
         return self.send_json({'items': items, 'count': len(items)})
@@ -1287,27 +1337,27 @@ class TrackController(Controller):
     def _features(self) -> dict:
         """Функции программы, доступные тому, кто прислал запрос."""
         return FeatureAccess(store()).for_user(
-            admin.session(self.h, touch=False) is not None, admin.actor(self.h, admin=False)[0] or ''
+            admin.session(self.handler, touch=False) is not None, admin.actor(self.handler, admin=False)[0] or ''
         )
 
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/mailform', 'GET')  # письмо клиенту: адреса и текст по умолчанию
     def mailform(self, kid: str) -> None:
-        st, mt = self._obj(store().kp_get(kid, 'state')), self._obj(store().kp_get(kid, 'meta'))
-        mp = Mailer(store()).public()
-        tpl = MailTemplate(st, mt, mp.get('fromName') or '')
+        state, meta = self._obj(store().kp_get(kid, 'state')), self._obj(store().kp_get(kid, 'meta'))
+        mail_public = Mailer(store()).public()
+        tpl = MailTemplate(state, meta, mail_public.get('fromName') or '')
         word = self.kp_docx(kid)
         pdf = pdf_of(word) if word and os.path.isfile(pdf_of(word)) else None
-        ct = st.get('contact') if isinstance(st.get('contact'), dict) else {}
+        contact = state.get('contact') if isinstance(state.get('contact'), dict) else {}
         files = []
         if self._features().get('kpFiles'):
             files = [{k: x[k] for k in ('id', 'name', 'size', 'note')} for x in KpFiles.of(store()).list(kid)]
         return self.send_json(
             {
-                'on': mp['on'],
-                'to': str(ct.get('email') or '').strip(),
+                'on': mail_public['on'],
+                'to': str(contact.get('email') or '').strip(),
                 'cc': tpl.vars['e-mail'],
-                'subject': tpl.fill(mp['subject']),
-                'body': tpl.fill(mp['body']),
+                'subject': tpl.fill(mail_public['subject']),
+                'body': tpl.fill(mail_public['body']),
                 'word': os.path.basename(word) if word else '',
                 'pdf': os.path.basename(pdf) if pdf else '',
                 'wordSize': os.path.getsize(word) if word else 0,
@@ -1320,99 +1370,130 @@ class TrackController(Controller):
 
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/send', 'POST')  # отправить КП клиенту по почте
     def send_kp(self, kid: str) -> None:
-        d = self.json_body()
+        data = self.json_body()
         with self.user_input():
-            to, cc = Mailer.addresses(d.get('to')), Mailer.addresses(d.get('cc'))
-        if not to:
+            recipients, copies = Mailer.addresses(data.get('to')), Mailer.addresses(data.get('cc'))
+        if not recipients:
             raise BadRequest('Укажите адрес получателя')
-        f = self.kp_docx(kid)
-        if not f:
+        path = self.kp_docx(kid)
+        if not path:
             return self.not_found('Файл КП не найден — сохраните КП')
         files = []
-        if d.get('word', True):
-            with open(f, 'rb') as fh:
+        if data.get('word', True):
+            with open(path, 'rb') as handle:
                 files.append(
                     (
-                        os.path.basename(f),
-                        fh.read(),
+                        os.path.basename(path),
+                        handle.read(),
                         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                     )
                 )
-        if d.get('pdf'):
-            pdf = pdf_of(f)
+        if data.get('pdf'):
+            pdf = pdf_of(path)
             if not os.path.isfile(pdf):
                 try:
-                    pdf_convert.convert_file(f, pdf, cp().keys().get('convertapiKey'))
-                except Exception as e:
-                    return self.text(422, f'PDF не создан: {str(e)[:200]}')
-            with open(pdf, 'rb') as fh:
-                files.append((os.path.basename(pdf), fh.read(), 'application/pdf'))
+                    pdf_convert.convert_file(path, pdf, counterparties().keys().get('convertapiKey'))
+                except Exception as exc:
+                    return self.text(422, f'PDF не создан: {str(exc)[:200]}')
+            with open(pdf, 'rb') as handle:
+                files.append((os.path.basename(pdf), handle.read(), 'application/pdf'))
         if not files:
             raise BadRequest('Выберите файл: Word или PDF')
-        if d.get('files') and self._features().get('kpFiles'):  # отмеченные справочные документы КП
-            if not isinstance(d['files'], list):
+        if data.get('files') and self._features().get('kpFiles'):  # отмеченные справочные документы КП
+            if not isinstance(data['files'], list):
                 raise BadRequest('Неверный список документов')
             with self.user_input():
-                files += KpFiles.of(store()).for_mail(kid, d['files'], sum(len(x[1]) for x in files))
-        st = self._obj(store().kp_get(kid, 'state'))
-        reply = str((st.get('manager') or {}).get('email') or '') if isinstance(st.get('manager'), dict) else ''
+                files += KpFiles.of(store()).for_mail(kid, data['files'], sum(len(x[1]) for x in files))
+        state = self._obj(store().kp_get(kid, 'state'))
+        reply = str((state.get('manager') or {}).get('email') or '') if isinstance(state.get('manager'), dict) else ''
         with self.user_input():
             u = getattr(
-                self.h, '_kp_user', None
+                self.handler, '_kp_user', None
             )  # без входа по паролю «кто» — заголовок запроса: считаем по компьютеру
-            MailRate.take(store(), 'u:{}'.format(u['id']) if u else f'ip:{self.h.client_address[0]}')
+            MailRate.take(store(), 'u:{}'.format(u['id']) if u else f'ip:{self.handler.client_address[0]}')
         try:
             Mailer(store()).send(
-                to, cc, str(d.get('subject') or '')[:300], str(d.get('body') or '')[:20000], files, reply
+                recipients,
+                copies,
+                str(data.get('subject') or '')[:300],
+                str(data.get('body') or '')[:20000],
+                files,
+                reply,
             )
-        except RuntimeError as e:
-            admin.log(self.h, store(), 'send_kp', 'kp', kid, None, {'to': to, 'error': str(e)[:200]}, result='failed')
-            return self.text(422, str(e))
-        tr = DealTrack(store()).mark_sent(kid, to + cc, [x[0] for x in files], admin.actor(self.h)[1])
-        CrmController.safe(lambda: CrmController.bx(DealBook(store()).refresh(kid, admin.actor(self.h)[1])))
-        CrmController.safe(lambda: CrmController.mailed(kid, to + cc, admin.actor(self.h)[1]))
-        admin.log(self.h, store(), 'send_kp', 'kp', kid, None, {'to': to, 'cc': cc, 'files': [x[0] for x in files]})
-        return self.send_json({'ok': True, 'track': tr})
+        except RuntimeError as exc:
+            admin.log(
+                self.handler,
+                store(),
+                'send_kp',
+                'kp',
+                kid,
+                None,
+                {'to': recipients, 'error': str(exc)[:200]},
+                result='failed',
+            )
+            return self.text(422, str(exc))
+        track = DealTrack(store()).mark_sent(
+            kid, recipients + copies, [x[0] for x in files], admin.actor(self.handler)[1]
+        )
+        CrmController.safe(
+            lambda: CrmController.bitrix_on(DealBook(store()).refresh(kid, admin.actor(self.handler)[1]))
+        )
+        CrmController.safe(lambda: CrmController.mailed(kid, recipients + copies, admin.actor(self.handler)[1]))
+        admin.log(
+            self.handler,
+            store(),
+            'send_kp',
+            'kp',
+            kid,
+            None,
+            {'to': recipients, 'cc': copies, 'files': [x[0] for x in files]},
+        )
+        return self.send_json({'ok': True, 'track': track})
 
     @route(
         r'/api/report', 'GET'
     )  # отчёт по КП за период: описания (права — как в журнале) и позиции для расчёта по категориям
     def report(self) -> None:
-        q = self.q
-        d1, d2 = str(q.get('from') or '')[:10], str(q.get('to') or '')[:10] or '9999-12-31'
+        query = self.query
+        date_from, date_to = str(query.get('from') or '')[:10], str(query.get('to') or '')[:10] or '9999-12-31'
         docs = [
-            d
-            for d in map(
+            day
+            for day in map(
                 self._obj,
                 store().kp_metas_where(
-                    q.get('q', ''), q.get('author', ''), q.get('kind', ''), '', d1, str(q.get('to') or '')[:10]
+                    query.get('q', ''),
+                    query.get('author', ''),
+                    query.get('kind', ''),
+                    '',
+                    date_from,
+                    str(query.get('to') or '')[:10],
                 ),
             )
-            if d and d1 <= str(d.get('date') or '')[:10] <= d2
+            if day and date_from <= str(day.get('date') or '')[:10] <= date_to
         ]
-        rows = admin.KpJournal.rows(self.h, docs)
+        rows = admin.KpJournal.rows(self.handler, docs)
         states = store().kp_states(
-            [r.get('id') for r in rows if isinstance(r, dict) and r.get('id') and not r.get('locked')]
+            [rec.get('id') for rec in rows if isinstance(rec, dict) and rec.get('id') and not rec.get('locked')]
         )
         deal_on = self._features()['deal']  # экономика недоступна — без прибыли
-        for r in rows:
-            sr, pr = admin.econ_rub(r)
-            r['sumRub'], r['profitRub'] = sr, (pr if deal_on else None)
+        for rec in rows:
+            sale_rub, profit = admin.econ_rub(rec)
+            rec['sumRub'], rec['profitRub'] = sale_rub, (profit if deal_on else None)
             if not deal_on:
                 for k in ('econ', 'deal'):
-                    r.pop(k, None)
-            if r.get('locked') or not deal_on:
+                    rec.pop(k, None)
+            if rec.get('locked') or not deal_on:
                 continue
-            st = self._obj(states.get(r.get('id') or ''))
-            r['calc'] = {
-                'vat': st.get('vat'),
-                'pricing': {k: (st.get('pricing') or {}).get(k) for k in ('cur', 'rates', 'costNoVat')},
+            state = self._obj(states.get(rec.get('id') or ''))
+            rec['calc'] = {
+                'vat': state.get('vat'),
+                'pricing': {k: (state.get('pricing') or {}).get(k) for k in ('cur', 'rates', 'costNoVat')},
                 'items': [
                     {
                         k: x.get(k)
                         for k in ('name', 'qty', 'price', 'disc', 'options', 'cost', 'costCur', 'attrs', 'kit')
                     }
-                    for x in (st.get('items') or [])
+                    for x in (state.get('items') or [])
                     if isinstance(x, dict)
                 ],
             }
@@ -1450,7 +1531,7 @@ class DraftsController(Controller):
     )
 
     def _who(self) -> tuple:
-        uid, name, _ = admin.actor(self.h, admin=False)
+        uid, name, _ = admin.actor(self.handler, admin=False)
         return uid or '', name or ''
 
     def _mine(self, row) -> bool:
@@ -1458,7 +1539,7 @@ class DraftsController(Controller):
         return (
             row['owner'] == self._who()[0]
             or (row['kind'] == 'draft' and not row['owner'])
-            or admin.session(self.h, touch=False) is not None
+            or admin.session(self.handler, touch=False) is not None
         )
 
     @route(r'/api/(drafts|presets)', 'GET')
@@ -1489,17 +1570,17 @@ class DraftsController(Controller):
             return self.text(
                 413, 'Черновик слишком большой (больше 25 МБ) — уберите вставленные картинки большого размера'
             )
-        d = self.json_body()
-        st = d.get('state')
-        if not isinstance(st, dict):
+        payload = self.json_body()
+        state = payload.get('state')
+        if not isinstance(state, dict):
             raise BadRequest('Нет состояния КП')
         old, _ = store().draft_get(did)
         if old and (old['kind'] != k or not self._mine(old)):
             return self.text(403, 'Это запись другого менеджера')
         uid, name = self._who()
-        items = st.get('items') if isinstance(st.get('items'), list) else []
+        items = state.get('items') if isinstance(state.get('items'), list) else []
         try:
-            total = float(d.get('sum') or 0)
+            total = float(payload.get('sum') or 0)
         except (TypeError, ValueError):
             total = 0.0
         if not math.isfinite(total):
@@ -1510,12 +1591,12 @@ class DraftsController(Controller):
             'kind': k,
             'owner': old['owner'] if keep else uid,
             'owner_name': old['owner_name'] if keep else name,
-            'title': str(d.get('title') or '')[:120],
-            'client': str(st.get('client') or '')[:200],
-            'kp': str(st.get('number') or '')[:40] if st.get('kpId') and k == 'draft' else '',
+            'title': str(payload.get('title') or '')[:120],
+            'client': str(state.get('client') or '')[:200],
+            'kp': str(state.get('number') or '')[:40] if state.get('kpId') and k == 'draft' else '',
             'positions': len(items),
             'sum': total,
-            'cur': str(d.get('cur') or 'RUB')[:3],
+            'cur': str(payload.get('cur') or 'RUB')[:3],
             'updated': datetime.now().isoformat(timespec='seconds'),
         }
         if k == 'preset' and not row['title']:
@@ -1523,13 +1604,13 @@ class DraftsController(Controller):
         if (
             k == 'preset'
         ):  # заготовка — общая для отдела: без клиента, номера, автора и экономики (как Presets.DROP в клиенте)
-            st = {x: v for x, v in st.items() if x not in self.PRESET_DROP}
-        data = {'state': st}
-        if k == 'draft' and isinstance(d.get('rev'), int):
-            data['rev'] = d['rev']
+            state = {x: v for x, v in state.items() if x not in self.PRESET_DROP}
+        data = {'state': state}
+        if k == 'draft' and isinstance(payload.get('rev'), int):
+            data['rev'] = payload['rev']
         store().draft_put(row, json.dumps(data, ensure_ascii=False))
         if k == 'preset' and not old:
-            admin.log(self.h, store(), 'preset_add', 'preset', did, None, {'title': row['title']})
+            admin.log(self.handler, store(), 'preset_add', 'preset', did, None, {'title': row['title']})
         return self.send_json({'ok': True, 'row': row})
 
     @route(r'/api/(drafts|presets)/([A-Za-z0-9_-]{1,40})/delete', 'POST')
@@ -1541,7 +1622,7 @@ class DraftsController(Controller):
             return self.text(403, 'Удалить может только автор или администратор')
         store().draft_del(did)
         if kind == 'presets':
-            admin.log(self.h, store(), 'preset_delete', 'preset', did, {'title': row['title']}, None)
+            admin.log(self.handler, store(), 'preset_delete', 'preset', did, {'title': row['title']}, None)
         return self.send_json({'ok': True})
 
 
@@ -1551,49 +1632,49 @@ class ClientCardController(Controller):
     MAX_NOTES = 200
 
     def _client(self, cid, inn) -> dict | None:
-        c = store().client_get(safe_id(cid), rev=True) if cid else None
-        if not c and inn:
-            c = store().client_get('inn' + inn, rev=True)
-        return c
+        client = store().client_get(safe_id(cid), rev=True) if cid else None
+        if not client and inn:
+            client = store().client_get('inn' + inn, rev=True)
+        return client
 
     @route(r'/api/clientcard', 'GET')
     def card(self) -> None:
-        inn = re.sub(r'\D', '', self.q.get('inn') or '')[:12]
-        name = (self.q.get('name') or '').strip()[:300]
-        c = self._client(self.q.get('id') or '', inn)
-        if c:
-            inn = inn or re.sub(r'\D', '', str(c.get('inn') or ''))
-            name = name or str(c.get('name') or '')
+        inn = re.sub(r'\D', '', self.query.get('inn') or '')[:12]
+        name = (self.query.get('name') or '').strip()[:300]
+        client = self._client(self.query.get('id') or '', inn)
+        if client:
+            inn = inn or re.sub(r'\D', '', str(client.get('inn') or ''))
+            name = name or str(client.get('name') or '')
         if not inn and not name:
             raise BadRequest('Нужен ИНН или название клиента')
-        res = admin.KpJournal.page(self.h, store(), {'q': inn or name, 'limit': 500})
+        res = admin.KpJournal.page(self.handler, store(), {'q': inn or name, 'limit': 500})
         key = (
-            (lambda r: re.sub(r'\D', '', str(r.get('clientInn') or '')) == inn)
+            (lambda rec: re.sub(r'\D', '', str(rec.get('clientInn') or '')) == inn)
             if inn
-            else (lambda r: str(r.get('client') or '').strip().lower() == name.lower())
+            else (lambda item: str(item.get('client') or '').strip().lower() == name.lower())
         )
-        rows = [r for r in res['items'] if key(r)]
-        rows.sort(key=lambda r: (r.get('date') or '', r.get('number') or ''), reverse=True)
-        by, total, people = {}, 0, {}
-        for r in rows:
-            st = admin.KpJournal.status(r)
-            rub = admin.econ_rub(r)[0] or 0
-            group = by.setdefault(st, {'n': 0, 'sum': 0})
+        rows = [rec for rec in res['items'] if key(rec)]
+        rows.sort(key=lambda rec: (rec.get('date') or '', rec.get('number') or ''), reverse=True)
+        by_status, total, people = {}, 0, {}
+        for rec in rows:
+            status = admin.KpJournal.status(rec)
+            rub = admin.econ_rub(rec)[0] or 0
+            group = by_status.setdefault(status, {'n': 0, 'sum': 0})
             group['n'] += 1
             group['sum'] += rub
             total += rub
-            if r.get('manager'):
-                people[r['manager']] = people.get(r['manager'], 0) + 1
+            if rec.get('manager'):
+                people[rec['manager']] = people.get(rec['manager'], 0) + 1
         return self.send_json(
             {
-                'client': c,
+                'client': client,
                 'inn': inn,
                 'name': name,
                 'kps': rows,
-                'by': by,
+                'by': by_status,
                 'total': total,
                 'managers': sorted(people, key=lambda k: -people[k]),
-                'notes': (c or {}).get('notes') or [],
+                'notes': (client or {}).get('notes') or [],
             }
         )
 
@@ -1601,26 +1682,26 @@ class ClientCardController(Controller):
         r'/api/clientcard/note', 'POST'
     )  # заметка о клиенте: {id, text} — добавить; {id, del: время заметки} — удалить свою
     def note(self) -> None:
-        d = self.json_body()
-        c = self._client(str(d.get('id') or '')[:64], '')
-        if not c:
+        data = self.json_body()
+        client = self._client(str(data.get('id') or '')[:64], '')
+        if not client:
             return self.text(404, 'Клиент не найден в справочнике — сначала сохраните КП с этим клиентом')
-        cid = safe_id(str(d.get('id')))
-        uid, name = admin.actor(self.h, admin=False)[0] or '', admin.actor(self.h)[1] or ''
-        notes = [n for n in (c.get('notes') or []) if isinstance(n, dict)]
-        if d.get('del'):
-            mine = admin.session(self.h, touch=False) is not None
-            keep = [n for n in notes if not (n.get('at') == d['del'] and (mine or n.get('uid') == uid))]
+        cid = safe_id(str(data.get('id')))
+        uid, name = admin.actor(self.handler, admin=False)[0] or '', admin.actor(self.handler)[1] or ''
+        notes = [note for note in (client.get('notes') or []) if isinstance(note, dict)]
+        if data.get('del'):
+            mine = admin.session(self.handler, touch=False) is not None
+            keep = [note for note in notes if not (note.get('at') == data['del'] and (mine or note.get('uid') == uid))]
             if len(keep) == len(notes):
                 return self.text(403, 'Удалить можно только свою заметку')
             notes = keep
         else:
-            text = str(d.get('text') or '').strip()[:2000]
+            text = str(data.get('text') or '').strip()[:2000]
             if not text:
                 raise BadRequest('Пустая заметка')
             notes.insert(0, {'at': datetime.now().isoformat(timespec='seconds'), 'by': name, 'uid': uid, 'text': text})
             notes = notes[: self.MAX_NOTES]
-        doc = {k: v for k, v in c.items() if k != '_rev'}
+        doc = {k: v for k, v in client.items() if k != '_rev'}
         doc['notes'] = notes
         store().client_put(cid, doc, name)
         return self.send_json({'ok': True, 'notes': notes})
@@ -1632,130 +1713,132 @@ class CrmController(Controller):
     MID = re.compile(r'^[A-Za-z0-9_:-]{0,64}$')
 
     @staticmethod
-    def safe(fn) -> object:
+    def safe(func) -> object:
         """Сделки — дополнение к КП: сбой в них не мешает сохранить КП (подробности — в журнал сервера)."""
         try:
-            return fn()
-        except Exception as e:
-            ServerLog.failure('сделки', e)
+            return func()
+        except Exception as exc:
+            ServerLog.failure('сделки', exc)
             return None
 
     @staticmethod
-    def bx(did, kind='deal') -> str:
+    def bitrix_on(did, kind='deal') -> str:
         """Изменение — в очередь отправки в Битрикс24 (если связь включена). → did"""
         if did:
             BitrixQueue.touch(store(), kind, did)
         return did
 
     @classmethod
-    def mailed(cls, kid: str, to, by: str) -> str | None:
+    def mailed(cls, kid: str, recipients, author: str) -> str | None:
         """Письмо с КП ушло клиенту — сделанное дело «Письмо» в сделке (и в Битрикс24, если связь включена)."""
         book = DealBook(store())
         did = book.deal_of(kid)
-        d = book.get(did) if did else None
-        if not d:
+        deal = book.get(did) if did else None
+        if not deal:
             return None
         meta = TrackController._obj(store().kp_get(kid, 'meta'))
-        tb = TaskBook(store())
-        t = tb.add(
+        tasks = TaskBook(store())
+        task = tasks.add(
             {
                 'kind': 'mail',
                 'due': date.today().isoformat(),
                 'time': datetime.now().strftime('%H:%M'),
-                'title': 'Отправлено КП № {}: {}'.format(*(meta.get('number') or kid, ', '.join(to))[:200]),
+                'title': 'Отправлено КП № {}: {}'.format(*(meta.get('number') or kid, ', '.join(recipients))[:200]),
             },
-            d.get('managerId') or '',
-            by,
+            deal.get('managerId') or '',
+            author,
             did,
         )
-        tb.update(t['id'], {'state': 'done'})
-        return cls.bx(t['id'], 'task')
+        tasks.update(task['id'], {'state': 'done'})
+        return cls.bitrix_on(task['id'], 'task')
 
     @classmethod
-    def on_kp(cls, h, kid: str) -> str | None:
+    def on_kp(cls, handler, kid: str) -> str | None:
         """КП сохранено — в сделку: выбранную в КП (своя или с правом на чужие), прежнюю или новую."""
         meta = TrackController._obj(store().kp_get(kid, 'meta'))
         want = str(meta.get('dealId') or '')[:40]
         if want and want != 'new':
-            d = DealBook(store()).get(want)
-            uid, _n, everyone = cls.who(h)
-            want = want if d and (everyone or d.get('managerId') == uid) else None
-        return cls.safe(lambda: cls.bx(DealBook(store()).on_kp(kid, meta, admin.actor(h)[1], want or None)))
+            deal = DealBook(store()).get(want)
+            uid, _name, everyone = cls.who(handler)
+            want = want if deal and (everyone or deal.get('managerId') == uid) else None
+        return cls.safe(
+            lambda: cls.bitrix_on(DealBook(store()).on_kp(kid, meta, admin.actor(handler)[1], want or None))
+        )
 
     @staticmethod
-    def who(h) -> tuple:
-        uid, name, _ = admin.actor(h, admin=False)
-        everyone = admin.session(h, touch=False) is not None or admin.perm(h, 'kpOthers')
+    def who(handler) -> tuple:
+        uid, name, _ = admin.actor(handler, admin=False)
+        everyone = admin.session(handler, touch=False) is not None or admin.perm(handler, 'kpOthers')
         return uid or '', name or '', everyone
 
-    def _scope(self, q) -> list | None:
+    def _scope(self, query) -> list | None:
         """Чьи сделки: '' — свои, 'all' — весь отдел, id — менеджера. Чужие — только с правом."""
-        uid, _n, everyone = self.who(self.h)
-        q = str(q or '')
-        if q in ('', 'me') or q == uid:
+        uid, _name, everyone = self.who(self.handler)
+        query = str(query or '')
+        if query in ('', 'me') or query == uid:
             return [uid]
         if not everyone:
             raise PermissionError(
                 'Кабинет коллеги и отдел — у администратора и менеджеров с правом «КП других менеджеров»'
             )
-        if q == 'all':
+        if query == 'all':
             return None
-        if not self.MID.match(q):
+        if not self.MID.match(query):
             raise BadRequest('Неверный менеджер')
-        return [q]
+        return [query]
 
     def _deal(self, did) -> dict | None:
         """Сделка, если она своя или есть право на чужие; иначе — ответ отправлен, None."""
-        d = DealBook(store()).get(did)
-        uid, _n, everyone = self.who(self.h)
-        if not d:
+        deal = DealBook(store()).get(did)
+        uid, _name, everyone = self.who(self.handler)
+        if not deal:
             self.not_found('Сделка не найдена')
             return None
-        if not everyone and d.get('managerId') != uid:
+        if not everyone and deal.get('managerId') != uid:
             self.text(403, 'Это сделка другого менеджера — нет доступа')
             return None
-        return d
+        return deal
 
     def _manager(self, mid: str) -> tuple:
         """(id, имя) менеджера из справочника для смены ответственного."""
-        m = next((x for x in CrmBoard(store()).managers() if x['id'] == mid), None)
-        if not m:
+        mgr = next((x for x in CrmBoard(store()).managers() if x['id'] == mid), None)
+        if not mgr:
             raise BadRequest('Менеджер не найден')
-        return m['id'], m['name']
+        return mgr['id'], mgr['name']
 
     @route(r'/api/crm/board', 'GET')
     def board(self) -> None:
         try:
-            scope = self._scope(self.q.get('manager'))
-        except PermissionError as e:
-            return self.text(403, str(e))
+            scope = self._scope(self.query.get('manager'))
+        except PermissionError as exc:
+            return self.text(403, str(exc))
         res = CrmBoard(store()).build(scope)
         if BitrixConf(store()).on():  # ссылки «Открыть в Битрикс24» на карточках доски
             portal = BitrixConf(store()).get().get('portal') or ''
-            bx = dict(store().all("SELECT local_id, bx_id FROM bx_link WHERE kind='deal'"))
-            for d in res['deals']:
-                if d['id'] in bx and portal:
-                    d['bxUrl'] = '{}/crm/deal/details/{}/'.format(portal, bx[d['id']])
-        uid, name, everyone = self.who(self.h)
+            bx_ids = dict(store().all("SELECT local_id, bx_id FROM bx_link WHERE kind='deal'"))
+            for deal in res['deals']:
+                if deal['id'] in bx_ids and portal:
+                    deal['bxUrl'] = '{}/crm/deal/details/{}/'.format(portal, bx_ids[deal['id']])
+        uid, name, everyone = self.who(self.handler)
         res.update(me=uid, meName=name, canAll=everyone, managers=CrmBoard(store()).managers() if everyone else [])
         return self.send_json(res)
 
     @route(r'/api/crm/pick', 'GET')
     def pick(self) -> None:
-        uid, _n, everyone = self.who(self.h)
-        inn = re.sub(r'\D', '', self.q.get('inn') or '')[:12]
-        name = (self.q.get('name') or '').strip()[:300]
-        kid = safe_id(self.q.get('kp')) if self.q.get('kp') else ''
-        cur = DealBook(store()).deal_of(kid) if kid and admin.kp_access(self.h, store(), kid) else None
+        uid, _name, everyone = self.who(self.handler)
+        inn = re.sub(r'\D', '', self.query.get('inn') or '')[:12]
+        name = (self.query.get('name') or '').strip()[:300]
+        kid = safe_id(self.query.get('kp')) if self.query.get('kp') else ''
+        cur = DealBook(store()).deal_of(kid) if kid and admin.kp_access(self.handler, store(), kid) else None
         mine = [uid] if not everyone else None
         items = CrmBoard(store()).pick(mine, inn, name) if inn or name else []
         if cur and cur not in [x['id'] for x in items]:
-            d = DealBook(store()).get(cur)
-            if d:
+            deal = DealBook(store()).get(cur)
+            if deal:
                 items.insert(
                     0,
                     {
-                        k: d.get(k)
+                        k: deal.get(k)
                         for k in ('id', 'number', 'title', 'client', 'stage', 'sum', 'expected', 'updated', 'manager')
                     },
                 )
@@ -1763,24 +1846,24 @@ class CrmController(Controller):
 
     @route(r'/api/crm/find', 'GET')  # единый поиск программы: сделки по словам (свои; руководитель — все)
     def find(self) -> None:
-        uid, _n, everyone = self.who(self.h)
+        uid, _name, everyone = self.who(self.handler)
         return self.send_json(
-            {'items': CrmBoard(store()).find(None if everyone else [uid], str(self.q.get('q') or '')[:200])}
+            {'items': CrmBoard(store()).find(None if everyone else [uid], str(self.query.get('q') or '')[:200])}
         )
 
     @route(r'/api/crm/deal', 'POST')
     def create(self) -> None:
-        d = self.json_body()
-        uid, name, everyone = self.who(self.h)
+        data = self.json_body()
+        uid, name, everyone = self.who(self.handler)
         mid, mname = (
-            self._manager(str(d.get('managerId')))
-            if everyone and d.get('managerId') and d.get('managerId') != uid
+            self._manager(str(data.get('managerId')))
+            if everyone and data.get('managerId') and data.get('managerId') != uid
             else (uid, name)
         )
         with self.user_input():
-            deal = DealBook(store()).create(d, mid, mname, admin.actor(self.h)[1])
+            deal = DealBook(store()).create(data, mid, mname, admin.actor(self.handler)[1])
         admin.log(
-            self.h,
+            self.handler,
             store(),
             'create_deal',
             'deal',
@@ -1788,46 +1871,46 @@ class CrmController(Controller):
             None,
             {k: deal.get(k) for k in ('title', 'client', 'stage')},
         )
-        self.bx(deal['id'])
+        self.bitrix_on(deal['id'])
         return self.send_json(deal)
 
     @route(r'/api/crm/deal/(d\d{1,9})', ('GET', 'PUT'))
     def deal(self, did) -> None:
-        d = self._deal(did)
-        if d is None:
+        deal = self._deal(did)
+        if deal is None:
             return None
         book = DealBook(store())
         if (
-            d.get('bxNew') and d.get('managerId') == self.who(self.h)[0]
+            deal.get('bxNew') and deal.get('managerId') == self.who(self.handler)[0]
         ):  # ответственный открыл — сделка больше не «новая»
             book.flag(did, bxNew=None)
-            d.pop('bxNew', None)
-        if self.m == 'PUT':
+            deal.pop('bxNew', None)
+        if self.method == 'PUT':
             body = self.json_body()
             mgr = None
-            if body.get('managerId') and body['managerId'] != d.get('managerId'):
-                if not self.who(self.h)[2]:
+            if body.get('managerId') and body['managerId'] != deal.get('managerId'):
+                if not self.who(self.handler)[2]:
                     return self.text(
                         403, 'Передать сделку коллеге может администратор или менеджер с правом «КП других менеджеров»'
                     )
                 mgr = self._manager(str(body['managerId']))
             with self.user_input():
                 try:
-                    new = book.update(did, body, admin.actor(self.h)[1], self.base_rev(), mgr)
-                except LookupError as e:
-                    return self.not_found(str(e))
+                    new = book.update(did, body, admin.actor(self.handler)[1], self.base_rev(), mgr)
+                except LookupError as exc:
+                    return self.not_found(str(exc))
             if mgr:
                 TaskBook(store()).move_deal(did, mgr[0])
-            ch = {k: new.get(k) for k in ('stage', 'lostReason', 'manager') if new.get(k) != d.get(k)}
-            if ch:
-                admin.log(self.h, store(), 'edit_deal', 'deal', did, {k: d.get(k) for k in ch}, ch)
-            self.bx(did)
-            d = new
-        d['kps'] = book.kps([did])[did]
-        d['tasks'] = TaskBook(store()).list(deal=did)
+            changes = {k: new.get(k) for k in ('stage', 'lostReason', 'manager') if new.get(k) != deal.get(k)}
+            if changes:
+                admin.log(self.handler, store(), 'edit_deal', 'deal', did, {k: deal.get(k) for k in changes}, changes)
+            self.bitrix_on(did)
+            deal = new
+        deal['kps'] = book.kps([did])[did]
+        deal['tasks'] = TaskBook(store()).list(deal=did)
         if BitrixConf(store()).on():
-            d['bx'] = self.safe(lambda: BitrixSync(store()).card(did))
-        return self.send_json(dict(d, stages=Stages.all(store())))
+            deal['bx'] = self.safe(lambda: BitrixSync(store()).card(did))
+        return self.send_json(dict(deal, stages=Stages.all(store())))
 
     @route(r'/api/crm/deal/(d\d{1,9})/kp', 'POST')
     def link(self, did) -> None:
@@ -1836,45 +1919,45 @@ class CrmController(Controller):
         kid = safe_id(str(self.json_body().get('kp') or ''))
         if not store().kp_get(kid, 'meta'):
             return self.not_found('КП не найдено')
-        if not admin.kp_access(self.h, store(), kid):
+        if not admin.kp_access(self.handler, store(), kid):
             return self.text(403, 'Это КП другого менеджера — нет доступа')
-        old = DealBook(store()).link(did, kid, admin.actor(self.h)[1])
-        admin.log(self.h, store(), 'link_deal', 'deal', did, {'deal': old} if old else None, {'kp': kid})
-        self.bx(did)
-        self.bx(old)
+        old = DealBook(store()).link(did, kid, admin.actor(self.handler)[1])
+        admin.log(self.handler, store(), 'link_deal', 'deal', did, {'deal': old} if old else None, {'kp': kid})
+        self.bitrix_on(did)
+        self.bitrix_on(old)
         return self.send_json({'ok': True, 'from': old})
 
     @route(r'/api/crm/task', 'POST')
     def task_add(self) -> None:
-        d = self.json_body()
-        uid, _n, everyone = self.who(self.h)
-        did = str(d.get('deal') or '')
+        data = self.json_body()
+        uid, _name, everyone = self.who(self.handler)
+        did = str(data.get('deal') or '')
         mid = uid
         if did:
             deal = self._deal(did)
             if deal is None:
                 return None
             mid = deal.get('managerId') or uid
-        elif everyone and d.get('managerId'):
-            mid = self._manager(str(d['managerId']))[0]
+        elif everyone and data.get('managerId'):
+            mid = self._manager(str(data['managerId']))[0]
         with self.user_input():
-            t = TaskBook(store()).add(d, mid, admin.actor(self.h)[1], did or None)
-        self.bx(t['id'], 'task')
-        return self.send_json(t)
+            task = TaskBook(store()).add(data, mid, admin.actor(self.handler)[1], did or None)
+        self.bitrix_on(task['id'], 'task')
+        return self.send_json(task)
 
     @route(r'/api/crm/task/(\d{1,9})', 'PUT')
     def task(self, tid: str) -> None:
-        tb = TaskBook(store())
-        t = tb.get(tid)
-        if not t:
+        tasks = TaskBook(store())
+        task = tasks.get(tid)
+        if not task:
             return self.not_found('Дело не найдено')
-        uid, _n, everyone = self.who(self.h)
-        if not everyone and t['managerId'] != uid:
+        uid, _name, everyone = self.who(self.handler)
+        if not everyone and task['managerId'] != uid:
             return self.text(403, 'Это дело другого менеджера — нет доступа')
         with self.user_input():
-            t = tb.update(tid, self.json_body())
-        self.bx(t['id'], 'task')
-        return self.send_json(t)
+            task = tasks.update(tid, self.json_body())
+        self.bitrix_on(task['id'], 'task')
+        return self.send_json(task)
 
 
 class MeController(Controller):
@@ -1882,17 +1965,17 @@ class MeController(Controller):
     def prefs(self) -> None:
         from user_prefs import UserPrefs
 
-        uid = admin.actor(self.h, admin=False)[0]
+        uid = admin.actor(self.handler, admin=False)[0]
         return self.send_json({'id': uid or '', 'prefs': UserPrefs(store()).get(uid) if uid else {}})
 
     @route(r'/api/me/prefs', 'PUT')
     def prefs_put(self) -> None:
         from user_prefs import UserPrefs
 
-        uid, name, _ = admin.actor(self.h, admin=False)
+        uid, name, _ = admin.actor(self.handler, admin=False)
         with self.user_input():
-            p = UserPrefs(store()).save(uid, self.json_body(), name)
-        return self.send_json({'id': uid, 'prefs': p})
+            prefs = UserPrefs(store()).save(uid, self.json_body(), name)
+        return self.send_json({'id': uid, 'prefs': prefs})
 
 
 class ServiceController(Controller):

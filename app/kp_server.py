@@ -39,7 +39,7 @@ from images import mark_organized, organize_existing
 from kp_templates import ensure_templates
 from server_log import ServerLog
 from version import VERSION as APP_VERSION
-from web_api import IMAGES, ROUTER, cp
+from web_api import IMAGES, ROUTER, counterparties
 
 PAID_GET = ('/api/geo/', '/api/party', '/api/check', '/api/imgfetch', '/api/cbr')
 
@@ -496,7 +496,7 @@ def main() -> int:
         # отложенные проверки контрагентов: когда лимит Checko обновится (после 00:00 по Москве) — выполнить очередь
         maintenance.Background.every(
             lambda: SrvVal.get(store(), 'cp.queueEveryMin') * 60,
-            lambda: cp().run_queue(),
+            lambda: counterparties().run_queue(),
             'очередь проверок контрагентов',
         )
         # ставки доставки по ATI.SU: проверка раз в 3 часа, обновление — когда прошёл период из настроек тарифов доставки

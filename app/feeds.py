@@ -2726,7 +2726,7 @@ def import_feed(store, f, types, image_store, by: str = '', only=None, log=print
                     except Conflict as e:
                         errors.append(
                             '{}: позицию изменили во время загрузки ({}) — оставлена как есть, обновится при следующей загрузке'.format(
-                                o['name'][:60], e.by or 'кто-то'
+                                o['name'][:60], e.author or 'кто-то'
                             )
                         )
                     except Exception as e:
@@ -3004,7 +3004,7 @@ def check_feed(store, f, by: str = '', log=print, types=None) -> dict:
                 except Conflict as e:
                     log(
                         'Фид «{}»: {} — изменили во время проверки ({}), обновится при следующей'.format(
-                            f['name'], d.get('name'), e.by or 'кто-то'
+                            f['name'], d.get('name'), e.author or 'кто-то'
                         )
                     )
             j['done'] += 1
