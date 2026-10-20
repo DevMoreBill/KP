@@ -1,4 +1,4 @@
-// Компоновка станций в контейнере (app/web/js/features/layout/, station-eskd.js, draw/): разбор габаритов
+// Компоновка станций в контейнере (app/web/js/features/layout/, eskd/, draw/): разбор габаритов
 // и цвета, расстановка с проходами обслуживания, подбор контейнера, отпечаток, габаритный чертёж и схема пневматическая
 // принципиальная на листе А4 по ЕСКД, 3D-вид.
 // Запуск из корня репозитория: node tests/js/station_layout.js — код выхода 0, если всё прошло (tests/test_station_layout.py).
@@ -6,11 +6,11 @@
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..'), WebScripts=require('./web.js');
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'station-eskd.js', 'view/index.js', 'draw/index.js']){
+for (const f of ['logistics-calc.js', 'station-rules.js', 'layout/index.js', 'eskd/index.js', 'view/index.js', 'draw/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
-if (GOLDEN){ GOLDEN.wrap(StationLayout, ['solve']); GOLDEN.wrap(StationDrawing, ['svg']); GOLDEN.wrap(StationView3D, ['svg']); GOLDEN.wrap(StationScheme, ['svg']); GOLDEN.wrapScene(StScene); }
+if (GOLDEN){ GOLDEN.wrap(StationLayout, ['solve']); GOLDEN.wrap(StationDrawing, ['svg']); GOLDEN.wrap(StationView3D, ['svg']); GOLDEN.wrap(StationScheme, ['svg']); GOLDEN.wrap(HydroScheme, ['svg']); GOLDEN.wrapScene(StScene); }
 
 class Check {
   static n=0;
@@ -762,15 +762,15 @@ Check.run('рисунки оборудования: узнаваемые, во �
     ['cabinet', 'box', [800, 600, 2000]], ['dgu', 'box', [3200, 1150, 1900]], ['pump', 'box', [2600, 1100, 1300]], ['pump', 'box', [400, 400, 1200]], ['tank', 'box', [1500, 800, 1100]], ['other', 'box', [800, 600, 900]]];
   for (const N of [20, 75, 200]) for (const [kind, shape, [lx, ly, h], o] of L) for (const v of [{ face:-1 }, { face:1 }, { face:-2 }, { face:-1, rot:true }]){
     const it=Object.assign({ kind, shape, lx, ly, h, mount:'floor', air:{}, look:'' }, o||{}, v), sh=new EskdSheet('A4'), k=1/N;
-    EquipIcon.front(sh, it, 30, 40, 30+lx*k, 40+h*k); EquipIcon.plan(sh, it, 30, 150, 30+lx*k, 150+ly*k);
+    EquipIcon.front(sh, it, [30, 40, 30+lx*k, 40+h*k]); EquipIcon.plan(sh, it, [30, 150, 30+lx*k, 150+ly*k]);
     const s=sh.svg(); Check.svg(s, `${kind} ${shape} 1:${N} ${JSON.stringify(v)}`);
     assert.ok((s.match(/<(rect|path|circle|polygon|line)/g)||[]).length>(N<100 ? 3 : 1), `${kind} 1:${N}: рисунок пустой`); }
-  const draw=(it, N=20)=>{ const sh=new EskdSheet('A4'), k=1/N; EquipIcon.front(sh, it, 30, 40, 30+it.lx*k, 40+it.h*k); return sh.svg(); };
+  const draw=(it, N=20)=>{ const sh=new EskdSheet('A4'), k=1/N; EquipIcon.front(sh, it, [30, 40, 30+it.lx*k, 40+it.h*k]); return sh.svg(); };
   const base={ shape:'box', ly:900, mount:'floor', face:-1, air:{} };
-  assert.ok(draw(Object.assign({ kind:'compressor', lx:1400, h:1500 }, base)).includes(`fill="${EquipIcon.DARK}"`), 'компрессор спереди: пульт с дисплеем');
-  assert.ok(!draw(Object.assign({ kind:'compressor', lx:1400, h:1500 }, base, { face:1 })).includes(`fill="${EquipIcon.DARK}"`), 'сзади пульта нет — решётка охладителя');
+  assert.ok(draw(Object.assign({ kind:'compressor', lx:1400, h:1500 }, base)).includes(`fill="${IconParts.DARK}"`), 'компрессор спереди: пульт с дисплеем');
+  assert.ok(!draw(Object.assign({ kind:'compressor', lx:1400, h:1500 }, base, { face:1 })).includes(`fill="${IconParts.DARK}"`), 'сзади пульта нет — решётка охладителя');
   assert.ok(draw(Object.assign({ kind:'compressor', lx:1900, h:1300, look:'piston' }, base)).includes('<polygon'), 'поршневой: цилиндры');
-  const sh=new EskdSheet('A4'); EquipIcon.plan(sh, Object.assign({ kind:'compressor', lx:900, ly:1400, h:1500 }, base, { rot:true }), 30, 40, 48, 68);
+  const sh=new EskdSheet('A4'); EquipIcon.plan(sh, Object.assign({ kind:'compressor', lx:900, ly:1400, h:1500 }, base, { rot:true }), [30, 40, 48, 68]);
   assert.ok(sh.svg().includes('<g transform="rotate(90'), 'повёрнутое поперёк — рисунок на плане повёрнут');
   // вид изделия: поршневой — по категории или названию
   assert.strictEqual(StationEquip.look({ name:'Компрессор', attrs:{ cat:'comp_piston' } }, 'compressor'), 'piston');
@@ -814,7 +814,7 @@ Check.run('схема пневматическая принципиальная'
   const four=solve(C('block'), [P('Компрессор со встроенным осушителем', { cat:'comp_screw', flow:4, size:'1400 × 900 × 1500' }, { role:'main', qty:4 }),
     P('Фильтр', { cat:'filter', size:'610*140' }, { qty:3 }), P('Генератор азота', { cat:'gen_n2', size:'800 × 600 × 1500' }, { qty:3 }), P('Ресивер', { cat:'receiver', volume:500, size:'650 × 650 × 1900' }, { qty:2 })]);
   const s4=StationScheme.svg(four, meta(four)); Check.sheet(s4, 'схема — 4 компрессора'); Check.crossing(s4, 'схема — 4 компрессора');
-  for (const g of [StationScheme.layout(4, [8, 5, 5, 5, 6, 6, 6, 5, 5, 5, 8], true, 26, 30, 150), StationScheme.layout(1, [5, 6, 5, 8], false, 26, 30, 170)])
+  for (const g of [SchemeLayout.layout({ nc:4, nodes:[8, 5, 5, 5, 6, 6, 6, 5, 5, 5, 8], wide:true, outW:26 }, 30, 150), SchemeLayout.layout({ nc:1, nodes:[5, 6, 5, 8], wide:false, outW:26 }, 30, 170)])
     assert.ok(g.m>=0.7 && g.m<=1.6 && g.per>=1 && g.rows>=1 && 30+g.h<=170, 'раскладка схемы '+JSON.stringify(g));
   // не компрессорная — схемы нет
   assert.ok(!StationScheme.ok(solve(C('block'), [pumpS, cab])) && !StationScheme.ok(null), 'насосная — схемы нет');
@@ -905,7 +905,7 @@ Check.run('свой рисунок модели: вид спереди и све
   // адрес не data: (не загружен) и не картинка — не попадают в лист
   const bad=solve(C('block', { sizeAuto:true }), [P('Компрессор', { cat:'comp_screw', size:'1400 × 900 × 1500' }, { role:'main', draw:{ front:{ src:'/img/x.png' }, top:{ src:'data:image/svg+xml;base64,PHN2Zz4=' } } })]);
   assert.ok(!/<image /.test(StationDrawing.svg(bad, meta(bad))), 'внешний адрес и SVG — нет');
-  const sh=new EskdSheet('A4'); assert.strictEqual(sh.image(0, 0, 10, 10, 'javascript:alert(1)'), false); assert.strictEqual(sh.image(0, 0, 10, 10, png+'"/><script>'), false);
+  const sh=new EskdSheet('A4'); assert.strictEqual(sh.image([0, 0, 10, 10], 'javascript:alert(1)'), false); assert.strictEqual(sh.image([0, 0, 10, 10], png+'"/><script>'), false);
 });
 
 Check.run('схема гидравлическая принципиальная: насосы параллельно, арматура, гидробак', ()=>{
@@ -1476,10 +1476,10 @@ Check.run('масса: брутто морского контейнера (ISO 6
 
 Check.run('полки номеров позиций: тесно — через один на второй полке, без наложений', ()=>{
   const A=Array.from({ length:30 }, (_, i)=>({ x:30+i*4, y:50, n:i+1 }));
-  const L=EskdSheet.shelves(A, 'x', 27, 192, 100, 9, 107), one=L.filter(q=>q.sy===100), two=L.filter(q=>q.sy===107);
+  const L=EskdSheet.shelves(A, 'x', [27, 192], [100, 107], 9), one=L.filter(q=>q.sy===100), two=L.filter(q=>q.sy===107);
   assert.ok(one.length && two.length && one.length+two.length===30, 'две полки');
   for (const T of [one, two]){ const xs=T.map(q=>q.sx).sort((a, b)=>a-b); for (let i=1; i<xs.length; i++) assert.ok(xs[i]-xs[i-1]>=EskdSheet.shelfMin(A)-1e-6, 'шаг не меньше полки номера'); }
-  assert.strictEqual(EskdSheet.shelves(A.slice(0, 5), 'x', 27, 192, 100, 9, 107).every(q=>q.sy===100), true, 'просторно — одна полка');
+  assert.strictEqual(EskdSheet.shelves(A.slice(0, 5), 'x', [27, 192], [100, 107], 9).every(q=>q.sy===100), true, 'просторно — одна полка');
 });
 
 Check.run('«на чертеже»: подсветка позиций, ворот и прохода — только по запросу', ()=>{

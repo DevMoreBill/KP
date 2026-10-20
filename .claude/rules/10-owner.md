@@ -53,7 +53,8 @@ Windows 10 (один EXE, папка программы C:\KP), менеджер
   данных и норм станций — `features/layout/`; 3.113.0 — `StationLayout` и его помощники — `features/layout/`, старый
   `station-layout.js` удалён; 3.114.0 — системы станции (`station-systems.js` → `features/layout/`); 3.115.0 — расчётная записка
   (`station-calc.js` → `features/calc/`); 3.116.0 — 3D-оснащение и наклейки (`features/view/`); 3.117.0 — 3D-вид (`station-render.js` →
-  `features/view/`); 3.118.0 — чертёж (`station-draw.js` → `features/draw/`); дальше — остальные
+  `features/view/`); 3.118.0 — чертёж (`station-draw.js` → `features/draw/`); 3.119.0 — листы ЕСКД
+  и схемы (`station-eskd.js` → `features/eskd/`); дальше — остальные
   файлы станций, сервер, интерфейс]
 
 ## Выпуск (каждое изменение)

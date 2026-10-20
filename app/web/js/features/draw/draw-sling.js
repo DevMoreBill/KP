@@ -1,3 +1,4 @@
+import { EskdSheet } from '../eskd/eskd-sheet.js';
 import { StationLayout } from '../layout/station-layout.js';
 import { StationMass } from '../layout/station-mass.js';
 
@@ -15,8 +16,8 @@ export class DrawSling {
     const r = R - B * 0.09;
     const g = Math.asin(Math.min(0.9, (a / 2 + B * 0.05) / r));
     const P = (rr, t) => `${f(cx + rr * Math.cos(t))},${f(cy + rr * Math.sin(t))}`;
-    sh.rect(cx - B / 2, cy - a / 2, B, a, 'thin', '#000');
-    sh.rect(cx - a / 2, cy - B / 2, a, B, 'thin', '#000');
+    sh.rect([cx - B / 2, cy - a / 2, B, a], 'thin', '#000');
+    sh.rect([cx - a / 2, cy - B / 2, a, B], 'thin', '#000');
     for (let k = 0; k < 4; k++) {
       const t0 = (k * Math.PI) / 2 + g;
       const t1 = ((k + 1) * Math.PI) / 2 - g;
@@ -39,8 +40,8 @@ export class DrawSling {
       `M${f(cx - lw / 2)},${f(y0)} V${f(y0 + uh - lw / 2)} A${f(lw / 2)},${f(lw / 2)} 0 0 0 ${f(cx + lw / 2)},${f(y0 + uh - lw / 2)} V${f(y0)}`,
       'main',
     );
-    for (const y of [y0 + H * 0.26, y0 + H * 0.62]) sh.rect(cx - lw / 2, y, lw, oh, 'main', 'none', lw / 2);
-    sh.rect(cx - t / 2, y0 + H * 0.08, t, H * 0.9, 'thin', '#000');
+    for (const y of [y0 + H * 0.26, y0 + H * 0.62]) sh.rect([cx - lw / 2, y, lw, oh], 'main', 'none', lw / 2);
+    sh.rect([cx - t / 2, y0 + H * 0.08, t, H * 0.9], 'thin', '#000');
   }
   /** Крюк над центром тяжести: кольцо стропа и крюк. */
   static hook(sh, x, y) {
@@ -72,19 +73,19 @@ export class DrawSling {
     sh.text(hx + 5, Z(cg.z) - 2.5, 'ЦТ', 3.5);
     for (const x of [X(450), X(Le - 450)]) DrawSling.signSling(sh, x, Z(He - 450), 7);
     // размеры (ГОСТ 2.307): меньший — ближе к изображению
-    sh.dimH(X(0), hx, yg + 8, n(cg.x), Z(0), Z(cg.z), { out: 'r' });
-    sh.dimH(X(0), X(Le), yg + 15, n(Le), Z(0), Z(0));
-    sh.dimV(Z(cg.z), Z(0), X(0) - 7, n(cg.z), hx, X(0), { out: true });
-    sh.dimV(Z(hz), Z(He + this.o.rise), X(0) - 14, n(S.hook - this.o.rise), hx, X(0), { out: true });
+    sh.dimH([X(0), hx], yg + 8, n(cg.x), [Z(0), Z(cg.z)], { out: 'r' });
+    sh.dimH([X(0), X(Le)], yg + 15, n(Le), [Z(0), Z(0)]);
+    sh.dimV([Z(cg.z), Z(0)], X(0) - 7, n(cg.z), [hx, X(0)], { out: true });
+    sh.dimV([Z(hz), Z(He + this.o.rise)], X(0) - 14, n(S.hook - this.o.rise), [hx, X(0)], { out: true });
   }
 
   /** Контур сбоку: шасси, корпус, крыша, глушители, земля. */
   sideOutline(sh, { X, Z, yg }) {
     const { k, Le, He, rise } = this.o;
-    if (this.o.dz) sh.rect(X(40), Z(0), (Le - 80) * k, 200 * k, 'thin', '#fff');
-    sh.rect(X(0), Z(He), Le * k, He * k, 'main', '#fff');
-    if (rise) sh.rect(X(0), Z(He + rise), Le * k, rise * k, 'main', '#fff');
-    for (const m of this.o.rf) sh.rect(X(this.o.ox + m.x), Z(He + m.gap + m.d), m.lx * k, m.d * k, 'thin', '#fff');
+    if (this.o.dz) sh.rect([X(40), Z(0), (Le - 80) * k, 200 * k], 'thin', '#fff');
+    sh.rect([X(0), Z(He), Le * k, He * k], 'main', '#fff');
+    if (rise) sh.rect([X(0), Z(He + rise), Le * k, rise * k], 'main', '#fff');
+    for (const m of this.o.rf) sh.rect([X(this.o.ox + m.x), Z(He + m.gap + m.d), m.lx * k, m.d * k], 'thin', '#fff');
     sh.line(X(0) - 4, yg, X(Le) + 4, yg, 'thin');
   }
 
@@ -94,7 +95,7 @@ export class DrawSling {
     const n = StationLayout.n;
     const F = S.frame;
     const zf = Z(He + F.z);
-    sh.rect(X(F.x0) - 1, zf - 1.2, (F.x1 - F.x0) * k + 2, 1.2, 'main', '#000');
+    sh.rect([X(F.x0) - 1, zf - 1.2, (F.x1 - F.x0) * k + 2, 1.2], 'main', '#000');
     for (const x of [F.x0, F.x1]) {
       sh.line(X(x), Z(He), X(x), zf, 'main');
       ring(x);
@@ -113,7 +114,7 @@ export class DrawSling {
     const n = StationLayout.n;
     const B = S.beam;
     const zb = Z(He + B.z);
-    sh.rect(X(B.x0) - 1, zb - 1.2, (B.x1 - B.x0) * k + 2, 1.2, 'main', '#000');
+    sh.rect([X(B.x0) - 1, zb - 1.2, (B.x1 - B.x0) * k + 2, 1.2], 'main', '#000');
     sh.line(hx, zb - 1.2, hx, Z(hz) + 1.1, 'main');
     for (const q of S.legs.filter(q => q.y < this.o.We / 2)) {
       sh.line(X(q.x), Z(He), X(q.x), zb, 'main');
@@ -150,7 +151,7 @@ export class DrawSling {
     const Z = z => yg - (this.o.dz + z) * k;
     const cg = M.cg;
     sh.text(XL(We / 2), yg + 21.5, cap, 2.5, { a: 'middle' });
-    sh.rect(XL(We), Z(He), We * k, He * k, 'main', '#fff');
+    sh.rect([XL(We), Z(He), We * k, He * k], 'main', '#fff');
     const roof = this.endRoof(XL, Z);
     if (roof) sh.poly(roof, 'main', '#fff');
     sh.line(XL(We) - 4, yg, XL(0) + 4, yg, 'thin');
@@ -160,8 +161,8 @@ export class DrawSling {
     DrawSling.hook(sh, hx, Z(hz));
     sh.line(hx, zt, hx, Z(cg.z) - 4, 'axis');
     DrawSling.signCog(sh, hx, Z(cg.z), 8);
-    sh.dimH(hx, XL(0), yg + 8, n(cg.y), Z(cg.z), Z(0), { out: 'r' });
-    sh.dimH(XL(We), XL(0), yg + 15, n(We), Z(0), Z(0));
+    sh.dimH([hx, XL(0)], yg + 8, n(cg.y), [Z(cg.z), Z(0)], { out: 'r' });
+    sh.dimH([XL(We), XL(0)], yg + 15, n(We), [Z(0), Z(0)]);
   }
 
   /** Крыша с торца: двускатная, арочная или односкатная (плоская — null). */
@@ -197,7 +198,7 @@ export class DrawSling {
     const F = S.frame;
     if (F) {
       const zf = Z(He + F.z);
-      sh.rect(XL(F.y1) - 1, zf - 1.2, (F.y1 - F.y0) * k + 2, 1.2, 'main', '#000');
+      sh.rect([XL(F.y1) - 1, zf - 1.2, (F.y1 - F.y0) * k + 2, 1.2], 'main', '#000');
       for (const y of [F.y0, F.y1]) {
         sh.line(XL(y), Z(He), XL(y), zf, 'main');
         ring(y);
@@ -241,7 +242,7 @@ export class DrawSling {
   /** Высота подписей под схемой, мм: строка знака — не ниже самого знака. */
   legendH(sh) {
     return this.legendItems().reduce(
-      (h, t, i) => h + Math.max(i < 2 ? 10 : 0, sh.paras(0, 0, 160, [t], 2.5, false) + 1.5),
+      (h, t, i) => h + Math.max(i < 2 ? 10 : 0, sh.paras([0, 0, 160], [t], 2.5, false) + 1.5),
       0,
     );
   }
@@ -251,7 +252,7 @@ export class DrawSling {
     this.legendItems().forEach((t, i) => {
       if (i === 0) DrawSling.signSling(sh, x + 4, yy + 5, 8);
       else if (i === 1) DrawSling.signCog(sh, x + 4, yy + 5, 8);
-      yy += Math.max(i < 2 ? 10 : 0, sh.paras(x + 11, yy, 160, [t], 2.5) + 1.5);
+      yy += Math.max(i < 2 ? 10 : 0, sh.paras([x + 11, yy, 160], [t], 2.5) + 1.5);
     });
   }
 }

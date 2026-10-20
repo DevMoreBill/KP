@@ -1,3 +1,6 @@
+import { EquipIcon } from '../eskd/equip-icon.js';
+import { EskdSheet } from '../eskd/eskd-sheet.js';
+import { PneuSymbol } from '../eskd/pneu-symbol.js';
 import { StationLayout } from '../layout/station-layout.js';
 import { StationMods } from '../layout/station-mods.js';
 import { StationVent } from '../layout/station-vent.js';
@@ -26,7 +29,7 @@ export class DrawPlan {
     md.cells.forEach(([i, j], q) => sh.text(X(i * md.Lm) + 2, YP((j + 1) * md.Wm) + 4.2, `М${q + 1}`, 3.5));
     for (const p of StationMods.posts(this.o.p.geo)) {
       const s = Math.max(0.8, ps * k);
-      sh.rect(X(this.o.ox + p.x) - s / 2, YP(this.o.oy + p.y) - s / 2, s, s, 'thin', '#000');
+      sh.rect([X(this.o.ox + p.x) - s / 2, YP(this.o.oy + p.y) - s / 2, s, s], 'thin', '#000');
     }
   }
   /** Маркизы на плане: открытый козырёк за наружной стеной (тонкой штрихпунктирной — откидные). */
@@ -37,10 +40,10 @@ export class DrawPlan {
     const s = StationVent.HOOD_SIDE;
     for (const q of ((this.o.p.vent && this.o.p.vent.louvers) || []).filter(q => q.hood)) {
       const d = q.hood.d;
-      if (q.wall === 'front') sh.rect(X(ox + q.u0 - s), YP(0), (q.u1 - q.u0 + 2 * s) * k, d * k, 'phantom');
-      else if (q.wall === 'back') sh.rect(X(ox + q.u0 - s), YP(We + d), (q.u1 - q.u0 + 2 * s) * k, d * k, 'phantom');
-      else if (q.wall === 'left') sh.rect(X(-d), YP(oy + q.u1 + s), d * k, (q.u1 - q.u0 + 2 * s) * k, 'phantom');
-      else sh.rect(X(Le), YP(oy + q.u1 + s), d * k, (q.u1 - q.u0 + 2 * s) * k, 'phantom');
+      if (q.wall === 'front') sh.rect([X(ox + q.u0 - s), YP(0), (q.u1 - q.u0 + 2 * s) * k, d * k], 'phantom');
+      else if (q.wall === 'back') sh.rect([X(ox + q.u0 - s), YP(We + d), (q.u1 - q.u0 + 2 * s) * k, d * k], 'phantom');
+      else if (q.wall === 'left') sh.rect([X(-d), YP(oy + q.u1 + s), d * k, (q.u1 - q.u0 + 2 * s) * k], 'phantom');
+      else sh.rect([X(Le), YP(oy + q.u1 + s), d * k, (q.u1 - q.u0 + 2 * s) * k], 'phantom');
     }
   }
   /** Разрез Б–Б: план под потолком. */
@@ -58,11 +61,11 @@ export class DrawPlan {
     const { ox, oy } = this.o;
     const X = v => this.o.X(v);
     for (const it of [...this.o.p.items].sort((a, c) => a.z + a.h - (c.z + c.h)))
-      EquipIcon.plan(sh, it, X(ox + it.x), YP(oy + it.y + it.ly), X(ox + it.x + it.lx), YP(oy + it.y));
+      EquipIcon.plan(sh, it, [X(ox + it.x), YP(oy + it.y + it.ly), X(ox + it.x + it.lx), YP(oy + it.y)]);
     this.pipesPlan(sh, YP);
     // глушитель на крыше — над секущей плоскостью: штриховой
     for (const m of this.o.rf)
-      sh.rect(X(ox + m.x), YP(oy + m.y + m.ly), m.lx * k, m.ly * k, 'dash', 'none', (m.ly * k) / 2);
+      sh.rect([X(ox + m.x), YP(oy + m.y + m.ly), m.lx * k, m.ly * k], 'dash', 'none', (m.ly * k) / 2);
     this.modsPlan(sh, YP);
     this.fittings(sh, YP);
     const ya = YP(oy + Math.min(60, this.o.Wi * 0.03));
@@ -85,20 +88,24 @@ export class DrawPlan {
     sh.section(xL, YP(We), Le * k, oy * k);
     sh.section(xL, YP(We - oy), ox * k, Wi * k);
     sh.section(X(Le - ox), YP(We - oy), ox * k, Wi * k);
-    sh.rect(xL, YP(We), Le * k, We * k, 'main');
-    sh.rect(X(ox), YP(oy + Wi), Li * k, Wi * k, 'thin');
+    sh.rect([xL, YP(We), Le * k, We * k], 'main');
+    sh.rect([X(ox), YP(oy + Wi), Li * k, Wi * k], 'thin');
     const fu = this.o.fuel;
     if ((g.x0 || 0) - (fu ? fu.x1 + fu.part : 0) > 0)
-      sh.rect(X(ox + g.x0) - Math.max(0.5, 30 * k), YP(oy + Wi), Math.max(1, 60 * k), (Wi - 1000) * k, 'thin', '#000');
+      sh.rect(
+        [X(ox + g.x0) - Math.max(0.5, 30 * k), YP(oy + Wi), Math.max(1, 60 * k), (Wi - 1000) * k],
+        'thin',
+        '#000',
+      );
     if (fu) {
       sh.section(X(ox + fu.x1), YP(oy + Wi), fu.part * k, Wi * k);
       const b = Math.max(1.2, 220 * k);
       const d = oy * k + b * 0.5;
-      if (fu.fill.wall === 'left') sh.rect(xL, YP(oy + fu.fill.y) - b / 2, ox * k + b * 0.5, b, 'main', '#fff');
-      else if (fu.fill.wall === 'back') sh.rect(X(ox + fu.fill.x) - b / 2, YP(We), b, d, 'main', '#fff');
-      else sh.rect(X(ox + fu.fill.x) - b / 2, YP(0) - d, b, d, 'main', '#fff');
+      if (fu.fill.wall === 'left') sh.rect([xL, YP(oy + fu.fill.y) - b / 2, ox * k + b * 0.5, b], 'main', '#fff');
+      else if (fu.fill.wall === 'back') sh.rect([X(ox + fu.fill.x) - b / 2, YP(We), b, d], 'main', '#fff');
+      else sh.rect([X(ox + fu.fill.x) - b / 2, YP(0) - d, b, d], 'main', '#fff');
     }
-    for (const h of this.o.heaters) sh.rect(X(ox + h.x), YP(oy + h.y + h.ly), h.lx * k, h.ly * k, 'main', '#fff');
+    for (const h of this.o.heaters) sh.rect([X(ox + h.x), YP(oy + h.y + h.ly), h.lx * k, h.ly * k], 'main', '#fff');
   }
 
   /** Трубопровод со стрелками потока; выходы через дальний торец и боковые стены (с фланцем); к ресиверам снаружи. */
@@ -159,7 +166,7 @@ export class DrawPlan {
       [ex, We - ey],
       [Le - ex, We - ey],
     ])
-      sh.rect(this.o.X(x) - s / 2, YP(y) - s / 2, s, s, 'thin');
+      sh.rect([this.o.X(x) - s / 2, YP(y) - s / 2, s, s], 'thin');
   }
 
   /** Размеры под планом: габаритная длина, до ресивера снаружи, между фитингами, выходы через боковую стену. */
@@ -168,20 +175,20 @@ export class DrawPlan {
     const n = StationLayout.n;
     const X = v => this.o.X(v);
     let yd = YP(0) + this.o.swing * k + (col ? 0 : 11) + 8;
-    sh.dimH(xL, xR, yd, n(Le), YP(0), YP(0));
+    sh.dimH([xL, xR], yd, n(Le), [YP(0), YP(0)]);
     if (this.o.ext.length) {
       const r = this.o.ext.reduce((a, c) => (c.x < a.x ? c : a));
-      sh.dimH(xR, X(ox + r.x), yd, n(ox + r.x - Le), null, YP(oy + r.y));
+      sh.dimH([xR, X(ox + r.x)], yd, n(ox + r.x - Le), [null, YP(oy + r.y)]);
     }
     if (this.o.fit) {
       const [fl, fw] = this.o.fit;
       const [ex, ey] = [(Le - fl) / 2, (We - fw) / 2];
       yd += 7;
-      sh.dimH(X(ex), X(Le - ex), yd, n(fl), YP(ey), YP(ey));
+      sh.dimH([X(ex), X(Le - ex)], yd, n(fl), [YP(ey), YP(ey)]);
     }
     for (const o of this.o.souts) {
       yd += 7;
-      sh.dimH(X(ox + o.x), xR, yd, n(Le - ox - o.x), o.wall === 'back' ? YP(We) : YP(0), YP(0), { out: 'l' });
+      sh.dimH([X(ox + o.x), xR], yd, n(Le - ox - o.x), [o.wall === 'back' ? YP(We) : YP(0), YP(0)], { out: 'l' });
     }
   }
 
@@ -191,18 +198,18 @@ export class DrawPlan {
     const n = StationLayout.n;
     const X = v => this.o.X(v);
     let xd = xL - 14 - this.o.mkL * k;
-    sh.dimV(YP(We), YP(0), xd, n(We), xL, xL);
+    sh.dimV([YP(We), YP(0)], xd, n(We), [xL, xL]);
     if (this.o.fit) {
       const [fl, fw] = this.o.fit;
       const [ex, ey] = [(Le - fl) / 2, (We - fw) / 2];
       xd -= 7;
-      sh.dimV(YP(We - ey), YP(ey), xd, n(fw), X(ex), X(ex));
+      sh.dimV([YP(We - ey), YP(ey)], xd, n(fw), [X(ex), X(ex)]);
     }
-    if (ai) sh.dimV(YP(oy + ai.y1), YP(oy + ai.y0), X(ox + ai.xm), n(ai.w), null, null);
+    if (ai) sh.dimV([YP(oy + ai.y1), YP(oy + ai.y0)], X(ox + ai.xm), n(ai.w), [null, null]);
     const ys = this.o.ext.length ? [] : [...new Set(this.o.outs.map(o => o.y))].sort((a, c) => c - a);
     let xo = this.o.xE + 16 + this.o.mkR * k; // правее буквы линии сечения А–А
     for (const y of ys) {
-      sh.dimV(YP(We), YP(oy + y), xo, n(We - oy - y), xR, xR + 7.6);
+      sh.dimV([YP(We), YP(oy + y)], xo, n(We - oy - y), [xR, xR + 7.6]);
       xo += 7;
     }
     return ys.length ? xo : null;
@@ -223,9 +230,9 @@ export class DrawPlan {
     const y0 = YP(0) + this.o.swing * k;
     const xc = (xo != null ? xo - 7 + 5 : this.o.xE + 10 + this.o.mkR * k) + 2;
     const L = col
-      ? EskdSheet.shelves(A, 'y', yB + 8, y0 + 4, xc, 7)
-      : EskdSheet.shelves(A, 'x', this.o.F.L0 + 2, this.o.F.L1 - 8, y0 + 8, 9, y0 + 15);
-    for (const q of L) sh.pos(q.px, q.py, q.sx, q.sy, q.n, 1);
+      ? EskdSheet.shelves(A, 'y', [yB + 8, y0 + 4], [xc], 7)
+      : EskdSheet.shelves(A, 'x', [this.o.F.L0 + 2, this.o.F.L1 - 8], [y0 + 8, y0 + 15], 9);
+    for (const q of L) sh.pos([q.px, q.py], [q.sx, q.sy], q.n, 1);
     return L;
   }
 
@@ -319,8 +326,8 @@ export class DrawPlan {
     const o = this.o.outs[0];
     const f = EskdSheet.f;
     for (const it of E) {
-      sh.rect(X(ox + it.x - 200), YP(oy + it.y + it.ly + 200), (it.lx + 400) * k, (it.ly + 400) * k, 'thin', '#fff');
-      EquipIcon.plan(sh, it, X(ox + it.x), YP(oy + it.y + it.ly), X(ox + it.x + it.lx), YP(oy + it.y));
+      sh.rect([X(ox + it.x - 200), YP(oy + it.y + it.ly + 200), (it.lx + 400) * k, (it.ly + 400) * k], 'thin', '#fff');
+      EquipIcon.plan(sh, it, [X(ox + it.x), YP(oy + it.y + it.ly), X(ox + it.x + it.lx), YP(oy + it.y)]);
     }
     if (!o) return;
     const x0 = Math.min(...E.map(i => i.x));
@@ -381,7 +388,7 @@ export class DrawPlan {
     const X = v => this.o.X(v);
     const y0 = back ? YP(We) : YP(oy);
     const h = oy * k;
-    sh.rect(X(x0), y0, (x1 - x0) * k, h, 'thin', '#fff');
+    sh.rect([X(x0), y0, (x1 - x0) * k, h], 'thin', '#fff');
     sh.line(X(x0), y0, X(x0), y0 + h, 'main');
     sh.line(X(x1), y0, X(x1), y0 + h, 'main');
   }
@@ -412,7 +419,7 @@ export class DrawPlan {
     const xo = L ? x0 : x1;
     const sx = L ? -1 : 1;
     const r = (ya - yb) / 2;
-    sh.rect(x0, yb, x1 - x0, ya - yb, 'thin', '#fff');
+    sh.rect([x0, yb, x1 - x0, ya - yb], 'thin', '#fff');
     sh.line(x0, ya, x1, ya, 'main');
     sh.line(x0, yb, x1, yb, 'main');
     for (const [yh, s] of [
@@ -434,9 +441,9 @@ export class DrawPlan {
     const y0 = oy + d.y0;
     const w = d.y1 - d.y0;
     const lw = w / n;
-    sh.rect(xw, YP(y0 + w), ox * k, w * k, 'thin', '#fff');
+    sh.rect([xw, YP(y0 + w), ox * k, w * k], 'thin', '#fff');
     for (let i = 0; i < n; i++)
-      sh.rect(xw + ox * k * 0.25, YP(y0 + lw * (i + 1)), Math.max(0.4, ox * k * 0.5), lw * k, 'main', '#fff');
+      sh.rect([xw + ox * k * 0.25, YP(y0 + lw * (i + 1)), Math.max(0.4, ox * k * 0.5), lw * k], 'main', '#fff');
   }
   /** Цепочка размеров вдоль задней стены по заднему ряду. */
   chainPlan(k) {
@@ -493,7 +500,11 @@ export class DrawPlan {
     const c = this.chainPlan(this.o.k);
     const base = X(ox);
     c.segs.forEach((q, i) =>
-      sh.dimH(X(ox + q.a), X(ox + q.c), y, q.t, i ? null : from, from, { lift: q.lift, tick: c.tick, tx: base + q.x }),
+      sh.dimH([X(ox + q.a), X(ox + q.c)], y, q.t, [i ? null : from, from], {
+        lift: q.lift,
+        tick: c.tick,
+        tx: base + q.x,
+      }),
     );
     if (c.skip.length)
       sh.text(

@@ -1,3 +1,4 @@
+import { EskdSheet } from '../eskd/eskd-sheet.js';
 import { StationLayout } from '../layout/station-layout.js';
 import { StationDrawing } from './station-drawing.js';
 
@@ -151,7 +152,7 @@ export class DrawSheets {
     const tt = this.o.text.reqs();
     const tc = this.o.text.tech();
     const rows = this.o.text.rows();
-    const hTT = new EskdSheet('A4').paras(0, 0, 175, tt, 2.5, false);
+    const hTT = new EskdSheet('A4').paras([0, 0, 175], tt, 2.5, false);
     const twoCol = tc.every(t => EskdSheet.tw(t, 2.5) <= 86);
     const ind = EskdSheet.tw('10. ', 2.5);
     const tcL = twoCol
@@ -214,7 +215,7 @@ export class DrawSheets {
     }
     if (rows.length) DrawSheets.parts(sh, rows, half, yTab);
     if (tc.length) DrawSheets.techBlock(sh, L, [yTC, yTTh]);
-    sh.paras(25, yTT, 175, tt, 2.5);
+    sh.paras([25, yTT, 175], tt, 2.5);
     sh.frame(this.tb(1, total, this.o.N1));
     return sh.svg();
   }
@@ -228,17 +229,14 @@ export class DrawSheets {
       r
         ? [[String(r.pos), 'c'], r.name, [String(r.n), 'c'], [r.mass > 0 ? StationLayout.n(r.mass) : '—', 'c']]
         : ['', '', '', ''];
-    sh.table(20, yTab, cols, head, H.map(cell), 4, 5, 2.5);
+    sh.table([20, yTab], cols, head, H.map(cell), [4, 5, 2.5]);
     if (R.length)
       sh.table(
-        112.5,
-        yTab,
+        [112.5, yTab],
         cols,
         head,
         H.map((x, i) => cell(R[i])),
-        4,
-        5,
-        2.5,
+        [4, 5, 2.5],
       );
   }
 

@@ -1,3 +1,8 @@
+import { IconParts } from '../eskd/icon-parts.js';
+import { IconUnits } from '../eskd/icon-units.js';
+import { EquipIcon } from '../eskd/equip-icon.js';
+import { EskdSheet } from '../eskd/eskd-sheet.js';
+import { PneuSymbol } from '../eskd/pneu-symbol.js';
 import { StationLayout } from '../layout/station-layout.js';
 import { StationVent } from '../layout/station-vent.js';
 
@@ -44,15 +49,15 @@ export class DrawSide {
     sh.section(X(Le - ox), Z(He), ox * k, He * k);
     sh.section(X(ox), Z(zf), Li * k, zf * k);
     sh.section(X(ox), Z(He), Li * k, (He - zf - Hi) * k);
-    sh.rect(xL, Z(He), Le * k, He * k, 'main');
-    if (this.o.rise) sh.rect(xL, Z(He + this.o.rise), Le * k, this.o.rise * k, 'main');
+    sh.rect([xL, Z(He), Le * k, He * k], 'main');
+    if (this.o.rise) sh.rect([xL, Z(He + this.o.rise), Le * k, this.o.rise * k], 'main');
     const md = this.o.p.geo.mods;
     if (md && md.Lm) for (let i = 1; i < md.a; i++) sh.line(X(i * md.Lm), Z(He) - 2, X(i * md.Lm), Z(0) + 2, 'phantom');
     if (this.o.g.sea) return;
     const lw = Math.max(0.8, 160 * k);
     const lh = Math.max(0.6, 120 * k);
     for (const x of [xL + 30 * k, xL + (Le - 190) * k]) {
-      sh.rect(x, Z(He) - lh, lw, lh, 'main', '#fff');
+      sh.rect([x, Z(He) - lh, lw, lh], 'main', '#fff');
       sh.circle(x + lw / 2, Z(He) - lh * 0.45, Math.max(0.2, lh * 0.25), 'thin', '#fff');
     }
   }
@@ -71,7 +76,7 @@ export class DrawSide {
     const t = this.o.p.items.find(i => i.tank);
     const zb = Z(zf + fu.fill.z);
     const b = Math.max(1.2, 220 * k);
-    sh.rect(xL, zb - b / 2, Math.max(b, ox * k + b * 0.4), b, 'main', '#fff');
+    sh.rect([xL, zb - b / 2, Math.max(b, ox * k + b * 0.4), b], 'main', '#fff');
     if (!t) return;
     const f = EskdSheet.f;
     sh.path(`M${f(xL)},${f(zb)} H${f(X(ox + t.x + Math.min(150, t.lx / 3)))} V${f(Z(zf + t.h))}`, 'main');
@@ -84,12 +89,12 @@ export class DrawSide {
     const Z = v => this.o.Z(v);
     const { ends } = this.o;
     for (const h of this.o.heaters.filter(q => q.wall === 'back'))
-      sh.rect(X(ox + h.x), Z(zf + h.z + h.h), h.lx * k, h.h * k, 'thin', '#fff');
+      sh.rect([X(ox + h.x), Z(zf + h.z + h.h), h.lx * k, h.h * k], 'thin', '#fff');
     for (const v of this.o.vents('back'))
       ends.louverEnd(sh, [X(ox + v.u0), X(ox + v.u1)], [Z(zf + v.z1), Z(zf + v.z0)], v.fan);
     for (const d of this.o.sdB) {
       const [xa, xb, za, zb] = [X(ox + d.x0), X(ox + d.x1), Z(zf + d.h), Z(zf)];
-      sh.rect(xa, za, xb - xa, zb - za, 'main', '#fff');
+      sh.rect([xa, za, xb - xa, zb - za], 'main', '#fff');
       for (let i = 1; i < d.leaves; i++)
         sh.line(xa + ((xb - xa) * i) / d.leaves, za, xa + ((xb - xa) * i) / d.leaves, zb, 'thin');
     }
@@ -99,7 +104,7 @@ export class DrawSide {
       ends.louverEnd(sh, [X(ox + v.u0), X(ox + v.u1)], [Z(zf + v.z1), Z(zf + v.z0)], v.fan);
     for (const R of this.o.hoods()) {
       const hz = Math.max(1, StationVent.HOOD * k);
-      sh.rect(X(ox + R.x0), Z(He) - hz, (R.x1 - R.x0) * k, hz, 'main', '#fff');
+      sh.rect([X(ox + R.x0), Z(He) - hz, (R.x1 - R.x0) * k, hz], 'main', '#fff');
       sh.line(X(ox + R.x0) - 0.6, Z(He) - hz, X(ox + R.x1) + 0.6, Z(He) - hz, 'main');
     }
   }
@@ -117,7 +122,7 @@ export class DrawSide {
       const fz = Z(zf + it.z);
       if (it.mount === 'frame')
         for (const xx of [x1 + (x2 - x1) * 0.12, x2 - (x2 - x1) * 0.12]) sh.line(xx, fz, xx, Z(zf), 'main');
-      EquipIcon.front(sh, it, x1, Z(zf + it.z + it.h), x2, fz);
+      EquipIcon.front(sh, it, [x1, Z(zf + it.z + it.h), x2, fz]);
     };
     for (const it of shown.filter(i => i.y > py)) one(it);
     this.pipesMain(sh);
@@ -134,7 +139,7 @@ export class DrawSide {
     const zm = (zb + zt) / 2;
     if (m.exhaust) {
       const pw = Math.max(0.8, 130 * k);
-      sh.rect(X(ox + m.exhaust.x) - pw / 2, zb, pw, Z(zf + m.exhaust.z) - zb, 'thin', '#fff');
+      sh.rect([X(ox + m.exhaust.x) - pw / 2, zb, pw, Z(zf + m.exhaust.z) - zb], 'thin', '#fff');
     }
     if (m.dir === 'y+') {
       const xc = (x1 + x2) / 2;
@@ -147,9 +152,9 @@ export class DrawSide {
     const w = Math.max(0.8, 120 * k);
     const back = m.dir === 'x-';
     const xo = X(back ? ox + m.x - m.outlet : ox + m.x + m.lx + m.outlet);
-    sh.rect(back ? xo : x2, zm - w / 2, back ? x1 - xo : xo - x2, w, 'thin', '#fff');
+    sh.rect([back ? xo : x2, zm - w / 2, back ? x1 - xo : xo - x2, w], 'thin', '#fff');
     sh.line(xo, zm - w * 0.9, xo, zm + w * 0.9, 'main');
-    EquipIcon.muffler(sh, x1, zt, x2, zb);
+    IconUnits.muffler(sh, x1, zt, x2, zb);
   }
 
   /** Выход трубопровода через дальний торец (над проёмом — с подъёмом) с фланцем и стрелкой. */
@@ -175,7 +180,7 @@ export class DrawSide {
     const Z = v => this.o.Z(v);
     let xd = xE + 16;
     const dim = (z, txt, x, x2 = xR) => {
-      sh.dimV(z, Z(0), xd, txt, x, x2);
+      sh.dimV([z, Z(0)], xd, txt, [x, x2]);
       xd += 7;
     };
     if (ro) dim(ro.y, n(ro.z + this.o.dz), ro.x, xE);
@@ -190,7 +195,7 @@ export class DrawSide {
     } else if (H.length) dim(Z(He + StationVent.HOOD), n(He + StationVent.HOOD), X(ox + H[H.length - 1].x1));
     if (this.o.dz) {
       const u = Math.max(this.o.up, this.o.hood);
-      sh.dimV(Z(He + u), this.o.Yg, xd, n(He + u + this.o.dz), null, xR);
+      sh.dimV([Z(He + u), this.o.Yg], xd, n(He + u + this.o.dz), [null, xR]);
     }
   }
 
@@ -203,8 +208,8 @@ export class DrawSide {
     const P = StationLayout.PAD;
     const f = EskdSheet.f;
     for (const it of [...this.o.ext].sort((a, c) => c.y - a.y)) {
-      sh.rect(X(ox + it.x - 200), Z(zf + it.z), (it.lx + 400) * k, P * k, 'main', '#fff');
-      EquipIcon.front(sh, it, X(ox + it.x), Z(zf + it.z + it.h), X(ox + it.x + it.lx), Z(zf + it.z));
+      sh.rect([X(ox + it.x - 200), Z(zf + it.z), (it.lx + 400) * k, P * k], 'main', '#fff');
+      EquipIcon.front(sh, it, [X(ox + it.x), Z(zf + it.z + it.h), X(ox + it.x + it.lx), Z(zf + it.z)]);
     }
     const o = this.o.outs[0];
     if (!o) return null;
@@ -275,13 +280,13 @@ export class DrawSide {
     const Le = this.o.Le;
     const Z = v => this.o.Z(v);
     const r = 420 * k;
-    sh.rect(xL + 40 * k, Z(0), Le * k - 80 * k, 200 * k, 'main', '#fff');
+    sh.rect([xL + 40 * k, Z(0), Le * k - 80 * k, 200 * k], 'main', '#fff');
     for (const f of Le <= 7000 ? [0.62, 0.78] : [0.66, 0.76, 0.86]) {
       const cx = xL + Le * k * f;
       sh.circle(cx, this.o.Yg - r, r, 'main', '#fff');
       sh.circle(cx, this.o.Yg - r, r * 0.45, 'thin');
     }
-    sh.rect(xL + Le * k * 0.16, Z(0) + 200 * k, 60 * k, this.o.Yg - Z(0) - 200 * k, 'thin', '#fff');
+    sh.rect([xL + Le * k * 0.16, Z(0) + 200 * k, 60 * k, this.o.Yg - Z(0) - 200 * k], 'thin', '#fff');
     sh.line(xL - 4, this.o.Yg, xR + 4, this.o.Yg, 'thin');
   }
 
@@ -302,9 +307,9 @@ export class DrawSide {
     const w = Math.max(0.8, 120 * k);
     const zm = (zb + zt) / 2;
     const e = X(oy + m.y + m.ly);
-    sh.rect(Math.min(e, xo), zm - w / 2, Math.abs(xo - e), w, 'thin', '#fff');
+    sh.rect([Math.min(e, xo), zm - w / 2, Math.abs(xo - e), w], 'thin', '#fff');
     sh.line(xo, zm - w * 0.9, xo, zm + w * 0.9, 'main');
-    EquipIcon.muffler(sh, lo, zt, hi, zb);
+    IconUnits.muffler(sh, lo, zt, hi, zb);
   }
   /** Станция из модулей на плане. */
   /** Точка выноски номера позиции на плане (аккуратность, п. 8). */
@@ -336,6 +341,6 @@ export class DrawSide {
         'thin',
       );
     }
-    EquipIcon.axes(sh, x, y, R * 1.25);
+    IconParts.axes(sh, x, y, R * 1.25);
   }
 }

@@ -1,3 +1,5 @@
+import { EquipIcon } from '../eskd/equip-icon.js';
+import { EskdSheet } from '../eskd/eskd-sheet.js';
 import { StationLayout } from '../layout/station-layout.js';
 import { StationVent } from '../layout/station-vent.js';
 
@@ -17,7 +19,7 @@ export class DrawEnds {
     if (fu && fu.fill.wall === 'left') {
       const b = Math.max(1.2, 220 * k);
       const [yc, zc] = [XL(oy + fu.fill.y), Z(zf + fu.fill.z)];
-      sh.rect(yc - b / 2, zc - b / 2, b, b, 'main', '#fff');
+      sh.rect([yc - b / 2, zc - b / 2, b, b], 'main', '#fff');
       sh.line(yc - b / 2, zc - b / 2 + 0.5, yc + b / 2, zc - b / 2 + 0.5, 'thin');
     }
     const [cw, chh] = this.endCorners(sh, XL);
@@ -39,11 +41,12 @@ export class DrawEnds {
     const x0 = P(rev ? 0 : We);
     if (this.o.dz) {
       const [r, w] = [420 * k, 300 * k];
-      sh.rect(x0 + 40 * k, Z(0), We * k - 80 * k, 200 * k, 'main', '#fff');
-      for (const x of [x0 + 60 * k, x0 + We * k - 60 * k - w]) sh.rect(x, this.o.Yg - 2 * r, w, 2 * r, 'main', '#fff');
+      sh.rect([x0 + 40 * k, Z(0), We * k - 80 * k, 200 * k], 'main', '#fff');
+      for (const x of [x0 + 60 * k, x0 + We * k - 60 * k - w])
+        sh.rect([x, this.o.Yg - 2 * r, w, 2 * r], 'main', '#fff');
       sh.line(x0 - 3, this.o.Yg, x0 + We * k + 3, this.o.Yg, 'thin');
     }
-    sh.rect(x0, Z(He), We * k, He * k, 'main', '#fff');
+    sh.rect([x0, Z(He), We * k, He * k], 'main', '#fff');
     if (!rz) return;
     const roof = this.o.g.roof;
     if (roof === 'arch') {
@@ -85,7 +88,7 @@ export class DrawEnds {
       [a, Z(0) - chh],
       [b - cw, Z(0) - chh],
     ])
-      sh.rect(x, y, cw, chh, 'thin');
+      sh.rect([x, y, cw, chh], 'thin');
     const md = this.o.p.geo.mods;
     if (md && md.Lm) for (let j = 1; j < md.b; j++) sh.line(P(j * md.Wm), Z(He) - 2, P(j * md.Wm), Z(0) + 2, 'phantom');
     return [cw, chh];
@@ -122,7 +125,7 @@ export class DrawEnds {
     const { k, He, oy } = this.o;
     const hz = Math.max(1, StationVent.HOOD * k);
     for (const R of this.o.hoods())
-      sh.rect(Math.min(P(oy + R.y0), P(oy + R.y1)), this.o.Z(He) - hz, (R.y1 - R.y0) * k, hz, 'main', '#fff');
+      sh.rect([Math.min(P(oy + R.y0), P(oy + R.y1)), this.o.Z(He) - hz, (R.y1 - R.y0) * k, hz], 'main', '#fff');
   }
 
   /** Глушители с торца: вдоль — круг корпуса на опоре (справа — с выходом), поперёк — сбоку. */
@@ -150,12 +153,12 @@ export class DrawEnds {
     const xm = (a + b) / 2;
     this.louverEnd(sh, [a, xm], [za, zb]);
     this.louverEnd(sh, [xm, b], [za, zb]);
-    sh.rect(a, za, b - a, zb - za, 'main');
+    sh.rect([a, za, b - a, zb - za], 'main');
     for (const f of [0.15, 0.5, 0.85]) {
       const z = za + (zb - za) * f;
       const hl = Math.max(0.8, 120 * k);
-      sh.rect(a - 0.5, z, 0.8, hl, 'thin', '#000');
-      sh.rect(b - 0.3, z, 0.8, hl, 'thin', '#000');
+      sh.rect([a - 0.5, z, 0.8, hl], 'thin', '#000');
+      sh.rect([b - 0.3, z, 0.8, hl], 'thin', '#000');
     }
     for (const dx of [-0.7, 0.7]) sh.line(xm + dx, za + 0.6, xm + dx, zb - 0.6, 'thin');
   }
@@ -175,7 +178,7 @@ export class DrawEnds {
     const xm = (xa + xb) / 2;
     const a = Math.min(xa, xb);
     const w = Math.abs(xb - xa);
-    sh.rect(a, za, w, zb - za, 'main', '#fff');
+    sh.rect([a, za, w, zb - za], 'main', '#fff');
     sh.line(xm, za, xm, zb, 'main');
     for (const dx of [-0.7, 0.7]) sh.line(xm + dx, za + 0.6, xm + dx, zb - 0.6, 'thin');
     if (d.wicket) {
@@ -185,7 +188,7 @@ export class DrawEnds {
       const zt = Z(this.o.zf + 60 + d.wicket.h);
       const z0 = Z(this.o.zf + 60);
       // калитка в створке
-      sh.rect(Math.min(wa, wb), zt, Math.abs(wb - wa), z0 - zt, 'main');
+      sh.rect([Math.min(wa, wb), zt, Math.abs(wb - wa), z0 - zt], 'main');
     }
   }
   /** Одностворчатая дверь оператора на виде с торца: полотно, ручка. */
@@ -197,7 +200,7 @@ export class DrawEnds {
     const zb = Z(this.o.zf);
     const a = Math.min(xa, xb);
     const w = Math.abs(xb - xa);
-    sh.rect(a, za, w, zb - za, 'main', '#fff');
+    sh.rect([a, za, w, zb - za], 'main', '#fff');
     const hx = a + w * 0.85;
     const zh = Z(this.o.zf + 1000);
     sh.line(hx, zh - 0.8, hx, zh + 0.8, 'main');
@@ -216,10 +219,10 @@ export class DrawEnds {
     const zl = Z(zh - H.drop);
     const la = Math.min(X(this.o.oy + v.u0), X(this.o.oy + v.u1));
     const lw = Math.abs(X(this.o.oy + v.u1) - X(this.o.oy + v.u0));
-    sh.rect(a, zt, w, zl - zt, 'main', '#fff');
+    sh.rect([a, zt, w, zl - zt], 'main', '#fff');
     const z0 = Z(this.o.zf + v.z1);
     const z1 = Math.min(zl, Z(this.o.zf + v.z0));
-    if (z1 > z0) sh.rect(la, z0, lw, z1 - z0, 'dash'); // жалюзи за козырьком
+    if (z1 > z0) sh.rect([la, z0, lw, z1 - z0], 'dash'); // жалюзи за козырьком
     sh.line(a, zl - Math.max(0.4, 35 * this.o.k), a + w, zl - Math.max(0.4, 35 * this.o.k), 'thin'); // отбортовка кромки
   }
   /** Жалюзи на виде с торца: рамка и ламели. */
@@ -239,7 +242,7 @@ export class DrawEnds {
   }
   louverEnd(sh, [xa, xb], [za, zb], fan) {
     const k = this.o.k;
-    sh.rect(Math.min(xa, xb), za, Math.abs(xb - xa), zb - za, 'main', '#fff');
+    sh.rect([Math.min(xa, xb), za, Math.abs(xb - xa), zb - za], 'main', '#fff');
     for (let z = za + Math.max(0.8, 70 * k); z < zb - 0.4; z += Math.max(0.8, 70 * k))
       sh.line(Math.min(xa, xb) + 0.4, z, Math.max(xa, xb) - 0.4, z, 'fine');
     if (fan) this.fanEnd(sh, xa, xb, za, zb);
@@ -264,7 +267,7 @@ export class DrawEnds {
     for (const o of this.o.outs) this.o.side.flangeFace(sh, XR(oy + o.y), Z(zf + o.z));
     this.endMufflers(sh, XR, true);
     for (const it of [...this.o.ext].sort((a, c) => c.x - a.x))
-      EquipIcon.front(sh, it, XR(oy + it.y), Z(zf + it.z + it.h), XR(oy + it.y + it.ly), Z(zf + it.z));
+      EquipIcon.front(sh, it, [XR(oy + it.y), Z(zf + it.z + it.h), XR(oy + it.y + it.ly), Z(zf + it.z)]);
   }
   /** Размеры видов с торцов: ширина — снизу, высота (и с крышей) — слева; у двери-жалюзи ДГУ — её размеры. */
   endDims(sh, x0, left) {
@@ -276,19 +279,19 @@ export class DrawEnds {
     const X = y => (left ? x0 + (We - y) * k : x0 + y * k);
     const xa = Math.min(X(0), X(We));
     const xb = Math.max(X(0), X(We));
-    sh.dimH(xa, xb, this.o.Yg + 8, n(We), this.o.Yg, this.o.Yg);
+    sh.dimH([xa, xb], this.o.Yg + 8, n(We), [this.o.Yg, this.o.Yg]);
     let xd = xa - 8;
-    sh.dimV(Z(He), Z(0), xd, n(He), xa, xa);
+    sh.dimV([Z(He), Z(0)], xd, n(He), [xa, xa]);
     if (this.o.rise) {
       xd -= 7;
-      sh.dimV(Z(He + this.o.rise), Z(0), xd, n(He + this.o.rise), (xa + xb) / 2, xa);
+      sh.dimV([Z(He + this.o.rise), Z(0)], xd, n(He + this.o.rise), [(xa + xb) / 2, xa]);
     }
     const d = left ? this.o.dgL : this.o.dg; // у двери-жалюзи ДГУ — её размеры
     if (d) {
       const x1 = X(this.o.oy + d.y0);
       const x2 = X(this.o.oy + d.y1);
-      sh.dimH(x1, x2, this.o.Yg + 15, n(d.w), Z(this.o.zf), Z(this.o.zf));
-      sh.dimV(Z(this.o.zf + d.h), Z(this.o.zf), xb + 6, n(d.h), x2, x2);
+      sh.dimH([x1, x2], this.o.Yg + 15, n(d.w), [Z(this.o.zf), Z(this.o.zf)]);
+      sh.dimV([Z(this.o.zf + d.h), Z(this.o.zf)], xb + 6, n(d.h), [x2, x2]);
     }
     this.gateDims(sh, X, xb, left);
   }
@@ -306,14 +309,14 @@ export class DrawEnds {
       const gx = (lo + hi) / 2;
       const yd = this.o.Yg + (two ? 22 : 15);
       sh.line(ax, Z(this.o.He) - 3, ax, this.o.Yg + 3, 'axis');
-      if (!q.full) sh.dimH(lo, hi, yd, n(q.w), Z(this.o.zf), Z(this.o.zf));
+      if (!q.full) sh.dimH([lo, hi], yd, n(q.w), [Z(this.o.zf), Z(this.o.zf)]);
       if (q.off) {
         sh.line(gx, Z(this.o.zf + q.h) - 7, gx, this.o.Yg + 3, 'axis');
-        sh.dimH(Math.min(ax, gx), Math.max(ax, gx), Z(this.o.zf + q.h) - 4, n(Math.abs(q.off)), null, null, {
+        sh.dimH([Math.min(ax, gx), Math.max(ax, gx)], Z(this.o.zf + q.h) - 4, n(Math.abs(q.off)), [null, null], {
           out: gx > ax ? 'r' : 'l',
         });
       } // над проёмом
-      sh.dimV(Z(this.o.zf + q.h), Z(this.o.zf), xb + (two ? 12 : 6), n(q.h), hi, hi);
+      sh.dimV([Z(this.o.zf + q.h), Z(this.o.zf)], xb + (two ? 12 : 6), n(q.h), [hi, hi]);
     }
   }
   /** Стрелка направления взгляда с буквой (ГОСТ 2.305): острие у контура, dir — куда смотрит (±1 по x). */
