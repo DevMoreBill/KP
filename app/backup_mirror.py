@@ -1,12 +1,5 @@
-# -*- coding: utf-8 -*-
-"""Копии базы во второе место: сетевой диск, флешка, папка облака (Яндекс Диск, OneDrive) — на случай,
-если откажет диск компьютера с программой (тогда пропадут и база, и копии рядом с ней в data/backup).
+"""Копии базы, изображений и документов КП во вторую папку (сетевой диск, флешка, облако)."""
 
-Каждый день после обычной копии (maintenance.DbCopy.daily) архив kp-ГГГГ-ММ-ДД.zip копируется во вторую папку
-и проверяется (контрольные суммы архива; прежние копии без сжатия .sqlite3 — встроенной проверкой SQLite); там хранится
-столько последних копий, сколько задано. По желанию туда же досылаются изображения каталога (только новые и изменённые
-файлы); справочные документы КП (data/kp_files) — всегда, только новые. Настройка — kv settings.backup2, состояние — kv maint.backup2.
-"""
 import os
 import shutil
 import threading
@@ -20,29 +13,40 @@ from storage import DbZip
 
 
 class MirrorBackup:
-    KEEP = 14                  # копий во второй папке по умолчанию
+    KEEP = 14  # копий во второй папке по умолчанию
     KEEP_MAX = 365
-    _lock = threading.Lock()   # одна копия за раз (по расписанию и кнопкой)
+    _lock = threading.Lock()  # одна копия за раз (по расписанию и кнопкой)
 
-    def __init__(self, store, data_dir):
+    def __init__(self, store, data_dir: str) -> None:
         self.store, self.data_dir = store, data_dir
 
     # ---------- настройка ----------
-    def config(self):
+    def config(self) -> dict:
         c = (self.store.kv_get('settings') or {}).get('backup2') or {}
-        return {'on': bool(c.get('on')), 'path': str(c.get('path') or ''), 'keep': int(c.get('keep') or self.KEEP),
-                'images': bool(c.get('images'))}
+        return {
+            'on': bool(c.get('on')),
+            'path': str(c.get('path') or ''),
+            'keep': int(c.get('keep') or self.KEEP),
+            'images': bool(c.get('images')),
+        }
 
-    def state(self):
+    def state(self) -> dict:
         return maintenance.state(self.store).get('backup2') or {}
 
-    def status(self):
+    def status(self) -> dict:
         c, s = self.config(), self.state()
         copies = self._copies(c['path']) if c['on'] and c['path'] and os.path.isdir(c['path']) else []
-        return dict(c, last=s, copies=len(copies), copiesBytes=sum(x['bytes'] for x in copies),
-                    newest=copies[0]['date'] if copies else None, stale=self.stale(), running=self._lock.locked())
+        return dict(
+            c,
+            last=s,
+            copies=len(copies),
+            copiesBytes=sum(x['bytes'] for x in copies),
+            newest=copies[0]['date'] if copies else None,
+            stale=self.stale(),
+            running=self._lock.locked(),
+        )
 
-    def start(self):
+    def start(self) -> None:
         """Копия в фоне (кнопка «Копировать сейчас»): первая выгрузка изображений по сети может идти минутами."""
         if not self.config()['on']:
             raise ValueError('Вторая папка не включена')
@@ -51,7 +55,7 @@ class MirrorBackup:
         threading.Thread(target=self.run, kwargs={'force': True}, daemon=True, name='backup-mirror').start()
         return dict(self.status(), running=True)
 
-    def save(self, d, by=''):
+    def save(self, d: dict, by: str = '') -> dict:
         path = self._norm(d.get('path'))
         on = bool(d.get('on')) and bool(path)
         if on:
@@ -63,19 +67,23 @@ class MirrorBackup:
         self.store.kv_set('settings', st)
         return self.status()
 
-    def _norm(self, path):
+    def _norm(self, path) -> str:
         path = str(path or '').strip().strip('"')
         if not path:
             return ''
         if not (os.path.isabs(path) or path.startswith('\\\\')):
-            raise ValueError('Укажите полный путь к папке: например D:\\Копии КП, \\\\сервер\\копии или папку Яндекс Диска')
+            raise ValueError(
+                'Укажите полный путь к папке: например D:\\Копии КП, \\\\сервер\\копии или папку Яндекс Диска'
+            )
         data = os.path.normcase(os.path.abspath(self.data_dir))
         p = os.path.normcase(os.path.abspath(path))
         if p == data or p.startswith(data + os.sep):
-            raise ValueError('Вторая папка не должна быть внутри папки данных программы — выберите другой диск или сетевую папку')
+            raise ValueError(
+                'Вторая папка не должна быть внутри папки данных программы — выберите другой диск или сетевую папку'
+            )
         return path
 
-    def check(self, path=None):
+    def check(self, path: str | None = None) -> dict:
         """Папка доступна и в неё можно писать → {ok, free}. ValueError — понятным текстом."""
         path = self._norm(path if path is not None else self.config()['path'])
         if not path:
@@ -83,15 +91,16 @@ class MirrorBackup:
         try:
             os.makedirs(path, exist_ok=True)
         except OSError as e:
-            raise ValueError('Папка недоступна: %s (%s)' % (path, e.strerror or e))
-        probe = os.path.join(path, '.kp-check-%s.tmp' % uuid.uuid4().hex[:8])
+            raise ValueError(f'Папка недоступна: {path} ({e.strerror or e})') from e
+        probe = os.path.join(path, f'.kp-check-{uuid.uuid4().hex[:8]}.tmp')
         try:
             with open(probe, 'wb') as f:
                 f.write(b'ok')
             os.remove(probe)
         except OSError as e:
-            raise ValueError('В папку нельзя записать: %s (%s). Если программа работает службой — у её учётной записи должен быть доступ.'
-                             % (path, e.strerror or e))
+            raise ValueError(
+                f'В папку нельзя записать: {path} ({e.strerror or e}). Если программа работает службой — у её учётной записи должен быть доступ.'
+            ) from e
         try:
             free = shutil.disk_usage(path).free
         except OSError:
@@ -100,10 +109,10 @@ class MirrorBackup:
 
     # ---------- копирование ----------
     @staticmethod
-    def _copies(path):
+    def _copies(path: str) -> str:
         return maintenance.DbCopy.listing(path)
 
-    def run(self, force=False):
+    def run(self, force: bool = False) -> dict | None:
         """Копия за сегодня во вторую папку (если включено). → состояние или None (выключено)."""
         c = self.config()
         if not c['on'] or not c['path']:
@@ -115,7 +124,7 @@ class MirrorBackup:
         finally:
             self._lock.release()
 
-    def _run(self, c, force):
+    def _run(self, c: dict, force: bool) -> dict:
         today = date.today().isoformat()
         rec = {'at': datetime.now().isoformat(timespec='seconds'), 'path': c['path']}
         try:
@@ -136,18 +145,18 @@ class MirrorBackup:
                 self._verify(tmp, DbZip.is_zip(src))
                 os.replace(tmp, dst)
             finally:
-                if os.path.exists(tmp):          # не записалась или не прошла проверку — недописанный файл не оставлять
+                if os.path.exists(tmp):  # не записалась или не прошла проверку — недописанный файл не оставлять
                     try:
                         os.remove(tmp)
                     except OSError:
                         pass
-            for x in self._copies(c['path']):        # та же дата в прежнем виде (без сжатия) — заменена архивом
+            for x in self._copies(c['path']):  # та же дата в прежнем виде (без сжатия) — заменена архивом
                 if x['date'] == today:
                     for f in x['files']:
                         if f != dst and os.path.isfile(f):
                             os.remove(f)
             rec.update(ok=True, file=dst, bytes=os.path.getsize(dst))
-            for old in self._copies(c['path'])[c['keep']:]:
+            for old in self._copies(c['path'])[c['keep'] :]:
                 for f in old['files']:
                     try:
                         os.remove(f)
@@ -155,7 +164,7 @@ class MirrorBackup:
                         pass
             if c['images']:
                 rec['images'] = self._images(os.path.join(c['path'], 'img'))
-            # справочные документы КП (паспорта, сертификаты) — всегда: заново их не получить, а места занимают немного
+            # справочные документы — всегда: заново их не получить
             rec['kpFiles'] = self._kp_files(os.path.join(c['path'], KpFiles.FOLDER))
         except Exception as e:
             rec.update(ok=False, error=str(e)[:300])
@@ -163,7 +172,7 @@ class MirrorBackup:
         return rec
 
     @staticmethod
-    def _today(auto, today):
+    def _today(auto: str, today: str) -> str:
         """Сегодняшняя копия в data/backup/auto: архив ZIP или прежняя копия без сжатия; нет — ''."""
         for x in maintenance.DbCopy.listing(auto):
             if x['date'] == today:
@@ -171,33 +180,34 @@ class MirrorBackup:
         return ''
 
     @staticmethod
-    def _verify(path, is_zip):
+    def _verify(path: str, is_zip: bool) -> None:
         """Записанная во вторую папку копия читается: архив — по контрольным суммам, файл базы — проверкой SQLite."""
         if is_zip:
             try:
                 DbZip.verify(path)
             except ValueError as e:
-                raise RuntimeError('копия не прошла проверку: %s' % e)
+                raise RuntimeError(f'копия не прошла проверку: {e}') from e
             return
         res = DbZip.integrity(path, quick=True)
         if res != 'ok':
             raise RuntimeError('копия не прошла проверку: ' + res)
 
-    def _images(self, dst_root):
+    def _images(self, dst_root: str) -> int:
         """Изображения каталога (без папки unused): только новые и изменённые (по размеру) файлы."""
-        return self._sync(os.path.join(self.data_dir, 'img'), dst_root, lambda name: name.lower().endswith(maintenance.IMG_EXTS),
-                          skip_top='unused')
+        return self._sync(
+            os.path.join(self.data_dir, 'img'),
+            dst_root,
+            lambda name: name.lower().endswith(maintenance.IMG_EXTS),
+            skip_top='unused',
+        )
 
-    def _kp_files(self, dst_root):
-        """Справочные документы КП (data/kp_files): имена на диске случайные, файл не меняется — копируются только новые;
-        недописанные .part и посторонние файлы — не копируются."""
+    def _kp_files(self, dst_root: str) -> int:
+        """Справочные документы КП: только новые, без недописанных .part и посторонних файлов."""
         return self._sync(os.path.join(self.data_dir, KpFiles.FOLDER), dst_root, KpFiles.DISK.match, atomic=True)
 
     @staticmethod
     def _sync(src_root, dst_root, accept, skip_top=None, atomic=False):
-        """Досылка файлов папки: копируются нет во второй папке или другого размера. accept(имя) — какие файлы берутся;
-        skip_top — папка верхнего уровня, которая не копируется; atomic — через .part (недописанный файл не останется под
-        своим именем). → {total, copied}."""
+        """Досылка файлов папки: копируются нет во второй папке или другого размера."""
         copied = total = 0
         for dp, _, files in os.walk(src_root):
             if skip_top and os.path.relpath(dp, src_root).split(os.sep)[0] == skip_top:
@@ -219,7 +229,7 @@ class MirrorBackup:
                 copied += 1
         return {'total': total, 'copied': copied}
 
-    def stale(self):
+    def stale(self) -> bool:
         """Включено, но последняя удачная копия старше srv.mirrorStaleDays дней (или её нет; «Значения программы»)."""
         c, s = self.config(), self.state()
         if not c['on']:
@@ -227,6 +237,8 @@ class MirrorBackup:
         if not s.get('ok'):
             return True
         try:
-            return (datetime.now() - datetime.fromisoformat(s['at'])).days >= SrvVal.get(self.store, 'srv.mirrorStaleDays')
+            return (datetime.now() - datetime.fromisoformat(s['at'])).days >= SrvVal.get(
+                self.store, 'srv.mirrorStaleDays'
+            )
         except (KeyError, ValueError):
             return True

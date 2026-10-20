@@ -1,13 +1,5 @@
-# -*- coding: utf-8 -*-
-"""Позиции каталога одного поставщика — для выгрузки «по поставщику» («Настройки → Обслуживание → Копии и база»).
+"""Отбор позиций каталога для выгрузки: по поставщику, по разделам и по фильтру каталога."""
 
-Поставщик позиции — как в фильтре «Поставщик» окна каталога (CatalogWindow.supplierOf): позиция фида — поставщик,
-к которому фид привязан в справочнике (не привязан — название фида); позиция не из фида — поставщик справочника,
-у которого это название или производитель («makers») совпадает с производителем позиции.
-
-Выгрузка по поставщику — без цен, закупки и остатков (решение владельца 16.10): в файле перечислены убранные поля
-(«keep»), и при загрузке файла обратно у имеющихся позиций они остаются как в базе.
-"""
 import json
 import re
 
@@ -15,22 +7,35 @@ import re
 class SupplierScope:
     NONE = 'Без поставщика'
     # цены, закупка, наценка и остатки: в выгрузку по поставщику не попадают, при загрузке не меняются
-    PRICE_KEYS = ('price', 'prices', 'priceCur', 'priceSrc', 'priceLink', 'rrc', 'cost', 'costCur', 'costSrc', 'costDisc',
-                  'costAt', 'margin', 'mmode', 'stock')
+    PRICE_KEYS = (
+        'price',
+        'prices',
+        'priceCur',
+        'priceSrc',
+        'priceLink',
+        'rrc',
+        'cost',
+        'costCur',
+        'costSrc',
+        'costDisc',
+        'costAt',
+        'margin',
+        'mmode',
+        'stock',
+    )
     MAX_NAME = 120
     COST_KEYS = ('cost', 'costCur', 'costSrc', 'costDisc', 'costAt', 'margin', 'mmode')
-    # меняется фидом каждый день (цены, остатки, служебная отметка фида, время изменения) — в сравнение «изменено ли в файле
-    # и в программе после выгрузки» не входит, иначе правка из Excel у позиций фида всегда считалась бы конфликтом
-    VOLATILE = PRICE_KEYS + ('updatedAt', 'feed', 'priceAt', 'photoSource')
+    # меняется фидом каждый день — не входит в сравнение «изменено и в файле, и в программе»
+    VOLATILE = (*PRICE_KEYS, 'updatedAt', 'feed', 'priceAt', 'photoSource')
 
-    def __init__(self, store):
+    def __init__(self, store) -> None:
         self.st = store
         self.sups = store.suppliers_list()
         feeds = (store.kv_get('feeds') or {}).get('items', [])
         by_id = {x.get('id'): x.get('name') for x in self.sups}
         self.feeds = {f['id']: (by_id.get(f.get('supplier')) or f.get('name') or f['id']) for f in feeds if f.get('id')}
         self.makers = {}
-        for s in self.sups:             # точное название раньше списка производителей — как в окне каталога
+        for s in self.sups:  # точное название раньше списка производителей — как в окне каталога
             for m in s.get('makers') or []:
                 self.makers.setdefault(self.key(m), s.get('name') or '')
         for s in self.sups:
@@ -38,19 +43,21 @@ class SupplierScope:
                 self.makers[self.key(s.get('name'))] = s.get('name')
 
     @staticmethod
-    def key(s):
+    def key(s) -> str:
         """Сравнение названий — как norm() клиента: регистр, ё, кавычки, пробелы не важны."""
         return re.sub(r'\s+', ' ', re.sub(r'[«»"]', '', str(s or '').lower().replace('ё', 'е'))).strip()
 
-    def name_of(self, feed, maker):
+    def name_of(self, feed: str, maker: str) -> str:
         if feed:
             return self.feeds.get(feed) or feed
         return self.makers.get(self.key(maker), '') if self.key(maker) else ''
 
     def _rows(self):
-        return self.st.all("SELECT id, COALESCE(json_extract(doc, '$.src'), json_extract(doc, '$.feed.id')), maker FROM catalog")
+        return self.st.all(
+            "SELECT id, COALESCE(json_extract(doc, '$.src'), json_extract(doc, '$.feed.id')), maker FROM catalog"
+        )
 
-    def groups(self):
+    def groups(self) -> list[dict]:
         """[{name, count, dir}] — по убыванию числа позиций; dir — поставщик есть в справочнике; «Без поставщика» — в конце."""
         cnt, title = {}, {}
         for _, feed, maker in self._rows():
@@ -62,41 +69,46 @@ class SupplierScope:
         out = [{'name': title[k], 'count': c, 'dir': k in names} for k, c in cnt.items()]
         return sorted(out, key=lambda g: (g['name'] == self.NONE, -g['count'], g['name'].lower()))
 
-    def ids(self, name):
+    def ids(self, name: str) -> list[str]:
         want = self.key(name)
         if not want or len(str(name)) > self.MAX_NAME:
             raise ValueError('Поставщик не выбран')
         out = [cid for cid, feed, maker in self._rows() if self.key(self.name_of(feed, maker) or self.NONE) == want]
         if not out:
-            raise ValueError('У поставщика «%s» нет позиций в каталоге' % str(name)[:self.MAX_NAME])
+            raise ValueError(f'У поставщика «{str(name)[: self.MAX_NAME]}» нет позиций в каталоге')
         return out
 
-    def docs(self, name):
+    def docs(self, name: str) -> list[dict]:
         """Позиции поставщика без цен и остатков, по названию: [doc]."""
         ids, out = self.ids(name), []
         for i in range(0, len(ids), 500):
-            part = ids[i:i + 500]
-            out += [json.loads(d) for (d,) in self.st.all('SELECT doc FROM catalog WHERE id IN (%s)' % ','.join('?' * len(part)), tuple(part))]
+            part = ids[i : i + 500]
+            out += [
+                json.loads(d)
+                for (d,) in self.st.all(
+                    'SELECT doc FROM catalog WHERE id IN ({})'.format(','.join('?' * len(part))), tuple(part)
+                )
+            ]
         for d in out:
             for k in self.PRICE_KEYS:
                 d.pop(k, None)
         return sorted(out, key=lambda d: str(d.get('name') or '').lower())
 
     @classmethod
-    def strip(cls, d, keys):
+    def strip(cls, d: dict, keys) -> dict:
         """Позиция без этих полей (цен и остатков, которые не выгружаются)."""
         for k in keys:
             d.pop(k, None)
         return d
 
     @classmethod
-    def keep_of(cls, d):
+    def keep_of(cls, d: dict) -> dict:
         """Поля, которых нет в файле выгрузки и которые при загрузке остаются как в базе (только известные)."""
         k = d.get('keep') if isinstance(d, dict) else None
         return [x for x in k if x in cls.PRICE_KEYS] if isinstance(k, list) else []
 
     @classmethod
-    def merge(cls, new, cur, keep):
+    def merge(cls, new: dict, cur: dict, keep) -> dict:
         """Позиция из файла + убранные при выгрузке поля текущей позиции базы."""
         for k in keep:
             if k in cur:
@@ -107,38 +119,43 @@ class SupplierScope:
 
 
 class ExportScope:
-    """Выборочная выгрузка каталога («Выгрузка разделов базы»): категории, производители, поставщики, фиды — несколько
-    в каждом; внутри одного вида — «или», между видами — «и» (решение владельца 18.10). Пустой вид — без ограничения.
-    Поставщик — как в SupplierScope (фид → поставщик справочника), фид — источник позиции; не из фида — «Не из фида»."""
+    """Выгрузка по разделам: внутри вида (категории, производители, поставщики, фиды) — «или», между видами — «и»."""
+
     KINDS = ('cats', 'makers', 'sups', 'feeds')
     NO_FEED = 'Не из фида'
     NO_MAKER = 'Без производителя'
     MAX = 1000
 
-    def __init__(self, store):
+    def __init__(self, store) -> None:
         self.st = store
         self.sc = SupplierScope(store)
-        self.feed_names = {f['id']: (f.get('name') or f['id']) for f in (store.kv_get('feeds') or {}).get('items', []) if f.get('id')}
+        self.feed_names = {
+            f['id']: (f.get('name') or f['id']) for f in (store.kv_get('feeds') or {}).get('items', []) if f.get('id')
+        }
 
     def _rows(self):
         """[(id, категория, производитель, поставщик, фид)]"""
         out = []
-        for cid, cat, maker, feed in self.st.all("SELECT id, cat, maker, COALESCE(json_extract(doc, '$.src'), json_extract(doc, '$.feed.id')) FROM catalog"):
+        for cid, cat, maker, feed in self.st.all(
+            "SELECT id, cat, maker, COALESCE(json_extract(doc, '$.src'), json_extract(doc, '$.feed.id')) FROM catalog"
+        ):
             sup = self.sc.name_of(feed, maker) or SupplierScope.NONE
             out.append((cid, cat or '', str(maker or '').strip() or self.NO_MAKER, sup, feed or ''))
         return out
 
-    def summary(self):
+    def summary(self) -> dict:
         """Сочетания для окна выгрузки: {rows: [{cat, maker, sup, feed, n}], feeds: {id: название}} — счётчики считает окно."""
         cnt = {}
         for _cid, cat, maker, sup, feed in self._rows():
             k = (cat, maker, sup, feed)
             cnt[k] = cnt.get(k, 0) + 1
-        return {'rows': [{'cat': c, 'maker': m, 'sup': s, 'feed': f, 'n': n} for (c, m, s, f), n in cnt.items()],
-                'feeds': dict(self.feed_names, **{'': self.NO_FEED})}
+        return {
+            'rows': [{'cat': c, 'maker': m, 'sup': s, 'feed': f, 'n': n} for (c, m, s, f), n in cnt.items()],
+            'feeds': dict(self.feed_names, **{'': self.NO_FEED}),
+        }
 
     @classmethod
-    def clean(cls, pick):
+    def clean(cls, pick) -> dict:
         """Выбор из запроса → {вид: множество}; ValueError — понятным текстом."""
         if not isinstance(pick, dict):
             raise ValueError('Неверный выбор позиций каталога')
@@ -148,10 +165,10 @@ class ExportScope:
             if not isinstance(v, list) or len(v) > cls.MAX or any(not isinstance(x, str) or len(x) > 200 for x in v):
                 raise ValueError('Неверный выбор позиций каталога')
             if v:
-                out[k] = set(v) if k != 'makers' and k != 'sups' else {SupplierScope.key(x) for x in v}
+                out[k] = set(v) if k not in {'makers', 'sups'} else {SupplierScope.key(x) for x in v}
         return out
 
-    def ids(self, pick):
+    def ids(self, pick: dict) -> list[str]:
         """id позиций, подходящих под выбор (pick — после clean)."""
         out = []
         for cid, cat, maker, sup, feed in self._rows():
@@ -168,19 +185,21 @@ class ExportScope:
 
 
 class CatalogFilter:
-    """«Выгрузить → Каталог по фильтру» (решение владельца 18.10 — отбор прямо во вкладке): категория, производитель,
-    поставщик (как в ExportScope), слова поиска (все — в названии, кратком описании, артикуле или характеристиках),
-    «С ценой», «В наличии» (как в окне каталога: остаток больше нуля; без остатка — отметка фида; снятое с фида — нет).
-    Какие цены войдут в файл — группами; не вошедшие при загрузке остаются как в базе."""
-    NO_CAT = '__none__'           # «Без категории» в списке (пустое значение — «Все категории»)
-    GROUPS = {'price': ('price', 'prices', 'priceCur', 'priceSrc', 'priceLink', 'margin', 'mmode'), 'rrc': ('rrc',),
-              'cost': ('cost', 'costCur', 'costSrc', 'costDisc', 'costAt'), 'stock': ('stock',)}
+    """«Выгрузить → Каталог по фильтру»."""
 
-    def __init__(self, store):
+    NO_CAT = '__none__'  # «Без категории» в списке (пустое значение — «Все категории»)
+    GROUPS = {
+        'price': ('price', 'prices', 'priceCur', 'priceSrc', 'priceLink', 'margin', 'mmode'),
+        'rrc': ('rrc',),
+        'cost': ('cost', 'costCur', 'costSrc', 'costDisc', 'costAt'),
+        'stock': ('stock',),
+    }
+
+    def __init__(self, store) -> None:
         self.st = store
 
     @staticmethod
-    def clean(f):
+    def clean(f) -> dict:
         if not isinstance(f, dict):
             raise ValueError('Неверный фильтр каталога')
         out = {}
@@ -196,25 +215,31 @@ class CatalogFilter:
         return out
 
     @classmethod
-    def keep(cls, prices):
+    def keep(cls, prices) -> set:
         """Поля цен и остатков, которые не выгружаются (группы не отмечены)."""
         want = set(prices or [])
         return [k for g, keys in cls.GROUPS.items() if g not in want for k in keys]
 
     @staticmethod
-    def in_stock(st):
+    def in_stock(st) -> bool:
         if not isinstance(st, dict) or st.get('gone'):
             return False
         return st['qty'] > 0 if isinstance(st.get('qty'), (int, float)) else bool(st.get('available'))
 
-    def ids(self, f):
+    def ids(self, f) -> list[str]:
         from storage import like_arg, norm
+
         f = self.clean(f)
         sc = ExportScope(self.st)
         mk, sp = SupplierScope.key(f.get('maker', '')), SupplierScope.key(f.get('sup', ''))
         cat_want = '' if f.get('cat') == self.NO_CAT else f.get('cat')
-        ok = [cid for cid, cat, maker, sup, _feed in sc._rows()
-              if ('cat' not in f or cat == cat_want) and (not mk or SupplierScope.key(maker) == mk) and (not sp or SupplierScope.key(sup) == sp)]
+        ok = [
+            cid
+            for cid, cat, maker, sup, _feed in sc._rows()
+            if ('cat' not in f or cat == cat_want)
+            and (not mk or SupplierScope.key(maker) == mk)
+            and (not sp or SupplierScope.key(sup) == sp)
+        ]
         if not ok or not ({'q', 'priced', 'instock'} & set(f)):
             return ok
         words = norm(f.get('q', '')).split()[:8]
