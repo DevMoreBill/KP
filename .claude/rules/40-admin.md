@@ -4,7 +4,7 @@ paths:
   - "app/web/js/features/clients*.js"
   - "app/web/js/features/managers.js"
   - "app/web/js/features/auth.js"
-  - "app/web/js/features/settings*.js"
+  - "app/web/js/features/admin/*.js"
   - "app/web/js/features/uitexts.js"
   - "app/web/js/features/my-*.js"
   - "app/web/js/features/journal.js"

@@ -43,7 +43,7 @@ paths:
 - (17.10) «Давай» — сделать связь с Битрикс24 по ответам опроса [реал. 3.101.0: `app/bitrix.py` (`BitrixApi`, `BitrixConf` kv
   «bitrix», `BitrixQueue`/`BitrixLinks`/`BitrixLog` — миграция `2027-11-bitrix`, `BitrixFields` UF_CRM_KP_*, `BitrixSync`,
   `EconXlsx`, `BitrixDesk`), фон — `Background.every` раз в `pollSec` (90 с, 30–3600); «Настройки → Подключения и ключи →
-  Битрикс24» (`settings-bitrix.js`); дела — `crm.activity.todo.add`, в старом Битриксе — `crm.activity.add` (встреча / звонок);
+  Битрикс24» (`admin/bitrix-*.js`); дела — `crm.activity.todo.add`, в старом Битриксе — `crm.activity.add` (встреча / звонок);
   файлы — записью в ленте сделки `crm.timeline.comment.add` (до 20 МБ файл, каждый — один раз на версию); проиграно в
   Битриксе — причина «Проиграно в Битрикс24»; сделка без КП — сумма из Битрикса; адрес вебхука — только на сервере, в файл
   настроек — только «с ключами API»; права вебхука — CRM, Пользователи, Диск. Вживую с bitrix24.kompr.ru НЕ проверено (из облака

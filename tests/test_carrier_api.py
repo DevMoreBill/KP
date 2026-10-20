@@ -287,7 +287,7 @@ class ChinaFreightTest(unittest.TestCase):
             cf.save_rates([{'from': 'Шанхай', 'to': 'Забайкальск', 'kind': 'ftl', 'price': '1', 'until': '31.12'}])
 
     def test_rate_file_js(self):
-        """Ставки файлом и запрос экспедитору (ChinaRateBook в settings-china.js): node tests/js/china_rates.js."""
+        """Ставки файлом и запрос экспедитору (ChinaRateBook в admin/china-rates.js): node tests/js/china_rates.js."""
         import subprocess
         node = shutil.which('node')
         if not node:

@@ -1,3 +1,4 @@
+import { AdminApi, AdminDialog } from '../admin/admin-core.js';
 import { LayoutEditor } from './layout-editor.js';
 import { LayoutParams } from '../layout/layout-params.js';
 import { RuleEdit } from './rule-edit.js';
@@ -27,7 +28,7 @@ export class RulesPanel {
   /** Загрузить правила и показать вкладку. */
   async open() {
     try {
-      const [answer, data] = await Promise.all([aapi('rules/stations'), StationRulesDoc.load()]);
+      const [answer, data] = await Promise.all([AdminApi.get('rules/stations'), StationRulesDoc.load()]);
       this.info = answer.info;
       this.layoutDef = answer.layoutDef || null;
       this.data = data;
@@ -280,7 +281,7 @@ export class RulesPanel {
 
   /** Все значения — как в файле поставки, и сразу новой версией правил. */
   async _rl_mxdef() {
-    const ok = await stConfirm(
+    const ok = await AdminDialog.confirm(
       'Все правила компоновки — по умолчанию?',
       'Матрица расстановки, проходы и отступы станут как в файле поставки программы и сразу сохранятся новой версией правил; прежняя версия останется для отката.',
       'Вернуть по умолчанию',
@@ -367,7 +368,7 @@ export class RulesPanel {
   /** Отправить правила на сервер и обновить вкладку. */
   async post(opts, query = '', what = 'Правила станций') {
     try {
-      const answer = await aapi(`rules/stations${query}`, opts);
+      const answer = await AdminApi.get(`rules/stations${query}`, opts);
       this.info = answer.info;
       this.data = await StationRulesDoc.load();
       StationRules.use(this.data);

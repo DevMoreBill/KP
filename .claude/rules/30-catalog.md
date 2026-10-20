@@ -6,7 +6,7 @@ paths:
   - "app/web/js/features/ai-autofill.js"
   - "app/web/js/features/types-editor.js"
   - "app/web/js/features/images.js"
-  - "app/web/js/features/settings-feeds.js"
+  - "app/web/js/features/admin/feed*.js"
   - "app/web/js/features/excel-import.js"
   - "app/catalog_*.py"
   - "app/feed*.py"

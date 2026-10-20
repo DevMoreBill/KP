@@ -1,4 +1,4 @@
-// Ставки экспедиторов Китай → РФ файлом (app/web/js/features/settings-china.js — ChinaRateBook): разбор строк .xlsx / .csv
+// Ставки экспедиторов Китай → РФ файлом (app/web/js/features/admin/china-rates.js — ChinaRateBook): разбор строк .xlsx / .csv
 // по заголовкам и словам («фура», «сборный», «до места прибытия», «юань», «за кг»), даты, пропуск строк с причиной,
 // текст запроса экспедитору с раздельными участками; шаблон Excel открывается обратно тем же разбором.
 // Запуск из корня репозитория: node tests/js/china_rates.js — код выхода 0, если всё прошло (tests/test_carrier_api.py).
@@ -7,8 +7,9 @@ const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('
 const ROOT=path.resolve(__dirname, '..', '..');
 global.JSZip=require(path.join(ROOT, 'app', 'web', 'vendor', 'jszip.min.js'));
 global.DOMParser=class { parseFromString(){ throw new Error('нет DOM'); } };
-for (const f of ['core/xlsx.js', 'features/settings-china.js']){
-  const p=path.join(ROOT, 'app', 'web', 'js', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
+const WebScripts=require('./web.js');
+for (const f of ['core/xlsx.js', 'features/admin/china-rates.js']) WebScripts.load(path.join(ROOT, 'app', 'web', 'js', f));
+const { ChinaRateBook }=require(path.join(ROOT, 'app', 'web', 'js', 'features', 'admin', 'china-rates.js'));
 
 let n=0;
 const check=async (name, fn)=>{ try{ await fn(); n++; } catch(e){ console.error('ОШИБКА — '+name+':\n'+(e && e.stack || e)); process.exitCode=1; } };

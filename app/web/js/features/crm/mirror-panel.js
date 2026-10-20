@@ -1,3 +1,5 @@
+import { AdminApi, AdminDialog } from '../admin/admin-core.js';
+
 /**
  * «Настройки → Битрикс24 → Как в Битрикс24»: структура портала (воронки, стадии, поля сделки), загрузка сделок (открытые и
  * закрытые за 2 года), перенос прежних связанных сделок, воронки (показывать, ход КП → стадия, куда новые сделки) и поля
@@ -26,7 +28,7 @@ export class MirrorPanel {
     this.box = box;
     this.edited.clear();
     try {
-      this.view = await aapi('bitrix/mirror');
+      this.view = await AdminApi.get('bitrix/mirror');
     } catch (error) {
       box.innerHTML = `<p class="msg err">${esc(error.message || error)}</p>`;
       return;
@@ -221,13 +223,13 @@ export class MirrorPanel {
         'Перенести',
       ],
     };
-    if (asks[action] && !(await stConfirm(...asks[action]))) return;
+    if (asks[action] && !(await AdminDialog.confirm(...asks[action]))) return;
     button.disabled = true;
     try {
       this.view =
         action === 'save'
-          ? await ajson('bitrix/mirror/options', this._payload())
-          : await ajson(`bitrix/mirror/${action}`, {});
+          ? await AdminApi.post('bitrix/mirror/options', this._payload())
+          : await AdminApi.post(`bitrix/mirror/${action}`, {});
       this.edited.clear();
       this.render({ t: this._done(action, this.view.result || {}) });
     } catch (error) {
@@ -269,7 +271,7 @@ export class MirrorPanel {
     this.timer = setTimeout(async () => {
       if (!this.box || !this.box.isConnected) return;
       try {
-        this.view = await aapi('bitrix/mirror');
+        this.view = await AdminApi.get('bitrix/mirror');
       } catch {
         return;
       }
