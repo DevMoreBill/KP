@@ -123,5 +123,5 @@ async function stEdSave(E){
   if (w0){ d.wh=w0.addr; d.whGeo=w0.lat!=null?{value:w0.addr, lat:w0.lat, lon:w0.lon, city:w0.city||'', exact:true, src:'справочник поставщиков'}:null; }
   delete d.id; delete d.updatedAt;
   await api('/api/suppliers/'+encodeURIComponent(id),{method:'PUT',headers:{...J,...(rev!=null?{'X-KP-Rev':String(rev)}:{})},body:JSON.stringify(d)});
-  DL.sups=null;
+  DealUi.sups=null;
 }

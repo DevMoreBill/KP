@@ -1,4 +1,4 @@
-// Экономика сделки и логистика (app/web/js/features/deal-calc.js, logistics-calc.js, logistics.js): ручной груз в мм и кг,
+// Экономика сделки и логистика (app/web/js/features/deal/): ручной груз в мм и кг,
 // прежние КП в метрах и тоннах, «своя сумма» доставки в валюте → рубли по курсу, значения из «Настройки → Значения
 // программы» меняют расчёт, ручная перепроверка формул сделки.
 // Запуск из корня репозитория: node tests/js/deal_logistics.js — код выхода 0, если всё прошло (tests/test_deal_logistics.py).
@@ -6,8 +6,10 @@
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..');
 global.GEO_EXTRA={};                                   // подсказки адресов (ui/geo-input.js) — в тесте не нужны
-for (const f of ['core/money.js', 'core/defaults.js', 'features/deal-calc.js', 'features/logistics-calc.js', 'features/logistics.js']){
+global.document={ addEventListener(){} };
+for (const f of ['core/money.js', 'core/defaults.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
+require('./web.js').load(path.join(ROOT, 'app', 'web', 'js', 'features', 'deal', 'index.js'));
 
 let n=0;
 const check=(name, fn)=>{ try{ DEFS_SRV={}; fn(); n++; } catch(e){ console.error('ОШИБКА — '+name+':\n'+(e && e.stack || e)); process.exitCode=1; } };
@@ -15,7 +17,7 @@ const near=(a, b, msg, eps=0.01)=>assert.ok(Math.abs(a-b)<=eps, `${msg}: ${a} �
 
 // простая сделка: поставщик в России, оплата поставщику 100 % перед отгрузкой, заказчик — через 30 дней после поставки
 function deal(o={}){
-  const d=dealBlank({});
+  const d=DealTerms.blank({});
   const s=d.sup[0]; Object.assign(s, {country:'Россия', cusMode:'none', vatIn:true, prod:'40', ship:'40', pay:[{name:'Оплата', ev:'ready', off:'0'}]}, o.sup||{});
   d.cust={tr:[{pct:'', ev:'delivery', off:'30'}]}; d.tax='25';
   return d;
@@ -53,17 +55,17 @@ check('груз в мм и кг даёт тот же расчёт доставк
 });
 
 check('своя сумма доставки в валюте → рубли по курсу ЦБ', ()=>{
-  const d=deal({sup:{logRu:{v:'1000,5', cur:'USD'}}}), c=dealCalc(KP, d), s=c.sup[0];
+  const d=deal({sup:{logRu:{v:'1000,5', cur:'USD'}}}), c=DealCalculator.calc(KP, d), s=c.sup[0];
   near(s.Lru, 1000.5*92.5, 'доставка в рублях'); assert.ok(s.LruFx, 'признак валюты');
   assert.ok(c.used.includes('USD'), 'валюта попадает в курсы «Цены КП»');
   const row=c.rows.find(r=>r.key==='ru:'+s.id); near(row.amount, -1000.5*92.5, 'платёж в графике — рубли');
   near(s.voRu, 1000.5*92.5*22/122, 'НДС к вычету по услугам — от рублёвой суммы');
   // без валюты (прежние КП и «по расчёту») — рубли
-  near(dealCalc(KP, deal({sup:{logRu:{v:'60000'}}})).sup[0].Lru, 60000, 'рубли');
-  near(dealCalc(KP, deal({sup:{logRu:{v:'60000', src:'module'}}})).sup[0].Lru, 60000, 'по расчёту');
+  near(DealCalculator.calc(KP, deal({sup:{logRu:{v:'60000'}}})).sup[0].Lru, 60000, 'рубли');
+  near(DealCalculator.calc(KP, deal({sup:{logRu:{v:'60000', src:'module'}}})).sup[0].Lru, 60000, 'по расчёту');
   // свой курс расчёта главнее курса КП; нет курса — ошибка поля, сумма не учитывается
-  const d2=deal({sup:{logRu:{v:'100', cur:'EUR'}}}); d2.rates={EUR:'110'}; near(dealCalc(KP, d2).sup[0].Lru, 11000, 'свой курс');
-  const c3=dealCalc({...KP, rates:{}}, deal({sup:{logRu:{v:'100', cur:'CNY'}}}));
+  const d2=deal({sup:{logRu:{v:'100', cur:'EUR'}}}); d2.rates={EUR:'110'}; near(DealCalculator.calc(KP, d2).sup[0].Lru, 11000, 'свой курс');
+  const c3=DealCalculator.calc({...KP, rates:{}}, deal({sup:{logRu:{v:'100', cur:'CNY'}}}));
   assert.strictEqual(c3.sup[0].Lru, 0); assert.ok(/курса/.test(c3.err['sup.0.logRu']||''), 'ошибка «Нет курса»');
 });
 
@@ -76,7 +78,7 @@ check('LgMoney: валюта своей суммы', ()=>{
 });
 
 check('ручная перепроверка формул сделки', ()=>{
-  const c=dealCalc(KP, deal({sup:{logRu:{v:'1000', cur:'USD'}}})), b=c.base, Lru=92500;
+  const c=DealCalculator.calc(KP, deal({sup:{logRu:{v:'1000', cur:'USD'}}})), b=c.base, Lru=92500;
   near(c.R, 1000000, 'выручка без НДС = 1 220 000 / 1,22');
   near(c.Ccash, 500000+Lru, 'платежи: оборудование + доставка');
   const F=500000*0.02*40/30 + (500000+Lru)*0.02*30/30;          // день 40 → 80 → 110 (оплата заказчика)
@@ -89,33 +91,34 @@ check('ручная перепроверка формул сделки', ()=>{
 
 check('значения программы меняют расчёт', ()=>{
   // таможенный сбор по шкале: встроенная — ПП РФ № 1637 / 1638
-  assert.strictEqual(customsFee(1000000), 4924); assert.strictEqual(customsFee(20000000), 73860); assert.strictEqual(customsFee(200000), 1231);
+  assert.strictEqual(DealValues.fee(1000000), 4924); assert.strictEqual(DealValues.fee(20000000), 73860); assert.strictEqual(DealValues.fee(200000), 1231);
   DEFS_SRV={'deal.fee3':{on:true, v:'5000'}, 'deal.feeLim7':{on:true, v:'12000000'}};
-  assert.strictEqual(customsFee(1000000), 5000, 'свой сбор интервала 3'); assert.strictEqual(customsFee(11000000), 49240, 'своя граница 7'); assert.ok(DealValues.feeOwn());
+  assert.strictEqual(DealValues.fee(1000000), 5000, 'свой сбор интервала 3'); assert.strictEqual(DealValues.fee(11000000), 49240, 'своя граница 7'); assert.ok(DealValues.feeOwn());
   assert.ok(/свыше 12 000 000 ₽ — 73 860 ₽/.test(DealValues.feeText().replace(/\s/g, ' ')), DealValues.feeText());
   DEFS_SRV={'deal.feeLim2':{on:true, v:'100000'}};                // границы не по возрастанию — встроенная шкала
-  assert.strictEqual(customsFee(300000), 2462); assert.ok(!DealValues.feeOwn());
+  assert.strictEqual(DealValues.fee(300000), 2462); assert.ok(!DealValues.feeOwn());
   DEFS_SRV={'deal.fee1':{on:true, v:'-5'}};                        // вне допустимого — встроенное
-  assert.strictEqual(customsFee(100000), 1231);
+  assert.strictEqual(DealValues.fee(100000), 1231);
   // ввоз: сбор входит в таможню
   DEFS_SRV={'deal.fee3':{on:true, v:'7000'}};
   const kpI={...KP, items:[{id:'a', name:'Компрессор', qty:1, cost:10000, cur:'USD', duty:5}]};
-  const ci=dealCalc(kpI, deal({sup:{country:'Китай', cusMode:'calc', vatIn:false}}));
+  const ci=DealCalculator.calc(kpI, deal({sup:{country:'Китай', cusMode:'calc', vatIn:false}}));
   near(ci.sup[0].cv, 925000, 'таможенная стоимость'); assert.strictEqual(ci.sup[0].fee, 7000); near(ci.sup[0].T, 925000*0.05+7000+(925000*1.05)*0.22, 'таможенные платежи');
   // дней в месяце — финансирование
   DEFS_SRV={'deal.monthDays':{on:true, v:'31'}};
-  near(dealCalc(KP, deal()).F, 500000*0.02*70/31, 'финансирование при 31 дне');
+  near(DealCalculator.calc(KP, deal()).F, 500000*0.02*70/31, 'финансирование при 31 дне');
   // запасная стоимость денег, налог, отсрочка, аванс, гарантии, наличные
   DEFS_SRV={'deal.moneyFb':{on:true, v:'3'}, 'deal.tax':{on:true, v:'20'}, 'deal.defer':{on:true, v:'45'}, 'deal.supAdv':{on:true, v:'35'}, 'deal.xcCost':{on:true, v:'10'},
-    'deal.bgPct':{on:true, v:'5'}, 'deal.bgWarrDays':{on:true, v:'730'}, 'deal.bgMin':{on:true, v:'1000'}, 'deal.bgAdvPct':{on:true, v:'50'}};
+    'deal.bgPct':{on:true, v:'5'}, 'deal.bgWarrDays':{on:true, v:'730'}, 'deal.bgMin':{on:true, v:'1000'}, 'deal.bgAdvPct':{on:true, v:'50'},
+    'deal.custPay':{on:false}, 'deal.supPay':{on:false}};   // без готовых этапов оплаты — отсрочка и аванс из своих значений
   const kp2={...KP}; delete kp2.moneyAuto;
   const d=deal(); d.tax=''; d.bg=[{type:'warr', rate:'3'}, {type:'perf', base:'pct', rate:'0'}]; d.xc={mode:'sum', v:'100000'};
-  const c=dealCalc(kp2, d);
+  const c=DealCalculator.calc(kp2, d);
   assert.strictEqual(c.i, 3, 'стоимость денег без ставки ЦБ'); assert.strictEqual(c.taxP, 20, 'налог по умолчанию');
   assert.strictEqual(c.bgs[0].days, 730); near(c.bgs[0].amount, 1220000*0.05, 'гарантия 5 % цены'); near(c.bgs[0].fee, 61000*0.03*730/365, 'комиссия');
   assert.strictEqual(c.bgs[1].fee, 1000, 'минимальная комиссия'); near(c.base.K, 100000/0.9, 'наличные с 10 %');
-  const nd=dealBlank({}); assert.strictEqual(nd.cust.tr[0].off, '45', 'отсрочка заказчика'); assert.strictEqual(nd.sup[0].adv, '35', 'аванс поставщику');
-  assert.deepStrictEqual(dealSupPay(nd.sup[0]).map(t=>t.pct||''), ['35', '']);
+  const nd=DealTerms.blank({}); assert.strictEqual(nd.cust.tr[0].off, '45', 'отсрочка заказчика'); assert.strictEqual(nd.sup[0].adv, '35', 'аванс поставщику');
+  assert.deepStrictEqual(DealTerms.supPay(nd.sup[0]).map(t=>t.pct||''), ['35', '']);
 });
 
 check('значения логистики: умолчания и реестр', ()=>{
@@ -162,14 +165,12 @@ check('станция в сборе (решение 17.10) — только от
   assert.ok(b.openOnly && b.vehicles.length && b.vehicles.every(v=>v.C.open), 'станция — контейнеровоз, площадка или трал');
   const keep=LG.tar; LG.tar=T;
   const Q={res:{offers:[{src:'ПЭК', kind:'ltl', complete:true, price:90000, base:90000}, {src:'ATI.SU', kind:'ftl', complete:true, price:150000, base:150000}]}};
-  assert.deepStrictEqual(DealLogistics.offers(b, Q).map(o=>o.id), ['model', 'ATI.SU'], 'без сборного груза');
-  assert.strictEqual(DealLogistics.offers(a, Q).length, 3, 'обычный груз — со сборным');
+  assert.deepStrictEqual(LgOffers.offers(b, Q).map(o=>o.id), ['model', 'ATI.SU'], 'без сборного груза');
+  assert.strictEqual(LgOffers.offers(a, Q).length, 3, 'обычный груз — со сборным');
   LG.tar=keep;
 });
 
 // ---------------------------------------------------------------- проверка расчётов 19.10 (решение владельца «выполняй все»)
-const clsOf=(file, name)=>{ const src=fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'features', file), 'utf8'), m=src.match(new RegExp('\\nclass '+name+' \\{[\\s\\S]*?\\n\\}\\n'));
-  assert.ok(m, name+' в '+file); vm.runInThisContext(m[0]+'\nglobal.'+name+'='+name+';'); };
 
 check('автомобили прикрытия: Требования Минтранса № 343, п. 14 и 32', ()=>{
   const T=Freight.tariffs();
@@ -183,19 +184,17 @@ check('автомобили прикрытия: Требования Минтр�
 check('НДС к вычету по доставке — без страховой премии (НК РФ, ст. 149, п. 3, пп. 7)', ()=>{
   // доставка по расчёту 120 000 ₽, в ней страхование 7 500 ₽: вычет (120 000 − 7 500) × 22 / 122 = 20 286,89 ₽ (было 21 639,34)
   const d=deal(); d.sup[0].logRu={v:'120000', src:'module', ins:'7500'};
-  const s=dealCalc(KP, d).sup[0]; near(s.voRu, 112500*22/122, 'вычет', 0.01); assert.strictEqual(s.LruIns, 7500);
+  const s=DealCalculator.calc(KP, d).sup[0]; near(s.voRu, 112500*22/122, 'вычет', 0.01); assert.strictEqual(s.LruIns, 7500);
   const m=deal(); m.sup[0].logRu={v:'120000'};
-  near(dealCalc(KP, m).sup[0].voRu, 120000*22/122, 'своя сумма менеджера — как раньше', 0.01);
+  near(DealCalculator.calc(KP, m).sup[0].voRu, 120000*22/122, 'своя сумма менеджера — как раньше', 0.01);
 });
 
 check('стоимость денег в месяц: годовая × 30 / 365 (месяц — 30 дней, как в финансировании)', ()=>{
-  clsOf('deal.js', 'DealMoneyRate');
   near(DealMoneyRate.month(19.5), 19.5*30/365, 'месяц', 1e-9);       // 1,6027 % (было 19,5 / 12 = 1,625 %)
   near(DealMoneyRate.month(19.5)*365/30, 19.5, 'годовая ставка сходится', 1e-9);
 });
 
 check('срок поставки в условиях КП при сборке станции — цепочкой', ()=>{
-  clsOf('deal.js', 'DealLeadTime');
   // контейнер 20 + 10 раб. дн., элементы 20 + 10 раб. дн. до сборщика, сборка 15 раб. дн. → 30 + 15 + 10 = 55 рабочих дней (было 30)
   const s1={ active:true, prod:20, ship:10, prodK:'work', shipK:'work' }, s2={ ...s1 };
   const c={ D:77, sup:[s1, s2], asm:{ A:s1, toAsm:[s2], days:15, daysK:'work' } };

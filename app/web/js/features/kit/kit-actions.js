@@ -151,7 +151,7 @@ export class KitActions {
     if (field.dataset.kitcost == null) return;
     const found = PartField.of(field.dataset.kitcost);
     if (!found) return;
-    const cost = dNum(field.value);
+    const cost = InputNum.parse(field.value);
     found.part._costText = field.value;
     field.classList.toggle('bad', Number.isNaN(cost));
     if (!Number.isNaN(cost)) found.part.cost = cost == null ? 0 : Math.round(cost * this.KOPECKS);
@@ -164,7 +164,7 @@ export class KitActions {
   static _costLeave(field) {
     if (field.dataset.kitcost == null) return;
     const found = PartField.of(field.dataset.kitcost);
-    if (found && !Number.isNaN(dNum(found.part._costText))) delete found.part._costText;
+    if (found && !Number.isNaN(InputNum.parse(found.part._costText))) delete found.part._costText;
     renderForm();
     this._deal();
   }

@@ -5,6 +5,7 @@
 когда API GitHub не ответил (app_update.ReleaseSource). Без сети — ответы подменяются."""
 import io
 import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -277,10 +278,11 @@ class ChinaFreightTest(unittest.TestCase):
         with mock.patch.object(ChinaFreight, '_ati', return_value=({'rub': 150000, 'avgRub': None, 'note': ''}, None)):
             r = cf.quote(q, fx, today='2026-10-17')
         self.assertTrue(any('рынка на 67' in w for w in {o['src']: o for o in r['offers']}['А']['warn']))
-        js = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'app', 'web', 'js', 'features', 'logistics-calc.js'), encoding='utf-8').read()
+        js = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'app', 'web', 'js', 'features', 'deal', 'lg-values.js'), encoding='utf-8').read()
         key, b0, lo, hi = ChinaFreight.DEV
-        self.assertIn("['%s', 'logAti'" % key, js)
-        self.assertIn("'num', '%d', {unit:'%%', req:true, min:%d, max:%d" % (b0, lo, hi), js, 'встроенное и пределы — как в «Значениях программы»')
+        self.assertRegex(js, r"\[\s*'%s',\s*'logAti'" % re.escape(key))
+        self.assertRegex(js, r"'num',\s*'%d',\s*\{\s*unit: '%%',\s*req: true,\s*min: %d,\s*max: %d," % (b0, lo, hi),
+                         'встроенное и пределы — как в «Значениях программы»')
         with self.assertRaises(ValueError):
             cf.quote(dict(q, terms='XXX'), fx)
         with self.assertRaises(ValueError):

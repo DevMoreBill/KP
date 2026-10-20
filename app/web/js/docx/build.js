@@ -278,7 +278,7 @@ async function download(){
     if (mr && mr.deal) S.dealId=mr.deal;      // КП в сделке (кабинет менеджера): следующее сохранение — в ту же сделку
     // связь с Битрикс24: Excel экономики сделки собирается здесь (в браузере автора) и уходит в ленту сделки
     if (mr && mr.bx && S.deal && S.deal.touched && DealDefaults.allowed()){ const kid=S.kpId;
-      dealXlsx({blob:true}).then(b=>b && api(`/api/kp/${kid}/econ`, {method:'PUT', body:b})).catch(e=>console.warn('Экономика для Битрикс24 не отправлена:', e)); }
+      DealXlsx.blob().then(b=>b && api(`/api/kp/${kid}/econ`, {method:'PUT', body:b})).catch(e=>console.warn('Экономика для Битрикс24 не отправлена:', e)); }
     await Drafts.saved(sig);      // КП в журнале — черновик не нужен; правки, сделанные во время сохранения, остаются несохранёнными
     if (Drafts.sig(Drafts.clean())!==sig) toast('Изменения, сделанные во время сохранения, в КП не вошли — сохраните КП ещё раз');
     // PDF рядом с .docx — по галочке «Также сохранить в PDF»

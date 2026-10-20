@@ -1,4 +1,4 @@
-// Слепок расчёта экономики сделки (app/web/js/features/deal-calc.js): 15 типовых сделок — поставщик в России, Китай и
+// Слепок расчёта экономики сделки (app/web/js/features/deal/): 15 типовых сделок — поставщик в России, Китай и
 // Европа с растаможкой по позициям, ЕАЭС, растаможка суммой, два поставщика, сборка станции, расходы, наличные, банковские
 // гарантии, своя цена и НДС, ошибки ввода, подбор цены под цель. Все итоговые величины, график платежей и структура затрат
 // сверяются с tests/js/deal_golden.json — любое изменение расчёта (хоть на копейку) видно сразу. Расчёт поменяли
@@ -7,15 +7,18 @@
 'use strict';
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..'), SNAP=path.join(__dirname, 'deal_golden.json');
-for (const f of ['core/money.js', 'core/defaults.js', 'features/tnved.js', 'features/deal-calc.js']){
+const WebScripts=require('./web.js');
+global.document={ addEventListener(){} };
+for (const f of ['core/money.js', 'core/defaults.js']){
   const p=path.join(ROOT, 'app', 'web', 'js', f); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
+WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', 'deal', 'index.js'));
 
 class Golden {
   static KP(o={}){ return {sumRub:1220000, vat:22, rates:{USD:'92,5', EUR:'100', CNY:'12,8'}, moneyAuto:2, date:'2026-10-19',
     items:[{id:'a', name:'Компрессор', qty:1, cost:500000, cur:'RUB', duty:5, code:'8414805900'}], ...o}; }
-  static sup(o={}){ return {...dealNewSupplier('s1', {country:'Россия'}), country:'Россия', cusMode:'none', vatIn:true, prod:'40', ship:'40',
+  static sup(o={}){ return {...DealTerms.newSupplier('s1', {country:'Россия'}), country:'Россия', cusMode:'none', vatIn:true, prod:'40', ship:'40',
     pay:[{name:'Оплата', ev:'ready', off:'0'}], ...o}; }
-  static deal(o={}){ const d=dealBlank({}); d.sup=[this.sup(o.sup)]; d.cust={tr:[{pct:'', ev:'delivery', off:'30'}]}; d.tax='25';
+  static deal(o={}){ const d=DealTerms.blank({}); d.sup=[this.sup(o.sup)]; d.cust={tr:[{pct:'', ev:'delivery', off:'30'}]}; d.tax='25';
     const {sup:_s, ...rest}=o; return Object.assign(d, rest); }
   static china(o={}){ return this.sup({country:'Китай', cusMode:'calc', vatIn:false, log:{v:'30000', cur:'CNY'}, ins:'0,3', fx:'1', brk:{v:'45000'},
     logRu:{v:'180000'}, pay:[{name:'Аванс', pct:'30', ev:'order', off:'0'}, {name:'Остаток', ev:'ready', off:'0'}], ...o}); }
@@ -54,7 +57,7 @@ class Golden {
     for (const k of ['VATin', 'Cnet', 'Ctot', 'Pa', 'X', 'K', 'P', 'tax', 'net', 'markup', 'margin', 'vatBal', 'payable', 'excess', 'cashAfter']) o[k]=this.r(x[k]);
     return o; }
   static shot(kp, d){
-    const c=dealCalc(kp, JSON.parse(JSON.stringify(d)));
+    const c=DealCalculator.calc(kp, JSON.parse(JSON.stringify(d)));
     const top={}; for (const k of ['S', 'R', 'VATs', 'Ccash', 'F', 'equipSum', 'Lsum', 'LruSum', 'brkSum', 'Tsum', 'voSup', 'voRuSum', 'M', 'E', 'Dc', 'W', 'Bn', 'BG', 'advSum', 'D', 'Rdy', 'Tend', 'cashBefore'])
       top[k]=this.r(c[k]);
     return { top, base:this.res(c.base), lo:this.res(c.lo), hi:this.res(c.hi),
@@ -68,9 +71,9 @@ class Golden {
     const out={};
     for (const [name, kp, d] of this.cases()) out[name]=this.shot(kp, d);
     const [, kp, d]=this.cases()[0];
-    out['Подбор цены под цель']={ margin20:this.r(dealSolve(kp, d, 'margin', 20)), markup30:this.r(dealSolve(kp, d, 'markup', 30)),
-      profit300k:this.r(dealSolve(kp, d, 'profit', 300000)), net200k:this.r(dealSolve(kp, d, 'net', 200000)) };
-    out['Таможенный сбор по шкале']=[1, 200000, 200000.01, 450000, 1200001, 2700000, 4200001, 5500000, 10000000, 10000001].map(v=>[v, customsFee(v)]);
+    out['Подбор цены под цель']={ margin20:this.r(DealCalculator.solve(kp, d, 'margin', 20)), markup30:this.r(DealCalculator.solve(kp, d, 'markup', 30)),
+      profit300k:this.r(DealCalculator.solve(kp, d, 'profit', 300000)), net200k:this.r(DealCalculator.solve(kp, d, 'net', 200000)) };
+    out['Таможенный сбор по шкале']=[1, 200000, 200000.01, 450000, 1200001, 2700000, 4200001, 5500000, 10000000, 10000001].map(v=>[v, DealValues.fee(v)]);
     return out;
   }
 }
@@ -85,6 +88,6 @@ for (const k of new Set([...Object.keys(was), ...Object.keys(now)])){
   catch(e){ bad++; console.error('РАСЧЁТ ИЗМЕНИЛСЯ — '+k+':\n'+String(e.message).split('\n').slice(0, 40).join('\n')); }
 }
 // контроль самого расчёта (не только слепка): равенство «прибыль = деньги после сделки + переплата НДС» во всех сделках без ошибок
-for (const [name, kp, d] of Golden.cases()){ const c=dealCalc(kp, JSON.parse(JSON.stringify(d))), b=c.base;
+for (const [name, kp, d] of Golden.cases()){ const c=DealCalculator.calc(kp, JSON.parse(JSON.stringify(d))), b=c.base;
   if (b && c.ok && Math.abs(b.P-(b.cashAfter+b.excess))>0.01){ bad++; console.error('НЕ СХОДИТСЯ — '+name); } }
 if (bad) process.exitCode=1; else console.log('экономика сделки: '+Object.keys(now).length+' слепков совпали');
