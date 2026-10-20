@@ -596,7 +596,7 @@ Check.run('двери: плотно к стене — сервисные вор�
   assert.strictEqual(solve(C('block', { size:'10000 × 3500 × 2700' }), [Object.assign({}, cw, { qty:12 })]).level, 'error', 'двенадцать — не помещаются');
   draw(wk, 'калитка');
   const wg=structuredClone(wk); wg.gates.wicket={ w:800, h:2000 };   // калитка в створке — вид изнутри в разрезе
-  for (const { mesh } of new StScene(wg, {}).build().groups.values()) assert.ok(mesh.p.every(Number.isFinite), 'калитка: NaN в 3D');
+  for (const { mesh } of new StScene(wg, {}).build().groups.values()) assert.ok(mesh.positions.every(Number.isFinite), 'калитка: NaN в 3D');
 });
 
 Check.run('шкафы не сужают проход, торец; дверь оператора не уже 900 мм', ()=>{
@@ -855,7 +855,7 @@ Check.run('ресивер: после подготовки воздуха, до 
   const sv=StationDrawing.svg(o, meta(o)); Check.sheet(sv, 'ресивер снаружи');
   assert.ok(/снаружи на бетонной площадке/.test(sv) && /подлежит учёту в Ростехнадзоре/.test(sv), 'ТТ: снаружи и учёт');
   const sc=new StScene(o, {}).build(), bb=sc.bounds(); assert.ok(bb.hi[0]>Le/1000+StationLayout.OUT_GAP/1000, '3D: ресивер в кадре');
-  for (const { mesh } of sc.groups.values()) assert.ok(mesh.p.every(Number.isFinite), '3D без NaN');
+  for (const { mesh } of sc.groups.values()) assert.ok(mesh.positions.every(Number.isFinite), '3D без NaN');
   // два ресивера снаружи не помещаются по ширине — второй ряд дальше от стены
   const o2=run([comp(), dry(), rc(2000, 11, { qty:2 }), flt()], { recvOut:true }); Check.plan(o2, 'два снаружи'); draw(o2, 'два снаружи');
   assert.ok(o2.outside.length===2 && o2.outside[1].x>o2.outside[0].x+o2.outside[0].lx, 'второй ряд');
@@ -940,7 +940,7 @@ Check.run('крыша: плоская, двускатная, односкатн�
     const sv=StationDrawing.svg(p, meta(p)); Check.sheet(sv, 'крыша '+rf);
     assert.strictEqual(sv.includes('Крыша — '), rf!=='flat', rf+': в технических требованиях');
     const sc=new StScene(p, {}).build(); assert.ok(sc.bounds().hi[2]>=sc.top+p.geo.rise/1000-1e-6, rf+': крыша в 3D');
-    for (const { mesh } of sc.groups.values()) assert.ok(mesh.p.every(Number.isFinite), rf+': NaN в 3D');
+    for (const { mesh } of sc.groups.values()) assert.ok(mesh.positions.every(Number.isFinite), rf+': NaN в 3D');
   }
   assert.notStrictEqual(StationLayout.hash({ cont:C('block', { roof:'gable' }), parts:[comp] }), StationLayout.hash({ cont:C('block'), parts:[comp] }), 'отпечаток: крыша');
 });
@@ -1000,7 +1000,7 @@ Check.run('ДГУ: отсек топливного бака — перегоро
     const sv=StationDrawing.svg(p, meta(p)); Check.sheet(sv, label+': чертёж');
     assert.ok(/Бак поз\. \d+ — в отсеке за противопожарной перегородкой \(EI 45\)/.test(sv), label+': требование в ТТ');
     assert.ok(p.issues.some(i=>/отсек/i.test(i.text)), label+': сведения об отсеке');
-    const sc=new StScene(p, {}).build(); for (const { mesh } of sc.groups.values()) assert.ok(mesh.p.every(Number.isFinite), label+': NaN в 3D');
+    const sc=new StScene(p, {}).build(); for (const { mesh } of sc.groups.values()) assert.ok(mesh.positions.every(Number.isFinite), label+': NaN в 3D');
   }
   const no=solve(C('sea40'), [dgu, ats]); assert.ok(!no.fuel && !no.items.some(i=>i.tank), 'без бака — без отсека');
 });
@@ -1018,15 +1018,15 @@ Check.run('3D-вид (WebGL): сцена, камера, свет', ()=>{
     assert.ok(n>500 && n<200000, `${label}: треугольников ${n}`);
     for (const { mat, mesh } of sc.groups.values()){
       assert.ok(/^#[0-9a-f]{6}$/i.test(mat.c) && mat.r>=0 && mat.r<=1 && (mat.m===0 || mat.m===1 || (mat.m>0 && mat.m<1)), `${label}: материал ${JSON.stringify(mat)}`);
-      assert.ok(mesh.p.length===mesh.n.length && mesh.i.every(k=>k<mesh.count), `${label}: геометрия`);
-      assert.ok([...mesh.p, ...mesh.n].every(Number.isFinite), `${label}: NaN в геометрии`);
-      for (let k=0; k<mesh.n.length; k+=3) assert.ok(Math.abs(Math.hypot(mesh.n[k], mesh.n[k+1], mesh.n[k+2])-1)<1e-3, `${label}: нормаль не единичная`); }
+      assert.ok(mesh.positions.length===mesh.normals.length && mesh.indices.every(k=>k<mesh.count), `${label}: геометрия`);
+      assert.ok([...mesh.positions, ...mesh.normals].every(Number.isFinite), `${label}: NaN в геометрии`);
+      for (let k=0; k<mesh.normals.length; k+=3) assert.ok(Math.abs(Math.hypot(mesh.normals[k], mesh.normals[k+1], mesh.normals[k+2])-1)<1e-3, `${label}: нормаль не единичная`); }
     assert.ok(b.hi[0]>=sc.Le && b.hi[2]>=sc.top-1e-9, `${label}: габарит сцены меньше контейнера`);
     if (p.roof && p.roof.length){ const m=p.roof[0]; assert.ok(b.hi[2]>=sc.top+(m.gap+m.d)/1000-1e-6 && b.hi[0]>=sc.ox+(m.x+m.lx+m.outlet)/1000, `${label}: глушитель с выхлопом вбок — в кадре`); }
     const cam=StCam.fit(b, 1.6), vp=StM4.mul(StM4.persp(cam.fov, 1.6, 0.1, cam.D*4), cam.view);
     for (const x of [b.lo[0], b.hi[0]]) for (const y of [b.lo[1], b.hi[1]]) for (const z of [b.lo[2], b.hi[2]]){ const q=StM4.apply(vp, [x, y, z]);
       assert.ok(Math.abs(q[0])<=0.93 && Math.abs(q[1])<=0.93, `${label}: угол сцены вне кадра ${q.map(v=>v.toFixed(2))}`); }
-    const [w, h]=StationRender.size(sc); assert.ok(w===StationRender.W && h>=760 && h<=1100, `${label}: размер кадра ${w}×${h}`);
+    const [w, h]=StationRender.size(sc); assert.ok(w===StationRender.WIDTH && h>=760 && h<=1100, `${label}: размер кадра ${w}×${h}`);
   }
   // шкафы на срезанной стене прохода — не рисуются (на чертеже есть); без прохода стена стоит, двери открыты
   const ks=plans['КС']; assert.ok(ks.items.some(i=>i.mount==='wall' && i.wall==='front'));
@@ -1061,9 +1061,9 @@ Check.run('3D: оснащение — пожарная безопасность,
   for (const view of ['in', 'out']){
     const sc=new StScene(ks, { view }).build(), D=[...sc.decals.values()];
     for (const { mat, mesh } of sc.groups.values()){
-      if (mat.k===3) assert.ok(mesh.t.length===mesh.count*2 && sc.decals.has(mat.tex), view+': у наклейки — координаты текстуры и картинка');
-      else assert.strictEqual(mesh.t.length, 0, view+': координаты текстуры — только у наклеек');
-      assert.ok(mesh.p.every(Number.isFinite) && mesh.t.every(v=>v>=0 && v<=1), view+': геометрия'); }
+      if (mat.k===3) assert.ok(mesh.uvs.length===mesh.count*2 && sc.decals.has(mat.tex), view+': у наклейки — координаты текстуры и картинка');
+      else assert.strictEqual(mesh.uvs.length, 0, view+': координаты текстуры — только у наклеек');
+      assert.ok(mesh.positions.every(Number.isFinite) && mesh.uvs.every(v=>v>=0 && v<=1), view+': геометрия'); }
     assert.ok(D.some(d=>d.type==='brand' && d.globe && d.parts.map(p=>p[0]).join('')==='ПНЕВМОТЕХ' && d.tag), view+': логотип ПНЕВМОТЕХ на контейнере');
     if (view==='in'){
       assert.ok(sc.cut && D.some(d=>d.type==='logo' && d.maker==='Dalgakiran' && d.ar>1), 'логотип производителя на оборудовании');
@@ -1077,7 +1077,7 @@ Check.run('3D: оснащение — пожарная безопасность,
       assert.ok(ext.length===1 && ext.every(q=>q.at[1]>sc.oy+0.05), 'огнетушитель виден: не на срезанной стене');
       const hs=ks.heat.heaters.filter(h=>h.wall!=='front'); assert.strictEqual(sc.outfit.log.filter(q=>q.kind==='heater').length, hs.length, 'конвекторы — на местах из расчёта');
     } else {
-      assert.ok(!sc.cut && sc.closed && sc.openF.some(o=>o.kind==='entry'), 'снаружи: стена с входной дверью');
+      assert.ok(!sc.cut && sc.closed && sc.frontOpenings.some(o=>o.kind==='entry'), 'снаружи: стена с входной дверью');
       for (const id of ['W08', 'P06', 'POW_NO', 'AUTO_OFF']) assert.ok(D.some(d=>d.id===id), 'снаружи — '+id);
       assert.ok(D.some(d=>d.id==='CAT' && d.cat==='В4' && !d.zone), 'снаружи — табличка категории на входной двери');
       assert.ok(sc.tris()<new StScene(ks, {}).build().tris(), 'снаружи внутреннее не строится'); }
@@ -1086,7 +1086,7 @@ Check.run('3D: оснащение — пожарная безопасность,
   // ДГУ с отсеком бака: снаружи — дверь отсека (решётка внизу, доводчик), «Пожароопасно», «Открытый огонь запрещён», «ДТ»
   const dgm=Object.assign({}, dgu, { attrs:{ ...dgu.attrs, maker:'AKSA' } }), dg=solve(C('block', { sizeAuto:true }), [dgm, ats, P('Глушитель на крыше', {}), P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'1000 л' }] })]);
   const so=new StScene(dg, { view:'out' }).build(), Do=[...so.decals.values()];
-  assert.ok((so.openF.some(o=>o.kind==='tank') || dg.fuel.gate) && ['W01', 'P02', 'DT'].every(id=>Do.some(d=>d.id===id)), 'отсек бака снаружи: вход (ворота в торце или дверь) и знаки');
+  assert.ok((so.frontOpenings.some(o=>o.kind==='tank') || dg.fuel.gate) && ['W01', 'P02', 'DT'].every(id=>Do.some(d=>d.id===id)), 'отсек бака снаружи: вход (ворота в торце или дверь) и знаки');
   assert.ok(Do.some(d=>d.id==='CAT' && d.cat==='В1' && d.zone==='П-I'), 'отсек бака: табличка «Категория В1, класс зоны П-I»');
   assert.ok(dg.fire.rooms.length===2 && dg.fire.ext===2 && !dg.fire.auto && dg.fire.mods===0, 'ДГУ с отсеком: огнетушители в двух помещениях, без пожаротушения — модулей нет');
   const si=new StScene(dg, {}).build(); assert.ok(dg.fire.ext===2 && si.outfit.log.filter(q=>q.kind==='ext').length===2, 'огнетушители: у входа и в отсеке бака');
@@ -1176,7 +1176,7 @@ Check.run('масса и центр тяжести, строповка; знак
     assert.ok(new Set(cg.map(q=>q.wall)).size>=2 && cg.every(q=>{ const c=sc.outfit.cogOn(q.wall); return Math.abs(c.u-q.u)<1 && Math.abs(c.z-q.z)<1; }), label+': № 12 — на двух стенах и больше, в проекции ЦТ');
     assert.ok(L.filter(q=>q.kind==='MASS').length===1 && D.some(d=>d.id==='MASS' && d.kg===p.mass.mass), label+': надпись «Масса брутто»');
     const dark=label.includes('тёмный'); assert.ok(D.filter(d=>['SLING', 'COG', 'MASS'].includes(d.id)).every(d=>!!d.light===dark), label+': цвет знаков по стене');
-    for (const w of ['front', 'back', 'left', 'right']){ const R=sc.outfit.O[w].slice(-40), Q=L.filter(q=>q.wall===w && ['SLING', 'COG', 'MASS'].includes(q.kind));
+    for (const w of ['front', 'back', 'left', 'right']){ const R=sc.outfit.outerBusy[w].slice(-40), Q=L.filter(q=>q.wall===w && ['SLING', 'COG', 'MASS'].includes(q.kind));
       assert.ok(Q.length<=R.length, label+': знаки учтены как занятые места'); } }
 });
 
@@ -1291,7 +1291,7 @@ Check.run('случайные составы: без сбоев и наруше�
     levels[p.level]=(levels[p.level]||0)+1;
     Check.plan(p, `состав ${k} (${cont.ctype} ${own})`);
     if (p.level==='ok' || p.level==='warn'){ draw(p, `состав ${k}`);
-      const sc=new StScene(p, {}).build(); for (const { mesh } of sc.groups.values()) if (!mesh.p.every(Number.isFinite)) throw new Error(`состав ${k}: NaN в 3D-сцене`); }
+      const sc=new StScene(p, {}).build(); for (const { mesh } of sc.groups.values()) if (!mesh.positions.every(Number.isFinite)) throw new Error(`состав ${k}: NaN в 3D-сцене`); }
   }
   assert.ok(levels.ok && levels.warn && levels.error, 'в прогоне есть все исходы: '+JSON.stringify(levels));
 });
@@ -1762,7 +1762,7 @@ Check.run('окраска контейнера: на один цвет — од�
     { art:[{ src:'/img/a.png', wall:'left', x:0.5, z:0.5, w:1200, ar:2 }, { src:'/img/b.png', wall:'back', x:0.3, z:0.75, w:99999, ar:1 }, { src:'', wall:'front' }, { src:'/img/c.png', wall:'roof' }] }), [comp, dryer, rec, cab]);
   assert.ok(pl.roofColor==='#A5A8A6' && pl.doorColor==='#C1121C' && pl.floorColor===null && pl.arts.length===2, 'план: цвета и рисунки (без пустых и чужих стен)');
   const sc=new StScene(pl, { view:'out' }).build(), D=[...sc.decals.values()], art=D.filter(d=>d.type==='art');
-  assert.ok(sc.roofC==='#A5A8A6' && sc.door==='#C1121C', '3D: крыша и двери своим цветом');
+  assert.ok(sc.roofColor==='#A5A8A6' && sc.door==='#C1121C', '3D: крыша и двери своим цветом');
   assert.ok(art.length===2 && art.some(d=>d.src==='/img/a.png' && Math.abs(d.ar-2)<1e-9), '3D: рисунки заказчика на стенах');
   const lg=sc.outfit.log.filter(q=>q.kind==='art'); assert.ok(lg.length===2 && lg.find(q=>q.wall==='back').w<=sc.Le*1000-300, 'рисунок не шире стены');
   assert.ok(lg.find(q=>q.wall==='left').free, 'рисунок — мимо дверей, ворот, жалюзи: '+JSON.stringify(lg));
@@ -1787,7 +1787,7 @@ Check.run('ДГУ в контейнере: радиатор к жалюзи, д�
     const radW=new Set(G.map(g=>g.rad||'right')); assert.ok(!V.louvers.some(q=>q.kind==='in' && radW.has(q.wall)), label+': приток не на стене радиаторов');
     assert.ok(!p.issues.some(i=>/не подойти/.test(i.text)), label+': доступ к ДГУ');
     Check.sheet(StationDrawing.svg(p, meta(p)), label+': чертёж');
-    for (const v of ['in', 'out']){ const sc=new StScene(p, { view:v }).build(); for (const { mesh } of sc.groups.values()) assert.ok(mesh.p.every(Number.isFinite), label+': NaN в 3D ('+v+')'); }
+    for (const v of ['in', 'out']){ const sc=new StScene(p, { view:v }).build(); for (const { mesh } of sc.groups.values()) assert.ok(mesh.positions.every(Number.isFinite), label+': NaN в 3D ('+v+')'); }
     assert.ok(StationView3D.svg(p, {}).length>1000, label+': вид');
     return G; };
   // одна — вдоль, радиатором к дальнему торцу
@@ -1853,7 +1853,7 @@ Check.run('Станция из модулей: раскладка, подбор 
   const M=two.mass; assert.ok(M.mods.length===3 && Math.abs(M.mods.reduce((s, q)=>s+q.mass, 0)-M.mass)<=40 && M.sling===M.top.sling, 'масса — по модулям, строповка — самого тяжёлого: '+JSON.stringify([M.mass, M.mods.map(q=>q.mass), M.sling===M.top.sling]));
   const sv=StationDrawing.sheets(two, meta(two)); sv.forEach((x, k)=>Check.sheet(x, 'модули: лист '+(k+1)));
   assert.ok(sv.some(x=>/Схема строповки модуля М\d/.test(x)) && sv.some(x=>/Станция из модулей/.test(x)) && sv.some(x=>/>М2</.test(x)), 'чертёж: строповка модуля, ТТ, номера модулей');
-  for (const v of ['in', 'out']){ const sc=new StScene(two, { view:v }).build(); for (const { mesh } of sc.groups.values()) assert.ok(mesh.p.every(Number.isFinite), 'NaN в 3D модулей ('+v+')'); }
+  for (const v of ['in', 'out']){ const sc=new StScene(two, { view:v }).build(); for (const { mesh } of sc.groups.values()) assert.ok(mesh.positions.every(Number.isFinite), 'NaN в 3D модулей ('+v+')'); }
   // 2 × 2: стойка на пересечении стыков — не под оборудованием
   const comp3=P('Компрессор 250', { cat:'comp_screw', kw:250, size:'3800 × 2000 × 2200', mass:5000 }, { role:'main', qty:3 });
   const q=solve(cM(StationMods.cells(2, 2)), [comp3, ats]); Check.plan(q, '2 × 2');
@@ -1901,7 +1901,7 @@ Check.run('Модули: ширина, состав модулей, стыки �
     if (o.wall!=='right') assert.ok(!(two.doors||[]).some(d=>d.wall===o.wall && o.x>d.x0-150 && o.x<d.x1+150) && o.x<=L-300 && l.x1===o.x, 'не в сервисных воротах, от торца 300'); }
   assert.ok(StationPipe.outs(two).every(t=>/фланцем \(ГОСТ 33259-2015/.test(t)), 'ТЗ: патрубок с фланцем');
   const sv=StationDrawing.sheets(two, meta(two)); sv.forEach((x, k)=>Check.sheet(x, 'выход: лист '+(k+1)));
-  for (const v of ['in', 'out']){ const sc=new StScene(two, { view:v }).build(); for (const { mesh } of sc.groups.values()) assert.ok(mesh.p.every(Number.isFinite), 'NaN в 3D ('+v+')'); }
+  for (const v of ['in', 'out']){ const sc=new StScene(two, { view:v }).build(); for (const { mesh } of sc.groups.values()) assert.ok(mesh.positions.every(Number.isFinite), 'NaN в 3D ('+v+')'); }
 });
 
 // аккуратная компоновка (решение владельца 19.10, «делай всё предложенное»): лицевая линия ряда, равный шаг, ворота одной

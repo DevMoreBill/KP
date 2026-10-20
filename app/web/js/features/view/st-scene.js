@@ -45,402 +45,430 @@ export class StScene {
     this.meta = meta;
     this.groups = new Map();
     this.decals = new Map(); // ключ → описание картинки наклейки
-    this.g = plan.geo;
-    this.mm = v => v / 1000;
+    this.geo = plan.geo;
+    this.meters = v => v / 1000;
     this.sizes(plan, meta);
     this.colors(plan);
     this.doorSets(plan, meta);
   }
 
+  /** Размеры контейнера, м. */
   sizes(plan, meta) {
-    const g = plan.geo;
-    const mm = this.mm;
-    [this.Le, this.We, this.He] = g.ext.map(mm);
-    [this.Li, this.Wi, this.Hi] = plan.int.map(mm);
+    const geo = plan.geo;
+    const meters = this.meters;
+    [this.Le, this.We, this.He] = geo.ext.map(meters);
+    [this.Li, this.Wi, this.Hi] = plan.int.map(meters);
     this.ox = (this.Le - this.Li) / 2;
     this.oy = (this.We - this.Wi) / 2;
-    this.dz = plan.chassis ? mm(meta.deck || 1150) : 0;
-    this.base = this.dz + mm(StationGeo.zFloor(g.type));
+    this.dz = plan.chassis ? meters(meta.deck || 1150) : 0;
+    this.base = this.dz + meters(StationGeo.zFloor(geo.type));
     this.ceil = this.base + this.Hi;
     this.top = this.dz + this.He;
-    this.rise = g.sea ? 0 : mm(g.rise || 0);
+    this.rise = geo.sea ? 0 : meters(geo.rise || 0);
   }
 
   /** Крыша — в цвет каркаса, двери и ворота — стен, если не заданы свои. */
   colors(plan) {
     this.wall = plan.wallColor || '#CBD0CC';
     this.frame = plan.frameColor || RalColor.shade(this.wall, 0.72);
-    this.roofC = plan.roofColor || this.frame;
+    this.roofColor = plan.roofColor || this.frame;
     this.door = plan.doorColor || this.wall;
     this.lining = plan.geo.sea ? '#e3e6e8' : '#eef0f1';
   }
 
   /** Сервисные двери (закрыты; дверь оператора и дверь отсека бака — отдельно), двери-жалюзи ДГУ поперёк в задней стене; проёмы стены со стороны зрителя. */
   doorSets(plan, meta) {
-    const sd = plan.doors || [];
-    this.doorsF = sd.filter(d => d.wall !== 'back');
-    this.doorsB = sd.filter(d => d.wall === 'back');
-    for (const d of (plan.dguDoors || []).filter(d => d.wall === 'back'))
-      this.doorsB.push({ wall: 'back', x0: d.x0, x1: d.x1, w: d.w, h: d.h, leaves: 2, kind: 'dgu' });
+    const doors = plan.doors || [];
+    this.doorsFront = doors.filter(door => door.wall !== 'back');
+    this.doorsBack = doors.filter(door => door.wall === 'back');
+    for (const door of (plan.dguDoors || []).filter(door => door.wall === 'back'))
+      this.doorsBack.push({ wall: 'back', x0: door.x0, x1: door.x1, w: door.w, h: door.h, leaves: 2, kind: 'dgu' });
     this.view = meta.view === 'out' ? 'out' : 'in';
     this.closed = this.view === 'out';
     this.cut = this.view === 'in';
-    this.az = meta.az ?? (this.closed && StScene.farEnd(plan) ? -StCam.AZ : StCam.AZ);
-    this.openF = this.openings(plan);
+    this.azimuth = meta.az ?? (this.closed && StScene.farEnd(plan) ? -StCam.AZIMUTH : StCam.AZIMUTH);
+    this.frontOpenings = this.openings(plan);
   }
 
+  /** Проёмы лицевой стены. */
   openings(plan) {
     if (this.cut) return [];
-    const F = this.doorsF.map(d => ({
-      x0: d.x0,
-      x1: d.x1,
-      h: d.h,
-      leaves: d.leaves,
-      kind: d.kind || 'service',
+    const list = this.doorsFront.map(door => ({
+      x0: door.x0,
+      x1: door.x1,
+      h: door.h,
+      leaves: door.leaves,
+      kind: door.kind || 'service',
       open: false,
     }));
-    if (!this.closed) return F;
-    const en = plan.entry;
-    if (en && en.wall === 'front') F.push({ x0: en.x0, x1: en.x1, h: en.h, leaves: 1, kind: 'entry' });
-    const fd = plan.fuel && plan.fuel.door;
-    if (fd) F.push({ x0: fd.x0, x1: fd.x1, h: StationLayout.DOOR.h, leaves: 1, kind: 'tank' });
-    return F.sort((a, b) => a.x0 - b.x0);
+    if (!this.closed) return list;
+    const entry = plan.entry;
+    if (entry && entry.wall === 'front')
+      list.push({ x0: entry.x0, x1: entry.x1, h: entry.h, leaves: 1, kind: 'entry' });
+    const fuelDoor = plan.fuel && plan.fuel.door;
+    if (fuelDoor) list.push({ x0: fuelDoor.x0, x1: fuelDoor.x1, h: StationLayout.DOOR.h, leaves: 1, kind: 'tank' });
+    return list.sort((left, right) => left.x0 - right.x0);
   }
 
   /** ДГУ с дверью-жалюзи или ворота для демонтажа в дальнем торце: снаружи — вид спереди справа (на этот торец). */
   static farEnd(plan) {
     return (
-      (plan.dguDoors || []).some(d => d.wall === 'right') ||
-      [plan.gates, plan.gates2].some(q => q && q.wall === 'right' && !q.sea)
+      (plan.dguDoors || []).some(door => door.wall === 'right') ||
+      [plan.gates, plan.gates2].some(gate => gate && gate.wall === 'right' && !gate.sea)
     );
   }
 
   /** Наклейка. */
-  sticker(d, c, n, [w, h], e = 0) {
-    const key = JSON.stringify(d);
-    this.decals.set(key, d);
-    const r = StV.norm(StV.cross(StV.mul(n, -1), [0, 0, 1]));
-    const o = StV.add(c, StV.mul(n, 0.002));
-    const U = StV.mul(r, w / 2);
-    const V = [0, 0, h / 2];
-    this.M(StMat.decal(key, e)).decal(
-      StV.sub(StV.sub(o, U), V),
-      StV.sub(StV.add(o, U), V),
-      StV.add(StV.add(o, U), V),
-      StV.add(StV.sub(o, U), V),
-      n,
+  sticker(decal, center, normal, [width, height], glow = 0) {
+    const key = JSON.stringify(decal);
+    this.decals.set(key, decal);
+    const right = StV.norm(StV.cross(StV.mul(normal, -1), [0, 0, 1]));
+    const origin = StV.add(center, StV.mul(normal, 0.002));
+    const halfU = StV.mul(right, width / 2);
+    const halfV = [0, 0, height / 2];
+    this.meshFor(StMat.decal(key, glow)).decal(
+      StV.sub(StV.sub(origin, halfU), halfV),
+      StV.sub(StV.add(origin, halfU), halfV),
+      StV.add(StV.add(origin, halfU), halfV),
+      StV.add(StV.sub(origin, halfU), halfV),
+      normal,
     );
   }
 
   /** Пропорция таблички логотипа (ширина / высота): картинка из каталога или название производителя. */
-  logoAr(mk) {
-    const r = (this.meta.logos || {})[mk.toLowerCase()];
-    return r > 0 ? r : Math.max(1.6, Math.min(7, 0.62 * mk.length + 0.5));
+  logoAr(maker) {
+    const ratio = (this.meta.logos || {})[maker.toLowerCase()];
+    return ratio > 0 ? ratio : Math.max(1.6, Math.min(7, 0.62 * maker.length + 0.5));
   }
 
   /** Логотип производителя на лицевой стороне — там, где он у изделий этого вида. */
-  badge(it) {
-    const mk = String(it.maker || (this.meta.makers || {})[it.id] || '').trim();
-    if (!mk || it.mount === 'pipe' || it.mount === 'wall') return;
-    const ar = this.logoAr(mk);
-    const d = { type: 'logo', maker: mk, bg: it.color, ar };
-    if (it.kind === 'receiver' && it.shape !== 'hcyl') this.badgeRound(it, d);
-    else if (it.kind === 'dgu') this.badgeDgu(it, d);
-    else this.badgeFront(it, d);
+  badge(item) {
+    const maker = String(item.maker || (this.meta.makers || {})[item.id] || '').trim();
+    if (!maker || item.mount === 'pipe' || item.mount === 'wall') return;
+    const ratio = this.logoAr(maker);
+    const decal = { type: 'logo', maker, bg: item.color, ar: ratio };
+    if (item.kind === 'receiver' && item.shape !== 'hcyl') this.badgeRound(item, decal);
+    else if (item.kind === 'dgu') this.badgeDgu(item, decal);
+    else this.badgeFront(item, decal);
   }
 
   /** Табличка ar (ширина / высота), вписанная в mw × mh. */
-  static fit(ar, mw, mh) {
-    const w = Math.min(mw, mh * ar);
-    return [w, w / ar];
+  static fit(ratio, maxW, maxH) {
+    const width = Math.min(maxW, maxH * ratio);
+    return [width, width / ratio];
   }
 
   /** На корпусе вертикального ресивера — по дуге. */
-  badgeRound(it, d) {
-    const [x0, y0, z0, x1, y1, z1] = this.B(it);
-    const s = this.side(it);
-    const r = Math.min(x1 - x0, y1 - y0) / 2;
-    const [w, h] = StScene.fit(d.ar, r * 1.6, 0.16);
-    const a = (s < 0 ? -w : w) / 2 / r;
-    const ac = (s < 0 ? -Math.PI : Math.PI) / 2;
+  badgeRound(item, decal) {
+    const [x0, y0, z0, x1, y1, z1] = this.extent(item);
+    const side = this.side(item);
+    const radius = Math.min(x1 - x0, y1 - y0) / 2;
+    const [width, height] = StScene.fit(decal.ar, radius * 1.6, 0.16);
+    const half = (side < 0 ? -width : width) / 2 / radius;
+    const mid = (side < 0 ? -Math.PI : Math.PI) / 2;
     const z = z0 + (z1 - z0) * 0.62;
-    const key = JSON.stringify(d);
-    this.decals.set(key, d);
-    this.M(StMat.decal(key)).decalArc(
-      [(x0 + x1) / 2, (y0 + y1) / 2, r + 0.003],
-      [ac + a, ac - a],
-      [z - h / 2, z + h / 2],
+    const key = JSON.stringify(decal);
+    this.decals.set(key, decal);
+    this.meshFor(StMat.decal(key)).decalArc(
+      [(x0 + x1) / 2, (y0 + y1) / 2, radius + 0.003],
+      [mid + half, mid - half],
+      [z - height / 2, z + height / 2],
     );
   }
 
   /** На радиаторе ДГУ. */
-  badgeDgu(it, d) {
-    const [x0, y0, z0, x1, y1, z1] = this.B(it);
-    const s = this.side(it);
-    const H = z1 - z0;
-    const xr = x0 + (x1 - x0) * 0.84;
-    const [w, h] = StScene.fit(d.ar, (x1 - xr) * 0.92, H * 0.16);
-    const y = s < 0 ? y0 + (y1 - y0) * 0.04 : y1 - (y1 - y0) * 0.04;
-    this.sticker(d, [(xr + x1) / 2, y, z0 + H * 0.8], [0, s, 0], [w, h]);
+  badgeDgu(item, decal) {
+    const [x0, y0, z0, x1, y1, z1] = this.extent(item);
+    const side = this.side(item);
+    const height = z1 - z0;
+    const radX = x0 + (x1 - x0) * 0.84;
+    const [width, plateH] = StScene.fit(decal.ar, (x1 - radX) * 0.92, height * 0.16);
+    const y = side < 0 ? y0 + (y1 - y0) * 0.04 : y1 - (y1 - y0) * 0.04;
+    this.sticker(decal, [(radX + x1) / 2, y, z0 + height * 0.8], [0, side, 0], [width, plateH]);
   }
 
   /** На лицевой стороне — крупно, для узнаваемости, на цвете своей части корпуса. */
-  badgeFront(it, d) {
-    const at = StScene.BADGE[it.kind];
-    if (!at || (it.kind === 'dryer' && StationLayout.twinDryer(it))) return;
-    const [x0, y0, z0, x1, y1, z1] = this.B(it);
-    d.bg = this.toneAt(it, (at[0] + at[1]) / 2, (at[2] + at[3]) / 2);
-    const span = this.endwise(it) ? y1 - y0 : x1 - x0;
-    const [w, h] = StScene.fit(d.ar, (at[1] - at[0]) * span, (at[3] - at[2]) * (z1 - z0));
-    this.sticker(d, this.front(it, (at[0] + at[1]) / 2, (at[2] + at[3]) / 2, 0.001), this.out(it, 1), [w, h]);
+  badgeFront(item, decal) {
+    const place = StScene.BADGE[item.kind];
+    if (!place || (item.kind === 'dryer' && StationLayout.twinDryer(item))) return;
+    const [x0, y0, z0, x1, y1, z1] = this.extent(item);
+    decal.bg = this.toneAt(item, (place[0] + place[1]) / 2, (place[2] + place[3]) / 2);
+    const span = this.endwise(item) ? y1 - y0 : x1 - x0;
+    const [width, height] = StScene.fit(decal.ar, (place[1] - place[0]) * span, (place[3] - place[2]) * (z1 - z0));
+    this.sticker(
+      decal,
+      this.front(item, (place[0] + place[1]) / 2, (place[2] + place[3]) / 2, 0.001),
+      this.out(item, 1),
+      [width, height],
+    );
   }
 
   /** Геометрия материала m. */
-  M(m) {
-    const k = StMat.key(m);
-    let e = this.groups.get(k);
-    if (!e) {
-      e = { mat: m, mesh: new StMesh() };
-      this.groups.set(k, e);
+  meshFor(mat) {
+    const k = StMat.key(mat);
+    let group = this.groups.get(k);
+    if (!group) {
+      group = { mat, mesh: new StMesh() };
+      this.groups.set(k, group);
     }
-    return e.mesh;
+    return group.mesh;
   }
 
   /** Точка внутри контейнера (мм от внутренних стен и пола) → мир, м. */
-  P(x, y, z) {
+  point(x, y, z) {
     return [this.ox + x / 1000, this.oy + y / 1000, this.base + z / 1000];
   }
 
+  /** Построить сцену. */
   build() {
     this.ground();
     if (this.dz) this.hull.chassis();
     this.hull.container();
     this.outfit = new StOutfit(this).build();
     if (this.view === 'in') {
-      for (const it of this.plan.items) this.air.equip(it);
-      for (const pp of this.plan.piping || []) this.pipes.piping(pp);
+      for (const item of this.plan.items) this.air.equip(item);
+      for (const piping of this.plan.piping || []) this.pipes.piping(piping);
     } // снаружи внутреннего не видно
-    for (const m of this.plan.roof || []) this.pipes.muffler(m);
+    for (const muffler of this.plan.roof || []) this.pipes.muffler(muffler);
     if ((this.plan.outside || []).length) this.outside();
     return this;
   }
 
   /** Ресиверы снаружи. */
   outside() {
-    const E = this.plan.outside;
-    const pad = this.M(StMat.paint('#b9b6ae', 0.95));
-    const P = this.mm(StationLayout.PAD);
-    for (const it of E) {
-      const [x0, y0, z0, x1, y1] = this.B(it);
-      pad.box([x0 - 0.2, y0 - 0.2, z0 - P], [x1 + 0.2, y1 + 0.2, z0], 0.01);
-      this.air.equip(it);
+    const outside = this.plan.outside;
+    const pad = this.meshFor(StMat.paint('#b9b6ae', 0.95));
+    const padH = this.meters(StationLayout.PAD);
+    for (const item of outside) {
+      const [x0, y0, z0, x1, y1] = this.extent(item);
+      pad.box([x0 - 0.2, y0 - 0.2, z0 - padH], [x1 + 0.2, y1 + 0.2, z0], 0.01);
+      this.air.equip(item);
     }
-    const pp = (this.plan.piping || [])[0];
-    const l = pp && pp.lines.find(q => q.medium === 'air' && !q.header && q.x1 >= this.plan.int[0] - 1);
-    if (l) this.outPipe(E, pp, l);
+    const piping = (this.plan.piping || [])[0];
+    const line =
+      piping && piping.lines.find(cand => cand.medium === 'air' && !cand.header && cand.x1 >= this.plan.int[0] - 1);
+    if (line) this.outPipe(outside, piping, line);
   }
 
   /** Вход трубы в ресивер: у высокого вертикального — внизу сбоку, иначе посередине. */
-  inletZ(it) {
-    const [, , z0, , , z1] = this.B(it);
-    return it.shape === 'vcyl' && it.h >= 900 ? z0 + Math.max(0.25, this.mm(it.h) * 0.22) : (z0 + z1) / 2;
+  inletZ(item) {
+    const [, , z0, , , z1] = this.extent(item);
+    return item.shape === 'vcyl' && item.h >= 900 ? z0 + Math.max(0.25, this.meters(item.h) * 0.22) : (z0 + z1) / 2;
   }
 
-  outPipe(E, pp, l) {
-    const air = { c: PipeMaterial.idColor('air', pp.color), r: 0.38, m: 0.35 };
-    const m = this.M(pp.mat === 'inox' ? StMat.metal(StScene.INOX, 0.22) : air);
-    const red = this.M(StMat.paint('#c83a2e', 0.4));
-    const dn = +(String(pp.dn || '').match(/\d+/) || [0])[0];
-    const r = Math.max(0.012, Math.min(0.08, (dn || 50) / 2000 + 0.006));
-    const o = this.P(l.x1, l.y, l.z);
-    const xm = (this.Le + 0.07 + Math.min(...E.map(i => this.B(i)[0]))) / 2;
-    const run = (...Q) => {
-      for (let k = 1; k < Q.length; k++) {
-        m.tube(Q[k - 1], Q[k], r, 18);
-        m.sphere(Q[k], r * 1.03, 12);
+  /** Труба к ресиверам снаружи. */
+  outPipe(outside, piping, line) {
+    const air = { c: PipeMaterial.idColor('air', piping.color), r: 0.38, m: 0.35 };
+    const mesh = this.meshFor(piping.mat === 'inox' ? StMat.metal(StScene.INOX, 0.22) : air);
+    const red = this.meshFor(StMat.paint('#c83a2e', 0.4));
+    const bore = +(String(piping.dn || '').match(/\d+/) || [0])[0];
+    const radius = Math.max(0.012, Math.min(0.08, (bore || 50) / 2000 + 0.006));
+    const origin = this.point(line.x1, line.y, line.z);
+    const midX = (this.Le + 0.07 + Math.min(...outside.map(i => this.extent(i)[0]))) / 2;
+    const run = (...points) => {
+      for (let k = 1; k < points.length; k++) {
+        mesh.tube(points[k - 1], points[k], radius, 18);
+        mesh.sphere(points[k], radius * 1.03, 12);
       }
     };
-    run([this.Le + 0.07, o[1], o[2]], [xm, o[1], o[2]]);
-    m.sphere([xm, o[1], o[2]], r * 1.03, 12);
+    run([this.Le + 0.07, origin[1], origin[2]], [midX, origin[1], origin[2]]);
+    mesh.sphere([midX, origin[1], origin[2]], radius * 1.03, 12);
     red.box(
-      [this.Le + 0.25, o[1] - 0.012, o[2] + r * 1.3],
-      [this.Le + 0.38, o[1] + 0.012, o[2] + r * 1.3 + 0.018],
+      [this.Le + 0.25, origin[1] - 0.012, origin[2] + radius * 1.3],
+      [this.Le + 0.38, origin[1] + 0.012, origin[2] + radius * 1.3 + 0.018],
       0.004,
     );
-    for (const it of E) {
-      const [ix0, iy0, , , iy1] = this.B(it);
+    for (const item of outside) {
+      const [ix0, iy0, , , iy1] = this.extent(item);
       const y = (iy0 + iy1) / 2;
-      const z = this.inletZ(it);
-      run([xm, o[1], o[2]], [xm, y, o[2]], [xm, y, z], [ix0, y, z]);
-      m.tube([ix0 - 0.02, y, z], [ix0 + 0.01, y, z], r * 1.6, 18);
+      const z = this.inletZ(item);
+      run([midX, origin[1], origin[2]], [midX, y, origin[2]], [midX, y, z], [ix0, y, z]);
+      mesh.tube([ix0 - 0.02, y, z], [ix0 + 0.01, y, z], radius * 1.6, 18);
     }
-    const far = E.reduce((a, c) => (c.x + c.lx > a.x + a.lx ? c : a));
-    const [fx0, fy0, , fx1, fy1, fz1] = this.B(far);
-    const cx = (fx0 + fx1) / 2;
-    const cy = (fy0 + fy1) / 2;
-    run([cx, cy, fz1 + 0.09], [cx, cy, fz1 + 0.25], [fx1 + 0.4, cy, fz1 + 0.25]);
-    m.tube([fx1 + 0.38, cy, fz1 + 0.25], [fx1 + 0.42, cy, fz1 + 0.25], r * 1.7, 20);
+    const far = outside.reduce((best, other) => (other.x + other.lx > best.x + best.lx ? other : best));
+    const [fx0, fy0, , fx1, fy1, fz1] = this.extent(far);
+    const midX2 = (fx0 + fx1) / 2;
+    const midY = (fy0 + fy1) / 2;
+    run([midX2, midY, fz1 + 0.09], [midX2, midY, fz1 + 0.25], [fx1 + 0.4, midY, fz1 + 0.25]);
+    mesh.tube([fx1 + 0.38, midY, fz1 + 0.25], [fx1 + 0.42, midY, fz1 + 0.25], radius * 1.7, 20);
   }
 
   /** Габариты сцены (м): контейнер, глушитель, ресиверы снаружи. */
   bounds() {
-    const R = this.plan.roof || [];
-    const up = R.reduce((s, m) => Math.max(s, (m.gap + m.d) / 1000 + 0.05), 0);
-    const E = (this.plan.outside || []).map(i => this.B(i));
-    const xo = Math.max(
+    const roof = this.plan.roof || [];
+    const above = roof.reduce((acc, muffler) => Math.max(acc, (muffler.gap + muffler.d) / 1000 + 0.05), 0);
+    const boxes = (this.plan.outside || []).map(i => this.extent(i));
+    const maxX = Math.max(
       this.Le,
-      ...E.map(b => b[3] + 0.45),
-      ...R.map(m => this.ox + (m.x + m.lx + m.outlet) / 1000 + 0.03),
+      ...boxes.map(box => box[3] + 0.45),
+      ...roof.map(muffler => this.ox + (muffler.x + muffler.lx + muffler.outlet) / 1000 + 0.03),
     );
-    const yo = Math.min(0, ...E.map(b => b[1] - 0.2));
-    const yi = Math.max(this.We, ...E.map(b => b[4] + 0.2));
-    const zo = Math.max(0, ...E.map(b => b[5] + 0.3));
+    const minY = Math.min(0, ...boxes.map(box => box[1] - 0.2));
+    const maxY = Math.max(this.We, ...boxes.map(box => box[4] + 0.2));
+    const maxZ = Math.max(0, ...boxes.map(box => box[5] + 0.3));
     return {
-      lo: [-0.15, Math.min(yo, -0.15), 0],
-      hi: [xo + 0.15, Math.max(yi, this.We + 0.15), Math.max(zo, this.top + this.rise + up + 0.05)],
+      lo: [-0.15, Math.min(minY, -0.15), 0],
+      hi: [maxX + 0.15, Math.max(maxY, this.We + 0.15), Math.max(maxZ, this.top + this.rise + above + 0.05)],
     };
   }
 
   /** Число треугольников (проверка и замер). */
   tris() {
-    let n = 0;
-    for (const e of this.groups.values()) n += e.mesh.i.length / 3;
-    return n;
+    let count = 0;
+    for (const group of this.groups.values()) count += group.mesh.indices.length / 3;
+    return count;
   }
 
+  /** Земля под контейнером. */
   ground() {
-    const m = this.M({ c: '#e7e8ea', r: 0.9, m: 0, k: 2 });
-    const R = Math.max(this.Le, this.We) * 3;
-    m.quad(
-      [this.Le / 2 - R, this.We / 2 - R, 0],
-      [this.Le / 2 + R, this.We / 2 - R, 0],
-      [this.Le / 2 + R, this.We / 2 + R, 0],
-      [this.Le / 2 - R, this.We / 2 + R, 0],
+    const mesh = this.meshFor({ c: '#e7e8ea', r: 0.9, m: 0, k: 2 });
+    const half = Math.max(this.Le, this.We) * 3;
+    mesh.quad(
+      [this.Le / 2 - half, this.We / 2 - half, 0],
+      [this.Le / 2 + half, this.We / 2 - half, 0],
+      [this.Le / 2 + half, this.We / 2 + half, 0],
+      [this.Le / 2 - half, this.We / 2 + half, 0],
       [0, 0, 1],
     );
   }
 
   /** Высота крыши над поперечной координатой y (м). */
   roofZ(y) {
-    const R = this.rise;
-    const W = this.We;
-    const t = Math.max(0, Math.min(W, y));
-    if (!(R > 0)) return this.top;
-    if (this.g.roof === 'arch') {
-      const rc = this.hull.arcR();
-      return this.top + R - rc + Math.sqrt(Math.max(0, rc * rc - (t - W / 2) * (t - W / 2)));
+    const rise = this.rise;
+    const wid = this.We;
+    const across = Math.max(0, Math.min(wid, y));
+    if (!(rise > 0)) return this.top;
+    if (this.geo.roof === 'arch') {
+      const radius = this.hull.arcR();
+      return (
+        this.top + rise - radius + Math.sqrt(Math.max(0, radius * radius - (across - wid / 2) * (across - wid / 2)))
+      );
     }
-    return this.top + (this.g.roof === 'gable' ? R * (1 - Math.abs(t - W / 2) / (W / 2)) : R * (1 - t / W));
+    return (
+      this.top +
+      (this.geo.roof === 'gable' ? rise * (1 - Math.abs(across - wid / 2) / (wid / 2)) : rise * (1 - across / wid))
+    );
   }
 
   /** Жалюзи в стене: along 1 — в торце (x = w), 0 — в длинной стене (y = w); out — наружу (±1). */
-  louver(along, w, [u0, u1], [z0, z1], out) {
-    const fr = this.M(StMat.paint('#8f969d', 0.5));
-    const sl = this.M(StMat.paint('#5d646b', 0.55));
-    const n = Math.max(3, Math.round((z1 - z0) / 0.07));
-    const P = (u, o, z) => (along === 1 ? [w + out * o, u, z] : [u, w + out * o, z]);
-    fr.box(P(u0 - 0.04, 0, z0 - 0.04), P(u1 + 0.04, 0.03, z0));
-    fr.box(P(u0 - 0.04, 0, z1), P(u1 + 0.04, 0.03, z1 + 0.04));
-    fr.box(P(u0 - 0.04, 0, z0), P(u0, 0.03, z1));
-    fr.box(P(u1, 0, z0), P(u1 + 0.04, 0.03, z1));
-    for (let i = 0; i < n; i++) {
-      const z = z0 + ((z1 - z0) * (i + 0.5)) / n;
-      sl.quad(P(u0, 0.035, z + 0.018), P(u1, 0.035, z + 0.018), P(u1, 0.005, z - 0.018), P(u0, 0.005, z - 0.018));
+  louver(along, plane, [u0, u1], [z0, z1], out) {
+    const frame = this.meshFor(StMat.paint('#8f969d', 0.5));
+    const slats = this.meshFor(StMat.paint('#5d646b', 0.55));
+    const count = Math.max(3, Math.round((z1 - z0) / 0.07));
+    const toWorld = (u, off, z) => (along === 1 ? [plane + out * off, u, z] : [u, plane + out * off, z]);
+    frame.box(toWorld(u0 - 0.04, 0, z0 - 0.04), toWorld(u1 + 0.04, 0.03, z0));
+    frame.box(toWorld(u0 - 0.04, 0, z1), toWorld(u1 + 0.04, 0.03, z1 + 0.04));
+    frame.box(toWorld(u0 - 0.04, 0, z0), toWorld(u0, 0.03, z1));
+    frame.box(toWorld(u1, 0, z0), toWorld(u1 + 0.04, 0.03, z1));
+    for (let i = 0; i < count; i++) {
+      const z = z0 + ((z1 - z0) * (i + 0.5)) / count;
+      slats.quad(
+        toWorld(u0, 0.035, z + 0.018),
+        toWorld(u1, 0.035, z + 0.018),
+        toWorld(u1, 0.005, z - 0.018),
+        toWorld(u0, 0.005, z - 0.018),
+      );
     }
   }
 
   /** Габарит в мире: [x0, y0, z0, x1, y1, z1] и сторона обслуживания (−1 — к стене прохода, 1 — к задней). */
-  B(it) {
-    const a = this.P(it.x, it.y, it.z || 0);
-    const b = this.P(it.x + it.lx, it.y + it.ly, (it.z || 0) + it.h);
-    return [...a, ...b];
+  extent(item) {
+    const low = this.point(item.x, item.y, item.z || 0);
+    const high = this.point(item.x + item.lx, item.y + item.ly, (item.z || 0) + item.h);
+    return [...low, ...high];
   }
 
-  side(it) {
-    return it.face > 0 ? 1 : -1;
+  /** Сторона обслуживания: −1 к проходу, 1 к задней. */
+  side(item) {
+    return item.face > 0 ? 1 : -1;
   }
 
   /** Лицевая сторона вдоль торца (шкаф на торцевой стене: face ±2). */
-  endwise(it) {
-    return Math.abs(it.face) === 2;
+  endwise(item) {
+    return Math.abs(item.face) === 2;
   }
 
   /** Наружу от лицевой стороны на k, м. */
-  out(it, k) {
-    const s = this.side(it) * k;
-    return this.endwise(it) ? [s, 0, 0] : [0, s, 0];
+  out(item, k) {
+    const shift = this.side(item) * k;
+    return this.endwise(item) ? [shift, 0, 0] : [0, shift, 0];
   }
 
   /** Точка на лицевой стороне: u — доля длины, v — доля высоты, o — выступ наружу, м. */
-  front(it, u, v, o = 0) {
-    const [x0, y0, z0, x1, y1, z1] = this.B(it);
-    const s = this.side(it);
-    return this.endwise(it)
-      ? [(s < 0 ? x0 : x1) + s * o, y0 + (y1 - y0) * u, z0 + (z1 - z0) * v]
-      : [x0 + (x1 - x0) * u, (s < 0 ? y0 : y1) + s * o, z0 + (z1 - z0) * v];
+  front(item, u, v, off = 0) {
+    const [x0, y0, z0, x1, y1, z1] = this.extent(item);
+    const side = this.side(item);
+    return this.endwise(item)
+      ? [(side < 0 ? x0 : x1) + side * off, y0 + (y1 - y0) * u, z0 + (z1 - z0) * v]
+      : [x0 + (x1 - x0) * u, (side < 0 ? y0 : y1) + side * off, z0 + (z1 - z0) * v];
   }
 
   /** Прямоугольник на лицевой стороне: u0…u1, v0…v1, толщина o (наружу). */
-  panel(m, it, [u0, u1], [v0, v1], [o, r = 0.003]) {
-    const a = this.front(it, u0, v0, 0);
-    const b = this.front(it, u1, v1, o);
-    m.box([a[0], a[1], a[2]], [b[0], b[1], b[2]], r);
+  panel(mesh, item, [u0, u1], [v0, v1], [off, round = 0.003]) {
+    const low = this.front(item, u0, v0, 0);
+    const high = this.front(item, u1, v1, off);
+    mesh.box([low[0], low[1], low[2]], [high[0], high[1], high[2]], round);
   }
 
   /** Доля u на лицевой стороне по фото. */
-  fu(it, u) {
-    return (this.endwise(it) ? this.side(it) < 0 : this.side(it) > 0) ? 1 - u : u;
+  faceU(item, u) {
+    return (this.endwise(item) ? this.side(item) < 0 : this.side(item) > 0) ? 1 - u : u;
   }
 
   /** Окраска частей по фото (it.tones — зоны других цветов, как в карточке товара). */
-  tones(it, [x0, y0, zA], [x1, y1, z1], r) {
-    const T = it.tones;
-    if (!T || !T.length) return;
-    const [, , Z0, , , Z1] = this.B(it);
-    const e = 0.0015;
-    const va = (zA - Z0) / (Z1 - Z0 || 1);
-    for (const t of T) {
-      const m = this.M(StMat.paint(t.hex, 0.42));
-      const v0 = Math.max(va, t.v0);
-      const v1 = t.v1;
+  tones(item, [x0, y0, fromZ], [x1, y1, z1], round) {
+    const tones = item.tones;
+    if (!tones || !tones.length) return;
+    const [, , lowZ, , , topZ] = this.extent(item);
+    const eps = 0.0015;
+    const baseV = (fromZ - lowZ) / (topZ - lowZ || 1);
+    for (const tone of tones) {
+      const mesh = this.meshFor(StMat.paint(tone.hex, 0.42));
+      const v0 = Math.max(baseV, tone.v0);
+      const v1 = tone.v1;
       if (v1 - v0 < 0.02) continue;
-      if (t.u0 <= 0.001 && t.u1 >= 0.999) {
-        const za = Z0 + (Z1 - Z0) * v0;
-        const zb = Z0 + (Z1 - Z0) * v1;
+      if (tone.u0 <= 0.001 && tone.u1 >= 0.999) {
+        const zoneLow = lowZ + (topZ - lowZ) * v0;
+        const zoneTop = lowZ + (topZ - lowZ) * v1;
         const top = v1 >= 0.999;
-        m.box([x0 - e, y0 - e, za], [x1 + e, y1 + e, top ? z1 + e : zb], top ? r : Math.min(r, 0.004));
+        mesh.box(
+          [x0 - eps, y0 - eps, zoneLow],
+          [x1 + eps, y1 + eps, top ? z1 + eps : zoneTop],
+          top ? round : Math.min(round, 0.004),
+        );
         continue;
       }
-      const a = this.fu(it, t.u0);
-      const b = this.fu(it, t.u1);
-      this.panel(m, it, [Math.min(a, b), Math.max(a, b)], [v0, v1], [e, 0]);
+      const from = this.faceU(item, tone.u0);
+      const till = this.faceU(item, tone.u1);
+      this.panel(mesh, item, [Math.min(from, till), Math.max(from, till)], [v0, v1], [eps, 0]);
     }
   }
 
   /** Цвет изделия в точке лицевой стороны (u, v): зона по фото или главный. */
-  toneAt(it, u, v) {
-    const t = (it.tones || []).find(t => {
-      const a = this.fu(it, t.u0),
-        b = this.fu(it, t.u1);
-      return u >= Math.min(a, b) && u <= Math.max(a, b) && v >= t.v0 && v <= t.v1;
+  toneAt(item, u, v) {
+    const tone = (item.tones || []).find(tone => {
+      const from = this.faceU(item, tone.u0),
+        till = this.faceU(item, tone.u1);
+      return u >= Math.min(from, till) && u <= Math.max(from, till) && v >= tone.v0 && v <= tone.v1;
     });
-    return t ? t.hex : it.color;
+    return tone ? tone.hex : item.color;
   }
 
   /** Построитель, рисующий через преобразование точек f (поворот и зеркало по осям). */
-  static mapMesh(m, f) {
-    const o = f([0, 0, 0]);
-    const fv = v => {
-      const b = f(v);
-      return [b[0] - o[0], b[1] - o[1], b[2] - o[2]];
+  static mapMesh(mesh, map) {
+    const origin = map([0, 0, 0]);
+    const mapVec = vec => {
+      const mapped = map(vec);
+      return [mapped[0] - origin[0], mapped[1] - origin[1], mapped[2] - origin[2]];
     };
     return {
-      box: (a, b, r) => m.box(f(a), f(b), r),
-      tube: (a, b, r, seg, o) => m.tube(f(a), f(b), r, seg, o),
-      sphere: (c, r, seg) => m.sphere(f(c), r, seg),
-      obox: (p, u, v, w) => m.obox(f(p), fv(u), fv(v), fv(w)),
-      quad: (a, b, c, d, n) => m.quad(f(a), f(b), f(c), f(d), n && fv(n)),
-      tri: (a, b, c, n) => m.tri(f(a), f(b), f(c), n && fv(n)),
+      box: (low, high, radius) => mesh.box(map(low), map(high), radius),
+      tube: (start, end, radius, seg, opts) => mesh.tube(map(start), map(end), radius, seg, opts),
+      sphere: (center, radius, seg) => mesh.sphere(map(center), radius, seg),
+      obox: (corner, u, v, wVec) => mesh.obox(map(corner), mapVec(u), mapVec(v), mapVec(wVec)),
+      quad: (first, second, third, fourth, normal) =>
+        mesh.quad(map(first), map(second), map(third), map(fourth), normal && mapVec(normal)),
+      tri: (first, second, third, normal) => mesh.tri(map(first), map(second), map(third), normal && mapVec(normal)),
     };
   }
 }

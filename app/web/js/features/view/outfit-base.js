@@ -8,14 +8,12 @@ import { StationMatrix } from '../layout/station-matrix.js';
 import { StationMods } from '../layout/station-mods.js';
 import { StationVent } from '../layout/station-vent.js';
 
-const END = w => w === 'left' || w === 'right';
-
 /**
  * Основа оснащения 3D-вида: места на стенах внутри (StWalls) и снаружи (O), точки и короба у стен, наклейки, видимость
  * места на картинке, козырьки и маркизы над жалюзи, проекция центра тяжести. u — вдоль стены, z — от пола, мм.
  */
 export class OutfitBase {
-  static N = { left: [1, 0, 0], right: [-1, 0, 0], back: [0, -1, 0], front: [0, 1, 0] };
+  static NORMAL = { left: [1, 0, 0], right: [-1, 0, 0], back: [0, -1, 0], front: [0, 1, 0] };
   static N_OUT = { left: [-1, 0, 0], right: [1, 0, 0], back: [0, 1, 0], front: [0, -1, 0] };
   static RED = '#c42a20';
   /** Место, невидимое на 3D-виде, — как на 3 м дальше от цели. */
@@ -23,6 +21,10 @@ export class OutfitBase {
   /** Знак № 9 «Место строповки» и № 12 «Центр тяжести» на стене (ГОСТ 14192-96), мм. */
   static SLING = [180, 300];
   static COG = 300;
+  /** Торцевая стена. */
+  static isEnd(wall) {
+    return wall === 'left' || wall === 'right';
+  }
   static BRAND = [
     ['ПНЕВМО', '#0B45A0'],
     ['ТЕХ', '#3DA0EE'],
@@ -34,66 +36,79 @@ export class OutfitBase {
   }
 
   constructor(scene) {
-    this.s = scene;
-    this.p = scene.plan;
-    this.sys = this.p.sys || {};
-    this.walls = new StWalls(this.p);
+    this.scene = scene;
+    this.plan = scene.plan;
+    this.sys = this.plan.sys || {};
+    this.walls = new StWalls(this.plan);
     this.inside = scene.view === 'in';
     this.log = [];
-    this.O = { left: [], right: [], back: [], front: [] };
+    this.outerBusy = { left: [], right: [], back: [], front: [] };
   }
 
   /** Станция из модулей: стыки на стенах снаружи заняты (стойки, нащельники); изнутри — StWalls. */
   joints() {
-    const J = StationMods.lines(this.p.geo);
-    const H = this.p.int[2];
-    for (const x of J.x) for (const w of ['front', 'back']) this.outer(w, x - 200, x + 200, -500, H + 500);
-    for (const y of J.y) for (const w of ['left', 'right']) this.outer(w, y - 200, y + 200, -500, H + 500);
+    const joints = StationMods.lines(this.plan.geo);
+    const height = this.plan.int[2];
+    for (const x of joints.x)
+      for (const wall of ['front', 'back']) this.outer(wall, x - 200, x + 200, -500, height + 500);
+    for (const y of joints.y)
+      for (const wall of ['left', 'right']) this.outer(wall, y - 200, y + 200, -500, height + 500);
   }
 
   /** Снаружи на стене w занят участок u0…u1, z0…z1. */
-  outer(w, u0, u1, z0, z1) {
-    this.O[w].push([u0, u1, z0, z1]);
+  outer(wall, u0, u1, z0, z1) {
+    this.outerBusy[wall].push([u0, u1, z0, z1]);
   }
 
-  outFree(w, u0, u1, z0, z1) {
-    return this.O[w].every(q => !(q[0] < u1 && q[1] > u0 && q[2] < z1 && q[3] > z0));
+  /** Снаружи на стене свободен участок u0…u1, z0…z1. */
+  outFree(wall, u0, u1, z0, z1) {
+    return this.outerBusy[wall].every(busy => !(busy[0] < u1 && busy[1] > u0 && busy[2] < z1 && busy[3] > z0));
   }
 
   /** Точка у стены помещения: u — вдоль стены, z — от пола, o — от стены внутрь, мм → мир, м. */
-  at(w, u, z, o = 0) {
-    const S = this.s;
-    const [L, W] = this.p.int;
-    const P = {
-      left: () => S.P((S.g.x0 || 0) + o, u, z),
-      right: () => S.P(L - o, u, z),
-      back: () => S.P(u, W - o, z),
-    }[w];
-    return P ? P() : S.P(u, o, z);
+  wallPoint(wall, u, z, off = 0) {
+    const scene = this.scene;
+    const [len, wid] = this.plan.int;
+    const byWall = {
+      left: () => scene.point((scene.geo.x0 || 0) + off, u, z),
+      right: () => scene.point(len - off, u, z),
+      back: () => scene.point(u, wid - off, z),
+    }[wall];
+    return byWall ? byWall() : scene.point(u, off, z);
   }
 
   /** Короб на стене: середина [u, z]; ширина, высота, глубина от стены [du, dz, d], мм. */
-  box(m, w, [u, z], [du, dz, d], r = 0.004) {
-    const a = this.at(w, u - du / 2, z - dz / 2, 0);
-    const b = this.at(w, u + du / 2, z + dz / 2, d);
-    m.box([Math.min(a[0], b[0]), Math.min(a[1], b[1]), a[2]], [Math.max(a[0], b[0]), Math.max(a[1], b[1]), b[2]], r);
+  box(mesh, wall, [u, z], [du, dz, depth], round = 0.004) {
+    const near = this.wallPoint(wall, u - du / 2, z - dz / 2, 0);
+    const far = this.wallPoint(wall, u + du / 2, z + dz / 2, depth);
+    mesh.box(
+      [Math.min(near[0], far[0]), Math.min(near[1], far[1]), near[2]],
+      [Math.max(near[0], far[0]), Math.max(near[1], far[1]), far[2]],
+      round,
+    );
   }
 
   /** Наклейка на стене: середина [u, z], размер [sw, sh], [от стены, свечение], мм. */
-  sign(d, w, [u, z], [sw, sh], [o, e] = [0, 0]) {
-    this.s.sticker(d, this.at(w, u, z, o), OutfitBase.N[w], [sw / 1000, sh / 1000], e);
+  sign(decal, wall, [u, z], [signW, signH], [off, glow] = [0, 0]) {
+    this.scene.sticker(
+      decal,
+      this.wallPoint(wall, u, z, off),
+      OutfitBase.NORMAL[wall],
+      [signW / 1000, signH / 1000],
+      glow,
+    );
   }
 
   /** Стена видна: снаружи внутреннего не видно, стена со стороны зрителя в разрезе срезана. */
-  shown(w) {
-    return this.inside && !(w === 'front' && this.s.cut);
+  shown(wall) {
+    return this.inside && !(wall === 'front' && this.scene.cut);
   }
 
   /** Наружная поверхность обшивки: гофр и профлист выступают. */
   skin() {
-    const S = this.s;
-    if (S.g.sea) return null;
-    return S.g.type === 'welded' ? 0.003 : 0.018;
+    const scene = this.scene;
+    if (scene.geo.sea) return null;
+    return scene.geo.type === 'welded' ? 0.003 : 0.018;
   }
 
   /** Стена со стороны зрителя (y). */
@@ -104,51 +119,60 @@ export class OutfitBase {
 
   /** Торец у двери (x): с воротами или дверью в торце — по коробке проёма. */
   leftX() {
-    const P = this.p;
-    if (this.s.g.sea) return -0.034;
-    const gate = [P.gates, P.gates2].some(q => q && q.wall === 'left') || !!(P.fuel && P.fuel.gate);
-    return P.door === 'end' || gate ? -0.028 : this.skin();
+    const plan = this.plan;
+    if (this.scene.geo.sea) return -0.034;
+    const gate =
+      [plan.gates, plan.gates2].some(pair => pair && pair.wall === 'left') || !!(plan.fuel && plan.fuel.gate);
+    return plan.door === 'end' || gate ? -0.028 : this.skin();
   }
 
   /** Дальний торец (виден снаружи у ДГУ с дверью-жалюзи). */
   rightX() {
-    const S = this.s;
-    if (S.g.sea) return S.Le + 0.008;
-    const gate = [this.p.gates, this.p.gates2].some(q => q && q.wall === 'right');
-    return S.Le + (gate ? 0.028 : -this.skin());
+    const scene = this.scene;
+    if (scene.geo.sea) return scene.Le + 0.008;
+    const gate = [this.plan.gates, this.plan.gates2].some(pair => pair && pair.wall === 'right');
+    return scene.Le + (gate ? 0.028 : -this.skin());
   }
 
   /** Точка стены видна: луч к камере не упирается в торец, потолок у среза, оборудование; при стоящей стене — через проёмы. */
-  seen(w, u, z) {
-    if (w === 'front' || !this.inside) return false;
-    const S = this.s;
-    const p = this.at(w, u, z, 70);
-    const az = (StCam.AZ * Math.PI) / 180;
-    const el = (StCam.EL * Math.PI) / 180;
-    const d = [-Math.cos(el) * Math.sin(az), -Math.cos(el) * Math.cos(az), Math.sin(el)];
-    const t0 = -p[1] / d[1];
-    const q = StV.add(p, StV.mul(d, t0));
-    const tl = (S.ox + (S.g.x0 || 0) / 1000 - p[0]) / d[0];
-    if ((tl > 0 && tl < t0) || q[2] > S.ceil - 0.01) return false;
+  seen(wall, u, z) {
+    if (wall === 'front' || !this.inside) return false;
+    const scene = this.scene;
+    const spot = this.wallPoint(wall, u, z, 70);
+    const azimuth = (StCam.AZIMUTH * Math.PI) / 180;
+    const el = (StCam.ELEVATION * Math.PI) / 180;
+    const dir = [-Math.cos(el) * Math.sin(azimuth), -Math.cos(el) * Math.cos(azimuth), Math.sin(el)];
+    const tWall = -spot[1] / dir[1];
+    const cross = StV.add(spot, StV.mul(dir, tWall));
+    const tLeft = (scene.ox + (scene.geo.x0 || 0) / 1000 - spot[0]) / dir[0];
+    if ((tLeft > 0 && tLeft < tWall) || cross[2] > scene.ceil - 0.01) return false;
     const open =
-      S.cut ||
-      S.openF.some(
-        c => q[0] > S.ox + c.x0 / 1000 + 0.03 && q[0] < S.ox + c.x1 / 1000 - 0.03 && q[2] < S.base + c.h / 1000 - 0.03,
+      scene.cut ||
+      scene.frontOpenings.some(
+        opening =>
+          cross[0] > scene.ox + opening.x0 / 1000 + 0.03 &&
+          cross[0] < scene.ox + opening.x1 / 1000 - 0.03 &&
+          cross[2] < scene.base + opening.h / 1000 - 0.03,
       );
-    return open && !this.p.items.some(it => it.mount !== 'pipe' && !it.tank && OutfitBase.hits(p, d, t0, S.B(it)));
+    return (
+      open &&
+      !this.plan.items.some(
+        item => item.mount !== 'pipe' && !item.tank && OutfitBase.hits(spot, dir, tWall, scene.extent(item)),
+      )
+    );
   }
 
   /** Луч p + t·d (0 < t < t0) пересекает коробку b = [x0, y0, z0, x1, y1, z1]. */
-  static hits(p, d, t0, b) {
-    let [t1, t2] = [1e-4, t0];
+  static hits(origin, dir, tEnd, box) {
+    let [tNear, tFar] = [1e-4, tEnd];
     for (let k = 0; k < 3; k++) {
-      if (Math.abs(d[k]) < 1e-9) {
-        if (p[k] < b[k] || p[k] > b[k + 3]) return false;
+      if (Math.abs(dir[k]) < 1e-9) {
+        if (origin[k] < box[k] || origin[k] > box[k + 3]) return false;
         continue;
       }
-      const a = [(b[k] - p[k]) / d[k], (b[k + 3] - p[k]) / d[k]].sort((x, y) => x - y);
-      [t1, t2] = [Math.max(t1, a[0]), Math.min(t2, a[1])];
-      if (t1 > t2) return false;
+      const span = [(box[k] - origin[k]) / dir[k], (box[k + 3] - origin[k]) / dir[k]].sort((x, y) => x - y);
+      [tNear, tFar] = [Math.max(tNear, span[0]), Math.min(tFar, span[1])];
+      if (tNear > tFar) return false;
     }
     return true;
   }
@@ -158,94 +182,108 @@ export class OutfitBase {
    * ближайший; видимое на 3D-виде — в первую очередь (невидимое — как на hide дальше); нет — без «мягких» запретов.
    * Место занимается: {w, u — середина, wd, z0, z1} или null.
    */
-  near(ws, bands, t, hide = OutfitBase.HIDE) {
-    const best = this.best(ws, bands, t, hide, true) || this.best(ws, bands, t, hide, false);
+  near(walls, bands, target, hide = OutfitBase.HIDE) {
+    const best = this.best(walls, bands, target, hide, true) || this.best(walls, bands, target, hide, false);
     if (best) this.walls.busy(best.w, best.u - best.wd / 2, best.u + best.wd / 2, best.z0, best.z1);
     return best;
   }
 
-  best(ws, bands, t, hide, soft) {
+  /** Лучшее место на одной из стен walls по полосам высоты bands. */
+  best(walls, bands, target, hide, soft) {
     let best = null;
-    for (const [wd, z0, z1, pen = 0] of bands) {
-      for (const w of ws) {
-        const q = this.bestOn(w, { wd, z0, z1, pen }, t, hide, soft);
-        if (q && (!best || q.sc < best.sc)) best = q;
+    for (const [width, z0, z1, pen = 0] of bands) {
+      for (const wall of walls) {
+        const spot = this.bestOn(wall, { wd: width, z0, z1, pen }, target, hide, soft);
+        if (spot && (!best || spot.sc < best.sc)) best = spot;
       }
     }
     return best;
   }
 
-  bestOn(w, { wd, z0, z1, pen }, t, hide, soft) {
-    const [L, W] = this.p.int;
-    const [lo, hi] = this.walls.range(w);
-    const zv = z0 + Math.min(z1 - z0, 900) * 0.35;
-    const xy = c => [{ left: this.s.g.x0 || 0, right: L }[w] ?? c, { back: W, front: 0 }[w] ?? c];
+  /** Лучшее место на стене wall: ближе к цели, на виду, без наложений. */
+  bestOn(wall, { wd: width, z0, z1, pen }, target, hide, soft) {
+    const [len, wid] = this.plan.int;
+    const [low, high] = this.walls.range(wall);
+    const viewZ = z0 + Math.min(z1 - z0, 900) * 0.35;
+    const planXY = mid => [
+      { left: this.scene.geo.x0 || 0, right: len }[wall] ?? mid,
+      { back: wid, front: 0 }[wall] ?? mid,
+    ];
     let best = null;
-    for (let u = lo + 120; u + wd <= hi - 120; u += 50) {
-      if (!this.walls.free(w, [u, u + wd], [z0, z1], soft)) continue;
-      const c = u + wd / 2;
-      const [x, y] = xy(c);
-      const sc = Math.hypot(x - t[0], y - t[1]) + pen + (this.seen(w, c, zv) ? 0 : hide);
-      if (!best || sc < best.sc) best = { w, u: c, wd, z0, z1, sc };
+    for (let u = low + 120; u + width <= high - 120; u += 50) {
+      if (!this.walls.free(wall, [u, u + width], [z0, z1], soft)) continue;
+      const mid = u + width / 2;
+      const [x, y] = planXY(mid);
+      const score = Math.hypot(x - target[0], y - target[1]) + pen + (this.seen(wall, mid, viewZ) ? 0 : hide);
+      if (!best || score < best.sc) best = { w: wall, u: mid, wd: width, z0, z1, sc: score };
     }
     return best;
   }
 
   /** Козырёк над жалюзи снаружи (от дождя и снега). */
-  hood(w, a, b, zt) {
-    const S = this.s;
-    const m = S.M(StMat.paint(RalColor.shade(S.wall, 0.9), 0.45));
-    const t = [0, 0, 0.006];
-    if (w === 'right') m.obox([S.Le, S.oy + a, zt], [0, b - a, 0], [0.14, 0, -0.07], t);
-    else if (w === 'left') m.obox([0, S.oy + a, zt], [0, b - a, 0], [-0.14, 0, -0.07], t);
-    else if (w === 'back') m.obox([S.ox + a, S.We, zt], [b - a, 0, 0], [0, 0.14, -0.07], t);
-    else if (!S.cut) m.obox([S.ox + a, 0, zt], [b - a, 0, 0], [0, -0.14, -0.07], t);
+  hood(wall, from, till, topZ) {
+    const scene = this.scene;
+    const mesh = scene.meshFor(StMat.paint(RalColor.shade(scene.wall, 0.9), 0.45));
+    const thick = [0, 0, 0.006];
+    if (wall === 'right') mesh.obox([scene.Le, scene.oy + from, topZ], [0, till - from, 0], [0.14, 0, -0.07], thick);
+    else if (wall === 'left') mesh.obox([0, scene.oy + from, topZ], [0, till - from, 0], [-0.14, 0, -0.07], thick);
+    else if (wall === 'back')
+      mesh.obox([scene.ox + from, scene.We, topZ], [till - from, 0, 0], [0, 0.14, -0.07], thick);
+    else if (!scene.cut) mesh.obox([scene.ox + from, 0, topZ], [till - from, 0, 0], [0, -0.14, -0.07], thick);
   }
 
   /** Точка снаружи стены w: u — вдоль, x — от наружной плоскости, z — высота, м. */
-  outside(w, u, x, z) {
-    const S = this.s;
-    if (w === 'right') return [S.Le + x, S.oy + u, z];
-    if (w === 'left') return [-x, S.oy + u, z];
-    return w === 'back' ? [S.ox + u, S.We + x, z] : [S.ox + u, -x, z];
+  outside(wall, u, x, z) {
+    const scene = this.scene;
+    if (wall === 'right') return [scene.Le + x, scene.oy + u, z];
+    if (wall === 'left') return [-x, scene.oy + u, z];
+    return wall === 'back' ? [scene.ox + u, scene.We + x, z] : [scene.ox + u, -x, z];
   }
 
   /**
    * Маркиза над жалюзи (u a…b, верх Z1, м): откидной козырёк на петлях, открыт на угол H.a; по бокам — треугольные
    * створки-ограничители (воздух только снизу); закрытая ложится на проём как щит. o — от наружной плоскости.
    */
-  snow(w, [a, b], Z1, H, o = 0) {
-    if (w === 'front' && this.s.cut) return;
-    const S = this.s;
-    const m = S.M(StMat.paint(RalColor.shade(S.wall, 0.86), 0.45));
-    const sd = S.M(StMat.paint(RalColor.shade(S.wall, 0.78), 0.5));
-    const dk = S.M(StMat.paint('#24292e', 0.5));
-    const t = 0.004;
-    const at = (u, q, z) => this.outside(w, u, o + q, z);
-    const vec = (du, dq, dz) => at(du, dq, dz).map((v, k) => v - at(0, 0, 0)[k]);
-    const r = (H.a * Math.PI) / 180;
-    const [d, dr, sw] = [H.d / 1000, H.drop / 1000, StationVent.HOOD_SIDE / 1000];
-    const [A, B] = [a - sw, b + sw];
-    const zh = Z1 + StationVent.HOOD_LAP / 1000;
-    const zl = zh - dr;
-    const q0 = 0.012;
-    m.obox(at(A, q0, zh), vec(B - A, 0, 0), vec(0, d, -dr), vec(0, t * Math.cos(r), t * Math.sin(r)));
-    m.obox(at(A, q0 + d, zl), vec(B - A, 0, 0), vec(0, 0, -0.035), vec(0, t, 0));
-    for (const u of [A, B]) {
-      const [p1, p2, p3] = [at(u, q0, zh), at(u, q0 + d, zl), at(u, q0, zl)];
-      sd.tri(p1, p2, p3);
-      sd.tri(p1, p3, p2);
+  snow(wall, [from, till], topZ, hood, off = 0) {
+    if (wall === 'front' && this.scene.cut) return;
+    const scene = this.scene;
+    const mesh = scene.meshFor(StMat.paint(RalColor.shade(scene.wall, 0.86), 0.45));
+    const side = scene.meshFor(StMat.paint(RalColor.shade(scene.wall, 0.78), 0.5));
+    const dark = scene.meshFor(StMat.paint('#24292e', 0.5));
+    const thick = 0.004;
+    const spot = (u, out, z) => this.outside(wall, u, off + out, z);
+    const vec = (du, dOut, dz) => spot(du, dOut, dz).map((value, k) => value - spot(0, 0, 0)[k]);
+    const angle = (hood.a * Math.PI) / 180;
+    const [depth, drop, overhang] = [hood.d / 1000, hood.drop / 1000, StationVent.HOOD_SIDE / 1000];
+    const [start, end] = [from - overhang, till + overhang];
+    const hoodZ = topZ + StationVent.HOOD_LAP / 1000;
+    const lowZ = hoodZ - drop;
+    const gap = 0.012;
+    mesh.obox(
+      spot(start, gap, hoodZ),
+      vec(end - start, 0, 0),
+      vec(0, depth, -drop),
+      vec(0, thick * Math.cos(angle), thick * Math.sin(angle)),
+    );
+    mesh.obox(spot(start, gap + depth, lowZ), vec(end - start, 0, 0), vec(0, 0, -0.035), vec(0, thick, 0));
+    for (const u of [start, end]) {
+      const [top, tip, bottom] = [spot(u, gap, hoodZ), spot(u, gap + depth, lowZ), spot(u, gap, lowZ)];
+      side.tri(top, tip, bottom);
+      side.tri(top, bottom, tip);
     }
-    for (const u of [a, (a + b) / 2 - 0.03, b - 0.06])
-      dk.tube(at(u, 0.02, zh + 0.01), at(u + 0.06, 0.02, zh + 0.01), 0.012, 8);
+    for (const u of [from, (from + till) / 2 - 0.03, till - 0.06])
+      dark.tube(spot(u, 0.02, hoodZ + 0.01), spot(u + 0.06, 0.02, hoodZ + 0.01), 0.012, 8);
   }
 
   /** Проекция центра тяжести на стену w: {u, z} — мм, как у StWalls; нет массы — null. */
-  cogOn(w) {
-    const M = this.p.mass;
-    const S = this.s;
-    if (!M) return null;
-    const c = M.cg;
-    return { u: END(w) ? c.y - S.oy * 1000 : c.x - S.ox * 1000, z: c.z - StationGeo.zFloor(S.g.type) };
+  cogOn(wall) {
+    const mass = this.plan.mass;
+    const scene = this.scene;
+    if (!mass) return null;
+    const center = mass.cg;
+    return {
+      u: OutfitBase.isEnd(wall) ? center.y - scene.oy * 1000 : center.x - scene.ox * 1000,
+      z: center.z - StationGeo.zFloor(scene.geo.type),
+    };
   }
 }

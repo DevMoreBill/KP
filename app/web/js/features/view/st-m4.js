@@ -1,60 +1,64 @@
 import { StV } from './st-v.js';
 
 export class StM4 {
-  static mul(a, b) {
-    const o = new Float32Array(16);
+  /** Произведение матриц 4 × 4. */
+  static mul(matA, matB) {
+    const out = new Float32Array(16);
     for (let i = 0; i < 4; i++)
       for (let j = 0; j < 4; j++) {
         let v = 0;
-        for (let k = 0; k < 4; k++) v += a[k * 4 + j] * b[i * 4 + k];
-        o[i * 4 + j] = v;
+        for (let k = 0; k < 4; k++) v += matA[k * 4 + j] * matB[i * 4 + k];
+        out[i * 4 + j] = v;
       }
-    return o;
+    return out;
   }
-  static persp(fov, asp, n, f) {
-    const t = 1 / Math.tan(fov / 2);
+  /** Перспектива. */
+  static persp(fov, asp, near, far) {
+    const focal = 1 / Math.tan(fov / 2);
     return new Float32Array([
-      t / asp,
+      focal / asp,
       0,
       0,
       0,
       0,
-      t,
+      focal,
       0,
       0,
       0,
       0,
-      (f + n) / (n - f),
+      (far + near) / (near - far),
       -1,
       0,
       0,
-      (2 * f * n) / (n - f),
+      (2 * far * near) / (near - far),
       0,
     ]);
   }
-  static ortho([l, r], [b, t], [n, f]) {
+  /** Ортогональная проекция. */
+  static ortho([left, right], [bottom, top], [near, far]) {
     return new Float32Array([
-      2 / (r - l),
+      2 / (right - left),
       0,
       0,
       0,
       0,
-      2 / (t - b),
+      2 / (top - bottom),
       0,
       0,
       0,
       0,
-      -2 / (f - n),
+      -2 / (far - near),
       0,
-      -(r + l) / (r - l),
-      -(t + b) / (t - b),
-      -(f + n) / (f - n),
+      -(right + left) / (right - left),
+      -(top + bottom) / (top - bottom),
+      -(far + near) / (far - near),
       1,
     ]);
   }
-  static look(eye, at, up) {
-    const z = StV.norm(StV.sub(eye, at));
-    const x = StV.norm(StV.cross(up, z));
+  /** Взгляд из eye на target. */
+  static look(eye, target, upward) {
+    const z = StV.norm(StV.sub(eye, target));
+    const x = StV.norm(StV.cross(upward, z));
     const y = StV.cross(z, x);
     return new Float32Array([
       x[0],
@@ -75,20 +79,24 @@ export class StM4 {
       1,
     ]);
   }
-  static apply(m, p) {
-    const x = p[0];
-    const y = p[1];
-    const z = p[2];
-    const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+  /** Точка через матрицу (с делением на w). */
+  static apply(mat, point) {
+    const x = point[0];
+    const y = point[1];
+    const z = point[2];
+    const wScale = mat[3] * x + mat[7] * y + mat[11] * z + mat[15];
     return [
-      (m[0] * x + m[4] * y + m[8] * z + m[12]) / w,
-      (m[1] * x + m[5] * y + m[9] * z + m[13]) / w,
-      (m[2] * x + m[6] * y + m[10] * z + m[14]) / w,
+      (mat[0] * x + mat[4] * y + mat[8] * z + mat[12]) / wScale,
+      (mat[1] * x + mat[5] * y + mat[9] * z + mat[13]) / wScale,
+      (mat[2] * x + mat[6] * y + mat[10] * z + mat[14]) / wScale,
     ];
   }
   /** Свет: ортографическая проекция по шару сцены (центр c, радиус R) со стороны dir. */
-  static light(dir, c, R) {
-    const up = Math.abs(dir[2]) > 0.95 ? [1, 0, 0] : [0, 0, 1];
-    return this.mul(this.ortho([-R, R], [-R, R], [0.05, 4 * R]), this.look(StV.add(c, StV.mul(dir, 2 * R)), c, up));
+  static light(dir, center, radius) {
+    const upward = Math.abs(dir[2]) > 0.95 ? [1, 0, 0] : [0, 0, 1];
+    return this.mul(
+      this.ortho([-radius, radius], [-radius, radius], [0.05, 4 * radius]),
+      this.look(StV.add(center, StV.mul(dir, 2 * radius)), center, upward),
+    );
   }
 }

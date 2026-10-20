@@ -22,6 +22,7 @@ export class StOutfit extends OutfitBase {
     this.shell = new OutfitShell(this);
   }
 
+  /** Всё оснащение по порядку. */
   build() {
     const { inner, air, safety, tank, entries, shell } = this;
     this.joints();

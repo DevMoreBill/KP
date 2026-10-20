@@ -5,330 +5,427 @@ import { StV } from './st-v.js';
 
 /** Насосы, ДГУ (радиатор, генератор, рама), баки, шкафы управления и прочее оборудование. */
 export class SceneUnits {
-  constructor(s) {
-    this.s = s;
+  constructor(scene) {
+    this.scene = scene;
   }
 
-  pump(it) {
-    const [x0, , z0, x1, , z1] = this.s.B(it);
-    const L = x1 - x0;
-    const H = z1 - z0;
-    const c = it.color;
-    const dk = this.s.M(StMat.paint(StScene.DARK, 0.6));
-    const mot = this.s.M(StMat.paint(c, 0.38));
-    const cast = this.s.M(StMat.paint(RalColor.shade(c, 0.78), 0.5));
-    const fin = this.s.M(StMat.paint(RalColor.shade(c, 0.85), 0.45));
-    const m = { dk, mot, cast, fin };
-    if (H > L * 1.2) this.pumpV(it, m);
-    else this.pumpH(it, m);
+  /** Насос. */
+  pump(item) {
+    const [x0, , z0, x1, , z1] = this.scene.extent(item);
+    const len = x1 - x0;
+    const height = z1 - z0;
+    const color = item.color;
+    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.6));
+    const mot = this.scene.meshFor(StMat.paint(color, 0.38));
+    const cast = this.scene.meshFor(StMat.paint(RalColor.shade(color, 0.78), 0.5));
+    const fin = this.scene.meshFor(StMat.paint(RalColor.shade(color, 0.85), 0.45));
+    const meshes = { dk: dark, mot, cast, fin };
+    if (height > len * 1.2) this.pumpV(item, meshes);
+    else this.pumpH(item, meshes);
   }
 
   /** Вертикальный многоступенчатый: основание, проточная часть, двигатель сверху. */
-  pumpV(it, { dk, mot, cast, fin }) {
-    const [x0, y0, z0, x1, y1, z1] = this.s.B(it);
-    const L = x1 - x0;
-    const W = y1 - y0;
-    const H = z1 - z0;
-    const cy = (y0 + y1) / 2;
-    const r = Math.min(L, W) * 0.32;
-    const cx = (x0 + x1) / 2;
-    const zb = z0 + H * 0.12;
-    const zm = z0 + H * 0.58;
-    cast.box([x0 + L * 0.05, y0 + W * 0.1, z0], [x1 - L * 0.05, y1 - W * 0.1, zb], 0.01);
-    for (const s of [-1, 1]) {
+  pumpV(item, { dk: dark, mot, cast, fin }) {
+    const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
+    const len = x1 - x0;
+    const wid = y1 - y0;
+    const height = z1 - z0;
+    const midY = (y0 + y1) / 2;
+    const radius = Math.min(len, wid) * 0.32;
+    const midX = (x0 + x1) / 2;
+    const baseZ = z0 + height * 0.12;
+    const motorZ = z0 + height * 0.58;
+    cast.box([x0 + len * 0.05, y0 + wid * 0.1, z0], [x1 - len * 0.05, y1 - wid * 0.1, baseZ], 0.01);
+    for (const sign of [-1, 1]) {
       cast.tube(
-        [cx + s * L * 0.42, cy, zb * 0.5 + z0 * 0.5],
-        [cx + s * L * 0.5, cy, zb * 0.5 + z0 * 0.5],
-        r * 0.55,
+        [midX + sign * len * 0.42, midY, baseZ * 0.5 + z0 * 0.5],
+        [midX + sign * len * 0.5, midY, baseZ * 0.5 + z0 * 0.5],
+        radius * 0.55,
         18,
       );
-      cast.tube([cx + s * L * 0.49, cy, zb * 0.5 + z0 * 0.5], [cx + s * L * 0.5, cy, zb * 0.5 + z0 * 0.5], r * 0.8, 18);
+      cast.tube(
+        [midX + sign * len * 0.49, midY, baseZ * 0.5 + z0 * 0.5],
+        [midX + sign * len * 0.5, midY, baseZ * 0.5 + z0 * 0.5],
+        radius * 0.8,
+        18,
+      );
     }
-    this.s.M(StMat.metal(StScene.INOX, 0.28)).tube([cx, cy, zb], [cx, cy, zm], r * 0.8, 28);
-    cast.tube([cx, cy, zm], [cx, cy, zm + H * 0.05], r * 1.05, 28);
-    mot.tube([cx, cy, zm + H * 0.05], [cx, cy, z1 - H * 0.06], r * 1.1, 32);
-    for (let z = zm + H * 0.09; z < z1 - H * 0.1; z += H * 0.035)
-      fin.tube([cx, cy, z], [cx, cy, z + 0.006], r * 1.17, 32);
-    dk.tube([cx, cy, z1 - H * 0.06], [cx, cy, z1], r * 1.05, 28);
+    this.scene
+      .meshFor(StMat.metal(StScene.INOX, 0.28))
+      .tube([midX, midY, baseZ], [midX, midY, motorZ], radius * 0.8, 28);
+    cast.tube([midX, midY, motorZ], [midX, midY, motorZ + height * 0.05], radius * 1.05, 28);
+    mot.tube([midX, midY, motorZ + height * 0.05], [midX, midY, z1 - height * 0.06], radius * 1.1, 32);
+    for (let z = motorZ + height * 0.09; z < z1 - height * 0.1; z += height * 0.035)
+      fin.tube([midX, midY, z], [midX, midY, z + 0.006], radius * 1.17, 32);
+    dark.tube([midX, midY, z1 - height * 0.06], [midX, midY, z1], radius * 1.05, 28);
   }
 
   /** Горизонтальный: рама, двигатель с рёбрами и кожухом вентилятора, защита муфты, улитка насоса. */
-  pumpH(it, { dk, mot, cast, fin }) {
-    const [x0, y0, z0, x1, y1, z1] = this.s.B(it);
-    const L = x1 - x0;
-    const W = y1 - y0;
-    const H = z1 - z0;
-    const cy = (y0 + y1) / 2;
-    dk.box([x0, y0 + W * 0.08, z0], [x1, y1 - W * 0.08, z0 + Math.min(0.12, H * 0.14)], 0.004);
-    const zc = z0 + H * 0.52;
-    const r = Math.min(W * 0.42, H * 0.36);
-    const xm0 = x0 + L * 0.04;
-    const xm1 = x0 + L * 0.52;
-    mot.tube([xm0 + 0.05, cy, zc], [xm1, cy, zc], r, 32);
-    for (let x = xm0 + 0.08; x < xm1 - 0.03; x += 0.045) fin.tube([x, cy, zc], [x + 0.008, cy, zc], r * 1.08, 32);
-    dk.tube([xm0, cy, zc], [xm0 + 0.06, cy, zc], r * 1.03, 32);
-    mot.box([xm0 + L * 0.12, cy - r * 0.55, zc + r * 0.85], [xm0 + L * 0.24, cy + r * 0.55, zc + r * 1.1], 0.005); // клеммная коробка
+  pumpH(item, { dk: dark, mot, cast, fin }) {
+    const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
+    const len = x1 - x0;
+    const wid = y1 - y0;
+    const height = z1 - z0;
+    const midY = (y0 + y1) / 2;
+    dark.box([x0, y0 + wid * 0.08, z0], [x1, y1 - wid * 0.08, z0 + Math.min(0.12, height * 0.14)], 0.004);
+    const axisZ = z0 + height * 0.52;
+    const radius = Math.min(wid * 0.42, height * 0.36);
+    const xm0 = x0 + len * 0.04;
+    const xm1 = x0 + len * 0.52;
+    mot.tube([xm0 + 0.05, midY, axisZ], [xm1, midY, axisZ], radius, 32);
+    for (let x = xm0 + 0.08; x < xm1 - 0.03; x += 0.045)
+      fin.tube([x, midY, axisZ], [x + 0.008, midY, axisZ], radius * 1.08, 32);
+    dark.tube([xm0, midY, axisZ], [xm0 + 0.06, midY, axisZ], radius * 1.03, 32);
+    mot.box(
+      [xm0 + len * 0.12, midY - radius * 0.55, axisZ + radius * 0.85],
+      [xm0 + len * 0.24, midY + radius * 0.55, axisZ + radius * 1.1],
+      0.005,
+    ); // клеммная коробка
     for (const x of [xm0 + 0.08, xm1 - 0.08])
-      mot.box([x - 0.03, cy - r * 0.8, z0 + 0.1], [x + 0.03, cy + r * 0.8, zc - r * 0.75], 0.004);
-    this.s
-      .M(StMat.paint('#e8a317', 0.4))
-      .box([xm1, cy - r * 0.45, zc - r * 0.45], [x0 + L * 0.66, cy + r * 0.45, zc + r * 0.45], 0.01);
-    const xp = x0 + L * 0.8;
-    const rv = Math.min(r * 1.25, H * 0.45);
-    cast.tube([xp - L * 0.08, cy, zc], [xp + L * 0.06, cy, zc], rv, 32);
-    cast.tube([xp + L * 0.06, cy, zc], [x1 - 0.01, cy, zc], rv * 0.42, 20);
-    cast.tube([x1 - 0.04, cy, zc], [x1, cy, zc], rv * 0.62, 20); // всас
-    cast.tube([xp, cy, zc + rv * 0.8], [xp, cy, Math.min(z1, zc + rv + 0.12)], rv * 0.36, 20);
-    cast.tube([xp, cy, Math.min(z1, zc + rv + 0.12) - 0.03], [xp, cy, Math.min(z1, zc + rv + 0.12)], rv * 0.55, 20); // напор
-    dk.box([xp - 0.04, cy - rv * 0.5, z0 + 0.1], [xp + 0.04, cy + rv * 0.5, zc - rv * 0.7], 0.004);
+      mot.box([x - 0.03, midY - radius * 0.8, z0 + 0.1], [x + 0.03, midY + radius * 0.8, axisZ - radius * 0.75], 0.004);
+    this.scene
+      .meshFor(StMat.paint('#e8a317', 0.4))
+      .box(
+        [xm1, midY - radius * 0.45, axisZ - radius * 0.45],
+        [x0 + len * 0.66, midY + radius * 0.45, axisZ + radius * 0.45],
+        0.01,
+      );
+    this._volute(item, { dark, cast }, { axisZ, radius });
+  }
+
+  _volute(item, { dark, cast }, { axisZ, radius }) {
+    const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
+    const len = x1 - x0;
+    const height = z1 - z0;
+    const midY = (y0 + y1) / 2;
+    const pumpX = x0 + len * 0.8;
+    const voluteR = Math.min(radius * 1.25, height * 0.45);
+    cast.tube([pumpX - len * 0.08, midY, axisZ], [pumpX + len * 0.06, midY, axisZ], voluteR, 32);
+    cast.tube([pumpX + len * 0.06, midY, axisZ], [x1 - 0.01, midY, axisZ], voluteR * 0.42, 20);
+    cast.tube([x1 - 0.04, midY, axisZ], [x1, midY, axisZ], voluteR * 0.62, 20); // всас
+    cast.tube(
+      [pumpX, midY, axisZ + voluteR * 0.8],
+      [pumpX, midY, Math.min(z1, axisZ + voluteR + 0.12)],
+      voluteR * 0.36,
+      20,
+    );
+    cast.tube(
+      [pumpX, midY, Math.min(z1, axisZ + voluteR + 0.12) - 0.03],
+      [pumpX, midY, Math.min(z1, axisZ + voluteR + 0.12)],
+      voluteR * 0.55,
+      20,
+    ); // напор
+    dark.box(
+      [pumpX - 0.04, midY - voluteR * 0.5, z0 + 0.1],
+      [pumpX + 0.04, midY + voluteR * 0.5, axisZ - voluteR * 0.7],
+      0.004,
+    );
   }
 
   /** ДГУ открытого исполнения. */
-  dgu(it) {
-    const rad = it.rad || 'right';
-    const B = this.s.B(it);
+  dgu(item) {
+    const rad = item.rad || 'right';
+    const box = this.scene.extent(item);
     if (rad === 'right')
       return this.dgu0(
-        it,
-        B,
-        m => this.s.M(m),
-        p => p,
+        item,
+        box,
+        mat => this.scene.meshFor(mat),
+        point => point,
         true,
       );
-    const [a0, b0, , a1, b1] = B;
-    const f = rad === 'left' ? p => [a0 + a1 - p[0], p[1], p[2]] : p => [p[1], p[0], p[2]];
+    const [fromX, fromY, , tillX, tillY] = box;
+    const map =
+      rad === 'left'
+        ? point => [fromX + tillX - point[0], point[1], point[2]]
+        : point => [point[1], point[0], point[2]];
     return this.dgu0(
-      it,
-      rad === 'left' ? B : [b0, a0, B[2], b1, a1, B[5]],
-      m => StScene.mapMesh(this.s.M(m), f),
-      f,
+      item,
+      rad === 'left' ? box : [fromY, fromX, box[2], tillY, tillX, box[5]],
+      mat => StScene.mapMesh(this.scene.meshFor(mat), map),
+      map,
       false,
     );
   }
 
   /** ДГУ в своей системе (радиатор к +x). */
-  dgu0(it, B, M, f, own) {
-    const [x0, y0, z0, x1, y1, z1] = B;
-    const g = { B, L: x1 - x0, W: y1 - y0, H: z1 - z0, cy: (y0 + y1) / 2, s: own ? this.s.side(it) : -1 };
-    g.fb = z0 + g.H * 0.13;
-    const c = it.color;
-    const m = {
-      M,
-      body: M(StMat.paint(c, 0.4)),
-      dk: M(StMat.paint(StScene.DARK, 0.6)),
-      alt: M(StMat.paint('#4a5259', 0.42)),
-      cap: M(StMat.paint(RalColor.shade(c, 0.62), 0.42)),
-      st: M(StMat.metal('#8d949a', 0.45)),
+  dgu0(item, box, meshFor, map, own) {
+    const [x0, y0, z0, x1, y1, z1] = box;
+    const geom = { B: box, L: x1 - x0, W: y1 - y0, H: z1 - z0, cy: (y0 + y1) / 2, s: own ? this.scene.side(item) : -1 };
+    geom.fb = z0 + geom.H * 0.13;
+    const color = item.color;
+    const meshes = {
+      M: meshFor,
+      body: meshFor(StMat.paint(color, 0.4)),
+      dk: meshFor(StMat.paint(StScene.DARK, 0.6)),
+      alt: meshFor(StMat.paint('#4a5259', 0.42)),
+      cap: meshFor(StMat.paint(RalColor.shade(color, 0.62), 0.42)),
+      st: meshFor(StMat.metal('#8d949a', 0.45)),
     };
-    m.dk.box([x0, y0, z0], [x1, y1, g.fb], 0.006); // рама-бак
-    m.dk.tube([x0 + g.L * 0.08, y0 + g.W * 0.18, g.fb], [x0 + g.L * 0.08, y0 + g.W * 0.18, g.fb + 0.04], 0.05, 16);
-    this.dguGen(g, m);
-    this.dguEngine(g, m);
-    this.dguExhaust(it, g, m, f);
-    this.dguRadiator(it, g, m, own);
-    this.dguPanel(g, m);
+    meshes.dk.box([x0, y0, z0], [x1, y1, geom.fb], 0.006); // рама-бак
+    meshes.dk.tube(
+      [x0 + geom.L * 0.08, y0 + geom.W * 0.18, geom.fb],
+      [x0 + geom.L * 0.08, y0 + geom.W * 0.18, geom.fb + 0.04],
+      0.05,
+      16,
+    );
+    this.dguGen(geom, meshes);
+    this.dguEngine(geom, meshes);
+    this.dguExhaust(item, geom, meshes, map);
+    this.dguRadiator(item, geom, meshes, own);
+    this.dguPanel(geom, meshes);
   }
 
   /** Генератор: лапы, корпус, решётка торца, клеммная коробка. */
-  dguGen(g, { dk, alt }) {
-    const [x0] = g.B;
-    const { L, W, H, cy, fb } = g;
-    const xa = x0 + L * 0.03;
-    const xb = x0 + L * 0.34;
-    const R = Math.min(W * 0.36, H * 0.3);
-    const zc = fb + R + 0.04;
-    Object.assign(g, { xa, xb, R, zc });
-    for (const x of [xa + 0.08, xb - 0.16])
-      dk.box([x, cy - R * 0.8, fb], [x + 0.08, cy + R * 0.8, zc - R * 0.5], 0.004);
-    alt.tube([xa + 0.03, cy, zc], [xb, cy, zc], R, 36);
-    alt.tube([xa, cy, zc], [xa + 0.03, cy, zc], R * 0.86, 36);
+  dguGen(geom, { dk: dark, alt }) {
+    const [x0] = geom.B;
+    const { L: len, W: wid, H: height, cy: midY, fb: baseTop } = geom;
+    const genX0 = x0 + len * 0.03;
+    const genX1 = x0 + len * 0.34;
+    const genR = Math.min(wid * 0.36, height * 0.3);
+    const midZ = baseTop + genR + 0.04;
+    Object.assign(geom, { xa: genX0, xb: genX1, R: genR, zc: midZ });
+    for (const x of [genX0 + 0.08, genX1 - 0.16])
+      dark.box([x, midY - genR * 0.8, baseTop], [x + 0.08, midY + genR * 0.8, midZ - genR * 0.5], 0.004);
+    alt.tube([genX0 + 0.03, midY, midZ], [genX1, midY, midZ], genR, 36);
+    alt.tube([genX0, midY, midZ], [genX0 + 0.03, midY, midZ], genR * 0.86, 36);
     for (let k = 0; k < 5; k++) {
-      const z = zc - R * 0.45 + k * R * 0.2;
-      dk.box([xa - 0.004, cy - R * 0.5, z], [xa + 0.002, cy + R * 0.5, z + R * 0.08]);
+      const z = midZ - genR * 0.45 + k * genR * 0.2;
+      dark.box([genX0 - 0.004, midY - genR * 0.5, z], [genX0 + 0.002, midY + genR * 0.5, z + genR * 0.08]);
     }
     alt.box(
-      [xa + (xb - xa) * 0.35, cy - R * 0.42, zc + R * 0.8],
-      [xb - (xb - xa) * 0.12, cy + R * 0.42, zc + R + 0.1],
+      [genX0 + (genX1 - genX0) * 0.35, midY - genR * 0.42, midZ + genR * 0.8],
+      [genX1 - (genX1 - genX0) * 0.12, midY + genR * 0.42, midZ + genR + 0.1],
       0.01,
     );
   }
 
   /** Двигатель: поддон, блок, головка, крышка клапанов, опоры. */
-  dguEngine(g, { body, dk, cap }) {
-    const [x0, , z0] = g.B;
-    const { L, W, H, cy, fb, xb } = g;
-    const xr = x0 + L * 0.84;
-    const wb = W * 0.62;
-    const zb = z0 + H * 0.6;
-    const zh = zb + H * 0.1;
-    const zv = zh + H * 0.05;
-    Object.assign(g, { xr, wb, zb, zh, zv });
-    dk.box([xb + 0.05, cy - wb * 0.38, fb], [xr - 0.06, cy + wb * 0.38, fb + H * 0.1], 0.01);
-    body.box([xb, cy - wb / 2, fb + H * 0.08], [xr - 0.02, cy + wb / 2, zb], 0.02);
-    body.box([xb + 0.05, cy - wb * 0.38, zb], [xr - 0.08, cy + wb * 0.38, zh], 0.015);
-    cap.box([xb + 0.08, cy - wb * 0.26, zh], [xr - 0.12, cy + wb * 0.26, zv], 0.02);
-    for (const x of [xb + 0.1, xr - 0.2]) dk.box([x, cy - W * 0.4, fb], [x + 0.1, cy + W * 0.4, fb + H * 0.1], 0.004);
+  dguEngine(geom, { body, dk: dark, cap }) {
+    const [x0, , z0] = geom.B;
+    const { L: len, W: wid, H: height, cy: midY, fb: baseTop, xb: genX1 } = geom;
+    const radX = x0 + len * 0.84;
+    const engineW = wid * 0.62;
+    const engineZ = z0 + height * 0.6;
+    const headZ = engineZ + height * 0.1;
+    const valveZ = headZ + height * 0.05;
+    Object.assign(geom, { xr: radX, wb: engineW, zb: engineZ, zh: headZ, zv: valveZ });
+    dark.box(
+      [genX1 + 0.05, midY - engineW * 0.38, baseTop],
+      [radX - 0.06, midY + engineW * 0.38, baseTop + height * 0.1],
+      0.01,
+    );
+    body.box([genX1, midY - engineW / 2, baseTop + height * 0.08], [radX - 0.02, midY + engineW / 2, engineZ], 0.02);
+    body.box([genX1 + 0.05, midY - engineW * 0.38, engineZ], [radX - 0.08, midY + engineW * 0.38, headZ], 0.015);
+    cap.box([genX1 + 0.08, midY - engineW * 0.26, headZ], [radX - 0.12, midY + engineW * 0.26, valveZ], 0.02);
+    for (const x of [genX1 + 0.1, radX - 0.2])
+      dark.box([x, midY - wid * 0.4, baseTop], [x + 0.1, midY + wid * 0.4, baseTop + height * 0.1], 0.004);
   }
 
   /** Выхлоп над ДГУ (глушитель на крыше) и место турбины по длине: под выхлопом (f обратна сама себе). */
-  dguTurbo(it, g, f) {
-    const ex = (this.s.plan.roof || [])
-      .map(m => m.exhaust)
-      .find(e => e && e.x >= it.x && e.x <= it.x + it.lx && (e.y == null || (e.y >= it.y && e.y <= it.y + it.ly)));
-    if (!ex) return [null, g.xr - 0.3];
-    const y = ex.y != null ? ex.y : it.y + it.ly / 2;
-    const x = f([this.s.ox + ex.x / 1000, this.s.oy + y / 1000, 0])[0];
-    return [ex, Math.max(g.xb + 0.15, Math.min(g.xr - 0.1, x))];
+  dguTurbo(item, geom, map) {
+    const exhaust = (this.scene.plan.roof || [])
+      .map(muffler => muffler.exhaust)
+      .find(
+        exhaust0 =>
+          exhaust0 &&
+          exhaust0.x >= item.x &&
+          exhaust0.x <= item.x + item.lx &&
+          (exhaust0.y == null || (exhaust0.y >= item.y && exhaust0.y <= item.y + item.ly)),
+      );
+    if (!exhaust) return [null, geom.xr - 0.3];
+    const y = exhaust.y != null ? exhaust.y : item.y + item.ly / 2;
+    const x = map([this.scene.ox + exhaust.x / 1000, this.scene.oy + y / 1000, 0])[0];
+    return [exhaust, Math.max(geom.xb + 0.15, Math.min(geom.xr - 0.1, x))];
   }
 
   /** Выпуск со стороны от прохода, турбина, сильфон к глушителю, воздушный фильтр. */
-  dguExhaust(it, g, { M, st }, f) {
-    const z1 = g.B[5];
-    const { L, W, H, cy, s, xb, wb, zb, zh, zv } = g;
-    const [ex, tx] = this.dguTurbo(it, g, f);
-    const yb = cy - s * wb * 0.56;
-    const zx = zb + H * 0.02;
-    const rt = Math.min(0.12, H * 0.065);
-    st.tube([xb + 0.12, yb, zx], [tx, yb, zx], Math.min(0.055, H * 0.03), 16);
-    st.sphere([tx, yb, zx], rt * 0.7, 14);
-    st.tube([tx, yb, zx], [tx, cy, zv + rt], rt * 0.45, 16);
-    st.sphere([tx, cy, zv + rt], rt, 18);
-    if (ex)
-      for (let z = zv + rt * 1.6; z < z1 - 0.03; z += 0.03) st.tube([tx, cy, z], [tx, cy, z + 0.018], rt * 0.62, 18);
-    M(StMat.paint('#1f2328', 0.55)).tube(
-      [xb + L * 0.08, cy + s * wb * 0.18, zh],
-      [xb + L * 0.08, cy + s * wb * 0.18, zv + H * 0.14],
-      Math.min(0.14, W * 0.12),
+  dguExhaust(item, geom, { M: meshFor, st: steel }, map) {
+    const z1 = geom.B[5];
+    const {
+      L: len,
+      W: wid,
+      H: height,
+      cy: midY,
+      s: side,
+      xb: genX1,
+      wb: engineW,
+      zb: engineZ,
+      zh: headZ,
+      zv: valveZ,
+    } = geom;
+    const [exhaust, turboX] = this.dguTurbo(item, geom, map);
+    const pipeY = midY - side * engineW * 0.56;
+    const pipeZ = engineZ + height * 0.02;
+    const radius = Math.min(0.12, height * 0.065);
+    steel.tube([genX1 + 0.12, pipeY, pipeZ], [turboX, pipeY, pipeZ], Math.min(0.055, height * 0.03), 16);
+    steel.sphere([turboX, pipeY, pipeZ], radius * 0.7, 14);
+    steel.tube([turboX, pipeY, pipeZ], [turboX, midY, valveZ + radius], radius * 0.45, 16);
+    steel.sphere([turboX, midY, valveZ + radius], radius, 18);
+    if (exhaust)
+      for (let z = valveZ + radius * 1.6; z < z1 - 0.03; z += 0.03)
+        steel.tube([turboX, midY, z], [turboX, midY, z + 0.018], radius * 0.62, 18);
+    meshFor(StMat.paint('#1f2328', 0.55)).tube(
+      [genX1 + len * 0.08, midY + side * engineW * 0.18, headZ],
+      [genX1 + len * 0.08, midY + side * engineW * 0.18, valveZ + height * 0.14],
+      Math.min(0.14, wid * 0.12),
       24,
     );
   }
 
   /** Кожух вентилятора, радиатор с решёткой, пробка. */
-  dguRadiator(it, g, { body, dk }, own) {
-    const [, y0, , x1, y1, z1] = g.B;
-    const { L, W, cy, fb, xr } = g;
-    dk.tube(
-      [xr - 0.06, cy, fb + (z1 - fb) * 0.5],
-      [xr, cy, fb + (z1 - fb) * 0.5],
-      Math.min(W * 0.42, (z1 - fb) * 0.42),
+  dguRadiator(item, geom, { body, dk: dark }, own) {
+    const [, y0, , x1, y1, z1] = geom.B;
+    const { L: len, W: wid, cy: midY, fb: baseTop, xr: radX } = geom;
+    dark.tube(
+      [radX - 0.06, midY, baseTop + (z1 - baseTop) * 0.5],
+      [radX, midY, baseTop + (z1 - baseTop) * 0.5],
+      Math.min(wid * 0.42, (z1 - baseTop) * 0.42),
       32,
     );
-    body.box([xr, y0 + W * 0.04, fb], [x1, y1 - W * 0.04, z1], 0.02);
-    if (own) this.s.air.grille({ ...it, x: it.x + it.lx * 0.84, lx: it.lx * 0.16 }, [0.08, 0.92], [0.12, 0.92], 12, 1);
+    body.box([radX, y0 + wid * 0.04, baseTop], [x1, y1 - wid * 0.04, z1], 0.02);
+    if (own)
+      this.scene.air.grille(
+        { ...item, x: item.x + item.lx * 0.84, lx: item.lx * 0.16 },
+        [0.08, 0.92],
+        [0.12, 0.92],
+        12,
+        1,
+      );
     else
       for (let k = 0; k < 12; k++) {
-        const z = fb + (z1 - fb) * (0.12 + k * 0.066);
-        dk.box([x1, y0 + W * 0.1, z], [x1 + 0.008, y1 - W * 0.1, z + 0.012]);
+        const z = baseTop + (z1 - baseTop) * (0.12 + k * 0.066);
+        dark.box([x1, y0 + wid * 0.1, z], [x1 + 0.008, y1 - wid * 0.1, z + 0.012]);
       }
-    dk.tube([x1 - L * 0.08, cy, z1], [x1 - L * 0.08, cy, z1 + 0.04], 0.04, 14);
+    dark.tube([x1 - len * 0.08, midY, z1], [x1 - len * 0.08, midY, z1 + 0.04], 0.04, 14);
   }
 
   /** Пульт на стойке над генератором. */
-  dguPanel(g, { M, dk }) {
-    const [, y0, z0, , y1] = g.B;
-    const { L, W, H, s, xa, R, zc } = g;
-    const py = s < 0 ? y0 + W * 0.12 : y1 - W * 0.12;
-    dk.box([xa + L * 0.06, py - 0.02, zc + R], [xa + L * 0.08, py + 0.02, z0 + H * 0.78]);
-    dk.box([xa + L * 0.02, py, z0 + H * 0.78], [xa + L * 0.2, py + s * 0.14, z0 + H * 0.97], 0.01);
-    const sc = s < 0 ? [py - 0.002 + s * 0.14, py + s * 0.14] : [py + 0.14, py + 0.142];
-    M(StMat.glow('#9fd4ff', 1.2)).box([xa + L * 0.05, sc[0], z0 + H * 0.86], [xa + L * 0.13, sc[1], z0 + H * 0.93]);
+  dguPanel(geom, { M: meshFor, dk: dark }) {
+    const [, y0, z0, , y1] = geom.B;
+    const { L: len, W: wid, H: height, s: side, xa: genX0, R: genR, zc: midZ } = geom;
+    const panelY = side < 0 ? y0 + wid * 0.12 : y1 - wid * 0.12;
+    dark.box([genX0 + len * 0.06, panelY - 0.02, midZ + genR], [genX0 + len * 0.08, panelY + 0.02, z0 + height * 0.78]);
+    dark.box(
+      [genX0 + len * 0.02, panelY, z0 + height * 0.78],
+      [genX0 + len * 0.2, panelY + side * 0.14, z0 + height * 0.97],
+      0.01,
+    );
+    const screenY = side < 0 ? [panelY - 0.002 + side * 0.14, panelY + side * 0.14] : [panelY + 0.14, panelY + 0.142];
+    meshFor(StMat.glow('#9fd4ff', 1.2)).box(
+      [genX0 + len * 0.05, screenY[0], z0 + height * 0.86],
+      [genX0 + len * 0.13, screenY[1], z0 + height * 0.93],
+    );
   }
 
-  tank(it) {
-    const [x0, y0, z0, x1, y1, z1] = this.s.B(it);
-    const m = this.s.M(StMat.paint(it.color, 0.42));
-    const dk = this.s.M(StMat.paint(StScene.DARK, 0.6));
-    dk.box([x0 - 0.02, y0 - 0.02, z0], [x1 + 0.02, y1 + 0.02, z0 + 0.06], 0.004);
-    m.box([x0, y0, z0 + 0.06], [x1, y1, z1], 0.03);
-    this.s.tones(it, [x0, y0, z0 + 0.06], [x1, y1, z1], 0.03);
-    dk.tube([x0 + (x1 - x0) * 0.2, (y0 + y1) / 2, z1], [x0 + (x1 - x0) * 0.2, (y0 + y1) / 2, z1 + 0.09], 0.07, 20);
-    this.s
-      .M(StMat.metal(StScene.GALV, 0.35))
+  /** Бак. */
+  tank(item) {
+    const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
+    const mesh = this.scene.meshFor(StMat.paint(item.color, 0.42));
+    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.6));
+    dark.box([x0 - 0.02, y0 - 0.02, z0], [x1 + 0.02, y1 + 0.02, z0 + 0.06], 0.004);
+    mesh.box([x0, y0, z0 + 0.06], [x1, y1, z1], 0.03);
+    this.scene.tones(item, [x0, y0, z0 + 0.06], [x1, y1, z1], 0.03);
+    dark.tube([x0 + (x1 - x0) * 0.2, (y0 + y1) / 2, z1], [x0 + (x1 - x0) * 0.2, (y0 + y1) / 2, z1 + 0.09], 0.07, 20);
+    this.scene
+      .meshFor(StMat.metal(StScene.GALV, 0.35))
       .tube([x0 + (x1 - x0) * 0.75, (y0 + y1) / 2, z1], [x0 + (x1 - x0) * 0.75, (y0 + y1) / 2, z1 + 0.15], 0.015, 10);
-    const lv = this.s.front(it, 0.88, 0.15, 0.015);
-    this.s
-      .M(StMat.paint('#d9e0e6', 0.15))
-      .box([lv[0] - 0.015, lv[1], lv[2]], [lv[0] + 0.015, lv[1] - this.s.side(it) * 0.015, lv[2] + (z1 - z0) * 0.7]);
+    const gauge = this.scene.front(item, 0.88, 0.15, 0.015);
+    this.scene
+      .meshFor(StMat.paint('#d9e0e6', 0.15))
+      .box(
+        [gauge[0] - 0.015, gauge[1], gauge[2]],
+        [gauge[0] + 0.015, gauge[1] - this.scene.side(item) * 0.015, gauge[2] + (z1 - z0) * 0.7],
+      );
   }
 
   /** Шкаф. */
-  cabinet(it) {
-    const [x0, y0, z0, x1, y1, z1] = this.s.B(it);
-    const c = it.color;
-    const body = this.s.M(StMat.paint(c, 0.38));
-    const dk = this.s.M(StMat.paint(StScene.DARK, 0.6));
-    const st = this.s.M(StMat.metal(StScene.GALV, 0.45));
-    if (it.mount === 'floor') dk.box([x0 + 0.01, y0 + 0.01, z0], [x1 - 0.01, y1 - 0.01, z0 + 0.1], 0.004);
-    body.box([x0, y0, z0 + (it.mount === 'floor' ? 0.1 : 0)], [x1, y1, z1], 0.012);
-    this.s.tones(it, [x0, y0, z0 + (it.mount === 'floor' ? 0.1 : 0)], [x1, y1, z1], 0.012);
-    const sm = this.s.M(StMat.paint(RalColor.shade(c, 0.72), 0.5));
-    this.s.panel(sm, it, [0.03, 0.97], [0.025, 0.03], [0.002, 0]);
-    this.s.panel(sm, it, [0.03, 0.97], [0.97, 0.975], [0.002, 0]);
-    this.s.panel(sm, it, [0.03, 0.035], [0.03, 0.97], [0.002, 0]);
-    this.s.panel(sm, it, [0.965, 0.97], [0.03, 0.97], [0.002, 0]);
-    this.s.panel(dk, it, [0.86, 0.9], [0.42, 0.58], [0.02, 0.003]);
-    for (const v of [0.12, 0.85]) this.s.panel(dk, it, [0.03, 0.06], [v, v + 0.06], [0.012, 0.003]);
-    if (/асу/i.test(String(it.name || ''))) this.cabinetHmi(it);
-    else this.cabinetLamps(it, dk);
-    this.cabinetMount(it, dk, st);
+  cabinet(item) {
+    const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
+    const color = item.color;
+    const body = this.scene.meshFor(StMat.paint(color, 0.38));
+    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.6));
+    const steel = this.scene.meshFor(StMat.metal(StScene.GALV, 0.45));
+    if (item.mount === 'floor') dark.box([x0 + 0.01, y0 + 0.01, z0], [x1 - 0.01, y1 - 0.01, z0 + 0.1], 0.004);
+    body.box([x0, y0, z0 + (item.mount === 'floor' ? 0.1 : 0)], [x1, y1, z1], 0.012);
+    this.scene.tones(item, [x0, y0, z0 + (item.mount === 'floor' ? 0.1 : 0)], [x1, y1, z1], 0.012);
+    const seam = this.scene.meshFor(StMat.paint(RalColor.shade(color, 0.72), 0.5));
+    this.scene.panel(seam, item, [0.03, 0.97], [0.025, 0.03], [0.002, 0]);
+    this.scene.panel(seam, item, [0.03, 0.97], [0.97, 0.975], [0.002, 0]);
+    this.scene.panel(seam, item, [0.03, 0.035], [0.03, 0.97], [0.002, 0]);
+    this.scene.panel(seam, item, [0.965, 0.97], [0.03, 0.97], [0.002, 0]);
+    this.scene.panel(dark, item, [0.86, 0.9], [0.42, 0.58], [0.02, 0.003]);
+    for (const v of [0.12, 0.85]) this.scene.panel(dark, item, [0.03, 0.06], [v, v + 0.06], [0.012, 0.003]);
+    if (/асу/i.test(String(item.name || ''))) this.cabinetHmi(item);
+    else this.cabinetLamps(item, dark);
+    this.cabinetMount(item, dark, steel);
   }
 
   /** АСУ ТП — панель оператора. */
-  cabinetHmi(it) {
-    this.s.panel(this.s.M(StMat.paint('#1f2429', 0.25)), it, [0.2, 0.75], [0.52, 0.86], [0.008, 0.004]);
-    this.s.panel(this.s.M(StMat.glow('#79b8ff', 1.5)), it, [0.24, 0.71], [0.56, 0.82], [0.01, 0]);
+  cabinetHmi(item) {
+    this.scene.panel(this.scene.meshFor(StMat.paint('#1f2429', 0.25)), item, [0.2, 0.75], [0.52, 0.86], [0.008, 0.004]);
+    this.scene.panel(this.scene.meshFor(StMat.glow('#79b8ff', 1.5)), item, [0.24, 0.71], [0.56, 0.82], [0.01, 0]);
   }
 
   /** Лампы (АВР — три), переключатель, табличка. */
-  cabinetLamps(it, dk) {
-    const lamps = /авр|резерв/i.test(String(it.name || ''))
+  cabinetLamps(item, dark) {
+    const lamps = /авр|резерв/i.test(String(item.name || ''))
       ? ['#3ccf5a', '#e2b33a', '#d84a3a']
       : ['#3ccf5a', '#d84a3a'];
     lamps.forEach((col, k) => {
-      const p = this.s.front(it, 0.22 + k * 0.13, 0.76, 0);
-      this.s.M(StMat.glow(col, 1.4)).tube(p, StV.add(p, this.s.out(it, 0.022)), 0.018, 14);
+      const point = this.scene.front(item, 0.22 + k * 0.13, 0.76, 0);
+      this.scene.meshFor(StMat.glow(col, 1.4)).tube(point, StV.add(point, this.scene.out(item, 0.022)), 0.018, 14);
     });
-    const q = this.s.front(it, 0.32, 0.5, 0);
-    const h0 = StV.add(q, this.s.out(it, 0.03));
-    const h1 = StV.add(q, this.s.out(it, 0.045));
-    const t = this.s.endwise(it) ? [0, 0.008, 0.04] : [0.008, 0, 0.04];
-    dk.tube(q, h0, 0.035, 18);
-    dk.box(
-      [0, 1, 2].map(k => Math.min(h0[k], h1[k]) - t[k]),
-      [0, 1, 2].map(k => Math.max(h0[k], h1[k]) + t[k]),
+    const base = this.scene.front(item, 0.32, 0.5, 0);
+    const lampIn = StV.add(base, this.scene.out(item, 0.03));
+    const lampOut = StV.add(base, this.scene.out(item, 0.045));
+    const halfSize = this.scene.endwise(item) ? [0, 0.008, 0.04] : [0.008, 0, 0.04];
+    dark.tube(base, lampIn, 0.035, 18);
+    dark.box(
+      [0, 1, 2].map(k => Math.min(lampIn[k], lampOut[k]) - halfSize[k]),
+      [0, 1, 2].map(k => Math.max(lampIn[k], lampOut[k]) + halfSize[k]),
       0.003,
     );
-    this.s.panel(this.s.M(StMat.paint('#f2f2ee', 0.4)), it, [0.15, 0.6], [0.86, 0.93], [0.004, 0]);
+    this.scene.panel(this.scene.meshFor(StMat.paint('#f2f2ee', 0.4)), item, [0.15, 0.6], [0.86, 0.93], [0.004, 0]);
   }
 
   /** Настенный — кронштейны у стены, на раме — стойки. */
-  cabinetMount(it, dk, st) {
-    const [x0, y0, z0, x1, y1, z1] = this.s.B(it);
-    const s = this.s.side(it);
-    if (it.mount === 'wall') {
-      const end = this.s.endwise(it);
-      const [bx, by] = s < 0 ? [x1, y1] : [x0, y0];
-      const back = end ? bx : by;
+  cabinetMount(item, dark, steel) {
+    const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
+    const side = this.scene.side(item);
+    if (item.mount === 'wall') {
+      const end = this.scene.endwise(item);
+      const [backX, backY] = side < 0 ? [x1, y1] : [x0, y0];
+      const back = end ? backX : backY;
       for (const v of [0.08, 0.92]) {
-        const za = z0 + (z1 - z0) * v - 0.02;
-        if (end) dk.box([back, y0 + 0.03, za], [back + s * 0.03, y1 - 0.03, za + 0.04]);
-        else dk.box([x0 + 0.03, back, za], [x1 - 0.03, back + s * 0.03, za + 0.04]);
+        const bracketZ = z0 + (z1 - z0) * v - 0.02;
+        if (end) dark.box([back, y0 + 0.03, bracketZ], [back + side * 0.03, y1 - 0.03, bracketZ + 0.04]);
+        else dark.box([x0 + 0.03, back, bracketZ], [x1 - 0.03, back + side * 0.03, bracketZ + 0.04]);
       }
-    } else if (it.mount === 'frame') {
-      const yc = (y0 + y1) / 2;
+    } else if (item.mount === 'frame') {
+      const midY = (y0 + y1) / 2;
       for (const x of [x0 + (x1 - x0) * 0.12, x1 - (x1 - x0) * 0.12 - 0.042])
-        st.box([x, yc - 0.021, this.s.base], [x + 0.042, yc + 0.021, z0], 0.004);
-      st.box([x0 + 0.02, yc - 0.15, this.s.base], [x1 - 0.02, yc + 0.15, this.s.base + 0.01]);
+        steel.box([x, midY - 0.021, this.scene.base], [x + 0.042, midY + 0.021, z0], 0.004);
+      steel.box([x0 + 0.02, midY - 0.15, this.scene.base], [x1 - 0.02, midY + 0.15, this.scene.base + 0.01]);
     }
   }
 
-  other(it) {
-    const [x0, y0, z0, x1, y1, z1] = this.s.B(it);
-    const c = it.color;
-    const body = this.s.M(StMat.paint(c, 0.42));
-    this.s.M(StMat.paint(StScene.DARK, 0.6)).box([x0 + 0.02, y0 + 0.02, z0], [x1 - 0.02, y1 - 0.02, z0 + 0.06], 0.004);
+  /** Прочее изделие — короб с лицевой стороной. */
+  other(item) {
+    const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
+    const color = item.color;
+    const body = this.scene.meshFor(StMat.paint(color, 0.42));
+    this.scene
+      .meshFor(StMat.paint(StScene.DARK, 0.6))
+      .box([x0 + 0.02, y0 + 0.02, z0], [x1 - 0.02, y1 - 0.02, z0 + 0.06], 0.004);
     body.box([x0, y0, z0 + 0.06], [x1, y1, z1], 0.015);
-    this.s.tones(it, [x0, y0, z0 + 0.06], [x1, y1, z1], 0.015);
-    this.s.panel(this.s.M(StMat.paint(RalColor.shade(c, 0.75), 0.5)), it, [0.08, 0.3], [0.7, 0.85], [0.006, 0.003]);
+    this.scene.tones(item, [x0, y0, z0 + 0.06], [x1, y1, z1], 0.015);
+    this.scene.panel(
+      this.scene.meshFor(StMat.paint(RalColor.shade(color, 0.75), 0.5)),
+      item,
+      [0.08, 0.3],
+      [0.7, 0.85],
+      [0.006, 0.003],
+    );
   }
 }

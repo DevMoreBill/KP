@@ -4,8 +4,8 @@ import { OutfitBase } from './outfit-base.js';
 
 /** Снаружи: отсек топливного бака, двери с козырьками и прожекторами, рисунки заказчика, маркировка для подъёма, логотип. */
 export class OutfitShell {
-  constructor(o) {
-    this.o = o;
+  constructor(outfit) {
+    this.outfit = outfit;
   }
 
   /**
@@ -14,110 +14,113 @@ export class OutfitShell {
    * со стороны зрителя — «Масса брутто». На тёмной стене — белые; места мало — знак на 1–2 градации меньше.
    */
   lift() {
-    const S = this.o.s;
-    const M = this.o.p.mass;
-    if (!M) return;
-    const rgb = RalColor.rgb(S.wall);
+    const scene = this.outfit.scene;
+    const weight = this.outfit.plan.mass;
+    if (!weight) return;
+    const rgb = RalColor.rgb(scene.wall);
     const light = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 < 0.45;
-    if (S.g.sea)
-      for (const f of [0.14, 0.36, 0.64, 0.86])
-        this.o.outer(
+    if (scene.geo.sea)
+      for (const frac of [0.14, 0.36, 0.64, 0.86])
+        this.outfit.outer(
           'left',
-          S.We * 1000 * f - S.oy * 1000 - 180,
-          S.We * 1000 * f - S.oy * 1000 + 180,
+          scene.We * 1000 * frac - scene.oy * 1000 - 180,
+          scene.We * 1000 * frac - scene.oy * 1000 + 180,
           -500,
-          S.He * 1000,
+          scene.He * 1000,
         );
-    for (const [w, e] of [
+    for (const [wall, end] of [
       ['front', 'left'],
       ['front', 'right'],
       ['back', 'left'],
       ['back', 'right'],
     ]) {
-      this.sling(w, e, light);
+      this.sling(wall, end, light);
     }
-    const mass = ['front', 'back', 'left', 'right'].map(w => this.cog(w, light, M.mass)).some(Boolean);
-    if (!mass) this.massFront(light, M.mass);
+    const mass = ['front', 'back', 'left', 'right'].map(wall => this.cog(wall, light, weight.mass)).some(Boolean);
+    if (!mass) this.massFront(light, weight.mass);
   }
 
   /** Точка на наружной поверхности стены: u — вдоль стены помещения, z — от пола, мм; на закрытой двери — на полотне. */
-  wallAt(w, u, z) {
-    const S = this.o.s;
-    const ox = S.ox * 1000;
-    const leaf = S.closed && S.openF.some(c => u > c.x0 && u < c.x1);
-    let xy = [w === 'left' ? this.o.leftX() : this.o.rightX(), (u + S.oy * 1000) / 1000];
-    if (w === 'front') xy = [(u + ox) / 1000, leaf ? -0.052 : this.o.frontY()];
-    else if (w === 'back') xy = [(u + ox) / 1000, S.We - this.o.frontY()];
-    return [...xy, S.base + z / 1000];
+  wallAt(wall, u, z) {
+    const scene = this.outfit.scene;
+    const ox = scene.ox * 1000;
+    const leaf = scene.closed && scene.frontOpenings.some(opening => u > opening.x0 && u < opening.x1);
+    let point = [wall === 'left' ? this.outfit.leftX() : this.outfit.rightX(), (u + scene.oy * 1000) / 1000];
+    if (wall === 'front') point = [(u + ox) / 1000, leaf ? -0.052 : this.outfit.frontY()];
+    else if (wall === 'back') point = [(u + ox) / 1000, scene.We - this.outfit.frontY()];
+    return [...point, scene.base + z / 1000];
   }
 
   /** Место a × b с зазором 40 мм свободно снаружи (стена со стороны зрителя в разрезе срезана). */
-  free(w, [u, z], [a, b]) {
+  free(wall, [u, z], [width, height]) {
     return (
-      (w !== 'front' || !this.o.s.cut) &&
-      this.o.outFree(w, u - a / 2 - 40, u + a / 2 + 40, z - b / 2 - 40, z + b / 2 + 40)
+      (wall !== 'front' || !this.outfit.scene.cut) &&
+      this.outfit.outFree(wall, u - width / 2 - 40, u + width / 2 + 40, z - height / 2 - 40, z + height / 2 + 40)
     );
   }
 
-  put(d, w, [u, z], [a, b]) {
-    this.o.s.sticker(d, this.wallAt(w, u, z), OutfitBase.N_OUT[w], [a / 1000, b / 1000]);
-    this.o.outer(w, u - a / 2 - 40, u + a / 2 + 40, z - b / 2 - 40, z + b / 2 + 40);
-    this.o.log.push({ kind: d.id, wall: w, u, z });
+  /** Наклейка на стене снаружи. */
+  put(decal, wall, [u, z], [width, height]) {
+    this.outfit.scene.sticker(decal, this.wallAt(wall, u, z), OutfitBase.N_OUT[wall], [width / 1000, height / 1000]);
+    this.outfit.outer(wall, u - width / 2 - 40, u + width / 2 + 40, z - height / 2 - 40, z + height / 2 + 40);
+    this.outfit.log.push({ kind: decal.id, wall, u, z });
   }
 
   /** № 9 у угла: верх — на 130 мм ниже верха контейнера; на длинной стене, иначе на торце у того же угла. */
-  sling(w, e, light) {
-    const S = this.o.s;
-    const [sw, sh] = OutfitBase.SLING;
-    const [ox, oy] = [S.ox * 1000, S.oy * 1000];
-    const zf = StationGeo.zFloor(S.g.type);
-    const tries = [1, 0.7, 0.5].flatMap(k => [300, 220, 160].map(c => [k, c]));
-    for (const [k, c] of tries) {
-      const size = [sw * k, sh * k];
-      const z = S.He * 1000 - zf - size[1] / 2 - 130;
-      const u = e === 'left' ? c - ox : S.Le * 1000 - c - ox;
-      const v = w === 'front' ? c - oy : S.We * 1000 - c - oy;
-      if (this.free(w, [u, z], size)) {
-        this.put({ type: 'sign', id: 'SLING', light }, w, [u, z], size);
+  sling(wall, end, light) {
+    const scene = this.outfit.scene;
+    const [signW, signH] = OutfitBase.SLING;
+    const [ox, oy] = [scene.ox * 1000, scene.oy * 1000];
+    const floorZ = StationGeo.zFloor(scene.geo.type);
+    const tries = [1, 0.7, 0.5].flatMap(k => [300, 220, 160].map(offset => [k, offset]));
+    for (const [k, offset] of tries) {
+      const size = [signW * k, signH * k];
+      const z = scene.He * 1000 - floorZ - size[1] / 2 - 130;
+      const u = end === 'left' ? offset - ox : scene.Le * 1000 - offset - ox;
+      const v = wall === 'front' ? offset - oy : scene.We * 1000 - offset - oy;
+      if (this.free(wall, [u, z], size)) {
+        this.put({ type: 'sign', id: 'SLING', light }, wall, [u, z], size);
         return;
       }
-      if (this.free(e, [v, z], size)) {
-        this.put({ type: 'sign', id: 'SLING', light }, e, [v, z], size);
-        if (e === 'left') this.o.slingL = { ...this.o.slingL, [w]: true };
+      if (this.free(end, [v, z], size)) {
+        this.put({ type: 'sign', id: 'SLING', light }, end, [v, z], size);
+        if (end === 'left') this.outfit.slingL = { ...this.outfit.slingL, [wall]: true };
         return;
       }
     }
   }
 
   /** № 12 в проекции центра тяжести; со стороны зрителя рядом — «Масса брутто» (справа, слева, ниже, выше). */
-  cog(w, light, kg) {
-    const S = this.o.s;
-    const cs = OutfitBase.COG;
-    const c = this.o.cogOn(w);
-    const k = [1, 0.7, 0.5].find(q => this.free(w, [c.u, c.z], [cs * q, cs * q]));
+  cog(wall, light, massKg) {
+    const scene = this.outfit.scene;
+    const size = OutfitBase.COG;
+    const center = this.outfit.cogOn(wall);
+    const k = [1, 0.7, 0.5].find(scale => this.free(wall, [center.u, center.z], [size * scale, size * scale]));
     if (!k) return false;
-    const a = cs * k;
-    this.put({ type: 'sign', id: 'COG', light }, w, [c.u, c.z], [a, a]);
-    if (w !== 'front') return false;
-    const ox = S.ox * 1000;
+    const side = size * k;
+    this.put({ type: 'sign', id: 'COG', light }, wall, [center.u, center.z], [side, side]);
+    if (wall !== 'front') return false;
+    const ox = scene.ox * 1000;
     const spot = [
-      [c.u + a / 2 + 325, c.z],
-      [c.u - a / 2 - 325, c.z],
-      [c.u, c.z - a / 2 - 210],
-      [c.u, c.z + a / 2 + 210],
-    ].find(([u, z]) => u - 225 > -ox && u + 225 < S.Le * 1000 - ox && z > 250 && this.free(w, [u, z], [450, 170]));
-    if (spot) this.put({ type: 'sign', id: 'MASS', kg, light }, w, spot, [450, 170]);
+      [center.u + side / 2 + 325, center.z],
+      [center.u - side / 2 - 325, center.z],
+      [center.u, center.z - side / 2 - 210],
+      [center.u, center.z + side / 2 + 210],
+    ].find(
+      ([u, z]) => u - 225 > -ox && u + 225 < scene.Le * 1000 - ox && z > 250 && this.free(wall, [u, z], [450, 170]),
+    );
+    if (spot) this.put({ type: 'sign', id: 'MASS', kg: massKg, light }, wall, spot, [450, 170]);
     return !!spot;
   }
 
   /** «Масса брутто» рядом не встала — на стене со стороны зрителя, ближе к дальнему торцу. */
-  massFront(light, kg) {
-    const S = this.o.s;
-    const ox = S.ox * 1000;
-    for (let u = S.Le * 1000 - ox - 600; u > 600 - ox; u -= 100) {
-      const z = [1300, 900].find(q => this.free('front', [u, q], [450, 170]));
+  massFront(light, massKg) {
+    const scene = this.outfit.scene;
+    const ox = scene.ox * 1000;
+    for (let u = scene.Le * 1000 - ox - 600; u > 600 - ox; u -= 100) {
+      const z = [1300, 900].find(cand => this.free('front', [u, cand], [450, 170]));
       if (z) {
-        this.put({ type: 'sign', id: 'MASS', kg, light }, 'front', [u, z], [450, 170]);
+        this.put({ type: 'sign', id: 'MASS', kg: massKg, light }, 'front', [u, z], [450, 170]);
         return;
       }
     }
@@ -128,103 +131,128 @@ export class OutfitShell {
    * ворот, жалюзи и знаков (не помещается — меньше, до половины ширины); знаки строповки и логотип — мимо рисунков.
    */
   arts() {
-    const S = this.o.s;
-    this.o.artF = [];
-    this.o.artL = false;
-    for (const a of (this.o.p.arts || []).filter(q => q.wall !== 'front' || !S.cut)) this.art(a);
+    const scene = this.outfit.scene;
+    this.outfit.artF = [];
+    this.outfit.artL = false;
+    for (const art of (this.outfit.plan.arts || []).filter(art0 => art0.wall !== 'front' || !scene.cut)) this.art(art);
   }
 
-  art(a) {
-    const S = this.o.s;
-    const end = a.wall === 'left' || a.wall === 'right';
-    const g = {
-      len: (end ? S.We : S.Le) * 1000,
-      off: (end ? S.oy : S.ox) * 1000,
-      zlo: (S.dz + 0.15 - S.base) * 1000,
-      zhi: (S.top - 0.15 - S.base) * 1000,
+  /** Рисунок заказчика на стене. */
+  art(art) {
+    const scene = this.outfit.scene;
+    const end = art.wall === 'left' || art.wall === 'right';
+    const wallBox = {
+      len: (end ? scene.We : scene.Le) * 1000,
+      off: (end ? scene.oy : scene.ox) * 1000,
+      zlo: (scene.dz + 0.15 - scene.base) * 1000,
+      zhi: (scene.top - 0.15 - scene.base) * 1000,
     };
     let best = null;
     let first = null;
     for (const k of [1, 0.8, 0.65, 0.5]) {
-      const q = this.artSize(a, k, g);
-      first = first || { u: q.u0, z: q.z0, w: q.w, h: q.h };
-      best = this.artSpot(a, q, g);
+      const size = this.artSize(art, k, wallBox);
+      first = first || { u: size.u0, z: size.z0, w: size.w, h: size.h };
+      best = this.artSpot(art, size, wallBox);
       if (best) break;
     }
-    this.artPut(a, best || first, !!best, g.off);
+    this.artPut(art, best || first, !!best, wallBox.off);
   }
 
   /** Размер рисунка (доля k от заданной ширины, не шире и не выше стены) и желаемое место u0, z0. */
-  artSize(a, k, { len, off, zlo, zhi }) {
-    const S = this.o.s;
-    let w = Math.min(a.w * k, len - 300);
-    let h = w / a.ar;
-    if (h > zhi - zlo) {
-      h = zhi - zlo;
-      w = h * a.ar;
+  artSize(art, k, { len, off, zlo, zhi }) {
+    const scene = this.outfit.scene;
+    let width = Math.min(art.w * k, len - 300);
+    let height = width / art.ar;
+    if (height > zhi - zlo) {
+      height = zhi - zlo;
+      width = height * art.ar;
     }
-    const f = a.wall === 'back' || a.wall === 'left' ? 1 - a.x : a.x;
-    const lo = 150 + w / 2 - off;
-    const hi = len - 150 - w / 2 - off;
+    const frac = art.wall === 'back' || art.wall === 'left' ? 1 - art.x : art.x;
+    const low = 150 + width / 2 - off;
+    const high = len - 150 - width / 2 - off;
     return {
-      w,
-      h,
-      lo,
-      hi,
-      u0: Math.min(hi, Math.max(lo, f * len - off)),
-      z0: Math.min(zhi - h / 2, Math.max(zlo + h / 2, (S.dz + S.He * a.z - S.base) * 1000)),
+      w: width,
+      h: height,
+      lo: low,
+      hi: high,
+      u0: Math.min(high, Math.max(low, frac * len - off)),
+      z0: Math.min(zhi - height / 2, Math.max(zlo + height / 2, (scene.dz + scene.He * art.z - scene.base) * 1000)),
     };
   }
 
   /** Ближайшее свободное место (по длине — вес 1, по высоте — 1,5). */
-  artSpot(a, { w, h, lo, hi, u0, z0 }, { zlo, zhi }) {
+  artSpot(art, { w: width, h: height, lo: low, hi: high, u0, z0 }, { zlo, zhi }) {
     let best = null;
-    for (let u = lo; u <= hi + 1e-6; u += 50) {
-      for (let z = zlo + h / 2; z <= zhi - h / 2 + 1e-6; z += 50) {
+    for (let u = low; u <= high + 1e-6; u += 50) {
+      for (let z = zlo + height / 2; z <= zhi - height / 2 + 1e-6; z += 50) {
         const cost = Math.abs(u - u0) + 1.5 * Math.abs(z - z0);
         const ok =
           (!best || cost < best.cost) &&
-          this.o.outFree(a.wall, u - w / 2 - 40, u + w / 2 + 40, z - h / 2 - 40, z + h / 2 + 40);
-        if (ok) best = { u, z, w, h, cost };
+          this.outfit.outFree(
+            art.wall,
+            u - width / 2 - 40,
+            u + width / 2 + 40,
+            z - height / 2 - 40,
+            z + height / 2 + 40,
+          );
+        if (ok) best = { u, z, w: width, h: height, cost };
       }
     }
     return best;
   }
 
-  artPut(a, q, free, off) {
-    const S = this.o.s;
-    const [wm, hm] = [q.w / 1000, q.h / 1000];
-    const x = (q.u + off) / 1000;
-    const zc = S.base + q.z / 1000;
-    let c = [a.wall === 'left' ? this.o.leftX() : this.o.rightX(), x, zc];
-    if (a.wall === 'front') c = [x, this.o.frontY(), zc];
-    else if (a.wall === 'back') c = [x, S.We - this.o.frontY(), zc];
-    S.sticker({ type: 'art', src: a.src, ar: wm / hm }, c, OutfitBase.N_OUT[a.wall], [wm, hm]);
-    this.o.outer(a.wall, q.u - q.w / 2 - 40, q.u + q.w / 2 + 40, q.z - q.h / 2 - 40, q.z + q.h / 2 + 40);
-    this.o.log.push({ kind: 'art', wall: a.wall, u: Math.round(q.u), z: Math.round(q.z), w: Math.round(q.w), free });
-    if (a.wall === 'front') this.o.artF.push([x - wm / 2 - 0.1, x + wm / 2 + 0.1]);
-    if (a.wall === 'left') this.o.artL = true;
+  /** Рисунок на найденном месте. */
+  artPut(art, spot, free, off) {
+    const scene = this.outfit.scene;
+    const [widM, heightM] = [spot.w / 1000, spot.h / 1000];
+    const x = (spot.u + off) / 1000;
+    const midZ = scene.base + spot.z / 1000;
+    let center = [art.wall === 'left' ? this.outfit.leftX() : this.outfit.rightX(), x, midZ];
+    if (art.wall === 'front') center = [x, this.outfit.frontY(), midZ];
+    else if (art.wall === 'back') center = [x, scene.We - this.outfit.frontY(), midZ];
+    scene.sticker({ type: 'art', src: art.src, ar: widM / heightM }, center, OutfitBase.N_OUT[art.wall], [
+      widM,
+      heightM,
+    ]);
+    this.outfit.outer(
+      art.wall,
+      spot.u - spot.w / 2 - 40,
+      spot.u + spot.w / 2 + 40,
+      spot.z - spot.h / 2 - 40,
+      spot.z + spot.h / 2 + 40,
+    );
+    this.outfit.log.push({
+      kind: 'art',
+      wall: art.wall,
+      u: Math.round(spot.u),
+      z: Math.round(spot.z),
+      w: Math.round(spot.w),
+      free,
+    });
+    if (art.wall === 'front') this.outfit.artF.push([x - widM / 2 - 0.1, x + widM / 2 + 0.1]);
+    if (art.wall === 'left') this.outfit.artL = true;
   }
 
   /** Логотип организации: на торце у двери (виден и в разрезе); снаружи — ещё на длинной стене в самом широком простенке. */
   brand() {
-    const S = this.o.s;
-    const d = OutfitShell.brandDecal(S);
-    const top = S.top - (S.g.sea ? 0.22 : 0.15);
+    const scene = this.outfit.scene;
+    const decal = OutfitShell.brandDecal(scene);
+    const top = scene.top - (scene.geo.sea ? 0.22 : 0.15);
     const [y0, y1] = this.endSpan();
-    const w = Math.min(1.9, (y1 - y0) * 0.92, 0.42 * d.ar);
-    const h = w / d.ar;
-    if (w >= 0.6 && !this.o.artL) S.sticker(d, [this.o.leftX(), (y0 + y1) / 2, top - 0.1 - h / 2], [-1, 0, 0], [w, h]);
-    if (S.closed) this.frontBrand(d, top);
+    const width = Math.min(1.9, (y1 - y0) * 0.92, 0.42 * decal.ar);
+    const height = width / decal.ar;
+    if (width >= 0.6 && !this.outfit.artL)
+      scene.sticker(decal, [this.outfit.leftX(), (y0 + y1) / 2, top - 0.1 - height / 2], [-1, 0, 0], [width, height]);
+    if (scene.closed) this.frontBrand(decal, top);
   }
 
   /** Надпись частями своих цветов (на тёмной стене — белыми); у ПНЕВМОТЕХ — глобус и «группа компаний». */
-  static brandDecal(S) {
-    const m = S.meta.brand;
-    const parts = Array.isArray(m) && m.length ? m : OutfitBase.BRAND;
-    const txt = parts.map(p => p[0]).join('');
+  static brandDecal(scene) {
+    const brand = scene.meta.brand;
+    const parts = Array.isArray(brand) && brand.length ? brand : OutfitBase.BRAND;
+    const txt = parts.map(part => part[0]).join('');
     const own = /^пневмотех$/i.test(txt);
-    const rgb = RalColor.rgb(S.wall);
+    const rgb = RalColor.rgb(scene.wall);
     const lum = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
     return {
       type: 'brand',
@@ -238,51 +266,70 @@ export class OutfitShell {
 
   /** Место на торце у входа: мимо жалюзи отсека бака, знаков строповки, двери оператора и ворот. */
   endSpan() {
-    const S = this.o.s;
-    const P = this.o.p;
-    const sl = this.o.slingL || {};
-    let y1 = P.fuel && !S.g.sea ? S.We - 0.62 : S.We - (sl.back ? 0.5 : 0.12);
-    let y0 = sl.front ? 0.5 : 0.12;
-    for (const q of [P.entry, P.gates, P.gates2].filter(o => o && o.wall === 'left' && !o.sea)) {
-      const a = S.oy + q.y0 / 1000 - 0.15;
-      const b = S.oy + q.y1 / 1000 + 0.15;
-      if (a - y0 >= y1 - b) y1 = Math.min(y1, a);
-      else y0 = Math.max(y0, b);
+    const scene = this.outfit.scene;
+    const plan = this.outfit.plan;
+    const slingL = this.outfit.slingL || {};
+    let y1 = plan.fuel && !scene.geo.sea ? scene.We - 0.62 : scene.We - (slingL.back ? 0.5 : 0.12);
+    let y0 = slingL.front ? 0.5 : 0.12;
+    for (const door of [plan.entry, plan.gates, plan.gates2].filter(
+      cand => cand && cand.wall === 'left' && !cand.sea,
+    )) {
+      const from = scene.oy + door.y0 / 1000 - 0.15;
+      const till = scene.oy + door.y1 / 1000 + 0.15;
+      if (from - y0 >= y1 - till) y1 = Math.min(y1, from);
+      else y0 = Math.max(y0, till);
     }
     return [y0, y1];
   }
 
   /** На стене со стороны зрителя: мимо дверей и рисунков; жалюзи под логотипом — он выше их козырьков, иначе мимо жалюзи. */
-  frontBrand(d, top) {
-    const S = this.o.s;
-    const L = ((this.o.p.vent && this.o.p.vent.louvers) || [])
-      .filter(q => q.wall === 'front')
-      .map(q => ({ a: S.ox + q.u0 / 1000 - 0.15, b: S.ox + q.u1 / 1000 + 0.15, t: S.base + q.z1 / 1000 + 0.3 }));
-    const doors = [...S.openF.map(c => [S.ox + c.x0 / 1000 - 0.3, S.ox + c.x1 / 1000 + 0.75]), ...(this.o.artF || [])];
-    const A = this.widest(doors, L, d, top);
-    const B = this.widest([...doors, ...L.filter(q => q.t > top - 0.72).map(q => [q.a, q.b])], L, d, top);
-    const f = A && (!B || A.w >= B.w * 0.8) ? A : B;
-    if (!f) return;
-    const h = f.w / d.ar;
-    S.sticker(d, [(f.g[0] + f.g[1]) / 2, this.o.frontY(), top - 0.12 - h / 2], [0, -1, 0], [f.w, h]);
+  frontBrand(decal, top) {
+    const scene = this.outfit.scene;
+    const louvers = ((this.outfit.plan.vent && this.outfit.plan.vent.louvers) || [])
+      .filter(louver => louver.wall === 'front')
+      .map(louver => ({
+        a: scene.ox + louver.u0 / 1000 - 0.15,
+        b: scene.ox + louver.u1 / 1000 + 0.15,
+        t: scene.base + louver.z1 / 1000 + 0.3,
+      }));
+    const doors = [
+      ...scene.frontOpenings.map(opening => [scene.ox + opening.x0 / 1000 - 0.3, scene.ox + opening.x1 / 1000 + 0.75]),
+      ...(this.outfit.artF || []),
+    ];
+    const bySides = this.widest(doors, louvers, decal, top);
+    const byTop = this.widest(
+      [...doors, ...louvers.filter(louver => louver.t > top - 0.72).map(louver => [louver.a, louver.b])],
+      louvers,
+      decal,
+      top,
+    );
+    const best = bySides && (!byTop || bySides.w >= byTop.w * 0.8) ? bySides : byTop;
+    if (!best) return;
+    const height = best.w / decal.ar;
+    scene.sticker(
+      decal,
+      [(best.g[0] + best.g[1]) / 2, this.outfit.frontY(), top - 0.12 - height / 2],
+      [0, -1, 0],
+      [best.w, height],
+    );
   }
 
   /** Самый широкий логотип в простенках между вырезами cuts (над жалюзи — по высоте над их козырьками). */
-  widest(cuts, L, d, top) {
-    const S = this.o.s;
+  widest(cuts, louvers, decal, top) {
+    const scene = this.outfit.scene;
     const gaps = [];
     let x = 0.5;
-    for (const [a, b] of cuts.sort((p, q) => p[0] - q[0])) {
-      if (a > x) gaps.push([x, a]);
-      x = Math.max(x, b);
+    for (const [from, till] of cuts.sort((left, other) => left[0] - other[0])) {
+      if (from > x) gaps.push([x, from]);
+      x = Math.max(x, till);
     }
-    if (S.Le - 0.5 > x) gaps.push([x, S.Le - 0.5]);
+    if (scene.Le - 0.5 > x) gaps.push([x, scene.Le - 0.5]);
     let best = null;
-    for (const g of gaps.filter(q => q[1] - q[0] >= 0.9)) {
-      const under = L.filter(q => q.a < g[1] && q.b > g[0]);
-      const room = top - 0.12 - Math.max(0, ...under.map(q => q.t));
-      const w = Math.min((g[1] - g[0]) * 0.85, 3.2, 0.6 * d.ar, (under.length ? room : 9) * d.ar);
-      if (w >= 0.6 && (!best || w > best.w)) best = { g, w };
+    for (const gap of gaps.filter(other => other[1] - other[0] >= 0.9)) {
+      const under = louvers.filter(other => other.a < gap[1] && other.b > gap[0]);
+      const room = top - 0.12 - Math.max(0, ...under.map(other => other.t));
+      const width = Math.min((gap[1] - gap[0]) * 0.85, 3.2, 0.6 * decal.ar, (under.length ? room : 9) * decal.ar);
+      if (width >= 0.6 && (!best || width > best.w)) best = { g: gap, w: width };
     }
     return best;
   }

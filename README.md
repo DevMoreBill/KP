@@ -526,6 +526,15 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.139.0 — что сделано:** «чистый код», часть 4: `features/view/` (3D-вид) — говорящие имена во всех файлах. Члены сцены:
+`StScene.meshFor`, `point`, `extent`, `faceU`, `geo`, `meters`, `azimuth`, `roofColor`, `frontOpenings`, `doorsFront`,
+`doorsBack`; части сцены и оснащения обращаются к ней через `this.scene` и `this.outfit` (было `this.s`, `this.o`); у
+оснащения — `plan`, `outerBusy`, `wallPoint`, `NORMAL`, `isEnd`; буферы геометрии `StMesh.positions`, `normals`, `indices`,
+`uvs`; константы `StCam.AZIMUTH`, `ELEVATION`, `StGl.VERTEX_SHADER`, `FRAGMENT_SHADER`, `BACKGROUND`, `StDecal.ASPECT`,
+`StationRender.WIDTH`; помощники цвета фото — класс `Rgb`; длинные методы разбиты на шаги. В словарь имён добавлены
+координаты грани `u v u0 u1 v0 v1 du dv` и `gl` (контекст WebGL); папка — под строгим ESLint. Слепок станций (2 891 результат,
+в том числе 3D-сцены) совпал; картинки 3D-вида в браузере (WebGL) побайтно совпали с прежним кодом.
+
 **3.138.0 — что сделано:** «чистый код», часть 3: `features/eskd/` — говорящие имена, в том числе поля рамки значка
 (`sheet`, `item`, `scale`, `width`, `height`, `centerX`, `centerY`, `minSide`), поля схем (`StationScheme.sheet`, `air`,
 `units`; `HydroScheme.sheet`, `pumps`, `req`) и члены классов (`EskdSheet.fmt`, `stroke`, `textWidth`, `ARROW`,

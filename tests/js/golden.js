@@ -39,7 +39,7 @@ class Golden {
     const fn=cls.prototype.build;
     cls.prototype.build=function(...args){
       const out=fn.apply(this, args);
-      const g=[...this.groups].map(([k, e])=>[k, e.mesh.p, e.mesh.n, e.mesh.i, e.mesh.t]);
+      const g=[...this.groups].map(([k, e])=>[k, e.mesh.positions, e.mesh.normals, e.mesh.indices, e.mesh.uvs]);
       Golden.rows.push([Golden.label, `${cls.name}.build`, Golden.hash({ g, d:[...this.decals.keys()], log:this.outfit ? this.outfit.log : null })]);
       return out;
     };
