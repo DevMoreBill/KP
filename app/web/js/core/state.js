@@ -100,6 +100,11 @@ var CATED = null;
 let catCache = [];
 let EDIT = null;
 
+// открытый раздел формы КП (ui/steps.js — Steps) и свои подсказки полей адреса (ui/geo-input.js — GeoInput,
+// склады поставщиков добавляет features/deal): общие для нескольких модулей
+let STEP = 'client';
+const GEO_EXTRA = {};
+
 function persist(){
   if (CATED) return;
   S.items.forEach(x=>{ Kit.sync(x); StationAuto.fill(x); StationName.apply(x); });     // закупка сборки — по текущим курсам; параметры станции — по составу
