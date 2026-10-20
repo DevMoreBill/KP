@@ -1,22 +1,5 @@
-# -*- coding: utf-8 -*-
-"""Админ-панель «Настройки»: пароль администратора, сессии, права, журнал действий, корзина, модерация правок,
-резервные копии и статистика.
+"""Админ-панель «Настройки»: администраторы и сессии, права, журнал действий, корзина, модерация, копии, статистика."""
 
-• Вход — логин и пароль администратора; администраторов может быть несколько (kv «admins»: логин, имя, хеш пароля).
-  Пароль хранится только хешем (scrypt; если в Python нет scrypt — PBKDF2-SHA256). Прежний единственный пароль
-  (kv «admin») при первом обращении переносится в учётную запись с логином «admin».
-  Первая учётная запись создаётся на компьютере, где работает программа. Сброс: создать файл data/admin-reset.txt
-  и перезапустить программу — все учётные записи администраторов удаляются, первую нужно создать заново.
-• Сессия администратора — cookie kp_admin (HttpOnly, SameSite=Strict) + CSRF-токен в заголовке X-CSRF-Token
-  для всех изменяющих запросов; 15 минут бездействия — выход. Неверный пароль 5 раз за 10 минут — пауза 10 минут.
-• Удаление (КП, товары, менеджеры, клиенты) — только из «Настроек», в корзину (data хранится 30 дней, можно восстановить).
-• Числа выше (бездействие, попытки входа, срок корзины, длина пароля, статистика) — «Настройки → Значения программы»
-  (defaults.SrvVal: srv.adminIdleMin, srv.loginFails, srv.loginLockMin, srv.trashDays, srv.adminPwMin, srv.statTop…).
-• Журнал действий (таблица audit): кто (менеджер из заголовков X-KP-User-Id / X-KP-User — обычные сотрудники
-  не входят по паролю), что, над чем, до/после (только изменённые поля), IP, браузер, результат.
-• Модерация правок товаров (kv «settings».productEditModeration): включена — правка товара сохраняется в
-  pending_edits и ждёт решения администратора; выключена — пишется сразу, но всё равно попадает в журнал.
-"""
 import hashlib
 import hmac
 import json
@@ -27,7 +10,7 @@ import secrets
 import threading
 import time
 import urllib.parse
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import auth_users
 from config import BadRequest
@@ -37,27 +20,41 @@ from storage import Conflict
 DENIED = 'Удаление и настройки — только в разделе «Настройки» (нужен пароль администратора)'
 # поля товара, которые меняет само сохранение КП (цены и история): такие правки не модерируются
 AUTO_KEYS = {'price', 'priceCur', 'cost', 'costCur', 'margin', 'mmode', 'prices', 'updatedAt', 'pricesCount'}
-LABELS = {'name': 'Наименование', 'spec': 'Краткие характеристики', 'price': 'Цена', 'priceCur': 'Валюта цены', 'cost': 'Закупка',
-          'costCur': 'Валюта закупки', 'pageTitle': 'Заголовок страницы', 'photoCaption': 'Подпись к фото', 'features': 'Описание',
-          'groups': 'Характеристики', 'hint': 'Титул', 'attrs': 'Параметры и категория', 'photo': 'Главное фото', 'logo': 'Логотип',
-          'gallery': 'Изображения', 'options': 'Опции', 'prices': 'История цен'}
+LABELS = {
+    'name': 'Наименование',
+    'spec': 'Краткие характеристики',
+    'price': 'Цена',
+    'priceCur': 'Валюта цены',
+    'cost': 'Закупка',
+    'costCur': 'Валюта закупки',
+    'pageTitle': 'Заголовок страницы',
+    'photoCaption': 'Подпись к фото',
+    'features': 'Описание',
+    'groups': 'Характеристики',
+    'hint': 'Титул',
+    'attrs': 'Параметры и категория',
+    'photo': 'Главное фото',
+    'logo': 'Логотип',
+    'gallery': 'Изображения',
+    'options': 'Опции',
+    'prices': 'История цен',
+}
 
 
-def _now():
+def _now() -> str:
     return datetime.now().isoformat(timespec='seconds')
 
 
-# ---------------------------------------------------------------- пароль
-def hash_password(pw):
+def hash_password(pw) -> dict:
     salt = secrets.token_bytes(16)
     if hasattr(hashlib, 'scrypt'):
-        h = hashlib.scrypt(pw.encode('utf-8'), salt=salt, n=2 ** 14, r=8, p=1, dklen=32)
-        return {'algo': 'scrypt', 'n': 2 ** 14, 'r': 8, 'p': 1, 'salt': salt.hex(), 'hash': h.hex(), 'updatedAt': _now()}
+        h = hashlib.scrypt(pw.encode('utf-8'), salt=salt, n=2**14, r=8, p=1, dklen=32)
+        return {'algo': 'scrypt', 'n': 2**14, 'r': 8, 'p': 1, 'salt': salt.hex(), 'hash': h.hex(), 'updatedAt': _now()}
     h = hashlib.pbkdf2_hmac('sha256', pw.encode('utf-8'), salt, 310000)
     return {'algo': 'pbkdf2', 'iter': 310000, 'salt': salt.hex(), 'hash': h.hex(), 'updatedAt': _now()}
 
 
-def verify_password(pw, rec):
+def verify_password(pw, rec) -> bool:
     try:
         salt = bytes.fromhex(rec['salt'])
         if rec['algo'] == 'scrypt':
@@ -72,87 +69,93 @@ def verify_password(pw, rec):
 LOGIN_RE = re.compile(r'^[A-Za-z0-9А-Яа-яЁё._@-]{2,40}$')
 
 
-def accounts(store):
+def accounts(store) -> list:
     """Учётные записи администраторов [{login, name, pw, created, by, lastLogin}] (с переносом прежнего пароля)."""
     rec = store.kv_get('admins')
     if rec is None:
         old = store.kv_get('admin')
-        rec = {'users': [{'login': 'admin', 'name': 'Администратор', 'pw': old, 'created': _now(), 'by': 'перенос'}] if old else []}
+        rec = {
+            'users': [{'login': 'admin', 'name': 'Администратор', 'pw': old, 'created': _now(), 'by': 'перенос'}]
+            if old
+            else []
+        }
         if old:
             store.kv_set('admins', rec)
             store.write("DELETE FROM kv WHERE key='admin'")
     return rec.get('users') or []
 
 
-def save_accounts(store, users):
+def save_accounts(store, users) -> None:
     store.kv_set('admins', {'users': users})
 
 
-def find_account(users, login):
+def find_account(users, login) -> dict | None:
     lo = (login or '').strip().lower()
     return next((u for u in users if u['login'].lower() == lo), None)
 
 
-def check_login(login):
+def check_login(login) -> None:
     if not LOGIN_RE.match(login or ''):
         raise ValueError('Логин — от 2 до 40 символов: буквы, цифры, точка, дефис, @')
 
 
-def public_account(u):
+def public_account(u) -> dict:
     return {k: u.get(k) for k in ('login', 'name', 'created', 'by', 'lastLogin')}
 
 
-def check_new_password(pw):
+def check_new_password(pw) -> None:
     n = SrvVal.now('srv.adminPwMin')
     if len(pw or '') < n:
-        raise ValueError('Пароль — не короче %d символов' % n)
+        raise ValueError(f'Пароль — не короче {n} символов')
     if not (re.search(r'\d', pw) and re.search(r'[^\d]', pw)):
         raise ValueError('В пароле нужны и буквы, и цифры')
 
 
-# ---------------------------------------------------------------- сессии и попытки входа
 LOCK = threading.RLock()
 
 
 class AdminSessions:
-    """Сессии администраторов «Настроек»: в памяти и в базе (kv adminSessions — хеш токена, а не сам токен), поэтому
-    перезапуск программы (обновление, «Перезапустить») не выводит администратора из «Настроек». 15 минут бездействия —
-    сессия закрывается; время последнего действия записывается в базу не чаще раза в минуту. При загрузке из базы
-    сессии удалённых учётных записей не восстанавливаются."""
+    """Сессии администраторов «Настроек»: в памяти и в базе (хеш токена), срок бездействия."""
+
     KV = 'adminSessions'
     SAVE_EVERY = 60
     FIELDS = ('csrf', 'last', 'ip', 'login', 'name')
-    items = None          # {хеш токена: {csrf, last, ip, login, name, saved}}
+    items = None  # {хеш токена: {csrf, last, ip, login, name, saved}}
 
     @staticmethod
-    def key(tok):
+    def key(tok) -> str:
         return hashlib.sha256(tok.encode('utf-8')).hexdigest() if tok else ''
 
     @staticmethod
-    def _store():
+    def _store() -> object:
         from config import store
+
         return store()
 
     @classmethod
-    def _all(cls):
+    def _all(cls) -> dict:
         if cls.items is None:
             st, now = cls._store(), time.time()
             idle = SrvVal.get(st, 'srv.adminIdleMin') * 60
             logins = {u['login'].lower() for u in accounts(st)}
             raw = st.kv_get(cls.KV) or {}
-            cls.items = {k: dict(v, saved=v.get('last', 0)) for k, v in (raw.items() if isinstance(raw, dict) else [])
-                         if isinstance(v, dict) and now - float(v.get('last') or 0) <= idle
-                         and (not v.get('login') or v['login'].lower() in logins)}
+            cls.items = {
+                k: dict(v, saved=v.get('last', 0))
+                for k, v in (raw.items() if isinstance(raw, dict) else [])
+                if isinstance(v, dict)
+                and now - float(v.get('last') or 0) <= idle
+                and (not v.get('login') or v['login'].lower() in logins)
+            }
         return cls.items
 
     @classmethod
-    def _save(cls):
+    def _save(cls) -> None:
         cls._store().kv_set(cls.KV, {k: {f: v.get(f) for f in cls.FIELDS} for k, v in cls.items.items()})
         for v in cls.items.values():
             v['saved'] = v['last']
 
     @classmethod
-    def get(cls, tok, touch=True):
+    def get(cls, tok, touch=True) -> dict | None:
         """Действующая сессия по токену из cookie или None."""
         if not tok:
             return None
@@ -173,22 +176,27 @@ class AdminSessions:
             return s
 
     @classmethod
-    def start(cls, h, user=None):
+    def start(cls, h, user=None) -> tuple:
         tok, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
         with LOCK:
-            cls._all()[cls.key(tok)] = {'csrf': csrf, 'last': time.time(), 'ip': _ip(h), 'login': (user or {}).get('login', ''),
-                                        'name': (user or {}).get('name') or (user or {}).get('login') or 'Администратор'}
+            cls._all()[cls.key(tok)] = {
+                'csrf': csrf,
+                'last': time.time(),
+                'ip': _ip(h),
+                'login': (user or {}).get('login', ''),
+                'name': (user or {}).get('name') or (user or {}).get('login') or 'Администратор',
+            }
             cls._save()
         return tok, csrf
 
     @classmethod
-    def drop(cls, tok):
+    def drop(cls, tok) -> None:
         with LOCK:
             if cls._all().pop(cls.key(tok), None) is not None:
                 cls._save()
 
     @classmethod
-    def drop_login(cls, login, keep=''):
+    def drop_login(cls, login, keep='') -> None:
         """Закрыть сессии учётной записи (удалена, сменён пароль), кроме сессии с токеном keep."""
         lo, kk = (login or '').lower(), cls.key(keep)
         with LOCK:
@@ -199,7 +207,7 @@ class AdminSessions:
                 cls._save()
 
     @classmethod
-    def rename(cls, old, login, name):
+    def rename(cls, old, login, name) -> None:
         with LOCK:
             for s in cls._all().values():
                 if s.get('login', '').lower() == (old or '').lower():
@@ -207,14 +215,14 @@ class AdminSessions:
             cls._save()
 
     @classmethod
-    def reset(cls, store):
+    def reset(cls, store) -> None:
         """Учётные записи сброшены (data/admin-reset.txt) — все сессии закрыты."""
         store.kv_set(cls.KV, {})
         with LOCK:
             cls.items = None
 
 
-def _cookie_token(h):
+def _cookie_token(h) -> str:
     for part in (h.headers.get('Cookie') or '').split(';'):
         k, _, v = part.strip().partition('=')
         if k == 'kp_admin':
@@ -222,33 +230,33 @@ def _cookie_token(h):
     return ''
 
 
-def session(h, touch=True):
+def session(h, touch=True) -> dict | None:
     """Действующая сессия администратора или None (по cookie; 15 минут бездействия — сессия закрывается)."""
     return AdminSessions.get(_cookie_token(h), touch)
 
 
-def is_admin(h, need_csrf=True):
+def is_admin(h, need_csrf=True) -> bool:
     s = session(h)
     if not s:
         return False
-    return not need_csrf or hmac.compare_digest((h.headers.get('X-CSRF-Token') or '').encode('utf-8'), str(s['csrf']).encode('utf-8'))
+    return not need_csrf or hmac.compare_digest(
+        (h.headers.get('X-CSRF-Token') or '').encode('utf-8'), str(s['csrf']).encode('utf-8')
+    )
 
 
 class LoginGuard:
-    """Защита входа от подбора паролей (менеджеры и администраторы): неверные попытки считаются по адресу компьютера.
-    srv.loginFails ошибок подряд (без перерыва дольше srv.loginLockMin мин) — вход с этого адреса закрыт на srv.loginLockMin
-    минут после последней ошибки. Ответ говорит, сколько ждать (заголовок Retry-After) и сколько попыток осталось, но не
-    говорит, есть ли такой логин: неизвестный логин проверяется по «пустому» хешу — время ответа то же."""
+    """Защита входа от подбора паролей (менеджеры и администраторы): неверные попытки считаются по адресу компьютера."""
+
     FAILS = {}
     WRONG = 'Неверный логин или пароль'
     _dummy = None
 
     @classmethod
-    def _limits(cls):
+    def _limits(cls) -> tuple:
         return SrvVal.now('srv.loginLockMin') * 60, SrvVal.now('srv.loginFails')
 
     @classmethod
-    def _tries(cls, ip):
+    def _tries(cls, ip) -> list:
         """Неверные попытки с адреса (старые — забываются)."""
         now = time.time()
         window = cls._limits()[0]
@@ -258,21 +266,20 @@ class LoginGuard:
             return list(cls.FAILS.get(ip, []))
 
     @classmethod
-    def ok(cls, ip):
-        """Верный вход или смена пароля: прежние ошибки с этого адреса забываются (иначе одна опечатка позже закрывала
-        бы вход сразу на всю паузу)."""
+    def ok(cls, ip) -> None:
+        """Верный вход или смена пароля — прежние ошибки с этого адреса забываются."""
         with LOCK:
             cls.FAILS.pop(ip, None)
 
     @classmethod
-    def left(cls, ip):
+    def left(cls, ip) -> int:
         """Сколько секунд вход с адреса ещё закрыт; 0 — открыт."""
         window, limit = cls._limits()
         v = cls._tries(ip)
         return max(1, math.ceil(v[-1] + window - time.time())) if len(v) >= limit else 0
 
     @classmethod
-    def verify(cls, pw, rec):
+    def verify(cls, pw, rec) -> bool:
         """Пароль подходит к хешу; нет хеша (нет такого логина) — та же работа впустую и False."""
         if not rec:
             if cls._dummy is None:
@@ -282,36 +289,42 @@ class LoginGuard:
         return verify_password(str(pw or ''), rec)
 
     @staticmethod
-    def wait_text(sec):
-        return '%d мин' % math.ceil(sec / 60) if sec > 30 else '%d с' % sec
+    def wait_text(sec) -> str:
+        return f'{math.ceil(sec / 60)} мин' if sec > 30 else f'{sec} с'
 
     @classmethod
-    def refuse(cls, h, sec):
+    def refuse(cls, h, sec) -> None:
         """429: вход закрыт — сколько ждать."""
-        return h.send(429, 'text/plain; charset=utf-8', 'Слишком много неверных попыток — вход с этого компьютера снова через %s'
-                      % cls.wait_text(sec), {'Retry-After': str(sec)})
+        return h.send(
+            429,
+            'text/plain; charset=utf-8',
+            f'Слишком много неверных попыток — вход с этого компьютера снова через {cls.wait_text(sec)}',
+            {'Retry-After': str(sec)},
+        )
 
     @classmethod
-    def wrong(cls, h, ip, text=None):
-        """Неверный логин или пароль (text — свой текст, например «Текущий пароль указан неверно» при смене пароля):
-        попытка засчитана; последняя — сразу 429, предпоследние — сколько осталось."""
+    def wrong(cls, h, ip, text=None) -> None:
+        """Неверный логин или пароль: счётчик попыток, пауза; text — свой текст ответа."""
         text = text or cls.WRONG
         with LOCK:
             cls.FAILS.setdefault(ip, []).append(time.time())
         sec = cls.left(ip)
         if sec:
-            return h.send(429, 'text/plain; charset=utf-8', '%s. Вход с этого компьютера закрыт на %s' % (text, cls.wait_text(sec)),
-                          {'Retry-After': str(sec)})
+            return h.send(
+                429,
+                'text/plain; charset=utf-8',
+                f'{text}. Вход с этого компьютера закрыт на {cls.wait_text(sec)}',
+                {'Retry-After': str(sec)},
+            )
         rest = cls._limits()[1] - len(cls._tries(ip))
-        return h.send(403, 'text/plain; charset=utf-8', text + ('. Осталось попыток: %d' % rest if rest <= 2 else ''))
+        return h.send(403, 'text/plain; charset=utf-8', text + (f'. Осталось попыток: {rest}' if rest <= 2 else ''))
 
 
-# ---------------------------------------------------------------- журнал действий
-def _ip(h):
+def _ip(h) -> str:
     return (h.client_address or ('',))[0]
 
 
-def actor(h, admin=None):
+def actor(h, admin=None) -> tuple:
     """Кто действует: администратор (по сессии) или менеджер, выбранный в программе (заголовки запроса)."""
     s = session(h, touch=False)
     if admin is None:
@@ -319,33 +332,32 @@ def actor(h, admin=None):
     uid = urllib.parse.unquote(h.headers.get('X-KP-User-Id') or '')[:64]
     name = urllib.parse.unquote(h.headers.get('X-KP-User') or '')[:120]
     u = getattr(h, '_kp_user', None)
-    if u and not (admin and s):                       # вход по паролю включён — кто работает, знает сервер
+    if u and not (admin and s):  # вход по паролю включён — кто работает, знает сервер
         return u['id'], u['name'], 'user'
-    if admin and s:                                   # действия в «Настройках» — от имени вошедшего администратора
+    if admin and s:  # действия в «Настройках» — от имени вошедшего администратора
         return 'admin:' + s.get('login', ''), s.get('name') or 'Администратор', 'admin'
     return uid or None, name or ('Администратор' if admin else 'Не выбран'), 'admin' if admin else 'user'
 
 
-# ---------- «Экономика сделки»: только автору КП и администратору ----------
 # Автор — authorId в состоянии/описании КП (у КП прежних версий — менеджер КП). Пользователь — подпись запроса
 # (менеджер, выбранный на устройстве): это не вход по паролю, а защита от случайного просмотра; администратор видит всё.
 DEAL_KEYS_STATE = ('deal',)
 DEAL_KEYS_META = ('deal', 'econ')
 
 
-def login_on(h):
+def login_on(h) -> bool:
     """Вход менеджеров по паролю включён и запрос — не от администратора: права проверяются."""
     return bool(getattr(h, '_kp_login', False)) and session(h, touch=False) is None
 
 
-def perm(h, key):
+def perm(h, key) -> bool:
     if not login_on(h):
         return True
     u = getattr(h, '_kp_user', None)
     return bool(u and u['perms'].get(key))
 
 
-def own_kp(h, doc):
+def own_kp(h, doc) -> bool:
     u = getattr(h, '_kp_user', None) or {}
     author = (doc or {}).get('authorId') or (doc or {}).get('managerId')
     if author:
@@ -354,10 +366,8 @@ def own_kp(h, doc):
     return not m or m == str(u.get('name') or '').strip().lower()
 
 
-def kp_access(h, store, kid):
-    """Открыть / сохранить КП: своё — всегда, чужое — с правом «КП других менеджеров»; нового КП ещё нет — можно.
-    КП в корзине — только администратору: его версии и документы ждут восстановления, а запись под тем же номером
-    сделала бы восстановление невозможным. Описания нет, а версии есть — права по описанию последней версии."""
+def kp_access(h, store, kid: str) -> bool:
+    """Открыть / сохранить КП: своё — всегда, чужое — с правом «КП других менеджеров»; нового КП ещё нет — можно."""
     meta = _loads(store.kp_get(kid, 'meta')) or _loads(store.kp_get(kid, 'state'))
     if not meta and store.kp_trashed(kid):
         return session(h, touch=False) is not None
@@ -367,7 +377,7 @@ def kp_access(h, store, kid):
     return not meta or own_kp(h, meta) or perm(h, 'kpOthers')
 
 
-def deal_allowed(h, doc):
+def deal_allowed(h, doc) -> bool:
     if session(h, touch=False) is not None:
         return True
     if login_on(h):
@@ -376,11 +386,11 @@ def deal_allowed(h, doc):
     author = (doc or {}).get('authorId') or (doc or {}).get('managerId')
     if author:
         return bool(uid) and uid == author
-    m = str((doc or {}).get('manager') or '').strip().lower()      # описание КП прежней версии — по имени автора
+    m = str((doc or {}).get('manager') or '').strip().lower()  # описание КП прежней версии — по имени автора
     return not m or (name or '').strip().lower() == m
 
 
-def kp_out(h, field, text):
+def kp_out(h, field, text) -> str:
     """Состояние или описание КП для ответа: экономику чужого КП убираем."""
     if not text or field not in ('state', 'meta'):
         return text
@@ -390,19 +400,19 @@ def kp_out(h, field, text):
         return text
     if deal_allowed(h, doc):
         return text
-    for k in (DEAL_KEYS_STATE if field == 'state' else DEAL_KEYS_META):
+    for k in DEAL_KEYS_STATE if field == 'state' else DEAL_KEYS_META:
         doc.pop(k, None)
     doc['locked'] = True
     return json.dumps(doc, ensure_ascii=False)
 
 
 class KpManagerLock:
-    """Вход по паролю: менеджер в КП — только вошедший (код, ФИО, должность и контакты — из его карточки справочника);
-    подставить другого менеджера нельзя ни из интерфейса, ни запросом. Администратор («Настройки») — без ограничения."""
+    """Вход по паролю: менеджер в КП — только вошедший (при правке чужого КП — тот, кто сохранил)."""
+
     CONTACTS = ('name', 'position', 'phone', 'ext', 'mobile', 'email')
 
     @classmethod
-    def apply(cls, h, store, field, text):
+    def apply(cls, h, store, field, text) -> str:
         u = getattr(h, '_kp_user', None)
         if not (login_on(h) and u) or session(h, touch=False) is not None:
             return text
@@ -412,7 +422,9 @@ class KpManagerLock:
             return text
         if not isinstance(d, dict):
             return text
-        card = next((x for x in (_loads(store.managers_list()) or []) if x.get('id') == u['id']), None) or {'name': u.get('name') or ''}
+        card = next((x for x in (_loads(store.managers_list()) or []) if x.get('id') == u['id']), None) or {
+            'name': u.get('name') or ''
+        }
         d['managerId'] = u['id']
         if field == 'meta':
             d['manager'], d['managerPost'] = card.get('name') or '', card.get('position') or ''
@@ -422,16 +434,15 @@ class KpManagerLock:
         return json.dumps(d, ensure_ascii=False)
 
 
-def kp_in(h, store, kid, field, text):
-    """Сохранение КП не автором: расчёт экономики и автор остаются прежними (их не видно — значит, и не затереть).
-    При входе по паролю менеджер в КП — вошедший (KpManagerLock)."""
+def kp_in(h, store, kid: str, field, text) -> str:
+    """Сохранение КП не автором: расчёт экономики и автор остаются прежними (их не видно — значит, и не затереть)."""
     if field not in ('state', 'meta'):
         return text
     text = KpManagerLock.apply(h, store, field, text)
     old = store.kp_get(kid, field)
     if not old:
         u = getattr(h, '_kp_user', None)
-        if login_on(h) and u:            # новое КП при входе по паролю: автор — вошедший менеджер, а не подпись браузера
+        if login_on(h) and u:  # новое КП при входе по паролю: автор — вошедший менеджер, а не подпись браузера
             try:
                 n = json.loads(text)
                 if isinstance(n, dict):
@@ -448,7 +459,7 @@ def kp_in(h, store, kid, field, text):
         return text
     u = getattr(h, '_kp_user', None)
     if login_on(h) and u and session(h, touch=False) is None and o.get('authorId'):
-        n['authorId'] = o['authorId']           # автор КП не меняется запросом менеджера («передать» КП коллеге нельзя)
+        n['authorId'] = o['authorId']  # автор КП не меняется запросом менеджера («передать» КП коллеге нельзя)
         text = json.dumps(n, ensure_ascii=False)
     if deal_allowed(h, o):
         return text
@@ -461,25 +472,26 @@ def kp_in(h, store, kid, field, text):
     return json.dumps(n, ensure_ascii=False)
 
 
-def _jround(x):
-    return int(math.floor(x + 0.5))
+def _jround(x) -> int:
+    return math.floor(x + 0.5)
 
 
-def econ_rub(r):
-    """Сумма КП в рублях и прибыль в рублях (копейки) для итогов журнала — как jEcon() в интерфейсе.
-    Не число (КП из старой копии или файла: «1 000», NaN) — 0 / нет: одно такое КП не ломает журнал и статистику."""
-    def num(v):
+def econ_rub(r) -> tuple:
+    """Сумма КП в рублях и прибыль в рублях (копейки) для итогов журнала — как jEcon() в интерфейсе."""
+
+    def num(v) -> float:
         if isinstance(v, bool) or not isinstance(v, (int, float)):
             try:
                 v = float(str(v).replace(' ', '').replace('\xa0', '').replace(',', '.'))
             except (TypeError, ValueError):
                 return 0
-        return v if v == v and abs(v) != float('inf') else 0
+        return v if math.isfinite(v) else 0
+
     a, b = _econ_rub(r)
     return (None if a is None else num(a)), (None if b is None else num(b))
 
 
-def _econ_rub(r):
+def _econ_rub(r) -> tuple:
     e = r.get('econ') if isinstance(r.get('econ'), dict) else None
     cur = (e or {}).get('cur') or 'RUB'
     base = ((e or {}).get('sum') if e else r.get('sum')) or 0
@@ -501,16 +513,15 @@ def _econ_rub(r):
 
 
 class KpJournal:
-    """Журнал КП с правами: чужие КП — только с правом «КП других менеджеров», экономика чужого КП убирается (locked);
-    постраничный вывод с итогами и воронкой по статусам."""
+    """Журнал КП с правами: чужие — с правом «КП других менеджеров», экономика чужого КП убирается."""
 
     @staticmethod
-    def status(r):
+    def status(r) -> str:
         """Статус хода сделки строки журнала (нет хода сделки — new)."""
         return ((r.get('track') or {}).get('status') if isinstance(r.get('track'), dict) else None) or 'new'
 
     @staticmethod
-    def rows(h, rows):
+    def rows(h, rows) -> list:
         """Разобранные описания КП с правами журнала (список меняется на месте)."""
         if login_on(h) and not perm(h, 'kpOthers'):
             rows = [r for r in rows if isinstance(r, dict) and own_kp(h, r)]
@@ -522,21 +533,20 @@ class KpJournal:
         return rows
 
     @classmethod
-    def out(cls, h, text):
+    def out(cls, h, text) -> str:
         """Журнал строкой JSON (как его отдаёт база) → строка JSON с правами."""
         try:
             rows = json.loads(text)
         except ValueError:
-            return '[]'          # без разбора нельзя убрать чужую экономику — лучше пусто, чем лишнее
+            return '[]'  # без разбора нельзя убрать чужую экономику — лучше пусто, чем лишнее
         return json.dumps(cls.rows(h, rows), ensure_ascii=False)
 
-    _cache = {}          # (версия журнала, поиск, автор, вид) → разобранные описания КП; последние 8 отборов
+    _cache = {}  # (версия журнала, поиск, автор, вид) → разобранные описания КП; последние 8 отборов
     _lock = threading.Lock()
 
     @classmethod
-    def parsed(cls, store, q, author, kind):
-        """Описания КП под отбором, разобранные один раз на версию журнала (datarev:kpj растёт при любой записи в kp):
-        прокрутка журнала и повторные открытия не разбирают тысячи описаний заново."""
+    def parsed(cls, store, q, author, kind) -> list:
+        """Описания КП под отбором, разобранные один раз на версию журнала (datarev:kpj)."""
         key = (store.data_rev('kpj'), str(q), str(author), str(kind))
         with cls._lock:
             hit = cls._cache.get(key)
@@ -551,10 +561,10 @@ class KpJournal:
         return rows
 
     @classmethod
-    def page(cls, h, store, q):
+    def page(cls, h, store, q) -> dict:
         """Журнал КП постранично: поиск и автор — в базе; итоги (сумма, прибыль) — по всему отбору."""
         try:
-            limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, min(int(q.get('offset') or 0), 10 ** 9))
+            limit, offset = max(1, min(int(q.get('limit') or 50), 500)), max(0, min(int(q.get('offset') or 0), 10**9))
         except ValueError:
             limit, offset = 50, 0
         rows = cls.rows(h, [dict(d) for d in cls.parsed(store, q.get('q', ''), q.get('author', ''), q.get('kind', ''))])
@@ -576,45 +586,71 @@ class KpJournal:
             if p is not None:
                 s_profit += p
                 n_profit += 1
-        return {'total': len(rows), 'items': rows[offset:offset + limit], 'authors': store.kp_authors(),
-                'agg': {'sum': s_sum, 'profit': s_profit, 'profitN': n_profit}, 'funnel': funnel}
+        return {
+            'total': len(rows),
+            'items': rows[offset : offset + limit],
+            'authors': store.kp_authors(),
+            'agg': {'sum': s_sum, 'profit': s_profit, 'profitN': n_profit},
+            'funnel': funnel,
+        }
 
 
-def log(h, store, action, etype=None, eid=None, before=None, after=None, result='success', admin=None):
+def log(h, store, action, etype=None, eid=None, before=None, after=None, result='success', admin=None) -> None:
     uid, name, role = actor(h, admin)
     try:
-        store.audit_add({'userId': uid, 'userName': name, 'userRole': role, 'action': action, 'entityType': etype,
-                         'entityId': None if eid is None else str(eid), 'before': before, 'after': after,
-                         'ip': _ip(h), 'userAgent': h.headers.get('User-Agent') or '', 'result': result})
+        store.audit_add(
+            {
+                'userId': uid,
+                'userName': name,
+                'userRole': role,
+                'action': action,
+                'entityType': etype,
+                'entityId': None if eid is None else str(eid),
+                'before': before,
+                'after': after,
+                'ip': _ip(h),
+                'userAgent': h.headers.get('User-Agent') or '',
+                'result': result,
+            }
+        )
     except Exception:
-        pass   # журнал не должен мешать работе
+        pass  # журнал не должен мешать работе
 
 
 ABSENT = '__absent__'
 
 
-def _short(v, limit=20000):
+def _short(v, limit: int = 20000) -> object:
     t = json.dumps(v, ensure_ascii=False)
     return v if len(t) <= limit else {'__truncated__': len(t)}
 
 
-def diff(before, after, skip=()):
+def diff(before, after, skip=()) -> tuple:
     """Только изменённые поля: ({поле: было}, {поле: стало}); отсутствующее поле — ABSENT."""
     b, a = before or {}, after or {}
-    norm = lambda v: ABSENT if v in (None, '', [], {}) else v      # пустое и отсутствующее поле — одно и то же
-    keys = [k for k in sorted(set(b) | set(a)) if k not in skip and not k.startswith('_')
-            and json.dumps(norm(b.get(k)), sort_keys=True, ensure_ascii=False) != json.dumps(norm(a.get(k)), sort_keys=True, ensure_ascii=False)]
+
+    def norm(v) -> object:
+        return ABSENT if v in (None, '', [], {}) else v  # пустое и отсутствующее поле — одно и то же
+
+    keys = [
+        k
+        for k in sorted(set(b) | set(a))
+        if k not in skip
+        and not k.startswith('_')
+        and json.dumps(norm(b.get(k)), sort_keys=True, ensure_ascii=False)
+        != json.dumps(norm(a.get(k)), sort_keys=True, ensure_ascii=False)
+    ]
     return {k: _short(b.get(k, ABSENT)) for k in keys}, {k: _short(a.get(k, ABSENT)) for k in keys}
 
 
-def _loads(t):
+def _loads(t) -> object:
     try:
         return json.loads(t) if t else None
     except Exception:
         return None
 
 
-def _body_obj(h):
+def _body_obj(h) -> dict:
     """Тело запроса — объект JSON или {} (не объект — маршрут сам ответит 400, журнал не падает)."""
     try:
         d = _loads(h.body().decode('utf-8'))
@@ -623,18 +659,17 @@ def _body_obj(h):
     return d if isinstance(d, dict) else {}
 
 
-# ---------------------------------------------------------------- модерация
-def moderation(store):
-    return ((store.kv_get('settings') or {}).get('productEditModeration') or {'enabled': False})
+def moderation(store) -> dict:
+    return (store.kv_get('settings') or {}).get('productEditModeration') or {'enabled': False}
 
 
-def _set_moderation(store, enabled, by):
+def _set_moderation(store, enabled, by: str) -> None:
     st = store.kv_get('settings') or {}
     st['productEditModeration'] = {'enabled': bool(enabled), 'updatedAt': _now(), 'updatedBy': by}
     store.kv_set('settings', st)
 
 
-def _put_product(h, store, cid, admin):
+def _put_product(h, store, cid, admin) -> None:
     """Единая точка сохранения товара: модерация (черновик) или сразу в каталог; всё — в журнал."""
     after = _body_obj(h)
     if not after or not isinstance(after.get('attrs', {}), dict):
@@ -645,17 +680,19 @@ def _put_product(h, store, cid, admin):
     text = json.dumps(after, ensure_ascii=False)
     before_text = store.catalog_get(cid)
     before = _loads(before_text)
-    b, a = diff(before, after)          # что изменилось (одним сравнением на всё сохранение)
-    auto = before is not None and set(a) <= AUTO_KEYS     # сохранение КП обновило только цены и историю
-    if not admin and login_on(h):
-        if not auto and not perm(h, 'catEdit' if before is not None else 'catAdd'):
-            log(h, store, 'edit_product' if before else 'create_product', 'product', cid, result='failed')
-            return h.send(403, 'text/plain; charset=utf-8', 'Нет права %s оборудование в каталоге — обратитесь к администратору'
-                          % ('редактировать' if before is not None else 'добавлять'))
+    b, a = diff(before, after)  # что изменилось (одним сравнением на всё сохранение)
+    auto = before is not None and set(a) <= AUTO_KEYS  # сохранение КП обновило только цены и историю
+    if not admin and login_on(h) and not auto and not perm(h, 'catEdit' if before is not None else 'catAdd'):
+        log(h, store, 'edit_product' if before else 'create_product', 'product', cid, result='failed')
+        return h.send(
+            403,
+            'text/plain; charset=utf-8',
+            f'Нет права {"редактировать" if before is not None else "добавлять"} оборудование в каталоге — обратитесь к администратору',
+        )
     # модерация не касается администратора и менеджера с правом «Правки без модерации»
     mod = moderation(store).get('enabled') and not admin and not (login_on(h) and perm(h, 'catSelfMod'))
     if mod and before is not None and h.headers.get('X-KP-Edit') == 'auto':
-        mod = not auto                   # сохранение КП обновило только цены и историю — без модерации
+        mod = not auto  # сохранение КП обновило только цены и историю — без модерации
     if mod:
         uid, name, _ = actor(h, False)
         pid = store.pending_add(cid, 'update' if before else 'create', before_text, text, uid, name)
@@ -666,13 +703,20 @@ def _put_product(h, store, cid, admin):
         rev = store.catalog_put(cid, text, actor(h, admin)[1], h.base_rev())
     except Conflict as e:
         return h.conflict(e)
-    log(h, store, 'price_sync' if auto else ('edit_product' if before else 'create_product'), 'product', cid,
-        b if before else None, a, admin=admin)
+    log(
+        h,
+        store,
+        'price_sync' if auto else ('edit_product' if before else 'create_product'),
+        'product',
+        cid,
+        b if before else None,
+        a,
+        admin=admin,
+    )
     return h.send_json({'ok': True, 'rev': rev})
 
 
-# ---------------------------------------------------------------- проверка прав перед маршрутом
-def _refuse(h, store=None, action=None, etype=None, eid=None, text=DENIED):
+def _refuse(h, store=None, action=None, etype=None, eid=None, text=DENIED) -> bool:
     """Отказ (403); попытка изменения (action) — в журнал. Возвращает True — «ответ уже отправлен» для guard."""
     if action:
         log(h, store, action, etype, eid, result='failed')
@@ -680,16 +724,16 @@ def _refuse(h, store=None, action=None, etype=None, eid=None, text=DENIED):
     return True
 
 
-def guard(h, store, m, path):
-    """Вызывается до обычного маршрута. True — ответ уже отправлен; функция — вызвать после успешного ответа
-    (запись в журнал); None — ничего не нужно."""
+def guard(h, store, m, path) -> object:
+    """Вызывается до обычного маршрута."""
     from settings_history import SettingsHistory
-    SettingsHistory.actor(actor(h)[1])            # запрос человека: его правки настроек — в историю
+
+    SettingsHistory.actor(actor(h)[1])  # запрос человека: его правки настроек — в историю
     if path.startswith('/api/admin/'):
-        AdminApi(h, store).handle(m, path[len('/api/admin/'):])
+        AdminApi(h, store).handle(m, path[len('/api/admin/') :])
         return True
     if path.startswith('/api/auth/'):
-        auth_api(h, store, m, path[len('/api/auth/'):])
+        auth_api(h, store, m, path[len('/api/auth/') :])
         return True
     # вход менеджеров по паролю: без входа — только экран входа; кто работает — по сессии
     h._kp_login = auth_users.enabled(store)
@@ -698,37 +742,56 @@ def guard(h, store, m, path):
         h.send(401, 'text/plain; charset=utf-8', 'Нужно войти в программу: логин и пароль менеджера')
         return True
     # вошёл с временным паролем от администратора — сначала задать свой (клиент по заголовку показывает форму смены)
-    if h._kp_user and h._kp_user.get('mustChange') and session(h, touch=False) is None and path not in ('/api/version', '/api/ping'):
-        h.send(403, 'text/plain; charset=utf-8', 'Сначала задайте свой пароль — временный пароль от администратора годится только для входа',
-               {'X-KP-Auth': 'change-password'})
+    if (
+        h._kp_user
+        and h._kp_user.get('mustChange')
+        and session(h, touch=False) is None
+        and path not in ('/api/version', '/api/ping')
+    ):
+        h.send(
+            403,
+            'text/plain; charset=utf-8',
+            'Сначала задайте свой пароль — временный пароль от администратора годится только для входа',
+            {'X-KP-Auth': 'change-password'},
+        )
         return True
     # выключенная администратором функция («Настройки → Функции программы») — её адреса закрыты
     from features import FeatureAccess
-    off = FeatureAccess(store).blocked(m, path, lambda: (session(h, touch=False) is not None, actor(h, admin=False)[0] or ''))
+
+    off = FeatureAccess(store).blocked(
+        m, path, lambda: (session(h, touch=False) is not None, actor(h, admin=False)[0] or '')
+    )
     if off:
-        return _refuse(h, text='Функция «%s» выключена администратором' % off)
+        return _refuse(h, text=f'Функция «{off}» выключена администратором')
     r = re.match(r'^/api/kp/([A-Za-z0-9_-]+)/', path)
     if r and not kp_access(h, store, r.group(1)):
         return _refuse(h, text='Это КП другого менеджера — нет доступа. Права выдаёт администратор')
     if path == '/api/types' and m == 'PUT' and not perm(h, 'catEdit'):
         return _refuse(h, text='Нет права менять категории оборудования — обратитесь к администратору')
     from catalog_admin import CatalogDesk
-    if CatalogDesk.handles(path):     # особые права менеджеров: в корзину, модерация, выгрузка (и администратор)
+
+    if CatalogDesk.handles(path):  # особые права менеджеров: в корзину, модерация, выгрузка (и администратор)
         return CatalogDesk(h, store).route(m, path)
     r = re.match(r'^/api/catalog/([A-Za-z0-9_-]{1,64})$', path)
-    if r and m == 'PUT' and r.group(1) in ('sources', 'pending', 'trash', 'export', 'moderation', 'search', 'sync'):      # служебные адреса — не карточки
+    if (
+        r and m == 'PUT' and r.group(1) in ('sources', 'pending', 'trash', 'export', 'moderation', 'search', 'sync')
+    ):  # служебные адреса — не карточки
         h.send(400, 'text/plain; charset=utf-8', 'Недопустимый идентификатор')
         return True
     if r and m == 'PUT':
         _put_product(h, store, r.group(1), is_admin(h))
         return True
     if m == 'DELETE':
-        return _refuse(h, store, 'delete_attempt', path.split('/')[2] if path.count('/') > 2 else None, path.rsplit('/', 1)[-1])
+        return _refuse(
+            h, store, 'delete_attempt', path.split('/')[2] if path.count('/') > 2 else None, path.rsplit('/', 1)[-1]
+        )
     # только администратор: тарифы доставки по России
     if path == '/api/logistics/refresh' and m == 'POST':
         if not is_admin(h):
             return _refuse(h)
-        return lambda: log(h, store, 'edit_settings', 'settings', 'logistics_refresh', None, {'source': 'ATI.SU'}, admin=True)
+        return lambda: log(
+            h, store, 'edit_settings', 'settings', 'logistics_refresh', None, {'source': 'ATI.SU'}, admin=True
+        )
     if path.startswith(('/api/logistics/carriers', '/api/logistics/china')):
         what = 'chinaRates' if 'china' in path else 'carrierApi'
         if not is_admin(h, need_csrf=(m != 'GET')):
@@ -752,14 +815,21 @@ def guard(h, store, m, path):
         return lambda: log(h, store, 'edit_settings', 'settings', 'uitexts', None, {'texts': n}, admin=True)
     # только администратор: шаблоны КП, ключи API
     tpl = re.match(r'^/api/templates/([A-Za-z0-9_-]+)/(file|restore|copy|reset|delete|open)$', path)
-    if (tpl and m in ('PUT', 'POST')) or (path == '/api/templates/folder' and m == 'POST') or (path == '/api/integrations' and m == 'PUT'):
+    if (
+        (tpl and m in ('PUT', 'POST'))
+        or (path == '/api/templates/folder' and m == 'POST')
+        or (path == '/api/integrations' and m == 'PUT')
+    ):
         if not is_admin(h):
             return _refuse(h, store, 'edit_settings', 'template' if tpl else 'settings', tpl.group(1) if tpl else path)
         if path == '/api/integrations':
             keys = list(_body_obj(h).keys())
             return lambda: log(h, store, 'edit_settings', 'settings', 'integrations', None, {'keys': keys}, admin=True)
         if tpl.group(2) != 'open':
-            info = {'action': tpl.group(2), 'file': urllib.parse.parse_qs(urllib.parse.urlsplit(h.path).query).get('name', [''])[0]}
+            info = {
+                'action': tpl.group(2),
+                'file': urllib.parse.parse_qs(urllib.parse.urlsplit(h.path).query).get('name', [''])[0],
+            }
             return lambda: log(h, store, 'edit_template', 'template', tpl.group(1), None, info, admin=True)
         return None
     # журнал: КП, менеджеры, клиенты, типы оборудования
@@ -776,53 +846,118 @@ def guard(h, store, m, path):
         old = next((x for x in json.loads(store.managers_list()) if x.get('id') == r.group(1)), None)
         new = _body_obj(h)
         b, a = diff(old, dict(new, id=r.group(1)), ('updatedAt',))
-        return (lambda: log(h, store, 'edit_manager' if old else 'create_manager', 'manager', r.group(1), b if old else None, a)) if a else None
+        return (
+            (
+                lambda: log(
+                    h, store, 'edit_manager' if old else 'create_manager', 'manager', r.group(1), b if old else None, a
+                )
+            )
+            if a
+            else None
+        )
     r = re.match(r'^/api/clients/([A-Za-z0-9_-]+)$', path)
     if r and m == 'PUT':
         old = store.client_get(r.group(1))
         new = _body_obj(h)
         b, a = diff(old, new, ('updated', 'updatedAt', 'kpCount', 'lastKp'))
-        return (lambda: log(h, store, 'edit_client' if old else 'create_client', 'client', r.group(1), b if old else None, a)) if a else None
+        return (
+            (
+                lambda: log(
+                    h, store, 'edit_client' if old else 'create_client', 'client', r.group(1), b if old else None, a
+                )
+            )
+            if a
+            else None
+        )
     r = re.match(r'^/api/suppliers/([A-Za-z0-9_-]+)$', path)
     if r and m == 'PUT':
         old = store.supplier_get(r.group(1))
         new = _body_obj(h)
         b, a = diff(old, dict(new, id=r.group(1)), ('updatedAt',))
-        return (lambda: log(h, store, 'edit_supplier' if old else 'create_supplier', 'supplier', r.group(1), b if old else None, a)) if a else None
+        return (
+            (
+                lambda: log(
+                    h,
+                    store,
+                    'edit_supplier' if old else 'create_supplier',
+                    'supplier',
+                    r.group(1),
+                    b if old else None,
+                    a,
+                )
+            )
+            if a
+            else None
+        )
     if path == '/api/customs' and m == 'PUT':
         new = _body_obj(h)
         old = store.customs_all().get(str(new.get('key') or ''))
-        return lambda: log(h, store, 'edit_customs', 'customs', new.get('key'), old and {k: old.get(k) for k in ('code', 'duty')},
-                           {k: new.get(k) for k in ('code', 'duty')})
+        return lambda: log(
+            h,
+            store,
+            'edit_customs',
+            'customs',
+            new.get('key'),
+            old and {k: old.get(k) for k in ('code', 'duty')},
+            {k: new.get(k) for k in ('code', 'duty')},
+        )
     if path == '/api/types' and m == 'PUT':
         stored = {t.get('id'): t for t in (store.kv_get('types') or {}).get('types', []) if isinstance(t, dict)}
         body = _body_obj(h)
-        if isinstance(body.get('add'), list):          # только добавление категорий — ничего не удаляется
-            return lambda: log(h, store, 'edit_types', 'types', 'user_types', None,
-                               {'added': [t.get('name') for t in body['add'] if isinstance(t, dict)]})
+        if isinstance(body.get('add'), list):  # только добавление категорий — ничего не удаляется
+            return lambda: log(
+                h,
+                store,
+                'edit_types',
+                'types',
+                'user_types',
+                None,
+                {'added': [t.get('name') for t in body['add'] if isinstance(t, dict)]},
+            )
         sent = body.get('types')
         new = {str(t.get('id')) for t in (sent if isinstance(sent, list) else []) if isinstance(t, dict)}
         try:
             from equipment_types import load_types_builtin
+
             builtin = {t.get('id'): t for t in load_types_builtin() if isinstance(t, dict)}
         except Exception:
             builtin = {}
         # копия стандартной категории без изменений — не удаление (её убирают, чтобы категория обновлялась с программой)
-        removed = {i for i in set(stored) - new if not (i in builtin and json.dumps(stored[i], sort_keys=True) == json.dumps(builtin[i], sort_keys=True))}
-        if removed and not is_admin(h):    # удалить свою категорию или вернуть стандартные — только администратор
+        removed = {
+            i
+            for i in set(stored) - new
+            if not (i in builtin and json.dumps(stored[i], sort_keys=True) == json.dumps(builtin[i], sort_keys=True))
+        }
+        if removed and not is_admin(h):  # удалить свою категорию или вернуть стандартные — только администратор
             return _refuse(h, store, 'delete_attempt', 'types', ','.join(sorted(removed)))
-        return lambda: log(h, store, 'edit_types', 'types', 'user_types', None,
-                           {'types': [t.get('name') for t in (sent if isinstance(sent, list) else []) if isinstance(t, dict)]})
+        return lambda: log(
+            h,
+            store,
+            'edit_types',
+            'types',
+            'user_types',
+            None,
+            {'types': [t.get('name') for t in (sent if isinstance(sent, list) else []) if isinstance(t, dict)]},
+        )
     return None
 
 
-# ---------------------------------------------------------------- вход менеджеров в конструктор
-def auth_api(h, store, m, sub):
-    send = lambda code, obj, extra=None: h.send(code, 'application/json; charset=utf-8', json.dumps(obj, ensure_ascii=False), extra)
+def auth_api(h, store, m, sub) -> None:
+    def send(code, obj, extra=None) -> None:
+        return h.send(code, 'application/json; charset=utf-8', json.dumps(obj, ensure_ascii=False), extra)
+
     if sub == 'status':
         u = auth_users.current(h, store) if auth_users.enabled(store) else None
-        return send(200, {'enabled': auth_users.enabled(store), 'user': u, 'admin': session(h, touch=False) is not None,
-                          'perms': [{'key': k, 'label': lb} for k, lb, _ in auth_users.PERMS], **auth_users.LoginInfo.public(store)})
+        return send(
+            200,
+            {
+                'enabled': auth_users.enabled(store),
+                'user': u,
+                'admin': session(h, touch=False) is not None,
+                'perms': [{'key': k, 'label': lb} for k, lb, _ in auth_users.PERMS],
+                **auth_users.LoginInfo.public(store),
+            },
+        )
     if sub == 'login' and m == 'POST':
         ip = _ip(h)
         sec = LoginGuard.left(ip)
@@ -833,22 +968,51 @@ def auth_api(h, store, m, sub):
         ok = LoginGuard.verify(d.get('password'), (rec or {}).get('pw'))
         expired = ok and auth_users.TempPassword.expired(rec)
         if not ok or rec.get('blocked') or expired:
-            store.audit_add({'userId': mid, 'userName': str(d.get('login') or '')[:40], 'userRole': 'user', 'action': 'login', 'entityType': 'user',
-                             'entityId': mid, 'after': {'reason': 'временный пароль истёк'} if expired and not rec.get('blocked') else None,
-                             'ip': ip, 'userAgent': h.headers.get('User-Agent') or '', 'result': 'failed'})
-            if ok and rec.get('blocked'):      # пароль верный, но вход запрещён — говорим только тому, кто знает пароль
+            store.audit_add(
+                {
+                    'userId': mid,
+                    'userName': str(d.get('login') or '')[:40],
+                    'userRole': 'user',
+                    'action': 'login',
+                    'entityType': 'user',
+                    'entityId': mid,
+                    'after': {'reason': 'временный пароль истёк'} if expired and not rec.get('blocked') else None,
+                    'ip': ip,
+                    'userAgent': h.headers.get('User-Agent') or '',
+                    'result': 'failed',
+                }
+            )
+            if ok and rec.get('blocked'):  # пароль верный, но вход запрещён — говорим только тому, кто знает пароль
                 return h.send(403, 'text/plain; charset=utf-8', 'Вход запрещён администратором — обратитесь к нему')
             if expired:
-                return h.send(403, 'text/plain; charset=utf-8', 'Срок временного пароля истёк — попросите администратора сбросить пароль ещё раз')
+                return h.send(
+                    403,
+                    'text/plain; charset=utf-8',
+                    'Срок временного пароля истёк — попросите администратора сбросить пароль ещё раз',
+                )
             return LoginGuard.wrong(h, ip)
         remember = d.get('remember', True) is not False
         LoginGuard.ok(ip)
         tok = auth_users.UserSession.start(store, mid, remember)
         auth_users.touch_login(store, mid)
-        store.audit_add({'userId': mid, 'userName': rec.get('login'), 'userRole': 'user', 'action': 'login', 'entityType': 'user', 'entityId': mid,
-                         'ip': ip, 'userAgent': h.headers.get('User-Agent') or '', 'result': 'success'})
-        return send(200, {'ok': True, 'mustChange': auth_users.TempPassword.of(rec) is not None},
-                    {'Set-Cookie': auth_users.UserSession.cookie(tok, remember)})
+        store.audit_add(
+            {
+                'userId': mid,
+                'userName': rec.get('login'),
+                'userRole': 'user',
+                'action': 'login',
+                'entityType': 'user',
+                'entityId': mid,
+                'ip': ip,
+                'userAgent': h.headers.get('User-Agent') or '',
+                'result': 'success',
+            }
+        )
+        return send(
+            200,
+            {'ok': True, 'mustChange': auth_users.TempPassword.of(rec) is not None},
+            {'Set-Cookie': auth_users.UserSession.cookie(tok, remember)},
+        )
     h._kp_user = auth_users.current(h, store) if auth_users.enabled(store) else None
     if sub == 'logout' and m == 'POST':
         tok = auth_users.cookie_token(h)
@@ -863,23 +1027,21 @@ def auth_api(h, store, m, sub):
 
 
 class UserAuthApi:
-    """Вошедший менеджер о себе: сменить пароль (в том числе временный — сразу после входа), выйти на всех устройствах.
-    Только по своей сессии (cookie kp_user, SameSite=Strict; чужие сайты отсекает проверка Origin сервера). Пароли — ни
-    в журнал, ни в ответ."""
+    """Вошедший менеджер о себе: сменить пароль, выйти на всех устройствах."""
 
-    def __init__(self, h, store):
+    def __init__(self, h, store) -> None:
         self.h, self.st = h, store
         self.u = h._kp_user
 
-    def text(self, code, text, extra=None):
+    def text(self, code, text, extra=None) -> None:
         return self.h.send(code, 'text/plain; charset=utf-8', text, extra)
 
-    def route(self, sub):
+    def route(self, sub) -> None:
         if not self.u:
             return self.text(401, 'Нужно войти в программу: логин и пароль менеджера')
         return self.password() if sub == 'password' else self.logout_all()
 
-    def password(self):
+    def password(self) -> None:
         h, st, mid = self.h, self.st, self.u['id']
         ip = _ip(h)
         sec = LoginGuard.left(ip)
@@ -894,34 +1056,46 @@ class UserAuthApi:
         except ValueError as e:
             return self.text(400, str(e))
         LoginGuard.ok(ip)
-        log(h, st, 'set_password', 'user', mid, None, {'by': 'сам', 'temp': temp, 'closedSessions': closed}, admin=False)
+        log(
+            h, st, 'set_password', 'user', mid, None, {'by': 'сам', 'temp': temp, 'closedSessions': closed}, admin=False
+        )
         return h.send_json({'ok': True, 'closed': closed})
 
-    def logout_all(self):
+    def logout_all(self) -> None:
         h, st, mid = self.h, self.st, self.u['id']
         closed = auth_users.UserSession.drop_all(st, mid)
         log(h, st, 'logout_all', 'user', mid, None, {'by': 'сам', 'closedSessions': closed}, admin=False)
-        return h.send(200, 'application/json; charset=utf-8', json.dumps({'ok': True, 'closed': closed}),
-                      {'Set-Cookie': auth_users.UserSession.cookie('')})
+        return h.send(
+            200,
+            'application/json; charset=utf-8',
+            json.dumps({'ok': True, 'closed': closed}),
+            {'Set-Cookie': auth_users.UserSession.cookie('')},
+        )
 
 
-# ---------------------------------------------------------------- API «Настроек»
 SECTIONS = ('catalog', 'kp', 'managers', 'clients', 'suppliers', 'audit', 'settings')
-SECTION_FILE = {'catalog': 'каталог', 'kp': 'КП', 'managers': 'менеджеры', 'clients': 'клиенты', 'suppliers': 'поставщики',
-                'audit': 'журнал', 'settings': 'настройки'}     # части имени файла выгрузки
+SECTION_FILE = {
+    'catalog': 'каталог',
+    'kp': 'КП',
+    'managers': 'менеджеры',
+    'clients': 'клиенты',
+    'suppliers': 'поставщики',
+    'audit': 'журнал',
+    'settings': 'настройки',
+}  # части имени файла выгрузки
 
 
 class AdminApi:
-    def __init__(self, h, store):
+    def __init__(self, h, store) -> None:
         self.h, self.st = h, store
 
-    def ok(self, obj=None):
+    def ok(self, obj=None) -> None:
         return self.h.send_json({'ok': True} if obj is None else obj)
 
-    def err(self, code, text):
+    def err(self, code, text) -> None:
         return self.h.send(code, 'text/plain; charset=utf-8', text)
 
-    def data(self):
+    def data(self) -> dict:
         """Тело запроса — объект JSON (пустое тело — {}); иначе 400 «Неверный запрос»."""
         raw = self.h.body()
         if not raw.strip():
@@ -929,25 +1103,33 @@ class AdminApi:
         try:
             d = json.loads(raw.decode('utf-8'))
         except ValueError:
-            raise BadRequest('Неверный запрос: нужен JSON')
+            raise BadRequest('Неверный запрос: нужен JSON') from None
         if d is None:
             return {}
         if not isinstance(d, dict):
             raise BadRequest('Неверный запрос: нужен объект JSON')
         return d
 
-    def log(self, *a, **k):
+    def log(self, *a, **k) -> None:
         log(self.h, self.st, *a, admin=True, **k)
 
-    def handle(self, m, sub):
+    def handle(self, m, sub) -> None:
         h, st = self.h, self.st
         q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(h.path).query, keep_blank_values=True, encoding='utf-8'))
         users = accounts(st)
         if sub == 'status':
             s = session(h)
-            return self.ok({'hasPassword': bool(users), 'admin': bool(s), 'csrf': s['csrf'] if s else '',
-                            'login': s.get('login', '') if s else '', 'name': s.get('name', '') if s else '',
-                            'canSetup': not users and h.is_local(), 'idleMinutes': SrvVal.get(st, 'srv.adminIdleMin')})
+            return self.ok(
+                {
+                    'hasPassword': bool(users),
+                    'admin': bool(s),
+                    'csrf': s['csrf'] if s else '',
+                    'login': s.get('login', '') if s else '',
+                    'name': s.get('name', '') if s else '',
+                    'canSetup': not users and h.is_local(),
+                    'idleMinutes': SrvVal.get(st, 'srv.adminIdleMin'),
+                }
+            )
         if sub == 'setup' and m == 'POST':
             if users:
                 return self.err(409, 'Администратор уже создан')
@@ -960,7 +1142,14 @@ class AdminApi:
                 check_new_password(pw)
             except ValueError as e:
                 return self.err(400, str(e))
-            u = {'login': login, 'name': str(d.get('name') or '').strip()[:80] or login, 'pw': hash_password(pw), 'created': _now(), 'by': 'первый вход', 'lastLogin': _now()}
+            u = {
+                'login': login,
+                'name': str(d.get('name') or '').strip()[:80] or login,
+                'pw': hash_password(pw),
+                'created': _now(),
+                'by': 'первый вход',
+                'lastLogin': _now(),
+            }
             save_accounts(st, [u])
             tok = self._login_ok(u)
             log(h, st, 'create_admin', 'admin', login, None, {'login': login, 'name': u['name']}, admin=True)
@@ -988,8 +1177,12 @@ class AdminApi:
         if sub == 'logout' and m == 'POST':
             AdminSessions.drop(_cookie_token(h))
             log(h, st, 'logout', 'admin', admin=True)
-            return h.send(200, 'application/json; charset=utf-8', '{"ok": true}',
-                          {'Set-Cookie': 'kp_admin=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict'})
+            return h.send(
+                200,
+                'application/json; charset=utf-8',
+                '{"ok": true}',
+                {'Set-Cookie': 'kp_admin=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict'},
+            )
         # дальше — только администратор; изменения — с CSRF-токеном
         if not is_admin(h, need_csrf=(m != 'GET')):
             if m != 'GET':
@@ -1000,18 +1193,37 @@ class AdminApi:
         except ValueError as e:
             return self.err(400, str(e))
 
-    def feeds(self, m, sub, q, me):
+    def feeds(self, m, sub, q, me) -> None:
         import feeds
         from equipment_types import load_types
+
         st = self.st
         types = load_types()['types']
         if sub == 'feeds' and m == 'GET':
-            return self.ok({'items': feeds.status(st), 'types': [{'id': t.get('id'), 'name': t.get('name'), 'group': t.get('group')} for t in types if not t.get('hidden')]})
+            return self.ok(
+                {
+                    'items': feeds.status(st),
+                    'types': [
+                        {'id': t.get('id'), 'name': t.get('name'), 'group': t.get('group')}
+                        for t in types
+                        if not t.get('hidden')
+                    ],
+                }
+            )
         if sub == 'feeds' and m == 'POST':
             f = feeds.feed_save(st, self.data())
-            self.log('edit_settings', 'settings', 'feed:' + f['id'], None, {'url': f['url'] or f.get('kind'), 'name': f['name']})
+            self.log(
+                'edit_settings',
+                'settings',
+                'feed:' + f['id'],
+                None,
+                {'url': f['url'] or f.get('kind'), 'name': f['name']},
+            )
             return self.ok(f)
-        r = re.match(r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|file|discounts|plan|loadplan|rebuild|purge|unblock)$', sub)
+        r = re.match(
+            r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|file|discounts|plan|loadplan|rebuild|purge|unblock)$',
+            sub,
+        )
         if not r:
             return self.err(404, 'Нет такого запроса')
         fid, act = r.group(1), r.group(2)
@@ -1022,7 +1234,9 @@ class AdminApi:
             return self.ok({'items': feeds.log_of(st, fid)})
         if act == 'status':
             return self.ok({'job': feeds.JOBS.get(fid)})
-        if act == 'discounts':      # как сетка скидок разложится по позициям; в теле можно прислать ещё не сохранённую сетку
+        if (
+            act == 'discounts'
+        ):  # как сетка скидок разложится по позициям; в теле можно прислать ещё не сохранённую сетку
             d = self.data() if m == 'POST' else {}
             g = dict(f)
             if isinstance(d.get('discounts'), list):
@@ -1035,7 +1249,9 @@ class AdminApi:
             return self.ok(feeds.discount_plan(st, g))
         if m != 'POST':
             return self.err(405, 'Нужен POST')
-        if act == 'loadplan':       # «Что загружать»: план «добавится / изменится / пропущено»; в теле — ещё не сохранённые настройки
+        if (
+            act == 'loadplan'
+        ):  # «Что загружать»: план «добавится / изменится / пропущено»; в теле — ещё не сохранённые настройки
             d = self.data()
             g = dict(f)
             if isinstance(d.get('filter'), dict):
@@ -1047,20 +1263,41 @@ class AdminApi:
             try:
                 return self.ok(feeds.FeedRules.plan(st, g, types))
             except Exception as e:
-                return self.err(422, 'Фид не загрузился: %s' % e)
-        if act == 'upload':         # файл фида из файлов: ?kind=pages|price&name=имя, тело — сам файл
+                return self.err(422, f'Фид не загрузился: {e}')
+        if act == 'upload':  # файл фида из файлов: ?kind=pages|price&name=имя, тело — сам файл
             if feeds.busy(fid):
                 return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
-            meta = feeds.feed_file_put(st, fid, q.get('kind', ''), self.h.body(), q.get('name', ''), q.get('slot') or None)
-            self.log('edit_settings', 'settings', 'feed:' + fid, None, {'file': q.get('kind'), 'name': meta['name'], 'rows': meta.get('rows')})
+            meta = feeds.feed_file_put(
+                st, fid, q.get('kind', ''), self.h.body(), q.get('name', ''), q.get('slot') or None
+            )
+            self.log(
+                'edit_settings',
+                'settings',
+                'feed:' + fid,
+                None,
+                {'file': q.get('kind'), 'name': meta['name'], 'rows': meta.get('rows')},
+            )
             return self.ok(meta)
-        if act == 'file':           # файл фида из файлов: {kind, slot, act: drop | cur, cur, sheet}
+        if act == 'file':  # файл фида из файлов: {kind, slot, act: drop | cur, cur, sheet}
             if feeds.busy(fid):
                 return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
             d = self.data()
-            x = feeds.feed_file_set(st, fid, str(d.get('kind') or ''), str(d.get('slot') or ''), str(d.get('act') or ''),
-                                    str(d.get('cur') or ''), str(d.get('sheet') or ''))
-            self.log('edit_settings', 'settings', 'feed:' + fid, None, {'file': d.get('kind'), 'slot': d.get('slot'), 'act': d.get('act'), 'cur': d.get('cur')})
+            x = feeds.feed_file_set(
+                st,
+                fid,
+                str(d.get('kind') or ''),
+                str(d.get('slot') or ''),
+                str(d.get('act') or ''),
+                str(d.get('cur') or ''),
+                str(d.get('sheet') or ''),
+            )
+            self.log(
+                'edit_settings',
+                'settings',
+                'feed:' + fid,
+                None,
+                {'file': d.get('kind'), 'slot': d.get('slot'), 'act': d.get('act'), 'cur': d.get('cur')},
+            )
             return self.ok(x.get('files') or {})
         if act == 'delete':
             feeds.feed_delete(st, fid)
@@ -1068,7 +1305,7 @@ class AdminApi:
             return self.ok()
         if feeds.busy(fid):
             return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
-        if act == 'purge':          # удалить позиции фида в корзину: {cat, preview, block}
+        if act == 'purge':  # удалить позиции фида в корзину: {cat, preview, block}
             d = self.data()
             cat = str(d.get('cat') or '')[:80]
             if d.get('preview') is True:
@@ -1076,16 +1313,16 @@ class AdminApi:
             r = feeds.FeedPurge.run(st, f, cat, d.get('block') is not False, actor(self.h, True)[1])
             self.log('delete_catalog', 'catalog', 'feed:' + fid, None, dict(r, feed=f.get('name'), cat=cat or 'все'))
             return self.ok(r)
-        if act == 'unblock':        # вернуть удалённые позиции фида в загрузку
+        if act == 'unblock':  # вернуть удалённые позиции фида в загрузку
             n = feeds.FeedPurge.unblock(st, fid)
             self.log('edit_settings', 'settings', 'feed:' + fid, {'excluded': n}, {'excluded': 0})
             return self.ok({'unblocked': n})
-        if act == 'plan':           # фид из файлов: что сделает сборка каталога (без записи)
+        if act == 'plan':  # фид из файлов: что сделает сборка каталога (без записи)
             try:
                 return self.ok(feeds.plan_summary(st, f))
             except Exception as e:
-                return self.err(422, 'Фид не загрузился: %s' % e)
-        if act == 'rebuild':        # разрешить сборку каталога заново (парс снова перестроит позиции производителя)
+                return self.err(422, f'Фид не загрузился: {e}')
+        if act == 'rebuild':  # разрешить сборку каталога заново (парс снова перестроит позиции производителя)
             feeds.feed_unbuild(st, fid)
             self.log('edit_settings', 'settings', 'feed:' + fid, {'built': True}, {'built': False})
             return self.ok()
@@ -1093,38 +1330,60 @@ class AdminApi:
             try:
                 return self.ok(feeds.preview(st, f, types))
             except Exception as e:
-                return self.err(422, 'Фид не загрузился: %s' % e)
+                return self.err(422, f'Фид не загрузился: {e}')
         who = me or 'администратор'
         if act == 'import':
             d = self.data()
             only = set(d.get('only') or []) or None
-            feeds.run_bg(feeds.import_feed, st, f, types, feeds.IMAGE_STORE, who, only, trash_missing=d.get('trashMissing') is True)
-            self.log('import_feed', 'catalog', 'feed:' + fid, None, {'url': f['url'], 'only': len(only) if only else 'все'})
+            feeds.run_bg(
+                feeds.import_feed,
+                st,
+                f,
+                types,
+                feeds.IMAGE_STORE,
+                who,
+                only,
+                trash_missing=d.get('trashMissing') is True,
+            )
+            self.log(
+                'import_feed', 'catalog', 'feed:' + fid, None, {'url': f['url'], 'only': len(only) if only else 'все'}
+            )
         else:
             feeds.run_bg(feeds.check_feed, st, f, who, types=types)
             self.log('check_feed', 'catalog', 'feed:' + fid, None, {'url': f['url']})
         return self.ok({'job': feeds.JOBS.get(fid) or {'state': 'run', 'kind': act}})
 
-    def _login_ok(self, user=None):
+    def _login_ok(self, user=None) -> None:
         tok, csrf = AdminSessions.start(self.h, user)
-        return self.h.send(200, 'application/json; charset=utf-8', json.dumps({'ok': True, 'csrf': csrf}),
-                           {'Set-Cookie': 'kp_admin=%s; Path=/; HttpOnly; SameSite=Strict' % tok})
+        return self.h.send(
+            200,
+            'application/json; charset=utf-8',
+            json.dumps({'ok': True, 'csrf': csrf}),
+            {'Set-Cookie': f'kp_admin={tok}; Path=/; HttpOnly; SameSite=Strict'},
+        )
 
-    def route(self, m, sub, q):
+    def route(self, m, sub, q) -> None:
         st = self.st
         me = (session(self.h, touch=False) or {}).get('login', '')
-        if sub in ('system', 'attention', 'restart', 'folder', 'log', 'log/download', 'alerts', 'alerts/test') or sub == 'update' or sub.startswith('update/'):
+        if (
+            sub in ('system', 'attention', 'restart', 'folder', 'log', 'log/download', 'alerts', 'alerts/test')
+            or sub == 'update'
+            or sub.startswith('update/')
+        ):
             return self.system(m, sub, q, me)
         if sub == 'history' or sub.startswith('history/'):
             return self.history(m, sub, q)
-        if sub == 'connections':      # проверить все подключения: почта, нейросеть, ЦБ, контрагенты, перевозчики, GitHub, фиды, PDF
+        if (
+            sub == 'connections'
+        ):  # проверить все подключения: почта, нейросеть, ЦБ, контрагенты, перевозчики, GitHub, фиды, PDF
             from config import ROOT
             from connections import ConnectionCheck
+
             cc = ConnectionCheck(st, os.path.dirname(st.path), ROOT)
             return self.ok(cc.run() if m == 'POST' else cc.last())
         if sub == 'password' and m == 'POST':
             ip = _ip(self.h)
-            sec = LoginGuard.left(ip)         # подбор текущего пароля — как подбор при входе
+            sec = LoginGuard.left(ip)  # подбор текущего пароля — как подбор при входе
             if sec:
                 return LoginGuard.refuse(self.h, sec)
             d, users = self.data(), accounts(st)
@@ -1136,27 +1395,37 @@ class AdminApi:
             LoginGuard.ok(ip)
             u['pw'] = hash_password(d['new'])
             save_accounts(st, users)
-            AdminSessions.drop_login(u['login'], keep=_cookie_token(self.h))     # другие входы с прежним паролем закрываются
+            AdminSessions.drop_login(
+                u['login'], keep=_cookie_token(self.h)
+            )  # другие входы с прежним паролем закрываются
             self.log('set_password', 'admin', u['login'])
             return self.ok()
-        if sub == 'access':      # вход менеджеров в конструктор: режим, логины, пароли, права
+        if sub == 'access':  # вход менеджеров в конструктор: режим, логины, пароли, права
             if m == 'POST':
                 d = self.data()
                 if 'enabled' in d:
                     on = bool(d['enabled'])
-                    if on and not any(r.get('login') and r.get('pw') and not r.get('blocked') for r in auth_users.access(st).values()):
+                    if on and not any(
+                        r.get('login') and r.get('pw') and not r.get('blocked') for r in auth_users.access(st).values()
+                    ):
                         return self.err(400, 'Сначала задайте логин и пароль хотя бы одному менеджеру')
                     before = auth_users.enabled(st)
                     auth_users.set_enabled(st, on, me or 'admin')
                     self.log('toggle_user_login', 'settings', 'userLogin', {'enabled': before}, {'enabled': on})
-                if 'help' in d:      # «Забыли пароль?» на экране входа: к кому обращаться
+                if 'help' in d:  # «Забыли пароль?» на экране входа: к кому обращаться
                     before = auth_users.LoginInfo.help(st)
                     after = auth_users.LoginInfo.set_help(st, d['help'], me or 'admin')
                     if after != before:
                         self.log('edit_settings', 'settings', 'userLogin.help', {'help': before}, {'help': after})
             mgrs = _loads(st.managers_list()) or []
-            return self.ok({'enabled': auth_users.enabled(st), 'perms': [{'key': k, 'label': lb, 'def': dv} for k, lb, dv in auth_users.PERMS],
-                            'managers': auth_users.public(st, mgrs), 'help': auth_users.LoginInfo.help(st)})
+            return self.ok(
+                {
+                    'enabled': auth_users.enabled(st),
+                    'perms': [{'key': k, 'label': lb, 'def': dv} for k, lb, dv in auth_users.PERMS],
+                    'managers': auth_users.public(st, mgrs),
+                    'help': auth_users.LoginInfo.help(st),
+                }
+            )
         r = re.match(r'^access/([A-Za-z0-9_-]{1,64})/(reset|logout)$', sub)
         if r and m == 'POST':
             return self.access_act(r.group(1), r.group(2), me)
@@ -1171,19 +1440,33 @@ class AdminApi:
             if d.get('password'):
                 info['password'] = 'изменён'
             self.log('edit_access', 'manager', mid, None, info)
-            return self.ok({'login': rec.get('login') or '', 'hasPassword': bool(rec.get('pw')), 'perms': auth_users.perms_of(rec), 'blocked': bool(rec.get('blocked'))})
-        if sub == 'rules/stations':      # инженерные правила станций: своя версия файла администратора или файл поставки
+            return self.ok(
+                {
+                    'login': rec.get('login') or '',
+                    'hasPassword': bool(rec.get('pw')),
+                    'perms': auth_users.perms_of(rec),
+                    'blocked': bool(rec.get('blocked')),
+                }
+            )
+        if sub == 'rules/stations':  # инженерные правила станций: своя версия файла администратора или файл поставки
             from station_rules import StationRules
+
             sr = StationRules(st)
             if m == 'POST':
                 before = sr.info()
                 res = sr.reset() if q.get('reset') == '1' else sr.save(self.h.body(), me or 'admin')
-                self.log('edit_settings', 'settings', 'stationRules', {'version': before['version'], 'own': before['own']},
-                         {'version': res['version'], 'own': res['own']})
+                self.log(
+                    'edit_settings',
+                    'settings',
+                    'stationRules',
+                    {'version': before['version'], 'own': before['own']},
+                    {'version': res['version'], 'own': res['own']},
+                )
                 return self.ok({'info': res})
             return self.ok({'info': sr.info(), 'layoutDef': sr.layout_defaults()})
-        if sub == 'features':    # функции программы: включить / выключить
+        if sub == 'features':  # функции программы: включить / выключить
             from features import FeatureAccess
+
             fa = FeatureAccess(st)
             if m == 'POST':
                 before = fa.config()
@@ -1193,37 +1476,56 @@ class AdminApi:
                     self.log('edit_settings', 'settings', 'features', {k: before.get(k) for k in ch}, ch)
                 return self.ok({'config': res})
             return self.ok({'config': fa.config()})
-        if sub == 'mail':        # почта для отправки КП клиентам (SMTP)
+        if sub == 'mail':  # почта для отправки КП клиентам (SMTP)
             from kp_track import Mailer
+
             if m == 'POST':
                 res = Mailer(st).save(self.data(), me or 'admin')
-                self.log('edit_settings', 'settings', 'mail', None, {k: res.get(k) for k in ('host', 'port', 'security', 'login', 'fromEmail')})
+                self.log(
+                    'edit_settings',
+                    'settings',
+                    'mail',
+                    None,
+                    {k: res.get(k) for k in ('host', 'port', 'security', 'login', 'fromEmail')},
+                )
                 return self.ok(res)
             return self.ok(Mailer(st).public())
         if sub == 'mail/test' and m == 'POST':
             from kp_track import Mailer
+
             try:
                 to = Mailer.addresses(self.data().get('to'))
                 if not to:
                     return self.err(400, 'Укажите адрес для проверки')
-                Mailer(st).send(to, [], 'Проверка почты — Конструктор КП', 'Это проверочное письмо: отправка КП по почте настроена.', [], test=True)
+                Mailer(st).send(
+                    to,
+                    [],
+                    'Проверка почты — Конструктор КП',
+                    'Это проверочное письмо: отправка КП по почте настроена.',
+                    [],
+                    test=True,
+                )
             except RuntimeError as e:
                 return self.err(422, str(e))
             self.log('edit_settings', 'settings', 'mail_test', None, {'to': to})
             return self.ok({'ok': True})
-        if sub == 'lists':       # списки и выборы: {ключ: [строки]}; None — вернуть встроенный список
+        if sub == 'lists':  # списки и выборы: {ключ: [строки]}; None — вернуть встроенный список
             from lists import ListStore
+
             ls = ListStore(st)
             if m == 'POST':
                 d = self.data()
                 before = ls.all()
                 res = ls.save(d.get('values'), me or 'admin')
                 keys = list((d.get('values') or {}).keys())
-                self.log('edit_lists', 'settings', 'lists', {k: before.get(k) for k in keys}, {k: res.get(k) for k in keys})
+                self.log(
+                    'edit_lists', 'settings', 'lists', {k: before.get(k) for k in keys}, {k: res.get(k) for k in keys}
+                )
                 return self.ok({'values': res})
             return self.ok({'values': ls.all()})
-        if sub == 'defaults':    # значения по умолчанию программы: {ключ: {on, v}}; None — вернуть встроенное
+        if sub == 'defaults':  # значения по умолчанию программы: {ключ: {on, v}}; None — вернуть встроенное
             import defaults
+
             if m == 'POST':
                 d = self.data()
                 before = defaults.get(st)
@@ -1232,11 +1534,13 @@ class AdminApi:
                 self.log('edit_defaults', 'settings', 'defaults', {k: before.get(k) for k in ch}, ch)
                 return self.ok({'values': res})
             return self.ok({'values': defaults.get(st)})
-        if sub == 'bitrix' or sub.startswith('bitrix/'):     # связь с Битрикс24 (bitrix.py)
+        if sub == 'bitrix' or sub.startswith('bitrix/'):  # связь с Битрикс24 (bitrix.py)
             from bitrix import BitrixDesk
+
             return BitrixDesk(self.h, self.st, self.log).route(m, sub, me or 'admin')
-        if sub == 'ai':          # нейросеть в программе: включить / выключить, ключ, модель, адрес API, расход
+        if sub == 'ai':  # нейросеть в программе: включить / выключить, ключ, модель, адрес API, расход
             import ai_llm
+
             if m == 'POST':
                 d = self.data()
                 before = ai_llm.settings(st)
@@ -1247,8 +1551,9 @@ class AdminApi:
                 self.log('edit_ai', 'settings', 'ai', {k: before.get(k) for k in info if k in before}, info)
                 return self.ok(res)
             return self.ok(ai_llm.admin_view(st))
-        if sub == 'ai/test' and m == 'POST':      # проверка ключа и связи: короткий запрос
+        if sub == 'ai/test' and m == 'POST':  # проверка ключа и связи: короткий запрос
             import ai_llm
+
             try:
                 r = ai_llm.ask(st, 'Ответь JSON-объектом {"ok": true, "model": "<название модели>"}', force=True)
             except RuntimeError as e:
@@ -1266,22 +1571,40 @@ class AdminApi:
             res['page'] = page
             return self.ok(res)
         if sub == 'audit/filters':
-            return self.ok({'users': st.audit_distinct('user_name'), 'actions': st.audit_distinct('action'),
-                            'entities': st.audit_distinct('entity_type')})
+            return self.ok(
+                {
+                    'users': st.audit_distinct('user_name'),
+                    'actions': st.audit_distinct('action'),
+                    'entities': st.audit_distinct('entity_type'),
+                }
+            )
         r = re.match(r'^audit/(\d{1,9})/rollback$', sub)
         if r and m == 'POST':
             return self.rollback(int(r.group(1)))
-        if sub == 'logos':       # логотипы производителей: закрепить за маркой (на всё её оборудование и в будущем) или снять
-            from maker_logos import MakerLogos
+        if (
+            sub == 'logos'
+        ):  # логотипы производителей: закрепить за маркой (на всё её оборудование и в будущем) или снять
             import web_api
+            from maker_logos import MakerLogos
+
             ml = MakerLogos(st, web_api.IMAGES)
             if m == 'POST':
                 d = self.data()
-                res = ml.unpin(d.get('maker')) if d.get('unpin') else ml.set(d.get('maker'), d.get('image'), me or 'admin')
-                self.log('edit_settings', 'settings', 'makerLogo', None, {'maker': res['maker'], 'unpin': bool(d.get('unpin')), 'items': res.get('items', 0)})
+                res = (
+                    ml.unpin(d.get('maker'))
+                    if d.get('unpin')
+                    else ml.set(d.get('maker'), d.get('image'), me or 'admin')
+                )
+                self.log(
+                    'edit_settings',
+                    'settings',
+                    'makerLogo',
+                    None,
+                    {'maker': res['maker'], 'unpin': bool(d.get('unpin')), 'items': res.get('items', 0)},
+                )
                 return self.ok(res)
             return self.ok({'items': ml.list()})
-        if sub == 'feeds' or sub.startswith('feeds/'):          # товарные фиды поставщиков (feeds.py)
+        if sub == 'feeds' or sub.startswith('feeds/'):  # товарные фиды поставщиков (feeds.py)
             return self.feeds(m, sub, q, me)
         r = re.match(r'^list/(kp|catalog|manager|client|supplier)$', sub)
         if r:
@@ -1289,8 +1612,9 @@ class AdminApi:
         if sub == 'delete' and m == 'POST':
             return self.delete(self.data())
         r = re.match(r'^kpfiles/([A-Za-z0-9_-]{1,64})/(\d{1,9})/delete$', sub)
-        if r and m == 'POST':        # справочный документ КП — удаляет только администратор (у менеджеров кнопки нет)
+        if r and m == 'POST':  # справочный документ КП — удаляет только администратор (у менеджеров кнопки нет)
             from kp_files import KpFiles
+
             rec = KpFiles.of(st).delete(r.group(1), int(r.group(2)))
             if not rec:
                 return self.err(404, 'Документ не найден')
@@ -1302,57 +1626,88 @@ class AdminApi:
             if m == 'POST':
                 return self.toggle(self.data())
             desk = self.desk()
-            return self.ok({'settings': moderation(st), 'pending': desk.items('pending'),
-                            'history': desk.items('approved', 30) + desk.items('rejected', 30),
-                            'archived': desk.items('archived')})
+            return self.ok(
+                {
+                    'settings': moderation(st),
+                    'pending': desk.items('pending'),
+                    'history': desk.items('approved', 30) + desk.items('rejected', 30),
+                    'archived': desk.items('archived'),
+                }
+            )
         r = re.match(r'^pending/(\d{1,9})$', sub)
         if r:
             return self.ok(self.desk().view(int(r.group(1))))
         r = re.match(r'^pending/(\d{1,9})/(approve|reject)$', sub)
-        if r and m == 'POST':     # fields — принять только эти поля (остальные изменения правки отбрасываются)
+        if r and m == 'POST':  # fields — принять только эти поля (остальные изменения правки отбрасываются)
             d = self.data()
-            return self.ok(self.desk().review(int(r.group(1)), r.group(2), d.get('reason') or '',
-                                              d.get('fields') if isinstance(d.get('fields'), list) else None))
+            return self.ok(
+                self.desk().review(
+                    int(r.group(1)),
+                    r.group(2),
+                    d.get('reason') or '',
+                    d.get('fields') if isinstance(d.get('fields'), list) else None,
+                )
+            )
         if sub == 'pending/approve-all' and m == 'POST':
             n = sum(1 for p in st.pending_list('pending') if self.desk().review(p['id'], 'approve', '')['ok'])
             return self.ok({'approved': n})
         if sub == 'export' and m == 'GET':
             cats = [c for c in (q.get('cats') or '').split(',') if re.match(r'^[A-Za-z0-9_-]{1,64}$', c)] or None
             pick = None
-            if q.get('pick'):          # категории, производители, поставщики, фиды — несколько в каждом
+            if q.get('pick'):  # категории, производители, поставщики, фиды — несколько в каждом
                 from supplier_scope import ExportScope
+
                 try:
                     pick = ExportScope.clean(json.loads(q['pick'])) or None
                 except ValueError as e:
                     return self.err(400, str(e) if 'выбор' in str(e) else 'Неверный выбор позиций каталога')
             flt = None
-            if q.get('flt'):           # «Каталог по фильтру»: категория, производитель, поставщик, поиск, с ценой, в наличии
+            if q.get('flt'):  # «Каталог по фильтру»: категория, производитель, поставщик, поиск, с ценой, в наличии
                 from supplier_scope import CatalogFilter
+
                 try:
                     flt = CatalogFilter.clean(json.loads(q['flt']))
                 except ValueError:
                     return self.err(400, 'Неверный фильтр каталога')
             prices = [x for x in (q.get('prices') or '').split(',') if x in ('price', 'rrc', 'cost', 'stock')]
-            return self.export([s for s in (q.get('sections') or ','.join(SECTIONS)).split(',') if s in SECTIONS],
-                               cats=cats, images=q.get('images') == '1', sup=(q.get('sup') or '').strip() or None, pick=pick,
-                               fmt=q.get('fmt'), flt=flt, prices=prices)
-        if sub == 'export/filter' and m == 'GET':      # сколько позиций попадёт в «Каталог по фильтру»
+            return self.export(
+                [s for s in (q.get('sections') or ','.join(SECTIONS)).split(',') if s in SECTIONS],
+                cats=cats,
+                images=q.get('images') == '1',
+                sup=(q.get('sup') or '').strip() or None,
+                pick=pick,
+                fmt=q.get('fmt'),
+                flt=flt,
+                prices=prices,
+            )
+        if sub == 'export/filter' and m == 'GET':  # сколько позиций попадёт в «Каталог по фильтру»
             from supplier_scope import CatalogFilter
+
             try:
                 f = CatalogFilter.clean(json.loads(q.get('flt') or '{}'))
             except ValueError:
                 return self.err(400, 'Неверный фильтр каталога')
             return self.ok({'n': len(CatalogFilter(st).ids(f))})
-        if sub.startswith('settings-file'):     # все настройки программы одним файлом (ключи API — по галочке, пароли — никогда)
+        if sub.startswith(
+            'settings-file'
+        ):  # все настройки программы одним файлом (ключи API — по галочке, пароли — никогда)
             from data_bundle import SettingsFile
+
             sf = SettingsFile(st, me or 'admin')
             df = self.data_file()
-            if sub == 'settings-file' and m == 'GET':      # любой формат выгрузки (DataFile), как у остальных вариантов
+            if sub == 'settings-file' and m == 'GET':  # любой формат выгрузки (DataFile), как у остальных вариантов
                 from data_file import DataFile
+
                 fmt = DataFile.fmt(q.get('fmt'))
                 name, body = sf.export(q.get('keys') == '1')
                 data, ext, ctype, more = df.dump(body.decode('utf-8'), fmt)
-                self.log('export_settings', 'settings', 'file', None, dict(more, keys=q.get('keys') == '1', bytes=len(data), fmt=fmt))
+                self.log(
+                    'export_settings',
+                    'settings',
+                    'file',
+                    None,
+                    dict(more, keys=q.get('keys') == '1', bytes=len(data), fmt=fmt),
+                )
                 return self.h.send(200, ctype, data, self.h.attachment(name[:-5] + ext))
             if sub == 'settings-file/preview' and m == 'POST':
                 return self.ok(sf.preview(self.settings_doc(df, self.h.body())))
@@ -1366,15 +1721,24 @@ class AdminApi:
             return self.err(404, 'Нет такого запроса')
         if sub == 'export/cats' and m == 'GET':
             return self.ok(self.export_cats())
-        if sub == 'export/scope' and m == 'GET':     # сочетания категория / производитель / поставщик / фид для выбора
+        if sub == 'export/scope' and m == 'GET':  # сочетания категория / производитель / поставщик / фид для выбора
             from supplier_scope import ExportScope
+
             return self.ok(ExportScope(st).summary())
         if sub == 'export/suppliers' and m == 'GET':
             from supplier_scope import SupplierScope
+
             return self.ok(SupplierScope(st).groups())
         if sub in ('import/file/preview', 'import/file') and m == 'POST':
-            return self.ok(self.import_file(self.h.body(), apply=(sub == 'import/file'), sections=q.get('sections'), name=q.get('name') or '',
-                                            mode=q.get('mode') if q.get('mode') in ('edits', 'auto') else 'all'))
+            return self.ok(
+                self.import_file(
+                    self.h.body(),
+                    apply=(sub == 'import/file'),
+                    sections=q.get('sections'),
+                    name=q.get('name') or '',
+                    mode=q.get('mode') if q.get('mode') in ('edits', 'auto') else 'all',
+                )
+            )
         if sub == 'export/sqlite' and m == 'GET':
             return self.export_sqlite()
         if sub in ('import/preview', 'import') and m == 'POST':
@@ -1385,38 +1749,65 @@ class AdminApi:
             return self.maint(m, sub, q)
         if sub == 'migrations':
             from storage import MIGRATIONS
-            return self.ok({'applied': st.migrations_applied(), 'all': [x[0] for x in MIGRATIONS], 'last': st.migration_last()})
+
+            return self.ok(
+                {'applied': st.migrations_applied(), 'all': [x[0] for x in MIGRATIONS], 'last': st.migration_last()}
+            )
         r = re.match(r'^migrations/([A-Za-z0-9_.-]+)/down$', sub)
         if r and m == 'POST':
             if r.group(1) != st.migration_last():
-                return self.err(400, 'Откатить можно только последнюю миграцию (%s): поздние миграции меняют таблицы ранних' % st.migration_last())
-            st.backup(os.path.join(os.path.dirname(st.path), 'backup', 'kp-%s-before-migration-down.zip' % datetime.now().strftime('%Y%m%d-%H%M%S')))
+                return self.err(
+                    400,
+                    f'Откатить можно только последнюю миграцию ({st.migration_last()}): поздние миграции меняют таблицы ранних',
+                )
+            st.backup(
+                os.path.join(
+                    os.path.dirname(st.path),
+                    'backup',
+                    'kp-{}-before-migration-down.zip'.format(datetime.now().strftime('%Y%m%d-%H%M%S')),
+                )
+            )
             st.migration_down(r.group(1))
             return self.ok()
         return self.err(404, 'not found')
 
-    # ---------- система: сведения, «требует внимания», обновления, перезапуск, папки ----------
-    def system(self, m, sub, q, me):
+    def system(self, m, sub, q, me) -> None:
         import config
         from admin_overview import Attention, SystemInfo
         from app_update import Restarter, UpdateError, Updater
+
         st, up = self.st, Updater(self.st, config.ROOT, config.DATA_DIR)
         if sub == 'system' and m == 'GET':
             return self.ok(dict(SystemInfo(st, config).get(), local=self.h.is_local()))
         if sub == 'attention' and m == 'GET':
             return self.ok({'items': Attention(st, config).items()})
-        if sub == 'log' and m == 'GET':             # журнал сервера: последние ошибки (data/logs/kp.log)
+        if sub == 'log' and m == 'GET':  # журнал сервера: последние ошибки (data/logs/kp.log)
             from server_log import ServerLog
+
             lg = ServerLog.of(config.DATA_DIR)
-            return self.ok({'errors': lg.errors(30), 'day': lg.count_since(24), 'bytes': lg.size(), 'files': len(lg.files()),
-                            'dir': lg.folder, 'local': self.h.is_local()})
+            return self.ok(
+                {
+                    'errors': lg.errors(30),
+                    'day': lg.count_since(24),
+                    'bytes': lg.size(),
+                    'files': len(lg.files()),
+                    'dir': lg.folder,
+                    'local': self.h.is_local(),
+                }
+            )
         if sub == 'log/download' and m == 'GET':
             from server_log import ServerLog
+
             lg = ServerLog.of(config.DATA_DIR)
-            return self.h.send(200, 'text/plain; charset=utf-8', lg.text().encode('utf-8'),
-                               self.h.attachment('kp-log_%s.txt' % datetime.now().strftime('%Y-%m-%d_%H%M')))
-        if sub.startswith('alerts'):              # письма администратору о проблемах (admin_alerts.py)
+            return self.h.send(
+                200,
+                'text/plain; charset=utf-8',
+                lg.text().encode('utf-8'),
+                self.h.attachment('kp-log_{}.txt'.format(datetime.now().strftime('%Y-%m-%d_%H%M'))),
+            )
+        if sub.startswith('alerts'):  # письма администратору о проблемах (admin_alerts.py)
             from admin_alerts import AdminAlerts
+
             al = AdminAlerts(st, config)
             try:
                 if sub == 'alerts' and m == 'GET':
@@ -1424,7 +1815,13 @@ class AdminApi:
                 if sub == 'alerts' and m == 'POST':
                     before = al.public()
                     res = al.save(self.data(), me)
-                    self.log('edit_settings', 'settings', 'alerts', {'on': before['on'], 'to': before['to']}, {'on': res['on'], 'to': res['to']})
+                    self.log(
+                        'edit_settings',
+                        'settings',
+                        'alerts',
+                        {'on': before['on'], 'to': before['to']},
+                        {'on': res['on'], 'to': res['to']},
+                    )
                     return self.ok(res)
                 if sub == 'alerts/test' and m == 'POST':
                     return self.ok(al.test())
@@ -1434,7 +1831,8 @@ class AdminApi:
         if sub == 'restart' and m == 'POST':
             self.log('restart', 'system', config.APP_TITLE)
             from server_log import ServerLog
-            ServerLog.note('Перезапуск из «Настроек» (%s)' % (me or 'администратор'))
+
+            ServerLog.note(f'Перезапуск из «Настроек» ({me or "администратор"})')
             self.ok({'ok': True, 'delay': Restarter.DELAY})
             Restarter(config.SERVER_MODE).restart(getattr(self.h.server, 'main_server', self.h.server))
             return None
@@ -1442,8 +1840,14 @@ class AdminApi:
             if not self.h.is_local():
                 return self.err(403, 'Папки открываются только на компьютере, где работает программа')
             from desktop import open_folder
-            path = {'data': config.DATA_DIR, 'docs': config.DOCS_DIR, 'root': config.ROOT,
-                    'backup': os.path.join(config.DATA_DIR, 'backup'), 'logs': os.path.join(config.DATA_DIR, 'logs')}.get(self.data().get('which'))
+
+            path = {
+                'data': config.DATA_DIR,
+                'docs': config.DOCS_DIR,
+                'root': config.ROOT,
+                'backup': os.path.join(config.DATA_DIR, 'backup'),
+                'logs': os.path.join(config.DATA_DIR, 'logs'),
+            }.get(self.data().get('which'))
             if not path or not os.path.isdir(path):
                 return self.err(404, 'Папки нет')
             open_folder(path)
@@ -1454,15 +1858,38 @@ class AdminApi:
             if sub == 'update' and m == 'POST':
                 d = self.data()
                 res = up.configure(d, me or 'admin')
-                self.log('edit_settings', 'settings', 'update', None, {k: ('задан' if k == 'token' and d[k] else d[k]) for k in d
-                                                                       if k in ('repo', 'auto', 'token', 'nightly', 'nightHour')})
+                self.log(
+                    'edit_settings',
+                    'settings',
+                    'update',
+                    None,
+                    {
+                        k: ('задан' if k == 'token' and d[k] else d[k])
+                        for k in d
+                        if k in ('repo', 'auto', 'token', 'nightly', 'nightHour')
+                    },
+                )
                 return self.ok(res)
             if sub == 'update/check' and m == 'POST':
                 return self.ok(up.check())
             if sub in ('update/download', 'update/upload') and m == 'POST':
-                res = up.download_latest(me or 'admin') if sub == 'update/download' else \
-                    up.install(self.h.body(), me or 'admin', source='файл ' + str(q.get('name') or '')[:80], force=q.get('force') == '1')
-                self.log('update_install', 'system', res['version'], {'version': res['from']}, {'version': res['version'], 'files': res['files']})
+                res = (
+                    up.download_latest(me or 'admin')
+                    if sub == 'update/download'
+                    else up.install(
+                        self.h.body(),
+                        me or 'admin',
+                        source='файл ' + str(q.get('name') or '')[:80],
+                        force=q.get('force') == '1',
+                    )
+                )
+                self.log(
+                    'update_install',
+                    'system',
+                    res['version'],
+                    {'version': res['from']},
+                    {'version': res['version'], 'files': res['files']},
+                )
                 return self.ok(res)
             if sub == 'update/rollback' and m == 'POST':
                 res = up.rollback(me or 'admin')
@@ -1476,15 +1903,17 @@ class AdminApi:
             return self.err(422, str(e))
         return self.err(404, 'not found')
 
-    # ---------- история изменений настроек ----------
-    def history(self, m, sub, q):
+    def history(self, m, sub, q) -> None:
         from settings_history import SettingsHistory
+
         sh = SettingsHistory(self.st)
         if sub == 'history' and m == 'GET':
             key = q.get('key') if q.get('key') in SettingsHistory.KEYS else None
-            limit, offset = max(1, min(int(q.get('limit') or 100), 500)), max(0, min(int(q.get('offset') or 0), SettingsHistory.KEEP))
-            return self.ok({'items': sh.items(key, limit, offset),
-                            'keys': SettingsHistory.KEYS})
+            limit, offset = (
+                max(1, min(int(q.get('limit') or 100), 500)),
+                max(0, min(int(q.get('offset') or 0), SettingsHistory.KEEP)),
+            )
+            return self.ok({'items': sh.items(key, limit, offset), 'keys': SettingsHistory.KEYS})
         r = re.match(r'^history/(\d{1,9})(/rollback)?$', sub)
         if r and m == 'GET' and not r.group(2):
             return self.ok(sh.get(r.group(1)))
@@ -1494,42 +1923,61 @@ class AdminApi:
             return self.ok(res)
         return self.err(404, 'not found')
 
-    # ---------- обслуживание базы: копии, сжатие, журнал, изображения ----------
-    def maint(self, m, sub, q):
+    def maint(self, m, sub, q) -> None:
         import maintenance as mt
+
         st = self.st
         data_dir = os.path.dirname(st.path)
         img_dir = os.path.join(data_dir, 'img')
         if sub == 'maint' and m == 'GET':
             return self.ok(mt.summary(st, data_dir))
-        if sub == 'maint/health':                  # проверка «здоровья» базы: последняя (GET) или сейчас (POST)
+        if sub == 'maint/health':  # проверка «здоровья» базы: последняя (GET) или сейчас (POST)
             import config
             from db_health import DbHealth
+
             hc = DbHealth(st, config.DATA_DIR, config.DOCS_DIR)
             if m == 'POST':
                 res = hc.run()
-                self.log('db_health', 'db', 'health', None, {k: (v.get('n') if isinstance(v, dict) else v) for k, v in res.items()})
+                self.log(
+                    'db_health',
+                    'db',
+                    'health',
+                    None,
+                    {k: (v.get('n') if isinstance(v, dict) else v) for k, v in res.items()},
+                )
                 return self.ok(res)
             return self.ok(hc.last())
-        if sub == 'maint/overview' and m == 'GET':      # сводка над вкладкой «База и копии»
+        if sub == 'maint/overview' and m == 'GET':  # сводка над вкладкой «База и копии»
             from admin_overview import DbOverview
+
             return self.ok(DbOverview(st, data_dir).get())
         if sub == 'maint/backup' and m == 'POST':
             rec = mt.DbCopy.daily(st, data_dir, force=True)
-            self.log('backup_db', 'db', 'auto', None, {'ok': rec.get('ok'), 'file': os.path.basename(rec.get('file') or '')}, result='success' if rec.get('ok') else 'failed')
+            self.log(
+                'backup_db',
+                'db',
+                'auto',
+                None,
+                {'ok': rec.get('ok'), 'file': os.path.basename(rec.get('file') or '')},
+                result='success' if rec.get('ok') else 'failed',
+            )
             from backup_mirror import MirrorBackup
+
             mb = MirrorBackup(st, data_dir)
             if mb.config()['on'] and not mb.status()['running']:
                 threading.Thread(target=mb.run, daemon=True, name='backup-mirror').start()
             return self.ok(mt.summary(st, data_dir))
-        if sub.startswith('maint/mirror'):         # вторая папка для копий базы (сетевой диск, флешка, облако)
+        if sub.startswith('maint/mirror'):  # вторая папка для копий базы (сетевой диск, флешка, облако)
             from backup_mirror import MirrorBackup
+
             mb = MirrorBackup(st, data_dir)
             if sub == 'maint/mirror' and m == 'GET':
                 return self.ok(mb.status())
             if sub == 'maint/mirror' and m == 'POST':
                 res = mb.save(self.data(), actor(self.h, True)[1])
-                self.log('edit_settings', 'settings', 'backup2', None, {k: res[k] for k in ('on', 'path', 'keep', 'images')})
+                self.log(
+                    'edit_settings', 'settings', 'backup2', None, {k: res[k] for k in ('on', 'path', 'keep', 'images')}
+                )
                 return self.ok(res)
             if sub == 'maint/mirror/check' and m == 'POST':
                 return self.ok(mb.check(self.data().get('path')))
@@ -1553,18 +2001,19 @@ class AdminApi:
             return self.ok(dict(mt.summary(st, data_dir), archivedNow=n))
         if sub == 'maint/images' and m == 'GET':
             lst = mt.unused_images(st, img_dir)
-            return self.ok({'count': len(lst), 'bytes': sum(x['bytes'] for x in lst), 'sample': [x['rel'] for x in lst[:20]]})
+            return self.ok(
+                {'count': len(lst), 'bytes': sum(x['bytes'] for x in lst), 'sample': [x['rel'] for x in lst[:20]]}
+            )
         if sub == 'maint/images' and m == 'POST':
-            import feeds           # хранилище изображений: его индекс одинаковых картинок после очистки строится заново
+            import feeds  # хранилище изображений: его индекс одинаковых картинок после очистки строится заново
+
             res = mt.purge_images(st, img_dir, feeds.IMAGE_STORE)
             self.log('purge_images', 'images', 'unused', None, res)
             return self.ok(res)
         return self.err(404, 'not found')
 
-    # ---------- учётные записи администраторов ----------
-    def access_act(self, mid, act, me):
-        """Менеджер: «Сбросить пароль» — временный пароль (в ответе один раз; в журнал — только факт и срок), все его входы
-        закрываются; «Выйти на всех устройствах» — закрыть все его входы."""
+    def access_act(self, mid: str, act, me) -> None:
+        """Менеджер: сброс пароля (временный — в ответе один раз), выход везде, права и вход."""
         st = self.st
         if not any(x.get('id') == mid for x in (_loads(st.managers_list()) or [])):
             return self.err(404, 'Менеджер не найден')
@@ -1576,16 +2025,22 @@ class AdminApi:
         self.log('logout_all', 'manager', mid, None, {'closedSessions': closed})
         return self.ok({'closed': closed})
 
-    def users(self, d, me):
+    def users(self, d, me) -> dict:
         st, users, act = self.st, accounts(self.st), d.get('action')
         login = (d.get('login') or '').strip()
         u = find_account(users, login)
         if act == 'add':
             check_login(login)
             if u:
-                raise ValueError('Логин «%s» уже занят' % login)
+                raise ValueError(f'Логин «{login}» уже занят')
             check_new_password(d.get('password') or '')
-            u = {'login': login, 'name': (d.get('name') or '').strip()[:80] or login, 'pw': hash_password(d['password']), 'created': _now(), 'by': me}
+            u = {
+                'login': login,
+                'name': (d.get('name') or '').strip()[:80] or login,
+                'pw': hash_password(d['password']),
+                'created': _now(),
+                'by': me,
+            }
             users.append(u)
             save_accounts(st, users)
             self.log('create_admin', 'admin', login, None, {'login': login, 'name': u['name']})
@@ -1598,7 +2053,7 @@ class AdminApi:
             if new_login.lower() != u['login'].lower():
                 check_login(new_login)
                 if find_account(users, new_login):
-                    raise ValueError('Логин «%s» уже занят' % new_login)
+                    raise ValueError(f'Логин «{new_login}» уже занят')
             u['login'], u['name'] = new_login, (d.get('name') or '').strip()[:80] or new_login
             save_accounts(st, users)
             self.log('edit_admin', 'admin', u['login'], before, {'login': u['login'], 'name': u['name']})
@@ -1608,7 +2063,7 @@ class AdminApi:
             check_new_password(d.get('password') or '')
             u['pw'] = hash_password(d['password'])
             save_accounts(st, users)
-            AdminSessions.drop_login(u['login'], keep=_cookie_token(self.h))     # сменён пароль — другие входы закрыты
+            AdminSessions.drop_login(u['login'], keep=_cookie_token(self.h))  # сменён пароль — другие входы закрыты
             self.log('set_password', 'admin', u['login'])
             return {'ok': True}
         if act == 'delete':
@@ -1623,41 +2078,75 @@ class AdminApi:
             return {'ok': True}
         raise ValueError('Неизвестное действие')
 
-    # ---------- удаление (в корзину) ----------
-    def listing(self, etype, qs):
+    def listing(self, etype, qs) -> dict:
         st, ql = self.st, qs.lower()
         if etype == 'kp':
             from kp_files import KpFiles
+
             metas = st.kp_all_meta()
-            nf = KpFiles.of(st).counts([x.get('id') for x in metas])       # справочные документы — «📎» у КП (удаляет администратор)
-            rows = [{'id': x.get('id'), 'title': '№ %s — %s' % (x.get('number', ''), x.get('client', '')), 'files': nf.get(x.get('id'), 0),
-                     'sub': '%s · %s · %s' % (x.get('date', ''), x.get('manager') or '—', (x.get('items') or [''])[0])} for x in metas]
+            nf = KpFiles.of(st).counts(
+                [x.get('id') for x in metas]
+            )  # справочные документы — «📎» у КП (удаляет администратор)
+            rows = [
+                {
+                    'id': x.get('id'),
+                    'title': '№ {} — {}'.format(x.get('number', ''), x.get('client', '')),
+                    'files': nf.get(x.get('id'), 0),
+                    'sub': '{} · {} · {}'.format(
+                        x.get('date', ''), x.get('manager') or '—', (x.get('items') or [''])[0]
+                    ),
+                }
+                for x in metas
+            ]
             rows.sort(key=lambda r: r['title'], reverse=True)
         elif etype == 'catalog':
-            rows = [{'id': x['id'], 'title': x.get('name', ''), 'sub': ' · '.join(str(v) for v in ((x.get('attrs') or {}).get('maker'), x.get('spec')) if v)}
-                    for x in json.loads(st.catalog_light())]
+            rows = [
+                {
+                    'id': x['id'],
+                    'title': x.get('name', ''),
+                    'sub': ' · '.join(str(v) for v in ((x.get('attrs') or {}).get('maker'), x.get('spec')) if v),
+                }
+                for x in json.loads(st.catalog_light())
+            ]
         elif etype == 'manager':
-            rows = [{'id': x['id'], 'title': x.get('name', ''), 'sub': ' · '.join(v for v in (x.get('position'), x.get('phone')) if v)}
-                    for x in json.loads(st.managers_list())]
+            rows = [
+                {
+                    'id': x['id'],
+                    'title': x.get('name', ''),
+                    'sub': ' · '.join(v for v in (x.get('position'), x.get('phone')) if v),
+                }
+                for x in json.loads(st.managers_list())
+            ]
         elif etype == 'supplier':
-            rows = [{'id': x['id'], 'title': x.get('name', ''), 'sub': ' · '.join(v for v in (x.get('country'), x.get('currency')) if v)}
-                    for x in st.suppliers_list()]
-        else:       # контрагентов тысячи: ищем в базе, показываем первые 300
+            rows = [
+                {
+                    'id': x['id'],
+                    'title': x.get('name', ''),
+                    'sub': ' · '.join(v for v in (x.get('country'), x.get('currency')) if v),
+                }
+                for x in st.suppliers_list()
+            ]
+        else:  # контрагентов тысячи: ищем в базе, показываем первые 300
             found = st.clients_search(qs, 300)
-            rows = [{'id': x['id'], 'title': x.get('name', ''), 'sub': 'ИНН %s' % x.get('inn', '')} for x in found['items']]
+            rows = [
+                {'id': x['id'], 'title': x.get('name', ''), 'sub': 'ИНН {}'.format(x.get('inn', ''))}
+                for x in found['items']
+            ]
             return {'total': found['total'], 'items': rows}
         if ql:
             rows = [r for r in rows if ql in (r['title'] + ' ' + r['sub'] + ' ' + str(r['id'])).lower()]
         return {'total': len(rows), 'items': rows if etype != 'catalog' else rows[:300]}
 
-    def delete(self, d):
+    def delete(self, d) -> None:
         etype, ids = d.get('type'), d.get('ids') or []
         if etype not in ('kp', 'catalog', 'manager', 'client', 'supplier') or not isinstance(ids, list) or not ids:
             raise ValueError('Не выбрано, что удалить')
-        if etype == 'catalog':       # название позиции — запросом по id, а не разбором всего каталога на каждую позицию
-            found = {eid: self.st.one('SELECT name FROM catalog WHERE id=?', (eid,)) for eid in ids if isinstance(eid, str)}
+        if etype == 'catalog':  # название позиции — запросом по id, а не разбором всего каталога на каждую позицию
+            found = {
+                eid: self.st.one('SELECT name FROM catalog WHERE id=?', (eid,)) for eid in ids if isinstance(eid, str)
+            }
             titles = {eid: found[eid][0] if found.get(eid) else str(eid) for eid in ids}
-        elif etype == 'client':      # контрагентов тысячи — по одному, а не списком
+        elif etype == 'client':  # контрагентов тысячи — по одному, а не списком
             titles = {eid: (self.st.client_get(str(eid)) or {}).get('name') or str(eid) for eid in ids}
         else:
             rows = {r['id']: r['title'] for r in self.listing(etype, '')['items']}
@@ -1667,27 +2156,37 @@ class AdminApi:
             data = self.st.trash_put(etype, str(eid), titles.get(eid, str(eid)), actor(self.h, True)[1])
             if data and etype == 'kp':
                 from crm import DealBook
-                DealBook.kp_moved(self.st, str(eid), actor(self.h, True)[1])      # сумма сделки — без удалённого КП
-            self.log('delete_' + etype, etype, eid, {'title': titles.get(eid, '')} if data else None, None,
-                     result='success' if data else 'failed')
+
+                DealBook.kp_moved(self.st, str(eid), actor(self.h, True)[1])  # сумма сделки — без удалённого КП
+            self.log(
+                'delete_' + etype,
+                etype,
+                eid,
+                {'title': titles.get(eid, '')} if data else None,
+                None,
+                result='success' if data else 'failed',
+            )
             n += bool(data)
         return self.ok({'deleted': n})
 
-    # ---------- модерация и корзина (catalog_admin.py) ----------
-    def desk(self):
+    def desk(self) -> object:
         from catalog_admin import ModerationDesk
+
         return ModerationDesk(self.st, actor(self.h, True)[1], self.log)
 
-    def review(self, eid, act, reason):
+    def review(self, eid, act, reason) -> object:
         return self.desk().review(eid, act, reason)
 
-    def trash(self, m, sub, q):
+    def trash(self, m, sub, q) -> None:
         """Корзина: список (?type=вид), восстановить, удалить навсегда одну запись, очистить (всё или один вид)."""
         from catalog_admin import TrashBin
+
         tb = TrashBin(self.st, self.log)
         if sub == 'trash':
             etype = q.get('type') or ''
-            return self.ok(dict(tb.items(etype if etype in TrashBin.TYPES else ''), days=SrvVal.get(self.st, 'srv.trashDays')))
+            return self.ok(
+                dict(tb.items(etype if etype in TrashBin.TYPES else ''), days=SrvVal.get(self.st, 'srv.trashDays'))
+            )
         if m != 'POST':
             return self.err(405, 'Нужен POST')
         if sub == 'trash/clear':
@@ -1698,14 +2197,14 @@ class AdminApi:
         tb.restore(int(r.group(1))) if r.group(2) == 'restore' else tb.drop(int(r.group(1)))
         return self.ok()
 
-    def toggle(self, d):
+    def toggle(self, d) -> None:
         before = moderation(self.st)
         on = bool(d.get('enabled'))
         pend = self.st.pending_list('pending')
         if not on and pend:
             how = d.get('pending')
             if how not in ('apply', 'reject', 'archive'):
-                return self.err(409, 'Есть правки на модерации (%d): выберите, что с ними сделать' % len(pend))
+                return self.err(409, f'Есть правки на модерации ({len(pend)}): выберите, что с ними сделать')
             for p in pend:
                 if how == 'archive':
                     self.st.pending_set(p['id'], 'archived', actor(self.h, True)[1], 'Модерация отключена')
@@ -1715,7 +2214,7 @@ class AdminApi:
         self.log('toggle_moderation', 'settings', 'productEditModeration', before, moderation(self.st))
         return self.ok({'settings': moderation(self.st)})
 
-    def rollback(self, aid):
+    def rollback(self, aid) -> None:
         e = self.st.audit_get(aid)
         if not e or e['action'] not in ('edit_product', 'approve_edit') or not isinstance(e.get('before'), dict):
             raise ValueError('Эту запись откатить нельзя')
@@ -1735,23 +2234,23 @@ class AdminApi:
         self.log('rollback_edit', 'product', e['entityId'], b, dict(a, __audit__=aid))
         return self.ok()
 
-    # ---------- резервные копии ----------
-    def bundle(self):
+    def bundle(self) -> object:
         from data_bundle import DataBundle
+
         return DataBundle(os.path.join(os.path.dirname(self.st.path), 'img'))
 
-    def export_cats(self):
+    def export_cats(self) -> list:
         """Категории каталога для выборочной выгрузки: [{cat, count}] (названия и группы — у клиента в справочнике типов)."""
-        return [{'cat': c or '', 'count': n} for c, n in self.st.all('SELECT cat, COUNT(*) FROM catalog GROUP BY cat ORDER BY cat')]
+        return [
+            {'cat': c or '', 'count': n}
+            for c, n in self.st.all('SELECT cat, COUNT(*) FROM catalog GROUP BY cat ORDER BY cat')
+        ]
 
-    def export(self, sections, cats=None, images=False, sup=None, pick=None, fmt=None, flt=None, prices=None):
-        """Выбранные разделы базы файлом в любом формате (DataFile: xlsx, json, xml, yml, zip — решение владельца 18.10).
-        cats — только эти категории каталога; images — прежний вызов: архив .zip с изображениями; sup — только позиции этого
-        поставщика (SupplierScope), без цен и остатков; pick — категории, производители, поставщики, фиды (ExportScope);
-        flt — «Каталог по фильтру» (CatalogFilter): prices — какие группы цен войдут (price, rrc, cost, stock), остальные
-        остаются в базе при загрузке (keep). В файле — отпечатки записей (digests): при загрузке «только изменённое»."""
+    def export(self, sections, cats=None, images=False, sup=None, pick=None, fmt=None, flt=None, prices=None) -> None:
+        """Выбранные разделы базы файлом в любом формате (DataFile: xlsx, json, xml, yml, zip — решение владельца 18.10)."""
         from data_file import DataFile
         from supplier_scope import SupplierScope
+
         st, out, items, catalog, keep, ids, docs, src = self.st, {}, 0, '[]', None, None, None, None
         fmt = DataFile.fmt(fmt, 'zip' if images else 'json')
         if fmt == 'yml':
@@ -1766,6 +2265,7 @@ class AdminApi:
             out['catalog'] = None
         elif 'catalog' in sections and (pick or flt is not None):
             from supplier_scope import CatalogFilter, ExportScope
+
             if flt is not None:
                 ids, keep = CatalogFilter(st).ids(flt), CatalogFilter.keep(prices)
                 sections = ['catalog']
@@ -1773,8 +2273,15 @@ class AdminApi:
                 ids = ExportScope(st).ids(pick)
             out['catalog'] = None
             items = len(ids)
-            parts = [st.joined('SELECT doc AS x FROM catalog WHERE id IN (%s) ORDER BY name' % ','.join('?' * len(ids[i:i + 500])), tuple(ids[i:i + 500]))
-                     for i in range(0, len(ids), 500)]
+            parts = [
+                st.joined(
+                    'SELECT doc AS x FROM catalog WHERE id IN ({}) ORDER BY name'.format(
+                        ','.join('?' * len(ids[i : i + 500]))
+                    ),
+                    tuple(ids[i : i + 500]),
+                )
+                for i in range(0, len(ids), 500)
+            ]
             catalog = '[' + ','.join(x for x in parts if x) + ']'
             if keep:
                 docs = [SupplierScope.strip(d, keep) for d in json.loads(catalog)]
@@ -1783,10 +2290,10 @@ class AdminApi:
                 src = ('WHERE id IN (%s)', ids)
         elif 'catalog' in sections:
             # каталог — готовыми строками из базы, без разбора и повторной сборки: 25 000 позиций занимали 1,3 ГБ памяти сервера
-            where, args = ('WHERE cat IN (%s)' % ','.join('?' * len(cats)), tuple(cats)) if cats else ('', ())
+            where, args = ('WHERE cat IN ({})'.format(','.join('?' * len(cats))), tuple(cats)) if cats else ('', ())
             out['catalog'] = None
             items = st.one('SELECT COUNT(*) FROM catalog ' + where, args)[0]
-            catalog = '[' + st.joined('SELECT doc AS x FROM catalog %s ORDER BY name' % where, args) + ']'
+            catalog = '[' + st.joined(f'SELECT doc AS x FROM catalog {where} ORDER BY name', args) + ']'
             src = (where, args)
         if fmt == 'yml' and 'catalog' in out:
             cost = list(SupplierScope.COST_KEYS)
@@ -1797,9 +2304,14 @@ class AdminApi:
             if k in cur:
                 out[k] = cur[k]
         from version import VERSION
-        extra = [('cats', cats if cats else None), ('pick', {k: sorted(v) for k, v in pick.items()} if pick and 'catalog' in sections else None),
-                 ('supplier', sup or None), ('keep', keep or None),
-                 ('filter', json.loads(json.dumps(flt, ensure_ascii=False, default=sorted)) if flt is not None else None)]
+
+        extra = [
+            ('cats', cats if cats else None),
+            ('pick', {k: sorted(v) for k, v in pick.items()} if pick and 'catalog' in sections else None),
+            ('supplier', sup or None),
+            ('keep', keep or None),
+            ('filter', json.loads(json.dumps(flt, ensure_ascii=False, default=sorted)) if flt is not None else None),
+        ]
         if fmt in ('xlsx', 'xml', 'yml'):
             # таблица и XML строятся из разобранных данных: каталог разбирается один раз (отпечатки — из него же), строка JSON
             # всей выгрузки не собирается — 25 000 позиций в Excel занимали больше гигабайта памяти сервера
@@ -1807,23 +2319,43 @@ class AdminApi:
             if 'catalog' in out:
                 cat_docs, catalog = (docs if docs is not None else json.loads(catalog)), None
             digests = self.digests(out, cat_docs if cat_docs is not None else False)
-            doc = {'format': 'kp-backup', 'version': 1, 'app': VERSION, 'createdAt': _now(),
-                   'sections': {k: cat_docs if k == 'catalog' else v for k, v in out.items()}}
+            doc = {
+                'format': 'kp-backup',
+                'version': 1,
+                'app': VERSION,
+                'createdAt': _now(),
+                'sections': {k: cat_docs if k == 'catalog' else v for k, v in out.items()},
+            }
             doc.update((k, v) for k, v in extra if v is not None)
             doc['digests'] = digests
             body = None
         else:
-            digests = self.digests(out, ('catalog' in out) and (docs if docs is not None and src is None else self._rows(src) if src else json.loads(catalog)))
-            secs = ','.join('%s:%s' % (json.dumps(k), catalog if k == 'catalog' else json.dumps(v, ensure_ascii=False)) for k, v in out.items())
+            digests = self.digests(
+                out,
+                ('catalog' in out)
+                and (docs if docs is not None and src is None else self._rows(src) if src else json.loads(catalog)),
+            )
+            secs = ','.join(
+                '{}:{}'.format(json.dumps(k), catalog if k == 'catalog' else json.dumps(v, ensure_ascii=False))
+                for k, v in out.items()
+            )
             del catalog
-            body = '{"format":"kp-backup","version":1,"app":%s,"createdAt":%s,"sections":{%s}%s,"digests":%s}' % (
-                json.dumps(VERSION), json.dumps(_now()), secs,
-                ''.join(',%s:%s' % (json.dumps(k), json.dumps(v, ensure_ascii=False)) for k, v in extra if v is not None),
-                json.dumps(digests, separators=(',', ':')))
+            body = (
+                '{{"format":"kp-backup","version":1,"app":{},"createdAt":{},"sections":{{{}}}{},"digests":{}}}'.format(
+                    json.dumps(VERSION),
+                    json.dumps(_now()),
+                    secs,
+                    ''.join(f',{json.dumps(k)}:{json.dumps(v, ensure_ascii=False)}' for k, v in extra if v is not None),
+                    json.dumps(digests, separators=(',', ':')),
+                )
+            )
             del secs
             doc = None
-        what = ('+'.join(SECTION_FILE[x] for x in sections) if len(sections) < len(SECTIONS) else 'вся_база') + ('_категорий-%d' % len(cats) if cats else '') + (
-            '_выборка-%d' % items if (pick or flt is not None) and 'catalog' in sections else '')
+        what = (
+            ('+'.join(SECTION_FILE[x] for x in sections) if len(sections) < len(SECTIONS) else 'вся_база')
+            + (f'_категорий-{len(cats)}' if cats else '')
+            + (f'_выборка-{items}' if (pick or flt is not None) and 'catalog' in sections else '')
+        )
         if sup:
             what = 'каталог_' + (re.sub(r'[^\w.-]+', '_', sup).strip('_')[:60] or 'поставщик')
         stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
@@ -1838,73 +2370,89 @@ class AdminApi:
         data, ext, ctype, more = self.data_file().dump(body, fmt, doc)
         del body, doc
         self.log('export_db', 'db', ','.join(sections), None, dict(info, bytes=len(data), **more))
-        return self.h.send(200, ctype, data, self.h.attachment('КП_выгрузка_%s_%s%s' % (what, stamp, ext)))
+        return self.h.send(200, ctype, data, self.h.attachment(f'КП_выгрузка_{what}_{stamp}{ext}'))
 
-    def data_file(self):
+    def data_file(self) -> object:
         """Форматы выгрузки: подписи столбцов Excel — из справочника категорий, ссылки на фото в YML — адрес программы."""
         from data_file import DataFile
         from equipment_types import load_types
+
         types = {t.get('id'): t for t in load_types()['types'] if isinstance(t, dict)}
         labels = {}
         for t in types.values():
             for f in t.get('fields') or []:
                 if isinstance(f, dict) and f.get('key') and f.get('label'):
-                    labels.setdefault('attrs.%s' % f['key'], f['label'] + (', ' + f['unit'] if f.get('unit') else ''))
+                    labels.setdefault(
+                        'attrs.{}'.format(f['key']), f['label'] + (', ' + f['unit'] if f.get('unit') else '')
+                    )
         host = re.sub(r'[^A-Za-z0-9.:\-\[\]]', '', self.h.headers.get('Host') or '')
-        return DataFile(os.path.join(os.path.dirname(self.st.path), 'img'), 'http://' + host if host else '', labels, types)
+        return DataFile(
+            os.path.join(os.path.dirname(self.st.path), 'img'), 'http://' + host if host else '', labels, types
+        )
 
-    def current(self, sections):
+    def current(self, sections) -> dict:
         """Разделы базы, кроме каталога, — как в файле выгрузки."""
         st, out = self.st, {}
         if 'kp' in sections:
-            out['kp'] = [dict(zip(('id', 'number', 'state', 'meta', 'docx', 'updated', 'track'), r))
-                         for r in st.all('SELECT id, number, state, meta, docx, updated, track FROM kp')]
+            out['kp'] = [
+                dict(zip(('id', 'number', 'state', 'meta', 'docx', 'updated', 'track'), r, strict=False))
+                for r in st.all('SELECT id, number, state, meta, docx, updated, track FROM kp')
+            ]
         if 'managers' in sections:
             out['managers'] = json.loads(st.managers_list())
         if 'clients' in sections:
             out['clients'] = st.clients_all()
         if 'audit' in sections:
-            out['audit'] = st.audit_query({}, 10 ** 7)['items']
+            out['audit'] = st.audit_query({}, 10**7)['items']
         if 'suppliers' in sections:
-            out['suppliers'] = {'suppliers': [{k: v for k, v in x.items() if k != '_rev'} for x in st.suppliers_list()],
-                                'customs': st.customs_all()}
+            out['suppliers'] = {
+                'suppliers': [{k: v for k, v in x.items() if k != '_rev'} for x in st.suppliers_list()],
+                'customs': st.customs_all(),
+            }
         if 'settings' in sections:
             from data_bundle import ProgramSettings
+
             out['settings'] = ProgramSettings(st).export()
         return out
 
-    def _rows(self, src):
+    def _rows(self, src) -> None:
         """Позиции каталога по одной (для отпечатков): условие WHERE … или список id."""
         where, args = src
         if '%s' in where:
             for i in range(0, len(args), 500):
-                part = tuple(args[i:i + 500])
+                part = tuple(args[i : i + 500])
                 for (d,) in self.st.all('SELECT doc FROM catalog ' + where % ','.join('?' * len(part)), part):
                     yield _loads(d) or {}
             return
         for (d,) in self.st.all('SELECT doc FROM catalog ' + where, args):
             yield _loads(d) or {}
 
-    def digests(self, out, catalog):
-        """Отпечатки записей на момент выгрузки: {раздел: {id: отпечаток}}; у настроек — {"_": отпечаток}. Каталог —
-        без цен и остатков (их при загрузке «только изменённого» программа не меняет)."""
+    def digests(self, out, catalog) -> dict:
+        """Отпечатки записей на момент выгрузки: {раздел: {id: отпечаток}}; у настроек — {"_": отпечаток}."""
         from data_file import DataFile
         from supplier_scope import SupplierScope
+
         res = {}
         if catalog:
-            res['catalog'] = {x['id']: DataFile.digest(x, SupplierScope.VOLATILE) for x in catalog if isinstance(x, dict) and x.get('id')}
+            res['catalog'] = {
+                x['id']: DataFile.digest(x, SupplierScope.VOLATILE)
+                for x in catalog
+                if isinstance(x, dict) and x.get('id')
+            }
         for k in ('kp', 'managers', 'clients'):
             if isinstance(out.get(k), list):
                 res[k] = {str(x.get('id')): DataFile.digest(x) for x in out[k] if isinstance(x, dict) and x.get('id')}
         if isinstance(out.get('suppliers'), dict):
-            res['suppliers'] = {str(x.get('id')): DataFile.digest(x) for x in out['suppliers'].get('suppliers') or [] if x.get('id')}
+            res['suppliers'] = {
+                str(x.get('id')): DataFile.digest(x) for x in out['suppliers'].get('suppliers') or [] if x.get('id')
+            }
         if 'settings' in out:
             res['settings'] = {'_': DataFile.digest(out['settings'])}
         return res
 
-    def export_sqlite(self):
+    def export_sqlite(self) -> None:
         """Файл базы целиком — архивом ZIP (kp.sqlite3 внутри): в 15–20 раз меньше, загружается обратно как есть."""
-        tmp = os.path.join(os.path.dirname(self.st.path), 'backup', 'export-%s.zip' % secrets.token_hex(4))
+        tmp = os.path.join(os.path.dirname(self.st.path), 'backup', f'export-{secrets.token_hex(4)}.zip')
         self.st.backup(tmp)
         try:
             with open(tmp, 'rb') as f:
@@ -1912,23 +2460,30 @@ class AdminApi:
         finally:
             os.remove(tmp)
         self.log('export_db', 'db', 'sqlite', None, {'bytes': len(data)})
-        return self.h.send(200, 'application/zip', data, self.h.attachment('kp_%s.zip' % datetime.now().strftime('%Y-%m-%d_%H%M')))
+        return self.h.send(
+            200,
+            'application/zip',
+            data,
+            self.h.attachment('kp_{}.zip'.format(datetime.now().strftime('%Y-%m-%d_%H%M'))),
+        )
 
-    def import_sqlite(self, data, name=''):
+    def import_sqlite(self, data, name='') -> dict:
         """Файл базы целиком (.sqlite3 или .zip с ним): проверка, копия текущей базы, замена содержимого «на ходу»."""
-        import zipfile
         import io
+        import zipfile
+
         from storage import DbZip
+
         if not data:
             raise ValueError('Файл пустой')
-        tmp = os.path.join(os.path.dirname(self.st.path), 'backup', 'import-%s.sqlite3' % secrets.token_hex(4))
+        tmp = os.path.join(os.path.dirname(self.st.path), 'backup', f'import-{secrets.token_hex(4)}.sqlite3')
         os.makedirs(os.path.dirname(tmp), exist_ok=True)
         try:
             if data[:2] == b'PK':
                 try:
                     DbZip.unpack(io.BytesIO(data), tmp)
                 except zipfile.BadZipFile:
-                    raise ValueError('Архив повреждён или это не архив ZIP')
+                    raise ValueError('Архив повреждён или это не архив ZIP') from None
             else:
                 with open(tmp, 'wb') as f:
                     f.write(data)
@@ -1936,7 +2491,10 @@ class AdminApi:
                 if f.read(16) != b'SQLite format 3\x00':
                     raise ValueError('Это не файл базы SQLite (.sqlite3) и не архив с ним')
             import feeds
-            if any(feeds.busy(fid) for fid in list(feeds.JOBS)):      # фоновая загрузка писала бы старые карточки в новую базу
+
+            if any(
+                feeds.busy(fid) for fid in list(feeds.JOBS)
+            ):  # фоновая загрузка писала бы старые карточки в новую базу
                 raise ValueError('Идёт загрузка или проверка фида — дождитесь её окончания и загрузите файл базы снова')
             bak = self.st.restore_sqlite(tmp)
         finally:
@@ -1945,21 +2503,33 @@ class AdminApi:
                     os.remove(tmp + ext)
                 except OSError:
                     pass
-        rep = {'catalog': self.st.one('SELECT COUNT(*) FROM catalog')[0], 'kp': self.st.one('SELECT COUNT(*) FROM kp')[0],
-               'clients': self.st.one('SELECT COUNT(*) FROM clients')[0], 'backup': bak, 'file': str(name or '')[:120]}
-        self.log('import_db', 'db', 'sqlite', None, {'bytes': len(data), 'file': rep['file'], 'backup': bak, 'catalog': rep['catalog'], 'kp': rep['kp']})
+        rep = {
+            'catalog': self.st.one('SELECT COUNT(*) FROM catalog')[0],
+            'kp': self.st.one('SELECT COUNT(*) FROM kp')[0],
+            'clients': self.st.one('SELECT COUNT(*) FROM clients')[0],
+            'backup': bak,
+            'file': str(name or '')[:120],
+        }
+        self.log(
+            'import_db',
+            'db',
+            'sqlite',
+            None,
+            {'bytes': len(data), 'file': rep['file'], 'backup': bak, 'catalog': rep['catalog'], 'kp': rep['kp']},
+        )
         return rep
 
     @staticmethod
-    def _limits_ok(x):
+    def _limits_ok(x) -> bool:
         from storage import DocLimits
+
         try:
             DocLimits.check(x, 'Карточка')
             return True
         except ValueError:
             return False
 
-    def _dup_in_file(self, x, seen, add=False):
+    def _dup_in_file(self, x, seen, add=False) -> str:
         """Повтор менеджера внутри одного файла (те же ключи, что manager_dup для базы). → что совпало или ''."""
         what = {'name': 'фамилия и имя', 'email': 'e-mail', 'mobile': 'мобильный телефон', 'ext': 'добавочный номер'}
         keys = self.st.manager_keys(x)
@@ -1970,40 +2540,62 @@ class AdminApi:
             return ''
         return next((what[f] for f in what if keys.get(f) and seen.get((f, keys[f])) not in (None, x.get('id'))), '')
 
-    def import_(self, d, apply, sections=None, mode='all', fmt='json'):
-        """Проверка схемы и предпросмотр (что добавится / обновится); apply — запись после копии базы.
-        Ничего не удаляется. Журнал действий не импортируется. mode «edits» (только изменённое в файле): запись, которую в
-        файле не меняли, пропускается; изменённую в файле, но уже изменённую и в программе после выгрузки, — тоже (в отчёт);
-        у позиций каталога цены и остатки остаются как в базе."""
-        if not isinstance(d, dict) or d.get('format') != 'kp-backup' or d.get('version') != 1 or not isinstance(d.get('sections'), dict):
-            raise ValueError('Это не выгрузка данных программы: нужен файл «КП_выгрузка_…», выгруженный в «База и копии → Выгрузить»')
+    def import_(self, d, apply: bool, sections=None, mode='all', fmt='json') -> dict:
+        """Проверка схемы и предпросмотр (что добавится / обновится); apply — запись после копии базы."""
+        if (
+            not isinstance(d, dict)
+            or d.get('format') != 'kp-backup'
+            or d.get('version') != 1
+            or not isinstance(d.get('sections'), dict)
+        ):
+            raise ValueError(
+                'Это не выгрузка данных программы: нужен файл «КП_выгрузка_…», выгруженный в «База и копии → Выгрузить»'
+            )
         from data_file import DataFile
+
         sec = d['sections']
-        want = [s for s in (sections or 'catalog,kp,managers,clients,suppliers,settings').split(',') if s in sec and s != 'audit' and s in SECTIONS]
+        want = [
+            s
+            for s in (sections or 'catalog,kp,managers,clients,suppliers,settings').split(',')
+            if s in sec and s != 'audit' and s in SECTIONS
+        ]
         st, rep, errors, conflicts = self.st, {}, [], []
         from supplier_scope import SupplierScope
-        keep = SupplierScope.keep_of(d)      # выгрузка без цен и остатков: у имеющихся позиций они остаются как в базе
+
+        keep = SupplierScope.keep_of(d)  # выгрузка без цен и остатков: у имеющихся позиций они остаются как в базе
         digs = d.get('digests') if isinstance(d.get('digests'), dict) else {}
         edits = mode == 'edits' and bool(digs)
         if edits:
             keep = list(SupplierScope.PRICE_KEYS)
         by = actor(self.h, True)[1]
         backup = self.import_backup() if apply else None
-        exist = {'catalog': {x['id']: x for x in json.loads(st.catalog_light())},
-                 'kp': {r[0]: r for r in st.all('SELECT id, meta FROM kp')},
-                 'managers': {x['id']: x for x in json.loads(st.managers_list())},
-                 'clients': {x['id']: x for x in st.clients_all()},
-                 'suppliers': {x['id']: x for x in st.suppliers_list()}}
-        req = {'catalog': ('id', 'name'), 'kp': ('id', 'number'), 'managers': ('id', 'name'), 'clients': ('id',), 'suppliers': ('id', 'name')}
+        exist = {
+            'catalog': {x['id']: x for x in json.loads(st.catalog_light())},
+            'kp': {r[0]: r for r in st.all('SELECT id, meta FROM kp')},
+            'managers': {x['id']: x for x in json.loads(st.managers_list())},
+            'clients': {x['id']: x for x in st.clients_all()},
+            'suppliers': {x['id']: x for x in st.suppliers_list()},
+        }
+        req = {
+            'catalog': ('id', 'name'),
+            'kp': ('id', 'number'),
+            'managers': ('id', 'name'),
+            'clients': ('id',),
+            'suppliers': ('id', 'name'),
+        }
         from data_bundle import ProgramSettings
 
-        def now_of(s, cid):
+        def now_of(s, cid) -> dict:
             """Запись базы сейчас — в том же виде, что в файле выгрузки (для сравнения отпечатков)."""
             if s == 'catalog':
                 return _loads(st.catalog_get(cid)) or {}
             if s == 'kp':
                 r = st.one('SELECT id, number, state, meta, docx, updated, track FROM kp WHERE id=?', (cid,))
-                return dict(zip(('id', 'number', 'state', 'meta', 'docx', 'updated', 'track'), r)) if r else {}
+                return (
+                    dict(zip(('id', 'number', 'state', 'meta', 'docx', 'updated', 'track'), r, strict=False))
+                    if r
+                    else {}
+                )
             x = exist[s].get(cid) or {}
             return {k: v for k, v in x.items() if k != '_rev'}
 
@@ -2023,16 +2615,21 @@ class AdminApi:
                         continue
                 rep[s] = {'new': 0, 'updated': n, 'invalid': 0}
                 continue
-            if s == 'suppliers':     # {suppliers: [...], customs: {ключ: {code, duty, note, name}}}
+            if s == 'suppliers':  # {suppliers: [...], customs: {ключ: {code, duty, note, name}}}
                 rows = (sec[s].get('suppliers') if isinstance(sec[s], dict) else None) or []
             else:
                 rows = sec[s] if isinstance(sec[s], list) else []
             for x in rows:
                 if isinstance(x, dict) and isinstance(x.get('id'), (int, float)) and not isinstance(x.get('id'), bool):
                     x['id'] = str(int(x['id'])) if float(x['id']).is_integer() else str(x['id'])
-            bad = [i for i, x in enumerate(rows) if not isinstance(x, dict) or any(not x.get(k) for k in req[s])
-                   or not re.match(r'^[A-Za-z0-9_-]{1,64}$', str(x.get('id')))]
-            errors += ['%s: запись %d без обязательных полей %s' % (s, i + 1, ', '.join(req[s])) for i in bad[:5]]
+            bad = [
+                i
+                for i, x in enumerate(rows)
+                if not isinstance(x, dict)
+                or any(not x.get(k) for k in req[s])
+                or not re.match(r'^[A-Za-z0-9_-]{1,64}$', str(x.get('id')))
+            ]
+            errors += [f'{s}: запись {i + 1} без обязательных полей {", ".join(req[s])}' for i in bad[:5]]
             # то, на чём запись споткнулась бы посередине загрузки, — видно уже в предпросмотре и пропускается
             more, seen = [], {}
             for i, x in enumerate(rows):
@@ -2040,25 +2637,33 @@ class AdminApi:
                     continue
                 if s == 'catalog' and 'attrs' in x and not isinstance(x['attrs'], (dict, type(None))):
                     more.append(i)
-                    errors.append('Позиция «%s»: параметры не в том виде — пропущено' % str(x.get('name'))[:80])
+                    errors.append('Позиция «{}»: параметры не в том виде — пропущено'.format(str(x.get('name'))[:80]))
                 elif s == 'suppliers' and not self._limits_ok(x):
                     more.append(i)
-                    errors.append('Поставщик «%s»: карточка не в том виде — пропущено' % str(x.get('name'))[:80])
+                    errors.append('Поставщик «{}»: карточка не в том виде — пропущено'.format(str(x.get('name'))[:80]))
                 elif s == 'managers' and self._dup_in_file(x, seen):
                     more.append(i)
-                    errors.append('Менеджер «%s»: повторяется в файле (%s) — пропущено' % (x.get('name'), self._dup_in_file(x, seen)))
+                    errors.append(
+                        'Менеджер «{}»: повторяется в файле ({}) — пропущено'.format(
+                            x.get('name'), self._dup_in_file(x, seen)
+                        )
+                    )
                 if s == 'managers':
                     self._dup_in_file(x, seen, add=True)
                 if i in more:
                     continue
                 if s == 'kp' and not st.kp_import_ok(x):
                     more.append(i)
-                    errors.append('КП %s: испорченная запись — пропущено' % (x.get('number') or x.get('id')))
+                    errors.append(f'КП {x.get("number") or x.get("id")}: испорченная запись — пропущено')
                 elif s == 'managers':
                     dup = st.manager_dup(x['id'], x)
                     if dup:
                         more.append(i)
-                        errors.append('Менеджер «%s»: такой уже есть — %s (совпадает %s), пропущено' % (x.get('name'), dup[0].get('name') or 'без имени', dup[1]))
+                        errors.append(
+                            'Менеджер «{}»: такой уже есть — {} (совпадает {}), пропущено'.format(
+                                x.get('name'), dup[0].get('name') or 'без имени', dup[1]
+                            )
+                        )
             bad += more
             skip = set(bad)
             ok = [x for i, x in enumerate(rows) if i not in skip]
@@ -2073,30 +2678,46 @@ class AdminApi:
                     if o and x['id'] in exist[s] and DataFile.digest(now_of(s, x['id']), sk) != o:
                         conf += 1
                         if len(conflicts) < 30:
-                            conflicts.append('%s «%s» — изменено и в программе после выгрузки' % (
-                                {'catalog': 'Позиция', 'kp': 'КП', 'managers': 'Менеджер', 'clients': 'Клиент', 'suppliers': 'Поставщик'}[s],
-                                x.get('name') or x.get('number') or x['id']))
+                            conflicts.append(
+                                '{} «{}» — изменено и в программе после выгрузки'.format(
+                                    {
+                                        'catalog': 'Позиция',
+                                        'kp': 'КП',
+                                        'managers': 'Менеджер',
+                                        'clients': 'Клиент',
+                                        'suppliers': 'Поставщик',
+                                    }[s],
+                                    x.get('name') or x.get('number') or x['id'],
+                                )
+                            )
                         continue
                     left.append(x)
                 ok = left
-            rep[s] = {'new': sum(1 for x in ok if x['id'] not in exist[s]), 'updated': sum(1 for x in ok if x['id'] in exist[s]),
-                      'invalid': len(bad)}
+            rep[s] = {
+                'new': sum(1 for x in ok if x['id'] not in exist[s]),
+                'updated': sum(1 for x in ok if x['id'] in exist[s]),
+                'invalid': len(bad),
+            }
             if edits:
                 rep[s].update(same=same, conflict=conf)
-            def put(fn, x):
+
+            def put(fn, x, s=s, errors=errors) -> None:
                 """Запись одной строки: ошибка — в отчёт, остальные записываются (загрузка не обрывается посередине)."""
                 try:
                     fn(x)
                 except (ValueError, TypeError) as e:
-                    errors.append('%s «%s»: не записано — %s' % (s, str(x.get('name') or x.get('number') or x.get('id'))[:80], str(e)[:160]))
+                    what = str(x.get('name') or x.get('number') or x.get('id'))[:80]
+                    errors.append(f'{s} «{what}»: не записано — {str(e)[:160]}')
 
             if apply:
                 if s == 'catalog':
-                    def cat_put(x):
+
+                    def cat_put(x) -> None:
                         y = {k: v for k, v in x.items() if k not in ('_light', 'st', 'pricesCount')}
                         if keep and x['id'] in exist['catalog']:
                             y = SupplierScope.merge(y, _loads(st.catalog_get(x['id'])) or {}, keep)
                         st.catalog_put(x['id'], json.dumps(y, ensure_ascii=False))
+
                     for x in ok:
                         put(cat_put, x)
                 elif s == 'kp':
@@ -2112,8 +2733,11 @@ class AdminApi:
                     now = st.customs_all() if edits else {}
                     for key, c in customs.items():
                         if isinstance(c, dict) and re.match(r'^(cat|item):[\w.-]{1,80}$', str(key)):
-                            if edits and all(str(c.get(f) or '') == str((now.get(key) or {}).get(f) or '') for f in ('code', 'duty', 'note', 'name')):
-                                continue      # «только изменённое»: такие же коды ТН ВЭД не переписываются
+                            if edits and all(
+                                str(c.get(f) or '') == str((now.get(key) or {}).get(f) or '')
+                                for f in ('code', 'duty', 'note', 'name')
+                            ):
+                                continue  # «только изменённое»: такие же коды ТН ВЭД не переписываются
                             st.customs_put(key, c.get('code'), c.get('duty'), c.get('note'), by, c.get('name') or '')
                 else:
                     for x in ok:
@@ -2121,19 +2745,36 @@ class AdminApi:
         if apply and 'settings' in want and isinstance(sec['settings'], dict):
             ProgramSettings(st).apply(sec['settings'])
         if apply:
-            self.log('import_db', 'db', ','.join(want), None, {'report': rep, 'createdAt': d.get('createdAt'), 'backup': backup,
-                                                                'fmt': fmt, 'mode': 'edits' if edits else 'all'})
-        return {'report': rep, 'errors': errors, 'createdAt': d.get('createdAt'), 'applied': apply, 'keep': bool(keep) and not edits,
-                'supplier': str(d.get('supplier') or '')[:120], 'digests': bool(digs), 'mode': 'edits' if edits else 'all',
-                'conflicts': conflicts}
+            self.log(
+                'import_db',
+                'db',
+                ','.join(want),
+                None,
+                {
+                    'report': rep,
+                    'createdAt': d.get('createdAt'),
+                    'backup': backup,
+                    'fmt': fmt,
+                    'mode': 'edits' if edits else 'all',
+                },
+            )
+        return {
+            'report': rep,
+            'errors': errors,
+            'createdAt': d.get('createdAt'),
+            'applied': apply,
+            'keep': bool(keep) and not edits,
+            'supplier': str(d.get('supplier') or '')[:120],
+            'digests': bool(digs),
+            'mode': 'edits' if edits else 'all',
+            'conflicts': conflicts,
+        }
 
-    def import_file(self, data, apply, sections=None, name='', mode='all'):
-        """Файл любого формата выгрузки (DataFile: .xlsx, .json, .xml, .yml, .zip с изображениями) — предпросмотр или загрузка
-        (изображения — только недостающие); книга Excel «для правки» (3.98, CatalogSheet) — как файл правок каталога.
-        Файл базы целиком и файл настроек здесь не загружаются — ответ kind подсказывает, куда их загрузить.
-        mode «edits» — только записи, изменённые в файле после выгрузки (по отпечаткам digests)."""
+    def import_file(self, data, apply: bool, sections=None, name='', mode='all') -> dict:
+        """Файл любого формата выгрузки → предпросмотр или запись (копия базы перед записью)."""
         from catalog_patch import CatalogPatch, CatalogSheet
         from data_file import DataFile
+
         kind = DataFile.sniff(data)
         if kind in ('sqlite', 'sqlite-zip'):
             if apply:
@@ -2150,15 +2791,25 @@ class AdminApi:
                 raise ValueError('Это файл настроек — загрузите его в «Загрузить → Файл настроек»')
             return {'kind': 'settings'}
         b = self.bundle()
-        if CatalogPatch.is_patch(d):        # правки каталога: только перечисленные поля позиций, цены и остатки не трогаются
+        if CatalogPatch.is_patch(d):  # правки каталога: только перечисленные поля позиций, цены и остатки не трогаются
             if z:
                 z.close()
             res = CatalogPatch(self.st).run(d, apply, actor(self.h, True)[1], self.import_backup)
             if apply:
-                self.log('import_db', 'db', 'catalog-patch', None, {'title': res['patch']['title'], 'items': res['patch']['written'],
-                                                                     'fields': res['patch']['fields'], 'skipped': res['patch']['conflictCount']})
+                self.log(
+                    'import_db',
+                    'db',
+                    'catalog-patch',
+                    None,
+                    {
+                        'title': res['patch']['title'],
+                        'items': res['patch']['written'],
+                        'fields': res['patch']['fields'],
+                        'skipped': res['patch']['conflictCount'],
+                    },
+                )
             return res
-        if mode == 'auto':          # Excel — по умолчанию «только изменённое в файле», остальное — «всё как в файле»
+        if mode == 'auto':  # Excel — по умолчанию «только изменённое в файле», остальное — «всё как в файле»
             mode = 'edits' if kind == 'xlsx' else 'all'
         try:
             res = self.import_(d, apply, sections, mode, kind)
@@ -2168,7 +2819,8 @@ class AdminApi:
                 res['images']['written'] = b.write(z, imgs)
                 try:
                     import web_api
-                    web_api.IMAGES.index = None     # новые файлы — в учёт одинаковых изображений
+
+                    web_api.IMAGES.index = None  # новые файлы — в учёт одинаковых изображений
                 except Exception:
                     pass
             return res
@@ -2176,9 +2828,10 @@ class AdminApi:
             if z:
                 z.close()
 
-    def settings_doc(self, df, data):
+    def settings_doc(self, df, data) -> dict:
         """Файл настроек любого формата → документ kp-settings (проверку делает SettingsFile.read)."""
         from data_file import DataFile
+
         kind = DataFile.sniff(data)
         if kind not in ('json', 'zip', 'xlsx', 'xml'):
             raise ValueError('Это не файл настроек программы')
@@ -2189,9 +2842,10 @@ class AdminApi:
             z.close()
         return d
 
-    def settings_images(self, df, data):
+    def settings_images(self, df, data) -> int | None:
         """Архив .zip настроек: недостающие изображения (логотипы производителей) — в папку img."""
         from data_file import DataFile
+
         if DataFile.sniff(data) != 'zip':
             return None
         _, z, imgs = df.load(data)
@@ -2200,39 +2854,62 @@ class AdminApi:
         finally:
             z.close()
 
-    def import_backup(self):
-        return self.st.backup(os.path.join(os.path.dirname(self.st.path), 'backup', 'kp-%s-before-import.zip' % datetime.now().strftime('%Y%m%d-%H%M%S')))
+    def import_backup(self) -> str:
+        return self.st.backup(
+            os.path.join(
+                os.path.dirname(self.st.path),
+                'backup',
+                'kp-{}-before-import.zip'.format(datetime.now().strftime('%Y%m%d-%H%M%S')),
+            )
+        )
 
 
-# ---------------------------------------------------------------- статистика
-def stats(st):
+def stats(st) -> dict:
     metas = st.kp_all_meta()
     now = datetime.now()
     today = now.date()
 
-    def day(x):
+    def day(x) -> date | None:
         v = x.get('createdAt') or x.get('savedAt') or x.get('date') or ''
         try:
-            return datetime.fromisoformat(v[:19]).date() if len(v) > 10 else datetime.strptime(v[:10], '%Y-%m-%d').date()
+            return (
+                datetime.fromisoformat(v[:19]).date() if len(v) > 10 else datetime.strptime(v[:10], '%Y-%m-%d').date()
+            )
         except ValueError:
             return None
+
     days = [(day(x), x) for x in metas]
     top, active = SrvVal.get(st, 'srv.statTop'), SrvVal.get(st, 'srv.statActiveDays')
 
-    def count(n):
+    def count(n) -> int:
         return sum(1 for d, _ in days if d and (today - d).days < n)
 
-    def rub(x):
+    def rub(x) -> float:
         e = x.get('econ') if isinstance(x.get('econ'), dict) else {}
-        return econ_rub({'econ': {'cur': 'RUB', 'sum': e.get('sumRub') if e.get('cur') not in (None, 'RUB') else (e.get('sum') or x.get('sum') or 0)}})[0]
+        return econ_rub(
+            {
+                'econ': {
+                    'cur': 'RUB',
+                    'sum': e.get('sumRub')
+                    if e.get('cur') not in (None, 'RUB')
+                    else (e.get('sum') or x.get('sum') or 0),
+                }
+            }
+        )[0]
+
     mgr = {}
     for _, x in days:
         k = x.get('manager') or '—'
         m = mgr.setdefault(k, {'name': k, 'count': 0, 'sum': 0})
         m['count'] += 1
         m['sum'] += rub(x) or 0
-    prods = sorted(({'name': x.get('name', ''), 'count': x.get('pricesCount') or len(x.get('prices') or [])}
-                    for x in json.loads(st.catalog_light())), key=lambda p: -p['count'])
+    prods = sorted(
+        (
+            {'name': x.get('name', ''), 'count': x.get('pricesCount') or len(x.get('prices') or [])}
+            for x in json.loads(st.catalog_light())
+        ),
+        key=lambda p: -p['count'],
+    )
     series = {'day': [], 'week': [], 'month': []}
     for i in range(29, -1, -1):
         d = today - timedelta(days=i)
@@ -2240,49 +2917,93 @@ def stats(st):
     monday = today - timedelta(days=today.weekday())
     for i in range(11, -1, -1):
         s = monday - timedelta(weeks=i)
-        series['week'].append({'label': s.strftime('%d.%m'), 'count': sum(1 for x, _ in days if x and s <= x < s + timedelta(days=7))})
+        series['week'].append(
+            {'label': s.strftime('%d.%m'), 'count': sum(1 for x, _ in days if x and s <= x < s + timedelta(days=7))}
+        )
     for i in range(11, -1, -1):
         y, mo = today.year, today.month - i
         while mo <= 0:
             y, mo = y - 1, mo + 12
-        series['month'].append({'label': '%02d.%d' % (mo, y % 100), 'count': sum(1 for x, _ in days if x and (x.year, x.month) == (y, mo))})
+        series['month'].append(
+            {'label': f'{mo:02d}.{y % 100}', 'count': sum(1 for x, _ in days if x and (x.year, x.month) == (y, mo))}
+        )
     month_ago = (now - timedelta(days=30)).isoformat(timespec='seconds')
     active_ago = (now - timedelta(days=active)).isoformat(timespec='seconds')
-    q = lambda sql, *a: st.one(sql, a)[0]
+
+    def q(sql, *a) -> object:
+        return st.one(sql, a)[0]
+
     approved = q("SELECT COUNT(*) FROM pending_edits WHERE status='approved'")
     rejected = q("SELECT COUNT(*) FROM pending_edits WHERE status='rejected'")
-    users = {r[0] for r in st.all('SELECT DISTINCT user_name FROM audit WHERE ts >= ? AND user_name IS NOT NULL', (active_ago,))}
+    users = {
+        r[0]
+        for r in st.all('SELECT DISTINCT user_name FROM audit WHERE ts >= ? AND user_name IS NOT NULL', (active_ago,))
+    }
     users |= {x.get('manager') for d, x in days if d and (today - d).days < active and x.get('manager')}
     users.discard('Не выбран')
     from maintenance import db_size
+
     size = db_size(st)
     return {
-        'kp': {'total': len(metas), 'today': count(1), 'week': count(7), 'month': count(30),
-               'sumMonth': sum((rub(x) or 0) for d, x in days if d and (today - d).days < 30)},
+        'kp': {
+            'total': len(metas),
+            'today': count(1),
+            'week': count(7),
+            'month': count(30),
+            'sumMonth': sum((rub(x) or 0) for d, x in days if d and (today - d).days < 30),
+        },
         'managers': sorted(mgr.values(), key=lambda m: -m['count'])[:top],
         'products': [p for p in prods if p['count']][:top],
-        'moderation': {'enabled': moderation(st).get('enabled'), 'pending': q("SELECT COUNT(*) FROM pending_edits WHERE status='pending'"),
-                       'approved': approved, 'rejected': rejected,
-                       'conversion': round(approved * 100 / (approved + rejected), 1) if approved + rejected else None},
-        'activeUsers': len(users), 'activeDays': active,
-        'deletions': {'month': q("SELECT COUNT(*) FROM audit WHERE action LIKE 'delete\\_%' ESCAPE '\\' AND result='success' AND ts >= ?", month_ago),
-                      'total': q("SELECT COUNT(*) FROM audit WHERE action LIKE 'delete\\_%' ESCAPE '\\' AND result='success'"),
-                      'trash': q('SELECT COUNT(*) FROM trash')},
+        'moderation': {
+            'enabled': moderation(st).get('enabled'),
+            'pending': q("SELECT COUNT(*) FROM pending_edits WHERE status='pending'"),
+            'approved': approved,
+            'rejected': rejected,
+            'conversion': round(approved * 100 / (approved + rejected), 1) if approved + rejected else None,
+        },
+        'activeUsers': len(users),
+        'activeDays': active,
+        'deletions': {
+            'month': q(
+                "SELECT COUNT(*) FROM audit WHERE action LIKE 'delete\\_%' ESCAPE '\\' AND result='success' AND ts >= ?",
+                month_ago,
+            ),
+            'total': q("SELECT COUNT(*) FROM audit WHERE action LIKE 'delete\\_%' ESCAPE '\\' AND result='success'"),
+            'trash': q('SELECT COUNT(*) FROM trash'),
+        },
         'db': {'bytes': size, 'tables': st.table_counts()},
         'series': series,
     }
 
 
-def startup(store, data_dir, log_print=print):
+def startup(store, data_dir: str, log_print=print) -> None:
     """При запуске: сброс пароля по файлу data/admin-reset.txt, очистка корзины старше srv.trashDays дней («Значения программы»)."""
     reset = os.path.join(data_dir, 'admin-reset.txt')
     if os.path.isfile(reset):
         store.write("DELETE FROM kv WHERE key IN ('admin', 'admins')")
         AdminSessions.reset(store)
         os.remove(reset)
-        store.audit_add({'action': 'set_password', 'entityType': 'admin', 'entityId': 'reset', 'userName': 'Компьютер-сервер',
-                         'userRole': 'admin', 'after': {'reset': True}})
-        log_print('Учётные записи администраторов сброшены (data/admin-reset.txt): создайте новую в «Настройках» на этом компьютере')
+        store.audit_add(
+            {
+                'action': 'set_password',
+                'entityType': 'admin',
+                'entityId': 'reset',
+                'userName': 'Компьютер-сервер',
+                'userRole': 'admin',
+                'after': {'reset': True},
+            }
+        )
+        log_print(
+            'Учётные записи администраторов сброшены (data/admin-reset.txt): создайте новую в «Настройках» на этом компьютере'
+        )
     n = store.trash_purge(SrvVal.get(store, 'srv.trashDays'))
     if n:
-        store.audit_add({'action': 'purge_trash', 'entityType': 'trash', 'userName': 'Программа', 'userRole': 'admin', 'after': {'count': n}})
+        store.audit_add(
+            {
+                'action': 'purge_trash',
+                'entityType': 'trash',
+                'userName': 'Программа',
+                'userRole': 'admin',
+                'after': {'count': n},
+            }
+        )

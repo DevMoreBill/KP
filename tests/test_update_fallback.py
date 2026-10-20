@@ -184,7 +184,7 @@ class UpdateFallbackTest(unittest.TestCase):
         return lambda app: self.edit(app, 'kp_server.py', 'STARTED = False\n', "STARTED = False\nraise RuntimeError('%s')\n" % msg)
 
     def broken_startup(self, line):
-        return lambda app: self.edit(app, 'admin.py', 'def startup(store, data_dir, log_print=print):\n',
+        return lambda app: self.edit(app, 'admin.py', 'def startup(store, data_dir: str, log_print=print) -> None:\n',
                                      'def startup(store, data_dir, log_print=print):\n    %s\n' % line)
 
     # ---------- сценарии по порядку
