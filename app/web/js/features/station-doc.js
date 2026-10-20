@@ -9,7 +9,7 @@
 
 class StationDesign {
   static LABEL = 'Устройство станции';
-  static n(v){ return StationLayout.n(v); }
+  static n(v){ return Mm.text(v); }
   /** строки «раздел: текст» (пустые — без строки) */
   static items(x){
     if (!StationUi.on(x)) return [];
@@ -93,7 +93,7 @@ class StationDoc {
     if (!StationUi.on(x)) return groups;
     let plan; try{ plan=StationUi.plan(x); } catch(e){ return groups; }
     if (!plan || plan.level==='error' || !plan.geo || !plan.geo.ext) return groups;
-    const has=k=>groups.some(g=>(g.rows||[]).some(r=>new RegExp(k, 'i').test(String(r.k||'')))), add=[], n=v=>StationLayout.n(v), c=kitContainer(x)||{};
+    const has=k=>groups.some(g=>(g.rows||[]).some(r=>new RegExp(k, 'i').test(String(r.k||'')))), add=[], n=v=>Mm.text(v), c=kitContainer(x)||{};
     if (!has('^Габарит')) add.push({ k:'Габариты станции (Д × Ш × В)', v:`${plan.geo.ext.map(n).join(' × ')} мм`, hl:false });
     const m=plan.mass; if (!has('^Масса') && m && m.mass>0 && !(m.missing||[]).length) add.push({ k:'Масса станции', v:`около ${n(Math.round(m.mass/10)*10)} кг`, hl:false });
     if (!has('^Контейнер')) add.push({ k:'Контейнер', v:[ctypeOf(c.ctype).name, c.ins ? `утепление ${c.ins}` : ''].filter(Boolean).join(', '), hl:false });

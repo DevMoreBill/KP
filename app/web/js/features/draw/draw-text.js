@@ -55,7 +55,8 @@ export class DrawText {
     const num = Mm.text;
     const air = drawing.plan.air;
     const out = [];
-    if (air && air.q > 0) out.push(`Производительность — ${AirChain.m3(air.q)} м³/мин при ${AirChain.m3(air.bar)} бар`);
+    if (air && air.q > 0)
+      out.push(`Производительность — ${AirChain.flowText(air.q)} м³/мин при ${AirChain.flowText(air.bar)} бар`);
     if (air && air.cls) out.push(`Класс воздуха по ISO 8573-1 — ${air.cls}`);
     out.push(...this.power());
     if (drawing.mass) out.push(StationMass.text(drawing.mass));
@@ -110,7 +111,7 @@ export class DrawText {
       this.fuel(),
       ...DrawText.heat(plan),
       ...DrawText.vessels(plan),
-      ...StationNorms.tt(plan),
+      ...StationNorms.techReqs(plan),
       ...DrawText.lift(plan, this.drawing.slingNo || 3),
       this.hidden(),
     ].filter(Boolean);

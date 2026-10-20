@@ -1,31 +1,32 @@
+import { Num } from './num.js';
 import { AirChain } from './air-chain.js';
 import { Mm } from './mm.js';
 import { PressureVessel } from './pressure-vessel.js';
 import { ReceiverPlan } from './receiver-plan.js';
 
-const n = v => Mm.text(v);
-const m3 = v => AirChain.m3(v);
-const pos = e => `поз. ${e.pos}`;
-const uniq = list => [...new Set(list)];
-const sumFlow = list => list.reduce((s, e) => s + e.air.flow * e.qty, 0);
-
 /** Проверка цепочки подготовки воздуха и что добавить в состав (рекомендации для подбора в каталоге). */
 export class AirCheck {
-  constructor(eq, cls, rq) {
-    this.eq = eq;
+  static _pos = unit => `поз. ${unit.pos}`;
+
+  static _sumFlow = list => list.reduce((acc, unit) => acc + unit.air.flow * unit.qty, 0);
+
+  constructor(equip, cls, req) {
+    this.equip = equip;
     this.cls = cls;
-    this.rq = rq;
-    this.A = AirChain.expand(eq.filter(e => e.air && e.air.stage != null && (e.place !== false || e.outside)));
-    this.C = this.A.filter(e => e.kind === 'compressor');
-    this.D = this.A.filter(e => e.kind === 'dryer' && e.air.type !== 'gen');
-    this.ads = this.D.filter(e => e.air.type === 'ads');
-    this.refrig = this.D.filter(e => e.air.type === 'refrig');
-    this.F = this.A.filter(e => e.kind === 'filter');
-    this.R = this.A.filter(e => e.kind === 'receiver');
-    this.q = sumFlow(this.C.filter(e => e.air.flow > 0));
-    this.bar = Math.max(0, ...this.C.map(e => e.air.bar || 0)) || 8;
-    this.builtDryer = this.C.some(e => e.air.dryer);
-    this.builtFilter = this.C.some(e => e.air.filter) || this.D.some(e => e.air.filters);
+    this.req = req;
+    this.units = AirChain.expand(
+      equip.filter(unit => unit.air && unit.air.stage != null && (unit.place !== false || unit.outside)),
+    );
+    this.comps = this.units.filter(unit => unit.kind === 'compressor');
+    this.dryers = this.units.filter(unit => unit.kind === 'dryer' && unit.air.type !== 'gen');
+    this.ads = this.dryers.filter(unit => unit.air.type === 'ads');
+    this.refrig = this.dryers.filter(unit => unit.air.type === 'refrig');
+    this.filters = this.units.filter(unit => unit.kind === 'filter');
+    this.recvUnits = this.units.filter(unit => unit.kind === 'receiver');
+    this.flow = AirCheck._sumFlow(this.comps.filter(unit => unit.air.flow > 0));
+    this.bar = Math.max(0, ...this.comps.map(unit => unit.air.bar || 0)) || 8;
+    this.builtDryer = this.comps.some(unit => unit.air.dryer);
+    this.builtFilter = this.comps.some(unit => unit.air.filter) || this.dryers.some(unit => unit.air.filters);
     this.iss = [];
     this.recs = [];
     this.keys = new Set();
@@ -33,65 +34,68 @@ export class AirCheck {
 
   /** @returns {object | null} */
   run() {
-    if (!this.C.length) return null;
+    if (!this.comps.length) return null;
     this.stages();
     this.capacity();
     this.registered();
     this.noDryer();
     this.receiverBar();
-    const cl = this.purity();
-    return this.result(cl);
+    const cls = this.purity();
+    return this.result(cls);
   }
 
-  grade(g) {
-    return this.F.filter(e => e.air.grade === g);
+  grade(grade) {
+    return this.filters.filter(unit => unit.air.grade === grade);
   }
 
   issue(level, text) {
     this.iss.push({ level, air: true, text });
   }
 
-  rec(key, o) {
+  rec(key, rec) {
     if (this.keys.has(key)) return;
     this.keys.add(key);
-    this.recs.push({ key, ...o });
+    this.recs.push({ key, ...rec });
   }
 
   need(v, unit) {
     return {
       k: unit === 'л' ? 'Объём' : 'Производительность',
-      v: `не менее ${unit === 'л' ? n(v) : m3(v)} ${unit}`,
+      v: `не менее ${unit === 'л' ? Mm.text(v) : AirChain.flowText(v)} ${unit}`,
     };
   }
 
   /** Что добавить: фильтр ступени grade. */
   filterRec(grade, why) {
-    const G = AirChain.GRADES[grade];
-    const q = this.q;
-    const flow = q / AirChain.kf(this.bar);
+    const gradeInfo = AirChain.GRADES[grade];
+    const rate = this.flow;
+    const flow = rate / AirChain.filterK(this.bar);
     this.rec(grade, {
-      title: G.name,
+      title: gradeInfo.name,
       why,
       cat: 'filter',
-      name: G.name,
-      f: G.stage ? { stage: G.stage } : {},
-      r: q ? { flow: [m3(flow), ''] } : {},
-      attrs: { cat: 'filter', stage: G.stage || undefined },
-      rows: [...(G.stage ? [{ k: 'Ступень очистки', v: G.stage }] : []), ...(q ? [this.need(flow, 'м³/мин')] : [])],
+      name: gradeInfo.name,
+      f: gradeInfo.stage ? { stage: gradeInfo.stage } : {},
+      r: rate ? { flow: [AirChain.flowText(flow), ''] } : {},
+      attrs: { cat: 'filter', stage: gradeInfo.stage || undefined },
+      rows: [
+        ...(gradeInfo.stage ? [{ k: 'Ступень очистки', v: gradeInfo.stage }] : []),
+        ...(rate ? [this.need(flow, 'м³/мин')] : []),
+      ],
     });
   }
 
   /** Ступени очистки по виду осушителя. */
   stages() {
     if (this.ads.length) this.adsStages();
-    if (this.ads.length && this.q > 0) {
+    if (this.ads.length && this.flow > 0) {
       const purge = AirChain.PURGE;
       this.issue(
         'info',
-        `Адсорбционный осушитель (${this.ads.map(pos).join(', ')}) без нагрева расходует на продувку ${Math.round(purge * 100)}–20 % сжатого воздуха: потребителю останется около ${m3(this.q * (1 - purge))} м³/мин из ${m3(this.q)}. Учитывайте при подборе компрессоров; осушитель с нагревом или с управлением по точке росы расходует меньше.`,
+        `Адсорбционный осушитель (${this.ads.map(AirCheck._pos).join(', ')}) без нагрева расходует на продувку ${Math.round(purge * 100)}–20 % сжатого воздуха: потребителю останется около ${AirChain.flowText(this.flow * (1 - purge))} м³/мин из ${AirChain.flowText(this.flow)}. Учитывайте при подборе компрессоров; осушитель с нагревом или с управлением по точке росы расходует меньше.`,
       );
     }
-    if (this.refrig.length && !this.F.length && !this.builtFilter) {
+    if (this.refrig.length && !this.filters.length && !this.builtFilter) {
       this.issue(
         'info',
         'Фильтров в составе нет: перед рефрижераторным осушителем рекомендуется фильтр предварительной очистки (защищает теплообменник), после — тонкой очистки от масла (0,01 мкм), если в осушителе их нет.',
@@ -102,18 +106,20 @@ export class AirCheck {
     if (this.grade('carbon').length && !this.grade('micro').length && !this.grade('fine').length) {
       this.issue(
         'info',
-        `Угольный фильтр (${this.grade('carbon').map(pos).join(', ')}) ставят после фильтра тонкой очистки от масла — иначе уголь быстро насыщается.`,
+        `Угольный фильтр (${this.grade('carbon').map(AirCheck._pos).join(', ')}) ставят после фильтра тонкой очистки от масла — иначе уголь быстро насыщается.`,
       );
     }
   }
 
   adsStages() {
-    const built = this.ads.every(e => e.air.filters);
-    const before = this.F.filter(e => (e.air.grade === 'micro' || e.air.grade === 'fine') && e.air.stage < 45);
+    const built = this.ads.every(unit => unit.air.filters);
+    const before = this.filters.filter(
+      unit => (unit.air.grade === 'micro' || unit.air.grade === 'fine') && unit.air.stage < 45,
+    );
     if (!before.length && !built) {
       this.issue(
         'warn',
-        `Перед адсорбционным осушителем (${this.ads.map(pos).join(', ')}) нужен фильтр очистки от масла (коалесцентный, 0,01 мкм): масло выводит адсорбент из строя. Добавьте фильтр в состав.`,
+        `Перед адсорбционным осушителем (${this.ads.map(AirCheck._pos).join(', ')}) нужен фильтр очистки от масла (коалесцентный, 0,01 мкм): масло выводит адсорбент из строя. Добавьте фильтр в состав.`,
       );
       this.filterRec('micro', 'перед адсорбционным осушителем — всегда: масло выводит адсорбент из строя');
     }
@@ -128,54 +134,54 @@ export class AirCheck {
 
   /** Производительность осушителей и фильтров, ресиверы по методике. */
   capacity() {
-    if (!(this.q > 0)) return;
+    if (!(this.flow > 0)) return;
     this.dryerCapacity();
     this.filterCapacity();
     this.receivers();
   }
 
   dryerNeed() {
-    return (this.q * AirChain.MARGIN) / AirChain.kp(this.bar);
+    return (this.flow * AirChain.MARGIN) / AirChain.dryerK(this.bar);
   }
 
   dryerRec(type, why, extra = {}) {
     const ads = type === 'ads';
     const cat = ads ? 'dryer_ads' : 'dryer_refrig';
     const word = ads ? 'Адсорбционный' : 'Рефрижераторный';
-    const need = this.q ? this.dryerNeed() : 0;
-    const flow = need ? ` не менее ${m3(need)} м³/мин` : '';
+    const need = this.flow ? this.dryerNeed() : 0;
+    const flow = need ? ` не менее ${AirChain.flowText(need)} м³/мин` : '';
     this.rec(`dryer-${type}`, {
       title: extra.title || `${word} осушитель${flow}`,
       why,
       cat,
       name: `${word} осушитель`,
       f: extra.f || {},
-      r: need ? { flow: [m3(need), ''] } : {},
+      r: need ? { flow: [AirChain.flowText(need), ''] } : {},
       attrs: { cat },
       rows: extra.rows || (need ? [this.need(need, 'м³/мин')] : []),
     });
   }
 
   dryerCapacity() {
-    const { q, bar } = this;
-    const kp = AirChain.kp(bar);
+    const { flow: flow, bar } = this;
+    const dryerK = AirChain.dryerK(bar);
     for (const [type, list] of [
       ['refrig', this.refrig],
       ['ads', this.ads],
     ]) {
-      if (!list.length || list.some(e => !(e.air.flow > 0))) continue;
-      const cap = sumFlow(list) * kp;
-      const ids = list.map(pos).join(', ');
-      if (cap < q * 0.98) {
+      if (!list.length || list.some(unit => !(unit.air.flow > 0))) continue;
+      const cap = AirCheck._sumFlow(list) * dryerK;
+      const ids = list.map(AirCheck._pos).join(', ');
+      if (cap < flow * 0.98) {
         this.issue(
           'warn',
-          `Осушитель (${ids}): ${m3(cap)} м³/мин при ${m3(bar)} бар — меньше производительности компрессоров ${m3(q)} м³/мин. Нужен не менее ${m3(this.dryerNeed())} м³/мин (номинал при 7 бар).`,
+          `Осушитель (${ids}): ${AirChain.flowText(cap)} м³/мин при ${AirChain.flowText(bar)} бар — меньше производительности компрессоров ${AirChain.flowText(flow)} м³/мин. Нужен не менее ${AirChain.flowText(this.dryerNeed())} м³/мин (номинал при 7 бар).`,
         );
         this.dryerRec(type, 'производительность — с запасом на лето и давление');
-      } else if (cap < q * AirChain.MARGIN) {
+      } else if (cap < flow * AirChain.MARGIN) {
         this.issue(
           'info',
-          `Осушитель (${ids}) почти без запаса: ${m3(cap)} м³/мин при ${m3(bar)} бар на ${m3(q)} м³/мин компрессоров. Летом при +40 °C на входе производительность осушителя падает примерно на 20 % — рекомендуется запас ${Math.round((AirChain.MARGIN - 1) * 100)} % и больше.`,
+          `Осушитель (${ids}) почти без запаса: ${AirChain.flowText(cap)} м³/мин при ${AirChain.flowText(bar)} бар на ${AirChain.flowText(flow)} м³/мин компрессоров. Летом при +40 °C на входе производительность осушителя падает примерно на 20 % — рекомендуется запас ${Math.round((AirChain.MARGIN - 1) * 100)} % и больше.`,
         );
       }
     }
@@ -183,20 +189,22 @@ export class AirCheck {
 
   /** Фильтры одной ступени — параллельно: пропускная способность складывается. */
   filterCapacity() {
-    const { q, bar } = this;
-    const kf = AirChain.kf(bar);
-    const groups = AirChain.groups([...this.F].sort((a, b) => a.air.stage - b.air.stage)).filter(
-      L => L[0].air.grade !== 'cond' && L[0].air.grade !== 'sep' && L.every(e => e.air.flow > 0),
+    const { flow: flow, bar } = this;
+    const filterK = AirChain.filterK(bar);
+    const groups = AirChain.groups([...this.filters].sort((left, right) => left.air.stage - right.air.stage)).filter(
+      group => group[0].air.grade !== 'cond' && group[0].air.grade !== 'sep' && group.every(unit => unit.air.flow > 0),
     );
-    for (const G of groups) {
-      const cap = sumFlow(G) * kf;
-      if (cap >= q * 0.98) continue;
-      const count = G.reduce((s, x) => s + x.qty, 0);
+    for (const stageGroup of groups) {
+      const cap = AirCheck._sumFlow(stageGroup) * filterK;
+      if (cap >= flow * 0.98) continue;
+      const count = stageGroup.reduce((acc, x) => acc + x.qty, 0);
       const who =
-        count > 1 ? `Фильтры ${uniq(G.map(pos)).join(', ')} (${count} шт. параллельно)` : `Фильтр ${pos(G[0])}`;
+        count > 1
+          ? `Фильтры ${Num.uniq(stageGroup.map(AirCheck._pos)).join(', ')} (${count} шт. параллельно)`
+          : `Фильтр ${AirCheck._pos(stageGroup[0])}`;
       this.issue(
         'warn',
-        `${who} «${G[0].short}»: ${m3(cap)} м³/мин при ${m3(bar)} бар — меньше производительности компрессоров ${m3(q)} м³/мин: перепад давления растёт, фильтр не держит класс очистки. Нужно не менее ${m3(q / kf)} м³/мин.`,
+        `${who} «${stageGroup[0].short}»: ${AirChain.flowText(cap)} м³/мин при ${AirChain.flowText(bar)} бар — меньше производительности компрессоров ${AirChain.flowText(flow)} м³/мин: перепад давления растёт, фильтр не держит класс очистки. Нужно не менее ${AirChain.flowText(flow / filterK)} м³/мин.`,
       );
     }
   }
@@ -214,74 +222,74 @@ export class AirCheck {
       role,
       need,
       attrs: { cat: 'receiver' },
-      rows: [{ k: 'Объём', v: `${n(x.size)} л` }],
+      rows: [{ k: 'Объём', v: `${Mm.text(x.size)} л` }],
     });
   }
 
   /** Ресиверы по методике ПНЕВМОТЕХ (ReceiverPlan): основной, мокрый, у потребителя. */
   receivers() {
-    const RP = ReceiverPlan.from(this.eq, this.rq || {});
-    if (!RP) return;
-    const dry = this.R.filter(e => e.air.role !== 'wet');
-    const wet = this.R.filter(e => e.air.role === 'wet');
-    if (RP.main && !dry.length && !this.C.some(e => e.air.recv)) this.mainReceiver(RP);
-    if (RP.wet && !wet.length) this.wetReceiver(RP);
-    this.moreMain(RP, dry);
-    if (RP.wet) this.more(wet, RP.wet, 'receiver-wet-more', 'wet', 'мокрый ресивер');
-    if (RP.local && !this.eq.some(e => e.local)) this.localReceiver(RP);
+    const plan = ReceiverPlan.from(this.equip, this.req || {});
+    if (!plan) return;
+    const dry = this.recvUnits.filter(unit => unit.air.role !== 'wet');
+    const wet = this.recvUnits.filter(unit => unit.air.role === 'wet');
+    if (plan.main && !dry.length && !this.comps.some(unit => unit.air.recv)) this.mainReceiver(plan);
+    if (plan.wet && !wet.length) this.wetReceiver(plan);
+    this.moreMain(plan, dry);
+    if (plan.wet) this.more(wet, plan.wet, 'receiver-wet-more', 'wet', 'мокрый ресивер');
+    if (plan.local && !this.equip.some(unit => unit.local)) this.localReceiver(plan);
   }
 
-  moreMain(RP, dry) {
-    const before = RP.mode === 'before';
-    this.more(before ? [] : dry, RP.main, 'receiver-more', before ? 'wet' : 'dry', 'основной ресивер');
+  moreMain(plan, dry) {
+    const before = plan.mode === 'before';
+    this.more(before ? [] : dry, plan.main, 'receiver-more', before ? 'wet' : 'dry', 'основной ресивер');
   }
 
-  wetReceiver(RP) {
-    this.recvRec('receiver-wet', RP.wet, {
+  wetReceiver(plan) {
+    this.recvRec('receiver-wet', plan.wet, {
       role: 'wet',
-      title: `Мокрый ресивер ${n(RP.wet.size)} л (до осушителя)`,
-      why: `30–50 % основного; ${RP.wet.why}`,
-      need: RP.main.total * ReceiverPlan.M.wet[0],
+      title: `Мокрый ресивер ${Mm.text(plan.wet.size)} л (до осушителя)`,
+      why: `30–50 % основного; ${plan.wet.why}`,
+      need: plan.main.total * ReceiverPlan.METHOD.wet[0],
     });
   }
 
-  localReceiver(RP) {
-    this.recvRec('receiver-local', RP.local, {
+  localReceiver(plan) {
+    this.recvRec('receiver-local', plan.local, {
       role: 'local',
-      title: `Локальный ресивер ${n(RP.local.size)} л у потребителя`,
-      why: `пик точки больше 50 % производительности компрессора; ${RP.local.why}`,
+      title: `Локальный ресивер ${Mm.text(plan.local.size)} л у потребителя`,
+      why: `пик точки больше 50 % производительности компрессора; ${plan.local.why}`,
     });
   }
 
-  mainReceiver(RP) {
-    const before = RP.mode === 'before';
-    const count = RP.main.n > 1 ? `${RP.main.n} × ` : '';
-    const after = this.D.length || this.builtDryer ? ' (после осушителя)' : '';
+  mainReceiver(plan) {
+    const before = plan.mode === 'before';
+    const count = plan.main.n > 1 ? `${plan.main.n} × ` : '';
+    const after = this.dryers.length || this.builtDryer ? ' (после осушителя)' : '';
     this.issue(
       'info',
-      `Ресивера в составе нет — по расчёту (приоритет ${RP.prio}) нужно ${n(RP.theor)} л: ${ReceiverPlan.text(RP)}. Ресивер сглаживает пульсации и пики потребления, собирает конденсат, компрессор реже включается.`,
+      `Ресивера в составе нет — по расчёту (приоритет ${plan.prio}) нужно ${Mm.text(plan.theor)} л: ${ReceiverPlan.text(plan)}. Ресивер сглаживает пульсации и пики потребления, собирает конденсат, компрессор реже включается.`,
     );
-    this.recvRec('receiver', RP.main, {
+    this.recvRec('receiver', plan.main, {
       role: before ? 'wet' : 'dry',
-      title: `Воздушные ресиверы ${count}${n(RP.main.size)} л${before ? ' (до осушителя)' : after}`,
-      why: `нужно ${n(RP.theor)} л (приоритет ${RP.prio}); ${RP.main.why}`,
-      need: RP.theor,
+      title: `Воздушные ресиверы ${count}${Mm.text(plan.main.size)} л${before ? ' (до осушителя)' : after}`,
+      why: `нужно ${Mm.text(plan.theor)} л (приоритет ${plan.prio}); ${plan.main.why}`,
+      need: plan.theor,
     });
   }
 
   /** Ресиверы есть, но меньше расчёта — добрать по 900 л. */
   more(list, x, key, role, what) {
-    const U = ReceiverPlan.UNIT;
-    const have = list.reduce((t, e) => t + (e.air.vol || 0) * e.qty, 0);
-    const add = x ? Math.ceil((x.total - have) / U - 1e-9) : 0;
-    if (!list.length || !x || x.size !== U || !list.every(e => e.air.vol === U) || add <= 0) return;
+    const unitVol = ReceiverPlan.UNIT;
+    const have = list.reduce((acc, unit) => acc + (unit.air.vol || 0) * unit.qty, 0);
+    const add = x ? Math.ceil((x.total - have) / unitVol - 1e-9) : 0;
+    if (!list.length || !x || x.size !== unitVol || !list.every(unit => unit.air.vol === unitVol) || add <= 0) return;
     this.recvRec(
       key,
-      { size: U, n: add, total: add * U },
+      { size: unitVol, n: add, total: add * unitVol },
       {
         role,
-        title: `Ещё ${add} × ${n(U)} л (${what})`,
-        why: `в составе ${n(have)} л, по расчёту — ${n(x.total)} л`,
+        title: `Ещё ${add} × ${Mm.text(unitVol)} л (${what})`,
+        why: `в составе ${Mm.text(have)} л, по расчёту — ${Mm.text(x.total)} л`,
         need: x.total - have,
       },
     );
@@ -290,62 +298,64 @@ export class AirCheck {
   /** Ресиверы на учёте в Ростехнадзоре: несколько меньших — каждый без учёта. */
   registered() {
     const { bar } = this;
-    const reg = this.R.filter(e => e.air.vol > 0 && AirChain.pv(bar, e.air.vol) > PressureVessel.LIMIT + 1e-9);
-    const total = reg.reduce((s, e) => s + e.air.vol * e.qty, 0);
-    const rs = total ? AirChain.base(total, bar) || AirChain.split(total, bar) : null;
-    if (!rs) return;
-    const who = uniq(reg.map(pos)).join(', ');
+    const reg = this.recvUnits.filter(
+      unit => unit.air.vol > 0 && AirChain.pvProduct(bar, unit.air.vol) > PressureVessel.LIMIT + 1e-9,
+    );
+    const total = reg.reduce((acc, unit) => acc + unit.air.vol * unit.qty, 0);
+    const split = total ? AirChain.base(total, bar) || AirChain.split(total, bar) : null;
+    if (!split) return;
+    const who = Num.uniq(reg.map(AirCheck._pos)).join(', ');
     this.issue(
       'info',
-      `Ресивер ${who}: p·V больше 1,0 МПа·м³ — подлежит учёту в Ростехнадзоре. Без учёта — ${rs.n} ресивера по ${n(rs.v)} л (p·V каждого — ${m3(AirChain.pv(bar, rs.v))} МПа·м³): замена — на вкладке «Компоновка».`,
+      `Ресивер ${who}: p·V больше 1,0 МПа·м³ — подлежит учёту в Ростехнадзоре. Без учёта — ${split.n} ресивера по ${Mm.text(split.v)} л (p·V каждого — ${AirChain.flowText(AirChain.pvProduct(bar, split.v))} МПа·м³): замена — на вкладке «Компоновка».`,
     );
     this.rec('recv-split', {
-      title: `Ресиверы ${rs.n} × ${n(rs.v)} л вместо ${who} — без учёта в Ростехнадзоре`,
-      why: `вместе ${n(rs.n * rs.v)} л; p·V каждого не больше 1,0 МПа·м³`,
+      title: `Ресиверы ${split.n} × ${Mm.text(split.v)} л вместо ${who} — без учёта в Ростехнадзоре`,
+      why: `вместе ${Mm.text(split.n * split.v)} л; p·V каждого не больше 1,0 МПа·м³`,
       cat: 'receiver',
       name: 'Воздушный ресивер',
       f: {},
-      r: { volume: [String(Math.round(rs.v * 0.8)), String(rs.v)] },
-      qty: rs.n,
-      replace: uniq(reg.map(e => e.id)),
+      r: { volume: [String(Math.round(split.v * 0.8)), String(split.v)] },
+      qty: split.n,
+      replace: Num.uniq(reg.map(unit => unit.id)),
       attrs: { cat: 'receiver' },
-      rows: [{ k: 'Объём', v: `${n(rs.v)} л` }],
+      rows: [{ k: 'Объём', v: `${Mm.text(split.v)} л` }],
     });
   }
 
   /** Осушителя нет и класс чистоты не задан — обычно рефрижераторный с байпасом. */
   noDryer() {
-    if (this.D.length || this.builtDryer || String(this.cls || '').trim()) return;
-    const need = this.q ? this.dryerNeed() : 0;
-    const flow = need ? ` не менее ${m3(need)} м³/мин` : '';
+    if (this.dryers.length || this.builtDryer || String(this.cls || '').trim()) return;
+    const need = this.flow ? this.dryerNeed() : 0;
+    const flow = need ? ` не менее ${AirChain.flowText(need)} м³/мин` : '';
     this.issue(
       'info',
       `Осушителя в составе нет: влага остаётся в сжатом воздухе — конденсат в трубах и у потребителей, зимой замерзает. Обычно ставят рефрижераторный осушитель (точка росы +3 °C)${flow} с байпасом — подбор на вкладке «Компоновка».`,
     );
     this.dryerRec('refrig', 'точка росы +3 °C: без конденсата в трубах; ставится с байпасом', {
-      rows: need ? [{ k: 'Производительность', v: `не менее ${m3(need)} м³/мин` }] : [],
+      rows: need ? [{ k: 'Производительность', v: `не менее ${AirChain.flowText(need)} м³/мин` }] : [],
     });
   }
 
   /** Ресивер — на давление не ниже компрессорного. */
   receiverBar() {
-    const cb = Math.max(0, ...this.C.map(e => e.air.bar || 0));
-    for (const e of this.R.filter(x => x.air.bar > 0 && cb > x.air.bar + 0.05)) {
+    const compBar = Math.max(0, ...this.comps.map(unit => unit.air.bar || 0));
+    for (const bad of this.recvUnits.filter(x => x.air.bar > 0 && compBar > x.air.bar + 0.05)) {
       this.issue(
         'warn',
-        `Ресивер ${pos(e)} рассчитан на ${m3(e.air.bar)} бар — меньше давления компрессоров ${m3(cb)} бар: нужен ресивер не ниже ${m3(cb)} бар.`,
+        `Ресивер ${AirCheck._pos(bad)} рассчитан на ${AirChain.flowText(bad.air.bar)} бар — меньше давления компрессоров ${AirChain.flowText(compBar)} бар: нужен ресивер не ниже ${AirChain.flowText(compBar)} бар.`,
       );
     }
   }
 
   /** Класс чистоты по ISO 8573-1: какой осушитель и какие ступени фильтров нужны. */
   purity() {
-    const cl = String(this.cls || '').match(/^([1-6])\.([1-6])\.([1-4])$/);
-    if (!cl) return null;
+    const match = String(this.cls || '').match(/^([1-6])\.([1-6])\.([1-4])$/);
+    if (!match) return null;
     const before = this.recs.length;
-    const [pc, wc, oc] = cl.slice(1).map(Number);
-    this.purityDryer(wc);
-    this.purityFilters(pc, oc);
+    const [partCls, waterCls, oilCls] = match.slice(1).map(Number);
+    this.purityDryer(waterCls);
+    this.purityFilters(partCls, oilCls);
     if (this.recs.length > before) {
       const missing = this.recs
         .slice(before)
@@ -358,7 +368,7 @@ export class AirCheck {
         .join(', ');
       this.issue('info', `Для класса ${this.cls} в составе не хватает: ${missing} — подбор на вкладке «Компоновка».`);
     }
-    return cl;
+    return match;
   }
 
   dewText(pdp) {
@@ -370,81 +380,88 @@ export class AirCheck {
     return pdp <= -40 ? '−40' : '−20';
   }
 
-  purityDryer(wc) {
-    const { cls, q } = this;
-    const pdp = AirChain.PDP[wc];
-    const dp = this.dewText(pdp);
-    const need = q ? this.dryerNeed() : 0;
-    if (wc <= 3 && !this.ads.some(e => e.air.pdp == null || e.air.pdp <= pdp)) {
+  purityDryer(waterCls) {
+    const { cls, flow: flow } = this;
+    const pdp = AirChain.PDP[waterCls];
+    const dewText = this.dewText(pdp);
+    const need = flow ? this.dryerNeed() : 0;
+    if (waterCls <= 3 && !this.ads.some(unit => unit.air.pdp == null || unit.air.pdp <= pdp)) {
       const refrig = this.refrig.length || this.builtDryer ? ' (рефрижераторный даёт +3 °C)' : '';
-      this.issue('warn', `Класс ${cls}: точка росы ${dp} — нужен адсорбционный осушитель${refrig}.`);
-      this.dryerRec('ads', `класс воды ${wc} по ISO 8573-1`, {
-        title: `Адсорбционный осушитель (точка росы ${dp})${need ? `, не менее ${m3(need)} м³/мин` : ''}`,
+      this.issue('warn', `Класс ${cls}: точка росы ${dewText} — нужен адсорбционный осушитель${refrig}.`);
+      this.dryerRec('ads', `класс воды ${waterCls} по ISO 8573-1`, {
+        title: `Адсорбционный осушитель (точка росы ${dewText})${need ? `, не менее ${AirChain.flowText(need)} м³/мин` : ''}`,
         f: { dewPoint: this.dewPoint(pdp) },
-        rows: [{ k: 'Точка росы', v: dp }, ...(need ? [this.need(need, 'м³/мин')] : [])],
+        rows: [{ k: 'Точка росы', v: dewText }, ...(need ? [this.need(need, 'м³/мин')] : [])],
       });
       if (!this.grade('micro').length) this.filterRec('micro', 'перед адсорбционным осушителем — всегда');
-    } else if (wc <= 6 && !(this.D.length || this.builtDryer)) {
-      this.issue('warn', `Класс ${cls}: точка росы ${dp} — нужен осушитель (рефрижераторный).`);
-      this.dryerRec('refrig', `класс воды ${wc} по ISO 8573-1 — точка росы до ${dp}`);
+    } else if (waterCls <= 6 && !(this.dryers.length || this.builtDryer)) {
+      this.issue('warn', `Класс ${cls}: точка росы ${dewText} — нужен осушитель (рефрижераторный).`);
+      this.dryerRec('refrig', `класс воды ${waterCls} по ISO 8573-1 — точка росы до ${dewText}`);
     }
   }
 
-  purityFilters(pc, oc) {
+  purityFilters(partCls, oilCls) {
     const { cls } = this;
     const want = (grades, why) => {
       const have = grades.some(x => this.grade(x).length);
       const built = this.builtFilter && grades.some(x => x === 'pre' || x === 'fine');
       if (!have && !built) this.filterRec(grades[0], why);
     };
-    if (pc === 1 || oc === 1) want(['micro'], `класс ${cls}: частицы и масло — до 0,01 мкм и 0,01 мг/м³`);
-    else if (pc === 2 || oc === 2) want(['fine', 'micro'], `класс ${cls}: частицы до 1 мкм, масло до 0,1 мг/м³`);
-    else if (pc <= 3 || oc <= 3) want(['pre', 'fine', 'micro'], `класс ${cls}: частицы до 5 мкм, масло до 1 мг/м³`);
-    if (oc === 1 && !this.grade('carbon').length)
+    if (partCls === 1 || oilCls === 1) want(['micro'], `класс ${cls}: частицы и масло — до 0,01 мкм и 0,01 мг/м³`);
+    else if (partCls === 2 || oilCls === 2)
+      want(['fine', 'micro'], `класс ${cls}: частицы до 1 мкм, масло до 0,1 мг/м³`);
+    else if (partCls <= 3 || oilCls <= 3)
+      want(['pre', 'fine', 'micro'], `класс ${cls}: частицы до 5 мкм, масло до 1 мг/м³`);
+    if (oilCls === 1 && !this.grade('carbon').length)
       this.filterRec('carbon', 'класс масла 1 — с парами масла (0,003 мг/м³)');
   }
 
-  word(e) {
-    const a = e.air;
+  word(unit) {
+    const air = unit.air;
     const words = {
-      compressor: () => `компрессор${a.dryer ? ' со встроенным осушителем' : ''}`,
-      receiver: () => `${this.receiverWord(a)}${a.out ? ' снаружи' : ''}`,
+      compressor: () => `компрессор${air.dryer ? ' со встроенным осушителем' : ''}`,
+      receiver: () => `${this.receiverWord(air)}${air.out ? ' снаружи' : ''}`,
       dryer: () =>
-        `${{ ads: 'адсорбционный осушитель', gen: 'генератор' }[a.type] || 'рефрижераторный осушитель'}${a.filters ? ' (встроенные фильтры)' : ''}`,
-    }[e.kind];
-    return words ? words() : `фильтр ${AirChain.GRADES[a.grade].short}`;
+        `${{ ads: 'адсорбционный осушитель', gen: 'генератор' }[air.type] || 'рефрижераторный осушитель'}${air.filters ? ' (встроенные фильтры)' : ''}`,
+    }[unit.kind];
+    return words ? words() : `фильтр ${AirChain.GRADES[air.grade].short}`;
   }
 
-  receiverWord(a) {
-    if (a.role === 'dry' && this.D.length) return '«сухой» ресивер';
-    return a.role === 'dry' && this.F.length ? 'ресивер после фильтров' : 'ресивер';
+  receiverWord(air) {
+    if (air.role === 'dry' && this.dryers.length) return '«сухой» ресивер';
+    return air.role === 'dry' && this.filters.length ? 'ресивер после фильтров' : 'ресивер';
   }
 
   /** Цепочка по ходу воздуха, единицы для схемы и очистка конденсата (не на линии). */
-  result(cl) {
-    const order = this.A.filter(e => e.kind !== 'filter' || e.air.grade !== 'cond').sort(
-      (a, b) => a.air.stage - b.air.stage,
-    );
-    const chain = order.map(e => ({ pos: e.pos, kind: e.kind, text: this.word(e), guess: Boolean(e.air.guess) }));
-    const units = order.map(e => ({
-      pos: e.pos,
-      kind: e.kind,
-      qty: e.qty || 1,
-      name: e.name,
-      brief: e.brief,
-      short: e.short,
-      air: e.air,
+  result(cls) {
+    const order = this.units
+      .filter(unit => unit.kind !== 'filter' || unit.air.grade !== 'cond')
+      .sort((left, right) => left.air.stage - right.air.stage);
+    const chain = order.map(unit => ({
+      pos: unit.pos,
+      kind: unit.kind,
+      text: this.word(unit),
+      guess: Boolean(unit.air.guess),
     }));
-    const cond = this.eq
-      .filter(e => e.kind === 'filter' && e.air && e.air.grade === 'cond' && e.place !== false)
-      .map(e => ({ pos: e.pos, qty: e.qty || 1, name: e.name, brief: e.brief }));
+    const units = order.map(unit => ({
+      pos: unit.pos,
+      kind: unit.kind,
+      qty: unit.qty || 1,
+      name: unit.name,
+      brief: unit.brief,
+      short: unit.short,
+      air: unit.air,
+    }));
+    const cond = this.equip
+      .filter(unit => unit.kind === 'filter' && unit.air && unit.air.grade === 'cond' && unit.place !== false)
+      .map(unit => ({ pos: unit.pos, qty: unit.qty || 1, name: unit.name, brief: unit.brief }));
     return {
       chain,
-      q: this.q,
+      q: this.flow,
       bar: this.bar,
       issues: this.iss,
       recs: this.recs,
-      cls: cl ? String(this.cls) : '',
+      cls: cls ? String(this.cls) : '',
       units,
       cond,
     };

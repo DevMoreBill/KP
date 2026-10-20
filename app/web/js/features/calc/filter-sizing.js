@@ -67,7 +67,7 @@ export class FilterSizing {
         ],
       };
     }
-    const k = AirChain.kf(pressure);
+    const k = AirChain.filterK(pressure);
     const attrs = unit.attrs;
     const model = attrs.series || attrs.model || unit.name;
     note.rule('filter.kp');

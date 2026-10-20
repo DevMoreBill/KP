@@ -6,10 +6,6 @@ import { VentCalc } from './vent-calc.js';
 import { VentGrille } from './vent-grille.js';
 import { VentIntake } from './vent-intake.js';
 
-const key = e => `${e.id}#${e.unit}`;
-const r = x => Math.round(x * 100) / 100;
-const floorDgu = I => I.filter(i => i.kind === 'dgu' && !i.tank && i.mount === 'floor');
-
 /**
  * Места жалюзи по расчёту (решения ПНЕВМОТЕХ). Приток и выброс — никогда на одной стене. Выброс компрессоров: над их
  * сервисными воротами → вверху стены над компрессором → торец у компрессора без ворот → иначе все через крышу каналами
@@ -18,6 +14,12 @@ const floorDgu = I => I.filter(i => i.kind === 'dgu' && !i.tank && i.mount === '
  * напротив каждой, одинаковый. Не встал — приточные вентиляторы, затем нехватка.
  */
 export class VentPlan {
+  static _key = item => `${item.id}#${item.unit}`;
+
+  static _round2 = x => Math.round(x * 100) / 100;
+
+  static _floorDgu = items => items.filter(i => i.kind === 'dgu' && !i.tank && i.mount === 'floor');
+
   constructor(plan, front, roof) {
     this.plan = plan;
     this.front = front;
@@ -25,16 +27,16 @@ export class VentPlan {
   }
 
   /** Проекция центра тяжести на стену w (знак № 12): {u, z} или null. */
-  static cog(plan, w) {
-    const M = plan.mass;
-    const g = plan.geo;
-    if (!M || !g || !g.ext) return null;
-    const c = M.cg;
-    const [Le, We] = g.ext;
+  static cog(plan, wall) {
+    const mass = plan.mass;
+    const geo = plan.geo;
+    if (!mass || !geo || !geo.ext) return null;
+    const center = mass.cg;
+    const [Le, We] = geo.ext;
     const [Li, Wi] = plan.int;
     return {
-      u: w === 'left' || w === 'right' ? c.y - (We - Wi) / 2 : c.x - (Le - Li) / 2,
-      z: c.z - StationGeo.zFloor(g.type),
+      u: wall === 'left' || wall === 'right' ? center.y - (We - Wi) / 2 : center.x - (Le - Li) / 2,
+      z: center.z - StationGeo.zFloor(geo.type),
     };
   }
 
@@ -44,9 +46,12 @@ export class VentPlan {
     this.radiators();
     this.compressors();
     const out = this.out;
-    this.exW = new Set([this.E, ...out.louvers.filter(q => q.kind === 'out' || q.kind === 'rad').map(q => q.wall)]);
+    this.exW = new Set([
+      this.exhaust,
+      ...out.louvers.filter(louver => louver.kind === 'out' || louver.kind === 'rad').map(louver => louver.wall),
+    ]);
     this.general();
-    if (!out.size.out && out.need.out) out.size.out = VentGrille.size(out.need.out.gross, this.OB);
+    if (!out.size.out && out.need.out) out.size.out = VentGrille.size(out.need.out.gross, this.outSize);
     new VentIntake(this).run();
     this.restOut();
     this.finish();
@@ -57,22 +62,39 @@ export class VentPlan {
     const { plan } = this;
     const v = plan.heat && plan.heat.vent;
     const sys = plan.sys || {};
-    const I = plan.items || [];
-    const dgu = I.find(i => i.kind === 'dgu' && !i.tank);
+    const items = plan.items || [];
+    const dgu = items.find(i => i.kind === 'dgu' && !i.tank);
     if (!v || (!dgu && sys.vent === false)) return false;
-    [this.L, this.Wd, this.H] = plan.int;
-    Object.assign(this, { v, sys, I, dgu, Sm: v.sum, x0: plan.geo.x0 || 0, S: VentGrille.STEP, OB: VentGrille.OUT });
+    [this.len, this.wid, this.height] = plan.int;
+    Object.assign(this, {
+      vent: v,
+      sys,
+      items,
+      dgu,
+      summary: v.sum,
+      x0: plan.geo.x0 || 0,
+      step: VentGrille.STEP,
+      outSize: VentGrille.OUTLET,
+    });
     this.speeds();
     this.room = Math.max(0, v.m3h - v.use);
     this.qRad = dgu ? Math.max(v.rad, this.room) : 0;
     this.qIn = this.inFlow();
-    this.comp = I.filter(i => i.kind === 'compressor' && i.mount === 'floor' && !i.tank);
-    this.radW = new Set(floorDgu(I).map(i => i.rad || 'right'));
-    this.E = this.exhaustWall();
-    this.W = new StWalls(plan, { equip: false });
-    this.roofs = (plan.roof || []).map(m => [m.x - 150, m.x + m.lx + 150, m.y - 150, m.y + m.ly + 150]);
-    const IN = VentGrille.IN;
-    this.oh = Math.max(this.OB.h[0], Math.min(this.OB.h[1], this.H - this.OB.top - IN.z0 - IN.h[0] - 200));
+    this.comp = items.filter(i => i.kind === 'compressor' && i.mount === 'floor' && !i.tank);
+    this.radW = new Set(VentPlan._floorDgu(items).map(i => i.rad || 'right'));
+    this.exhaust = this.exhaustWall();
+    this.walls = new StWalls(plan, { equip: false });
+    this.roofs = (plan.roof || []).map(muffler => [
+      muffler.x - 150,
+      muffler.x + muffler.lx + 150,
+      muffler.y - 150,
+      muffler.y + muffler.ly + 150,
+    ]);
+    const inSize = VentGrille.INLET;
+    this.outH = Math.max(
+      this.outSize.h[0],
+      Math.min(this.outSize.h[1], this.height - this.outSize.top - inSize.z0 - inSize.h[0] - 200),
+    );
     this.qWall = dgu ? 0 : this.room;
     this.outRest = 0;
     this.leftOk = this.x0 === 0 && !plan.geo.sea;
@@ -82,17 +104,17 @@ export class VentPlan {
 
   /** Проёмы — по рамке S = L / (3600·v), приток — с запасом. */
   speeds() {
-    const Sm = this.Sm;
-    const sp = () => StationRules.raw('vent.speed');
-    this.vIn = Sm ? Sm.vIn : sp().in;
-    this.vOut = Sm ? Sm.vOut : sp().out;
-    this.res = Sm ? Sm.res : sp().inReserve;
+    const summary = this.summary;
+    const speed = () => StationRules.raw('vent.speed');
+    this.vIn = summary ? summary.vIn : speed().in;
+    this.vOut = summary ? summary.vOut : speed().out;
+    this.res = summary ? summary.res : speed().inReserve;
   }
 
   inFlow() {
-    const { v, Sm } = this;
+    const { vent: v, summary: summary } = this;
     if (this.dgu) return this.qRad + v.use + v.cool;
-    return Sm && Sm.Lin ? Sm.Lin : v.m3h + v.cool;
+    return summary && summary.Lin ? summary.Lin : v.m3h + v.cool;
   }
 
   exhaustWall() {
@@ -100,19 +122,19 @@ export class VentPlan {
     return this.radW.has('right') ? 'right' : [...this.radW][0];
   }
 
-  qc(c) {
-    return Math.round(StationHeat.coolOf(c, this.plan));
+  coolFlow(comp) {
+    return Math.round(StationHeat.coolOf(comp, this.plan));
   }
 
   result() {
-    const qOut = (this.dgu ? 0 : this.room) + this.comp.reduce((s, c) => s + this.qc(c), 0);
+    const qOut = (this.dgu ? 0 : this.room) + this.comp.reduce((sum, comp) => sum + this.coolFlow(comp), 0);
     return {
       q: { in: Math.round(this.qIn), out: Math.round(qOut), rad: Math.round(this.qRad) },
       need: { in: this.need(this.qIn, 'in'), out: qOut > 0 ? this.need(qOut, 'out') : null },
       size: {},
       louvers: [],
       roof: [],
-      exhaust: this.E,
+      exhaust: this.exhaust,
       ducts: {},
       short: { in: 0, out: 0 },
       face: this.vOut,
@@ -125,131 +147,145 @@ export class VentPlan {
     };
   }
 
-  need(q, kind) {
-    const gross = kind === 'in' ? (q / 3600 / this.vIn) * this.res : q / 3600 / this.vOut;
-    return { q, gross: r(gross), free: r(gross * VentGrille.FREE), v: kind === 'in' ? this.vIn : this.vOut };
+  need(flow, kind) {
+    const gross = kind === 'in' ? (flow / 3600 / this.vIn) * this.res : flow / 3600 / this.vOut;
+    return {
+      q: flow,
+      gross: VentPlan._round2(gross),
+      free: VentPlan._round2(gross * VentGrille.FREE),
+      v: kind === 'in' ? this.vIn : this.vOut,
+    };
   }
 
   /** Выброс по рамке, мм². */
-  gross(q) {
-    return (q / 3600 / this.vOut) * 1e6;
+  gross(flow) {
+    return (flow / 3600 / this.vOut) * 1e6;
   }
 
-  cogHit(w, u0, u1, z0, z1) {
-    const c = VentPlan.cog(this.plan, w);
-    const hh = 150 + 120;
-    return !!c && c.z + hh > z0 && c.z - hh < z1 + 220 && u0 < c.u + hh && u1 > c.u - hh;
+  cogHit(wall, u0, u1, z0, z1) {
+    const center = VentPlan.cog(this.plan, wall);
+    const signH = 150 + 120;
+    return (
+      !!center && center.z + signH > z0 && center.z - signH < z1 + 220 && u0 < center.u + signH && u1 > center.u - signH
+    );
   }
 
   /** Маркиза выступает от стены — от дверей и ворот на HOOD_GAP дальше. */
   snowGaps() {
     if (!this.sys.snow && !this.sys.snowout) return;
-    const { plan, W } = this;
-    const D = VentGrille.HOOD_GAP;
-    for (const d of plan.doors || []) W.busy(d.wall === 'back' ? 'back' : 'front', d.x0 - D, d.x1 + D, 0, d.h + 150);
-    for (const q of [plan.entry, plan.exit, plan.gates, plan.gates2].filter(Boolean)) {
-      if (q.wall === 'front') W.busy('front', q.x0 - D, q.x1 + D, 0, q.h + 150);
-      else W.busy(q.wall, q.y0 - D, q.y1 + D, 0, q.h + 150);
+    const { plan, walls: walls } = this;
+    const gap = VentGrille.HOOD_GAP;
+    for (const door of plan.doors || [])
+      walls.busy(door.wall === 'back' ? 'back' : 'front', door.x0 - gap, door.x1 + gap, 0, door.h + 150);
+    for (const louver of [plan.entry, plan.exit, plan.gates, plan.gates2].filter(Boolean)) {
+      if (louver.wall === 'front') walls.busy('front', louver.x0 - gap, louver.x1 + gap, 0, louver.h + 150);
+      else walls.busy(louver.wall, louver.y0 - gap, louver.y1 + gap, 0, louver.h + 150);
     }
   }
 
   /** У каждой ДГУ — своя дверь-жалюзи (или жалюзи) напротив радиатора; общий расход — в доле её радиатора. */
   radiators() {
     if (!this.dgu) return;
-    const DG = floorDgu(this.I);
-    const R = StationRules.raw('heat.dgu_rad');
-    const own = i => (i.cool > 0 ? i.cool : (i.kw * 1000 * R.share) / (StationHeat.AIR * R.dt));
-    const sum = DG.reduce((s, i) => s + own(i), 0) || 1;
-    const rads = DG.map(g => this.radiator(g, Math.round((this.qRad * own(g)) / sum)));
-    const top = rads.reduce((a, b) => ((b.v || 0) > (a.v || 0) ? b : a), rads[0]);
+    const dgus = VentPlan._floorDgu(this.items);
+    const rule = StationRules.raw('heat.dgu_rad');
+    const own = i => (i.cool > 0 ? i.cool : (i.kw * 1000 * rule.share) / (StationHeat.AIR * rule.dt));
+    const sum = dgus.reduce((acc, i) => acc + own(i), 0) || 1;
+    const rads = dgus.map(dgu => this.radiator(dgu, Math.round((this.qRad * own(dgu)) / sum)));
+    const top = rads.reduce((best, other) => ((other.v || 0) > (best.v || 0) ? other : best), rads[0]);
     if (top) this.out.rad = { ...top, qOne: top.q, q: Math.round(this.qRad), n: rads.length, list: rads };
   }
 
-  radiator(g, q) {
-    const wall = g.rad || 'right';
+  radiator(dgu, flow) {
+    const wall = dgu.rad || 'right';
     const end = wall !== 'back';
-    const d = (this.plan.dguDoors || []).find(o => o.pos === g.pos && o.unit === g.unit);
-    const Lr = d
+    const door = (this.plan.dguDoors || []).find(cand => cand.pos === dgu.pos && cand.unit === dgu.unit);
+    const louver = door
       ? {
           kind: 'rad',
           wall,
-          u0: end ? d.y0 : d.x0,
-          u1: end ? d.y1 : d.x1,
+          u0: end ? door.y0 : door.x0,
+          u1: end ? door.y1 : door.x1,
           z0: 0,
-          z1: d.h,
+          z1: door.h,
           door: true,
-          pos: g.pos,
-          unit: g.unit,
+          pos: dgu.pos,
+          unit: dgu.unit,
         }
       : {
           kind: 'rad',
           wall,
-          u0: Math.round((end ? g.y : g.x) + 80),
-          u1: Math.round((end ? g.y + g.ly : g.x + g.lx) - 80),
-          z0: Math.round(g.h * 0.12),
-          z1: Math.round(g.h * 0.95),
-          pos: g.pos,
-          unit: g.unit,
+          u0: Math.round((end ? dgu.y : dgu.x) + 80),
+          u1: Math.round((end ? dgu.y + dgu.ly : dgu.x + dgu.lx) - 80),
+          z0: Math.round(dgu.h * 0.12),
+          z1: Math.round(dgu.h * 0.95),
+          pos: dgu.pos,
+          unit: dgu.unit,
         };
-    Lr.w = Lr.u1 - Lr.u0;
-    Lr.h = Lr.z1 - Lr.z0;
-    Lr.q = q;
-    this.out.louvers.push(Lr);
-    this.W.busy(wall, Lr.u0 - 90, Lr.u1 + 260, Lr.z0, Lr.z1 + 120);
-    const fr = ((Lr.w * Lr.h) / 1e6) * VentGrille.FREE;
+    louver.w = louver.u1 - louver.u0;
+    louver.h = louver.z1 - louver.z0;
+    louver.q = flow;
+    this.out.louvers.push(louver);
+    this.walls.busy(wall, louver.u0 - 90, louver.u1 + 260, louver.z0, louver.z1 + 120);
+    const free = ((louver.w * louver.h) / 1e6) * VentGrille.FREE;
     return {
-      q: Lr.q,
-      free: r(fr),
-      w: Lr.w,
-      h: Lr.h,
-      door: !!Lr.door,
+      q: louver.q,
+      free: VentPlan._round2(free),
+      w: louver.w,
+      h: louver.h,
+      door: !!louver.door,
       wall,
-      v: fr > 0 ? Math.round((Lr.q / 3600 / fr) * 10) / 10 : null,
+      v: free > 0 ? Math.round((louver.q / 3600 / free) * 10) / 10 : null,
     };
   }
 
   /** Колпак выброса на крыше ближе к источнику, мимо глушителя и других колпаков; нет места — двумя поменьше. */
-  hood(q, xc, yc, duct, depth = 0) {
-    const { S, Wd, out } = this;
-    const a = this.gross(q);
-    const sy = Math.min(Wd - 300, Math.max(400, Math.ceil(Math.sqrt(a) / S) * S));
-    const sx = Math.max(400, Math.ceil(a / sy / S) * S);
-    const at = this.roofSpot({ sx, sy }, xc, yc);
-    if (!at) {
-      if (depth < 2 && a > 0.5e6) {
-        this.hood(q / 2, xc, yc, duct, depth + 1);
-        this.hood(q / 2, xc, yc, duct, depth + 1);
+  hood(flow, midX, midY, duct, depth = 0) {
+    const { step: step, wid: wid, out } = this;
+    const area = this.gross(flow);
+    const sizeY = Math.min(wid - 300, Math.max(400, Math.ceil(Math.sqrt(area) / step) * step));
+    const sizeX = Math.max(400, Math.ceil(area / sizeY / step) * step);
+    const spot = this.roofSpot({ sx: sizeX, sy: sizeY }, midX, midY);
+    if (!spot) {
+      if (depth < 2 && area > 0.5e6) {
+        this.hood(flow / 2, midX, midY, duct, depth + 1);
+        this.hood(flow / 2, midX, midY, duct, depth + 1);
       } else {
-        out.short.out = r(out.short.out + a / 1e6);
+        out.short.out = VentPlan._round2(out.short.out + area / 1e6);
       }
       return;
     }
-    const [xa, ya] = at;
-    this.roofs.push([xa - 150, xa + sx + 150, ya - 150, ya + sy + 150]);
+    const [spotX, spotY] = spot;
+    this.roofs.push([spotX - 150, spotX + sizeX + 150, spotY - 150, spotY + sizeY + 150]);
     out.roof.push({
       kind: 'out',
-      x0: xa,
-      x1: xa + sx,
-      y0: ya,
-      y1: ya + sy,
-      w: sx,
-      l: sy,
-      q: Math.round(q),
+      x0: spotX,
+      x1: spotX + sizeX,
+      y0: spotY,
+      y1: spotY + sizeY,
+      w: sizeX,
+      l: sizeY,
+      q: Math.round(flow),
       ...(duct ? { duct } : {}),
     });
   }
 
-  roofSpot({ sx, sy }, xc, yc) {
-    const { S, Wd, L, x0 } = this;
+  roofSpot({ sx: sizeX, sy: sizeY }, midX, midY) {
+    const { step: step, wid: wid, len: len, x0 } = this;
     const hit = (x, y) =>
-      x < x0 + 150 || x + sx > L - 150 || this.roofs.some(([a, b, c, d]) => x < b && x + sx > a && y < d && y + sy > c);
-    const ys = [
-      ...new Set([yc - sy / 2, 150, Wd - 150 - sy].map(y => Math.round(Math.max(150, Math.min(Wd - 150 - sy, y))))),
+      x < x0 + 150 ||
+      x + sizeX > len - 150 ||
+      this.roofs.some(
+        ([fromX, tillX, fromY, tillY]) => x < tillX && x + sizeX > fromX && y < tillY && y + sizeY > fromY,
+      );
+    const rowsY = [
+      ...new Set(
+        [midY - sizeY / 2, 150, wid - 150 - sizeY].map(y => Math.round(Math.max(150, Math.min(wid - 150 - sizeY, y)))),
+      ),
     ];
-    const x1 = Math.round(xc - sx / 2);
-    for (let d = 0; d <= L; d += S) {
-      for (const x of d ? [x1 + d, x1 - d] : [x1]) {
-        const y = ys.find(q => !hit(x, q));
+    const x1 = Math.round(midX - sizeX / 2);
+    for (let dist = 0; dist <= len; dist += step) {
+      for (const x of dist ? [x1 + dist, x1 - dist] : [x1]) {
+        const y = rowsY.find(cand => !hit(x, cand));
         if (y !== undefined) return [x, y];
       }
     }
@@ -257,270 +293,304 @@ export class VentPlan {
   }
 
   /** Стена выброса компрессора: задняя; второй ряд — стена прохода (если разрешено) или крыша. */
-  exWall(c) {
-    if (this.E !== 'back') return null;
-    if (this.plan.rows === 2 && c.row === 1) return this.front ? 'front' : null;
+  exWall(comp) {
+    if (this.exhaust !== 'back') return null;
+    if (this.plan.rows === 2 && comp.row === 1) return this.front ? 'front' : null;
     return 'back';
   }
 
-  gate(c, w) {
+  gate(comp, wall) {
     return (this.plan.doors || []).find(
-      d => d.rear && d.wall === w && d.pos.includes(c.pos) && d.x0 < c.x + c.lx && d.x1 > c.x,
+      door =>
+        door.rear &&
+        door.wall === wall &&
+        door.pos.includes(comp.pos) &&
+        door.x0 < comp.x + comp.lx &&
+        door.x1 > comp.x,
     );
   }
 
-  zTop(w) {
-    const rearBack = (this.plan.doors || []).some(d => d.rear && d.wall === 'back');
-    return this.H - (w === 'back' && rearBack ? 100 : this.OB.top);
+  zTop(wall) {
+    const rearBack = (this.plan.doors || []).some(door => door.rear && door.wall === 'back');
+    return this.height - (wall === 'back' && rearBack ? 100 : this.outSize.top);
   }
 
   /** Свободное место для жалюзи w × hh вверху стены: ближе к uc, сдвиг не больше maxd → {u, z0, z1, d} | null. */
-  fitAt(wall, [w, hh], uc, maxd, ok) {
+  fitAt(wall, [width, height], midU, maxd, ok) {
     const z1 = this.zTop(wall);
-    const z0 = z1 - hh;
+    const z0 = z1 - height;
     const end = wall === 'left' || wall === 'right';
-    const [lo, hi] = end ? [100, this.Wd - 100] : [this.x0 + 100, this.L - 100];
-    const good = a =>
-      a >= lo &&
-      a + w <= hi &&
-      this.W.free(wall, [a - 90, a + w + 90], [z0 - 90, z1 + 90]) &&
-      !this.cogHit(wall, a, a + w, z0, z1) &&
-      (!ok || ok(a));
-    for (let d = 0; d <= maxd; d += this.S) {
-      for (const sg of d ? [1, -1] : [1]) {
-        const a = Math.round(uc - w / 2 + sg * d);
-        if (good(a)) return { u: a, z0, z1, d };
+    const [low, high] = end ? [100, this.wid - 100] : [this.x0 + 100, this.len - 100];
+    const good = from =>
+      from >= low &&
+      from + width <= high &&
+      this.walls.free(wall, [from - 90, from + width + 90], [z0 - 90, z1 + 90]) &&
+      !this.cogHit(wall, from, from + width, z0, z1) &&
+      (!ok || ok(from));
+    for (let dist = 0; dist <= maxd; dist += this.step) {
+      for (const sign of dist ? [1, -1] : [1]) {
+        const from = Math.round(midU - width / 2 + sign * dist);
+        if (good(from)) return { u: from, z0, z1, d: dist };
       }
     }
     return null;
   }
 
   /** Торец, у которого компрессор стоит (между ним и торцом нет оборудования, в торце нет ворот): ближайшее место. */
-  side(c, w, hh) {
-    const { plan, L, x0, Wd } = this;
-    if (w > Wd - 200) return null;
-    const endsOk = !this.comp.some(q => this.exWall(q) === 'front');
-    const gatesOn = e => [plan.gates, plan.gates2].some(g => g && g.wall === e);
-    const floor = this.I.filter(i => !i.tank && i.mount !== 'pipe' && i.mount !== 'wall');
-    const atEnd = e =>
+  side(comp, width, height) {
+    const { plan, len: lenIn, x0, wid: wid } = this;
+    if (width > wid - 200) return null;
+    const endsOk = !this.comp.some(other => this.exWall(other) === 'front');
+    const gatesOn = end => [plan.gates, plan.gates2].some(gate => gate && gate.wall === end);
+    const floor = this.items.filter(i => !i.tank && i.mount !== 'pipe' && i.mount !== 'wall');
+    const atEnd = end =>
       !floor.some(
         i =>
-          i !== c &&
-          i.y < c.y + c.ly &&
-          i.y + i.ly > c.y &&
-          (e === 'right' ? i.x >= c.x + c.lx - 1 : i.x + i.lx <= c.x + 1),
+          i !== comp &&
+          i.y < comp.y + comp.ly &&
+          i.y + i.ly > comp.y &&
+          (end === 'right' ? i.x >= comp.x + comp.lx - 1 : i.x + i.lx <= comp.x + 1),
       );
-    const ends = endsOk ? ['right', ...(this.leftOk ? ['left'] : [])].filter(e => !gatesOn(e) && atEnd(e)) : [];
-    const cx = c.x + c.lx / 2;
+    const ends = endsOk ? ['right', ...(this.leftOk ? ['left'] : [])].filter(end => !gatesOn(end) && atEnd(end)) : [];
+    const midX = comp.x + comp.lx / 2;
     let best = null;
-    for (const e of ends) {
-      const r2 = this.fitAt(e, [w, hh], c.y + c.ly / 2, Wd);
-      const len = r2 ? (e === 'right' ? L - cx : cx - x0) + r2.d : Infinity;
-      if (r2 && (!best || len < best.len)) best = { wall: e, ...r2, len };
+    for (const end of ends) {
+      const spot = this.fitAt(end, [width, height], comp.y + comp.ly / 2, wid);
+      const len = spot ? (end === 'right' ? lenIn - midX : midX - x0) + spot.d : Infinity;
+      if (spot && (!best || len < best.len)) best = { wall: end, ...spot, len };
     }
     return best;
   }
 
   mark() {
-    return { b: this.W.mark(), n: this.out.louvers.length };
+    return { b: this.walls.mark(), n: this.out.louvers.length };
   }
 
-  unmark(m) {
-    this.W.reset(m.b);
-    this.out.louvers.length = m.n;
+  unmark(mark) {
+    this.walls.reset(mark.b);
+    this.out.louvers.length = mark.n;
   }
 
-  add(Lv) {
-    const G = VentGrille.GAP;
-    this.out.louvers.push(Lv);
-    this.W.busy(Lv.wall, Lv.u0 - 90 - G, Lv.u1 + 260 + G, Lv.z0 - 90, Lv.z1 + 90);
-    return Lv;
+  add(louver) {
+    const gap = VentGrille.GAP;
+    this.out.louvers.push(louver);
+    this.walls.busy(louver.wall, louver.u0 - 90 - gap, louver.u1 + 260 + gap, louver.z0 - 90, louver.z1 + 90);
+    return louver;
   }
 
   /** Место компрессора: над его частью сервисных ворот (от перемычки + 240 мм до 100 мм под потолком) или над ним. */
-  slot(c) {
-    const wall = this.exWall(c);
-    const G = wall && this.gate(c, wall);
-    if (!G) return { c, wall, hMax: this.oh, wMax: VentGrille.WHOLE };
-    const S2 = this.comp.filter(q => this.exWall(q) === wall && this.gate(q, wall) === G).sort((a, b) => a.x - b.x);
-    const sw = (G.x1 - G.x0) / S2.length;
-    const gap = S2.length > 1 ? VentGrille.GAP / 2 : 0;
+  slot(comp) {
+    const wall = this.exWall(comp);
+    const gate = wall && this.gate(comp, wall);
+    if (!gate) return { c: comp, wall, hMax: this.outH, wMax: VentGrille.WHOLE };
+    const same = this.comp
+      .filter(other => this.exWall(other) === wall && this.gate(other, wall) === gate)
+      .sort((left, right) => left.x - right.x);
+    const slotW = (gate.x1 - gate.x0) / same.length;
+    const gap = same.length > 1 ? VentGrille.GAP / 2 : 0;
     return {
-      c,
+      c: comp,
       wall,
-      G,
-      a0: G.x0 + S2.indexOf(c) * sw,
-      sw,
-      hMax: Math.floor(Math.min(this.OB.h[1], this.H - 100 - (G.h + 240)) / this.S) * this.S,
-      wMax: Math.min(VentGrille.WHOLE, Math.floor((sw - 2 * gap) / this.S) * this.S),
+      G: gate,
+      a0: gate.x0 + same.indexOf(comp) * slotW,
+      sw: slotW,
+      hMax: Math.floor(Math.min(this.outSize.h[1], this.height - 100 - (gate.h + 240)) / this.step) * this.step,
+      wMax: Math.min(VentGrille.WHOLE, Math.floor((slotW - 2 * gap) / this.step) * this.step),
     };
   }
 
-  at(s, w, hh) {
-    const duct = key(s.c);
-    if (s.G) {
-      const u = Math.round(s.a0 + (s.sw - w) / 2);
-      const z1 = this.H - 100;
-      return this.add({ kind: 'out', wall: s.wall, u0: u, u1: u + w, z0: z1 - hh, z1, w, h: hh, duct, over: true });
+  placeAt(slot, width, height) {
+    const duct = VentPlan._key(slot.c);
+    if (slot.G) {
+      const u = Math.round(slot.a0 + (slot.sw - width) / 2);
+      const z1 = this.height - 100;
+      return this.add({
+        kind: 'out',
+        wall: slot.wall,
+        u0: u,
+        u1: u + width,
+        z0: z1 - height,
+        z1,
+        w: width,
+        h: height,
+        duct,
+        over: true,
+      });
     }
-    const p = this.fitAt(s.wall, [w, hh], s.c.x + s.c.lx / 2, 1500);
-    return p && this.add({ kind: 'out', wall: s.wall, u0: p.u, u1: p.u + w, z0: p.z0, z1: p.z1, w, h: hh, duct });
+    const spot = this.fitAt(slot.wall, [width, height], slot.c.x + slot.c.lx / 2, 1500);
+    return (
+      spot &&
+      this.add({
+        kind: 'out',
+        wall: slot.wall,
+        u0: spot.u,
+        u1: spot.u + width,
+        z0: spot.z0,
+        z1: spot.z1,
+        w: width,
+        h: height,
+        duct,
+      })
+    );
   }
 
   /** Одна решётка w × hh у каждого компрессора группы; не встала хоть у одного — ничего не ставится. */
-  all(G, w, hh, f) {
-    const m = this.mark();
-    if (G.every(s => f(s, w, hh))) return true;
-    this.unmark(m);
+  all(slots, width, height, put) {
+    const mark = this.mark();
+    if (slots.every(slot => put(slot, width, height))) return true;
+    this.unmark(mark);
     return false;
   }
 
   /** Все компрессоры — одна группа (решётки одного размера по наибольшему расходу); не вышло на стенах — все через крышу. */
   compressors() {
-    const { comp, W, out } = this;
-    const groups = comp.length ? [comp.slice().sort((a, b) => this.qc(b) - this.qc(a))] : [];
-    const mC = W.mark();
-    const [nC, nR0, qW0] = [out.louvers.length, out.roof.length, this.qWall];
-    const viaRoof = this.roofOnly || comp.some(c => !this.exWall(c)) || !groups.every(Cs => this.group(Cs));
+    const { comp, walls: walls, out } = this;
+    const groups = comp.length ? [comp.slice().sort((left, right) => this.coolFlow(right) - this.coolFlow(left))] : [];
+    const markC = walls.mark();
+    const [countC, nR0, qW0] = [out.louvers.length, out.roof.length, this.qWall];
+    const viaRoof = this.roofOnly || comp.some(cand => !this.exWall(cand)) || !groups.every(group => this.group(group));
     if (!viaRoof) return;
-    W.reset(mC);
-    out.louvers.length = nC;
+    walls.reset(markC);
+    out.louvers.length = countC;
     out.roof.length = nR0;
     this.qWall = qW0;
     out.ducts = {};
-    const qMax = Math.max(...comp.map(c => this.qc(c)));
-    for (const c of comp) {
-      out.ducts[key(c)] = 'roof';
-      this.hood(qMax, c.x + c.lx / 2, c.y + c.ly / 2, key(c));
+    const qMax = Math.max(...comp.map(cand => this.coolFlow(cand)));
+    for (const cand of comp) {
+      out.ducts[VentPlan._key(cand)] = 'roof';
+      this.hood(qMax, cand.x + cand.lx / 2, cand.y + cand.ly / 2, VentPlan._key(cand));
     }
   }
 
   /** Размер — по самому стеснённому месту: выше — уже; не хватает — наибольшая, что встаёт у всех; остаток — в торце. */
-  group(Cs) {
-    const q = this.qc(Cs[0]);
-    const Sl = Cs.map(c => this.slot(c));
-    const got = this.groupSize(Sl, this.gross(q));
+  group(comps) {
+    const flow = this.coolFlow(comps[0]);
+    const slots = comps.map(comp => this.slot(comp));
+    const got = this.groupSize(slots, this.gross(flow));
     if (!got) return false;
-    let rest = Math.max(0, q - ((got[0] * got[1]) / 1e6) * this.vOut * 3600);
-    if (rest > 1) rest = this.sideAdd(Sl, rest);
-    for (const c of Cs) this.out.ducts[key(c)] = 'wall';
+    let rest = Math.max(0, flow - ((got[0] * got[1]) / 1e6) * this.vOut * 3600);
+    if (rest > 1) rest = this.sideAdd(slots, rest);
+    for (const comp of comps) this.out.ducts[VentPlan._key(comp)] = 'wall';
     if (rest <= 1) return true;
-    if (!Sl.every(s => s.wall === 'back')) return false;
-    this.qWall += rest * Cs.length;
+    if (!slots.every(slot => slot.wall === 'back')) return false;
+    this.qWall += rest * comps.length;
     return true;
   }
 
-  groupSize(Sl, need0) {
-    const { S, OB } = this;
-    const at = (s, w, hh) => this.at(s, w, hh);
-    const hTop = Math.min(...Sl.map(s => s.hMax));
-    const wTop = Math.min(...Sl.map(s => s.wMax));
-    const hMin = this.Sm && this.Sm.exfan ? VentGrille.FAN_MIN : OB.h[0];
+  groupSize(slots, need0) {
+    const { step: step, outSize: outSize } = this;
+    const place = (slot, width, height) => this.placeAt(slot, width, height);
+    const hTop = Math.min(...slots.map(slot => slot.hMax));
+    const wTop = Math.min(...slots.map(slot => slot.wMax));
+    const hMin = this.summary && this.summary.exfan ? VentGrille.FAN_MIN : outSize.h[0];
     let part = null;
-    for (let hh = hTop; hh >= hMin && wTop >= OB.w[0]; hh -= 50) {
-      const w = Math.max(OB.w[0], Math.min(wTop, Math.ceil(need0 / hh / S) * S));
-      const m = this.mark();
-      if (this.all(Sl, w, hh, at)) {
-        if (w * hh >= need0) return [w, hh];
-        this.unmark(m);
-        if (!part || w * hh > part[0] * part[1]) part = [w, hh];
+    for (let height = hTop; height >= hMin && wTop >= outSize.w[0]; height -= 50) {
+      const width = Math.max(outSize.w[0], Math.min(wTop, Math.ceil(need0 / height / step) * step));
+      const mark = this.mark();
+      if (this.all(slots, width, height, place)) {
+        if (width * height >= need0) return [width, height];
+        this.unmark(mark);
+        if (!part || width * height > part[0] * part[1]) part = [width, height];
       }
     }
-    return part && this.all(Sl, part[0], part[1], at) ? part : null;
+    return part && this.all(slots, part[0], part[1], place) ? part : null;
   }
 
   /** Остаток — добавка одного размера в торце у каждого компрессора; хоть одному некуда — ни у кого. */
-  sideAdd(Sl, rest) {
-    const { S, OB } = this;
-    const hMin = this.Sm && this.Sm.exfan ? VentGrille.FAN_MIN : OB.h[0];
-    const put = (s, w2, h2) => {
-      const p = this.side(s.c, w2, h2);
+  sideAdd(slots, rest) {
+    const { step: step, outSize: outSize } = this;
+    const hMin = this.summary && this.summary.exfan ? VentGrille.FAN_MIN : outSize.h[0];
+    const put = (slot, width2, height2) => {
+      const spot = this.side(slot.c, width2, height2);
       return (
-        p &&
+        spot &&
         this.add({
           kind: 'out',
-          wall: p.wall,
-          u0: p.u,
-          u1: p.u + w2,
-          z0: p.z0,
-          z1: p.z1,
-          w: w2,
-          h: h2,
-          duct: key(s.c),
+          wall: spot.wall,
+          u0: spot.u,
+          u1: spot.u + width2,
+          z0: spot.z0,
+          z1: spot.z1,
+          w: width2,
+          h: height2,
+          duct: VentPlan._key(slot.c),
           side: true,
         })
       );
     };
-    for (let hh = this.oh; hh >= hMin && rest > 1; hh -= 50) {
-      const w = Math.max(OB.w[0], Math.min(VentGrille.WHOLE, Math.ceil(this.gross(rest) / hh / S) * S));
-      if (this.all(Sl, w, hh, put)) rest = Math.max(0, rest - ((w * hh) / 1e6) * this.vOut * 3600);
+    for (let height = this.outH; height >= hMin && rest > 1; height -= 50) {
+      const width = Math.max(
+        outSize.w[0],
+        Math.min(VentGrille.WHOLE, Math.ceil(this.gross(rest) / height / step) * step),
+      );
+      if (this.all(slots, width, height, put)) rest = Math.max(0, rest - ((width * height) / 1e6) * this.vOut * 3600);
     }
     return rest;
   }
 
   /** Место на стене: жалюзи u0…u1 (слева 100 мм, справа 260 мм — электропривод клапана), мимо знака «Центр тяжести». */
-  spotAt(wall, from, w, lim, [z0, z1]) {
-    return this.W.find(
+  spotAt(wall, from, width, lim, [z0, z1]) {
+    return this.walls.find(
       wall,
-      w + 360,
+      width + 360,
       [z0 - 90, z1 + 90],
       from,
-      a => !this.cogHit(wall, a + 100, a + 100 + w, z0, z1) && (!lim || a + 100 + w <= lim),
+      start => !this.cogHit(wall, start + 100, start + 100 + width, z0, z1) && (!lim || start + 100 + width <= lim),
     );
   }
 
-  putAt({ kind, wall, w, u, z0, h }) {
-    const G = VentGrille.GAP;
+  putAt({ kind, wall, w: width, u, z0, h: height }) {
+    const gap = VentGrille.GAP;
     const u0 = u + 100;
-    const Lv = { kind, wall, u0, u1: u0 + w, z0, z1: z0 + h, w, h };
-    this.out.louvers.push(Lv);
-    this.W.busy(wall, u0 - 90 - G, Lv.u1 + 260 + G, z0 - 90, z0 + h + 90);
-    return w * h;
+    const louver = { kind, wall, u0, u1: u0 + width, z0, z1: z0 + height, w: width, h: height };
+    this.out.louvers.push(louver);
+    this.walls.busy(wall, u0 - 90 - gap, louver.u1 + 260 + gap, z0 - 90, z0 + height + 90);
+    return width * height;
   }
 
   /** Одним проёмом, иначе наименьшим числом одинаковых (до MAXN), если встают целиком; bands — высоты низа. */
-  whole(kind, o, walls, gross, bands) {
-    for (let n = 1; n <= VentGrille.MAXN; n++) {
-      for (const zb of bands) {
-        if (this.wholeAt({ kind, o, walls, gross, zb }, n)) return true;
+  whole(kind, size, walls, gross, bands) {
+    for (let count = 1; count <= VentGrille.MAXN; count++) {
+      for (const band of bands) {
+        if (this.wholeAt({ kind, o: size, walls, gross, zb: band }, count)) return true;
       }
     }
     return false;
   }
 
-  wholeAt({ kind, o, walls, gross, zb }, n) {
-    const { S, H, OB, W, out } = this;
-    const IN = VentGrille.IN;
-    const room = kind === 'in' ? H - OB.top - 90 - zb : H - o.top - IN.z0 - IN.h[0] - 200;
-    const hmax = Math.floor(Math.min(o.h[1], room) / S) * S;
-    if (hmax < o.h[0]) return false;
-    for (const sz of VentGrille.sizesN(
+  wholeAt({ kind, o: size, walls, gross, zb: band }, count) {
+    const { step: step, height: height, outSize: outSize, walls: wallsMap, out } = this;
+    const inSize = VentGrille.INLET;
+    const room = kind === 'in' ? height - outSize.top - 90 - band : height - size.top - inSize.z0 - inSize.h[0] - 200;
+    const hmax = Math.floor(Math.min(size.h[1], room) / step) * step;
+    if (hmax < size.h[0]) return false;
+    for (const size2 of VentGrille.sizesN(
       gross,
-      { ...o, w: [o.w[0], Math.max(o.w[1], VentGrille.WHOLE)], h: [o.h[0], hmax] },
-      n,
+      { ...size, w: [size.w[0], Math.max(size.w[1], VentGrille.WHOLE)], h: [size.h[0], hmax] },
+      count,
     )) {
-      const z0 = kind === 'in' ? zb : H - o.top - sz.h;
-      const mark = W.mark();
-      const nL = out.louvers.length;
-      const got = this.fill({ kind, w: sz.w, z0, h: sz.h }, walls, n);
-      if (got === n) {
-        out.size[kind] = sz;
+      const z0 = kind === 'in' ? band : height - size.top - size2.h;
+      const mark = wallsMap.mark();
+      const countL = out.louvers.length;
+      const got = this.fill({ kind, w: size2.w, z0, h: size2.h }, walls, count);
+      if (got === count) {
+        out.size[kind] = size2;
         return true;
       }
-      W.reset(mark);
-      out.louvers.length = nL;
+      wallsMap.reset(mark);
+      out.louvers.length = countL;
     }
     return false;
   }
 
   /** n жалюзи w × h на стенах по порядку; сколько встало. */
-  fill({ kind, w, z0, h }, walls, n) {
+  fill({ kind, w: width, z0, h: height }, walls, count) {
     let got = 0;
     for (const [wall, from, lim] of walls) {
-      while (got < n) {
-        const u = this.spotAt(wall, from, w, lim, [z0, z0 + h]);
+      while (got < count) {
+        const u = this.spotAt(wall, from, width, lim, [z0, z0 + height]);
         if (u == null) break;
-        this.putAt({ kind, wall, w, u, z0, h });
+        this.putAt({ kind, wall, w: width, u, z0, h: height });
         got++;
       }
     }
@@ -528,70 +598,72 @@ export class VentPlan {
   }
 
   /** Одинаковые жалюзи по расчёту; не встали все — остаток той же высоты, ширина — под свободные участки стен. */
-  place(kind, o, walls, need0) {
+  place(kind, size0, walls, need0) {
     if (!need0 || need0.gross <= 0) return 0;
-    const sz = VentGrille.size(need0.gross, o);
-    this.out.size[kind] = this.out.size[kind] || sz;
-    if (!sz) return need0.gross * 1e6;
-    const z0 = kind === 'in' ? o.z0 : this.H - o.top - sz.h;
-    const spec = { kind, z0, h: sz.h };
-    const left = this.placeSame(spec, walls, sz, need0.gross * 1e6);
-    return Math.max(0, this.placePieces(spec, walls, o.w[1], left));
+    const size = VentGrille.size(need0.gross, size0);
+    this.out.size[kind] = this.out.size[kind] || size;
+    if (!size) return need0.gross * 1e6;
+    const z0 = kind === 'in' ? size0.z0 : this.height - size0.top - size.h;
+    const spec = { kind, z0, h: size.h };
+    const left = this.placeSame(spec, walls, size, need0.gross * 1e6);
+    return Math.max(0, this.placePieces(spec, walls, size0.w[1], left));
   }
 
-  placeSame({ kind, z0, h }, walls, sz, left) {
-    let uni = sz.n;
+  placeSame({ kind, z0, h: height }, walls, size, left) {
+    let uni = size.n;
     for (const [wall, from, lim] of walls) {
       while (uni > 0 && left > 1) {
-        const u = this.spotAt(wall, from, sz.w, lim, [z0, z0 + h]);
+        const u = this.spotAt(wall, from, size.w, lim, [z0, z0 + height]);
         if (u == null) break;
-        left -= this.putAt({ kind, wall, w: sz.w, u, z0, h });
+        left -= this.putAt({ kind, wall, w: size.w, u, z0, h: height });
         uni--;
       }
     }
     return left;
   }
 
-  placePieces({ kind, z0, h }, walls, wMax, left) {
+  placePieces({ kind, z0, h: height }, walls, wMax, left) {
     for (const [wall, from, lim] of walls) {
       while (left > 1) {
-        const p = this.piece(
-          { wall, from, lim, z: [z0, z0 + h] },
-          Math.min(wMax, Math.max(VentGrille.PIECE, Math.ceil(left / h / this.S) * this.S)),
+        const piece = this.piece(
+          { wall, from, lim, z: [z0, z0 + height] },
+          Math.min(wMax, Math.max(VentGrille.PIECE, Math.ceil(left / height / this.step) * this.step)),
         );
-        if (!p) break;
-        left -= this.putAt({ kind, wall, w: p.w, u: p.u, z0, h });
+        if (!piece) break;
+        left -= this.putAt({ kind, wall, w: piece.w, u: piece.u, z0, h: height });
       }
     }
     return left;
   }
 
   /** Наибольшая ширина от w0 вниз (не уже PIECE), что встаёт на стене. */
-  piece({ wall, from, lim, z }, w0) {
-    for (let w = w0; w >= VentGrille.PIECE; w -= this.S) {
-      const u = this.spotAt(wall, from, w, lim, z);
-      if (u != null) return { w, u };
+  piece({ wall, from, lim, z }, maxW) {
+    for (let width = maxW; width >= VentGrille.PIECE; width -= this.step) {
+      const u = this.spotAt(wall, from, width, lim, z);
+      if (u != null) return { w: width, u };
     }
     return null;
   }
 
   /** Общая вытяжка — у осушителя, своего размера, вверху стены выброса, не над сервисными воротами; не встала — выше. */
   general() {
-    const { comp, I, plan, W, H, OB, oh, S } = this;
-    const dr = comp.length
-      ? I.filter(i => i.kind === 'dryer' && i.mount === 'floor').sort((a, b) => a.x - b.x)[0]
+    const { comp, items: items, plan, walls: walls, height: height, outSize: outSize, outH: outH, step: step } = this;
+    const dryer = comp.length
+      ? items.filter(i => i.kind === 'dryer' && i.mount === 'floor').sort((first, second) => first.x - second.x)[0]
       : null;
-    const hub = dr ? Math.round(dr.x + dr.lx / 2) : 'hi';
-    for (const d of (plan.doors || []).filter(q => q.wall === 'back')) W.busy('back', d.x0 - 150, d.x1 + 150, 0, H);
+    const hub = dryer ? Math.round(dryer.x + dryer.lx / 2) : 'hi';
+    for (const door of (plan.doors || []).filter(cand => cand.wall === 'back'))
+      walls.busy('back', door.x0 - 150, door.x1 + 150, 0, height);
     if (this.qWall <= 0) return;
     const need = this.need(this.qWall, 'out');
-    const at = [['back', hub]];
-    const o = { ...OB, h: [OB.h[0], oh] };
+    const spots = [['back', hub]];
+    const size = { ...outSize, h: [outSize.h[0], outH] };
     let left = need.gross * 1e6;
-    if (this.E === 'back') left = this.whole('out', o, at, need.gross, [0]) ? 0 : this.place('out', o, at, need);
-    if (left > 1 && this.E === 'back') {
-      const hT = Math.floor(Math.max(OB.h[0], H - OB.top - 600) / S) * S;
-      if (hT > oh) left = this.place('out', { ...OB, h: [OB.h[0], hT] }, at, { gross: left / 1e6 });
+    if (this.exhaust === 'back')
+      left = this.whole('out', size, spots, need.gross, [0]) ? 0 : this.place('out', size, spots, need);
+    if (left > 1 && this.exhaust === 'back') {
+      const topH = Math.floor(Math.max(outSize.h[0], height - outSize.top - 600) / step) * step;
+      if (topH > outH) left = this.place('out', { ...outSize, h: [outSize.h[0], topH] }, spots, { gross: left / 1e6 });
     }
     if (left > 1) this.outRest = left;
   }
@@ -599,77 +671,89 @@ export class VentPlan {
   /** Остаток вытяжки — на торцах без притока (наверху), затем через крышу. */
   restOut() {
     if (this.outRest <= 1) return;
-    const { OB, H, S, L, x0, Wd, E, out } = this;
+    const { outSize: outSize, height: height, step: step, len: len, x0, wid: wid, exhaust: exhaust, out } = this;
     const ends = ['right', ...(this.leftOk ? ['left'] : [])].filter(
-      w => w !== E && !out.louvers.some(q => q.kind === 'in' && q.wall === w),
+      wall => wall !== exhaust && !out.louvers.some(louver => louver.kind === 'in' && louver.wall === wall),
     );
-    const hT = Math.floor(Math.max(OB.h[0], H - OB.top - 600) / S) * S;
+    const topH = Math.floor(Math.max(outSize.h[0], height - outSize.top - 600) / step) * step;
     if (ends.length) {
       this.outRest = this.place(
         'out',
-        { ...OB, h: [OB.h[0], hT] },
-        ends.map(w => [w, 'hi']),
+        { ...outSize, h: [outSize.h[0], topH] },
+        ends.map(wall => [wall, 'hi']),
         { gross: this.outRest / 1e6 },
       );
     }
     if (this.outRest > 1)
-      this.hood((this.outRest / 1e6) * this.vOut * 3600, L - Math.min(1500, (L - x0) / 4), Wd / 2, null);
+      this.hood((this.outRest / 1e6) * this.vOut * 3600, len - Math.min(1500, (len - x0) / 4), wid / 2, null);
   }
 
   /** Маркизы у всех — один угол открытия (наибольший из нужных). */
-  marks(I, Q, vmax) {
-    if (!I.length) return null;
-    const hs = I.map(q => VentGrille.hood(Q(q), q.w, q.h, q.z1, vmax));
-    const a = Math.max(...hs.map(h => h.a));
-    I.forEach((q, i) => {
-      q.hood = VentGrille.hoodAt(hs[i], a, Q(q));
+  marks(list, flowOf, vmax) {
+    if (!list.length) return null;
+    const hoods = list.map(louver => VentGrille.hood(flowOf(louver), louver.w, louver.h, louver.z1, vmax));
+    const angle = Math.max(...hoods.map(hood => hood.a));
+    list.forEach((louver, i) => {
+      louver.hood = VentGrille.hoodAt(hoods[i], angle, flowOf(louver));
     });
     return {
-      n: I.length,
+      n: list.length,
       v: vmax,
-      a,
-      d: Math.max(...I.map(q => q.hood.d)),
-      over: I.filter(q => q.hood.v > vmax + 0.005).length,
+      a: angle,
+      d: Math.max(...list.map(louver => louver.hood.d)),
+      over: list.filter(louver => louver.hood.v > vmax + 0.005).length,
     };
   }
 
   /** Аккуратность проёмов, естественная тяга, маркизы, вытяжные вентиляторы. */
   finish() {
-    const { out, Sm, sys } = this;
-    if (!this.dgu) StationTidy.louvers(out.louvers, this.W, this.H, VentGrille.GAP);
+    const { out, summary: summary, sys } = this;
+    if (!this.dgu) StationTidy.louvers(out.louvers, this.walls, this.height, VentGrille.GAP);
     this.draft();
     if (sys.snow) {
-      const I = out.louvers.filter(q => q.kind === 'in');
-      const A = I.reduce((s, q) => s + q.w * q.h, 0);
-      out.hood = this.marks(I, q => (this.qIn * q.w * q.h) / A, VentGrille.HOOD_V);
+      const intake = out.louvers.filter(louver => louver.kind === 'in');
+      const area = intake.reduce((sum, louver) => sum + louver.w * louver.h, 0);
+      out.hood = this.marks(intake, louver => (this.qIn * louver.w * louver.h) / area, VentGrille.HOOD_V);
     }
     if (sys.snowout) {
       out.hoodOut = this.marks(
-        out.louvers.filter(q => q.kind === 'out'),
-        q => ((q.w * q.h) / 1e6) * this.vOut * 3600,
+        out.louvers.filter(louver => louver.kind === 'out'),
+        louver => ((louver.w * louver.h) / 1e6) * this.vOut * 3600,
         this.vOut,
       );
     }
-    if (Sm && Sm.exfan) {
-      const Lx = out.louvers.filter(q => q.kind === 'out');
-      for (const q of [...Lx, ...(out.roof || [])]) q.fan = true;
-      out.exfan = { n: Lx.length + (out.roof || []).length, L: Sm.exfan.L, dp: Sm.exfan.dp, P: Sm.exfan.P };
+    if (summary && summary.exfan) {
+      const outs = out.louvers.filter(louver => louver.kind === 'out');
+      for (const louver of [...outs, ...(out.roof || [])]) louver.fan = true;
+      out.exfan = {
+        n: outs.length + (out.roof || []).length,
+        L: summary.exfan.L,
+        dp: summary.exfan.dp,
+        P: summary.exfan.P,
+      };
     }
   }
 
   /** Естественная тяга общей вытяжки — у станций без компрессоров: от середины притока до середины выброса. */
   draft() {
-    const { out, Sm, v } = this;
-    const zc = L =>
-      L.reduce((s, q) => s + ((q.z0 + q.z1) / 2) * q.w * q.h, 0) /
+    const { out, summary: summary, vent: v } = this;
+    const midZ = list =>
+      list.reduce((sum, louver) => sum + ((louver.z0 + louver.z1) / 2) * louver.w * louver.h, 0) /
       Math.max(
         1,
-        L.reduce((s, q) => s + q.w * q.h, 0),
+        list.reduce((sum, louver) => sum + louver.w * louver.h, 0),
       );
-    const Li = out.louvers.filter(q => q.kind === 'in');
-    const Lo = out.louvers.filter(q => q.kind === 'out' && !q.duct);
-    if (this.dgu || !Sm || Sm.units.length || !Li.length || !(Lo.length || (out.roof || []).some(q => !q.duct))) return;
-    const zo = Lo.length ? zc(Lo) : this.H + VentGrille.HOOD;
-    out.draft = VentCalc.draft(Sm, (zo - zc(Li)) / 1000, this.room, v.ex || {}, v.warn || []);
+    const Li = out.louvers.filter(louver => louver.kind === 'in');
+    const outs = out.louvers.filter(louver => louver.kind === 'out' && !louver.duct);
+    if (
+      this.dgu ||
+      !summary ||
+      summary.units.length ||
+      !Li.length ||
+      !(outs.length || (out.roof || []).some(louver => !louver.duct))
+    )
+      return;
+    const outZ = outs.length ? midZ(outs) : this.height + VentGrille.HOOD;
+    out.draft = VentCalc.draft(summary, (outZ - midZ(Li)) / 1000, this.room, v.ex || {}, v.warn || []);
   }
 }

@@ -65,7 +65,7 @@ class StationUi {
   // ---- вкладка «Компоновка»
   static tab(x, i){
     if (StationSize.apply(x)) persist();
-    const plan=this.plan(x), n=StationLayout.n;
+    const plan=this.plan(x), n=Mm.text;
     if (plan.level==='none') return `<div class="ed-sec stl"><p class="stl-none">${esc(plan.text)}</p>${this.how()}</div>`;
     const g=plan.geo, c=kitContainer(x), ct=ctypeOf(c.ctype), o=this.opts(x);
     const big=plan.suggest && plan.suggest.smaller && !plan.issues.some(t=>t.level==='warn' && !t.big);   // предупреждение — только о запасе
@@ -141,7 +141,7 @@ class StationUi {
    *  безопасность, отопление — коротко; подробно — в ТЗ на сборку */
   static systems(plan, x){
     const W=plan.power, Lt=plan.light, K=plan.sockets, F=plan.fire, h=plan.heat; if (!W) return '';
-    const f=StationPower.f, pl=StationFire.pl, row=(k, v)=>v ? `<li><b>${esc(k)}:</b> ${esc(v)}</li>` : '';
+    const f=StationPower.fmt, pl=StationFire.plural, row=(k, v)=>v ? `<li><b>${esc(k)}:</b> ${esc(v)}</li>` : '';
     const own=W.dgu ? 'собственные нужды' : 'расчётная';
     return `<details class="stl-air stl-sys stl-sp"${Spoiler.attr('sys:'+(x ? x.id : ''))}><summary class="stl-air-h"><b>Системы контейнера и электропитание</b><span class="muted">${f(W.inst)} кВт, ввод ${W.breaker ? W.breaker+' А' : 'по проекту'} — подробно в ТЗ на сборку</span></summary><ul class="stl-sys-l">
       ${row('Мощность', `установленная (с системами контейнера) ${f(W.inst)} кВт, ${own} — ${f(W.kw)} кВт (${W.mode==='run' ? 'при работе' : 'зимой в простое'}); ток ${f(W.amp)} А при 3 × 400 В; вводной автомат — ${W.breaker ? W.breaker+' А' : 'по проекту'}`)}
@@ -149,12 +149,12 @@ class StationUi {
       ${K ? row('Розетки', `230 В — ${K.n230}, 380 В — ${K.n380}, ЯТП-0,25 (36 В) — ${K.ytp}; на высоте 1 м`) : ''}
       ${F ? row('Пожарная безопасность', `огнетушители ${StationFire.EXT} — ${F.ext}${F.auto ? `; модули «Буран-2,5» на потолке — ${F.mods} (по площади, объёму и геометрии распыла${F.rooms.some(q=>q.shade) ? ', над затенёнными зонами' : ''})` : ''}${F.ops ? '; щит ОПС у входа' : ''}${F.cat && F.cat!=='Д' ? `; категория ${F.cat}${F.zone ? ', зона '+F.zone : ''} — табличка на двери` : ''}`) : ''}
       ${h && h.on && h.n ? row('Отопление', `${h.n} × ${StationHeat.kw(h.kw)} кВт = ${StationHeat.kw(h.total)} кВт`) : ''}
-      ${plan.pipe ? row('Трубопровод', `${plan.pipe.lines.map(l=>`${l.name} — DN ${l.dn}`).join(', ')} по расчёту (${plan.pipe.why}, не более ${StationFire.f1(plan.pipe.lines[0].v)} м/с)${plan.pipe.small ? ` — в составе DN ${plan.pipe.set}, мало` : ''}`) : ''}</ul></details>`;
+      ${plan.pipe ? row('Трубопровод', `${plan.pipe.lines.map(l=>`${l.name} — DN ${l.dn}`).join(', ')} по расчёту (${plan.pipe.why}, не более ${StationFire.dec1(plan.pipe.lines[0].v)} м/с)${plan.pipe.small ? ` — в составе DN ${plan.pipe.set}, мало` : ''}`) : ''}</ul></details>`;
   }
   /** подготовка воздуха: цепочка по ходу воздуха, класс чистоты (ISO 8573-1), чего не хватает — подобрать в каталоге */
   static air(plan, x, i){
     const a=plan.air; if (!a) return '';
-    const o=this.opts(x), m3=v=>AirChain.m3(v);
+    const o=this.opts(x), m3=v=>AirChain.flowText(v);
     const chain=a.chain.map(c=>`<span class="stl-node${c.guess ? ' guess' : ''}"${c.guess ? ' title="Ступень фильтра не указана — место выбрано по виду осушителя"' : ''}>${esc(c.text)} <small>поз. ${c.pos}</small></span>`).join('<span class="stl-arr">→</span>');
     const cls=`<label class="f stl-cls"><span>Класс чистоты воздуха по ISO 8573-1 (частицы.вода.масло)</span><select data-stl="air" data-i="${i}"><option value="">не задан — проверка по составу</option>${AirChain.options(o.air).map(([v, t])=>`<option value="${esc(v)}"${o.air===v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`;
     const recs=a.recs.map((r, k)=>`<li><span><b>${esc(r.title)}</b> — ${esc(r.why)}</span><button class="btn sm" type="button" data-a="stlRec" data-i="${i}" data-k="${k}">${r.replace ? 'Заменить — подобрать в каталоге' : 'Подобрать в каталоге'}</button></li>`).join('');
@@ -170,7 +170,7 @@ class StationUi {
     return String(c.size||'').trim() ? ` · размер задан вручную — <button type="button" class="lnk" data-a="stlAuto" data-i="${i}">подобрать по оборудованию</button>` : '';
   }
   static fix(sg, i){
-    const n=StationLayout.n, t=ctypeOf(sg.ctype).name+(sg.size ? ` ${n(sg.size[0])} × ${n(sg.size[1])} × ${n(sg.size[2])} мм` : '');
+    const n=Mm.text, t=ctypeOf(sg.ctype).name+(sg.size ? ` ${n(sg.size[0])} × ${n(sg.size[1])} × ${n(sg.size[2])} мм` : '');
     const lead=sg.smaller ? 'Достаточно' : 'Поместится';
     return `<button class="btn primary" type="button" data-a="stlFix" data-i="${i}" data-ct="${esc(sg.ctype)}"${sg.size ? ` data-size="${esc(sg.size.join(' × '))}"` : ''}>${lead}: ${esc(t)} — заменить</button>`;
   }
@@ -244,7 +244,7 @@ class StationModsUi {
   static solve(x, cells){ const inp=StationUi.input(x); return StationLayout.solve({ ...inp, cont:{ ...inp.cont, mods:cells ? { cells } : null, size:'', sizeAuto:true } }); }
   /** «✓ 12 000 × 5 100 мм» — итог расчёта кратко */
   static sum(p){
-    const n=StationLayout.n, g=p.geo, m=g && g.mods;
+    const n=Mm.text, g=p.geo, m=g && g.mods;
     if (p.level==='error' || !g || !g.ext) return { cls:'bad', t:'✕ не помещается', k:1e15 };
     return { cls:p.level==='ok' ? 'ok' : 'warn', t:`${p.level==='ok' ? '✓' : '⚠'} ${n(g.ext[0])} × ${n(g.ext[1])} мм${m && m.Lm ? ` · модуль ${n(m.Lm)} × ${n(m.Wm)}` : ''}`, k:g.ext[0]*g.ext[1]+(p.level==='ok' ? 0 : 1e9) };
   }
@@ -265,7 +265,7 @@ class StationModsUi {
     const best=v.filter(q=>q.r && q.r.cls!=='bad').sort((p, q)=>p.r.k-q.r.k)[0];
     // сетка — по раскладке и ещё клетка вокруг (куда перетащить), не больше MAX
     const A=Math.min(MAX, (R ? R.a : 1)+1), B=Math.min(MAX, (R ? R.b : 1)+1), on=new Set((R ? R.cells : []).map(q=>q.join(',')));
-    const res=R && R.ok ? st.res.get(key(st.cells)) : null, n=StationLayout.n;
+    const res=R && R.ok ? st.res.get(key(st.cells)) : null, n=Mm.text;
     // что в каком модуле — по расчёту этой раскладки (номера позиций на клетке, названия — списком под сеткой)
     const C=res && res.p && res.cls!=='bad' ? StationMods.content(res.p) : new Map(), mn=k=>`М${R.cells.findIndex(q=>q.join(',')===k)+1}`;
     const cell=(cx, cy)=>{ const k=cx+','+cy, f=on.has(k), L=C.get(k)||[];
@@ -368,7 +368,7 @@ class StationSize {
     const d=plan.level==='error' ? 'error' : plan.density ? plan.density.id : '', k=L+'|'+d, was=this.dens.get(x.id); this.dens.set(x.id, k);
     if (was===k || typeof toast!=='function') return;
     // после перерисовки окна (иначе уведомление пропадает вместе со старым содержимым)
-    const msg=plan.level==='error' ? (plan.issues[0]||{}).text||'Не помещается' : plan.density ? `Длина ${StationLayout.n(L)} мм: компоновка пересобрана — «${plan.density.title}» (${plan.density.text})` : '';
+    const msg=plan.level==='error' ? (plan.issues[0]||{}).text||'Не помещается' : plan.density ? `Длина ${Mm.text(L)} мм: компоновка пересобрана — «${plan.density.title}» (${plan.density.text})` : '';
     if (msg)
     setTimeout(()=>toast(msg, 7000), 0);
   }
@@ -376,7 +376,7 @@ class StationSize {
   static note(c, plan, i){
     const L=StationGeo.len(c && c.lenFix); if (!L) return '';
     const d=plan && plan.density;
-    return `<p class="muted kit-szn">Длина задана: <b>${esc(StationLayout.n(L))} мм</b>${d ? ` — компоновка «${esc(d.title)}» (${esc(d.text)})` : plan && plan.level==='error' ? ' — <span class="bad-t">не помещается</span>' : ''}. <button type="button" class="lnk" data-a="stlAuto" data-i="${i}">размер — по оборудованию</button></p>`;
+    return `<p class="muted kit-szn">Длина задана: <b>${esc(Mm.text(L))} мм</b>${d ? ` — компоновка «${esc(d.title)}» (${esc(d.text)})` : plan && plan.level==='error' ? ' — <span class="bad-t">не помещается</span>' : ''}. <button type="button" class="lnk" data-a="stlAuto" data-i="${i}">размер — по оборудованию</button></p>`;
   }
   /** блок-контейнер «по проекту» без своего размера — наименьший размер из ряда, при котором всё помещается.
    *  Возвращает true, если размер изменился. Размер, вписанный менеджером, не трогается. */

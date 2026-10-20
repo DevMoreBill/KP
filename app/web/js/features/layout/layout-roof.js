@@ -3,10 +3,10 @@ import { LayoutItem } from './layout-item.js';
 import { StationGeo } from './station-geo.js';
 import { StationMatrix } from './station-matrix.js';
 
-const mid = (a, l) => a + l / 2;
-
 /** Снаружи помещения: глушители ДГУ на крыше, выхлоп через стену, ресиверы на площадке за дальним торцом. */
 export class LayoutRoof {
+  static _mid = (start, len) => start + len / 2;
+
   static CHASSIS_H = 1150;
   static ROAD_H = 4000;
 
@@ -14,13 +14,13 @@ export class LayoutRoof {
    * Глушитель — над своей ДГУ на опорах, выхлоп вбок; хоть у одной ДГУ глушитель на крыше — на крыше у всех (недостающие
    * — как последний в составе). ДГУ поперёк — глушитель вдоль неё, выхлоп к задней стене.
    */
-  static roof(plan, eq) {
-    const ms = eq.filter(e => e.kind === 'muffler' && e.roof);
-    if (!ms.length) return [];
-    const [L] = plan.int;
-    const dgu = plan.items.filter(i => i.kind === 'dgu' && !i.tank).sort((a, b) => a.x - b.x);
-    const ctx = { plan, ow: this.overhang(plan), next: Math.max(100, L / 2 - ms[0].l / 2) };
-    return this.units(ms, dgu.length).map(([m, u], k) => this.muffler(m, u, dgu[k], ctx));
+  static roof(plan, equip) {
+    const mufflers = equip.filter(unit => unit.kind === 'muffler' && unit.roof);
+    if (!mufflers.length) return [];
+    const [Li] = plan.int;
+    const dgu = plan.items.filter(i => i.kind === 'dgu' && !i.tank).sort((left, right) => left.x - right.x);
+    const ctx = { plan, ow: this.overhang(plan), next: Math.max(100, Li / 2 - mufflers[0].l / 2) };
+    return this.units(mufflers, dgu.length).map(([muffler, u], k) => this.muffler(muffler, u, dgu[k], ctx));
   }
 
   /** Выступ крыши за стену, мм. */
@@ -30,69 +30,75 @@ export class LayoutRoof {
   }
 
   /** Глушители по единицам: [элемент, номер]; на каждую ДГУ — по одному. */
-  static units(ms, dguCount) {
-    const all = ms.flatMap(m => Array.from({ length: m.qty }, (_, u) => [m, u]));
+  static units(mufflers, dguCount) {
+    const all = mufflers.flatMap(muffler => Array.from({ length: muffler.qty }, (_, u) => [muffler, u]));
     for (let u = all.length; u < dguCount; u++) {
-      const m = all[all.length - 1][0];
-      all.push([m, u - all.filter(q => q[0] !== m).length]);
+      const muffler = all[all.length - 1][0];
+      all.push([muffler, u - all.filter(pair => pair[0] !== muffler).length]);
     }
     return all;
   }
 
-  static muffler(m, u, g, ctx) {
-    const R = {
-      pos: m.pos,
+  static muffler(muffler, u, dgu, ctx) {
+    const spot = {
+      pos: muffler.pos,
       unit: u,
-      name: m.name,
-      brief: m.brief,
-      short: m.short,
+      name: muffler.name,
+      brief: muffler.brief,
+      short: muffler.short,
       kind: 'muffler',
-      h: m.w,
-      d: m.w,
-      known: m.known,
-      mass: m.mass,
-      color: m.color,
+      h: muffler.w,
+      d: muffler.w,
+      known: muffler.known,
+      mass: muffler.mass,
+      color: muffler.color,
       gap: StationMatrix.muffler().gap,
       outlet: StationMatrix.muffler().outlet,
-      dgu: g ? { pos: g.pos, unit: g.unit } : null,
+      dgu: dgu ? { pos: dgu.pos, unit: dgu.unit } : null,
     };
-    const rad = (g && g.rad) || 'right';
-    return rad === 'back' ? this.across(R, m, g, ctx) : this.along(R, m, g, rad, ctx);
+    const rad = (dgu && dgu.rad) || 'right';
+    return rad === 'back' ? this.across(spot, muffler, dgu, ctx) : this.along(spot, muffler, dgu, rad, ctx);
   }
 
   /** ДГУ поперёк: глушитель по ширине станции над ней, выхлоп — над радиатором. */
-  static across(R, m, g, { plan, ow }) {
-    const [L, W] = plan.int;
-    const d = R.d;
-    const l = Math.min(m.l, W + 2 * ow - 80);
-    const y = Math.round(Math.max(-ow + 40, Math.min(W + ow - 40 - l, mid(g.y, g.ly) - l / 2)));
-    const x = Math.round(Math.max(100, Math.min(L - 100 - d, mid(g.x, g.lx) - d / 2)));
+  static across(spot, muffler, dgu, { plan, ow: overhang }) {
+    const [Li, Wi] = plan.int;
+    const depth = spot.d;
+    const len = Math.min(muffler.l, Wi + 2 * overhang - 80);
+    const y = Math.round(
+      Math.max(-overhang + 40, Math.min(Wi + overhang - 40 - len, LayoutRoof._mid(dgu.y, dgu.ly) - len / 2)),
+    );
+    const x = Math.round(Math.max(100, Math.min(Li - 100 - depth, LayoutRoof._mid(dgu.x, dgu.lx) - depth / 2)));
     const exhaust = {
-      x: Math.round(mid(g.x, g.lx)),
-      y: Math.round(Math.max(y + 120, Math.min(y + l - 120, g.y + g.ly * 0.62))),
-      z: g.h,
+      x: Math.round(LayoutRoof._mid(dgu.x, dgu.lx)),
+      y: Math.round(Math.max(y + 120, Math.min(y + len - 120, dgu.y + dgu.ly * 0.62))),
+      z: dgu.h,
     };
-    return { ...R, x, y, lx: d, ly: l, dir: 'y+', exhaust };
+    return { ...spot, x, y, lx: depth, ly: len, dir: 'y+', exhaust };
   }
 
   /** ДГУ вдоль: глушитель по длине над ней (без ДГУ — подряд по середине), выхлоп — в сторону радиатора. */
-  static along(R, m, g, rad, ctx) {
-    const { plan, ow } = ctx;
-    const [L, W] = plan.int;
-    const d = R.d;
-    const l = Math.min(m.l, L - 200);
-    const cx = g ? mid(g.x, g.lx) : ctx.next + l / 2;
-    const x = Math.round(Math.max(100, Math.min(L - 100 - l, cx - l / 2)));
-    const y = Math.round(g ? Math.max(-ow + 40, Math.min(W + ow - 40 - d, mid(g.y, g.ly) - d / 2)) : W / 2 - d / 2);
-    const exhaust = g
+  static along(spot, muffler, dgu, rad, ctx) {
+    const { plan, ow: overhang } = ctx;
+    const [Li, Wi] = plan.int;
+    const depth = spot.d;
+    const len = Math.min(muffler.l, Li - 200);
+    const centerX = dgu ? LayoutRoof._mid(dgu.x, dgu.lx) : ctx.next + len / 2;
+    const x = Math.round(Math.max(100, Math.min(Li - 100 - len, centerX - len / 2)));
+    const y = Math.round(
+      dgu
+        ? Math.max(-overhang + 40, Math.min(Wi + overhang - 40 - depth, LayoutRoof._mid(dgu.y, dgu.ly) - depth / 2))
+        : Wi / 2 - depth / 2,
+    );
+    const exhaust = dgu
       ? {
-          x: Math.round(Math.max(x + 120, Math.min(x + l - 120, g.x + g.lx * (rad === 'left' ? 0.38 : 0.62)))),
-          y: Math.round(mid(g.y, g.ly)),
-          z: g.h,
+          x: Math.round(Math.max(x + 120, Math.min(x + len - 120, dgu.x + dgu.lx * (rad === 'left' ? 0.38 : 0.62)))),
+          y: Math.round(LayoutRoof._mid(dgu.y, dgu.ly)),
+          z: dgu.h,
         }
       : null;
-    ctx.next = x + l + 300;
-    return { ...R, x, y, lx: l, ly: d, dir: rad === 'left' ? 'x-' : 'x+', exhaust };
+    ctx.next = x + len + 300;
+    return { ...spot, x, y, lx: len, ly: depth, dir: rad === 'left' ? 'x-' : 'x+', exhaust };
   }
 
   /**
@@ -100,58 +106,71 @@ export class LayoutRoof {
    * вдоль — над двигателем, поперёк — рядом с дверью-жалюзи. [{pos, unit, how, wall, u, z, gap}]
    */
   static exhausts(plan) {
-    const [, W, H] = plan.int;
+    const [, Wi, Hi] = plan.int;
     const roof = plan.roof || [];
     const dgu = (plan.items || []).filter(i => i.kind === 'dgu' && !i.tank && i.mount === 'floor');
-    return dgu.map(g => {
-      const base = { pos: g.pos, unit: g.unit, x: Math.round(mid(g.x, g.lx)), y: Math.round(mid(g.y, g.ly)) };
-      if (roof.some(m => m.dgu && m.dgu.pos === g.pos && m.dgu.unit === g.unit)) return { ...base, how: 'roof' };
-      const z = Math.round(Math.min(H - 200, g.h + 250));
-      return { ...base, how: 'wall', wall: 'back', u: this.exhaustAt(plan, g), z, gap: Math.max(0, W - g.y - g.ly) };
+    return dgu.map(gen => {
+      const base = {
+        pos: gen.pos,
+        unit: gen.unit,
+        x: Math.round(LayoutRoof._mid(gen.x, gen.lx)),
+        y: Math.round(LayoutRoof._mid(gen.y, gen.ly)),
+      };
+      if (roof.some(item => item.dgu && item.dgu.pos === gen.pos && item.dgu.unit === gen.unit))
+        return { ...base, how: 'roof' };
+      const z = Math.round(Math.min(Hi - 200, gen.h + 250));
+      return {
+        ...base,
+        how: 'wall',
+        wall: 'back',
+        u: this.exhaustAt(plan, gen),
+        z,
+        gap: Math.max(0, Wi - gen.y - gen.ly),
+      };
     });
   }
 
-  static exhaustAt(plan, g) {
-    const rad = g.rad || 'right';
+  static exhaustAt(plan, dgu) {
+    const rad = dgu.rad || 'right';
     if (rad === 'back') {
-      const door = (plan.dguDoors || []).find(q => q.pos === g.pos && q.unit === g.unit);
-      return Math.round(door ? door.x1 + 200 : mid(g.x, g.lx));
+      const door = (plan.dguDoors || []).find(spot => spot.pos === dgu.pos && spot.unit === dgu.unit);
+      return Math.round(door ? door.x1 + 200 : LayoutRoof._mid(dgu.x, dgu.lx));
     }
-    return Math.round(rad === 'left' ? g.x + g.lx * 0.16 + 300 : g.x + g.lx * 0.84 - 300);
+    return Math.round(rad === 'left' ? dgu.x + dgu.lx * 0.16 + 300 : dgu.x + dgu.lx * 0.84 - 300);
   }
 
   /**
    * Ресиверы снаружи (ФНП ОРПД, п. 65) — на площадке за дальним торцом у выхода трубопровода: первый — по оси выхода,
    * следующие — к стене прохода через recv.outStep; не помещаются по ширине — следующий ряд дальше. z — от площадки.
    */
-  static outside(plan, eq, chassis) {
-    const E = eq.filter(e => e.outside);
-    if (!E.length) return [];
-    const [L, W] = plan.int;
+  static outside(plan, equip, chassis) {
+    const outer = equip.filter(unit => unit.outside);
+    if (!outer.length) return [];
+    const [Li, Wi] = plan.int;
     const ext = plan.geo.ext;
-    const R = StationMatrix.recv();
-    const oy = (ext[1] - W) / 2;
-    const zf = StationGeo.zFloor(plan.geo.type);
+    const recv = StationMatrix.recv();
+    const oy = (ext[1] - Wi) / 2;
+    const zFloor = StationGeo.zFloor(plan.geo.type);
     const air = (plan.piping || [])
-      .flatMap(p => p.lines || [])
-      .filter(l => l.medium === 'air' && !l.header && l.x1 >= L - 1);
-    const yc = air.length ? air[0].y : W - StationMatrix.grp('pipe').airY;
-    const first = ly => Math.round(Math.min(W + oy - ly, Math.max(-oy, yc - ly / 2)));
-    const z = -(zf + (chassis ? this.CHASSIS_H : 0)) + R.pad;
+      .flatMap(part => part.lines || [])
+      .filter(line => line.medium === 'air' && !line.header && line.x1 >= Li - 1);
+    const lineY = air.length ? air[0].y : Wi - StationMatrix.grp('pipe').airY;
+    const first = lenY => Math.round(Math.min(Wi + oy - lenY, Math.max(-oy, lineY - lenY / 2)));
+    const z = -(zFloor + (chassis ? this.CHASSIS_H : 0)) + recv.pad;
     const out = [];
-    const at = { x: L + (ext[0] - L) / 2 + R.outGap, top: null, col: 0 };
-    for (const e of E) {
-      for (let k = 0; k < e.qty; k++) {
-        const y = this.nextY(at, e, { first, lo: -oy, step: R.outStep });
+    const anchor = { x: Li + (ext[0] - Li) / 2 + recv.outGap, top: null, col: 0 };
+    for (const unit of outer) {
+      for (let k = 0; k < unit.qty; k++) {
+        const y = this.nextY(anchor, unit, { first, lo: -oy, step: recv.outStep });
         out.push(
-          LayoutItem.unit(e, {
+          LayoutItem.unit(unit, {
             unit: k,
-            x: Math.round(at.x),
+            x: Math.round(anchor.x),
             y,
             z,
             mount: 'out',
             face: -2,
-            air: AirChain.unit(e.air, k),
+            air: AirChain.unit(unit.air, k),
           }),
         );
       }
@@ -160,15 +179,15 @@ export class LayoutRoof {
   }
 
   /** Следующее место ресивера снаружи: к стене прохода, не помещается — новый ряд дальше от торца. */
-  static nextY(at, e, { first, lo, step }) {
-    let y = at.top == null ? first(e.w) : at.top - step - e.w;
-    if (at.top != null && y < lo) {
-      at.x += at.col + step;
-      at.col = 0;
-      y = first(e.w);
+  static nextY(anchor, unit, { first, lo: low, step }) {
+    let y = anchor.top == null ? first(unit.w) : anchor.top - step - unit.w;
+    if (anchor.top != null && y < low) {
+      anchor.x += anchor.col + step;
+      anchor.col = 0;
+      y = first(unit.w);
     }
-    at.top = y;
-    at.col = Math.max(at.col, e.l);
+    anchor.top = y;
+    anchor.col = Math.max(anchor.col, unit.l);
     return y;
   }
 }

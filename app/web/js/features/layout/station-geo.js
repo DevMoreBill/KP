@@ -36,11 +36,11 @@ export class StationGeo {
   /** Блок-контейнеры «по проекту»: стена сверх утеплителя, пол, кровля; «Север» — с тамбуром. */
   static get FLEX() {
     return StationMatrix.derive('flex', () => {
-      const s = StationMatrix.grp('shell');
+      const shell = StationMatrix.grp('shell');
       return {
-        block: { wall: s.blockWall, floor: s.blockFloor, roof: s.blockRoof },
-        welded: { wall: s.weldWall, floor: s.weldFloor, roof: s.weldRoof },
-        north: { wall: s.northWall, floor: s.northFloor, roof: s.northRoof, tambour: s.tambour },
+        block: { wall: shell.blockWall, floor: shell.blockFloor, roof: shell.blockRoof },
+        welded: { wall: shell.weldWall, floor: shell.weldFloor, roof: shell.weldRoof },
+        north: { wall: shell.northWall, floor: shell.northFloor, roof: shell.northRoof, tambour: shell.tambour },
       };
     });
   }
@@ -60,64 +60,64 @@ export class StationGeo {
 
   static get ROOFS() {
     return StationMatrix.derive('roofs', () => {
-      const s = StationMatrix.grp('shell');
+      const shell = StationMatrix.grp('shell');
       return {
         flat: { name: 'плоская', deg: 0 },
-        gable: { name: 'двускатная', deg: s.gable },
-        mono: { name: 'односкатная', deg: s.mono },
+        gable: { name: 'двускатная', deg: shell.gable },
+        mono: { name: 'односкатная', deg: shell.mono },
         arch: { name: 'арочная (покатая)', deg: 0, k: 0.075 },
       };
     });
   }
 
   /** Вверх до шага размеров блок-контейнера. */
-  static up(v) {
+  static roundUp(v) {
     return Math.ceil(v / this.STEP - 1e-9) * this.STEP;
   }
 
   /** «6 × 2,4 × 2,5 м» → [6000, 2400, 2500]; иначе null. */
-  static mm(text) {
-    const a = StationEquip.sizes(text, StationEquip.DIM3);
-    return a && a.every(v => v >= 500 && v <= 30000) ? a : null;
+  static parseMm(text) {
+    const sizes = StationEquip.sizes(text, StationEquip.DIM3);
+    return sizes && sizes.every(v => v >= 500 && v <= 30000) ? sizes : null;
   }
 
   /** Заданная длина блок-контейнера: «10 000 мм», «10 м», «10,5» → мм в пределах; иначе null. */
   static len(text) {
-    const s = String(text ?? '')
+    const clean = String(text ?? '')
       .trim()
       .replace(/(\d)\s+(?=\d{3}\b)/g, '$1');
-    const m = s.match(/^(\d+(?:[.,]\d+)?)\s*(мм|м)?$/i);
-    if (!m) return null;
-    const raw = parseFloat(m[1].replace(',', '.'));
-    const v = Math.round(/^м$/i.test(m[2] || '') || raw < 40 ? raw * 1000 : raw);
-    const f = StationMatrix.fit();
-    return v >= f.minL && v <= f.maxL ? v : null;
+    const match = clean.match(/^(\d+(?:[.,]\d+)?)\s*(мм|м)?$/i);
+    if (!match) return null;
+    const raw = parseFloat(match[1].replace(',', '.'));
+    const v = Math.round(/^м$/i.test(match[2] || '') || raw < 40 ? raw * 1000 : raw);
+    const fit = StationMatrix.fit();
+    return v >= fit.minL && v <= fit.maxL ? v : null;
   }
 
   /** Утеплитель, мм: из карточки; не указан — по умолчанию правил. */
   static ins(text) {
-    const n = parseFloat(String(text || '').replace(',', '.'));
-    return n > 0 && n < 400 ? n : StationMatrix.grp('shell').ins;
+    const num = parseFloat(String(text || '').replace(',', '.'));
+    return num > 0 && num < 400 ? num : StationMatrix.grp('shell').ins;
   }
 
-  static roof(c) {
-    const r = String((c && c.roof) || '');
-    if (c && this.SEA[c.ctype]) return 'flat';
-    return this.ROOFS[r] ? r : 'flat';
+  static roof(cont) {
+    const roofText = String((cont && cont.roof) || '');
+    if (cont && this.SEA[cont.ctype]) return 'flat';
+    return this.ROOFS[roofText] ? roofText : 'flat';
   }
 
   /** Подъём крыши над стенами, мм: двускатная — до конька, односкатная — у стены с дверью, арочная — дуга. */
-  static rise(roof, W) {
-    const R = this.ROOFS[roof] || this.ROOFS.flat;
-    const tan = Math.tan((R.deg * Math.PI) / 180);
-    const by = { gable: (W / 2) * tan, mono: W * tan, arch: W * R.k };
-    return Math.round(by[roof] || 0);
+  static rise(roof, Wi) {
+    const roofRule = this.ROOFS[roof] || this.ROOFS.flat;
+    const tan = Math.tan((roofRule.deg * Math.PI) / 180);
+    const rise = { gable: (Wi / 2) * tan, mono: Wi * tan, arch: Wi * roofRule.k };
+    return Math.round(rise[roof] || 0);
   }
 
-  static floor(c) {
-    const f = String((c && c.floor) || '');
-    if (this.FLOORS[f]) return f;
-    const row = ((c && c.rows) || []).find(q => q && /^пол(?![а-яё])/i.test(String(q.k || '').trim()));
+  static floor(cont) {
+    const floorText = String((cont && cont.floor) || '');
+    if (this.FLOORS[floorText]) return floorText;
+    const row = ((cont && cont.rows) || []).find(line => line && /^пол(?![а-яё])/i.test(String(line.k || '').trim()));
     return row && /алюмин/i.test(String(row.v || '')) ? 'alu' : 'steel';
   }
 
@@ -126,59 +126,59 @@ export class StationGeo {
   }
 
   /** Внутренние размеры по наружным: морской — штатные стенки и утепление, блок-контейнер — стены, пол и кровля. */
-  static inner(type, ext, t) {
+  static inner(type, ext, ins) {
     const sea = this.SEA[type];
     if (sea) {
-      const d = sea.ext.map((v, i) => v - sea.int[i]);
-      const k = t + this.LINING;
-      return [ext[0] - d[0] - 2 * k, ext[1] - d[1] - 2 * k, ext[2] - d[2] - k - this.SEA_FLOOR];
+      const wall = sea.ext.map((v, i) => v - sea.int[i]);
+      const k = ins + this.LINING;
+      return [ext[0] - wall[0] - 2 * k, ext[1] - wall[1] - 2 * k, ext[2] - wall[2] - k - this.SEA_FLOOR];
     }
-    const f = this.flex(type);
-    return [ext[0] - 2 * (t + f.wall), ext[1] - 2 * (t + f.wall), ext[2] - f.floor - (t + f.roof)];
+    const flex = this.flex(type);
+    return [ext[0] - 2 * (ins + flex.wall), ext[1] - 2 * (ins + flex.wall), ext[2] - flex.floor - (ins + flex.roof)];
   }
 
   /**
    * Геометрия элемента «контейнер»; у станции из модулей размер в составе — одного модуля.
    * @returns {object} {type, t, sea, own, auto, fixL, ext, int, x0, door, roof, floor, mods}
    */
-  static of(c) {
-    const type = c.ctype || 'block';
-    const t = this.ins(c.ins);
+  static of(cont) {
+    const type = cont.ctype || 'block';
+    const ins = this.ins(cont.ins);
     const sea = this.SEA[type];
-    const own = c.sizeAuto ? null : this.mm(c.size);
-    const M = sea ? null : StationMods.of(c);
-    const mod = own && M ? own : null;
-    const ext = this.extOf(mod, M, own, sea);
+    const own = cont.sizeAuto ? null : this.parseMm(cont.size);
+    const mods = sea ? null : StationMods.of(cont);
+    const mod = own && mods ? own : null;
+    const ext = this.extOf(mod, mods, own, sea);
     return {
       type,
-      t,
+      t: ins,
       sea: Boolean(sea),
       own: Boolean(own),
       auto: !ext,
-      fixL: ext || sea ? null : this.fixLen(c, M),
+      fixL: ext || sea ? null : this.fixLen(cont, mods),
       ext,
-      int: ext ? this.inner(type, ext, t) : null,
+      int: ext ? this.inner(type, ext, ins) : null,
       x0: this.tambour(type),
       door: sea ? sea.door : null,
-      roof: this.roof(c),
-      floor: this.floor(c),
-      mods: M ? { ...M, ...(mod ? { Lm: mod[0], Wm: mod[1] } : {}) } : null,
+      roof: this.roof(cont),
+      floor: this.floor(cont),
+      mods: mods ? { ...mods, ...(mod ? { Lm: mod[0], Wm: mod[1] } : {}) } : null,
     };
   }
 
   /** Заданная длина станции (у модулей — модуля × число по длине) или null. */
-  static fixLen(c, M) {
-    const L = this.len(c.lenFix);
-    return L && M ? L * M.a : L;
+  static fixLen(cont, mods) {
+    const len = this.len(cont.lenFix);
+    return len && mods ? len * mods.a : len;
   }
 
   static tambour(type) {
-    const f = this.flex(type);
-    return (f && f.tambour) || 0;
+    const flex = this.flex(type);
+    return (flex && flex.tambour) || 0;
   }
 
-  static extOf(mod, M, own, sea) {
-    if (mod) return [mod[0] * M.a, mod[1] * M.b, mod[2]];
+  static extOf(mod, mods, own, sea) {
+    if (mod) return [mod[0] * mods.a, mod[1] * mods.b, mod[2]];
     return own || (sea ? sea.ext.slice() : null);
   }
 

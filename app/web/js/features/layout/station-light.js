@@ -1,7 +1,6 @@
+import { Mm } from './mm.js';
 import { StationFire } from './station-fire.js';
 import { StationMatrix } from './station-matrix.js';
-
-const dec = v => String(v).replace('.', ',');
 
 /**
  * Освещение: светильники в ряд по оси помещения, число — методом коэффициента использования N = E · S · Кз / (Φ · η)
@@ -28,13 +27,13 @@ export class StationLight {
   static get PLANE() {
     return StationMatrix.grp('light').plane;
   }
-  static get KZ() {
+  static get RESERVE_K() {
     return StationRules.raw('norm.lux').kz;
   }
   static get LAMP() {
     return StationMatrix.derive('lamp', () => {
-      const L = StationMatrix.grp('light');
-      return { w: L.lampW, lm: L.lampLm, len: L.lampLen };
+      const lamp = StationMatrix.grp('light');
+      return { w: lamp.lampW, lm: lamp.lampLm, len: lamp.lampLen };
     });
   }
   static get SMALL() {
@@ -49,43 +48,43 @@ export class StationLight {
 
   /** Коэффициент использования по индексу помещения (линейно между точками таблицы). */
   static eta(i) {
-    const T = StationLight.ETA;
-    const last = T[T.length - 1];
-    if (i <= T[0][0]) return T[0][1];
+    const table = StationLight.ETA;
+    const last = table[table.length - 1];
+    if (i <= table[0][0]) return table[0][1];
     if (i >= last[0]) return last[1];
-    const k = T.findIndex(([a]) => i <= a);
-    const [[a, x], [b, y]] = [T[k - 1], T[k]];
-    return x + ((y - x) * (i - a)) / (b - a);
+    const k = table.findIndex(([lux]) => i <= lux);
+    const [[lower, x], [upper, y]] = [table[k - 1], table[k]];
+    return x + ((y - x) * (i - lower)) / (upper - lower);
   }
 
   static calc(plan) {
-    const [L, W, H] = plan.int;
-    const A = (L - (plan.geo.x0 || 0)) / 1000;
-    const B = W / 1000;
-    const h = Math.max(0.8, (H - StationLight.PLANE) / 1000);
-    const S = A * B;
-    const i = S / (h * (A + B));
+    const [Li, Wi, Hi] = plan.int;
+    const lenM = (Li - (plan.geo.x0 || 0)) / 1000;
+    const widM = Wi / 1000;
+    const height = Math.max(0.8, (Hi - StationLight.PLANE) / 1000);
+    const area = lenM * widM;
+    const i = area / (height * (lenM + widM));
     const eta = StationLight.eta(i);
-    const M = StationLight.LAMP;
-    const n = Math.max(
+    const lamp = StationLight.LAMP;
+    const count = Math.max(
       2,
-      Math.ceil((StationLight.LUX * S * StationLight.KZ) / (M.lm * eta) - 1e-9),
-      Math.ceil(A / (1.5 * h)),
+      Math.ceil((StationLight.LUX * area * StationLight.RESERVE_K) / (lamp.lm * eta) - 1e-9),
+      Math.ceil(lenM / (1.5 * height)),
     );
     const { small, floods, exits } = StationLight.fixtures(plan);
-    const on = (plan.sys || {}).light !== false;
-    const kw = on
-      ? (n * M.w + small * StationLight.SMALL + floods * StationLight.FLOOD + exits * StationLight.EXIT) / 1000
+    const active = (plan.sys || {}).light !== false;
+    const kw = active
+      ? (count * lamp.w + small * StationLight.SMALL + floods * StationLight.FLOOD + exits * StationLight.EXIT) / 1000
       : 0;
     return {
-      on,
+      on: active,
       lux: StationLight.LUX,
-      n,
-      em: Math.max(1, Math.ceil(n / 2)),
+      n: count,
+      em: Math.max(1, Math.ceil(count / 2)),
       eta,
       i,
-      area: S,
-      E: (n * M.lm * eta) / (S * StationLight.KZ),
+      area,
+      E: (count * lamp.lm * eta) / (area * StationLight.RESERVE_K),
       small,
       floods,
       kw,
@@ -94,30 +93,34 @@ export class StationLight {
 
   /** Светильники в отсеке бака и тамбуре, прожекторы над дверями, табло «Выход». */
   static fixtures(plan) {
-    const f = plan.fuel ? 1 : 0;
-    const tb = (plan.geo.x0 || 0) - (f ? plan.fuel.x1 + plan.fuel.part : 0);
-    const two = Number(!!((plan.doors || []).some(d => d.kind === 'entry') || plan.exit));
+    const fuelCount = plan.fuel ? 1 : 0;
+    const tambour = (plan.geo.x0 || 0) - (fuelCount ? plan.fuel.x1 + plan.fuel.part : 0);
+    const two = Number(!!((plan.doors || []).some(door => door.kind === 'entry') || plan.exit));
     const entry = Number(!!(plan.entry && !plan.entry.sea));
     const wicket = !!(plan.gates && plan.gates.wicket);
-    return { small: f + Number(tb > 0), floods: entry + two + f, exits: 1 + Number(!!(two || wicket)) };
+    return {
+      small: fuelCount + Number(tambour > 0),
+      floods: entry + two + fuelCount,
+      exits: 1 + Number(!!(two || wicket)),
+    };
   }
 
   /** Строка системы контейнера «Освещение». */
-  static text(Lt) {
-    if (!Lt || !Lt.on) return '';
-    const f = StationFire.f1;
-    const M = StationLight.LAMP;
-    const pl = StationFire.pl;
-    const small = Lt.small
-      ? `; отсек топливного бака${Lt.small > 1 ? ' и тамбур' : ''} — по светильнику ${StationLight.SMALL} Вт IP65`
+  static text(light) {
+    if (!light || !light.on) return '';
+    const dec1 = StationFire.dec1;
+    const lamp = StationLight.LAMP;
+    const plural = StationFire.plural;
+    const small = light.small
+      ? `; отсек топливного бака${light.small > 1 ? ' и тамбур' : ''} — по светильнику ${StationLight.SMALL} Вт IP65`
       : '';
-    const floods = Lt.floods
-      ? `; снаружи над дверями — светодиодные прожекторы ${StationLight.FLOOD} Вт IP65 с фотореле и блоком аварийного питания (перед выходом — не менее 5 лк), ${Lt.floods} шт.`
+    const floods = light.floods
+      ? `; снаружи над дверями — светодиодные прожекторы ${StationLight.FLOOD} Вт IP65 с фотореле и блоком аварийного питания (перед выходом — не менее 5 лк), ${light.floods} шт.`
       : '';
     return (
-      `основное — ${pl(Lt.n, ['светодиодный светильник', 'светодиодных светильника', 'светодиодных светильников'])} IP65 по ${M.w} Вт (${M.lm} лм) в ряд под потолком: около ${Math.round(Lt.E)} лк на рабочей плоскости 0,8 м при норме ${Lt.lux} лк ` +
-      `(СП 52.13330.2016, табл. Л.2; метод коэффициента использования: S = ${f(Lt.area)} м², индекс помещения ${f(Lt.i)}, η = ${dec(Math.round(Lt.eta * 100) / 100)}, Кз = ${dec(StationLight.KZ)}); ` +
-      `аварийное — ${pl(Lt.em, ['светильник', 'светильника', 'светильников'])} из них — с блоком аварийного питания на 1 ч (на полу по оси прохода — не менее 1 лк, у выхода, огнетушителя и щита ОПС — не менее 5 лк; табл. 7.28), табло «Выход» над дверью — с аккумулятором` +
+      `основное — ${plural(light.n, ['светодиодный светильник', 'светодиодных светильника', 'светодиодных светильников'])} IP65 по ${lamp.w} Вт (${lamp.lm} лм) в ряд под потолком: около ${Math.round(light.E)} лк на рабочей плоскости 0,8 м при норме ${light.lux} лк ` +
+      `(СП 52.13330.2016, табл. Л.2; метод коэффициента использования: S = ${dec1(light.area)} м², индекс помещения ${dec1(light.i)}, η = ${Mm.dec(Math.round(light.eta * 100) / 100)}, Кз = ${Mm.dec(StationLight.RESERVE_K)}); ` +
+      `аварийное — ${plural(light.em, ['светильник', 'светильника', 'светильников'])} из них — с блоком аварийного питания на 1 ч (на полу по оси прохода — не менее 1 лк, у выхода, огнетушителя и щита ОПС — не менее 5 лк; табл. 7.28), табло «Выход» над дверью — с аккумулятором` +
       `${small}${floods}`
     );
   }

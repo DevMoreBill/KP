@@ -81,7 +81,7 @@ class NewStation {
   static kind(t){ return /comp/.test(t.id) ? 'comp' : /dgu/.test(t.id) ? 'dgu' : /pump/.test(t.id) ? 'pump' : ''; }
   /** контейнер одной строкой */
   static cont(){
-    const S=this.S, c=ctypeOf(S.ctype), flex=!!StationGeo.FLEX[S.ctype], n=StationLayout.n;
+    const S=this.S, c=ctypeOf(S.ctype), flex=!!StationGeo.FLEX[S.ctype], n=Mm.text;
     return `${c.name}${flex ? ` — размер по оборудованию, в габарите перевозки (ширина до ${n(StationGeo.ROAD_W)} мм)` : c.size ? ` (${c.size})` : ''}; утепление ${S.ins}; ${S.climate}`;
   }
   static html(t){
@@ -131,7 +131,7 @@ class NewStation {
     const pv=this.pv; if (!pv || pv.key!==this.key()) return '';
     if (pv.busy) return '<p class="muted ns-pv-w">Подбираю станцию…</p>';
     if (pv.err || !pv.x) return `<p class="msg err">Не получилось подобрать: ${esc(pv.err||'')}</p>`;
-    const x=pv.x, plan=StationUi.on(x) ? StationUi.plan(x) : null, c=kitContainer(x), n=StationLayout.n;
+    const x=pv.x, plan=StationUi.on(x) ? StationUi.plan(x) : null, c=kitContainer(x), n=Mm.text;
     const size=plan && plan.geo && plan.geo.ext ? `${n(plan.geo.ext[0])} × ${n(plan.geo.ext[1])} × ${n(plan.geo.ext[2])} мм` : '';
     const miss=String(StationReq.of(x).pick||'').match(/В каталоге нет: ([^]*?)(?: — добавьте вручную|$)/);
     const bad=plan && plan.level==='error' ? (plan.issues.find(i=>i.level==='error')||{}).text : '', wide=plan && (plan.issues||[]).find(i=>i.wide);

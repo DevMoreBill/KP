@@ -5,7 +5,7 @@ import { StationMatrix } from './station-matrix.js';
  * app/station_rules.py), пояснение; готовые наборы стратегии подбора.
  */
 export class LayoutParams {
-  static ON = [
+  static YES_NO = [
     [1, 'да'],
     [0, 'нет'],
   ];
@@ -274,49 +274,49 @@ export class LayoutParams {
 
   /** Значения набора: «g.k» → число (без своих значений — по умолчанию StationMatrix.DEF). */
   static preset(id) {
-    const P = this.PRESETS.find(p => p.id === id);
-    if (!P) return null;
+    const preset = this.PRESETS.find(item => item.id === id);
+    if (!preset) return null;
     const keys = Object.keys((this.PRESETS[0] || {}).v || {});
-    return Object.fromEntries(keys.map(k => [k, P.v ? P.v[k] : this.def(k)]));
+    return Object.fromEntries(keys.map(k => [k, preset.v ? preset.v[k] : this.def(k)]));
   }
 
   static def(key) {
-    const [g, f] = key.split('.');
-    return StationMatrix.DEF[g][f];
+    const [group, field] = key.split('.');
+    return StationMatrix.DEF[group][field];
   }
 
   /** Набор, совпадающий с матрицей M, или null — свои значения. */
-  static which(M) {
+  static which(defaults) {
     const same = ([key, x]) => {
-      const [g, f] = key.split('.');
-      return +M[g][f] === +x;
+      const [group, field] = key.split('.');
+      return +defaults[group][field] === +x;
     };
-    return this.PRESETS.find(P => Object.entries(this.preset(P.id)).every(same)) || null;
+    return this.PRESETS.find(candidate => Object.entries(this.preset(candidate.id)).every(same)) || null;
   }
 
   /** Все поля: «g.k» → поле; флажки «да / нет» — пределы 0…1. */
   static all() {
     if (!this.#fields) {
       this.#fields = new Map();
-      for (const f of this.SECTIONS.flatMap(s => s.f)) {
-        if (f.opt === null) f.opt = this.ON;
-        if (f.opt) Object.assign(f, { lo: 0, hi: 1 });
-        this.#fields.set(`${f.g}.${f.k}`, f);
+      for (const field of this.SECTIONS.flatMap(section => section.f)) {
+        if (field.opt === null) field.opt = this.YES_NO;
+        if (field.opt) Object.assign(field, { lo: 0, hi: 1 });
+        this.#fields.set(`${field.g}.${field.k}`, field);
       }
     }
     return this.#fields;
   }
 
-  static field(g, k) {
-    return this.all().get(`${g}.${k}`) || null;
+  static field(group, k) {
+    return this.all().get(`${group}.${k}`) || null;
   }
 
   /** Значение для показа: «2 550 мм», «да», «0,75». */
-  static show(f, v) {
-    if (f.opt) return (f.opt.find(o => o[0] === +v) || [0, String(v)])[1];
+  static show(field, v) {
+    if (field.opt) return (field.opt.find(option => option[0] === +v) || [0, String(v)])[1];
     const num = String(v)
       .replace('.', ',')
       .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-    return f.u && f.u !== 'доля' ? `${num} ${f.u}` : num;
+    return field.u && field.u !== 'доля' ? `${num} ${field.u}` : num;
   }
 }

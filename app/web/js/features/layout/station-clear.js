@@ -12,27 +12,27 @@ export class StationClear {
   /** Малые насосы (до pumps.kw и pumps.len): у стены и по два на общей раме. */
   static get PUMP_SMALL() {
     return StationMatrix.derive('pumps', () => {
-      const p = StationMatrix.grp('pumps');
-      return { back: [p.back, p.backMin], side: [p.side, p.sideMin], top: [p.top, p.topMin] };
+      const pumps = StationMatrix.grp('pumps');
+      return { back: [pumps.back, pumps.backMin], side: [pumps.side, pumps.sideMin], top: [pumps.top, pumps.topMin] };
     });
   }
 
   /** Отступы оборудования по виду (у насосов — ещё по мощности и длине). */
-  static of(kind, e) {
-    if (kind === 'pump' && e && this.smallPump(e)) return this.PUMP_SMALL;
+  static of(kind, unit) {
+    if (kind === 'pump' && unit && this.smallPump(unit)) return this.PUMP_SMALL;
     return this.KIND[kind] || this.KIND.other;
   }
 
-  static smallPump(e) {
-    const p = StationMatrix.grp('pumps');
-    return !(e.kw > p.kw) && Math.max(e.l || 0, e.w || 0) <= p.len;
+  static smallPump(unit) {
+    const pumps = StationMatrix.grp('pumps');
+    return !(unit.kw > pumps.kw) && Math.max(unit.l || 0, unit.w || 0) <= pumps.len;
   }
 
   /** Проход обслуживания [рекомендуется, не менее], мм. */
   static aisle() {
-    const A = StationRules.raw('norm.aisle');
-    const rec = Math.max(600, Math.min(3000, +A[0] || 1000));
-    const min = Math.max(600, Math.min(rec, +A[1] || 800));
+    const raw = StationRules.raw('norm.aisle');
+    const rec = Math.max(600, Math.min(3000, +raw[0] || 1000));
+    const min = Math.max(600, Math.min(rec, +raw[1] || 800));
     return [rec, min];
   }
 }

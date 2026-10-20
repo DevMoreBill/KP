@@ -424,7 +424,7 @@ Check.run('сжатый воздух: последовательно, фильт
   assert.ok(I('Компрессор GA 37 VSD', {}, 'compressor').vsd && I('Компрессор с осушителем и фильтрами', {}, 'compressor').filter);
   assert.ok(I('Осушитель DK 60 со встроенными фильтрами', {}, 'dryer').filters && I('Осушитель CD 50', { cat:'dryer_ads' }, 'dryer').type==='ads');
   assert.strictEqual(I('Ресивер сухой 500 л', {}, 'receiver').role, 'dry'); assert.ok(Math.abs(AirChain.flow({ attrs:{}, rows:[{ k:'Производительность', v:'6 200 л/мин' }] })-6.2)<1e-9);
-  assert.ok(Math.abs(AirChain.kp(7)-1)<1e-9 && AirChain.kp(10)>1.1 && AirChain.kp(5)<0.9, 'поправка на давление');
+  assert.ok(Math.abs(AirChain.dryerK(7)-1)<1e-9 && AirChain.dryerK(10)>1.1 && AirChain.dryerK(5)<0.9, 'поправка на давление');
   // КС: компрессор → ресивер → фильтр до осушителя → осушитель → фильтр после; у осушителя и ресивера — вход и выход
   const c62=P('Винтовой компрессор', { cat:'comp_screw', model:'K 37', kw:37, flow:6.2, pressure:8, size:'1400 × 900 × 1500' }, { role:'main' });
   const dr6=P('Рефрижераторный осушитель', { cat:'dryer_refrig', model:'R 70', flow:7.5, size:'900 × 600 × 1100' });
@@ -635,7 +635,7 @@ Check.run('ДГУ: глушитель на крыше, бак рядом, топ
   assert.ok(t.tank && t.x+t.lx<=p.fuel.x1 && g.x>=p.geo.x0 && p.geo.x0>=p.fuel.x1+p.fuel.part, 'бак — в отсеке у торца, ДГУ — за перегородкой');
   assert.ok(m && Math.abs(m.x+m.lx/2-(g.x+g.lx/2))<=1 && Math.abs(m.y+m.d/2-(g.y+g.ly/2))<=1, 'глушитель — прямо над ДГУ, по центру');
   assert.ok(m.exhaust && m.exhaust.z===g.h && m.exhaust.x>m.x && m.exhaust.x<m.x+m.lx && Math.abs(m.exhaust.y-(m.y+m.d/2))<=1, 'выхлоп от двигателя — вертикально в глушитель');
-  assert.ok(p.issues.some(i=>i.text.includes('высота станции с глушителем '+StationLayout.n(3791-500)) && /снимают/.test(i.text) && /горизонтально в сторону/.test(i.text)), 'высота с глушителем (выхлоп — вбок) и пометка о перевозке');
+  assert.ok(p.issues.some(i=>i.text.includes('высота станции с глушителем '+Mm.text(3791-500)) && /снимают/.test(i.text) && /горизонтально в сторону/.test(i.text)), 'высота с глушителем (выхлоп — вбок) и пометка о перевозке');
   const pp=p.piping[0]; assert.strictEqual(pp.mat, 'steel'); assert.strictEqual(pp.lines.length, 1, 'топливо: от бака к ДГУ');
   assert.ok(pp.lines[0].x0<=t.x+t.lx && pp.lines[0].x1>=g.x, 'линия от бака до ДГУ');
   const svg=StationDrawing.svg(p, meta(p)); Check.sheet(svg, 'ДГУ+ чертёж');
@@ -654,7 +654,7 @@ Check.run('трубопровод: материал, трасса, отпеча�
   assert.strictEqual(PipeMaterial.of({ name:'Трубопровод из полипропилена PP-R' }).id, 'pp');
   assert.strictEqual(PipeMaterial.of({ name:'Трубопровод', rows:[{ k:'Материал трубопровода', v:'сталь' }] }).id, 'steel');
   assert.strictEqual(PipeMaterial.of({ name:'Трубопровод' }), null);
-  assert.strictEqual(PipeMaterial.dn({ rows:[{ k:'Условный проход', v:'Ду 50' }] }), 'DN 50');
+  assert.strictEqual(PipeMaterial.bore({ rows:[{ k:'Условный проход', v:'Ду 50' }] }), 'DN 50');
   const ns=solve(C('block'), [pumpS, cab, P('Трубопроводная обвязка и запорная арматура', {}, { pipeMat:'inox' })]);
   Check.plan(ns, 'НС трубы'); const L=ns.piping[0].lines;
   assert.strictEqual(L.length, 2, 'насосы: всас и напор'); assert.deepStrictEqual(L.map(l=>l.label), ['вход', 'выход']);
@@ -750,7 +750,7 @@ Check.run('чертёж: листы А4 по ЕСКД', ()=>{
   const want=[...new Set([...p.items, ...(p.roof||[])].map(i=>i.pos))].sort((a, b)=>a-b);
   assert.deepStrictEqual(pos, want, 'номера позиций на чертеже');
   // установочные размеры морского контейнера — между фитингами (ISO 1161)
-  assert.ok(T2.includes(StationLayout.n(StationDrawing.FIT[p.geo.ext[0]])) && T2.includes(StationLayout.n(StationDrawing.FIT_W)), 'размеры между фитингами');
+  assert.ok(T2.includes(Mm.text(StationDrawing.FIT[p.geo.ext[0]])) && T2.includes(Mm.text(StationDrawing.FIT_W)), 'размеры между фитингами');
   // дата и разработчик — не обязательны; обозначение без организации — по умолчанию
   const bare=StationDrawing.svg(p, {}); Check.sheet(bare, 'чертёж без сведений');
   assert.ok(Check.texts(bare).some(q=>/^КПСТ\.\d{6}\.001 ГЧ$/.test(q.t)), 'обозначение без организации');
@@ -1057,7 +1057,7 @@ Check.run('3D: оснащение — пожарная безопасность,
   const Fd=StationFire.calc(Object.assign({}, ks, { req:{ kind:'comp', fire:'Д' } })).rooms[0];
   assert.ok(Fd.need===0 && Fd.ext===1 && Fd.rank==='2А, 55В, С, Е', 'категория Д до 100 м²: по ППР (п. 401) можно без огнетушителя — один рекомендуется, ранг 2А, 55В');
   assert.ok(/квадрат 2,64 × 2,64 м/.test(StationFire.autoText(F)) && /100 %/.test(StationFire.autoText(F)), 'в тексте — геометрия распыла и запас модулей');
-  assert.ok(StationFire.tt(ks).length===4 && /Буран-2,5/.test(StationFire.autoText(F)), 'тексты ТЗ');
+  assert.ok(StationFire.techReqs(ks).length===4 && /Буран-2,5/.test(StationFire.autoText(F)), 'тексты ТЗ');
   for (const view of ['in', 'out']){
     const sc=new StScene(ks, { view }).build(), D=[...sc.decals.values()];
     for (const { mat, mesh } of sc.groups.values()){
@@ -1107,7 +1107,7 @@ Check.run('3D: оснащение — пожарная безопасность,
 Check.run('системы: освещение, розетки, нагрузки и вводной автомат', ()=>{
   const ks=StationLayout.solve({ cont:C('block', { sizeAuto:true, sys:{ power:true, light:true, heat:true, vent:true, ops:true } }), parts:[comp, dryer, rec, cab], req:{ kind:'comp', fire:'В4' } });
   const Lt=ks.light; assert.ok(Lt.on && Lt.n>=2 && Lt.E>=StationLight.LUX && Lt.em===Math.ceil(Lt.n/2), 'освещение: не ниже нормы, аварийное — половина светильников');
-  assert.ok(Lt.n>=Math.ceil(StationLight.LUX*Lt.area*StationLight.KZ/(StationLight.LAMP.lm*Lt.eta)-1e-9), 'число светильников — методом коэффициента использования');
+  assert.ok(Lt.n>=Math.ceil(StationLight.LUX*Lt.area*StationLight.RESERVE_K/(StationLight.LAMP.lm*Lt.eta)-1e-9), 'число светильников — методом коэффициента использования');
   assert.ok(StationLight.eta(1)===0.51 && StationLight.eta(0.1)===0.34 && StationLight.eta(9)===0.76 && Math.abs(StationLight.eta(0.9)-0.485)<1e-9, 'коэффициент использования — по индексу помещения');
   const K=ks.sockets; assert.ok(K.n230>=2 && K.n380===1 && K.ytp===1 && K.z===1000, 'сервисные розетки');
   const W=ks.power; assert.ok(W.inst>=37 && W.kw>=37 && W.kw<=W.inst && W.mode==='run', 'расчётная мощность — при работе компрессора');
@@ -1118,7 +1118,7 @@ Check.run('системы: освещение, розетки, нагрузки 
   assert.ok(dg.dgu && dg.list.some(q=>/Подогреватель/.test(q.name) && q.idle && !q.run) && !dg.list.some(q=>/Компрессор/.test(q.name)), 'ДГУ — собственные нужды, подогреватель в простое');
   assert.ok(StationPower.lines(W).length===2 && /вводной автомат — \d+ А/.test(StationPower.lines(W)[1]), 'строки итога');
   assert.ok(/около \d+ лк/.test(StationLight.text(Lt)) && /светильника|светильников/.test(StationLight.text(Lt)) && /ЯТП-0,25/.test(StationSockets.text(K)), 'тексты ТЗ');
-  for (const [n, w] of [[21, '21 модуль'], [12, '12 модулей'], [3, '3 модуля'], [5, '5 модулей']]) assert.strictEqual(StationFire.pl(n, ['модуль', 'модуля', 'модулей']), w);
+  for (const [n, w] of [[21, '21 модуль'], [12, '12 модулей'], [3, '3 модуля'], [5, '5 модулей']]) assert.strictEqual(StationFire.plural(n, ['модуль', 'модуля', 'модулей']), w);
   const sc=new StScene(ks, {}).build(); assert.ok(sc.outfit.log.some(q=>q.kind==='socket'), '3D: розетки на стенах');
 });
 
@@ -1134,7 +1134,7 @@ Check.run('сжатый воздух: байпас осушителя, диам�
   const Q=ks.pipe; assert.ok(Q && Q.medium==='air' && Q.dn===50 && Q.set===25 && Q.small && Math.abs(Q.lines[0].d-42.3)<0.6, 'DN по расчёту: '+JSON.stringify(Q));
   assert.ok(ks.issues.some(t=>t.level==='warn' && /DN 25 меньше расчётного DN 50/.test(t.text)), 'замечание: DN в составе мал');
   assert.ok(/DN 50/.test(StationPipe.text(Q)) && /принять DN 50/.test(StationPipe.text(Q)), 'текст ТЗ');
-  assert.ok(StationPipe.dn(42.3)===50 && StationPipe.dn(52.5)===50 && StationPipe.dn(52.6)===65 && StationPipe.dn(10)===15, 'ряд DN');
+  assert.ok(StationPipe.bore(42.3)===50 && StationPipe.bore(52.5)===50 && StationPipe.bore(52.6)===65 && StationPipe.bore(10)===15, 'ряд DN');
   // ресиверы: 2000 л при 8 бар — p·V 1,6: без учёта — 2 × 1000 л; 900 л — без учёта и так
   assert.deepStrictEqual(AirChain.split(2000, 8), { n:2, v:1000 }); assert.strictEqual(AirChain.split(900, 8), null); assert.deepStrictEqual(AirChain.split(1500, 13), { n:3, v:500 });
   // по умолчанию — по 900 л, сколько нужно без недобора (объём до литра); выше 11 бар 900 л на учёте — прежний подбор
@@ -1181,14 +1181,14 @@ Check.run('масса и центр тяжести, строповка; знак
 });
 
 Check.run('трубы: опознавательная окраска (ГОСТ 14202-69) и стрелки направления потока', ()=>{
-  assert.ok(PipeMaterial.idColor('air', '#000')===PipeMaterial.ID.air && PipeMaterial.idColor('fuel', '#000')===PipeMaterial.ID.fuel && PipeMaterial.idColor('gen', '#123456')==='#123456', 'воздух — синий, топливо — коричневый, прочее — цвет материала');
+  assert.ok(PipeMaterial.idColor('air', '#000')===PipeMaterial.ID_COLOR.air && PipeMaterial.idColor('fuel', '#000')===PipeMaterial.ID_COLOR.fuel && PipeMaterial.idColor('gen', '#123456')==='#123456', 'воздух — синий, топливо — коричневый, прочее — цвет материала');
   for (const mat of ['steel', 'inox', 'pp']){
     const p=solve(C('block', { sizeAuto:true }), [comp, dryer, rec, P('Трубопровод', {}, { pipeMat:mat })]), sc=new StScene(p, {}).build(), D=[...sc.decals.values()];
-    const blue=[...sc.groups.values()].some(({ mat:m })=>String(m.c||'').toLowerCase()===PipeMaterial.ID.air);
+    const blue=[...sc.groups.values()].some(({ mat:m })=>String(m.c||'').toLowerCase()===PipeMaterial.ID_COLOR.air);
     assert.ok(blue, mat+': трубы сжатого воздуха — синие при любом материале');
     assert.ok(D.some(d=>d.id==='FLOW' && d.dir===1) && D.some(d=>d.id==='FLOWV'), mat+': стрелки по ходу воздуха — на магистрали (к выходу) и на спусках'); }
   const l={ medium:'air', header:true, to:2000 }; assert.ok(PipeMaterial.flow(l, 1000)===1 && PipeMaterial.flow(l, 3000)===-1 && PipeMaterial.flow({ medium:'in' }, 0)===-1, 'коллектор — к входу аппарата, всас насосов — от торца');
-  assert.ok(StationNorms.tt(solve(C('block', { sizeAuto:true }), [comp])).some(t=>/опознавательная окраска .* со стрелками направления потока/.test(t)), 'в ТТ — окраска и стрелки');
+  assert.ok(StationNorms.techReqs(solve(C('block', { sizeAuto:true }), [comp])).some(t=>/опознавательная окраска .* со стрелками направления потока/.test(t)), 'в ТТ — окраска и стрелки');
 });
 
 Check.run('цвет по фото: фон убирается, главный цвет корпуса', ()=>{
@@ -1321,10 +1321,10 @@ Check.run('жалюзи: размеры по расходу воздуха, ме
   const [L, W, H]=p.int, len=w=>w==='left' || w==='right' ? W : L;
   for (const q of V.louvers){
     assert.ok(q.u0>=0 && q.u1<=len(q.wall) && q.z0>=0 && q.z1<=H, 'жалюзи в пределах стены: '+JSON.stringify(q));
-    assert.ok(q.w>=StationVent.IN.w[0] && q.w<=StationVent.WHOLE && q.w%50===0 && q.h%50===0, 'размер кратен 50 мм: '+JSON.stringify(q));
+    assert.ok(q.w>=StationVent.INLET.w[0] && q.w<=StationVent.WHOLE && q.w%50===0 && q.h%50===0, 'размер кратен 50 мм: '+JSON.stringify(q));
     // приток — внизу; над конвектором на той же стене — выше него
     if (q.kind==='in' && !q.leaf){ const hb=p.heat.heaters.filter(h=>h.wall===q.wall && (h.wall==='front' || h.wall==='back' ? h.x<q.u1 && h.x+h.lx>q.u0 : h.y<q.u1 && h.y+h.ly>q.u0));
-      assert.ok(hb.length ? q.z0>=Math.max(...hb.map(h=>h.z+h.h)) : q.z0===StationVent.IN.z0, 'приток — внизу: '+JSON.stringify(q)); }
+      assert.ok(hb.length ? q.z0>=Math.max(...hb.map(h=>h.z+h.h)) : q.z0===StationVent.INLET.z0, 'приток — внизу: '+JSON.stringify(q)); }
     const en=p.entry; if (en && en.wall===q.wall) assert.ok(q.u1<=en.x0 || q.u0>=en.x1, 'не на двери оператора');
     for (const r of V.louvers) if (r!==q && r.wall===q.wall) assert.ok(r.u1<=q.u0 || r.u0>=q.u1 || r.z1<=q.z0 || r.z0>=q.z1, 'жалюзи не накладываются'); }
   const area=kind=>V.louvers.filter(q=>q.kind===kind).reduce((s, q)=>s+q.w*q.h/1e6, 0);
@@ -1340,7 +1340,7 @@ Check.run('жалюзи: размеры по расходу воздуха, ме
   // 3D: жалюзи по расчёту и подписи размеров; чертёж — пункт ТТ о жалюзи
   // сноски на 3D-виде убраны (решение ПНЕВМОТЕХ): размеры жалюзи — на чертеже
   const sc=new StScene(p, {}).build(); assert.ok(!sc.tags, '3D-вид без сносок');
-  assert.ok(sc.outfit.walls.B.back.length+sc.outfit.walls.B.left.length+sc.outfit.walls.B.right.length>0);
+  assert.ok(sc.outfit.walls.hard.back.length+sc.outfit.walls.hard.left.length+sc.outfit.walls.hard.right.length>0);
   assert.ok(DrawText.heat(p).some(t=>/^Жалюзи \(размер по рамке\).*приточные .* мм/.test(t)), DrawText.heat(p).join(' | '));
   assert.ok(!StationView3D.svg(p, meta(p)).includes('Приток:'), 'SVG-вид без сносок');
   // приток и выброс горячего воздуха — никогда на одной стене; приток — сначала напротив выброса, затем в створках ворот
@@ -1364,7 +1364,7 @@ Check.run('жалюзи: размеры по расходу воздуха, ме
     draw(q, nm); new StScene(q, { view:'out' }).build(); new StScene(q, {}).build(); }
   // приток без лишнего разбиения: на длинной свободной стене — одним проёмом (не шире 2 400 мм)
   const one=solve(C('block', { size:'9000 × 2700 × 2700' }), [comp, dryer, rec]), oi=one.vent.louvers.filter(L=>L.kind==='in');
-  const nMin=Math.ceil(one.vent.need.in.gross/(StationVent.WHOLE*StationVent.IN.h[1]/1e6)-1e-9);
+  const nMin=Math.ceil(one.vent.need.in.gross/(StationVent.WHOLE*StationVent.INLET.h[1]/1e6)-1e-9);
   assert.ok(oi.length===nMin && oi.every(L=>L.w===oi[0].w && L.h===oi[0].h && L.w<=StationVent.WHOLE) && oi.reduce((s, L)=>s+L.w*L.h/1e6, 0)>=one.vent.need.in.gross-1e-6, 'приток — наименьшим числом одинаковых проёмов: '+JSON.stringify(oi));
   assert.deepStrictEqual(StationVent.sizeN(2.36, { h:[300, 1200], w:[400, 2400] }, 1), { n:1, w:2000, h:1200 }, 'один проём — 2 000 × 1 200');
   // маркизы (снегозащита): откидной козырёк на петлях над каждой приточной жалюзи (закрыт — щит на проёме), открыт на угол
@@ -1401,7 +1401,7 @@ Check.run('жалюзи: размеры по расходу воздуха, ме
   assert.ok(!t.vent.louvers.some(L=>L.kind==='out' && L.duct), 'у компрессора жалюзи в стене нет');
   // с отступом: воздуховод к жалюзи в задней стене над компрессором, приток — в стене прохода и створках ворот в торце
   const w2=cases[2][1], wc=w2.items.find(i=>i.kind==='compressor'), wl=w2.vent.louvers.find(L=>L.duct===StationLayout.key(wc));
-  assert.ok(w2.vent.exhaust==='back' && wl && wl.wall==='back' && wl.u0<wc.x+wc.lx && wl.u1>wc.x && wl.z1<=w2.int[2]-StationVent.OUT.top, 'жалюзи выброса — над компрессором: '+JSON.stringify(wl));
+  assert.ok(w2.vent.exhaust==='back' && wl && wl.wall==='back' && wl.u0<wc.x+wc.lx && wl.u1>wc.x && wl.z1<=w2.int[2]-StationVent.OUTLET.top, 'жалюзи выброса — над компрессором: '+JSON.stringify(wl));
   assert.ok(w2.vent.louvers.some(L=>L.kind==='in' && L.leaf && L.wall===w2.gates.wall), 'приток — в створках ворот');
   const T2=DrawText.heat(w2).join(' '); assert.ok(/приток и выброс — на разных стенах/.test(T2) && /клапанами рециркуляции/.test(T2), 'ТТ на чертеже: '+T2);
   // ДГУ: радиатор — в дальнем торце; приток не там, у торца с радиатором — нет
@@ -1582,10 +1582,10 @@ Check.run('подбор размера: сначала без сервисных
   assert.ok(!(p.doors||[]).some(d=>d.kind!=='entry') && p.geo.ext[1]<=StationGeo.ROAD_W, 'без сервисных ворот и дверей: '+JSON.stringify([p.geo.ext, p.doors]));
   const cp=p.items.find(i=>i.kind==='compressor'); assert.ok(cp.back>=StationMatrix.access().back && p.aisleRule[1]<=p.aisle.w, 'сзади — без ворот, проход не уже допустимого');
   // готовые наборы: «плотно» — значения программы; набор меняет только стратегию, нормы отступов — нет
-  assert.strictEqual(LayoutParams.which(StationMatrix.M).id, 'def');
-  const M=JSON.parse(JSON.stringify(StationMatrix.M)), v=LayoutParams.preset('wide');
+  assert.strictEqual(LayoutParams.which(StationMatrix.MATRIX).id, 'def');
+  const M=JSON.parse(JSON.stringify(StationMatrix.MATRIX)), v=LayoutParams.preset('wide');
   for (const [k, x] of Object.entries(v)){ const [g, f]=k.split('.'); M[g][f]=x; }
-  assert.strictEqual(LayoutParams.which(M).id, 'wide'); assert.deepStrictEqual(M.pair, StationMatrix.M.pair, 'нормы не тронуты');
+  assert.strictEqual(LayoutParams.which(M).id, 'wide'); assert.deepStrictEqual(M.pair, StationMatrix.MATRIX.pair, 'нормы не тронуты');
   for (const P of LayoutParams.PRESETS) for (const [k, x] of Object.entries(LayoutParams.preset(P.id))){ const f=LayoutParams.field(...k.split('.')); assert.ok(f && x>=f.lo && x<=f.hi, P.id+' '+k); }
 });
 
@@ -1675,7 +1675,7 @@ Check.run('длина задана: ширина, высота и плотнос
   }
   assert.notStrictEqual(StationLayout.hash({ cont:C('block', { sizeAuto:true, lenFix:12000 }), parts:[dl] }), StationLayout.hash({ cont:C('block', { sizeAuto:true }), parts:[dl] }), 'длина — в отпечатке');
   const s=solve(C('block', { sizeAuto:true, lenFix:3000 }), [dl, dry, rec]);   // и негабаритом не встаёт
-  assert.strictEqual(s.level, 'error'); assert.ok(/не помещается даже максимально плотно/.test(s.issues[0].text) && s.issues[0].text.includes(StationLayout.n(L0)), s.issues[0].text);
+  assert.strictEqual(s.level, 'error'); assert.ok(/не помещается даже максимально плотно/.test(s.issues[0].text) && s.issues[0].text.includes(Mm.text(L0)), s.issues[0].text);
 });
 Check.run('вертикальный ресивер с габаритами «высота × Ø × Ø» стоит; меньшие отступы в правилах не делают станцию больше (3.86.12)', ()=>{
   const d=StationEquip.dims({ name:'Ресивер вертикальный РВ 900.40', attrs:{ cat:'receiver', size:'2200 × 1000 × 1000' }, rows:[] }, 'receiver');
@@ -1718,7 +1718,7 @@ Check.run('ресиверы стоят: «высота × Ø × Ø» без ис
 Check.run('прочие числа станции — из правил: конструкция, подбор, жалюзи, масса, свет, пожаротушение (14.10)', ()=>{
   for (const g of ['shell', 'pick', 'pipe', 'pumps', 'grille', 'mass', 'light', 'fire', 'power']) for (const k of Object.keys(StationMatrix.DEF[g])){
     const f=LayoutParams.field(g, k); assert.ok(f && f.t && (f.u || f.opt), `поле формы ${g}.${k}`); assert.ok(f.lo<=StationMatrix.DEF[g][k] && StationMatrix.DEF[g][k]<=f.hi, `пределы ${g}.${k}`); }
-  assert.deepStrictEqual([StationGeo.FLEX.block.wall, StationGeo.LINING, StationVent.STEP, StationVent.IN.h, StationMass.LUG, StationLight.LAMP.w, StationFire.MOD.area, StationLayout.AIR_Y, StationMatrix.grp('pick').max, StationHeat.UNITS[0]],
+  assert.deepStrictEqual([StationGeo.FLEX.block.wall, StationGeo.LINING, StationVent.STEP, StationVent.INLET.h, StationMass.LUG, StationLight.LAMP.w, StationFire.MOD.area, StationLayout.AIR_Y, StationMatrix.grp('pick').max, StationHeat.UNITS[0]],
     [20, 15, 50, [300, 1200], [90, 60], 36, 7, 150, 4, [0.5, 460]], 'значения по умолчанию — прежние');
   const base=JSON.parse(JSON.stringify(StationRules.data));
   try{ const b=JSON.parse(JSON.stringify(base)), m=b.rules.find(r=>r.id==='layout.matrix').value; m.shell.blockWall=40; m.grille.step=100; m.pick.max=3; StationRules.use(b);
@@ -1744,19 +1744,19 @@ Check.run('окраска контейнера: на один цвет — од�
   const old=C('block', { sizeAuto:true }), o=StationPaint.of(old);
   assert.deepStrictEqual([o.wall, o.frame, o.roof, o.door, o.floor], ['RAL 7035', 'RAL 5005', '', '', ''], 'прежнее поле «Цвет»');
   let k=StationPaint.colors(old); assert.ok(k.wall==='#CBD0CC' && k.frame==='#154889' && k.roof===k.frame && k.door===k.wall && k.floor===null, 'по умолчанию: крыша — каркас, двери — стены');
-  assert.strictEqual(StationPaint.kp(old), 'каркас RAL 5005, стены RAL 7035, крыша RAL 5005, пол — сталь рифлёная, чёрная', 'строка «Окраска» в КП');
+  assert.strictEqual(StationPaint.kpLine(old), 'каркас RAL 5005, стены RAL 7035, крыша RAL 5005, пол — сталь рифлёная, чёрная', 'строка «Окраска» в КП');
   // отдельные окна: правка одного не трогает остальные, прежнее поле больше не читается
   const c=C('block', { sizeAuto:true }); StationPaint.set(c, 'roof', 'RAL 9006'); StationPaint.set(c, 'door', 'RAL 3020'); StationPaint.set(c, 'floor', 'RAL 7016');
   assert.ok(!('ral' in c) && c.paint.wall==='RAL 7035' && c.paint.frame==='RAL 5005' && c.paint.roof==='RAL 9006', 'окна раздельно');
   k=StationPaint.colors(c); assert.ok(k.roof==='#A5A8A6' && k.door==='#C1121C' && k.floor==='#373F43', 'цвета частей');
-  assert.strictEqual(StationPaint.kp(c), 'каркас RAL 5005, стены RAL 7035, крыша RAL 9006, двери и ворота RAL 3020, пол RAL 7016');
-  assert.ok(/крыша — RAL 9006; двери и ворота — RAL 3020; пол — окраска RAL 7016/.test(StationPaint.tz(c)), 'ТЗ: каждая часть');
+  assert.strictEqual(StationPaint.kpLine(c), 'каркас RAL 5005, стены RAL 7035, крыша RAL 9006, двери и ворота RAL 3020, пол RAL 7016');
+  assert.ok(/крыша — RAL 9006; двери и ворота — RAL 3020; пол — окраска RAL 7016/.test(StationPaint.tzRows(c)), 'ТЗ: каждая часть');
   StationPaint.set(c, 'nope', 'x'); assert.ok(!('nope' in c.paint), 'чужое поле не пишется');
-  const sea=C('sea20', {}); assert.ok(!/крыша/.test(StationPaint.kp(sea)), 'у морского — крыша штатная, в КП не пишется');
-  assert.strictEqual(StationPaint.kp(C('block', { ral:'' })), '', 'ничего не задано — строки нет');
+  const sea=C('sea20', {}); assert.ok(!/крыша/.test(StationPaint.kpLine(sea)), 'у морского — крыша штатная, в КП не пишется');
+  assert.strictEqual(StationPaint.kpLine(C('block', { ral:'' })), '', 'ничего не задано — строки нет');
   // буклет: в КП — только «по буклету», в ТЗ — ориентир цветами
-  const b=C('block', { sizeAuto:true, paintBook:true }); assert.strictEqual(StationPaint.kp(b), 'по буклету цветовых решений заказчика');
-  assert.ok(/^по буклету цветовых решений заказчика \(приложение к ТЗ\); для ориентира: каркас — RAL 5005/.test(StationPaint.tz(b)), 'ТЗ: буклет');
+  const b=C('block', { sizeAuto:true, paintBook:true }); assert.strictEqual(StationPaint.kpLine(b), 'по буклету цветовых решений заказчика');
+  assert.ok(/^по буклету цветовых решений заказчика \(приложение к ТЗ\); для ориентира: каркас — RAL 5005/.test(StationPaint.tzRows(b)), 'ТЗ: буклет');
   // 3D: крыша, двери, пол — своим цветом; рисунок заказчика — на стене снаружи, логотип и знаки — мимо
   const pl=solve(Object.assign(C('block', { sizeAuto:true, paint:{ frame:'RAL 5005', wall:'RAL 7035', roof:'RAL 9006', floor:'', door:'RAL 3020' } }),
     { art:[{ src:'/img/a.png', wall:'left', x:0.5, z:0.5, w:1200, ar:2 }, { src:'/img/b.png', wall:'back', x:0.3, z:0.75, w:99999, ar:1 }, { src:'', wall:'front' }, { src:'/img/c.png', wall:'roof' }] }), [comp, dryer, rec, cab]);
@@ -1819,7 +1819,7 @@ Check.run('ДГУ в контейнере: радиатор к жалюзи, д�
   const T=pt.items.find(i=>i.tank), M=StationMatrix.tank(), vin=(l, w, h)=>(l-2*M.wall)*(w-2*M.wall)*(h-2*M.wall)/1e6, [Lt, Wt]=[Math.max(T.lx, T.ly), Math.min(T.lx, T.ly)];
   assert.ok(vin(Lt, Wt, T.h)>=2000 && Lt<=Wt+M.step, `бак — по объёму и не вытянут в длину: ${Lt} × ${Wt} × ${T.h}`);
   assert.ok(T.h<=pt.int[2]-M.top && T.h>M.h1, 'бак — выше, почти под потолок');
-  for (const v of [500, 1000, 2000, 4500]){ const d=TankSize.of(v); assert.ok(vin(d.l, d.w, d.h)>=v && (d.l<=d.w+M.step || d.w>=M.wMax && d.h>=TankSize.H-M.top-M.step), `бак ${v} л: ${TankSize.text(d)}`); }
+  for (const v of [500, 1000, 2000, 4500]){ const d=TankSize.of(v); assert.ok(vin(d.l, d.w, d.h)>=v && (d.l<=d.w+M.step || d.w>=M.wMax && d.h>=TankSize.HEIGHT-M.top-M.step), `бак ${v} л: ${TankSize.text(d)}`); }
   assert.deepStrictEqual([TankSize.of(500).h, TankSize.of(500).w], [M.h1, M.w1], 'малый бак — начальные размеры');
   // с воротами в торце — глубиной на всю ширину контейнера (уточнено 19.10)
   { const p8=solve(blk, [big(1), ats, P('Дополнительный топливный бак', {}, { rows:[{ k:'Объём', v:'8000 л' }] }), muf(1)]); chk(p8, 'бак 8000 л'); const t=p8.items.find(i=>i.tank);

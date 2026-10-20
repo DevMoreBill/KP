@@ -5,12 +5,17 @@ export class Mm {
    * @returns {string}
    */
   static text(v) {
-    const s = String(Math.round(v));
-    return s.length < 4 ? s : s.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    const digits = String(Math.round(v));
+    return digits.length < 4 ? digits : digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   }
 
   /** 0.75 → «0,75» */
   static dec(v) {
     return String(v).replace('.', ',');
+  }
+
+  /** Миллиметры → метры. */
+  static meters(v) {
+    return v / 1000;
   }
 }

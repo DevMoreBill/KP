@@ -38,8 +38,8 @@ export class StationPaint {
    * Окраска частей как вписал менеджер; прежнее поле «Цвет» (c.ral) — первый RAL стены, второй каркас.
    * @returns {{frame: string, wall: string, roof: string, floor: string, door: string}}
    */
-  static of(c) {
-    const box = c || {};
+  static of(cont) {
+    const box = cont || {};
     if (box.paint && typeof box.paint === 'object') {
       return Object.fromEntries(this.KEYS.map(k => [k, String(box.paint[k] || '').trim()]));
     }
@@ -51,15 +51,15 @@ export class StationPaint {
   }
 
   /** Поле окраски изменено: дальше — только отдельные поля, прежнее «Цвет» не читается. */
-  static set(c, key, value) {
+  static set(cont, key, value) {
     if (!this.KEYS.includes(key)) return;
-    c.paint = {
-      ...this.of(c),
+    cont.paint = {
+      ...this.of(cont),
       [key]: String(value || '')
         .trim()
         .slice(0, 60),
     };
-    delete c.ral;
+    delete cont.ral;
   }
 
   /** @returns {string | null} RAL → hex, «синий» → условный цвет */
@@ -75,39 +75,39 @@ export class StationPaint {
   }
 
   /** Цвета для 3D и видов; не заданы — RAL 7035 / RAL 5005 условно, пол null — по материалу. */
-  static colors(c) {
-    const o = this.of(c);
-    const w = this.hex(o.wall);
-    const f = this.hex(o.frame);
-    const wall = w || '#CBD0CC';
-    const frame = f || (w ? RalColor.shade(wall, 0.72) : '#154889');
+  static colors(cont) {
+    const paint = this.of(cont);
+    const wallHex = this.hex(paint.wall);
+    const frameHex = this.hex(paint.frame);
+    const wall = wallHex || '#CBD0CC';
+    const frame = frameHex || (wallHex ? RalColor.shade(wall, 0.72) : '#154889');
     return {
       wall,
       frame,
-      roof: this.hex(o.roof) || frame,
-      door: this.hex(o.door) || wall,
-      floor: this.hex(o.floor),
-      known: Boolean(w || f),
+      roof: this.hex(paint.roof) || frame,
+      door: this.hex(paint.door) || wall,
+      floor: this.hex(paint.floor),
+      known: Boolean(wallHex || frameHex),
     };
   }
 
-  static book(c) {
-    return Boolean(c && c.paintBook);
+  static book(cont) {
+    return Boolean(cont && cont.paintBook);
   }
 
   /** Строка «Окраска» в характеристиках КП; ничего не задано — ''. */
-  static kp(c) {
-    if (this.book(c)) return 'по буклету цветовых решений заказчика';
-    const o = this.of(c);
-    if (!Object.values(o).some(Boolean)) return '';
-    const code = t => this.code(t);
-    const roof = o.roof || o.frame;
-    const floor = o.floor ? `пол ${code(o.floor)}` : `пол — ${StationGeo.FLOORS[StationGeo.floor(c)].short}`;
+  static kpLine(cont) {
+    if (this.book(cont)) return 'по буклету цветовых решений заказчика';
+    const paint = this.of(cont);
+    if (!Object.values(paint).some(Boolean)) return '';
+    const code = value => this.code(value);
+    const roof = paint.roof || paint.frame;
+    const floor = paint.floor ? `пол ${code(paint.floor)}` : `пол — ${StationGeo.FLOORS[StationGeo.floor(cont)].short}`;
     return [
-      o.frame && `каркас ${code(o.frame)}`,
-      o.wall && `стены ${code(o.wall)}`,
-      roof && !StationGeo.SEA[c.ctype] && `крыша ${code(roof)}`,
-      o.door && code(o.door) !== code(o.wall) && `двери и ворота ${code(o.door)}`,
+      paint.frame && `каркас ${code(paint.frame)}`,
+      paint.wall && `стены ${code(paint.wall)}`,
+      roof && !StationGeo.SEA[cont.ctype] && `крыша ${code(roof)}`,
+      paint.door && code(paint.door) !== code(paint.wall) && `двери и ворота ${code(paint.door)}`,
       floor,
     ]
       .filter(Boolean)
@@ -115,29 +115,29 @@ export class StationPaint {
   }
 
   /** Подпись на чертеже: «RAL 7035 / RAL 5005». */
-  static short(c) {
-    if (this.book(c)) return 'по буклету заказчика';
-    const o = this.of(c);
-    return [o.wall, o.frame]
+  static short(cont) {
+    if (this.book(cont)) return 'по буклету заказчика';
+    const paint = this.of(cont);
+    return [paint.wall, paint.frame]
       .filter(Boolean)
-      .map(t => this.code(t))
+      .map(value => this.code(value))
       .join(' / ');
   }
 
   /** ТЗ на сборку: каждая часть и откуда её цвет. */
-  static tz(c) {
-    const o = this.of(c);
-    const code = t => this.code(t);
-    const or = (value, fallback) => (value ? code(value) : fallback);
+  static tzRows(cont) {
+    const paint = this.of(cont);
+    const code = val => this.code(val);
+    const orCode = (value, fallback) => (value ? code(value) : fallback);
     const like = (own, base, what) => (own ? code(own) : `${base ? `${code(base)}, ` : ''}в цвет ${what}`);
     const parts = [
-      `каркас — ${or(o.frame, 'по согласованию')}`,
-      `стены — ${or(o.wall, 'по согласованию')}`,
-      StationGeo.SEA[c.ctype] ? '' : `крыша — ${like(o.roof, o.frame, 'каркаса')}`,
-      `двери и ворота — ${like(o.door, o.wall, 'стен')}`,
-      `пол — ${o.floor ? `окраска ${code(o.floor)}` : StationGeo.FLOORS[StationGeo.floor(c)].name}`,
+      `каркас — ${orCode(paint.frame, 'по согласованию')}`,
+      `стены — ${orCode(paint.wall, 'по согласованию')}`,
+      StationGeo.SEA[cont.ctype] ? '' : `крыша — ${like(paint.roof, paint.frame, 'каркаса')}`,
+      `двери и ворота — ${like(paint.door, paint.wall, 'стен')}`,
+      `пол — ${paint.floor ? `окраска ${code(paint.floor)}` : StationGeo.FLOORS[StationGeo.floor(cont)].name}`,
     ].filter(Boolean);
-    const book = this.book(c) ? 'по буклету цветовых решений заказчика (приложение к ТЗ); для ориентира: ' : '';
+    const book = this.book(cont) ? 'по буклету цветовых решений заказчика (приложение к ТЗ); для ориентира: ' : '';
     return book + parts.join('; ');
   }
 
@@ -145,19 +145,19 @@ export class StationPaint {
    * Рисунки заказчика: x, z — середина в долях стены (снаружи, слева направо и снизу вверх), w — ширина, мм.
    * @returns {{src: string, name: string, wall: string, x: number, z: number, w: number, ar: number}[]}
    */
-  static arts(c) {
-    const list = c && Array.isArray(c.art) ? c.art : [];
+  static arts(cont) {
+    const list = cont && Array.isArray(cont.art) ? cont.art : [];
     return list
-      .filter(a => a && a.src && this.WALLS[a.wall])
+      .filter(art => art && art.src && this.WALLS[art.wall])
       .slice(0, this.ART_MAX)
-      .map(a => ({
-        src: String(a.src),
-        name: String(a.name || ''),
-        wall: a.wall,
-        x: this.frac(a.x, 0.5),
-        z: this.frac(a.z, 0.5),
-        w: Math.max(100, Math.min(12000, +a.w || 1500)),
-        ar: Math.max(0.1, Math.min(10, +a.ar || 1)),
+      .map(art => ({
+        src: String(art.src),
+        name: String(art.name || ''),
+        wall: art.wall,
+        x: this.frac(art.x, 0.5),
+        z: this.frac(art.z, 0.5),
+        w: Math.max(100, Math.min(12000, +art.w || 1500)),
+        ar: Math.max(0.1, Math.min(10, +art.ar || 1)),
       }));
   }
 
@@ -167,15 +167,16 @@ export class StationPaint {
   }
 
   /** «Передняя стена, по центру, посередине, ширина 1 500 мм» */
-  static where(a) {
-    const near = (list, v) => list.reduce((best, q) => (Math.abs(q[0] - v) < Math.abs(best[0] - v) ? q : best))[1];
-    return `${this.WALLS[a.wall]}, ${near(this.ALONG, a.x)}, ${near(this.HIGH, a.z)}, ширина ${Mm.text(a.w)} мм`;
+  static where(art) {
+    const near = (list, v) =>
+      list.reduce((best, pair) => (Math.abs(pair[0] - v) < Math.abs(best[0] - v) ? pair : best))[1];
+    return `${this.WALLS[art.wall]}, ${near(this.ALONG, art.x)}, ${near(this.HIGH, art.z)}, ширина ${Mm.text(art.w)} мм`;
   }
 
   /** Отпечаток окраски — картинки пересобираются при правке цвета, рисунка, буклета. */
-  static stamp(c) {
-    const src = s => (s.length > 200 ? s.length + s.slice(-40) : s);
-    const arts = this.arts(c).map(a => [src(a.src), a.wall, a.x, a.z, a.w]);
-    return JSON.stringify([this.of(c), Boolean(this.book(c)), arts]);
+  static stamp(cont) {
+    const src = text => (text.length > 200 ? text.length + text.slice(-40) : text);
+    const arts = this.arts(cont).map(art => [src(art.src), art.wall, art.x, art.z, art.w]);
+    return JSON.stringify([this.of(cont), Boolean(this.book(cont)), arts]);
   }
 }

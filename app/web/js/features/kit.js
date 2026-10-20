@@ -75,7 +75,7 @@ function contApply(p, o={}){
   const rf=StationGeo.roof(p), roof=rf!=='flat' ? StationGeo.ROOFS[rf] : null, fl=StationGeo.floor(p); p.floor=fl;
   const set={ 'Тип': c.name, 'Габариты (Д × Ш × В)': String(p.size||'').trim() ? String(p.size).trim()+(/мм|м\b/.test(p.size)?'':' мм') : c.size,
     'Утепление': p.ins?'минеральная вата '+p.ins:'', 'Климатическое исполнение': cl?`${cl[0]} (${cl[1]})`:'', 'Крыша': roof ? (roof.deg ? `${roof.name}, уклон ${roof.deg}°` : roof.name) : '',
-    'Пол': StationGeo.FLOORS[fl].name[0].toUpperCase()+StationGeo.FLOORS[fl].name.slice(1), 'Окраска': StationPaint.kp(p), 'Модули': StationModsText.kp(p) };
+    'Пол': StationGeo.FLOORS[fl].name[0].toUpperCase()+StationGeo.FLOORS[fl].name.slice(1), 'Окраска': StationPaint.kpLine(p), 'Модули': StationModsText.kp(p) };
   p.rows=p.rows||[]; if (!p.sys) p.sys={...CONT_SYS_DEF};
   const was=p.rows.find(z=>z.k==='Цвет'); if (was && !p.rows.some(z=>z.k==='Окраска')) was.k='Окраска';   // прежняя строка «Цвет» — теперь «Окраска» (19.10)
   for (const [k,v] of Object.entries(set)){ const r=p.rows.find(z=>z.k===k); if (r){ if (v) r.v=v; else if (k==='Окраска' || k==='Крыша' || k==='Модули') p.rows.splice(p.rows.indexOf(r),1); } else if (v) p.rows.push({k, v}); }
@@ -89,7 +89,7 @@ function contApply(p, o={}){
 class StationModsText {
   static kp(p){
     const m=typeof StationMods!=='undefined' ? StationMods.of(p) : null; if (!m) return '';
-    const d=StationGeo.mm(p.size), n=StationLayout.n;
+    const d=StationGeo.parseMm(p.size), n=Mm.text;
     return `${StationMods.shape(m)}${d ? `, вместе ${n(d[0]*m.a)} × ${n(d[1]*m.b)} × ${n(d[2])} мм` : ''}; на объекте стыкуются в одно помещение, каждый модуль — в габарите перевозки`;
   }
 }
@@ -109,7 +109,7 @@ function stationAuto(x){
   if (c){ out.container=ctypeOf(c.ctype).name; if (c.climate) out.climate=c.climate; if (cl) out.tmin=cl[2];
     const dm=String((c.rows||[]).find(r=>/^Габариты/.test(r.k))?.v||''); if (/\d{3,}\s*[×xх*]\s*\d{3,}/.test(dm)) out.size=dm.replace(/\s*мм\s*$/,'');
     // из модулей — габариты станции целиком (в строке контейнера — одного модуля)
-    const md=typeof StationMods!=='undefined' ? StationMods.of(c) : null, d=md && StationGeo.mm(c.size); if (d) out.size=`${d[0]*md.a} × ${d[1]*md.b} × ${d[2]}`; }
+    const md=typeof StationMods!=='undefined' ? StationMods.of(c) : null, d=md && StationGeo.parseMm(c.size); if (d) out.size=`${d[0]*md.a} × ${d[1]*md.b} × ${d[2]}`; }
   const ms=P.map(p=>{ const v=numOf(pa(p).mass) ?? (typeof lgCargoOf==='function' ? (lgCargoOf([{rows:p.rows||[]}]).mass||0)*1000 : 0); return v>0 ? v*q(p) : null; });
   if (P.length && ms.every(v=>v>0)) out.mass=Math.round(ms.reduce((a,b)=>a+b,0));
   for (const f of t.fields){ if (['container','climate','tmin','size','mass'].includes(f.key)) continue;
@@ -195,7 +195,7 @@ class StationSpec {
       if (out.length) out[0].rows.unshift(row); else out.push({name:'Основные', rows:[row]}); }
     // расчётная мощность по компоновке (StationPower): сколько выделить станции (у ДГУ — собственные нужды)
     const W=t.station ? this.power(x) : null;
-    if (W && W.kw>0){ const row={k:W.dgu ? 'Собственные нужды станции' : 'Потребляемая мощность (расчётная)', v:`${StationPower.f(W.kw)} кВт, 3 × 400 В${W.breaker ? `, вводной автомат ${W.breaker} А` : ''}`, hl:false};
+    if (W && W.kw>0){ const row={k:W.dgu ? 'Собственные нужды станции' : 'Потребляемая мощность (расчётная)', v:`${StationPower.fmt(W.kw)} кВт, 3 × 400 В${W.breaker ? `, вводной автомат ${W.breaker} А` : ''}`, hl:false};
       if (out.length) out[0].rows.push(row); else out.push({name:'Основные', rows:[row]}); }
     // свои параметры станции (ручной режим): после автоматических; совпадающая строка — заменяется своей
     const own=t.station && typeof StationParams!=='undefined' ? StationParams.rows(x) : [];
@@ -280,7 +280,7 @@ class KitPipe {
     this.rows(p); renderForm(); persist();
   }
   static rows(p){
-    p.rows=p.rows||[]; const m=PipeMaterial.get(p.pipeMat), dn=PipeMaterial.dn({ dn:p.dn });
+    p.rows=p.rows||[]; const m=PipeMaterial.get(p.pipeMat), dn=PipeMaterial.bore({ dn:p.dn });
     for (const [k, v] of [[PipeMaterial.ROW, m ? m.row : ''], [PipeMaterial.DN_ROW, dn]]){ const r=p.rows.find(z=>z.k===k);
       if (r){ if (v) r.v=v; else p.rows.splice(p.rows.indexOf(r), 1); } else if (v) p.rows.push({ k, v }); }
   }

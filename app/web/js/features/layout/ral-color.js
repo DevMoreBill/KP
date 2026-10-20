@@ -1,4 +1,6 @@
-const TABLE = `
+/** Цвета RAL Classic (открытый список ral-colors, MIT) и простые действия над цветом. */
+export class RalColor {
+  static TABLE = `
 1000 CDBA88  1001 D0B084  1002 D2AA6D  1003 F9A800  1004 E49E00  1005 CB8E00  1006 E29000  1007 E88C00  1011 AF804F  1012 DDAF27
 1013 E3D9C6  1014 DDC49A  1015 E6D2B5  1016 F1DD38  1017 F6A950  1018 FACA30  1019 A48F7A  1020 A08F65  1021 F6B600  1023 F7B500
 1024 BA8F4C  1026 FFFF00  1027 A77F0E  1028 FF9B00  1032 E2A300  1033 F99A1C  1034 EB9C52  1035 908370  1036 80643F  1037 F09200
@@ -23,10 +25,8 @@ const TABLE = `
 9016 F7FBF5  9017 2A2D2F  9018 CFD3CD  9022 9C9C9C  9023 7E8182
 `;
 
-/** Цвета RAL Classic (открытый список ral-colors, MIT) и простые действия над цветом. */
-export class RalColor {
-  static T = Object.fromEntries(
-    TABLE.trim()
+  static CODES = Object.fromEntries(
+    RalColor.TABLE.trim()
       .split(/\s{2,}|\n/)
       .map(pair => pair.split(' ')),
   );
@@ -54,51 +54,51 @@ export class RalColor {
    * @returns {{ code: string, hex: string }[]}
    */
   static codes(text) {
-    const s = String(text || '');
-    const start = s.search(/RAL/i);
+    const clean = String(text || '');
+    const start = clean.search(/RAL/i);
     if (start < 0) return [];
-    return [...s.slice(start).matchAll(/(?:^|\D)(\d{4})(?!\d)/g)]
-      .map(m => m[1])
-      .filter(code => this.T[code])
-      .map(code => ({ code: `RAL ${code}`, hex: `#${this.T[code]}` }));
+    return [...clean.slice(start).matchAll(/(?:^|\D)(\d{4})(?!\d)/g)]
+      .map(match => match[1])
+      .filter(code => this.CODES[code])
+      .map(code => ({ code: `RAL ${code}`, hex: `#${this.CODES[code]}` }));
   }
 
   /** @returns {string | null} условный цвет по названию («синий», «серый») */
   static named(text) {
-    const s = String(text || '').toLowerCase();
-    const hit = this.NAMED.find(([re]) => re.test(s));
+    const clean = String(text || '').toLowerCase();
+    const hit = this.NAMED.find(([pattern]) => pattern.test(clean));
     return hit ? hit[1] : null;
   }
 
   /** @returns {number[]} [r, g, b] */
   static rgb(hex) {
-    const n = parseInt(String(hex).replace('#', ''), 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    const num = parseInt(String(hex).replace('#', ''), 16);
+    return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
   }
 
-  static hex(r, g, b) {
+  static hex(red, green, blue) {
     const byte = v =>
       Math.max(0, Math.min(255, Math.round(v)))
         .toString(16)
         .padStart(2, '0');
-    return `#${[r, g, b].map(byte).join('')}`;
+    return `#${[red, green, blue].map(byte).join('')}`;
   }
 
   /** k < 1 — темнее, k > 1 — светлее (к белому). */
   static shade(hex, k) {
-    const c = this.rgb(hex);
-    if (k <= 1) return this.hex(...c.map(v => v * k));
-    return this.hex(...c.map(v => v + (255 - v) * Math.min(1, k - 1)));
+    const channels = this.rgb(hex);
+    if (k <= 1) return this.hex(...channels.map(v => v * k));
+    return this.hex(...channels.map(v => v + (255 - v) * Math.min(1, k - 1)));
   }
 
-  static mix(a, b, t) {
-    const y = this.rgb(b);
-    return this.hex(...this.rgb(a).map((v, i) => v + (y[i] - v) * t));
+  static mix(from, till, part) {
+    const y = this.rgb(till);
+    return this.hex(...this.rgb(from).map((v, i) => v + (y[i] - v) * part));
   }
 
   /** @returns {number} яркость 0…1 — подпись на цвете тёмная или светлая */
   static light(hex) {
-    const [r, g, b] = this.rgb(hex);
-    return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    const [red, green, blue] = this.rgb(hex);
+    return (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
   }
 }

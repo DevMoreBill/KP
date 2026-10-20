@@ -1,8 +1,11 @@
 import { LayoutParams } from './layout-params.js';
 
 /** Числа расстановки по умолчанию; действующие — правило layout.matrix («Настройки → Правила компоновки»). */
-// prettier-ignore
-const DEF = {
+
+/** Матрица расстановки: правила файла поверх значений по умолчанию; разобранное — один раз на матрицу. */
+export class StationMatrix {
+  // prettier-ignore
+  static DEF = {
   gap: { v: 50 },
   pair: {
     rows: [
@@ -102,9 +105,6 @@ const DEF = {
   },
 };
 
-/** Матрица расстановки: правила файла поверх значений по умолчанию; разобранное — один раз на матрицу. */
-export class StationMatrix {
-  static DEF = DEF;
   static NO_DOOR = /^(dryer|receiver)$/;
   static #rules = null;
   static #merged = null;
@@ -112,13 +112,16 @@ export class StationMatrix {
   static #memo = null;
 
   /** Действующая матрица: правило layout.matrix поверх DEF (по разделам). */
-  static get M() {
+  static get MATRIX() {
     const v = typeof StationRules !== 'undefined' && StationRules.ok() ? StationRules.opt('layout.matrix') : null;
-    if (!v || typeof v !== 'object') return DEF;
+    if (!v || typeof v !== 'object') return StationMatrix.DEF;
     if (this.#rules !== v) {
       this.#rules = v;
       this.#merged = Object.fromEntries(
-        Object.keys(DEF).map(k => [k, v[k] && typeof v[k] === 'object' ? { ...DEF[k], ...v[k] } : DEF[k]]),
+        Object.keys(StationMatrix.DEF).map(k => [
+          k,
+          v[k] && typeof v[k] === 'object' ? { ...StationMatrix.DEF[k], ...v[k] } : StationMatrix.DEF[k],
+        ]),
       );
     }
     return this.#merged;
@@ -126,9 +129,9 @@ export class StationMatrix {
 
   /** Разобранное из матрицы: g — разделы, s — стороны вида, p — пары соседей, d — производные объекты. */
   static memo() {
-    const M = this.M;
-    if (this.#memoFor !== M) {
-      this.#memoFor = M;
+    const matrix = this.MATRIX;
+    if (this.#memoFor !== matrix) {
+      this.#memoFor = matrix;
       this.#memo = { g: new Map(), s: new Map(), p: new Map(), d: new Map() };
     }
     return this.#memo;
@@ -140,108 +143,116 @@ export class StationMatrix {
   }
 
   /** Числа раздела g: значения правил в пределах LayoutParams, недостающее — по умолчанию. */
-  static grp(g) {
-    return this.cached(this.memo().g, g, () => {
-      const v = this.M[g];
+  static grp(group) {
+    return this.cached(this.memo().g, group, () => {
+      const v = this.MATRIX[group];
       const out = {};
-      for (const [k, d] of Object.entries(DEF[g])) {
-        const f = LayoutParams.field(g, k);
-        const x = this.num(v[k], d);
-        out[k] = f ? Math.max(f.lo, Math.min(f.hi, x)) : x;
+      for (const [k, fallback] of Object.entries(StationMatrix.DEF[group])) {
+        const limits = LayoutParams.field(group, k);
+        const x = this.num(v[k], fallback);
+        out[k] = limits ? Math.max(limits.lo, Math.min(limits.hi, x)) : x;
       }
       return Object.freeze(out);
     });
   }
 
   /** Объект, собранный из чисел матрицы, — один на матрицу. */
-  static derive(k, fn) {
-    return this.cached(this.memo().d, k, fn);
+  static derive(k, make) {
+    return this.cached(this.memo().d, k, make);
   }
 
-  static num(v, d) {
-    const n = +v;
-    return Number.isFinite(n) ? n : d;
+  static num(v, fallback) {
+    const num = +v;
+    return Number.isFinite(num) ? num : fallback;
   }
 
   static rows(group) {
-    return this.M[group].rows || [];
+    return this.MATRIX[group].rows || [];
   }
 
   static gap() {
-    return Math.max(0, Math.min(150, this.num(this.M.gap.v, 50)));
+    return Math.max(0, Math.min(150, this.num(this.MATRIX.gap.v, 50)));
   }
 
   /** Размер «of» пары: 'receiver.w' — ширина (Ø) большего ресивера из пары; '' — 0. */
-  static dim(of, a, b) {
-    const [kind, field] = String(of || '').split('.');
+  static dim(ref, left, right) {
+    const [kind, field] = String(ref || '').split('.');
     if (!kind) return 0;
-    const size = { l: e => e.l, h: e => e.h }[field] || (e => e.pairD || e.w);
-    const v = e => (e && e.kind === kind ? +size(e) || 0 : 0);
-    return Math.max(0, v(a), v(b));
+    const size = { l: unit => unit.l, h: unit => unit.h }[field] || (unit => unit.pairD || unit.w);
+    const v = unit => (unit && unit.kind === kind ? +size(unit) || 0 : 0);
+    return Math.max(0, v(left), v(right));
   }
 
   /**
    * Между соседями по длине: [рекомендуется, не менее, крайний случай] или null — правила для пары нет.
    * @returns {number[] | null}
    */
-  static pair(a, b) {
-    const r = this.cached(
+  static pair(left, right) {
+    const row = this.cached(
       this.memo().p,
-      `${a.kind}|${b.kind}`,
+      `${left.kind}|${right.kind}`,
       () =>
-        this.rows('pair').find(q => (q.a === a.kind && q.b === b.kind) || (q.a === b.kind && q.b === a.kind)) || null,
+        this.rows('pair').find(
+          line => (line.a === left.kind && line.b === right.kind) || (line.a === right.kind && line.b === left.kind),
+        ) || null,
     );
-    if (!r) return null;
-    const rec = Math.round(Math.max(this.num(r.base, 0), this.num(r.k, 0) * this.dim(r.of, a, b)));
-    const min = Math.min(rec, Math.max(0, this.num(r.min, rec)));
-    return [rec, min, r.close ? 0 : min];
+    if (!row) return null;
+    const rec = Math.round(Math.max(this.num(row.base, 0), this.num(row.k, 0) * this.dim(row.of, left, right)));
+    const min = Math.min(rec, Math.max(0, this.num(row.min, rec)));
+    return [rec, min, row.close ? 0 : min];
   }
 
   static OWN_WALL = ['pump', 'compressor', 'dryer', 'receiver'];
 
   /** От стены за агрегатом: [рекомендуется, «плотно»] или null. */
-  static wall(e) {
+  static wall(unit) {
     const rows = this.rows('wall');
-    const r =
-      rows.find(q => q.kind === e.kind) || (this.OWN_WALL.includes(e.kind) ? null : rows.find(q => q.kind === 'other'));
-    if (!r) return null;
-    const rec = Math.round(Math.max(this.num(r.base, 0), this.num(r.k, 0) * (+e.w || 0)));
-    return [rec, Math.min(rec, Math.max(0, this.num(r.tight, rec)))];
+    const row =
+      rows.find(line => line.kind === unit.kind) ||
+      (this.OWN_WALL.includes(unit.kind) ? null : rows.find(line => line.kind === 'other'));
+    if (!row) return null;
+    const rec = Math.round(Math.max(this.num(row.base, 0), this.num(row.k, 0) * (+unit.w || 0)));
+    return [rec, Math.min(rec, Math.max(0, this.num(row.tight, rec)))];
   }
 
   static access() {
-    const a = this.M.access;
-    return { back: this.num(a.back, 500), side: this.num(a.side, 600) };
+    const access = this.MATRIX.access;
+    return { back: this.num(access.back, 500), side: this.num(access.side, 600) };
   }
 
   static sideRow(kind) {
-    return this.rows('sides').find(q => q.kind === kind);
+    return this.rows('sides').find(line => line.kind === kind);
   }
 
   /** Обслуживаемые стороны вида: {F, B, L, R} — фронт, зад, бока. */
   static sides(kind) {
     return this.cached(this.memo().s, kind, () => {
-      const r = this.sideRow(kind) || this.sideRow('other');
-      const s = String((r && r.s) || 'Ф').toUpperCase();
-      return Object.freeze({ F: s.includes('Ф'), B: s.includes('З'), L: s.includes('Л'), R: s.includes('П') });
+      const row = this.sideRow(kind) || this.sideRow('other');
+      const sides = String((row && row.s) || 'Ф').toUpperCase();
+      return Object.freeze({
+        F: sides.includes('Ф'),
+        B: sides.includes('З'),
+        L: sides.includes('Л'),
+        R: sides.includes('П'),
+      });
     });
   }
 
   static rot(kind) {
-    const r = this.rows('rotate').find(q => q.kind === kind);
-    return r ? r.on !== false : !/^(dgu|cabinet)$/.test(kind);
+    const row = this.rows('rotate').find(line => line.kind === kind);
+    return row ? row.on !== false : !/^(dgu|cabinet)$/.test(kind);
   }
 
   /** Без сервисных ворот: по отметке таблицы «Стороны», без отметки — осушители и ресиверы. */
   static noDoor(kind) {
-    const r = this.sideRow(kind);
-    return r && typeof r.door === 'boolean' ? !r.door : this.NO_DOOR.test(kind);
+    const row = this.sideRow(kind);
+    return row && typeof row.door === 'boolean' ? !row.door : this.NO_DOOR.test(kind);
   }
 
   /** При выносе можно наклонить. */
   static tilt(kind) {
-    const r = this.sideRow(kind);
-    return r ? Boolean(r.tilt) : /^(receiver|filter|cabinet|tank)$/.test(kind);
+    const row = this.sideRow(kind);
+    return row ? Boolean(row.tilt) : /^(receiver|filter|cabinet|tank)$/.test(kind);
   }
 
   static gate() {

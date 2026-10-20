@@ -33,43 +33,40 @@ import { StationSockets } from './station-sockets.js';
 import { StationTidy } from './station-tidy.js';
 import { StationVent } from './station-vent.js';
 
-const n = v => Mm.text(v);
-const warned = q => q.iss.some(i => i.level === 'warn');
-const ATTRS = [
-  'cat',
-  'size',
-  'mass',
-  'model',
-  'maker',
-  'orient',
-  'kw',
-  'volume',
-  'color',
-  'flow',
-  'pressure',
-  'stage',
-  'dryer',
-  'vsd',
-  'dewPoint',
-  'receiver',
-];
-const ROW_KEYS =
-  /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы|воздух|теплов|охлажд/i;
-
 /**
  * Компоновка станции в контейнере: оборудование рядами с проходом обслуживания, двери и ворота, трубопровод, подбор размера
  * контейнера. Координаты внутри контейнера, мм: x — вдоль от торца с дверью, y — поперёк от стены прохода, z — от пола.
  */
 export class StationLayout {
+  static _warned = res => res.iss.some(i => i.level === 'warn');
+
+  static ATTRS = [
+    'cat',
+    'size',
+    'mass',
+    'model',
+    'maker',
+    'orient',
+    'kw',
+    'volume',
+    'color',
+    'flow',
+    'pressure',
+    'stage',
+    'dryer',
+    'vsd',
+    'dewPoint',
+    'receiver',
+  ];
+
+  static ROW_KEYS =
+    /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы|воздух|теплов|охлажд/i;
+
   /** Версия правил и рисунков: изменилась — картинки станций в КП пересобираются. */
   static VER = 25;
 
   static solve(input) {
     return new StationLayout(input).run();
-  }
-
-  static n(v) {
-    return Mm.text(v);
   }
 
   /** Отпечаток всего, от чего зависит компоновка: изменился — чертёж и 3D-вид пора обновить. */
@@ -79,8 +76,10 @@ export class StationLayout {
         ? `${StationRules.version()}.${StationRules.stamp()}`
         : '';
     const app = typeof APP_VERSION !== 'undefined' ? APP_VERSION : '';
-    const parts = (input.parts || []).filter(p => p && p.role !== 'container').map(p => StationLayout.hashPart(p));
-    const s = JSON.stringify([
+    const parts = (input.parts || [])
+      .filter(part => part && part.role !== 'container')
+      .map(part => StationLayout.hashPart(part));
+    const text = JSON.stringify([
       StationLayout.VER,
       app,
       rules,
@@ -92,43 +91,43 @@ export class StationLayout {
       input.req || null,
       parts,
     ]);
-    return StationRules.fnv(s);
+    return StationRules.fnv(text);
   }
 
-  static hashCont(c) {
-    const mods = c.mods ? JSON.stringify(StationMods.rect(c.mods.cells)) : null;
+  static hashCont(cont) {
+    const mods = cont.mods ? JSON.stringify(StationMods.rect(cont.mods.cells)) : null;
     return [
-      c.ctype,
-      c.size,
-      c.sizeAuto,
-      c.lenFix || null,
-      c.ins,
-      StationPaint.stamp(c),
+      cont.ctype,
+      cont.size,
+      cont.sizeAuto,
+      cont.lenFix || null,
+      cont.ins,
+      StationPaint.stamp(cont),
       mods,
-      c.sys || null,
-      c.climate || '',
-      c.roof || '',
-      StationGeo.floor(c),
+      cont.sys || null,
+      cont.climate || '',
+      cont.roof || '',
+      StationGeo.floor(cont),
     ];
   }
 
-  static hashPart(p) {
-    const attrs = p.attrs ? Object.fromEntries(ATTRS.map(k => [k, p.attrs[k]])) : null;
-    const rows = (p.rows || [])
-      .filter(r => r && ROW_KEYS.test(`${String(r.k || '')} ${String(r.v || '')}`))
-      .map(r => [r.k, r.v]);
+  static hashPart(part) {
+    const attrs = part.attrs ? Object.fromEntries(StationLayout.ATTRS.map(k => [k, part.attrs[k]])) : null;
+    const rows = (part.rows || [])
+      .filter(row => row && StationLayout.ROW_KEYS.test(`${String(row.k || '')} ${String(row.v || '')}`))
+      .map(row => [row.k, row.v]);
     return [
-      p.name,
-      p.qty,
-      p.role || '',
-      p.pipeMat || '',
-      p.dn || '',
-      p.mount || '',
+      part.name,
+      part.qty,
+      part.role || '',
+      part.pipeMat || '',
+      part.dn || '',
+      part.mount || '',
       attrs,
-      StationEquip.tint(p),
-      StationEquip.tones(p),
+      StationEquip.tint(part),
+      StationEquip.tones(part),
       rows,
-      StationEquip.pic(p),
+      StationEquip.pic(part),
     ];
   }
 
@@ -169,7 +168,7 @@ export class StationLayout {
     return StationMatrix.fit().recv2;
   }
   static get TANK() {
-    return LayoutTank.M;
+    return LayoutTank.RULES;
   }
   static get SIDE() {
     return LayoutAccess.SIDE;
@@ -180,38 +179,38 @@ export class StationLayout {
   static gaps(geo) {
     return LayoutOpening.gaps(geo);
   }
-  static svcW(len, T = 0) {
-    return LayoutOpening.svcW(len, T);
+  static svcW(len, wallT = 0) {
+    return LayoutOpening.svcW(len, wallT);
   }
-  static svcH(h, T, rear, H) {
-    return LayoutOpening.svcH(h, T, rear, H);
+  static svcH(heightIn, wallT, rear, height) {
+    return LayoutOpening.svcH(heightIn, wallT, rear, height);
   }
-  static gateAxis(q) {
-    return LayoutMode.gateAxis(q);
+  static gateAxis(gate) {
+    return LayoutMode.gateAxis(gate);
   }
-  static series(e) {
-    return LayoutPipes.series(e);
+  static series(unit) {
+    return LayoutPipes.series(unit);
   }
-  static runs(l) {
-    return LayoutPipes.runs(l);
+  static runs(line) {
+    return LayoutPipes.runs(line);
   }
-  static outPath(l, W) {
-    return LayoutPipes.outPath(l, W);
+  static outPath(line, wid) {
+    return LayoutPipes.outPath(line, wid);
   }
-  static key(e) {
-    return `${e.id}#${e.unit}`;
+  static key(unit) {
+    return `${unit.id}#${unit.unit}`;
   }
 
   /** Осушитель двумя колоннами: адсорбционный или генератор (вид — из цепочки сжатого воздуха, иначе по названию). */
-  static twinDryer(it) {
-    const t = it && it.air && it.air.type;
-    if (t) return t === 'ads' || t === 'gen';
-    return /адсорбц|десикант|adsorp|desicc/i.test(String((it && it.name) || ''));
+  static twinDryer(item) {
+    const type = item && item.air && item.air.type;
+    if (type) return type === 'ads' || type === 'gen';
+    return /адсорбц|десикант|adsorp|desicc/i.test(String((item && item.name) || ''));
   }
 
   constructor(input) {
-    this.in = input || {};
-    this.cont = this.in.cont || null;
+    this.input = input || {};
+    this.cont = this.input.cont || null;
     this.rows = new LayoutRows(this);
     this.dgu = new LayoutDgu(this);
     this.joints = new LayoutJoints(this);
@@ -221,16 +220,16 @@ export class StationLayout {
     this.access = new LayoutAccess(this);
     this.size = new LayoutSize(this);
     this.notes = new LayoutNotes(this);
-    this.eq = StationEquip.list(this.in.parts || [], { recv: this.in.recv, recvOut: this.in.recvOut });
+    this.equip = StationEquip.list(this.input.parts || [], { recv: this.input.recv, recvOut: this.input.recvOut });
     this.aisle0 = StationClear.aisle();
     this.aisle = this.aisle0;
     this.mode = {};
-    const has = kind => this.eq.some(e => e.kind === kind);
+    const has = kind => this.equip.some(unit => unit.kind === kind);
     this.comp = has('compressor') && !has('dgu');
-    this.G = this.comp ? StationMatrix.gap() : 0;
+    this.gap = this.comp ? StationMatrix.gap() : 0;
     this.dguSt =
-      this.eq.some(e => e.kind === 'dgu' && e.place) &&
-      !this.eq.some(e => e.place && (e.kind === 'compressor' || e.kind === 'pump'));
+      this.equip.some(unit => unit.kind === 'dgu' && unit.place) &&
+      !this.equip.some(unit => unit.place && (unit.kind === 'compressor' || unit.kind === 'pump'));
   }
 
   modes() {
@@ -238,12 +237,12 @@ export class StationLayout {
   }
 
   /** Выполнить fn в режиме m. */
-  withMode(m, fn) {
+  withMode(nextMode, run) {
     const [aisle, mode] = [this.aisle, this.mode];
-    this.mode = m || {};
+    this.mode = nextMode || {};
     this.aisle = LayoutMode.aisle(this.aisle0, this.mode);
     try {
-      return fn();
+      return run();
     } finally {
       this.aisle = aisle;
       this.mode = mode;
@@ -251,14 +250,14 @@ export class StationLayout {
   }
 
   run() {
-    const placed = this.eq.filter(e => e.place);
-    const extra = this.eq.filter(e => !e.place);
-    const chassis = extra.some(e => e.kind === 'chassis');
+    const placed = this.equip.filter(unit => unit.place);
+    const extra = this.equip.filter(unit => !unit.place);
+    const chassis = extra.some(unit => unit.kind === 'chassis');
     const base = {
       items: [],
       extra,
       chassis,
-      muffler: extra.some(e => e.kind === 'muffler'),
+      muffler: extra.some(unit => unit.kind === 'muffler'),
       aisleRule: this.aisle,
       issues: [],
     };
@@ -270,7 +269,7 @@ export class StationLayout {
       });
     const units = this.tankRoom(this.units(placed));
     const geo = this.geoOf(this.cont);
-    this.T = geo.t || 0;
+    this.wallT = geo.t || 0;
     let plan = this.place(units, geo, chassis);
     plan = Object.assign(base, plan, { issues: plan.issues || [] }, this.colors());
     this.check(plan);
@@ -281,58 +280,61 @@ export class StationLayout {
 
   /** ДГУ с дополнительным баком — бак в отдельном отсеке у ближнего торца; по оборудованию — в ширине блок-контейнера 2 300 мм. */
   tankRoom(units) {
-    const g0 = StationGeo.of(this.cont);
-    const in0 = g0.int || StationGeo.inner(g0.type, [10000, StationGeo.ROAD_W, 2600], g0.t);
-    const We = g0.int ? g0.ext[1] : Math.min(StationGeo.ROAD_W, 2300);
-    const Wt = g0.int ? in0[1] : StationGeo.inner(g0.type, [10000, We, 2600], g0.t)[1];
-    const eW = LayoutOpening.gaps({ ext: [0, We, 0], int: [0, Wt, 0] }).eW;
-    this.tank = LayoutTank.room(units, Wt, in0[2], !!g0.sea, Wt - 2 * eW);
-    return this.tank ? units.filter(e => e.kind !== 'tank') : units;
+    const geo0 = StationGeo.of(this.cont);
+    const in0 = geo0.int || StationGeo.inner(geo0.type, [10000, StationGeo.ROAD_W, 2600], geo0.t);
+    const We = geo0.int ? geo0.ext[1] : Math.min(StationGeo.ROAD_W, 2300);
+    const widIn = geo0.int ? in0[1] : StationGeo.inner(geo0.type, [10000, We, 2600], geo0.t)[1];
+    const entryW = LayoutOpening.gaps({ ext: [0, We, 0], int: [0, widIn, 0] }).eW;
+    this.tank = LayoutTank.room(units, widIn, in0[2], !!geo0.sea, widIn - 2 * entryW);
+    return this.tank ? units.filter(unit => unit.kind !== 'tank') : units;
   }
 
   /** Расстановка и снаружи (глушители, выхлоп, выход трубы, ресиверы); «не помещается» без условных габаритов — точно. */
   place(units, geo, chassis) {
-    const fit = U => (geo.auto ? this.size.auto(U, geo) : this.fit(U, geo));
-    const plan = !geo.auto && this.in._mode ? this.fit(units, geo, [this.in._mode]) : fit(units);
+    const fit = list => (geo.auto ? this.size.auto(list, geo) : this.fit(list, geo));
+    const plan = !geo.auto && this.input._mode ? this.fit(units, geo, [this.input._mode]) : fit(units);
     if (plan.level === 'error') {
       if (!geo.auto) plan.suggest = this.size.suggest(units, geo);
-      if (units.some(e => !e.known)) {
-        const known = units.filter(e => e.known);
+      if (units.some(unit => !unit.known)) {
+        const known = units.filter(unit => unit.known);
         plan.assumed = !known.length || fit(known).level !== 'error';
       }
       return plan;
     }
-    if (!geo.auto && !this.in._grow) this.size.excess(units, geo, plan);
+    if (!geo.auto && !this.input._grow) this.size.excess(units, geo, plan);
     if (plan.items && plan.items.length) this.outside(plan, chassis);
     return plan;
   }
 
   outside(plan, chassis) {
-    plan.roof = LayoutRoof.roof(plan, this.eq);
+    plan.roof = LayoutRoof.roof(plan, this.equip);
     plan.exhausts = LayoutRoof.exhausts(plan);
     LayoutPipes.outlet(
       plan,
-      this.eq.some(e => e.outside),
+      this.equip.some(unit => unit.outside),
     );
-    plan.piping = LayoutPipes.route(plan, this.eq);
-    plan.outside = LayoutRoof.outside(plan, this.eq, chassis);
+    plan.piping = LayoutPipes.route(plan, this.equip);
+    plan.outside = LayoutRoof.outside(plan, this.equip, chassis);
     this.notes.mods(plan);
   }
 
   /** Сжатый воздух, сосуды под давлением, системы контейнера, нормы. */
   check(plan) {
     this.air(plan);
-    const bar = Math.max(0, ...this.eq.filter(e => e.kind === 'compressor' && e.air).map(e => e.air.bar || 0));
-    plan.vessels = PressureVessel.list(this.eq, bar);
-    plan.req = this.in.req || null;
+    const bar = Math.max(
+      0,
+      ...this.equip.filter(unit => unit.kind === 'compressor' && unit.air).map(unit => unit.air.bar || 0),
+    );
+    plan.vessels = PressureVessel.list(this.equip, bar);
+    plan.req = this.input.req || null;
     plan.climate = (this.cont && this.cont.climate) || '';
     if (plan.geo && plan.geo.ext) plan.geo.rise = StationGeo.rise(plan.geo.roof, plan.geo.ext[1]);
     if (plan.level !== 'error' && plan.geo && plan.geo.ext && plan.int) this.systems(plan);
-    if (plan.level !== 'error') StationNorms.check(plan, this.eq);
+    if (plan.level !== 'error') StationNorms.check(plan, this.equip);
   }
 
   air(plan) {
-    const air = AirChain.check(this.eq, this.in.air, this.in.req && this.in.req.recvIn);
+    const air = AirChain.check(this.equip, this.input.air, this.input.req && this.input.req.recvIn);
     if (air && plan.level !== 'error') {
       plan.air = air;
       plan.issues.push(...air.issues);
@@ -353,107 +355,116 @@ export class StationLayout {
     if (plan.fire.low) {
       plan.issues.push({
         level: 'info',
-        text: `Высота помещения ${n(plan.int[2])} мм — ниже паспортной высоты установки модулей «Буран-2,5» (2,5–3,5 м): зона тушения — по диаграмме распыла изготовителя при этой высоте (согласовать с проектировщиком пожаротушения).`,
+        text: `Высота помещения ${Mm.text(plan.int[2])} мм — ниже паспортной высоты установки модулей «Буран-2,5» (2,5–3,5 м): зона тушения — по диаграмме распыла изготовителя при этой высоте (согласовать с проектировщиком пожаротушения).`,
       });
     }
-    const pq = plan.pipe;
-    if (pq && pq.small) {
+    const pipe = plan.pipe;
+    if (pipe && pipe.small) {
       plan.issues.push({
         level: 'warn',
-        text: `Трубопровод DN ${pq.set} меньше расчётного DN ${pq.dn} (${pq.why}): скорость больше ${Mm.dec(pq.lines[0].v)} м/с — потери давления и шум. Укажите DN ${pq.dn} в составе станции.`,
+        text: `Трубопровод DN ${pipe.set} меньше расчётного DN ${pipe.dn} (${pipe.why}): скорость больше ${Mm.dec(pipe.lines[0].v)} м/с — потери давления и шум. Укажите DN ${pipe.dn} в составе станции.`,
       });
     }
   }
 
   /** Единицы оборудования по порядку от двери: шкафы, остальное по составу (воздух — по ходу), бак, ДГУ — в дальнем торце. */
   units(placed) {
-    const u = placed.flatMap(e =>
-      Array.from({ length: e.qty }, (_, k) => ({ ...e, unit: k, c: this.clear(e), air: AirChain.unit(e.air, k) })),
+    const u = placed.flatMap(unit =>
+      Array.from({ length: unit.qty }, (_, k) => ({
+        ...unit,
+        unit: k,
+        c: this.clear(unit),
+        air: AirChain.unit(unit.air, k),
+      })),
     );
-    const dgu = placed.some(e => e.kind === 'dgu');
-    const air = placed.some(e => e.kind === 'compressor');
-    const rank = e => {
-      if (e.kind === 'cabinet') return 0;
-      if (e.kind === 'dgu') return 2;
-      if (e.kind === 'tank' && dgu) return 1.5;
-      if (air && e.air && e.air.stage != null) return 1 + e.air.stage / 100;
+    const dgu = placed.some(unit => unit.kind === 'dgu');
+    const air = placed.some(unit => unit.kind === 'compressor');
+    const rank = unit => {
+      if (unit.kind === 'cabinet') return 0;
+      if (unit.kind === 'dgu') return 2;
+      if (unit.kind === 'tank' && dgu) return 1.5;
+      if (air && unit.air && unit.air.stage != null) return 1 + unit.air.stage / 100;
       return air ? 1.8 : 1;
     };
     return u
-      .map((e, i) => [e, i])
-      .sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1])
-      .map(([e]) => e);
+      .map((unit, i) => [unit, i])
+      .sort((left, right) => rank(left[0]) - rank(right[0]) || left[1] - right[1])
+      .map(([unit]) => unit);
   }
 
   /** Отступы агрегата: нормы вида и матрица расстановки; «плотно» сзади — только виду с сервисными воротами. */
-  clear(e) {
-    const c = StationClear.of(e.kind, e);
-    const w = StationMatrix.wall(e);
-    if (e.kind === 'dgu') {
-      const R = StationMatrix.grp('dgu').rad;
-      return { ...c, far: [R, R] };
+  clear(unit) {
+    const clear = StationClear.of(unit.kind, unit);
+    const wall = StationMatrix.wall(unit);
+    if (unit.kind === 'dgu') {
+      const rad = StationMatrix.grp('dgu').rad;
+      return { ...clear, far: [rad, rad] };
     }
-    if (!w || e.kind === 'cabinet' || e.kind === 'tank') return c;
-    return { ...c, back: [w[0], LayoutGates.gated(e.kind) ? w[1] : Math.max(w[1], Math.min(w[0], c.back[1]))] };
+    if (!wall || unit.kind === 'cabinet' || unit.kind === 'tank') return clear;
+    return {
+      ...clear,
+      back: [wall[0], LayoutGates.gated(unit.kind) ? wall[1] : Math.max(wall[1], Math.min(wall[0], clear.back[1]))],
+    };
   }
 
   /** Геометрия контейнера: оборудование — после отсека бака. */
-  geoOf(c) {
-    const g = StationGeo.of(c);
-    if (this.tank) g.x0 = (g.x0 || 0) + this.tank.len;
-    return g;
+  geoOf(cont) {
+    const geo = StationGeo.of(cont);
+    if (this.tank) geo.x0 = (geo.x0 || 0) + this.tank.len;
+    return geo;
   }
 
   /** Перед оборудованием [рекомендуется, не менее]: проход обслуживания (вдоль ДГУ «не менее» — своё). */
-  front(e) {
-    return [this.aisle[0], e.c.front != null ? Math.min(this.aisle[1], e.c.front) : this.aisle[1]];
+  front(unit) {
+    return [this.aisle[0], unit.c.front != null ? Math.min(this.aisle[1], unit.c.front) : this.aisle[1]];
   }
 
-  item(it, geo) {
-    return LayoutItem.floor(it, geo, this.G);
+  item(item, geo) {
+    return LayoutItem.floor(item, geo, this.gap);
   }
 
   /** Высота: оборудование и место над ним; шкаф на стене — не ниже CAB_LOW; фильтры висят на трубе. */
-  heights(units, H) {
+  heights(units, height) {
     const iss = [];
-    for (const e of units) {
-      if (e.unit || e.pipe) continue;
-      if (e.mount === 'wall') {
-        if (e.h + StationLayout.CAB_LOW > H - 50) {
+    for (const unit of units) {
+      if (unit.unit || unit.pipe) continue;
+      if (unit.mount === 'wall') {
+        if (unit.h + StationLayout.CAB_LOW > height - 50) {
           iss.push({
             level: 'error',
-            text: `Поз. ${e.pos} «${e.short}» не помещается на стене по высоте: ${n(e.h)} мм и не ниже ${n(StationLayout.CAB_LOW)} мм от пола, а высота внутри — ${n(H)} мм.`,
+            text: `Поз. ${unit.pos} «${unit.short}» не помещается на стене по высоте: ${Mm.text(unit.h)} мм и не ниже ${Mm.text(StationLayout.CAB_LOW)} мм от пола, а высота внутри — ${Mm.text(height)} мм.`,
           });
         }
       } else {
-        this.headroom(e, H, iss);
+        this.headroom(unit, height, iss);
       }
     }
     return { bad: iss.some(i => i.level === 'error'), iss };
   }
 
-  headroom(e, H, iss) {
-    const top = e.c.top;
-    const room = H - e.h;
+  headroom(unit, height, iss) {
+    const top = unit.c.top;
+    const room = height - unit.h;
     if (room < top[1]) {
-      const vol = e.air && e.air.vol > 0 ? ` (например, 2 × ${n(Math.ceil(e.air.vol / 2 / 100) * 100)} л)` : '';
+      const vol =
+        unit.air && unit.air.vol > 0 ? ` (например, 2 × ${Mm.text(Math.ceil(unit.air.vol / 2 / 100) * 100)} л)` : '';
       const recv =
-        e.kind === 'receiver'
+        unit.kind === 'receiver'
           ? ` Замените на горизонтальный ресивер или несколько меньших${vol}, либо ресивер — снаружи (ФНП ОРПД, п. 65).`
           : '';
       iss.push({
         level: 'error',
-        text: `Поз. ${e.pos} «${e.short}» не проходит по высоте: ${n(e.h)} мм и не менее ${n(top[1])} мм над ним, а высота внутри — ${n(H)} мм.${recv}`,
+        text: `Поз. ${unit.pos} «${unit.short}» не проходит по высоте: ${Mm.text(unit.h)} мм и не менее ${Mm.text(top[1])} мм над ним, а высота внутри — ${Mm.text(height)} мм.${recv}`,
       });
-    } else if (room < top[0] && e.kind === 'compressor') {
+    } else if (room < top[0] && unit.kind === 'compressor') {
       iss.push({
         level: 'info',
-        text: `Над компрессором (поз. ${e.pos}) ${n(room)} мм до потолка — горячий воздух отводится воздуховодом (в помещении рекомендуется 1 м).`,
+        text: `Над компрессором (поз. ${unit.pos}) ${Mm.text(room)} мм до потолка — горячий воздух отводится воздуховодом (в помещении рекомендуется 1 м).`,
       });
     } else if (room < top[0]) {
       iss.push({
         level: 'warn',
-        text: `Над поз. ${e.pos} «${e.short}» ${n(room)} мм до потолка — рекомендуется ${n(top[0])} мм.`,
+        text: `Над поз. ${unit.pos} «${unit.short}» ${Mm.text(room)} мм до потолка — рекомендуется ${Mm.text(top[0])} мм.`,
       });
     }
   }
@@ -461,211 +472,218 @@ export class StationLayout {
   /** Заданный контейнер: сначала как обычно, не помещается — исключения; нигде — ответ обычного режима (он понятнее). */
   fit(units, geo, modes) {
     let first = null;
-    for (const m of modes || this.modes()) {
-      const r = this.withMode(m, () => this.fit0(units, geo));
-      if (r.level !== 'error') {
-        this.notes.mode(r, m, geo);
-        if (m.tight || m.cross || m.ends) r.level = r.issues.some(i => i.level === 'warn') ? 'warn' : r.level;
-        return r;
+    for (const mode of modes || this.modes()) {
+      const res = this.withMode(mode, () => this.fit0(units, geo));
+      if (res.level !== 'error') {
+        this.notes.mode(res, mode, geo);
+        if (mode.tight || mode.cross || mode.ends)
+          res.level = res.issues.some(i => i.level === 'warn') ? 'warn' : res.level;
+        return res;
       }
-      first = first || r;
+      first = first || res;
     }
     return first;
   }
 
   /** Пол — рядами; шкафы — на стене прохода, фильтры — на трубе; не нашлось им места — своё место в ряду. */
   fit0(units, geo) {
-    let wall = units.filter(e => e.mount === 'wall');
-    let hang = units.filter(e => e.pipe);
-    let floor = units.filter(e => !e.pipe && e.mount !== 'wall');
+    let wall = units.filter(unit => unit.mount === 'wall');
+    let hang = units.filter(unit => unit.pipe);
+    let floor = units.filter(unit => !unit.pipe && unit.mount !== 'wall');
     if (!floor.length) {
-      floor = units.map(e => ({ ...e, slot: true }));
+      floor = units.map(unit => ({ ...unit, slot: true }));
       wall = [];
       hang = [];
     }
     const pass = avoid => {
-      const q = this.fitRow(floor, geo, units);
-      if (q.level === 'error') return { q, left: [] };
-      if (this.tank) LayoutTank.place(q, geo, this.tank);
-      this.gates.plan(q, geo, avoid);
-      return { q, left: this.walls.attach(q, wall, hang, geo) };
+      const row = this.fitRow(floor, geo, units);
+      if (row.level === 'error') return { q: row, left: [] };
+      if (this.tank) LayoutTank.place(row, geo, this.tank);
+      this.gates.plan(row, geo, avoid);
+      return { q: row, left: this.walls.attach(row, wall, hang, geo) };
     };
-    let { q: r, left } = pass([]);
-    if (r.level === 'error') return r;
-    ({ r, left } = this.wallsFirst(r, left, pass));
-    r = this.slots({ r, left, floor, wall, hang, geo, units });
-    if (r.level !== 'error') this.exits.finish(r, geo);
-    return r;
+    let { q: res, left } = pass([]);
+    if (res.level === 'error') return res;
+    ({ r: res, left } = this.wallsFirst(res, left, pass));
+    res = this.slots({ r: res, left, floor, wall, hang, geo, units });
+    if (res.level !== 'error') this.exits.finish(res, geo);
+    return res;
   }
 
   /** Ворота заняли торец и шкафам не хватило стены — шкафы важнее: ворота в другом торце, нет места — сервисная дверь. */
-  wallsFirst(r, left, pass) {
-    for (const avoid of [r.gates && !r.gates.sea ? [r.gates.wall] : null, ['left', 'right']]) {
-      if (!left.length || !avoid || !(r.gates && !r.gates.sea)) break;
-      const t = pass(avoid);
-      if (t.left.length < left.length) {
-        r = t.q;
-        left = t.left;
+  wallsFirst(res, left, pass) {
+    for (const avoid of [res.gates && !res.gates.sea ? [res.gates.wall] : null, ['left', 'right']]) {
+      if (!left.length || !avoid || !(res.gates && !res.gates.sea)) break;
+      const tried = pass(avoid);
+      if (tried.left.length < left.length) {
+        res = tried.q;
+        left = tried.left;
       }
     }
-    return { r, left };
+    return { r: res, left };
   }
 
   /** Не нашлось места на стене или трубе — своё место в ряду (в конце, иначе перед ресиверами в конце ряда). */
-  slots({ r, left, floor, wall, hang, geo, units }) {
+  slots({ r: res, left, floor, wall, hang, geo, units }) {
     for (let slots = left; left.length; slots = [...slots, ...left]) {
       const ids = new Set(slots.map(StationLayout.key));
-      const rest = e => !ids.has(StationLayout.key(e));
-      const r2 = this.slotRow(floor, slots, geo, units);
-      if (r2.level === 'error') return r2;
-      if (this.tank) LayoutTank.place(r2, geo, this.tank);
-      this.gates.plan(r2, geo);
-      left = this.walls.attach(r2, wall.filter(rest), hang.filter(rest), geo);
-      r = r2;
+      const rest = unit => !ids.has(StationLayout.key(unit));
+      const res2 = this.slotRow(floor, slots, geo, units);
+      if (res2.level === 'error') return res2;
+      if (this.tank) LayoutTank.place(res2, geo, this.tank);
+      this.gates.plan(res2, geo);
+      left = this.walls.attach(res2, wall.filter(rest), hang.filter(rest), geo);
+      res = res2;
     }
-    return r;
+    return res;
   }
 
   slotRow(floor, slots, geo, units) {
-    const sl = slots.map(e => ({ ...e, slot: true }));
-    const r = this.fitRow([...floor, ...sl], geo, units);
+    const slotted = slots.map(unit => ({ ...unit, slot: true }));
+    const res = this.fitRow([...floor, ...slotted], geo, units);
     let k = floor.length;
     while (k > 0 && floor[k - 1].kind === 'receiver') k--;
-    if (r.level !== 'error' || k >= floor.length) return r;
-    const r2 = this.fitRow([...floor.slice(0, k), ...sl, ...floor.slice(k)], geo, units);
-    return r2.level !== 'error' ? r2 : r;
+    if (res.level !== 'error' || k >= floor.length) return res;
+    const res2 = this.fitRow([...floor.slice(0, k), ...slotted, ...floor.slice(k)], geo, units);
+    return res2.level !== 'error' ? res2 : res;
   }
 
   /** Ряды в заданном контейнере: высота, один ряд, при нехватке — два. Проход для оператора есть всегда. */
   fitRow(units, geo, all) {
-    const g = this.G;
-    const [L, Wi, H] = geo.int;
-    const Lu = L - geo.x0 - 2 * g;
-    const W = Wi - 2 * g;
-    const hh = this.heights(all, H);
+    const gap = this.gap;
+    const [len, Wi, height] = geo.int;
+    const lenMax = len - geo.x0 - 2 * gap;
+    const wid = Wi - 2 * gap;
+    const heights = this.heights(all, height);
     this.inMods = !!(geo.mods && geo.mods.Lm);
     this.jGeo = this.inMods ? geo : null;
     this.closeOk = !!this.closeAll || (!geo.auto && !geo.road);
-    const r = this.rowsOf(units, geo, Lu, W);
+    const rowRes = this.rowsOf(units, geo, lenMax, wid);
     const res = { geo, ext: geo.ext, int: geo.int };
-    if (!r.ok) return Object.assign(res, this.rowError(r, hh, { Lu, Wi, g }));
-    return Object.assign(res, this.rowPlan(r, hh, geo));
+    if (!rowRes.ok) return Object.assign(res, this.rowError(rowRes, heights, { Lu: lenMax, Wi, g: gap }));
+    return Object.assign(res, this.rowPlan(rowRes, heights, geo));
   }
 
-  rowsOf(units, geo, Lu, W) {
-    const r = this.altRows(units, Lu, W, this.firstRow(units, geo, Lu, W));
-    if (this.dguSt) return r;
-    if (this.jGeo && !this.mode.ends) return this.modRows(units, geo, Lu, W);
-    return r.ok && this.jGeo ? this.joints.fit(r, geo, Lu, W) : r;
+  rowsOf(units, geo, lenMax, wid) {
+    const res = this.altRows(units, lenMax, wid, this.firstRow(units, geo, lenMax, wid));
+    if (this.dguSt) return res;
+    if (this.jGeo && !this.mode.ends) return this.modRows(units, geo, lenMax, wid);
+    return res.ok && this.jGeo ? this.joints.fit(res, geo, lenMax, wid) : res;
   }
 
   /** Один ряд не встал или с предупреждениями — два ряда; исключение «поперёк» — агрегат поперёк, две двери. */
-  altRows(units, Lu, W, r) {
-    if (this.dguSt) return r;
-    if (!this.mode.ends && (!r.ok || warned(r))) {
-      const r2 = this.rows.two(units, Lu, W);
-      if (r2.ok && (!r.ok || !warned(r2))) r = r2;
+  altRows(units, lenMax, wid, res) {
+    if (this.dguSt) return res;
+    if (!this.mode.ends && (!res.ok || StationLayout._warned(res))) {
+      const res2 = this.rows.two(units, lenMax, wid);
+      if (res2.ok && (!res.ok || !StationLayout._warned(res2))) res = res2;
     }
-    if (!r.ok && this.mode.cross) {
-      const r3 = this.rows.cross(units, Lu, W);
-      if (r3.ok) r = r3;
+    if (!res.ok && this.mode.cross) {
+      const res3 = this.rows.cross(units, lenMax, wid);
+      if (res3.ok) res = res3;
     }
-    return r;
+    return res;
   }
 
-  firstRow(units, geo, Lu, W) {
-    if (this.dguSt) return this.dgu.row(units, Lu, W);
-    if (!this.mode.ends) return this.rows.one(units, Lu, W);
-    return geo.x0 ? { ok: false, why: 'mode' } : this.rows.ends(units, Lu, W, geo.t || 0, LayoutOpening.gaps(geo).eL);
+  firstRow(units, geo, lenMax, wid) {
+    if (this.dguSt) return this.dgu.row(units, lenMax, wid);
+    if (!this.mode.ends) return this.rows.one(units, lenMax, wid);
+    return geo.x0
+      ? { ok: false, why: 'mode' }
+      : this.rows.ends(units, lenMax, wid, geo.t || 0, LayoutOpening.gaps(geo).eL);
   }
 
   /** Из модулей: бок о бок — сначала два ряда (ряд в своей полосе модулей); на стыке — другой вариант. */
-  modRows(units, geo, Lu, W) {
+  modRows(units, geo, lenMax, wid) {
     const order = geo.mods.b > 1 ? ['row2', 'row1'] : ['row1', 'row2'];
-    const V = order
-      .map(k => (k === 'row2' ? this.rows.two(units, Lu, W) : this.rows.one(units, Lu, W)))
-      .filter(q => q.ok);
+    const variants = order
+      .map(k => (k === 'row2' ? this.rows.two(units, lenMax, wid) : this.rows.one(units, lenMax, wid)))
+      .filter(cand => cand.ok);
     let first = null;
-    let r = null;
-    for (const q of V) {
-      const j = this.joints.fit(q, geo, Lu, W);
-      if (j.ok && (!r || (warned(r) && !warned(j)))) r = j;
+    let res = null;
+    for (const cand of variants) {
+      const j = this.joints.fit(cand, geo, lenMax, wid);
+      if (j.ok && (!res || (StationLayout._warned(res) && !StationLayout._warned(j)))) res = j;
       first = first || j;
-      if (r && !warned(r)) break;
+      if (res && !StationLayout._warned(res)) break;
     }
-    return r || first || this.rows.one(units, Lu, W);
+    return res || first || this.rows.one(units, lenMax, wid);
   }
 
-  rowError(r, hh, { Lu, Wi, g }) {
-    const iss = [...hh.iss];
+  rowError(res, heights, { Lu: lenMax, Wi, g: gap }) {
+    const iss = [...heights.iss];
     const list = () =>
-      r.bad
-        .filter(e => !e.unit)
+      res.bad
+        .filter(unit => !unit.unit)
         .slice(0, 3)
-        .map(e => `поз. ${e.pos} «${e.short}» (${n(e.w)} мм)`)
+        .map(unit => `поз. ${unit.pos} «${unit.short}» (${Mm.text(unit.w)} мм)`)
         .join(', ');
     const texts = {
       joint: () =>
-        `Поз. ${r.bad.map(e => e.pos).join(', ')} — на стыке модулей: каждый агрегат должен быть целиком в своём модуле (модуль везут с оборудованием внутри).`,
+        `Поз. ${res.bad.map(unit => unit.pos).join(', ')} — на стыке модулей: каждый агрегат должен быть целиком в своём модуле (модуль везут с оборудованием внутри).`,
       mode: () => 'Без продольного прохода — только компрессорная (без ДГУ и насосов).',
       width: () =>
-        `Не проходит по ширине: ${list()} — вместе с проходом для оператора и обслуживания, отступом от стены и зазором на коммуникации нужно ${n(r.needW + 2 * g)} мм, а ширина внутри — ${n(Wi)} мм.`,
+        `Не проходит по ширине: ${list()} — вместе с проходом для оператора и обслуживания, отступом от стены и зазором на коммуникации нужно ${Mm.text(res.needW + 2 * gap)} мм, а ширина внутри — ${Mm.text(Wi)} мм.`,
     };
     const long = () =>
-      `Не помещается по длине: нужно ${n(r.needL + 2 * g)} мм, а внутри контейнера ${n(Lu + 2 * g)} мм — не хватает ${n(r.needL - Lu)} мм.`;
-    iss.unshift({ level: 'error', text: (texts[r.why] || long)() });
-    return { level: 'error', issues: iss, need: { L: r.needL || null, W: r.needW || null } };
+      `Не помещается по длине: нужно ${Mm.text(res.needL + 2 * gap)} мм, а внутри контейнера ${Mm.text(lenMax + 2 * gap)} мм — не хватает ${Mm.text(res.needL - lenMax)} мм.`;
+    iss.unshift({ level: 'error', text: (texts[res.why] || long)() });
+    return { level: 'error', issues: iss, need: { L: res.needL || null, W: res.needW || null } };
   }
 
-  rowPlan(r, hh, geo) {
-    const items = r.items.flatMap(it =>
-      it.o.pair ? this.rows.unpair(it, geo) : [Object.assign(this.item(it, geo), it.o.ends ? { ends: true } : {})],
+  rowPlan(res, heights, geo) {
+    const items = res.items.flatMap(item =>
+      item.o.pair
+        ? this.rows.unpair(item, geo)
+        : [Object.assign(this.item(item, geo), item.o.ends ? { ends: true } : {})],
     );
-    const iss = [...hh.iss, ...r.iss];
-    const X = items.find(i => i.cross);
-    const cross = X ? { pos: X.pos, x0: X.x, x1: X.x + X.lx } : null;
-    const P = [...new Set(items.filter(i => i.pair).map(i => i.pos))];
-    if (P.length) {
+    const iss = [...heights.iss, ...res.iss];
+    const crossItem = items.find(i => i.cross);
+    const cross = crossItem ? { pos: crossItem.pos, x0: crossItem.x, x1: crossItem.x + crossItem.lx } : null;
+    const pairs = [...new Set(items.filter(i => i.pair).map(i => i.pos))];
+    if (pairs.length) {
       const end = items.some(i => i.pairEnd) ? ', в конце ряда поперёк контейнера — станция короче' : '';
       iss.push({
         level: 'info',
-        text: `Ресиверы поз. ${P.join(', ')} — в два ряда (один за другим${end}): осмотр и обслуживание заднего — сбоку, через промежутки между ресиверами.`,
+        text: `Ресиверы поз. ${pairs.join(', ')} — в два ряда (один за другим${end}): осмотр и обслуживание заднего — сбоку, через промежутки между ресиверами.`,
       });
     }
-    const entryX = r.entry ? r.entry.map(v => Math.round(geo.x0 + this.G + v)) : null;
+    const entryX = res.entry ? res.entry.map(v => Math.round(geo.x0 + this.gap + v)) : null;
     return {
-      level: hh.bad ? 'error' : 'ok',
-      bad: hh.bad,
+      level: heights.bad ? 'error' : 'ok',
+      bad: heights.bad,
       items,
-      rows: r.rows,
-      door: this.doorAt(cross, r, geo),
+      rows: res.rows,
+      door: this.doorAt(cross, res, geo),
       cross,
       ends: this.endsOf(items),
       entryX,
       doors: null,
-      aisle: { w: r.aisleW, rows: r.rows },
+      aisle: { w: res.aisleW, rows: res.rows },
       issues: iss,
     };
   }
 
   /** Дверь оператора: агрегат поперёк — в стене прохода перед ним, если хватает места, иначе — в ближнем торце. */
-  doorAt(cross, r, geo) {
+  doorAt(cross, res, geo) {
     if (cross) return cross.x0 - geo.x0 >= StationLayout.ENTRY[1] + 100 ? 'side' : 'end';
-    return !this.tank && r.rows === 2 ? 'end' : 'side';
+    return !this.tank && res.rows === 2 ? 'end' : 'side';
   }
 
   /** Без продольного прохода: компрессоры у торца, что за ними, ресиверы парами у дальнего торца. */
   endsOf(items) {
-    const CE = items.filter(i => i.ends).sort((a, b) => a.x - b.x);
-    if (!CE.length) return null;
-    const [C, CZ] = [CE[0], CE[CE.length - 1]];
-    const after = items.filter(i => i.mount === 'floor' && !i.ends && i.x >= CZ.x + CZ.lx).sort((a, b) => a.x - b.x)[0];
+    const comps = items.filter(i => i.ends).sort((left, right) => left.x - right.x);
+    if (!comps.length) return null;
+    const [first, last] = [comps[0], comps[comps.length - 1]];
+    const after = items
+      .filter(i => i.mount === 'floor' && !i.ends && i.x >= last.x + last.lx)
+      .sort((left, right) => left.x - right.x)[0];
     return {
-      pos: C.pos,
-      x0: C.x,
-      x1: CZ.x + CZ.lx,
-      n: CE.length,
-      all: [...new Set(CE.map(i => i.pos))],
+      pos: first.pos,
+      x0: first.x,
+      x1: last.x + last.lx,
+      n: comps.length,
+      all: [...new Set(comps.map(i => i.pos))],
       next: (after || {}).pos || null,
       recv: [...new Set(items.filter(i => i.pairEnd).map(i => i.pos))],
     };
@@ -673,8 +691,8 @@ export class StationLayout {
 
   /** Окраска контейнера и рисунки заказчика на стенах снаружи. */
   colors() {
-    const c = this.cont || {};
-    const k = StationPaint.colors(c);
+    const cont = this.cont || {};
+    const k = StationPaint.colors(cont);
     return {
       wallColor: k.wall,
       frameColor: k.frame,
@@ -682,9 +700,9 @@ export class StationLayout {
       doorColor: k.door,
       floorColor: k.floor,
       colorKnown: k.known,
-      colorText: StationPaint.short(c),
-      arts: StationPaint.arts(c),
-      sys: c.sys || null,
+      colorText: StationPaint.short(cont),
+      arts: StationPaint.arts(cont),
+      sys: cont.sys || null,
     };
   }
 }

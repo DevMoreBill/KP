@@ -4,19 +4,19 @@ import { StationMatrix } from './station-matrix.js';
 export class StationSockets {
   static calc(plan) {
     if ((plan.sys || {}).power === false) return null;
-    const [L] = plan.int;
-    const P = StationMatrix.grp('power');
+    const [Li] = plan.int;
+    const power = StationMatrix.grp('power');
     return {
-      n230: Math.max(P.sockMin, Math.ceil((L - (plan.geo.x0 || 0)) / P.sockStep)),
-      n380: P.sock380,
+      n230: Math.max(power.sockMin, Math.ceil((Li - (plan.geo.x0 || 0)) / power.sockStep)),
+      n380: power.sock380,
       ytp: 1,
-      z: P.sockZ,
+      z: power.sockZ,
     };
   }
 
-  static text(K) {
-    if (!K) return '';
-    const z = (K.z / 1000).toFixed(1).replace('.', ',');
-    return `сервисные розетки: 230 В 16 А IP54 с заземляющим контактом — ${K.n230} шт. (у входа и у оборудования, через УЗО 30 мА), 380 В 16 А IP54 (3P+N+PE) — ${K.n380} шт. у основного оборудования, ящик ЯТП-0,25 (220/36 В) для переносных светильников — ${K.ytp} шт. у входа; высота — ${z} м от пола`;
+  static text(sockets) {
+    if (!sockets) return '';
+    const z = (sockets.z / 1000).toFixed(1).replace('.', ',');
+    return `сервисные розетки: 230 В 16 А IP54 с заземляющим контактом — ${sockets.n230} шт. (у входа и у оборудования, через УЗО 30 мА), 380 В 16 А IP54 (3P+N+PE) — ${sockets.n380} шт. у основного оборудования, ящик ЯТП-0,25 (220/36 В) для переносных светильников — ${sockets.ytp} шт. у входа; высота — ${z} м от пола`;
   }
 }

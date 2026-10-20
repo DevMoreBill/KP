@@ -11,145 +11,152 @@ export class LayoutJoints {
     this.lay = lay;
   }
 
-  fit(r, geo, Lu, W) {
-    const J = StationMods.lines(geo);
-    const s = StationMods.M.post / 2;
-    const g = this.lay.G;
-    const X = J.x.map(v => v - geo.x0 - g);
-    const Y = J.y.map(v => v - g);
-    const bad = this.across(r, Y, s, W);
+  fit(res, geo, lenUse, Wi) {
+    const joints = StationMods.lines(geo);
+    const half = StationMods.RULES.post / 2;
+    const wallGap = this.lay.gap;
+    const jointsX = joints.x.map(v => v - geo.x0 - wallGap);
+    const jointsY = joints.y.map(v => v - wallGap);
+    const bad = this.across(res, jointsY, half, Wi);
     if (bad.length) return { ok: false, why: 'joint', bad: [...new Set(bad)] };
-    if (X.length)
-      for (const ri of [...new Set(r.items.map(i => i.ri))])
+    if (jointsX.length)
+      for (const rowIx of [...new Set(res.items.map(i => i.ri))])
         this.along(
-          r.items.filter(i => i.ri === ri).sort((p, q) => p.x - q.x),
-          X,
-          s,
-          Lu,
+          res.items.filter(i => i.ri === rowIx).sort((left, right) => left.x - right.x),
+          jointsX,
+          half,
+          lenUse,
         );
-    const end = Math.max(...r.items.map(i => i.x + i.lx));
-    if (end > Lu) return { ok: false, why: 'length', needL: end + 100, needL0: end + 100 };
-    r.aisleW = Math.min(...r.items.map(i => i.aisle));
-    this.entry(r, X, s);
-    return r;
+    const end = Math.max(...res.items.map(i => i.x + i.lx));
+    if (end > lenUse) return { ok: false, why: 'length', needL: end + 100, needL0: end + 100 };
+    res.aisleW = Math.min(...res.items.map(i => i.aisle));
+    this.entry(res, jointsX, half);
+    return res;
   }
 
   /** Полосы модулей поперёк: [от, до] между стыками с отступом в полстойки. */
-  zones(Y, s, W) {
-    return Array.from({ length: Y.length + 1 }, (_, k) => [k ? Y[k - 1] + s : 0, k < Y.length ? Y[k] - s : W]);
+  zones(jointsY, half, Wi) {
+    return Array.from({ length: jointsY.length + 1 }, (_, k) => [
+      k ? jointsY[k - 1] + half : 0,
+      k < jointsY.length ? jointsY[k] - half : Wi,
+    ]);
   }
 
   /** ДГУ вдоль — посередине своей полосы. */
-  midDgu(it) {
-    return it.o.e.kind === 'dgu' && !it.o.rot;
+  midDgu(item) {
+    return item.o.e.kind === 'dgu' && !item.o.rot;
   }
 
   /** Поперёк: на стыке — в ближайшую полосу (у задней стены — у неё, у передней — у неё, ДГУ — ближайшую по середине). */
-  across(r, Y, s, W) {
-    const zones = this.zones(Y, s, W);
+  across(res, jointsY, half, Wi) {
+    const zones = this.zones(jointsY, half, Wi);
     const bad = [];
     const moved = [];
-    for (const it of r.items.filter(i => Y.some(y => i.y < y + s && i.y + i.d > y - s))) {
-      const z = this.zoneFor(it, zones);
-      if (!z || it.o.e.cross || it.o.end) {
-        bad.push(it.o.e);
+    for (const item of res.items.filter(i => jointsY.some(y => i.y < y + half && i.y + i.d > y - half))) {
+      const z = this.zoneFor(item, zones);
+      if (!z || item.o.e.cross || item.o.end) {
+        bad.push(item.o.e);
         continue;
       }
-      this.moveInto(it, z, W);
-      if (it.back < this.backMin(it)) bad.push(it.o.e);
-      moved.push(it);
+      this.moveInto(item, z, Wi);
+      if (item.back < this.backMin(item)) bad.push(item.o.e);
+      moved.push(item);
     }
-    if (moved.length && r.rows === 2) this.shareAisle(r, W);
-    for (const it of moved.filter(i => i.aisle < this.aisleMin(i))) bad.push(it.o.e);
+    if (moved.length && res.rows === 2) this.shareAisle(res, Wi);
+    for (const item of moved.filter(i => i.aisle < this.aisleMin(i))) bad.push(item.o.e);
     return bad;
   }
 
-  zoneFor(it, zones) {
-    const d = it.d;
-    const c = it.y + d / 2;
-    const mid = this.midDgu(it);
-    const byCenter = (p, q) => Math.abs((p[0] + p[1]) / 2 - c) - Math.abs((q[0] + q[1]) / 2 - c);
-    const order = (p, q) => {
-      if (!mid && it.face === -1) return q[1] - p[1];
-      if (!mid && it.face === 1) return p[0] - q[0];
-      return byCenter(p, q);
+  zoneFor(item, zones) {
+    const depth = item.d;
+    const center = item.y + depth / 2;
+    const mid = this.midDgu(item);
+    const byCenter = (left, right) =>
+      Math.abs((left[0] + left[1]) / 2 - center) - Math.abs((right[0] + right[1]) / 2 - center);
+    const order = (left, right) => {
+      if (!mid && item.face === -1) return right[1] - left[1];
+      if (!mid && item.face === 1) return left[0] - right[0];
+      return byCenter(left, right);
     };
-    return zones.filter(([a, b]) => b - a >= d).sort(order)[0];
+    return zones.filter(([from, till]) => till - from >= depth).sort(order)[0];
   }
 
-  moveInto(it, z, W) {
-    const d = it.d;
-    it.y = this.midDgu(it) ? Math.round(z[0] + (z[1] - z[0] - d) / 2) : Math.min(Math.max(it.y, z[0]), z[1] - d);
-    if (it.face === 1) it.back = it.y;
+  moveInto(item, z, Wi) {
+    const depth = item.d;
+    item.y = this.midDgu(item)
+      ? Math.round(z[0] + (z[1] - z[0] - depth) / 2)
+      : Math.min(Math.max(item.y, z[0]), z[1] - depth);
+    if (item.face === 1) item.back = item.y;
     else {
-      it.back = W - it.y - d;
-      it.aisle = it.y;
+      item.back = Wi - item.y - depth;
+      item.aisle = item.y;
     }
   }
 
-  backMin(it) {
-    return this.midDgu(it) ? StationMatrix.grp('dgu').pass : Math.min(...it.o.e.c.back);
+  backMin(item) {
+    return this.midDgu(item) ? StationMatrix.grp('dgu').pass : Math.min(...item.o.e.c.back);
   }
 
-  aisleMin(it) {
-    return this.midDgu(it) ? StationMatrix.grp('dgu').pass : Math.min(this.lay.aisle[1], this.lay.front(it.o.e)[1]);
+  aisleMin(item) {
+    return this.midDgu(item) ? StationMatrix.grp('dgu').pass : Math.min(this.lay.aisle[1], this.lay.front(item.o.e)[1]);
   }
 
   /** Два ряда: проход между рядами — общий. */
-  shareAisle(r, W) {
-    const A = r.items.filter(i => i.ri === 1);
-    const B = r.items.filter(i => i.ri === 0);
-    const free = (B.length ? Math.min(...B.map(i => i.y)) : W) - (A.length ? Math.max(...A.map(i => i.y + i.d)) : 0);
-    for (const it of r.items) it.aisle = free;
+  shareAisle(res, Wi) {
+    const far = res.items.filter(i => i.ri === 1);
+    const near = res.items.filter(i => i.ri === 0);
+    const free =
+      (near.length ? Math.min(...near.map(i => i.y)) : Wi) - (far.length ? Math.max(...far.map(i => i.y + i.d)) : 0);
+    for (const item of res.items) item.aisle = free;
   }
 
   /**
    * По длине, ряд слева направо: агрегат на стыке — за стык в ближнюю сторону, если промежуток к соседу не меньше
    * прежнего (и не меньше 700 мм); иначе — вместе со следующими (или предыдущими — за счёт свободной длины у двери).
    */
-  along(row, X, s, Lu) {
-    row.forEach((it, k) => {
-      const x = X.find(v => it.x < v + s && it.x + it.lx > v - s);
+  along(row, jointsX, half, lenUse) {
+    row.forEach((item, k) => {
+      const x = jointsX.find(v => item.x < v + half && item.x + item.lx > v - half);
       if (x == null) return;
-      const near = this.nearSide(row, k, x, s, Lu);
+      const near = this.nearSide(row, k, x, half, lenUse);
       if (near != null) {
-        it.x = near;
+        item.x = near;
         return;
       }
-      const dx = Math.round(x + s - it.x);
-      const dl = Math.round(it.x + it.lx - (x - s));
+      const dx = Math.round(x + half - item.x);
+      const shift = Math.round(item.x + item.lx - (x - half));
       const last = row[row.length - 1];
-      if (last.x + last.lx + dx > Lu && row[0].x - dl >= Math.min(row[0].x, 600)) {
-        for (const q of row.slice(0, k + 1)) q.x -= dl;
+      if (last.x + last.lx + dx > lenUse && row[0].x - shift >= Math.min(row[0].x, 600)) {
+        for (const unit of row.slice(0, k + 1)) unit.x -= shift;
         return;
       }
-      for (const q of row.slice(k)) q.x += dx;
+      for (const unit of row.slice(k)) unit.x += dx;
     });
   }
 
   /** Ближняя сторона стыка, куда агрегат встаёт сам; нет — null. */
-  nearSide(row, k, x, s, Lu) {
-    const it = row[k];
-    const pv = row[k - 1];
-    const nx = row[k + 1];
-    const g0 = pv ? it.x - pv.x - pv.lx : it.x;
-    const g1 = nx ? nx.x - it.x - it.lx : Lu - it.x - it.lx;
-    const xl = Math.round(x - s - it.lx);
-    const xr = Math.round(x + s);
-    const okL = xl - (pv ? pv.x + pv.lx : 0) >= Math.min(g0, 700);
-    const okR = (nx ? nx.x : Lu) - xr - it.lx >= Math.min(g1, 700);
-    const opt = [okL ? xl : null, okR ? xr : null]
+  nearSide(row, k, x, half, lenUse) {
+    const item = row[k];
+    const prev = row[k - 1];
+    const next = row[k + 1];
+    const gapPrev = prev ? item.x - prev.x - prev.lx : item.x;
+    const gapNext = next ? next.x - item.x - item.lx : lenUse - item.x - item.lx;
+    const leftX = Math.round(x - half - item.lx);
+    const rightX = Math.round(x + half);
+    const okL = leftX - (prev ? prev.x + prev.lx : 0) >= Math.min(gapPrev, 700);
+    const okR = (next ? next.x : lenUse) - rightX - item.lx >= Math.min(gapNext, 700);
+    const opt = [okL ? leftX : null, okR ? rightX : null]
       .filter(v => v != null)
-      .sort((p, q) => Math.abs(p - it.x) - Math.abs(q - it.x));
+      .sort((left, right) => Math.abs(left - item.x) - Math.abs(right - item.x));
     return opt.length ? opt[0] : null;
   }
 
   /** Дверь оператора на стыке — за стык. */
-  entry(r, X, s) {
-    if (!r.entry) return;
-    const v = X.find(q => r.entry[0] < q + s && r.entry[1] > q - s);
+  entry(res, jointsX, half) {
+    if (!res.entry) return;
+    const v = jointsX.find(joint => res.entry[0] < joint + half && res.entry[1] > joint - half);
     if (v == null) return;
-    const w = r.entry[1] - r.entry[0];
-    r.entry = [v + s, v + s + w];
+    const width = res.entry[1] - res.entry[0];
+    res.entry = [v + half, v + half + width];
   }
 }

@@ -61,7 +61,7 @@ class StationQuick {
   /** подсказка в пустых полях компрессорной: что дают выбранные компрессоры («сейчас 12,6 — по компрессорам») */
   static hint(x){
     const C=StationReq.kind(x)==='comp' ? KitNeed.comps(x) : [], q=C.reduce((s, e)=>s+(e.air.flow>0 ? e.air.flow*e.qty : 0), 0), bar=KitNeed.bar(x);
-    return { ...(q>0 ? { flow:`по компрессорам: ${AirChain.m3(q)}` } : {}), ...(bar>0 ? { pressure:`компрессоры: до ${AirChain.m3(bar)}` } : {}) };
+    return { ...(q>0 ? { flow:`по компрессорам: ${AirChain.flowText(q)}` } : {}), ...(bar>0 ? { pressure:`компрессоры: до ${AirChain.flowText(bar)}` } : {}) };
   }
 
   /** итог подбора: статус одной строкой, что подобрано, проверки значками, 3D-вид */
@@ -97,7 +97,7 @@ class StationQuick {
           out.push(`${String(p.name).trim()} × ${q}${w ? ` (${w} рабоч. + ${res} резерв)` : ''}`); } }
       else if (kind==='dryer') out.push(...L.map(p=>`${String(p.name).trim()}${(+p.qty||1)>1 ? ' × '+p.qty : ''}`));
       else if (kind==='filter') out.push(`${title}: ${n} ${n===1 ? 'ступень' : n<5 ? 'ступени' : 'ступеней'}`);
-      else if (kind==='receiver'){ const v=L.reduce((s, p)=>s+(AirChain.volume(p)||0)*Math.max(1, +p.qty||1), 0); out.push(`${title}: ${n} шт.${v ? ', всего '+StationLayout.n(v)+' л' : ''}`); }
+      else if (kind==='receiver'){ const v=L.reduce((s, p)=>s+(AirChain.volume(p)||0)*Math.max(1, +p.qty||1), 0); out.push(`${title}: ${n} шт.${v ? ', всего '+Mm.text(v)+' л' : ''}`); }
       else out.push(`${title}: ${L.map(p=>String(p.name).trim()).join(', ')}`); }
     return out;
   }

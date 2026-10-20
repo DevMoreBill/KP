@@ -229,7 +229,7 @@ export class TzPick {
 
   static _kf(item, bar) {
     const series = StationRules.series({ name: item.name, attrs: attrsOf(item), rows: [] }, 'filter');
-    return series ? StationRules.interp(series.f.p, bar) : AirChain.kf(bar);
+    return series ? StationRules.interp(series.f.p, bar) : AirChain.filterK(bar);
   }
 
   static _filterOk(item, grade, demand, barMin) {
@@ -409,7 +409,7 @@ export class TzPick {
     );
     const fit = all.filter(option => this._fitsTop(option, Hmax));
     const order = this._recvOrder();
-    for (const add of [ReceiverPlan.M.margin, 0]) {
+    for (const add of [ReceiverPlan.METHOD.margin, 0]) {
       const best = fit.filter(z => this._pressOk(z.p, bar, add)).sort(order)[0];
       if (best) return { o: best };
     }
@@ -623,7 +623,7 @@ export class TzPick {
 
   static _compMiss(job) {
     const { q: need, B: bar } = job;
-    return `${need.oilFree ? 'безмасляный ' : ''}${need.work > 1 ? `${need.work} компрессора` : 'компрессор'} на ${AirChain.m3(job.Q)} м³/мин${bar ? ` и ${AirChain.m3(bar)} бар` : ''}`;
+    return `${need.oilFree ? 'безмасляный ' : ''}${need.work > 1 ? `${need.work} компрессора` : 'компрессор'} на ${AirChain.flowText(job.Q)} м³/мин${bar ? ` и ${AirChain.flowText(bar)} бар` : ''}`;
   }
 
   static _compGot(job, chosen, demand) {
@@ -633,7 +633,7 @@ export class TzPick {
     );
     if (bar > 0 && chosen.o.p > 0 && chosen.o.p < this.barNeed(bar, chosen.o.vsd) - this.BAR_TOL)
       job.got.push(
-        `давление компрессора ${AirChain.m3(chosen.o.p)} бар — без запаса на потери в осушителе и фильтрах${chosen.o.vsd ? '' : ' и диапазон регулирования'} (нужно около ${AirChain.m3(this.barNeed(bar, chosen.o.vsd))})`,
+        `давление компрессора ${AirChain.flowText(chosen.o.p)} бар — без запаса на потери в осушителе и фильтрах${chosen.o.vsd ? '' : ' и диапазон регулирования'} (нужно около ${AirChain.flowText(this.barNeed(bar, chosen.o.vsd))})`,
       );
     if (need.vsd && !chosen.o.f)
       job.got.push('компрессора с частотным регулированием в каталоге нет — подобран без него');
@@ -647,7 +647,7 @@ export class TzPick {
     const dryers = this.dryer(job.ads, demand, job.B, job.Bc, { tmax, H: job.H, W: this.wmax(job.x) });
     if (!dryers?.o) {
       job.miss.push(
-        `${job.ads ? 'адсорбционный' : 'рефрижераторный'} осушитель на ${AirChain.m3(demand)} м³/мин с поправками на давление и температуру`,
+        `${job.ads ? 'адсорбционный' : 'рефрижераторный'} осушитель на ${AirChain.flowText(demand)} м³/мин с поправками на давление и температуру`,
       );
       return;
     }
@@ -655,7 +655,7 @@ export class TzPick {
     const k = dryers.n > 1;
     job.add.push(await this.part(best.c, dryers.n));
     job.got.push(
-      `${k ? `осушители ${dryers.n} × ${best.c.name} параллельно` : this.lbl('осушитель', best.c.name)} (с поправками ${k ? `${dryers.n} × ` : ''}${AirChain.m3(best.cap)}${k ? ` = ${AirChain.m3(best.cap * dryers.n)}` : ''} м³/мин)`,
+      `${k ? `осушители ${dryers.n} × ${best.c.name} параллельно` : this.lbl('осушитель', best.c.name)} (с поправками ${k ? `${dryers.n} × ` : ''}${AirChain.flowText(best.cap)}${k ? ` = ${AirChain.flowText(best.cap * dryers.n)}` : ''} м³/мин)`,
     );
   }
 
@@ -726,7 +726,7 @@ export class TzPick {
     );
     if (!chosen) {
       job.miss.push(
-        `${need.work > 1 ? `${need.work} насоса` : 'насос'} на ${AirChain.m3(need.q)} м³/ч${need.head ? ` и ${AirChain.m3(need.head)} м` : ''}`,
+        `${need.work > 1 ? `${need.work} насоса` : 'насос'} на ${AirChain.flowText(need.q)} м³/ч${need.head ? ` и ${AirChain.flowText(need.head)} м` : ''}`,
       );
       return;
     }
@@ -755,7 +755,7 @@ export class TzPick {
       job.got.push(
         `ДГУ ${count > 1 ? `${chosen.n}${job.res ? ` + ${job.res} резервн.` : ''} × ` : ''}${chosen.o.c.name}`,
       );
-    } else job.miss.push(`ДГУ от ${AirChain.m3(need.kw)} кВт`);
+    } else job.miss.push(`ДГУ от ${AirChain.flowText(need.kw)} кВт`);
     job.x.kit.parts = [...job.add, ...job.keep];
     this._tank(job);
   }

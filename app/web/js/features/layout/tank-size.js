@@ -7,7 +7,7 @@ import { StationMatrix } from './station-matrix.js';
  * объёму, длиннее глубины — сначала выше (почти под потолок), затем глубже; длина — с шагом tank.step.
  */
 export class TankSize {
-  static H = 2290;
+  static HEIGHT = 2290;
   static LITRE = /(?:^|[^а-яё])л(?![а-яё])|литр/i;
 
   /**
@@ -18,40 +18,47 @@ export class TankSize {
   static of(v, lim) {
     const vol = +v;
     if (!(vol > 0)) return null;
-    const T = StationMatrix.tank();
-    const big = vol > T.big;
-    const t = T.wall;
-    const st = T.step || 50;
-    const V = vol * 1e6;
-    const up = x => Math.ceil(x / st) * st;
-    let w = big ? T.w2 : T.w1;
-    let h = big ? T.h2 : T.h1;
-    const hMax = Math.max(h, Math.floor(((lim && lim.h) || this.H - T.top) / st) * st);
-    const wMax = Math.max(w, Math.floor(Math.min(T.wMax, (lim && lim.w) || T.wMax) / st) * st);
-    const len = (a, b) => up(V / ((a - 2 * t) * (b - 2 * t)) + 2 * t);
-    if (len(w, h) > w) h = Math.min(hMax, Math.max(h, up(V / ((w - 2 * t) * (w - 2 * t)) + 2 * t)));
-    if (len(w, h) > w) w = Math.min(wMax, Math.max(w, up(Math.sqrt(V / (h - 2 * t)) + 2 * t)));
-    return { l: Math.max(w, len(w, h)), w, h };
+    const tank = StationMatrix.tank();
+    const big = vol > tank.big;
+    const wall = tank.wall;
+    const step = tank.step || 50;
+    const volMm3 = vol * 1e6;
+    const roundUp = x => Math.ceil(x / step) * step;
+    let width = big ? tank.w2 : tank.w1;
+    let height = big ? tank.h2 : tank.h1;
+    const hMax = Math.max(height, Math.floor(((lim && lim.h) || this.HEIGHT - tank.top) / step) * step);
+    const wMax = Math.max(width, Math.floor(Math.min(tank.wMax, (lim && lim.w) || tank.wMax) / step) * step);
+    const len = (sideA, sideB) => roundUp(volMm3 / ((sideA - 2 * wall) * (sideB - 2 * wall)) + 2 * wall);
+    if (len(width, height) > width)
+      height = Math.min(hMax, Math.max(height, roundUp(volMm3 / ((width - 2 * wall) * (width - 2 * wall)) + 2 * wall)));
+    if (len(width, height) > width)
+      width = Math.min(wMax, Math.max(width, roundUp(Math.sqrt(volMm3 / (height - 2 * wall)) + 2 * wall)));
+    return { l: Math.max(width, len(width, height)), w: width, h: height };
   }
 
   /** «2 600 × 800 × 1 000 мм» */
-  static text(d) {
-    return d ? `${Mm.text(d.l)} × ${Mm.text(d.w)} × ${Mm.text(d.h)} мм` : '';
+  static text(size) {
+    return size ? `${Mm.text(size.l)} × ${Mm.text(size.w)} × ${Mm.text(size.h)} мм` : '';
   }
 
   /** Объём бака из состава, л: поле tank / volume или строка «Объём … л». */
-  static vol(p) {
-    const a = (p && p.attrs) || {};
-    const row = this.volumeRow(p);
+  static vol(product) {
+    const attrs = (product && product.attrs) || {};
+    const row = this.volumeRow(product);
     return (
-      StationEquip.num(a.tank) || StationEquip.num(a.volume) || (row ? StationEquip.num(this.firstNumber(row.v)) : null)
+      StationEquip.num(attrs.tank) ||
+      StationEquip.num(attrs.volume) ||
+      (row ? StationEquip.num(this.firstNumber(row.v)) : null)
     );
   }
 
   /** Строка «Объём … л» характеристик. */
-  static volumeRow(p) {
-    return ((p && p.rows) || []).find(
-      r => r && /^объ[её]м/i.test(String(r.k || '')) && this.LITRE.test(`${String(r.v || '')} ${String(r.k || '')}`),
+  static volumeRow(product) {
+    return ((product && product.rows) || []).find(
+      row =>
+        row &&
+        /^объ[её]м/i.test(String(row.k || '')) &&
+        this.LITRE.test(`${String(row.v || '')} ${String(row.k || '')}`),
     );
   }
 

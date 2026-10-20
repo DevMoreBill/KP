@@ -62,7 +62,7 @@ Check.run('нормальные м³ → FAD (ISO 1217, ГОСТ 2939-63)', ()=>
 
 Check.run('ресивер: правило методики ПНЕВМОТЕХ (receiver.method)', ()=>{
   // 10–15 циклов в час: V = Q / (8 · ΔP); буфер 0,25 · Q (винтовой), 1 · Q (поршневой); ряд 900 / 500 л
-  const M=ReceiverPlan.M; assert.deepStrictEqual([M.cycles, M.base.screw, M.base.piston, M.unit, M.small, M.excess, M.low], [8, 0.25, 1, 900, 500, 2, 0.8]);
+  const M=ReceiverPlan.METHOD; assert.deepStrictEqual([M.cycles, M.base.screw, M.base.piston, M.unit, M.small, M.excess, M.low], [8, 0.25, 1, 900, 500, 2, 0.8]);
   assert.strictEqual(StationRules.raw('pressure.band'), 1, 'ΔP по умолчанию — 1 бар');
 });
 
@@ -116,7 +116,7 @@ Check.run('фильтры: GON и типовая формула', ()=>{
   assert.ok(s, 'GON найдена');
   near(StationRules.interp(s.f.p, 9), 1.12, 1e-9, 'GON 9 бар'); near(StationRules.interp(s.f.p, 6), 0.935, 1e-9, 'GON 6 бар: (0,87 + 1)/2');
   // типовая: Kp = (p + 1)/(7 + 1), не больше 1,3: 9 бар → 1,25; 15 бар → 1,3
-  near(AirChain.kf(9), 1.25, 1e-9, 'типовая 9 бар'); near(AirChain.kf(15), 1.3, 1e-9, 'типовая — потолок');
+  near(AirChain.filterK(9), 1.25, 1e-9, 'типовая 9 бар'); near(AirChain.filterK(15), 1.3, 1e-9, 'типовая — потолок');
 });
 
 Check.run('продувка адсорбционного осушителя по типу регенерации', ()=>{
@@ -167,7 +167,7 @@ Check.run('вентиляция: пример — винтовой 75 кВт, 20
   // 6. выброс по рамке: 14 340 / (3600 · 4) = 0,996 → 1,00 м²; приток: 13 840 / (3600 · 3) · 1,1 = 1,410 → 1,41 м²
   assert.strictEqual(S.Sout, 1); assert.strictEqual(S.Sin, 1.41);
   // справочно: скорость в живом сечении (доля vent.free) — 4 / free
-  near(S.vLiveOut, VentCalc.r1(4/S.free), 1e-9, 'живое сечение выброса');
+  near(S.vLiveOut, VentCalc.round1(4/S.free), 1e-9, 'живое сечение выброса');
   // лето +35 °C с теплом помещения 6,5 кВт и воздухом на сжатие 780 м³/ч: охлаждение 14 060 м³/ч, помещение (Δt 5) — 4 040,
   // один поток — 14 060 + 780 = 14 840 м³/ч; у входа компрессора 35 + 6,5 · 3600 / (1,005 · 1,146 · 14 840) = 36,4 °C;
   // приток 14 840 / 10 800 · 1,1 = 1,51 м², выброс (14 060 + 500) / 14 400 = 1,01 м² (было 7,84 и 4,28)

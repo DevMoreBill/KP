@@ -1,46 +1,46 @@
 /** Места оборудования на плане: на полу (из ряда), на стене, на трубе, снаружи; пересечения и занятая длина. */
 export class LayoutItem {
   /** Общие поля места из оборудования e. */
-  static base(e) {
+  static base(unit) {
     return {
-      id: e.id,
-      pos: e.pos,
-      unit: e.unit,
-      name: e.name,
-      brief: e.brief,
-      short: e.short,
-      kind: e.kind,
-      shape: e.shape,
-      look: e.look || '',
-      color: e.color,
-      colorKnown: e.colorKnown,
-      tones: e.tones || null,
-      maker: e.maker || '',
-      known: e.known,
-      mass: e.mass,
-      kw: e.kw,
+      id: unit.id,
+      pos: unit.pos,
+      unit: unit.unit,
+      name: unit.name,
+      brief: unit.brief,
+      short: unit.short,
+      kind: unit.kind,
+      shape: unit.shape,
+      look: unit.look || '',
+      color: unit.color,
+      colorKnown: unit.colorKnown,
+      tones: unit.tones || null,
+      maker: unit.maker || '',
+      known: unit.known,
+      mass: unit.mass,
+      kw: unit.kw,
     };
   }
 
   /** Шкаф на стене, фильтр на трубе, ресивер снаружи — не из ряда; o — положение и отличия. */
-  static unit(e, o) {
+  static unit(unit, extra) {
     return {
-      ...this.base(e),
-      lx: e.l,
-      ly: e.w,
-      h: e.h,
+      ...this.base(unit),
+      lx: unit.l,
+      ly: unit.w,
+      h: unit.h,
       rot: false,
       face: -1,
       back: 0,
       aisle: 0,
-      l: e.l,
-      w: e.w,
+      l: unit.l,
+      w: unit.w,
       row: -1,
       slot: false,
-      pipe: Boolean(e.pipe),
-      air: e.air || null,
-      pic: e.pic || null,
-      ...o,
+      pipe: Boolean(unit.pipe),
+      air: unit.air || null,
+      pic: unit.pic || null,
+      ...extra,
     };
   }
 
@@ -48,59 +48,59 @@ export class LayoutItem {
    * Место из ряда: координаты полезной зоны (без зазора G на коммуникации) → координаты помещения.
    * @param {object} it место в ряду {o, ri, x, lx, d, y, face, back, aisle}
    */
-  static floor(it, geo, G) {
-    const e = it.o.e;
+  static floor(item, geo, gap) {
+    const unit = item.o.e;
     return {
-      ...this.base(e),
-      x: geo.x0 + G + it.x,
-      y: it.y + G,
+      ...this.base(unit),
+      x: geo.x0 + gap + item.x,
+      y: item.y + gap,
       z: 0,
-      lx: it.lx,
-      ly: it.d,
-      h: e.h,
-      rot: Boolean(it.o.rot) || Boolean(e.cross),
-      face: it.face,
-      back: it.back + G,
-      backRec: e.cross ? 0 : e.c.back[0] + G,
-      aisle: it.aisle + G,
-      cross: Boolean(e.cross),
-      l: e.l,
-      w: e.w,
-      row: it.ri,
-      rad: it.o.rad || null,
-      mount: e.slot ? e.mount : 'floor',
-      slot: Boolean(e.slot),
-      pipe: Boolean(e.pipe),
-      air: e.air || null,
-      pic: e.pic || null,
-      flow: e.flow || null,
-      cool: e.cool || null,
-      comb: e.comb || null,
-      heat: e.heat || null,
-      ctype: e.ctype || '',
+      lx: item.lx,
+      ly: item.d,
+      h: unit.h,
+      rot: Boolean(item.o.rot) || Boolean(unit.cross),
+      face: item.face,
+      back: item.back + gap,
+      backRec: unit.cross ? 0 : unit.c.back[0] + gap,
+      aisle: item.aisle + gap,
+      cross: Boolean(unit.cross),
+      l: unit.l,
+      w: unit.w,
+      row: item.ri,
+      rad: item.o.rad || null,
+      mount: unit.slot ? unit.mount : 'floor',
+      slot: Boolean(unit.slot),
+      pipe: Boolean(unit.pipe),
+      air: unit.air || null,
+      pic: unit.pic || null,
+      flow: unit.flow || null,
+      cool: unit.cool || null,
+      comb: unit.comb || null,
+      heat: unit.heat || null,
+      ctype: unit.ctype || '',
     };
   }
 
   /** Пересекаются ли короба a и b (x, y, z, lx, ly, h) с зазором pad по длине. */
-  static hit(a, b, pad) {
-    const az = a.z || 0;
-    const bz = b.z || 0;
+  static hit(first, second, pad) {
+    const firstZ = first.z || 0;
+    const secondZ = second.z || 0;
     return (
-      a.x < b.x + b.lx + pad &&
-      a.x + a.lx + pad > b.x &&
-      a.y < b.y + b.ly &&
-      a.y + a.ly > b.y &&
-      az < bz + b.h &&
-      az + a.h > bz
+      first.x < second.x + second.lx + pad &&
+      first.x + first.lx + pad > second.x &&
+      first.y < second.y + second.ly &&
+      first.y + first.ly > second.y &&
+      firstZ < secondZ + second.h &&
+      firstZ + first.h > secondZ
     );
   }
 
   /** Занятая длина: от первого до последнего на полу; free — свободно по длине помещения. */
   static used(items, geo) {
     const floor = items.filter(i => i.mount !== 'wall' && i.mount !== 'pipe' && !i.tank);
-    const I = floor.length ? floor : items;
-    const x0 = Math.min(...I.map(i => i.x));
-    const x1 = Math.max(...I.map(i => i.x + i.lx));
+    const pool = floor.length ? floor : items;
+    const x0 = Math.min(...pool.map(i => i.x));
+    const x1 = Math.max(...pool.map(i => i.x + i.lx));
     return { x0, x1, free: Math.max(0, geo.int[0] - (x1 - x0) - geo.x0) };
   }
 }

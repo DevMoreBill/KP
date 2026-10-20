@@ -104,7 +104,9 @@ const KP = { rules: { 'no-undef': noUndef, jsdoc } };
 
 // папки, где уже наведён «чистый код» (решение владельца 20.10): говорящие имена и JSDoc у открытых методов
 const CLEAN = ['tz', 'tz-out', 'calc', 'rules', 'rules-doc', 'eskd', 'draw', 'view'].map(d => `app/web/js/features/${d}/*.js`);
-const NAMES = { min: 3, properties: 'never', exceptions: ['i', 'j', 'k', 'x', 'y', 'z', 'x0', 'x1', 'x2', 'y0', 'y1', 'y2', 'z0', 'z1', 'z2', 'dx', 'dy', 'dz', 'id', 'ok', 'kw', 'el', 'gl', 'db', 'of', 'ox', 'oy', 'Li', 'Wi', 'Hi', 'Le', 'We', 'He', 'u', 'v', 'u0', 'u1', 'v0', 'v1', 'du', 'dv', '_'] };
+// только говорящие имена (JSDoc — следующим выпуском)
+const NAMED = ['layout'].map(d => `app/web/js/features/${d}/*.js`);
+const NAMES = { min: 3, properties: 'never', exceptions: ['i', 'j', 'k', 'x', 'y', 'z', 'x0', 'x1', 'x2', 'y0', 'y1', 'y2', 'z0', 'z1', 'z2', 'dx', 'dy', 'dz', 'id', 'ok', 'kw', 'el', 'gl', 'db', 'of', 'ox', 'oy', 'Li', 'Wi', 'Hi', 'Le', 'We', 'He', 'Mm', 'u', 'v', 'u0', 'u1', 'v0', 'v1', 'du', 'dv', '_'] };
 
 // строгие правила переписанного кода (ES-модули): без вложенных «?:» и длинных цепочек условий, короткие методы
 const MODULES = SharedNames.files(JS_DIR).filter(f => ESM.test(fs.readFileSync(f, 'utf8'))).map(f => path.relative(ROOT, f).split(path.sep).join('/'));
@@ -138,4 +140,7 @@ export default [{
   files: CLEAN,
   plugins: { kp: KP },
   rules: { 'id-length': ['error', NAMES], 'kp/jsdoc': 'error' },
+}, {
+  files: NAMED,
+  rules: { 'id-length': ['error', NAMES] },
 }];

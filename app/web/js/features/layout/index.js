@@ -18,6 +18,7 @@ import { LayoutSize } from './layout-size.js';
 import { LayoutTank } from './layout-tank.js';
 import { LayoutWalls } from './layout-walls.js';
 import { Mm } from './mm.js';
+import { Num } from './num.js';
 import { PipeMaterial } from './pipe-material.js';
 import { PressureVessel } from './pressure-vessel.js';
 import { RalColor } from './ral-color.js';
@@ -68,6 +69,7 @@ export const LAYOUT = {
   LayoutTank,
   LayoutWalls,
   Mm,
+  Num,
   PipeMaterial,
   PressureVessel,
   RalColor,

@@ -359,11 +359,11 @@ export class TzText {
     const power = ok ? plan.power : null;
     if (power && power.list.length) this._loads(doc, power);
     doc.items(this._powerLines(spec, power), prefix);
-    if (ok) StationJoints.tz(plan, doc); // станция из модулей: что расстыковывают на перевозку
+    if (ok) StationJoints.tzSection(plan, doc); // станция из модулей: что расстыковывают на перевозку
   }
 
   static _loads(doc, power) {
-    const kwText = StationPower.f;
+    const kwText = StationPower.fmt;
     doc.p(
       power.dgu
         ? 'Нагрузки собственных нужд станции (ДГУ — источник, в расчёт не входит; в ожидании — от сети через АВР):'
@@ -418,9 +418,9 @@ export class TzText {
     spec.d.items(
       [
         ok
-          ? StationNorms.tt(plan)[0]
+          ? StationNorms.techReqs(plan)[0]
           : `Категория помещения по пожарной опасности — ${req.fire}${req.fireAuto ? ' (ориентировочно, уточняется расчётом по СП 12.13130.2009)' : ' (СП 12.13130.2009)'}; табличка с категорией — на двери снаружи.`,
-        ...(ok ? StationFire.tt(plan) : []),
+        ...(ok ? StationFire.techReqs(plan) : []),
         `Уровень звука на рабочем месте — не более ${req.noise} дБА (СанПиН 1.2.3685-21); выше — шумоизоляция контейнера и знак о средствах защиты слуха.`,
         ...(ok ? DrawText.vessels(plan) : []),
         `Климатическое исполнение контейнера${spec.cl ? ` — ${spec.cl[0]}` : ''} по ГОСТ 15150-69; внутри при работе — не ниже +${StationNorms.INSIDE} °C, оборудование — в исполнении для отапливаемых помещений.`,

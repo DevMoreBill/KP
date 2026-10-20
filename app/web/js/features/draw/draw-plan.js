@@ -19,7 +19,7 @@ export class DrawPlan {
     const k = this.drawing.scale;
     const toX = value => this.drawing.sheetX(value);
     const { Le, We } = this.drawing;
-    const post = StationMods.M.post;
+    const post = StationMods.RULES.post;
     for (let i = 1; i < mods.a; i++) {
       const x = toX(i * mods.Lm);
       sheet.line(x, toY(We) - 2, x, toY(0) + 2, 'phantom');

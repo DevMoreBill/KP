@@ -1,8 +1,6 @@
 import { AirChain } from './air-chain.js';
 import { Mm } from './mm.js';
 
-const EPS = 1e-9;
-
 /**
  * Ресиверы по методике ПНЕВМОТЕХ: объём одного — кратно 900 л, 500 л — только при крайней необходимости. Нужный объём —
  * наибольший из приоритетов: 1 — цикл «нагрузка — разгрузка», 2 — пиковый разбор по циклограмме, 3 — базовый буфер
@@ -10,6 +8,8 @@ const EPS = 1e-9;
  * правило receiver.method.
  */
 export class ReceiverPlan {
+  static EPS = 1e-9;
+
   static PRIO = {
     1: '1 — цикл нагрузки/разгрузки',
     2: '2 — пиковый разбор по циклограмме',
@@ -17,24 +17,20 @@ export class ReceiverPlan {
     ТЗ: 'объём по ТЗ заказчика',
   };
 
-  static get M() {
+  static get METHOD() {
     return StationRules.raw('receiver.method');
   }
 
   static get UNIT() {
-    return this.M.unit;
+    return this.METHOD.unit;
   }
 
   static get SMALL() {
-    return this.M.small;
+    return this.METHOD.small;
   }
 
-  static l(v) {
-    return Mm.text(Math.round(v));
-  }
-
-  static f(v, d = 2) {
-    return String(Math.round(v * 10 ** d) / 10 ** d).replace('.', ',');
+  static dec(v, digits = 2) {
+    return String(Math.round(v * 10 ** digits) / 10 ** digits).replace('.', ',');
   }
 
   static pct(v) {
@@ -45,152 +41,156 @@ export class ReceiverPlan {
    * Типоразмер на объём V, л: {size, n, total, why}. o.min — наименьший допустимый объём, o.force — '500' | '900',
    * o.reason — 'space' | 'mass', o.space — 900 л не помещается по высоте, o.auto — 500 л ради габарита перевозки.
    */
-  static size(V, o = {}) {
-    if (!(V > 0)) return null;
-    const U = this.UNIT;
-    const Sm = this.SMALL;
-    const ex = this.M.excess;
-    const Vn = o.min > 0 ? o.min : V;
-    const n900 = Math.max(1, Math.ceil(Vn / U - EPS));
-    const by900 = { size: U, n: n900, total: n900 * U };
-    if (o.force === '900') return { ...by900, why: `${this.l(U)} л — выбор вручную` };
-    if (o.force === '500' || o.space) return this.small(Vn, o);
-    if (V <= Sm && U > ex * V) {
+  static size(volume, opts = {}) {
+    if (!(volume > 0)) return null;
+    const unitVol = this.UNIT;
+    const small = this.SMALL;
+    const excess = this.METHOD.excess;
+    const need = opts.min > 0 ? opts.min : volume;
+    const n900 = Math.max(1, Math.ceil(need / unitVol - ReceiverPlan.EPS));
+    const by900 = { size: unitVol, n: n900, total: n900 * unitVol };
+    if (opts.force === '900') return { ...by900, why: `${Mm.text(unitVol)} л — выбор вручную` };
+    if (opts.force === '500' || opts.space) return this.small(need, opts);
+    if (volume <= small && unitVol > excess * volume) {
       return {
-        size: Sm,
+        size: small,
         n: 1,
-        total: Sm,
-        why: `${this.l(Sm)} л — ресивер ${this.l(U)} л дал бы запас ${this.pct(U / V)} % (больше ${this.pct(ex)} %)`,
+        total: small,
+        why: `${Mm.text(small)} л — ресивер ${Mm.text(unitVol)} л дал бы запас ${this.pct(unitVol / volume)} % (больше ${this.pct(excess)} %)`,
         reason: 'excess',
       };
     }
     const least =
-      Vn < V - EPS && by900.total < V - EPS
-        ? ` — наименьшее допустимое по методике (${this.pct(by900.total / V)} % нужного, не меньше ${this.pct(this.M.low)} %)`
+      need < volume - ReceiverPlan.EPS && by900.total < volume - ReceiverPlan.EPS
+        ? ` — наименьшее допустимое по методике (${this.pct(by900.total / volume)} % нужного, не меньше ${this.pct(this.METHOD.low)} %)`
         : '';
     const notSmall =
-      V <= Sm ? ` (${this.l(Sm)} л не применён: ${this.l(U)} л даёт запас не больше ${this.pct(ex)} %)` : '';
+      volume <= small
+        ? ` (${Mm.text(small)} л не применён: ${Mm.text(unitVol)} л даёт запас не больше ${this.pct(excess)} %)`
+        : '';
     return {
       ...by900,
-      why: `кратно ${this.l(U)} л: ${by900.n} × ${this.l(U)} = ${this.l(by900.total)} л${least}${notSmall}`,
+      why: `кратно ${Mm.text(unitVol)} л: ${by900.n} × ${Mm.text(unitVol)} = ${Mm.text(by900.total)} л${least}${notSmall}`,
     };
   }
 
   /** По 500 л: выбор вручную, нехватка места или 900 л не встаёт по высоте. */
-  static small(Vn, o) {
-    const Sm = this.SMALL;
-    const n = Math.max(1, Math.ceil(Vn / Sm - EPS));
+  static small(need, opts) {
+    const small = this.SMALL;
+    const count = Math.max(1, Math.ceil(need / small - ReceiverPlan.EPS));
     return {
-      size: Sm,
-      n,
-      total: n * Sm,
-      why: `${n > 1 ? `${n} × ` : ''}${this.l(Sm)} л — ${this.smallWhy(o)}`,
+      size: small,
+      n: count,
+      total: count * small,
+      why: `${count > 1 ? `${count} × ` : ''}${Mm.text(small)} л — ${this.smallWhy(opts)}`,
       forced: true,
-      reason: o.space ? 'space' : o.reason || '',
+      reason: opts.space ? 'space' : opts.reason || '',
     };
   }
 
-  static smallWhy(o) {
-    if (o.space) return 'ресивер 900 л не помещается по высоте';
-    if (o.auto) return 'нехватка места: с ресиверами 900 л станция не помещается в габарит перевозки';
-    return { space: 'нехватка места (вручную)', mass: 'ограничение по массе (вручную)' }[o.reason] || 'выбор вручную';
+  static smallWhy(opts) {
+    if (opts.space) return 'ресивер 900 л не помещается по высоте';
+    if (opts.auto) return 'нехватка места: с ресиверами 900 л станция не помещается в габарит перевозки';
+    return (
+      { space: 'нехватка места (вручную)', mass: 'ограничение по массе (вручную)' }[opts.reason] || 'выбор вручную'
+    );
   }
 
   /**
    * Расчёт: o — {Q — наибольший компрессор, м³/мин, piston, S — подача рабочих, dp, cyc {T, C, drop}, point, tz, dryer,
    * dryerCap, mode, force, reason, space, auto, bar, valve, have}. Нет Q — null.
    */
-  static calc(o) {
-    const Q = o.Q > 0 ? o.Q : 0;
-    if (!Q) return null;
-    const { dp, dpSrc, cyc } = this.inputs(o);
-    const V = this.volumes(o, Q, dp, cyc);
-    const gov = this.governing(V);
-    const theor = Math.round(V[gov[0]]);
-    const main = this.size(theor, { ...o, min: this.least(gov, theor, Q) });
-    const peak = Math.max(cyc ? cyc.C : 0, o.point || 0);
-    const risk = o.dryerCap > 0 && peak > o.dryerCap;
-    const R = {
+  static calc(opts) {
+    const flow = opts.Q > 0 ? opts.Q : 0;
+    if (!flow) return null;
+    const { dp: drop, dpSrc, cyc } = this.inputs(opts);
+    const vols = this.volumes(opts, flow, drop, cyc);
+    const gov = this.governing(vols);
+    const theor = Math.round(vols[gov[0]]);
+    const main = this.size(theor, { ...opts, min: this.least(gov, theor, flow) });
+    const peak = Math.max(cyc ? cyc.C : 0, opts.point || 0);
+    const risk = opts.dryerCap > 0 && peak > opts.dryerCap;
+    const plan = {
       prio: gov[1],
-      V,
+      V: vols,
       theor,
       main,
-      wet: this.wet(o, main, risk),
-      local: this.local(o, Q),
-      dp,
+      wet: this.wet(opts, main, risk),
+      local: this.local(opts, flow),
+      dp: drop,
       dpSrc,
       cyc,
-      Q,
-      S: o.S || Q,
-      piston: Boolean(o.piston),
-      mode: o.mode || '',
+      Q: flow,
+      S: opts.S || flow,
+      piston: Boolean(opts.piston),
+      mode: opts.mode || '',
       risk,
-      dryer: Boolean(o.dryer),
+      dryer: Boolean(opts.dryer),
       checks: [],
     };
-    R.checks = this.checks(R, o);
-    return R;
+    plan.checks = this.checks(plan, opts);
+    return plan;
   }
 
   /** ΔP нагрузка/разгрузка (не задан — правило pressure.band) и циклограмма, если она полная. */
-  static inputs(o) {
-    const own = o.dp > 0;
-    const c = o.cyc;
+  static inputs(opts) {
+    const own = opts.dp > 0;
+    const cycle = opts.cyc;
     return {
-      dp: own ? o.dp : StationRules.raw('pressure.band'),
+      dp: own ? opts.dp : StationRules.raw('pressure.band'),
       dpSrc: own ? 'задан' : 'по правилу pressure.band',
-      cyc: c && c.T > 0 && c.C > 0 && c.drop > 0 ? c : null,
+      cyc: cycle && cycle.T > 0 && cycle.C > 0 && cycle.drop > 0 ? cycle : null,
     };
   }
 
   /** Локальный ресивер у потребителя: пик точки больше доли производительности компрессора. */
-  static local(o, Q) {
-    return o.point > this.M.local * Q ? this.size(this.M.base.screw * o.point * 1000) : null;
+  static local(opts, flow) {
+    return opts.point > this.METHOD.local * flow ? this.size(this.METHOD.base.screw * opts.point * 1000) : null;
   }
 
   /** Сработавший приоритет — давший наибольший объём: [ключ, приоритет]. */
-  static governing(V) {
+  static governing(vols) {
     const cand = [
       ['p1', 1],
       ['p2', 2],
       ['p3', 3],
       ['tz', 'ТЗ'],
-    ].filter(([k]) => V[k] != null);
-    return cand.reduce((m, c) => (V[c[0]] > V[m[0]] + EPS ? c : m), cand[0]);
+    ].filter(([k]) => vols[k] != null);
+    return cand.reduce((best, cand1) => (vols[cand1[0]] > vols[best[0]] + ReceiverPlan.EPS ? cand1 : best), cand[0]);
   }
 
   /** Наименьшее допустимое: по ТЗ — полностью, иначе 80 % нужного и 15 % минутной производительности. */
-  static least(gov, theor, Q) {
-    return gov[0] === 'tz' ? theor : Math.max(this.M.low * theor, this.M.ratio[0] * Q * 1000);
+  static least(gov, theor, flow) {
+    return gov[0] === 'tz' ? theor : Math.max(this.METHOD.low * theor, this.METHOD.ratio[0] * flow * 1000);
   }
 
   /** Мокрый ресивер: задан («основной + мокрый») или по методике при риске проскока влаги. */
-  static wet(o, main, risk) {
-    const on = o.dryer && (o.mode === 'both' || (!o.mode && risk));
-    if (!on || !main) return null;
-    const v = main.total * this.M.wet[0];
+  static wet(opts, main, risk) {
+    const wetOn = opts.dryer && (opts.mode === 'both' || (!opts.mode && risk));
+    if (!wetOn || !main) return null;
+    const v = main.total * this.METHOD.wet[0];
     return this.size(v, { min: v });
   }
 
   /** Объёмы по приоритетам, л: p1 всегда, p2 — с циклограммой, p3 — поршневой без неё, tz — по ТЗ. */
-  static volumes(o, Q, dp, cyc) {
-    const M = this.M;
-    const V = { p1: (Q / (M.cycles * dp)) * 1000 };
-    if (cyc) V.p2 = Math.max(0, ((cyc.T * (cyc.C - (o.S || Q)) * M.pa) / cyc.drop) * 1000);
-    else if (o.piston) V.p3 = M.base.piston * Q * 1000;
-    if (o.tz > 0) V.tz = o.tz;
-    return V;
+  static volumes(opts, flow, drop, cyc) {
+    const method = this.METHOD;
+    const vols = { p1: (flow / (method.cycles * drop)) * 1000 };
+    if (cyc) vols.p2 = Math.max(0, ((cyc.T * (cyc.C - (opts.S || flow)) * method.pa) / cyc.drop) * 1000);
+    else if (opts.piston) vols.p3 = method.base.piston * flow * 1000;
+    if (opts.tz > 0) vols.tz = opts.tz;
+    return vols;
   }
 
   /** Проверки «на здравый смысл» — по составу (если ресиверы в нём есть), иначе по рекомендации. */
-  static checks(R, o) {
-    const have = o.have || [];
-    const dry = have.filter(h => h.role !== 'wet' && h.role !== 'local');
-    const wets = have.filter(h => h.role === 'wet');
-    const sum = list => list.reduce((s, h) => s + (h.vol || 0) * (h.qty || 1), 0);
-    const main = this.mainVolume(R, dry, sum);
-    const all = main + this.wetVolume(R, wets, sum);
-    const ctx = { R, o, have, dry, wets, main, all };
+  static checks(plan, opts) {
+    const have = opts.have || [];
+    const dry = have.filter(tank => tank.role !== 'wet' && tank.role !== 'local');
+    const wets = have.filter(tank => tank.role === 'wet');
+    const sum = list => list.reduce((acc, tank) => acc + (tank.vol || 0) * (tank.qty || 1), 0);
+    const main = this.mainVolume(plan, dry, sum);
+    const all = main + this.wetVolume(plan, wets, sum);
+    const ctx = { R: plan, o: opts, have, dry, wets, main, all };
     return [
       ...this.checkVolume(ctx),
       ...this.checkPressure(ctx),
@@ -200,69 +200,69 @@ export class ReceiverPlan {
     ];
   }
 
-  static mainVolume(R, dry, sum) {
-    if (dry.length && dry.every(h => h.vol > 0)) return sum(dry);
-    return R.main ? R.main.total : 0;
+  static mainVolume(plan, dry, sum) {
+    if (dry.length && dry.every(tank => tank.vol > 0)) return sum(dry);
+    return plan.main ? plan.main.total : 0;
   }
 
-  static wetVolume(R, wets, sum) {
+  static wetVolume(plan, wets, sum) {
     if (wets.length) return sum(wets);
-    return R.wet ? R.wet.total : 0;
+    return plan.wet ? plan.wet.total : 0;
   }
 
   /** Избыточность, недобор и объём к минутной производительности наибольшего компрессора. */
-  static checkVolume({ R, main }) {
-    const M = this.M;
-    const l = v => this.l(v);
-    const q = this.f(R.Q);
-    const minute = R.Q * 1000;
+  static checkVolume({ R: plan, main }) {
+    const method = this.METHOD;
+    const fmt = v => Mm.text(v);
+    const flowText = this.dec(plan.Q);
+    const minute = plan.Q * 1000;
     return [
-      main > M.excess * R.theor && {
+      main > method.excess * plan.theor && {
         level: 'warn',
-        text: `Запас превышает 200% (${l(main)} л на ${l(R.theor)} л). Рассмотреть переход на 500 л или пересмотр количества ресиверов.`,
+        text: `Запас превышает 200% (${fmt(main)} л на ${fmt(plan.theor)} л). Рассмотреть переход на 500 л или пересмотр количества ресиверов.`,
       },
-      main < M.low * R.theor && {
+      main < method.low * plan.theor && {
         level: 'error',
-        text: `Объём ниже минимально допустимого (${l(main)} л при нужных ${l(R.theor)} л). Расчёт некорректен.`,
+        text: `Объём ниже минимально допустимого (${fmt(main)} л при нужных ${fmt(plan.theor)} л). Расчёт некорректен.`,
       },
-      main < M.ratio[0] * minute && {
+      main < method.ratio[0] * minute && {
         level: 'warn',
-        text: `Объём менее 15% минутной производительности (${l(main)} л при ${q} м³/мин) — риск частых циклов и пульсаций.`,
+        text: `Объём менее 15% минутной производительности (${fmt(main)} л при ${flowText} м³/мин) — риск частых циклов и пульсаций.`,
       },
-      main > M.ratio[1] * minute && {
+      main > method.ratio[1] * minute && {
         level: 'warn',
-        text: `Объём более 5-кратной минутной производительности (${l(main)} л при ${q} м³/мин) — неоправданно велик, если нет задачи длительного буфера.`,
+        text: `Объём более 5-кратной минутной производительности (${fmt(main)} л при ${flowText} м³/мин) — неоправданно велик, если нет задачи длительного буфера.`,
       },
     ].filter(Boolean);
   }
 
   /** Давление: номинал ресивера — с запасом над компрессором, уставка клапана — не выше номинала. */
-  static checkPressure({ o, have }) {
-    const rated = have.filter(h => h.bar > 0);
-    const pmin = rated.length ? Math.min(...rated.map(h => h.bar)) : 0;
+  static checkPressure({ o: opts, have }) {
+    const rated = have.filter(tank => tank.bar > 0);
+    const pmin = rated.length ? Math.min(...rated.map(tank => tank.bar)) : 0;
     if (!(pmin > 0)) return [];
-    const f = v => this.f(v);
+    const fmt = v => this.dec(v);
     return [
-      o.bar > 0 &&
-        pmin < o.bar + this.M.margin - EPS && {
+      opts.bar > 0 &&
+        pmin < opts.bar + this.METHOD.margin - ReceiverPlan.EPS && {
           level: 'error',
-          text: `Ресивер должен иметь запас по давлению минимум 1–2 бар относительно максимального давления компрессора (ресивер ${f(pmin)} бар, компрессор ${f(o.bar)} бар).`,
+          text: `Ресивер должен иметь запас по давлению минимум 1–2 бар относительно максимального давления компрессора (ресивер ${fmt(pmin)} бар, компрессор ${fmt(opts.bar)} бар).`,
         },
-      o.valve > 0 &&
-        o.valve > pmin + EPS && {
+      opts.valve > 0 &&
+        opts.valve > pmin + ReceiverPlan.EPS && {
           level: 'error',
-          text: `Уставка предохранительного клапана превышает номинал ресивера (${f(o.valve)} бар > ${f(pmin)} бар).`,
+          text: `Уставка предохранительного клапана превышает номинал ресивера (${fmt(opts.valve)} бар > ${fmt(pmin)} бар).`,
         },
     ].filter(Boolean);
   }
 
   /** «Мёртвый объём» — к пиковому разбору за цикл. */
-  static checkDead({ R, all }) {
-    if (!(R.V.p2 > 0) || !(all > this.M.dead * R.V.p2)) return [];
+  static checkDead({ R: plan, all }) {
+    if (!(plan.V.p2 > 0) || !(all > this.METHOD.dead * plan.V.p2)) return [];
     return [
       {
         level: 'warn',
-        text: `Система имеет избыточную аккумулирующую способность (${this.l(all)} л при пиковом разборе ${this.l(R.V.p2)} л за цикл). Возможно снижение энергоэффективности из-за длительного нахождения воздуха в ресивере (конденсат, потери тепла).`,
+        text: `Система имеет избыточную аккумулирующую способность (${Mm.text(all)} л при пиковом разборе ${Mm.text(plan.V.p2)} л за цикл). Возможно снижение энергоэффективности из-за длительного нахождения воздуха в ресивере (конденсат, потери тепла).`,
       },
     ];
   }
@@ -277,20 +277,23 @@ export class ReceiverPlan {
   }
 
   static rowError({ have, dry, main }) {
-    const bad = have.filter(h => h.vol > 0 && h.role !== 'local' && h.vol !== this.SMALL && this.offRow(h.vol));
-    const all500 = dry.length && dry.every(h => h.vol === this.SMALL);
+    const bad = have.filter(
+      tank => tank.vol > 0 && tank.role !== 'local' && tank.vol !== this.SMALL && this.offRow(tank.vol),
+    );
+    const all500 = dry.length && dry.every(tank => tank.vol === this.SMALL);
     const mainOff = dry.length && main > 0 && main !== this.SMALL && !all500 && this.offRow(main);
     if (!bad.length && !mainOff) return null;
-    const list = [...new Set(bad.map(h => `${this.l(h.vol)} л`))].join(', ') || `${this.l(main)} л`;
+    const list = [...new Set(bad.map(tank => `${Mm.text(tank.vol)} л`))].join(', ') || `${Mm.text(main)} л`;
     return {
       level: 'error',
-      text: `Нарушено правило типоразмерного ряда (${list}: объём — кратно ${this.l(this.UNIT)} л или ${this.l(this.SMALL)} л). Пересчитать.`,
+      text: `Нарушено правило типоразмерного ряда (${list}: объём — кратно ${Mm.text(this.UNIT)} л или ${Mm.text(this.SMALL)} л). Пересчитать.`,
     };
   }
 
-  static smallWarn({ R, o, dry }) {
-    const small = dry.length ? dry.some(h => h.vol === this.SMALL) : R.main && R.main.size === this.SMALL;
-    const grounded = this.UNIT > this.M.excess * R.theor || o.space || ['space', 'mass'].includes(o.reason);
+  static smallWarn({ R: plan, o: opts, dry }) {
+    const small = dry.length ? dry.some(tank => tank.vol === this.SMALL) : plan.main && plan.main.size === this.SMALL;
+    const grounded =
+      this.UNIT > this.METHOD.excess * plan.theor || opts.space || ['space', 'mass'].includes(opts.reason);
     if (!small || grounded) return null;
     return {
       level: 'warn',
@@ -299,83 +302,86 @@ export class ReceiverPlan {
   }
 
   /** Резкое падение давления: без мокрого ресивера — проскок влаги через осушитель. */
-  static checkMoisture({ R, o, have, wets }) {
-    const peak = Math.max(R.cyc ? R.cyc.C : 0, o.point || 0);
-    const wetPlanned = R.wet && !have.length;
-    if (!o.dryer || !(o.dryerCap > 0) || !(peak > o.dryerCap) || wets.length || wetPlanned) return [];
+  static checkMoisture({ R: plan, o: opts, have, wets }) {
+    const peak = Math.max(plan.cyc ? plan.cyc.C : 0, opts.point || 0);
+    const wetPlanned = plan.wet && !have.length;
+    if (!opts.dryer || !(opts.dryerCap > 0) || !(peak > opts.dryerCap) || wets.length || wetPlanned) return [];
     return [
       {
         level: 'warn',
-        text: `Возможен проскок влаги через осушитель при резком падении давления (пик ${this.f(peak)} м³/мин больше производительности осушителя ${this.f(o.dryerCap)} м³/мин). Рассмотреть установку мокрого ресивера.`,
+        text: `Возможен проскок влаги через осушитель при резком падении давления (пик ${this.dec(peak)} м³/мин больше производительности осушителя ${this.dec(opts.dryerCap)} м³/мин). Рассмотреть установку мокрого ресивера.`,
       },
     ];
   }
 
   /** Одной строкой: «основной 900 л × 3 = 2 700 л (после осушителя); мокрый 500 л × 1 (до осушителя)». */
-  static text(R) {
-    const unit = (x, w) => (x ? `${w} ${this.l(x.size)} л × ${x.n}${x.n > 1 ? ` = ${this.l(x.total)} л` : ''}` : '');
+  static text(plan) {
+    const unit = (x, title) =>
+      x ? `${title} ${Mm.text(x.size)} л × ${x.n}${x.n > 1 ? ` = ${Mm.text(x.total)} л` : ''}` : '';
     return [
-      unit(R.main, 'основной') + this.where(R),
-      R.wet ? `${unit(R.wet, 'мокрый')} (до осушителя)` : '',
-      R.local ? unit(R.local, 'у потребителя') : '',
+      unit(plan.main, 'основной') + this.where(plan),
+      plan.wet ? `${unit(plan.wet, 'мокрый')} (до осушителя)` : '',
+      plan.local ? unit(plan.local, 'у потребителя') : '',
     ]
       .filter(Boolean)
       .join('; ');
   }
 
-  static where(R) {
-    if (R.mode === 'before') return ' (до осушителя)';
-    return R.wet || R.dryer || R.mode === 'after' ? ' (после осушителя)' : '';
+  static where(plan) {
+    if (plan.mode === 'before') return ' (до осушителя)';
+    return plan.wet || plan.dryer || plan.mode === 'after' ? ' (после осушителя)' : '';
   }
 
   /** Расчёт по составу станции: eq — StationEquip.list, rq — StationReq.recvIn. */
-  static from(eq, rq = {}) {
-    const C = (eq || []).filter(e => e.kind === 'compressor' && e.air && e.air.flow > 0);
-    if (!C.length) return null;
-    const big = C.reduce((m, e) => (e.air.flow > m.air.flow ? e : m), C[0]);
-    const total = C.reduce((s, e) => s + e.air.flow * (e.qty || 1), 0);
-    const bar = Math.max(0, ...C.map(e => e.air.bar || 0));
-    const D = eq.filter(e => e.kind === 'dryer' && e.air && e.air.type !== 'gen');
+  static from(equip, req = {}) {
+    const comps = (equip || []).filter(unit => unit.kind === 'compressor' && unit.air && unit.air.flow > 0);
+    if (!comps.length) return null;
+    const big = comps.reduce((best, unit) => (unit.air.flow > best.air.flow ? unit : best), comps[0]);
+    const total = comps.reduce((acc, unit) => acc + unit.air.flow * (unit.qty || 1), 0);
+    const bar = Math.max(0, ...comps.map(unit => unit.air.bar || 0));
+    const dryers = equip.filter(unit => unit.kind === 'dryer' && unit.air && unit.air.type !== 'gen');
     const dryerCap =
-      D.length && D.every(e => e.air.flow > 0)
-        ? D.reduce((s, e) => s + e.air.flow * (e.qty || 1), 0) * AirChain.kp(bar)
+      dryers.length && dryers.every(unit => unit.air.flow > 0)
+        ? dryers.reduce((acc, unit) => acc + unit.air.flow * (unit.qty || 1), 0) * AirChain.dryerK(bar)
         : 0;
-    const have = this.have(eq);
-    const R = this.calc({
+    const have = this.have(equip);
+    const plan = this.calc({
       Q: big.air.flow,
       piston: big.ctype === 'piston',
-      S: Math.max(big.air.flow, total - Math.max(0, rq.reserve || 0) * big.air.flow),
-      dp: rq.dp,
-      cyc: rq.cyc,
-      point: rq.point,
-      tz: rq.tz,
-      dryer: D.length > 0 || C.some(e => e.air.dryer),
+      S: Math.max(big.air.flow, total - Math.max(0, req.reserve || 0) * big.air.flow),
+      dp: req.dp,
+      cyc: req.cyc,
+      point: req.point,
+      tz: req.tz,
+      dryer: dryers.length > 0 || comps.some(unit => unit.air.dryer),
       dryerCap,
-      mode: rq.mode,
-      force: rq.force,
-      reason: rq.reason,
-      auto: rq.auto,
-      space: rq.space,
+      mode: req.mode,
+      force: req.force,
+      reason: req.reason,
+      auto: req.auto,
+      space: req.space,
       bar,
-      valve: rq.valve,
+      valve: req.valve,
       have,
     });
-    if (R) Object.assign(R, { big, have, bar, dryerCap });
-    return R;
+    if (plan) Object.assign(plan, { big, have, bar, dryerCap });
+    return plan;
   }
 
   /** Ресиверы состава: в станции и у потребителя. */
-  static have(eq) {
-    const inside = eq
-      .filter(e => e.kind === 'receiver' && e.air)
-      .map(e => ({
-        vol: e.air.vol || 0,
-        qty: e.qty || 1,
-        bar: e.air.bar || 0,
-        role: e.air.role === 'wet' ? 'wet' : 'dry',
-        pos: e.pos,
+  static have(equip) {
+    const inside = equip
+      .filter(unit => unit.kind === 'receiver' && unit.air)
+      .map(unit => ({
+        vol: unit.air.vol || 0,
+        qty: unit.qty || 1,
+        bar: unit.air.bar || 0,
+        role: unit.air.role === 'wet' ? 'wet' : 'dry',
+        pos: unit.pos,
       }));
-    const local = eq.filter(e => e.local).map(e => ({ vol: e.vol || 0, qty: e.qty || 1, bar: 0, role: 'local' }));
+    const local = equip
+      .filter(unit => unit.local)
+      .map(unit => ({ vol: unit.vol || 0, qty: unit.qty || 1, bar: 0, role: 'local' }));
     return [...inside, ...local];
   }
 }

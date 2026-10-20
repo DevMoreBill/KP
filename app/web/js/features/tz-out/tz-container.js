@@ -110,7 +110,7 @@ export class TzContainer {
   static _paint(container) {
     const booklet = StationPaint.book(container) && container.paintFile;
     return (
-      StationPaint.tz(container) +
+      StationPaint.tzRows(container) +
       (booklet
         ? ` — файл «${container.paintFile.name || 'буклет'}»${container.paintFile.pdf ? ' (передаётся вместе с ТЗ)' : ''}`
         : '')

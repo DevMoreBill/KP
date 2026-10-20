@@ -70,7 +70,7 @@ export class SceneHull {
     }
     if (this.scene.view === 'in')
       for (const post of StationMods.posts(this.scene.geo)) {
-        const half = meters(StationMods.M.post) / 2;
+        const half = meters(StationMods.RULES.post) / 2;
         const center = this.scene.point(post.x, post.y, 0);
         frame.box(
           [center[0] - half, center[1] - half, this.scene.base],

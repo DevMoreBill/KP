@@ -2,18 +2,18 @@ import { Mm } from './mm.js';
 import { StationFire } from './station-fire.js';
 import { StationMatrix } from './station-matrix.js';
 
-const n = v => Mm.text(v);
-const f = v => StationFire.f1(v);
-const WALL = { right: 'дальний торец', back: 'заднюю стену', front: 'стену прохода' };
-const WHAT = { air: 'Выход сжатого воздуха', in: 'Вход (всасывание)' };
-const PN = [10, 16, 25, 40, 63];
-
 /**
  * Диаметр трубопровода по расходу и допустимой скорости: d = √(4 · Q / (π · v)), DN — ближайший больший (ГОСТ 3262,
  * ГОСТ 8732). Воздух — расход при рабочем давлении; вода — подача рабочих насосов; топливо — насос перекачки.
  */
 export class StationPipe {
-  static DN = [
+  static WALL = { right: 'дальний торец', back: 'заднюю стену', front: 'стену прохода' };
+
+  static WHAT = { air: 'Выход сжатого воздуха', in: 'Вход (всасывание)' };
+
+  static PRESSURES = [10, 16, 25, 40, 63];
+
+  static BORES = [
     [15, 15.7],
     [20, 20.9],
     [25, 26.6],
@@ -30,7 +30,7 @@ export class StationPipe {
     [300, 309],
   ];
 
-  static get V() {
+  static get MAX_SPEED() {
     return StationRules.raw('el.pipe_v');
   }
   static get FUEL() {
@@ -38,64 +38,67 @@ export class StationPipe {
   }
 
   /** DN по внутреннему диаметру, мм. */
-  static dn(d) {
-    const r = StationPipe.DN.find(([, di]) => di >= d - 1e-9);
-    return r ? r[0] : StationPipe.DN[StationPipe.DN.length - 1][0];
+  static bore(inner) {
+    const row = StationPipe.BORES.find(([, inside]) => inside >= inner - 1e-9);
+    return row ? row[0] : StationPipe.BORES[StationPipe.BORES.length - 1][0];
   }
 
-  static inner(dn) {
-    const r = StationPipe.DN.find(([k]) => k === dn);
-    return r ? r[1] : dn;
+  static inner(bore) {
+    const row = StationPipe.BORES.find(([k]) => k === bore);
+    return row ? row[1] : bore;
   }
 
   /** {medium, why, lines: [{name, v, d, dn, vAct}], dn, set — DN в составе, small — меньше расчётного} или null. */
   static calc(plan) {
     if (!(plan.lines || []).length) return null;
-    const P = plan.piping || [];
-    const pp = P.find(p => p.pos != null) || P[0];
-    const set = pp ? +(String(pp.dn || '').match(/\d+/) || [0])[0] || 0 : 0;
+    const piping = plan.piping || [];
+    const pipe = piping.find(part => part.pos != null) || piping[0];
+    const set = pipe ? +(String(pipe.dn || '').match(/\d+/) || [0])[0] || 0 : 0;
     const lines = [];
-    const add = (name, q, v) => {
-      const d = Math.sqrt((4 * q) / (Math.PI * v)) * 1000;
-      const dn = StationPipe.dn(d);
-      const di = StationPipe.inner(dn) / 1000;
+    const add = (name, flow, v) => {
+      const diam = Math.sqrt((4 * flow) / (Math.PI * v)) * 1000;
+      const bore = StationPipe.bore(diam);
+      const insideM = StationPipe.inner(bore) / 1000;
       lines.push({
         name,
         v,
-        d: Math.round(d * 10) / 10,
-        dn,
-        vAct: Math.round((q / ((Math.PI * di * di) / 4)) * 10) / 10,
+        d: Math.round(diam * 10) / 10,
+        dn: bore,
+        vAct: Math.round((flow / ((Math.PI * insideM * insideM) / 4)) * 10) / 10,
       });
     };
     const { medium, why } = StationPipe.flow(plan, add);
     if (!lines.length) return null;
-    const dn = lines[0].dn;
-    return { medium, why, lines, dn, set, small: set > 0 && set < dn };
+    const bore = lines[0].dn;
+    return { medium, why, lines, dn: bore, set, small: set > 0 && set < bore };
   }
 
   static flow(plan, add) {
-    const V = StationPipe.V;
-    const r = plan.req || {};
+    const maxSpeed = StationPipe.MAX_SPEED;
+    const req = plan.req || {};
     const pumps = (plan.items || [])
       .filter(i => i.kind === 'pump' && i.flow > 0)
       .map(i => i.flow)
-      .sort((a, b) => b - a);
+      .sort((left, right) => right - left);
     if (plan.air && plan.air.q > 0) {
       const bar = plan.air.bar || 8;
-      const q = ((plan.air.q / 60) * 1.013) / (bar + 1.013);
-      add('магистраль сжатого воздуха', q, V.air);
-      return { medium: 'air', why: `${f(plan.air.q)} м³/мин при ${f(bar)} бар — ${f(q * 60)} м³/мин в трубе` };
+      const flow = ((plan.air.q / 60) * 1.013) / (bar + 1.013);
+      add('магистраль сжатого воздуха', flow, maxSpeed.air);
+      return {
+        medium: 'air',
+        why: `${StationFire.dec1(plan.air.q)} м³/мин при ${StationFire.dec1(bar)} бар — ${StationFire.dec1(flow * 60)} м³/мин в трубе`,
+      };
     }
     if (pumps.length) {
-      const k = Math.max(1, pumps.length - Math.max(0, Math.round(r.res || 0)));
-      const Q = pumps.slice(0, k).reduce((s, v) => s + v, 0) / 3600;
-      add('напорный коллектор', Q, V.out);
-      add('всасывающий коллектор', Q, V.in);
-      return { medium: 'water', why: `подача рабочих насосов ${f(Q * 3600)} м³/ч` };
+      const k = Math.max(1, pumps.length - Math.max(0, Math.round(req.res || 0)));
+      const flowSum = pumps.slice(0, k).reduce((acc, v) => acc + v, 0) / 3600;
+      add('напорный коллектор', flowSum, maxSpeed.out);
+      add('всасывающий коллектор', flowSum, maxSpeed.in);
+      return { medium: 'water', why: `подача рабочих насосов ${StationFire.dec1(flowSum * 3600)} м³/ч` };
     }
     if (plan.fuel) {
-      add('топливопровод', StationPipe.FUEL / 3600, V.fuel);
-      return { medium: 'fuel', why: `подача насоса перекачки около ${f(StationPipe.FUEL)} м³/ч` };
+      add('топливопровод', StationPipe.FUEL / 3600, maxSpeed.fuel);
+      return { medium: 'fuel', why: `подача насоса перекачки около ${StationFire.dec1(StationPipe.FUEL)} м³/ч` };
     }
     return { medium: '', why: '' };
   }
@@ -103,33 +106,38 @@ export class StationPipe {
   /** Пункты ТЗ: выходы трубопровода из станции — где, на какой высоте, патрубок с фланцем (ГОСТ 33259-2015). */
   static outs(plan) {
     const bar = plan.air && plan.air.bar > 0 ? plan.air.bar : 0;
-    const pn = bar ? PN.find(v => v >= bar) || 63 : 0;
-    const dn = plan.pipe ? plan.pipe.set || plan.pipe.dn : 0;
-    return (plan.lines || []).filter(l => l.out).map(l => StationPipe.outText(plan, l, { pn, dn }));
+    const pressure = bar ? StationPipe.PRESSURES.find(v => v >= bar) || 63 : 0;
+    const bore = plan.pipe ? plan.pipe.set || plan.pipe.dn : 0;
+    return (plan.lines || [])
+      .filter(line => line.out)
+      .map(line => StationPipe.outText(plan, line, { pn: pressure, dn: bore }));
   }
 
-  static outText(plan, l, { pn, dn }) {
-    const o = l.out;
-    const [L] = plan.int || [0];
+  static outText(plan, line, { pn: pressure, dn: bore }) {
+    const out = line.out;
+    const [Li] = plan.int || [0];
     const where =
-      o.wall === 'right'
-        ? `через дальний торец${o.rise ? ' над проёмом' : ''}, в ${n(Math.round(plan.int[1] - o.y))} мм от задней стены (внутри)`
-        : `через ${WALL[o.wall]} в ${n(Math.round(L - o.x))} мм от дальнего торца (внутри)`;
-    const moved = o.moved ? ` (в торце — ${o.why}: выход перенесён на свободное место)` : '';
-    return `${WHAT[l.medium] || 'Выход'} — ${where}, на высоте ${n(Math.round(o.z))} мм от пола${moved}: патрубок${dn ? ` DN ${dn}` : ''} с выступом ${n(o.flange)} мм от стены и фланцем (ГОСТ 33259-2015${pn ? `, PN ${pn}` : ', PN — по рабочему давлению'}), на перевозку — фланцевая заглушка; проход стены — гильза с уплотнением.`;
+      out.wall === 'right'
+        ? `через дальний торец${out.rise ? ' над проёмом' : ''}, в ${Mm.text(Math.round(plan.int[1] - out.y))} мм от задней стены (внутри)`
+        : `через ${StationPipe.WALL[out.wall]} в ${Mm.text(Math.round(Li - out.x))} мм от дальнего торца (внутри)`;
+    const moved = out.moved ? ` (в торце — ${out.why}: выход перенесён на свободное место)` : '';
+    return `${StationPipe.WHAT[line.medium] || 'Выход'} — ${where}, на высоте ${Mm.text(Math.round(out.z))} мм от пола${moved}: патрубок${bore ? ` DN ${bore}` : ''} с выступом ${Mm.text(out.flange)} мм от стены и фланцем (ГОСТ 33259-2015${pressure ? `, PN ${pressure}` : ', PN — по рабочему давлению'}), на перевозку — фланцевая заглушка; проход стены — гильза с уплотнением.`;
   }
 
   /** Пункт ТЗ и строка «Компоновки»: DN по расчёту. */
-  static text(Q) {
-    if (!Q) return '';
-    const lines = Q.lines
-      .map(l => `${l.name} — DN ${l.dn} (внутри не менее ${f(l.d)} мм при скорости не более ${f(l.v)} м/с)`)
+  static text(calc) {
+    if (!calc) return '';
+    const lines = calc.lines
+      .map(
+        line =>
+          `${line.name} — DN ${line.dn} (внутри не менее ${StationFire.dec1(line.d)} мм при скорости не более ${StationFire.dec1(line.v)} м/с)`,
+      )
       .join(', ');
     let set = '';
-    if (Q.set)
-      set = Q.small
-        ? `; в составе указан DN ${Q.set} — меньше расчётного, принять DN ${Q.dn}`
-        : `; в составе — DN ${Q.set}`;
-    return `диаметр — по расчёту (${Q.why}): ${lines}${set}`;
+    if (calc.set)
+      set = calc.small
+        ? `; в составе указан DN ${calc.set} — меньше расчётного, принять DN ${calc.dn}`
+        : `; в составе — DN ${calc.set}`;
+    return `диаметр — по расчёту (${calc.why}): ${lines}${set}`;
   }
 }

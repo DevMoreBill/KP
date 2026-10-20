@@ -36,7 +36,7 @@ export class DryerSizing {
   static factor(part, bar, temps, type) {
     const { s: series, generic } = DryerSizing.seriesOf(part, type);
     if (!series) {
-      const kPress = AirChain.kp(bar);
+      const kPress = AirChain.dryerK(bar);
       return { F: kPress / StationRules.raw('dryer.margin'), s: null, generic: false, kp: { k: kPress }, out: [] };
     }
     const kPress = DryerSizing.k(series.f.p, bar);

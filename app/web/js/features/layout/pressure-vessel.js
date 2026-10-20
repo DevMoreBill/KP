@@ -8,22 +8,22 @@ export class PressureVessel {
   }
 
   /** Ресиверы состава: [{pos, qty, vol, mpa, pv, reg, out}]; bar — рабочее давление станции (0 — неизвестно). */
-  static list(eq, bar) {
-    return eq
-      .filter(e => e.kind === 'receiver' && e.air && (e.place !== false || e.outside))
-      .map(e => {
-        const vol = e.air.vol > 0 ? e.air.vol : null;
-        const b = this.pressure(bar, e.air.bar);
-        const mpa = b ? b / 10 : null;
-        const pv = vol && mpa ? Math.round(((mpa * vol) / 1000) * 1000) / 1000 : null;
+  static list(equip, bar) {
+    return equip
+      .filter(unit => unit.kind === 'receiver' && unit.air && (unit.place !== false || unit.outside))
+      .map(unit => {
+        const vol = unit.air.vol > 0 ? unit.air.vol : null;
+        const barMpa = this.pressure(bar, unit.air.bar);
+        const mpa = barMpa ? barMpa / 10 : null;
+        const pvProduct = vol && mpa ? Math.round(((mpa * vol) / 1000) * 1000) / 1000 : null;
         return {
-          pos: e.pos,
-          qty: e.qty || 1,
+          pos: unit.pos,
+          qty: unit.qty || 1,
           vol,
           mpa,
-          pv,
-          reg: pv == null ? null : pv > this.LIMIT,
-          out: Boolean(e.outside),
+          pv: pvProduct,
+          reg: pvProduct == null ? null : pvProduct > this.LIMIT,
+          out: Boolean(unit.outside),
         };
       });
   }
@@ -35,7 +35,7 @@ export class PressureVessel {
 
   /** «0,8 МПа × 1,0 м³ = 0,8» */
   static text(v) {
-    const f = x => String(Math.round(x * 100) / 100).replace('.', ',');
-    return `${f(v.mpa)} МПа × ${f(v.vol / 1000)} м³ = ${f(v.pv)}`;
+    const dec2 = x => String(Math.round(x * 100) / 100).replace('.', ',');
+    return `${dec2(v.mpa)} МПа × ${dec2(v.vol / 1000)} м³ = ${dec2(v.pv)}`;
   }
 }

@@ -1,13 +1,9 @@
+import { Num } from './num.js';
 import { LayoutOpening } from './layout-opening.js';
 import { LayoutPipes } from './layout-pipes.js';
 import { Mm } from './mm.js';
 import { StationMatrix } from './station-matrix.js';
 import { StationTidy } from './station-tidy.js';
-
-const n = v => Mm.text(v);
-const sum = list => list.reduce((s, v) => s + v, 0);
-const depthOf = o => (o.rot || o.e.cross ? o.e.l : o.e.w);
-const lenOf = o => (o.rot || o.e.cross ? o.e.w : o.e.l);
 
 /**
  * Ряды оборудования на полу лицом к проходу: один ряд у задней стены, два ряда у длинных стен с проходом посередине,
@@ -15,32 +11,42 @@ const lenOf = o => (o.rot || o.e.cross ? o.e.w : o.e.l);
  * к рекомендуемым; ресиверы — парами, «вплотную» — последним приёмом.
  */
 export class LayoutRows {
+  static _depthOf = slot => (slot.rot || slot.e.cross ? slot.e.l : slot.e.w);
+
+  static _lenOf = slot => (slot.rot || slot.e.cross ? slot.e.w : slot.e.l);
+
   constructor(lay) {
     this.lay = lay;
   }
 
   /** Задний отступ: рекомендуемый, если проход перед агрегатом остаётся не уже f; иначе сколько можно, не меньше «не менее». */
-  static backFor(b, budget, f) {
-    if (budget - b[0] >= f) return b[0];
-    return budget - f >= b[1] ? budget - f : b[1];
+  static backFor(back, budget, need) {
+    if (budget - back[0] >= need) return back[0];
+    return budget - need >= back[1] ? budget - need : back[1];
   }
 
   /** Пара ресиверов один за другим (передний a, задний b, промежуток gap): глубина — оба и промежуток. */
-  static pairUnit(a, b, gap) {
-    return { ...a, l: Math.max(a.l, b.l), w: a.w + gap + b.w, h: Math.max(a.h, b.h), pairD: Math.max(a.w, b.w) };
+  static pairUnit(first, second, gap) {
+    return {
+      ...first,
+      l: Math.max(first.l, second.l),
+      w: first.w + gap + second.w,
+      h: Math.max(first.h, second.h),
+      pairD: Math.max(first.w, second.w),
+    };
   }
 
   /** Можно повернуть боком: разрешено матрицей, короб и заметно длиннее, чем глубже. */
-  static turnable(e) {
-    return StationMatrix.rot(e.kind) && e.shape === 'box' && e.l > e.w + 50;
+  static turnable(unit) {
+    return StationMatrix.rot(unit.kind) && unit.shape === 'box' && unit.l > unit.w + 50;
   }
 
   /** Поворачивать боком (сначала дающее больше длины), пока ok(o) после поворота и ряд не уложится (fits). */
   static turn(list, ok, fits) {
-    for (const o of list.sort((a, b) => b.e.l - b.e.w - (a.e.l - a.e.w))) {
-      o.rot = true;
-      if (!ok(o)) {
-        o.rot = false;
+    for (const slot of list.sort((first, second) => second.e.l - second.e.w - (first.e.l - first.e.w))) {
+      slot.rot = true;
+      if (!ok(slot)) {
+        slot.rot = false;
         continue;
       }
       if (fits()) break;
@@ -48,118 +54,120 @@ export class LayoutRows {
   }
 
   /** В два ряда — в задний ряд: ДГУ; аппараты цепочки воздуха (при компрессорах) — подряд по ходу воздуха. */
-  static backRow(e, units) {
-    if (e.kind === 'dgu') return true;
-    const chain = (LayoutPipes.series(e) && e.kind !== 'receiver') || (e.slot && e.kind === 'filter');
+  static backRow(unit, units) {
+    if (unit.kind === 'dgu') return true;
+    const chain = (LayoutPipes.series(unit) && unit.kind !== 'receiver') || (unit.slot && unit.kind === 'filter');
     return units.some(u => u.kind === 'compressor') && chain;
   }
 
   /** Повернуть то, что не проходит по ширине, если после поворота проходит. */
-  widen(U, wide, canRot) {
-    for (const o of U.filter(x => !wide(x) && canRot(x))) {
-      o.rot = true;
-      if (!wide(o)) o.rot = false;
+  widen(slots, wide, canRot) {
+    for (const slot of slots.filter(x => !wide(x) && canRot(x))) {
+      slot.rot = true;
+      if (!wide(slot)) slot.rot = false;
     }
   }
 
-  length(U, lvl) {
+  length(slots, lvl) {
     return (
       this.chain(
-        U.map(o => o.e),
+        slots.map(slot => slot.e),
         lvl,
-      ).sum + sum(U.map(lenOf))
+      ).sum + Num.sum(slots.map(LayoutRows._lenOf))
     );
   }
 
   /** Один ряд у задней стены лицом к проходу. */
-  one(units, Lu, W, noRotate) {
+  one(units, lenMax, wid, noRotate) {
     const lay = this.lay;
-    const U = units.map(e => ({ e, rot: false }));
-    const canRot = o => !noRotate && LayoutRows.turnable(o.e);
-    const pairWall = o => Math.min(o.e.c.back[1], StationMatrix.recv().pairWall);
-    const need = o => depthOf(o) + (o.end ? 2 * pairWall(o) : o.e.c.back[1] + lay.front(o.e)[1]);
-    const wide = o => need(o) <= W;
-    this.widen(U, wide, canRot);
-    const narrow = U.filter(o => !wide(o));
+    const slots = units.map(unit => ({ e: unit, rot: false }));
+    const canRot = slot => !noRotate && LayoutRows.turnable(slot.e);
+    const pairWall = slot => Math.min(slot.e.c.back[1], StationMatrix.recv().pairWall);
+    const need = slot =>
+      LayoutRows._depthOf(slot) + (slot.end ? 2 * pairWall(slot) : slot.e.c.back[1] + lay.front(slot.e)[1]);
+    const wide = slot => need(slot) <= wid;
+    this.widen(slots, wide, canRot);
+    const narrow = slots.filter(slot => !wide(slot));
     if (narrow.length)
-      return { ok: false, why: 'width', bad: narrow.map(o => o.e), needW: Math.max(...narrow.map(need)) };
-    const len = lvl => this.length(U, lvl);
-    if (lay.recv2) this.endPairs(U, wide, () => false);
-    if (len(1) > Lu) {
-      const roomy = o => depthOf(o) + o.e.c.back[0] + lay.front(o.e)[1] <= W;
+      return { ok: false, why: 'width', bad: narrow.map(slot => slot.e), needW: Math.max(...narrow.map(need)) };
+    const len = lvl => this.length(slots, lvl);
+    if (lay.recv2) this.endPairs(slots, wide, () => false);
+    if (len(1) > lenMax) {
+      const roomy = slot => LayoutRows._depthOf(slot) + slot.e.c.back[0] + lay.front(slot.e)[1] <= wid;
       for (const ok of [roomy, wide]) {
-        if (len(1) <= Lu) break;
+        if (len(1) <= lenMax) break;
         LayoutRows.turn(
-          U.filter(o => canRot(o) && !o.rot),
+          slots.filter(slot => canRot(slot) && !slot.rot),
           ok,
-          () => len(1) <= Lu,
+          () => len(1) <= lenMax,
         );
       }
     }
-    const lv = this.squeeze(U, len, Lu, wide, noRotate);
-    if (len(lv) > Lu) return { ok: false, why: 'length', needL: len(1), needL0: len(0), needLc: len(2) };
-    return this.place([U], { Lu, W, lv });
+    const level = this.squeeze(slots, len, lenMax, wide, noRotate);
+    if (len(level) > lenMax) return { ok: false, why: 'length', needL: len(1), needL0: len(0), needLc: len(2) };
+    return this.place([slots], { Lu: lenMax, W: wid, lv: level });
   }
 
   /** Не хватает длины: ресиверы парой, затем парами поперёк у торца, затем вплотную, затем без прохода у торца. */
-  squeeze(U, len, Lu, wide, noRotate) {
-    const done = () => len(1) <= Lu;
+  squeeze(slots, len, lenMax, wide, noRotate) {
+    const done = () => len(1) <= lenMax;
     if (done()) return 1;
-    if (!noRotate) this.pairs(U, wide, done);
-    if (!noRotate && !done()) this.endPairs(U, wide, done);
+    if (!noRotate) this.pairs(slots, wide, done);
+    if (!noRotate && !done()) this.endPairs(slots, wide, done);
     if (done()) return 1;
     if (!this.lay.closeOk) return 1;
-    return len(2) <= Lu ? 2 : 3;
+    return len(2) <= lenMax ? 2 : 3;
   }
 
   /** Соседние ресиверы — парой один за другим (задний — ближе к стене), осмотр заднего — сбоку. */
-  pairs(U, wide, done) {
-    const solo = o => !o.pair && !o.rot && o.e.kind === 'receiver' && !o.e.slot;
-    for (let k = 0; k < U.length - 1 && !done(); k++) {
-      const [a, b] = [U[k], U[k + 1]];
-      if (!solo(a) || !solo(b)) continue;
-      const gap = Math.max(a.e.c.side[1], b.e.c.side[1]);
-      const o = { e: LayoutRows.pairUnit(a.e, b.e, gap), rot: false, pair: [a.e, b.e], gap };
-      if (wide(o)) U.splice(k, 2, o);
+  pairs(slots, wide, done) {
+    const solo = slot => !slot.pair && !slot.rot && slot.e.kind === 'receiver' && !slot.e.slot;
+    for (let k = 0; k < slots.length - 1 && !done(); k++) {
+      const [first, second] = [slots[k], slots[k + 1]];
+      if (!solo(first) || !solo(second)) continue;
+      const gap = Math.max(first.e.c.side[1], second.e.c.side[1]);
+      const slot = { e: LayoutRows.pairUnit(first.e, second.e, gap), rot: false, pair: [first.e, second.e], gap };
+      if (wide(slot)) slots.splice(k, 2, slot);
     }
   }
 
   /** Ресиверы в конце ряда — парами поперёк во всю ширину; вплотную в паре — только где допускается. */
-  endPairs(U, wide, done) {
-    const solo = o => !o.pair && !o.rot && o.e.kind === 'receiver' && !o.e.slot && !o.e.cross;
-    let k = U.length;
-    while (k > 0 && solo(U[k - 1])) k--;
-    for (let j = U.length - 2; j >= k && !done(); j -= 2) {
-      const o = this.endPair(U[j].e, U[j + 1].e, wide);
-      if (!o) break;
-      U.splice(j, 2, o);
+  endPairs(slots, wide, done) {
+    const solo = slot => !slot.pair && !slot.rot && slot.e.kind === 'receiver' && !slot.e.slot && !slot.e.cross;
+    let k = slots.length;
+    while (k > 0 && solo(slots[k - 1])) k--;
+    for (let j = slots.length - 2; j >= k && !done(); j -= 2) {
+      const slot = this.endPair(slots[j].e, slots[j + 1].e, wide);
+      if (!slot) break;
+      slots.splice(j, 2, slot);
     }
   }
 
-  endPair(a, b, wide) {
-    const side = Math.max(a.c.side[1], b.c.side[1]);
+  endPair(first, second, wide) {
+    const side = Math.max(first.c.side[1], second.c.side[1]);
     const gaps = this.lay.closeOk ? [side, 0] : [side];
     return (
-      gaps.map(gap => ({ e: LayoutRows.pairUnit(a, b, gap), rot: false, pair: [a, b], gap, end: true })).find(wide) ||
-      null
+      gaps
+        .map(gap => ({ e: LayoutRows.pairUnit(first, second, gap), rot: false, pair: [first, second], gap, end: true }))
+        .find(wide) || null
     );
   }
 
   /** Пара ресиверов → два места: передний — у прохода, задний — за ним. */
-  unpair(it, geo) {
-    const [f, b] = it.o.pair;
-    const g = it.o.gap;
-    const mark = it.o.end ? { pairEnd: true } : {};
-    const make = (e, y, d, back, aisle) => ({
+  unpair(item, geo) {
+    const [front, rear] = item.o.pair;
+    const gap = item.o.gap;
+    const mark = item.o.end ? { pairEnd: true } : {};
+    const make = (unit, y, depth, back, aisle) => ({
       ...this.lay.item(
         {
-          o: { e, rot: false },
-          ri: it.ri,
-          x: it.x + Math.round((it.lx - e.l) / 2),
-          lx: e.l,
-          d,
+          o: { e: unit, rot: false },
+          ri: item.ri,
+          x: item.x + Math.round((item.lx - unit.l) / 2),
+          lx: unit.l,
+          d: depth,
           y,
-          face: it.face,
+          face: item.face,
           back,
           aisle,
         },
@@ -168,309 +176,326 @@ export class LayoutRows {
       pair: true,
       ...mark,
     });
-    return [make(f, it.y, f.w, it.back + g + b.w, it.aisle), make(b, it.y + f.w + g, b.w, it.back, it.aisle + f.w + g)];
+    return [
+      make(front, item.y, front.w, item.back + gap + rear.w, item.aisle),
+      make(rear, item.y + front.w + gap, rear.w, item.back, item.aisle + front.w + gap),
+    ];
   }
 
   /** Распределение по двум рядам: задний — ДГУ и цепочка воздуха, ресиверы — подряд в одном ряду, прочее — в короткий. */
   split(units) {
-    const A = [];
-    const B = [];
+    const rowA = [];
+    const rowB = [];
     let recv = null;
-    for (const e of units) {
-      const o = { e, rot: false };
-      if (LayoutRows.backRow(e, units)) B.push(o);
-      else if (e.kind === 'receiver' && recv) recv.push(o);
+    for (const unit of units) {
+      const slot = { e: unit, rot: false };
+      if (LayoutRows.backRow(unit, units)) rowB.push(slot);
+      else if (unit.kind === 'receiver' && recv) recv.push(slot);
       else {
-        const row = this.length(A, 1) <= this.length(B, 1) ? A : B;
-        row.push(o);
-        if (e.kind === 'receiver') recv = row;
+        const row = this.length(rowA, 1) <= this.length(rowB, 1) ? rowA : rowB;
+        row.push(slot);
+        if (unit.kind === 'receiver') recv = row;
       }
     }
-    return [A, B];
+    return [rowA, rowB];
   }
 
   /** Два ряда у длинных стен, проход посередине. */
-  two(units, Lu, W, noRotate) {
+  two(units, lenMax, wid, noRotate) {
     const lay = this.lay;
-    const [A, B] = this.split(units);
-    if (!A.length || !B.length) return { ok: false, why: 'rows' };
-    const deep = R => Math.max(...R.map(o => depthOf(o) + o.e.c.back[1]));
-    const aMin = Math.max(...[...A, ...B].map(o => lay.front(o.e)[1]));
-    const fits = () => W - deep(A) - deep(B) >= aMin;
+    const [rowA, rowB] = this.split(units);
+    if (!rowA.length || !rowB.length) return { ok: false, why: 'rows' };
+    const deep = row => Math.max(...row.map(slot => LayoutRows._depthOf(slot) + slot.e.c.back[1]));
+    const aMin = Math.max(...[...rowA, ...rowB].map(slot => lay.front(slot.e)[1]));
+    const fits = () => wid - deep(rowA) - deep(rowB) >= aMin;
     if (!fits()) return { ok: false, why: 'width2' };
-    let lv = 1;
-    const L = () => Math.max(this.length(A, lv), this.length(B, lv));
-    const L0 = Math.max(this.length(A, 0), this.length(B, 0));
-    if (L() > Lu && !noRotate)
+    let level = 1;
+    const lenFn = () => Math.max(this.length(rowA, level), this.length(rowB, level));
+    const len0 = Math.max(this.length(rowA, 0), this.length(rowB, 0));
+    if (lenFn() > lenMax && !noRotate)
       LayoutRows.turn(
-        [...A, ...B].filter(o => LayoutRows.turnable(o.e)),
+        [...rowA, ...rowB].filter(slot => LayoutRows.turnable(slot.e)),
         fits,
-        () => L() <= Lu,
+        () => lenFn() <= lenMax,
       );
-    const fitsAt = v => Math.max(this.length(A, v), this.length(B, v)) <= Lu;
-    if (L() > Lu && lay.closeOk) lv = [2, 3].find(fitsAt) || 1;
-    if (L() > Lu)
+    const fitsAt = v => Math.max(this.length(rowA, v), this.length(rowB, v)) <= lenMax;
+    if (lenFn() > lenMax && lay.closeOk) level = [2, 3].find(fitsAt) || 1;
+    if (lenFn() > lenMax)
       return {
         ok: false,
         why: 'length2',
-        needL: L(),
-        needL0: L0,
-        needLc: Math.max(this.length(A, 2), this.length(B, 2)),
+        needL: lenFn(),
+        needL0: len0,
+        needLc: Math.max(this.length(rowA, 2), this.length(rowB, 2)),
       };
-    return this.place([B, A], { Lu, W, lv });
+    return this.place([rowB, rowA], { Lu: lenMax, W: wid, lv: level });
   }
 
   /**
    * Без сквозного прохода (исключение): один ряд, а агрегат, который с проходом не встаёт по ширине, — поперёк лицом к
    * входу; за ним — вторая часть станции со своей дверью оператора.
    */
-  cross(units, Lu, W, noRotate) {
+  cross(units, lenMax, wid, noRotate) {
     const lay = this.lay;
-    const U = units.map(e => ({ e, rot: false }));
-    const canRot = o => !noRotate && LayoutRows.turnable(o.e);
-    const need = o => depthOf(o) + o.e.c.back[1] + lay.front(o.e)[1];
-    const wide = o => o.e.cross || need(o) <= W;
-    this.widen(U, wide, canRot);
-    const narrow = U.filter(o => !wide(o));
+    const slots = units.map(unit => ({ e: unit, rot: false }));
+    const canRot = slot => !noRotate && LayoutRows.turnable(slot.e);
+    const need = slot => LayoutRows._depthOf(slot) + slot.e.c.back[1] + lay.front(slot.e)[1];
+    const wide = slot => slot.e.cross || need(slot) <= wid;
+    this.widen(slots, wide, canRot);
+    const narrow = slots.filter(slot => !wide(slot));
     if (narrow.length !== 1) {
       return {
         ok: false,
         why: 'width',
-        bad: narrow.map(o => o.e),
-        needW: narrow.length ? Math.max(...narrow.map(need)) : W + 1,
+        bad: narrow.map(slot => slot.e),
+        needW: narrow.length ? Math.max(...narrow.map(need)) : wid + 1,
       };
     }
-    const X = narrow[0];
-    if (/^(dgu|cabinet|pump)$/.test(X.e.kind) || X.e.slot || X.e.l > W)
-      return { ok: false, why: 'width', bad: [X.e], needW: need(X) };
-    X.rot = false;
-    X.e = { ...X.e, cross: true };
-    const len = lvl => this.length(U, lvl);
-    if (len(1) > Lu)
+    const widest = narrow[0];
+    if (/^(dgu|cabinet|pump)$/.test(widest.e.kind) || widest.e.slot || widest.e.l > wid)
+      return { ok: false, why: 'width', bad: [widest.e], needW: need(widest) };
+    widest.rot = false;
+    widest.e = { ...widest.e, cross: true };
+    const len = lvl => this.length(slots, lvl);
+    if (len(1) > lenMax)
       LayoutRows.turn(
-        U.filter(o => !o.e.cross && canRot(o)),
+        slots.filter(slot => !slot.e.cross && canRot(slot)),
         wide,
-        () => len(1) <= Lu,
+        () => len(1) <= lenMax,
       );
-    const lv = this.squeeze(U, len, Lu, wide, noRotate);
-    if (len(lv) > Lu) return { ok: false, why: 'length', needL: len(1), needL0: len(0), needLc: len(2) };
-    return this.place([U], { Lu, W, lv });
+    const level = this.squeeze(slots, len, lenMax, wide, noRotate);
+    if (len(level) > lenMax) return { ok: false, why: 'length', needL: len(1), needL0: len(0), needLc: len(2) };
+    return this.place([slots], { Lu: lenMax, W: wid, lv: level });
   }
 
   /** Промежутки по длине ряда: у двери, между соседними, в дальнем торце (lvl 0 — рекомендуемые, 1 — не менее). */
-  chain(E, lvl) {
-    if (!E.length) return { gaps: [], sum: 0 };
+  chain(units, lvl) {
+    if (!units.length) return { gaps: [], sum: 0 };
     const lay = this.lay;
-    const l1 = Math.min(1, lvl);
-    const front = e => lay.front(e)[l1];
-    const behind = e => Math.max(e.c.back[l1], lay.aisle[1]);
-    const neighbours = (a, b) => {
-      const p = StationMatrix.pair(a, b);
-      if (!p) return Math.max(a.c.side[l1], b.c.side[l1]);
-      if (lvl >= 2 && (a.pairD || b.pairD)) return Math.max(p[2], Math.min(p[1], StationMatrix.recv().pairSide));
-      return p[Math.min(lvl, 2)];
+    const level1 = Math.min(1, lvl);
+    const front = unit => lay.front(unit)[level1];
+    const behind = unit => Math.max(unit.c.back[level1], lay.aisle[1]);
+    const neighbours = (prev, next) => {
+      const pair = StationMatrix.pair(prev, next);
+      if (!pair) return Math.max(prev.c.side[level1], next.c.side[level1]);
+      if (lvl >= 2 && (prev.pairD || next.pairD))
+        return Math.max(pair[2], Math.min(pair[1], StationMatrix.recv().pairSide));
+      return pair[Math.min(lvl, 2)];
     };
-    const end = e => {
-      const S = StationMatrix.sides(e.kind);
-      return Math.max(e.c.side[l1], lvl < 3 && (S.L || S.R) ? StationMatrix.access().side : 0);
+    const end = unit => {
+      const sides = StationMatrix.sides(unit.kind);
+      return Math.max(unit.c.side[level1], lvl < 3 && (sides.L || sides.R) ? StationMatrix.access().side : 0);
     };
-    const between = (a, b) => {
-      if (b.cross) return Math.max(a.c.side[l1], front(b));
-      if (a.cross) return Math.max(behind(a), b.c.side[l1]);
-      return neighbours(a, b);
+    const between = (prev, next) => {
+      if (next.cross) return Math.max(prev.c.side[level1], front(next));
+      if (prev.cross) return Math.max(behind(prev), next.c.side[level1]);
+      return neighbours(prev, next);
     };
-    const last = E[E.length - 1];
+    const last = units[units.length - 1];
     const tail = () => {
       if (last.cross) return behind(last);
-      return last.c.far ? last.c.far[l1] : end(last);
+      return last.c.far ? last.c.far[level1] : end(last);
     };
-    const gaps = [E[0].cross ? front(E[0]) : end(E[0]), ...E.slice(1).map((e, i) => between(E[i], e)), tail()];
-    return { gaps, sum: sum(gaps) };
+    const gaps = [
+      units[0].cross ? front(units[0]) : end(units[0]),
+      ...units.slice(1).map((unit, i) => between(units[i], unit)),
+      tail(),
+    ];
+    return { gaps, sum: Num.sum(gaps) };
   }
 
   /**
    * Без продольного прохода (исключение, компрессорная): компрессоры у торца по середине ширины, рядом в ряд, с
    * сервисными воротами с обеих сторон; дверь оператора — за последним; ресиверы — парами поперёк у дальнего торца.
    */
-  ends(units, Lu, W, T = 0, pe = StationMatrix.door().edge) {
-    const C = units.filter(e => e.kind === 'compressor' && !e.slot);
-    if (!C.length || units.some(e => /^(dgu|pump|tank)$/.test(e.kind))) return { ok: false, why: 'mode' };
-    const tightOf = e => {
-      const wt = StationMatrix.wall(e);
-      return wt ? wt[1] : e.c.back[1];
+  ends(units, lenMax, wid, wallT = 0, edge = StationMatrix.door().edge) {
+    const comps = units.filter(unit => unit.kind === 'compressor' && !unit.slot);
+    if (!comps.length || units.some(unit => /^(dgu|pump|tank)$/.test(unit.kind))) return { ok: false, why: 'mode' };
+    const tightOf = unit => {
+      const wallT2 = StationMatrix.wall(unit);
+      return wallT2 ? wallT2[1] : unit.c.back[1];
     };
-    const wide = C.filter(e => e.w + 2 * tightOf(e) > W);
+    const wide = comps.filter(unit => unit.w + 2 * tightOf(unit) > wid);
     if (wide.length)
-      return { ok: false, why: 'width', bad: wide, needW: Math.max(...wide.map(e => e.w + 2 * tightOf(e))) };
-    const U = this.endsOrder(C, units);
-    this.endsPairs(U, W, tightOf(C[0]));
-    const need = o => o.e.w + o.e.c.back[1] + this.lay.front(o.e)[1];
-    const bad = U.filter(o => !o.ends && !o.end && need(o) > W);
-    if (bad.length) return { ok: false, why: 'width', bad: bad.map(o => o.e), needW: Math.max(...bad.map(need)) };
-    return new EndsRow(this, { C, U, W, Lu, T, pe, tw: tightOf(C[0]) }).build();
+      return { ok: false, why: 'width', bad: wide, needW: Math.max(...wide.map(unit => unit.w + 2 * tightOf(unit))) };
+    const slots = this.endsOrder(comps, units);
+    this.endsPairs(slots, wid, tightOf(comps[0]));
+    const need = slot => slot.e.w + slot.e.c.back[1] + this.lay.front(slot.e)[1];
+    const bad = slots.filter(slot => !slot.ends && !slot.end && need(slot) > wid);
+    if (bad.length) return { ok: false, why: 'width', bad: bad.map(slot => slot.e), needW: Math.max(...bad.map(need)) };
+    return new EndsRow(this, { comps, slots, wid, lenMax, wallT, edge, tightW: tightOf(comps[0]) }).build();
   }
 
   /** Компрессоры — первыми; шкафы и фильтры без места на стене и трубе — перед ресиверами (ресиверы — у дальнего торца). */
-  endsOrder(C, units) {
-    const isR = e => e.kind === 'receiver' && !e.slot;
-    const rest = units.filter(e => !C.includes(e));
-    let t = rest.length;
-    while (t > 0 && (isR(rest[t - 1]) || rest[t - 1].slot)) t--;
-    const tail = rest.slice(t);
-    const order = [...rest.slice(0, t), ...tail.filter(e => !isR(e)), ...tail.filter(isR)];
-    return [...C.map(e => ({ e, rot: false, ends: true })), ...order.map(e => ({ e, rot: false }))];
+  endsOrder(comps, units) {
+    const isR = unit => unit.kind === 'receiver' && !unit.slot;
+    const rest = units.filter(unit => !comps.includes(unit));
+    let count = rest.length;
+    while (count > 0 && (isR(rest[count - 1]) || rest[count - 1].slot)) count--;
+    const tail = rest.slice(count);
+    const order = [...rest.slice(0, count), ...tail.filter(unit => !isR(unit)), ...tail.filter(isR)];
+    return [
+      ...comps.map(unit => ({ e: unit, rot: false, ends: true })),
+      ...order.map(unit => ({ e: unit, rot: false })),
+    ];
   }
 
   /** Ресиверы в конце — парами поперёк: от стен до «плотно» компрессора, промежуток в паре — по правилу, при нехватке — меньше. */
-  endsPairs(U, W, tw) {
-    let k = U.length;
-    while (k > 1 && U[k - 1].e.kind === 'receiver' && !U[k - 1].e.slot) k--;
-    const cw = (StationMatrix.wall({ kind: 'compressor', w: 0 }) || [0, 100])[1];
-    for (let j = U.length - 2; j >= k; j -= 2) {
-      const [a, b] = [U[j].e, U[j + 1].e];
-      const pr = StationMatrix.pair(a, b);
-      const rw = Math.min(Math.max(a.c.back[1], b.c.back[1]), cw);
-      const lo = this.pairLow(pr);
-      const g = Math.min(pr ? pr[0] : 300, W - a.w - b.w - 2 * rw);
-      if (g < lo || W - a.w - b.w - g < 2 * tw) break;
-      U.splice(j, 2, { e: LayoutRows.pairUnit(a, b, g), rot: false, pair: [a, b], gap: g, end: true });
+  endsPairs(slots, wid, tightW) {
+    let k = slots.length;
+    while (k > 1 && slots[k - 1].e.kind === 'receiver' && !slots[k - 1].e.slot) k--;
+    const compWall = (StationMatrix.wall({ kind: 'compressor', w: 0 }) || [0, 100])[1];
+    for (let j = slots.length - 2; j >= k; j -= 2) {
+      const [first, second] = [slots[j].e, slots[j + 1].e];
+      const pair = StationMatrix.pair(first, second);
+      const recWall = Math.min(Math.max(first.c.back[1], second.c.back[1]), compWall);
+      const low = this.pairLow(pair);
+      const gap = Math.min(pair ? pair[0] : 300, wid - first.w - second.w - 2 * recWall);
+      if (gap < low || wid - first.w - second.w - gap < 2 * tightW) break;
+      slots.splice(j, 2, {
+        e: LayoutRows.pairUnit(first, second, gap),
+        rot: false,
+        pair: [first, second],
+        gap,
+        end: true,
+      });
     }
   }
 
-  pairLow(pr) {
-    if (!pr) return 300;
-    return pr[2] === 0 ? 0 : pr[1];
+  pairLow(pair) {
+    if (!pair) return 300;
+    return pair[2] === 0 ? 0 : pair[1];
   }
 
   /** Места в рядах: R[0] — у задней стены, R[1] — у стены с дверью; отступы — от «не менее» к рекомендуемым. */
-  place(R, { Lu, W, lv = 1 }) {
+  place(rowList, { Lu: lenMax, W: wid, lv: level = 1 }) {
     const items = [];
     const span = { short: false, min: Infinity };
-    R.forEach((row, ri) => {
-      if (row.length) items.push(...this.alongRow(row, ri, Lu, lv, span));
+    rowList.forEach((row, rowNo) => {
+      if (row.length) items.push(...this.alongRow(row, rowNo, lenMax, level, span));
     });
     StationTidy.even(items);
-    const rows = R.filter(r => r.length).length;
-    if (rows === 1) for (const it of items) this.acrossOne(it, W);
-    else this.acrossTwo(items, W);
+    const rows = rowList.filter(one => one.length).length;
+    if (rows === 1) for (const item of items) this.acrossOne(item, wid);
+    else this.acrossTwo(items, wid);
     const aRec = this.lay.aisle[0];
-    StationTidy.facade(items, W, rows, aRec);
-    const eq = items.filter(i => !i.o.e.slot && !i.o.e.cross && !i.o.end);
+    StationTidy.facade(items, wid, rows, aRec);
+    const equip = items.filter(i => !i.o.e.slot && !i.o.e.cross && !i.o.end);
     return {
       ok: true,
       rows,
-      aisleW: eq.length ? Math.min(...eq.map(i => i.aisle)) : W,
+      aisleW: equip.length ? Math.min(...equip.map(i => i.aisle)) : wid,
       items,
-      iss: this.placeNotes(eq, span),
+      iss: this.placeNotes(equip, span),
     };
   }
 
   /** Ряд по длине: промежутки между «не менее» и рекомендуемыми, свободная длина — у двери (после шкафов). */
-  alongRow(row, ri, Lu, lv, span) {
-    const E = row.map(o => o.e);
-    const rec = this.chain(E, 0);
-    const min = this.chain(E, lv);
-    const body = sum(row.map(lenOf));
-    const k = rec.sum > min.sum ? Math.max(0, Math.min(1, (Lu - body - min.sum) / (rec.sum - min.sum))) : 1;
+  alongRow(row, rowNo, lenMax, level, span) {
+    const units = row.map(slot => slot.e);
+    const rec = this.chain(units, 0);
+    const min = this.chain(units, level);
+    const body = Num.sum(row.map(LayoutRows._lenOf));
+    const k = rec.sum > min.sum ? Math.max(0, Math.min(1, (lenMax - body - min.sum) / (rec.sum - min.sum))) : 1;
     const gaps = min.gaps.map((v, i) => Math.round(v + (rec.gaps[i] - v) * k));
-    for (let over = body + sum(gaps) - Lu, i = gaps.length - 1; over > 0 && i >= 0; i--) {
-      const d = Math.min(over, gaps[i]);
-      gaps[i] -= d;
-      over -= d;
+    for (let over = body + Num.sum(gaps) - lenMax, i = gaps.length - 1; over > 0 && i >= 0; i--) {
+      const shift = Math.min(over, gaps[i]);
+      gaps[i] -= shift;
+      over -= shift;
     }
-    const free = Lu - body - sum(gaps);
+    const free = lenMax - body - Num.sum(gaps);
     if (k < 1) span.short = true;
     const lead = Math.max(
       0,
-      E.findIndex(e => e.kind !== 'cabinet'),
+      units.findIndex(unit => unit.kind !== 'cabinet'),
     );
     const out = [];
     let x = gaps[0];
-    row.forEach((o, i) => {
+    row.forEach((slot, i) => {
       if (i === lead && free > 0) x += free;
-      out.push({ o, ri, x, lx: lenOf(o), d: depthOf(o) });
+      out.push({ o: slot, ri: rowNo, x, lx: LayoutRows._lenOf(slot), d: LayoutRows._depthOf(slot) });
       if (i > 0) span.min = Math.min(span.min, gaps[i]);
-      x += lenOf(o) + gaps[i + 1];
+      x += LayoutRows._lenOf(slot) + gaps[i + 1];
     });
     return out;
   }
 
   /** Один ряд поперёк: сначала задний отступ до рекомендуемого (если проход не уже допустимого), затем проход. */
-  acrossOne(it, W) {
-    const b = it.o.e.c.back;
-    const budget = W - it.d;
-    const [fr, fm] = this.lay.front(it.o.e);
-    if (it.o.e.cross) {
-      Object.assign(it, { y: Math.round(budget / 2), aisle: 0, face: -2 });
-      it.back = it.y;
+  acrossOne(item, wid) {
+    const back = item.o.e.c.back;
+    const budget = wid - item.d;
+    const [front, frontMin] = this.lay.front(item.o.e);
+    if (item.o.e.cross) {
+      Object.assign(item, { y: Math.round(budget / 2), aisle: 0, face: -2 });
+      item.back = item.y;
       return;
     }
-    if (it.o.end) {
-      const wall = Math.min(b[1], StationMatrix.recv().pairWall);
-      it.back = Math.min(Math.max(wall, Math.round(budget / 2)), budget - wall);
+    if (item.o.end) {
+      const wall = Math.min(back[1], StationMatrix.recv().pairWall);
+      item.back = Math.min(Math.max(wall, Math.round(budget / 2)), budget - wall);
     } else {
-      it.back = LayoutRows.backFor(b, budget, fm);
-      if (budget - it.back > fr && it.back < b[0]) it.back = Math.min(b[0], budget - fr);
+      item.back = LayoutRows.backFor(back, budget, frontMin);
+      if (budget - item.back > front && item.back < back[0]) item.back = Math.min(back[0], budget - front);
     }
-    it.aisle = budget - it.back;
-    it.y = W - it.back - it.d;
-    it.face = -1;
+    item.aisle = budget - item.back;
+    item.y = wid - item.back - item.d;
+    item.face = -1;
   }
 
   /** Два ряда: сзади рекомендуемый, если проход не уже допустимого; иначе излишек прохода — поровну рядам назад. */
-  acrossTwo(items, W) {
+  acrossTwo(items, wid) {
     const lay = this.lay;
-    const back = it => it.o.e.c.back;
-    const A = items.filter(i => i.ri === 1);
-    const B = items.filter(i => i.ri === 0);
-    const deep = (S, f) => (S.length ? Math.max(...S.map(f)) : 0);
-    const recOk = W - deep(A, i => i.d + back(i)[0]) - deep(B, i => i.d + back(i)[0]) >= lay.aisle[1];
-    for (const it of items) it.back = recOk ? back(it)[0] : back(it)[1];
+    const back = item => item.o.e.c.back;
+    const rowA = items.filter(i => i.ri === 1);
+    const rowB = items.filter(i => i.ri === 0);
+    const deep = (list, pick) => (list.length ? Math.max(...list.map(pick)) : 0);
+    const recOk = wid - deep(rowA, i => i.d + back(i)[0]) - deep(rowB, i => i.d + back(i)[0]) >= lay.aisle[1];
+    for (const item of items) item.back = recOk ? back(item)[0] : back(item)[1];
     if (!recOk) {
       const per =
-        Math.max(0, W - deep(A, i => i.d + i.back) - deep(B, i => i.d + i.back) - lay.aisle[0]) /
-        ((A.length ? 1 : 0) + (B.length ? 1 : 0));
-      for (const it of items) it.back = Math.floor(Math.min(back(it)[0], back(it)[1] + per));
+        Math.max(0, wid - deep(rowA, i => i.d + i.back) - deep(rowB, i => i.d + i.back) - lay.aisle[0]) /
+        ((rowA.length ? 1 : 0) + (rowB.length ? 1 : 0));
+      for (const item of items) item.back = Math.floor(Math.min(back(item)[0], back(item)[1] + per));
     }
-    const free = W - deep(A, i => i.d + i.back) - deep(B, i => i.d + i.back);
-    for (const it of B) Object.assign(it, { y: W - it.back - it.d, face: -1, aisle: free });
-    for (const it of A) Object.assign(it, { y: it.back, face: 1, aisle: free });
+    const free = wid - deep(rowA, i => i.d + i.back) - deep(rowB, i => i.d + i.back);
+    for (const item of rowB) Object.assign(item, { y: wid - item.back - item.d, face: -1, aisle: free });
+    for (const item of rowA) Object.assign(item, { y: item.back, face: 1, aisle: free });
   }
 
   /** Замечания расстановки: проход уже рекомендуемого, промежутки уменьшены, агрегат близко к стене. */
-  placeNotes(eq, span) {
+  placeNotes(equip, span) {
     const lay = this.lay;
     const aRec = lay.aisle[0];
     const iss = [];
-    const dgu = eq.find(i => i.o.e.kind === 'dgu');
-    const other = eq.filter(i => i.o.e.kind !== 'dgu');
+    const dgu = equip.find(i => i.o.e.kind === 'dgu');
+    const other = equip.filter(i => i.o.e.kind !== 'dgu');
     const aisleO = other.length ? Math.min(...other.map(i => i.aisle)) : Infinity;
     if (aisleO < aRec)
       iss.push({
         level: 'warn',
-        text: `Проход обслуживания ${n(aisleO)} мм — меньше рекомендуемых ${n(aRec)} мм (допустимо от ${n(lay.aisle[1])} мм).`,
+        text: `Проход обслуживания ${Mm.text(aisleO)} мм — меньше рекомендуемых ${Mm.text(aRec)} мм (допустимо от ${Mm.text(lay.aisle[1])} мм).`,
       });
     if (dgu && dgu.aisle < aRec) {
       iss.push({
         level: 'warn',
-        text: `Проход вдоль ДГУ ${n(dgu.aisle)} мм — меньше рекомендуемых ${n(aRec)} мм (допустимо от ${n(lay.front(dgu.o.e)[1])} мм).`,
+        text: `Проход вдоль ДГУ ${Mm.text(dgu.aisle)} мм — меньше рекомендуемых ${Mm.text(aRec)} мм (допустимо от ${Mm.text(lay.front(dgu.o.e)[1])} мм).`,
       });
     }
     if (span.short) {
       iss.push({
         level: 'warn',
         text: Number.isFinite(span.min)
-          ? `Промежутки между оборудованием уменьшены до ${n(span.min)} мм — по длине не хватает места для рекомендуемых.`
+          ? `Промежутки между оборудованием уменьшены до ${Mm.text(span.min)} мм — по длине не хватает места для рекомендуемых.`
           : 'Отступы от торцов уменьшены — по длине не хватает места для рекомендуемых.',
       });
     }
-    for (const it of eq) {
-      const rec = it.o.e.c.back[0];
-      if (it.back < rec && rec > 150 && !it.o.e.unit) {
+    for (const item of equip) {
+      const rec = item.o.e.c.back[0];
+      if (item.back < rec && rec > 150 && !item.o.e.unit) {
         iss.push({
           level: 'warn',
-          tight: it.o.e.pos,
-          text: `Поз. ${it.o.e.pos} «${it.o.e.short}» стоит в ${n(it.back + lay.G)} мм от стены — рекомендуется ${n(rec + lay.G)} мм.`,
+          tight: item.o.e.pos,
+          text: `Поз. ${item.o.e.pos} «${item.o.e.short}» стоит в ${Mm.text(item.back + lay.gap)} мм от стены — рекомендуется ${Mm.text(rec + lay.gap)} мм.`,
         });
       }
     }
@@ -480,83 +505,102 @@ export class LayoutRows {
 
 /** Ряд без продольного прохода: промежутки у торца и между компрессорами (их сервисные ворота и двери оператора). */
 class EndsRow {
-  constructor(rows, { C, U, W, Lu, T, pe, tw }) {
-    Object.assign(this, { rows, lay: rows.lay, C, U, W, Lu, T, pe, tw });
-    this.Ew = LayoutOpening.ENTRY[1] - LayoutOpening.ENTRY[0];
-    this.dg = StationMatrix.door().gap;
+  constructor(rows, { comps, slots, wid, lenMax, wallT, edge, tightW }) {
+    Object.assign(this, { rows, lay: rows.lay, comps, slots, wid, lenMax, wallT, edge, tightW });
+    this.entryW = LayoutOpening.ENTRY[1] - LayoutOpening.ENTRY[0];
+    this.doorGap = StationMatrix.door().gap;
   }
 
   /** Выступ сервисных ворот компрессора за его бока. */
-  over(e) {
-    return Math.max(0, (LayoutOpening.svcW(e.l, this.T) - e.l) / 2);
+  over(unit) {
+    return Math.max(0, (LayoutOpening.svcW(unit.l, this.wallT) - unit.l) / 2);
   }
 
   /** От торца — «плотно», но ворота не упираются в угол; между компрессорами — не меньше modes.next и дверь оператора. */
   gapsAt(lvl) {
-    const { C, Ew, dg } = this;
-    const nc = C.length;
+    const { comps: comps, entryW: entryW, doorGap: doorGap } = this;
+    const countC = comps.length;
     const pad = LayoutOpening.DOOR.pad;
     const next = StationMatrix.modes().next;
-    const g = this.rows.chain(
-      this.U.map(o => o.e),
+    const gaps = this.rows.chain(
+      this.slots.map(slot => slot.e),
       lvl,
     ).gaps;
-    g[0] = Math.max(this.tw, Math.ceil(this.over(C[0]) + Math.max(pad, this.pe) - this.lay.G));
-    for (let i = 1; i < nc; i++)
-      g[i] = Math.max(g[i], next, Math.ceil(this.over(C[i - 1]) + this.over(C[i]) + 2 * dg + Ew));
-    g[nc] = Math.max(g[nc], Math.ceil(this.over(C[nc - 1]) + dg + Ew + pad), next);
-    return g;
+    gaps[0] = Math.max(this.tightW, Math.ceil(this.over(comps[0]) + Math.max(pad, this.edge) - this.lay.gap));
+    for (let i = 1; i < countC; i++)
+      gaps[i] = Math.max(
+        gaps[i],
+        next,
+        Math.ceil(this.over(comps[i - 1]) + this.over(comps[i]) + 2 * doorGap + entryW),
+      );
+    gaps[countC] = Math.max(gaps[countC], Math.ceil(this.over(comps[countC - 1]) + doorGap + entryW + pad), next);
+    return gaps;
   }
 
   build() {
-    const { U, Lu, C } = this;
-    const nc = C.length;
-    const body = sum(U.map(o => o.e.l));
+    const { slots: slots, lenMax: lenMax, comps: comps } = this;
+    const countC = comps.length;
+    const body = Num.sum(slots.map(slot => slot.e.l));
     const rec = this.gapsAt(0);
     const min = this.gapsAt(this.lay.closeOk ? 2 : 1);
-    if (body + sum(min) > Lu) return { ok: false, why: 'length', needL: body + sum(min), needL0: body + sum(rec) };
-    const q = sum(rec) > sum(min) ? Math.max(0, Math.min(1, (Lu - body - sum(min)) / (sum(rec) - sum(min)))) : 1;
-    const gaps = min.map((v, i) => Math.floor(v + (rec[i] - v) * q));
-    gaps[nc] += Lu - body - sum(gaps);
+    if (body + Num.sum(min) > lenMax)
+      return { ok: false, why: 'length', needL: body + Num.sum(min), needL0: body + Num.sum(rec) };
+    const share =
+      Num.sum(rec) > Num.sum(min)
+        ? Math.max(0, Math.min(1, (lenMax - body - Num.sum(min)) / (Num.sum(rec) - Num.sum(min))))
+        : 1;
+    const gaps = min.map((v, i) => Math.floor(v + (rec[i] - v) * share));
+    gaps[countC] += lenMax - body - Num.sum(gaps);
     const items = this.items(gaps);
-    const last = C[nc - 1];
-    const ce = items[nc - 1].x + last.l;
-    const e0 = Math.round(Math.max(ce + this.over(last) + this.dg, ce + (gaps[nc] - this.Ew) / 2));
-    const eq = items.filter(i => !i.o.ends && !i.o.end && !i.o.e.slot);
-    const aisleW = eq.length ? Math.min(...eq.map(i => i.aisle)) : this.W - C[0].w;
-    return { ok: true, rows: 1, aisleW, items, iss: this.notes(eq, aisleW, q, gaps), entry: [e0, e0 + this.Ew] };
+    const last = comps[countC - 1];
+    const compEnd = items[countC - 1].x + last.l;
+    const restX = Math.round(
+      Math.max(compEnd + this.over(last) + this.doorGap, compEnd + (gaps[countC] - this.entryW) / 2),
+    );
+    const equip = items.filter(i => !i.o.ends && !i.o.end && !i.o.e.slot);
+    const aisleW = equip.length ? Math.min(...equip.map(i => i.aisle)) : this.wid - comps[0].w;
+    return {
+      ok: true,
+      rows: 1,
+      aisleW,
+      items,
+      iss: this.notes(equip, aisleW, share, gaps),
+      entry: [restX, restX + this.entryW],
+    };
   }
 
   items(gaps) {
-    const { W } = this;
+    const { wid: wid } = this;
     const out = [];
     let x = gaps[0];
-    this.U.forEach((o, i) => {
-      const d = o.e.w;
-      const budget = W - d;
-      const it = { o, ri: 0, x, lx: o.e.l, d, face: -1 };
-      it.back =
-        o.ends || o.end ? Math.round(budget / 2) : LayoutRows.backFor(o.e.c.back, budget, this.lay.front(o.e)[0]);
-      it.aisle = budget - it.back;
-      it.y = W - it.back - d;
-      out.push(it);
-      x += o.e.l + gaps[i + 1];
+    this.slots.forEach((slot, i) => {
+      const depth = slot.e.w;
+      const budget = wid - depth;
+      const item = { o: slot, ri: 0, x, lx: slot.e.l, d: depth, face: -1 };
+      item.back =
+        slot.ends || slot.end
+          ? Math.round(budget / 2)
+          : LayoutRows.backFor(slot.e.c.back, budget, this.lay.front(slot.e)[0]);
+      item.aisle = budget - item.back;
+      item.y = wid - item.back - depth;
+      out.push(item);
+      x += slot.e.l + gaps[i + 1];
     });
     return out;
   }
 
-  notes(eq, aisleW, q, gaps) {
+  notes(equip, aisleW, share, gaps) {
     const iss = [];
     const [aRec, aMin] = this.lay.aisle;
-    if (eq.length && aisleW < aRec)
+    if (equip.length && aisleW < aRec)
       iss.push({
         level: 'warn',
-        text: `Проход обслуживания ${n(aisleW)} мм — меньше рекомендуемых ${n(aRec)} мм (допустимо от ${n(aMin)} мм).`,
+        text: `Проход обслуживания ${Mm.text(aisleW)} мм — меньше рекомендуемых ${Mm.text(aRec)} мм (допустимо от ${Mm.text(aMin)} мм).`,
       });
-    if (q < 1 && gaps.length > 2) {
+    if (share < 1 && gaps.length > 2) {
       iss.push({
         level: 'warn',
-        text: `Промежутки между оборудованием уменьшены до ${n(Math.min(...gaps.slice(1, -1)))} мм — по длине не хватает места для рекомендуемых.`,
+        text: `Промежутки между оборудованием уменьшены до ${Mm.text(Math.min(...gaps.slice(1, -1)))} мм — по длине не хватает места для рекомендуемых.`,
       });
     }
     return iss;

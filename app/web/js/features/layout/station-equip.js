@@ -5,18 +5,22 @@ import { StationMatrix } from './station-matrix.js';
 import { StationNorms } from './station-norms.js';
 import { TankSize } from './tank-size.js';
 
-const CABINET = /шкаф|щит|(?:^|[^а-яё])АВР(?![а-яё])|пульт/i;
-const CHASSIS = /шасси|прицеп/i;
-const MUFFLER = /глушител/i;
-const PIPING = /трубопровод|топливопровод|обвязк/i;
-const SKIP =
-  /систем|освещ|электроснабж|сигнализац|пожар|обвязк|арматур|трубопровод|монтаж|вентиляц|отоплен|подогрев|кабел|комплект|ЗИП|документац|доставк|наладк|проект/i;
-
-/** Наименьшее значение таблицы ступеней [предел, значение], подходящее для v (v не задан — первое). */
-const step = (table, v) => table.find(([lim]) => v == null || v <= lim)[1];
-
 /** Оборудование из состава станции: вид, габариты, масса, цвет, форма, подписи. */
 export class StationEquip {
+  static CABINET = /шкаф|щит|(?:^|[^а-яё])АВР(?![а-яё])|пульт/i;
+
+  static CHASSIS = /шасси|прицеп/i;
+
+  static MUFFLER = /глушител/i;
+
+  static PIPING = /трубопровод|топливопровод|обвязк/i;
+
+  static SKIP =
+    /систем|освещ|электроснабж|сигнализац|пожар|обвязк|арматур|трубопровод|монтаж|вентиляц|отоплен|подогрев|кабел|комплект|ЗИП|документац|доставк|наладк|проект/i;
+
+  /** Наименьшее значение таблицы ступеней [предел, значение], подходящее для v (v не задан — первое). */
+  static _step = (table, v) => table.find(([lim]) => v == null || v <= lim)[1];
+
   static KINDS = [
     ['compressor', /^(comp_|blower$)/, /компрессор|воздуходувк/i],
     ['dryer', /^(dryer_|gen_n2$|gen_o2$)/, /осушител|генератор азота|генератор кислорода/i],
@@ -24,25 +28,25 @@ export class StationEquip {
     ['filter', /^(filter|oil_sep)$/, /фильтр|сепаратор|циклон/i],
     ['dgu', /^dgu$/, /дизель-?генератор|(?:^|[^а-яё])(?:ДГУ|ДЭС)(?![а-яё])|генераторн\S* установ/i],
     ['pump', /^pump$/, /насос|мотопомп/i],
-    ['cabinet', /^ats$/, CABINET],
+    ['cabinet', /^ats$/, StationEquip.CABINET],
     ['tank', null, /бак|[её]мкост/i],
   ];
 
-  static CABINET = CABINET;
+  static CABINET = StationEquip.CABINET;
   static CAB_FLOOR = /напольн/i;
   static CAB_WALL = /настенн|навесн|на стене/i;
-  static CHASSIS = CHASSIS;
-  static MUFFLER = MUFFLER;
-  static PIPING = PIPING;
-  static SKIP = SKIP;
+  static CHASSIS = StationEquip.CHASSIS;
+  static MUFFLER = StationEquip.MUFFLER;
+  static PIPING = StationEquip.PIPING;
+  static SKIP = StationEquip.SKIP;
 
   /** Виды по названию до общих слов: [образец, вид, только не для основного оборудования]. */
   static NAME_KINDS = [
-    [CHASSIS, 'chassis', false],
-    [MUFFLER, 'muffler', false],
-    [PIPING, 'piping', true],
-    [CABINET, 'cabinet', false],
-    [SKIP, 'skip', true],
+    [StationEquip.CHASSIS, 'chassis', false],
+    [StationEquip.MUFFLER, 'muffler', false],
+    [StationEquip.PIPING, 'piping', true],
+    [StationEquip.CABINET, 'cabinet', false],
+    [StationEquip.SKIP, 'skip', true],
   ];
 
   static LABEL = {
@@ -75,59 +79,61 @@ export class StationEquip {
   static DIM2 = /(\d+(?:[.,]\d+)?)\s*×\s*(\d+(?:[.,]\d+)?)(?:\s*×\s*(\d+(?:[.,]\d+)?))?/;
   static DIM3 = /(\d+(?:[.,]\d+)?)\s*×\s*(\d+(?:[.,]\d+)?)\s*×\s*(\d+(?:[.,]\d+)?)/;
 
-  static cat(p) {
-    return String((p.attrs && p.attrs.cat) || p.cat || '');
+  static cat(part) {
+    return String((part.attrs && part.attrs.cat) || part.cat || '');
   }
 
   /** Вид оборудования: по категории каталога, иначе по названию. */
-  static kindOf(p) {
-    if (p.role === 'container') return 'container';
-    const cat = this.cat(p);
-    const name = String(p.name || '');
-    const main = p.role === 'main';
-    const byCat = cat && this.KINDS.find(([, re]) => re && re.test(cat));
+  static kindOf(part) {
+    if (part.role === 'container') return 'container';
+    const cat = this.cat(part);
+    const name = String(part.name || '');
+    const main = part.role === 'main';
+    const byCat = cat && this.KINDS.find(([, pattern]) => pattern && pattern.test(cat));
     if (byCat) return byCat[0];
-    const byName = this.NAME_KINDS.find(([re, , extra]) => !(extra && main) && re.test(name));
+    const byName = this.NAME_KINDS.find(([pattern, , extra]) => !(extra && main) && pattern.test(name));
     if (byName) return byName[1];
-    const byWord = this.KINDS.find(([, , re]) => re.test(name));
+    const byWord = this.KINDS.find(([, , pattern]) => pattern.test(name));
     if (byWord) return byWord[0];
     return main ? 'other' : '';
   }
 
   static num(v) {
-    const n = parseFloat(
+    const value = parseFloat(
       String(v ?? '')
         .replace(/\s+/g, '')
         .replace(',', '.'),
     );
-    return Number.isFinite(n) ? n : null;
+    return Number.isFinite(value) ? value : null;
   }
 
   /** Число поля каталога; диапазон или «до 40» — верхняя граница: {v, range} или null. */
   static top(v) {
-    const n = this.num(v);
-    if (n != null && /^\s*[\d.,\s]+\s*$/.test(String(v))) return { v: n, range: false };
-    const all = (String(v ?? '').match(/\d[\d\s]*(?:[.,]\d+)?/g) || []).map(t => this.num(t)).filter(x => x != null);
+    const value = this.num(v);
+    if (value != null && /^\s*[\d.,\s]+\s*$/.test(String(v))) return { v: value, range: false };
+    const all = (String(v ?? '').match(/\d[\d\s]*(?:[.,]\d+)?/g) || [])
+      .map(token => this.num(token))
+      .filter(x => x != null);
     return all.length ? { v: Math.max(...all), range: true } : null;
   }
 
   /** Расход воздуха по паспорту, м³/ч: cool — на охлаждение, comb — на горение; heat — тепловыделение, кВт. */
-  static airRows(p) {
+  static airRows(part) {
     const out = { cool: null, comb: null, heat: null };
-    for (const r of p.rows || []) if (r) this.airRow(out, r);
+    for (const row of part.rows || []) if (row) this.airRow(out, row);
     return out;
   }
 
-  static airRow(out, r) {
-    const k = String(r.k || '');
+  static airRow(out, row) {
+    const k = String(row.k || '');
     if (/тепловыделен|теплоотдач|тепловой поток|тепловая мощность/i.test(k) && !/рекупер|возврат/i.test(k)) {
-      this.heatRow(out, r);
+      this.heatRow(out, row);
       return;
     }
     if (!/воздух/i.test(k) || !/расход|поток|производительн/i.test(k)) return;
-    const q = this.airFlow(r.v);
-    const use = this.airUse(k, String(r.v || ''));
-    if (q > 0 && use) out[use] = out[use] || q;
+    const flow = this.airFlow(row.v);
+    const use = this.airUse(k, String(row.v || ''));
+    if (flow > 0 && use) out[use] = out[use] || flow;
   }
 
   /** Расход на горение (comb) или на охлаждение (cool) по названию строки. */
@@ -137,9 +143,9 @@ export class StationEquip {
   }
 
   /** Тепловыделение по паспорту, кВт (рекуперируемая доля — не всё тепло, не берётся). */
-  static heatRow(out, r) {
-    const h = String(r.v || '').match(/(\d+(?:[.,]\d+)?)\s*(квт|kw)/i);
-    if (h && !out.heat) out.heat = this.num(h[1]);
+  static heatRow(out, row) {
+    const heat = String(row.v || '').match(/(\d+(?:[.,]\d+)?)\s*(квт|kw)/i);
+    if (heat && !out.heat) out.heat = this.num(heat[1]);
   }
 
   static PER_HOUR = [
@@ -149,107 +155,110 @@ export class StationEquip {
 
   /** «1 200 м³/мин» → м³/ч; нет единицы расхода — null. */
   static airFlow(v) {
-    const m = String(v || '')
+    const match = String(v || '')
       .replace(/(\d)\s+(?=\d{3}(?!\d))/g, '$1')
       .match(/(\d+(?:[.,]\d+)?)\s*(м³|м3|m³|m3)\s*\/\s*(ч|час|h|мин|min|с|сек|s)(?![А-Яа-яЁёA-Za-z])/i);
-    if (!m) return null;
-    const unit = m[3].toLowerCase();
-    const per = this.PER_HOUR.find(([re]) => re.test(unit));
-    return Math.round(this.num(m[1]) * (per ? per[1] : 1));
+    if (!match) return null;
+    const unit = match[3].toLowerCase();
+    const per = this.PER_HOUR.find(([pattern]) => pattern.test(unit));
+    return Math.round(this.num(match[1]) * (per ? per[1] : 1));
   }
 
   /** «1090 × 790 × 870», «1150*430», «109 х 79 х 87 см» → 2 или 3 числа в мм. */
   static nums(text) {
-    const a = this.sizes(text, this.DIM2);
-    return a && a.every(v => v >= 50 && v <= 20000) ? a : null;
+    const two = this.sizes(text, this.DIM2);
+    return two && two.every(v => v >= 50 && v <= 20000) ? two : null;
   }
 
   /** Размеры по образцу re (DIM2 | DIM3), мм: метры и сантиметры пересчитываются; нет — null. */
-  static sizes(text, re) {
-    const s = String(text || '')
+  static sizes(text, pattern) {
+    const clean = String(text || '')
       .replace(/(\d)\s+(?=\d{3}\b)/g, '$1')
       .replace(/[хxХX*]/g, '×');
-    const m = s.match(re);
-    if (!m) return null;
-    const a = [m[1], m[2], m[3]].filter(Boolean).map(v => parseFloat(v.replace(',', '.')));
-    const scale = this.sizeScale(a, s);
-    return a.map(v => Math.round(v * scale));
+    const match = clean.match(pattern);
+    if (!match) return null;
+    const nums = [match[1], match[2], match[3]].filter(Boolean).map(v => parseFloat(v.replace(',', '.')));
+    const scale = this.sizeScale(nums, clean);
+    return nums.map(v => Math.round(v * scale));
   }
 
-  static sizeScale(a, s) {
-    if (Math.max(...a) < 40) return 1000;
-    return /см/.test(s) ? 10 : 1;
+  static sizeScale(nums, text) {
+    if (Math.max(...nums) < 40) return 1000;
+    return /см/.test(text) ? 10 : 1;
   }
 
   /** Габариты, мм: {l ≥ w, h, known, src}; не указаны — условные по виду. */
-  static dims(p, kind) {
-    const found = this.sizeOf(p);
+  static dims(part, kind) {
+    const found = this.sizeOf(part);
     const { src } = found;
-    let { n } = found;
-    if (n && n.length === 2) n = this.twoSizes(n, p, kind);
-    if (n && n.length === 3 && kind === 'receiver' && this.standing(n, p)) {
-      const s = [...n].sort((x, y) => y - x);
-      n = [s[1], s[2], s[0]];
+    let { n: nums } = found;
+    if (nums && nums.length === 2) nums = this.twoSizes(nums, part, kind);
+    if (nums && nums.length === 3 && kind === 'receiver' && this.standing(nums, part)) {
+      const sorted = [...nums].sort((x, y) => y - x);
+      nums = [sorted[1], sorted[2], sorted[0]];
     }
-    if (n && n.length === 3) {
-      const [l, w] = n[0] >= n[1] ? [n[0], n[1]] : [n[1], n[0]];
-      return { l, w, h: n[2], known: true, src };
+    if (nums && nums.length === 3) {
+      const [len, wid] = nums[0] >= nums[1] ? [nums[0], nums[1]] : [nums[1], nums[0]];
+      return { l: len, w: wid, h: nums[2], known: true, src };
     }
-    const g = this.guess(p, kind);
-    return { l: g[0], w: g[1], h: g[2], known: false, src: '' };
+    const guess = this.guess(part, kind);
+    return { l: guess[0], w: guess[1], h: guess[2], known: false, src: '' };
   }
 
   /** Размеры из поля «Габариты», строк характеристик (не упаковки, патрубков, радиатора, проёмов) или груза. */
-  static sizeOf(p) {
-    const own = this.nums((p.attrs || {}).size);
+  static sizeOf(part) {
+    const own = this.nums((part.attrs || {}).size);
     let found = { n: own, src: own ? 'Габариты' : '' };
-    if (!own || own.length < 3) found = this.sizeRows(p, found);
+    if (!own || own.length < 3) found = this.sizeRows(part, found);
     if ((!found.n || found.n.length < 3) && typeof lgCargoOf === 'function') {
-      const c = lgCargoOf([{ rows: p.rows || [] }]);
-      if (c && c.dims)
-        found = { n: [c.dims.l, c.dims.w, c.dims.h].map(v => Math.round(v * 1000)), src: c.dimSrc || 'Габариты' };
+      const cargo = lgCargoOf([{ rows: part.rows || [] }]);
+      if (cargo && cargo.dims)
+        found = {
+          n: [cargo.dims.l, cargo.dims.w, cargo.dims.h].map(v => Math.round(v * 1000)),
+          src: cargo.dimSrc || 'Габариты',
+        };
     }
     return found;
   }
 
-  static sizeRows(p, found) {
-    const key = r => String(r.k || '');
-    const rows = (p.rows || []).filter(
-      r =>
-        r &&
-        /габарит|размер|д\s*[×xх*]\s*ш/i.test(key(r)) &&
-        !/упаков|присоедин|фланц|патрубк|радиатор|про[её]м|отверсти/i.test(key(r)),
+  static sizeRows(part, found) {
+    const key = row => String(row.k || '');
+    const rows = (part.rows || []).filter(
+      row =>
+        row &&
+        /габарит|размер|д\s*[×xх*]\s*ш/i.test(key(row)) &&
+        !/упаков|присоедин|фланц|патрубк|радиатор|про[её]м|отверсти/i.test(key(row)),
     );
     let out = found;
-    for (const r of rows) {
-      const t = this.nums(r.v);
-      if (!t || (out.n && t.length <= out.n.length)) continue;
-      out = { n: t, src: key(r) };
-      if (t.length === 3) break;
+    for (const row of rows) {
+      const nums = this.nums(row.v);
+      if (!nums || (out.n && nums.length <= out.n.length)) continue;
+      out = { n: nums, src: key(row) };
+      if (nums.length === 3) break;
     }
     return out;
   }
 
   /** Два числа: у фильтров, ресиверов, осушителей и баков — высота × Ø, у глушителя — длина × Ø. */
-  static twoSizes([a, b], p, kind) {
-    const lo = Math.min(a, b);
-    const hi = Math.max(a, b);
-    if (kind === 'muffler') return [hi, lo, lo];
-    if (['filter', 'receiver', 'dryer', 'tank'].includes(kind)) return [lo, lo, hi];
-    return [a, b, this.guess(p, kind)[2]];
+  static twoSizes([first, second], part, kind) {
+    const low = Math.min(first, second);
+    const high = Math.max(first, second);
+    if (kind === 'muffler') return [high, low, low];
+    if (['filter', 'receiver', 'dryer', 'tank'].includes(kind)) return [low, low, high];
+    return [first, second, this.guess(part, kind)[2]];
   }
 
   /** Ресивер стоит: вертикальный по исполнению или названию, или «высота × Ø × Ø» без указания исполнения. */
-  static standing(n, p) {
-    const text = `${String((p.attrs || {}).orient || '')} ${String(p.name || '')}`;
-    if (/гориз/i.test(text) || !(Math.max(...n) > n[2])) return false;
-    return /верт/i.test(text) || this.upright(n);
+  static standing(nums, part) {
+    const text = `${String((part.attrs || {}).orient || '')} ${String(part.name || '')}`;
+    if (/гориз/i.test(text) || !(Math.max(...nums) > nums[2])) return false;
+    return /верт/i.test(text) || this.upright(nums);
   }
 
   /** Две меньшие стороны равны (до 5 %), большая — в 1,3 раза больше: стоит, если так отмечено в правилах. */
-  static upright(n) {
-    const s = [...n].sort((x, y) => y - x);
-    return Boolean(StationMatrix.recv().upright) && s[1] <= s[2] * 1.05 && s[0] >= 1.3 * s[1];
+  static upright(nums) {
+    const sorted = [...nums].sort((x, y) => y - x);
+    return Boolean(StationMatrix.recv().upright) && sorted[1] <= sorted[2] * 1.05 && sorted[0] >= 1.3 * sorted[1];
   }
 
   static GUESS = {
@@ -284,108 +293,112 @@ export class StationEquip {
   };
 
   /** Условные габариты, мм — по мощности, объёму или виду. */
-  static guess(p, kind) {
-    const a = p.attrs || {};
-    const kw = this.num(a.kw);
-    const row = TankSize.volumeRow(p);
-    const vol = this.num(a.volume) ?? (row ? this.num(TankSize.firstNumber(row.v)) : null);
-    const G = this.GUESS;
+  static guess(part, kind) {
+    const attrs = part.attrs || {};
+    const kw = this.num(attrs.kw);
+    const row = TankSize.volumeRow(part);
+    const vol = this.num(attrs.volume) ?? (row ? this.num(TankSize.firstNumber(row.v)) : null);
+    const guessRule = this.GUESS;
     const byKind = {
-      compressor: () => step(G.compressor, kw),
-      dgu: () => step(G.dgu, kw),
+      compressor: () => StationEquip._step(guessRule.compressor, kw),
+      dgu: () => StationEquip._step(guessRule.dgu, kw),
       receiver: () => {
-        const [d, h] = step(G.receiver, vol || 500);
-        return [d, d, h];
+        const [dims, height] = StationEquip._step(guessRule.receiver, vol || 500);
+        return [dims, dims, height];
       },
       tank: () => {
-        const d = TankSize.of(this.num(a.tank) || vol || 1000);
-        return [d.l, d.w, d.h];
+        const dims = TankSize.of(this.num(attrs.tank) || vol || 1000);
+        return [dims.l, dims.w, dims.h];
       },
       muffler: () => this.guessMuffler(kw),
-      cabinet: () => (this.cabWord(p) === 'floor' ? [800, 400, 1800] : [600, 250, 800]),
+      cabinet: () => (this.cabWord(part) === 'floor' ? [800, 400, 1800] : [600, 250, 800]),
     };
-    return byKind[kind] ? byKind[kind]() : G.plain[kind] || [800, 600, 1000];
+    return byKind[kind] ? byKind[kind]() : guessRule.plain[kind] || [800, 600, 1000];
   }
 
   /** Шкаф: выбрано в составе или сказано в названии и характеристиках («на стене» / «на полу»); иначе null. */
-  static cabWord(p) {
-    if (p.mount === 'wall' || p.mount === 'floor') return p.mount;
-    const text = [p.name, ...(p.rows || []).map(r => (r ? `${String(r.k || '')} ${String(r.v || '')}` : ''))].join(' ');
+  static cabWord(part) {
+    if (part.mount === 'wall' || part.mount === 'floor') return part.mount;
+    const text = [
+      part.name,
+      ...(part.rows || []).map(row => (row ? `${String(row.k || '')} ${String(row.v || '')}` : '')),
+    ].join(' ');
     if (this.CAB_FLOOR.test(text)) return 'floor';
     return this.CAB_WALL.test(text) ? 'wall' : null;
   }
 
   /** Шкаф на стене, если так выбрано, размеры не указаны или он невысокий и неглубокий (до 1400 × 450 мм). */
-  static mount(p, d) {
-    return this.cabWord(p) || (!d.known || (d.h <= 1400 && d.w <= 450) ? 'wall' : 'floor');
+  static mount(part, dims) {
+    return this.cabWord(part) || (!dims.known || (dims.h <= 1400 && dims.w <= 450) ? 'wall' : 'floor');
   }
 
   /** Глушитель ДГУ без размеров — по мощности ДГУ, кВт. */
   static guessMuffler(kw) {
-    return step(this.GUESS.muffler, kw == null ? 200 : kw);
+    return StationEquip._step(this.GUESS.muffler, kw == null ? 200 : kw);
   }
 
-  static mass(p) {
-    const m = this.num((p.attrs || {}).mass);
-    if (m > 0) return m;
+  static mass(part) {
+    const massKg = this.num((part.attrs || {}).mass);
+    if (massKg > 0) return massKg;
     if (typeof lgCargoOf !== 'function') return null;
-    const c = lgCargoOf([{ rows: p.rows || [] }]);
-    return c && c.mass > 0 ? Math.round(c.mass * 1000) : null;
+    const cargo = lgCargoOf([{ rows: part.rows || [] }]);
+    return cargo && cargo.mass > 0 ? Math.round(cargo.mass * 1000) : null;
   }
 
   /** Цвет: главный цвет фото, иначе из характеристик (RAL или словами), иначе условный по виду. */
-  static color(p, kind) {
-    const c = this.colorRows(p, kind);
-    const t = this.tint(p);
-    return t ? { hex: t, known: true, text: c.text, photo: true, tones: this.tones(p) } : c;
+  static color(part, kind) {
+    const color = this.colorRows(part, kind);
+    const tint = this.tint(part);
+    return tint ? { hex: tint, known: true, text: color.text, photo: true, tones: this.tones(part) } : color;
   }
 
-  static photo(p) {
-    const s = p && p.photo && p.photo.src;
-    return s && typeof PhotoTint !== 'undefined' ? String(s) : '';
+  static photo(part) {
+    const text = part && part.photo && part.photo.src;
+    return text && typeof PhotoTint !== 'undefined' ? String(text) : '';
   }
 
   /** Зоны других цветов по фото: [{u0, u1, v0, v1, hex}] или null. */
-  static tones(p) {
-    const s = this.photo(p);
-    const z = s ? PhotoTint.tones(s) : [];
+  static tones(part) {
+    const text = this.photo(part);
+    const z = text ? PhotoTint.tones(text) : [];
     return z.length ? z : null;
   }
 
-  static tint(p) {
-    const s = this.photo(p);
-    return s ? PhotoTint.get(s) || '' : '';
+  static tint(part) {
+    const text = this.photo(part);
+    return text ? PhotoTint.get(text) || '' : '';
   }
 
-  static colorRows(p, kind) {
-    const a = p.attrs || {};
-    const key = r => String(r.k || '').trim();
-    const rows = (p.rows || []).filter(
-      r => r && (/^(цвет|окраск|покрыт|ral)/i.test(key(r)) || /RAL\s*-?\s*\d{4}/i.test(String(r.v || ''))),
+  static colorRows(part, kind) {
+    const attrs = part.attrs || {};
+    const key = row => String(row.k || '').trim();
+    const rows = (part.rows || []).filter(
+      row => row && (/^(цвет|окраск|покрыт|ral)/i.test(key(row)) || /RAL\s*-?\s*\d{4}/i.test(String(row.v || ''))),
     );
-    const ral = [a.color, a.ral, ...rows.map(r => r.v)]
+    const ral = [attrs.color, attrs.ral, ...rows.map(row => row.v)]
       .filter(v => v != null && String(v).trim())
       .map(v => RalColor.codes(v)[0])
       .find(Boolean);
     if (ral) return { hex: ral.hex, known: true, text: ral.code };
     const named = rows
-      .filter(r => /^(цвет|окраск)/i.test(key(r)))
-      .map(r => [RalColor.named(r.v), r.v])
+      .filter(row => /^(цвет|окраск)/i.test(key(row)))
+      .map(row => [RalColor.named(row.v), row.v])
       .find(([hex]) => hex);
     if (named) return { hex: named[0], known: true, text: String(named[1]).trim().slice(0, 40) };
     return { hex: this.COLOR[kind] || this.COLOR.other, known: false, text: '' };
   }
 
   /** Форма для 3D-вида: box — короб, vcyl — вертикальный цилиндр, hcyl — горизонтальный. */
-  static shape(p, kind, d) {
-    if (kind === 'receiver') return this.receiverShape(String((p.attrs && p.attrs.orient) || '').toLowerCase(), d);
-    if (kind === 'filter' && d.l <= 1.3 * d.w && d.h >= 1.2 * d.l) return 'vcyl';
+  static shape(part, kind, dims) {
+    if (kind === 'receiver')
+      return this.receiverShape(String((part.attrs && part.attrs.orient) || '').toLowerCase(), dims);
+    if (kind === 'filter' && dims.l <= 1.3 * dims.w && dims.h >= 1.2 * dims.l) return 'vcyl';
     return 'box';
   }
 
-  static receiverShape(orient, d) {
-    if (/гориз/.test(orient) || (!/верт/.test(orient) && d.l >= 1.6 * Math.max(d.w, d.h))) return 'hcyl';
-    if (/верт/.test(orient) || (d.h >= 1.3 * d.l && d.l <= 1.25 * d.w)) return 'vcyl';
+  static receiverShape(orient, dims) {
+    if (/гориз/.test(orient) || (!/верт/.test(orient) && dims.l >= 1.6 * Math.max(dims.w, dims.h))) return 'hcyl';
+    if (/верт/.test(orient) || (dims.h >= 1.3 * dims.l && dims.l <= 1.25 * dims.w)) return 'vcyl';
     return 'box';
   }
 
@@ -396,39 +409,39 @@ export class StationEquip {
   ];
 
   /** Тип компрессора для расчёта тепла: screw / piston / centrifugal / scroll. */
-  static ctype(p) {
-    const cat = this.cat(p);
-    const name = String(p.name || '');
-    const hit = this.CTYPES.find(([, c, re]) => cat === c || re.test(name));
+  static ctype(part) {
+    const cat = this.cat(part);
+    const name = String(part.name || '');
+    const hit = this.CTYPES.find(([, catKey, pattern]) => cat === catKey || pattern.test(name));
     return hit ? hit[0] : 'screw';
   }
 
   /** Вид изделия на чертеже: поршневой компрессор (на ресивере) — 'piston', иначе ''. */
-  static look(p, kind) {
-    const piston = this.cat(p) === 'comp_piston' || /поршнев/i.test(String(p.name || ''));
+  static look(part, kind) {
+    const piston = this.cat(part) === 'comp_piston' || /поршнев/i.test(String(part.name || ''));
     return kind === 'compressor' && piston ? 'piston' : '';
   }
 
   /** Свой рисунок модели для чертежа: {front, top} или null. */
-  static pic(p) {
-    const d = p.draw || {};
-    const src = v => String((d[v] && d[v].src) || '');
+  static pic(part) {
+    const draw = part.draw || {};
+    const src = v => String((draw[v] && draw[v].src) || '');
     return src('front') || src('top') ? { front: src('front'), top: src('top') } : null;
   }
 
   /** Короткая подпись на чертеже: модель или первые слова названия. */
-  static short(p, kind) {
-    const model = String((p.attrs || {}).model || '').trim();
+  static short(part, kind) {
+    const model = String((part.attrs || {}).model || '').trim();
     if (model) return model.length > 22 ? `${model.slice(0, 21)}…` : model;
-    const name = String(p.name || '').trim() || this.LABEL[kind] || 'Элемент';
+    const name = String(part.name || '').trim() || this.LABEL[kind] || 'Элемент';
     return name.length > 22 ? `${name.slice(0, 21).replace(/\s+\S*$/, '')}…` : name;
   }
 
   /** Коротко для экспликации, если название длинное: «Компрессор Remeza ВК60-2,5 ВС». */
-  static brief(p, kind, name) {
-    const a = p.attrs || {};
-    const model = String(a.model || '').trim();
-    const maker = String(a.maker || '').trim();
+  static brief(part, kind, name) {
+    const attrs = part.attrs || {};
+    const model = String(attrs.model || '').trim();
+    const maker = String(attrs.maker || '').trim();
     if (name.length <= 56 || !model || kind === 'other') return name;
     const own = maker && !model.toLowerCase().includes(maker.toLowerCase()) ? maker : '';
     return [this.LABEL[kind], own, model].filter(Boolean).join(' ');
@@ -439,135 +452,135 @@ export class StationEquip {
    * @param {object[]} parts состав станции
    * @param {{recv?: string, recvOut?: boolean}} o recv — где ресивер без своей роли, recvOut — ресиверы снаружи
    */
-  static list(parts, o = {}) {
+  static list(parts, opts = {}) {
     const pos = { n: 0 };
-    const out = (parts || []).filter(p => p && p.role !== 'container').map(p => this.entry(p, pos));
-    AirChain.assign(out, o.recv);
-    if (o.recvOut)
-      for (const e of out.filter(x => x.kind === 'receiver' && x.air && x.air.role === 'dry')) this.putOutside(e);
-    const dgu = out.find(e => e.kind === 'dgu');
-    for (const e of out.filter(x => x.kind === 'muffler' && !x.known)) {
-      [e.l, e.w, e.h] = this.guessMuffler(dgu ? dgu.kw : null);
+    const out = (parts || []).filter(part => part && part.role !== 'container').map(part => this.entry(part, pos));
+    AirChain.assign(out, opts.recv);
+    if (opts.recvOut)
+      for (const unit of out.filter(x => x.kind === 'receiver' && x.air && x.air.role === 'dry')) this.putOutside(unit);
+    const dgu = out.find(unit => unit.kind === 'dgu');
+    for (const unit of out.filter(x => x.kind === 'muffler' && !x.known)) {
+      [unit.l, unit.w, unit.h] = this.guessMuffler(dgu ? dgu.kw : null);
     }
     return out;
   }
 
   /** Ресивер после подготовки воздуха — снаружи, на площадке у дальнего торца; по ходу воздуха последний. */
-  static putOutside(e) {
-    e.place = false;
-    e.outside = true;
-    e.air.stage = 80;
-    e.air.out = true;
+  static putOutside(unit) {
+    unit.place = false;
+    unit.outside = true;
+    unit.air.stage = 80;
+    unit.air.out = true;
   }
 
-  static entry(p, pos) {
-    const kind = this.kindOf(p);
-    const name = String(p.name || '').trim() || this.LABEL[kind] || 'Элемент';
-    const qty = Math.max(1, Math.min(20, Math.round(this.num(p.qty) || 1)));
-    const base = { id: p.id, name, kind, qty, place: false };
-    const special = this.special(p, base);
+  static entry(part, pos) {
+    const kind = this.kindOf(part);
+    const name = String(part.name || '').trim() || this.LABEL[kind] || 'Элемент';
+    const qty = Math.max(1, Math.min(20, Math.round(this.num(part.qty) || 1)));
+    const base = { id: part.id, name, kind, qty, place: false };
+    const special = this.special(part, base);
     if (special) return special(pos);
-    const d = this.dims(p, kind);
-    if (!kind && !d.known) return { ...base, kind: 'skip', nodims: true };
-    return this.unit(p, { ...base, kind: kind || 'other' }, d, ++pos.n);
+    const dims = this.dims(part, kind);
+    if (!kind && !dims.known) return { ...base, kind: 'skip', nodims: true };
+    return this.unit(part, { ...base, kind: kind || 'other' }, dims, ++pos.n);
   }
 
   /** Не стоит в помещении: системы и шасси, ресивер у потребителя, трубопровод, глушитель. */
-  static special(p, base) {
+  static special(part, base) {
     const { kind } = base;
     if (kind === 'skip' || kind === 'chassis') return () => base;
-    if (kind === 'receiver' && p.recvRole === 'local') {
-      return () => ({ ...base, kind: 'skip', local: true, vol: AirChain.volume(p) });
+    if (kind === 'receiver' && part.recvRole === 'local') {
+      return () => ({ ...base, kind: 'skip', local: true, vol: AirChain.volume(part) });
     }
-    if (kind === 'piping') return pos => this.piping(p, base, ++pos.n);
-    if (kind === 'muffler') return pos => this.muffler(p, base, ++pos.n);
+    if (kind === 'piping') return pos => this.piping(part, base, ++pos.n);
+    if (kind === 'muffler') return pos => this.muffler(part, base, ++pos.n);
     return null;
   }
 
-  static piping(p, base, pos) {
-    const m = PipeMaterial.of(p);
+  static piping(part, base, pos) {
+    const mat = PipeMaterial.of(part);
     return {
       id: base.id,
       pos,
       name: base.name,
-      brief: this.brief(p, base.kind, base.name),
+      brief: this.brief(part, base.kind, base.name),
       short: 'Трубопровод',
       kind: base.kind,
       qty: base.qty,
       place: false,
-      mat: m ? m.id : '',
-      dn: PipeMaterial.dn(p),
+      mat: mat ? mat.id : '',
+      dn: PipeMaterial.bore(part),
     };
   }
 
-  static muffler(p, base, pos) {
-    const d = this.dims(p, base.kind);
+  static muffler(part, base, pos) {
+    const dims = this.dims(part, base.kind);
     return {
       id: base.id,
       pos,
       name: base.name,
-      brief: this.brief(p, base.kind, base.name),
-      short: this.short(p, base.kind),
+      brief: this.brief(part, base.kind, base.name),
+      short: this.short(part, base.kind),
       kind: base.kind,
       qty: base.qty,
       place: false,
       roof: !/внутр/i.test(base.name),
-      l: d.l,
-      w: d.w,
-      h: d.h,
-      known: d.known,
-      src: d.src,
-      mass: this.mass(p),
-      color: this.color(p, base.kind).hex,
+      l: dims.l,
+      w: dims.w,
+      h: dims.h,
+      known: dims.known,
+      src: dims.src,
+      mass: this.mass(part),
+      color: this.color(part, base.kind).hex,
     };
   }
 
   static AIR_KINDS = ['compressor', 'dryer', 'receiver', 'filter'];
 
   /** Оборудование на полу, на стене или на трубопроводе. */
-  static unit(p, base, d, pos) {
+  static unit(part, base, dims, pos) {
     const k = base.kind;
-    const attrs = p.attrs || {};
-    const c = this.color(p, k);
-    const air = this.AIR_KINDS.includes(k) ? AirChain.info(p, k) : null;
-    const pipe = k === 'filter' && air.grade !== 'cond' && Math.max(d.l, d.w) <= 700;
+    const attrs = part.attrs || {};
+    const color = this.color(part, k);
+    const air = this.AIR_KINDS.includes(k) ? AirChain.info(part, k) : null;
+    const pipe = k === 'filter' && air.grade !== 'cond' && Math.max(dims.l, dims.w) <= 700;
     return {
       id: base.id,
       pos,
       name: base.name,
-      brief: this.brief(p, k, base.name),
-      short: this.short(p, k),
+      brief: this.brief(part, k, base.name),
+      short: this.short(part, k),
       kind: k,
       qty: base.qty,
-      l: d.l,
-      w: d.w,
-      h: d.h,
-      known: d.known,
-      src: d.src,
-      mass: this.mass(p),
+      l: dims.l,
+      w: dims.w,
+      h: dims.h,
+      known: dims.known,
+      src: dims.src,
+      mass: this.mass(part),
       kw: this.num(attrs.kw),
       maker: String(attrs.maker || '').trim(),
-      color: c.hex,
-      colorKnown: c.known,
-      colorText: c.text,
-      tones: c.tones || null,
-      shape: this.shape(p, k, d),
-      look: this.look(p, k),
+      color: color.hex,
+      colorKnown: color.known,
+      colorText: color.text,
+      tones: color.tones || null,
+      shape: this.shape(part, k, dims),
+      look: this.look(part, k),
       place: true,
       pipe,
-      mount: this.mountOf(p, k, d, pipe),
+      mount: this.mountOf(part, k, dims, pipe),
       air,
-      noise: StationNorms.dba(p),
-      pic: this.pic(p),
+      noise: StationNorms.dba(part),
+      pic: this.pic(part),
       flow: k === 'pump' ? this.num(attrs.flow) : null,
-      ...(k === 'tank' ? { vol: TankSize.vol(p) } : {}),
-      ...(k === 'compressor' || k === 'dgu' ? this.airRows(p) : {}),
-      ...(k === 'compressor' ? { ctype: this.ctype(p) } : {}),
+      ...(k === 'tank' ? { vol: TankSize.vol(part) } : {}),
+      ...(k === 'compressor' || k === 'dgu' ? this.airRows(part) : {}),
+      ...(k === 'compressor' ? { ctype: this.ctype(part) } : {}),
     };
   }
 
-  static mountOf(p, kind, d, pipe) {
-    if (kind === 'cabinet') return this.mount(p, d);
+  static mountOf(part, kind, dims, pipe) {
+    if (kind === 'cabinet') return this.mount(part, dims);
     return pipe ? 'pipe' : 'floor';
   }
 }
