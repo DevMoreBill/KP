@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
 """Справочник типов оборудования: встроенный (app/equipment_types.json) + свои типы отдела (в базе)."""
+
 import json
 import os
 import re
@@ -7,23 +7,19 @@ import re
 from config import APP_DIR, read_text, store
 
 
-def types_builtin_path():
+def types_builtin_path() -> str:
     return os.path.join(APP_DIR, 'equipment_types.json')
 
 
-def load_types_builtin():
+def load_types_builtin() -> list:
     try:
         return json.loads(read_text(types_builtin_path())).get('types', [])
     except Exception:
         return []
 
 
-def load_types():
-    """Справочник типов оборудования: встроенный (app/equipment_types.json) + свои (kv «types» в базе).
-
-    Свой тип с тем же id заменяет встроенный, новые добавляются в конец, а тип с "hidden": true скрывается.
-    Так новые виды оборудования добавляются без правки кода.
-    """
+def load_types() -> dict:
+    """Свой тип с тем же id дополняет встроенный, новые — в конец, «hidden» — скрыт."""
     base = load_types_builtin()
     user = (store().kv_get('types') or {}).get('types', [])
     out = [dict(t) for t in base]
@@ -41,13 +37,12 @@ def load_types():
     return {'version': 1, 'types': [t for t in out if not t.get('hidden')]}
 
 
-def save_user_types(body):
+def save_user_types(body: bytes) -> None:
     data = json.loads(body.decode('utf-8'))
     if not isinstance(data, dict):
         raise ValueError('Ожидается {"types": [...]}')
     if isinstance(data.get('add'), list):
-        # добавить категории к нынешним (новая категория из окна каталога): список целиком не пересылается — категория,
-        # созданная коллегой минутой раньше, не теряется
+        # добавление к нынешним: категория, созданная коллегой минутой раньше, не теряется
         cur = (store().kv_get('types') or {}).get('types') or []
         add = {str(t.get('id')): t for t in data['add'] if isinstance(t, dict)}
         data = {'types': [t for t in cur if not (isinstance(t, dict) and str(t.get('id')) in add)] + list(add.values())}

@@ -1,13 +1,5 @@
-# -*- coding: utf-8 -*-
-"""Распознавание текста встроенными средствами Windows 10/11 — без сторонних программ и библиотек.
+"""Распознавание сканов встроенным OCR Windows 10/11 через PowerShell (Windows.Media.Ocr, Windows.Data.Pdf)."""
 
-• Сканы ТЗ: картинки (PNG, JPEG, TIFF, BMP) и PDF без текстового слоя. PDF рисуется постранично встроенным в Windows
-  Windows.Data.Pdf, текст распознаёт Windows.Media.Ocr (язык — русский, если установлен пакет распознавания; иначе —
-  языки профиля пользователя). Вызов — Windows PowerShell 5.1 (есть в каждой Windows 10) со скриптом ниже: WinRT-классы
-  доступны из .NET без установки чего-либо.
-• Не Windows или нет PowerShell — WinOcr.available() = False, распознавание не выполняется (ValueError с пояснением).
-• Файл пишется во временную папку и удаляется после распознавания; ошибки — понятным текстом, без путей.
-"""
 import json
 import os
 import re
@@ -17,12 +9,12 @@ import tempfile
 
 
 class WinOcr:
-    TIMEOUT = 240          # с — на весь документ
+    TIMEOUT = 240
     MAX_PAGES = 40
     IMAGE_EXT = {b'\x89PNG': '.png', b'\xff\xd8\xff': '.jpg', b'II*\x00': '.tif', b'MM\x00*': '.tif', b'BM': '.bmp'}
 
     # скрипт PowerShell: -In файл, -Out JSON {pages:[текст], total, lang}; NOENGINE — нет языка распознавания
-    SCRIPT = r'''param([string]$In, [string]$Out, [string]$Kind, [int]$MaxPages = 40)
+    SCRIPT = r"""param([string]$In, [string]$Out, [string]$Kind, [int]$MaxPages = 40)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $ext = [System.WindowsRuntimeSystemExtensions].GetMethods()
@@ -75,41 +67,50 @@ if ($Kind -eq 'pdf') {
 }
 $json = ConvertTo-Json -InputObject @{ pages = @($pages); total = $total; lang = $engine.RecognizerLanguage.LanguageTag } -Depth 3 -Compress
 [System.IO.File]::WriteAllText($Out, $json, (New-Object System.Text.UTF8Encoding $false))
-'''
+"""
 
     @classmethod
-    def powershell(cls):
-        """путь к Windows PowerShell или None (не Windows)"""
+    def powershell(cls) -> str | None:
         if os.name != 'nt':
             return None
-        root = os.environ.get('SystemRoot') or r'C:\Windows'
+        root = os.environ.get('SYSTEMROOT') or r'C:\Windows'
         p = os.path.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
         return p if os.path.isfile(p) else shutil.which('powershell.exe')
 
     @classmethod
-    def available(cls):
+    def available(cls) -> bool:
         return cls.powershell() is not None
 
     @classmethod
-    def image_ext(cls, data):
+    def image_ext(cls, data: bytes) -> str | None:
         for sig, ext in cls.IMAGE_EXT.items():
-            if data[:len(sig)] == sig:
+            if data[: len(sig)] == sig:
                 return ext
         return None
 
     @staticmethod
-    def _clean(msg):
-        """сообщение без путей и служебных строк PowerShell"""
+    def _clean(msg) -> str:
+        """Сообщение без путей и служебных строк PowerShell."""
         s = re.sub(r'[A-Za-z]:\\[^\s\'"]+', '…', str(msg or ''))
-        s = next((x.strip() for x in s.splitlines() if x.strip() and not x.strip().startswith(('At ', 'строка:', '+ ', 'CategoryInfo', 'FullyQualifiedErrorId'))), '')
+        s = next(
+            (
+                x.strip()
+                for x in s.splitlines()
+                if x.strip()
+                and not x.strip().startswith(('At ', 'строка:', '+ ', 'CategoryInfo', 'FullyQualifiedErrorId'))
+            ),
+            '',
+        )
         return s[:200]
 
     @classmethod
-    def recognize(cls, data, kind):
-        """kind — 'pdf' или 'image'; → {'pages': [текст страницы], 'total': страниц, 'lang': язык}; ValueError — понятным текстом"""
+    def recognize(cls, data: bytes, kind: str) -> dict:
+        """kind — «pdf» или «image» → {pages, total, lang}."""
         ps = cls.powershell()
         if not ps:
-            raise ValueError('распознавание сканов доступно на сервере под Windows 10/11 (встроенное распознавание текста Windows)')
+            raise ValueError(
+                'распознавание сканов доступно на сервере под Windows 10/11 (встроенное распознавание текста Windows)'
+            )
         ext = '.pdf' if kind == 'pdf' else (cls.image_ext(data) or '.png')
         tmp = tempfile.mkdtemp(prefix='kp-ocr-')
         try:
@@ -120,16 +121,40 @@ $json = ConvertTo-Json -InputObject @{ pages = @($pages); total = $total; lang =
                 f.write(cls.SCRIPT)
             flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
             try:
-                r = subprocess.run([ps, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script,
-                                    '-In', src, '-Out', out, '-Kind', 'pdf' if kind == 'pdf' else 'image', '-MaxPages', str(cls.MAX_PAGES)],
-                                   capture_output=True, timeout=cls.TIMEOUT, creationflags=flags)
+                r = subprocess.run(
+                    [
+                        ps,
+                        '-NoProfile',
+                        '-NonInteractive',
+                        '-ExecutionPolicy',
+                        'Bypass',
+                        '-File',
+                        script,
+                        '-In',
+                        src,
+                        '-Out',
+                        out,
+                        '-Kind',
+                        'pdf' if kind == 'pdf' else 'image',
+                        '-MaxPages',
+                        str(cls.MAX_PAGES),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=cls.TIMEOUT,
+                    creationflags=flags,
+                )
             except subprocess.TimeoutExpired:
-                raise ValueError('распознавание текста не уложилось в %d с — сократите документ или пришлите текстовый PDF' % cls.TIMEOUT)
+                raise ValueError(
+                    f'распознавание текста не уложилось в {cls.TIMEOUT} с — сократите документ или пришлите текстовый PDF'
+                ) from None
             if not os.path.isfile(out):
                 err = (r.stderr or b'').decode('utf-8', 'replace') + (r.stdout or b'').decode('utf-8', 'replace')
                 if 'NOENGINE' in err:
-                    raise ValueError('в Windows не установлен язык распознавания текста: «Параметры» → «Время и язык» → «Язык» → '
-                                     'Русский → «Параметры» → «Распознавание текста», затем повторите')
+                    raise ValueError(
+                        'в Windows не установлен язык распознавания текста: «Параметры» → «Время и язык» → «Язык» → '
+                        'Русский → «Параметры» → «Распознавание текста», затем повторите'
+                    )
                 why = cls._clean(err)
                 raise ValueError('встроенное распознавание Windows не сработало' + (': ' + why if why else ''))
             with open(out, encoding='utf-8-sig') as f:

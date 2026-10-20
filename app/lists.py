@@ -1,12 +1,5 @@
-# -*- coding: utf-8 -*-
-"""Списки и выборы, которые администратор правит в «Настройках → Списки и выборы»: варианты выпадающих меню
-и подсказок (сроки поставки, условия оплаты, утепление контейнера, климатические исполнения, типы контейнеров,
-страны поставщиков…).
+"""Списки выбора администратора: kv «settings».lists = {ключ: [строки]}; нет записи — встроенный список."""
 
-Хранятся в kv «settings».lists = {ключ: [строки]}; строка — {поле: значение}. Какие списки есть, их поля и встроенные
-значения — в интерфейсе (app/web/js/core/lists.js): сервер хранит и отдаёт то, что задал администратор.
-Нет записи по ключу — действует встроенный список программы.
-"""
 import re
 from datetime import datetime
 
@@ -19,30 +12,27 @@ MAX_LEN = 2000
 
 
 class ListStore:
-    """Хранилище списков администратора поверх kv «settings» базы (один объект на запрос)."""
-
-    def __init__(self, store):
+    def __init__(self, store) -> None:
         self.store = store
 
-    def all(self):
+    def all(self) -> dict:
         d = ((self.store.kv_get('settings') or {}).get('lists')) or {}
         return d if isinstance(d, dict) else {}
 
     @staticmethod
-    def clean_rows(key, rows):
-        """Строки списка без лишнего: только поля-слова, значения — строка (до 2000 знаков) или число."""
+    def clean_rows(key: str, rows) -> list[dict]:
         if not isinstance(rows, list):
-            raise ValueError('Список «%s»: нужен перечень строк' % key)
+            raise ValueError(f'Список «{key}»: нужен перечень строк')
         if len(rows) > MAX_ROWS:
-            raise ValueError('Список «%s»: больше %d строк' % (key, MAX_ROWS))
+            raise ValueError(f'Список «{key}»: больше {MAX_ROWS} строк')
         out = []
         for r in rows:
             if not isinstance(r, dict) or len(r) > MAX_FIELDS:
-                raise ValueError('Список «%s»: неверная строка' % key)
+                raise ValueError(f'Список «{key}»: неверная строка')
             row = {}
             for f, v in r.items():
                 if not FIELD_RX.match(str(f)):
-                    raise ValueError('Список «%s»: неверное поле %s' % (key, str(f)[:30]))
+                    raise ValueError(f'Список «{key}»: неверное поле {str(f)[:30]}')
                 if isinstance(v, bool) or v is None:
                     row[f] = bool(v)
                 elif isinstance(v, (int, float)):
@@ -52,15 +42,15 @@ class ListStore:
             out.append(row)
         return out
 
-    def save(self, values, by=''):
-        """values = {ключ: [строки] | None (вернуть встроенный список)}. ValueError — понятным текстом."""
+    def save(self, values: dict, by: str = '') -> dict:
+        """values = {ключ: [строки] | None — встроенный список}."""
         if not isinstance(values, dict):
             raise ValueError('Нет списков')
         st = self.store.kv_get('settings') or {}
         cur = dict(st.get('lists') or {})
         for k, rows in values.items():
             if not KEY_RX.match(str(k)):
-                raise ValueError('Неверный ключ списка: %s' % str(k)[:40])
+                raise ValueError(f'Неверный ключ списка: {str(k)[:40]}')
             if rows is None:
                 cur.pop(k, None)
             else:

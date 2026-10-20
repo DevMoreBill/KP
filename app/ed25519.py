@@ -1,22 +1,18 @@
-# -*- coding: utf-8 -*-
-"""Подпись Ed25519 (RFC 8032) на чистом Python — без сторонних библиотек (программа собирается в один EXE).
+"""Подпись Ed25519 (RFC 8032) на чистом Python — для пакетов обновления."""
 
-Нужна для пакетов обновления: выпуск подписывается закрытым ключом (секрет сборки), программа проверяет подпись
-открытым ключом, вшитым в код (update_sign.UpdateSign). Скорость здесь не важна: одна проверка — доли секунды.
-"""
 import hashlib
 
 
 class Ed25519:
-    P = 2 ** 255 - 19
-    L = 2 ** 252 + 27742317777372353535851937790883648493
-    D = -121665 * pow(121666, 2 ** 255 - 21, 2 ** 255 - 19) % (2 ** 255 - 19)
-    SQRT_M1 = pow(2, (2 ** 255 - 20) // 4, 2 ** 255 - 19)
-    G = None        # базовая точка — в _base()
+    P = 2**255 - 19
+    L = 2**252 + 27742317777372353535851937790883648493
+    D = -121665 * pow(121666, 2**255 - 21, 2**255 - 19) % (2**255 - 19)
+    SQRT_M1 = pow(2, (2**255 - 20) // 4, 2**255 - 19)
+    G = None
 
-    # ---------- арифметика точек (расширенные координаты X, Y, Z, T)
+    # точки — в расширенных координатах (X, Y, Z, T)
     @classmethod
-    def _add(cls, a, b):
+    def _add(cls, a: tuple, b: tuple) -> tuple:
         p = cls.P
         A = (a[1] - a[0]) * (b[1] - b[0]) % p
         B = (a[1] + a[0]) * (b[1] + b[0]) % p
@@ -26,7 +22,7 @@ class Ed25519:
         return (E * F % p, G * H % p, F * G % p, E * H % p)
 
     @classmethod
-    def _mul(cls, s, pt):
+    def _mul(cls, s: int, pt: tuple) -> tuple:
         q = (0, 1, 1, 0)
         while s > 0:
             if s & 1:
@@ -36,12 +32,12 @@ class Ed25519:
         return q
 
     @classmethod
-    def _equal(cls, a, b):
+    def _equal(cls, a: tuple, b: tuple) -> bool:
         p = cls.P
         return (a[0] * b[2] - b[0] * a[2]) % p == 0 and (a[1] * b[2] - b[1] * a[2]) % p == 0
 
     @classmethod
-    def _recover_x(cls, y, sign):
+    def _recover_x(cls, y: int, sign: int) -> int | None:
         p = cls.P
         if y >= p:
             return None
@@ -58,7 +54,7 @@ class Ed25519:
         return x
 
     @classmethod
-    def _base(cls):
+    def _base(cls) -> tuple:
         if cls.G is None:
             y = 4 * pow(5, cls.P - 2, cls.P) % cls.P
             x = cls._recover_x(y, 0)
@@ -66,14 +62,14 @@ class Ed25519:
         return cls.G
 
     @classmethod
-    def _compress(cls, pt):
+    def _compress(cls, pt: tuple) -> bytes:
         p = cls.P
         zi = pow(pt[2], p - 2, p)
         x, y = pt[0] * zi % p, pt[1] * zi % p
         return int.to_bytes(y | ((x & 1) << 255), 32, 'little')
 
     @classmethod
-    def _decompress(cls, s):
+    def _decompress(cls, s: bytes) -> tuple | None:
         if len(s) != 32:
             return None
         y = int.from_bytes(s, 'little')
@@ -83,11 +79,11 @@ class Ed25519:
         return None if x is None else (x, y, 1, x * y % cls.P)
 
     @staticmethod
-    def _h(*parts):
+    def _h(*parts: bytes) -> int:
         return int.from_bytes(hashlib.sha512(b''.join(parts)).digest(), 'little')
 
     @classmethod
-    def _secret(cls, seed):
+    def _secret(cls, seed: bytes) -> tuple[int, bytes]:
         if len(seed) != 32:
             raise ValueError('Ключ Ed25519 — 32 байта')
         h = hashlib.sha512(seed).digest()
@@ -96,15 +92,13 @@ class Ed25519:
         a |= 1 << 254
         return a, h[32:]
 
-    # ---------- открытые методы
     @classmethod
-    def public_key(cls, seed):
-        """Открытый ключ (32 байта) по закрытому (seed, 32 байта)."""
+    def public_key(cls, seed: bytes) -> bytes:
         a, _ = cls._secret(seed)
         return cls._compress(cls._mul(a, cls._base()))
 
     @classmethod
-    def sign(cls, seed, msg):
+    def sign(cls, seed: bytes, msg: bytes) -> bytes:
         a, prefix = cls._secret(seed)
         A = cls._compress(cls._mul(a, cls._base()))
         r = cls._h(prefix, msg) % cls.L
@@ -113,8 +107,7 @@ class Ed25519:
         return R + int.to_bytes(s, 32, 'little')
 
     @classmethod
-    def verify(cls, public, msg, sig):
-        """True — подпись sig (64 байта) сообщения msg сделана ключом, чей открытый ключ — public (32 байта)."""
+    def verify(cls, public: bytes, msg: bytes, sig: bytes) -> bool:
         if len(public) != 32 or len(sig) != 64:
             return False
         A = cls._decompress(public)

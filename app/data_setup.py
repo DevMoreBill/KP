@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
 """Подготовка данных при запуске: папки, признак новой базы, сверка нумерации КП с файлами."""
+
 import os
 import re
 from datetime import datetime
@@ -7,13 +7,13 @@ from datetime import datetime
 from config import DATA_DIR, DOCS_DIR, IMG_DIR, store
 
 
-def prepare_dirs():
+def prepare_dirs() -> None:
     for d in (DATA_DIR, IMG_DIR, DOCS_DIR):
         os.makedirs(d, exist_ok=True)
 
 
-def sync_counter_with_files():
-    """Номер КП не должен повторить уже существующий файл (например, если базу восстановили из старой копии)."""
+def sync_counter_with_files() -> None:
+    """Номер КП не повторяет файл в папке КП (база восстановлена из старой копии)."""
     year = datetime.now().year
     top = 0
     for _, _, files in os.walk(DOCS_DIR):
@@ -26,9 +26,8 @@ def sync_counter_with_files():
 
 
 class FreshBase:
-    """Новая пустая база (первый запуск на новом компьютере). Каталог и фото в EXE не входят — они хранятся
-    в базе на сервере отдела; на новый компьютер переносятся файлом базы («Настройки» → «Обслуживание»)."""
+    """Новая пустая база: каталог и фото не входят в EXE, переносятся файлом базы."""
 
     @staticmethod
-    def check():
+    def check() -> bool:
         return not store().catalog_count()

@@ -1,13 +1,29 @@
 {
   "python": [
+    "app/admin_alerts.py",
     "app/ai_llm.py",
     "app/ai_profile.py",
+    "app/catalog_sync.py",
+    "app/cbr.py",
     "app/config.py",
+    "app/data_setup.py",
+    "app/db_health.py",
     "app/defaults.py",
+    "app/desktop.py",
+    "app/ed25519.py",
+    "app/equipment_types.py",
     "app/features.py",
     "app/geo.py",
     "app/imgfetch.py",
+    "app/lists.py",
     "app/maker_logos.py",
+    "app/net.py",
+    "app/ocr_win.py",
+    "app/server_task.py",
+    "app/update_sign.py",
+    "app/user_prefs.py",
+    "app/version.py",
+    "app/workcal.py",
     "tests/code_style.py"
   ]
 }

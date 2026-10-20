@@ -526,6 +526,9 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.121.0 — что сделано:** переписывание кода, часть 10 — сервер, ещё 16 малых модулей (`version.py`, `data_setup.py`, `desktop.py`, `catalog_sync.py`, `equipment_types.py`, `user_prefs.py`, `lists.py`, `net.py`, `workcal.py`, `db_health.py`, `update_sign.py`, `cbr.py`, `server_task.py`, `ed25519.py`, `admin_alerts.py`, `ocr_win.py`) — строгий Ruff, подписи типов, короткие описания, f-строки, `raise … from`.
+Поведение не менялось: `run_all --strict` — без ошибок.
+
 **3.120.0 — что сделано:** переписывание кода, часть 9 — сервер, малые модули: `config.py`, `features.py`,
 `defaults.py`, `geo.py`, `ai_llm.py`, `ai_profile.py`, `maker_logos.py`, `imgfetch.py` — строгий Ruff (проверка и формат,
 `tests/code_style.json`), подписи типов, короткие описания модулей вместо подробных, `raise … from`, f-строки; в
