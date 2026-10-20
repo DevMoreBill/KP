@@ -135,6 +135,13 @@ export class CabToday {
         deal => (this._late(deal) ? 'ждёт больше суток' : 'откройте, чтобы принять'),
         'new',
       ],
+      [
+        'Исполнение: точка просрочена',
+        open.filter(deal => deal.execSum && deal.execSum.overdue),
+        deal =>
+          deal.execSum.next ? `${deal.execSum.next.label} — план ${CrmFmt.day(deal.execSum.next.plan)}` : 'просрочено',
+        'exec',
+      ],
       ['Без следующего дела', open.filter(deal => !deal.next), () => 'запланируйте звонок или встречу', 'free'],
       [
         'Срок прошёл',
@@ -146,7 +153,7 @@ export class CabToday {
     const count = new Set(parts.flatMap(([, list]) => list.map(deal => deal.id))).size;
     const body = parts.map(part => this._attn(...part)).join('');
     return MyDay.section(
-      `Требуют внимания${count ? ` <b class="md-c">${count}</b>` : ''}${tip('<p>Сделки, которым нужно действие: новые из Битрикс24, без запланированного дела и с прошедшей ожидаемой датой.</p><p>«＋ Дело» — запланировать следующий шаг, не открывая сделку.</p>')}`,
+      `Требуют внимания${count ? ` <b class="md-c">${count}</b>` : ''}${tip('<p>Сделки, которым нужно действие: новые из Битрикс24, с просроченной точкой исполнения (оплата, готовность, поставка), без запланированного дела и с прошедшей ожидаемой датой.</p><p>«＋ Дело» — запланировать следующий шаг, не открывая сделку.</p>')}`,
       body || '<p class="empty">Всё в порядке: у каждой сделки есть следующий шаг.</p>',
     );
   }
@@ -162,7 +169,7 @@ export class CabToday {
       rest > 0
         ? `<button class="lnk cab-all" type="button" data-cflt="${filter}">и ещё ${rest} — показать все</button>`
         : '';
-    return `<p class="tk-g${filter === 'late' ? ' bad-t' : ''}">${title} <b class="md-c">${list.length}</b></p>${rows}${more}`;
+    return `<p class="tk-g${['late', 'exec'].includes(filter) ? ' bad-t' : ''}">${title} <b class="md-c">${list.length}</b></p>${rows}${more}`;
   }
 
   static _attnRow(deal, why, filter) {

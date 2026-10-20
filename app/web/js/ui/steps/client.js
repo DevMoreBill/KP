@@ -25,7 +25,7 @@ function stepClient(){
   const cons=(cl?.contacts||[]).filter(o=>o.name && norm(o.name)!==norm(S.contact.name));
   const objs=(cl?.objects||[]).filter(o=>(o.purpose||o.address) && !(norm(o.purpose)===norm(S.object.purpose) && norm(o.address)===norm(S.object.address)));
   // 1. Кому: поиск или карточка клиента
-  const finder = `<div class="cl-find"><input type="text" id="clFind" placeholder="Название или ИНН клиента" autocomplete="off" aria-label="Поиск клиента"><div id="clList" class="cl-list" hidden></div></div>
+  const finder = `<div class="cl-find"><input type="text" id="clFind" placeholder="Название, ИНН, телефон, e-mail или ФИО контакта" autocomplete="off" aria-label="Поиск клиента"><div id="clList" class="cl-list" hidden></div></div>
     <p class="muted" style="margin:8px 0 0"><button type="button" class="lnk" data-a="clientManual">Ввести реквизиты вручную</button></p>`;
   const badge = S.clientStatus ? `<span class="st-badge ${/действ/i.test(S.clientStatus)?'ok':'bad'}">${esc(S.clientStatus)}</span>` : '';
   const risk = S.check && !S.check.error ? `<span class="st-badge ${S.check.score==='ok'?'ok':S.check.score==='warn'?'warn':'bad'}">${S.check.score==='ok'?'рисков не найдено':S.check.score==='warn'?'есть замечания':'высокий риск'}</span>` : '';

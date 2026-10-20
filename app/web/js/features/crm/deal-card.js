@@ -6,6 +6,10 @@ import { DealFieldsView } from './deal-fields.js';
 import { LostPick } from './lost-pick.js';
 import { DealKp } from './deal-kp.js';
 import { Cabinet } from './cabinet.js';
+import { DealSummary } from './deal-summary.js';
+import { DealExec } from './deal-exec.js';
+import { DealClient } from './deal-client.js';
+import { ClientSuggest } from './client-suggest.js';
 
 /**
  * Карточка сделки — панель справа (на телефоне — весь экран): стадии, «О сделке», поля Битрикс24, следующий шаг и дела, КП,
@@ -63,6 +67,7 @@ export class DealCard {
     modal.d.addEventListener('click', event => this._click(event));
     modal.d.addEventListener('change', event => this._change(event));
     modal.d.addEventListener('keydown', event => this._key(event));
+    modal.d.addEventListener('input', event => this._input(event));
     CrmTask.bind(modal.d, () => this.reload());
   }
 
@@ -114,7 +119,7 @@ export class DealCard {
    */
   static html() {
     const deal = this.deal;
-    return `${this._top(deal)}<div class="dk-in">${this._steps(deal)}
+    return `${this._top(deal)}<div class="dk-in">${this._steps(deal)}${DealSummary.html(deal)}${DealExec.html(deal)}
       <div class="dk-cols"><div class="dk-main">${this._about(deal)}${DealFieldsView.html(deal)}</div>
       <div class="dk-side">${this._next(deal)}${this._kps(deal)}${this._history(deal)}</div></div></div>`;
   }
@@ -216,8 +221,8 @@ export class DealCard {
       .map(client => `<option value="${esc(client.name)}">`)
       .join('');
     return `<section class="md-s dk-about"><div class="md-h"><p class="sub">О сделке</p><span class="muted">сохраняется само</span></div><div class="dk-f">
-      <label class="f dk-wide"><span>Клиент</span><input type="text" data-dkf="client" value="${esc(deal.client || '')}" maxlength="300" list="dkCl" autocomplete="off" placeholder="Название или ИНН"></label>
-      ${this._sumField(deal)}
+      <label class="f dk-wide"><span>Клиент</span><input type="text" data-dkf="client" value="${esc(deal.client || '')}" maxlength="300" list="dkCl" autocomplete="off" placeholder="Название, ИНН, телефон, e-mail или ФИО контакта"></label>
+      ${DealClient.html(deal)}${this._sumField(deal)}
       <label class="f"><span>Ожидаемая дата</span><input type="date" data-dkf="expected" value="${esc(deal.expected || '')}"></label>
       <div class="dk-wide dk-dchips">${DateChips.html(DateChips.DEAL, 'expected', deal.expected)}</div>
       ${this.funnelSelect(deal)}${this._managerSelect(deal)}
@@ -372,7 +377,53 @@ export class DealCard {
     }, this.SAVED_MS);
   }
 
+  static _input(event) {
+    const field = event.target.closest('[data-dkf="client"]');
+    if (field) ClientSuggest.run(field, client => this._pickClient(client, field));
+  }
+
+  static async _pickClient(client, field) {
+    field.value = client.name || '';
+    const body = { client: client.name || '', clientId: client.id || '', clientInn: client.inn || '' };
+    if (await this.save(body)) this._flash();
+  }
+
+  /**
+   * Отметка точки исполнения (по очереди с прочими сохранениями).
+   * @param {{key: string, at: string}} body
+   * @returns {Promise<boolean>}
+   */
+  static mark(body) {
+    const result = this.queue.then(() => this._mark(body));
+    this.queue = result.catch(() => false);
+    return result;
+  }
+
+  static async _mark(body) {
+    try {
+      this.deal = this._keep(
+        await api(`/api/crm/deal/${this.deal.id}/exec`, {
+          method: 'PUT',
+          headers: this.HEAD,
+          body: JSON.stringify(body),
+        }),
+      );
+      this.changed = true;
+      this.render();
+      this._flash();
+      return true;
+    } catch (error) {
+      toast(`Не отмечено: ${error.message}`);
+      return false;
+    }
+  }
+
   static async _change(event) {
+    const day = DealExec.change(event);
+    if (day) {
+      this.mark(day);
+      return;
+    }
     const custom = event.target.closest('[data-uf]');
     if (custom) {
       const { code, value } = DealFieldsView.read(custom, this.deal);
@@ -417,8 +468,14 @@ export class DealCard {
       this.close();
       return;
     }
+    const exec = DealExec.click(event);
+    if (exec) {
+      this.mark(exec);
+      return;
+    }
     const actions = [
       ['[data-x]', () => this.close()],
+      ['[data-dkpick]', el => this._pick(el.dataset.dkpick)],
       ['[data-dknav]', el => this._go(+el.dataset.dknav)],
       ['[data-dks]', el => this._stage(el.dataset.dks)],
       ['[data-dko]', el => DealKp.openKp(el.dataset.dko)],
@@ -433,6 +490,11 @@ export class DealCard {
         return;
       }
     }
+  }
+
+  static async _pick(id) {
+    const body = DealClient.picked(this.deal, id);
+    if (body && (await this.save(body))) this._flash();
   }
 
   static _key(event) {

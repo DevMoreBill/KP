@@ -46,6 +46,7 @@ from config import (
     write_bytes,
 )
 from crm import CrmBoard, DealBook, Stages, TaskBook
+from crm_exec import ExecBook, ExecPlan, ExecTasks, Sums
 from crm_funnels import DealFields, Funnels
 from desktop import DesktopError, open_file, open_folder, show_in_folder
 from equipment_types import load_types, save_user_types, types_builtin_path
@@ -1725,6 +1726,7 @@ class CrmController(Controller):
     """Кабинет: свои сделки и дела — каждому, коллег и отдел — администратору и праву «КП других»; не удаляются."""
 
     MID = re.compile(r'^[A-Za-z0-9_:-]{0,64}$')
+    CONTACTS = 10
 
     @staticmethod
     def safe(func) -> Any:
@@ -1920,7 +1922,17 @@ class CrmController(Controller):
                 admin.log(self.handler, store(), 'edit_deal', 'deal', did, {k: deal.get(k) for k in changes}, changes)
             self.bitrix_on(did)
             deal = new
+        return self._card(did, deal)
+
+    def _card(self, did: str, deal: dict) -> Any:
+        """Карточка сделки: КП, исполнение, клиент из справочника, дела, Битрикс24, воронки и поля."""
+        book = DealBook(store())
         deal['kps'] = book.kps([did])[did]
+        if ExecTasks(store()).sync(deal):
+            deal = dict(book.get(did) or deal, kps=deal['kps'])
+        deal['exec'] = ExecPlan(deal).view(Sums.ALL if self._money(deal) else Sums.SALES)
+        ExecPlan.strip(deal['kps'])
+        deal['clientCard'] = self._client_card(deal)
         deal['tasks'] = TaskBook(store()).list(deal=did)
         if BitrixConf(store()).enabled():
             deal['bx'] = self.safe(lambda: BitrixSync(store()).card(did))
@@ -1935,6 +1947,48 @@ class CrmController(Controller):
                 users=fields.users(),
             )
         )
+
+    def _money(self, deal) -> bool:
+        """Суммы оплат поставщикам и перевозчикам — тем, кому открыта экономика сделки КП (решение владельца 20.10)."""
+        main = ExecPlan.main(deal)
+        if not main:
+            return False
+        meta = TrackController._obj(store().kp_get(main['id'], 'meta'))
+        return admin.deal_allowed(self.handler, meta)
+
+    @staticmethod
+    def _client_card(deal) -> dict | None:
+        """Клиент сделки из справочника: реквизиты и контакты (телефон, почта — для звонка и письма из карточки)."""
+        cid = deal.get('clientId') or ('inn' + deal['clientInn'] if deal.get('clientInn') else '')
+        client = store().client_get(cid) if cid else None
+        if not client:
+            return None
+        contacts = [row for row in (client.get('contacts') or []) if isinstance(row, dict)][: CrmController.CONTACTS]
+        keep = ('name', 'post', 'phone', 'email')
+        return {
+            'id': client.get('id') or cid,
+            'name': client.get('name') or '',
+            'inn': client.get('inn') or '',
+            'noInn': bool(client.get('noInn')),
+            'address': client.get('address') or '',
+            'contacts': [{key: str(row.get(key) or '') for key in keep} for row in contacts],
+        }
+
+    @route(r'/api/crm/deal/(d\d{1,9})/exec', 'PUT')
+    def exec_mark(self, did) -> Any:
+        """Отметка точки исполнения: {key, at} — at пусто снимает отметку."""
+        if self._deal(did) is None:
+            return None
+        body = self.json_body()
+        with self.user_input():
+            try:
+                ExecBook(store()).mark(
+                    did, str(body.get('key') or '')[:80], str(body.get('at') or ''), admin.actor(self.handler)[1]
+                )
+            except LookupError as exc:
+                return self.not_found(str(exc))
+        self.bitrix_on(did)
+        return self._card(did, DealBook(store()).get(did) or {})
 
     @route(r'/api/crm/deal/(d\d{1,9})/kp', 'POST')
     def link(self, did) -> Any:
@@ -1979,7 +2033,7 @@ class CrmController(Controller):
         if not everyone and task['managerId'] != uid:
             return self.text(403, 'Это дело другого менеджера — нет доступа')
         with self.user_input():
-            task = tasks.update(tid, self.json_body())
+            task = tasks.update(tid, self.json_body(), admin.actor(self.handler)[1])
         self.bitrix_on(task['id'], 'task')
         return self.send_json(task)
 

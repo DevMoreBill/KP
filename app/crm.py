@@ -56,6 +56,33 @@ class Stages:
         return [stage['key'] for stage in cls.all(store)]
 
 
+class ClientPick:
+    """Компании на выбор в сделке (клиент из Битрикс24 совпал по контакту с несколькими клиентами программы)."""
+
+    MAX = 8
+    TEXT = 300
+    SHORT = 120
+    CONTACT = ('name', 'post', 'phone', 'email')
+
+    @classmethod
+    def clean(cls, rows) -> list[dict]:
+        out = []
+        for row in rows if isinstance(rows, list) else []:
+            if not isinstance(row, dict) or not row.get('id'):
+                continue
+            contact = picked if isinstance(picked := row.get('contact'), dict) else {}
+            out.append(
+                {
+                    'id': re.sub(r'[^A-Za-z0-9_-]', '', str(row['id']))[:64],
+                    'name': str(row.get('name') or '')[: cls.TEXT],
+                    'inn': re.sub(r'\D', '', str(row.get('inn') or ''))[:12],
+                    'by': str(row.get('by') or '')[:20],
+                    'contact': {key: str(contact.get(key) or '')[: cls.SHORT] for key in cls.CONTACT},
+                }
+            )
+        return out[: cls.MAX]
+
+
 class DealBook:
     """Сделки одного хранилища."""
 
@@ -243,6 +270,10 @@ class DealBook:
             out['clientInn'] = re.sub(r'\D', '', str(data.get('clientInn') or ''))[:12]
         if 'clientId' in data:
             out['clientId'] = re.sub(r'[^A-Za-z0-9_-]', '', str(data.get('clientId') or ''))[:64]
+        if 'clientPick' in data:
+            out['clientPick'] = ClientPick.clean(data.get('clientPick'))
+        elif 'clientId' in data or 'client' in data:
+            out['clientPick'] = []
         if 'expected' in data:
             v = data.get('expected')
             day = Val.day(v) if v else None
@@ -326,6 +357,18 @@ class DealBook:
             if new == old:
                 return
             cur['uf'] = new
+            conn = self.store.conn()
+            self._save(conn, did, cur, author)
+            conn.commit()
+
+    def put_exec(self, did, state: dict, author: str, what: dict) -> None:
+        """Отметки исполнения сделки (crm_exec) — с записью в историю."""
+        with self.store.lock:
+            cur = self.get(did)
+            if not cur:
+                raise LookupError('Сделка не найдена')
+            cur['exec'] = state
+            self._log(cur, author, what='exec', **what)
             conn = self.store.conn()
             self._save(conn, did, cur, author)
             conn.commit()
@@ -652,7 +695,7 @@ class TaskBook:
     KINDS = (('call', 'Звонок'), ('meet', 'Встреча'), ('mail', 'Письмо'), ('task', 'Задача'))
     STATES = ('open', 'done', 'cancel')
     TIME = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
-    COLS = 'id, deal_id, manager_id, kind, due, time, title, note, state, done_at, created, created_by'
+    COLS = 'id, deal_id, manager_id, kind, due, time, title, note, state, done_at, created, created_by, step'
 
     def __init__(self, store) -> None:
         self.store = store
@@ -661,7 +704,21 @@ class TaskBook:
     def _out(cls, row) -> dict:
         return dict(
             zip(
-                ('id', 'deal', 'managerId', 'kind', 'due', 'time', 'title', 'note', 'state', 'doneAt', 'created', 'by'),
+                (
+                    'id',
+                    'deal',
+                    'managerId',
+                    'kind',
+                    'due',
+                    'time',
+                    'title',
+                    'note',
+                    'state',
+                    'doneAt',
+                    'created',
+                    'by',
+                    'step',
+                ),
                 row,
                 strict=False,
             )
@@ -717,14 +774,15 @@ class TaskBook:
             x['state'] = data['state']
         return x
 
-    def add(self, data, manager_id, author: str, deal=None) -> dict:
+    def add(self, data, manager_id, author: str, deal=None, step: str = '') -> dict:
+        """Новое дело; step — точка исполнения сделки, на которую дело поставила программа (crm_exec)."""
         x = self._clean(data, None)
         title = x.get('title') or dict(self.KINDS)[x['kind']]
         with self.store.lock:
             conn = self.store.conn()
             cur = conn.execute(
-                'INSERT INTO crm_tasks (deal_id, manager_id, kind, due, time, title, note, state, created, created_by) '
-                "VALUES (?,?,?,?,?,?,?,'open',?,?)",
+                'INSERT INTO crm_tasks (deal_id, manager_id, kind, due, time, title, note, state, created, created_by, step) '
+                "VALUES (?,?,?,?,?,?,?,'open',?,?,?)",
                 (
                     deal or None,
                     manager_id or '',
@@ -735,13 +793,14 @@ class TaskBook:
                     x.get('note') or '',
                     Val.now(),
                     str(author or '')[:120],
+                    str(step or '')[:80] or None,
                 ),
             )
             conn.commit()
             tid = cur.lastrowid
         return self._require(tid)
 
-    def update(self, tid: str | int, data) -> dict:
+    def update(self, tid: str | int, data, author: str = '') -> dict:
         cur = self.get(tid)
         if not cur:
             raise LookupError('Дело не найдено')
@@ -764,6 +823,12 @@ class TaskBook:
                 int(tid),
             ),
         )
+        if new.get('step') and new['deal'] and x.get('state') == 'done' and cur['state'] != 'done':
+            from crm_exec import ExecBook  # дело точки исполнения сделано — точка отмечена
+
+            ExecBook(self.store).mark(
+                new['deal'], new['step'], date.today().isoformat(), author or 'по сделанному делу'
+            )
         return self._require(tid)
 
     def move_deal(self, did, manager_id) -> None:
@@ -795,11 +860,15 @@ class CrmBoard:
         for task in task_list:
             if task['state'] == 'open' and task['deal'] and task['deal'] not in nxt:
                 nxt[task['deal']] = task
+        from crm_exec import ExecPlan
+
         for deal in deals:
             deal['kps'] = kps.get(deal['id'], [])
             deal['next'] = nxt.get(deal['id'])
-            deal.pop('history', None)
-            deal.pop('uf', None)
+            deal['execSum'] = ExecPlan(deal).summary()
+            ExecPlan.strip(deal['kps'])
+            for key in ('history', 'uf', 'exec'):
+                deal.pop(key, None)
         return {
             'stages': Stages.all(self.store),
             'funnels': Funnels(self.store).all(),

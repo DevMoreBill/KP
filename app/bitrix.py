@@ -15,6 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from bitrix_clients import BitrixClients
 from bitrix_mirror import BitrixMirror
 from bitrix_rules import BitrixRules
 from crm import DealBook, Stages, TaskBook
@@ -1498,7 +1499,7 @@ class BitrixSync:
 
     def _import_deal(self, bx_deal, mid: str | None = None, company: dict | None = None) -> dict:
         """Сделка Битрикса → сделка программы у ответственного (mid — по правилам, _who); company — уже известная компания."""
-        company = self._company_info(bx_deal.get('COMPANY_ID')) if company is None else company
+        company = BitrixClients(self).of_deal(bx_deal) if company is None else company
         mid = (self._mid_of(bx_deal.get('ASSIGNED_BY_ID')) or '') if mid is None else mid
         mgr: dict = next((x for x in self._managers() if x['id'] == mid), {})
         key = (
@@ -1513,12 +1514,15 @@ class BitrixSync:
             'title': bx_deal.get('TITLE') or company.get('name') or 'Сделка из Битрикс24',
             'client': company.get('name') or '',
             'clientInn': company.get('inn') or '',
+            'clientId': company.get('clientId') or '',
             'expected': BitrixTime.day(bx_deal.get('CLOSEDATE')),
             'note': bx_deal.get('COMMENTS') or '',
             'stage': key,
         }
         if key == 'lost':
             body['lostReason'] = 'Проиграно в Битрикс24'
+        if company.get('pick'):
+            body['clientPick'] = company['pick']
         body.update(self.mirror.place(bx_deal))
         if bx_deal.get('OPPORTUNITY'):
             body['sum'] = bx_deal['OPPORTUNITY']
@@ -1542,58 +1546,6 @@ class BitrixSync:
             mid=mid,
         )
         return deal
-
-    def _company_info(self, cid) -> dict:
-        """Компания Битрикса: название, ИНН; контакты и адрес — в справочник клиентов программы (без дублей)."""
-        if not cid or str(cid) == '0':
-            return {}
-        comp = self.api.call('crm.company.get', {'id': cid}) or {}
-        req = self.api.list(
-            'crm.requisite.list',
-            {'filter': {'ENTITY_TYPE_ID': 4, 'ENTITY_ID': cid}, 'select': ['ID', 'RQ_INN', 'RQ_KPP', 'RQ_OGRN']},
-            limit=3,
-        )
-        inn = re.sub(r'\D', '', str((req[0] if req else {}).get('RQ_INN') or ''))
-        out = {'company': str(cid), 'name': comp.get('TITLE') or '', 'inn': inn}
-        if inn and self.rules.can('company', 'in'):  # компании и контакты из Битрикса — в справочник клиентов
-            self._merge_client(inn, comp, req[0])
-        return out
-
-    def _merge_client(self, inn, comp, req) -> None:
-        doc = self._client(inn, '')
-        new = not doc
-        doc = (
-            dict(doc)
-            if doc
-            else {
-                'id': 'inn' + inn,
-                'name': comp.get('TITLE') or '',
-                'inn': inn,
-                'kpp': req.get('RQ_KPP') or '',
-                'ogrn': req.get('RQ_OGRN') or '',
-                'source': 'Битрикс24',
-            }
-        )
-        doc.pop('_rev', None)
-        cons = [x for x in (doc.get('contacts') or []) if isinstance(x, dict)]
-        have = {str(x.get('phone') or '') for x in cons} | {str(x.get('email') or '').lower() for x in cons}
-        changed = new
-        take = self.rules.allow(self.rules.company()['contacts'], 'in')
-        for phone in (comp.get('PHONE') or [])[:5] if take else []:
-            v = str(phone.get('VALUE') or '')
-            if v and v not in have:
-                cons.append({'name': comp.get('TITLE') or 'Телефон', 'phone': v})
-                have.add(v)
-                changed = True
-        for email in (comp.get('EMAIL') or [])[:5] if take else []:
-            v = str(email.get('VALUE') or '')
-            if v and v.lower() not in have:
-                cons.append({'name': comp.get('TITLE') or 'Почта', 'email': v})
-                have.add(v.lower())
-                changed = True
-        if changed:
-            doc['contacts'] = cons[:30]
-            self.store.client_put(doc.get('id') or 'inn' + inn, doc, self.WHO)
 
     def _pull_tasks(self, since_dt) -> int:
         if not self.rules.can('task', 'in'):

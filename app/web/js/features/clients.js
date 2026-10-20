@@ -309,6 +309,11 @@ class ApiKeys {
 
 document.addEventListener('input', e=>{ const t=e.target; if (t.dataset && t.dataset.p==='clientInn'){ const v=t.value.replace(/\D/g,''); t.classList.toggle('bad', !!v && !validInn(v) && (v.length>=10)); if ((v.length===10||v.length===12) && validInn(v) && v!==S._lastInn){ S._lastInn=v; setTimeout(partyFind,50); } } });
 
+/** «найден по контакту»: кто и чем совпал (телефон, e-mail, ФИО) — сервер отмечает в ответе поиска клиентов */
+class ClientMatchText {
+  static of(c){ const m=c.match||{}, k=m.contact||{}; return `по ${m.by||'контакту'}: ${[k.name, k.phone, k.email].filter(Boolean).join(', ')}`; }
+}
+
 let clFindSeq=0; const clFindT=new Debounce(160);
 document.addEventListener('input', e=>{ if (e.target.id!=='clFind') return; const inp=e.target; clFindT.run(()=>clFindRun(inp)); });
 async function clFindRun(inp){ const raw=inp.value.trim(), q=norm(raw), L=$('#clList'), seq=++clFindSeq;
@@ -316,7 +321,8 @@ async function clFindRun(inp){ const raw=inp.value.trim(), q=norm(raw), L=$('#cl
   if (seq!==clFindSeq || !L) return;      // пока ждали ответ, ввели ещё буквы
   const inp2=$('#clFind'); if (!inp2 || inp2.value.trim()!==raw) return;
   const inn=raw.replace(/\D/g,''), innOk=(inn.length===10||inn.length===12)&&/^\d[\d\s]*$/.test(raw)&&validInn(inn), known=res.some(c=>String(c.inn||'').replace(/\D/g,'')===inn);
-  let html=res.map(c=>`<button type="button" data-clid="${esc(c.id)}"><b>${esc(c.name)}</b><span>${c.inn?'ИНН '+esc(c.inn)+' · ':''}${esc((c.address||'').slice(0,70))}${c.kpCount?' · КП: '+c.kpCount:''}</span></button>`).join('');
+  let html=res.map(c=>`<button type="button" data-clid="${esc(c.id)}"><b>${esc(c.name)}</b><span>${c.match?`<i class="cl-m">${esc(ClientMatchText.of(c))}</i> · `:''}${c.inn?'ИНН '+esc(c.inn)+' · ':''}${esc((c.address||'').slice(0,70))}${c.kpCount?' · КП: '+c.kpCount:''}</span></button>`).join('');
+  if (res.length>1 && res.every(c=>c.match)) html=`<p class="muted cl-many">Этот контакт есть у нескольких компаний — выберите нужную:</p>`+html;
   if (innOk && !known) html+=`<button type="button" data-inn="${inn}"><b>Найти ИНН ${inn} в реестре</b><span>реквизиты подставятся автоматически</span></button>`;
   else if (/^\d+$/.test(inn) && inn.length>=10 && !innOk) html+=`<p class="muted" style="margin:10px 14px">ИНН с ошибкой: нужно 10 цифр (организация) или 12 (ИП)</p>`;
   else if (q && !res.length) html+=`<p class="muted" style="margin:10px 14px">Среди сохранённых не найдено. Введите ИНН — найдём в реестре.</p>`;

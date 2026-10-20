@@ -1276,9 +1276,17 @@ class DealPlan {
     let c; try{ c=dealCalc(DealState.kpInputs(st), st.deal); }catch(e){ return undefined; }
     if (!c || !Number.isFinite(c.D)) return undefined;
     const r=x=>Number.isFinite(x) ? Math.round(x) : null;
-    return { start:/^\d{4}-\d{2}-\d{2}$/.test(st.deal.start||'') ? st.deal.start : '', ready:r(c.Rdy), delivery:r(c.D), end:r(c.Tend),
+    return { start:/^\d{4}-\d{2}-\d{2}$/.test(st.deal.start||'') ? st.deal.start : '', ready:r(c.Rdy), delivery:r(c.D), end:r(c.Tend), pnr:c.pnrDays>0 ? r(c.pnrEnd) : null,
       pays:(c.rows||[]).filter(x=>x.inflow && x.amount>0 && Number.isFinite(x.day)).slice(0, 8)
-        .map(x=>({d:Math.round(x.day), p:Math.round((x.pct||0)*10)/10, t:String(x.label||'').slice(0, 80)})) };
+        .map(x=>({d:Math.round(x.day), p:Math.round((x.pct||0)*10)/10, t:String(x.label||'').slice(0, 80)})),
+      steps:this.steps(c) };
+  }
+  /** платежи графика для исполнения сделки в кабинете: заказчик, поставщики, перевозка, прочее — день от договора и сумма в рублях
+   *  (суммы закупки сервер показывает только тем, кому открыта экономика сделки) */
+  static steps(c){
+    const parties={cust:'cust', sup:'sup', log:'log', oth:'oth'};
+    return (c.rows||[]).filter(x=>Number.isFinite(x.day) && Math.abs(x.amount||0)>0).slice(0, 40)
+      .map(x=>({k:String(x.key||'').slice(0, 60), d:Math.round(x.day), t:String(x.label||'').slice(0, 120), p:parties[x.inflow?'cust':x.party]||'oth', a:Math.round(Math.abs(x.amount)), pc:x.inflow ? Math.round((x.pct||0)*10)/10 : undefined}));
   }
 }
 

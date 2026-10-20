@@ -12,6 +12,7 @@ import zipfile
 from datetime import datetime
 from typing import Any, Literal
 
+from client_match import ClientMatch, ContactKey
 from defaults import SrvVal
 
 SCHEMA = """
@@ -305,6 +306,28 @@ MIGRATIONS = [
      ALTER TABLE deals DROP COLUMN funnel;
      """,
     ),
+    # поиск клиента по контактам: телефон (10 цифр), почта, ФИО контактного лица — в строке поиска (пересчёт при миграции)
+    (
+        '2027-16-client-contacts',
+        """
+     CREATE INDEX IF NOT EXISTS clients_name ON clients(name);
+     """,
+        """
+     DROP INDEX IF EXISTS clients_name;
+     """,
+    ),
+    # исполнение сделки (app/crm_exec.py): дело, поставленное программой на точку исполнения (оплата, готовность, поставка)
+    (
+        '2027-17-crm-exec',
+        """
+     ALTER TABLE crm_tasks ADD COLUMN step TEXT;
+     CREATE INDEX IF NOT EXISTS crm_tasks_step ON crm_tasks(deal_id, step);
+     """,
+        """
+     DROP INDEX IF EXISTS crm_tasks_step;
+     ALTER TABLE crm_tasks DROP COLUMN step;
+     """,
+    ),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
@@ -344,6 +367,26 @@ def _now() -> str:
 def norm(text) -> str:
     """Строка для поиска — как norm() в интерфейсе: нижний регистр, ё → е, без кавычек, одинарные пробелы."""
     return re.sub(r'\s+', ' ', re.sub(r'[«»"]', '', str(text or '').lower().replace('ё', 'е'))).strip()
+
+
+class ClientSearch:
+    """Поиск клиента: телефон и почта — по контактам; найденный по контакту отмечается «match» (кто и чем совпал)."""
+
+    TEXT_MAX = 3000
+    CONTACT = {'phone': ContactKey.phone, 'email': ContactKey.email}
+
+    @staticmethod
+    def mark(item: dict, query) -> dict:
+        kind = ContactKey.kind(query)
+        if not kind:
+            return item
+        found = ClientMatch.contact_of(item, kind, query)
+        if found:
+            item['match'] = {
+                'by': ClientMatch.MATCHED_BY[kind],
+                'contact': {k: found.get(k) or '' for k in ('name', 'phone', 'email')},
+            }
+        return item
 
 
 def like_arg(query) -> str:
@@ -470,7 +513,11 @@ def client_cols(doc) -> tuple:
         str(data.get('name') or '')[:300],
         re.sub(r'\D', '', str(data.get('inn') or ''))[:12],
         str(data.get('usedAt') or data.get('updatedAt') or '')[:40],
-        norm(' '.join(str(data.get(k) or '') for k in ('name', 'full', 'inn', 'address')))[:1000],
+        norm(
+            ' '.join(
+                [*(str(data.get(k) or '') for k in ('name', 'full', 'inn', 'address')), ContactKey.search_text(data)]
+            )
+        )[: ClientSearch.TEXT_MAX],
     )
 
 
@@ -501,6 +548,16 @@ def kp_cols(meta) -> tuple:
             )
         )[:1500],
     )
+
+
+def _fill_client_search(store, conn) -> None:
+    """Миграция 2027-16-client-contacts: строка поиска клиента — с контактами."""
+    for cid, doc in conn.execute('SELECT id, doc FROM clients').fetchall():
+        try:
+            data = json.loads(doc)
+        except ValueError:
+            data = {}
+        conn.execute('UPDATE clients SET name=?, inn=?, used_at=?, search=? WHERE id=?', (*client_cols(data), cid))
 
 
 def _fill_columns(store, conn) -> None:
@@ -608,6 +665,7 @@ MIGRATION_FILL = {
     '2027-07-catalog-sync': _fill_sync,
     '2027-10-crm': _fill_crm,
     '2027-12-indexes': _fill_feed,
+    '2027-16-client-contacts': _fill_client_search,
 }
 
 
@@ -1771,7 +1829,10 @@ class Store:
     def clients_search(self, query='', limit: int = 50, offset: int = 0) -> dict:
         """Контрагенты: последние использованные или найденные по названию, ИНН, адресу (поиск — на сервере)."""
         query_norm, args, where_sql = norm(query), [], ''
-        if query_norm:
+        kind = ContactKey.kind(query)
+        if kind in ClientSearch.CONTACT:
+            where_sql, args = " WHERE search LIKE ? ESCAPE '\\'", [like_arg(ClientSearch.CONTACT[kind](query))]
+        elif query_norm:
             digits = re.sub(r'\D', '', query_norm)
             if digits and digits == query_norm.replace(' ', ''):
                 where_sql, args = (
@@ -1785,7 +1846,8 @@ class Store:
             'SELECT doc, rev FROM clients' + where_sql + ' ORDER BY used_at DESC, updated DESC LIMIT ? OFFSET ?',
             [*args, int(limit), int(offset)],
         )
-        return {'total': total, 'items': [dict(json.loads(row[0]), _rev=row[1] or 0) for row in rows]}
+        items = [dict(json.loads(row[0]), _rev=row[1] or 0) for row in rows]
+        return {'total': total, 'items': [ClientSearch.mark(item, query) for item in items]}
 
     def client_get(self, cid) -> dict | None:
         row = self.one('SELECT doc FROM clients WHERE id=?', (cid,))

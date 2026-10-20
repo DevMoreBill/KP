@@ -520,6 +520,9 @@ def main() -> int:
         from bitrix import BitrixConf, BitrixSync  # связь с Битрикс24: очередь отправки и опрос изменений
 
         maintenance.Background.every(lambda: BitrixConf(store()).poll(), lambda: BitrixSync(store()).run(), 'Битрикс24')
+        from crm_exec import ExecTasks  # исполнение сделок: дела на подошедшие точки (оплаты, готовность, поставка)
+
+        maintenance.Background.every(3600, lambda: ExecTasks(store()).sweep(), 'исполнение сделок')
         import config
         from admin_alerts import AdminAlerts
 

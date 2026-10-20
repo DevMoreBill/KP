@@ -17,8 +17,10 @@ export class CabDeals {
     late: ['Срок прошёл', deal => deal.expected && deal.expected < today()],
     month: ['Ожидаются в этом месяце', deal => String(deal.expected || '').slice(0, 7) <= today().slice(0, 7)],
     new: ['Новые из Битрикс24', deal => deal.bxNew],
+    exec: ['Исполнение просрочено', deal => deal.execSum && deal.execSum.overdue],
   };
   static LIMIT = 60;
+  static PERCENT = 100;
   static LIST_LIMIT = 100;
   static closed = false;
   static filter = '';
@@ -169,7 +171,7 @@ export class CabDeals {
     const client = deal.client && deal.client !== deal.title ? `<span class="dc-c">${esc(deal.client)}</span>` : '';
     return `<article class="dc t-${CrmData.toneOf(deal)}" data-deal="${esc(deal.id)}"${drag} tabindex="0">
       <b class="dc-t">${esc(deal.title || deal.client || `Сделка № ${deal.number}`)}</b>${client}
-      <div class="dc-r"><b>${CrmFmt.short(deal.sum)}</b>${this._expected(deal)}</div>${this._next(deal)}${this._foot(deal)}</article>`;
+      <div class="dc-r"><b>${CrmFmt.short(deal.sum)}</b>${this._expected(deal)}</div>${this._next(deal)}${this.exec(deal)}${this._foot(deal)}</article>`;
   }
 
   static _expected(deal) {
@@ -188,6 +190,20 @@ export class CabDeals {
       return `<button type="button" class="dc-add" data-dstep="${esc(deal.id)}" title="Запланировать следующий шаг">＋ Следующий шаг</button>`;
     const over = step.due < today() ? ' bad-t' : '';
     return `<span class="dc-n${over}">${CrmData.icon(step.kind)} ${esc(step.title)} · ${esc(CrmFmt.rel(step.due))}</span>`;
+  }
+
+  /**
+   * Исполнение после договора: полоска «сделано из всех» и ближайшая точка.
+   * @param {object} deal
+   * @returns {string}
+   */
+  static exec(deal) {
+    const sum = deal.execSum;
+    if (!sum || !sum.total) return '';
+    const width = Math.round((sum.done / sum.total) * this.PERCENT);
+    const step = sum.next ? ` · ${esc(sum.next.label)} ${esc(CrmFmt.day(sum.next.plan))}` : '';
+    const late = sum.overdue ? ' bad-t' : '';
+    return `<span class="dc-x${late}" title="Исполнение: сделано ${sum.done} из ${sum.total}"><i class="dc-xb"><i style="width:${width}%"></i></i>${sum.done}/${sum.total}${step}</span>`;
   }
 
   static _foot(deal) {
@@ -246,7 +262,7 @@ export class CabDeals {
       <span class="lr-n"><b>${esc(name)}</b><span class="muted">${esc(client)}</span></span>
       <span class="lr-s"><span class="cab-dot t-${CrmData.toneOf(deal)}" aria-hidden="true"></span>${esc(CrmFunnel.label(deal))}</span>
       <b class="lr-sum">${CrmFmt.short(deal.sum)}</b><span class="lr-e">${this._expected(deal) || '<span class="muted">—</span>'}</span>
-      <span class="lr-x">${this._next(deal)}</span>${who}</div>`;
+      <span class="lr-x">${this._next(deal)}${this.exec(deal)}</span>${who}</div>`;
   }
 
   /**

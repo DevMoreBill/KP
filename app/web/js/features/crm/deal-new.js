@@ -3,6 +3,7 @@ import { CrmFmt, DateChips } from './crm-fmt.js';
 import { CrmTask } from './crm-task.js';
 import { DealCard } from './deal-card.js';
 import { Cabinet } from './cabinet.js';
+import { ClientSuggest } from './client-suggest.js';
 
 /**
  * «Новая сделка» без КП: клиент с подсказкой из справочника, задача, сумма, ожидаемая дата чипом, воронка и сразу первое
@@ -11,10 +12,6 @@ import { Cabinet } from './cabinet.js';
 export class DealNew {
   static AHEAD = 30;
   static FOCUS_MS = 50;
-  static SUGGEST = 8;
-  static CLIENTS_SHOWN = 50;
-  static MIN_QUERY = 2;
-  static TYPING_MS = 250;
   static HEAD = { 'Content-Type': 'application/json; charset=utf-8' };
 
   /** Открыть окно. */
@@ -22,8 +19,11 @@ export class DealNew {
     const expected = CrmFmt.after(this.AHEAD);
     const modal = new Modal(this._html(expected), 'dk-new-dlg');
     const form = modal.$('form');
-    const typing = new Debounce(this.TYPING_MS);
-    form.elements.client.addEventListener('input', () => typing.run(() => this._suggest(modal)));
+    const field = form.elements.client;
+    field.addEventListener('input', () => {
+      this._found(modal);
+      ClientSuggest.run(field, client => this._picked(modal, client));
+    });
     modal.d.addEventListener('click', event => this._click(event, modal));
     form.onsubmit = event => {
       event.preventDefault();
@@ -37,7 +37,7 @@ export class DealNew {
     const funnel = DealCard.funnelSelect({ funnel: CrmData.funnel() }, 'name="funnel"');
     return `<div class="dlg-h"><h3>Новая сделка</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <p class="muted dk-nnote">Сделки появляются и сами — при сохранении КП. Здесь — сделка без КП: запрос, встреча, тендер.</p>
-      <form class="dk-new" autocomplete="off"><label class="f"><span class="req">Клиент</span><input type="text" name="client" maxlength="300" list="dkNewCl" placeholder="Название или ИНН — подскажем из справочника"><small class="muted dk-found"></small></label>
+      <form class="dk-new" autocomplete="off"><label class="f"><span class="req">Клиент</span><input type="text" name="client" maxlength="300" placeholder="Название, ИНН, телефон, e-mail или ФИО — подскажем"><small class="muted dk-found"></small></label>
         <label class="f"><span>Объект или задача</span><input type="text" name="title" maxlength="200" placeholder="Например: компрессорная для цеха № 3"></label>
         <div class="dk-nr"><label class="f"><span>Сумма, ₽ <em class="muted">если известна</em></span><input type="text" name="sum" inputmode="decimal" placeholder="по КП"></label>
         <label class="f"><span>Ожидаемая дата</span><input type="date" name="expected" value="${expected}"></label></div>
@@ -45,30 +45,13 @@ export class DealNew {
         <fieldset class="dk-first"><legend>Первое дело <span class="muted">— чтобы сделка не потерялась</span></legend>${CrmTask.kinds('call')}
           <input type="text" name="task" maxlength="200" placeholder="Например: позвонить, уточнить потребность" aria-label="Что сделать">
           <div class="tq-r">${DateChips.html(DateChips.TASK, 'due', tomorrow)}<input type="date" name="due" value="${tomorrow}" aria-label="Дата дела"></div></fieldset>
-        <datalist id="dkNewCl">${this._options(CLIENTS || [])}</datalist>
         <div class="row"><button class="btn primary" type="submit">Создать сделку</button><span class="sp"></span><button class="btn" type="button" data-x>Отмена</button></div></form>`;
   }
 
-  static _options(clients) {
-    return clients
-      .slice(0, this.CLIENTS_SHOWN)
-      .map(client => `<option value="${esc(client.name)}">${esc(client.inn ? `ИНН ${client.inn}` : '')}</option>`)
-      .join('');
-  }
-
-  static async _suggest(modal) {
-    const field = modal.$('[name=client]');
-    const text = field.value.trim();
+  static _picked(modal, client) {
+    clientsKeep([client]);
+    modal.$('[name=client]').value = client.name || '';
     this._found(modal);
-    if (text.length < this.MIN_QUERY) return;
-    try {
-      const found = await api(`/api/clients?limit=${this.SUGGEST}&q=${encodeURIComponent(text)}`);
-      clientsKeep(found.items || []);
-      modal.$('#dkNewCl').innerHTML = this._options(found.items || []);
-      this._found(modal);
-    } catch {
-      // без подсказок клиента можно вписать вручную
-    }
   }
 
   static _client(text) {

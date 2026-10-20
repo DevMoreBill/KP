@@ -152,6 +152,10 @@ class FakeBitrix:
             return {'result': int(i)}
         if m == 'crm.company.get':
             return {'result': self.companies[str(b['id'])]}
+        if m == 'crm.contact.list':
+            return self.page([c for c in self.contacts.values() if self.match(c, b.get('filter'))], b)
+        if m == 'crm.contact.get':
+            return {'result': self.contacts[str(b['id'])]}
         if m == 'crm.contact.add':
             i = self._id()
             self.contacts[i] = dict(f, ID=i)

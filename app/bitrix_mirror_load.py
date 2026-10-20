@@ -8,6 +8,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from bitrix import BitrixQueue, BitrixSync
+from bitrix_clients import BitrixClients
 from crm import DealBook, TaskBook
 from crm_funnels import DealFields, Funnels, UfValue
 from kp_track import Val
@@ -260,27 +261,8 @@ class MirrorImport:
         return 'created'
 
     def _companies(self, ids: list) -> dict:
-        """Компании пачкой: {id: {company, name, inn}} — без справочника клиентов (тысячи сделок за раз)."""
-        want = sorted({str(cid) for cid in ids if cid and str(cid) != '0'})
-        if not want:
-            return {}
-        api = self.sync.api
-        names = {
-            str(row.get('ID')): str(row.get('TITLE') or '')
-            for row in api.list(
-                'crm.company.list', {'filter': {'ID': want}, 'select': ['ID', 'TITLE']}, limit=len(want)
-            )
-        }
-        inns: dict = {}
-        for row in api.list(
-            'crm.requisite.list',
-            {'filter': {'ENTITY_TYPE_ID': 4, 'ENTITY_ID': want}, 'select': ['ENTITY_ID', 'RQ_INN']},
-            limit=len(want) * 3,
-        ):
-            inn = re.sub(r'\D', '', str(row.get('RQ_INN') or ''))
-            if inn:
-                inns.setdefault(str(row.get('ENTITY_ID')), inn)
-        return {cid: {'company': cid, 'name': names.get(cid, ''), 'inn': inns.get(cid, '')} for cid in want}
+        """Компании пачкой: {id: {company, name, inn, clientId | pick}} — со слиянием с базой клиентов."""
+        return BitrixClients(self.sync).bulk(ids)
 
     def _tasks(self) -> int:
         """Открытые дела загруженных сделок (по связям сделок)."""

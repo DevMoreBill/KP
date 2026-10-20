@@ -848,6 +848,7 @@ class Scenario(UiRun):
             pg.click('#cabWin [data-cflt=""]')
             self.wait(500)
         self._cab_card()
+        self._cab_exec()
         self._cab_new()
         self.closeall()
         self.ev("Cabinet.open()")
@@ -867,7 +868,7 @@ class Scenario(UiRun):
             return
         card.click()
         pg.wait_for_selector('dialog.deal-dlg[open] .dk-in', timeout=15000)
-        self.snap('f_deal_card', 'dialog.deal-dlg[open]', wait=500)
+        self.snap('f_deal_card', 'dialog.deal-dlg[open]', wait=800)
         title = 'Позвонить главному инженеру (прогон)'
         pg.fill('dialog.deal-dlg[open] form.tq input[name=title]', title)
         pg.click('dialog.deal-dlg[open] form.tq [data-dchip][data-day]:nth-child(2)')
@@ -889,6 +890,40 @@ class Scenario(UiRun):
         if pg.locator('dialog.deal-dlg[open]').count():
             self.errs.append(('cabinet', 'ERR', 'Esc не закрыл карточку сделки'))
 
+    PLAN = {'start': '', 'ready': 30, 'delivery': 40, 'end': 45, 'pnr': None, 'pays': [{'d': 0, 'p': 50, 't': 'Аванс 50 %'}],
+            'steps': [{'k': 'c1', 'd': 0, 't': 'Аванс 50 % — при подписании договора', 'p': 'cust', 'a': 450000, 'pc': 50},
+                      {'k': 'sp:s1:0', 'd': 3, 't': 'Поставщику: предоплата 100 %', 'p': 'sup', 'a': 610000},
+                      {'k': 'log:s1', 'd': 30, 't': 'Перевозка и сборы', 'p': 'log', 'a': 48000},
+                      {'k': 'c2', 'd': 45, 't': 'Окончательный расчёт 50 % — после поставки', 'p': 'cust', 'a': 450000, 'pc': 50}]}
+
+    def _cab_exec(self):
+        """Исполнение сделки: план из экономики КП (вписан в описание КП стенда), «Договор подписан», дела сами, отметка «✓»."""
+        pg = self.pg
+        did = self.ev("""async plan => { const b = await api('/api/crm/board?manager=all');
+          const d = b.deals.find(x => (x.kps || []).length && !x.execSum && !['won', 'lost'].includes(x.stage)); if (!d) return '';
+          const kid = d.kps[0].id, m = await api(`/api/kp/${kid}/meta`); m.plan = plan;
+          await api(`/api/kp/${kid}/meta`, {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8'}, body: JSON.stringify(m)});
+          return d.id; }""", self.PLAN)
+        if not did:
+            self.errs.append(('cabinet', 'ERR', 'нет сделки с КП для исполнения'))
+            return
+        self.ev("id => DealCard.open(id)", did)
+        pg.wait_for_selector('dialog.deal-dlg[open] .dk-exec', timeout=15000)
+        self.snap('f_deal_exec0', 'dialog.deal-dlg[open]', wait=800)
+        pg.click('dialog.deal-dlg[open] [data-exsign]')
+        pg.wait_for_selector('dialog.deal-dlg[open] .ex-r.ex-done', timeout=15000)
+        self.wait(500)
+        text = pg.locator('dialog.deal-dlg[open]').inner_text()
+        if 'Оплатить поставщику' not in text:
+            self.errs.append(('cabinet', 'ERR', 'после «Договор подписан» не появилось дело «Оплатить поставщику»'))
+        pg.locator('dialog.deal-dlg[open] [data-exmark]').first.click()
+        self.wait(1200)
+        if self.ev("DealCard.deal.exec.paid") != 450000:
+            self.errs.append(('cabinet', 'ERR', 'оплата заказчика не отмечена: %s' % self.ev("DealCard.deal.exec.paid")))
+        self.snap('f_deal_exec1', 'dialog.deal-dlg[open]', wait=300)
+        pg.keyboard.press('Escape')
+        self.wait(500)
+
     def _cab_new(self):
         pg = self.pg
         if pg.locator('#cabWin .cab-q [data-cq="deal"]').is_visible():
@@ -898,6 +933,14 @@ class Scenario(UiRun):
             self.snap('f_cab_fab', '#cabWin', wait=200)
             pg.click('#cabWin .cab-fabm [data-cq="deal"]')
         pg.wait_for_selector('dialog.dk-new-dlg[open]', timeout=10000)
+        self.ev("""() => api('/api/clients/innprogon1', {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8'},
+          body: JSON.stringify({id: 'innprogon1', name: 'ООО «Контакт-Прогон»', inn: '', contacts: [{name: 'Смирнова Ольга', phone: '+7 (912) 345-67-89'}]})})""")
+        pg.locator('dialog.dk-new-dlg[open] [name=client]').press_sequentially('89123456789', delay=30)
+        try:
+            pg.wait_for_selector('dialog.dk-new-dlg[open] .csg button', timeout=8000)
+            self.snap('f_deal_new_phone', 'dialog.dk-new-dlg[open]', wait=200)
+        except Exception:
+            self.errs.append(('cabinet', 'ERR', 'клиент по телефону не подсказан'))
         pg.fill('dialog.dk-new-dlg[open] [name=client]', 'ООО «Прогон»')
         pg.fill('dialog.dk-new-dlg[open] [name=title]', 'Компрессорная для цеха (прогон)')
         pg.fill('dialog.dk-new-dlg[open] [name=task]', 'Уточнить потребность (прогон)')

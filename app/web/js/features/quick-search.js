@@ -20,7 +20,7 @@ class QuickSearch {
     const m=Modal.once('quick-search', ()=>this._open()); return m; }
   static _open(){
     const m=this.m=new Modal(`<div class="dlg-h"><h3>Найти</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
-      <input type="search" id="qsQ" class="qs-q" placeholder="КП, клиент, ИНН, сделка, модель или артикул" autocomplete="off" aria-label="Что найти">
+      <input type="search" id="qsQ" class="qs-q" placeholder="КП, клиент, ИНН, телефон, e-mail, сделка, модель" autocomplete="off" aria-label="Что найти">
       <div class="qs-r" id="qsR" aria-live="polite"></div><p class="muted qs-k">↑ ↓ — выбрать, Enter — открыть, Esc — закрыть · Ctrl+K — этот поиск откуда угодно</p>`, 'qs-dlg');
     const q=m.$('#qsQ');
     q.addEventListener('input', ()=>{ (this.t=this.t||new Debounce(180)).run(()=>this.run(q.value)); });
@@ -57,7 +57,7 @@ class QuickSearch {
     if (my!==this.seq) return;
     const cat=quickMatches(q).slice(0, 6);
     box.innerHTML=this.sect('КП', kp.map(kpRow))
-      + this.sect('Клиенты', cl.map(c=>this.row(`data-qcl="${esc(JSON.stringify({id:c.id||'', inn:c.inn||'', name:c.name||''}))}"`, esc(c.name), c.inn?'ИНН '+esc(c.inn):'')))
+      + this.sect('Клиенты', cl.map(c=>this.row(`data-qcl="${esc(JSON.stringify({id:c.id||'', inn:c.inn||'', name:c.name||''}))}"`, esc(c.name), [c.match?esc(ClientMatchText.of(c)):'', c.inn?'ИНН '+esc(c.inn):''].filter(Boolean).join(' · '))))
       + this.sect('Сделки', dl.map(d=>this.row(`data-qdl="${esc(d.id)}"`, `${esc(d.title||d.client)}`, `№ ${esc(d.number)} · ${esc(d.client||'')}${d.sum?' · '+CrmFmt.rub(d.sum):''}`)))
       + this.sect('Каталог', cat.map(catRow)) + (cat.length ? `<div class="qs-i"><button type="button" class="qs-b qs-all" data-qall><b>Все модели по «${esc(q)}» — в каталоге</b></button></div>` : '')
       || '<p class="empty">Ничего не найдено.</p>';
