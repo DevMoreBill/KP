@@ -1411,7 +1411,8 @@ class AdminApi:
             cat = str(data.get('cat') or '')[:80]
             if data.get('preview') is True:
                 return self.ok(feeds.FeedPurge.preview(store, feed, cat))
-            match = feeds.FeedPurge.run(store, feed, cat, data.get('block') is not False, actor(self.handler, True)[1])
+            purge = feeds.FeedPurge.run_and_block if data.get('block') is not False else feeds.FeedPurge.run
+            match = purge(store, feed, cat, actor(self.handler, True)[1])
             self.log(
                 'delete_catalog', 'catalog', 'feed:' + fid, None, dict(match, feed=feed.get('name'), cat=cat or 'все')
             )
@@ -1446,7 +1447,7 @@ class AdminApi:
                 feeds.IMAGE_STORE,
                 who,
                 only,
-                trash_missing=data.get('trashMissing') is True,
+                missing=feeds.Missing.TRASH if data.get('trashMissing') is True else feeds.Missing.KEEP,
             )
             self.log(
                 'import_feed',
@@ -1610,13 +1611,10 @@ class AdminApi:
                 recipients = Mailer.addresses(self.data().get('to'))
                 if not recipients:
                     return self.err(400, 'Укажите адрес для проверки')
-                Mailer(store).send(
+                Mailer(store).send_service(
                     recipients,
-                    [],
                     'Проверка почты — Конструктор КП',
                     'Это проверочное письмо: отправка КП по почте настроена.',
-                    [],
-                    test=True,
                 )
             except RuntimeError as exc:
                 return self.err(422, str(exc))
@@ -1668,7 +1666,7 @@ class AdminApi:
             import ai_llm
 
             try:
-                acc = ai_llm.ask(store, 'Ответь JSON-объектом {"ok": true, "model": "<название модели>"}', force=True)
+                acc = ai_llm.AiAsk.probe(store, 'Ответь JSON-объектом {"ok": true, "model": "<название модели>"}')
             except RuntimeError as exc:
                 return self.err(422, str(exc))
             return self.ok({'ok': True, 'answer': acc['text'][:200], 'model': acc['model'], 'usage': acc['usage']})
@@ -1822,7 +1820,9 @@ class AdminApi:
                 from data_file import DataFile
 
                 fmt = DataFile.fmt(query.get('fmt'))
-                name, body = settings_file.export(query.get('keys') == '1')
+                from data_bundle import Keys
+
+                name, body = settings_file.export(Keys.WITH if query.get('keys') == '1' else Keys.WITHOUT)
                 data, ext, ctype, more = data_file.dump(body.decode('utf-8'), fmt)
                 self.log(
                     'export_settings',
@@ -2006,11 +2006,8 @@ class AdminApi:
                 res = (
                     updater.download_latest(actor_login or 'admin')
                     if sub == 'update/download'
-                    else updater.install(
-                        self.handler.body(),
-                        actor_login or 'admin',
-                        source='файл ' + str(query.get('name') or '')[:80],
-                        force=query.get('force') == '1',
+                    else (updater.reinstall if query.get('force') == '1' else updater.install)(
+                        self.handler.body(), actor_login or 'admin', source='файл ' + str(query.get('name') or '')[:80]
                     )
                 )
                 self.log(
@@ -2082,7 +2079,7 @@ class AdminApi:
 
             return self.ok(DbOverview(store, data_dir).get())
         if sub == 'maint/backup' and method == 'POST':
-            rec = maintenance.DbCopy.daily(store, data_dir, force=True) or {}
+            rec = maintenance.DbCopy.now(store, data_dir)
             self.log(
                 'backup_db',
                 'db',

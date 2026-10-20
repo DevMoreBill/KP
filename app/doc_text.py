@@ -88,7 +88,7 @@ class DocText:
     @classmethod
     def _pdf(cls, data, ocr) -> dict:
         """текстовый слой; если его нет или он плохой — распознавание Windows; лучший по качеству"""
-        res = pdf_text.text(data, need_text=False)
+        res = pdf_text.PdfText.read(data)
         per = res.get('per') or []
         text_layer = cls._pages(per)
         quality_layer = TextQuality.score(text_layer)

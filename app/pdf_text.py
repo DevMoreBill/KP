@@ -523,38 +523,50 @@ def _run(doc, data, res, out, fonts, depth=0) -> None:
     newline()
 
 
-def text(data, need_text=True) -> dict:
-    """Текст PDF и текст каждой страницы; need_text=False — PDF без текста не ошибка (дальше — OCR)."""
-    max_mb = SrvVal.now('cat.docMaxMB')
-    if len(data) > max_mb * 1024 * 1024:
-        raise ValueError(f'файл больше {max_mb} МБ')
-    doc = Doc(data)
-    pages = doc.pages()
-    fonts: dict = {}
-    parts = []
-    per = []
-    size = 0
-    for page, res in pages:
-        contents = page.get('Contents')
-        streams = doc.get(contents)
-        refs = streams if isinstance(streams, list) else [contents]
-        data = b'\n'.join(doc.stream(ref) for ref in refs)
-        lines: list = []
-        try:
-            _run(doc, data, res, lines, fonts)
-        except RecursionError:
-            pass
-        result = '\n'.join(re.sub(r'[ \t\xa0]+', ' ', x).strip() for x in lines)
-        result = re.sub(r'\n{2,}', '\n', result).strip().replace('\x00', '')
-        per.append(result)
-        if result:
-            parts.append(result)
-            size += len(result)
-        if size > MAX_TEXT:
-            break
-    out = '\n\n'.join(parts)
-    if need_text and len(re.sub(r'\W', '', out)) < 20:
-        raise ValueError(
-            'в PDF нет текста — похоже на скан (картинки). Приложите PDF прямо в окне ИИ-чата или скопируйте текст вручную'
-        )
-    return {'text': out[:MAX_TEXT], 'pages': len(pages), 'per': per}
+class PdfText:
+    """Текст PDF и текст каждой страницы: {text, pages, per}."""
+
+    MIN_LETTERS = 20
+
+    @classmethod
+    def require(cls, data) -> dict:
+        """PDF без текста (скан) — ошибка с подсказкой."""
+        res = cls.read(data)
+        if len(re.sub(r'\W', '', res['text'])) < cls.MIN_LETTERS:
+            raise ValueError(
+                'в PDF нет текста — похоже на скан (картинки). Приложите PDF прямо в окне ИИ-чата или скопируйте текст вручную'
+            )
+        return res
+
+    @staticmethod
+    def read(data) -> dict:
+        """PDF без текста — не ошибка (дальше — распознавание)."""
+        max_mb = SrvVal.now('cat.docMaxMB')
+        if len(data) > max_mb * 1024 * 1024:
+            raise ValueError(f'файл больше {max_mb} МБ')
+        doc = Doc(data)
+        pages = doc.pages()
+        fonts: dict = {}
+        parts = []
+        per = []
+        size = 0
+        for page, res in pages:
+            contents = page.get('Contents')
+            streams = doc.get(contents)
+            refs = streams if isinstance(streams, list) else [contents]
+            data = b'\n'.join(doc.stream(ref) for ref in refs)
+            lines: list = []
+            try:
+                _run(doc, data, res, lines, fonts)
+            except RecursionError:
+                pass
+            result = '\n'.join(re.sub(r'[ \t\xa0]+', ' ', x).strip() for x in lines)
+            result = re.sub(r'\n{2,}', '\n', result).strip().replace('\x00', '')
+            per.append(result)
+            if result:
+                parts.append(result)
+                size += len(result)
+            if size > MAX_TEXT:
+                break
+        out = '\n\n'.join(parts)
+        return {'text': out[:MAX_TEXT], 'pages': len(pages), 'per': per}

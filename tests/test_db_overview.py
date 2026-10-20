@@ -19,7 +19,7 @@ class OverviewTest(unittest.TestCase):
         self.assertFalse(o['mirror']['on'])
         self.assertIn('free', o['disk'])
         import maintenance
-        maintenance.DbCopy.daily(st, os.path.dirname(st.path), force=True)
+        maintenance.DbCopy.now(st, os.path.dirname(st.path))
         o = DbOverview(st, os.path.dirname(st.path)).get()
         self.assertTrue(o['backup']['ok'])
         self.assertFalse(o['stale'], 'свежая копия')

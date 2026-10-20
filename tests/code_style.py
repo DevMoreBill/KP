@@ -7,9 +7,17 @@ import re
 import shutil
 import subprocess
 import sys
+from enum import Enum
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+
+
+class Mode(Enum):
+    """Только проверка или исправление (Ruff --fix, формат, Prettier --write)."""
+
+    CHECK = 'check'
+    FIX = 'fix'
 
 
 class CodeStyle:
@@ -46,7 +54,8 @@ class CodeStyle:
     def npx() -> str | None:
         return shutil.which('npx')
 
-    def commands(self, fix: bool = False) -> list[tuple[str, list[str]]]:
+    def commands(self, mode: Mode = Mode.CHECK) -> list[tuple[str, list[str]]]:
+        fix = mode is Mode.FIX
         out = []
         py_files, js_files, ruff, mypy, npx = self.python(), self.modules(), self.ruff(), self.mypy(), self.npx()
         if py_files and ruff:
@@ -69,11 +78,11 @@ class CodeStyle:
             need.append('Node.js (npx)')
         return need
 
-    def run(self, fix: bool = False) -> int:
+    def run(self, mode: Mode = Mode.CHECK) -> int:
         for what in self.missing():
             print(f'ОШИБКА  нет {what}')
         failed = bool(self.missing())
-        for name, cmd in self.commands(fix):
+        for name, cmd in self.commands(mode):
             proc = subprocess.run(
                 cmd, cwd=REPO, capture_output=True, text=True, encoding='utf-8', errors='replace', check=False
             )
@@ -89,4 +98,4 @@ class CodeStyle:
 if __name__ == '__main__':
     args = sys.argv[1:]
     files = [arg for arg in args if not arg.startswith('--')]
-    sys.exit(CodeStyle(files or None).run(fix='--fix' in args))
+    sys.exit(CodeStyle(files or None).run(Mode.FIX if '--fix' in args else Mode.CHECK))

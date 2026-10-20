@@ -9,6 +9,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
+from enum import Enum
 from typing import Any
 
 from defaults import SrvVal
@@ -155,16 +156,20 @@ class CheckoApi:
             'key': bool(self.key()),
         }
 
-    def spend(self, count=1, meta=None, exhausted=False) -> None:
+    def spend(self, count=1, meta=None) -> None:
         with self.store.lock:
             quota = self.quota()
             used = quota['used'] + count
             cnt = (meta or {}).get('today_request_count') if isinstance(meta, dict) else None
             if isinstance(cnt, int) and cnt >= 0:
                 used = cnt  # сервис сам сообщает, сколько запросов сделано сегодня
-            if exhausted:
-                used = max(used, quota['limit'])
             self.store.kv_set(self.QUOTA, {'day': quota['day'], 'used': used})
+
+    def exhaust(self) -> None:
+        """Сервис ответил «лимит исчерпан» — до конца дня запросов нет."""
+        with self.store.lock:
+            quota = self.quota()
+            self.store.kv_set(self.QUOTA, {'day': quota['day'], 'used': max(quota['used'], quota['limit'])})
 
     def get(self, endpoint, inn, **extra) -> dict:
         """Запрос с учётом лимита; лимит исчерпан — LimitError, другая ошибка — RuntimeError с понятным текстом."""
@@ -174,8 +179,9 @@ class CheckoApi:
         try:
             j = http_json(url)
         except urllib.error.HTTPError as exc:
-            self.spend(1, exhausted=exc.code in (402, 429))
+            self.spend(1)
             if exc.code in (402, 429):
+                self.exhaust()
                 raise LimitError(f'Лимит запросов {self.NAME} на сегодня исчерпан') from exc
             raise RuntimeError(
                 'ключ не принят — проверьте его в «Ключах API»'
@@ -193,8 +199,9 @@ class CheckoApi:
         lim = meta.get('status') == 'error' and re.search(
             r'лимит|limit|исчерпан|превыш|баланс|balance', str(meta.get('message') or ''), re.I
         )
-        self.spend(1, meta, exhausted=bool(lim))
+        self.spend(1, meta)
         if lim:
+            self.exhaust()
             raise LimitError(str(meta.get('message') or f'Лимит запросов {self.NAME} на сегодня исчерпан'))
         return j
 
@@ -391,6 +398,14 @@ class Rusprofile:
     @classmethod
     def url(cls, inn) -> str:
         return cls.SEARCH + urllib.parse.quote(re.sub(r'\D', '', str(inn or '')))
+
+
+class CheckMode(Enum):
+    """Проверка контрагента: из памяти, если свежая; заново по кнопке; отложенная из очереди."""
+
+    CACHED = 'cached'
+    FRESH = 'fresh'
+    QUEUE = 'queue'
 
 
 class Counterparties:
@@ -734,7 +749,7 @@ class Counterparties:
             if not any(api.quota()['left'] - CHECK_COST - 1 >= self._spare(api) for api in self.apis()):
                 break
             try:
-                res = self.check(x['inn'], force=True, queue=False, spare=True)
+                res = self.check(x['inn'], CheckMode.QUEUE)
             except Exception as exc:
                 log('Отложенная проверка {}: {}'.format(x['inn'], exc))
                 break
@@ -758,8 +773,9 @@ class Counterparties:
         except Exception:
             return 999
 
-    def check(self, inn, force: bool = False, queue=True, author: str = '', spare=False) -> dict:
-        """Проверка по ИНН. spare=True (очередь) — не трогать последние запросы дня и не делать краткую проверку."""
+    def check(self, inn, mode: CheckMode = CheckMode.CACHED, author: str = '') -> dict:
+        """Проверка по ИНН; CheckMode.QUEUE — не трогать последние запросы дня и не делать краткую проверку."""
+        force, queue, spare = mode is not CheckMode.CACHED, mode is not CheckMode.QUEUE, mode is CheckMode.QUEUE
         inn = re.sub(r'\D', '', inn or '')
         if not valid_inn(inn):
             return {'error': 'ИНН указан с ошибкой'}

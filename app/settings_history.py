@@ -199,17 +199,23 @@ class SettingsHistory:
 
     # ---------- откат ----------
     @classmethod
-    def _put(cls, v: dict, path: list, x, delete: bool) -> None:
-        """Записать x в словарь v по пути path (недостающие уровни создаются); delete — убрать поле."""
+    def _put(cls, v: dict, path: list, x) -> None:
+        """Записать x в словарь v по пути path (недостающие уровни создаются)."""
+        cls._parent(v, path)[path[-1]] = x
+
+    @classmethod
+    def _drop(cls, v: dict, path: list) -> None:
+        """Убрать поле по пути path."""
+        cls._parent(v, path).pop(path[-1], None)
+
+    @staticmethod
+    def _parent(v: dict, path: list) -> dict:
         cur = v
         for part in path[:-1]:
             if not isinstance(cur.get(part), dict):
                 cur[part] = {}
             cur = cur[part]
-        if delete:
-            cur.pop(path[-1], None)
-        else:
-            cur[path[-1]] = x
+        return cur
 
     def rollback(self, hid, author: str) -> dict:
         """Вернуть поля этой записи к значениям «было». Секреты (•••) не трогаются. → запись, как в get()."""
@@ -226,7 +232,10 @@ class SettingsHistory:
                 old = self._stamp(before, path)
                 if old == '•••':
                     continue
-                self._put(new, path, old, delete=self._missing(before, path))
+                if self._missing(before, path):
+                    self._drop(new, path)
+                else:
+                    self._put(new, path, old)
         self.actor(author)
         self.store.kv_set(key, new)
         self.store.write(

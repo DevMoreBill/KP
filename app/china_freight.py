@@ -65,10 +65,16 @@ class ChinaFreight:
         return data if isinstance(data, dict) else {'rows': []}
 
     @staticmethod
-    def _text(v, name: str, limit: int, need: bool = True) -> str:
-        text = re.sub(r'\s+', ' ', str(v or '')).strip()
-        if need and not text:
+    def _text(v, name: str, limit: int) -> str:
+        """Обязательное поле."""
+        text = ChinaFreight._optional(v, name, limit)
+        if not text:
             raise ValueError(f'Ставки экспедиторов: не заполнено поле «{name}»')
+        return text
+
+    @staticmethod
+    def _optional(v, name: str, limit: int) -> str:
+        text = re.sub(r'\s+', ' ', str(v or '')).strip()
         if len(text) > limit:
             raise ValueError(f'Ставки экспедиторов: «{name}» — не длиннее {limit} знаков')
         return text
@@ -128,7 +134,7 @@ class ChinaFreight:
             days = str(row.get('days') or '').strip()
             if days and not (days.isdigit() and int(days) <= 365):
                 raise ValueError(f'Строка {i}: срок — целое число дней до 365')
-            src = self._text(row.get('src'), 'Источник', 300, need=False)
+            src = self._optional(row.get('src'), 'Источник', 300)
             if src and not re.match(r'^https?://\S+$', src):
                 raise ValueError(f'Строка {i}: источник — ссылка http(s)://…')
             out.append(
@@ -145,8 +151,8 @@ class ChinaFreight:
                     'cur': cur,
                     'days': int(days) if days else None,
                     'until': self._date(row.get('until'), i),
-                    'who': self._text(row.get('who'), 'Экспедитор', 80, need=False),
-                    'note': self._text(row.get('note'), 'Примечание', 200, need=False),
+                    'who': self._optional(row.get('who'), 'Экспедитор', 80),
+                    'note': self._optional(row.get('note'), 'Примечание', 200),
                 }
             )
         data = {'rows': out, 'at': datetime.now().isoformat(timespec='seconds'), 'by': str(author or '')[:80]}

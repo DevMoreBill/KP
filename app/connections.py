@@ -125,7 +125,7 @@ class ConnectionCheck:
         status = ai_llm.status(self.store)
         if not ai_llm.api_key(self.store):
             return 'off', 'ключ не задан — «Внешние сервисы → Нейросеть»'
-        reply = ai_llm.ask(self.store, 'Ответь одним словом: да', force=True)
+        reply = ai_llm.AiAsk.probe(self.store, 'Ответь одним словом: да')
         return ('ok' if status.get('enabled') else 'warn'), 'модель {} отвечает{}'.format(
             reply.get('model') or '',
             '' if status.get('enabled') else '; у менеджеров выключена',

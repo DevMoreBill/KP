@@ -94,7 +94,7 @@ class AdminAlerts:
 
     def test(self) -> dict:
         """Пробное письмо; RuntimeError — почему не ушло."""
-        rec = self.send(self.problems(), (), test=True)
+        rec = self.send_test(self.problems())
         conf = self.settings()
         conf['last'] = rec
         self.store.kv_set(self.KV_KEY, conf)
@@ -102,19 +102,11 @@ class AdminAlerts:
             raise RuntimeError(rec['error'])
         return rec
 
-    def send(self, items: list[dict], new=(), test: bool = False, notes=()) -> dict:
-        from kp_track import Mailer
-
+    def send(self, items: list[dict], new=(), notes=()) -> dict:
+        """Письмо о проблемах (items) и событиях (notes); new — ключи проблем, появившихся с прошлого письма."""
         host = socket.gethostname()
-        url = f'http://{host}:{self.cfg.BASE_PORT}/'
-        lines = [
-            f'• {self.LEVEL.get(x["level"], "")}: {x["text"]}{" (новое)" if x["key"] in new else ""}' for x in items
-        ]
-        if test:
-            subject = f'Конструктор КП ({host}): пробное письмо'
-            head = f'Это пробное письмо: уведомления о проблемах сервера отдела «Конструктор КП» на компьютере {host} работают.'
-            body = head + ('\n\nСейчас требует внимания:\n' + '\n'.join(lines) if lines else '\n\nСейчас проблем нет.')
-        elif items:
+        lines = self._lines(items, new)
+        if items:
             subject = f'Конструктор КП ({host}): требует внимания — {len(items)}'
             body = f'Сервер отдела «Конструктор КП» на компьютере {host} требует внимания:\n\n' + '\n'.join(lines)
         else:
@@ -124,15 +116,35 @@ class AdminAlerts:
             body += '\n\nСобытия:\n' + '\n'.join(
                 f'• {note.get("at", "")[:16].replace("T", " ")} {note.get("text", "")}' for note in notes
             )
+        return self._mail(subject, body, {'count': len(items), 'test': False})
+
+    def send_test(self, items: list[dict]) -> dict:
+        """Пробное письмо: уведомления работают, и что сейчас требует внимания."""
+        host = socket.gethostname()
+        lines = self._lines(items, ())
+        subject = f'Конструктор КП ({host}): пробное письмо'
+        head = f'Это пробное письмо: уведомления о проблемах сервера отдела «Конструктор КП» на компьютере {host} работают.'
+        body = head + ('\n\nСейчас требует внимания:\n' + '\n'.join(lines) if lines else '\n\nСейчас проблем нет.')
+        return self._mail(subject, body, {'count': len(items), 'test': True})
+
+    def _lines(self, items: list[dict], new) -> list[str]:
+        return [
+            f'• {self.LEVEL.get(x["level"], "")}: {x["text"]}{" (новое)" if x["key"] in new else ""}' for x in items
+        ]
+
+    def _mail(self, subject: str, body: str, info: dict) -> dict:
+        from kp_track import Mailer
+
+        url = f'http://{socket.gethostname()}:{self.cfg.BASE_PORT}/'
         body += (
             f'\n\nОткрыть программу: {url} → «Настройки» → «Обзор» → «Сводка и статистика» → «Требует внимания».\n\n'
             'Письмо приходит, когда проблема появилась, и раз в сутки, пока она не решена. '
             'Изменить адрес или отключить — «Настройки → Почта» → «Письма о проблемах».'
         )
-        rec = {'at': self._now(), 'count': len(items), 'test': test, 'ok': True}
+        rec = {'at': self._now(), **info, 'ok': True}
         try:
             mailer = Mailer(self.store)
-            mailer.send(mailer.addresses(self.settings().get('to')), [], subject, body, [], test=True)
+            mailer.send_service(mailer.addresses(self.settings().get('to')), subject, body)
         except (RuntimeError, ValueError) as exc:
             rec.update(ok=False, error=str(exc)[:300])
             ServerLog.failure(f'письмо администратору не отправлено: {exc}')

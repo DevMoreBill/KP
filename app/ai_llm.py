@@ -110,73 +110,82 @@ def _count(store, usage: dict | None) -> None:
         store.kv_set('aiUsage', use)
 
 
-def ask(store, prompt: str, force: bool = False) -> dict:
-    """{text, usage, model}; RuntimeError — текст для пользователя."""
-    conf, key = settings(store), api_key(store)
-    if not force and not conf['enabled']:
-        raise RuntimeError(
-            'Нейросеть в программе выключена администратором — заполните через любой ИИ-чат (кнопки ниже)'
-        )
-    if not key:
-        raise RuntimeError('Не задан ключ API DeepSeek — администратор указывает его в «Настройки → Нейросеть»')
-    prompt = str(prompt or '').strip()
-    if not prompt:
-        raise RuntimeError('Пустой запрос')
-    now = time.time()
-    with LOCK:
-        _RECENT[:] = [stamp for stamp in _RECENT if now - stamp < 60]
-        if len(_RECENT) >= SrvVal.get(store, 'ai.rateMin'):
-            raise RuntimeError('Слишком много запросов к нейросети за минуту — подождите немного и повторите')
-        _RECENT.append(now)
-    body = {
-        'model': conf['model'],
-        'temperature': SrvVal.get(store, 'ai.temperature'),
-        'max_tokens': SrvVal.get(store, 'ai.maxTokens'),
-        'stream': False,
-        'messages': [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': prompt[:MAX_PROMPT]}],
-    }
-    if 'reasoner' not in conf['model']:
-        body['response_format'] = {'type': 'json_object'}
-    try:
-        j = json.loads(
-            Net.request(
-                conf['base'] + '/chat/completions',
-                data=json.dumps(body, ensure_ascii=False).encode('utf-8'),
-                method='POST',
-                headers={
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'Authorization': 'Bearer ' + key,
-                },
-                timeout=TIMEOUT,
-                limit=Net.LIMIT,
-            ).decode('utf-8')
-        )
-    except urllib.error.HTTPError as exc:
-        try:
-            msg = (json.loads(exc.read().decode('utf-8', 'replace')).get('error') or {}).get('message') or ''
-        except Exception:
-            msg = ''
-        known = {
-            401: 'неверный ключ API — проверьте его в «Настройки → Нейросеть»',
-            402: 'на балансе DeepSeek закончились деньги — пополните счёт на platform.deepseek.com',
-            429: 'слишком много запросов — подождите минуту и повторите',
-            503: 'сервис перегружен — повторите через минуту',
+class AiAsk:
+    """Запрос к нейросети DeepSeek: {text, usage, model}; RuntimeError — текст для пользователя."""
+
+    @classmethod
+    def ask(cls, store, prompt: str) -> dict:
+        """Запрос менеджера — если нейросеть включена администратором."""
+        if not settings(store)['enabled']:
+            raise RuntimeError(
+                'Нейросеть в программе выключена администратором — заполните через любой ИИ-чат (кнопки ниже)'
+            )
+        return cls.probe(store, prompt)
+
+    @staticmethod
+    def probe(store, prompt: str) -> dict:
+        """Запрос и при выключенной нейросети — проверка связи администратором."""
+        conf, key = settings(store), api_key(store)
+        if not key:
+            raise RuntimeError('Не задан ключ API DeepSeek — администратор указывает его в «Настройки → Нейросеть»')
+        prompt = str(prompt or '').strip()
+        if not prompt:
+            raise RuntimeError('Пустой запрос')
+        now = time.time()
+        with LOCK:
+            _RECENT[:] = [stamp for stamp in _RECENT if now - stamp < 60]
+            if len(_RECENT) >= SrvVal.get(store, 'ai.rateMin'):
+                raise RuntimeError('Слишком много запросов к нейросети за минуту — подождите немного и повторите')
+            _RECENT.append(now)
+        body = {
+            'model': conf['model'],
+            'temperature': SrvVal.get(store, 'ai.temperature'),
+            'max_tokens': SrvVal.get(store, 'ai.maxTokens'),
+            'stream': False,
+            'messages': [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': prompt[:MAX_PROMPT]}],
         }
-        tail = f' — {msg[:200]}' if msg else ''
-        raise RuntimeError('Нейросеть: ' + known.get(exc.code, f'ошибка {exc.code}{tail}')) from exc
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        why = str(getattr(exc, 'reason', exc))[:160]
-        raise RuntimeError(
-            f'Нейросеть недоступна: {why}. Проверьте интернет на компьютере-сервере или заполните через ИИ-чат'
-        ) from exc
-    except ValueError:
-        raise RuntimeError(
-            'Нейросеть ответила не данными, а страницей — сервис или адрес API недоступен, повторите позже'
-        ) from None
-    try:
-        text = j['choices'][0]['message']['content'] or ''
-    except (KeyError, IndexError, TypeError):
-        raise RuntimeError('Нейросеть вернула пустой ответ — повторите') from None
-    _count(store, j.get('usage'))
-    return {'text': text, 'usage': j.get('usage') or {}, 'model': j.get('model') or conf['model']}
+        if 'reasoner' not in conf['model']:
+            body['response_format'] = {'type': 'json_object'}
+        try:
+            j = json.loads(
+                Net.request(
+                    conf['base'] + '/chat/completions',
+                    data=json.dumps(body, ensure_ascii=False).encode('utf-8'),
+                    method='POST',
+                    headers={
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'Authorization': 'Bearer ' + key,
+                    },
+                    timeout=TIMEOUT,
+                    limit=Net.LIMIT,
+                ).decode('utf-8')
+            )
+        except urllib.error.HTTPError as exc:
+            try:
+                msg = (json.loads(exc.read().decode('utf-8', 'replace')).get('error') or {}).get('message') or ''
+            except Exception:
+                msg = ''
+            known = {
+                401: 'неверный ключ API — проверьте его в «Настройки → Нейросеть»',
+                402: 'на балансе DeepSeek закончились деньги — пополните счёт на platform.deepseek.com',
+                429: 'слишком много запросов — подождите минуту и повторите',
+                503: 'сервис перегружен — повторите через минуту',
+            }
+            tail = f' — {msg[:200]}' if msg else ''
+            raise RuntimeError('Нейросеть: ' + known.get(exc.code, f'ошибка {exc.code}{tail}')) from exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            why = str(getattr(exc, 'reason', exc))[:160]
+            raise RuntimeError(
+                f'Нейросеть недоступна: {why}. Проверьте интернет на компьютере-сервере или заполните через ИИ-чат'
+            ) from exc
+        except ValueError:
+            raise RuntimeError(
+                'Нейросеть ответила не данными, а страницей — сервис или адрес API недоступен, повторите позже'
+            ) from None
+        try:
+            text = j['choices'][0]['message']['content'] or ''
+        except (KeyError, IndexError, TypeError):
+            raise RuntimeError('Нейросеть вернула пустой ответ — повторите') from None
+        _count(store, j.get('usage'))
+        return {'text': text, 'usage': j.get('usage') or {}, 'model': j.get('model') or conf['model']}

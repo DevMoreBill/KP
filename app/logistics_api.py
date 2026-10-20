@@ -1635,63 +1635,77 @@ def auto_settings(store) -> dict:
     }
 
 
-def auto_refresh(store, force: bool = False, log=print) -> dict | None:
+class AutoRates:
     """Ставки ₽/км классов машин — верхняя граница средних ставок ATI.SU → kv «logisticsAuto»."""
-    if not providers(store)['ati']:
-        return None
-    cfg = auto_settings(store)
-    last = store.kv_get('logisticsAuto') or {}
-    if not force:
+
+    @classmethod
+    def scheduled(cls, store) -> dict | None:
+        """Плановое обновление: если включено и прошлое старше срока из настроек."""
+        if not providers(store)['ati']:
+            return None
+        cfg = auto_settings(store)
         if not cfg['on']:
             return None
+        last = store.kv_get('logisticsAuto') or {}
         try:
             if last.get('at') and datetime.fromisoformat(last['at']) > datetime.now() - timedelta(days=cfg['days']):
                 return None
         except ValueError:
             pass
-    if not _lock.acquire(blocking=False):
-        return None
-    try:
-        out, errors, ati = {}, [], AtiDirections(store)
-        for cid, (car, ton) in Ati.CAR_CLASSES.items():
-            best, rows = None, []
-            for route in cfg['routes']:
-                frm_name, _, dst_name = str(route).partition('—')
-                if not dst_name:
-                    frm_name, _, dst_name = str(route).partition('-')
-                try:
-                    direction = ati.find(frm_name.strip(), dst_name.strip())
-                    if not direction:
-                        raise ValueError('направления нет в «Средних ставках»')
-                    price = Ati.price(store, direction, car, ton, cfg['period'])
-                    if price['upperKm']:
-                        # длина направления и цена рейса — для тарифа в два участка (ставка до 1 000 км и дальше считается в программе)
-                        dist = (
-                            round(price['upperRub'] / price['upperKm'])
-                            if price['upperRub'] and price['upperKm']
-                            else None
-                        )
-                        rows.append(
-                            {
-                                'route': route.strip(),
-                                'km': round(price['upperKm'], 1),
-                                'avg': price['avgKm'] and round(price['avgKm'], 1),
-                                'trip': round(price['upperRub']) if price['upperRub'] else None,
-                                'dist': dist,
-                            }
-                        )
-                        best = max(best or 0, price['upperKm'])
-                except Exception as exc:
-                    errors.append(f'{route.strip()}, {cid}: {Http.error(exc)}')
-            if best:
-                out[cid] = {
-                    'km': round(best),
-                    'routes': rows,
-                    'src': f'ATI.SU «Средние ставки»: верхняя граница за {cfg["period"]} дн., '
-                    f'максимум по {len(rows)} направл., с НДС',
-                }
-        rec = {'at': _now(), 'classes': out, 'errors': errors[:30]}
-        store.kv_set('logisticsAuto', rec)
-        return rec
-    finally:
-        _lock.release()
+        return cls._refresh(store, cfg)
+
+    @classmethod
+    def now(cls, store) -> dict | None:
+        """Обновление по кнопке — сразу."""
+        if not providers(store)['ati']:
+            return None
+        return cls._refresh(store, auto_settings(store))
+
+    @staticmethod
+    def _refresh(store, cfg: dict) -> dict | None:
+        if not _lock.acquire(blocking=False):
+            return None
+        try:
+            out, errors, ati = {}, [], AtiDirections(store)
+            for cid, (car, ton) in Ati.CAR_CLASSES.items():
+                best, rows = None, []
+                for route in cfg['routes']:
+                    frm_name, _, dst_name = str(route).partition('—')
+                    if not dst_name:
+                        frm_name, _, dst_name = str(route).partition('-')
+                    try:
+                        direction = ati.find(frm_name.strip(), dst_name.strip())
+                        if not direction:
+                            raise ValueError('направления нет в «Средних ставках»')
+                        price = Ati.price(store, direction, car, ton, cfg['period'])
+                        if price['upperKm']:
+                            # длина направления и цена рейса — для тарифа в два участка (ставка до 1 000 км и дальше считается в программе)
+                            dist = (
+                                round(price['upperRub'] / price['upperKm'])
+                                if price['upperRub'] and price['upperKm']
+                                else None
+                            )
+                            rows.append(
+                                {
+                                    'route': route.strip(),
+                                    'km': round(price['upperKm'], 1),
+                                    'avg': price['avgKm'] and round(price['avgKm'], 1),
+                                    'trip': round(price['upperRub']) if price['upperRub'] else None,
+                                    'dist': dist,
+                                }
+                            )
+                            best = max(best or 0, price['upperKm'])
+                    except Exception as exc:
+                        errors.append(f'{route.strip()}, {cid}: {Http.error(exc)}')
+                if best:
+                    out[cid] = {
+                        'km': round(best),
+                        'routes': rows,
+                        'src': f'ATI.SU «Средние ставки»: верхняя граница за {cfg["period"]} дн., '
+                        f'максимум по {len(rows)} направл., с НДС',
+                    }
+            rec = {'at': _now(), 'classes': out, 'errors': errors[:30]}
+            store.kv_set('logisticsAuto', rec)
+            return rec
+        finally:
+            _lock.release()

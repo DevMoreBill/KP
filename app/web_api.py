@@ -376,9 +376,13 @@ class PartiesController(Controller):
 
     @route(r'/api/check')
     def check(self) -> Any:
+        from counterparty import CheckMode
+
         return self.send_json(
             counterparties().check(
-                self.query.get('inn', ''), force=self.query.get('force') == '1', author=admin.actor(self.handler)[1]
+                self.query.get('inn', ''),
+                CheckMode.FRESH if self.query.get('force') == '1' else CheckMode.CACHED,
+                author=admin.actor(self.handler)[1],
             )
         )
 
@@ -997,7 +1001,7 @@ class ToolsController(Controller):
     def ai_fill(self) -> Any:
         data = self.json_body()
         try:
-            return self.send_json(ai_llm.ask(store(), str(data.get('prompt') or '')))
+            return self.send_json(ai_llm.AiAsk.ask(store(), str(data.get('prompt') or '')))
         except RuntimeError as exc:
             return self.text(422, str(exc))
 
@@ -1024,7 +1028,7 @@ class ToolsController(Controller):
         if self._too_big('PDF'):
             return None
         try:
-            res = pdf_text.text(self.body())
+            res = pdf_text.PdfText.require(self.body())
             res.pop('per', None)  # текст по страницам — только для разбора ТЗ
             return self.send_json(res)
         except Exception as exc:
@@ -1134,7 +1138,7 @@ class SettingsController(Controller):
     @route(r'/api/logistics/refresh', 'POST')  # обновить ставки по ATI.SU сейчас (администратор)
     def logistics_refresh(self) -> Any:
         try:
-            rec = logistics_api.auto_refresh(store(), force=True)
+            rec = logistics_api.AutoRates.now(store())
         except Exception as exc:
             return self.text(502, f'ATI.SU: {exc}')
         return self.send_json(rec or {'error': 'Не задан ключ ATI.SU («Интеграции») или обновление уже идёт'})

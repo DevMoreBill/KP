@@ -329,7 +329,7 @@ class RulesTest(SyncBase):
         h0, h1 = (now.hour + 2) % 24, (now.hour + 3) % 24
         self.conf(sched={'from': '%02d:00' % h0, 'to': '%02d:00' % h1, 'batch': 50, 'tries': 5})
         self.assertEqual(self.sync().run(), {'hours': True}, 'вне часов обмена — фоновый обмен ждёт')
-        self.assertNotIn('hours', self.sync().run(manual=True), 'кнопкой — всегда')
+        self.assertNotIn('hours', self.sync().run_now(), 'кнопкой — всегда')
         for bad in ({'sched': {'from': '8 утра'}}, {'sched': {'batch': 5}}, {'mode': 'всё'}, {'fallback': 'чужой'}, {'cats': ['x']}):
             with self.assertRaises(ValueError, msg=bad):
                 self.conf(**bad)

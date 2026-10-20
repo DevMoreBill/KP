@@ -109,7 +109,11 @@ class Launcher:
             import config
             from app_update import Restarter  # встроенный в EXE: модули обновления уже выгружены
 
-            Restarter(config.SERVER_MODE).spawn(browser=not os.environ.get('KP_NO_BROWSER'))
+            restarter = Restarter(config.SERVER_MODE)
+            if os.environ.get('KP_NO_BROWSER'):
+                restarter.spawn()
+            else:
+                restarter.spawn_with_browser()
         except Exception as err:
             self._message(
                 'Обновление {} не запустилось — программа вернулась к версии {}, но перезапустить себя не смогла: {}.\n\n'

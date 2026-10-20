@@ -11,6 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -487,6 +488,14 @@ class BitrixFields:
         return made
 
 
+class Sides(Enum):
+    """Стороны обмена с Битрикс24: обе, только отправка, только получение."""
+
+    BOTH = 'both'
+    SEND = 'send'
+    RECEIVE = 'receive'
+
+
 class BitrixSync:
     """Обмен с Битрикс24: очередь отправки и опрос изменений."""
 
@@ -631,13 +640,22 @@ class BitrixSync:
                 out.append({'id': mid, 'name': card['name'], 'email': str(card.get('email') or '').strip()})
         return out
 
-    def run(self, pull=True, budget=None, manual=False, push=True) -> dict:
-        """Отправить очередь (push) и забрать изменения (pull)."""
+    def run(self, sides: Sides = Sides.BOTH) -> dict:
+        """Плановый обмен — только в часы обмена из правил."""
+        return self._exchange(sides, BitrixRules.in_hours)
+
+    def run_now(self, sides: Sides = Sides.BOTH) -> dict:
+        """Обмен по кнопке — в любое время."""
+        return self._exchange(sides, lambda rules: True)
+
+    def _exchange(self, sides: Sides, in_hours) -> dict:
+        """Отправить очередь и забрать изменения (стороны — sides)."""
         if not self.conf.enabled():
             return {'off': True}
         self._rules = None
-        if not manual and not self.rules.in_hours():
+        if not in_hours(self.rules):
             return {'hours': True}
+        push, pull = sides is not Sides.RECEIVE, sides is not Sides.SEND
         if not self.LOCK.acquire(blocking=False):
             return {'busy': True}
         try:
@@ -1421,8 +1439,14 @@ class BitrixSync:
         finally:
             BitrixQueue._quiet.on = False
 
-    def _new_deal(self, bx_deal, mid: str | None = None, flag=True) -> dict | None:
-        """Новая сделка воронки обмена Битрикса → сделка программы у ответственного (mid — по правилам, _who)."""
+    def _new_deal(self, bx_deal, mid: str | None = None) -> dict:
+        """Новая сделка воронки обмена; в кабинете — «Новые сделки из Битрикс24», пока ответственный не откроет."""
+        deal = self._import_deal(bx_deal, mid)
+        DealBook(self.store).flag(deal['id'], bxNew=True)
+        return deal
+
+    def _import_deal(self, bx_deal, mid: str | None = None) -> dict:
+        """Сделка Битрикса → сделка программы у ответственного (mid — по правилам, _who)."""
         company = self._company_info(bx_deal.get('COMPANY_ID'))
         mid = (self._mid_of(bx_deal.get('ASSIGNED_BY_ID')) or '') if mid is None else mid
         mgr: dict = next((x for x in self._managers() if x['id'] == mid), {})
@@ -1454,10 +1478,6 @@ class BitrixSync:
         self.links.put(
             'deal', deal['id'], bx_deal['ID'], dict(self._theirs(bx_deal), cat=str(bx_deal.get('CATEGORY_ID') or '0'))
         )
-        if flag:
-            DealBook(self.store).flag(
-                deal['id'], bxNew=True
-            )  # в кабинете — «Новые сделки из Битрикс24», пока ответственный не откроет
         if company.get('company') and company.get('inn'):
             self.links.put('company', company['inn'], company['company'])
         self.log.add(
@@ -1718,7 +1738,7 @@ class BitrixDry:
             dry = BitrixDryApi(real.api, labels)
             sync._api = dry
             first_log = BitrixLog(st2).last_id()
-            res = sync.run(manual=True)
+            res = sync.run_now()
             log = BitrixLog(st2).since(first_log)
             prog = [x['text'] for x in log if '←' in x['text'] or x['text'].startswith('Новая сделка')]
             return {
@@ -1873,7 +1893,7 @@ class BitrixImport:
                 )
                 res['linked'] += 1
             else:
-                sync._new_deal(bx_deal, sync._who(bx_deal) or '', flag=False)
+                sync._import_deal(bx_deal, sync._who(bx_deal) or '')
                 res['created'] += 1
         sync.log.add(
             f'Загрузка сделок Битрикс24 с {since}: новых {res["created"]}, связано {res["linked"]}, пропущено {res["skipped"]}'
@@ -1991,10 +2011,10 @@ class BitrixDesk:
             except (BitrixError, ValueError) as exc:
                 return self.text(422, str(exc))
         if sub == 'bitrix/run' and method == 'POST':
-            res = BitrixSync(store, self.opener).run(manual=True)
+            res = BitrixSync(store, self.opener).run_now()
             return self.send(dict(self.view(), result=res))
         if sub == 'bitrix/pull' and method == 'POST':  # «Загрузить из Битрикса сейчас» — без отправки очереди
-            res = BitrixSync(store, self.opener).run(manual=True, push=False)
+            res = BitrixSync(store, self.opener).run_now(Sides.RECEIVE)
             return self.send(dict(self.view(), result=res))
         if sub == 'bitrix/push' and method == 'POST':  # «Выгрузить сделку № …» — сразу
             num = str(self.body().get('number') or '').strip()
@@ -2008,7 +2028,7 @@ class BitrixDesk:
             BitrixQueue.touch(store, 'deal', row[0])
             if not store.one("SELECT 1 FROM bx_queue WHERE kind='deal' AND local_id=?", (row[0],)):
                 return self.text(400, 'Связь выключена — сделка не отправлена')
-            res = BitrixSync(store, self.opener).run(manual=True, pull=False)
+            res = BitrixSync(store, self.opener).run_now(Sides.SEND)
             return self.send(dict(self.view(), result=res))
         if sub == 'bitrix/stages' and method == 'POST':  # стадии другой воронки — для соответствия этапов
             cat = str(self.body().get('category') or '0')
@@ -2051,7 +2071,7 @@ class BitrixDesk:
             if body.get('kind') in ('deal', 'task') and body.get('id'):  # «Повторить» у одной записи
                 if not BitrixQueue(store).retry(body['kind'], str(body['id'])[:64]):
                     return self.text(404, 'Записи уже нет в очереди — она отправлена')
-                return self.send(dict(self.view(), result=BitrixSync(store, self.opener).run(pull=False)))
+                return self.send(dict(self.view(), result=BitrixSync(store, self.opener).run(Sides.SEND)))
             BitrixQueue(store).retry_all()
             count = 0
             if what == 'all':

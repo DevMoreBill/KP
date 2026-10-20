@@ -6,6 +6,7 @@ import os
 import re
 import zipfile
 from datetime import datetime
+from enum import Enum
 
 from images import EXTS, ImageStore
 
@@ -174,6 +175,13 @@ class ProgramSettings:
         return count
 
 
+class Keys(Enum):
+    """Настройки в файл: без ключей API и пароля почты или с ними."""
+
+    WITHOUT = 'without'
+    WITH = 'with'
+
+
 class SettingsFile:
     """«Все настройки в файл»."""
 
@@ -226,7 +234,7 @@ class SettingsFile:
     def label(cls, k: str) -> str:
         return dict(cls.PARTS).get(k, k)
 
-    def _get(self, k, keys):
+    def _get(self, k, keys: Keys):
         store = self.store
         if k == 'access':
             from auth_users import access, perms_of
@@ -238,21 +246,21 @@ class SettingsFile:
             } or None
         if k == 'integrations':
             v = store.kv_get('integrations')
-            return v if keys and v else None
+            return v if keys is Keys.WITH and v else None
         v = store.kv_get(k)
         if v is None:
             return None
         if k == 'mail' and isinstance(v, dict):
             v = {key: val for key, val in v.items() if key != 'password'}
         if k == 'bitrix' and isinstance(v, dict):  # служебное (время опроса, поля созданы) — не настройка
-            v = {key: val for key, val in v.items() if key in self.BITRIX_KEYS and (keys or key != 'url')}
-        if k == 'settings' and isinstance(v, dict) and isinstance(v.get('ai'), dict) and not keys:
+            v = {key: val for key, val in v.items() if key in self.BITRIX_KEYS and (keys is Keys.WITH or key != 'url')}
+        if k == 'settings' and isinstance(v, dict) and isinstance(v.get('ai'), dict) and keys is Keys.WITHOUT:
             v = dict(v, ai={key: val for key, val in v['ai'].items() if key != 'key'})
         if k == 'update' and isinstance(v, dict):
             v = {key: v[key] for key in self.UPDATE_KEYS if key in v} or None
         return v
 
-    def export(self, keys: bool = False) -> tuple:
+    def export(self, keys: Keys = Keys.WITHOUT) -> tuple:
         """→ (имя файла, байты JSON)."""
         from version import VERSION
 
@@ -266,10 +274,12 @@ class SettingsFile:
             'version': 1,
             'app': VERSION,
             'createdAt': datetime.now().isoformat(timespec='seconds'),
-            'keys': bool(keys),
+            'keys': keys is Keys.WITH,
             'sections': sec,
         }
-        name = 'КП_настройки{}_{}.json'.format('_с_ключами' if keys else '', datetime.now().strftime('%Y-%m-%d_%H%M'))
+        name = 'КП_настройки{}_{}.json'.format(
+            '_с_ключами' if keys is Keys.WITH else '', datetime.now().strftime('%Y-%m-%d_%H%M')
+        )
         return name, json.dumps(body, ensure_ascii=False, indent=1).encode('utf-8')
 
     def read(self, data: bytes):
@@ -299,7 +309,7 @@ class SettingsFile:
             if k not in parsed['sections']:
                 continue
             same = json.dumps(parsed['sections'][k], sort_keys=True, ensure_ascii=False) == json.dumps(
-                self._get(k, True), sort_keys=True, ensure_ascii=False
+                self._get(k, Keys.WITH), sort_keys=True, ensure_ascii=False
             )
             out.append({'key': k, 'label': label, 'same': same})
         return {

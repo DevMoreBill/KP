@@ -93,28 +93,40 @@ class DbCopy:
         return keep
 
     @classmethod
-    def daily(cls, store, data_dir: str, force: bool = False) -> dict | None:
-        """Копия за сегодня (если её нет), проверенная до и после сжатия; затем ротация → запись о копии."""
+    def daily(cls, store, data_dir: str) -> dict | None:
+        """Копия за сегодня, если её ещё нет → запись о копии."""
         with cls.LOCK:
             today = date.today().isoformat()
-            folder = auto_dir(data_dir)
-            have = [x for x in cls.listing(folder) if x['date'] == today]
-            if have and not force:
+            if any(x['date'] == today for x in cls.listing(auto_dir(data_dir))):
                 return state(store).get('backup')
-            dst = os.path.join(folder, f'kp-{today}.zip')
-            rec: dict[str, Any] = {'at': _now(), 'file': dst}
-            try:
-                store.backup_checked(dst)
-                for x in have:  # прежняя копия за сегодня (например, без сжатия) — заменена архивом
-                    for name in x['files']:
-                        if name != dst and os.path.isfile(name):
-                            os.remove(name)
-                rec.update(ok=True, bytes=os.path.getsize(dst), db=db_size(store), zip=True)
-            except Exception as exc:
-                rec.update(ok=False, error=str(exc)[:300])
-            cls.rotate(folder, store=store)
-            _save(store, backup=rec)
-            return rec
+            return cls._copy(store, data_dir)
+
+    @classmethod
+    def now(cls, store, data_dir: str) -> dict:
+        """Копия сейчас («Создать копию»): прежняя копия за сегодня заменяется."""
+        with cls.LOCK:
+            return cls._copy(store, data_dir)
+
+    @classmethod
+    def _copy(cls, store, data_dir: str) -> dict:
+        """Копия, проверенная до и после сжатия; затем ротация → запись о копии."""
+        today = date.today().isoformat()
+        folder = auto_dir(data_dir)
+        have = [x for x in cls.listing(folder) if x['date'] == today]
+        dst = os.path.join(folder, f'kp-{today}.zip')
+        rec: dict[str, Any] = {'at': _now(), 'file': dst}
+        try:
+            store.backup_checked(dst)
+            for x in have:  # прежняя копия за сегодня (например, без сжатия) — заменена архивом
+                for name in x['files']:
+                    if name != dst and os.path.isfile(name):
+                        os.remove(name)
+            rec.update(ok=True, bytes=os.path.getsize(dst), db=db_size(store), zip=True)
+        except Exception as exc:
+            rec.update(ok=False, error=str(exc)[:300])
+        cls.rotate(folder, store=store)
+        _save(store, backup=rec)
+        return rec
 
     @classmethod
     def sweep(cls, folder: str, age=None) -> int:

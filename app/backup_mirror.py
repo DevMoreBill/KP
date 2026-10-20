@@ -52,7 +52,7 @@ class MirrorBackup:
             raise ValueError('Вторая папка не включена')
         if self._lock.locked():
             raise ValueError('Копия во вторую папку уже идёт')
-        threading.Thread(target=self.run, kwargs={'force': True}, daemon=True, name='backup-mirror').start()
+        threading.Thread(target=self.run_now, daemon=True, name='backup-mirror').start()
         return dict(self.status(), running=True)
 
     def save(self, dst: dict, author: str = '') -> dict:
@@ -112,28 +112,43 @@ class MirrorBackup:
     def _copies(path: str):
         return maintenance.DbCopy.listing(path)
 
-    def run(self, force: bool = False) -> dict | None:
+    def run(self) -> dict | None:
         """Копия за сегодня во вторую папку (если включено). → состояние или None (выключено)."""
+        return self._locked(self._today_copy)
+
+    def run_now(self) -> dict | None:
+        """«Копировать сейчас»: свежая копия базы — и во вторую папку."""
+        return self._locked(self._new_copy)
+
+    def _locked(self, source) -> dict | None:
         conf = self.config()
         if not conf['on'] or not conf['path']:
             return None
         if not self._lock.acquire(blocking=False):
             return None
         try:
-            return self._run(conf, force)
+            return self._run(conf, source)
         finally:
             self._lock.release()
 
-    def _run(self, conf: dict, force: bool) -> dict:
+    def _today_copy(self, auto: str, today: str) -> str:
+        src = self._today(auto, today)
+        if not src:
+            maintenance.DbCopy.daily(self.store, self.data_dir)
+            src = self._today(auto, today)
+        return src
+
+    def _new_copy(self, auto: str, today: str) -> str:
+        maintenance.DbCopy.now(self.store, self.data_dir)
+        return self._today(auto, today)
+
+    def _run(self, conf: dict, source) -> dict:
         today = date.today().isoformat()
         rec = {'at': datetime.now().isoformat(timespec='seconds'), 'path': conf['path']}
         try:
             self.check(conf['path'])
             auto = maintenance.auto_dir(self.data_dir)
-            src = self._today(auto, today)
-            if not src or force:
-                maintenance.DbCopy.daily(self.store, self.data_dir, force=force)
-                src = self._today(auto, today)
+            src = source(auto, today)
             if not src:
                 raise RuntimeError('нет сегодняшней копии базы в data\\backup\\auto')
             dst = os.path.join(conf['path'], os.path.basename(src))
@@ -142,7 +157,7 @@ class MirrorBackup:
                 shutil.copyfile(src, tmp)
                 if os.path.getsize(tmp) != os.path.getsize(src):
                     raise RuntimeError('копия записалась не полностью')
-                self._verify(tmp, DbZip.is_zip(src))
+                (self._verify_zip if DbZip.is_zip(src) else self._verify_db)(tmp)
                 os.replace(tmp, dst)
             finally:
                 if os.path.exists(tmp):  # не записалась или не прошла проверку — недописанный файл не оставлять
@@ -180,14 +195,16 @@ class MirrorBackup:
         return ''
 
     @staticmethod
-    def _verify(path: str, is_zip: bool) -> None:
-        """Записанная во вторую папку копия читается: архив — по контрольным суммам, файл базы — проверкой SQLite."""
-        if is_zip:
-            try:
-                DbZip.verify(path)
-            except ValueError as exc:
-                raise RuntimeError(f'копия не прошла проверку: {exc}') from exc
-            return
+    def _verify_zip(path: str) -> None:
+        """Записанный во вторую папку архив читается — по контрольным суммам."""
+        try:
+            DbZip.verify(path)
+        except ValueError as exc:
+            raise RuntimeError(f'копия не прошла проверку: {exc}') from exc
+
+    @staticmethod
+    def _verify_db(path: str) -> None:
+        """Записанный во вторую папку файл базы читается — проверка SQLite."""
         res = DbZip.quick_check(path)
         if res != 'ok':
             raise RuntimeError('копия не прошла проверку: ' + res)
@@ -203,10 +220,18 @@ class MirrorBackup:
 
     def _kp_files(self, dst_root: str) -> int:
         """Справочные документы КП: только новые, без недописанных .part и посторонних файлов."""
-        return self._sync(os.path.join(self.data_dir, KpFiles.FOLDER), dst_root, KpFiles.DISK.match, atomic=True)
+        return self._sync(
+            os.path.join(self.data_dir, KpFiles.FOLDER), dst_root, KpFiles.DISK.match, copy=self._copy_atomic
+        )
 
     @staticmethod
-    def _sync(src_root, dst_root, accept, skip_top=None, atomic=False):
+    def _copy_atomic(src: str, dst: str) -> None:
+        """Через .part: недописанный файл не выглядит готовым."""
+        shutil.copyfile(src, dst + '.part')
+        os.replace(dst + '.part', dst)
+
+    @staticmethod
+    def _sync(src_root, dst_root, accept, skip_top=None, copy=shutil.copyfile):
         """Досылка файлов папки: копируются нет во второй папке или другого размера."""
         copied = total = 0
         for folder, _, files in os.walk(src_root):
@@ -221,11 +246,7 @@ class MirrorBackup:
                 if os.path.isfile(dst) and os.path.getsize(dst) == os.path.getsize(src):
                     continue
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
-                if atomic:
-                    shutil.copyfile(src, dst + '.part')
-                    os.replace(dst + '.part', dst)
-                else:
-                    shutil.copyfile(src, dst)
+                copy(src, dst)
                 copied += 1
         return {'total': total, 'copied': copied}
 

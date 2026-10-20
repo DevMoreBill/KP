@@ -139,24 +139,35 @@ def rows_of(doc: dict) -> Iterator[tuple[str, str]]:
                 yield k, v
 
 
-def detect(doc, types, with_dgu=False) -> str:
+class CatDetect:
     """Категория по названию — как в программе (core/types.js detectCat): по порядку типов, ДГУ — последней."""
-    dgu = next((tdef for tdef in types if tdef.get('id') == 'dgu'), None)
-    for text in (
-        ' '.join(str(x or '') for x in (doc.get('name'), doc.get('pageTitle'))),
-        str((doc.get('hint') or {}).get('title') or ''),
-    ):
-        for tdef in types:
-            if tdef.get('id') == 'dgu' or not tdef.get('match'):
-                continue
-            try:
-                if re.search(tdef['match'], text, re.I):
-                    return tdef['id']
-            except re.error:
-                pass
-        if with_dgu and dgu and re.search(dgu.get('match') or '$^', text, re.I):
-            return 'dgu'
-    return ''
+
+    @classmethod
+    def of(cls, doc, types) -> str:
+        """Без ДГУ: «генератор» в названии запчасти или опции не делает позицию установкой."""
+        return cls._detect(doc, types, None)
+
+    @classmethod
+    def with_dgu(cls, doc, types) -> str:
+        return cls._detect(doc, types, next((tdef for tdef in types if tdef.get('id') == 'dgu'), None))
+
+    @staticmethod
+    def _detect(doc, types, dgu) -> str:
+        for text in (
+            ' '.join(str(x or '') for x in (doc.get('name'), doc.get('pageTitle'))),
+            str((doc.get('hint') or {}).get('title') or ''),
+        ):
+            for tdef in types:
+                if tdef.get('id') == 'dgu' or not tdef.get('match'):
+                    continue
+                try:
+                    if re.search(tdef['match'], text, re.I):
+                        return tdef['id']
+                except re.error:
+                    pass
+            if dgu and re.search(dgu.get('match') or '$^', text, re.I):
+                return 'dgu'
+        return ''
 
 
 def fill_from_name(doc, cat, attrs) -> None:
@@ -342,12 +353,12 @@ def run(store, types_builtin, types_user, img_dir: str, backup_dir: str, log=pri
         new = old
         if old in user_map:
             new = user_map[old]
-            if new == 'dryer_refrig' and detect(doc, types) == 'dryer_ads':
+            if new == 'dryer_refrig' and CatDetect.of(doc, types) == 'dryer_ads':
                 new = 'dryer_ads'
         elif old not in tmap:
-            new = detect(doc, types, with_dgu=True) or 'other'
+            new = CatDetect.with_dgu(doc, types) or 'other'
         else:
-            det = detect(doc, types)
+            det = CatDetect.of(doc, types)
             if det in SPECIFIC and det != old and old in GENERAL:
                 new = det
         if new != old:

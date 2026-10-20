@@ -16,6 +16,7 @@ import zlib
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
+from enum import Enum
 from typing import Any
 from xml.etree import ElementTree
 
@@ -29,6 +30,7 @@ from maker_logos import MakerLogos
 from storage import Conflict, WriteBatch
 
 KV_KEY = 'feeds'
+CACHE_SEC = 1800  # скачанный фид YML годен полчаса
 IMAGE_STORE: Any = None  # хранилище изображений data/img (images.ImageStore) — задаёт kp_server при запуске
 JOBS: dict = {}  # id фида → {kind, state, done, total, msg, startedAt, result}
 _CACHE: dict = {}  # id фида → (время, url, разобранный фид) — предпросмотр и загрузка без повторного скачивания
@@ -332,8 +334,20 @@ def _inflate(data, wbits, limit: int = PAGE_MAX * 8) -> bytes:
     return out
 
 
-def page_html(url, strict=True) -> str:
-    """Страница товара на сайте поставщика (та же защита, что у фида и фото)."""
+def is_product_page(html) -> bool:
+    """Страница товара, а не заглушка защиты от роботов: есть заголовок <h1> и признаки карточки товара."""
+    return bool(
+        re.search(r'<h1\b', html, re.I)
+        and re.search(
+            r'itemprop\s*=\s*["\'](?:name|image|description|offers)["\']|data-fancybox|/upload/(?:iblock|medialibrary)/|detail-text',
+            html,
+            re.I,
+        )
+    )
+
+
+def page_html(url, accept=is_product_page) -> str:
+    """Страница на сайте поставщика (та же защита, что у фида и фото); accept — проверка, что это страница товара."""
     url = imgfetch.web_url(url)
     imgfetch._check_url(url)
     u = urllib.parse.urlsplit(url)
@@ -375,21 +389,9 @@ def page_html(url, strict=True) -> str:
             html = data.decode('utf-8')
         except UnicodeDecodeError:
             html = data.decode('cp1251', errors='replace')
-    if strict and not is_product_page(html):
+    if accept and not accept(html):
         raise ValueError('сайт отдал не страницу товара (проверка «не робот» или ошибка сайта)')
     return html
-
-
-def is_product_page(html) -> bool:
-    """Страница товара, а не заглушка защиты от роботов: есть заголовок <h1> и признаки карточки товара."""
-    return bool(
-        re.search(r'<h1\b', html, re.I)
-        and re.search(
-            r'itemprop\s*=\s*["\'](?:name|image|description|offers)["\']|data-fancybox|/upload/(?:iblock|medialibrary)/|detail-text',
-            html,
-            re.I,
-        )
-    )
 
 
 def _inner_html(html, match) -> str:
@@ -488,7 +490,7 @@ def page_images_any(html, url, limit: int = 12) -> list:
     """Фото товара с любого сайта: галерея, og:image, JSON-LD, крупные картинки страницы."""
     out, seen = [], set()
 
-    def add(u, strict=True) -> None:
+    def add(u, pattern=r'\.(jpe?g|png|webp)$') -> None:
         u = html_mod.unescape(str(u or '')).strip().split(' ')[0]
         if not u or u.startswith('data:'):
             return
@@ -501,7 +503,7 @@ def page_images_any(html, url, limit: int = 12) -> list:
             or re.search(r'\.(svg|gif|ico)$', key)
         ):
             return
-        if strict and not re.search(r'\.(jpe?g|png|webp)$', key):
+        if not re.search(pattern, key):
             return
         seen.add(key)
         out.append(u)
@@ -511,14 +513,14 @@ def page_images_any(html, url, limit: int = 12) -> list:
     for x in LdJson.products(html, LdJson.ANY_RX):
         image = x.get('image')
         for v in image if isinstance(image, list) else [image]:
-            add(v.get('url') or v.get('contentUrl') if isinstance(v, dict) else v, strict=False)
+            add(v.get('url') or v.get('contentUrl') if isinstance(v, dict) else v, pattern='')
     for regex in (
         r'<meta\b[^>]*\bproperty\s*=\s*["\']og:image(?::url)?["\'][^>]*\bcontent\s*=\s*["\']([^"\']+)',
         r'<meta\b[^>]*\bcontent\s*=\s*["\']([^"\']+)["\'][^>]*\bproperty\s*=\s*["\']og:image["\']',
         r'<(?:img|link|meta)\b[^>]*\bitemprop\s*=\s*["\']image["\'][^>]*\b(?:src|href|content)\s*=\s*["\']([^"\']+)',
     ):
         for match in re.finditer(regex, html, re.I):
-            add(match.group(1), strict=False)
+            add(match.group(1), pattern='')
     for match in re.finditer(
         r'<a\b[^>]*(?:data-fancybox|data-lightbox|data-zoom|rel\s*=\s*["\'](?:lightbox|gallery)|class\s*=\s*["\'][^"\']*(?:fancybox|lightbox|zoom|gallery))[^>]*>',
         html,
@@ -603,13 +605,12 @@ class PropList:
         ]
 
 
-def _table_props(html, pats=PROP_PATS, items=False, limit: int = 60) -> list:
-    """Пары из таблиц, dt/dd, блоков свойств (Битрикс и др.); li=True — ещё и списки «название — значение»."""
+def _table_props(html, pats=PROP_PATS, extra=lambda html: [], limit: int = 60) -> list:
+    """Пары из таблиц, dt/dd, блоков свойств (Битрикс и др.); extra(html) — ещё пары (списки «название — значение»)."""
     html = re.sub(r'(?is)<div\b[^>]*\bbasket_props_block\b.*?</table>', '', html)  # скрытый выбор свойств корзины
     out, seen = [], set()
     found = [(match.group(1), match.group(2)) for regex in pats for match in re.finditer(regex, html, re.I | re.S)]
-    if items:
-        found += PropList.pairs(html)
+    found += extra(html)
     for key, val in found:
         k = re.sub(r'\s+', ' ', _html_text(key)).strip(' :')
         v = re.sub(r'\s*\n\s*', '; ', _html_text(val)).strip(' ;')
@@ -756,7 +757,7 @@ def probe_images(urls, opts) -> tuple:
 
 def page_text(url, opts=None) -> dict:
     """Для автозаполнения: название, описание и характеристики со страницы любого сайта."""
-    html = page_html(url, strict=False)
+    html = page_html(url, accept=None)
     h1_match = re.search(r'(?is)<h1\b[^>]*>(.*?)</h1>', html) or re.search(r'(?is)<title\b[^>]*>(.*?)</title>', html)
     title = _unesc(re.sub(r'<[^>]+>', ' ', h1_match.group(1))) if h1_match else ''
     ld_desc, ld_props = _ld_product(html)
@@ -766,7 +767,7 @@ def page_text(url, opts=None) -> dict:
     )  # «Масса</span><span>430 кг» → «Масса 430 кг»
     # характеристики — отовсюду: schema.org, JSON-LD, таблицы и списки (в том числе на скрытых вкладках)
     props, seen = [], set()
-    for k, v in _schema_props(html) + ld_props + _table_props(clean, items=True, limit=200):
+    for k, v in _schema_props(html) + ld_props + _table_props(clean, extra=PropList.pairs, limit=200):
         if k.lower() not in seen:
             seen.add(k.lower())
             props.append([k, v])
@@ -1098,7 +1099,7 @@ def parse(data) -> dict:
     }
 
 
-def load(store, feed_cfg, fresh=False) -> dict:
+def load(store, feed_cfg, max_age=CACHE_SEC) -> dict:
     """Разобранный фид: YML — скачать (кэш 30 минут), из файлов — прочитать сохранённые файлы (кэш до новой загрузки файла)."""
     files = feed_cfg.get('kind') == 'files'
     key = (
@@ -1111,11 +1112,7 @@ def load(store, feed_cfg, fresh=False) -> dict:
     )
     with _LOCK:
         cached = _CACHE.get(feed_cfg['id'])
-        if (
-            cached
-            and cached[1] == key
-            and (files or (not fresh and (datetime.now() - cached[0]).total_seconds() < 1800))
-        ):
+        if cached and cached[1] == key and (files or (datetime.now() - cached[0]).total_seconds() < max_age):
             return cached[2]
     if files:
         pages = feed_files.read_file(DATA_DIR, feed_cfg['id'], 'pages')
@@ -1145,7 +1142,7 @@ def load(store, feed_cfg, fresh=False) -> dict:
 
 
 def preview(store, feed_cfg, types) -> dict:
-    feed = load(store, feed_cfg, fresh=True)
+    feed = load(store, feed_cfg, max_age=0)
     by_cat: dict = {}
     for offer in feed['offers']:
         by_cat.setdefault(offer['cat'], []).append(offer)
@@ -1387,6 +1384,13 @@ def plan_summary(store, feed_cfg) -> dict:
     }
 
 
+class Missing(Enum):
+    """Позиции, которых больше нет в новом файле фида: оставить в каталоге или убрать в корзину."""
+
+    KEEP = 'keep'
+    TRASH = 'trash'
+
+
 class FeedPurge:
     """Удаление позиций фида (администратор): все или одной категории — в корзину, с запретом повторной загрузки."""
 
@@ -1420,27 +1424,36 @@ class FeedPurge:
         }
 
     @classmethod
-    def run(cls, store, feed, cat='', block=True, author: str = '') -> dict:
-        """→ {deleted, blocked}"""
+    def run(cls, store, feed, cat='', author: str = '') -> dict:
+        """Позиции фида (или категории фида) — в корзину. → {deleted, blocked}"""
         pick = cls._pick(_feed_docs(store, feed['id']), cat)
-        count = store.trash_put_many(
+        return {'deleted': cls._trash(store, pick, author), 'blocked': 0}
+
+    @classmethod
+    def run_and_block(cls, store, feed, cat='', author: str = '') -> dict:
+        """В корзину, и фид их больше не загружает и не предлагает. → {deleted, blocked}"""
+        pick = cls._pick(_feed_docs(store, feed['id']), cat)
+        count = cls._trash(store, pick, author)
+        oids = [(doc.get('feed') or {}).get('oid') for doc in pick]
+        blocked = 0
+        items = feeds(store)
+        for x in items:
+            if x.get('id') == feed['id']:
+                excluded = list(dict.fromkeys((x.get('excluded') or []) + [str(oid) for oid in oids if oid]))[
+                    -cls.MAX_EXCLUDED :
+                ]
+                blocked = len(excluded) - len(x.get('excluded') or [])
+                x['excluded'] = excluded
+        store.kv_set(KV_KEY, {'items': items})
+        with _LOCK:
+            _CACHE.pop(feed['id'], None)
+        return {'deleted': count, 'blocked': blocked}
+
+    @staticmethod
+    def _trash(store, pick: list, author: str) -> int:
+        return store.trash_put_many(
             'catalog', [(doc['id'], doc.get('name') or doc['id']) for doc in pick], author or 'администратор'
         )
-        blocked = 0
-        if block:
-            oids = [(doc.get('feed') or {}).get('oid') for doc in pick]
-            items = feeds(store)
-            for x in items:
-                if x.get('id') == feed['id']:
-                    excluded = list(dict.fromkeys((x.get('excluded') or []) + [str(oid) for oid in oids if oid]))[
-                        -cls.MAX_EXCLUDED :
-                    ]
-                    blocked = len(excluded) - len(x.get('excluded') or [])
-                    x['excluded'] = excluded
-            store.kv_set(KV_KEY, {'items': items})
-            with _LOCK:
-                _CACHE.pop(feed['id'], None)
-        return {'deleted': count, 'blocked': blocked}
 
     @staticmethod
     def unblock(store, fid: str) -> int:
@@ -1625,7 +1638,7 @@ class FeedRules:
     @classmethod
     def plan(cls, store, feed_cfg, types) -> dict:
         """Предпросмотр загрузки без записи (фото и страницы товаров не скачиваются)."""
-        feed = load(store, feed_cfg, fresh=True)
+        feed = load(store, feed_cfg, max_age=0)
         existing = {(card.get('feed') or {}).get('oid'): card for card in _feed_docs(store, feed_cfg['id'])}
         files, built = feed_cfg.get('kind') == 'files', bool(feed_cfg.get('built'))
         tnames = {tdef.get('id'): tdef.get('name') for tdef in types}
@@ -2166,7 +2179,7 @@ def item_cat(offer, types) -> str:
         if cat:
             return cat
     diesel = re.search(r'дизел', offer['name'] + ' ' + path, re.I)
-    cat = catalog_migrate.detect({'name': offer['name']}, types)
+    cat = catalog_migrate.CatDetect.of({'name': offer['name']}, types)
     if cat == 'comp_diesel' and not diesel:  # «Компрессорная станция МВК» — электрическая, винтовая
         cat = 'comp_screw'
     if cat:
@@ -2175,7 +2188,7 @@ def item_cat(offer, types) -> str:
     if cat:
         return cat
     for seg in reversed(path.split(' / ')):
-        cat = catalog_migrate.detect({'name': seg}, types)
+        cat = catalog_migrate.CatDetect.of({'name': seg}, types)
         if cat and not (cat == 'comp_diesel' and not diesel):
             return cat
     if 'comp_diesel' in ids and re.search(r'бензин\S*\s+(\S+\s+)?компрессор', offer['name'], re.I):
@@ -2697,7 +2710,7 @@ def _img_key(u) -> str:
 
 
 def import_feed(
-    store, feed_cfg, types, image_store, author: str = '', only=None, log=print, trash_missing=False
+    store, feed_cfg, types, image_store, author: str = '', only=None, log=print, missing: Missing = Missing.KEEP
 ) -> dict:
     """Загрузка фида в каталог: новые позиции создаются, связанные обновляются (ручные правки сохраняются)."""
     j = _job(feed_cfg['id'], 'import')
@@ -2737,7 +2750,7 @@ def import_feed(
                     oid: {'id': card['id'], 'prices': card.get('prices') or []} for oid, card in plan['links'].items()
                 }
                 existing = {}
-                gone = plan['dups'] + (plan['keep'] if trash_missing else [])
+                gone = plan['dups'] + (plan['keep'] if missing is Missing.TRASH else [])
                 for card in gone:  # дубли — в корзину до записи новых позиций (id новой может совпасть)
                     store.trash_put(
                         'catalog',
@@ -2749,7 +2762,8 @@ def import_feed(
                 'linked': len(plan['links']),
                 'dups': len(plan['dups']),
                 'keep': len(plan['keep']),
-                'trashed': len(plan['dups']) + (len(plan['keep']) if mode == 'build' and trash_missing else 0),
+                'trashed': len(plan['dups'])
+                + (len(plan['keep']) if mode == 'build' and missing is Missing.TRASH else 0),
             }
         j['total'] = len(offs)
         put, save, istat = _image_putter(store, image_store)
@@ -3108,7 +3122,7 @@ def check_feed(store, feed_cfg, author: str = '', log=print, types=None) -> dict
     """Ежедневная проверка: РРЦ и наличие связанных позиций каталога; позиции, пропавшие из фида, — «нет в фиде»."""
     j = _job(feed_cfg['id'], 'check')
     try:
-        feed = load(store, feed_cfg, fresh=True)
+        feed = load(store, feed_cfg, max_age=0)
         by_oid = {offer['oid']: offer for offer in feed['offers']}
         revs = store.catalog_revs()  # номера правок до чтения позиций: правку менеджера за время проверки не затираем
         docs = _feed_docs(store, feed_cfg['id'])

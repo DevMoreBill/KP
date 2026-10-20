@@ -19,10 +19,10 @@ def fill(st):
 
 class UnitTest(unittest.TestCase):
     def test_export_secrets(self):
-        from data_bundle import SettingsFile
+        from data_bundle import Keys, SettingsFile
         st = TempStore(self).store
         fill(st)
-        name, raw = SettingsFile(st).export(False)
+        name, raw = SettingsFile(st).export()
         text = raw.decode('utf-8')
         self.assertTrue(name.endswith('.json'))
         for secret in ('sk-секрет-ии', 'пароль-почты', 'ключ-checko', 'хеш', '"pw"', 'history'):
@@ -31,7 +31,7 @@ class UnitTest(unittest.TestCase):
         self.assertEqual(d['format'], 'kp-settings')
         self.assertEqual(d['sections']['access']['m1']['perms']['catDelete'], True)
         self.assertEqual(d['sections']['update'], {'repo': 'x/y', 'nightly': 'on'})
-        _, raw = SettingsFile(st).export(True)
+        _, raw = SettingsFile(st).export(Keys.WITH)
         text = raw.decode('utf-8')
         self.assertIn('sk-секрет-ии', text)
         self.assertIn('ключ-checko', text)
@@ -41,7 +41,7 @@ class UnitTest(unittest.TestCase):
         from data_bundle import SettingsFile
         src = TempStore(self).store
         fill(src)
-        _, raw = SettingsFile(src).export(False)
+        _, raw = SettingsFile(src).export()
         dst = TempStore(self).store
         dst.kv_set('settings', {'ai': {'key': 'свой-ключ'}})
         dst.kv_set('mail', {'host': 'old', 'password': 'свой-пароль'})

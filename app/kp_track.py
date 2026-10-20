@@ -384,13 +384,23 @@ class Mailer:
             raise ValueError(f'Не больше {cls.MAX_TO} адресов в письме')
         return out
 
-    def send(self, recipients, copies, subject, body, files, reply_to='', test=False) -> list[str]:
+    def send(self, recipients, copies, subject, body, files, reply_to='') -> list[str]:
         """Письмо через SMTP из настроек. files — [(имя, байты, mime)]. → получатели. RuntimeError — с понятным текстом."""
+        mail = self._settings_ready()
+        msg = self._message(mail, recipients, copies, subject, body, files, reply_to)
+        return self._deliver_to(mail, msg, recipients + copies + ([mail['fromEmail']] if mail.get('bccSelf') else []))
+
+    def send_service(self, recipients, subject, body) -> list[str]:
+        """Служебное письмо (пробное, о проблемах сервера) — без копии себе."""
+        mail = self._settings_ready()
+        return self._deliver_to(mail, self._message(mail, recipients, [], subject, body, [], ''), list(recipients))
+
+    def _settings_ready(self) -> dict:
         if not self.enabled():
             raise RuntimeError('Почта не настроена: администратор — «Настройки → Почта»')
-        mail = self.settings()
-        msg = self._message(mail, recipients, copies, subject, body, files, reply_to)
-        rcpt = recipients + copies + ([mail['fromEmail']] if mail.get('bccSelf') and not test else [])
+        return self.settings()
+
+    def _deliver_to(self, mail: dict, msg, rcpt: list[str]) -> list[str]:
         try:
             self._deliver(mail, msg, rcpt)
         except smtplib.SMTPAuthenticationError:

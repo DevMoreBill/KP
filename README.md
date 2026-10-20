@@ -526,6 +526,15 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.154.0 — что сделано:** «чистый код», часть 19: без логических флагов в параметрах, этап 2 (31 → 0, все 62 модуля в списке «flags»):
+- письма: `Mailer.send_service` (служебное — без копии себе), `AdminAlerts.send` / `send_test`;
+- нейросеть: `AiAsk.ask` (если включена) и `AiAsk.probe` (проверка связи администратором); обновление: `install` (только новее) и `reinstall`; перезапуск: `spawn` / `spawn_with_browser`;
+- копии: `DbCopy.daily` / `DbCopy.now`; вторая папка — `MirrorBackup.run` / `run_now` («Копировать сейчас»), `_verify_zip` / `_verify_db`, копирование через `.part` — отдельной функцией; ставки ATI.SU: `AutoRates.scheduled` / `now`;
+- Битрикс24: `run` (в часы обмена) / `run_now` (кнопкой), стороны — `Sides.BOTH/SEND/RECEIVE`; старые сделки — `_import_deal` (без отметки «новая»);
+- контрагенты: `CheckMode.CACHED/FRESH/QUEUE`, `exhaust()` — лимит исчерпан; категории по названию — `CatDetect.of` / `with_dgu`; PDF — `PdfText.read` / `require`;
+- настройки в файл — `Keys.WITH/WITHOUT`; фиды — `load(max_age)`, `page_html(accept=…)`, `FeedPurge.run` / `run_and_block`, `import_feed(missing=Missing.KEEP/TRASH)`;
+- неиспользуемый параметр `BitrixSync.run(budget)` убран; `tests/code_style.py` — `Mode.CHECK/FIX`.
+
 **3.153.0 — что сделано:** «чистый код», часть 18: без логических флагов в параметрах, этап 1 (56 → 31):
 - проверка `tests/test_names.py::test_flags` — параметр со значением `True/False` по умолчанию или типом `bool` запрещён в модулях списка «flags» (`tests/code_style.json`, 45 из 62);
 - `Store`: `catalog_get_rev`, `client_get_rev`, `managers_list_rev`, `pending_docs`, `catalog_stage` (запись в пачке `WriteBatch`), `backup_checked`; `DbZip.quick_check`;

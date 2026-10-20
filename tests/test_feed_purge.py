@@ -31,7 +31,7 @@ class UnitTest(unittest.TestCase):
         self.assertEqual((p['total'], p['picked']), (5, 5))
         self.assertEqual([(c['cat'], c['n']) for c in p['cats']], [('c1', 3), ('c2', 2)])
         self.assertEqual(feeds.FeedPurge.preview(st, f, 'c2')['picked'], 2)
-        r = feeds.FeedPurge.run(st, f, 'c1', True, 'тест')
+        r = feeds.FeedPurge.run_and_block(st, f, 'c1', 'тест')
         self.assertEqual(r, {'deleted': 3, 'blocked': 3})
         left = sorted(json.loads(st.catalog_light()), key=lambda x: x['id'])
         self.assertEqual([x['id'] for x in left], ['fx-3', 'fx-4', 'own'], 'своя позиция и другая категория не тронуты')
@@ -43,7 +43,7 @@ class UnitTest(unittest.TestCase):
         self.assertTrue(st.catalog_get(eid))
         self.assertEqual(feeds.FeedPurge.unblock(st, 'fx'), 3)
         self.assertFalse(feeds.feed_get(st, 'fx').get('excluded'))
-        r = feeds.FeedPurge.run(st, feeds.feed_get(st, 'fx'), '', False, 'тест')
+        r = feeds.FeedPurge.run(st, feeds.feed_get(st, 'fx'), '', 'тест')
         self.assertEqual((r['deleted'], r['blocked']), (3, 0), 'без «не загружать снова» — запрета нет')
         self.assertFalse(feeds.feed_get(st, 'fx').get('excluded'))
 

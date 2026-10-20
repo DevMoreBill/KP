@@ -504,7 +504,7 @@ def main() -> int:
             'очередь проверок контрагентов',
         )
         # ставки доставки по ATI.SU: проверка раз в 3 часа, обновление — когда прошёл период из настроек тарифов доставки
-        maintenance.Background.every(3 * 3600, lambda: logistics_api.auto_refresh(store()), 'ставки доставки')
+        maintenance.Background.every(3 * 3600, lambda: logistics_api.AutoRates.scheduled(store()), 'ставки доставки')
         import feeds
 
         feeds.IMAGE_STORE = IMAGES

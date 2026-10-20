@@ -154,7 +154,7 @@ class BackupTest(unittest.TestCase):
 
     def test_7_parallel_copies(self):
         res = []
-        ts = [threading.Thread(target=lambda: res.append(DbCopy.daily(self.st, self.data, force=True))) for _ in range(2)]
+        ts = [threading.Thread(target=lambda: res.append(DbCopy.now(self.st, self.data))) for _ in range(2)]
         for t in ts:
             t.start()
         for t in ts:

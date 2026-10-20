@@ -457,11 +457,20 @@ class Updater:
             raise UpdateError('В выпуске нет архива обновления — сначала «Проверить обновления»')
         return self.install(self.source().download(last['asset']), author, source='GitHub ' + (last.get('tag') or ''))
 
-    def install(self, data, author: str, source='файл', force: bool = False) -> dict:
+    def install(self, data, author: str, source='файл') -> dict:
+        """Обновление новее работающей версии."""
         pkg = UpdatePackage(data, UpdateSign.keys(self.root))
         cur = self.current()
-        if not force and version.as_tuple(pkg.version) <= version.as_tuple(cur):
+        if version.as_tuple(pkg.version) <= version.as_tuple(cur):
             raise UpdateError(f'Версия обновления {pkg.version} не новее работающей {cur} — устанавливать нечего')
+        return self._install(pkg, cur, author, source)
+
+    def reinstall(self, data, author: str, source='файл') -> dict:
+        """Пакет любой версии (та же или прежняя) — по явной просьбе администратора."""
+        pkg = UpdatePackage(data, UpdateSign.keys(self.root))
+        return self._install(pkg, self.current(), author, source)
+
+    def _install(self, pkg, cur: str, author: str, source: str) -> dict:
         if not self.writable():
             raise UpdateError(
                 f'Нет прав записи в папку программы {self.root} — запустите обновление файлом «Установить обновление.cmd» '
@@ -589,18 +598,31 @@ class Restarter:
     INHERIT_DROP = ('_MEI', '_PYI', 'PYINSTALLER_', 'KP_UPDATE_', 'KP_BASE_VERSION')
 
     @classmethod
-    def environment(cls, browser=False) -> dict:
-        env = {k: v for k, v in os.environ.items() if not k.upper().startswith(cls.INHERIT_DROP)}
-        env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'  # PyInstaller ≥ 6.10: новый EXE — как запущенный заново
-        if browser:
-            env.pop('KP_NO_BROWSER', None)
-        else:
-            env['KP_NO_BROWSER'] = '1'
+    def environment(cls) -> dict:
+        """Окружение нового процесса: браузер не открывать (страница уже открыта)."""
+        return dict(cls._inherited(), KP_NO_BROWSER='1')
+
+    @classmethod
+    def environment_with_browser(cls) -> dict:
+        """Окружение нового процесса, который сам откроет браузер."""
+        env = cls._inherited()
+        env.pop('KP_NO_BROWSER', None)
         return env
 
-    def spawn(self, browser=False) -> None:
-        """browser — новый процесс сам откроет браузер (возврат к прежней версии при первом запуске: страницы ещё нет)."""
-        env = self.environment(browser)
+    @classmethod
+    def _inherited(cls) -> dict:
+        env = {k: v for k, v in os.environ.items() if not k.upper().startswith(cls.INHERIT_DROP)}
+        env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'  # PyInstaller ≥ 6.10: новый EXE — как запущенный заново
+        return env
+
+    def spawn(self) -> None:
+        self._spawn(self.environment())
+
+    def spawn_with_browser(self) -> None:
+        """Возврат к прежней версии при первом запуске: страницы ещё нет — новый процесс откроет браузер."""
+        self._spawn(self.environment_with_browser())
+
+    def _spawn(self, env: dict) -> None:
         cmd = self.command()
         if os.name == 'nt':
             flags = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
