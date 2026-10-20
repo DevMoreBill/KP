@@ -1,13 +1,8 @@
 ---
 paths:
-  - "app/web/js/features/catalog*.js"
-  - "app/web/js/features/item-editor.js"
+  - "app/web/js/features/catalog/*.js"
   - "app/web/js/features/wizard/*.js"
-  - "app/web/js/features/ai-autofill.js"
-  - "app/web/js/features/types-editor.js"
-  - "app/web/js/features/images.js"
   - "app/web/js/features/admin/feed*.js"
-  - "app/web/js/features/excel-import.js"
   - "app/catalog_*.py"
   - "app/feed*.py"
   - "app/images.py"

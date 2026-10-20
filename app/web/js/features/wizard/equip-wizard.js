@@ -194,8 +194,8 @@ export class EquipWizard {
 
   static _toCatalog(item, tab, after) {
     const { _src, _srcProps, _srcUrl, _srcImgs } = item;
-    const doc = itemToDoc(item, { id: uid() + uid(), prices: [] });
-    openCatEditor(doc, cwAfterSave, true);
+    const doc = CatalogEditor.toDoc(item, { id: uid() + uid(), prices: [] });
+    CatalogEditor.openNew(doc, saved => CatalogWindow.win.afterSave(saved));
     Object.assign(S.items[0], { _src, _srcProps, _srcUrl, _srcImgs, _aiStep: item._aiStep, _aiMsg: item._aiMsg });
     EDIT.tab = tab;
     renderEditor();

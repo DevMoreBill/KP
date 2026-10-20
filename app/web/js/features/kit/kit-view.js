@@ -238,7 +238,7 @@ export class KitView {
   }
 
   static _specRow({ path, index, j }, row, k) {
-    const value = DimRow.is('', row.k)
+    const value = DimRow.matches('', row.k)
       ? DimRow.html(`data-p="${path}.rows.${k}.v"`, row)
       : `<input type="text" data-p="${path}.rows.${k}.v" value="${esc(row.v)}" placeholder="Значение">`;
     return `<div class="kit-row"><input type="text" data-p="${path}.rows.${k}.k" value="${esc(row.k)}" placeholder="Параметр">${value}<button class="icon" type="button" data-a="kitRowDel" data-i="${index}" data-j="${j}" data-k="${k}" aria-label="Удалить строку">✕</button></div>`;

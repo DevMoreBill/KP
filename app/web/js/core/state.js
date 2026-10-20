@@ -93,8 +93,12 @@ let saveT;
 // mgrT — отложенное сохранение контактов менеджера (docx/build.js сбрасывает его перед записью КП)
 let CLIENTS = [], CLIENTS_ALL = 0, MGRS = [], mgrT = null;
 
-// правка позиции каталога в карточке (features/catalog-edit.js): пока она открыта, S.items подменены — черновик не сохраняется
+// правка позиции каталога в карточке (features/catalog/catalog-edit.js): пока она открыта, S.items подменены — черновик не сохраняется
 var CATED = null;
+
+// каталог в браузере (features/catalog/ — Catalog.refresh) и открытая карточка позиции (ItemEditor): присваивают и читают все разделы
+let catCache = [];
+let EDIT = null;
 
 function persist(){
   if (CATED) return;
