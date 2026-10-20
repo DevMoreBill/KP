@@ -54,6 +54,7 @@
     "app/update_sign.py",
     "app/user_prefs.py",
     "app/version.py",
+    "app/web_api.py",
     "app/workcal.py",
     "tests/code_style.py"
   ]

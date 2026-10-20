@@ -229,8 +229,8 @@ class UpdateFallbackTest(unittest.TestCase):
     def test_4_self_check_failed(self):
         self.keep_prev()
         self.patch('99.0.3', breaker=lambda app: self.edit(
-            app, 'web_api.py', "        import version\n        return self.send_json({'version': version.VERSION,",
-            "        import version\n        raise KeyError('ci: version route broken')\n        return self.send_json({'version': version.VERSION,"))
+            app, 'web_api.py', "        import version\n\n        return self.send_json({'version': version.VERSION,",
+            "        import version\n\n        raise KeyError('ci: version route broken')\n        return self.send_json({'version': version.VERSION,"))
         self.start(browser=False)
         self.assertTrue(self.wait_up(), self.output())
         time.sleep(2)
