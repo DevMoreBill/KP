@@ -639,7 +639,7 @@ class Scenario(UiRun):
                    if r.method in ('POST', 'PUT') and '/api/kp' in r.url else None)
         b = self.pg.locator('#side [data-a=download]').first
         if self.phone:
-            self.go(self.ev("StepList.visible().slice(-1)[0].id"))
+            self.go(self.ev("Steps.visible().slice(-1)[0].id"))
             b = self.pg.locator('#mbar [data-a=download]').first
         # не всё заполнено (частичный прогон) — что мешает, без 30 с ожидания; на телефоне тогда вместо «Сохранить» — «Проверить»
         if not b.count() or b.is_disabled():

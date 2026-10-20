@@ -446,3 +446,8 @@ let EDIT = null;
 // целиком — окна, которые помнят разбор по TYPES, видят смену справочника
 let TYPES = [];
 let TYPES_BUILTIN = null;
+
+// открытый раздел формы КП (ui/steps.js — Steps) и свои подсказки полей адреса (ui/geo-input.js — GeoInput,
+// склады поставщиков добавляет features/deal): общие для нескольких модулей
+let STEP = 'client';
+const GEO_EXTRA = {};

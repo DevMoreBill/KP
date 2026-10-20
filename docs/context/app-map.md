@@ -99,7 +99,7 @@
 Каркас: `index.html` (все js/css подключаются по порядку, проверяет `test_project`), `js/boot.js` (тема и телефон до отрисовки), `js/main.js` (запуск).
 Ядро `js/core`: `api.js` (`api()`, подпись пользователя, `X-CSRF-Token`, 409 → `conflictAsk`; `SRV`, `ADMIN`, `ImgUpload`), `state.js` (состояние КП `S`,
 `S.items`, `S.deal`, черновик в браузере), `util.js` (`$`, `esc`, `norm`, `toast`, `morph`; `money` — из `KPGen`), `types.js`, `defaults.js` (`DEF()`), `features.js` (`FEAT.on`),
-`lists.js` (`LISTS`), `xlsx.js` (Excel на JSZip). `js/ui`: `form.js` (`STEPS`, `StepList`, `Popups`), `events.js` (кнопки `data-a`), `sidebar.js`
+`lists.js` (`LISTS`), `xlsx.js` (Excel на JSZip). `js/ui`: `form.js` (`STEPS`, `Steps`, `Popups`), `events.js` (кнопки `data-a`), `sidebar.js`
 (`SidePanel`), `datepicker.js` (`DP`, `WCAL`), `geo-input.js` (`GEO`), `mobile.js`. Шаги КП `js/ui/steps`: client (1, `TenderBlock`), equipment (2),
 pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`), manager (6). Окна — класс `Modal` (`kp-track.js`). CSS — `app/web/css/*.css` по разделам;
 `vendor/` — jszip, docx-preview, шрифт Onest; `fonts/` — osifont (чертежи).
@@ -238,6 +238,7 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.165.0** (20.10) — чистый код, ч. 26–27: документ КП, шаблоны, предпросмотр, графический редактор → `features/doc/`; журнал, черновики, клиенты, менеджеры, вход, цены, руководство → `features/kp/` (`help.js` — данные версий, `kp/legacy.js` — мост старых имён).
 - **3.166.0** (20.10) — чистый код, ч. 28: каталог, карточка позиции, фото, ИИ, категории → `features/catalog/`; сервер — кэш сжатых файлов по пути и версии.
 - **3.167.0** (20.10) — чистый код, ч. 29: экономика сделки, Excel, логистика, «Тарифы доставки», ТН ВЭД → `features/deal/` (`DealUi`, `LgState`, `DealCalculator`, `DealXlsx`, `TnVed`).
+- **3.168.0** (20.10) — чистый код, ч. 30: форма КП, шаги, боковая панель, события, телефон, даты, адреса → модули `ui/` (`Steps`, `FormView`, `SidePanel`, `ItemActions`, `Mobile`, `DatePicker`, `GeoInput`; мост `ui/legacy.js`).
 - **3.155.1** (20.10) — `test_update_fallback.wait_version`: ожидание версии после отката вместо фиксированной паузы.
 - **3.155.0** (20.10) — чистый код, ч. 20: «магические числа» сервера 256 → 0 (Ruff PLR2004 включён), `feed_files.PRESSURE_ALIAS`.
 - **3.154.0** (20.10) — чистый код, ч. 19: без флагов, этап 2 (31 → 0): `Mailer.send_service`, `AiAsk.ask/probe`, `install/reinstall`, `DbCopy.daily/now`, `AutoRates`, `Sides`, `CheckMode`, `CatDetect`, `PdfText`, `data_bundle.Keys`, `feeds.Missing`, `FeedPurge.run_and_block`.
