@@ -37,7 +37,7 @@ try {
 """
 
 
-def _no_window() -> int:
+def _no_window() -> dict:
     return {'creationflags': 0x08000000} if os.name == 'nt' else {}
 
 
@@ -67,7 +67,7 @@ def word_available() -> bool:
         return False
 
 
-def available(cloud_key: str | None = None) -> bool:
+def available(cloud_key: str | None = None) -> dict:
     return {'word': word_available(), 'libreoffice': bool(soffice_path()), 'cloud': bool(cloud_key)}
 
 

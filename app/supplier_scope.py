@@ -102,7 +102,7 @@ class SupplierScope:
         return d
 
     @classmethod
-    def keep_of(cls, d: dict) -> dict:
+    def keep_of(cls, d: dict) -> list:
         """Поля, которых нет в файле выгрузки и которые при загрузке остаются как в базе (только известные)."""
         k = d.get('keep') if isinstance(d, dict) else None
         return [x for x in k if x in cls.PRICE_KEYS] if isinstance(k, list) else []
@@ -215,7 +215,7 @@ class CatalogFilter:
         return out
 
     @classmethod
-    def keep(cls, prices) -> set:
+    def keep(cls, prices) -> list:
         """Поля цен и остатков, которые не выгружаются (группы не отмечены)."""
         want = set(prices or [])
         return [k for g, keys in cls.GROUPS.items() if g not in want for k in keys]

@@ -46,7 +46,7 @@ class MirrorBackup:
             running=self._lock.locked(),
         )
 
-    def start(self) -> None:
+    def start(self) -> dict:
         """Копия в фоне (кнопка «Копировать сейчас»): первая выгрузка изображений по сети может идти минутами."""
         if not self.config()['on']:
             raise ValueError('Вторая папка не включена')
@@ -109,7 +109,7 @@ class MirrorBackup:
 
     # ---------- копирование ----------
     @staticmethod
-    def _copies(path: str) -> str:
+    def _copies(path: str):
         return maintenance.DbCopy.listing(path)
 
     def run(self, force: bool = False) -> dict | None:

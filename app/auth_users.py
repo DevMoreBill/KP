@@ -1,21 +1,5 @@
-# -*- coding: utf-8 -*-
-"""Вход менеджеров в конструктор по логину и паролю и права менеджеров.
+"""Вход менеджеров по логину и паролю, сессии, права, временные пароли."""
 
-• Режим входа — kv «settings».userLogin.enabled (включает и выключает администратор в «Настройках → Менеджеры и доступ»).
-  Выключен — менеджер выбирается на устройстве, права не проверяются.
-  Включён — без входа конструктор не открывается; кто работает, сервер знает по сессии (а не по подписи запроса).
-• Учётные данные и права — kv «mgrAccess»: {id менеджера: {login, pw (хеш), perms, lastLogin}}. Отдельно от справочника
-  менеджеров: справочник уходит в каждый браузер, а хеши паролей и права — нет.
-• Сессия — cookie kp_user (HttpOnly, SameSite=Strict, 30 дней — srv.userSessionDays в «Значениях программы»); в базе — только хеш токена (kv «userSessions»),
-  поэтому вход переживает перезапуск программы. Выход, смена пароля или права «вход запрещён» закрывают сессии.
-  Без «Запомнить меня» — cookie до закрытия браузера и не дольше srv.userShortHours часов (UserSession).
-• Экран входа — подсказка «Забыли пароль?» от администратора (settings.userLogin.help, LoginInfo).
-• Пароль — не короче srv.userPwMin символов (по умолчанию 4); хранится только хешем, как у администраторов.
-• «Сбросить пароль» (администратор) — временный пароль (TempPassword): показывается администратору один раз, хранится только
-  хешем, действует srv.tempPwHours часов; все сессии менеджера закрываются. Вошедший с временным паролем сначала задаёт свой
-  (до этого сервер отвечает только 403 «задайте свой пароль»). Менеджер меняет пароль сам (UserPassword) — его другие сессии
-  закрываются; «Выйти на всех устройствах» — UserSession.drop_all.
-"""
 import hashlib
 import json
 import secrets
@@ -26,30 +10,30 @@ from datetime import datetime
 from defaults import SrvVal
 
 COOKIE = 'kp_user'
-PERMS = [   # ключ, подпись, по умолчанию
+PERMS = [  # ключ, подпись, по умолчанию
     ('catAdd', 'Добавлять оборудование в каталог', True),
     ('catEdit', 'Редактировать оборудование в каталоге', True),
     ('kpOthers', 'Видеть и открывать КП других менеджеров', False),
     ('dealView', 'Видеть экономику сделки', True),
-    # особые права — только выбранным менеджерам (по умолчанию нет; без входа по паролю их нет ни у кого)
+    # особые права — только выбранным менеджерам и только при входе по паролю
     ('catDelete', 'Удалять товары (в корзину; восстанавливает и чистит корзину администратор)', False),
     ('catSelfMod', 'Правки без модерации: свои — сразу в каталог, принимать и отклонять правки других', False),
     ('export', 'Выгружать каталог и клиентов в файл (без закупки)', False),
 ]
 PERM_KEYS = [p[0] for p in PERMS]
-STRICT = ('catDelete', 'catSelfMod', 'export')     # особые: при выключенном входе по паролю — только администратору
+STRICT = ('catDelete', 'catSelfMod', 'export')
 LOCK = threading.Lock()
 
 
-def _now():
+def _now() -> str:
     return datetime.now().isoformat(timespec='seconds')
 
 
-def enabled(store):
+def enabled(store) -> bool:
     return bool(((store.kv_get('settings') or {}).get('userLogin') or {}).get('enabled'))
 
 
-def set_enabled(store, on, by):
+def set_enabled(store, on: bool, by: str) -> None:
     st = store.kv_get('settings') or {}
     st['userLogin'] = {**(st.get('userLogin') or {}), 'enabled': bool(on), 'updatedAt': _now(), 'updatedBy': by}
     store.kv_set('settings', st)
@@ -57,14 +41,13 @@ def set_enabled(store, on, by):
         store.kv_set('userSessions', {})
 
 
-def access(store):
+def access(store) -> dict:
     a = store.kv_get('mgrAccess') or {}
     return a if isinstance(a, dict) else {}
 
 
 class AccessRecord:
-    """Запись одного менеджера в kv «mgrAccess»: прочитать — изменить — записать под блокировкой базы. Иначе вход
-    другого менеджера в ту же секунду (touch_login пишет весь kv) отменял бы сброс или смену пароля, запрет входа."""
+    """Запись одного менеджера в kv «mgrAccess»: прочитать — изменить — записать под блокировкой базы."""
 
     @staticmethod
     def update(store, mid, fn):
@@ -87,7 +70,7 @@ class AccessRecord:
             rec['login'] = login
         if pw:
             rec['pw'] = pw
-            rec.pop('temp', None)       # пароль от администратора — постоянный
+            rec.pop('temp', None)  # пароль от администратора — постоянный
             drop.append(True)
         if isinstance(d.get('perms'), dict):
             rec['perms'] = {k: bool(d['perms'].get(k, perms_of(rec)[k])) for k in PERM_KEYS}
@@ -101,42 +84,58 @@ class AccessRecord:
         return rec
 
 
-def perms_of(rec):
+def perms_of(rec: dict) -> dict:
     p = (rec or {}).get('perms') or {}
     return {k: bool(p.get(k, d)) for k, _, d in PERMS}
 
 
-def public(store, managers):
-    """Для «Настроек»: менеджеры с логином, правами, последним входом, временным паролем (до какого времени) и числом
-    открытых входов — без хешей."""
+def public(store, managers: list) -> list[dict]:
+    """Для «Настроек»: менеджеры с логином, правами, последним входом, временным паролем (до какого времени)."""
     a = access(store)
     n = UserSession.count(store)
     out = []
     for m in managers:
         r = a.get(m.get('id')) or {}
         t = TempPassword.of(r)
-        out.append({'id': m.get('id'), 'name': m.get('name') or '', 'position': m.get('position') or '', 'login': r.get('login') or '',
-                    'hasPassword': bool(r.get('pw')), 'blocked': bool(r.get('blocked')), 'perms': perms_of(r), 'lastLogin': r.get('lastLogin') or '',
-                    'temp': ({'until': datetime.fromtimestamp(t['exp']).isoformat(timespec='minutes'), 'expired': TempPassword.expired(r)} if t else None),
-                    'sessions': n.get(m.get('id'), 0)})
+        out.append(
+            {
+                'id': m.get('id'),
+                'name': m.get('name') or '',
+                'position': m.get('position') or '',
+                'login': r.get('login') or '',
+                'hasPassword': bool(r.get('pw')),
+                'blocked': bool(r.get('blocked')),
+                'perms': perms_of(r),
+                'lastLogin': r.get('lastLogin') or '',
+                'temp': (
+                    {
+                        'until': datetime.fromtimestamp(t['exp']).isoformat(timespec='minutes'),
+                        'expired': TempPassword.expired(r),
+                    }
+                    if t
+                    else None
+                ),
+                'sessions': n.get(m.get('id'), 0),
+            }
+        )
     return out
 
 
-def check_password(pw):
+def check_password(pw) -> None:
     n = SrvVal.now('srv.userPwMin')
     if len(pw or '') < n:
-        raise ValueError('Пароль — не короче %d символов' % n)
+        raise ValueError(f'Пароль — не короче {n} символов')
 
 
-def norm_login(s):
+def norm_login(s) -> str:
     return str(s or '').strip().lower()
 
 
-def set_access(store, mid, d, hash_password):
+def set_access(store, mid: str, d: dict, hash_password) -> dict:
     """Логин, пароль (если передан), права и блокировка менеджера. ValueError — с понятным текстом."""
     if d.get('password'):
         check_password(d['password'])
-    pw = hash_password(d['password']) if d.get('password') else None      # медленный хеш — до блокировки базы
+    pw = hash_password(d['password']) if d.get('password') else None  # медленный хеш — до блокировки базы
     drop = []
     rec = AccessRecord.update(store, mid, lambda rec, a: AccessRecord.edit(rec, a, mid, d, pw, drop))
     if drop:
@@ -144,26 +143,27 @@ def set_access(store, mid, d, hash_password):
     return rec
 
 
-
-# ---------------------------------------------------------------- сессии
-def _h(tok):
+def _h(tok: str) -> str:
     return hashlib.sha256(tok.encode()).hexdigest()
 
 
-def _sessions(store):
+def _sessions(store) -> dict:
     s = store.kv_get('userSessions') or {}
     now = time.time()
     return {k: v for k, v in s.items() if isinstance(v, dict) and v.get('exp', 0) > now}
 
 
 class UserSession:
-    """Сессия менеджера после входа. remember — «Запомнить меня на этом устройстве»: cookie на srv.userSessionDays дней;
-    без неё — cookie до закрытия браузера (без Max-Age), а сервер держит сессию не дольше srv.userShortHours часов."""
+    """Сессия менеджера после входа."""
 
     @staticmethod
-    def start(store, mid, remember=True):
+    def start(store, mid: str, remember: bool = True) -> str:
         tok = secrets.token_urlsafe(32)
-        ttl = SrvVal.get(store, 'srv.userSessionDays') * 86400 if remember else SrvVal.get(store, 'srv.userShortHours') * 3600
+        ttl = (
+            SrvVal.get(store, 'srv.userSessionDays') * 86400
+            if remember
+            else SrvVal.get(store, 'srv.userShortHours') * 3600
+        )
         with LOCK:
             s = _sessions(store)
             s[_h(tok)] = {'mid': mid, 'exp': time.time() + ttl}
@@ -171,7 +171,7 @@ class UserSession:
         return tok
 
     @staticmethod
-    def count(store):
+    def count(store) -> dict:
         """Открытые входы по менеджерам: {id: число}."""
         out = {}
         for v in _sessions(store).values():
@@ -179,7 +179,7 @@ class UserSession:
         return out
 
     @staticmethod
-    def drop_all(store, mid, keep=''):
+    def drop_all(store, mid: str, keep: str = '') -> int:
         """«Выйти на всех устройствах»: закрыть все входы менеджера (keep — токен входа, который остаётся). Число закрытых."""
         with LOCK:
             s = _sessions(store)
@@ -189,30 +189,30 @@ class UserSession:
         return len(s) - len(left)
 
     @staticmethod
-    def cookie(tok, remember=True):
+    def cookie(tok: str, remember: bool = True) -> str:
         """Set-Cookie: пустой tok — удалить cookie (выход)."""
         if not tok:
-            return '%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict' % COOKIE
-        age = '; Max-Age=%d' % (SrvVal.now('srv.userSessionDays') * 86400) if remember else ''
-        return '%s=%s; Path=/%s; HttpOnly; SameSite=Strict' % (COOKIE, tok, age)
+            return f'{COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict'
+        age = f'; Max-Age={SrvVal.now("srv.userSessionDays") * 86400}' if remember else ''
+        return f'{COOKIE}={tok}; Path=/{age}; HttpOnly; SameSite=Strict'
 
 
 class LoginInfo:
-    """Что экран входа знает до входа: подсказка «Забыли пароль?» (её пишет администратор — к кому обращаться),
-    срок «Запомнить меня». Только то, что администратор сам решил показать, — без логинов и данных менеджеров."""
+    """Что экран входа знает до входа: подсказка «Забыли пароль?»."""
+
     HELP_MAX = 200
 
     @staticmethod
-    def help(store):
+    def help(store) -> str:
         return str(((store.kv_get('settings') or {}).get('userLogin') or {}).get('help') or '')
 
     @classmethod
-    def set_help(cls, store, text, by):
+    def set_help(cls, store, text, by: str) -> str:
         if not isinstance(text, str):
             raise ValueError('Подсказка «Забыли пароль?» — текст')
         text = ' '.join(text.split())
         if len(text) > cls.HELP_MAX:
-            raise ValueError('Подсказка «Забыли пароль?» — не длиннее %d символов' % cls.HELP_MAX)
+            raise ValueError(f'Подсказка «Забыли пароль?» — не длиннее {cls.HELP_MAX} символов')
         st = store.kv_get('settings') or {}
         st['userLogin'] = {**(st.get('userLogin') or {}), 'help': text, 'helpAt': _now(), 'helpBy': by}
         store.kv_set('settings', st)
@@ -220,31 +220,33 @@ class LoginInfo:
 
     @classmethod
     def public(cls, store):
-        return {'help': cls.help(store), 'sessionDays': SrvVal.get(store, 'srv.userSessionDays'),
-                'shortHours': SrvVal.get(store, 'srv.userShortHours'), 'pwMin': SrvVal.get(store, 'srv.userPwMin')}
+        return {
+            'help': cls.help(store),
+            'sessionDays': SrvVal.get(store, 'srv.userSessionDays'),
+            'shortHours': SrvVal.get(store, 'srv.userShortHours'),
+            'pwMin': SrvVal.get(store, 'srv.userPwMin'),
+        }
 
 
 class TempPassword:
-    """Временный пароль от администратора («Сбросить пароль»): случайный, без похожих знаков (0/o, 1/l/i), хранится только
-    хешем вместо прежнего пароля; запись rec['temp'] = {exp, at, by}. Действует srv.tempPwHours часов; вошедший с ним менеджер
-    до смены пароля ничего другого сделать не может (UserPassword.change снимает отметку)."""
+    """Временный пароль от администратора: без похожих знаков, только хешем, rec['temp'] = {exp, at, by}."""
+
     ABC = 'abcdefghjkmnpqrstuvwxyz23456789'
     LEN = 10
 
     @staticmethod
-    def of(rec):
+    def of(rec: dict) -> dict | None:
         t = (rec or {}).get('temp')
         return t if isinstance(t, dict) and t.get('exp') else None
 
     @classmethod
-    def expired(cls, rec):
+    def expired(cls, rec: dict) -> bool:
         t = cls.of(rec)
         return bool(t) and t['exp'] <= time.time()
 
     @classmethod
-    def issue(cls, store, mid, hash_password, by):
-        """Новый временный пароль менеджеру: (пароль, часов, до какого времени); все его входы закрываются.
-        Пароль возвращается только здесь — ни в базу, ни в журнал он не попадает."""
+    def issue(cls, store, mid: str, hash_password, by: str) -> tuple:
+        """Новый временный пароль менеджеру: (пароль, часов, до какого времени); все его входы закрываются."""
         if not (access(store).get(mid) or {}).get('login'):
             raise ValueError('Сначала задайте менеджеру логин («Логин и пароль»)')
         n = max(cls.LEN, SrvVal.get(store, 'srv.userPwMin'))
@@ -258,14 +260,13 @@ class TempPassword:
 
 
 class UserPassword:
-    """Менеджер меняет пароль сам: текущий + новый дважды (после входа с временным паролем текущий не спрашивается —
-    его только что ввели). Другие входы менеджера закрываются, текущий остаётся. ValueError — с понятным текстом."""
+    """Смена пароля менеджером: текущий (кроме временного) и новый дважды; другие входы закрываются."""
+
     MAX = 128
 
     @classmethod
-    def change(cls, store, mid, d, keep, verify, hash_password):
-        """verify(pw, hash) — проверка пароля (с защитой от подбора — у вызывающего). Возвращает (было ли это сменой
-        временного пароля, закрыто входов). PermissionError — текущий пароль неверный."""
+    def change(cls, store, mid: str, d: dict, keep: str, verify, hash_password) -> tuple:
+        """→ (был ли пароль временным, закрыто входов); PermissionError — текущий пароль неверный."""
         rec = dict(access(store).get(mid) or {})
         temp = TempPassword.of(rec) is not None
         new, new2 = d.get('new'), d.get('new2')
@@ -274,7 +275,7 @@ class UserPassword:
         if not temp and not verify(d.get('old'), rec.get('pw')):
             raise PermissionError('Текущий пароль указан неверно')
         if len(new) > cls.MAX:
-            raise ValueError('Пароль — не длиннее %d символов' % cls.MAX)
+            raise ValueError(f'Пароль — не длиннее {cls.MAX} символов')
         check_password(new)
         if new != new2:
             raise ValueError('Новый пароль и повтор не совпадают')
@@ -285,14 +286,14 @@ class UserPassword:
         return temp, UserSession.drop_all(store, mid, keep)
 
 
-def drop_sessions(store, mid=None, tok=None):
+def drop_sessions(store, mid: str | None = None, tok: str | None = None) -> None:
     with LOCK:
         s = _sessions(store)
         s = {k: v for k, v in s.items() if not ((mid and v.get('mid') == mid) or (tok and k == _h(tok)))}
         store.kv_set('userSessions', s)
 
 
-def cookie_token(h):
+def cookie_token(h) -> str:
     for part in (h.headers.get('Cookie') or '').split(';'):
         k, _, v = part.strip().partition('=')
         if k == COOKIE:
@@ -300,7 +301,7 @@ def cookie_token(h):
     return ''
 
 
-def current(h, store):
+def current(h, store) -> dict | None:
     """Вошедший менеджер {id, name, perms} или None. Кешируется на время запроса."""
     if hasattr(h, '_kp_user'):
         return h._kp_user
@@ -312,15 +313,20 @@ def current(h, store):
             acc = access(store).get(rec['mid']) or {}
             if not acc.get('blocked') and acc.get('pw') and not TempPassword.expired(acc):
                 m = next((x for x in json.loads(store.managers_list()) if x.get('id') == rec['mid']), None)
-                if m:       # менеджера удалили из справочника — сессия больше не действует
-                    u = {'id': rec['mid'], 'name': m.get('name') or acc.get('login') or '', 'login': acc.get('login') or '', 'perms': perms_of(acc)}
-                    if TempPassword.of(acc):        # вошёл с временным паролем — сначала задать свой
+                if m:
+                    u = {
+                        'id': rec['mid'],
+                        'name': m.get('name') or acc.get('login') or '',
+                        'login': acc.get('login') or '',
+                        'perms': perms_of(acc),
+                    }
+                    if TempPassword.of(acc):  # вошёл с временным паролем — сначала задать свой
                         u['mustChange'] = True
     h._kp_user = u
     return u
 
 
-def find_by_login(store, login):
+def find_by_login(store, login: str) -> tuple:
     login = norm_login(login)
     for mid, r in access(store).items():
         if login and norm_login(r.get('login')) == login:
@@ -328,6 +334,6 @@ def find_by_login(store, login):
     return None, None
 
 
-def touch_login(store, mid):
+def touch_login(store, mid: str) -> None:
     if mid in access(store):
         AccessRecord.update(store, mid, lambda rec, _a: dict(rec, lastLogin=_now()))

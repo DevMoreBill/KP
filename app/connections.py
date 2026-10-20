@@ -72,7 +72,7 @@ class ConnectionCheck:
         return self.store.kv_get('connCheck') or {}
 
     @staticmethod
-    def _err(e: BaseException) -> tuple:
+    def _err(e: BaseException) -> str:
         s = str(e) or type(e).__name__
         if hasattr(e, 'code') and hasattr(e, 'reason'):
             s = f'HTTP {e.code} {e.reason}'

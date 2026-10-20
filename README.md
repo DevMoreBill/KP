@@ -526,6 +526,10 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.123.0 — что сделано:** переписывание кода, часть 12 — сервер: `china_freight.py`, `catalog_patch.py`, `bitrix_rules.py`, `kp_templates.py`, `data_bundle.py`, `auth_users.py` — строгий Ruff,
+подписи типов (сверены с возвращаемыми значениями, поправлены и в частях 9–11), короткие описания, f-строки. Поведение не
+менялось: `run_all --strict` — без ошибок.
+
 **3.122.0 — что сделано:** переписывание кода, часть 11 — сервер: `settings_history.py`, `launcher.py`, `connections.py`, `admin_overview.py`, `server_log.py`, `pdf_convert.py`, `backup_mirror.py`, `supplier_scope.py`, `images.py` — строгий Ruff,
 подписи типов, короткие описания модулей и методов, f-строки, `raise … from`. Поведение не менялось: `run_all --strict` — без ошибок.
 

@@ -16,7 +16,7 @@ class SystemInfo:
         self.store, self.cfg = store, cfg
 
     @staticmethod
-    def _free(path: str) -> int | None:
+    def _free(path: str) -> dict | None:
         try:
             u = shutil.disk_usage(path)
             return {'free': u.free, 'total': u.total}
@@ -345,7 +345,7 @@ class DbOverview:
     def __init__(self, store, data_dir: str) -> None:
         self.store, self.data_dir = store, data_dir
 
-    def _count(self, table: str) -> int:
+    def _count(self, table: str) -> int | None:
         try:
             return self.store.one(f'SELECT COUNT(*) FROM "{table}"')[0]  # имя — из COUNTS, не из запроса
         except Exception:  # таблицы ещё нет (миграция откачена)

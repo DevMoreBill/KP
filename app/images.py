@@ -190,7 +190,7 @@ def _conforms(rel: str) -> bool:
     return re.fullmatch(r'[a-z0-9_./-]+', rel) is not None and '/' in rel
 
 
-def organize_existing(store, types: list, img_dir: str, backup_dir: str, backup=None, log=print) -> dict:
+def organize_existing(store, types: list, img_dir: str, backup_dir: str, backup=None, log=print) -> dict | None:
     """Один раз: все изображения — по папкам «раздел/категория/производитель»."""
     done = store.kv_get('migrations') or []
     if any(isinstance(m, dict) and m.get('id') == ORGANIZE_ID for m in done):
