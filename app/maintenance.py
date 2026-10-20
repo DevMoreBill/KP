@@ -26,10 +26,10 @@ def state(store) -> dict:
 
 
 def _save(store, **parts) -> dict:
-    st = state(store)
-    st.update(parts)
-    store.kv_set('maint', st)
-    return st
+    state_data = state(store)
+    state_data.update(parts)
+    store.kv_set('maint', state_data)
+    return state_data
 
 
 def auto_dir(data_dir: str) -> str:
@@ -39,7 +39,7 @@ def auto_dir(data_dir: str) -> str:
 class DbCopy:
     """Ежедневные копии базы в data/backup/auto (ZIP), хранение по дням, неделям и месяцам."""
 
-    RX = re.compile(r'^kp-(\d{4}-\d{2}-\d{2})\.(zip|sqlite3)$')
+    NAME_RE = re.compile(r'^kp-(\d{4}-\d{2}-\d{2})\.(zip|sqlite3)$')
     OLD_RX = re.compile(r'^kp-.+\.sqlite3$')  # копии без сжатия: ежедневные и «перед изменением» (обновление, импорт…)
     # временные файлы копий, выгрузки и загрузки базы: остаются, если программу закрыли посреди копирования
     TMP_RX = re.compile(
@@ -52,23 +52,25 @@ class DbCopy:
     @classmethod
     def listing(cls, folder: str) -> list:
         """Ежедневные копии в папке, новые первыми: по одной записи на дату (file — ZIP, если есть; files — все файлы даты)."""
-        by = {}
+        by_date = {}
         if folder and os.path.isdir(folder):
             for name in os.listdir(folder):
-                m = cls.RX.match(name)
-                if not m:
+                match = cls.NAME_RE.match(name)
+                if not match:
                     continue
-                f = os.path.join(folder, name)
+                path = os.path.join(folder, name)
                 try:
-                    size = os.path.getsize(f)
+                    size = os.path.getsize(path)
                 except OSError:
                     continue
-                rec = by.setdefault(m.group(1), {'date': m.group(1), 'file': f, 'bytes': 0, 'zip': False, 'files': []})
-                rec['files'].append(f)
+                rec = by_date.setdefault(
+                    match.group(1), {'date': match.group(1), 'file': path, 'bytes': 0, 'zip': False, 'files': []}
+                )
+                rec['files'].append(path)
                 rec['bytes'] += size
-                if m.group(2) == 'zip':
-                    rec['file'], rec['zip'] = f, True
-        return sorted(by.values(), key=lambda x: x['date'], reverse=True)
+                if match.group(2) == 'zip':
+                    rec['file'], rec['zip'] = path, True
+        return sorted(by_date.values(), key=lambda x: x['date'], reverse=True)
 
     @staticmethod
     def keep_set(dates, store=None) -> set:
@@ -76,13 +78,13 @@ class DbCopy:
         daily, weekly, monthly = (
             SrvVal.get(store, k) for k in ('srv.backupDaily', 'srv.backupWeekly', 'srv.backupMonthly')
         )
-        ds = sorted(set(dates), reverse=True)
-        keep = set(ds[:daily])
+        days = sorted(set(dates), reverse=True)
+        keep = set(days[:daily])
         weeks, months = {}, {}
-        for s in ds:
-            d = date.fromisoformat(s)
-            weeks.setdefault(d.isocalendar()[:2], s)
-            months.setdefault((d.year, d.month), s)
+        for day_text in days:
+            day = date.fromisoformat(day_text)
+            weeks.setdefault(day.isocalendar()[:2], day_text)
+            months.setdefault((day.year, day.month), day_text)
         keep |= set(list(weeks.values())[:weekly])
         keep |= set(list(months.values())[:monthly])
         return keep
@@ -92,59 +94,59 @@ class DbCopy:
         """Копия за сегодня (если её нет), проверенная до и после сжатия; затем ротация → запись о копии."""
         with cls.LOCK:
             today = date.today().isoformat()
-            d = auto_dir(data_dir)
-            have = [x for x in cls.listing(d) if x['date'] == today]
+            folder = auto_dir(data_dir)
+            have = [x for x in cls.listing(folder) if x['date'] == today]
             if have and not force:
                 return state(store).get('backup')
-            dst = os.path.join(d, f'kp-{today}.zip')
+            dst = os.path.join(folder, f'kp-{today}.zip')
             rec = {'at': _now(), 'file': dst}
             try:
                 store.backup(dst, check=True)
                 for x in have:  # прежняя копия за сегодня (например, без сжатия) — заменена архивом
-                    for f in x['files']:
-                        if f != dst and os.path.isfile(f):
-                            os.remove(f)
+                    for name in x['files']:
+                        if name != dst and os.path.isfile(name):
+                            os.remove(name)
                 rec.update(ok=True, bytes=os.path.getsize(dst), db=db_size(store), zip=True)
-            except Exception as e:
-                rec.update(ok=False, error=str(e)[:300])
-            cls.rotate(d, store=store)
+            except Exception as exc:
+                rec.update(ok=False, error=str(exc)[:300])
+            cls.rotate(folder, store=store)
             _save(store, backup=rec)
             return rec
 
     @classmethod
     def sweep(cls, folder: str, age=None) -> int:
         """Удалить остатки прерванных копий, выгрузок и загрузок базы (временные файлы старше часа). → сколько удалено."""
-        n = 0
+        count = 0
         edge = time.time() - (cls.TMP_AGE if age is None else age)
         if folder and os.path.isdir(folder):
             for name in os.listdir(folder):
-                f = os.path.join(folder, name)
+                path = os.path.join(folder, name)
                 try:
-                    if cls.TMP_RX.match(name) and os.path.isfile(f) and os.path.getmtime(f) < edge:
-                        os.remove(f)
-                        n += 1
+                    if cls.TMP_RX.match(name) and os.path.isfile(path) and os.path.getmtime(path) < edge:
+                        os.remove(path)
+                        count += 1
                 except OSError:
                     pass
-        return n
+        return count
 
     @classmethod
     def rotate(cls, folder: str, keep=None, store=None) -> None:
         """Удалить копии, которые не нужно хранить (все файлы их даты), и остатки прерванных копий."""
         cls.sweep(folder)
         lst = cls.listing(folder)
-        keep = cls.keep_set([b['date'] for b in lst], store) if keep is None else keep
-        for b in lst:
-            if b['date'] not in keep:
-                for f in b['files']:
+        keep = cls.keep_set([backup['date'] for backup in lst], store) if keep is None else keep
+        for backup in lst:
+            if backup['date'] not in keep:
+                for name in backup['files']:
                     try:
-                        os.remove(f)
+                        os.remove(name)
                     except OSError:
                         pass
 
     @classmethod
     def compress_old(cls, store, data_dir: str, log=print) -> dict | None:
         """Копии без сжатия → ZIP рядом; исходный файл удаляется после проверки архива."""
-        n = saved = 0
+        count = saved = 0
         for folder in (auto_dir(data_dir), os.path.join(data_dir, 'backup')):
             if not os.path.isdir(folder):
                 continue
@@ -161,15 +163,19 @@ class DbCopy:
                     for ext in ('-wal', '-shm', '-journal'):
                         if os.path.exists(src + ext):
                             os.remove(src + ext)
-                    n += 1
+                    count += 1
                     saved += before - os.path.getsize(dst)
-                except Exception as e:
-                    log(f'Копия {name} не сжата: {e}')
+                except Exception as exc:
+                    log(f'Копия {name} не сжата: {exc}')
                 time.sleep(cls.PAUSE)
-        if not n:
+        if not count:
             return None
-        st = state(store).get('compressed') or {}
-        rec = {'at': _now(), 'files': int(st.get('files') or 0) + n, 'saved': int(st.get('saved') or 0) + saved}
+        state_data = state(store).get('compressed') or {}
+        rec = {
+            'at': _now(),
+            'files': int(state_data.get('files') or 0) + count,
+            'saved': int(state_data.get('saved') or 0) + saved,
+        }
         _save(store, compressed=rec)
         return rec
 
@@ -177,14 +183,14 @@ class DbCopy:
     def others(data_dir: str) -> dict:
         """Копии «перед изменением» в data/backup (обновление программы, импорт, сборка каталога…): сколько и сколько места."""
         folder = os.path.join(data_dir, 'backup')
-        n = size = 0
+        count = size = 0
         if os.path.isdir(folder):
             for name in os.listdir(folder):
-                f = os.path.join(folder, name)
-                if name.startswith('kp-') and name.endswith(('.zip', '.sqlite3')) and os.path.isfile(f):
-                    n += 1
-                    size += os.path.getsize(f)
-        return {'count': n, 'bytes': size}
+                path = os.path.join(folder, name)
+                if name.startswith('kp-') and name.endswith(('.zip', '.sqlite3')) and os.path.isfile(path):
+                    count += 1
+                    size += os.path.getsize(path)
+        return {'count': count, 'bytes': size}
 
 
 def archive_audit(store, data_dir: str, years=None) -> int:
@@ -209,23 +215,23 @@ def archive_audit(store, data_dir: str, years=None) -> int:
     rows = store.all('SELECT {} FROM audit WHERE ts < ? ORDER BY id'.format(', '.join(cols)), (edge,))
     if not rows:
         return 0
-    d = os.path.join(data_dir, 'backup', 'audit-archive')
-    os.makedirs(d, exist_ok=True)
+    folder = os.path.join(data_dir, 'backup', 'audit-archive')
+    os.makedirs(folder, exist_ok=True)
     by_year = {}
-    for r in rows:
-        by_year.setdefault(str(r[1])[:4] or 'unknown', []).append(dict(zip(cols, r, strict=False)))
+    for row in rows:
+        by_year.setdefault(str(row[1])[:4] or 'unknown', []).append(dict(zip(cols, row, strict=False)))
     for y, recs in by_year.items():
-        with gzip.open(os.path.join(d, f'audit-{y}.jsonl.gz'), 'at', encoding='utf-8') as f:
+        with gzip.open(os.path.join(folder, f'audit-{y}.jsonl.gz'), 'at', encoding='utf-8') as handle:
             for x in recs:
-                f.write(json.dumps(x, ensure_ascii=False) + '\n')
+                handle.write(json.dumps(x, ensure_ascii=False) + '\n')
     store.write('DELETE FROM audit WHERE ts < ? AND id <= ?', (edge, rows[-1][0]))
-    st = state(store)
+    state_data = state(store)
     _save(
         store,
         audit={
             'at': _now(),
-            'archived': int((st.get('audit') or {}).get('archived') or 0) + len(rows),
-            'dir': d,
+            'archived': int((state_data.get('audit') or {}).get('archived') or 0) + len(rows),
+            'dir': folder,
             'years': years,
         },
     )
@@ -234,16 +240,16 @@ def archive_audit(store, data_dir: str, years=None) -> int:
 
 def purge_checks(store) -> int:
     edge = (datetime.now() - timedelta(days=SrvVal.get(store, 'srv.checksDays'))).isoformat(timespec='seconds')
-    n = store.one('SELECT COUNT(*) FROM checks WHERE checked < ?', (edge,))[0]
-    if n:
+    count = store.one('SELECT COUNT(*) FROM checks WHERE checked < ?', (edge,))[0]
+    if count:
         store.write('DELETE FROM checks WHERE checked < ?', (edge,))
-    return n
+    return count
 
 
 def db_maintenance(store, vacuum=None) -> dict:
     """Сброс журнала WAL в базу, обновление статистики запросов; раз в месяц (или по кнопке) — сжатие и проверка."""
-    st = state(store)
-    last = (st.get('vacuum') or {}).get('at') or ''
+    state_data = state(store)
+    last = (state_data.get('vacuum') or {}).get('at') or ''
     if vacuum is None:  # само — только ночью: сжатие держит запись в базу (десятки секунд на большой базе)
         night = datetime.now().hour < 6 or datetime.now().hour >= 22
         vacuum = night and (
@@ -254,12 +260,12 @@ def db_maintenance(store, vacuum=None) -> dict:
     size0 = db_size(store)
     rec = {}
     with store.lock:
-        c = store.conn()
-        c.commit()
+        conn = store.conn()
+        conn.commit()
         if vacuum:
-            c.execute('VACUUM')
-        c.execute('PRAGMA optimize')
-        c.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+            conn.execute('VACUUM')
+        conn.execute('PRAGMA optimize')
+        conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
     if vacuum:
         rec['vacuum'] = {
             'at': _now(),
@@ -273,17 +279,21 @@ def db_maintenance(store, vacuum=None) -> dict:
 
 
 def db_size(store) -> int:
-    return sum(os.path.getsize(store.path + s) for s in ('', '-wal') if os.path.isfile(store.path + s))
+    return sum(os.path.getsize(store.path + suffix) for suffix in ('', '-wal') if os.path.isfile(store.path + suffix))
 
 
 def _referenced(store) -> set:
     refs = set()
-    for (t,) in store.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
-        cols = [r[1] for r in store.all(f'PRAGMA table_info("{t}")') if (r[2] or '').upper() in ('TEXT', '')]
+    for (table,) in store.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
+        cols = [
+            column[1]
+            for column in store.all(f'PRAGMA table_info("{table}")')
+            if (column[2] or '').upper() in ('TEXT', '')
+        ]
         for col in cols:
-            for (v,) in store.all(f'SELECT "{col}" FROM "{t}" WHERE "{col}" LIKE ?', ('%/img/%',)):
-                for m in IMG_RX.finditer(str(v)):
-                    refs.add(m.group(1).replace('\\/', '/'))
+            for (v,) in store.all(f'SELECT "{col}" FROM "{table}" WHERE "{col}" LIKE ?', ('%/img/%',)):
+                for match in IMG_RX.finditer(str(v)):
+                    refs.add(match.group(1).replace('\\/', '/'))
     return refs
 
 
@@ -293,35 +303,35 @@ def unused_images(store, img_dir: str) -> list:
     edge = (datetime.now() - timedelta(days=SrvVal.get(store, 'srv.imgUnusedDays'))).timestamp()
     out = []
     root = os.path.abspath(img_dir)
-    for dp, _dn, fn in os.walk(root):
-        for name in fn:
+    for dir_path, _dirs, files in os.walk(root):
+        for name in files:
             if os.path.splitext(name)[1].lower() not in IMG_EXTS:
                 continue
-            f = os.path.join(dp, name)
-            rel = os.path.relpath(f, root).replace(os.sep, '/')
+            path = os.path.join(dir_path, name)
+            rel = os.path.relpath(path, root).replace(os.sep, '/')
             if rel in refs:
                 continue
-            if not rel.startswith('unused/') and os.path.getmtime(f) > edge:
+            if not rel.startswith('unused/') and os.path.getmtime(path) > edge:
                 continue
-            out.append({'rel': rel, 'bytes': os.path.getsize(f)})
+            out.append({'rel': rel, 'bytes': os.path.getsize(path)})
     return out
 
 
 def purge_images(store, img_dir: str, images=None) -> dict:
     lst = unused_images(store, img_dir)
-    n = size = 0
+    count = size = 0
     for x in lst:
         try:
-            f = os.path.join(img_dir, *x['rel'].split('/'))
-            os.remove(f)
-            n += 1
+            path = os.path.join(img_dir, *x['rel'].split('/'))
+            os.remove(path)
+            count += 1
             size += x['bytes']
         except OSError:
             pass
     if images is not None:
         images.index = None  # индекс одинаковых изображений построится заново
-    _save(store, images={'at': _now(), 'deleted': n, 'bytes': size})
-    return {'deleted': n, 'bytes': size}
+    _save(store, images={'at': _now(), 'deleted': count, 'bytes': size})
+    return {'deleted': count, 'bytes': size}
 
 
 class DbHealthRun:
@@ -349,7 +359,7 @@ class Background:
             from backup_mirror import MirrorBackup
             from kp_files import KpFiles
 
-            for name, fn in (
+            for name, func in (
                 ('копия базы', lambda: DbCopy.daily(store, data_dir)),
                 ('копия во вторую папку', lambda: MirrorBackup(store, data_dir).run()),
                 ('сжатие прежних копий', lambda: DbCopy.compress_old(store, data_dir, ServerLog.failure)),
@@ -360,9 +370,9 @@ class Background:
                 ('проверка базы', lambda: DbHealthRun.weekly(store)),
             ):
                 try:
-                    fn()
-                except Exception as e:
-                    ServerLog.failure(f'обслуживание ({name})', e)
+                    func()
+                except Exception as exc:
+                    ServerLog.failure(f'обслуживание ({name})', exc)
             _save(store, lastRun=_now())
         finally:
             cls.LOCK.release()
@@ -372,54 +382,54 @@ class Background:
         """Раз в час проверяем, не наступил ли новый день: сервер отдела может работать неделями без перезапуска."""
 
         def loop() -> None:
-            ev = threading.Event()
-            while not ev.wait(3600):
+            event = threading.Event()
+            while not event.wait(3600):
                 if (state(store).get('lastRun') or '')[:10] != date.today().isoformat():
                     cls.run(store, data_dir)
 
-        t = threading.Thread(target=loop, daemon=True, name='maintenance')
-        t.start()
-        return t
+        thread = threading.Thread(target=loop, daemon=True, name='maintenance')
+        thread.start()
+        return thread
 
     @staticmethod
-    def every(seconds: float, fn, name) -> threading.Thread:
+    def every(seconds: float, func, name) -> threading.Thread:
         """Задача раз в seconds секунд (первый запуск — через минуту после старта); name — для журнала сервера."""
 
         def loop() -> None:
-            ev = threading.Event()
+            event = threading.Event()
             wait = 60
-            while not ev.wait(wait):
+            while not event.wait(wait):
                 try:
                     wait = max(60, int(seconds() if callable(seconds) else seconds))
                 except Exception:
                     wait = 3600
                 try:
-                    fn()
-                except Exception as e:
-                    ServerLog.failure(f'фоновая задача «{name}»', e)
+                    func()
+                except Exception as exc:
+                    ServerLog.failure(f'фоновая задача «{name}»', exc)
 
-        t = threading.Thread(target=loop, daemon=True, name=f'every-{name[:40]}')
-        t.start()
-        return t
+        table = threading.Thread(target=loop, daemon=True, name=f'every-{name[:40]}')
+        table.start()
+        return table
 
 
 def summary(store, data_dir: str) -> dict:
-    st = state(store)
-    bl = DbCopy.listing(auto_dir(data_dir))
+    state_data = state(store)
+    backups = DbCopy.listing(auto_dir(data_dir))
     return {
-        'backup': st.get('backup'),
-        'copies': len(bl),
-        'copiesBytes': sum(b['bytes'] for b in bl),
+        'backup': state_data.get('backup'),
+        'copies': len(backups),
+        'copiesBytes': sum(backup['bytes'] for backup in backups),
         'dir': auto_dir(data_dir),
         'others': DbCopy.others(data_dir),
-        'compressed': st.get('compressed'),
+        'compressed': state_data.get('compressed'),
         'dbBytes': db_size(store),
-        'oldest': bl[-1]['date'] if bl else None,
-        'audit': st.get('audit'),
-        'vacuum': st.get('vacuum'),
-        'optimize': st.get('optimize'),
-        'images': st.get('images'),
-        'lastRun': st.get('lastRun'),
+        'oldest': backups[-1]['date'] if backups else None,
+        'audit': state_data.get('audit'),
+        'vacuum': state_data.get('vacuum'),
+        'optimize': state_data.get('optimize'),
+        'images': state_data.get('images'),
+        'lastRun': state_data.get('lastRun'),
         'auditYears': int((store.kv_get('settings') or {}).get('auditYears') or AUDIT_YEARS),
         'auditRows': store.one('SELECT COUNT(*) FROM audit')[0],
         'auditOldest': (store.one('SELECT MIN(ts) FROM audit')[0] or '')[:10],

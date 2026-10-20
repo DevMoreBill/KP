@@ -9,7 +9,7 @@ import images
 
 
 class MakerLogos:
-    KV = 'makerLogos'
+    KV_KEY = 'makerLogos'
     MAX_BYTES = 2 * 1024 * 1024
     MAX_MAKER = 80
 
@@ -22,7 +22,7 @@ class MakerLogos:
         return images.slug(str(maker or '').strip(), 60).replace('-', '')
 
     def pins(self) -> dict:
-        v = self.store.kv_get(self.KV)
+        v = self.store.kv_get(self.KV_KEY)
         return v if isinstance(v, dict) else {}
 
     def pinned(self, maker) -> dict | None:
@@ -33,26 +33,28 @@ class MakerLogos:
         import imgfetch
 
         cur, pins, groups = imgfetch.logos(self.store), self.pins(), {}
-        for maker, n in self.store.all(
+        for maker, name in self.store.all(
             "SELECT maker, COUNT(*) FROM catalog WHERE maker IS NOT NULL AND maker <> '' GROUP BY maker"
         ):
             k = self.key(maker)
             if not k:
                 continue
-            g = groups.setdefault(k, {'maker': maker.strip(), 'n': 0, 'top': 0})
-            g['n'] += n
-            if n > g['top']:
-                g['maker'], g['top'] = maker.strip(), n
+            group = groups.setdefault(k, {'maker': maker.strip(), 'n': 0, 'top': 0})
+            group['n'] += name
+            if name > group['top']:
+                group['maker'], group['top'] = maker.strip(), name
         out = []
-        for k, g in groups.items():
+        for k, group in groups.items():
             pin = pins.get(k)
-            lg = pin or cur.get(g['maker'].lower())
+            logo = pin or cur.get(group['maker'].lower())
             out.append(
                 {
-                    'maker': g['maker'],
-                    'n': g['n'],
+                    'maker': group['maker'],
+                    'n': group['n'],
                     'pinned': bool(pin),
-                    'logo': {'src': lg['src'], 'w': lg.get('w'), 'h': lg.get('h')} if lg and lg.get('src') else None,
+                    'logo': {'src': logo['src'], 'w': logo.get('w'), 'h': logo.get('h')}
+                    if logo and logo.get('src')
+                    else None,
                 }
             )
         return sorted(out, key=lambda x: (-x['n'], x['maker'].lower()))
@@ -60,11 +62,11 @@ class MakerLogos:
     @staticmethod
     def image(raw) -> tuple:
         """base64 или data:-адрес → (байты, расширение, ширина, высота)."""
-        s = str(raw or '').strip()
-        if s.startswith('data:'):
-            s = s.split(',', 1)[1] if ',' in s else ''
+        text = str(raw or '').strip()
+        if text.startswith('data:'):
+            text = text.split(',', 1)[1] if ',' in text else ''
         try:
-            data = base64.b64decode(s, validate=False)
+            data = base64.b64decode(text, validate=False)
         except (ValueError, TypeError):
             raise ValueError('Картинка не читается') from None
         if not data:
@@ -72,71 +74,75 @@ class MakerLogos:
         if len(data) > MakerLogos.MAX_BYTES:
             raise ValueError('Картинка больше 2 МБ — уменьшите её')
         if data[:8] == b'\x89PNG\r\n\x1a\n' and len(data) >= 24:
-            w, h = struct.unpack('>II', data[16:24])
-            return data, '.png', w, h
+            width, height = struct.unpack('>II', data[16:24])
+            return data, '.png', width, height
         if data[:3] == b'\xff\xd8\xff':
-            w, h = MakerLogos._jpeg_size(data)
-            return data, '.jpg', w, h
+            width, height = MakerLogos._jpeg_size(data)
+            return data, '.jpg', width, height
         if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
-            w, h = MakerLogos._webp_size(data)
-            return data, '.webp', w, h
+            width, height = MakerLogos._webp_size(data)
+            return data, '.webp', width, height
         raise ValueError('Нужна картинка PNG, JPEG или WebP')
 
     @staticmethod
-    def _jpeg_size(d: bytes) -> tuple:
+    def _jpeg_size(data: bytes) -> tuple:
         i = 2
-        while i + 9 < len(d):
-            if d[i] != 0xFF:
+        while i + 9 < len(data):
+            if data[i] != 0xFF:
                 i += 1
                 continue
-            m = d[i + 1]
-            if m in (0xD8, 0x01) or 0xD0 <= m <= 0xD7:
+            marker = data[i + 1]
+            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
                 i += 2
                 continue
-            ln = struct.unpack('>H', d[i + 2 : i + 4])[0]
-            if m in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
-                h, w = struct.unpack('>HH', d[i + 5 : i + 9])
-                return w, h
-            i += 2 + ln
+            length = struct.unpack('>H', data[i + 2 : i + 4])[0]
+            if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                height, width = struct.unpack('>HH', data[i + 5 : i + 9])
+                return width, height
+            i += 2 + length
         return None, None
 
     @staticmethod
-    def _webp_size(d: bytes) -> tuple:
-        c = d[12:16]
+    def _webp_size(data: bytes) -> tuple:
+        chunk = data[12:16]
         try:
-            if c == b'VP8X':
-                return 1 + int.from_bytes(d[24:27], 'little'), 1 + int.from_bytes(d[27:30], 'little')
-            if c == b'VP8L':
-                b = int.from_bytes(d[21:25], 'little')
-                return 1 + (b & 0x3FFF), 1 + ((b >> 14) & 0x3FFF)
-            if c == b'VP8 ':
-                w, h = struct.unpack('<HH', d[26:30])
-                return w & 0x3FFF, h & 0x3FFF
+            if chunk == b'VP8X':
+                return 1 + int.from_bytes(data[24:27], 'little'), 1 + int.from_bytes(data[27:30], 'little')
+            if chunk == b'VP8L':
+                bits = int.from_bytes(data[21:25], 'little')
+                return 1 + (bits & 0x3FFF), 1 + ((bits >> 14) & 0x3FFF)
+            if chunk == b'VP8 ':
+                width, height = struct.unpack('<HH', data[26:30])
+                return width & 0x3FFF, height & 0x3FFF
         except (struct.error, ValueError):
             pass
         return None, None
 
-    def set(self, maker: str, raw, by: str = '') -> dict:
+    def set(self, maker: str, raw, author: str = '') -> dict:
         """Закрепить логотип и поставить на оборудование марки → {maker, logo, items}."""
         maker = str(maker or '').strip()
         if not maker or len(maker) > self.MAX_MAKER or not self.key(maker):
             raise ValueError('Укажите производителя')
         if self.images is None:
             raise ValueError('Хранилище изображений недоступно')
-        data, ext, w, h = self.image(raw)
+        data, ext, width, height = self.image(raw)
         rel = self.images.put(data, ext, *images.place(None, maker, '', '', 'logo'))
-        lg = {
+        logo = {
             'maker': maker,
             'src': '/img/' + rel,
-            'w': w,
-            'h': h,
+            'w': width,
+            'h': height,
             'at': datetime.now().isoformat(timespec='seconds'),
-            'by': str(by or '')[:120],
+            'by': str(author or '')[:120],
         }
         pins = self.pins()
-        pins[self.key(maker)] = lg
-        self.store.kv_set(self.KV, pins)
-        return {'maker': maker, 'logo': {'src': lg['src'], 'w': w, 'h': h}, 'items': self.apply(maker, by)}
+        pins[self.key(maker)] = logo
+        self.store.kv_set(self.KV_KEY, pins)
+        return {
+            'maker': maker,
+            'logo': {'src': logo['src'], 'w': width, 'h': height},
+            'items': self.apply(maker, author),
+        }
 
     def unpin(self, maker: str) -> dict:
         """Снять закрепление; логотип на оборудовании остаётся."""
@@ -144,10 +150,10 @@ class MakerLogos:
         if k not in pins:
             raise ValueError('У этого производителя логотип не закреплён')
         pins.pop(k)
-        self.store.kv_set(self.KV, pins)
+        self.store.kv_set(self.KV_KEY, pins)
         return {'maker': str(maker or '').strip()}
 
-    def apply(self, maker: str | None = None, by: str = '') -> int:
+    def apply(self, maker: str | None = None, author: str = '') -> int:
         """Закреплённые логотипы — на оборудование (одной марки или всех) → число изменённых позиций."""
         pins = self.pins()
         if maker is not None:
@@ -155,21 +161,21 @@ class MakerLogos:
             pins = {k: pins[k]} if k in pins else {}
         if not pins:
             return 0
-        n = 0
-        for cid, doc, mk in self.store.all(
+        count = 0
+        for cid, doc, maker_name in self.store.all(
             "SELECT id, doc, maker FROM catalog WHERE maker IS NOT NULL AND maker <> ''"
         ):
-            lg = pins.get(self.key(mk))
-            if not lg:
+            logo = pins.get(self.key(maker_name))
+            if not logo:
                 continue
             try:
-                d = json.loads(doc)
+                card = json.loads(doc)
             except ValueError:
                 continue
-            cur = d.get('logo') or {}
-            if cur.get('src') == lg['src']:
+            cur = card.get('logo') or {}
+            if cur.get('src') == logo['src']:
                 continue
-            d['logo'] = {'src': lg['src'], 'w': lg.get('w'), 'h': lg.get('h')}
-            self.store.catalog_put(cid, json.dumps(d, ensure_ascii=False), by or 'логотип производителя')
-            n += 1
-        return n
+            card['logo'] = {'src': logo['src'], 'w': logo.get('w'), 'h': logo.get('h')}
+            self.store.catalog_put(cid, json.dumps(card, ensure_ascii=False), author or 'логотип производителя')
+            count += 1
+        return count

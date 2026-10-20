@@ -27,7 +27,7 @@ class ConnectionCheck:
     def run(self) -> dict:
         jobs = [
             ('mail', 'Почта', 'Почтовый сервер (SMTP)', 'mail', self._mail),
-            ('ai', 'Нейросеть', 'Нейросеть для «Заполнить с ИИ»', 'ai', self._ai),
+            ('ai', 'Нейросеть', 'Нейросеть для «Заполнить с ИИ»', 'ai', self._neural),
             ('cbr', 'Курсы и ставки', 'ЦБ РФ — курсы валют', 'defaults', self._cbr),
             ('fns', 'Контрагенты', 'ФНС (реквизиты без ключа)', 'keys', self._fns),
             ('dadata', 'Контрагенты', 'DaData', 'keys', self._dadata),
@@ -40,30 +40,32 @@ class ConnectionCheck:
             ('bitrix', 'CRM', 'Битрикс24 — сделки и дела', 'services', self._bitrix),
         ]
         jobs += [
-            ('feed:' + f['id'], 'Фиды поставщиков', f['name'], 'feeds', (lambda f=f: self._feed(f)))
-            for f in (self.store.kv_get('feeds') or {}).get('items', [])
-            if f.get('id') and f.get('url')
+            ('feed:' + entry['id'], 'Фиды поставщиков', entry['name'], 'feeds', (lambda feed=entry: self._feed(feed)))
+            for entry in (self.store.kv_get('feeds') or {}).get('items', [])
+            if entry.get('id') and entry.get('url')
         ]
         res = {}
 
-        def one(jid, fn):
-            t = time.time()
+        def one(jid, func):
+            started = time.time()
             try:
-                st, msg = fn()
-            except Exception as e:
-                st, msg = 'fail', self._err(e)
-            res[jid] = (st, msg, int((time.time() - t) * 1000))
+                status, msg = func()
+            except Exception as exc:
+                status, msg = 'fail', self._err(exc)
+            res[jid] = (status, msg, int((time.time() - started) * 1000))
 
-        th = [threading.Thread(target=one, args=(j[0], j[4]), daemon=True) for j in jobs]
-        for t in th:
-            t.start()
+        threads = [threading.Thread(target=one, args=(j[0], j[4]), daemon=True) for j in jobs]
+        for thread in threads:
+            thread.start()
         end = time.time() + self.TIMEOUT
-        for t in th:
-            t.join(max(0.1, end - time.time()))
+        for thread in threads:
+            thread.join(max(0.1, end - time.time()))
         out = []
-        for jid, group, name, tab, _fn in jobs:
-            st, msg, ms = res.get(jid, ('fail', f'нет ответа за {self.TIMEOUT} с', self.TIMEOUT * 1000))
-            out.append({'id': jid, 'group': group, 'name': name, 'status': st, 'msg': msg, 'ms': ms, 'tab': tab})
+        for jid, group, name, tab, _func in jobs:
+            state, msg, took_ms = res.get(jid, ('fail', f'нет ответа за {self.TIMEOUT} с', self.TIMEOUT * 1000))
+            out.append(
+                {'id': jid, 'group': group, 'name': name, 'status': state, 'msg': msg, 'ms': took_ms, 'tab': tab}
+            )
         rec = {'at': datetime.now().isoformat(timespec='seconds'), 'items': out}
         self.store.kv_set('connCheck', rec)
         return rec
@@ -72,21 +74,21 @@ class ConnectionCheck:
         return self.store.kv_get('connCheck') or {}
 
     @staticmethod
-    def _err(e: BaseException) -> str:
-        s = str(e) or type(e).__name__
-        if hasattr(e, 'code') and hasattr(e, 'reason'):
-            s = f'HTTP {e.code} {e.reason}'
-        return s[:240]
+    def _err(exc: BaseException) -> str:
+        text = str(exc) or type(exc).__name__
+        if hasattr(exc, 'code') and hasattr(exc, 'reason'):
+            text = f'HTTP {exc.code} {exc.reason}'
+        return text[:240]
 
     def _keys(self) -> dict:
         return self.store.kv_get('integrations') or {}
 
     # ---------- проверки ----------
     def _mail(self):
-        m = self.store.kv_get('mail') or {}
-        if not m.get('host'):
+        mail = self.store.kv_get('mail') or {}
+        if not mail.get('host'):
             return 'off', 'не настроена — «КП и документы → Почта для отправки КП»'
-        host, port, sec = m['host'], int(m.get('port') or 465), m.get('security') or 'ssl'
+        host, port, sec = mail['host'], int(mail.get('port') or 465), mail.get('security') or 'ssl'
         srv = (
             smtplib.SMTP_SSL(host, port, timeout=20, context=ssl.create_default_context())
             if sec == 'ssl'
@@ -95,9 +97,9 @@ class ConnectionCheck:
         with srv:
             if sec == 'starttls':
                 srv.starttls(context=ssl.create_default_context())
-            if m.get('login'):
+            if mail.get('login'):
                 try:
-                    srv.login(m['login'], m.get('password') or '')
+                    srv.login(mail['login'], mail.get('password') or '')
                 except smtplib.SMTPAuthenticationError:
                     return 'fail', f'сервер {host} не принял логин или пароль'
         return 'ok', f'вход на {host}:{port} выполнен (письмо не отправлялось)'
@@ -105,37 +107,37 @@ class ConnectionCheck:
     def _bitrix(self):
         from bitrix import BitrixConf, BitrixQueue
 
-        c = BitrixConf(self.store)
-        if not c.get().get('url'):
+        conf = BitrixConf(self.store)
+        if not conf.get().get('url'):
             return 'off', 'не настроен — «Подключения и ключи → Битрикс24»'
-        p = c.api().call('profile') or {}
-        q = BitrixQueue(self.store).stats()
-        if not c.on():
-            return 'warn', f'связь есть ({p.get("NAME") or "вебхук"}), обмен выключен'
-        failed = f', с ошибкой {q["failed"]}' if q['failed'] else ''
-        return ('warn' if q['failed'] else 'ok'), f'связь есть; в очереди {q["queued"]}{failed}'
+        profile = conf.api().call('profile') or {}
+        queue = BitrixQueue(self.store).stats()
+        if not conf.on():
+            return 'warn', f'связь есть ({profile.get("NAME") or "вебхук"}), обмен выключен'
+        failed = f', с ошибкой {queue["failed"]}' if queue['failed'] else ''
+        return ('warn' if queue['failed'] else 'ok'), f'связь есть; в очереди {queue["queued"]}{failed}'
 
-    def _ai(self):
+    def _neural(self):
         import ai_llm
 
-        s = ai_llm.status(self.store)
+        status = ai_llm.status(self.store)
         if not ai_llm.api_key(self.store):
             return 'off', 'ключ не задан — «Внешние сервисы → Нейросеть»'
-        r = ai_llm.ask(self.store, 'Ответь одним словом: да', force=True)
-        return ('ok' if s.get('enabled') else 'warn'), 'модель {} отвечает{}'.format(
-            r.get('model') or '',
-            '' if s.get('enabled') else '; у менеджеров выключена',
+        reply = ai_llm.ask(self.store, 'Ответь одним словом: да', force=True)
+        return ('ok' if status.get('enabled') else 'warn'), 'модель {} отвечает{}'.format(
+            reply.get('model') or '',
+            '' if status.get('enabled') else '; у менеджеров выключена',
         )
 
     def _cbr(self):
         import cbr
 
-        r = cbr.cbr_rates() or {}
-        if r.get('error'):
-            return 'fail', r['error'][:240]
-        usd = r.get('USD')
+        res = cbr.cbr_rates() or {}
+        if res.get('error'):
+            return 'fail', res['error'][:240]
+        usd = res.get('USD')
         return (
-            ('ok', 'USD {} ₽ на {} · {}'.format((f'{usd:.2f}').replace('.', ','), r.get('date'), r.get('src')))
+            ('ok', 'USD {} ₽ на {} · {}'.format((f'{usd:.2f}').replace('.', ','), res.get('date'), res.get('src')))
             if usd
             else ('warn', 'ответ без курса USD')
         )
@@ -143,8 +145,8 @@ class ConnectionCheck:
     def _fns(self):
         from counterparty import Counterparties
 
-        r = Counterparties(self.store)._lookup_egrul(SAMPLE_INN, self._keys())
-        return ('ok', 'отвечает') if r else ('warn', 'ответ пустой')
+        res = Counterparties(self.store)._lookup_egrul(SAMPLE_INN, self._keys())
+        return ('ok', 'отвечает') if res else ('warn', 'ответ пустой')
 
     def _dadata(self):
         k = self._keys()
@@ -152,8 +154,8 @@ class ConnectionCheck:
             return 'off', 'ключ не задан (реквизиты берутся из ФНС)'
         from counterparty import Counterparties
 
-        r = Counterparties(self.store)._lookup_dadata(SAMPLE_INN, k)
-        return ('ok', 'ключ действует') if r else ('warn', 'ответ пустой')
+        res = Counterparties(self.store)._lookup_dadata(SAMPLE_INN, k)
+        return ('ok', 'ключ действует') if res else ('warn', 'ответ пустой')
 
     def _checko(self):
         from counterparty import CheckoApi
@@ -179,37 +181,37 @@ class ConnectionCheck:
             ).close()
         except urllib.error.HTTPError:
             pass
-        q = api.quota()
-        st = 'ok' if q.get('left', 0) > 0 else 'warn'
-        return st, 'сервис доступен; сегодня использовано {} из {} запросов (лимит не тратится на проверку)'.format(
-            q.get('used'),
-            q.get('limit'),
+        quota = api.quota()
+        status = 'ok' if quota.get('left', 0) > 0 else 'warn'
+        return status, 'сервис доступен; сегодня использовано {} из {} запросов (лимит не тратится на проверку)'.format(
+            quota.get('used'),
+            quota.get('limit'),
         )
 
     def _girbo(self):
         from counterparty import GirBo
 
-        r = GirBo.load(SAMPLE_BO_INN)
-        f = (r.get('finances') or [None])[0]
-        if not f or f.get('revenue') is None:
+        res = GirBo.load(SAMPLE_BO_INN)
+        fin = (res.get('finances') or [None])[0]
+        if not fin or fin.get('revenue') is None:
             return 'warn', 'отвечает, но отчётности пробной организации нет — бухотчётность возьмётся из Checko'
         return 'ok', 'отвечает: выручка пробной организации за {} — {} млн ₽'.format(
-            f['year'],
-            '{:,.0f}'.format(f['revenue'] / 1e6).replace(',', ' '),
+            fin['year'],
+            '{:,.0f}'.format(fin['revenue'] / 1e6).replace(',', ' '),
         )
 
     def _carriers(self):
         import logistics_api
 
-        r = logistics_api.DeliveryQuote(
+        res = logistics_api.DeliveryQuote(
             self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Санкт-Петербург'}, 'places': [SAMPLE_PLACE]}
         ).run()
         ok = [
-            '{} {} ₽'.format(o['src'], '{:,.0f}'.format(o['price']).replace(',', ' '))
-            for o in r['offers']
-            if o.get('kind') == 'ltl'
+            '{} {} ₽'.format(offer['src'], '{:,.0f}'.format(offer['price']).replace(',', ' '))
+            for offer in res['offers']
+            if offer.get('kind') == 'ltl'
         ]
-        bad = ['{}: {}'.format(e['src'], e['msg']) for e in r['errors'] if not e.get('skip')]
+        bad = ['{}: {}'.format(err['src'], err['msg']) for err in res['errors'] if not err.get('skip')]
         if not ok:
             return 'fail', '; '.join(bad)[:400] or 'ни один перевозчик не ответил'
         return ('warn' if bad else 'ok'), (
@@ -220,34 +222,38 @@ class ConnectionCheck:
         import version
         from app_update import Updater
 
-        up = Updater(self.store, self.root, self.data_dir)
-        rel = up.source().latest()
+        updater = Updater(self.store, self.root, self.data_dir)
+        rel = updater.source().latest()
         v = rel.get('version') if isinstance(rel, dict) else None
         if not v:
             return 'warn', 'выпусков не найдено'
         return 'ok', 'последняя версия {}, работает {}{}'.format(
             v,
             version.VERSION,
-            '' if up.token() else ' (без токена — репозиторий открыт)',
+            '' if updater.token() else ' (без токена — репозиторий открыт)',
         )
 
     def _pdf(self):
         import pdf_convert
 
-        a = pdf_convert.available(self._keys().get('convertapiKey'))
-        ways = [n for k, n in (('word', 'Word'), ('libreoffice', 'LibreOffice'), ('cloud', 'ConvertAPI')) if a.get(k)]
+        avail = pdf_convert.available(self._keys().get('convertapiKey'))
+        ways = [
+            name
+            for k, name in (('word', 'Word'), ('libreoffice', 'LibreOffice'), ('cloud', 'ConvertAPI'))
+            if avail.get(k)
+        ]
         return (
             ('ok', 'чем сохраняется: ' + ', '.join(ways))
             if ways
             else ('warn', 'нет Word, LibreOffice и ключа ConvertAPI — PDF не сохранится')
         )
 
-    def _feed(self, f: dict) -> tuple:
-        url = imgfetch.web_url(f['url'])
+    def _feed(self, feed: dict) -> tuple:
+        url = imgfetch.web_url(feed['url'])
         imgfetch._check_url(url)  # фид — только в интернете, как при загрузке (feeds.download)
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 KP-Konstruktor', 'Range': 'bytes=0-1023'})
-        with imgfetch.SafeWeb.opener().open(req, timeout=self.FEED_TIMEOUT) as r:
-            r.read(1024)
-            code = r.status
-        last = ((f.get('last') or {}).get('check') or (f.get('last') or {}).get('import') or {}).get('at') or ''
+        with imgfetch.SafeWeb.opener().open(req, timeout=self.FEED_TIMEOUT) as resp:
+            resp.read(1024)
+            code = resp.status
+        last = ((feed.get('last') or {}).get('check') or (feed.get('last') or {}).get('import') or {}).get('at') or ''
         return 'ok', 'адрес отвечает ({}){}'.format(code, ', последняя проверка ' + last[:10] if last else '')

@@ -20,7 +20,7 @@ PERMS = [  # ключ, подпись, по умолчанию
     ('catSelfMod', 'Правки без модерации: свои — сразу в каталог, принимать и отклонять правки других', False),
     ('export', 'Выгружать каталог и клиентов в файл (без закупки)', False),
 ]
-PERM_KEYS = [p[0] for p in PERMS]
+PERM_KEYS = [perm[0] for perm in PERMS]
 STRICT = ('catDelete', 'catSelfMod', 'export')
 LOCK = threading.Lock()
 
@@ -33,124 +33,129 @@ def enabled(store) -> bool:
     return bool(((store.kv_get('settings') or {}).get('userLogin') or {}).get('enabled'))
 
 
-def set_enabled(store, on: bool, by: str) -> None:
-    st = store.kv_get('settings') or {}
-    st['userLogin'] = {**(st.get('userLogin') or {}), 'enabled': bool(on), 'updatedAt': _now(), 'updatedBy': by}
-    store.kv_set('settings', st)
-    if not on:
+def set_enabled(store, enabled: bool, author: str) -> None:
+    settings = store.kv_get('settings') or {}
+    settings['userLogin'] = {
+        **(settings.get('userLogin') or {}),
+        'enabled': bool(enabled),
+        'updatedAt': _now(),
+        'updatedBy': author,
+    }
+    store.kv_set('settings', settings)
+    if not enabled:
         store.kv_set('userSessions', {})
 
 
 def access(store) -> dict:
-    a = store.kv_get('mgrAccess') or {}
-    return a if isinstance(a, dict) else {}
+    acc = store.kv_get('mgrAccess') or {}
+    return acc if isinstance(acc, dict) else {}
 
 
 class AccessRecord:
     """Запись одного менеджера в kv «mgrAccess»: прочитать — изменить — записать под блокировкой базы."""
 
     @staticmethod
-    def update(store, mid, fn):
+    def update(store, mid, func):
         """fn(запись, все записи) → новая запись (исключение — ничего не пишется)."""
         with store.lock:
-            a = access(store)
-            a[mid] = fn(dict(a.get(mid) or {}), a)
-            store.kv_set('mgrAccess', a)
-            return a[mid]
+            acc = access(store)
+            acc[mid] = func(dict(acc.get(mid) or {}), acc)
+            store.kv_set('mgrAccess', acc)
+            return acc[mid]
 
     @staticmethod
-    def edit(rec, a, mid, d, pw, drop):
+    def edit(rec, acc, mid, data, password, drop):
         """Правка администратора («Логин и пароль», права, запрет входа, сброс): drop — пометка «закрыть входы»."""
-        if 'login' in d:
-            login = norm_login(d.get('login'))
-            if login and (len(login) > 40 or not all(ch.isalnum() or ch in '._-@' for ch in login)):
+        if 'login' in data:
+            login = norm_login(data.get('login'))
+            if login and (len(login) > 40 or not all(char.isalnum() or char in '._-@' for char in login)):
                 raise ValueError('Логин — буквы, цифры, точка, дефис, «_» или «@», до 40 символов')
-            if login and any(norm_login(r.get('login')) == login for k, r in a.items() if k != mid):
+            if login and any(norm_login(other.get('login')) == login for k, other in acc.items() if k != mid):
                 raise ValueError('Такой логин уже есть у другого менеджера')
             rec['login'] = login
-        if pw:
-            rec['pw'] = pw
+        if password:
+            rec['pw'] = password
             rec.pop('temp', None)  # пароль от администратора — постоянный
             drop.append(True)
-        if isinstance(d.get('perms'), dict):
-            rec['perms'] = {k: bool(d['perms'].get(k, perms_of(rec)[k])) for k in PERM_KEYS}
-        if 'blocked' in d:
-            rec['blocked'] = bool(d['blocked'])
+        if isinstance(data.get('perms'), dict):
+            rec['perms'] = {k: bool(data['perms'].get(k, perms_of(rec)[k])) for k in PERM_KEYS}
+        if 'blocked' in data:
+            rec['blocked'] = bool(data['blocked'])
             if rec['blocked']:
                 drop.append(True)
-        if d.get('clear'):
+        if data.get('clear'):
             rec = {'perms': perms_of(rec)}
             drop.append(True)
         return rec
 
 
 def perms_of(rec: dict) -> dict:
-    p = (rec or {}).get('perms') or {}
-    return {k: bool(p.get(k, d)) for k, _, d in PERMS}
+    perms = (rec or {}).get('perms') or {}
+    return {k: bool(perms.get(k, key)) for k, _, key in PERMS}
 
 
 def public(store, managers: list) -> list[dict]:
     """Для «Настроек»: менеджеры с логином, правами, последним входом, временным паролем (до какого времени)."""
-    a = access(store)
-    n = UserSession.count(store)
+    acc = access(store)
+    count = UserSession.count(store)
     out = []
-    for m in managers:
-        r = a.get(m.get('id')) or {}
-        t = TempPassword.of(r)
+    for mgr in managers:
+        rec = acc.get(mgr.get('id')) or {}
+        temp = TempPassword.of(rec)
         out.append(
             {
-                'id': m.get('id'),
-                'name': m.get('name') or '',
-                'position': m.get('position') or '',
-                'login': r.get('login') or '',
-                'hasPassword': bool(r.get('pw')),
-                'blocked': bool(r.get('blocked')),
-                'perms': perms_of(r),
-                'lastLogin': r.get('lastLogin') or '',
+                'id': mgr.get('id'),
+                'name': mgr.get('name') or '',
+                'position': mgr.get('position') or '',
+                'login': rec.get('login') or '',
+                'hasPassword': bool(rec.get('pw')),
+                'blocked': bool(rec.get('blocked')),
+                'perms': perms_of(rec),
+                'lastLogin': rec.get('lastLogin') or '',
                 'temp': (
                     {
-                        'until': datetime.fromtimestamp(t['exp']).isoformat(timespec='minutes'),
-                        'expired': TempPassword.expired(r),
+                        'until': datetime.fromtimestamp(temp['exp']).isoformat(timespec='minutes'),
+                        'expired': TempPassword.expired(rec),
                     }
-                    if t
+                    if temp
                     else None
                 ),
-                'sessions': n.get(m.get('id'), 0),
+                'sessions': count.get(mgr.get('id'), 0),
             }
         )
     return out
 
 
-def check_password(pw) -> None:
-    n = SrvVal.now('srv.userPwMin')
-    if len(pw or '') < n:
-        raise ValueError(f'Пароль — не короче {n} символов')
+def check_password(password) -> None:
+    minimum = SrvVal.now('srv.userPwMin')
+    if len(password or '') < minimum:
+        raise ValueError(f'Пароль — не короче {minimum} символов')
 
 
-def norm_login(s) -> str:
-    return str(s or '').strip().lower()
+def norm_login(text) -> str:
+    return str(text or '').strip().lower()
 
 
-def set_access(store, mid: str, d: dict, hash_password) -> dict:
+def set_access(store, mid: str, data: dict, hash_password) -> dict:
     """Логин, пароль (если передан), права и блокировка менеджера. ValueError — с понятным текстом."""
-    if d.get('password'):
-        check_password(d['password'])
-    pw = hash_password(d['password']) if d.get('password') else None  # медленный хеш — до блокировки базы
+    if data.get('password'):
+        check_password(data['password'])
+    password = hash_password(data['password']) if data.get('password') else None  # медленный хеш — до блокировки базы
     drop = []
-    rec = AccessRecord.update(store, mid, lambda rec, a: AccessRecord.edit(rec, a, mid, d, pw, drop))
+    rec = AccessRecord.update(store, mid, lambda rec, acc: AccessRecord.edit(rec, acc, mid, data, password, drop))
     if drop:
         drop_sessions(store, mid)
     return rec
 
 
-def _h(tok: str) -> str:
+def _hash(tok: str) -> str:
     return hashlib.sha256(tok.encode()).hexdigest()
 
 
 def _sessions(store) -> dict:
-    s = store.kv_get('userSessions') or {}
+    sessions = store.kv_get('userSessions') or {}
     now = time.time()
-    return {k: v for k, v in s.items() if isinstance(v, dict) and v.get('exp', 0) > now}
+    return {k: v for k, v in sessions.items() if isinstance(v, dict) and v.get('exp', 0) > now}
 
 
 class UserSession:
@@ -165,9 +170,9 @@ class UserSession:
             else SrvVal.get(store, 'srv.userShortHours') * 3600
         )
         with LOCK:
-            s = _sessions(store)
-            s[_h(tok)] = {'mid': mid, 'exp': time.time() + ttl}
-            store.kv_set('userSessions', s)
+            sessions = _sessions(store)
+            sessions[_hash(tok)] = {'mid': mid, 'exp': time.time() + ttl}
+            store.kv_set('userSessions', sessions)
         return tok
 
     @staticmethod
@@ -182,11 +187,11 @@ class UserSession:
     def drop_all(store, mid: str, keep: str = '') -> int:
         """«Выйти на всех устройствах»: закрыть все входы менеджера (keep — токен входа, который остаётся). Число закрытых."""
         with LOCK:
-            s = _sessions(store)
-            kh = _h(keep) if keep else ''
-            left = {k: v for k, v in s.items() if v.get('mid') != mid or k == kh}
+            sessions = _sessions(store)
+            keep_hash = _hash(keep) if keep else ''
+            left = {k: v for k, v in sessions.items() if v.get('mid') != mid or k == keep_hash}
             store.kv_set('userSessions', left)
-        return len(s) - len(left)
+        return len(sessions) - len(left)
 
     @staticmethod
     def cookie(tok: str, remember: bool = True) -> str:
@@ -207,15 +212,15 @@ class LoginInfo:
         return str(((store.kv_get('settings') or {}).get('userLogin') or {}).get('help') or '')
 
     @classmethod
-    def set_help(cls, store, text, by: str) -> str:
+    def set_help(cls, store, text, author: str) -> str:
         if not isinstance(text, str):
             raise ValueError('Подсказка «Забыли пароль?» — текст')
         text = ' '.join(text.split())
         if len(text) > cls.HELP_MAX:
             raise ValueError(f'Подсказка «Забыли пароль?» — не длиннее {cls.HELP_MAX} символов')
-        st = store.kv_get('settings') or {}
-        st['userLogin'] = {**(st.get('userLogin') or {}), 'help': text, 'helpAt': _now(), 'helpBy': by}
-        store.kv_set('settings', st)
+        settings = store.kv_get('settings') or {}
+        settings['userLogin'] = {**(settings.get('userLogin') or {}), 'help': text, 'helpAt': _now(), 'helpBy': author}
+        store.kv_set('settings', settings)
         return text
 
     @classmethod
@@ -236,27 +241,27 @@ class TempPassword:
 
     @staticmethod
     def of(rec: dict) -> dict | None:
-        t = (rec or {}).get('temp')
-        return t if isinstance(t, dict) and t.get('exp') else None
+        temp = (rec or {}).get('temp')
+        return temp if isinstance(temp, dict) and temp.get('exp') else None
 
     @classmethod
     def expired(cls, rec: dict) -> bool:
-        t = cls.of(rec)
-        return bool(t) and t['exp'] <= time.time()
+        temp = cls.of(rec)
+        return bool(temp) and temp['exp'] <= time.time()
 
     @classmethod
-    def issue(cls, store, mid: str, hash_password, by: str) -> tuple:
+    def issue(cls, store, mid: str, hash_password, author: str) -> tuple:
         """Новый временный пароль менеджеру: (пароль, часов, до какого времени); все его входы закрываются."""
         if not (access(store).get(mid) or {}).get('login'):
             raise ValueError('Сначала задайте менеджеру логин («Логин и пароль»)')
-        n = max(cls.LEN, SrvVal.get(store, 'srv.userPwMin'))
-        pw = ''.join(secrets.choice(cls.ABC) for _ in range(n))
+        length = max(cls.LEN, SrvVal.get(store, 'srv.userPwMin'))
+        password = ''.join(secrets.choice(cls.ABC) for _ in range(length))
         hours = SrvVal.get(store, 'srv.tempPwHours')
         exp = time.time() + hours * 3600
-        temp = {'pw': hash_password(pw), 'temp': {'exp': exp, 'at': _now(), 'by': by}}
-        AccessRecord.update(store, mid, lambda rec, _a: dict(rec, **temp))
+        temp = {'pw': hash_password(password), 'temp': {'exp': exp, 'at': _now(), 'by': author}}
+        AccessRecord.update(store, mid, lambda rec, _access: dict(rec, **temp))
         UserSession.drop_all(store, mid)
-        return pw, hours, datetime.fromtimestamp(exp).isoformat(timespec='minutes')
+        return password, hours, datetime.fromtimestamp(exp).isoformat(timespec='minutes')
 
 
 class UserPassword:
@@ -265,14 +270,14 @@ class UserPassword:
     MAX = 128
 
     @classmethod
-    def change(cls, store, mid: str, d: dict, keep: str, verify, hash_password) -> tuple:
+    def change(cls, store, mid: str, data: dict, keep: str, verify, hash_password) -> tuple:
         """→ (был ли пароль временным, закрыто входов); PermissionError — текущий пароль неверный."""
         rec = dict(access(store).get(mid) or {})
         temp = TempPassword.of(rec) is not None
-        new, new2 = d.get('new'), d.get('new2')
+        new, new2 = data.get('new'), data.get('new2')
         if not isinstance(new, str) or not isinstance(new2, str) or not new:
             raise ValueError('Введите новый пароль два раза')
-        if not temp and not verify(d.get('old'), rec.get('pw')):
+        if not temp and not verify(data.get('old'), rec.get('pw')):
             raise PermissionError('Текущий пароль указан неверно')
         if len(new) > cls.MAX:
             raise ValueError(f'Пароль — не длиннее {cls.MAX} символов')
@@ -281,59 +286,63 @@ class UserPassword:
             raise ValueError('Новый пароль и повтор не совпадают')
         if verify(new, rec.get('pw')):
             raise ValueError('Новый пароль совпадает с прежним — придумайте другой')
-        pw = hash_password(new)
-        AccessRecord.update(store, mid, lambda r, _a: {k: v for k, v in dict(r, pw=pw).items() if k != 'temp'})
+        password = hash_password(new)
+        AccessRecord.update(
+            store, mid, lambda old, _access: {k: v for k, v in dict(old, pw=password).items() if k != 'temp'}
+        )
         return temp, UserSession.drop_all(store, mid, keep)
 
 
 def drop_sessions(store, mid: str | None = None, tok: str | None = None) -> None:
     with LOCK:
-        s = _sessions(store)
-        s = {k: v for k, v in s.items() if not ((mid and v.get('mid') == mid) or (tok and k == _h(tok)))}
-        store.kv_set('userSessions', s)
+        sessions = _sessions(store)
+        sessions = {
+            k: v for k, v in sessions.items() if not ((mid and v.get('mid') == mid) or (tok and k == _hash(tok)))
+        }
+        store.kv_set('userSessions', sessions)
 
 
-def cookie_token(h) -> str:
-    for part in (h.headers.get('Cookie') or '').split(';'):
+def cookie_token(handler) -> str:
+    for part in (handler.headers.get('Cookie') or '').split(';'):
         k, _, v = part.strip().partition('=')
         if k == COOKIE:
             return v
     return ''
 
 
-def current(h, store) -> dict | None:
+def current(handler, store) -> dict | None:
     """Вошедший менеджер {id, name, perms} или None. Кешируется на время запроса."""
-    if hasattr(h, '_kp_user'):
-        return h._kp_user
+    if hasattr(handler, '_kp_user'):
+        return handler._kp_user
     u = None
-    tok = cookie_token(h)
+    tok = cookie_token(handler)
     if tok:
-        rec = _sessions(store).get(_h(tok))
+        rec = _sessions(store).get(_hash(tok))
         if rec:
             acc = access(store).get(rec['mid']) or {}
             if not acc.get('blocked') and acc.get('pw') and not TempPassword.expired(acc):
-                m = next((x for x in json.loads(store.managers_list()) if x.get('id') == rec['mid']), None)
-                if m:
+                mgr = next((x for x in json.loads(store.managers_list()) if x.get('id') == rec['mid']), None)
+                if mgr:
                     u = {
                         'id': rec['mid'],
-                        'name': m.get('name') or acc.get('login') or '',
+                        'name': mgr.get('name') or acc.get('login') or '',
                         'login': acc.get('login') or '',
                         'perms': perms_of(acc),
                     }
                     if TempPassword.of(acc):  # вошёл с временным паролем — сначала задать свой
                         u['mustChange'] = True
-    h._kp_user = u
+    handler._kp_user = u
     return u
 
 
 def find_by_login(store, login: str) -> tuple:
     login = norm_login(login)
-    for mid, r in access(store).items():
-        if login and norm_login(r.get('login')) == login:
-            return mid, r
+    for mid, rec in access(store).items():
+        if login and norm_login(rec.get('login')) == login:
+            return mid, rec
     return None, None
 
 
 def touch_login(store, mid: str) -> None:
     if mid in access(store):
-        AccessRecord.update(store, mid, lambda rec, _a: dict(rec, lastLogin=_now()))
+        AccessRecord.update(store, mid, lambda rec, _access: dict(rec, lastLogin=_now()))

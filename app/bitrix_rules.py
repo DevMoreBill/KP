@@ -51,26 +51,26 @@ class BitrixRules:
     FILE_MB = (1, 100, 20)
 
     def __init__(self, conf) -> None:
-        self.c = conf if isinstance(conf, dict) else {}
+        self.conf = conf if isinstance(conf, dict) else {}
 
     def mode(self) -> str:
-        m = self.c.get('mode')
-        return m if m in ('both', 'in', 'out') else 'both'
+        mgr = self.conf.get('mode')
+        return mgr if mgr in ('both', 'in', 'out') else 'both'
 
     def flow(self, kind: str) -> str:
-        v = (self.c.get('flow') or {}).get(kind)
+        v = (self.conf.get('flow') or {}).get(kind)
         return v if v in DIRS else self.mode()
 
     @staticmethod
-    def allow(d: str, way: str) -> bool:
-        return d in ('both', way)
+    def allow(data: str, way: str) -> bool:
+        return data in ('both', way)
 
     def mgr(self, mid: str) -> dict:
-        m = (self.c.get('mgr') or {}).get(str(mid or '')) or {}
+        mgr = (self.conf.get('mgr') or {}).get(str(mid or '')) or {}
         return {
-            'on': m.get('on', True) is not False,
-            'dir': m.get('dir') if m.get('dir') in DIRS else '',
-            'cat': str(m.get('cat') or ''),
+            'on': mgr.get('on', True) is not False,
+            'dir': mgr.get('dir') if mgr.get('dir') in DIRS else '',
+            'cat': str(mgr.get('cat') or ''),
         }
 
     def can(self, kind: str, way: str, mid: str | None = None) -> bool:
@@ -78,44 +78,52 @@ class BitrixRules:
         if not self.allow(self.flow(kind), way):
             return False
         if mid:
-            m = self.mgr(mid)
-            if not m['on'] or not self.allow(m['dir'] or 'both', way):
+            mgr = self.mgr(mid)
+            if not mgr['on'] or not self.allow(mgr['dir'] or 'both', way):
                 return False
         return True
 
     @classmethod
     def spec(cls, key: str) -> tuple | None:
-        return next((f for f in cls.FIELDS if f[0] == key), None)
+        return next((field for field in cls.FIELDS if field[0] == key), None)
 
     def field(self, key: str) -> dict:
         """{bx, dir, win, label, own}: поле Битрикса, направление, кто главный при правке с обеих сторон."""
-        f = self.spec(key)
-        mine = (self.c.get('fields') or {}).get(key) or {}
-        bx = mine.get('bx') if f[3] and mine.get('bx') else f[2]
-        d = mine.get('dir') if mine.get('dir') in f[4] else f[5]
+        spec = self.spec(key)
+        mine = (self.conf.get('fields') or {}).get(key) or {}
+        bx_code = mine.get('bx') if spec[3] and mine.get('bx') else spec[2]
+        direction = mine.get('dir') if mine.get('dir') in spec[4] else spec[5]
         win = mine.get('win') if mine.get('win') in self.WINS else 'last'
-        return {'bx': bx, 'dir': d, 'win': win, 'label': f[1], 'own': bool(f[6]) and bx.startswith('UF_CRM_KP_')}
+        return {
+            'bx': bx_code,
+            'dir': direction,
+            'win': win,
+            'label': spec[1],
+            'own': bool(spec[6]) and bx_code.startswith('UF_CRM_KP_'),
+        }
 
     def own_fields(self) -> list:
         """Свои поля сделки, которые программа создаёт в Битриксе: [(код без UF_CRM_, тип, подпись)] — только включённые."""
         out = []
-        for f in self.FIELDS:
-            if not f[6]:
+        for field in self.FIELDS:
+            if not field[6]:
                 continue
-            x = self.field(f[0])
+            x = self.field(field[0])
             if x['dir'] != 'off' and x['own']:
-                out.append((x['bx'][len('UF_CRM_') :], f[6], f[1]))
+                out.append((x['bx'][len('UF_CRM_') :], field[6], field[1]))
         return out
 
     def category(self):
-        return str(self.c.get('category') or '0')
+        return str(self.conf.get('category') or '0')
 
     def cat_of(self, mid: str):
         return self.mgr(mid)['cat'] or self.category()
 
     def pull_cats(self) -> list:
-        cats = [self.category()] + [str(x) for x in (self.c.get('cats') or [])]
-        cats += [m.get('cat') for m in (self.c.get('mgr') or {}).values() if isinstance(m, dict) and m.get('cat')]
+        cats = [self.category()] + [str(x) for x in (self.conf.get('cats') or [])]
+        cats += [
+            mgr.get('cat') for mgr in (self.conf.get('mgr') or {}).values() if isinstance(mgr, dict) and mgr.get('cat')
+        ]
         out = []
         for x in cats:
             if x not in out:
@@ -124,57 +132,61 @@ class BitrixRules:
 
     def stages(self, cat=None) -> dict:
         cat = str(cat if cat is not None else self.category())
-        by = (self.c.get('stagesBy') or {}).get(cat)
-        if isinstance(by, dict) and by:
-            return by
-        return (self.c.get('stages') or {}) if cat == self.category() else {}
+        stages_by = (self.conf.get('stagesBy') or {}).get(cat)
+        if isinstance(stages_by, dict) and stages_by:
+            return stages_by
+        return (self.conf.get('stages') or {}) if cat == self.category() else {}
 
     def send(self) -> dict:
-        s = self.c.get('send') or {}
-        files = s.get('files') if isinstance(s.get('files'), dict) else {}
+        send = self.conf.get('send') or {}
+        files = send.get('files') if isinstance(send.get('files'), dict) else {}
         return {
-            'rows': s.get('rows', True) is not False,
-            'rowsHow': s.get('rowsHow') if s.get('rowsHow') in ('kp', 'sum') else 'kp',
+            'rows': send.get('rows', True) is not False,
+            'rowsHow': send.get('rowsHow') if send.get('rowsHow') in ('kp', 'sum') else 'kp',
             'files': {k: files.get(k, True) is not False for k in self.FILES},
-            'fileMB': self._int(s.get('fileMB'), self.FILE_MB),
+            'fileMB': self._int(send.get('fileMB'), self.FILE_MB),
         }
 
     def company(self) -> dict:
-        c = self.c.get('company') or {}
+        company = self.conf.get('company') or {}
         return {
-            'find': c.get('find') if c.get('find') in self.FIND else 'inn_name',
-            'create': c.get('create', True) is not False,
-            'contacts': c.get('contacts') if c.get('contacts') in DIRS else 'both',
-            'reqs': c.get('reqs', True) is not False,
+            'find': company.get('find') if company.get('find') in self.FIND else 'inn_name',
+            'create': company.get('create', True) is not False,
+            'contacts': company.get('contacts') if company.get('contacts') in DIRS else 'both',
+            'reqs': company.get('reqs', True) is not False,
         }
 
     def tasks(self) -> dict:
-        t = self.c.get('tasks') or {}
-        k = t.get('kinds') if isinstance(t.get('kinds'), dict) else {}
+        tasks = self.conf.get('tasks') or {}
+        k = tasks.get('kinds') if isinstance(tasks.get('kinds'), dict) else {}
         return {
             'kinds': {x: (k.get(x) if k.get(x) in self.TASK_AS else 'todo') for x in self.TASK_KINDS},
-            'cancel': t.get('cancel', True) is not False,
-            'other': t.get('other', True) is not False,
+            'cancel': tasks.get('cancel', True) is not False,
+            'other': tasks.get('other', True) is not False,
         }
 
     def sched(self) -> dict:
-        s = self.c.get('sched') or {}
+        sched = self.conf.get('sched') or {}
         return {
-            'from': s.get('from') if self.TIME.match(str(s.get('from') or '')) else '',
-            'to': s.get('to') if self.TIME.match(str(s.get('to') or '')) else '',
-            'batch': self._int(s.get('batch'), self.BATCH),
-            'tries': self._int(s.get('tries'), self.TRIES),
+            'from': sched.get('from') if self.TIME.match(str(sched.get('from') or '')) else '',
+            'to': sched.get('to') if self.TIME.match(str(sched.get('to') or '')) else '',
+            'batch': self._int(sched.get('batch'), self.BATCH),
+            'tries': self._int(sched.get('tries'), self.TRIES),
         }
 
     def in_hours(self, now=None) -> bool:
-        s = self.sched()
-        if not s['from'] or not s['to'] or s['from'] == s['to']:
+        sched = self.sched()
+        if not sched['from'] or not sched['to'] or sched['from'] == sched['to']:
             return True
-        t = (now or datetime.now()).strftime('%H:%M')
-        return s['from'] <= t < s['to'] if s['from'] < s['to'] else (t >= s['from'] or t < s['to'])  # через полночь
+        hhmm = (now or datetime.now()).strftime('%H:%M')
+        return (
+            sched['from'] <= hhmm < sched['to']
+            if sched['from'] < sched['to']
+            else (hhmm >= sched['from'] or hhmm < sched['to'])
+        )  # через полночь
 
     def fallback(self) -> str:
-        return str(self.c.get('fallback') or '')
+        return str(self.conf.get('fallback') or '')
 
     @staticmethod
     def _int(v, rng: tuple) -> int:
@@ -188,32 +200,32 @@ class BitrixRules:
         """Для «Настроек»: все правила с умолчаниями (то, что действует сейчас)."""
         return {
             'mode': self.mode(),
-            'flow': {k: (self.c.get('flow') or {}).get(k) or '' for k in self.KINDS},
-            'mgr': {k: self.mgr(k) for k in (self.c.get('mgr') or {})},
+            'flow': {k: (self.conf.get('flow') or {}).get(k) or '' for k in self.KINDS},
+            'mgr': {k: self.mgr(k) for k in (self.conf.get('mgr') or {})},
             'fallback': self.fallback(),
-            'cats': [str(x) for x in (self.c.get('cats') or [])],
-            'stagesBy': self.c.get('stagesBy') or {},
-            'fields': {f[0]: self.field(f[0]) for f in self.FIELDS},
+            'cats': [str(x) for x in (self.conf.get('cats') or [])],
+            'stagesBy': self.conf.get('stagesBy') or {},
+            'fields': {field[0]: self.field(field[0]) for field in self.FIELDS},
             'send': self.send(),
             'company': self.company(),
             'tasks': self.tasks(),
             'sched': self.sched(),
             'spec': [
                 {
-                    'key': f[0],
-                    'label': f[1],
-                    'bx': f[2],
-                    'pick': f[3],
-                    'dirs': list(f[4]),
-                    'def': f[5],
-                    'shared': f[0] in self.SHARED,
+                    'key': field[0],
+                    'label': field[1],
+                    'bx': field[2],
+                    'pick': field[3],
+                    'dirs': list(field[4]),
+                    'def': field[5],
+                    'shared': field[0] in self.SHARED,
                 }
-                for f in self.FIELDS
+                for field in self.FIELDS
             ],
         }
 
     @classmethod
-    def check(cls, new: dict, d: dict, managers, stage_keys) -> dict:
+    def check(cls, new: dict, data: dict, managers, stage_keys) -> dict:
         """Проверить и записать в new правила из d (только известные ключи). ValueError — понятным текстом."""
 
         def pick(v, allowed, what):
@@ -223,15 +235,17 @@ class BitrixRules:
                 raise ValueError(f'Неверное значение: {what}')
             return v
 
-        if 'mode' in d:
-            new['mode'] = pick(d['mode'], ('both', 'in', 'out'), 'направление обмена') or 'both'
-        if 'flow' in d:
-            f = d['flow'] if isinstance(d['flow'], dict) else {}
-            new['flow'] = {k: pick(f.get(k), DIRS, f'направление «{v}»') for k, v in cls.KINDS.items() if f.get(k)}
-        if 'mgr' in d:
-            m = d['mgr'] if isinstance(d['mgr'], dict) else {}
+        if 'mode' in data:
+            new['mode'] = pick(data['mode'], ('both', 'in', 'out'), 'направление обмена') or 'both'
+        if 'flow' in data:
+            flow = data['flow'] if isinstance(data['flow'], dict) else {}
+            new['flow'] = {
+                k: pick(flow.get(k), DIRS, f'направление «{v}»') for k, v in cls.KINDS.items() if flow.get(k)
+            }
+        if 'mgr' in data:
+            mgr = data['mgr'] if isinstance(data['mgr'], dict) else {}
             out = {}
-            for mid, x in m.items():
+            for mid, x in mgr.items():
                 if mid not in managers or not isinstance(x, dict):
                     continue
                 cat = str(x.get('cat') or '')
@@ -243,85 +257,85 @@ class BitrixRules:
                     'cat': cat,
                 }
             new['mgr'] = out
-        if 'fallback' in d:
-            fb = str(d.get('fallback') or '')
-            if fb and fb != 'skip' and fb not in managers:
+        if 'fallback' in data:
+            fallback = str(data.get('fallback') or '')
+            if fallback and fallback != 'skip' and fallback not in managers:
                 raise ValueError('Неверный менеджер для сделок без ответственного')
-            new['fallback'] = fb
-        if 'cats' in d:
-            cs = d['cats'] if isinstance(d['cats'], list) else []
-            if any(not re.match(r'^\d{1,9}$', str(x)) for x in cs):
+            new['fallback'] = fallback
+        if 'cats' in data:
+            cats = data['cats'] if isinstance(data['cats'], list) else []
+            if any(not re.match(r'^\d{1,9}$', str(x)) for x in cats):
                 raise ValueError('Неверная воронка')
-            new['cats'] = sorted({str(x) for x in cs})[:20]
-        if 'stagesBy' in d:
-            sb = d['stagesBy'] if isinstance(d['stagesBy'], dict) else {}
+            new['cats'] = sorted({str(x) for x in cats})[:20]
+        if 'stagesBy' in data:
+            stages_by = data['stagesBy'] if isinstance(data['stagesBy'], dict) else {}
             out = {}
-            for cat, st in sb.items():
-                if not re.match(r'^\d{1,9}$', str(cat)) or not isinstance(st, dict):
+            for cat, stage in stages_by.items():
+                if not re.match(r'^\d{1,9}$', str(cat)) or not isinstance(stage, dict):
                     raise ValueError('Неверное соответствие этапов воронки')
                 out[str(cat)] = {
                     k: str(v)[:60]
-                    for k, v in st.items()
+                    for k, v in stage.items()
                     if k in stage_keys and v and re.match(r'^[A-Za-z0-9_:]{1,60}$', str(v))
                 }
             new['stagesBy'] = out
             main = out.get(str(new.get('category') or '0'))
             if main is not None:
                 new['stages'] = main  # основная воронка — и в прежнем поле (совместимость)
-        if 'fields' in d:
-            fs = d['fields'] if isinstance(d['fields'], dict) else {}
+        if 'fields' in data:
+            fields = data['fields'] if isinstance(data['fields'], dict) else {}
             out = {}
-            for key, x in fs.items():
-                f = cls.spec(key)
-                if not f or not isinstance(x, dict):
+            for key, x in fields.items():
+                flow = cls.spec(key)
+                if not flow or not isinstance(x, dict):
                     continue
                 y = {}
                 if x.get('dir') not in (None, ''):
-                    y['dir'] = pick(x['dir'], f[4], f'направление поля «{f[1]}»')
+                    y['dir'] = pick(x['dir'], flow[4], f'направление поля «{flow[1]}»')
                 if x.get('win') not in (None, ''):
-                    y['win'] = pick(x['win'], cls.WINS, f'кто главный у поля «{f[1]}»')
-                if f[3] and x.get('bx'):
-                    bx = str(x['bx']).strip().upper()
-                    if not cls.BX_FIELD.match(bx):
-                        raise ValueError(f'Неверное поле Битрикса у «{f[1]}»')
-                    y['bx'] = bx
+                    y['win'] = pick(x['win'], cls.WINS, f'кто главный у поля «{flow[1]}»')
+                if flow[3] and x.get('bx'):
+                    bx_code = str(x['bx']).strip().upper()
+                    if not cls.BX_FIELD.match(bx_code):
+                        raise ValueError(f'Неверное поле Битрикса у «{flow[1]}»')
+                    y['bx'] = bx_code
                 out[key] = y
             new['fields'] = out
-        if 'send' in d:
-            s = d['send'] if isinstance(d['send'], dict) else {}
-            fl = s.get('files') if isinstance(s.get('files'), dict) else {}
+        if 'send' in data:
+            send = data['send'] if isinstance(data['send'], dict) else {}
+            files = send.get('files') if isinstance(send.get('files'), dict) else {}
             new['send'] = {
-                'rows': s.get('rows', True) is not False,
-                'rowsHow': pick(s.get('rowsHow'), ('kp', 'sum'), 'товары') or 'kp',
-                'files': {k: fl.get(k, True) is not False for k in cls.FILES},
-                'fileMB': cls._num(s.get('fileMB'), cls.FILE_MB, 'Предел файла, МБ'),
+                'rows': send.get('rows', True) is not False,
+                'rowsHow': pick(send.get('rowsHow'), ('kp', 'sum'), 'товары') or 'kp',
+                'files': {k: files.get(k, True) is not False for k in cls.FILES},
+                'fileMB': cls._num(send.get('fileMB'), cls.FILE_MB, 'Предел файла, МБ'),
             }
-        if 'company' in d:
-            c = d['company'] if isinstance(d['company'], dict) else {}
+        if 'company' in data:
+            company = data['company'] if isinstance(data['company'], dict) else {}
             new['company'] = {
-                'find': pick(c.get('find'), cls.FIND, 'поиск компании') or 'inn_name',
-                'create': c.get('create', True) is not False,
-                'contacts': pick(c.get('contacts'), DIRS, 'контакты') or 'both',
-                'reqs': c.get('reqs', True) is not False,
+                'find': pick(company.get('find'), cls.FIND, 'поиск компании') or 'inn_name',
+                'create': company.get('create', True) is not False,
+                'contacts': pick(company.get('contacts'), DIRS, 'контакты') or 'both',
+                'reqs': company.get('reqs', True) is not False,
             }
-        if 'tasks' in d:
-            t = d['tasks'] if isinstance(d['tasks'], dict) else {}
-            k = t.get('kinds') if isinstance(t.get('kinds'), dict) else {}
+        if 'tasks' in data:
+            tasks = data['tasks'] if isinstance(data['tasks'], dict) else {}
+            k = tasks.get('kinds') if isinstance(tasks.get('kinds'), dict) else {}
             new['tasks'] = {
                 'kinds': {x: pick(k.get(x), cls.TASK_AS, 'вид дела') or 'todo' for x in cls.TASK_KINDS},
-                'cancel': t.get('cancel', True) is not False,
-                'other': t.get('other', True) is not False,
+                'cancel': tasks.get('cancel', True) is not False,
+                'other': tasks.get('other', True) is not False,
             }
-        if 'sched' in d:
-            s = d['sched'] if isinstance(d['sched'], dict) else {}
+        if 'sched' in data:
+            send = data['sched'] if isinstance(data['sched'], dict) else {}
             for k in ('from', 'to'):
-                if s.get(k) and not cls.TIME.match(str(s[k])):
+                if send.get(k) and not cls.TIME.match(str(send[k])):
                     raise ValueError('Время обмена — ЧЧ:ММ, например 08:00')
             new['sched'] = {
-                'from': str(s.get('from') or ''),
-                'to': str(s.get('to') or ''),
-                'batch': cls._num(s.get('batch'), cls.BATCH, 'Записей за один обмен'),
-                'tries': cls._num(s.get('tries'), cls.TRIES, 'Попыток отправки'),
+                'from': str(send.get('from') or ''),
+                'to': str(send.get('to') or ''),
+                'batch': cls._num(send.get('batch'), cls.BATCH, 'Записей за один обмен'),
+                'tries': cls._num(send.get('tries'), cls.TRIES, 'Попыток отправки'),
             }
         return new
 

@@ -371,7 +371,7 @@ class PartiesController(Controller):
     @route(r'/api/check')
     def check(self) -> None:
         return self.send_json(
-            cp().check(self.q.get('inn', ''), force=self.q.get('force') == '1', by=admin.actor(self.h)[1])
+            cp().check(self.q.get('inn', ''), force=self.q.get('force') == '1', author=admin.actor(self.h)[1])
         )
 
     @route(r'/api/integrations/export', 'GET')  # резервная копия ключей (только администратор — см. admin.guard)
@@ -1023,7 +1023,7 @@ class ToolsController(Controller):
         return self.send(
             200,
             'text/javascript; charset=utf-8',
-            StationRules(store()).js().encode('utf-8'),
+            StationRules(store()).json_text().encode('utf-8'),
             {'Cache-Control': 'no-cache'},
         )
 

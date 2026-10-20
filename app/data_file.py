@@ -18,7 +18,7 @@ class XmlTree:
 
     @classmethod
     def el(cls, tag, v, attrs='', depth=0) -> str:
-        nl = '\n' if depth < 3 else ''
+        newline = '\n' if depth < 3 else ''
         if v is None:
             return f'<{tag}{attrs} t="z"/>'
         if isinstance(v, bool):
@@ -26,44 +26,44 @@ class XmlTree:
         if isinstance(v, (int, float)):
             return f'<{tag}{attrs} t="n">{json.dumps(v)}</{tag}>'
         if isinstance(v, dict):
-            inner = ''.join(cls.el('f', x, f' n={quoteattr(str(k))}', depth + 1) + nl for k, x in v.items())
-            return f'<{tag}{attrs} t="o">{nl}{inner}</{tag}>'
+            inner = ''.join(cls.el('f', x, f' n={quoteattr(str(k))}', depth + 1) + newline for k, x in v.items())
+            return f'<{tag}{attrs} t="o">{newline}{inner}</{tag}>'
         if isinstance(v, (list, tuple)):
-            inner = ''.join(cls.el('i', x, '', depth + 1) + nl for x in v)
-            return f'<{tag}{attrs} t="a">{nl}{inner}</{tag}>'
-        s = str(v)
-        if cls.RAW.search(s):
-            return f'<{tag}{attrs} t="e">{escape(json.dumps(s))}</{tag}>'
-        return f'<{tag}{attrs}>{escape(s)}</{tag}>'
+            inner = ''.join(cls.el('i', x, '', depth + 1) + newline for x in v)
+            return f'<{tag}{attrs} t="a">{newline}{inner}</{tag}>'
+        text = str(v)
+        if cls.RAW.search(text):
+            return f'<{tag}{attrs} t="e">{escape(json.dumps(text))}</{tag}>'
+        return f'<{tag}{attrs}>{escape(text)}</{tag}>'
 
     @classmethod
-    def value(cls, e) -> object:
-        t = e.get('t')
-        if t == 'z':
+    def value(cls, elem) -> object:
+        type_attr = elem.get('t')
+        if type_attr == 'z':
             return None
-        if t == 'b':
-            return (e.text or '').strip() == 'true'
-        if t in ('n', 'e'):
-            v = json.loads(e.text or 'null', parse_constant=lambda x: None)  # NaN, Infinity — не числа
+        if type_attr == 'b':
+            return (elem.text or '').strip() == 'true'
+        if type_attr in ('n', 'e'):
+            v = json.loads(elem.text or 'null', parse_constant=lambda x: None)  # NaN, Infinity — не числа
             if isinstance(v, float) and not math.isfinite(v):
                 return None
             return v
-        if t == 'o':
-            return {c.get('n') or '': cls.value(c) for c in e}
-        if t == 'a':
-            return [cls.value(c) for c in e]
-        return e.text or ''
+        if type_attr == 'o':
+            return {child.get('n') or '': cls.value(child) for child in elem}
+        if type_attr == 'a':
+            return [cls.value(child) for child in elem]
+        return elem.text or ''
 
     @staticmethod
     def parse(data) -> object:
-        import xml.etree.ElementTree as ET
+        from xml.etree import ElementTree
 
         if b'<!DOCTYPE' in data or b'<!ENTITY' in data:
             raise ValueError('Файл XML с объявлениями DOCTYPE/ENTITY не принимается')
         try:
-            root = ET.fromstring(data)
-        except ET.ParseError as e:
-            raise ValueError(f'Файл XML повреждён: {e}') from e
+            root = ElementTree.fromstring(data)
+        except ElementTree.ParseError as elem:
+            raise ValueError(f'Файл XML повреждён: {elem}') from elem
         node = root if root.tag == 'kp_data' else root.find('kp_data')
         if node is None:
             raise ValueError(
@@ -138,11 +138,11 @@ class XlsxData:
 
     @staticmethod
     def col(i) -> str:
-        s, i = '', i + 1
+        label, i = '', i + 1
         while i:
-            i, r = divmod(i - 1, 26)
-            s = chr(65 + r) + s
-        return s
+            i, rest = divmod(i - 1, 26)
+            label = chr(65 + rest) + label
+        return label
 
     @staticmethod
     def _num_ok(v) -> bool:
@@ -157,8 +157,8 @@ class XlsxData:
     def _columns(self, rows) -> list:
         """Столбцы таблицы: [(ключ строки 2, путь (k,) или (k, sub), json?)]; вложенные объекты — раскрыты одним уровнем."""
         order, vals = [], {}
-        for r in rows:
-            for k, v in r.items():
+        for rec in rows:
+            for k, v in rec.items():
                 if k not in vals:
                     order.append(k)
                     vals[k] = []
@@ -168,36 +168,38 @@ class XlsxData:
         for k in order:
             if not self.KEY.match(str(k)):
                 continue  # ключ с «.» или «:» — в общем столбце «_more:json»
-            vs = vals[k]
+            values = vals[k]
             subs = {}
-            flat = all(isinstance(v, dict) and v for v in vs) and all(self.KEY.match(str(s)) for v in vs for s in v)
+            flat = all(isinstance(v, dict) and v for v in values) and all(
+                self.KEY.match(str(key)) for v in values for key in v
+            )
             if flat:
-                for v in vs:
-                    for s in v:
-                        subs.setdefault(s, None)
+                for v in values:
+                    for key in v:
+                        subs.setdefault(key, None)
                 flat = len(subs) <= 300
             if flat:
-                for s in subs:
-                    js = not all(self._plain(v[s]) for v in vs if s in v)
-                    out.append(('{}.{}{}'.format(k, s, ':json' if js else ''), (k, s), js))
+                for key in subs:
+                    is_json = not all(self._plain(v[key]) for v in values if key in v)
+                    out.append(('{}.{}{}'.format(k, key, ':json' if is_json else ''), (k, key), is_json))
             else:
-                js = not all(self._plain(x) for x in vs)
-                out.append(('{}{}'.format(k, ':json' if js else ''), (k,), js))
+                is_json = not all(self._plain(x) for x in values)
+                out.append(('{}{}'.format(k, ':json' if is_json else ''), (k,), is_json))
         if any(not self.KEY.match(str(k)) for k in order):
             out.append(('_more:json', ('_more',), True))
         return out
 
     def _cell(self, ref, v, style=0) -> str:
-        st = f' s="{style}"' if style else ''
+        style_attr = f' s="{style}"' if style else ''
         if isinstance(v, bool):
-            return f'<c r="{ref}" t="b"{st}><v>{1 if v else 0}</v></c>'
+            return f'<c r="{ref}" t="b"{style_attr}><v>{1 if v else 0}</v></c>'
         if self._num_ok(v):
-            return f'<c r="{ref}"{st}><v>{repr(v) if isinstance(v, float) else v}</v></c>'
-        s = str(v)
-        if len(s) > self.CELL:
-            self.long.append(s)
-            s = self.LONG % (len(self.long) - 1)
-        return f'<c r="{ref}" t="inlineStr"{st}><is><t xml:space="preserve">{escape(s)}</t></is></c>'
+            return f'<c r="{ref}"{style_attr}><v>{repr(v) if isinstance(v, float) else v}</v></c>'
+        text = str(v)
+        if len(text) > self.CELL:
+            self.long.append(text)
+            text = self.LONG % (len(self.long) - 1)
+        return f'<c r="{ref}" t="inlineStr"{style_attr}><is><t xml:space="preserve">{escape(text)}</t></is></c>'
 
     def _sheet(self, rows, freeze=2, widths=None, file_no=None) -> int:
         """Лист в архив книги — построчно, без строки XML всего листа (20 000 позиций занимали сотни МБ памяти)."""
@@ -205,7 +207,8 @@ class XlsxData:
             self.files += 1
             file_no = self.files
         cols = ''.join(
-            f'<col min="{i + 1}" max="{i + 1}" width="{w}" customWidth="1"/>' for i, w in enumerate(widths or [])
+            f'<col min="{i + 1}" max="{i + 1}" width="{width}" customWidth="1"/>'
+            for i, width in enumerate(widths or [])
         )
         pane = (
             (
@@ -215,8 +218,8 @@ class XlsxData:
             if freeze
             else ''
         )
-        with self.z.open(f'xl/worksheets/sheet{file_no}.xml', 'w', force_zip64=True) as f:
-            f.write(
+        with self.z.open(f'xl/worksheets/sheet{file_no}.xml', 'w', force_zip64=True) as handle:
+            handle.write(
                 (
                     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
                     + pane
@@ -224,30 +227,30 @@ class XlsxData:
                     + '<sheetData>'
                 ).encode('utf-8')
             )
-            for n, r in enumerate(rows, 1):
-                style = 1 if n == 1 else 2 if n == 2 and freeze == 2 else 0
-                f.write(
+            for row_no, row in enumerate(rows, 1):
+                style = 1 if row_no == 1 else 2 if row_no == 2 and freeze == 2 else 0
+                handle.write(
                     (
-                        f'<row r="{n}">'
+                        f'<row r="{row_no}">'
                         + ''.join(
-                            self._cell(f'{self.col(i)}{n}', v, style)
-                            for i, v in enumerate(r)
+                            self._cell(f'{self.col(i)}{row_no}', v, style)
+                            for i, v in enumerate(row)
                             if v is not None and v != ''
                         )
                         + '</row>'
                     ).encode('utf-8')
                 )
-            f.write(b'</sheetData></worksheet>')
+            handle.write(b'</sheetData></worksheet>')
         return file_no
 
     def _name(self, title) -> str:
-        n = re.sub(r'[\[\]:*?/\\]', ' ', str(title)).strip()[:31] or 'Лист'
-        base, k = n, 2
-        while n.lower() in self.used:
-            n = (base[:26] + f' ({k})')[:31]
+        name = re.sub(r'[\[\]:*?/\\]', ' ', str(title)).strip()[:31] or 'Лист'
+        base, k = name, 2
+        while name.lower() in self.used:
+            name = (base[:26] + f' ({k})')[:31]
             k += 1
-        self.used.add(n.lower())
-        return n
+        self.used.add(name.lower())
+        return name
 
     def _table(self, title, path, recs) -> None:
         cols = self._columns(recs)
@@ -261,29 +264,32 @@ class XlsxData:
         def rows() -> Iterator[list]:
             yield head
             yield keys
-            for r in recs:
+            for rec in recs:
                 row = []
-                for _, p, js in cols:
-                    if p == ('_more',):
-                        more = {k: v for k, v in r.items() if not self.KEY.match(str(k))}
+                for _, col_path, is_json in cols:
+                    if col_path == ('_more',):
+                        more = {k: v for k, v in rec.items() if not self.KEY.match(str(k))}
                         row.append(json.dumps(more, ensure_ascii=False) if more else None)
                         continue
-                    if p[0] not in r or (len(p) == 2 and (not isinstance(r[p[0]], dict) or p[1] not in r[p[0]])):
+                    if col_path[0] not in rec or (
+                        len(col_path) == 2
+                        and (not isinstance(rec[col_path[0]], dict) or col_path[1] not in rec[col_path[0]])
+                    ):
                         row.append(None)  # поля нет — пустая ячейка
                         continue
-                    v = r[p[0]] if len(p) == 1 else r[p[0]][p[1]]
-                    row.append(json.dumps(v, ensure_ascii=False) if js else v)
+                    v = rec[col_path[0]] if len(col_path) == 1 else rec[col_path[0]][col_path[1]]
+                    row.append(json.dumps(v, ensure_ascii=False) if is_json else v)
                 yield row
 
-        widths = [min(50, max(10, len(str(h)) + 2)) for h in head]
+        widths = [min(50, max(10, len(str(head_cell)) + 2)) for head_cell in head]
         name = self._name(title)
         self.sheets.append((name, self._sheet(rows(), 2, widths), False))
         self.map.append(['table', name, path])
 
-    def _kv(self, title, path, d) -> None:
+    def _pairs(self, title, path, data) -> None:
         name = self._name(title)
         rows = [['Ключ', 'Значение'], ['_key', '_value:json']] + [
-            [k, json.dumps(v, ensure_ascii=False)] for k, v in d.items()
+            [k, json.dumps(v, ensure_ascii=False)] for k, v in data.items()
         ]
         self.sheets.append((name, self._sheet(rows, 2, [30, 80]), False))
         self.map.append(['kv', name, path])
@@ -312,34 +318,38 @@ class XlsxData:
     def _dump(self, doc) -> None:
         sec = doc.get('sections') if isinstance(doc.get('sections'), dict) else {}
         loose = {}
-        for s, v in sec.items():
-            title = self.SECTION.get(s, s)
+        for sec_key, v in sec.items():
+            title = self.SECTION.get(sec_key, sec_key)
             if self._records(v):
-                self._table(title, [s], v)
+                self._table(title, [sec_key], v)
             elif isinstance(v, dict):
                 rest = {}
                 for k, x in v.items():
                     if self._records(x) and x:
-                        self._table(f'{title} · {self.SECTION.get(k, k)}' if k != s else title, [s, k], x)
+                        self._table(f'{title} · {self.SECTION.get(k, k)}' if k != sec_key else title, [sec_key, k], x)
                     else:
                         rest[k] = x
-                if rest or not any(m[2][:1] == [s] for m in self.map):
-                    self._kv(title if not any(m[2][:1] == [s] for m in self.map) else title + ' · прочее', [s], rest)
+                if rest or not any(item[2][:1] == [sec_key] for item in self.map):
+                    self._pairs(
+                        title if not any(item[2][:1] == [sec_key] for item in self.map) else title + ' · прочее',
+                        [sec_key],
+                        rest,
+                    )
             else:
-                loose[s] = v
+                loose[sec_key] = v
         if loose:
-            self._kv('Прочее', [], loose)
+            self._pairs('Прочее', [], loose)
         meta = {k: v for k, v in doc.items() if k != 'sections'}
-        kp = [['что', 'лист', 'путь'], ['meta', '', json.dumps(meta, ensure_ascii=False)]] + [
-            [m[0], m[1], json.dumps(m[2], ensure_ascii=False)] for m in self.map
+        meta_rows = [['что', 'лист', 'путь'], ['meta', '', json.dumps(meta, ensure_ascii=False)]] + [
+            [item[0], item[1], json.dumps(item[2], ensure_ascii=False)] for item in self.map
         ]
-        kp_no = self._sheet(kp, 0)
+        kp_no = self._sheet(meta_rows, 0)
         info = self._sheet(self._info(doc), 0, [28, 90], file_no=1)
         long_no = self._sheet(
             (
-                [i, n, s[j : j + self.CELL]]
-                for i, s in enumerate(self.long)
-                for n, j in enumerate(range(0, len(s), self.CELL))
+                [i, part_no, sec_key[j : j + self.CELL]]
+                for i, sec_key in enumerate(self.long)
+                for part_no, j in enumerate(range(0, len(sec_key), self.CELL))
             ),
             0,
         )
@@ -375,27 +385,27 @@ class XlsxData:
     @staticmethod
     def _count(doc, path) -> int:
         v = doc.get('sections') or {}
-        for p in path:
-            v = v.get(p) if isinstance(v, dict) else None
+        for step in path:
+            v = v.get(step) if isinstance(v, dict) else None
         return len(v) if isinstance(v, list) else 0
 
     @staticmethod
-    def _sheet_tag(no: int, name: str, hidden: bool) -> str:
+    def _sheet_tag(num: int, name: str, hidden: bool) -> str:
         name = escape(name, {'"': '&quot;'})
         state = ' state="hidden"' if hidden else ''
-        return f'<sheet name="{name}" sheetId="{no}"{state} r:id="rId{no}"/>'
+        return f'<sheet name="{name}" sheetId="{num}"{state} r:id="rId{num}"/>'
 
     def _book(self, sheets) -> None:
         """Служебные части книги; sheets — [(имя, номер файла листа, скрыт)] в порядке листов."""
-        n = len(sheets)
-        ct = (
+        count = len(sheets)
+        content_types = (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
             '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
             '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
             + ''.join(
-                f'<Override PartName="/xl/worksheets/sheet{no}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-                for _, no, _ in sheets
+                f'<Override PartName="/xl/worksheets/sheet{num}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+                for _, num, _ in sheets
             )
             + '</Types>'
         )
@@ -403,19 +413,19 @@ class XlsxData:
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
             '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'
         )
-        wb = (
+        workbook = (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
             'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
-            + ''.join(self._sheet_tag(i + 1, nm, hid) for i, (nm, _, hid) in enumerate(sheets))
+            + ''.join(self._sheet_tag(i + 1, name_match, hid) for i, (name_match, _, hid) in enumerate(sheets))
             + '</sheets></workbook>'
         )
         wrels = (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
             + ''.join(
-                f'<Relationship Id="rId{i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{no}.xml"/>'
-                for i, (_, no, _) in enumerate(sheets)
+                f'<Relationship Id="rId{i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{num}.xml"/>'
+                for i, (_, num, _) in enumerate(sheets)
             )
-            + f'<Relationship Id="rId{n + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'
+            + f'<Relationship Id="rId{count + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'
         )
         styles = (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
@@ -426,28 +436,28 @@ class XlsxData:
             '<cellXfs count="3"><xf/><xf fontId="1" applyFont="1"/><xf fontId="2" applyFont="1"/></cellXfs></styleSheet>'
         )
         z = self.z
-        z.writestr('[Content_Types].xml', ct)
+        z.writestr('[Content_Types].xml', content_types)
         z.writestr('_rels/.rels', rels)
-        z.writestr('xl/workbook.xml', wb)
+        z.writestr('xl/workbook.xml', workbook)
         z.writestr('xl/_rels/workbook.xml.rels', wrels)
         z.writestr('xl/styles.xml', styles)
 
     @staticmethod
-    def _text(s) -> str:
+    def _text(text) -> str:
         import html
 
-        return html.unescape(s)
+        return html.unescape(text)
 
     @classmethod
     def sheets(cls, z) -> list:
         """{имя листа: {номер строки: {номер столбца: значение с типом}}}."""
         names = set(z.namelist())
-        ss = []
+        strings = []
         if 'xl/sharedStrings.xml' in names:
             x = z.read('xl/sharedStrings.xml').decode('utf-8', 'replace')
-            for si in re.findall(r'<si>(.*?)</si>', x, re.S):
-                ss.append(cls._text(''.join(re.findall(r'<t[^>]*>(.*?)</t>', si, re.S))))
-        wb = z.read('xl/workbook.xml').decode('utf-8', 'replace')
+            for item in re.findall(r'<si>(.*?)</si>', x, re.S):
+                strings.append(cls._text(''.join(re.findall(r'<t[^>]*>(.*?)</t>', item, re.S))))
+        workbook = z.read('xl/workbook.xml').decode('utf-8', 'replace')
         rels = (
             z.read('xl/_rels/workbook.xml.rels').decode('utf-8', 'replace')
             if 'xl/_rels/workbook.xml.rels' in names
@@ -455,71 +465,74 @@ class XlsxData:
         )
         rid = {}
         for rel in re.findall(r'<Relationship [^>]*>', rels):
-            i, t = re.search(r'\bId="([^"]+)"', rel), re.search(r'\bTarget="([^"]+)"', rel)
-            if i and t:
-                rid[i.group(1)] = t.group(1)
+            i, id_match = re.search(r'\bId="([^"]+)"', rel), re.search(r'\bTarget="([^"]+)"', rel)
+            if i and id_match:
+                rid[i.group(1)] = id_match.group(1)
         out = {}
-        for m in re.finditer(r'<sheet\b[^>]*>', wb):
-            nm, ri = re.search(r'\bname="([^"]*)"', m.group(0)), re.search(r'\br:id="([^"]+)"', m.group(0))
-            if not nm or not ri:
+        for part in re.finditer(r'<sheet\b[^>]*>', workbook):
+            name_match, rel_id = (
+                re.search(r'\bname="([^"]*)"', part.group(0)),
+                re.search(r'\br:id="([^"]+)"', part.group(0)),
+            )
+            if not name_match or not rel_id:
                 continue
-            target = rid.get(ri.group(1), '')
-            p = target.lstrip('/') if target.startswith('/') else 'xl/' + re.sub(r'^(\./)?(xl/)?', '', target)
-            if p not in names:
+            target = rid.get(rel_id.group(1), '')
+            path = target.lstrip('/') if target.startswith('/') else 'xl/' + re.sub(r'^(\./)?(xl/)?', '', target)
+            if path not in names:
                 continue
-            x = z.read(p).decode('utf-8', 'replace')
+            x = z.read(path).decode('utf-8', 'replace')
             rows = {}
-            for rm in re.finditer(r'<row\b([^>]*?)(?:/>|>(.*?)</row>)', x, re.S):
-                rn = re.search(r'\br="(\d+)"', rm.group(1))
-                rn = int(rn.group(1)) if rn else len(rows) + 1
+            for row_match in re.finditer(r'<row\b([^>]*?)(?:/>|>(.*?)</row>)', x, re.S):
+                row_num = re.search(r'\br="(\d+)"', row_match.group(1))
+                row_num = int(row_num.group(1)) if row_num else len(rows) + 1
                 cells = {}
-                for cm in re.finditer(r'<c\b([^>]*?)(?:/>|>(.*?)</c>)', rm.group(2) or '', re.S):
-                    attrs, inner = cm.group(1), cm.group(2) or ''
+                for cell_match in re.finditer(r'<c\b([^>]*?)(?:/>|>(.*?)</c>)', row_match.group(2) or '', re.S):
+                    attrs, inner = cell_match.group(1), cell_match.group(2) or ''
                     ref = re.search(r'\br="([A-Z]+)\d*"', attrs)
-                    ci = cls._ci(ref.group(1)) if ref else len(cells)
-                    t = re.search(r'\bt="(\w+)"', attrs)
-                    t = t.group(1) if t else 'n'
-                    if t == 'inlineStr':
+                    col_ix = cls._col_index(ref.group(1)) if ref else len(cells)
+                    id_match = re.search(r'\bt="(\w+)"', attrs)
+                    id_match = id_match.group(1) if id_match else 'n'
+                    if id_match == 'inlineStr':
                         v = cls._text(''.join(re.findall(r'<t[^>]*>(.*?)</t>', inner, re.S)))
                     else:
-                        vm = re.search(r'<v>(.*?)</v>', inner, re.S)
-                        if not vm:
+                        val_match = re.search(r'<v>(.*?)</v>', inner, re.S)
+                        if not val_match:
                             continue
-                        v = cls._text(vm.group(1))
-                        if t == 's':
+                        v = cls._text(val_match.group(1))
+                        if id_match == 's':
                             try:
-                                v = ss[int(v)]
+                                v = strings[int(v)]
                             except (ValueError, IndexError):
                                 continue
-                        elif t == 'b':
+                        elif id_match == 'b':
                             v = v.strip() == '1'
-                        elif t == 'n':
+                        elif id_match == 'n':
                             v = cls._number(v)
                     if v != '':
-                        cells[ci] = v
-                rows[rn] = cells
-            out[cls._text(nm.group(1))] = rows
+                        cells[col_ix] = v
+                rows[row_num] = cells
+            out[cls._text(name_match.group(1))] = rows
         return out
 
     @staticmethod
-    def _ci(letters) -> int:
-        n = 0
-        for ch in letters:
-            n = n * 26 + ord(ch) - 64
-        return n - 1
+    def _col_index(letters) -> int:
+        num = 0
+        for char in letters:
+            num = num * 26 + ord(char) - 64
+        return num - 1
 
     @staticmethod
-    def _number(s) -> int | float | str:
-        s = s.strip()
-        if re.match(r'^-?\d{1,15}$', s):
-            return int(s)
+    def _number(text) -> int | float | str:
+        text = text.strip()
+        if re.match(r'^-?\d{1,15}$', text):
+            return int(text)
         try:
-            f = float(s)
+            num = float(text)
         except ValueError:
-            return s
-        if not math.isfinite(f):  # «nan», «inf» в ячейке — текст, а не число
-            return s
-        return int(f) if f.is_integer() and abs(f) < 1e15 and not re.search(r'[.eE]', s) else f
+            return text
+        if not math.isfinite(num):  # «nan», «inf» в ячейке — текст, а не число
+            return text
+        return int(num) if num.is_integer() and abs(num) < 1e15 and not re.search(r'[.eE]', text) else num
 
     def load(self, data) -> dict:
         try:
@@ -533,27 +546,27 @@ class XlsxData:
                 'Это не книга, выгруженная из программы: нет служебного листа «_kp» (не удаляйте скрытые листы)'
             )
         longs = {}
-        for r in sorted(book.get(self.LONG_SHEET, {}).items()):
-            c = r[1]
-            if isinstance(c.get(0), int) and isinstance(c.get(1), int):
-                longs.setdefault(c[0], {})[c[1]] = str(c.get(2, ''))
-        longs = {i: ''.join(p[k] for k in sorted(p)) for i, p in longs.items()}
+        for long_row in sorted(book.get(self.LONG_SHEET, {}).items()):
+            cell = long_row[1]
+            if isinstance(cell.get(0), int) and isinstance(cell.get(1), int):
+                longs.setdefault(cell[0], {})[cell[1]] = str(cell.get(2, ''))
+        longs = {i: ''.join(part[k] for k in sorted(part)) for i, part in longs.items()}
 
         def full(v) -> str:
             if isinstance(v, str):
-                m = self.LONG_RE.match(v)
-                if m:
-                    return longs.get(int(m.group(1)), '')
+                part = self.LONG_RE.match(v)
+                if part:
+                    return longs.get(int(part.group(1)), '')
             return v
 
         meta, maps = None, []
-        for _, c in sorted(book[self.META].items()):
-            kind = c.get(0)
+        for _, cell in sorted(book[self.META].items()):
+            kind = cell.get(0)
             if kind == 'meta':
-                meta = json.loads(full(c.get(2)) or '{}', parse_constant=DataFile.no_const)
+                meta = json.loads(full(cell.get(2)) or '{}', parse_constant=DataFile.no_const)
             elif kind in ('table', 'kv'):
                 maps.append(
-                    (kind, full(c.get(1)), json.loads(full(c.get(2)) or '[]', parse_constant=DataFile.no_const))
+                    (kind, full(cell.get(1)), json.loads(full(cell.get(2)) or '[]', parse_constant=DataFile.no_const))
                 )
         if not isinstance(meta, dict):
             raise ValueError('Служебный лист «_kp» повреждён')
@@ -562,65 +575,65 @@ class XlsxData:
             rows = book.get(name)
             if rows is None:
                 raise ValueError(f'В книге нет листа «{name}» — не переименовывайте и не удаляйте листы')
-            keys = {c: str(k).strip() for c, k in (rows.get(2) or {}).items() if str(k).strip()}
+            keys = {cell: str(k).strip() for cell, k in (rows.get(2) or {}).items() if str(k).strip()}
             recs = []
-            for rn in sorted(r for r in rows if r > 2):
+            for row_num in sorted(long_row for long_row in rows if long_row > 2):
                 rec = {}
-                for c, key in keys.items():
-                    if c not in rows[rn]:
+                for cell, key in keys.items():
+                    if cell not in rows[row_num]:
                         continue
-                    v = full(rows[rn][c])
-                    js = key.endswith(':json')
-                    k = key[:-5] if js else key
-                    if js and isinstance(v, str):
+                    v = full(rows[row_num][cell])
+                    is_json = key.endswith(':json')
+                    k = key[:-5] if is_json else key
+                    if is_json and isinstance(v, str):
                         try:
                             v = json.loads(v, parse_constant=DataFile.no_const)
                         except ValueError:
                             raise ValueError(
-                                f'Лист «{name}», ячейка {self.col(c)}{rn}: значение не в формате JSON'
+                                f'Лист «{name}», ячейка {self.col(cell)}{row_num}: значение не в формате JSON'
                             ) from None
                     if k == '_more' and isinstance(v, dict):
                         rec.update(v)
                         continue
                     if '.' in k and kind == 'table':
-                        a, b = k.split('.', 1)
-                        if not isinstance(rec.get(a), dict):
-                            rec[a] = {}
-                        rec[a][b] = v
+                        head, tail = k.split('.', 1)
+                        if not isinstance(rec.get(head), dict):
+                            rec[head] = {}
+                        rec[head][tail] = v
                     else:
                         rec[k] = v
                 recs.append(rec)
             if kind == 'table':
                 self._put(doc['sections'], path, recs)
             else:
-                d = {}
+                target = {}
                 for rec in recs:
                     if '_key' in rec:
-                        d[str(rec['_key'])] = rec.get('_value')
+                        target[str(rec['_key'])] = rec.get('_value')
                 if path:
                     cur = self._get(doc['sections'], path)
                     if isinstance(cur, dict):
-                        cur.update(d)
+                        cur.update(target)
                     else:
-                        self._put(doc['sections'], path, d)
+                        self._put(doc['sections'], path, target)
                 else:
-                    doc['sections'].update(d)
+                    doc['sections'].update(target)
         return doc
 
     @staticmethod
     def _get(root, path) -> object:
         v = root
-        for p in path:
-            v = v.get(p) if isinstance(v, dict) else None
+        for step in path:
+            v = v.get(step) if isinstance(v, dict) else None
         return v
 
     @staticmethod
     def _put(root, path, v) -> None:
         cur = root
-        for p in path[:-1]:
-            if not isinstance(cur.get(p), dict):
-                cur[p] = {}
-            cur = cur[p]
+        for step in path[:-1]:
+            if not isinstance(cur.get(step), dict):
+                cur[step] = {}
+            cur = cur[step]
         if isinstance(cur.get(path[-1]), dict) and isinstance(v, dict):
             cur[path[-1]].update(v)
         else:
@@ -634,7 +647,7 @@ class YmlData:
         self.base, self.types = (base_url or '').rstrip('/'), types or {}
 
     @staticmethod
-    def _t(tag, v, attrs='') -> str:
+    def _tag(tag, v, attrs='') -> str:
         if v in (None, ''):
             return ''
         return '<{}{}>{}</{}>'.format(tag, attrs, escape(XmlTree.RAW.sub(' ', str(v))), tag)
@@ -647,29 +660,34 @@ class YmlData:
         return src if re.match(r'^https?://', src, re.I) else ''
 
     def dump(self, doc) -> bytes:
-        t = self._t
+        tag = self._tag
         items = (doc.get('sections') or {}).get('catalog')
         items = items if isinstance(items, list) else []
-        cats, cur = {}, lambda c: 'RUR' if c in ('RUB', 'RUR', '', None) else str(c)
+        cats, cur = {}, lambda code: 'RUR' if code in ('RUB', 'RUR', '', None) else str(code)
         for x in items:
-            c = str(((x.get('attrs') or {}) if isinstance(x, dict) else {}).get('cat') or '')
-            cats.setdefault(c, len(cats) + 1)
+            cur_code = str(((x.get('attrs') or {}) if isinstance(x, dict) else {}).get('cat') or '')
+            cats.setdefault(cur_code, len(cats) + 1)
         curs = sorted({cur(x.get('priceCur')) for x in items if isinstance(x, dict) and x.get('price')} | {'RUR'})
         out = [
             '<?xml version="1.0" encoding="UTF-8"?>',
             '<yml_catalog date={}><shop>'.format(quoteattr(datetime.now().strftime('%Y-%m-%dT%H:%M'))),
-            t('name', 'Каталог'),
-            t('company', 'Каталог'),
-            t('url', self.base or 'http://localhost'),
+            tag('name', 'Каталог'),
+            tag('company', 'Каталог'),
+            tag('url', self.base or 'http://localhost'),
             '<currencies>'
             + ''.join(
-                '<currency id={} rate={}/>'.format(quoteattr(c), quoteattr('1' if c == 'RUR' else 'CBRF')) for c in curs
+                '<currency id={} rate={}/>'.format(quoteattr(cur_code), quoteattr('1' if cur_code == 'RUR' else 'CBRF'))
+                for cur_code in curs
             )
             + '</currencies>',
             '<categories>'
             + ''.join(
-                t('category', (self.types.get(c) or {}).get('name') or c or 'Без категории', f' id="{i}"')
-                for c, i in cats.items()
+                tag(
+                    'category',
+                    (self.types.get(cur_code) or {}).get('name') or cur_code or 'Без категории',
+                    f' id="{i}"',
+                )
+                for cur_code, i in cats.items()
             )
             + '</categories>',
             '<offers>',
@@ -677,29 +695,31 @@ class YmlData:
         for x in items:
             if not isinstance(x, dict) or not x.get('id'):
                 continue
-            a = x.get('attrs') if isinstance(x.get('attrs'), dict) else {}
+            attrs = x.get('attrs') if isinstance(x.get('attrs'), dict) else {}
             fields = {
-                f.get('key'): f for f in (self.types.get(a.get('cat')) or {}).get('fields') or [] if isinstance(f, dict)
+                field.get('key'): field
+                for field in (self.types.get(attrs.get('cat')) or {}).get('fields') or []
+                if isinstance(field, dict)
             }
-            st = x.get('stock') if isinstance(x.get('stock'), dict) else None
-            q = (
-                st.get('qty')
-                if st and isinstance(st.get('qty'), (int, float)) and not isinstance(st.get('qty'), bool)
+            stock = x.get('stock') if isinstance(x.get('stock'), dict) else None
+            qty = (
+                stock.get('qty')
+                if stock and isinstance(stock.get('qty'), (int, float)) and not isinstance(stock.get('qty'), bool)
                 else None
             )
             avail = (
                 ''
-                if st is None
-                else f' available="{"true" if (q or 0) > 0 or (q is None and st.get("available")) else "false"}"'
+                if stock is None
+                else f' available="{"true" if (qty or 0) > 0 or (qty is None and stock.get("available")) else "false"}"'
             )
             pics = [
-                p
-                for p in [self._pic((x.get('photo') or {}).get('src') if isinstance(x.get('photo'), dict) else '')]
-                + [self._pic(g.get('src')) for g in (x.get('gallery') or []) if isinstance(g, dict)]
-                if p
+                pic
+                for pic in [self._pic((x.get('photo') or {}).get('src') if isinstance(x.get('photo'), dict) else '')]
+                + [self._pic(gal.get('src')) for gal in (x.get('gallery') or []) if isinstance(gal, dict)]
+                if pic
             ]
             params = ''.join(
-                t(
+                tag(
                     'param',
                     v,
                     ' name={}{}'.format(
@@ -707,7 +727,7 @@ class YmlData:
                         ' unit={}'.format(quoteattr(fields[k]['unit'])) if (fields.get(k) or {}).get('unit') else '',
                     ),
                 )
-                for k, v in a.items()
+                for k, v in attrs.items()
                 if k not in ('cat', 'maker', 'model', 'series', 'article')
                 and isinstance(v, (str, int, float))
                 and not isinstance(v, bool)
@@ -715,17 +735,17 @@ class YmlData:
             rrc = x.get('rrc') if isinstance(x.get('rrc'), dict) else {}
             out.append(
                 '<offer id={}{}>'.format(quoteattr(str(x['id'])), avail)
-                + t('name', x.get('name'))
-                + t('vendor', a.get('maker'))
-                + t('model', a.get('model') or x.get('name'))
-                + t('vendorCode', a.get('article'))
-                + (t('price', x.get('price')) + t('currencyId', cur(x.get('priceCur'))) if x.get('price') else '')
-                + t('categoryId', cats.get(str(a.get('cat') or '')))
-                + ''.join(t('picture', p) for p in dict.fromkeys(pics))
-                + t('description', x.get('spec'))
+                + tag('name', x.get('name'))
+                + tag('vendor', attrs.get('maker'))
+                + tag('model', attrs.get('model') or x.get('name'))
+                + tag('vendorCode', attrs.get('article'))
+                + (tag('price', x.get('price')) + tag('currencyId', cur(x.get('priceCur'))) if x.get('price') else '')
+                + tag('categoryId', cats.get(str(attrs.get('cat') or '')))
+                + ''.join(tag('picture', pic) for pic in dict.fromkeys(pics))
+                + tag('description', x.get('spec'))
                 + params
                 + (
-                    t('param', rrc.get('price'), ' name="РРЦ" unit={}'.format(quoteattr(rrc.get('cur') or 'RUB')))
+                    tag('param', rrc.get('price'), ' name="РРЦ" unit={}'.format(quoteattr(rrc.get('cur') or 'RUB')))
                     if rrc.get('price')
                     else ''
                 )
@@ -778,8 +798,8 @@ class DataFile:
         if fmt == 'zip':
             from data_bundle import DataBundle
 
-            data, n, missing = DataBundle(self.img_dir or '.').pack(body)
-            return data, ext, ctype, {'images': n, 'missing': missing}
+            data, packed, missing = DataBundle(self.img_dir or '.').pack(body)
+            return data, ext, ctype, {'images': packed, 'missing': missing}
         if doc is None:
             doc = json.loads(body)
         if fmt == 'xlsx':
@@ -805,12 +825,12 @@ class DataFile:
                 with zipfile.ZipFile(io.BytesIO(data)) as z:
                     names = z.namelist()
                     if 'xl/workbook.xml' in names:
-                        wb = z.read('xl/workbook.xml').decode('utf-8', 'replace')
-                        return 'xlsx' if re.search(r'<sheet\b[^>]*\bname="_kp"', wb) else 'xlsx-patch'
+                        workbook = z.read('xl/workbook.xml').decode('utf-8', 'replace')
+                        return 'xlsx' if re.search(r'<sheet\b[^>]*\bname="_kp"', workbook) else 'xlsx-patch'
             except zipfile.BadZipFile:
                 raise ValueError('Архив повреждён или это не архив ZIP') from None
-            if any(n.lower().endswith(('.sqlite3', '.sqlite', '.db')) for n in names) and not any(
-                n.lower().endswith('.json') for n in names
+            if any(name.lower().endswith(('.sqlite3', '.sqlite', '.db')) for name in names) and not any(
+                name.lower().endswith('.json') for name in names
             ):
                 return 'sqlite-zip'
             return 'zip'

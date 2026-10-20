@@ -273,7 +273,7 @@ class Attention:
         from features import FeatureAccess
         from kp_track import Mailer
 
-        if not Mailer(self.store).on():
+        if not Mailer(self.store).enabled():
             if (self.store.kv_get('alerts') or {}).get('on'):
                 return [
                     {

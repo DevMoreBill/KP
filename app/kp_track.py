@@ -24,20 +24,20 @@ class Val:
         return datetime.now().isoformat(timespec='seconds')
 
     @staticmethod
-    def day(s) -> date | None:
+    def day(text) -> date | None:
         """'ГГГГ-ММ-ДД' → date или None."""
         try:
-            return datetime.strptime(str(s or '')[:10], '%Y-%m-%d').date()
+            return datetime.strptime(str(text or '')[:10], '%Y-%m-%d').date()
         except ValueError:
             return None
 
     @classmethod
-    def text(cls, v, n) -> str:
-        return cls.CTRL.sub('', str(v or '')).strip()[:n]
+    def text(cls, v, limit) -> str:
+        return cls.CTRL.sub('', str(v or '')).strip()[:limit]
 
     @classmethod
-    def email(cls, s) -> bool:
-        return bool(cls.EMAIL.match(s or ''))
+    def email(cls, text) -> bool:
+        return bool(cls.EMAIL.match(text or ''))
 
 
 class DealTrack:
@@ -57,64 +57,75 @@ class DealTrack:
     def __init__(self, store) -> None:
         self.store = store
 
-    def _log(self, tr, entry) -> None:
-        h = tr.get('history') if isinstance(tr.get('history'), list) else []
-        h.append(entry)
-        tr['history'] = h[-self.HISTORY_MAX :]
+    def _log(self, track, entry) -> None:
+        hist = track.get('history') if isinstance(track.get('history'), list) else []
+        hist.append(entry)
+        track['history'] = hist[-self.HISTORY_MAX :]
 
-    def update(self, kid: str, d, by: str) -> tuple:
+    def update(self, kid: str, data, author: str) -> tuple:
         """Изменить ход сделки: status, reason, note, followUp ({date, note} | {done: true} | None)."""
-        tr = self.store.kp_track_get(kid)
+        track = self.store.kp_track_get(kid)
         changed = {}
-        if 'status' in d:
-            changed.update(self._status(tr, d, by))
-        if 'followUp' in d:
-            changed.update(self._follow(tr, d.get('followUp'), by))
+        if 'status' in data:
+            changed.update(self._status(track, data, author))
+        if 'followUp' in data:
+            changed.update(self._follow(track, data.get('followUp'), author))
         if changed:
-            self._log(tr, dict(changed, at=Val.now(), by=by))
-            self.store.kp_track_set(kid, tr)
-        return tr, changed
+            self._log(track, dict(changed, at=Val.now(), by=author))
+            self.store.kp_track_set(kid, track)
+        return track, changed
 
-    def _status(self, tr, d, by: str) -> dict:
-        st = d.get('status') or 'new'
-        if st not in self.STATUS_KEYS:
+    def _status(self, track, data, author: str) -> dict:
+        status = data.get('status') or 'new'
+        if status not in self.STATUS_KEYS:
             raise ValueError('Неизвестный статус КП')
-        reason = Val.text(d.get('reason'), 200) if st == 'lost' else ''
-        note = Val.text(d.get('note'), 500)
-        if st == (tr.get('status') or 'new') and reason == (tr.get('reason') or '') and note == (tr.get('note') or ''):
+        reason = Val.text(data.get('reason'), 200) if status == 'lost' else ''
+        note = Val.text(data.get('note'), 500)
+        if (
+            status == (track.get('status') or 'new')
+            and reason == (track.get('reason') or '')
+            and note == (track.get('note') or '')
+        ):
             return {}
-        tr.update(status=st, reason=reason, note=note, at=Val.now(), by=by)
-        if st in ('won', 'lost') and isinstance(tr.get('followUp'), dict):
-            tr['followUp']['done'] = True  # сделка закрыта — напоминание больше не нужно
-        return {'status': st, 'reason': reason, 'note': note}
+        track.update(status=status, reason=reason, note=note, at=Val.now(), by=author)
+        if status in ('won', 'lost') and isinstance(track.get('followUp'), dict):
+            track['followUp']['done'] = True  # сделка закрыта — напоминание больше не нужно
+        return {'status': status, 'reason': reason, 'note': note}
 
-    def _follow(self, tr, fu, by: str) -> dict:
-        if fu is None:
-            tr.pop('followUp', None)
+    def _follow(self, track, follow, author: str) -> dict:
+        if follow is None:
+            track.pop('followUp', None)
             return {'followUp': None}
-        if not isinstance(fu, dict):
+        if not isinstance(follow, dict):
             raise ValueError('Напоминание: нужна дата')
-        if fu.get('done'):
-            if isinstance(tr.get('followUp'), dict):
-                tr['followUp']['done'] = True
+        if follow.get('done'):
+            if isinstance(track.get('followUp'), dict):
+                track['followUp']['done'] = True
             return {'followUp': 'выполнено'}
-        dt = Val.day(fu.get('date'))
-        if not dt:
+        day = Val.day(follow.get('date'))
+        if not day:
             raise ValueError('Дата напоминания — в формате ГГГГ-ММ-ДД')
-        tr['followUp'] = {'date': dt.isoformat(), 'note': Val.text(fu.get('note'), 300), 'by': by, 'at': Val.now()}
-        return {'followUp': tr['followUp']}
+        track['followUp'] = {
+            'date': day.isoformat(),
+            'note': Val.text(follow.get('note'), 300),
+            'by': author,
+            'at': Val.now(),
+        }
+        return {'followUp': track['followUp']}
 
-    def mark_sent(self, kid: str, to, files, by: str) -> dict:
+    def mark_sent(self, kid: str, recipients, files, author: str) -> dict:
         """Письмо клиенту ушло: запись в «sent»; неотправленное КП становится «Отправлено»."""
-        tr = self.store.kp_track_get(kid)
-        s = tr.get('sent') if isinstance(tr.get('sent'), list) else []
-        s.append({'at': Val.now(), 'by': by, 'to': to, 'files': files})
-        tr['sent'] = s[-self.SENT_MAX :]
-        if (tr.get('status') or 'new') == 'new':
-            tr.update(status='sent', at=Val.now(), by=by)
-            self._log(tr, {'status': 'sent', 'note': 'письмо: ' + ', '.join(to), 'at': Val.now(), 'by': by})
-        self.store.kp_track_set(kid, tr)
-        return tr
+        track = self.store.kp_track_get(kid)
+        text = track.get('sent') if isinstance(track.get('sent'), list) else []
+        text.append({'at': Val.now(), 'by': author, 'to': recipients, 'files': files})
+        track['sent'] = text[-self.SENT_MAX :]
+        if (track.get('status') or 'new') == 'new':
+            track.update(status='sent', at=Val.now(), by=author)
+            self._log(
+                track, {'status': 'sent', 'note': 'письмо: ' + ', '.join(recipients), 'at': Val.now(), 'by': author}
+            )
+        self.store.kp_track_set(kid, track)
+        return track
 
 
 class OfferTerm:
@@ -125,46 +136,46 @@ class OfferTerm:
     @classmethod
     def until(cls, state, meta=None) -> date | None:
         """Дата окончания (date) или None — срок не указан или не распознан."""
-        m = meta if isinstance(meta, dict) else {}
-        if m.get('validUntil'):
-            return Val.day(m['validUntil'])
-        st = state if isinstance(state, dict) else {}
+        meta1 = meta if isinstance(meta, dict) else {}
+        if meta1.get('validUntil'):
+            return Val.day(meta1['validUntil'])
+        state1 = state if isinstance(state, dict) else {}
         cond = next(
             (
-                c
-                for c in (st.get('conditions') or [])
-                if isinstance(c, dict) and 'действ' in str(c.get('label') or '').lower()
+                cnd
+                for cnd in (state1.get('conditions') or [])
+                if isinstance(cnd, dict) and 'действ' in str(cnd.get('label') or '').lower()
             ),
             None,
         )
         v = str((cond or {}).get('value') or '').lower()
         if not v:
             return None
-        dm = re.search(r'(\d{1,2})\.(\d{1,2})\.(\d{4})', v)
-        if dm:
+        date_match = re.search(r'(\d{1,2})\.(\d{1,2})\.(\d{4})', v)
+        if date_match:
             try:
-                return date(int(dm.group(3)), int(dm.group(2)), int(dm.group(1)))
+                return date(int(date_match.group(3)), int(date_match.group(2)), int(date_match.group(1)))
             except ValueError:
                 return None
-        base = Val.day(st.get('date') or m.get('date'))
-        nm = re.search(r'(\d{1,3})\s*([а-яё]*)\s*([а-яё]*)', v)
-        if not base or not nm:
+        base = Val.day(state1.get('date') or meta1.get('date'))
+        num_match = re.search(r'(\d{1,3})\s*([а-яё]*)\s*([а-яё]*)', v)
+        if not base or not num_match:
             return None
-        n, words = int(nm.group(1)), nm.group(2) + ' ' + nm.group(3)
+        count, words = int(num_match.group(1)), num_match.group(2) + ' ' + num_match.group(3)
         for key, mult in cls.UNITS:
             if key in words:
-                return cls.work_days(base, n) if mult == 'work' else base + timedelta(days=n * mult)
+                return cls.work_days(base, count) if mult == 'work' else base + timedelta(days=count * mult)
         return None
 
     @staticmethod
-    def work_days(base, n) -> date:
+    def work_days(base, days) -> date:
         """Через n рабочих дней (без выходных; праздники — приблизительно)."""
-        d, k = base, 0
-        while k < n:
-            d += timedelta(days=1)
-            if d.weekday() < 5:
+        day, k = base, 0
+        while k < days:
+            day += timedelta(days=1)
+            if day.weekday() < 5:
                 k += 1
-        return d
+        return day
 
 
 class ReminderList:
@@ -179,45 +190,45 @@ class ReminderList:
     def collect(self, rows, mine) -> list[dict]:
         """rows — [(id, meta-dict, track-dict, state-dict)] доступных КП; mine(meta) — КП этого менеджера."""
         out = []
-        for kid, meta, tr, state in rows:
+        for kid, meta, track, state in rows:
             if mine(meta):
-                out.extend(self._of(kid, meta, tr, state))
+                out.extend(self._of(kid, meta, track, state))
         out.sort(key=lambda x: (x['date'], x['number']))
         return out
 
-    def _of(self, kid: str, meta, tr, state) -> Iterator[dict]:
-        today, st = self.today, tr.get('status') or 'new'
-        base = {'id': kid, 'number': meta.get('number') or kid, 'client': meta.get('client') or '', 'status': st}
-        fu = tr.get('followUp') if isinstance(tr.get('followUp'), dict) else None
-        if fu and not fu.get('done'):
-            d = Val.day(fu.get('date'))
-            if d and d <= today + timedelta(days=1):
+    def _of(self, kid: str, meta, track, state) -> Iterator[dict]:
+        today, status = self.today, track.get('status') or 'new'
+        base = {'id': kid, 'number': meta.get('number') or kid, 'client': meta.get('client') or '', 'status': status}
+        follow = track.get('followUp') if isinstance(track.get('followUp'), dict) else None
+        if follow and not follow.get('done'):
+            due = Val.day(follow.get('date'))
+            if due and due <= today + timedelta(days=1):
                 yield dict(
                     base,
                     kind='follow',
-                    date=d.isoformat(),
-                    text=fu.get('note') or 'Связаться с клиентом',
-                    overdue=d < today,
+                    date=due.isoformat(),
+                    text=follow.get('note') or 'Связаться с клиентом',
+                    overdue=due < today,
                 )
-        if st in ('won', 'lost'):
+        if status in ('won', 'lost'):
             return
-        vu = OfferTerm.until(state, meta)
-        if vu and today - timedelta(days=self.expired) <= vu <= today + timedelta(days=self.ahead):
+        valid_until = OfferTerm.until(state, meta)
+        if valid_until and today - timedelta(days=self.expired) <= valid_until <= today + timedelta(days=self.ahead):
             yield dict(
                 base,
                 kind='expire',
-                date=vu.isoformat(),
-                text='Срок действия КП истёк' if vu < today else 'Срок действия КП истекает',
-                overdue=vu < today,
+                date=valid_until.isoformat(),
+                text='Срок действия КП истёк' if valid_until < today else 'Срок действия КП истекает',
+                overdue=valid_until < today,
             )
-        if st == 'sent' and not fu:
-            at = Val.day(tr.get('at'))
-            if at and (today - at).days >= self.stale:
+        if status == 'sent' and not follow:
+            stamp = Val.day(track.get('at'))
+            if stamp and (today - stamp).days >= self.stale:
                 yield dict(
                     base,
                     kind='stale',
-                    date=at.isoformat(),
-                    text=f'Отправлено {(today - at).days} дн. назад — ответа нет?',
+                    date=stamp.isoformat(),
+                    text=f'Отправлено {(today - stamp).days} дн. назад — ответа нет?',
                     overdue=False,
                 )
 
@@ -237,39 +248,41 @@ class MailTemplate:
     @staticmethod
     def variables(state, meta, supplier='') -> dict:
         """Значения подстановок письма из КП."""
-        st = state if isinstance(state, dict) else {}
-        mt = meta if isinstance(meta, dict) else {}
-        mg = st.get('manager') if isinstance(st.get('manager'), dict) else {}
-        ct = st.get('contact') if isinstance(st.get('contact'), dict) else {}
-        cv = st.get('cover') if isinstance(st.get('cover'), dict) else {}
-        d = Val.day(st.get('date') or mt.get('date'))
-        phone = str(mg.get('phone') or '')
-        if mg.get('ext'):
-            phone += ' доб. ' + str(mg['ext'])
-        phone = ', '.join(x for x in (phone, str(mg.get('mobile') or '')) if x.strip())
-        eq = ' '.join(x for x in [str(cv.get('title') or '').strip(), str(cv.get('model') or '').strip()] if x).strip()
+        state1 = state if isinstance(state, dict) else {}
+        meta1 = meta if isinstance(meta, dict) else {}
+        mgr = state1.get('manager') if isinstance(state1.get('manager'), dict) else {}
+        contact = state1.get('contact') if isinstance(state1.get('contact'), dict) else {}
+        cover = state1.get('cover') if isinstance(state1.get('cover'), dict) else {}
+        day = Val.day(state1.get('date') or meta1.get('date'))
+        phone = str(mgr.get('phone') or '')
+        if mgr.get('ext'):
+            phone += ' доб. ' + str(mgr['ext'])
+        phone = ', '.join(x for x in (phone, str(mgr.get('mobile') or '')) if x.strip())
+        equip = ' '.join(
+            x for x in [str(cover.get('title') or '').strip(), str(cover.get('model') or '').strip()] if x
+        ).strip()
         return {
-            'номер': mt.get('number') or st.get('number') or '',
-            'дата': d.strftime('%d.%m.%Y') if d else '',
-            'клиент': mt.get('client') or st.get('client') or '',
+            'номер': meta1.get('number') or state1.get('number') or '',
+            'дата': day.strftime('%d.%m.%Y') if day else '',
+            'клиент': meta1.get('client') or state1.get('client') or '',
             'поставщик': supplier,
-            'менеджер': mg.get('name') or mt.get('manager') or '',
-            'должность': mg.get('position') or '',
+            'менеджер': mgr.get('name') or meta1.get('manager') or '',
+            'должность': mgr.get('position') or '',
             'телефон': phone,
-            'e-mail': mg.get('email') or '',
-            'контакт': str(ct.get('name') or '').strip(),
-            'оборудование': eq,
+            'e-mail': mgr.get('email') or '',
+            'контакт': str(contact.get('name') or '').strip(),
+            'оборудование': equip,
         }
 
     def fill(self, tpl) -> str:
         """Шаблон письма с подстановками {номер}, {дата}, {клиент}, {менеджер} и др."""
-        v, s = self.vars, str(tpl or '')
-        s = s.replace('{, контакт}', (', ' + v['контакт']) if v.get('контакт') else '')
-        s = s.replace('{ на оборудование}', (' на ' + v['оборудование']) if v.get('оборудование') else '')
-        s = s.replace('{: оборудование}', (': ' + v['оборудование']) if v.get('оборудование') else '')
+        v, text = self.vars, str(tpl or '')
+        text = text.replace('{, контакт}', (', ' + v['контакт']) if v.get('контакт') else '')
+        text = text.replace('{ на оборудование}', (' на ' + v['оборудование']) if v.get('оборудование') else '')
+        text = text.replace('{: оборудование}', (': ' + v['оборудование']) if v.get('оборудование') else '')
         for k, x in v.items():
-            s = s.replace(f'{{{k}}}', str(x or ''))
-        return re.sub(r'\n{3,}', '\n\n', re.sub(r'[ \t]+\n', '\n', s)).strip()
+            text = text.replace(f'{{{k}}}', str(x or ''))
+        return re.sub(r'\n{3,}', '\n\n', re.sub(r'[ \t]+\n', '\n', text)).strip()
 
 
 class MailRate:
@@ -283,7 +296,7 @@ class MailRate:
         """Учесть письмо; ValueError — предел исчерпан (с временем ожидания)."""
         now, limit = time.time(), SrvVal.get(store, 'kp.mailPerHour')
         with cls.LOCK:
-            v = [t for t in cls.SENT.get(who, []) if now - t < 3600]
+            v = [stamp for stamp in cls.SENT.get(who, []) if now - stamp < 3600]
             if len(v) >= limit:
                 wait = int(v[0] + 3600 - now) // 60 + 1
                 raise ValueError(f'Отправлено {len(v)} писем за час — следующее можно через {wait} мин')
@@ -301,114 +314,114 @@ class Mailer:
         self.store = store
 
     def settings(self) -> dict:
-        m = self.store.kv_get('mail') or {}
-        return m if isinstance(m, dict) else {}
+        mail = self.store.kv_get('mail') or {}
+        return mail if isinstance(mail, dict) else {}
 
-    def on(self) -> bool:
-        m = self.settings()
-        return bool(m.get('host') and Val.email(m.get('fromEmail')))
+    def enabled(self) -> bool:
+        mail = self.settings()
+        return bool(mail.get('host') and Val.email(mail.get('fromEmail')))
 
     def public(self) -> dict:
         """Для «Настроек»: без пароля (есть ли он — hasPassword)."""
-        m = self.settings()
-        out = {k: m.get(k, '') for k in self.KEYS if k != 'password'}
+        mail = self.settings()
+        out = {k: mail.get(k, '') for k in self.KEYS if k != 'password'}
         out.update(
-            hasPassword=bool(m.get('password')),
-            bccSelf=bool(m.get('bccSelf')),
-            port=m.get('port') or 465,
-            security=m.get('security') or 'ssl',
-            subject=m.get('subject') or MailTemplate.SUBJECT,
-            body=m.get('body') or MailTemplate.BODY,
-            on=self.on(),
+            hasPassword=bool(mail.get('password')),
+            bccSelf=bool(mail.get('bccSelf')),
+            port=mail.get('port') or 465,
+            security=mail.get('security') or 'ssl',
+            subject=mail.get('subject') or MailTemplate.SUBJECT,
+            body=mail.get('body') or MailTemplate.BODY,
+            on=self.enabled(),
         )
         return out
 
-    def save(self, d, by: str) -> dict:
+    def save(self, data, author: str) -> dict:
         """Сохранить настройки из «Настроек → Почта». ValueError — с понятным текстом."""
-        m = self.settings()
+        mail = self.settings()
         for k in ('host', 'login', 'fromName', 'subject', 'body'):
-            if k in d:
-                m[k] = Val.text(d.get(k), 4000 if k == 'body' else 300)
-        if 'fromEmail' in d:
-            e = Val.text(d.get('fromEmail'), 200)
-            if e and not Val.email(e):
+            if k in data:
+                mail[k] = Val.text(data.get(k), 4000 if k == 'body' else 300)
+        if 'fromEmail' in data:
+            from_email = Val.text(data.get('fromEmail'), 200)
+            if from_email and not Val.email(from_email):
                 raise ValueError('Адрес отправителя — например, kp@company.ru')
-            m['fromEmail'] = e
-        if 'port' in d:
-            m['port'] = self._port(d.get('port'))
-        if 'security' in d:
-            if d.get('security') not in ('ssl', 'starttls', 'none'):
+            mail['fromEmail'] = from_email
+        if 'port' in data:
+            mail['port'] = self._port(data.get('port'))
+        if 'security' in data:
+            if data.get('security') not in ('ssl', 'starttls', 'none'):
                 raise ValueError('Защита соединения: ssl, starttls или none')
-            m['security'] = d['security']
-        if 'bccSelf' in d:
-            m['bccSelf'] = bool(d.get('bccSelf'))
-        if d.get('password'):
-            m['password'] = str(d['password'])[:300]
-        if d.get('clearPassword'):
-            m.pop('password', None)
-        m['updatedAt'], m['updatedBy'] = Val.now(), by
-        self.store.kv_set('mail', m)
+            mail['security'] = data['security']
+        if 'bccSelf' in data:
+            mail['bccSelf'] = bool(data.get('bccSelf'))
+        if data.get('password'):
+            mail['password'] = str(data['password'])[:300]
+        if data.get('clearPassword'):
+            mail.pop('password', None)
+        mail['updatedAt'], mail['updatedBy'] = Val.now(), author
+        self.store.kv_set('mail', mail)
         return self.public()
 
     @staticmethod
     def _port(v) -> int:
         try:
-            p = int(v or 0)
+            port = int(v or 0)
         except (TypeError, ValueError):
-            p = 0
-        if not 1 <= p <= 65535:
+            port = 0
+        if not 1 <= port <= 65535:
             raise ValueError('Порт — число от 1 до 65535 (обычно 465 или 587)')
-        return p
+        return port
 
     @classmethod
-    def addresses(cls, s) -> list[str]:
+    def addresses(cls, text) -> list[str]:
         """Адреса из строки «a@b.ru, c@d.ru». ValueError — неверный адрес или больше MAX_TO."""
-        out = [a for a in (x.strip() for x in re.split(r'[,;\s]+', str(s or ''))) if a]
-        bad = next((a for a in out if not Val.email(a)), None)
+        out = [addr for addr in (x.strip() for x in re.split(r'[,;\s]+', str(text or ''))) if addr]
+        bad = next((addr for addr in out if not Val.email(addr)), None)
         if bad:
             raise ValueError(f'Неверный адрес почты: {bad[:80]}')
         if len(out) > cls.MAX_TO:
             raise ValueError(f'Не больше {cls.MAX_TO} адресов в письме')
         return out
 
-    def send(self, to, cc, subject, body, files, reply_to='', test=False) -> list[str]:
+    def send(self, recipients, copies, subject, body, files, reply_to='', test=False) -> list[str]:
         """Письмо через SMTP из настроек. files — [(имя, байты, mime)]. → получатели. RuntimeError — с понятным текстом."""
-        if not self.on():
+        if not self.enabled():
             raise RuntimeError('Почта не настроена: администратор — «Настройки → Почта»')
-        m = self.settings()
-        msg = self._message(m, to, cc, subject, body, files, reply_to)
-        rcpt = to + cc + ([m['fromEmail']] if m.get('bccSelf') and not test else [])
+        mail = self.settings()
+        msg = self._message(mail, recipients, copies, subject, body, files, reply_to)
+        rcpt = recipients + copies + ([mail['fromEmail']] if mail.get('bccSelf') and not test else [])
         try:
-            self._deliver(m, msg, rcpt)
+            self._deliver(mail, msg, rcpt)
         except smtplib.SMTPAuthenticationError:
             raise RuntimeError('Почтовый сервер не принял логин или пароль — проверьте «Настройки → Почта»') from None
-        except (smtplib.SMTPException, OSError) as e:
-            raise RuntimeError(f'Письмо не отправлено: {(str(e) or type(e).__name__)[:200]}') from e
+        except (smtplib.SMTPException, OSError) as email:
+            raise RuntimeError(f'Письмо не отправлено: {(str(email) or type(email).__name__)[:200]}') from email
         return rcpt
 
     @staticmethod
-    def _message(m, to, cc, subject, body, files, reply_to) -> EmailMessage:
+    def _message(mail, recipients, copies, subject, body, files, reply_to) -> EmailMessage:
         def line(v) -> str:
             return ' '.join(str(v or '').split())  # заголовок письма — одна строка (перевод строки — ошибка письма)
 
         msg = EmailMessage()
-        msg['From'] = formataddr((line(m.get('fromName')), m['fromEmail']))
-        msg['To'] = ', '.join(to)
-        if cc:
-            msg['Cc'] = ', '.join(cc)
+        msg['From'] = formataddr((line(mail.get('fromName')), mail['fromEmail']))
+        msg['To'] = ', '.join(recipients)
+        if copies:
+            msg['Cc'] = ', '.join(copies)
         if reply_to and Val.email(reply_to):
             msg['Reply-To'] = reply_to
         msg['Subject'] = line(subject) or 'Коммерческое предложение'
-        msg['Message-ID'] = make_msgid(domain=m['fromEmail'].split('@')[-1])
+        msg['Message-ID'] = make_msgid(domain=mail['fromEmail'].split('@')[-1])
         msg.set_content(body or '')
         for name, data, mime in files:
-            mt, st = (mime or 'application/octet-stream').split('/', 1)
-            msg.add_attachment(data, maintype=mt, subtype=st, filename=name)
+            main_type, sub_type = (mime or 'application/octet-stream').split('/', 1)
+            msg.add_attachment(data, maintype=main_type, subtype=sub_type, filename=name)
         return msg
 
     @staticmethod
-    def _deliver(m, msg, rcpt) -> None:
-        host, port, sec = m['host'], int(m.get('port') or 465), m.get('security') or 'ssl'
+    def _deliver(mail, msg, rcpt) -> None:
+        host, port, sec = mail['host'], int(mail.get('port') or 465), mail.get('security') or 'ssl'
         srv = (
             smtplib.SMTP_SSL(host, port, timeout=30, context=ssl.create_default_context())
             if sec == 'ssl'
@@ -417,6 +430,6 @@ class Mailer:
         with srv:
             if sec == 'starttls':
                 srv.starttls(context=ssl.create_default_context())
-            if m.get('login'):
-                srv.login(m['login'], m.get('password') or '')
+            if mail.get('login'):
+                srv.login(mail['login'], mail.get('password') or '')
             srv.send_message(msg, to_addrs=rcpt)

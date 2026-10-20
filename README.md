@@ -526,6 +526,8 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.143.0 — что сделано:** «чистый код», часть 8: имена сервера ещё в 18 модулях — `maintenance`, `doc_text`, `kp_track` (`Mailer.enabled`), `catalog_migrate`, `app_update` (`NightUpdate.AUTHOR`), `counterparty`, `data_file`, `data_bundle`, `ed25519` (`PRIME`, `ORDER`, `CURVE_D`, `BASE`), `images`, `auth_users`, `station_rules` (`json_text`), `maker_logos`, `supplier_scope`, `bitrix_rules`, `china_freight`, `connections`; `ElementTree` без сокращения. Проверка имён охватывает 49 модулей из 62. Ключи сохраняемых данных (`by` в истории КП и Битрикс24) не менялись. Поведение то же: все наборы проверок проходят.
+
 **3.142.0 — что сделано:** «чистый код», часть 7: сервер — говорящие имена:
 - проверка `tests/test_names.py` (ast): переменные, параметры, функции, классы и атрибуты `self` не короче 3 знаков, кроме словаря исключений; список проверяемых модулей — `names` в `tests/code_style.json` (31 модуль);
 - переименованы: `UserPrefs`, `ListStore`, `FeatureAccess`, `AdminAlerts`, `DbHealth`, `ServerTask`, `ServerLog`, `MirrorBackup`, `Launcher`, `Net`, `CatalogSync`, `CatalogPatch`/`CatalogSheet`, `KpFiles`, шаблоны КП, `SettingsHistory`, курсы ЦБ, гео и маршруты (`RoadRoute.distance_km`), нейросеть, производственный календарь и др.;

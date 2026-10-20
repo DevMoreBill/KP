@@ -36,7 +36,7 @@ class DataBundle:
     @classmethod
     def refs(cls, text: str) -> list[str]:
         """Адреса изображений (путь внутри data/img), на которые ссылается текст резервной копии."""
-        return sorted({m.group(1) for m in cls.REF.finditer(text)})
+        return sorted({match.group(1) for match in cls.REF.finditer(text)})
 
     def pack(self, body: bytes) -> tuple:
         """zip: kp-backup.json + изображения из ссылок. → (байты архива, сколько изображений вошло, сколько не найдено)."""
@@ -44,11 +44,11 @@ class DataBundle:
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
             z.writestr(self.JSON_NAME, body)
             for rel in self.refs(body):
-                f = self.images.path(rel)
-                if not f:
+                path = self.images.path(rel)
+                if not path:
                     missing += 1
                     continue
-                z.write(f, self.IMG_PREFIX + rel, compress_type=zipfile.ZIP_STORED)  # jpg/png/webp уже сжаты
+                z.write(path, self.IMG_PREFIX + rel, compress_type=zipfile.ZIP_STORED)  # jpg/png/webp уже сжаты
                 found += 1
         return buf.getvalue(), found, missing
 
@@ -84,16 +84,16 @@ class DataBundle:
         doc = (
             self.JSON_NAME
             if self.JSON_NAME in names
-            else next((n for n in names if n.lower().endswith('.json') and '/' not in n), None)
+            else next((name for name in names if name.lower().endswith('.json') and '/' not in name), None)
         )
         if not doc:
             raise ValueError('В архиве нет резервной копии (kp-backup.json)')
         try:
-            d = StrictJson.loads(z.read(doc).decode('utf-8-sig'))
+            backup = StrictJson.loads(z.read(doc).decode('utf-8-sig'))
         except (ValueError, UnicodeDecodeError):
             raise ValueError('Резервная копия в архиве повреждена') from None
         imgs = [i for i in z.infolist() if i.filename.startswith(self.IMG_PREFIX) and not i.is_dir()][: self.MAX_IMAGES]
-        return d, z, imgs
+        return backup, z, imgs
 
     def _target(self, name: str) -> tuple:
         rel = name[len(self.IMG_PREFIX) :]
@@ -105,8 +105,8 @@ class DataBundle:
         """Сколько изображений добавится, сколько уже есть, сколько отброшено."""
         new = have = bad = 0
         for i in imgs:
-            rel, f = self._target(i.filename)
-            if not f or i.file_size > self.MAX_IMAGE:
+            rel, path = self._target(i.filename)
+            if not path or i.file_size > self.MAX_IMAGE:
                 bad += 1
             elif self.images.path(rel):
                 have += 1
@@ -116,21 +116,21 @@ class DataBundle:
 
     def write(self, z, imgs) -> int:
         """Записать недостающие изображения → сколько записано."""
-        n = 0
+        count = 0
         for i in imgs:
-            rel, f = self._target(i.filename)
-            if not f or i.file_size > self.MAX_IMAGE or self.images.path(rel):
+            rel, path = self._target(i.filename)
+            if not path or i.file_size > self.MAX_IMAGE or self.images.path(rel):
                 continue
             data = z.read(i)
             if len(data) > self.MAX_IMAGE or not self.is_image(data):
                 continue
-            os.makedirs(os.path.dirname(f), exist_ok=True)
-            tmp = f + '.part'
-            with open(tmp, 'wb') as fh:
-                fh.write(data)
-            os.replace(tmp, f)
-            n += 1
-        return n
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            tmp = path + '.part'
+            with open(tmp, 'wb') as handle:
+                handle.write(data)
+            os.replace(tmp, path)
+            count += 1
+        return count
 
 
 class ProgramSettings:
@@ -147,31 +147,31 @@ class ProgramSettings:
         for k in self.KEYS:
             v = self.store.kv_get(k)
             if isinstance(v, dict) and k in self.SECRET:
-                v = {a: b for a, b in v.items() if a not in self.SECRET[k]}
+                v = {key: val for key, val in v.items() if key not in self.SECRET[k]}
             if v is not None:
                 out[k] = v
         return out
 
-    def count(self, d: dict) -> int:
-        return sum(1 for k in self.KEYS if isinstance(d, dict) and d.get(k) is not None)
+    def count(self, data: dict) -> int:
+        return sum(1 for k in self.KEYS if isinstance(data, dict) and data.get(k) is not None)
 
-    def apply(self, d):
+    def apply(self, data):
         """Записать настройки из копии; секреты текущей базы сохраняются. → сколько разделов настроек записано."""
-        n = 0
+        count = 0
         for k in self.KEYS:
-            v = d.get(k) if isinstance(d, dict) else None
+            v = data.get(k) if isinstance(data, dict) else None
             if v is None:
                 continue
             if isinstance(v, dict) and k in self.SECRET:
                 cur = self.store.kv_get(k) or {}
                 v = dict(
-                    {a: b for a, b in v.items() if a not in self.SECRET[k]},
-                    **{a: cur[a] for a in self.SECRET[k] if isinstance(cur, dict) and a in cur},
+                    {key: val for key, val in v.items() if key not in self.SECRET[k]},
+                    **{key: cur[key] for key in self.SECRET[k] if isinstance(cur, dict) and key in cur},
                 )
             self.store.kv_set(k, v)
-            n += 1
+            count += 1
         self.store.touch_data('types', 'settings')
-        return n
+        return count
 
 
 class SettingsFile:
@@ -219,37 +219,37 @@ class SettingsFile:
         'sched',
     )  # служебное (время опроса, созданные поля) — не настройка
 
-    def __init__(self, store, by: str = '') -> None:
-        self.store, self.by = store, by
+    def __init__(self, store, author: str = '') -> None:
+        self.store, self.author = store, author
 
     @classmethod
     def label(cls, k: str) -> str:
         return dict(cls.PARTS).get(k, k)
 
     def _get(self, k, keys):
-        st = self.store
+        store = self.store
         if k == 'access':
             from auth_users import access, perms_of
 
             return {
-                mid: {'perms': perms_of(r), 'blocked': bool(r.get('blocked'))}
-                for mid, r in access(st).items()
-                if isinstance(r, dict)
+                mid: {'perms': perms_of(rec), 'blocked': bool(rec.get('blocked'))}
+                for mid, rec in access(store).items()
+                if isinstance(rec, dict)
             } or None
         if k == 'integrations':
-            v = st.kv_get('integrations')
+            v = store.kv_get('integrations')
             return v if keys and v else None
-        v = st.kv_get(k)
+        v = store.kv_get(k)
         if v is None:
             return None
         if k == 'mail' and isinstance(v, dict):
-            v = {a: b for a, b in v.items() if a != 'password'}
+            v = {key: val for key, val in v.items() if key != 'password'}
         if k == 'bitrix' and isinstance(v, dict):  # служебное (время опроса, поля созданы) — не настройка
-            v = {a: b for a, b in v.items() if a in self.BITRIX_KEYS and (keys or a != 'url')}
+            v = {key: val for key, val in v.items() if key in self.BITRIX_KEYS and (keys or key != 'url')}
         if k == 'settings' and isinstance(v, dict) and isinstance(v.get('ai'), dict) and not keys:
-            v = dict(v, ai={a: b for a, b in v['ai'].items() if a != 'key'})
+            v = dict(v, ai={key: val for key, val in v['ai'].items() if key != 'key'})
         if k == 'update' and isinstance(v, dict):
-            v = {a: v[a] for a in self.UPDATE_KEYS if a in v} or None
+            v = {key: v[key] for key in self.UPDATE_KEYS if key in v} or None
         return v
 
     def export(self, keys: bool = False) -> tuple:
@@ -275,81 +275,85 @@ class SettingsFile:
     def read(self, data: bytes):
         """Файл настроек: байты JSON или уже разобранный документ (другие форматы — admin.settings_doc через DataFile)."""
         if isinstance(data, dict):
-            d = data
+            parsed = data
         else:
             try:
-                d = StrictJson.loads((data or b'').decode('utf-8-sig'))
+                parsed = StrictJson.loads((data or b'').decode('utf-8-sig'))
             except (ValueError, UnicodeDecodeError):
-                d = None
-        if not isinstance(d, dict) or d.get('format') != self.FORMAT or not isinstance(d.get('sections'), dict):
+                parsed = None
+        if (
+            not isinstance(parsed, dict)
+            or parsed.get('format') != self.FORMAT
+            or not isinstance(parsed.get('sections'), dict)
+        ):
             raise ValueError(
                 'Это не файл настроек программы: нужен файл «КП_настройки_…», выгруженный в «База и копии → Выгрузить → Настройки программы»'
             )
-        return d
+        return parsed
 
     def preview(self, data: bytes) -> dict:
         """Разделы файла: что в нём есть и отличается ли от текущего."""
-        d = self.read(data)
+        parsed = self.read(data)
         out = []
         for k, label in self.PARTS:
-            if k not in d['sections']:
+            if k not in parsed['sections']:
                 continue
-            same = json.dumps(d['sections'][k], sort_keys=True, ensure_ascii=False) == json.dumps(
+            same = json.dumps(parsed['sections'][k], sort_keys=True, ensure_ascii=False) == json.dumps(
                 self._get(k, True), sort_keys=True, ensure_ascii=False
             )
             out.append({'key': k, 'label': label, 'same': same})
         return {
-            'app': d.get('app') or '',
-            'createdAt': d.get('createdAt') or '',
-            'keys': bool(d.get('keys')),
+            'app': parsed.get('app') or '',
+            'createdAt': parsed.get('createdAt') or '',
+            'keys': bool(parsed.get('keys')),
             'sections': out,
         }
 
     def apply(self, data: bytes, picked=None) -> dict:
         """Записать выбранные разделы (picked — список ключей; None — все). → {applied: [...], errors: [...]}"""
-        d = self.read(data)
-        st, applied, errors = self.store, [], []
+        parsed = self.read(data)
+        store, applied, errors = self.store, [], []
         for k, label in self.PARTS:
-            v = d['sections'].get(k)
+            v = parsed['sections'].get(k)
             if v is None or (picked is not None and k not in picked):
                 continue
             try:
                 self._put(k, v)
                 applied.append(label)
-            except (ValueError, TypeError) as e:
-                errors.append(f'{label}: {e}')
-        st.touch_data('types', 'settings')
+            except (ValueError, TypeError) as exc:
+                errors.append(f'{label}: {exc}')
+        store.touch_data('types', 'settings')
         from defaults import SrvVal
 
         SrvVal.forget()
         return {'applied': applied, 'errors': errors}
 
     def _put(self, k: str, v) -> None:
-        st = self.store
+        store = self.store
         if k == 'stationRules':
             from station_rules import StationRules
 
-            StationRules(st).save(json.dumps(v, ensure_ascii=False).encode('utf-8'), self.by or 'файл настроек')
+            StationRules(store).save(json.dumps(v, ensure_ascii=False).encode('utf-8'), self.author or 'файл настроек')
             return
         if k == 'access':
             from auth_users import PERM_KEYS, AccessRecord, access
 
             if not isinstance(v, dict):
                 raise ValueError('неверный формат')
-            have = access(st)
+            have = access(store)
             for mid, rec in v.items():  # только менеджеры этой базы: чужие записи не создаются
                 if mid in have and isinstance(rec, dict) and isinstance(rec.get('perms'), dict):
                     AccessRecord.update(
-                        st,
+                        store,
                         mid,
-                        lambda r, _a, rec=rec: dict(
-                            r,
-                            perms={p: bool(rec['perms'].get(p)) for p in PERM_KEYS},
+                        lambda old, _access, rec=rec: dict(
+                            old,
+                            perms={perm: bool(rec['perms'].get(perm)) for perm in PERM_KEYS},
                             **({'blocked': bool(rec['blocked'])} if 'blocked' in rec else {}),
                         ),
                     )
             return
-        cur = st.kv_get(k)
+        cur = store.kv_get(k)
         if k == 'mail' and isinstance(v, dict) and isinstance(cur, dict) and 'password' in cur:
             v = dict(v, password=cur['password'])
         if k == 'settings' and isinstance(v, dict) and isinstance(cur, dict):
@@ -359,20 +363,22 @@ class SettingsFile:
         if k == 'update':
             v = dict(
                 cur if isinstance(cur, dict) else {},
-                **{a: v[a] for a in self.UPDATE_KEYS if isinstance(v, dict) and a in v},
+                **{key: v[key] for key in self.UPDATE_KEYS if isinstance(v, dict) and key in v},
             )
         if k == 'integrations' and isinstance(v, dict) and isinstance(cur, dict):
             v = dict(cur, **v)
         if k == 'bitrix' and isinstance(v, dict):  # адреса вебхука в файле нет — остаётся свой; служебное — своё
-            v = dict(cur if isinstance(cur, dict) else {}, **{a: b for a, b in v.items() if a in self.BITRIX_KEYS})
+            v = dict(
+                cur if isinstance(cur, dict) else {}, **{key: val for key, val in v.items() if key in self.BITRIX_KEYS}
+            )
             from bitrix_rules import BitrixRules
             from crm import Stages
 
             BitrixRules.check(
-                v, dict(v), {r[0] for r in st.all('SELECT id FROM managers')}, Stages.keys(st)
+                v, dict(v), {row[0] for row in store.all('SELECT id FROM managers')}, Stages.keys(store)
             )  # правила — та же проверка, что в «Настройках»
             if v.get('on') and not v.get('url'):
                 v['on'] = False
         if not isinstance(v, (dict, list)):
             raise ValueError('неверный формат')
-        st.kv_set(k, v)
+        store.kv_set(k, v)

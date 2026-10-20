@@ -4,118 +4,120 @@ import hashlib
 
 
 class Ed25519:
-    P = 2**255 - 19
-    L = 2**252 + 27742317777372353535851937790883648493
-    D = -121665 * pow(121666, 2**255 - 21, 2**255 - 19) % (2**255 - 19)
+    PRIME = 2**255 - 19
+    ORDER = 2**252 + 27742317777372353535851937790883648493
+    CURVE_D = -121665 * pow(121666, 2**255 - 21, 2**255 - 19) % (2**255 - 19)
     SQRT_M1 = pow(2, (2**255 - 20) // 4, 2**255 - 19)
-    G = None
+    BASE = None
 
     # точки — в расширенных координатах (X, Y, Z, T)
     @classmethod
-    def _add(cls, a: tuple, b: tuple) -> tuple:
-        p = cls.P
-        A = (a[1] - a[0]) * (b[1] - b[0]) % p
-        B = (a[1] + a[0]) * (b[1] + b[0]) % p
-        C = 2 * a[3] * b[3] * cls.D % p
-        Dd = 2 * a[2] * b[2] % p
-        E, F, G, H = B - A, Dd - C, Dd + C, B + A
-        return (E * F % p, G * H % p, F * G % p, E * H % p)
+    def _add(cls, first: tuple, second: tuple) -> tuple:
+        prime = cls.PRIME
+        sub_prod = (first[1] - first[0]) * (second[1] - second[0]) % prime
+        add_prod = (first[1] + first[0]) * (second[1] + second[0]) % prime
+        t_prod = 2 * first[3] * second[3] * cls.CURVE_D % prime
+        z_prod = 2 * first[2] * second[2] % prime
+        e_val, f_val, g_val, h_val = add_prod - sub_prod, z_prod - t_prod, z_prod + t_prod, add_prod + sub_prod
+        return (e_val * f_val % prime, g_val * h_val % prime, f_val * g_val % prime, e_val * h_val % prime)
 
     @classmethod
-    def _mul(cls, s: int, pt: tuple) -> tuple:
-        q = (0, 1, 1, 0)
-        while s > 0:
-            if s & 1:
-                q = cls._add(q, pt)
-            pt = cls._add(pt, pt)
-            s >>= 1
-        return q
+    def _mul(cls, scalar: int, point: tuple) -> tuple:
+        acc = (0, 1, 1, 0)
+        while scalar > 0:
+            if scalar & 1:
+                acc = cls._add(acc, point)
+            point = cls._add(point, point)
+            scalar >>= 1
+        return acc
 
     @classmethod
-    def _equal(cls, a: tuple, b: tuple) -> bool:
-        p = cls.P
-        return (a[0] * b[2] - b[0] * a[2]) % p == 0 and (a[1] * b[2] - b[1] * a[2]) % p == 0
+    def _equal(cls, first: tuple, second: tuple) -> bool:
+        prime = cls.PRIME
+        return (first[0] * second[2] - second[0] * first[2]) % prime == 0 and (
+            first[1] * second[2] - second[1] * first[2]
+        ) % prime == 0
 
     @classmethod
     def _recover_x(cls, y: int, sign: int) -> int | None:
-        p = cls.P
-        if y >= p:
+        prime = cls.PRIME
+        if y >= prime:
             return None
-        x2 = (y * y - 1) * pow(cls.D * y * y + 1, p - 2, p) % p
+        x2 = (y * y - 1) * pow(cls.CURVE_D * y * y + 1, prime - 2, prime) % prime
         if x2 == 0:
             return None if sign else 0
-        x = pow(x2, (p + 3) // 8, p)
-        if (x * x - x2) % p != 0:
-            x = x * cls.SQRT_M1 % p
-        if (x * x - x2) % p != 0:
+        x = pow(x2, (prime + 3) // 8, prime)
+        if (x * x - x2) % prime != 0:
+            x = x * cls.SQRT_M1 % prime
+        if (x * x - x2) % prime != 0:
             return None
         if (x & 1) != sign:
-            x = p - x
+            x = prime - x
         return x
 
     @classmethod
     def _base(cls) -> tuple:
-        if cls.G is None:
-            y = 4 * pow(5, cls.P - 2, cls.P) % cls.P
+        if cls.BASE is None:
+            y = 4 * pow(5, cls.PRIME - 2, cls.PRIME) % cls.PRIME
             x = cls._recover_x(y, 0)
-            cls.G = (x, y, 1, x * y % cls.P)
-        return cls.G
+            cls.BASE = (x, y, 1, x * y % cls.PRIME)
+        return cls.BASE
 
     @classmethod
-    def _compress(cls, pt: tuple) -> bytes:
-        p = cls.P
-        zi = pow(pt[2], p - 2, p)
-        x, y = pt[0] * zi % p, pt[1] * zi % p
+    def _compress(cls, point: tuple) -> bytes:
+        prime = cls.PRIME
+        z_inv = pow(point[2], prime - 2, prime)
+        x, y = point[0] * z_inv % prime, point[1] * z_inv % prime
         return int.to_bytes(y | ((x & 1) << 255), 32, 'little')
 
     @classmethod
-    def _decompress(cls, s: bytes) -> tuple | None:
-        if len(s) != 32:
+    def _decompress(cls, raw: bytes) -> tuple | None:
+        if len(raw) != 32:
             return None
-        y = int.from_bytes(s, 'little')
+        y = int.from_bytes(raw, 'little')
         sign = y >> 255
         y &= (1 << 255) - 1
         x = cls._recover_x(y, sign)
-        return None if x is None else (x, y, 1, x * y % cls.P)
+        return None if x is None else (x, y, 1, x * y % cls.PRIME)
 
     @staticmethod
-    def _h(*parts: bytes) -> int:
+    def _hash_int(*parts: bytes) -> int:
         return int.from_bytes(hashlib.sha512(b''.join(parts)).digest(), 'little')
 
     @classmethod
     def _secret(cls, seed: bytes) -> tuple[int, bytes]:
         if len(seed) != 32:
             raise ValueError('Ключ Ed25519 — 32 байта')
-        h = hashlib.sha512(seed).digest()
-        a = int.from_bytes(h[:32], 'little')
-        a &= (1 << 254) - 8
-        a |= 1 << 254
-        return a, h[32:]
+        digest = hashlib.sha512(seed).digest()
+        secret = int.from_bytes(digest[:32], 'little')
+        secret &= (1 << 254) - 8
+        secret |= 1 << 254
+        return secret, digest[32:]
 
     @classmethod
     def public_key(cls, seed: bytes) -> bytes:
-        a, _ = cls._secret(seed)
-        return cls._compress(cls._mul(a, cls._base()))
+        secret, _ = cls._secret(seed)
+        return cls._compress(cls._mul(secret, cls._base()))
 
     @classmethod
     def sign(cls, seed: bytes, msg: bytes) -> bytes:
-        a, prefix = cls._secret(seed)
-        A = cls._compress(cls._mul(a, cls._base()))
-        r = cls._h(prefix, msg) % cls.L
-        R = cls._compress(cls._mul(r, cls._base()))
-        s = (r + cls._h(R, A, msg) * a) % cls.L
-        return R + int.to_bytes(s, 32, 'little')
+        secret, prefix = cls._secret(seed)
+        pub = cls._compress(cls._mul(secret, cls._base()))
+        nonce = cls._hash_int(prefix, msg) % cls.ORDER
+        r_point = cls._compress(cls._mul(nonce, cls._base()))
+        sig_s = (nonce + cls._hash_int(r_point, pub, msg) * secret) % cls.ORDER
+        return r_point + int.to_bytes(sig_s, 32, 'little')
 
     @classmethod
     def verify(cls, public: bytes, msg: bytes, sig: bytes) -> bool:
         if len(public) != 32 or len(sig) != 64:
             return False
-        A = cls._decompress(public)
-        R = cls._decompress(sig[:32])
-        if A is None or R is None:
+        pub = cls._decompress(public)
+        r_point = cls._decompress(sig[:32])
+        if pub is None or r_point is None:
             return False
-        s = int.from_bytes(sig[32:], 'little')
-        if s >= cls.L:
+        sig_s = int.from_bytes(sig[32:], 'little')
+        if sig_s >= cls.ORDER:
             return False
-        h = cls._h(sig[:32], public, msg) % cls.L
-        return cls._equal(cls._mul(s, cls._base()), cls._add(R, cls._mul(h, A)))
+        digest = cls._hash_int(sig[:32], public, msg) % cls.ORDER
+        return cls._equal(cls._mul(sig_s, cls._base()), cls._add(r_point, cls._mul(digest, pub)))

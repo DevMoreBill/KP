@@ -4,7 +4,7 @@ import os
 import re
 import zipfile
 from io import BytesIO
-from xml.etree import ElementTree as ET
+from xml.etree import ElementTree
 
 import pdf_text
 from defaults import SrvVal
@@ -20,14 +20,16 @@ class TextQuality:
 
     @classmethod
     def score(cls, text) -> float:
-        t = str(text or '')
-        chars = [c for c in t if not c.isspace()]
+        text1 = str(text or '')
+        chars = [char for char in text1 if not char.isspace()]
         if len(chars) < 20:
             return 0.0
-        good = sum(1 for c in chars if cls.GOOD_CH.match(c)) / len(chars)
-        words = [w.strip('.,:;!?()«»"\'') for w in cls.WORD.findall(t)]
-        words = [w for w in words if len(w) >= 3 and not re.search(r'\d', w)]
-        clean = sum(1 for w in words if re.fullmatch(r'[А-Яа-яЁё-]+|[A-Za-z-]+', w)) / len(words) if words else 0.0
+        good = sum(1 for char in chars if cls.GOOD_CH.match(char)) / len(chars)
+        words = [word.strip('.,:;!?()«»"\'') for word in cls.WORD.findall(text1)]
+        words = [word for word in words if len(word) >= 3 and not re.search(r'\d', word)]
+        clean = (
+            sum(1 for word in words if re.fullmatch(r'[А-Яа-яЁё-]+|[A-Za-z-]+', word)) / len(words) if words else 0.0
+        )
         return round(0.5 * good + 0.5 * clean, 3)
 
 
@@ -43,9 +45,9 @@ class DocText:
         """→ {text, kind, pages, quality, methods}; ocr — класс распознавания (в проверках — заглушка)."""
         if not data:
             raise ValueError('файл пустой')
-        mb = SrvVal.now('cat.docMaxMB')
-        if len(data) > mb * 1024 * 1024:
-            raise ValueError(f'файл больше {mb} МБ')
+        max_mb = SrvVal.now('cat.docMaxMB')
+        if len(data) > max_mb * 1024 * 1024:
+            raise ValueError(f'файл больше {max_mb} МБ')
         ocr = ocr or WinOcr
         ext = os.path.splitext(str(name or '').lower())[1]
         if data[:4] == b'%PDF' or ext == '.pdf':
@@ -64,56 +66,63 @@ class DocText:
 
     @classmethod
     def _done(cls, text, kind, pages=None, methods=None) -> dict:
-        t = re.sub(r'[ \t\xa0]+', ' ', text.replace('\r\n', '\n').replace('\r', '\n'))
-        t = re.sub(r'\n[ \t\xa0]*\n[ \t\xa0]*\n+', '\n\n', t).strip()  # \f — граница страниц — остаётся
-        if len(re.sub(r'\W', '', t)) < 20:
+        clean = re.sub(r'[ \t\xa0]+', ' ', text.replace('\r\n', '\n').replace('\r', '\n'))
+        clean = re.sub(r'\n[ \t\xa0]*\n[ \t\xa0]*\n+', '\n\n', clean).strip()  # \f — граница страниц — остаётся
+        if len(re.sub(r'\W', '', clean)) < 20:
             raise ValueError('в документе нет текста')
-        q = TextQuality.score(t)
-        methods = methods or [{'id': 'text', 'name': 'Текст документа', 'chars': len(t), 'quality': q}]
+        quality = TextQuality.score(clean)
+        methods = methods or [{'id': 'text', 'name': 'Текст документа', 'chars': len(clean), 'quality': quality}]
         return {
-            'text': t[: cls.MAX_TEXT],
+            'text': clean[: cls.MAX_TEXT],
             'kind': kind,
             'pages': pages,
-            'quality': q,
-            'low': q < TextQuality.LOW,
+            'quality': quality,
+            'low': quality < TextQuality.LOW,
             'methods': methods,
         }
 
     @staticmethod
     def _pages(per) -> str:
-        return '\n\f\n'.join(p.strip() for p in per)
+        return '\n\f\n'.join(page.strip() for page in per)
 
     @classmethod
     def _pdf(cls, data, ocr) -> dict:
         """текстовый слой; если его нет или он плохой — распознавание Windows; лучший по качеству"""
-        r = pdf_text.text(data, need_text=False)
-        per = r.get('per') or []
-        t0 = cls._pages(per)
-        q0 = TextQuality.score(t0)
-        methods = [{'id': 'pdf', 'name': 'Текстовый слой PDF', 'chars': len(t0.replace('\f', '')), 'quality': q0}]
+        res = pdf_text.text(data, need_text=False)
+        per = res.get('per') or []
+        text_layer = cls._pages(per)
+        quality_layer = TextQuality.score(text_layer)
+        methods = [
+            {
+                'id': 'pdf',
+                'name': 'Текстовый слой PDF',
+                'chars': len(text_layer.replace('\f', '')),
+                'quality': quality_layer,
+            }
+        ]
         best, kind = per, 'pdf'
-        empty = sum(1 for p in per if len(p.strip()) < 30)
-        if q0 < TextQuality.LOW or (
+        empty = sum(1 for page in per if len(page.strip()) < 30)
+        if quality_layer < TextQuality.LOW or (
             per and empty * 2 >= len(per)
         ):  # скан или нечитаемые шрифты (половина страниц пустые)
             if ocr.available():
                 try:
-                    o = ocr.recognize(data, 'pdf')
-                    t1 = cls._pages(o['pages'])
-                    q1 = TextQuality.score(t1)
+                    ocr_res = ocr.recognize(data, 'pdf')
+                    text_ocr = cls._pages(ocr_res['pages'])
+                    quality_ocr = TextQuality.score(text_ocr)
                     methods.append(
                         {
                             'id': 'ocr',
-                            'name': f'Распознавание Windows (OCR, {o.get("lang") or "язык профиля"})',
-                            'chars': len(t1.replace('\f', '')),
-                            'quality': q1,
-                            'pages': len(o['pages']),
+                            'name': f'Распознавание Windows (OCR, {ocr_res.get("lang") or "язык профиля"})',
+                            'chars': len(text_ocr.replace('\f', '')),
+                            'quality': quality_ocr,
+                            'pages': len(ocr_res['pages']),
                         }
                     )
-                    if q1 > q0:
-                        best, kind = o['pages'], 'pdf-ocr'
-                except ValueError as e:
-                    methods.append({'id': 'ocr', 'name': 'Распознавание Windows (OCR)', 'error': str(e)[:300]})
+                    if quality_ocr > quality_layer:
+                        best, kind = ocr_res['pages'], 'pdf-ocr'
+                except ValueError as elem:
+                    methods.append({'id': 'ocr', 'name': 'Распознавание Windows (OCR)', 'error': str(elem)[:300]})
             else:
                 methods.append(
                     {
@@ -124,15 +133,15 @@ class DocText:
                 )
         text = cls._pages(best)
         if len(re.sub(r'\W', '', text)) < 20:
-            err = next((m.get('error') for m in methods if m.get('error')), '')
+            err = next((method.get('error') for method in methods if method.get('error')), '')
             raise ValueError(
                 'в PDF нет текста — похоже на скан'
                 + ('; распознавание: ' + err if err else '')
                 + '. Пришлите текстовый PDF или DOCX либо скопируйте текст вручную'
             )
-        for m in methods:
-            m['used'] = (m['id'] == 'ocr') == (kind == 'pdf-ocr') and not m.get('error')
-        return cls._done(text, kind, r.get('pages'), methods)
+        for method in methods:
+            method['used'] = (method['id'] == 'ocr') == (kind == 'pdf-ocr') and not method.get('error')
+        return cls._done(text, kind, res.get('pages'), methods)
 
     @classmethod
     def _image(cls, data, ocr) -> dict:
@@ -142,9 +151,9 @@ class DocText:
                 'картинка ТЗ распознаётся на сервере под Windows 10/11 (встроенное распознавание текста) — '
                 'здесь недоступно: пришлите PDF с текстом, DOCX или скопируйте текст'
             )
-        o = ocr.recognize(data, 'image')
-        text = cls._pages(o['pages'])
-        q = TextQuality.score(text)
+        ocr_res = ocr.recognize(data, 'image')
+        text = cls._pages(ocr_res['pages'])
+        quality = TextQuality.score(text)
         return cls._done(
             text,
             'image',
@@ -152,9 +161,9 @@ class DocText:
             [
                 {
                     'id': 'ocr',
-                    'name': f'Распознавание Windows (OCR, {o.get("lang") or "язык профиля"})',
+                    'name': f'Распознавание Windows (OCR, {ocr_res.get("lang") or "язык профиля"})',
                     'chars': len(text),
-                    'quality': q,
+                    'quality': quality,
                     'used': True,
                 }
             ],
@@ -183,21 +192,21 @@ class DocText:
             raise ValueError('файл повреждён — не открывается как ' + cls.KINDS) from None
         names = set(z.namelist())
 
-        def part(n) -> ET.Element:
-            info = z.getinfo(n)
+        def part(name) -> ElementTree.Element:
+            info = z.getinfo(name)
             if info.file_size > cls.MAX_PART:
                 raise ValueError('слишком большая часть документа')
-            return Xml.parse(z.read(n))
+            return Xml.parse(z.read(name))
 
         if 'word/document.xml' in names:
             return cls._done(Xml.docx(part('word/document.xml')), 'docx')
         if 'xl/workbook.xml' in names:
             shared = Xml.shared(part('xl/sharedStrings.xml')) if 'xl/sharedStrings.xml' in names else []
             sheets = sorted(
-                (n for n in names if re.match(r'xl/worksheets/sheet\d+\.xml$', n)),
-                key=lambda n: int(re.findall(r'\d+', n)[-1]),
+                (entry for entry in names if re.match(r'xl/worksheets/sheet\d+\.xml$', entry)),
+                key=lambda entry: int(re.findall(r'\d+', entry)[-1]),
             )
-            return cls._done('\n\n'.join(Xml.sheet(part(n), shared) for n in sheets[:20]), 'xlsx')
+            return cls._done('\n\n'.join(Xml.sheet(part(entry), shared) for entry in sheets[:20]), 'xlsx')
         if 'content.xml' in names:
             return cls._done(Xml.odf(part('content.xml')), 'odt')
         raise ValueError('архив не похож на документ — нужен ' + cls.KINDS)
@@ -207,13 +216,13 @@ class Xml:
     """Разбор частей Office/OpenDocument: текст по порядку, таблицы — строками «ячейка | ячейка»."""
 
     @staticmethod
-    def parse(raw) -> ET.Element:
+    def parse(raw) -> ElementTree.Element:
         head = raw[:4096].upper()
         if b'<!DOCTYPE' in head or b'<!ENTITY' in head:
             raise ValueError('документ с недопустимой разметкой')
         try:
-            return ET.fromstring(raw)
-        except ET.ParseError:
+            return ElementTree.fromstring(raw)
+        except ElementTree.ParseError:
             raise ValueError('документ повреждён — разметка не читается') from None
 
     @staticmethod
@@ -224,60 +233,60 @@ class Xml:
     def docx(cls, root) -> str:
         out = []
 
-        def para(p) -> str:
-            s = []
-            for e in p.iter():
-                t = cls.local(e.tag)
-                if t == 't' and e.text:
-                    s.append(e.text)
-                elif t == 'tab':
-                    s.append('\t')
-                elif t in ('br', 'cr'):
-                    s.append('\n')
-            return ''.join(s)
+        def para(page) -> str:
+            parts = []
+            for elem in page.iter():
+                tag = cls.local(elem.tag)
+                if tag == 't' and elem.text:
+                    parts.append(elem.text)
+                elif tag == 'tab':
+                    parts.append('\t')
+                elif tag in ('br', 'cr'):
+                    parts.append('\n')
+            return ''.join(parts)
 
         def walk(node) -> None:
-            for e in node:
-                t = cls.local(e.tag)
-                if t == 'p':
-                    out.append(para(e))
-                elif t == 'tbl':
-                    for tr in (x for x in e.iter() if cls.local(x.tag) == 'tr'):
+            for elem in node:
+                tag = cls.local(elem.tag)
+                if tag == 'p':
+                    out.append(para(elem))
+                elif tag == 'tbl':
+                    for row in (x for x in elem.iter() if cls.local(x.tag) == 'tr'):
                         cells = [
-                            ' '.join(para(p) for p in tc.iter() if cls.local(p.tag) == 'p').strip()
-                            for tc in tr
-                            if cls.local(tc.tag) == 'tc'
+                            ' '.join(para(page) for page in cell.iter() if cls.local(page.tag) == 'p').strip()
+                            for cell in row
+                            if cls.local(cell.tag) == 'tc'
                         ]
                         if any(cells):
                             out.append(' | '.join(cells))
                     out.append('')
                 else:
-                    walk(e)
+                    walk(elem)
 
-        body = next((e for e in root if cls.local(e.tag) == 'body'), root)
+        body = next((child for child in root if cls.local(child.tag) == 'body'), root)
         walk(body)
         return '\n'.join(out)
 
     @classmethod
     def shared(cls, root) -> list:
         return [
-            ''.join(t.text or '' for t in si.iter() if cls.local(t.tag) == 't')
-            for si in root
-            if cls.local(si.tag) == 'si'
+            ''.join(node.text or '' for node in item.iter() if cls.local(node.tag) == 't')
+            for item in root
+            if cls.local(item.tag) == 'si'
         ]
 
     @classmethod
     def sheet(cls, root, shared) -> str:
         rows = []
-        for row in (e for e in root.iter() if cls.local(e.tag) == 'row'):
+        for row in (elem for elem in root.iter() if cls.local(elem.tag) == 'row'):
             cells = []
-            for c in (x for x in row if cls.local(x.tag) == 'c'):
-                typ, v = c.get('t'), None
-                for e in c:
-                    if cls.local(e.tag) == 'v':
-                        v = e.text
-                    elif cls.local(e.tag) == 'is':
-                        v = ''.join(t.text or '' for t in e.iter() if cls.local(t.tag) == 't')
+            for cell in (x for x in row if cls.local(x.tag) == 'c'):
+                typ, v = cell.get('t'), None
+                for elem in cell:
+                    if cls.local(elem.tag) == 'v':
+                        v = elem.text
+                    elif cls.local(elem.tag) == 'is':
+                        v = ''.join(node.text or '' for node in elem.iter() if cls.local(node.tag) == 't')
                 if typ == 's' and v is not None:
                     try:
                         v = shared[int(v)]
@@ -292,29 +301,31 @@ class Xml:
     def odf(cls, root) -> str:
         out = []
 
-        def text(e) -> str:
-            s = [e.text or '']
-            for ch in e:
-                t = cls.local(ch.tag)
-                s.append('\t' if t == 'tab' else '\n' if t == 'line-break' else ' ' if t == 's' else text(ch))
-                s.append(ch.tail or '')
-            return ''.join(s)
+        def text(elem) -> str:
+            parts = [elem.text or '']
+            for child in elem:
+                tag = cls.local(child.tag)
+                parts.append(
+                    '\t' if tag == 'tab' else '\n' if tag == 'line-break' else ' ' if tag == 's' else text(child)
+                )
+                parts.append(child.tail or '')
+            return ''.join(parts)
 
         def walk(node) -> None:
-            for e in node:
-                t = cls.local(e.tag)
-                if t in ('p', 'h'):
-                    out.append(text(e))
-                elif t == 'table-row':
+            for elem in node:
+                tag = cls.local(elem.tag)
+                if tag in ('p', 'h'):
+                    out.append(text(elem))
+                elif tag == 'table-row':
                     cells = [
-                        ' '.join(text(p) for p in c.iter() if cls.local(p.tag) in ('p', 'h')).strip()
-                        for c in e
-                        if cls.local(c.tag) == 'table-cell'
+                        ' '.join(text(page) for page in child.iter() if cls.local(page.tag) in ('p', 'h')).strip()
+                        for child in elem
+                        if cls.local(child.tag) == 'table-cell'
                     ]
                     if any(cells):
                         out.append(' | '.join(x for x in cells if x))
                 else:
-                    walk(e)
+                    walk(elem)
 
         walk(root)
         return '\n'.join(out)
@@ -346,30 +357,30 @@ class Rtf:
 
     @classmethod
     def text(cls, data) -> str:
-        out, stack, skip, uc, pend = [], [], False, 1, 0
+        out, stack, skip, skip_count, pend = [], [], False, 1, 0
         for word, num, hexb, sym, brace, plain in cls.TOKEN.findall(data):
             if brace == b'{':
-                stack.append((skip, uc))
+                stack.append((skip, skip_count))
                 continue
             if brace == b'}':
-                skip, uc = stack.pop() if stack else (False, 1)
+                skip, skip_count = stack.pop() if stack else (False, 1)
                 continue
             if skip:
                 continue
             if word:
-                w = word.decode('ascii')
-                if w in cls.SKIP:
+                ctrl_word = word.decode('ascii')
+                if ctrl_word in cls.SKIP:
                     skip = True
-                elif w in ('par', 'line', 'row', 'sect', 'page'):
+                elif ctrl_word in ('par', 'line', 'row', 'sect', 'page'):
                     out.append('\n')
-                elif w in ('tab', 'cell'):
-                    out.append(' | ' if w == 'cell' else '\t')
-                elif w == 'uc':
-                    uc = int(num or 1)
-                elif w == 'u':
-                    n = int(num or 0)
-                    out.append(chr(n + 65536 if n < 0 else n))
-                    pend = uc
+                elif ctrl_word in ('tab', 'cell'):
+                    out.append(' | ' if ctrl_word == 'cell' else '\t')
+                elif ctrl_word == 'uc':
+                    skip_count = int(num or 1)
+                elif ctrl_word == 'u':
+                    num_val = int(num or 0)
+                    out.append(chr(num_val + 65536 if num_val < 0 else num_val))
+                    pend = skip_count
                 continue
             if sym:
                 if sym == b'*':
@@ -386,8 +397,8 @@ class Rtf:
                 out.append(bytes([int(hexb, 16)]).decode('cp1251', 'replace'))
                 continue
             if plain:
-                s = plain.replace(b'\r', b'').replace(b'\n', b'')
+                plain_text = plain.replace(b'\r', b'').replace(b'\n', b'')
                 if pend:
-                    s, pend = s[pend:], 0
-                out.append(s.decode('cp1251', 'replace'))
+                    plain_text, pend = plain_text[pend:], 0
+                out.append(plain_text.decode('cp1251', 'replace'))
         return ''.join(out)

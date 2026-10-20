@@ -6,12 +6,12 @@ import re
 from datetime import date, datetime
 
 import defaults
-import logistics_api as lg
+import logistics_api
 from config import APP_DIR
 
 
 class ChinaFreight:
-    KV = 'chinaRates'
+    KV_KEY = 'chinaRates'
     KINDS = {
         'ftl': 'Фура 20 т (тент)',
         'ltl': 'Сборный груз',
@@ -48,7 +48,7 @@ class ChinaFreight:
     }
     ATI_CAR = {'ftl': ('tent', 20), 'docker': ('docker', 20), 'tral': ('tral', 20)}
     DEV = ('log.cnDev', 30, 0, 200)  # отклонение ставки от рынка, %
-    CN = re.compile(r'китай|кнр', re.I)
+    CHINA_RE = re.compile(r'китай|кнр', re.I)
     MAX_ROWS = 300
     # ориентиры по открытым данным — не ставки по договору
     REF = os.path.join(APP_DIR, 'web', 'rules', 'china_rates_ref.json')
@@ -57,21 +57,21 @@ class ChinaFreight:
         self.store = store
 
     def dev(self) -> float:
-        key, b, lo, hi = self.DEV
-        return defaults.num(self.store, key, b, lo, hi)
+        key, builtin, low, high = self.DEV
+        return defaults.num(self.store, key, builtin, low, high)
 
     def rates(self) -> dict:
-        d = self.store.kv_get(self.KV)
-        return d if isinstance(d, dict) else {'rows': []}
+        data = self.store.kv_get(self.KV_KEY)
+        return data if isinstance(data, dict) else {'rows': []}
 
     @staticmethod
-    def _text(v, name: str, n: int, need: bool = True) -> str:
-        s = re.sub(r'\s+', ' ', str(v or '')).strip()
-        if need and not s:
+    def _text(v, name: str, limit: int, need: bool = True) -> str:
+        text = re.sub(r'\s+', ' ', str(v or '')).strip()
+        if need and not text:
             raise ValueError(f'Ставки экспедиторов: не заполнено поле «{name}»')
-        if len(s) > n:
-            raise ValueError(f'Ставки экспедиторов: «{name}» — не длиннее {n} знаков')
-        return s
+        if len(text) > limit:
+            raise ValueError(f'Ставки экспедиторов: «{name}» — не длиннее {limit} знаков')
+        return text
 
     @staticmethod
     def _num(v) -> float | None:
@@ -82,11 +82,11 @@ class ChinaFreight:
 
     @staticmethod
     def _date(v, i: int) -> str:
-        s = str(v or '').strip()
-        if not s:
+        text = str(v or '').strip()
+        if not text:
             return ''
         try:
-            return date.fromisoformat(s[:10]).isoformat()
+            return date.fromisoformat(text[:10]).isoformat()
         except ValueError:
             raise ValueError(f'Строка {i}: «Действует до» — дата (ГГГГ-ММ-ДД)') from None
 
@@ -94,71 +94,75 @@ class ChinaFreight:
     def ref(cls) -> dict:
         """{date, title, note, rows} из файла поставки; нет файла — пусто."""
         try:
-            with open(cls.REF, encoding='utf-8') as f:
-                d = json.load(f)
+            with open(cls.REF, encoding='utf-8') as handle:
+                data = json.load(handle)
             return (
-                {k: d.get(k) for k in ('date', 'title', 'note', 'rows')}
-                if d.get('format') == 'kp-china-rates-ref'
+                {k: data.get(k) for k in ('date', 'title', 'note', 'rows')}
+                if data.get('format') == 'kp-china-rates-ref'
                 else {'rows': []}
             )
         except (OSError, ValueError):
             return {'rows': []}
 
-    def save_rates(self, rows: list, by: str = '') -> dict:
+    def save_rates(self, rows: list, author: str = '') -> dict:
         if not isinstance(rows, list) or len(rows) > self.MAX_ROWS:
             raise ValueError(f'Ставки экспедиторов: нужен список до {self.MAX_ROWS} строк')
         out = []
-        for i, r in enumerate(rows, 1):
-            if not isinstance(r, dict):
+        for i, row in enumerate(rows, 1):
+            if not isinstance(row, dict):
                 raise ValueError(f'Ставки экспедиторов: строка {i} — неверный формат')
-            price = self._num(r.get('price'))
+            price = self._num(row.get('price'))
             if price is None or not 0 < price <= 1e9:
                 raise ValueError(f'Строка {i}: ставка — число больше нуля')
             kind, unit, cur, scope = (
-                r.get('kind'),
-                r.get('unit') or 'trip',
-                r.get('cur') or 'CNY',
-                r.get('scope') or 'border',
+                row.get('kind'),
+                row.get('unit') or 'trip',
+                row.get('cur') or 'CNY',
+                row.get('scope') or 'border',
             )
             if kind not in self.KINDS or unit not in self.UNITS or cur not in self.CURS or scope not in self.SCOPES:
                 raise ValueError(f'Строка {i}: выберите вид перевозки, участок, единицу и валюту из списка')
-            mn = self._num(r.get('min')) if str(r.get('min') or '').strip() else 0
-            if mn is None or not 0 <= mn <= 1e9:
+            minimum = self._num(row.get('min')) if str(row.get('min') or '').strip() else 0
+            if minimum is None or not 0 <= minimum <= 1e9:
                 raise ValueError(f'Строка {i}: минимальная сумма — число не меньше нуля')
-            days = str(r.get('days') or '').strip()
+            days = str(row.get('days') or '').strip()
             if days and not (days.isdigit() and int(days) <= 365):
                 raise ValueError(f'Строка {i}: срок — целое число дней до 365')
-            src = self._text(r.get('src'), 'Источник', 300, need=False)
+            src = self._text(row.get('src'), 'Источник', 300, need=False)
             if src and not re.match(r'^https?://\S+$', src):
                 raise ValueError(f'Строка {i}: источник — ссылка http(s)://…')
             out.append(
                 {
-                    'ref': bool(r.get('ref')) and r.get('ref') not in ('0', 'false', ''),
+                    'ref': bool(row.get('ref')) and row.get('ref') not in ('0', 'false', ''),
                     'src': src,
-                    'from': self._text(r.get('from'), 'Откуда', 80),
-                    'to': self._text(r.get('to'), 'Куда', 80),
+                    'from': self._text(row.get('from'), 'Откуда', 80),
+                    'to': self._text(row.get('to'), 'Куда', 80),
                     'kind': kind,
                     'scope': scope,
                     'unit': unit,
                     'price': price,
-                    'min': mn,
+                    'min': minimum,
                     'cur': cur,
                     'days': int(days) if days else None,
-                    'until': self._date(r.get('until'), i),
-                    'who': self._text(r.get('who'), 'Экспедитор', 80, need=False),
-                    'note': self._text(r.get('note'), 'Примечание', 200, need=False),
+                    'until': self._date(row.get('until'), i),
+                    'who': self._text(row.get('who'), 'Экспедитор', 80, need=False),
+                    'note': self._text(row.get('note'), 'Примечание', 200, need=False),
                 }
             )
-        d = {'rows': out, 'at': datetime.now().isoformat(timespec='seconds'), 'by': str(by or '')[:80]}
-        self.store.kv_set(self.KV, d)
-        return d
+        data = {'rows': out, 'at': datetime.now().isoformat(timespec='seconds'), 'by': str(author or '')[:80]}
+        self.store.kv_set(self.KV_KEY, data)
+        return data
 
     def ati_on(self):
-        return lg.providers(self.store).get('ati')
+        return logistics_api.providers(self.store).get('ati')
 
     def directions(self) -> list:
         """[{from, to, fromId, toId}] — направления «Средних ставок» с отправлением из Китая."""
-        return [d for d in lg.Ati.directions(self.store) if self.CN.search(d.get('from') or '')]
+        return [
+            direction
+            for direction in logistics_api.Ati.directions(self.store)
+            if self.CHINA_RE.search(direction.get('from') or '')
+        ]
 
     def status(self) -> dict:
         out = {
@@ -176,30 +180,32 @@ class ChinaFreight:
         }
         if out['ati']:
             try:
-                out['directions'] = [{'from': d['from'], 'to': d['to']} for d in self.directions()]
-            except Exception as e:
-                out['atiError'] = lg.Http.error(e)
+                out['directions'] = [
+                    {'from': direction['from'], 'to': direction['to']} for direction in self.directions()
+                ]
+            except Exception as exc:
+                out['atiError'] = logistics_api.Http.error(exc)
         return out
 
     @staticmethod
-    def _key(s) -> str:
+    def _key(text) -> str:
         """«Достык (Казахстан)» = «Достык»: сравнение мест без пояснения в скобках."""
-        return lg.cnorm(re.sub(r'\([^)]*\)', '', str(s or '')))
+        return logistics_api.cnorm(re.sub(r'\([^)]*\)', '', str(text or '')))
 
-    def _money(self, o, fx: dict, what: str) -> float:
+    def _money(self, offer, rates: dict, what: str) -> float:
         """{v, cur} → рубли по курсу ЦБ; пусто — 0; нет курса — ValueError."""
-        v = self._num((o or {}).get('v')) if str((o or {}).get('v') or '').strip() else 0
+        v = self._num((offer or {}).get('v')) if str((offer or {}).get('v') or '').strip() else 0
         if v is None or v < 0:
             raise ValueError(f'{what} — число не меньше нуля')
-        cur = (o or {}).get('cur') or 'CNY'
+        cur = (offer or {}).get('cur') or 'CNY'
         if cur not in self.CURS:
             raise ValueError(f'{what} — выберите валюту из списка')
-        rate = 1.0 if cur == 'RUB' else lg.number((fx or {}).get(cur))
+        rate = 1.0 if cur == 'RUB' else logistics_api.number((rates or {}).get(cur))
         if v and not rate:
             raise ValueError(f'{what}: нет курса ЦБ для {cur} — повторите позже')
         return v * (rate or 0)
 
-    def _ati(self, frm: str, to: str, kind: str) -> tuple:
+    def _ati(self, frm: str, dest: str, kind: str) -> tuple:
         """Рыночный ориентир ATI.SU (верхняя граница средних ставок, ₽) или (None, ошибка)."""
         if kind not in self.ATI_CAR:
             return None, None
@@ -209,89 +215,93 @@ class ChinaFreight:
                 'нет ключа ATI.SU («Сотрудники и система → Подключения и ключи») или ATI.SU выключен — сравнение с рынком не сделано',
             )
         try:
-            ds = [d for d in self.directions() if self._key(d['from']) == frm and self._key(d['to']) == to]
-            if not ds:
+            dirs = [
+                direction
+                for direction in self.directions()
+                if self._key(direction['from']) == frm and self._key(direction['to']) == dest
+            ]
+            if not dirs:
                 return None, 'направления нет в «Средних ставках» ATI.SU — сравнение с рынком не сделано'
             car, ton = self.ATI_CAR[kind]
-            p = lg.Ati.price(self.store, ds[0], car, ton)
+            price = logistics_api.Ati.price(self.store, dirs[0], car, ton)
             return {
-                'rub': round(p['upperRub'] or 0),
-                'avgRub': round(p['avgRub'] or 0) if p['avgRub'] else None,
-                'note': f'верхняя граница средних ставок за {lg.LtlLimits.ati_days(self.store)} дн., '
+                'rub': round(price['upperRub'] or 0),
+                'avgRub': round(price['avgRub'] or 0) if price['avgRub'] else None,
+                'note': f'верхняя граница средних ставок за {logistics_api.LtlLimits.ati_days(self.store)} дн., '
                 f'{self.KINDS[kind].split(" (")[0].lower()} {ton} т, с НДС',
             }, None
-        except Exception as e:
-            return None, lg.Http.error(e)
+        except Exception as exc:
+            return None, logistics_api.Http.error(exc)
 
-    def quote(self, req: dict, fx: dict, today=None) -> dict:
+    def quote(self, req: dict, rates: dict, today=None) -> dict:
         """req: from, to, dest, kind, kg, m3, terms, extra, ins; fx — курсы ЦБ → предложения с суммой к таможенной стоимости."""
-        frm, to, dest, kind = (
+        frm, dst, dest, kind = (
             self._key(req.get('from')),
             self._key(req.get('to')),
             self._key(req.get('dest')),
             req.get('kind'),
         )
-        if not frm or not to or kind not in self.KINDS:
+        if not frm or not dst or kind not in self.KINDS:
             raise ValueError('Укажите город в Китае, место прибытия и вид перевозки')
         terms = req.get('terms') or 'EXW'
         if terms not in self.TERMS:
             raise ValueError('Выберите условия поставки из списка')
         t_name, add_freight, add_extra, add_ins = self.TERMS[terms]
-        qty = {'kg': lg.number(req.get('kg')) or 0, 'm3': lg.number(req.get('m3')) or 0}
-        extra = self._money(req.get('extra'), fx, 'Расходы в Китае') if add_extra else 0
-        ins = self._money(req.get('ins'), fx, 'Страхование') if add_ins else 0
+        qty = {'kg': logistics_api.number(req.get('kg')) or 0, 'm3': logistics_api.number(req.get('m3')) or 0}
+        extra = self._money(req.get('extra'), rates, 'Расходы в Китае') if add_extra else 0
+        ins = self._money(req.get('ins'), rates, 'Страхование') if add_ins else 0
         today = today or date.today().isoformat()
         offers, after, errors, groups = [], [], [], {}
-        for r in self.rates().get('rows') or []:
-            scope = r.get('scope') or 'border'
-            if r.get('kind') != kind:
+        for row in self.rates().get('rows') or []:
+            scope = row.get('scope') or 'border'
+            if row.get('kind') != kind:
                 continue
             if scope == 'border':
-                ok = self._key(r.get('from')) == frm and self._key(r.get('to')) == to
+                ok = self._key(row.get('from')) == frm and self._key(row.get('to')) == dst
             elif scope == 'through':
-                ok = self._key(r.get('from')) == frm and bool(dest) and self._key(r.get('to')) == dest
+                ok = self._key(row.get('from')) == frm and bool(dest) and self._key(row.get('to')) == dest
             else:
-                ok = self._key(r.get('from')) == to and bool(dest) and self._key(r.get('to')) == dest
+                ok = self._key(row.get('from')) == dst and bool(dest) and self._key(row.get('to')) == dest
             if not ok:
                 continue
-            who = r.get('who') or 'Ставка экспедитора'
-            mul = 1 if r['unit'] == 'trip' else qty[r['unit']]
+            who = row.get('who') or 'Ставка экспедитора'
+            mul = 1 if row['unit'] == 'trip' else qty[row['unit']]
             if not mul:
                 errors.append(
                     {
                         'src': who,
                         'msg': 'ставка {} — укажите {}'.format(
-                            self.UNITS[r['unit']], 'вес брутто, кг' if r['unit'] == 'kg' else 'объём, м³'
+                            self.UNITS[row['unit']], 'вес брутто, кг' if row['unit'] == 'kg' else 'объём, м³'
                         ),
                     }
                 )
                 continue
-            rate = 1.0 if r['cur'] == 'RUB' else lg.number((fx or {}).get(r['cur']))
+            rate = 1.0 if row['cur'] == 'RUB' else logistics_api.number((rates or {}).get(row['cur']))
             if not rate:
-                errors.append({'src': who, 'msg': 'нет курса ЦБ для {} — повторите позже'.format(r['cur'])})
+                errors.append({'src': who, 'msg': 'нет курса ЦБ для {} — повторите позже'.format(row['cur'])})
                 continue
-            amount = r['price'] * mul
-            how = '{} {} {}'.format(self.fmt(r['price']), r['cur'], self.UNITS[r['unit']]) + (
-                '' if r['unit'] == 'trip' else f' × {self.fmt(mul)}'
+            amount = row['price'] * mul
+            how = '{} {} {}'.format(self.fmt(row['price']), row['cur'], self.UNITS[row['unit']]) + (
+                '' if row['unit'] == 'trip' else f' × {self.fmt(mul)}'
             )
-            g = groups.setdefault(
-                (who, scope, self._key(r.get('to'))),
+            group = groups.setdefault(
+                (who, scope, self._key(row.get('to'))),
                 {
                     'src': who,
                     'scope': scope,
                     'amount': 0,
-                    'cur': r['cur'],
+                    'cur': row['cur'],
                     'rate': rate,
                     'how': [],
-                    'days': r.get('days'),
-                    'until': r.get('until') or '',
-                    'note': r.get('note') or '',
+                    'days': row.get('days'),
+                    'until': row.get('until') or '',
+                    'note': row.get('note') or '',
                     'min': 0,
-                    'ref': bool(r.get('ref')),
-                    'url': r.get('src') or '',
+                    'ref': bool(row.get('ref')),
+                    'url': row.get('src') or '',
                 },
             )
-            if g['cur'] != r['cur']:
+            if group['cur'] != row['cur']:
                 errors.append(
                     {
                         'src': who,
@@ -300,85 +310,89 @@ class ChinaFreight:
                 )
                 continue
             # сборный: большее из «за кг» и «за м³», не меньше минимума
-            g['amount'] = max(g['amount'], amount)
-            g['min'] = max(g['min'], r.get('min') or 0)
-            g['how'].append(how)
-            if r.get('until') and (not g['until'] or r['until'] < g['until']):
-                g['until'] = r['until']
-        mkt, mkt_err = self._ati(frm, to, kind)
+            group['amount'] = max(group['amount'], amount)
+            group['min'] = max(group['min'], row.get('min') or 0)
+            group['how'].append(how)
+            if row.get('until') and (not group['until'] or row['until'] < group['until']):
+                group['until'] = row['until']
+        mkt, mkt_err = self._ati(frm, dst, kind)
         dev = self.dev()
-        for g in groups.values():
-            amount = max(g['amount'], g['min'])
-            rub = round(amount * g['rate'])
+        for group in groups.values():
+            amount = max(group['amount'], group['min'])
+            rub = round(amount * group['rate'])
             warn = []
-            if g['ref']:
+            if group['ref']:
                 warn.append(
                     'ориентир по открытым данным, а не ставка экспедитора по договору — для таможенной стоимости запросите ставку с выделенным участком до места прибытия'
                 )
-            if g['until'] and g['until'] < today:
+            if group['until'] and group['until'] < today:
                 warn.append(
                     'ставка просрочена (действовала до {}) — запросите у экспедитора новую'.format(
-                        '.'.join(reversed(g['until'].split('-')))
+                        '.'.join(reversed(group['until'].split('-')))
                     )
                 )
-            if g['min'] and g['min'] >= g['amount']:
-                g['how'].append('минимальная сумма {} {}'.format(self.fmt(g['min']), g['cur']))
-            o = {
-                'src': g['src'],
-                'scope': g['scope'],
+            if group['min'] and group['min'] >= group['amount']:
+                group['how'].append('минимальная сумма {} {}'.format(self.fmt(group['min']), group['cur']))
+            offer = {
+                'src': group['src'],
+                'scope': group['scope'],
                 'rub': rub,
                 'amount': round(amount, 2),
-                'cur': g['cur'],
-                'days': g['days'],
-                'until': g['until'],
-                'note': '; '.join(g['how'] + ([g['note']] if g['note'] else [])),
+                'cur': group['cur'],
+                'days': group['days'],
+                'until': group['until'],
+                'note': '; '.join(group['how'] + ([group['note']] if group['note'] else [])),
                 'warn': warn,
-                'ref': g['ref'],
-                'srcUrl': g['url'],
+                'ref': group['ref'],
+                'srcUrl': group['url'],
             }
-            if g['scope'] == 'after':
-                o['warn'].append(
+            if group['scope'] == 'after':
+                offer['warn'].append(
                     'в таможенную стоимость не входит, только если эта сумма выделена в договоре и подтверждена счётом (ТК ЕАЭС ст. 40 п. 2)'
                 )
-                after.append(o)
+                after.append(offer)
                 continue
-            if g['scope'] == 'through':
-                o['warn'].append(
+            if group['scope'] == 'through':
+                offer['warn'].append(
                     'сквозная ставка одной суммой: вся сумма войдёт в таможенную стоимость; чтобы исключить участок по РФ — '
                     'попросите экспедитора выделить его в договоре и счёте (ТК ЕАЭС ст. 40 п. 2)'
                 )
-            if mkt and mkt['rub'] and g['scope'] == 'border' and dev:
-                d = (rub - mkt['rub']) / float(mkt['rub']) * 100
-                if abs(d) > dev:
-                    o['warn'].append(
-                        f'{"дороже" if d > 0 else "дешевле"} рынка на {round(abs(d))} % '
+            if mkt and mkt['rub'] and group['scope'] == 'border' and dev:
+                diff = (rub - mkt['rub']) / float(mkt['rub']) * 100
+                if abs(diff) > dev:
+                    offer['warn'].append(
+                        f'{"дороже" if diff > 0 else "дешевле"} рынка на {round(abs(diff))} % '
                         f'(ATI.SU {self.fmt(mkt["rub"])} ₽) — проверьте ставку'
                     )
-            o['cv'] = round((rub if add_freight else 0) + extra + ins)
-            o['cvParts'] = [
-                p
-                for p in (
+            offer['cv'] = round((rub if add_freight else 0) + extra + ins)
+            offer['cvParts'] = [
+                part
+                for part in (
                     (
-                        ('перевозка ' + ('сквозная (целиком)' if g['scope'] == 'through' else 'до места прибытия'), rub)
+                        (
+                            'перевозка '
+                            + ('сквозная (целиком)' if group['scope'] == 'through' else 'до места прибытия'),
+                            rub,
+                        )
                         if add_freight
                         else None
                     ),
                     (('расходы в Китае', round(extra)) if extra else None),
                     (('страхование', round(ins)) if ins else None),
                 )
-                if p
+                if part
             ]
-            offers.append(o)
+            offers.append(offer)
         if mkt_err:
             errors.append({'src': 'ATI.SU', 'msg': mkt_err, 'skip': True})
-        if not offers and not [e for e in errors if not e.get('skip')]:
+        if not offers and not [err for err in errors if not err.get('skip')]:
             errors.append(
                 {
                     'src': 'Ставки экспедиторов',
                     'msg': 'для этого маршрута и вида перевозки ставок нет — добавьте их в таблицу ниже',
                 }
             )
-        offers.sort(key=lambda o: -o['cv'])
+        offers.sort(key=lambda offer: -offer['cv'])
         note = {
             'EXW': 'к цене контракта добавляются перевозка до места прибытия, расходы в Китае и страхование (если оплачено)',
             'FCA': 'к цене контракта добавляются перевозка от передачи перевозчику до места прибытия и страхование (если оплачено)',
@@ -399,10 +413,10 @@ class ChinaFreight:
             'ins': round(ins),
             'dev': dev,
             'kz': 'казахстан' in str(req.get('to') or '').lower(),
-            'fx': {k: (fx or {}).get(k) for k in ('USD', 'CNY', 'EUR', 'date')},
+            'fx': {k: (rates or {}).get(k) for k in ('USD', 'CNY', 'EUR', 'date')},
         }
 
     @staticmethod
     def fmt(v) -> str:
-        s = f'{v:,.2f}'.replace(',', ' ')
-        return s[:-3] if s.endswith('.00') else s.replace('.', ',')
+        text = f'{v:,.2f}'.replace(',', ' ')
+        return text[:-3] if text.endswith('.00') else text.replace('.', ',')

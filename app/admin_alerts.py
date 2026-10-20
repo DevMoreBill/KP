@@ -46,7 +46,7 @@ class AdminAlerts:
             'on': bool(conf.get('on')),
             'to': conf.get('to') or '',
             'last': conf.get('last') or None,
-            'mailOn': Mailer(self.store).on(),
+            'mailOn': Mailer(self.store).enabled(),
         }
 
     def save(self, data: dict, author: str) -> dict:

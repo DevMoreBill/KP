@@ -25,17 +25,20 @@ def msk_today() -> str:
 
 def manual_links(inn) -> list:
     """Бесплатные официальные сервисы и Rusprofile — проверить вручную то, что не вошло в проверку."""
-    q = urllib.parse.quote(inn)
+    quoted = urllib.parse.quote(inn)
     return [
         {'name': 'Rusprofile', 'url': Rusprofile.url(inn)},
-        {'name': 'Прозрачный бизнес (ФНС)', 'url': 'https://pb.nalog.ru/search.html#t=1&mode=search-all&queryAll=' + q},
+        {
+            'name': 'Прозрачный бизнес (ФНС)',
+            'url': 'https://pb.nalog.ru/search.html#t=1&mode=search-all&queryAll=' + quoted,
+        },
         {'name': 'Бухотчётность (ГИР БО)', 'url': GirBo.search_url(inn)},
         {'name': 'Арбитражные дела', 'url': 'https://kad.arbitr.ru/'},
         {'name': 'Исполнительные производства (ФССП)', 'url': 'https://fssp.gov.ru/iss/ip/'},
-        {'name': 'Банкротство (Федресурс)', 'url': 'https://fedresurs.ru/search/entity?code=' + q},
+        {'name': 'Банкротство (Федресурс)', 'url': 'https://fedresurs.ru/search/entity?code=' + quoted},
         {
             'name': 'Недобросовестные поставщики',
-            'url': 'https://zakupki.gov.ru/epz/dishonestsupplier/search/results.html?searchString=' + q,
+            'url': 'https://zakupki.gov.ru/epz/dishonestsupplier/search/results.html?searchString=' + quoted,
         },
         {'name': 'Checko (сайт)', 'url': CheckoApi.site(inn)},
     ]
@@ -47,40 +50,40 @@ class LimitError(Exception):
 
 def http_json(url, data=None, headers=None, method=None) -> object:
     """Запрос к API → разобранный JSON. data: dict/list — JSON (если Content-Type: application/json) или форма; bytes — как есть."""
-    h = {'User-Agent': 'Mozilla/5.0 (KP-Pnevmotekh)', 'Accept': 'application/json'}
-    h.update(headers or {})
+    hdrs = {'User-Agent': 'Mozilla/5.0 (KP-Pnevmotekh)', 'Accept': 'application/json'}
+    hdrs.update(headers or {})
     body = None
     if data is not None:
-        if isinstance(data, (dict, list)) and h.get('Content-Type', '').startswith('application/json'):
+        if isinstance(data, (dict, list)) and hdrs.get('Content-Type', '').startswith('application/json'):
             body = json.dumps(data).encode('utf-8')
         elif isinstance(data, dict):
             body = urllib.parse.urlencode(data).encode('utf-8')
-            h.setdefault('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8')
+            hdrs.setdefault('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8')
         else:
             body = data
-    raw = Net.request(url, data=body, headers=h, method=method, timeout=TIMEOUT)  # предел ответа и повтор GET — Net
+    raw = Net.request(url, data=body, headers=hdrs, method=method, timeout=TIMEOUT)  # предел ответа и повтор GET — Net
     return json.loads(raw.decode('utf-8-sig'))
 
 
 def valid_inn(inn) -> bool:
     """Проверка ИНН по контрольным цифрам (10 — организация, 12 — ИП)."""
-    s = re.sub(r'\D', '', str(inn or ''))
+    digits_text = re.sub(r'\D', '', str(inn or ''))
 
     def ctl(digits, coefs) -> int:
-        return sum(int(d) * c for d, c in zip(digits, coefs, strict=False)) % 11 % 10
+        return sum(int(digit) * coef for digit, coef in zip(digits, coefs, strict=False)) % 11 % 10
 
-    if len(s) == 10:
-        return ctl(s, [2, 4, 10, 3, 5, 9, 4, 6, 8]) == int(s[9])
-    if len(s) == 12:
-        return ctl(s, [7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) == int(s[10]) and ctl(
-            s, [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8]
-        ) == int(s[11])
+    if len(digits_text) == 10:
+        return ctl(digits_text, [2, 4, 10, 3, 5, 9, 4, 6, 8]) == int(digits_text[9])
+    if len(digits_text) == 12:
+        return ctl(digits_text, [7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) == int(digits_text[10]) and ctl(
+            digits_text, [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8]
+        ) == int(digits_text[11])
     return False
 
 
-def g(d, *path, default=None) -> object:
+def dig(data, *path, default=None) -> object:
     """Безопасное чтение вложенных полей: g(d, 'Статус', 'Наим')."""
-    cur = d
+    cur = data
     for k in path:
         if isinstance(cur, dict):
             cur = cur.get(k)
@@ -111,7 +114,11 @@ class CheckoApi:
     FREE_DAILY = CHECKO_DAILY
     FINANCES = True  # бухотчётность входит в бесплатный тариф
     SITE = 'https://checko.ru/search?query='
-    EP = {'finances': ('finances', {}), 'courts': ('legal-cases', {'role': 'defendant'}), 'fssp': ('enforcements', {})}
+    ENDPOINTS = {
+        'finances': ('finances', {}),
+        'courts': ('legal-cases', {'role': 'defendant'}),
+        'fssp': ('enforcements', {}),
+    }
     PART = {'company': 'карточка', 'finances': 'бухотчётность', 'courts': 'суды', 'fssp': 'ФССП'}
 
     def __init__(self, store) -> None:
@@ -131,9 +138,9 @@ class CheckoApi:
             return self.FREE_DAILY
 
     def quota(self) -> dict:
-        q = self.store.kv_get(self.QUOTA) or {}
+        quota = self.store.kv_get(self.QUOTA) or {}
         today = msk_today()
-        used = int(q.get('used') or 0) if q.get('day') == today else 0
+        used = int(quota.get('used') or 0) if quota.get('day') == today else 0
         limit = self.limit()
         left = max(0, limit - used)
         return {
@@ -146,36 +153,36 @@ class CheckoApi:
             'key': bool(self.key()),
         }
 
-    def spend(self, n=1, meta=None, exhausted=False) -> None:
+    def spend(self, count=1, meta=None, exhausted=False) -> None:
         with self.store.lock:
-            q = self.quota()
-            used = q['used'] + n
+            quota = self.quota()
+            used = quota['used'] + count
             cnt = (meta or {}).get('today_request_count') if isinstance(meta, dict) else None
             if isinstance(cnt, int) and cnt >= 0:
                 used = cnt  # сервис сам сообщает, сколько запросов сделано сегодня
             if exhausted:
-                used = max(used, q['limit'])
-            self.store.kv_set(self.QUOTA, {'day': q['day'], 'used': used})
+                used = max(used, quota['limit'])
+            self.store.kv_set(self.QUOTA, {'day': quota['day'], 'used': used})
 
-    def get(self, ep, inn, **extra) -> dict:
+    def get(self, endpoint, inn, **extra) -> dict:
         """Запрос с учётом лимита; лимит исчерпан — LimitError, другая ошибка — RuntimeError с понятным текстом."""
         if self.quota()['left'] <= 0:
             raise LimitError(f'Лимит запросов {self.NAME} на сегодня исчерпан')
-        url = self.BASE + ep + '?' + urllib.parse.urlencode(dict({'key': self.key(), 'inn': inn}, **extra))
+        url = self.BASE + endpoint + '?' + urllib.parse.urlencode(dict({'key': self.key(), 'inn': inn}, **extra))
         try:
             j = http_json(url)
-        except urllib.error.HTTPError as e:
-            self.spend(1, exhausted=e.code in (402, 429))
-            if e.code in (402, 429):
-                raise LimitError(f'Лимит запросов {self.NAME} на сегодня исчерпан') from e
+        except urllib.error.HTTPError as exc:
+            self.spend(1, exhausted=exc.code in (402, 429))
+            if exc.code in (402, 429):
+                raise LimitError(f'Лимит запросов {self.NAME} на сегодня исчерпан') from exc
             raise RuntimeError(
                 'ключ не принят — проверьте его в «Ключах API»'
-                if e.code in (401, 403)
-                else f'ошибка сервиса (HTTP {e.code})'
-            ) from e
-        except (urllib.error.URLError, OSError) as e:
-            slow = isinstance(e, socket.timeout) or isinstance(getattr(e, 'reason', None), socket.timeout)
-            raise RuntimeError(f'сервис не ответил за {TIMEOUT} с' if slow else 'нет связи с сервисом') from e
+                if exc.code in (401, 403)
+                else f'ошибка сервиса (HTTP {exc.code})'
+            ) from exc
+        except (urllib.error.URLError, OSError) as exc:
+            slow = isinstance(exc, socket.timeout) or isinstance(getattr(exc, 'reason', None), socket.timeout)
+            raise RuntimeError(f'сервис не ответил за {TIMEOUT} с' if slow else 'нет связи с сервисом') from exc
         except ValueError:
             raise RuntimeError('ответ в неожиданном формате') from None
         if not isinstance(j, dict):
@@ -193,22 +200,26 @@ class CheckoApi:
         """Части проверки ('company', 'finances', 'courts', 'fssp') → (raw, meta, errors, limited)."""
         raw, meta, errors, limited = {}, None, [], False
         for name in parts:
-            ep, extra = (('entrepreneur' if len(inn) == 12 else 'company'), {}) if name == 'company' else self.EP[name]
+            endpoint, extra = (
+                (('entrepreneur' if len(inn) == 12 else 'company'), {}) if name == 'company' else self.ENDPOINTS[name]
+            )
             try:
-                j = self.get(ep, inn, **extra)
-            except LimitError as e:
+                j = self.get(endpoint, inn, **extra)
+            except LimitError as exc:
                 limited = True
-                errors.append(str(e))
+                errors.append(str(exc))
                 break
-            except Exception as e:
-                errors.append(f'{self.NAME}, {self.PART.get(name, name)}: {e}')
+            except Exception as exc:
+                errors.append(f'{self.NAME}, {self.PART.get(name, name)}: {exc}')
                 if name == 'company':
                     break  # без карточки остальное не нужно — дальше резерв или бесплатная проверка
                 continue
             meta = j.get('meta') or meta
-            if g(j, 'meta', 'status') == 'error':
+            if dig(j, 'meta', 'status') == 'error':
                 errors.append(
-                    '{}, {}: {}'.format(self.NAME, self.PART.get(name, name), g(j, 'meta', 'message', default='ошибка'))
+                    '{}, {}: {}'.format(
+                        self.NAME, self.PART.get(name, name), dig(j, 'meta', 'message', default='ошибка')
+                    )
                 )
                 if name == 'company':
                     break
@@ -237,7 +248,9 @@ class GirBo:
 
     NAME = 'ГИР БО ФНС'
     HOSTS = ('https://bo.nalog.gov.ru', 'https://bo.nalog.ru')  # витрина переехала на .gov.ru; старый адрес — запасной
-    UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+    USER_AGENT = (
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+    )
     YEARS = 3
     THOUSAND = 1000
 
@@ -260,20 +273,20 @@ class GirBo:
         for host in cls.HOSTS:
             try:
                 return cls._load(host, inn)
-            except Exception as e:
-                err = e
+            except Exception as exc:
+                err = exc
         raise RuntimeError(cls._why(err))
 
     @staticmethod
-    def _why(e) -> str:
+    def _why(exc) -> str:
         """Причина сбоя для человека — без адресов и технических подробностей."""
-        if isinstance(e, urllib.error.HTTPError):
-            return f'сервис ответил ошибкой (HTTP {e.code})'
-        if isinstance(e, (urllib.error.URLError, OSError)):
-            slow = isinstance(getattr(e, 'reason', e), (socket.timeout, TimeoutError)) or 'timed out' in str(e)
+        if isinstance(exc, urllib.error.HTTPError):
+            return f'сервис ответил ошибкой (HTTP {exc.code})'
+        if isinstance(exc, (urllib.error.URLError, OSError)):
+            slow = isinstance(getattr(exc, 'reason', exc), (socket.timeout, TimeoutError)) or 'timed out' in str(exc)
             return f'сервис не ответил за {TIMEOUT} с' if slow else 'нет связи с сервисом'
-        if isinstance(e, ValueError) and str(e).startswith(('поиск ГИР БО', 'отчётность ГИР БО')):
-            return str(e)
+        if isinstance(exc, ValueError) and str(exc).startswith(('поиск ГИР БО', 'отчётность ГИР БО')):
+            return str(exc)
         return 'ответ в неожиданном формате'
 
     @classmethod
@@ -281,7 +294,7 @@ class GirBo:
         return http_json(
             host + path + ('?' + urllib.parse.urlencode(params) if params else ''),
             headers={
-                'User-Agent': cls.UA,
+                'User-Agent': cls.USER_AGENT,
                 'Accept': 'application/json, text/plain, */*',
                 'Accept-Language': 'ru-RU,ru;q=0.9',
                 'Referer': host + '/',
@@ -323,17 +336,17 @@ class GirBo:
         if not isinstance(reports, list):
             raise ValueError('отчётность ГИР БО: неожиданный ответ')
         rows = {}
-        for r in reports:
-            year = str((r or {}).get('period') or '') if isinstance(r, dict) else ''
+        for report in reports:
+            year = str((report or {}).get('period') or '') if isinstance(report, dict) else ''
             if not re.match(r'^(19|20)\d\d$', year):
                 continue
-            c = cls._correction(r)
-            fr, bal = c.get('financialResult') or {}, c.get('balance') or {}
+            corr = cls._correction(report)
+            fin_res, bal = corr.get('financialResult') or {}, corr.get('balance') or {}
             row = {
                 'year': year,
-                'revenue': cls._rub(fr.get('current2110'), r.get('gainSum')),
-                'profit': cls._rub(fr.get('current2400')),
-                'assets': cls._rub(bal.get('current1600'), r.get('actives')),
+                'revenue': cls._rub(fin_res.get('current2110'), report.get('gainSum')),
+                'profit': cls._rub(fin_res.get('current2400')),
+                'assets': cls._rub(bal.get('current1600'), report.get('actives')),
             }
             if row['revenue'] is not None or row['profit'] is not None or row['assets'] is not None:
                 rows[year] = row
@@ -347,24 +360,24 @@ class GirBo:
         """Действующая редакция отчёта за год: из «typeCorrections» (новый формат) или «corrections» — последняя по номеру."""
         cand = [x.get('correction') for x in report.get('typeCorrections') or [] if isinstance(x, dict)]
         cand += list(report.get('corrections') or [])
-        cand = [c for c in cand if isinstance(c, dict)]
+        cand = [corr for corr in cand if isinstance(corr, dict)]
         if not cand:
             return {}
         return max(
             cand,
-            key=lambda c: (
-                _num(c.get('correctionVersion')) or 0,
-                1 if c.get('lastCorrection') else 0,
-                _num(c.get('id')) or 0,
+            key=lambda corr: (
+                _num(corr.get('correctionVersion')) or 0,
+                1 if corr.get('lastCorrection') else 0,
+                _num(corr.get('id')) or 0,
             ),
         )
 
     @classmethod
     def _rub(cls, *vals) -> float | None:
         for v in vals:
-            n = _num(v) if v is not None else None
-            if n is not None:
-                return n * cls.THOUSAND
+            num = _num(v) if v is not None else None
+            if num is not None:
+                return num * cls.THOUSAND
         return None
 
 
@@ -403,7 +416,7 @@ class Counterparties:
 
     def apis(self) -> list:
         """Сервисы проверки с ключом: Checko — основной, OFData — резерв."""
-        return [a for a in (self.checko, self.ofdata) if a.key()]
+        return [api for api in (self.checko, self.ofdata) if api.key()]
 
     def keys(self) -> dict:
         return self.store.kv_get('integrations', {}) or {}
@@ -464,11 +477,11 @@ class Counterparties:
         for k in self.DAILY_FIELDS:  # бесплатный лимит в день (по тарифу); 0 или пусто — по умолчанию
             if k in new:
                 try:
-                    n = int(new.get(k) or 0)
+                    num = int(new.get(k) or 0)
                 except (TypeError, ValueError):
                     raise ValueError('Лимит запросов в день — целое число от 1 до 100 000') from None
-                if n > 0:
-                    cur[k] = min(n, 100000)
+                if num > 0:
+                    cur[k] = min(num, 100000)
                 else:
                     cur.pop(k, None)
         self.store.kv_set('integrations', cur)
@@ -479,56 +492,61 @@ class Counterparties:
         if not re.match(r'^[A-Za-z0-9_-]{1,64}$', cid or ''):
             raise ValueError('Некорректный идентификатор контрагента')
 
-    def save_client(self, cid, body, by: str = '', base_rev=None) -> dict:
-        c = json.loads(body.decode('utf-8'))
+    def save_client(self, cid, body, author: str = '', base_rev=None) -> dict:
+        client = json.loads(body.decode('utf-8'))
         self._check_id(cid)
-        rev_in = c.pop('_rev', None)
+        rev_in = client.pop('_rev', None)
         if base_rev is None:
             base_rev = rev_in
-        if not isinstance(c, dict):
+        if not isinstance(client, dict):
             raise ValueError('Ожидался объект клиента')
         old = self.store.client_get(cid) or {}
         replace = bool(
-            c.pop('_replace', False)
+            client.pop('_replace', False)
         )  # из справочника «Настроек»: списки — как в карточке (удалённое удаляется)
 
         def dicts(v) -> list:
             return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
 
         # из КП объекты и контакты накапливаются: повторы не дублируются, у того же контакта — новые телефон, e-mail
-        def merge(a, b, key) -> list:
-            res = [dict(x) for x in dicts(a)]
-            at = {key(x): x for x in res}
-            for x in dicts(b):
+        def merge(old_list, new_list, key) -> list:
+            res = [dict(x) for x in dicts(old_list)]
+            by_key = {key(x): x for x in res}
+            for x in dicts(new_list):
                 k = key(x)
                 if not k:
                     continue
-                if k in at:
-                    at[k].update({f: v for f, v in x.items() if str(v if v is not None else '').strip()})
+                if k in by_key:
+                    by_key[k].update({field: v for field, v in x.items() if str(v if v is not None else '').strip()})
                 else:
                     res.insert(0, x)
-                    at[k] = x
+                    by_key[k] = x
             return res[:30]
 
-        def norm(s) -> str:
-            return re.sub(r'\s+', ' ', str(s or '')).strip().lower()
+        def norm(text) -> str:
+            return re.sub(r'\s+', ' ', str(text or '')).strip().lower()
 
         if replace:
-            c['objects'], c['contacts'] = dicts(c.get('objects'))[:30], dicts(c.get('contacts'))[:30]
-        else:
-            c['objects'] = merge(
-                old.get('objects'), c.get('objects'), lambda o: norm(o.get('purpose')) + '|' + norm(o.get('address'))
+            client['objects'], client['contacts'] = (
+                dicts(client.get('objects'))[:30],
+                dicts(client.get('contacts'))[:30],
             )
-            c['contacts'] = merge(old.get('contacts'), c.get('contacts'), lambda o: norm(o.get('name')))
-        c['kpCount'] = int(old.get('kpCount', 0)) + (1 if c.pop('_usedInKp', False) else 0)
-        c['id'] = cid
-        c['createdAt'] = old.get('createdAt') or datetime.now().isoformat(timespec='seconds')
-        c['updatedAt'] = datetime.now().isoformat(timespec='seconds')
-        if not c.get('check') and old.get('check'):
-            c['check'] = old['check']
-        c['notes'] = old.get('notes') or []  # заметки о клиенте ведёт карточка клиента (/api/clientcard/note)
-        c['_rev'] = self.store.client_put(cid, c, by, base_rev)
-        return c
+        else:
+            client['objects'] = merge(
+                old.get('objects'),
+                client.get('objects'),
+                lambda obj: norm(obj.get('purpose')) + '|' + norm(obj.get('address')),
+            )
+            client['contacts'] = merge(old.get('contacts'), client.get('contacts'), lambda obj: norm(obj.get('name')))
+        client['kpCount'] = int(old.get('kpCount', 0)) + (1 if client.pop('_usedInKp', False) else 0)
+        client['id'] = cid
+        client['createdAt'] = old.get('createdAt') or datetime.now().isoformat(timespec='seconds')
+        client['updatedAt'] = datetime.now().isoformat(timespec='seconds')
+        if not client.get('check') and old.get('check'):
+            client['check'] = old['check']
+        client['notes'] = old.get('notes') or []  # заметки о клиенте ведёт карточка клиента (/api/clientcard/note)
+        client['_rev'] = self.store.client_put(cid, client, author, base_rev)
+        return client
 
     def lookup(self, inn) -> dict:
         inn = re.sub(r'\D', '', inn or '')
@@ -540,60 +558,60 @@ class Counterparties:
         if keys.get('dadataKey'):
             sources.append(('DaData', self._lookup_dadata))
         sources.append(('ФНС ЕГРЮЛ', self._lookup_egrul))
-        for a in self.apis():  # Checko, затем OFData — их запросы берегутся для проверок
-            if a.quota()['left'] > SrvVal.get(self.store, 'cp.reserve'):
-                sources.append((a.NAME, lambda inn, keys, a=a: self._lookup_api(a, inn)))
-        for name, fn in sources:
+        for api in self.apis():  # Checko, затем OFData — их запросы берегутся для проверок
+            if api.quota()['left'] > SrvVal.get(self.store, 'cp.reserve'):
+                sources.append((api.NAME, lambda inn, keys, src_api=api: self._lookup_api(src_api, inn)))
+        for name, func in sources:
             try:
-                r = fn(inn, keys)
-                if r:
-                    r['source'] = name
-                    return r
+                res = func(inn, keys)
+                if res:
+                    res['source'] = name
+                    return res
                 errors.append(name + ': организация не найдена')
-            except Exception as e:
-                errors.append(f'{name}: {e}')
+            except Exception as exc:
+                errors.append(f'{name}: {exc}')
         return {'error': 'Не удалось получить данные. ' + '; '.join(errors)}
 
     @staticmethod
     def _lookup_api(api, inn) -> dict | None:
         """Реквизиты по карточке Checko / OFData (формат одинаковый)."""
         j = api.get('entrepreneur' if len(inn) == 12 else 'company', inn)
-        d = j.get('data') or {}
-        if not d:
+        data = j.get('data') or {}
+        if not data:
             return None
         if len(inn) == 12:
-            fio = d.get('ФИО') or ''
+            fio = data.get('ФИО') or ''
             return {
                 'inn': inn,
-                'ogrn': d.get('ОГРНИП', ''),
+                'ogrn': data.get('ОГРНИП', ''),
                 'kpp': '',
                 'short': 'ИП ' + fio,
                 'full': 'Индивидуальный предприниматель ' + fio,
-                'address': g(d, 'Регион', 'Наим', default=''),
+                'address': dig(data, 'Регион', 'Наим', default=''),
                 'director': fio,
                 'directorPost': 'Индивидуальный предприниматель',
-                'status': g(d, 'Статус', 'Наим', default=''),
-                'active': not g(d, 'ДатаЛикв'),
-                'regDate': d.get('ДатаРег', ''),
-                'okved': Counterparties._okved(d),
+                'status': dig(data, 'Статус', 'Наим', default=''),
+                'active': not dig(data, 'ДатаЛикв'),
+                'regDate': data.get('ДатаРег', ''),
+                'okved': Counterparties._okved(data),
             }
-        boss = (d.get('Руковод') or [{}])[0] if isinstance(d.get('Руковод'), list) else {}
+        boss = (data.get('Руковод') or [{}])[0] if isinstance(data.get('Руковод'), list) else {}
         return {
             'inn': inn,
-            'kpp': d.get('КПП', ''),
-            'ogrn': d.get('ОГРН', ''),
-            'short': d.get('НаимСокр') or d.get('НаимПолн', ''),
-            'full': d.get('НаимПолн', ''),
-            'address': g(d, 'ЮрАдрес', 'АдресРФ', default=''),
+            'kpp': data.get('КПП', ''),
+            'ogrn': data.get('ОГРН', ''),
+            'short': data.get('НаимСокр') or data.get('НаимПолн', ''),
+            'full': data.get('НаимПолн', ''),
+            'address': dig(data, 'ЮрАдрес', 'АдресРФ', default=''),
             'director': boss.get('ФИО', ''),
             'directorPost': boss.get('НаимДолжн', ''),
-            'status': g(d, 'Статус', 'Наим', default=''),
-            'active': not d.get('ДатаЛикв'),
-            'regDate': d.get('ДатаРег', ''),
-            'okved': Counterparties._okved(d),
-            'phones': g(d, 'Контакты', 'Тел', default=[]) or [],
-            'emails': g(d, 'Контакты', 'Емэйл', default=[]) or [],
-            'site': g(d, 'Контакты', 'ВебСайт', default='') or '',
+            'status': dig(data, 'Статус', 'Наим', default=''),
+            'active': not data.get('ДатаЛикв'),
+            'regDate': data.get('ДатаРег', ''),
+            'okved': Counterparties._okved(data),
+            'phones': dig(data, 'Контакты', 'Тел', default=[]) or [],
+            'emails': dig(data, 'Контакты', 'Емэйл', default=[]) or [],
+            'site': dig(data, 'Контакты', 'ВебСайт', default='') or '',
         }
 
     def _lookup_dadata(self, inn, keys) -> dict | None:
@@ -602,49 +620,50 @@ class Counterparties:
             data={'query': inn, 'count': 1},
             headers={'Content-Type': 'application/json', 'Authorization': 'Token ' + keys['dadataKey']},
         )
-        s = (j.get('suggestions') or [None])[0]
-        if not s:
+        sugg = (j.get('suggestions') or [None])[0]
+        if not sugg:
             return None
-        d = s.get('data') or {}
-        reg = g(d, 'state', 'registration_date')
+        data = sugg.get('data') or {}
+        reg = dig(data, 'state', 'registration_date')
         return {
             'inn': inn,
-            'kpp': d.get('kpp') or '',
-            'ogrn': d.get('ogrn') or '',
-            'short': g(d, 'name', 'short_with_opf', default='') or s.get('value', ''),
-            'full': g(d, 'name', 'full_with_opf', default=''),
-            'address': g(d, 'address', 'unrestricted_value', default='') or g(d, 'address', 'value', default=''),
-            'director': g(d, 'management', 'name', default=''),
-            'directorPost': (g(d, 'management', 'post', default='') or '').capitalize(),
+            'kpp': data.get('kpp') or '',
+            'ogrn': data.get('ogrn') or '',
+            'short': dig(data, 'name', 'short_with_opf', default='') or sugg.get('value', ''),
+            'full': dig(data, 'name', 'full_with_opf', default=''),
+            'address': dig(data, 'address', 'unrestricted_value', default='')
+            or dig(data, 'address', 'value', default=''),
+            'director': dig(data, 'management', 'name', default=''),
+            'directorPost': (dig(data, 'management', 'post', default='') or '').capitalize(),
             'status': {
                 'ACTIVE': 'Действует',
                 'LIQUIDATING': 'В процессе ликвидации',
                 'LIQUIDATED': 'Ликвидирована',
                 'BANKRUPT': 'Банкротство',
                 'REORGANIZING': 'Реорганизация',
-            }.get(g(d, 'state', 'status', default=''), ''),
-            'active': g(d, 'state', 'status') == 'ACTIVE',
+            }.get(dig(data, 'state', 'status', default=''), ''),
+            'active': dig(data, 'state', 'status') == 'ACTIVE',
             'regDate': datetime.utcfromtimestamp(reg / 1000).strftime('%Y-%m-%d')
             if isinstance(reg, (int, float))
             else '',
-            'okved': d.get('okved') or '',
-            'invalid': bool(d.get('invalid')),
-            'disq': bool(g(d, 'management', 'disqualified')),
-            'liqDate': g(d, 'state', 'liquidation_date'),
+            'okved': data.get('okved') or '',
+            'invalid': bool(data.get('invalid')),
+            'disq': bool(dig(data, 'management', 'disqualified')),
+            'liqDate': dig(data, 'state', 'liquidation_date'),
         }
 
     def _lookup_egrul(self, inn, keys) -> dict | None:
-        t = http_json(
+        token_resp = http_json(
             'https://egrul.nalog.ru/',
             data={'query': inn, 'nameEq': 'on', 'region': '', 'PreventChromeAutocomplete': ''},
             headers={'X-Requested-With': 'XMLHttpRequest', 'Referer': 'https://egrul.nalog.ru/index.html'},
         ).get('t')
-        if not t:
+        if not token_resp:
             return None
         rows = None
         for _ in range(8):
             res = http_json(
-                f'https://egrul.nalog.ru/search-result/{t}?r={int(time.time() * 1000)}',
+                f'https://egrul.nalog.ru/search-result/{token_resp}?r={int(time.time() * 1000)}',
                 headers={'X-Requested-With': 'XMLHttpRequest', 'Referer': 'https://egrul.nalog.ru/index.html'},
             )
             if res.get('status') == 'wait':
@@ -654,50 +673,50 @@ class Counterparties:
             break
         if not rows:
             return None
-        r = rows[0]
-        boss = r.get('g') or ''
+        row = rows[0]
+        boss = row.get('g') or ''
         post, _, fio = boss.partition(':')
-        full = r.get('n') or ''
-        short = r.get('c') or full
+        full = row.get('n') or ''
+        short = row.get('c') or full
         return {
-            'inn': r.get('i') or inn,
-            'kpp': r.get('p') or '',
-            'ogrn': r.get('o') or '',
+            'inn': row.get('i') or inn,
+            'kpp': row.get('p') or '',
+            'ogrn': row.get('o') or '',
             'short': short,
             'full': full,
-            'address': r.get('a') or '',
+            'address': row.get('a') or '',
             'director': fio.strip().title() if fio else '',
             'directorPost': post.strip().capitalize() if fio else '',
-            'status': 'Ликвидирована' if r.get('e') else 'Действует',
-            'active': not r.get('e'),
-            'regDate': self._ru2iso(r.get('r')),
+            'status': 'Ликвидирована' if row.get('e') else 'Действует',
+            'active': not row.get('e'),
+            'regDate': self._ru2iso(row.get('r')),
             'okved': '',
         }
 
     @staticmethod
-    def _okved(d) -> str:
+    def _okved(data) -> str:
         """«28.13 Производство насосов» — код и название основного ОКВЭД из карточки Checko / OFData."""
-        return ' '.join(x for x in [g(d, 'ОКВЭД', 'Код', default=''), g(d, 'ОКВЭД', 'Наим', default='')] if x)
+        return ' '.join(x for x in [dig(data, 'ОКВЭД', 'Код', default=''), dig(data, 'ОКВЭД', 'Наим', default='')] if x)
 
     @staticmethod
-    def _ru2iso(s) -> str:
-        m = re.match(r'(\d{2})\.(\d{2})\.(\d{4})', s or '')
-        return f'{m.group(3)}-{m.group(2)}-{m.group(1)}' if m else (s or '')
+    def _ru2iso(text) -> str:
+        match = re.match(r'(\d{2})\.(\d{2})\.(\d{4})', text or '')
+        return f'{match.group(3)}-{match.group(2)}-{match.group(1)}' if match else (text or '')
 
     def quota(self) -> dict:
         """Остаток Checko на сегодня (поля — как раньше) + резерв OFData, если задан его ключ."""
-        q = self.checko.quota()
-        q['queue'] = len(self.store.kv_get('checkQueue') or [])
-        q['cost'] = CHECK_COST
+        quota = self.checko.quota()
+        quota['queue'] = len(self.store.kv_get('checkQueue') or [])
+        quota['cost'] = CHECK_COST
         if self.ofdata.key():
-            q['reserve'] = self.ofdata.quota()
-        return q
+            quota['reserve'] = self.ofdata.quota()
+        return quota
 
-    def queue_add(self, inn, by: str = '') -> None:
+    def queue_add(self, inn, author: str = '') -> None:
         with self.store.lock:
-            qu = [x for x in (self.store.kv_get('checkQueue') or []) if x.get('inn') != inn]
-            qu.append({'inn': inn, 'at': datetime.now().isoformat(timespec='seconds'), 'by': by})
-            self.store.kv_set('checkQueue', qu[-500:])
+            queue = [x for x in (self.store.kv_get('checkQueue') or []) if x.get('inn') != inn]
+            queue.append({'inn': inn, 'at': datetime.now().isoformat(timespec='seconds'), 'by': author})
+            self.store.kv_set('checkQueue', queue[-500:])
 
     def _spare(self, api) -> int:
         """Сколько запросов дня очередь оставляет для проверок «вручную»."""
@@ -705,17 +724,17 @@ class Counterparties:
 
     def run_queue(self, log=print) -> int:
         """Отложенные полные проверки, когда лимит обновился; последние cp.reserve запросов не трогаются."""
-        qu = self.store.kv_get('checkQueue') or []
-        if not qu or not self.apis():
+        queue = self.store.kv_get('checkQueue') or []
+        if not queue or not self.apis():
             return 0
         done = 0
-        for x in list(qu):
-            if not any(a.quota()['left'] - CHECK_COST - 1 >= self._spare(a) for a in self.apis()):
+        for x in list(queue):
+            if not any(api.quota()['left'] - CHECK_COST - 1 >= self._spare(api) for api in self.apis()):
                 break
             try:
                 res = self.check(x['inn'], force=True, queue=False, spare=True)
-            except Exception as e:
-                log('Отложенная проверка {}: {}'.format(x['inn'], e))
+            except Exception as exc:
+                log('Отложенная проверка {}: {}'.format(x['inn'], exc))
                 break
             if res.get('partial') or res.get('error'):
                 break  # лимит кончился посередине — продолжим, когда обновится
@@ -723,10 +742,10 @@ class Counterparties:
                 self.store.kv_set(
                     'checkQueue', [y for y in (self.store.kv_get('checkQueue') or []) if y.get('inn') != x['inn']]
                 )
-            cl = self.store.client_get('inn' + x['inn'])
-            if cl is not None:
-                cl['check'] = res
-                self.store.client_put('inn' + x['inn'], cl, 'Программа (очередь проверок)')
+            client = self.store.client_get('inn' + x['inn'])
+            if client is not None:
+                client['check'] = res
+                self.store.client_put('inn' + x['inn'], client, 'Программа (очередь проверок)')
             done += 1
         return done
 
@@ -737,12 +756,12 @@ class Counterparties:
         except Exception:
             return 999
 
-    def check(self, inn, force: bool = False, queue=True, by: str = '', spare=False) -> dict:
+    def check(self, inn, force: bool = False, queue=True, author: str = '', spare=False) -> dict:
         """Проверка по ИНН. spare=True (очередь) — не трогать последние запросы дня и не делать краткую проверку."""
         inn = re.sub(r'\D', '', inn or '')
         if not valid_inn(inn):
             return {'error': 'ИНН указан с ошибкой'}
-        ip = len(inn) == 12
+        is_person = len(inn) == 12
         cached = self.store.check_get(inn)
         apis = self.apis()
         # краткую / бесплатную проверку заменяем полной, как только хватает запросов
@@ -750,64 +769,64 @@ class Counterparties:
             cached
             and not force
             and self._age(cached) < SrvVal.get(self.store, 'cp.ttlDays')
-            and not (cached.get('partial') and any(a.quota()['left'] >= CHECK_COST for a in apis))
+            and not (cached.get('partial') and any(api.quota()['left'] >= CHECK_COST for api in apis))
         ):
             cached['cached'] = True
             cached['quotaNow'] = self.quota()
             return cached
         # бухотчётность (у ИП её нет): из прежней полной проверки (годовая — не меняется неделями) или бесплатно из ГИР БО
         fin = None
-        if not ip:
+        if not is_person:
             if (
                 cached
                 and not cached.get('partial')
                 and cached.get('finances')
                 and self._age(cached) < SrvVal.get(self.store, 'cp.finReuseDays')
             ):
-                dt = '.'.join(reversed(str(cached.get('checkedAt') or '')[:10].split('-')))
+                day = '.'.join(reversed(str(cached.get('checkedAt') or '')[:10].split('-')))
                 fin = {
                     'finances': cached['finances'],
-                    'src': f'из проверки от {dt}',
+                    'src': f'из проверки от {day}',
                     'url': cached.get('finUrl') or '',
                 }
             else:
-                gb = GirBo.finances(inn)
-                if gb is not None:
-                    fin = {'finances': gb['finances'], 'src': GirBo.NAME, 'url': gb['url']}
-        need = ['company', 'courts', 'fssp'] + (['finances'] if not ip and fin is None else [])
+                girbo = GirBo.finances(inn)
+                if girbo is not None:
+                    fin = {'finances': girbo['finances'], 'src': GirBo.NAME, 'url': girbo['url']}
+        need = ['company', 'courts', 'fssp'] + (['finances'] if not is_person and fin is None else [])
 
-        def parts(a) -> list:
-            return [p for p in need if p != 'finances' or a.FINANCES]
+        def parts(api) -> list:
+            return [part for part in need if part != 'finances' or api.FINANCES]
 
-        def floor(a) -> int:
-            return self._spare(a) if spare else 0
+        def floor(api) -> int:
+            return self._spare(api) if spare else 0
 
         raw, meta, errors, limited, used, failed, short = {}, None, [], False, None, set(), False
         # 1) полная проверка — первым сервисом, у которого хватает запросов: Checko, затем резерв OFData
-        for a in apis:
-            if a.quota()['left'] - len(parts(a)) < floor(a):
+        for api in apis:
+            if api.quota()['left'] - len(parts(api)) < floor(api):
                 continue
-            r, m, errs, lim = a.fetch(inn, parts(a))
+            res1, meta1, errs, lim = api.fetch(inn, parts(api))
             errors += errs
             limited = limited or lim
-            if r.get('company'):
-                raw, meta, used = r, m, a
+            if res1.get('company'):
+                raw, meta, used = res1, meta1, api
                 break
             if not lim:
-                failed.add(a.NAME)
+                failed.add(api.NAME)
         # 2) краткая — одна карточка (1 запрос), если на полную не хватило ни у одного сервиса
         if not used and not spare:
-            for a in apis:
-                if a.NAME in failed or a.quota()['left'] < 1:
+            for api in apis:
+                if api.NAME in failed or api.quota()['left'] < 1:
                     continue
-                r, m, errs, lim = a.fetch(inn, ['company'])
+                res1, meta1, errs, lim = api.fetch(inn, ['company'])
                 errors += errs
                 limited = limited or lim
-                if r.get('company'):
-                    raw, meta, used, short = r, m, a, True
+                if res1.get('company'):
+                    raw, meta, used, short = res1, meta1, api, True
                     break
                 if not lim:
-                    failed.add(a.NAME)
+                    failed.add(api.NAME)
         if not used:
             if not apis:
                 res = self._free_check(
@@ -818,13 +837,13 @@ class Counterparties:
                 )
                 res['nokey'] = True
                 return self._finish(inn, res, self.quota(), keep_full=cached)
-            out = [a.NAME for a in apis if a.NAME not in failed]  # не хватило запросов (или кончились по ходу)
+            out = [api.NAME for api in apis if api.NAME not in failed]  # не хватило запросов (или кончились по ходу)
             exhausted = bool(out)
             if exhausted and queue:
-                self.queue_add(inn, by)
+                self.queue_add(inn, author)
             note = ''
             if failed:
-                note = 'Не ответили: {}. '.format('; '.join(e for e in errors if not re.search(r'[Лл]имит', e)))
+                note = 'Не ответили: {}. '.format('; '.join(err for err in errors if not re.search(r'[Лл]имит', err)))
             if exhausted:
                 note += ('Лимит запросов {} на сегодня исчерпан. '.format(', '.join(out))) + (
                     'Полная проверка выполнится автоматически после 00:00 по Москве.' if queue else ''
@@ -836,36 +855,44 @@ class Counterparties:
             res['errors'] = errors + res.get('errors', [])
             return self._finish(inn, res, self.quota(), keep_full=cached)
         # 3) недостающее (лимит кончился посередине, у сервиса нет бухотчётности) — у другого сервиса с запасом
-        for b in apis:
-            miss = [p for p in need if p != 'company' and p not in raw and (p != 'finances' or b.FINANCES)]
-            if (b is used and not short) or b.NAME in failed or not miss or b.quota()['left'] < 1:
+        for api2 in apis:
+            miss = [
+                need_part
+                for need_part in need
+                if need_part != 'company' and need_part not in raw and (need_part != 'finances' or api2.FINANCES)
+            ]
+            if (api2 is used and not short) or api2.NAME in failed or not miss or api2.quota()['left'] < 1:
                 continue
-            if not short and b.quota()['left'] - len(miss) < floor(b):
+            if not short and api2.quota()['left'] - len(miss) < floor(api2):
                 continue
-            r, m, errs, lim = b.fetch(inn, miss[: max(0, b.quota()['left'] - floor(b))] if short else miss)
+            res1, meta1, errs, lim = api2.fetch(
+                inn, miss[: max(0, api2.quota()['left'] - floor(api2))] if short else miss
+            )
             errors += errs
-            for k, v in r.items():
+            for k, v in res1.items():
                 raw.setdefault(k, v)
-                if b is not used:
-                    raw.setdefault('_by', {})[k] = b.NAME
-        res = self._summarize(inn, raw, ip, used.NAME, fin)
+                if api2 is not used:
+                    raw.setdefault('_by', {})[k] = api2.NAME
+        res = self._summarize(inn, raw, is_person, used.NAME, fin)
         res['quota'] = meta or {}
         res['errors'] = errors
         helpers = sorted(set((raw.get('_by') or {}).values()))
         if helpers:
             res['source'] = used.NAME + ' + ' + ', '.join(helpers)
-        missing = [n for n in ('courts', 'fssp') if n not in raw]
-        if not ip and fin is None and 'finances' not in raw:
-            tail = '' if any(a.FINANCES for a in apis) else ', а у OFData в бесплатном тарифе её нет'
+        missing = [name for name in ('courts', 'fssp') if name not in raw]
+        if not is_person and fin is None and 'finances' not in raw:
+            tail = '' if any(api.FINANCES for api in apis) else ', а у OFData в бесплатном тарифе её нет'
             res['finNote'] = f'Бухотчётность не получена: ГИР БО ФНС не ответил{tail}.'
         if missing:
             res['partial'] = True
-            res['missing'] = [{'courts': 'арбитражные суды', 'fssp': 'исполнительные производства'}[n] for n in missing]
+            res['missing'] = [
+                {'courts': 'арбитражные суды', 'fssp': 'исполнительные производства'}[name] for name in missing
+            ]
             res['note'] = (f'Краткая проверка: на сегодня осталось меньше {CHECK_COST} запросов. ') + (
                 'Полная проверка выполнится автоматически после 00:00 по Москве.' if queue else ''
             )
             if queue:
-                self.queue_add(inn, by)
+                self.queue_add(inn, author)
                 res['queued'] = True
             res['links'] = manual_links(inn)
             prev = cached if cached and not cached.get('partial') else None
@@ -877,29 +904,29 @@ class Counterparties:
                     res[k] = prev.get(k)
                 if not res.get('finances') and prev.get('finances'):
                     res['finances'] = prev['finances']
-                have = {f.get('text') for f in res['flags']}
+                have = {flag.get('text') for flag in res['flags']}
                 pat = '|'.join(
                     [{'courts': 'Арбитраж', 'fssp': 'Исполнительн'}[k] for k in missing]
                     + ([] if fresh_fin else ['Убыток', 'Есть выручка'])
                 )
                 old = [
-                    f
-                    for f in (prev.get('flags') or [])
-                    if re.match(pat, f.get('text', '')) and f.get('text') not in have
+                    flag
+                    for flag in (prev.get('flags') or [])
+                    if re.match(pat, flag.get('text', '')) and flag.get('text') not in have
                 ]
-                dt = '.'.join(reversed(prev['checkedAt'][:10].split('-')))
-                res['flags'] = res['flags'] + [dict(f, text=f['text'] + f' (на {dt})') for f in old]
+                day = '.'.join(reversed(prev['checkedAt'][:10].split('-')))
+                res['flags'] = res['flags'] + [dict(flag, text=flag['text'] + f' (на {day})') for flag in old]
                 res['score'] = self._score(res['flags'])
                 res['missing'] = []
                 what = ' и '.join({'courts': 'суды', 'fssp': 'ФССП'}[k] for k in missing)
-                res['note'] = f'Карточка обновлена сегодня; {what} — из полной проверки от {dt}. ' + (
+                res['note'] = f'Карточка обновлена сегодня; {what} — из полной проверки от {day}. ' + (
                     'Полная проверка выполнится автоматически после 00:00 по Москве.' if queue else ''
                 )
         return self._finish(inn, res, self.quota())
 
-    def _finish(self, inn, res, q, keep_full=None) -> dict:
+    def _finish(self, inn, res, quota, keep_full=None) -> dict:
         res['checkedAt'] = datetime.now().isoformat(timespec='seconds')
-        res['quotaNow'] = q
+        res['quotaNow'] = quota
         res['rusprofile'] = Rusprofile.url(inn)
         # прежнюю полную проверку не затираем краткой / бесплатной: она остаётся в кэше, пока не устарела
         if (
@@ -910,7 +937,7 @@ class Counterparties:
             and self._age(keep_full) < SrvVal.get(self.store, 'cp.fullReuseDays')
         ):
             keep_full['cached'] = True
-            keep_full['quotaNow'] = q
+            keep_full['quotaNow'] = quota
             keep_full['note'] = res.get('note') or ''
             keep_full['queued'] = res.get('queued')
             keep_full['rusprofile'] = Rusprofile.url(inn)
@@ -921,8 +948,8 @@ class Counterparties:
     @staticmethod
     def _score(flags, empty='ok') -> str:
         """Итог проверки по отметкам: красная — bad, жёлтая — warn, иначе empty."""
-        lv = [f['level'] for f in flags]
-        return 'bad' if 'red' in lv else ('warn' if 'yellow' in lv else empty)
+        levels = [flag['level'] for flag in flags]
+        return 'bad' if 'red' in levels else ('warn' if 'yellow' in levels else empty)
 
     def _reg_age(self, reg, add) -> float | None:
         """Возраст организации, лет, по дате регистрации; дата не читается — None."""
@@ -958,16 +985,16 @@ class Counterparties:
         """Бесплатная проверка: DaData или ФНС ЕГРЮЛ, бухотчётность — ГИР БО, остальное — ссылками."""
         keys = self.keys()
         info, src, errs = None, '', []
-        for name, fn in ((('DaData', self._lookup_dadata),) if keys.get('dadataKey') else ()) + (
+        for name, func in ((('DaData', self._lookup_dadata),) if keys.get('dadataKey') else ()) + (
             ('ФНС ЕГРЮЛ', self._lookup_egrul),
         ):
             try:
-                info = fn(inn, keys)
+                info = func(inn, keys)
                 if info:
                     src = name
                     break
-            except Exception as e:
-                errs.append(f'{name}: {e}')
+            except Exception as exc:
+                errs.append(f'{name}: {exc}')
         flags = []
 
         def add(lvl, text) -> None:
@@ -1022,37 +1049,39 @@ class Counterparties:
             'finUrl': (fin or {}).get('url', '') if finances else '',
         }
 
-    def _summarize(self, inn, raw, ip, src='Checko', fin_in=None) -> dict:
-        c = raw.get('company') or {}
+    def _summarize(self, inn, raw, is_person, src='Checko', fin_in=None) -> dict:
+        company = raw.get('company') or {}
         flags = []
 
         def add(lvl, text) -> None:
             return flags.append({'level': lvl, 'text': text})
 
-        status = g(c, 'Статус', 'Наим', default='') or ('Ликвидирована' if c.get('ДатаЛикв') else 'Действует')
-        active = not c.get('ДатаЛикв') and not re.search(r'ликвид|прекращ|банкрот|исключ', status, re.I)
+        status = dig(company, 'Статус', 'Наим', default='') or (
+            'Ликвидирована' if company.get('ДатаЛикв') else 'Действует'
+        )
+        active = not company.get('ДатаЛикв') and not re.search(r'ликвид|прекращ|банкрот|исключ', status, re.I)
         if active:
             add('green', 'Организация действует')
         else:
             add('red', 'Статус: ' + status)
-        reg = c.get('ДатаРег') or ''
+        reg = company.get('ДатаРег') or ''
         age = self._reg_age(reg, add)
-        if c.get('НедобПост'):
+        if company.get('НедобПост'):
             add('red', 'Состоит в реестре недобросовестных поставщиков')
-        if c.get('ЕФРСБ'):
+        if company.get('ЕФРСБ'):
             add('red', 'Есть сообщения о банкротстве (ЕФРСБ)')
-        if g(c, 'ЮрАдрес', 'Недост'):
+        if dig(company, 'ЮрАдрес', 'Недост'):
             add('red', 'Недостоверный юридический адрес (отметка ФНС)')
-        if g(c, 'ЮрАдрес', 'МассАдрес'):
+        if dig(company, 'ЮрАдрес', 'МассАдрес'):
             add('yellow', 'Массовый юридический адрес')
-        bosses = c.get('Руковод') if isinstance(c.get('Руковод'), list) else []
-        if any(b.get('ДисквЛицо') for b in bosses):
+        bosses = company.get('Руковод') if isinstance(company.get('Руковод'), list) else []
+        if any(boss.get('ДисквЛицо') for boss in bosses):
             add('red', 'Руководитель — дисквалифицированное лицо')
-        if any(b.get('МассРуковод') for b in bosses):
+        if any(boss.get('МассРуковод') for boss in bosses):
             add('yellow', 'Массовый руководитель')
-        if any(b.get('Недост') for b in bosses):
+        if any(boss.get('Недост') for boss in bosses):
             add('red', 'Недостоверные сведения о руководителе')
-        debt = _num(g(c, 'Налоги', 'СумНедоим'))
+        debt = _num(dig(company, 'Налоги', 'СумНедоим'))
         if debt:
             add('yellow', f'Налоговая недоимка: {self._money(debt)} руб.')
         # бухотчётность: последние 3 года — из ответа сервиса (суммы в рублях) или из ГИР БО / прежней проверки
@@ -1088,9 +1117,9 @@ class Counterparties:
         if f_sum is None:  # общей суммы нет — сумма по записям (остаток долга, иначе сумма долга)
             recs = (fssp or {}).get('Записи') if isinstance((fssp or {}).get('Записи'), list) else []
             vals = [
-                _num(r.get('ОстЗадолж') if r.get('ОстЗадолж') is not None else r.get('СумДолг'))
-                for r in recs
-                if isinstance(r, dict)
+                _num(rec.get('ОстЗадолж') if rec.get('ОстЗадолж') is not None else rec.get('СумДолг'))
+                for rec in recs
+                if isinstance(rec, dict)
             ]
             f_sum = sum(v for v in vals if v) if len(recs) >= f_cnt else 0
         if f_cnt:
@@ -1099,19 +1128,19 @@ class Counterparties:
                 f'Исполнительные производства: {f_cnt}' + (f' на {self._money(f_sum)} руб.' if f_sum else ''),
             )
         score = self._score(flags)
-        ogrn = c.get('ОГРН') or c.get('ОГРНИП') or ''
+        ogrn = company.get('ОГРН') or company.get('ОГРНИП') or ''
         return {
             'inn': inn,
             'ogrn': ogrn,
-            'name': c.get('НаимСокр') or c.get('НаимПолн') or c.get('ФИО') or '',
+            'name': company.get('НаимСокр') or company.get('НаимПолн') or company.get('ФИО') or '',
             'status': status,
             'active': active,
             'regDate': reg,
             'ageYears': round(age, 1) if age is not None else None,
-            'capital': _num(g(c, 'УстКап', 'Сумма')),
-            'employees': _num(c.get('СЧР')),
-            'okved': self._okved(c),
-            'msp': g(c, 'РМСП', 'Кат', default=''),
+            'capital': _num(dig(company, 'УстКап', 'Сумма')),
+            'employees': _num(company.get('СЧР')),
+            'okved': self._okved(company),
+            'msp': dig(company, 'РМСП', 'Кат', default=''),
             'taxDebt': debt,
             'finances': fin,
             'finSource': fin_src,

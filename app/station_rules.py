@@ -13,106 +13,106 @@ class StationRules:
     PATH = os.path.join(APP_DIR, 'web', 'rules', 'stations.json')
     STATUSES = ('confirmed', 'practice', 'unconfirmed')
     FORMAT = 'kp-station-rules'
-    ID = re.compile(r'^[a-z][a-z0-9_]*(\.[a-z0-9_]+){1,3}$')
+    ID_RE = re.compile(r'^[a-z][a-z0-9_]*(\.[a-z0-9_]+){1,3}$')
     MAX_BYTES = 2 * 1024 * 1024
-    KV, KV_PREV = 'stationRules', 'stationRulesPrev'
+    KV_KEY, KV_PREV = 'stationRules', 'stationRulesPrev'
 
     def __init__(self, store=None) -> None:
         self.store = store
 
     @classmethod
     def bundled(cls) -> dict:
-        with open(cls.PATH, encoding='utf-8') as f:
-            return json.load(f)
+        with open(cls.PATH, encoding='utf-8') as handle:
+            return json.load(handle)
 
     def own(self) -> dict | None:
         """своя версия администратора или None"""
-        d = self.store.kv_get(self.KV) if self.store is not None else None
-        return d if isinstance(d, dict) and d.get('rules') else None
+        data = self.store.kv_get(self.KV_KEY) if self.store is not None else None
+        return data if isinstance(data, dict) and data.get('rules') else None
 
     def current(self) -> dict:
         """действующие правила: своя версия администратора (если исправна), иначе файл поставки."""
-        d = self.own()
-        if d:
+        data = self.own()
+        if data:
             try:
-                self.validate(d)
-                return self.complete(d)
+                self.validate(data)
+                return self.complete(data)
             except ValueError:
                 pass
         return self.bundled()
 
     @classmethod
-    def complete(cls, d) -> dict:
+    def complete(cls, data) -> dict:
         """своя версия + правила поставки, которых в ней нет (копия, своя версия в базе не меняется)"""
-        have = {r.get('id') for r in d['rules']}
-        miss = [r for r in cls.bundled()['rules'] if r.get('id') not in have]
-        return dict(d, rules=d['rules'] + miss) if miss else d
+        have = {rule.get('id') for rule in data['rules']}
+        miss = [rule for rule in cls.bundled()['rules'] if rule.get('id') not in have]
+        return dict(data, rules=data['rules'] + miss) if miss else data
 
     @classmethod
-    def validate(cls, d) -> bool:
+    def validate(cls, data) -> bool:
         """структура файла правил; ValueError — понятным текстом"""
-        if not isinstance(d, dict) or d.get('format') != cls.FORMAT:
+        if not isinstance(data, dict) or data.get('format') != cls.FORMAT:
             raise ValueError(f'Это не файл правил станций (нужен format «{cls.FORMAT}»)')
-        if not isinstance(d.get('version'), str) or not d['version'].strip() or len(d['version']) > 40:
+        if not isinstance(data.get('version'), str) or not data['version'].strip() or len(data['version']) > 40:
             raise ValueError('Не указана версия правил')
-        rules = d.get('rules')
+        rules = data.get('rules')
         if not isinstance(rules, list) or not rules or len(rules) > 2000:
             raise ValueError('Нет списка правил')
         seen = set()
-        for i, r in enumerate(rules):
+        for i, rule in enumerate(rules):
             where = f'правило {i + 1}'
-            if not isinstance(r, dict):
+            if not isinstance(rule, dict):
                 raise ValueError(where + ': не объект')
-            rid = r.get('id')
-            if not isinstance(rid, str) or not cls.ID.match(rid):
+            rid = rule.get('id')
+            if not isinstance(rid, str) or not cls.ID_RE.match(rid):
                 raise ValueError(where + ': неверный идентификатор')
             if rid in seen:
                 raise ValueError(f'Правило {rid} повторяется')
             seen.add(rid)
-            if not isinstance(r.get('title'), str) or not r['title'].strip():
+            if not isinstance(rule.get('title'), str) or not rule['title'].strip():
                 raise ValueError(f'Правило {rid}: нет названия')
-            if 'value' not in r:
+            if 'value' not in rule:
                 raise ValueError(f'Правило {rid}: нет значения')
-            if r.get('status') not in cls.STATUSES:
+            if rule.get('status') not in cls.STATUSES:
                 raise ValueError(f'Правило {rid}: статус — confirmed, practice или unconfirmed')
-            s = r.get('source')
-            if not isinstance(s, dict) or not isinstance(s.get('doc'), str) or not s['doc'].strip():
+            src = rule.get('source')
+            if not isinstance(src, dict) or not isinstance(src.get('doc'), str) or not src['doc'].strip():
                 raise ValueError(f'Правило {rid}: не указан источник')
             if rid in LayoutValues.IDS:
-                LayoutValues.check(rid, r['value'])
-        series = d.get('series', [])
+                LayoutValues.check(rid, rule['value'])
+        series = data.get('series', [])
         if not isinstance(series, list):
             raise ValueError('Раздел series — список')
-        for i, s in enumerate(series):
+        for i, src in enumerate(series):
             if (
-                not isinstance(s, dict)
-                or not s.get('maker')
-                or not s.get('match')
-                or not isinstance(s.get('source'), dict)
-                or not s['source'].get('doc')
+                not isinstance(src, dict)
+                or not src.get('maker')
+                or not src.get('match')
+                or not isinstance(src.get('source'), dict)
+                or not src['source'].get('doc')
             ):
                 raise ValueError(f'Серия {i + 1}: нужны maker, match и source.doc')
             try:
-                re.compile(str(s['match']))
+                re.compile(str(src['match']))
             except re.error:
                 raise ValueError(f'Серия {i + 1}: неверное выражение match') from None
         return True
 
-    def save(self, raw, by: str = '') -> dict:
+    def save(self, raw, author: str = '') -> dict:
         """своя версия администратора (байты JSON); прежняя — в kv «stationRulesPrev». → кратко о версии"""
         if not raw or len(raw) > self.MAX_BYTES:
             raise ValueError('Файл пустой или больше 2 МБ')
         try:
-            d = json.loads(raw.decode('utf-8-sig') if isinstance(raw, bytes) else raw)
+            data = json.loads(raw.decode('utf-8-sig') if isinstance(raw, bytes) else raw)
         except ValueError:
             raise ValueError('Файл не читается как JSON') from None
-        self.validate(d)
-        RuleShape.check(d, self.bundled())
+        self.validate(data)
+        RuleShape.check(data, self.bundled())
         old = self.own()
         if old:
             self.store.kv_set(self.KV_PREV, old)
-        d['_saved'] = {'at': datetime.now().isoformat(timespec='seconds'), 'by': str(by or '')[:120]}
-        self.store.kv_set(self.KV, d)
+        data['_saved'] = {'at': datetime.now().isoformat(timespec='seconds'), 'by': str(author or '')[:120]}
+        self.store.kv_set(self.KV_KEY, data)
         return self.info()
 
     def reset(self) -> dict:
@@ -120,29 +120,29 @@ class StationRules:
         old = self.own()
         if old:
             self.store.kv_set(self.KV_PREV, old)
-        self.store.kv_set(self.KV, None)
+        self.store.kv_set(self.KV_KEY, None)
         return self.info()
 
     def layout_defaults(self) -> dict:
         """значения правил компоновки из файла поставки ({id: значение}) — для «Все значения — по умолчанию» в «Настройках»"""
-        return {r['id']: r.get('value') for r in self.bundled()['rules'] if r.get('id') in LayoutValues.IDS}
+        return {rule['id']: rule.get('value') for rule in self.bundled()['rules'] if rule.get('id') in LayoutValues.IDS}
 
     def info(self) -> dict:
-        d, b = self.current(), self.bundled()
+        data, builtin = self.current(), self.bundled()
         own = self.own()
-        cnt = {k: sum(1 for r in d['rules'] if r.get('status') == k) for k in self.STATUSES}
+        cnt = {k: sum(1 for rule in data['rules'] if rule.get('status') == k) for k in self.STATUSES}
         return {
-            'version': d.get('version'),
-            'date': d.get('date'),
+            'version': data.get('version'),
+            'date': data.get('date'),
             'own': bool(own),
             'saved': (own or {}).get('_saved'),
-            'bundled': b.get('version'),
-            'rules': len(d['rules']),
-            'series': len(d.get('series') or []),
+            'bundled': builtin.get('version'),
+            'rules': len(data['rules']),
+            'series': len(data.get('series') or []),
             'byStatus': cnt,
         }
 
-    def js(self) -> str:
+    def json_text(self) -> str:
         """скрипт для браузера: StationRules.use({...}) — до модулей расчёта станций"""
         body = json.dumps(self.current(), ensure_ascii=False).replace('</', '<\\/')
         return f'StationRules.use({body});\n'
@@ -154,12 +154,12 @@ class RuleShape:
     MAX = 1e9
 
     @classmethod
-    def check(cls, d, bundled) -> bool:
-        base = {r['id']: r.get('value') for r in bundled.get('rules', [])}
-        for r in d.get('rules', []):
-            rid = r.get('id')
+    def check(cls, data, bundled) -> bool:
+        base = {rule['id']: rule.get('value') for rule in bundled.get('rules', [])}
+        for rule in data.get('rules', []):
+            rid = rule.get('id')
             if rid in base and rid not in LayoutValues.IDS:
-                cls.same(base[rid], r.get('value'), f'Правило {rid}')
+                cls.same(base[rid], rule.get('value'), f'Правило {rid}')
         return True
 
     @classmethod
@@ -175,29 +175,29 @@ class RuleShape:
         return isinstance(v, (int, float)) and not isinstance(v, bool)
 
     @classmethod
-    def same(cls, b, v, where) -> None:
-        if isinstance(b, bool):
+    def same(cls, other, v, where) -> None:
+        if isinstance(other, bool):
             if not isinstance(v, bool):
                 raise ValueError(where + ': нужно «да» или «нет»')
-        elif cls.number(b):
+        elif cls.number(other):
             if not cls.number(v) or math.isnan(v) or abs(v) > cls.MAX:
                 raise ValueError(where + ': нужно число')
-        elif isinstance(b, str):
+        elif isinstance(other, str):
             if not isinstance(v, str) or len(v) > 500:
                 raise ValueError(where + ': нужен текст до 500 знаков')
-        elif cls.table(b):
+        elif cls.table(other):
             if not cls.table(v) or len(v) > 200:
                 raise ValueError(where + ': нужна таблица из пар чисел (до 200 строк)')
-        elif isinstance(b, list):
-            if not isinstance(v, list) or len(v) != len(b):
-                raise ValueError(where + f': нужен список из {len(b)} значений')
-            for i, (x, y) in enumerate(zip(b, v, strict=False)):
+        elif isinstance(other, list):
+            if not isinstance(v, list) or len(v) != len(other):
+                raise ValueError(where + f': нужен список из {len(other)} значений')
+            for i, (x, y) in enumerate(zip(other, v, strict=False)):
                 cls.same(x, y, f'{where} [{i + 1}]')
-        elif isinstance(b, dict):
-            if not isinstance(v, dict) or set(v) != set(b):
+        elif isinstance(other, dict):
+            if not isinstance(v, dict) or set(v) != set(other):
                 raise ValueError(where + ': набор параметров не совпадает с файлом поставки')
-            for k in b:
-                cls.same(b[k], v[k], f'{where}, {str(k)[:30]}')
+            for k in other:
+                cls.same(other[k], v[k], f'{where}, {str(k)[:30]}')
 
 
 class LayoutValues:
@@ -470,10 +470,10 @@ class LayoutValues:
     }
 
     @classmethod
-    def num(cls, v, where, lo=0, hi=None) -> float:
-        hi = cls.MAX_MM if hi is None else hi
-        if isinstance(v, bool) or not isinstance(v, (int, float)) or math.isnan(v) or not lo <= v <= hi:
-            raise ValueError(f'{where}: нужно число от {lo} до {hi}')
+    def num(cls, v, where, low=0, high=None) -> float:
+        high = cls.MAX_MM if high is None else high
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or math.isnan(v) or not low <= v <= high:
+            raise ValueError(f'{where}: нужно число от {low} до {high}')
         return v
 
     @classmethod
@@ -487,8 +487,8 @@ class LayoutValues:
         if rid == 'norm.aisle':
             if not isinstance(v, list) or len(v) != 2:
                 raise ValueError(where + ': нужны два числа — рекомендуемый и допустимый проход')
-            a, b = (cls.num(x, where, 600, 3000) for x in v)
-            if b > a:
+            first, second = (cls.num(x, where, 600, 3000) for x in v)
+            if second > first:
                 raise ValueError(where + ': допустимый проход больше рекомендуемого')
         elif rid == 'norm.aisle_tight':
             cls.num(v, where, 600, 3000)
@@ -506,81 +506,85 @@ class LayoutValues:
             cls.kind(k, where)
             if not isinstance(x, dict):
                 raise ValueError(f'{where}, {k}: не объект')
-            for s, y in x.items():
-                w = f'{where}, {k}, {str(s)[:20]}'
+            for val, y in x.items():
+                where_text = f'{where}, {k}, {str(val)[:20]}'
                 if isinstance(y, list):
                     if len(y) != 2:
-                        raise ValueError(w + ': нужны два числа — рекомендуемый и допустимый')
-                    a, b = (cls.num(z, w, 0, 5000) for z in y)
-                    if b > a:
-                        raise ValueError(w + ': допустимый больше рекомендуемого')
+                        raise ValueError(where_text + ': нужны два числа — рекомендуемый и допустимый')
+                    first, second = (cls.num(z, where_text, 0, 5000) for z in y)
+                    if second > first:
+                        raise ValueError(where_text + ': допустимый больше рекомендуемого')
                 else:
-                    cls.num(y, w, 0, 5000)
+                    cls.num(y, where_text, 0, 5000)
 
     @classmethod
-    def rows(cls, v, g, where) -> list:
-        x = v.get(g)
+    def rows(cls, v, group, where) -> list:
+        x = v.get(group)
         if x is None:
             return []
-        r = x.get('rows') if isinstance(x, dict) else None
-        if not isinstance(r, list) or len(r) > 100 or not all(isinstance(q, dict) for q in r):
-            raise ValueError(f'{where}, {g}: нужен список строк')
-        return r
+        rows_raw = x.get('rows') if isinstance(x, dict) else None
+        if not isinstance(rows_raw, list) or len(rows_raw) > 100 or not all(isinstance(row, dict) for row in rows_raw):
+            raise ValueError(f'{where}, {group}: нужен список строк')
+        return rows_raw
 
     @classmethod
     def matrix(cls, v, where) -> None:
         if not isinstance(v, dict):
             raise ValueError(where + ': не объект')
-        for g, x in v.items():
-            if g not in cls.GROUPS:
-                raise ValueError(f'{where}: неизвестный раздел «{str(g)[:30]}»')
+        for group, x in v.items():
+            if group not in cls.GROUPS:
+                raise ValueError(f'{where}: неизвестный раздел «{str(group)[:30]}»')
             if not isinstance(x, dict):
-                raise ValueError(f'{where}, {g}: не объект')
-            t = x.get('t', '')
-            if not isinstance(t, str) or len(t) > 500:
-                raise ValueError(f'{where}, {g}: пояснение — текст до 500 знаков')
-            if g not in ('pair', 'wall', 'sides', 'rotate'):
+                raise ValueError(f'{where}, {group}: не объект')
+            text = x.get('t', '')
+            if not isinstance(text, str) or len(text) > 500:
+                raise ValueError(f'{where}, {group}: пояснение — текст до 500 знаков')
+            if group not in ('pair', 'wall', 'sides', 'rotate'):
                 for k, y in x.items():
                     if k != 't':
-                        lo, hi = cls.SCALAR.get(f'{g}.{k}', (0, cls.MAX_MM))
-                        cls.num(y, f'{where}, {g}.{str(k)[:20]}', lo, hi)
-        for j, r in enumerate(cls.rows(v, 'pair', where)):
-            w = f'{where}, пара {j + 1}'
-            cls.kind(r.get('a'), w)
-            cls.kind(r.get('b'), w)
-            base, k, mn = (
-                cls.num(r.get('base'), w + ', база', 0, 5000),
-                cls.num(r.get('k', 0), w + ', коэффициент', 0, 3),
-                cls.num(r.get('min'), w + ', не менее', 0, 5000),
+                        low, high = cls.SCALAR.get(f'{group}.{k}', (0, cls.MAX_MM))
+                        cls.num(y, f'{where}, {group}.{str(k)[:20]}', low, high)
+        for j, row in enumerate(cls.rows(v, 'pair', where)):
+            where_text = f'{where}, пара {j + 1}'
+            cls.kind(row.get('a'), where_text)
+            cls.kind(row.get('b'), where_text)
+            base, k, minimum = (
+                cls.num(row.get('base'), where_text + ', база', 0, 5000),
+                cls.num(row.get('k', 0), where_text + ', коэффициент', 0, 3),
+                cls.num(row.get('min'), where_text + ', не менее', 0, 5000),
             )
-            of = r.get('of', '')
+            of = row.get('of', '')
             if of and (
                 not isinstance(of, str) or of.split('.')[0] not in cls.KINDS or of.split('.')[-1] not in ('w', 'l', 'h')
             ):
-                raise ValueError(w + ': размер — «вид.w», «вид.l» или «вид.h»')
-            if mn > base and not k:
-                raise ValueError(w + ': «не менее» больше базы')
-        for j, r in enumerate(cls.rows(v, 'wall', where)):
-            w = f'{where}, стена {j + 1}'
-            cls.kind(r.get('kind'), w)
-            cls.num(r.get('base'), w + ', база', 0, 5000)
-            cls.num(r.get('k', 0), w + ', коэффициент', 0, 3)
-            cls.num(r.get('tight'), w + ', плотно', 0, 5000)
-        for j, r in enumerate(cls.rows(v, 'sides', where)):
-            w = f'{where}, стороны {j + 1}'
-            cls.kind(r.get('kind'), w)
-            if not isinstance(r.get('s'), str) or not re.match('^[ФЗЛП]{1,4}$', r['s']):
-                raise ValueError(w + ': стороны — буквы Ф, З, Л, П')
-            for f in ('door', 'tilt'):
-                if f in r and not isinstance(r[f], bool):
-                    raise ValueError(w + f': отметка «{f}» — да или нет')
-        for j, r in enumerate(cls.rows(v, 'rotate', where)):
-            cls.kind(r.get('kind'), f'{where}, поворот {j + 1}')
-        d = v.get('door') or {}
-        if 'w' in d:
-            cls.num(d['w'], where + ', ширина двери', *cls.SCALAR['door.w'])
-        if 'h' in d:
-            cls.num(d['h'], where + ', высота двери', *cls.SCALAR['door.h'])
-        s = v.get('service') or {}
-        if isinstance(s.get('min'), (int, float)) and isinstance(s.get('max'), (int, float)) and s['min'] > s['max']:
+                raise ValueError(where_text + ': размер — «вид.w», «вид.l» или «вид.h»')
+            if minimum > base and not k:
+                raise ValueError(where_text + ': «не менее» больше базы')
+        for j, row in enumerate(cls.rows(v, 'wall', where)):
+            where_text = f'{where}, стена {j + 1}'
+            cls.kind(row.get('kind'), where_text)
+            cls.num(row.get('base'), where_text + ', база', 0, 5000)
+            cls.num(row.get('k', 0), where_text + ', коэффициент', 0, 3)
+            cls.num(row.get('tight'), where_text + ', плотно', 0, 5000)
+        for j, row in enumerate(cls.rows(v, 'sides', where)):
+            where_text = f'{where}, стороны {j + 1}'
+            cls.kind(row.get('kind'), where_text)
+            if not isinstance(row.get('s'), str) or not re.match('^[ФЗЛП]{1,4}$', row['s']):
+                raise ValueError(where_text + ': стороны — буквы Ф, З, Л, П')
+            for field in ('door', 'tilt'):
+                if field in row and not isinstance(row[field], bool):
+                    raise ValueError(where_text + f': отметка «{field}» — да или нет')
+        for j, row in enumerate(cls.rows(v, 'rotate', where)):
+            cls.kind(row.get('kind'), f'{where}, поворот {j + 1}')
+        door = v.get('door') or {}
+        if 'w' in door:
+            cls.num(door['w'], where + ', ширина двери', *cls.SCALAR['door.w'])
+        if 'h' in door:
+            cls.num(door['h'], where + ', высота двери', *cls.SCALAR['door.h'])
+        service = v.get('service') or {}
+        if (
+            isinstance(service.get('min'), (int, float))
+            and isinstance(service.get('max'), (int, float))
+            and service['min'] > service['max']
+        ):
             raise ValueError(where + ': сервисные ворота — «не меньше» больше «не больше»')

@@ -79,7 +79,7 @@ class NightUpdateTest(unittest.TestCase):
         self.st.kv_set('alerts', {'on': True, 'to': 'admin@example.com'})
         r = self.run_at(up, self.AT3)
         self.assertTrue(r and r.get('ok'), r)
-        self.assertEqual(up.installed, NightUpdate.BY)
+        self.assertEqual(up.installed, NightUpdate.AUTHOR)
         self.assertEqual(self.restarted, [1])
         self.assertEqual(up.settings()['nightLast']['version'], '3.52.1')
         self.assertIn('Ночью установлено обновление 3.52.1', str(self.st.kv_get('alerts').get('notices')))
