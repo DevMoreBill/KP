@@ -228,7 +228,7 @@ export class KpSave {
     // связь с Битрикс24: Excel экономики сделки собирается здесь (в браузере автора) и уходит в ленту сделки
     if (!result || !result.bx || !S.deal || !S.deal.touched || !DealDefaults.allowed()) return;
     const kpId = S.kpId;
-    dealXlsx({ blob: true })
+    DealXlsx.blob()
       .then(xlsx => xlsx && api(`/api/kp/${kpId}/econ`, { method: 'PUT', body: xlsx }))
       .catch(error => console.warn('Экономика для Битрикс24 не отправлена:', error));
   }

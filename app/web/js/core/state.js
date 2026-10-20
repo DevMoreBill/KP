@@ -100,8 +100,8 @@ var CATED = null;
 let catCache = [];
 let EDIT = null;
 
-// открытый раздел формы КП (ui/steps.js — Steps) и свои подсказки полей адреса (ui/geo-input.js — GeoInput):
-// присваивают обычные скрипты при загрузке (logistics.js — склады поставщиков) и модули
+// открытый раздел формы КП (ui/steps.js — Steps) и свои подсказки полей адреса (ui/geo-input.js — GeoInput,
+// склады поставщиков добавляет features/deal): общие для нескольких модулей
 let STEP = 'client';
 const GEO_EXTRA = {};
 

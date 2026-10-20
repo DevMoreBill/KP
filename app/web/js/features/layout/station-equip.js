@@ -212,8 +212,8 @@ export class StationEquip {
     const own = this.nums((part.attrs || {}).size);
     let found = { n: own, src: own ? 'Габариты' : '' };
     if (!own || own.length < 3) found = this._sizeRows(part, found);
-    if ((!found.n || found.n.length < 3) && typeof lgCargoOf === 'function') {
-      const cargo = lgCargoOf([{ rows: part.rows || [] }]);
+    if ((!found.n || found.n.length < 3) && typeof LgCargo !== 'undefined') {
+      const cargo = LgCargo.of([{ rows: part.rows || [] }]);
       if (cargo && cargo.dims)
         found = {
           n: [cargo.dims.l, cargo.dims.w, cargo.dims.h].map(v => Math.round(v * 1000)),
@@ -343,8 +343,8 @@ export class StationEquip {
   static mass(part) {
     const massKg = this.num((part.attrs || {}).mass);
     if (massKg > 0) return massKg;
-    if (typeof lgCargoOf !== 'function') return null;
-    const cargo = lgCargoOf([{ rows: part.rows || [] }]);
+    if (typeof LgCargo === 'undefined') return null;
+    const cargo = LgCargo.of([{ rows: part.rows || [] }]);
     return cargo && cargo.mass > 0 ? Math.round(cargo.mass * 1000) : null;
   }
 

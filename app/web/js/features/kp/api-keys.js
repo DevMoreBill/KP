@@ -210,7 +210,7 @@ export class ApiKeys {
         body: JSON.stringify(body),
       });
       toast('Сохранено');
-      LG.status = null;
+      LgState.status = null;
       PartyCheck.quota = null;
       this.form(host);
     } catch (error) {

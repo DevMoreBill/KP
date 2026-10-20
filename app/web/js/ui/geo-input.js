@@ -172,7 +172,7 @@ export class GeoInput {
   static _extra(input, text) {
     const make = GEO_EXTRA[input.dataset.geo];
     return (make ? make(input) || [] : []).filter(
-      item => !text || lgN(`${item.value} ${item.sub || ''}`).includes(lgN(text)),
+      item => !text || LgGeo.norm(`${item.value} ${item.sub || ''}`).includes(LgGeo.norm(text)),
     );
   }
 
@@ -217,7 +217,7 @@ export class GeoInput {
 
   static _cities(text) {
     if (text.length < this.CITY_MIN) return [];
-    return LG_IDX.filter(city => city.n.startsWith(lgN(text)))
+    return LgGeo.IDX.filter(city => city.n.startsWith(LgGeo.norm(text)))
       .slice(0, this.CITIES)
       .map(city => ({
         value: city.name,

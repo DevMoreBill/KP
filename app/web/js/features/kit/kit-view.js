@@ -63,7 +63,7 @@ export class KitView {
   }
 
   static _sups() {
-    const deal = (typeof DL !== 'undefined' && DL.sups) || [];
+    const deal = (typeof DealUi !== 'undefined' && DealUi.sups) || [];
     const names = [...deal.map(sup => sup.name), ...catCache.map(card => attrsOf(card).maker)].filter(Boolean);
     return [...new Set(names)].slice(0, this.SUPS_MAX);
   }

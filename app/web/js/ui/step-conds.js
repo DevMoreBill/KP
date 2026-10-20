@@ -72,7 +72,7 @@ export class CondsStep {
   static fromDeal() {
     if (!S.deal || !S.deal.touched) return {};
     try {
-      return DealConds.suggest(dealCalc(DealState.kpInputs(), S.deal));
+      return DealConds.suggest(DealCalculator.calc(DealState.kpInputs(), S.deal));
     } catch {
       return {};
     }
