@@ -1,111 +1,400 @@
-// Поле точного адреса с подсказками (для полей с атрибутом data-geo): DaData (если задан ключ) или OpenStreetMap — сервер /api/geo/*.
-// Можно вставить координаты («55.751244, 37.618423», 55°45′04″N 37°37′06″E) или ссылку на точку из Google / Яндекс Карт —
-// адрес определится по координатам. Выбор — событие «geo:pick» на поле: detail = {value, lat, lon, city, region, exact, src}.
-// Дополнительные пункты (например, склады поставщика) — GEO_EXTRA[имя из data-geo](поле) → [{value, lat, lon, city, sub, tag}].
-'use strict';
+/** Координаты из текста или ссылки карт: «55.751244, 37.618423», 55°45′04″N 37°37′06″E, ссылки Google и Яндекс Карт. */
+export class GeoParse {
+  static DIGITS = 6;
+  static LAT_MAX = 90;
+  static LON_MAX = 180;
+  static MINUTE = 60;
+  static SECOND = 3600;
+  static SHORT = /^https?:\/\/(?:[\w-]+\.)*(?:goo\.gl|g\.co|yandex\.(?:ru|com|kz|by)|ya\.ru)\//i;
+  // ссылка карт: шаблон и порядок чисел (широта, долгота или долгота, широта)
+  static LINKS = [
+    [/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/, 'latlon'], // Google: точка места
+    [/[?&](?:whatshere\[point\]|pt|ll)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/, 'lonlat'], // Яндекс: долгота, широта
+    [/[?&](?:q|query|destination|center)=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/, 'latlon'],
+    [/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/, 'latlon'], // Google: центр карты
+  ];
+  static DMS =
+    /(\d+(?:[.,]\d+)?)\s*°\s*(?:(\d+(?:[.,]\d+)?)\s*['′’]\s*)?(?:(\d+(?:[.,]\d+)?)\s*(?:["″”]|'')\s*)?([NSEWСЮВЗ])?/gi;
+  static PAIR = /^(-?\d{1,2}(?:[.,]\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:[.,]\d+)?)$/;
 
-const GEO = { box:null, inp:null, items:[], i:-1, t:0, seq:0, msg:'', src:'' };
-const GEO_EXTRA = {};
+  /**
+   * Точка из текста или ссылки.
+   * @param {string} text
+   * @returns {{lat: number, lon: number}|null}
+   */
+  static point(text) {
+    const value = String(text || '').trim();
+    if (!value) return null;
+    if (/^https?:\/\//i.test(value)) return this._link(value);
+    const dms = [...value.matchAll(this.DMS)];
+    if (dms.length === 2) return this._dms(dms);
+    const pair = value.match(this.PAIR);
+    return pair ? this._ok(pair[1].replace(',', '.'), pair[2].replace(',', '.')) : null;
+  }
 
-// координаты из текста или ссылки карт → {lat, lon} | null
-function geoParse(text){
-  const s=String(text||'').trim(); if (!s) return null;
-  const ok=(a,b)=>{ a=+a; b=+b; return Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a)<=90&&Math.abs(b)<=180&&(a||b) ? {lat:+a.toFixed(6), lon:+b.toFixed(6)} : null; };
-  let m;
-  if (/^https?:\/\//i.test(s)){
-    let u=s; try{ u=decodeURIComponent(s); }catch(e){}
-    if ((m=u.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/))) return ok(m[1],m[2]);                 // Google: точка места
-    if ((m=u.match(/[?&](?:whatshere\[point\]|pt|ll)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/))) return ok(m[2],m[1]); // Яндекс: долгота, широта
-    if ((m=u.match(/[?&](?:q|query|destination|center)=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/))) return ok(m[1],m[2]);
-    if ((m=u.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/))) return ok(m[1],m[2]);                    // Google: центр карты
+  static _ok(latText, lonText) {
+    const lat = +latText;
+    const lon = +lonText;
+    const valid =
+      Number.isFinite(lat) &&
+      Number.isFinite(lon) &&
+      Math.abs(lat) <= this.LAT_MAX &&
+      Math.abs(lon) <= this.LON_MAX &&
+      (lat || lon);
+    return valid ? { lat: +lat.toFixed(this.DIGITS), lon: +lon.toFixed(this.DIGITS) } : null;
+  }
+
+  static _link(value) {
+    let url = value;
+    try {
+      url = decodeURIComponent(value);
+    } catch {
+      // не раскодировалась — ищем в исходной
+    }
+    for (const [pattern, order] of this.LINKS) {
+      const found = url.match(pattern);
+      if (found) return order === 'latlon' ? this._ok(found[1], found[2]) : this._ok(found[2], found[1]);
+    }
     return null;
   }
-  const dms=[...s.matchAll(/(\d+(?:[.,]\d+)?)\s*°\s*(?:(\d+(?:[.,]\d+)?)\s*['′’]\s*)?(?:(\d+(?:[.,]\d+)?)\s*(?:["″”]|'')\s*)?([NSEWСЮВЗ])?/gi)];
-  if (dms.length===2){
-    const v=x=>{ const n=k=>parseFloat(String(x[k]||0).replace(',','.')); let d=n(1)+n(2)/60+n(3)/3600; if (/[SWЮЗ]/i.test(x[4]||'')) d=-d; return d; };
-    const [a,b]=dms, aLon=/[EWВЗ]/i.test(a[4]||''); return aLon ? ok(v(b),v(a)) : ok(v(a),v(b));
+
+  static _degrees(part) {
+    const number = k => parseFloat(String(part[k] || 0).replace(',', '.'));
+    const value = number(1) + number(2) / this.MINUTE + number(3) / this.SECOND;
+    return /[SWЮЗ]/i.test(part[4] || '') ? -value : value;
   }
-  if ((m=s.match(/^(-?\d{1,2}(?:[.,]\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:[.,]\d+)?)$/))) return ok(m[1].replace(',','.'), m[2].replace(',','.'));
-  return null;
+
+  static _dms([first, second]) {
+    const lonFirst = /[EWВЗ]/i.test(first[4] || '');
+    return lonFirst
+      ? this._ok(this._degrees(second), this._degrees(first))
+      : this._ok(this._degrees(first), this._degrees(second));
+  }
+
+  /**
+   * Короткая ссылка карт без координат (её открывает сервер).
+   * @param {string} text
+   * @returns {boolean}
+   */
+  static short(text) {
+    return this.SHORT.test(String(text || '').trim()) && !this.point(text);
+  }
+
+  /**
+   * Координаты текстом.
+   * @param {{lat: number, lon: number}} point
+   * @returns {string}
+   */
+  static text(point) {
+    return `${point.lat.toFixed(this.DIGITS)}, ${point.lon.toFixed(this.DIGITS)}`;
+  }
 }
-const geoShort = s => /^https?:\/\/(?:[\w-]+\.)*(?:goo\.gl|g\.co|yandex\.(?:ru|com|kz|by)|ya\.ru)\//i.test(String(s||'').trim()) && !geoParse(s);
-const geoFmt = p => `${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}`;
 
-function geoClose(){ if (GEO.box) GEO.box.remove(); GEO.box=null; GEO.inp=null; GEO.items=[]; GEO.i=-1; GEO.msg=''; clearTimeout(GEO.t); }
+/**
+ * Поле точного адреса с подсказками (атрибут data-geo): DaData (если задан ключ) или OpenStreetMap — сервер /api/geo/*.
+ * Выбор — событие «geo:pick» на поле: detail = {value, lat, lon, city, region, exact, src}. Дополнительные пункты
+ * (например, склады поставщика) — GEO_EXTRA[имя из data-geo](поле) → [{value, lat, lon, city, sub, tag}].
+ */
+export class GeoInput {
+  static state = { box: null, input: null, items: [], index: -1, timer: 0, seq: 0, msg: '', src: '' };
+  static MIN_WIDTH = 280;
+  static MAX_HEIGHT = 320;
+  static GAP = 8;
+  static OFFSET = 4;
+  static MARGIN = 12;
+  static CITY_MIN = 2;
+  static QUERY_MIN = 3;
+  static CITIES = 3;
+  static TYPE_DELAY = 320;
+  static BLUR_DELAY = 120;
 
-function geoPlace(){
-  const b=GEO.box, el=GEO.inp; if (!b || !el || !el.isConnected) return geoClose();
-  const r=el.getBoundingClientRect();
-  b.style.left=Math.max(8, Math.min(r.left, innerWidth-Math.max(r.width,280)-8))+'px'; b.style.width=Math.max(r.width,280)+'px';
-  const below=innerHeight-r.bottom, h=Math.min(320, b.scrollHeight||320);
-  if (below<h+12 && r.top>below){ b.style.top=''; b.style.bottom=(innerHeight-r.top+4)+'px'; } else { b.style.bottom=''; b.style.top=(r.bottom+4)+'px'; }
-}
+  /** Закрыть список подсказок. */
+  static close() {
+    const state = this.state;
+    if (state.box) state.box.remove();
+    Object.assign(state, { box: null, input: null, items: [], index: -1, msg: '' });
+    clearTimeout(state.timer);
+  }
 
-function geoDraw(){
-  if (!GEO.inp) return;
-  if (GEO.box && !GEO.box.isConnected) GEO.box=null;
-  if (!GEO.box){ const b=document.createElement('div'); b.className='geo-box'; b.setAttribute('role','listbox');
-    b.addEventListener('pointerdown', e=>e.preventDefault());       // фокус остаётся в поле
-    b.addEventListener('click', e=>{ const x=e.target.closest('[data-gi]'); if (x) geoPick(+x.dataset.gi); });
+  /** Поставить список у поля (снизу, а если места мало — сверху). */
+  static place() {
+    const { box, input } = this.state;
+    if (!box || !input || !input.isConnected) {
+      this.close();
+      return;
+    }
+    const rect = input.getBoundingClientRect();
+    const width = Math.max(rect.width, this.MIN_WIDTH);
+    box.style.left = `${Math.max(this.GAP, Math.min(rect.left, innerWidth - width - this.GAP))}px`;
+    box.style.width = `${width}px`;
+    const below = innerHeight - rect.bottom;
+    const height = Math.min(this.MAX_HEIGHT, box.scrollHeight || this.MAX_HEIGHT);
+    if (below < height + this.MARGIN && rect.top > below) {
+      box.style.top = '';
+      box.style.bottom = `${innerHeight - rect.top + this.OFFSET}px`;
+    } else {
+      box.style.bottom = '';
+      box.style.top = `${rect.bottom + this.OFFSET}px`;
+    }
+  }
+
+  static _box() {
+    const box = document.createElement('div');
+    box.className = 'geo-box';
+    box.setAttribute('role', 'listbox');
+    box.addEventListener('pointerdown', event => event.preventDefault()); // фокус остаётся в поле
+    box.addEventListener('click', event => {
+      const row = event.target.closest('[data-gi]');
+      if (row) this.pick(+row.dataset.gi);
+    });
     // внутри открытого окна (иначе модальное окно делает список недоступным); перерисовка окна его не удаляет
-    b.setAttribute('data-morph-keep',''); (GEO.inp.closest('dialog[open]')||document.body).appendChild(b);
-    GEO.box=b; }
-  const it=GEO.items;
-  GEO.box.innerHTML=(it.length?it.map((x,i)=>`<button type="button" role="option" data-gi="${i}"${i===GEO.i?' aria-selected="true"':''}><b>${esc(x.value)}</b>${x.tag?`<em>${esc(x.tag)}</em>`:''}${x.sub?`<small>${esc(x.sub)}</small>`:''}</button>`).join(''):'')
-    +(GEO.msg?`<p class="geo-msg">${esc(GEO.msg)}</p>`:'')
-    +`<p class="geo-ft">${GEO.src?'Подсказки: '+esc(GEO.src)+' · ':''}можно вставить координаты или ссылку на точку из Google / Яндекс Карт</p>`;
-  geoPlace();
-}
+    box.setAttribute('data-morph-keep', '');
+    (this.state.input.closest('dialog[open]') || document.body).appendChild(box);
+    return box;
+  }
 
-async function geoQuery(inp){
-  const q=inp.value.trim(), seq=++GEO.seq, key=inp.dataset.geo;
-  const extra=(GEO_EXTRA[key]?GEO_EXTRA[key](inp)||[]:[]).filter(x=>!q || lgN(x.value+' '+(x.sub||'')).includes(lgN(q)));
-  GEO.msg='';
-  const p=geoParse(q);
-  if (p){ GEO.items=[{value:geoFmt(p), lat:p.lat, lon:p.lon, coords:true, tag:'координаты', sub:'Выберите — адрес определится по точке'}]; GEO.src=''; GEO.i=0; return geoDraw(); }
-  if (geoShort(q)){ GEO.items=[{value:q, short:true, tag:'ссылка', sub:'Выберите — откроем ссылку и возьмём точку'}]; GEO.src=''; GEO.i=0; return geoDraw(); }
-  // города из встроенной таблицы — сразу (и без интернета)
-  const loc=q.length>=2 ? LG_IDX.filter(c=>c.n.startsWith(lgN(q))).slice(0,3).map(c=>({value:c.name, lat:c.lat, lon:c.lon, city:c.name, sub:'город — центр', tag:'город', cityOnly:true})) : [];
-  GEO.items=[...extra, ...loc]; GEO.i=-1; geoDraw();
-  if (q.length<3) return;
-  try{ const r=await api('/api/geo/suggest?q='+encodeURIComponent(q)); if (seq!==GEO.seq || GEO.inp!==inp) return;
-    if (r.error) GEO.msg='Подсказки адресов недоступны: '+r.error;
-    GEO.src=r.src||'';
-    GEO.items=[...extra, ...(r.items||[]).map(x=>({...x, sub:[x.region&&x.region!==x.city?x.region:'', x.lat==null?'без координат — уточним по карте':x.exact?'точка дома':'точка улицы / населённого пункта'].filter(Boolean).join(' · ')})), ...(r.items&&r.items.length?[]:loc)];
-  }catch(e){ if (seq!==GEO.seq) return; GEO.msg='Подсказки адресов недоступны ('+(e.message||e)+'). Город из списка или координаты — работают.'; }
-  geoDraw();
-}
+  /** Нарисовать список подсказок. */
+  static draw() {
+    const state = this.state;
+    if (!state.input) return;
+    if (state.box && !state.box.isConnected) state.box = null;
+    if (!state.box) state.box = this._box();
+    const rows = state.items
+      .map(
+        (item, i) =>
+          `<button type="button" role="option" data-gi="${i}"${i === state.index ? ' aria-selected="true"' : ''}><b>${esc(item.value)}</b>${item.tag ? `<em>${esc(item.tag)}</em>` : ''}${item.sub ? `<small>${esc(item.sub)}</small>` : ''}</button>`,
+      )
+      .join('');
+    state.box.innerHTML = `${rows}${state.msg ? `<p class="geo-msg">${esc(state.msg)}</p>` : ''}<p class="geo-ft">${state.src ? `Подсказки: ${esc(state.src)} · ` : ''}можно вставить координаты или ссылку на точку из Google / Яндекс Карт</p>`;
+    this.place();
+  }
 
-async function geoPick(i){
-  const inp=GEO.inp, x=GEO.items[i]; if (!inp || !x) return;
-  let item={...x};
-  try{
-    if (x.short){ GEO.msg='Открываю ссылку…'; GEO.items=[]; geoDraw(); const r=await api('/api/geo/unshort?u='+encodeURIComponent(x.value)); if (r.error) throw new Error(r.error);
-      const p=geoParse(r.url); if (!p) throw new Error('в ссылке нет координат точки — откройте точку на карте и скопируйте координаты'); item={value:geoFmt(p), ...p, coords:true}; }
-    if (item.coords){ GEO.msg='Определяю адрес по координатам…'; GEO.items=[]; geoDraw();
-      const r=await api(`/api/geo/reverse?lat=${item.lat}&lon=${item.lon}`);
-      item = r.error ? {...item, value:geoFmt(item), city:'', exact:true, src:'координаты', note:r.error} : {...r, lat:item.lat, lon:item.lon, exact:true, src:(r.src||'')+' по координатам'}; }
-    else if (item.lat==null && !item.cityOnly){ const r=await api('/api/geo/locate?q='+encodeURIComponent(item.value)); if (!r.error) item={...item, lat:r.lat, lon:r.lon, city:item.city||r.city}; }
-  }catch(e){ GEO.msg='Не получилось: '+(e.message||e); GEO.items=[]; return geoDraw(); }
-  const clean={value:item.value, lat:item.lat??null, lon:item.lon??null, city:item.city||'', region:item.region||'', exact:!!item.exact, src:item.src||(item.cityOnly?'город':''), cityOnly:!!item.cityOnly};
-  geoClose();
-  inp.value=clean.value;
-  inp.dispatchEvent(new CustomEvent('geo:pick', {bubbles:true, detail:clean}));
-  if (clean.note) toast('Адрес по координатам не определён: '+clean.note);
-}
+  static _extra(input, text) {
+    const make = GEO_EXTRA[input.dataset.geo];
+    return (make ? make(input) || [] : []).filter(
+      item => !text || lgN(`${item.value} ${item.sub || ''}`).includes(lgN(text)),
+    );
+  }
 
-document.addEventListener('focusin', e=>{ const t=e.target; if (!t.matches || !t.matches('input[data-geo]') || t.disabled || t.readOnly) return;
-  if (GEO.inp!==t){ geoClose(); GEO.inp=t; } const key=t.dataset.geo; if (GEO_EXTRA[key] && (GEO_EXTRA[key](t)||[]).length) geoQuery(t); });
-document.addEventListener('input', e=>{ const t=e.target; if (!t.matches || !t.matches('input[data-geo]')) return;
-  if (GEO.inp!==t){ geoClose(); GEO.inp=t; } clearTimeout(GEO.t); const q=t.value.trim();
-  GEO.t=setTimeout(()=>geoQuery(t), geoParse(q)||geoShort(q) ? 0 : 320); });
-document.addEventListener('focusout', e=>{ if (e.target===GEO.inp) setTimeout(()=>{ if (GEO.inp && document.activeElement!==GEO.inp) geoClose(); }, 120); });
-document.addEventListener('keydown', e=>{ const t=e.target; if (t!==GEO.inp || !GEO.box) return; const n=GEO.items.length;
-  if (e.key==='ArrowDown'||e.key==='ArrowUp'){ if (!n) return; e.preventDefault(); GEO.i=(GEO.i+(e.key==='ArrowDown'?1:-1)+n)%n; geoDraw(); }
-  else if (e.key==='Enter' && GEO.i>=0){ e.preventDefault(); e.stopPropagation(); geoPick(GEO.i); }
-  else if (e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); geoClose(); } }, true);
-window.addEventListener('resize', ()=>geoPlace());
-document.addEventListener('scroll', e=>{ if (GEO.box && !GEO.box.contains(e.target)) geoPlace(); }, true);
-// вставили координаты или ссылку на точку — сразу определяем адрес
-document.addEventListener('paste', e=>{ const t=e.target; if (!t.matches || !t.matches('input[data-geo]') || t.disabled || t.readOnly) return;
-  setTimeout(async()=>{ const q=t.value.trim(); if (!(geoParse(q)||geoShort(q))) return; clearTimeout(GEO.t); GEO.inp=t; await geoQuery(t); if (GEO.inp===t && GEO.items.length===1) geoPick(0); }, 0); });
+  static _single(item) {
+    Object.assign(this.state, { items: [item], src: '', index: 0 });
+    this.draw();
+  }
+
+  /**
+   * Подсказки для поля: свои пункты, координаты, ссылка, города из встроенной таблицы, затем адреса с сервера.
+   * @param {HTMLInputElement} input
+   */
+  static async query(input) {
+    const state = this.state;
+    const text = input.value.trim();
+    const seq = ++state.seq;
+    const extra = this._extra(input, text);
+    state.msg = '';
+    const point = GeoParse.point(text);
+    if (point) {
+      this._single({
+        value: GeoParse.text(point),
+        lat: point.lat,
+        lon: point.lon,
+        coords: true,
+        tag: 'координаты',
+        sub: 'Выберите — адрес определится по точке',
+      });
+      return;
+    }
+    if (GeoParse.short(text)) {
+      this._single({ value: text, short: true, tag: 'ссылка', sub: 'Выберите — откроем ссылку и возьмём точку' });
+      return;
+    }
+    // города из встроенной таблицы — сразу (и без интернета)
+    const cities = this._cities(text);
+    Object.assign(state, { items: [...extra, ...cities], index: -1 });
+    this.draw();
+    if (text.length < this.QUERY_MIN) return;
+    if (await this._suggest({ input, text, seq, extra, cities })) this.draw();
+  }
+
+  static _cities(text) {
+    if (text.length < this.CITY_MIN) return [];
+    return LG_IDX.filter(city => city.n.startsWith(lgN(text)))
+      .slice(0, this.CITIES)
+      .map(city => ({
+        value: city.name,
+        lat: city.lat,
+        lon: city.lon,
+        city: city.name,
+        sub: 'город — центр',
+        tag: 'город',
+        cityOnly: true,
+      }));
+  }
+
+  // false — ответ устарел (поле сменилось или введено новое), список не перерисовывается
+  static async _suggest({ input, text, seq, extra, cities }) {
+    const state = this.state;
+    try {
+      const found = await api(`/api/geo/suggest?q=${encodeURIComponent(text)}`);
+      if (seq !== state.seq || state.input !== input) return false;
+      if (found.error) state.msg = `Подсказки адресов недоступны: ${found.error}`;
+      state.src = found.src || '';
+      const items = (found.items || []).map(item => ({ ...item, sub: this._sub(item) }));
+      state.items = [...extra, ...items, ...(found.items && found.items.length ? [] : cities)];
+    } catch (error) {
+      if (seq !== state.seq) return false;
+      state.msg = `Подсказки адресов недоступны (${error.message || error}). Город из списка или координаты — работают.`;
+    }
+    return true;
+  }
+
+  static _sub(item) {
+    let where = 'точка улицы / населённого пункта';
+    if (item.lat == null) where = 'без координат — уточним по карте';
+    else if (item.exact) where = 'точка дома';
+    return [item.region && item.region !== item.city ? item.region : '', where].filter(Boolean).join(' · ');
+  }
+
+  static _status(msg) {
+    Object.assign(this.state, { msg, items: [] });
+    this.draw();
+  }
+
+  static async _resolve(picked) {
+    let item = { ...picked };
+    if (picked.short) {
+      this._status('Открываю ссылку…');
+      const found = await api(`/api/geo/unshort?u=${encodeURIComponent(picked.value)}`);
+      if (found.error) throw new Error(found.error);
+      const point = GeoParse.point(found.url);
+      if (!point) throw new Error('в ссылке нет координат точки — откройте точку на карте и скопируйте координаты');
+      item = { value: GeoParse.text(point), ...point, coords: true };
+    }
+    if (item.coords) return this._reverse(item);
+    if (item.lat == null && !item.cityOnly) {
+      const found = await api(`/api/geo/locate?q=${encodeURIComponent(item.value)}`);
+      if (!found.error) item = { ...item, lat: found.lat, lon: found.lon, city: item.city || found.city };
+    }
+    return item;
+  }
+
+  static async _reverse(item) {
+    this._status('Определяю адрес по координатам…');
+    const found = await api(`/api/geo/reverse?lat=${item.lat}&lon=${item.lon}`);
+    if (found.error)
+      return { ...item, value: GeoParse.text(item), city: '', exact: true, src: 'координаты', note: found.error };
+    return { ...found, lat: item.lat, lon: item.lon, exact: true, src: `${found.src || ''} по координатам` };
+  }
+
+  /**
+   * Выбрать подсказку: адрес по координатам или ссылке, точка адреса; событие «geo:pick» на поле.
+   * @param {number} index
+   */
+  static async pick(index) {
+    const input = this.state.input;
+    const picked = this.state.items[index];
+    if (!input || !picked) return;
+    let item;
+    try {
+      item = await this._resolve(picked);
+    } catch (error) {
+      this._status(`Не получилось: ${error.message || error}`);
+      return;
+    }
+    const clean = {
+      value: item.value,
+      lat: item.lat ?? null,
+      lon: item.lon ?? null,
+      city: item.city || '',
+      region: item.region || '',
+      exact: !!item.exact,
+      src: item.src || (item.cityOnly ? 'город' : ''),
+      cityOnly: !!item.cityOnly,
+    };
+    this.close();
+    input.value = clean.value;
+    input.dispatchEvent(new CustomEvent('geo:pick', { bubbles: true, detail: clean }));
+    if (item.note) toast(`Адрес по координатам не определён: ${item.note}`);
+  }
+
+  static _field(target) {
+    return target.matches && target.matches('input[data-geo]') && !target.disabled && !target.readOnly;
+  }
+
+  static _take(input) {
+    if (this.state.input !== input) {
+      this.close();
+      this.state.input = input;
+    }
+  }
+
+  static _focus(input) {
+    if (!this._field(input)) return;
+    this._take(input);
+    const make = GEO_EXTRA[input.dataset.geo];
+    if (make && (make(input) || []).length) this.query(input);
+  }
+
+  static _type(input) {
+    if (!input.matches || !input.matches('input[data-geo]')) return;
+    this._take(input);
+    clearTimeout(this.state.timer);
+    const text = input.value.trim();
+    const now = GeoParse.point(text) || GeoParse.short(text);
+    this.state.timer = setTimeout(() => this.query(input), now ? 0 : this.TYPE_DELAY);
+  }
+
+  static _key(event) {
+    const state = this.state;
+    if (event.target !== state.input || !state.box) return;
+    const count = state.items.length;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (!count) return;
+      event.preventDefault();
+      state.index = (state.index + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
+      this.draw();
+    } else if (event.key === 'Enter' && state.index >= 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.pick(state.index);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.close();
+    }
+  }
+
+  // вставили координаты или ссылку на точку — сразу определяем адрес
+  static _paste(input) {
+    if (!this._field(input)) return;
+    setTimeout(async () => {
+      const text = input.value.trim();
+      if (!(GeoParse.point(text) || GeoParse.short(text))) return;
+      clearTimeout(this.state.timer);
+      this.state.input = input;
+      await this.query(input);
+      if (this.state.input === input && this.state.items.length === 1) this.pick(0);
+    }, 0);
+  }
+
+  /** Обработчики полей адреса. */
+  static listen() {
+    document.addEventListener('focusin', event => this._focus(event.target));
+    document.addEventListener('input', event => this._type(event.target));
+    document.addEventListener('focusout', event => {
+      if (event.target !== this.state.input) return;
+      setTimeout(() => {
+        if (this.state.input && document.activeElement !== this.state.input) this.close();
+      }, this.BLUR_DELAY);
+    });
+    document.addEventListener('keydown', event => this._key(event), true);
+    window.addEventListener('resize', () => this.place());
+    document.addEventListener(
+      'scroll',
+      event => {
+        if (this.state.box && !this.state.box.contains(event.target)) this.place();
+      },
+      true,
+    );
+    document.addEventListener('paste', event => this._paste(event.target));
+  }
+}
