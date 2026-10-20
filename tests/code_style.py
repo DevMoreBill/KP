@@ -77,5 +77,5 @@ class CodeStyle:
 
 if __name__ == '__main__':
     args = sys.argv[1:]
-    files = [a for a in args if not a.startswith('--')]
+    files = [arg for arg in args if not arg.startswith('--')]
     sys.exit(CodeStyle(files or None).run(fix='--fix' in args))

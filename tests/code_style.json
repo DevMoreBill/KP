@@ -94,6 +94,8 @@
     "app/ed25519.py",
     "app/equipment_types.py",
     "app/features.py",
+    "app/feed_files.py",
+    "app/feeds.py",
     "app/geo.py",
     "app/images.py",
     "app/imgfetch.py",
@@ -122,6 +124,7 @@
     "app/version.py",
     "app/web_api.py",
     "app/workcal.py",
+    "tests/code_style.py",
     "tests/test_names.py"
   ]
 }

@@ -225,6 +225,7 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.91.0** (14.10) — доставка из Китая до границы РФ, только админка (`china_freight.ChinaFreight`, kv `chinaRates`, `/api/logistics/china`, клиент `ChinaFreightTab`): ATI.SU по направлениям из Китая + ставки экспедиторов в валюте по курсу ЦБ.
 - **3.92.0** (16.10) — ЖелДорЭкспедиция (`logistics_api.Jde`): открытый расчёт без ключа, сборный и крупногабаритный груз (до 20 т, надбавка за негабарит по размерам места), забор и доставка; крупногабарит — только ЖДЭ из сборных.
 - **3.93.0** (16.10) — справочные документы к КП (`kp_files.KpFiles`, таблица `kp_files`, `data/kp_files`, клиент `KpFilesPanel`, вложения письма) и окно входа (`LoginGuard`, `UserSession`, `LoginInfo`, `LoginForm`, `AuthScreen`, `AdminLogin`).
+- **3.149.0** (20.10) — чистый код, ч. 14: имена `feeds`, `feed_files`; все 62 модуля в `names`.
 - **3.148.0** (20.10) — чистый код, ч. 13: имена `admin` (`AdminApi.handler/store/user`); 59 из 62.
 - **3.147.0** (20.10) — чистый код, ч. 12: имена `bitrix` (`BitrixConf.enabled`, `BitrixSync.rules`); 58 из 62.
 - **3.146.0** (20.10) — чистый код, ч. 11: имена `storage`, `web_api` (`Controller.handler/method/url_path/query`); 57 из 62.
