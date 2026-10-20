@@ -22,7 +22,7 @@ global.mainLine=()=>''; global.groupsFromAttrs=()=>[];   // характерис
 global.esc=v=>String(v??'').replace(/[&<>"']/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 global.api=async u=>{ const c=global.catCache.find(z=>u.endsWith('/'+encodeURIComponent(z.id))); if (!c) throw new Error('нет '+u); return c; };
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit/index.js', 'kit-view.js', 'eskd/index.js', 'view/index.js', 'draw/index.js', 'tz/index.js', 'tz-out/index.js', 'station/index.js']){
+for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit/index.js', 'req/index.js', 'eskd/index.js', 'view/index.js', 'draw/index.js', 'tz/index.js', 'tz-out/index.js', 'station/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js

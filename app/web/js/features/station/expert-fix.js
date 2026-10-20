@@ -254,7 +254,7 @@ export class ExpertFix {
 
   /** чего не хватает в составе («Нужно…»); ресиверы того же объёма — числом в той же строке состава */
   static _needs(item, list) {
-    const sync = StationReq.kind(item) === 'comp' ? ReceiverSync.apply(item, true) : '';
+    const sync = StationReq.kind(item) === 'comp' ? ReceiverSync.preview(item) : '';
     for (const need of KitNeed.recs(item)) {
       if (!(sync && /^receiver-(wet-)?more$/.test(need.key))) this._need(item, list, need);
     }
@@ -425,7 +425,7 @@ export class ExpertFix {
   }
 
   static _clear(item, key) {
-    if (!(key in ReqNum.R)) return '';
+    if (!(key in ReqNum.RANGE)) return '';
     delete StationReq.ensure(item)[key];
     return `поле «${ReqNum.LABEL[key] || key}» очищено`;
   }

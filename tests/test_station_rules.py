@@ -46,10 +46,11 @@ class RulesFileTest(unittest.TestCase):
         have = {r['id'] for r in self.d['rules']}
         used = set()
         js = os.path.join(APP, 'web', 'js', 'features')
-        for n in os.listdir(js):
-            if n.endswith('.js'):
-                with open(os.path.join(js, n), encoding='utf-8') as f:
-                    used |= set(re.findall(r"(?:StationRules\.(?:raw|rule|v|status|weak|src)|N\.rule)\('([a-z0-9_.]+)'\)", f.read()))
+        for root, _dirs, files in os.walk(js):   # и папки ES-модулей
+            for n in files:
+                if n.endswith('.js'):
+                    with open(os.path.join(root, n), encoding='utf-8') as f:
+                        used |= set(re.findall(r"(?:StationRules\.(?:raw|rule|v|status|weak|src|opt)|N\.rule)\(\s*'([a-z0-9_.]+)'\s*\)", f.read()))
         self.assertTrue(used, 'код читает правила')
         self.assertEqual(sorted(used - have), [], 'нет в файле правил')
 
