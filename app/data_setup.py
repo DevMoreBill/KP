@@ -8,8 +8,8 @@ from config import DATA_DIR, DOCS_DIR, IMG_DIR, store
 
 
 def prepare_dirs() -> None:
-    for d in (DATA_DIR, IMG_DIR, DOCS_DIR):
-        os.makedirs(d, exist_ok=True)
+    for folder in (DATA_DIR, IMG_DIR, DOCS_DIR):
+        os.makedirs(folder, exist_ok=True)
 
 
 def sync_counter_with_files() -> None:
@@ -18,9 +18,9 @@ def sync_counter_with_files() -> None:
     top = 0
     for _, _, files in os.walk(DOCS_DIR):
         for name in files:
-            m = re.match(r'^(\d{4})-(\d{3,})_', name)
-            if m and int(m.group(1)) == year:
-                top = max(top, int(m.group(2)))
+            match = re.match(r'^(\d{4})-(\d{3,})_', name)
+            if match and int(match.group(1)) == year:
+                top = max(top, int(match.group(2)))
     if top:
         store().ensure_counter_at_least(year, top)
 
