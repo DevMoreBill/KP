@@ -1,32 +1,22 @@
-# -*- coding: utf-8 -*-
-"""Обновление каталога под новую структуру категорий — один раз, при первом запуске новой версии.
+"""Однократный перенос каталога в новую структуру категорий (с копией базы перед изменениями)."""
 
-База не заменяется: перед изменениями делается копия (data/backup/…), затем правятся только записи каталога
-и свои типы оборудования. Что сделано — записывается в базу (kv «migrations») и в журнал запуска.
-
-1. Категории. Позиции переносятся в новые встроенные категории по названию: дизельные и спиральные компрессоры,
-   осушители рефрижераторные и адсорбционные, магистральные фильтры, ресиверы, запасные части. Позиции из своих
-   категорий отдела с тем же смыслом («Спиральные компрессоры», «Осушители воздуха»…) переходят во встроенные,
-   а сами свои категории убираются. Позиции без категории получают её по названию.
-2. Параметры. Пустые параметры категории заполняются из таблицы характеристик (поле find в equipment_types.json)
-   и из названия (объём ресивера, исполнение спирального компрессора…). Заполненные вручную значения не меняются.
-3. Фото. Ссылки на изображения галереи, файлов которых нет, убираются. Позиция без фото (или с потерянным файлом фото)
-   получает фото похожей модели той же категории и того же производителя (та же серия и исполнение, ближайшая
-   мощность/производительность); позиция без логотипа — логотип своего производителя. Фото другого производителя
-   не подставляется.
-"""
 import json
 import math
 import os
 import re
+from collections.abc import Iterator
 from datetime import datetime
 
 MIGRATION_ID = 'catalog-structure-2026-10'
 
 # свои категории отдела, которые теперь есть среди встроенных (по названию категории)
 USER_TYPE_MAP = [
-    (r'адсорбц', 'dryer_ads'), (r'осушител', 'dryer_refrig'), (r'спиральн', 'comp_scroll'),
-    (r'дизельн\S*\s+компрессор', 'comp_diesel'), (r'ресивер', 'receiver'), (r'магистральн\S*\s+фильтр', 'filter'),
+    (r'адсорбц', 'dryer_ads'),
+    (r'осушител', 'dryer_refrig'),
+    (r'спиральн', 'comp_scroll'),
+    (r'дизельн\S*\s+компрессор', 'comp_diesel'),
+    (r'ресивер', 'receiver'),
+    (r'магистральн\S*\s+фильтр', 'filter'),
     (r'запчаст|запасн|(^|\s)зип(\s|$)', 'spare'),
 ]
 # встроенные категории, в которые позиции переносятся по названию даже из другой категории
@@ -36,26 +26,38 @@ GENERAL = {'', 'other', 'comp_screw', 'comp_piston'}
 
 NUM = r'(\d+(?:[  ]\d{3})*(?:[.,]\d+)?)'
 UNIT_RX = {
-    'м³/мин': r'м[³3]\s*/\s*мин', 'л/мин': r'л\s*/\s*мин', 'кВт': r'квт', 'бар': r'(бар|атм|кгс)', 'л': r'л(?![а-я])',
-    'м³/ч': r'м[³3]\s*/\s*ч(?:ас)?(?![а-я])', 'кг': r'кг', 'дБ(А)': r'дб', 'мм': r'мм', '%': r'%', 'л/ч': r'л\s*/\s*ч', 'моточасов': r'(моточас|ч(?![а-я]))',
+    'м³/мин': r'м[³3]\s*/\s*мин',
+    'л/мин': r'л\s*/\s*мин',
+    'кВт': r'квт',
+    'бар': r'(бар|атм|кгс)',
+    'л': r'л(?![а-я])',
+    'м³/ч': r'м[³3]\s*/\s*ч(?:ас)?(?![а-я])',
+    'кг': r'кг',
+    'дБ(А)': r'дб',
+    'мм': r'мм',
+    '%': r'%',
+    'л/ч': r'л\s*/\s*ч',
+    'моточасов': r'(моточас|ч(?![а-я]))',
 }
 
 
-CONVERT = {'м³/мин': (('л/мин', 0.001), ('м³/ч', 1 / 60)), 'л/мин': (('м³/мин', 1000), ('м³/ч', 1000 / 60)),
-           'м³/ч': (('м³/мин', 60), ('л/мин', 0.06))}
+CONVERT = {
+    'м³/мин': (('л/мин', 0.001), ('м³/ч', 1 / 60)),
+    'л/мин': (('м³/мин', 1000), ('м³/ч', 1000 / 60)),
+    'м³/ч': (('м³/мин', 60), ('л/мин', 0.06)),
+}
 
 
-def _num(s):
+def _num(s) -> float:
     return float(re.sub(r'[  ]', '', s).replace(',', '.'))
 
 
-def _clean(v):
+def _clean(v) -> float:
     return int(v) if float(v).is_integer() else round(v, 3)
 
 
-def parse_num(text, unit):
-    """Число из значения таблицы характеристик с учётом единиц: «800 л/мин» → 0,8 для поля в м³/мин,
-    «0,2 кВт / 220 В» → 0,2 для поля в кВт. Без подходящей единицы — первое число."""
+def parse_num(text, unit) -> float | None:
+    """Число из значения характеристики с учётом единиц: «800 л/мин» → 0,8 для поля в м³/мин."""
     t = str(text or '').lower()
     if unit:
         rx = UNIT_RX.get(unit)
@@ -63,7 +65,7 @@ def parse_num(text, unit):
             m = re.search(NUM + r'\s*' + rx, t)
             if m:
                 return _clean(_num(m.group(1)))
-        for src, k in CONVERT.get(unit, ()):      # другая единица той же величины: л/мин ↔ м³/мин ↔ м³/ч
+        for src, k in CONVERT.get(unit, ()):  # другая единица той же величины: л/мин ↔ м³/мин ↔ м³/ч
             m = re.search(NUM + r'\s*' + UNIT_RX[src], t)
             if m:
                 return _clean(round(_num(m.group(1)) * k, 3))
@@ -71,11 +73,11 @@ def parse_num(text, unit):
     return _clean(_num(m.group(1))) if m else None
 
 
-def _canon(v):
+def _canon(v) -> str:
     return re.sub(r'[\s°c]', '', v.lower().replace('−', '-').replace('–', '-'))
 
 
-def dew_point(v, vals=()):
+def dew_point(v, vals=()) -> str:
     """Точка росы: первое число со знаком; к значению из списка категории, если отличается не больше чем на 1 °C."""
     m = re.search(r'([+\-−–]?)\s*(\d+(?:[.,]\d+)?)', str(v or ''))
     if not m:
@@ -88,37 +90,45 @@ def dew_point(v, vals=()):
         except ValueError:
             pass
     n = int(n) if n.is_integer() else n
-    return ('+%s' % n if n > 0 else '−%s' % str(-n) if n < 0 else '0').replace('.', ',')
+    return (f'+{n}' if n > 0 else f'−{-n!s}' if n < 0 else '0').replace('.', ',')
 
 
-def parse_text(text, f):
+def parse_text(text, f) -> str:
     v = re.sub(r'\s+', ' ', str(text or '')).strip()
-    if f.get('key') == 'oilFree' and f.get('values') == ['Да', 'Нет']:     # «Тип компрессора: Безмасляный / Масляный»
-        return 'Да' if re.search(r'безмасл|oil[- ]?free|класс 0', v, re.I) else 'Нет' if re.search(r'масл', v, re.I) else ''
+    if f.get('key') == 'oilFree' and f.get('values') == ['Да', 'Нет']:  # «Тип компрессора: Безмасляный / Масляный»
+        return (
+            'Да'
+            if re.search(r'безмасл|oil[- ]?free|класс 0', v, re.I)
+            else 'Нет'
+            if re.search(r'масл', v, re.I)
+            else ''
+        )
     vals = [x for x in f.get('values') or [] if isinstance(x, str)]
-    for x in vals:      # значение из списка категории: «-40 °C» → «−40»
+    for x in vals:  # значение из списка категории: «-40 °C» → «−40»
         if _canon(x) and _canon(x) == _canon(v):
             return x
-    if f.get('key') == 'dewPoint':      # «3 °C» → «+3», «-40…-70 °C» → «−40», «2-10 °C» → «+3» (ближайшее из списка)
+    if f.get('key') == 'dewPoint':  # «3 °C» → «+3», «-40…-70 °C» → «−40», «2-10 °C» → «+3» (ближайшее из списка)
         return dew_point(v, vals)
     if f.get('key') == 'voltage':
         m = re.search(r'(\d{3})\s*в\b', v.lower())
         x = m.group(1) if m else ''
         return {'230': '220', '400': '380'}.get(x, x) if {'220', '380'} <= set(vals) else x
-    if f.get('key') == 'refrigerant':   # «R134a, 0,275 кг» → «R134A»; «Тип компрессора хладагента: поршневой» — не хладагент
+    if (
+        f.get('key') == 'refrigerant'
+    ):  # «R134a, 0,275 кг» → «R134A»; «Тип компрессора хладагента: поршневой» — не хладагент
         m = re.search(r'\bR-?\d{2,4}[A-Za-z]?\b', v)
         return m.group(0).replace('-', '').upper() if m else ''
-    if len(_canon(v)) >= 4:             # «Горячая» → «Горячая (с нагревом)»: единственное значение списка с таким началом
+    if len(_canon(v)) >= 4:  # «Горячая» → «Горячая (с нагревом)»: единственное значение списка с таким началом
         pre = [x for x in vals if _canon(x).startswith(_canon(v))]
         if len(pre) == 1:
             return pre[0]
     u = f.get('unit')
     if u and v.lower().endswith(u.lower()):
-        v = v[:-len(u)].strip()
+        v = v[: -len(u)].strip()
     return v[:120]
 
 
-def rows_of(doc):
+def rows_of(doc: dict) -> Iterator[tuple[str, str]]:
     for g in doc.get('groups') or []:
         for r in g.get('rows') or []:
             k, v = str(r.get('k') or '').strip(), str(r.get('v') or '').strip()
@@ -126,12 +136,13 @@ def rows_of(doc):
                 yield k, v
 
 
-def detect(doc, types, with_dgu=False):
-    """Категория по названию — как в программе (core/types.js detectCat): по порядку типов, ДГУ — последней.
-    Сначала по наименованию и заголовку страницы; заголовок титула — только если по ним не определилось
-    (он бывает скопирован от другой позиции)."""
+def detect(doc, types, with_dgu=False) -> str:
+    """Категория по названию — как в программе (core/types.js detectCat): по порядку типов, ДГУ — последней."""
     dgu = next((t for t in types if t.get('id') == 'dgu'), None)
-    for text in (' '.join(str(x or '') for x in (doc.get('name'), doc.get('pageTitle'))), str((doc.get('hint') or {}).get('title') or '')):
+    for text in (
+        ' '.join(str(x or '') for x in (doc.get('name'), doc.get('pageTitle'))),
+        str((doc.get('hint') or {}).get('title') or ''),
+    ):
         for t in types:
             if t.get('id') == 'dgu' or not t.get('match'):
                 continue
@@ -145,13 +156,14 @@ def detect(doc, types, with_dgu=False):
     return ''
 
 
-def fill_from_name(doc, cat, a):
+def fill_from_name(doc, cat, a) -> None:
     name = str(doc.get('name') or '')
     low = name.lower()
 
-    def put(k, v):
+    def put(k, v) -> None:
         if v not in (None, '') and a.get(k) in (None, ''):
             a[k] = v
+
     if cat == 'receiver':
         m = re.search(NUM + r'\s*л(?![а-я])', low)
         put('volume', _clean(_num(m.group(1))) if m else None)
@@ -159,7 +171,14 @@ def fill_from_name(doc, cat, a):
         put('pressure', int(m.group(1)) if m else None)
         put('orient', 'Горизонтальный' if 'горизонт' in low else 'Вертикальный' if 'вертикал' in low else None)
     if cat == 'comp_scroll':
-        put('execution', 'На ресивере с осушителем' if 'ресивер' in low and 'осушител' in low else 'На ресивере' if 'ресивер' in low else 'Стационарный')
+        put(
+            'execution',
+            'На ресивере с осушителем'
+            if 'ресивер' in low and 'осушител' in low
+            else 'На ресивере'
+            if 'ресивер' in low
+            else 'Стационарный',
+        )
         put('dryer', 'Да' if 'осушител' in low else 'Нет')
         put('oilFree', 'Да' if 'безмасл' in low or 'класс 0' in str(doc.get('spec') or '').lower() else None)
     if cat == 'comp_diesel':
@@ -171,7 +190,7 @@ def fill_from_name(doc, cat, a):
         put('pressure', int(m.group(2)) if m else None)
 
 
-def fill_attrs(doc, t, a):
+def fill_attrs(doc, t, a) -> int:
     """Пустые параметры категории — из таблицы характеристик; возвращает число заполненных."""
     n = 0
     rows = list(rows_of(doc))
@@ -187,7 +206,7 @@ def fill_attrs(doc, t, a):
                     continue
             except re.error:
                 break
-            if f.get('num') and re.search(r'(?i)снижени|уменьшени', rv):    # «снижение уровня шума на 8 дБ» — не значение
+            if f.get('num') and re.search(r'(?i)снижени|уменьшени', rv):  # «снижение уровня шума на 8 дБ» — не значение
                 continue
             v = parse_num(rv, f.get('unit')) if f.get('num') else parse_text(rv, f)
             if v not in (None, ''):
@@ -197,7 +216,7 @@ def fill_attrs(doc, t, a):
     return n
 
 
-def tidy_dgu(a):
+def tidy_dgu(a) -> None:
     eng = str(a.get('engine') or '')
     m = re.match(r'^([A-Za-zА-Яа-я]+(?: [A-Za-z]+)?)\s+([A-Z0-9][A-Z0-9-]{3,})$', eng)
     if m and not a.get('engineModel') and re.search(r'\d', m.group(2)):
@@ -206,7 +225,7 @@ def tidy_dgu(a):
         a['execution'] = 'В кожухе'
 
 
-def photo_ok(p, img_dir):
+def photo_ok(p, img_dir: str) -> bool:
     if not isinstance(p, dict) or not p.get('src'):
         return False
     src = str(p['src'])
@@ -215,7 +234,7 @@ def photo_ok(p, img_dir):
     return True
 
 
-def main_val(doc, t):
+def main_val(doc, t) -> float | None:
     a = doc.get('attrs') or {}
     v = a.get(t.get('main') or 'kw') if t else None
     try:
@@ -224,14 +243,14 @@ def main_val(doc, t):
         return None
 
 
-def pick_donor(doc, t, pool):
+def pick_donor(doc, t, pool) -> dict | None:
     a = doc.get('attrs') or {}
     mv = main_val(doc, t)
     best, score = None, None
     for d in pool:
         da = d.get('attrs') or {}
         if not a.get('maker') or da.get('maker') != a.get('maker'):
-            continue    # фото другого производителя не подставляем
+            continue  # фото другого производителя не подставляем
         s = 0.0
         if a.get('series') and da.get('series') == a.get('series'):
             s += 4
@@ -245,20 +264,26 @@ def pick_donor(doc, t, pool):
     return best
 
 
-def _done(store):
+def _done(store) -> tuple:
     """(отметки выполненных обновлений из kv «migrations», выполнено ли это)"""
     done = store.kv_get('migrations') or []
     return done, any(isinstance(m, dict) and m.get('id') == MIGRATION_ID for m in done)
 
 
-def mark_done(store):
+def mark_done(store) -> None:
     """Отметить обновление выполненным без изменений (новая база — каталог ещё пуст)."""
     done, ok = _done(store)
     if not ok:
-        store.kv_set('migrations', done + [{'id': MIGRATION_ID, 'at': datetime.now().isoformat(timespec='seconds'), 'report': {'empty': True}}])
+        store.kv_set(
+            'migrations',
+            [
+                *done,
+                {'id': MIGRATION_ID, 'at': datetime.now().isoformat(timespec='seconds'), 'report': {'empty': True}},
+            ],
+        )
 
 
-def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
+def run(store, types_builtin, types_user, img_dir: str, backup_dir: str, log=print) -> dict | None:
     """Обновление каталога (один раз); → отчёт или None — уже выполнено или каталог пуст."""
     done, ok = _done(store)
     if ok:
@@ -269,7 +294,7 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
         return None
 
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-    backup = os.path.join(backup_dir, 'kp-%s-до-обновления-каталога.zip' % stamp)
+    backup = os.path.join(backup_dir, f'kp-{stamp}-до-обновления-каталога.zip')
     store.backup(backup)
 
     # свои категории, которые теперь встроенные
@@ -278,7 +303,9 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
         nm = str(t.get('name') or '')
         target = next((tid for rx, tid in USER_TYPE_MAP if re.search(rx, nm, re.I)), None)
         if target and not any(b.get('id') == t.get('id') for b in types_builtin):
-            user_map[t['id']] = target if not (target == 'dryer_refrig' and re.search('адсорбц', nm, re.I)) else 'dryer_ads'
+            user_map[t['id']] = (
+                target if not (target == 'dryer_refrig' and re.search('адсорбц', nm, re.I)) else 'dryer_ads'
+            )
         else:
             keep_user.append(t)
     types = list(types_builtin) + [t for t in keep_user if not any(b.get('id') == t.get('id') for b in types_builtin)]
@@ -291,7 +318,9 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
                 titles.setdefault(k, t['id'])
 
     # производители, встречающиеся в каталоге: позиция без производителя получает его по названию
-    makers = sorted({str((d.get('attrs') or {}).get('maker') or '').strip() for d in docs} - {''}, key=len, reverse=True)
+    makers = sorted(
+        {str((d.get('attrs') or {}).get('maker') or '').strip() for d in docs} - {''}, key=len, reverse=True
+    )
     moved, filled, photos, logos, nophoto = {}, 0, 0, 0, []
     changed = set()
     for d in docs:
@@ -313,7 +342,7 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
             old_name = (tmap.get(old) or {}).get('name')
             if not old_name:
                 old_name = names[old].get('name', old) + ' (своя категория)' if old in names else old
-            key = '%s → %s' % (old_name or 'без категории', tmap[new]['name'])
+            key = '{} → {}'.format(old_name or 'без категории', tmap[new]['name'])
             moved[key] = moved.get(key, 0) + 1
         t = tmap.get(new)
         # заголовок титула от другой категории («Винтовые компрессоры» у ДГУ) — по категории позиции
@@ -323,7 +352,14 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
             changed.add(d['id'])
         before = json.dumps(a, sort_keys=True, ensure_ascii=False)
         if not str(a.get('maker') or '').strip():
-            mk = next((m for m in makers if re.search(r'(^|[\s«"(])' + re.escape(m) + r'($|[\s»",)])', str(d.get('name') or ''), re.I)), None)
+            mk = next(
+                (
+                    m
+                    for m in makers
+                    if re.search(r'(^|[\s«"(])' + re.escape(m) + r'($|[\s»",)])', str(d.get('name') or ''), re.I)
+                ),
+                None,
+            )
             if mk:
                 a['maker'] = mk
         if t:
@@ -343,7 +379,11 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
         a = d.get('attrs') or {}
         t = tmap.get(a.get('cat'))
         if not photo_ok(d.get('photo'), img_dir):
-            pool = [x for x in by_cat.get(a.get('cat'), []) if x is not d and photo_ok(x.get('photo'), img_dir) and not x.get('photoFrom')]
+            pool = [
+                x
+                for x in by_cat.get(a.get('cat'), [])
+                if x is not d and photo_ok(x.get('photo'), img_dir) and not x.get('photoFrom')
+            ]
             donor = pick_donor(d, t, pool)
             if donor:
                 d['photo'] = dict(donor['photo'])
@@ -353,7 +393,11 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
             else:
                 nophoto.append(d.get('name', d['id']))
         if not photo_ok(d.get('logo'), img_dir) and a.get('maker'):
-            cands = [x.get('logo') for x in docs if (x.get('attrs') or {}).get('maker') == a.get('maker') and photo_ok(x.get('logo'), img_dir)]
+            cands = [
+                x.get('logo')
+                for x in docs
+                if (x.get('attrs') or {}).get('maker') == a.get('maker') and photo_ok(x.get('logo'), img_dir)
+            ]
             if cands:
                 srcs = [c['src'] for c in cands]
                 top = max(set(srcs), key=srcs.count)
@@ -379,11 +423,31 @@ def run(store, types_builtin, types_user, img_dir, backup_dir, log=print):
     if user_map:
         store.kv_set('types', {'version': 1, 'types': keep_user})
 
-    report = {'moved': moved, 'attrsFilled': filled, 'photos': photos, 'logos': logos, 'galleryFixed': gal_fixed,
-              'noPhoto': nophoto[:50], 'noPhotoCount': len(nophoto), 'changed': len(changed),
-              'userTypesMerged': [t.get('name') for t in (types_user or []) if t.get('id') in user_map]}
-    store.kv_set('migrations', done + [{'id': MIGRATION_ID, 'at': datetime.now().isoformat(timespec='seconds'), 'backup': backup, 'report': report}])
+    report = {
+        'moved': moved,
+        'attrsFilled': filled,
+        'photos': photos,
+        'logos': logos,
+        'galleryFixed': gal_fixed,
+        'noPhoto': nophoto[:50],
+        'noPhotoCount': len(nophoto),
+        'changed': len(changed),
+        'userTypesMerged': [t.get('name') for t in (types_user or []) if t.get('id') in user_map],
+    }
+    store.kv_set(
+        'migrations',
+        [
+            *done,
+            {
+                'id': MIGRATION_ID,
+                'at': datetime.now().isoformat(timespec='seconds'),
+                'backup': backup,
+                'report': report,
+            },
+        ],
+    )
     report = dict(report, backup=backup)
-    log('Каталог обновлён под новые категории: изменено позиций %d, перенесено %d, параметров заполнено %d, фото %d, логотипов %d. Копия базы: %s'
-        % (len(changed), sum(moved.values()), filled, photos, logos, backup))
+    log(
+        f'Каталог обновлён под новые категории: изменено позиций {len(changed)}, перенесено {sum(moved.values())}, параметров заполнено {filled}, фото {photos}, логотипов {logos}. Копия базы: {backup}'
+    )
     return report

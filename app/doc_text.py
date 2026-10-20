@@ -1,35 +1,25 @@
-# -*- coding: utf-8 -*-
-"""Текст из документа заказчика (ТЗ, опросный лист) — только стандартная библиотека.
+"""Текст из документа заказчика (PDF, DOCX, XLSX, ODT, ODS, RTF, TXT, сканы — OCR Windows) с оценкой качества."""
 
-PDF (pdf_text), Word DOCX, Excel XLSX, OpenDocument ODT и ODS, RTF, обычный текст (UTF-8 или Windows-1251). Таблицы —
-строками «ячейка | ячейка». Старые двоичные .doc и .xls не читаются — ValueError с пояснением (сохранить как DOCX, XLSX
-или PDF). Защита: размер файла, размер распакованных частей архива, XML без DOCTYPE и сущностей.
-
-Сканы: PDF без текстового слоя (или с нечитаемым — «кракозябры» шрифтов) и картинки (PNG, JPEG, TIFF, BMP) распознаются
-встроенным распознаванием Windows 10/11 (ocr_win.WinOcr). Способы сравниваются по качеству текста (TextQuality) —
-берётся лучший; в ответе — methods: какие способы пробовались, качество каждого, ошибка. Страницы PDF разделены символом
-«\\f» (номер страницы для цитат из ТЗ).
-"""
 import os
 import re
 import zipfile
 from io import BytesIO
 from xml.etree import ElementTree as ET
 
-from defaults import SrvVal
 import pdf_text
+from defaults import SrvVal
 from ocr_win import WinOcr
 
 
 class TextQuality:
-    """Качество извлечённого текста, 0…1: доля «нормальных» символов (буквы, цифры, знаки препинания) и доля слов из
-    букв одного алфавита. Ниже LOW — текст плохой (скан, неверная кодировка шрифта): нужен другой способ или ИИ."""
+    """Качество текста 0…1: доля «нормальных» символов и слов одного алфавита; ниже LOW — нужен другой способ."""
+
     LOW = 0.6
     GOOD_CH = re.compile(r'[0-9A-Za-zА-Яа-яЁё.,:;!?()«»"\'%№°+\-–—/×*=<>\[\]|]')
     WORD = re.compile(r'\S+')
 
     @classmethod
-    def score(cls, text):
+    def score(cls, text) -> float:
         t = str(text or '')
         chars = [c for c in t if not c.isspace()]
         if len(chars) < 20:
@@ -42,22 +32,20 @@ class TextQuality:
 
 
 class DocText:
-    # наибольший файл — cat.docMaxMB («Значения программы», встроенное 40 МБ)
     MAX_TEXT = 60000
-    MAX_PART = 30 * 1024 * 1024       # распакованная часть архива — не больше
+    MAX_PART = 30 * 1024 * 1024  # распакованная часть архива — не больше
     KINDS = 'PDF, DOCX, XLSX, ODT, ODS, RTF или TXT'
 
     IMAGE_EXT = ('.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp')
 
     @classmethod
-    def extract(cls, name, data, ocr=None):
-        """{'text', 'kind', 'pages', 'quality', 'methods': [{id, name, chars, quality, error}]}; ошибка — ValueError
-        понятным текстом. ocr — класс распознавания (по умолчанию WinOcr; в проверках — заглушка)."""
+    def extract(cls, name, data, ocr=None) -> dict:
+        """→ {text, kind, pages, quality, methods}; ocr — класс распознавания (в проверках — заглушка)."""
         if not data:
             raise ValueError('файл пустой')
         mb = SrvVal.now('cat.docMaxMB')
         if len(data) > mb * 1024 * 1024:
-            raise ValueError('файл больше %d МБ' % mb)
+            raise ValueError(f'файл больше {mb} МБ')
         ocr = ocr or WinOcr
         ext = os.path.splitext(str(name or '').lower())[1]
         if data[:4] == b'%PDF' or ext == '.pdf':
@@ -75,21 +63,28 @@ class DocText:
         raise ValueError('формат не распознан — нужен ' + cls.KINDS)
 
     @classmethod
-    def _done(cls, text, kind, pages=None, methods=None):
+    def _done(cls, text, kind, pages=None, methods=None) -> dict:
         t = re.sub(r'[ \t\xa0]+', ' ', text.replace('\r\n', '\n').replace('\r', '\n'))
-        t = re.sub(r'\n[ \t\xa0]*\n[ \t\xa0]*\n+', '\n\n', t).strip()      # \f — граница страниц — остаётся
+        t = re.sub(r'\n[ \t\xa0]*\n[ \t\xa0]*\n+', '\n\n', t).strip()  # \f — граница страниц — остаётся
         if len(re.sub(r'\W', '', t)) < 20:
             raise ValueError('в документе нет текста')
         q = TextQuality.score(t)
         methods = methods or [{'id': 'text', 'name': 'Текст документа', 'chars': len(t), 'quality': q}]
-        return {'text': t[:cls.MAX_TEXT], 'kind': kind, 'pages': pages, 'quality': q, 'low': q < TextQuality.LOW, 'methods': methods}
+        return {
+            'text': t[: cls.MAX_TEXT],
+            'kind': kind,
+            'pages': pages,
+            'quality': q,
+            'low': q < TextQuality.LOW,
+            'methods': methods,
+        }
 
     @staticmethod
-    def _pages(per):
+    def _pages(per) -> str:
         return '\n\f\n'.join(p.strip() for p in per)
 
     @classmethod
-    def _pdf(cls, data, ocr):
+    def _pdf(cls, data, ocr) -> dict:
         """текстовый слой; если его нет или он плохой — распознавание Windows; лучший по качеству"""
         r = pdf_text.text(data, need_text=False)
         per = r.get('per') or []
@@ -98,48 +93,80 @@ class DocText:
         methods = [{'id': 'pdf', 'name': 'Текстовый слой PDF', 'chars': len(t0.replace('\f', '')), 'quality': q0}]
         best, kind = per, 'pdf'
         empty = sum(1 for p in per if len(p.strip()) < 30)
-        if q0 < TextQuality.LOW or (per and empty * 2 >= len(per)):     # скан или нечитаемые шрифты (половина страниц пустые)
+        if q0 < TextQuality.LOW or (
+            per and empty * 2 >= len(per)
+        ):  # скан или нечитаемые шрифты (половина страниц пустые)
             if ocr.available():
                 try:
                     o = ocr.recognize(data, 'pdf')
                     t1 = cls._pages(o['pages'])
                     q1 = TextQuality.score(t1)
-                    methods.append({'id': 'ocr', 'name': 'Распознавание Windows (OCR, %s)' % (o.get('lang') or 'язык профиля'),
-                                    'chars': len(t1.replace('\f', '')), 'quality': q1, 'pages': len(o['pages'])})
+                    methods.append(
+                        {
+                            'id': 'ocr',
+                            'name': f'Распознавание Windows (OCR, {o.get("lang") or "язык профиля"})',
+                            'chars': len(t1.replace('\f', '')),
+                            'quality': q1,
+                            'pages': len(o['pages']),
+                        }
+                    )
                     if q1 > q0:
                         best, kind = o['pages'], 'pdf-ocr'
                 except ValueError as e:
                     methods.append({'id': 'ocr', 'name': 'Распознавание Windows (OCR)', 'error': str(e)[:300]})
             else:
-                methods.append({'id': 'ocr', 'name': 'Распознавание Windows (OCR)', 'error': 'доступно на сервере под Windows 10/11'})
+                methods.append(
+                    {
+                        'id': 'ocr',
+                        'name': 'Распознавание Windows (OCR)',
+                        'error': 'доступно на сервере под Windows 10/11',
+                    }
+                )
         text = cls._pages(best)
         if len(re.sub(r'\W', '', text)) < 20:
             err = next((m.get('error') for m in methods if m.get('error')), '')
-            raise ValueError('в PDF нет текста — похоже на скан' + ('; распознавание: ' + err if err else '') +
-                             '. Пришлите текстовый PDF или DOCX либо скопируйте текст вручную')
+            raise ValueError(
+                'в PDF нет текста — похоже на скан'
+                + ('; распознавание: ' + err if err else '')
+                + '. Пришлите текстовый PDF или DOCX либо скопируйте текст вручную'
+            )
         for m in methods:
             m['used'] = (m['id'] == 'ocr') == (kind == 'pdf-ocr') and not m.get('error')
         return cls._done(text, kind, r.get('pages'), methods)
 
     @classmethod
-    def _image(cls, data, ocr):
+    def _image(cls, data, ocr) -> dict:
         """картинка (фото или скан ТЗ) — распознавание Windows"""
         if not ocr.available():
-            raise ValueError('картинка ТЗ распознаётся на сервере под Windows 10/11 (встроенное распознавание текста) — '
-                             'здесь недоступно: пришлите PDF с текстом, DOCX или скопируйте текст')
+            raise ValueError(
+                'картинка ТЗ распознаётся на сервере под Windows 10/11 (встроенное распознавание текста) — '
+                'здесь недоступно: пришлите PDF с текстом, DOCX или скопируйте текст'
+            )
         o = ocr.recognize(data, 'image')
         text = cls._pages(o['pages'])
         q = TextQuality.score(text)
-        return cls._done(text, 'image', 1, [{'id': 'ocr', 'name': 'Распознавание Windows (OCR, %s)' % (o.get('lang') or 'язык профиля'),
-                                             'chars': len(text), 'quality': q, 'used': True}])
+        return cls._done(
+            text,
+            'image',
+            1,
+            [
+                {
+                    'id': 'ocr',
+                    'name': f'Распознавание Windows (OCR, {o.get("lang") or "язык профиля"})',
+                    'chars': len(text),
+                    'quality': q,
+                    'used': True,
+                }
+            ],
+        )
 
     @staticmethod
-    def _texty(data):
+    def _texty(data) -> bool:
         sample = data[:4096]
         return b'\x00' not in sample
 
     @staticmethod
-    def _decode(data):
+    def _decode(data) -> str:
         for enc in ('utf-8-sig', 'cp1251'):
             try:
                 return data.decode(enc)
@@ -149,23 +176,27 @@ class DocText:
 
     # ---- архивы Office и OpenDocument
     @classmethod
-    def _zip(cls, data):
+    def _zip(cls, data) -> dict:
         try:
             z = zipfile.ZipFile(BytesIO(data))
         except zipfile.BadZipFile:
-            raise ValueError('файл повреждён — не открывается как ' + cls.KINDS)
+            raise ValueError('файл повреждён — не открывается как ' + cls.KINDS) from None
         names = set(z.namelist())
 
-        def part(n):
+        def part(n) -> ET.Element:
             info = z.getinfo(n)
             if info.file_size > cls.MAX_PART:
                 raise ValueError('слишком большая часть документа')
             return Xml.parse(z.read(n))
+
         if 'word/document.xml' in names:
             return cls._done(Xml.docx(part('word/document.xml')), 'docx')
         if 'xl/workbook.xml' in names:
             shared = Xml.shared(part('xl/sharedStrings.xml')) if 'xl/sharedStrings.xml' in names else []
-            sheets = sorted((n for n in names if re.match(r'xl/worksheets/sheet\d+\.xml$', n)), key=lambda n: int(re.findall(r'\d+', n)[-1]))
+            sheets = sorted(
+                (n for n in names if re.match(r'xl/worksheets/sheet\d+\.xml$', n)),
+                key=lambda n: int(re.findall(r'\d+', n)[-1]),
+            )
             return cls._done('\n\n'.join(Xml.sheet(part(n), shared) for n in sheets[:20]), 'xlsx')
         if 'content.xml' in names:
             return cls._done(Xml.odf(part('content.xml')), 'odt')
@@ -176,24 +207,24 @@ class Xml:
     """Разбор частей Office/OpenDocument: текст по порядку, таблицы — строками «ячейка | ячейка»."""
 
     @staticmethod
-    def parse(raw):
+    def parse(raw) -> ET.Element:
         head = raw[:4096].upper()
         if b'<!DOCTYPE' in head or b'<!ENTITY' in head:
             raise ValueError('документ с недопустимой разметкой')
         try:
             return ET.fromstring(raw)
         except ET.ParseError:
-            raise ValueError('документ повреждён — разметка не читается')
+            raise ValueError('документ повреждён — разметка не читается') from None
 
     @staticmethod
-    def local(tag):
+    def local(tag) -> str:
         return tag.rsplit('}', 1)[-1] if isinstance(tag, str) else ''
 
     @classmethod
-    def docx(cls, root):
+    def docx(cls, root) -> str:
         out = []
 
-        def para(p):
+        def para(p) -> str:
             s = []
             for e in p.iter():
                 t = cls.local(e.tag)
@@ -205,30 +236,38 @@ class Xml:
                     s.append('\n')
             return ''.join(s)
 
-        def walk(node):
+        def walk(node) -> None:
             for e in node:
                 t = cls.local(e.tag)
                 if t == 'p':
                     out.append(para(e))
                 elif t == 'tbl':
                     for tr in (x for x in e.iter() if cls.local(x.tag) == 'tr'):
-                        cells = [' '.join(para(p) for p in tc.iter() if cls.local(p.tag) == 'p').strip()
-                                 for tc in tr if cls.local(tc.tag) == 'tc']
+                        cells = [
+                            ' '.join(para(p) for p in tc.iter() if cls.local(p.tag) == 'p').strip()
+                            for tc in tr
+                            if cls.local(tc.tag) == 'tc'
+                        ]
                         if any(cells):
                             out.append(' | '.join(cells))
                     out.append('')
                 else:
                     walk(e)
+
         body = next((e for e in root if cls.local(e.tag) == 'body'), root)
         walk(body)
         return '\n'.join(out)
 
     @classmethod
-    def shared(cls, root):
-        return [''.join(t.text or '' for t in si.iter() if cls.local(t.tag) == 't') for si in root if cls.local(si.tag) == 'si']
+    def shared(cls, root) -> list:
+        return [
+            ''.join(t.text or '' for t in si.iter() if cls.local(t.tag) == 't')
+            for si in root
+            if cls.local(si.tag) == 'si'
+        ]
 
     @classmethod
-    def sheet(cls, root, shared):
+    def sheet(cls, root, shared) -> str:
         rows = []
         for row in (e for e in root.iter() if cls.local(e.tag) == 'row'):
             cells = []
@@ -250,10 +289,10 @@ class Xml:
         return '\n'.join(rows)
 
     @classmethod
-    def odf(cls, root):
+    def odf(cls, root) -> str:
         out = []
 
-        def text(e):
+        def text(e) -> str:
             s = [e.text or '']
             for ch in e:
                 t = cls.local(ch.tag)
@@ -261,31 +300,52 @@ class Xml:
                 s.append(ch.tail or '')
             return ''.join(s)
 
-        def walk(node):
+        def walk(node) -> None:
             for e in node:
                 t = cls.local(e.tag)
                 if t in ('p', 'h'):
                     out.append(text(e))
                 elif t == 'table-row':
-                    cells = [' '.join(text(p) for p in c.iter() if cls.local(p.tag) in ('p', 'h')).strip()
-                             for c in e if cls.local(c.tag) == 'table-cell']
+                    cells = [
+                        ' '.join(text(p) for p in c.iter() if cls.local(p.tag) in ('p', 'h')).strip()
+                        for c in e
+                        if cls.local(c.tag) == 'table-cell'
+                    ]
                     if any(cells):
                         out.append(' | '.join(x for x in cells if x))
                 else:
                     walk(e)
+
         walk(root)
         return '\n'.join(out)
 
 
 class Rtf:
-    """RTF → текст: управляющие слова убираются, \\par — новая строка, \\'hh — Windows-1251, \\uN — Юникод; служебные
-    группы ({\\*…}, шрифты, цвета, стили, картинки) пропускаются."""
-    SKIP = {'fonttbl', 'colortbl', 'stylesheet', 'info', 'pict', 'object', 'header', 'footer', 'listtable', 'listoverridetable',
-            'rsidtbl', 'generator', 'themedata', 'colorschememapping', 'datastore', 'latentstyles', 'xmlnstbl'}
+    """RTF → текст: управляющие слова и служебные группы убираются, \\par — перевод строки."""
+
+    SKIP = {
+        'fonttbl',
+        'colortbl',
+        'stylesheet',
+        'info',
+        'pict',
+        'object',
+        'header',
+        'footer',
+        'listtable',
+        'listoverridetable',
+        'rsidtbl',
+        'generator',
+        'themedata',
+        'colorschememapping',
+        'datastore',
+        'latentstyles',
+        'xmlnstbl',
+    }
     TOKEN = re.compile(rb"\\([a-z]+)(-?\d+)? ?|\\'([0-9a-fA-F]{2})|\\(.)|([{}])|([^\\{}]+)", re.S)
 
     @classmethod
-    def text(cls, data):
+    def text(cls, data) -> str:
         out, stack, skip, uc, pend = [], [], False, 1, 0
         for word, num, hexb, sym, brace, plain in cls.TOKEN.findall(data):
             if brace == b'{':
