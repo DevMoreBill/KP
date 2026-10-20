@@ -1,5 +1,13 @@
 {
   "python": [
+    "app/ai_llm.py",
+    "app/ai_profile.py",
+    "app/config.py",
+    "app/defaults.py",
+    "app/features.py",
+    "app/geo.py",
+    "app/imgfetch.py",
+    "app/maker_logos.py",
     "tests/code_style.py"
   ]
 }

@@ -526,6 +526,12 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.120.0 — что сделано:** переписывание кода, часть 9 — сервер, малые модули: `config.py`, `features.py`,
+`defaults.py`, `geo.py`, `ai_llm.py`, `ai_profile.py`, `maker_logos.py`, `imgfetch.py` — строгий Ruff (проверка и формат,
+`tests/code_style.json`), подписи типов, короткие описания модулей вместо подробных, `raise … from`, f-строки; в
+`imgfetch.py` проверка адреса локальной сети — одна (`_local`) для имени и соединения. Поведение не менялось:
+`run_all --strict` — без ошибок.
+
 **3.119.0 — что сделано:** переписывание кода, часть 8 — `features/station-eskd.js` (файл удалён) — ES-модули
 `features/eskd/` (`index.js` — мост): `EskdSheet` (лист: `rect([x, y, w, h], …)`, `dimH([x1, x2], y, t, [e1, e2], o)`,
 `dimV`, `pos([px, py], [sx, sy], n)`, `shelves(A, axis, [lo, hi], [at, at2], gap)`, `paras([x, y, w], …)`,

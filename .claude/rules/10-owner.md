@@ -54,7 +54,8 @@ Windows 10 (один EXE, папка программы C:\KP), менеджер
   `station-layout.js` удалён; 3.114.0 — системы станции (`station-systems.js` → `features/layout/`); 3.115.0 — расчётная записка
   (`station-calc.js` → `features/calc/`); 3.116.0 — 3D-оснащение и наклейки (`features/view/`); 3.117.0 — 3D-вид (`station-render.js` →
   `features/view/`); 3.118.0 — чертёж (`station-draw.js` → `features/draw/`); 3.119.0 — листы ЕСКД
-  и схемы (`station-eskd.js` → `features/eskd/`); дальше — остальные
+  и схемы (`station-eskd.js` → `features/eskd/`); 3.120.0 — сервер, малые модули (строгий Ruff, подписи типов,
+  `tests/code_style.json`); дальше — остальные
   файлы станций, сервер, интерфейс]
 
 ## Выпуск (каждое изменение)

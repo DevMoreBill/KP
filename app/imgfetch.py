@@ -1,11 +1,5 @@
-# -*- coding: utf-8 -*-
-"""Картинки для карточек оборудования: логотипы по производителю и загрузка картинки по ссылке.
+"""Картинки по ссылке и логотипы производителей; запросы на чужие сайты — только в интернет, не в локальную сеть."""
 
-• logos(store) — логотип каждого производителя из каталога (у моделей с логотипом; если у производителя разные
-  логотипы — самый частый). Ключ — название производителя в нижнем регистре: подставляется только при точном совпадении.
-• fetch_image(url) — картинка, перетащенная со страницы сайта (браузер отдаёт только ссылку): скачивает сервер
-  программы. Только http/https, только изображения до 15 МБ, адреса локальной сети и самого компьютера запрещены.
-"""
 import http.client
 import ipaddress
 import socket
@@ -17,20 +11,22 @@ import urllib.request
 from defaults import SrvVal
 from maker_logos import MakerLogos
 
-# сайты поставщиков (Bitrix и др.) на запрос «робота» отвечают 403 или страницей-проверкой — представляемся браузером
-BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
-TYPES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp')     # SVG не берём: в нём бывают скрипты
+# сайты поставщиков отвечают «роботу» 403 или страницей-проверкой
+BROWSER_UA = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+)
+TYPES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp')  # без SVG: в нём бывают скрипты
 
 
-def logos(store):
-    """Логотип каждого производителя: {производитель в нижнем регистре: {maker, src, w, h}}. Написания одной марки
-    («Remeza», «REMEZA», «Ремеза») — одна группа; из нескольких логотипов — файл из папки логотипов, затем самый частый."""
+def logos(store) -> dict:
+    """{производитель в нижнем регистре: {maker, src, w, h}}: закреплённый, иначе из папки логотипов, иначе самый частый."""
     groups, names = {}, {}
-    # логотипы считает сама база (по производителю и файлу): не нужно читать и разбирать все карточки каталога —
-    # на 25 000 позиций это было 0,9 с и +190 МБ памяти сервера после каждой правки каталога
-    one = "CASE WHEN json_valid(doc) THEN json_extract(doc, '$.logo.%s') END"
-    rows = store.all("SELECT maker, src, w, h, COUNT(*) FROM (SELECT maker, %s AS src, %s AS w, %s AS h FROM catalog "
-                     "WHERE maker IS NOT NULL AND maker <> '') GROUP BY maker, src" % (one % 'src', one % 'w', one % 'h'))
+    col = {k: f"CASE WHEN json_valid(doc) THEN json_extract(doc, '$.logo.{k}') END" for k in ('src', 'w', 'h')}
+    rows = store.all(
+        f'SELECT maker, src, w, h, COUNT(*) FROM (SELECT maker, {col["src"]} AS src, {col["w"]} AS w, {col["h"]} AS h '
+        'FROM catalog '
+        "WHERE maker IS NOT NULL AND maker <> '') GROUP BY maker, src"
+    )
     for maker, src, w, h, n in rows:
         g = MakerLogos.key(maker)
         names.setdefault(g, set()).add(maker.strip())
@@ -44,7 +40,6 @@ def logos(store):
         n, maker, lg = max(variants.values(), key=lambda v: (str(v[2]['src']).startswith('/img/logos/'), v[0]))
         for m in names.get(g, {maker}):
             out[m.lower()] = {'maker': m, 'src': lg['src'], 'w': lg.get('w'), 'h': lg.get('h')}
-    # закреплённый администратором логотип марки — главнее найденного в каталоге
     for g, lg in MakerLogos(store).pins().items():
         for m in names.get(g, set()) | {str(lg.get('maker') or '').strip()}:
             if m:
@@ -52,35 +47,51 @@ def logos(store):
     return out
 
 
-def _public_host(host):
+def _local(ip: str) -> bool:
+    a = ipaddress.ip_address(ip.split('%', maxsplit=1)[0])
+    return a.is_private or a.is_loopback or a.is_link_local or a.is_reserved or a.is_multicast or a.is_unspecified
+
+
+def _public_host(host: str) -> bool:
     try:
         infos = socket.getaddrinfo(host, None)
     except OSError:
-        raise ValueError('Адрес не найден')
+        raise ValueError('Адрес не найден') from None
     for info in infos:
-        ip = ipaddress.ip_address(info[4][0].split('%')[0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+        if _local(info[4][0]):
             raise ValueError('Ссылки на адреса локальной сети не загружаются')
     return True
 
 
-def web_url(url):
-    """Адрес как его пишет сайт («…/upload/РГ110 01.jpg», кириллический домен) → допустимый для запроса: русские буквы,
-    пробелы и прочее — в %-кодировку, домен — в punycode; уже закодированное (%D0%A0) не трогается."""
+def web_url(url) -> str:
+    """Адрес с кириллицей и пробелами → %-кодировка, домен — punycode; закодированное не трогается."""
     url = str(url or '').strip()
     try:
         u = urllib.parse.urlsplit(url)
-        host = u.hostname.encode('idna').decode('ascii') if u.hostname and not u.hostname.isascii() else (u.hostname or '')
+        host = (
+            u.hostname.encode('idna').decode('ascii') if u.hostname and not u.hostname.isascii() else (u.hostname or '')
+        )
     except (ValueError, UnicodeError):
         return url
     netloc = u.netloc
     if u.hostname and host != u.hostname:
         netloc = netloc.replace(u.hostname, host)
-    q = lambda s, safe: urllib.parse.quote(s, safe=safe, encoding='utf-8')
-    return urllib.parse.urlunsplit((u.scheme, netloc, q(u.path, "/%:@!$&'()*+,;=~-._"), q(u.query, "/%:@!$&'()*+,;=?~-._"), q(u.fragment, "/%:@?~-._")))
+
+    def q(s: str, safe: str) -> str:
+        return urllib.parse.quote(s, safe=safe, encoding='utf-8')
+
+    return urllib.parse.urlunsplit(
+        (
+            u.scheme,
+            netloc,
+            q(u.path, "/%:@!$&'()*+,;=~-._"),
+            q(u.query, "/%:@!$&'()*+,;=?~-._"),
+            q(u.fragment, '/%:@?~-._'),
+        )
+    )
 
 
-def _check_url(url):
+def _check_url(url: str) -> None:
     u = urllib.parse.urlsplit(url or '')
     if u.scheme not in ('http', 'https') or not u.hostname:
         raise ValueError('Нужна ссылка http или https на картинку')
@@ -88,7 +99,6 @@ def _check_url(url):
 
 
 class _SafeRedirect(urllib.request.HTTPRedirectHandler):
-    """Переадресация тоже проверяется: сайт не должен увести запрос в локальную сеть."""
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         newurl = web_url(newurl)
         _check_url(newurl)
@@ -96,29 +106,26 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class SafeWeb:
-    """Запросы на чужие сайты (фото, страницы, фиды) — только в интернет. Имя проверяется до запроса (_check_url), но DNS
-    может ответить иначе при соединении (подмена DNS) — поэтому после соединения проверяется и адрес, с которым оно
-    установлено. Через прокси-сервер адрес проверить нельзя — его разрешает прокси."""
+    """Запросы на чужие сайты: адрес соединения проверяется после подключения (подмена DNS); через прокси — нельзя."""
 
     @staticmethod
-    def _peer(sock):
-        ip = ipaddress.ip_address(sock.getpeername()[0].split('%')[0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+    def _peer(sock) -> None:
+        if _local(sock.getpeername()[0]):
             sock.close()
             raise ValueError('Ссылки на адреса локальной сети не загружаются')
 
     class HTTPConn(http.client.HTTPConnection):
-        def connect(self):
+        def connect(self) -> None:
             super().connect()
             SafeWeb._peer(self.sock)
 
     class HTTPSConn(http.client.HTTPSConnection):
-        def connect(self):
+        def connect(self) -> None:
             super().connect()
             SafeWeb._peer(self.sock)
 
     @staticmethod
-    def _proxied(req):
+    def _proxied(req) -> bool:
         return req.has_proxy() or bool(getattr(req, '_tunnel_host', None))
 
     class HTTP(urllib.request.HTTPHandler):
@@ -127,16 +134,17 @@ class SafeWeb:
 
     class HTTPS(urllib.request.HTTPSHandler):
         def https_open(self, req):
-            return self.do_open(http.client.HTTPSConnection if SafeWeb._proxied(req) else SafeWeb.HTTPSConn, req, context=self._context)
+            return self.do_open(
+                http.client.HTTPSConnection if SafeWeb._proxied(req) else SafeWeb.HTTPSConn, req, context=self._context
+            )
 
     @classmethod
-    def opener(cls, *extra):
-        """Открыватель ссылок: переадресация проверяется (_SafeRedirect), соединение — только с адресом в интернете."""
+    def opener(cls, *extra) -> urllib.request.OpenerDirector:
         return urllib.request.build_opener(_SafeRedirect, cls.HTTP, cls.HTTPS, *extra)
 
 
-def retry(fn, tries=3, pause=1.5):
-    """Повтор при временном отказе сайта: 403/429/5xx (защита от частых запросов), обрыв, тайм-аут."""
+def retry(fn, tries: int = 3, pause: float = 1.5):
+    """Повтор при 403/429/5xx, обрыве и тайм-ауте."""
     for k in range(tries):
         try:
             return fn()
@@ -147,23 +155,25 @@ def retry(fn, tries=3, pause=1.5):
             if k == tries - 1:
                 raise
         time.sleep(pause * (k + 1))
+    return None
 
 
-def fetch_image(url, referer=None, tries=1):
+def fetch_image(url: str, referer: str | None = None, tries: int = 1) -> tuple[str, bytes]:
     url = web_url(url)
     _check_url(url)
     hd = {'User-Agent': BROWSER_UA, 'Accept': 'image/avif,image/webp,image/png,image/jpeg,image/*,*/*;q=0.8'}
     if referer:
-        hd['Referer'] = referer        # защита от «горячих ссылок»: картинку отдают только со своей страницы
+        hd['Referer'] = referer
     mb = SrvVal.now('cat.imgMaxMB')
 
-    def get():
+    def get() -> tuple[str, bytes]:
         with SafeWeb.opener().open(urllib.request.Request(url, headers=hd), timeout=20) as r:
             ctype = (r.headers.get('Content-Type') or '').split(';')[0].strip().lower()
             if ctype not in TYPES:
                 raise ValueError('По ссылке не картинка (нужен PNG, JPEG, GIF, WebP или BMP)')
             data = r.read(mb * 1024 * 1024 + 1)
         if len(data) > mb * 1024 * 1024:
-            raise ValueError('Картинка больше %d МБ' % mb)
+            raise ValueError(f'Картинка больше {mb} МБ')
         return ctype, data
+
     return retry(get, tries)
