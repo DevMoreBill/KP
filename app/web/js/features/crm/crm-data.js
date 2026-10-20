@@ -179,6 +179,6 @@ export class CrmData {
    * @returns {string}
    */
   static mgrShort(deal) {
-    return jShort(deal.manager || this.managers().find(mgr => mgr.id === deal.managerId)?.name || '');
+    return ShortName.of(deal.manager || this.managers().find(mgr => mgr.id === deal.managerId)?.name || '');
   }
 }

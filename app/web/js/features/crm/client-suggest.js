@@ -26,7 +26,7 @@ export class ClientSuggest {
       this.close(input);
       return;
     }
-    const found = await clientsFind(text, this.LIMIT);
+    const found = await ClientStore.find(text, this.LIMIT);
     if (seq !== this._seq || !input.isConnected) return;
     this._show(input, found, onPick);
   }

@@ -67,7 +67,7 @@ export class CabClients {
   }
 
   static _card(client) {
-    const name = ClientCard.on()
+    const name = ClientCard.enabled()
       ? `<button type="button" class="lnk cab-cln" data-cc="${esc(JSON.stringify({ id: client.id, inn: client.inn, name: client.name }))}" title="Карточка клиента">${esc(client.name)}</button>`
       : `<b>${esc(client.name)}</b>`;
     const num = (label, count, sum) =>

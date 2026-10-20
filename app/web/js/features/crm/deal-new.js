@@ -49,7 +49,7 @@ export class DealNew {
   }
 
   static _picked(modal, client) {
-    clientsKeep([client]);
+    ClientStore.keep([client]);
     modal.$('[name=client]').value = client.name || '';
     this._found(modal);
   }

@@ -18,7 +18,7 @@ function openMobileMenu(){
   const d=Modal.host('mmenu', 'sheet', 'Меню'), dark=Theme.current()==='dark';
   const it=(k,ic,t,s)=>`<button type="button" class="mm-i" data-mm="${k}"><i aria-hidden="true">${ic}</i><span><b>${t}</b>${s?`<small>${s}</small>`:''}</span></button>`;
   d.innerHTML=`<div class="dlg-h"><h3>Меню</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-    <div class="mm-l">${MyDay.on()?it('myday','☀','Кабинет','Дела на сегодня, сделки, график'):''}${it('new','＋','Новое КП',Presets.on()?'Пустое или по заготовке':'Начать с чистого листа')}
+    <div class="mm-l">${MyDay.enabled()?it('myday','☀','Кабинет','Дела на сегодня, сделки, график'):''}${it('new','＋','Новое КП',Presets.enabled()?'Пустое или по заготовке':'Начать с чистого листа')}
       ${it('find','⌕','Найти','КП, клиент, сделка, модель — одной строкой')}${it('journal','☰','Журнал КП','Открыть, повторить прошлое КП, статусы, отчёт')}
       ${Reminders.items.length?it('reminders','🔔','Напоминания ('+Reminders.items.length+')','Перезвонить, срок действия КП'):''}
       ${it('catalog','▦','Каталог оборудования','Подбор и своё оборудование')}

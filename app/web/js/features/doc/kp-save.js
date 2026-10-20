@@ -80,7 +80,7 @@ export class KpSave {
     await StationImages.syncAll(); // 3D-вид и чертёж станций — по текущему составу
     if (!StationImages.confirmSave()) throw this._declined('изображения станции не готовы');
     MgrLock.apply(); // вход по паролю: в КП — контакты вошедшего менеджера
-    if (MgrLock.on()) {
+    if (MgrLock.locked()) {
       clearTimeout(mgrT);
       await saveManager(true); // свежие правки своих контактов — в карточку до записи КП
     }

@@ -216,8 +216,8 @@ export class AdminLogin {
     const min = DEFN('srv.adminPwMin', this.PW_MIN);
     return `${LoginForm.login('stLg', 'Логин', setup ? 'admin' : this._last(), 'placeholder="admin"')}
         ${setup ? '<label class="f"><span>Имя (для журнала действий)</span><input type="text" id="stNm" autocomplete="name" placeholder="Например, Петров А. В."></label>' : ''}
-        ${LoginForm.pw('stPw', setup ? `Пароль — не короче ${min} символов, буквы и цифры` : 'Пароль', setup ? 'new-password' : 'current-password')}
-        ${setup ? LoginForm.pw('stPw2', 'Повторите пароль', 'new-password') : ''}
+        ${LoginForm.password('stPw', setup ? `Пароль — не короче ${min} символов, буквы и цифры` : 'Пароль', setup ? 'new-password' : 'current-password')}
+        ${setup ? LoginForm.password('stPw2', 'Повторите пароль', 'new-password') : ''}
         <p class="auth-err" id="stErr" role="alert" aria-live="assertive" hidden></p>
         <button class="btn primary auth-go" type="submit">${setup ? 'Создать и войти' : 'Войти'}</button>
         <div class="muted st-login-note">Через ${status.idleMinutes || this.IDLE_MIN} мин бездействия вход закрывается.${tip('Только в «Настройках»: удаление и правка данных, модерация, резервные копии, шаблоны, ключи API, вход менеджеров и администраторы. Забыли пароль — его меняет другой администратор («Сотрудники и вход → Администраторы»).')}</div>`;

@@ -127,7 +127,7 @@ export class DealCard {
   static _top(deal) {
     const created = KpDate.ddmm(String(deal.created || '').slice(0, 10));
     const card =
-      ClientCard.on() && (deal.client || deal.clientInn)
+      ClientCard.enabled() && (deal.client || deal.clientInn)
         ? `<button class="btn sm ghost" type="button" data-cc="${esc(JSON.stringify({ id: deal.clientId || '', inn: deal.clientInn || '', name: deal.client || '' }))}">Карточка клиента</button>`
         : '';
     return `<header class="dk-top">${this._nav(deal)}<div class="dk-hd"><span class="muted">Сделка № ${esc(deal.number)}${deal.manager ? ` · ${esc(deal.manager)}` : ''} · создана ${esc(created)} <span class="dk-saved" aria-live="polite"></span></span>
@@ -292,7 +292,7 @@ export class DealCard {
     const items = `${esc((offer.items || [])[0] || '')}${offer.positions > 1 ? ` и ещё ${offer.positions - 1}` : ''}`;
     const valid = offer.validUntil ? ` · действует до ${esc(KpDate.ddmm(offer.validUntil))}` : '';
     const status = FEAT.on('track')
-      ? `<span class="md-st"><span class="jst st-${esc(offer.status)}">${esc(KP_STATUS[offer.status] || offer.status)}</span></span>`
+      ? `<span class="md-st"><span class="jst st-${esc(offer.status)}">${esc(KpTrack.STATUS[offer.status] || offer.status)}</span></span>`
       : '';
     return `<div class="md-r"><span class="md-n">№ ${esc(offer.number)}</span><div><b>${esc(KpDate.ddmm(offer.date))} · ${CrmFmt.rub(offer.sum)}</b><span class="muted">${items}${valid}</span>${status}</div><button class="btn sm" type="button" data-dko="${esc(offer.id)}">Открыть</button></div>`;
   }

@@ -28,8 +28,8 @@ export class EquipWizard {
    * @param {string} [pre] station или id категории — сразу на её шаге
    */
   static open(where, pre) {
-    if (where === 'catalog' && !can('catAdd')) {
-      cannot('catAdd');
+    if (where === 'catalog' && !Auth.can('catAdd')) {
+      Auth.cannot('catAdd');
       return;
     }
     Object.assign(this.state, { where: where || 'kp', cat: '', q: '', url: '', name: '', busy: false });

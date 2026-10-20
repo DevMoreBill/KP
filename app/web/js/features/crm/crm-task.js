@@ -33,7 +33,7 @@ export class CrmTask {
         : `<button type="button" class="lnk" data-deal="${esc(task.deal)}">${esc(deal ? deal.title || deal.client : 'Сделка')}</button>`;
     const who =
       CrmData.all() && !opts.noDeal
-        ? esc(jShort(CrmData.managers().find(mgr => mgr.id === task.managerId)?.name || ''))
+        ? esc(ShortName.of(CrmData.managers().find(mgr => mgr.id === task.managerId)?.name || ''))
         : '';
     const when = opts.date ? esc(CrmFmt.rel(task.due)) : '';
     return [when, task.time, link, who].filter(Boolean).join(' · ');
