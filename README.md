@@ -526,6 +526,15 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.168.0 — что сделано:** чистый код, ч. 30 — форма КП в ES-модулях:
+- `ui/*.js`, `ui/steps/*.js` → модули `ui/` (точка входа `ui/index.js`): `UiKit`, `Steps` (бывший `StepList`), `FormView`, `Popups`,
+  `Problems`, `SidePanel`, шаги (`ClientStep`, `Tender`, `EquipStep`, `QuickFind`, `PriceStep`, `CoverStep`, `CondsStep`, `ManagerStep`),
+  события (`ItemActions` — таблица действий, `FieldEvents`, `AppKeys`, `TopBar`), `Mobile`, `WorkCalendar`, `DatePicker`, `GeoInput`;
+  `STEP`, `GEO_EXTRA` — в `core/state.js`; старые имена (`renderForm`, `goStep`, `tip`, `field` …) — мост `ui/legacy.js`.
+- Исправлено (телефон): форма рисовалась раньше шаблонов («Templates is not defined»), кнопка «✕» меню, сообщение «Адрес по
+  координатам не определён» не показывалось.
+- Сверка: разметка формы на ПК и телефоне как прежде; полный прогон ПК (все этапы) — разметка всех снимков как у базового прогона.
+
 **3.167.0 — что сделано:** чистый код, ч. 29 — экономика сделки, логистика и ТН ВЭД в ES-модулях:
 - `features/deal/` (61 модуль): расчёт (`DealCalcBase` → `DealSchedule` → `DealCalculator`, `SupplierCalc`, `DealTerms`), окно сделки
   (`DealWin`, `DealBind`, `DealClicks`, вкладки), Excel (`DealXlsx*`), логистика (`Freight*`, `Lg*`, `DealLogistics`), «Тарифы доставки»,
