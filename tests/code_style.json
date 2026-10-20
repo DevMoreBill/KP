@@ -64,6 +64,7 @@
     "tests/test_names.py"
   ],
   "names": [
+    "app/admin.py",
     "app/admin_alerts.py",
     "app/admin_overview.py",
     "app/ai_llm.py",
