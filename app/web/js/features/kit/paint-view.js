@@ -146,7 +146,7 @@ export class PaintView {
   }
 
   static _width(art, text) {
-    const width = Math.round(dNum(text));
+    const width = Math.round(InputNum.parse(text));
     const { min, max } = this.ART_WIDTH;
     if (width >= min && width <= max) art.w = width;
     else toast('Ширина рисунка — от 100 до 12 000 мм');

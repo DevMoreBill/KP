@@ -84,7 +84,7 @@ LISTS.add({ key:'st.systems', group:'st', label:'Системы контейне
   toRow:([id, name, desc])=>({id, name, desc}), fromRow:r=>r.id&&r.name ? [r.id, r.name, String(r.desc||'')] : null });
 lstStr('kit.presets', 'st', 'Быстрые элементы состава', ()=>Kit.PRESETS, 'Кнопки «+ …» во вкладке «Состав станции».', {late:true});
 
-LISTS.add({ key:'deal.countries', group:'deal', label:'Страны поставщиков', target:()=>DEAL_COUNTRIES,
+LISTS.add({ key:'deal.countries', group:'deal', label:'Страны поставщиков', target:()=>DealTerms.COUNTRIES, late:true,
   hint:'Подсказки в поле «Где покупаем» и валюта закупки по умолчанию для страны.',
   cols:[['name','Страна','text',{req:true, unique:true}],['cur','Валюта','text',{req:true, ph:'USD'}]],
   toRow:([name, cur])=>({name, cur}), fromRow:r=>r.name ? [String(r.name), String(r.cur||'USD').toUpperCase()] : null });

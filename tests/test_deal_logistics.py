@@ -2,7 +2,7 @@
 """Экономика сделки и логистика: node tests/js/deal_logistics.js (ручной груз в мм и кг, прежние КП в метрах и тоннах,
 «своя сумма» доставки в валюте → рубли по курсу, значения «Настройки → Значения программы» в расчёте, ручная перепроверка
 формул) и пределы сборного груза на сервере (app/logistics_api.py, LtlLimits) из «Значений программы» — те же ключи и
-встроенные значения, что описаны для админки в app/web/js/features/logistics-calc.js (LgValues)."""
+встроенные значения, что описаны для админки в app/web/js/features/deal/lg-values.js (LgValues)."""
 import os
 import re
 import shutil
@@ -85,13 +85,13 @@ class LtlLimitsServer(unittest.TestCase):
         self.assertEqual(LtlLimits.ati_days(self.store), 14)
 
     def test_keys_match_admin_registry(self):
-        """ключи, встроенные значения и пределы сервера — как в описании для админки (LgValues в logistics-calc.js)"""
+        """ключи, встроенные значения и пределы сервера — как в описании для админки (LgValues в deal/lg-values.js)"""
         from logistics_api import LtlLimits
-        with open(os.path.join(APP, 'web', 'js', 'features', 'logistics-calc.js'), encoding='utf-8') as f:
+        with open(os.path.join(APP, 'web', 'js', 'features', 'deal', 'lg-values.js'), encoding='utf-8') as f:
             js = f.read()
         for key, b, lo, hi in list(LtlLimits.KEYS.values()) + [LtlLimits.ATI_DAYS]:
-            m = re.search(r"\['%s', '\w+', '[^']+', 'num', '(\d+)', \{[^}]*?min:(\d+), max:(\d+)" % re.escape(key), js)
-            self.assertIsNotNone(m, 'нет описания %s в logistics-calc.js' % key)
+            m = re.search(r"\[\s*'%s',\s*'\w+',\s*'[^']+',\s*'num',\s*'(\d+)',\s*\{[^}]*?min: (\d+),\s*max: (\d+)" % re.escape(key), js)
+            self.assertIsNotNone(m, 'нет описания %s в deal/lg-values.js' % key)
             self.assertEqual((int(m.group(1)), int(m.group(2)), int(m.group(3))), (b, lo, hi), key)
 
 

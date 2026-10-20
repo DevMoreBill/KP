@@ -524,6 +524,6 @@ export class DirEditor {
     delete doc.id;
     delete doc.updatedAt;
     await this._put(`/api/suppliers/${encodeURIComponent(id)}`, rev, doc);
-    DL.sups = null;
+    DealUi.sups = null;
   }
 }

@@ -8,8 +8,9 @@ tools: Read, Grep, Glob, Bash, WebSearch, WebFetch
 достоверность данных: расчёты, нормы, характеристики — по источникам, без выдуманных значений; неподтверждённое — помечать
 «требует подтверждения»». Ничего не исправляй — только найди и докажи.
 
-Где расчёты (`app/web/js/features/`): экономика сделки — `deal-calc.js`, `deal.js`, `deal-xlsx.js`, `pricing.js`; логистика —
-`logistics-calc.js`, `logistics.js`, сервер `app/logistics_api.py`, `app/china_freight.py`; пошлины и ТН ВЭД — `tnved.js`;
+Где расчёты (`app/web/js/features/`): экономика сделки — `deal/` (`DealCalculator`, `SupplierCalc`, `DealSchedule`, Excel —
+`deal-xlsx*.js`), `pricing.js`; логистика — `deal/` (`Freight`, `FreightFit`, `LgOffers`, `LgValues`), сервер `app/logistics_api.py`,
+`app/china_freight.py`; пошлины и ТН ВЭД — `deal/tn-ved.js`;
 станции — `station-*.js`, `kit*.js`, `tz-*.js`, правила и нормы — `app/web/rules/stations.json`, разбор ТЗ — `app/tz_parse.py`.
 Требования владельца — `.claude/rules/50-deal.md` и `.claude/rules/60-stations.md`.
 

@@ -65,7 +65,7 @@ export class CarrierApis {
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(this._body(host)),
       });
-      LG.status = null;
+      LgState.status = null;
       return true;
     } catch (error) {
       toast(`Не сохранено: ${error.message || error}`);

@@ -179,7 +179,7 @@ export class StationAuto {
   static _partMass(part) {
     const own = numOf((part.attrs || {}).mass);
     if (own != null) return own;
-    return typeof lgCargoOf === 'function' ? (lgCargoOf([{ rows: part.rows || [] }]).mass || 0) * this.KG_IN_TONNE : 0;
+    return typeof LgCargo !== 'undefined' ? (LgCargo.of([{ rows: part.rows || [] }]).mass || 0) * this.KG_IN_TONNE : 0;
   }
 
   static _field(field, parts, main, out) {

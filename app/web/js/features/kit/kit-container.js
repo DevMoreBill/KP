@@ -36,7 +36,7 @@ export class KitContainer {
    * @returns {string}
    */
   static currency(index, j, part) {
-    const options = DEAL_CURS.map(
+    const options = DealTerms.CURS.map(
       code => `<option${(part.costCur || 'RUB') === code ? ' selected' : ''}>${code}</option>`,
     ).join('');
     return `<select data-kitcur="${index}.${j}" aria-label="Валюта закупки">${options}</select>`;

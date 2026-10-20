@@ -59,13 +59,13 @@ function geoDraw(){
 
 async function geoQuery(inp){
   const q=inp.value.trim(), seq=++GEO.seq, key=inp.dataset.geo;
-  const extra=(GEO_EXTRA[key]?GEO_EXTRA[key](inp)||[]:[]).filter(x=>!q || lgN(x.value+' '+(x.sub||'')).includes(lgN(q)));
+  const extra=(GEO_EXTRA[key]?GEO_EXTRA[key](inp)||[]:[]).filter(x=>!q || LgGeo.norm(x.value+' '+(x.sub||'')).includes(LgGeo.norm(q)));
   GEO.msg='';
   const p=geoParse(q);
   if (p){ GEO.items=[{value:geoFmt(p), lat:p.lat, lon:p.lon, coords:true, tag:'координаты', sub:'Выберите — адрес определится по точке'}]; GEO.src=''; GEO.i=0; return geoDraw(); }
   if (geoShort(q)){ GEO.items=[{value:q, short:true, tag:'ссылка', sub:'Выберите — откроем ссылку и возьмём точку'}]; GEO.src=''; GEO.i=0; return geoDraw(); }
   // города из встроенной таблицы — сразу (и без интернета)
-  const loc=q.length>=2 ? LG_IDX.filter(c=>c.n.startsWith(lgN(q))).slice(0,3).map(c=>({value:c.name, lat:c.lat, lon:c.lon, city:c.name, sub:'город — центр', tag:'город', cityOnly:true})) : [];
+  const loc=q.length>=2 ? LgGeo.IDX.filter(c=>c.n.startsWith(LgGeo.norm(q))).slice(0,3).map(c=>({value:c.name, lat:c.lat, lon:c.lon, city:c.name, sub:'город — центр', tag:'город', cityOnly:true})) : [];
   GEO.items=[...extra, ...loc]; GEO.i=-1; geoDraw();
   if (q.length<3) return;
   try{ const r=await api('/api/geo/suggest?q='+encodeURIComponent(q)); if (seq!==GEO.seq || GEO.inp!==inp) return;
