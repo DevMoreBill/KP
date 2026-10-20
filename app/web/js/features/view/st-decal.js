@@ -88,7 +88,7 @@ export class StDecal {
 
   /** Логотип организации: части надписи с цветами из шаблона КП; «ПНЕВМОТЕХ» — фирменные синие всегда. */
   static brandParts() {
-    const pack = typeof TPL_CACHE !== 'undefined' && typeof S !== 'undefined' ? TPL_CACHE[S.template] : null;
+    const pack = typeof Templates !== 'undefined' && typeof S !== 'undefined' ? Templates.cache[S.template] : null;
     const settings = (pack && pack.settings) || {};
     const col = settings.colors || {};
     const parts = (settings.brandParts || [])

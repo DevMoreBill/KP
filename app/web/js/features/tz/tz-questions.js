@@ -1,3 +1,4 @@
+import { DocxWriter } from '../doc/docx-writer.js';
 import { TzImport } from './tz-import.js';
 
 /** Вопросы заказчику по ТЗ — документ Word. */
@@ -30,11 +31,11 @@ export class TzQuestions {
     const mgr = S.manager || {};
     doc.title1('Вопросы по техническому заданию');
     doc
-      .p([
+      .para([
         ['Документ: ', { b: true }],
         [cur.name || '', {}],
       ])
-      .p([
+      .para([
         ['От: ', { b: true }],
         [org + (mgr.name ? `, ${mgr.name}` : '') + (mgr.phone ? `, ${mgr.phone}` : ''), {}],
       ]);
@@ -45,11 +46,11 @@ export class TzQuestions {
 
   static _asks(doc, questions, later) {
     if (questions.length) {
-      doc.p('Для подбора оборудования просим сообщить:', { before: 6 });
+      doc.para('Для подбора оборудования просим сообщить:', { before: 6 });
       doc.items(questions);
     }
     if (!later.length) return;
-    doc.p(
+    doc.para(
       questions.length
         ? 'По возможности уточните также (без ответа расчёт выполнен по значениям с запасом):'
         : 'Расчёт выполнен по ТЗ; по возможности уточните (без ответа приняты значения с запасом):',
@@ -59,7 +60,7 @@ export class TzQuestions {
   }
 
   static _taken(doc, fields) {
-    doc.h2('Что принято из ТЗ');
+    doc.subheading('Что принято из ТЗ');
     doc.table(
       [50, 28, 28, 74],
       ['Параметр', 'Статус', 'Значение', 'Источник / почему'],

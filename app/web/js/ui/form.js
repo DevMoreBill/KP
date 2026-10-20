@@ -66,7 +66,7 @@ function stepNavHtml(){
 
 function renderForm(){
   if (CATED){ if (EDIT && $('#edlg').open) renderEditor(); return; }
-  pickTemplate(); MgrLock.apply();
+  Templates.pick(); MgrLock.apply();
   const f = $('#form'); const act = document.activeElement, focusP = act?.dataset?.p;
   const cur = STEPS.find(s=>s.id===STEP)||STEPS[0];
   morph($('#nav'), stepperHtml());
@@ -78,7 +78,7 @@ function renderForm(){
   f.querySelectorAll('textarea.iname').forEach(fitText);
   SidePanel.render();
   if (EDIT && $('#edlg').open) renderEditor();
-  if (STEP==='cover') coverThumbSoon();
+  if (STEP==='cover') CoverThumb.soon();
 }
 
 // раскрывающиеся меню и подсказки (класс Popups) закрываются щелчком мимо них, меню действий — и после выбора пункта

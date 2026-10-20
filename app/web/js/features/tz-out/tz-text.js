@@ -65,15 +65,15 @@ export class TzText {
   /** Заголовок раздела со следующим номером; ответ — префикс пунктов раздела. */
   static _h1(spec, title) {
     spec.no += 1;
-    spec.d.h1(`${spec.no}. ${title}`);
+    spec.d.heading(`${spec.no}. ${title}`);
     return `${spec.no}.`;
   }
 
   static _head(spec) {
     const { d: doc } = spec;
     doc.title1('Техническое задание на сборку станции в контейнере');
-    doc.p([[spec.x.name || 'Станция', { b: true }]], { align: 'center', after: 2 });
-    doc.p(`${spec.org}${S.number ? ` · КП № ${S.number}` : ''}${S.date ? ` от ${EskdSheet.date(S.date)}` : ''}`, {
+    doc.para([[spec.x.name || 'Станция', { b: true }]], { align: 'center', after: 2 });
+    doc.para(`${spec.org}${S.number ? ` · КП № ${S.number}` : ''}${S.date ? ` от ${EskdSheet.date(S.date)}` : ''}`, {
       align: 'center',
       after: 10,
       run: { color: '555555' },
@@ -129,7 +129,7 @@ export class TzText {
       k.toLowerCase(),
     );
     if (off.length)
-      doc.p(`Не требуются (не входят в поставку): ${off.join(', ')}.`, { after: 6, run: { color: '555555' } });
+      doc.para(`Не требуются (не входят в поставку): ${off.join(', ')}.`, { after: 6, run: { color: '555555' } });
   }
 
   static _scope(spec, scope) {
@@ -141,11 +141,11 @@ export class TzText {
     const { d: doc } = spec;
     this._h1(spec, 'Оборудование заказчика (давальческое)');
     const our = this._scope(spec, 'our');
-    doc.p(
+    doc.para(
       `Поставляет ${spec.org} на площадку сборщика; приёмка — по количеству и внешнему виду, по акту. До монтажа — хранить в упаковке, в сухом помещении; консервацию не снимать.`,
     );
     if (!our.length) {
-      doc.p('Нет — всё оборудование поставляет сборщик.');
+      doc.para('Нет — всё оборудование поставляет сборщик.');
       return;
     }
     doc.table(
@@ -219,7 +219,7 @@ export class TzText {
     const { d: doc, plan } = spec;
     const prefix = this._h1(spec, 'Размещение оборудования');
     const side = plan.door === 'side';
-    doc.p(
+    doc.para(
       `Привязки — от внутренних поверхностей стен до ближнего края оборудования: X — от левого торца${side ? ' (со стороны двери оператора)' : ''}, Y — от передней стены${side ? ' (с дверью оператора)' : ''}; Z — от пола до низа. Допуск ±50 мм; иное — по согласованию.`,
     );
     doc.table(
@@ -231,7 +231,7 @@ export class TzText {
     if (plan.fuel) this._fuelBay(spec, prefix);
     const iss = plan.issues.filter(i => i.level === 'warn').map(i => i.text);
     if (!iss.length) return;
-    doc.h2('Учесть при сборке');
+    doc.subheading('Учесть при сборке');
     doc.items(iss, prefix);
   }
 
@@ -261,7 +261,7 @@ export class TzText {
   static _heaters(spec) {
     const heaters = (spec.plan.heat && spec.plan.heat.heaters) || [];
     if (!heaters.length) return;
-    spec.d.h2('Электроконвекторы');
+    spec.d.subheading('Электроконвекторы');
     spec.d.table(
       [12, 66, 20, 20, 20, 32],
       ['№', 'Конвектор', 'X, мм', 'Y, мм', 'Z, мм', 'Где'],
@@ -279,7 +279,7 @@ export class TzText {
   /** Отсек топливного бака ДГУ: перегородка, вход, горловина в нише, поддон, насос перекачки. */
   static _fuelBay(spec, prefix) {
     const fuel = spec.plan.fuel;
-    spec.d.h2('Отсек топливного бака');
+    spec.d.subheading('Отсек топливного бака');
     spec.d.items(
       [
         `Отсек — у левого торца, длина внутри ${Mm.text(fuel.x1)} мм; противопожарная перегородка 1-го типа (EI 45) толщиной ${Mm.text(fuel.part)} мм на всю ширину и высоту, без проёмов; топливопровод — через перегородку в гильзе с негорючим уплотнением.`,
@@ -366,7 +366,7 @@ export class TzText {
 
   static _loads(doc, power) {
     const kwText = StationPower.fmt;
-    doc.p(
+    doc.para(
       power.dgu
         ? 'Нагрузки собственных нужд станции (ДГУ — источник, в расчёт не входит; в ожидании — от сети через АВР):'
         : 'Электрические нагрузки станции:',

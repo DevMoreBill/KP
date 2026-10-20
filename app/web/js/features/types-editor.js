@@ -5,7 +5,7 @@
 
 const TY = { cur:null, id:'', dirty:false, q:'' };
 const tyClone = o => JSON.parse(JSON.stringify(o));
-const tyKey = s => (translit(s)||'param').replace(/-+(.)/g, (m,c)=>c.toUpperCase()).replace(/[^a-zA-Z0-9]/g,'').replace(/^\d+/,'').slice(0,30) || 'param';
+const tyKey = s => (Translit.slug(s)||'param').replace(/-+(.)/g, (m,c)=>c.toUpperCase()).replace(/[^a-zA-Z0-9]/g,'').replace(/^\d+/,'').slice(0,30) || 'param';
 const tyBuiltin = id => ((TYPES_BUILTIN&&TYPES_BUILTIN.types)||[]).find(t=>t.id===id) || null;
 // правило распознавания простое (слова и «любое окончание»), если в нём нет групп, якорей и прочих знаков регулярных выражений
 const tyMatchSimple = m => !/[()^$.[\]{}?+*\\]/.test(String(m||'').replace(/\\S\*|\\s\+/g,''));
@@ -152,7 +152,7 @@ function tyBind(d){
         if (!t.name) return toast('Укажите название категории');
         if (!t.fields.length) return toast('Добавьте хотя бы один параметр');
         t.group=String(t.group||'').trim()||'Прочее'; t.item=t.item||t.name; t.coverTitle=t.coverTitle||t.name;
-        if (!t.id){ let id=(translit(t.name)||'type').replace(/-/g,'_').replace(/^[^a-z]+/,'').slice(0,28)||'type', n=1; const base=id; while (TYPES.some(x=>x.id===id)) id=base+'_'+(++n); t.id=id; }
+        if (!t.id){ let id=(Translit.slug(t.name)||'type').replace(/-/g,'_').replace(/^[^a-z]+/,'').slice(0,28)||'type', n=1; const base=id; while (TYPES.some(x=>x.id===id)) id=base+'_'+(++n); t.id=id; }
         if (!/^[a-z][a-z0-9_]{1,30}$/.test(t.id)) return toast('Код категории — латиница, цифры и «_»');
         if (!t.folder) t.folder=t.id.replace(/_/g,'-');
         const list=userTypesList().filter(x=>x.id!==t.id); list.push(t);

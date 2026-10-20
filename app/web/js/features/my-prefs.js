@@ -51,7 +51,7 @@ class MyPrefs {
     const opt=(list, v)=>list.map(([k,l])=>`<option value="${esc(k)}"${(v||'auto')===k?' selected':''}>${esc(l)}</option>`).join('');
     const company=k=>{ const sc=DEF_BY[k]; if (!sc) return ''; const x=DEFS_SRV[k]; return x&&x.v!=null&&String(x.v)!=='' ? String(x.v) : String(sc[4]??''); };
     const conds=DEF_SCHEMA.filter(x=>x[1]==='cond');
-    const tpls=TEMPLATES.filter(t=>!t.error);
+    const tpls=Templates.list.filter(t=>!t.error);
     const m=new Modal(`<div class="dlg-h"><h3>Мои настройки<small>${esc(me?me.name:'')}</small></h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <p class="muted" style="margin-top:0">Только для вас и на любом компьютере, где вы работаете. Общие правила отдела задаёт администратор («Настройки → Умолчания»); пустое поле — как у отдела.</p>
       <div class="grid g2"><label class="f"><span>Тема</span><select id="mpTheme">${opt(this.THEME, p.theme)}</select></label>

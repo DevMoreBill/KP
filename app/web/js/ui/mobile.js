@@ -36,7 +36,7 @@ function openMobileMenu(){
     else if (k==='myday') MyDay.open();
     else if (k==='reminders') Reminders.open();
     else if (k==='catalog') openCatalog({});
-    else if (k==='preview') openKpPreview();
+    else if (k==='preview') KpPreview.open();
     else if (k==='deal') DealState.open();
     else if (k==='help') openHelp();
     else if (k==='theme') $('#btnTheme').click();

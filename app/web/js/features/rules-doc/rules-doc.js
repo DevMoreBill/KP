@@ -1,3 +1,4 @@
+import { DocxWriter } from '../doc/docx-writer.js';
 import { LayoutDigest } from '../layout/layout-digest.js';
 
 /** Документ «Инженерные правила и источники» (DOCX) и общий вид значений правил. */
@@ -73,21 +74,21 @@ export class StationRulesDoc {
   static _intro(doc, data, rules) {
     const cnt = k => rules.filter(rule => rule.status === k).length;
     doc.title1('Инженерные правила и источники');
-    doc.p(
+    doc.para(
       `Расчёт модульных станций (компрессорных и дизель-генераторных) — версия правил ${data.version || '—'} от ${data.date || '—'}. Правил: ${rules.length}; подтверждено источником — ${cnt('confirmed')}, отраслевая практика — ${cnt('practice')}, требует подтверждения — ${cnt('unconfirmed')}. Данных производителей по сериям: ${(data.series || []).length}.`,
       { align: 'center' },
     );
-    doc.h1('Как читать');
+    doc.heading('Как читать');
     doc.items(this.HOW);
   }
 
   static _digest(doc) {
-    doc.h1('Свод правил компоновки');
-    doc.p(
+    doc.heading('Свод правил компоновки');
+    doc.para(
       'Как программа компонует станцию — по действующим значениям этой версии правил (правятся в «Настройки → Инженерные правила станций → Правила компоновки»).',
     );
     for (const line of LayoutDigest.sections()) {
-      doc.p(line.h, { run: { b: true }, keep: true });
+      doc.para(line.h, { run: { b: true }, keep: true });
       doc.items(line.items);
     }
   }
@@ -95,7 +96,7 @@ export class StationRulesDoc {
   static _groups(doc, rules) {
     const groups = [...new Set(rules.map(rule => rule.group || 'Прочее'))];
     groups.forEach((group, index) => {
-      doc.h1(`${index + 1}. ${group}`);
+      doc.heading(`${index + 1}. ${group}`);
       const rows = rules
         .filter(rule => (rule.group || 'Прочее') === group)
         .map((rule, k) => this._ruleRow(rule, `${index + 1}.${k + 1}`));
@@ -121,8 +122,8 @@ export class StationRulesDoc {
 
   static _series(doc, series, index) {
     if (!series.length) return;
-    doc.h1(`${index}. Данные производителей по сериям`);
-    doc.p(
+    doc.heading(`${index}. Данные производителей по сериям`);
+    doc.para(
       'Поправочные коэффициенты производителя применяются, если позиция каталога относится к серии (производитель и выражение по названию, модели, серии). Производительность с поправками = номинал × Fдавление × Fвход × Fокружающая.',
     );
     const factors = entry =>
@@ -144,7 +145,7 @@ export class StationRulesDoc {
   static _unconfirmed(doc, rules) {
     const unconfirmed = rules.filter(rule => rule.status === 'unconfirmed');
     if (!unconfirmed.length) return;
-    doc.h1('Требует подтверждения — что запросить');
+    doc.heading('Требует подтверждения — что запросить');
     doc.items(
       unconfirmed.map(
         rule =>
