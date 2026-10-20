@@ -18,8 +18,8 @@ class MyDay {
   static hello(){ const h=new Date().getHours(); return h<5?'Доброй ночи':h<12?'Доброе утро':h<18?'Добрый день':'Добрый вечер'; }
 
   static section(title, body, more=''){ return `<section class="md-s"><div class="md-h"><p class="sub">${title}</p>${more}</div>${body}</section>`; }
-  /** «Мой день» стал вкладкой «Сегодня» кабинета менеджера (cabinet.js) */
-  static open(){ return Cabinet.open('today'); }
+  /** «Мой день» стал вкладкой «Сегодня» кабинета менеджера (features/crm/cabinet.js) */
+  static open(){ return Cabinet.open(); }
   /** при запуске: «Мой день» вместо каталога */
   static start(){ this.badge(); if (this.on() && this.atStart()){ this.open(); return true; } return false; }
 }

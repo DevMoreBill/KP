@@ -44,7 +44,7 @@ class Modes:
            'phd': dict(BASE, viewport={'width': 430, 'height': 932}, color_scheme='dark', is_mobile=True, has_touch=True,
                        device_scale_factor=3, user_agent=IPHONE)}
     STAGES = ('client', 'cat', 'editor', 'station', 'price', 'deal', 'steps', 'preview', 'save', 'files', 'mail',
-              'journal', 'misc', 'settings', 'bitrix', 'mirror', 'dbl')
+              'journal', 'misc', 'cabinet', 'settings', 'bitrix', 'mirror', 'dbl')
 
     @staticmethod
     def chromium():
@@ -772,8 +772,7 @@ class Scenario(UiRun):
         """«Настройки → Битрикс24»: вход администратора, адрес подставного Битрикса, связь включена."""
         pg = self.pg
         self.closeall()
-        self.ev("try{ localStorage.setItem('kp.bxtab', 'link'); }catch(e){}")
-        self.ev("openSettings('services')")
+        self.ev("openSettings('bx-link')")
         self.wait(1500)
         if pg.locator('#stPw').count():
             if pg.locator('#stLg').count():
@@ -781,22 +780,28 @@ class Scenario(UiRun):
             pg.fill('#stPw', self.cfg['admin'][1])
             pg.keyboard.press('Enter')
             self.wait(2000)
-        pg.wait_for_selector('#setdlg #bxUrl', timeout=20000)        # «Битрикс24» — раздел на вкладке «Подключения и ключи»
+        pg.wait_for_selector('#setdlg #bxUrl', timeout=20000)        # «Битрикс24» — свой раздел «Настроек»
         pg.fill('#setdlg #bxUrl', self.cfg['bitrix'])
         pg.click('#setdlg #bxTest')
+        # прежний текст «Связь есть» уже на странице — ждать, пока проверка закончится (кнопка снова доступна)
+        pg.wait_for_function("(b => b && !b.disabled)(document.querySelector('#setdlg #bxTest'))", timeout=30000)
         pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Связь есть')", timeout=30000)
         if not self.ev("document.querySelector('#setdlg #bxOn').checked"):   # режимы идут параллельно на одном стенде — включить один раз
             pg.click('#setdlg #bxOn')
         pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Последний обмен')", timeout=30000)
 
+    def _bx_tab(self, tab):
+        """Пункт раздела «Битрикс24» в меню «Настроек» (на телефоне меню может быть свёрнуто — щелчок из страницы)."""
+        self.ev("t=>document.querySelector('#setdlg nav [data-sttab=\"bx-'+t+'\"]').click()", tab)
+        self.wait(1500)
+
     def s_bitrix(self):
-        """«Настройки → Подключения и ключи → Битрикс24» на подставном Битриксе: связь, все вкладки, пробный прогон, старые сделки."""
+        """«Настройки → Битрикс24» на подставном Битриксе: связь, все пункты раздела, пробный прогон, старые сделки."""
         pg = self.pg
         self._bx_connect()
         tabs = self.ev("BitrixPanel.TABS.map(t=>t[0])")
         for t in tabs:
-            pg.click('#setdlg [data-bxtab="%s"]' % t)
-            self.wait(1500)
+            self._bx_tab(t)
             if t == 'log':
                 pg.click('#setdlg #bxDry')
                 pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Пробный прогон готов') || document.querySelector('#setdlg .msg.err')", timeout=60000)
@@ -806,12 +811,109 @@ class Scenario(UiRun):
                 pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Найдено') || document.querySelector('#setdlg .msg.err')", timeout=60000)
             if pg.locator('#setdlg .msg.err').count():
                 self.errs.append(('bitrix', 'ERR', '%s: %s' % (t, pg.locator('#setdlg .msg.err').first.inner_text()[:200])))
-            self.ev("document.querySelector('#setdlg .bx-tabs').scrollIntoView()")
-            self.snap('d_bx_' + t, '#setdlg .st-part:has(.bx-tabs)', wait=300)
+            self.snap('d_bx_' + t, '#setdlg', wait=300)
         self.closeall()
 
+    def s_cabinet(self):
+        """Кабинет менеджера: все разделы (весь отдел), доска и список, карточка сделки панелью (дело, «‹ ›»), новая сделка с первым делом."""
+        pg = self.pg
+        self.closeall()
+        self.ev("Cabinet.open()")
+        pg.wait_for_selector('#cabWin .cab-tabs', timeout=30000)
+        self.wait(1200)
+        if self.ev("Cabinet.tab") != 'today':
+            self.errs.append(('cabinet', 'ERR', 'кабинет открылся не на «Сегодня»'))
+        self.snap('f_cab_start', '#cabWin', wait=200)
+        if pg.locator('#cabWho').count():
+            pg.select_option('#cabWho', 'all')
+            self.wait(2000)
+        for tab in self.ev("Cabinet.TABS.map(t=>t[0])"):
+            loc = pg.locator('#cabWin [data-ctab="%s"]' % tab)
+            if not loc.count():
+                continue
+            loc.click()
+            self.wait(900)
+            self.snap('f_cab_' + tab, '#cabWin', wait=200)
+        pg.locator('#cabWin [data-ctab="deals"]').click()
+        self.wait(800)
+        other = 'board' if self.ev("CabDeals.view") == 'list' else 'list'
+        pg.click('#cabWin [data-cview="%s"]' % other)
+        self.wait(600)
+        self.snap('f_cab_deals_' + other, '#cabWin', wait=200)
+        flt = pg.locator('#cabWin [data-cflt="free"]')
+        if flt.count():
+            flt.click()
+            self.wait(500)
+            self.snap('f_cab_deals_free', '#cabWin', wait=200)
+            pg.click('#cabWin [data-cflt=""]')
+            self.wait(500)
+        self._cab_card()
+        self._cab_new()
+        self.closeall()
+        self.ev("Cabinet.open()")
+        self.wait(800)
+        if self.ev("Cabinet.tab") != 'deals':
+            self.errs.append(('cabinet', 'ERR', 'кабинет не запомнил раздел'))
+        pg.click('#cabWin [data-cguide]')
+        pg.wait_for_selector('dialog.cg-dlg[open]', timeout=10000)
+        self.snap('f_cab_guide', 'dialog.cg-dlg[open]', wait=200)
+        self.closeall()
+
+    def _cab_card(self):
+        pg = self.pg
+        card = pg.locator('#cabWin .dc, #cabWin .cab-lr').first
+        if not card.count():
+            self.errs.append(('cabinet', 'ERR', 'в «Сделках» нет сделок'))
+            return
+        card.click()
+        pg.wait_for_selector('dialog.deal-dlg[open] .dk-in', timeout=15000)
+        self.snap('f_deal_card', 'dialog.deal-dlg[open]', wait=500)
+        title = 'Позвонить главному инженеру (прогон)'
+        pg.fill('dialog.deal-dlg[open] form.tq input[name=title]', title)
+        pg.click('dialog.deal-dlg[open] form.tq [data-dchip][data-day]:nth-child(2)')
+        pg.click('dialog.deal-dlg[open] form.tq button[type=submit]')
+        self.wait(1500)
+        if title not in pg.locator('dialog.deal-dlg[open]').inner_text():
+            self.errs.append(('cabinet', 'ERR', 'дело не добавилось в карточке'))
+        self.snap('f_deal_task', 'dialog.deal-dlg[open]', wait=200)
+        nxt = pg.locator('dialog.deal-dlg[open] [data-dknav="1"]')
+        if nxt.count() and nxt.is_enabled():
+            before = self.ev("DealCard.deal.id")
+            nxt.click()
+            self.wait(1500)
+            if self.ev("DealCard.deal.id") == before:
+                self.errs.append(('cabinet', 'ERR', '«›» не перешла к следующей сделке'))
+            self.snap('f_deal_next', 'dialog.deal-dlg[open]', wait=200)
+        pg.keyboard.press('Escape')
+        self.wait(600)
+        if pg.locator('dialog.deal-dlg[open]').count():
+            self.errs.append(('cabinet', 'ERR', 'Esc не закрыл карточку сделки'))
+
+    def _cab_new(self):
+        pg = self.pg
+        if pg.locator('#cabWin .cab-q [data-cq="deal"]').is_visible():
+            pg.click('#cabWin .cab-q [data-cq="deal"]')
+        else:
+            pg.click('#cabWin [data-cfab]')
+            self.snap('f_cab_fab', '#cabWin', wait=200)
+            pg.click('#cabWin .cab-fabm [data-cq="deal"]')
+        pg.wait_for_selector('dialog.dk-new-dlg[open]', timeout=10000)
+        pg.fill('dialog.dk-new-dlg[open] [name=client]', 'ООО «Прогон»')
+        pg.fill('dialog.dk-new-dlg[open] [name=title]', 'Компрессорная для цеха (прогон)')
+        pg.fill('dialog.dk-new-dlg[open] [name=task]', 'Уточнить потребность (прогон)')
+        self.snap('f_deal_new', 'dialog.dk-new-dlg[open]', wait=200)
+        pg.click('dialog.dk-new-dlg[open] button[type=submit]')
+        pg.wait_for_selector('dialog.deal-dlg[open] .dk-in', timeout=15000)
+        self.wait(800)
+        text = pg.locator('dialog.deal-dlg[open]').inner_text()
+        if 'Уточнить потребность (прогон)' not in text:
+            self.errs.append(('cabinet', 'ERR', 'первое дело новой сделки не добавилось'))
+        self.snap('f_deal_created', 'dialog.deal-dlg[open]', wait=200)
+        pg.keyboard.press('Escape')
+        self.wait(500)
+
     def _mirror_tab(self):
-        self.pg.click('#setdlg [data-bxtab="mirror"]')
+        self._bx_tab('mirror')
         self.pg.wait_for_selector('#setdlg #bxMirror .st-card', timeout=20000)
 
     def _mirror_act(self, action, done):
@@ -836,8 +938,9 @@ class Scenario(UiRun):
         self._mirror_tab()
         self._mirror_act('structure', 'Структура загружена')
         self._mirror_act('import', 'Загрузка сделок закончена')
-        self.snap('e0_mirror', '#setdlg .st-part:has(.bx-tabs)', wait=300)
+        self.snap('e0_mirror', '#setdlg', wait=300)
         self.closeall()
+        self.ev("CabDeals.view = 'board'")
         self.ev("Cabinet.open('deals')")
         pg.wait_for_selector('#cabWin .cab-tabs', timeout=30000)
         if pg.locator('#cabWho').count():
@@ -855,7 +958,7 @@ class Scenario(UiRun):
         sel = pg.locator('dialog.deal-dlg[open] select[data-uf="UF_CRM_REGION"]')
         sel.select_option('12')
         self.wait(2000)
-        saved = self.ev("CrmFunnel && DealCard.d && (DealCard.d.uf||{}).UF_CRM_REGION")
+        saved = self.ev("DealCard.deal && (DealCard.deal.uf||{}).UF_CRM_REGION")
         if saved != '12':
             self.errs.append(('mirror', 'ERR', 'поле Битрикса не сохранилось: %s' % saved))
         self.snap('e3_card_saved', 'dialog.deal-dlg[open]', wait=300)

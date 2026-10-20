@@ -34,9 +34,9 @@ check('коротко для кабинета', ()=>{
   assert.strictEqual(Money.short(999500), `1${NB}млн${NB}₽`, 'граница — по округлённому'); assert.strictEqual(Money.short(999.6), `1${NB}тыс.${NB}₽`);
 });
 check('прежние имена выводят то же', ()=>{
-  const util=JS('core/util.js'), cab=JS('features/cabinet.js'), lg=JS('features/logistics-calc.js'), deal=JS('features/deal.js'), dc=JS('features/deal-calc.js');
+  const util=JS('core/util.js'), cab=JS('features/crm/crm-fmt.js'), lg=JS('features/logistics-calc.js'), deal=JS('features/deal.js'), dc=JS('features/deal-calc.js');
   assert.ok(/static rub\(v\)\{ return Money\.rub\(v\); \}/.test(util) && /function fmtRub\(v\)\{ return Money\.rub\(v\); \}/.test(util), 'Fmt.rub, fmtRub');
-  assert.ok(/static rub\(kop\)\{ return Money\.rub\(\(\+kop\|\|0\)\/100\); \}/.test(cab) && /static short\(kop\)\{ return Money\.short/.test(cab), 'CrmFmt — копейки сделки');
+  assert.ok(/static rub\(kop\) \{\s*return Money\.rub\(\(\+kop \|\| 0\) \/ this\.KOPECKS\);/.test(cab) && /static KOPECKS = 100;/.test(cab) && /static short\(kop\) \{\s*return Money\.short/.test(cab), 'CrmFmt — копейки сделки');
   assert.ok(/const lgRub = v => Money\.rub\(v\);/.test(lg), 'lgRub'); assert.ok(/static rub\(n\)\{ return Money\.rub2\(n\); \}/.test(deal), 'DealFmt.rub');
   assert.ok(/static rub\(v\)\{ return Money\.int\(v\); \}/.test(dc), 'DealValues.rub');
   const own=[util, cab, lg, deal, dc].join('\n').match(/Math\.round\([^)]*\)\.toLocaleString\('ru-RU'\)\+' ?(₽|руб\.)'/g);

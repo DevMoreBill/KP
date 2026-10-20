@@ -158,9 +158,7 @@ class BitrixConf:
     def api(self, opener=None) -> 'BitrixApi':
         data = self.get()
         if not data.get('url'):
-            raise BitrixError(
-                'Адрес вебхука не задан — «Настройки → Сотрудники и система → Подключения и ключи → Битрикс24»'
-            )
+            raise BitrixError('Адрес вебхука не задан — «Настройки → Битрикс24 → Связь и включение»')
         return BitrixApi(data['url'], opener)
 
     def poll(self) -> int:
@@ -1996,7 +1994,7 @@ class EconXlsx:
 
 
 class BitrixDesk:
-    """«Настройки → Подключения и ключи → Битрикс24» (/api/admin/bitrix…): только администратор, изменения — с CSRF."""
+    """«Настройки → Битрикс24» (/api/admin/bitrix…): только администратор, изменения — с CSRF."""
 
     def __init__(self, handler, store, log_fn, opener=None) -> None:
         self.handler, self.store, self.log_fn, self.opener = handler, store, log_fn, opener

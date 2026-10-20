@@ -34,14 +34,26 @@ class AdminNav {
       {key:'managers', label:'Менеджеры', hint:'Вход по паролю, права (в том числе особые: удалять товары, правки без модерации, выгрузка) и контакты для КП.', parts:[['', m=>AccessPanel.open(m)], ['Контакты менеджеров — в КП', m=>stDelete(m, 'manager')]]},
       {key:'users', label:'Администраторы', hint:'Кто входит в «Настройки»: добавить, изменить; смена своего пароля.', parts:[['', m=>stUsers(m)], ['Мой пароль', m=>stSecurity(m)]]},
       {key:'audit', label:'Журнал действий', hint:'Кто, что и когда сделал: КП, каталог, справочники, настройки. Фильтры по сотруднику, действию и дате.', open:m=>stAudit(m)},
-      {key:'services', label:'Подключения и ключи', hint:'Проверка всех внешних сервисов одной кнопкой, ключи API (контрагенты, перевозчики, PDF), нейросеть, связь с Битрикс24.', parts:[['', m=>new ConnectionsPanel(m).open()], ['Ключи API', m=>stKeys(m)], ['Битрикс24', m=>BitrixPanel.open(m)], ['Нейросеть', m=>stAi(m)]]},
+      {key:'services', label:'Подключения и ключи', hint:'Проверка всех внешних сервисов одной кнопкой, ключи API (контрагенты, перевозчики, PDF), нейросеть. Битрикс24 — отдельный раздел ниже.', parts:[['', m=>new ConnectionsPanel(m).open()], ['Ключи API', m=>stKeys(m)], ['Нейросеть', m=>stAi(m)]]},
       {key:'updates', label:'Обновления', hint:'Новая версия: проверить на GitHub и установить одной кнопкой или из файла; откат; история установок.', open:m=>AdminSystem.updates(m)},
       {key:'backup', label:'База и копии', hint:'Выгрузка и загрузка данных, автоматические копии, вторая папка, обслуживание базы.', open:m=>stBackup(m)},
       {key:'trash', label:'Корзина', get hint(){ return `Удалённое хранится ${DEFN('srv.trashDays', 30)} дн.: восстановить, удалить навсегда, очистить.`; }, open:m=>TrashTab.render(m)},
-      {key:'system', label:'Система', hint:'Версия, режим работы, адрес, папки, место на диске; перезапуск программы.', open:m=>AdminSystem.system(m)}]}];
+      {key:'system', label:'Система', hint:'Версия, режим работы, адрес, папки, место на диске; перезапуск программы.', open:m=>AdminSystem.system(m)}]},
+    {title:'Битрикс24', desc:'Связь с Битрикс24: сделки, стадии, поля, дела и КП обмениваются сами — менеджеры могут работать и в Битриксе, и в программе. Порядок настройки — сверху вниз.', tabs:[
+      ['link', 'Связь и включение', 'Адрес вебхука, проверка связи, включение обмена и «Обменяться сейчас». Пока связь выключена, программа в Битрикс ничего не пишет и оттуда не читает.'],
+      ['mirror', 'Кабинет как в Битрикс24', 'Повторить в кабинете менеджера воронки, стадии и поля сделок Битрикса и загрузить сделки; какие воронки показывать, куда попадают новые сделки, какие поля видны в карточке.'],
+      ['flow', 'Направление обмена', 'В какую сторону идут данные: в обе стороны, только из Битрикса или только в Битрикс — отдельно для сделок, дел и компаний.'],
+      ['mgr', 'Менеджеры', 'Какой пользователь Битрикса — какой менеджер программы, кто участвует в обмене, своя воронка у менеджера, что делать со сделкой без ответственного.'],
+      ['cats', 'Воронки и этапы', 'Основная воронка Битрикса для сделок программы и соответствие этапов программы её стадиям; ещё воронки, из которых загружать сделки.'],
+      ['fields', 'Поля сделки', 'Какое поле программы — в какое поле Битрикса, направление и кто главный, если поле изменили с двух сторон.'],
+      ['send', 'Что передаётся', 'Товары сделки, файлы КП (Word, PDF, справочные), Excel экономики, компании и контакты, виды дел.'],
+      ['sched', 'Расписание', 'Как часто забирать изменения из Битрикса, в какие часы обмениваться, сколько записей за раз, сколько повторять при ошибке.'],
+      ['log', 'Журнал и проверка', 'Что и когда передавалось («поле: было → стало»), ошибки и «Не отправлено»; пробный прогон — что изменилось бы, без записи.'],
+      ['old', 'Старые сделки', 'Загрузить сделки, созданные в Битриксе раньше, — с даты и по воронкам, с предпросмотром: новая, связать с открытой или пропустить.'],
+    ].map(([tab, label, hint])=>({key:'bx-'+tab, label, hint, open:m=>BitrixPanel.open(m, null, tab)}))}];
   // прежние ключи вкладок (ссылки из других окон и подсказок, сохранённый выбор, история настроек)
   static ALIAS = {delete:'db-kp', 'db-catalog':'goods', stats:'home', changed:'changes', history:'changes', access:'managers', 'db-manager':'managers',
-    security:'users', connections:'services', keys:'services', ai:'services', bitrix:'services', texts:'lists'};
+    security:'users', connections:'services', keys:'services', ai:'services', bitrix:'bx-link', texts:'lists'};
   static START = 'home';   // вкладка при первом открытии — обзор
 
   static tabs(){ return [this.HOME, ...this.GROUPS.flatMap(g=>g.tabs)]; }
@@ -50,7 +62,7 @@ class AdminNav {
   /** «Раздел → Вкладка» — где вкладка в «Настройках» (для поиска и подсказок) */
   static path(k){ const t=this.tab(k), g=this.GROUPS.find(x=>x.tabs.includes(t)); return g ? g.title+' → '+t.label : t.label; }
   static btn(t, cur){ return `<button type="button" class="${t.key===cur?'on':''}" data-sttab="${t.key}" title="${esc(t.hint)}">${esc(t.label)}</button>`; }
-  static html(cur){ return `<nav class="st-nav">${SettingsSearch.html()}${this.btn(this.HOME, cur)}${this.GROUPS.map(g=>`<span class="st-ng">${esc(g.title)}</span>${g.tabs.map(t=>this.btn(t, cur)).join('')}`).join('')}</nav>`; }
+  static html(cur){ return `<nav class="st-nav">${SettingsSearch.html()}${this.btn(this.HOME, cur)}${this.GROUPS.map(g=>`<span class="st-ng" title="${esc(g.desc||'')}">${esc(g.title)}</span>${g.tabs.map(t=>this.btn(t, cur)).join('')}`).join('')}</nav>`; }
   /** обзор: сводка (КП, «требует внимания», база) и карта разделов — щелчок по вкладке открывает её */
   static async home(m){
     m.innerHTML=`<div id="stHomeStats"><p class="empty">Загружаю…</p></div><p class="sub st-hm">Где что настраивается</p><div class="st-home">${this.GROUPS.map(g=>`<section class="st-card st-hg"><p class="sub">${esc(g.title)}</p><p class="muted">${esc(g.desc||'')}</p>
@@ -67,7 +79,7 @@ class AdminNav {
   static async open(main, k, click){
     const t=this.tab(k), g=this.GROUPS.find(x=>x.tabs.includes(t)), hist=SettingsHistoryPanel.TABS[t.key];
     StDirty.set(false);
-    main.innerHTML=`<header class="st-th"><span class="muted">${esc(g?g.title:'Настройки')}</span><div class="st-th-r"><h4>${esc(t.label)}</h4>${hist?`<button class="btn ghost sm" type="button" data-sthist="${t.key}" title="Что и когда меняли на этой вкладке, вернуть как было">История</button>`:''}</div><p class="muted">${esc(t.hint)}</p></header><div class="st-body"><p class="empty">Загружаю…</p></div>`;
+    main.innerHTML=`<header class="st-th"><span class="muted" title="${esc(g&&g.desc||'')}">${esc(g?g.title:'Настройки')}</span><div class="st-th-r"><h4>${esc(t.label)}</h4>${hist?`<button class="btn ghost sm" type="button" data-sthist="${t.key}" title="Что и когда меняли на этой вкладке, вернуть как было">История</button>`:''}</div><p class="muted">${esc(t.hint)}</p></header><div class="st-body"><p class="empty">Загружаю…</p></div>`;
     const body=main.querySelector('.st-body');
     await (t.parts ? this.stack(body, t.parts) : t.open(body, click));
   }

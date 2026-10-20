@@ -64,7 +64,7 @@ COND.forEach(([label, opts]) => lstStr('cond.'+label, 'kp', 'Условие «'+
 lstStr('cond.extra', 'kp', 'Дополнительные условия (типовые оговорки)', ()=>COND_EXTRA, 'Добавляются в «Дополнительные условия» одной кнопкой.');
 lstStr('obj.purposes', 'kp', 'Назначение объекта', ()=>PURPOSES, 'Подсказки в поле «Назначение» раздела «Клиент».');
 lstStr('kp.lost', 'kp', 'Причины проигрыша КП', ()=>KP_LOST, 'Варианты в окне «Ход сделки» при статусе «Проиграно» (журнал КП) и при закрытии сделки как проигранной (кабинет менеджера).');
-LISTS.add({ key:'crm.stages', group:'crm', label:'Этапы сделки', target:()=>CRM_STAGES, min:3,
+LISTS.add({ key:'crm.stages', group:'crm', label:'Этапы сделки', target:()=>CrmStages.LIST, min:3, late:true,
   hint:'Порядок строк — порядок этапов на доске. Код — внутренний (латиница): у этапов, по которым уже есть сделки, его не меняйте. «Выиграно» (won) и «Проиграно» (lost) есть всегда и стоят в конце — их можно только переименовать. По ходу КП сделка сама идёт вперёд до этапов lead (КП подготовлено), sent (отправлено), talks (в работе), contract (выиграно), если они есть в списке.',
   cols:[['id','Код','text',{req:true, id:true, ph:'tender'}],['name','Название','text',{req:true}]],
   toRow:x=>({id:x.id, name:x.name}), fromRow:r=>r.id&&r.name ? {id:String(r.id).trim(), name:String(r.name).trim()} : null });

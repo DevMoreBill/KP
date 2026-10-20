@@ -190,7 +190,9 @@ class NewKp {
       const o=t.closest('[data-dro]'); if (o){ m.close(); return Drafts.open(o.dataset.dro); }
       const dl=t.closest('[data-drd]'); if (dl && await Drafts.remove(dl.dataset.drd)) dl.closest('.st-row').remove(); };
   }
-  static blank(){ S=freshState(); NewKp.myContacts(); renderForm(); persist(); window.scrollTo({top:0}); if (catCache.length) openCatalog({}); }
+  /** чистое КП с моими контактами (без вывода) — для КП по сделке, клиенту */
+  static fresh(){ S=freshState(); NewKp.myContacts(); }
+  static blank(){ this.fresh(); renderForm(); persist(); window.scrollTo({top:0}); if (catCache.length) openCatalog({}); }
   /** контакты менеджера в новом КП: запомненные этим браузером, иначе — из карточки «кто я» (новый компьютер) */
   static myContacts(){ if (String(S.manager.name||'').trim()) return; const m=MGRS.find(x=>x.id===meId()); if (m){ S.managerId=m.id; S.manager={...S.manager, ...mgrFields(m)}; } }
 }

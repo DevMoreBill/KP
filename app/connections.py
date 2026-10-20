@@ -111,7 +111,7 @@ class ConnectionCheck:
 
         conf = BitrixConf(self.store)
         if not conf.get().get('url'):
-            return 'off', 'не настроен — «Подключения и ключи → Битрикс24»'
+            return 'off', 'не настроен — «Настройки → Битрикс24»'
         profile = conf.api().call('profile') or {}
         queue = BitrixQueue(self.store).stats()
         if not conf.enabled():

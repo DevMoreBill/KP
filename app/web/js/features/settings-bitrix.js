@@ -1,4 +1,4 @@
-// «Настройки → Сотрудники и система → Подключения и ключи → Битрикс24»: связь кабинета менеджера с Битрикс24 (сервер — app/bitrix.py,
+// «Настройки → Битрикс24» (раздел; вкладка — пункт меню): связь кабинета менеджера с Битрикс24 (сервер — app/bitrix.py,
 // правила обмена — app/bitrix_rules.py). Вкладки: Связь (адрес вебхука — ключ хранится только на сервере, — проверка, обмен
 // кнопками) · Обмен (направление: в обе стороны / только из Битрикса / только в Битрикс — общее и для сделок, дел, компаний) ·
 // Как в Битрикс24 (воронки, стадии и поля сделки — features/crm/) · Менеджеры (пользователь Битрикса, участвует ли, своё направление и воронка) · Воронки (из каких загружать, этапы у каждой) ·
@@ -14,7 +14,7 @@ class BitrixPanel {
   static logMid='';       // журнал: отбор по менеджеру
   static dry=null;        // результат пробного прогона
   static imp=null;        // предпросмотр загрузки старых сделок
-  static TABS = [['link', 'Связь'], ['mirror', 'Как в Битрикс24'], ['flow', 'Обмен'], ['mgr', 'Менеджеры'], ['cats', 'Воронки'], ['fields', 'Поля'], ['send', 'Что передаётся'],
+  static TABS = [['link', 'Связь и включение'], ['mirror', 'Кабинет как в Битрикс24'], ['flow', 'Направление обмена'], ['mgr', 'Менеджеры'], ['cats', 'Воронки и этапы'], ['fields', 'Поля сделки'], ['send', 'Что передаётся'],
     ['sched', 'Расписание'], ['log', 'Журнал и проверка'], ['old', 'Старые сделки']];
   static DIR = { both:'В обе стороны', in:'Только из Битрикса в программу', out:'Только из программы в Битрикс', off:'Не передавать' };
   static DIR_SHORT = { both:'⇄ в обе стороны', in:'← из Битрикса', out:'→ в Битрикс', off:'не передавать' };
@@ -23,11 +23,12 @@ class BitrixPanel {
   static FIND = { inn:'только по ИНН', inn_name:'по ИНН, затем по названию', name:'только по названию' };
   static NEED_C = ['mgr', 'cats', 'fields'];   // вкладкам нужны списки из Битрикса
 
-  static get tab(){ try{ return localStorage.getItem('kp.bxtab')||'link'; }catch(e){ return 'link'; } }
-  static set tab(t){ try{ localStorage.setItem('kp.bxtab', t); }catch(e){ /* без памяти вкладки */ } }
+  static embed=null;      // вкладка, открытая разделом «Настроек → Битрикс24» (своя строка меню вместо полосы вкладок)
+  static get tab(){ if (this.embed) return this.embed; try{ return localStorage.getItem('kp.bxtab')||'link'; }catch(e){ return 'link'; } }
+  static set tab(t){ if (this.embed){ this.embed=t; return; } try{ localStorage.setItem('kp.bxtab', t); }catch(e){ /* без памяти вкладки */ } }
 
-  static async open(m, note){
-    this.m=m;
+  static async open(m, note, tab=null){
+    this.m=m; this.embed=tab;
     try{ this.v=await aapi('bitrix'); }catch(e){ m.innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`; return; }
     this.render(note);
     if (this.NEED_C.includes(this.tab)) this.loadC();
@@ -44,9 +45,11 @@ class BitrixPanel {
   static render(note){
     const t=this.TABS.some(x=>x[0]===this.tab) ? this.tab : 'link';
     const need=this.NEED_C.includes(t) && !this.c;
-    this.m.innerHTML=`<div class="bx-tabs" role="tablist">${this.TABS.map(([k, l])=>`<button type="button" role="tab" data-bxtab="${k}" class="${k===t?'on':''}" aria-selected="${k===t}">${esc(l)}</button>`).join('')}</div>
+    StDirty.set(false);      // вкладка нарисована заново из сохранённого — набранное прежде не ждёт сохранения
+    const bar=this.embed ? '' : `<div class="bx-tabs" role="tablist">${this.TABS.map(([k, l])=>`<button type="button" role="tab" data-bxtab="${k}" class="${k===t?'on':''}" aria-selected="${k===t}">${esc(l)}</button>`).join('')}</div>`;
+    this.m.innerHTML=`${bar}
       ${note?`<p class="msg${note.err?' err':''}" style="text-align:left">${esc(note.t)}</p>`:''}
-      ${need ? `<div class="st-card"><p class="muted">${this.v.hasUrl?'Загружаю списки из Битрикс24 (воронки, стадии, пользователи, поля)…':'Сначала задайте адрес вебхука на вкладке «Связь».'}</p></div>` : this['t_'+t]()}`;
+      ${need ? `<div class="st-card"><p class="muted">${this.v.hasUrl?'Загружаю списки из Битрикс24 (воронки, стадии, пользователи, поля)…':'Сначала задайте адрес вебхука в пункте «Связь и включение».'}</p></div>` : this['t_'+t]()}`;
     this.bind(t);
   }
   static async loadC(){
@@ -56,7 +59,7 @@ class BitrixPanel {
   }
 
   // ---- Как в Битрикс24: воронки, стадии и поля сделки (features/crm/mirror-panel.js)
-  static t_mirror(){ return this.v.hasUrl ? '<div id="bxMirror"><p class="muted">Загружаю…</p></div>' : '<div class="st-card"><p class="muted">Сначала задайте адрес вебхука на вкладке «Связь».</p></div>'; }
+  static t_mirror(){ return this.v.hasUrl ? '<div id="bxMirror"><p class="muted">Загружаю…</p></div>' : '<div class="st-card"><p class="muted">Сначала задайте адрес вебхука в пункте «Связь и включение».</p></div>'; }
 
   // ---- Связь
   static t_link(){
@@ -64,8 +67,8 @@ class BitrixPanel {
     const mode={ both:'в обе стороны', in:'только из Битрикса в программу', out:'только из программы в Битрикс' }[R.mode]||'в обе стороны';
     return `<div class="st-card"><div class="row"><p class="sub" style="margin:0">Битрикс24 — сделки, дела и КП</p><span class="sp"></span>
         <label class="sw"><input type="checkbox" id="bxOn"${v.on?' checked':''}${v.hasUrl?'':' disabled'}><span>${v.on?'включена':'выключена'}</span></label></div>
-      <p class="muted">${v.on?`Обмен — <b>${esc(mode)}</b> (вкладка «Обмен»); изменения из Битрикса — раз в ${Math.round((v.pollSec||90)/60*10)/10} мин${R.sched&&R.sched.from?`, с ${esc(R.sched.from)} до ${esc(R.sched.to)}`:''}.`
-        :'Задайте адрес вебхука, нажмите «Проверить связь», настройте вкладки «Обмен», «Менеджеры», «Воронки» — и включите.'}</p>
+      <p class="muted">${v.on?`Обмен — <b>${esc(mode)}</b> («Направление обмена»); изменения из Битрикса — раз в ${Math.round((v.pollSec||90)/60*10)/10} мин${R.sched&&R.sched.from?`, с ${esc(R.sched.from)} до ${esc(R.sched.to)}`:''}.`
+        :'Задайте адрес вебхука, нажмите «Проверить связь», настройте «Направление обмена», «Менеджеры», «Воронки и этапы» — и включите.'}</p>
       ${v.on||q.queued?`<p class="bx-st">Последний обмен: <b>${esc(this.when(v.lastRun))}</b> · в Битриксе сделок <b>${L.deals||0}</b>, компаний <b>${L.companies||0}</b>, дел <b>${L.tasks||0}</b>
         · в очереди <b>${q.queued||0}</b>${q.failed?` · <span class="bad-t">с ошибкой ${q.failed}: ${esc(q.lastError||'')}</span>`:''}</p>
         <div class="row bx-btns"><button class="btn" type="button" id="bxRun"${v.on?'':' disabled'}>Обменяться сейчас</button>
@@ -93,10 +96,10 @@ class BitrixPanel {
       <div class="seg bx-seg" role="radiogroup">${['both', 'in', 'out'].map(d=>`<button type="button" data-bxmode="${d}" class="${R.mode===d?'on':''}" aria-pressed="${R.mode===d}">${esc(this.DIR[d])}</button>`).join('')}</div>
       <p class="muted bx-why">${R.mode==='in'?'В Битрикс ничего не пишется. Изменения и новые сделки из Битрикса приходят в программу; правки менеджера в программе остаются в программе (изменят в Битриксе — придёт значение Битрикса).'
         :R.mode==='out'?'Программа только отправляет: сделки, КП, экономику и дела. Изменения, сделанные в Битриксе, в программу не приходят.'
-        :'Сделки, КП, экономика и дела уходят в Битрикс; стадии, даты, ответственные, дела и новые сделки приходят обратно. Кто главный при правке с обеих сторон — на вкладке «Поля».'}</p></div>
+        :'Сделки, КП, экономика и дела уходят в Битрикс; стадии, даты, ответственные, дела и новые сделки приходят обратно. Кто главный при правке с обеих сторон — в «Поля сделки».'}</p></div>
     <div class="st-card"><p class="sub">По видам данных</p>
       ${kinds.map(([k, l, h])=>`<div class="bx-map"><label>${esc(l)}<small class="muted">${esc(h)}</small></label>${this.sel(`data-bxflow="${k}"`, this.dirOpts(['both', 'in', 'out', 'off'], 'как общее: '+(this.DIR[R.mode]||'').toLowerCase()), (R.flow||{})[k]||'', l)}</div>`).join('')}
-      <p class="muted">Свои направления у менеджеров — на вкладке «Менеджеры» (действует и общее, и своё).</p>
+      <p class="muted">Свои направления у менеджеров — в «Менеджеры» (действует и общее, и своё).</p>
       <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveFlow">Сохранить</button></div></div>`;
   }
 
@@ -132,7 +135,7 @@ class BitrixPanel {
     return `<div class="st-card"><div class="bx-map"><label>Основная воронка — сюда уходят новые сделки программы</label>${this.sel('id="bxCat"', c.categories.map(x=>[x.id, x.name]), main, 'Основная воронка')}</div>
       <p class="sub" style="margin-top:12px">Загружать сделки ещё из воронок</p>
       <div class="bx-chips">${c.categories.filter(x=>x.id!==main).map(x=>this.chk(`data-bxcats="${esc(x.id)}"`, extra.has(x.id), esc(x.name))).join('')||'<span class="muted">Других воронок нет</span>'}</div>
-      <p class="muted">Воронки менеджеров (вкладка «Менеджеры») загружаются всегда. У каждой воронки — своё соответствие этапов; без стадии этап не передаётся (стадия в Битриксе остаётся как есть), стадии «успех» и «провал» без пары — «Выиграно» и «Проиграно».</p></div>
+      <p class="muted">Воронки менеджеров («Менеджеры») загружаются всегда. У каждой воронки — своё соответствие этапов; без стадии этап не передаётся (стадия в Битриксе остаётся как есть), стадии «успех» и «провал» без пары — «Выиграно» и «Проиграно».</p></div>
     <div class="st-card">${shown.map(block).join('<hr class="bx-hr">')}
       <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveCats">Сохранить</button></div></div>`;
   }
@@ -228,7 +231,7 @@ class BitrixPanel {
       $m('#bxOn').onchange=e=>this.run(()=>ajson('bitrix', {on:e.target.checked}), e.target.checked?'Связь включена: открытые сделки поставлены в очередь отправки':'Связь выключена: обмен остановлен, данные в Битриксе остаются');
       $m('#bxTest').onclick=async e=>{ e.target.disabled=true; e.target.textContent='Проверяю…';
         try{ const u=$m('#bxUrl').value.trim(); if (u) this.v=await ajson('bitrix', {url:u});
-          this.c=await ajson('bitrix/test', {}); this.render({t:'Связь с Битрикс24 есть. Настройте вкладки «Обмен», «Менеджеры», «Воронки» и включите связь.'}); }
+          this.c=await ajson('bitrix/test', {}); this.render({t:'Связь с Битрикс24 есть. Настройте «Направление обмена», «Менеджеры», «Воронки и этапы» и включите связь.'}); }
         catch(err){ this.render({t:String(err.message||err), err:true}); } };
       if ($m('#bxDel')) $m('#bxDel').onclick=async()=>{ if (!await stConfirm('Удалить адрес вебхука?', 'Обмен с Битрикс24 остановится. Данные в обеих системах останутся.', 'Удалить')) return;
         this.c=null; this.run(()=>ajson('bitrix', {url:''}), 'Адрес удалён, связь выключена'); };

@@ -14,7 +14,7 @@ export class CrmFunnel {
    * @returns {object[]}
    */
   static all() {
-    const fromBoard = typeof CrmData !== 'undefined' && CrmData.B && CrmData.B.funnels;
+    const fromBoard = typeof CrmData !== 'undefined' && CrmData.board && CrmData.board.funnels;
     return fromBoard || this.cache;
   }
 
