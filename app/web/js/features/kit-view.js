@@ -447,7 +447,7 @@ class KitNeed {
     StationSup.use(x);   // при равных условиях — поставщик компрессоров станции (решение 17.10)
     const A=this.air(x), q=A ? A.q : 0, req=StationReq.of(x), B=this.n(req.pressure)||0, Bc=this.bar(x); let o=null;
     if (/^dryer-/.test(r.key)){ const ads=r.cat==='dryer_ads', pdp=ads && r.f && r.f.dewPoint ? this.n(r.f.dewPoint) : null;
-      o=q>0 ? TzPick.dryer(ads, q, B, Bc, this.n(req.tmax), pdp, TzPick.hmax(x), TzPick.wmax(x)) : null; }
+      o=q>0 ? TzPick.dryer(ads, q, B, Bc, { tmax:this.n(req.tmax), pdp, H:TzPick.hmax(x), W:TzPick.wmax(x) }) : null; }
     else if (r.cat==='filter') o=TzPick.filter(r, q, B, Bc);
     else if (r.cat==='receiver'){
       // замена ресиверов на учёте (recv-split) — как раньше; остальные — типоразмер и число по методике (ReceiverPlan)

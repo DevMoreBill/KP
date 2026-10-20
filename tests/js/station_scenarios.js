@@ -16,10 +16,13 @@ global.typeById=id=>TYPES[id]||{};
 global.DEF=()=>null; global.FEAT={ on:()=>true };
 global.esc=s=>String(s??'');
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit.js', 'kit-view.js', 'station-ui.js', 'tz-import.js']){
+for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit.js', 'kit-view.js', 'station-ui.js', 'eskd/index.js', 'view/index.js', 'draw/index.js', 'tz/index.js', 'tz-out/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));
 global.isKit=x=>!!(x && x.kit);
+global.S={};
+const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
+if (GOLDEN) process.on('exit', ()=>GOLDEN.save(process.env.KP_GOLDEN));
 
 class Catalog {
   static n=0;
@@ -61,6 +64,8 @@ class Scenario {
     if (q.kind==='comp' && q.air) x.stLayout={ air:q.air };
     StationReq.ensureParts(x);
     const note=await TzPick.run(x, { ...q, flow:+this.num(q.flow), pressure:+this.num(q.pressure), q:+this.num(q.q), head:+this.num(q.head), kw:+this.num(q.kw), hours:+this.num(q.hours), pdp:q.pdp, recvVol:+this.num(q.recvVol), work:+q.work||0 });
+    if (GOLDEN){ GOLDEN.label=sc.name; GOLDEN.put('TzPick.run', [note, x.kit, x.req, x.stLayout]);
+      const d=GOLDEN.docx(); TzText.write(d, x, StationUi.plan(x), 'ПНЕВМОТЕХ'); GOLDEN.put('TzOut.write', d.calls); }
     if (sc.edit) for (const [k, v] of Object.entries(sc.edit)) r[k]=v;   // правка менеджера после подбора
     // ТКП (решение ПНЕВМОТЕХ): расчётная записка в КП — только галочкой менеджера, по умолчанию её нет
     const off=StationCalc.docGroups(x).length; x.stLayout={ ...(x.stLayout||{}), calc:true };

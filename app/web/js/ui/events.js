@@ -82,7 +82,7 @@ document.addEventListener('click', async e=>{
     case 'kitAdd': case 'kitCat': case 'kitMain': case 'kitCont': case 'kitSys': case 'kitPreset': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (kitAction(a, i, b)==='async') return; break; }
     case 'kitOpen': case 'kitBy': case 'reqPickX': case 'reqReset': case 'kitNeed': case 'kitNeedAll': case 'kitSwap': { const r=KitView.act(a, i, b); if (r==='async' || !r) return; break; }
     case 'drawPick': return DrawPic.pick(i, j, b.dataset.v);
-    case 'tzOut': return LazyJs.load('tz-out.js').then(()=>TzOut.download(i)).catch(e=>toast(e.message));
+    case 'tzOut': return LazyJs.load('tz-out/index.js').then(()=>TzOut.download(i)).catch(e=>toast(e.message));
     case 'stSpot': return IssueSpot.open(i, j);
     case 'xFix': case 'xFixAll': return ExpertFix.act(a, i, b);
     case 'paintFile': case 'paintFileDel': case 'paintArt': case 'paintArtDel': { const r=PaintView.act(a, i, b); if (r==='async' || !r) return; break; }

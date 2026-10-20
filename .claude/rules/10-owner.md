@@ -55,7 +55,8 @@ Windows 10 (один EXE, папка программы C:\KP), менеджер
   (`station-calc.js` → `features/calc/`); 3.116.0 — 3D-оснащение и наклейки (`features/view/`); 3.117.0 — 3D-вид (`station-render.js` →
   `features/view/`); 3.118.0 — чертёж (`station-draw.js` → `features/draw/`); 3.119.0 — листы ЕСКД
   и схемы (`station-eskd.js` → `features/eskd/`); 3.120.0–3.133.0 — весь сервер `app/*.py` (строгий Ruff, подписи типов,
-  `tests/code_style.json`); 3.134.0 — правила станций (`features/rules/`, `rules-doc/`); дальше — остальные
+  `tests/code_style.json`); 3.134.0 — правила станций (`features/rules/`, `rules-doc/`); 3.135.0 — ТЗ заказчика и ТЗ на сборку
+  (`features/tz/`, `tz-out/`); дальше — остальные
   файлы станций, сервер, интерфейс]
 
 ## Выпуск (каждое изменение)

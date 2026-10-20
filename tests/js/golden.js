@@ -45,6 +45,42 @@ class Golden {
     };
   }
 
+  /** асинхронные методы: отпечаток view(аргументы, результат) после завершения */
+  static wrapAsync(cls, names, view){
+    for (const name of names){
+      const fn=cls[name]; let depth=0;
+      cls[name]=async function(...args){
+        depth++;
+        try{
+          const out=await fn.apply(this, args);
+          if (depth===1) Golden.rows.push([Golden.label, `${cls.name}.${name}`, Golden.hash(view(args, out))]);
+          return out;
+        } finally{ depth--; }
+      };
+    }
+  }
+
+  /** документ Word без Word: записывает вызовы методов DocxWriter по порядку */
+  static docx(){
+    const calls=[];
+    return new Proxy({ width:170, calls }, { get:(t, k)=>(k in t ? t[k] : (...a)=>{ calls.push([k, ...a]); }) });
+  }
+
+  /** текст по результату метода (ТЗ на сборку по расстановке): отпечаток text(результат), ошибка — её текст */
+  static wrapText(cls, name, text){
+    const fn=cls[name]; let depth=0;
+    cls[name]=function(...args){
+      depth++;
+      try{
+        const out=fn.apply(this, args);
+        if (depth===1){ let t; try{ t=text(out); } catch(e){ t='ошибка: '+e.message; } Golden.rows.push([Golden.label, `${cls.name}.${name}:text`, Golden.hash(t)]); }
+        return out;
+      } finally{ depth--; }
+    };
+  }
+
+  static put(name, v){ Golden.rows.push([Golden.label, name, Golden.hash(v)]); }
+
   static save(file){ fs.writeFileSync(file, JSON.stringify(Golden.rows)); }
 }
 

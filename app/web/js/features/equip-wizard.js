@@ -35,7 +35,7 @@ function nwStationCards(){
   return `<div class="nw-cards">${nwStations().map(t=>`<button type="button" class="nw-card st" data-nwcat="${esc(t.id)}"><i>${ic[t.id]||'▣'}</i><b>${esc(t.item)}</b><small>${esc(t.coverTitle||t.name)}: контейнер, ${esc((t.station.mainLabel||'').toLowerCase())}, обвязка и системы — одним изделием</small></button>`).join('')}</div>`;
 }
 
-// станция по ТЗ заказчика: вид станции, требования, контейнер и оборудование — из файла ТЗ (features/tz-import.js)
+// станция по ТЗ заказчика: вид станции, требования, контейнер и оборудование — из файла ТЗ (features/tz/)
 const nwTz = () => NW.where==='kp' ? `<div class="nw-tz"><button class="btn" type="button" data-nw="tz">📄 По ТЗ заказчика</button><span class="muted">PDF, Word, Excel — найдём требования, подберём контейнер и оборудование; всё проверите перед созданием</span></div>` : '';
 
 function nwStart(){

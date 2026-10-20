@@ -104,7 +104,7 @@
 <script src="/web/js/features/station-fix.js"></script>
 <script src="/web/js/features/station-doc.js"></script>
 <script src="/web/js/features/docx-writer.js"></script>
-<script src="/web/js/features/tz-import.js"></script>
+<script type="module" src="/web/js/features/tz/index.js"></script>
 <script src="/web/js/features/ai-autofill.js"></script>
 <script src="/web/js/features/equip-wizard.js"></script>
 <script src="/web/js/features/templates.js"></script>
@@ -161,6 +161,6 @@
 <script src="/web/js/ui/datepicker.js"></script>
 <script src="/web/js/main.js" defer></script>
 <!-- модули по требованию (LazyJs): загружаются, когда их открывают; адреса здесь — чтобы сервер поставил метку версии -->
-<template id="lazyJs"><script src="/web/js/features/tz-out.js"></script><script type="module" src="/web/js/features/rules-doc/index.js"></script></template>
+<template id="lazyJs"><script type="module" src="/web/js/features/tz-out/index.js"></script><script type="module" src="/web/js/features/rules-doc/index.js"></script></template>
 </body>
 </html>

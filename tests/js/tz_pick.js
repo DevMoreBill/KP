@@ -1,4 +1,4 @@
-// Подбор оборудования по ТЗ заказчика (app/web/js/features/tz-import.js — TzPick) и проверки требований станции
+// Подбор оборудования по ТЗ заказчика (app/web/js/features/tz/ — TzPick) и проверки требований станции
 // (kit-view.js — StationReq.checks) на вымышленном каталоге в памяти: число рабочих агрегатов из ТЗ, запас давления
 // компрессора на потери в осушителе и фильтрах, продувка адсорбционного осушителя, бак ДГУ под время работы, насосы
 // без лишнего напора.
@@ -22,9 +22,12 @@ global.mainLine=()=>''; global.groupsFromAttrs=()=>[];   // характерис
 global.esc=v=>String(v??'').replace(/[&<>"']/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 global.api=async u=>{ const c=global.catCache.find(z=>u.endsWith('/'+encodeURIComponent(z.id))); if (!c) throw new Error('нет '+u); return c; };
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit.js', 'kit-view.js', 'station-ui.js', 'tz-import.js', 'station-quick.js', 'station-fix.js', 'station-doc.js']){
+for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit.js', 'kit-view.js', 'station-ui.js', 'eskd/index.js', 'view/index.js', 'draw/index.js', 'tz/index.js', 'tz-out/index.js', 'station-quick.js', 'station-fix.js', 'station-doc.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
+const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
+if (GOLDEN){ process.on('exit', ()=>GOLDEN.save(process.env.KP_GOLDEN));
+  GOLDEN.wrapAsync(TzPick, ['run'], ([x], note)=>{ global.S??={}; const d=GOLDEN.docx(); TzText.write(d, x, StationUi.plan(x), 'ПНЕВМОТЕХ'); return [note, x.kit, x.req, x.stLayout, d.calls]; }); }
 
 class Cat {
   static n=0;
@@ -35,7 +38,7 @@ class Cat {
 
 class Check {
   static n=0;
-  static async run(name, fn){ try{ await fn(); Check.n++; } catch(e){ console.error('ОШИБКА — '+name+':\n'+(e && e.stack || e)); process.exitCode=1; } }
+  static async run(name, fn){ if (GOLDEN) GOLDEN.label=name; try{ await fn(); Check.n++; } catch(e){ console.error('ОШИБКА — '+name+':\n'+(e && e.stack || e)); process.exitCode=1; } }
 }
 
 (async ()=>{
@@ -59,11 +62,11 @@ class Check {
       Cat.item('Осушитель рефрижераторный ОР-12', { cat:'dryer_refrig', flow:12, size:'900 × 700 × 1100' }),
     ];
     // по высоте: помещение 2 400 мм — высокий (2 600 + 100 на подключение) не проходит → два ОА-15 параллельно
-    let d=TzPick.dryer(true, 13, 7, 10, 30, null, 2400, 0);
+    let d=TzPick.dryer(true, 13, 7, 10, { tmax:30, H:2400 });
     assert.ok(d && d.n===2 && d.o.c.name==='Осушитель адсорбционный ОА-15', JSON.stringify(d && [d.o.c.name, d.n]));
-    assert.strictEqual(TzPick.dryer(true, 13, 7, 10, 30, null, 3000, 0).o.c.name, 'Осушитель адсорбционный ОА-30 высокий', 'проходит — один');
+    assert.strictEqual(TzPick.dryer(true, 13, 7, 10, { tmax:30, H:3000 }).o.c.name, 'Осушитель адсорбционный ОА-30 высокий', 'проходит — один');
     // в плане: ширина 2 210 мм — 1 700 + 150 + проход 800 не помещается → два ОР-12
-    d=TzPick.dryer(false, 13, 7, 10, 30, null, 0, 2210);
+    d=TzPick.dryer(false, 13, 7, 10, { tmax:30, W:2210 });
     assert.ok(d && d.n===2 && d.o.c.name==='Осушитель рефрижераторный ОР-12', JSON.stringify(d && [d.o.c.name, d.n]));
     // в составе — высокий: «Заменить» на подходящий, «Решить автоматически» ставит два параллельно
     const x=Cat.station('st_comp', [await TzPick.part(global.catCache[0], 1, 'main'), await TzPick.part(global.catCache[1], 1)], {});
