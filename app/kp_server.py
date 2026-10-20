@@ -180,7 +180,9 @@ class Handler(BaseHTTPRequestHandler):
         if data is None:
             with open(path, 'rb') as handle:
                 data = handle.read()
-        gzipped = FileGzip.get(tag, data, ctype) if 'gzip' in (self.headers.get('Accept-Encoding') or '') else None
+        # ключ сжатого — файл и его версия: у разных файлов после распаковки обновления бывают одинаковые время и размер
+        gzip_key = f'{path}|{tag}'
+        gzipped = FileGzip.get(gzip_key, data, ctype) if 'gzip' in (self.headers.get('Accept-Encoding') or '') else None
         if gzipped is not None:
             extra['Content-Encoding'] = 'gzip'
             extra['Vary'] = 'Accept-Encoding'

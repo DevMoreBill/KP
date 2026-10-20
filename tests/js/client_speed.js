@@ -27,7 +27,7 @@ t('позиция КП (не карточка): разбор каждый раз
   const a=attrsOf(it); it.attrs.maker='Б'; assert.notStrictEqual(attrsOf(it), a); assert.strictEqual(attrsOf(it).maker, 'Б'); assert.ok(!('_a' in it));
 });
 t('служебные поля разбора не уходят на сервер и в выгрузку', ()=>{
-  for (const [f, rx] of [['features/catalog-cache.js', /delete y\._pq/], ['features/catalog-window.js', /delete x\._pq/], ['features/catalog-edit.js', /'_pq'/]])
+  for (const [f, rx] of [['features/catalog/catalog-cache.js', /delete copy\._pq/], ['features/catalog/catalog-actions.js', /CatalogCache\.clean\(card\)/], ['features/catalog/catalog-edit.js', /'_pq'/]])
     assert.ok(rx.test(JS(f)), f);
 });
 

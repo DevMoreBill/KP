@@ -88,8 +88,12 @@ try { const d = LocalDraft.load(); if (d) { S = Object.assign(freshState(), d); 
 
 let saveT;
 
-// правка позиции каталога в карточке (features/catalog-edit.js): пока она открыта, S.items подменены — черновик не сохраняется
+// правка позиции каталога в карточке (features/catalog/catalog-edit.js): пока она открыта, S.items подменены — черновик не сохраняется
 var CATED = null;
+
+// каталог в браузере (features/catalog/ — Catalog.refresh) и открытая карточка позиции (ItemEditor): присваивают и читают все разделы
+let catCache = [];
+let EDIT = null;
 
 function persist(){
   if (CATED) return;

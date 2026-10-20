@@ -554,7 +554,7 @@ class Check {
   });
 
   await Check.run('карточка позиции: значение параметра не из списка категории не теряется', ()=>{
-    const p=path.join(ROOT, 'app', 'web', 'js', 'features', 'item-editor.js'); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p });
+    const { AttrChoices }=require(path.join(ROOT, 'app', 'web', 'js', 'features', 'catalog', 'attr-choices.js'));   // ES-модуль
     const f={ key:'stages', values:['1', '2'] };
     assert.deepStrictEqual(AttrChoices.list(f, '2/1'), ['1', '2', '2/1'], 'ступени Remeza «2/1» — в списке выбора');
     assert.deepStrictEqual(AttrChoices.list(f, 2), ['1', '2'], 'значение из списка — без повтора');

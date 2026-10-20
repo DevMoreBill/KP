@@ -89,7 +89,7 @@ LISTS.add({ key:'deal.countries', group:'deal', label:'Страны постав
   cols:[['name','Страна','text',{req:true, unique:true}],['cur','Валюта','text',{req:true, ph:'USD'}]],
   toRow:([name, cur])=>({name, cur}), fromRow:r=>r.name ? [String(r.name), String(r.cur||'USD').toUpperCase()] : null });
 
-LISTS.add({ key:'ai.sites', group:'misc', label:'Нейросети для автозаполнения', target:()=>AI_SITES,
+LISTS.add({ key:'ai.sites', group:'misc', label:'Нейросети для автозаполнения', target:()=>AiChat.SITES, late:true,
   hint:'Кнопки быстрого перехода в «Заполнить с ИИ»: запрос копируется, сайт открывается в новой вкладке.',
   cols:[['name','Название','text',{req:true}],['url','Адрес','text',{req:true, ph:'https://…'}]],
   toRow:([name, url])=>({name, url}), fromRow:r=>r.name && /^https?:\/\//i.test(r.url||'') ? [r.name, r.url] : null });
