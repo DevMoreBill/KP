@@ -29,6 +29,7 @@
     "app/ed25519.py",
     "app/equipment_types.py",
     "app/features.py",
+    "app/feed_files.py",
     "app/geo.py",
     "app/images.py",
     "app/imgfetch.py",
