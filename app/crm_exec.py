@@ -29,6 +29,8 @@ class ExecPlan:
     SHIP = 'delivery'
     PNR = 'pnr'
     NOTIFY_BEFORE = 2
+    KOPECKS = 100
+    PERCENT = 100
     MONEY = ('sup', 'log', 'oth')
     ORDER = {'mile': 0, 'cust': 1, 'sup': 2, 'log': 3, 'oth': 4}
     LABELS = {
@@ -78,10 +80,23 @@ class ExecPlan:
             return [self._payment(row) for row in steps if isinstance(row, dict) and isinstance(row.get('d'), int)]
         pays = picked if isinstance(picked := self.plan.get('pays'), list) else []
         return [
-            {'key': f'c{index}', 'day': row['d'], 'label': str(row.get('t') or 'Оплата заказчика'), 'kind': 'cust'}
+            self._share(index, row)
             for index, row in enumerate(pays)
             if isinstance(row, dict) and isinstance(row.get('d'), int)
         ]
+
+    def _share(self, index: int, row: dict) -> dict:
+        """Оплата заказчика из КП прежней версии (без платежей графика): сумма — процент от суммы КП."""
+        step: dict[str, Any] = {
+            'key': f'c{index}',
+            'day': row['d'],
+            'label': str(row.get('t') or 'Оплата заказчика'),
+            'kind': 'cust',
+        }
+        total = (self.offer or {}).get('sum') or 0
+        if isinstance(row.get('p'), (int, float)) and total:
+            step['amount'] = round(total / self.KOPECKS * row['p'] / self.PERCENT)
+        return step
 
     @staticmethod
     def _payment(row: dict) -> dict:

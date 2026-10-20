@@ -146,6 +146,14 @@ class ExecTest(unittest.TestCase):
         self.assertEqual(view['toPay'], 1000000)
         self.assertEqual(view['next']['key'], 'sign')
 
+    def test_old_kp_pays_by_percent(self):
+        from crm_exec import ExecPlan, Sums
+        deal = self.deal()
+        deal['kps'][0]['plan'] = {key: value for key, value in self.PLAN.items() if key != 'steps'}
+        deal['kps'][0]['sum'] = 120000000
+        cust = [step for step in ExecPlan(deal).steps(Sums.SALES) if step['kind'] == 'cust']
+        self.assertEqual([(step['key'], step['amount']) for step in cust], [('c0', 600000)], 'КП прежней версии: 50 % от 1,2 млн')
+
     def test_sign_tasks_and_done(self):
         from crm import DealBook, TaskBook
         from crm_exec import ExecBook, ExecTasks, Sums

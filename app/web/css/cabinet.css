@@ -449,4 +449,4 @@ label.f:has(.csg){position:relative}
 .ex-act{display:inline-flex;align-items:center;gap:4px}
 .ex-ok{color:var(--ok);font-weight:600}
 @media (max-width:760px){.ex-r>.ex-act{grid-column:2/-1;justify-self:start}}
-@media (max-width:760px){.ex-r.ex-done .ex-d{display:none}.ex-r.ex-done{row-gap:2px}.ex-r.ex-done .ex-fact{min-height:40px;width:160px;font-size:16px}}
+@media (max-width:760px){.ex-r.ex-done .ex-d{display:none}.ex-r.ex-done{row-gap:2px}.ex-r.ex-done .ex-fact{min-height:44px;width:160px;font-size:16px}}

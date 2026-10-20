@@ -97,7 +97,7 @@ class BitrixPanel {
       <p class="muted bx-why">${R.mode==='in'?'В Битрикс ничего не пишется. Изменения и новые сделки из Битрикса приходят в программу; правки менеджера в программе остаются в программе (изменят в Битриксе — придёт значение Битрикса).'
         :R.mode==='out'?'Программа только отправляет: сделки, КП, экономику и дела. Изменения, сделанные в Битриксе, в программу не приходят.'
         :'Сделки, КП, экономика и дела уходят в Битрикс; стадии, даты, ответственные, дела и новые сделки приходят обратно. Кто главный при правке с обеих сторон — в «Поля сделки».'}</p></div>
-    <div class="st-card"><p class="sub">По видам данных</p>
+    <div class="st-card"><p class="sub">По видам данных${tip('<p>Можно задать своё направление каждому виду данных поверх общего.</p><p>Пример: общее — «в обе стороны», а «Компании и контакты» — «только из Битрикса в программу»: сделки и дела обмениваются в обе стороны, а компании в Битриксе программа не создаёт и не правит — только забирает их контакты в справочник клиентов.</p>')}</p>
       ${kinds.map(([k, l, h])=>`<div class="bx-map"><label>${esc(l)}<small class="muted">${esc(h)}</small></label>${this.sel(`data-bxflow="${k}"`, this.dirOpts(['both', 'in', 'out', 'off'], 'как общее: '+(this.DIR[R.mode]||'').toLowerCase()), (R.flow||{})[k]||'', l)}</div>`).join('')}
       <p class="muted">Свои направления у менеджеров — в «Менеджеры» (действует и общее, и своё).</p>
       <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveFlow">Сохранить</button></div></div>`;
@@ -110,7 +110,7 @@ class BitrixPanel {
     const cats=[['', 'основная: '+this.catName(v.category||'0')], ...c.categories.map(x=>[x.id, x.name])];
     const fb=[['', 'загружать без ответственного'], ['skip', 'не загружать'], ...(v.managers||[]).map(m=>[m.id, 'отдать: '+m.name])];
     return `<div class="st-card"><p class="sub">Менеджеры программы ↔ пользователи Битрикса</p>
-      <div class="tzi-tw"><table class="tzi-t bx-mt"><thead><tr><th>Менеджер</th><th>Пользователь Битрикса</th><th>Участвует</th><th>Направление</th><th>Воронка новых сделок</th></tr></thead><tbody>
+      <div class="tzi-tw"><table class="tzi-t bx-mt"><thead><tr><th>Менеджер</th><th>Пользователь Битрикса</th><th>Участвует</th><th>Направление${tip('<p>Своё направление менеджера действует вместе с общим (берётся более строгое).</p><p>Пример: общее «в обе стороны», у стажёра — «только в Битрикс»: его сделки уходят в Битрикс, а правки коллег из Битрикса к нему не приходят.</p>')}</th><th>Воронка новых сделок${tip('<p>Куда в Битриксе попадают новые сделки этого менеджера из программы. Пусто — основная воронка.</p><p>Пример: сервисному инженеру — воронка «Заявки в Сервис».</p>')}</th></tr></thead><tbody>
       ${c.managers.map(m=>{ const x=M[m.id]||{on:true, dir:'', cat:''};
         return `<tr data-bxm="${esc(m.id)}"><td>${esc(m.name)}${c.auto[m.id]&&!(v.users||{})[m.id]?' <em class="muted">по e-mail</em>':''}</td>
           <td>${this.sel('data-k="user"', uOpts, users[m.id]||'', 'Пользователь Битрикса')}</td>
@@ -118,7 +118,7 @@ class BitrixPanel {
           <td>${this.sel('data-k="dir"', this.dirOpts(['both', 'in', 'out'], 'как общее'), x.dir||'', 'Направление')}</td>
           <td>${this.sel('data-k="cat"', cats, x.cat||'', 'Воронка новых сделок')}</td></tr>`; }).join('')}</tbody></table></div>
       <p class="muted">Не участвует — его сделки и дела не уходят в Битрикс и не приходят из него. «Только из Битрикса» — у него правки остаются в программе.</p>
-      <div class="bx-map" style="margin-top:10px"><label>Новая сделка Битрикса, ответственный которой не сопоставлен</label>${this.sel('id="bxFb"', fb, R.fallback||'', 'Без сопоставленного ответственного')}</div>
+      <div class="bx-map" style="margin-top:10px"><label>Новая сделка Битрикса, ответственный которой не сопоставлен${tip('<p>Пользователь Битрикса не найден среди менеджеров программы (новый сотрудник, бот, сайт).</p><p>«Без ответственного» — сделка появится у руководителя во «Весь отдел»; «отдать: …» — сразу этому менеджеру; «не загружать» — останется только в Битриксе.</p>')}</label>${this.sel('id="bxFb"', fb, R.fallback||'', 'Без сопоставленного ответственного')}</div>
       <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveMgr">Сохранить</button></div></div>`;
   }
 
@@ -132,7 +132,7 @@ class BitrixPanel {
       return `<div class="bx-cat" data-bxcat="${esc(cat)}"><p class="sub">${esc(this.catName(cat))}${cat===main?' <em class="muted">основная</em>':''}${mgrCats.has(cat)?' <em class="muted">воронка менеджера</em>':''}</p>
         ${st ? v.stagesOur.map(s=>`<div class="bx-map"><label>${esc(s.label)}</label>${this.sel(`data-bxst="${esc(s.key)}"`, [['', '— не передавать —'], ...st.map(x=>[x.id, x.name+(x.sem==='S'?' (успех)':x.sem==='F'?' (провал)':'')])], cur[s.key]||'', s.label)}</div>`).join('')
           : `<p class="muted">Стадии загружаются…</p>`}</div>`; };
-    return `<div class="st-card"><div class="bx-map"><label>Основная воронка — сюда уходят новые сделки программы</label>${this.sel('id="bxCat"', c.categories.map(x=>[x.id, x.name]), main, 'Основная воронка')}</div>
+    return `<div class="st-card"><div class="bx-map"><label>Основная воронка — сюда уходят новые сделки программы${tip('<p>Сделка, созданная в программе (сохранено КП, «＋ Сделка»), появится в Битриксе в этой воронке.</p><p>Пример: «Общая». Сделки других воронок, загруженные из Битрикса, остаются в своих воронках.</p>')}</label>${this.sel('id="bxCat"', c.categories.map(x=>[x.id, x.name]), main, 'Основная воронка')}</div>
       <p class="sub" style="margin-top:12px">Загружать сделки ещё из воронок</p>
       <div class="bx-chips">${c.categories.filter(x=>x.id!==main).map(x=>this.chk(`data-bxcats="${esc(x.id)}"`, extra.has(x.id), esc(x.name))).join('')||'<span class="muted">Других воронок нет</span>'}</div>
       <p class="muted">Воронки менеджеров («Менеджеры») загружаются всегда. У каждой воронки — своё соответствие этапов; без стадии этап не передаётся (стадия в Битриксе остаётся как есть), стадии «успех» и «провал» без пары — «Выиграно» и «Проиграно».</p></div>
@@ -150,7 +150,7 @@ class BitrixPanel {
       const win=s.shared ? this.sel('data-k="win"', Object.entries(this.WIN), x.win, 'Кто главный')+'' : '<span class="muted">—</span>';
       return `<tr data-bxf="${esc(s.key)}"${x.dir==='off'?' class="off"':''}><td>${esc(s.label)}</td><td>${bx}</td><td>${this.sel('data-k="dir"', s.dirs.map(d=>[d, this.DIR_SHORT[d]]), x.dir, 'Направление')}</td><td>${win}</td></tr>`; });
     return `<div class="st-card"><p class="sub">Поле программы ↔ поле сделки Битрикса</p>
-      <div class="tzi-tw"><table class="tzi-t bx-ft"><thead><tr><th>Поле программы</th><th>Поле Битрикса</th><th>Направление</th><th>Правка с обеих сторон — главный</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>
+      <div class="tzi-tw"><table class="tzi-t bx-ft"><thead><tr><th>Поле программы</th><th>Поле Битрикса</th><th>Направление</th><th>Правка с обеих сторон — главный${tip('<p>Что делать, если поле изменили и в программе, и в Битриксе между двумя обменами.</p><p>«Последняя правка» — побеждает более поздняя; «программа» — всегда значение программы; «Битрикс» — всегда значение Битрикса.</p><p>Пример: ожидаемая дата — «последняя правка», ответственный — «Битрикс» (его меняет руководитель в Битриксе).</p>')}</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>
       <p class="muted">«Своё поле программы» программа создаёт в сделках Битрикса сама при первом обмене; можно выбрать любое поле портала (в том числе ваши). Экономика и прочие поля — только в Битрикс. Сумма «→ в Битрикс»: сделка без КП берёт сумму из Битрикса; «← из Битрикса» — всегда из Битрикса.</p>
       <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveFields">Сохранить</button><button class="btn ghost" type="button" id="bxFieldsDef">Все поля — по умолчанию</button></div></div>`;
   }
@@ -160,16 +160,16 @@ class BitrixPanel {
     const R=this.R(), S=R.send||{}, C=R.company||{}, T=R.tasks||{}, files=S.files||{};
     return `<div class="st-card"><p class="sub">Товары сделки</p>
       ${this.chk('id="bxRows"', S.rows!==false, 'Передавать товары')}
-      <div class="bx-map"><label>Как</label>${this.sel('id="bxRowsHow"', [['kp', 'позиции последнего КП (цены со скидкой, с НДС)'], ['sum', 'одной строкой — итог КП']], S.rowsHow||'kp', 'Товары')}</div></div>
+      <div class="bx-map"><label>Как${tip('<p>«Позиции последнего КП» — каждая позиция строкой с ценой со скидкой и НДС, как в документе КП.</p><p>«Одной строкой» — «КП № 2026-015» на итоговую сумму: удобно, если в Битриксе товары не ведут.</p>')}</label>${this.sel('id="bxRowsHow"', [['kp', 'позиции последнего КП (цены со скидкой, с НДС)'], ['sum', 'одной строкой — итог КП']], S.rowsHow||'kp', 'Товары')}</div></div>
     <div class="st-card"><p class="sub">Файлы КП — в ленту сделки</p>
       <div class="bx-chips">${[['word', 'КП (Word)'], ['pdf', 'КП (PDF)'], ['refs', 'Справочные документы'], ['econ', 'Экономика сделки (Excel)']].map(([k, l])=>this.chk(`data-bxfile="${k}"`, files[k]!==false, esc(l))).join('')}</div>
       <div class="bx-map"><label>Файл больше, МБ, — не отправлять</label><input type="number" id="bxMB" min="1" max="100" inputmode="numeric" value="${S.fileMB||20}"></div></div>
     <div class="st-card"><p class="sub">Компании</p>
-      <div class="bx-map"><label>Искать компанию в Битриксе</label>${this.sel('id="bxFind"', Object.entries(this.FIND), C.find||'inn_name', 'Поиск компании')}</div>
+      <div class="bx-map"><label>Искать компанию в Битриксе${tip('<p>Как найти в Битриксе компанию клиента сделки программы, чтобы не создать дубль.</p><p>«По ИНН, затем по названию» — сначала реквизиты (ИНН 7701234567), не нашлась — точное название («ООО «Ромашка»»).</p>')}</label>${this.sel('id="bxFind"', Object.entries(this.FIND), C.find||'inn_name', 'Поиск компании')}</div>
       ${this.chk('id="bxCreate"', C.create!==false, 'Не нашлась — создать компанию в Битриксе')}
       ${this.chk('id="bxReqs"', C.reqs!==false, 'С реквизитами (ИНН, КПП, ОГРН, адрес)')}
-      <div class="bx-map"><label>Контакты (телефон, почта)</label>${this.sel('id="bxCons"', this.dirOpts(['both', 'in', 'out', 'off']), C.contacts||'both', 'Контакты')}</div></div>
-    <div class="st-card"><p class="sub">Дела</p>
+      <div class="bx-map"><label>Контакты (телефон, почта)${tip('<p>Обмен контактами клиента. «В обе стороны» — контакты из КП уходят в компанию Битрикса, а телефоны, почта и сотрудники компании Битрикса дописываются в справочник клиентов программы (без повторов, реквизиты программы не меняются).</p>')}</label>${this.sel('id="bxCons"', this.dirOpts(['both', 'in', 'out', 'off']), C.contacts||'both', 'Контакты')}</div></div>
+    <div class="st-card"><p class="sub">Дела${tip('<p>Каким делом Битрикса становится дело программы. «Дело (универсальное)» — новое дело Битрикса с крайним сроком; «звонок», «встреча» — дела этих видов (в старых версиях Битрикса); «не передавать» — дело остаётся только в программе.</p>')}</p>
       ${[['call', 'Звонок'], ['meet', 'Встреча'], ['mail', 'Письмо'], ['task', 'Задача']].map(([k, l])=>`<div class="bx-map"><label>${esc(l)} → в Битриксе</label>${this.sel(`data-bxtask="${k}"`, Object.entries(this.TASK_AS), (T.kinds||{})[k]||'todo', l)}</div>`).join('')}
       ${this.chk('id="bxCancel"', T.cancel!==false, 'Передавать отмену дела («Отменено — …»)')}
       ${this.chk('id="bxOther"', T.other!==false, 'Загружать дела, заведённые в Битриксе вручную')}
@@ -180,10 +180,10 @@ class BitrixPanel {
   static t_sched(){
     const v=this.v, S=this.R().sched||{};
     return `<div class="st-card"><p class="sub">Расписание обмена</p>
-      <div class="bx-map"><label>Спрашивать изменения раз в, с</label><input type="number" id="bxPoll" min="30" max="3600" inputmode="numeric" value="${v.pollSec||90}"></div>
+      <div class="bx-map"><label>Спрашивать изменения раз в, с${tip('<p>Как часто программа забирает из Битрикса изменения и новые сделки. Пример: 90 — раз в полторы минуты. Меньше — быстрее, но больше запросов к порталу (не реже 30 с).</p>')}</label><input type="number" id="bxPoll" min="30" max="3600" inputmode="numeric" value="${v.pollSec||90}"></div>
       <div class="bx-map"><label>Часы обмена (пусто — круглосуточно)</label><span class="bx-hours"><input type="time" id="bxFrom" value="${esc(S.from||'')}" aria-label="С"> — <input type="time" id="bxTo" value="${esc(S.to||'')}" aria-label="До"></span></div>
-      <div class="bx-map"><label>Записей за один обмен</label><input type="number" id="bxBatch" min="10" max="2000" inputmode="numeric" value="${S.batch||200}"></div>
-      <div class="bx-map"><label>Попыток отправки записи (потом — «Не отправлено»)</label><input type="number" id="bxTries" min="1" max="100" inputmode="numeric" value="${S.tries||20}"></div>
+      <div class="bx-map"><label>Записей за один обмен${tip('<p>Сколько сделок и дел отправить за один раз. Остальное уйдёт следующим обменом. Пример: 200 — при первом включении 1 000 сделок уйдут за 5 обменов (около 8 минут при опросе раз в 90 с).</p>')}</label><input type="number" id="bxBatch" min="10" max="2000" inputmode="numeric" value="${S.batch||200}"></div>
+      <div class="bx-map"><label>Попыток отправки записи (потом — «Не отправлено»)${tip('<p>Битрикс недоступен или ответил ошибкой — запись пробуется снова с паузой от 1 минуты до часа. После стольких попыток она попадает в «Журнал и проверка → Не отправлено», откуда её можно повторить вручную.</p>')}</label><input type="number" id="bxTries" min="1" max="100" inputmode="numeric" value="${S.tries||20}"></div>
       <p class="muted">Вне часов обмена фоновый обмен ждёт; кнопки «Обменяться сейчас», «Загрузить из Битрикса», «Выгрузить сделку» работают всегда. Повтор после ошибки — с паузой от 1 минуты до часа.</p>
       <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveSched">Сохранить</button></div></div>`;
   }
@@ -210,7 +210,7 @@ class BitrixPanel {
     const act={ new:'новая', link:'связать', skip:'пропустить' };
     return `<div class="st-card"><p class="sub">Сделки Битрикса, созданные до включения связи</p>
       <p class="muted">Новые сделки воронок обмена приходят сами. Здесь — более ранние: с выбранной даты, по воронкам обмена. Сделка того же клиента (ИНН), открытая в программе и ещё не связанная, — связывается; остальные — новые сделки в программе (без отметки «новая из Битрикса»).</p>
-      <div class="row bx-btns"><label class="f bx-num"><span>Созданные с</span><input type="date" id="bxFromD" value="${esc((p&&p.from)||'')}"></label>
+      <div class="row bx-btns"><label class="f bx-num"><span>Созданные с${tip('<p>С какой даты создания показать сделки Битрикса. Пример: 01.01.2026 — все сделки этого года из воронок обмена. Сначала — предпросмотр «Что будет», загрузка — только отмеченных.</p>')}</span><input type="date" id="bxFromD" value="${esc((p&&p.from)||'')}"></label>
         <button class="btn" type="button" id="bxImpPv"${v.on?'':' disabled'}>Показать</button></div>
       ${p?`<p class="muted">Найдено ${p.items.length}${p.items.length>=p.max?` (показаны первые ${p.max})`:''} · воронки: ${esc(cats.map(c=>this.catName(c)).join(', '))} · до ${esc(Fmt.date?Fmt.date(p.until):p.until)}</p>
         ${p.items.length?`<div class="tzi-tw"><table class="tzi-t bx-it"><thead><tr><th><input type="checkbox" id="bxImpAll" checked aria-label="Все"></th><th>Сделка Битрикса</th><th>Создана</th><th>Сумма</th><th>Этап</th><th>Менеджер</th><th>Что будет</th></tr></thead><tbody>
