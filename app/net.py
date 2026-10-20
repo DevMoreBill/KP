@@ -9,7 +9,7 @@ import urllib.request
 
 
 class Net:
-    UA = 'Mozilla/5.0 (KP-Pnevmotekh)'
+    USER_AGENT = 'Mozilla/5.0 (KP-Pnevmotekh)'
     TIMEOUT = 20
     LIMIT = 8 * 1024 * 1024
     RETRY_PAUSE = 1.5
@@ -18,9 +18,11 @@ class Net:
     def read(cls, resp, limit: int | None = None) -> bytes:
         """Тело ответа не больше limit байт, иначе ValueError."""
         limit = limit or cls.LIMIT
-        n = resp.headers.get('Content-Length') if getattr(resp, 'headers', None) is not None else None
-        if n and str(n).isdigit() and int(n) > limit:
-            raise ValueError(f'Ответ сервиса слишком большой: {int(n) // 1048576} МБ (ждали до {limit // 1048576} МБ)')
+        length = resp.headers.get('Content-Length') if getattr(resp, 'headers', None) is not None else None
+        if length and str(length).isdigit() and int(length) > limit:
+            raise ValueError(
+                f'Ответ сервиса слишком большой: {int(length) // 1048576} МБ (ждали до {limit // 1048576} МБ)'
+            )
         data = resp.read(limit + 1)
         if len(data) > limit:
             raise ValueError(f'Ответ сервиса слишком большой (больше {limit // 1048576} МБ)')
@@ -39,49 +41,49 @@ class Net:
         opener=None,
     ) -> bytes | None:
         """Байты ответа; HTTPError — вызывающему; обрыв — повтор (GET — 1 раз, POST — нет)."""
-        h = {'User-Agent': cls.UA}
-        h.update(headers or {})
+        merged = {'User-Agent': cls.USER_AGENT}
+        merged.update(headers or {})
         meth = method or ('POST' if data is not None else 'GET')
         tries = 1 + (retries if retries is not None else (1 if meth == 'GET' else 0))
         open_ = opener.open if opener is not None else urllib.request.urlopen
         for k in range(tries):
-            req = urllib.request.Request(url, data=data, headers=h, method=meth)
+            req = urllib.request.Request(url, data=data, headers=merged, method=meth)
             try:
-                with open_(req, timeout=timeout or cls.TIMEOUT) as r:
-                    return cls.read(r, limit)
+                with open_(req, timeout=timeout or cls.TIMEOUT) as resp:
+                    return cls.read(resp, limit)
             except urllib.error.HTTPError:
                 raise
-            except (urllib.error.URLError, ConnectionError) as e:
+            except (urllib.error.URLError, ConnectionError) as exc:
                 # тайм-аут не повторяется: «молчащий» перевозчик удвоил бы ожидание логистики
-                if k + 1 >= tries or cls._timeout(e):
+                if k + 1 >= tries or cls._timeout(exc):
                     raise
                 time.sleep(cls.RETRY_PAUSE)
         return None
 
     @staticmethod
-    def _timeout(e: BaseException) -> bool:
-        r = getattr(e, 'reason', e)
-        return isinstance(r, (socket.timeout, TimeoutError)) or 'timed out' in str(r)
+    def _timeout(exc: BaseException) -> bool:
+        reason = getattr(exc, 'reason', exc)
+        return isinstance(reason, (socket.timeout, TimeoutError)) or 'timed out' in str(reason)
 
     @classmethod
     def json(cls, url: str, data: bytes | None = None, headers: dict | None = None, method: str | None = None, **kw):
-        h = {'Accept': 'application/json'}
-        h.update(headers or {})
-        return json.loads(cls.request(url, data=data, headers=h, method=method, **kw).decode('utf-8-sig'))
+        merged = {'Accept': 'application/json'}
+        merged.update(headers or {})
+        return json.loads(cls.request(url, data=data, headers=merged, method=method, **kw).decode('utf-8-sig'))
 
     @staticmethod
-    def why(e: BaseException) -> str:
+    def why(exc: BaseException) -> str:
         """Причина сбоя без адреса запроса (в нём бывает ключ API)."""
-        if isinstance(e, urllib.error.HTTPError):
-            return f'сервис ответил ошибкой {e.code}'
-        r = getattr(e, 'reason', e)
-        if Net._timeout(e):
+        if isinstance(exc, urllib.error.HTTPError):
+            return f'сервис ответил ошибкой {exc.code}'
+        reason = getattr(exc, 'reason', exc)
+        if Net._timeout(exc):
             return 'сервис не ответил вовремя'
-        if isinstance(r, socket.gaierror):
+        if isinstance(reason, socket.gaierror):
             return 'адрес сервиса не найден — нет интернета или DNS'
-        if isinstance(r, ConnectionRefusedError):
+        if isinstance(reason, ConnectionRefusedError):
             return 'сервис отказал в соединении'
-        if isinstance(e, ValueError):
-            return str(e)[:160]
-        hidden = re.sub(r'\w+://\S+', 'адрес скрыт', str(r))[:120]
+        if isinstance(exc, ValueError):
+            return str(exc)[:160]
+        hidden = re.sub(r'\w+://\S+', 'адрес скрыт', str(reason))[:120]
         return f'нет связи с сервисом ({hidden})'

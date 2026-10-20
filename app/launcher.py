@@ -22,8 +22,8 @@ class _UpdateFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, name, path=None, target=None):
         if '.' in name:
             return None
-        f = os.path.join(self.folder, name + '.py')
-        return importlib.util.spec_from_file_location(name, f) if os.path.isfile(f) else None
+        file_path = os.path.join(self.folder, name + '.py')
+        return importlib.util.spec_from_file_location(name, file_path) if os.path.isfile(file_path) else None
 
 
 class Launcher:
@@ -40,13 +40,13 @@ class Launcher:
         self.root = os.path.dirname(os.path.abspath(sys.executable if self.frozen else __file__))
         self.upd = os.path.join(self.root, 'update')
         self.finder = None
-        self.uv = ''
+        self.update_version = ''
 
     @staticmethod
-    def dir_version(d: str) -> str:
+    def dir_version(folder: str) -> str:
         try:
-            with open(os.path.join(d, 'version.json'), encoding='utf-8-sig') as f:
-                return str(json.load(f).get('version') or '')
+            with open(os.path.join(folder, 'version.json'), encoding='utf-8-sig') as file:
+                return str(json.load(file).get('version') or '')
         except (OSError, ValueError, AttributeError):
             return ''
 
@@ -57,18 +57,18 @@ class Launcher:
 
     def activate(self) -> bool:
         """Подключить обновление из папки update, если оно новее EXE. → True, если подключено."""
-        uv = self.dir_version(self.upd)
+        upd_version = self.dir_version(self.upd)
         app = os.path.join(self.upd, 'app')
-        if not (self.frozen and self.newer(uv) and os.path.isfile(os.path.join(app, 'kp_server.py'))):
+        if not (self.frozen and self.newer(upd_version) and os.path.isfile(os.path.join(app, 'kp_server.py'))):
             return False
         os.environ['KP_UPDATE_DIR'] = self.upd
         os.environ['KP_BASE_VERSION'] = version.VERSION  # версия, встроенная в EXE («Настройки → Обновления»)
-        os.environ['KP_UPDATE_VERSION'] = uv
+        os.environ['KP_UPDATE_VERSION'] = upd_version
         os.environ['KP_UPDATE_FALLBACK'] = '1'
         self.finder = _UpdateFinder(app)
         sys.meta_path.insert(0, self.finder)
         sys.modules.pop('version', None)  # версия — тоже из обновления
-        self.uv = uv
+        self.update_version = upd_version
         return True
 
     def run(self):
@@ -80,19 +80,19 @@ class Launcher:
             import kp_server
 
             return kp_server.main()
-        except Exception as e:
+        except Exception as exc:
             # после самопроверки (kp_server.STARTED) программа уже работала — это не сбой запуска обновления
             if getattr(sys.modules.get('kp_server'), 'STARTED', False):
                 raise
-            return self.fall_back(e)
+            return self.fall_back(exc)
 
     # ---------- возврат к прежней версии
-    def fall_back(self, e: BaseException):
+    def fall_back(self, exc: BaseException):
         rec = {
-            'version': self.uv,
+            'version': self.update_version,
             'exe': version.VERSION,
             'at': datetime.now().isoformat(timespec='seconds'),
-            'reason': (f'{type(e).__name__}: {e}')[:600],
+            'reason': (f'{type(exc).__name__}: {exc}')[:600],
             'trace': traceback.format_exc()[-6000:],
         }
         self._unload()
@@ -100,7 +100,7 @@ class Launcher:
             self._message(
                 'Обновление {} не запустилось, и отключить его не удалось (папка {} занята или нет прав).\n\n'
                 'Причина: {}\n\nУдалите папку update рядом с программой и запустите программу снова — '
-                'заработает версия {}.'.format(self.uv, self.upd, rec['reason'], version.VERSION)
+                'заработает версия {}.'.format(self.update_version, self.upd, rec['reason'], version.VERSION)
             )
             return 1
         rec['back'] = self._restore_prev() or version.VERSION
@@ -113,7 +113,7 @@ class Launcher:
         except Exception as err:
             self._message(
                 'Обновление {} не запустилось — программа вернулась к версии {}, но перезапустить себя не смогла: {}.\n\n'
-                'Запустите программу ещё раз.'.format(self.uv, rec['back'], err)
+                'Запустите программу ещё раз.'.format(self.update_version, rec['back'], err)
             )
         try:
             sys.stdout.flush()
@@ -127,9 +127,9 @@ class Launcher:
         if self.finder in sys.meta_path:
             sys.meta_path.remove(self.finder)
         top = os.path.normcase(os.path.join(self.upd, ''))
-        for name, m in list(sys.modules.items()):
-            f = getattr(m, '__file__', None) or ''
-            if f and os.path.normcase(os.path.abspath(f)).startswith(top):
+        for name, module in list(sys.modules.items()):
+            path = getattr(module, '__file__', None) or ''
+            if path and os.path.normcase(os.path.abspath(path)).startswith(top):
                 sys.modules.pop(name, None)
         sys.modules['version'] = version
         for k in self.ENV:
@@ -157,27 +157,27 @@ class Launcher:
     def _restore_prev(self) -> str:
         """Предыдущее обновление (update.prev), если оно новее EXE, — снова в update. → его версия или ''."""
         prev = self.upd + '.prev'
-        pv = self.dir_version(prev)
-        if not self.newer(pv) or os.path.exists(self.upd):
+        prev_version = self.dir_version(prev)
+        if not self.newer(prev_version) or os.path.exists(self.upd):
             return ''
         try:
             os.replace(prev, self.upd)
-            return pv
+            return prev_version
         except OSError:
             return ''
 
     def _record(self, rec: dict) -> None:
         path = os.path.join(self.root, self.FAILED_LOG)
         try:
-            with open(path, encoding='utf-8') as f:
-                recs = json.load(f)
+            with open(path, encoding='utf-8') as file:
+                recs = json.load(file)
             recs = recs if isinstance(recs, list) else []
         except (OSError, ValueError):
             recs = []
         recs = ([*recs, rec])[-self.KEEP :]
         try:
-            with open(path + '.tmp', 'w', encoding='utf-8') as f:
-                json.dump(recs, f, ensure_ascii=False, indent=1)
+            with open(path + '.tmp', 'w', encoding='utf-8') as file:
+                json.dump(recs, file, ensure_ascii=False, indent=1)
             os.replace(path + '.tmp', path)
         except OSError:
             pass

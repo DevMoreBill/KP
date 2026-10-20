@@ -51,9 +51,11 @@ class CategoryProfile:
     def _rebuild(self, cat: str, rev) -> dict | None:
         try:
             cards = [
-                c
-                for c in (self._card(doc) for (doc,) in self.store.all('SELECT doc FROM catalog WHERE cat = ?', (cat,)))
-                if c
+                card
+                for card in (
+                    self._card(doc) for (doc,) in self.store.all('SELECT doc FROM catalog WHERE cat = ?', (cat,))
+                )
+                if card
             ]
             prof = self._profile(cat, cards) if len(cards) >= self.MIN_CARDS else None
             with self._lock:
@@ -67,55 +69,62 @@ class CategoryProfile:
     def _card(text: str) -> dict | None:
         """Блоки описания, группы и строки карточки; None — опция или пустая."""
         try:
-            d = json.loads(text)
+            doc = json.loads(text)
         except ValueError:
             return None
-        if d.get('kind') == 'option':
+        if doc.get('kind') == 'option':
             return None
-        feats = [f for f in (d.get('features') or []) if isinstance(f, dict) and str(f.get('text') or '').strip()]
-        groups = [
-            g
-            for g in (d.get('groups') or [])
-            if isinstance(g, dict) and any(isinstance(r, dict) and r.get('v') for r in (g.get('rows') or []))
+        feats = [
+            feat
+            for feat in (doc.get('features') or [])
+            if isinstance(feat, dict) and str(feat.get('text') or '').strip()
         ]
-        rows = [r for g in groups for r in g['rows'] if isinstance(r, dict) and r.get('k') and r.get('v')]
+        groups = [
+            group
+            for group in (doc.get('groups') or [])
+            if isinstance(group, dict)
+            and any(isinstance(row, dict) and row.get('v') for row in (group.get('rows') or []))
+        ]
+        rows = [
+            row for group in groups for row in group['rows'] if isinstance(row, dict) and row.get('k') and row.get('v')
+        ]
         if not feats and not rows:
             return None
         return {
-            'feats': [(str(f.get('label') or '').strip(), len(str(f['text']))) for f in feats],
-            'groups': [str(g.get('name') or '').strip() for g in groups],
-            'keys': [str(r['k']).strip() for r in rows],
+            'feats': [(str(feat.get('label') or '').strip(), len(str(feat['text']))) for feat in feats],
+            'groups': [str(group.get('name') or '').strip() for group in groups],
+            'keys': [str(row['k']).strip() for row in rows],
         }
 
-    def _profile(self, cat: str, L: list[dict]) -> dict:
-        def med(xs):
-            return round(statistics.median(xs)) if xs else 0
+    def _profile(self, cat: str, cards: list[dict]) -> dict:
+        def med(values):
+            return round(statistics.median(values)) if values else 0
 
-        n = len(L)
+        count = len(cards)
         keys, shown, labels, gnames = Counter(), defaultdict(Counter), Counter(), Counter()
-        for c in L:
-            for k in {KeyNorm.of(x) for x in c['keys'] if x}:
+        for card in cards:
+            for k in {KeyNorm.of(x) for x in card['keys'] if x}:
                 keys[k] += 1
-            for x in c['keys']:
+            for x in card['keys']:
                 shown[KeyNorm.of(x)][x] += 1
-            labels.update({lb for lb, _ in c['feats'] if lb})
-            gnames.update({g for g in c['groups'] if g})
-        block = [ln for c in L for _, ln in c['feats']]
+            labels.update({label for label, _ in card['feats'] if label})
+            gnames.update({group for group in card['groups'] if group})
+        block = [line for card in cards for _, line in card['feats']]
         return {
             'cat': cat,
-            'cards': n,
-            'features': med([len(c['feats']) for c in L]),
+            'cards': count,
+            'features': med([len(card['feats']) for card in cards]),
             'blockChars': med(block),
-            'descChars': med([sum(ln for _, ln in c['feats']) for c in L]),
-            'groups': med([len(c['groups']) for c in L]),
-            'rows': med([len(c['keys']) for c in L]),
+            'descChars': med([sum(line for _, line in card['feats']) for card in cards]),
+            'groups': med([len(card['groups']) for card in cards]),
+            'rows': med([len(card['keys']) for card in cards]),
             'keys': [
-                {'k': shown[k].most_common(1)[0][0], 'share': round(v / n, 2)}
+                {'k': shown[k].most_common(1)[0][0], 'share': round(v / count, 2)}
                 for k, v in keys.most_common(self.TOP_KEYS)
-                if v / n >= self.KEY_SHARE
+                if v / count >= self.KEY_SHARE
             ],
-            'labels': [lb for lb, v in labels.most_common(self.TOP_LABELS) if v / n >= 0.15],
-            'groupNames': [g for g, v in gnames.most_common(8) if v / n >= 0.15],
+            'labels': [label for label, v in labels.most_common(self.TOP_LABELS) if v / count >= 0.15],
+            'groupNames': [group for group, v in gnames.most_common(8) if v / count >= 0.15],
         }
 
 
@@ -133,7 +142,7 @@ class ModelFacts:
     @classmethod
     def words(cls, name) -> frozenset:
         """«Компрессор G 11, 7,5 бар» → {компрессор, g, 11, 7.5, бар}."""
-        return frozenset(w.lower().replace('ё', 'е').replace(',', '.') for w in cls.WORD.findall(str(name or '')))
+        return frozenset(word.lower().replace('ё', 'е').replace(',', '.') for word in cls.WORD.findall(str(name or '')))
 
     def find(self, maker: str = '', model: str = '', name: str = '', exclude: str = '') -> list[dict]:
         """[{name, rows: [[k, v]], text}] — до LIMIT карточек, кроме exclude."""
@@ -155,29 +164,29 @@ class ModelFacts:
             if cid == exclude:
                 continue
             try:
-                d = json.loads(text)
+                doc = json.loads(text)
             except ValueError:
                 continue
-            if d.get('kind') == 'option' or self.words(d.get('name')) != key:
+            if doc.get('kind') == 'option' or self.words(doc.get('name')) != key:
                 continue
-            fact = self._facts(d)
+            fact = self._facts(doc)
             if fact['rows'] or fact['text']:
                 out.append(fact)
             if len(out) >= self.LIMIT:
                 break
         return out
 
-    def _facts(self, d: dict) -> dict:
+    def _facts(self, doc: dict) -> dict:
         rows = [
-            [str(r.get('k')), str(r.get('v'))]
-            for g in (d.get('groups') or [])
-            if isinstance(g, dict)
-            for r in (g.get('rows') or [])
-            if isinstance(r, dict) and r.get('k') and r.get('v')
+            [str(row.get('k')), str(row.get('v'))]
+            for group in (doc.get('groups') or [])
+            if isinstance(group, dict)
+            for row in (group.get('rows') or [])
+            if isinstance(row, dict) and row.get('k') and row.get('v')
         ][: self.MAX_ROWS]
         text = '\n'.join(
-            f'{f.get("label") or ""}: {f.get("text") or ""}'
-            for f in (d.get('features') or [])
-            if isinstance(f, dict) and f.get('text')
+            f'{feat.get("label") or ""}: {feat.get("text") or ""}'
+            for feat in (doc.get('features') or [])
+            if isinstance(feat, dict) and feat.get('text')
         )[: self.MAX_TEXT]
-        return {'name': str(d.get('name') or ''), 'rows': rows, 'text': text}
+        return {'name': str(doc.get('name') or ''), 'rows': rows, 'text': text}

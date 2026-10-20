@@ -42,16 +42,18 @@ def _no_window() -> dict:
 
 
 def soffice_path() -> str | None:
-    for n in ('soffice', 'libreoffice'):
-        p = shutil.which(n)
-        if p:
-            return p
+    for name in ('soffice', 'libreoffice'):
+        path = shutil.which(name)
+        if path:
+            return path
     if os.name == 'nt':
         for env in ('ProgramFiles', 'ProgramW6432', 'ProgramFiles(x86)'):
             base = os.environ.get(env)
             if base:
-                for p in sorted(glob.glob(os.path.join(base, 'LibreOffice*', 'program', 'soffice.exe')), reverse=True):
-                    return p
+                for path in sorted(
+                    glob.glob(os.path.join(base, 'LibreOffice*', 'program', 'soffice.exe')), reverse=True
+                ):
+                    return path
     return None
 
 
@@ -76,13 +78,13 @@ def _ok(path: str) -> bool:
 
 
 def _word(src: str, dst: str) -> None:
-    ps = os.path.join(
+    script = os.path.join(
         os.environ.get('WINDIR', r'C:\Windows'), 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'
     )
     env = dict(os.environ, KP_PDF_IN=src, KP_PDF_OUT=dst)
-    r = subprocess.run(  # noqa: PLW1510 — код выхода разбирается ниже
+    proc = subprocess.run(  # noqa: PLW1510 — код выхода разбирается ниже
         [
-            ps if os.path.isfile(ps) else 'powershell.exe',
+            script if os.path.isfile(script) else 'powershell.exe',
             '-NoProfile',
             '-NonInteractive',
             '-ExecutionPolicy',
@@ -96,7 +98,7 @@ def _word(src: str, dst: str) -> None:
         **_no_window(),
     )
     if not _ok(dst):
-        err = (r.stderr or r.stdout or b'').decode('cp866' if os.name == 'nt' else 'utf-8', 'replace').strip()
+        err = (proc.stderr or proc.stdout or b'').decode('cp866' if os.name == 'nt' else 'utf-8', 'replace').strip()
         raise RuntimeError('Word: ' + (err.splitlines()[0] if err else 'файл PDF не создан'))
 
 
@@ -144,8 +146,8 @@ def _cloud(src: str, dst: str, key: str) -> None:
     from net import Net
 
     boundary = uuid.uuid4().hex
-    with open(src, 'rb') as f:
-        data = f.read()
+    with open(src, 'rb') as file:
+        data = file.read()
     body = b''.join(
         [
             (f'--{boundary}\r\nContent-Disposition: form-data; name="StoreFile"\r\n\r\nfalse\r\n').encode(),
@@ -172,19 +174,19 @@ def _cloud(src: str, dst: str, key: str) -> None:
                 },
             ).decode('utf-8')
         )
-    except urllib.error.HTTPError as e:
+    except urllib.error.HTTPError as exc:
         try:
-            msg = json.loads(e.read().decode('utf-8')).get('Message')
+            msg = json.loads(exc.read().decode('utf-8')).get('Message')
         except Exception:
             msg = ''
-        raise RuntimeError('ConvertAPI: %s' % (msg or f'ошибка {e.code}')) from e
-    except OSError as e:
-        raise RuntimeError(f'ConvertAPI недоступен: {e}') from e
+        raise RuntimeError('ConvertAPI: %s' % (msg or f'ошибка {exc.code}')) from exc
+    except OSError as exc:
+        raise RuntimeError(f'ConvertAPI недоступен: {exc}') from exc
     files = res.get('Files') or []
     if not files or not files[0].get('FileData'):
         raise RuntimeError('ConvertAPI: файл PDF не получен')
-    with open(dst, 'wb') as f:
-        f.write(base64.b64decode(files[0]['FileData']))
+    with open(dst, 'wb') as file:
+        file.write(base64.b64decode(files[0]['FileData']))
     if not _ok(dst):
         raise RuntimeError('ConvertAPI: файл PDF пустой')
 
@@ -192,28 +194,28 @@ def _cloud(src: str, dst: str, key: str) -> None:
 def convert_file(src: str, dst: str, cloud_key: str | None = None) -> str:
     """DOCX-файл src → PDF-файл dst."""
     try:
-        with open(src, 'rb') as fh:
-            DocxCheck.check(fh.read(DocxCheck.MAX + 1))
-    except ValueError as e:
-        raise RuntimeError(str(e)) from e
+        with open(src, 'rb') as handle:
+            DocxCheck.check(handle.read(DocxCheck.MAX + 1))
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
     tried = []
     with LOCK:
-        for name, ok, fn in (
+        for name, ok, convert in (
             ('Word', word_available, _word),
             ('LibreOffice', lambda: bool(soffice_path()), _libreoffice),
-            ('ConvertAPI', lambda: bool(cloud_key), lambda s, d: _cloud(s, d, cloud_key)),
+            ('ConvertAPI', lambda: bool(cloud_key), lambda src_path, dst_path: _cloud(src_path, dst_path, cloud_key)),
         ):
             if not ok():
                 continue
             try:
                 if os.path.exists(dst):
                     os.remove(dst)
-                fn(src, dst)
+                convert(src, dst)
                 return dst
             except subprocess.TimeoutExpired:
                 tried.append(f'{name} не успел за отведённое время')
-            except Exception as e:
-                tried.append(str(e) or name)
+            except Exception as exc:
+                tried.append(str(exc) or name)
     if not tried:
         raise RuntimeError(
             'на компьютере-сервере нет Microsoft Word или LibreOffice и не задан ключ ConvertAPI — сохраните PDF через печать из предпросмотра'
@@ -236,35 +238,38 @@ class DocxCheck:
             z = zipfile.ZipFile(io.BytesIO(data))
             names = set(z.namelist())
             if any(
-                (n == '[Content_Types].xml' or n.endswith('.rels')) and z.getinfo(n).file_size > cls.PART for n in names
+                (name == '[Content_Types].xml' or name.endswith('.rels')) and z.getinfo(name).file_size > cls.PART
+                for name in names
             ):
                 raise ValueError('это не документ Word (.docx)')
-            ct = z.read('[Content_Types].xml').decode('utf-8', 'replace') if '[Content_Types].xml' in names else ''
+            content_types = (
+                z.read('[Content_Types].xml').decode('utf-8', 'replace') if '[Content_Types].xml' in names else ''
+            )
         except (zipfile.BadZipFile, KeyError, OSError, NotImplementedError):
             raise ValueError('это не документ Word (.docx)') from None
-        if 'word/document.xml' not in names or 'wordprocessingml.document.main+xml' not in ct:
+        if 'word/document.xml' not in names or 'wordprocessingml.document.main+xml' not in content_types:
             raise ValueError('это не документ Word (.docx)')
-        if 'macroEnabled' in ct or any(
-            n.lower().endswith('vbaproject.bin') or n.lower().startswith('word/activex') for n in names
+        if 'macroEnabled' in content_types or any(
+            name.lower().endswith('vbaproject.bin') or name.lower().startswith('word/activex') for name in names
         ):
             raise ValueError('документ с макросами не преобразуется')
-        for n in names:
-            if n.endswith('.rels'):
-                for m in re.finditer(r'<Relationship\b[^>]*>', z.read(n).decode('utf-8', 'replace')):
-                    t = re.search(r'\bType="([^"]*)"', m.group(0))
-                    if 'External' in m.group(0) and t and cls.BAD_REL.search(t.group(1)):
+        for name in names:
+            if name.endswith('.rels'):
+                for match in re.finditer(r'<Relationship\b[^>]*>', z.read(name).decode('utf-8', 'replace')):
+                    type_match = re.search(r'\bType="([^"]*)"', match.group(0))
+                    if 'External' in match.group(0) and type_match and cls.BAD_REL.search(type_match.group(1)):
                         raise ValueError('документ ссылается на внешний шаблон или объект — не преобразуется')
 
 
 def convert_bytes(data: bytes, cloud_key: str | None = None) -> bytes:
     DocxCheck.check(data)
-    d = tempfile.mkdtemp(prefix='kp_pdfb_')
+    tmp = tempfile.mkdtemp(prefix='kp_pdfb_')
     try:
-        src, dst = os.path.join(d, 'kp.docx'), os.path.join(d, 'kp.pdf')
-        with open(src, 'wb') as f:
-            f.write(data)
+        src, dst = os.path.join(tmp, 'kp.docx'), os.path.join(tmp, 'kp.pdf')
+        with open(src, 'wb') as file:
+            file.write(data)
         convert_file(src, dst, cloud_key)
-        with open(dst, 'rb') as f:
-            return f.read()
+        with open(dst, 'rb') as file:
+            return file.read()
     finally:
-        shutil.rmtree(d, ignore_errors=True)
+        shutil.rmtree(tmp, ignore_errors=True)

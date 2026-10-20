@@ -36,77 +36,83 @@ def _nom(path: str, params: dict):
     )
 
 
-def _f(v) -> float | None:
+def _num(v) -> float | None:
     try:
         return round(float(v), 6)
     except (TypeError, ValueError):
         return None
 
 
-def _dd_item(s: dict) -> dict:
-    d = s.get('data') or {}
-    city = d.get('city') or d.get('settlement') or d.get('area') or d.get('region') or ''
+def _dd_item(sugg: dict) -> dict:
+    data = sugg.get('data') or {}
+    city = data.get('city') or data.get('settlement') or data.get('area') or data.get('region') or ''
     return {
-        'value': s.get('value') or '',
-        'lat': _f(d.get('geo_lat')),
-        'lon': _f(d.get('geo_lon')),
+        'value': sugg.get('value') or '',
+        'lat': _num(data.get('geo_lat')),
+        'lon': _num(data.get('geo_lon')),
         'city': city,
-        'region': d.get('region_with_type') or '',
-        'exact': str(d.get('qc_geo')) in ('0', '1'),
+        'region': data.get('region_with_type') or '',
+        'exact': str(data.get('qc_geo')) in ('0', '1'),
         'src': 'DaData',
     }
 
 
-def _nom_item(r: dict) -> dict:
-    a = r.get('address') or {}
+def _nom_item(rec: dict) -> dict:
+    addr = rec.get('address') or {}
     city = (
-        a.get('city') or a.get('town') or a.get('village') or a.get('hamlet') or a.get('county') or a.get('state') or ''
+        addr.get('city')
+        or addr.get('town')
+        or addr.get('village')
+        or addr.get('hamlet')
+        or addr.get('county')
+        or addr.get('state')
+        or ''
     )
-    parts = [a.get('state'), city if city != a.get('state') else '', a.get('road'), a.get('house_number')]
-    value = ', '.join(p for p in parts if p) or r.get('display_name', '')
+    parts = [addr.get('state'), city if city != addr.get('state') else '', addr.get('road'), addr.get('house_number')]
+    value = ', '.join(part for part in parts if part) or rec.get('display_name', '')
     return {
         'value': value,
-        'lat': _f(r.get('lat')),
-        'lon': _f(r.get('lon')),
+        'lat': _num(rec.get('lat')),
+        'lon': _num(rec.get('lon')),
         'city': city,
-        'region': a.get('state') or '',
-        'exact': bool(a.get('house_number')),
+        'region': addr.get('state') or '',
+        'exact': bool(addr.get('house_number')),
         'src': 'OpenStreetMap',
     }
 
 
-def suggest(store, q: str) -> dict:
-    q = str(q or '').strip()[:200]
-    if len(q) < 3:
+def suggest(store, query: str) -> dict:
+    query = str(query or '').strip()[:200]
+    if len(query) < 3:
         return {'items': [], 'src': ''}
     k = _key(store)
     if k:
         j = http_json(
             DADATA + '/suggest/address',
-            data={'query': q, 'count': 8, 'locations': [{'country_iso_code': 'RU'}]},
+            data={'query': query, 'count': 8, 'locations': [{'country_iso_code': 'RU'}]},
             headers={'Content-Type': 'application/json', 'Authorization': 'Token ' + k},
         )
-        return {'items': [_dd_item(s) for s in j.get('suggestions') or []], 'src': 'DaData'}
-    j = _nom('/search', {'q': q, 'countrycodes': 'ru', 'limit': 8})
+        return {'items': [_dd_item(sugg) for sugg in j.get('suggestions') or []], 'src': 'DaData'}
+    j = _nom('/search', {'q': query, 'countrycodes': 'ru', 'limit': 8})
     return {
-        'items': [_nom_item(r) for r in j if isinstance(r, dict)] if isinstance(j, list) else [],
+        'items': [_nom_item(rec) for rec in j if isinstance(rec, dict)] if isinstance(j, list) else [],
         'src': 'OpenStreetMap',
     }
 
 
-def locate(store, q: str) -> dict:
+def locate(store, query: str) -> dict:
     """Координаты по адресу через OpenStreetMap (у подсказки DaData их может не быть)."""
-    q = str(q or '').strip()[:300]
-    if not q:
+    query = str(query or '').strip()[:300]
+    if not query:
         raise ValueError('Пустой адрес')
-    j = _nom('/search', {'q': q, 'countrycodes': 'ru', 'limit': 1})
+    j = _nom('/search', {'q': query, 'countrycodes': 'ru', 'limit': 1})
     if isinstance(j, list) and j:
         return _nom_item(j[0])
     raise ValueError('Адрес не найден на карте')
 
 
 def reverse(store, lat, lon) -> dict:
-    lat, lon = _f(lat), _f(lon)
+    lat, lon = _num(lat), _num(lon)
     if lat is None or lon is None or not (-90 <= lat <= 90 and -180 <= lon <= 180):
         raise ValueError('Неверные координаты')
     k = _key(store)
@@ -117,9 +123,9 @@ def reverse(store, lat, lon) -> dict:
                 data={'lat': lat, 'lon': lon, 'count': 1, 'radius_meters': 200},
                 headers={'Content-Type': 'application/json', 'Authorization': 'Token ' + k},
             )
-            s = (j.get('suggestions') or [None])[0]
-            if s:
-                return dict(_dd_item(s), lat=lat, lon=lon, exact=True)
+            sugg = (j.get('suggestions') or [None])[0]
+            if sugg:
+                return dict(_dd_item(sugg), lat=lat, lon=lon, exact=True)
         except Exception:
             pass
     j = _nom('/reverse', {'lat': lat, 'lon': lon, 'zoom': 18})
@@ -135,25 +141,29 @@ class RoadRoute:
     MAX = 2000
 
     @classmethod
-    def km(cls, store, a: tuple, b: tuple) -> dict:
-        """a, b — (lat, lon) → {km, hours, src}."""
-        a, b = (_f(a[0]), _f(a[1])), (_f(b[0]), _f(b[1]))
-        if None in a or None in b or not all(-90 <= p[0] <= 90 and -180 <= p[1] <= 180 for p in (a, b)):
+    def distance_km(cls, store, src: tuple, dst: tuple) -> dict:
+        """src, dst — (lat, lon) → {km, hours, src}."""
+        src, dst = (_num(src[0]), _num(src[1])), (_num(dst[0]), _num(dst[1]))
+        if (
+            None in src
+            or None in dst
+            or not all(-90 <= point[0] <= 90 and -180 <= point[1] <= 180 for point in (src, dst))
+        ):
             raise ValueError('Неверные координаты')
-        key = '%.3f,%.3f|%.3f,%.3f' % (a + b)
+        key = '%.3f,%.3f|%.3f,%.3f' % (src + dst)
         cache = store.kv_get('georoute') or {}
         if key in cache:
             return dict(cache[key], cached=True)
         try:
-            j = http_json(cls.URL + f'{a[1]},{a[0]};{b[1]},{b[0]}?overview=false')
+            j = http_json(cls.URL + f'{src[1]},{src[0]};{dst[1]},{dst[0]}?overview=false')
         except (urllib.error.URLError, OSError, ValueError):
             raise ValueError('сервис маршрутов OSRM не ответил — расстояние по прямой с поправкой на дороги') from None
-        r = (j.get('routes') or [None])[0] if isinstance(j, dict) else None
-        if not r or j.get('code') not in (None, 'Ok'):
+        route = (j.get('routes') or [None])[0] if isinstance(j, dict) else None
+        if not route or j.get('code') not in (None, 'Ok'):
             raise ValueError('маршрут по дорогам не найден — расстояние по прямой с поправкой на дороги')
         out = {
-            'km': max(1, round(r['distance'] / 1000)),
-            'hours': round(r.get('duration', 0) / 3600, 1),
+            'km': max(1, round(route['distance'] / 1000)),
+            'hours': round(route.get('duration', 0) / 3600, 1),
             'src': 'по дорогам (OSRM, OpenStreetMap)',
         }
         if len(cache) > cls.MAX:
@@ -164,7 +174,7 @@ class RoadRoute:
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *a, **k) -> None:
+    def redirect_request(self, *args, **k) -> None:
         return None
 
 
@@ -172,25 +182,30 @@ def unshort(url: str) -> str:
     """Раскрыть короткую ссылку Google или Яндекс Карт (только их адреса)."""
     u = urllib.parse.urlsplit(str(url or '').strip())
     host = (u.hostname or '').lower()
-    if u.scheme not in ('http', 'https') or not any(host == h or host.endswith('.' + h) for h in SHORT_HOSTS):
+    if u.scheme not in ('http', 'https') or not any(
+        host == short or host.endswith('.' + short) for short in SHORT_HOSTS
+    ):
         raise ValueError('Это не ссылка Google или Яндекс Карт')
     cur = u.geturl()
     opener = urllib.request.build_opener(_NoRedirect)
     for _ in range(5):
         req = urllib.request.Request(cur, headers={'User-Agent': 'Mozilla/5.0 (KP-Pnevmotekh)'}, method='GET')
         try:
-            with opener.open(req, timeout=10) as r:
-                body = r.read(200000).decode('utf-8', 'ignore')
-                m = re.search(r'https://(?:www\.)?google\.[a-z.]+/maps[^"\'\s<>]+', body) or re.search(
+            with opener.open(req, timeout=10) as resp:
+                body = resp.read(200000).decode('utf-8', 'ignore')
+                match = re.search(r'https://(?:www\.)?google\.[a-z.]+/maps[^"\'\s<>]+', body) or re.search(
                     r'https://yandex\.[a-z]+/maps[^"\'\s<>]+', body
                 )
-                return m.group(0) if m else cur
-        except urllib.error.HTTPError as e:
-            loc = e.headers.get('Location')
-            if e.code in (301, 302, 303, 307, 308) and loc:
+                return match.group(0) if match else cur
+        except urllib.error.HTTPError as exc:
+            loc = exc.headers.get('Location')
+            if exc.code in (301, 302, 303, 307, 308) and loc:
                 nxt = urllib.parse.urljoin(cur, loc)
-                nh = (urllib.parse.urlsplit(nxt).hostname or '').lower()
-                if not any(nh == h or nh.endswith('.' + h) for h in (*SHORT_HOSTS, 'google.com', 'google.ru')):
+                next_host = (urllib.parse.urlsplit(nxt).hostname or '').lower()
+                if not any(
+                    next_host == known or next_host.endswith('.' + known)
+                    for known in (*SHORT_HOSTS, 'google.com', 'google.ru')
+                ):
                     raise ValueError('Ссылка ведёт не на карты') from None
                 cur = nxt
                 if re.search(r'@-?\d|[?&](ll|pt|q)=|!3d', cur):

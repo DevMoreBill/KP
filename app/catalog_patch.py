@@ -9,16 +9,16 @@ class CatalogPatch:
     FORMAT = 'kp-catalog-patch'
     MAX_ITEMS = 50000
     MAX_TEXT = 4000
-    ID = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+    ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
     KEY = re.compile(r'^[A-Za-z][A-Za-z0-9_]{0,40}$')
     SET = ('name', 'spec')
 
     def __init__(self, store) -> None:
-        self.st = store
+        self.store = store
 
     @staticmethod
-    def is_patch(d) -> bool:
-        return isinstance(d, dict) and d.get('format') == CatalogPatch.FORMAT
+    def is_patch(data) -> bool:
+        return isinstance(data, dict) and data.get('format') == CatalogPatch.FORMAT
 
     @staticmethod
     def digest(v) -> str:
@@ -45,20 +45,20 @@ class CatalogPatch:
     def _groups(self, v):
         if not isinstance(v, list) or len(v) > 50:
             return False
-        for g in v:
+        for group in v:
             if (
-                not isinstance(g, dict)
-                or not isinstance(g.get('name', ''), str)
-                or not isinstance(g.get('rows'), list)
-                or len(g['rows']) > 300
+                not isinstance(group, dict)
+                or not isinstance(group.get('name', ''), str)
+                or not isinstance(group.get('rows'), list)
+                or len(group['rows']) > 300
             ):
                 return False
-            for r in g['rows']:
+            for row in group['rows']:
                 if (
-                    not isinstance(r, dict)
-                    or not isinstance(r.get('k'), str)
-                    or not self._scalar(r.get('v'))
-                    or len(r.get('k')) > 300
+                    not isinstance(row, dict)
+                    or not isinstance(row.get('k'), str)
+                    or not self._scalar(row.get('v'))
+                    or len(row.get('k')) > 300
                 ):
                     return False
         return True
@@ -67,28 +67,28 @@ class CatalogPatch:
         if not isinstance(v, list) or len(v) > 50:
             return False
         return all(
-            isinstance(f, dict)
-            and isinstance(f.get('text', ''), str)
-            and len(f.get('text', '')) <= 20000
-            and isinstance(f.get('label', ''), str)
-            and len(f.get('label', '')) <= 300
-            for f in v
+            isinstance(feat, dict)
+            and isinstance(feat.get('text', ''), str)
+            and len(feat.get('text', '')) <= 20000
+            and isinstance(feat.get('label', ''), str)
+            and len(feat.get('label', '')) <= 300
+            for feat in v
         )
 
     def _item_ok(self, x) -> str:
         """Пусто — запись годится, иначе — что не так (для отчёта)."""
-        if not isinstance(x, dict) or not self.ID.match(str(x.get('id', ''))):
+        if not isinstance(x, dict) or not self.ID_RE.match(str(x.get('id', ''))):
             return 'нет id позиции'
-        a = x.get('attrs', {})
-        if not isinstance(a, dict) or any(
+        attrs = x.get('attrs', {})
+        if not isinstance(attrs, dict) or any(
             not self.KEY.match(str(k)) or not isinstance(v, list) or len(v) != 2 or not all(self._scalar(z) for z in v)
-            for k, v in a.items()
+            for k, v in attrs.items()
         ):
             return 'поля категории в неверном виде'
-        s = x.get('set', {})
-        if not isinstance(s, dict) or any(
+        sets = x.get('set', {})
+        if not isinstance(sets, dict) or any(
             k not in self.SET or not isinstance(v, list) or len(v) != 2 or not all(self._scalar(z) for z in v)
-            for k, v in s.items()
+            for k, v in sets.items()
         ):
             return 'название или строка характеристик в неверном виде'
         for k, test in (('groups', self._groups), ('features', self._features)):
@@ -98,40 +98,40 @@ class CatalogPatch:
                 return 'таблицы или описание в неверном виде'
         return ''
 
-    def plan(self, d: dict) -> dict:
+    def plan(self, data: dict) -> dict:
         """→ {items: [(id, doc, changes)], errors, conflicts, same, missing}; changes — [(вид, ключ, новое)]."""
-        if not self.is_patch(d) or d.get('version') != 1 or not isinstance(d.get('items'), list):
+        if not self.is_patch(data) or data.get('version') != 1 or not isinstance(data.get('items'), list):
             raise ValueError('Это не файл правок каталога (нужен «КП_правки_каталога_….json»)')
-        if len(d['items']) > self.MAX_ITEMS:
+        if len(data['items']) > self.MAX_ITEMS:
             raise ValueError('В файле правок слишком много позиций')
         out, errors, conflicts, same, missing = [], [], [], 0, 0
-        for i, x in enumerate(d['items']):
+        for i, x in enumerate(data['items']):
             bad = self._item_ok(x)
             if bad:
                 errors.append(f'Запись {i + 1}: {bad}')
                 continue
-            text = self.st.catalog_get(x['id'])
+            text = self.store.catalog_get(x['id'])
             if not text:
                 missing += 1
                 continue
             doc = json.loads(text)
             title = doc.get('name') or x.get('name') or x['id']
-            ch = []
+            change = []
             cur = doc.get('attrs') or {}
             for k, (old, new) in (x.get('attrs') or {}).items():
-                c = self.norm(cur.get(k))
-                if c == self.norm(new):
+                norm_cur = self.norm(cur.get(k))
+                if norm_cur == self.norm(new):
                     same += 1
-                elif c == self.norm(old):
-                    ch.append(('attr', k, new))
+                elif norm_cur == self.norm(old):
+                    change.append(('attr', k, new))
                 else:
                     conflicts.append(f'{title}: поле «{k}» изменено после выгрузки — пропущено')
             for k, (old, new) in (x.get('set') or {}).items():
-                c = self.norm(doc.get(k))
-                if c == self.norm(new):
+                norm_cur = self.norm(doc.get(k))
+                if norm_cur == self.norm(new):
                     same += 1
-                elif c == self.norm(old):
-                    ch.append(('set', k, new))
+                elif norm_cur == self.norm(old):
+                    change.append(('set', k, new))
                 else:
                     conflicts.append(
                         '{}: «{}» изменено после выгрузки — пропущено'.format(
@@ -141,62 +141,62 @@ class CatalogPatch:
             for k in ('groups', 'features'):
                 if k not in x:
                     continue
-                c = self.digest(doc.get(k))
-                if c == self.digest(x[k]['new']):
+                norm_cur = self.digest(doc.get(k))
+                if norm_cur == self.digest(x[k]['new']):
                     same += 1
-                elif c == x[k]['was']:
-                    ch.append((k, k, x[k]['new']))
+                elif norm_cur == x[k]['was']:
+                    change.append((k, k, x[k]['new']))
                 else:
                     conflicts.append(
                         '{}: {} изменены после выгрузки — пропущено'.format(
                             title, 'характеристики' if k == 'groups' else 'описание'
                         )
                     )
-            if ch:
-                out.append((x['id'], doc, ch))
+            if change:
+                out.append((x['id'], doc, change))
         return {'items': out, 'errors': errors, 'conflicts': conflicts, 'same': same, 'missing': missing}
 
     @staticmethod
-    def change(doc: dict, ch: dict) -> dict:
+    def change(doc: dict, change: dict) -> dict:
         """Правки → в карточку (на месте)."""
-        a = doc.setdefault('attrs', {})
-        for kind, k, v in ch:
+        attrs = doc.setdefault('attrs', {})
+        for kind, k, v in change:
             if kind == 'attr':
                 if v is None or v == '':
-                    a.pop(k, None)
+                    attrs.pop(k, None)
                 else:
-                    a[k] = v
+                    attrs[k] = v
             elif kind == 'set':
                 doc[k] = v if v is not None else ''
             else:
                 doc[k] = v
         return doc
 
-    def run(self, d: dict, apply: bool, by: str = '', backup=None) -> dict:
+    def run(self, data: dict, apply: bool, author: str = '', backup=None) -> dict:
         """Предпросмотр или запись. backup() — копия базы перед записью. → отчёт для окна загрузки."""
-        p = self.plan(d)
-        fields = sum(len(ch) for _, _, ch in p['items'])
+        plan = self.plan(data)
+        fields = sum(len(change) for _, _, change in plan['items'])
         written = 0
-        if apply and p['items']:
+        if apply and plan['items']:
             if backup:
                 backup()
-            for cid, doc, ch in p['items']:
-                self.st.catalog_put(cid, json.dumps(self.change(doc, ch), ensure_ascii=False), by)
+            for cid, doc, change in plan['items']:
+                self.store.catalog_put(cid, json.dumps(self.change(doc, change), ensure_ascii=False), author)
                 written += 1
         return {
-            'report': {'catalog': {'new': 0, 'updated': len(p['items']), 'invalid': len(p['errors'])}},
-            'errors': p['errors'][:20],
-            'createdAt': d.get('createdAt'),
+            'report': {'catalog': {'new': 0, 'updated': len(plan['items']), 'invalid': len(plan['errors'])}},
+            'errors': plan['errors'][:20],
+            'createdAt': data.get('createdAt'),
             'applied': bool(apply),
             'images': None,
             'patch': {
-                'title': str(d.get('title') or '')[:200],
-                'items': len(p['items']),
+                'title': str(data.get('title') or '')[:200],
+                'items': len(plan['items']),
                 'fields': fields,
-                'same': p['same'],
-                'missing': p['missing'],
-                'conflicts': p['conflicts'][:30],
-                'conflictCount': len(p['conflicts']),
+                'same': plan['same'],
+                'missing': plan['missing'],
+                'conflicts': plan['conflicts'][:30],
+                'conflictCount': len(plan['conflicts']),
                 'written': written,
             },
         }
@@ -209,7 +209,7 @@ class CatalogSheet:
     MAX_ROWS = 50000
 
     def __init__(self, store) -> None:
-        self.st = store
+        self.store = store
 
     @staticmethod
     def is_book(data: bytes) -> bool:
@@ -226,32 +226,32 @@ class CatalogSheet:
 
     def _nums(self) -> set:
         """{категория: {поле с числом}} — из справочника категорий."""
-        t = self.st.kv_get('types') or {}
-        t = t.get('types') if isinstance(t, dict) else t
+        types = self.store.kv_get('types') or {}
+        types = types.get('types') if isinstance(types, dict) else types
         return {
-            x.get('id'): {f.get('key') for f in x.get('fields') or [] if f.get('num')}
-            for x in t or []
+            x.get('id'): {field.get('key') for field in x.get('fields') or [] if field.get('num')}
+            for x in types or []
             if isinstance(x, dict)
         }
 
     @staticmethod
-    def _value(s, like, num):
+    def _value(text, like, num):
         """Текст ячейки → значение поля: число, если поле числовое (или было числом), да/нет — если было да/нет."""
-        s = str(s if s is not None else '').strip()
-        if s == '':
+        text = str(text if text is not None else '').strip()
+        if text == '':
             return None
         if isinstance(like, bool):
-            low = s.lower()
+            low = text.lower()
             if low in ('да', 'true', '1', 'yes'):
                 return True
             if low in ('нет', 'false', '0', 'no'):
                 return False
         if num or (isinstance(like, (int, float)) and not isinstance(like, bool)):
-            t = s.replace('\xa0', '').replace(' ', '').replace(',', '.')
-            if re.match(r'^-?\d+(\.\d+)?$', t):
-                v = float(f'{float(t):.12g}')  # Excel пишет 7,3 как 7.2999999999999998
+            num_text = text.replace('\xa0', '').replace(' ', '').replace(',', '.')
+            if re.match(r'^-?\d+(\.\d+)?$', num_text):
+                v = float(f'{float(num_text):.12g}')  # Excel пишет 7,3 как 7.2999999999999998
                 return int(v) if v.is_integer() and abs(v) < 1e15 else v
-        return s[: CatalogPatch.MAX_TEXT]
+        return text[: CatalogPatch.MAX_TEXT]
 
     def patch(self, data: bytes, title: str = '') -> dict:
         from feed_files import read_xlsx
@@ -260,44 +260,44 @@ class CatalogSheet:
         orig, known = {}, set()  # known — позиции, у которых есть «было»: пустое поле в «было» не пишется
         for name, rows in book:
             if name == self.ORIG:
-                for r in rows[1:]:
-                    if r.get(0):
-                        known.add(r[0])
-                    if r.get(0) and r.get(1):
+                for row in rows[1:]:
+                    if row.get(0):
+                        known.add(row[0])
+                    if row.get(0) and row.get(1):
                         try:
-                            orig[(r[0], r[1])] = json.loads(r.get(2) or 'null')
+                            orig[(row[0], row[1])] = json.loads(row.get(2) or 'null')
                         except ValueError:
                             pass
         nums, items, seen = self._nums(), [], 0
         for name, rows in book:
             if name == self.ORIG or len(rows) < 2 or str(rows[1].get(0, '')).strip() != 'id':
                 continue
-            keys = {c: str(k).strip() for c, k in rows[1].items() if c > 0}
-            for r in rows[2:]:
-                cid = str(r.get(0, '')).strip()
+            keys = {cell: str(k).strip() for cell, k in rows[1].items() if cell > 0}
+            for row in rows[2:]:
+                cid = str(row.get(0, '')).strip()
                 if not cid:
                     continue
                 seen += 1
                 if seen > self.MAX_ROWS:
                     raise ValueError('В книге слишком много строк')
-                text = self.st.catalog_get(cid) if CatalogPatch.ID.match(cid) else None
+                text = self.store.catalog_get(cid) if CatalogPatch.ID_RE.match(cid) else None
                 if not text:
                     items.append({'id': cid})  # нет в базе — в отчёте «нет в базе»
                     continue
                 doc = json.loads(text)
-                a = doc.get('attrs') or {}
-                num = nums.get(a.get('cat'), set())
+                attrs = doc.get('attrs') or {}
+                num = nums.get(attrs.get('cat'), set())
                 x = {'id': cid, 'name': doc.get('name') or ''}
-                for c, k in keys.items():
+                for cell, k in keys.items():
                     if k in CatalogPatch.SET:
                         cur, field = doc.get(k), None
                     elif k.startswith('a:') and CatalogPatch.KEY.match(k[2:]) and k[2:] != 'cat':
                         field = k[2:]
-                        cur = a.get(field)
+                        cur = attrs.get(field)
                     else:
                         continue
                     old = orig.get((cid, k)) if cid in known else cur
-                    new = self._value(r.get(c), old if old is not None else cur, field in num if field else False)
+                    new = self._value(row.get(cell), old if old is not None else cur, field in num if field else False)
                     if k == 'name' and new is None:
                         continue  # название не стирается
                     if CatalogPatch.norm(new) == CatalogPatch.norm(old):

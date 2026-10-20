@@ -17,17 +17,17 @@ class UpdateSign:
     HEX = re.compile(r'^[0-9a-f]{64}\Z')
 
     @staticmethod
-    def norm(n: str) -> str:
-        n = n.replace('\\', '/')
-        while n.startswith('./'):
-            n = n[2:]
-        return n
+    def norm(name: str) -> str:
+        name = name.replace('\\', '/')
+        while name.startswith('./'):
+            name = name[2:]
+        return name
 
     @classmethod
     def prefix(cls, names: list[str]) -> str:
-        for n in names:
-            if n.endswith('update/version.json'):
-                return n[: -len('update/version.json')]
+        for name in names:
+            if name.endswith('update/version.json'):
+                return name[: -len('update/version.json')]
         return ''
 
     @staticmethod
@@ -38,20 +38,20 @@ class UpdateSign:
 
     @staticmethod
     def _sha(z: zipfile.ZipFile, info: zipfile.ZipInfo) -> str:
-        h = hashlib.sha256()
-        with z.open(info) as f:
-            for chunk in iter(lambda: f.read(1 << 20), b''):
-                h.update(chunk)
-        return h.hexdigest()
+        digest = hashlib.sha256()
+        with z.open(info) as file:
+            for chunk in iter(lambda: file.read(1 << 20), b''):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     @classmethod
     def keys(cls, root: str | None = None) -> list[str]:
         """Вшитые открытые ключи + update-keys.txt в папке программы."""
         out = list(cls.PUBLIC_KEYS)
-        p = os.path.join(root, cls.LOCAL_KEYS) if root else None
-        if p and os.path.isfile(p):
-            with open(p, encoding='utf-8-sig') as f:
-                out += [ln.strip().lower() for ln in f if cls.HEX.match(ln.strip().lower())]
+        path = os.path.join(root, cls.LOCAL_KEYS) if root else None
+        if path and os.path.isfile(path):
+            with open(path, encoding='utf-8-sig') as file:
+                out += [line.strip().lower() for line in file if cls.HEX.match(line.strip().lower())]
         return out
 
     @classmethod
@@ -101,9 +101,9 @@ class UpdateSign:
             raise ValueError('подпись не от этой версии')
         if not Ed25519.verify(bytes.fromhex(key), cls._message(version, files), sig):
             raise ValueError('подпись архива неверна — файл изменён после выпуска')
-        mine = {n for n in names if n != prefix + cls.NAME}
+        mine = {name for name in names if name != prefix + cls.NAME}
         if mine != set(files):
             raise ValueError('в архиве не те файлы, что подписаны при выпуске')
-        for n in mine:
-            if cls._sha(z, names[n]) != files[n]:
-                raise ValueError(f'файл {n.split("/")[-1][:80]} изменён после выпуска')
+        for name in mine:
+            if cls._sha(z, names[name]) != files[name]:
+                raise ValueError(f'файл {name.split("/")[-1][:80]} изменён после выпуска')

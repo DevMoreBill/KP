@@ -21,13 +21,13 @@ class ServerLog:
         self.folder = folder
         self.path = os.path.join(folder, self.NAME)
         self.lock = threading.RLock()
-        self.f = None
+        self.handle = None
 
     def _file(self):
-        if self.f is None:
+        if self.handle is None:
             os.makedirs(self.folder, exist_ok=True)
-            self.f = open(self.path, 'a', encoding='utf-8', newline='\n')  # noqa: SIM115 — журнал открыт всё время работы
-        return self.f
+            self.handle = open(self.path, 'a', encoding='utf-8', newline='\n')  # noqa: SIM115 — журнал открыт всё время работы
+        return self.handle
 
     def _rotate(self):
         try:
@@ -35,9 +35,9 @@ class ServerLog:
                 return
         except OSError:
             return
-        if self.f:
-            self.f.close()
-            self.f = None
+        if self.handle:
+            self.handle.close()
+            self.handle = None
         for i in range(self.KEEP, 0, -1):
             src = self.path if i == 1 else f'{self.path}.{i - 1}'
             try:
@@ -53,9 +53,9 @@ class ServerLog:
         with self.lock:
             try:
                 self._rotate()
-                f = self._file()
-                f.write(rec)
-                f.flush()
+                handle = self._file()
+                handle.write(rec)
+                handle.flush()
             except (OSError, ValueError):
                 pass
 
@@ -64,16 +64,20 @@ class ServerLog:
 
     def close(self) -> None:
         with self.lock:
-            if self.f:
-                self.f.close()
-                self.f = None
+            if self.handle:
+                self.handle.close()
+                self.handle = None
 
-    def error(self, where: str, exc: BaseException | None = None, tb=None) -> None:
+    def error(self, where: str, exc: BaseException | None = None, trace_obj=None) -> None:
         """Ошибка с трассировкой: where — где (запрос, поток, задача); exc — исключение (по умолчанию — текущее)."""
         if exc is None and sys.exc_info()[1] is not None:
-            exc, tb = sys.exc_info()[1], sys.exc_info()[2]
+            exc, trace_obj = sys.exc_info()[1], sys.exc_info()[2]
         head = f'{where} — {type(exc).__name__}: {str(exc)[:500]}' if exc is not None else str(where)
-        trace = ''.join(traceback.format_exception(type(exc), exc, tb or exc.__traceback__)) if exc is not None else ''
+        trace = (
+            ''.join(traceback.format_exception(type(exc), exc, trace_obj or exc.__traceback__))
+            if exc is not None
+            else ''
+        )
         self.write(self.ERROR, head + ('\n' + trace if trace else ''))
         if sys.__stderr__ is not None:  # запуск из консоли — трассировка и там
             try:
@@ -82,10 +86,10 @@ class ServerLog:
                 pass
 
     @classmethod
-    def failure(cls, where: str, exc: BaseException | None = None, tb=None) -> None:
+    def failure(cls, where: str, exc: BaseException | None = None, trace=None) -> None:
         """Ошибка в журнал этого процесса (или в консоль, если журнала нет)."""
         if cls.current is not None:
-            return cls.current.error(where, exc, tb)
+            return cls.current.error(where, exc, trace)
         print(where, exc if exc is not None else '', file=sys.stderr)
         return None
 
@@ -113,9 +117,9 @@ class ServerLog:
         sys.stdout = _LogStream(log, sys.stdout)
         sys.stderr = _LogStream(log, sys.stderr)
 
-        def thread_failed(a):
-            if a.exc_type is not SystemExit:
-                log.error('поток «{}»'.format(getattr(a.thread, 'name', '?')), a.exc_value, a.exc_traceback)
+        def thread_failed(args):
+            if args.exc_type is not SystemExit:
+                log.error('поток «{}»'.format(getattr(args.thread, 'name', '?')), args.exc_value, args.exc_traceback)
 
         threading.excepthook = thread_failed
         return log
@@ -124,30 +128,30 @@ class ServerLog:
     def _flush(self) -> None:
         """Записанное этим процессом — на диск до чтения файлов журнала."""
         with self.lock:
-            if self.f:
-                self.f.flush()
+            if self.handle:
+                self.handle.flush()
 
     def files(self) -> list[str]:
         """Файлы журнала от старого к новому."""
         out = [f'{self.path}.{i}' for i in range(self.KEEP, 0, -1)] + [self.path]
-        return [p for p in out if os.path.isfile(p)]
+        return [path for path in out if os.path.isfile(path)]
 
     def records(self) -> list[dict]:
         """Все записи от старых к новым: [{at, level, text, detail}]."""
         self._flush()
         out = []
-        for p in self.files():
+        for path in self.files():
             try:
-                with open(p, encoding='utf-8', errors='replace') as f:
-                    for raw in f:
+                with open(path, encoding='utf-8', errors='replace') as file:
+                    for raw in file:
                         line = raw.rstrip('\n')
-                        m = self.HEAD.match(line)
-                        if m:
+                        match = self.HEAD.match(line)
+                        if match:
                             out.append(
                                 {
-                                    'at': m.group(1).replace(' ', 'T'),
-                                    'level': m.group(2),
-                                    'text': m.group(3),
+                                    'at': match.group(1).replace(' ', 'T'),
+                                    'level': match.group(2),
+                                    'text': match.group(3),
                                     'detail': [],
                                 }
                             )
@@ -159,27 +163,29 @@ class ServerLog:
 
     def errors(self, limit: int = 30) -> list[dict]:
         """Последние ошибки, новые первыми."""
-        errs = [dict(r, detail='\n'.join(r['detail'])[-6000:]) for r in self.records() if r['level'] == self.ERROR]
+        errs = [
+            dict(rec, detail='\n'.join(rec['detail'])[-6000:]) for rec in self.records() if rec['level'] == self.ERROR
+        ]
         return errs[::-1][:limit]
 
     def count_since(self, hours: float = 24) -> int:
         edge = (datetime.now() - timedelta(hours=hours)).isoformat(timespec='seconds')
-        return sum(1 for r in self.records() if r['level'] == self.ERROR and r['at'] >= edge)
+        return sum(1 for rec in self.records() if rec['level'] == self.ERROR and rec['at'] >= edge)
 
     def text(self) -> str:
         """Журнал целиком (до 4 МБ) — для «Скачать журнал»."""
         self._flush()
         parts = []
-        for p in self.files():
+        for path in self.files():
             try:
-                with open(p, encoding='utf-8', errors='replace') as f:
-                    parts.append(f.read())
+                with open(path, encoding='utf-8', errors='replace') as file:
+                    parts.append(file.read())
             except OSError:
                 pass
         return ''.join(parts)
 
     def size(self) -> int:
-        return sum(os.path.getsize(p) for p in self.files())
+        return sum(os.path.getsize(path) for path in self.files())
 
 
 class _LogStream(io.TextIOBase):
@@ -190,18 +196,18 @@ class _LogStream(io.TextIOBase):
         self.log, self.orig = log, orig
         self.buf = threading.local()
 
-    def write(self, s: str) -> int:
+    def write(self, chunk: str) -> int:
         if self.orig is not None:
             try:
-                self.orig.write(s)
+                self.orig.write(chunk)
             except Exception:
                 pass
-        text = getattr(self.buf, 'v', '') + str(s)
+        text = getattr(self.buf, 'v', '') + str(chunk)
         *done, self.buf.v = text.split('\n')
         for line in done:
             if line.strip():
                 self.log.write(ServerLog.OUT, line)
-        return len(s)
+        return len(chunk)
 
     def flush(self) -> None:
         if self.orig is not None:

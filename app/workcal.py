@@ -11,7 +11,7 @@ RETRY = 3600
 _FAILED: dict[int, float] = {}
 APPROX_SRC = 'приблизительно: выходные и праздники без переносов (нет связи с календарём)'
 # нерабочие праздничные дни (ст. 112 ТК РФ): месяц, день
-HOLIDAYS = [(1, d) for d in range(1, 9)] + [(2, 23), (3, 8), (5, 1), (5, 9), (6, 12), (11, 4)]
+HOLIDAYS = [(1, day) for day in range(1, 9)] + [(2, 23), (3, 8), (5, 1), (5, 9), (6, 12), (11, 4)]
 
 
 def _days_in_year(y: int) -> int:
@@ -20,36 +20,38 @@ def _days_in_year(y: int) -> int:
 
 def parse_isdayoff(text: str, y: int) -> tuple[str, str]:
     """(нерабочие, сокращённые); у isdayoff «2» — сокращённый предпраздничный день."""
-    s = text.strip()
-    if len(s) != _days_in_year(y) or set(s) - set('01248'):
+    clean = text.strip()
+    if len(clean) != _days_in_year(y) or set(clean) - set('01248'):
         raise ValueError('isdayoff: неожиданный ответ')
-    return ''.join('1' if ch == '1' else '0' for ch in s), ''.join('1' if ch == '2' else '0' for ch in s)
+    return ''.join('1' if char == '1' else '0' for char in clean), ''.join(
+        '1' if char == '2' else '0' for char in clean
+    )
 
 
 def parse_xmlcalendar(obj: dict, y: int) -> tuple[str, str]:
     off, short = set(), set()
-    for m in obj.get('months') or []:
-        for part in str(m.get('days') or '').split(','):
+    for month in obj.get('months') or []:
+        for part in str(month.get('days') or '').split(','):
             tok = part.strip()
             if not tok:
                 continue
             if tok.endswith('*'):
-                short.add((int(m['month']), int(tok.rstrip('*'))))
+                short.add((int(month['month']), int(tok.rstrip('*'))))
                 continue
-            off.add((int(m['month']), int(tok.rstrip('+'))))
+            off.add((int(month['month']), int(tok.rstrip('+'))))
     if not off:
         raise ValueError('xmlcalendar: пустой календарь')
-    d0 = date(y, 1, 1)
-    md = [((d0 + timedelta(i)).month, (d0 + timedelta(i)).day) for i in range(_days_in_year(y))]
-    return ''.join('1' if x in off else '0' for x in md), ''.join('1' if x in short else '0' for x in md)
+    first = date(y, 1, 1)
+    days = [((first + timedelta(i)).month, (first + timedelta(i)).day) for i in range(_days_in_year(y))]
+    return ''.join('1' if x in off else '0' for x in days), ''.join('1' if x in short else '0' for x in days)
 
 
 def approx(y: int) -> str:
-    d0 = date(y, 1, 1)
+    first = date(y, 1, 1)
     out = []
     for i in range(_days_in_year(y)):
-        d = d0 + timedelta(i)
-        out.append('1' if d.weekday() >= 5 or (d.month, d.day) in HOLIDAYS else '0')
+        day = first + timedelta(i)
+        out.append('1' if day.weekday() >= 5 or (day.month, day.day) in HOLIDAYS else '0')
     return ''.join(out)
 
 
@@ -69,12 +71,12 @@ def year(store, y) -> dict:
         (
             'isdayoff.ru',
             f'https://isdayoff.ru/api/getdata?year={y}&cc=ru',
-            lambda b: parse_isdayoff(b.decode('utf-8'), y),
+            lambda raw: parse_isdayoff(raw.decode('utf-8'), y),
         ),
         (
             'xmlcalendar.ru',
             f'https://xmlcalendar.ru/data/ru/{y}/calendar.json',
-            lambda b: parse_xmlcalendar(json.loads(b.decode('utf-8-sig')), y),
+            lambda raw: parse_xmlcalendar(json.loads(raw.decode('utf-8-sig')), y),
         ),
     ):
         try:
@@ -89,8 +91,8 @@ def year(store, y) -> dict:
             }
             store.kv_set(key, rec)
             return rec
-        except Exception as e:
-            errs.append(f'{src}: {e}')
+        except Exception as exc:
+            errs.append(f'{src}: {exc}')
     _FAILED[y] = time.time()
     if cached:
         return cached

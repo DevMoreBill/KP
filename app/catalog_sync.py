@@ -19,38 +19,38 @@ class CatalogSync:
 
     def delta(self, since, epoch: str) -> dict | None:
         """{epoch, seq, full, items — карточки JSON через запятую, gone}; None — нужен каталог целиком."""
-        st = self.state()
+        state = self.state()
         try:
             since = int(since)
         except (TypeError, ValueError):
             return None
-        if since <= 0 or epoch != st['epoch'] or since > st['seq']:
+        if since <= 0 or epoch != state['epoch'] or since > state['seq']:
             return None
-        n = self.store.one('SELECT COUNT(*) FROM catalog WHERE seq > ?', (since,))[0]
-        if n > self.MAX_DELTA:
+        total = self.store.one('SELECT COUNT(*) FROM catalog WHERE seq > ?', (since,))[0]
+        if total > self.MAX_DELTA:
             return None
         items = self.store.joined('SELECT light AS x FROM catalog WHERE seq > ? ORDER BY seq', (since,))
-        gone = [r[0] for r in self.store.all('SELECT id FROM catalog_gone WHERE seq > ?', (since,))]
-        return dict(st, full=False, items=items, gone=gone)
+        gone = [rec[0] for rec in self.store.all('SELECT id FROM catalog_gone WHERE seq > ?', (since,))]
+        return dict(state, full=False, items=items, gone=gone)
 
-    def delta_json(self, d: dict) -> str:
-        epoch, gone = json.dumps(d['epoch']), json.dumps(d['gone'], ensure_ascii=False)
-        return f'{{"epoch":{epoch},"seq":{int(d["seq"])},"full":false,"items":[{d["items"]}],"gone":{gone}}}'
+    def delta_json(self, data: dict) -> str:
+        epoch, gone = json.dumps(data['epoch']), json.dumps(data['gone'], ensure_ascii=False)
+        return f'{{"epoch":{epoch},"seq":{int(data["seq"])},"full":false,"items":[{data["items"]}],"gone":{gone}}}'
 
     def full_json(self) -> str:
-        st = self.state()
-        epoch, items = json.dumps(st['epoch']), self.store.catalog_light()
-        return f'{{"epoch":{epoch},"seq":{int(st["seq"])},"full":true,"items":{items},"gone":[]}}'
+        state = self.state()
+        epoch, items = json.dumps(state['epoch']), self.store.catalog_light()
+        return f'{{"epoch":{epoch},"seq":{int(state["seq"])},"full":true,"items":{items},"gone":[]}}'
 
-    def search(self, q: str) -> list[str]:
+    def search(self, query: str) -> list[str]:
         """id позиций со всеми словами запроса (от двух букв); база отдаёт их одной строкой."""
-        words = [w for w in re.split(r'\s+', norm(q)) if len(w) >= self.MIN_WORD][:8]
+        words = [word for word in re.split(r'\s+', norm(query)) if len(word) >= self.MIN_WORD][:8]
         if not words:
             return []
         where = ' AND '.join(["search LIKE ? ESCAPE '\\'"] * len(words))
         ids = self.store.joined(
             f'SELECT id AS x FROM catalog WHERE {where} LIMIT {self.SEARCH_LIMIT}',
-            tuple(like_arg(w) for w in words),
+            tuple(like_arg(word) for word in words),
             '\n',
         )
         return ids.split('\n') if ids else []

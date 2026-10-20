@@ -97,9 +97,9 @@ class SettingsHistory:
         name = self.who()
         if key not in self.KEYS or name is None:
             return None
-        b, a = self._clean(before), self._clean(after)
-        ch = self.changes(b, a)
-        if not ch:
+        before_clean, after_clean = self._clean(before), self._clean(after)
+        changes = self.changes(before_clean, after_clean)
+        if not changes:
             return None
         self.store.write(
             'INSERT INTO settings_history (ts, key, by, paths, before, after) VALUES (?,?,?,?,?,?)',
@@ -107,16 +107,16 @@ class SettingsHistory:
                 datetime.now().isoformat(timespec='seconds'),
                 key,
                 str(name)[:120],
-                json.dumps(ch[:200], ensure_ascii=False),
-                json.dumps(b, ensure_ascii=False),
-                json.dumps(a, ensure_ascii=False),
+                json.dumps(changes[:200], ensure_ascii=False),
+                json.dumps(before_clean, ensure_ascii=False),
+                json.dumps(after_clean, ensure_ascii=False),
             ),
         )
         self.store.write(
             'DELETE FROM settings_history WHERE id <= (SELECT MAX(id) FROM settings_history) - ?',
             (SrvVal.get(self.store, 'srv.settingsHistory'),),
         )
-        return ch
+        return changes
 
     def watches(self, key: str) -> bool:
         return key in self.KEYS and self.who() is not None
@@ -142,54 +142,54 @@ class SettingsHistory:
             sql, args = sql + ' WHERE key = ?', (key,)
         rows = self.store.all(sql + ' ORDER BY id DESC LIMIT ? OFFSET ?', (*args, int(limit), int(offset)))
         out = []
-        for i, ts, k, by, paths, rolled in rows:
-            p = json.loads(paths or '[]')
+        for i, stamp, k, author, paths, rolled in rows:
+            paths_list = json.loads(paths or '[]')
             out.append(
                 {
                     'id': i,
-                    'ts': ts,
+                    'ts': stamp,
                     'key': k,
-                    'by': by,
-                    'paths': p,
-                    'count': len(p),
-                    'title': self.title(k, p),
-                    'tab': self.tab(k, p),
+                    'by': author,
+                    'paths': paths_list,
+                    'count': len(paths_list),
+                    'title': self.title(k, paths_list),
+                    'tab': self.tab(k, paths_list),
                     'rolled': rolled,
                 }
             )
         return out
 
     def get(self, hid) -> dict:
-        r = self.store.one(
+        row = self.store.one(
             'SELECT id, ts, key, by, paths, before, after, rolled FROM settings_history WHERE id = ?', (int(hid),)
         )
-        if not r:
+        if not row:
             raise ValueError('Запись истории не найдена')
-        i, ts, k, by, paths, b, a, rolled = r
-        p, b, a = json.loads(paths or '[]'), json.loads(b), json.loads(a)
+        i, stamp, k, author, paths, before_raw, after_raw, rolled = row
+        paths_list, before_raw, after_raw = json.loads(paths or '[]'), json.loads(before_raw), json.loads(after_raw)
         cur = self._clean(self.store.kv_get(k))
         return {
             'id': i,
-            'ts': ts,
+            'ts': stamp,
             'key': k,
-            'by': by,
-            'title': self.title(k, p),
-            'tab': self.tab(k, p),
+            'by': author,
+            'title': self.title(k, paths_list),
+            'tab': self.tab(k, paths_list),
             'rolled': rolled,
             'diff': [
                 {
                     'path': x,
-                    'before': self._at(b, x),
-                    'after': self._at(a, x),
-                    'now': self._at(cur, x),
-                    'later': self._at(cur, x) != self._at(a, x),
+                    'before': self._stamp(before_raw, x),
+                    'after': self._stamp(after_raw, x),
+                    'now': self._stamp(cur, x),
+                    'later': self._stamp(cur, x) != self._stamp(after_raw, x),
                 }
-                for x in p[:200]
+                for x in paths_list[:200]
             ],
         }
 
     @staticmethod
-    def _at(v, path: list):
+    def _stamp(v, path: list):
         for part in path:
             if not isinstance(v, dict):
                 return None
@@ -210,23 +210,23 @@ class SettingsHistory:
         else:
             cur[path[-1]] = x
 
-    def rollback(self, hid, by: str) -> dict:
+    def rollback(self, hid, author: str) -> dict:
         """Вернуть поля этой записи к значениям «было». Секреты (•••) не трогаются. → запись, как в get()."""
-        r = self.store.one('SELECT key, paths, before FROM settings_history WHERE id = ?', (int(hid),))
-        if not r:
+        row = self.store.one('SELECT key, paths, before FROM settings_history WHERE id = ?', (int(hid),))
+        if not row:
             raise ValueError('Запись истории не найдена')
-        key, paths, before = r[0], json.loads(r[1] or '[]'), json.loads(r[2])
+        key, paths, before = row[0], json.loads(row[1] or '[]'), json.loads(row[2])
         cur = self.store.kv_get(key)
         if not paths or paths == [[]]:  # значение целиком (не словарь)
             new = before
         else:
             new = json.loads(json.dumps(cur if isinstance(cur, dict) else {}))
-            for p in paths:
-                old = self._at(before, p)
+            for path in paths:
+                old = self._stamp(before, path)
                 if old == '•••':
                     continue
-                self._put(new, p, old, delete=self._missing(before, p))
-        self.actor(by)
+                self._put(new, path, old, delete=self._missing(before, path))
+        self.actor(author)
         self.store.kv_set(key, new)
         self.store.write(
             'UPDATE settings_history SET rolled = ? WHERE id = ?',

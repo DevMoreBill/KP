@@ -15,8 +15,8 @@ IMG_BUILTIN = {'img.minKB': 15, 'img.minPx': 200, 'img.skipBlank': True, 'img.ma
 
 
 def get(store) -> dict:
-    d = ((store.kv_get('settings') or {}).get('defaults')) or {}
-    return d if isinstance(d, dict) else {}
+    data = ((store.kv_get('settings') or {}).get('defaults')) or {}
+    return data if isinstance(data, dict) else {}
 
 
 def _clean(v):
@@ -27,12 +27,12 @@ def _clean(v):
     return str(v).strip()[:MAX_LEN]
 
 
-def save(store, values: dict, by: str = '') -> dict:
+def save(store, values: dict, author: str = '') -> dict:
     """values = {ключ: {on, v} | None — встроенное}."""
     if not isinstance(values, dict):
         raise ValueError('Нет значений')
-    st = store.kv_get('settings') or {}
-    cur = dict(st.get('defaults') or {})
+    settings = store.kv_get('settings') or {}
+    cur = dict(settings.get('defaults') or {})
     for k, x in values.items():
         if not KEY_RX.match(str(k)):
             raise ValueError(f'Неверный ключ: {str(k)[:40]}')
@@ -46,9 +46,9 @@ def save(store, values: dict, by: str = '') -> dict:
         raise ValueError('Слишком много значений')
     for k in values:
         SrvVal.check(k, cur.get(k))
-    st['defaults'] = cur
-    st['defaultsAt'], st['defaultsBy'] = datetime.now().isoformat(timespec='seconds'), by
-    store.kv_set('settings', st)
+    settings['defaults'] = cur
+    settings['defaultsAt'], settings['defaultsBy'] = datetime.now().isoformat(timespec='seconds'), author
+    store.kv_set('settings', settings)
     SrvVal.forget()
     return cur
 
@@ -67,19 +67,19 @@ def _value_of(x, builtin):
     return builtin if v in (None, '') else v
 
 
-def _num_of(v, builtin, lo: float | None = None, hi: float | None = None):
+def _num_of(v, builtin, low: float | None = None, high: float | None = None):
     try:
-        n = float(str(v).replace(',', '.').replace(' ', ''))
+        num = float(str(v).replace(',', '.').replace(' ', ''))
     except (TypeError, ValueError):
         return builtin
-    if not math.isfinite(n) or (lo is not None and n < lo) or (hi is not None and n > hi):
+    if not math.isfinite(num) or (low is not None and num < low) or (high is not None and num > high):
         return builtin
-    return int(n) if isinstance(builtin, int) and not isinstance(builtin, bool) and n == int(n) else n
+    return int(num) if isinstance(builtin, int) and not isinstance(builtin, bool) and num == int(num) else num
 
 
-def num(store, key: str, builtin, lo: float | None = None, hi: float | None = None):
+def num(store, key: str, builtin, low: float | None = None, high: float | None = None):
     """Число из «Значений программы»; не задано, выключено, не число или вне [lo, hi] — встроенное."""
-    return _num_of(value(store, key, builtin), builtin, lo, hi)
+    return _num_of(value(store, key, builtin), builtin, low, high)
 
 
 class SrvVal:
@@ -165,25 +165,25 @@ class SrvVal:
     @classmethod
     def _all(cls, store) -> dict:
         with cls._lock:
-            st, at, d = cls._cache
-            if st is store and time.time() - at < cls.TTL:
-                return d
-        d = get(store)
+            cached, stamp, values = cls._cache
+            if cached is store and time.time() - stamp < cls.TTL:
+                return values
+        values = get(store)
         with cls._lock:
-            cls._cache = (store, time.time(), d)
-        return d
+            cls._cache = (store, time.time(), values)
+        return values
 
     @classmethod
     def get(cls, store, key: str):
-        b, lo, hi = cls.LIMITS[key]
+        builtin, low, high = cls.LIMITS[key]
         if store is None:
-            return b
+            return builtin
         try:
             x = cls._all(store).get(key)
         except Exception:
-            return b
-        n = _num_of(_value_of(x, b), b, lo, hi)
-        return round(n) if isinstance(b, int) else n
+            return builtin
+        num = _num_of(_value_of(x, builtin), builtin, low, high)
+        return round(num) if isinstance(builtin, int) else num
 
     @classmethod
     def now(cls, key: str):
@@ -191,32 +191,32 @@ class SrvVal:
         try:
             import config
 
-            st = config.STORE
+            store = config.STORE
         except Exception:
-            st = None
-        return cls.get(st, key)
+            store = None
+        return cls.get(store, key)
 
     @classmethod
     def check(cls, key: str, x) -> None:
         """При сохранении: число в границах, пустое — встроенное."""
         if key not in cls.LIMITS or not isinstance(x, dict) or x.get('v') in (None, ''):
             return
-        _, lo, hi = cls.LIMITS[key]
-        if _num_of(x['v'], None, lo, hi) is None:
-            raise ValueError(f'Значение «{key}»: нужно число от {lo} до {hi}')
+        _, low, high = cls.LIMITS[key]
+        if _num_of(x['v'], None, low, high) is None:
+            raise ValueError(f'Значение «{key}»: нужно число от {low} до {high}')
 
 
 def img_opts(store) -> dict:
     """Фильтр фото со страницы: {minKB, minPx, skipBlank, maxCount}; выключенное — 0 / False."""
     out, own = {}, get(store)
-    for k, b in IMG_BUILTIN.items():
+    for k, builtin in IMG_BUILTIN.items():
         x = own.get(k)
         name = k.split('.', 1)[1]
-        if isinstance(b, bool):
-            out[name] = bool(x.get('on', True)) if isinstance(x, dict) else b
+        if isinstance(builtin, bool):
+            out[name] = bool(x.get('on', True)) if isinstance(x, dict) else builtin
             continue
-        v = _value_of(x, b)
-        out[name] = max(0, int(_num_of(v, b))) if v is not None else 0
+        v = _value_of(x, builtin)
+        out[name] = max(0, int(_num_of(v, builtin))) if v is not None else 0
     if not out['maxCount']:
         out['maxCount'] = 30
     return out

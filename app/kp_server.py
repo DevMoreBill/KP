@@ -55,12 +55,12 @@ class GzipCache:
 
     def building(self, tag) -> threading.Lock:
         with self.lock:
-            lk = self.locks.get(tag)
-            if lk is None:
-                lk = self.locks[tag] = threading.Lock()
+            lock = self.locks.get(tag)
+            if lock is None:
+                lock = self.locks[tag] = threading.Lock()
                 while len(self.locks) > self.max_n:
                     self.locks.pop(next(iter(self.locks)))
-            return lk
+            return lock
 
     def get(self, tag) -> bytes | None:
         with self.lock:
@@ -110,19 +110,19 @@ class BodyLimit:
         if path.startswith(cls.BIG):
             return MAX_BODY
         try:
-            mb = max(SrvVal.get(store(), k) for k in cls.FILES)
+            max_mb = max(SrvVal.get(store(), k) for k in cls.FILES)
         except Exception:
-            mb = 0
-        return min(MAX_BODY, max(cls.USER, int((mb + 2) * 1024 * 1024)))
+            max_mb = 0
+        return min(MAX_BODY, max(cls.USER, int((max_mb + 2) * 1024 * 1024)))
 
     @classmethod
-    def drain(cls, rfile, n) -> None:
+    def drain(cls, rfile, left) -> None:
         """Дочитать отклонённое тело частями — без копии в памяти целиком."""
-        while n > 0:
-            got = rfile.read(min(cls.CHUNK, n))
+        while left > 0:
+            got = rfile.read(min(cls.CHUNK, left))
             if not got:
                 break
-            n -= len(got)
+            left -= len(got)
 
 
 # после самопроверки сбой — уже не сбой запуска обновления
@@ -143,26 +143,26 @@ class Handler(BaseHTTPRequestHandler):
     LOCAL_NAMES = ('localhost', '127.0.0.1', '::1')
 
     @classmethod
-    def gone(cls, e) -> bool:
-        return isinstance(e, cls.GONE) or getattr(e, 'winerror', None) in cls.GONE_WIN
+    def gone(cls, exc) -> bool:
+        return isinstance(exc, cls.GONE) or getattr(exc, 'winerror', None) in cls.GONE_WIN
 
     def log_message(self, fmt, *args) -> None:  # у EXE без консоли нет stderr
         pass
 
     # --- ответы ---
     def is_local(self) -> bool:
-        a = (self.client_address or ('',))[0]
-        return a in ('127.0.0.1', '::1', '::ffff:127.0.0.1') or a.startswith('127.')
+        addr = (self.client_address or ('',))[0]
+        return addr in ('127.0.0.1', '::1', '::ffff:127.0.0.1') or addr.startswith('127.')
 
     @staticmethod
-    def file_tag(f) -> str:
+    def file_tag(path) -> str:
         """Метка версии файла (ETag): время изменения и размер."""
-        st = os.stat(f)
-        return f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
+        stat = os.stat(path)
+        return f'"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
 
-    def send_file(self, f, ctype, cache, csp=None, data=None) -> None:
+    def send_file(self, path, ctype, cache, csp=None, data=None) -> None:
         """Файл с проверкой версии (ETag): неизменённый файл браузер берёт из своего кэша — ответ 304 без тела."""
-        tag = self.file_tag(f) if data is None else f'"{zlib.crc32(data) & 0xFFFFFFFF:x}"'
+        tag = self.file_tag(path) if data is None else f'"{zlib.crc32(data) & 0xFFFFFFFF:x}"'
         if self.headers.get('If-None-Match') == tag:
             self.send_response(304)
             self.send_header('ETag', tag)
@@ -173,28 +173,28 @@ class Handler(BaseHTTPRequestHandler):
         if csp:
             extra['Content-Security-Policy'] = csp
         if data is None:
-            with open(f, 'rb') as fh:
-                data = fh.read()
-        gz = FileGzip.get(tag, data, ctype) if 'gzip' in (self.headers.get('Accept-Encoding') or '') else None
-        if gz is not None:
+            with open(path, 'rb') as handle:
+                data = handle.read()
+        gzipped = FileGzip.get(tag, data, ctype) if 'gzip' in (self.headers.get('Accept-Encoding') or '') else None
+        if gzipped is not None:
             extra['Content-Encoding'] = 'gzip'
             extra['Vary'] = 'Accept-Encoding'
-            return self.send(200, ctype, gz, extra, compressed=True)
+            return self.send(200, ctype, gzipped, extra, compressed=True)
         return self.send(200, ctype, data, extra)
 
     def send(self, code, ctype, body, extra=None, compressed=False) -> None:
         data = body if isinstance(body, bytes) else str(body).encode('utf-8')
-        gz = (
+        gzipped = (
             not compressed
             and len(data) > 20000
             and 'gzip' in (self.headers.get('Accept-Encoding') or '')
             and (ctype.startswith(('application/json', 'text/')))
         )
-        if gz:
+        if gzipped:
             data = gzip.compress(data, 5)
         self.send_response(code)
         self.send_header('Content-Type', ctype)
-        if gz:
+        if gzipped:
             self.send_header('Content-Encoding', 'gzip')
         for k, v in (extra or {}).items():
             self.send_header(k, v)
@@ -244,14 +244,14 @@ class Handler(BaseHTTPRequestHandler):
         v = (self.headers.get('X-KP-Rev') or '').strip()
         return int(v) if v.isdigit() else None
 
-    def conflict(self, e) -> None:
-        return self.send(409, 'application/json; charset=utf-8', json.dumps(e.info(), ensure_ascii=False))
+    def conflict(self, exc) -> None:
+        return self.send(409, 'application/json; charset=utf-8', json.dumps(exc.info(), ensure_ascii=False))
 
-    def attachment(self, fn, fallback='file') -> dict:
+    def attachment(self, filename, fallback='file') -> dict:
         """Заголовок «скачать как» с русским именем файла (fallback — латинское имя, если в имени нет латиницы)."""
-        ascii_fn = re.sub(r'[^A-Za-z0-9._-]', '_', fn.encode('ascii', 'ignore').decode()) or fallback
+        ascii_fn = re.sub(r'[^A-Za-z0-9._-]', '_', filename.encode('ascii', 'ignore').decode()) or fallback
         return {
-            'Content-Disposition': f'attachment; filename="{ascii_fn}"; filename*=UTF-8\'\'{urllib.parse.quote(fn)}'
+            'Content-Disposition': f'attachment; filename="{ascii_fn}"; filename*=UTF-8\'\'{urllib.parse.quote(filename)}'
         }
 
     def not_found(self, text='not found') -> None:
@@ -262,8 +262,8 @@ class Handler(BaseHTTPRequestHandler):
     def body(self) -> bytes:
         # тело читается один раз: его смотрят и admin.py, и маршрут
         if not hasattr(self, '_body'):
-            n = self.body_size()
-            self._body = self.rfile.read(n) if n > 0 else b''
+            size = self.body_size()
+            self._body = self.rfile.read(size) if size > 0 else b''
         if self.non_finite(self._body):
             raise BadRequest('Неверный запрос: в числах недопустимы NaN и Infinity')
         return self._body
@@ -274,7 +274,7 @@ class Handler(BaseHTTPRequestHandler):
         if not raw or not cls.NON_FINITE.search(raw):
             return False
 
-        def refuse(_c) -> None:
+        def refuse(_const) -> None:
             raise OverflowError
 
         try:
@@ -332,8 +332,8 @@ class Handler(BaseHTTPRequestHandler):
     PER_REQUEST = ('_body', '_kp_user', '_kp_login', '_code')
 
     def dispatch(self) -> None:
-        for a in self.PER_REQUEST:
-            self.__dict__.pop(a, None)
+        for attr in self.PER_REQUEST:
+            self.__dict__.pop(attr, None)
         try:
             self._dispatch()
         finally:
@@ -349,7 +349,7 @@ class Handler(BaseHTTPRequestHandler):
     def _dispatch(self) -> None:
         try:
             path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
-            m = 'GET' if self.command == 'HEAD' else self.command
+            method = 'GET' if self.command == 'HEAD' else self.command
             if re.search(r'[\x00-\x1f\x7f]', path):  # «%0A» и др. в пути — мимо проверок прав по точному адресу
                 self.close_connection = True
                 return self.send(400, 'text/plain; charset=utf-8', 'Недопустимый адрес')
@@ -357,15 +357,15 @@ class Handler(BaseHTTPRequestHandler):
                 self.close_connection = True
                 return self.send(403, 'text/plain; charset=utf-8', 'Запрос отклонён: откройте программу по её адресу')
             # платные внешние сервисы — только с заголовком программы X-KP-User-Id
-            if m == 'GET' and path.startswith(PAID_GET) and 'X-KP-User-Id' not in self.headers:
+            if method == 'GET' and path.startswith(PAID_GET) and 'X-KP-User-Id' not in self.headers:
                 return self.send(403, 'text/plain; charset=utf-8', 'Запрос отклонён: только из программы')
             if self.body_size() > BodyLimit.of(path):
                 self.close_connection = True
                 return self.send(413, 'text/plain; charset=utf-8', 'Слишком большой запрос')
             # права, модерация, журнал (admin.py): True — ответ отправлен, функция — записать в журнал
-            if m in ('POST', 'PUT', 'DELETE') and path.startswith('/api/'):
+            if method in ('POST', 'PUT', 'DELETE') and path.startswith('/api/'):
                 NightUpdate.touch()  # кто-то работает: ночное обновление подождёт
-            hook = admin.guard(self, store(), m, path) if path.startswith(('/api/', '/tpl/', '/img/')) else None
+            hook = admin.guard(self, store(), method, path) if path.startswith(('/api/', '/tpl/', '/img/')) else None
             if hook is True:
                 return None
             self.route()
@@ -375,28 +375,28 @@ class Handler(BaseHTTPRequestHandler):
             BadRequest,
             UnicodeDecodeError,
             json.JSONDecodeError,
-        ) as e:  # недопустимый идентификатор, испорченное тело — 400
+        ) as exc:  # недопустимый идентификатор, испорченное тело — 400
             try:
                 self.send(
                     400,
                     'text/plain; charset=utf-8',
-                    str(e) if isinstance(e, BadRequest) else 'Неверный запрос: нужен JSON в кодировке UTF-8',
+                    str(exc) if isinstance(exc, BadRequest) else 'Неверный запрос: нужен JSON в кодировке UTF-8',
                 )
             except Exception:
                 pass
-        except Exception as e:
+        except Exception as exc:
             # пользователю — без путей, подробности — в журнал сервера
             try:
                 self.send(
                     500,
                     'text/plain; charset=utf-8',
-                    f'Внутренняя ошибка сервера ({type(e).__name__}). Подробности — в журнале сервера.',
+                    f'Внутренняя ошибка сервера ({type(exc).__name__}). Подробности — в журнале сервера.',
                 )
             except Exception:
-                if self.gone(e):  # браузер уже закрыл соединение — ответ не нужен, и это не ошибка сервера
+                if self.gone(exc):  # браузер уже закрыл соединение — ответ не нужен, и это не ошибка сервера
                     self.close_connection = True
                     return None
-            ServerLog.failure(f'{self.command} {urllib.parse.urlsplit(self.path).path[:300]}', e)
+            ServerLog.failure(f'{self.command} {urllib.parse.urlsplit(self.path).path[:300]}', exc)
 
     def route(self) -> None:
         """Маршруты API — контроллеры разделов в web_api.py (Router: первый подходящий по пути и методу)."""
@@ -407,8 +407,8 @@ def already_running() -> bool:
     try:
         with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
             f'http://127.0.0.1:{BASE_PORT}/api/ping', timeout=2
-        ) as r:
-            return r.status == 200
+        ) as resp:
+            return resp.status == 200
     except Exception:
         return False
 
@@ -422,9 +422,9 @@ class Server(ThreadingHTTPServer):
 
     def handle_error(self, request, client_address) -> None:
         """Ошибка вне обработчика — в журнал сервера (у EXE нет stderr); закрытое браузером соединение — не ошибка."""
-        e = sys.exc_info()[1]
-        if not Handler.gone(e):
-            ServerLog.failure(f'соединение {client_address[0] if client_address else "?"}', e)
+        exc = sys.exc_info()[1]
+        if not Handler.gone(exc):
+            ServerLog.failure(f'соединение {client_address[0] if client_address else "?"}', exc)
 
 
 class Server6(Server):
@@ -434,11 +434,11 @@ class Server6(Server):
 def start_ipv6(port, main_server) -> None:
     """localhost в Windows часто означает ::1 — слушаем и его, как это делал HttpListener."""
     try:
-        s6 = Server6(('::1', port), Handler)
+        server6 = Server6(('::1', port), Handler)
     except OSError:
         return
-    s6.main_server = main_server
-    threading.Thread(target=s6.serve_forever, daemon=True).start()
+    server6.main_server = main_server
+    threading.Thread(target=server6.serve_forever, daemon=True).start()
 
 
 def start_server() -> tuple:
@@ -530,11 +530,11 @@ def main() -> int:
         feeds.upgrade(store(), load_types()['types'], APP_VERSION)  # после обновления — фиды по новым правилам
         fresh = FreshBase.check()
         sync_counter_with_files()
-    except Exception as e:
-        ServerLog.failure('запуск', e)
-        if StartCheck.armed() and StartCheck.code_error(e):
+    except Exception as exc:
+        ServerLog.failure('запуск', exc)
+        if StartCheck.armed() and StartCheck.code_error(exc):
             raise  # ошибка в коде обновления: launcher.py вернёт прежнюю версию и запустит её
-        if 'malformed' in str(e) or 'not a database' in str(e):
+        if 'malformed' in str(exc) or 'not a database' in str(exc):
             message_box(
                 'Файл базы данных повреждён:\n{}\n\n{}\n\n'
                 'Так бывает, когда kp.sqlite3 подменяют вручную при оставшихся рядом файлах kp.sqlite3-wal и kp.sqlite3-shm.\n'
@@ -542,11 +542,11 @@ def main() -> int:
                 'копию из папки data\\backup (архивы ZIP: kp-ДАТА.zip в backup\\auto — автоматические копии, kp-…-before-….zip — '
                 'перед изменениями; файл kp.sqlite3 — внутри архива). '
                 'Загружать файл базы впредь лучше через «Настройки → Обслуживание → Копии и база → Файл базы целиком».'.format(
-                    os.path.join(DATA_DIR, 'kp.sqlite3'), e
+                    os.path.join(DATA_DIR, 'kp.sqlite3'), exc
                 )
             )
             return 1
-        message_box(f'Не удалось подготовить папки данных:\n{DATA_DIR}\n\n{e}')
+        message_box(f'Не удалось подготовить папки данных:\n{DATA_DIR}\n\n{exc}')
         return 1
     try:  # каталог под новую структуру категорий — один раз; перед этим копия базы в data/backup
         if fresh:  # новая база: переносить в новую структуру нечего
@@ -562,8 +562,8 @@ def main() -> int:
         organize_existing(
             store(), load_types()['types'], IMG_DIR, os.path.join(DATA_DIR, 'backup'), backup=(rep or {}).get('backup')
         )
-    except Exception as e:
-        ServerLog.failure('обновление каталога или раскладка изображений (будут повторены при следующем запуске)', e)
+    except Exception as exc:
+        ServerLog.failure('обновление каталога или раскладка изображений (будут повторены при следующем запуске)', exc)
     if DATA_DIR.startswith('\\\\'):
         message_box(
             f'Папка данных указана в сети ({DATA_DIR}).\n\nБазу данных нельзя держать в общей сетевой папке — '

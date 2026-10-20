@@ -16,8 +16,8 @@ class ListStore:
         self.store = store
 
     def all(self) -> dict:
-        d = ((self.store.kv_get('settings') or {}).get('lists')) or {}
-        return d if isinstance(d, dict) else {}
+        data = ((self.store.kv_get('settings') or {}).get('lists')) or {}
+        return data if isinstance(data, dict) else {}
 
     @staticmethod
     def clean_rows(key: str, rows) -> list[dict]:
@@ -26,28 +26,28 @@ class ListStore:
         if len(rows) > MAX_ROWS:
             raise ValueError(f'Список «{key}»: больше {MAX_ROWS} строк')
         out = []
-        for r in rows:
-            if not isinstance(r, dict) or len(r) > MAX_FIELDS:
+        for raw in rows:
+            if not isinstance(raw, dict) or len(raw) > MAX_FIELDS:
                 raise ValueError(f'Список «{key}»: неверная строка')
             row = {}
-            for f, v in r.items():
-                if not FIELD_RX.match(str(f)):
-                    raise ValueError(f'Список «{key}»: неверное поле {str(f)[:30]}')
+            for field, v in raw.items():
+                if not FIELD_RX.match(str(field)):
+                    raise ValueError(f'Список «{key}»: неверное поле {str(field)[:30]}')
                 if isinstance(v, bool) or v is None:
-                    row[f] = bool(v)
+                    row[field] = bool(v)
                 elif isinstance(v, (int, float)):
-                    row[f] = v
+                    row[field] = v
                 else:
-                    row[f] = str(v).strip()[:MAX_LEN]
+                    row[field] = str(v).strip()[:MAX_LEN]
             out.append(row)
         return out
 
-    def save(self, values: dict, by: str = '') -> dict:
+    def save(self, values: dict, author: str = '') -> dict:
         """values = {ключ: [строки] | None — встроенный список}."""
         if not isinstance(values, dict):
             raise ValueError('Нет списков')
-        st = self.store.kv_get('settings') or {}
-        cur = dict(st.get('lists') or {})
+        settings = self.store.kv_get('settings') or {}
+        cur = dict(settings.get('lists') or {})
         for k, rows in values.items():
             if not KEY_RX.match(str(k)):
                 raise ValueError(f'Неверный ключ списка: {str(k)[:40]}')
@@ -57,7 +57,7 @@ class ListStore:
                 cur[k] = self.clean_rows(k, rows)
         if len(cur) > MAX_LISTS:
             raise ValueError('Слишком много списков')
-        st['lists'] = cur
-        st['listsAt'], st['listsBy'] = datetime.now().isoformat(timespec='seconds'), by
-        self.store.kv_set('settings', st)
+        settings['lists'] = cur
+        settings['listsAt'], settings['listsBy'] = datetime.now().isoformat(timespec='seconds'), author
+        self.store.kv_set('settings', settings)
         return cur

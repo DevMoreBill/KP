@@ -8,7 +8,7 @@ from server_log import ServerLog
 
 
 class AdminAlerts:
-    KV = 'alerts'
+    KV_KEY = 'alerts'
     MAX_TO = 5
     NOTICES = 10
     LEVEL = {'bad': 'Важно', 'warn': 'Внимание', 'info': 'К сведению'}
@@ -21,17 +21,17 @@ class AdminAlerts:
         return datetime.now().isoformat(timespec='seconds')
 
     def settings(self) -> dict:
-        s = self.store.kv_get(self.KV) or {}
-        return s if isinstance(s, dict) else {}
+        conf = self.store.kv_get(self.KV_KEY) or {}
+        return conf if isinstance(conf, dict) else {}
 
     @classmethod
     def notice(cls, store, text: str) -> None:
         """Событие (не проблема) — в следующее письмо, если письма включены."""
-        s = store.kv_get(cls.KV) or {}
-        if not isinstance(s, dict) or not s.get('on'):
+        conf = store.kv_get(cls.KV_KEY) or {}
+        if not isinstance(conf, dict) or not conf.get('on'):
             return
-        s['notices'] = ((s.get('notices') or []) + [{'at': cls._now(), 'text': str(text)[:300]}])[-cls.NOTICES :]
-        store.kv_set(cls.KV, s)
+        conf['notices'] = ((conf.get('notices') or []) + [{'at': cls._now(), 'text': str(text)[:300]}])[-cls.NOTICES :]
+        store.kv_set(cls.KV_KEY, conf)
 
     def problems(self) -> list[dict]:
         from admin_overview import Attention
@@ -41,63 +41,63 @@ class AdminAlerts:
     def public(self) -> dict:
         from kp_track import Mailer
 
-        s = self.settings()
+        conf = self.settings()
         return {
-            'on': bool(s.get('on')),
-            'to': s.get('to') or '',
-            'last': s.get('last') or None,
+            'on': bool(conf.get('on')),
+            'to': conf.get('to') or '',
+            'last': conf.get('last') or None,
             'mailOn': Mailer(self.store).on(),
         }
 
-    def save(self, d: dict, by: str) -> dict:
+    def save(self, data: dict, author: str) -> dict:
         from kp_track import Mailer
 
-        s = self.settings()
-        if 'to' in d:
-            to = Mailer.addresses(str(d.get('to') or '')[:600])
-            if len(to) > self.MAX_TO:
+        conf = self.settings()
+        if 'to' in data:
+            recipients = Mailer.addresses(str(data.get('to') or '')[:600])
+            if len(recipients) > self.MAX_TO:
                 raise ValueError(f'Не больше {self.MAX_TO} адресов для писем о проблемах')
-            s['to'] = ', '.join(to)
-        if 'on' in d:
-            s['on'] = bool(d.get('on'))
-        if s.get('on') and not s.get('to'):
+            conf['to'] = ', '.join(recipients)
+        if 'on' in data:
+            conf['on'] = bool(data.get('on'))
+        if conf.get('on') and not conf.get('to'):
             raise ValueError('Укажите адрес, на который присылать письма о проблемах')
-        s['updatedAt'], s['updatedBy'] = self._now(), by
-        self.store.kv_set(self.KV, s)
+        conf['updatedAt'], conf['updatedBy'] = self._now(), author
+        self.store.kv_set(self.KV_KEY, conf)
         return self.public()
 
     def check(self) -> dict | None:
         """Письмо о новой проблеме или раз в srv.alertRemindH, пока она есть."""
-        s = self.settings()
-        if not s.get('on') or not s.get('to'):
+        conf = self.settings()
+        if not conf.get('on') or not conf.get('to'):
             return None
         items = self.problems()
         keys = {x['key'] for x in items}
-        sent = {k: v for k, v in (s.get('sent') or {}).items() if k in keys}
+        sent = {k: v for k, v in (conf.get('sent') or {}).items() if k in keys}
         edge = (datetime.now() - timedelta(hours=SrvVal.get(self.store, 'srv.alertRemindH'))).isoformat(
             timespec='seconds'
         )
         due = {x['key'] for x in items if sent.get(x['key'], '') < edge}
-        notes = s.get('notices') or []
+        notes = conf.get('notices') or []
         if not due and not notes:
-            if sent != (s.get('sent') or {}):
-                s['sent'] = sent
-                self.store.kv_set(self.KV, s)
+            if sent != (conf.get('sent') or {}):
+                conf['sent'] = sent
+                self.store.kv_set(self.KV_KEY, conf)
             return None
         rec = self.send(items, due, notes=notes)
         if rec['ok']:
             sent.update(dict.fromkeys(keys, rec['at']))
-            s['notices'] = []
-        s['sent'], s['last'] = sent, rec
-        self.store.kv_set(self.KV, s)
+            conf['notices'] = []
+        conf['sent'], conf['last'] = sent, rec
+        self.store.kv_set(self.KV_KEY, conf)
         return rec
 
     def test(self) -> dict:
         """Пробное письмо; RuntimeError — почему не ушло."""
         rec = self.send(self.problems(), (), test=True)
-        s = self.settings()
-        s['last'] = rec
-        self.store.kv_set(self.KV, s)
+        conf = self.settings()
+        conf['last'] = rec
+        self.store.kv_set(self.KV_KEY, conf)
         if not rec['ok']:
             raise RuntimeError(rec['error'])
         return rec
@@ -122,7 +122,7 @@ class AdminAlerts:
             body = f'Сервер отдела «Конструктор КП» на компьютере {host}: проблем нет.'
         if notes:
             body += '\n\nСобытия:\n' + '\n'.join(
-                f'• {n.get("at", "")[:16].replace("T", " ")} {n.get("text", "")}' for n in notes
+                f'• {note.get("at", "")[:16].replace("T", " ")} {note.get("text", "")}' for note in notes
             )
         body += (
             f'\n\nОткрыть программу: {url} → «Настройки» → «Обзор» → «Сводка и статистика» → «Требует внимания».\n\n'
@@ -131,9 +131,9 @@ class AdminAlerts:
         )
         rec = {'at': self._now(), 'count': len(items), 'test': test, 'ok': True}
         try:
-            m = Mailer(self.store)
-            m.send(m.addresses(self.settings().get('to')), [], subject, body, [], test=True)
-        except (RuntimeError, ValueError) as e:
-            rec.update(ok=False, error=str(e)[:300])
-            ServerLog.failure(f'письмо администратору не отправлено: {e}')
+            mailer = Mailer(self.store)
+            mailer.send(mailer.addresses(self.settings().get('to')), [], subject, body, [], test=True)
+        except (RuntimeError, ValueError) as exc:
+            rec.update(ok=False, error=str(exc)[:300])
+            ServerLog.failure(f'письмо администратору не отправлено: {exc}')
         return rec

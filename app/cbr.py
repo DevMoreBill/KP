@@ -3,8 +3,8 @@
 import json
 import re
 import time
-import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
+from xml.etree import ElementTree
 
 from net import Net
 
@@ -19,9 +19,9 @@ def cbr_rates() -> dict:
     err = []
     # 1) официальный сайт ЦБ РФ
     try:
-        root = ET.fromstring(http_get('https://www.cbr.ru/scripts/XML_daily.asp'))
-        d = root.get('Date')
-        res = {'date': f'{d[6:10]}-{d[3:5]}-{d[0:2]}', 'src': 'ЦБ РФ (cbr.ru)'}
+        root = ElementTree.fromstring(http_get('https://www.cbr.ru/scripts/XML_daily.asp'))
+        day = root.get('Date')
+        res = {'date': f'{day[6:10]}-{day[3:5]}-{day[0:2]}', 'src': 'ЦБ РФ (cbr.ru)'}
         for v in root.findall('Valute'):
             code = v.findtext('CharCode')
             if code in CURRENCIES:
@@ -29,19 +29,19 @@ def cbr_rates() -> dict:
                     v.findtext('Nominal').replace(',', '.')
                 )
         return res
-    except Exception as e:
-        err.append(str(e))
+    except Exception as exc:
+        err.append(str(exc))
     # 2) зеркало данных ЦБ
     try:
         j = json.loads(http_get('https://www.cbr-xml-daily.ru/daily_json.js').decode('utf-8-sig'))
         res = {'date': j['Date'][:10], 'src': 'ЦБ РФ (зеркало cbr-xml-daily.ru)'}
-        for c in CURRENCIES:
-            v = j.get('Valute', {}).get(c)
+        for cur in CURRENCIES:
+            v = j.get('Valute', {}).get(cur)
             if v:
-                res[c] = float(v['Value']) / float(v['Nominal'])
+                res[cur] = float(v['Value']) / float(v['Nominal'])
         return res
-    except Exception as e:
-        err.append(str(e))
+    except Exception as exc:
+        err.append(str(exc))
     return {'error': '; '.join(err)}
 
 
@@ -53,11 +53,11 @@ KEY_HISTORY_DAYS = 400
 def parse_key_rate_xml(data: str) -> tuple[str, float] | None:
     """Ответ KeyRateXML → (дата, ставка %) последнего значения."""
     best = None
-    for kr in re.findall(r'<KR>(.*?)</KR>', data, re.S):
-        dt = re.search(r'<DT>(\d{4}-\d{2}-\d{2})', kr)
-        rt = re.search(r'<Rate>([\d.,]+)</Rate>', kr)
-        if dt and rt:
-            item = (dt.group(1), float(rt.group(1).replace(',', '.')))
+    for block in re.findall(r'<KR>(.*?)</KR>', data, re.S):
+        date_match = re.search(r'<DT>(\d{4}-\d{2}-\d{2})', block)
+        rate_match = re.search(r'<Rate>([\d.,]+)</Rate>', block)
+        if date_match and rate_match:
+            item = (date_match.group(1), float(rate_match.group(1).replace(',', '.')))
             if not best or item[0] > best[0]:
                 best = item
     return best
@@ -66,8 +66,8 @@ def parse_key_rate_xml(data: str) -> tuple[str, float] | None:
 def parse_key_rate_html(html: str) -> tuple[str, float] | None:
     """Таблица cbr.ru/hd_base/KeyRate → (дата, ставка %) последнего значения."""
     best = None
-    for d, m, y, rate in re.findall(r'<td>\s*(\d{2})\.(\d{2})\.(\d{4})\s*</td>\s*<td>\s*([\d,.]+)\s*</td>', html):
-        item = (f'{y}-{m}-{d}', float(rate.replace(',', '.')))
+    for day, month, y, rate in re.findall(r'<td>\s*(\d{2})\.(\d{2})\.(\d{4})\s*</td>\s*<td>\s*([\d,.]+)\s*</td>', html):
+        item = (f'{y}-{month}-{day}', float(rate.replace(',', '.')))
         if not best or item[0] > best[0]:
             best = item
     return best
@@ -75,18 +75,18 @@ def parse_key_rate_html(html: str) -> tuple[str, float] | None:
 
 def cbr_key_rate() -> dict:
     """{rate, date, src} или {error}; кэш — KEY_TTL."""
-    c = _KEY_CACHE.get('v')
-    if c and time.time() - c[0] < KEY_TTL:
-        return c[1]
+    cached = _KEY_CACHE.get('v')
+    if cached and time.time() - cached[0] < KEY_TTL:
+        return cached[1]
     err = []
     today = datetime.now()
     since = today - timedelta(days=KEY_HISTORY_DAYS)
-    frm, to = since.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d')
+    frm, till = since.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d')
     # 1) веб-сервис ЦБ (SOAP)
     try:
         body = (
             '<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
-            f'<soap:Body><KeyRateXML xmlns="http://web.cbr.ru/"><fromDate>{frm}</fromDate><ToDate>{to}</ToDate></KeyRateXML>'
+            f'<soap:Body><KeyRateXML xmlns="http://web.cbr.ru/"><fromDate>{frm}</fromDate><ToDate>{till}</ToDate></KeyRateXML>'
             '</soap:Body></soap:Envelope>'
         ).encode()
         raw = Net.request(
@@ -106,18 +106,18 @@ def cbr_key_rate() -> dict:
             _KEY_CACHE['v'] = (time.time(), res)
             return res
         err.append('веб-сервис ЦБ: нет данных')
-    except Exception as e:
-        err.append(f'веб-сервис ЦБ: {e}')
+    except Exception as exc:
+        err.append(f'веб-сервис ЦБ: {exc}')
     # 2) страница ключевой ставки на сайте ЦБ
     try:
-        a, b = since.strftime('%d.%m.%Y'), today.strftime('%d.%m.%Y')
-        url = f'https://www.cbr.ru/hd_base/KeyRate/?UniDbQuery.Posted=True&UniDbQuery.From={a}&UniDbQuery.To={b}'
+        since_text, till_text = since.strftime('%d.%m.%Y'), today.strftime('%d.%m.%Y')
+        url = f'https://www.cbr.ru/hd_base/KeyRate/?UniDbQuery.Posted=True&UniDbQuery.From={since_text}&UniDbQuery.To={till_text}'
         got = parse_key_rate_html(http_get(url).decode('utf-8', 'replace'))
         if got:
             res = {'date': got[0], 'rate': got[1], 'src': 'ЦБ РФ (cbr.ru/hd_base)'}
             _KEY_CACHE['v'] = (time.time(), res)
             return res
         err.append('страница ЦБ: нет данных')
-    except Exception as e:
-        err.append(f'страница ЦБ: {e}')
+    except Exception as exc:
+        err.append(f'страница ЦБ: {exc}')
     return {'error': '; '.join(err)}

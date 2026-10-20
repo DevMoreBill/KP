@@ -66,7 +66,7 @@ class LtlLimitsServer(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn('3 000 кг', why)
         self.assertIn('6 000 × 2 400 × 2 500 мм', why)
-        defaults.save(self.store, {'log.ltlKg': {'on': True, 'v': '5000'}}, by='проверка')
+        defaults.save(self.store, {'log.ltlKg': {'on': True, 'v': '5000'}}, author='проверка')
         self.assertEqual(LtlLimits.get(self.store)['m'], 5.0)
         self.assertEqual(LtlLimits.fits(place, self.store), (True, ''))
         # общая масса: 5 мест по 4 т = 20 т — на пределе; предел 15 000 кг — отдельная машина

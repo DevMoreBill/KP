@@ -74,8 +74,8 @@ $json = ConvertTo-Json -InputObject @{ pages = @($pages); total = $total; lang =
         if os.name != 'nt':
             return None
         root = os.environ.get('SYSTEMROOT') or r'C:\Windows'
-        p = os.path.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-        return p if os.path.isfile(p) else shutil.which('powershell.exe')
+        path = os.path.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+        return path if os.path.isfile(path) else shutil.which('powershell.exe')
 
     @classmethod
     def available(cls) -> bool:
@@ -91,39 +91,39 @@ $json = ConvertTo-Json -InputObject @{ pages = @($pages); total = $total; lang =
     @staticmethod
     def _clean(msg) -> str:
         """Сообщение без путей и служебных строк PowerShell."""
-        s = re.sub(r'[A-Za-z]:\\[^\s\'"]+', '…', str(msg or ''))
-        s = next(
+        text = re.sub(r'[A-Za-z]:\\[^\s\'"]+', '…', str(msg or ''))
+        text = next(
             (
                 x.strip()
-                for x in s.splitlines()
+                for x in text.splitlines()
                 if x.strip()
                 and not x.strip().startswith(('At ', 'строка:', '+ ', 'CategoryInfo', 'FullyQualifiedErrorId'))
             ),
             '',
         )
-        return s[:200]
+        return text[:200]
 
     @classmethod
     def recognize(cls, data: bytes, kind: str) -> dict:
         """kind — «pdf» или «image» → {pages, total, lang}."""
-        ps = cls.powershell()
-        if not ps:
+        shell = cls.powershell()
+        if not shell:
             raise ValueError(
                 'распознавание сканов доступно на сервере под Windows 10/11 (встроенное распознавание текста Windows)'
             )
         ext = '.pdf' if kind == 'pdf' else (cls.image_ext(data) or '.png')
         tmp = tempfile.mkdtemp(prefix='kp-ocr-')
         try:
-            src, out, script = (os.path.join(tmp, n) for n in ('in' + ext, 'out.json', 'ocr.ps1'))
-            with open(src, 'wb') as f:
-                f.write(data)
-            with open(script, 'w', encoding='utf-8-sig') as f:
-                f.write(cls.SCRIPT)
+            src, out, script = (os.path.join(tmp, name) for name in ('in' + ext, 'out.json', 'ocr.ps1'))
+            with open(src, 'wb') as file:
+                file.write(data)
+            with open(script, 'w', encoding='utf-8-sig') as file:
+                file.write(cls.SCRIPT)
             flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
             try:
-                r = subprocess.run(
+                proc = subprocess.run(
                     [
-                        ps,
+                        shell,
                         '-NoProfile',
                         '-NonInteractive',
                         '-ExecutionPolicy',
@@ -149,7 +149,7 @@ $json = ConvertTo-Json -InputObject @{ pages = @($pages); total = $total; lang =
                     f'распознавание текста не уложилось в {cls.TIMEOUT} с — сократите документ или пришлите текстовый PDF'
                 ) from None
             if not os.path.isfile(out):
-                err = (r.stderr or b'').decode('utf-8', 'replace') + (r.stdout or b'').decode('utf-8', 'replace')
+                err = (proc.stderr or b'').decode('utf-8', 'replace') + (proc.stdout or b'').decode('utf-8', 'replace')
                 if 'NOENGINE' in err:
                     raise ValueError(
                         'в Windows не установлен язык распознавания текста: «Параметры» → «Время и язык» → «Язык» → '
@@ -157,10 +157,14 @@ $json = ConvertTo-Json -InputObject @{ pages = @($pages); total = $total; lang =
                     )
                 why = cls._clean(err)
                 raise ValueError('встроенное распознавание Windows не сработало' + (': ' + why if why else ''))
-            with open(out, encoding='utf-8-sig') as f:
-                d = json.load(f)
-            pages = d.get('pages')
-            pages = [pages] if isinstance(pages, str) else [str(p or '') for p in (pages or [])]
-            return {'pages': pages, 'total': int(d.get('total') or len(pages)), 'lang': str(d.get('lang') or '')}
+            with open(out, encoding='utf-8-sig') as file:
+                parsed = json.load(file)
+            pages = parsed.get('pages')
+            pages = [pages] if isinstance(pages, str) else [str(page or '') for page in (pages or [])]
+            return {
+                'pages': pages,
+                'total': int(parsed.get('total') or len(pages)),
+                'lang': str(parsed.get('lang') or ''),
+            }
         finally:
             shutil.rmtree(tmp, ignore_errors=True)

@@ -349,7 +349,7 @@ class GeoController(Controller):
                 a, b = (q.get('a') or '').split(','), (q.get('b') or '').split(',')
                 if len(a) != 2 or len(b) != 2:
                     raise ValueError('Нужны две точки')
-                return self.send_json(geo.RoadRoute.km(store(), a, b))
+                return self.send_json(geo.RoadRoute.distance_km(store(), a, b))
             if act == 'unshort':
                 return self.send_json({'url': geo.unshort(q.get('u', ''))})
         except Exception as e:

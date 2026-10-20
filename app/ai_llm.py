@@ -32,13 +32,13 @@ def _now() -> str:
 
 
 def settings(store) -> dict:
-    a = (store.kv_get('settings') or {}).get('ai') or {}
+    conf = (store.kv_get('settings') or {}).get('ai') or {}
     return {
-        'enabled': bool(a.get('enabled')),
-        'model': a.get('model') or MODELS[0][0],
-        'base': (a.get('base') or DEFAULT_BASE).rstrip('/'),
-        'updatedAt': a.get('updatedAt') or '',
-        'updatedBy': a.get('updatedBy') or '',
+        'enabled': bool(conf.get('enabled')),
+        'model': conf.get('model') or MODELS[0][0],
+        'base': (conf.get('base') or DEFAULT_BASE).rstrip('/'),
+        'updatedAt': conf.get('updatedAt') or '',
+        'updatedBy': conf.get('updatedBy') or '',
     }
 
 
@@ -48,72 +48,72 @@ def api_key(store) -> str:
 
 def status(store) -> dict:
     """Для менеджеров: включено ли и есть ли ключ — без ключа и адреса."""
-    s = settings(store)
-    prov = 'DeepSeek' if 'deepseek' in s['base'] else 'OpenRouter' if 'openrouter' in s['base'] else 'нейросеть'
-    return {'enabled': s['enabled'] and bool(api_key(store)), 'provider': prov, 'model': s['model']}
+    conf = settings(store)
+    prov = 'DeepSeek' if 'deepseek' in conf['base'] else 'OpenRouter' if 'openrouter' in conf['base'] else 'нейросеть'
+    return {'enabled': conf['enabled'] and bool(api_key(store)), 'provider': prov, 'model': conf['model']}
 
 
 def admin_view(store) -> dict:
-    s, k = settings(store), api_key(store)
+    conf, k = settings(store), api_key(store)
     use = store.kv_get('aiUsage') or {}
     month = datetime.now().strftime('%Y-%m')
     return dict(
-        s,
+        conf,
         hasKey=bool(k),
         keyMask=(k[:4] + '…' + k[-4:]) if len(k) > 10 else ('задан' if k else ''),
-        models=[{'id': i, 'name': n} for i, n in MODELS],
+        models=[{'id': i, 'name': name} for i, name in MODELS],
         usage=use.get(month) or {},
         usageMonth=month,
-        usageAll=sorted(({'month': m, **v} for m, v in use.items()), key=lambda x: x['month'], reverse=True)[:12],
+        usageAll=sorted(({'month': key, **v} for key, v in use.items()), key=lambda x: x['month'], reverse=True)[:12],
     )
 
 
-def save(store, d: dict, by: str) -> dict:
+def save(store, data: dict, author: str) -> dict:
     """Включение, модель, адрес; ключ — в kv «integrations»."""
-    st = store.kv_get('settings') or {}
-    a = dict(st.get('ai') or {})
-    if 'enabled' in d:
-        if d['enabled'] and not (api_key(store) or d.get('key')):
+    settings = store.kv_get('settings') or {}
+    conf = dict(settings.get('ai') or {})
+    if 'enabled' in data:
+        if data['enabled'] and not (api_key(store) or data.get('key')):
             raise ValueError('Сначала укажите ключ API DeepSeek')
-        a['enabled'] = bool(d['enabled'])
-    if d.get('model'):
-        a['model'] = str(d['model']).strip()[:80]
-    if 'base' in d:
-        b = str(d.get('base') or '').strip().rstrip('/')
-        if b and not b.startswith('https://'):
+        conf['enabled'] = bool(data['enabled'])
+    if data.get('model'):
+        conf['model'] = str(data['model']).strip()[:80]
+    if 'base' in data:
+        base_url = str(data.get('base') or '').strip().rstrip('/')
+        if base_url and not base_url.startswith('https://'):
             raise ValueError('Адрес API должен начинаться с https://')
-        a['base'] = b or DEFAULT_BASE
-    if 'key' in d:
+        conf['base'] = base_url or DEFAULT_BASE
+    if 'key' in data:
         keys = store.kv_get('integrations') or {}
-        k = str(d.get('key') or '').strip()
+        k = str(data.get('key') or '').strip()
         if k:
             keys['deepseekKey'] = k
         else:
             keys.pop('deepseekKey', None)
-            a['enabled'] = False
+            conf['enabled'] = False
         store.kv_set('integrations', keys)
-    a['updatedAt'], a['updatedBy'] = _now(), by
-    st['ai'] = a
-    store.kv_set('settings', st)
+    conf['updatedAt'], conf['updatedBy'] = _now(), author
+    settings['ai'] = conf
+    store.kv_set('settings', settings)
     return admin_view(store)
 
 
 def _count(store, usage: dict | None) -> None:
     with LOCK:
         use = store.kv_get('aiUsage') or {}
-        m = datetime.now().strftime('%Y-%m')
-        r = use.get(m) or {'requests': 0, 'tokensIn': 0, 'tokensOut': 0}
-        r['requests'] += 1
-        r['tokensIn'] += int((usage or {}).get('prompt_tokens') or 0)
-        r['tokensOut'] += int((usage or {}).get('completion_tokens') or 0)
-        use[m] = r
+        month = datetime.now().strftime('%Y-%m')
+        month_use = use.get(month) or {'requests': 0, 'tokensIn': 0, 'tokensOut': 0}
+        month_use['requests'] += 1
+        month_use['tokensIn'] += int((usage or {}).get('prompt_tokens') or 0)
+        month_use['tokensOut'] += int((usage or {}).get('completion_tokens') or 0)
+        use[month] = month_use
         store.kv_set('aiUsage', use)
 
 
 def ask(store, prompt: str, force: bool = False) -> dict:
     """{text, usage, model}; RuntimeError — текст для пользователя."""
-    s, key = settings(store), api_key(store)
-    if not force and not s['enabled']:
+    conf, key = settings(store), api_key(store)
+    if not force and not conf['enabled']:
         raise RuntimeError(
             'Нейросеть в программе выключена администратором — заполните через любой ИИ-чат (кнопки ниже)'
         )
@@ -124,23 +124,23 @@ def ask(store, prompt: str, force: bool = False) -> dict:
         raise RuntimeError('Пустой запрос')
     now = time.time()
     with LOCK:
-        _RECENT[:] = [t for t in _RECENT if now - t < 60]
+        _RECENT[:] = [stamp for stamp in _RECENT if now - stamp < 60]
         if len(_RECENT) >= SrvVal.get(store, 'ai.rateMin'):
             raise RuntimeError('Слишком много запросов к нейросети за минуту — подождите немного и повторите')
         _RECENT.append(now)
     body = {
-        'model': s['model'],
+        'model': conf['model'],
         'temperature': SrvVal.get(store, 'ai.temperature'),
         'max_tokens': SrvVal.get(store, 'ai.maxTokens'),
         'stream': False,
         'messages': [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': prompt[:MAX_PROMPT]}],
     }
-    if 'reasoner' not in s['model']:
+    if 'reasoner' not in conf['model']:
         body['response_format'] = {'type': 'json_object'}
     try:
         j = json.loads(
             Net.request(
-                s['base'] + '/chat/completions',
+                conf['base'] + '/chat/completions',
                 data=json.dumps(body, ensure_ascii=False).encode('utf-8'),
                 method='POST',
                 headers={
@@ -152,9 +152,9 @@ def ask(store, prompt: str, force: bool = False) -> dict:
                 limit=Net.LIMIT,
             ).decode('utf-8')
         )
-    except urllib.error.HTTPError as e:
+    except urllib.error.HTTPError as exc:
         try:
-            msg = (json.loads(e.read().decode('utf-8', 'replace')).get('error') or {}).get('message') or ''
+            msg = (json.loads(exc.read().decode('utf-8', 'replace')).get('error') or {}).get('message') or ''
         except Exception:
             msg = ''
         known = {
@@ -164,12 +164,12 @@ def ask(store, prompt: str, force: bool = False) -> dict:
             503: 'сервис перегружен — повторите через минуту',
         }
         tail = f' — {msg[:200]}' if msg else ''
-        raise RuntimeError('Нейросеть: ' + known.get(e.code, f'ошибка {e.code}{tail}')) from e
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        why = str(getattr(e, 'reason', e))[:160]
+        raise RuntimeError('Нейросеть: ' + known.get(exc.code, f'ошибка {exc.code}{tail}')) from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        why = str(getattr(exc, 'reason', exc))[:160]
         raise RuntimeError(
             f'Нейросеть недоступна: {why}. Проверьте интернет на компьютере-сервере или заполните через ИИ-чат'
-        ) from e
+        ) from exc
     except ValueError:
         raise RuntimeError(
             'Нейросеть ответила не данными, а страницей — сервис или адрес API недоступен, повторите позже'
@@ -179,4 +179,4 @@ def ask(store, prompt: str, force: bool = False) -> dict:
     except (KeyError, IndexError, TypeError):
         raise RuntimeError('Нейросеть вернула пустой ответ — повторите') from None
     _count(store, j.get('usage'))
-    return {'text': text, 'usage': j.get('usage') or {}, 'model': j.get('model') or s['model']}
+    return {'text': text, 'usage': j.get('usage') or {}, 'model': j.get('model') or conf['model']}

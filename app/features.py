@@ -54,7 +54,7 @@ class FeatureAccess:
     """Настройка функций хранилища и доступ пользователя к ним."""
 
     WHO = ('all', 'admin', 'users')
-    ID = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+    ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
     MAX_USERS = 200
 
     def __init__(self, store) -> None:
@@ -64,7 +64,7 @@ class FeatureAccess:
         """{ключ: {on, who, users}}; старое значение да / нет — {on, who: all}."""
         own = ((self.store.kv_get('settings') or {}).get('features')) or {}
         own = own if isinstance(own, dict) else {}
-        return {k: self._norm(own.get(k), d) for k, (d, _) in FEATURES.items()}
+        return {k: self._norm(own.get(k), desc) for k, (desc, _) in FEATURES.items()}
 
     def _norm(self, v, default: bool) -> dict:
         if isinstance(v, bool):
@@ -80,12 +80,12 @@ class FeatureAccess:
 
     @staticmethod
     def allowed(cfg: dict, key: str, is_admin: bool, uid: str) -> bool:
-        c = cfg.get(key) or {'on': True, 'who': 'all'}
-        if not c['on']:
+        conf = cfg.get(key) or {'on': True, 'who': 'all'}
+        if not conf['on']:
             return False
-        if c['who'] == 'all' or is_admin:
+        if conf['who'] == 'all' or is_admin:
             return True
-        return c['who'] == 'users' and bool(uid) and uid in c['users']
+        return conf['who'] == 'users' and bool(uid) and uid in conf['users']
 
     def for_user(self, is_admin: bool = True, uid: str = '') -> dict[str, bool]:
         cfg = self.config()
@@ -94,12 +94,12 @@ class FeatureAccess:
     def is_on(self, key: str) -> bool:
         return self.config()[key]['on']
 
-    def save(self, values: dict, by: str = '') -> dict:
+    def save(self, values: dict, author: str = '') -> dict:
         """values = {ключ: {on, who, users} | да / нет | None — встроенное}."""
         if not isinstance(values, dict) or not values:
             raise ValueError('Нет значений')
-        st = self.store.kv_get('settings') or {}
-        cur = dict(st.get('features') or {})
+        settings = self.store.kv_get('settings') or {}
+        cur = dict(settings.get('features') or {})
         for k, v in values.items():
             if k not in FEATURES:
                 raise ValueError(f'Неизвестная функция: {str(k)[:40]}')
@@ -107,9 +107,9 @@ class FeatureAccess:
                 cur.pop(k, None)
             else:
                 cur[k] = self._value(cur.get(k), v)
-        st['features'] = cur
-        st['featuresAt'], st['featuresBy'] = datetime.now().isoformat(timespec='seconds'), by
-        self.store.kv_set('settings', st)
+        settings['features'] = cur
+        settings['featuresAt'], settings['featuresBy'] = datetime.now().isoformat(timespec='seconds'), author
+        self.store.kv_set('settings', settings)
         return self.config()
 
     def _value(self, old, v) -> dict:
@@ -122,14 +122,14 @@ class FeatureAccess:
         if who not in self.WHO:
             raise ValueError('Кому доступно: всем, администратору или выбранным менеджерам')
         users = v.get('users') or []
-        if not isinstance(users, list) or not all(isinstance(x, str) and self.ID.match(x) for x in users):
+        if not isinstance(users, list) or not all(isinstance(x, str) and self.ID_RE.match(x) for x in users):
             raise ValueError('Неверный список менеджеров')
         return {'on': bool(v.get('on', True)), 'who': who, 'users': users[: self.MAX_USERS] if who == 'users' else []}
 
     def blocked(self, method: str, path: str, who) -> str | None:
         """Название недоступной пользователю функции адреса или None; who() → (администратор ли, id менеджера)."""
-        for m, rx, key in ROUTES:
-            if (m is None or m == method) and rx.match(path):
+        for pattern, regex, key in ROUTES:
+            if (pattern is None or pattern == method) and regex.match(path):
                 is_admin, uid = who()
                 return None if self.allowed(self.config(), key, is_admin, uid) else FEATURES[key][1]
         return None

@@ -12,7 +12,7 @@ from defaults import SrvVal
 
 class KpFiles:
     FOLDER = 'kp_files'
-    MB = 1024 * 1024
+    MEGABYTE = 1024 * 1024
     NAME_MAX = 150
     NOTE_MAX = 300
     KP_ID = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
@@ -106,16 +106,16 @@ class KpFiles:
         }
 
     @classmethod
-    def mb(cls, n) -> str:
-        x = n / cls.MB
+    def megabytes(cls, size) -> str:
+        x = size / cls.MEGABYTE
         return (f'{x:.1f}').replace('.', ',') if x < 10 else str(round(x))
 
     @classmethod
     def clean_name(cls, name) -> tuple:
         """Имя для показа и скачивания: без пути и запрещённых символов, не длиннее NAME_MAX → (имя, расширение)."""
-        s = re.split(r'[\\/]', str(name or ''))[-1]
-        s = re.sub(r'\s+', ' ', cls.BAD_CHARS.sub('', s)).strip().strip('.').strip()
-        stem, ext = os.path.splitext(s)
+        text = re.split(r'[\\/]', str(name or ''))[-1]
+        text = re.sub(r'\s+', ' ', cls.BAD_CHARS.sub('', text)).strip().strip('.').strip()
+        stem, ext = os.path.splitext(text)
         ext = ext.lower()
         if not stem or ext not in cls.TYPES:
             raise ValueError(
@@ -170,9 +170,9 @@ class KpFiles:
         return True
 
     @classmethod
-    def _ext(cls, n) -> str:
+    def _ext(cls, name) -> str:
         """Расширение имени из архива так, как его увидит Windows: точки и пробелы в конце она отбрасывает («a.exe.» → .exe)."""
-        return os.path.splitext(n.rstrip('/').rstrip(' .'))[1].lower()
+        return os.path.splitext(name.rstrip('/').rstrip(' .'))[1].lower()
 
     @classmethod
     def _zip_bad(cls, data, depth=0) -> bool:
@@ -210,75 +210,75 @@ class KpFiles:
             return True
         if b'\x00' in head:
             return False
-        h = head.lstrip(b'\xef\xbb\xbf \t\r\n').lower()
-        return not h.startswith(cls.TEXT_BAD)
+        head_low = head.lstrip(b'\xef\xbb\xbf \t\r\n').lower()
+        return not head_low.startswith(cls.TEXT_BAD)
 
-    def _kp(self, kid: str) -> str:
+    def _kp_id(self, kid: str) -> str:
         if not self.KP_ID.match(str(kid or '')):
             raise ValueError('Недопустимый номер КП')
         return str(kid)
 
     def _dir(self, kid: str) -> str:
-        return os.path.join(self.root, self._kp(kid))
+        return os.path.join(self.root, self._kp_id(kid))
 
     def _path(self, kid: str, disk) -> str:
         """Файл на диске по имени из базы: только своё имя (случайное) и только в папке этого КП."""
         if not self.DISK.match(str(disk or '')):
             raise ValueError('Неверная запись файла')
-        f = os.path.join(self._dir(kid), disk)
+        path = os.path.join(self._dir(kid), disk)
         root = os.path.normcase(os.path.abspath(self.root)) + os.sep
-        if not os.path.normcase(os.path.abspath(f)).startswith(root):
+        if not os.path.normcase(os.path.abspath(path)).startswith(root):
             raise ValueError('Неверная запись файла')
-        return f
+        return path
 
     COLS = ('id', 'name', 'file', 'size', 'mime', 'note', 'added', 'added_by', 'added_by_id')
 
     @staticmethod
-    def _row(d) -> dict:
+    def _row(rec) -> dict:
         """Описание для ответа из строки таблицы {столбец: значение}."""
         return {
-            'id': d['id'],
-            'name': d['name'],
-            'size': d['size'] or 0,
-            'mime': d['mime'] or '',
-            'note': d['note'] or '',
-            'added': d['added'] or '',
-            'by': d['added_by'] or '',
-            'ext': os.path.splitext(d['name'])[1].lower().lstrip('.'),
+            'id': rec['id'],
+            'name': rec['name'],
+            'size': rec['size'] or 0,
+            'mime': rec['mime'] or '',
+            'note': rec['note'] or '',
+            'added': rec['added'] or '',
+            'by': rec['added_by'] or '',
+            'ext': os.path.splitext(rec['name'])[1].lower().lstrip('.'),
         }
 
     def list(self, kid: str, uid: str | None = None) -> list[dict]:
         """Документы КП; у своих свежих файлов (uid — кто спрашивает) — undoUntil: до какого времени автор может удалить."""
         rows = self.store.all(
-            'SELECT {} FROM kp_files WHERE kp_id=? ORDER BY id'.format(', '.join(self.COLS)), (self._kp(kid),)
+            'SELECT {} FROM kp_files WHERE kp_id=? ORDER BY id'.format(', '.join(self.COLS)), (self._kp_id(kid),)
         )
         out = []
-        for r in rows:
-            d = dict(zip(self.COLS, r, strict=False))
-            rec = self._row(d)
-            until = self.undo_until(d, uid)
+        for row in rows:
+            raw = dict(zip(self.COLS, row, strict=False))
+            rec = self._row(raw)
+            until = self.undo_until(raw, uid)
             if until:
                 rec['undoUntil'] = until.isoformat(timespec='seconds')
             out.append(rec)
         return out
 
-    def undo_until(self, d, uid: str) -> datetime | None:
+    def undo_until(self, rec, uid: str) -> datetime | None:
         """До какого времени автор uid может удалить свой документ d (строка таблицы) — или None, если не может."""
         minutes = SrvVal.get(self.store, 'kp.fileUndoMin')
-        if not uid or not minutes or d.get('added_by_id') != uid:
+        if not uid or not minutes or rec.get('added_by_id') != uid:
             return None
         try:
-            until = datetime.fromisoformat(d['added']) + timedelta(minutes=minutes)
+            until = datetime.fromisoformat(rec['added']) + timedelta(minutes=minutes)
         except (TypeError, ValueError):
             return None
         return until if datetime.now() < until else None
 
     def delete_own(self, kid: str, fid: str, uid: str) -> dict | None:
         """Автор удаляет свой документ в первые kp.fileUndoMin минут → прежнее описание."""
-        d = self._get(kid, fid)
-        if not d:
+        rec = self._get(kid, fid)
+        if not rec:
             raise LookupError('Документ не найден')
-        if not self.undo_until(d, uid):
+        if not self.undo_until(rec, uid):
             raise PermissionError(
                 f'Удалить документ может его автор в первые {SrvVal.get(self.store, "kp.fileUndoMin")} мин после загрузки, '
                 'позже — администратор'
@@ -299,70 +299,70 @@ class KpFiles:
             )
         else:  # весь журнал (админка): одним запросом по всем КП с документами
             rows = self.store.all('SELECT kp_id, COUNT(*) FROM kp_files GROUP BY kp_id')
-        return {k: n for k, n in rows if k in want}
+        return {k: count for k, count in rows if k in want}
 
     def _get(self, kid: str, fid: str) -> dict | None:
-        r = self.store.one(
-            'SELECT {} FROM kp_files WHERE kp_id=? AND id=?'.format(', '.join(self.COLS)), (self._kp(kid), int(fid))
+        row = self.store.one(
+            'SELECT {} FROM kp_files WHERE kp_id=? AND id=?'.format(', '.join(self.COLS)), (self._kp_id(kid), int(fid))
         )
-        return dict(zip(self.COLS, r, strict=False)) if r else None
+        return dict(zip(self.COLS, row, strict=False)) if row else None
 
     def get(self, kid: str, fid: str) -> dict | None:
-        d = self._get(kid, fid)
-        return self._row(d) if d else None
+        rec = self._get(kid, fid)
+        return self._row(rec) if rec else None
 
     def read(self, kid: str, fid: str) -> tuple | None:
         """(описание, содержимое) или None — нет такой записи или файл пропал с диска."""
-        d = self._get(kid, fid)
-        if not d:
+        rec = self._get(kid, fid)
+        if not rec:
             return None
-        f = self._path(kid, d['file'])
-        if not os.path.isfile(f):
+        path = self._path(kid, rec['file'])
+        if not os.path.isfile(path):
             return None
-        with open(f, 'rb') as fh:
-            data = fh.read()
-        return self._row(d), data
+        with open(path, 'rb') as handle:
+            data = handle.read()
+        return self._row(rec), data
 
     @classmethod
     def clean_note(cls, note) -> str:
         return re.sub(r'\s+', ' ', cls.BAD_CHARS.sub(' ', str(note or ''))).strip()[: cls.NOTE_MAX]
 
-    def add(self, kid: str, name, data, note='', by: str = '', by_id='') -> dict | None:
+    def add(self, kid: str, name, data, note='', author: str = '', by_id='') -> dict | None:
         """Прикрепить файл к КП → описание. ValueError — понятным текстом (тип, размер, пределы КП)."""
-        kid = self._kp(kid)
+        kid = self._kp_id(kid)
         name, ext = self.clean_name(name)
         lim = self.limits()
         if not data:
             raise ValueError(f'Файл «{name}» пустой')
-        if len(data) > lim['fileMB'] * self.MB:
+        if len(data) > lim['fileMB'] * self.MEGABYTE:
             raise ValueError(
                 'Файл «{}» — {} МБ, можно не больше {} МБ. Сожмите его (PDF — «уменьшить размер», картинки — меньше '
-                'разрешение) или разделите на части'.format(name, self.mb(len(data)), lim['fileMB'])
+                'разрешение) или разделите на части'.format(name, self.megabytes(len(data)), lim['fileMB'])
             )
         self.check_content(name, ext, data)
         disk = uuid.uuid4().hex + ('.jpg' if ext == '.jpeg' else ext)
-        f = self._path(kid, disk)
-        tmp = f + '.part'
+        path = self._path(kid, disk)
+        tmp = path + '.part'
         with self.store.lock:
-            n, total = self.store.one('SELECT COUNT(*), COALESCE(SUM(size), 0) FROM kp_files WHERE kp_id=?', (kid,))
-            if n >= lim['filesMax']:
+            usage, total = self.store.one('SELECT COUNT(*), COALESCE(SUM(size), 0) FROM kp_files WHERE kp_id=?', (kid,))
+            if usage >= lim['filesMax']:
                 raise ValueError(
-                    f'У КП уже {n} документов — больше {lim["filesMax"]} прикрепить нельзя. '
+                    f'У КП уже {usage} документов — больше {lim["filesMax"]} прикрепить нельзя. '
                     'Объедините часть в один PDF или архив ZIP'
                 )
-            if total + len(data) > lim['filesMB'] * self.MB:
+            if total + len(data) > lim['filesMB'] * self.MEGABYTE:
                 raise ValueError(
                     'Документы КП вместе займут {} МБ — можно не больше {} МБ на одно КП'.format(
-                        self.mb(total + len(data)), lim['filesMB']
+                        self.megabytes(total + len(data)), lim['filesMB']
                     )
                 )
             try:
-                os.makedirs(os.path.dirname(f), exist_ok=True)
-                with open(tmp, 'wb') as fh:
-                    fh.write(data)
-                os.replace(tmp, f)
-                c = self.store.conn()
-                cur = c.execute(
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(tmp, 'wb') as handle:
+                    handle.write(data)
+                os.replace(tmp, path)
+                conn = self.store.conn()
+                cur = conn.execute(
                     'INSERT INTO kp_files (kp_id, name, file, size, mime, note, added, added_by, added_by_id) '
                     'VALUES (?,?,?,?,?,?,?,?,?)',
                     (
@@ -373,13 +373,13 @@ class KpFiles:
                         self.TYPES[ext][0],
                         self.clean_note(note),
                         datetime.now().isoformat(timespec='seconds'),
-                        str(by or '')[:120],
+                        str(author or '')[:120],
                         str(by_id or '')[:64] or None,
                     ),
                 )
-                c.commit()
+                conn.commit()
             except Exception:
-                for x in (tmp, f):
+                for x in (tmp, path):
                     try:
                         if os.path.isfile(x):
                             os.remove(x)
@@ -392,24 +392,24 @@ class KpFiles:
         if not self._get(kid, fid):
             raise LookupError('Документ не найден')
         self.store.write(
-            'UPDATE kp_files SET note=? WHERE kp_id=? AND id=?', (self.clean_note(note), self._kp(kid), int(fid))
+            'UPDATE kp_files SET note=? WHERE kp_id=? AND id=?', (self.clean_note(note), self._kp_id(kid), int(fid))
         )
         return self.get(kid, fid)
 
     def delete(self, kid: str, fid: str) -> dict | None:
         """Удалить документ (администратор или автор через delete_own — проверяет маршрут) → прежнее описание или None."""
-        d = self._get(kid, fid)
-        if not d:
+        rec = self._get(kid, fid)
+        if not rec:
             return None
-        self.store.write('DELETE FROM kp_files WHERE kp_id=? AND id=?', (self._kp(kid), int(fid)))
-        self._remove(kid, d['file'])
-        return self._row(d)
+        self.store.write('DELETE FROM kp_files WHERE kp_id=? AND id=?', (self._kp_id(kid), int(fid)))
+        self._remove(kid, rec['file'])
+        return self._row(rec)
 
     def _remove(self, kid: str, disk) -> None:
         try:
-            f = self._path(kid, disk)
-            if os.path.isfile(f):
-                os.remove(f)
+            path = self._path(kid, disk)
+            if os.path.isfile(path):
+                os.remove(path)
             folder = self._dir(kid)
             if os.path.isdir(folder) and not os.listdir(folder):
                 os.rmdir(folder)
@@ -433,9 +433,9 @@ class KpFiles:
             out.append((rec['name'], data, rec['mime'] or 'application/octet-stream'))
             total += len(data)
         lim = self.limits()['mailMB']
-        if out and total > lim * self.MB:
+        if out and total > lim * self.MEGABYTE:
             raise ValueError(
-                f'Вложения вместе — {self.mb(total)} МБ, почта клиента может не принять письмо больше {lim} МБ. Снимите галочки с части '
+                f'Вложения вместе — {self.megabytes(total)} МБ, почта клиента может не принять письмо больше {lim} МБ. Снимите галочки с части '
                 'документов (их можно отправить вторым письмом)'
             )
         return out

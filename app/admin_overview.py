@@ -24,7 +24,7 @@ class SystemInfo:
             return None
 
     @staticmethod
-    def _os() -> str:
+    def _os_name() -> str:
         try:  # platform может не быть в EXE прежних версий
             import platform
 
@@ -41,7 +41,7 @@ class SystemInfo:
         return ServerTask(self.store).status() or {'pending': True}
 
     def get(self):
-        c = self.cfg
+        conf = self.cfg
         try:
             db = os.path.getsize(self.store.path)
         except OSError:
@@ -50,22 +50,22 @@ class SystemInfo:
             'version': version.VERSION,
             'base': os.environ.get('KP_BASE_VERSION') or '',
             'patched': bool(os.environ.get('KP_UPDATE_DIR')),
-            'frozen': c.FROZEN,
-            'mode': 'server' if c.SERVER_MODE else 'local',
+            'frozen': conf.FROZEN,
+            'mode': 'server' if conf.SERVER_MODE else 'local',
             'host': socket.gethostname(),
-            'port': c.BASE_PORT,
-            'root': c.ROOT,
-            'dataDir': c.DATA_DIR,
-            'docsDir': c.DOCS_DIR,
-            'docsShare': c.DOCS_SHARE,
-            'settingsFile': os.path.join(c.ROOT, 'settings.json'),
+            'port': conf.BASE_PORT,
+            'root': conf.ROOT,
+            'dataDir': conf.DATA_DIR,
+            'docsDir': conf.DOCS_DIR,
+            'docsShare': conf.DOCS_SHARE,
+            'settingsFile': os.path.join(conf.ROOT, 'settings.json'),
             'dbBytes': db,
-            'disk': self._free(c.DATA_DIR),
+            'disk': self._free(conf.DATA_DIR),
             'python': sys.version.split()[0],
-            'os': self._os(),
-            'started': datetime.fromtimestamp(c.STARTED).isoformat(timespec='seconds'),
-            'uptime': int(time.time() - c.STARTED),
-            'allowedHosts': list(c.ALLOWED_HOSTS),
+            'os': self._os_name(),
+            'started': datetime.fromtimestamp(conf.STARTED).isoformat(timespec='seconds'),
+            'uptime': int(time.time() - conf.STARTED),
+            'allowedHosts': list(conf.ALLOWED_HOSTS),
             'task': self.task(),
         }
 
@@ -87,7 +87,7 @@ class Attention:
             self._errors,
             self._moderation,
             self._mail,
-            self._ai,
+            self._neural,
             self._disk,
             self._login,
             self._trash,
@@ -114,26 +114,26 @@ class Attention:
     def _backup(self):
         import maintenance
 
-        b = maintenance.state(self.store).get('backup') or {}
-        if not b.get('at'):
+        backup = maintenance.state(self.store).get('backup') or {}
+        if not backup.get('at'):
             return [{'level': 'warn', 'text': 'Автоматической копии базы ещё не было', 'tab': 'backup'}]
-        if not b.get('ok'):
+        if not backup.get('ok'):
             return [
                 {
                     'level': 'bad',
-                    'text': 'Последняя копия базы с ошибкой: {}'.format((b.get('error') or '')[:120]),
+                    'text': 'Последняя копия базы с ошибкой: {}'.format((backup.get('error') or '')[:120]),
                     'tab': 'backup',
                     'key': 'backup',
                     'alert': True,
                 }
             ]
-        if datetime.fromisoformat(b['at'][:19]) < datetime.now() - timedelta(
+        if datetime.fromisoformat(backup['at'][:19]) < datetime.now() - timedelta(
             days=SrvVal.get(self.store, 'srv.backupStaleDays')
         ):
             return [
                 {
                     'level': 'warn',
-                    'text': 'Копия базы не обновлялась с {}'.format(b['at'][:10]),
+                    'text': 'Копия базы не обновлялась с {}'.format(backup['at'][:10]),
                     'tab': 'backup',
                     'key': 'backup',
                     'alert': True,
@@ -144,9 +144,9 @@ class Attention:
     def _mirror(self):
         from backup_mirror import MirrorBackup
 
-        mb = MirrorBackup(self.store, self.cfg.DATA_DIR)
-        c, s = mb.config(), mb.state()
-        if not c['on']:
+        mirror = MirrorBackup(self.store, self.cfg.DATA_DIR)
+        conf, state = mirror.config(), mirror.state()
+        if not conf['on']:
             return [
                 {
                     'level': 'info',
@@ -154,11 +154,13 @@ class Attention:
                     'tab': 'backup',
                 }
             ]
-        if mb.stale():
-            why = s.get('error') or ('последняя — {}'.format(s['at'][:10]) if s.get('at') else 'ещё не было')
+        if mirror.stale():
+            why = state.get('error') or (
+                'последняя — {}'.format(state['at'][:10]) if state.get('at') else 'ещё не было'
+            )
             return [
                 {
-                    'level': 'bad' if s.get('error') else 'warn',
+                    'level': 'bad' if state.get('error') else 'warn',
                     'text': f'Копия во вторую папку не обновляется: {why[:160]}',
                     'tab': 'backup',
                     'key': 'mirror',
@@ -170,41 +172,45 @@ class Attention:
     def _update(self):
         from app_update import Updater
 
-        s = Updater(self.store, self.cfg.ROOT, self.cfg.DATA_DIR).status()
-        f = s.get('failed')
+        status = Updater(self.store, self.cfg.ROOT, self.cfg.DATA_DIR).status()
+        failed = status.get('failed')
         out = (
             [
                 {
                     'level': 'bad',
                     'text': 'Обновление {} не запустилось — программа сама вернулась к версии {}. Причина: {}'.format(
-                        f['version'], s['current'], f.get('reason', '')[:160]
+                        failed['version'], status['current'], failed.get('reason', '')[:160]
                     ),
                     'tab': 'updates',
                     'key': 'update-failed',
                     'alert': True,
                 }
             ]
-            if f
+            if failed
             else []
         )
-        if s['available'] and not (f and f['version'] == s['last']['version']):  # ту же неудачную версию не предлагать
+        if status['available'] and not (
+            failed and failed['version'] == status['last']['version']
+        ):  # ту же неудачную версию не предлагать
             out.append(
                 {
                     'level': 'warn',
-                    'text': 'Доступна новая версия {} (работает {})'.format(s['last']['version'], s['current']),
+                    'text': 'Доступна новая версия {} (работает {})'.format(
+                        status['last']['version'], status['current']
+                    ),
                     'tab': 'updates',
                 }
             )
-        elif s['pending']:
+        elif status['pending']:
             out.append(
                 {
                     'level': 'warn',
-                    'text': 'Обновление {} установлено, но программа ещё не перезапущена'.format(s['installed']),
+                    'text': 'Обновление {} установлено, но программа ещё не перезапущена'.format(status['installed']),
                     'tab': 'updates',
                 }
             )
-        night = s.get('nightLast') or {}
-        if s.get('nightly', 'off') != 'off' and not s.get('nightSupported'):
+        night = status.get('nightLast') or {}
+        if status.get('nightly', 'off') != 'off' and not status.get('nightSupported'):
             out.append(
                 {
                     'level': 'info',
@@ -212,7 +218,7 @@ class Attention:
                     'tab': 'updates',
                 }
             )
-        elif s.get('nightly', 'off') != 'off' and night.get('error'):
+        elif status.get('nightly', 'off') != 'off' and night.get('error'):
             out.append(
                 {
                     'level': 'warn',
@@ -223,15 +229,15 @@ class Attention:
         return out
 
     def _task(self):
-        t = SystemInfo(self.store, self.cfg).task()
-        if not t or not t.get('exists') or not t.get('problems'):
+        task = SystemInfo(self.store, self.cfg).task()
+        if not task or not task.get('exists') or not task.get('problems'):
             return []
-        why = ' (исправить не удалось: {})'.format(t['error'][:120]) if t.get('error') else ''
+        why = ' (исправить не удалось: {})'.format(task['error'][:120]) if task.get('error') else ''
         return [
             {
                 'level': 'bad',
                 'text': 'Задача Планировщика сервера отдела {}{} — запустите «server-setup\\1. Установить сервер отдела.bat» '
-                'от имени администратора'.format(', '.join(t['problems']), why),
+                'от имени администратора'.format(', '.join(task['problems']), why),
                 'tab': 'system',
                 'key': 'task',
                 'alert': True,
@@ -241,25 +247,27 @@ class Attention:
     def _errors(self):
         from server_log import ServerLog
 
-        lg = ServerLog.of(self.cfg.DATA_DIR)
-        n = lg.count_since(24)
+        log = ServerLog.of(self.cfg.DATA_DIR)
+        count = log.count_since(24)
         return (
             [
                 {
                     'level': 'warn',
-                    'text': f'Ошибки сервера за сутки: {n} — подробности в «Системе» (журнал сервера)',
+                    'text': f'Ошибки сервера за сутки: {count} — подробности в «Системе» (журнал сервера)',
                     'tab': 'system',
                     'key': 'errors',
                     'alert': True,
                 }
             ]
-            if n
+            if count
             else []
         )
 
     def _moderation(self):
-        n = len(self.store.pending_list('pending'))
-        return [{'level': 'warn', 'text': f'Правок товаров на модерации: {n}', 'tab': 'moderation'}] if n else []
+        count = len(self.store.pending_list('pending'))
+        return (
+            [{'level': 'warn', 'text': f'Правок товаров на модерации: {count}', 'tab': 'moderation'}] if count else []
+        )
 
     def _mail(self):
         from features import FeatureAccess
@@ -280,21 +288,21 @@ class Attention:
                 ]
         return []
 
-    def _ai(self):
+    def _neural(self):
         import ai_llm
 
-        s = ai_llm.settings(self.store)
-        if s['enabled'] and not ai_llm.status(self.store)['enabled']:
+        conf = ai_llm.settings(self.store)
+        if conf['enabled'] and not ai_llm.status(self.store)['enabled']:
             return [{'level': 'warn', 'text': 'Нейросеть включена, но не задан ключ API', 'tab': 'ai'}]
         return []
 
     def _disk(self):
-        d = SystemInfo._free(self.cfg.DATA_DIR)
-        if d and d['free'] < SrvVal.get(self.store, 'srv.lowDiskGB') * 1024**3:
+        free = SystemInfo._free(self.cfg.DATA_DIR)
+        if free and free['free'] < SrvVal.get(self.store, 'srv.lowDiskGB') * 1024**3:
             return [
                 {
                     'level': 'bad',
-                    'text': 'На диске с базой осталось %.1f ГБ' % (d['free'] / 1024**3),
+                    'text': 'На диске с базой осталось %.1f ГБ' % (free['free'] / 1024**3),
                     'tab': 'system',
                     'key': 'disk',
                     'alert': True,
@@ -323,16 +331,16 @@ class Attention:
         return DbHealth(self.store).attention()
 
     def _trash(self):
-        n = len(self.store.trash_list())
+        count = len(self.store.trash_list())
         return (
             [
                 {
                     'level': 'info',
-                    'text': f'В корзине записей: {n} (хранятся {SrvVal.get(self.store, "srv.trashDays")} дн.)',
+                    'text': f'В корзине записей: {count} (хранятся {SrvVal.get(self.store, "srv.trashDays")} дн.)',
                     'tab': 'trash',
                 }
             ]
-            if n
+            if count
             else []
         )
 
@@ -351,9 +359,9 @@ class DbOverview:
         except Exception:  # таблицы ещё нет (миграция откачена)
             return None
 
-    def _old(self, b):
+    def _old(self, backup):
         try:
-            return datetime.fromisoformat(b['at'][:19]) < datetime.now() - timedelta(
+            return datetime.fromisoformat(backup['at'][:19]) < datetime.now() - timedelta(
                 days=SrvVal.get(self.store, 'srv.backupStaleDays')
             )
         except (KeyError, TypeError, ValueError):
@@ -364,11 +372,11 @@ class DbOverview:
         from backup_mirror import MirrorBackup
 
         out = maintenance.summary(self.store, self.data_dir)
-        mb = MirrorBackup(self.store, self.data_dir).status()
+        mirror = MirrorBackup(self.store, self.data_dir).status()
         out.update(
             disk=SystemInfo._free(self.data_dir),
-            counts={t: self._count(t) for t in self.COUNTS},
+            counts={table: self._count(table) for table in self.COUNTS},
             stale=self._old(out.get('backup') or {}),
-            mirror={k: mb.get(k) for k in ('on', 'path', 'last', 'stale', 'running')},
+            mirror={k: mirror.get(k) for k in ('on', 'path', 'last', 'stale', 'running')},
         )
         return out

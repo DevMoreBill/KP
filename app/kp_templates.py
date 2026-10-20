@@ -30,10 +30,10 @@ class TemplateError(Exception):
 
 
 def _bundled(tid: str, name: str) -> str | None:
-    for t in (tid, DEFAULT_ID):
-        f = os.path.join(BUNDLED_DIR, t, name)
-        if os.path.isfile(f):
-            return f
+    for tpl in (tid, DEFAULT_ID):
+        path = os.path.join(BUNDLED_DIR, tpl, name)
+        if os.path.isfile(path):
+            return path
     return None
 
 
@@ -46,17 +46,17 @@ def ensure_templates() -> None:
             src, dst = os.path.join(BUNDLED_DIR, name), os.path.join(TEMPLATES_DIR, name)
             if os.path.isdir(src) and not os.path.exists(dst):
                 shutil.copytree(src, dst)
-    for tid, d in template_dirs().items():
+    for tid, folder in template_dirs().items():
         for name in SHARED_FILES:
-            f, src = os.path.join(d, name), _bundled(tid, name)
-            if not src or os.path.normcase(src) == os.path.normcase(f):
+            path, src = os.path.join(folder, name), _bundled(tid, name)
+            if not src or os.path.normcase(src) == os.path.normcase(path):
                 continue
-            if not os.path.isfile(f):
-                shutil.copyfile(src, f)
-            elif _norm_md5(f) in OLD_FACTORY.get(name, ()) and _norm_md5(f) != _norm_md5(src):
+            if not os.path.isfile(path):
+                shutil.copyfile(src, path)
+            elif _norm_md5(path) in OLD_FACTORY.get(name, ()) and _norm_md5(path) != _norm_md5(src):
                 # заводской файл прошлой версии, который никто не правил, — обновляем (прежний — в историю)
-                _backup(d, name)
-                shutil.copyfile(src, f)
+                _backup(folder, name)
+                shutil.copyfile(src, path)
 
 
 # отпечатки заводских скелета и формы редактора прошлых версий: такие файлы обновляются сами,
@@ -90,45 +90,49 @@ OLD_FACTORY = {
 def _norm_md5(path: str) -> str:
     import hashlib
 
-    with open(path, 'rb') as fh:
-        return hashlib.md5(fh.read().replace(b'\r\n', b'\n')).hexdigest()
+    with open(path, 'rb') as handle:
+        return hashlib.md5(handle.read().replace(b'\r\n', b'\n')).hexdigest()
 
 
 def template_dirs() -> list[str]:
     out = {}
     if os.path.isdir(TEMPLATES_DIR):
         for name in sorted(os.listdir(TEMPLATES_DIR)):
-            d = os.path.join(TEMPLATES_DIR, name)
-            if SAFE_ID.match(name) and not name.startswith('_') and os.path.isfile(os.path.join(d, 'template.json')):
-                out[name] = d
+            folder = os.path.join(TEMPLATES_DIR, name)
+            if (
+                SAFE_ID.match(name)
+                and not name.startswith('_')
+                and os.path.isfile(os.path.join(folder, 'template.json'))
+            ):
+                out[name] = folder
     return out
 
 
 def tpl_dir(tid: str) -> str:
-    d = template_dirs().get(tid or '')
-    if not d:
+    folder = template_dirs().get(tid or '')
+    if not folder:
         raise TemplateError(f'Шаблон «{tid}» не найден')
-    return d
+    return folder
 
 
 def template_file(tid: str, name: str) -> str | None:
     """Путь к файлу шаблона для отдачи в браузер; скелет и форма редактора — из заводского, если своих нет."""
-    d = template_dirs().get(tid)
-    if not d or not TPL_FILES.match(name or ''):
+    folder = template_dirs().get(tid)
+    if not folder or not TPL_FILES.match(name or ''):
         return None
-    f = os.path.join(d, name)
-    if os.path.isfile(f):
-        return f
+    path = os.path.join(folder, name)
+    if os.path.isfile(path):
+        return path
     return _bundled(tid, name) if name in SHARED_FILES else None
 
 
 def list_templates() -> list[dict]:
     res = []
-    for tid, d in template_dirs().items():
+    for tid, folder in template_dirs().items():
         try:
-            j = json.loads(read_text(os.path.join(d, 'template.json')))
-        except Exception as e:
-            res.append({'id': tid, 'name': tid, 'error': f'Ошибка в template.json: {e}'})
+            j = json.loads(read_text(os.path.join(folder, 'template.json')))
+        except Exception as exc:
+            res.append({'id': tid, 'name': tid, 'error': f'Ошибка в template.json: {exc}'})
             continue
         res.append(
             {
@@ -137,9 +141,10 @@ def list_templates() -> list[dict]:
                 'description': j.get('description', ''),
                 'filePrefix': j.get('filePrefix', ''),
                 'fileName': j.get('fileName', ''),
-                'hasBase': os.path.isfile(os.path.join(d, 'base.docx')),
+                'hasBase': os.path.isfile(os.path.join(folder, 'base.docx')),
                 'factory': bool(_factory_dir(tid)),
-                'clients': bool(j.get('clientsImage')) and os.path.isfile(os.path.join(d, j.get('clientsImage', ''))),
+                'clients': bool(j.get('clientsImage'))
+                and os.path.isfile(os.path.join(folder, j.get('clientsImage', ''))),
             }
         )
     return res
@@ -149,61 +154,61 @@ def _stamp() -> str:
     return datetime.now().strftime('%Y%m%d-%H%M%S')
 
 
-def _backup(d: str, name: str) -> None:
+def _backup(folder: str, name: str) -> None:
     """Копия файла в _history перед изменением."""
-    f = os.path.join(d, name)
-    if not os.path.isfile(f):
+    path = os.path.join(folder, name)
+    if not os.path.isfile(path):
         return
-    h = os.path.join(d, HISTORY)
-    os.makedirs(h, exist_ok=True)
+    hist = os.path.join(folder, HISTORY)
+    os.makedirs(hist, exist_ok=True)
     stem, ext = os.path.splitext(name)
     kind = stem if stem in ('template', 'base', 'skeleton', 'editor') else None
     if not kind:
         return
-    dst, n = os.path.join(h, f'{kind}-{_stamp()}{ext}'), 1
+    dst, num = os.path.join(hist, f'{kind}-{_stamp()}{ext}'), 1
     while os.path.exists(dst):
-        n += 1
-        dst = os.path.join(h, f'{kind}-{_stamp()}-{n}{ext}')
-    shutil.copyfile(f, dst)
-    files = sorted(x for x in os.listdir(h) if HIST_RE.match(x) and x.startswith(kind + '-'))
+        num += 1
+        dst = os.path.join(hist, f'{kind}-{_stamp()}-{num}{ext}')
+    shutil.copyfile(path, dst)
+    files = sorted(x for x in os.listdir(hist) if HIST_RE.match(x) and x.startswith(kind + '-'))
     for old in files[: -SrvVal.now('srv.tplHistory')]:
         try:
-            os.remove(os.path.join(h, old))
+            os.remove(os.path.join(hist, old))
         except OSError:
             pass
 
 
 def list_history(tid: str) -> list[dict]:
-    h = os.path.join(tpl_dir(tid), HISTORY)
-    if not os.path.isdir(h):
+    hist = os.path.join(tpl_dir(tid), HISTORY)
+    if not os.path.isdir(hist):
         return []
     out = []
-    for name in sorted(os.listdir(h), reverse=True):
-        mm = re.match(r'^(template|base|skeleton|editor)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})', name)
-        if HIST_RE.match(name) and mm:
+    for name in sorted(os.listdir(hist), reverse=True):
+        match = re.match(r'^(template|base|skeleton|editor)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})', name)
+        if HIST_RE.match(name) and match:
             out.append(
                 {
                     'name': name,
-                    'kind': mm.group(1),
-                    'time': f'{mm.group(4)}.{mm.group(3)}.{mm.group(2)} {mm.group(5)}:{mm.group(6)}:{mm.group(7)}',
-                    'size': os.path.getsize(os.path.join(h, name)),
+                    'kind': match.group(1),
+                    'time': f'{match.group(4)}.{match.group(3)}.{match.group(2)} {match.group(5)}:{match.group(6)}:{match.group(7)}',
+                    'size': os.path.getsize(os.path.join(hist, name)),
                 }
             )
     return out
 
 
 def restore_history(tid: str, name: str) -> str:
-    d = tpl_dir(tid)
+    folder = tpl_dir(tid)
     if not HIST_RE.match(name or ''):
         raise TemplateError('Недопустимое имя версии')
-    src = os.path.join(d, HISTORY, name)
+    src = os.path.join(folder, HISTORY, name)
     if not os.path.isfile(src):
         raise TemplateError('Версия не найдена')
     target = {'template': 'template.json', 'base': 'base.docx', 'skeleton': 'skeleton.js', 'editor': 'editor.json'}[
         name.split('-', maxsplit=1)[0]
     ]
-    with open(src, 'rb') as fh:
-        put_file(tid, target, fh.read())
+    with open(src, 'rb') as handle:
+        put_file(tid, target, handle.read())
     return target
 
 
@@ -211,8 +216,8 @@ def _check(name: str, data: bytes) -> bytes:
     if name in ('template.json', 'editor.json'):
         try:
             j = json.loads(data.decode('utf-8-sig'))
-        except Exception as e:
-            raise TemplateError(f'Ошибка в {name}: {e}') from e
+        except Exception as exc:
+            raise TemplateError(f'Ошибка в {name}: {exc}') from exc
         if not isinstance(j, dict):
             raise TemplateError(f'{name} должен содержать объект {{ … }}')
         return json.dumps(j, ensure_ascii=False, indent=2).encode('utf-8') + b'\n'
@@ -242,14 +247,14 @@ def _check(name: str, data: bytes) -> bytes:
 
 def put_file(tid: str, name: str, data: bytes) -> None:
     """Записать файл шаблона (прежняя версия — в _history)."""
-    d = tpl_dir(tid)
+    folder = tpl_dir(tid)
     if not TPL_FILES.match(name or ''):
         raise TemplateError(f'Недопустимое имя файла шаблона: {name}')
     data = _check(name, data)
-    _backup(d, name)
-    tmp = os.path.join(d, name + '.tmp')
+    _backup(folder, name)
+    tmp = os.path.join(folder, name + '.tmp')
     write_bytes(tmp, data)
-    os.replace(tmp, os.path.join(d, name))
+    os.replace(tmp, os.path.join(folder, name))
 
 
 def copy_template(tid: str, new_id: str, name: str) -> str:
@@ -260,60 +265,62 @@ def copy_template(tid: str, new_id: str, name: str) -> str:
     if os.path.exists(dst):
         raise TemplateError(f'Шаблон с кодом «{new_id}» уже есть')
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns(HISTORY, '*.tmp'))
-    for f in SHARED_FILES:
-        if not os.path.isfile(os.path.join(dst, f)) and _bundled(tid, f):
-            shutil.copyfile(_bundled(tid, f), os.path.join(dst, f))
-    f = os.path.join(dst, 'template.json')
-    j = json.loads(read_text(f))
+    for shared in SHARED_FILES:
+        if not os.path.isfile(os.path.join(dst, shared)) and _bundled(tid, shared):
+            shutil.copyfile(_bundled(tid, shared), os.path.join(dst, shared))
+    path = os.path.join(dst, 'template.json')
+    j = json.loads(read_text(path))
     j['name'] = name or (j.get('name', new_id) + ' (копия)')
-    write_bytes(f, json.dumps(j, ensure_ascii=False, indent=2).encode('utf-8') + b'\n')
+    write_bytes(path, json.dumps(j, ensure_ascii=False, indent=2).encode('utf-8') + b'\n')
     return new_id
 
 
 def delete_template(tid: str) -> None:
-    d = tpl_dir(tid)
+    folder = tpl_dir(tid)
     if len(template_dirs()) < 2:
         raise TemplateError('Нельзя удалить единственный шаблон')
     trash = os.path.join(TEMPLATES_DIR, '_deleted')
     os.makedirs(trash, exist_ok=True)
-    shutil.move(d, os.path.join(trash, f'{tid}-{_stamp()}'))
+    shutil.move(folder, os.path.join(trash, f'{tid}-{_stamp()}'))
 
 
 def _factory_dir(tid: str) -> str | None:
-    f = os.path.join(BUNDLED_DIR, tid)
-    d = template_dirs().get(tid)
-    if not os.path.isdir(f) or (d and os.path.normcase(os.path.abspath(f)) == os.path.normcase(os.path.abspath(d))):
+    path = os.path.join(BUNDLED_DIR, tid)
+    folder = template_dirs().get(tid)
+    if not os.path.isdir(path) or (
+        folder and os.path.normcase(os.path.abspath(path)) == os.path.normcase(os.path.abspath(folder))
+    ):
         return None
-    return f
+    return path
 
 
 def reset_template(tid: str) -> None:
     """Вернуть заводской вариант шаблона (текущие файлы остаются в _history)."""
-    d = tpl_dir(tid)
-    f = _factory_dir(tid)
-    if not f:
+    folder = tpl_dir(tid)
+    path = _factory_dir(tid)
+    if not path:
         raise TemplateError('Для этого шаблона нет заводского варианта — верните нужную версию из истории')
-    for name in os.listdir(f):
-        src = os.path.join(f, name)
+    for name in os.listdir(path):
+        src = os.path.join(path, name)
         if os.path.isfile(src) and TPL_FILES.match(name):
-            _backup(d, name)
-            shutil.copyfile(src, os.path.join(d, name))
+            _backup(folder, name)
+            shutil.copyfile(src, os.path.join(folder, name))
 
 
 def open_template_file(tid: str, name: str) -> None:
     """Открыть файл шаблона на этом компьютере: base.docx — в Word, тексты — в Блокноте, иначе — папку."""
     from desktop import open_file, open_folder
 
-    d = tpl_dir(tid)
+    folder = tpl_dir(tid)
     if not name:
-        return open_folder(d)
+        return open_folder(folder)
     if not TPL_FILES.match(name):
         raise TemplateError('Недопустимое имя файла шаблона')
-    f = os.path.join(d, name)
-    if not os.path.isfile(f):
+    path = os.path.join(folder, name)
+    if not os.path.isfile(path):
         raise TemplateError(f'Файл {name} не найден в папке шаблона')
     if name.endswith(('.js', '.json')) and os.name == 'nt':
-        subprocess.Popen(['notepad.exe', f])  # .js нельзя открывать «по умолчанию»: Windows его запустит
+        subprocess.Popen(['notepad.exe', path])  # .js нельзя открывать «по умолчанию»: Windows его запустит
     else:
-        open_file(f)
+        open_file(path)
     return None

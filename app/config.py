@@ -51,18 +51,18 @@ def message_box(text: str, error: bool = True) -> None:
 
 
 def read_text(path: str) -> str:
-    with open(path, encoding='utf-8-sig') as f:
-        return f.read()
+    with open(path, encoding='utf-8-sig') as file:
+        return file.read()
 
 
 def write_text(path: str, text: str) -> None:
-    with open(path, 'w', encoding='utf-8', newline='') as f:
-        f.write(text)
+    with open(path, 'w', encoding='utf-8', newline='') as file:
+        file.write(text)
 
 
 def write_bytes(path: str, data: bytes) -> None:
-    with open(path, 'wb') as f:
-        f.write(data)
+    with open(path, 'wb') as file:
+        file.write(data)
 
 
 SETTINGS: dict = {}
@@ -74,11 +74,11 @@ def resolve_dirs() -> tuple[str, str]:
     settings = os.path.join(ROOT, 'settings.json')
     if os.path.exists(settings):
         try:
-            st = json.loads(read_text(settings))
-            SETTINGS.update(st)
-            if st.get('dataDir'):
-                data_dir = os.path.join(st['dataDir'], 'data')
-                docs_dir = os.path.join(st['dataDir'], 'Коммерческие предложения')
+            saved = json.loads(read_text(settings))
+            SETTINGS.update(saved)
+            if saved.get('dataDir'):
+                data_dir = os.path.join(saved['dataDir'], 'data')
+                docs_dir = os.path.join(saved['dataDir'], 'Коммерческие предложения')
         except Exception:
             pass
     else:
@@ -119,28 +119,28 @@ class BadRequest(ValueError):
     """Неверный запрос — ответ 400 с понятным текстом."""
 
 
-def safe_id(s: str) -> str:
-    if not SAFE_ID.match(s or ''):
+def safe_id(text: str) -> str:
+    if not SAFE_ID.match(text or ''):
         raise BadRequest('Недопустимый идентификатор')
-    return s
+    return text
 
 
-def safe_file(s: str) -> str:
-    s = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '', s or '').strip()
-    return s if s.strip('. ') else 'КП.docx'
+def safe_file(text: str) -> str:
+    text = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '', text or '').strip()
+    return text if text.strip('. ') else 'КП.docx'
 
 
-def safe_dir(s: str) -> str:
+def safe_dir(text: str) -> str:
     """Имя подпапки менеджера без путей и запрещённых символов."""
-    s = re.sub(r'[\\/:*?"<>|.]', '', s or '').strip()
-    return s[:60]
+    text = re.sub(r'[\\/:*?"<>|.]', '', text or '').strip()
+    return text[:60]
 
 
 def docs_path(rel: str) -> str:
     """Путь к файлу КП по имени из базы, не выходя из папки КП."""
     parts = [safe_file(x) for x in re.split(r'[\\/]', rel or '') if x]
-    f = os.path.join(DOCS_DIR, *parts) if parts else os.path.join(DOCS_DIR, 'КП.docx')
+    path = os.path.join(DOCS_DIR, *parts) if parts else os.path.join(DOCS_DIR, 'КП.docx')
     root = os.path.normcase(os.path.abspath(DOCS_DIR)) + os.sep
-    if not os.path.normcase(os.path.abspath(f)).startswith(root):
+    if not os.path.normcase(os.path.abspath(path)).startswith(root):
         raise ValueError('Недопустимое имя файла КП')
-    return f
+    return path

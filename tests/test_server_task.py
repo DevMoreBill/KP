@@ -19,7 +19,7 @@ class FakeTask(ServerTask):
         super().__init__(store)
         self.states, self.fix_ok, self.calls = list(states), fix_ok, []
 
-    def _ps(self, script):
+    def _powershell(self, script):
         self.calls.append(script)
         if 'Set-ScheduledTask' in script:
             if self.fix_ok:
@@ -63,7 +63,7 @@ class ServerTaskTest(unittest.TestCase):
 
     def test_powershell_without_module(self):
         class Broken(FakeTask):
-            def _ps(self, script):
+            def _powershell(self, script):
                 return 1, '', 'Get-ScheduledTask : The term is not recognized'
         rec = Broken(self.st, []).check(1760000400)
         self.assertTrue(rec.get('error', '').startswith('Get-ScheduledTask'), rec)

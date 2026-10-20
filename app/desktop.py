@@ -10,16 +10,16 @@ class DesktopError(RuntimeError):
     """Файл или папку не удалось открыть на этом компьютере."""
 
 
-def _safe(fn):
+def _safe(func):
     """Ошибка ОС — DesktopError с понятным текстом (ответ 422)."""
 
-    @functools.wraps(fn)
+    @functools.wraps(func)
     def run(path: str):
         try:
-            return fn(path)
-        except OSError as e:
-            why = e.strerror or 'нет программы для такого файла'
-            raise DesktopError(f'Не удалось открыть на этом компьютере: {why}') from e
+            return func(path)
+        except OSError as exc:
+            why = exc.strerror or 'нет программы для такого файла'
+            raise DesktopError(f'Не удалось открыть на этом компьютере: {why}') from exc
 
     return run
 

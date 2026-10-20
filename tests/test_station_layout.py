@@ -41,7 +41,7 @@ class StationLayoutFeature(unittest.TestCase):
         fa = FeatureAccess(Store(os.path.join(tmp, 'kp.sqlite3')))
         self.assertIn('stLayout', FEATURES)
         self.assertTrue(fa.for_user()['stLayout'], 'включена по умолчанию')
-        fa.save({'stLayout': {'on': False}}, by='проверка')
+        fa.save({'stLayout': {'on': False}}, author='проверка')
         self.assertFalse(fa.for_user()['stLayout'])
         self.assertFalse(fa.for_user(is_admin=False, uid='m1')['stLayout'])
         fa.save({'stLayout': None})
